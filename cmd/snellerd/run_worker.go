@@ -26,6 +26,7 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
@@ -226,6 +227,14 @@ func (b *blobSegment) Open() (io.ReadCloser, error) {
 
 // Decode implements dcache.Segment.Decode
 func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
+	if c, ok := b.blob.(*blob.Compressed); ok {
+		// compressed: do decoding
+		var dec blockfmt.Decoder
+		dec.Trailer = c.Trailer
+		_, err := dec.CopyBytes(dst, src)
+		return err
+	}
+	// default: just write the segments directly
 	for off := int64(0); off < b.info.Size; off += int64(b.info.Align) {
 		mem := src[off:]
 		if len(mem) > b.info.Align {

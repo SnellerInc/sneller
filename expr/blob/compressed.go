@@ -59,7 +59,7 @@ func (c *Compressed) Stat() (*Info, error) {
 	}
 	return &Info{
 		ETag:         etag,
-		Size:         c.Trailer.Decompressed(),
+		Size:         c.Trailer.Offset - c.Trailer.Blocks[0].Offset,
 		Align:        1 << c.Trailer.BlockShift,
 		LastModified: inner.LastModified,
 	}, nil
@@ -142,38 +142,51 @@ func (c *Compressed) Split(cut int) (*List, error) {
 }
 
 type compressedReader struct {
+	io.ReadCloser
 	dec blockfmt.Decoder
-	src io.ReadCloser
-}
-
-func (c *compressedReader) Close() error { return c.src.Close() }
-
-// Read implements io.Reader
-func (c *compressedReader) Read(p []byte) (int, error) {
-	return c.dec.Decompress(c.src, p)
 }
 
 // WriteTo implements io.WriterTo
 func (c *compressedReader) WriteTo(dst io.Writer) (int64, error) {
-	return c.dec.Copy(dst, c.src)
+	return c.dec.Copy(dst, c.ReadCloser)
 }
 
-func (c *Compressed) Reader(start, size int64) (io.ReadCloser, error) {
-	// for now, constrain reads to be
-	// just from (0, size)
-	if start != 0 {
-		return nil, fmt.Errorf("blob.Compressed: reading @ offset %d not supported", start)
-	}
-	if size != c.Trailer.Decompressed() {
-		return nil, fmt.Errorf("expected %d-byte buffer passed to Read; got %d", c.Trailer.Decompressed(), size)
-	}
-	start = c.Trailer.Blocks[0].Offset
-	size = c.Trailer.Offset - start
-	src, err := c.From.Reader(start, size)
+type decompressor struct {
+	src io.ReadCloser
+	dec blockfmt.Decoder
+}
+
+func (d *decompressor) Read(p []byte) (int, error) {
+	return d.dec.Decompress(d.src, p)
+}
+
+func (d *decompressor) WriteTo(dst io.Writer) (int64, error) {
+	return d.dec.Copy(dst, d.src)
+}
+
+func (d *decompressor) Close() error { return d.src.Close() }
+
+func (c *Compressed) Decompressor() (io.ReadCloser, error) {
+	start := c.Trailer.Blocks[0].Offset
+	end := c.Trailer.Offset
+	rd, err := c.From.Reader(start, end-start)
 	if err != nil {
 		return nil, err
 	}
-	cr := &compressedReader{src: src}
+	dd := &decompressor{}
+	dd.src = rd
+	dd.dec.Trailer = c.Trailer
+	return dd, nil
+}
+
+func (c *Compressed) Reader(start, size int64) (io.ReadCloser, error) {
+	start += c.Trailer.Blocks[0].Offset
+	rd, err := c.From.Reader(start, size)
+	if err != nil {
+		return nil, err
+	}
+	cr := &compressedReader{}
+	cr.ReadCloser = rd
 	cr.dec.Trailer = c.Trailer
 	return cr, nil
 }

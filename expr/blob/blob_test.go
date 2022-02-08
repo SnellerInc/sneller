@@ -37,11 +37,22 @@ func testRead(t *testing.T, src Interface, backing []byte) {
 		t.Helper()
 		t.Fatal(err)
 	}
-	r, err := src.Reader(0, info.Size)
-	if err != nil {
-		t.Helper()
-		t.Fatal(err)
+	reader := func(src Interface, info *Info) io.ReadCloser {
+		var r io.ReadCloser
+		var err error
+		if c, ok := src.(*Compressed); ok {
+			r, err = c.Decompressor()
+		} else {
+			r, err = src.Reader(0, info.Size)
+		}
+		if err != nil {
+			t.Helper()
+			t.Fatal(err)
+		}
+		return r
 	}
+
+	r := reader(src, info)
 	_, writerTo := r.(io.WriterTo)
 	defer r.Close()
 	_, err = io.ReadFull(r, dst)
@@ -56,13 +67,7 @@ func testRead(t *testing.T, src Interface, backing []byte) {
 	if !writerTo {
 		return
 	}
-	// if there is a WriterTo implementation,
-	// test that as well
-	r2, err := src.Reader(0, info.Size)
-	if err != nil {
-		t.Helper()
-		t.Fatal(err)
-	}
+	r2 := reader(src, info)
 	defer r2.Close()
 	wt := r2.(io.WriterTo)
 	var buf bytes.Buffer
@@ -71,9 +76,9 @@ func testRead(t *testing.T, src Interface, backing []byte) {
 		t.Helper()
 		t.Fatal(err)
 	}
-	if nn != info.Size {
+	if int(nn) != len(backing) {
 		t.Helper()
-		t.Errorf("wrote %d instead of %d bytes", nn, info.Size)
+		t.Errorf("wrote %d bytes instead of %d", nn, len(backing))
 	}
 	if !bytes.Equal(buf.Bytes(), backing) {
 		t.Helper()

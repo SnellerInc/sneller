@@ -93,7 +93,7 @@ func TestCompressedRange(t *testing.T) {
 			off := int64(i * cw.InputAlign)
 			size := int64((j - i) * cw.InputAlign)
 			r := &Compressed{From: all.From, Trailer: all.Trailer.Slice(i, j)}
-			rd, err := r.Reader(0, r.Trailer.Decompressed())
+			rd, err := r.Decompressor()
 			if err != nil {
 				t.Fatal(err)
 			}

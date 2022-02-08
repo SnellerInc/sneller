@@ -92,7 +92,6 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 		if err != nil {
 			return nil, err
 		}
-		s.total += stat.Size
 		c, ok := b.(*blob.Compressed)
 		if !ok {
 			// we can only really do interesting
@@ -100,9 +99,11 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 			if err := insert(b); err != nil {
 				return nil, err
 			}
+			s.total += stat.Size
 			s.maxscan += stat.Size
 			continue
 		}
+		s.total += c.Trailer.Decompressed()
 		ret, err := c.Split(int(splitSize))
 		if err != nil {
 			return nil, err
@@ -123,7 +124,7 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 			s.maxscan += scan
 			continue
 		}
-		s.maxscan += stat.Size
+		s.maxscan += c.Trailer.Decompressed()
 		for _, b := range ret.Contents {
 			if err := insert(b); err != nil {
 				return nil, err

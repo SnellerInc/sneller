@@ -306,5 +306,32 @@ func check(t *testing.T, buf []byte) []byte {
 		t.Helper()
 		t.Errorf("%d bytes decompressed instead of %d", n, len(out))
 	}
+	var dst bytes.Buffer
+	r.Seek(0, io.SeekStart)
+	nn, err := dec.Copy(&dst, io.LimitReader(r, trailer.Offset))
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	if int(nn) != len(out) {
+		t.Helper()
+		t.Errorf("%d bytes decompressed instead of %d", n, len(out))
+	}
+	if !bytes.Equal(dst.Bytes(), out) {
+		t.Error("Decompress and Copy returned different data")
+	}
+	dst.Reset()
+	nn, err = dec.CopyBytes(&dst, buf[:trailer.Offset])
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	if int(nn) != len(out) {
+		t.Helper()
+		t.Errorf("%d bytes decompressed instead of %d", n, len(out))
+	}
+	if !bytes.Equal(dst.Bytes(), out) {
+		t.Error("Decompress and CopyBytes returned different data")
+	}
 	return out
 }

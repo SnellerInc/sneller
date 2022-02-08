@@ -523,6 +523,37 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 	return d.decompressBlocks(src, int(d.Offset), dst)
 }
 
+// CopyBytes incrementally decompresses data from src
+// and writes it to dst. It returns the number of
+// bytes written to dst and the first error encountered,
+// if any.
+func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
+	tmp := malloc(1 << d.Trailer.BlockShift)
+	decomp := Decompression(d.Algo)
+	defer free(tmp)
+	nn := int64(0)
+	for len(src) > 0 {
+		if ion.TypeOf(src) != ion.BlobType {
+			return nn, fmt.Errorf("decoding data: expected a blob; got %s", ion.TypeOf(src))
+		}
+		size := ion.SizeOf(src)
+		if size < 5 || size > len(src) {
+			return nn, fmt.Errorf("unexpected frame size %d", size)
+		}
+		err := decomp.Decompress(src[5:size], tmp)
+		if err != nil {
+			return nn, err
+		}
+		src = src[size:]
+		n, err := dst.Write(tmp)
+		nn += int64(n)
+		if err != nil {
+			return nn, err
+		}
+	}
+	return nn, nil
+}
+
 // Copy incrementally decompresses data from src
 // and writes it to dst. It returns the number of
 // bytes written to dst and the first error encountered,
