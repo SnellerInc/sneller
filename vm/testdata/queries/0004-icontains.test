@@ -1,0 +1,25 @@
+# note: we can't just write
+# 'WHERE LOWER(str) LIKE "%xy" AND match IS TRUE'
+# because that can be optimized into
+# short-circuit comparison against 'match'
+# for the failing cases, which we don't want
+SELECT COUNT(*)
+FROM input
+WHERE (LOWER(str) LIKE '%xy%') = (match IS FALSE)
+---
+{"str": "xy", "match": true}
+{"match": false}
+{"str": "Xy", "match": true}
+{"str": "xY", "match": true}
+{"str": "XY", "match": true}
+{"str": "zxy", "match": true}
+{"str": "xyz", "match": true}
+{"str": "x", "match": false}
+{"str": "y", "match": false}
+{"str": "", "match": false}
+{"str": 100, "match": false}
+{"str": "abcdefghxy", "match": true}
+{"str": "ABcdEFghXY", "match": true}
+{"str": "abcdxxyyabcd", "match": true}
+---
+{"count": 0}

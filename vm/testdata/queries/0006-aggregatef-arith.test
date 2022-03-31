@@ -1,0 +1,36 @@
+# Simple aggregation (float)
+#
+# NOTE: what are the semantics of AVG()
+# when a column is missing or non-numeric?
+# If we add {"x": "foo"} to the input, should
+# the average for the column change?
+# (The PartiQL specification is unclear on this point.)
+SELECT
+  COUNT(*) AS all,
+  COUNT(x) AS count,
+  SUM(x) AS sum,
+  MIN(x) AS min,
+  MAX(x) AS max,
+  AVG(x) AS avg
+FROM input
+---
+{"x": null}
+{"x": -1000}
+{"x": 0}
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 45}
+{"x": 666}
+{"x": 999}
+{"x": 1000}
+{"x": 10000}
+{"x": 100000}
+{"x": 1000000}
+{"x": 10000000}
+{"x": 100000000}
+{"x": 1000000000}
+{"x": 10000000000}
+{"x": 100000000000}
+---
+{"all": 18, "count": 18, "sum": 111111111716, "min": -1000, "max": 100000000000, "avg": 6535947748}

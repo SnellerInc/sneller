@@ -1,0 +1,27 @@
+# Tests for SIZE() function
+SELECT SIZE(x) as s
+FROM input
+---
+{"x": null}
+{"x": 1}
+{"x": 2.5}
+{"x": "test"}
+{"x": []}
+{"x": ["quite a long text"]}
+{"x": [1, 2, 3, 4, 5]}
+{"x": ["x", null, {"foo": 1, "bar": 2}]}
+{"x": {}}
+{"x": {"foo": 1, "bar": [1, 2, 3, 4, 5, 6, 7], "baz": 3, "abc": null}}
+{"x": true}
+---
+{}
+{}
+{}
+{}
+{"s": 0}
+{"s": 1}
+{"s": 5}
+{"s": 3}
+{"s": 0}
+{"s": 4}
+{}

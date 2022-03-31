@@ -1,0 +1,19 @@
+# correlated subquery (struct result)
+SELECT
+  x,
+  (SELECT a, b, c FROM input1 WHERE f = x LIMIT 1) AS y
+FROM input0
+---
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 4}
+---
+{"f": 1, "a": "foo1", "b": "bar1", "c": "baz1"}
+{"f": 2, "w": "foo2", "b": "bar2", "c": "baz2"}
+{"f": 3, "a": "foo3", "b": "bar3"}
+---
+{"x": 1, "y": {"a": "foo1", "b": "bar1", "c": "baz1"}}
+{"x": 2, "y": {"b": "bar2", "c": "baz2"}}
+{"x": 3, "y": {"a": "foo3", "b": "bar3"}}
+{"x": 4}

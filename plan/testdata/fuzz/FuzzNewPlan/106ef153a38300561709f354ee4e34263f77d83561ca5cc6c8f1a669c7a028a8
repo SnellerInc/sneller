@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SELECT(SELECT 0)GROUP BY 0")

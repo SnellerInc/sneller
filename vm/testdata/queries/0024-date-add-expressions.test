@@ -1,0 +1,52 @@
+SELECT
+  DATE_ADD(MICROSECOND, microsecond_value,
+    DATE_ADD(SECOND, second_value,
+      DATE_ADD(MINUTE, minute_value,
+        DATE_ADD(HOUR, hour_value,
+          DATE_ADD(DAY, day_value,
+            DATE_ADD(MONTH, month_value,
+              DATE_ADD(YEAR, year_value, t))))))) AS t
+FROM
+  input
+---
+{"t": "1970-01-01T00:00:00Z", "year_value": 1, "month_value": 1, "day_value": 1, "hour_value": 1, "minute_value": 1, "second_value": 1, "microsecond_value": 1}
+{"t": "1970-01-01T00:00:01Z", "year_value": 2, "month_value": 2, "day_value": 2, "hour_value": 2, "minute_value": 2, "second_value": 2, "microsecond_value": 2}
+{"t": "1970-01-01T00:00:02Z", "year_value": 3, "month_value": 3, "day_value": 3, "hour_value": 3, "minute_value": 3, "second_value": 3, "microsecond_value": 3}
+{"t": "1970-01-01T00:01:00Z", "year_value": 4, "month_value": 4, "day_value": 4, "hour_value": 4, "minute_value": 4, "second_value": 4, "microsecond_value": 4}
+{"t": "1970-01-01T01:00:00Z", "year_value": 5, "month_value": 5, "day_value": 5, "hour_value": 5, "minute_value": 5, "second_value": 5, "microsecond_value": 5}
+{"t": "1970-01-01T01:29:59Z", "year_value": 6, "month_value": 6, "day_value": 6, "hour_value": 6, "minute_value": 6, "second_value": 6, "microsecond_value": 6}
+{"t": "1970-01-01T01:30:00Z", "year_value": 7, "month_value": 7, "day_value": 7, "hour_value": 7, "minute_value": 7, "second_value": 7, "microsecond_value": 7}
+{"t": "1970-01-01T01:30:01Z", "year_value": 8, "month_value": 8, "day_value": 8, "hour_value": 8, "minute_value": 8, "second_value": 8, "microsecond_value": 8}
+{"t": "1970-01-01T01:59:59Z", "year_value": 9, "month_value": 9, "day_value": 9, "hour_value": 9, "minute_value": 9, "second_value": 9, "microsecond_value": 9}
+{"t": "1970-01-01T02:00:00Z", "year_value": 10, "month_value": 10, "day_value": 10, "hour_value": 10, "minute_value": 10, "second_value": 10, "microsecond_value": 10}
+{"t": "1970-01-01T02:15:00Z", "year_value": 11, "month_value": 11, "day_value": 11, "hour_value": 11, "minute_value": 11, "second_value": 11, "microsecond_value": 11}
+{"t": "1970-01-01T02:29:59Z", "year_value": 12, "month_value": 12, "day_value": 12, "hour_value": 12, "minute_value": 12, "second_value": 12, "microsecond_value": 12}
+{"t": "1970-01-01T02:30:30Z", "year_value": 13, "month_value": 13, "day_value": 13, "hour_value": 13, "minute_value": 13, "second_value": 13, "microsecond_value": 13}
+{"t": "2020-01-01T00:00:00Z", "year_value": 14, "month_value": 14, "day_value": 14, "hour_value": 14, "minute_value": 14, "second_value": 14, "microsecond_value": 14}
+{"t": "2020-01-01T00:30:00Z", "year_value": 15, "month_value": 15, "day_value": 15, "hour_value": 15, "minute_value": 15, "second_value": 15, "microsecond_value": 15}
+{"t": "2020-01-01T01:00:00Z", "year_value": 16, "month_value": 16, "day_value": 16, "hour_value": 16, "minute_value": 16, "second_value": 16, "microsecond_value": 16}
+{"t": "2021-01-02T01:00:00Z", "year_value": 17, "month_value": 17, "day_value": 17, "hour_value": 17, "minute_value": 17, "second_value": 17, "microsecond_value": 17}
+{"t": "2023-01-02T23:00:00Z", "year_value": 18, "month_value": 18, "day_value": 18, "hour_value": 18, "minute_value": 18, "second_value": 18, "microsecond_value": 18}
+{"t": "2024-01-03T23:00:00Z", "year_value": 19, "month_value": 19, "day_value": 19, "hour_value": 19, "minute_value": 19, "second_value": 19, "microsecond_value": 19}
+{"t": "2025-01-04T23:00:00Z", "year_value": 20, "month_value": 20, "day_value": 20, "hour_value": 20, "minute_value": 20, "second_value": 20, "microsecond_value": 20}
+---
+{"t": "1971-02-02T01:01:01.000001Z"}
+{"t": "1972-03-03T02:02:03.000002Z"}
+{"t": "1973-04-04T03:03:05.000003Z"}
+{"t": "1974-05-05T04:05:04.000004Z"}
+{"t": "1975-06-06T06:05:05.000005Z"}
+{"t": "1976-07-07T07:36:05.000006Z"}
+{"t": "1977-08-08T08:37:07.000007Z"}
+{"t": "1978-09-09T09:38:09.000008Z"}
+{"t": "1979-10-10T11:09:08.000009Z"}
+{"t": "1980-11-11T12:10:10.000010Z"}
+{"t": "1981-12-12T13:26:11.000011Z"}
+{"t": "1983-01-13T14:42:11.000012Z"}
+{"t": "1984-02-14T15:43:43.000013Z"}
+{"t": "2035-03-15T14:14:14.000014Z"}
+{"t": "2036-04-16T15:45:15.000015Z"}
+{"t": "2037-05-17T17:16:16.000016Z"}
+{"t": "2039-06-19T18:17:17.000017Z"}
+{"t": "2042-07-21T17:18:18.000018Z"}
+{"t": "2044-08-23T18:19:19.000019Z"}
+{"t": "2046-09-25T19:20:20.000020Z"}

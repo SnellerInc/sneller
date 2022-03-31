@@ -1,0 +1,14 @@
+#go test -run=TestQueries/0041-cmp-cs
+
+SELECT COUNT(*)
+FROM input
+WHERE (str = 'KSK') = (match IS FALSE)
+---
+{"str": "KSK", "match": true}
+{"str": "SK", "match": false}
+{"str": "KSKS", "match": false}
+{"match": false}
+{"str": "kSK", "match": false}
+{"str": 100, "match": false}
+---
+{"count": 0}

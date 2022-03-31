@@ -1,0 +1,51 @@
+# Group aggregation with WIDTH_BUCKET (float)
+SELECT
+  COUNT(*) AS count,
+  SUM(x) AS sum,
+  MIN(x) AS min,
+  MAX(x) AS max,
+  WIDTH_BUCKET(x, 5, 30, 3) AS bucket
+FROM
+  input
+GROUP BY
+  WIDTH_BUCKET(x, 5, 30, 3)
+ORDER BY
+  bucket
+---
+{"x": 0}
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 4}
+{"x": 5}
+{"x": 6}
+{"x": 7}
+{"x": 8}
+{"x": 9}
+{"x": 10}
+{"x": 11}
+{"x": 12}
+{"x": 13}
+{"x": 14}
+{"x": 15}
+{"x": 16}
+{"x": 17}
+{"x": 18}
+{"x": 19}
+{"x": 20}
+{"x": 21}
+{"x": 22}
+{"x": 23}
+{"x": 24}
+{"x": 25}
+{"x": 26}
+{"x": 27}
+{"x": 28}
+{"x": 29}
+{"x": 30.12}
+---
+{"count": 5, "sum": 10, "min": 0, "max": 4, "bucket": 0}
+{"count": 9, "sum": 81, "min": 5, "max": 13, "bucket": 1}
+{"count": 8, "sum": 140, "min": 14, "max": 21, "bucket": 2}
+{"count": 8, "sum": 204, "min": 22, "max": 29, "bucket": 3}
+{"count": 1, "sum": 30.12, "min": 30.12, "max": 30.12, "bucket": 4}

@@ -1,0 +1,38 @@
+SELECT
+  TRIM(a) AS a
+FROM
+  input
+---
+{"a": " A "}
+{"a": " Bb "}
+{"a": " Cbc "}
+{"a": " DbcM "}
+{"a": " EbcdL "}
+{"a": " FbcdeK "}
+{"a": " GbcdefJ "}
+{"a": " HbcdefgI "}
+{"a": " IbcdefghH "}
+{"a": " JbcdefghiG "}
+{"a": " KbcdefghijF "}
+{"a": " LbcdefghijkE "}
+{"a": " MbcdefghijklD "}
+{"a": " NbcdefghijklmC "}
+{"a": " ObcdefghijklmnB "}
+{"a": " PbcdefghijklmnoA "}
+---
+{"a": "A"}
+{"a": "Bb"}
+{"a": "Cbc"}
+{"a": "DbcM"}
+{"a": "EbcdL"}
+{"a": "FbcdeK"}
+{"a": "GbcdefJ"}
+{"a": "HbcdefgI"}
+{"a": "IbcdefghH"}
+{"a": "JbcdefghiG"}
+{"a": "KbcdefghijF"}
+{"a": "LbcdefghijkE"}
+{"a": "MbcdefghijklD"}
+{"a": "NbcdefghijklmC"}
+{"a": "ObcdefghijklmnB"}
+{"a": "PbcdefghijklmnoA"}

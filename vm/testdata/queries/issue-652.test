@@ -1,0 +1,17 @@
+SELECT
+  TIME_BUCKET(created_at, 3600) AS time, COUNT(*)
+FROM input
+WHERE DATE_DIFF(HOUR, created_at, `2022-01-15T00:00:00Z`) < 24
+GROUP BY TIME_BUCKET(created_at, 3600)
+ORDER BY time
+---
+{"created_at": "2022-01-14T19:11:26Z"}
+{"created_at": "2022-01-14T18:11:26Z"}
+{"created_at": "2022-01-14T18:11:30Z"}
+{"created_at": "2022-01-14T17:11:26Z"}
+{"created_at": "2022-01-14T17:11:27Z"}
+{"created_at": "2022-01-14T17:12:27Z"}
+---
+{"time": 1642179600, "count": 3}
+{"time": 1642183200, "count": 2}
+{"time": 1642186800, "count": 1}

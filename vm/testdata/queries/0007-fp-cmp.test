@@ -1,0 +1,22 @@
+# test numeric and generic equality
+# to see if we get the correct
+# TRUE/FALSE/MISSING behavior
+SELECT
+    a+0 = b/1 AS eq,
+    a = b AS eqv,
+    a+1 = 5 AS eqc
+FROM input
+---
+{"a": 1.5, "b": 1.5}
+{"a": 4, "b": 4}
+{"a": 1.5}
+{"b": 1.5}
+{"a": "xyz", "b": "xyz"}
+{"a": 4, "b": 2}
+---
+{"eq": true, "eqv": true, "eqc": false}
+{"eq": true, "eqv": true, "eqc": true}
+{"eqc": false}
+{}
+{"eqv": true}
+{"eq": false, "eqv": false, "eqc": true}

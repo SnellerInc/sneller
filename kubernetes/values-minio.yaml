@@ -1,0 +1,14 @@
+replicas: 4
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    cert-manager.io/issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+  path: /
+  hosts:
+    - kubernetes-minio.sneller-dev.io
+  tls:
+    - secretName: kubernetes-minio-tls
+      hosts:
+        - kubernetes-minio.sneller-dev.io

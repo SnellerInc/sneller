@@ -1,0 +1,8 @@
+# SIZE() on short list (few bytes each)
+SELECT SIZE(list)
+FROM input
+---
+{"list": []}
+{"list": [1]}
+{"list": [1, 2]}
+---

@@ -1,0 +1,16 @@
+SELECT
+  MAX(id) AS max_id, # symbol ID 8
+  version,           # symbol ID 5
+  name               # symbol ID 4
+FROM input
+GROUP BY version, name
+ORDER BY max_id ASC
+---
+{"id": 0, "version": 0, "name": "name0"}
+{"id": 1, "version": 0, "name": "name0"}
+{"id": 2, "version": 1, "name": "name1"}
+{"id": 3, "version": 2, "name": "name1"}
+---
+{"name": "name0", "version": 0, "max_id": 1}
+{"name": "name1", "version": 1, "max_id": 2}
+{"name": "name1", "version": 2, "max_id": 3}

@@ -1,0 +1,14 @@
+# simple scalar subquery substitution
+SELECT
+  foo
+FROM input
+WHERE x =
+  (SELECT y FROM input WHERE useme LIMIT 1)
+---
+{"foo": "bar", "x": -1, "y": 1}
+{"foo": "baz", "x": 0, "y": -1}
+{"foo": "quux", "x": 1, "y": 0}
+{"foo": "select me", "x": 2, "y": 3}
+{"foo": "inner select me", "x": 3, "y": 2, "useme": true}
+---
+{"foo": "select me"}

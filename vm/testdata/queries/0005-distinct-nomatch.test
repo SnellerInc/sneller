@@ -1,0 +1,7 @@
+SELECT DISTINCT does_not_exist
+FROM input
+---
+{"a": 2}
+{"b": 3}
+{"d": 4}
+---

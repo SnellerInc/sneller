@@ -1,0 +1,25 @@
+#NOTE HJ: the following cases fail, I'm working on a fix
+
+SELECT
+  COUNT(*) # count failing test cases
+FROM input
+WHERE SUBSTRING(inp, off, len) <> want
+---
+{"inp":"xyz", "off":1, "len":3, "want":"xyz"}
+{"inp":"xyz", "off":2, "len":3, "want":"xy"}
+{"inp":"xyz", "off":2, "len":2, "want":"xy"}
+
+# examples from https://docs.aws.amazon.com/qldb/latest/developerguide/ql-functions.substring.html
+{"inp":"123456789",  "off":0,    "len":9999999,  "want":"123456789"}
+{"inp":"123456789",  "off":1,    "len":9999999,  "want":"123456789"}
+{"inp":"123456789",  "off":2,    "len":9999999,  "want":"23456789"}
+{"inp":"123456789",  "off":-4,   "len":9999999,  "want":"123456789"}
+{"inp":"123456789",  "off":0,    "len":999,      "want":"123456789"}
+{"inp":"123456789",  "off":0,    "len":2,        "want":"1"}
+{"inp":"123456789",  "off":1,    "len":999,      "want":"123456789"}
+{"inp":"1",          "off":1,    "len":2,        "want":"12"}
+{"inp":"1",          "off":1,    "len":0,        "want":""}
+{"inp":"1",          "off":-4,   "len":0,        "want":""}
+{"inp":"1234",       "off":10,   "len":10,       "want":""}
+---
+{"count": 0}

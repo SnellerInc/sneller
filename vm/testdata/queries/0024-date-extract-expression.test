@@ -1,0 +1,42 @@
+SELECT
+  EXTRACT(YEAR   FROM DATE_ADD(SECOND, 1, t)) AS year,
+  EXTRACT(MONTH  FROM DATE_ADD(SECOND, 1, t)) AS month,
+  EXTRACT(DAY    FROM DATE_ADD(SECOND, 1, t)) AS day,
+  EXTRACT(HOUR   FROM DATE_ADD(SECOND, 1, t)) AS hour,
+  EXTRACT(MINUTE FROM DATE_ADD(SECOND, 1, t)) AS minute,
+  EXTRACT(SECOND FROM DATE_ADD(SECOND, 1, t)) AS second
+FROM input
+---
+{"t": "1999-01-11T21:31:41Z"}
+{"t": "2007-02-12T22:32:42Z"}
+{"t": "2008-03-13T23:33:43Z"}
+{"t": "2009-04-14T00:34:44Z"}
+{"t": "2010-05-15T01:35:45Z"}
+{"t": "2011-06-16T02:36:46Z"}
+{"t": "2012-07-17T03:37:47Z"}
+{"t": "2013-08-18T04:38:48Z"}
+{"t": "2014-09-19T05:39:49Z"}
+{"t": "2015-10-20T06:40:50Z"}
+{"t": "2016-11-21T07:41:51Z"}
+{"t": "2017-12-22T08:42:52Z"}
+{"t": "2018-01-23T09:43:53Z"}
+{"t": "2019-02-24T10:44:54Z"}
+{"t": "2020-03-25T11:45:55Z"}
+{"t": "2021-04-26T12:46:56Z"}
+---
+{"year": 1999, "month": 1, "day": 11, "hour": 21, "minute": 31, "second": 42}
+{"year": 2007, "month": 2, "day": 12, "hour": 22, "minute": 32, "second": 43}
+{"year": 2008, "month": 3, "day": 13, "hour": 23, "minute": 33, "second": 44}
+{"year": 2009, "month": 4, "day": 14, "hour": 0, "minute": 34, "second": 45}
+{"year": 2010, "month": 5, "day": 15, "hour": 1, "minute": 35, "second": 46}
+{"year": 2011, "month": 6, "day": 16, "hour": 2, "minute": 36, "second": 47}
+{"year": 2012, "month": 7, "day": 17, "hour": 3, "minute": 37, "second": 48}
+{"year": 2013, "month": 8, "day": 18, "hour": 4, "minute": 38, "second": 49}
+{"year": 2014, "month": 9, "day": 19, "hour": 5, "minute": 39, "second": 50}
+{"year": 2015, "month": 10, "day": 20, "hour": 6, "minute": 40, "second": 51}
+{"year": 2016, "month": 11, "day": 21, "hour": 7, "minute": 41, "second": 52}
+{"year": 2017, "month": 12, "day": 22, "hour": 8, "minute": 42, "second": 53}
+{"year": 2018, "month": 1, "day": 23, "hour": 9, "minute": 43, "second": 54}
+{"year": 2019, "month": 2, "day": 24, "hour": 10, "minute": 44, "second": 55}
+{"year": 2020, "month": 3, "day": 25, "hour": 11, "minute": 45, "second": 56}
+{"year": 2021, "month": 4, "day": 26, "hour": 12, "minute": 46, "second": 57}

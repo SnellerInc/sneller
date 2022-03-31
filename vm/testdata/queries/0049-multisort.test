@@ -1,0 +1,19 @@
+SELECT m, d, h, COUNT(*)
+FROM (SELECT EXTRACT(MONTH FROM timestamp) m, EXTRACT(DAY FROM timestamp) d, EXTRACT(HOUR FROM timestamp) h
+      FROM input)
+WHERE m = 3 AND d >= 9
+GROUP BY m, d, h
+ORDER BY m, d, h
+---
+{"timestamp": "2000-03-09T00:00:00Z"}
+{"timestamp": "2000-03-10T01:00:00Z"}
+{"timestamp": "2000-03-11T02:00:00Z"}
+{"timestamp": "2000-03-12T03:00:00Z"}
+{"timestamp": "2000-03-12T03:00:00Z"}
+{"timestamp": "2000-03-13T13:00:00Z"}
+---
+{"count": 1, "m": 3, "d": 9, "h": 0}
+{"count": 1, "m": 3, "d": 10, "h": 1}
+{"count": 1, "m": 3, "d": 11, "h": 2}
+{"count": 2, "m": 3, "d": 12, "h": 3}
+{"count": 1, "m": 3, "d": 13, "h": 13}

@@ -1,0 +1,70 @@
+SELECT
+  GEO_GRID_INDEX(lat, lon, 5) AS bits, name
+FROM
+  input
+ORDER BY
+  name
+---
+{"country": "NL", "name": "Amsterdam", "lat": 52.37403, "lon": 4.88969}
+{"country": "GR", "name": "Athens", "lat": 37.97945, "lon": 23.71622}
+{"country": "DE", "name": "Berlin", "lat": 52.52437, "lon": 13.41053}
+{"country": "SK", "name": "Bratislava", "lat": 48.14816, "lon": 17.10674}
+{"country": "BE", "name": "Brussels", "lat": 50.85045, "lon": 4.34878}
+{"country": "RO", "name": "Bucharest", "lat": 44.43225, "lon": 26.10626}
+{"country": "HU", "name": "Budapest", "lat": 47.49801, "lon": 19.03991}
+{"country": "MD", "name": "Chisinau", "lat": 47.00556, "lon": 28.8575}
+{"country": "DK", "name": "Copenhagen", "lat": 55.67594, "lon": 12.56553}
+{"country": "IE", "name": "Dublin", "lat": 53.33306, "lon": -6.24889}
+{"country": "FI", "name": "Helsinki", "lat": 60.16952, "lon": 24.93545}
+{"country": "PT", "name": "Lisbon", "lat": 38.71667, "lon": -9.13333}
+{"country": "SI", "name": "Ljubljana", "lat": 46.05108, "lon": 14.50513}
+{"country": "GB", "name": "London", "lat": 51.50853, "lon": -0.12574}
+{"country": "LU", "name": "Luxembourg", "lat": 49.61167, "lon": 6.13}
+{"country": "ES", "name": "Madrid", "lat": 40.4165, "lon": -3.70256}
+{"country": "MC", "name": "Monaco", "lat": 43.73333, "lon": 7.41667}
+{"country": "CY", "name": "Nicosia", "lat": 35.17531, "lon": 33.3642}
+{"country": "NO", "name": "Oslo", "lat": 59.91273, "lon": 10.74609}
+{"country": "FR", "name": "Paris", "lat": 48.85341, "lon": 2.3488}
+{"country": "CZ", "name": "Prague", "lat": 50.08804, "lon": 14.42076}
+{"country": "IS", "name": "Reykjavík", "lat": 64.13548, "lon": -21.89541}
+{"country": "LV", "name": "Riga", "lat": 56.946, "lon": 24.10589}
+{"country": "IT", "name": "Rome", "lat": 41.89193, "lon": 12.51133}
+{"country": "BG", "name": "Sofia", "lat": 42.69751, "lon": 23.32415}
+{"country": "EE", "name": "Tallinn", "lat": 59.43696, "lon": 24.75353}
+{"country": "AT", "name": "Vienna", "lat": 48.20849, "lon": 16.37208}
+{"country": "PL", "name": "Warsaw", "lat": 52.22977, "lon": 21.01178}
+{"country": "US", "name": "Washington, D.C.", "lat": 38.89511, "lon": -77.03637}
+{"country": "HR", "name": "Zagreb", "lat": 45.81444, "lon": 15.97798}
+{"country": "CH", "name": "Zürich", "lat": 47.36667, "lon": 8.55}
+---
+{"name": "Amsterdam", "bits": 1840}
+{"name": "Athens", "bits": 1746}
+{"name": "Berlin", "bits": 1841}
+{"name": "Bratislava", "bits": 1809}
+{"name": "Brussels", "bits": 1840}
+{"name": "Bucharest", "bits": 1778}
+{"name": "Budapest", "bits": 1809}
+{"name": "Chisinau", "bits": 1810}
+{"name": "Copenhagen", "bits": 1841}
+{"name": "Dublin", "bits": 1839}
+{"name": "Helsinki", "bits": 1874}
+{"name": "Lisbon", "bits": 1743}
+{"name": "Ljubljana", "bits": 1809}
+{"name": "London", "bits": 1839}
+{"name": "Luxembourg", "bits": 1808}
+{"name": "Madrid", "bits": 1775}
+{"name": "Monaco", "bits": 1776}
+{"name": "Nicosia", "bits": 1746}
+{"name": "Oslo", "bits": 1872}
+{"name": "Paris", "bits": 1808}
+{"name": "Prague", "bits": 1809}
+{"name": "Reykjavík", "bits": 1902}
+{"name": "Riga", "bits": 1874}
+{"name": "Rome", "bits": 1777}
+{"name": "Sofia", "bits": 1778}
+{"name": "Tallinn", "bits": 1874}
+{"name": "Vienna", "bits": 1809}
+{"name": "Warsaw", "bits": 1841}
+{"name": "Washington, D.C.", "bits": 1737}
+{"name": "Zagreb", "bits": 1809}
+{"name": "Zürich", "bits": 1808}

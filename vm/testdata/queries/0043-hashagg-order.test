@@ -1,0 +1,17 @@
+SELECT "group", COUNT(*)
+FROM input
+GROUP BY "group"
+ORDER BY "group" ASC NULLS LAST
+---
+{"group": "a"}
+{"group": "b"}
+{"group": 1}
+{"group": 1}
+{"group": -1}
+{"group": null}
+---
+{"group": -1, "count": 1}
+{"group": 1, "count": 2}
+{"group": "a", "count": 1}
+{"group": "b", "count": 1}
+{"group": null, "count": 1}

@@ -1,0 +1,78 @@
+# Group aggregation having all rows unique (float)
+SELECT
+  category,
+  COUNT(*) AS count,
+  SUM(x) AS sum,
+  MIN(x) AS min,
+  MAX(x) AS max,
+  AVG(x) AS avg
+FROM
+  input
+GROUP BY
+  category
+ORDER BY
+  category
+---
+{"category": "A", "x": 0}
+{"category": "B", "x": 1}
+{"category": "C", "x": 2}
+{"category": "D", "x": 3}
+{"category": "E", "x": 4}
+{"category": "F", "x": 5}
+{"category": "G", "x": 6}
+{"category": "H", "x": 7}
+{"category": "I", "x": 8}
+{"category": "J", "x": 9}
+{"category": "K", "x": 10}
+{"category": "L", "x": 11}
+{"category": "M", "x": 12}
+{"category": "N", "x": 13}
+{"category": "O", "x": 14}
+{"category": "P", "x": 15}
+{"category": "Q", "x": 16}
+{"category": "R", "x": 17}
+{"category": "S", "x": 18}
+{"category": "T", "x": 19}
+{"category": "U", "x": 20}
+{"category": "V", "x": 21}
+{"category": "W", "x": 22}
+{"category": "X", "x": 23}
+{"category": "Y", "x": 24}
+{"category": "Z", "x": 25}
+{"category": "a", "x": 26}
+{"category": "b", "x": 27}
+{"category": "c", "x": 28}
+{"category": "d", "x": 29}
+{"category": "e", "x": 30.12}
+---
+{"category": "A", "count": 1, "sum": 0, "min": 0, "max": 0, "avg": 0}
+{"category": "B", "count": 1, "sum": 1, "min": 1, "max": 1, "avg": 1}
+{"category": "C", "count": 1, "sum": 2, "min": 2, "max": 2, "avg": 2}
+{"category": "D", "count": 1, "sum": 3, "min": 3, "max": 3, "avg": 3}
+{"category": "E", "count": 1, "sum": 4, "min": 4, "max": 4, "avg": 4}
+{"category": "F", "count": 1, "sum": 5, "min": 5, "max": 5, "avg": 5}
+{"category": "G", "count": 1, "sum": 6, "min": 6, "max": 6, "avg": 6}
+{"category": "H", "count": 1, "sum": 7, "min": 7, "max": 7, "avg": 7}
+{"category": "I", "count": 1, "sum": 8, "min": 8, "max": 8, "avg": 8}
+{"category": "J", "count": 1, "sum": 9, "min": 9, "max": 9, "avg": 9}
+{"category": "K", "count": 1, "sum": 10, "min": 10, "max": 10, "avg": 10}
+{"category": "L", "count": 1, "sum": 11, "min": 11, "max": 11, "avg": 11}
+{"category": "M", "count": 1, "sum": 12, "min": 12, "max": 12, "avg": 12}
+{"category": "N", "count": 1, "sum": 13, "min": 13, "max": 13, "avg": 13}
+{"category": "O", "count": 1, "sum": 14, "min": 14, "max": 14, "avg": 14}
+{"category": "P", "count": 1, "sum": 15, "min": 15, "max": 15, "avg": 15}
+{"category": "Q", "count": 1, "sum": 16, "min": 16, "max": 16, "avg": 16}
+{"category": "R", "count": 1, "sum": 17, "min": 17, "max": 17, "avg": 17}
+{"category": "S", "count": 1, "sum": 18, "min": 18, "max": 18, "avg": 18}
+{"category": "T", "count": 1, "sum": 19, "min": 19, "max": 19, "avg": 19}
+{"category": "U", "count": 1, "sum": 20, "min": 20, "max": 20, "avg": 20}
+{"category": "V", "count": 1, "sum": 21, "min": 21, "max": 21, "avg": 21}
+{"category": "W", "count": 1, "sum": 22, "min": 22, "max": 22, "avg": 22}
+{"category": "X", "count": 1, "sum": 23, "min": 23, "max": 23, "avg": 23}
+{"category": "Y", "count": 1, "sum": 24, "min": 24, "max": 24, "avg": 24}
+{"category": "Z", "count": 1, "sum": 25, "min": 25, "max": 25, "avg": 25}
+{"category": "a", "count": 1, "sum": 26, "min": 26, "max": 26, "avg": 26}
+{"category": "b", "count": 1, "sum": 27, "min": 27, "max": 27, "avg": 27}
+{"category": "c", "count": 1, "sum": 28, "min": 28, "max": 28, "avg": 28}
+{"category": "d", "count": 1, "sum": 29, "min": 29, "max": 29, "avg": 29}
+{"category": "e", "count": 1, "sum": 30.12, "min": 30.12, "max": 30.12, "avg": 30.12}

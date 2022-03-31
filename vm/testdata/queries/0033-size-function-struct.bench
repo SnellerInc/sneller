@@ -1,0 +1,12 @@
+# SIZE() on struct
+SELECT SIZE(struct)
+FROM input
+---
+{"struct": {}}
+{"struct": {"int": 99}}
+{"struct": {"int": 99, "float": 3.14}}
+{"struct": {"int": 99, "float": 3.14, "str": "text"}}
+{"struct": {"int": 99, "float": 3.14, "str": "text", "bool": true}}
+{"struct": {"int": 99, "float": 3.14, "str": "text", "bool": true, "bool": false}}
+{"struct": {"int": 99, "float": 3.14, "str": "text", "bool": true, "bool": false, "list": [1, 2]}}
+---

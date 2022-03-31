@@ -1,0 +1,8 @@
+# repro for bug #354
+SELECT list, list[1] as second FROM input
+# this query works
+# SELECT list[1] as second, list FROM input
+---
+{"list": [1, 2, 3, 4]}
+---
+{"list": [1, 2, 3, 4], "second": 2}

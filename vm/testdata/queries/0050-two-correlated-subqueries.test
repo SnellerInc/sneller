@@ -1,0 +1,26 @@
+# multiple correlated subqueries
+SELECT
+  x,
+  (SELECT y FROM input1 WHERE f = x LIMIT 1) AS y,
+  (SELECT z FROM input2 WHERE f = y LIMIT 1) AS z
+FROM input0
+---
+{"x": 0}
+{"x": 1}
+{"x": 2}
+{"x": 3}
+---
+{"f": 0, "y": 100}
+{"f": 1, "y": 200}
+{"f": 2, "y": 300}
+{"f": 3, "y": 400}
+---
+{"f": 100, "z": "foo"}
+{"f": 200, "z": "bar"}
+{"f": 300, "z": "baz"}
+{"f": 400, "z": "quux"}
+---
+{"x": 0, "y": 100, "z": "foo"}
+{"x": 1, "y": 200, "z": "bar"}
+{"x": 2, "y": 300, "z": "baz"}
+{"x": 3, "y": 400, "z": "quux"}

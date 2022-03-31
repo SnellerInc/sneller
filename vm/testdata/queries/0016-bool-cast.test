@@ -1,0 +1,19 @@
+SELECT
+  CAST(x AS boolean) AS b
+FROM input
+---
+{"x": true}
+{"x": false}
+{"x": null}
+{"y": "y value"}
+{"x": 0}
+{"x": -1}
+{"x": 1.5}
+---
+{"b": true}
+{"b": false}
+{}
+{}
+{"b": false}
+{"b": true}
+{"b": true}

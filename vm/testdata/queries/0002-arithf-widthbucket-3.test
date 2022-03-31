@@ -1,0 +1,29 @@
+# Example taken from oreilly:
+#   https://www.oreilly.com/library/view/sql-in-a/9780596155322/re91.html
+
+SELECT
+  WIDTH_BUCKET(v, 1, 10, 2) AS out
+FROM
+  input
+---
+{"v":  1 }
+{"v":  2 }
+{"v":  3 }
+{"v":  4 }
+{"v":  5 }
+{"v":  6 }
+{"v":  7 }
+{"v":  8 }
+{"v":  9 }
+{"v":  10}
+---
+{"out": 1}
+{"out": 1}
+{"out": 1}
+{"out": 1}
+{"out": 1}
+{"out": 2}
+{"out": 2}
+{"out": 2}
+{"out": 2}
+{"out": 3}

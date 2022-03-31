@@ -1,0 +1,18 @@
+# test numeric and generic equality
+# to see if we get the correct
+# TRUE/FALSE/MISSING behavior
+SELECT row
+FROM (SELECT
+        a < b AS less,
+        a > b AS greater,
+        row AS row
+      FROM input)
+WHERE less = greater
+---
+{"a": 0, "row": 0}
+{"b": 0, "row": 1}
+{"a": 100, "b": 100, "row": 2}
+{"a": -1, "b": 1, "row": 3}
+{"a": 1325.8, "b": 987.982, "row": 4}
+---
+{"row": 2}

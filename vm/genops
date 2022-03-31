@@ -1,0 +1,28 @@
+#!/bin/gawk -f
+BEGIN {
+    op = 0;
+    offset = 0;
+    gofile = "ops_gen.go";
+    asmfile = "ops_gen_amd64.s";
+
+    print("package vm\n") > gofile;
+    print("\n// Code generated automatically; DO NOT EDIT\n") > gofile;
+    print("const (\n") > gofile;
+
+    print("#include \"textflag.h\"\n") > asmfile;
+    print("\n// Code generated automatically; DO NOT EDIT\n") > asmfile;
+}
+
+/^TEXT bc/{
+    match($2, /bc(.*)\(SB\)/, opname);
+    printf("\top%s bcop = %d\n", opname[1], op) > gofile;
+    printf("DATA opaddrs+0x%03x(SB)/8, $%s\n", offset, opname[0]) > asmfile;
+    op++;
+    offset += 8;
+}
+
+END {
+    printf("\t_maxbcop = %d\n", op) > gofile;
+    print ")\n" > gofile;
+    printf("GLOBL opaddrs(SB), RODATA|NOPTR, $0x%03x\n", offset) > asmfile;
+}

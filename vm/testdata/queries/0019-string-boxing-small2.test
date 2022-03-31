@@ -1,0 +1,56 @@
+SELECT
+  TRIM(a) AS a
+FROM
+  input
+---
+{"a": " Axx0 "}
+{"a": " Bbxx1 "}
+{"a": " Cbcxx2 "}
+{"a": " Dbcdxx3 "}
+{"a": " Ebcdexx4 "}
+{"a": " Fbcdefxx5 "}
+{"a": " Gbcdefgxx6 "}
+{"a": " Hbcdefghxx7 "}
+{"a": " Ibcdefghixx8 "}
+{"a": " Jqr123456789X "}
+{"a": " Kbc123456789Y "}
+{"a": " Lyz123456789Z "}
+{"a": " MbcdefghijklM "}
+{"a": " NbcdefghijkL "}
+{"a": " ObcdefghijK "}
+{"a": " PbcdefghiJ "}
+{"a": " QbcdefghI "}
+{"a": " RbcdefgH "}
+{"a": " SbcdefG "}
+{"a": " TbcdeF "}
+{"a": " UbcdE "}
+{"a": " VbcD "}
+{"a": " WbC "}
+{"a": " XB "}
+{"a": " Y "}
+---
+{"a": "Axx0"}
+{"a": "Bbxx1"}
+{"a": "Cbcxx2"}
+{"a": "Dbcdxx3"}
+{"a": "Ebcdexx4"}
+{"a": "Fbcdefxx5"}
+{"a": "Gbcdefgxx6"}
+{"a": "Hbcdefghxx7"}
+{"a": "Ibcdefghixx8"}
+{"a": "Jqr123456789X"}
+{"a": "Kbc123456789Y"}
+{"a": "Lyz123456789Z"}
+{"a": "MbcdefghijklM"}
+{"a": "NbcdefghijkL"}
+{"a": "ObcdefghijK"}
+{"a": "PbcdefghiJ"}
+{"a": "QbcdefghI"}
+{"a": "RbcdefgH"}
+{"a": "SbcdefG"}
+{"a": "TbcdeF"}
+{"a": "UbcdE"}
+{"a": "VbcD"}
+{"a": "WbC"}
+{"a": "XB"}
+{"a": "Y"}

@@ -1,0 +1,9 @@
+# SIZE() of non-supported types 
+SELECT 1
+FROM input
+---
+{"list": 1}
+{"list": "2"}
+{"list": 3.5}
+{"list": null}
+---

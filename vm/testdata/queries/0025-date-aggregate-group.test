@@ -1,0 +1,35 @@
+SELECT
+  category,
+  EARLIEST(t) AS earliest,
+  LATEST(t) AS latest
+FROM
+  input
+GROUP BY
+  category
+ORDER BY
+  category
+---
+{"t": "1970-01-01T00:00:00Z", "category": "A" }
+{"t": "1970-01-01T00:00:01Z", "category": "A" }
+{"t": "1970-01-01T00:00:02Z", "category": "A" }
+{"t": "1970-01-01T00:01:00Z", "category": "A" }
+{"t": "1970-01-01T01:00:00Z", "category": "A" }
+{"t": "1970-01-01T01:29:59Z", "category": "A" }
+{"t": "1970-01-01T01:30:00Z", "category": "B" }
+{"t": "1970-01-01T01:30:01Z", "category": "B" }
+{"t": "1970-01-01T01:59:59Z", "category": "B" }
+{"t": "1970-01-01T02:00:00Z", "category": "B" }
+{"t": "1970-01-01T02:15:00Z", "category": "B" }
+{"t": "1970-01-01T02:29:59Z", "category": "B" }
+{"t": "1970-01-01T02:30:30Z", "category": "C" }
+{"t": "2020-01-01T00:00:00Z", "category": "C" }
+{"t": "2020-01-01T00:30:00Z", "category": "C" }
+{"t": "2020-01-01T01:00:00Z", "category": "C" }
+{"t": "2021-01-02T01:00:00Z", "category": "C" }
+{"t": "2023-01-02T23:00:00Z", "category": "C" }
+{"t": "2024-01-03T23:00:00Z", "category": "C" }
+{"t": "2025-01-04T23:00:00Z", "category": "C" }
+---
+{"category": "A", "earliest": "1970-01-01T00:00:00Z", "latest": "1970-01-01T01:29:59Z"}
+{"category": "B", "earliest": "1970-01-01T01:30:00Z", "latest": "1970-01-01T02:29:59Z"}
+{"category": "C", "earliest": "1970-01-01T02:30:30Z", "latest": "2025-01-04T23:00:00Z"}

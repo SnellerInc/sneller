@@ -1,0 +1,22 @@
+# correlated subquery (list result)
+SELECT
+  x,
+  (SELECT z FROM input1 WHERE f = x LIMIT 2) AS y
+FROM input0
+---
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 4}
+---
+{"f": 1, "z": "foo1"}
+{"f": 1, "z": "foo2"}
+{"f": 2, "z": "bar1"}
+{"f": 3, "z": "baz1"}
+{"f": 3, "z": "baz2"}
+{"f": 3, "z": "baz3"}
+---
+{"x": 1, "y": [{"z": "foo1"}, {"z": "bar2"}]}
+{"x": 2, "y": [{"z": "bar1"}]}
+{"x": 3, "y": [{"z": "baz1"}, {"z": "baz2"}]}
+{"x": 4}

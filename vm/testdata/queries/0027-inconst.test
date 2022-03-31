@@ -1,0 +1,15 @@
+SELECT COUNT(*)
+FROM input
+WHERE x IN ('foo', 3, 3.5, FALSE)
+---
+{"x": "foo"}
+{"x": 3}
+{"x": 3.5}
+{"x": false}
+{"x": true}
+{}
+{"x": "bar"}
+{"x": 7.52}
+{"x": -1}
+---
+{"count": 4}

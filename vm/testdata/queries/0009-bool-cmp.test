@@ -1,0 +1,25 @@
+# test various combinations
+# of boolean comparisons with true/false/null/missing
+# FIXME: right now we compute '<bool> = NULL' as FALSE,
+# but it ought to be MISSING in practice
+SELECT
+    a = TRUE AS eqtrue,
+    a = FALSE AS eqfalse,
+    a IS TRUE AS istrue,   # never MISSING
+    a IS FALSE AS isfalse, # never MISSING
+    a = b AS eqb
+FROM input
+---
+{"a": true}
+{"a": false}
+{"a": null}
+{"b": 3}
+{"a": true, "b": false}
+{"a": true, "b": true}
+---
+{"eqtrue": true, "eqfalse": false, "istrue": true, "isfalse": false}
+{"eqtrue": false, "eqfalse": true, "istrue": false, "isfalse": true}
+{"eqtrue": false, "eqfalse": false, "istrue": false, "isfalse": false}
+{"istrue": false, "isfalse": false}
+{"eqtrue": true, "eqfalse": false, "istrue": true, "isfalse": false, "eqb": false}
+{"eqtrue": true, "eqfalse": false, "istrue": true, "isfalse": false, "eqb": true}

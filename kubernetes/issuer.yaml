@@ -1,0 +1,15 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef: # this secret is created in the namespace of cert-manager
+      name: letsencrypt-private-key
+    # email: <will be used for urgent alerts about expiration etc>
+
+    solvers:
+    - http01:
+        ingress:
+          class: nginx

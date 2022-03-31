@@ -1,0 +1,51 @@
+# Group aggregation (float)
+SELECT
+  category,
+  COUNT(*) AS count,
+  SUM(x) AS sum,
+  MIN(x) AS min,
+  MAX(x) AS max,
+  AVG(x) AS avg
+FROM
+  input
+GROUP BY
+  category
+ORDER BY
+  category
+---
+{"category": "A", "x": 0}
+{"category": "A", "x": 1}
+{"category": "A", "x": 2}
+{"category": "A", "x": 3}
+{"category": "A", "x": 4}
+{"category": "A", "x": 5}
+{"category": "A", "x": 6}
+{"category": "A", "x": 7}
+{"category": "A", "x": 8}
+{"category": "A", "x": 9}
+{"category": "B", "x": 10}
+{"category": "B", "x": 11}
+{"category": "B", "x": 12}
+{"category": "B", "x": 13}
+{"category": "B", "x": 14}
+{"category": "B", "x": 15}
+{"category": "B", "x": 16}
+{"category": "B", "x": 17}
+{"category": "B", "x": 18}
+{"category": "B", "x": 19}
+{"category": "C", "x": 20}
+{"category": "C", "x": 21}
+{"category": "C", "x": 22}
+{"category": "C", "x": 23}
+{"category": "C", "x": 24}
+{"category": "C", "x": 25}
+{"category": "C", "x": 26}
+{"category": "C", "x": 27}
+{"category": "C", "x": 28}
+{"category": "C", "x": 29}
+{"category": "D", "x": 30.12}
+---
+{"category": "A", "count": 10, "sum": 45, "min": 0, "max": 9, "avg": 4.5}
+{"category": "B", "count": 10, "sum": 145, "min": 10, "max": 19, "avg": 14.5}
+{"category": "C", "count": 10, "sum": 245, "min": 20, "max": 29, "avg": 24.5}
+{"category": "D", "count": 1, "sum": 30.12, "min": 30.12, "max": 30.12, "avg": 30.12}

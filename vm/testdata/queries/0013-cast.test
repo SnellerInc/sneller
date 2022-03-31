@@ -1,0 +1,16 @@
+# test casting operations
+SELECT
+  CAST(str AS string) AS str2str,
+  CAST(fp AS integer) AS fp2int,
+  CAST(fp+1 AS integer) AS fp3int,
+  CAST(fp AS float) AS fp2fp,
+  CAST(struct AS struct) AS s2s
+FROM input
+---
+{"str": "foo", "fp": 3.75, "struct": {"x": "x", "y": "y"}}
+{"str": null, "fp": 3, "struct": [null]}
+{"str": 3, "fp": "foo", "struct": {}}
+---
+{"str2str": "foo", "fp2int": 3, "fp3int": 4, "fp2fp": 3.75, "s2s": {"x": "x", "y": "y"}}
+{"fp2int": 3, "fp3int": 4, "fp2fp": 3}
+{"s2s": {}}

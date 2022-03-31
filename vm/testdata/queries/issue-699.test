@@ -1,0 +1,11 @@
+SELECT * FROM (SELECT * FROM input WHERE some_field IS MISSING) WHERE some_field IS NOT MISSING
+---
+{"some_field": 1}
+{"some_field": 1}
+{"some_field": 1}
+{"some_field": 1}
+{"some_field": 1}
+{"some_field": 1}
+{"some_field": 1}
+{"some_field": 1}
+---

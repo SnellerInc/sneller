@@ -1,0 +1,22 @@
+SELECT
+  WIDTH_BUCKET(v, wb_min, wb_max, wb_count) AS out
+FROM
+  input
+---
+{"v": -2  , "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v": -1  , "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v":  0  , "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v":  0.9, "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v":  1  , "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v":  1.9, "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v":  2  , "wb_min": 0, "wb_max": 2, "wb_count": 2}
+{"v":  3  , "wb_min": 0, "wb_max": 2, "wb_count": 2}
+---
+{"out": 0}
+{"out": 0}
+{"out": 1}
+{"out": 1}
+{"out": 2}
+{"out": 2}
+{"out": 3}
+{"out": 3}

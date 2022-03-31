@@ -1,0 +1,29 @@
+SELECT COUNT(*)
+FROM input
+WHERE (str ILIKE '%S%Ω%') = (match IS FALSE)
+
+#go test -run=TestQueries/0039-ilike-utf8-matchpat-hard
+---
+# hard code-points with non-trivial normalization with different byte length encodings:
+# U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+# U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+# U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+
+# both pattern and data are non-ascii
+{"str": "ſΩ", "match": true}
+{"str": "ſaΩ", "match": true}
+{"str": "SΩ", "match": true}
+{"str": "SaΩ", "match": true}
+
+{"str": "KſΩK", "match": true}
+{"str": "KſaΩK", "match": true}
+{"str": "KSΩK", "match": true}
+{"str": "KSaΩK", "match": true}
+
+{"str": "ſK", "match": false}
+{"str": "ſaK", "match": false}
+{"str": "SK", "match": false}
+{"str": "SaK", "match": false}
+
+---
+{"count": 0}

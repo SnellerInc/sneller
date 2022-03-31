@@ -1,0 +1,15 @@
+select
+  ((max(currentRecordCount) - min(currentRecordCount))/DATE_DIFF(SECOND, earliest(timestamp), latest(timestamp))) as rate,
+  backend
+from input
+where run.runKey = '6d616b1c-16f9-4b59-a6bc-e19a95a16071'
+group by backend
+---
+{"currentRecordCount": 0, "timestamp": "2022-01-01T00:00:00Z", "backend": "sneller", "run": {"runKey": "6d616b1c-16f9-4b59-a6bc-e19a95a16071"}}
+{"currentRecordCount": 1, "timestamp": "2022-01-01T00:00:01Z", "backend": "sneller", "run": {"runKey": "6d616b1c-16f9-4b59-a6bc-e19a95a16071"}}
+{"currentRecordCount": 2, "timestamp": "2022-01-01T00:00:02Z", "backend": "sneller", "run": {"runKey": "6d616b1c-16f9-4b59-a6bc-e19a95a16071"}}
+{"currentRecordCount": 3, "timestamp": "2022-01-01T00:00:03Z", "backend": "sneller", "run": {"runKey": "6d616b1c-16f9-4b59-a6bc-e19a95a16071"}}
+{"currentRecordCount": 4, "timestamp": "2022-01-01T00:00:04Z", "backend": "sneller", "run": {"runKey": "6d616b1c-16f9-4b59-a6bc-e19a95a16071"}}
+{"currentRecordCount": 5, "timestamp": "2022-01-01T00:00:05Z", "backend": "sneller", "run": {"runKey": "6d616b1c-16f9-4b59-a6bc-e19a95a16071"}}
+---
+{"rate": 1, "backend": "sneller"}

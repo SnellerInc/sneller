@@ -1,0 +1,48 @@
+# Group aggregation having all rows of the same group (float)
+SELECT
+  category,
+  COUNT(*) AS count,
+  SUM(x) AS sum,
+  MIN(x) AS min,
+  MAX(x) AS max,
+  AVG(x) AS avg
+FROM
+  input
+GROUP BY
+  category
+ORDER BY
+  category
+---
+{"category": "A", "x": 0}
+{"category": "A", "x": 1}
+{"category": "A", "x": 2}
+{"category": "A", "x": 3}
+{"category": "A", "x": 4}
+{"category": "A", "x": 5}
+{"category": "A", "x": 6}
+{"category": "A", "x": 7}
+{"category": "A", "x": 8}
+{"category": "A", "x": 9}
+{"category": "A", "x": 10}
+{"category": "A", "x": 11}
+{"category": "A", "x": 12}
+{"category": "A", "x": 13}
+{"category": "A", "x": 14}
+{"category": "A", "x": 15}
+{"category": "A", "x": 16}
+{"category": "A", "x": 17}
+{"category": "A", "x": 18}
+{"category": "A", "x": 19}
+{"category": "A", "x": 20}
+{"category": "A", "x": 21}
+{"category": "A", "x": 22}
+{"category": "A", "x": 23}
+{"category": "A", "x": 24}
+{"category": "A", "x": 25}
+{"category": "A", "x": 26}
+{"category": "A", "x": 27}
+{"category": "A", "x": 28}
+{"category": "A", "x": 29}
+{"category": "A", "x": 30}
+---
+{"category": "A", "count": 31, "sum": 465, "min": 0, "max": 30, "avg": 15}

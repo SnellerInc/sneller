@@ -1,0 +1,13 @@
+select
+  sum(coalesce(x, 0)) as a, # should work as usual
+  sum(x) as b,              # should equal 'a'
+  avg(coalesce(x, 0)) as c, # should be slightly different
+  sum(coalesce(x, 1)*2) as d
+from input
+---
+{"x": 1}
+{"y": 1}
+{"x": 1.5}
+{"x": 2.5}
+---
+{"a": 5, "b": 5, "c": 1.25, "d": 12}

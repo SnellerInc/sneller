@@ -1,0 +1,29 @@
+# Example taken from oreilly:
+#   https://www.oreilly.com/library/view/sql-in-a/9780596155322/re91.html
+
+SELECT
+  WIDTH_BUCKET(v, wb_min, wb_max, wb_count) AS out
+FROM
+  input
+---
+{"v":  1  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  2  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  3  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  4  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  5  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  6  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  7  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  8  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  9  , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+{"v":  10 , "wb_min": 1, "wb_max": 10, "wb_count": 2}
+---
+{"out": 1}
+{"out": 1}
+{"out": 1}
+{"out": 1}
+{"out": 1}
+{"out": 2}
+{"out": 2}
+{"out": 2}
+{"out": 2}
+{"out": 3}

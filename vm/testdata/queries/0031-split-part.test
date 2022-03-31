@@ -1,0 +1,28 @@
+# go test -v -run=TestQueries/0031-split-part
+SELECT
+  COUNT(*) # count failing test cases
+FROM input
+WHERE SPLIT_PART(inp, ';', index) <> want
+---
+{"inp":"aa;b;cc", "index":2, "want":"b"}
+{"inp":"aa;b", "index":2, "want":"b"}
+{"inp":"aa;bb;cc", "index":2, "want":"bb"}
+{"inp":"aa;bb", "index":2, "want":"bb"}
+{"inp":"aa;bb", "index":1, "want":"aa"}
+{"inp":"aa", "index":1, "want":"aa"}
+{"inp":"aa;b;cc", "index":3, "want": "cc"}
+
+# hard code-points with non-trivial normalization with different byte length encodings
+# U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+# U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+# U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+
+{"inp":"aa;ſ;cc", "index":2, "want":"ſ"}
+{"inp":"aa;ſ", "index":2, "want":"ſ"}
+{"inp":"Ω;bb;Ω", "index":2, "want":"bb"}
+{"inp":"Ω;bb", "index":2, "want":"bb"}
+{"inp":"aa;Ω", "index":1, "want":"aa"}
+{"inp":"Ω", "index":1, "want":"Ω"}
+
+---
+{"count": 0}

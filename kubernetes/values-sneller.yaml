@@ -1,0 +1,22 @@
+snellerd:
+  replicaCount: 4
+  tag: latest
+  pullPolicy: Always
+  maxCacheDirSize: 64Mi
+
+configuration:
+  values:
+    s3EndPoint: http://minio-sneller:9000
+    s3Bucket: s3://test/
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    cert-manager.io/issuer: letsencrypt
+  hosts:
+    - kubernetes-sneller.sneller-dev.io
+  tls:
+    - secretName: kubernetes-sneller-tls
+      hosts:
+        - kubernetes-sneller.sneller-dev.io

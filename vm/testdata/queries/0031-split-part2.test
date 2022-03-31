@@ -1,0 +1,17 @@
+SELECT
+  SPLIT_PART(x, '\n', n) AS line
+FROM input
+---
+{"x": "foo\nbar\nbaz\n", "n": -1}
+{"x": "foo\nbar\nbaz\n", "n": 0}
+{"x": "foo\nbar\nbaz\n", "n": 1}
+{"x": "foo\nbar\nbaz\n", "n": 2}
+{"x": "foo\nbar\nbaz\n", "n": 3}
+{"x": "foo\nbar\nbaz\n", "n": 4}
+---
+{}
+{}
+{"line": "foo"}
+{"line": "bar"}
+{"line": "baz"}
+{"line": ""}

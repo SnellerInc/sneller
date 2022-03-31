@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "helpers.snellerdName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  {{- with .Values.snellerd.serviceLabels }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.snellerd.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+    - name: snellerd
+      port: {{ .Values.snellerd.ports.snellerd }}
+      targetPort: {{ .Values.snellerd.ports.snellerd }}
+      protocol: TCP      
+  selector:
+    app: snellerd
+    release: {{ .Release.Name }}

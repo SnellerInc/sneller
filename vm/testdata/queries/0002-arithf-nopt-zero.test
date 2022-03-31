@@ -1,0 +1,16 @@
+# we rely on x+0 producing MISSING
+# when x is not a number, so we can
+# use this as a hack to count the number
+# of x values that are numbers
+# (the implementation of AVG relies on this)
+SELECT COUNT(x+0) FROM input
+---
+{"x": "foo"}
+{"x": {"y": "a structure"}}
+{"x": 0}
+{"x": 1}
+{"x": 1.5}
+{"x": -300.2}
+{"y": "no x value"}
+---
+{"count": 4}

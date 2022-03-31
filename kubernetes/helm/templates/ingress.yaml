@@ -1,0 +1,42 @@
+{{- if .Values.ingress.enabled -}}
+{{- $snellerdName := include "helpers.snellerdName" . -}}
+{{- $snellerdPort := .Values.snellerd.ports.snellerd -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $snellerdName }}
+  namespace: {{ .Release.Namespace | quote }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.ingressClassName }}
+  ingressClassName: {{ .Values.ingress.ingressClassName }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - hosts:
+      {{- range .hosts }}
+        - {{ . | quote }}
+      {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+  {{- range .Values.ingress.hosts }}
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $snellerdName }}
+                port:
+                  number: {{ $snellerdPort }}
+      {{- if . }}
+      host: {{ . | quote }}
+      {{- end }}
+  {{- end }}
+{{- end }}

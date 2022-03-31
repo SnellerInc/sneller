@@ -1,0 +1,23 @@
+#go test -run=TestQueries/0041-cmp-ci-utf8
+
+# hard code-points with non-trivial normalization with different byte length encodings
+# U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+# U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+# U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+
+SELECT COUNT(*)
+FROM input
+WHERE (UPPER(str) = 'KSK') = (match IS FALSE)
+---
+#TODO operation UPPER is a different operation than normalization, the following tests were made for normalization.
+
+{"str": "KSK", "match": true}
+#{"str": "SK", "match": false}
+#{"str": "KSKS", "match": false}
+#{"match": false}
+#{"str": "kSK", "match": true}
+#{"str": "KſK", "match": true}
+#{"str": "KſKſ", "match": false}
+#{"str": 100, "match": false}
+---
+{"count": 0}

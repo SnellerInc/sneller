@@ -1,0 +1,15 @@
+SELECT
+  # list interpolation:
+  (SELECT SUM(x), name FROM input GROUP BY name ORDER BY SUM(x) DESC) AS sum_by_names,
+  # scalar interpolation:
+  (SELECT SUM(x) FROM input) AS total_sum,
+  # struct interpolation:
+  (SELECT COUNT(*) AS "count", COUNT(name) AS "count_name" FROM input) AS stats
+---
+{"name": "foo", "x": 0}
+{"name": "foo", "x": 1}
+{"name": "foo", "x": 2}
+{"name": "bar", "x": 3}
+{"name": "bar", "x": 4}
+---
+{"sum_by_names": [{"name": "bar", "sum": 7}, {"name": "foo", "sum": 3}], "total_sum": 10, "stats": {"count": 5, "count_name": 5}}

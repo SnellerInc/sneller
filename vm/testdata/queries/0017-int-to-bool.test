@@ -1,0 +1,9 @@
+SELECT
+  CAST(COUNT(x) AS boolean) AS b
+FROM input
+---
+{"x": "foo"}
+{"x": "bar"}
+{"x": "baz", "y": "quux"}
+---
+{"b": true}

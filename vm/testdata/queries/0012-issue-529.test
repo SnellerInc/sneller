@@ -1,0 +1,19 @@
+select (case
+when x = 'one' then 1
+when x = 'two' then 2
+when x > 0 then x
+else null
+end )+1 as "val"
+from input
+---
+{"x": "one"}
+{"x": "two"}
+{"x": "default"}
+{"x": 1}
+{"x": -1}
+---
+{"val": 2}
+{"val": 3}
+{}
+{"val": 2}
+{}

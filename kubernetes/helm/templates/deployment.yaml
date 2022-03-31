@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "helpers.snellerdName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app: snellerd
+    chart: {{ template "helpers.chart" . }}
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.snellerd.replicaCount }}
+  selector:
+    matchLabels:
+      app: snellerd
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: snellerd
+        release: {{ .Release.Name }}
+        {{- if .Values.snellerd.podLabels }}
+        {{ toYaml .Values.snellerd.podLabels | indent 8 }}
+        {{- end }}        
+      {{- if .Values.snellerd.podAnnotations }}
+      annotations:
+        {{ toYaml .Values.snellerd.podAnnotations | indent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ template "helpers.snellerdName" . }}
+          image: "{{ .Values.snellerd.repository }}:{{ .Values.snellerd.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.snellerd.pullPolicy }}
+          args: 
+            - "daemon"
+            - "-e"
+            - "0.0.0.0:{{ .Values.snellerd.ports.snellerd }}"
+            - "-r"
+            - "0.0.0.0:{{ .Values.snellerd.ports.internode }}"
+            - "-x"
+            - "k8s-peers -p {{ .Values.snellerd.ports.internode }} -s {{ template "helpers.snellerdHeadlessName" . }}"
+          ports:
+            - name: snellerd
+              containerPort: {{ .Values.snellerd.ports.snellerd }}
+              protocol: TCP
+            - name: internode
+              containerPort: {{ .Values.snellerd.ports.internode }}
+              protocol: TCP
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: snellerd
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: snellerd
+          env:
+            # - name: CACHEDIR
+            #   value: /var/cache/sneller
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "helpers.s3SecretName" . }}
+                  key: awsAccessKeyId
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "helpers.s3SecretName" . }}
+                  key: awsSecretAccessKey
+            - name: S3_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ template "helpers.s3ConfigMapName" . }}
+                  key: endPoint
+            - name: SNELLER_BUCKET
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ template "helpers.s3ConfigMapName" . }}
+                  key: bucket
+            - name: SNELLER_INDEX_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "helpers.indexSecretName" . }}
+                  key: snellerIndexKey
+            - name: SNELLER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "helpers.tokenSecretName" . }}
+                  key: snellerToken
+          # volumeMounts:
+          #   - mountPath: /var/cache/sneller
+          #     name: cachedir
+          #     subPath: tmp
+          resources:
+            {{- toYaml .Values.snellerd.resources | nindent 12 }}
+      {{- with .Values.snellerd.nodeSelector }}
+      nodeSelector:
+        {{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.snellerd.affinity }}
+      affinity:
+        {{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.snellerd.tolerations }}
+      tolerations:
+        {{ toYaml . | indent 8 }}
+      {{- end }}
+      # volumes:
+      #   - name: cachedir
+      #     emptyDir:
+      #       medium: Memory
+      #       sizeLimit: {{ .Values.snellerd.maxCacheDirSize }}

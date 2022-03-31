@@ -1,0 +1,22 @@
+# correlated subquery
+SELECT
+  x,
+  (SELECT y FROM input1 WHERE f = x LIMIT 1) AS y
+FROM input0
+---
+{"x": 0}
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 4}
+---
+{"f": 0, "y": "foo"}
+{"f": 1, "y": "bar"}
+{"f": 2, "y": "baz"}
+{"f": 3, "y": "quux"}
+---
+{"x": 0, "y": "foo"}
+{"x": 1, "y": "bar"}
+{"x": 2, "y": "baz"}
+{"x": 3, "y": "quux"}
+{"x": 4}

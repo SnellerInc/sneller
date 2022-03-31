@@ -1,0 +1,21 @@
+# test casting of booleans
+SELECT
+  CAST(b AS INTEGER) AS "int",
+  CAST(b > 0 AS INTEGER) AS "cmp"
+FROM input
+---
+{"b": true}
+{"b": false}
+{"b": null}
+{"b": 0}
+{"b": 1}
+{"b": 1.7}
+{"b": "foo"}
+---
+{"int": 1}
+{"int": 0}
+{}
+{"int": 0, "cmp": 0}
+{"int": 1, "cmp": 1}
+{"int": 1, "cmp": 1}
+{}

@@ -1,0 +1,14 @@
+SELECT COUNT(*)
+FROM input
+WHERE (str LIKE '__x_z___') = (match IS FALSE)
+---
+{"str": "aaxazaaa", "match": true}
+{"str": "aaaxazaaa", "match": false}
+{"match": false}
+{"str": "aaxzaaa", "match": false}
+{"str": "aaxaz", "match": false}
+{"str": "aaaxaaz", "match": false}
+{"str": "aaxazaaa", "match": true}
+#{"str": "aaxazaaaa", "match": false}
+---
+{"count": 0}

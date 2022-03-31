@@ -1,0 +1,15 @@
+#!/bin/sh -e
+
+go build ./cmd/dump
+go build ./cmd/json2ion
+
+< testdata/parking.10n ./dump |\
+	jq -c '{Ticket: .Ticket, Make: .Make, Color: .Color,
+	IsPassenger: (.BodyStyle=="PA"), BodyStyle: .BodyStyle,
+	Fields: [(.BodyStyle=="PA"), .Agency, .Route],
+	Issue: {Data: .IssueData, Time: .IssueTime},
+	Coordinates: {Lat: .Latitude, Long: .Longitude}}' > testdata/parking2.json
+
+./json2ion < testdata/parking2.json > testdata/parking2.ion
+./json2ion < testdata/quintuple.json > testdata/quintuple.ion
+./json2ion < testdata/parking3.json > testdata/parking3.ion

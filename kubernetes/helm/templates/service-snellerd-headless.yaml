@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "helpers.snellerdHeadlessName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  {{- with .Values.snellerd.headlessServiceLabels }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.snellerd.headlessServiceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  clusterIP: None
+  ports:
+    - name: internode
+      port: {{ .Values.snellerd.ports.internode }}
+      targetPort: {{ .Values.snellerd.ports.internode }}
+      protocol: TCP      
+  selector:
+    app: snellerd
+    release: {{ .Release.Name }}

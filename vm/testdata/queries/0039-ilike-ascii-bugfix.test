@@ -1,0 +1,9 @@
+# go test -v -run=TestQueries/0021-patmatch-bugfix0
+SELECT COUNT(*)
+FROM input
+WHERE (str LIKE '%aaaa_b%') = (match IS FALSE)
+---
+# bugfix: 21A93561 JGE -> JG: this bug triggers with JGE; is fixed with JG
+{"str": "aaaa", "match": false}
+---
+{"count": 0}

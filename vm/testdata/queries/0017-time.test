@@ -1,0 +1,19 @@
+SELECT
+  t = `2009-01-15T00:00:00Z` AS eq,
+  t < `2009-01-15T00:00:00Z` AS lt,
+  t <= `2009-01-15T00:00:00Z` AS lte,
+  t > `2009-01-15T00:00:00Z` AS gt,
+  t >= `2009-01-15T00:00:00Z` AS gte
+FROM input
+---
+{"t": "2009-01-14T23:59:59Z"}
+{"t": "2009-01-15T00:00:01Z"}
+{"t": "2009-01-15T00:00:00Z"}
+{"t": "2009-01-14T23:59:59.9999Z"}
+{"t": "2009-01-15T00:00:00.0001Z"}
+---
+{"eq": false, "lt": true, "lte": true, "gt": false, "gte": false}
+{"eq": false, "lt": false, "lte": false, "gt": true, "gte": true}
+{"eq": true, "lt": false, "lte": true, "gt": false, "gte": true}
+{"eq": false, "lt": true, "lte": true, "gt": false, "gte": false}
+{"eq": false, "lt": false, "lte": false, "gt": true, "gte": true}

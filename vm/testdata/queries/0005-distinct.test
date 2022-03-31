@@ -1,0 +1,25 @@
+SELECT DISTINCT col
+FROM input
+---
+{"a": 1, "b": 2, "col": "one"}
+{"a": "two", "col": "two"}
+{"col": "one"}
+{"col": "three"}
+{"col": 1}
+{"col": null}
+{"col": null}
+{"a": 1}
+{"col": 1}
+{"col": 2}
+{"col": true}
+{"col": false}
+{"col": true}
+---
+{"col": "one"}
+{"col": "two"}
+{"col": "three"}
+{"col": 1}
+{"col": null}
+{"col": 2}
+{"col": true}
+{"col": false}

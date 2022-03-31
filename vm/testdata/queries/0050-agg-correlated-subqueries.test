@@ -1,0 +1,21 @@
+# correlated subqueries with aggregates
+SELECT
+  x,
+  (SELECT MIN(y) FROM input1 WHERE f = x) AS min,
+  (SELECT MAX(y) FROM input1 WHERE f = x) AS max
+FROM input0
+---
+{"x": 1}
+{"x": 2}
+{"x": 3}
+---
+{"f": 1, "y": 10}
+{"f": 1, "y": 11}
+{"f": 2, "y": 20}
+{"f": 2, "y": 22}
+{"f": 3, "y": 30}
+{"f": 3, "y": 33}
+---
+{"x": 1, "min": 10, "max": 11}
+{"x": 2, "min": 20, "max": 22}
+{"x": 3, "min": 30, "max": 33}

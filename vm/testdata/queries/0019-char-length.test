@@ -1,0 +1,36 @@
+SELECT
+  COUNT(*)
+FROM input
+WHERE CHAR_LENGTH(inp) <> want
+---
+{"inp": "", "want": 0}
+{"inp": "a", "want": 1}
+{"inp": "aa", "want": 2}
+{"inp": "aaa", "want": 3}
+{"inp": "aaaa", "want": 4}
+{"inp": "aaaaa", "want": 5}
+{"inp": "aaaaaa", "want": 6}
+{"inp": "aaaaaaa", "want": 7}
+{"inp": "aaaaaaaa", "want": 8}
+{"inp": "aaaaaaaaa", "want": 9}
+{"inp": "aaaaaaaaaa", "want": 10}
+#© is 2 bytes
+{"inp": "aaaa©", "want": 5}
+{"inp": "aaa©a", "want": 5}
+{"inp": "aa©aa", "want": 5}
+{"inp": "a©aaa", "want": 5}
+{"inp": "©aaaa", "want": 5}
+#ḿ is 3 bytes
+{"inp": "aaaaḿ", "want": 5}
+{"inp": "aaaḿa", "want": 5}
+{"inp": "aaḿaa", "want": 5}
+{"inp": "aḿaaa", "want": 5}
+{"inp": "ḿaaaa", "want": 5}
+#𐐸 is 4 bytes
+{"inp": "aaaa𐐸", "want": 5}
+{"inp": "aaa𐐸a", "want": 5}
+{"inp": "aa𐐸aa", "want": 5}
+{"inp": "a𐐸aaa", "want": 5}
+{"inp": "𐐸aaaa", "want": 5}
+---
+{"count": 0}

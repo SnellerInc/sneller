@@ -1,0 +1,8 @@
+# 1 is never MISSING,
+# so this is equivalent to COUNT(*)
+SELECT COUNT(1) FROM input
+---
+{"x": 3}
+{"y": 4}
+---
+{"count": 2}

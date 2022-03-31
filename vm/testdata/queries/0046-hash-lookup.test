@@ -1,0 +1,47 @@
+SELECT
+  CASE
+    WHEN x = 'foo' THEN 'is_foo'
+    WHEN x = 'bar' THEN 'is_bar'
+    WHEN x = 'zero' THEN 0
+  END AS first,
+  CASE
+    WHEN y = 0 THEN 'zero'
+    WHEN y = 1 THEN 'one'
+    WHEN y = 2 THEN 'two'
+    WHEN y = 3 THEN 'many'
+  END AS second
+FROM input
+---
+{"x": "foo", "y": 0, "z": null}
+{"x": "bar", "y": 1}
+{"x": "zero", "y": 2}
+{"x": "xyzabc", "y": 3, "z": null}
+{"x": 12345, "y": 345}
+{"x": "zero", "y": 0}
+{"x": 12345, "y": 345, "z": true}
+{"x": "zero", "y": -1, "z": false}
+{"x": "foo", "y": 0}
+{"x": "bar", "y": 1}
+{"x": "zero", "y": 2}
+{"x": "xyzabc", "y": 3}
+{"x": 12345, "y": 345}
+{"x": "zero", "y": 0}
+{"x": 12345, "y": 345}
+{"x": "zero", "y": -1}
+---
+{"first": "is_foo", "second": "zero"}
+{"first": "is_bar", "second": "one"}
+{"first": 0, "second": "two"}
+{"second": "many"}
+{}
+{"first": 0, "second": "zero"}
+{}
+{"first": 0}
+{"first": "is_foo", "second": "zero"}
+{"first": "is_bar", "second": "one"}
+{"first": 0, "second": "two"}
+{"second": "many"}
+{}
+{"first": 0, "second": "zero"}
+{}
+{"first": 0}

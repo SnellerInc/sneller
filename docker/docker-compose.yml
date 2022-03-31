@@ -1,0 +1,25 @@
+version: '3'
+services:
+  minio:
+    image: ${MINIO_IMAGE}
+    ports:
+     - "127.0.0.1:9100:9100"
+     - "127.0.0.1:9101:9101"
+    environment:
+     - MINIO_ROOT_USER=${AWS_ACCESS_KEY_ID}
+     - MINIO_ROOT_PASSWORD=${AWS_SECRET_ACCESS_KEY}
+    volumes:
+     - ./minio:/data
+    command: server /data --address ":9100" --console-address ":9101"
+
+  snellerd:
+    image: ${SNELLER_REPO}sneller/snellerd:latest
+    ports:
+     - "127.0.0.1:9180:9180"
+    env_file:
+     - .env
+    command: daemon -e 0.0.0.0:9180
+
+networks:
+  default:
+    name: sneller-network

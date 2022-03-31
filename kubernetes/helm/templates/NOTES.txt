@@ -1,0 +1,22 @@
+Sneller can be accessed via port {{ .Values.snellerd.ports.snellerd }} on the following DNS name from within your cluster:
+{{ template "helpers.snellerdName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+
+To access Sneller from localhost, run: 
+
+  kubectl port-forward --namespace {{ .Release.Namespace }} service/{{ template "helpers.snellerdName" . }} {{ .Values.snellerd.ports.snellerd }}
+
+Test if you can access the cluster by issuing the following command:
+
+  curl http://localhost:{{ .Values.snellerd.ports.snellerd }}
+
+If there is already data in the cluster, then you can obtain the list of database using:
+  
+  export SNELLER_TOKEN=`kubectl get secret --namespace {{ .Release.Namespace }} {{ template "helpers.tokenSecretName" . }} -o jsonpath="{.data.snellerToken}" | base64 -d`
+  curl -H "Authorization: Bearer $SNELLER_TOKEN" http://localhost:{{ .Values.snellerd.ports.snellerd }}/databases
+
+{{- if .Values.ingress.tls }}
+{{- $proto := (include "ingress.proto" .) -}}
+{{- range .Values.ingress.hosts }}
+The Sneller engine is also available on {{ $proto }}://{{ . }}
+{{- end }}
+{{- end }}

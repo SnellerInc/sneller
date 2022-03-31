@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ template "helpers.sdbName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: sdb
+            release: {{ .Release.Name }}
+        spec:
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 8 }}
+          {{- end }}
+          containers:
+            - name: {{ template "helpers.sdbName" . }}
+              image: "{{ .Values.sdb.repository }}:{{ .Values.sdb.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.sdb.pullPolicy }}
+              args: 
+                - "sync"
+                - "sf1"
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ template "helpers.s3SecretName" . }}
+                      key: awsAccessKeyId
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ template "helpers.s3SecretName" . }}
+                      key: awsSecretAccessKey
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ template "helpers.s3ConfigMapName" . }}
+                      key: endPoint
+                - name: SNELLER_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: {{ template "helpers.s3ConfigMapName" . }}
+                      key: bucket
+                - name: SNELLER_INDEX_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ template "helpers.indexSecretName" . }}
+                      key: snellerIndexKey
+                - name: SNELLER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ template "helpers.tokenSecretName" . }}
+                      key: snellerToken
+          restartPolicy: Never

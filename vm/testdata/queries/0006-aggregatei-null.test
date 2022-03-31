@@ -1,0 +1,45 @@
+# Test aggregation of MISSING and NULL values (int)
+#
+# - COUNT(*) must always return the count of rows.
+# - COUNT(column) must return the number of rows where column is not MISSING.
+# - SUM/AVG/MIN/MAX must return NULL if there was no aggregated row.
+SELECT
+  COUNT(*) AS all,
+  COUNT(x) AS count,
+  MAX(CAST(x AS INTEGER)) AS max,
+  MIN(CAST(x AS INTEGER)) AS min,
+  SUM(CAST(x AS INTEGER)) AS sum,
+  AVG(CAST(x AS INTEGER)) AS avg
+FROM input
+---
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+{}
+{"x": null}
+---
+{"all": 29, "count": 15, "max": null, "min": null, "sum": null, "avg": null}

@@ -1,0 +1,14 @@
+# go test -v -run=TestQueries/0032
+SELECT COUNT(*)
+FROM input
+WHERE IS_SUBNET_OF('128.1.2.3', '128.1.2.5', str) <> (match = true)
+---
+{"str": "128.1.2.4", "match": true}
+{"match": false}
+{"str": "128.1.2.3", "match": true}
+{"str": "128.1.2.5", "match": true}
+{"str": "128.1.2.6", "match": false}
+{"str": "128.001.002.005", "match": true}
+{"str": "128.001.002.006", "match": false}
+---
+{"count": 0}

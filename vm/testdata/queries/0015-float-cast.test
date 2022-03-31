@@ -1,0 +1,19 @@
+# test casting of floats
+SELECT
+  CAST(x AS float) AS "float",
+  CAST(x > 1.1 AS float) AS "cmp"
+FROM input
+---
+{"x": 1.5}
+{"x": 1}
+{"x": false}
+{"x": true}
+{"x": "xyz"}
+{"x": null}
+---
+{"float": 1.5, "cmp": 1}
+{"float": 1, "cmp": 0}
+{"float": 0}
+{"float": 1}
+{}
+{}
