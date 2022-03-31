@@ -23,6 +23,7 @@
 #include "bc_amd64.h"
 #include "bc_imm_amd64.h"
 #include "bc_constant.h"
+#include "ops_mask.h" // provides OPMASK
 
 // decode the next instruction from
 // the virtual pc register and jump
@@ -30,6 +31,7 @@
 #define _NEXT(bpc, tmp, tmp2) \
   MOVWQZX 0(bpc), tmp         \
   ADDQ $2, bpc                \
+  ANDQ $OPMASK, tmp           \
   LEAQ opaddrs+0(SB), tmp2    \
   JMP 0(tmp2)(tmp*8)
 

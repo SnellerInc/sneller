@@ -31,8 +31,6 @@ import (
 // using scripts to manipulate objects
 // that are already checked-in:
 
-//go:generate sh gen-nested
-
 // collect the set of symbol names
 // referenced in 'dot' operations
 // so we can generate a valid symbol table
