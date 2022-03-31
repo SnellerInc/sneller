@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http/httputil"
 	"os"
 	"time"
 
@@ -67,12 +68,17 @@ func (o OutputFormat) String() string {
 	}
 }
 
+// note: for HTTP chunking we do not
+// write the final "0\r\n\r\n", as it is
+// handled by the net/http package when
+// the parent's HTTP handler returns,
+// hence we do not call http.NewChunkedWriter(...).Close()
 func (o OutputFormat) writer(dst io.WriteCloser) io.WriteCloser {
 	switch o {
 	case OutputRaw:
 		return dst
 	case OutputChunkedIon:
-		return &chunkedHTTPWriter{w: dst}
+		return &writerCloser{Writer: httputil.NewChunkedWriter(dst), Closer: dst}
 	case OutputChunkedJSON:
 		return httpChunkedJSON(dst)
 	case OutputChunkedJSONArray:
@@ -396,4 +402,37 @@ func detach(ctl *net.UnixConn) (io.WriteCloser, error) {
 		return nil, err
 	}
 	return w, nil
+}
+
+type writerCloser struct {
+	io.Writer
+	io.Closer
+}
+
+func httpChunkedJSON(dst io.WriteCloser) io.WriteCloser {
+	return &writerCloser{
+		Writer: ion.NewJSONWriter(httputil.NewChunkedWriter(dst), '\n'),
+		Closer: dst,
+	}
+}
+
+type arrayWriter struct {
+	*ion.JSONWriter
+	final io.Closer
+}
+
+func httpJSONArray(dst io.WriteCloser) io.WriteCloser {
+	return &arrayWriter{
+		JSONWriter: ion.NewJSONWriter(httputil.NewChunkedWriter(dst), ','),
+		final:      dst,
+	}
+}
+
+func (a *arrayWriter) Close() error {
+	err := a.JSONWriter.Close()
+	err2 := a.final.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
 }
