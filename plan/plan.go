@@ -425,9 +425,6 @@ func (c *CountStar) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error
 	}
 	var b ion.Buffer
 	var st ion.Symtab
-	tmp := vm.Malloc()
-	defer vm.Free(tmp)
-	b.Set(tmp[:0])
 
 	field := st.Intern(c.name())
 	st.Marshal(&b, true)

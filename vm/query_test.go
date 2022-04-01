@@ -95,6 +95,8 @@ func (b *benchTable) Open() (vm.Table, error) {
 func (b *benchTable) Chunks() int { return int(b.count) }
 
 func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
+	// FIXME: the memory being sent to the core here
+	// is not from vm.Malloc, so it is going to be copied...
 	return vm.SplitInput(dst, parallel, func(w io.Writer) error {
 		for atomic.AddInt64(&b.count, -1) >= 0 {
 			_, err := w.Write(b.buf)

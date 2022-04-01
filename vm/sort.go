@@ -267,11 +267,10 @@ func (s *Order) finalizeKtop() error {
 	if tmp.Size() > PageSize {
 		return fmt.Errorf("size %d > PageSize", tmp.Size())
 	}
-	out := Malloc()
-	defer Free(out)
+	out := make([]byte, tmp.Size())
 	pre := copy(out, tmp.Bytes()[slice:])
 	copy(out[pre:], tmp.Bytes()[:slice])
-	_, err = s.dst.Write(out[:tmp.Size()])
+	_, err = s.dst.Write(out)
 	return err
 }
 

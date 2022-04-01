@@ -390,7 +390,7 @@ func (q *Aggregate) Close() error {
 	if err != nil {
 		return err
 	}
-	err = safeWrite(w, &b)
+	_, err = w.Write(b.Bytes())
 	err2 := w.Close()
 	err3 := q.rest.Close()
 

@@ -15,15 +15,11 @@
 package vm
 
 import (
-	"fmt"
-	"io"
 	"math/bits"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
-
-	"github.com/SnellerInc/sneller/ion"
 )
 
 // VM "memory" aka VMM
@@ -136,20 +132,6 @@ func PagesUsed() int {
 	return n
 }
 
-// needsVMM determines if the target io.Writer
-// *really* needs a malloc'd input buffer
-func needsVMM(dst io.Writer) bool {
-	if s, ok := dst.(*sink); ok {
-		dst = s.dst
-	}
-	_, ok := dst.(RowConsumer)
-	if ok {
-		return ok
-	}
-	_, ok = dst.(*RowSplitter)
-	return ok
-}
-
 // Free frees a buffer that was returned
 // by Malloc so that it can be re-used.
 // The caller may not use the contents
@@ -187,21 +169,4 @@ func Free(buf []byte) {
 			return
 		}
 	}
-}
-
-func safeWrite(dst io.Writer, src *ion.Buffer) error {
-	if !needsVMM(dst) {
-		_, err := dst.Write(src.Bytes())
-		return err
-	}
-	if src.Size() < PageSize {
-		tmp := Malloc()
-		_, err := dst.Write(tmp[:copy(tmp, src.Bytes())])
-		Free(tmp)
-		return err
-	}
-	// TODO: copy segments,
-	// taking care to reproduce the
-	// leading symbol table when appropriate
-	return fmt.Errorf("size %d > PageSize %d", src.Size(), PageSize)
 }

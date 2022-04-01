@@ -377,7 +377,7 @@ func (h *HashAggregate) Close() error {
 	if err != nil {
 		return err
 	}
-	err = safeWrite(dst, &outbuf)
+	_, err = dst.Write(outbuf.Bytes())
 	if err != nil {
 		dst.Close()
 		return err

@@ -15,11 +15,9 @@
 package vm
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -91,6 +89,8 @@ type RowSplitter struct {
 	delims      [][2]uint32 // buffer of delimiters; allocated lazily
 	delimhint   int
 	symbolized  bool // seen any symbol tables
+
+	vmcache []byte
 }
 
 // default number of rows to process per batch
@@ -101,6 +101,28 @@ const defaultDelims = 512
 // into individual rows for consumption by a RowConsumer
 func Splitter(q RowConsumer) *RowSplitter {
 	return &RowSplitter{RowConsumer: q, delimhint: defaultDelims}
+}
+
+func (q *RowSplitter) writeSanitized(src []byte, delims [][2]uint32) error {
+	if Allocated(src) {
+		return q.WriteRows(src, delims)
+	}
+	if q.vmcache == nil {
+		q.vmcache = Malloc()
+	}
+	if len(src) > PageSize {
+		return fmt.Errorf("cannot sanitize write of size %d (PageSize = %d)", len(src), PageSize)
+	}
+	n := copy(q.vmcache, src)
+	return q.WriteRows(q.vmcache[:n], delims)
+}
+
+func (q *RowSplitter) Close() error {
+	if q.vmcache != nil {
+		Free(q.vmcache)
+		q.vmcache = nil
+	}
+	return q.RowConsumer.Close()
 }
 
 // Write implements io.Writer
@@ -129,16 +151,18 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 			return 0, err
 		}
 	}
-	if int(boff) < len(buf) && !Allocated(buf) {
-		panic("didn't use vm.Malloc")
-		return 0, fmt.Errorf("Write: didn't use vm.Malloc")
-	}
 
 	// allocate q.delims lazily
 	if len(q.delims) < q.delimhint {
-		q.delims = make([][2]uint32, q.delimhint)
-	} else if q.delimhint == 0 {
-		panic("delimhint == 0")
+		if !Allocated(buf) {
+			// when we know we are receiving non-VM buffers,
+			// we should limit the number of delimiters processed
+			// in one go so that we can try to guarantee that
+			// the objects can safely be copied into a single vm "page"
+			q.delims = make([][2]uint32, 32)
+		} else {
+			q.delims = make([][2]uint32, q.delimhint)
+		}
 	}
 
 	for int(boff) < len(buf) {
@@ -147,19 +171,12 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 			panic("last object extends past end of buffer?")
 		}
 		if count != 0 {
-			err := q.WriteRows(buf[boff:boff+next], q.delims[:count])
+			err := q.writeSanitized(buf[boff:boff+next], q.delims[:count])
 			if err != nil {
 				return int(boff), err
 			}
 		}
 		boff += next
-		if next == 0 && int(boff) < len(buf) {
-			fmt.Printf("bytes: %x\n", buf[boff:])
-			fmt.Printf("len(delims): %d\n", len(q.delims))
-			ion.ToJSON(os.Stdout, bufio.NewReader(bytes.NewReader(buf)))
-			println("boff", boff, "next", next, "len(buf)", len(buf), "count", count)
-			panic("no progress")
-		}
 	}
 	return len(buf), nil
 }
@@ -265,14 +282,7 @@ func (m *Rematerializer) flush() error {
 		return nil
 	}
 	buf := m.buf.Bytes()
-	var err error
-	if needsVMM(m.out) {
-		tmp := Malloc()
-		_, err = m.out.Write(tmp[:copy(tmp, buf)])
-		Free(tmp)
-	} else {
-		_, err = m.out.Write(buf)
-	}
+	_, err := m.out.Write(buf)
 	m.buf.Set(buf[:m.stsize])
 	m.empty = true
 	return err

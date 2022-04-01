@@ -389,7 +389,9 @@ func TestRadixBytecodeInsert(t *testing.T) {
 
 func BenchmarkAggregate(b *testing.B) {
 	var st ion.Symtab
-	buf := unhex(parkingCitations1KLines)
+	orig := unhex(parkingCitations1KLines)
+	buf := Malloc()
+	buf = buf[:copy(buf, orig)]
 	_, err := st.Unmarshal(buf)
 	if err != nil {
 		b.Fatal(err)
