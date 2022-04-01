@@ -415,7 +415,6 @@ func (p *aggregateLocal) WriteRows(buf []byte, delims [][2]uint32) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
 	}
-
 	rowsCount := evalaggregatebc(&p.bc, buf, delims, p.partialData)
 	p.rowCount += uint64(rowsCount)
 

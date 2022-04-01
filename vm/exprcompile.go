@@ -1288,9 +1288,9 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			isbool := p.checkTag(from, expr.BoolType)
 			vi := p.ssa2(sbooltoint, istrue, isbool)
 			k := p.mask(vi)
-			vi = p.ssa3(stoint, vi, from, p.nand(k, p.ValidLanes()))
+			vi = p.ssa3(stoint, vi, from, p.nand(k, p.mask(from)))
 			k = p.Or(k, vi)
-			vf := p.ssa3(stofloat, vi, from, p.nand(k, p.ValidLanes()))
+			vf := p.ssa3(stofloat, vi, from, p.nand(k, p.mask(from)))
 			v := p.ssa2(sroundi, vf, vf)
 			k = p.Or(k, vf)
 			return p.intk(v, k), nil

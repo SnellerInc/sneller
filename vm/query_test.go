@@ -61,8 +61,15 @@ func (c chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	if err != nil {
 		return err
 	}
+	// fill any untouched bytes
+	// with garbage to detect
+	// out-of-bounds reads
+	all := make([]byte, 1024*1024)
+	for i := range all {
+		all[i] = byte(i & 255)
+	}
 	for _, buf := range c {
-		_, err = w.Write(buf)
+		_, err = w.Write(all[:copy(all, buf)])
 		if err != nil {
 			closerr := w.Close()
 			if errors.Is(err, io.EOF) {
