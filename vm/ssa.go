@@ -708,17 +708,17 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitWidthBucket},
 	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitWidthBucket},
 
-	saggsumf:  {text: "aggsum.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf},
-	saggsumi:  {text: "aggsum.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi},
-	saggavgf:  {text: "aggavg.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf},
-	saggavgi:  {text: "aggavg.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi},
-	saggminf:  {text: "aggmin.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggminf},
-	saggmini:  {text: "aggmin.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmini},
-	saggmaxf:  {text: "aggmax.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggmaxf},
-	saggmaxi:  {text: "aggmax.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmaxi},
-	saggmints: {text: "aggmin.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmini},
-	saggmaxts: {text: "aggmax.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmaxi},
-	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtslot, bc: opaggcount},
+	saggsumf:  {text: "aggsum.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf, priority: prioMem},
+	saggsumi:  {text: "aggsum.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi, priority: prioMem},
+	saggavgf:  {text: "aggavg.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf, priority: prioMem},
+	saggavgi:  {text: "aggavg.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi, priority: prioMem},
+	saggminf:  {text: "aggmin.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggminf, priority: prioMem},
+	saggmini:  {text: "aggmin.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmini, priority: prioMem},
+	saggmaxf:  {text: "aggmax.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggmaxf, priority: prioMem},
+	saggmaxi:  {text: "aggmax.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmaxi, priority: prioMem},
+	saggmints: {text: "aggmin.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmini, priority: prioMem},
+	saggmaxts: {text: "aggmax.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmaxi, priority: prioMem},
+	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtslot, bc: opaggcount, priority: prioMem + 1},
 
 	// compute hash aggregate bucket location; encoded immediate will be input hash slot to use
 	saggbucket: {text: "aggbucket", argtypes: []ssatype{stMem, stHash, stBool}, rettype: stBucket, immfmt: fmtslot, bc: opaggbucket},
@@ -5413,7 +5413,7 @@ func (p *prog) compile(dst *bytecode) error {
 		}
 	} else if c.needscratch && dst.scratch == nil {
 		// zero-length, large-capacity buffer
-		dst.scratch = calloc(defaultAlign)[:0]
+		dst.scratch = Malloc()[:0]
 	}
 	return dst.finalize()
 }

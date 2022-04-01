@@ -336,6 +336,9 @@ func (n DummyOutput) exec(dst vm.QuerySink, parallel int, stats *ExecStats) erro
 	// plus an empty structure
 	var b ion.Buffer
 	var st ion.Symtab
+	mem := vm.Malloc()
+	defer vm.Free(mem)
+	b.Set(mem[:0])
 	st.Marshal(&b, true)
 	empty := ion.Struct{}
 	empty.Encode(&b, &st)
@@ -420,9 +423,12 @@ func (c *CountStar) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error
 	if err != nil {
 		return err
 	}
-	// FIXME: put this logic somewhere else
 	var b ion.Buffer
 	var st ion.Symtab
+	tmp := vm.Malloc()
+	defer vm.Free(tmp)
+	b.Set(tmp[:0])
+
 	field := st.Intern(c.name())
 	st.Marshal(&b, true)
 	b.BeginStruct(-1)

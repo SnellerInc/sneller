@@ -16,6 +16,7 @@ package vm
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"sync"
@@ -153,8 +154,8 @@ func SplitInput(dst QuerySink, parallel int, into func(io.Writer) error) error {
 // WriteChunks implements Table.WriteChunks
 func (s *StreamTable) WriteChunks(dst QuerySink, parallel int) error {
 	into := func(w io.Writer) error {
-		chunk := calloc(s.align)
-		defer free(chunk)
+		chunk := Malloc()
+		defer Free(chunk)
 		for {
 			s.lock.Lock()
 			if s.ateof {
@@ -209,8 +210,11 @@ func (r *ReaderAtTable) Align() int { return r.align }
 func (r *ReaderAtTable) Chunks() int { return int((r.size + int64(r.align-1)) / int64(r.align)) }
 
 func (r *ReaderAtTable) run(dst io.Writer) error {
-	chunk := calloc(r.align)
-	defer free(chunk)
+	if r.align > PageSize {
+		return fmt.Errorf("align %d < PageSize (%d)", r.align, PageSize)
+	}
+	chunk := Malloc()[:r.align]
+	defer Free(chunk)
 	step := int64(r.align)
 	for {
 		off := atomic.AddInt64(&r.off, step) - step
@@ -282,6 +286,8 @@ func (b *BufferedTable) Size() int64 { return int64(len(b.buf)) }
 func (b *BufferedTable) Chunks() int { return (len(b.buf) + b.align - 1) / b.align }
 
 func (b *BufferedTable) run(w io.Writer) error {
+	tmp := Malloc()
+	defer Free(tmp)
 	for {
 		off := atomic.AddInt64(&b.off, int64(b.align)) - int64(b.align)
 		if off >= int64(len(b.buf)) {
@@ -291,7 +297,8 @@ func (b *BufferedTable) run(w io.Writer) error {
 		if off+size > int64(len(b.buf)) {
 			size = int64(len(b.buf)) - off
 		}
-		_, err := w.Write(b.buf[off : off+size])
+		copy(tmp, b.buf[off:off+size])
+		_, err := w.Write(tmp[:size])
 		if err != nil {
 			return err
 		}

@@ -17,10 +17,10 @@ package plan
 import (
 	"io"
 	"runtime"
-	"sync"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/vm"
 )
 
 // Exec executes a plan and writes the
@@ -51,7 +51,7 @@ func (l *LocalTransport) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 // Exec implements Transport.Exec
 func (l *LocalTransport) Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *ExecStats) error {
-	s := &sink{dst: dst}
+	s := vm.LockedSink(dst)
 	parallel := l.Threads
 	if parallel <= 0 {
 		parallel = runtime.GOMAXPROCS(0)
@@ -125,25 +125,4 @@ type Transport interface {
 	// determines how table expressions are re-written
 	// before they are provided to Transport.
 	Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *ExecStats) error
-}
-
-// trivial vm.QuerySink for
-// producing an output stream
-type sink struct {
-	lock sync.Mutex
-	dst  io.Writer
-}
-
-func (s *sink) Open() (io.WriteCloser, error) {
-	return s, nil
-}
-
-func (s *sink) Write(p []byte) (int, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	return s.dst.Write(p)
-}
-
-func (s *sink) Close() error {
-	return nil
 }

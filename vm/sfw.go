@@ -15,9 +15,11 @@
 package vm
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -127,10 +129,16 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 			return 0, err
 		}
 	}
+	if int(boff) < len(buf) && !Allocated(buf) {
+		panic("didn't use vm.Malloc")
+		return 0, fmt.Errorf("Write: didn't use vm.Malloc")
+	}
 
 	// allocate q.delims lazily
 	if len(q.delims) < q.delimhint {
 		q.delims = make([][2]uint32, q.delimhint)
+	} else if q.delimhint == 0 {
+		panic("delimhint == 0")
 	}
 
 	for int(boff) < len(buf) {
@@ -145,6 +153,13 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 			}
 		}
 		boff += next
+		if next == 0 && int(boff) < len(buf) {
+			fmt.Printf("bytes: %x\n", buf[boff:])
+			fmt.Printf("len(delims): %d\n", len(q.delims))
+			ion.ToJSON(os.Stdout, bufio.NewReader(bytes.NewReader(buf)))
+			println("boff", boff, "next", next, "len(buf)", len(buf), "count", count)
+			panic("no progress")
+		}
 	}
 	return len(buf), nil
 }
@@ -250,7 +265,14 @@ func (m *Rematerializer) flush() error {
 		return nil
 	}
 	buf := m.buf.Bytes()
-	_, err := m.out.Write(buf)
+	var err error
+	if needsVMM(m.out) {
+		tmp := Malloc()
+		_, err = m.out.Write(tmp[:copy(tmp, buf)])
+		Free(tmp)
+	} else {
+		_, err = m.out.Write(buf)
+	}
 	m.buf.Set(buf[:m.stsize])
 	m.empty = true
 	return err
@@ -262,12 +284,7 @@ func (m *Rematerializer) Symbolize(st *ion.Symtab) error {
 	if err != nil {
 		return err
 	}
-	if m.buf.Bytes() == nil {
-		out := calloc(defaultAlign)
-		m.buf.Set(out[:0])
-	} else {
-		m.buf.Reset()
-	}
+	m.buf.Reset()
 	st.Marshal(&m.buf, true)
 	m.stsize = m.buf.Size()
 	return nil
@@ -308,3 +325,42 @@ func (m *Rematerializer) Close() error {
 	}
 	return err
 }
+
+// Locked turns an io.Writer into a goroutine-safe
+// io.Writer where each write is serialized against
+// other writes. Locked takes into account whether
+// dst implements RowConsumer and optimizes the
+// calls to Write accordingly.
+func Locked(dst io.Writer) io.Writer {
+	if _, ok := dst.(*sink); ok {
+		return dst
+	}
+	return &sink{dst: dst}
+}
+
+// LockedSink returns a QuerySink for which
+// all calls to Open return a wrapper of dst
+// that serializes calls to io.Writer.Write.
+// (See also Locked.)
+func LockedSink(dst io.Writer) QuerySink {
+	if s, ok := dst.(*sink); ok {
+		return s
+	}
+	return &sink{dst: dst}
+}
+
+// trivial vm.QuerySink for
+// producing an output stream
+type sink struct {
+	lock sync.Mutex
+	dst  io.Writer
+}
+
+func (s *sink) Write(p []byte) (int, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return s.dst.Write(p)
+}
+
+func (s *sink) Open() (io.WriteCloser, error) { return s, nil }
+func (s *sink) Close() error                  { return nil }

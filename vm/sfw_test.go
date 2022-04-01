@@ -69,8 +69,11 @@ func TestRematerializeIssue561(t *testing.T) {
 	rc := AsRowConsumer(&noClose{&tmp}) // create rematerializer
 	splitter := Splitter(rc)
 
+	mem := Malloc()
+	defer Free(mem)
 	for _, chunk := range out {
-		_, err := splitter.Write(chunk)
+		size := copy(mem, chunk)
+		_, err := splitter.Write(mem[:size])
 		if err != nil {
 			t.Fatal(err)
 		}

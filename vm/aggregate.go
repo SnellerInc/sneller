@@ -390,7 +390,7 @@ func (q *Aggregate) Close() error {
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(b.Bytes())
+	err = safeWrite(w, &b)
 	err2 := w.Close()
 	err3 := q.rest.Close()
 
@@ -417,12 +417,12 @@ func (p *aggregateLocal) WriteRows(buf []byte, delims [][2]uint32) error {
 	}
 	rowsCount := evalaggregatebc(&p.bc, buf, delims, p.partialData)
 	p.rowCount += uint64(rowsCount)
-
 	return nil
 }
 
 func (p *aggregateLocal) Close() error {
 	mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateKinds)
+	p.partialData = nil
 	p.bc.reset()
 	return p.dst.Close()
 }
@@ -438,7 +438,6 @@ func NewAggregate(bind Aggregation, rest QuerySink) (*Aggregate, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	aggregatedData := make([]byte, len(q.initialData))
 	copy(aggregatedData, q.initialData)
 	q.AggregatedData = aggregatedData

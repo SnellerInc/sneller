@@ -306,10 +306,6 @@ func (h *HashAggregate) Close() error {
 
 	var outst ion.Symtab
 	var outbuf ion.Buffer
-	outbuf.Set(calloc(defaultAlign)[:0])
-	defer func() {
-		free(outbuf.Bytes()[:0])
-	}()
 
 	var aggsyms []ion.Symbol
 	var bysyms []ion.Symbol
@@ -381,7 +377,7 @@ func (h *HashAggregate) Close() error {
 	if err != nil {
 		return err
 	}
-	_, err = dst.Write(outbuf.Bytes())
+	err = safeWrite(dst, &outbuf)
 	if err != nil {
 		dst.Close()
 		return err

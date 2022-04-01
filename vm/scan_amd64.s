@@ -18,15 +18,15 @@
 
 // func scan(buf []byte, dst [][2]uint32) (int, int)
 TEXT ·scan(SB), 7, $8
-	MOVQ   buf+0(FP), SI      // SI: &raw
-	MOVQ   buf_len+8(FP), DX  // DX: len(raw)
+  MOVQ   buf+0(FP), SI      // SI: &raw
+  MOVQ   buf_len+8(FP), DX  // DX: len(raw)
   MOVL   start+24(FP), AX   // AX: start offset
   MOVQ   dst+32(FP), DI     // &dst
   MOVQ   dst_len+40(FP), R8 // R8 = len(dst)
-	CALL   scanbody(SB)
+  CALL   scanbody(SB)
   MOVQ   CX, ret+56(FP)     // count
-	MOVL   AX, ret1+64(FP)    // next offset
-	RET
+  MOVL   AX, ret1+64(FP)    // next offset
+  RET
 
 //
 // Input
@@ -54,17 +54,18 @@ restart:
   // we use the record size from the previous iteration.
   ADDQ SI, R14
   PREFETCHT0 0(R14)(AX*1)
-  //MOVQ 0(R14)(AX*1), R13 // it's a bit slower and unsafe
 
   // work out the current record
   MOVQ 0(SI)(AX*1), R15
   INCQ AX
-  MOVL R15, R14; ANDL $0xf0, R14
+  MOVL R15, R14
+  ANDL $0xf0, R14
   CMPL R14, $0xd0
   JNZ  foundNoStruct
-  MOVL R15, R14; ANDL $0x0f, R14
+  MOVL R15, R14
+  ANDL $0x0f, R14
   CMPL R14, $0x0e
-  JNZ  endloop
+  JNE  endloop
   XORL R14, R14
 varint:
   SHLL $7, R14
@@ -85,17 +86,17 @@ endloop:
   CMPL CX, R8
   JLT  restart
 done:
- 	RET
+  RET
 
 foundBVM:
-	// We encountered the binary version marker (BVM)
-	// Skip remaining 3 bytes (major version=0x01, minor version=0x00, end marker=0xea)
-	//
-	// TODO: We have to make sure that the subsequent Annot with the header info
-	//       is identical between blocks that are padded
-	//
-	MOVQ    $3, R14
-	JMP     foundNoStructDone
+// We encountered the binary version marker (BVM)
+// Skip remaining 3 bytes (major version=0x01, minor version=0x00, end marker=0xea)
+//
+// TODO: We have to make sure that the subsequent Annot with the header info
+//       is identical between blocks that are padded
+//
+  MOVQ    $3, R14
+  JMP     foundNoStructDone
 
 foundNoStruct:
   // We encountered a non-structure value
@@ -108,7 +109,8 @@ foundNoStruct:
   JZ      foundBVM
 
   // Otherwise parse (and skip) length of this element
-  MOVQ    R15, R14; ANDQ $0x0f, R14
+  MOVQ    R15, R14
+  ANDQ    $0x0f, R14
   CMPQ    R14, $0x0e
   JNZ     foundNoStructDone
   XORL    R14, R14

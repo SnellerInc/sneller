@@ -148,7 +148,7 @@ func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error 
 	if err != nil {
 		return err
 	}
-	s := &sink{dst: w}
+	s := vm.Locked(w)
 
 	// NOTE: the heuristic here at the momement
 	// is that the reduction step of sub-queries

@@ -61,15 +61,17 @@ func (c chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	if err != nil {
 		return err
 	}
-	// fill any untouched bytes
-	// with garbage to detect
-	// out-of-bounds reads
-	all := make([]byte, 1024*1024)
-	for i := range all {
-		all[i] = byte(i & 255)
-	}
+	tmp := vm.Malloc()
+	defer vm.Free(tmp)
 	for _, buf := range c {
-		_, err = w.Write(all[:copy(all, buf)])
+		if len(buf) > len(tmp) {
+			return fmt.Errorf("chunk len %d > PageSize", len(buf))
+		}
+		for i := range tmp {
+			tmp[i] = byte(i & 255)
+		}
+		size := copy(tmp, buf)
+		_, err = w.Write(tmp[:size:size])
 		if err != nil {
 			closerr := w.Close()
 			if errors.Is(err, io.EOF) {
@@ -527,6 +529,14 @@ func BenchmarkTestQueries(b *testing.B) {
 // as quickly as possible, tests are
 // run in parallel.
 func TestQueries(t *testing.T) {
+	start := vm.PagesUsed()
+	t.Cleanup(func() {
+		// detect a page leak
+		end := vm.PagesUsed()
+		if end != start {
+			t.Errorf("pages used: %d -> %d", start, end)
+		}
+	})
 	err := filepath.WalkDir("./testdata/queries/", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -538,10 +548,14 @@ func TestQueries(t *testing.T) {
 			t.Log("skip", d.Name())
 			return nil
 		}
+		// start := vm.PagesUsed()
 		t.Run(strings.TrimSuffix(d.Name(), ".test"), func(t *testing.T) {
 			t.Parallel()
 			testPath(t, path)
 		})
+		// if end := vm.PagesUsed(); false && end != start {
+		//	t.Errorf("memory leak: PagesUsed %d -> %d", start, end)
+		//}
 		return nil
 	})
 	if err != nil {

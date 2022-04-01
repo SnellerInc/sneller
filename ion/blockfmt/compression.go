@@ -529,9 +529,13 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 // bytes written to dst and the first error encountered,
 // if any.
 func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
-	tmp := malloc(1 << d.Trailer.BlockShift)
+	size := 1 << d.Trailer.BlockShift
+	if size > vm.PageSize {
+		return 0, fmt.Errorf("block size %d exceeds vm.PageSize (%d)", size, vm.PageSize)
+	}
+	tmp := vm.Malloc()[:size]
+	defer vm.Free(tmp)
 	decomp := Decompression(d.Algo)
-	defer free(tmp)
 	nn := int64(0)
 	for len(src) > 0 {
 		if ion.TypeOf(src) != ion.BlobType {
@@ -578,7 +582,7 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 		return 0, fmt.Errorf("size %d above vm.PageSize (%d)", size, vm.PageSize)
 	}
 	vmm := vm.Malloc()[:size]
-	defer free(vmm)
+	defer vm.Free(vmm)
 	for {
 		_, err := io.ReadFull(src, d.frame[:])
 		if err == io.EOF {

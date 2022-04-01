@@ -23,19 +23,13 @@ func TestMalloc(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		n := Malloc()
 		n[10] = 'x'
-		n[(1024 * 1024) - 1] = 'y'
+		n[(1024*1024)-1] = 'y'
 		bufs = append(bufs, n)
-		if PagesUsed() != i+1 {
-			t.Errorf("%d pages used?", PagesUsed())
-		}
 	}
 	for i := range bufs {
 		if !Allocated(bufs[i]) {
 			t.Fatalf("didn't allocate %p?", &bufs[i][0])
 		}
 		Free(bufs[i])
-	}
-	if PagesUsed() != 0 {
-		t.Errorf("%d pages used?", PagesUsed())
 	}
 }

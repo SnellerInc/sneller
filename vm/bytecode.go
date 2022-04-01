@@ -660,7 +660,7 @@ func (b *bytecode) setlit(buf []byte) bool {
 		return false
 	}
 	if b.scratch == nil {
-		b.scratch = calloc(defaultAlign)
+		b.scratch = Malloc()
 	}
 	b.scratchreserve = copy(b.scratch, buf)
 	b.scratch = b.scratch[:b.scratchreserve]
@@ -669,7 +669,7 @@ func (b *bytecode) setlit(buf []byte) bool {
 
 func (b *bytecode) reset() {
 	if b.scratch != nil {
-		free(b.scratch)
+		Free(b.scratch)
 	}
 	*b = bytecode{}
 }

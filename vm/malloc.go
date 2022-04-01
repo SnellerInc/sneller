@@ -15,18 +15,33 @@
 package vm
 
 import (
-	"unsafe"
+	"fmt"
+	"io"
 	"math/bits"
+	"sync"
 	"sync/atomic"
 	"syscall"
+	"unsafe"
+
+	"github.com/SnellerInc/sneller/ion"
 )
 
+// VM "memory" aka VMM
+//
+// We reserve 4GiB of memory at start-up
+// that is dedicated to VM operations.
+// Restricting the VM to operating on
+// a fixed 4GiB region lets us use 32-bit
+// "absolute" addresses in the VM even though
+// the VM may reference data in different buffers
+// (i.e. one from io.Writer.Write, the scratch buffer, etc.)
+
 const (
-	pageBits = 20
-	pageSize = 1 << pageBits
-	vmUse = 1 << 29
-	vmPages = vmUse >> pageBits
-	vmWords = vmPages / 64
+	pageBits  = 20
+	pageSize  = 1 << pageBits
+	vmUse     = 1 << 29
+	vmPages   = vmUse >> pageBits
+	vmWords   = vmPages / 64
 	vmReserve = 1 << 32
 
 	// PageSize is the granularity
@@ -36,9 +51,19 @@ const (
 )
 
 var (
-	vmm *[vmReserve]byte
-	vmbits [vmWords]uint64
+	memlock sync.Mutex
+	vmm     *[vmReserve]byte
+	vmbits  [vmWords]uint64
 )
+
+// vmref is a (type, length) tuple
+// referring to memory within the VMM
+type vmref [2]uint32
+
+func (v vmref) mem() []byte {
+	mem := vmm[v[0]:]
+	return mem[:v[1]:v[1]]
+}
 
 func init() {
 	buf, err := syscall.Mmap(0, 0, vmReserve, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS)
@@ -86,16 +111,17 @@ func Allocated(buf []byte) bool {
 func Malloc() []byte {
 	for i := 0; i < vmWords; i++ {
 		addr := &vmbits[i]
-		mask := ^atomic.LoadUint64(addr)
-		if mask == uint64(0) {
+		mask := atomic.LoadUint64(addr)
+		avail := ^mask
+		if avail == uint64(0) {
 			continue
 		}
-		bit := bits.TrailingZeros64(mask)
-		if !atomic.CompareAndSwapUint64(addr, ^mask, (^mask)|(uint64(1) << bit)) {
+		bit := bits.TrailingZeros64(avail)
+		if !atomic.CompareAndSwapUint64(addr, mask, mask|(uint64(1)<<bit)) {
 			i--
 			continue
 		}
-		buf := vmm[((i * 64)+bit) << pageBits:]
+		buf := vmm[((i*64)+bit)<<pageBits:]
 		buf = buf[:pageSize:pageSize]
 		return buf
 	}
@@ -110,18 +136,33 @@ func PagesUsed() int {
 	return n
 }
 
+// needsVMM determines if the target io.Writer
+// *really* needs a malloc'd input buffer
+func needsVMM(dst io.Writer) bool {
+	if s, ok := dst.(*sink); ok {
+		dst = s.dst
+	}
+	_, ok := dst.(RowConsumer)
+	if ok {
+		return ok
+	}
+	_, ok = dst.(*RowSplitter)
+	return ok
+}
+
 // Free frees a buffer that was returned
 // by Malloc so that it can be re-used.
 // The caller may not use the contents
 // of buf after it has called Free.
 func Free(buf []byte) {
+	buf = buf[:pageSize]
 	p := uintptr(unsafe.Pointer(&buf[0]))
 	if p < vmbase() || p >= vmend() {
 		panic("bad pointer passed to Free()")
 	}
 	pfn := (p - vmbase()) >> pageBits
 	bit := uint64(1) << (pfn % 64)
-	addr := &vmbits[pfn / 64]
+	addr := &vmbits[pfn/64]
 	for {
 		mask := atomic.LoadUint64(addr)
 		if mask&bit == 0 {
@@ -130,19 +171,37 @@ func Free(buf []byte) {
 		// if we are about to set a whole region to zero,
 		// then madvise the whole thing to being unused
 		// once we have locked all the page bits
-		if mask&^bit == 0 && atomic.CompareAndSwapUint64(addr, mask, ^uint64(0)) {
+		if mask == bit && atomic.CompareAndSwapUint64(addr, mask, ^uint64(0)) {
 			width := 64 << pageBits
-			base := (64*(pfn / 64)) << pageBits
-			mem := vmm[base:width:width]
+			base := (64 * (pfn / 64)) << pageBits
+			mem := vmm[base:]
+			mem = mem[:width:width]
 			err := syscall.Madvise(mem, 8) // MADV_FREE
 			if err != nil {
 				panic("madvise: " + err.Error())
 			}
 			atomic.StoreUint64(addr, 0)
-			break
+			return
 		}
 		if atomic.CompareAndSwapUint64(addr, mask, mask&^bit) {
-			break
+			return
 		}
 	}
+}
+
+func safeWrite(dst io.Writer, src *ion.Buffer) error {
+	if !needsVMM(dst) {
+		_, err := dst.Write(src.Bytes())
+		return err
+	}
+	if src.Size() < PageSize {
+		tmp := Malloc()
+		_, err := dst.Write(tmp[:copy(tmp, src.Bytes())])
+		Free(tmp)
+		return err
+	}
+	// TODO: copy segments,
+	// taking care to reproduce the
+	// leading symbol table when appropriate
+	return fmt.Errorf("size %d > PageSize %d", src.Size(), PageSize)
 }

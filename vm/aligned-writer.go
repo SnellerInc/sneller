@@ -17,45 +17,14 @@ package vm
 import (
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
 )
 
-const pageSlack = 16
-
-// buffer pool of buffers that have size defaultAlign
-var alignedbufs = sync.Pool{}
-
-const defaultAlign = 1024 * 1024
-
-// calloc returns a zeroed buffer
-// with length equal to size and capacity
-// equal to size plus the required padding
-// for the assembly code to perform unaligned reads.
-//
-// Buffers passed to core procedures ought to be
-// allocated with calloc.
-func calloc(size int) []byte {
-	if size == defaultAlign {
-		g := alignedbufs.Get()
-		if g != nil {
-			buf := g.([]byte)
-			return buf[:size]
-		}
-	}
-	return make([]byte, size, size+pageSlack)
-}
-
-// free "frees" a buffer allocated by calloc.
-// The caller may not use any part of buf
-// once free has been callled.
-func free(buf []byte) {
-	if cap(buf) == defaultAlign+pageSlack {
-		//lint:ignore SA6002 inconsequential
-		alignedbufs.Put(buf)
-	}
-}
+const (
+	pageSlack    = 16
+	defaultAlign = 1024 * 1024
+)
 
 // alignedWriter buffers writes up to len(buf)
 // and flushes them to 'out'
@@ -67,7 +36,7 @@ type alignedWriter struct {
 
 func (a *alignedWriter) init(out io.WriteCloser, pre []byte, align int) {
 	a.out = out
-	a.buf = calloc(align)
+	a.buf = Malloc()
 	if pre != nil {
 		a.off = copy(a.buf, pre)
 		a.save = a.off
@@ -123,7 +92,7 @@ func (a *alignedWriter) Close() error {
 		return nil
 	}
 	_, err := a.flush()
-	free(a.buf)
+	Free(a.buf)
 	a.buf = nil
 	err2 := a.out.Close()
 	if err == nil {

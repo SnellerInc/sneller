@@ -214,8 +214,11 @@ type looptable struct {
 func (l *looptable) Chunks() int { return int(l.count) }
 
 func (l *looptable) run(dst io.Writer) error {
+	tmp := Malloc()
+	defer Free(tmp)
+	tmp = tmp[:copy(tmp, l.chunk)]
 	for atomic.AddInt64(&l.count, -1) >= 0 {
-		_, err := dst.Write(l.chunk)
+		_, err := dst.Write(tmp)
 		if err != nil {
 			return err
 		}

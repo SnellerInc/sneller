@@ -104,12 +104,17 @@ func (h *Handle) Open() (io.ReadCloser, error) {
 }
 
 func (h *Handle) Decode(dst io.Writer, src []byte) error {
+	if h.Align() > vm.PageSize {
+		return fmt.Errorf("align %d > vm.PageSize %d", h.Align(), vm.PageSize)
+	}
+	buf := vm.Malloc()
+	defer vm.Free(buf)
 	for off := int64(0); off < h.Size(); off += int64(h.Align()) {
 		mem := src[off:]
 		if len(mem) > h.Align() {
 			mem = mem[:h.Align()]
 		}
-		_, err := dst.Write(mem)
+		_, err := dst.Write(buf[:copy(buf, mem)])
 		if err != nil {
 			return err
 		}

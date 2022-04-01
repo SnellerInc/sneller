@@ -264,10 +264,14 @@ func (s *Order) finalizeKtop() error {
 	}
 	slice := tmp.Size()
 	globalst.Marshal(&tmp, true)
-	out := make([]byte, tmp.Size())
+	if tmp.Size() > PageSize {
+		return fmt.Errorf("size %d > PageSize", tmp.Size())
+	}
+	out := Malloc()
+	defer Free(out)
 	pre := copy(out, tmp.Bytes()[slice:])
 	copy(out[pre:], tmp.Bytes()[:slice])
-	_, err = s.dst.Write(out)
+	_, err = s.dst.Write(out[:tmp.Size()])
 	return err
 }
 
