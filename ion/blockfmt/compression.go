@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/vm"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -558,6 +559,10 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 // and writes it to dst. It returns the number of
 // bytes written to dst and the first error encountered,
 // if any.
+//
+// Copy always calls dst.Write with memory allocated
+// via sneller/vm.Malloc, so dst may be an io.Writer
+// returned via a vm.QuerySink.
 func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 	if d.tmp != nil {
 		panic("concurrent blockfmt.Decoder calls")
@@ -568,8 +573,12 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 		return 0, fmt.Errorf("decompression %q not supported", d.Algo)
 	}
 	nn := int64(0)
-	tmp := malloc(1 << d.Trailer.BlockShift)
-	defer free(tmp)
+	size := 1 << d.Trailer.BlockShift
+	if size > vm.PageSize {
+		return 0, fmt.Errorf("size %d above vm.PageSize (%d)", size, vm.PageSize)
+	}
+	vmm := vm.Malloc()[:size]
+	defer free(vmm)
 	for {
 		_, err := io.ReadFull(src, d.frame[:])
 		if err == io.EOF {
@@ -594,11 +603,11 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 		if err != nil {
 			return nn, err
 		}
-		err = d.decomp.Decompress(buf, tmp)
+		err = d.decomp.Decompress(buf, vmm)
 		if err != nil {
 			return nn, err
 		}
-		n, err = dst.Write(tmp)
+		n, err = dst.Write(vmm)
 		nn += int64(n)
 		if err != nil {
 			return nn, err
