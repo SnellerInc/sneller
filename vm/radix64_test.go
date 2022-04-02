@@ -67,7 +67,10 @@ func checktable(tr *radixTree64, t testing.TB) {
 
 func TestRadixBytecodeFind(t *testing.T) {
 	var st ion.Symtab
-	buf := unhex(parkingCitations1KLines)
+	orig := unhex(parkingCitations1KLines)
+	buf := Malloc()
+	defer Free(buf)
+	buf = buf[:copy(buf, orig)]
 	_, err := st.Unmarshal(buf)
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +173,10 @@ func TestRadixBytecodeFind(t *testing.T) {
 
 func TestRadixBytecodeInsert(t *testing.T) {
 	var st ion.Symtab
-	buf := unhex(parkingCitations1KLines)
+	orig := unhex(parkingCitations1KLines)
+	buf := Malloc()
+	defer Free(buf)
+	buf = buf[:copy(buf, orig)]
 	_, err := st.Unmarshal(buf)
 	if err != nil {
 		t.Fatal(err)

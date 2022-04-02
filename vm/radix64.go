@@ -582,7 +582,7 @@ func (a *aggtable) writeRows(buf []byte, delims [][2]uint32) error {
 							// TODO: Should we specify the value to provide more info in case it happens?
 							panic("abort bit set on a MISSING value")
 						}
-						a.repr = append(a.repr, buf[lo:lo+hi]...)
+						a.repr = append(a.repr, vmref{lo, hi}.mem()...)
 					}
 				}
 				a.pairs = append(a.pairs, hpair{

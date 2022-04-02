@@ -22,7 +22,7 @@ TEXT ·evalhashagg(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
 
   MOVQ bc+0(FP), DI     // DI = &w
-  MOVQ buf+8(FP), SI    // SI = &buf[0]
+  MOVQ ·vmm+0(SB), SI   // real static base
   XORQ R9, R9           // R9 = rows consumed
   MOVQ tree+56(FP), R10 // R10 = tree pointer
   MOVQ abort+64(FP), R8
@@ -62,6 +62,11 @@ loop:
 
   VINSERTI32X8 $1, Y1, Z0, Z0
   VINSERTI32X8 $1, Y3, Z2, Z1
+  MOVQ         ·vmm+0(SB), SI   // real static base
+  MOVQ         buf+8(FP), CX    // CX = &buf[0]
+  SUBQ         SI, CX           // CX = (&buf[0] - vmm) = displacement
+  VPBROADCASTD CX, Z2
+  VPADDD       Z2, Z0, Z0       // address += displacement
 
   VPXORD Z30, Z30, Z30
   VPXORD Z31, Z31, Z31
