@@ -15,7 +15,9 @@
 package vm
 
 import (
+	"io"
 	"io/ioutil"
+	"os"
 	"runtime"
 	"testing"
 
@@ -35,17 +37,40 @@ func path(t testing.TB, s string) *expr.Path {
 	return p
 }
 
+func readVM(t *testing.T, name string) []byte {
+	f, err := os.Open(name)
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	size := info.Size()
+	if size > PageSize {
+		t.Helper()
+		t.Fatalf("file %q larger than page size", name)
+	}
+	buf := Malloc()
+	t.Cleanup(func() { Free(buf) })
+	_, err = io.ReadFull(f, buf[:size])
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	return buf
+}
+
 func TestSplat(t *testing.T) {
 	var bc bytecode
 	var p prog
 	var st ion.Symtab
 
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rest []byte
-	rest, err = st.Unmarshal(buf)
+	buf := readVM(t, "../testdata/parking3.ion")
+	rest, err := st.Unmarshal(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,13 +135,10 @@ func TestSplat(t *testing.T) {
 	// test that delimiter object sizes
 	// are sane
 	for i := range outdelims[:out] {
-		start := outdelims[i][0]
-		length := outdelims[i][1]
-		mem := buf[start : start+length]
-		os, ds := objsize(mem)
+		os, ds := objsize(vmref(outdelims[i]).mem())
 		outsize := int(os) + int(ds)
-		if outsize != int(length) {
-			t.Errorf("delim %d: size %d, but computed %d", i, length, outsize)
+		if outsize != int(outdelims[i][1]) {
+			t.Errorf("delim %d: size %d, but computed %d", i, outdelims[i][1], outsize)
 		}
 	}
 

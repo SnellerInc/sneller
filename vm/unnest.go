@@ -264,10 +264,10 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 		}
 		delims = delims[in:]
 
-		inner := u.delims[:out]
+		inner := u.delims[:out] // absolute addresses
 		innerperm := u.perms[:out]
 		for len(inner) > 0 {
-			wrote, consumed := evalunnest(&u.innerbc, buf, inner, innerperm, u.aw.buf[u.aw.off:], u.outsel)
+			wrote, consumed := evalunnest(&u.innerbc, vmm[:vmUse:vmUse], inner, innerperm, u.aw.buf[u.aw.off:], u.outsel)
 			if u.innerbc.err != 0 {
 				return fmt.Errorf("unnest inner bytecode: %w", u.innerbc.err)
 			}

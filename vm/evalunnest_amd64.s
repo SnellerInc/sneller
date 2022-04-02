@@ -96,8 +96,12 @@ vmenter:
   VINSERTI32X8 $1, Y2, Z1, Z1
 
   // enter bytecode interpretation
-  MOVQ    bc+0(FP), VIRT_BCPTR
-  MOVQ    buf+8(FP), VIRT_BASE
+  MOVQ         bc+0(FP), DI
+  MOVQ         buf+8(FP), CX   // buffer pos
+  MOVQ         ·vmm+0(SB), SI  // real static base
+  SUBQ         SI, CX          // CX = (buffer pos - static base)
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPADDD       Z2, Z0, Z0
   VMENTER(R8, DX)
 
   // now we need to scan (z2:z3).k1 as arrays
@@ -113,20 +117,17 @@ vmenter:
 splat_lane:
   CMPQ    R10, R11              // no more output space?
   JGE     done
-  VMOVD   X2, R12
-  ADDQ    SI, R12               // R12 = base pointer
+  VMOVD   X2, R12               // R12 = base pointer
   VMOVD   X3, R13               // R13 = length
-  ADDQ    R12, R13              // R13 = end-of-array pointer
+  ADDQ    R12, R13              // R13 = end-of-array offset
   VALIGND $1, Z2, Z2, Z2        // shift away dword in z2 and z3
   VALIGND $1, Z3, Z3, Z3
   TESTL   $1, R15               // don't do anything here
   JZ      next_lane
   JMP     splat_array_tail
 splat_array:
-  MOVQ    R12, R14
-  SUBQ    SI, R14               // R14 = offset of current element
-  MOVL    R14, 0(R10)           // store offset
-  MOVQ    0(R12), DX
+  MOVL    R12, 0(R10)           // store offset
+  MOVQ    0(SI)(R12*1), DX      // DX = element bits
   MOVL    DX, BX
   ANDB    $0x0f, BX
   CMPB    BX, $0x0f             // size bits = 0x0f? size = 1
@@ -218,7 +219,11 @@ doit:
   VMOVDQU32    Z3, bytecode_perm(VIRT_BCPTR)
 
   // enter bytecode interpretation
-  MOVQ    buf+8(FP), VIRT_BASE
+  MOVQ         buf+8(FP), CX   // buffer pos
+  MOVQ         ·vmm+0(SB), SI  // real static base
+  SUBQ         SI, CX          // CX = (buffer pos - static base)
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPADDD       Z2, Z0, Z0
   VMENTER(R8, DX)
   KMOVW   K1, R15           // R15 = active rows bitmask
   MOVQ    ret+128(FP), DI   // DI = output location
@@ -305,7 +310,7 @@ copy_field:
 
   // memcpy(DI, SI, CX),
   // falling back to 'rep movsb' for very large copies
-  MOVQ    buf+8(FP), SI
+  MOVQ    ·vmm+0(SB), SI  // real static base
   MOVL    0(DX), AX
   ADDQ    AX, SI
   CMPL    CX, $256
