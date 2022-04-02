@@ -112,9 +112,13 @@ doit:
   VPMOVQD      Z3, Y2
   VINSERTI32X8 $1, Y2, Z1, Z1
 
-  // enter bytecode interpretation
   MOVQ    bc+0(FP), VIRT_BCPTR
-  MOVQ    buf+8(FP), VIRT_BASE
+  MOVQ    buf+8(FP), CX        // buffer pos
+  MOVQ    ·vmm+0(SB), SI       // real static base
+  SUBQ    SI, CX               // CX = (buffer pos - static base)
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPADDD   Z2, Z0, Z0
+  // enter bytecode interpretation
   VMENTER(R8, DX)
   JCS     did_abort
 
@@ -206,7 +210,7 @@ copy_field:
 
   // memcpy(DI, SI, CX),
   // falling back to 'rep movsb' for very large copies
-  MOVQ    buf+8(FP), SI
+  MOVQ    ·vmm+0(SB), SI
   MOVL    0(DX), AX
   TESTL   AX, AX
   JNS     not_signed
