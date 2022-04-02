@@ -117,7 +117,8 @@ func (w *wherebc) writeRows(buf []byte, delims [][2]uint32) error {
 		return fmt.Errorf("filter: bytecode error: %w", w.bc.err)
 	}
 	if valid > 0 {
-		return w.dst.writeRows(buf, delims[:valid])
+		// delims are absolute now, so use vmm as base
+		return w.dst.writeRows(vmm[:vmUse:vmUse], delims[:valid])
 	}
 	return nil
 }

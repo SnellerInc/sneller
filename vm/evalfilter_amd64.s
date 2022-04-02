@@ -20,7 +20,6 @@
 TEXT ·evalfilterbc(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
   MOVQ w+0(FP), DI    // DI = &w
-  MOVQ buf+8(FP), SI  // SI = &buf[0]
   XORQ R9, R9         // R9 = rows consumed
   XORQ R10, R10       // R10 = rows out
   JMP  tail
@@ -47,8 +46,13 @@ doit:
   ADDQ         $16, R9
 
   // enter bytecode interpretation
-  VPXORD Z30, Z30, Z30
-  VPXORD Z31, Z31, Z31
+  MOVQ         buf+8(FP), CX   // buffer pos
+  MOVQ         ·vmm+0(SB), SI  // real static base
+  SUBQ         SI, CX          // CX = (buffer pos - static base)
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPXORD       Z30, Z30, Z30
+  VPXORD       Z31, Z31, Z31
+  VPADDD       Z2, Z0, Z0
   VMENTER(R8, DX)
 
   // compress output into delims
