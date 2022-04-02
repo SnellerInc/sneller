@@ -240,7 +240,8 @@ func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
 	}
-	return d.dst.writeRows(buf, delims)
+	// delims are absolute now, so write relative to vmm
+	return d.dst.writeRows(vmm[:vmUse:vmUse], delims)
 }
 
 func (d *deduper) Close() error {

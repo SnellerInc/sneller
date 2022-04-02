@@ -46,7 +46,11 @@ doit:
 
   // enter bytecode interpretation
   MOVQ bc+0(FP), DI
-  MOVQ buf+8(FP), SI
+  MOVQ buf+8(FP), CX        // buffer pos
+  MOVQ ·vmm+0(SB), SI       // real static base
+  SUBQ SI, CX               // CX = (buffer pos - static base)
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPADDD Z2, Z0, Z0
   VMENTER(R8, DX)
 
   // load the low 64 bits of the sixteen hashes;
