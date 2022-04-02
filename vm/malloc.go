@@ -18,7 +18,6 @@ import (
 	"math/bits"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"unsafe"
 )
 
@@ -62,17 +61,7 @@ func (v vmref) mem() []byte {
 }
 
 func init() {
-	buf, err := syscall.Mmap(0, 0, vmReserve, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS)
-	if err != nil {
-		panic("couldn't map vmm region: " + err.Error())
-	}
-	if vmUse < vmReserve {
-		err = syscall.Mprotect(buf[vmUse:], syscall.PROT_NONE)
-		if err != nil {
-			panic("couldn't map unused vmm region as PROT_NONE: " + err.Error())
-		}
-	}
-	vmm = (*[vmReserve]byte)(buf)
+	vmm = mapVM()
 }
 
 func vmbase() uintptr {
@@ -158,10 +147,7 @@ func Free(buf []byte) {
 			base := (64 * (pfn / 64)) << pageBits
 			mem := vmm[base:]
 			mem = mem[:width:width]
-			err := syscall.Madvise(mem, 8) // MADV_FREE
-			if err != nil {
-				panic("madvise: " + err.Error())
-			}
+			hintUnused(mem)
 			atomic.StoreUint64(addr, 0)
 			return
 		}
