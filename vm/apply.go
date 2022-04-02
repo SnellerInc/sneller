@@ -420,10 +420,8 @@ func (a *applicator) writeRows(buf []byte, delims [][2]uint32) error {
 		laneID := i & bcLaneCountMask
 
 		for j := range a.ssa2local {
-			loff := fieldsView[blockID+j].offsets[laneID]
-			llen := fieldsView[blockID+j].sizes[laneID]
-			if llen != 0 {
-				mem := buf[loff : loff+llen]
+			mem := fieldsView[blockID+j].item(laneID).mem()
+			if len(mem) != 0 {
 				a.bind(a.ssa2local[j], mem)
 			} else {
 				a.bind(a.ssa2local[j], nil)

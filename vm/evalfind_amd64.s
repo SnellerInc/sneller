@@ -52,6 +52,9 @@ doit:
 
   // enter bytecode interpretation
   KMOVW   K1, K7
+  MOVQ    buf+8(FP), CX   // buffer pos
+  MOVQ    ·vmm+0(SB), SI  // real static base
+  SUBQ    SI, CX          // CX = (buffer pos - static base)
   MOVQ    bytecode_compiled(DI), VIRT_PCREG
   MOVQ    bytecode_vstack(DI), VIRT_VALUES
   ADDQ    R10, VIRT_VALUES                     // stack offset += rows out
@@ -59,6 +62,8 @@ doit:
   LEAQ    opaddrs+0(SB), DX
   MOVQ    0(DX)(R8*8), R8
   ADDQ    $2, VIRT_PCREG
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPADDD       Z2, Z0, Z0
   CALL    R8
   JC      opcode_failed                        // break on error
 

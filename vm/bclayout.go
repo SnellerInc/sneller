@@ -39,3 +39,11 @@ func vRegLayoutFromVStackCast(vstack *[]uint64, count int) (out []vRegLayout) {
 	outhdr.Cap = hdr.Cap / vRegSize
 	return
 }
+
+// items returns the number of items in the vReg
+func (v *vRegLayout) items() int { return 16 }
+
+// item returns the i'th item in the vReg
+func (v *vRegLayout) item(i int) vmref {
+	return vmref{v.offsets[i], v.sizes[i]}
+}

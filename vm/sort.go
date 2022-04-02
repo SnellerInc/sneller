@@ -415,7 +415,11 @@ func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 				copy(record.Raw[boxedOffset:], s.findbc.scratch[fieldOffset:fieldOffset+fieldSize])
 				boxedOffset += fieldSize
 			} else {
-				record.FieldDelims[columnID][0] = fieldOffset - ofs + record.Boxed
+				delta, ok := vmdispl(bytes)
+				if !ok {
+					panic("src not vmm?")
+				}
+				record.FieldDelims[columnID][0] = fieldOffset - delta + record.Boxed
 				record.FieldDelims[columnID][1] = fieldSize
 			}
 		}
@@ -510,8 +514,7 @@ func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error 
 				fieldOffset = ^fieldOffset
 				field = s.findbc.scratch[fieldOffset : fieldOffset+fieldSize]
 			} else {
-				fieldOffset -= ofs
-				field = bytes[fieldOffset : fieldOffset+fieldSize]
+				field = vmref{fieldOffset, fieldSize}.mem()
 			}
 
 			err := s.subcolumn.Add(s.recordID, field)
@@ -649,7 +652,11 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 				copy(s.buffer[boxedOffset:], s.findbc.scratch[fieldOffset:fieldOffset+fieldSize])
 				boxedOffset += fieldSize
 			} else {
-				s.fields[columnID][0] = fieldOffset - ofs + record.Boxed
+				delta, ok := vmdispl(bytes)
+				if !ok {
+					panic("src not vmm?")
+				}
+				s.fields[columnID][0] = fieldOffset - delta + record.Boxed
 				s.fields[columnID][1] = fieldSize
 			}
 		}

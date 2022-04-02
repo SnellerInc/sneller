@@ -49,7 +49,9 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	ionRecord := []byte{0x8a, 0x48, 0x40, 0x08, 0xfc, 0xd6, 0xe9, 0xb9, 0xcb, 0x1b}
 
 	// finally prepare data for evalfindbc
-	buf := make([]byte, 16*len(ionRecord))
+	buf := Malloc()
+	defer Free(buf)
+	buf = buf[:16*len(ionRecord)]
 	delims := make([][2]uint32, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
@@ -96,7 +98,9 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 	ionRecord := []byte{0x8a, 0x28, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}
 
 	// finally prepare data for evalfindbc
-	buf := make([]byte, 16*len(ionRecord))
+	buf := Malloc()
+	defer Free(buf)
+	buf = buf[:16*len(ionRecord)]
 	delims := make([][2]uint32, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
@@ -143,7 +147,9 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 	ionRecord := []byte{0x8a, 0x25, 0x11, 0x22, 0x33, 0x44, 0x55}
 
 	// finally prepare data for evalfindbc
-	buf := make([]byte, 16*len(ionRecord))
+	buf := Malloc()
+	defer Free(buf)
+	buf = buf[:16*len(ionRecord)]
 	delims := make([][2]uint32, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
