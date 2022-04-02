@@ -20,9 +20,7 @@
 
 TEXT ·evalaggregatebc(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
-
   MOVQ w+0(FP), DI                     // RDI = &w
-  MOVQ buf+8(FP), SI                   // RSI = &buf[0]
   XORQ R9, R9                          // R9  = rows consumed
   MOVQ aggregateDataBuffer+56(FP), R10 // R10 = aggregate data buffer
 
@@ -62,8 +60,13 @@ loop:
   VINSERTI32X8 $1, Y3, Z2, Z1
 
   // Enter bytecode interpretation
-  VPXORD Z30, Z30, Z30
-  VPXORD Z31, Z31, Z31
+  VPXORD       Z30, Z30, Z30
+  VPXORD       Z31, Z31, Z31
+  MOVQ         buf+8(FP), CX   // buffer pos
+  MOVQ         ·vmm+0(SB), SI  // real static base
+  SUBQ         SI, CX          // CX = (buffer pos - static base)
+  VPBROADCASTD CX, Z2          // add offsets += displacement
+  VPADDD       Z2, Z0, Z0
   VMENTER(R8, DX)
 
   JMP loop
