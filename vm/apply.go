@@ -376,7 +376,7 @@ func (a *Applicator) Close() error {
 	return a.dst.Close()
 }
 
-func (a *applicator) Symbolize(st *ion.Symtab) error {
+func (a *applicator) symbolize(st *ion.Symtab) error {
 	a.args.st = st
 	for i := range a.outmap {
 		a.outmap[i].sym = st.Intern(a.outmap[i].name)
@@ -399,14 +399,14 @@ func (a *applicator) Symbolize(st *ion.Symtab) error {
 		return err
 	}
 	if a.rc != nil {
-		return a.rc.Symbolize(st)
+		return a.rc.symbolize(st)
 	}
 	return nil
 }
 
-func (a *applicator) WriteRows(buf []byte, delims [][2]uint32) error {
+func (a *applicator) writeRows(buf []byte, delims [][2]uint32) error {
 	if a.bc.compiled == nil {
-		panic("applicator.Symbolize() not called")
+		panic("applicator.symbolize() not called")
 	}
 	if len(a.ssa2local) == 0 {
 		panic("ssa2local==0")

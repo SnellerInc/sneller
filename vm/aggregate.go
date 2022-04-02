@@ -403,15 +403,15 @@ func (q *Aggregate) Close() error {
 	return err
 }
 
-func (p *aggregateLocal) Symbolize(st *ion.Symtab) error {
+func (p *aggregateLocal) symbolize(st *ion.Symtab) error {
 	err := recompile(st, p.parent.prog, &p.prog, &p.bc)
 	if err != nil {
 		return err
 	}
-	return p.dst.Symbolize(st)
+	return p.dst.symbolize(st)
 }
 
-func (p *aggregateLocal) WriteRows(buf []byte, delims [][2]uint32) error {
+func (p *aggregateLocal) writeRows(buf []byte, delims [][2]uint32) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
 	}

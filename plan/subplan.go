@@ -22,7 +22,6 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan/pir"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 type replacement struct {
@@ -229,44 +228,36 @@ func (c *listConverter) args(n ...expr.Node) []expr.Node {
 
 type subreplacement struct {
 	parent *replacement
-	cur    *ion.Symtab
+	curst  ion.Symtab
+	tmp    []ion.Struct
 }
 
-func (s *subreplacement) Symbolize(st *ion.Symtab) error {
-	s.cur = st
-	return nil
-}
-
-func (s *subreplacement) WriteRows(buf []byte, fields [][2]uint32) error {
+func (s *subreplacement) Write(buf []byte) (int, error) {
+	orig := len(buf)
+	s.tmp = s.tmp[:0]
+	var err error
+	var d ion.Datum
+	for len(buf) > 0 {
+		d, buf, err = ion.ReadDatum(&s.curst, buf)
+		if err != nil {
+			return orig - len(buf), err
+		}
+		if d == nil {
+			continue // processed a symbol table
+		}
+		if _, ok := d.(ion.UntypedNull); ok {
+			continue // skip nop pad
+		}
+		s.tmp = append(s.tmp, *(d.(*ion.Struct)))
+	}
 	s.parent.lock.Lock()
 	defer s.parent.lock.Unlock()
-	for i := range fields {
-		var d ion.Struct
-		body := buf[fields[i][0] : fields[i][0]+fields[i][1]]
-		var sym ion.Symbol
-		var err error
-		var value ion.Datum
-		for len(body) > 0 {
-			sym, body, err = ion.ReadLabel(body)
-			if err != nil {
-				return fmt.Errorf("reading subreplacement: %w", err)
-			}
-			value, body, err = ion.ReadDatum(s.cur, body)
-			if err != nil {
-				return fmt.Errorf("reading subreplacement: %w", err)
-			}
-			d.Fields = append(d.Fields, ion.Field{
-				Label: s.cur.Get(sym),
-				Value: value,
-			})
-		}
-		s.parent.rows = append(s.parent.rows, d)
-		size := len(s.parent.rows)
-		if size > pir.LargeSize {
-			return fmt.Errorf("cannot perform replacement of %d entries", size)
-		}
+	s.parent.rows = append(s.parent.rows, s.tmp...)
+	s.tmp = s.tmp[:0]
+	if len(s.parent.rows) > pir.LargeSize {
+		return orig, fmt.Errorf("%d items in supreplacement exceeds limit", len(s.parent.rows))
 	}
-	return nil
+	return orig, nil
 }
 
 func (s *subreplacement) Close() error {
@@ -274,9 +265,9 @@ func (s *subreplacement) Close() error {
 }
 
 func (r *replacement) Open() (io.WriteCloser, error) {
-	return vm.Splitter(&subreplacement{
+	return &subreplacement{
 		parent: r,
-	}), nil
+	}, nil
 }
 
 func (r *replacement) Close() error {

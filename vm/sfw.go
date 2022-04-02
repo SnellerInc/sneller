@@ -49,15 +49,15 @@ type sizedConsumer interface {
 // to use this interface instead of re-materializing
 // the data.)
 type RowConsumer interface {
-	// Symbolize is called every time
+	// symbolize is called every time
 	// the current symbol table changes
-	Symbolize(st *ion.Symtab) error
-	// WriteRows writes rows delimited by 'delims'
+	symbolize(st *ion.Symtab) error
+	// writeRows writes rows delimited by 'delims'
 	// from buf into the rest of the query.
 	// The implementation of WriteRows may clobber
 	// 'delims,' but it should *not* write into
 	// the source data buffer.
-	WriteRows(buf []byte, delims [][2]uint32) error
+	writeRows(buf []byte, delims [][2]uint32) error
 
 	// Close indicates that the caller has
 	// finished writing row data.
@@ -84,7 +84,7 @@ func AsRowConsumer(dst io.WriteCloser) RowConsumer {
 // RowSplitter is a QueryConsumer that implements io.WriteCloser
 // so that materialized data can be fed to a RowConsumer
 type RowSplitter struct {
-	RowConsumer             // automatically adopts WriteRows() and Close()
+	RowConsumer             // automatically adopts writeRows() and Close()
 	st, shared  ion.Symtab  // current symbol table
 	delims      [][2]uint32 // buffer of delimiters; allocated lazily
 	delimhint   int
@@ -105,7 +105,7 @@ func Splitter(q RowConsumer) *RowSplitter {
 
 func (q *RowSplitter) writeSanitized(src []byte, delims [][2]uint32) error {
 	if Allocated(src) {
-		return q.WriteRows(src, delims)
+		return q.writeRows(src, delims)
 	}
 	if q.vmcache == nil {
 		q.vmcache = Malloc()
@@ -114,7 +114,7 @@ func (q *RowSplitter) writeSanitized(src []byte, delims [][2]uint32) error {
 		return fmt.Errorf("cannot sanitize write of size %d (PageSize = %d)", len(src), PageSize)
 	}
 	n := copy(q.vmcache, src)
-	return q.WriteRows(q.vmcache[:n], delims)
+	return q.writeRows(q.vmcache[:n], delims)
 }
 
 func (q *RowSplitter) Close() error {
@@ -146,7 +146,7 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 		q.symbolized = true
 		boff = int32(len(buf) - len(rest))
 		q.st.CloneInto(&q.shared)
-		err = q.Symbolize(&q.shared)
+		err = q.symbolize(&q.shared)
 		if err != nil {
 			return 0, err
 		}
@@ -288,8 +288,8 @@ func (m *Rematerializer) flush() error {
 	return err
 }
 
-// Symbolize implements RowConsumer.Symbolize
-func (m *Rematerializer) Symbolize(st *ion.Symtab) error {
+// symbolize implements RowConsumer.symbolize
+func (m *Rematerializer) symbolize(st *ion.Symtab) error {
 	err := m.flush()
 	if err != nil {
 		return err
@@ -300,10 +300,10 @@ func (m *Rematerializer) Symbolize(st *ion.Symtab) error {
 	return nil
 }
 
-// WriteRows implements RowConsumer.WriteRows
-func (m *Rematerializer) WriteRows(buf []byte, delims [][2]uint32) error {
+// writeRows implements RowConsumer.writeRows
+func (m *Rematerializer) writeRows(buf []byte, delims [][2]uint32) error {
 	if m.stsize == 0 {
-		return fmt.Errorf("Rematerializer.WriteRows() before Symbolize()")
+		return fmt.Errorf("Rematerializer.WriteRows() before symbolize()")
 	}
 	for i := range delims {
 		if delims[i][1] == 0 {

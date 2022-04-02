@@ -70,11 +70,11 @@ func (l *limiter) Close() error {
 	return nil
 }
 
-func (l *limiter) Symbolize(st *ion.Symtab) error {
-	return l.dst.Symbolize(st)
+func (l *limiter) symbolize(st *ion.Symtab) error {
+	return l.dst.symbolize(st)
 }
 
-func (l *limiter) WriteRows(buf []byte, rows [][2]uint32) error {
+func (l *limiter) writeRows(buf []byte, rows [][2]uint32) error {
 	if l.done {
 		return io.EOF
 	}
@@ -97,5 +97,5 @@ func (l *limiter) WriteRows(buf []byte, rows [][2]uint32) error {
 			return err
 		}
 	}
-	return l.dst.WriteRows(buf, rows[:c])
+	return l.dst.writeRows(buf, rows[:c])
 }

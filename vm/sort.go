@@ -47,10 +47,10 @@ type Order struct {
 	// lock for writing to `symtab`
 	symtabLock sync.Mutex
 
-	// collection of all records received in WriteRows (for multicolumn sorting)
+	// collection of all records received in writeRows (for multicolumn sorting)
 	records []sort.IonRecord
 
-	// collection of all records received in WriteRows (for single column sorting)
+	// collection of all records received in writeRows (for single column sorting)
 	column  sort.MixedTypeColumn
 	chunkID uint32
 	// map chunkID -> collected rows for given chunk
@@ -293,7 +293,7 @@ func symbolize(sort *Order, findbc *bytecode, st *ion.Symtab, global bool) error
 	program.symbolize(st)
 	err := program.compile(findbc)
 	if err != nil {
-		return fmt.Errorf("sortstate.Symbolize(): %w", err)
+		return fmt.Errorf("sortstate.symbolize(): %w", err)
 	}
 	if global {
 		return sort.setSymbolTable(st)
@@ -303,7 +303,7 @@ func symbolize(sort *Order, findbc *bytecode, st *ion.Symtab, global bool) error
 
 func bcfind(sort *Order, findbc *bytecode, buf []byte, delims [][2]uint32) (out []vRegLayout, err error) {
 	if findbc.compiled == nil {
-		return out, fmt.Errorf("sortstate.bcfind() before Symbolize()")
+		return out, fmt.Errorf("sortstate.bcfind() before symbolize()")
 	}
 
 	// FIXME: don't encode knowledge about vectorization width here...
@@ -337,7 +337,7 @@ type sortstateMulticolumn struct {
 	findbc bytecode
 }
 
-func (s *sortstateMulticolumn) Symbolize(st *ion.Symtab) error {
+func (s *sortstateMulticolumn) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
@@ -345,7 +345,7 @@ func (s *sortstateMulticolumn) bcfind(buf []byte, delims [][2]uint32) ([]vRegLay
 	return bcfind(s.parent, &s.findbc, buf, delims)
 }
 
-func (s *sortstateMulticolumn) WriteRows(src []byte, delims [][2]uint32) error {
+func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 	// Note: we have to copy all input data, as:
 	// 1. the 'src' buffer is mutable,
 	// 2. the 'delims' array is mutable too.
@@ -453,7 +453,7 @@ type sortstateSingleColumn struct {
 	subcolumn sort.MixedTypeColumn
 }
 
-func (s *sortstateSingleColumn) Symbolize(st *ion.Symtab) error {
+func (s *sortstateSingleColumn) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
@@ -461,7 +461,7 @@ func (s *sortstateSingleColumn) bcfind(buf []byte, delims [][2]uint32) ([]vRegLa
 	return bcfind(s.parent, &s.findbc, buf, delims)
 }
 
-func (s *sortstateSingleColumn) WriteRows(src []byte, delims [][2]uint32) error {
+func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -558,7 +558,7 @@ type sortstateKtop struct {
 	// local k-top rows
 	ktop *sort.Ktop
 
-	// a buffer to keep the scratch + record data of the current record in `WriteRows`
+	// a buffer to keep the scratch + record data of the current record in `writeRows`
 	buffer []byte
 
 	// list of all captured symbol tables
@@ -566,11 +566,11 @@ type sortstateKtop struct {
 	// # of captures of symtabs[len(symtabs)-1]
 	captures int
 
-	// a buffer to keep the fields for the current record in `WriteRows`
+	// a buffer to keep the fields for the current record in `writeRows`
 	fields [][2]uint32
 }
 
-func (s *sortstateKtop) Symbolize(st *ion.Symtab) error {
+func (s *sortstateKtop) symbolize(st *ion.Symtab) error {
 	if s.captures > 0 || len(s.symtabs) == 0 {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
 	}
@@ -585,7 +585,7 @@ func (s *sortstateKtop) bcfind(buf []byte, delims [][2]uint32) ([]vRegLayout, er
 	return bcfind(s.parent, &s.findbc, buf, delims)
 }
 
-func (s *sortstateKtop) WriteRows(src []byte, delims [][2]uint32) error {
+func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
 	}

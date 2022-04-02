@@ -95,7 +95,7 @@ func (u *uByID) Less(i, j int) bool {
 	return u.outsel[i].value < u.outsel[j].value
 }
 
-func (u *unnesting) Symbolize(st *ion.Symtab) error {
+func (u *unnesting) symbolize(st *ion.Symtab) error {
 	st.CloneInto(&u.st)
 	if len(u.outsel) != len(u.parent.outer)+len(u.parent.inner) {
 		u.outsel = make([]syminfo, len(u.parent.outer)+len(u.parent.inner))
@@ -207,7 +207,7 @@ func (u *unnesting) Symbolize(st *ion.Symtab) error {
 	u.innerbc.ensureVStackSize(len(u.outsel)*int(vRegSize) + 8)
 	u.innerbc.allocStacks()
 	if u.dstrc != nil {
-		err := u.dstrc.Symbolize(&u.st)
+		err := u.dstrc.symbolize(&u.st)
 		if err != nil {
 			return err
 		}
@@ -228,7 +228,7 @@ func evalunnest(bc *bytecode, buf []byte, delims [][2]uint32, perm []int32, dst 
 //go:noescape
 func compress(delims [][2]uint32) int
 
-func (u *unnesting) WriteRows(buf []byte, delims [][2]uint32) error {
+func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -243,7 +243,7 @@ func (u *unnesting) WriteRows(buf []byte, delims [][2]uint32) error {
 		u.perms = make([]int32, 1023)
 	}
 	if u.outerbc.compiled == nil {
-		return fmt.Errorf("unnesting.WriteRows() before Symbolize()")
+		return fmt.Errorf("unnesting.writeRows() before symbolize()")
 	}
 
 	for len(delims) > 0 {
@@ -279,7 +279,7 @@ func (u *unnesting) WriteRows(buf []byte, delims [][2]uint32) error {
 				if u.parent.filter != nil {
 					subrows = subrows[:compress(subrows)]
 				}
-				err := u.dstrc.WriteRows(u.aw.buf[u.aw.off:u.aw.off+wrote], subrows)
+				err := u.dstrc.writeRows(u.aw.buf[u.aw.off:u.aw.off+wrote], subrows)
 				if err != nil {
 					return err
 				}

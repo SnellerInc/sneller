@@ -169,12 +169,12 @@ func (p *projector) update(st *ion.Symtab) error {
 		return err
 	}
 	if p.dstrc != nil {
-		return p.dstrc.Symbolize(st)
+		return p.dstrc.symbolize(st)
 	}
 	return nil
 }
 
-func (p *projector) Symbolize(st *ion.Symtab) error {
+func (p *projector) symbolize(st *ion.Symtab) error {
 	sel := p.parent.sel
 	// output symbol table is the union of the
 	// input symbol table plus the output bindings
@@ -227,7 +227,7 @@ func (p *projector) Symbolize(st *ion.Symtab) error {
 	prg.symbolize(st)
 	err = prg.compile(&p.bc)
 	if err != nil {
-		return fmt.Errorf("projector.Symbolize(): %w", err)
+		return fmt.Errorf("projector.symbolize(): %w", err)
 	}
 	return p.update(st)
 }
@@ -244,7 +244,7 @@ func (p *projector) flush() error {
 
 func (p *projector) bcproject(buf []byte, delims [][2]uint32, dst []byte, out []syminfo) (int, int) {
 	if len(p.bc.compiled) == 0 {
-		panic("projector.bcproject() before Symbolize()")
+		panic("projector.bcproject() before symbolize()")
 	}
 	if len(p.parent.sel) != len(out) {
 		panic("len(selector.symbols) != len(outsymbols)")
@@ -259,12 +259,12 @@ func (p *projector) bcproject(buf []byte, delims [][2]uint32, dst []byte, out []
 	return evalproject(&p.bc, buf, delims, dst, out)
 }
 
-func (p *projector) WriteRows(buf []byte, delims [][2]uint32) error {
+func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
 	}
 	if p.aw.buf == nil {
-		panic("projector.WriteRows() before Symbolize()")
+		panic("projector.WriteRows() before symbolize()")
 	}
 	// if the first iteration of the projection
 	// loop would fail due to not enough space,
@@ -296,7 +296,7 @@ func (p *projector) WriteRows(buf []byte, delims [][2]uint32) error {
 			panic("memory corruption")
 		}
 		if p.dstrc != nil && rewrote > 0 {
-			err := p.dstrc.WriteRows(p.aw.buf[p.aw.off:p.aw.off+off], delims[:rewrote])
+			err := p.dstrc.writeRows(p.aw.buf[p.aw.off:p.aw.off+off], delims[:rewrote])
 			if err != nil {
 				return fmt.Errorf("Projection.dst.WriteRows: %w", err)
 			}

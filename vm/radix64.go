@@ -501,7 +501,7 @@ func (a *aggtable) fasteval(buf []byte, delims [][2]uint32, abort *uint16) int {
 	return evalhashagg(&a.bc, buf, delims, a.tree, abort)
 }
 
-func (a *aggtable) Symbolize(st *ion.Symtab) error {
+func (a *aggtable) symbolize(st *ion.Symtab) error {
 	err := recompile(st, &a.parent.prog, &a.prog, &a.bc)
 	if err != nil {
 		return err
@@ -522,7 +522,7 @@ func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
 	return lo, hi
 }
 
-func (a *aggtable) WriteRows(buf []byte, delims [][2]uint32) error {
+func (a *aggtable) writeRows(buf []byte, delims [][2]uint32) error {
 	// Number of projected fields that we GROUP BY. This
 	// specifies how many concatenated values will be stored
 	// in a.repr[] for each aggregated item.

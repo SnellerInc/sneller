@@ -79,12 +79,12 @@ func (c *Count) Close() error {
 	return nil
 }
 
-func (c *Count) WriteRows(buf []byte, delims [][2]uint32) error {
+func (c *Count) writeRows(buf []byte, delims [][2]uint32) error {
 	atomic.AddInt64(&c.val, int64(len(delims)))
 	return nil
 }
 
-func (c *Count) Symbolize(st *ion.Symtab) error {
+func (c *Count) symbolize(st *ion.Symtab) error {
 	return nil
 }
 
@@ -100,24 +100,24 @@ type wherebc struct {
 //go:noescape
 func evalfilterbc(w *bytecode, buf []byte, delims [][2]uint32) int
 
-func (w *wherebc) Symbolize(st *ion.Symtab) error {
+func (w *wherebc) symbolize(st *ion.Symtab) error {
 	err := recompile(st, w.parent.prog, &w.ssa, &w.bc)
 	if err != nil {
 		return err
 	}
-	return w.dst.Symbolize(st)
+	return w.dst.symbolize(st)
 }
 
-func (w *wherebc) WriteRows(buf []byte, delims [][2]uint32) error {
+func (w *wherebc) writeRows(buf []byte, delims [][2]uint32) error {
 	if w.bc.compiled == nil {
-		panic("bytecode WriteRows() before Symbolize()")
+		panic("bytecode writeRows() before Symbolize()")
 	}
 	valid := evalfilterbc(&w.bc, buf, delims)
 	if w.bc.err != 0 {
 		return fmt.Errorf("filter: bytecode error: %w", w.bc.err)
 	}
 	if valid > 0 {
-		return w.dst.WriteRows(buf, delims[:valid])
+		return w.dst.writeRows(buf, delims[:valid])
 	}
 	return nil
 }

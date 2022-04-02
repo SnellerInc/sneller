@@ -218,7 +218,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 		t.Fatal("expected 1023 delims; found", n)
 	}
 	delims = delims[:n]
-	err = agt.WriteRows(buf, delims)
+	err = agt.writeRows(buf, delims)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = agt2.WriteRows(buf, delims)
+	err = agt2.writeRows(buf, delims)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ func BenchmarkAggregate(b *testing.B) {
 	b.SetBytes(int64(delims[1022][0] + delims[1022][1]))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err = agt.WriteRows(buf, delims)
+		err = agt.writeRows(buf, delims)
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -131,7 +131,7 @@ type deduper struct {
 	closed bool
 }
 
-func (d *deduper) Symbolize(st *ion.Symtab) error {
+func (d *deduper) symbolize(st *ion.Symtab) error {
 	err := recompile(st, &d.parent.prog, &d.prog, &d.bc)
 	if err != nil {
 		return err
@@ -148,13 +148,13 @@ func (d *deduper) Symbolize(st *ion.Symtab) error {
 	if !ok {
 		d.hashslot = -1
 	}
-	return d.dst.Symbolize(st)
+	return d.dst.symbolize(st)
 }
 
 //go:noescape
 func evaldedup(bc *bytecode, buf []byte, delims [][2]uint32, hashes []uint64, tree *radixTree64, slot int) int
 
-func (d *deduper) WriteRows(buf []byte, delims [][2]uint32) error {
+func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
 	if d.closed {
 		return io.EOF
 	}
@@ -169,7 +169,7 @@ func (d *deduper) WriteRows(buf []byte, delims [][2]uint32) error {
 	if d.local == nil {
 		d.local = newRadixTree(0)
 		if len(delims) > 16 {
-			d.WriteRows(buf, delims[:16])
+			d.writeRows(buf, delims[:16])
 			delims = delims[16:]
 		}
 	}
@@ -240,7 +240,7 @@ func (d *deduper) WriteRows(buf []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
 	}
-	return d.dst.WriteRows(buf, delims)
+	return d.dst.writeRows(buf, delims)
 }
 
 func (d *deduper) Close() error {
