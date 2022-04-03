@@ -3928,32 +3928,6 @@ TEXT bchashvalueplus(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA32.Z      Z31, K1, Z29
   JMP              hashimpl_tail(SB)
 
-TEXT bchashboxed(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX          0(VIRT_PCREG), R8
-  ADDQ             $2, VIRT_PCREG
-  ADDQ             bytecode_hashmem(VIRT_BCPTR), R8
-  MOVQ             R8, R14
-  MOVQ             bytecode_scratch(VIRT_BCPTR), R15
-  VPXORD           X10, X10, X10
-  VMOVDQU32        Z10, (R8)
-  VMOVDQU32        Z10, 64(R8)
-  VMOVDQU32        Z10, 128(R8)
-  VMOVDQU32        Z10, 192(R8)
-  VNOTK(Z30, K1, Z28)
-  VMOVDQA32.Z      Z31, K1, Z29
-  JMP              hashimpl_tail(SB)
-
-TEXT bchashboxedplus(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX          0(VIRT_PCREG), R14
-  MOVWQZX          2(VIRT_PCREG), R8
-  ADDQ             $4, VIRT_PCREG
-  ADDQ             bytecode_hashmem(VIRT_BCPTR), R8
-  ADDQ             bytecode_hashmem(VIRT_BCPTR), R14
-  MOVQ             bytecode_scratch(VIRT_BCPTR), R15
-  VNOTK(Z30, K1, Z28)
-  VMOVDQA32.Z      Z31, K1, Z29
-  JMP              hashimpl_tail(SB)
-
 // expected input register arguments:
 //   R8 = destination hash slot
 //   R14 = source hash slot (may alias R8)

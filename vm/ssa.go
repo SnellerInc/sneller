@@ -148,8 +148,6 @@ const (
 
 	shashvalue  // hash a value
 	shashvaluep // hash a value and add it to the current hash
-	shashboxed  // hash a boxed value
-	shashboxedp // hash a boxed value and add it to the current hash
 	shashmember // look up a hash in a tree for existence; returns predicate
 	shashlookup // look up a hash in a tree for a value; returns boxed
 
@@ -326,7 +324,6 @@ const (
 	stBool    = 1 << iota // only a mask
 	stBase                // inner bytes of a structure
 	stValue               // opaque ion value
-	stBoxed               // opaque ion value, re-boxed
 	stFloat               // unpacked float
 	stInt                 // unpacked signed integer
 	stString              // unpacked string pointer
@@ -341,7 +338,6 @@ const (
 	// composite types: a real return value,
 	// plus a new mask containing the lanes
 	// in which the operation was successful
-	stBoxedValue    = stValue | stBoxed
 	stScalar        = stFloat | stInt | stString | stList | stTime | stTimeInt
 	stBaseMasked    = stBase | stBool
 	stValueMasked   = stValue | stBool
@@ -382,8 +378,6 @@ func (s ssatype) char() byte {
 		return 'h'
 	case stBucket:
 		return 'L'
-	case stBoxed:
-		return 'V'
 	case stMem:
 		return 'm'
 	default:
@@ -608,8 +602,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// hash and hash-with-seed ops
 	shashvalue:  {text: "hashvalue", argtypes: []ssatype{stValue, stBool}, rettype: stHash, immfmt: fmtslot, bc: ophashvalue, priority: prioHash},
 	shashvaluep: {text: "hashvalue+", argtypes: []ssatype{stHash, stValue, stBool}, rettype: stHash, immfmt: fmtslotx2hash, bc: ophashvalueplus, priority: prioHash},
-	shashboxed:  {text: "hashboxed", argtypes: []ssatype{stBoxed, stBool}, rettype: stHash, immfmt: fmtslot, bc: ophashboxed, priority: prioHash},
-	shashboxedp: {text: "hashboxed+", argtypes: []ssatype{stHash, stBoxed, stBool}, rettype: stHash, immfmt: fmtslotx2hash, bc: ophashboxedplus, priority: prioHash},
 
 	shashmember: {text: "hashmember", argtypes: []ssatype{stHash, stBool}, rettype: stBool, immfmt: fmtother, bc: ophashmember, emit: emithashmember},
 	shashlookup: {text: "hashlookup", argtypes: []ssatype{stHash, stBool}, rettype: stValue | stBool, immfmt: fmtother, bc: ophashlookup, emit: emithashlookup},
@@ -617,8 +609,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
 
 	// store value m, v, k, $slot
-	sstorev:      {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stBoxedValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
-	sstorevblend: {text: "store.blend", rettype: stMem, argtypes: []ssatype{stMem, stBoxedValue, stBool}, immfmt: fmtother, emit: emitstorevblend, priority: prioMem},
+	sstorev:      {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
+	sstorevblend: {text: "store.blend", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorevblend, priority: prioMem},
 	sloadv:       {text: "load.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadzerov, priority: prioParse},
 	sloadvperm:   {text: "load.perm.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadpermzerov, priority: prioParse},
 
@@ -1257,7 +1249,7 @@ func (p *prog) Store(mem *value, v *value, slot stackslot) (*value, error) {
 		return p.ssa3imm(sstorev, mem, v, p.ValidLanes(), int(slot)), nil
 	}
 	switch v.primary() {
-	case stBoxed, stValue:
+	case stValue:
 		return p.ssa3imm(sstorev, mem, v, p.mask(v), int(slot)), nil
 	default:
 		return nil, fmt.Errorf("cannot store value %s", v)
@@ -3135,8 +3127,6 @@ func (p *prog) hash(v *value) *value {
 	switch v.primary() {
 	case stValue:
 		return p.ssa2(shashvalue, v, p.mask(v))
-	case stBoxed:
-		return p.ssa2(shashboxed, v, p.mask(v))
 	default:
 		return p.errorf("bad value %v passed to prog.hash()", v)
 	}
@@ -3146,8 +3136,6 @@ func (p *prog) hashplus(h *value, v *value) *value {
 	switch v.primary() {
 	case stValue:
 		return p.ssa3(shashvaluep, h, v, p.mask(v))
-	case stBoxed:
-		return p.ssa3(shashboxedp, h, v, p.mask(v))
 	default:
 		return p.errorf("bad value %v, %v passed to prog.hashplus()", h, v)
 	}
@@ -4108,7 +4096,7 @@ func (s ssatype) vregs() regset {
 	if s&stScalar != 0 {
 		r.add(regS)
 	}
-	if s&(stValue|stBoxed) != 0 {
+	if s&stValue != 0 {
 		r.add(regV)
 	}
 	if s&stBase != 0 {

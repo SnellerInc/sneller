@@ -360,8 +360,6 @@ var opinfo = [_maxbcop]bcopinfo{
 	// Hash instructions
 	ophashvalue:     {text: "hashvalue", imms: bcImmsS16, flags: bcReadK | bcReadV | bcWriteH},
 	ophashvalueplus: {text: "hashvalue+", imms: bcImmsS16S16, flags: bcReadK | bcReadV | bcReadWriteH},
-	ophashboxed:     {text: "hashboxed", imms: bcImmsS16, flags: bcReadK | bcWriteH},
-	ophashboxedplus: {text: "hashboxed+", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteH},
 	ophashmember:    {text: "hashmember", imms: bcImmsS16U16, flags: bcReadWriteK | bcReadH},
 	ophashlookup:    {text: "hashlookup", imms: bcImmsS16U16, flags: bcReadWriteK | bcReadH},
 

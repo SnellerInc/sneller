@@ -913,7 +913,7 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 		return nil, err
 	}
 	switch v.primary() {
-	case stValue, stBoxed:
+	case stValue:
 		// already got one
 		return v, nil
 	case stBool:
