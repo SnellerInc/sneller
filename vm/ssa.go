@@ -744,7 +744,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sboxmask:   {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stValue, emit: emitboxmask, scratch: true},
 	sboxint:    {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxint, scratch: true},
 	sboxfloat:  {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxfloat, scratch: true},
-	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stBoxed, bc: opboxstring, scratch: true},
+	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstring, scratch: true},
 
 	// timestamp operations
 	scmplttm:                {text: "cmplt.tm", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplti, emit: emitcmp, inverse: scmpgttm},

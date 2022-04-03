@@ -3702,14 +3702,15 @@ TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
   JLT abort
 
   // Update the output buffer length and Z30/Z31 (boxed value outputs).
-  VPBROADCASTD CX, K1, Z30
+  VPBROADCASTD.Z CX, K1, Z30
+  VPADDD.BCST    bytecode_scratchoff(VIRT_BCPTR), Z30, K1, Z30
   ADDQ CX, R15
   VPADDD Z9, Z30, K1, Z30
-  VPTERNLOGD.Z $0x33, Z30, Z30, K1, Z30                // Z30 = Start of each string in scratch buffer (complemented).
-  VMOVDQA32 Z7, K1, Z31                                // Z31 = ION data length: Type|L + optional VarUInt + string data.
+  VMOVDQA32.Z Z7, K1, Z31                              // Z31 = ION data length: Type|L + optional VarUInt + string data.
   MOVQ R15, bytecode_scratch+8(VIRT_BCPTR)             // Store output buffer length back to the bytecode_scratch slice.
 
-  MOVQ bytecode_scratch+0(VIRT_BCPTR), R8              // R8 = base output address.
+  MOVQ SI, R8                                          // R8 = base output address.
+  ADDQ bytecode_scratchoff(VIRT_BCPTR), R8             // R8 += location of scratch base
   ADDQ CX, R8                                          // R8 = adjusted output address by its current length.
 
   // Unpack string data into 16-byte units, so we can use 16-byte stores.
