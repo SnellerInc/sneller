@@ -62,6 +62,7 @@ func (v vmref) mem() []byte {
 
 func init() {
 	vmm = mapVM()
+	guard(vmm[:vmUse])
 }
 
 func vmbase() uintptr {
@@ -93,6 +94,8 @@ func Allocated(buf []byte) bool {
 
 // Malloc returns a new buffer suitable
 // for passing to VM operations.
+//
+// If there is no VM memory available, Malloc panics.
 func Malloc() []byte {
 	for i := 0; i < vmWords; i++ {
 		addr := &vmbits[i]
@@ -108,11 +111,16 @@ func Malloc() []byte {
 		}
 		buf := vmm[((i*64)+bit)<<pageBits:]
 		buf = buf[:pageSize:pageSize]
+		unguard(buf) // if -tags=vmfence, unprotect this memory
 		return buf
 	}
+	panic("out of VM memory")
 	return nil
 }
 
+// PagesUsed returns the number of currently-active
+// pages returned by Malloc that have not been
+// deactivated with a call to Free.
 func PagesUsed() int {
 	n := 0
 	for i := range vmbits {
@@ -131,6 +139,7 @@ func Free(buf []byte) {
 	if p < vmbase() || p >= vmend() {
 		panic("bad pointer passed to Free()")
 	}
+	guard(buf) // if -tags=vmfence, protect this memory
 	pfn := (p - vmbase()) >> pageBits
 	bit := uint64(1) << (pfn % 64)
 	addr := &vmbits[pfn/64]

@@ -550,14 +550,10 @@ func TestQueries(t *testing.T) {
 			t.Log("skip", d.Name())
 			return nil
 		}
-		// start := vm.PagesUsed()
 		t.Run(strings.TrimSuffix(d.Name(), ".test"), func(t *testing.T) {
 			t.Parallel()
 			testPath(t, path)
 		})
-		// if end := vm.PagesUsed(); false && end != start {
-		//	t.Errorf("memory leak: PagesUsed %d -> %d", start, end)
-		//}
 		return nil
 	})
 	if err != nil {
