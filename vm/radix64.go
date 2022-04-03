@@ -578,7 +578,7 @@ func (a *aggtable) writeRows(buf []byte, delims [][2]uint32) error {
 						lo = ^lo
 						a.repr = append(a.repr, a.bc.scratch[lo:lo+hi]...)
 					} else {
-						if lo == 0 {
+						if hi == 0 {
 							// TODO: Should we specify the value to provide more info in case it happens?
 							panic("abort bit set on a MISSING value")
 						}

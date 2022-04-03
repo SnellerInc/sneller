@@ -408,6 +408,8 @@ type ssaopinfo struct {
 	// of the immediate value in value.imm
 	// when emitted as code
 	immfmt immfmt
+
+	scratch bool // op uses scratch
 }
 
 // immfmt is an immediate format indicator
@@ -612,7 +614,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	shashmember: {text: "hashmember", argtypes: []ssatype{stHash, stBool}, rettype: stBool, immfmt: fmtother, bc: ophashmember, emit: emithashmember},
 	shashlookup: {text: "hashlookup", argtypes: []ssatype{stHash, stBool}, rettype: stBoxed | stBool, immfmt: fmtother, bc: ophashlookup, emit: emithashlookup},
 
-	sliteral: {text: "literal", rettype: stBoxed, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
+	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
 
 	// store value m, v, k, $slot
 	sstorev:      {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stBoxedValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
@@ -739,10 +741,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// boxing ops
 	//
 	// turn two masks into TRUE/FALSE/MISSING according to 3VL
-	sboxmask:   {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stBoxed, emit: emitboxmask},
-	sboxint:    {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stBoxed, bc: opboxint},
-	sboxfloat:  {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stBoxed, bc: opboxfloat},
-	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stBoxed, bc: opboxstring},
+	sboxmask:   {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stValue, emit: emitboxmask, scratch: true},
+	sboxint:    {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxint, scratch: true},
+	sboxfloat:  {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxfloat, scratch: true},
+	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stBoxed, bc: opboxstring, scratch: true},
 
 	// timestamp operations
 	scmplttm:                {text: "cmplt.tm", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplti, emit: emitcmp, inverse: scmpgttm},
@@ -777,7 +779,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetruncmonth:         {text: "datetruncmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmonth},
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitBinaryOp},
-	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stBoxed, bc: opboxts},
+	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stBoxed, bc: opboxts, scratch: true},
 
 	sgeogridi:    {text: "geogrid.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, immfmt: fmtother, bc: opgeogridi, emit: emitGeoGridOp},
 	sgeogridimmi: {text: "geogrid.imm.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmtother, bc: opgeogridimmi, emit: emitGeoGridImmOp},
@@ -5250,9 +5252,7 @@ func emitauto(v *value, c *compilestate) {
 	if len(v.args) != len(info.argtypes) {
 		panic("argument count mismatch")
 	}
-	if v.ret()&stBoxed != 0 {
-		c.needscratch = true
-	}
+	c.needscratch = c.needscratch || info.scratch
 	clobbers := v.ret().vregs()
 	var allregs regset
 	for i := range v.args {
@@ -5414,6 +5414,7 @@ func (p *prog) compile(dst *bytecode) error {
 	} else if c.needscratch && dst.scratch == nil {
 		// zero-length, large-capacity buffer
 		dst.scratch = Malloc()[:0]
+		dst.scratchoff, _ = vmdispl(dst.scratch[:1])
 	}
 	return dst.finalize()
 }

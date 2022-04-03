@@ -60,8 +60,7 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	}
 
 	// force non-empty scratch
-	findbc.scratchreserve = 64
-	findbc.scratch = make([]byte, findbc.scratchreserve, 512)
+	reserve(t, &findbc, 64)
 
 	// when
 	evalfindbc(&findbc, buf, delims, vRegSize)
@@ -71,6 +70,21 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	// modify 9*16 bytes starting from the current length of the scratch buffer.
 	expected := ionRecord[1:]
 	checkScratch(t, findbc.scratch, expected, findbc.scratchreserve)
+}
+
+func reserve(t *testing.T, b *bytecode, n int) {
+	b.scratch = Malloc()
+	// we test that parts of this memory
+	// remain untouched, so we need to
+	// explicitly clear it
+	for i := range b.scratch {
+		b.scratch[i] = 0
+	}
+	t.Cleanup(func() {
+		Free(b.scratch)
+	})
+	b.scratchoff, _ = vmdispl(b.scratch)
+	b.scratchreserve = n
 }
 
 func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
@@ -109,8 +123,7 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 	}
 
 	// force non-empty scratch
-	findbc.scratchreserve = 64
-	findbc.scratch = make([]byte, findbc.scratchreserve, 512)
+	reserve(t, &findbc, 64)
 
 	// when
 	evalfindbc(&findbc, buf, delims, vRegSize)
@@ -158,8 +171,7 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 	}
 
 	// force non-empty scratch
-	findbc.scratchreserve = 64
-	findbc.scratch = make([]byte, findbc.scratchreserve, 512)
+	reserve(t, &findbc, 64)
 
 	// when
 	evalfindbc(&findbc, buf, delims, vRegSize)

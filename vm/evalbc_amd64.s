@@ -3318,6 +3318,20 @@ tryfp32:
 next:
   NEXT()
 
+// VSCRATCH_BASE(mask) sets Z30.mask
+// to the current scratch base (equal in all lanes);
+// this address can be scattered to safely as long
+// as the scratch capacity has been checked in advance
+#define VSCRATCH_BASE(mask) \
+  VPBROADCASTD  bytecode_scratchoff(VIRT_BCPTR), mask, Z30 \
+  VPADDD.BCST   bytecode_scratch+8(VIRT_BCPTR), Z30, mask, Z30
+
+#define CHECK_SCRATCH_CAP(size, sizereg, abrt) \
+  MOVQ bytecode_scratch+16(VIRT_BCPTR), sizereg \
+  SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg \
+  CMPQ sizereg, size \
+  JLT  abrt
+
 // Boxing Instructions
 // -------------------
 
@@ -3333,10 +3347,7 @@ next:
 // box 64-bit floats in Z2:Z3
 // (possibly tail-calling into boxint)
 TEXT bcboxfloat(SB), NOSPLIT|NOFRAME, $0
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), R15
-  SUBQ bytecode_scratch+8(VIRT_BCPTR), R15
-  CMPQ R15, $(9 * 16) // FIXME: we could be clever and make this smaller
-  JLT  abort
+  CHECK_SCRATCH_CAP($(9 * 16), R15, abort)
 
   VPXORD     Z30, Z30, Z30
   VPXORD     Z31, Z31, Z31
@@ -3352,27 +3363,26 @@ TEXT bcboxfloat(SB), NOSPLIT|NOFRAME, $0
   KTESTW     K3, K3
   JZ         check_ints
 
-  VPBROADCASTD.Z   CONSTD_9(), K3, Z31                     // set len(encoded) = 9
-  MOVQ             bytecode_scratch(VIRT_BCPTR), R15
+  VPBROADCASTD.Z   CONSTD_9(), K3, Z31           // set len(encoded) = 9
+  VSCRATCH_BASE(K3)
   VMOVDQA32        byteidx<>+0(SB), X28
   VPMOVZXBD        X28, Z28
   VPSLLD           $3, Z28, Z29
-  VPADDD           Z28, Z29, Z30                                // offset = lane index * 9
-  VPADDD.BCST.Z    bytecode_scratch+8(VIRT_BCPTR), Z30, K3, Z30 // offset += current scratch offset
+  VPADDD           Z28, Z29, Z29
+  VPADDD           Z29, Z30, K3, Z30             // pos += lane index * 9
   MOVL             $0x48, R8
   VPBROADCASTD     R8, Z28
   VBROADCASTI64X2  bswap64<>(SB), Z27
   VPSHUFB          Z27, Z2, Z6                   // bswap64(input)
   VPSHUFB          Z27, Z3, Z7
   KMOVW            K3, K4
-  VPSCATTERDD      Z28, K4, 0(R15)(Z30*1)        // write descriptor byte
+  VPSCATTERDD      Z28, K4, 0(SI)(Z30*1)        // write descriptor byte
   VEXTRACTI32X8    $1, Z30, Y29
   KMOVB            K3, K4
-  VSCATTERDPD      Z6, K4, 1(R15)(Y30*1)         // write lo 8 floats
+  VSCATTERDPD      Z6, K4, 1(SI)(Y30*1)         // write lo 8 floats
   KSHIFTRW         $8, K3, K4
-  VSCATTERDPD      Z7, K4, 1(R15)(Y29*1)         // write hi 8 floats
-  VNOTK(Z30, K3, Z30)                            // complement output offset
-  ADDQ $(9*16), bytecode_scratch+8(VIRT_BCPTR)   // update scratch base
+  VSCATTERDPD      Z7, K4, 1(SI)(Y29*1)         // write hi 8 floats
+  ADDQ             $(9*16), bytecode_scratch+8(VIRT_BCPTR)       // update scratch base
 check_ints:
   KTESTW     K2, K2
   JZ         next
@@ -3399,10 +3409,7 @@ TEXT bcboxint(SB), NOSPLIT|NOFRAME, $0
 //   K2 = lanes to write out
 // updates Z30.K2 and Z31.K2, but leaves the other lanes un-touched
 TEXT boxint_tail(SB), NOSPLIT|NOFRAME, $0
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), R15
-  SUBQ bytecode_scratch+8(VIRT_BCPTR), R15
-  CMPQ R15, $(9 * 16) // FIXME: we could be clever and make this smaller
-  JLT  abort
+  CHECK_SCRATCH_CAP($(9 * 16), R15, abort)
 
   // compute abs(word) and compute
   // the predicate mask for negative signed words
@@ -3449,41 +3456,37 @@ TEXT boxint_tail(SB), NOSPLIT|NOFRAME, $0
   VPORQ            Z13, Z6, Z6              // OR in descriptor byte
   VPORQ            Z14, Z7, Z7
 
-  MOVQ             bytecode_scratch(VIRT_BCPTR), R15
-  VPBROADCASTD     bytecode_scratch+8(VIRT_BCPTR), K2, Z30 // set offset to scratch offset
+  VMOVDQU64        byteidx<>(SB), X29
+  VPMOVZXBD        X29, Z29           // Z29 = lane index
+  VPSLLD           $3, Z29, Z28       // Z28 = lane index * 8
+  VSCRATCH_BASE(K2)
   KTESTW           K6, K6
   JNZ              slow_encode
 
+  // fast-path for all integers 8 bytes or less when encoded
+  MOVQ             bytecode_scratch(VIRT_BCPTR), R15
   ADDQ             bytecode_scratch+8(VIRT_BCPTR), R15
   KSHIFTRW         $8, K2, K3
   VMOVDQU64        Z6, K2, 0(R15)                       // store the sixteen encoded ion objects
   VMOVDQU64        Z7, K3, 64(R15)
   ADDQ             $128, bytecode_scratch+8(VIRT_BCPTR)
-  VMOVDQU64        byteidx<>(SB), X29
-  VPMOVZXBD        X29, Z29
-  VPSLLD           $3, Z29, Z29
-  VPADDD           Z29, Z30, K2, Z30                   // add (lane*8) to offset, or set to zero
-  VNOTK(Z30, K2, Z30)                                  // complement offset
+  VPADDD           Z28, Z30, K2, Z30                   // add (lane*8) to offset, or set to zero
   JMP              next
 slow_encode:
   // some of the lanes have 8 significant bytes,
   // so we need to perform two overlapped scatters
   ADDQ             $(9*16), bytecode_scratch+8(VIRT_BCPTR)
-  VMOVDQU64        byteidx<>(SB), X29
-  VPMOVZXBD        X29, Z29
-  VPSLLD           $3, Z29, Z28        // Z28 = lane index * 8
-  VPADDD           Z28, Z30, K2, Z30   // Z30 = base + (lane index * 8)
-  VPADDD           Z29, Z30, K2, Z30   // Z30 = base + (lane index * 9)
+  VPADDD           Z28, Z30, K2, Z30   // base += (lane index * 8)
+  VPADDD           Z29, Z30, K2, Z30   // base += lane index
   VEXTRACTI32X8    $1, Z30, Y28
   KMOVB            K2, K3
-  VPSCATTERDQ      Z6, K3, 0(R15)(Y30*1)         // write lo 8, first 8 bytes
+  VPSCATTERDQ      Z6, K3, 0(SI)(Y30*1)         // write lo 8, first 8 bytes
   KSHIFTRW         $8, K2, K3
-  VPSCATTERDQ      Z7, K3, 0(R15)(Y28*1)         // write hi 8, first 8 bytes
+  VPSCATTERDQ      Z7, K3, 0(SI)(Y28*1)         // write hi 8, first 8 bytes
   KMOVB            K2, K3
-  VPSCATTERDQ      Z4, K3, 1(R15)(Y30*1)         // write overlapping for final byte of lo 8
+  VPSCATTERDQ      Z4, K3, 1(SI)(Y30*1)         // write overlapping for final byte of lo 8
   KSHIFTRW         $8, K2, K3
-  VPSCATTERDQ      Z5, K3, 1(R15)(Y28*1)         // write overlapping for final byte of hi 8
-  VNOTK(Z30, K2, Z30)                            // complement output offset
+  VPSCATTERDQ      Z5, K3, 1(SI)(Y28*1)         // write overlapping for final byte of hi 8
 next:
   NEXT()
 abort:
@@ -3521,10 +3524,7 @@ TEXT bcboxmask3(SB), NOSPLIT|NOFRAME, $0
 // see boxmask_tail_vbmi2 for a version that
 // only writes out the lanes that are valid
 TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), R15
-  SUBQ bytecode_scratch+8(VIRT_BCPTR), R15
-  CMPQ R15, $16
-  JLT  abort
+  CHECK_SCRATCH_CAP($16, R15, abort)
   MOVL         $0x10, R14
   VPBROADCASTB R14, X10                             // X10 = false byte x 16
   MOVL         $1, R14
@@ -3535,14 +3535,14 @@ TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
   MOVOU        X10, 0(R14)                          // store 16 bytes unconditionally
   // offsets are [0, 1, 2, 3...] plus base offset;
   // then complemented for Z30
-  MOVOU        byteidx<>+0(SB), X10
-  VPMOVZXBD    X10, Z10
-  VPADDD.BCST  bytecode_scratch+8(VIRT_BCPTR), Z10, Z10
-  VNOTINPLACE(Z10)
-  VMOVDQA32    Z10, K1, Z30
-  VPBROADCASTD CONSTD_1(), K1, Z31
+  VPXORD         Z30, Z30, Z30
+  VSCRATCH_BASE(K1)
+  MOVOU          byteidx<>+0(SB), X10
+  VPMOVZXBD      X10, Z10
+  VPADDD         Z10, Z30, K1, Z30
+  VPBROADCASTD.Z CONSTD_1(), K1, Z31
   // update used scratch space
-  ADDQ         $16, bytecode_scratch+8(VIRT_BCPTR)
+  ADDQ           $16, bytecode_scratch+8(VIRT_BCPTR)
   NEXT()
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
@@ -5012,12 +5012,10 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
 
 // take two immediate offsets into the scratch buffer and broadcast them into registers
 TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
-  MOVL 0(VIRT_PCREG), R14 // R14 = 24-bit offset
-  MOVL 4(VIRT_PCREG), R15 // R15 = 24-bit length
-  ADDQ $8, VIRT_PCREG
-  NOTL R14                    // ^offset indicates pointer to bytecode.scratch
-  VPBROADCASTD.Z R15, K7, Z31 // only set length and offset for 'true' lanes
-  VPBROADCASTD.Z R14, K7, Z30
+  VPBROADCASTD  0(VIRT_PCREG), Z30 // offset in scratch
+  VPBROADCASTD  4(VIRT_PCREG), Z31 // length
+  VPADDD.BCST   bytecode_scratchoff(VIRT_BCPTR), Z30, Z30 // offset += displ
+  ADDQ          $8, VIRT_PCREG
   NEXT()
 
 // take the list slice in Z2:Z3

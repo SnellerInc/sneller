@@ -514,6 +514,8 @@ type bytecode struct {
 	scratch []byte
 	// number of bytes to reserve for literals
 	scratchreserve int
+	// relative displacment of scratch relative to vmm
+	scratchoff uint32
 
 	outer *bytecode // outer variable bindings
 	//lint:ignore U1000 not unused; used in assembly
@@ -664,6 +666,11 @@ func (b *bytecode) setlit(buf []byte) bool {
 	}
 	b.scratchreserve = copy(b.scratch, buf)
 	b.scratch = b.scratch[:b.scratchreserve]
+	var ok bool
+	b.scratchoff, ok = vmdispl(b.scratch[:1])
+	if !ok {
+		panic("buffer from malloc has bad displacement?")
+	}
 	return true
 }
 
