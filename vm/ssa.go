@@ -779,7 +779,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetruncmonth:         {text: "datetruncmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmonth},
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitBinaryOp},
-	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stBoxed, bc: opboxts, scratch: true},
+	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
 
 	sgeogridi:    {text: "geogrid.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, immfmt: fmtother, bc: opgeogridi, emit: emitGeoGridOp},
 	sgeogridimmi: {text: "geogrid.imm.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmtother, bc: opgeogridimmi, emit: emitGeoGridImmOp},

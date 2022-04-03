@@ -390,11 +390,8 @@ func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 
 		// calculate space for boxed values
 		for columnID := 0; columnID < columnCount; columnID++ {
-			fieldOffset := fieldsView[blockID+columnID].offsets[laneID]
 			fieldSize := fieldsView[blockID+columnID].sizes[laneID]
-			if int32(fieldOffset) < 0 {
-				record.Boxed += fieldSize
-			}
+			record.Boxed += fieldSize
 		}
 
 		// allocate memory and copy original row data
@@ -408,20 +405,15 @@ func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 		for columnID := 0; columnID < columnCount; columnID++ {
 			fieldOffset := fieldsView[blockID+columnID].offsets[laneID]
 			fieldSize := fieldsView[blockID+columnID].sizes[laneID]
+			record.FieldDelims[columnID][0] = boxedOffset
+			record.FieldDelims[columnID][1] = fieldSize
 			if int32(fieldOffset) < 0 {
-				record.FieldDelims[columnID][0] = boxedOffset
-				record.FieldDelims[columnID][1] = fieldSize
 				fieldOffset = ^fieldOffset
 				copy(record.Raw[boxedOffset:], s.findbc.scratch[fieldOffset:fieldOffset+fieldSize])
-				boxedOffset += fieldSize
 			} else {
-				delta, ok := vmdispl(bytes)
-				if !ok {
-					panic("src not vmm?")
-				}
-				record.FieldDelims[columnID][0] = fieldOffset - delta + record.Boxed
-				record.FieldDelims[columnID][1] = fieldSize
+				copy(record.Raw[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
 			}
+			boxedOffset += fieldSize
 		}
 
 		s.parent.records = append(s.parent.records, record)
@@ -622,11 +614,8 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 		// calculate space for boxed values
 		record.Boxed = 0
 		for columnID := 0; columnID < columnCount; columnID++ {
-			fieldOffset := fieldsView[blockID].offsets[laneID]
 			fieldSize := fieldsView[blockID].sizes[laneID]
-			if int32(fieldOffset) < 0 {
-				record.Boxed += fieldSize
-			}
+			record.Boxed += fieldSize
 		}
 
 		// grow byte buffer when necessary
@@ -645,20 +634,15 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 		for columnID := 0; columnID < columnCount; columnID++ {
 			fieldOffset := fieldsView[blockID].offsets[laneID]
 			fieldSize := fieldsView[blockID].sizes[laneID]
+			s.fields[columnID][0] = boxedOffset
+			s.fields[columnID][1] = fieldSize
 			if int32(fieldOffset) < 0 {
-				s.fields[columnID][0] = boxedOffset
-				s.fields[columnID][1] = fieldSize
 				fieldOffset = ^fieldOffset
 				copy(s.buffer[boxedOffset:], s.findbc.scratch[fieldOffset:fieldOffset+fieldSize])
-				boxedOffset += fieldSize
 			} else {
-				delta, ok := vmdispl(bytes)
-				if !ok {
-					panic("src not vmm?")
-				}
-				s.fields[columnID][0] = fieldOffset - delta + record.Boxed
-				s.fields[columnID][1] = fieldSize
+				copy(s.buffer[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
 			}
+			boxedOffset += fieldSize
 		}
 
 		record.Raw = s.buffer

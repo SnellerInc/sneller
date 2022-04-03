@@ -2207,27 +2207,16 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   NEXT()
 
 TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-
-  MOVQ bytecode_scratch+8(VIRT_BCPTR), R15             // R15 = Output buffer length.
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), R8             // R8 = Output buffer capacity.
-  SUBQ R15, R8                                         // R8 = Remaining space in the output buffer.
-
   // Make sure we have at least 16 bytes for each lane, we always overallocate to make the boxing simpler.
-  CMPQ R8, $(16 * 16)
-  JLT abort
+  CHECK_SCRATCH_CAP($(16 * 16), R8, abort)
 
-  // Z20 - base offset for serialized timestamps.
-  VPBROADCASTQ R15, Z20
-  VPBROADCASTD R15, Z30
+  // set zmm31.k1 to the current scratch base
+  VSCRATCH_BASE(K1)
 
   // Update the length of the output buffer.
-  LEAQ 256(R15), R8
-  MOVQ R8, bytecode_scratch+8(VIRT_BCPTR)
+  ADDQ $(16 * 16), bytecode_scratch+8(VIRT_BCPTR)
 
-  // A base pointer where each timestamp will be serialized.
-  MOVQ bytecode_scratch+0(VIRT_BCPTR), R15
-
+  KSHIFTRW $8, K1, K2
   // Decompose the timestamp value into Year/Month/DayOfMonth and microseconds of the day.
   //
   // Z4/Z5   - Microseconds of the day (combines hours, minutes, seconds, microseconds).
@@ -2381,24 +2370,28 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ.BCST CONSTQ_4(), Z10, K3, Z10
   VPADDQ.BCST CONSTQ_4(), Z11, K4, Z11
 
-  // Z20/Z21 - offsets to scratch buffer (where each timestamp value starts, overallocated).
-  VPADDQ CONST_GET_PTR(consts_offsets_q_16, 64), Z20, Z21
-  VPADDQ CONST_GET_PTR(consts_offsets_q_16, 0), Z20, Z20
+  // Z30 - offsets relative to vmm (where each timestamp value starts, overallocated).
+  VMOVDQA32 byteidx<>+0(SB), X28 // X28 = [0, 1, 2, 3 ...]
+  VPMOVZXBD X28, Z28
+  VPSLLD    $4, Z28, Z28
+  VPADDD    Z28, Z30, K1, Z30    // Z30 += [0, 16, 32, 48, ...]
 
-  KMOVB K1, K3
-  KSHIFTRW $8, K1, K4
-  VPSCATTERQQ Z10, K3, 0(R15)(Z20*1)
-  VPSCATTERQQ Z11, K4, 0(R15)(Z21*1)
+  // turn (zmm14 || zmm15) -> zmm14 by truncating
+  VPMOVQD      Z14, Y14
+  VPMOVQD      Z15, Y15
+  VINSERTI32X8 $1, Y15, Z14, Z14
 
-  VPADDQ Z14, Z20, Z20
-  VPADDQ Z15, Z21, Z21
-  KMOVB K1, K3
-  KSHIFTRW $8, K1, K4
-  VPSCATTERQQ Z4, K3, 0(R15)(Z20*1)
-  VPSCATTERQQ Z5, K4, 0(R15)(Z21*1)
-
-  VPADDD.Z CONST_GET_PTR(consts_offsets_d_16, 0), Z30, K1, Z30
-  VNOTK(Z30, K1, Z30)
+  KMOVB         K1, K3
+  KSHIFTRW      $8, K1, K4
+  VPADDD        Z14, Z30, Z29         // Z29 = high positions
+  VEXTRACTI32X8 $1, Z30, Y21          // Y21 = hi 8 base positions
+  VPSCATTERDQ   Z10, K3, 0(SI)(Y30*1) // write leading bits, lo 8 lanes
+  VPSCATTERDQ   Z11, K4, 0(SI)(Y21*1) // write leading bits, hi 8 lanes
+  KMOVB         K1, K3
+  KSHIFTRW      $8, K1, K4
+  VEXTRACTI32X8 $1, Z29, Y21          // Y21 = hi 8 upper positions
+  VPSCATTERDQ   Z4, K3, 0(SI)(Y29*1)  // write trailing bits, lo 8 lanes
+  VPSCATTERDQ   Z5, K4, 0(SI)(Y21*1)  // write trailing bits, hi 8 lanes
 
   VPMOVQD Z10, Y10
   VPMOVQD Z11, Y11
@@ -3317,20 +3310,6 @@ tryfp32:
   VMOVAPD       Z28, K3, Z3
 next:
   NEXT()
-
-// VSCRATCH_BASE(mask) sets Z30.mask
-// to the current scratch base (equal in all lanes);
-// this address can be scattered to safely as long
-// as the scratch capacity has been checked in advance
-#define VSCRATCH_BASE(mask) \
-  VPBROADCASTD  bytecode_scratchoff(VIRT_BCPTR), mask, Z30 \
-  VPADDD.BCST   bytecode_scratch+8(VIRT_BCPTR), Z30, mask, Z30
-
-#define CHECK_SCRATCH_CAP(size, sizereg, abrt) \
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), sizereg \
-  SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg \
-  CMPQ sizereg, size \
-  JLT  abrt
 
 // Boxing Instructions
 // -------------------

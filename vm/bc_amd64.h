@@ -68,3 +68,17 @@
   LEAQ opaddrs+0(SB), tmp2    \
   MOVQ 0(tmp2)(tmp1*8), tmp1  \
   CALL tmp1
+
+// VSCRATCH_BASE(mask) sets Z30.mask
+// to the current scratch base (equal in all lanes);
+// this address can be scattered to safely as long
+// as the scratch capacity has been checked in advance
+#define VSCRATCH_BASE(mask) \
+  VPBROADCASTD  bytecode_scratchoff(VIRT_BCPTR), mask, Z30 \
+  VPADDD.BCST   bytecode_scratch+8(VIRT_BCPTR), Z30, mask, Z30
+
+#define CHECK_SCRATCH_CAP(size, sizereg, abrt) \
+  MOVQ bytecode_scratch+16(VIRT_BCPTR), sizereg \
+  SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg \
+  CMPQ sizereg, size \
+  JLT  abrt
