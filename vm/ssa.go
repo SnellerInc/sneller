@@ -612,7 +612,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	shashboxedp: {text: "hashboxed+", argtypes: []ssatype{stHash, stBoxed, stBool}, rettype: stHash, immfmt: fmtslotx2hash, bc: ophashboxedplus, priority: prioHash},
 
 	shashmember: {text: "hashmember", argtypes: []ssatype{stHash, stBool}, rettype: stBool, immfmt: fmtother, bc: ophashmember, emit: emithashmember},
-	shashlookup: {text: "hashlookup", argtypes: []ssatype{stHash, stBool}, rettype: stBoxed | stBool, immfmt: fmtother, bc: ophashlookup, emit: emithashlookup},
+	shashlookup: {text: "hashlookup", argtypes: []ssatype{stHash, stBool}, rettype: stValue | stBool, immfmt: fmtother, bc: ophashlookup, emit: emithashlookup},
 
 	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
 
@@ -4810,9 +4810,9 @@ func emithashlookup(v *value, c *compilestate) {
 		// to reflect their final positions in c.litbuf
 		base := uint32(len(c.litbuf))
 		for i := 0; i < len(hr.tree.values); i += (aggregateTagSize + 8) {
-			val := ^binary.LittleEndian.Uint32(hr.tree.values[i+aggregateTagSize:])
+			val := binary.LittleEndian.Uint32(hr.tree.values[i+aggregateTagSize:])
 			val += base
-			binary.LittleEndian.PutUint32(hr.tree.values[i+aggregateTagSize:], ^val)
+			binary.LittleEndian.PutUint32(hr.tree.values[i+aggregateTagSize:], val)
 		}
 	}
 	c.litbuf = append(c.litbuf, hr.literals...)

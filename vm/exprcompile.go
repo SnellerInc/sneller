@@ -877,7 +877,7 @@ func (p *prog) mkhash(st *ion.Symtab, imm interface{}) *hashResult {
 		// (4-byte base + 4-byte offset)
 		base := tmp2.Size()
 		then.Encode(&tmp2, st)
-		binary.LittleEndian.PutUint32(buf, ^uint32(base))
+		binary.LittleEndian.PutUint32(buf, uint32(base))
 		size := tmp2.Size() - base
 		binary.LittleEndian.PutUint32(buf[4:], uint32(size))
 	}

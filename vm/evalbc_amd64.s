@@ -4376,6 +4376,7 @@ loop_tail:
   VPGATHERDD    8(R15)(Z8*1), K2, Z30   // load boxed offsets
   KMOVW         K1, K3
   VPGATHERDD    12(R15)(Z8*1), K3, Z31  // load boxed lengths
+  VPADDD.BCST   bytecode_scratchoff(VIRT_BCPTR), Z30, K1, Z30
 next:
   NEXT()
 
