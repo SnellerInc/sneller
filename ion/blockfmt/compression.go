@@ -21,6 +21,7 @@ import (
 	"io"
 	"math/bits"
 	"math/rand"
+	"runtime"
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -70,7 +71,9 @@ func (z zstdCompressor) Name() string { return "zstd" }
 var theDecoder *zstd.Decoder
 
 func init() {
-	z, err := zstd.NewReader(nil)
+	// by default, concurrency is set to min(4, GOMAXPROCS);
+	// we'd like it to *always* be GOMAXPROCS
+	z, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(runtime.GOMAXPROCS(0)))
 	if err != nil {
 		panic(err)
 	}
