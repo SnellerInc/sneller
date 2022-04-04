@@ -30,6 +30,17 @@ type readerTable struct {
 	block int64
 }
 
+var allBytes int64
+
+type byteTracker struct {
+	io.Writer
+}
+
+func (b *byteTracker) Write(p []byte) (int, error) {
+	atomic.AddInt64(&allBytes, int64(len(p)))
+	return b.Writer.Write(p)
+}
+
 func (f *readerTable) Chunks() int {
 	n := 0
 	for i := range f.t.Blocks {
@@ -45,6 +56,7 @@ type rangeReader interface {
 
 func (f *readerTable) write(dst io.Writer) error {
 	var d blockfmt.Decoder
+	dst = &byteTracker{dst}
 	for n := atomic.AddInt64(&f.block, 1) - 1; int(n) < len(f.t.Blocks); n = atomic.AddInt64(&f.block, 1) - 1 {
 		nt := f.t.Slice(int(n), int(n+1))
 		d.Trailer = nt

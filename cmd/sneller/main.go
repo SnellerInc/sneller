@@ -243,7 +243,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "execution time: %v\n", elapsed)
 	}
 	if printAllocs {
-		fmt.Fprintf(os.Stderr, "allocated memory: %s, allocations: %d\n",
-			formatSize(stats.bytes), stats.mallocs)
+		fmt.Fprintf(os.Stderr, "allocated memory: %s, allocations: %d, scanned: %d, %.3gGiB/s\n",
+			formatSize(stats.bytes), stats.mallocs, allBytes,
+			(float64(allBytes)/float64(elapsed))*(float64(1000)/float64(1024))) // bytes/ns ~= GB/s -> GiB/s
 	}
 }
