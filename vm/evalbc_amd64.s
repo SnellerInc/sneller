@@ -3581,6 +3581,8 @@ abort:
 //     do gathers meanwhile so the CPU should be busy enough to hide the latency.
 TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
   // Quickly skip this instruction if there is nothing to box.
+  VPXORD Z30, Z30, Z30
+  VPXORD Z31, Z31, Z31
   KTESTW K1, K1
   JZ next
 
