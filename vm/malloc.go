@@ -32,12 +32,25 @@ import (
 // (i.e. one from io.Writer.Write, the scratch buffer, etc.)
 
 const (
-	pageBits  = 20
-	pageSize  = 1 << pageBits
-	vmUse     = 1 << 29
-	vmPages   = vmUse >> pageBits
-	vmWords   = vmPages / 64
+	pageBits = 20
+	pageSize = 1 << pageBits
+
+	// number of bytes within reserved
+	// mapping to make available via Malloc
+	// (can be up to vmReserve - vmStart)
+	vmUse = 1 << 29
+
+	// total pages that can be used
+	vmPages = vmUse >> pageBits
+
+	// 64-bit words in allocation bitmap
+	vmWords = vmPages / 64
+
+	// total number of bytes to reserve
 	vmReserve = 1 << 32
+
+	// offset within vmReserve to set as vmm
+	vmStart = vmReserve >> 1
 
 	// PageSize is the granularity
 	// of the allocations returned
@@ -47,7 +60,7 @@ const (
 
 var (
 	memlock sync.Mutex
-	vmm     *[vmReserve]byte
+	vmm     *[vmUse]byte
 	vmbits  [vmWords]uint64
 )
 
@@ -87,6 +100,12 @@ func vmdispl(buf []byte) (uint32, bool) {
 
 // Allocated returns true if buf
 // was returned from Malloc, or false otherwise.
+//
+// NOTE: Allocated will return true for
+// a buffer allocated from Malloc even after
+// it has been returned via Free. Allocated
+// does *not* indicate whether the buffer is
+// actually safe to access.
 func Allocated(buf []byte) bool {
 	_, ok := vmdispl(buf)
 	return ok

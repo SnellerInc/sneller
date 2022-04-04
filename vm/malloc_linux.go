@@ -22,18 +22,31 @@ import (
 
 // linux implementation of vmm area
 
-func mapVM() *[vmReserve]byte {
-	buf, err := syscall.Mmap(0, 0, vmReserve, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS)
+func mapVM() *[vmUse]byte {
+	// reserve 4GiB of memory
+	buf, err := syscall.Mmap(0, 0, vmReserve, syscall.PROT_NONE, syscall.MAP_PRIVATE|syscall.MAP_ANONYMOUS)
 	if err != nil {
 		panic("couldn't map vmm region: " + err.Error())
 	}
-	if vmUse < vmReserve {
-		err = syscall.Mprotect(buf[vmUse:], syscall.PROT_NONE)
-		if err != nil {
-			panic("couldn't map unused vmm region as PROT_NONE: " + err.Error())
-		}
+	// map some usable memory in the middle of the region;
+	// this means that any reference to vmm +/- 2GiB must
+	// hit the region we mapped above
+	//
+	// we add 1 to the usable memory region so that the
+	// user of the final page can have a multi-byte load
+	// extend past the final page boundary
+	// (mprotect will round up to the next page)
+	//
+	// (we do this b/c AVX-512 VPGATHER*D sign-extends
+	// the per-lane offset, so a gather that uses vmm
+	// as the base is guaranteed to reference only the
+	// mapping that we picked above)
+	err = syscall.Mprotect(buf[vmStart:vmStart+vmUse+1], syscall.PROT_READ|syscall.PROT_WRITE)
+	if err != nil {
+		panic("couldn't map unused vmm region as PROT_NONE: " + err.Error())
 	}
-	return (*[vmReserve]byte)(buf)
+	guard(buf[vmStart : vmStart+vmUse])
+	return (*[vmUse]byte)(buf[vmStart:])
 }
 
 func hintUnused(mem []byte) {

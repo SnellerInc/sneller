@@ -22,16 +22,16 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func mapVM() *[vmReserve]byte {
-	base, err := windows.VirtualAlloc(0, vmReserve, windows.MEM_RESERVE|windows.MEM_COMMIT, windows.PAGE_NOACCESS)
+func mapVM() *[vmUse]byte {
+	base, err := windows.VirtualAlloc(0, vmReserve, windows.MEM_RESERVE, windows.PAGE_NOACCESS)
 	if err != nil {
 		panic("VirtualAlloc(reserve): " + err.Error())
 	}
-	base, err = windows.VirtualAlloc(base, vmUse, windows.MEM_COMMIT, windows.PAGE_READWRITE)
+	base, err = windows.VirtualAlloc(base+vmStart, vmUse, windows.MEM_COMMIT, windows.PAGE_READWRITE)
 	if err != nil {
 		panic("VirtualAlloc(commit): " + err.Error())
 	}
-	return (*[vmReserve]byte)(unsafe.Pointer(base))
+	return (*[vmUse]byte)(unsafe.Pointer(base + vmStart))
 }
 
 func hintUnused(mem []byte) {
