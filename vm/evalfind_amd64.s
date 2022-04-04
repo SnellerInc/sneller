@@ -217,15 +217,6 @@ copy_field:
   // falling back to 'rep movsb' for very large copies
   MOVQ    ·vmm+0(SB), SI
   MOVL    0(DX), AX
-  TESTL   AX, AX
-  JNS     not_signed
-  // this is a re-boxed value;
-  // it is in *scratch* and we need
-  // to bitwise NOT the source location
-  MOVQ    bc+0(FP), R13
-  NOTL    AX
-  MOVQ    bytecode_scratch(R13), SI // new source
-not_signed:
   ADDQ    AX, SI
   CMPL    CX, $256
   JGE     rep_movsb

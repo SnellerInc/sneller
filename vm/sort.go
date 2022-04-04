@@ -407,12 +407,7 @@ func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 			fieldSize := fieldsView[blockID+columnID].sizes[laneID]
 			record.FieldDelims[columnID][0] = boxedOffset
 			record.FieldDelims[columnID][1] = fieldSize
-			if int32(fieldOffset) < 0 {
-				fieldOffset = ^fieldOffset
-				copy(record.Raw[boxedOffset:], s.findbc.scratch[fieldOffset:fieldOffset+fieldSize])
-			} else {
-				copy(record.Raw[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
-			}
+			copy(record.Raw[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
 			boxedOffset += fieldSize
 		}
 
@@ -501,14 +496,7 @@ func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error 
 		fieldOffset := fieldsView[blockID].offsets[laneID]
 		fieldSize := fieldsView[blockID].sizes[laneID]
 		if fieldSize > 0 {
-			var field []byte
-			if int(fieldOffset) < 0 {
-				fieldOffset = ^fieldOffset
-				field = s.findbc.scratch[fieldOffset : fieldOffset+fieldSize]
-			} else {
-				field = vmref{fieldOffset, fieldSize}.mem()
-			}
-
+			field := vmref{fieldOffset, fieldSize}.mem()
 			err := s.subcolumn.Add(s.recordID, field)
 			if err != nil {
 				return err
@@ -636,12 +624,7 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 			fieldSize := fieldsView[blockID].sizes[laneID]
 			s.fields[columnID][0] = boxedOffset
 			s.fields[columnID][1] = fieldSize
-			if int32(fieldOffset) < 0 {
-				fieldOffset = ^fieldOffset
-				copy(s.buffer[boxedOffset:], s.findbc.scratch[fieldOffset:fieldOffset+fieldSize])
-			} else {
-				copy(s.buffer[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
-			}
+			copy(s.buffer[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
 			boxedOffset += fieldSize
 		}
 

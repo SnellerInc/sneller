@@ -574,16 +574,11 @@ func (a *aggtable) writeRows(buf []byte, delims [][2]uint32) error {
 
 				for n := 0; n < projectedGroupByCount; n++ {
 					lo, hi := a.bc.getVRegOffsetAndSize(n*vRegSizeInUInt64Units, i)
-					if (lo & 0x80000000) != 0 {
-						lo = ^lo
-						a.repr = append(a.repr, a.bc.scratch[lo:lo+hi]...)
-					} else {
-						if hi == 0 {
-							// TODO: Should we specify the value to provide more info in case it happens?
-							panic("abort bit set on a MISSING value")
-						}
-						a.repr = append(a.repr, vmref{lo, hi}.mem()...)
+					if hi == 0 {
+						// TODO: Should we specify the value to provide more info in case it happens?
+						panic("abort bit set on a MISSING value")
 					}
+					a.repr = append(a.repr, vmref{lo, hi}.mem()...)
 				}
 				a.pairs = append(a.pairs, hpair{
 					reprloc: reprloc,
