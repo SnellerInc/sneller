@@ -904,9 +904,9 @@ func (p *prog) mktree(st *ion.Symtab, imm interface{}) *radixTree64 {
 	return tree
 }
 
-// serialized returns an stValue- or stBoxed-typed ssa value
-// from an AST expression; the return value ought to be safe
-// to pass to prog.Store()
+// serialized turns an arbitrary expression
+// into a boxed value (stValue) so that it
+// can be passed to generic operations (store, hash, etc.)
 func (p *prog) serialized(e expr.Node) (*value, error) {
 	v, err := compile(p, e)
 	if err != nil {
@@ -942,78 +942,11 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 
 // turn an arbitrary expression into a store-able value
 func (p *prog) compileStore(mem *value, e expr.Node, slot stackslot) (*value, error) {
-	if c, ok := e.(*expr.Case); ok {
-		return storecase(p, mem, c, slot)
-	}
 	v, err := p.serialized(e)
 	if err != nil {
 		return nil, err
 	}
 	return p.Store(mem, v, slot)
-}
-
-// when we encounter a store of the result
-// of a case expression, we can simplify the compilation
-// to simply a series of stores that conditionally update
-// the lanes for each limb of the case
-func storecase(p *prog, mem *value, c *expr.Case, slot stackslot) (*value, error) {
-	var err error
-	// first, set the lane to the ELSE expression
-	if c.Else == (expr.Missing{}) {
-		// zero the slot
-		mem, err = p.Store(mem, p.ssa0(skfalse), slot)
-	} else if c.Else == nil {
-		mem, err = p.Store(mem, p.Constant(nil), slot)
-	} else {
-		mem, err = p.compileStore(mem, c.Else, slot)
-	}
-	if err != nil {
-		return nil, err
-	}
-	if len(c.Limbs) == 0 {
-		return mem, nil
-	}
-
-	// blend the first limb's results to yield
-	// the initial mask
-	k, err := compile(p, c.Limbs[0].When)
-	if err != nil {
-		return nil, err
-	}
-	if k.op != skfalse {
-		// NOTE: we are relying on the value
-		// of serialized(e) to be MISSING when
-		// the expression is MISSING so that if
-		// the THEN condition is true, we still
-		// end up zeroing out the lane appropriately
-		v, err := p.serialized(c.Limbs[0].Then)
-		if err != nil {
-			return nil, err
-		}
-		mem = p.storeBlend(mem, v, k, slot)
-	}
-
-	rest := c.Limbs[1:]
-	for i := range rest {
-		w, err := compile(p, rest[i].When)
-		if err != nil {
-			return nil, err
-		}
-		// if WHEN is statically false,
-		// just ignore this case
-		if w.op == skfalse {
-			continue
-		}
-		v, err := p.serialized(rest[i].Then)
-		if err != nil {
-			return nil, err
-		}
-		// only store w&^k lanes
-		// (read as 'WHEN is true and not already stored')
-		mem = p.storeBlend(mem, v, p.nand(k, w), slot)
-		k = p.Or(k, w) // already stored |= WHEN
-	}
-	return mem, nil
 }
 
 // determine if the CASE expression c
@@ -1023,15 +956,7 @@ func compilecase(p *prog, c *expr.Case) (*value, error) {
 	if c.Valence == "logical" {
 		return p.compileLogicalCase(c)
 	}
-	if c.IsPathLimbs() {
-		return p.compilePathCase(c)
-	}
-	// when there is absolutely no context
-	// for the type of the case expression,
-	// we should fall back to assuming each value
-	// is simply a path expression or NULL/MISSING;
-	// otherwise we cannot (easily) handle the expression
-	return nil, fmt.Errorf("FIXME: implement CASE w/o hint")
+	return p.compileGenericCase(c)
 }
 
 // logical CASE expressions are easier
@@ -1088,7 +1013,7 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 	// we can just merge the path expression values
 	// and perform only one load+convert
 	if c.IsPathLimbs() {
-		v, err := p.compilePathCase(c)
+		v, err := p.compileGenericCase(c)
 		if err != nil {
 			return nil, err
 		}
@@ -1190,11 +1115,20 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 	return p.floatk(outnum, outk), nil
 }
 
-func (p *prog) compilePathCase(c *expr.Case) (*value, error) {
+// a "generic case" is one in which all the
+// results of the arms of the case are coerced to stValue,
+// which happens if a) they were already all stValue,
+// or b) they have incompatible types and the caller needs
+// to perform unboxing again to get at the results
+func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 	var v, k, merged *value
-	if c.Else != nil && c.Else != (expr.Missing{}) && c.Else != (expr.Null{}) {
-		v = p.walk(c.Else.(*expr.Path))
-		k = v
+	var err error
+	if c.Else != nil && c.Else != (expr.Missing{}) {
+		v, err = p.serialized(c.Else)
+		if err != nil {
+			return nil, err
+		}
+		k = p.mask(v)
 		merged = p.ssa0(skfalse)
 	}
 	for i := range c.Limbs {
@@ -1205,7 +1139,7 @@ func (p *prog) compilePathCase(c *expr.Case) (*value, error) {
 		if when.op == skfalse {
 			continue
 		}
-		then, err := compile(p, c.Limbs[i].Then)
+		then, err := p.serialized(c.Limbs[i].Then)
 		if err != nil {
 			return nil, err
 		}
@@ -1215,14 +1149,14 @@ func (p *prog) compilePathCase(c *expr.Case) (*value, error) {
 			panic("inside compilePathCase: unexpected return type")
 		}
 		if v == nil {
-			k = p.And(when, then)
+			k = p.And(when, p.mask(then))
 			v = then
 			merged = when
 			continue
 		}
 		shouldmerge := p.nand(merged, when)
 		v = p.ssa3(sblendv, v, then, shouldmerge)
-		k = p.Or(k, p.And(shouldmerge, then))
+		k = p.Or(k, p.And(shouldmerge, p.mask(then)))
 		merged = p.Or(merged, when)
 	}
 	if v == nil {

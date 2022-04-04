@@ -404,6 +404,7 @@ type ssaopinfo struct {
 	immfmt immfmt
 
 	scratch bool // op uses scratch
+	blend   bool // equivalent to args[0] when mask arg is false
 }
 
 // immfmt is an immediate format indicator
@@ -636,10 +637,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sstrk:   {text: "strk", rettype: stString, argtypes: []ssatype{stString, stBool}, emit: emittuple2regs},
 	svk:     {text: "vk", rettype: stValue, argtypes: []ssatype{stValue, stBool}, emit: emittuple2regs},
 
-	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv},
-	sblendint:   {text: "blendint", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opblendnum, emit: emitblends},
-	sblendstr:   {text: "blendstr", rettype: stString, argtypes: []ssatype{stString, stString, stBool}, bc: opblendslice, emit: emitblends},
-	sblendfloat: {text: "blendfloat", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opblendnum, emit: emitblends},
+	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv, blend: true},
+	sblendint:   {text: "blendint", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opblendnum, emit: emitblends, blend: true},
+	sblendstr:   {text: "blendstr", rettype: stString, argtypes: []ssatype{stString, stString, stBool}, bc: opblendslice, emit: emitblends, blend: true},
+	sblendfloat: {text: "blendfloat", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opblendnum, emit: emitblends, blend: true},
 
 	// compare timestamp against immediate
 	sltconsttm: {text: "ltconsttm", argtypes: time1Args, rettype: stBool, immfmt: fmtother, bc: optimelt, emit: emitcmptm, inverse: sgtconsttm},
@@ -3798,11 +3799,20 @@ func (p *prog) falseprop(pi *proginfo) {
 				}
 				fallthrough
 			default:
-				if m := v.maskarg(); m != nil && m.op == skfalse && ssainfo[v.op].rettype&stMem == 0 {
-					v.op = skfalse
-					v.args = nil
-					v.imm = nil
-					opt = true
+				if m := v.maskarg(); m != nil &&
+					m.op == skfalse &&
+					ssainfo[v.op].rettype&stMem == 0 {
+					if ssainfo[v.op].blend {
+						if rewrite == nil {
+							rewrite = make([]*value, len(p.values))
+						}
+						rewrite[v.id] = v.args[0]
+					} else {
+						v.op = skfalse
+						v.args = nil
+						v.imm = nil
+						opt = true
+					}
 				}
 			}
 		}
