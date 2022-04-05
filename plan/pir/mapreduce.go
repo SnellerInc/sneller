@@ -211,7 +211,11 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		bind.bind = append(bind.bind, expr.Bind(expr.Div(sumid, countid), a.Agg[i].Result))
 	}
 	if bind != nil {
-		bind.bind = append(bind.bind, a.GroupBy...)
+		for i := range a.GroupBy {
+			name := a.GroupBy[i].Result()
+			id := expr.Identifier(name)
+			bind.bind = append(bind.bind, expr.Bind(id, name))
+		}
 	}
 
 	// first, compute the set of output columns
