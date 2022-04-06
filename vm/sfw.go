@@ -103,18 +103,80 @@ func Splitter(q RowConsumer) *RowSplitter {
 	return &RowSplitter{RowConsumer: q, delimhint: defaultDelims}
 }
 
-func (q *RowSplitter) writeSanitized(src []byte, delims [][2]uint32) error {
-	if Allocated(src) {
-		return q.writeRows(src, delims)
+// write vmm-allocated bytes w/o copying
+func (q *RowSplitter) writeVM(src []byte, delims [][2]uint32) error {
+	for len(src) > 0 {
+		n, nb := scanvmm(src, delims)
+		if n == 0 {
+			panic("no progress")
+		}
+		if int(nb) > len(src) {
+			panic("scanned past end of src")
+		}
+		err := q.writeRows(vmm[:vmUse], delims[:n])
+		if err != nil {
+			return err
+		}
+		src = src[nb:]
 	}
+	return nil
+}
+
+// write non-vmm bytes by copying immediately after scanning
+func (q *RowSplitter) writeVMCopy(src []byte, delims [][2]uint32) error {
 	if q.vmcache == nil {
 		q.vmcache = Malloc()
 	}
 	if len(src) > PageSize {
 		return fmt.Errorf("cannot sanitize write of size %d (PageSize = %d)", len(src), PageSize)
 	}
-	n := copy(q.vmcache, src)
-	return q.writeRows(q.vmcache[:n], delims)
+
+	const (
+		// startGranule is the desired size
+		// of copies into the vmm region
+		startGranule = 32 * 1024
+		// minDelims is the desired minimum
+		// number of delimiters passed to the core
+		minDelims = 32
+	)
+	granule := startGranule
+	for len(src) > 0 {
+		// copy data until we reach minDelims
+		// or the input data is exhausted
+		nd := 0
+		mem := q.vmcache[:0]
+	scancopy:
+		for nd < minDelims && len(mem)+granule < PageSize && len(src) > 0 {
+			off := len(mem)
+			copied := copy(mem[off:off+granule], src)
+			nnd, bytes := scanvmm(mem[off:off+copied], delims[nd:])
+			if nnd == 0 {
+				if nd > 0 {
+					break scancopy // just take what we have
+				}
+				// granule not large enough
+				// to fit a single object,
+				// so let's grow it and try again
+				granule *= 2
+				if granule > PageSize {
+					return fmt.Errorf("object > PageSize(%d)", PageSize)
+				}
+				continue scancopy
+			}
+			if bytes == 0 {
+				// should never be zero if nnd != 0
+				panic("zero added bytes")
+			}
+			nd += nnd                  // added delims
+			mem = mem[:off+int(bytes)] // only keep good data
+			src = src[bytes:]          // chomp off input
+		}
+		err := q.writeRows(vmm[:vmUse], delims[:nd])
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (q *RowSplitter) Close() error {
@@ -154,29 +216,16 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 
 	// allocate q.delims lazily
 	if len(q.delims) < q.delimhint {
-		if !Allocated(buf) {
-			// when we know we are receiving non-VM buffers,
-			// we should limit the number of delimiters processed
-			// in one go so that we can try to guarantee that
-			// the objects can safely be copied into a single vm "page"
-			q.delims = make([][2]uint32, 32)
-		} else {
-			q.delims = make([][2]uint32, q.delimhint)
-		}
+		q.delims = make([][2]uint32, q.delimhint)
 	}
-
-	for int(boff) < len(buf) {
-		count, next := scan(buf[boff:], 0, q.delims)
-		if int(next) > len(buf[boff:]) {
-			panic("last object extends past end of buffer?")
-		}
-		if count != 0 {
-			err := q.writeSanitized(buf[boff:boff+next], q.delims[:count])
-			if err != nil {
-				return int(boff), err
-			}
-		}
-		boff += next
+	var err error
+	if Allocated(buf) {
+		err = q.writeVM(buf[boff:], q.delims)
+	} else {
+		err = q.writeVMCopy(buf[boff:], q.delims)
+	}
+	if err != nil {
+		return 0, err
 	}
 	return len(buf), nil
 }

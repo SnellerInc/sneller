@@ -25,7 +25,6 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 // Subtable is a (Transport, Table) tuple
@@ -439,11 +438,11 @@ func (c *Client) output(dst io.Writer, size int) error {
 	if err != nil {
 		return err
 	}
-	// FIXME: gross
-	tmp := vm.Malloc()
-	tmp = tmp[:copy(tmp, buf)]
-	defer vm.Free(tmp)
-	w, err := dst.Write(tmp)
+	// NOTE: this is triggering a copy operation
+	// in vm due to buf not being allocated from vm.Malloc;
+	// on balance this is typically fine because we try
+	// to make the data sent between nodes very small
+	w, err := dst.Write(buf)
 	if err != nil {
 		return err
 	}

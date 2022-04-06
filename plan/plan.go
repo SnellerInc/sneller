@@ -334,11 +334,11 @@ func (n DummyOutput) exec(dst vm.QuerySink, parallel int, stats *ExecStats) erro
 	}
 	// just output an empty symbol table
 	// plus an empty structure
+	//
+	// NOTE: we are triggering a vm copy here,
+	// but it's just for a few bytes
 	var b ion.Buffer
 	var st ion.Symtab
-	mem := vm.Malloc()
-	defer vm.Free(mem)
-	b.Set(mem[:0])
 	st.Marshal(&b, true)
 	empty := ion.Struct{}
 	empty.Encode(&b, &st)
@@ -436,6 +436,8 @@ func (c *CountStar) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error
 	if err != nil {
 		return err
 	}
+	// NOTE: we are triggering a vm copy here;
+	// the buffer is small so it's fine
 	_, err = w.Write(b.Bytes())
 	err2 := w.Close()
 	err3 := dst.Close()

@@ -377,6 +377,12 @@ func (h *HashAggregate) Close() error {
 	if err != nil {
 		return err
 	}
+	// NOTE: we are triggering a vm copy here;
+	// we're doing this deliberately because
+	// typically the result is small (so, cheap)
+	// or the result is large in which case
+	// the RowSplitter will take care to split
+	// it up into small pieces before copying
 	_, err = dst.Write(outbuf.Bytes())
 	if err != nil {
 		dst.Close()

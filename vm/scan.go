@@ -18,8 +18,18 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+// scan scans any buffer and produces
+// relative displacments for all of
+// the structures relative to &buf[0]
+// beginning at offset start
 //go:noescape
 func scan(buf []byte, start int32, dst [][2]uint32) (int, int32)
+
+// scanvmm scans a vmm-allocated buffer
+// and produces absolute displacements
+// relative to vmm for all of the structures
+//go:noescape
+func scanvmm(buf []byte, dst [][2]uint32) (int, int32)
 
 // encoded returns a Symbol as its UVarInt
 // encoded bytes (up to 4 bytes) and the mask

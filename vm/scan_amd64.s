@@ -16,8 +16,10 @@
 
 //+build !noasm !appengine
 
+#include "textflag.h"
+
 // func scan(buf []byte, dst [][2]uint32) (int, int)
-TEXT ·scan(SB), 7, $8
+TEXT ·scan(SB), NOSPLIT, $8
   MOVQ   buf+0(FP), SI      // SI: &raw
   MOVQ   buf_len+8(FP), DX  // DX: len(raw)
   MOVL   start+24(FP), AX   // AX: start offset
@@ -26,6 +28,22 @@ TEXT ·scan(SB), 7, $8
   CALL   scanbody(SB)
   MOVQ   CX, ret+56(FP)     // count
   MOVL   AX, ret1+64(FP)    // next offset
+  RET
+
+// func scan(buf []byte, dst [][2]uint32) (int, int)
+TEXT ·scanvmm(SB), NOSPLIT, $0
+  MOVQ buf+0(FP), AX
+  MOVQ buf_len+8(FP), DX   // DX = relative end offset
+  MOVQ ·vmm+0(SB), SI      // SI = static base
+  SUBQ SI, AX              // AX = start offset
+  ADDL AX, DX              // DX = absolute end offset
+  MOVQ dst+24(FP), DI      // DI = &dst[0]
+  MOVQ dst_len+32(FP), R8  // R8 = len(dst)
+  CALL scanbody(SB)
+  MOVQ CX, ret+48(FP)      // ret0 = #items
+  ADDQ SI, AX              // AX = real pointer to end
+  SUBQ buf+0(FP), AX       // AX = (&end - &start) = #bytes processed
+  MOVL AX, ret1+56(FP)     // ret1 = #bytes
   RET
 
 //
@@ -55,38 +73,55 @@ restart:
   ADDQ SI, R14
   PREFETCHT0 0(R14)(AX*1)
 
-  // work out the current record
-  MOVQ 0(SI)(AX*1), R15
-  INCQ AX
-  MOVL R15, R14
-  ANDL $0xf0, R14
-  CMPL R14, $0xd0
-  JNZ  foundNoStruct
-  MOVL R15, R14
-  ANDL $0x0f, R14
-  CMPL R14, $0x0e
-  JNE  endloop
-  XORL R14, R14
+  MOVL  AX, R9
+  MOVQ  0(SI)(AX*1), R15
+  INCQ  AX
+  MOVL  R15, R14
+  ANDL  $0xf0, R14
+  CMPL  R14, $0xd0
+  JNZ   foundNoStruct
+  MOVL  R15, R14
+  ANDL  $0x0f, R14
+  CMPL  R14, $0x0e
+  JNE   endloop
+  TESTL $0x80808000, R15
+  JZ    done_early       // doesn't have varint stop bit
+  XORL  R14, R14
 varint:
-  SHLL $7, R14
-  SHRQ $8, R15
-  INCQ AX
-  MOVL R15, R13
-  ANDL $0x7f, R13
-  ADDL R13, R14
-  BTL  $7, R15
-  JNC  varint
+  SHLL  $7, R14
+  SHRQ  $8, R15
+  INCQ  AX
+  MOVL  R15, R13
+  ANDL  $0x7f, R13
+  ADDL  R13, R14
+  TESTL $0x80, R15
+  JZ    varint
 endloop:
-  MOVL AX, 0(DI)(CX*8)
-  MOVL R14, 4(DI)(CX*8)
-  ADDL R14, AX
-  INCL CX
-  CMPL AX, DX
-  JGE  done
+  // if the next offset is *beyond*
+  // the end of this buffer, then do
+  // not include it as a delimiter;
+  // this allows the caller to limit
+  // the range of inputs up to some #bytes
+  MOVL AX, R15
+  ADDL R14, R15
+  CMPL R15, DX
+  JA   done_early
+
+  MOVL AX, 0(DI)(CX*8)  // delims[cx].offset = off
+  MOVL R14, 4(DI)(CX*8) // delims[cx].length = length
+  ADDL R14, AX          // off += length
+  INCL CX               // cx++
+
+  CMPL R15, DX          // at end of buffer? done
+  JEQ  done
+  MOVL R15, AX
   CMPL CX, R8
   JLT  restart
 done:
   RET
+done_early:
+  MOVL R9, AX // restore previous offset
+  JMP  done
 
 foundBVM:
 // We encountered the binary version marker (BVM)
@@ -113,6 +148,8 @@ foundNoStruct:
   ANDQ    $0x0f, R14
   CMPQ    R14, $0x0e
   JNZ     foundNoStructDone
+  TESTL   $0x80808000, R15
+  JZ      done_early       // doesn't have varint stop bit
   XORL    R14, R14
 varint2:
   SHLL    $7, R14
@@ -121,8 +158,8 @@ varint2:
   MOVL    R15, R13
   ANDL    $0x7f, R13
   ADDL    R13, R14
-  BTL     $7, R15
-  JNC     varint2
+  TESTL   $0x80, R15
+  JZ      varint2
 foundNoStructDone:
   ADDQ    R14, AX  // Add length
   CMPQ    AX, DX   // Are we at the end of the message?

@@ -17,6 +17,8 @@ package vm
 import (
 	"fmt"
 	"testing"
+
+	"github.com/SnellerInc/sneller/ion"
 )
 
 func bulkscan(buf []byte, start int32, blocksize int, then func(uint32, uint32)) {
@@ -24,8 +26,11 @@ func bulkscan(buf []byte, start int32, blocksize int, then func(uint32, uint32))
 	count := 0
 	for start < int32(len(buf)) {
 		count, start = scan(buf, start, dst)
-		if count < blocksize && start < int32(len(buf)) {
-			panic("???")
+		if count == 0 {
+			panic("no progress")
+		}
+		if int(start) > len(buf) {
+			panic("start > len(buf)")
 		}
 		for i := range dst[:count] {
 			then(dst[i][0], dst[i][1])
@@ -115,6 +120,75 @@ func TestScan(t *testing.T) {
 		if n < len(expectedStarts) {
 			t.Errorf("only scanned %d items?", n)
 		}
+	}
+}
+
+// test that scanning data that points
+// outside the current slice does not
+// lead to invalid delimiters being returned
+func TestScanPartial(t *testing.T) {
+	var buf ion.Buffer
+	buf.BeginStruct(-1)
+	buf.BeginField(12)
+	buf.WriteString("first field")
+	buf.EndStruct()
+	splitpos := buf.Size()
+	buf.BeginStruct(-1)
+	buf.BeginField(13)
+	buf.WriteString("second field")
+	buf.EndStruct()
+
+	all := buf.Bytes()
+
+	delims := make([][2]uint32, 3)
+	// try to scan *past* the first struct
+	// but not including the second; this
+	// should only produce 1 delimiter
+	n, nb := scan(all[:splitpos+3], 0, delims)
+	if n != 1 {
+		t.Errorf("got %d delimiters back?", n)
+	}
+	if int(nb) != splitpos {
+		t.Errorf("consumed %d bytes; wanted %d", nb, splitpos)
+	}
+	// .. but the whole buffer should work:
+	n, nb = scan(all, 0, delims)
+	if n != 2 {
+		t.Errorf("got %d delimiters back?", n)
+	}
+	if int(nb) != len(all) {
+		t.Errorf("got %d bytes scanned?", nb)
+	}
+}
+
+// test that scanning incomplete data
+// does not lead to a hang or invalid results
+func TestScanIncomplete(t *testing.T) {
+	var buf ion.Buffer
+	buf.BeginStruct(-1)
+	buf.BeginField(10)
+	buf.WriteString("this is a string long enough to have a multi-byte TLV prefix")
+	buf.EndStruct()
+	mem := buf.Bytes()
+	other := make([]byte, len(mem))
+	other[0] = mem[0]
+
+	// not enough data; should return early
+	delims := make([][2]uint32, 3)
+	n, nb := scan(other[:1], 0, delims)
+	if n != 0 || nb != 0 {
+		t.Errorf("n = %d, nb = %d? expected zeros", n, nb)
+	}
+	// enough to parse length, but not enough length
+	other[1] = mem[1]
+	n, nb = scan(other[:2], 0, delims)
+	if n != 0 || nb != 0 {
+		t.Errorf("n = %d, nb = %d? expected zeros", n, nb)
+	}
+	copy(other, mem)
+	n, nb = scan(other, 0, delims)
+	if n != 1 || int(nb) != len(other) {
+		t.Errorf("n = %d, nb = %d? expected %d, %d", n, nb, 1, len(other))
 	}
 }
 
