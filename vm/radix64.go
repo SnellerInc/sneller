@@ -491,9 +491,9 @@ func (a *aggtable) initentry(buf []byte) {
 }
 
 //go:noescape
-func evalhashagg(bc *bytecode, delims [][2]uint32, tree *radixTree64, abort *uint16) int
+func evalhashagg(bc *bytecode, delims []vmref, tree *radixTree64, abort *uint16) int
 
-func (a *aggtable) fasteval(delims [][2]uint32, abort *uint16) int {
+func (a *aggtable) fasteval(delims []vmref, abort *uint16) int {
 	if a.bc.compiled == nil {
 		panic("aggtable.bc.compiled == nil")
 	}
@@ -522,7 +522,7 @@ func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
 	return lo, hi
 }
 
-func (a *aggtable) writeRows(buf []byte, delims [][2]uint32) error {
+func (a *aggtable) writeRows(delims []vmref) error {
 	// Number of projected fields that we GROUP BY. This
 	// specifies how many concatenated values will be stored
 	// in a.repr[] for each aggregated item.

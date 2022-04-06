@@ -52,12 +52,15 @@ type RowConsumer interface {
 	// symbolize is called every time
 	// the current symbol table changes
 	symbolize(st *ion.Symtab) error
-	// writeRows writes rows delimited by 'delims'
-	// from buf into the rest of the query.
-	// The implementation of WriteRows may clobber
-	// 'delims,' but it should *not* write into
-	// the source data buffer.
-	writeRows(buf []byte, delims [][2]uint32) error
+	// writeRows writes a slice of vmrefs
+	// (pointing to the inside of each row)
+	// into the next sub-query
+	//
+	// the implementation of writeRows *may*
+	// re-use the delims slice, but it *may not*
+	// write to the memory pointed to by delims;
+	// it must allocate new memory for new output
+	writeRows(delims []vmref) error
 
 	// Close indicates that the caller has
 	// finished writing row data.
@@ -84,9 +87,9 @@ func AsRowConsumer(dst io.WriteCloser) RowConsumer {
 // RowSplitter is a QueryConsumer that implements io.WriteCloser
 // so that materialized data can be fed to a RowConsumer
 type RowSplitter struct {
-	RowConsumer             // automatically adopts writeRows() and Close()
-	st, shared  ion.Symtab  // current symbol table
-	delims      [][2]uint32 // buffer of delimiters; allocated lazily
+	RowConsumer            // automatically adopts writeRows() and Close()
+	st, shared  ion.Symtab // current symbol table
+	delims      []vmref    // buffer of delimiters; allocated lazily
 	delimhint   int
 	symbolized  bool // seen any symbol tables
 
@@ -104,7 +107,7 @@ func Splitter(q RowConsumer) *RowSplitter {
 }
 
 // write vmm-allocated bytes w/o copying
-func (q *RowSplitter) writeVM(src []byte, delims [][2]uint32) error {
+func (q *RowSplitter) writeVM(src []byte, delims []vmref) error {
 	for len(src) > 0 {
 		n, nb := scanvmm(src, delims)
 		if nb == 0 {
@@ -113,7 +116,7 @@ func (q *RowSplitter) writeVM(src []byte, delims [][2]uint32) error {
 			panic("scanned past end of src")
 		}
 		if n > 0 {
-			err := q.writeRows(vmm[:vmUse], delims[:n])
+			err := q.writeRows(delims[:n])
 			if err != nil {
 				return err
 			}
@@ -124,7 +127,7 @@ func (q *RowSplitter) writeVM(src []byte, delims [][2]uint32) error {
 }
 
 // write non-vmm bytes by copying immediately after scanning
-func (q *RowSplitter) writeVMCopy(src []byte, delims [][2]uint32) error {
+func (q *RowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 	if q.vmcache == nil {
 		q.vmcache = Malloc()
 	}
@@ -174,7 +177,7 @@ func (q *RowSplitter) writeVMCopy(src []byte, delims [][2]uint32) error {
 			mem = mem[:off+int(bytes)] // only keep good data
 			src = src[bytes:]          // chomp off input
 		}
-		err := q.writeRows(vmm[:vmUse], delims[:nd])
+		err := q.writeRows(delims[:nd])
 		if err != nil {
 			return err
 		}
@@ -219,7 +222,7 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 
 	// allocate q.delims lazily
 	if len(q.delims) < q.delimhint {
-		q.delims = make([][2]uint32, q.delimhint)
+		q.delims = make([]vmref, q.delimhint)
 	}
 	var err error
 	if Allocated(buf) {
@@ -353,7 +356,7 @@ func (m *Rematerializer) symbolize(st *ion.Symtab) error {
 }
 
 // writeRows implements RowConsumer.writeRows
-func (m *Rematerializer) writeRows(buf []byte, delims [][2]uint32) error {
+func (m *Rematerializer) writeRows(delims []vmref) error {
 	if m.stsize == 0 {
 		return fmt.Errorf("Rematerializer.WriteRows() before symbolize()")
 	}
@@ -368,10 +371,8 @@ func (m *Rematerializer) writeRows(buf []byte, delims [][2]uint32) error {
 				return err
 			}
 		}
-		off := delims[i][0]
-		end := off + delims[i][1]
 		m.buf.BeginStruct(-1)
-		m.buf.UnsafeAppend(buf[off:end])
+		m.buf.UnsafeAppend(delims[i].mem())
 		m.buf.EndStruct()
 		m.empty = false
 	}

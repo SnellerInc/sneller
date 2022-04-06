@@ -74,7 +74,7 @@ type unnesting struct {
 	innerbc bytecode
 	aw      alignedWriter
 	st      ion.Symtab
-	delims  [][2]uint32
+	delims  []vmref
 	perms   []int32
 	dstrc   RowConsumer
 	out     io.WriteCloser
@@ -220,20 +220,17 @@ func (u *unnesting) symbolize(st *ion.Symtab) error {
 }
 
 //go:noescape
-func evalsplat(bc *bytecode, indelims, outdelims [][2]uint32, perm []int32) (int, int)
+func evalsplat(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int)
 
 //go:noescape
-func evalunnest(bc *bytecode, delims [][2]uint32, perm []int32, dst []byte, symbols []syminfo) (int, int)
+func evalunnest(bc *bytecode, delims []vmref, perm []int32, dst []byte, symbols []syminfo) (int, int)
 
 //go:noescape
-func compress(delims [][2]uint32) int
+func compress(delims []vmref) int
 
-func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
+func (u *unnesting) writeRows(delims []vmref) error {
 	if len(delims) == 0 {
 		return nil
-	}
-	if &buf[0] != &vmm[0] {
-		panic("not vmm?")
 	}
 	if u.aw.space() < (4 + 7) {
 		_, err := u.aw.flush()
@@ -242,7 +239,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 		}
 	}
 	if len(u.delims) == 0 {
-		u.delims = make([][2]uint32, 1023)
+		u.delims = make([]vmref, 1023)
 		u.perms = make([]int32, 1023)
 	}
 	if u.outerbc.compiled == nil {
@@ -258,7 +255,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 		if in == 0 {
 			// there wasn't enough room to splat a single
 			// lane's array members! we need more space
-			u.delims = make([][2]uint32, 2*len(u.delims))
+			u.delims = make([]vmref, 2*len(u.delims))
 			u.perms = make([]int32, 2*len(u.perms))
 			continue
 		}
@@ -282,7 +279,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 				if u.parent.filter != nil {
 					subrows = subrows[:compress(subrows)]
 				}
-				err := u.dstrc.writeRows(vmm[:vmUse], subrows)
+				err := u.dstrc.writeRows(subrows)
 				if err != nil {
 					return err
 				}
@@ -305,7 +302,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 			// lanes worth of data at once, so lets allocate
 			// more space for the next go-around to improve
 			// lane utilization
-			u.delims = make([][2]uint32, 2*len(u.delims))
+			u.delims = make([]vmref, 2*len(u.delims))
 			u.perms = make([]int32, 2*len(u.perms))
 		}
 	}

@@ -74,7 +74,7 @@ func (l *limiter) symbolize(st *ion.Symtab) error {
 	return l.dst.symbolize(st)
 }
 
-func (l *limiter) writeRows(buf []byte, rows [][2]uint32) error {
+func (l *limiter) writeRows(rows []vmref) error {
 	if l.done {
 		return io.EOF
 	}
@@ -97,5 +97,5 @@ func (l *limiter) writeRows(buf []byte, rows [][2]uint32) error {
 			return err
 		}
 	}
-	return l.dst.writeRows(buf, rows[:c])
+	return l.dst.writeRows(rows[:c])
 }

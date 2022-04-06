@@ -53,10 +53,10 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	defer Free(buf)
 	buf = buf[:16*len(ionRecord)]
 	base, _ := vmdispl(buf)
-	delims := make([][2]uint32, 16)
+	delims := make([]vmref, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
-		delims[i][0] = uint32(i * len(ionRecord)) + base
+		delims[i][0] = uint32(i*len(ionRecord)) + base
 		delims[i][1] = uint32(len(ionRecord))
 	}
 
@@ -117,10 +117,10 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 	defer Free(buf)
 	buf = buf[:16*len(ionRecord)]
 	base, _ := vmdispl(buf)
-	delims := make([][2]uint32, 16)
+	delims := make([]vmref, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
-		delims[i][0] = uint32(i * len(ionRecord)) + base
+		delims[i][0] = uint32(i*len(ionRecord)) + base
 		delims[i][1] = uint32(len(ionRecord) - 1)
 	}
 
@@ -165,11 +165,11 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 	buf := Malloc()
 	defer Free(buf)
 	buf = buf[:16*len(ionRecord)]
-	delims := make([][2]uint32, 16)
+	delims := make([]vmref, 16)
 	base, _ := vmdispl(buf)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
-		delims[i][0] = uint32(i * len(ionRecord)) + base
+		delims[i][0] = uint32(i*len(ionRecord)) + base
 		delims[i][1] = uint32(len(ionRecord) - 1)
 	}
 

@@ -30,7 +30,7 @@ import (
 )
 
 //go:noescape
-func evalaggregatebc(w *bytecode, delims [][2]uint32, aggregateDataBuffer []byte) int
+func evalaggregatebc(w *bytecode, delims []vmref, aggregateDataBuffer []byte) int
 
 // AggregateKind Specifies the aggregate operation and its type.
 type AggregateKind uint8
@@ -411,12 +411,9 @@ func (p *aggregateLocal) symbolize(st *ion.Symtab) error {
 	return p.dst.symbolize(st)
 }
 
-func (p *aggregateLocal) writeRows(buf []byte, delims [][2]uint32) error {
+func (p *aggregateLocal) writeRows(delims []vmref) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
-	}
-	if &buf[0] != &vmm[0] {
-		panic("not vm base")
 	}
 	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
 	p.rowCount += uint64(rowsCount)

@@ -404,7 +404,7 @@ func (a *applicator) symbolize(st *ion.Symtab) error {
 	return nil
 }
 
-func (a *applicator) writeRows(buf []byte, delims [][2]uint32) error {
+func (a *applicator) writeRows(delims []vmref) error {
 	if a.bc.compiled == nil {
 		panic("applicator.symbolize() not called")
 	}

@@ -301,7 +301,7 @@ func symbolize(sort *Order, findbc *bytecode, st *ion.Symtab, global bool) error
 	return nil
 }
 
-func bcfind(sort *Order, findbc *bytecode, delims [][2]uint32) (out []vRegLayout, err error) {
+func bcfind(sort *Order, findbc *bytecode, delims []vmref) (out []vRegLayout, err error) {
 	if findbc.compiled == nil {
 		return out, fmt.Errorf("sortstate.bcfind() before symbolize()")
 	}
@@ -341,11 +341,11 @@ func (s *sortstateMulticolumn) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
-func (s *sortstateMulticolumn) bcfind(delims [][2]uint32) ([]vRegLayout, error) {
+func (s *sortstateMulticolumn) bcfind(delims []vmref) ([]vRegLayout, error) {
 	return bcfind(s.parent, &s.findbc, delims)
 }
 
-func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
+func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
 	// Note: we have to copy all input data, as:
 	// 1. the 'src' buffer is mutable,
 	// 2. the 'delims' array is mutable too.
@@ -382,9 +382,8 @@ func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 		laneID := rowID & bcLaneCountMask
 
 		// extract the record data
-		ofs := delims[rowID][0]
-		size := delims[rowID][1]
-		bytes := src[ofs : ofs+size]
+		d := delims[rowID]
+		bytes := d.mem()
 
 		var record sort.IonRecord
 
@@ -448,11 +447,11 @@ func (s *sortstateSingleColumn) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
-func (s *sortstateSingleColumn) bcfind(delims [][2]uint32) ([]vRegLayout, error) {
+func (s *sortstateSingleColumn) bcfind(delims []vmref) ([]vRegLayout, error) {
 	return bcfind(s.parent, &s.findbc, delims)
 }
 
-func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error {
+func (s *sortstateSingleColumn) writeRows(delims []vmref) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -482,9 +481,7 @@ func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error 
 		laneID := rowID & bcLaneCountMask
 
 		// extract the record data
-		ofs := delims[rowID][0]
-		size := delims[rowID][1]
-		bytes := src[ofs : ofs+size]
+		bytes := delims[rowID].mem()
 
 		// append record
 		record := make([]byte, len(bytes))
@@ -493,11 +490,9 @@ func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error 
 		s.records = append(s.records, record)
 
 		// get the field value
-		fieldOffset := fieldsView[blockID].offsets[laneID]
-		fieldSize := fieldsView[blockID].sizes[laneID]
-		if fieldSize > 0 {
-			field := vmref{fieldOffset, fieldSize}.mem()
-			err := s.subcolumn.Add(s.recordID, field)
+		item := fieldsView[blockID].item(laneID)
+		if item.size() > 0 {
+			err := s.subcolumn.Add(s.recordID, item.mem())
 			if err != nil {
 				return err
 			}
@@ -564,11 +559,11 @@ func (s *sortstateKtop) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, &s.symtabs[len(s.symtabs)-1], false)
 }
 
-func (s *sortstateKtop) bcfind(delims [][2]uint32) ([]vRegLayout, error) {
+func (s *sortstateKtop) bcfind(delims []vmref) ([]vRegLayout, error) {
 	return bcfind(s.parent, &s.findbc, delims)
 }
 
-func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
+func (s *sortstateKtop) writeRows(delims []vmref) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -595,9 +590,7 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 		laneID := rowID & bcLaneCountMask
 
 		// extract the record data
-		ofs := delims[rowID][0]
-		size := delims[rowID][1]
-		bytes := src[ofs : ofs+size]
+		bytes := delims[rowID].mem()
 
 		// calculate space for boxed values
 		record.Boxed = 0
@@ -618,14 +611,14 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 		copy(s.buffer[record.Boxed:], bytes)
 
 		// copy field delimiters and boxed values (if any)
-		boxedOffset := uint32(0)
+		boxedOffset := 0
 		for columnID := 0; columnID < columnCount; columnID++ {
-			fieldOffset := fieldsView[blockID].offsets[laneID]
-			fieldSize := fieldsView[blockID].sizes[laneID]
-			s.fields[columnID][0] = boxedOffset
-			s.fields[columnID][1] = fieldSize
-			copy(s.buffer[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
-			boxedOffset += fieldSize
+			it := fieldsView[blockID].item(laneID)
+			size := it.size()
+			s.fields[columnID][0] = uint32(boxedOffset)
+			s.fields[columnID][1] = uint32(size)
+			copy(s.buffer[boxedOffset:], it.mem())
+			boxedOffset += size
 		}
 
 		record.Raw = s.buffer

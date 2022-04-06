@@ -79,7 +79,7 @@ func (c *Count) Close() error {
 	return nil
 }
 
-func (c *Count) writeRows(buf []byte, delims [][2]uint32) error {
+func (c *Count) writeRows(delims []vmref) error {
 	atomic.AddInt64(&c.val, int64(len(delims)))
 	return nil
 }
@@ -98,7 +98,7 @@ type wherebc struct {
 }
 
 //go:noescape
-func evalfilterbc(w *bytecode, delims [][2]uint32) int
+func evalfilterbc(w *bytecode, delims []vmref) int
 
 func (w *wherebc) symbolize(st *ion.Symtab) error {
 	err := recompile(st, w.parent.prog, &w.ssa, &w.bc)
@@ -108,7 +108,7 @@ func (w *wherebc) symbolize(st *ion.Symtab) error {
 	return w.dst.symbolize(st)
 }
 
-func (w *wherebc) writeRows(buf []byte, delims [][2]uint32) error {
+func (w *wherebc) writeRows(delims []vmref) error {
 	if w.bc.compiled == nil {
 		panic("bytecode writeRows() before Symbolize()")
 	}
@@ -118,7 +118,7 @@ func (w *wherebc) writeRows(buf []byte, delims [][2]uint32) error {
 	}
 	if valid > 0 {
 		// delims are absolute now, so use vmm as base
-		return w.dst.writeRows(vmm[:vmUse:vmUse], delims[:valid])
+		return w.dst.writeRows(delims[:valid])
 	}
 	return nil
 }

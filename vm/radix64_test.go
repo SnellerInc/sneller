@@ -99,7 +99,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	}
 	t.Logf("bytecode: %s\n", agt.bc.String())
 
-	delims := make([][2]uint32, 1024)
+	delims := make([]vmref, 1024)
 	n, _ := scanvmm(buf, delims)
 	if n != 1023 {
 		t.Fatal("expected 1023 delims; found", n)
@@ -218,13 +218,13 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	}
 	agt.aggregateKinds = agt.parent.aggregateKinds
 
-	delims := make([][2]uint32, 1024)
+	delims := make([]vmref, 1024)
 	n, _ := scanvmm(buf, delims)
 	if n != 1023 {
 		t.Fatal("expected 1023 delims; found", n)
 	}
 	delims = delims[:n]
-	err = agt.writeRows(buf, delims)
+	err = agt.writeRows(delims)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = agt2.writeRows(buf, delims)
+	err = agt2.writeRows(delims)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,8 +430,8 @@ func BenchmarkAggregate(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	delims := make([][2]uint32, 1024)
-	n, _ := scan(buf, 0, delims)
+	delims := make([]vmref, 1024)
+	n, _ := scanvmm(buf, delims)
 	if n != 1023 {
 		b.Fatal("expected 1023 delims; found", n)
 	}
@@ -439,7 +439,7 @@ func BenchmarkAggregate(b *testing.B) {
 	b.SetBytes(int64(delims[1022][0] + delims[1022][1]))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		err = agt.writeRows(buf, delims)
+		err = agt.writeRows(delims)
 		if err != nil {
 			b.Fatal(err)
 		}

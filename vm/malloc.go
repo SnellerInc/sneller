@@ -79,6 +79,31 @@ func (v vmref) mem() []byte {
 	return mem[:v[1]:v[1]]
 }
 
+// valid returns whether or not v
+// is a valid reference
+//
+// NOTE: valid is fairly expensive to run;
+// you should probably only use this in testing
+// or with special build flags turned on
+func (v vmref) valid() bool {
+	if v[0] == 0 && v[1] == 0 {
+		return true
+	}
+	if v[0] > vmUse || v[0]+v[1] > vmUse {
+		return false
+	}
+	// the page that this points to
+	// should have its allocated bit set
+	pfn := v[0] >> pageBits
+	bitmap := vmbits[pfn / 64]
+	bit := pfn % 64
+	return bitmap & (1 << bit) != 0
+}
+
+// size returns the number of bytes
+// that this vmref points to
+func (v vmref) size() int { return int(v[1]) }
+
 func init() {
 	vmm = mapVM()
 	guard(vmm[:vmUse])

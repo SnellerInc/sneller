@@ -237,12 +237,10 @@ func (c *cross) join(lhs, rhs []byte) error {
 	return nil
 }
 
-func (c *cross) writeRows(buf []byte, delims [][2]uint32) error {
+func (c *cross) writeRows(delims []vmref) error {
 	rhsmem := c.rhsbuf.Bytes()
 	for i := range delims {
-		loff := int(delims[i][0])
-		llen := int(delims[i][1])
-		lhsmem := buf[loff : loff+llen]
+		lhsmem := delims[i].mem()
 		for j := range c.rhssep {
 			roff := c.rhssep[j][0]
 			rlen := c.rhssep[j][1]

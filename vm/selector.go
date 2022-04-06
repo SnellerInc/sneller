@@ -80,9 +80,9 @@ type syminfo struct {
 }
 
 //go:noescape
-func evalfindbc(w *bytecode, delims [][2]uint32, stride int)
+func evalfindbc(w *bytecode, delims []vmref, stride int)
 
-func evalfind(w *bytecode, delims [][2]uint32, stride int) error {
+func evalfind(w *bytecode, delims []vmref, stride int) error {
 	evalfindbc(w, delims, stride*vRegSize)
 	if w.err != 0 {
 		return w.err
@@ -242,7 +242,7 @@ func (p *projector) flush() error {
 	return err
 }
 
-func (p *projector) bcproject(buf []byte, delims [][2]uint32, dst []byte, out []syminfo) (int, int) {
+func (p *projector) bcproject(delims []vmref, dst []byte, out []syminfo) (int, int) {
 	if len(p.bc.compiled) == 0 {
 		panic("projector.bcproject() before symbolize()")
 	}
@@ -256,7 +256,7 @@ func (p *projector) bcproject(buf []byte, delims [][2]uint32, dst []byte, out []
 	return evalproject(&p.bc, delims, dst, out)
 }
 
-func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
+func (p *projector) writeRows(delims []vmref) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -278,7 +278,7 @@ func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
 	// all of the input delimiters must need more buffer space
 	lc := 0
 	for len(delims) > 0 {
-		off, rewrote := p.bcproject(buf, delims, p.aw.buf[p.aw.off:], p.outsel)
+		off, rewrote := p.bcproject(delims, p.aw.buf[p.aw.off:], p.outsel)
 		if p.bc.err != 0 {
 			// we don't expect to encounter
 			// any errors...
@@ -293,7 +293,7 @@ func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
 			panic("memory corruption")
 		}
 		if p.dstrc != nil && rewrote > 0 {
-			err := p.dstrc.writeRows(vmm[:vmUse], delims[:rewrote])
+			err := p.dstrc.writeRows(delims[:rewrote])
 			if err != nil {
 				return fmt.Errorf("Projection.dst.WriteRows: %w", err)
 			}
@@ -317,4 +317,4 @@ func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
 }
 
 //go:noescape
-func evalproject(bc *bytecode, delims [][2]uint32, dst []byte, symbols []syminfo) (int, int)
+func evalproject(bc *bytecode, delims []vmref, dst []byte, symbols []syminfo) (int, int)

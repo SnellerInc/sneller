@@ -22,14 +22,19 @@ import (
 // relative displacments for all of
 // the structures relative to &buf[0]
 // beginning at offset start
+//
+// NOTE: these are *not* vmref slices;
+// those are produced by scanvmm
 //go:noescape
 func scan(buf []byte, start int32, dst [][2]uint32) (int, int32)
 
 // scanvmm scans a vmm-allocated buffer
 // and produces absolute displacements
 // relative to vmm for all of the structures
+// present in buf, up to either len(buf) or
+// the maximum number of records that fit in dst
 //go:noescape
-func scanvmm(buf []byte, dst [][2]uint32) (int, int32)
+func scanvmm(buf []byte, dst []vmref) (int, int32)
 
 // encoded returns a Symbol as its UVarInt
 // encoded bytes (up to 4 bytes) and the mask

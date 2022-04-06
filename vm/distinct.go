@@ -152,9 +152,9 @@ func (d *deduper) symbolize(st *ion.Symtab) error {
 }
 
 //go:noescape
-func evaldedup(bc *bytecode, delims [][2]uint32, hashes []uint64, tree *radixTree64, slot int) int
+func evaldedup(bc *bytecode, delims []vmref, hashes []uint64, tree *radixTree64, slot int) int
 
-func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
+func (d *deduper) writeRows(delims []vmref) error {
 	if d.closed {
 		return io.EOF
 	}
@@ -169,7 +169,7 @@ func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
 	if d.local == nil {
 		d.local = newRadixTree(0)
 		if len(delims) > 16 {
-			d.writeRows(buf, delims[:16])
+			d.writeRows(delims[:16])
 			delims = delims[16:]
 		}
 	}
@@ -241,7 +241,7 @@ func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
 		return nil
 	}
 	// delims are absolute now, so write relative to vmm
-	return d.dst.writeRows(vmm[:vmUse:vmUse], delims)
+	return d.dst.writeRows(delims)
 }
 
 func (d *deduper) Close() error {

@@ -14,7 +14,7 @@
 
 package vm
 
-func (b *bytecode) find(delims [][2]uint32, cols int) (out []vRegLayout) {
+func (b *bytecode) find(delims []vmref, cols int) (out []vRegLayout) {
 	// FIXME: don't encode knowledge about
 	// vectorization width here...
 	blockCount := (len(delims) + bcLaneCount - 1) / bcLaneCount

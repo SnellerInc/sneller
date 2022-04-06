@@ -75,7 +75,7 @@ func TestSplat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	delims := make([][2]uint32, 128)
+	delims := make([]vmref, 128)
 	n, _ := scanvmm(rest, delims)
 	if n != 60 {
 		t.Fatalf("got %d rows at top level?", n)
@@ -104,7 +104,7 @@ func TestSplat(t *testing.T) {
 		totalentries += entrylengths[i]
 	}
 
-	outdelims := make([][2]uint32, 1024)
+	outdelims := make([]vmref, 1024)
 	outperm := make([]int32, len(outdelims))
 	in, out := evalsplat(&bc, delims[:n], outdelims, outperm)
 	if in != 16 {
@@ -375,7 +375,7 @@ func BenchmarkUnpackParking3(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	delims := make([][2]uint32, 128)
+	delims := make([]vmref, 128)
 	n, _ := scanvmm(rest, delims)
 	if n != 60 {
 		b.Fatalf("got %d rows at top level?", n)
@@ -390,7 +390,7 @@ func BenchmarkUnpackParking3(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	outdelims := make([][2]uint32, 1024)
+	outdelims := make([]vmref, 1024)
 	outperm := make([]int32, len(outdelims))
 
 	b.SetBytes(0x42b8)
