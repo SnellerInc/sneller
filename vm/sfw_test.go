@@ -30,6 +30,13 @@ type noClose struct {
 
 func (n *noClose) Close() error { return nil }
 
+func noppad(buf []byte) {
+	for len(buf) > 0 {
+		wrote, padded := ion.NopPadding(buf, len(buf))
+		buf = buf[(wrote + padded):]
+	}
+}
+
 // See #561
 func TestRematerializeIssue561(t *testing.T) {
 	row0 := ion.Struct{
@@ -73,12 +80,20 @@ func TestRematerializeIssue561(t *testing.T) {
 	defer Free(mem)
 	for _, chunk := range out {
 		size := copy(mem, chunk)
-		_, err := splitter.Write(mem[:size])
+		noppad(mem[size:]) // test that we handle nop pad ok
+		_, err := splitter.Write(mem)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	err := splitter.Close()
+	// test that writing a nop pad alone is ok
+	noppad(mem[:150])
+	_, err := splitter.Write(mem[:150])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = splitter.Close()
 	if err != nil {
 		t.Fatal(err)
 	}

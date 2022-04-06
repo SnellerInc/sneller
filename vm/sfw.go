@@ -107,15 +107,16 @@ func Splitter(q RowConsumer) *RowSplitter {
 func (q *RowSplitter) writeVM(src []byte, delims [][2]uint32) error {
 	for len(src) > 0 {
 		n, nb := scanvmm(src, delims)
-		if n == 0 {
+		if nb == 0 {
 			panic("no progress")
-		}
-		if int(nb) > len(src) {
+		} else if int(nb) > len(src) {
 			panic("scanned past end of src")
 		}
-		err := q.writeRows(vmm[:vmUse], delims[:n])
-		if err != nil {
-			return err
+		if n > 0 {
+			err := q.writeRows(vmm[:vmUse], delims[:n])
+			if err != nil {
+				return err
+			}
 		}
 		src = src[nb:]
 	}
@@ -151,6 +152,11 @@ func (q *RowSplitter) writeVMCopy(src []byte, delims [][2]uint32) error {
 			copied := copy(mem[off:off+granule], src)
 			nnd, bytes := scanvmm(mem[off:off+copied], delims[nd:])
 			if nnd == 0 {
+				// just a nop pad:
+				if bytes > 0 {
+					src = src[bytes:]
+					continue scancopy
+				}
 				if nd > 0 {
 					break scancopy // just take what we have
 				}
