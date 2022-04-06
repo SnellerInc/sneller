@@ -37,7 +37,7 @@ func path(t testing.TB, s string) *expr.Path {
 	return p
 }
 
-func readVM(t *testing.T, name string) []byte {
+func readVM(t testing.TB, name string) []byte {
 	f, err := os.Open(name)
 	if err != nil {
 		t.Helper()
@@ -74,10 +74,9 @@ func TestSplat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip := len(buf) - len(rest)
 
 	delims := make([][2]uint32, 128)
-	n, _ := scan(buf, int32(skip), delims)
+	n, _ := scanvmm(rest, delims)
 	if n != 60 {
 		t.Fatalf("got %d rows at top level?", n)
 	}
@@ -107,7 +106,7 @@ func TestSplat(t *testing.T) {
 
 	outdelims := make([][2]uint32, 1024)
 	outperm := make([]int32, len(outdelims))
-	in, out := evalsplat(&bc, buf, delims[:n], outdelims, outperm)
+	in, out := evalsplat(&bc, delims[:n], outdelims, outperm)
 	if in != 16 {
 		// we know we provided enough space
 		// for all sixteen lanes to be
@@ -147,7 +146,7 @@ func TestSplat(t *testing.T) {
 	total := 0
 	delims = delims[:n]
 	for len(delims) > 0 {
-		in, out := evalsplat(&bc, buf, delims, outdelims, outperm)
+		in, out := evalsplat(&bc, delims, outdelims, outperm)
 		if in > 16 {
 			t.Errorf("consumed %d rows?", in)
 		}
@@ -370,20 +369,14 @@ func BenchmarkUnpackParking3(b *testing.B) {
 	var p prog
 	var st ion.Symtab
 
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
+	buf := readVM(b, "../testdata/parking3.ion")
+	rest, err := st.Unmarshal(buf)
 	if err != nil {
 		b.Fatal(err)
 	}
-	var skip int
-	var rest []byte
-	rest, err = st.Unmarshal(buf)
-	if err != nil {
-		b.Fatal(err)
-	}
-	skip = len(buf) - len(rest)
 
 	delims := make([][2]uint32, 128)
-	n, _ := scan(buf, int32(skip), delims)
+	n, _ := scanvmm(rest, delims)
 	if n != 60 {
 		b.Fatalf("got %d rows at top level?", n)
 	}
@@ -408,7 +401,7 @@ func BenchmarkUnpackParking3(b *testing.B) {
 		outp := outperm
 		total := 0
 		for len(indelims) > 0 {
-			in, out := evalsplat(&bc, buf, indelims, outd, outp)
+			in, out := evalsplat(&bc, indelims, outd, outp)
 			indelims = indelims[in:]
 			outd = outd[out:]
 			outp = outp[out:]

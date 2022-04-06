@@ -52,10 +52,11 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	buf := Malloc()
 	defer Free(buf)
 	buf = buf[:16*len(ionRecord)]
+	base, _ := vmdispl(buf)
 	delims := make([][2]uint32, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
-		delims[i][0] = uint32(i * len(ionRecord))
+		delims[i][0] = uint32(i * len(ionRecord)) + base
 		delims[i][1] = uint32(len(ionRecord))
 	}
 
@@ -63,7 +64,7 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	reserve(t, &findbc, 64)
 
 	// when
-	evalfindbc(&findbc, buf, delims, vRegSize)
+	evalfindbc(&findbc, delims, vRegSize)
 
 	// then
 	// When converting float values, the procedure 'boxfloat' is allowed to
@@ -115,10 +116,11 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 	buf := Malloc()
 	defer Free(buf)
 	buf = buf[:16*len(ionRecord)]
+	base, _ := vmdispl(buf)
 	delims := make([][2]uint32, 16)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
-		delims[i][0] = uint32(i * len(ionRecord))
+		delims[i][0] = uint32(i * len(ionRecord)) + base
 		delims[i][1] = uint32(len(ionRecord) - 1)
 	}
 
@@ -126,7 +128,7 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 	reserve(t, &findbc, 64)
 
 	// when
-	evalfindbc(&findbc, buf, delims, vRegSize)
+	evalfindbc(&findbc, delims, vRegSize)
 
 	// then
 	// Note: Math operations are done on floats and then converted back to ints,
@@ -164,9 +166,10 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 	defer Free(buf)
 	buf = buf[:16*len(ionRecord)]
 	delims := make([][2]uint32, 16)
+	base, _ := vmdispl(buf)
 	for i := 0; i < 16; i++ {
 		copy(buf[i*len(ionRecord):], ionRecord)
-		delims[i][0] = uint32(i * len(ionRecord))
+		delims[i][0] = uint32(i * len(ionRecord)) + base
 		delims[i][1] = uint32(len(ionRecord) - 1)
 	}
 
@@ -174,7 +177,7 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 	reserve(t, &findbc, 64)
 
 	// when
-	evalfindbc(&findbc, buf, delims, vRegSize)
+	evalfindbc(&findbc, delims, vRegSize)
 
 	// Note: Math operations are done on floats and then converted back to ints,
 	//       this is why the two least bytes are not equal the original ones.

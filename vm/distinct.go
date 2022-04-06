@@ -152,7 +152,7 @@ func (d *deduper) symbolize(st *ion.Symtab) error {
 }
 
 //go:noescape
-func evaldedup(bc *bytecode, buf []byte, delims [][2]uint32, hashes []uint64, tree *radixTree64, slot int) int
+func evaldedup(bc *bytecode, delims [][2]uint32, hashes []uint64, tree *radixTree64, slot int) int
 
 func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
 	if d.closed {
@@ -179,7 +179,7 @@ func (d *deduper) writeRows(buf []byte, delims [][2]uint32) error {
 	} else {
 		d.hashes = make([]uint64, len(delims))
 	}
-	count := evaldedup(&d.bc, buf, delims, d.hashes, d.local, d.hashslot)
+	count := evaldedup(&d.bc, delims, d.hashes, d.local, d.hashslot)
 	if d.bc.err != 0 {
 		return fmt.Errorf("distinct: bytecode error: %w", d.bc.err)
 	}

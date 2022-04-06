@@ -80,10 +80,10 @@ type syminfo struct {
 }
 
 //go:noescape
-func evalfindbc(w *bytecode, buf []byte, delims [][2]uint32, stride int)
+func evalfindbc(w *bytecode, delims [][2]uint32, stride int)
 
-func evalfind(w *bytecode, buf []byte, delims [][2]uint32, stride int) error {
-	evalfindbc(w, buf, delims, stride*vRegSize)
+func evalfind(w *bytecode, delims [][2]uint32, stride int) error {
+	evalfindbc(w, delims, stride*vRegSize)
 	if w.err != 0 {
 		return w.err
 	}
@@ -249,14 +249,11 @@ func (p *projector) bcproject(buf []byte, delims [][2]uint32, dst []byte, out []
 	if len(p.parent.sel) != len(out) {
 		panic("len(selector.symbols) != len(outsymbols)")
 	}
-	if p.bc.scratch != nil {
-		p.bc.scratch = p.bc.scratch[:p.bc.scratchreserve]
-	}
 
 	p.bc.ensureVStackSize(len(p.parent.sel) * int(vRegSize))
 	p.bc.allocStacks()
 
-	return evalproject(&p.bc, buf, delims, dst, out)
+	return evalproject(&p.bc, delims, dst, out)
 }
 
 func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
@@ -320,4 +317,4 @@ func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
 }
 
 //go:noescape
-func evalproject(bc *bytecode, buf []byte, delims [][2]uint32, dst []byte, symbols []syminfo) (int, int)
+func evalproject(bc *bytecode, delims [][2]uint32, dst []byte, symbols []syminfo) (int, int)

@@ -128,9 +128,6 @@ func (q *RowSplitter) writeVMCopy(src []byte, delims [][2]uint32) error {
 	if q.vmcache == nil {
 		q.vmcache = Malloc()
 	}
-	if len(src) > PageSize {
-		return fmt.Errorf("cannot sanitize write of size %d (PageSize = %d)", len(src), PageSize)
-	}
 
 	const (
 		// startGranule is the desired size

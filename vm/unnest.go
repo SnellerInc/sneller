@@ -220,10 +220,10 @@ func (u *unnesting) symbolize(st *ion.Symtab) error {
 }
 
 //go:noescape
-func evalsplat(bc *bytecode, buf []byte, indelims, outdelims [][2]uint32, perm []int32) (int, int)
+func evalsplat(bc *bytecode, indelims, outdelims [][2]uint32, perm []int32) (int, int)
 
 //go:noescape
-func evalunnest(bc *bytecode, buf []byte, delims [][2]uint32, perm []int32, dst []byte, symbols []syminfo) (int, int)
+func evalunnest(bc *bytecode, delims [][2]uint32, perm []int32, dst []byte, symbols []syminfo) (int, int)
 
 //go:noescape
 func compress(delims [][2]uint32) int
@@ -231,6 +231,9 @@ func compress(delims [][2]uint32) int
 func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 	if len(delims) == 0 {
 		return nil
+	}
+	if &buf[0] != &vmm[0] {
+		panic("not vmm?")
 	}
 	if u.aw.space() < (4 + 7) {
 		_, err := u.aw.flush()
@@ -248,7 +251,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 
 	for len(delims) > 0 {
 		shouldgrow := false
-		in, out := evalsplat(&u.outerbc, buf, delims, u.delims, u.perms)
+		in, out := evalsplat(&u.outerbc, delims, u.delims, u.perms)
 		if u.outerbc.err != 0 {
 			return fmt.Errorf("unnest: splatting arrays: %w", u.outerbc.err)
 		}
@@ -267,7 +270,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 		inner := u.delims[:out] // absolute addresses
 		innerperm := u.perms[:out]
 		for len(inner) > 0 {
-			wrote, consumed := evalunnest(&u.innerbc, vmm[:vmUse:vmUse], inner, innerperm, u.aw.buf[u.aw.off:], u.outsel)
+			wrote, consumed := evalunnest(&u.innerbc, inner, innerperm, u.aw.buf[u.aw.off:], u.outsel)
 			if u.innerbc.err != 0 {
 				return fmt.Errorf("unnest inner bytecode: %w", u.innerbc.err)
 			}

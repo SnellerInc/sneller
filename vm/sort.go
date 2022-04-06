@@ -301,7 +301,7 @@ func symbolize(sort *Order, findbc *bytecode, st *ion.Symtab, global bool) error
 	return nil
 }
 
-func bcfind(sort *Order, findbc *bytecode, buf []byte, delims [][2]uint32) (out []vRegLayout, err error) {
+func bcfind(sort *Order, findbc *bytecode, delims [][2]uint32) (out []vRegLayout, err error) {
 	if findbc.compiled == nil {
 		return out, fmt.Errorf("sortstate.bcfind() before symbolize()")
 	}
@@ -318,7 +318,7 @@ func bcfind(sort *Order, findbc *bytecode, buf []byte, delims [][2]uint32) (out 
 		findbc.scratch = findbc.scratch[:findbc.scratchreserve]
 	}
 
-	err = evalfind(findbc, buf, delims, len(sort.columns))
+	err = evalfind(findbc, delims, len(sort.columns))
 	if err != nil {
 		return
 	}
@@ -341,8 +341,8 @@ func (s *sortstateMulticolumn) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
-func (s *sortstateMulticolumn) bcfind(buf []byte, delims [][2]uint32) ([]vRegLayout, error) {
-	return bcfind(s.parent, &s.findbc, buf, delims)
+func (s *sortstateMulticolumn) bcfind(delims [][2]uint32) ([]vRegLayout, error) {
+	return bcfind(s.parent, &s.findbc, delims)
 }
 
 func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
@@ -357,7 +357,7 @@ func (s *sortstateMulticolumn) writeRows(src []byte, delims [][2]uint32) error {
 	}
 
 	// locate fields within the src
-	fieldsView, err := s.bcfind(src, delims)
+	fieldsView, err := s.bcfind(delims)
 	if err != nil {
 		return err
 	}
@@ -448,8 +448,8 @@ func (s *sortstateSingleColumn) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
-func (s *sortstateSingleColumn) bcfind(buf []byte, delims [][2]uint32) ([]vRegLayout, error) {
-	return bcfind(s.parent, &s.findbc, buf, delims)
+func (s *sortstateSingleColumn) bcfind(delims [][2]uint32) ([]vRegLayout, error) {
+	return bcfind(s.parent, &s.findbc, delims)
 }
 
 func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error {
@@ -469,7 +469,7 @@ func (s *sortstateSingleColumn) writeRows(src []byte, delims [][2]uint32) error 
 	}
 
 	// locate fields within the src
-	fieldsView, err := s.bcfind(src, delims)
+	fieldsView, err := s.bcfind(delims)
 	if err != nil {
 		return err
 	}
@@ -564,8 +564,8 @@ func (s *sortstateKtop) symbolize(st *ion.Symtab) error {
 	return symbolize(s.parent, &s.findbc, &s.symtabs[len(s.symtabs)-1], false)
 }
 
-func (s *sortstateKtop) bcfind(buf []byte, delims [][2]uint32) ([]vRegLayout, error) {
-	return bcfind(s.parent, &s.findbc, buf, delims)
+func (s *sortstateKtop) bcfind(delims [][2]uint32) ([]vRegLayout, error) {
+	return bcfind(s.parent, &s.findbc, delims)
 }
 
 func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
@@ -574,7 +574,7 @@ func (s *sortstateKtop) writeRows(src []byte, delims [][2]uint32) error {
 	}
 
 	// locate fields within the src
-	fieldsView, err := s.bcfind(src, delims)
+	fieldsView, err := s.bcfind(delims)
 	if err != nil {
 		return err
 	}

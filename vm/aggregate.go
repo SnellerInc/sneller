@@ -30,7 +30,7 @@ import (
 )
 
 //go:noescape
-func evalaggregatebc(w *bytecode, buf []byte, delims [][2]uint32, aggregateDataBuffer []byte) int
+func evalaggregatebc(w *bytecode, delims [][2]uint32, aggregateDataBuffer []byte) int
 
 // AggregateKind Specifies the aggregate operation and its type.
 type AggregateKind uint8
@@ -415,7 +415,10 @@ func (p *aggregateLocal) writeRows(buf []byte, delims [][2]uint32) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
 	}
-	rowsCount := evalaggregatebc(&p.bc, buf, delims, p.partialData)
+	if &buf[0] != &vmm[0] {
+		panic("not vm base")
+	}
+	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
 	p.rowCount += uint64(rowsCount)
 	return nil
 }

@@ -20,9 +20,8 @@
 TEXT ·evalfindbc(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
   MOVQ w+0(FP), DI        // DI = &w
-  MOVQ buf+8(FP), SI      // SI = &buf[0]
   XORL R9, R9             // R9 = rows consumed
-  MOVQ stride+56(FP), R10
+  MOVQ stride+32(FP), R10
   MOVQ R10, 0(SP)         // 0(SP) = stack pointer incrementor
   XORL R10, R10           // R10 = current stack pointer addend
   BCCLEARSCRATCH(R15)
@@ -36,7 +35,7 @@ loop:
 doit:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -52,9 +51,7 @@ doit:
 
   // enter bytecode interpretation
   KMOVW   K1, K7
-  MOVQ    buf+8(FP), CX   // buffer pos
   MOVQ    ·vmm+0(SB), SI  // real static base
-  SUBQ    SI, CX          // CX = (buffer pos - static base)
   MOVQ    bytecode_compiled(DI), VIRT_PCREG
   MOVQ    bytecode_vstack(DI), VIRT_VALUES
   ADDQ    R10, VIRT_VALUES                     // stack offset += rows out
@@ -62,14 +59,12 @@ doit:
   LEAQ    opaddrs+0(SB), DX
   MOVQ    0(DX)(R8*8), R8
   ADDQ    $2, VIRT_PCREG
-  VPBROADCASTD CX, Z2          // add offsets += displacement
-  VPADDD       Z2, Z0, Z0
   CALL    R8
   JC      opcode_failed                        // break on error
 
   ADDQ    0(SP), R10                           // moar stack
 tail:
-  MOVQ delims_len+40(FP), CX
+  MOVQ delims_len+16(FP), CX
   SUBQ R9, CX
   JG   loop             // should be JLT, but operands are reversed
   RET
@@ -92,9 +87,9 @@ trap:
 TEXT ·evalproject(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
   XORL R9, R9             // R9 = rows consumed
-  MOVQ dst+56(FP), DI
-  MOVQ DI, ret+104(FP)    // ret0 = # bytes written
-  MOVQ R9, ret1+112(FP)   // ret1 = # rows consumed
+  MOVQ dst+32(FP), DI
+  MOVQ DI, ret+80(FP)    // ret0 = # bytes written
+  MOVQ R9, ret1+88(FP)   // ret1 = # rows consumed
   JMP  tail
 loop:
   // load delims
@@ -104,7 +99,7 @@ loop:
 doit:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -118,23 +113,19 @@ doit:
   VINSERTI32X8 $1, Y2, Z1, Z1
 
   MOVQ    bc+0(FP), VIRT_BCPTR
-  MOVQ    buf+8(FP), CX        // buffer pos
   MOVQ    ·vmm+0(SB), SI       // real static base
-  SUBQ    SI, CX               // CX = (buffer pos - static base)
-  VPBROADCASTD CX, Z2          // add offsets += displacement
-  VPADDD   Z2, Z0, Z0
   // enter bytecode interpretation
   VMENTER(R8, DX)
   JCS     did_abort
 
-  KMOVW   K1, R15          // R15 = active rows bitmask
-  MOVQ    ret+104(FP), DI  // DI = output location
+  KMOVW   K1, R15         // R15 = active rows bitmask
+  MOVQ    ret+80(FP), DI  // DI = output location
 
 project_objects:
   TESTL   $1, R15
   JZ      next_lane
-  MOVQ    symbols_len+88(FP), R8
-  MOVQ    symbols+80(FP), BX
+  MOVQ    symbols_len+64(FP), R8
+  MOVQ    symbols+56(FP), BX
   MOVQ    VIRT_VALUES, DX
   XORL    CX, CX
 get_size:
@@ -157,15 +148,15 @@ empty_cell:
   // (we need 7 bytes for the copy
   // and up to 4 bytes for the structure
   // header)
-  MOVQ    dst_len+64(FP), DX   // DX = len(dst)
+  MOVQ    dst_len+40(FP), DX   // DX = len(dst)
   SUBQ    $13, DX              // DX = len(dst) - slack
   SUBQ    CX, DX               // DX = space = len(dst) - slack - sizeof(obj)
-  ADDQ    dst+56(FP), DX       // DX = &dst[0] + space = max dst ptr
+  ADDQ    dst+32(FP), DX       // DX = &dst[0] + space = max dst ptr
   CMPQ    DI, DX               // current offset >= space?
   JG      ret                  // if so, return early
 
   // rewrite delims[R9].size
-  MOVQ    delims+32(FP), R8
+  MOVQ    delims+8(FP), R8
   MOVL    CX, 4(R8)(R9*8)
 
   // compute output descriptor in DX
@@ -199,8 +190,8 @@ writeheader:
   INCL    R9
 
   // actually project
-  MOVQ    symbols+80(FP), BX
-  MOVQ    symbols_len+88(FP), R8
+  MOVQ    symbols+56(FP), BX
+  MOVQ    symbols_len+64(FP), R8
   MOVQ    VIRT_VALUES, DX
 copy_field:
   MOVL    64(DX), CX
@@ -248,15 +239,15 @@ next_lane:
   ADDQ    $4, VIRT_VALUES
   SHRL    $1, R15
   JNZ     project_objects
-  MOVQ    DI, ret+104(FP)    // accumulate destination offset
+  MOVQ    DI, ret+80(FP)    // accumulate destination offset
 tail:
-  MOVQ    delims_len+40(FP), CX
+  MOVQ    delims_len+16(FP), CX
   SUBQ    R9, CX
   JNZ     loop
 ret:
-  MOVQ    dst+56(FP), DI
-  SUBQ    DI, ret+104(FP)
-  MOVQ    R9, ret1+112(FP)
+  MOVQ    dst+32(FP), DI
+  SUBQ    DI, ret+80(FP)
+  MOVQ    R9, ret1+88(FP)
   RET
 genmask:
   // K1 = (1 << CX)-1
@@ -273,6 +264,6 @@ trap:
   BYTE $0xCC
   RET
 did_abort:
-  MOVQ $0, ret+104(FP)
-  MOVQ $0, ret1+112(FP)
+  MOVQ $0, ret+80(FP)
+  MOVQ $0, ret1+88(FP)
   RET

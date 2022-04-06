@@ -14,7 +14,7 @@
 
 package vm
 
-func (b *bytecode) find(buf []byte, delims [][2]uint32, cols int) (out []vRegLayout) {
+func (b *bytecode) find(delims [][2]uint32, cols int) (out []vRegLayout) {
 	// FIXME: don't encode knowledge about
 	// vectorization width here...
 	blockCount := (len(delims) + bcLaneCount - 1) / bcLaneCount
@@ -27,7 +27,7 @@ func (b *bytecode) find(buf []byte, delims [][2]uint32, cols int) (out []vRegLay
 	// vstack is 64-bit words but we'd like to
 	// view it as 32-bit words, so we have to
 	// do a little unsafe juggling
-	err := evalfind(b, buf, delims, cols)
+	err := evalfind(b, delims, cols)
 	if err != nil {
 		panic(b.err)
 	}

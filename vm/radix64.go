@@ -491,14 +491,14 @@ func (a *aggtable) initentry(buf []byte) {
 }
 
 //go:noescape
-func evalhashagg(bc *bytecode, buf []byte, delims [][2]uint32, tree *radixTree64, abort *uint16) int
+func evalhashagg(bc *bytecode, delims [][2]uint32, tree *radixTree64, abort *uint16) int
 
-func (a *aggtable) fasteval(buf []byte, delims [][2]uint32, abort *uint16) int {
+func (a *aggtable) fasteval(delims [][2]uint32, abort *uint16) int {
 	if a.bc.compiled == nil {
 		panic("aggtable.bc.compiled == nil")
 	}
 
-	return evalhashagg(&a.bc, buf, delims, a.tree, abort)
+	return evalhashagg(&a.bc, delims, a.tree, abort)
 }
 
 func (a *aggtable) symbolize(st *ion.Symtab) error {
@@ -531,7 +531,7 @@ func (a *aggtable) writeRows(buf []byte, delims [][2]uint32) error {
 
 	var abort uint16
 	for len(delims) > 0 {
-		n := a.fasteval(buf, delims, &abort)
+		n := a.fasteval(delims, &abort)
 		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {
 			return fmt.Errorf("hash aggregate: bytecode error: %w", a.bc.err)
 		}

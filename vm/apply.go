@@ -412,7 +412,7 @@ func (a *applicator) writeRows(buf []byte, delims [][2]uint32) error {
 		panic("ssa2local==0")
 	}
 
-	fieldsView := a.bc.find(buf, delims, len(a.ssa2local))
+	fieldsView := a.bc.find(delims, len(a.ssa2local))
 
 	// compute the size of the probe side of the projection
 	blockID := 0

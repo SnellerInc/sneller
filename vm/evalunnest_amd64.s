@@ -75,14 +75,14 @@ ret:
 
 TEXT ·evalsplat(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
-  MOVQ         indelims_len+40(FP), CX
+  MOVQ         indelims_len+16(FP), CX
   CMPQ         CX, $16
   JLT          genmask
   KXNORW       K0, K0, K1
 vmenter:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
-  MOVQ         indelims+32(FP), DX
+  MOVQ         indelims+8(FP), DX
   VMOVDQU64.Z  0(DX), K1, Z2
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  64(DX), K2, Z3
@@ -96,21 +96,17 @@ vmenter:
   VINSERTI32X8 $1, Y2, Z1, Z1
 
   // enter bytecode interpretation
-  MOVQ         bc+0(FP), DI
-  MOVQ         buf+8(FP), CX   // buffer pos
-  MOVQ         ·vmm+0(SB), SI  // real static base
-  SUBQ         SI, CX          // CX = (buffer pos - static base)
-  VPBROADCASTD CX, Z2          // add offsets += displacement
-  VPADDD       Z2, Z0, Z0
+  MOVQ   bc+0(FP), DI
+  MOVQ   ·vmm+0(SB), SI  // real static base
   VMENTER(R8, DX)
 
   // now we need to scan (z2:z3).k1 as arrays
   // for distinct ion elements
   XORL    AX, AX                // lane number
   KMOVW   K1, R15
-  MOVQ    perm+80(FP), R9       // R9 = &perm[0]
-  MOVQ    outdelims+56(FP), R10 // R10 = &outdelims[0]
-  MOVQ    outdelims_len+64(FP), R11
+  MOVQ    perm+56(FP), R9       // R9 = &perm[0]
+  MOVQ    outdelims+32(FP), R10 // R10 = &outdelims[0]
+  MOVQ    outdelims_len+40(FP), R11
   LEAQ    0(R10)(R11*8), R11    // R11 = &outdelims[len(outdelims)]
   TESTL   R15, R15              // no lanes are arrays?
   JZ      done
@@ -170,10 +166,10 @@ next_lane:
   SHRL    $1, R15
   JNZ     splat_lane
 done:
-  MOVQ    AX, ret+104(FP)        // ret0 = # lanes output
-  SUBQ    outdelims+56(FP), R10
+  MOVQ    AX, ret+80(FP)         // ret0 = # lanes output
+  SUBQ    outdelims+32(FP), R10
   SHRQ    $3, R10                // R10 = (R10-&outdelims[0])/8
-  MOVQ    R10, ret1+112(FP)      // ret1 = # delims output
+  MOVQ    R10, ret1+88(FP)       // ret1 = # delims output
   RET
 genmask:
   MOVL    $1, R8
@@ -188,9 +184,9 @@ genmask:
 TEXT ·evalunnest(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
   XORL R9, R9             // R9 = rows consumed
-  MOVQ dst+80(FP), DI
-  MOVQ DI, ret+128(FP)    // ret0 = # bytes written
-  MOVQ R9, ret1+136(FP)   // ret1 = # rows consumed
+  MOVQ dst+56(FP), DI
+  MOVQ DI, ret+104(FP)    // ret0 = # bytes written
+  MOVQ R9, ret1+112(FP)   // ret1 = # rows consumed
   JMP  tail
 loop:
   // load delims
@@ -200,7 +196,7 @@ loop:
 doit:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -213,26 +209,22 @@ doit:
   VPMOVQD      Z3, Y2
   VINSERTI32X8 $1, Y2, Z31, Z31
 
-  MOVQ         perm+56(FP), DX
+  MOVQ         perm+32(FP), DX
   VMOVDQU32    0(DX)(R9*4), K1, Z3
   MOVQ         bc+0(FP), VIRT_BCPTR
   VMOVDQU32    Z3, bytecode_perm(VIRT_BCPTR)
 
   // enter bytecode interpretation
-  MOVQ         buf+8(FP), CX   // buffer pos
-  MOVQ         ·vmm+0(SB), SI  // real static base
-  SUBQ         SI, CX          // CX = (buffer pos - static base)
-  VPBROADCASTD CX, Z2          // add offsets += displacement
-  VPADDD       Z2, Z0, Z0
+  MOVQ    ·vmm+0(SB), SI  // real static base
   VMENTER(R8, DX)
-  KMOVW   K1, R15           // R15 = active rows bitmask
-  MOVQ    ret+128(FP), DI   // DI = output location
+  KMOVW   K1, R15         // R15 = active rows bitmask
+  MOVQ    ret+104(FP), DI // DI = output location
 
 project_objects:
   TESTL   $1, R15
   JZ      clear_delimiter
-  MOVQ    symbols_len+112(FP), R8
-  MOVQ    symbols+104(FP), BX
+  MOVQ    symbols_len+88(FP), R8
+  MOVQ    symbols+80(FP), BX
   MOVQ    VIRT_VALUES, DX
   XORL    CX, CX
 get_size:
@@ -255,14 +247,14 @@ empty_cell:
   // (we need 7 bytes for the copy
   // and up to 4 bytes for the structure
   // header)
-  MOVQ    dst_len+88(FP), DX   // DX = len(dst)
+  MOVQ    dst_len+64(FP), DX   // DX = len(dst)
   SUBQ    $13, DX              // DX = len(dst) - slack
   SUBQ    CX, DX               // DX = space = len(dst) - slack - sizeof(obj)
-  ADDQ    dst+80(FP), DX       // DX = &dst[0] + space = max dst ptr
+  ADDQ    dst+56(FP), DX       // DX = &dst[0] + space = max dst ptr
   CMPQ    DI, DX               // current offset >= space?
   JG      ret                  // if so, return early
 
-  MOVQ    delims+32(FP), R8
+  MOVQ    delims+8(FP), R8
   MOVL    CX, 4(R8)(R9*8)
 
   // compute output descriptor in DX
@@ -294,8 +286,8 @@ writeheader:
   MOVL    DX, 0(R8)(R9*8) // rewrite delims[R9].offset = (DI - dst)
 
   // actually project
-  MOVQ    symbols+104(FP), BX
-  MOVQ    symbols_len+112(FP), R8
+  MOVQ    symbols+80(FP), BX
+  MOVQ    symbols_len+88(FP), R8
   MOVQ    VIRT_VALUES, DX
 copy_field:
   MOVL    64(DX), CX
@@ -344,15 +336,15 @@ next_lane:
   INCL    R9
   SHRL    $1, R15
   JNZ     project_objects
-  MOVQ    DI, ret+128(FP)    // accumulate destination offset
+  MOVQ    DI, ret+104(FP)    // accumulate destination offset
 tail:
-  MOVQ    delims_len+40(FP), CX
+  MOVQ    delims_len+16(FP), CX
   SUBQ    R9, CX
   JNZ     loop
 ret:
-  MOVQ    dst+80(FP), DI
-  SUBQ    DI, ret+128(FP)
-  MOVQ    R9, ret1+136(FP)
+  MOVQ    dst+56(FP), DI
+  SUBQ    DI, ret+104(FP)
+  MOVQ    R9, ret1+112(FP)
   RET
 genmask:
   // K1 = (1 << CX)-1
@@ -362,7 +354,7 @@ genmask:
   KMOVW   R8, K1
   JMP     doit
 clear_delimiter:  // branch target from projection loop entry
-  MOVQ    delims+32(FP), R8
+  MOVQ    delims+8(FP), R8
   MOVQ    $0, 0(R8)(R9*8)
   JMP     next_lane
 rep_movsb:

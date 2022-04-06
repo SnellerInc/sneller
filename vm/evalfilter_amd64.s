@@ -31,7 +31,7 @@ loop:
 doit:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -46,17 +46,13 @@ doit:
   ADDQ         $16, R9
 
   // enter bytecode interpretation
-  MOVQ         buf+8(FP), CX   // buffer pos
-  MOVQ         ·vmm+0(SB), SI  // real static base
-  SUBQ         SI, CX          // CX = (buffer pos - static base)
-  VPBROADCASTD CX, Z2          // add offsets += displacement
   VPXORD       Z30, Z30, Z30
   VPXORD       Z31, Z31, Z31
-  VPADDD       Z2, Z0, Z0
+  MOVQ         ·vmm+0(SB), SI  // real static base
   VMENTER(R8, DX)
 
   // compress output into delims
-  MOVQ          delims+32(FP), DX
+  MOVQ          delims+8(FP), DX
   KMOVW         K1, K2
   KSHIFTRW      $8, K2, K2
   KMOVB         K1, K1
@@ -83,10 +79,10 @@ doit:
   VPCOMPRESSQ   Z2, K2, 0(DX)(R10*8)
   ADDQ          R8, R10
 tail:
-  MOVQ delims_len+40(FP), CX
+  MOVQ delims_len+16(FP), CX
   SUBQ R9, CX
   JG   loop             // should be JLT, but operands are reversed
-  MOVQ R10, ret+56(FP)
+  MOVQ R10, ret+32(FP)
   RET
 genmask:
   // K1 = (1 << CX)-1

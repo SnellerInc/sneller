@@ -20,7 +20,7 @@
 TEXT ·evaldedup(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
   XORQ R9, R9         // R9 = rows consumed
-  MOVQ R9, ret+96(FP) // # rows output (set to zero for now)
+  MOVQ R9, ret+72(FP) // # rows output (set to zero for now)
   JMP  tail
 loop:
   // load delims
@@ -30,7 +30,7 @@ loop:
 doit:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -46,16 +46,12 @@ doit:
 
   // enter bytecode interpretation
   MOVQ bc+0(FP), DI
-  MOVQ buf+8(FP), CX        // buffer pos
   MOVQ ·vmm+0(SB), SI       // real static base
-  SUBQ SI, CX               // CX = (buffer pos - static base)
-  VPBROADCASTD CX, Z2          // add offsets += displacement
-  VPADDD Z2, Z0, Z0
   VMENTER(R8, DX)
 
   // load the low 64 bits of the sixteen hashes;
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64
-  MOVQ        slot+88(FP), R8
+  MOVQ        slot+64(FP), R8
   SHLQ        $8, R8 // TODO: BC REFACTOR, REMOVE...
   ADDQ        bytecode_hashmem(VIRT_BCPTR), R8
   VMOVDQU64   0(R8), Z15
@@ -89,7 +85,7 @@ doit:
   VPXORQ        Z7, Z7, Z7           // Z7 = shift count
 
   // load table[0] into Z8 and copy to Z9
-  MOVQ          tree+80(FP), R10
+  MOVQ          tree+56(FP), R10
   MOVQ          radixTree64_index(R10), R15
   VMOVDQU32     0(R15), Z8         // Z8 = initial indices for (hash&mask)
   VMOVDQA32     Z8, Z9             // Z9 = same
@@ -188,9 +184,9 @@ radix_loop_tail:
   JZ            tail
 
   // compress output into delims and hashes
-  MOVQ          delims+32(FP), DX
-  MOVQ          hashes+56(FP), R11
-  MOVQ          ret+96(FP), R10
+  MOVQ          delims+8(FP), DX
+  MOVQ          hashes+32(FP), R11
+  MOVQ          ret+72(FP), R10
   KSHIFTRW      $8, K1, K2
   KMOVB         K1, K1
 
@@ -215,9 +211,9 @@ radix_loop_tail:
   VPORD         Z2, Z3, Z2
   VPCOMPRESSQ   Z2, K2, 0(DX)(R10*8)
   ADDQ          R8, R10
-  MOVQ          R10, ret+96(FP)
+  MOVQ          R10, ret+72(FP)
 tail:
-  MOVQ delims_len+40(FP), CX
+  MOVQ delims_len+16(FP), CX
   SUBQ R9, CX
   JG   loop             // should be JLT, but operands are reversed
   RET

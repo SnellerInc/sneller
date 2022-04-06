@@ -100,7 +100,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	t.Logf("bytecode: %s\n", agt.bc.String())
 
 	delims := make([][2]uint32, 1024)
-	n, _ := scan(buf, 0, delims)
+	n, _ := scanvmm(buf, delims)
 	if n != 1023 {
 		t.Fatal("expected 1023 delims; found", n)
 	}
@@ -112,7 +112,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	for i := range first16 {
 		start := first16[i][0]
 		end := start + first16[i][1]
-		mem := buf[start:end]
+		mem := vmref{start, end}.mem()
 		var sym ion.Symbol
 		var obj []byte
 		for len(mem) > 0 {
@@ -143,7 +143,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	checktable(agt.tree, t)
 
 	abort := uint16(0)
-	n = agt.fasteval(buf, first16, &abort)
+	n = agt.fasteval(first16, &abort)
 	if n != 16 {
 		t.Fatalf("n = %d", n)
 	}
@@ -219,7 +219,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	agt.aggregateKinds = agt.parent.aggregateKinds
 
 	delims := make([][2]uint32, 1024)
-	n, _ := scan(buf, 0, delims)
+	n, _ := scanvmm(buf, delims)
 	if n != 1023 {
 		t.Fatal("expected 1023 delims; found", n)
 	}

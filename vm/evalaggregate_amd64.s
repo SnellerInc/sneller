@@ -22,10 +22,10 @@ TEXT ·evalaggregatebc(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
   MOVQ w+0(FP), DI                     // RDI = &w
   XORQ R9, R9                          // R9  = rows consumed
-  MOVQ aggregateDataBuffer+56(FP), R10 // R10 = aggregate data buffer
+  MOVQ aggregateDataBuffer+32(FP), R10 // R10 = aggregate data buffer
 
 loop:
-  MOVQ delims_len+40(FP), CX
+  MOVQ delims_len+16(FP), CX
   MOVL $16, R8
 
   SUBQ R9, CX
@@ -42,7 +42,7 @@ loop:
   KMOVW R8, K1
 
   // Unpack the next 16 (or fewer) delims into Z0 (indices) and Z1 (lengths).
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -60,13 +60,9 @@ loop:
   VINSERTI32X8 $1, Y3, Z2, Z1
 
   // Enter bytecode interpretation
-  VPXORD       Z30, Z30, Z30
-  VPXORD       Z31, Z31, Z31
-  MOVQ         buf+8(FP), CX   // buffer pos
-  MOVQ         ·vmm+0(SB), SI  // real static base
-  SUBQ         SI, CX          // CX = (buffer pos - static base)
-  VPBROADCASTD CX, Z2          // add offsets += displacement
-  VPADDD       Z2, Z0, Z0
+  VPXORD Z30, Z30, Z30
+  VPXORD Z31, Z31, Z31
+  MOVQ   ·vmm+0(SB), VIRT_BASE
   VMENTER(R8, DX)
 
   JMP loop
@@ -77,5 +73,5 @@ trap:
 end:
   // The function returns an integer, but at the moment we just return zero as each aggregate value has a separate counter.
   XORL R10, R10
-  MOVQ R10, ret+80(FP)
+  MOVQ R10, ret+56(FP)
   RET

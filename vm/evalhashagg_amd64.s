@@ -24,12 +24,12 @@ TEXT ·evalhashagg(SB), NOSPLIT, $8
   MOVQ bc+0(FP), DI     // DI = &w
   MOVQ ·vmm+0(SB), SI   // real static base
   XORQ R9, R9           // R9 = rows consumed
-  MOVQ tree+56(FP), R10 // R10 = tree pointer
-  MOVQ abort+64(FP), R8
+  MOVQ tree+32(FP), R10 // R10 = tree pointer
+  MOVQ abort+40(FP), R8
   MOVW $0, 0(R8)        // initially, abort = 0
 
 loop:
-  MOVQ delims_len+40(FP), CX
+  MOVQ delims_len+16(FP), CX
   MOVL $16, R8
 
   SUBQ R9, CX
@@ -46,7 +46,7 @@ loop:
   KMOVW R8, K1
 
   // Unpack the next 16 (or fewer) delims into Z0 (indices) and Z1 (lengths).
-  MOVQ         delims+32(FP), DX
+  MOVQ         delims+8(FP), DX
   KSHIFTRW     $8, K1, K2
   VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
@@ -62,24 +62,19 @@ loop:
 
   VINSERTI32X8 $1, Y1, Z0, Z0
   VINSERTI32X8 $1, Y3, Z2, Z1
-  MOVQ         ·vmm+0(SB), SI   // real static base
-  MOVQ         buf+8(FP), CX    // CX = &buf[0]
-  SUBQ         SI, CX           // CX = (&buf[0] - vmm) = displacement
-  VPBROADCASTD CX, Z2
-  VPADDD       Z2, Z0, Z0       // address += displacement
-
   VPXORD Z30, Z30, Z30
   VPXORD Z31, Z31, Z31
+  MOVQ   ·vmm+0(SB), VIRT_BASE
   VMENTER(R8, DX)
   JC     early_end
   JMP    loop
 end:
-  MOVQ      R9, ret+72(FP)
+  MOVQ      R9, ret+48(FP)
   RET
 early_end:
   KMOVW     K7, R8
   POPCNTL   R8, R8
   SUBQ      R8, R9
-  MOVQ      abort+64(FP), R8
+  MOVQ      abort+40(FP), R8
   KMOVW     K2, 0(R8)
   JMP       end

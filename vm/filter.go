@@ -98,7 +98,7 @@ type wherebc struct {
 }
 
 //go:noescape
-func evalfilterbc(w *bytecode, buf []byte, delims [][2]uint32) int
+func evalfilterbc(w *bytecode, delims [][2]uint32) int
 
 func (w *wherebc) symbolize(st *ion.Symtab) error {
 	err := recompile(st, w.parent.prog, &w.ssa, &w.bc)
@@ -112,7 +112,7 @@ func (w *wherebc) writeRows(buf []byte, delims [][2]uint32) error {
 	if w.bc.compiled == nil {
 		panic("bytecode writeRows() before Symbolize()")
 	}
-	valid := evalfilterbc(&w.bc, buf, delims)
+	valid := evalfilterbc(&w.bc, delims)
 	if w.bc.err != 0 {
 		return fmt.Errorf("filter: bytecode error: %w", w.bc.err)
 	}
