@@ -43,7 +43,7 @@ import (
 func TestMain(m *testing.M) {
 	// build the test binary launched with "stub" just once
 	err := exec.Command("go", "build",
-		"-o", "snellerd-test-binary", "-buildmode=exe", ".").Run()
+		"-o", "snellerd-test-binary", "-buildmode=exe", "-tags=vmfence", ".").Run()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

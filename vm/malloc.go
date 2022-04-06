@@ -80,7 +80,11 @@ func (v vmref) mem() []byte {
 }
 
 // valid returns whether or not v
-// is a valid reference
+// is a valid reference; valid takes
+// into account whether the memory
+// pointed to by v has been reserved
+// via a call to Malloc and has *not*
+// yet been free'd
 //
 // NOTE: valid is fairly expensive to run;
 // you should probably only use this in testing
@@ -95,9 +99,9 @@ func (v vmref) valid() bool {
 	// the page that this points to
 	// should have its allocated bit set
 	pfn := v[0] >> pageBits
-	bitmap := vmbits[pfn / 64]
+	bitmap := vmbits[pfn/64]
 	bit := pfn % 64
-	return bitmap & (1 << bit) != 0
+	return bitmap&(1<<bit) != 0
 }
 
 // size returns the number of bytes
