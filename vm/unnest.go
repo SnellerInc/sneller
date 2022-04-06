@@ -279,7 +279,7 @@ func (u *unnesting) writeRows(buf []byte, delims [][2]uint32) error {
 				if u.parent.filter != nil {
 					subrows = subrows[:compress(subrows)]
 				}
-				err := u.dstrc.writeRows(u.aw.buf[u.aw.off:u.aw.off+wrote], subrows)
+				err := u.dstrc.writeRows(vmm[:vmUse], subrows)
 				if err != nil {
 					return err
 				}

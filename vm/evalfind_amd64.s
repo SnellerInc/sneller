@@ -192,9 +192,9 @@ writeheader:
   MOVL    DX, 0(DI)
   ADDQ    BX, DI             // move forward descriptor size
 
-  // rewrite delims[R9++].offset = (DI - dst)
+  // rewrite delims[R9++].offset = (DI - vmm)
   MOVQ    DI, DX
-  SUBQ    dst+56(FP), DX     // DX = (DI - dst) = offset
+  SUBQ    ·vmm+0(SB), DX  // DX = absolute address (32-bit)
   MOVL    DX, 0(R8)(R9*8)
   INCL    R9
 

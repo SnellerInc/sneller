@@ -290,8 +290,8 @@ writeheader:
   ADDQ    BX, DI             // move forward descriptor size
 
   MOVQ    DI, DX
-  SUBQ    dst+80(FP), DX
-  MOVL    DX, 0(R8)(R9*8)    // rewrite delims[R9].offset = (DI - dst)
+  SUBQ    ·vmm+0(SB), DX  // DX = absolute address (32-bit)
+  MOVL    DX, 0(R8)(R9*8) // rewrite delims[R9].offset = (DI - dst)
 
   // actually project
   MOVQ    symbols+104(FP), BX

@@ -296,7 +296,7 @@ func (p *projector) writeRows(buf []byte, delims [][2]uint32) error {
 			panic("memory corruption")
 		}
 		if p.dstrc != nil && rewrote > 0 {
-			err := p.dstrc.writeRows(p.aw.buf[p.aw.off:p.aw.off+off], delims[:rewrote])
+			err := p.dstrc.writeRows(vmm[:vmUse], delims[:rewrote])
 			if err != nil {
 				return fmt.Errorf("Projection.dst.WriteRows: %w", err)
 			}

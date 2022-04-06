@@ -73,6 +73,7 @@ var (
 // referring to memory within the VMM
 type vmref [2]uint32
 
+// mem returns the memory to which v points
 func (v vmref) mem() []byte {
 	mem := vmm[v[0]:]
 	return mem[:v[1]:v[1]]
