@@ -25,21 +25,23 @@
 #include "bc_constant.h"
 #include "ops_mask.h" // provides OPMASK
 
-// decode the next instruction from
-// the virtual pc register and jump
-// into its implementation
-#define _NEXT(bpc, tmp, tmp2) \
-  MOVWQZX 0(bpc), tmp         \
-  ADDQ $2, bpc                \
-  ANDQ $OPMASK, tmp           \
-  LEAQ opaddrs+0(SB), tmp2    \
+// decodes the next instruction from the virtual pc
+// register, advances virtual pc register, and jumps
+// into the next bytecode instruction.
+#define _NEXT(vm_pc, tmp, tmp2, advance) \
+  MOVWQZX (advance)(vm_pc), tmp          \
+  ADDQ $(advance + 2), vm_pc             \
+  ANDQ $OPMASK, tmp                      \
+  LEAQ opaddrs+0(SB), tmp2               \
   JMP 0(tmp2)(tmp*8)
 
 // every bytecode instruction
 // other than 'ret' should end in
 // NEXT(), which will branch into
 // the next pseudo-instruction
-#define NEXT() _NEXT(VIRT_PCREG, BX, DX)
+#define NEXT() _NEXT(VIRT_PCREG, BX, DX, 0)
+
+#define NEXT_ADVANCE(advance) _NEXT(VIRT_PCREG, BX, DX, advance)
 
 // RET_ABORT returns early
 // with the carry flag set to
@@ -127,119 +129,121 @@ next:
 
 // k1 = vstack[imm]
 TEXT bcloadk(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K1)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K1
+  NEXT_ADVANCE(2)
 
 // vstack[imm] = k1
 TEXT bcsavek(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
   KMOVW K1, 0(VIRT_VALUES)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // swap(k1, vstack[imm])
 TEXT bcxchgk(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
   KMOVW 0(VIRT_VALUES)(R8*1), K2
   KMOVW K1, 0(VIRT_VALUES)(R8*1)
   KMOVW K2, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // load row pointer
 TEXT bcloadb(SB), NOSPLIT|NOFRAME, $0
-  LOADARG1Z(Z0, Z1)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z0
+  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z1
+  NEXT_ADVANCE(2)
 
 // save row pointer
 TEXT bcsaveb(SB), NOSPLIT|NOFRAME, $0
-  SAVEARG1Z(Z0, Z1)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 Z0, 0(VIRT_VALUES)(R8*1)
+  VMOVDQU64 Z1, 64(VIRT_VALUES)(R8*1)
+  NEXT_ADVANCE(2)
 
 // load value pointer
 TEXT bcloadv(SB), NOSPLIT|NOFRAME, $0
-  LOADARG1Z(Z30, Z31)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z30
+  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z31
+  NEXT_ADVANCE(2)
 
 // save value pointer
 TEXT bcsavev(SB), NOSPLIT|NOFRAME, $0
-  SAVEARG1Z(Z30, Z31)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 Z30, 0(VIRT_VALUES)(R8*1)
+  VMOVDQU64 Z31, 64(VIRT_VALUES)(R8*1)
+  NEXT_ADVANCE(2)
 
 // load a sub-structure pointer,
 // but only set K1 for non-zero-length
 // sub-structure components
 TEXT bcloadzerov(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
-  VMOVDQU32   0(VIRT_VALUES)(R8*1), Z30
-  VMOVDQU32   64(VIRT_VALUES)(R8*1), Z31
-  VPTESTMD    Z31, Z31, K1
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z30
+  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z31
+  VPTESTMD Z31, Z31, K1
+  NEXT_ADVANCE(2)
 
 // save a sub-structure pointer,
 // but zero results when K1 is unset
 TEXT bcsavezerov(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
   VMOVDQA32.Z Z30, K1, Z28
   VMOVDQA32.Z Z31, K1, Z29
   VMOVDQU32   Z28, 0(VIRT_VALUES)(R8*1)
   VMOVDQU32   Z29, 64(VIRT_VALUES)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // load a value pointer from bytecode.outer
 // using the permutation specified in
 // bytecode.perm
 TEXT bcloadpermzerov(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
   MOVQ        bytecode_outer(VIRT_BCPTR), R15
   VMOVDQU32   bytecode_perm(VIRT_BCPTR), Z28
   MOVQ        bytecode_vstack(R15), R15
   VPERMD      0(R15)(R8*1), Z28, Z30
   VPERMD      64(R15)(R8*1), Z28, Z31
   VPTESTMD    Z31, Z31, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // save a subset of lanes to a particular slot, leaving existing entries intact
 TEXT bcsaveblendv(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
   VMOVDQU32   Z30, K1, 0(VIRT_VALUES)(R8*1)
   VMOVDQU32   Z31, K1, 64(VIRT_VALUES)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // load scalar
 TEXT bcloads(SB), NOSPLIT|NOFRAME, $0
-  LOADARG1Z(Z2, Z3)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z2
+  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z3
+  NEXT_ADVANCE(2)
 
 // save scalar
 TEXT bcsaves(SB), NOSPLIT|NOFRAME, $0
-  SAVEARG1Z(Z2, Z3)
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU64 Z2, 0(VIRT_VALUES)(R8*1)
+  VMOVDQU64 Z3, 64(VIRT_VALUES)(R8*1)
+  NEXT_ADVANCE(2)
 
 TEXT bcloadzeros(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
-  VMOVDQU32   0(VIRT_VALUES)(R8*1), Z2
-  VMOVDQU32   64(VIRT_VALUES)(R8*1), Z3
-  VPTESTMD    Z3, Z3, K1
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  VMOVDQU32 0(VIRT_VALUES)(R8*1), Z2
+  VMOVDQU32 64(VIRT_VALUES)(R8*1), Z3
+  VPTESTMD Z3, Z3, K1
+  NEXT_ADVANCE(2)
 
 TEXT bcsavezeros(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
-
-  KSHIFTRW    $8, K1, K2
+  MOVWQZX 0(VIRT_PCREG), R8
+  KSHIFTRW $8, K1, K2
   VMOVDQA32.Z Z2, K1, Z4
   VMOVDQA32.Z Z3, K2, Z5
-
-  VMOVDQU32   Z4, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU32   Z5, 64(VIRT_VALUES)(R8*1)
-
-  NEXT()
+  VMOVDQU32 Z4, 0(VIRT_VALUES)(R8*1)
+  VMOVDQU32 Z5, 64(VIRT_VALUES)(R8*1)
+  NEXT_ADVANCE(2)
 
 // Mask Instructions
 // -----------------
@@ -252,33 +256,38 @@ TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
 
 // K1 &= vstack[imm]
 TEXT bcandk(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K2)
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K2
   KANDW K1, K2, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // K1 |= vstack[imm]
 TEXT bcork(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K2)
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K2
   KORW  K1, K2, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // K1 = vstack[imm] &^ K1
 TEXT bcandnotk(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K2)
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K2
   KANDNW K2, K1, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // K1 = K1 &^ vstack[imm]
 TEXT bcnandk(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K2)
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K2
   KANDNW K1, K2, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // K1 = (K1 ^ vstack[imm]) & (valid lanes)
 TEXT bcxork(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K2)
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K2
   KXORW K1, K2, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // K1 = K1 ^ true
 // (this is roughly NOT, but keeps invalid lanes unset)
@@ -288,10 +297,11 @@ TEXT bcnotk(SB), NOSPLIT|NOFRAME, $0
 
 // K1 = (K1 xnor vstack[imm]) & (valid lanes)
 TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
-  LOADMSK(K2)
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K2
   KXNORW K1, K2, K1
   KANDW  K1, K7, K1
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // Arithmetic Instructions
 // -----------------------
@@ -299,21 +309,18 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
 // Arithmetic operation macros
 #define BC_ARITH_OP_VAR(instruction)                \
   MOVWQZX       0(VIRT_PCREG), R8                   \
-  ADDQ          $2, VIRT_PCREG                      \
   KSHIFTRW      $8, K1, K2                          \
   instruction   0(VIRT_VALUES)(R8*1), Z2, K1, Z2    \
   instruction   64(VIRT_VALUES)(R8*1), Z3, K2, Z3
 
 #define BC_ARITH_OP_IMM(instruction, broadcast)     \
-  broadcast  0(VIRT_PCREG), Z4                      \
-  ADDQ          $8, VIRT_PCREG                      \
+  broadcast     0(VIRT_PCREG), Z4                   \
   KSHIFTRW      $8, K1, K2                          \
   instruction   Z4, Z2, K1, Z2                      \
   instruction   Z4, Z3, K2, Z3
 
 #define BC_ARITH_REV_OP_VAR(instruction)            \
   MOVWQZX       0(VIRT_PCREG), R8                   \
-  ADDQ          $2, VIRT_PCREG                      \
   KSHIFTRW      $8, K1, K2                          \
   VMOVDQU64     0(VIRT_VALUES)(R8*1), Z4            \
   VMOVDQU64     64(VIRT_VALUES)(R8*1), Z5           \
@@ -322,7 +329,6 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
 
 #define BC_ARITH_REV_OP_IMM(instruction, broadcast) \
   broadcast     0(VIRT_PCREG), Z4                   \
-  ADDQ          $8, VIRT_PCREG                      \
   KSHIFTRW      $8, K1, K2                          \
   instruction   Z2, Z4, K1, Z2                      \
   instruction   Z3, Z4, K2, Z3
@@ -597,17 +603,15 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
 
 // Broadcast a constant (float)
 TEXT bcbroadcastimmf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  0(VIRT_PCREG), Z2
-  ADDQ          $8, VIRT_PCREG
-  VMOVDQA64     Z2, Z3
-  NEXT()
+  VBROADCASTSD 0(VIRT_PCREG), Z2
+  VMOVDQA64 Z2, Z3
+  NEXT_ADVANCE(8)
 
 // Broadcast a constant (int)
 TEXT bcbroadcastimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ  0(VIRT_PCREG), Z2
-  ADDQ          $8, VIRT_PCREG
-  VMOVDQA64     Z2, Z3
-  NEXT()
+  VPBROADCASTQ 0(VIRT_PCREG), Z2
+  VMOVDQA64 Z2, Z3
+  NEXT_ADVANCE(8)
 
 // Unary operation - abs (float)
 TEXT bcabsf(SB), NOSPLIT|NOFRAME, $0
@@ -730,95 +734,94 @@ TEXT bcceilf(SB), NOSPLIT|NOFRAME, $0
   VRNDSCALEPD   $(VROUND_IMM_UP | VROUND_IMM_SUPPRESS), Z3, K2, Z3
   NEXT()
 
-// Binary operation - add (float)
 TEXT bcaddf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VADDPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaddimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VADDPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - add (int)
 TEXT bcaddi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VPADDQ)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaddimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VPADDQ, VPBROADCASTQ)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - sub (float)
 TEXT bcsubf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VSUBPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcsubimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VSUBPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - sub (int)
 TEXT bcsubi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VPSUBQ)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcsubimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VPSUBQ, VPBROADCASTQ)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - rsub (float)
 TEXT bcrsubf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REV_OP_VAR(VSUBPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcrsubimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REV_OP_IMM(VSUBPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - rsub (int)
 TEXT bcrsubi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REV_OP_VAR(VPSUBQ)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcrsubimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REV_OP_IMM(VPSUBQ, VPBROADCASTQ)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - mul (float)
 TEXT bcmulf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VMULPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcmulimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VMULPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - mul (int)
 TEXT bcmuli(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VPMULLQ)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcmulimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VPMULLQ, VPBROADCASTQ)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - div (float)
 TEXT bcdivf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VDIVPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcdivimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VDIVPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - rdiv (float)
 TEXT bcrdivf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REV_OP_VAR(VDIVPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcrdivimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_REV_OP_IMM(VDIVPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - div (int)
 TEXT bcdivi(SB), NOSPLIT|NOFRAME, $0
@@ -863,41 +866,37 @@ TEXT rdivi_tail(SB), NOSPLIT|NOFRAME, $0
 // Binary operation - mod (float):
 TEXT bcmodf(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
   KSHIFTRW      $8, K1, K2
   VMOVUPD       0(VIRT_VALUES)(R8*1), Z4
   VMOVUPD       64(VIRT_VALUES)(R8*1), Z5
   BC_MODF64_OP(Z2, Z3, Z4, Z5, Z6, Z7)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcmodimmf(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTSD  0(VIRT_PCREG), Z4
-  ADDQ          $8, VIRT_PCREG
   KSHIFTRW      $8, K1, K2
   BC_MODF64_OP(Z2, Z3, Z4, Z4, Z6, Z7)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - rmod (float):
 TEXT bcrmodf(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
   KSHIFTRW      $8, K1, K2
   VMOVAPD       Z2, Z4
   VMOVAPD       Z3, Z5
   VMOVUPD       0(VIRT_VALUES)(R8*1), Z2
   VMOVUPD       64(VIRT_VALUES)(R8*1), Z3
   BC_MODF64_OP(Z2, Z3, Z4, Z5, Z6, Z7)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcrmodimmf(SB), NOSPLIT|NOFRAME, $0
   VMOVAPD       Z2, Z4
   VMOVAPD       Z3, Z5
   VBROADCASTSD  0(VIRT_PCREG), Z2
   VBROADCASTSD  0(VIRT_PCREG), Z3
-  ADDQ          $8, VIRT_PCREG
   KSHIFTRW      $8, K1, K2
   BC_MODF64_OP(Z2, Z3, Z4, Z5, Z6, Z7)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Binary operation - mod (int):
 TEXT bcmodi(SB), NOSPLIT|NOFRAME, $0
@@ -944,46 +943,45 @@ TEXT bcaddmulimmi(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
   VPBROADCASTQ 2(VIRT_PCREG), Z5
   KSHIFTRW $8, K1, K2
-  ADDQ $10, VIRT_PCREG
   VPMULLQ 0(VIRT_VALUES)(R8*1), Z5, Z4
   VPMULLQ 64(VIRT_VALUES)(R8*1), Z5, Z5
   VPADDQ Z4, Z2, K1, Z2
   VPADDQ Z5, Z3, K2, Z3
-  NEXT()
+  NEXT_ADVANCE(10)
 
 // Arithmetic min/max (float)
 TEXT bcminvaluef(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VMINPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcminvalueimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VMINPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 TEXT bcmaxvaluef(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VMAXPD)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcmaxvalueimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VMAXPD, VBROADCASTSD)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Arithmetic min/max (int)
 TEXT bcminvaluei(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VPMINSQ)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcminvalueimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VPMINSQ, VPBROADCASTQ)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 TEXT bcmaxvaluei(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VPMAXSQ)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcmaxvalueimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VPMAXSQ, VPBROADCASTQ)
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // Conversion Instructions
 // -----------------------
@@ -1035,141 +1033,533 @@ TEXT bcfproundd(SB), NOSPLIT|NOFRAME, $0
   BC_CVT_F64_TO_I64(RD_SAE)
   NEXT()
 
+// Converts a signed 64-bit integer to a string slice.
+//
+// Implementation notes:
+//   - maximum length of the output is 20 bytes, including '-' sign.
+//   - we split the string into 3 parts (two 8-char parts, and one 4-char part) forming [4-8-8] string.
+//   - the integer is converted to string by subdividing it, by 10000000000000000, 100000000, 10000, 100, and 10.
+//   - then after we have 0-9 numbers in each byte representing a character, we just add '48' to make it ASCII.
+//   - the length of each string in each lane is found at the end, by counting leading zeros.
+//   - we always insert a '-' sign, the string length is incremented if the integer is negative, so it will only
+//     appear when the input is negative. This simplifies the code a bit.
+TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
+  // Get the signs so we can prepend '-' sign at the end.
+  VPMOVQ2M Z2, K2
+  VPMOVQ2M Z3, K3
+  KUNPCKBW K2, K3, K2
+
+  // Make the inputs unsigned - since we know which lanes are negative, it's destructive.
+  VPABSQ Z2, Z2
+  VPABSQ Z3, Z3
+
+  // Step A:
+  //
+  // Split the input into 3 parts:
+  //   Z2:Z3   <- 8-char low part lanes
+  //   Z12:Z13 <- 8-char high part lanes
+  //   Z20     <- 4-char high part lanes
+
+  // NOTE: We don't rely on high-precision integer division here. We can just shift
+  // right by 16 bits, which is the maximum we can to divide by `10000000000000000`
+  // to get the 4-char high part lanes.
+  VPSRLQ $16, Z2, Z12
+  VPSRLQ $16, Z3, Z13
+
+  // 152587890625 == 10000000000000000 >> 16
+  VBROADCASTSD CONSTF64_152587890625(), Z19
+
+  VCVTUQQ2PD Z12, Z12
+  VCVTUQQ2PD Z13, Z13
+
+  VDIVPD.RD_SAE Z19, Z12, Z8
+  VDIVPD.RD_SAE Z19, Z13, Z9
+
+  VPBROADCASTQ CONSTQ_0xFFFF(), Z20
+  VBROADCASTSD CONSTF64_65536(), Z18
+
+  VPANDQ Z20, Z3, Z21
+  VPANDQ Z20, Z2, Z20
+
+  VCVTUQQ2PD Z21, Z21
+  VCVTUQQ2PD Z20, Z20
+
+  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z8, Z8
+  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z9, Z9
+
+  VFNMADD231PD Z19, Z8, Z12
+  VFNMADD231PD Z19, Z9, Z13
+
+  VFMADD132PD Z18, Z20, Z12
+  VFMADD132PD Z18, Z21, Z13
+
+  // Required for splitting to 8-char parts, where each part is between 0 to 99999999.
+  VBROADCASTSD CONSTF64_100000000(), Z18
+
+  VDIVPD.RD_SAE Z18, Z12, Z2
+  VDIVPD.RD_SAE Z18, Z13, Z3
+
+  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z2, Z2
+  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z3, Z3
+
+  VFNMADD231PD Z18, Z2, Z12
+  VFNMADD231PD Z18, Z3, Z13
+
+  // Z20 <- 4-char high part lanes
+  VCVTPD2UDQ Z8, Y20
+  VCVTPD2UDQ Z9, Y21
+  VINSERTI32X8 $1, Y21, Z20, Z20
+
+  // Z2:Z3 <- 8-char high part lanes
+  VCVTPD2UQQ Z2, Z2
+  VCVTPD2UQQ Z3, Z3
+
+  // Z12:Z13 <- 8-char low part lanes
+  VCVTPD2UQQ Z12, Z12
+  VCVTPD2UQQ Z13, Z13
+
+  // Step B:
+  //
+  // Stringify the input parts:
+  //   - the output would be 20 characters.
+  //   - the stringification happens in 3 steps:
+  //     - Step X - tens of thousands [X / 10000, X % 10000]
+  //     - Step Y - hundreds          [Y / 100  , Y % 100  ]
+  //     - Step Z - tens              [Z / 10   , Z % 10   ]
+  //   - the output is bytes having numbers from 0-9 (decimals).
+
+  // Constants for X step.
+  VPBROADCASTQ CONSTQ_3518437209(), Z18
+  VPBROADCASTQ CONSTQ_10000(), Z19
+
+  // Z4:Z5, Z14:Z15 <- X / 10000
+  VPMULUDQ Z18, Z2, Z4
+  VPMULUDQ Z18, Z3, Z5
+  VPMULUDQ Z18, Z12, Z14
+  VPMULUDQ Z18, Z13, Z15
+
+  VPSRLQ $45, Z4, Z4
+  VPSRLQ $45, Z5, Z5
+  VPSRLQ $45, Z14, Z14
+  VPSRLQ $45, Z15, Z15
+
+  // Z6:Z7, Z16:Z17 <- X % 10000
+  VPMULUDQ Z19, Z4, Z6
+  VPMULUDQ Z19, Z5, Z7
+  VPMULUDQ Z19, Z14, Z16
+  VPMULUDQ Z19, Z15, Z17
+
+  VPSUBD Z6, Z2, Z6
+  VPSUBD Z7, Z3, Z7
+  VPSUBD Z16, Z12, Z16
+  VPSUBD Z17, Z13, Z17
+
+  // Constants for Y step.
+  VPBROADCASTD CONSTD_5243(), Z18
+  VPBROADCASTD CONSTD_100(), Z19
+
+  // Z4:Z5, Z14:Z15 <- Y == [X / 10000, X % 10000]
+  VPSLLQ $32, Z6, Z6
+  VPSLLQ $32, Z7, Z7
+  VPSLLQ $32, Z16, Z16
+  VPSLLQ $32, Z17, Z17
+
+  VPORD Z6, Z4, Z4
+  VPORD Z7, Z5, Z5
+  VPORD Z16, Z14, Z14
+  VPORD Z17, Z15, Z15
+
+  // Z6:Z7, Z16:Z17, Z21 <- Y / 100
+  VPMULHUW Z18, Z20, Z21
+  VPMULHUW Z18, Z4, Z6
+  VPMULHUW Z18, Z5, Z7
+  VPMULHUW Z18, Z14, Z16
+  VPMULHUW Z18, Z15, Z17
+
+  VPSRLW $3, Z21, Z21
+  VPSRLW $3, Z6, Z6
+  VPSRLW $3, Z7, Z7
+  VPSRLW $3, Z16, Z16
+  VPSRLW $3, Z17, Z17
+
+  // Z4:Z5, Z14:Z15, Z20 <- Y % 100
+  VPMULLW Z19, Z21, Z22
+  VPMULLW Z19, Z6, Z8
+  VPMULLW Z19, Z7, Z9
+  VPMULLW Z19, Z16, Z18
+  VPMULLW Z19, Z17, Z19
+
+  VPSUBW Z22, Z20, Z20
+  VPSUBW Z8, Z4, Z4
+  VPSUBW Z9, Z5, Z5
+  VPSUBW Z18, Z14, Z14
+  VPSUBW Z19, Z15, Z15
+
+  // Z4:Z5, Z14:Z15, Z20 <- Z == [Y / 100, Y % 100]
+  VPSLLD $16, Z20, Z20
+  VPSLLD $16, Z4, Z4
+  VPSLLD $16, Z5, Z5
+  VPSLLD $16, Z14, Z14
+  VPSLLD $16, Z15, Z15
+
+  VPORD Z21, Z20, Z20
+  VPORD Z6, Z4, Z4
+  VPORD Z7, Z5, Z5
+  VPORD Z16, Z14, Z14
+  VPORD Z17, Z15, Z15
+
+  // Constants for Z step.
+  VPBROADCASTW CONSTD_6554(), Z18
+  VPBROADCASTW CONSTD_10(), Z19
+
+  // Z4:Z5, Z14:Z15, Z21 <- Z / 10
+  VPMULHUW Z18, Z20, Z21
+  VPMULHUW Z18, Z4, Z6
+  VPMULHUW Z18, Z5, Z7
+  VPMULHUW Z18, Z14, Z16
+  VPMULHUW Z18, Z15, Z17
+
+  // Z4:Z5, Z14:Z15, Z20 <- Z % 10
+  VPMULLW Z19, Z21, Z22
+  VPMULLW Z19, Z6, Z8
+  VPMULLW Z19, Z7, Z9
+  VPMULLW Z19, Z16, Z18
+  VPMULLW Z19, Z17, Z19
+
+  VPSUBW Z22, Z20, Z20
+  VPSUBW Z8, Z4, Z4
+  VPSUBW Z9, Z5, Z5
+  VPSUBW Z18, Z14, Z14
+  VPSUBW Z19, Z15, Z15
+
+  // Z4:Z5, Z14:Z15, Z20 <- [Z / 10, Z % 10]
+  VPSLLW $8, Z20, Z20
+  VPSLLW $8, Z4, Z4
+  VPSLLW $8, Z5, Z5
+  VPSLLW $8, Z14, Z14
+  VPSLLW $8, Z15, Z15
+
+  VPORD Z21, Z20, Z20
+  VPORD Z6, Z4, Z4
+  VPORD Z7, Z5, Z5
+  VPORD Z16, Z14, Z14
+  VPORD Z17, Z15, Z15
+
+  // Step C:
+  //
+  // Find the length of the output string of each lane and insert a '-' sign
+  // before the first non-zero character. This is not really trivial as the
+  // string is split across three registers. So, we start at the highest
+  // character and use VPLZCNT[D|Q] to advance.
+
+  // This temporarily reverses the strings as we would not be able to
+  // use VPLZCNT[D|Q] otherwise. There are in general two options, generate
+  // reversed string, or reverse the string before the counting. It doesn't
+  // matter, as either way we would have to reverse it (either for storing
+  // or for zero counting).
+  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z10
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z9
+
+  VPSHUFB Z10, Z20, Z10
+  VPSHUFB Z9, Z4, Z6
+  VPSHUFB Z9, Z5, Z7
+  VPSHUFB Z9, Z14, Z8
+  VPSHUFB Z9, Z15, Z9
+
+  // Stringified number must have at least 1 character, so make it nonzero in tmp Z8/Z9.
+  VPORQ.BCST CONSTD_0x7F(), Z8, Z8
+  VPORQ.BCST CONSTD_0x7F(), Z9, Z9
+
+  VPLZCNTD Z10, Z10
+  VPLZCNTQ Z6, Z6
+  VPLZCNTQ Z7, Z7
+  VPLZCNTQ Z8, Z8
+  VPLZCNTQ Z9, Z9
+
+  // VPLZCNT[D|Q] gives us bits, but we need shifts of 8-bit quantities.
+  //
+  // NOTE: We keep the quantities in bits - so 2 characters are 16, etc... The reason
+  // is that this makes the code simpler as shift operation needs bits, and we have to
+  // insert a sign, which is shifted by bits and not bytes.
+  VPBROADCASTD CONSTD_7(), Z11
+  VPANDND Z10, Z11, Z10
+  VPANDNQ Z6, Z11, Z6
+  VPANDNQ Z7, Z11, Z7
+  VPANDNQ Z8, Z11, Z8
+  VPANDNQ Z9, Z11, Z9
+
+  // Number of characters * 8 of the output string (will be advanced).
+  VPSLLD.BCST $3, CONSTD_20(), Z3
+
+  // Advance high 4 chars.
+  VPSUBD Z10, Z3, K1, Z3
+  VPSUBD.BCST CONSTD_8(), Z10, Z10
+  VPBROADCASTD CONSTD_3(), Z11
+  VPSLLVD Z10, Z11, Z11
+  VPSUBB Z11, Z20, Z20
+
+  // Advance high 8-chars.
+  VPCMPEQD.BCST CONSTD_128(), Z3, K3
+  KSHIFTRW $8, K3, K4
+
+  VPMOVQD Z6, Y10
+  VPMOVQD Z7, Y11
+  VPSUBQ.BCST CONSTQ_8(), Z6, Z6
+  VPSUBQ.BCST CONSTQ_8(), Z7, Z7
+
+  VINSERTI32X8 $1, Y11, Z10, Z10
+  VPSUBD Z10, Z3, K3, Z3
+
+  VPBROADCASTQ.Z CONSTQ_3(), K3, Z12
+  VPBROADCASTQ.Z CONSTQ_3(), K4, Z13
+  VPSLLVQ Z6, Z12, Z12
+  VPSLLVQ Z7, Z13, Z13
+
+  VPSUBB Z12, Z4, Z4
+  VPSUBB Z13, Z5, Z5
+
+  // Advance low 8-chars.
+  VPCMPEQD.BCST CONSTD_64(), Z3, K3
+  KSHIFTRW $8, K3, K4
+
+  VPMOVQD Z8, Y10
+  VPMOVQD Z9, Y11
+  VPSUBQ.BCST CONSTQ_8(), Z8, Z8
+  VPSUBQ.BCST CONSTQ_8(), Z9, Z9
+
+  VINSERTI32X8 $1, Y11, Z10, Z10
+  VPSUBD Z10, Z3, K3, Z3
+
+  VPBROADCASTQ.Z CONSTQ_3(), K3, Z12
+  VPBROADCASTQ.Z CONSTQ_3(), K4, Z13
+  VPSLLVQ Z8, Z12, Z12
+  VPSLLVQ Z9, Z13, Z13
+
+  VPSUBB Z12, Z14, Z14
+  VPSUBB Z13, Z15, Z15
+
+  // Z3 contains the number of characters * 8 (in bit units) - convert it back to bytes.
+  VPSRLD $3, Z3, Z3
+
+  // Step D:
+  //
+  // Shuffle in a way so we get low 16 character part for each lane. The rest 4
+  // characters are kept in Z20 (4 character high lanes). Then store the characters
+  // to consecutive memory.
+
+  VPUNPCKLQDQ Z14, Z4, Z6 // Lane [06] [04] [02] [00]
+  VPUNPCKHQDQ Z14, Z4, Z7 // Lane [07] [05] [03] [01]
+  VPUNPCKLQDQ Z15, Z5, Z8 // Lane [14] [12] [10] [08]
+  VPUNPCKHQDQ Z15, Z5, Z9 // Lane [15] [13] [11] [09]
+
+  // Constants for converting the number to ASCII.
+  VPBROADCASTB CONSTD_48(), Z18
+
+  VPADDB Z18, Z20, Z20
+  VPADDB Z18, Z6, Z6
+  VPADDB Z18, Z7, Z7
+  VPADDB Z18, Z8, Z8
+  VPADDB Z18, Z9, Z9
+
+  // Z3 now contains the length of the output string of each lane including '-' sign when negative.
+  VPADDD.BCST CONSTD_1(), Z3, K2, Z3
+
+  // Make sure we have at least 20 bytes for each lane, we always overallocate to make the conversion easier.
+  VM_CHECK_SCRATCH_CAPACITY($(20 * 16), R8, abort)
+
+  VM_GET_SCRATCH_BASE_GP(R8)
+
+  // Update the length of the output buffer.
+  ADDQ $(20 * 16), bytecode_scratch+8(VIRT_BCPTR)
+
+  // Broadcast scratch base to all lanes in Z2, which becomes string slice offset.
+  VPBROADCASTD.Z R8, K1, Z2
+
+  // Make R8 the first address where the output will be stored.
+  ADDQ SI, R8
+
+  VPADDD CONST_GET_PTR(consts_offsets_d_20, 4), Z2, Z2
+  VPSUBD.Z Z3, Z2, K1, Z2
+
+  VEXTRACTI32X4 $1, Z20, X21
+  VEXTRACTI32X4 $2, Z20, X22
+  VEXTRACTI32X4 $3, Z20, X23
+
+  // Store output strings (low lanes).
+  VPEXTRD $0, X20, 0(R8)
+  VEXTRACTI32X4 $0, Z6, 4(R8)
+  VPEXTRD $1, X20, 20(R8)
+  VEXTRACTI32X4 $0, Z7, 24(R8)
+  VPEXTRD $2, X20, 40(R8)
+  VEXTRACTI32X4 $1, Z6, 44(R8)
+  VPEXTRD $3, X20, 60(R8)
+  VEXTRACTI32X4 $1, Z7, 64(R8)
+
+  VPEXTRD $0, X21, 80(R8)
+  VEXTRACTI32X4 $2, Z6, 84(R8)
+  VPEXTRD $1, X21, 100(R8)
+  VEXTRACTI32X4 $2, Z7, 104(R8)
+  VPEXTRD $2, X21, 120(R8)
+  VEXTRACTI32X4 $3, Z6, 124(R8)
+  VPEXTRD $3, X21, 140(R8)
+  VEXTRACTI32X4 $3, Z7, 144(R8)
+
+  // Store output strings (high lanes).
+  VPEXTRD $0, X22, 160(R8)
+  VEXTRACTI32X4 $0, Z8, 164(R8)
+  VPEXTRD $1, X22, 180(R8)
+  VEXTRACTI32X4 $0, Z9, 184(R8)
+  VPEXTRD $2, X22, 200(R8)
+  VEXTRACTI32X4 $1, Z8, 204(R8)
+  VPEXTRD $3, X22, 220(R8)
+  VEXTRACTI32X4 $1, Z9, 224(R8)
+
+  VPEXTRD $0, X23, 240(R8)
+  VEXTRACTI32X4 $2, Z8, 244(R8)
+  VPEXTRD $1, X23, 260(R8)
+  VEXTRACTI32X4 $2, Z9, 264(R8)
+  VPEXTRD $2, X23, 280(R8)
+  VEXTRACTI32X4 $3, Z8, 284(R8)
+  VPEXTRD $3, X23, 300(R8)
+  VEXTRACTI32X4 $3, Z9, 304(R8)
+
+  NEXT()
+
+abort:
+  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
+  RET_ABORT()
+
+
 // Comparison Instructions
 // -----------------------
 
-// computes cmp(Z2|Z3, stack[imm])
-#define ICMPQ(imm)                                 \
-  MOVWQZX 0(VIRT_PCREG), R8                        \
-  ADDQ $2, VIRT_PCREG                              \
-  KSHIFTRW $8, K1, K3                              \
-  VPCMPQ   imm, 0(VIRT_VALUES)(R8*1), Z2, K1, K2   \
-  VPCMPQ   imm, 64(VIRT_VALUES)(R8*1), Z3, K3, K3  \
-  KUNPCKBW K2, K3, K1
-
-// computes cmp(Z2|Z3, stack[imm])
-#define PDCMP(imm)                                \
-  MOVWQZX 0(VIRT_PCREG), R8                       \
-  ADDQ     $2, VIRT_PCREG                         \
-  KSHIFTRW $8, K1, K3                             \
-  VCMPPD   imm, 0(VIRT_VALUES)(R8*1), Z2, K1, K2  \
-  VCMPPD   imm, 64(VIRT_VALUES)(R8*1), Z3, K3, K3 \
-  KUNPCKBW K2, K3, K1
+// computes cmp(Z2|Z3, stack[slot])
+#define BC_CMP_OP_I64(imm)                      \
+  MOVWQZX 0(VIRT_PCREG), R8                     \
+  KSHIFTRW $8, K1, K2                           \
+  VPCMPQ imm, 0(VIRT_VALUES)(R8*1), Z2, K1, K1  \
+  VPCMPQ imm, 64(VIRT_VALUES)(R8*1), Z3, K2, K2 \
+  KUNPCKBW K1, K2, K1
 
 // computes cmp(Z2|Z3, imm)
-#define ICMPQ_IMM(imm)              \
-  POP_BCSTQ(Z28)                    \
-  KSHIFTRW     $8, K1, K3           \
-  VPCMPQ       imm, Z28, Z2, K1, K2 \
-  VPCMPQ       imm, Z28, Z3, K3, K3 \
-  KUNPCKBW     K2, K3, K1
+#define BC_CMP_OP_I64_IMM(imm)                  \
+  VPBROADCASTQ 0(VIRT_PCREG), Z4                \
+  KSHIFTRW $8, K1, K2                           \
+  VPCMPQ imm, Z4, Z2, K1, K1                    \
+  VPCMPQ imm, Z4, Z3, K2, K2                    \
+  KUNPCKBW K1, K2, K1
+
+// computes cmp(Z2|Z3, stack[slot])
+#define BC_CMP_OP_F64(imm)                      \
+  MOVWQZX 0(VIRT_PCREG), R8                     \
+  KSHIFTRW $8, K1, K2                           \
+  VCMPPD imm, 0(VIRT_VALUES)(R8*1), Z2, K1, K1  \
+  VCMPPD imm, 64(VIRT_VALUES)(R8*1), Z3, K2, K2 \
+  KUNPCKBW K1, K2, K1
 
 // computes cmp(Z2|Z3, imm)
-#define PDCMP_IMM(imm)             \
-  POP_BCSTPD(Z28)                  \
-  KSHIFTRW    $8, K1, K3           \
-  VCMPPD      imm, Z28, Z2, K1, K2 \
-  VCMPPD      imm, Z28, Z3, K3, K3 \
-  KUNPCKBW    K2, K3, K1
+#define BC_CMP_OP_F64_IMM(imm)                  \
+  VBROADCASTSD 0(VIRT_PCREG), Z4                \
+  KSHIFTRW $8, K1, K2                           \
+  VCMPPD imm, Z4, Z2, K1, K1                    \
+  VCMPPD imm, Z4, Z3, K2, K2                    \
+  KUNPCKBW K1, K2, K1
 
 TEXT bccmpeqf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP($VCMP_IMM_EQ_OQ)
-  NEXT()
+  BC_CMP_OP_F64($VCMP_IMM_EQ_OQ)
+  NEXT_ADVANCE(2)
 
-// current integer scalar = saved integer scalar
+// current integer scalar == saved integer scalar
 TEXT bccmpeqi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX      0(VIRT_PCREG), R8
-  ADDQ         $2, VIRT_PCREG
-  LEAQ         0(VIRT_VALUES)(R8*1), R8
-  KSHIFTRW     $8, K1, K3
-  VPCMPEQQ     0(R8), Z2, K1, K2
-  VPCMPEQQ     64(R8), Z3, K3, K3
-  KUNPCKBW     K2, K3, K1
-  NEXT()
+  MOVWQZX 0(VIRT_PCREG), R8
+  KSHIFTRW $8, K1, K2
+  VPCMPEQQ 0(VIRT_VALUES)(R8*1), Z2, K1, K1
+  VPCMPEQQ 64(VIRT_VALUES)(R8*1), Z3, K2, K2
+  KUNPCKBW K1, K2, K1
+  NEXT_ADVANCE(2)
 
-// current scalar = f64(imm)
+// current scalar float == f64(imm)
 TEXT bccmpeqimmf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  0(VIRT_PCREG), Z28
-  ADDQ          $8, VIRT_PCREG
+  VBROADCASTSD  0(VIRT_PCREG), Z4
   KSHIFTRW      $8, K1, K2
-  VCMPPD        $0, Z2, Z28, K1, K1
-  VCMPPD        $0, Z3, Z28, K2, K2
+  VCMPPD        $0, Z2, Z4, K1, K1
+  VCMPPD        $0, Z3, Z4, K2, K2
   KUNPCKBW      K1, K2, K1
-  NEXT()
+  NEXT_ADVANCE(8)
 
-// current scalar int = i64(imm)
+// current scalar int == i64(imm)
 TEXT bccmpeqimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ  0(VIRT_PCREG), Z28
-  ADDQ          $8, VIRT_PCREG
+  VPBROADCASTQ  0(VIRT_PCREG), Z4
   KSHIFTRW      $8, K1, K2
-  VPCMPQ        $0, Z2, Z28, K1, K1
-  VPCMPQ        $0, Z3, Z28, K2, K2
+  VPCMPQ        $0, Z2, Z4, K1, K1
+  VPCMPQ        $0, Z3, Z4, K2, K2
   KUNPCKBW      K1, K2, K1
-  NEXT()
+  NEXT_ADVANCE(8)
 
 TEXT bccmpltf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP($VCMP_IMM_LT_OQ)
-  NEXT()
+  BC_CMP_OP_F64($VCMP_IMM_LT_OQ)
+  NEXT_ADVANCE(2)
 
 TEXT bccmplti(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ($VPCMP_IMM_LT)
-  NEXT()
+  BC_CMP_OP_I64($VPCMP_IMM_LT)
+  NEXT_ADVANCE(2)
 
 TEXT bccmpltimmf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP_IMM($VCMP_IMM_LT_OQ)
-  NEXT()
+  BC_CMP_OP_F64_IMM($VCMP_IMM_LT_OQ)
+  NEXT_ADVANCE(8)
 
 TEXT bccmpltimmi(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ_IMM($VPCMP_IMM_LT)
-  NEXT()
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_LT)
+  NEXT_ADVANCE(8)
 
 TEXT bccmplef(SB), NOSPLIT|NOFRAME, $0
-  PDCMP($VCMP_IMM_LE_OQ)
-  NEXT()
+  BC_CMP_OP_F64($VCMP_IMM_LE_OQ)
+  NEXT_ADVANCE(2)
 
 TEXT bccmplei(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ($VPCMP_IMM_LE)
-  NEXT()
+  BC_CMP_OP_I64($VPCMP_IMM_LE)
+  NEXT_ADVANCE(2)
 
 TEXT bccmpleimmf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP_IMM($VCMP_IMM_LE_OQ)
-  NEXT()
+  BC_CMP_OP_F64_IMM($VCMP_IMM_LE_OQ)
+  NEXT_ADVANCE(8)
 
 TEXT bccmpleimmi(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ_IMM($VPCMP_IMM_LE)
-  NEXT()
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_LE)
+  NEXT_ADVANCE(8)
 
 TEXT bccmpgtf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP($VCMP_IMM_GT_OQ)
-  NEXT()
+  BC_CMP_OP_F64($VCMP_IMM_GT_OQ)
+  NEXT_ADVANCE(2)
 
 TEXT bccmpgti(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ($VPCMP_IMM_GT)
-  NEXT()
+  BC_CMP_OP_I64($VPCMP_IMM_GT)
+  NEXT_ADVANCE(2)
 
 TEXT bccmpgtimmf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP_IMM($VCMP_IMM_GT_OQ)
-  NEXT()
+  BC_CMP_OP_F64_IMM($VCMP_IMM_GT_OQ)
+  NEXT_ADVANCE(8)
 
 TEXT bccmpgtimmi(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ_IMM($VPCMP_IMM_GT)
-  NEXT()
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_GT)
+  NEXT_ADVANCE(8)
 
 TEXT bccmpgef(SB), NOSPLIT|NOFRAME, $0
-  PDCMP($VCMP_IMM_GE_OQ)
-  NEXT()
+  BC_CMP_OP_F64($VCMP_IMM_GE_OQ)
+  NEXT_ADVANCE(2)
 
 TEXT bccmpgei(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ($VPCMP_IMM_GE)
-  NEXT()
+  BC_CMP_OP_I64($VPCMP_IMM_GE)
+  NEXT_ADVANCE(2)
 
 TEXT bccmpgeimmf(SB), NOSPLIT|NOFRAME, $0
-  PDCMP_IMM($VCMP_IMM_GE_OQ)
-  NEXT()
+  BC_CMP_OP_F64_IMM($VCMP_IMM_GE_OQ)
+  NEXT_ADVANCE(8)
 
 TEXT bccmpgeimmi(SB), NOSPLIT|NOFRAME, $0
-  ICMPQ_IMM($VPCMP_IMM_GE)
-  NEXT()
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_GE)
+  NEXT_ADVANCE(8)
+
 
 // Test Instructions
 // -----------------
@@ -1187,7 +1577,6 @@ TEXT bcisnanf(SB), NOSPLIT|NOFRAME, $0
 // the immediate bits provided in the instruction
 TEXT bcchecktag(SB), NOSPLIT|NOFRAME, $0
   MOVWLZX      0(VIRT_PCREG), R14
-  ADDQ         $2, VIRT_PCREG
   VPBROADCASTD R14, Z14                // Z14 = tag bits
   KMOVW        K1, K3
   VPGATHERDD   0(SI)(Z30*1), K3, Z15   // Z15 = initial object bytes
@@ -1196,7 +1585,7 @@ TEXT bcchecktag(SB), NOSPLIT|NOFRAME, $0
   VPANDD.BCST  CONSTD_0x0F(), Z15, Z15 // Z15 = (bytes >> 4) & 0xf
   VPSLLVD      Z15, Z21, Z15           // Z15 = 1 << ((bytes >> 4) & 0xf)
   VPTESTMD     Z14, Z15, K1, K1        // test tag&z15 != 0
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // current value == NULL
 TEXT bcisnull(SB), NOSPLIT|NOFRAME, $0
@@ -1291,9 +1680,8 @@ TEXT bceqv4mask(SB), NOSPLIT|NOFRAME, $0
   VPGATHERDD    0(SI)(Z30*1), K2, Z26
   VPANDD.BCST   4(VIRT_PCREG), Z26, Z26
   VPCMPEQD.BCST 0(VIRT_PCREG), Z26, K1, K1
-  ADDQ          $8, VIRT_PCREG
   LEAQ          4(SI), R8
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // same as above, but use 'R8'
 // as an additional pre-increment
@@ -1304,9 +1692,8 @@ TEXT bceqv4maskplus(SB), NOSPLIT|NOFRAME, $0
   VPGATHERDD    0(R8)(Z30*1), K2, Z26
   VPANDD.BCST   4(VIRT_PCREG), Z26, Z26
   VPCMPEQD.BCST 0(VIRT_PCREG), Z26, K1, K1
-  ADDQ          $8, VIRT_PCREG
   LEAQ          4(R8), R8
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // begin a comparison with 8 literal bytes,
 // resetting the displacement reg
@@ -1317,9 +1704,8 @@ TEXT bceqv8(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, K2
   VPGATHERDD    4(SI)(Z30*1), K2, Z26
   VPCMPEQD.BCST 4(VIRT_PCREG), Z26, K1, K1
-  ADDQ          $8, VIRT_PCREG
   LEAQ          8(SI), R8
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // continue a comparison op with 8 more literal bytes
 TEXT bceqv8plus(SB), NOSPLIT|NOFRAME, $0
@@ -1329,15 +1715,13 @@ TEXT bceqv8plus(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, K2
   VPGATHERDD    4(R8)(Z30*1), K2, Z26
   VPCMPEQD.BCST 4(VIRT_PCREG), Z26, K1, K1
-  ADDQ          $8, VIRT_PCREG
   LEAQ          8(R8), R8
-  NEXT()
+  NEXT_ADVANCE(8)
 
 // select only values where length==imm
 TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
   VPCMPEQD.BCST 0(VIRT_PCREG), Z31, K1, K1
-  ADDQ          $4, VIRT_PCREG
-  NEXT()
+  NEXT_ADVANCE(4)
 
 // Timestamp Boxing, Unboxing, and Manipulation
 // ============================================
@@ -1716,7 +2100,6 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTQ 2(VIRT_PCREG), Z6
 
   KSHIFTRW $8, K1, K2
-  ADDQ $10, VIRT_PCREG
 
   VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
   VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
@@ -1739,7 +2122,7 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
   VCVTPD2QQ.RZ_SAE Z4, K1, Z2
   VCVTPD2QQ.RZ_SAE Z5, K2, Z3
 
-  NEXT()
+  NEXT_ADVANCE(10)
 
 // DATE_DIFF(MONTH|YEAR, interval, timestamp)
 TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
@@ -1834,8 +2217,7 @@ TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z2, Z10, K5, Z2
   VPSUBQ Z3, Z10, K6, Z3
 
-  ADDQ $4, VIRT_PCREG
-  NEXT()
+  NEXT_ADVANCE(4)
 
 // EXTRACT(MICROSECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmicrosecond(SB), NOSPLIT|NOFRAME, $0
@@ -2208,10 +2590,10 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
 
 TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   // Make sure we have at least 16 bytes for each lane, we always overallocate to make the boxing simpler.
-  CHECK_SCRATCH_CAP($(16 * 16), R8, abort)
+  VM_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
 
-  // set zmm31.k1 to the current scratch base
-  VSCRATCH_BASE(K1)
+  // set zmm30.k1 to the current scratch base
+  VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
 
   // Update the length of the output buffer.
   ADDQ $(16 * 16), bytecode_scratch+8(VIRT_BCPTR)
@@ -2645,8 +3027,6 @@ TEXT bcwidthbucketf(SB), NOSPLIT|NOFRAME, $0
 
   // BucketCount
   MOVWQZX       4(VIRT_PCREG), R8
-  ADDQ          $6, VIRT_PCREG
-
   VMOVUPD.Z     0(VIRT_VALUES)(R8*1), K1, Z4
   VMOVUPD.Z     64(VIRT_VALUES)(R8*1), K2, Z5
 
@@ -2668,7 +3048,7 @@ TEXT bcwidthbucketf(SB), NOSPLIT|NOFRAME, $0
   VMAXPD        Z6, Z2, K1, Z2
   VMAXPD        Z6, Z3, K2, Z3
 
-  NEXT()
+  NEXT_ADVANCE(6)
 
 // widthbucket (int)
 //
@@ -2712,8 +3092,6 @@ TEXT bcwidthbucketi(SB), NOSPLIT|NOFRAME, $0
 
   // BucketCount.U64
   MOVWQZX 4(VIRT_PCREG), R8
-  ADDQ $6, VIRT_PCREG
-
   VMOVDQU64.Z 0(VIRT_VALUES)(R8*1), K1, Z4
   VMOVDQU64.Z 64(VIRT_VALUES)(R8*1), K2, Z5
 
@@ -2738,7 +3116,7 @@ TEXT bcwidthbucketi(SB), NOSPLIT|NOFRAME, $0
   VPXORQ Z2, Z2, K3, Z2
   VPXORQ Z3, Z3, K4, Z3
 
-  NEXT()
+  NEXT_ADVANCE(6)
 
 // timebucket (timestamp)
 TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
@@ -2746,7 +3124,6 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
 
   // Load interval from stack
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
   VMOVDQU64.Z   0(VIRT_VALUES)(R8*1), K1, Z4
   VMOVDQU64.Z   64(VIRT_VALUES)(R8*1), K2, Z5
 
@@ -2757,7 +3134,7 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z16, Z2, K1, Z2
   VPSUBQ Z17, Z3, K2, Z3
 
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // Geo Instructions
 // ----------------
@@ -3125,7 +3502,6 @@ TEXT bcblendslicerev(SB), NOSPLIT|NOFRAME, $0
 // unpack string/array/timestamp to scalar slice
 TEXT bcunpack(SB), NOSPLIT|NOFRAME, $0
   MOVBLZX       0(VIRT_PCREG), R8
-  ADDQ          $1, VIRT_PCREG
   KTESTW        K1, K1
   JZ            next
   VPBROADCASTD  R8, Z23                    // Z23 = descriptor tag
@@ -3182,7 +3558,7 @@ TEXT bcunpack(SB), NOSPLIT|NOFRAME, $0
 done:
   VMOVDQA32     Z28, K2, Z3             // set Z3 = length
 next:
-  NEXT()
+  NEXT_ADVANCE(1)
 trap:
   FAIL()
 
@@ -3326,7 +3702,7 @@ next:
 // box 64-bit floats in Z2:Z3
 // (possibly tail-calling into boxint)
 TEXT bcboxfloat(SB), NOSPLIT|NOFRAME, $0
-  CHECK_SCRATCH_CAP($(9 * 16), R15, abort)
+  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, abort)
 
   VPXORD     Z30, Z30, Z30
   VPXORD     Z31, Z31, Z31
@@ -3343,7 +3719,7 @@ TEXT bcboxfloat(SB), NOSPLIT|NOFRAME, $0
   JZ         check_ints
 
   VPBROADCASTD.Z   CONSTD_9(), K3, Z31           // set len(encoded) = 9
-  VSCRATCH_BASE(K3)
+  VM_GET_SCRATCH_BASE_ZMM(Z30, K3)
   VMOVDQA32        byteidx<>+0(SB), X28
   VPMOVZXBD        X28, Z28
   VPSLLD           $3, Z28, Z29
@@ -3388,7 +3764,7 @@ TEXT bcboxint(SB), NOSPLIT|NOFRAME, $0
 //   K2 = lanes to write out
 // updates Z30.K2 and Z31.K2, but leaves the other lanes un-touched
 TEXT boxint_tail(SB), NOSPLIT|NOFRAME, $0
-  CHECK_SCRATCH_CAP($(9 * 16), R15, abort)
+  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, abort)
 
   // compute abs(word) and compute
   // the predicate mask for negative signed words
@@ -3438,7 +3814,7 @@ TEXT boxint_tail(SB), NOSPLIT|NOFRAME, $0
   VMOVDQU64        byteidx<>(SB), X29
   VPMOVZXBD        X29, Z29           // Z29 = lane index
   VPSLLD           $3, Z29, Z28       // Z28 = lane index * 8
-  VSCRATCH_BASE(K2)
+  VM_GET_SCRATCH_BASE_ZMM(Z30, K2)
   KTESTW           K6, K6
   JNZ              slow_encode
 
@@ -3503,7 +3879,7 @@ TEXT bcboxmask3(SB), NOSPLIT|NOFRAME, $0
 // see boxmask_tail_vbmi2 for a version that
 // only writes out the lanes that are valid
 TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
-  CHECK_SCRATCH_CAP($16, R15, abort)
+  VM_CHECK_SCRATCH_CAPACITY($16, R15, abort)
   MOVL         $0x10, R14
   VPBROADCASTB R14, X10                             // X10 = false byte x 16
   MOVL         $1, R14
@@ -3511,12 +3887,12 @@ TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDB       X10, X11, K2, X10                    // X10 = true or false bytes (0x10 + 1/0)
   MOVQ         bytecode_scratch(VIRT_BCPTR), R14
   ADDQ         bytecode_scratch+8(VIRT_BCPTR), R14
-  MOVOU        X10, 0(R14)                          // store 16 bytes unconditionally
+  VMOVDQU      X10, 0(R14)                          // store 16 bytes unconditionally
   // offsets are [0, 1, 2, 3...] plus base offset;
   // then complemented for Z30
   VPXORD         Z30, Z30, Z30
-  VSCRATCH_BASE(K1)
-  MOVOU          byteidx<>+0(SB), X10
+  VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
+  VMOVDQU        byteidx<>+0(SB), X10
   VPMOVZXBD      X10, Z10
   VPADDD         Z10, Z30, K1, Z30
   VPBROADCASTD.Z CONSTD_1(), K1, Z31
@@ -3546,7 +3922,7 @@ TEXT boxmask_tail_vbmi2(SB), NOSPLIT|NOFRAME, $0
   MOVQ         bytecode_scratch(VIRT_BCPTR), R13
   MOVQ         bytecode_scratch+8(VIRT_BCPTR), R14  // current offset
   VPCOMPRESSB  X10, K1, 0(R13)(R14*1)               // write out true/false bytes
-  MOVOU        byteidx<>+0(SB), X11                 // X11 = [0, 1, 2, 3...]
+  VMOVDQU      byteidx<>+0(SB), X11                 // X11 = [0, 1, 2, 3...]
   VPEXPANDB    X11, K1, X11                         // X11 = output offset displ in each lane
   VPMOVZXBD    X11, Z11                             // expand offset to 32 bits
   VPBROADCASTD R14, Z14                             // broadcast original offset

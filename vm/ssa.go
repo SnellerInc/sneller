@@ -84,6 +84,8 @@ const (
 	sbooltoint // bool to 0 or 1
 	sbooltofp  // bool to 0.0 or 1.0
 
+	scvti64tostr // int64 to string
+
 	// #region raw string comparison
 	sStrCmpEqCs     // Ascii string compare equality case-sensitive
 	sStrCmpEqCi     // Ascii string compare equality case-insensitive
@@ -525,6 +527,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// fp <-> int conversion ops
 	sinttofp: {text: "inttofp", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
 	sfptoint: {text: "fptoint", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
+
+	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr},
 
 	// boolean -> scalar conversions;
 	// first argument is true/false; second is present/missing

@@ -57,7 +57,7 @@ func (r *RowsWriter) write(bytes []byte) {
 }
 
 // WriteRows outputs the Ion records in the given order.
-// It takes care on completig the Ion structure, but does
+// It takes care on completing the Ion structure, but does
 // not validate whether incoming data is sensible or not.
 func (r *RowsWriter) WriteRows(records []IonRecord) (err error) {
 	if r.written == 0 {

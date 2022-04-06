@@ -191,15 +191,19 @@ func (c *Case) check(h Hint) error {
 }
 
 func (c *Cast) check(h Hint) error {
+	ft := TypeOf(c.From, h)
 	switch c.To {
 	case SymbolType, DecimalType:
 		return errsyntaxf("unsupported cast %q", c)
-	case StructType, ListType, StringType, TimeType:
+	case StringType:
+		if ft&(StringType|IntegerType) == 0 {
+			return errtype(c, "unsupported cast will never succeed")
+		}
+	case StructType, ListType, TimeType:
 		// for each of these types, we only support
 		// no-op casting, so if we can determine statically
 		// that we will be doing a meaningful cast, then return
 		// an error rather than silently converting to MISSING...
-		ft := TypeOf(c.From, h)
 		if ft&c.To == 0 {
 			return errtype(c, "unsupported cast will never succeed")
 		}

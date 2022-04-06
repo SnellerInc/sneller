@@ -69,15 +69,19 @@
   MOVQ 0(tmp2)(tmp1*8), tmp1  \
   CALL tmp1
 
-// VSCRATCH_BASE(mask) sets Z30.mask
+// VM_GET_SCRATCH_BASE_ZMM(dst, mask) sets dst.mask
 // to the current scratch base (equal in all lanes);
 // this address can be scattered to safely as long
 // as the scratch capacity has been checked in advance
-#define VSCRATCH_BASE(mask) \
-  VPBROADCASTD  bytecode_scratchoff(VIRT_BCPTR), mask, Z30 \
-  VPADDD.BCST   bytecode_scratch+8(VIRT_BCPTR), Z30, mask, Z30
+#define VM_GET_SCRATCH_BASE_ZMM(dst, mask) \
+  VPBROADCASTD  bytecode_scratchoff(VIRT_BCPTR), mask, dst \
+  VPADDD.BCST   bytecode_scratch+8(VIRT_BCPTR), dst, mask, dst
 
-#define CHECK_SCRATCH_CAP(size, sizereg, abrt) \
+#define VM_GET_SCRATCH_BASE_GP(dst) \
+  MOVLQSX bytecode_scratchoff(VIRT_BCPTR), dst \
+  ADDQ bytecode_scratch+8(VIRT_BCPTR), dst
+
+#define VM_CHECK_SCRATCH_CAPACITY(size, sizereg, abrt) \
   MOVQ bytecode_scratch+16(VIRT_BCPTR), sizereg \
   SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg \
   CMPQ sizereg, size \

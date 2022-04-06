@@ -1267,6 +1267,8 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		switch from.primary() {
 		case stString:
 			return from, nil
+		case stInt:
+			return p.ssa2(scvti64tostr, from, p.mask(from)), nil
 		case stValue:
 			return p.checkTag(from, c.To), nil
 		default:

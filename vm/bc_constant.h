@@ -357,6 +357,20 @@ CONST_DATA_U64(constpool, 576, $46)
 #define CONSTD_0x2E() CONST_GET_PTR(constpool, 584)
 CONST_DATA_U32(constpool, 584, $0x2E)
 
+#define CONSTD_5243() CONST_GET_PTR(constpool, 588)
+CONST_DATA_U32(constpool, 588, $5243)
+
+#define CONSTD_6554() CONST_GET_PTR(constpool, 592)
+CONST_DATA_U32(constpool, 592, $6554)
+
+#define CONSTQ_10000() CONST_GET_PTR(constpool, 596)
+CONST_DATA_U64(constpool, 596, $10000)
+
+#define CONSTQ_20() CONST_GET_PTR(constpool, 608)
+#define CONSTD_20() CONST_GET_PTR(constpool, 608)
+CONST_DATA_U64(constpool, 608, $20)
+
+
 // Integer Division Reciprocals
 // ----------------------------
 
@@ -386,26 +400,29 @@ CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 24, $274877907)
 #define CONSTQ_376287347() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 32)
 CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 32, $376287347)
 
+// Unsigned 32-bit division by 10000 => Result = (Value * 3518437209) >> 45
+#define CONSTQ_3518437209() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 40)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 40, $3518437209)
+
 // Unsigned 32-bit division by 36524 => Result = (Value >> 2) * 963321983 >> 43.
-#define CONSTQ_963321983() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 40)
-CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 40, $963321983)
+#define CONSTQ_963321983() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 48)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 48, $963321983)
 
 // Unsigned 32-bit division by 146097 => Result = Value * 963315389 >> 47.
-#define CONSTQ_963315389() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 48)
-CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 48, $963315389)
+#define CONSTQ_963315389() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 56)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 56, $963315389)
 
 // Unsigned 37-bit division by 1000000 => Result = Value * 1125899907 >> 50.
-#define CONSTQ_1125899907() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 56)
-CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 56, $1125899907)
+#define CONSTQ_1125899907() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 64)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 64, $1125899907)
 
 // Unsigned 37-bit division by 60000000 => Result = (Value >> 8) * 18764999 >> 42.
-#define CONSTQ_18764999() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 64)
-CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 64, $18764999)
+#define CONSTQ_18764999() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 72)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 72, $18764999)
 
-// Unsigned 44-bit division by 3600000000 => Reslt = (Value >> 12) * 2562048517 >> 51
-#define CONSTQ_2562048517() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 72)
-CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 72, $2562048517)
-
+// Unsigned 44-bit division by 3600000000 => Result = (Value >> 12) * 2562048517 >> 51
+#define CONSTQ_2562048517() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80, $2562048517)
 
 
 // 64-Bit Floating Point Constants
@@ -440,6 +457,15 @@ CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 56, $0xFFF0000000000000)
 // float64((60 * 60 * 24 * 1000000) >> 13)
 #define CONSTF64_MICROSECONDS_IN_1_DAY_SHR_13() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 64)
 CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 64, $0x41641DD760000000)
+
+#define CONSTF64_100000000() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 72)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 72, $0x4197D78400000000)
+
+#define CONSTF64_152587890625() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 80)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 80, $0x4241C37937E08000)
+
+#define CONSTF64_65536() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 88)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 88, $0x40F0000000000000)
 
 
 // Other Constants
@@ -659,6 +685,26 @@ CONST_DATA_U32(consts_offsets_d_16, 52, $208)
 CONST_DATA_U32(consts_offsets_d_16, 56, $224)
 CONST_DATA_U32(consts_offsets_d_16, 60, $240)
 CONST_GLOBAL(consts_offsets_d_16, $64)
+
+// Consecutive DWORD offsets for 1 ZMM register incremented by 20, for each lane.
+CONST_DATA_U32(consts_offsets_d_20,  0, $0)
+CONST_DATA_U32(consts_offsets_d_20,  4, $20)
+CONST_DATA_U32(consts_offsets_d_20,  8, $40)
+CONST_DATA_U32(consts_offsets_d_20, 12, $60)
+CONST_DATA_U32(consts_offsets_d_20, 16, $80)
+CONST_DATA_U32(consts_offsets_d_20, 20, $100)
+CONST_DATA_U32(consts_offsets_d_20, 24, $120)
+CONST_DATA_U32(consts_offsets_d_20, 28, $140)
+CONST_DATA_U32(consts_offsets_d_20, 32, $160)
+CONST_DATA_U32(consts_offsets_d_20, 36, $180)
+CONST_DATA_U32(consts_offsets_d_20, 40, $200)
+CONST_DATA_U32(consts_offsets_d_20, 44, $220)
+CONST_DATA_U32(consts_offsets_d_20, 48, $240)
+CONST_DATA_U32(consts_offsets_d_20, 52, $260)
+CONST_DATA_U32(consts_offsets_d_20, 56, $280)
+CONST_DATA_U32(consts_offsets_d_20, 60, $300)
+CONST_DATA_U32(consts_offsets_d_20, 64, $320)
+CONST_GLOBAL(consts_offsets_d_20, $68)
 
 // Consecutive QWORD offsets for 2 ZMM registers incremented by 16, for each lane.
 CONST_DATA_U64(consts_offsets_q_16,  0, $0)

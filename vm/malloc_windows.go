@@ -25,16 +25,13 @@ import (
 func mapVM() *[vmUse]byte {
 	base, err := windows.VirtualAlloc(0, vmReserve, windows.MEM_RESERVE, windows.PAGE_NOACCESS)
 	if err != nil {
-		panic("VirtualAlloc(reserve): " + err.Error())
+		panic("VirtualAlloc(reserve) failed: " + err.Error())
 	}
-	base, err = windows.VirtualAlloc(base+vmStart, vmUse, windows.MEM_COMMIT, windows.PAGE_READWRITE)
+	_, err = windows.VirtualAlloc(base+vmStart, vmUse, windows.MEM_COMMIT, windows.PAGE_READWRITE)
 	if err != nil {
-		panic("VirtualAlloc(commit): " + err.Error())
+		panic("VirtualAlloc(commit) failed: " + err.Error())
 	}
 	return (*[vmUse]byte)(unsafe.Pointer(base + vmStart))
 }
 
-func hintUnused(mem []byte) {
-	// implement me!
-	// I believe this is VirtualAlloc(base, length, MEM_RESET, 0)
-}
+func hintUnused(mem []byte) {}

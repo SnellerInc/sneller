@@ -1089,6 +1089,9 @@ func converts(to TypeSet) TypeSet {
 		// we support conversion to/from
 		// floats, ints, and bools (zero = false, otherwise true)
 		return FloatType | IntegerType | BoolType
+	case StringType:
+		// we support int->string
+		return IntegerType | StringType
 	default:
 		// to = to; we support converting
 		// any other type to itself
@@ -1137,6 +1140,7 @@ func (c *Cast) simplify(h Hint) Node {
 			return Float(0.0)
 		}
 	}
+
 	// literal integer conversion constprop
 	if c.To == IntegerType {
 		if fn, ok := c.From.(number); ok {
@@ -1157,6 +1161,17 @@ func (c *Cast) simplify(h Hint) Node {
 			return Integer(0)
 		}
 	}
+
+	// literal string conversion constprop
+	if c.To == StringType {
+		if fn, ok := c.From.(number); ok {
+			rat := fn.rat()
+			if rat.IsInt() {
+				return String(rat.RatString())
+			}
+		}
+	}
+
 	return c
 }
 

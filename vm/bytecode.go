@@ -250,6 +250,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcvtf64toi64: {text: "cvtf64toi64", flags: bcReadWriteK | bcReadWriteS},
 	opfproundd:    {text: "fproundd", flags: bcReadWriteK | bcReadWriteS},
 	opfproundu:    {text: "fproundu", flags: bcReadWriteK | bcReadWriteS},
+	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS},
 
 	// Comparison instructions
 	opcmpeqf:    {text: "cmpeq.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpeqf},
@@ -361,7 +362,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	ophashvalue:     {text: "hashvalue", imms: bcImmsS16, flags: bcReadK | bcReadV | bcWriteH},
 	ophashvalueplus: {text: "hashvalue+", imms: bcImmsS16S16, flags: bcReadK | bcReadV | bcReadWriteH},
 	ophashmember:    {text: "hashmember", imms: bcImmsS16U16, flags: bcReadWriteK | bcReadH},
-	ophashlookup:    {text: "hashlookup", imms: bcImmsS16U16, flags: bcReadWriteK | bcReadH},
+	ophashlookup:    {text: "hashlookup", imms: bcImmsS16U16, flags: bcReadWriteK | bcWriteV | bcReadH},
 
 	// Simple aggregate operations
 	opaggsumf:  {text: "aggsum.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
@@ -390,7 +391,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	optuple:      {text: "tuple", flags: bcReadV | bcWriteB},
 	opdupv:       {text: "dup.v", imms: bcImmsS16S16, flags: 0}, // duplicates a saved stack slot
 	opzerov:      {text: "zero.v", imms: bcImmsS16, flags: 0},   // zeroes all values in a slot
-	opobjectsize: {text: "objectsize", flags: bcReadWriteK | bcWriteS},
+	opobjectsize: {text: "objectsize", flags: bcReadWriteK | bcWriteS | bcReadV},
 
 	// string comparing operations
 	opCmpStrEqCs:     {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadV | bcReadWriteK},

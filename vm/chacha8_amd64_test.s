@@ -129,8 +129,8 @@ TEXT ·chacha8x4(SB), 7, $0
   MOVQ      base+0(FP), R15
   MOVQ      offsets+8(FP), DI
   MOVQ      lengths+16(FP), CX
-  MOVOU     0(CX), X11
-  MOVOU     0(DI), X10
+  VMOVDQU   0(CX), X11
+  VMOVDQU   0(DI), X10
   VBROADCASTI32X4 chachaiv<>+00(SB), Z9
   CALL      hashx4(SB)
   VMOVDQU32 Z9, ret+24(FP)

@@ -67,10 +67,6 @@ func TestCheck(t *testing.T) {
 			kind: &SyntaxError{},
 		},
 		{
-			expr: &Cast{From: Integer(3), To: StringType},
-			kind: &TypeError{},
-		},
-		{
 			expr: CallOp(Contains, path("x")),
 			kind: &SyntaxError{},
 		},
