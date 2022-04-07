@@ -66,13 +66,13 @@ func TestRFC3339(t *testing.T) {
 func testFormat(t *testing.T, got Time, want time.Time) {
 	t.Helper()
 	want = want.UTC()
-	b1 := got.AppendRFC3339(nil)
-	b2 := want.AppendFormat(nil, time.RFC3339)
-	if string(b1) != string(b2) {
-		t.Errorf("AppendRFC3339: %s != %s", b1, b2)
+	s1 := got.String()
+	s2 := want.String()
+	if s1 != s2 {
+		t.Errorf("String: %s != %s", s1, s2)
 	}
-	b1 = got.AppendRFC3339Nano(nil)
-	b2 = want.AppendFormat(nil, time.RFC3339Nano)
+	b1 := got.AppendRFC3339Nano(nil)
+	b2 := want.AppendFormat(nil, time.RFC3339Nano)
 	if string(b1) != string(b2) {
 		t.Errorf("AppendRFC3339Nano: %s != %s", b1, b2)
 	}
@@ -166,6 +166,21 @@ func BenchmarkParse(b *testing.B) {
 			}
 		}
 	})
+}
+
+func BenchmarkAppend3339Nano(b *testing.B) {
+	var buf []byte
+	t := Date(2021, 4, 7, 12, 0, 0, 123456789)
+	for i := 0; i < b.N; i++ {
+		buf = t.AppendRFC3339Nano(buf[:0])
+	}
+}
+
+func BenchmarkString(b *testing.B) {
+	t := Date(2021, 4, 7, 12, 0, 0, 123456789)
+	for i := 0; i < b.N; i++ {
+		t.String()
+	}
 }
 
 func check(got Time, want time.Time) (e []string) {

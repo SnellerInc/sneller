@@ -274,7 +274,7 @@ func (s *scratch) uint(u uint64) []byte {
 
 func (s *scratch) time(t date.Time) []byte {
 	s.buf = append(s.buf[:0], '"')
-	s.buf = t.AppendRFC3339(s.buf)
+	s.buf = t.AppendRFC3339Nano(s.buf)
 	s.buf = append(s.buf, '"')
 	return s.buf
 }

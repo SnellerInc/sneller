@@ -15,7 +15,6 @@
 package date
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -187,16 +186,45 @@ func (t Time) IsZero() bool {
 	return t == Time{}
 }
 
-// AppendRFC3339 appends t formatted as an RFC3339
-// compliant string to b.
-func (t Time) AppendRFC3339(b []byte) []byte {
-	return t.Time().AppendFormat(b, time.RFC3339)
-}
-
-// AppendRFC3339Nano is like AppendRFC3339 but includes
-// nanoseconds.
+// AppendRFC3339Nano appends t formatted as an RFC3339
+// compliant string (including nanoseconds) to b. This
+// method is functionally equivalent to:
+//
+//   t.Time().AppendFormat(b, time.RFC3339Nano)
+//
 func (t Time) AppendRFC3339Nano(b []byte) []byte {
-	return t.Time().AppendFormat(b, time.RFC3339Nano)
+	year, month, day := t.Year(), t.Month(), t.Day()
+	hour, min, sec := t.Hour(), t.Minute(), t.Second()
+	ns := int(t.ns)
+	lenmin := len("0000-00-00T00:00:00Z")
+	lenmax := lenmin
+	if ns != 0 {
+		lenmin += len(".1")
+		lenmax += len(".999999999")
+	}
+	if len(b)+lenmin > cap(b) {
+		b2 := make([]byte, len(b), len(b)+lenmax)
+		copy(b2, b)
+		b = b2
+	}
+	b = appendInt(b, year, 4, false)
+	b = append(b, '-')
+	b = appendInt(b, month, 2, false)
+	b = append(b, '-')
+	b = appendInt(b, day, 2, false)
+	b = append(b, 'T')
+	b = appendInt(b, hour, 2, false)
+	b = append(b, ':')
+	b = appendInt(b, min, 2, false)
+	b = append(b, ':')
+	b = appendInt(b, sec, 2, false)
+	if ns != 0 {
+		b = append(b, '.')
+		b = appendInt(b, ns, 9, true)
+	}
+	b = append(b, 'Z')
+	return b
+
 }
 
 // Add adds d to t.
@@ -217,13 +245,31 @@ func (t Time) Truncate(d time.Duration) Time {
 // String implements io.Stringer. The returned string
 // is meant to be used for debugging purposes.
 func (t Time) String() string {
-	y, mo, d := t.Year(), t.Month(), t.Day()
-	h, mi, s := t.Hour(), t.Minute(), t.Second()
-	ns := t.Nanosecond()
-	if ns == 0 {
-		return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d +0000 UTC", y, mo, d, h, mi, s)
+	year, month, day := t.Year(), t.Month(), t.Day()
+	hour, min, sec := t.Hour(), t.Minute(), t.Second()
+	ns := int(t.ns)
+	n := len("0000-00-00 00:00:00 +0000 UTC")
+	if ns != 0 {
+		n += len(".999999999")
 	}
-	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d.%d +0000 UTC", y, mo, d, h, mi, s, ns)
+	b := make([]byte, 0, n)
+	b = appendInt(b, year, 4, false)
+	b = append(b, '-')
+	b = appendInt(b, month, 2, false)
+	b = append(b, '-')
+	b = appendInt(b, day, 2, false)
+	b = append(b, ' ')
+	b = appendInt(b, hour, 2, false)
+	b = append(b, ':')
+	b = appendInt(b, min, 2, false)
+	b = append(b, ':')
+	b = appendInt(b, sec, 2, false)
+	if ns != 0 {
+		b = append(b, '.')
+		b = appendInt(b, ns, 9, true)
+	}
+	b = append(b, " +0000 UTC"...)
+	return string(b)
 }
 
 var monthdays = [12]int{
