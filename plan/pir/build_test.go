@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
@@ -150,7 +151,7 @@ func (e *indexenv) Schema(tbl *expr.Table) expr.Hint {
 	return e.env.Schema(tbl)
 }
 
-func (e *indexenv) TimeRange(_ *expr.Table, p *expr.Path) (min, max time.Time, ok bool) {
+func (e *indexenv) TimeRange(_ *expr.Table, p *expr.Path) (min, max date.Time, ok bool) {
 	return e.idx.TimeRange(p)
 }
 
@@ -190,9 +191,8 @@ func mkschema(args ...interface{}) expr.Hint {
 }
 
 func TestBuild(t *testing.T) {
-	basetime, _ := time.Parse(time.RFC3339, "2022-02-22T20:22:22Z")
-	basetime = basetime.UTC()
-	now := func(hours int) time.Time {
+	basetime, _ := date.Parse([]byte("2022-02-22T20:22:22Z"))
+	now := func(hours int) date.Time {
 		return basetime.Add(time.Duration(hours) * time.Hour)
 	}
 	tests := []struct {
@@ -942,7 +942,7 @@ func mkindex(rs [][]blockfmt.Range) *blockfmt.Index {
 	}
 }
 
-func timeRange(path string, min, max time.Time) blockfmt.Range {
+func timeRange(path string, min, max date.Time) blockfmt.Range {
 	p := strings.Split(path, ".")
 	return blockfmt.NewRange(p, ion.Timestamp(min), ion.Timestamp(max))
 }

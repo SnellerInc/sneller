@@ -20,8 +20,8 @@ import (
 	"math/rand"
 	"reflect"
 	"testing"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -659,7 +659,7 @@ func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
 		min := rand.Intn(60)
 		sec := 0
 		nsec := 0
-		buf.WriteTime(time.Date(year, time.Month(month), day, hour, min, sec, nsec, time.UTC))
+		buf.WriteTime(date.Date(year, month, day, hour, min, sec, nsec))
 
 		add()
 	}

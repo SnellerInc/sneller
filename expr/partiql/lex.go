@@ -20,7 +20,6 @@ import (
 	"io"
 	"math/big"
 	"strconv"
-	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -56,7 +55,7 @@ func (s *scanner) utcnow() *expr.Timestamp {
 		return faketime
 	}
 	if s.now == nil {
-		s.now = &expr.Timestamp{Value: time.Now()}
+		s.now = &expr.Timestamp{Value: date.Now()}
 	}
 	return s.now
 }

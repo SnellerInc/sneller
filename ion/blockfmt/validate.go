@@ -17,8 +17,8 @@ package blockfmt
 import (
 	"fmt"
 	"io"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -53,7 +53,7 @@ func (c *checkWriter) errorf(f string, args ...interface{}) {
 	fmt.Fprintf(c.dst, f, args...)
 }
 
-func (c *checkWriter) checkRange(tm time.Time, path []string) {
+func (c *checkWriter) checkRange(tm date.Time, path []string) {
 	r := c.blocks[c.block].Ranges
 	if len(r) == 0 {
 		return
@@ -89,12 +89,12 @@ func (c *checkWriter) walkStruct(fields []byte) {
 			c.errorf("symbol %d not in symbol table", sym)
 		}
 		var row []byte
-		var tm time.Time
+		var tm date.Time
 		switch ion.TypeOf(fields) {
 		case ion.TimestampType:
 			tm, fields, err = ion.ReadTime(fields)
 			if err != nil {
-				c.errorf("ion.ReadTime: %s", err)
+				c.errorf("ion.ReadDate: %s", err)
 				return
 			}
 			before := len(c.path)

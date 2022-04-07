@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
@@ -101,7 +102,7 @@ func TestCompileFilter(t *testing.T) {
 	}
 
 	// Test some path expressions against ranges.
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := date.Now().Truncate(time.Microsecond)
 	type check struct {
 		ranges []blockfmt.Range
 		expect ternary
@@ -496,7 +497,7 @@ func parsePath(s string) *expr.Path {
 
 func parseExpr(str string, args ...interface{}) expr.Node {
 	for i := range args {
-		if t, ok := args[i].(time.Time); ok {
+		if t, ok := args[i].(date.Time); ok {
 			args[i] = expr.ToString(&expr.Timestamp{Value: t})
 		}
 	}
@@ -510,7 +511,7 @@ func parseExpr(str string, args ...interface{}) expr.Node {
 }
 
 func BenchmarkExecuteFilter(b *testing.B) {
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := date.Now().Truncate(time.Microsecond)
 	cases := []struct {
 		Expr   expr.Node
 		Ranges []blockfmt.Range

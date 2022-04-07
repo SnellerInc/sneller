@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"path"
 	"strings"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 
@@ -64,7 +64,7 @@ type ObjectInfo struct {
 	// and the mtime to determine whether
 	// an object has been modified since
 	// we last looked at it.
-	LastModified time.Time
+	LastModified date.Time
 	// Format specifies the format
 	// of the object. For output
 	// objects, the format indicates
@@ -121,7 +121,7 @@ type Index struct {
 	Name string
 	// Created is the time the index
 	// was populated.
-	Created time.Time
+	Created date.Time
 	// Algo is the compression algorithm used to
 	// compress the index contents.
 	Algo string
@@ -136,7 +136,7 @@ type Index struct {
 	// the last scan operation completed.
 	// This may be the zero time if no
 	// scan has ever been performed.
-	LastScan time.Time
+	LastScan date.Time
 	// Cursors is the list of scanning cursors.
 	// These may not be present if no scan
 	// has ever been performed.
@@ -566,7 +566,7 @@ func (idx *Index) SyncInputs(dir string) error {
 
 // TimeRange returns the inclusive time range for the
 // given path expression.
-func (idx *Index) TimeRange(p *expr.Path) (min, max time.Time, ok bool) {
+func (idx *Index) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
 	for i := range idx.Contents {
 		desc := &idx.Contents[i]
 		if desc.Trailer == nil {
@@ -580,9 +580,9 @@ func (idx *Index) TimeRange(p *expr.Path) (min, max time.Time, ok bool) {
 					continue
 				}
 				if !ok {
-					min, max, ok = tr.MinTime(), tr.MaxTime(), true
+					min, max, ok = tr.min, tr.max, true
 				} else {
-					min, max = timeUnion(min, max, tr.MinTime(), tr.MaxTime())
+					min, max = timeUnion(min, max, tr.min, tr.max)
 				}
 			}
 		}

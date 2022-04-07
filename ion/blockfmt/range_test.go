@@ -20,15 +20,17 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func TestTimeUnion(t *testing.T) {
-	now := time.Now().UTC()
+	now := date.Now()
 	timerange := func(path []string, min, max int) *TimeRange {
 		return &TimeRange{
 			path: path,
-			min:  now.Add(time.Duration(min) * time.Hour).UnixMicro(),
-			diff: (time.Duration(max-min) * time.Hour).Microseconds(),
+			min:  now.Add(time.Duration(min) * time.Hour),
+			max:  now.Add(time.Duration(max) * time.Hour),
 		}
 	}
 
@@ -106,8 +108,8 @@ func TestTimeUnion(t *testing.T) {
 				out.WriteString(", ")
 			}
 			fmt.Fprintf(&out, "{ %v, ", lst[i].path)
-			fmt.Fprintf(&out, " %q, ", lst[i].MinTime().String())
-			fmt.Fprintf(&out, " %q}", lst[i].MaxTime().String())
+			fmt.Fprintf(&out, " %q, ", lst[i].min.String())
+			fmt.Fprintf(&out, " %q}", lst[i].max.String())
 		}
 		out.WriteByte(']')
 		return out.String()

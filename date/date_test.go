@@ -25,6 +25,8 @@ func TestRFC3339(t *testing.T) {
 		"2019-10-12T07:20:50.52Z",
 		"2019-10-12T07:20:50.52334-05:00",
 		"1992-01-23T12:24:32.999999999+07:00",
+		"2022-01-01T00:20:00+01:30",
+		"2022-12-31T23:59:59-00:30",
 	}
 	for i := range in {
 		out, ok := Parse([]byte(in[i]))
@@ -36,8 +38,8 @@ func TestRFC3339(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !out.Equal(want) {
-			t.Errorf("got %s; wanted %s", out, want)
+		for _, err := range check(out, want) {
+			t.Errorf("%s: got %s; wanted %s", err, out, want)
 		}
 		// move the date around forwards and backwards
 		// and check that the parsed time is okay
@@ -48,12 +50,12 @@ func TestRFC3339(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, ok := Parse([]byte(buf))
+			got, ok := Parse([]byte(buf))
 			if !ok {
 				t.Fatalf("couldn't parse %s", buf)
 			}
-			if !out.Equal(ref) {
-				t.Fatalf("iter %d got %s from %s", j, out.Format(time.RFC3339Nano), buf)
+			for _, err := range check(got, ref) {
+				t.Errorf("iter %d: %s: got %s from %s; wanted %s", j, err, got, buf, ref.UTC())
 			}
 		}
 	}
@@ -82,8 +84,25 @@ func TestNonConforming(t *testing.T) {
 		if err != nil {
 			t.Fatalf("invalid reference string %q: %s", in[i].normal, err)
 		}
-		if !out.Equal(want) {
-			t.Errorf("%s != %s", out, want)
+		for _, err := range check(out, want) {
+			t.Errorf("%s: %s != %s", err, out, want)
+		}
+	}
+}
+
+func TestNormalization(t *testing.T) {
+	rng := func(min, max int) int {
+		return min + rand.Intn(max-min)
+	}
+	for i := 0; i < 100000; i++ {
+		y, mo, d := rng(1000, 3000), rng(-100, 100), rng(-500, 500)
+		h, mi, s := rng(-100, 100), rng(-1000, 1000), rng(-1000, 1000)
+		ns := rng(-1e15, 1e15)
+		got := Date(y, mo, d, h, mi, s, ns)
+		want := time.Date(y, time.Month(mo), d, h, mi, s, ns, time.UTC)
+		for _, err := range check(got, want) {
+			t.Errorf("case %d: %s: %s != %s", i, err, got, want)
+			t.Error("input:", y, mo, d, h, mi, s, ns)
 		}
 	}
 }
@@ -111,4 +130,25 @@ func BenchmarkParse(b *testing.B) {
 			}
 		}
 	})
+}
+
+func check(got Time, want time.Time) (e []string) {
+	if !got.Time().Equal(want) {
+		e = append(e, "as times")
+	}
+	if !got.Equal(FromTime(want)) {
+		e = append(e, "as dates")
+	}
+	want = want.UTC()
+	y1, mo1, d1 := got.Year(), got.Month(), got.Day()
+	y2, mo2, d2 := want.Year(), want.Month(), want.Day()
+	if y1 != y2 || mo1 != int(mo2) || d1 != d2 {
+		e = append(e, "date parts")
+	}
+	h1, mi1, s1, ns1 := got.Hour(), got.Minute(), got.Second(), got.Nanosecond()
+	h2, mi2, s2, ns2 := want.Hour(), want.Minute(), want.Second(), want.Nanosecond()
+	if h1 != h2 || mi1 != mi2 || s1 != s2 || ns1 != ns2 {
+		e = append(e, "time parts")
+	}
+	return e
 }

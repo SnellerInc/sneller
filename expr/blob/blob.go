@@ -21,6 +21,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -67,7 +68,7 @@ type Info struct {
 	Align int
 	// LastModified is the last modified time
 	// of the blob.
-	LastModified time.Time
+	LastModified date.Time
 }
 
 // Use sets the http client used to
@@ -232,7 +233,7 @@ func (u *URL) Reader(start, size int64) (io.ReadCloser, error) {
 		}
 		// FIXME: re-enable this check;
 		// See issue #790
-		if false && t.After(u.Info.LastModified) {
+		if false && t.After(u.Info.LastModified.Time()) {
 			res.Body.Close()
 			return nil, fmt.Errorf("Last-Modified time %s after blob.URL.LastModified %s", lm, u.Info.LastModified)
 		}

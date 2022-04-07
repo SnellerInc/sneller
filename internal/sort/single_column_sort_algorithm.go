@@ -14,9 +14,7 @@
 
 package sort
 
-import (
-	"time"
-)
+import "github.com/SnellerInc/sneller/date"
 
 func scsExecute(column *MixedTypeColumn, plan []sortAction, threadPool ThreadPool, mainConsumer SortedDataConsumer, rp *RuntimeParameters) {
 	for i := range plan {
@@ -126,7 +124,7 @@ func (s *sortStringAsc) Swap(i, j int) {
 // --------------------------------------------------
 
 type sortDateTimeAsc struct {
-	keys    []time.Time
+	keys    []date.Time
 	indices []uint64
 }
 
@@ -206,7 +204,7 @@ func (s *sortStringDesc) Swap(i, j int) {
 // --------------------------------------------------
 
 type sortDateTimeDesc struct {
-	keys    []time.Time
+	keys    []date.Time
 	indices []uint64
 }
 

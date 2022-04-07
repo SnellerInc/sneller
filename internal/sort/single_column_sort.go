@@ -36,8 +36,8 @@ import (
 	"fmt"
 	"sort"
 	"sync"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -93,7 +93,7 @@ type MixedTypeColumn struct {
 	stringIndices        []uint64
 	fastTimestampKeys    []uint64 // timestamp represented as 8-byte values
 	fastTimestampIndices []uint64
-	timestampKeys        []time.Time // all other timestamps
+	timestampKeys        []date.Time // all other timestamps
 	timestampIndices     []uint64
 	decimalKeys          []string
 	decimalIndices       []uint64
@@ -565,7 +565,7 @@ func (m *MixedTypeColumn) promoteSimplifiedTimestamps() {
 		return
 	}
 
-	keys := make([]time.Time, len(m.fastTimestampKeys))
+	keys := make([]date.Time, len(m.fastTimestampKeys))
 	for i := range m.fastTimestampKeys {
 		keys[i] = simplifiedTimestampToTime(m.fastTimestampKeys[i])
 	}

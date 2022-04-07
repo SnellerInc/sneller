@@ -46,8 +46,8 @@ func Decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 	case ion.StructType:
 		return decodeStruct(st, msg)
 	case ion.TimestampType:
-		t, rest, err := ion.ReadTime(msg)
-		return &Timestamp{Value: t}, rest, err
+		d, rest, err := ion.ReadTime(msg)
+		return &Timestamp{Value: d}, rest, err
 	default:
 		if len(msg) > 8 {
 			msg = msg[:8]

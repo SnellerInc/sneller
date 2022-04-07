@@ -16,8 +16,8 @@ package blockfmt
 
 import (
 	"sort"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -38,8 +38,8 @@ func NewRange(path []string, min, max ion.Datum) Range {
 		if max, ok := max.(ion.Timestamp); ok {
 			return &TimeRange{
 				path: path,
-				min:  time.Time(min).UnixMicro(),
-				diff: difftime(time.Time(min), time.Time(max)),
+				min:  date.Time(min),
+				max:  date.Time(max),
 			}
 		}
 	}
@@ -59,28 +59,23 @@ func (r *datumRange) Path() []string { return r.path }
 func (r *datumRange) Min() ion.Datum { return r.min }
 func (r *datumRange) Max() ion.Datum { return r.max }
 
-func difftime(min, max time.Time) int64 {
-	return max.UnixMicro() - min.UnixMicro()
-}
-
 type TimeRange struct {
-	path      []string
-	min, diff int64 // microseconds
+	path []string
+	min  date.Time
+	max  date.Time
 }
 
 func (r *TimeRange) Path() []string     { return r.path }
-func (r *TimeRange) Min() ion.Datum     { return ion.Timestamp(r.MinTime()) }
-func (r *TimeRange) Max() ion.Datum     { return ion.Timestamp(r.MaxTime()) }
-func (r *TimeRange) MinTime() time.Time { return time.UnixMicro(r.min).UTC() }
-func (r *TimeRange) MaxTime() time.Time { return time.UnixMicro(r.min + r.diff).UTC() }
+func (r *TimeRange) Min() ion.Datum     { return ion.Timestamp(r.min) }
+func (r *TimeRange) Max() ion.Datum     { return ion.Timestamp(r.max) }
+func (r *TimeRange) MinTime() date.Time { return r.min }
+func (r *TimeRange) MaxTime() date.Time { return r.max }
 
 func (r *TimeRange) Union(t *TimeRange) {
-	min, max := timeUnion(t.MinTime(), t.MaxTime(), r.MinTime(), r.MaxTime())
-	r.min = min.UnixMicro()
-	r.diff = difftime(min, max)
+	r.min, r.max = timeUnion(t.min, t.max, r.min, r.max)
 }
 
-func timeUnion(min1, max1, min2, max2 time.Time) (min, max time.Time) {
+func timeUnion(min1, max1, min2, max2 date.Time) (min, max date.Time) {
 	if min1.Before(min2) {
 		min = min1
 	} else {

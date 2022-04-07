@@ -17,6 +17,8 @@ package ion
 import (
 	"math"
 	"testing"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func TestReadInt(t *testing.T) {
@@ -260,5 +262,47 @@ func BenchmarkReadIntMagnitudeFromIonWithExtraPaddingAfterValues(b *testing.B) {
 		for _, input := range testcases {
 			_, _, _ = ReadIntMagnitude(input.encoded)
 		}
+	}
+}
+
+func BenchmarkReadTime(b *testing.B) {
+	mkts := func(s string) []byte {
+		d, ok := date.Parse([]byte(s))
+		if !ok {
+			panic("bad date: " + s)
+		}
+		var b Buffer
+		b.WriteTime(d)
+		return b.Bytes()
+	}
+	times := [][]byte{
+		mkts("2022-04-05T07:20:50"),
+		mkts("2022-04-05T07:20:50.52334"),
+		mkts("2022-04-05T12:24:32.999999999"),
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ReadTime(times[i%len(times)])
+	}
+}
+
+func BenchmarkWriteTime(b *testing.B) {
+	mkts := func(s string) date.Time {
+		d, ok := date.Parse([]byte(s))
+		if !ok {
+			panic("bad date: " + s)
+		}
+		return d
+	}
+	times := []date.Time{
+		mkts("2022-04-05T07:20:50"),
+		mkts("2022-04-05T07:20:50.52334"),
+		mkts("2022-04-05T12:24:32.999999999"),
+	}
+	var buf Buffer
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf.WriteTime(times[i%len(times)])
+		buf.Reset()
 	}
 }

@@ -21,9 +21,9 @@ import (
 	"math"
 	"strings"
 	"sync/atomic"
-	"time"
 	"unsafe"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/atomicext"
 	"github.com/SnellerInc/sneller/ion"
@@ -268,7 +268,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 		if mark == 0 {
 			b.WriteNull()
 		} else {
-			b.WriteTime(time.UnixMicro(int64(binary.LittleEndian.Uint64(data))))
+			b.WriteTime(date.UnixMicro(int64(binary.LittleEndian.Uint64(data))))
 		}
 		return 16
 	case AggregateKindCount:

@@ -24,7 +24,6 @@ import (
 	"math/bits"
 	"os"
 	"strconv"
-	"time"
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
@@ -354,7 +353,7 @@ func (s *State) after() {
 
 // addTimeRange adds a time to the range for the path
 // to the current field.
-func (s *State) addTimeRange(t time.Time) {
+func (s *State) addTimeRange(t date.Time) {
 	if s.flags&(flagField|flagInList) != flagField {
 		return
 	}
@@ -383,7 +382,7 @@ func (s *State) parseInt(i int64) {
 		v := strconv.Itoa(int(i))
 		s.out.WriteString(v)
 	case stateExpectUnixSeconds:
-		t := time.Unix(i, 0).In(time.UTC)
+		t := date.Unix(i, 0)
 		s.addTimeRange(t)
 		s.out.WriteTime(t)
 	default:

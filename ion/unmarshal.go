@@ -18,7 +18,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 // Type is one of the ion datatypes
@@ -511,6 +512,24 @@ func readuv(msg []byte) (uint, []byte, bool) {
 	return out, msg[i+1:], done
 }
 
+// read a 1-byte unsigned varint
+func readuv1(msg []byte) (uint, []byte, bool) {
+	out := uint(msg[0] & 0x7f)
+	done := msg[0]&0x80 != 0
+	return out, msg[1:], done
+}
+
+// read a 1- or 2-byte unsigned varint
+func readuv2(msg []byte) (uint, []byte, bool) {
+	out := uint(msg[0] & 0x7f)
+	if msg[0]&0x80 != 0 {
+		return out, msg[1:], true
+	}
+	out = (out << 7) + uint(msg[1]&0x7f)
+	done := msg[1]&0x80 != 0
+	return out, msg[2:], done
+}
+
 // read signed varint
 func readiv(msg []byte) (int, []byte, bool) {
 	out := int(msg[0] & 0x3f)
@@ -546,6 +565,16 @@ func readiv(msg []byte) (int, []byte, bool) {
 	return out, msg, done
 }
 
+// read a 1-byte signed varint
+func readiv1(msg []byte) (int, []byte, bool) {
+	out := int(msg[0] & 0x3f)
+	if msg[0]&0x40 != 0 {
+		out = -out
+	}
+	done := msg[0]&0x80 != 0
+	return out, msg[1:], done
+}
+
 // read a fixed-width integer with a sign bit
 func readint(msg []byte) int64 {
 	out := int64(msg[0] & 0x7f)
@@ -563,14 +592,15 @@ func readint(msg []byte) int64 {
 
 // ReadTime reads a timestamp object
 // and returns the subsequent message bytes.
-func ReadTime(msg []byte) (time.Time, []byte, error) {
+func ReadTime(msg []byte) (date.Time, []byte, error) {
 	if t := TypeOf(msg); t != TimestampType {
-		return time.Time{}, nil, bad(t, TimestampType, "ReadTime")
+		return date.Time{}, nil, bad(t, TimestampType, "ReadTime")
 	}
 
-	var out time.Time
+	var out date.Time
 	body, rest := Contents(msg)
 	var year, month, day, hour, minute, second uint
+	month, day = 1, 1
 	var offset, fracexp, nsec int
 	var frac int64
 	var ok bool
@@ -581,24 +611,24 @@ func ReadTime(msg []byte) (time.Time, []byte, error) {
 	if !ok {
 		return out, nil, errInvalidIon
 	}
-	year, body, ok = readuv(body)
+	year, body, ok = readuv2(body)
 	if ok && len(body) > 0 {
-		month, body, ok = readuv(body)
+		month, body, ok = readuv1(body)
 	}
 	if ok && len(body) > 0 {
-		day, body, ok = readuv(body)
+		day, body, ok = readuv1(body)
 	}
 	if ok && len(body) > 0 {
-		hour, body, ok = readuv(body)
+		hour, body, ok = readuv1(body)
 	}
 	if ok && len(body) > 0 {
-		minute, body, ok = readuv(body)
+		minute, body, ok = readuv1(body)
 	}
 	if ok && len(body) > 0 {
-		second, body, ok = readuv(body)
+		second, body, ok = readuv1(body)
 	}
 	if ok && len(body) > 0 {
-		fracexp, body, ok = readiv(body)
+		fracexp, body, ok = readiv1(body)
 	}
 	if ok && len(body) > 0 {
 		frac = readint(body)
@@ -616,7 +646,7 @@ func ReadTime(msg []byte) (time.Time, []byte, error) {
 	default:
 		// unhandled!
 	}
-	out = time.Date(int(year), time.Month(month), int(day), int(hour), int(minute), int(second), nsec, time.UTC)
+	out = date.Date(int(year), int(month), int(day), int(hour), int(minute), int(second), nsec)
 	return out, rest, nil
 }
 

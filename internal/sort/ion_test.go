@@ -17,18 +17,17 @@ package sort
 import (
 	"math"
 	"testing"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
 func TestParseSimplfiedTimestamp(t *testing.T) {
 
-	ts := time.Date(2021, time.Month(8), 22, 14, 42, 32, 0, time.UTC)
+	ts := date.Date(2021, 8, 22, 14, 42, 32, 0)
 
 	testcases := []struct {
 		trunc ion.TimeTrunc
-		ts    time.Time
 		val   uint64
 	}{
 		{trunc: ion.TruncToSecond,
@@ -67,7 +66,7 @@ func TestParseSimplfiedTimestamp(t *testing.T) {
 
 func TestSimplifiedTimestampToTime(t *testing.T) {
 
-	ts := time.Date(2021, time.Month(8), 22, 14, 42, 32, 0, time.UTC)
+	ts := date.Date(2021, 8, 22, 14, 42, 32, 0)
 
 	// given
 	var buf ion.Buffer
@@ -96,7 +95,7 @@ func TestSimplfiedTimestampComparison(t *testing.T) {
 		hour := 14
 		minute := 42
 		second := 32
-		ts1 := time.Date(year, time.Month(month), day, hour, minute, second, 0, time.UTC)
+		ts1 := date.Date(year, month, day, hour, minute, second, 0)
 
 		switch i {
 		case 0:
@@ -113,7 +112,7 @@ func TestSimplfiedTimestampComparison(t *testing.T) {
 			second += 1
 		}
 
-		ts2 := time.Date(year, time.Month(month), day, hour, minute, second, 0, time.UTC)
+		ts2 := date.Date(year, month, day, hour, minute, second, 0)
 
 		buf.Reset()
 		buf.WriteTime(ts1)

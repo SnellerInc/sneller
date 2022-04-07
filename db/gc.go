@@ -125,7 +125,7 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 				}
 				return err
 			}
-			if info.ModTime().After(idx.Created) {
+			if info.ModTime().After(idx.Created.Time()) {
 				// if, due to some kind of synchronization failure,
 				// we are running an ingest at the same time that
 				// we are runing GC, then new files will be introduced

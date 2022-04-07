@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -521,7 +522,7 @@ func uuid() string {
 
 func (st *tableState) emptyIndex() error {
 	idx := blockfmt.Index{
-		Created: time.Now().Truncate(time.Microsecond),
+		Created: date.Now().Truncate(time.Microsecond),
 		Name:    st.table,
 		// no Contents
 	}
@@ -589,7 +590,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
 			return
 		}
 	}
-	idx.Created = time.Now()
+	idx.Created = date.Now()
 	idx.Algo = "zstd"
 	err = st.flush(idx)
 	if err != nil {
@@ -675,7 +676,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 		return err
 	}
 	st.conf.logf("table %s: wrote object %s ETag %s", st.table, fp, etag)
-	buildtime := time.Now().Truncate(time.Microsecond)
+	buildtime := date.Now().Truncate(time.Microsecond)
 	if idx == nil {
 		idx = new(blockfmt.Index)
 		for i := range lst {
@@ -687,7 +688,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	idx.Contents = append(idx.Contents, blockfmt.Descriptor{
 		ObjectInfo: blockfmt.ObjectInfo{
 			Path:         fp,
-			LastModified: lastmod,
+			LastModified: date.FromTime(lastmod),
 			ETag:         etag,
 			Format:       blockfmt.Version,
 			Size:         out.Size(),

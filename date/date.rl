@@ -2,10 +2,6 @@
 
 package date
 
-import (
-       "time"
-)
-
 // TODO: support more date formats
 // than simply rfc3339
 %%{
@@ -50,22 +46,15 @@ import (
         frac += int(data[p]-'0')
         fracdig /= 10
     }};
-
-    action save_hm {
-        hoursave, minutesave = hour, minute;
-        hour, minute = 0, 0;
-    }
-    action negoff { negoff = true }
-    action setloc {{
-        offset := 3600*hour + 60*minute
-        if negoff {
-           offset = -offset
+    # offset: ±HH:MM
+    offset = ('+' | '-') (('0' digit) | ('1' digit) | ('2' [0-3])) ':' [0-5] digit @{{
+        hoff := int(data[p-4]-'0')*10 + int(data[p-3]-'0')
+        moff := int(data[p-1]-'0')*10 + int(data[p]-'0')
+        if data[p-5] == '-' {
+            hoff, moff = -hoff, -moff
         }
-        loc = time.FixedZone("", offset)
-        hour, minute = hoursave, minutesave
-    }}
-
-    offset = ('+' | ('-' %negoff)) >save_hm (hour ':' minute) @setloc;
+        hour, minute = hour-hoff, minute-moff
+    }};
     partial_time = hour ':' minute ':' second (secfrac)?;
     date = fullyear '-' month '-' day;
     time_offset = 'Z' | offset;
@@ -79,28 +68,11 @@ import (
     main := space* date ('T' | ' ') full_time space*;
 }%%
 
-// Parse parses a date string from data
-// and returns the associated time and true,
-// or the zero time value and false if the buffer
-// did not contain a recognzied date format.
-//
-// Parse attempts to recognize strings
-// that (approximately) match RFC3339 timestamps
-// with optional nanosecond precision and timezone/offset
-// components. Parse will automatically ignore leading
-// and trailing whitespace as long as the middle characters
-// of data are unambiguously a timestamp.
-//
-//
-func Parse(data []byte) (time.Time, bool) {
+func parse(data []byte) (year, month, day, hour, minute, second, nsec int, ok bool) {
     cs, p, pe, eof := 0, 0, len(data), -1
-    loc := time.UTC
     // fractional component; divided by ten
     // for each decimal place after '.' that we scan
-    fracdig := int(time.Second)
-    negoff := false
-    hoursave, minutesave := 0, 0
-    year, month, day, hour, minute, second, frac := 0, 0, 0, 0, 0, 0, 0
+    frac, fracdig := 0, int(1e9)
 
     %%{
         write data;
@@ -108,11 +80,11 @@ func Parse(data []byte) (time.Time, bool) {
         write exec;
     }%%
     if cs < date_first_final {
-        return time.Time{}, false
+        return
     }
-    nsec := 0
     if frac != 0 {
         nsec = frac * fracdig;
     }
-    return time.Date(year, time.Month(month), day, hour, minute, second, nsec, loc), true
+    ok = true
+    return
 }

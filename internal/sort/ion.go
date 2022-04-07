@@ -16,8 +16,8 @@ package sort
 
 import (
 	"encoding/binary"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -60,8 +60,8 @@ func ionParseFloat64(raw []byte) float64 {
 // ionParseSimplifiedTimestamp tries to parse timestamp as a big-endian 8-byte value.
 //
 // Caveat: if a timestamp has some fields missing, we complete them with zeros.
-// Such completed timestamps converted back to `time.Time` (see: `simplifiedTimestampToTime`)
-// may substantially different the original timestamp. The reason is `time.Date`
+// Such completed timestamps converted back to `date.Time` (see: `simplifiedTimestampToTime`)
+// may substantially different the original timestamp. The reason is `date.Stamp`
 // function tries to fix ill-formed timestamps to something more reasonable.
 func ionParseSimplifiedTimestamp(raw []byte) (uint64, bool) {
 	// The "ideal" format is:
@@ -125,7 +125,7 @@ func ionParseSimplifiedTimestamp(raw []byte) (uint64, bool) {
 }
 
 // simplifiedTimestampToTime interprets integer value as raw Ion timestamp.
-func simplifiedTimestampToTime(ts uint64) time.Time {
+func simplifiedTimestampToTime(ts uint64) date.Time {
 	tmp := ts >> (5 * 8)
 	year := ((tmp & 0xff00) >> 1) | (tmp & 0x7f)
 	month := (ts >> (4 * 8)) & 0x7f
@@ -135,11 +135,11 @@ func simplifiedTimestampToTime(ts uint64) time.Time {
 	sec := ts & 0x7f
 	nsec := 0
 
-	return time.Date(int(year), time.Month(month), int(day), int(hour),
-		int(min), int(sec), nsec, time.UTC)
+	return date.Date(int(year), int(month), int(day), int(hour),
+		int(min), int(sec), nsec)
 }
 
-func ionParseTimestamp(raw []byte) time.Time {
+func ionParseTimestamp(raw []byte) date.Time {
 	value, _, err := ion.ReadTime(raw)
 	if err != nil {
 		panic(err)

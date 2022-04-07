@@ -29,8 +29,8 @@ package blockfmt
 
 import (
 	"fmt"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -127,9 +127,9 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 				switch r := ranges[j].(type) {
 				case *TimeRange:
 					dst.BeginField(symMin)
-					ion.Timestamp(r.MinTime()).Encode(dst, st)
+					dst.WriteTime(r.min)
 					dst.BeginField(symMax)
-					ion.Timestamp(r.MaxTime()).Encode(dst, st)
+					dst.WriteTime(r.max)
 				default:
 					if min := r.Min(); min != nil {
 						dst.BeginField(symMin)
@@ -302,14 +302,14 @@ func (d *TrailerDecoder) makeRange(n int) []Range {
 
 // timeRange appends a timeRange to d.timeRanges and
 // returns a pointer to it.
-func (d *TrailerDecoder) timeRange(path []string, min, max time.Time) *TimeRange {
+func (d *TrailerDecoder) timeRange(path []string, min, max date.Time) *TimeRange {
 	if len(d.timeRanges) == cap(d.timeRanges) {
 		d.timeRanges = make([]TimeRange, 0, 8+2*cap(d.timeRanges))
 	}
 	d.timeRanges = append(d.timeRanges, TimeRange{
 		path: path,
-		min:  min.UnixMicro(),
-		diff: difftime(min, max),
+		min:  min,
+		max:  max,
 	})
 	return &d.timeRanges[len(d.timeRanges)-1]
 }
@@ -322,7 +322,7 @@ func (d *TrailerDecoder) unpackRanges(st *ion.Symtab, field []byte) ([]Range, er
 	ranges := d.makeRange(n)[:0]
 	err = unpackList(field, func(field []byte) error {
 		var tmin, tmax struct {
-			ts time.Time
+			ts date.Time
 			ok bool
 		}
 		var min, max ion.Datum

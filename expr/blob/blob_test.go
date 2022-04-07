@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -157,7 +158,7 @@ func TestBlobs(t *testing.T) {
 }
 
 func TestSerialization(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Microsecond)
+	now := date.Now().Truncate(time.Microsecond)
 	lst := &List{
 		Contents: []Interface{
 			&Compressed{

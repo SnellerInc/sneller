@@ -15,8 +15,7 @@
 package main
 
 import (
-	"time"
-
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -149,11 +148,11 @@ func compileComparisonFilter(e *expr.Comparison) filter {
 	}
 	switch fn.Func {
 	case expr.DateToUnixEpoch:
-		return timeFilter(path, func(min, max time.Time) ternary {
+		return timeFilter(path, func(min, max date.Time) ternary {
 			return cmp(int64(im), min.Unix(), max.Unix())
 		})
 	case expr.DateToUnixMicro:
-		return timeFilter(path, func(min, max time.Time) ternary {
+		return timeFilter(path, func(min, max date.Time) ternary {
 			return cmp(int64(im), min.UnixMicro(), max.UnixMicro())
 		})
 	}
@@ -257,7 +256,7 @@ func compileBefore(args []expr.Node) filter {
 		switch rhs := args[1].(type) {
 		case *expr.Path:
 			// BEFORE(ts, path)
-			return timeFilter(rhs, func(min, max time.Time) ternary {
+			return timeFilter(rhs, func(min, max date.Time) ternary {
 				if lhs.Value.Before(min) {
 					return always
 				}
@@ -271,7 +270,7 @@ func compileBefore(args []expr.Node) filter {
 		switch rhs := args[1].(type) {
 		case *expr.Timestamp:
 			// BEFORE(path, ts)
-			return timeFilter(lhs, func(min, max time.Time) ternary {
+			return timeFilter(lhs, func(min, max date.Time) ternary {
 				if max.Before(rhs.Value) {
 					return always
 				}
@@ -289,7 +288,7 @@ func compileBefore(args []expr.Node) filter {
 // matching the given path and applies fn to it. If a
 // range for the given path was found, but it is not a
 // time range, the filter returns maybe.
-func timeFilter(path *expr.Path, fn func(min, max time.Time) ternary) filter {
+func timeFilter(path *expr.Path, fn func(min, max date.Time) ternary) filter {
 	return pathFilter(path, func(r blockfmt.Range) ternary {
 		rt, ok := r.(*blockfmt.TimeRange)
 		if !ok {

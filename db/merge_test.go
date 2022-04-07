@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -49,7 +50,7 @@ func TestMerge(t *testing.T) {
 		{in: []int64{minMerge * 2, minMerge, minMerge - 1, minMerge - 2}, prepend: []int64{minMerge * 2, minMerge}, merge: []int64{minMerge - 1, minMerge - 2}},
 	}
 
-	t0 := time.Now()
+	t0 := date.Now()
 	for i := range cases {
 		in := cases[i].in
 		descs := make([]blockfmt.Descriptor, len(in))

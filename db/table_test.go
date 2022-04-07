@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -123,7 +124,7 @@ func TestOpenIndex(t *testing.T) {
 
 	idx := blockfmt.Index{
 		Name:    "test-index",
-		Created: time.Now().UTC().Truncate(time.Microsecond),
+		Created: date.Now().Truncate(time.Microsecond),
 		Algo:    "zstd",
 		Contents: []blockfmt.Descriptor{{
 			ObjectInfo: blockfmt.ObjectInfo{

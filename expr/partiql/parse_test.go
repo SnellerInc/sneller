@@ -17,8 +17,8 @@ package partiql
 import (
 	"fmt"
 	"testing"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -221,9 +221,9 @@ func TestParseNormalization(t *testing.T) {
 		},
 	}
 
-	tm, err := time.Parse(time.RFC3339Nano, "2006-01-02T15:04:05.999Z")
-	if err != nil {
-		t.Fatal(err)
+	tm, ok := date.Parse([]byte("2006-01-02T15:04:05.999Z"))
+	if !ok {
+		t.Fatal("failed to parse time")
 	}
 	t.Cleanup(func() {
 		faketime = nil

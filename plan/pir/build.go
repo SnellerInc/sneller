@@ -16,8 +16,8 @@ package pir
 
 import (
 	"fmt"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -100,7 +100,7 @@ type TimeRanger interface {
 	// TimeRange returns the inclusive time range
 	// for the given path expression across the
 	// given table.
-	TimeRange(*expr.Table, *expr.Path) (min, max time.Time, ok bool)
+	TimeRange(*expr.Table, *expr.Path) (min, max date.Time, ok bool)
 }
 
 // Build walks the provided Query

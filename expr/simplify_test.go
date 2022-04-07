@@ -20,8 +20,8 @@ import (
 	"math/big"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -41,9 +41,9 @@ func casen(args ...Node) *Case {
 }
 
 func ts(str string) Node {
-	tm, err := time.Parse(time.RFC3339Nano, str)
-	if err != nil {
-		panic(err)
+	tm, ok := date.Parse([]byte(str))
+	if !ok {
+		panic("bad time: " + str)
 	}
 	return &Timestamp{Value: tm}
 }
@@ -645,6 +645,8 @@ func TestSimplify(t *testing.T) {
 }
 
 func testEquivalence(e Node, t *testing.T) {
+	t.Helper()
+
 	var buf ion.Buffer
 	var st ion.Symtab
 	e.Encode(&buf, &st)

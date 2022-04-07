@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -291,13 +292,13 @@ func (f *Float) Add(value ion.Datum) Union {
 // Time is a Generator that generates
 // timestamp datums.
 type Time struct {
-	earliest, latest time.Time
+	earliest, latest date.Time
 	hits             int
 }
 
 // FromTime returns a Time Generator
 // that only returns t.
-func FromTime(t time.Time) *Time {
+func FromTime(t date.Time) *Time {
 	return &Time{
 		hits:     1,
 		earliest: t,
@@ -324,13 +325,13 @@ func (t *Time) Generate(src *rand.Rand) ion.Datum {
 		nano = start + src.Int63n(distance)
 	}
 	secs, nsecs := nano/int64(time.Second), nano%int64(time.Second)
-	return ion.Timestamp(time.Unix(secs, nsecs))
+	return ion.Timestamp(date.Unix(secs, nsecs))
 }
 
 // Add implements Union.Add
 func (t *Time) Add(value ion.Datum) Union {
 	if vt, ok := value.(ion.Timestamp); ok {
-		vt := time.Time(vt)
+		vt := date.Time(vt)
 		if vt.Before(t.earliest) {
 			t.earliest = vt
 		}
@@ -606,7 +607,7 @@ func Single(value ion.Datum) Union {
 	case ion.FloatType:
 		return FromFloat(float64(value.(ion.Float)))
 	case ion.TimestampType:
-		return FromTime(time.Time(value.(ion.Timestamp)))
+		return FromTime(date.Time(value.(ion.Timestamp)))
 	case ion.StringType:
 		return FromString(string(value.(ion.String)))
 	case ion.ListType:

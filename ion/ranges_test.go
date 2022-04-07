@@ -18,6 +18,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func TestRangesSaveLoad(t *testing.T) {
@@ -27,7 +29,7 @@ func TestRangesSaveLoad(t *testing.T) {
 	p1 := mksymstr(1)
 	p2 := mksymstr(2)
 	p3 := mksymstr(3)
-	ts := time.Date(2021, 11, 11, 11, 0, 0, 0, time.UTC)
+	ts := date.Date(2021, 11, 11, 11, 0, 0, 0)
 
 	rs.AddTime(mksymbuf(1), ts)
 	rs.save(&snap)
@@ -80,7 +82,7 @@ func TestRangesCommit(t *testing.T) {
 
 	p1 := mksymstr(1)
 	p2 := mksymstr(2)
-	t1 := time.Date(2021, 11, 11, 11, 0, 0, 0, time.UTC)
+	t1 := date.Date(2021, 11, 11, 11, 0, 0, 0)
 	t2 := t1.Add(time.Minute)
 
 	rs.AddTime(mksymbuf(1), t1)
@@ -154,7 +156,7 @@ func TestRangesCommit(t *testing.T) {
 // This can be run to make sure that range tracking is
 // not super alloc-y.
 func BenchmarkRanges(b *testing.B) {
-	t := time.Date(2021, 11, 10, 0, 0, 0, 0, time.UTC)
+	t := date.Date(2021, 11, 10, 0, 0, 0, 0)
 
 	paths := [...]Symbuf{
 		mksymbuf(1),

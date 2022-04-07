@@ -19,6 +19,8 @@ import (
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func TestEncodeInt(t *testing.T) {
@@ -151,7 +153,7 @@ func TestShortStruct(t *testing.T) {
 }
 
 func TestRandomTime(t *testing.T) {
-	base := time.Unix(0, 0)
+	base := date.Unix(0, 0)
 	var b Buffer
 	// test many random displacements of 64-bit nanoseconds
 	// from the zero unix time
@@ -188,9 +190,9 @@ func TestTime(t *testing.T) {
 
 	var b Buffer
 	for i := range tcs {
-		d, err := time.Parse(time.RFC3339, tcs[i].text)
-		if err != nil {
-			t.Fatalf("parsing %q: %s", tcs[i].text, err)
+		d, ok := date.Parse([]byte(tcs[i].text))
+		if !ok {
+			t.Fatalf("parsing %q failed", tcs[i].text)
 		}
 		b.Reset()
 		b.WriteTime(d)
@@ -201,7 +203,7 @@ func TestTime(t *testing.T) {
 		}
 		d2, rest, err := ReadTime(got)
 		if err != nil {
-			t.Errorf("case %d: ReadTime: %s", i, err)
+			t.Errorf("case %d: ReadDate: %s", i, err)
 		}
 		if len(rest) != 0 {
 			t.Errorf("case %d: %d bytes left over?", i, len(rest))

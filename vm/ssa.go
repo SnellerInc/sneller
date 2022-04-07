@@ -26,8 +26,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
@@ -888,7 +888,7 @@ func (p *prog) tobits(imm interface{}) uint64 {
 			return 1
 		}
 		return 0
-	case time.Time:
+	case date.Time:
 		var buf ion.Buffer
 		buf.WriteTime(v)
 		str := string(buf.Bytes()[1:])
@@ -2692,7 +2692,7 @@ func (p *prog) WidthBucket(val, min, max, bucketCount *value) *value {
 
 func (p *prog) coerceTimestamp(v *value) (*value, *value) {
 	if v.op == sliteral {
-		ts, ok := v.imm.(time.Time)
+		ts, ok := v.imm.(date.Time)
 		if !ok {
 			return p.errorf("cannot use result of %T as TIMESTAMP", v.imm), p.ValidLanes()
 		}
@@ -4469,7 +4469,7 @@ func (c *compilestate) litcmp(v *value, i interface{}) {
 			d = ion.String(i)
 		case []byte:
 			d = ion.Blob(i)
-		case time.Time:
+		case date.Time:
 			d = ion.Timestamp(i)
 		default:
 			panic("type not supported for literal comparison")
@@ -4713,7 +4713,7 @@ func emitconst(v *value, c *compilestate) {
 		b.WriteBool(t)
 	case string:
 		b.WriteString(t)
-	case time.Time:
+	case date.Time:
 		b.WriteTime(t)
 	case rawDatum:
 		b.Set([]byte(t))
@@ -5220,7 +5220,7 @@ func emitcmptm(v *value, c *compilestate) {
 	mask := v.args[1]
 
 	var buf ion.Buffer
-	buf.WriteTime(v.imm.(time.Time))
+	buf.WriteTime(v.imm.(date.Time))
 	offset := c.dictimm(string(buf.Bytes()))
 
 	c.loadk(v, mask)

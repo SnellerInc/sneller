@@ -3,51 +3,30 @@
 
 package date
 
-import (
-	"time"
-)
-
 // TODO: support more date formats
 // than simply rfc3339
 
-//line date.rl:80
+//line date.rl:69
 
-// Parse parses a date string from data
-// and returns the associated time and true,
-// or the zero time value and false if the buffer
-// did not contain a recognzied date format.
-//
-// Parse attempts to recognize strings
-// that (approximately) match RFC3339 timestamps
-// with optional nanosecond precision and timezone/offset
-// components. Parse will automatically ignore leading
-// and trailing whitespace as long as the middle characters
-// of data are unambiguously a timestamp.
-//
-//
-func Parse(data []byte) (time.Time, bool) {
+func parse(data []byte) (year, month, day, hour, minute, second, nsec int, ok bool) {
 	cs, p, pe, eof := 0, 0, len(data), -1
-	loc := time.UTC
 	// fractional component; divided by ten
 	// for each decimal place after '.' that we scan
-	fracdig := int(time.Second)
-	negoff := false
-	hoursave, minutesave := 0, 0
-	year, month, day, hour, minute, second, frac := 0, 0, 0, 0, 0, 0, 0
+	frac, fracdig := 0, int(1e9)
 
-//line date.go:42
+//line date.go:21
 	const date_start int = 1
-	const date_first_final int = 33
+	const date_first_final int = 32
 	const date_error int = 0
 
 	const date_en_main int = 1
 
-//line date.go:50
+//line date.go:29
 	{
 		cs = date_start
 	}
 
-//line date.go:55
+//line date.go:34
 	{
 		if p == pe {
 			goto _test_eof
@@ -93,10 +72,10 @@ func Parse(data []byte) (time.Time, bool) {
 			goto st_case_18
 		case 19:
 			goto st_case_19
+		case 32:
+			goto st_case_32
 		case 33:
 			goto st_case_33
-		case 34:
-			goto st_case_34
 		case 20:
 			goto st_case_20
 		case 21:
@@ -107,14 +86,14 @@ func Parse(data []byte) (time.Time, bool) {
 			goto st_case_23
 		case 24:
 			goto st_case_24
-		case 35:
-			goto st_case_35
 		case 25:
 			goto st_case_25
 		case 26:
 			goto st_case_26
-		case 27:
-			goto st_case_27
+		case 34:
+			goto st_case_34
+		case 35:
+			goto st_case_35
 		case 36:
 			goto st_case_36
 		case 37:
@@ -129,22 +108,18 @@ func Parse(data []byte) (time.Time, bool) {
 			goto st_case_41
 		case 42:
 			goto st_case_42
+		case 27:
+			goto st_case_27
 		case 43:
 			goto st_case_43
-		case 44:
-			goto st_case_44
 		case 28:
 			goto st_case_28
-		case 45:
-			goto st_case_45
 		case 29:
 			goto st_case_29
 		case 30:
 			goto st_case_30
 		case 31:
 			goto st_case_31
-		case 32:
-			goto st_case_32
 		}
 		goto st_out
 	st1:
@@ -205,7 +180,7 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 		goto st0
 	tr6:
-//line date.rl:17
+//line date.rl:13
 		{
 			year = int(data[p-4]-'0') * 1000
 			year += int(data[p-3]-'0') * 100
@@ -218,12 +193,12 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof6
 		}
 	st_case_6:
-//line date.go:226
+//line date.go:201
 		switch data[p] {
 		case 48:
 			goto st7
 		case 49:
-			goto st32
+			goto st31
 		}
 		goto st0
 	st7:
@@ -245,7 +220,7 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 		goto st0
 	tr10:
-//line date.rl:29
+//line date.rl:25
 		{
 			month = int(data[p-2]-'0') * 10
 			month += int(data[p-1] - '0')
@@ -256,15 +231,15 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof9
 		}
 	st_case_9:
-//line date.go:264
+//line date.go:239
 		switch data[p] {
 		case 48:
 			goto st10
 		case 51:
-			goto st31
+			goto st30
 		}
 		if 49 <= data[p] && data[p] <= 50 {
-			goto st30
+			goto st29
 		}
 		goto st0
 	st10:
@@ -289,7 +264,7 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 		goto st0
 	tr15:
-//line date.rl:24
+//line date.rl:20
 		{
 			day = int(data[p-2]-'0') * 10
 			day += int(data[p-1] - '0')
@@ -300,9 +275,9 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof12
 		}
 	st_case_12:
-//line date.go:308
+//line date.go:283
 		if data[p] == 50 {
-			goto st29
+			goto st28
 		}
 		if 48 <= data[p] && data[p] <= 49 {
 			goto st13
@@ -327,7 +302,7 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 		goto st0
 	tr19:
-//line date.rl:34
+//line date.rl:30
 		{
 			hour = int(data[p-2]-'0') * 10
 			hour += int(data[p-1] - '0')
@@ -338,7 +313,7 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof15
 		}
 	st_case_15:
-//line date.go:346
+//line date.go:321
 		if 48 <= data[p] && data[p] <= 53 {
 			goto st16
 		}
@@ -362,7 +337,7 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 		goto st0
 	tr22:
-//line date.rl:39
+//line date.rl:35
 		{
 			minute = int(data[p-2]-'0') * 10
 			minute += int(data[p-1] - '0')
@@ -373,9 +348,9 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof18
 		}
 	st_case_18:
-//line date.go:381
+//line date.go:356
 		if data[p] == 54 {
-			goto st28
+			goto st27
 		}
 		if 48 <= data[p] && data[p] <= 53 {
 			goto st19
@@ -391,80 +366,72 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 		goto st0
 	tr25:
-//line date.rl:43
+//line date.rl:39
 		{
 			second = int(data[p-1]-'0') * 10
 			second += int(data[p] - '0')
 		}
+		goto st32
+	st32:
+		if p++; p == pe {
+			goto _test_eof32
+		}
+	st_case_32:
+//line date.go:385
+		switch data[p] {
+		case 32:
+			goto st33
+		case 43:
+			goto st20
+		case 45:
+			goto st20
+		case 46:
+			goto st26
+		case 90:
+			goto st33
+		}
+		if 9 <= data[p] && data[p] <= 13 {
+			goto st33
+		}
+		goto st0
+	tr31:
+//line date.rl:50
+		{
+			hoff := int(data[p-4]-'0')*10 + int(data[p-3]-'0')
+			moff := int(data[p-1]-'0')*10 + int(data[p]-'0')
+			if data[p-5] == '-' {
+				hoff, moff = -hoff, -moff
+			}
+			hour, minute = hour-hoff, minute-moff
+		}
+		goto st33
+	tr45:
+//line date.rl:42
+		second = 60
 		goto st33
 	st33:
 		if p++; p == pe {
 			goto _test_eof33
 		}
 	st_case_33:
-//line date.go:410
-		switch data[p] {
-		case 32:
-			goto st34
-		case 43:
-			goto tr37
-		case 45:
-			goto tr38
-		case 46:
-			goto st27
-		case 90:
-			goto st34
-		}
-		if 9 <= data[p] && data[p] <= 13 {
-			goto st34
-		}
-		goto st0
-	tr40:
-//line date.rl:39
-		{
-			minute = int(data[p-2]-'0') * 10
-			minute += int(data[p-1] - '0')
-		}
-		goto st34
-	tr49:
-//line date.rl:46
-		second = 60
-		goto st34
-	st34:
-		if p++; p == pe {
-			goto _test_eof34
-		}
-	st_case_34:
-//line date.go:443
+//line date.go:422
 		if data[p] == 32 {
-			goto st34
+			goto st33
 		}
 		if 9 <= data[p] && data[p] <= 13 {
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr37:
-//line date.rl:54
-
-		hoursave, minutesave = hour, minute
-		hour, minute = 0, 0
-
-		goto st20
-	tr50:
-//line date.rl:46
+	tr46:
+//line date.rl:42
 		second = 60
-//line date.rl:54
-
-		hoursave, minutesave = hour, minute
-		hour, minute = 0, 0
-
 		goto st20
 	st20:
 		if p++; p == pe {
 			goto _test_eof20
 		}
 	st_case_20:
-//line date.go:472
+//line date.go:439
 		if data[p] == 50 {
 			goto st25
 		}
@@ -472,16 +439,11 @@ func Parse(data []byte) (time.Time, bool) {
 			goto st21
 		}
 		goto st0
-	tr32:
-//line date.rl:58
-		negoff = true
-		goto st21
 	st21:
 		if p++; p == pe {
 			goto _test_eof21
 		}
 	st_case_21:
-//line date.go:489
 		if 48 <= data[p] && data[p] <= 57 {
 			goto st22
 		}
@@ -492,22 +454,14 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 	st_case_22:
 		if data[p] == 58 {
-			goto tr29
+			goto st23
 		}
 		goto st0
-	tr29:
-//line date.rl:34
-		{
-			hour = int(data[p-2]-'0') * 10
-			hour += int(data[p-1] - '0')
-		}
-		goto st23
 	st23:
 		if p++; p == pe {
 			goto _test_eof23
 		}
 	st_case_23:
-//line date.go:515
 		if 48 <= data[p] && data[p] <= 53 {
 			goto st24
 		}
@@ -521,15 +475,68 @@ func Parse(data []byte) (time.Time, bool) {
 			goto tr31
 		}
 		goto st0
-	tr31:
-//line date.rl:59
+	st25:
+		if p++; p == pe {
+			goto _test_eof25
+		}
+	st_case_25:
+		if 48 <= data[p] && data[p] <= 51 {
+			goto st22
+		}
+		goto st0
+	tr47:
+//line date.rl:42
+		second = 60
+		goto st26
+	st26:
+		if p++; p == pe {
+			goto _test_eof26
+		}
+	st_case_26:
+//line date.go:501
+		if 48 <= data[p] && data[p] <= 57 {
+			goto tr32
+		}
+		goto st0
+	tr32:
+//line date.rl:44
 		{
-			offset := 3600*hour + 60*minute
-			if negoff {
-				offset = -offset
+			frac *= 10
+			frac += int(data[p] - '0')
+			fracdig /= 10
+		}
+		goto st34
+	st34:
+		if p++; p == pe {
+			goto _test_eof34
+		}
+	st_case_34:
+//line date.go:519
+		switch data[p] {
+		case 32:
+			goto st33
+		case 43:
+			goto st20
+		case 45:
+			goto st20
+		case 90:
+			goto st33
+		}
+		switch {
+		case data[p] > 13:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr37
 			}
-			loc = time.FixedZone("", offset)
-			hour, minute = hoursave, minutesave
+		case data[p] >= 9:
+			goto st33
+		}
+		goto st0
+	tr37:
+//line date.rl:44
+		{
+			frac *= 10
+			frac += int(data[p] - '0')
+			fracdig /= 10
 		}
 		goto st35
 	st35:
@@ -537,73 +544,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof35
 		}
 	st_case_35:
-//line date.go:545
-		if data[p] == 32 {
-			goto tr40
+//line date.go:552
+		switch data[p] {
+		case 32:
+			goto st33
+		case 43:
+			goto st20
+		case 45:
+			goto st20
+		case 90:
+			goto st33
 		}
-		if 9 <= data[p] && data[p] <= 13 {
-			goto tr40
-		}
-		goto st0
-	tr33:
-//line date.rl:58
-		negoff = true
-		goto st25
-	st25:
-		if p++; p == pe {
-			goto _test_eof25
-		}
-	st_case_25:
-//line date.go:562
-		if 48 <= data[p] && data[p] <= 51 {
-			goto st22
+		switch {
+		case data[p] > 13:
+			if 48 <= data[p] && data[p] <= 57 {
+				goto tr38
+			}
+		case data[p] >= 9:
+			goto st33
 		}
 		goto st0
 	tr38:
-//line date.rl:54
-
-		hoursave, minutesave = hour, minute
-		hour, minute = 0, 0
-
-		goto st26
-	tr51:
-//line date.rl:46
-		second = 60
-//line date.rl:54
-
-		hoursave, minutesave = hour, minute
-		hour, minute = 0, 0
-
-		goto st26
-	st26:
-		if p++; p == pe {
-			goto _test_eof26
-		}
-	st_case_26:
-//line date.go:588
-		if data[p] == 50 {
-			goto tr33
-		}
-		if 48 <= data[p] && data[p] <= 49 {
-			goto tr32
-		}
-		goto st0
-	tr52:
-//line date.rl:46
-		second = 60
-		goto st27
-	st27:
-		if p++; p == pe {
-			goto _test_eof27
-		}
-	st_case_27:
-//line date.go:605
-		if 48 <= data[p] && data[p] <= 57 {
-			goto tr34
-		}
-		goto st0
-	tr34:
-//line date.rl:48
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -615,28 +577,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof36
 		}
 	st_case_36:
-//line date.go:623
+//line date.go:585
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
 		switch {
 		case data[p] > 13:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr41
+				goto tr39
 			}
 		case data[p] >= 9:
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr41:
-//line date.rl:48
+	tr39:
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -648,28 +610,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof37
 		}
 	st_case_37:
-//line date.go:656
+//line date.go:618
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
 		switch {
 		case data[p] > 13:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr42
+				goto tr40
 			}
 		case data[p] >= 9:
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr42:
-//line date.rl:48
+	tr40:
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -681,28 +643,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof38
 		}
 	st_case_38:
-//line date.go:689
+//line date.go:651
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
 		switch {
 		case data[p] > 13:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr43
+				goto tr41
 			}
 		case data[p] >= 9:
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr43:
-//line date.rl:48
+	tr41:
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -714,28 +676,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof39
 		}
 	st_case_39:
-//line date.go:722
+//line date.go:684
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
 		switch {
 		case data[p] > 13:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr44
+				goto tr42
 			}
 		case data[p] >= 9:
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr44:
-//line date.rl:48
+	tr42:
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -747,28 +709,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof40
 		}
 	st_case_40:
-//line date.go:755
+//line date.go:717
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
 		switch {
 		case data[p] > 13:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr45
+				goto tr43
 			}
 		case data[p] >= 9:
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr45:
-//line date.rl:48
+	tr43:
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -780,28 +742,28 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof41
 		}
 	st_case_41:
-//line date.go:788
+//line date.go:750
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
 		switch {
 		case data[p] > 13:
 			if 48 <= data[p] && data[p] <= 57 {
-				goto tr46
+				goto tr44
 			}
 		case data[p] >= 9:
-			goto st34
+			goto st33
 		}
 		goto st0
-	tr46:
-//line date.rl:48
+	tr44:
+//line date.rl:44
 		{
 			frac *= 10
 			frac += int(data[p] - '0')
@@ -813,85 +775,49 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof42
 		}
 	st_case_42:
-//line date.go:821
+//line date.go:783
 		switch data[p] {
 		case 32:
-			goto st34
+			goto st33
 		case 43:
-			goto tr37
+			goto st20
 		case 45:
-			goto tr38
+			goto st20
 		case 90:
-			goto st34
+			goto st33
 		}
-		switch {
-		case data[p] > 13:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr47
-			}
-		case data[p] >= 9:
-			goto st34
+		if 9 <= data[p] && data[p] <= 13 {
+			goto st33
 		}
 		goto st0
-	tr47:
-//line date.rl:48
-		{
-			frac *= 10
-			frac += int(data[p] - '0')
-			fracdig /= 10
+	st27:
+		if p++; p == pe {
+			goto _test_eof27
 		}
-		goto st43
+	st_case_27:
+		if data[p] == 48 {
+			goto st43
+		}
+		goto st0
 	st43:
 		if p++; p == pe {
 			goto _test_eof43
 		}
 	st_case_43:
-//line date.go:854
 		switch data[p] {
 		case 32:
-			goto st34
+			goto tr45
 		case 43:
-			goto tr37
+			goto tr46
 		case 45:
-			goto tr38
+			goto tr46
+		case 46:
+			goto tr47
 		case 90:
-			goto st34
-		}
-		switch {
-		case data[p] > 13:
-			if 48 <= data[p] && data[p] <= 57 {
-				goto tr48
-			}
-		case data[p] >= 9:
-			goto st34
-		}
-		goto st0
-	tr48:
-//line date.rl:48
-		{
-			frac *= 10
-			frac += int(data[p] - '0')
-			fracdig /= 10
-		}
-		goto st44
-	st44:
-		if p++; p == pe {
-			goto _test_eof44
-		}
-	st_case_44:
-//line date.go:887
-		switch data[p] {
-		case 32:
-			goto st34
-		case 43:
-			goto tr37
-		case 45:
-			goto tr38
-		case 90:
-			goto st34
+			goto tr45
 		}
 		if 9 <= data[p] && data[p] <= 13 {
-			goto st34
+			goto tr45
 		}
 		goto st0
 	st28:
@@ -899,29 +825,8 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof28
 		}
 	st_case_28:
-		if data[p] == 48 {
-			goto st45
-		}
-		goto st0
-	st45:
-		if p++; p == pe {
-			goto _test_eof45
-		}
-	st_case_45:
-		switch data[p] {
-		case 32:
-			goto tr49
-		case 43:
-			goto tr50
-		case 45:
-			goto tr51
-		case 46:
-			goto tr52
-		case 90:
-			goto tr49
-		}
-		if 9 <= data[p] && data[p] <= 13 {
-			goto tr49
+		if 48 <= data[p] && data[p] <= 51 {
+			goto st14
 		}
 		goto st0
 	st29:
@@ -929,8 +834,8 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof29
 		}
 	st_case_29:
-		if 48 <= data[p] && data[p] <= 51 {
-			goto st14
+		if 48 <= data[p] && data[p] <= 57 {
+			goto st11
 		}
 		goto st0
 	st30:
@@ -938,7 +843,7 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof30
 		}
 	st_case_30:
-		if 48 <= data[p] && data[p] <= 57 {
+		if 48 <= data[p] && data[p] <= 49 {
 			goto st11
 		}
 		goto st0
@@ -947,15 +852,6 @@ func Parse(data []byte) (time.Time, bool) {
 			goto _test_eof31
 		}
 	st_case_31:
-		if 48 <= data[p] && data[p] <= 49 {
-			goto st11
-		}
-		goto st0
-	st32:
-		if p++; p == pe {
-			goto _test_eof32
-		}
-	st_case_32:
 		if 48 <= data[p] && data[p] <= 50 {
 			goto st8
 		}
@@ -1018,11 +914,11 @@ func Parse(data []byte) (time.Time, bool) {
 	_test_eof19:
 		cs = 19
 		goto _test_eof
+	_test_eof32:
+		cs = 32
+		goto _test_eof
 	_test_eof33:
 		cs = 33
-		goto _test_eof
-	_test_eof34:
-		cs = 34
 		goto _test_eof
 	_test_eof20:
 		cs = 20
@@ -1039,17 +935,17 @@ func Parse(data []byte) (time.Time, bool) {
 	_test_eof24:
 		cs = 24
 		goto _test_eof
-	_test_eof35:
-		cs = 35
-		goto _test_eof
 	_test_eof25:
 		cs = 25
 		goto _test_eof
 	_test_eof26:
 		cs = 26
 		goto _test_eof
-	_test_eof27:
-		cs = 27
+	_test_eof34:
+		cs = 34
+		goto _test_eof
+	_test_eof35:
+		cs = 35
 		goto _test_eof
 	_test_eof36:
 		cs = 36
@@ -1072,17 +968,14 @@ func Parse(data []byte) (time.Time, bool) {
 	_test_eof42:
 		cs = 42
 		goto _test_eof
+	_test_eof27:
+		cs = 27
+		goto _test_eof
 	_test_eof43:
 		cs = 43
 		goto _test_eof
-	_test_eof44:
-		cs = 44
-		goto _test_eof
 	_test_eof28:
 		cs = 28
-		goto _test_eof
-	_test_eof45:
-		cs = 45
 		goto _test_eof
 	_test_eof29:
 		cs = 29
@@ -1093,25 +986,16 @@ func Parse(data []byte) (time.Time, bool) {
 	_test_eof31:
 		cs = 31
 		goto _test_eof
-	_test_eof32:
-		cs = 32
-		goto _test_eof
 
 	_test_eof:
 		{
 		}
 		if p == eof {
 			switch cs {
-			case 35:
-//line date.rl:39
-				{
-					minute = int(data[p-2]-'0') * 10
-					minute += int(data[p-1] - '0')
-				}
-			case 45:
-//line date.rl:46
+			case 43:
+//line date.rl:42
 				second = 60
-//line date.go:1027
+//line date.go:915
 			}
 		}
 
@@ -1120,14 +1004,14 @@ func Parse(data []byte) (time.Time, bool) {
 		}
 	}
 
-//line date.rl:109
+//line date.rl:81
 
 	if cs < date_first_final {
-		return time.Time{}, false
+		return
 	}
-	nsec := 0
 	if frac != 0 {
 		nsec = frac * fracdig
 	}
-	return time.Date(year, time.Month(month), day, hour, minute, second, nsec, loc), true
+	ok = true
+	return
 }

@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -2626,7 +2627,7 @@ func (c *Cast) Equals(e Node) bool {
 }
 
 type Timestamp struct {
-	Value time.Time
+	Value date.Time
 }
 
 func (t *Timestamp) UnixMicro() int64 {
@@ -2642,7 +2643,7 @@ func (t *Timestamp) Datum() ion.Datum {
 func (t *Timestamp) text(dst *strings.Builder, redact bool) {
 	var buf [48]byte
 	dst.WriteByte('`')
-	dst.Write(t.Value.AppendFormat(buf[:0], time.RFC3339Nano))
+	dst.Write(t.Value.AppendRFC3339Nano(buf[:0]))
 	dst.WriteByte('`')
 }
 
@@ -2736,7 +2737,9 @@ func DateExtract(part Timepart, from Node) Node {
 
 func DateTrunc(part Timepart, from Node) Node {
 	if ts, ok := from.(*Timestamp); ok {
-		year, month, day := ts.Value.Date()
+		year := ts.Value.Year()
+		month := ts.Value.Month()
+		day := ts.Value.Day()
 		hour := ts.Value.Hour()
 		minute := ts.Value.Minute()
 		second := ts.Value.Second()
@@ -2765,7 +2768,7 @@ func DateTrunc(part Timepart, from Node) Node {
 		case Microsecond:
 			nsec = (nsec / 1000) * 1000
 		}
-		return &Timestamp{Value: time.Date(year, month, day, hour, minute, second, nsec, time.UTC)}
+		return &Timestamp{Value: date.Date(year, month, day, hour, minute, second, nsec)}
 	}
 	return Call("DATE_TRUNC_"+part.String(), from)
 }
@@ -2972,7 +2975,7 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 	case *ion.BigInt:
 		return (*Rational)(new(big.Rat).SetInt((*big.Int)(d))), true
 	case ion.Timestamp:
-		return &Timestamp{Value: time.Time(d)}, true
+		return &Timestamp{Value: date.Time(d)}, true
 	default:
 		// TODO: add blob, clob, bags, etc.
 		return nil, false

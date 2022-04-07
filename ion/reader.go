@@ -20,7 +20,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 // Peek peeks at the type and size of
@@ -271,9 +272,9 @@ func (s *scratch) uint(u uint64) []byte {
 	return s.buf
 }
 
-func (s *scratch) time(t time.Time) []byte {
+func (s *scratch) time(t date.Time) []byte {
 	s.buf = append(s.buf[:0], '"')
-	s.buf = t.AppendFormat(s.buf, time.RFC3339)
+	s.buf = t.AppendRFC3339(s.buf)
 	s.buf = append(s.buf, '"')
 	return s.buf
 }

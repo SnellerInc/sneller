@@ -149,8 +149,8 @@ func TestChunkerRange(t *testing.T) {
 	barSym := c.Symbols.Intern("bar")
 	bazSym := c.Symbols.Intern("baz")
 
-	t1 := time.Date(2021, time.November, 10, 00, 00, 00, 0, time.UTC)
-	t2 := time.Date(2021, time.November, 17, 12, 34, 56, 0, time.UTC)
+	t1 := date.Date(2021, 11, 10, 00, 00, 00, 0)
+	t2 := date.Date(2021, 11, 17, 12, 34, 56, 0)
 
 	// Write a bunch of objects like:
 	//
@@ -224,8 +224,8 @@ func TestChunkerSnapshot(t *testing.T) {
 
 	foo := c.Symbols.Intern("foo")
 
-	date1 := time.Date(2021, time.November, 11, 11, 11, 11, 0, time.UTC)
-	date2 := time.Date(2021, time.December, 12, 12, 12, 12, 0, time.UTC)
+	date1 := date.Date(2021, 11, 11, 11, 11, 11, 0)
+	date2 := date.Date(2021, 12, 12, 12, 12, 12, 0)
 
 	var snap ion.Snapshot
 
@@ -418,8 +418,8 @@ func dumpRanges(allRanges [][]ranges) {
 			if i > 0 {
 				fmt.Println("}, {")
 			}
-			min, _ := json.Marshal(time.Time(r.min.(ion.Timestamp)))
-			max, _ := json.Marshal(time.Time(r.max.(ion.Timestamp)))
+			min, _ := json.Marshal(date.Time(r.min.(ion.Timestamp)))
+			max, _ := json.Marshal(date.Time(r.max.(ion.Timestamp)))
 			fmt.Printf("\tpath: %#v,\n", r.path)
 			fmt.Printf("\tmin: timestamp(%s),\n", min)
 			fmt.Printf("\tmax: timestamp(%s),\n", max)
@@ -482,11 +482,11 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 					found = true
 					min := r[j].min.(ion.Timestamp)
 					max := r[j].max.(ion.Timestamp)
-					if time.Time(ts).Before(time.Time(min)) {
-						t.Errorf("value %s before min for block %s", time.Time(ts), time.Time(min))
+					if date.Time(ts).Before(date.Time(min)) {
+						t.Errorf("value %s before min for block %s", date.Time(ts), date.Time(min))
 					}
-					if time.Time(ts).After(time.Time(max)) {
-						t.Errorf("value %s after max for block %s", time.Time(ts), time.Time(max))
+					if date.Time(ts).After(date.Time(max)) {
+						t.Errorf("value %s after max for block %s", date.Time(ts), date.Time(max))
 					}
 					break
 				}
@@ -495,7 +495,7 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 				for i := range r {
 					t.Logf("have range for %s", strings.Join(r[i].path, "."))
 				}
-				t.Fatalf("no range entry for %s date %s (%d ranges)", s.Fields[i].Label, time.Time(ts), len(r))
+				t.Fatalf("no range entry for %s date %s (%d ranges)", s.Fields[i].Label, date.Time(ts), len(r))
 			}
 		}
 	}
@@ -657,8 +657,8 @@ func TestSyntheticRanges(t *testing.T) {
 				}
 				min := min.(ion.Timestamp)
 				max := max.(ion.Timestamp)
-				if time.Time(ts).Before(time.Time(min)) || time.Time(ts).After(time.Time(max)) {
-					t.Errorf("value %s %s out of range [%s, %s]", path[0], time.Time(ts), time.Time(min), time.Time(max))
+				if date.Time(ts).Before(date.Time(min)) || date.Time(ts).After(date.Time(max)) {
+					t.Errorf("value %s %s out of range [%s, %s]", path[0], date.Time(ts), date.Time(min), date.Time(max))
 				}
 			} else if st, ok := lst[i].Value.(*ion.Struct); ok {
 				walkRange(st.Fields, path[1:], min, max)
@@ -748,7 +748,7 @@ func TestChunkerChangingSymbols(t *testing.T) {
 				},
 				{
 					Label: "timestamp",
-					Value: ion.Timestamp(time.Unix(int64(n), 0).UTC()),
+					Value: ion.Timestamp(date.Unix(int64(n), 0)),
 				},
 			},
 		}

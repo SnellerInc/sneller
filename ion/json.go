@@ -128,7 +128,7 @@ func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
 		return Bool(t), nil
 	case time.Time:
 		// probably not possible?
-		return Timestamp(t), nil
+		return Timestamp(date.FromTime(t)), nil
 	case nil:
 		return UntypedNull{}, nil
 	default:

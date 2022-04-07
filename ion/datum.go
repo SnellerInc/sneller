@@ -18,7 +18,8 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 // Datum represents an Ion datum
@@ -181,12 +182,12 @@ func (a *Annotation) Encode(dst *Buffer, st *Symtab) {
 }
 
 // Timestamp is an ion timestamp datum
-type Timestamp time.Time
+type Timestamp date.Time
 
 func (t Timestamp) Type() Type { return TimestampType }
 
 func (t Timestamp) Encode(dst *Buffer, st *Symtab) {
-	dst.WriteTime(time.Time(t))
+	dst.WriteTime(date.Time(t))
 }
 
 // BigNum is a datum that can hold

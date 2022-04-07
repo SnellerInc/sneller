@@ -19,7 +19,8 @@ import (
 	"io"
 	"math"
 	"math/bits"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 type segkind int
@@ -364,25 +365,14 @@ func (b *Buffer) WriteTo(w io.Writer) (int64, error) {
 	return int64(i), err
 }
 
-// WriteTime writes a time.Time as an ion timestamp object.
-// Note that the ion format does not support negative years,
-// so WriteTime will silently clamp the timestamp to year zero
-// if its year component would be negative.
+// WriteTime writes a date.Date as an ion timestamp object.
 //
 // WriteTime only supports microsecond-precision timestamps.
-func (b *Buffer) WriteTime(t time.Time) {
-	t = t.UTC()
+func (b *Buffer) WriteTime(t date.Time) {
 	year := t.Year()
 	nano := t.Nanosecond()
 	micro := nano / 1000
 	length := 8
-
-	// truncate years that are out-of-range
-	if year < 0 {
-		year = 0
-	} else if year > (1<<14)-1 {
-		year = (1 << 14) - 1
-	}
 
 	if micro != 0 {
 		length += 4
@@ -423,32 +413,28 @@ const (
 )
 
 // truncate returns d with truncation applied.
-func (t TimeTrunc) truncate(d time.Time) time.Time {
-	d = d.UTC()
+func (t TimeTrunc) truncate(d date.Time) date.Time {
 	switch t {
 	case TruncToYear:
-		return time.Date(d.Year(), 0, 0, 0, 0, 0, 0, time.UTC)
+		return date.Date(d.Year(), 1, 1, 0, 0, 0, 0)
 	case TruncToMonth:
-		return time.Date(d.Year(), d.Month(), 0, 0, 0, 0, 0, time.UTC)
+		return date.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0)
 	case TruncToDay:
-		return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
+		return date.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0)
 	case TruncToHour:
-		return time.Date(d.Year(), d.Month(), d.Day(), d.Hour(), 0, 0, 0, time.UTC)
+		return date.Date(d.Year(), d.Month(), d.Day(), d.Hour(), 0, 0, 0)
 	case TruncToMinute:
-		return time.Date(d.Year(), d.Month(), d.Day(), d.Hour(), d.Minute(), 0, 0, time.UTC)
+		return date.Date(d.Year(), d.Month(), d.Day(), d.Hour(), d.Minute(), 0, 0)
 	case TruncToSecond:
 		fallthrough
 	default:
-		return time.Date(d.Year(), d.Month(), d.Day(), d.Hour(), d.Minute(), d.Second(), 0, time.UTC)
+		return date.Date(d.Year(), d.Month(), d.Day(), d.Hour(), d.Minute(), d.Second(), 0)
 	}
 }
 
-// WriteTruncatedTime writes a time.Time as an ion timestamp object and
+// WriteTruncatedTime writes a date.Date as an ion timestamp object and
 // lets the caller decide how precise the output is.
-//
-// BUGS: see WriteTime
-func (b *Buffer) WriteTruncatedTime(t time.Time, trunc TimeTrunc) {
-	t = t.UTC()
+func (b *Buffer) WriteTruncatedTime(t date.Time, trunc TimeTrunc) {
 	year := t.Year()
 
 	var size byte

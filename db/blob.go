@@ -20,6 +20,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -63,7 +64,7 @@ func (d *descInfo) ModTime() time.Time {
 	// the modtime is actually *before* the index commit time
 	// (before rounding); we have to round up so that the
 	// If-Not-Modified-Since precondition will pass.
-	return d.LastModified.Add(time.Second - 1).Truncate(time.Second)
+	return d.LastModified.Time().Add(time.Second - 1).Truncate(time.Second)
 }
 
 func (d *descInfo) IsDir() bool      { return false }
@@ -101,7 +102,7 @@ func Blobs(src FS, idx *blockfmt.Index) (*blob.List, error) {
 
 func infoToBlob(src FS, b *blockfmt.Descriptor, info fs.FileInfo, p string) (blob.Interface, error) {
 	etag := b.ETag
-	modtime := b.LastModified
+	modtime := b.LastModified.Time()
 	// annoyingly, S3 does not use very precise
 	// LastModified times (it truncates the precision);
 	// just guarantee that the object is no more than one
@@ -139,7 +140,7 @@ func infoToBlob(src FS, b *blockfmt.Descriptor, info fs.FileInfo, p string) (blo
 				// the trailer to figure out the alignment.
 				Align: 1,
 				// LastModified should match info.ModTime exactly
-				LastModified: info.ModTime(),
+				LastModified: date.FromTime(info.ModTime()),
 			},
 		},
 		Trailer: b.Trailer,

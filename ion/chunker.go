@@ -20,7 +20,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 // Chunker is a wrapper for a Buffer
@@ -459,7 +460,7 @@ func noteTimeFields(d Datum, c *Chunker) {
 		}
 		buf.Prepare(1)
 		buf.Push(s.Fields[i].Sym)
-		c.Ranges.AddTime(buf, time.Time(ts))
+		c.Ranges.AddTime(buf, date.Time(ts))
 	}
 }
 

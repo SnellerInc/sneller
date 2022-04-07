@@ -21,6 +21,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -45,7 +46,7 @@ type fsEnv struct {
 	// FIXME: change cachedEnv and don't
 	// keep the accumulated state here:
 	hash    hash.Hash
-	modtime time.Time
+	modtime date.Time
 }
 
 func environ(t db.Tenant, dbname string) (cachedEnv, error) {
@@ -85,7 +86,7 @@ func tsplit(p *expr.Path) (string, string, error) {
 
 // CacheValues implements cachedEnv.CacheValues
 func (f *fsEnv) CacheValues() ([]byte, time.Time) {
-	return f.hash.Sum(nil), f.modtime
+	return f.hash.Sum(nil), f.modtime.Time()
 }
 
 // Schema implements plan.Env.Schema
@@ -141,7 +142,7 @@ func (f *fsEnv) index(e *expr.Table) (*blockfmt.Index, error) {
 	// but, the modtime of the index plus its name
 	// ought to be unique per-input
 	io.WriteString(f.hash, path.Join(dbname, table))
-	io.WriteString(f.hash, index.Created.UTC().String())
+	io.WriteString(f.hash, index.Created.String())
 	return index, nil
 }
 
@@ -163,10 +164,10 @@ func (f *fsEnv) Stat(e *expr.Table) (plan.TableHandle, error) {
 }
 
 // TimeRange implements plan/pir.TimeRanger.
-func (f *fsEnv) TimeRange(tbl *expr.Table, p *expr.Path) (min, max time.Time, ok bool) {
+func (f *fsEnv) TimeRange(tbl *expr.Table, p *expr.Path) (min, max date.Time, ok bool) {
 	index, err := f.index(tbl)
 	if err != nil {
-		return time.Time{}, time.Time{}, false
+		return date.Time{}, date.Time{}, false
 	}
 	return index.TimeRange(p)
 }

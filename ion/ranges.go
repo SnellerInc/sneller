@@ -16,7 +16,8 @@ package ion
 
 import (
 	"encoding/binary"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 type Ranges struct {
@@ -46,13 +47,13 @@ outer:
 
 // AddTruncatedTime adds a truncated time value to the
 // range tracker.
-func (rs *Ranges) AddTruncatedTime(p Symbuf, t time.Time, trunc TimeTrunc) {
+func (rs *Ranges) AddTruncatedTime(p Symbuf, t date.Time, trunc TimeTrunc) {
 	tt := trunc.truncate(t)
 	rs.AddTime(p, tt)
 }
 
 // AddTime adds a time value to the range tracker.
-func (rs *Ranges) AddTime(p Symbuf, t time.Time) {
+func (rs *Ranges) AddTime(p Symbuf, t date.Time) {
 	if rs.m == nil {
 		rs.m = make(map[symstr]dataRange)
 	} else if r := rs.m[symstr(p)]; r != nil {
@@ -121,13 +122,13 @@ type dataRange interface {
 }
 
 type timeRange struct {
-	min, max   time.Time // committed range
+	min, max   date.Time // committed range
 	hasRange   bool
-	pending    time.Time // uncommitted value
+	pending    date.Time // uncommitted value
 	hasPending bool
 }
 
-func newTimeRange(t time.Time) *timeRange {
+func newTimeRange(t date.Time) *timeRange {
 	return &timeRange{
 		pending:    t,
 		hasPending: true,
@@ -162,7 +163,7 @@ func (r *timeRange) flush() bool {
 	return r.hasPending
 }
 
-func (r *timeRange) add(t time.Time) {
+func (r *timeRange) add(t date.Time) {
 	r.pending = t
 	r.hasPending = true
 }

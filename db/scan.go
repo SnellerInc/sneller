@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -65,7 +65,7 @@ func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
 	// TODO: better detection of change in definition
 	if len(idx.Cursors) != len(def.Inputs) {
-		idx.LastScan = time.Now()
+		idx.LastScan = date.Now()
 		idx.Cursors = make([]string, len(def.Inputs))
 		idx.Scanning = true
 	}

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/expr/partiql"
@@ -83,8 +84,8 @@ func (b *benchenv) Stat(t *expr.Table) (TableHandle, error) {
 	lst := make([]blob.Interface, b.blocks)
 	for i := range lst {
 		ranges := []blockfmt.Range{
-			blockfmt.NewRange([]string{"foo"}, ion.Timestamp(time.Now().Add(-time.Hour)), ion.Timestamp(time.Now().Add(time.Hour))),
-			blockfmt.NewRange([]string{"event", "timestamp"}, ion.Timestamp(time.Now().Add(-24*time.Hour)), ion.Timestamp(time.Now().Add(time.Hour))),
+			blockfmt.NewRange([]string{"foo"}, ion.Timestamp(date.Now().Add(-time.Hour)), ion.Timestamp(date.Now().Add(time.Hour))),
+			blockfmt.NewRange([]string{"event", "timestamp"}, ion.Timestamp(date.Now().Add(-24*time.Hour)), ion.Timestamp(date.Now().Add(time.Hour))),
 		}
 		lst[i] = &blob.Compressed{
 			From: &blob.URL{
@@ -93,7 +94,7 @@ func (b *benchenv) Stat(t *expr.Table) (TableHandle, error) {
 					ETag:         "\"abc123xyzandmoreetagstringhere\"",
 					Size:         1234567,
 					Align:        1024 * 1024,
-					LastModified: time.Now(),
+					LastModified: date.Now(),
 				},
 			},
 			Trailer: &blockfmt.Trailer{

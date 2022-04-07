@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -88,9 +88,9 @@ func (i *IterTable) rewrite(rw func(expr.Node, bool) expr.Node) {
 	}
 }
 
-func (i *IterTable) timeRange(p *expr.Path) (min, max time.Time, ok bool) {
+func (i *IterTable) timeRange(p *expr.Path) (min, max date.Time, ok bool) {
 	if i.TimeRanger == nil {
-		return time.Time{}, time.Time{}, false
+		return date.Time{}, date.Time{}, false
 	}
 	return i.TimeRanger.TimeRange(i.Table, p)
 }

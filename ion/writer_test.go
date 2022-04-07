@@ -17,11 +17,12 @@ package ion
 import (
 	"bytes"
 	"testing"
-	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func TestWriteTruncatedTime(t *testing.T) {
-	ts := time.Date(2021, time.Month(8), 22, 14, 42, 32, 0, time.UTC)
+	ts := date.Date(2021, 8, 22, 14, 42, 32, 0)
 
 	testcases := []struct {
 		trunc TimeTrunc
@@ -54,7 +55,7 @@ func TestWriteTruncatedTime(t *testing.T) {
 }
 
 func TestWriteTruncatedTimeMatchesWriteTime(t *testing.T) {
-	ts := time.Date(2021, time.Month(8), 22, 14, 42, 32, 0, time.UTC)
+	ts := date.Date(2021, 8, 22, 14, 42, 32, 0)
 
 	var buf1 Buffer
 	buf1.WriteTime(ts)

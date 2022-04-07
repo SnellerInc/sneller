@@ -21,6 +21,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func init() {
@@ -37,7 +39,7 @@ func (f *FileTree) dropAll() {
 }
 
 func TestLargeIndexEncoding(t *testing.T) {
-	time0 := time.Now().UTC().Truncate(time.Microsecond)
+	time0 := date.Now().Truncate(time.Microsecond)
 	idx := Index{
 		Name:     "the-index",
 		Created:  time0,
@@ -63,8 +65,8 @@ func TestLargeIndexEncoding(t *testing.T) {
 						Offset: 0,
 						Ranges: []Range{&TimeRange{
 							[]string{"a", "b"},
-							time0.UnixMicro(),
-							0,
+							time0,
+							time0,
 						}},
 					}, {
 						Offset: 1 << 20,
@@ -111,9 +113,9 @@ func TestLargeIndexEncoding(t *testing.T) {
 }
 
 func TestIndexEncoding(t *testing.T) {
-	time0 := time.Now().UTC().Truncate(time.Duration(1000))
+	time0 := date.Now().Truncate(time.Duration(1000))
 
-	timen := func(n int) time.Time {
+	timen := func(n int) date.Time {
 		return time0.Add(-time.Duration(n) * 20 * time.Minute)
 	}
 
@@ -122,7 +124,7 @@ func TestIndexEncoding(t *testing.T) {
 	idxs := []Index{
 		{
 			Name:    "my-view",
-			Created: time.Now().UTC().Truncate(time.Duration(1000)),
+			Created: date.Now().Truncate(time.Duration(1000)),
 			Algo:    "zstd",
 			Contents: []Descriptor{
 				{
@@ -142,8 +144,8 @@ func TestIndexEncoding(t *testing.T) {
 							Offset: 0,
 							Ranges: []Range{&TimeRange{
 								[]string{"a", "b"},
-								time0.UnixMicro(),
-								0,
+								time0,
+								time0,
 							}},
 						}, {
 							Offset: 1 << 20,
@@ -246,19 +248,18 @@ func TestIndexEncoding(t *testing.T) {
 // Benchmark for the allocation overhead of decoding an
 // index with a lot of ranges.
 func BenchmarkIndexDecodingAllocs(b *testing.B) {
-	now := time.Now().UTC().Truncate(time.Duration(1000))
-	timen := func(n int) int64 {
-		return now.Add(time.Duration(n) * time.Second).UnixMicro()
-	}
-	diffn := func(n int) int64 {
-		return (time.Duration(n) * time.Second).Microseconds()
+	debugFree = false
+	defer func() { debugFree = true }()
+	now := date.Now().Truncate(time.Duration(1000))
+	timen := func(n int) date.Time {
+		return now.Add(time.Duration(n) * time.Second)
 	}
 	ranges := make([]Range, 10)
 	for i := range ranges {
 		ranges[i] = &TimeRange{
 			path: []string{"foo", "bar"},
 			min:  timen(i),
-			diff: diffn(1),
+			max:  timen(i + 1),
 		}
 	}
 	blocks := make([]Blockdesc, 1000)
