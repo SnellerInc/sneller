@@ -15,7 +15,6 @@
 package date
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -225,24 +224,6 @@ func (t Time) String() string {
 		return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d +0000 UTC", y, mo, d, h, mi, s)
 	}
 	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d.%d +0000 UTC", y, mo, d, h, mi, s, ns)
-}
-
-// MarshalJSON implements json.Marshaler.
-func (t Time) MarshalJSON() ([]byte, error) {
-	return t.AppendRFC3339Nano(nil), nil
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (t *Time) UnmarshalJSON(b []byte) error {
-	if string(b) == "null" {
-		return nil
-	}
-	var ok bool
-	*t, ok = Parse(b[1 : len(b)-1])
-	if !ok {
-		return errors.New("failed to parse JSON")
-	}
-	return nil
 }
 
 var monthdays = [12]int{

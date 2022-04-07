@@ -41,6 +41,7 @@ func TestRFC3339(t *testing.T) {
 		for _, err := range check(out, want) {
 			t.Errorf("%s: got %s; wanted %s", err, out, want)
 		}
+		testFormat(t, out, want)
 		// move the date around forwards and backwards
 		// and check that the parsed time is okay
 		// (this won't end up adjusting the timezone)
@@ -57,7 +58,42 @@ func TestRFC3339(t *testing.T) {
 			for _, err := range check(got, ref) {
 				t.Errorf("iter %d: %s: got %s from %s; wanted %s", j, err, got, buf, ref.UTC())
 			}
+			testFormat(t, got, ref)
 		}
+	}
+}
+
+func testFormat(t *testing.T, got Time, want time.Time) {
+	t.Helper()
+	want = want.UTC()
+	b1 := got.AppendRFC3339(nil)
+	b2 := want.AppendFormat(nil, time.RFC3339)
+	if string(b1) != string(b2) {
+		t.Errorf("AppendRFC3339: %s != %s", b1, b2)
+	}
+	b1 = got.AppendRFC3339Nano(nil)
+	b2 = want.AppendFormat(nil, time.RFC3339Nano)
+	if string(b1) != string(b2) {
+		t.Errorf("AppendRFC3339Nano: %s != %s", b1, b2)
+	}
+	j1, err1 := got.MarshalJSON()
+	j2, err2 := want.MarshalJSON()
+	if err2 != nil {
+		if err1 != nil {
+			t.Error("MarshalJSON: expected error")
+		}
+		return
+	}
+	if string(j1) != string(j2) {
+		t.Errorf("MarshalJSON: %s != %s", j1, j2)
+	}
+	var got2 Time
+	if err := got2.UnmarshalJSON(j1); err != nil {
+		t.Errorf("UnmarshalJSON: %v", err)
+		return
+	}
+	if !got2.Equal(got) {
+		t.Errorf("UnmarshalJSON: %s != %s", got, got2)
 	}
 }
 

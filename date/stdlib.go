@@ -29,6 +29,8 @@
 
 package date
 
+import "errors"
+
 func isleap(year int) bool {
 	return year%4 == 0 && (year%100 != 0 || year%400 == 0)
 }
@@ -45,4 +47,32 @@ func norm(hi, lo, base int) (nhi, nlo int) {
 		lo -= n * base
 	}
 	return hi, lo
+}
+
+// MarshalJSON implements json.Marshaler.
+func (t Time) MarshalJSON() ([]byte, error) {
+	if t.Year() >= 10000 {
+		return nil, errors.New("date.MarshalJSON: year outside of range [0,9999]")
+	}
+	b := make([]byte, 0, 37)
+	b = append(b, '"')
+	b = t.AppendRFC3339Nano(b)
+	b = append(b, '"')
+	return b, nil
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (t *Time) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return nil
+	}
+	if len(b) == 0 || b[0] != '"' {
+		return errors.New("date.UnmarshalJSON: expected a string")
+	}
+	var ok bool
+	*t, ok = Parse(b[1 : len(b)-1])
+	if !ok {
+		return errors.New("date.UnmarshalJSON: failed to parse")
+	}
+	return nil
 }
