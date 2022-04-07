@@ -25,11 +25,18 @@ func TestMalloc(t *testing.T) {
 		n[10] = 'x'
 		n[(1024*1024)-1] = 'y'
 		bufs = append(bufs, n)
+
+		if vmPageBits() != PagesUsed() {
+			t.Fatalf("%d bits, %d pages used", vmPageBits(), PagesUsed())
+		}
 	}
 	for i := range bufs {
 		if !Allocated(bufs[i]) {
 			t.Fatalf("didn't allocate %p?", &bufs[i][0])
 		}
 		Free(bufs[i])
+		if vmPageBits() != PagesUsed() {
+			t.Fatalf("%d bits, %d pages used", vmPageBits(), PagesUsed())
+		}
 	}
 }

@@ -62,6 +62,11 @@ var (
 	memlock sync.Mutex
 	vmm     *[vmUse]byte
 	vmbits  [vmWords]uint64
+
+	// # pages in use; this may differ
+	// slightly from the bitmap count
+	// when we are freeing pages
+	vminuse int64
 )
 
 // vmref is a (type, length) tuple
@@ -116,34 +121,46 @@ func Allocated(buf []byte) bool {
 //
 // If there is no VM memory available, Malloc panics.
 func Malloc() []byte {
-	for i := 0; i < vmWords; i++ {
-		addr := &vmbits[i]
-		mask := atomic.LoadUint64(addr)
-		avail := ^mask
-		if avail == uint64(0) {
-			continue
+	// we loop while vminuse < vmPages because
+	// we may be racing with Free locking groups
+	// of pages in order to pass them to madvise(mem, MADV_FREE)
+	for atomic.LoadInt64(&vminuse) < vmPages {
+		for i := 0; i < vmWords; i++ {
+			addr := &vmbits[i]
+			mask := atomic.LoadUint64(addr)
+			avail := ^mask
+			if avail == uint64(0) {
+				continue
+			}
+			bit := bits.TrailingZeros64(avail)
+			if !atomic.CompareAndSwapUint64(addr, mask, mask|(uint64(1)<<bit)) {
+				i--
+				continue
+			}
+			atomic.AddInt64(&vminuse, 1)
+			buf := vmm[((i*64)+bit)<<pageBits:]
+			buf = buf[:pageSize:pageSize]
+			unguard(buf) // if -tags=vmfence, unprotect this memory
+			return buf
 		}
-		bit := bits.TrailingZeros64(avail)
-		if !atomic.CompareAndSwapUint64(addr, mask, mask|(uint64(1)<<bit)) {
-			i--
-			continue
-		}
-		buf := vmm[((i*64)+bit)<<pageBits:]
-		buf = buf[:pageSize:pageSize]
-		unguard(buf) // if -tags=vmfence, unprotect this memory
-		return buf
 	}
 	panic("out of VM memory")
-	return nil
 }
 
 // PagesUsed returns the number of currently-active
 // pages returned by Malloc that have not been
 // deactivated with a call to Free.
 func PagesUsed() int {
+	return int(atomic.LoadInt64(&vminuse))
+}
+
+// should ordinarily return the same
+// result as PagesUsed(), except when
+// we are freeing pages
+func vmPageBits() int {
 	n := 0
 	for i := range vmbits {
-		n += bits.OnesCount64(vmbits[i])
+		n += bits.OnesCount64(atomic.LoadUint64(&vmbits[i]))
 	}
 	return n
 }
@@ -177,9 +194,11 @@ func Free(buf []byte) {
 			mem = mem[:width:width]
 			hintUnused(mem)
 			atomic.StoreUint64(addr, 0)
+			atomic.AddInt64(&vminuse, -1)
 			return
 		}
 		if atomic.CompareAndSwapUint64(addr, mask, mask&^bit) {
+			atomic.AddInt64(&vminuse, -1)
 			return
 		}
 	}
