@@ -249,14 +249,14 @@ func TestBuildBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("after Stat: %d", openFiles())
+	t.Logf("after Stat: %d", openFiles(t))
 
 	// etag should match object etag
 	inputETag, err := dfs.ETag(idx.Contents[0].Path, info)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("after ETag: %d", openFiles())
+	t.Logf("after ETag: %d", openFiles(t))
 	if urlb.Info.ETag != inputETag {
 		t.Errorf("got ETag %q but wanted ETag %q", urlb.Info.ETag, inputETag)
 	}

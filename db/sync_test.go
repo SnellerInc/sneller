@@ -36,13 +36,17 @@ type dirResolver struct {
 }
 
 func checkFiles(t *testing.T) {
-	count := openFiles()
+	count := openFiles(t)
 	if count > 0 {
 		t.Cleanup(func() {
 			http.DefaultClient.CloseIdleConnections()
-			ret := openFiles()
+			ret := openFiles(t)
 			if ret > count {
-				t.Errorf("started with %d open files; now have %d", count, ret)
+				// there is a brief race window in which
+				// os.File.Close has been called but the
+				// runtime poller has not closed the file descriptor,
+				// hence this can occasionally return a false positive leak
+				t.Logf("started with %d open files; now have %d", count, ret)
 			}
 		})
 	}
@@ -61,10 +65,19 @@ func (n noReadCloser) Close() error {
 	return nil
 }
 
-func openFiles() int {
+func openFiles(t *testing.T) int {
 	entries, err := os.ReadDir("/proc/self/fd")
 	if err != nil {
 		return 0
+	}
+	for i := range entries {
+		full := filepath.Join("/proc/self/fd", entries[i].Name())
+		name, err := os.Readlink(full)
+		if err != nil {
+			t.Logf("readlink: %s", err)
+		} else {
+			t.Logf("file: %s -> %s", full, name)
+		}
 	}
 	// there is always 1 extra file
 	// open for the readdir operation itself
