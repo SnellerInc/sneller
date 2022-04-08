@@ -59,6 +59,14 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 //  2. The config files in $HOME/.aws/config and
 //     $HOME/.aws/credentials, with the credentials
 //     file taking precedence over the config file.
+//     (The path to the config file can be overridden
+//     with the AWS_CONFIG_FILE environment variable.)
+//
+// Additionally, AmbientKey respects the following
+// environment variables:
+//   - AWS_CONFIG_FILE for the config file path
+//   - AWS_PROFILE for the name of the profile
+//     to search for in config files (otherwise "default")
 //
 // NOTE: in general, it is a bad idea to use
 // "Do-What-I-Mean" functionality to load security
@@ -68,14 +76,24 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 // is safer than the aws SDK's "NewSession" function
 // but less safe than explicitly picking up secrets
 // from where you expect to find them. Caveat emptor.
-//
-// BUGS: currently this picks up just the very
-// first profile defined in credential files.
 func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 	var id, secret, region, token string
 	if derive == nil {
 		derive = DefaultDerive
 	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("trying to find $HOME: %w", err)
+	}
+	envdefault := func(base, env string) string {
+		if x := os.Getenv(env); x != "" {
+			return env
+		}
+		return base
+	}
+	profile := envdefault("default", "AWS_PROFILE")
+	configfile := envdefault(filepath.Join(home, ".aws", "credentials"), "AWS_CONFIG_FILE")
 
 	if x := os.Getenv("AWS_ACCESS_KEY_ID"); x != "" {
 		id = x
@@ -95,13 +113,9 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 		return derive(s3baseURI, id, secret, token, region, service)
 	}
 
-	home, err := os.UserHomeDir()
+	info, err := os.Stat(filepath.Dir(configfile))
 	if err != nil {
-		return nil, fmt.Errorf("trying to find $HOME/.aws: %w", err)
-	}
-	info, err := os.Stat(filepath.Join(home, ".aws"))
-	if err != nil {
-		return nil, fmt.Errorf("examining $HOME/.aws: %w", err)
+		return nil, fmt.Errorf("examining %s: %w", filepath.Dir(configfile), err)
 	}
 	err = check(info)
 	if err != nil {
@@ -109,7 +123,7 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 	}
 
 	if id == "" || secret == "" {
-		f, err := os.Open(filepath.Join(home, ".aws", "credentials"))
+		f, err := os.Open(configfile)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +136,7 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = scan(f, []scanspec{
+		err = scan(f, profile, []scanspec{
 			{"aws_access_key_id", &id},
 			{"aws_secret_access_key", &secret},
 			{"region", &region},
@@ -146,7 +160,7 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = scan(f, []scanspec{
+		err = scan(f, profile, []scanspec{
 			{"region", &region},
 		})
 		if err != nil {
@@ -167,10 +181,24 @@ type scanspec struct {
 	dst    *string
 }
 
-func scan(in io.Reader, into []scanspec) error {
+func isSection(line, section string, matched bool) bool {
+	line = strings.TrimSpace(line)
+	if len(line) < 2 || line[0] != '[' || line[len(line)-1] != ']' {
+		return matched
+	}
+	return section == strings.TrimSpace(line[1:len(line)-1])
+}
+
+func scan(in io.Reader, section string, into []scanspec) error {
 	s := bufio.NewScanner(in)
+	matched := false
 	for s.Scan() && len(into) > 0 {
 		line := s.Text()
+		line = strings.TrimSpace(line)
+		matched = isSection(line, section, matched)
+		if !matched {
+			continue
+		}
 		// we are trying to match
 		//   prefix (space*) '=' (space*) suffix
 		for i := 0; i < len(into); i++ {

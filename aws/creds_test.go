@@ -21,25 +21,29 @@ import (
 
 func TestScan(t *testing.T) {
 	var foo, bar, baz, quux string
-	spec := []scanspec{
+	basespec := []scanspec{
 		{prefix: "foo", dst: &foo},
 		{prefix: "bar", dst: &bar},
 		{prefix: "baz", dst: &baz},
 		{prefix: "quux", dst: &quux},
 	}
-	text := strings.NewReader(
-		strings.Join([]string{
-			"foo=foo_result",
-			"ignore this line",
-			"bar = bar_result",
-			"baz= baz_result",
-			"quux  =quux_result",
-			"ignoreme=",
-			"=invalid line",
-			"x=y=z",
-		}, "\n"))
-
-	err := scan(text, spec)
+	text := strings.Join([]string{
+		"[default]",
+		"foo=foo_result",
+		"ignore this line",
+		"bar = bar_result",
+		"baz= baz_result",
+		"quux  =quux_result",
+		"ignoreme=",
+		"=invalid line",
+		"x=y=z",
+		"[section2]",
+		"foo=section2_result",
+		"bar=section2_bar_result",
+	}, "\n")
+	spec := make([]scanspec, len(basespec))
+	copy(spec, basespec)
+	err := scan(strings.NewReader(text), "default", spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,5 +58,16 @@ func TestScan(t *testing.T) {
 	}
 	if quux != "quux_result" {
 		t.Errorf("quux = %q", quux)
+	}
+	copy(spec, basespec)
+	err = scan(strings.NewReader(text), "section2", spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foo != "section2_result" {
+		t.Errorf("foo = %q", foo)
+	}
+	if bar != "section2_bar_result" {
+		t.Errorf("bar = %q", bar)
 	}
 }
