@@ -15,8 +15,6 @@
 package pir
 
 import (
-	"fmt"
-
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -231,7 +229,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		switch age.Op {
 		default:
 			// should have already been compiled away
-			return fmt.Errorf("cannot split %s", expr.ToString(age))
+			return errorf(age, "cannot split %s", expr.ToString(age))
 		case expr.OpCount:
 			// convert to SUM_COUNT(COUNT(x))
 			out = append(out, vm.AggBinding{expr.SumCount(innerref), result})

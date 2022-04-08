@@ -15,8 +15,6 @@
 package pir
 
 import (
-	"fmt"
-
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -72,7 +70,7 @@ func rejectNestedAggregates(columns []expr.Binding) error {
 		}
 		agg, ok := e.(*expr.Aggregate)
 		if ok {
-			err = fmt.Errorf("cannot handle nested aggregate %s", expr.ToString(agg))
+			err = errorf(agg, "cannot handle nested aggregate %s", expr.ToString(agg))
 			return nil
 		}
 		return walkinner
@@ -183,7 +181,7 @@ func (b *Trace) splitAggregate(columns, groups []expr.Binding, having expr.Node)
 		columns[i].As(res)
 	}
 	if len(aggcols) == 0 {
-		return fmt.Errorf("didn't find any aggregates in %s", vm.Selection(columns).String())
+		return errorf(nil, "didn't find any aggregates in %s", vm.Selection(columns).String())
 	}
 
 	// now we can push these to the builder

@@ -16,11 +16,41 @@ package pir
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
+
+// CompileError is an error associated
+// with compiling a particular expression.
+type CompileError struct {
+	In  expr.Node
+	Err string
+}
+
+// Error implements error
+func (c *CompileError) Error() string { return c.Err }
+
+// WriteTo implements io.WriterTo
+//
+// WriteTo writes a plaintext representation
+// of the error to dst, including the expression
+// associated with the error.
+func (c *CompileError) WriteTo(dst io.Writer) (int, error) {
+	if c.In == nil {
+		return fmt.Fprintf(dst, "%s\n", c.Err)
+	}
+	return fmt.Fprintf(dst, "in expression:\n\t%s\n%s\n", expr.ToString(c.In), c.Err)
+}
+
+func errorf(e expr.Node, f string, args ...interface{}) error {
+	return &CompileError{
+		In:  e,
+		Err: fmt.Sprintf(f, args...),
+	}
+}
 
 func (b *Trace) walkFrom(f expr.From, e Env) error {
 	if f == nil {
@@ -29,10 +59,10 @@ func (b *Trace) walkFrom(f expr.From, e Env) error {
 	}
 	switch f := f.(type) {
 	default:
-		return fmt.Errorf("unexpected expression %q", f)
+		return errorf(f, "unexpected expression %q", f)
 	case *expr.Join:
 		if f.Kind != expr.CrossJoin {
-			return fmt.Errorf("join %q not yet supported", f.Kind)
+			return errorf(f, "join %q not yet supported", f.Kind)
 		}
 		err := b.walkFrom(f.Left, e)
 		if err != nil {
@@ -122,7 +152,7 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 		return build(nil, sel, e)
 	}
 	// TODO: body can be UNION ALL, UNION, etc.
-	return nil, fmt.Errorf("cannot pir.Build %T", q.Body)
+	return nil, errorf(body, "cannot pir.Build %T", body)
 }
 
 func build(parent *Trace, s *expr.Select, e Env) (*Trace, error) {
@@ -170,7 +200,7 @@ func (t *tableReplacer) Rewrite(e expr.Node) expr.Node {
 		// for now we refuse bindings for tables
 		// that can conflict with one another
 		if tbl.Result() == with[i].Table {
-			t.err = fmt.Errorf("table binding %q shadows CTE binding %q", tbl.Result(), with[i].Table)
+			t.err = errorf(tbl.Expr, "table binding %q shadows CTE binding %q", tbl.Result(), with[i].Table)
 		}
 	}
 	return e
@@ -340,7 +370,7 @@ func (h *hoistwalk) Rewrite(e expr.Node) expr.Node {
 		}
 		return expr.Call("LIST_REPLACEMENT", index)
 	default:
-		h.err = fmt.Errorf("cardinality of sub-query is too large; use LIMIT")
+		h.err = errorf(s, "cardinality of sub-query is too large; use LIMIT")
 		return s
 	}
 }
@@ -357,7 +387,7 @@ func (h *hoistwalk) rewriteInSubquery(b *expr.Builtin) expr.Node {
 		return b
 	}
 	if cols := len(t.FinalBindings()); cols != 1 {
-		h.err = fmt.Errorf("IN sub-query should have 1 column; have %d", cols)
+		h.err = errorf(b.Args[1].(*expr.Select), "IN sub-query should have 1 column; have %d", cols)
 		return b
 	}
 	index := len(h.in)
@@ -372,7 +402,7 @@ func (h *hoistwalk) rewriteInSubquery(b *expr.Builtin) expr.Node {
 		h.in = append(h.in, t)
 		return expr.Call("IN_REPLACEMENT", b.Args[0], expr.Integer(index))
 	default:
-		h.err = fmt.Errorf("sub-query cardinality too large: %s", b.Args[1])
+		h.err = errorf(b.Args[1].(*expr.Select), "sub-query cardinality too large: %s", b.Args[1])
 		return b
 	}
 }
@@ -391,7 +421,7 @@ func (h *hoistwalk) rewriteScalarArg(e expr.Node) expr.Node {
 		return nil
 	}
 	if cols := len(t.FinalBindings()); cols != 1 {
-		h.err = fmt.Errorf("cannot coerce sub-query with %d columns into a scalar", cols)
+		h.err = errorf(s, "cannot coerce sub-query with %d columns into a scalar", cols)
 		return nil
 	}
 	switch t.Class() {
@@ -408,7 +438,7 @@ func (h *hoistwalk) rewriteScalarArg(e expr.Node) expr.Node {
 		// have a known output size of 0 or 1,
 		// and make users provide LIMIT 1 if they
 		// really mean just the first result
-		h.err = fmt.Errorf("scalar sub-query %q has unbounded results; use LIMIT 1", expr.ToString(s))
+		h.err = errorf(e, "scalar sub-query %q has unbounded results; use LIMIT 1", expr.ToString(s))
 		return e
 	}
 }
@@ -453,7 +483,7 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	// walk SELECT + GROUP BY + HAVING
 	if s.Having != nil || s.GroupBy != nil || anyHasAggregate(s.Columns) {
 		if s.Distinct && s.GroupBy != nil {
-			return fmt.Errorf("mixed hash aggregate and DISTINCT not supported")
+			return errorf(s, "mixed hash aggregate and DISTINCT not supported")
 			// if we have DISTINCT but no group by,
 			// just ignore it; we are only producing
 			// one output row anyway...
@@ -489,12 +519,12 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		if s.Offset != nil {
 			offset = int64(*s.Offset)
 			if offset < 0 {
-				return fmt.Errorf("negative offset %d not supported", offset)
+				return errorf(s, "negative offset %d not supported", offset)
 			}
 		}
 		limit := int64(*s.Limit)
 		if limit < 0 {
-			return fmt.Errorf("negative limit %d not supported", limit)
+			return errorf(s, "negative limit %d not supported", limit)
 		}
 		err = b.LimitOffset(int64(*s.Limit), offset)
 		if err != nil {

@@ -99,7 +99,7 @@ func (f *fsEnv) index(e *expr.Table) (*blockfmt.Index, error) {
 	var err error
 	p, ok := e.Expr.(*expr.Path)
 	if !ok {
-		return nil, fmt.Errorf("unexpected table expression %q", e.Expr)
+		return nil, syntax("unexpected table expression %q", expr.ToString(e.Expr))
 	}
 	// if a database was already provided,
 	// then we expect just the table identifier;

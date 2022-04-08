@@ -52,8 +52,8 @@ func (b *Trace) add(p *expr.Path, step Step, n expr.Node) {
 	}
 }
 
-func (b *Trace) errorf(f string, args ...interface{}) {
-	b.err = append(b.err, fmt.Errorf(f, args...))
+func (b *Trace) errorf(e expr.Node, f string, args ...interface{}) {
+	b.err = append(b.err, errorf(e, f, args...))
 }
 
 func (b *Trace) combine() error {
@@ -75,7 +75,7 @@ func (b *Trace) Visit(e expr.Node) expr.Visitor {
 		}
 		src, node := b.cur.get(p.First)
 		if src == nil {
-			b.errorf("path %s references an unbound variable", expr.ToString(p))
+			b.errorf(p, "path %s references an unbound variable", expr.ToString(p))
 			return nil
 		}
 		b.add(p, src, node)
@@ -104,11 +104,11 @@ func (b *Trace) Visit(e expr.Node) expr.Visitor {
 		switch p.Rest.(type) {
 		case *expr.LiteralIndex:
 			if !t.Contains(ion.ListType) {
-				b.errorf("path expression %q indexes a non-list object", p)
+				b.errorf(p, "path expression %q indexes a non-list object", p)
 			}
 		case *expr.Dot:
 			if !t.Contains(ion.StructType) {
-				b.errorf("path expression %q dots a non-structure object", p)
+				b.errorf(p, "path expression %q dots a non-structure object", p)
 			}
 		}
 		return nil

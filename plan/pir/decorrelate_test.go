@@ -15,6 +15,7 @@
 package pir
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -44,9 +45,13 @@ func TestUnsupported(t *testing.T) {
 			t.Errorf("didn't error on query %s", tests[i])
 			continue
 		}
-		str := err.Error()
-		if !strings.Contains(str, "correlated") {
-			t.Errorf("suspicious error %q in %q", str, tests[i])
+		var cerr *CompileError
+		if !errors.As(err, &cerr) {
+			t.Errorf("couldn't convert %T to a CompileError", err)
+			continue
 		}
+		var txt strings.Builder
+		cerr.WriteTo(&txt)
+		t.Log(txt.String())
 	}
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
+	"github.com/SnellerInc/sneller/plan/pir"
 	"github.com/SnellerInc/sneller/tenant"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/google/uuid"
@@ -132,8 +133,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	defaultDatabase := r.URL.Query().Get("database")
 	parsedQuery, err := partiql.Parse(query)
 	if err != nil {
-		s.logger.Printf("query can't be parsed: %v", err)
-		http.Error(w, "error parsing query", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	normalized := parsedQuery.Text()
@@ -302,13 +302,25 @@ func isTimeout(err error) bool {
 	return false
 }
 
-func isBadQuery(err error) bool {
+func isBadQuery(err error, w http.ResponseWriter) bool {
 	var emptySyntax *expr.SyntaxError
 	var emptyType *expr.TypeError
+	var emptyCompile *pir.CompileError
 	if errors.As(err, &emptySyntax) {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, emptySyntax.Error())
+		io.WriteString(w, "\n")
 		return true
 	}
 	if errors.As(err, &emptyType) {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, emptyType.Error())
+		io.WriteString(w, "\n")
+		return true
+	}
+	if errors.As(err, &emptyCompile) {
+		w.WriteHeader(http.StatusBadRequest)
+		emptyCompile.WriteTo(w)
 		return true
 	}
 	return false
@@ -323,22 +335,17 @@ func isBadQuery(err error) bool {
 // fs.ErrNotExist errors are returned as 404,
 // and others are returned as 500
 func (s *server) planError(w http.ResponseWriter, err error) {
+	w.Header().Set("Content-Type", "text/plain")
 	if errors.Is(err, fs.ErrNotExist) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Header().Set("Content-Type", "text/plan")
 		io.WriteString(w, "table does not exist\n")
 		return
 	}
-	if isBadQuery(err) {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Header().Set("Content-Type", "text/plain")
-		io.WriteString(w, err.Error())
-		io.WriteString(w, "\n")
+	if isBadQuery(err, w) {
 		return
 	}
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Header().Set("Content-Type", "text/plain")
-	io.WriteString(w, "couldn't create query plan")
+	io.WriteString(w, "couldn't create query plan\n")
 	s.logger.Printf("query planning failed: %s", err)
 }
 

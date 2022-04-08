@@ -15,8 +15,6 @@
 package pir
 
 import (
-	"fmt"
-
 	"github.com/SnellerInc/sneller/expr"
 )
 
@@ -72,7 +70,7 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		// multiple correlated references are
 		// unsupported for now
 		if x != "" {
-			return nil, nil, decorrerr(it.free[i])
+			return nil, nil, decorrerr(node, it.free[i])
 		}
 		x = it.free[i]
 		v = node
@@ -93,7 +91,7 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		// unless we have a way to filter N
 		// distinct results for a given column
 		if li.Count > 1 {
-			return nil, nil, decorrerr(x)
+			return nil, nil, decorrerr(v, x)
 		}
 		if b.top == s {
 			b.top = s.parent()
@@ -105,18 +103,18 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 	// find "x = y" in the WHERE clause
 	y := b.decorrelateWhere(x, it)
 	if y == nil {
-		return nil, nil, decorrerr(x)
+		return nil, nil, decorrerr(v, x)
 	}
 	// the top step must either be a Bind or
 	// Aggregate with at least one output
 	switch s := b.top.(type) {
 	case *Bind:
 		if len(s.bind) == 0 {
-			return nil, nil, decorrerr(x)
+			return nil, nil, decorrerr(v, x)
 		}
 		for i := range s.bind {
 			if hasReference(x, s.bind[i].Expr) {
-				return nil, nil, decorrerr(x)
+				return nil, nil, decorrerr(v, x)
 			}
 		}
 		key := expr.Bind(y, gensym(0, 0))
@@ -132,13 +130,13 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		k = expr.String(key.Result())
 	case *Aggregate:
 		if len(s.Agg) == 0 || s.GroupBy != nil || hasReference(x, s.Agg[0].Expr) {
-			return nil, nil, decorrerr(x)
+			return nil, nil, decorrerr(v, x)
 		}
 		by := expr.Bind(y, gensym(0, 0))
 		s.GroupBy = append(s.GroupBy, by)
 		k = expr.String(by.Result())
 	default:
-		return nil, nil, decorrerr(x)
+		return nil, nil, decorrerr(v, x)
 	}
 	// do some bookkeeping
 	free := it.free[:0]
@@ -151,8 +149,8 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 	return k, v, nil
 }
 
-func decorrerr(x string) error {
-	return fmt.Errorf("cannot support correlated reference to %q", x)
+func decorrerr(e expr.Node, x string) error {
+	return errorf(e, "cannot support correlated reference to %q", x)
 }
 
 // decorrelateWhere searches the top-level conjunctions

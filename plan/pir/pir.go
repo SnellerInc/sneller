@@ -52,7 +52,7 @@ func (t *table) strip(p *expr.Path) error {
 		return nil
 	} else if p.First != t.Bind {
 		if !t.haveParent || p.Rest != nil {
-			return fmt.Errorf("reference to undefined variable %q", p)
+			return errorf(p, "reference to undefined variable %q", p)
 		}
 		// this is *definitely* a free variable
 		t.outer = append(t.outer, p.First)
@@ -60,7 +60,7 @@ func (t *table) strip(p *expr.Path) error {
 	}
 	d, ok := p.Rest.(*expr.Dot)
 	if !ok {
-		return fmt.Errorf("cannot compute %s on table %s", p.Rest, t.Bind)
+		return errorf(p, "cannot compute %s on table %s", p.Rest, t.Bind)
 	}
 	p.First = d.Field
 	p.Rest = d.Rest
