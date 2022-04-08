@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -26,6 +27,8 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/auth"
+	"github.com/SnellerInc/sneller/aws"
+	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -38,6 +41,7 @@ var (
 	dashunsafe   bool
 	dashm        int64
 	dashk        string
+	dasho        string
 	token        string
 	tenant       string
 	authEndPoint string
@@ -55,6 +59,7 @@ func init() {
 	flag.BoolVar(&dashunsafe, "unsafe", false, "use unsafe index signing key")
 	flag.Int64Var(&dashm, "m", 100*giga, "maximum input bytes read per index update")
 	flag.StringVar(&dashk, "k", "", "key file to use for signing+authenticating indexes")
+	flag.StringVar(&dasho, "o", "-", "output file (or - for stdin) for unpack")
 	flag.StringVar(&token, "token", "", "JWT token or custom bearer token (default: fetch from SNELLER_TOKEN environment variable)")
 	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, http://, https://, empty uses environment)")
 }
@@ -295,19 +300,97 @@ func validate(creds db.Tenant, dbname, table string) {
 	}
 }
 
+type packed interface {
+	io.Reader
+	io.ReaderAt
+	io.Closer
+}
+
+func s3split(name string) (string, string) {
+	out := strings.TrimPrefix(name, "s3://")
+	split := strings.IndexByte(out, '/')
+	if split == -1 || split == len(out) {
+		exitf("invalid s3 path spec %q", out)
+	}
+	bucket := out[:split]
+	object := out[split+1:]
+	return bucket, object
+}
+
+func openarg(name string) (packed, *blockfmt.Trailer) {
+	if strings.HasPrefix(name, "s3://") {
+		bucket, key := s3split(name)
+		k, err := aws.AmbientKey("s3", s3.DeriveForBucket(bucket))
+		if err != nil {
+			exitf("deriving key for %q: %s", name, err)
+		}
+		f, err := s3.Open(k, bucket, key)
+		if err != nil {
+			exitf("opening arg: %s", err)
+		}
+		trailer, err := blockfmt.ReadTrailer(f, f.Size())
+		if err != nil {
+			f.Close()
+			exitf("reading trailer from %s: %s", name, err)
+		}
+		return f, trailer
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		exitf("opening arg: %s", err)
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		exitf("stat arg: %s", err)
+	}
+	trailer, err := blockfmt.ReadTrailer(f, info.Size())
+	if err != nil {
+		f.Close()
+		exitf("reading trailer from %s: %s", name, err)
+	}
+	return f, trailer
+}
+
+func unpack(args []string) {
+	var out io.WriteCloser
+	var err error
+	if dasho == "-" {
+		out = os.Stdout
+	} else {
+		out, err = os.Create(dasho)
+		if err != nil {
+			exitf("creating output: %s", err)
+		}
+	}
+	defer out.Close()
+	var d blockfmt.Decoder
+	for i := range args {
+		src, trailer := openarg(args[i])
+		d.Trailer = trailer
+		data := io.LimitReader(src, trailer.Offset)
+		_, err := d.Copy(out, data)
+		if err != nil {
+			exitf("blockfmt.Decoder.Copy: %s", err)
+		}
+	}
+}
+
 func main() {
 	flag.Parse()
 	args := flag.Args()
 	if len(args) == 0 || dashh {
 		fmt.Fprintf(os.Stderr, "usage:\n")
-		fmt.Fprintf(os.Stderr, "    %s [-token <token> ] create <db> <def.json>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s [-token <token>] create <db> <def.json>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "        create a new table from a def\n")
-		fmt.Fprintf(os.Stderr, "    %s [-token <token> ] sync <db> <table>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "    %s [-token <token>] sync <db> <table>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "        sync a table index based on an existing def\n")
-		fmt.Fprintf(os.Stderr, "	%s [-token <token> / -tenant <tenant-id>] describe <db> <table>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "	%s [-token <token>] describe <db> <table>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "		describe a table index\n")
-		fmt.Fprintf(os.Stderr, "	%s gc [-token <token> / -tenant <tenant-id>] <db> <table-pattern?>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "	%s [-token <token>] gc <db> <table-pattern?>\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "		gc old objects from a db (+ table-pattern)\n")
+		fmt.Fprintf(os.Stderr, "    %s [-token <token>] [-o <output>] unpack <file>...\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "        unpack a packed .ion.zst file into ion")
 		fmt.Fprintf(os.Stderr, "flag usage:\n")
 		flag.Usage()
 		os.Exit(1)
@@ -350,6 +433,11 @@ func main() {
 			exitf("usage: validate <db> <table>")
 		}
 		validate(creds(), args[1], args[2])
+	case "unpack":
+		if len(args) < 2 {
+			exitf("usage: unpack <file> ...")
+		}
+		unpack(args[1:])
 	default:
 		exitf("commands: create, sync\n")
 	}
