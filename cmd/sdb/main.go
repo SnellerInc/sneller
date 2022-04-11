@@ -223,10 +223,6 @@ func describe(creds db.Tenant, dbname, table string) {
 	for i := range idx.Contents {
 		fmt.Printf("%s %s %d %s\n", idx.Contents[i].Path, idx.Contents[i].ETag, idx.Contents[i].Size, idx.Contents[i].Format)
 		describeBlob(blobs.Contents[i], idx.Contents[i].Size)
-		orig := idx.Contents[i].Original
-		for j := range orig {
-			fmt.Printf("\tinput %s %s %s %s\n", orig[j].Path, orig[j].ETag, orig[j].LastModified, orig[j].Format)
-		}
 	}
 }
 

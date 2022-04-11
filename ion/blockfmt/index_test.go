@@ -152,22 +152,6 @@ func TestIndexEncoding(t *testing.T) {
 							Ranges: nil,
 						}},
 					},
-					Original: []ObjectInfo{
-						{
-							Path:         "bucket/00/baz.json",
-							Format:       "json",
-							ETag:         "baz.json-etag-0",
-							LastModified: timen(2),
-							Size:         1234,
-						},
-						{
-							Path:         "bucket/01/baz/json.gz",
-							Format:       "json.gz",
-							ETag:         "baz.json-etag-1",
-							LastModified: timen(3),
-							Size:         5678,
-						},
-					},
 				},
 				{
 					ObjectInfo: ObjectInfo{
@@ -177,20 +161,6 @@ func TestIndexEncoding(t *testing.T) {
 						LastModified: timen(4),
 						Size:         100000,
 					},
-					Original: []ObjectInfo{
-						{
-							Path:         "bucket/02/quux.json.zst",
-							Format:       "json.zst",
-							ETag:         "quux-etag-02",
-							LastModified: timen(5),
-						},
-						{
-							Path:         "bucket/03/quux.json.lz4",
-							Format:       "json.lz4",
-							ETag:         "quux-etag-03",
-							LastModified: timen(6),
-						},
-					},
 				},
 			},
 		},
@@ -199,14 +169,37 @@ func TestIndexEncoding(t *testing.T) {
 		idx := &idxs[i]
 		var key Key
 		rand.Read(key[:])
-		for i := range idx.Contents {
-			c := &idx.Contents[i]
-			for j := range c.Original {
-				o := &c.Original[j]
-				_, err := idx.Inputs.Append(o.Path, o.ETag, i)
-				if err != nil {
-					t.Fatal(err)
-				}
+		for i, oi := range []ObjectInfo{
+			{
+				Path:         "bucket/02/quux.json.zst",
+				Format:       "json.zst",
+				ETag:         "quux-etag-02",
+				LastModified: timen(5),
+			},
+			{
+				Path:         "bucket/03/quux.json.lz4",
+				Format:       "json.lz4",
+				ETag:         "quux-etag-03",
+				LastModified: timen(6),
+			},
+			{
+				Path:         "bucket/00/baz.json",
+				Format:       "json",
+				ETag:         "baz.json-etag-0",
+				LastModified: timen(2),
+				Size:         1234,
+			},
+			{
+				Path:         "bucket/01/baz/json.gz",
+				Format:       "json.gz",
+				ETag:         "baz.json-etag-1",
+				LastModified: timen(3),
+				Size:         5678,
+			},
+		} {
+			_, err := idx.Inputs.Append(oi.Path, oi.ETag, i)
+			if err != nil {
+				t.Fatal(err)
 			}
 		}
 		idx.Inputs.Backing = dfs
@@ -229,11 +222,8 @@ func TestIndexEncoding(t *testing.T) {
 			t.Errorf("output: %#v", ret)
 			t.Fatal("input and output not equal")
 		}
-		for i := range idx.Contents {
-			idx.Contents[i].Original = nil
-		}
-		idx.Inputs.Reset() // not decoded with FlagSkipOrig
-		ret, err = DecodeIndex(&key, buf, FlagSkipOrig)
+		idx.Inputs.Reset() // not decoded with FlagSkipInputs
+		ret, err = DecodeIndex(&key, buf, FlagSkipInputs)
 		if err != nil {
 			t.Fatal(err)
 		}

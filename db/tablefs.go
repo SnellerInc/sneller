@@ -112,11 +112,11 @@ func OpenIndex(s fs.FS, db, table string, key *blockfmt.Key) (*blockfmt.Index, e
 }
 
 // OpenPartialIndex is equivalent to OpenIndex, but
-// skips decoding Index.Contents.Original. The returned
+// skips decoding Index.Inputs. The returned
 // index is suitable for queries, but not for
 // synchronizing tables.
 func OpenPartialIndex(s fs.FS, db, table string, key *blockfmt.Key) (*blockfmt.Index, error) {
-	return openIndex(s, db, table, key, blockfmt.FlagSkipOrig)
+	return openIndex(s, db, table, key, blockfmt.FlagSkipInputs)
 }
 
 func openIndex(s fs.FS, db, table string, key *blockfmt.Key, opts blockfmt.Flag) (*blockfmt.Index, error) {

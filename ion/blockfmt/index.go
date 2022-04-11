@@ -90,19 +90,6 @@ type Descriptor struct {
 	// be present in the index, in which case the
 	// trailer must be read from the object.
 	Trailer *Trailer
-
-	// Original describes the original
-	// input objects used to produce
-	// this output object. This will be
-	// nil if FlagSkipOrig was passed to
-	// DecodeIndex.
-	//
-	// NOTE:
-	// Original will only be present if
-	// this object is small and therefore
-	// a candidate for re-ingest. Otherwise
-	// this field should not be present.
-	Original []ObjectInfo
 }
 
 // Index is a collection of
@@ -284,7 +271,6 @@ func (idx *Index) writeContents(buf *ion.Buffer, st *ion.Symtab) {
 		etag         = st.Intern("etag")
 		lastModified = st.Intern("last-modified")
 		format       = st.Intern("format")
-		original     = st.Intern("original")
 		trailer      = st.Intern("trailer")
 		size         = st.Intern("size")
 	)
@@ -307,26 +293,6 @@ func (idx *Index) writeContents(buf *ion.Buffer, st *ion.Symtab) {
 			buf.BeginField(trailer)
 			t.Encode(buf, st)
 		}
-		buf.BeginField(original)
-		lst := idx.Contents[i].Original
-		buf.BeginList(-1)
-		for j := range lst {
-			buf.BeginStruct(-1)
-			buf.BeginField(path)
-			buf.WriteString(lst[j].Path)
-			buf.BeginField(etag)
-			buf.WriteString(lst[j].ETag)
-			if !idx.Contents[i].LastModified.IsZero() {
-				buf.BeginField(lastModified)
-				buf.WriteTime(lst[j].LastModified)
-			}
-			buf.BeginField(format)
-			buf.WriteString(lst[j].Format)
-			buf.BeginField(size)
-			buf.WriteInt(lst[j].Size)
-			buf.EndStruct()
-		}
-		buf.EndList()
 		buf.EndStruct()
 	}
 	buf.EndList()
@@ -362,24 +328,7 @@ func (o *ObjectInfo) set(field string, value []byte) ([]byte, bool, error) {
 func (d *Descriptor) decode(td *TrailerDecoder, field []byte, opts Flag) error {
 	return unpackStruct(td.Symbols, field, func(name string, field []byte) error {
 		if name == "original" {
-			if opts&FlagSkipOrig != 0 {
-				return nil
-			}
-			return unpackList(field, func(item []byte) error {
-				var o ObjectInfo
-				err := unpackStruct(td.Symbols, item, func(name string, field []byte) error {
-					_, ok, err := o.set(name, field)
-					if !ok {
-						return fmt.Errorf("unexpected field name %q", name)
-					}
-					return err
-				})
-				if err != nil {
-					return fmt.Errorf("unpacking Original: %w", err)
-				}
-				d.Original = append(d.Original, o)
-				return nil
-			})
+			return nil // ignore for backwards-compat
 		}
 		if name == "trailer" {
 			t, err := td.Decode(field)
@@ -401,9 +350,10 @@ func (d *Descriptor) decode(td *TrailerDecoder, field []byte, opts Flag) error {
 type Flag int
 
 const (
-	// FlagSkipOrig skips Index.Contents.Original
-	// when decoding the index.
-	FlagSkipOrig Flag = 1 << iota
+	// FlagSkipInputs skips Index.Contents.Inputs
+	// when decoding the index. The Inputs list
+	// does not need to be read when running queries.
+	FlagSkipInputs Flag = 1 << iota
 )
 
 func (idx *Index) readInputs(st *ion.Symtab, body []byte, isize int64, alg string) error {
@@ -430,8 +380,8 @@ func (idx *Index) readInputs(st *ion.Symtab, body []byte, isize int64, alg strin
 // and returns the Index, or an error if the index
 // was malformed or the signature doesn't match.
 //
-// If FlagSkipOrig is passed in opts, this avoids
-// decoding Index.Contents.Original.
+// If FlagSkipInputs is passed in opts, this avoids
+// decoding Index.Inputs.
 //
 // NOTE: the returned Index may contain fields
 // that alias the input slice.
@@ -481,7 +431,7 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 		case "input-size":
 			isize, _, err = ion.ReadInt(field)
 		case "inputs":
-			if opts&FlagSkipOrig == 0 {
+			if opts&FlagSkipInputs == 0 {
 				err = idx.readInputs(&st, field, isize, idx.Algo)
 			}
 		case "scanning":

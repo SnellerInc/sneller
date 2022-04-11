@@ -131,13 +131,6 @@ func TestOpenIndex(t *testing.T) {
 				Path: "path/to/object",
 				ETag: "object-etag-1",
 			},
-			Original: []blockfmt.ObjectInfo{{
-				Path: "path/to/original/1",
-				ETag: "original-etag-1",
-			}, {
-				Path: "path/to/original/2",
-				ETag: "original-etag-2",
-			}},
 		}},
 	}
 	buf, err := blockfmt.Sign(&k, &idx)
@@ -159,9 +152,6 @@ func TestOpenIndex(t *testing.T) {
 		t.Fatal("index object differs")
 	}
 
-	for i := range idx.Contents {
-		idx.Contents[i].Original = nil
-	}
 	idx3, err := OpenPartialIndex(os.DirFS(base), "db0", "table", &k)
 	if err != nil {
 		t.Fatal(err)
