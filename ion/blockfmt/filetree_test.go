@@ -84,7 +84,10 @@ func TestFiletreeInsert(t *testing.T) {
 	}
 
 	nextpath := 0
-	sync := func(buf []byte) (path, etag string, err error) {
+	sync := func(old string, buf []byte) (path, etag string, err error) {
+		if old != "" {
+			f.Backing.(*DirFS).Remove(old)
+		}
 		name := fmt.Sprintf("orig/out-file-%d", nextpath)
 		ret, err := f.Backing.WriteFile(name, buf)
 		nextpath++
@@ -167,7 +170,10 @@ func TestFiletreeOverwrite(t *testing.T) {
 	}
 
 	nextpath := 0
-	sync := func(buf []byte) (path, etag string, err error) {
+	sync := func(old string, buf []byte) (path, etag string, err error) {
+		if old != "" {
+			f.Backing.(*DirFS).Remove(old)
+		}
 		name := fmt.Sprintf("orig/out-file-%d", nextpath)
 		ret, err := f.Backing.WriteFile(name, buf)
 		nextpath++

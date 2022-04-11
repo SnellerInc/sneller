@@ -82,7 +82,7 @@ func TestAppend(t *testing.T) {
 			return blockfmt.UnsafeION()
 		},
 		Logf:         t.Logf,
-		GCLikelihood: 100,
+		GCLikelihood: 1,
 	}
 	err := b.Append(owner, "default", "parking", nil)
 	if err != nil {
@@ -94,6 +94,9 @@ func TestAppend(t *testing.T) {
 	}
 	if len(empty.Contents) != 0 {
 		t.Errorf("expected len(Contents)==0; got %#v", empty.Contents)
+	}
+	if len(empty.ToDelete) != 0 {
+		t.Errorf("expected len(ToDelete)==0; got %#v", empty.ToDelete)
 	}
 
 	newname := filepath.Join(tmpdir, "a-prefix/parking.10n")
@@ -200,6 +203,7 @@ func TestAppend(t *testing.T) {
 		t.Error("missing a-prefix/parking.10n")
 	}
 	checkContents(t, idx1, dfs)
+	checkNoGarbage(t, dfs, "db/default/parking", idx1)
 	blobs, err := Blobs(dfs, idx1)
 	if err != nil {
 		t.Fatal(err)
@@ -248,6 +252,7 @@ func TestAppend(t *testing.T) {
 		t.Errorf("no trailer in contents[%d]", 0)
 	}
 	checkContents(t, idx1, dfs)
+	checkNoGarbage(t, dfs, "db/default/parking", idx1)
 
 	// try again; this should be a no-op
 	owner.ro = true

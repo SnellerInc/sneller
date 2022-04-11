@@ -21,6 +21,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -116,6 +117,17 @@ func contains(t *testing.T, idx *blockfmt.Index, path string) bool {
 }
 
 func checkContents(t *testing.T, idx *blockfmt.Index, dir OutputFS) {
+	// it should be safe to delete anything
+	// in ToDelete as long as we aren't running
+	// concurrent queries (which we aren't);
+	// confirm that we really don't need these
+	// objects around any more:
+	rmfs := dir.(RemoveFS)
+	for i := range idx.ToDelete {
+		rmfs.Remove(idx.ToDelete[i].Path)
+	}
+	idx.ToDelete = nil
+
 	for i := range idx.Contents {
 		b := &idx.Contents[i]
 		info, err := fs.Stat(dir, b.Path)
@@ -131,6 +143,58 @@ func checkContents(t *testing.T, idx *blockfmt.Index, dir OutputFS) {
 		}
 		if b.Size != info.Size() {
 			t.Errorf("%s: size %d != %d", b.Path, info.Size(), b.Size)
+		}
+	}
+	idx.Inputs.EachFile(func(name string) {
+		_, err := fs.Stat(dir, name)
+		if err != nil {
+			t.Fatalf("stat %s: %s", name, err)
+		}
+	})
+}
+
+func checkNoGarbage(t *testing.T, root fs.FS, dir string, idx *blockfmt.Index) {
+	t.Helper()
+	entries, err := fs.ReadDir(root, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okpacked := make(map[string]struct{}, len(idx.Contents))
+	for i := range idx.Contents {
+		okpacked[path.Base(idx.Contents[i].Path)] = struct{}{}
+	}
+	okinput := make(map[string]struct{})
+	idx.Inputs.EachFile(func(name string) {
+		okinput[path.Base(name)] = struct{}{}
+	})
+	defer func() {
+		if t.Failed() {
+			for k := range okpacked {
+				t.Logf("ok packed: %s", k)
+			}
+			for k := range okinput {
+				t.Logf("ok input: %s", k)
+			}
+		}
+	}()
+	for i := range entries {
+		if entries[i].IsDir() {
+			continue
+		}
+		name := entries[i].Name()
+		if name == "definition.json" || name == "index" {
+			continue
+		}
+		if strings.HasPrefix(name, "inputs-") {
+			if _, ok := okinput[name]; !ok {
+				t.Errorf("unexpected input %s", name)
+			}
+		} else if strings.HasPrefix(name, "packed-") {
+			if _, ok := okpacked[name]; !ok {
+				t.Errorf("unexpected packed %s", name)
+			}
+		} else {
+			t.Errorf("unexpected file %s", name)
 		}
 	}
 }
@@ -178,7 +242,7 @@ func TestSync(t *testing.T) {
 		},
 		Logf: t.Logf,
 
-		GCLikelihood: 50,
+		GCLikelihood: 1,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
 	err = b.Sync(owner, "default", "*")
@@ -241,6 +305,7 @@ func TestSync(t *testing.T) {
 		t.Error("missing file?")
 	}
 	checkContents(t, idx0, dfs)
+	checkNoGarbage(t, dfs, "db/default/parking", idx0)
 
 	// link a new file into the parking
 	// table and see that we update the index:
@@ -271,6 +336,7 @@ func TestSync(t *testing.T) {
 		t.Errorf("no trailer in contents[%d]", 0)
 	}
 	checkContents(t, idx1, dfs)
+	checkNoGarbage(t, dfs, "db/default/parking", idx1)
 
 	// appending should do nothing:
 	info, err := fs.Stat(dfs, "a-prefix/parking2.json")
@@ -342,9 +408,8 @@ func TestMaxBytesSync(t *testing.T) {
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
 		},
-		Logf: t.Logf,
-
-		GCLikelihood: 50,
+		Logf:         t.Logf,
+		GCLikelihood: 1,
 	}
 	symlink := func(old, new string) {
 		oldabs, err := filepath.Abs(old)
@@ -396,6 +461,8 @@ func TestMaxBytesSync(t *testing.T) {
 		t.Error("don't have parking2.10n?")
 	}
 	checkContents(t, idx, dfs)
+	checkNoGarbage(t, dfs, "db/default/parking", idx)
+
 	// test that a second Sync determines
 	// that everything is up-to-date and does nothing
 	owner.ro = true

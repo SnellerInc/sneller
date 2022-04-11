@@ -88,7 +88,7 @@ func TestLargeIndexEncoding(t *testing.T) {
 		}
 	}
 	idx.Inputs.Backing = dfs
-	idx.SyncInputs(path.Join("db", "foo", "bar"))
+	idx.SyncInputs(path.Join("db", "foo", "bar"), 0)
 
 	var key Key
 	rand.Read(key[:])
@@ -126,6 +126,10 @@ func TestIndexEncoding(t *testing.T) {
 			Name:    "my-view",
 			Created: date.Now().Truncate(time.Duration(1000)),
 			Algo:    "zstd",
+			ToDelete: []Quarantined{
+				{Path: "/foo/bar/deleteme.ion.zst", Expiry: date.Now().Truncate(time.Microsecond).Add(time.Minute)},
+				{Path: "/foo/bar/deleteme2.ion.zst", Expiry: date.Now().Truncate(time.Microsecond).Add(2 * time.Minute)},
+			},
 			Contents: []Descriptor{
 				{
 					ObjectInfo: ObjectInfo{
@@ -203,7 +207,7 @@ func TestIndexEncoding(t *testing.T) {
 			}
 		}
 		idx.Inputs.Backing = dfs
-		idx.SyncInputs(path.Join("db", "foo", idx.Name))
+		idx.SyncInputs(path.Join("db", "foo", idx.Name), 0)
 
 		// reset input state to appear decoded
 		idx.Inputs.Backing = nil
@@ -218,17 +222,18 @@ func TestIndexEncoding(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(idx, ret) {
-			t.Errorf("input: %#v", idx)
+			t.Errorf("input : %#v", idx)
 			t.Errorf("output: %#v", ret)
 			t.Fatal("input and output not equal")
 		}
 		idx.Inputs.Reset() // not decoded with FlagSkipInputs
+		idx.ToDelete = nil // not decoded with FlagSkipInputs
 		ret, err = DecodeIndex(&key, buf, FlagSkipInputs)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(idx, ret) {
-			t.Errorf("input: %#v", idx)
+			t.Errorf("input : %#v", idx)
 			t.Errorf("output: %#v", ret)
 			t.Fatal("input and output not equal")
 		}

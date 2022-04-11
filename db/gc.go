@@ -15,10 +15,13 @@
 package db
 
 import (
+	"errors"
 	"io/fs"
 	"path"
+	"sort"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -55,6 +58,11 @@ type GCConfig struct {
 	// Logf, if non-nil, is a callback used for logging
 	// detailed information regarding GC decisions.
 	Logf func(f string, args ...interface{})
+
+	// Precise determines if GC is performed
+	// by only deleting objects that have been
+	// explicitly marked for deletion.
+	Precise bool
 }
 
 func (c *GCConfig) logf(f string, args ...interface{}) {
@@ -77,6 +85,10 @@ const (
 // it was packed by Sync, at b) is not pointed to
 // by idx.
 func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
+	if c.Precise {
+		c.preciseGC(rfs, idx)
+	}
+
 	// pin relative time to start time,
 	// since we don't want to look at
 	// anything that has been written since
@@ -152,4 +164,29 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 		}
 	}
 	return nil
+}
+
+// preciseGC removes expired elements from idx.ToDelete
+// and returns true if any items were removed, or otherwise false
+func (c *GCConfig) preciseGC(rfs RemoveFS, idx *blockfmt.Index) bool {
+	if len(idx.ToDelete) == 0 {
+		return false
+	}
+	// FIXME: just make this heap-ordered
+	sort.Slice(idx.ToDelete, func(i, j int) bool {
+		return idx.ToDelete[i].Expiry.Before(idx.ToDelete[j].Expiry)
+	})
+	any := false
+	now := date.Now()
+	for len(idx.ToDelete) > 0 && idx.ToDelete[0].Expiry.Before(now) {
+		err := rfs.Remove(idx.ToDelete[0].Path)
+		if err == nil || errors.Is(err, fs.ErrNotExist) {
+			any = true
+			idx.ToDelete = idx.ToDelete[1:]
+		} else {
+			c.logf("deleting ToDelete %q: %s", idx.ToDelete[0].Path, err)
+			return any
+		}
+	}
+	return any
 }

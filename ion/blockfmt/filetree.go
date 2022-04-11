@@ -332,7 +332,7 @@ func (f *FileTree) Append(path, etag string, id int) (bool, error) {
 	return true, nil
 }
 
-type syncfn func([]byte) (path, etag string, err error)
+type syncfn func(oldpath string, mem []byte) (path, etag string, err error)
 
 func (f *FileTree) sync(fn syncfn) error {
 	var st ion.Symtab
@@ -342,7 +342,7 @@ func (f *FileTree) sync(fn syncfn) error {
 			continue
 		}
 		buf := f.toplevel[i].marshal(&buf, &st)
-		path, etag, err := fn(buf)
+		path, etag, err := fn(string(f.toplevel[i].path), buf)
 		if err != nil {
 			return err
 		}

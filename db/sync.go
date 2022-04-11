@@ -107,8 +107,9 @@ type Builder struct {
 	GCLikelihood int
 	// GCMinimumAge is the minimum time that
 	// a packed file should be left around after
-	// it has been dereferenced. If this is set
-	// to zero, then the default is 15 minutes.
+	// it has been dereferenced.
+	// See blockfmt.Index.ToDelete.Expiry for
+	// how this value is used.
 	GCMinimumAge time.Duration
 
 	// Logf, if non-nil, will be where
@@ -217,11 +218,19 @@ func (b *Builder) maxTrim(lst []blockfmt.Input) ([]blockfmt.Input, bool) {
 	return lst, false
 }
 
+// determine if the most-recently-produced packed*.ion.zst
+// is below the minimum merge size; if it is, then pop
+// it off the end of idx.Contents and add the old (to-be-unreferenced)
+// path to the list of items to be deleted when we sync the index
 func (b *Builder) popPrepend(idx *blockfmt.Index) *blockfmt.Descriptor {
 	l := len(idx.Contents)
 	if l > 0 && idx.Contents[l-1].Size < b.minMergeSize() {
 		ret := &idx.Contents[l-1]
 		idx.Contents = idx.Contents[:l-1]
+		idx.ToDelete = append(idx.ToDelete, blockfmt.Quarantined{
+			Path:   ret.Path,
+			Expiry: date.Now().Add(b.GCMinimumAge),
+		})
 		return ret
 	}
 	return nil
@@ -317,6 +326,10 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) err
 	var prepend *blockfmt.Descriptor
 	idx, err := st.index()
 	if err == nil {
+		// begin by removing any unreferenced files,
+		// if we have some left around that need removing
+		st.preciseGC(idx)
+
 		idx.Inputs.Backing = st.ofs
 		if idx.Scanning {
 			def, err := st.def()
@@ -436,6 +449,7 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 			idx, err := st.index()
 			if err == nil && idx.Name == table {
 				idx.Inputs.Backing = st.ofs
+				st.preciseGC(idx)
 				prepend, tail, ok := b.isAppend(idx, lst)
 				if ok {
 					if len(tail) == 0 {
@@ -603,10 +617,17 @@ type readCloser struct {
 	io.Closer
 }
 
+func (st *tableState) preciseGC(idx *blockfmt.Index) {
+	if rmfs, ok := st.ofs.(RemoveFS); ok && st.conf.GCLikelihood > 0 {
+		gcconf := GCConfig{Precise: true, Logf: st.conf.Logf}
+		gcconf.preciseGC(rmfs, idx)
+	}
+}
+
 func (st *tableState) flush(idx *blockfmt.Index) error {
 	idx.Name = st.table
 	idx.Inputs.Backing = st.ofs
-	err := idx.SyncInputs(path.Join("db", st.db, st.table))
+	err := idx.SyncInputs(path.Join("db", st.db, st.table), st.conf.GCMinimumAge)
 	if err != nil {
 		return err
 	}

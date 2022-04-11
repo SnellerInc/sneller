@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -92,6 +93,14 @@ type Descriptor struct {
 	Trailer *Trailer
 }
 
+// Quarantined is an item that
+// is queued for GC but has not
+// yet been deleted.
+type Quarantined struct {
+	Expiry date.Time
+	Path   string
+}
+
 // Index is a collection of
 // formatted objects with a name.
 //
@@ -118,6 +127,14 @@ type Index struct {
 	// Inputs is the collection of
 	// objects that comprise Contents.
 	Inputs FileTree
+
+	// ToDelete is a list of items
+	// that are no longer referenced
+	// by the Index except to indicate
+	// that they should be deleted after
+	// they have been unreferenced for
+	// some period of time.
+	ToDelete []Quarantined
 
 	// LastScan is the time at which
 	// the last scan operation completed.
@@ -186,6 +203,9 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		scanning = st.Intern("scanning")
 		cursors  = st.Intern("cursors")
 		lastscan = st.Intern("last-scan")
+		path     = st.Intern("path")
+		expiry   = st.Intern("expiry")
+		todelete = st.Intern("to-delete")
 	)
 	var ibuf ion.Buffer
 	buf.BeginStruct(-1)
@@ -198,6 +218,20 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 	buf.WriteString(idx.Name)
 	buf.BeginField(created)
 	buf.WriteTime(idx.Created)
+
+	if len(idx.ToDelete) > 0 {
+		buf.BeginField(todelete)
+		buf.BeginList(-1)
+		for i := range idx.ToDelete {
+			buf.BeginStruct(-1)
+			buf.BeginField(path)
+			buf.WriteString(idx.ToDelete[i].Path)
+			buf.BeginField(expiry)
+			buf.WriteTime(idx.ToDelete[i].Expiry)
+			buf.EndStruct()
+		}
+		buf.EndList()
+	}
 
 	if !idx.LastScan.IsZero() {
 		buf.BeginField(lastscan)
@@ -434,6 +468,30 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 			if opts&FlagSkipInputs == 0 {
 				err = idx.readInputs(&st, field, isize, idx.Algo)
 			}
+		case "to-delete":
+			if opts&FlagSkipInputs != 0 {
+				return nil
+			}
+			return unpackList(field, func(field []byte) error {
+				var item Quarantined
+				err := unpackStruct(&st, field, func(name string, field []byte) error {
+					var err error
+					switch name {
+					case "expiry":
+						item.Expiry, _, err = ion.ReadTime(field)
+					case "path":
+						item.Path, _, err = ion.ReadString(field)
+					default:
+						// ignore
+					}
+					return err
+				})
+				if err != nil {
+					return err
+				}
+				idx.ToDelete = append(idx.ToDelete, item)
+				return nil
+			})
 		case "scanning":
 			idx.Scanning, _, err = ion.ReadBool(field)
 		case "cursors":
@@ -503,13 +561,21 @@ func uuid() string {
 }
 
 // SyncInputs syncs idx.Inputs to a directory
-// within idx.Inputs.Backing.
+// within idx.Inputs.Backing, and queues old
+// input files in idx.ToDelete with the provided
+// expiry relative to the current time.
 // Callers are required to call SyncInputs after
 // updating idx.Inputs.
-func (idx *Index) SyncInputs(dir string) error {
-	return idx.Inputs.sync(func(buf []byte) (string, string, error) {
+func (idx *Index) SyncInputs(dir string, expiry time.Duration) error {
+	return idx.Inputs.sync(func(old string, buf []byte) (string, string, error) {
 		p := path.Join(dir, "inputs-"+uuid())
 		etag, err := idx.Inputs.Backing.WriteFile(p, buf)
+		if err == nil && old != "" {
+			idx.ToDelete = append(idx.ToDelete, Quarantined{
+				Path:   old,
+				Expiry: date.Now().Add(expiry),
+			})
+		}
 		return p, etag, err
 	})
 }
