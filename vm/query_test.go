@@ -110,7 +110,7 @@ func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 
 type envfn func(expr.Node) (plan.TableHandle, error)
 
-func (e envfn) Stat(t *expr.Table) (plan.TableHandle, error) {
+func (e envfn) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	return e(t.Expr)
 }
 

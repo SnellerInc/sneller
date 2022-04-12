@@ -102,8 +102,8 @@ func TestGC(t *testing.T) {
 	// make sure all the objects pointed to
 	// by the index still exist, and all the bogus
 	// objects have been removed
-	for i := range idx.Contents {
-		p := idx.Contents[i].Path
+	for i := range idx.Inline {
+		p := idx.Inline[i].Path
 		_, err := fs.Stat(dfs, p)
 		if err != nil {
 			t.Fatal(err)

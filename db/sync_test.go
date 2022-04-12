@@ -128,8 +128,8 @@ func checkContents(t *testing.T, idx *blockfmt.Index, dir OutputFS) {
 	}
 	idx.ToDelete = nil
 
-	for i := range idx.Contents {
-		b := &idx.Contents[i]
+	for i := range idx.Inline {
+		b := &idx.Inline[i]
 		info, err := fs.Stat(dir, b.Path)
 		if err != nil {
 			t.Fatal(err)
@@ -153,27 +153,34 @@ func checkContents(t *testing.T, idx *blockfmt.Index, dir OutputFS) {
 	})
 }
 
-func checkNoGarbage(t *testing.T, root fs.FS, dir string, idx *blockfmt.Index) {
+func checkNoGarbage(t *testing.T, root *DirFS, dir string, idx *blockfmt.Index) {
 	t.Helper()
 	entries, err := fs.ReadDir(root, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	okpacked := make(map[string]struct{}, len(idx.Contents))
-	for i := range idx.Contents {
-		okpacked[path.Base(idx.Contents[i].Path)] = struct{}{}
+	okfile := make(map[string]struct{})
+	for i := range idx.Inline {
+		okfile[path.Base(idx.Inline[i].Path)] = struct{}{}
 	}
-	okinput := make(map[string]struct{})
+	for i := range idx.Indirect.Refs {
+		okfile[path.Base(idx.Indirect.Refs[i].Path)] = struct{}{}
+	}
+	descs, err := idx.Indirect.Search(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range descs {
+		okfile[path.Base(descs[i].Path)] = struct{}{}
+	}
+
 	idx.Inputs.EachFile(func(name string) {
-		okinput[path.Base(name)] = struct{}{}
+		okfile[path.Base(name)] = struct{}{}
 	})
 	defer func() {
 		if t.Failed() {
-			for k := range okpacked {
-				t.Logf("ok packed: %s", k)
-			}
-			for k := range okinput {
-				t.Logf("ok input: %s", k)
+			for k := range okfile {
+				t.Logf("ok file: %s", k)
 			}
 		}
 	}()
@@ -185,15 +192,7 @@ func checkNoGarbage(t *testing.T, root fs.FS, dir string, idx *blockfmt.Index) {
 		if name == "definition.json" || name == "index" {
 			continue
 		}
-		if strings.HasPrefix(name, "inputs-") {
-			if _, ok := okinput[name]; !ok {
-				t.Errorf("unexpected input %s", name)
-			}
-		} else if strings.HasPrefix(name, "packed-") {
-			if _, ok := okpacked[name]; !ok {
-				t.Errorf("unexpected packed %s", name)
-			}
-		} else {
+		if _, ok := okfile[name]; !ok {
 			t.Errorf("unexpected file %s", name)
 		}
 	}
@@ -242,6 +241,12 @@ func TestSync(t *testing.T) {
 		},
 		Logf: t.Logf,
 
+		// note: this is tuned so that the
+		// first append produces an inline ref,
+		// and the second append flushes the
+		// inline ref to an indirect ref
+		MaxInlineBytes: 150 * 1024,
+
 		GCLikelihood: 1,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
@@ -253,8 +258,8 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(empty.Contents) != 0 {
-		t.Errorf("expected len(Contents)==0; got %#v", empty.Contents)
+	if len(empty.Inline) != 0 {
+		t.Errorf("expected len(Contents)==0; got %#v", empty.Inline)
 	}
 
 	newname := filepath.Join(tmpdir, "a-prefix/parking.10n")
@@ -292,11 +297,11 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx0.Contents) != 1 {
-		t.Errorf("expected len(Contents)==1; got %#v", idx0.Contents)
+	if idx0.Objects() != 1 {
+		t.Errorf("expected idx.Objects()==1; got %d", idx0.Objects())
 	}
-	for i := range idx0.Contents {
-		if idx0.Contents[i].Trailer == nil {
+	for i := range idx0.Inline {
+		if idx0.Inline[i].Trailer == nil {
 			t.Errorf("no trailer in contents[%d]", i)
 		}
 	}
@@ -329,11 +334,12 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx1.Contents) != 1 {
-		t.Fatalf("got idx1 contents %#v", idx1.Contents)
+	if idx1.Objects() != 1 {
+		t.Fatalf("got idx1.Objects() = %d", idx1.Objects())
 	}
-	if idx1.Contents[0].Trailer == nil {
-		t.Errorf("no trailer in contents[%d]", 0)
+	if idx1.Indirect.Objects() != 1 {
+		t.Logf("inline size: %d", idx1.Inline[0].Trailer.Decompressed())
+		t.Fatal("expected flush to indirect...?")
 	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)
@@ -361,7 +367,7 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.ro = false
-	blobs, err := Blobs(dfs, idx1)
+	blobs, err := Blobs(dfs, idx1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

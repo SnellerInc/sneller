@@ -74,7 +74,7 @@ func (e emptyEnv) CacheValues() ([]byte, time.Time) {
 	return nil, time.Time{}
 }
 
-func (e emptyEnv) Stat(tbl *expr.Table) (plan.TableHandle, error) {
+func (e emptyEnv) Stat(tbl *expr.Table, _ expr.Node) (plan.TableHandle, error) {
 	return noTableHandle{}, nil
 }
 

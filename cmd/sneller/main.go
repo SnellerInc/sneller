@@ -100,7 +100,8 @@ func (h handle) Open() (vm.Table, error) {
 	return h()
 }
 
-func (e eenv) Stat(tbl *expr.Table) (plan.TableHandle, error) {
+// FIXME: use filter when we are reading ion data!
+func (e eenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	return handle(func() (vm.Table, error) {
 		return e(tbl)
 	}), nil

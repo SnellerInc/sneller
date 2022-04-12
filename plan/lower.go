@@ -205,14 +205,9 @@ func lowerBind(in *pir.Bind, from Op) (Op, error) {
 }
 
 func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
-	handle, err := env.Stat(in.Inner.Table)
+	handle, err := env.Stat(in.Inner.Table, in.Inner.Filter)
 	if err != nil {
 		return nil, err
-	}
-	if in.Inner.Filter != nil {
-		if h, ok := handle.(Filterable); ok {
-			handle = h.Filter(in.Inner.Filter)
-		}
 	}
 	// NOTE: we're passing the same splitter
 	// to the child here. We don't currently
@@ -234,7 +229,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	}
 	handles := make([]TableHandle, len(tbls))
 	for i := range tbls {
-		handles[i], err = env.Stat(tbls[i].Table)
+		handles[i], err = env.Stat(tbls[i].Table, in.Inner.Filter)
 		if err != nil {
 			return nil, err
 		}
@@ -250,7 +245,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
-		handle, err := env.Stat(it.Table)
+		handle, err := env.Stat(it.Table, it.Filter)
 		if err != nil {
 			return nil, err
 		}
@@ -396,7 +391,7 @@ func ShouldSplit(q *expr.Query, env Env, split Splitter) (bool, error) {
 			return visit
 		}
 		var handle TableHandle
-		handle, err = env.Stat(t)
+		handle, err = env.Stat(t, nil)
 		if err != nil {
 			return nil
 		}

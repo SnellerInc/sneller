@@ -16,6 +16,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"path"
 	"sort"
@@ -95,8 +96,19 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 	// the GC operation actually started
 	start := time.Now()
 	used := make(map[string]struct{})
-	for i := range idx.Contents {
-		used[idx.Contents[i].Path] = struct{}{}
+	for i := range idx.Inline {
+		used[idx.Inline[i].Path] = struct{}{}
+	}
+	ifs, ok := rfs.(blockfmt.InputFS)
+	if !ok {
+		return fmt.Errorf("cannot scan indirect inputs using %T", rfs)
+	}
+	descs, err := idx.Indirect.Search(ifs, func(r []blockfmt.Range) bool { return true })
+	if err != nil {
+		return err
+	}
+	for i := range descs {
+		used[descs[i].Path] = struct{}{}
 	}
 	idx.Inputs.EachFile(func(f string) {
 		used[f] = struct{}{}

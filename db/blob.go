@@ -29,13 +29,7 @@ import (
 // that is required for turning a table
 // reference into a consistent list of blobs.
 type FS interface {
-	fs.FS
-	// Prefix indicates the expected
-	// prefix of index contents within
-	// this path. For example, if the FS
-	// implementation is an S3 bucket,
-	// Prefix should return "s3://<bucket>/"
-	Prefix() string
+	InputFS
 
 	// URL should return a URL for the
 	// file at the given full path and with
@@ -77,47 +71,56 @@ func noIfMatch(fs FS) bool {
 	return false
 }
 
+func keepAny(t *blockfmt.Trailer, keep func([]blockfmt.Range) bool) bool {
+	for i := range t.Blocks {
+		if keep(t.Blocks[i].Ranges) {
+			return true
+		}
+	}
+	return false
+}
+
 // Blobs collects the list of objects
 // from an index and returns them as
 // a list of blobs against which queries can be run.
+// Only blobs that reference objects for which
+// at least one block satisfies keep(Blockdesc.Ranges)
+// are returned.
 //
 // Note that the returned blob.List may consist
 // of zero blobs if the index has no contents.
-func Blobs(src FS, idx *blockfmt.Index) (*blob.List, error) {
+func Blobs(src FS, idx *blockfmt.Index, keep func([]blockfmt.Range) bool) (*blob.List, error) {
 	out := &blob.List{}
-	for i := range idx.Contents {
-		p := idx.Contents[i].Path
-		if idx.Contents[i].Format != blockfmt.Version {
-			return nil, fmt.Errorf("don't know how to convert format %q into a blob", idx.Contents[i].Format)
+	for i := range idx.Inline {
+		if idx.Inline[i].Format != blockfmt.Version {
+			return nil, fmt.Errorf("don't know how to convert format %q into a blob", idx.Inline[i].Format)
 		}
-		info := (*descInfo)(&idx.Contents[i])
-		b, err := infoToBlob(src, &idx.Contents[i], info, p)
+		if keep != nil && !keepAny(idx.Inline[i].Trailer, keep) {
+			continue
+		}
+		b, err := descToBlob(src, &idx.Inline[i])
 		if err != nil {
 			return nil, err
+		}
+		out.Contents = append(out.Contents, b)
+	}
+	descs, err := idx.Indirect.Search(src, keep)
+	if err != nil {
+		return out, err
+	}
+	for i := range descs {
+		b, err := descToBlob(src, &descs[i])
+		if err != nil {
+			return out, err
 		}
 		out.Contents = append(out.Contents, b)
 	}
 	return out, nil
 }
 
-func infoToBlob(src FS, b *blockfmt.Descriptor, info fs.FileInfo, p string) (blob.Interface, error) {
-	etag := b.ETag
-	modtime := b.LastModified.Time()
-	// annoyingly, S3 does not use very precise
-	// LastModified times (it truncates the precision);
-	// just guarantee that the object is no more than one
-	// second newer...
-	delta := info.ModTime().Sub(modtime)
-	if delta > time.Second {
-		return nil, fmt.Errorf("object %s has been modified (index says %s; file says %s)", p, modtime, info.ModTime())
-	}
-	if infs, ok := src.(blockfmt.InputFS); ok {
-		curETag, err := infs.ETag(p, info)
-		if err == nil && etag != curETag {
-			return nil, fmt.Errorf("object %s has been modified (index says ETag %s; current ETag %s)", p, etag, curETag)
-		}
-	}
-	uri, err := src.URL(p, info, etag)
+func descToBlob(src FS, b *blockfmt.Descriptor) (blob.Interface, error) {
+	info := (*descInfo)(b)
+	uri, err := src.URL(b.Path, info, b.ETag)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +136,7 @@ func infoToBlob(src FS, b *blockfmt.Descriptor, info fs.FileInfo, p string) (blo
 				// inserts the If-Match header to ensure
 				// that the object can't change while
 				// we are reading it.
-				ETag: etag,
+				ETag: b.ETag,
 				Size: info.Size(),
 				// Note: the Align of blob.Compressed.From
 				// is ignored, since blob.Compressed reads

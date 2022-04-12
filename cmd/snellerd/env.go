@@ -33,5 +33,6 @@ func (h noTableHandle) Filter(f expr.Node) plan.TableHandle {
 
 type filterHandle struct {
 	noTableHandle
-	filter expr.Node
+	filter   expr.Node
+	compiled filter
 }

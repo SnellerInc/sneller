@@ -104,10 +104,13 @@ type Filterable interface {
 type Env interface {
 	// Stat returns a TableHandle
 	// associated with the given PartiQL expression.
+	// The filter expression provided in the second
+	// argument can be used to constrain the set of
+	// rows that are present in the returned TableHandle.
 	// The information provided by the TableHandle
 	// is used by the query planner to make query-splitting
 	// decisions.
-	Stat(*expr.Table) (TableHandle, error)
+	Stat(*expr.Table, expr.Node) (TableHandle, error)
 
 	// Schema returns type hints associated
 	// with a particular table expression.

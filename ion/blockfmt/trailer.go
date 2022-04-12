@@ -74,6 +74,43 @@ type Trailer struct {
 	Blocks []Blockdesc
 }
 
+func writeRanges(dst *ion.Buffer, st *ion.Symtab, ranges []Range) {
+	symPath := st.Intern("path")
+	symMin := st.Intern("min")
+	symMax := st.Intern("max")
+	dst.BeginList(-1)
+	for j := range ranges {
+		dst.BeginStruct(-1)
+		{
+			dst.BeginField(symPath)
+			dst.BeginList(-1)
+			path := ranges[j].Path()
+			for k := range path {
+				dst.WriteSymbol(st.Intern(path[k]))
+			}
+			dst.EndList()
+		}
+		switch r := ranges[j].(type) {
+		case *TimeRange:
+			dst.BeginField(symMin)
+			dst.WriteTime(r.min)
+			dst.BeginField(symMax)
+			dst.WriteTime(r.max)
+		default:
+			if min := r.Min(); min != nil {
+				dst.BeginField(symMin)
+				min.Encode(dst, st)
+			}
+			if max := r.Max(); max != nil {
+				dst.BeginField(symMax)
+				max.Encode(dst, st)
+			}
+		}
+		dst.EndStruct()
+	}
+	dst.EndList()
+}
+
 // Encode encodes a trailer to the provided buffer
 // using the provided symbol table.
 // Note that Encode may add new symbols to the symbol table.
@@ -98,9 +135,6 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 	symOffset := st.Intern("offset")
 	symRanges := st.Intern("ranges")
-	symPath := st.Intern("path")
-	symMin := st.Intern("min")
-	symMax := st.Intern("max")
 	symChunks := st.Intern("chunks")
 	dst.BeginList(-1)
 	for i := range t.Blocks {
@@ -111,38 +145,7 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		dst.WriteInt(int64(t.Blocks[i].Chunks))
 		if len(t.Blocks[i].Ranges) > 0 {
 			dst.BeginField(symRanges)
-			ranges := t.Blocks[i].Ranges
-			dst.BeginList(-1)
-			for j := range ranges {
-				dst.BeginStruct(-1)
-				{
-					dst.BeginField(symPath)
-					dst.BeginList(-1)
-					path := ranges[j].Path()
-					for k := range path {
-						dst.WriteSymbol(st.Intern(path[k]))
-					}
-					dst.EndList()
-				}
-				switch r := ranges[j].(type) {
-				case *TimeRange:
-					dst.BeginField(symMin)
-					dst.WriteTime(r.min)
-					dst.BeginField(symMax)
-					dst.WriteTime(r.max)
-				default:
-					if min := r.Min(); min != nil {
-						dst.BeginField(symMin)
-						min.Encode(dst, st)
-					}
-					if max := r.Max(); max != nil {
-						dst.BeginField(symMax)
-						max.Encode(dst, st)
-					}
-				}
-				dst.EndStruct()
-			}
-			dst.EndList()
+			writeRanges(dst, st, t.Blocks[i].Ranges)
 		}
 		dst.EndStruct()
 	}

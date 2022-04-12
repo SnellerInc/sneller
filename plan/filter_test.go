@@ -33,8 +33,8 @@ type filterEnv struct {
 	filters []string
 }
 
-func (e *filterEnv) Stat(t *expr.Table) (TableHandle, error) {
-	th, err := e.env.Stat(t)
+func (e *filterEnv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
+	th, err := e.env.Stat(t, filter)
 	if err != nil {
 		return nil, err
 	}

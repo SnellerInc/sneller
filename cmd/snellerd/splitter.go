@@ -68,7 +68,11 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 	// compile the filter expression if provided
 	var flt filter
 	if fh, ok := handle.(*filterHandle); ok {
-		flt = compileFilter(fh.filter)
+		if fh.compiled != nil {
+			flt = fh.compiled
+		} else {
+			flt = compileFilter(fh.filter)
+		}
 	}
 
 	// determine all ranges for this table

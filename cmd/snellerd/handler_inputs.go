@@ -92,14 +92,18 @@ func (s *server) inputsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
+	indirect := idx.Indirect.Objects()
 	err = idx.Inputs.Walk(start, func(path, etag string, id int) bool {
 		it.Path = path
 		it.ETag = etag
 		it.Accepted = id >= 0
-		if id >= 0 && id < len(idx.Contents) {
-			it.Packfile = idx.Contents[id].Path
-		} else {
-			it.Packfile = ""
+		// FIXME: we only produce packfile information
+		// when the reference is inline in the index;
+		// we'd have to load indirect blocks to handle
+		// the other cases
+		it.Packfile = ""
+		if id >= indirect && (id-indirect) < len(idx.Inline) {
+			it.Packfile = idx.Inline[id-indirect].Path
 		}
 		err = enc.Encode(&it)
 		if err != nil {

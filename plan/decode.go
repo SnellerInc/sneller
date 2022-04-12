@@ -124,14 +124,14 @@ func decodeOps(env Env, st *ion.Symtab, buf []byte) (Op, error) {
 			return nil, fmt.Errorf("plan.Decode: reading op %d: %w", count, err)
 		}
 		if tbl, ok := op.(*Leaf); env != nil && ok {
-			tbl.Handle, err = env.Stat(tbl.Expr)
+			tbl.Handle, err = env.Stat(tbl.Expr, nil)
 			if err != nil {
 				return nil, err
 			}
 		} else if um, ok := op.(*UnionMap); env != nil && ok {
 			um.Handles = make([]TableHandle, len(um.Sub))
 			for i := range um.Sub {
-				um.Handles[i], err = env.Stat(um.Sub[i].Table)
+				um.Handles[i], err = env.Stat(um.Sub[i].Table, nil)
 				if err != nil {
 					return nil, err
 				}

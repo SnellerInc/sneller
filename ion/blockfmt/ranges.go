@@ -126,7 +126,21 @@ func sortByPath(lst []*TimeRange) {
 	})
 }
 
-// union two lists of time ranges
+func (t *TimeRange) copy() *TimeRange {
+	return &TimeRange{path: t.path, min: t.min, max: t.max}
+}
+
+func copyTimeRanges(lst []*TimeRange) []*TimeRange {
+	out := make([]*TimeRange, len(lst))
+	for i := range out {
+		out[i] = lst[i].copy()
+	}
+	return out
+}
+
+// union unions the results from b into a
+// and returns the mutated slice
+// (the result is guaranteed not to alias b)
 func union(a, b []*TimeRange) []*TimeRange {
 	sortByPath(a)
 	sortByPath(b)
@@ -147,7 +161,7 @@ func union(a, b []*TimeRange) []*TimeRange {
 		if pathequal(apath, bpath) {
 			a[pos].Union(b[i])
 		} else {
-			a = append(a, b[i])
+			a = append(a, b[i].copy())
 		}
 	}
 	sortByPath(a) // make results deterministic

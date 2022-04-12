@@ -92,8 +92,8 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(empty.Contents) != 0 {
-		t.Errorf("expected len(Contents)==0; got %#v", empty.Contents)
+	if empty.Objects() != 0 {
+		t.Errorf("expected len(Contents)==0; got %#v", empty.Objects())
 	}
 	if len(empty.ToDelete) != 0 {
 		t.Errorf("expected len(ToDelete)==0; got %#v", empty.ToDelete)
@@ -155,11 +155,11 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx0.Contents) != 1 {
-		t.Errorf("expected len(Contents)==1; got %#v", idx0.Contents)
+	if idx0.Objects() != 1 {
+		t.Errorf("expected idx0.Objects()==1; got %#v", idx0.Objects())
 	}
-	for i := range idx0.Contents {
-		if idx0.Contents[i].Trailer == nil {
+	for i := range idx0.Inline {
+		if idx0.Inline[i].Trailer == nil {
 			t.Errorf("no trailer in contents[%d]", i)
 		}
 	}
@@ -192,10 +192,10 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx1.Contents) != 1 {
-		t.Errorf("got idx1 contents %#v", idx1.Contents)
+	if idx1.Objects() != 1 {
+		t.Errorf("got idx1.Objects() = %d", idx1.Objects())
 	}
-	if idx1.Contents[0].Trailer == nil {
+	if idx1.Inline[0].Trailer == nil {
 		t.Errorf("no trailer in contents[%d]", 0)
 	}
 	idx1.Inputs.Backing = dfs
@@ -204,7 +204,7 @@ func TestAppend(t *testing.T) {
 	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)
-	blobs, err := Blobs(dfs, idx1)
+	blobs, err := Blobs(dfs, idx1, func([]blockfmt.Range) bool { return true })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,10 +245,10 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx1.Contents) != 1 {
-		t.Errorf("got idx1 contents %#v", idx1.Contents)
+	if idx1.Objects() != 1 {
+		t.Errorf("got idx1.Objects() = %d", idx1.Objects())
 	}
-	if idx1.Contents[0].Trailer == nil {
+	if idx1.Inline[0].Trailer == nil {
 		t.Errorf("no trailer in contents[%d]", 0)
 	}
 	checkContents(t, idx1, dfs)

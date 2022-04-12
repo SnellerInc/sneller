@@ -47,7 +47,7 @@ func TestLargeIndexEncoding(t *testing.T) {
 		Scanning: true,
 		Cursors:  []string{"a/b/c", "x/y/z"},
 		LastScan: time0,
-		Contents: []Descriptor{
+		Inline: []Descriptor{
 			{
 				ObjectInfo: ObjectInfo{
 					Path:         "foo/bar/baz.10n.c",
@@ -130,7 +130,7 @@ func TestIndexEncoding(t *testing.T) {
 				{Path: "/foo/bar/deleteme.ion.zst", Expiry: date.Now().Truncate(time.Microsecond).Add(time.Minute)},
 				{Path: "/foo/bar/deleteme2.ion.zst", Expiry: date.Now().Truncate(time.Microsecond).Add(2 * time.Minute)},
 			},
-			Contents: []Descriptor{
+			Inline: []Descriptor{
 				{
 					ObjectInfo: ObjectInfo{
 						Path:         "foo/bar/baz.10n.c",
@@ -283,10 +283,10 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 		}
 	}
 	idx := &Index{
-		Name:     "index",
-		Created:  now,
-		Algo:     "zstd",
-		Contents: contents,
+		Name:    "index",
+		Created: now,
+		Algo:    "zstd",
+		Inline:  contents,
 	}
 	var key Key
 	rand.Read(key[:])

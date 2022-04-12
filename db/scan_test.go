@@ -121,8 +121,8 @@ func TestScan(t *testing.T) {
 	if idx.Scanning {
 		t.Error("index is still scanning?")
 	}
-	if len(idx.Contents) != 1 {
-		t.Errorf("len(idx.Contents) = %d", len(idx.Contents))
+	if idx.Objects() != 1 {
+		t.Errorf("idx.Objects() = %d", idx.Objects())
 	}
 	idx.Inputs.Backing = dfs
 	count := 0
@@ -216,8 +216,8 @@ func TestNewIndexScan(t *testing.T) {
 	if !idx.Scanning {
 		t.Error("index is not scanning?")
 	}
-	if len(idx.Contents) != 1 {
-		t.Errorf("len(idx.Contents) = %d", len(idx.Contents))
+	if idx.Objects() != 1 {
+		t.Errorf("idx.Objects() = %d", idx.Objects())
 	}
 
 	// second attempt should fail again,

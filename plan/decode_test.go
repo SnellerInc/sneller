@@ -75,7 +75,7 @@ func (b *benchenv) Schema(t *expr.Table) expr.Hint {
 	return nil
 }
 
-func (b *benchenv) Stat(t *expr.Table) (TableHandle, error) {
+func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
 	if t.Value != nil {
 		return b, nil
 	}

@@ -79,7 +79,7 @@ func (f *fakeenv) rewrite(in *expr.Table, h TableHandle) (*expr.Table, TableHand
 
 func (f *fakeenv) Schema(e *expr.Table) expr.Hint { return nil }
 
-func (f *fakeenv) Stat(e *expr.Table) (TableHandle, error) {
+func (f *fakeenv) Stat(e *expr.Table, filter expr.Node) (TableHandle, error) {
 	iv := int64(e.Expr.(expr.Integer))
 	e.Value = f.tables[iv].Value
 	return f.handles[iv], nil

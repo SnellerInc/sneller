@@ -87,7 +87,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
 	size := int64(0)
 	complete := true
 	prepend := st.conf.popPrepend(idx)
-	id := len(idx.Contents)
+	id := nextID(idx)
 	for i := range def.Inputs {
 		if len(collect) >= maxInputs || size >= maxSize {
 			break
@@ -164,17 +164,28 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
 	idx.Scanning = !complete
 	if len(collect) == 0 {
 		if idx.Scanning {
-			panic("should not be possible: idx.Scannig && len(collect) == 0")
+			panic("should not be possible: idx.Scanning && len(collect) == 0")
 		}
-		// re-append the prepended item
-		if prepend != nil {
-			idx.Contents = append(idx.Contents, *prepend)
-		}
-		return 0, st.flush(idx)
+		return 0, st.flushScanDone(idx.Cursors)
 	}
 	err := st.force(idx, prepend, collect)
 	if err != nil {
 		return 0, err
 	}
 	return len(collect), nil
+}
+
+// mark scanning=false and set the cursors
+// to their final values; we do this by re-loading
+// the index so that any modifications we made
+// along the way (other than scanning for cursors)
+// are discarded
+func (st *tableState) flushScanDone(cursors []string) error {
+	old, err := st.index()
+	if err != nil {
+		return err
+	}
+	old.Scanning = false
+	old.Cursors = cursors
+	return st.flush(old)
 }

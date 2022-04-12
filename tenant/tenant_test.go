@@ -60,7 +60,7 @@ func (s stubenv) Open() (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened stubenv locally!")
 }
 
-func (s stubenv) Stat(tbl *expr.Table) (plan.TableHandle, error) {
+func (s stubenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	// confirm that the file exists,
 	// but otherwise do nothing
 	fn, ok := tbl.Expr.(expr.String)
@@ -610,7 +610,7 @@ func (b *benchenv) Schema(t *expr.Table) expr.Hint {
 	return nil
 }
 
-func (b *benchenv) Stat(t *expr.Table) (plan.TableHandle, error) {
+func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	if t.Value != nil {
 		return stubenv{}, nil
 	}

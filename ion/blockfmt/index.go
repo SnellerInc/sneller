@@ -121,11 +121,23 @@ type Index struct {
 	// Algo is the compression algorithm used to
 	// compress the index contents.
 	Algo string
-	// Contents is the list of objects
-	// that comprise the index.
-	Contents []Descriptor
+
+	// Inline is a list of object descriptors
+	// that are inlined into the index object.
+	//
+	// Typically, Inline contains the objects
+	// that have been ingested most recently
+	// (or are otherwise known to be more likely
+	// to be referenced).
+	Inline []Descriptor
+
+	// Indirect is the tree that contains
+	// all the object descriptors that aren't
+	// part of Inline.
+	Indirect IndirectTree
+
 	// Inputs is the collection of
-	// objects that comprise Contents.
+	// objects that comprise Inline and Indirect.
 	Inputs FileTree
 
 	// ToDelete is a list of items
@@ -206,6 +218,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		path     = st.Intern("path")
 		expiry   = st.Intern("expiry")
 		todelete = st.Intern("to-delete")
+		indirect = st.Intern("indirect")
 	)
 	var ibuf ion.Buffer
 	buf.BeginStruct(-1)
@@ -249,10 +262,10 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		}
 		buf.EndList()
 	}
-	if len(idx.Contents) == 0 {
+	if len(idx.Inline) == 0 {
 		// Do nothing...
 	} else if idx.Algo != "" {
-		idx.writeContents(&ibuf, &st)
+		writeContents(&ibuf, &st, idx.Inline)
 		comp := Compression(idx.Algo)
 		cbuf := comp.Compress(ibuf.Bytes(), malloc(ibuf.Size())[:0])
 		buf.BeginField(st.Intern("algo"))
@@ -264,8 +277,12 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		free(cbuf)
 	} else {
 		buf.BeginField(st.Intern("contents"))
-		idx.writeContents(&buf, &st)
+		writeContents(&buf, &st, idx.Inline)
 	}
+
+	// encode indirect references
+	buf.BeginField(indirect)
+	idx.Indirect.encode(&st, &buf)
 
 	// encode tree; choose to compress
 	// when it would encode to more than 1kB
@@ -299,7 +316,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 	return appendSig(key, buf.Bytes())
 }
 
-func (idx *Index) writeContents(buf *ion.Buffer, st *ion.Symtab) {
+func writeContents(buf *ion.Buffer, st *ion.Symtab, contents []Descriptor) {
 	var (
 		path         = st.Intern("path")
 		etag         = st.Intern("etag")
@@ -309,21 +326,21 @@ func (idx *Index) writeContents(buf *ion.Buffer, st *ion.Symtab) {
 		size         = st.Intern("size")
 	)
 	buf.BeginList(-1)
-	for i := range idx.Contents {
+	for i := range contents {
 		buf.BeginStruct(-1)
 		buf.BeginField(path)
-		buf.WriteString(idx.Contents[i].Path)
+		buf.WriteString(contents[i].Path)
 		buf.BeginField(etag)
-		buf.WriteString(idx.Contents[i].ETag)
-		if !idx.Contents[i].LastModified.IsZero() {
+		buf.WriteString(contents[i].ETag)
+		if !contents[i].LastModified.IsZero() {
 			buf.BeginField(lastModified)
-			buf.WriteTime(idx.Contents[i].LastModified)
+			buf.WriteTime(contents[i].LastModified)
 		}
 		buf.BeginField(format)
-		buf.WriteString(idx.Contents[i].Format)
+		buf.WriteString(contents[i].Format)
 		buf.BeginField(size)
-		buf.WriteInt(idx.Contents[i].Size)
-		if t := idx.Contents[i].Trailer; t != nil {
+		buf.WriteInt(contents[i].Size)
+		if t := contents[i].Trailer; t != nil {
 			buf.BeginField(trailer)
 			t.Encode(buf, st)
 		}
@@ -468,6 +485,8 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 			if opts&FlagSkipInputs == 0 {
 				err = idx.readInputs(&st, field, isize, idx.Algo)
 			}
+		case "indirect":
+			err = idx.Indirect.parse(&td, field)
 		case "to-delete":
 			if opts&FlagSkipInputs != 0 {
 				return nil
@@ -540,7 +559,7 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 		if err := self.decode(&td, field, opts); err != nil {
 			return err
 		}
-		idx.Contents = append(idx.Contents, self)
+		idx.Inline = append(idx.Inline, self)
 		return nil
 	})
 	if err != nil {
@@ -580,28 +599,63 @@ func (idx *Index) SyncInputs(dir string, expiry time.Duration) error {
 	})
 }
 
+// SyncOutputs synchronizes idx.Indirect to a directory
+// with the provided UploadFS. SyncOutputs uses maxInlined
+// to determine which (if any) of the leading entries in
+// idx.Inlined should be moved into the indirect tree
+// by trimming leading entries until the decompressed size
+// of the data referenced by idx.Inline is less than or
+// equal to maxInlined.
+func (idx *Index) SyncOutputs(ofs UploadFS, dir string, maxInlined int64, expiry time.Duration) error {
+	inline := int64(0)
+	for i := range idx.Inline {
+		inline += idx.Inline[i].Trailer.Decompressed()
+	}
+	if inline < maxInlined {
+		return nil
+	}
+	j := 0
+	for inline > maxInlined && j < len(idx.Inline) {
+		inline -= idx.Inline[j].Trailer.Decompressed()
+		j++
+	}
+	before, after := idx.Inline[:j], idx.Inline[j:]
+	err := idx.append(&idx.Indirect, ofs, dir, before, expiry)
+	if err != nil {
+		return err
+	}
+	idx.Inline = after
+	return nil
+}
+
 // TimeRange returns the inclusive time range for the
 // given path expression.
 func (idx *Index) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
-	for i := range idx.Contents {
-		desc := &idx.Contents[i]
+	add := func(ranges []Range) {
+		for _, r := range ranges {
+			tr, _ := r.(*TimeRange)
+			if tr == nil || !pathMatches(p, tr.path) {
+				continue
+			}
+			if !ok {
+				min, max, ok = tr.min, tr.max, true
+			} else {
+				min, max = timeUnion(min, max, tr.min, tr.max)
+			}
+		}
+	}
+	for i := range idx.Inline {
+		desc := &idx.Inline[i]
 		if desc.Trailer == nil {
 			continue
 		}
 		for i := range desc.Trailer.Blocks {
 			blk := &desc.Trailer.Blocks[i]
-			for _, r := range blk.Ranges {
-				tr, _ := r.(*TimeRange)
-				if tr == nil || !pathMatches(p, tr.path) {
-					continue
-				}
-				if !ok {
-					min, max, ok = tr.min, tr.max, true
-				} else {
-					min, max = timeUnion(min, max, tr.min, tr.max)
-				}
-			}
+			add(blk.Ranges)
 		}
+	}
+	for i := range idx.Indirect.Refs {
+		add(idx.Indirect.Refs[i].Ranges)
 	}
 	return min, max, ok
 }
@@ -622,4 +676,10 @@ func pathMatches(e *expr.Path, p []string) bool {
 		p = p[1:]
 	}
 	return len(p) == 0
+}
+
+// Objects returns the number of packed objects
+// that are pointed to by this Index.
+func (idx *Index) Objects() int {
+	return idx.Indirect.Objects() + len(idx.Inline)
 }

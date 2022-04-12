@@ -936,7 +936,7 @@ func mkindex(rs [][]blockfmt.Range) *blockfmt.Index {
 		t.Blocks = append(t.Blocks, blockfmt.Blockdesc{Ranges: r})
 	}
 	return &blockfmt.Index{
-		Contents: []blockfmt.Descriptor{{
+		Inline: []blockfmt.Descriptor{{
 			Trailer: t,
 		}},
 	}

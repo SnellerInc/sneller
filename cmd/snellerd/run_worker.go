@@ -117,7 +117,7 @@ func (e *tenantEnv) post() {
 	e.evfd.Write(e.onebuf[:])
 }
 
-func (e *tenantEnv) Stat(tbl *expr.Table) (plan.TableHandle, error) {
+func (e *tenantEnv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	return &tableHandle{
 		tbl: tbl,
 		env: e,

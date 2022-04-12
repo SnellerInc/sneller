@@ -47,6 +47,18 @@ const DefaultMinMerge = 50 * 1024 * 1024
 // we write out metadata.
 const DefaultRangeMultiple = 100
 
+const (
+	kilo = 1024
+	mega = kilo * kilo
+	giga = kilo * mega
+)
+
+// DefaultMaxInlineBytes is the default
+// number of decompressed bytes that we
+// reference in blockfmt.Index.Inline before
+// flushing references to blockfmt.Index.Indirect.
+const DefaultMaxInlineBytes = 100 * giga
+
 // ErrBuildAgain is returned by db.Builder.Sync
 // when only some of the input objects were successfully
 // ingested.
@@ -96,6 +108,14 @@ type Builder struct {
 	// NewIndexScan, if true, enables scanning
 	// for newly-created index objects.
 	NewIndexScan bool
+
+	// MaxInlineBytes is the maximum number
+	// of (decompressed) data bytes for which
+	// we should store references directly in
+	// blockfmt.Index.Inline.
+	// If this value is zero, then DefaultMaxInlineBytes
+	// is used instead.
+	MaxInlineBytes int64
 
 	// GCLikelihood is the likelihood that
 	// a Sync, Append, or Scan operation
@@ -220,13 +240,13 @@ func (b *Builder) maxTrim(lst []blockfmt.Input) ([]blockfmt.Input, bool) {
 
 // determine if the most-recently-produced packed*.ion.zst
 // is below the minimum merge size; if it is, then pop
-// it off the end of idx.Contents and add the old (to-be-unreferenced)
+// it off the end of idx.Inline and add the old (to-be-unreferenced)
 // path to the list of items to be deleted when we sync the index
 func (b *Builder) popPrepend(idx *blockfmt.Index) *blockfmt.Descriptor {
-	l := len(idx.Contents)
-	if l > 0 && idx.Contents[l-1].Size < b.minMergeSize() {
-		ret := &idx.Contents[l-1]
-		idx.Contents = idx.Contents[:l-1]
+	l := len(idx.Inline)
+	if l > 0 && idx.Inline[l-1].Size < b.minMergeSize() {
+		ret := &idx.Inline[l-1]
+		idx.Inline = idx.Inline[:l-1]
 		idx.ToDelete = append(idx.ToDelete, blockfmt.Quarantined{
 			Path:   ret.Path,
 			Expiry: date.Now().Add(b.GCMinimumAge),
@@ -236,12 +256,16 @@ func (b *Builder) popPrepend(idx *blockfmt.Index) *blockfmt.Descriptor {
 	return nil
 }
 
+func nextID(idx *blockfmt.Index) int {
+	return len(idx.Inline) + idx.Indirect.Objects()
+}
+
 // if 'lst' consists of a superset of the contents of idx,
 // then filter out all the members of lst that are already
 // present and return the trimmed list of inputs
 func (b *Builder) isAppend(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, bool) {
 	prepend := b.popPrepend(idx)
-	descID := len(idx.Contents)
+	descID := nextID(idx)
 	var kept []blockfmt.Input
 	for i := range lst {
 		ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)
@@ -267,7 +291,7 @@ func (b *Builder) isAppend(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt
 
 func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, error) {
 	prepend := st.conf.popPrepend(idx)
-	descID := len(idx.Contents)
+	descID := nextID(idx)
 	var kept []blockfmt.Input
 	for i := range lst {
 		ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)
@@ -538,7 +562,7 @@ func (st *tableState) emptyIndex() error {
 	idx := blockfmt.Index{
 		Created: date.Now().Truncate(time.Microsecond),
 		Name:    st.table,
-		// no Contents
+		// no Inline, etc.
 	}
 	buf, err := blockfmt.Sign(st.owner.Key(), &idx)
 	if err != nil {
@@ -624,10 +648,22 @@ func (st *tableState) preciseGC(idx *blockfmt.Index) {
 	}
 }
 
+func (b *Builder) maxInlineBytes() int64 {
+	if b.MaxInlineBytes <= 0 {
+		return DefaultMaxInlineBytes
+	}
+	return b.MaxInlineBytes
+}
+
 func (st *tableState) flush(idx *blockfmt.Index) error {
 	idx.Name = st.table
 	idx.Inputs.Backing = st.ofs
-	err := idx.SyncInputs(path.Join("db", st.db, st.table), st.conf.GCMinimumAge)
+	dir := path.Join("db", st.db, st.table)
+	err := idx.SyncInputs(dir, st.conf.GCMinimumAge)
+	if err != nil {
+		return err
+	}
+	err = idx.SyncOutputs(st.ofs, dir, st.conf.maxInlineBytes(), st.conf.GCMinimumAge)
 	if err != nil {
 		return err
 	}
@@ -682,13 +718,6 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	err = c.Run()
 	if err != nil {
 		abort(out)
-		if c.Prepend.R != nil {
-			// re-extend Contents (see popPrepend())
-			idx.Contents = idx.Contents[:len(idx.Contents)+1]
-			if prepend != &idx.Contents[len(idx.Contents)-1] {
-				panic("could not re-extend contents")
-			}
-		}
 		st.updateFailed(idx == nil, c.Inputs)
 		return fmt.Errorf("db.Builder: running blockfmt.Converter: %w", err)
 	}
@@ -706,7 +735,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	}
 	idx.Algo = "zstd"
 	idx.Created = buildtime
-	idx.Contents = append(idx.Contents, blockfmt.Descriptor{
+	idx.Inline = append(idx.Inline, blockfmt.Descriptor{
 		ObjectInfo: blockfmt.ObjectInfo{
 			Path:         fp,
 			LastModified: date.FromTime(lastmod),

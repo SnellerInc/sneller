@@ -59,7 +59,7 @@ func (n nopHandle) Open() (vm.Table, error) {
 	return nil, nil
 }
 
-func (f fuzzEnv) Stat(t *expr.Table) (plan.TableHandle, error) {
+func (f fuzzEnv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	return nopHandle{}, nil
 }
 

@@ -128,7 +128,7 @@ func (t *tableHandle) Open() (vm.Table, error) {
 	return t.env.cache.Table((*Handle)(t), 0), nil
 }
 
-func (e *Env) Stat(tbl *expr.Table) (plan.TableHandle, error) {
+func (e *Env) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	fname := tbl.Expr
 	repeat := 1
 	if bi, ok := fname.(*expr.Builtin); ok {

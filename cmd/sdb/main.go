@@ -216,13 +216,19 @@ func describe(creds db.Tenant, dbname, table string) {
 	if err != nil {
 		exitf("opening index: %s\n", err)
 	}
-	blobs, err := db.Blobs(ofs.(db.FS), idx)
+	blobs, err := db.Blobs(ofs.(db.FS), idx, nil)
 	if err != nil {
 		exitf("getting blobs: %s\n", err)
 	}
-	for i := range idx.Contents {
-		fmt.Printf("%s %s %d %s\n", idx.Contents[i].Path, idx.Contents[i].ETag, idx.Contents[i].Size, idx.Contents[i].Format)
-		describeBlob(blobs.Contents[i], idx.Contents[i].Size)
+	for i := range idx.Inline {
+		fmt.Printf("inline %s %s %d %s\n", idx.Inline[i].Path, idx.Inline[i].ETag, idx.Inline[i].Size, idx.Inline[i].Format)
+	}
+	for i := range blobs.Contents {
+		info, err := blobs.Contents[i].Stat()
+		if err != nil {
+			exitf("stat blob: %s\n", err)
+		}
+		describeBlob(blobs.Contents[i], info.Size)
 	}
 }
 
@@ -280,17 +286,18 @@ func validate(creds db.Tenant, dbname, table string) {
 		exitf("opening index: %s\n", err)
 	}
 	e := errorWriter{}
-	for i := range idx.Contents {
+	for i := range idx.Inline {
 		if dashv {
-			fmt.Printf("checking %s\n", idx.Contents[i].Path)
+			fmt.Printf("checking %s\n", idx.Inline[i].Path)
 		}
-		f, err := ofs.Open(idx.Contents[i].Path)
+		f, err := ofs.Open(idx.Inline[i].Path)
 		if err != nil {
-			exitf("opening %s: %s", idx.Contents[i].Path, err)
+			exitf("opening %s: %s", idx.Inline[i].Path, err)
 		}
-		blockfmt.Validate(f, idx.Contents[i].Trailer, &e)
+		blockfmt.Validate(f, idx.Inline[i].Trailer, &e)
 		f.Close()
 	}
+	// TODO: validate idx.Indirect
 	if e.any {
 		os.Exit(1)
 	}

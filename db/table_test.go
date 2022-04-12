@@ -126,7 +126,7 @@ func TestOpenIndex(t *testing.T) {
 		Name:    "test-index",
 		Created: date.Now().Truncate(time.Microsecond),
 		Algo:    "zstd",
-		Contents: []blockfmt.Descriptor{{
+		Inline: []blockfmt.Descriptor{{
 			ObjectInfo: blockfmt.ObjectInfo{
 				Path: "path/to/object",
 				ETag: "object-etag-1",
@@ -211,17 +211,17 @@ func TestBuildBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(idx.Contents) != 1 {
-		t.Fatalf("index contents: %#v", idx.Contents)
+	if idx.Objects() != 1 {
+		t.Fatalf("index contents: %d", idx.Objects())
 	}
-	match, err := path.Match("db/db0/table0/packed*.ion.zst", idx.Contents[0].Path)
+	match, err := path.Match("db/db0/table0/packed*.ion.zst", idx.Inline[0].Path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !match {
-		t.Fatalf("unexpected contents[0] path %s", idx.Contents[0].Path)
+		t.Fatalf("unexpected contents[0] path %s", idx.Inline[0].Path)
 	}
-	lst, err := Blobs(dfs, idx)
+	lst, err := Blobs(dfs, idx, func([]blockfmt.Range) bool { return true })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,14 +236,14 @@ func TestBuildBlobs(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected blobs.URL; got %T", bc.From)
 	}
-	info, err := fs.Stat(dfs, idx.Contents[0].Path)
+	info, err := fs.Stat(dfs, idx.Inline[0].Path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("after Stat: %d", openFiles(t))
 
 	// etag should match object etag
-	inputETag, err := dfs.ETag(idx.Contents[0].Path, info)
+	inputETag, err := dfs.ETag(idx.Inline[0].Path, info)
 	if err != nil {
 		t.Fatal(err)
 	}
