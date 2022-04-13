@@ -138,51 +138,131 @@ func TestParseFail(t *testing.T) {
 	}
 }
 
-func TestParseWithSchema(t *testing.T) {
+func TestParseWithHints(t *testing.T) {
 	objs := []struct {
 		input    string
-		schema   string
+		hints    string
 		expected string
 	}{
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
-			schema:   ``,
+			hints:    ``,
 			expected: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3, "exp": 3.18e-09, "exp2": 31}`,
 		},
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
-			schema:   `{}`,
+			hints:    `{"*": "ignore"}`,
 			expected: `{}`,
 		},
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
-			schema:   `{"foo": "int", "quux": "number", "exp2": "number"}`,
+			hints:    `{"foo": "int", "quux": "number", "exp2": "number", "*": "ignore"}`,
 			expected: `{"foo": -300, "quux": 3, "exp2": 31}`,
 		},
 		{
 			input:    `{"foo": -300, "bar": { "sub": "test", "sub3": { "inner": "i", "sub2": [1, 2, 3] }, "sub4": "123" }, "baz": 3.141}`,
-			schema:   `{"foo": "int", "bar": { "sub": "string", "sub4": "string" }, "baz": "number" }`,
+			hints:    `{"foo": "int", "bar.sub": "string", "bar.sub4": "string", "baz": "number", "*": "ignore"}`,
 			expected: `{"foo": -300, "bar": {"sub": "test", "sub4": "123"}, "baz": 3.141}`,
 		},
 		{
 			input:    `{"value": "2019-07-26T00:00:00"}`,
-			schema:   `{"value": "datetime"}`,
+			hints:    `{"value": "datetime"}`,
 			expected: `{"value": "2019-07-26T00:00:00Z"}`,
 		},
 		{
 			input:    `{"value": 1634054285}`,
-			schema:   `{"value": "unix_seconds" }`,
+			hints:    `{"value": "unix_seconds"}`,
 			expected: `{"value": "2021-10-12T15:58:05Z"}`,
 		},
 		{
 			input:    `{"value": 1337}`,
-			schema:   `{"value": "string" }`,
+			hints:    `{"value": "string"}`,
 			expected: `{"value": "1337"}`,
 		},
+
+		// Test explicit ignore
 		{
-			input:    `{"value": "1337"}`,
-			schema:   `{"value": "int" }`,
-			expected: `{"value": 1337}`,
+			input:    `{"a": 0, "b": 1, "c": 2}`,
+			hints:    `{"b": "ignore"}`,
+			expected: `{"a": 0, "c": 2}`,
+		},
+
+		// Test nesting
+		{
+			input:    `{"a": {"b": { "c": 0 }}, "c": {"b": { "a": 1 }}}`,
+			hints:    `{"a.*": "int", "*": "ignore"}`,
+			expected: `{"a": {"b": {"c": 0}}}`,
+		},
+
+		// Test "first wins"
+		{
+			input:    `{"a": { "b": { "%": { "d": "0" } }, "%": { "%": { "d": "0" } } }}`,
+			hints:    `{"a.?.?.d": "int", "a.b.?.d": "string"}`,
+			expected: `{"a": {"b": {"%": {"d": 0}}, "%": {"%": {"d": 0}}}}`,
+		},
+		{
+			input:    `{"a": { "b": { "%": { "d": "0" } }, "%": { "%": { "d": "0" } } }}`,
+			hints:    `{"a.b.?.d": "string", "a.?.?.d": "int"}`,
+			expected: `{"a": {"b": {"%": {"d": "0"}}, "%": {"%": {"d": 0}}}}`,
+		},
+
+		// Test wildcards
+		{
+			input:    `{"a": "0", "%": "1"}`,
+			hints:    `{"a": "string", "?": "int"}`,
+			expected: `{"a": "0", "%": 1}`,
+		},
+		{
+			input:    `{"a": "0", "%": { "%": "1" }}`,
+			hints:    `{"a": "string", "?": "int"}`,
+			expected: `{"a": "0", "%": {"%": "1"}}`,
+		},
+		{
+			input:    `{"a": "0", "%": { "%": "1" }}`,
+			hints:    `{"a": "string", "*": "int"}`,
+			expected: `{"a": "0", "%": {"%": 1}}`,
+		},
+
+		// Test arrays
+		{
+			input:    `{"a": "0", "b": ["1", {"c": "2"}], "c": 1}`,
+			hints:    `{"a": "string", "b.[?]": "int"}`,
+			expected: `{"a": "0", "b": [1, {"c": "2"}], "c": 1}`,
+		},
+		{
+			input:    `{"a": "0", "b": ["1", {"c": "2"}], "c": 1}`,
+			hints:    `{"a": "string", "b.[*]": "int"}`,
+			expected: `{"a": "0", "b": [1, {"c": 2}], "c": 1}`,
+		},
+		{
+			input:    `{"a": "0", "b": ["1", {"c": "2"}], "c": 1}`,
+			hints:    `{"a": "string", "b.[?].c": "int"}`,
+			expected: `{"a": "0", "b": ["1", {"c": 2}], "c": 1}`,
+		},
+		{
+			input:    `{"a": "0", "%": ["1"], "c": "1"}`,
+			hints:    `{"a": "string", "*": "int"}`,
+			expected: `{"a": "0", "%": [1], "c": 1}`,
+		},
+		{
+			input:    `{"a": "0", "%": [{ "%": "1" }], "c": "1"}`,
+			hints:    `{"a": "string", "?.[?].?": "int"}`,
+			expected: `{"a": "0", "%": [{"%": 1}], "c": "1"}`,
+		},
+		{
+			input:    `{"a": "0", "%": [{ "%": "1" }], "c": "1"}`,
+			hints:    `{"a": "string", "?.[*]": "int"}`,
+			expected: `{"a": "0", "%": [{"%": 1}], "c": "1"}`,
+		},
+		{
+			input:    `{"a": "0", "%": [{ "%": "1" }], "c": "1"}`,
+			hints:    `{"a": "string", "*": "int"}`,
+			expected: `{"a": "0", "%": [{"%": 1}], "c": 1}`,
+		},
+		{
+			input:    `{"a": [{ "%": "1" }], "b": [{ "%": "2" }]}`,
+			hints:    `{"a.[*]": "int", "*": "ignore"}`,
+			expected: `{"a": [{"%": 1}]}`,
 		},
 	}
 	for i := range objs {
@@ -190,12 +270,12 @@ func TestParseWithSchema(t *testing.T) {
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			st := NewState(&ion.Chunker{W: ioutil.Discard, Align: 1000000})
 
-			if test.schema != "" {
-				entry, err := MakeSchema([]byte(test.schema))
+			if test.hints != "" {
+				entry, err := ParseHint([]byte(test.hints))
 				if err != nil {
-					t.Fatalf("invalid schema: %s", err)
+					t.Fatalf("invalid hints: %s", err)
 				}
-				st.schemaState = entry
+				st.UseHints(entry)
 			}
 
 			n, err := ParseObject(st, []byte(test.input))
@@ -343,68 +423,68 @@ func BenchmarkTranslate(b *testing.B) {
 
 func BenchmarkTranslateWithSchema(b *testing.B) {
 	objs := []struct {
-		input  string
-		schema string
+		input string
+		hints string
 	}{
 		{
-			input:  `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
-			schema: ``,
+			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
+			hints: ``,
 		},
 		{
-			input:  `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
-			schema: `{"0": "string", "1": "string", "2": "string", "3": "string", "4": "string", "5": "string", "6": "string", "7": "string", "8": "string", "9": "string"}`,
+			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
+			hints: `{"0": "string", "1": "string", "2": "string", "3": "string", "4": "string", "5": "string", "6": "string", "7": "string", "8": "string", "9": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
-			schema: `{"0": "string", "1": "string", "2": "string", "3": "string", "4": "string"}`,
+			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
+			hints: `{"0": "string", "1": "string", "2": "string", "3": "string", "4": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
-			schema: `{"5": "string", "6": "string", "7": "string", "8": "string", "9": "string"}`,
+			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
+			hints: `{"5": "string", "6": "string", "7": "string", "8": "string", "9": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
-			schema: `{"0": "string", "2": "string", "4": "string", "6": "string", "8": "string"}`,
+			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
+			hints: `{"0": "string", "2": "string", "4": "string", "6": "string", "8": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
-			schema: ``,
+			input: `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
+			hints: ``,
 		},
 		{
-			input:  `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
-			schema: `{"0": { "inner": "string" }, "1": { "inner": "string" }, "2": { "inner": "string" }, "3": { "inner": "string" }, "4": { "inner": "string" }, "5": { "inner": "string" }, "6": { "inner": "string" }, "7": { "inner": "string" }, "8": { "inner": "string" }, "9": { "inner": "string" }}`,
+			input: `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
+			hints: `{"0.inner": "string", "1.inner": "string", "2.inner": "string", "3.inner": "string", "4.inner": "string", "5.inner": "string", "6.inner": "string", "7.inner": "string", "8.inner": "string", "9.inner": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
-			schema: `{"0": { "inner": "string" }, "1": { "inner": "string" }, "2": { "inner": "string" }, "3": { "inner": "string" }, "4": { "inner": "string" }}`,
+			input: `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
+			hints: `{"0.inner": "string", "1.inner": "string", "2.inner": "string", "3.inner": "string", "4.inner": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
-			schema: `{"5": { "inner": "string" }, "6": { "inner": "string" }, "7": { "inner": "string" }, "8": { "inner": "string" }, "9": { "inner": "string" }}`,
+			input: `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
+			hints: `{"5.inner": "string", "6.inner": "string", "7.inner": "string", "8.inner": "string", "9.inner": "string", "*": "ignore"}`,
 		},
 		{
-			input:  `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
-			schema: `{"0": { "inner": "string" }, "2": { "inner": "string" }, "4": { "inner": "string" }, "6": { "inner": "string" }, "8": { "inner": "string" }}`,
+			input: `{"0": { "inner": "a" }, "1": { "inner": "a" }, "2": { "inner": "a" }, "3": { "inner": "a" }, "4": { "inner": "a" }, "5": { "inner": "a" }, "6": { "inner": "a" }, "7": { "inner": "a" }, "8": { "inner": "a" }, "9": { "inner": "a" }}`,
+			hints: `{"0.inner": "string", "2.inner": "string", "4.inner": "string", "6.inner": "string", "8.inner": "string", "*": "ignore"}`,
 		},
 	}
 	for i := range objs {
 		test := objs[i]
 		b.Run(fmt.Sprintf("case-%d", i), func(b *testing.B) {
 			buf := []byte(test.input)
-			var schema *SchemaState
-			if test.schema != "" {
-				entry, err := MakeSchema([]byte(test.schema))
+			var hints *Hint
+			if test.hints != "" {
+				entry, err := ParseHint([]byte(test.hints))
 				if err != nil {
-					b.Fatalf("invalid schema: %s", err)
+					b.Fatalf("invalid hints: %s", err)
 				}
-				schema = entry
+				hints = entry
 			}
 			b.SetBytes(int64(len(buf)))
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
 				s := NewState(cn)
-				s.schemaState = schema
+				s.UseHints(hints)
 				for pb.Next() {
 					s.out.Reset()
 					cur := buf

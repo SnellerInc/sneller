@@ -75,9 +75,9 @@ type Scanner interface {
 //
 // Convert does not support translating
 // objects above MaxObjectSize.
-func Convert(src io.Reader, dst *ion.Chunker, schema *SchemaState) error {
+func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
 	st := NewState(dst)
-	st.schemaState = schema
+	st.UseHints(hints)
 	var rd Scanner
 	if s, ok := src.(Scanner); ok && s.Size() >= MaxObjectSize {
 		rd = s

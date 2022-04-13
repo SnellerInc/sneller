@@ -18,12 +18,14 @@
 package jsonrl
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/bits"
 	"os"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
@@ -98,181 +100,389 @@ const (
 	flagField
 )
 
-type TransitionType byte
+type hints int
 
 const (
-	transBeginRecord TransitionType = iota
-	transEndRecord
-	transBeginList
-	transEndList
-	transBeginField
-	transParseInt
-	transParseFloat
-	transParseBool
-	transParseNull
-	transParseString
-	transMaxValue
+	hintDefault hints = 1 << iota
+
+	hintString
+	hintNumber
+	hintInt
+	hintBool
+	hintDateTime
+	hintUnixSeconds
+
+	hintIgnore
+	hintNoIndex
 )
 
-type SchemaStateToken byte
-
-const (
-	stateEntry SchemaStateToken = iota
-	stateExpectFieldOrEnd
-	stateExpectValueOrEnd
-	stateExpectRecord
-	stateExpectList
-	stateExpectValue // arbitrary value expected -> emit default
-	stateExpectString
-	stateExpectNumber
-	stateExpectInt
-	stateExpectBool
-	stateExpectDateTime
-	stateExpectUnixSeconds
-)
-
-type SchemaState struct {
-	token       SchemaStateToken
-	transitions []*SchemaState
-	fields      map[string]*SchemaState
+type Hint struct {
+	parent              *Hint
+	hints               hints
+	isRecursiveWildcard bool
+	fields              map[string]*Hint
+	wildcard            *Hint
 }
 
-// MakeSchema creates a schema structure from the given json-schema input
-func MakeSchema(schema []byte) (*SchemaState, error) {
-
-	var result map[string]interface{}
-	err := json.Unmarshal(schema, &result)
+func ParseHint(rules []byte) (*Hint, error) {
+	var obj map[string]interface{}
+	err := json.Unmarshal(rules, &obj)
 	if err != nil {
 		return nil, err
 	}
 
-	entry := makeNode(stateEntry)
-	rec := entry.addTransition(transBeginRecord, stateExpectFieldOrEnd)
+	// We need the keys in their original order which is not guaranteed if we would
+	// use `map[string]interface{}`
+	keys, err := objectKeys(rules)
+	if err != nil {
+		return nil, err
+	}
 
-	for k, v := range result {
-		if err = makeSchemaRecursive(k, v, rec); err != nil {
+	root := makeHintNode(nil, hintDefault, false)
+
+	for _, path := range keys {
+		value := obj[path]
+		hints, err := hintsFromJson(value)
+		if err != nil {
+			return nil, err
+		}
+		if err = root.encodeRuleString(path, hints); err != nil {
 			return nil, err
 		}
 	}
 
-	return entry, nil
+	return root, nil
 }
 
-func makeSchemaRecursive(k string, v interface{}, current *SchemaState) error {
-
-	s, ok := v.(string)
-	if ok {
-		token := stateExpectString
-
-		// TODO: Add more conversions
-		switch s {
-		case "number":
-			token = stateExpectNumber
-		case "int":
-			token = stateExpectInt
-		case "bool":
-			token = stateExpectBool
-		case "datetime":
-			token = stateExpectDateTime
-		case "unix_seconds":
-			token = stateExpectUnixSeconds
-		case "string":
-			// nothing to do here
-		default:
-			return errors.New("type not implemented")
-		}
-
-		current.addField(k, token)
+func objectKeys(b []byte) ([]string, error) {
+	d := json.NewDecoder(bytes.NewReader(b))
+	t, err := d.Token()
+	if err != nil {
+		return nil, err
 	}
+	if t != json.Delim('{') {
+		return nil, errors.New("expected start of object")
+	}
+	var keys []string
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		if t == json.Delim('}') {
+			return keys, nil
+		}
+		keys = append(keys, t.(string))
+		if err := skipValue(d); err != nil {
+			return nil, err
+		}
+	}
+}
 
-	o, ok := v.(map[string]interface{})
-	if ok {
-		cur := current.addField(k, stateExpectRecord)
-		rec := cur.addTransition(transBeginRecord, stateExpectFieldOrEnd)
-		for k2, v2 := range o {
-			if err := makeSchemaRecursive(k2, v2, rec); err != nil {
+func skipValue(d *json.Decoder) error {
+	t, err := d.Token()
+	if err != nil {
+		return err
+	}
+	switch t {
+	case json.Delim('['), json.Delim('{'):
+		for {
+			if err := skipValue(d); err != nil {
+				if err == end {
+					break
+				}
 				return err
 			}
 		}
+	case json.Delim(']'), json.Delim('}'):
+		return end
+	}
+	return nil
+}
+
+var end = errors.New("invalid end of array or object")
+
+func hintsFromJson(value interface{}) (hints, error) {
+	s, ok := value.(string)
+	if ok {
+		return hintFromString(s)
+	}
+	a, ok := value.([]string)
+
+	if ok {
+		result := hintDefault
+		for _, v := range a {
+			h, err := hintFromString(v)
+			if err != nil {
+				return hintDefault, err
+			}
+			result = result | h
+		}
+		return result, nil
 	}
 
-	// TODO: Add support for lists
+	return hintDefault, errors.New("unsupported hint type; expected 'string' or '[]string'")
+}
 
-	//a, ok := v.([]interface{})
-	//if ok {
-	//	cur := current.addField(k, stateExpectList)
-	//	rec := cur.addTransition(transBeginList, stateExpectValueOrEnd)
-	//	for _, v2 := range a {
-	//		makeSchemaRecursive("", v2, rec)
-	//	}
-	//}
+func hintFromString(value string) (hints, error) {
+	switch value {
+	case "default":
+		return hintDefault, nil
+	case "string":
+		return hintString, nil
+	case "number":
+		return hintNumber, nil
+	case "int":
+		return hintInt, nil
+	case "bool":
+		return hintBool, nil
+	case "datetime":
+		return hintDateTime, nil
+	case "unix_seconds":
+		return hintUnixSeconds, nil
+	case "ignore":
+		return hintIgnore, nil
+	case "no_index":
+		return hintNoIndex, nil
+	}
+
+	return hintDefault, fmt.Errorf("unsupported hint '%s'", value)
+}
+
+func makeHintNode(parent *Hint, hints hints, isRecursiveWildcard bool) *Hint {
+	return &Hint{
+		parent:              parent,
+		hints:               hints,
+		isRecursiveWildcard: isRecursiveWildcard,
+		fields:              map[string]*Hint{},
+	}
+}
+
+func (n *Hint) hasWildcard() bool {
+	return n.wildcard != nil
+}
+
+func (n *Hint) getNext(label []byte) *Hint {
+	next, ok := n.fields[string(label)]
+	if ok {
+		return next
+	}
+	if n.wildcard != nil {
+		return n.wildcard
+	}
+	return n
+}
+
+func (n *Hint) encodeRuleString(path string, hints hints) error {
+	segments := strings.Split(path, ".")
+	return n.encodeRule(segments, hints)
+}
+
+func (n *Hint) encodeRule(path []string, hints hints) error {
+	segment := path[0]
+
+	if segment == "[*]" {
+		segment = "*"
+	}
+	if segment == "[?]" {
+		segment = "?"
+	}
+	if strings.HasPrefix(segment, "[") && strings.HasSuffix(segment, "]") {
+		return errors.New("array brackets must enclose a wildcard index ([*] or [?])")
+	}
+
+	isFinalSegment := len(path) == 1
+	isWildcard := segment == "?" || segment == "*"
+	isRecursiveWildcard := segment == "*"
+
+	if isRecursiveWildcard && !isFinalSegment {
+		return errors.New("recursive wildcard (*) is only valid at the end of a path")
+	}
+	if isWildcard && !isRecursiveWildcard && hints&hintIgnore != 0 {
+		return errors.New("the 'ignore' hint is only valid for explicit fields or the recursive wildcard (*)")
+	}
+
+	if n.hasWildcard() && !isWildcard {
+		// We are trying to encode an explicit field, but a wildcard is already present
+		// => new rule would never match
+		return nil
+	}
+
+	if !isRecursiveWildcard && n.hints != hintDefault {
+		return nil
+	}
+
+	nextHints := hintDefault
+	if isFinalSegment {
+		nextHints = hints
+	}
+	next := n.getOrCreate(segment, nextHints, isWildcard, isRecursiveWildcard)
+
+	if !isFinalSegment {
+		// Recursively encode the next segment
+		err := next.encodeRule(path[1:], hints)
+		if err != nil {
+			return err
+		}
+
+		if !isWildcard {
+			return nil
+		}
+
+		// We are encoding a wildcard (?) segment which is not the final segment
+		// => all existing nodes on the same level must encode the subsequent segments
+		for _, v := range n.fields {
+			err = v.encodeRule(path[1:], hints)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+
+	if !isWildcard {
+		return nil
+	}
+
+	// We are encoding a wildcard (? or *) segment which is the final segment
+	// => update the current wildcard node
+	if next.hints == hintDefault {
+		next.hints = hints
+	}
+
+	if !isRecursiveWildcard {
+		return nil
+	}
+
+	// We are encoding a recursive wildcard (*) segment
+	// => all existing nodes on the same level must encode the wildcard recursively
+	for _, v := range n.fields {
+		err := v.encodeRule(path, hints)
+		if err != nil {
+			return err
+		}
+	}
+	if !n.isRecursiveWildcard {
+		err := n.wildcard.encodeRule(path, hints)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
-func makeNode(state SchemaStateToken) *SchemaState {
-
-	if state == stateExpectFieldOrEnd {
-		return &SchemaState{stateExpectFieldOrEnd, make([]*SchemaState, transMaxValue), make(map[string]*SchemaState)}
-	}
-
-	node := SchemaState{state, make([]*SchemaState, transMaxValue), nil}
-
-	// entry [*] -> entry
-	if state == stateEntry {
-		for i := range node.transitions {
-			node.transitions[i] = &node
+func (n *Hint) getOrCreate(label string, hints hints, isWildcard bool, isRecursiveWildcard bool) *Hint {
+	if isWildcard {
+		if n.wildcard == nil {
+			n.wildcard = makeHintNode(n, hints, isRecursiveWildcard)
 		}
+		return n.wildcard
 	}
 
-	return &node
+	next, ok := n.fields[label]
+	if ok {
+		return next
+	}
+
+	if n.wildcard != nil {
+		return n.wildcard
+	}
+
+	next = makeHintNode(n, hints, false)
+	n.fields[label] = next
+
+	return next
 }
 
-func (n *SchemaState) addTransition(trans TransitionType, nextState SchemaStateToken) *SchemaState {
-
-	node := makeNode(nextState)
-
-	if n.token == stateExpectList {
-		// * [*] -> self
-		for i := range node.transitions {
-			node.transitions[i] = node
-		}
-	}
-
-	n.transitions[trans] = node
-
-	// expect_field_or_end [end_record] -> parent_token
-	if nextState == stateExpectFieldOrEnd {
-		node.transitions[transEndRecord] = n
-	}
-
-	// expect_value_or_end [end_list] -> parent_token
-	if nextState == stateExpectValueOrEnd {
-		node.transitions[transEndList] = n
-	}
-
-	// expect_record|expect_list [*] -> parent_token
-	if nextState == stateExpectRecord || nextState == stateExpectList {
-		for i := range node.transitions {
-			node.transitions[i] = n
-		}
-	}
-
-	return node
+type hintState struct {
+	root    *Hint
+	hints   hints
+	current *Hint
+	next    *Hint
+	level   int
 }
 
-func (n *SchemaState) addField(label string, nextState SchemaStateToken) *SchemaState {
+func makeHintState(root *Hint) hintState {
+	level := -1
+	if root == nil {
+		level = 1
+	}
+	return hintState{
+		root:    root,
+		hints:   hintDefault,
+		current: root,
+		level:   level,
+	}
+}
 
-	node := makeNode(nextState)
+func (s *hintState) nextIsRecursive() bool {
+	return s.next == nil || s.next.isRecursiveWildcard
+}
 
-	// * [*] -> parent_token
-	for i := range node.transitions {
-		node.transitions[i] = n
+func (s *hintState) reset() {
+	s.hints = hintDefault
+	s.current = s.root
+	s.next = nil
+	s.level = -1
+	if s.root == nil {
+		s.level = 1
+	}
+}
+
+/// enter should be invoked before a sub-structure (either record or array) is entered
+func (s *hintState) enter() {
+	if s.nextIsRecursive() || s.level > 0 {
+		s.level++
+		return
 	}
 
-	n.fields[label] = node
+	s.hints = hintDefault
+	if s.next != nil {
+		s.current = s.next
+	}
+}
 
-	return node
+/// leave should be invoked before a sub-structure (either record or array) is left
+func (s *hintState) leave() {
+	if s.level > 0 {
+		s.level--
+		if s.level == 0 {
+			s.hints = hintDefault
+		}
+		return
+	}
+
+	s.hints = hintDefault
+	if s.current.parent != nil {
+		s.current = s.current.parent
+	} else {
+		s.level = -1
+	}
+}
+
+/// field should be invoked before a field label is parsed
+func (s *hintState) field(label []byte) {
+	if s.level > 0 {
+		return
+	}
+
+	next := s.current.getNext(label)
+	if next == s.current && !s.current.isRecursiveWildcard {
+		s.hints = hintDefault
+	} else {
+		s.hints = next.hints
+	}
+
+	s.next = next
+}
+
+/// afterListEntered should be invoked after a list has been entered
+func (s *hintState) afterListEntered() {
+	// Invoking `field` with an empty `label` sets `next` to `current` and updates the
+	// currently effective hints
+	s.field([]byte{})
 }
 
 type State struct {
@@ -302,15 +512,47 @@ type State struct {
 	// un-escaped strings
 	tmp []byte
 
-	schemaState *SchemaState
-	schemaStack []*SchemaState
-	ignore      bool
-	ignoreLevel int
-	pathbuf     ion.Symbuf // scratch buffer for path
+	pathbuf ion.Symbuf // scratch buffer for path
+
+	hints hintState
 }
 
 func NewState(dst *ion.Chunker) *State {
-	return &State{out: dst}
+	return &State{
+		out: dst,
+	}
+}
+
+func (s *State) UseHints(hints *Hint) {
+	s.hints = makeHintState(hints)
+}
+
+func (s *State) shouldIgnore() bool {
+	return s.hints.hints&hintIgnore != 0
+}
+
+func (s *State) shouldNotIndex() bool {
+	return s.hints.hints&hintNoIndex != 0
+}
+
+func (s *State) coerceString() bool {
+	return s.hints.hints&hintString != 0
+}
+
+func (s *State) coerceNumber() bool {
+	return s.hints.hints&hintNumber != 0
+}
+
+func (s *State) coerceInt() bool {
+	return s.hints.hints&hintInt != 0
+}
+
+func (s *State) coerceDateTime() bool {
+	return s.hints.hints&hintDateTime != 0
+}
+
+func (s *State) coerceUnixSeconds() bool {
+	return s.hints.hints&hintUnixSeconds != 0
 }
 
 // rewind the state when attempting to
@@ -322,12 +564,7 @@ func (s *State) rewind(snapshot *ion.Snapshot) {
 	s.stack = s.stack[:0]
 	s.flags = 0
 	s.oldflags = s.oldflags[:0]
-	if len(s.schemaStack) != 0 {
-		s.schemaState = s.schemaStack[0]
-	}
-	s.schemaStack = s.schemaStack[:0]
-	s.ignore = false
-	s.ignoreLevel = 0
+	s.hints.reset()
 }
 
 func (s *State) Commit() error {
@@ -354,6 +591,9 @@ func (s *State) after() {
 // addTimeRange adds a time to the range for the path
 // to the current field.
 func (s *State) addTimeRange(t date.Time) {
+	if s.shouldNotIndex() {
+		return
+	}
 	if s.flags&(flagField|flagInList) != flagField {
 		return
 	}
@@ -372,20 +612,18 @@ func (s *State) addTimeRange(t date.Time) {
 }
 
 func (s *State) parseInt(i int64) {
-	token, skip := s.doTransition(transParseInt)
-	if skip {
+	if s.shouldIgnore() {
 		return
 	}
 
-	switch token {
-	case stateExpectString:
+	if s.coerceString() {
 		v := strconv.Itoa(int(i))
 		s.out.WriteString(v)
-	case stateExpectUnixSeconds:
+	} else if s.coerceUnixSeconds() {
 		t := date.Unix(i, 0)
 		s.addTimeRange(t)
 		s.out.WriteTime(t)
-	default:
+	} else {
 		s.out.WriteInt(i)
 	}
 
@@ -481,16 +719,14 @@ func (s *State) unescaped(buf []byte) []byte {
 }
 
 func (s *State) parseFloat(f float64) {
-	token, skip := s.doTransition(transParseFloat)
-	if skip {
+	if s.shouldIgnore() {
 		return
 	}
 
-	switch token {
-	case stateExpectString:
+	if s.coerceString() {
 		v := strconv.FormatFloat(f, 'f', -1, 32)
 		s.out.WriteString(v)
-	default:
+	} else {
 		// emit the core-normalized representation of f
 		if i := int64(f); float64(i) == f {
 			s.out.WriteInt(i)
@@ -527,7 +763,9 @@ func (s *State) popFlags() {
 }
 
 func (s *State) beginRecord() {
-	if _, skip := s.doTransition(transBeginRecord); skip {
+	ignore := s.shouldIgnore()
+	s.hints.enter()
+	if ignore {
 		return
 	}
 
@@ -537,7 +775,9 @@ func (s *State) beginRecord() {
 }
 
 func (s *State) endRecord() {
-	if _, skip := s.doTransition(transEndRecord); skip {
+	ignore := s.shouldIgnore()
+	s.hints.leave()
+	if ignore {
 		return
 	}
 
@@ -564,15 +804,12 @@ func dumb(buf []byte) (int, bool) {
 }
 
 func (s *State) beginField(label []byte, esc bool) {
-	if s.ignore {
-		return
-	}
-
 	if esc {
 		label = s.unescaped(label)
 	}
 
-	if skip := s.doFieldTransition(label); skip {
+	s.hints.field(label)
+	if s.shouldIgnore() {
 		return
 	}
 
@@ -600,7 +837,10 @@ func (s *State) beginField(label []byte, esc bool) {
 }
 
 func (s *State) beginList() {
-	if _, skip := s.doTransition(transBeginList); skip {
+	ignore := s.shouldIgnore()
+	s.hints.enter()
+	s.hints.afterListEntered()
+	if ignore {
 		return
 	}
 
@@ -609,7 +849,9 @@ func (s *State) beginList() {
 }
 
 func (s *State) endList() {
-	if _, skip := s.doTransition(transEndList); skip {
+	ignore := s.shouldIgnore()
+	s.hints.leave()
+	if ignore {
 		return
 	}
 
@@ -619,25 +861,23 @@ func (s *State) endList() {
 }
 
 func (s *State) parseBool(b bool) {
-	token, skip := s.doTransition(transParseBool)
-	if skip {
+	if s.shouldIgnore() {
 		return
 	}
 
-	switch token {
-	case stateExpectString:
+	if s.coerceString() {
 		if b {
 			s.out.WriteString("true")
 		} else {
 			s.out.WriteString("false")
 		}
-	case stateExpectInt:
+	} else if s.coerceInt() {
 		if b {
 			s.out.WriteInt(1)
 		} else {
 			s.out.WriteInt(0)
 		}
-	default:
+	} else {
 		s.out.WriteBool(b)
 	}
 
@@ -645,7 +885,7 @@ func (s *State) parseBool(b bool) {
 }
 
 func (s *State) parseNull() {
-	if _, skip := s.doTransition(transParseNull); skip {
+	if s.shouldIgnore() {
 		return
 	}
 
@@ -654,8 +894,7 @@ func (s *State) parseNull() {
 }
 
 func (s *State) parseString(seg []byte, esc bool) {
-	token, skip := s.doTransition(transParseString)
-	if skip {
+	if s.shouldIgnore() {
 		return
 	}
 
@@ -665,8 +904,7 @@ func (s *State) parseString(seg []byte, esc bool) {
 
 	emitDefault := true
 
-	switch token {
-	case stateExpectNumber:
+	if s.coerceNumber() {
 		if f, err := strconv.ParseFloat(string(seg), 64); err == nil {
 			emitDefault = false
 			// emit the core-normalized representation of f
@@ -676,12 +914,12 @@ func (s *State) parseString(seg []byte, esc bool) {
 				s.out.WriteFloat64(f)
 			}
 		}
-	case stateExpectInt:
+	} else if s.coerceInt() {
 		if i, err := strconv.Atoi(string(seg)); err == nil {
 			emitDefault = false
 			s.out.WriteInt(int64(i))
 		}
-	case stateExpectDateTime:
+	} else if s.coerceDateTime() {
 		if t, ok := date.Parse(seg); ok {
 			emitDefault = false
 			s.addTimeRange(t)
@@ -700,69 +938,4 @@ func (s *State) parseString(seg []byte, esc bool) {
 	}
 
 	s.after()
-}
-
-func (s *State) doTransition(trans TransitionType) (SchemaStateToken, bool) {
-
-	if s.schemaState == nil {
-		// No schema provided -> take everything
-		return stateExpectValue, false
-	}
-
-	prev := s.schemaState
-	var next *SchemaState
-
-	ignore := s.ignore
-
-	if trans == transBeginRecord || trans == transBeginList {
-		if s.ignore {
-			s.ignoreLevel++
-		} else {
-			// PUSH
-			a := prev.transitions[transEndRecord]
-			s.schemaStack = append(s.schemaStack, a)
-			next = prev.transitions[trans]
-		}
-	} else if trans == transEndRecord || trans == transEndList {
-		if s.ignore {
-			s.ignoreLevel--
-		} else {
-			// POP
-			s.schemaState = s.schemaStack[len(s.schemaStack)-1]
-			s.schemaStack = s.schemaStack[:len(s.schemaStack)-1]
-			next = s.schemaState
-		}
-	} else {
-		if prev != nil {
-			next = prev.transitions[trans]
-		}
-	}
-
-	if s.ignore && s.ignoreLevel == 0 {
-		s.ignore = false
-	}
-
-	if !ignore {
-		s.schemaState = next
-	}
-
-	return prev.token, ignore
-}
-
-func (s *State) doFieldTransition(label []byte) (skip bool) {
-
-	if s.schemaState == nil {
-		// No schema provided -> take everything
-		return false
-	}
-
-	next, ok := s.schemaState.fields[string(label)]
-	if !ok {
-		s.ignore = true
-		return true
-	}
-
-	s.schemaState = next
-
-	return false
 }

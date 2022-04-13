@@ -61,7 +61,7 @@ type Input struct {
 type jsonConverter struct {
 	decomp   func(r io.Reader) (io.Reader, error)
 	compname string
-	schema   *jsonrl.SchemaState
+	hints    *jsonrl.Hint
 }
 
 func (j *jsonConverter) Name() string {
@@ -80,7 +80,7 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 			return err
 		}
 	}
-	err = jsonrl.Convert(rc, dst, j.schema)
+	err = jsonrl.Convert(rc, dst, j.hints)
 	if j.decomp != nil {
 		// if the decompressor (i.e. gzip.Reader)
 		// has a Close() method, then use that;
@@ -96,12 +96,12 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 	return err
 }
 
-func (j *jsonConverter) SetSchema(schema []byte) error {
-	s, err := jsonrl.MakeSchema(schema)
+func (j *jsonConverter) SetSchema(hints []byte) error {
+	s, err := jsonrl.ParseHint(hints)
 	if err != nil {
 		return err
 	}
-	j.schema = s
+	j.hints = s
 	return nil
 }
 
