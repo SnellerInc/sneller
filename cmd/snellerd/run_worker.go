@@ -143,7 +143,9 @@ func (h *tableHandle) Open() (vm.Table, error) {
 	segs := make([]dcache.Segment, 0, len(lst.Contents))
 	var flt filter
 	if h.flt != nil {
-		flt = compileFilter(h.flt)
+		if m, ok := compileFilter(h.flt); ok {
+			flt = m
+		}
 	}
 	var size int64
 	for i := range lst.Contents {

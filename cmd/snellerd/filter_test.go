@@ -36,7 +36,8 @@ func TestCompileFilter(t *testing.T) {
 		{node: parsePath("foo"), expect: maybe},
 		{node: expr.Bool(true), expect: always},
 	} {
-		got := compileFilter(c.node)(nil)
+		f, ok := compileFilter(c.node)
+		got := toMaybe(f, ok)(nil)
 		if got != c.expect {
 			t.Errorf("%v: want %d, got %d", c.node, c.expect, got)
 		}
@@ -93,7 +94,7 @@ func TestCompileFilter(t *testing.T) {
 			le := &expr.Logical{Op: c.op}
 			for i := range c.tt {
 				le.Left, le.Right = exprs[i/3], exprs[i%3]
-				got, want := compileFilter(le)(nil), c.tt[i]
+				got, want := toMaybe(compileFilter(le))(nil), c.tt[i]
 				if got != want {
 					t.Errorf("%v: want %d, got %d", le, want, got)
 				}
@@ -475,7 +476,7 @@ func TestCompileFilter(t *testing.T) {
 	for i := range cases {
 		c := cases[i]
 		t.Run(fmt.Sprint(expr.ToString(c.expr)), func(t *testing.T) {
-			f := compileFilter(c.expr)
+			f := toMaybe(compileFilter(c.expr))
 			for i, c := range c.checks {
 				got := f(c.ranges)
 				if got != c.expect {
@@ -517,7 +518,7 @@ func BenchmarkExecuteFilter(b *testing.B) {
 		Ranges []blockfmt.Range
 	}{
 		{
-			Expr: parseExpr(`foo = 'bar' AND BEFORE(x, %s)`, now),
+			Expr: parseExpr(`(foo = 'baz' OR foo = 'bar') AND BEFORE(x, %s)`, now),
 			Ranges: []blockfmt.Range{
 				blockfmt.NewRange([]string{"quux"}, ion.Int(0), ion.Int(100)),
 				blockfmt.NewRange([]string{"x"}, ion.Timestamp(now.Add(-time.Minute)), ion.Timestamp(now.Add(time.Minute))),
@@ -528,7 +529,7 @@ func BenchmarkExecuteFilter(b *testing.B) {
 		e := cases[i].Expr
 		rng := cases[i].Ranges
 		b.Run(fmt.Sprintf("case-%d", i), func(b *testing.B) {
-			f := compileFilter(e)
+			f := toMaybe(compileFilter(e))
 			b.ResetTimer()
 			b.ReportAllocs()
 			b.SetBytes(1024 * 1024) // 1MB per block

@@ -71,7 +71,7 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 		if fh.compiled != nil {
 			flt = fh.compiled
 		} else {
-			flt = compileFilter(fh.filter)
+			flt, _ = compileFilter(fh.filter)
 		}
 	}
 

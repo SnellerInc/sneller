@@ -158,9 +158,11 @@ func (f *fsEnv) Stat(e *expr.Table, where expr.Node) (plan.TableHandle, error) {
 	var keep func([]blockfmt.Range) bool
 	var match filter
 	if where != nil {
-		match = compileFilter(where)
-		keep = func(rng []blockfmt.Range) bool {
-			return match(rng) != never
+		if m, ok := compileFilter(where); ok {
+			match = m
+			keep = func(rng []blockfmt.Range) bool {
+				return match(rng) != never
+			}
 		}
 	}
 	blobs, err := db.Blobs(f.root, index, keep)

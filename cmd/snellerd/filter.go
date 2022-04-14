@@ -38,19 +38,24 @@ func alwaysMatches([]blockfmt.Range) ternary { return always }
 func maybeMatches([]blockfmt.Range) ternary  { return maybe }
 func neverMatches([]blockfmt.Range) ternary  { return never }
 
-// compileFilter compiles a filter expression.
-func compileFilter(e expr.Node) filter {
+// compileFilter compiles a filter expression;
+// if it returns (nil, false), then the result
+// of the expression is intederminate
+func compileFilter(e expr.Node) (filter, bool) {
 	switch e := e.(type) {
 	case expr.Bool:
 		if e {
-			return alwaysMatches
+			return alwaysMatches, true
 		}
-		return neverMatches
+		return neverMatches, true
 	case *expr.Not:
-		f := compileFilter(e.Expr)
-		return func(r []blockfmt.Range) ternary {
-			return -f(r)
+		f, ok := compileFilter(e.Expr)
+		if ok {
+			return func(r []blockfmt.Range) ternary {
+				return -f(r)
+			}, true
 		}
+		return nil, false
 	case *expr.Logical:
 		return compileLogicalFilter(e)
 	case *expr.Comparison:
@@ -58,20 +63,64 @@ func compileFilter(e expr.Node) filter {
 	case *expr.Builtin:
 		return compileBuiltin(e)
 	}
+	return nil, false
+}
+
+func toMaybe(f filter, ok bool) filter {
+	if ok {
+		return f
+	}
 	return maybeMatches
 }
 
 // compileLogicalFilter compiles a filter from a
 // logical expression.
-func compileLogicalFilter(e *expr.Logical) filter {
-	left := compileFilter(e.Left)
-	right := compileFilter(e.Right)
+func compileLogicalFilter(e *expr.Logical) (filter, bool) {
+	left, okl := compileFilter(e.Left)
+	right, okr := compileFilter(e.Right)
+	if !okl && !okr {
+		return nil, false
+	}
+	// if we can evaluate one side but
+	// not the other, we can still search
+	// for short-circuiting
+	if !okl || !okr {
+		prim := left
+		if !okl {
+			prim = right
+		}
+		return logical1Arm(prim, e.Op)
+	}
 	return logical(left, e.Op, right)
+}
+
+// evaluate a logical expression when
+// only one side of the expression has
+// an interesting result
+func logical1Arm(prim filter, op expr.LogicalOp) (filter, bool) {
+	switch op {
+	case expr.OpAnd:
+		return func(r []blockfmt.Range) ternary {
+			if prim(r) == never {
+				return never
+			}
+			return maybe
+		}, true
+	case expr.OpOr:
+		return func(r []blockfmt.Range) ternary {
+			if prim(r) == always {
+				return always
+			}
+			return maybe
+		}, true
+	default:
+		return nil, false
+	}
 }
 
 // logical returns a filter applying op to the results
 // of the left and right filters.
-func logical(left filter, op expr.LogicalOp, right filter) filter {
+func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 	switch op {
 	case expr.OpAnd:
 		return func(r []blockfmt.Range) ternary {
@@ -83,7 +132,7 @@ func logical(left filter, op expr.LogicalOp, right filter) filter {
 				return always
 			}
 			return maybe
-		}
+		}, true
 	case expr.OpOr:
 		return func(r []blockfmt.Range) ternary {
 			a, b := left(r), right(r)
@@ -94,7 +143,7 @@ func logical(left filter, op expr.LogicalOp, right filter) filter {
 				return never
 			}
 			return maybe
-		}
+		}, true
 	case expr.OpXnor:
 		return func(r []blockfmt.Range) ternary {
 			a, b := left(r), right(r)
@@ -105,7 +154,7 @@ func logical(left filter, op expr.LogicalOp, right filter) filter {
 				return always
 			}
 			return never
-		}
+		}, true
 	case expr.OpXor:
 		return func(r []blockfmt.Range) ternary {
 			a, b := left(r), right(r)
@@ -116,14 +165,14 @@ func logical(left filter, op expr.LogicalOp, right filter) filter {
 				return never
 			}
 			return always
-		}
+		}, true
 	}
-	return maybeMatches
+	return nil, false
 }
 
 // compileComparisonFilter compiles a filter from a
 // comparison expression.
-func compileComparisonFilter(e *expr.Comparison) filter {
+func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
 	fn, ok1 := e.Left.(*expr.Builtin)
 	im, ok2 := e.Right.(expr.Integer)
 	op := e.Op
@@ -131,32 +180,32 @@ func compileComparisonFilter(e *expr.Comparison) filter {
 		fn, ok1 = e.Right.(*expr.Builtin)
 		im, ok2 = e.Left.(expr.Integer)
 		if !ok1 || !ok2 {
-			return maybeMatches
+			return nil, false
 		}
 		op = e.Op.Flip()
 	}
 	if len(fn.Args) != 1 {
-		return maybeMatches
+		return nil, false
 	}
 	path, ok := fn.Args[0].(*expr.Path)
 	if !ok {
-		return maybeMatches
+		return nil, false
 	}
 	cmp := compareFunc(op)
 	if cmp == nil {
-		return maybeMatches
+		return nil, false
 	}
 	switch fn.Func {
 	case expr.DateToUnixEpoch:
 		return timeFilter(path, func(min, max date.Time) ternary {
 			return cmp(int64(im), min.Unix(), max.Unix())
-		})
+		}), true
 	case expr.DateToUnixMicro:
 		return timeFilter(path, func(min, max date.Time) ternary {
 			return cmp(int64(im), min.UnixMicro(), max.UnixMicro())
-		})
+		}), true
 	}
-	return maybeMatches
+	return nil, false
 }
 
 // compareFunc returns a function that returns whether
@@ -232,24 +281,27 @@ func compareFunc(op expr.CmpOp) func(n, min, max int64) ternary {
 
 // compileBuiltin compiles a filter from a builtin
 // expression.
-func compileBuiltin(e *expr.Builtin) filter {
+func compileBuiltin(e *expr.Builtin) (filter, bool) {
 	switch e.Func {
 	case expr.Before:
 		return compileBefore(e.Args)
 	}
-	return maybeMatches
+	return nil, false
 }
 
 // compileBefore compiles a filter from a BEFORE
 // expression.
-func compileBefore(args []expr.Node) filter {
+func compileBefore(args []expr.Node) (filter, bool) {
 	if len(args) < 2 {
-		return maybeMatches
+		return nil, false
 	}
 	if len(args) > 2 {
-		f1 := compileBefore(args[:2])
-		f2 := compileBefore(args[1:])
-		return logical(f1, expr.OpAnd, f2)
+		f1, ok1 := compileBefore(args[:2])
+		f2, ok2 := compileBefore(args[1:])
+		if ok1 || ok2 {
+			return logical(toMaybe(f1, ok1), expr.OpAnd, toMaybe(f2, ok2))
+		}
+		return nil, false
 	}
 	switch lhs := args[0].(type) {
 	case *expr.Timestamp:
@@ -264,7 +316,7 @@ func compileBefore(args []expr.Node) filter {
 					return maybe
 				}
 				return never
-			})
+			}), true
 		}
 	case *expr.Path:
 		switch rhs := args[1].(type) {
@@ -278,10 +330,10 @@ func compileBefore(args []expr.Node) filter {
 					return maybe
 				}
 				return never
-			})
+			}), true
 		}
 	}
-	return maybeMatches
+	return nil, false
 }
 
 // timeFilter returns a filter that finds a time range
