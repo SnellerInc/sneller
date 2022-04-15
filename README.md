@@ -4,11 +4,11 @@ Sneller is a cloud-native high-performance query engine that lets you directly q
 
 Under the hood, Sneller implements [PartiQL](https://partiql.org), which extends SQL to support semi-structured and nested data. The query engine operates on [ion](https://amzn.github.io/ion-docs/), a compact binary representation of the original JSON data.
 
-Sneller's performance derives from extensive use of SIMD, specifically [AVX512](https://en.wikipedia.org/wiki/AVX-512) in its core operators. This allows the engine to process multiple lanes in parallel on each core for up to 16x the normal IO throughput on AVX-512 capable Intel CPUs. This alleviates the need to build search indices (like with Elasticsearch) or transform JSON via ETL into a columnar layout (as commonly done with SQL-based tools), and considerably simplifies JSON processing pipelines.
+Sneller's performance derives from extensive use of SIMD, specifically [AVX512](https://en.wikipedia.org/wiki/AVX-512) in its core operators. This allows the engine to process multiple lanes in parallel on each core for up to 16x the normal IO throughput on AVX-512 capable Intel CPUs. This alleviates the need pre-process JSON data into alternate storage layouts - such as search indices (Elasticsearch and variants) or columnar formats like parquet (as commonly done with SQL-based tools). Combined with the fact that Sneller's primary 'API' is SQL, this can considerably simplify and streamline data processing pipelines.
 
 Sneller extends standard SQL syntax by supporting path expressions to reference nested fields/structures in JSON. For example, the `.` operator dereferences fields within structures, as it does in many C-family programming languages. In combination with normal SQL functions/operators, this makes for a far more ergonomic way to query deeply nested JSON than non-standard SQL extensions (see examples below). Additionally, Sneller implements a large (and growing!) number of [built-in functions from other SQL implementations](https://sneller-docs-dev.s3.amazonaws.com/sneller-SQL.html).
 
-Here is a 50000 ft overview of the complete Sneller pipeline for JSON -- you can also read our more detailed blog post [Introducing sneller](https://blog.sneller.io/introducing-sneller).
+Here is a 50000 ft overview of what is essentially the complete Sneller pipeline for JSON -- you can also read our more detailed blog post [Introducing sneller](https://blog.sneller.io/introducing-sneller).
 
 ![Sneller SQL for JSON](https://github.com/frank-sneller/sneller/blob/main/sneller-sql-on-json.png)
 
