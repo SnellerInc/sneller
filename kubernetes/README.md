@@ -45,7 +45,7 @@ sequenceDiagram
     activate Worker 1
     Sneller->>Worker 2: execute 2/3
     activate Worker 2
-    S3->>Sneller: fetch index file
+    Sneller->>Worker 2: execute 3/3
     activate Worker 3
     S3->>Worker 1: fetch data 1/3
     S3->>Worker 2: fetch data 2/3
