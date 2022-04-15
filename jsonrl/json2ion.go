@@ -62,6 +62,65 @@ type Scanner interface {
 	Size() int
 }
 
+// 1-bit state machine for list tokens
+type listState int
+
+const (
+	// waiting for '['
+	listNone listState = iota
+	listStart
+	listNext
+	listObject
+
+	// encountered an error
+	listInvalid
+)
+
+// determine if we should skip the next
+// non-space character and update the
+// internal state accordingly
+func (l *listState) skip(next byte) bool {
+	switch *l {
+	case listNone:
+		// search for '['
+		switch next {
+		case '[':
+			*l = listStart
+			return true
+		default:
+			// ignore
+			return false
+		}
+	case listStart:
+		switch next {
+		case ']':
+			*l = listNone
+			return true
+		default:
+			*l = listNext
+			return false
+		}
+	case listNext:
+		// expect ',' or ']'
+		switch next {
+		case ',':
+			*l = listObject
+			return true
+		case ']':
+			*l = listNone
+			return true
+		default:
+			*l = listInvalid
+			return false
+		}
+	case listObject:
+		*l = listNext
+		return false
+	}
+	*l = listInvalid
+	return false
+}
+
 // Convert converts json data from src
 // into aligned ion chunks in dst using
 // the provided alignment.
@@ -84,6 +143,7 @@ func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
 	} else {
 		rd = bufio.NewReaderSize(src, MaxObjectSize)
 	}
+	lstate := listNone
 	startsize := startObjectSize
 	var snapshot ion.Snapshot
 	objn := 0
@@ -92,6 +152,9 @@ func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				if len(buf) == 0 {
+					if lstate != listNone {
+						return fmt.Errorf("%w (no matching ending ']')", ErrNoMatch)
+					}
 					return nil
 				}
 			} else if err == bufio.ErrBufferFull {
@@ -109,6 +172,14 @@ func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
 			continue
 		}
 		buf = tail
+		if lstate.skip(buf[0]) {
+			// if we're processing a list token,
+			// continue searching for actual object text
+			rd.Discard(1)
+			continue
+		} else if lstate == listInvalid {
+			return fmt.Errorf("%w (unexpected list token %c)", ErrNoMatch, buf[0])
+		}
 		var n int
 		for {
 			st.out.Save(&snapshot)
