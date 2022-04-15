@@ -172,6 +172,8 @@ $ docker run --rm --net 'sneller-network' --env-file .env \
 ```
 
 #### Create table definition and sync data
+_Note that table definition here does not require a schema to be defined. It is simply a path to the source json data on s3_
+
 ```console
 $ # create table definition file (with wildcard pattern for input data)
 $ cat << EOF > definition.json
