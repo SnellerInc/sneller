@@ -10,7 +10,9 @@ snellerd:
   ports:
     snellerd: 8000
     internode: 8001
-  maxCacheDirSize: 64Mi
+  # Note that `maxCacheDirSize` only works when `SizeMemoryBackedVolumes`
+  # feature gate is enabled (default from K8s v1.22+).
+  maxCacheDirSize: 1Gi
   podLabels: {}
   podAnnotations: {}
   nodeSelector: {}

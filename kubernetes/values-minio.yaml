@@ -1,4 +1,7 @@
 replicas: 4
+resources:
+        requests:
+                memory: 1Gi
 ingress:
   enabled: true
   ingressClassName: nginx

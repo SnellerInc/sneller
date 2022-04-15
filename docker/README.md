@@ -7,6 +7,8 @@ Sneller heavily depends on AVX-512 to achieve its high perfomance. So make sure 
  * Intel AVX-512 support
  * Docker is installed
  * Sufficient memory and storage (depends on your test-set)
+
+Sneller caches data using `tmpfs` that is a memory-backed storage (RAM-disk). All cache data is stored in `/var/cache/sneller` and the default environment that is generated allocates 1GB of storage. You can change this amount in `.env` (after generation, but before spinning up the containers).
  
 ## Login to ECR
 The Sneller docker images are currently stored in a private AWS Elastic Container Repository (ECR), so you need read-only access to this repo to obtain the docker images. With the proper AWS credentials, you should be able to log in using:
@@ -54,6 +56,8 @@ It does expose the following ports:
  * `9100` is the S3 compatible port that is used to access the object storage.
  * `9101` is the Minio webconsole port (use the `ACCESS_KEY_ID` and `SECRET_ACCESS_KEY` for authentication).
  * `9180` is the Sneller API port that is used to execute queries.
+
+If you prefer not to use docker-compose, you can also create and run the containers by using only the docker command.
 
 ### Add some data
 Sneller uses S3 (or compatible) object storage to fetch the data. When running in AWS it's trivial to use AWS S3 for this purpose, but in this environment we are using Minio for this.

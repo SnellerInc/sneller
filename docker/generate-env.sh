@@ -12,6 +12,7 @@ SNELLER_TOKEN=$SNELLER_TOKEN
 SNELLER_INDEX_KEY=4AiJmIzLvMAP8A/1XdmbuzdwDduxHdu4hVRO7//7vd8=
 SNELLER_REGION=us-east-1
 S3_ENDPOINT=http://minio:9100
+CACHESIZE=1G
 EOF
 echo "Refreshed the .env file with random values."
 echo

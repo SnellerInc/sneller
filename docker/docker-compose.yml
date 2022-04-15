@@ -16,8 +16,12 @@ services:
     image: ${SNELLER_REPO}sneller/snellerd:latest
     ports:
      - "127.0.0.1:9180:9180"
+    environment:
+     - CACHEDIR=/var/cache/sneller
     env_file:
      - .env
+    tmpfs:
+     - /var/cache/sneller:size=${CACHESIZE}
     command: daemon -e 0.0.0.0:9180
 
 networks:

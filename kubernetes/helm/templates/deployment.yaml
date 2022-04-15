@@ -58,8 +58,8 @@ spec:
           #     path: /
           #     port: snellerd
           env:
-            # - name: CACHEDIR
-            #   value: /var/cache/sneller
+            - name: CACHEDIR
+              value: /var/cache/sneller
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
@@ -90,10 +90,9 @@ spec:
                 secretKeyRef:
                   name: {{ template "helpers.tokenSecretName" . }}
                   key: snellerToken
-          # volumeMounts:
-          #   - mountPath: /var/cache/sneller
-          #     name: cachedir
-          #     subPath: tmp
+          volumeMounts:
+            - mountPath: /var/cache/sneller
+              name: cachedir
           resources:
             {{- toYaml .Values.snellerd.resources | nindent 12 }}
       {{- with .Values.snellerd.nodeSelector }}
@@ -108,8 +107,8 @@ spec:
       tolerations:
         {{ toYaml . | indent 8 }}
       {{- end }}
-      # volumes:
-      #   - name: cachedir
-      #     emptyDir:
-      #       medium: Memory
-      #       sizeLimit: {{ .Values.snellerd.maxCacheDirSize }}
+      volumes:
+        - name: cachedir
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.snellerd.maxCacheDirSize }}
