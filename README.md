@@ -1,14 +1,16 @@
-# Fast vectorized SQL for JSON at scale
+# Vectorized SQL for JSON at scale: fast, simple, schemaless
 
-Sneller is a high-performance vectorized SQL engine that runs directly on top of object storage. Sneller is optimized to handle JSON data (including deeply nested structures/fields) without requiring a schema to be specified upfront. Sneller implements PartiQL, a superset of SQL. Under the hood, Sneller operates on [ion](https://amzn.github.io/ion-docs/), a compact binary representation of the original JSON data.
+Sneller is a high-performance vectorized SQL engine that runs directly on top of object storage. Sneller is optimized to handle huge TB-sized JSON datasets (including deeply nested structures/fields) without requiring a schema to be specified upfront. It is particularly well suited for the rapidly growing world of [event data](https://keen.io/blog/analytics-for-hackers-how-to-think-about-event-data/) such as data from Security, Observability, Ops, Product Analytics and Sensor/IoT data pipelines. Under the hood, Sneller operates on [ion](https://amzn.github.io/ion-docs/), a compact binary representation of the original JSON data.
 
-Sneller is able to process multiple lanes in parallel on each core through the use of AVX-512 instrutions. This is turn alleviates the need to pre-compute all sorts of indexes or transform the data into columnar structures, which is notoriously hard for flexible nested JSON sub-structures.
+Sneller's performance derives from pervasive use of SIMD, specifically AVX-512 [assembly](https://github.com/SnellerInc/sneller/blob/master/vm/evalbc_amd64.s) in its 200+ core primitives. The main engine is capable of processing many lanes in parallel per core for very high processing throughputs. This eliminates the need to pre-process JSON data into alternate storage layouts - such as search indices (Elasticsearch and variants) or less flexible columnar formats like parquet (as commonly done with SQL-based tools). Combined with the fact that Sneller's main 'API' is SQL (with JSON output results), this greatly simplifies data processing pipelines.
 
-Sneller extends SQL by supporting "path expressions," which dynamically dereference sub-values of composite data-types. For example, the `.` operator dereferences fields within structures, as it does in many C-family programming languages. Additionally, sneller implements a large (and growing!) number of [built-in functions from other SQL implementations](https://sneller-docs-dev.s3.amazonaws.com/sneller-SQL.html).
+Sneller extends standard SQL syntax via [PartiQL](https://partiql.org) by supporting path expressions to reference nested fields/structures in JSON. For example, the `.` operator dereferences fields within structures. In combination with normal SQL functions/operators, this makes for a far more ergonomic way to query deeply nested JSON than non-standard SQL extensions. Additionally, Sneller implements a large (and growing!) number of [built-in functions](https://sneller-docs-dev.s3.amazonaws.com/sneller-SQL.html) from other SQL implementations.
 
-The following diagram shows a basic positioning of sneller -- more information can be found in the blog post [Introducing sneller](https://blog.sneller.io/introducing-sneller).
+Sneller is fully stateless and all state is stored exclusively on object storage. There are no other dependencies, such as meta-databases or key/value stores, to install, manage and maintain. This also means that Sneller can be scaled very dynamically to adapt for varying query loads.
 
-![Sneller SQL for JSON](https://github.com/frank-sneller/sneller/blob/main/sneller-sql-on-json.png)
+Here is a 50000 ft overview of what is essentially the complete Sneller pipeline for JSON -- you can also read our more detailed blog post [Introducing sneller](https://blog.sneller.io/introducing-sneller).
+
+![Sneller SQL for JSON](https://sneller-assets.s3.amazonaws.com/SnellerForJson.png)
 
 ## Build from source
 
@@ -20,9 +22,17 @@ $ cd sneller
 $ go build ./...
 ```
 
+## AVX-512 support
+
+Please make sure that your CPU has [AVX-512](https://en.wikipedia.org/wiki/AVX-512#CPUs_with_AVX-512) support. Also note that AVX-512 is widely available on all major cloud providers: for [AWS](https://aws.amazon.com/intel/) we recommend c6i (Ice Lake) or r5 (Skylake), for GCP we recommend N2, M2, or C2 instance types, or either Dv4 or Ev4 families on [Azure](https://azure.microsoft.com/en-us/blog/new-general-purpose-and-memoryoptimized-azure-virtual-machines-with-intel-now-available/).
+
 ## Quick test drive 
 
-The easiest way to try out sneller is via the `sneller` executable, there is some sample data available in the `sneller-samples` S3 bucket, for example using some data from the (excellent) [gharchive.org](https://www.gharchive.org):
+The easiest way to try out sneller is via the (standalone) `sneller` executable.
+
+We've made some sample data available in the `sneller-samples` bucket, based on the (excellent) [GitHub archive](https://www.gharchive.org). Here are some queries that illustrate what you can do with Sneller on [fairly complex](https://api.github.com/events) JSON event structures containing 100+ fields.
+
+#### simple count
 ```console
 $ cd cmd/sneller
 $ aws s3 cp s3://sneller-samples/gharchive-1day.ion.zst .
@@ -30,23 +40,39 @@ $ du -h gharchive-1day.ion.zst
 1.3G
 $ ./sneller -j "select count(*) from 'gharchive-1day.ion.zst'"
 {"count": 3259519}
-$
+```
+
+#### search/filter _(notice SQL string operations such as LIKE/ILIKE on a nested field `repo.name`)_
+
+```console
 $ # all repos containing 'orvalds' (case-insensitive)
 $ ./sneller -j "SELECT DISTINCT repo.name FROM 'gharchive-1day.ion.zst' WHERE repo.name ILIKE '%orvalds%'"
 {"name": "torvalds/linux"}
 {"name": "jordy-torvalds/dailystack"}
 {"name": "torvalds/subsurface-for-dirk"}
-$
+```
+
+#### standard SQL aggregations/grouping
+
+```console
 $ # number of events per type
 $ ./sneller -j "SELECT type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY type ORDER BY COUNT(*) DESC"
 {"type": "PushEvent", "count": 1686536}
 ...
 {"type": "GollumEvent", "count": 7443}
-$ 
+```
+
+#### query custom payloads _(see `payload.pull_request.created_at` only for `type = 'PullRequestEvent'` rows)_
+
+```console
 $ # number of pull requests that took more than 180 days
 $ ./sneller -j "SELECT COUNT(*) FROM 'gharchive-1day.ion.zst' WHERE type = 'PullRequestEvent' AND DATE_DIFF(DAY, payload.pull_request.created_at, created_at) >= 180"
 {"count": 3161}
-$
+```
+
+#### specialized operators like `TIME_BUCKET`
+
+```console
 $ # number of events per type per hour (date histogram)
 $ ./sneller -j "SELECT TIME_BUCKET(created_at, 3600) AS time, type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY TIME_BUCKET(created_at, 3600), type"
 {"time": 1641254400, "type": "PushEvent", "count": 58756}
@@ -54,7 +80,7 @@ $ ./sneller -j "SELECT TIME_BUCKET(created_at, 3600) AS time, type, COUNT(*) FRO
 {"time": 1641326400, "type": "MemberEvent", "count": 316}
 ```
 
-If you want to be a bit more adventurous, you can grab the 1month object (contains 80M rows at 29GB compressed), here as tested on a c6i.36xlarge:
+If you're a bit more adventurous, you can grab the 1month object (contains 80M rows at 29GB compressed), here as tested on a c6i.36xlarge:
 ```console
 $ aws s3 cp s3://sneller-samples/gharchive-1month.ion.zst .
 $ du -h gharchive-1month.ion.zst 
@@ -77,27 +103,27 @@ sys     0m17.217s
 
 ## Performance
 
-Depending on the type of query, sneller is capable of processing GB/s of data per second per core, as shown in these benchmarks (measured on a c6i.12xlarge instance on AWS):
+Depending on the type of query, sneller is capable of processing GB/s of data per second per core, as shown in these benchmarks (measured on a c6i.12xlarge instance on AWS with an Ice Lake CPU):
 
 ```console
 $ cd vm
 $ # S I N G L E   C O R E
-$ GOMAXPROCS=1 go test -bench=HashAggregate                                                                     
+$ GOMAXPROCS=1 go test -bench=HashAggregate
 cpu: Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz
-BenchmarkHashAggregate/case-0                       6814            170163 ns/op          6160.59 MB/s
-BenchmarkHashAggregate/case-1                       5361            217318 ns/op          4823.83 MB/s
-BenchmarkHashAggregate/case-2                       5019            232081 ns/op          4516.98 MB/s
-BenchmarkHashAggregate/case-3                       4232            278055 ns/op          3770.13 MB/s
+BenchmarkHashAggregate/case-0                  6814            170163 ns/op          6160.59 MB/s
+BenchmarkHashAggregate/case-1                  5361            217318 ns/op          4823.83 MB/s
+BenchmarkHashAggregate/case-2                  5019            232081 ns/op          4516.98 MB/s
+BenchmarkHashAggregate/case-3                  4232            278055 ns/op          3770.13 MB/s
 PASS
 ok      github.com/SnellerInc/sneller/vm        6.119s
 $
 $ # A L L   C O R E S
 $ go test -bench=HashAggregate
 cpu: Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz
-BenchmarkHashAggregate/case-0-48                  155818              6969 ns/op        150424.92 MB/s
-BenchmarkHashAggregate/case-1-48                  129116              8764 ns/op        119612.84 MB/s
-BenchmarkHashAggregate/case-2-48                  121840              9379 ns/op        111768.43 MB/s
-BenchmarkHashAggregate/case-3-48                  119640              9578 ns/op        109444.06 MB/s
+BenchmarkHashAggregate/case-0-48             155818              6969 ns/op        150424.92 MB/s
+BenchmarkHashAggregate/case-1-48             129116              8764 ns/op        119612.84 MB/s
+BenchmarkHashAggregate/case-2-48             121840              9379 ns/op        111768.43 MB/s
+BenchmarkHashAggregate/case-3-48             119640              9578 ns/op        109444.06 MB/s
 PASS
 ok      github.com/SnellerInc/sneller/vm        5.576s
 ```
@@ -106,12 +132,12 @@ The following chart shows the performance for a varying numbers of cores:
 
 ![Sneller Performance](https://sneller-assets.s3.amazonaws.com/SnellerHashAggregatePerformance.png)
 
-sneller is capable of scaling beyond a single server and for instance a medium-sized r6i.12xlarge cluster in AWS can achieve 1TB/s
+Sneller is capable of scaling beyond a single server and for instance a medium-sized r6i.12xlarge cluster in AWS can achieve 1TB/s
 in scanning performance, even running non-trivial queries.
 
 ## Spin up stack locally
 
-It is easiest to spin up a local stack (non-HA/single node) via `docker compose`. Make sure you have `docker` and `docker-compose` installed. Follow the instructions below.
+It is easiest to spin up a local stack (non-HA/single node) via `docker compose`. Make sure you have `docker` and `docker-compose` installed and follow these instructions.
 
 #### Spin up sneller and minio
 ```console
@@ -147,14 +173,14 @@ $ docker run --rm --net 'sneller-network' --env-file .env \
 ...
 make_bucket: test
 $
-$ # copy data into object storage
+$ # copy data into object storage (at source path)
 $ docker run --rm --net 'sneller-network' --env-file .env \
   -v "`pwd`:/data" amazon/aws-cli --endpoint 'http://minio:9100' s3 cp '/data/gharchive-1million.json.gz' 's3://test/gharchive/'
 ```
 
 #### Create table definition and sync data
 ```console
-$ # create table definition file (with wildcard pattern for input data)
+$ # create table definition file (with wildcard pattern for source input data path)
 $ cat << EOF > definition.json
 { "name": "gharchive", "input": [ { "pattern": "s3://test/gharchive/*.json.gz", "format": "json.gz" } ] }
 EOF
@@ -176,7 +202,7 @@ update of table gharchive complete
 ```console
 $ # query the data (replace STzzzzzzzzzzzzzzzzzzzz with SNELLER_TOKEN from .env file!)
 $ curl -s -G --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' -H 'Authorization: Bearer STzzzzzzzzzzzzzzzzzzzz' --data-urlencode 'json' --data-urlencode 'database=gharchive' http://localhost:9180/executeQuery
-{"count": 1000}
+{"count": 1000000}
 $
 $ # yet another query: number of events per type
 $ curl -s -G --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP BY type ORDER BY COUNT(*) DESC' -H 'Authorization: Bearer STzzzzzzzzzzzzzzzzzzzz' --data-urlencode 'json' --data-urlencode 'database=gharchive' http://localhost:9180/executeQuery
@@ -185,11 +211,11 @@ $ curl -s -G --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP 
 {"type": "GollumEvent", "count": 567}
 ```
 
-See [Sneller on Docker](https://sneller-docs-dev.s3.amazonaws.com/docker.html) for more detailed instructions.
+Note that it is perfectly possible to sync more JSON data by copying additional objects into the source bucket and (incrementally) syncing just the newly added data. See [Sneller on Docker](https://sneller-docs-dev.s3.amazonaws.com/docker.html) for more detailed instructions.
 
 ## Spin up sneller stack in the cloud
 
-It is also possible to use Kubernetes to spin up a sneller stack in the cloud. You can either do this on AWS using S3 for storage or in another (hybrid) cloud that support Kubernetes and potentially using an object storage as Minio.
+It is also possible to use Kubernetes to spin up a sneller stack in the cloud. You can either do this on AWS using S3 for storage or in another (hybrid) cloud that supports Kubernetes and potentially using an object storage such as Minio.
 
 See the [Sneller on Kubernetes](https://sneller-docs-dev.s3.amazonaws.com/kubernetes.html) instructions for more details and an example of how to spin this up.
 
@@ -210,4 +236,4 @@ See docs/DEVELOPMENT.
 
 ## Contribute
 
-sneller is released under the AGPL-3.0 license. See the LICENSE file for more information. 
+Sneller is released under the AGPL-3.0 license. See the LICENSE file for more information. 
