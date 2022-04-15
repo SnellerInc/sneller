@@ -100,6 +100,10 @@ func (h handle) Open() (vm.Table, error) {
 	return h()
 }
 
+func (h handle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return fmt.Errorf("unexpected call to handle.Encode")
+}
+
 // FIXME: use filter when we are reading ion data!
 func (e eenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
 	return handle(func() (vm.Table, error) {

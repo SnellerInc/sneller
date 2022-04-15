@@ -148,9 +148,6 @@ func (f *fsEnv) index(e *expr.Table) (*blockfmt.Index, error) {
 
 // Stat implements plan.Env.Stat
 func (f *fsEnv) Stat(e *expr.Table, where expr.Node) (plan.TableHandle, error) {
-	if e.Value != nil {
-		return noTableHandle{}, nil
-	}
 	index, err := f.index(e)
 	if err != nil {
 		return nil, err
@@ -169,8 +166,7 @@ func (f *fsEnv) Stat(e *expr.Table, where expr.Node) (plan.TableHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.Value = blobs
-	return &filterHandle{filter: where, compiled: match}, nil
+	return &filterHandle{filter: where, compiled: match, blobs: blobs}, nil
 }
 
 // TimeRange implements plan/pir.TimeRanger.

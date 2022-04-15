@@ -29,38 +29,12 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
-	"github.com/SnellerInc/sneller/vm"
 )
-
-func init() {
-	expr.AddOpaqueDecoder("fuzz-string", func(st *ion.Symtab, buf []byte) (expr.Opaque, error) {
-		str, _, err := ion.ReadString(buf)
-		if err != nil {
-			return nil, err
-		}
-		return fuzzString(str), nil
-	})
-}
-
-type fuzzString string
-
-func (f fuzzString) TypeName() string { return "fuzz-string" }
-
-func (f fuzzString) Encode(dst *ion.Buffer, st *ion.Symtab) {
-	dst.WriteString(string(f))
-}
 
 type fuzzEnv struct{}
 
-type nopHandle struct{}
-
-func (n nopHandle) Open() (vm.Table, error) {
-	panic("nopHandle.Open called")
-	return nil, nil
-}
-
 func (f fuzzEnv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	return nopHandle{}, nil
+	return nil, nil
 }
 
 func (f fuzzEnv) Schema(t *expr.Table) expr.Hint { return nil }
@@ -68,20 +42,17 @@ func (f fuzzEnv) Schema(t *expr.Table) expr.Hint { return nil }
 type fuzzSplitter struct{}
 
 func (f fuzzSplitter) Split(t *expr.Table, h plan.TableHandle) ([]plan.Subtable, error) {
-	t.Value = fuzzString(expr.ToString(t.Expr))
 	return []plan.Subtable{
 		plan.Subtable{
 			Transport: &plan.LocalTransport{},
 			Table: &expr.Table{
 				Binding: expr.Bind(t.Expr, "local-copy-0"),
-				Value:   t.Value,
 			},
 		},
 		plan.Subtable{
 			Transport: &plan.LocalTransport{},
 			Table: &expr.Table{
 				Binding: expr.Bind(t.Expr, "local-copy-1"),
-				Value:   t.Value,
 			},
 		},
 	}, nil
@@ -143,7 +114,7 @@ func FuzzNewPlan(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = plan.Decode(fuzzEnv{}, &st, buf.Bytes())
+		_, err = plan.Decode(nil, &st, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -169,7 +140,7 @@ func FuzzNewSplit(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = plan.Decode(fuzzEnv{}, &st, buf.Bytes())
+		_, err = plan.Decode(nil, &st, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}

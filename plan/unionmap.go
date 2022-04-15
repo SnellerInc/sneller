@@ -30,9 +30,8 @@ import (
 type UnionMap struct {
 	Nonterminal
 
-	Orig    *expr.Table
-	Sub     []Subtable
-	Handles []TableHandle // when de-serialized, handles to substitute
+	Orig *expr.Table
+	Sub  []Subtable
 }
 
 var (
@@ -163,7 +162,7 @@ func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error 
 			defer wg.Done()
 			rw := func(in *expr.Table, handle TableHandle) (*expr.Table, TableHandle) {
 				if in.Equals(u.Orig) {
-					return u.Sub[i].Table, u.Handles[i]
+					return u.Sub[i].Table, u.Sub[i].Handle
 				}
 				return in, handle
 			}
@@ -209,13 +208,21 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginField(st.Intern("sub"))
 	dst.BeginList(-1)
 	for i := range u.Sub {
-		// encode as [transport, table-expr]
+		// encode as [transport, table-expr, handle]
 		dst.BeginList(-1)
 		err := encodeTransport(u.Sub[i].Transport, st, dst)
 		if err != nil {
 			return err
 		}
 		u.Sub[i].Table.Encode(dst, st)
+		if u.Sub[i].Handle == nil {
+			dst.WriteNull()
+		} else {
+			err = u.Sub[i].Handle.Encode(dst, st)
+			if err != nil {
+				return err
+			}
+		}
 		dst.EndList()
 	}
 	dst.EndList()
@@ -246,7 +253,7 @@ func (u *UnionMap) setfield(name string, st *ion.Symtab, body []byte) error {
 				return err
 			}
 			body = body[ion.SizeOf(body):]
-			e, _, err := expr.Decode(st, body)
+			e, body, err := expr.Decode(st, body)
 			if err != nil {
 				return err
 			}
@@ -254,7 +261,11 @@ func (u *UnionMap) setfield(name string, st *ion.Symtab, body []byte) error {
 			if !ok {
 				return fmt.Errorf("decoding UnionMap: cannot use %T as expr.Table", e)
 			}
-			u.Sub = append(u.Sub, Subtable{Transport: t, Table: tbl})
+			var handlemem []byte
+			if len(body) > 0 && ion.TypeOf(body) != ion.NullType {
+				handlemem = body
+			}
+			u.Sub = append(u.Sub, Subtable{Transport: t, Table: tbl, handlemem: handlemem})
 			return nil
 		})
 		return err

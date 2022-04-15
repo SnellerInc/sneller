@@ -20,12 +20,14 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+type HandleDecodeFn func(st *ion.Symtab, mem []byte) (TableHandle, error)
+
 // Decode decodes an ion-encoded tree
 // from the provided symbol table and buffer.
 // During decoding, each Leaf op in the Tree
 // will have its TableHandle populated with env.Stat.
 // See also: Tree.Encode, Tree.EncodePart.
-func Decode(env Env, st *ion.Symtab, buf []byte) (*Tree, error) {
+func Decode(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (*Tree, error) {
 	if ion.TypeOf(buf) != ion.StructType {
 		return nil, fmt.Errorf("plan.Decode: unexpected ion type %s for Tree", ion.TypeOf(buf))
 	}
@@ -50,13 +52,13 @@ func Decode(env Env, st *ion.Symtab, buf []byte) (*Tree, error) {
 			}
 			var body []byte
 			body, inner = ion.Contents(inner)
-			out.Op, err = decodeOps(env, st, body)
+			out.Op, err = decodeOps(hfn, st, body)
 			if err != nil {
 				return nil, err
 			}
 		case "children":
 			err = unpackList(inner, func(field []byte) error {
-				tt, err := Decode(env, st, field)
+				tt, err := Decode(hfn, st, field)
 				if err != nil {
 					return err
 				}
@@ -89,7 +91,7 @@ func Decode(env Env, st *ion.Symtab, buf []byte) (*Tree, error) {
 //
 // During decoding, each *Leaf plan that references
 // a table has its TableHandle populated with env.Stat.
-func decodeOps(env Env, st *ion.Symtab, buf []byte) (Op, error) {
+func decodeOps(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (Op, error) {
 	typesym, ok := st.Symbolize("type")
 	if !ok {
 		return nil, fmt.Errorf("plan.Decode: symbol table missing \"type\" symbol")
@@ -123,18 +125,22 @@ func decodeOps(env Env, st *ion.Symtab, buf []byte) (Op, error) {
 		if err != nil {
 			return nil, fmt.Errorf("plan.Decode: reading op %d: %w", count, err)
 		}
-		if tbl, ok := op.(*Leaf); env != nil && ok {
-			tbl.Handle, err = env.Stat(tbl.Expr, nil)
+		if tbl, ok := op.(*Leaf); hfn != nil && ok && tbl.handlebuf != nil {
+			tbl.Handle, err = hfn(st, tbl.handlebuf)
 			if err != nil {
 				return nil, err
 			}
-		} else if um, ok := op.(*UnionMap); env != nil && ok {
-			um.Handles = make([]TableHandle, len(um.Sub))
+			tbl.handlebuf = nil
+		} else if um, ok := op.(*UnionMap); hfn != nil && ok {
 			for i := range um.Sub {
-				um.Handles[i], err = env.Stat(um.Sub[i].Table, nil)
+				if um.Sub[i].handlemem == nil {
+					continue
+				}
+				um.Sub[i].Handle, err = hfn(st, um.Sub[i].handlemem)
 				if err != nil {
 					return nil, err
 				}
+				um.Sub[i].handlemem = nil
 			}
 		}
 		if top == nil {

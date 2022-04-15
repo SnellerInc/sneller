@@ -107,8 +107,13 @@ const (
 //   locally via Manager.Remote.
 //
 type Manager struct {
+	// CacheDir is the root of the directory
+	// tree used for caching data.
 	CacheDir string
-	Sandbox  bool
+	// Sandbox determines if Manager
+	// launches the tenant process
+	// with bwrap(1)
+	Sandbox bool
 
 	// remote is the socket on which to
 	// listen for remote connections

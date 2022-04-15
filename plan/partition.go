@@ -43,6 +43,9 @@ type Subtable struct {
 	// that the Transport should use
 	// as the table value.
 	*expr.Table
+
+	Handle    TableHandle
+	handlemem []byte
 }
 
 // Splitter is the interface through which
@@ -111,7 +114,7 @@ func getframe(src []byte) frame {
 type server struct {
 	pipe io.ReadWriteCloser
 	rd   *bufio.Reader
-	env  Env
+	hfn  HandleDecodeFn
 
 	st  ion.Symtab
 	tmp []byte
@@ -127,13 +130,13 @@ var serverPool = sync.Pool{
 }
 
 // Serve serves queries from the given io.ReadWriter
-// using env to determine how to handle tables.
+// using hfn to determine how to handle tables.
 //
 // Serve will run until rw.Read returns io.EOF,
 // at which point it will return with no error.
 // If it encounters an internal error, it will
 // close the pipe and return the error.
-func Serve(rw io.ReadWriteCloser, env Env) error {
+func Serve(rw io.ReadWriteCloser, hfn HandleDecodeFn) error {
 	s := serverPool.Get().(*server)
 	s.pipe = rw
 	if s.rd == nil {
@@ -141,7 +144,7 @@ func Serve(rw io.ReadWriteCloser, env Env) error {
 	} else {
 		s.rd.Reset(rw)
 	}
-	s.env = env
+	s.hfn = hfn
 	s.st.Reset()
 	err := s.serve()
 	serverPool.Put(s)
@@ -297,7 +300,7 @@ func (s *server) runQuery(buf []byte) error {
 	if err != nil {
 		return err
 	}
-	t, err = Decode(s.env, &s.st, buf)
+	t, err = Decode(s.hfn, &s.st, buf)
 	if err != nil {
 		return err
 	}

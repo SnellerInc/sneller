@@ -15,24 +15,76 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/expr/blob"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/vm"
 )
 
-type noTableHandle struct{}
+var canVMOpen = false
 
-func (h noTableHandle) Open() (vm.Table, error) {
-	panic("during planning phase, we will not allow tables to be read.")
+func (f *filterHandle) Open() (vm.Table, error) {
+	panic("bare filterHandle.Open")
+	return nil, nil
 }
 
-// Filter implements plan.Filterable.
-func (h noTableHandle) Filter(f expr.Node) plan.TableHandle {
-	return &filterHandle{filter: f}
+func (f *filterHandle) Filter(e expr.Node) plan.TableHandle {
+	o := *f
+	o.filter = e
+	return &o
+}
+
+func (f *filterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	if f.filter != nil {
+		dst.BeginField(st.Intern("filter"))
+		f.filter.Encode(dst, st)
+	}
+	dst.BeginField(st.Intern("blobs"))
+	f.blobs.Encode(dst, st)
+	dst.EndStruct()
+	return nil
+}
+
+func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
+	if len(mem) == 0 {
+		return fmt.Errorf("filterHandle.decode: no data?")
+	}
+	if ion.TypeOf(mem) != ion.StructType {
+		return fmt.Errorf("unexpected filterHandle type: %s", ion.TypeOf(mem))
+	}
+	mem, _ = ion.Contents(mem)
+	var err error
+	var sym ion.Symbol
+	for len(mem) > 0 {
+		sym, mem, err = ion.ReadLabel(mem)
+		if err != nil {
+			return err
+		}
+		switch st.Get(sym) {
+		case "filter":
+			f.filter, mem, err = expr.Decode(st, mem)
+		case "blobs":
+			skip := ion.SizeOf(mem)
+			f.blobs, err = blob.DecodeList(st, mem)
+			mem = mem[skip:]
+		default:
+			fmt.Errorf("unrecognized filterHandle field %q", st.Get(sym))
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type filterHandle struct {
-	noTableHandle
-	filter   expr.Node
+	filter expr.Node
+	blobs  *blob.List
+
+	// cached result of compileFilter(filter)
 	compiled filter
 }

@@ -15,7 +15,6 @@
 package expr
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -736,18 +735,11 @@ func (t *Table) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		dst.BeginField(st.Intern("bind"))
 		dst.WriteString(t.Result())
 	}
-	if t.Value != nil {
-		dst.BeginField(st.Intern("typename"))
-		dst.WriteString(t.Value.TypeName())
-		dst.BeginField(st.Intern("value"))
-		t.Value.Encode(dst, st)
-	}
 	dst.EndStruct()
 }
 
 func (t *Table) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
-	var typename string
 	switch name {
 	case "expr":
 		t.Expr, _, err = Decode(st, body)
@@ -757,24 +749,6 @@ func (t *Table) setfield(name string, st *ion.Symtab, body []byte) error {
 			return fmt.Errorf("reading expr.Table: %w", err)
 		}
 		t.As(str)
-	case "typename":
-		typename, _, err = ion.ReadString(body)
-		if err != nil {
-			return fmt.Errorf("reading expr.Table: %w", err)
-		}
-		decfn := opaqueDecoders[typename]
-		if decfn != nil {
-			t.decoder = decfn
-		}
-	case "value":
-		if t.decoder == nil {
-			return errors.New("reading expr.Table: 'value' before 'typename'")
-		}
-		val, err := t.decoder(st, body)
-		if err != nil {
-			return fmt.Errorf("reading expr.Table: %w", err)
-		}
-		t.Value = val
 	}
 	return err
 }

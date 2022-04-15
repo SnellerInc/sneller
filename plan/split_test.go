@@ -21,6 +21,7 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -32,6 +33,11 @@ func (e emptyenv) Stat(*expr.Table, expr.Node) (TableHandle, error) {
 
 func (e emptyenv) Open() (vm.Table, error) {
 	return nil, fmt.Errorf("cannot open emptyenv table")
+}
+
+func (e emptyenv) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteNull()
+	return nil
 }
 
 func (e emptyenv) Schema(*expr.Table) expr.Hint {

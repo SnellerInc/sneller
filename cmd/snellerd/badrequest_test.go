@@ -31,7 +31,9 @@ import (
 
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
+	"github.com/SnellerInc/sneller/vm"
 )
 
 // tsbuf is a threadsafe buffer;
@@ -72,6 +74,18 @@ type emptyEnv struct{}
 
 func (e emptyEnv) CacheValues() ([]byte, time.Time) {
 	return nil, time.Time{}
+}
+
+type noTableHandle struct{}
+
+func (n noTableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteNull()
+	return nil
+}
+
+func (n noTableHandle) Open() (vm.Table, error) {
+	panic("noTableHandle.Open()")
+	return nil, nil
 }
 
 func (e emptyEnv) Stat(tbl *expr.Table, _ expr.Node) (plan.TableHandle, error) {

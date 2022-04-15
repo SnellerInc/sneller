@@ -48,10 +48,18 @@ func (b bufhandle) Open() (vm.Table, error) {
 	return vm.BufferTable([]byte(b), len(b)), nil
 }
 
+func (b bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return fmt.Errorf("unexpected bufhandle.Encode")
+}
+
 type chunkshandle [][]byte
 
 func (c chunkshandle) Open() (vm.Table, error) {
 	return c, nil
+}
+
+func (c chunkshandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return fmt.Errorf("unexpected chunkshandle.Encode")
 }
 
 func (c chunkshandle) Chunks() int { return len(c) }
@@ -93,6 +101,10 @@ func (b *benchTable) Open() (vm.Table, error) {
 }
 
 func (b *benchTable) Chunks() int { return int(b.count) }
+
+func (b *benchTable) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return fmt.Errorf("unexpected benchTable.Encode")
+}
 
 func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	// FIXME: the memory being sent to the core here

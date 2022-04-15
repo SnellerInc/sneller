@@ -36,12 +36,13 @@ func BenchmarkDecodeTree(b *testing.B) {
 		b.Run(fmt.Sprintf("%d-blocks", count), func(b *testing.B) {
 			var buf ion.Buffer
 			var st ion.Symtab
+			var be benchenv
 			tree := mkplan(b, count)
 			tree.Encode(&buf, &st)
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := Decode(nil, &st, buf.Bytes())
+				_, err := Decode(be.decode, &st, buf.Bytes())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -67,6 +68,20 @@ type benchenv struct {
 	blocks int
 }
 
+func (b *benchenv) encode(h TableHandle, dst *ion.Buffer, st *ion.Symtab) error {
+	bh := h.(*blobHandle)
+	bh.Encode(dst, st)
+	return nil
+}
+
+func (b *benchenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	l, err := blob.DecodeList(st, mem)
+	if err != nil {
+		return nil, err
+	}
+	return &blobHandle{l}, nil
+}
+
 func (b *benchenv) Open() (vm.Table, error) {
 	return nil, fmt.Errorf("open not allowed")
 }
@@ -75,10 +90,20 @@ func (b *benchenv) Schema(t *expr.Table) expr.Hint {
 	return nil
 }
 
+type blobHandle struct {
+	*blob.List
+}
+
+func (b *blobHandle) Open() (vm.Table, error) {
+	return nil, fmt.Errorf("Open() not allowed")
+}
+
+func (b *blobHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	b.List.Encode(dst, st)
+	return nil
+}
+
 func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
-	if t.Value != nil {
-		return b, nil
-	}
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)
@@ -112,6 +137,5 @@ func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
 			},
 		}
 	}
-	t.Value = &blob.List{Contents: lst}
-	return b, nil
+	return &blobHandle{&blob.List{lst}}, nil
 }

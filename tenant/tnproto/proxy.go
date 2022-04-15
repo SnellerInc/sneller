@@ -261,7 +261,7 @@ func (b *Buffer) DirectExec(ctl *net.UnixConn, t *plan.Tree, f OutputFormat, con
 
 // Serve responds to ProxyExec and DirectExec requests
 // over the given control socket.
-func Serve(ctl *net.UnixConn, env plan.Env) error {
+func Serve(ctl *net.UnixConn, dfn plan.HandleDecodeFn) error {
 	var msgbuf [8]byte
 	var st ion.Symtab
 	var tmp []byte
@@ -287,7 +287,7 @@ func Serve(ctl *net.UnixConn, env plan.Env) error {
 		}
 		if bytes.Equal(msgbuf[:], proxymsg) {
 			// proxy request
-			go serveProxy(env, conn)
+			go serveProxy(dfn, conn)
 		} else if bytes.Equal(msgbuf[:3], directmsg[:3]) {
 			// need to read the plan
 			// and then execute it directly
@@ -312,7 +312,7 @@ func Serve(ctl *net.UnixConn, env plan.Env) error {
 			if err != nil {
 				return fmt.Errorf("tnproto.Serve: decoding symbol table: %w", err)
 			}
-			t, err := plan.Decode(env, &st, tmp)
+			t, err := plan.Decode(dfn, &st, tmp)
 			if err != nil {
 				err = errnow(ctl, err, tmp)
 				if err != nil {
@@ -323,7 +323,7 @@ func Serve(ctl *net.UnixConn, env plan.Env) error {
 				if err != nil {
 					return err
 				}
-				go serveDirect(env, t, ofmt.writer(conn), errorWriter)
+				go serveDirect(dfn, t, ofmt.writer(conn), errorWriter)
 			}
 		} else {
 			if conn != nil {
@@ -334,12 +334,12 @@ func Serve(ctl *net.UnixConn, env plan.Env) error {
 	}
 }
 
-func serveProxy(env plan.Env, conn net.Conn) {
+func serveProxy(fn plan.HandleDecodeFn, conn net.Conn) {
 	defer conn.Close()
-	plan.Serve(conn, env)
+	plan.Serve(conn, fn)
 }
 
-func serveDirect(env plan.Env, t *plan.Tree, conn io.WriteCloser, errpipe io.WriteCloser) {
+func serveDirect(fn plan.HandleDecodeFn, t *plan.Tree, conn io.WriteCloser, errpipe io.WriteCloser) {
 	defer errpipe.Close()
 
 	// if we encounter a panic, we don't

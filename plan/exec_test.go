@@ -72,6 +72,40 @@ func (t *testenv) get(fname string) *os.File {
 	return f
 }
 
+func (t *testenv) encode(h TableHandle, dst *ion.Buffer, st *ion.Symtab) error {
+	switch h := h.(type) {
+	case *literalHandle:
+		dst.WriteBlob(h.body)
+	case *fileHandle:
+		dst.WriteString(h.name)
+	default:
+		return fmt.Errorf("can't encode %T", h)
+	}
+	return nil
+}
+
+func (t *testenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	if t.mustfail != "" {
+		return nil, errors.New(t.mustfail)
+	}
+	switch ion.TypeOf(mem) {
+	case ion.BlobType:
+		buf, _, err := ion.ReadBytes(mem)
+		if err != nil {
+			return nil, err
+		}
+		return &literalHandle{buf}, nil
+	case ion.StringType:
+		str, _, err := ion.ReadString(mem)
+		if err != nil {
+			return nil, err
+		}
+		return &fileHandle{parent: t, name: str}, nil
+	default:
+		panic("unexpected table handle")
+	}
+}
+
 func (t *testenv) clean() {
 	if t.open == nil {
 		return
@@ -93,6 +127,11 @@ type literalHandle struct {
 
 func (l *literalHandle) Open() (vm.Table, error) {
 	return vm.BufferTable(l.body, len(l.body)), nil
+}
+
+func (l *literalHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteBlob(l.body)
+	return nil
 }
 
 func str2json(arg expr.Node) (TableHandle, error) {
@@ -141,22 +180,27 @@ func (t *testenv) Stat(tbl *expr.Table, filter expr.Node) (TableHandle, error) {
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)
 	}
-
-	t.t.Helper()
-	f := t.get(filepath.Join("../testdata/", string(str)))
-	return (*fileHandle)(f), nil
+	return &fileHandle{parent: t, name: filepath.Join("../testdata/", string(str))}, nil
 }
 
 // fileHandle is a TableHandle implementation for an *os.File
-type fileHandle os.File
+type fileHandle struct {
+	name   string
+	parent *testenv
+}
 
 func (fh *fileHandle) Open() (vm.Table, error) {
-	f := (*os.File)(fh)
+	f := fh.parent.get(fh.name)
 	i, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
 	return vm.NewReaderAtTable(f, i.Size(), 1024*1024), nil
+}
+
+func (fh *fileHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteString(fh.name)
+	return nil
 }
 
 func countmsg(n int) string {
@@ -1166,7 +1210,7 @@ where Make in (
 			}
 
 			t.Run("serialize-plan", func(t *testing.T) {
-				testPlanSerialize(t, tree)
+				testPlanSerialize(t, tree, env)
 			})
 
 			dst.Reset()
@@ -1265,7 +1309,7 @@ func BenchmarkPlan(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				_, err = Decode(env, &st, buf.Bytes())
+				_, err = Decode(env.decode, &st, buf.Bytes())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -1327,7 +1371,8 @@ func (f funkyPipe) Read(p []byte) (int, error) {
 	return f.ReadWriteCloser.Read(p[:1+rand.Intn(len(p))])
 }
 
-func testRemoteEquivalent(t *testing.T, tree *Tree, e Env, got []byte, wantstat *ExecStats) {
+func testRemoteEquivalent(t *testing.T, tree *Tree,
+	env *testenv, got []byte, wantstat *ExecStats) {
 	local, remote := net.Pipe()
 
 	var buf bytes.Buffer
@@ -1337,7 +1382,7 @@ func testRemoteEquivalent(t *testing.T, tree *Tree, e Env, got []byte, wantstat 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		remoteerr = Serve(funkyPipe{remote}, e)
+		remoteerr = Serve(funkyPipe{remote}, env.decode)
 	}()
 
 	var stats ExecStats
@@ -1363,7 +1408,7 @@ func testRemoteEquivalent(t *testing.T, tree *Tree, e Env, got []byte, wantstat 
 	}
 }
 
-func testSplitEquivalent(t *testing.T, text string, e Env, expected []string, wantstat *ExecStats) {
+func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []string, wantstat *ExecStats) {
 	s, err := partiql.Parse([]byte(text))
 	if err != nil {
 		t.Fatal(err)
@@ -1394,7 +1439,7 @@ func testSplitEquivalent(t *testing.T, text string, e Env, expected []string, wa
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err = Decode(e, &st, ib.Bytes())
+	tree, err = Decode(e.decode, &st, ib.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1444,7 +1489,7 @@ func testSplitEquivalent(t *testing.T, text string, e Env, expected []string, wa
 	}
 }
 
-func testPlanSerialize(t *testing.T, tree *Tree) {
+func testPlanSerialize(t *testing.T, tree *Tree, env *testenv) {
 	var obuf ion.Buffer
 	var st ion.Symtab
 
@@ -1453,7 +1498,7 @@ func testPlanSerialize(t *testing.T, tree *Tree) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree2, err := Decode(nil, &st, obuf.Bytes())
+	tree2, err := Decode(env.decode, &st, obuf.Bytes())
 	if err != nil {
 		t.Logf("json: %s", buf2json(&st, &obuf))
 		t.Fatal(err)
@@ -1477,7 +1522,7 @@ func TestServerError(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		serverr = Serve(remote, env)
+		serverr = Serve(remote, env.decode)
 	}()
 
 	query := `select * from 'parking.10n' limit 1`
@@ -1499,7 +1544,7 @@ func TestServerError(t *testing.T) {
 	var stats ExecStats
 	err = cl.Exec(tree, nil, &out, &stats)
 	if err == nil {
-		t.Error("no failure message?")
+		t.Fatal("no failure message?")
 	}
 	if !strings.HasSuffix(err.Error(), env.mustfail) {
 		t.Errorf("unexpected error %q", err)
@@ -1543,7 +1588,7 @@ func (n nopSplitter) Split(t *expr.Table, th TableHandle) ([]Subtable, error) {
 			Transport: &LocalTransport{},
 			Table: &expr.Table{
 				Binding: bind,
-				Value:   t.Value,
 			},
+			Handle: th,
 		}}, nil
 }

@@ -83,9 +83,9 @@ func (l *Leaf) filter(e expr.Node) {
 }
 
 func (u *UnionMap) filter(e expr.Node) {
-	for i := range u.Handles {
-		if fh, ok := u.Handles[i].(Filterable); ok {
-			u.Handles[i] = fh.Filter(e)
+	for i := range u.Sub {
+		if fh, ok := u.Sub[i].Handle.(Filterable); ok {
+			u.Sub[i].Handle = fh.Filter(e)
 		}
 	}
 	push(e, u.From)

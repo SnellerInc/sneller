@@ -205,10 +205,7 @@ func lowerBind(in *pir.Bind, from Op) (Op, error) {
 }
 
 func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
-	handle, err := env.Stat(in.Inner.Table, in.Inner.Filter)
-	if err != nil {
-		return nil, err
-	}
+	tbl := in.Inner.Table
 	// NOTE: we're passing the same splitter
 	// to the child here. We don't currently
 	// produce nested split queries, so it isn't
@@ -219,6 +216,22 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	if err != nil {
 		return nil, err
 	}
+	// don't call Stat; wait for it to be called
+	// on the Leaf table and then grab the handle
+	// returned from that Stat operation
+	var handle TableHandle
+	for o := sub; o != nil; o = o.input() {
+		if l, ok := o.(*Leaf); ok && l.Expr == tbl {
+			// the inner handle should never be
+			// referenced directly; strip it
+			// from the query plan
+			handle, l.Handle = l.Handle, nil
+			break
+		}
+	}
+	if handle == nil {
+		return nil, fmt.Errorf("lowerUnionMap: couldn't find %s", expr.ToString(tbl))
+	}
 	tbls, err := split.Split(in.Inner.Table, handle)
 	if err != nil {
 		return nil, err
@@ -227,18 +240,10 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	if len(tbls) == 0 {
 		return NoOutput{}, nil
 	}
-	handles := make([]TableHandle, len(tbls))
-	for i := range tbls {
-		handles[i], err = env.Stat(tbls[i].Table, in.Inner.Filter)
-		if err != nil {
-			return nil, err
-		}
-	}
 	return &UnionMap{
 		Nonterminal: Nonterminal{From: sub},
 		Orig:        in.Inner.Table,
 		Sub:         tbls,
-		Handles:     handles,
 	}, nil
 }
 

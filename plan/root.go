@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"fmt"
 	"io"
 	"runtime"
 
@@ -66,23 +67,32 @@ func (l *LocalTransport) Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *Ex
 	return t.exec(s, parallel, stats)
 }
 
+type wrappedHandle int
+
+func (w wrappedHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteInt(int64(w))
+	return nil
+}
+
+func (w wrappedHandle) Open() (vm.Table, error) {
+	panic("wrappedHandle.Open")
+}
+
 func (f *fakeenv) rewrite(in *expr.Table, h TableHandle) (*expr.Table, TableHandle) {
 	in, h = f.rw(in, h)
-	out := &expr.Table{
-		Binding: expr.Bind(expr.Integer(int64(len(f.tables))), ""),
-		Value:   in.Value,
-	}
-	f.tables = append(f.tables, in)
 	f.handles = append(f.handles, h)
-	return out, h
+	h = wrappedHandle(len(f.handles) - 1)
+	return in, h
 }
 
 func (f *fakeenv) Schema(e *expr.Table) expr.Hint { return nil }
 
-func (f *fakeenv) Stat(e *expr.Table, filter expr.Node) (TableHandle, error) {
-	iv := int64(e.Expr.(expr.Integer))
-	e.Value = f.tables[iv].Value
-	return f.handles[iv], nil
+func (f *fakeenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	i, _, err := ion.ReadInt(mem)
+	if err != nil {
+		return nil, fmt.Errorf("fakeenv: %w", err)
+	}
+	return f.handles[i], nil
 }
 
 // Rewrite returns a copy of a tree
@@ -96,7 +106,11 @@ func (t *Tree) Rewrite(rw TableRewrite) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Decode(fe, &st, buf.Bytes())
+	ret, err := Decode(fe.decode, &st, buf.Bytes())
+	if err != nil {
+		panic(err.Error())
+	}
+	return ret, nil
 }
 
 // fakeenv is a TableRewriter and an Env

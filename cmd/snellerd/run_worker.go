@@ -26,6 +26,7 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
@@ -43,6 +44,8 @@ func nfds() int {
 }
 
 func runWorker(args []string) {
+	canVMOpen = true
+
 	workerCmd := flag.NewFlagSet("worker", flag.ExitOnError)
 	workerTenant := workerCmd.String("t", "", "tenant identifier")
 	workerControlSocket := workerCmd.Int("c", -1, "control socket")
@@ -99,7 +102,7 @@ func runWorker(args []string) {
 			env.cache.Logger = logger
 		}
 	}
-	err = tnproto.Serve(uc, &env)
+	err = tnproto.Serve(uc, env.decodeHandle)
 	if err != nil {
 		logger.Fatalf("cannot serve: %v", err)
 	}
@@ -113,44 +116,51 @@ type tenantEnv struct {
 	onebuf     [8]byte
 }
 
+type tenantHandle struct {
+	parent *tenantEnv
+	inner  plan.TableHandle
+}
+
+func (t *tenantEnv) decodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
+	decodeHandle := func(st *ion.Symtab, mem []byte) (plan.TableHandle, error) {
+		fh := new(filterHandle)
+		if err := fh.decode(st, mem); err != nil {
+			return nil, err
+		}
+		return fh, nil
+	}
+	h, err := decodeHandle(st, buf)
+	if err != nil {
+		return nil, err
+	}
+	return &tenantHandle{parent: t, inner: h}, nil
+}
+
 func (e *tenantEnv) post() {
 	e.evfd.Write(e.onebuf[:])
 }
 
-func (e *tenantEnv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	return &tableHandle{
-		tbl: tbl,
-		env: e,
-	}, nil
+func (h *tenantHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return h.inner.Encode(dst, st)
 }
 
-func (e *tenantEnv) Schema(tbl *expr.Table) expr.Hint {
-	// TODO???
-	return nil
-}
-
-type tableHandle struct {
-	tbl *expr.Table
-	env *tenantEnv
-	flt expr.Node
-}
-
-func (h *tableHandle) Open() (vm.Table, error) {
-	lst, ok := h.tbl.Value.(*blob.List)
-	if !ok {
-		return nil, fmt.Errorf("unrecognized table.Value %T", h.tbl.Value)
+func (h *tenantHandle) Open() (vm.Table, error) {
+	fh := h.inner.(*filterHandle)
+	lst := fh.blobs
+	if !canVMOpen {
+		panic("shouldn't have called filterHandle.Open()")
 	}
 	segs := make([]dcache.Segment, 0, len(lst.Contents))
 	var flt filter
-	if h.flt != nil {
-		if m, ok := compileFilter(h.flt); ok {
+	if fh.filter != nil {
+		if m, ok := compileFilter(fh.filter); ok {
 			flt = m
 		}
 	}
 	var size int64
 	for i := range lst.Contents {
-		if h.env.HTTPClient != nil {
-			blob.Use(lst.Contents[i], h.env.HTTPClient)
+		if h.parent.HTTPClient != nil {
+			blob.Use(lst.Contents[i], h.parent.HTTPClient)
 		}
 		blob := lst.Contents[i]
 		if flt != nil {
@@ -177,13 +187,14 @@ func (h *tableHandle) Open() (vm.Table, error) {
 	if cacheLimit > 0 && size > cacheLimit {
 		flags = dcache.FlagNoFill
 	}
-	return h.env.cache.MultiTable(segs, flags), nil
+	return h.parent.cache.MultiTable(segs, flags), nil
 }
 
-func (h *tableHandle) Filter(e expr.Node) plan.TableHandle {
-	th := *h
-	th.flt = e
-	return &th
+func (h *tenantHandle) Filter(e expr.Node) plan.TableHandle {
+	return &tenantHandle{
+		parent: h.parent,
+		inner:  h.inner.(*filterHandle).Filter(e),
+	}
 }
 
 type emptyTable struct{}

@@ -121,19 +121,6 @@ type From interface {
 	Node
 }
 
-var opaqueDecoders = map[string](func(*ion.Symtab, []byte) (Opaque, error)){}
-
-// AddOpaqueDecoder can be called during init()
-// to add a new decoding function for Opauque
-// values (see Table.Value).
-//
-// The decoding function fn will be called
-// to decode objects that are labelled with typename
-// (see Opaque.TypeName()).
-func AddOpaqueDecoder(typename string, fn func(*ion.Symtab, []byte) (Opaque, error)) {
-	opaqueDecoders[typename] = fn
-}
-
 // Opaque is an opaque object that
 // can be serialized and deserialized
 type Opaque interface {
@@ -152,16 +139,6 @@ type Opaque interface {
 // as a bag of values
 type Table struct {
 	Binding
-
-	// Calls to Stat() can populate
-	// Value with an opaque object.
-	// The object must be serializeable
-	// as ion, but other than that it
-	// can be anything.
-	Value Opaque
-
-	// used during decoding
-	decoder func(*ion.Symtab, []byte) (Opaque, error)
 }
 
 func vbind(v Visitor, x string, expr Node) {

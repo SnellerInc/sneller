@@ -16,7 +16,6 @@ package tnproto
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"math/rand"
 	"net"
@@ -29,6 +28,7 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/usock"
+	"github.com/SnellerInc/sneller/vm"
 )
 
 func randomID() (id ID) {
@@ -59,15 +59,16 @@ func TestAttach(t *testing.T) {
 
 type largeOpaque struct{}
 
-func (l largeOpaque) TypeName() string {
-	return "large-opaque"
+func (l largeOpaque) Open() (vm.Table, error) {
+	panic("largeOpaque.Open()")
 }
 
 const largeSize = 500000
 
-func (l largeOpaque) Encode(dst *ion.Buffer, st *ion.Symtab) {
+func (l largeOpaque) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	buf := make([]byte, largeSize)
 	dst.WriteBlob(buf)
+	return nil
 }
 
 // See #381
@@ -79,15 +80,6 @@ func TestDirectExecHugeBody(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip()
 	}
-	expr.AddOpaqueDecoder("large-opaque", func(st *ion.Symtab, body []byte) (expr.Opaque, error) {
-		if ion.TypeOf(body) != ion.BlobType {
-			return nil, fmt.Errorf("unexpected large-opaque object %s", ion.TypeOf(body))
-		}
-		if ion.SizeOf(body) != largeSize {
-			return nil, fmt.Errorf("unexpected large-opaque size %d", ion.SizeOf(body))
-		}
-		return largeOpaque{}, nil
-	})
 	here, there, err := usock.SocketPair()
 	if err != nil {
 		t.Fatal(err)
@@ -109,9 +101,8 @@ func TestDirectExecHugeBody(t *testing.T) {
 			Op: &plan.Leaf{
 				Expr: &expr.Table{
 					Binding: expr.Bind(expr.Identifier("foo"), ""),
-					Value:   largeOpaque{},
 				},
-				Handle: nil,
+				Handle: largeOpaque{},
 			}}, OutputRaw, myconn)
 		if err != nil {
 			panic(err)

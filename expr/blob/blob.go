@@ -22,18 +22,9 @@ import (
 	"unsafe"
 
 	"github.com/SnellerInc/sneller/date"
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
-
-func init() {
-	// tell expr how to decode blob.List when
-	// we use it as an opaque table metadata value
-	expr.AddOpaqueDecoder("blob.List", func(st *ion.Symtab, body []byte) (expr.Opaque, error) {
-		return DecodeList(st, body)
-	})
-}
 
 // Interface is the interface
 // implemented by every blob type.

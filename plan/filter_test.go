@@ -45,6 +45,14 @@ func (e *filterEnv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
 	}, nil
 }
 
+func (e *filterEnv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	h, err := e.env.decode(st, mem)
+	if err != nil {
+		return nil, err
+	}
+	return &filterHandle{th: h, env: e}, nil
+}
+
 func (e *filterEnv) Schema(*expr.Table) expr.Hint {
 	return nil
 }
@@ -56,6 +64,10 @@ type filterHandle struct {
 
 func (h *filterHandle) Open() (vm.Table, error) {
 	return h.th.Open()
+}
+
+func (h *filterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return h.th.Encode(dst, st)
 }
 
 func (h *filterHandle) Filter(f expr.Node) TableHandle {
@@ -127,7 +139,7 @@ func TestFilter(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tree, err = Decode(&env, &st, buf.Bytes())
+			tree, err = Decode(env.decode, &st, buf.Bytes())
 			if err != nil {
 				t.Fatal(err)
 			}

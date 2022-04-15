@@ -15,7 +15,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net"
 
@@ -53,12 +52,8 @@ func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *splitte
 }
 
 func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Subtable, error) {
-	if table.Value == nil {
-		return nil, errors.New("table hasn't been populated yet via the environment")
-	}
-
 	// distribute blobs over available nodes
-	blobList := table.Value.(*blob.List)
+	blobList := handle.(*filterHandle).blobs
 
 	splitSize := s.SplitSize
 	if s.SplitSize == 0 {
@@ -144,7 +139,10 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 			Transport: s.transport(nodeID),
 			Table: &expr.Table{
 				Binding: bind,
-				Value:   blobList,
+			},
+			Handle: &filterHandle{
+				blobs:  blobList,
+				filter: nil, // pushed down later
 			},
 		}
 		subtables = append(subtables, subtable)

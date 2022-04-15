@@ -56,17 +56,57 @@ type stubenv struct {
 	fakeSplit bool
 }
 
-func (s stubenv) Open() (vm.Table, error) {
+type stubHandle string
+
+func (s stubHandle) Open() (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened stubenv locally!")
 }
 
+func (s stubHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteString(string(s))
+	return nil
+}
+
+type badHandle struct{}
+
+func (b badHandle) Open() (vm.Table, error) {
+	return nil, fmt.Errorf("shouldn't have opened badHandle")
+}
+
+func (b badHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteNull()
+	return nil
+}
+
+type repeatHandle struct {
+	count int
+	file  string
+}
+
+func (r *repeatHandle) Open() (vm.Table, error) {
+	return nil, fmt.Errorf("shouldn't have opened repeatHandle")
+}
+
+func (r *repeatHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginList(-1)
+	dst.WriteInt(int64(r.count))
+	dst.WriteString(r.file)
+	dst.EndList()
+	return nil
+}
+
 func (s stubenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
+	if b, ok := tbl.Expr.(*expr.Builtin); ok {
+		if b.Text != "REPEAT" {
+			return badHandle{}, nil
+		}
+		return &repeatHandle{count: int(b.Args[0].(expr.Integer)), file: string(b.Args[1].(expr.String))}, nil
+	}
 	// confirm that the file exists,
 	// but otherwise do nothing
 	fn, ok := tbl.Expr.(expr.String)
 	if !ok {
-		// allow busted table expressions for error-testing
-		return s, nil
+		return badHandle{}, nil
 	}
 	_, err := os.Stat(string(fn))
 	if err != nil {
@@ -75,7 +115,7 @@ func (s stubenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, erro
 	if s.fakeSplit {
 		tbl.As("copy-fake")
 	}
-	return s, nil
+	return stubHandle(fn), nil
 }
 
 func (s stubenv) Schema(tbl *expr.Table) expr.Hint { return nil }
@@ -374,26 +414,26 @@ type split4 struct {
 	port int // local port on which the tenant is bound
 }
 
-func (s *split4) Split(tbl *expr.Table, _ plan.TableHandle) ([]plan.Subtable, error) {
+func (s *split4) Split(tbl *expr.Table, h plan.TableHandle) ([]plan.Subtable, error) {
 	out := make([]plan.Subtable, 4)
+	out[0].Handle = h
 	out[0].Table = &expr.Table{
 		Binding: expr.Bind(
 			tbl.Expr,
 			"copy-0",
 		),
-		Value: tbl.Value,
 	}
 	// get test coverage of using a LocalTransport
 	// for one of the UnionMap sub-plans
 	out[0].Transport = &plan.LocalTransport{}
 	for i := 1; i < 4; i++ {
+		out[i].Handle = h
 		out[i].Table = &expr.Table{
 			// textually the same as the original input,
 			// but not == in terms of strict equality
 			Binding: expr.Bind(
 				tbl.Expr,
-				fmt.Sprintf("copy-%d", i+1)),
-			Value: tbl.Value,
+				fmt.Sprintf("copy-%d", i)),
 		}
 		out[i].Transport = &tnproto.Remote{
 			Tenant: s.id,
@@ -401,8 +441,6 @@ func (s *split4) Split(tbl *expr.Table, _ plan.TableHandle) ([]plan.Subtable, er
 			Addr:   net.JoinHostPort("localhost", strconv.Itoa(s.port)),
 		}
 	}
-	// make tbl.Value inaccessible
-	tbl.Value = nil
 	return out, nil
 }
 
@@ -610,10 +648,20 @@ func (b *benchenv) Schema(t *expr.Table) expr.Hint {
 	return nil
 }
 
+type benchHandle struct {
+	*blob.List
+}
+
+func (b *benchHandle) Open() (vm.Table, error) {
+	panic("benchHandle.Open()")
+}
+
+func (b *benchHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	b.List.Encode(dst, st)
+	return nil
+}
+
 func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	if t.Value != nil {
-		return stubenv{}, nil
-	}
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)
@@ -650,6 +698,5 @@ func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, erro
 			},
 		}
 	}
-	t.Value = &blob.List{Contents: lst}
-	return stubenv{}, nil
+	return &benchHandle{&blob.List{lst}}, nil
 }

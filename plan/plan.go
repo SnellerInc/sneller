@@ -85,6 +85,11 @@ type TableHandle interface {
 	// Open opens the handle for reading
 	// by the query execution engine.
 	Open() (vm.Table, error)
+
+	// Encode should serialize the table handle
+	// so that it can be deserialized by a corresponding
+	// HandleDecodeFn.
+	Encode(dst *ion.Buffer, st *ion.Symtab) error
 }
 
 // Filterable may be implemented by a TableHandle that
@@ -216,6 +221,9 @@ type Leaf struct {
 	// Handle is the handle to the return value
 	// of Env.Stat when the query was planned.
 	Handle TableHandle
+
+	// used during decoding
+	handlebuf []byte
 }
 
 func (l *Leaf) String() string { return expr.ToString(l.Expr) }
@@ -229,6 +237,9 @@ func (l *Leaf) rewrite(rw expr.Rewriter) {
 }
 
 func (l *Leaf) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+	if l.Handle == nil {
+		panic("nope!")
+	}
 	tbl, err := l.Handle.Open()
 	if err != nil {
 		return err
@@ -249,17 +260,32 @@ func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	settype("leaf", dst, st)
 	dst.BeginField(st.Intern("expr"))
 	l.Expr.Encode(dst, st)
+	if l.Handle != nil {
+		dst.BeginField(st.Intern("handle"))
+		err := l.Handle.Encode(dst, st)
+		if err != nil {
+			return err
+		}
+	}
 	dst.EndStruct()
 	return nil
 }
 
-func (l *Leaf) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) {
+func (l *Leaf) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+	tbl, handle := rw(l.Expr, l.Handle)
 	dst.BeginStruct(-1)
 	settype("leaf", dst, st)
 	dst.BeginField(st.Intern("expr"))
-	tbl, _ := rw(l.Expr, l.Handle)
 	tbl.Encode(dst, st)
+	if handle != nil {
+		dst.BeginField(st.Intern("handle"))
+		err := handle.Encode(dst, st)
+		if err != nil {
+			return err
+		}
+	}
 	dst.EndStruct()
+	return nil
 }
 
 func (l *Leaf) setfield(name string, st *ion.Symtab, buf []byte) error {
@@ -274,6 +300,8 @@ func (l *Leaf) setfield(name string, st *ion.Symtab, buf []byte) error {
 			return fmt.Errorf("decoding plan.Leaf: %T not a table", e)
 		}
 		l.Expr = t
+	case "handle":
+		l.handlebuf = buf[:ion.SizeOf(buf)]
 	}
 	return nil
 }
@@ -920,14 +948,19 @@ func (t *Tree) EncodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) erro
 		dst.BeginField(st.Intern("children"))
 		dst.BeginList(-1)
 		for i := range t.Children {
-			t.Children[i].EncodePart(dst, st, rw)
+			if err := t.Children[i].EncodePart(dst, st, rw); err != nil {
+				return err
+			}
 		}
 		dst.EndList()
 	}
 	dst.BeginField(st.Intern("op"))
 	dst.BeginList(-1)
 	err := encoderec(t.Op, dst, st, rw)
+	if err != nil {
+		return err
+	}
 	dst.EndList()
 	dst.EndStruct()
-	return err
+	return nil
 }
