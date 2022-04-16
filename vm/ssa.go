@@ -306,6 +306,8 @@ const (
 	sdatetruncmonth
 	sdatetruncyear
 
+	sgeohash
+	sgeohashimm
 	sgeogridi
 	sgeogridimmi
 	sobjectsize // built-in function SIZE()
@@ -777,6 +779,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitBinaryOp},
 	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
+
+	sgeohash:    {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitGeoHashOp},
+	sgeohashimm: {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitGeoHashImmOp},
 
 	sgeogridi:    {text: "geogrid.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, immfmt: fmtother, bc: opgeogridi, emit: emitGeoGridOp},
 	sgeogridimmi: {text: "geogrid.imm.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmtother, bc: opgeogridimmi, emit: emitGeoGridImmOp},
@@ -2878,6 +2883,19 @@ func (p *prog) TimeBucket(timestamp, interval *value) *value {
 	return p.ssa3(stimebucketts, tv, iv, p.And(p.mask(tv), im))
 }
 
+func (p *prog) GeoHash(latitude, longitude, numChars *value) *value {
+	latV, latM := p.coercefp(latitude)
+	lonV, lonM := p.coercefp(longitude)
+
+	if numChars.op == sliteral && isIntImmediate(numChars.imm) {
+		return p.ssa3imm(sgeohashimm, latV, lonV, p.And(latM, lonM), numChars.imm)
+	}
+
+	charsV, charsM := p.coerceInt(numChars)
+	mask := p.And(p.And(latM, lonM), charsM)
+	return p.ssa4(sgeohash, latV, lonV, charsV, mask)
+}
+
 func (p *prog) GeoGridI(latitude, longitude, precision *value) *value {
 	latV, latM := p.coercefp(latitude)
 	lonV, lonM := p.coercefp(longitude)
@@ -2918,6 +2936,35 @@ func emitBinaryOp(v *value, c *compilestate) {
 	c.loads(v, arg0)
 	c.clobbers(v)
 	c.ops16(v, bc, arg1Slot)
+}
+
+func emitGeoHashOp(v *value, c *compilestate) {
+	arg0 := v.args[0]                            // latitude
+	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
+	arg2Slot := c.forceStackRef(v.args[2], regS) // precision
+	mask := v.args[3]                            // predicate
+
+	info := ssainfo[v.op]
+	bc := info.bc
+
+	c.loadk(v, mask)
+	c.loads(v, arg0)
+	c.clobbers(v)
+	c.ops16s16(v, bc, arg1Slot, arg2Slot)
+}
+
+func emitGeoHashImmOp(v *value, c *compilestate) {
+	arg0 := v.args[0]                            // latitude
+	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
+	mask := v.args[2]                            // predicate
+
+	info := ssainfo[v.op]
+	bc := info.bc
+
+	c.loadk(v, mask)
+	c.loads(v, arg0)
+	c.clobbers(v)
+	c.ops16u16(v, bc, arg1Slot, uint16(toi64(v.imm)))
 }
 
 func emitGeoGridOp(v *value, c *compilestate) {

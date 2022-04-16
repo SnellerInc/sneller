@@ -676,6 +676,28 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			return nil, err
 		}
 		return p.DateToUnixMicro(arg), nil
+	case expr.GeoHash:
+		if len(args) != 3 {
+			return nil, fmt.Errorf("GEO_HASH requires 3 arguments, %d given", len(args))
+		}
+
+		arg0, err1 := p.compileAsNumber(args[0])
+		if err1 != nil {
+			return nil, err1
+		}
+
+		arg1, err2 := p.compileAsNumber(args[1])
+		if err2 != nil {
+			return nil, err2
+		}
+
+		arg2, err3 := p.compileAsNumber(args[2])
+		if err3 != nil {
+			return nil, err3
+		}
+
+		return p.GeoHash(arg0, arg1, arg2), nil
+
 	case expr.GeoGridIndex:
 		if len(args) != 3 {
 			return nil, fmt.Errorf("GEO_GRID_INDEX requires 3 arguments, %d given", len(args))

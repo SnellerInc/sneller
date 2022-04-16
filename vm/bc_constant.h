@@ -370,11 +370,20 @@ CONST_DATA_U64(constpool, 596, $10000)
 #define CONSTD_20() CONST_GET_PTR(constpool, 608)
 CONST_DATA_U64(constpool, 608, $20)
 
+#define CONSTQ_29() CONST_GET_PTR(constpool, 616)
+#define CONSTD_29() CONST_GET_PTR(constpool, 616)
+CONST_DATA_U64(constpool, 616, $29)
+
+#define CONSTD_0b11001110_01110011_10011100_11100111() CONST_GET_PTR(constpool, 624)
+CONST_DATA_U32(constpool, 624, $0b11001110_01110011_10011100_11100111)
+
+#define CONSTQ_0b00000000_00000000_00000000_00000000_00011111_00000000_00000000_00011111() CONST_GET_PTR(constpool, 632)
+CONST_DATA_U64(constpool, 632, $0b0000000000000000000000000000000000011111000000000000000000011111)
 
 // Integer Division Reciprocals
 // ----------------------------
 
-#define CONSTPOOL_RECIPROCALS_INDEX 640
+#define CONSTPOOL_RECIPROCALS_INDEX 680
 
 // Unsigned 32-bit division by 25: (Value * 1374389535) >> 35.
 // Unsigned 32-bit division by 50: (Value * 1374389535) >> 36.
@@ -639,6 +648,21 @@ CONST_DATA_U64(popcnt_nibble, 48, $0x0302020102010100) // [0111 0110 0101 0100 0
 CONST_DATA_U64(popcnt_nibble, 56, $0x0403030203020201) // [1111 1110 1101 1100 1011 1010 1001 1000]
 CONST_GLOBAL(popcnt_nibble, $64)
 
+// LUT to convert 5 GEO_HASH bits into characters:
+//   - original: 0123456789bcdefghjkmnpqrstuvwxyz
+//   - sneller : 0145hjnp2367kmqr89destwxbcfguvyz
+// NOTE: The result is the same, we just uses a different bit permutation as an input.
+
+CONST_DATA_U64(geohash_chars_lut, 0, $0x706E6A6835343130)
+CONST_DATA_U64(geohash_chars_lut, 8, $0x72716D6B37363332)
+CONST_DATA_U64(geohash_chars_lut, 16, $0x7877747365643938)
+CONST_DATA_U64(geohash_chars_lut, 24, $0x7A79767567666362)
+CONST_GLOBAL(geohash_chars_lut, $32)
+
+CONST_DATA_U64(geohash_chars_swap,  0, $0x0405060708090A0B)
+CONST_DATA_U64(geohash_chars_swap,  8, $0xFFFFFFFF00010203)
+CONST_GLOBAL(geohash_chars_swap, $16)
+
 CONST_DATA_U64(aggregate_conflictdq_mask,  0, $0x000000FF000000FF)
 CONST_DATA_U64(aggregate_conflictdq_mask,  8, $0x000000FF000000FF)
 CONST_DATA_U64(aggregate_conflictdq_mask, 16, $0x000000FF000000FF)
@@ -685,6 +709,29 @@ CONST_DATA_U32(consts_offsets_d_16, 52, $208)
 CONST_DATA_U32(consts_offsets_d_16, 56, $224)
 CONST_DATA_U32(consts_offsets_d_16, 60, $240)
 CONST_GLOBAL(consts_offsets_d_16, $64)
+
+// Consecutive DWORD offsets for 1 ZMM register incremented by 16, for each lane.
+//
+// This is for interleaved lanes that were formed by using unpacking low and high
+// 128 bit words - it's easier to just store interleaved and correct offsets than
+// to shuffle vectors before storing (we don't need offsets to be consecutive).
+CONST_DATA_U32(consts_offsets_interleaved_d_16,  0, $(0  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16,  4, $(4  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16,  8, $(1  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 12, $(5  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 16, $(2  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 20, $(6  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 24, $(3  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 28, $(7  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 32, $(8  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 36, $(12 * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 40, $(9  * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 44, $(13 * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 48, $(10 * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 52, $(14 * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 56, $(11 * 16))
+CONST_DATA_U32(consts_offsets_interleaved_d_16, 60, $(15 * 16))
+CONST_GLOBAL(consts_offsets_interleaved_d_16, $64)
 
 // Consecutive DWORD offsets for 1 ZMM register incremented by 20, for each lane.
 CONST_DATA_U32(consts_offsets_d_20,  0, $0)

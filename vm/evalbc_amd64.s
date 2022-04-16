@@ -3139,6 +3139,36 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
 // Geo Instructions
 // ----------------
 
+// Calculates GEO HASH bits with full precision.
+//
+// The output can contain many bits, so it's necessary to BIT-AND the results to get the designated precision.
+#define BC_SCALE_GEO_COORDINATES(DST_LAT_A, DST_LAT_B, DST_LON_A, DST_LON_B, SRC_LAT_A, SRC_LAT_B, SRC_LON_A, SRC_LON_B, TMP_0) \
+  /* Scale latitude values. */                                 \
+  VBROADCASTSD CONSTQ_0x3D86800000000000(), TMP_0              \
+  VDIVPD.RD_SAE TMP_0, SRC_LAT_A, DST_LAT_A                    \
+  VDIVPD.RD_SAE TMP_0, SRC_LAT_B, DST_LAT_B                    \
+                                                               \
+  /* Scale longitude values. */                                \
+  VBROADCASTSD CONSTQ_0x3D96800000000000(), TMP_0              \
+  VDIVPD.RD_SAE TMP_0, SRC_LON_A, DST_LON_A                    \
+  VDIVPD.RD_SAE TMP_0, SRC_LON_B, DST_LON_B                    \
+                                                               \
+  /* Convert to integers. */                                   \
+  VPBROADCASTQ CONSTQ_35184372088832(), TMP_0                  \
+  VCVTPD2QQ.RD_SAE DST_LAT_A, DST_LAT_A                        \
+  VCVTPD2QQ.RD_SAE DST_LAT_B, DST_LAT_B                        \
+                                                               \
+  VCVTPD2QQ.RD_SAE DST_LON_A, DST_LON_A                        \
+  VCVTPD2QQ.RD_SAE DST_LON_B, DST_LON_B                        \
+                                                               \
+  /* Scaled latitude values to integers of full precision. */  \
+  VPADDQ TMP_0, DST_LAT_A, DST_LAT_A                           \
+  VPADDQ TMP_0, DST_LAT_B, DST_LAT_B                           \
+                                                               \
+  /* Scaled longitute values to integers of full precision. */ \
+  VPADDQ TMP_0, DST_LON_A, DST_LON_A                           \
+  VPADDQ TMP_0, DST_LON_B, DST_LON_B
+
 // GEO_GRID_INDEX is a 64-bit value that has encoded the following fields:
 //
 //   - Precision
@@ -3179,8 +3209,8 @@ TEXT bcgeogridi(SB), NOSPLIT|NOFRAME, $0
   ADDQ $4, VIRT_PCREG
 
   // Z4/Z5 <- Latitude.
-  VMOVUPD.Z Z2, K1, Z4
-  VMOVUPD.Z Z3, K2, Z5
+  VMOVAPD.Z Z2, K1, Z4
+  VMOVAPD.Z Z3, K2, Z5
 
   // Z6/Z7 <- Longitude.
   VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
@@ -3214,15 +3244,8 @@ TEXT bcgeogridimmi(SB), NOSPLIT|NOFRAME, $0
   JMP geogridi_tail(SB)
 
 TEXT geogridi_tail(SB), NOSPLIT|NOFRAME, $0
-  // Z14/Z15 <- Constants for scaling latitude (Z14) and longitude (Z15).
-  VBROADCASTSD CONSTQ_0x3D86800000000000(), Z14
-  VBROADCASTSD CONSTQ_0x3D96800000000000(), Z15
-
-  // Scale latitude and longitude values.
-  VDIVPD.RD_SAE Z14, Z4, Z4
-  VDIVPD.RD_SAE Z14, Z5, Z5
-  VDIVPD.RD_SAE Z15, Z6, Z6
-  VDIVPD.RD_SAE Z15, Z7, Z7
+  // Z4/Z5/Z6/Z7 <- Scaled latitude and longitude bits with full precision.
+  BC_SCALE_GEO_COORDINATES(Z4, Z5, Z6, Z7, Z4, Z5, Z6, Z7, Z10)
 
   // Z14/Z15 <- Useful constants.
   VPBROADCASTQ CONSTQ_1(), Z14
@@ -3244,19 +3267,6 @@ TEXT geogridi_tail(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z8, Z15, Z14
   VPSUBQ Z9, Z15, Z15
 
-  // Z4/Z5 <- Scaled latitude bits to an integer and chopped to only contain the requred bits.
-  // Z6/Z7 <- Scaled longitude bits to an integer and chopped to only contain the requred bits.
-  VBROADCASTSD CONSTQ_35184372088832(), Z16
-  VCVTPD2QQ.RD_SAE Z4, Z4
-  VCVTPD2QQ.RD_SAE Z5, Z5
-  VCVTPD2QQ.RD_SAE Z6, Z6
-  VCVTPD2QQ.RD_SAE Z7, Z7
-
-  VPADDQ Z16, Z4, Z4
-  VPADDQ Z16, Z5, Z5
-  VPADDQ Z16, Z6, Z6
-  VPADDQ Z16, Z7, Z7
-
   VPSRLVQ Z14, Z4, Z4
   VPSRLVQ Z15, Z5, Z5
   VPSRLVQ Z14, Z6, Z6
@@ -3276,6 +3286,206 @@ TEXT geogridi_tail(SB), NOSPLIT|NOFRAME, $0
   VPTERNLOGQ $0xFE, Z13, Z7, K2, Z3
 
   NEXT()
+
+// GEO_HASH is a string representing longitude, latitude, and precision as "HASH" where each
+// 5 bits of interleaved latitude and longitude data are encoded by a single ASCII character.
+TEXT bcgeohash(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  MOVWQZX 0(VIRT_PCREG), R8
+  MOVWQZX 2(VIRT_PCREG), R15
+  ADDQ $4, VIRT_PCREG
+
+  // Z4/Z5 <- Latitude.
+  VMOVAPD.Z Z2, K1, Z4
+  VMOVAPD.Z Z3, K2, Z5
+
+  // Z6/Z7 <- Longitude.
+  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
+  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
+
+  // Z8/Z9 <- Precision in bits.
+  VMOVDQU64.Z 0(VIRT_VALUES)(R15*1), K1, Z8
+  VMOVDQU64.Z 64(VIRT_VALUES)(R15*1), K2, Z9
+
+  JMP geohash_tail(SB)
+
+TEXT bcgeohashimm(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  MOVWQZX 0(VIRT_PCREG), R8
+  MOVWQZX 2(VIRT_PCREG), R15
+  ADDQ $4, VIRT_PCREG
+
+  // Z4/Z5 <- Latitude.
+  VMOVAPD.Z Z2, K1, Z4
+  VMOVAPD.Z Z3, K2, Z5
+
+  // Z6/Z7 <- Longitude.
+  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
+  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
+
+  // Z8/Z9 <- Precision in bits.
+  VPBROADCASTQ R15, Z8
+  VPBROADCASTQ R15, Z9
+
+  JMP geohash_tail(SB)
+
+TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
+  VPMOVSQD Z8, Y8
+  VPMOVSQD Z9, Y9
+  VINSERTI32X8 $1, Y9, Z8, Z3
+
+  // Z4/Z5/Z6/Z7 <- Scaled latitude and longitude bits with full precision.
+  BC_SCALE_GEO_COORDINATES(Z4, Z5, Z6, Z7, Z4, Z5, Z6, Z7, Z10)
+
+  // Restrict precision to [1, 12] characters (12 characters is 60 bits, which is the maximum).
+  VPMAXSD.BCST CONSTD_1(), Z3, Z3
+  VPMINSD.BCST.Z CONSTD_12(), Z3, K1, Z3
+
+  // At the moment the output bits contain 46 bits representing latitude and longitude.
+  // The maximum precision of geohash we support is 12 (30 bits for each coordinate),
+  // so cut off the extra bits from both latitude and longitude.
+  VPSRLQ $16, Z4, Z4
+  VPSRLQ $16, Z5, Z5
+  VPSRLQ $16, Z6, Z6
+  VPSRLQ $16, Z7, Z7
+
+  // Usually, GEO_HASH implementations first interleave all the bits of latitude
+  // and logitude and then a lookup is used for each 5 bits chunk to get the
+  // character representing it. However, this is unnecessary as we just need 5
+  // bits of each chunk in any order to apply our own VPSHUFB lookups.
+  //
+  // We have this (latitude / longitude) (5 bits are used to compose a single character):
+  //
+  //   [__AABBBC|CDDDEEFF|FGGHHHII|JJJKKLLL] (Z4/Z5) (uppercased are latitudes)
+  //   [__aaabbc|ccddeeef|fggghhii|ijjkkkll] (Z6/Z7) (lowercased are longitudes)
+  //
+  // But we want this so we would be able to encode the bits as GEO_HASH:
+  //
+  //   [________][________][___AAaaa][___CCccc][___EEeee][___GGggg][___IIiii][___KKkkk] {longitude has 3 bits}
+  //   [________][________][___bbBBB][___ddDDD][___ffFFF][___hhHHH][___jjJJJ][___llLLL] {latitude has 3 bits}
+  //
+  // After this it's easy to use VPUNPCKLBW to interleave the bytes to get the final string.
+
+  // VPTERNLOG(0xD8) == (A & ~C) | (B &  C) == Blend(A, B, ~C)
+  // VPTERNLOG(0xE4) == (A &  C) | (B & ~C) == Blend(A, B,  C)
+
+  // NOTE: This is basically a dumb approach to shuffle bits via shifting and masking.
+  VPBROADCASTD CONSTD_0b11001110_01110011_10011100_11100111(), Z14
+
+  VPSRLQ $2, Z6, Z10                            // [________|________|________|________|____aaab|bcccddee|effggghh|iiijjkkk] {lo}
+  VPSRLQ $2, Z7, Z11                            // [________|________|________|________|____aaab|bcccddee|effggghh|iiijjkkk] {hi}
+  VPSLLQ $3, Z6, Z6                             // [________|________|________|________|__bbcccd|deeeffgg|ghhiiijj|kkkll___] {lo}
+  VPSLLQ $3, Z7, Z7                             // [________|________|________|________|__bbcccd|deeeffgg|ghhiiijj|kkkll___] {hi}
+
+  VPTERNLOGD $0xD8, Z14, Z4, Z6                 // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {lo}
+  VPTERNLOGD $0xD8, Z14, Z5, Z7                 // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {hi}
+  VPTERNLOGD $0xD8, Z14, Z10, Z4                // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {lo}
+  VPTERNLOGD $0xD8, Z14, Z11, Z5                // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {hi}
+
+  VPBROADCASTQ CONSTQ_0xFFFFFF(), Z14
+  VPSLLQ $9, Z4, Z10                            // [________|________|________|_AAaaaCC|cccEEeee|________|________|________] {lo}
+  VPSLLQ $9, Z5, Z11                            // [________|________|________|_AAaaaCC|cccEEeee|________|________|________] {hi}
+  VPSLLQ $9, Z6, Z12                            // [________|________|________|_bbBBBdd|DDDffFFF|________|________|________] {lo}
+  VPSLLQ $9, Z7, Z13                            // [________|________|________|_bbBBBdd|DDDffFFF|________|________|________] {hi}
+
+  VPTERNLOGQ $0xE4, Z14, Z10, Z4                // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {lo}
+  VPTERNLOGQ $0xE4, Z14, Z11, Z5                // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {hi}
+  VPTERNLOGQ $0xE4, Z14, Z12, Z6                // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {lo}
+  VPTERNLOGQ $0xE4, Z14, Z13, Z7                // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {hi}
+
+  VPSLLQ $3, Z4, Z10                            // [________|________|________|___CCccc|________|________|___IIiii|________] {lo}
+  VPSLLQ $3, Z5, Z11                            // [________|________|________|___CCccc|________|________|___IIiii|________] {hi}
+  VPSLLQ $3, Z6, Z12                            // [________|________|________|___ddDDD|________|________|___jjJJJ|________] {lo}
+  VPSLLQ $3, Z7, Z13                            // [________|________|________|___ddDDD|________|________|___jjJJJ|________] {hi}
+
+  VPSLLQ $6, Z4, Z14                            // [________|________|___AAaaa|________|________|___GGggg|________|________] {lo}
+  VPSLLQ $6, Z5, Z15                            // [________|________|___AAaaa|________|________|___GGggg|________|________] {hi}
+  VPSLLQ $6, Z6, Z16                            // [________|________|___bbBBB|________|________|___hhHHH|________|________] {lo}
+  VPSLLQ $6, Z7, Z17                            // [________|________|___bbBBB|________|________|___hhHHH|________|________] {hi}
+
+  VPBROADCASTQ CONSTQ_0b00000000_00000000_00000000_00000000_00011111_00000000_00000000_00011111(), Z18
+  VPANDD Z18, Z4, Z4                            // [00000000|00000000|00000000|00000000|000EEeee|00000000|00000000|000KKkkk] {lo}
+  VPANDD Z18, Z5, Z5                            // [00000000|00000000|00000000|00000000|000EEeee|00000000|00000000|000KKkkk] {hi}
+  VPSLLQ $8, Z18, Z19
+  VPANDD Z18, Z6, Z6                            // [00000000|00000000|00000000|00000000|000ffFFF|00000000|00000000|000llLLL] {lo}
+  VPANDD Z18, Z7, Z7                            // [00000000|00000000|00000000|00000000|000ffFFF|00000000|00000000|000llLLL] {hi}
+
+  VPSLLQ $16, Z18, Z18
+  VPTERNLOGD $0xD8, Z19, Z10, Z4                // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {lo}
+  VPTERNLOGD $0xD8, Z19, Z11, Z5                // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {hi}
+  VPTERNLOGD $0xD8, Z19, Z12, Z6                // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {lo}
+  VPTERNLOGD $0xD8, Z19, Z13, Z7                // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {hi}
+
+  VPTERNLOGD $0xD8, Z18, Z14, Z4                // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {lo}
+  VPTERNLOGD $0xD8, Z18, Z15, Z5                // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {hi}
+  VPTERNLOGD $0xD8, Z18, Z16, Z6                // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {lo}
+  VPTERNLOGD $0xD8, Z18, Z17, Z7                // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {hi}
+
+  // Encode the bits into characters.
+  //
+  // NOTE: Since we need 32 entry LUT, we apply VPSHUFB twice, the second time with a mask that's only valid when `index > 15`.
+  VPBROADCASTB CONSTD_15(), Z12
+  VBROADCASTI32X4 CONST_GET_PTR(geohash_chars_lut,  0), Z10
+  VBROADCASTI32X4 CONST_GET_PTR(geohash_chars_lut, 16), Z11
+
+  VPCMPGTB Z12, Z4, K3
+  VPCMPGTB Z12, Z5, K4
+  VPSHUFB Z4, Z10, Z14
+  VPSHUFB Z5, Z10, Z15
+  VPSHUFB Z4, Z11, K3, Z14
+  VPSHUFB Z5, Z11, K4, Z15
+
+  VPCMPGTB Z12, Z6, K3
+  VPCMPGTB Z12, Z7, K4
+  VPSHUFB Z6, Z10, Z16
+  VPSHUFB Z7, Z10, Z17
+  VPSHUFB Z6, Z11, K3, Z16
+  VPSHUFB Z7, Z11, K4, Z17
+
+  // Make sure we have at least 16 bytes for each lane, we always overallocate to make the encoding easier.
+  // The encoded hash per lane is 12 bytes, however, we store 16 byte quantities, so we need 16 bytes.
+  VM_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
+
+  VM_GET_SCRATCH_BASE_GP(R8)
+
+  // Update the length of the output buffer.
+  ADDQ $(16 * 16), bytecode_scratch+8(VIRT_BCPTR)
+
+  // Broadcast scratch base to all lanes in Z2, which becomes string slice offset.
+  VPBROADCASTD.Z R8, K1, Z2
+
+  VPADDD CONST_GET_PTR(consts_offsets_interleaved_d_16, 0), Z2, Z2
+
+  // Make R8 the first address where the output will be stored.
+  ADDQ SI, R8
+
+  // Unpack so we will get 16 characters in each 128-bit part of the register.
+  VPUNPCKLBW Z14, Z16, Z4  // Lane: [06][04][02][00]
+  VPUNPCKHBW Z14, Z16, Z5  // Lane: [07][05][03][01]
+  VPUNPCKLBW Z15, Z17, Z6  // Lane: [13][12][10][08]
+  VPUNPCKHBW Z15, Z17, Z7  // Lane: [15][13][11][09]
+
+  // Byteswap the characters, as we have the most significant last, at the moment.
+  VBROADCASTI32X4 CONST_GET_PTR(geohash_chars_swap, 0), Z10
+  VPSHUFB Z10, Z4, Z4
+  VPSHUFB Z10, Z5, Z5
+  VPSHUFB Z10, Z6, Z6
+  VPSHUFB Z10, Z7, Z7
+
+  // Store directly (avoiding scatter).
+  VMOVDQU32 Z4, 0(R8)
+  VMOVDQU32 Z5, 64(R8)
+  VMOVDQU32 Z6, 128(R8)
+  VMOVDQU32 Z7, 192(R8)
+
+  NEXT()
+
+abort:
+  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
+  RET_ABORT()
+
 
 // Find Symbol Instructions
 // ------------------------

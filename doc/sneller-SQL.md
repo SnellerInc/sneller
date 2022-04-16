@@ -161,7 +161,7 @@ binding_list = expr [ 'AS' identifier ] { ',' expr [ 'AS' identifier ] } ;
 
 sfw_query = 'SELECT' [ 'DISTINCT' ] ('*' | binding_list) [ from_clause ] [ where_clause ] [ group_by_clause ] [ order_by_clause ] [ limit_clause ] ;
 
-from_clause = 'FROM' path_expr [ 'AS' identifier]  { ',' path_expr [ 'AS' identifier] } ; 
+from_clause = 'FROM' path_expr [ 'AS' identifier]  { ',' path_expr [ 'AS' identifier] } ;
 
 where_clause = 'WHERE' expr ;
 
@@ -196,7 +196,7 @@ in_expr = expr 'IN' ( subquery_expr | '(' { expr } ')' ) ;
 // conflict with ordinary AND
 between_expr = expr BETWEEN expr AND expr ;
 
-arith_expr = expr ('+' | '-' | '/' | '*' | '%') ; 
+arith_expr = expr ('+' | '-' | '/' | '*' | '%') ;
 
 function_name = ... ; // see list of built-in functions
 function_expr = function_name '(' arg { ',' args } ')' ;
@@ -687,7 +687,7 @@ between `from` and `to` in terms of the date interval `part`.
  - `DAY`
  - `MONTH`
  - `YEAR`
- 
+
 See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/datetime.html)
 
 #### `DATE_TRUNC`
@@ -704,7 +704,7 @@ See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/dateti
  - `DAY`
  - `MONTH`
  - `YEAR`
- 
+
 `DATE_TRUNC()` returns a timestamp that contains only
 the components of the timestamp `expr` that are less precise
 than the precision given by `part`. In other words, `DATE_TRUNC(SECOND, x)`
@@ -713,7 +713,7 @@ truncates the timestamp `x` down to the nearest second.
 (It can be useful to use the result of a `DATE_TRUNC()` expression
 as a group value in `GROUP BY` in order to build a histogram
 with buckets corresponding to calendar dates.)
- 
+
 #### `EXTRACT`
 
 `EXTRACT(part FROM expr)` extracts part of a date from a timestamp.
@@ -728,7 +728,7 @@ with buckets corresponding to calendar dates.)
  - `DAY`
  - `MONTH`
  - `YEAR`
- 
+
 `EXTRACT` yields the integer corresponding to the requested
 date part, or `MISSING` if `expr` does not evaluate to a timestamp.
 
@@ -773,6 +773,30 @@ The expression `TIME_BUCKET(time, interval)` is mathematically equivalent to
 
 A typical use of `TIME_BUCKET` is to produce a
 bucket value for use in a `GROUP BY` clause.
+
+#### `GEO_HASH`
+
+`GEO_HASH(lat, long, num_chars)` encodes a string representing a geo-hash
+of the latitude `lat` and longitude `long` having `num_chars` characters.
+Each `GEO_HASH` character encodes 5 bits of interleaved latitude and
+longitude. When the number of characters is even the count of latitude
+and longitude bits is the same; when it's odd, latitude has one bit less
+than longitude.
+
+`GEO_HASH()` is just a hash calculated from scaled latitude and longitude
+coordinates, it doesn't project the coordinates in any way.
+
+The `num_chars` parameter's range is 1 to 12. Out of range parameters are
+automatically clamped to a valid range. For example `GEO_HASH(a, b, 100)`
+would produce the same result as `GEO_HASH(a, b, 12)`.
+
+Future notice: At the moment the maximum precision of `GEO_HASH()` is 12
+characters, which represents 60 bits of interleaved latitude and longitude
+values. We may increase the range of `num_chars` in the future, so please
+always specify the precision and do not rely on parameter clamping.
+
+See https://en.wikipedia.org/wiki/Geohash for more details regarding
+geo-hash and its encoding.
 
 #### `GEO_GRID_INDEX`
 

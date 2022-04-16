@@ -1,0 +1,70 @@
+SELECT
+  GEO_HASH(lat, lon, 8) AS hash, name
+FROM
+  input
+ORDER BY
+  name
+---
+{"country": "NL", "name": "Amsterdam", "lat": 52.37403, "lon": 4.88969}
+{"country": "GR", "name": "Athens", "lat": 37.97945, "lon": 23.71622}
+{"country": "DE", "name": "Berlin", "lat": 52.52437, "lon": 13.41053}
+{"country": "SK", "name": "Bratislava", "lat": 48.14816, "lon": 17.10674}
+{"country": "BE", "name": "Brussels", "lat": 50.85045, "lon": 4.34878}
+{"country": "RO", "name": "Bucharest", "lat": 44.43225, "lon": 26.10626}
+{"country": "HU", "name": "Budapest", "lat": 47.49801, "lon": 19.03991}
+{"country": "MD", "name": "Chisinau", "lat": 47.00556, "lon": 28.8575}
+{"country": "DK", "name": "Copenhagen", "lat": 55.67594, "lon": 12.56553}
+{"country": "IE", "name": "Dublin", "lat": 53.33306, "lon": -6.24889}
+{"country": "FI", "name": "Helsinki", "lat": 60.16952, "lon": 24.93545}
+{"country": "PT", "name": "Lisbon", "lat": 38.71667, "lon": -9.13333}
+{"country": "SI", "name": "Ljubljana", "lat": 46.05108, "lon": 14.50513}
+{"country": "GB", "name": "London", "lat": 51.50853, "lon": -0.12574}
+{"country": "LU", "name": "Luxembourg", "lat": 49.61167, "lon": 6.13}
+{"country": "ES", "name": "Madrid", "lat": 40.4165, "lon": -3.70256}
+{"country": "MC", "name": "Monaco", "lat": 43.73333, "lon": 7.41667}
+{"country": "CY", "name": "Nicosia", "lat": 35.17531, "lon": 33.3642}
+{"country": "NO", "name": "Oslo", "lat": 59.91273, "lon": 10.74609}
+{"country": "FR", "name": "Paris", "lat": 48.85341, "lon": 2.3488}
+{"country": "CZ", "name": "Prague", "lat": 50.08804, "lon": 14.42076}
+{"country": "IS", "name": "Reykjavík", "lat": 64.13548, "lon": -21.89541}
+{"country": "LV", "name": "Riga", "lat": 56.946, "lon": 24.10589}
+{"country": "IT", "name": "Rome", "lat": 41.89193, "lon": 12.51133}
+{"country": "BG", "name": "Sofia", "lat": 42.69751, "lon": 23.32415}
+{"country": "EE", "name": "Tallinn", "lat": 59.43696, "lon": 24.75353}
+{"country": "AT", "name": "Vienna", "lat": 48.20849, "lon": 16.37208}
+{"country": "PL", "name": "Warsaw", "lat": 52.22977, "lon": 21.01178}
+{"country": "US", "name": "Washington, D.C.", "lat": 38.89511, "lon": -77.03637}
+{"country": "HR", "name": "Zagreb", "lat": 45.81444, "lon": 15.97798}
+{"country": "CH", "name": "Zürich", "lat": 47.36667, "lon": 8.55}
+---
+{"name": "Amsterdam", "hash": "u173zq2s"}
+{"name": "Athens", "hash": "swbb59vw"}
+{"name": "Berlin", "hash": "u33dc1v0"}
+{"name": "Bratislava", "hash": "u2s1vm0e"}
+{"name": "Brussels", "hash": "u1516cn9"}
+{"name": "Bucharest", "hash": "sxfsf09u"}
+{"name": "Budapest", "hash": "u2mw1q8r"}
+{"name": "Chisinau", "hash": "u8ke2tj7"}
+{"name": "Copenhagen", "hash": "u3butzmz"}
+{"name": "Dublin", "hash": "gc7x3ucx"}
+{"name": "Helsinki", "hash": "ud9wr3t2"}
+{"name": "Lisbon", "hash": "eycs20jk"}
+{"name": "Ljubljana", "hash": "u24mfp66"}
+{"name": "London", "hash": "gcpvj0u6"}
+{"name": "Luxembourg", "hash": "u0u65rx8"}
+{"name": "Madrid", "hash": "ezjmgtxg"}
+{"name": "Monaco", "hash": "spv2bc2t"}
+{"name": "Nicosia", "hash": "swr8p5rp"}
+{"name": "Oslo", "hash": "u4xsudc0"}
+{"name": "Paris", "hash": "u09tvmqr"}
+{"name": "Prague", "hash": "u2fkbnhz"}
+{"name": "Reykjavík", "hash": "ge2kvg80"}
+{"name": "Riga", "hash": "ud15uw9q"}
+{"name": "Rome", "hash": "sr2ykdnq"}
+{"name": "Sofia", "hash": "sx8dfub5"}
+{"name": "Tallinn", "hash": "ud9d5k0v"}
+{"name": "Vienna", "hash": "u2edk81f"}
+{"name": "Warsaw", "hash": "u3qcnhhk"}
+{"name": "Washington, D.C.", "hash": "dqcjqbxu"}
+{"name": "Zagreb", "hash": "u25kes6b"}
+{"name": "Zürich", "hash": "u0qj6wcf"}

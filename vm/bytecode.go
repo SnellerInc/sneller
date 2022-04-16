@@ -325,6 +325,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	optimebucketts: {text: "timebucket.ts", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 
 	// Geo instructions
+	opgeohash:     {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
+	opgeohashimm:  {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
 	opgeogridi:    {text: "geogridi", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
 	opgeogridimmi: {text: "geogridimmi", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
 

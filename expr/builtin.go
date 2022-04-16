@@ -158,6 +158,7 @@ const (
 	DateTruncMonth
 	DateTruncYear
 
+	GeoHash
 	GeoGridIndex
 
 	ObjectSize // SIZE(x)
@@ -228,6 +229,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_TRUNC_DAY":           DateTruncDay,
 	"DATE_TRUNC_MONTH":         DateTruncMonth,
 	"DATE_TRUNC_YEAR":          DateTruncYear,
+	"GEO_HASH":                 GeoHash,
 	"GEO_GRID_INDEX":           GeoGridIndex,
 	"IN_SUBQUERY":              InSubquery,
 	"HASH_LOOKUP":              HashLookup,
