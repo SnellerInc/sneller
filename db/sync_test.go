@@ -431,7 +431,7 @@ func TestMaxBytesSync(t *testing.T) {
 	symlink("../testdata/parking.10n", "a-prefix/parking1.10n")
 	symlink("../testdata/parking.10n", "a-prefix/parking2.10n")
 	// this should fit 2 but not 3 copies of parking.10n
-	b.MaxInputBytes = 250000
+	b.MaxScanBytes = 200000
 	// disable merging of non-trivial objects
 	b.MinMergeSize = 1
 	err = b.Sync(owner, "default", "*")

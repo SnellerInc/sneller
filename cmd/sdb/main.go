@@ -173,7 +173,8 @@ func sync(dbname, tblpat string) {
 			RangeMultiple: 100,         // metadata once every 100MB
 			Fallback:      fallback,
 			Force:         dashf,
-			MaxInputBytes: dashm,
+			MaxScanBytes:  dashm,
+			GCMinimumAge:  5 * time.Minute,
 		}
 		if dashv {
 			b.Logf = logf

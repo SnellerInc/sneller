@@ -59,10 +59,10 @@ func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 			return 0, err
 		}
 	}
-	return st.scan(def, idx)
+	return st.scan(def, idx, true)
 }
 
-func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
+func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete bool) (int, error) {
 	// TODO: better detection of change in definition
 	if len(idx.Cursors) != len(def.Inputs) {
 		idx.LastScan = date.Now()
@@ -116,6 +116,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
 				f.Close()
 				return err
 			}
+
 			full := prefix + p
 			ret, err := idx.Inputs.Append(full, etag, id)
 			if err != nil {
@@ -166,7 +167,10 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
 		if idx.Scanning {
 			panic("should not be possible: idx.Scanning && len(collect) == 0")
 		}
-		return 0, st.flushScanDone(idx.Cursors)
+		if flushOnComplete {
+			return 0, st.flushScanDone(idx.Cursors)
+		}
+		return 0, nil
 	}
 	err := st.force(idx, prepend, collect)
 	if err != nil {
@@ -183,7 +187,14 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index) (int, error) {
 func (st *tableState) flushScanDone(cursors []string) error {
 	old, err := st.index()
 	if err != nil {
-		return err
+		if errors.Is(err, fs.ErrNotExist) {
+			old = &blockfmt.Index{
+				Name: st.table,
+				Algo: "zstd",
+			}
+		} else {
+			return fmt.Errorf("scan: flushScanDone: %w", err)
+		}
 	}
 	old.Scanning = false
 	old.Cursors = cursors

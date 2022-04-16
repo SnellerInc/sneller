@@ -88,19 +88,13 @@ type Builder struct {
 	// objects when the object format is not
 	// obvious from the file extension.
 	Fallback func(name string) blockfmt.RowFormat
-	// MaxInputBytes is the maximum
-	// number of input bytes read into the table
-	// before ErrBuildAgain is returned.
-	// If MaxInputBytes is less than or equal to
-	// zero, it is ignored.
-	MaxInputBytes int64
 	// MaxScanObjects is the maximum number
 	// of objects to be committed in a single Scan operation.
 	// If MaxScanObjects is less than or equal to zero,
 	// it is ignored and no limit is applied.
 	MaxScanObjects int
 	// MaxScanBytes is the maximum number
-	// of bytes to ingest in a single Scan operation
+	// of bytes to ingest in a single Scan or Sync operation
 	// (not including merging).
 	// If MaxScanBytes is less than or equal to zero,
 	// it is ignored and no limit is applied.
@@ -214,30 +208,6 @@ var (
 	ErrDuplicateObject = errors.New("duplicate input object")
 )
 
-// constrain the combined size of lst
-// to b.MaxInputBytes as long as it is set
-func (b *Builder) maxTrim(lst []blockfmt.Input) ([]blockfmt.Input, bool) {
-	if b.MaxInputBytes <= 0 {
-		return lst, false
-	}
-	sum := int64(0)
-	for i := range lst {
-		sum += lst[i].Size
-		// always accept the first object, even
-		// if it is larger than MaxInputBytes, just
-		// to guarantee that we make forward progress
-		if sum >= b.MaxInputBytes && i > 0 {
-			b.logf("constraining input to %d of %d items", i, len(lst))
-			tail := lst[i:]
-			for j := range tail {
-				tail[j].R.Close()
-			}
-			return lst[:i], true
-		}
-	}
-	return lst, false
-}
-
 // determine if the most-recently-produced packed*.ion.zst
 // is below the minimum merge size; if it is, then pop
 // it off the end of idx.Inline and add the old (to-be-unreferenced)
@@ -258,35 +228,6 @@ func (b *Builder) popPrepend(idx *blockfmt.Index) *blockfmt.Descriptor {
 
 func nextID(idx *blockfmt.Index) int {
 	return len(idx.Inline) + idx.Indirect.Objects()
-}
-
-// if 'lst' consists of a superset of the contents of idx,
-// then filter out all the members of lst that are already
-// present and return the trimmed list of inputs
-func (b *Builder) isAppend(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, bool) {
-	prepend := b.popPrepend(idx)
-	descID := nextID(idx)
-	var kept []blockfmt.Input
-	for i := range lst {
-		ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)
-		if err != nil {
-			if !errors.Is(err, blockfmt.ErrETagChanged) {
-				b.logf("blockfmt.FileTree.Append: %s", err)
-			}
-			// FIXME: handle ErrETagChanged
-			// differently from an I/O error
-			return nil, nil, false
-		}
-		if ret {
-			kept = append(kept, lst[i])
-		} else {
-			lst[i].R.Close()
-		}
-	}
-	if len(kept) == 0 {
-		return nil, nil, true
-	}
-	return prepend, kept, true
 }
 
 func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, error) {
@@ -360,7 +301,7 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) err
 			if err != nil {
 				return err
 			}
-			_, err = st.scan(def, idx)
+			_, err = st.scan(def, idx, true)
 			if err != nil {
 				return err
 			}
@@ -388,7 +329,7 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) err
 			Name: table,
 			Algo: "zstd",
 		}
-		_, err = st.scan(def, idx)
+		_, err = st.scan(def, idx, true)
 		if err != nil {
 			return err
 		}
@@ -404,8 +345,7 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) err
 	return st.append(nil, prepend, lst)
 }
 
-func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, tail []blockfmt.Input) error {
-	lst, partial := st.conf.maxTrim(tail)
+func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input) error {
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
 	if len(lst) == 0 {
@@ -415,10 +355,6 @@ func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, 
 	}
 	if err != nil {
 		return fmt.Errorf("force: %w", err)
-	}
-	if partial {
-		st.conf.logf("update of table %s partially complete", st.table)
-		return ErrBuildAgain
 	}
 	st.conf.logf("update of table %s complete", st.table)
 	return nil
@@ -451,43 +387,48 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 			// continue
 		}
 	}
-
 	syncTable := func(table string) error {
 		st, err := b.open(db, table, who)
 		if err != nil {
 			return err
 		}
-		s, err := st.def()
+		def, err := st.def()
 		if err != nil {
 			return err
 		}
-		lst, err := s.resolve(b, who)
+		fresh := false
+		idx, err := st.index()
 		if err != nil {
-			b.logf("resolving inputs for %s: %s", table, err)
-			return fmt.Errorf("resolving table %s: %w", table, err)
-		}
-		if len(lst) == 0 {
-			b.logf("warning: table %s is empty", table)
-		}
-		if !b.Force {
-			idx, err := st.index()
-			if err == nil && idx.Name == table {
-				idx.Inputs.Backing = st.ofs
-				st.preciseGC(idx)
-				prepend, tail, ok := b.isAppend(idx, lst)
-				if ok {
-					if len(tail) == 0 {
-						b.logf("table %s up-to-date", table)
-						return nil
-					}
-					return st.append(idx, prepend, tail)
+			// if the index isn't present
+			// or is out-of-date, create a new one
+			if shouldRebuild(err) {
+				fresh = true
+				idx = &blockfmt.Index{
+					Name: table,
+					Algo: "zstd",
 				}
-			}
-			if !shouldRebuild(err) {
+			} else {
 				return err
 			}
+		} else {
+			st.preciseGC(idx)
 		}
-		return st.append(nil, nil, lst)
+		restart := false
+		if !idx.Scanning {
+			idx.Cursors = nil
+			restart = true
+		}
+		// we flush the new index on termination
+		// if it is a) a new index file, or
+		// b) it was already in the scanning state
+		_, err = st.scan(def, idx, fresh || !restart)
+		if err != nil {
+			return err
+		}
+		if idx.Scanning {
+			return ErrBuildAgain
+		}
+		return nil
 	}
 	errlist := make([]error, len(tables))
 	var wg sync.WaitGroup
