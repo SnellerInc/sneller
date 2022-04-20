@@ -116,6 +116,8 @@ const (
 	hintNoIndex
 )
 
+// Hint represents a structure containing type-hints and/or other flags to be used
+// by the json parser. See ParseHint for further information.
 type Hint struct {
 	parent              *Hint
 	hints               hints
@@ -124,6 +126,35 @@ type Hint struct {
 	wildcard            *Hint
 }
 
+// The ParseHint function parses a json byte array to a Hint structure which can
+// later be used to pass type-hints and/or other flags to the json parser.
+//
+// The input must contain a valid json object with the individual rules:
+//
+//   {
+// 	   "path.to.value.a": "hint",
+// 	   "path.to.value.b": ["hint_a", "hint_b"]
+//   }
+//
+// The precedence of overlapping rules is determined by the order in which the rules
+// are written.
+//
+// The '?'/'[?]' wildcard can be used to match all keys of the current level.
+//
+// The '*'/'[*]' wildcard can be used to match all keys of the current level and all following
+// levels. Must be the last segment in the path.
+//
+// Supported actions:
+// 	 - `ignore` -> do not parse this property
+// 	 - `no_index` -> do not add this property to the sparse index
+//
+// Supported hints:
+//   - string
+//   - number -> either float or int
+//   - int
+//   - bool
+//   - datetime -> RFC3339Nano
+//   - unix_seconds
 func ParseHint(rules []byte) (*Hint, error) {
 	var obj map[string]interface{}
 	err := json.Unmarshal(rules, &obj)
@@ -280,6 +311,10 @@ func (n *Hint) encodeRuleString(path string, hints hints) error {
 
 func (n *Hint) encodeRule(path []string, hints hints) error {
 	segment := path[0]
+
+	if segment == "" {
+		return errors.New("empty path")
+	}
 
 	if segment == "[*]" {
 		segment = "*"

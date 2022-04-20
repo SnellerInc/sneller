@@ -84,3 +84,123 @@ func FuzzConvert(f *testing.F) {
 		Convert(in, &cn, nil)
 	})
 }
+
+func FuzzConvertWithHints(f *testing.F) {
+	objs := []struct {
+		input string
+		hints string
+	}{
+		{
+			input: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
+			hints: ``,
+		},
+		{
+			input: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
+			hints: `{"*": "ignore"}`,
+		},
+		{
+			input: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
+			hints: `{"foo": "int", "quux": "number", "exp2": "number", "*": "ignore"}`,
+		},
+		{
+			input: `{"foo": -300, "bar": { "sub": "test", "sub3": { "inner": "i", "sub2": [1, 2, 3] }, "sub4": "123" }, "baz": 3.141}`,
+			hints: `{"foo": "int", "bar.sub": "string", "bar.sub4": "string", "baz": "number", "*": "ignore"}`,
+		},
+		{
+			input: `{"value": "2019-07-26T00:00:00"}`,
+			hints: `{"value": "datetime"}`,
+		},
+		{
+			input: `{"value": 1634054285}`,
+			hints: `{"value": "unix_seconds"}`,
+		},
+		{
+			input: `{"value": 1337}`,
+			hints: `{"value": "string"}`,
+		},
+
+		// Test explicit ignore
+		{
+			input: `{"a": 0, "b": 1, "c": 2}`,
+			hints: `{"b": "ignore"}`,
+		},
+
+		// Test nesting
+		{
+			input: `{"a": {"b": { "c": 0 }}, "c": {"b": { "a": 1 }}}`,
+			hints: `{"a.*": "int", "*": "ignore"}`,
+		},
+
+		// Test "first wins"
+		{
+			input: `{"a": { "b": { "%": { "d": "0" } }, "%": { "%": { "d": "0" } } }}`,
+			hints: `{"a.?.?.d": "int", "a.b.?.d": "string"}`,
+		},
+		{
+			input: `{"a": { "b": { "%": { "d": "0" } }, "%": { "%": { "d": "0" } } }}`,
+			hints: `{"a.b.?.d": "string", "a.?.?.d": "int"}`,
+		},
+
+		// Test wildcards
+		{
+			input: `{"a": "0", "%": "1"}`,
+			hints: `{"a": "string", "?": "int"}`,
+		},
+		{
+			input: `{"a": "0", "%": { "%": "1" }}`,
+			hints: `{"a": "string", "?": "int"}`,
+		},
+		{
+			input: `{"a": "0", "%": { "%": "1" }}`,
+			hints: `{"a": "string", "*": "int"}`,
+		},
+
+		// Test arrays
+		{
+			input: `{"a": "0", "b": ["1", {"c": "2"}], "c": 1}`,
+			hints: `{"a": "string", "b.[?]": "int"}`,
+		},
+		{
+			input: `{"a": "0", "b": ["1", {"c": "2"}], "c": 1}`,
+			hints: `{"a": "string", "b.[*]": "int"}`,
+		},
+		{
+			input: `{"a": "0", "b": ["1", {"c": "2"}], "c": 1}`,
+			hints: `{"a": "string", "b.[?].c": "int"}`,
+		},
+		{
+			input: `{"a": "0", "%": ["1"], "c": "1"}`,
+			hints: `{"a": "string", "*": "int"}`,
+		},
+		{
+			input: `{"a": "0", "%": [{ "%": "1" }], "c": "1"}`,
+			hints: `{"a": "string", "?.[?].?": "int"}`,
+		},
+		{
+			input: `{"a": "0", "%": [{ "%": "1" }], "c": "1"}`,
+			hints: `{"a": "string", "?.[*]": "int"}`,
+		},
+		{
+			input: `{"a": "0", "%": [{ "%": "1" }], "c": "1"}`,
+			hints: `{"a": "string", "*": "int"}`,
+		},
+		{
+			input: `{"a": [{ "%": "1" }], "b": [{ "%": "2" }]}`,
+			hints: `{"a.[*]": "int", "*": "ignore"}`,
+		},
+	}
+
+	for i := range objs {
+		f.Add([]byte(objs[i].input), []byte(objs[i].hints))
+	}
+	// confirm no crashes from adversarial input
+	f.Fuzz(func(t *testing.T, input []byte, hints []byte) {
+		cn := ion.Chunker{W: io.Discard, Align: 2048}
+		in := bytes.NewReader(input)
+		h, err := ParseHint(hints)
+		if err != nil {
+			return
+		}
+		Convert(in, &cn, h)
+	})
+}

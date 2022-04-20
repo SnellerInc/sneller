@@ -35,7 +35,7 @@ type RowFormat interface {
 	// Name is the name of the format
 	// that will be included in an index description.
 	Name() string
-	SetSchema(schema []byte) error
+	UseHints(schema []byte) error
 }
 
 // Input is a combination of
@@ -96,7 +96,7 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 	return err
 }
 
-func (j *jsonConverter) SetSchema(hints []byte) error {
+func (j *jsonConverter) UseHints(hints []byte) error {
 	s, err := jsonrl.ParseHint(hints)
 	if err != nil {
 		return err
@@ -117,7 +117,7 @@ func (i ionConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 	return nil
 }
 
-func (i ionConverter) SetSchema(schema []byte) error {
+func (i ionConverter) UseHints(schema []byte) error {
 	return nil
 }
 

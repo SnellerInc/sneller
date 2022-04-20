@@ -421,7 +421,7 @@ func BenchmarkTranslate(b *testing.B) {
 	}
 }
 
-func BenchmarkTranslateWithSchema(b *testing.B) {
+func BenchmarkTranslateWithHints(b *testing.B) {
 	objs := []struct {
 		input string
 		hints string
