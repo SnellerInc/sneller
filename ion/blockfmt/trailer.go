@@ -154,78 +154,22 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func countList(body []byte) (int, error) {
-	if ion.TypeOf(body) != ion.ListType {
-		return 0, fmt.Errorf("expected a list; found ion type %s", ion.TypeOf(body))
-	}
-	body, _ = ion.Contents(body)
-	if body == nil {
-		return 0, fmt.Errorf("unpacking ion list: invalid encoding")
-	}
 	n := 0
-	for len(body) > 0 {
-		next := ion.SizeOf(body)
-		if next <= 0 || next > len(body) {
-			return n, fmt.Errorf("object size %d exceeds buffer size %d", next, len(body))
-		}
+	err := unpackList(body, func([]byte) error {
 		n++
-		body = body[next:]
-	}
-	return n, nil
+		return nil
+	})
+	return n, err
 }
 
 func unpackList(body []byte, fn func(field []byte) error) error {
-	if ion.TypeOf(body) != ion.ListType {
-		return fmt.Errorf("expected a list; found ion type %s", ion.TypeOf(body))
-	}
-	body, _ = ion.Contents(body)
-	if body == nil {
-		return fmt.Errorf("unpacking ion list: invalid encoding")
-	}
-	for len(body) > 0 {
-		next := ion.SizeOf(body)
-		if next <= 0 || next > len(body) {
-			return fmt.Errorf("object size %d exceeds buffer size %d", next, len(body))
-		}
-		err := fn(body[:next])
-		if err != nil {
-			return err
-		}
-		body = body[next:]
-	}
-	return nil
+	_, err := ion.UnpackList(body, fn)
+	return err
 }
 
 func unpackStruct(st *ion.Symtab, body []byte, fn func(name string, field []byte) error) error {
-	if ion.TypeOf(body) != ion.StructType {
-		return fmt.Errorf("expected a struct; found ion type %s", ion.TypeOf(body))
-	}
-	body, _ = ion.Contents(body)
-	if body == nil {
-		return fmt.Errorf("unpacking ion list: invalid encoding")
-	}
-	var sym ion.Symbol
-	var name string
-	var err error
-	for len(body) > 0 {
-		sym, body, err = ion.ReadLabel(body)
-		if err != nil {
-			return err
-		}
-		name = st.Get(sym)
-		if name == "" {
-			return fmt.Errorf("symbol %d not in symbol table", sym)
-		}
-		next := ion.SizeOf(body)
-		if next <= 0 || next > len(body) {
-			return fmt.Errorf("next object size %d exceeds buffer size %d", next, len(body))
-		}
-		err = fn(name, body[:next])
-		if err != nil {
-			return err
-		}
-		body = body[next:]
-	}
-	return nil
+	_, err := ion.UnpackStruct(st, body, fn)
+	return err
 }
 
 // A TrailerDecoder can be used to decode multiple

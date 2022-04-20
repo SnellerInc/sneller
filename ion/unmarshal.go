@@ -686,3 +686,61 @@ func ReadAnnotation(buf []byte) (Symbol, []byte, []byte, error) {
 	}
 	return Symbol(first), contents, rest, nil
 }
+
+// UnpackList calls fn for each item in a list,
+// returning the remaining bytes.
+func UnpackList(body []byte, fn func([]byte) error) (rest []byte, err error) {
+	if TypeOf(body) != ListType {
+		return body, fmt.Errorf("expected a list; found ion type %s", TypeOf(body))
+	}
+	body, rest = Contents(body)
+	if body == nil {
+		return rest, fmt.Errorf("invalid list encoding")
+	}
+	for len(body) > 0 {
+		next := SizeOf(body)
+		if next <= 0 || next > len(body) {
+			return rest, fmt.Errorf("object size %d exceeds buffer size %d", next, len(body))
+		}
+		err := fn(body[:next])
+		if err != nil {
+			return rest, err
+		}
+		body = body[next:]
+	}
+	return rest, nil
+}
+
+// UnpackStruct calls fn for each field in a struct,
+// returning the remaining bytes.
+func UnpackStruct(st *Symtab, body []byte, fn func(string, []byte) error) (rest []byte, err error) {
+	if TypeOf(body) != StructType {
+		return body, fmt.Errorf("expected a struct; found ion type %s", TypeOf(body))
+	}
+	body, rest = Contents(body)
+	if body == nil {
+		return rest, fmt.Errorf("invalid struct encoding")
+	}
+	var sym Symbol
+	var name string
+	for len(body) > 0 {
+		sym, body, err = ReadLabel(body)
+		if err != nil {
+			return rest, err
+		}
+		name = st.Get(sym)
+		if name == "" {
+			return rest, fmt.Errorf("symbol %d not in symbol table", sym)
+		}
+		next := SizeOf(body)
+		if next <= 0 || next > len(body) {
+			return rest, fmt.Errorf("next object size %d exceeds buffer size %d", next, len(body))
+		}
+		err = fn(name, body[:next])
+		if err != nil {
+			return rest, err
+		}
+		body = body[next:]
+	}
+	return rest, nil
+}

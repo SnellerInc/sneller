@@ -1205,14 +1205,14 @@ func (m *Member) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "arg":
 		m.Arg, _, err = Decode(st, body)
 	case "values":
-		err = unpackList(body, func(arg []byte) error {
+		_, err = ion.UnpackList(body, func(arg []byte) error {
 			v, _, err := Decode(st, arg)
 			if err != nil {
 				return err
 			}
 			c, ok := v.(Constant)
 			if !ok {
-				return fmt.Errorf("decoding MEMBER: %T not a constant", v)
+				return fmt.Errorf("%T not a constant", v)
 			}
 			m.Values = append(m.Values, c)
 			return nil
@@ -2422,33 +2422,16 @@ func (c *Case) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func unpackList(lst []byte, fieldfn func([]byte) error) error {
-	if ion.TypeOf(lst) != ion.ListType {
-		return fmt.Errorf("expected a list; found ion type %s", ion.TypeOf(lst))
-	}
-	lst, _ = ion.Contents(lst)
-	if lst == nil {
-		return fmt.Errorf("invalid ion list encoding")
-	}
-	for len(lst) > 0 {
-		err := fieldfn(lst)
-		if err != nil {
-			return err
-		}
-		lst = lst[ion.SizeOf(lst):]
-	}
-	return nil
-}
-
 func (c *Case) setfield(name string, st *ion.Symtab, body []byte) error {
+	var err error
 	switch name {
 	case "limbs":
-		return unpackList(body, func(field []byte) error {
+		_, err = ion.UnpackList(body, func(field []byte) error {
 			var when, then Node
 			var err error
 			body, _ := ion.Contents(field)
 			if body == nil {
-				return fmt.Errorf("decoding Case limbs: invalid contents")
+				return fmt.Errorf("invalid contents")
 			}
 			when, body, err = Decode(st, body)
 			if err != nil {
@@ -2462,19 +2445,11 @@ func (c *Case) setfield(name string, st *ion.Symtab, body []byte) error {
 			return nil
 		})
 	case "else":
-		n, _, err := Decode(st, body)
-		if err != nil {
-			return err
-		}
-		c.Else = n
+		c.Else, _, err = Decode(st, body)
 	case "valence":
-		v, _, err := ion.ReadString(body)
-		if err != nil {
-			return err
-		}
-		c.Valence = v
+		c.Valence, _, err = ion.ReadString(body)
 	}
-	return nil
+	return err
 }
 
 // Coalesce turns COALESCE(args...)

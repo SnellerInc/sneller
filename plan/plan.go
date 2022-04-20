@@ -576,20 +576,8 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 func unpackList(buf []byte, inner func([]byte) error) error {
-	if ion.TypeOf(buf) != ion.ListType {
-		return fmt.Errorf("expected a list; got %s", ion.TypeOf(buf))
-	}
-	mem, _ := ion.Contents(buf)
-	if mem == nil {
-		return fmt.Errorf("invalid list TLV bytes")
-	}
-	for len(mem) > 0 {
-		if err := inner(mem); err != nil {
-			return err
-		}
-		mem = mem[ion.SizeOf(mem):]
-	}
-	return nil
+	_, err := ion.UnpackList(buf, inner)
+	return err
 }
 
 func nonemptyList(buf []byte) ([]byte, error) {
@@ -598,7 +586,7 @@ func nonemptyList(buf []byte) ([]byte, error) {
 	}
 	buf, _ = ion.Contents(buf)
 	if len(buf) == 0 {
-		return nil, fmt.Errorf("corruped list length")
+		return nil, fmt.Errorf("corrupted list length")
 	}
 	return buf, nil
 }

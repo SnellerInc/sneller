@@ -665,104 +665,78 @@ func (s *Select) HasQueryLimit() bool {
 
 func decodeOrder(st *ion.Symtab, body []byte) ([]Order, error) {
 	var out []Order
-	if ion.TypeOf(body) != ion.ListType {
-		return nil, fmt.Errorf("expr.DecodeBindings: encoded not a list")
-	}
-	desc, _ := st.Symbolize("desc")
-	nl, _ := st.Symbolize("nulls_last")
-	col, ok := st.Symbolize("col")
-	if !ok {
-		return nil, fmt.Errorf("binding for 'col' not present")
-	}
-	body, _ = ion.Contents(body)
-	for len(body) > 0 {
-		if ion.TypeOf(body) != ion.StructType {
-			return nil, fmt.Errorf("unexpected ion type %v in binding list", ion.TypeOf(body))
-		}
-		inner, _ := ion.Contents(body)
-		var err error
-		var lbl ion.Symbol
-		out = append(out, Order{})
-		setexpr := false
-		for len(inner) > 0 {
-			bits := inner
-			if len(bits) > 4 {
-				bits = bits[:4]
-			}
-			lbl, inner, err = ion.ReadLabel(inner)
-			if err != nil {
-				return nil, fmt.Errorf("decoding expr.Order label %d %b %w", len(out), bits, err)
-			}
-			switch lbl {
-			case col:
-				out[len(out)-1].Column, inner, err = Decode(st, inner)
-				setexpr = true
-			case desc:
-				out[len(out)-1].Desc, inner, err = ion.ReadBool(inner)
-			case nl:
-				out[len(out)-1.].NullsLast, inner, err = ion.ReadBool(inner)
-			default:
-				inner = inner[ion.SizeOf(inner):]
+	_, err := ion.UnpackList(body, func(body []byte) error {
+		var o Order
+		_, err := ion.UnpackStruct(st, body, func(name string, inner []byte) error {
+			var err error
+			switch name {
+			case "col":
+				o.Column, _, err = Decode(st, inner)
+			case "desc":
+				o.Desc, _, err = ion.ReadBool(inner)
+			case "nulls_last":
+				o.NullsLast, _, err = ion.ReadBool(inner)
 			}
 			if err != nil {
-				return nil, fmt.Errorf("decoding field %s: %w", st.Get(lbl), err)
+				return fmt.Errorf("decoding field %s: %w", name, err)
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		if !setexpr {
-			return nil, fmt.Errorf("order element missing 'column' field")
+		if o.Column == nil {
+			return fmt.Errorf("order element missing 'column' field")
 		}
-		body = body[ion.SizeOf(body):]
+		out = append(out, o)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
 	return out, nil
 }
 
 func DecodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
-	var out []Binding
-	if ion.TypeOf(body) != ion.ListType {
-		return nil, fmt.Errorf("expr.DecodeBindings: encoded not a list")
+	b, err := decodeBindings(st, body)
+	if err != nil {
+		err = fmt.Errorf("expr.DecodeBindings: %w", err)
 	}
-	exprl, ok := st.Symbolize("expr")
-	bindl, _ := st.Symbolize("bind")
-	if !ok {
-		return nil, fmt.Errorf("binding for 'expr' not present")
-	}
+	return b, err
+}
 
-	body, _ = ion.Contents(body)
-	for len(body) > 0 {
-		if ion.TypeOf(body) != ion.StructType {
-			return nil, fmt.Errorf("unexpected ion type %v in binding list", ion.TypeOf(body))
-		}
-		inner, _ := ion.Contents(body)
-		var err error
-		var lbl ion.Symbol
-		out = append(out, Binding{})
-		setexpr := false
-		for len(inner) > 0 {
-			lbl, inner, err = ion.ReadLabel(inner)
-			if err != nil {
-				return nil, err
-			}
-			switch lbl {
-			case exprl:
-				out[len(out)-1].Expr, inner, err = Decode(st, inner)
+func decodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
+	var out []Binding
+	_, err := ion.UnpackList(body, func(body []byte) error {
+		var b Binding
+		_, err := ion.UnpackStruct(st, body, func(name string, inner []byte) error {
+			switch name {
+			case "expr":
+				exp, _, err := Decode(st, inner)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				setexpr = true
-			case bindl:
-				var str string
-				str, inner, err = ion.ReadString(inner)
+				b.Expr = exp
+			case "bind":
+				str, _, err := ion.ReadString(inner)
 				if err != nil {
-					return nil, err
+					return err
 				}
-				out[len(out)-1].As(str)
+				b.As(str)
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
-		if !setexpr {
-			return nil, fmt.Errorf("binding element missing 'expr' field")
+		if b.Expr == nil {
+			return fmt.Errorf("binding element missing 'expr' field")
 		}
-		body = body[ion.SizeOf(body):]
+		out = append(out, b)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -771,7 +745,7 @@ func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
 	switch name {
 	case "cols":
-		s.Columns, err = DecodeBindings(st, body)
+		s.Columns, err = decodeBindings(st, body)
 	case "from":
 		var e Node
 		e, _, err = Decode(st, body)
@@ -788,7 +762,7 @@ func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "having":
 		s.Having, _, err = Decode(st, body)
 	case "group_by":
-		s.GroupBy, err = DecodeBindings(st, body)
+		s.GroupBy, err = decodeBindings(st, body)
 	case "order_by":
 		s.OrderBy, err = decodeOrder(st, body)
 	case "distinct":

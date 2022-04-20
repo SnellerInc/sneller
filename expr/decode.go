@@ -22,8 +22,16 @@ import (
 )
 
 func Decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
+	node, rest, err := decode(st, msg)
+	if err != nil {
+		err = fmt.Errorf("expr.Decode: %w", err)
+	}
+	return node, rest, err
+}
+
+func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 	if len(msg) == 0 {
-		return nil, nil, fmt.Errorf("expr.Decode: no input data")
+		return nil, nil, fmt.Errorf("no input data")
 	}
 	switch ion.TypeOf(msg) {
 	case ion.NullType:
@@ -52,68 +60,39 @@ func Decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 		if len(msg) > 8 {
 			msg = msg[:8]
 		}
-		return nil, nil, fmt.Errorf("expr.Decode: cannot decode ion %x", msg)
+		return nil, nil, fmt.Errorf("cannot decode ion %x", msg)
 	}
 }
 
 func decodeStruct(st *ion.Symtab, msg []byte) (Node, []byte, error) {
-	typel, ok := st.Symbolize("type")
-	if !ok {
-		return nil, nil, fmt.Errorf("expr.Decode: symbol table doesn't have \"type\"")
-	}
-	contents, rest := ion.Contents(msg)
-
-	body := contents
-	var err error
-	var lbl ion.Symbol
-	for len(body) > 0 {
-		lbl, body, err = ion.ReadLabel(body)
+	var node composite
+	rest, err := ion.UnpackStruct(st, msg, func(name string, field []byte) error {
+		if node != nil {
+			return node.setfield(name, st, field)
+		}
+		// expect the type field to be the
+		// first field in the struct
+		if name != "type" {
+			return fmt.Errorf("missing type field, found %q", name)
+		}
+		sym, _, err := ion.ReadSymbol(field)
 		if err != nil {
-			return nil, nil, fmt.Errorf("expr.Decode: %w", err)
+			return fmt.Errorf("reading \"type\": %w", err)
 		}
-		if lbl == typel {
-			sym, _, err := ion.ReadSymbol(body)
-			if err != nil {
-				return nil, nil, fmt.Errorf("expr.Decode: reading \"type\": %w", err)
-			}
-			str := st.Get(sym)
-			if str == "" {
-				return nil, nil, fmt.Errorf("expr.Decode: symbol %d not in symbol table", sym)
-			}
-			empty := getEmpty(str)
-			if empty == nil {
-				return nil, nil, fmt.Errorf("expr.Decode: unknown structure %q", str)
-			}
-			err = decodeinto(empty, st, contents)
-			if err != nil {
-				return nil, rest, fmt.Errorf("reading into %T: %w", empty, err)
-			}
-			return empty, rest, nil
-		}
-		body = body[ion.SizeOf(body):]
-	}
-	return nil, rest, fmt.Errorf("expr.Decode: unrecognized structure %x", msg)
-}
-
-func decodeinto(dst composite, st *ion.Symtab, src []byte) error {
-	var err error
-	var lbl ion.Symbol
-	for len(src) > 0 {
-		lbl, src, err = ion.ReadLabel(src)
-		if err != nil {
-			return err
-		}
-		str := st.Get(lbl)
+		str := st.Get(sym)
 		if str == "" {
-			return fmt.Errorf("expr.Decode: symbol %d not valid", lbl)
+			return fmt.Errorf("symbol %d not in symbol table", sym)
 		}
-		err = dst.setfield(str, st, src)
-		if err != nil {
-			return err
+		node = getEmpty(str)
+		if node == nil {
+			return fmt.Errorf("unknown structure %q", str)
 		}
-		src = src[ion.SizeOf(src):]
+		return nil
+	})
+	if node == nil {
+		err = fmt.Errorf("missing type field")
 	}
-	return nil
+	return node, rest, err
 }
 
 type composite interface {
