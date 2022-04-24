@@ -103,6 +103,10 @@ func TestBuildError(t *testing.T) {
 			input:  `select xthree+ythree from (select xtwo as xthree, ytwo as ythree from (select x as xtwo, y as ytwo from table))`,
 			rx:     `ill-typed`,
 		},
+		{
+			input: `select x, y, z from foo order by x`,
+			rx:    "unlimited cardinality",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
@@ -543,17 +547,21 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			},
 		},
 		{
-			input: `select x, y, z from t order by x`,
+			input: `select x, y, z from t order by x LIMIT 9999`,
 			expect: []string{
 				"ITERATE t",
 				"PROJECT x AS x, y AS y, z AS z",
 				"ORDER BY x ASC NULLS FIRST",
+				"LIMIT 9999",
 			},
 			split: []string{
 				"UNION MAP t (",
 				"	ITERATE PART t",
-				"	PROJECT x AS x, y AS y, z AS z)",
+				"	PROJECT x AS x, y AS y, z AS z",
+				"	ORDER BY x ASC NULLS FIRST",
+				"	LIMIT 9999)",
 				"ORDER BY x ASC NULLS FIRST",
+				"LIMIT 9999",
 			},
 		},
 		{

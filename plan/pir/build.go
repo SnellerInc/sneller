@@ -149,7 +149,15 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 		}
 	}
 	if sel, ok := body.(*expr.Select); ok {
-		return build(nil, sel, e)
+		t, err := build(nil, sel, e)
+		if err != nil {
+			return nil, err
+		}
+		err = postcheck(t)
+		if err != nil {
+			return nil, err
+		}
+		return t, nil
 	}
 	// TODO: body can be UNION ALL, UNION, etc.
 	return nil, errorf(body, "cannot pir.Build %T", body)

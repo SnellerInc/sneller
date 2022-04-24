@@ -4,6 +4,7 @@ FROM
   input
 ORDER BY
   name
+LIMIT 1000
 ---
 {"country": "NL", "name": "Amsterdam", "lat": 52.37403, "lon": 4.88969, "precision": 1}
 {"country": "GR", "name": "Athens", "lat": 37.97945, "lon": 23.71622, "precision": 2}

@@ -47,3 +47,16 @@ func (v *vRegLayout) items() int { return 16 }
 func (v *vRegLayout) item(i int) vmref {
 	return vmref{v.offsets[i], v.sizes[i]}
 }
+
+// getdelim produces the delimiter associated
+// with a particular field in a particular
+// record returned by bcfind() based on the
+// record and field indices and the number
+// of fields produced by bcfind
+func getdelim(out []vRegLayout, record, field, nfields int) vmref {
+	// each group of nfields registers corresponds to 16 records
+	blk := (nfields * (record / 16)) + field
+	// with in each register, lanes are 1:1
+	lane := (record & 15)
+	return out[blk].item(lane)
+}

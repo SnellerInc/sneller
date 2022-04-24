@@ -264,9 +264,6 @@ func (s *Order) finalizeKtop() error {
 	}
 	slice := tmp.Size()
 	globalst.Marshal(&tmp, true)
-	if tmp.Size() > PageSize {
-		return fmt.Errorf("size %d > PageSize", tmp.Size())
-	}
 	out := make([]byte, tmp.Size())
 	pre := copy(out, tmp.Bytes()[slice:])
 	copy(out[pre:], tmp.Bytes()[:slice])
@@ -580,23 +577,19 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 	}
 
 	// split input data into separate records
-	blockID := 0
 	columnCount := len(s.parent.columns)
 
 	var record sort.IonRecord
 	record.SymtabID = len(s.symtabs) - 1
 
 	for rowID := 0; rowID < len(delims); rowID++ {
-		laneID := rowID & bcLaneCountMask
-
 		// extract the record data
 		bytes := delims[rowID].mem()
 
 		// calculate space for boxed values
 		record.Boxed = 0
 		for columnID := 0; columnID < columnCount; columnID++ {
-			fieldSize := fieldsView[blockID].sizes[laneID]
-			record.Boxed += fieldSize
+			record.Boxed += getdelim(fieldsView, rowID, columnID, columnCount)[1]
 		}
 
 		// grow byte buffer when necessary
@@ -613,7 +606,7 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 		// copy field delimiters and boxed values (if any)
 		boxedOffset := 0
 		for columnID := 0; columnID < columnCount; columnID++ {
-			it := fieldsView[blockID].item(laneID)
+			it := getdelim(fieldsView, rowID, columnID, columnCount)
 			size := it.size()
 			s.fields[columnID][0] = uint32(boxedOffset)
 			s.fields[columnID][1] = uint32(size)
@@ -627,10 +620,6 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 		// when record is added, its data is being copied
 		if s.ktop.Add(&record) {
 			s.captures++
-		}
-
-		if laneID == bcLaneCountMask {
-			blockID += 1
 		}
 	}
 

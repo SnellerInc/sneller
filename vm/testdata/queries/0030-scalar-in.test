@@ -11,6 +11,7 @@ WHERE tag IN
          ORDER BY COUNT(tag) DESC
          LIMIT 2))
 ORDER BY label
+LIMIT 1000
 ---
 {"label": "x", "tag": "tag0"}
 {"label": "y", "tag": "tag1"}

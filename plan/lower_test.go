@@ -30,11 +30,11 @@ func TestLoweringErrors(t *testing.T) {
 		disabled bool
 	}{
 		{
-			query: `select * from 'parking.10n' order by name asc, name desc`,
+			query: `select * from 'parking.10n' order by name asc, name desc limit 100`,
 			msg:   `duplicate order by expression "name"`,
 		},
 		{
-			query: `select * from 'parking.10n' order by size * coef asc, size * coef desc`,
+			query: `select * from 'parking.10n' order by size * coef asc, size * coef desc limit 100`,
 			msg:   `duplicate order by expression "size * coef"`,
 		},
 	}

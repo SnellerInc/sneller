@@ -984,7 +984,7 @@ from 'parking.10n' limit 1`,
 			// test simple ORDER BY clause (IssueTime forces order of rows Make="CHEV")
 			query: `select Ticket, IssueTime, Make from 'parking.10n'
                        where ViolationCode like '80.69A+'
-                       order by Make desc, IssueTime`,
+                       order by Make desc, IssueTime LIMIT 10`,
 			expectedRows: []string{
 				`{"Ticket": 4272473866, "IssueTime": 1510, "Make": "TOYT"}`,
 				`{"Ticket": 4272349266, "IssueTime": 1615, "Make": "NISS"}`,
@@ -1032,7 +1032,7 @@ where Make in (
 			// test ORDER BY an experession and field
 			query: `select Ticket, IssueTime, Make from 'parking.10n'
                        where ViolationCode like '80.69A+'
-                       order by Make desc, -1*IssueTime`,
+                       order by Make desc, -1*IssueTime LIMIT 6`,
 			expectedRows: []string{
 				`{"Ticket": 4272473866, "IssueTime": 1510, "Make": "TOYT"}`,
 				`{"Ticket": 4272349266, "IssueTime": 1615, "Make": "NISS"}`,
