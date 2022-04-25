@@ -27,6 +27,9 @@ type readerTable struct {
 	src io.ReaderAt
 	clo io.Closer
 
+	// if mmap is available, then buf
+	buf []byte
+
 	block int64
 }
 
@@ -62,7 +65,12 @@ func (f *readerTable) write(dst io.Writer) error {
 		d.Trailer = nt
 		pos := nt.Blocks[0].Offset
 		end := nt.Offset
-		if rr, ok := f.src.(rangeReader); ok {
+		if f.buf != nil {
+			_, err := d.CopyBytes(dst, f.buf[pos:end])
+			if err != nil {
+				return err
+			}
+		} else if rr, ok := f.src.(rangeReader); ok {
 			src, err := rr.RangeReader(pos, end-pos)
 			if err != nil {
 				return err
@@ -84,6 +92,12 @@ func (f *readerTable) write(dst io.Writer) error {
 }
 
 func (f *readerTable) WriteChunks(dst vm.QuerySink, parallel int) error {
+	if !dashnommap {
+		if buf, ok := mmap(f.src, f.t.Offset); ok {
+			f.buf = buf
+			defer unmap(f.buf)
+		}
+	}
 	err := vm.SplitInput(dst, parallel, f.write)
 	if f.clo != nil {
 		f.clo.Close()

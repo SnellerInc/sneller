@@ -40,6 +40,7 @@ var (
 	dashg       bool
 	dasho       string
 	dashi       string
+	dashnommap  bool
 	printTime   bool
 	printAllocs bool
 
@@ -56,8 +57,7 @@ func init() {
 	flag.StringVar(&dashi, "i", "-", "file named stdin (default is stdin)")
 	flag.BoolVar(&printTime, "t", false, "print execution time on stderr")
 	flag.BoolVar(&printAllocs, "A", false, "print allocations stats on stderr")
-	// mmap(2) is often slower than just some calls to pread(2), so
-	// make mmap opt-in rather than opt-out
+	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files when possible")
 }
 
 type memStats struct {
