@@ -57,6 +57,7 @@ func Parse(in []byte) (*expr.Query, error) {
 	}
 	return &expr.Query{
 		With: s.with,
+		Into: s.into,
 		Body: s.result,
 	}, nil
 }

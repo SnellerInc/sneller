@@ -41,7 +41,11 @@ func (c *CTE) Equals(other *CTE) bool {
 // Query contains a complete query.
 type Query struct {
 	With []CTE
-
+	// Into, if non-nil, is the INTO
+	// portion of Body when Body is
+	// a SELECT-FROM-WHERE that includes
+	// an INTO clause.
+	Into Node
 	// Body is the body of the query.
 	// Body can be:
 	//   - A SELECT expression
@@ -76,7 +80,7 @@ func (q *Query) text(dst *strings.Builder, redact bool) {
 	}
 	if s, ok := q.Body.(*Select); ok {
 		// do not parenthesize final SELECT
-		s.write(dst, redact)
+		s.write(dst, redact, q.Into)
 	} else {
 		q.Body.text(dst, redact)
 	}

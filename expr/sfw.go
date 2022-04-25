@@ -579,7 +579,7 @@ func fmtbinding(lst []Binding, dst *strings.Builder, redact bool) {
 
 func (s *Select) text(out *strings.Builder, redact bool) {
 	out.WriteByte('(')
-	s.write(out, redact)
+	s.write(out, redact, nil)
 	out.WriteByte(')')
 }
 
@@ -588,16 +588,20 @@ func (s *Select) text(out *strings.Builder, redact bool) {
 // the query.
 func (s *Select) Text() string {
 	var out strings.Builder
-	s.write(&out, false)
+	s.write(&out, false, nil)
 	return out.String()
 }
 
-func (s *Select) write(out *strings.Builder, redact bool) {
+func (s *Select) write(out *strings.Builder, redact bool, into Node) {
 	out.WriteString("SELECT ")
 	if s.Distinct {
 		out.WriteString("DISTINCT ")
 	}
 	fmtbinding(s.Columns, out, redact)
+	if into != nil {
+		out.WriteString(" INTO ")
+		into.text(out, redact)
+	}
 	if s.From != nil {
 		out.WriteString(" FROM ")
 		s.From.text(out, redact)

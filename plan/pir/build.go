@@ -140,6 +140,10 @@ type TimeRanger interface {
 // type information that can be used to type-check
 // and optimize the query.
 func Build(q *expr.Query, e Env) (*Trace, error) {
+	if q.Into != nil {
+		// FIXME
+		return nil, errorf(q.Into, "INTO not yet supported")
+	}
 	body := q.Body
 	var err error
 	if len(q.With) > 0 {

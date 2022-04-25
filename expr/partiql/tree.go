@@ -74,6 +74,7 @@ func init() {
 		{"MISSING", MISSING},
 		{"IS", IS},
 		{"IN", IN},
+		{"INTO", INTO},
 		{"NOT", NOT},
 		{"ALL", ALL},
 		{"LEFT", LEFT},

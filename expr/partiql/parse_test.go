@@ -69,6 +69,7 @@ var sameq = []string{
 	"WITH foo AS (SELECT x, y FROM table) SELECT x FROM foo",
 	"WITH foo AS (SELECT x, y FROM table), bar AS (SELECT z, a FROM table) SELECT x FROM foo CROSS JOIN bar",
 	"SELECT * FROM (t1 ++ t2 ++ t3)",
+	"SELECT x, y INTO db.xyz FROM db.foo WHERE x = 'foo' AND y = 'bar'",
 }
 
 func TestParseSFW(t *testing.T) {

@@ -4,6 +4,7 @@ SELECT
 FROM
   input0 ++ input1 ++ input2
 ORDER BY z # order for consistent output
+LIMIT 1000
 ---
 {"x": 1, "z": 1}
 {"y": 2, "z": 2}

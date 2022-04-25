@@ -55,7 +55,7 @@ import (
 
 %token ERROR EOF
 %left UNION
-%token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH
+%token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH INTO
 %token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC
 %token VALUE
 %right COUNT MIN MAX SUM AVG COALESCE NULLIF EXTRACT DATE_TRUNC
@@ -82,7 +82,7 @@ import (
 %token <expr> NUMBER ION
 %token <str> STRING
 
-%type <expr> query expr datum datum_or_parens path_expression
+%type <expr> query expr datum datum_or_parens path_expression maybe_into
 %type <expr> where_expr having_expr case_optional_else parenthesized_expr
 %type <with> maybe_cte_bindings cte_bindings
 %type <pc> path_component
@@ -106,10 +106,11 @@ import (
 %%
 
 query:
-maybe_cte_bindings select_stmt
+maybe_cte_bindings SELECT maybe_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
 {
-  yylex.(*scanner).result = $2
   yylex.(*scanner).with = $1
+  yylex.(*scanner).into = $5
+  yylex.(*scanner).result = &expr.Select{Distinct: $3, Columns: $4, From: $6, Where: $7, GroupBy: $8, Having: $9, OrderBy: $10, Limit: $11, Offset: $12};
 }
 
 select_stmt:
@@ -117,6 +118,9 @@ SELECT maybe_distinct binding_list from_expr where_expr group_expr having_expr o
 {
     $$ = &expr.Select{Distinct: $2, Columns: $3, From: $4, Where: $5, GroupBy: $6, Having: $7, OrderBy: $8, Limit: $9, Offset: $10};
 }
+
+maybe_into:
+INTO path_expression { $$ = $2 } | { $$ = nil }
 
 maybe_cte_bindings:
 cte_bindings { $$ = $1 } | { $$ = nil }

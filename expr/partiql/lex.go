@@ -40,6 +40,7 @@ type scanner struct {
 	err    error
 	result expr.Node
 	with   []expr.CTE
+	into   expr.Node
 	// notkw is set when
 	// we are not in keyword context
 	notkw bool
