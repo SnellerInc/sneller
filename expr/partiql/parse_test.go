@@ -68,6 +68,7 @@ var sameq = []string{
 	"SELECT * FROM foo WHERE date < (SELECT MIN(date) FROM y)",
 	"WITH foo AS (SELECT x, y FROM table) SELECT x FROM foo",
 	"WITH foo AS (SELECT x, y FROM table), bar AS (SELECT z, a FROM table) SELECT x FROM foo CROSS JOIN bar",
+	"SELECT * FROM (t1 ++ t2 ++ t3)",
 }
 
 func TestParseSFW(t *testing.T) {
@@ -218,6 +219,10 @@ func TestParseNormalization(t *testing.T) {
 		{
 			"SELECT * FROM foo WHERE x IN (SELECT COUNT(x) FROM foo ORDER BY COUNT(x) DESC NULLS FIRST LIMIT 5)",
 			"SELECT * FROM foo WHERE IN_SUBQUERY(x, (SELECT COUNT(x) FROM foo ORDER BY COUNT(x) DESC NULLS FIRST LIMIT 5))",
+		},
+		{
+			"SELECT * FROM t1 ++ t2 ++ t3 WHERE foo = bar",
+			"SELECT * FROM (t1 ++ t2 ++ t3) WHERE foo = bar",
 		},
 	}
 

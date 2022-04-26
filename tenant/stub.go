@@ -128,14 +128,14 @@ func (t *tableHandle) Open() (vm.Table, error) {
 }
 
 func (t *tableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
 	if t.repeat > 1 {
-		dst.BeginList(-1)
+		dst.BeginField(st.Intern("repeat"))
 		dst.WriteInt(int64(t.repeat))
-		dst.WriteString(t.filename)
-		dst.EndList()
-		return nil
 	}
+	dst.BeginField(st.Intern("filename"))
 	dst.WriteString(t.filename)
+	dst.EndStruct()
 	return nil
 }
 
@@ -143,36 +143,36 @@ func (e *Env) decodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 	if len(buf) == 0 {
 		return nil, fmt.Errorf("no TableHandle present")
 	}
-	repeat := int64(1)
-	var err error
-	switch ion.TypeOf(buf) {
-	case ion.ListType:
-		// [repeat, filename]
-		buf, _ = ion.Contents(buf)
-		repeat, buf, err = ion.ReadInt(buf)
-		if err != nil {
-			return nil, err
-		}
-		fallthrough
-	case ion.StringType:
-		// filename
-		str, _, err := ion.ReadString(buf)
-		if err != nil {
-			return nil, err
-		}
-		fi, err := os.Stat(str)
-		if err != nil {
-			return nil, err
-		}
-		return &tableHandle{
-			filename: str,
-			size:     fi.Size(),
-			env:      e,
-			repeat:   int(repeat),
-		}, nil
-	default:
-		return nil, fmt.Errorf("bad table handle")
+	th := &tableHandle{
+		env:    e,
+		repeat: 1,
 	}
+	_, err := ion.UnpackStruct(st, buf, func(name string, field []byte) error {
+		switch name {
+		case "repeat":
+			n, _, err := ion.ReadInt(field)
+			if err != nil {
+				return err
+			}
+			th.repeat = int(n)
+		case "filename":
+			str, _, err := ion.ReadString(field)
+			if err != nil {
+				return err
+			}
+			fi, err := os.Stat(str)
+			if err != nil {
+				return err
+			}
+			th.filename = str
+			th.size = fi.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return th, nil
 }
 
 func (e *Env) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {

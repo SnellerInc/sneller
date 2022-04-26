@@ -122,6 +122,8 @@ func getEmpty(name string) composite {
 		return &UnaryArith{}
 	case "arith":
 		return &Arithmetic{}
+	case "append":
+		return &Appended{}
 	case "is":
 		return &IsKey{}
 	case "select":

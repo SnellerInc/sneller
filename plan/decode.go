@@ -20,7 +20,20 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+// HandleDecodeFn is a function used to decode a
+// TableHandle produced by TableHandle.Encode. If a
+// list is encountered when decoding a TableHandle,
+// this function will be called for each item in the
+// list to produce a concatenated table.
 type HandleDecodeFn func(st *ion.Symtab, mem []byte) (TableHandle, error)
+
+// decode calls f with special handling for lists
+func (f HandleDecodeFn) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	if ion.TypeOf(mem) == ion.ListType {
+		return decodeHandles(f, st, mem)
+	}
+	return f(st, mem)
+}
 
 // Decode decodes an ion-encoded tree
 // from the provided symbol table and buffer.
@@ -126,7 +139,7 @@ func decodeOps(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (Op, error) {
 			return nil, fmt.Errorf("plan.Decode: reading op %d: %w", count, err)
 		}
 		if tbl, ok := op.(*Leaf); hfn != nil && ok && tbl.handlebuf != nil {
-			tbl.Handle, err = hfn(st, tbl.handlebuf)
+			tbl.Handle, err = hfn.decode(st, tbl.handlebuf)
 			if err != nil {
 				return nil, err
 			}
@@ -136,7 +149,7 @@ func decodeOps(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (Op, error) {
 				if um.Sub[i].handlemem == nil {
 					continue
 				}
-				um.Sub[i].Handle, err = hfn(st, um.Sub[i].handlemem)
+				um.Sub[i].Handle, err = hfn.decode(st, um.Sub[i].handlemem)
 				if err != nil {
 					return nil, err
 				}

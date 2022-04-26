@@ -26,6 +26,7 @@ import (
 )
 
 //go:generate goyacc partiql.y
+//go:generate goimports -w y.go
 
 const eof = -1
 
@@ -179,8 +180,18 @@ func (s *scanner) Lex(l *yySymType) int {
 			s.pos += 2
 			return CONCAT
 		}
-		fallthrough
-	case ',', '*', '+', '-', '/', '%', '[', ']', '(', ')', '{', '}', ':':
+		s.notkw = false
+		s.pos++
+		return int(b)
+	case '+':
+		if s.peekat(1) == '+' {
+			s.pos += 2
+			return APPEND
+		}
+		s.notkw = false
+		s.pos++
+		return int(b)
+	case ',', '*', '-', '/', '%', '[', ']', '(', ')', '{', '}', ':':
 		// literal operators
 		s.notkw = false
 		s.pos++

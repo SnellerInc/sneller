@@ -39,6 +39,9 @@ func (e *filterEnv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
 		return nil, err
 	}
 	e.filters = nil
+	if filter != nil {
+		e.filters = append(e.filters, expr.ToString(filter))
+	}
 	return &filterHandle{
 		th:  th,
 		env: e,

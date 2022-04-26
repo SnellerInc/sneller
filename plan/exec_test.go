@@ -88,7 +88,7 @@ func (t *testenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)
 	}
-	switch ion.TypeOf(mem) {
+	switch typ := ion.TypeOf(mem); typ {
 	case ion.BlobType:
 		buf, _, err := ion.ReadBytes(mem)
 		if err != nil {
@@ -102,7 +102,7 @@ func (t *testenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
 		}
 		return &fileHandle{parent: t, name: str}, nil
 	default:
-		panic("unexpected table handle")
+		panic("unexpected table handle: " + typ.String())
 	}
 }
 
@@ -1160,6 +1160,10 @@ where Make in (
 				`{"t": 1106506402, "m": "CHEV", "num": 70}`,
 				`{"t": 1106506413, "m": "NISS", "num": 80}`,
 			},
+		},
+		{
+			query: `select * from 'parking.10n' ++ 'nyc-taxi.block'`,
+			rows:  9583,
 		},
 	}
 

@@ -1,0 +1,14 @@
+# multiple tables with aggregates
+# to exercise close behavior
+SELECT
+  SUM(x), AVG(x)
+FROM
+  input0 ++ input1
+---
+{"x": 1}
+{"x": 2}
+---
+{"x": 3}
+{"x": 4}
+----
+{"sum": 10, "avg": 2.5}

@@ -250,14 +250,9 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
-		handle, err := env.Stat(it.Table, it.Filter)
+		handle, err := stat(env, it.Table, it.Filter)
 		if err != nil {
 			return nil, err
-		}
-		if it.Filter != nil {
-			if h, ok := handle.(Filterable); ok {
-				handle = h.Filter(it.Filter)
-			}
 		}
 		out := (Op)(&Leaf{Expr: it.Table, Handle: handle})
 		if it.Filter != nil {
@@ -396,7 +391,7 @@ func ShouldSplit(q *expr.Query, env Env, split Splitter) (bool, error) {
 			return visit
 		}
 		var handle TableHandle
-		handle, err = env.Stat(t, nil)
+		handle, err = stat(env, t, nil)
 		if err != nil {
 			return nil
 		}

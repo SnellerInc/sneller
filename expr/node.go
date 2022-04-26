@@ -2032,6 +2032,95 @@ func (a *Arithmetic) typeof(hint Hint) TypeSet {
 	return both & (NumericType | MissingType)
 }
 
+func Append(left, right Node) *Appended {
+	a := &Appended{}
+	a.append(left)
+	a.append(right)
+	return a
+}
+
+// Appended is an append (++) expression
+type Appended struct {
+	Values []Node
+}
+
+func (a *Appended) append(x Node) {
+	if a2, ok := x.(*Appended); ok {
+		a.Values = append(a.Values, a2.Values...)
+	} else {
+		a.Values = append(a.Values, x)
+	}
+}
+
+func (a *Appended) text(dst *strings.Builder, redact bool) {
+	if len(a.Values) > 1 {
+		dst.WriteByte('(')
+	}
+	for i := range a.Values {
+		if i > 0 {
+			dst.WriteString(" ++ ")
+		}
+		a.Values[i].text(dst, redact)
+	}
+	if len(a.Values) > 1 {
+		dst.WriteByte(')')
+	}
+}
+
+func (a *Appended) rewrite(r Rewriter) Node {
+	for i := range a.Values {
+		a.Values[i] = Rewrite(r, a.Values[i])
+	}
+	return a
+}
+
+func (a *Appended) Equals(x Node) bool {
+	a2, ok := x.(*Appended)
+	if !ok || len(a.Values) != len(a2.Values) {
+		return false
+	}
+	for i := range a.Values {
+		if !a.Values[i].Equals(a2.Values[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Appended) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "append")
+	dst.BeginField(st.Intern("values"))
+	dst.BeginList(-1)
+	for i := range a.Values {
+		a.Values[i].Encode(dst, st)
+	}
+	dst.EndList()
+	dst.EndStruct()
+}
+
+func (a *Appended) setfield(name string, st *ion.Symtab, body []byte) error {
+	var err error
+	switch name {
+	case "values":
+		_, err = ion.UnpackList(body, func(body []byte) error {
+			v, _, err := Decode(st, body)
+			if err != nil {
+				return err
+			}
+			a.append(v)
+			return nil
+		})
+	}
+	return err
+}
+
+func (a *Appended) walk(v Visitor) {
+	for i := range a.Values {
+		Walk(v, a.Values[i])
+	}
+}
+
 type Keyword int
 
 const (

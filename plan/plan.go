@@ -89,6 +89,10 @@ type TableHandle interface {
 	// Encode should serialize the table handle
 	// so that it can be deserialized by a corresponding
 	// HandleDecodeFn.
+	//
+	// If Encode produces a list, HandleDecodeFn
+	// will be called for each item in the list,
+	// which might not be the desired behavior.
 	Encode(dst *ion.Buffer, st *ion.Symtab) error
 }
 
@@ -122,6 +126,26 @@ type Env interface {
 	// In the event that there is no available
 	// type information, Schema may return nil.
 	Schema(*expr.Table) expr.Hint
+}
+
+// stat handles calling env.Stat(tbl, flt), with
+// special handling for the ++ operator.
+func stat(env Env, tbl *expr.Table, flt expr.Node) (TableHandle, error) {
+	switch e := tbl.Expr.(type) {
+	case *expr.Appended:
+		ths := make(tableHandles, len(e.Values))
+		var tmp expr.Table
+		for i := range e.Values {
+			tmp.Expr = e.Values[i]
+			th, err := stat(env, &tmp, flt)
+			if err != nil {
+				return nil, err
+			}
+			ths[i] = th
+		}
+		return ths, nil
+	}
+	return env.Stat(tbl, flt)
 }
 
 // SimpleAggregate computes aggregates

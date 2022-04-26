@@ -323,7 +323,7 @@ func Serve(ctl *net.UnixConn, dfn plan.HandleDecodeFn) error {
 				if err != nil {
 					return err
 				}
-				go serveDirect(dfn, t, ofmt.writer(conn), errorWriter)
+				go serveDirect(t, ofmt.writer(conn), errorWriter)
 			}
 		} else {
 			if conn != nil {
@@ -339,7 +339,7 @@ func serveProxy(fn plan.HandleDecodeFn, conn net.Conn) {
 	plan.Serve(conn, fn)
 }
 
-func serveDirect(fn plan.HandleDecodeFn, t *plan.Tree, conn io.WriteCloser, errpipe io.WriteCloser) {
+func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe io.WriteCloser) {
 	defer errpipe.Close()
 
 	// if we encounter a panic, we don't

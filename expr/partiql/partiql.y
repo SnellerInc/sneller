@@ -74,7 +74,8 @@ import (
 %left <empty> EQ NE LT LE GT GE
 %left <empty> ILIKE LIKE IN IS
 %left <empty> '+' '-'
-%left <empty> '*' '/' '%' CONCAT
+%left <empty> '*' '/' '%'
+%left <empty> CONCAT APPEND
 %left NEGATION_PRECEDENCE
 %nonassoc <empty> '.'
 
@@ -337,6 +338,10 @@ datum_or_parens
 | expr CONCAT expr
 {
   $$ = expr.Call("CONCAT", $1, $3)
+}
+| expr APPEND expr
+{
+  $$ = expr.Append($1, $3)
 }
 | '-' expr %prec NEGATION_PRECEDENCE
 {

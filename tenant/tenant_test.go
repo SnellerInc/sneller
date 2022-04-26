@@ -63,7 +63,10 @@ func (s stubHandle) Open() (vm.Table, error) {
 }
 
 func (s stubHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("filename"))
 	dst.WriteString(string(s))
+	dst.EndStruct()
 	return nil
 }
 
@@ -88,10 +91,12 @@ func (r *repeatHandle) Open() (vm.Table, error) {
 }
 
 func (r *repeatHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.BeginList(-1)
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("repeat"))
 	dst.WriteInt(int64(r.count))
+	dst.BeginField(st.Intern("filename"))
 	dst.WriteString(r.file)
-	dst.EndList()
+	dst.EndStruct()
 	return nil
 }
 
