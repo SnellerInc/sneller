@@ -3568,6 +3568,7 @@ loop:
   KANDNW       K5, K4, K2
   VPSRLD       $8, Z29, K2, Z29      // shift to get descriptor byte as lsb
   KTESTW       K4, K4
+  KMOVW        K4, K3
   JNZ          uvarint_parse2        // slow path for symbol > 0x7f
 uvarintdone:
   VPCMPD        $VPCMP_IMM_GE, Z28, Z22, K5, K5  // only keep lanes active where search >= symbol
@@ -3627,6 +3628,10 @@ uvarint_parse2:
   // we use DX to indicate the return branch target
   TESTL        DX, DX
   JNZ          fieldlendone
+  // uvarintdone expects that we have
+  // shifted zmm29 so that the first byte
+  // is the beginning of the next object
+  VPSRLD       $8, Z29, K3, Z29
   JMP          uvarintdone
 trap:
   FAIL()

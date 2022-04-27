@@ -246,6 +246,12 @@ func shuffled(st *ion.Symtab) *ion.Symtab {
 	rand.Shuffle(len(symbolmap), func(i, j int) {
 		symbolmap[i], symbolmap[j] = symbolmap[j], symbolmap[i]
 	})
+
+	// force symbols to be multi-byte sequences:
+	for i := 0; i < 117; i++ {
+		ret.Intern(fmt.Sprintf("..garbage%d", i))
+	}
+
 	for _, s := range symbolmap {
 		ret.Intern(st.Get(s))
 	}
