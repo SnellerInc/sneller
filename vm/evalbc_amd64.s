@@ -52,7 +52,9 @@
 
 // use FAIL() when you encounter
 // an unrecoverable error
-#define FAIL() \
+#define FAIL()                                       \
+  SUBQ bytecode_compiled+0(VIRT_BCPTR), VIRT_PCREG   \
+  MOVL VIRT_PCREG, bytecode_errpc(VIRT_BCPTR)        \
   MOVL $const_bcerrCorrupt, bytecode_err(VIRT_BCPTR) \
   RET_ABORT()
 
@@ -5252,7 +5254,7 @@ next:
   // each offset should be <= len(tree.values)
   VPCMPD.BCST   $VPCMP_IMM_GT, radixTree64_values+8(R10), Z13, K1, K4
   KTESTW        K4, K4
-  JNZ           trap
+  JNZ           bad_radix_bucket
   VMOVDQU32     Z13, bytecode_bucket(VIRT_BCPTR)
   NEXT()
 early_ret:
@@ -5262,8 +5264,14 @@ early_ret:
   MOVWQZX -2(VIRT_PCREG), R8
   MOVQ    R8, bytecode_errinfo(VIRT_BCPTR)
   RET_ABORT()
-trap:
-  FAIL()
+bad_radix_bucket:
+  // set bytecode.err to TreeCorrupt
+  // and set bytecode.errpc to this pc
+  MOVL    $const_bcerrTreeCorrupt, bytecode_err(VIRT_BCPTR)
+  LEAQ    -2(VIRT_PCREG), VIRT_PCREG
+  SUBQ    bytecode_compiled(VIRT_BCPTR), VIRT_PCREG // get relative position
+  MOVL    VIRT_PCREG, bytecode_errpc(VIRT_BCPTR)
+  RET_ABORT()
 
 // All aggregate operations except AVG aggregate the value and then mark
 // slot+1, so we can decide whether the result of the aggregation should

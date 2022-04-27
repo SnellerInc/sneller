@@ -533,7 +533,9 @@ func (a *aggtable) writeRows(delims []vmref) error {
 	for len(delims) > 0 {
 		n := a.fasteval(delims, &abort)
 		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {
-			return fmt.Errorf("hash aggregate: bytecode error: %w", a.bc.err)
+			errorf("error pc %d", a.bc.errpc)
+			errorf("bytecode:\n%s\n", a.bc.String())
+			return fmt.Errorf("hash aggregate: bytecode error: errpc %d: %w", a.bc.errpc, a.bc.err)
 		}
 		delims = delims[n:]
 		if len(delims) != 0 && abort == 0 {
@@ -578,7 +580,12 @@ func (a *aggtable) writeRows(delims []vmref) error {
 						// TODO: Should we specify the value to provide more info in case it happens?
 						panic("abort bit set on a MISSING value")
 					}
-					a.repr = append(a.repr, vmref{lo, hi}.mem()...)
+					mem := vmref{lo, hi}.mem()
+					// must be a single valid ion object
+					if ion.SizeOf(mem) != len(mem) {
+						panic(fmt.Sprintf("column %d vmref 0x%x has invalid size", n, mem))
+					}
+					a.repr = append(a.repr, mem...)
 				}
 				a.pairs = append(a.pairs, hpair{
 					reprloc: reprloc,
@@ -595,7 +602,6 @@ func (a *aggtable) Close() error {
 	a.bc.reset()
 	parent := a.parent
 	parent.lock.Lock()
-	defer parent.lock.Unlock()
 
 	// a little clever:
 	// when another thread finished earlier,
@@ -622,6 +628,7 @@ func (a *aggtable) Close() error {
 	if atomic.AddInt64(&parent.children, -1) < 0 {
 		panic("duplicate aggtable.Close()")
 	}
+	parent.lock.Unlock()
 	return nil
 }
 

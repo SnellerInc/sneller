@@ -481,6 +481,10 @@ const (
 	// fails a bounds check or some other
 	// piece of sanity-checking
 	bcerrCorrupt
+	// TreeCorrupt is returned when the
+	// bytecode fails a bounds check
+	// in a radix tree lookup
+	bcerrTreeCorrupt
 )
 
 func (b bcerr) Error() string {
@@ -491,6 +495,8 @@ func (b bcerr) Error() string {
 		return "missing radix tree entry"
 	case bcerrCorrupt:
 		return "internal assertion failed"
+	case bcerrTreeCorrupt:
+		return "radix tree bounds-check failed"
 	default:
 		return "unknown bytecode error"
 	}
@@ -526,7 +532,8 @@ type bytecode struct {
 	hstacksize int
 
 	// set from abort handlers
-	err bcerr
+	err   bcerr
+	errpc int32
 	// additional error information;
 	// error-specific
 	errinfo int

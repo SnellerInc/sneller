@@ -137,6 +137,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalized := parsedQuery.Text()
+	redacted := parsedQuery.Text()
 	queryID := uuid.New()
 
 	var workerID tnproto.ID
@@ -251,7 +252,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, "error dispatching query")
 			}
 		}
-		s.logger.Printf("query ID %s %q execution failed (do): %v", queryID, expr.ToRedacted(parsedQuery), err)
+		s.logger.Printf("query ID %s %q execution failed (do): %v", queryID, redacted, err)
 		return
 	}
 	s.logger.Printf("query ID %s plan transfer took %s", queryID, time.Since(startrun))
@@ -262,7 +263,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		if sendTrailer {
 			setError(w)
 		}
-		s.logger.Printf("query ID %s %q execution failed (check): %v", queryID, expr.ToRedacted(parsedQuery), err)
+		s.logger.Printf("query ID %s %q execution failed (check): %v", queryID, redacted, err)
 		if deadlined && isTimeout(err) {
 			s.logger.Printf("query ID %s killing tenant ID %s due to timeout", queryID, workerID)
 			s.manager.Quit(workerID)

@@ -582,6 +582,10 @@ func BenchmarkTestQueries(b *testing.B) {
 // run in parallel.
 func TestQueries(t *testing.T) {
 	start := vm.PagesUsed()
+	vm.Errorf = t.Errorf
+	t.Cleanup(func() {
+		vm.Errorf = nil
+	})
 	t.Cleanup(func() {
 		// detect a page leak
 		end := vm.PagesUsed()

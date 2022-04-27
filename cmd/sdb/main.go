@@ -287,15 +287,21 @@ func validate(creds db.Tenant, dbname, table string) {
 		exitf("opening index: %s\n", err)
 	}
 	e := errorWriter{}
-	for i := range idx.Inline {
+
+	descs, err := idx.Indirect.Search(ofs, nil)
+	if err != nil {
+		exitf("populating indirect descriptors: %s\n", err)
+	}
+	descs = append(descs, idx.Inline...)
+	for i := range descs {
 		if dashv {
-			fmt.Printf("checking %s\n", idx.Inline[i].Path)
+			fmt.Printf("checking %s\n", descs[i].Path)
 		}
-		f, err := ofs.Open(idx.Inline[i].Path)
+		f, err := ofs.Open(descs[i].Path)
 		if err != nil {
-			exitf("opening %s: %s", idx.Inline[i].Path, err)
+			exitf("opening %s: %s", descs[i].Path, err)
 		}
-		blockfmt.Validate(f, idx.Inline[i].Trailer, &e)
+		blockfmt.Validate(f, descs[i].Trailer, &e)
 		f.Close()
 	}
 	// TODO: validate idx.Indirect
