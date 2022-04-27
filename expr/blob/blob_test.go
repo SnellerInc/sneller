@@ -16,6 +16,7 @@ package blob
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/fs"
 	"math/rand"
@@ -193,4 +194,106 @@ func TestSerialization(t *testing.T) {
 	if !reflect.DeepEqual(got, lst) {
 		t.Errorf("%#v != %#v", got, lst)
 	}
+}
+
+func TestSerializationCompressed(t *testing.T) {
+	now := date.Now().Truncate(time.Microsecond)
+	lst := &List{
+		Contents: make([]Interface, 2000),
+	}
+	for i := range lst.Contents {
+		lst.Contents[i] = &URL{
+			Value: "http://foo.bar/baz",
+			Info: Info{
+				Size:         rand.Int63(),
+				Align:        1000,
+				LastModified: now,
+			},
+		}
+	}
+	var compressed, uncompressed ion.Buffer
+	var st ion.Symtab
+	lst.Encode(&compressed, &st)
+	lst.encode(&uncompressed, &st)
+	if ion.TypeOf(compressed.Bytes()) != ion.StructType {
+		t.Fatal("not encoded as struct")
+	}
+	if compressed.Size() >= uncompressed.Size() {
+		t.Errorf("list suspiciously big (%d bytes) after compression", compressed.Size())
+	}
+	got, err := DecodeList(&st, compressed.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, lst) {
+		t.Errorf("%#v != %#v", got, lst)
+	}
+}
+
+func BenchmarkSerializationCompressed(b *testing.B) {
+	now := date.Now().Truncate(time.Microsecond)
+	lst := &List{
+		Contents: make([]Interface, 2000),
+	}
+	rng := func(n int) []blockfmt.Range {
+		return []blockfmt.Range{
+			blockfmt.NewRange([]string{"timestamp"},
+				ion.Timestamp(now.Add(-time.Duration(n)*time.Hour)),
+				ion.Timestamp(now.Add(-time.Duration(n+1)*time.Hour))),
+		}
+	}
+	// 2000 items * 5 blocks each ~= 10000 * 100MiB ~= 1TiB worth of blocks
+	for i := range lst.Contents {
+		lst.Contents[i] = &Compressed{
+			From: &URL{
+				Value: fmt.Sprintf("https://bucket.name.s3.amazonaws.com/path/to/object-%d", rand.Int63()),
+				Info: Info{
+					Size:         50*1024*1024 + rand.Int63n(1024*1024),
+					Align:        1024 * 1024,
+					LastModified: now,
+				},
+			},
+			Trailer: &blockfmt.Trailer{
+				Version:    1,
+				Offset:     50*1024*1024 - rand.Int63n(1024*1024),
+				Algo:       "zstd",
+				BlockShift: 20,
+				Blocks: []blockfmt.Blockdesc{
+					{Offset: 0, Chunks: 100, Ranges: rng(5)},
+					{Offset: 10*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(4)},
+					{Offset: 20*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(3)},
+					{Offset: 30*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(2)},
+					{Offset: 40*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(1)},
+				},
+			},
+		}
+	}
+	b.Run("encode", func(b *testing.B) {
+		var buf ion.Buffer
+		var st ion.Symtab
+		lst.Encode(&buf, &st)
+		b.SetBytes(int64(len(buf.Bytes())))
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			buf.Reset()
+			st.Reset()
+			lst.Encode(&buf, &st)
+		}
+		b.ReportMetric(float64(int64(len(buf.Bytes())))/2000, "bytes/record")
+	})
+	b.Run("decode", func(b *testing.B) {
+		var buf ion.Buffer
+		var st ion.Symtab
+		lst.Encode(&buf, &st)
+		b.SetBytes(int64(len(buf.Bytes())))
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, err := DecodeList(&st, buf.Bytes())
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 }

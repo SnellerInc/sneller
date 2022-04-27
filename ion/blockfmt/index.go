@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
@@ -266,7 +267,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		// Do nothing...
 	} else if idx.Algo != "" {
 		writeContents(&ibuf, &st, idx.Inline)
-		comp := Compression(idx.Algo)
+		comp := compr.Compression(idx.Algo)
 		cbuf := comp.Compress(ibuf.Bytes(), malloc(ibuf.Size())[:0])
 		buf.BeginField(st.Intern("algo"))
 		buf.WriteString(idx.Algo)
@@ -298,7 +299,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 			if alg == "" {
 				alg = "zstd"
 			}
-			comp := Compression(alg)
+			comp := compr.Compression(alg)
 			buf.BeginField(isize)
 			buf.WriteInt(int64(len(ibuf.Bytes())))
 			cbuf := comp.Compress(ibuf.Bytes(), malloc(ibuf.Size())[:0])
@@ -415,7 +416,7 @@ func (idx *Index) readInputs(st *ion.Symtab, body []byte, isize int64, alg strin
 	if alg == "" {
 		alg = "zstd"
 	}
-	decomp := Decompression(alg)
+	decomp := compr.Decompression(alg)
 	b, _, err := ion.ReadBytes(body)
 	if err != nil {
 		return fmt.Errorf("DecodeIndex: readInputs: %w", err)
@@ -547,7 +548,7 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 		if err != nil {
 			return nil, fmt.Errorf("DecodeIndex: %w", err)
 		}
-		decomp := Decompression(idx.Algo)
+		decomp := compr.Decompression(idx.Algo)
 		contents = malloc(int(size))
 		defer free(contents)
 		if err := decomp.Decompress(b, contents); err != nil {

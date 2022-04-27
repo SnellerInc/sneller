@@ -22,6 +22,7 @@ import (
 	"io"
 	"runtime"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/klauspost/compress/zstd"
@@ -265,7 +266,7 @@ func (c *Converter) Run() error {
 }
 
 func (c *Converter) runSingle() error {
-	comp := Compression(c.Comp)
+	comp := compr.Compression(c.Comp)
 	if comp == nil {
 		return fmt.Errorf("compression %q unavailable", c.Comp)
 	}
@@ -321,7 +322,7 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 }
 
 func (c *Converter) runMulti() error {
-	comp := Compression(c.Comp)
+	comp := compr.Compression(c.Comp)
 	if comp == nil {
 		return fmt.Errorf("compression %q unavailable", c.Comp)
 	}

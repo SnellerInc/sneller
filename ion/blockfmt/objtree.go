@@ -23,6 +23,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -168,7 +169,7 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, ke
 	if err != nil {
 		return in, fmt.Errorf("IndirectTree: io.ReadFull: %w", err)
 	}
-	buf, err = theDecoder.DecodeAll(buf, nil)
+	buf, err = compr.DecodeZstd(buf, nil)
 	var st ion.Symtab
 	buf, err = st.Unmarshal(buf)
 	if err != nil {

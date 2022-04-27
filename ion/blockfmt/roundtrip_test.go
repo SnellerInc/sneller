@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/ion/versify"
@@ -68,7 +69,7 @@ func synthesize(t testing.TB, corpus string, blocks int) ([]byte, [][]byte) {
 	out.PartSize = 1 << shift
 	w := blockfmt.CompressionWriter{
 		Output:     &out,
-		Comp:       blockfmt.Compression("zstd"),
+		Comp:       compr.Compression("zstd"),
 		InputAlign: (1 << shift),
 	}
 
@@ -161,7 +162,7 @@ func TestMultiRoundtrip(t *testing.T) {
 	var buf blockfmt.BufferUploader
 	mw := blockfmt.MultiWriter{
 		Output: &buf,
-		Comp:   blockfmt.Compression("zstd"),
+		Comp:   compr.Compression("zstd"),
 		// we're picking very small alignment
 		// and target size so we can really exercise
 		// the span-merging code

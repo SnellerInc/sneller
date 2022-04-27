@@ -21,6 +21,7 @@ import (
 	"io"
 	"sort"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/klauspost/compress/zstd"
 )
@@ -228,7 +229,7 @@ func (f *filetree) marshal(tmp *ion.Buffer, st *ion.Symtab) []byte {
 }
 
 func (f *filetree) decode(in []byte) error {
-	ret, err := theDecoder.DecodeAll(in, nil)
+	ret, err := compr.DecodeZstd(in, nil)
 	if err != nil {
 		return err
 	}

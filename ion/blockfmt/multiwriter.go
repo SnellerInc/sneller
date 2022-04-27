@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -44,7 +45,7 @@ type MultiWriter struct {
 	Output Uploader
 	// Comp is the compression algorithm
 	// used to compress blocks.
-	Comp Compressor
+	Comp compr.Compressor
 	// InputAlign is the expected size
 	// of input blocks that are provided
 	// to io.Write in each stream.

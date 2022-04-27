@@ -21,10 +21,19 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
+
+// If the size in bytes of an encoded list exceeds this
+// threshold, the blob will be written compressed.
+const compressionThreshold = 16 * 1024
+
+// compressor will be used to encode large compressed
+// blob lists.
+var compressor = compr.Compression("s2")
 
 // Interface is the interface
 // implemented by every blob type.
@@ -244,6 +253,26 @@ func (l *List) String() string {
 func (l *List) TypeName() string { return "blob.List" }
 
 func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	start := dst.Size()
+	l.encode(dst, st)
+	raw := dst.Bytes()[start:]
+	if len(raw) <= compressionThreshold {
+		return
+	}
+	// rewind and write compressed
+	dst.Set(dst.Bytes()[:start])
+	data := compressor.Compress(raw, nil)
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("algo"))
+	dst.WriteString(compressor.Name())
+	dst.BeginField(st.Intern("size"))
+	dst.WriteInt(int64(len(raw)))
+	dst.BeginField(st.Intern("data"))
+	dst.WriteBlob(data)
+	dst.EndStruct()
+}
+
+func (l *List) encode(dst *ion.Buffer, st *ion.Symtab) {
 	var be blobEncoder
 	dst.BeginList(-1)
 	for i := range l.Contents {
@@ -256,6 +285,44 @@ func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
+	if ion.TypeOf(body) != ion.StructType {
+		return decodeList(st, body)
+	}
+	var dec compr.Decompressor
+	var buf []byte
+	_, err := ion.UnpackStruct(st, body, func(name string, inner []byte) error {
+		switch name {
+		case "algo":
+			algo, _, err := ion.ReadStringShared(inner)
+			if err != nil {
+				return err
+			}
+			dec = compr.Decompression(string(algo))
+		case "size":
+			size, _, err := ion.ReadInt(inner)
+			if err != nil {
+				return err
+			}
+			buf = make([]byte, size)
+		case "data":
+			if dec == nil || buf == nil {
+				return fmt.Errorf("blob.DecodeList: missing algo or size")
+			}
+			data, _, err := ion.ReadBytesShared(inner)
+			if err != nil {
+				return err
+			}
+			return dec.Decompress(data, buf)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return decodeList(st, buf)
+}
+
+func decodeList(st *ion.Symtab, body []byte) (*List, error) {
 	if ion.TypeOf(body) != ion.ListType {
 		return nil, fmt.Errorf("blob.DecodeList: unexpected ion type %v", ion.TypeOf(body))
 	}

@@ -21,108 +21,14 @@ import (
 	"io"
 	"math/bits"
 	"math/rand"
-	"runtime"
 	"sync"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
-	"github.com/klauspost/compress/zstd"
 )
 
 var debugFree = false
-
-// Compressor describes the interface
-// that CompressionWriter needs a compression
-// algorithm to implement.
-type Compressor interface {
-	// Name is the name of the compression algorithm.
-	Name() string
-	// Compress should append the compressed contents
-	// of src to dst and return the result.
-	Compress(src, dst []byte) []byte
-}
-
-// Decompressor is the interface that a
-// CompressionReader uses to decompress blocks.
-type Decompressor interface {
-	// Name is the name of the compression algorithm.
-	// See also Compressor.Name.
-	Name() string
-	// Decompress decompresses source data
-	// into dst. It should error out if
-	// dst is not large enough to fit the
-	// encoded source data.
-	//
-	// It must be safe to make multiple
-	// calls to Decompress simultaneously
-	// from different goroutines.
-	Decompress(src, dst []byte) error
-}
-
-type zstdCompressor struct {
-	enc *zstd.Encoder
-}
-
-func (z zstdCompressor) Compress(src, dst []byte) []byte {
-	return z.enc.EncodeAll(src, dst)
-}
-
-func (z zstdCompressor) Name() string { return "zstd" }
-
-var theDecoder *zstd.Decoder
-
-func init() {
-	// by default, concurrency is set to min(4, GOMAXPROCS);
-	// we'd like it to *always* be GOMAXPROCS
-	z, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(runtime.GOMAXPROCS(0)))
-	if err != nil {
-		panic(err)
-	}
-	theDecoder = z
-}
-
-type zstdDecompressor struct{}
-
-func (z zstdDecompressor) Name() string { return "zstd" }
-
-func (z zstdDecompressor) Decompress(src, dst []byte) error {
-	into := dst[:0:len(dst)]
-	ret, err := theDecoder.DecodeAll(src, into)
-	if err != nil {
-		return err
-	}
-	if len(ret) != len(dst) {
-		return fmt.Errorf("expected %d bytes decompressed; got %d", len(dst), len(ret))
-	}
-	// the decoder should not have had to
-	// realloc the buffer
-	if &ret[0] != &dst[0] {
-		return fmt.Errorf("zstd decompress: output buffer realloc'd")
-	}
-	return nil
-}
-
-// Compression selects a compression algorithm by name.
-// The return Compressor will return the same value
-// for Compressor.Name as the specified name.
-func Compression(name string) Compressor {
-	switch name {
-	case "zstd":
-		z, _ := zstd.NewWriter(nil)
-		return zstdCompressor{z}
-	default:
-		return nil
-	}
-}
-
-func Decompression(name string) Decompressor {
-	switch name {
-	case "zstd":
-		return zstdDecompressor{}
-	default:
-		return nil
-	}
-}
 
 // CompressionWriter is a single-stream
 // io.Writer that accepts blocks from an
@@ -135,7 +41,7 @@ type CompressionWriter struct {
 	// the compressed data should be uploaded.
 	Output Uploader
 	// Comp is the compression algorithm to use.
-	Comp Compressor
+	Comp compr.Compressor
 	// InputAlign is the expected input alignment
 	// of data blocks. CompressionWriter will disallow
 	// calls to Write that do not have length
@@ -312,7 +218,7 @@ func (w *CompressionWriter) Close() error {
 	return w.Output.Close(w.buffer)
 }
 
-func (t *Trailer) trailer(comp Compressor, align int) []byte {
+func (t *Trailer) trailer(comp compr.Compressor, align int) []byte {
 	var st ion.Symtab
 	var buf ion.Buffer
 
@@ -389,7 +295,7 @@ func fill(t *Trailer, rd io.ReaderAt, insize int64) error {
 
 // append a compressed frame to dst
 // that is wrapped in an ion 'blob' tag
-func appendFrame(dst []byte, comp Compressor, src []byte) []byte {
+func appendFrame(dst []byte, comp compr.Compressor, src []byte) []byte {
 	base := len(dst)
 	dst = append(dst,
 		byte((ion.BlobType)<<4)|0xe,
@@ -448,7 +354,7 @@ type Decoder struct {
 	Offset     int64
 	Algo       string
 
-	decomp Decompressor
+	decomp compr.Decompressor
 	frame  [5]byte
 	tmp    []byte
 }
@@ -534,7 +440,7 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 		panic("concurrent blockfmt.Decoder calls")
 	}
 	defer d.free()
-	d.decomp = Decompression(d.Algo)
+	d.decomp = compr.Decompression(d.Algo)
 	if d.decomp == nil {
 		return 0, fmt.Errorf("decompression %q not supported", d.Algo)
 	}
@@ -552,7 +458,7 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 	}
 	tmp := vm.Malloc()[:size]
 	defer vm.Free(tmp)
-	decomp := Decompression(d.Algo)
+	decomp := compr.Decompression(d.Algo)
 	nn := int64(0)
 	for len(src) > 0 {
 		if ion.TypeOf(src) != ion.BlobType {
@@ -589,7 +495,7 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 		panic("concurrent blockfmt.Decoder calls")
 	}
 	defer d.free()
-	d.decomp = Decompression(d.Algo)
+	d.decomp = compr.Decompression(d.Algo)
 	if d.decomp == nil {
 		return 0, fmt.Errorf("decompression %q not supported", d.Algo)
 	}
