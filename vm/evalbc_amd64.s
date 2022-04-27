@@ -8020,7 +8020,7 @@ TEXT bcMatchpatCs(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R8)                      //;05667C35 Load *[]byte with the provided str into R8
   MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=seg_begin_ptr; R8=pattern_begin_ptr;
   KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
-  KMOVW         K0,  K1                   //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
   VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_length + str_start;Z5=o_data_end; Z3=str_length; Z2=str_start;
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
@@ -8167,7 +8167,7 @@ TEXT bcMatchpatCi(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R8)                      //;05667C35 Load *[]byte with the provided str into R8
   MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=seg_begin_ptr; R8=pattern_begin_ptr;
   KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
-  KMOVW         K0,  K1                   //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
   VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_length + str_start;Z5=o_data_end; Z3=str_length; Z2=str_start;
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
@@ -8343,7 +8343,7 @@ TEXT bcMatchpatUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R8)                      //;05667C35 load *[]byte with the provided str into R8
   MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=needle_begin_ptr; R8=tmp;
   KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
-  KMOVW         K0,  K1                   //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
   VPADDD        Z2,  Z3,  Z5              //;E5429114 compute string end position     ;Z5=o_data_end; Z3=str_length; Z2=str_start;
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
@@ -8372,10 +8372,10 @@ outer_loop:
   VPCMPD.BCST   $0,  4(DX),Z8,  K3        //;345D0BF3 K3 := (data_msg==[needle_begin_ptr+4]);K3=tmp_mask; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
   VPCMPD.BCST   $0,  8(DX),Z8,  K5        //;EFD0A9A3 K5 := (data_msg==[needle_begin_ptr+8]);K5=scratch_mask1; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
   VPCMPD.BCST   $0,  12(DX),Z8,  K6       //;CAC0FAC6 K6 := (data_msg==[needle_begin_ptr+12]);K6=scratch_mask2; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  16(DX),Z8,  K7       //;50C70740 K7 := (data_msg==[needle_begin_ptr+16]);K7=scratch_mask3; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  16(DX),Z8,  K0       //;50C70740 K0 := (data_msg==[needle_begin_ptr+16]);K0=scratch_mask3; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
   KORW          K3,  K5,  K3              //;58E49245 tmp_mask |= scratch_mask1       ;K3=tmp_mask; K5=scratch_mask1;
   KORW          K3,  K6,  K3              //;BDCB8940 tmp_mask |= scratch_mask2       ;K3=tmp_mask; K6=scratch_mask2;
-  KORW          K7,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K7=scratch_mask3;
+  KORW          K0,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K0=scratch_mask3;
   KNOTW         K4,  K3                   //;2C3A5B12                                 ;K3=tmp_mask; K4=active_lanes;
 
   VPADDD        Z7,  Z25, K3,  Z25        //;5034DEA0 o_data_outer_loop += n_bytes_data;Z25=o_data_outer_loop; K3=tmp_mask; Z7=n_bytes_data;
@@ -8408,10 +8408,10 @@ inner_loop:
   VPCMPD.BCST   $0,  (R13)(R14*1),Z8,  K4,  K3  //;345D0BF3 K3 := K4 & (data_msg==[seg_start_ptr+bytes_consumed]);K3=tmp_mask; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
   VPCMPD.BCST   $0,  4(R13)(R14*1),Z8,  K4,  K5  //;EFD0A9A3 K5 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+4]);K5=scratch_mask1; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
   VPCMPD.BCST   $0,  8(R13)(R14*1),Z8,  K4,  K6  //;CAC0FAC6 K6 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+8]);K6=scratch_mask2; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
-  VPCMPD.BCST   $0,  12(R13)(R14*1),Z8,  K4,  K7  //;50C70740 K7 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+12]);K7=scratch_mask3; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
+  VPCMPD.BCST   $0,  12(R13)(R14*1),Z8,  K4,  K0  //;50C70740 K0 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+12]);K0=scratch_mask3; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
   KORW          K3,  K5,  K3              //;58E49245 tmp_mask |= scratch_mask1       ;K3=tmp_mask; K5=scratch_mask1;
   KORW          K3,  K6,  K3              //;BDCB8940 tmp_mask |= scratch_mask2       ;K3=tmp_mask; K6=scratch_mask2;
-  KORW          K7,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K7=scratch_mask3;
+  KORW          K0,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K0=scratch_mask3;
   ADDL          $16, R14                  //;4D85A22A bytes_consumed += 16            ;R14=bytes_consumed;
 
   KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
@@ -8500,7 +8500,7 @@ TEXT bcIsSubnetOfIP4(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1,  K4                   //;E40C8014 lane_todo_min := lane_active    ;K4=lane_todo_min; K1=lane_active;
   KMOVW         K1,  K5                   //;C82AE9DA lane_todo_max := lane_active    ;K5=lane_todo_max; K1=lane_active;
   KMOVW         K1,  K6                   //;CA9B839F lane_active_min := lane_active  ;K6=lane_active_min; K1=lane_active;
-  KMOVW         K1,  K7                   //;7159F950 lane_active_max := lane_active  ;K7=lane_active_max; K1=lane_active;
+  KMOVW         K1,  K0                   //;7159F950 lane_active_max := lane_active  ;K0=lane_active_max; K1=lane_active;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
@@ -8531,9 +8531,9 @@ loop:
   KORW          K3,  K2,  K6              //;5A29F035 lane_active_min := scratch_K2 | tmp_mask;K6=lane_active_min; K2=scratch_K2; K3=tmp_mask;
 
   VPCMPD        $2,  Z27, Z8,  K5,  K3    //;27BFCA91 K3 := K5 & (data_msg<=ip_max)   ;K3=tmp_mask; K5=lane_todo_max; Z8=data_msg; Z27=ip_max; 2=LessEq;
-  KANDNW        K7,  K5,  K2              //;C52B6681 scratch_K2 := ~lane_todo_max & lane_active_max;K2=scratch_K2; K5=lane_todo_max; K7=lane_active_max;
+  KANDNW        K0,  K5,  K2              //;C52B6681 scratch_K2 := ~lane_todo_max & lane_active_max;K2=scratch_K2; K5=lane_todo_max; K0=lane_active_max;
   VPCMPD        $0,  Z27, Z8,  K5,  K5    //;A70DC3C3 K5 &= (data_msg==ip_max)        ;K5=lane_todo_max; Z8=data_msg; Z27=ip_max; 0=Eq;
-  KORW          K3,  K2,  K7              //;E588CF91 lane_active_max := scratch_K2 | tmp_mask;K7=lane_active_max; K2=scratch_K2; K3=tmp_mask;
+  KORW          K3,  K2,  K0              //;E588CF91 lane_active_max := scratch_K2 | tmp_mask;K0=lane_active_max; K2=scratch_K2; K3=tmp_mask;
 
   KORTESTW      K4,  K5                   //;2BFBF8CE any lanes still todo?           ;K5=lane_todo_max; K4=lane_todo_min;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
@@ -8565,11 +8565,11 @@ loop:
   KORW          K3,  K2,  K6              //;7B1A3448 lane_active_min := scratch_K2 | tmp_mask;K6=lane_active_min; K2=scratch_K2; K3=tmp_mask;
 
   VPCMPD        $2,  Z27, Z8,  K5,  K3    //;327EA9E2 K3 := K5 & (data_msg<=ip_max)   ;K3=tmp_mask; K5=lane_todo_max; Z8=data_msg; Z27=ip_max; 2=LessEq;
-  KANDNW        K7,  K5,  K2              //;85D2E03D scratch_K2 := ~lane_todo_max & lane_active_max;K2=scratch_K2; K5=lane_todo_max; K7=lane_active_max;
-  KORW          K3,  K2,  K7              //;CB00427A lane_active_max := scratch_K2 | tmp_mask;K7=lane_active_max; K2=scratch_K2; K3=tmp_mask;
+  KANDNW        K0,  K5,  K2              //;85D2E03D scratch_K2 := ~lane_todo_max & lane_active_max;K2=scratch_K2; K5=lane_todo_max; K0=lane_active_max;
+  KORW          K3,  K2,  K0              //;CB00427A lane_active_max := scratch_K2 | tmp_mask;K0=lane_active_max; K2=scratch_K2; K3=tmp_mask;
 
 next:
-  KANDW         K6,  K7,  K1              //;5F783BA8 lane_active := lane_active_max & lane_active_min;K1=lane_active; K7=lane_active_max; K6=lane_active_min;
+  KANDW         K6,  K0,  K1              //;5F783BA8 lane_active := lane_active_max & lane_active_min;K1=lane_active; K0=lane_active_max; K6=lane_active_min;
   NEXT()
 //; #endregion bcIsSubnetOfIP4
 
