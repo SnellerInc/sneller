@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -89,6 +90,50 @@ func (c chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 		}
 	}
 	return w.Close()
+}
+
+type parallelchunks [][]byte
+
+func (p parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return fmt.Errorf("unexpected parallelchunks.Encode")
+}
+
+func (p parallelchunks) Chunks() int { return len(p) }
+
+func (p parallelchunks) Open() (vm.Table, error) {
+	return p, nil
+}
+
+func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
+	outputs := make([]io.WriteCloser, len(p))
+	errors := make([]error, len(p))
+	var wg sync.WaitGroup
+	for i := range outputs {
+		w, err := dst.Open()
+		if err != nil {
+			return err
+		}
+		outputs[i] = w
+	}
+	wg.Add(len(outputs))
+	for i := range outputs {
+		go func(w io.WriteCloser, mem []byte, errp *error) {
+			defer wg.Done()
+			_, err := w.Write(mem)
+			if err != nil {
+				w.Close()
+				*errp = err
+			}
+			*errp = w.Close()
+		}(outputs[i], p[i], &errors[i])
+	}
+	wg.Wait()
+	for i := range errors {
+		if errors[i] != nil {
+			return errors[i]
+		}
+	}
+	return nil
 }
 
 type benchTable struct {
@@ -208,7 +253,7 @@ func shuffled(st *ion.Symtab) *ion.Symtab {
 }
 
 // run a query on the given input table and yield the output list
-func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool) []ion.Datum {
+func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool, parallel bool) []ion.Datum {
 	st.Reset()
 	input := make([]plan.TableHandle, len(in))
 	for i, in := range in {
@@ -216,7 +261,11 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 			half := len(in) / 2
 			first := flatten(in[:half], st)
 			second := flatten(in[half:], shuffled(st))
-			input[i] = chunkshandle{first, second}
+			if parallel {
+				input[i] = parallelchunks{first, second}
+			} else {
+				input[i] = chunkshandle{first, second}
+			}
 		} else {
 			input[i] = bufhandle(flatten(in, st))
 		}
@@ -292,28 +341,17 @@ func canShuffle(q *expr.Query) bool {
 // does the output need to be shuffled along
 // with the input?
 func shuffleOutput(q *expr.Query) bool {
-	return !hasOrderBy(q)
+	sel, ok := q.Body.(*expr.Select)
+	if !ok {
+		return false
+	}
+	// ORDER BY, GROUP BY, and DISTINCT
+	// all have output orderings that are
+	// independent of the input
+	return sel.OrderBy == nil && sel.GroupBy == nil && !sel.Distinct
 }
 
 const shufflecount = 10
-
-func hasOrderBy(q *expr.Query) bool {
-	if s, ok := q.Body.(*expr.Select); ok {
-		return s.OrderBy != nil
-	}
-	return false
-}
-
-// hasBareOrderBy determines if we are doing an ORDER BY
-// w/o a LIMIT or a GROUP BY, since the GROUP BY codepath
-// is entirely separate from ordinary sorting, and the LIMIT
-// path knows how to handle multiple symbol tables
-func hasBareOrderBy(q *expr.Query) bool {
-	if s, ok := q.Body.(*expr.Select); ok {
-		return s.OrderBy != nil && s.Limit == nil && len(s.GroupBy) == 0
-	}
-	return false
-}
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {
 	if d == nil {
@@ -344,11 +382,11 @@ func testInput(t *testing.T, query []byte, in [][]ion.Datum, out []ion.Datum) {
 			// into multiple chunks with different symbol
 			// tables (but only if there's more than one symbol
 			// that isn't part of the pre-interned set...)
-			//
-			// FIXME: sorting doesn't work when the input symbol table
-			// changes; we need to fix that...
-			resymbolize := i > 0 && st.MaxID() > 11 && !hasBareOrderBy(q)
-			gotout := run(t, q, in, &st, resymbolize)
+			resymbolize := i > 0 && st.MaxID() > 11
+			// if the outputs are input-order-independent,
+			// then we can test the query with parallel inputs:
+			parallel := len(out) <= 1 || !shuffleOutput(q)
+			gotout := run(t, q, in, &st, resymbolize, parallel)
 			fixup(gotout, &st)
 			fixup(out, &st)
 			if len(out) != len(gotout) {
