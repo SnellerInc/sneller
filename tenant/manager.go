@@ -366,12 +366,16 @@ func (c *child) unlock() {
 var ErrOverloaded = errors.New("child overloaded")
 
 func (c *child) directExec(t *plan.Tree, ofmt tnproto.OutputFormat, conn net.Conn) (io.ReadCloser, error) {
+	buf := bufPool.Get().(*tnproto.Buffer)
+	err := buf.Prepare(t, ofmt)
+	if err != nil {
+		return nil, err
+	}
 	if !c.lock() {
 		return nil, ErrOverloaded
 	}
 	defer c.unlock()
-	buf := bufPool.Get().(*tnproto.Buffer)
-	ret, err := buf.DirectExec(c.ctl, t, ofmt, conn)
+	ret, err := buf.DirectExec(c.ctl, conn)
 	bufPool.Put(buf)
 	return ret, err
 }

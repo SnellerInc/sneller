@@ -150,13 +150,15 @@ func ProxyExec(ctl *net.UnixConn, conn net.Conn) error {
 // an enormous blob list, so re-using
 // this state reduces GC pressure)
 type serializer struct {
-	mainbuf ion.Buffer
-	stbuf   ion.Buffer
-	st      ion.Symtab
-	pre     [8]byte
+	mainbuf  ion.Buffer
+	stbuf    ion.Buffer
+	st       ion.Symtab
+	pre      [8]byte
+	prepared bool
 }
 
-func (s *serializer) direct(t *plan.Tree, ctl *net.UnixConn, f OutputFormat, conn net.Conn) error {
+func (s *serializer) prepare(t *plan.Tree, f OutputFormat) error {
+	s.prepared = false
 	s.stbuf.Reset()
 	copy(s.pre[:], directmsg)
 	s.pre[7] = byte(f)
@@ -170,12 +172,20 @@ func (s *serializer) direct(t *plan.Tree, ctl *net.UnixConn, f OutputFormat, con
 	s.st.Marshal(&s.stbuf, true)
 	size := uint32(s.mainbuf.Size() + s.stbuf.Size() - 8)
 	binary.LittleEndian.PutUint32(s.stbuf.Bytes()[3:], size)
+	s.prepared = true
+	return nil
+}
+
+func (s *serializer) send(ctl *net.UnixConn, conn net.Conn) error {
+	if !s.prepared {
+		panic("send before prepare")
+	}
 	// the implementation of Serve is non-blocking,
 	// so any considerable delay here means we are
 	// ridiculously overloaded or something has gone wrong;
 	// in either case we should not block forever
 	ctl.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_, err = usock.WriteWithConn(ctl, s.stbuf.Bytes(), conn)
+	_, err := usock.WriteWithConn(ctl, s.stbuf.Bytes(), conn)
 	if err != nil {
 		return fmt.Errorf("in DirectExec: usock.WriteWithConn: %w", err)
 	}
@@ -196,10 +206,21 @@ type Buffer struct {
 	serializer
 }
 
+// Prepare prepepares a serialized query
+// in b. Each call to Prepare overwrites
+// the serialized query produced by
+// preceding calls to Prepare.
+func (b *Buffer) Prepare(t *plan.Tree, f OutputFormat) error {
+	return b.prepare(t, f)
+}
+
 // DirectExec sends a query plan to a tenant
 // over the control socket ctl and requests
 // that it write query results into the socket
 // represented by conn.
+// DirectExec should only be called after
+// Buffer.Prepare has been called at least
+// once with the query that should be executed.
 //
 // If the query is launched successfully,
 // DirectExec returns an io.ReadCloser that
@@ -215,8 +236,11 @@ type Buffer struct {
 // to synchronize access to the control socket in
 // a reasonable manner to ensure that message exchanges
 // are not interleaved.
-func (b *Buffer) DirectExec(ctl *net.UnixConn, t *plan.Tree, f OutputFormat, conn net.Conn) (io.ReadCloser, error) {
-	err := b.direct(t, ctl, f, conn)
+func (b *Buffer) DirectExec(ctl *net.UnixConn, conn net.Conn) (io.ReadCloser, error) {
+	if !b.prepared {
+		return nil, fmt.Errorf("call to tnproto.Buffer.DirectExec before tnproto.Buffer.Prepare")
+	}
+	err := b.send(ctl, conn)
 	if err != nil {
 		return nil, err
 	}

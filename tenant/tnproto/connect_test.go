@@ -97,13 +97,14 @@ func TestDirectExecHugeBody(t *testing.T) {
 	outerwg.Add(1)
 	go func() {
 		var b Buffer
-		rc, err := b.DirectExec(there, &plan.Tree{
+		b.Prepare(&plan.Tree{
 			Op: &plan.Leaf{
 				Expr: &expr.Table{
 					Binding: expr.Bind(expr.Identifier("foo"), ""),
 				},
 				Handle: largeOpaque{},
-			}}, OutputRaw, myconn)
+			}}, OutputRaw)
+		rc, err := b.DirectExec(there, myconn)
 		if err != nil {
 			panic(err)
 		}
