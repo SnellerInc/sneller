@@ -28,7 +28,8 @@ import (
 // content written to diag means that the src had
 // no errors.
 func Validate(src io.Reader, t *Trailer, diag io.Writer) int {
-	d := Decoder{Trailer: t}
+	d := Decoder{}
+	d.Set(t, len(t.Blocks))
 	w := checkWriter{dst: diag, blocks: t.Blocks}
 	d.Copy(&w, src)
 	return w.rows

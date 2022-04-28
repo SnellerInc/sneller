@@ -423,7 +423,7 @@ func unpack(args []string) {
 	var d blockfmt.Decoder
 	for i := range args {
 		src, trailer := openarg(args[i])
-		d.Trailer = trailer
+		d.Set(trailer, len(trailer.Blocks))
 		data := io.LimitReader(src, trailer.Offset)
 		_, err := d.Copy(out, data)
 		if err != nil {

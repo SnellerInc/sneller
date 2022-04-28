@@ -103,7 +103,7 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 			continue
 		}
 		s.total += c.Trailer.Decompressed()
-		ret, err := c.Split(int(splitSize))
+		sub, err := c.Split(int(splitSize))
 		if err != nil {
 			return nil, err
 		}
@@ -111,8 +111,8 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 			// only insert blobs that satisfy
 			// the predicate pushdown conditions
 			scan := int64(0)
-			for _, b := range ret.Contents {
-				b, scan = filterBlob(b, flt, scan)
+			for i := range sub {
+				b, scan = filterBlob(&sub[i], flt, scan)
 				if b == nil {
 					continue
 				}
@@ -124,8 +124,8 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 			continue
 		}
 		s.maxscan += c.Trailer.Decompressed()
-		for _, b := range ret.Contents {
-			if err := insert(b); err != nil {
+		for i := range sub {
+			if err := insert(&sub[i]); err != nil {
 				return nil, err
 			}
 		}
@@ -154,17 +154,14 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 // blob is excluded by the filter, this returns (nil, 0);
 // otherwise, it returns the filtered blob and the number
 // of bytes to be scanned in the blob
-func filterBlob(b blob.Interface, f filter, size int64) (blob.Interface, int64) {
-	c, ok := b.(*blob.Compressed)
-	if !ok {
-		return b, size
-	}
-	t := c.Trailer
+func filterBlob(pc *blob.CompressedPart, f filter, size int64) (blob.Interface, int64) {
+	t := pc.Parent.Trailer
 	self := int64(0)
 	any := false
-	for i := range t.Blocks {
-		ranges := t.Blocks[i].Ranges
-		self += int64(t.Blocks[i].Chunks) << t.BlockShift
+	blocks := t.Blocks[pc.StartBlock:pc.EndBlock]
+	for i := range blocks {
+		ranges := blocks[i].Ranges
+		self += int64(blocks[i].Chunks) << t.BlockShift
 		if len(ranges) == 0 || f(ranges) != never {
 			any = true
 		}
@@ -172,7 +169,7 @@ func filterBlob(b blob.Interface, f filter, size int64) (blob.Interface, int64) 
 	if !any {
 		return nil, size
 	}
-	return c, size + self
+	return pc, size + self
 }
 
 func (s *splitter) partition(b blob.Interface) (*net.TCPAddr, error) {

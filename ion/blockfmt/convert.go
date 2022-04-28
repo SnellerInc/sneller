@@ -312,7 +312,8 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 		return nil
 	}
 	cn.WalkTimeRanges = collectRanges(c.Prepend.Trailer)
-	d := Decoder{Trailer: c.Prepend.Trailer}
+	d := Decoder{}
+	d.Set(c.Prepend.Trailer, 0)
 	_, err := d.Copy(cn, c.Prepend.R)
 	c.Prepend.R.Close()
 	cn.WalkTimeRanges = nil

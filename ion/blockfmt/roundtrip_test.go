@@ -296,7 +296,8 @@ func check(t *testing.T, buf []byte) []byte {
 	}
 	r.Seek(0, io.SeekStart)
 	out := make([]byte, trailer.Decompressed())
-	dec := blockfmt.Decoder{Trailer: trailer}
+	dec := blockfmt.Decoder{}
+	dec.Set(trailer, len(trailer.Blocks))
 	n, err := dec.Decompress(r, out)
 	if err != nil {
 		t.Helper()

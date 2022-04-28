@@ -38,6 +38,9 @@ type Compressed struct {
 	// if the trailer has been manipulated
 	// to point to different data (see compressedRange)
 	etext string
+
+	// interned ID; used for encoding
+	iid int
 }
 
 func extend(et, extra string) string {
@@ -88,6 +91,10 @@ func (d *blobDecoder) decodeComp(fields []byte) (*Compressed, error) {
 		case "skip":
 			// ignore
 			_, fields, err = ion.ReadBytes(fields)
+		case "iid":
+			var id int64
+			id, fields, err = ion.ReadInt(fields)
+			c.iid = int(id)
 		default:
 			err = fmt.Errorf("unrecognized field %q (sym %d)", st.Get(sym), sym)
 		}
@@ -98,17 +105,21 @@ func (d *blobDecoder) decodeComp(fields []byte) (*Compressed, error) {
 	return c, nil
 }
 
-func (c *Compressed) encode(dst *ion.Buffer, st *ion.Symtab) {
+func (c *Compressed) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("type"))
 	dst.WriteSymbol(st.Intern("blob.Compressed"))
 	dst.BeginField(st.Intern("from"))
-	encode(c.From, dst, st)
+	be.encode(c.From, dst, st)
 	dst.BeginField(st.Intern("trailer"))
 	c.Trailer.Encode(dst, st)
 	if c.etext != "" {
 		dst.BeginField(st.Intern("etext"))
 		dst.WriteString(c.etext)
+	}
+	if c.iid > 0 {
+		dst.BeginField(st.Intern("iid"))
+		dst.WriteInt(int64(c.iid))
 	}
 	dst.EndStruct()
 }
@@ -117,8 +128,8 @@ func (c *Compressed) encode(dst *ion.Buffer, st *ion.Symtab) {
 // into a list of blobs where all
 // but the last blob in the list
 // have a (decompressed) size of at least 'cut' bytes.
-func (c *Compressed) Split(cut int) (*List, error) {
-	l := &List{}
+func (c *Compressed) Split(cut int) ([]CompressedPart, error) {
+	var out []CompressedPart
 	n := 0
 	t := c.Trailer
 	for n < len(t.Blocks) {
@@ -130,15 +141,14 @@ func (c *Compressed) Split(cut int) (*List, error) {
 			end++
 			size += newb.Chunks << t.BlockShift
 		}
-		newt := t.Slice(n, end)
-		l.Contents = append(l.Contents, &Compressed{
-			From:    c.From,
-			Trailer: newt,
-			etext:   fmt.Sprintf("%d-%d", newt.Blocks[0].Offset, newt.Offset),
+		out = append(out, CompressedPart{
+			StartBlock: n,
+			EndBlock:   end,
+			Parent:     c,
 		})
 		n = end
 	}
-	return l, nil
+	return out, nil
 }
 
 type compressedReader struct {
@@ -175,7 +185,7 @@ func (c *Compressed) Decompressor() (io.ReadCloser, error) {
 	}
 	dd := &decompressor{}
 	dd.src = rd
-	dd.dec.Trailer = c.Trailer
+	dd.dec.Set(c.Trailer, len(c.Trailer.Blocks))
 	return dd, nil
 }
 
@@ -187,6 +197,146 @@ func (c *Compressed) Reader(start, size int64) (io.ReadCloser, error) {
 	}
 	cr := &compressedReader{}
 	cr.ReadCloser = rd
-	cr.dec.Trailer = c.Trailer
+	cr.dec.Set(c.Trailer, len(c.Trailer.Blocks))
 	return cr, nil
+}
+
+// CompressedPart is a range of blocks
+// within a Compressed blob.
+type CompressedPart struct {
+	Parent               *Compressed
+	StartBlock, EndBlock int
+}
+
+// Reader implements Interface.Reader
+func (c *CompressedPart) Reader(start, size int64) (io.ReadCloser, error) {
+	start += c.Parent.Trailer.Blocks[c.StartBlock].Offset
+	rd, err := c.Parent.From.Reader(start, size)
+	if err != nil {
+		return nil, err
+	}
+	cr := &compressedReader{}
+	cr.ReadCloser = rd
+	cr.dec.Set(c.Parent.Trailer, c.EndBlock)
+	return cr, nil
+}
+
+func (c *CompressedPart) Decompressor() (io.ReadCloser, error) {
+	start := c.Parent.Trailer.Blocks[c.StartBlock].Offset
+	end := c.Parent.Trailer.Offset
+	if c.EndBlock < len(c.Parent.Trailer.Blocks) {
+		end = c.Parent.Trailer.Blocks[c.EndBlock].Offset
+	}
+	rd, err := c.Parent.From.Reader(start, end-start)
+	if err != nil {
+		return nil, err
+	}
+	dd := &decompressor{}
+	dd.src = rd
+	dd.dec.Set(c.Parent.Trailer, c.EndBlock)
+	return dd, nil
+}
+
+// Stat implements Interface.Stat
+func (c *CompressedPart) Stat() (*Info, error) {
+	pinfo, err := c.Parent.Stat()
+	if err != nil {
+		return nil, err
+	}
+	info := new(Info)
+	*info = *pinfo
+	info.ETag = extend(info.ETag, fmt.Sprintf("%d-%d", c.StartBlock, c.EndBlock))
+	start := c.Parent.Trailer.Blocks[c.StartBlock].Offset
+	end := c.Parent.Trailer.Offset
+	if c.EndBlock < len(c.Parent.Trailer.Blocks) {
+		end = c.Parent.Trailer.Blocks[c.EndBlock].Offset
+	}
+	info.Size = end - start
+	return info, nil
+}
+
+func (c *CompressedPart) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("type"))
+	dst.WriteSymbol(st.Intern("blob.CompressedPart"))
+	dst.BeginField(st.Intern("start"))
+	dst.WriteInt(int64(c.StartBlock))
+	dst.BeginField(st.Intern("end"))
+	dst.WriteInt(int64(c.EndBlock))
+	if c.Parent.iid > 0 {
+		dst.BeginField(st.Intern("parent-id"))
+		dst.WriteInt(int64(c.Parent.iid))
+	} else {
+		c.Parent.iid = len(be.interned) + 1
+		be.interned = append(be.interned, c.Parent)
+		dst.BeginField(st.Intern("parent"))
+		c.Parent.encode(be, dst, st)
+	}
+	dst.EndStruct()
+}
+
+func (d *blobDecoder) decodeCPart(fields []byte) (*CompressedPart, error) {
+	out := new(CompressedPart)
+	st := d.td.Symbols
+	var err error
+	var sym ion.Symbol
+	for len(fields) > 0 {
+		sym, fields, err = ion.ReadLabel(fields)
+		if err != nil {
+			return nil, err
+		}
+		var n int64
+		switch st.Get(sym) {
+		case "start":
+			n, fields, err = ion.ReadInt(fields)
+			out.StartBlock = int(n)
+		case "end":
+			n, fields, err = ion.ReadInt(fields)
+			out.EndBlock = int(n)
+		case "parent-id":
+			n, fields, err = ion.ReadInt(fields)
+			if idx := n - 1; idx >= 0 && int(idx) < len(d.interned) {
+				out.Parent = d.interned[idx]
+			} else {
+				err = fmt.Errorf("bad parent-id %d (of %d)", n, len(d.interned))
+			}
+		case "parent":
+			var p *Compressed
+			var body []byte
+			body, fields = ion.Contents(fields)
+			sym, body, err = ion.ReadLabel(body)
+			if err != nil {
+				break
+			}
+			if st.Get(sym) != "type" {
+				err = fmt.Errorf("unexpected field %q", st.Get(sym))
+				break
+			}
+			sym, body, err = ion.ReadSymbol(body)
+			if err != nil {
+				err = fmt.Errorf("reading type symbol: %w", err)
+				break
+			}
+			if st.Get(sym) != "blob.Compressed" {
+				err = fmt.Errorf("unexpected parent blob type %q", st.Get(sym))
+				break
+			}
+			p, err = d.decodeComp(body)
+			out.Parent = p
+			if p != nil {
+				if p.iid != len(d.interned)+1 {
+					err = fmt.Errorf("unexpected parent iid %d (expected %d)", p.iid, len(d.interned)+1)
+					break
+				}
+				d.interned = append(d.interned, p)
+				p.iid = 0
+			}
+		default:
+			err = fmt.Errorf("unrecognized field %q", st.Get(sym))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("blob.CompressedPart decode: %w", err)
+		}
+	}
+	return out, nil
 }

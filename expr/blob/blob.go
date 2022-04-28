@@ -108,7 +108,7 @@ func (u *URL) client() *http.Client {
 	return u.Client
 }
 
-func (u *URL) encode(dst *ion.Buffer, st *ion.Symtab) {
+func (u *URL) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("type"))
 	dst.WriteSymbol(st.Intern("blob.URL"))
@@ -244,11 +244,15 @@ func (l *List) String() string {
 func (l *List) TypeName() string { return "blob.List" }
 
 func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	var be blobEncoder
 	dst.BeginList(-1)
 	for i := range l.Contents {
-		encode(l.Contents[i], dst, st)
+		be.encode(l.Contents[i], dst, st)
 	}
 	dst.EndList()
+	for i := range be.interned {
+		be.interned[i].iid = 0
+	}
 }
 
 func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
@@ -271,23 +275,28 @@ func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
 	return l, nil
 }
 
-func encode(i Interface, dst *ion.Buffer, st *ion.Symtab) {
+type blobEncoder struct {
+	interned []*Compressed
+}
+
+func (be *blobEncoder) encode(i Interface, dst *ion.Buffer, st *ion.Symtab) {
 	type encoder interface {
-		encode(dst *ion.Buffer, st *ion.Symtab)
+		encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab)
 	}
 	if e, ok := i.(encoder); ok {
-		e.encode(dst, st)
+		e.encode(be, dst, st)
 		return
 	}
 	dst.WriteString(fmt.Sprintf("cannot encode %T", i))
 }
 
 type blobDecoder struct {
-	urls   []URL
-	comps  []Compressed
-	strcap int
-	str    []byte
-	td     blockfmt.TrailerDecoder
+	interned []*Compressed
+	urls     []URL
+	comps    []Compressed
+	strcap   int
+	str      []byte
+	td       blockfmt.TrailerDecoder
 }
 
 func (d *blobDecoder) url() *URL {
@@ -351,6 +360,9 @@ func (d *blobDecoder) decode(buf []byte) (Interface, []byte, error) {
 				return u, rest, err
 			case "blob.Compressed":
 				c, err := d.decodeComp(fields)
+				return c, rest, err
+			case "blob.CompressedPart":
+				c, err := d.decodeCPart(fields)
 				return c, rest, err
 			default:
 				return nil, nil, fmt.Errorf("unrecognized blob type %q", st.Get(sym))

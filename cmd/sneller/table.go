@@ -62,7 +62,7 @@ func (f *readerTable) write(dst io.Writer) error {
 	dst = &byteTracker{dst}
 	for n := atomic.AddInt64(&f.block, 1) - 1; int(n) < len(f.t.Blocks); n = atomic.AddInt64(&f.block, 1) - 1 {
 		nt := f.t.Slice(int(n), int(n+1))
-		d.Trailer = nt
+		d.Set(nt, len(nt.Blocks))
 		pos := nt.Blocks[0].Offset
 		end := nt.Offset
 		if f.buf != nil {

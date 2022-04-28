@@ -164,15 +164,15 @@ func (h *tenantHandle) Open() (vm.Table, error) {
 		if h.parent.HTTPClient != nil {
 			blob.Use(lst.Contents[i], h.parent.HTTPClient)
 		}
-		blob := lst.Contents[i]
-		if flt != nil {
-			blob, _ = filterBlob(blob, flt, 0)
-			if blob == nil {
+		b := lst.Contents[i]
+		if pc, ok := b.(*blob.CompressedPart); ok && flt != nil {
+			b, _ = filterBlob(pc, flt, 0)
+			if b == nil {
 				continue
 			}
 		}
 		seg := &blobSegment{
-			blob: blob,
+			blob: b,
 		}
 		// make sure info can be populated successfully
 		s, err := seg.stat()
@@ -242,10 +242,10 @@ func (b *blobSegment) Open() (io.ReadCloser, error) {
 
 // Decode implements dcache.Segment.Decode
 func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
-	if c, ok := b.blob.(*blob.Compressed); ok {
+	if c, ok := b.blob.(*blob.CompressedPart); ok {
 		// compressed: do decoding
 		var dec blockfmt.Decoder
-		dec.Trailer = c.Trailer
+		dec.Set(c.Parent.Trailer, c.EndBlock)
 		_, err := dec.CopyBytes(dst, src)
 		return err
 	}

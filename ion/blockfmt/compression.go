@@ -444,11 +444,28 @@ func realloc(buf []byte, size int) []byte {
 }
 
 type Decoder struct {
-	*Trailer
+	BlockShift int
+	Offset     int64
+	Algo       string
 
 	decomp Decompressor
 	frame  [5]byte
 	tmp    []byte
+}
+
+// Set sets fields in the decoder in order
+// to prepare it for reading blocks from the
+// trailer t up to (but not including) lastblock.
+// To prepare for reading the whole trailer,
+// use Set(t, len(t.Blocks)).
+func (d *Decoder) Set(t *Trailer, lastblock int) {
+	d.BlockShift = t.BlockShift
+	d.Algo = t.Algo
+	if lastblock >= len(t.Blocks) {
+		d.Offset = t.Offset
+	} else {
+		d.Offset = t.Blocks[lastblock].Offset
+	}
 }
 
 func (d *Decoder) realloc(size int) []byte {
@@ -529,7 +546,7 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 // bytes written to dst and the first error encountered,
 // if any.
 func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
-	size := 1 << d.Trailer.BlockShift
+	size := 1 << d.BlockShift
 	if size > vm.PageSize {
 		return 0, fmt.Errorf("block size %d exceeds vm.PageSize (%d)", size, vm.PageSize)
 	}
@@ -577,7 +594,7 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 		return 0, fmt.Errorf("decompression %q not supported", d.Algo)
 	}
 	nn := int64(0)
-	size := 1 << d.Trailer.BlockShift
+	size := 1 << d.BlockShift
 	if size > vm.PageSize {
 		return 0, fmt.Errorf("size %d above vm.PageSize (%d)", size, vm.PageSize)
 	}
