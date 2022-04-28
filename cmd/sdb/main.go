@@ -30,7 +30,6 @@ import (
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/db"
-	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -189,26 +188,41 @@ func sync(dbname, tblpat string) {
 	}
 }
 
-func describeBlob(b blob.Interface, compsize int64) {
-	if c, ok := b.(*blob.Compressed); ok {
-		t := c.Trailer
-		size := t.Decompressed()
-		ranges := 0
-		indices := make(map[string]struct{})
-		for i := range t.Blocks {
-			ranges += len(t.Blocks[i].Ranges)
-			for j := range t.Blocks[i].Ranges {
-				field := strings.Join(t.Blocks[i].Ranges[j].Path(), ".")
-				indices[field] = struct{}{}
-			}
-		}
-		fields := make([]string, 0, len(indices))
-		for k := range indices {
-			fields = append(fields, k)
-		}
-		fmt.Printf("\ttrailer: %d blocks, %d bytes decompressed (%.2fx compression)\n", len(t.Blocks), size, float64(size)/float64(compsize))
-		fmt.Printf("\tranges: %d total, fields: %v\n", ranges, fields)
+var hsizes = []byte{'K', 'M', 'G', 'T', 'P'}
+
+func human(size int64) string {
+	dec := int64(0)
+	trail := -1
+	for size > 1024 {
+		trail++
+		// decimal component needs to be
+		// converted from parts-per-1024
+		dec = ((size % 1023) * 1024) / 1000
+		size /= 1024
 	}
+	if trail < 0 {
+		return fmt.Sprintf("%d", size)
+	}
+	return fmt.Sprintf("%d.%d %ciB", size, dec, hsizes[trail])
+}
+
+func describeTrailer(t *blockfmt.Trailer, compsize int64) {
+	size := t.Decompressed()
+	ranges := 0
+	indices := make(map[string]struct{})
+	for i := range t.Blocks {
+		ranges += len(t.Blocks[i].Ranges)
+		for j := range t.Blocks[i].Ranges {
+			field := strings.Join(t.Blocks[i].Ranges[j].Path(), ".")
+			indices[field] = struct{}{}
+		}
+	}
+	fields := make([]string, 0, len(indices))
+	for k := range indices {
+		fields = append(fields, k)
+	}
+	fmt.Printf("\ttrailer: %d blocks, %d bytes decompressed (%.2fx compression)\n", len(t.Blocks), size, float64(size)/float64(compsize))
+	fmt.Printf("\tranges: %d total, fields: %v\n", ranges, fields)
 }
 
 func describe(creds db.Tenant, dbname, table string) {
@@ -217,19 +231,51 @@ func describe(creds db.Tenant, dbname, table string) {
 	if err != nil {
 		exitf("opening index: %s\n", err)
 	}
-	blobs, err := db.Blobs(ofs.(db.FS), idx, nil)
+	descs, err := idx.Indirect.Search(ofs, nil)
 	if err != nil {
-		exitf("getting blobs: %s\n", err)
+		exitf("getting indirect blobs: %s\n", err)
 	}
-	for i := range idx.Inline {
-		fmt.Printf("inline %s %s %d %s\n", idx.Inline[i].Path, idx.Inline[i].ETag, idx.Inline[i].Size, idx.Inline[i].Format)
-	}
-	for i := range blobs.Contents {
-		info, err := blobs.Contents[i].Stat()
-		if err != nil {
-			exitf("stat blob: %s\n", err)
+	totalComp := int64(0)
+	totalDecomp := int64(0)
+	blocks := 0
+	nindirect := len(descs)
+	descs = append(descs, idx.Inline...)
+	for i := range descs {
+		totalComp += descs[i].Size
+		totalDecomp += descs[i].Trailer.Decompressed()
+		blocks += len(descs[i].Trailer.Blocks)
+		fmt.Printf("%s %s %s\n", descs[i].Path, descs[i].ETag, human(descs[i].Size))
+		if i < nindirect {
+			fmt.Printf("\t (indirect)\n")
 		}
-		describeBlob(blobs.Contents[i], info.Size)
+		describeTrailer(descs[i].Trailer, descs[i].Size)
+	}
+	fmt.Printf("total blocks:       %d\n", blocks)
+	fmt.Printf("total compressed:   %s\n", human(totalComp))
+	fmt.Printf("total decompressed: %s (%.2fx)\n", human(totalDecomp), float64(totalDecomp)/float64(totalComp))
+}
+
+func fetch(creds db.Tenant, files ...string) {
+	ofs := root(creds)
+	for i := range files {
+		if dashv {
+			logf("fetching %s...\n", files[i])
+		}
+		f, err := ofs.Open(files[i])
+		if err != nil {
+			exitf("%s\n", err)
+		}
+		dstf, err := os.Create(path.Base(files[i]))
+		if err != nil {
+			exitf("creating %s: %s\n", path.Base(files[i]), err)
+		}
+		_, err = io.Copy(dstf, f)
+		f.Close()
+		dstf.Close()
+		if err != nil {
+			os.Remove(dstf.Name())
+			exitf("copying bytes: %s\n", err)
+		}
 	}
 }
 
@@ -448,6 +494,11 @@ func main() {
 			exitf("usage: unpack <file> ...")
 		}
 		unpack(args[1:])
+	case "fetch":
+		if len(args) < 2 {
+			exitf("usage: fetch <file> ...")
+		}
+		fetch(creds(), args[1:]...)
 	default:
 		exitf("commands: create, sync\n")
 	}
