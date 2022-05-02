@@ -26,8 +26,15 @@ import (
 
 func testConvertMulti(t *testing.T, meta int) {
 	var inputs []Input
-
-	f, err := os.Open("../../testdata/parking2.json")
+	f, err := os.Open("../../testdata/cloudtrail.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs = append(inputs, Input{
+		R: f,
+		F: SuffixToFormat[".json"](),
+	})
+	f, err = os.Open("../../testdata/parking2.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +60,7 @@ func testConvertMulti(t *testing.T, meta int) {
 		Inputs:    inputs,
 		Align:     align,
 		FlushMeta: align * meta,
+		Parallel:  2, // 3 inputs + 2 parellelism enables prefetching
 	}
 	if !c.MultiStream() {
 		t.Fatal("expected MultiStream to be true with 2 inputs")

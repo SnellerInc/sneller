@@ -28,6 +28,11 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
+// we try to keep this many bytes in-flight
+// at all times, regardless of the level of
+// parallelism we are using to ingest files
+const wantInflight = 80 * 1024 * 1024
+
 // RowFormat is the interface through which
 // input streams are converted into aligned
 // output blocks.
@@ -201,6 +206,10 @@ type Converter struct {
 	// uploads. If Parallel is <= 0, then
 	// GOMAXPROCS is used instead.
 	Parallel int
+	// DisablePrefetch, if true, disables
+	// prefetching of inputs.
+	DisablePrefetch bool
+
 	// trailer built by the writer. This is only
 	// set if the object was written successfully.
 	trailer *Trailer
@@ -288,13 +297,56 @@ func (c *Converter) runSingle() error {
 	if err != nil {
 		return err
 	}
+	ready := make([]chan struct{}, len(c.Inputs))
+	next := 1
+	inflight := int64(0) // # bytes being prefetched
 	for i := range c.Inputs {
+		// make sure that prefetching has completed
+		// on this entry if we had queued it up
+		var saved chan struct{}
+		if ready[i] != nil {
+			<-ready[i]
+			saved, ready[i] = ready[i], nil
+			inflight -= c.Inputs[i].Size
+		}
+		// fast-forward the prefetch pointer
+		// if we had a run of large files
+		if next <= i {
+			next = i + 1
+		}
+		// start readahead on inputs that we will need
+		for !c.DisablePrefetch && inflight < wantInflight && (next-i) < 64 && next < len(c.Inputs) {
+			if saved != nil {
+				ready[next] = saved
+				saved = nil
+			} else {
+				ready[next] = make(chan struct{}, 1)
+			}
+			go func(r io.Reader, done chan struct{}) {
+				r.Read([]byte{})
+				done <- struct{}{}
+			}(c.Inputs[next].R, ready[next])
+			inflight += c.Inputs[next].Size
+			next++
+		}
+
 		err := c.Inputs[i].F.Convert(c.Inputs[i].R, &cn)
 		err2 := c.Inputs[i].R.Close()
 		if err == nil {
 			err = err2
 		}
 		if err != nil {
+			// wait for prefetching to stop
+			for _, c := range ready[i:next] {
+				if c != nil {
+					<-c
+				}
+			}
+			// close everything we haven't already closed
+			tail := c.Inputs[i+1:]
+			for j := range tail {
+				tail[j].R.Close()
+			}
 			c.Inputs[i].Err = err
 			return err
 		}
@@ -339,18 +391,33 @@ func (c *Converter) runMulti() error {
 	if p <= 0 {
 		p = runtime.GOMAXPROCS(0)
 	}
+	startc := make(chan *Input, p)
+	readyc := startc
 	if p >= len(c.Inputs) {
 		p = len(c.Inputs)
+	} else if !c.DisablePrefetch {
+		max := 64
+		if max > len(c.Inputs) {
+			max = len(c.Inputs)
+		}
+		readyc = doPrefetch(startc, max, wantInflight)
 	}
-	ic := make(chan *Input, p)
 	errs := make(chan error, p)
+	consume := func(in chan *Input) {
+		for in := range in {
+			in.R.Close()
+		}
+	}
 	for i := 0; i < p; i++ {
 		wc, err := w.Open()
 		if err != nil {
-			close(ic)
+			close(readyc)
 			return err
 		}
 		go func(i int) {
+			// if we encounter an error,
+			// drain the queue and close each item
+			defer consume(startc)
 			cn := ion.Chunker{
 				W:          wc,
 				Align:      w.InputAlign,
@@ -363,7 +430,7 @@ func (c *Converter) runMulti() error {
 					return
 				}
 			}
-			for in := range ic {
+			for in := range startc {
 				err := in.F.Convert(in.R, &cn)
 				err2 := in.R.Close()
 				if err == nil {
@@ -383,18 +450,14 @@ func (c *Converter) runMulti() error {
 			errs <- wc.Close()
 		}(i)
 	}
-	var outerr error
-loop:
 	for i := range c.Inputs {
-		select {
-		case ic <- &c.Inputs[i]:
-		case outerr = <-errs:
-			p--
-			break loop
-		}
+		readyc <- &c.Inputs[i]
 	}
-	close(ic)
+	// will cause readyc to be closed
+	// when the queue has been drained:
+	close(readyc)
 	var extra int
+	var outerr error
 	for i := 0; i < p; i++ {
 		err := <-errs
 		if outerr == nil {
