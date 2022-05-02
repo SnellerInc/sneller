@@ -17,7 +17,8 @@ package ion
 import (
 	"fmt"
 	"math/big"
-	"sort"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
 )
@@ -100,8 +101,8 @@ func (s *Struct) Encode(dst *Buffer, st *Symtab) {
 	for i := range s.Fields {
 		s.Fields[i].Sym = st.Intern(s.Fields[i].Label)
 	}
-	sort.Slice(s.Fields, func(i, j int) bool {
-		return s.Fields[i].Sym < s.Fields[j].Sym
+	slices.SortFunc(s.Fields, func(x, y Field) bool {
+		return x.Sym < y.Sym
 	})
 
 	dst.BeginStruct(-1)

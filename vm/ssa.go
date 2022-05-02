@@ -23,9 +23,10 @@ import (
 	"math/bits"
 	"net"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -4027,8 +4028,8 @@ func (p *prog) ordersyms(pi *proginfo) {
 			continue
 		}
 		pi.invalidate()
-		sort.Slice(access, func(i, j int) bool {
-			return access[i].imm.(ion.Symbol) < access[j].imm.(ion.Symbol)
+		slices.SortFunc(access, func(x, y *value) bool {
+			return x.imm.(ion.Symbol) < y.imm.(ion.Symbol)
 		})
 		prev := access[0]
 		rest := access[1:]

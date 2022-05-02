@@ -21,6 +21,8 @@ import (
 	"math/bits"
 	"sync/atomic"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -134,10 +136,8 @@ func (t *radixTree64) newtable() int {
 // guarantee that there are at least 16 free value slots
 func (t *radixTree64) reserve() {
 	if len(t.values)+(t.vsize*16) > cap(t.values) {
-		old := t.values
-		t.values = make([]byte, len(old),
-			(len(old)+(t.vsize*8))*2)
-		copy(t.values, old)
+		t.values = slices.Grow(t.values,
+			(len(t.values)+(t.vsize*16))*2)
 	}
 }
 

@@ -16,7 +16,8 @@ package pir
 
 import (
 	"fmt"
-	"sort"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
 )
@@ -108,19 +109,14 @@ func itervalueinfo(b *Trace) {
 		for _, bind := range liveacross {
 			iter.liveacross = append(iter.liveacross, bind)
 		}
-		sort.Slice(iter.liveacross, func(i, j int) bool {
-			ip := iter.liveacross[i].Expr.(*expr.Path)
-			jp := iter.liveacross[j].Expr.(*expr.Path)
-			return ip.Less(jp)
-		})
+		bindless := func(x, y expr.Binding) bool {
+			return x.Expr.(*expr.Path).Less(y.Expr.(*expr.Path))
+		}
+		slices.SortFunc(iter.liveacross, bindless)
 		for _, bind := range liveat {
 			iter.liveat = append(iter.liveat, bind)
 		}
-		sort.Slice(iter.liveat, func(i, j int) bool {
-			ip := iter.liveat[i].Expr.(*expr.Path)
-			jp := iter.liveat[j].Expr.(*expr.Path)
-			return ip.Less(jp)
-		})
+		slices.SortFunc(iter.liveat, bindless)
 
 		// track the live values in the filter expression as well;
 		// these need to be converted to LOAD(num) expressions

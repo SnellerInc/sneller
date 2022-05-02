@@ -15,7 +15,7 @@
 package blockfmt
 
 import (
-	"sort"
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
@@ -105,24 +105,9 @@ func pathless(a, b []string) bool {
 	return len(a) < len(b)
 }
 
-func pathequal(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	if len(a) > 0 && &a[0] == &b[0] {
-		return true
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func sortByPath(lst []*TimeRange) {
-	sort.Slice(lst, func(i, j int) bool {
-		return pathless(lst[i].path, lst[j].path)
+	slices.SortFunc(lst, func(left, right *TimeRange) bool {
+		return pathless(left.path, right.path)
 	})
 }
 
@@ -158,7 +143,7 @@ func union(a, b []*TimeRange) []*TimeRange {
 			pos++
 			apath = a[pos].path
 		}
-		if pathequal(apath, bpath) {
+		if slices.Equal(apath, bpath) {
 			a[pos].Union(b[i])
 		} else {
 			a = append(a, b[i].copy())
@@ -185,7 +170,7 @@ func collectRanges(t *Trailer) [][]string {
 			p := t.Blocks[i].Ranges[j].Path()
 			// FIXME: don't do polynomial-time comparison here :o
 			for k := range out {
-				if pathequal(out[k], p) {
+				if slices.Equal(out[k], p) {
 					continue rangeloop
 				}
 			}

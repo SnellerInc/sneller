@@ -20,6 +20,8 @@ import (
 	"sort"
 	"strings"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -42,21 +44,8 @@ func (s Selection) String() string {
 // output bindings that are system
 // symbols will come first
 func (s Selection) outputSorted() Selection {
-	var empty ion.Symtab
-	sort.Slice(s, func(i, j int) bool {
-		iid, oki := empty.Symbolize(s[i].Result())
-		jid, okj := empty.Symbolize(s[j].Result())
-		if !oki {
-			// if j is a system symbol,
-			// it must be less than another
-			// arbitrary symbol
-			return okj
-		}
-		if !okj {
-			// see above, but for i
-			return true
-		}
-		return iid < jid
+	slices.SortFunc(s, func(x, y expr.Binding) bool {
+		return ion.MinimumID(x.Result()) < ion.MinimumID(y.Result())
 	})
 	return s
 }

@@ -727,9 +727,10 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 		},
 		{
 			// find the least common Make for parking tickets
-			query:    `select Make, COUNT(Make) as count from 'parking.10n' group by Make order by COUNT(Make) limit 1`,
+			// (breaking the tie on Make ordering)
+			query:    `select Make, COUNT(Make) as count from 'parking.10n' group by Make order by COUNT(Make), Make limit 1`,
 			rows:     1,
-			firstrow: `{"Make": "TSMR", "count": 1}`,
+			firstrow: `{"Make": "CHEC", "count": 1}`,
 		},
 		{
 			// really round-about way of computing count(Ticket) where Make is not missing;
@@ -746,7 +747,7 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 			// this should yield a plan with SUM_INT()
 			// during hash aggregation
 			schema: partial("Fine", expr.IntegerType|expr.MissingType),
-			query:  `select sum(Fine), Make from 'parking.10n' group by Make order by sum(Fine) desc`,
+			query:  `select sum(Fine), Make from 'parking.10n' group by Make order by sum(Fine) desc, Make`,
 			matchPlan: []string{
 				"HASH AGGREGATE.*SUM_INT",
 			},
@@ -797,19 +798,19 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 				`{"Make": "SCIO", "sum": 126}`,
 				`{"Make": "STRN", "sum": 98}`,
 				`{"Make": "HINO", "sum": 93}`,
-				`{"Make": "RROV", "sum": 73}`,
 				`{"Make": "ISU", "sum": 73}`,
 				`{"Make": "JAGU", "sum": 73}`,
+				`{"Make": "RROV", "sum": 73}`,
 				`{"Make": "JAGR", "sum": 68}`,
-				`{"Make": "KW", "sum": 63}`,
 				`{"Make": "CHEC", "sum": 63}`,
 				`{"Make": "FREI", "sum": 63}`,
+				`{"Make": "KW", "sum": 63}`,
 				`{"Make": "LIND", "sum": 50}`,
-				`{"Make": "TSMR", "sum": 25}`,
-				`{"Make": "SAA", "sum": 25}`,
 				`{"Make": "MASE", "sum": 25}`,
+				`{"Make": "SAA", "sum": 25}`,
 				`{"Make": "SUZI", "sum": 25}`,
 				`{"Make": "TESL", "sum": 25}`,
+				`{"Make": "TSMR", "sum": 25}`,
 			},
 		},
 		{
@@ -939,9 +940,9 @@ from 'parking.10n' limit 1`,
 		},
 		{
 			// count the number of distinct colors occuring for each Make
-			query:    `select count(distinct Color), Make from 'parking.10n' group by Make order by count(distinct Color) desc`,
+			query:    `select count(distinct Color), Make from 'parking.10n' group by Make order by count(distinct Color), Make desc`,
 			rows:     59,
-			firstrow: `{"Make": "HOND", "count": 16}`,
+			firstrow: `{"Make": "TSMR", "count": 1}`,
 		},
 		{
 			// same query result as above, computed differently

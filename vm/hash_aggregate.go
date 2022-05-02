@@ -17,9 +17,10 @@ package vm
 import (
 	"fmt"
 	"io"
-	"sort"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
 	ionsort "github.com/SnellerInc/sneller/internal/sort"
@@ -49,7 +50,7 @@ type HashAggregate struct {
 	// ordering functions;
 	// applied in order to determine
 	// the total ordering
-	order []func(*aggtable, *hpair, *hpair) int
+	order []func(*aggtable, hpair, hpair) int
 }
 
 // Limit sets the maximum number of output rows.
@@ -71,9 +72,9 @@ func (h *HashAggregate) OrderByGroup(n int, desc bool, nullslast bool) error {
 	if nullslast {
 		o.Nulls = ionsort.NullsLast
 	}
-	h.order = append(h.order, func(agt *aggtable, left, right *hpair) int {
-		leftmem := agt.repridx(left, n)
-		rightmem := agt.repridx(right, n)
+	h.order = append(h.order, func(agt *aggtable, left, right hpair) int {
+		leftmem := agt.repridx(&left, n)
+		rightmem := agt.repridx(&right, n)
 		return o.Compare(leftmem, rightmem)
 	})
 	return nil
@@ -84,9 +85,9 @@ func (h *HashAggregate) OrderByAggregate(n int, desc bool) error {
 		return fmt.Errorf("aggregate %d doesn't exist", n)
 	}
 	aggregateKind := h.aggregateKinds[n]
-	h.order = append(h.order, func(agt *aggtable, left, right *hpair) int {
-		lmem := agt.valueof(left)
-		rmem := agt.valueof(right)
+	h.order = append(h.order, func(agt *aggtable, left, right hpair) int {
+		lmem := agt.valueof(&left)
+		rmem := agt.valueof(&right)
 		dir := aggcmp(aggregateKind, lmem, rmem)
 		if desc {
 			return -dir
@@ -121,8 +122,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 		}
 		return by[i].Result()
 	}
-	sort.SliceStable(pos2id, func(i, j int) bool {
-		return ion.MinimumID(posResult(pos2id[i])) < ion.MinimumID(posResult(pos2id[j]))
+	// shuffle results around so that the
+	// output symbol table can always be ordered
+	slices.SortStableFunc(pos2id, func(i, j int) bool {
+		return ion.MinimumID(posResult(i)) < ion.MinimumID(posResult(j))
 	})
 
 	h := &HashAggregate{agg: agg, by: by, dst: dst, pos2id: pos2id}
@@ -279,10 +282,9 @@ func (h *HashAggregate) sort(pairs []hpair) {
 	if h.order == nil {
 		return
 	}
-
-	sort.Slice(pairs, func(i, j int) bool {
+	slices.SortFunc(pairs, func(left, right hpair) bool {
 		for k := range h.order {
-			dir := h.order[k](h.final, &pairs[i], &pairs[j])
+			dir := h.order[k](h.final, left, right)
 			if dir < 0 {
 				return true
 			}

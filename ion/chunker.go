@@ -19,7 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
 )
@@ -579,11 +580,8 @@ func (c *Chunker) walkTimeRanges(rec []byte) {
 	}
 	// rebuild rangeSyms
 	if len(c.rangeSyms) == 0 {
-		if cap(c.rangeSyms) >= len(c.WalkTimeRanges) {
-			c.rangeSyms = c.rangeSyms[:len(c.WalkTimeRanges)]
-		} else {
-			c.rangeSyms = make([][]Symbol, len(c.WalkTimeRanges))
-		}
+		nranges := len(c.WalkTimeRanges)
+		c.rangeSyms = slices.Grow(c.rangeSyms, nranges)[:nranges]
 		for i := range c.WalkTimeRanges {
 			path := c.WalkTimeRanges[i]
 			sl := c.rangeSyms[i][:0]
@@ -600,9 +598,7 @@ func (c *Chunker) walkTimeRanges(rec []byte) {
 			c.rangeSyms[i] = sl
 		}
 		// produce ranges to search in symbol order
-		sort.Slice(c.rangeSyms, func(i, j int) bool {
-			return pathLess(c.rangeSyms[i], c.rangeSyms[j])
-		})
+		slices.SortFunc(c.rangeSyms, pathLess)
 	}
 	body, _ := Contents(rec)
 	for i := range c.rangeSyms {

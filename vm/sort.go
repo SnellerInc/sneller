@@ -20,6 +20,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/sort"
 	"github.com/SnellerInc/sneller/ion"
@@ -366,9 +368,7 @@ func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
 		if newCapacity == 0 {
 			newCapacity = 1024
 		}
-		tmp := make([]sort.IonRecord, len(s.parent.records), newCapacity)
-		copy(tmp, s.parent.records)
-		s.parent.records = tmp
+		s.parent.records = slices.Grow(s.parent.records, newCapacity)
 	}
 
 	// split input data into separate records

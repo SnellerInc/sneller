@@ -19,6 +19,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/exp/slices"
 )
 
 // tenant cache eviction implementation
@@ -79,11 +81,8 @@ type evictHeap struct {
 // sort the final heap results by
 // *least recently accessed time*
 func (e *evictHeap) sort() {
-	if cap(e.sorted) < len(e.lst) {
-		e.sorted = make([]fprio, len(e.lst))
-	}
+	e.sorted = slices.Grow(e.sorted, len(e.lst))[:len(e.lst)]
 	// reverse the output of calling pop() repeatedly
-	e.sorted = e.sorted[:len(e.lst)]
 	for i := len(e.sorted) - 1; i >= 0; i-- {
 		path, atime, size := e.pop()
 		e.sorted[i] = fprio{path: path, atime: atime, size: size}

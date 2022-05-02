@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"io"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -61,7 +63,7 @@ func (c *checkWriter) checkRange(tm date.Time, path []string) {
 	}
 	for i := range r {
 		if ts, ok := r[i].(*TimeRange); ok {
-			if pathequal(path, ts.Path()) {
+			if slices.Equal(path, ts.Path()) {
 				min, max := ts.MinTime(), ts.MaxTime()
 				if tm.Before(min) || tm.After(max) {
 					c.errorf("block %d chunk %d time %s out of range [%s, %s]",
