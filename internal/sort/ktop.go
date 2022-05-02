@@ -15,14 +15,21 @@
 package sort
 
 import (
-	"container/heap"
+	"github.com/SnellerInc/sneller/heap"
 )
 
 // Ktop stores the given number of k smallest/largest records.
 type Ktop struct {
+	// indirect is heap ordering of records;
+	// we use integer indirection here so that
+	// re-ordering the heap doesn't require swapping
+	// the complete IonRecord structures
+	indirect []int
+	// storage for records, up to limit
 	records []IonRecord
-	orders  []Ordering
-	limit   int
+
+	orders []Ordering
+	limit  int
 }
 
 // NewKtop constructs a new Ktop object.
@@ -45,17 +52,19 @@ func (k *Ktop) add(rec *IonRecord, copyrec bool) bool {
 		if copyrec {
 			rec.snapshot()
 		}
-		heap.Push(k, *rec)
+		n := len(k.records)
+		k.records = append(k.records, *rec)
+		heap.PushSlice(&k.indirect, n, k.greater)
 		return true
 	}
 
 	// new record less than max - add it to the heap and discard the current max
-	if k.less(rec, &k.records[0]) {
+	if k.recGreater(&k.records[k.indirect[0]], rec) {
 		if copyrec {
 			rec.snapshot()
 		}
-		k.records[0] = *rec
-		heap.Fix(k, 0)
+		k.records[k.indirect[0]] = *rec
+		heap.FixSlice(k.indirect, 0, k.greater)
 		return true
 	}
 
@@ -78,55 +87,31 @@ func (k *Ktop) Records() []IonRecord {
 
 // Capture returns sorted collection of records and cleans the collection.
 func (k *Ktop) Capture() (result []IonRecord) {
-	result = make([]IonRecord, k.Len())
-	i := k.Len() - 1
-	for len(k.records) > 0 {
-		record := heap.Pop(k).(IonRecord)
-		result[i] = record
+	result = make([]IonRecord, len(k.indirect))
+	i := len(k.indirect) - 1
+	for len(k.indirect) > 0 {
+		record := heap.PopSlice(&k.indirect, k.greater)
+		result[i] = k.records[record]
 		i -= 1
 	}
-
 	return result
 }
 
-// Len implements sort.Interface
-func (k *Ktop) Len() int { return len(k.records) }
+func (k *Ktop) greater(leftnum, rightnum int) bool {
+	return k.recGreater(&k.records[leftnum], &k.records[rightnum])
+}
 
-func (k *Ktop) less(record1, record2 *IonRecord) bool {
+func (k *Ktop) recGreater(record1, record2 *IonRecord) bool {
 	for i := range k.orders {
 		raw1 := record1.UnsafeField(i)
 		raw2 := record2.UnsafeField(i)
 		cmp := k.orders[i].Compare(raw1, raw2)
-		if cmp < 0 {
+		if cmp > 0 {
 			return true
-		} else if cmp > 0 {
+		} else if cmp < 0 {
 			return false
 		}
 		// cmp == 0 -> continue
 	}
 	return false
-}
-
-// Less implements sort.Interface
-func (k *Ktop) Less(i, j int) bool {
-	return k.less(&k.records[j], &k.records[i]) // note swapped indices
-}
-
-// Swap implements sort.Interface
-func (k *Ktop) Swap(i, j int) {
-	k.records[i], k.records[j] = k.records[j], k.records[i]
-}
-
-// Push implements heap.Interface
-func (k *Ktop) Push(x interface{}) {
-	k.records = append(k.records, x.(IonRecord))
-}
-
-// Pop implements heap.Interface
-func (k *Ktop) Pop() interface{} {
-	old := k.records
-	n := len(old)
-	x := old[n-1]
-	k.records = old[0 : n-1]
-	return x
 }

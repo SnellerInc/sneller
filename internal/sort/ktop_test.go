@@ -191,8 +191,8 @@ func TestKtopAddAndCaptureDescendingOrder(t *testing.T) {
 		`{"id": 6, "num": 102}`,
 		`{"id": 4, "num": 101}`,
 		`{"id": 1, "num": 100}`,
-		`{"id": 3, "num": 50}`,
 		`{"id": 9, "num": 50}`,
+		`{"id": 3, "num": 50}`,
 	}
 
 	testCompareRecords(t, buf.Bytes(), &st, expectedRows)

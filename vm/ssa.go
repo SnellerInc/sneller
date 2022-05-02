@@ -15,7 +15,6 @@
 package vm
 
 import (
-	"container/heap"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -30,6 +29,7 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/heap"
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -3051,6 +3051,12 @@ func emitdatecasttoint(v *value, c *compilestate) {
 
 	c.loadk(v, mask)
 	c.loads(v, arg0)
+	// FIXME: we need this here in order
+	// to not confuse the stack allocator,
+	// but in principle we wouldn't need to do
+	// a clobber if we could teach the stack allocator
+	// that these registers are actually equivalent
+	c.clobbers(v)
 }
 
 // Simple aggregate operations
@@ -3453,33 +3459,6 @@ func (p *prog) order(pi *proginfo) []*value {
 	return p.rpo(pi.rpo)
 }
 
-type valheap struct {
-	values   []*value
-	priority func(v *value) int
-}
-
-func (v *valheap) Len() int { return len(v.values) }
-func (v *valheap) Less(i, j int) bool {
-	return v.priority(v.values[i]) < v.priority(v.values[j])
-}
-func (v *valheap) Swap(i, j int) {
-	v.values[i], v.values[j] = v.values[j], v.values[i]
-}
-func (v *valheap) Push(x interface{}) {
-	v.values = append(v.values, x.(*value))
-}
-func (v *valheap) Pop() interface{} {
-	out := v.values[len(v.values)-1]
-	v.values = v.values[:len(v.values)-1]
-	return out
-}
-func (v *valheap) Next() *value {
-	return heap.Pop(v).(*value)
-}
-func (v *valheap) add(x *value) {
-	heap.Push(v, x)
-}
-
 // finalorder computes the final instruction ordering
 //
 // the ordering is determined by static scheduling priority
@@ -3500,7 +3479,10 @@ func (p *prog) finalorder(rpo []*value, numbering []int) []*value {
 		// when we don't have any other indication
 		return -numbering[v.id]
 	}
-	h := &valheap{priority: priority}
+	var hvalues []*value
+	vless := func(x, y *value) bool {
+		return priority(x) < priority(y)
+	}
 
 	// count the number of times each
 	// instruction is used; this will
@@ -3519,15 +3501,15 @@ func (p *prog) finalorder(rpo []*value, numbering []int) []*value {
 	if refcount[p.ret.id] != 0 {
 		panic("ret has non-zero refcount?")
 	}
-	h.add(p.ret)
+	hvalues = append(hvalues, p.ret)
 	out := make([]*value, len(rpo))
 	nv := len(out)
-	for h.Len() > 0 {
-		next := h.Next()
+	for len(hvalues) > 0 {
+		next := heap.PopSlice(&hvalues, vless)
 		for _, arg := range next.args {
 			refcount[arg.id]--
 			if refcount[arg.id] == 0 {
-				h.add(arg)
+				heap.PushSlice(&hvalues, arg, vless)
 			}
 			if refcount[arg.id] < 0 {
 				panic("negative refcount")

@@ -20,7 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"golang.org/x/exp/slices"
+	"github.com/SnellerInc/sneller/heap"
 )
 
 // tenant cache eviction implementation
@@ -81,76 +81,35 @@ type evictHeap struct {
 // sort the final heap results by
 // *least recently accessed time*
 func (e *evictHeap) sort() {
-	e.sorted = slices.Grow(e.sorted, len(e.lst))[:len(e.lst)]
-	// reverse the output of calling pop() repeatedly
-	for i := len(e.sorted) - 1; i >= 0; i-- {
-		path, atime, size := e.pop()
-		e.sorted[i] = fprio{path: path, atime: atime, size: size}
+	e.sorted = e.sorted[:0]
+	for len(e.lst) > 0 {
+		e.sorted = append(e.sorted, heap.PopSlice(&e.lst, atimeLRU))
 	}
+}
+
+func atimeLRU(x, y fprio) bool {
+	return x.atime < y.atime
 }
 
 func (e *evictHeap) push(path string, atime int64, size int64) {
-	e.lst = append(e.lst, fprio{
+	heap.PushSlice(&e.lst, fprio{
 		path:  path,
 		atime: atime,
 		size:  size,
-	})
-	e.siftUp(len(e.lst) - 1)
-}
-
-func (e *evictHeap) siftUp(at int) {
-	f := e.lst[at]
-	t := f.atime
-	for at > 0 {
-		p := (at - 1) / 2
-		if e.lst[p].atime >= t {
-			break
-		}
-		e.lst[at] = e.lst[p]
-		at = p
-	}
-	e.lst[at] = f
-}
-
-func (e *evictHeap) siftDown(at int) {
-	f := e.lst[at]
-	t := f.atime
-	for {
-		left := (at * 2) + 1
-		right := left + 1
-		if left >= len(e.lst) {
-			break
-		}
-		c := left
-		if len(e.lst) > right && e.lst[right].atime > e.lst[left].atime {
-			c = right
-		}
-		if t > e.lst[c].atime {
-			break
-		}
-		e.lst[at] = e.lst[c]
-		at = c
-	}
-	e.lst[at] = f
+	}, atimeLRU)
 }
 
 // shrink the heap while it is larger than max elements
 func (e *evictHeap) shrink(max int) {
 	for len(e.lst) > max {
-		e.lst[0] = e.lst[len(e.lst)-1]
-		e.lst = e.lst[:len(e.lst)-1]
-		e.siftDown(0)
+		heap.PopSlice(&e.lst, atimeLRU)
 	}
 }
 
 // pop the *most recently accessed* file from
 // the eviction heap
 func (e *evictHeap) pop() (string, int64, int64) {
-	f := e.lst[0]
-	e.lst[0], e.lst = e.lst[len(e.lst)-1], e.lst[:len(e.lst)-1]
-	if len(e.lst) > 1 {
-		e.siftDown(0)
-	}
+	f := heap.PopSlice(&e.lst, atimeLRU)
 	return f.path, f.atime, f.size
 }
 

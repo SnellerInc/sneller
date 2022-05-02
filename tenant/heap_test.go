@@ -25,10 +25,10 @@ func checkheap(t *testing.T, lst []fprio) {
 	for i := range lst {
 		left := (i * 2) + 1
 		right := left + 1
-		if len(lst) > left && lst[left].atime > lst[i].atime {
+		if len(lst) > left && lst[left].atime < lst[i].atime {
 			t.Errorf("heap invariant violated: element %d > %d", left, i)
 		}
-		if len(lst) > right && lst[right].atime > lst[i].atime {
+		if len(lst) > right && lst[right].atime < lst[i].atime {
 			t.Errorf("heap invariant violated: element %d > %d", right, i)
 		}
 	}
@@ -51,12 +51,12 @@ func TestHeapOrder(t *testing.T) {
 	if len(e.lst) != entries {
 		t.Fatalf("len(e.lst)=%d, wanted %d", len(e.lst), entries)
 	}
-	prevatime := int64(math.MaxInt64)
+	prevatime := int64(math.MinInt64)
 	elem := 0
 	for len(e.lst) > 0 {
-		// pop() should yield atimes in descending order
+		// pop() should yield atimes in ascending order
 		name, atime, size := e.pop()
-		if atime > prevatime {
+		if atime < prevatime {
 			t.Fatalf("unsorted at elem %d: prev=%d, atime=%d", elem, prevatime, atime)
 		}
 		if name != fmt.Sprintf("atime=%d", atime) {
