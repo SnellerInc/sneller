@@ -16,9 +16,16 @@ package plan
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
+	"path"
+	"regexp"
+	"strings"
 	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -153,4 +160,135 @@ func (w *multiWriter) reallyClose() error {
 
 func (w *multiWriter) Close() error {
 	return nil
+}
+
+// TableLister is an interface an Env can optionally
+// implement to support TABLE_GLOB and TABLE_PATTERN
+// expressions.
+type TableLister interface {
+	Env
+	// ListTables returns the names of tables in
+	// the given db. Callers must not modify the
+	// returned list.
+	ListTables(db string) ([]string, error)
+}
+
+func statGlob(tl TableLister, e *expr.Builtin, flt expr.Node) (TableHandle, error) {
+	db, m, err := compileGlob(e)
+	if err != nil {
+		return nil, err
+	}
+	if m, ok := m.(literalMatcher); ok {
+		return statTable(tl, db, string(m), flt)
+	}
+	list, err := tl.ListTables(db)
+	if err != nil {
+		return nil, err
+	}
+	ts := make(tableHandles, 0, len(list))
+	for i := range list {
+		if !m.MatchString(list[i]) {
+			continue
+		}
+		th, err := statTable(tl, db, list[i], flt)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		ts = append(ts, th)
+	}
+	switch len(ts) {
+	case 0:
+		return nil, fs.ErrNotExist
+	case 1:
+		return ts[0], nil
+	default:
+		return ts, nil
+	}
+}
+
+func statTable(env Env, db, name string, flt expr.Node) (TableHandle, error) {
+	var tmp expr.Table
+	if db != "" {
+		tmp.Expr = &expr.Path{First: db, Rest: &expr.Dot{Field: name}}
+	} else {
+		tmp.Expr = &expr.Path{First: name}
+	}
+	return env.Stat(&tmp, flt)
+}
+
+type matcher interface {
+	MatchString(string) bool
+}
+
+type literalMatcher string
+
+func (m literalMatcher) MatchString(s string) bool { return s == string(m) }
+
+type globMatcher string
+
+func (m globMatcher) MatchString(s string) bool {
+	ok, _ := path.Match(string(m), s)
+	return ok
+}
+
+// compileGlob compiles a matcher from a TABLE_GLOB or
+// TABLE_PATTERN builtin.
+func compileGlob(bi *expr.Builtin) (db string, m matcher, err error) {
+	switch bi.Func {
+	case expr.TableGlob:
+		db, str, ok := splitGlobArg(bi.Args)
+		if !ok {
+			return "", nil, fmt.Errorf("invalid argument(s) to TABLE_GLOB")
+		}
+		if fsutil.MetaPrefix(str) == str {
+			return db, literalMatcher(str), nil
+		}
+		// check syntax
+		if _, err := path.Match("", str); err != nil {
+			return "", nil, err
+		}
+		return db, globMatcher(str), nil
+	case expr.TablePattern:
+		db, str, ok := splitGlobArg(bi.Args)
+		if !ok {
+			return "", nil, fmt.Errorf("invalid argument(s) to TABLE_PATTERN")
+		}
+		if !strings.HasPrefix(str, "^") {
+			str = "^" + str
+		}
+		if !strings.HasSuffix(str, "$") {
+			str = str + "$"
+		}
+		m, err := regexp.Compile(str)
+		if err != nil {
+			return "", nil, err
+		}
+		if str, full := m.LiteralPrefix(); full {
+			return db, literalMatcher(str), nil
+		}
+		return db, m, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported builtin: %v", bi.Func)
+	}
+}
+
+func splitGlobArg(args []expr.Node) (db, str string, ok bool) {
+	if len(args) != 1 {
+		return "", "", false
+	}
+	p, ok := args[0].(*expr.Path)
+	if !ok {
+		return "", "", false
+	}
+	if p.Rest == nil {
+		return "", p.First, true
+	}
+	db = p.First
+	dot, ok := p.Rest.(*expr.Dot)
+	if !ok || dot.Rest != nil {
+		return "", "", false
+	}
+	return db, dot.Field, true
 }

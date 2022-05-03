@@ -946,3 +946,31 @@ and the `cidr` string in the two-argument form must be constant strings.*
 <!---
 Document me!
 -->
+
+#### `TABLE_GLOB` and `TABLE_PATTERN`
+
+`TABLE_GLOB(path)` and `TABLE_PATTERN(path)` can be
+used in the `FROM` position of a `SELECT` statement to
+execute a query across multiple tables with names
+matching the given shell pattern or regular expression
+respectively.
+
+Path segments used as patterns will generally need to
+be enclosed in double-quotes to avoid special
+characters causing syntax errors, for example:
+```
+SELECT * FROM TABLE_GLOB("table[0-9][0-9]")
+SELECT * FROM TABLE_PATTERN("(access|error)_logs")
+```
+`TABLE_GLOB` and `TABLE_PATTERN` can be used to search
+within a particular database by including the database
+name as the first segment of the path argument, for
+example:
+```
+# searching within a database named "db"
+SELECT * FROM TABLE_GLOB(db."*_logs")
+```
+
+*Note: `TABLE_GLOB` and `TABLE_PATTERN` cannot be used
+to match the database portion of the path, only the
+table name.*

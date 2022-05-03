@@ -165,13 +165,42 @@ func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	})
 }
 
-type envfn func(expr.Node) (plan.TableHandle, error)
-
-func (e envfn) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	return e(t.Expr)
+type queryenv struct {
+	in []plan.TableHandle
 }
 
-func (e envfn) Schema(t *expr.Table) expr.Hint { return nil }
+func (e *queryenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
+	p, ok := t.Expr.(*expr.Path)
+	if !ok || p.Rest != nil {
+		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t.Expr))
+	}
+	if p.First == "input" && len(e.in) == 1 {
+		return e.in[0], nil
+	}
+	var i int
+	if n, _ := fmt.Sscanf(p.First, "input%d", &i); n > 0 && i >= 0 && i < len(e.in) {
+		return e.in[i], nil
+	}
+	return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t.Expr))
+}
+
+func (e *queryenv) Schema(t *expr.Table) expr.Hint { return nil }
+
+var _ plan.TableLister = (*queryenv)(nil)
+
+func (e *queryenv) ListTables(db string) ([]string, error) {
+	if db != "" {
+		return nil, fmt.Errorf("no databases")
+	}
+	if len(e.in) == 1 {
+		return []string{"input"}, nil
+	}
+	ts := make([]string, len(e.in))
+	for i := range e.in {
+		ts[i] = fmt.Sprintf("input%d", i)
+	}
+	return ts, nil
+}
 
 func rows(b []byte, outst *ion.Symtab) ([]ion.Datum, error) {
 	if len(b) == 0 {
@@ -276,20 +305,8 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 			input[i] = bufhandle(flatten(in, st))
 		}
 	}
-	tree, err := plan.New(q, envfn(func(e expr.Node) (plan.TableHandle, error) {
-		p, ok := e.(*expr.Path)
-		if !ok || p.Rest != nil {
-			return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(e))
-		}
-		if p.First == "input" && len(input) == 1 {
-			return input[0], nil
-		}
-		var i int
-		if n, _ := fmt.Sscanf(p.First, "input%d", &i); n > 0 && i >= 0 && i < len(in) {
-			return input[i], nil
-		}
-		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(e))
-	}))
+	env := &queryenv{in: input}
+	tree, err := plan.New(q, env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,13 +509,8 @@ func benchInput(b *testing.B, query, inbuf []byte, rows int) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	tree, err := plan.New(sel, envfn(func(e expr.Node) (plan.TableHandle, error) {
-		id, ok := e.(*expr.Path)
-		if !ok || id.First != "input" {
-			return nil, fmt.Errorf("unexpected table %q", e)
-		}
-		return bt, nil
-	}))
+	env := &queryenv{in: []plan.TableHandle{bt}}
+	tree, err := plan.New(sel, env)
 	if err != nil {
 		b.Fatal(err)
 	}

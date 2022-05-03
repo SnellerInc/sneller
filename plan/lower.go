@@ -232,7 +232,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	if handle == nil {
 		return nil, fmt.Errorf("lowerUnionMap: couldn't find %s", expr.ToString(tbl))
 	}
-	tbls, err := split.Split(in.Inner.Table, handle)
+	tbls, err := doSplit(split, in.Inner.Table, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +245,24 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 		Orig:        in.Inner.Table,
 		Sub:         tbls,
 	}, nil
+}
+
+// doSplit calls s.Split(tbl, th) with special handling
+// for tableHandles.
+func doSplit(s Splitter, tbl *expr.Table, th TableHandle) ([]Subtable, error) {
+	hs, ok := th.(tableHandles)
+	if !ok {
+		return s.Split(tbl, th)
+	}
+	var out []Subtable
+	for i := range hs {
+		sub, err := doSplit(s, tbl, hs[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sub...)
+	}
+	return out, nil
 }
 
 func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {

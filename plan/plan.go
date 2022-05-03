@@ -129,7 +129,8 @@ type Env interface {
 }
 
 // stat handles calling env.Stat(tbl, flt), with
-// special handling for the ++ operator.
+// special handling for certain table expressions
+// (TABLE_GLOB, TABLE_PATTERN, ++ operator).
 func stat(env Env, tbl *expr.Table, flt expr.Node) (TableHandle, error) {
 	switch e := tbl.Expr.(type) {
 	case *expr.Appended:
@@ -144,6 +145,15 @@ func stat(env Env, tbl *expr.Table, flt expr.Node) (TableHandle, error) {
 			ths[i] = th
 		}
 		return ths, nil
+	case *expr.Builtin:
+		switch e.Func {
+		case expr.TableGlob, expr.TablePattern:
+			tl, ok := env.(TableLister)
+			if !ok {
+				return nil, fmt.Errorf("listing not supported")
+			}
+			return statGlob(tl, e, flt)
+		}
 	}
 	return env.Stat(tbl, flt)
 }

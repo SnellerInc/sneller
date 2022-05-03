@@ -163,6 +163,9 @@ const (
 
 	ObjectSize // SIZE(x)
 
+	TableGlob
+	TablePattern
+
 	// used by query planner:
 	InSubquery        // matches IN (SELECT ...)
 	HashLookup        // matches CASE with only literal comparisons
@@ -242,6 +245,8 @@ var name2Builtin = map[string]BuiltinOp{
 	"TO_UNIX_EPOCH":            DateToUnixEpoch,
 	"TO_UNIX_MICRO":            DateToUnixMicro,
 	"SIZE":                     ObjectSize,
+	"TABLE_GLOB":               TableGlob,
+	"TABLE_PATTERN":            TablePattern,
 }
 
 var builtin2Name [maxBuiltin]string
@@ -762,6 +767,26 @@ func simplifyConcat(h Hint, args []Node) Node {
 	return String(l + r)
 }
 
+func checkTableGlob(h Hint, args []Node) error {
+	if len(args) != 1 {
+		return mismatch(1, len(args))
+	}
+	if _, ok := args[0].(*Path); !ok {
+		return errsyntaxf("argument to TABLE_GLOB is %q", ToString(args[0]))
+	}
+	return nil
+}
+
+func checkTablePattern(h Hint, args []Node) error {
+	if len(args) != 1 {
+		return mismatch(1, len(args))
+	}
+	if _, ok := args[0].(*Path); !ok {
+		return errsyntaxf("argument to TABLE_PATTERN is %q", ToString(args[0]))
+	}
+	return nil
+}
+
 var builtinInfo = [maxBuiltin]binfo{
 	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType, simplify: simplifyConcat},
 	Trim:       {check: checkTrim, ret: StringType | MissingType, simplify: simplifyTrim},
@@ -830,6 +855,9 @@ var builtinInfo = [maxBuiltin]binfo{
 	StructReplacement: {check: checkScalarReplacement, private: true, ret: StructType},
 
 	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType},
+
+	TableGlob:    {check: checkTableGlob, ret: AnyType},
+	TablePattern: {check: checkTablePattern, ret: AnyType},
 }
 
 func (b *Builtin) info() *binfo {

@@ -67,7 +67,7 @@ func WalkGlob(f fs.FS, seek, pattern string, walk WalkGlobFn) error {
 	}
 	// the constant prefix in pattern
 	// must match seek
-	pre := metaPrefix(pattern)
+	pre := MetaPrefix(pattern)
 	seek = path.Clean(seek)
 	if seek == "." {
 		seek = ""
@@ -107,10 +107,9 @@ func WalkGlob(f fs.FS, seek, pattern string, walk WalkGlobFn) error {
 	return fs.WalkDir(f, pre, outer)
 }
 
-// find the longest directory path
-// for which we can begin searching
-// for a glob pattern
-func metaPrefix(pattern string) string {
+// MetaPrefix finds the longest directory path for
+// which we can begin searching for a glob pattern.
+func MetaPrefix(pattern string) string {
 	j := 0
 	for i := 0; i < len(pattern); i++ {
 		switch pattern[i] {

@@ -20,6 +20,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -141,4 +142,30 @@ func openIndex(s fs.FS, db, table string, key *blockfmt.Key, opts blockfmt.Flag)
 		return nil, err
 	}
 	return blockfmt.DecodeIndex(key, buf[:n], opts)
+}
+
+// ListTables list the names of all tables in the given
+// database. The database name must not be empty.
+//
+// A table in the returned list does not guarantee that
+// the table exists. For example, it may have been
+// deleted between the call to ListTables and the call
+// to OpenIndex.
+func ListTables(s fs.FS, db string) ([]string, error) {
+	if db == "" {
+		return nil, errors.New("db.ListTables: no database specified")
+	}
+	base := path.Join("db", db)
+	dirs, err := fs.ReadDir(s, base)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(dirs))
+	for i := range dirs {
+		if !dirs[i].IsDir() {
+			continue
+		}
+		out = append(out, dirs[i].Name())
+	}
+	return out, nil
 }

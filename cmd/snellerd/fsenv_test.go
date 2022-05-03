@@ -379,6 +379,8 @@ SELECT SUM(total_amount) FROM default.taxi WHERE VendorID = (SELECT VendorID FRO
 			"",
 			`{"sum": 76333.22931289673}`,
 		},
+		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 9583}`},
+		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 9583}`},
 	}
 	for i := range queries {
 		r := rq.getQuery(queries[i].db, queries[i].input)

@@ -1,0 +1,21 @@
+# multiple tables (glob)
+SELECT
+  x
+FROM
+  TABLE_GLOB("inp?t[02]")
+ORDER BY x # order for consistent output
+LIMIT 1000
+---
+{"x": 1}
+{"x": 2}
+---
+{"x": 3}
+{"x": 4}
+---
+{"x": 5}
+{"x": 6}
+----
+{"x": 1}
+{"x": 2}
+{"x": 5}
+{"x": 6}

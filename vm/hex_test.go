@@ -17,11 +17,9 @@ package vm_test
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/plan"
 )
@@ -101,12 +99,10 @@ c41d94d227ad5492de00d395dc9822904999864e656f74656c96deb59a8a
 		if err != nil {
 			t.Fatal(err)
 		}
-		op, err := plan.New(s, envfn(func(e expr.Node) (plan.TableHandle, error) {
-			if !expr.IsIdentifier(e, "input") {
-				return nil, fmt.Errorf("unexpected table expression %q", e)
-			}
-			return bufhandle(decode(tcs[i].body)), nil
-		}))
+		env := &queryenv{in: []plan.TableHandle{
+			bufhandle(decode(tcs[i].body)),
+		}}
+		op, err := plan.New(s, env)
 		if err != nil {
 			t.Fatal(err)
 		}

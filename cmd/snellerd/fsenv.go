@@ -35,6 +35,11 @@ type savedIndex struct {
 	index     *blockfmt.Index
 }
 
+type savedList struct {
+	db   string
+	list []string
+}
+
 // fsEnv provides a plan.Env from a db.FS
 type fsEnv struct {
 	root   db.FS
@@ -42,6 +47,7 @@ type fsEnv struct {
 	tenant db.Tenant
 
 	recent []savedIndex
+	lists  []savedList
 
 	// FIXME: change cachedEnv and don't
 	// keep the accumulated state here:
@@ -176,4 +182,27 @@ func (f *fsEnv) TimeRange(tbl *expr.Table, p *expr.Path) (min, max date.Time, ok
 		return date.Time{}, date.Time{}, false
 	}
 	return index.TimeRange(p)
+}
+
+var _ plan.TableLister = (*fsEnv)(nil)
+
+// ListTables implements plan.TableLister.ListTables
+func (f *fsEnv) ListTables(dbname string) ([]string, error) {
+	if dbname == "" {
+		dbname = f.db
+	}
+	for i := range f.lists {
+		if f.lists[i].db == dbname {
+			return f.lists[i].list, nil
+		}
+	}
+	li, err := db.ListTables(f.root, dbname)
+	if err != nil {
+		return nil, err
+	}
+	f.lists = append(f.lists, savedList{
+		db:   dbname,
+		list: li,
+	})
+	return li, nil
 }
