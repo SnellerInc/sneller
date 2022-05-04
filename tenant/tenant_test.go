@@ -52,9 +52,7 @@ func randomID() (id tnproto.ID) {
 	return
 }
 
-type stubenv struct {
-	fakeSplit bool
-}
+type stubenv struct{}
 
 type stubHandle string
 
@@ -100,8 +98,8 @@ func (r *repeatHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (s stubenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	if b, ok := tbl.Expr.(*expr.Builtin); ok {
+func (s stubenv) Stat(tbl, _ expr.Node) (plan.TableHandle, error) {
+	if b, ok := tbl.(*expr.Builtin); ok {
 		if b.Text != "REPEAT" {
 			return badHandle{}, nil
 		}
@@ -109,7 +107,7 @@ func (s stubenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, erro
 	}
 	// confirm that the file exists,
 	// but otherwise do nothing
-	fn, ok := tbl.Expr.(expr.String)
+	fn, ok := tbl.(expr.String)
 	if !ok {
 		return badHandle{}, nil
 	}
@@ -117,20 +115,15 @@ func (s stubenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, erro
 	if err != nil {
 		return nil, err
 	}
-	if s.fakeSplit {
-		tbl.As("copy-fake")
-	}
 	return stubHandle(fn), nil
 }
-
-func (s stubenv) Schema(tbl *expr.Table) expr.Hint { return nil }
 
 func mkplan(t *testing.T, str string) *plan.Tree {
 	s, err := partiql.Parse([]byte(str))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := plan.New(s, stubenv{fakeSplit: true})
+	tree, err := plan.New(s, stubenv{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,14 +412,11 @@ type split4 struct {
 	port int // local port on which the tenant is bound
 }
 
-func (s *split4) Split(tbl *expr.Table, h plan.TableHandle) ([]plan.Subtable, error) {
+func (s *split4) Split(tbl expr.Node, h plan.TableHandle) ([]plan.Subtable, error) {
 	out := make([]plan.Subtable, 4)
 	out[0].Handle = h
 	out[0].Table = &expr.Table{
-		Binding: expr.Bind(
-			tbl.Expr,
-			"copy-0",
-		),
+		Binding: expr.Bind(tbl, "copy-0"),
 	}
 	// get test coverage of using a LocalTransport
 	// for one of the UnionMap sub-plans
@@ -436,9 +426,7 @@ func (s *split4) Split(tbl *expr.Table, h plan.TableHandle) ([]plan.Subtable, er
 		out[i].Table = &expr.Table{
 			// textually the same as the original input,
 			// but not == in terms of strict equality
-			Binding: expr.Bind(
-				tbl.Expr,
-				fmt.Sprintf("copy-%d", i)),
+			Binding: expr.Bind(tbl, fmt.Sprintf("copy-%d", i)),
 		}
 		out[i].Transport = &tnproto.Remote{
 			Tenant: s.id,
@@ -487,7 +475,7 @@ func socketPair(t testing.TB) (net.Conn, net.Conn) {
 // begin execution of a split query and yield the
 // returned data.
 func splitquery(t *testing.T, query string, m *Manager, id tnproto.ID) (io.ReadCloser, io.ReadCloser) {
-	tree := mksplit(t, query, stubenv{fakeSplit: false}, &split4{id: id, port: getport(t, m)})
+	tree := mksplit(t, query, stubenv{}, &split4{id: id, port: getport(t, m)})
 	me, there := socketPair(t)
 
 	t.Logf("split plan: %s", tree.String())
@@ -649,10 +637,6 @@ type benchenv struct {
 	ranges bool
 }
 
-func (b *benchenv) Schema(t *expr.Table) expr.Hint {
-	return nil
-}
-
 type benchHandle struct {
 	*blob.List
 }
@@ -666,7 +650,7 @@ func (b *benchHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
+func (b *benchenv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)

@@ -209,13 +209,13 @@ func statGlob(tl TableLister, e *expr.Builtin, flt expr.Node) (TableHandle, erro
 }
 
 func statTable(env Env, db, name string, flt expr.Node) (TableHandle, error) {
-	var tmp expr.Table
+	var p *expr.Path
 	if db != "" {
-		tmp.Expr = &expr.Path{First: db, Rest: &expr.Dot{Field: name}}
+		p = &expr.Path{First: db, Rest: &expr.Dot{Field: name}}
 	} else {
-		tmp.Expr = &expr.Path{First: name}
+		p = &expr.Path{First: name}
 	}
-	return env.Stat(&tmp, flt)
+	return env.Stat(p, flt)
 }
 
 type matcher interface {

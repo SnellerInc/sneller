@@ -51,7 +51,7 @@ func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *splitte
 	return split
 }
 
-func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Subtable, error) {
+func (s *splitter) Split(table expr.Node, handle plan.TableHandle) ([]plan.Subtable, error) {
 	// distribute blobs over available nodes
 	blobList := handle.(*filterHandle).blobs
 
@@ -133,8 +133,8 @@ func (s *splitter) Split(table *expr.Table, handle plan.TableHandle) ([]plan.Sub
 
 	subtables := make([]plan.Subtable, 0, len(nodeBlobLists))
 	for nodeID, blobList := range nodeBlobLists {
-		bind := table.Binding
-		bind.As(fmt.Sprintf("part.%d", len(subtables)))
+		name := fmt.Sprintf("part.%d", len(subtables))
+		bind := expr.Bind(table, name)
 		subtable := plan.Subtable{
 			Transport: s.transport(nodeID),
 			Table: &expr.Table{

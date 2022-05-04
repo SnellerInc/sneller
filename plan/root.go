@@ -85,8 +85,6 @@ func (f *fakeenv) rewrite(in *expr.Table, h TableHandle) (*expr.Table, TableHand
 	return in, h
 }
 
-func (f *fakeenv) Schema(e *expr.Table) expr.Hint { return nil }
-
 func (f *fakeenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	i, _, err := ion.ReadInt(mem)
 	if err != nil {

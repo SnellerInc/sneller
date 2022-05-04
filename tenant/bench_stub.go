@@ -31,7 +31,6 @@ import (
 	"net"
 	"os"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 
@@ -93,15 +92,12 @@ func (t *tableHandle) Open() (vm.Table, error) {
 	return t.env.cache.Table((*Handle)(t), 0), nil
 }
 
-func (e *Env) Stat(tbl *expr.Table) (plan.TableHandle, error) {
-	fname := tbl.Expr
-	p, ok := fname.(*expr.Path)
-	if !ok {
-		return nil, fmt.Errorf("unexpected expression %q", fname)
-	}
-	if p.First != "input" {
-		return nil, fmt.Errorf("unexpected expression %q", p)
-	}
+func (t *tableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteNull()
+	return nil
+}
+
+func mkhandle(e *Env) *tableHandle {
 	// emit a dummy record
 	var tmp ion.Buffer
 	var st ion.Symtab
@@ -111,11 +107,7 @@ func (e *Env) Stat(tbl *expr.Table) (plan.TableHandle, error) {
 	return &tableHandle{
 		env:  e,
 		body: tmp.Bytes(),
-	}, nil
-}
-
-func (e *Env) Schema(tbl *expr.Table) expr.Hint {
-	return nil
+	}
 }
 
 func die(err error) {
@@ -166,7 +158,9 @@ func main() {
 	defer uc.Close()
 	env := Env{eventfd: evfd}
 	env.cache = dcache.New(cachedir, env.post)
-	err = tnproto.Serve(uc, &env)
+	err = tnproto.Serve(uc, func(st *ion.Symtab, mem []byte) (plan.TableHandle, error) {
+		return mkhandle(&env), nil
+	})
 	if err != nil {
 		die(err)
 	}

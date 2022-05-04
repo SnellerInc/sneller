@@ -33,7 +33,7 @@ type filterEnv struct {
 	filters []string
 }
 
-func (e *filterEnv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
+func (e *filterEnv) Stat(t, filter expr.Node) (TableHandle, error) {
 	th, err := e.env.Stat(t, filter)
 	if err != nil {
 		return nil, err
@@ -54,10 +54,6 @@ func (e *filterEnv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
 		return nil, err
 	}
 	return &filterHandle{th: h, env: e}, nil
-}
-
-func (e *filterEnv) Schema(*expr.Table) expr.Hint {
-	return nil
 }
 
 type filterHandle struct {

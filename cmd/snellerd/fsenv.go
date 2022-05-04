@@ -26,6 +26,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
+	"github.com/SnellerInc/sneller/plan/pir"
 
 	"golang.org/x/crypto/blake2b"
 )
@@ -95,17 +96,12 @@ func (f *fsEnv) CacheValues() ([]byte, time.Time) {
 	return f.hash.Sum(nil), f.modtime.Time()
 }
 
-// Schema implements plan.Env.Schema
-func (f *fsEnv) Schema(e *expr.Table) expr.Hint {
-	return nil
-}
-
-func (f *fsEnv) index(e *expr.Table) (*blockfmt.Index, error) {
+func (f *fsEnv) index(e expr.Node) (*blockfmt.Index, error) {
 	var dbname, table string
 	var err error
-	p, ok := e.Expr.(*expr.Path)
+	p, ok := e.(*expr.Path)
 	if !ok {
-		return nil, syntax("unexpected table expression %q", expr.ToString(e.Expr))
+		return nil, syntax("unexpected table expression %q", expr.ToString(e))
 	}
 	// if a database was already provided,
 	// then we expect just the table identifier;
@@ -153,7 +149,7 @@ func (f *fsEnv) index(e *expr.Table) (*blockfmt.Index, error) {
 }
 
 // Stat implements plan.Env.Stat
-func (f *fsEnv) Stat(e *expr.Table, where expr.Node) (plan.TableHandle, error) {
+func (f *fsEnv) Stat(e, where expr.Node) (plan.TableHandle, error) {
 	index, err := f.index(e)
 	if err != nil {
 		return nil, err
@@ -175,8 +171,10 @@ func (f *fsEnv) Stat(e *expr.Table, where expr.Node) (plan.TableHandle, error) {
 	return &filterHandle{filter: where, compiled: match, blobs: blobs}, nil
 }
 
+var _ pir.TimeRanger = (*fsEnv)(nil)
+
 // TimeRange implements plan/pir.TimeRanger.
-func (f *fsEnv) TimeRange(tbl *expr.Table, p *expr.Path) (min, max date.Time, ok bool) {
+func (f *fsEnv) TimeRange(tbl expr.Node, p *expr.Path) (min, max date.Time, ok bool) {
 	index, err := f.index(tbl)
 	if err != nil {
 		return date.Time{}, date.Time{}, false

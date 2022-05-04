@@ -59,14 +59,14 @@ type Splitter interface {
 	// and yields a list of Subtables to
 	// be used to evaluate the sub-query
 	// in parallel.
-	Split(*expr.Table, TableHandle) ([]Subtable, error)
+	Split(expr.Node, TableHandle) ([]Subtable, error)
 }
 
 // SplitFn is a funtion that implements Splitter
-type SplitFn func(*expr.Table, TableHandle) ([]Subtable, error)
+type SplitFn func(expr.Node, TableHandle) ([]Subtable, error)
 
 // Split implements Splitter.Split
-func (s SplitFn) Split(t *expr.Table, h TableHandle) ([]Subtable, error) {
+func (s SplitFn) Split(t expr.Node, h TableHandle) ([]Subtable, error) {
 	return s(t, h)
 }
 

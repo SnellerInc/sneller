@@ -88,12 +88,8 @@ func (n noTableHandle) Open() (vm.Table, error) {
 	return nil, nil
 }
 
-func (e emptyEnv) Stat(tbl *expr.Table, _ expr.Node) (plan.TableHandle, error) {
+func (e emptyEnv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
 	return noTableHandle{}, nil
-}
-
-func (e emptyEnv) Schema(tbl *expr.Table) expr.Hint {
-	return nil
 }
 
 func (r *requester) get(uri string) *http.Request {

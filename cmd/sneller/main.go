@@ -92,7 +92,7 @@ func formatSize(size uint64) string {
 	return res
 }
 
-type eenv func(*expr.Table) (vm.Table, error)
+type eenv func(expr.Node) (vm.Table, error)
 
 type handle func() (vm.Table, error)
 
@@ -105,14 +105,10 @@ func (h handle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 // FIXME: use filter when we are reading ion data!
-func (e eenv) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
+func (e eenv) Stat(tbl, filter expr.Node) (plan.TableHandle, error) {
 	return handle(func() (vm.Table, error) {
 		return e(tbl)
 	}), nil
-}
-
-func (e eenv) Schema(tbl *expr.Table) expr.Hint {
-	return nil
 }
 
 func parse(arg string) *expr.Query {
@@ -135,10 +131,10 @@ func parse(arg string) *expr.Query {
 }
 
 func do(arg string) {
-	tree, err := plan.New(parse(arg), eenv(func(tbl *expr.Table) (vm.Table, error) {
-		str, ok := tbl.Expr.(expr.String)
+	tree, err := plan.New(parse(arg), eenv(func(e expr.Node) (vm.Table, error) {
+		str, ok := e.(expr.String)
 		if !ok {
-			return nil, fmt.Errorf("unexpected table expression %s", tbl.Expr)
+			return nil, fmt.Errorf("unexpected table expression %s", expr.ToString(e))
 		}
 		fname := string(str)
 		if strings.HasPrefix(fname, "s3://") {

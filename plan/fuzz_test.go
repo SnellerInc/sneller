@@ -33,26 +33,24 @@ import (
 
 type fuzzEnv struct{}
 
-func (f fuzzEnv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
+func (f fuzzEnv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
 	return nil, nil
 }
 
-func (f fuzzEnv) Schema(t *expr.Table) expr.Hint { return nil }
-
 type fuzzSplitter struct{}
 
-func (f fuzzSplitter) Split(t *expr.Table, h plan.TableHandle) ([]plan.Subtable, error) {
+func (f fuzzSplitter) Split(t expr.Node, h plan.TableHandle) ([]plan.Subtable, error) {
 	return []plan.Subtable{
 		plan.Subtable{
 			Transport: &plan.LocalTransport{},
 			Table: &expr.Table{
-				Binding: expr.Bind(t.Expr, "local-copy-0"),
+				Binding: expr.Bind(t, "local-copy-0"),
 			},
 		},
 		plan.Subtable{
 			Transport: &plan.LocalTransport{},
 			Table: &expr.Table{
-				Binding: expr.Bind(t.Expr, "local-copy-1"),
+				Binding: expr.Bind(t, "local-copy-1"),
 			},
 		},
 	}, nil

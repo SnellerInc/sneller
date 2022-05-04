@@ -118,9 +118,23 @@ func hasAggregate(e expr.Node) bool {
 	return found
 }
 
-// Env is a subset of plan.Env.
+// Env is a subset of plan.Env which can implement
+// optional interfaces, such as Schemer and TimeRanger.
 type Env interface {
-	Schema(table *expr.Table) expr.Hint
+	// Currently no methods are required.
+	// Implementations may provide optional methods
+	// to implement Schemer or TimeRanger.
+}
+
+// Schemer is an interface that may optionally be
+// implemented by Env to provide a type hint for a
+// table expression.
+type Schemer interface {
+	// Schema returns type hints associated
+	// with a particular table expression.
+	// In the event that there is no available
+	// type information, Schema may return nil.
+	Schema(expr.Node) expr.Hint
 }
 
 // TimeRanger is an interface that may optionally be
@@ -130,7 +144,7 @@ type TimeRanger interface {
 	// TimeRange returns the inclusive time range
 	// for the given path expression across the
 	// given table.
-	TimeRange(*expr.Table, *expr.Path) (min, max date.Time, ok bool)
+	TimeRange(tbl expr.Node, path *expr.Path) (min, max date.Time, ok bool)
 }
 
 // Build walks the provided Query

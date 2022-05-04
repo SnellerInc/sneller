@@ -32,7 +32,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
@@ -173,40 +172,6 @@ func (e *Env) decodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 		return nil, err
 	}
 	return th, nil
-}
-
-func (e *Env) Stat(tbl *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	fname := tbl.Expr
-	repeat := 1
-	if bi, ok := fname.(*expr.Builtin); ok {
-		if bi.Name() != "REPEAT" {
-			return nil, fmt.Errorf("unexpected expression %q", tbl.Expr)
-		}
-		iv, ok := bi.Args[0].(expr.Integer)
-		if !ok {
-			return nil, fmt.Errorf("unexpected expression %q", tbl.Expr)
-		}
-		repeat = int(iv)
-		fname = bi.Args[1]
-	}
-	estr, ok := fname.(expr.String)
-	if !ok {
-		return nil, fmt.Errorf("unexpected expression %q", tbl.Expr)
-	}
-	fi, err := os.Stat(string(estr))
-	if err != nil {
-		return nil, err
-	}
-	return &tableHandle{
-		filename: string(estr),
-		size:     fi.Size(),
-		env:      e,
-		repeat:   repeat,
-	}, nil
-}
-
-func (e *Env) Schema(tbl *expr.Table) expr.Hint {
-	return nil
 }
 
 func die(err error) {

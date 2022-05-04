@@ -27,7 +27,7 @@ import (
 
 type emptyenv struct{}
 
-func (e emptyenv) Stat(*expr.Table, expr.Node) (TableHandle, error) {
+func (e emptyenv) Stat(_, _ expr.Node) (TableHandle, error) {
 	return e, nil
 }
 
@@ -40,13 +40,9 @@ func (e emptyenv) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (e emptyenv) Schema(*expr.Table) expr.Hint {
-	return nil
-}
-
 type twosplit struct{}
 
-func (t twosplit) Split(e *expr.Table, _ TableHandle) ([]Subtable, error) {
+func (t twosplit) Split(e expr.Node, _ TableHandle) ([]Subtable, error) {
 	sub := make([]Subtable, 2)
 	for i := range sub {
 		newstr := expr.Identifier(expr.ToString(e) + fmt.Sprintf("-part%d", i+1))

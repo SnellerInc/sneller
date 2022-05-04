@@ -86,10 +86,6 @@ func (b *benchenv) Open() (vm.Table, error) {
 	return nil, fmt.Errorf("open not allowed")
 }
 
-func (b *benchenv) Schema(t *expr.Table) expr.Hint {
-	return nil
-}
-
 type blobHandle struct {
 	*blob.List
 }
@@ -103,7 +99,7 @@ func (b *blobHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (b *benchenv) Stat(t *expr.Table, filter expr.Node) (TableHandle, error) {
+func (b *benchenv) Stat(_, _ expr.Node) (TableHandle, error) {
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)

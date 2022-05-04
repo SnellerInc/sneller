@@ -89,10 +89,11 @@ func (i *IterTable) rewrite(rw func(expr.Node, bool) expr.Node) {
 }
 
 func (i *IterTable) timeRange(p *expr.Path) (min, max date.Time, ok bool) {
-	if i.TimeRanger == nil {
+	tbl, ok := i.Table.Expr.(*expr.Path)
+	if !ok || i.TimeRanger == nil {
 		return date.Time{}, date.Time{}, false
 	}
-	return i.TimeRanger.TimeRange(i.Table, p)
+	return i.TimeRanger.TimeRange(tbl, p)
 }
 
 // Wildcard returns true if the table
@@ -535,10 +536,10 @@ func (b *Trace) Begin(f *expr.Table, e Env) {
 	if f.Explicit() {
 		it.Bind = f.Result()
 	}
-	if e != nil {
-		it.Schema = e.Schema(f)
-		it.TimeRanger, _ = e.(TimeRanger)
+	if s, ok := e.(Schemer); ok {
+		it.Schema = s.Schema(f.Expr)
 	}
+	it.TimeRanger, _ = e.(TimeRanger)
 	b.top = it
 }
 

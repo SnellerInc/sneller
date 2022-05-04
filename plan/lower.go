@@ -232,7 +232,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	if handle == nil {
 		return nil, fmt.Errorf("lowerUnionMap: couldn't find %s", expr.ToString(tbl))
 	}
-	tbls, err := doSplit(split, in.Inner.Table, handle)
+	tbls, err := doSplit(split, in.Inner.Table.Expr, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +249,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 
 // doSplit calls s.Split(tbl, th) with special handling
 // for tableHandles.
-func doSplit(s Splitter, tbl *expr.Table, th TableHandle) ([]Subtable, error) {
+func doSplit(s Splitter, tbl expr.Node, th TableHandle) ([]Subtable, error) {
 	hs, ok := th.(tableHandles)
 	if !ok {
 		return s.Split(tbl, th)
@@ -268,7 +268,7 @@ func doSplit(s Splitter, tbl *expr.Table, th TableHandle) ([]Subtable, error) {
 func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
-		handle, err := stat(env, it.Table, it.Filter)
+		handle, err := stat(env, it.Table.Expr, it.Filter)
 		if err != nil {
 			return nil, err
 		}
@@ -409,12 +409,12 @@ func ShouldSplit(q *expr.Query, env Env, split Splitter) (bool, error) {
 			return visit
 		}
 		var handle TableHandle
-		handle, err = stat(env, t, nil)
+		handle, err = stat(env, t.Expr, nil)
 		if err != nil {
 			return nil
 		}
 		var lst []Subtable
-		lst, err = split.Split(t, handle)
+		lst, err = split.Split(t.Expr, handle)
 		if err == nil && len(lst) > 1 {
 			ret = true
 			return nil

@@ -119,26 +119,18 @@ type Env interface {
 	// The information provided by the TableHandle
 	// is used by the query planner to make query-splitting
 	// decisions.
-	Stat(*expr.Table, expr.Node) (TableHandle, error)
-
-	// Schema returns type hints associated
-	// with a particular table expression.
-	// In the event that there is no available
-	// type information, Schema may return nil.
-	Schema(*expr.Table) expr.Hint
+	Stat(tbl, filter expr.Node) (TableHandle, error)
 }
 
 // stat handles calling env.Stat(tbl, flt), with
 // special handling for certain table expressions
 // (TABLE_GLOB, TABLE_PATTERN, ++ operator).
-func stat(env Env, tbl *expr.Table, flt expr.Node) (TableHandle, error) {
-	switch e := tbl.Expr.(type) {
+func stat(env Env, tbl, flt expr.Node) (TableHandle, error) {
+	switch e := tbl.(type) {
 	case *expr.Appended:
 		ths := make(tableHandles, len(e.Values))
-		var tmp expr.Table
 		for i := range e.Values {
-			tmp.Expr = e.Values[i]
-			th, err := stat(env, &tmp, flt)
+			th, err := stat(env, e.Values[i], flt)
 			if err != nil {
 				return nil, err
 			}

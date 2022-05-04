@@ -35,6 +35,7 @@ import (
 	_ "github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/plan/pir"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -117,7 +118,9 @@ func (t *testenv) clean() {
 	t.open = nil
 }
 
-func (t *testenv) Schema(tbl *expr.Table) expr.Hint {
+var _ pir.Schemer = (*testenv)(nil)
+
+func (t *testenv) Schema(tbl expr.Node) expr.Hint {
 	return t.schema
 }
 
@@ -163,19 +166,19 @@ func str2json(arg expr.Node) (TableHandle, error) {
 	return &literalHandle{buf.Bytes()}, nil
 }
 
-func (t *testenv) Stat(tbl *expr.Table, filter expr.Node) (TableHandle, error) {
-	b, ok := tbl.Expr.(*expr.Builtin)
+func (t *testenv) Stat(tbl, filter expr.Node) (TableHandle, error) {
+	b, ok := tbl.(*expr.Builtin)
 	if ok {
 		switch b.Name() {
 		case "JSON":
 			return str2json(b.Args[0])
 		default:
-			return nil, fmt.Errorf("don't understand builtin %s", tbl.Expr)
+			return nil, fmt.Errorf("don't understand builtin %s", expr.ToString(tbl))
 		}
 	}
-	str, ok := tbl.Expr.(expr.String)
+	str, ok := tbl.(expr.String)
 	if !ok {
-		return nil, fmt.Errorf("don't understand table expression %s", tbl.Expr)
+		return nil, fmt.Errorf("don't understand table expression %s", expr.ToString(tbl))
 	}
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)
@@ -1586,8 +1589,8 @@ func TestServerError(t *testing.T) {
 type nopSplitter struct{}
 
 // Split returns the original table and the local transport
-func (n nopSplitter) Split(t *expr.Table, th TableHandle) ([]Subtable, error) {
-	bind := expr.Bind(t.Expr, "local-copy")
+func (n nopSplitter) Split(t expr.Node, th TableHandle) ([]Subtable, error) {
+	bind := expr.Bind(t, "local-copy")
 	return []Subtable{
 		Subtable{
 			Transport: &LocalTransport{},

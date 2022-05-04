@@ -169,10 +169,10 @@ type queryenv struct {
 	in []plan.TableHandle
 }
 
-func (e *queryenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, error) {
-	p, ok := t.Expr.(*expr.Path)
+func (e *queryenv) Stat(t, filter expr.Node) (plan.TableHandle, error) {
+	p, ok := t.(*expr.Path)
 	if !ok || p.Rest != nil {
-		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t.Expr))
+		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
 	}
 	if p.First == "input" && len(e.in) == 1 {
 		return e.in[0], nil
@@ -181,10 +181,8 @@ func (e *queryenv) Stat(t *expr.Table, filter expr.Node) (plan.TableHandle, erro
 	if n, _ := fmt.Sscanf(p.First, "input%d", &i); n > 0 && i >= 0 && i < len(e.in) {
 		return e.in[i], nil
 	}
-	return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t.Expr))
+	return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(p))
 }
-
-func (e *queryenv) Schema(t *expr.Table) expr.Hint { return nil }
 
 var _ plan.TableLister = (*queryenv)(nil)
 
