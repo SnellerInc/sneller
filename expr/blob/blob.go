@@ -253,6 +253,8 @@ func (l *List) String() string {
 func (l *List) TypeName() string { return "blob.List" }
 
 func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	var snap ion.Snapshot
+	dst.Save(&snap)
 	start := dst.Size()
 	l.encode(dst, st)
 	raw := dst.Bytes()[start:]
@@ -260,7 +262,7 @@ func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		return
 	}
 	// rewind and write compressed
-	dst.Set(dst.Bytes()[:start])
+	dst.Load(&snap)
 	data := compressor.Compress(raw, nil)
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("algo"))

@@ -228,6 +228,14 @@ func TestSerializationCompressed(t *testing.T) {
 	if !reflect.DeepEqual(got, lst) {
 		t.Errorf("%#v != %#v", got, lst)
 	}
+	// make sure we do snapshotting properly so
+	// EndStruct doesn't panic when writing a blob
+	// list as a struct member
+	var buf ion.Buffer
+	buf.BeginStruct(-1)
+	buf.BeginField(123)
+	lst.Encode(&buf, &st)
+	buf.EndStruct()
 }
 
 func BenchmarkSerializationCompressed(b *testing.B) {

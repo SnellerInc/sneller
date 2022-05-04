@@ -93,14 +93,14 @@ type Snapshot struct {
 // buffer.
 func (c *Chunker) Save(snap *Snapshot) {
 	c.Ranges.save(snap)
-	c.Buffer.save(snap)
+	c.Buffer.Save(snap)
 }
 
 // Load resets the buffer to the state stored in the
 // snapshot.
 func (c *Chunker) Load(snap *Snapshot) {
 	c.Ranges.load(snap)
-	c.Buffer.load(snap)
+	c.Buffer.Load(snap)
 }
 
 // Set sets the buffer used by c to b and resets c to
