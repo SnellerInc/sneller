@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 
 	"github.com/SnellerInc/sneller/date"
@@ -466,6 +467,54 @@ func (l *Limit) describe(dst io.Writer) {
 
 func (l *Limit) rewrite(func(expr.Node, bool) expr.Node) {}
 
+// OutputPart writes output rows into
+// a single part and returns a row like
+//   {"part": "path/to/packed-XXXXX.ion.zst"}
+type OutputPart struct {
+	Basename string
+	parented
+}
+
+func (o *OutputPart) describe(dst io.Writer) {
+	fmt.Fprintf(dst, "OUTPUT PART %s\n", o.Basename)
+}
+
+func (o *OutputPart) get(x string) (Step, expr.Node) {
+	if x == "part" {
+		return o, nil
+	}
+	// NOTE: this would be problematic
+	// if Output* nodes were inserted
+	// before optimization, as the input
+	// fields wouldn't be marked as live
+	return nil, nil
+}
+
+func (o *OutputPart) rewrite(func(expr.Node, bool) expr.Node) {}
+
+// OutputIndex is a step that takes the "part" field
+// of incoming rows and constructs an index out of them,
+// returning a single row like
+//   {"table_name": "basename-XXXXXX"}
+type OutputIndex struct {
+	Basename string
+	parented
+}
+
+func (o *OutputIndex) describe(dst io.Writer) {
+	fmt.Fprintf(dst, "OUTPUT INDEX %s\n", o.Basename)
+}
+
+func (o *OutputIndex) get(x string) (Step, expr.Node) {
+	if x == "table_name" {
+		return o, nil
+	}
+	// see comment in OutputPart.get
+	return nil, nil
+}
+
+func (o *OutputIndex) rewrite(func(expr.Node, bool) expr.Node) {}
+
 // NoOutput is a dummy input of 0 rows.
 type NoOutput struct{}
 
@@ -694,6 +743,22 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 	// meaningful expressions
 	b.cur = l
 	return b.push()
+}
+
+// Into handles the INTO clause by pushing
+// the appropriate OutputIndex and OutputPart nodes.
+func (b *Trace) Into(basepath string) {
+	op := &OutputPart{Basename: basepath}
+	op.setparent(b.top)
+	b.add(expr.Identifier("part"), op, nil)
+	oi := &OutputIndex{Basename: basepath}
+	oi.setparent(op)
+	b.top = oi
+	tblname := expr.Identifier("table_name")
+	result := expr.String(path.Base(basepath))
+	b.add(tblname, oi, result)
+	final := expr.Bind(result, "table_name")
+	b.final = []expr.Binding{final}
 }
 
 // FinalBindings returns the set of output bindings,

@@ -17,6 +17,7 @@ package pir
 import (
 	"fmt"
 	"io"
+	"path"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -154,10 +155,6 @@ type TimeRanger interface {
 // type information that can be used to type-check
 // and optimize the query.
 func Build(q *expr.Query, e Env) (*Trace, error) {
-	if q.Into != nil {
-		// FIXME
-		return nil, errorf(q.Into, "INTO not yet supported")
-	}
 	body := q.Body
 	var err error
 	if len(q.With) > 0 {
@@ -170,6 +167,18 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 		t, err := build(nil, sel, e)
 		if err != nil {
 			return nil, err
+		}
+		if q.Into != nil {
+			// expect db.table
+			p, ok := q.Into.(*expr.Path)
+			if !ok {
+				return nil, fmt.Errorf("unsupported INTO: %q", err)
+			}
+			tbl, ok := p.Rest.(*expr.Dot)
+			if !ok || tbl.Rest != nil {
+				return nil, fmt.Errorf("unsupported INTO: %q", err)
+			}
+			t.Into(path.Join("db", p.First, tbl.Field))
 		}
 		err = postcheck(t)
 		if err != nil {
@@ -557,6 +566,5 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 			return err
 		}
 	}
-
 	return b.hoist(e)
 }

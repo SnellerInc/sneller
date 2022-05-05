@@ -879,6 +879,43 @@ ORDER BY m, d, h`,
 				"ORDER BY _tmbucket1 ASC NULLS FIRST",
 			},
 		},
+		{
+			// simple INTO with no preceding aggregation, etc.
+			input: `SELECT x, y, z INTO db.table FROM foo WHERE x > 3 AND x < 100`,
+			expect: []string{
+				"ITERATE foo WHERE x > 3 AND x < 100",
+				"PROJECT x AS x, y AS y, z AS z",
+				"OUTPUT PART db/db/table",
+				"OUTPUT INDEX db/db/table",
+			},
+			split: []string{
+				"UNION MAP foo (",
+				"	ITERATE PART foo WHERE x > 3 AND x < 100",
+				"	PROJECT x AS x, y AS y, z AS z",
+				"	OUTPUT PART db/db/table)",
+				"OUTPUT INDEX db/db/table",
+			},
+			results: []expr.TypeSet{expr.StringType},
+		},
+		{
+			// INTO with leading reduction steps
+			input: `SELECT x, SUM(y) INTO my.stats FROM foo GROUP BY x`,
+			expect: []string{
+				"ITERATE foo",
+				"AGGREGATE SUM(y) AS \"sum\" BY x AS x",
+				"OUTPUT PART db/my/stats",
+				"OUTPUT INDEX db/my/stats",
+			},
+			split: []string{
+				"UNION MAP foo (",
+				"	ITERATE PART foo",
+				"	AGGREGATE SUM(y) AS $_0_0 BY x AS x)",
+				"AGGREGATE SUM($_0_0) AS \"sum\" BY x AS x",
+				"OUTPUT PART db/my/stats",
+				"OUTPUT INDEX db/my/stats",
+			},
+			results: []expr.TypeSet{expr.StringType},
+		},
 	}
 
 	for i := range tests {

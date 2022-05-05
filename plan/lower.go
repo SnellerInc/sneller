@@ -313,6 +313,10 @@ func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 		return lowerLimit(n, input)
 	case *pir.Order:
 		return lowerOrder(n, input)
+	case *pir.OutputIndex:
+		return nil, fmt.Errorf("INTO not yet supported")
+	case *pir.OutputPart:
+		return nil, fmt.Errorf("INTO not yet supported")
 	default:
 		return nil, fmt.Errorf("don't know how to lower %T", in)
 	}

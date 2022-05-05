@@ -155,6 +155,12 @@ func splitOne(s Step, mapping, reduce *Trace) (bool, error) {
 		return false, nil
 	case *Aggregate:
 		return false, reduceAggregate(n, mapping, reduce)
+	case *OutputIndex:
+		mapping.top = par
+		n.setparent(reduce.top)
+		reduce.top = n
+		// no longer in mapping step
+		return false, nil
 	default:
 		// we are trivially still in the mapping step
 		return true, nil
