@@ -151,7 +151,7 @@ func FromFile(fileName string) (Provider, error) {
 		return nil, err
 	}
 	var static fileCreds
-	err = json.NewDecoder(f).Decode(&f)
+	err = json.NewDecoder(f).Decode(&static)
 	if err != nil {
 		return nil, err
 	}
