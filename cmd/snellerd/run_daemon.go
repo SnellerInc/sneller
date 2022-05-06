@@ -61,7 +61,12 @@ func runDaemon(args []string) {
 
 	provider, err := auth.Parse(*authEndpoint)
 	if err != nil {
-		server.logger.Fatal(err)
+		if len(*authEndpoint) == 0 {
+			// read from env
+			server.logger.Fatalf("Unable to parse authorization: %s environment variable", err)
+		} else {
+			server.logger.Fatalf("Unable to parse authorization specification from '%s': %s", *authEndpoint, err)
+		}
 	}
 	server.auth = provider
 
