@@ -196,6 +196,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opsquaref:       {text: "square.f", flags: bcReadK | bcReadWriteS},
 	opsquarei:       {text: "square.i", flags: bcReadK | bcReadWriteS},
 	opsqrtf:         {text: "sqrt.f", flags: bcReadK | bcReadWriteS},
+	opcbrtf:         {text: "cbrt.f", flags: bcReadK | bcReadWriteS},
 	oproundf:        {text: "round.f", flags: bcReadK | bcReadWriteS},
 	oproundevenf:    {text: "roundeven.f", flags: bcReadK | bcReadWriteS},
 	optruncf:        {text: "trunc.f", flags: bcReadK | bcReadWriteS},
@@ -242,6 +243,25 @@ var opinfo = [_maxbcop]bcopinfo{
 	opmaxvaluei:     {text: "maxvalue.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 	opmaxvalueimmf:  {text: "maxvalue.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
 	opmaxvalueimmi:  {text: "maxvalue.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+
+	// Math functions
+	opexpf:   {text: "exp.f", flags: bcReadK | bcReadWriteS},
+	opexpm1f: {text: "expm1.f", flags: bcReadK | bcReadWriteS},
+	opexp2f:  {text: "exp2.f", flags: bcReadK | bcReadWriteS},
+	opexp10f: {text: "exp10.f", flags: bcReadK | bcReadWriteS},
+	oplnf:    {text: "ln.f", flags: bcReadK | bcReadWriteS},
+	opln1pf:  {text: "ln1p.f", flags: bcReadK | bcReadWriteS},
+	oplog2f:  {text: "log2.f", flags: bcReadK | bcReadWriteS},
+	oplog10f: {text: "log10.f", flags: bcReadK | bcReadWriteS},
+	opsinf:   {text: "sin.f", flags: bcReadK | bcReadWriteS},
+	opcosf:   {text: "cos.f", flags: bcReadK | bcReadWriteS},
+	optanf:   {text: "tan.f", flags: bcReadK | bcReadWriteS},
+	opasinf:  {text: "asin.f", flags: bcReadK | bcReadWriteS},
+	opacosf:  {text: "acos.f", flags: bcReadK | bcReadWriteS},
+	opatanf:  {text: "atan.f", flags: bcReadK | bcReadWriteS},
+	opatan2f: {text: "atan2.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	ophypotf: {text: "hypot.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	oppowf:   {text: "pow.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 
 	// Conversion instructions
 	opcvtktof64:   {text: "cvtktof64", flags: bcReadK | bcWriteS}, // convert mask -> floats
@@ -327,8 +347,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	// Geo instructions
 	opgeohash:     {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
 	opgeohashimm:  {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
-	opgeogridi:    {text: "geogridi", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opgeogridimmi: {text: "geogridimmi", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
+	opgeogridi:    {text: "geogrid.i", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
+	opgeogridimmi: {text: "geogrid.imm.i", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
 
 	// Find Symbol instructions
 	//   - findsym - computes 'current struct' . 'symbol'
@@ -527,6 +547,14 @@ type bytecode struct {
 	outer *bytecode // outer variable bindings
 	//lint:ignore U1000 not unused; used in assembly
 	perm [16]int32 // permutation from outer to inner bindings
+
+	//lint:ignore U1000 not unused; used in assembly
+	// Area that is used by bytecode instructions to temporarily spill registers.
+	// 256 bytes can be used to spill up to 4 ZMM registers (or more registers of
+	// any choice). Note that spill area is designed to be used only by a single
+	// bytecode instruction at a time, it should not be used to persist any data
+	// during the execution of bytecode.
+	spillArea [256]byte
 
 	vstacksize int
 	hstacksize int

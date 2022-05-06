@@ -1744,12 +1744,6 @@ const (
 	NegOp UnaryArithOp = iota
 	AbsOp
 	SignOp
-	RoundOp
-	RoundEvenOp
-	TruncOp
-	FloorOp
-	CeilOp
-	SqrtOp
 )
 
 type UnaryArith struct {
@@ -1770,20 +1764,8 @@ func (u *UnaryArith) text(dst *strings.Builder, redact bool) {
 		pre = "ABS"
 	case SignOp:
 		pre = "SIGN"
-	case RoundOp:
-		pre = "ROUND"
-	case RoundEvenOp:
-		pre = "ROUND_EVEN"
-	case TruncOp:
-		pre = "TRUNC"
-	case FloorOp:
-		pre = "FLOOR"
-	case CeilOp:
-		pre = "CEIL"
-	case SqrtOp:
-		pre = "SQRT"
 	default:
-		pre = "UnaryAithOp???"
+		pre = "UNKNOWN_FUNCTION"
 	}
 	dst.WriteString(pre)
 	dst.WriteByte('(')
@@ -1801,30 +1783,6 @@ func Abs(child Node) *UnaryArith {
 
 func Sign(child Node) *UnaryArith {
 	return NewUnaryArith(SignOp, child)
-}
-
-func Round(child Node) *UnaryArith {
-	return NewUnaryArith(RoundOp, child)
-}
-
-func RoundEven(child Node) *UnaryArith {
-	return NewUnaryArith(RoundEvenOp, child)
-}
-
-func Trunc(child Node) *UnaryArith {
-	return NewUnaryArith(TruncOp, child)
-}
-
-func Floor(child Node) *UnaryArith {
-	return NewUnaryArith(FloorOp, child)
-}
-
-func Ceil(child Node) *UnaryArith {
-	return NewUnaryArith(CeilOp, child)
-}
-
-func Sqrt(child Node) *UnaryArith {
-	return NewUnaryArith(SqrtOp, child)
 }
 
 func (u *UnaryArith) walk(v Visitor) {
@@ -1923,8 +1881,8 @@ func (a *Arithmetic) text(dst *strings.Builder, redact bool) {
 	// an operator of higher precedence
 	// (we could compare precedence directly,
 	// but it's easier just to do this unconditionally)
-	parens := infix(a.Right)
 	var middle string
+
 	switch a.Op {
 	case AddOp:
 		middle = " + "
@@ -1937,8 +1895,10 @@ func (a *Arithmetic) text(dst *strings.Builder, redact bool) {
 	case ModOp:
 		middle = " % "
 	default:
-		middle = "Arith(???)"
+		middle = " ? "
 	}
+
+	parens := infix(a.Right)
 	a.Left.text(dst, redact)
 	dst.WriteString(middle)
 	if parens {

@@ -134,99 +134,99 @@ func TestSimplify(t *testing.T) {
 			Float(1.0),
 		},
 		{
-			Round(Float(3.1)),
+			Call("ROUND", Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Round(Float(3.5)),
+			Call("ROUND", Float(3.5)),
 			Float(4.0),
 		},
 		{
-			Round(Float(3.9)),
+			Call("ROUND", Float(3.9)),
 			Float(4.0),
 		},
 		{
-			Round(Float(-3.1)),
+			Call("ROUND", Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Round(Float(-3.5)),
+			Call("ROUND", Float(-3.5)),
 			Float(-3.0),
 		},
 		{
-			Round(Float(-3.9)),
+			Call("ROUND", Float(-3.9)),
 			Float(-4.0),
 		},
 		{
-			RoundEven(Float(3.1)),
+			Call("ROUND_EVEN", Float(3.1)),
 			Float(3.0),
 		},
 		{
-			RoundEven(Float(3.5)),
+			Call("ROUND_EVEN", Float(3.5)),
 			Float(4.0),
 		},
 		{
-			RoundEven(Float(3.9)),
+			Call("ROUND_EVEN", Float(3.9)),
 			Float(4.0),
 		},
 		{
-			RoundEven(Float(-3.1)),
+			Call("ROUND_EVEN", Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			RoundEven(Float(-3.5)),
+			Call("ROUND_EVEN", Float(-3.5)),
 			Float(-4.0),
 		},
 		{
-			RoundEven(Float(-3.9)),
+			Call("ROUND_EVEN", Float(-3.9)),
 			Float(-4.0),
 		},
 		{
-			Trunc(Float(3.1)),
+			Call("TRUNC", Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Trunc(Float(3.9)),
+			Call("TRUNC", Float(3.9)),
 			Float(3.0),
 		},
 		{
-			Trunc(Float(-3.1)),
+			Call("TRUNC", Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Trunc(Float(-3.9)),
+			Call("TRUNC", Float(-3.9)),
 			Float(-3.0),
 		},
 		{
-			Floor(Float(3.1)),
+			Call("FLOOR", Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Floor(Float(3.9)),
+			Call("FLOOR", Float(3.9)),
 			Float(3.0),
 		},
 		{
-			Floor(Float(-3.1)),
+			Call("FLOOR", Float(-3.1)),
 			Float(-4.0),
 		},
 		{
-			Floor(Float(-3.9)),
+			Call("FLOOR", Float(-3.9)),
 			Float(-4.0),
 		},
 		{
-			Ceil(Float(3.1)),
+			Call("CEIL", Float(3.1)),
 			Float(4.0),
 		},
 		{
-			Ceil(Float(3.9)),
+			Call("CEIL", Float(3.9)),
 			Float(4.0),
 		},
 		{
-			Ceil(Float(-3.1)),
+			Call("CEIL", Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Ceil(Float(-3.9)),
+			Call("CEIL", Float(-3.9)),
 			Float(-3.0),
 		},
 		{

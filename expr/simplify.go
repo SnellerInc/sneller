@@ -579,7 +579,17 @@ func (u *UnaryArith) canonical(h Hint) *UnaryArith {
 	return u
 }
 
-func roundBigRat(value *big.Rat, op UnaryArithOp) *big.Rat {
+type roundOp uint8
+
+const (
+	roundNearestOp roundOp = iota
+	roundEvenOp
+	roundTruncOp
+	roundFloorOp
+	roundCeilOp
+)
+
+func roundBigRat(value *big.Rat, op roundOp) *big.Rat {
 	one := new(big.Int).SetUint64(1)
 	denom := value.Denom()
 
@@ -591,11 +601,11 @@ func roundBigRat(value *big.Rat, op UnaryArithOp) *big.Rat {
 	p, q := new(big.Int).DivMod(value.Num(), denom, new(big.Int))
 
 	switch op {
-	case RoundOp:
+	case roundNearestOp:
 		if q.Cmp(halfDenom) >= 0 {
 			p.Add(p, one)
 		}
-	case RoundEvenOp:
+	case roundEvenOp:
 		cmp := q.Cmp(halfDenom)
 		if cmp > 0 {
 			p.Add(p, one)
@@ -607,13 +617,13 @@ func roundBigRat(value *big.Rat, op UnaryArithOp) *big.Rat {
 				p.Add(p, one)
 			}
 		}
-	case TruncOp:
+	case roundTruncOp:
 		if q.Cmp(one) >= 0 && value.Num().Sign() < 0 {
 			p.Add(p, one)
 		}
-	case FloorOp:
+	case roundFloorOp:
 		// DivMod actually floors `p` so we already have the required number.
-	case CeilOp:
+	case roundCeilOp:
 		if q.Cmp(one) >= 0 {
 			p.Add(p, one)
 		}
@@ -623,6 +633,25 @@ func roundBigRat(value *big.Rat, op UnaryArithOp) *big.Rat {
 
 	return new(big.Rat).SetFrac(p, one)
 }
+
+func simplifyRoundOp(h Hint, args []Node, op roundOp) Node {
+	if len(args) != 1 {
+		return nil
+	}
+
+	args[0] = missingUnless(args[0], h, NumericType)
+	if cn, ok := args[0].(number); ok {
+		return (*Rational)(roundBigRat(cn.rat(), op))
+	}
+
+	return nil
+}
+
+func simplifyRound(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundNearestOp) }
+func simplifyRoundEven(h Hint, args []Node) Node { return simplifyRoundOp(h, args, roundEvenOp) }
+func simplifyTrunc(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundTruncOp) }
+func simplifyFloor(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundFloorOp) }
+func simplifyCeil(h Hint, args []Node) Node      { return simplifyRoundOp(h, args, roundCeilOp) }
 
 func (u *UnaryArith) simplify(h Hint) Node {
 	u.Child = missingUnless(u.Child, h, NumericType)
@@ -641,8 +670,6 @@ func (u *UnaryArith) simplify(h Hint) Node {
 			return (*Rational)(new(big.Rat).Neg(cn.rat()))
 		case SignOp:
 			return (*Rational)(new(big.Rat).SetInt64(int64(cn.rat().Sign())))
-		case RoundOp, RoundEvenOp, TruncOp, FloorOp, CeilOp:
-			return (*Rational)(roundBigRat(cn.rat(), u.Op))
 		}
 	}
 
@@ -1120,7 +1147,7 @@ func (c *Cast) simplify(h Hint) Node {
 		if fn, ok := c.From.(number); ok {
 			rat := fn.rat()
 			if !rat.IsInt() {
-				rat = roundBigRat(rat, TruncOp)
+				rat = roundBigRat(rat, roundTruncOp)
 			}
 			num := rat.Num()
 			if num.IsInt64() {

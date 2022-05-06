@@ -147,20 +147,8 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			return p.Neg(child), nil
 		case expr.AbsOp:
 			return p.Abs(child), nil
-		case expr.SqrtOp:
-			return p.Sqrt(child), nil
 		case expr.SignOp:
 			return p.Sign(child), nil
-		case expr.RoundOp:
-			return p.Round(child), nil
-		case expr.RoundEvenOp:
-			return p.RoundEven(child), nil
-		case expr.TruncOp:
-			return p.Trunc(child), nil
-		case expr.FloorOp:
-			return p.Floor(child), nil
-		case expr.CeilOp:
-			return p.Ceil(child), nil
 		}
 
 		return nil, fmt.Errorf("unknown arithmetic expression %q", n)
@@ -368,6 +356,152 @@ func (p *prog) compileAsString(e expr.Node) (*value, error) {
 func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 	fn := b.Func
 	switch fn {
+	case expr.Pi:
+		if len(args) != 0 {
+			return nil, fmt.Errorf("%s cannot have arguments", fn)
+		}
+
+		return p.Constant(pi), nil
+
+	case expr.Log:
+		count := len(args)
+
+		if count < 1 || count > 2 {
+			return nil, fmt.Errorf("%s must have either 1 or 2 arguments", fn)
+		}
+
+		n, err := p.compileAsNumber(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		var val *value
+		if count == 1 {
+			// use LOG base 10 if no base was specified
+			val = p.Log10(n)
+		} else {
+			base := n
+
+			n, err = p.compileAsNumber(args[1])
+			if err != nil {
+				return nil, err
+			}
+
+			// logarithm of any base can be calculated as `log2(n) / log2(base)`
+			val = p.Div(p.Log2(n), p.Log2(base))
+		}
+
+		return val, nil
+
+	case expr.Degrees, expr.Radians:
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
+		}
+
+		arg, err := p.compileAsNumber(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		var c float64
+		if fn == expr.Degrees {
+			c = radiansToDegrees
+		} else {
+			c = degreesToRadians
+		}
+
+		return p.Mul(arg, p.Constant(c)), nil
+
+	case expr.Round, expr.RoundEven, expr.Trunc, expr.Floor, expr.Ceil,
+		expr.Sqrt, expr.Cbrt,
+		expr.Exp, expr.Exp2, expr.Exp10, expr.ExpM1,
+		expr.Ln, expr.Ln1p, expr.Log2, expr.Log10,
+		expr.Sin, expr.Cos, expr.Tan,
+		expr.Asin, expr.Acos, expr.Atan:
+
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
+		}
+
+		arg, err := p.compileAsNumber(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		var val *value
+		switch fn {
+		case expr.Round:
+			val = p.Round(arg)
+		case expr.RoundEven:
+			val = p.RoundEven(arg)
+		case expr.Trunc:
+			val = p.Trunc(arg)
+		case expr.Floor:
+			val = p.Floor(arg)
+		case expr.Ceil:
+			val = p.Ceil(arg)
+		case expr.Sqrt:
+			val = p.Sqrt(arg)
+		case expr.Cbrt:
+			val = p.Cbrt(arg)
+		case expr.Exp:
+			val = p.Exp(arg)
+		case expr.Exp2:
+			val = p.Exp2(arg)
+		case expr.Exp10:
+			val = p.Exp10(arg)
+		case expr.ExpM1:
+			val = p.ExpM1(arg)
+		case expr.Ln:
+			val = p.Ln(arg)
+		case expr.Ln1p:
+			val = p.Ln1p(arg)
+		case expr.Log2:
+			val = p.Log2(arg)
+		case expr.Log10:
+			val = p.Log10(arg)
+		case expr.Sin:
+			val = p.Sin(arg)
+		case expr.Cos:
+			val = p.Cos(arg)
+		case expr.Tan:
+			val = p.Tan(arg)
+		case expr.Asin:
+			val = p.Asin(arg)
+		case expr.Acos:
+			val = p.Acos(arg)
+		case expr.Atan:
+			val = p.Atan(arg)
+		}
+		return val, nil
+
+	case expr.Hypot, expr.Pow, expr.Atan2:
+		count := len(args)
+
+		if count != 2 {
+			return nil, fmt.Errorf("%s must have at exactly 2 arguments", fn)
+		}
+
+		arg1, err1 := p.compileAsNumber(args[0])
+		if err1 != nil {
+			return nil, err1
+		}
+		arg2, err2 := p.compileAsNumber(args[1])
+		if err2 != nil {
+			return nil, err2
+		}
+
+		var val *value
+		switch fn {
+		case expr.Hypot:
+			val = p.Hypot(arg1, arg2)
+		case expr.Pow:
+			val = p.Pow(arg1, arg2)
+		case expr.Atan2:
+			val = p.Atan2(arg1, arg2)
+		}
+		return val, nil
+
 	case expr.Least, expr.Greatest:
 		least := fn == expr.Least
 		count := len(args)
@@ -388,9 +522,9 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			}
 
 			if least {
-				val = p.Minvalue(val, rhs)
+				val = p.MinValue(val, rhs)
 			} else {
-				val = p.Maxvalue(val, rhs)
+				val = p.MaxValue(val, rhs)
 			}
 		}
 

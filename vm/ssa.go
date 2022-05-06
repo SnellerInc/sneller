@@ -186,7 +186,7 @@ const (
 	sbroadcastf // val = broadcast(float64(imm))
 	sbroadcasti // val = broadcast(int64(imm))
 
-	// arithmetic unary operators and functions
+	// unary operators and functions
 	sabsf       // val = abs(val)
 	sabsi       // val = abs(val)
 	snegf       // val = -val
@@ -195,15 +195,30 @@ const (
 	ssigni      // val = sign(val)
 	ssquaref    // val = val * val
 	ssquarei    // val = val * val
-	ssqrtf      // val = sqrt(val)
 	sroundf     // val = round(val)
 	sroundevenf // val = roundeven(val)
 	struncf     // val = trunc(val)
 	sfloorf     // val = floor(val)
 	sceilf      // val = ceil(val)
 	sroundi     // val = int(round(val))
+	ssqrtf      // val = sqrt(val)
+	scbrtf      // val = cbrt(val)
+	sexpf       // val = exp(val)
+	sexpm1f     // val = exp(val) - 1
+	sexp2f      // val = exp2(val)
+	sexp10f     // val = exp10(val)
+	slnf        // val = ln(val)
+	sln1pf      // val = ln(val + 1)
+	slog2f      // val = log2(val)
+	slog10f     // val = log10(val)
+	ssinf       // val = sin(x)
+	scosf       // val = cos(x)
+	stanf       // val = tan(x)
+	sasinf      // val = asin(x)
+	sacosf      // val = acos(x)
+	satanf      // val = atan(x)
 
-	// arithmetic binary operators and functions
+	// binary operators and functions
 	saddf         // val = val + slot[imm]
 	saddi         // val = val + slot[imm]
 	saddimmf      // val = val + imm
@@ -244,6 +259,10 @@ const (
 	smaxvaluei    // val = max(val, slot[imm])
 	smaxvalueimmf // val = max(val, imm)
 	smaxvalueimmi // val = max(val, imm)
+	satan2f       // val = atan2(y, slot[imm])
+	shypotf       // val = hypot(val, slot[imm])
+	spowf         // val = pow(val, slot[imm])
+
 	swidthbucketf // val = width_bucket(val, min, max, bucket_count)
 	swidthbucketi // val = width_bucket(val, min, max, bucket_count)
 	stimebucketts // val = time_bucket(val, interval)
@@ -664,13 +683,29 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	ssigni:      {text: "sign.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsigni},
 	ssquaref:    {text: "square.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsquaref},
 	ssquarei:    {text: "square.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsquaref},
-	ssqrtf:      {text: "sqrt.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsqrtf},
 	sroundf:     {text: "round.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oproundf},
 	sroundevenf: {text: "roundeven.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oproundevenf},
 	struncf:     {text: "trunc.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: optruncf},
 	sfloorf:     {text: "floor.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opfloorf},
 	sceilf:      {text: "ceil.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opceilf},
 	sroundi:     {text: "round.i", rettype: stInt, argtypes: []ssatype{stFloat, stBool}, bc: opfproundd},
+	ssqrtf:      {text: "sqrt.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsqrtf},
+	scbrtf:      {text: "cbrt.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opcbrtf},
+	sexpf:       {text: "exp.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexpf},
+	sexpm1f:     {text: "expm1.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexpm1f},
+	sexp2f:      {text: "exp2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexp2f},
+	sexp10f:     {text: "exp10.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexp10f},
+	slnf:        {text: "ln.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oplnf},
+	sln1pf:      {text: "ln1p.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opln1pf},
+	slog2f:      {text: "log2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oplog2f},
+	slog10f:     {text: "log10.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oplog10f},
+	ssinf:       {text: "sin.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsinf},
+	scosf:       {text: "cos.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opcosf},
+	stanf:       {text: "tan.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: optanf},
+	sasinf:      {text: "asin.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opasinf},
+	sacosf:      {text: "acos.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opacosf},
+	satanf:      {text: "atan.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opatanf},
+	satan2f:     {text: "atan2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opatan2f, emit: emitBinaryArithmeticOp},
 
 	saddf:         {text: "add.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opaddf, bcrev: opaddf, emit: emitBinaryArithmeticOp},
 	saddi:         {text: "add.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opaddi, bcrev: opaddi, emit: emitBinaryArithmeticOp},
@@ -706,6 +741,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	smaxvaluei:    {text: "maxvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmaxvaluei, bcrev: opmaxvaluei, emit: emitBinaryArithmeticOp},
 	smaxvalueimmf: {text: "maxvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmaxvalueimmf, bcrev: opmaxvalueimmf},
 	smaxvalueimmi: {text: "maxvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmaxvalueimmi, bcrev: opmaxvalueimmi},
+	shypotf:       {text: "hypot.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf, bcrev: ophypotf, emit: emitBinaryArithmeticOp},
+	spowf:         {text: "pow.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf, emit: emitBinaryArithmeticOp},
 
 	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitWidthBucket},
 	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitWidthBucket},
@@ -2574,10 +2611,6 @@ func (p *prog) Sign(child *value) *value {
 	return p.makeUnaryArithmeticOp(ssignf, ssigni, child)
 }
 
-func (p *prog) Sqrt(child *value) *value {
-	return p.makeUnaryArithmeticOpFp(ssqrtf, child)
-}
-
 func (p *prog) Round(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sroundf, child)
 }
@@ -2596,6 +2629,70 @@ func (p *prog) Floor(child *value) *value {
 
 func (p *prog) Ceil(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sceilf, child)
+}
+
+func (p *prog) Sqrt(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(ssqrtf, child)
+}
+
+func (p *prog) Cbrt(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(scbrtf, child)
+}
+
+func (p *prog) Exp(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sexpf, child)
+}
+
+func (p *prog) ExpM1(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sexpm1f, child)
+}
+
+func (p *prog) Exp2(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sexp2f, child)
+}
+
+func (p *prog) Exp10(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sexp10f, child)
+}
+
+func (p *prog) Ln(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(slnf, child)
+}
+
+func (p *prog) Ln1p(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sln1pf, child)
+}
+
+func (p *prog) Log2(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(slog2f, child)
+}
+
+func (p *prog) Log10(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(slog10f, child)
+}
+
+func (p *prog) Sin(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(ssinf, child)
+}
+
+func (p *prog) Cos(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(scosf, child)
+}
+
+func (p *prog) Tan(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(stanf, child)
+}
+
+func (p *prog) Asin(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sasinf, child)
+}
+
+func (p *prog) Acos(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(sacosf, child)
+}
+
+func (p *prog) Atan(child *value) *value {
+	return p.makeUnaryArithmeticOpFp(satanf, child)
 }
 
 // Binary arithmetic operators and functions
@@ -2633,25 +2730,39 @@ func (p *prog) makeBinaryArithmeticOp(regOpF, regOpI, immOpF, immOpI, reverseImm
 	return p.ssa3(regOpF, lhs, rhs, p.And(lhk, rhk))
 }
 
-func (p *prog) Add(left, right *value) *value {
-	if left != right {
-		return p.makeBinaryArithmeticOp(saddf, saddi, saddimmf, saddimmi, saddimmf, saddimmi, left, right)
+func (p *prog) makeBinaryArithmeticOpFp(op ssaop, left *value, right *value) *value {
+	if left.op == sliteral {
+		left = p.makeBroadcastOp(left)
 	}
-	return p.makeBinaryArithmeticOpImm(smulimmf, smulimmi, left, 2)
+
+	if right.op == sliteral {
+		right = p.makeBroadcastOp(right)
+	}
+
+	lhs, lhk := p.coercefp(left)
+	rhs, rhk := p.coercefp(right)
+	return p.ssa3(op, lhs, rhs, p.And(lhk, rhk))
+}
+
+func (p *prog) Add(left, right *value) *value {
+	if left == right {
+		return p.makeBinaryArithmeticOpImm(smulimmf, smulimmi, left, 2)
+	}
+	return p.makeBinaryArithmeticOp(saddf, saddi, saddimmf, saddimmi, saddimmf, saddimmi, left, right)
 }
 
 func (p *prog) Sub(left, right *value) *value {
-	if left != right {
-		return p.makeBinaryArithmeticOp(ssubf, ssubi, ssubimmf, ssubimmi, srsubimmf, srsubimmi, left, right)
+	if left == right {
+		return p.makeBinaryArithmeticOpImm(smulimmf, smulimmi, left, 0)
 	}
-	return p.makeBinaryArithmeticOpImm(smulimmf, smulimmi, left, 0)
+	return p.makeBinaryArithmeticOp(ssubf, ssubi, ssubimmf, ssubimmi, srsubimmf, srsubimmi, left, right)
 }
 
 func (p *prog) Mul(left, right *value) *value {
-	if left != right {
-		return p.makeBinaryArithmeticOp(smulf, smuli, smulimmf, smulimmi, smulimmf, smulimmi, left, right)
+	if left == right {
+		return p.makeUnaryArithmeticOp(ssquaref, ssquarei, left)
 	}
-	return p.makeUnaryArithmeticOp(ssquaref, ssquarei, left)
+	return p.makeBinaryArithmeticOp(smulf, smuli, smulimmf, smulimmi, smulimmf, smulimmi, left, right)
 }
 
 func (p *prog) Div(left, right *value) *value {
@@ -2662,18 +2773,30 @@ func (p *prog) Mod(left, right *value) *value {
 	return p.makeBinaryArithmeticOp(smodf, smodi, smodimmf, smodimmi, srmodimmf, srmodimmi, left, right)
 }
 
-func (p *prog) Minvalue(left, right *value) *value {
-	if left != right {
-		return p.makeBinaryArithmeticOp(sminvaluef, sminvaluei, sminvalueimmf, sminvalueimmi, sminvalueimmf, sminvalueimmi, left, right)
+func (p *prog) MinValue(left, right *value) *value {
+	if left == right {
+		return left
 	}
-	return left
+	return p.makeBinaryArithmeticOp(sminvaluef, sminvaluei, sminvalueimmf, sminvalueimmi, sminvalueimmf, sminvalueimmi, left, right)
 }
 
-func (p *prog) Maxvalue(left, right *value) *value {
-	if left != right {
-		return p.makeBinaryArithmeticOp(smaxvaluef, smaxvaluei, smaxvalueimmf, smaxvalueimmi, smaxvalueimmf, smaxvalueimmi, left, right)
+func (p *prog) MaxValue(left, right *value) *value {
+	if left == right {
+		return left
 	}
-	return left
+	return p.makeBinaryArithmeticOp(smaxvaluef, smaxvaluei, smaxvalueimmf, smaxvalueimmi, smaxvalueimmf, smaxvalueimmi, left, right)
+}
+
+func (p *prog) Hypot(left, right *value) *value {
+	return p.makeBinaryArithmeticOpFp(shypotf, left, right)
+}
+
+func (p *prog) Pow(left, right *value) *value {
+	return p.makeBinaryArithmeticOpFp(spowf, left, right)
+}
+
+func (p *prog) Atan2(left, right *value) *value {
+	return p.makeBinaryArithmeticOpFp(satan2f, left, right)
 }
 
 func (p *prog) WidthBucket(val, min, max, bucketCount *value) *value {
@@ -5051,7 +5174,7 @@ func emitBinaryArithmeticOp(v *value, c *compilestate) {
 	info := ssainfo[v.op]
 	bc := info.bc
 
-	if c.regs.cur[regS] == arg1.id {
+	if info.bcrev != 0 && c.regs.cur[regS] == arg1.id {
 		arg0, arg1 = arg1, arg0
 		bc = info.bcrev
 	}

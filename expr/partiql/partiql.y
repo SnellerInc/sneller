@@ -59,7 +59,7 @@ import (
 %token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC
 %token VALUE
 %right COUNT MIN MAX SUM AVG COALESCE NULLIF EXTRACT DATE_TRUNC
-%right ABS SIGN ROUND ROUND_EVEN TRUNC FLOOR CEIL SQRT CAST UTCNOW
+%right ABS SIGN CAST UTCNOW
 %right DATE_ADD DATE_DIFF EARLIEST LATEST
 %left JOIN LEFT RIGHT CROSS INNER OUTER FULL
 %left ON
@@ -222,30 +222,6 @@ datum_or_parens
 {
   $$ = expr.Sign($3)
 }
-| ROUND '(' expr ')'
-{
-  $$ = expr.Round($3)
-}
-| ROUND_EVEN '(' expr ')'
-{
-  $$ = expr.RoundEven($3)
-}
-| TRUNC '(' expr ')'
-{
-  $$ = expr.Trunc($3)
-}
-| FLOOR '(' expr ')'
-{
-  $$ = expr.Floor($3)
-}
-| CEIL '(' expr ')'
-{
-  $$ = expr.Ceil($3)
-}
-| SQRT '(' expr ')'
-{
-  $$ = expr.Sqrt($3)
-}
 | CASE case_limbs case_optional_else END
 {
   $$ = &expr.Case{Limbs: $2, Else: $3}
@@ -302,6 +278,14 @@ datum_or_parens
 | UTCNOW '(' ')'
 {
   $$ = yylex.(*scanner).utcnow()
+}
+| identifier '(' ')'
+{
+  op := expr.Call($1)
+  if op.Private() {
+    yylex.Error(__yyfmt__.Sprintf("cannot use reserved builtin %q", $1))
+  }
+  $$ = op
 }
 | identifier '(' value_list ')'
 {

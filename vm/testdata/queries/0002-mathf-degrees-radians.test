@@ -1,0 +1,15 @@
+SELECT
+  x,
+  y,
+  DEGREES(x) AS degrees_x,
+  RADIANS(y) AS radians_y
+FROM
+  input
+---
+{"x": 0, "y": 0}
+{"x": 1.5707963267948966, "y": 90}
+{"x": 3.1415926535897931, "y": 180}
+---
+{"x": 0, "y": 0, "degrees_x": 0, "radians_y": 0}
+{"x": 1.5707963267948966, "y": 90, "degrees_x": 90, "radians_y": 1.5707963267948966}
+{"x": 3.1415926535897931, "y": 180, "degrees_x": 180, "radians_y": 3.141592653589793}

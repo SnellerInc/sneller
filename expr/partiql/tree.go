@@ -52,12 +52,6 @@ func init() {
 		{"OR", OR},
 		{"ON", ON},
 		{"SIGN", SIGN},
-		{"ROUND", ROUND},
-		{"ROUND_EVEN", ROUND_EVEN},
-		{"TRUNC", TRUNC},
-		{"FLOOR", FLOOR},
-		{"CEIL", CEIL},
-		{"SQRT", SQRT},
 		{"FROM", FROM},
 		{"WHERE", WHERE},
 		{"GROUP", GROUP},
@@ -134,11 +128,14 @@ func charcode(b byte) (uint64, bool) {
 	if b >= 'a' && b <= 'z' {
 		return uint64(b-'a') + 1, true
 	}
-	if b >= 'A' && b < 'Z' {
+	if b >= 'A' && b <= 'Z' {
 		return uint64(b-'A') + 1, true
 	}
 	if b == '_' {
 		return uint64(26), true
+	}
+	if b >= '0' && b <= '4' {
+		return uint64(b-'0') + 27, true
 	}
 	return 0, false
 }

@@ -24,11 +24,14 @@ also values. A "table" is an *un-ordered* collection of records.
 Instead of projecting "columns," a Sneller SQL query projects record fields.
 
 For example, the query
-```
+
+```sql
 SELECT 1 AS x, 2 AS y, (SELECT 'z' AS z, NULL AS bar) AS sub
 ```
+
 evaluates to
-```
+
+```json
 {'x': 1, 'y': 2, 'sub': {'z': 'z', 'bar': null}}
 ```
 
@@ -370,7 +373,8 @@ beginning with `WITH`, followed by `GROUP BY` and `SELECT`, and then
 finally `ORDER BY`.
 
 For example:
-```
+
+```sql
 SELECT COUNT(*) AS count, count/100, group
 FROM table
 GROUP BY TRIM(name) AS group
@@ -447,7 +451,8 @@ matches exactly one Unicode point. All other characters
 in the pattern string match only themselves.
 
 For example:
-```
+
+```sql
 SELECT *
 FROM table
 WHERE message_body LIKE '%foo%'
@@ -476,7 +481,8 @@ or the value `NULL`.
 
 The `IN` operator can also accept a subquery
 that can be coerced to a list of scalars on the right-hand-side:
-```
+
+```sql
 WITH top5_attrs AS (SELECT COUNT(*), attr
                     FROM table
                     GROUP BY attr
@@ -558,7 +564,13 @@ an implicit `ELSE MISSING` is inserted.
 `NULLIF(a, b)` is exactly equivalent to
 `CASE WHEN a = b THEN NULL ELSE a`.
 
-### Built-in Functions
+### Math Constants
+
+#### `PI`
+
+`PI()` returns the value of `π` as a double precision floating point.
+
+### Math Functions
 
 #### `ABS`
 
@@ -566,12 +578,134 @@ an implicit `ELSE MISSING` is inserted.
 of the expression `expr` if `expr` evaluates to a number;
 otherwse, it returns `MISSING`.
 
+#### `CBRT`
+
+`CBRT(expr)` computes the cube root of its argument `expr`.
+
+NOTE: This function is more precise than `POW(expr, 1.0 / 3.0)`.
+
+#### `EXP`
+
+`EXP(expr)` computes Euler's number raised to the given power `expr`.
+
+#### `EXPM1`
+
+`EXPM1(expr)` computes Euler's number raised to the given power `expr - 1`.
+
+#### `EXP2`
+
+`EXP2(expr)` computes `2` raised to the given power `expr`.
+
+#### `EXP10`
+
+`EXP10(expr)` computes `10` raised to the given power `expr`.
+
+#### `HYPOT`
+
+`HYPOT(xExpr, yExpr)` computes the square root of the sum of the squares of
+`xExpr` and `yExpr`.
+
+NOTE: this functions is more precise than `SQRT(xExpr * xExpr + yExpr * yExpr)`.
+
+#### `LN`
+
+`LN(expr)` computes the natural logarithm of `expr`.
+
+#### `LN1P`
+
+`LN1P(expr)` computes the natural logarithm of `expr + 1`.
+
+#### `LOG`
+
+`LOG()` function has two variants:
+
+  - `LOG(expr)` computes the base-10 logarithm of `expr`
+  - `LOG(baseExpr, numExpr)` combutes `baseExpr` logarithm of `numExpr`
+
+Compatibility notice: `LOG(expr)` (without a base) is a synonym of `LOG10(expr)`.
+This is compatible with Postgres and SQLite, but incompatible with MySQL and others,
+which compute natural logarithm instead. We recommend the explicit use of either
+`LN(expr)` to compute the natural logaritm of `expr` or `LOG10(expr)` to compute the
+base-10 logarithm of `expr`.
+
+In addition, some SQL dialects have the order of `LOG(base, n)` arguments reversed.
+For example SQL server uses `LOG(n, base)` instead. So always check the order of
+the arguments when porting an existing SQL code to Sneller.
+
+NOTE: At the moment `LOG(base, n)` is equivalent to `LOG2(n) / LOG2(base)`.
+
+#### `LOG2`
+
+`LOG2(expr)` computes the base-2 logarithm of `expr`.
+
+#### `LOG10`
+
+`LOG10(expr)` computes the base-10 logarithm of `expr`.
+
+#### `POW` or `POWER`
+
+`POW(baseExpr, expExpr)` computes the value of `baseExpr` raised to the given
+power `expExpr`.
+
+NOTE: `POWER(baseExpr, expExpr)` is a synonym of `POW(baseExpr, expExpr)`.
+
 #### `SIGN`
 
 `SIGN(expr)` returns -1 if `expr` evaluates
 to a negative number, 0 if `expr` evaluates to 0,
 1 if `expr` evaluates to a positive number, and
 `MISSING` otherwise.
+
+#### `SQRT`
+
+`SQRT(expr)` returns the square root of
+`expr` as long as `expr` evaluates to a number.
+Otherwise, `SQRT(expr)` evaluates to `MISSING`.
+
+### Trigonometric Functions
+
+#### `DEGREES`
+
+`DEGREES(expr)` converts radians in `expr` to degrees.
+
+NOTE: at the moment the computation is equivalent to `(expr) * (180.0 / PI())`.
+
+#### `RADIANS`
+
+`RADIANS(expr)` converts degrees in `expr` to radians.
+
+NOTE: at the moment the computation is equivalent to `(expr) * (PI() / 180.0)`.
+
+#### `SIN`
+
+`SIN(expr)` computes sine of `expr`.
+
+#### `COS`
+
+`COS(expr)` computes cosine of `expr`.
+
+#### `TAN`
+
+`TAN(expr)` computes tangent of `expr`.
+
+#### `ASIN`
+
+`ASIN(expr)` computes arcsine of `expr`.
+
+#### `ACOS`
+
+`ACOS(expr)` computes arccosine of `expr`.
+
+#### `ATAN`
+
+`ATAN(expr)` computes arctangent of `expr`.
+
+#### `ATAN2`
+
+`ATAN2(yExpr, xExpr)` computes the angle in the plane between the positive
+x-axis and the ray from `(0, 0)` to the point `(xExpr, yExpr)`.
+
+### Rounding Functions
 
 #### `ROUND`
 
@@ -581,14 +715,14 @@ to the largest-magnitude integer.
 
 Examples:
 
-```
+```sql
 ROUND(42.4) -> 42
 ROUND(42.8) -> 43
 ROUND(-42.4) -> -42
 ROUND(-42.8) -> -43
 ```
 
-See [Postgres Math Functions](https://www.postgresql.org/docs/9.1/functions-math.html)
+See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
 #### `ROUND_EVEN`
 
@@ -601,7 +735,7 @@ ROUND_EVEN(1.5) -> 2 # note: same result as ROUND()
 ROUND_EVEN(2.5) -> 2 # note: ROUND(2.5) -> 3
 ```
 
-See [Postgres Math Functions](https://www.postgresql.org/docs/9.1/functions-math.html)
+See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
 #### `TRUNC`
 
@@ -609,14 +743,15 @@ The `TRUNC(num)` function truncates a number to the
 next-lowest-magnitude integer.
 
 Examples:
-```
+
+```sql
 TRUNC(42.4) -> 42
 TRUNC(42.8) -> 42
 TRUNC(-42.4) -> -42
 TRUNC(-42.8) -> -42
 ```
 
-See [Postgres Math Functions](https://www.postgresql.org/docs/9.1/functions-math.html)
+See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
 #### `FLOOR`
 
@@ -624,35 +759,36 @@ The `FLOOR(num)` function rounds a number down to the
 next integer less than or equal to `num`.
 
 Examples:
-```
+
+```sql
 FLOOR(42.4) -> 42
 FLOOR(42.8) -> 42
 FLOOR(-42.4) -> -43
 FLOOR(-43.8) -> -43
 ```
 
-See [Postgres Math Functions](https://www.postgresql.org/docs/9.1/functions-math.html)
+See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
-#### `CEIL`
+#### `CEIL` or `CEILING`
 
-The `CEIL(num)` function rounds a number to the next integer
-greater than or equal to `num`.
+The `CEIL(num)` function rounds a number to the next integer greater than or equal to `num`.
 
 Examples:
-```
+
+```sql
 CEIL(42.4) -> 43
 CEIL(42.8) -> 43
 CEIL(-42.4) -> -42
 CEIL(-42.8) -> -42
 ```
 
-See [Postgres Math Functions](https://www.postgresql.org/docs/9.1/functions-math.html)
+NOTE: `CEILING(num)` is a synonym of `CEIL(num)`.
 
-#### `SQRT`
+See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
-`SQRT(expr)` returns the square root of
-`expr` as long as `expr` evaluates to a number.
-Otherwise, `SQRT(expr)` evaluates to `MISSING`.
+#### `CEILING`
+
+### Built-in Functions
 
 #### `DATE_ADD`
 
@@ -795,8 +931,10 @@ characters, which represents 60 bits of interleaved latitude and longitude
 values. We may increase the range of `num_chars` in the future, so please
 always specify the precision and do not rely on parameter clamping.
 
-See https://en.wikipedia.org/wiki/Geohash for more details regarding
-geo-hash and its encoding.
+External resources:
+
+  - https://en.wikipedia.org/wiki/Geohash provides insight into geo-hash
+    encoding
 
 #### `GEO_GRID_INDEX`
 

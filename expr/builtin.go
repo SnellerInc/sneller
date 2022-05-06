@@ -108,6 +108,37 @@ const (
 	SubString
 	SplitPart
 
+	Round
+	RoundEven
+	Trunc
+	Floor
+	Ceil
+
+	Sqrt
+	Cbrt
+	Exp
+	ExpM1
+	Exp2
+	Exp10
+	Hypot
+	Ln
+	Ln1p
+	Log
+	Log2
+	Log10
+	Pow
+
+	Pi
+	Degrees
+	Radians
+	Sin
+	Cos
+	Tan
+	Asin
+	Acos
+	Atan
+	Atan2
+
 	Least
 	Greatest
 	WidthBucket
@@ -196,6 +227,36 @@ var name2Builtin = map[string]BuiltinOp{
 	"IS_SUBNET_OF":             IsSubnetOf,
 	"SUBSTRING":                SubString,
 	"SPLIT_PART":               SplitPart,
+	"ROUND":                    Round,
+	"ROUND_EVEN":               RoundEven,
+	"TRUNC":                    Trunc,
+	"FLOOR":                    Floor,
+	"CEIL":                     Ceil,
+	"CEILING":                  Ceil,
+	"SQRT":                     Sqrt,
+	"CBRT":                     Cbrt,
+	"EXP":                      Exp,
+	"EXPM1":                    ExpM1,
+	"EXP2":                     Exp2,
+	"EXP10":                    Exp10,
+	"HYPOT":                    Hypot,
+	"LN":                       Ln,
+	"LN1P":                     Ln1p,
+	"LOG":                      Log,
+	"LOG2":                     Log2,
+	"LOG10":                    Log10,
+	"POW":                      Pow,
+	"POWER":                    Pow,
+	"PI":                       Pi,
+	"DEGREES":                  Degrees,
+	"RADIANS":                  Radians,
+	"SIN":                      Sin,
+	"COS":                      Cos,
+	"TAN":                      Tan,
+	"ASIN":                     Asin,
+	"ACOS":                     Acos,
+	"ATAN":                     Atan,
+	"ATAN2":                    Atan2,
 	"LEAST":                    Least,
 	"GREATEST":                 Greatest,
 	"WIDTH_BUCKET":             WidthBucket,
@@ -802,6 +863,34 @@ var builtinInfo = [maxBuiltin]binfo{
 	SplitPart:  {check: checkSplitPart, ret: StringType | MissingType},
 	EqualsCI:   {ret: LogicalType},
 
+	Round:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyRound},
+	RoundEven: {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyRoundEven},
+	Trunc:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyTrunc},
+	Floor:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyFloor},
+	Ceil:      {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyCeil},
+	Sqrt:      {check: fixedArgs(NumericType), ret: FloatType},
+	Cbrt:      {check: fixedArgs(NumericType), ret: FloatType},
+	Exp:       {check: fixedArgs(NumericType), ret: FloatType},
+	Exp2:      {check: fixedArgs(NumericType), ret: FloatType},
+	Exp10:     {check: fixedArgs(NumericType), ret: FloatType},
+	ExpM1:     {check: fixedArgs(NumericType), ret: FloatType},
+	Hypot:     {check: fixedArgs(NumericType, NumericType), ret: FloatType},
+	Ln:        {check: fixedArgs(NumericType), ret: FloatType},
+	Log:       {check: variadicArgs(NumericType), ret: FloatType},
+	Log2:      {check: fixedArgs(NumericType), ret: FloatType},
+	Log10:     {check: fixedArgs(NumericType), ret: FloatType},
+	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType},
+	Pi:        {check: fixedArgs(), ret: FloatType},
+	Degrees:   {check: fixedArgs(NumericType), ret: FloatType},
+	Radians:   {check: fixedArgs(NumericType), ret: FloatType},
+	Sin:       {check: fixedArgs(NumericType), ret: FloatType},
+	Cos:       {check: fixedArgs(NumericType), ret: FloatType},
+	Tan:       {check: fixedArgs(NumericType), ret: FloatType},
+	Asin:      {check: fixedArgs(NumericType), ret: FloatType},
+	Acos:      {check: fixedArgs(NumericType), ret: FloatType},
+	Atan:      {check: fixedArgs(NumericType), ret: FloatType},
+	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType},
+
 	Least:       {check: variadicNumeric, ret: NumericType | MissingType},
 	Greatest:    {check: variadicNumeric, ret: NumericType | MissingType},
 	WidthBucket: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: NumericType},
@@ -841,6 +930,8 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateTruncYear:          {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Year)},
 	DateToUnixEpoch:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixEpoch},
 	DateToUnixMicro:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixMicro},
+
+	GeoHash: {check: fixedArgs(FloatType, FloatType, IntegerType), ret: StringType | MissingType},
 
 	GeoGridIndex: {check: fixedArgs(FloatType, FloatType, IntegerType), ret: IntegerType | MissingType},
 
