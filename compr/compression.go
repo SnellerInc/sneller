@@ -63,7 +63,10 @@ func (z zstdCompressor) Compress(src, dst []byte) []byte {
 
 func (z zstdCompressor) Name() string { return "zstd" }
 
-var zstdDecoder *zstd.Decoder
+var (
+	zstdDecoder     *zstd.Decoder
+	zstdFastDecoder *zstd.Decoder
+)
 
 func init() {
 	// by default, concurrency is set to min(4, GOMAXPROCS);
@@ -73,6 +76,12 @@ func init() {
 		panic(err)
 	}
 	zstdDecoder = z
+	z, err = zstd.NewReader(nil, zstd.WithDecoderConcurrency(runtime.GOMAXPROCS(0)),
+		zstd.IgnoreChecksum(true))
+	if err != nil {
+		panic(err)
+	}
+	zstdFastDecoder = z
 }
 
 // DecodeZstd calls DecodeAll on the global zstd
@@ -83,13 +92,13 @@ func DecodeZstd(src, dst []byte) ([]byte, error) {
 	return zstdDecoder.DecodeAll(src, dst)
 }
 
-type zstdDecompressor struct{}
+type zstdDecompressor zstd.Decoder
 
-func (z zstdDecompressor) Name() string { return "zstd" }
+func (z *zstdDecompressor) Name() string { return "zstd" }
 
-func (z zstdDecompressor) Decompress(src, dst []byte) error {
+func (z *zstdDecompressor) Decompress(src, dst []byte) error {
 	into := dst[:0:len(dst)]
-	ret, err := zstdDecoder.DecodeAll(src, into)
+	ret, err := (*zstd.Decoder)(z).DecodeAll(src, into)
 	if err != nil {
 		return err
 	}
@@ -159,7 +168,9 @@ func Compression(name string) Compressor {
 func Decompression(name string) Decompressor {
 	switch name {
 	case "zstd":
-		return zstdDecompressor{}
+		return (*zstdDecompressor)(zstdDecoder)
+	case "zstd-nocrc":
+		return (*zstdDecompressor)(zstdFastDecoder)
 	case "s2":
 		return s2Compressor{}
 	default:

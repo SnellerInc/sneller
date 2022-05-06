@@ -458,7 +458,14 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 	}
 	tmp := vm.Malloc()[:size]
 	defer vm.Free(tmp)
-	decomp := compr.Decompression(d.Algo)
+	algo := d.Algo
+	// this path is performance-sensitive,
+	// so disable xxhash checking in zstd
+	// (costs about 15% of total time!)
+	if algo == "zstd" {
+		algo = "zstd-nocrc"
+	}
+	decomp := compr.Decompression(algo)
 	nn := int64(0)
 	for len(src) > 0 {
 		if ion.TypeOf(src) != ion.BlobType {
