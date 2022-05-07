@@ -704,7 +704,7 @@ func checkInSubquery(h Hint, args []Node) error {
 
 // HASH_LOOKUP(value, if_first, then_first, ..., [otherwise])
 func checkHashLookup(h Hint, args []Node) error {
-	if len(args) <= 3 || len(args)&1 == 0 {
+	if len(args) < 3 || len(args)&1 == 0 {
 		return mismatch(3, len(args))
 	}
 	tail := args[1:]
@@ -966,6 +966,7 @@ func (b *Builtin) check(h Hint) error {
 	if bi.check != nil {
 		err := bi.check(h, b.Args)
 		if err != nil {
+			errat(err, b)
 			return err
 		}
 	}

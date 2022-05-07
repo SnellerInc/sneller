@@ -31,6 +31,7 @@ type TypeError struct {
 // returned from Check when an
 // expression has illegal syntax.
 type SyntaxError struct {
+	At  Node
 	Msg string
 }
 
@@ -40,7 +41,19 @@ func (t *TypeError) Error() string {
 }
 
 func (s *SyntaxError) Error() string {
+	if s.At != nil {
+		return fmt.Sprintf("%q %s", ToString(s.At), s.Msg)
+	}
 	return s.Msg
+}
+
+func errat(err error, whence Node) {
+	switch e := err.(type) {
+	case *TypeError:
+		e.At = whence
+	case *SyntaxError:
+		e.At = whence
+	}
 }
 
 func errtype(e Node, msg string) *TypeError {
