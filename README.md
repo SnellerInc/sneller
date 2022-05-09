@@ -28,17 +28,17 @@ Please make sure that your CPU has [AVX-512](https://en.wikipedia.org/wiki/AVX-5
 
 ## Quick test drive 
 
-The easiest way to try out sneller is via the (standalone) `sneller` executable.
+The easiest way to try out sneller is via the (standalone) `sneller` executable. (Note: this is more of a development tool, for application use see either the Docker or Kubernetes section below.)
 
 We've made some sample data available in the `sneller-samples` bucket, based on the (excellent) [GitHub archive](https://www.gharchive.org). Here are some queries that illustrate what you can do with Sneller on [fairly complex](https://api.github.com/events) JSON event structures containing 100+ fields.
 
 #### simple count
 ```console
-$ cd cmd/sneller
+$ go install github.com/SnellerInc/sneller/cmd/sneller@latest
 $ aws s3 cp s3://sneller-samples/gharchive-1day.ion.zst .
 $ du -h gharchive-1day.ion.zst
 1.3G
-$ ./sneller -j "select count(*) from 'gharchive-1day.ion.zst'"
+$ sneller -j "select count(*) from 'gharchive-1day.ion.zst'"
 {"count": 3259519}
 ```
 
@@ -46,7 +46,7 @@ $ ./sneller -j "select count(*) from 'gharchive-1day.ion.zst'"
 
 ```console
 $ # all repos containing 'orvalds' (case-insensitive)
-$ ./sneller -j "SELECT DISTINCT repo.name FROM 'gharchive-1day.ion.zst' WHERE repo.name ILIKE '%orvalds%'"
+$ sneller -j "SELECT DISTINCT repo.name FROM 'gharchive-1day.ion.zst' WHERE repo.name ILIKE '%orvalds%'"
 {"name": "torvalds/linux"}
 {"name": "jordy-torvalds/dailystack"}
 {"name": "torvalds/subsurface-for-dirk"}
@@ -56,7 +56,7 @@ $ ./sneller -j "SELECT DISTINCT repo.name FROM 'gharchive-1day.ion.zst' WHERE re
 
 ```console
 $ # number of events per type
-$ ./sneller -j "SELECT type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY type ORDER BY COUNT(*) DESC"
+$ sneller -j "SELECT type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY type ORDER BY COUNT(*) DESC"
 {"type": "PushEvent", "count": 1686536}
 ...
 {"type": "GollumEvent", "count": 7443}
@@ -66,7 +66,7 @@ $ ./sneller -j "SELECT type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY typ
 
 ```console
 $ # number of pull requests that took more than 180 days
-$ ./sneller -j "SELECT COUNT(*) FROM 'gharchive-1day.ion.zst' WHERE type = 'PullRequestEvent' AND DATE_DIFF(DAY, payload.pull_request.created_at, created_at) >= 180"
+$ sneller -j "SELECT COUNT(*) FROM 'gharchive-1day.ion.zst' WHERE type = 'PullRequestEvent' AND DATE_DIFF(DAY, payload.pull_request.created_at, created_at) >= 180"
 {"count": 3161}
 ```
 
@@ -74,31 +74,46 @@ $ ./sneller -j "SELECT COUNT(*) FROM 'gharchive-1day.ion.zst' WHERE type = 'Pull
 
 ```console
 $ # number of events per type per hour (date histogram)
-$ ./sneller -j "SELECT TIME_BUCKET(created_at, 3600) AS time, type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY TIME_BUCKET(created_at, 3600), type"
+$ sneller -j "SELECT TIME_BUCKET(created_at, 3600) AS time, type, COUNT(*) FROM 'gharchive-1day.ion.zst' GROUP BY TIME_BUCKET(created_at, 3600), type"
 {"time": 1641254400, "type": "PushEvent", "count": 58756}
 ...
 {"time": 1641326400, "type": "MemberEvent", "count": 316}
 ```
 
-If you're a bit more adventurous, you can grab the 1month object (contains 80M rows at 29GB compressed), here as tested on a c6i.36xlarge:
+#### combine multiple queries
+
+```console
+# fire off multiple queries simultaneously as a single (outer) select
+$ sneller -j "SELECT (SELECT COUNT(*) FROM 'gharchive-1day.ion.zst') AS query0, (SELECT DISTINCT repo.name FROM 'gharchive-1day.ion.zst' WHERE repo.name ILIKE '%orvalds%') as query1" | jq
+{
+  "query0": 3259519,
+  "query1": [
+    { "name": "torvalds/linux" },
+    { "name": "jordy-torvalds/dailystack" },
+    { "name": "torvalds/subsurface-for-dirk" }
+  ]
+}
+```
+
+If you're a bit more adventurous, you can grab the 1month object (contains **80M** rows at **29GB** compressed), here as tested on a c6i.32xlarge:
 ```console
 $ aws s3 cp s3://sneller-samples/gharchive-1month.ion.zst .
 $ du -h gharchive-1month.ion.zst 
 29G
-$ time ./sneller -j "select count(*) from 'gharchive-1month.ion.zst'"
+$ time sneller -j "select count(*) from 'gharchive-1month.ion.zst'"
 {"count": 79565989}
-real    0m5.628s
-user    8m34.520s
-sys     0m35.691s
+real    0m4.892s
+user    6m41.630s
+sys     0m48.016s
 $ 
-$ time ./sneller -j "SELECT DISTINCT repo.name FROM 'gharchive-1month.ion.zst' WHERE repo.name ILIKE '%orvalds%'"
+$ time sneller -j "SELECT DISTINCT repo.name FROM 'gharchive-1month.ion.zst' WHERE repo.name ILIKE '%orvalds%'"
 {"name": "torvalds/linux"}
 {"name": "jordy-torvalds/dailystack"}
 ...
 {"name": "IHorvalds/AstralEye"}
-real    0m5.936s
-user    9m35.244s
-sys     0m17.217s
+real    0m4.940s
+user    7m11.080s
+sys     0m28.268s
 ```
 
 ## Performance
