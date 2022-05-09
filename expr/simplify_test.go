@@ -630,6 +630,10 @@ func TestSimplify(t *testing.T) {
 				Compare(Equals, String("foo"), path("x")), Integer(0)),
 			Call("HASH_LOOKUP", path("x"), Integer(0), String("is_zero"), String("foo"), Integer(0)),
 		},
+		{
+			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
+			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
+		},
 	}
 
 	for i := range testcases {

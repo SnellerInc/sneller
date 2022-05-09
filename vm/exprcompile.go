@@ -245,8 +245,10 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		return p.Constant(n.Value), nil
 	case *expr.Member:
 		return p.member(n.Arg, n.Values)
+	case expr.Missing:
+		return p.ssa0(skfalse), nil
 	default:
-		return nil, fmt.Errorf("unhandled expression %q", e)
+		return nil, fmt.Errorf("unhandled expression %T %q", e, e)
 	}
 }
 

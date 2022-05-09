@@ -912,7 +912,10 @@ func (i *IsKey) simplify(h Hint) Node {
 }
 
 func (a *Aggregate) simplify(h Hint) Node {
-	a.Inner = missingUnless(a.Inner, h, NumericType)
+	switch a.Op {
+	case OpMin, OpMax, OpSum, OpAvg:
+		a.Inner = missingUnless(a.Inner, h, NumericType)
+	}
 	// convert SUM(x) where 'x' is always an integer
 	// to SUM_INT(x)
 	if a.Op == OpSum && TypeOf(a.Inner, h)&^(IntegerType|MissingType) == 0 {
