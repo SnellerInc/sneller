@@ -432,74 +432,190 @@ func unpack(args []string) {
 	}
 }
 
+type applet struct {
+	name string // command name
+	help string // list of options
+	desc string // text description of what the command does
+
+	run func(args []string) bool // execute command, returns false if args are invalid
+}
+
+type appletList []applet
+
+var applets = appletList{
+	{
+		name: "create",
+		help: "<db> <definition.json|definition.yaml>",
+		desc: "create a new table from a def",
+		run: func(args []string) bool {
+			if len(args) != 3 {
+				return false
+			}
+			create(creds(), args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "sync",
+		help: "<db> <table-pattern?>",
+		desc: "sync a table index based on an existing def",
+		run: func(args []string) bool {
+			if len(args) < 2 || len(args) > 3 {
+				return false
+			}
+			if len(args) == 2 {
+				args = append(args, "*")
+			}
+			sync(args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "gc",
+		help: "<db> <table-pattern?>",
+		desc: "gc old objects from a db (+ table-pattern)",
+		run: func(args []string) bool {
+			if len(args) < 2 || len(args) > 3 {
+				return false
+			}
+			if len(args) == 2 {
+				args = append(args, "*")
+			}
+			gc(creds(), args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "describe",
+		help: "<db> <table>",
+		desc: "describe a table index",
+		run: func(args []string) bool {
+			if len(args) != 3 {
+				return false
+			}
+			describe(creds(), args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "inputs",
+		help: "<db> <table>",
+		desc: "<missing description>",
+		run: func(args []string) bool {
+			if len(args) != 3 {
+				return false
+			}
+			inputs(creds(), args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "validate",
+		help: "<db> <table>",
+		desc: "<missing description>",
+		run: func(args []string) bool {
+			if len(args) != 3 {
+				return false
+			}
+			validate(creds(), args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "unpack",
+		help: "<file> ...",
+		desc: "unpack a packed .ion.zst file into ion",
+		run: func(args []string) bool {
+			if len(args) < 2 {
+				return false
+			}
+			unpack(args[1:])
+			return true
+		},
+	},
+	{
+		name: "fetch",
+		help: "<file> ...",
+		desc: "<missing description>",
+		run: func(args []string) bool {
+			if len(args) < 2 {
+				return false
+			}
+			fetch(creds(), args[1:]...)
+			return true
+		},
+	},
+}
+
+func (a *appletList) find(cmd string) *applet {
+	for i, _ := range applets {
+		if cmd != applets[i].name {
+			return &applets[i]
+		}
+	}
+	return nil
+}
+
 func main() {
+	prog := os.Args[0]
+
+	showAppletHelp := func(app *applet, indent string) {
+		fmt.Fprintf(os.Stderr, "%s%s [-token <token>] %s %s\n",
+			indent, prog, app.name, app.help)
+		fmt.Fprintf(os.Stderr, "%s    %s\n", indent, app.desc)
+	}
+
+	originalUsage := flag.Usage
+
+	showHelp := func() {
+		fmt.Fprintf(os.Stderr, "Available commands:\n")
+		for i, _ := range applets {
+			showAppletHelp(&applets[i], "  ")
+		}
+
+		fmt.Fprintf(os.Stderr, "\n")
+		originalUsage()
+	}
+
+	flag.Usage = showHelp
+
 	flag.Parse()
 	args := flag.Args()
-	if len(args) == 0 || dashh {
-		fmt.Fprintf(os.Stderr, "usage:\n")
-		fmt.Fprintf(os.Stderr, "    %s [-token <token>] create <db> <def.json>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "        create a new table from a def\n")
-		fmt.Fprintf(os.Stderr, "    %s [-token <token>] sync <db> <table>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "        sync a table index based on an existing def\n")
-		fmt.Fprintf(os.Stderr, "	%s [-token <token>] describe <db> <table>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "		describe a table index\n")
-		fmt.Fprintf(os.Stderr, "	%s [-token <token>] gc <db> <table-pattern?>\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "		gc old objects from a db (+ table-pattern)\n")
-		fmt.Fprintf(os.Stderr, "    %s [-token <token>] [-o <output>] unpack <file>...\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "        unpack a packed .ion.zst file into ion")
-		fmt.Fprintf(os.Stderr, "flag usage:\n")
-		flag.Usage()
+
+	if len(args) == 0 {
+		showHelp()
 		os.Exit(1)
 	}
 
-	switch args[0] {
-	case "create":
-		if len(args) != 3 {
-			exitf("usage: create <db> <definition.json|definition.yaml>")
+	for i, _ := range args {
+		if args[i] == "-h" {
+			dashh = true
 		}
-		create(creds(), args[1], args[2])
-	case "sync":
-		if len(args) < 2 || len(args) > 3 {
-			exitf("usage: sync <db> <table-pattern?>")
+	}
+
+	cmd := args[0]
+	applet := applets.find(cmd)
+	if applet == nil {
+		fmt.Fprintf(os.Stderr, "commands: ")
+		for i, _ := range applets {
+			if i > 0 {
+				fmt.Fprintf(os.Stderr, ", ")
+			}
+
+			fmt.Fprintf(os.Stderr, applets[i].name)
 		}
-		if len(args) == 2 {
-			args = append(args, "*")
-		}
-		sync(args[1], args[2])
-	case "gc":
-		if len(args) < 2 || len(args) > 3 {
-			exitf("usage: gc <db> <table-pattern?>")
-		}
-		if len(args) == 2 {
-			args = append(args, "*")
-		}
-		gc(creds(), args[1], args[2])
-	case "describe":
-		if len(args) != 3 {
-			exitf("usage: describe <db> <table>")
-		}
-		describe(creds(), args[1], args[2])
-	case "inputs":
-		if len(args) != 3 {
-			exitf("usage: inputs <db> <table>")
-		}
-		inputs(creds(), args[1], args[2])
-	case "validate":
-		if len(args) != 3 {
-			exitf("usage: validate <db> <table>")
-		}
-		validate(creds(), args[1], args[2])
-	case "unpack":
-		if len(args) < 2 {
-			exitf("usage: unpack <file> ...")
-		}
-		unpack(args[1:])
-	case "fetch":
-		if len(args) < 2 {
-			exitf("usage: fetch <file> ...")
-		}
-		fetch(creds(), args[1:]...)
-	default:
-		exitf("commands: create, sync\n")
+
+		fmt.Fprintf(os.Stderr, "\n")
+		os.Exit(1)
+	}
+
+	if dashh {
+		showAppletHelp(applet, "")
+		return
+	}
+
+	validArgs := applet.run(args)
+	if !validArgs {
+		exitf("usage: %s %s\n", cmd, applet.help)
 	}
 }
