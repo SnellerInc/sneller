@@ -549,7 +549,7 @@ var applets = appletList{
 
 func (a *appletList) find(cmd string) *applet {
 	for i, _ := range applets {
-		if cmd != applets[i].name {
+		if cmd == applets[i].name {
 			return &applets[i]
 		}
 	}
