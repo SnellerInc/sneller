@@ -37,12 +37,10 @@ var (
 	dashv        bool
 	dashh        bool
 	dashf        bool
-	dashunsafe   bool
 	dashm        int64
 	dashk        string
 	dasho        string
 	token        string
-	tenant       string
 	authEndPoint string
 )
 
@@ -55,7 +53,6 @@ func init() {
 	flag.BoolVar(&dashv, "v", false, "verbose")
 	flag.BoolVar(&dashh, "h", false, "show usage help")
 	flag.BoolVar(&dashf, "f", false, "force rebuild")
-	flag.BoolVar(&dashunsafe, "unsafe", false, "use unsafe index signing key")
 	flag.Int64Var(&dashm, "m", 100*giga, "maximum input bytes read per index update")
 	flag.StringVar(&dashk, "k", "", "key file to use for signing+authenticating indexes")
 	flag.StringVar(&dasho, "o", "-", "output file (or - for stdin) for unpack")
@@ -156,21 +153,11 @@ func logf(f string, args ...interface{}) {
 
 // entry point for 'sdb sync ...'
 func sync(dbname, tblpat string) {
-	fallback := func(name string) blockfmt.RowFormat {
-		if dashunsafe && (strings.HasSuffix(name, ".10n") || strings.HasSuffix(name, ".ion")) {
-			if dashv {
-				logf("using unsafe ion format for %s\n", name)
-			}
-			return blockfmt.UnsafeION()
-		}
-		return nil
-	}
 	var err error
 	for {
 		b := db.Builder{
 			Align:         1024 * 1024, // maximum alignment with current span size
 			RangeMultiple: 100,         // metadata once every 100MB
-			Fallback:      fallback,
 			Force:         dashf,
 			MaxScanBytes:  dashm,
 			GCMinimumAge:  5 * time.Minute,
@@ -446,7 +433,26 @@ var applets = appletList{
 	{
 		name: "create",
 		help: "<db> <definition.json|definition.yaml>",
-		desc: "create a new table from a def",
+		desc: `create a new table from a def
+The command
+  $ sdb create <db> definition.json
+uploads a copy of definition.json to
+the tenant root file system at
+  /db/<db>/<name>/definition.json
+using the table name given in the definition.json file
+
+The definition.json is expected to be a JSON
+document with the following structure:
+
+  {
+    "name": "<table-name>",
+    "inputs": [
+      {"pattern": "s3://bucket/path/to/*.json", "format": "json"},
+      {"pattern": "s3://another/path/*.json.gz", "format": "json.gz"}
+    ]
+  }
+
+`,
 		run: func(args []string) bool {
 			if len(args) != 3 {
 				return false
@@ -458,7 +464,13 @@ var applets = appletList{
 	{
 		name: "sync",
 		help: "<db> <table-pattern?>",
-		desc: "sync a table index based on an existing def",
+		desc: `sync a table index based on an existing def
+the command
+  $ sdb sync <db> <pattern>
+synchronizes all the tables that match <pattern> within
+the database <db> against the list of objects specified
+in the associated definition.json files (see also "create")
+`,
 		run: func(args []string) bool {
 			if len(args) < 2 || len(args) > 3 {
 				return false
@@ -473,7 +485,16 @@ var applets = appletList{
 	{
 		name: "gc",
 		help: "<db> <table-pattern?>",
-		desc: "gc old objects from a db (+ table-pattern)",
+		desc: `gc old objects from a db (+ table-pattern)
+The command
+  $ sdb gc <db> <table-pattern>
+will perform garbage collection of all the objects
+in the set of tables that match the glob pattern <table-pattern>.
+
+A file is a candidate for garbage collection if
+it is not pointed to by the current index file
+and it was created more than 15 minutes ago.
+`,
 		run: func(args []string) bool {
 			if len(args) < 2 || len(args) > 3 {
 				return false
@@ -488,7 +509,13 @@ var applets = appletList{
 	{
 		name: "describe",
 		help: "<db> <table>",
-		desc: "describe a table index",
+		desc: `describe a table index
+The command
+  $ sdb describe <db> <table>
+will output a textual description
+of the index file associated with
+the given database+table.
+`,
 		run: func(args []string) bool {
 			if len(args) != 3 {
 				return false
@@ -500,7 +527,18 @@ var applets = appletList{
 	{
 		name: "inputs",
 		help: "<db> <table>",
-		desc: "<missing description>",
+		desc: `inputs <db> <table>
+The command
+  $ sdb inputs <db> <table>
+lists all of the input files that have
+been recorded by the index file belonging
+to the specified database and table.
+
+The output of this command is a series
+of newline-delimited JSON records describing
+the name of the file and whether or not it
+was successfully read into the table.
+`,
 		run: func(args []string) bool {
 			if len(args) != 3 {
 				return false
@@ -512,7 +550,17 @@ var applets = appletList{
 	{
 		name: "validate",
 		help: "<db> <table>",
-		desc: "<missing description>",
+		desc: `iteratively validate each packed-*.ion.zst file in an index
+The command
+  $ sdb validate <db> <table>
+loads the index file associated with the
+provided db and table and walks each of
+the packed-*.ion.zst files comprising the index.
+Any errors discovered will be reported on stderr.
+
+NOTE: validation walks every byte of data in a table.
+It may take a long time for this command to run on large tables.
+`,
 		run: func(args []string) bool {
 			if len(args) != 3 {
 				return false
@@ -524,7 +572,19 @@ var applets = appletList{
 	{
 		name: "unpack",
 		help: "<file> ...",
-		desc: "unpack a packed .ion.zst file into ion",
+		desc: `unpack 1 or more *.ion.zst files into ion
+The command
+  $ sdb unpack <file> ...
+unpacks each of the listed files (from the local filesystem)
+and outputs the decompressed ion data from within the file.
+
+If the -o <output> flag is set, then the output of this
+command will be directed to that file.
+Otherwise, the output is written to stdout.
+
+See the "fetch" command for downloading files
+from the tenant rootfs to the local filesystem.
+`,
 		run: func(args []string) bool {
 			if len(args) < 2 {
 				return false
@@ -536,7 +596,20 @@ var applets = appletList{
 	{
 		name: "fetch",
 		help: "<file> ...",
-		desc: "<missing description>",
+		desc: `download 1 or more files from the tenant rootfs
+The command
+  $ sdb fetch <file> ...
+fetches the associated file from the tenant rootfs
+and stores it on the local filesystem in a file with
+the same basename as the respective remote file.
+
+For example,
+  $ sdb fetch db/foo/bar/baz.ion.zst
+would create a local file called baz.ion.zst.
+
+For unpacking downloaded *.ion.zst files,
+see the unpack command.
+`,
 		run: func(args []string) bool {
 			if len(args) < 2 {
 				return false
@@ -548,7 +621,7 @@ var applets = appletList{
 }
 
 func (a *appletList) find(cmd string) *applet {
-	for i, _ := range applets {
+	for i := range applets {
 		if cmd == applets[i].name {
 			return &applets[i]
 		}
@@ -559,18 +632,26 @@ func (a *appletList) find(cmd string) *applet {
 func main() {
 	prog := os.Args[0]
 
-	showAppletHelp := func(app *applet, indent string) {
-		fmt.Fprintf(os.Stderr, "%s%s [-token <token>] %s %s\n",
+	showAppletHelp := func(app *applet, indent string, short bool) {
+		fmt.Fprintf(os.Stderr, "%s%s %s %s\n",
 			indent, prog, app.name, app.help)
-		fmt.Fprintf(os.Stderr, "%s    %s\n", indent, app.desc)
+		desc := app.desc
+		if short {
+			desc = strings.Split(desc, "\n")[0]
+		}
+		fmt.Fprintf(os.Stderr, "%s    %s\n", indent, desc)
 	}
 
 	originalUsage := flag.Usage
 
 	showHelp := func() {
+		fmt.Fprintf(os.Stderr, "Usage:\n  sdb [-a auth-spec] [-token token] command args...\n")
+		fmt.Fprintf(os.Stderr, "  -a     auth-spec: an http:// or file:// URI\n")
+		fmt.Fprintf(os.Stderr, "         pointing to the token validation server or local credentials\n")
+		fmt.Fprintf(os.Stderr, "  -token token: the token to pass to the auth server\n")
 		fmt.Fprintf(os.Stderr, "Available commands:\n")
-		for i, _ := range applets {
-			showAppletHelp(&applets[i], "  ")
+		for i := range applets {
+			showAppletHelp(&applets[i], "  ", true)
 		}
 
 		fmt.Fprintf(os.Stderr, "\n")
@@ -587,7 +668,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	for i, _ := range args {
+	for i := range args {
 		if args[i] == "-h" {
 			dashh = true
 		}
@@ -597,11 +678,10 @@ func main() {
 	applet := applets.find(cmd)
 	if applet == nil {
 		fmt.Fprintf(os.Stderr, "commands: ")
-		for i, _ := range applets {
+		for i := range applets {
 			if i > 0 {
 				fmt.Fprintf(os.Stderr, ", ")
 			}
-
 			fmt.Fprintf(os.Stderr, applets[i].name)
 		}
 
@@ -610,7 +690,7 @@ func main() {
 	}
 
 	if dashh {
-		showAppletHelp(applet, "")
+		showAppletHelp(applet, "", false)
 		return
 	}
 
