@@ -171,7 +171,7 @@ func (u *Uploader) Start() error {
 		return fmt.Errorf("returned bucket %q not input bucket %q?", rt.Bucket, u.Bucket)
 	}
 	if rt.Key != u.Object {
-		return fmt.Errorf("returned key %q not input key %q?", rt.Key, u.Key)
+		return fmt.Errorf("returned key %q not input key %q?", rt.Key, u.Object)
 	}
 	u.started = true
 	u.id = rt.ID

@@ -111,7 +111,7 @@ f536975d06c0309214f805bb90ccff089219ecd68b2577efef23edd43b7e1a59`
 	sk := DeriveKey("", "", "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", "us-east-1", "iam")
 
 	var dst [2 * sha256.Size]byte
-	sk.sign([]byte(testvec), dst[:])
+	sk.sign([]byte(testvec), dst[:], when)
 	const wantsig = "5d672d79c15b13162d9279b0855cfba6789a8edb4c82c400e06b5924a6f2b5d7"
 	if got := string(dst[:]); got != wantsig {
 		t.Errorf("got sig %s", got)
@@ -120,7 +120,8 @@ f536975d06c0309214f805bb90ccff089219ecd68b2577efef23edd43b7e1a59`
 
 // See https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html#query-string-auth-v4-signing-example
 func TestSignURL(t *testing.T) {
-	fn, err := time.Parse(longFormat, "20130524T000000Z")
+	// derive the key in the preceding day
+	fn, err := time.Parse(longFormat, "20130523T010203Z")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +129,13 @@ func TestSignURL(t *testing.T) {
 	input := "https://examplebucket.s3.amazonaws.com/test.txt"
 	k := DeriveKey("", "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "us-east-1", "s3")
 
+	// change the day to "tomorrow" and confirm
+	// that the signature is still produced correctly
+	fn, err = time.Parse(longFormat, "20130524T000000Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakenow = fn
 	ret, err := k.SignURL(input, 86400*time.Second)
 	if err != nil {
 		t.Fatal(err)

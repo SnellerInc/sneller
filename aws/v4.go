@@ -22,13 +22,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"hash"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -186,7 +184,7 @@ func (s *SigningKey) SignV4(req *http.Request, body []byte) {
 	h := sha256.Sum256(buf.Bytes())
 	buf.Reset()
 	s.tosign(&buf, now, hex.EncodeToString(h[:]))
-	s.sign(buf.Bytes(), hexbuf[:])
+	s.sign(buf.Bytes(), hexbuf[:], now)
 
 	buf.Reset()
 	buf.WriteString("AWS4-HMAC-SHA256 Credential=")
@@ -268,7 +266,7 @@ func (s *SigningKey) SignURL(uri string, validfor time.Duration) (string, error)
 	dst.Reset()
 	reqhash := hex.EncodeToString(h[:])
 	s.tosign(&dst, now, reqhash)
-	s.sign(dst.Bytes(), hexbuf[:])
+	s.sign(dst.Bytes(), hexbuf[:], now)
 	query := q.Encode() + "&X-Amz-Signature=" + string(hexbuf[:])
 	// we're overriding the request scheme here to HTTPS,
 	// since we're only signing the host header
@@ -289,9 +287,14 @@ type SigningKey struct {
 	Token     string    // Token, if key is from STS
 	Derived   time.Time // time token was derived
 
-	lock sync.Mutex
-	// secret signing key, wrapped in an hmac signer
-	mac hash.Hash
+	// we only store the clamped secret
+	// so that this object can't be repurposed
+	// for other services / regions
+	//
+	// clamped0 is "today's" key when the
+	// key was derived; clamped1 is "tomorrow's" key
+	clamped0 []byte
+	clamped1 []byte
 }
 
 func macinto(key, mem []byte) []byte {
@@ -314,34 +317,28 @@ func derive(secret string, when time.Time, region, service string) []byte {
 // to sign requests
 func DeriveKey(baseURI, accessKey, secret, region, service string) *SigningKey {
 	now := signtime().UTC()
-	key := derive(secret, now, region, service)
 	return &SigningKey{
 		BaseURI:   baseURI,
 		Region:    region,
 		Service:   service,
 		AccessKey: accessKey,
 		Derived:   now,
-		mac:       hmac.New(sha256.New, key),
+		clamped0:  derive(secret, now, region, service),
+		clamped1:  derive(secret, now.Add(24*time.Hour), region, service),
 	}
 }
 
-// Expired returns whether or not
-// the signing key has expired since
-// it was derived.
-func (s *SigningKey) Expired() bool {
-	if faketime {
-		return false
+func (s *SigningKey) pickKey(when time.Time) []byte {
+	// if it is "tomorrow" then pick tomorrow's key
+	if when.Sub(s.Derived) >= 24*time.Hour || when.Day() != s.Derived.Day() {
+		return s.clamped1
 	}
-	now := time.Now()
-	return now.Sub(s.Derived) >= 24*time.Hour || now.Day() != s.Derived.Day()
+	return s.clamped0
 }
 
-func (s *SigningKey) sign(src, dst []byte) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+func (s *SigningKey) sign(src, dst []byte, when time.Time) {
 	var tmp [sha256.Size]byte
-	s.mac.Reset()
-	s.mac.Write(src)
-	hex.Encode(dst, s.mac.Sum(tmp[:0]))
-	s.mac.Reset()
+	m := hmac.New(sha256.New, s.pickKey(when))
+	m.Write(src)
+	hex.Encode(dst, m.Sum(tmp[:0]))
 }
