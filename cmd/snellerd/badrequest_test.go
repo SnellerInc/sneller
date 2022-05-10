@@ -109,7 +109,7 @@ func (r *requester) getQuery(db, query string) *http.Request {
 			url.QueryEscape(db), url.QueryEscape(query))
 	}
 	req := r.get(uri)
-	req.Header.Set("TE", "trailer")
+	req.Header.Set("TE", "trailers")
 	req.Header.Set("Authorization", "Bearer snellerd-test")
 	return req
 }

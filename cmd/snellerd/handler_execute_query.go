@@ -221,7 +221,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	sendTrailer := contains(r.Header.Values("TE"), "trailer")
+	sendTrailer := contains(r.Header.Values("TE"), "trailers")
 	if sendTrailer {
 		w.Header().Add("Trailer", "Server-Timing")
 	}
