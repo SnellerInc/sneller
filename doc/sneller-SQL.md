@@ -14,6 +14,11 @@ UTF8-encoded text. These query text strings
 are typically sent as HTTP request bodies or
 URL-encoded query strings.
 
+Sneller SQL only supports part of the "DQL" portion of
+standard SQL (i.e. `SELECT-FROM-WHERE` statements, etc.).
+Sneller does not currently use SQL to perform database insert/update operations,
+although we may support those at some point in the future.
+
 <!-- TODO: link to API docs when we have them -->
 
 Sneller SQL extends the concept of SQL "rows" and "columns"
@@ -32,13 +37,24 @@ SELECT 1 AS x, 2 AS y, (SELECT 'z' AS z, NULL AS bar) AS sub
 evaluates to
 
 ```json
-{'x': 1, 'y': 2, 'sub': {'z': 'z', 'bar': null}}
+{"x": 1, "y": 2, "sub": {"z": "z", "bar": null}}
 ```
 
 Sneller SQL can handle tables that have records
 with wildly different schemas, as it does not
 assume that the result of a particular field selection
 must produce a particular datatype (or even any value at all).
+
+### Execution Model
+
+Since Sneller is designed to run as a "hosted" multi-tenant
+product, the query engine and query planner are designed so
+that queries will execute within a (generous) fixed memory limit
+and a linear amount of time with respect to the size of the input.
+In other words, any query that is accepted by the query planner will touch each
+row of each table referenced in each individual `FROM` clause no more than once,
+and query operations that need to buffer rows (e.g. `ORDER BY`, `GROUP BY`, etc.)
+will not buffer indefinitely.
 
 ### Identifiers
 
@@ -48,7 +64,7 @@ that would conflict with SQL keywords or would not otherwise be
 legal identifiers. (For example, `""` is a valid identifier, but it
 is impossible to write that identifier without quoting.)
 
-In general, users should prefer quoted identifiers, as SQL
+In general, users should prefer double-quoted identifiers, as SQL
 has a large number of keywords that conflict with commonly-used
 attribute names.
 
@@ -136,7 +152,13 @@ Literal strings are allowed to contain conventional ASCII escape sequences
 #### Literal Timestamps
 
 Literal timestamps are enclosed in the back-tick (```) character
-and formatted in RFC3339 representation.
+and formatted in RFC3339 representation with microsecond precision,
+i.e. six decimal digits in the "seconds" component of the timestamp.
+
+For example:
+```
+`2022-05-01T12:35:01.000111Z`
+```
 
 #### Literal Numbers
 
@@ -199,7 +221,7 @@ in_expr = expr 'IN' ( subquery_expr | '(' { expr } ')' ) ;
 // conflict with ordinary AND
 between_expr = expr BETWEEN expr AND expr ;
 
-arith_expr = expr ('+' | '-' | '/' | '*' | '%') ;
+arith_expr = expr ('+' | '-' | '/' | '*' | '%') expr;
 
 function_name = ... ; // see list of built-in functions
 function_expr = function_name '(' arg { ',' args } ')' ;
@@ -211,14 +233,72 @@ case_expr = 'CASE' { 'WHEN' expr 'THEN' expr } [ 'ELSE' expr ] 'END' ;
 
 #### JOIN restrictions
 
-Currently, the only `JOIN` type that
-is supported by the query engine is an
-"un-nesting" join that cross-joins a
-structure with an array of structures
-within the outer (containing) structure:
+The Sneller SQL query engine supports
+"un-nesting" cross joins and inner joins,
+but neither use the `JOIN` SQL keyword explicitly.
+The query engine does not yet support other kinds of SQL joins.
+
+##### Unnesting
+
+The `,` operator in the `FROM` position
+can be used to `CROSS JOIN` all of the
+rows in a table with an array element
+that occurs in each row.
+
+For example, if we have a table with the following rows:
+```JSON
+{"array": [{"y": 3}, {"y": 4}], "x": "first"}
+{"array": [{"y": 5}, {"y": 6}], "x": "second"}
+```
+
+Then the following query
 ```SQL
 select outer.x, inner.y
 from table as outer, outer.array as inner
+```
+
+would produce
+```JSON
+{"x": "first", "y": 3}
+{"x": "first", "y": 4}
+{"x": "second", "y": 5}
+{"x": "second", "y": 6}
+```
+
+##### Correlated Sub-queries
+
+A "correlated" sub-query is one that uses
+a binding from an outer query to determine
+the result of an inner query.
+Correlated sub-queries can be used to compute
+results that are similar to a traditional SQL
+"inner join." The query engine will reject correlated
+sub-queries that cannot be optimized to run in linear time.
+(Also, please read the subsequent section on general
+restrictions applied to sub-queries.)
+
+For example, if we have a table `inner` that looks like this:
+```JSON
+{"x": "foo", "y": "first row"}
+{"x": "bar", "y": "second row"}
+```
+
+and a table `outer` that looks like this:
+```JSON
+{"z": "first outer", "x": "foo"}
+{"z": "second outer", "x": "bar"}
+```
+
+Then the following query
+```SQL
+SELECT z, (SELECT inner.y FROM inner AS inner WHERE inner.x = outer.z) AS y
+FROM outer AS outer
+```
+
+would produce this result:
+```JSON
+{"z": "first outer", "y": "first row"}
+{"z": "second outer", "y": "second row"}
 ```
 
 #### Subquery restrictions
@@ -263,15 +343,16 @@ conditions will be rejected by the query engine.
 
 #### Ordering Restriction
 
-<!-- TODO: implement this restriction! -->
-
 The `ORDER BY` clause may not operate on
 an unlimited number of rows, as it would require
 that the query engine buffer an unlimited number of rows
 in order to sort them.
 
-Queries with `ORDER BY` clauses should include
-either a `LIMIT` or `GROUP BY` clause.
+The query engine will reject an `ORDER BY` clause
+that occurs without *at least one* of the following:
+
+ - A `LIMIT` clause of 10000 elements or fewer
+ - A `GROUP BY` clause
 
 #### Implicit Subquery Scalar Coercion
 
@@ -403,6 +484,18 @@ As `COUNT(expr)`, returns an integer count
 of the total number of rows for which `expr` evaluates to a
 value that is not `MISSING`.
 
+For example, the following two queries are equivalent:
+```SQL
+SELECT COUNT(*)
+FROM table
+WHERE x > 3
+```
+
+```SQL
+SELECT COUNT(CASE WHEN x > 3 THEN TRUE ELSE MISSING END)
+FROM table
+```
+
 #### `MIN` and `MAX`
 
 `MIN(expr)` and `MAX(expr)` produce the largest
@@ -429,6 +522,17 @@ If `expr` never evaluates to a number, `SUM(expr)` yields `NULL`.
 `AVG(expr)` accumulates the average of `expr`
 for all the rows that reach the aggregation expression.
 If `expr` never evaluates to a number, `AVG(expr)` yields `NULL`.
+
+#### `COUNT(DISTINCT)`
+
+`COUNT(DISTINCT expr)` counts the number of distinct
+results produced by evaluating `expr` for each row.
+
+Current limitations: `COUNT(DISTINCT expr)` is not allowed
+to occur alongside any other aggregation expressions in
+a `SELECT` clause. We implement `COUNT(DISTINCT expr)`
+by rewriting the query into a compound query that uses
+`SELECT DISTINCT` and `COUNT`.
 
 ### Infix Operators
 
