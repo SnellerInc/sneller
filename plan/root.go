@@ -85,7 +85,8 @@ func (f *fakeenv) rewrite(in *expr.Table, h TableHandle) (*expr.Table, TableHand
 	return in, h
 }
 
-func (f *fakeenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+// DecodeHandle implements Decoder
+func (f *fakeenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	i, _, err := ion.ReadInt(mem)
 	if err != nil {
 		return nil, fmt.Errorf("fakeenv: %w", err)
@@ -104,7 +105,7 @@ func (t *Tree) Rewrite(rw TableRewrite) (*Tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	ret, err := Decode(fe.decode, &st, buf.Bytes())
+	ret, err := Decode(fe, &st, buf.Bytes())
 	if err != nil {
 		panic(err.Error())
 	}

@@ -104,7 +104,7 @@ func runWorker(args []string) {
 			env.cache.Logger = logger
 		}
 	}
-	err = tnproto.Serve(uc, env.decodeHandle)
+	err = tnproto.Serve(uc, &env)
 	if err != nil {
 		logger.Fatalf("cannot serve: %v", err)
 	}
@@ -123,7 +123,7 @@ type tenantHandle struct {
 	inner  plan.TableHandle
 }
 
-func (t *tenantEnv) decodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
+func (t *tenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
 	decodeHandle := func(st *ion.Symtab, mem []byte) (plan.TableHandle, error) {
 		fh := new(filterHandle)
 		if err := fh.decode(st, mem); err != nil {
@@ -136,6 +136,20 @@ func (t *tenantEnv) decodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, 
 		return nil, err
 	}
 	return &tenantHandle{parent: t, inner: h}, nil
+}
+
+var _ plan.SubtableDecoder = (*tenantEnv)(nil)
+
+// DecodeSubtables implements plan.SubtableDecoder.
+func (t *tenantEnv) DecodeSubtables(st *ion.Symtab, buf []byte) (plan.Subtables, error) {
+	thfn := func(blobs []blob.Interface, flt expr.Node) plan.TableHandle {
+		h := &filterHandle{
+			blobs:  &blob.List{Contents: blobs},
+			filter: flt,
+		}
+		return &tenantHandle{parent: t, inner: h}
+	}
+	return decodeSubtables(st, buf, thfn)
 }
 
 func (e *tenantEnv) post() {

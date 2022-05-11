@@ -31,7 +31,7 @@ type UnionMap struct {
 	Nonterminal
 
 	Orig *expr.Table
-	Sub  []Subtable
+	Sub  Subtables
 }
 
 var (
@@ -78,7 +78,9 @@ func getDecoder(name string) TransportDecoder {
 	return transDecoders[name]
 }
 
-func encodeTransport(t Transport, st *ion.Symtab, buf *ion.Buffer) error {
+// EncodeTransport attempts to encode t to buf. If t
+// cannot be serialized, this returns an error.
+func EncodeTransport(t Transport, st *ion.Symtab, buf *ion.Buffer) error {
 	type encoder interface {
 		Encode(dst *ion.Buffer, st *ion.Symtab)
 	}
@@ -90,7 +92,9 @@ func encodeTransport(t Transport, st *ion.Symtab, buf *ion.Buffer) error {
 	return nil
 }
 
-func decodeTransport(st *ion.Symtab, body []byte) (Transport, error) {
+// DecodeTransport decodes a transport encoded with
+// EncodeTransport.
+func DecodeTransport(st *ion.Symtab, body []byte) (Transport, error) {
 	if ion.TypeOf(body) != ion.StructType {
 		return nil, fmt.Errorf("ion object of type %s cannot be a transport", ion.TypeOf(body))
 	}
@@ -154,15 +158,17 @@ func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error 
 	// does not benefit substantially from having
 	// parallelism, so we union all the output bytes
 	// into a single thread here
-	errors := make([]error, len(u.Sub))
+	errors := make([]error, u.Sub.Len())
 	var wg sync.WaitGroup
-	wg.Add(len(u.Sub))
-	for i := range u.Sub {
+	wg.Add(u.Sub.Len())
+	for i := 0; i < u.Sub.Len(); i++ {
 		go func(i int) {
 			defer wg.Done()
+			var sub Subtable
+			u.Sub.Subtable(i, &sub)
 			rw := func(in *expr.Table, handle TableHandle) (*expr.Table, TableHandle) {
 				if in.Equals(u.Orig) {
-					return u.Sub[i].Table, u.Sub[i].Handle
+					return sub.Table, sub.Handle
 				}
 				return in, handle
 			}
@@ -171,7 +177,7 @@ func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error 
 			// like we are executing a sub-query, which
 			// is approximately true
 			stub := &Tree{Op: u.From}
-			errors[i] = u.Sub[i].Exec(stub, rw, s, stats)
+			errors[i] = sub.Exec(stub, rw, s, stats)
 		}(i)
 	}
 	wg.Wait()
@@ -206,31 +212,14 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	// subtables are encoded as
 	//   [[transport, table-expr] ...]
 	dst.BeginField(st.Intern("sub"))
-	dst.BeginList(-1)
-	for i := range u.Sub {
-		// encode as [transport, table-expr, handle]
-		dst.BeginList(-1)
-		err := encodeTransport(u.Sub[i].Transport, st, dst)
-		if err != nil {
-			return err
-		}
-		u.Sub[i].Table.Encode(dst, st)
-		if u.Sub[i].Handle == nil {
-			dst.WriteNull()
-		} else {
-			err = u.Sub[i].Handle.Encode(dst, st)
-			if err != nil {
-				return err
-			}
-		}
-		dst.EndList()
+	if err := u.Sub.Encode(st, dst); err != nil {
+		return err
 	}
-	dst.EndList()
 	dst.EndStruct()
 	return nil
 }
 
-func (u *UnionMap) setfield(name string, st *ion.Symtab, body []byte) error {
+func (u *UnionMap) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "orig":
 		nod, _, err := expr.Decode(st, body)
@@ -243,40 +232,21 @@ func (u *UnionMap) setfield(name string, st *ion.Symtab, body []byte) error {
 		}
 		u.Orig = t
 	case "sub":
-		err := unpackList(body, func(field []byte) error {
-			body, err := nonemptyList(field)
-			if err != nil {
-				return err
-			}
-			t, err := decodeTransport(st, body)
-			if err != nil {
-				return err
-			}
-			body = body[ion.SizeOf(body):]
-			e, body, err := expr.Decode(st, body)
-			if err != nil {
-				return err
-			}
-			tbl, ok := e.(*expr.Table)
-			if !ok {
-				return fmt.Errorf("decoding UnionMap: cannot use %T as expr.Table", e)
-			}
-			var handlemem []byte
-			if len(body) > 0 && ion.TypeOf(body) != ion.NullType {
-				handlemem = body
-			}
-			u.Sub = append(u.Sub, Subtable{Transport: t, Table: tbl, handlemem: handlemem})
-			return nil
-		})
-		return err
+		sub, err := DecodeSubtables(d, st, body[:ion.SizeOf(body)])
+		if err != nil {
+			return err
+		}
+		u.Sub = sub
 	}
 	return nil
 }
 
-func tableStrings(lst []Subtable) []string {
-	out := make([]string, len(lst))
-	for i := range lst {
-		out[i] = expr.ToString(lst[i])
+func tableStrings(lst Subtables) []string {
+	out := make([]string, lst.Len())
+	for i := range out {
+		var sub Subtable
+		lst.Subtable(i, &sub)
+		out[i] = expr.ToString(sub)
 	}
 	return out
 }

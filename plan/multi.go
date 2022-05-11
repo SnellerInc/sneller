@@ -55,10 +55,10 @@ func (h tableHandles) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func decodeHandles(hfn HandleDecodeFn, st *ion.Symtab, mem []byte) (TableHandle, error) {
+func decodeHandles(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
 	var ths tableHandles
 	ion.UnpackList(mem, func(mem []byte) error {
-		th, err := hfn.decode(st, mem)
+		th, err := decodeHandle(d, st, mem)
 		if err != nil {
 			return err
 		}

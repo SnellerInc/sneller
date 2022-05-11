@@ -42,8 +42,8 @@ func (e emptyenv) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 type twosplit struct{}
 
-func (t twosplit) Split(e expr.Node, _ TableHandle) ([]Subtable, error) {
-	sub := make([]Subtable, 2)
+func (t twosplit) Split(e expr.Node, _ TableHandle) (Subtables, error) {
+	sub := make(SubtableList, 2)
 	for i := range sub {
 		newstr := expr.Identifier(expr.ToString(e) + fmt.Sprintf("-part%d", i+1))
 		sub[i] = Subtable{

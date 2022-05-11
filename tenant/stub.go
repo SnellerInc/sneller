@@ -138,7 +138,7 @@ func (t *tableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (e *Env) decodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
+func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
 	if len(buf) == 0 {
 		return nil, fmt.Errorf("no TableHandle present")
 	}
@@ -222,7 +222,7 @@ func main() {
 	defer uc.Close()
 	env := Env{eventfd: evfd}
 	env.cache = dcache.New(cachedir, env.post)
-	err = tnproto.Serve(uc, env.decodeHandle)
+	err = tnproto.Serve(uc, &env)
 	if err != nil {
 		die(err)
 	}

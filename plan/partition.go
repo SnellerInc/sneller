@@ -27,6 +27,114 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+// Subtables represents a list of subtables with an
+// opaque encoding and in-memory representation.
+type Subtables interface {
+	// Len returns the number of subtables.
+	Len() int
+	// Subtable copies the ith Subtable into sub.
+	// This may panic if i is out of range.
+	// Implementations must not retain sun.
+	Subtable(i int, sub *Subtable)
+	// Encode encodes the subtables into dst.
+	Encode(st *ion.Symtab, dst *ion.Buffer) error
+	// Filter applies the given filter expression
+	// to every TableHandle in each subtables.
+	Filter(expr.Node)
+	// Append appends another subtable list to this
+	// one. Implementations may assume the argument
+	// is always one of the Subtables produced by
+	// the same Encoder that produced the receiver.
+	Append(Subtables) Subtables
+}
+
+// SubtableList is a basic implementation of Subtables.
+// This implementation is used if a Decoder does not
+// implement DecodeSubtables.
+type SubtableList []Subtable
+
+// Len returns the number of subtables.
+func (s SubtableList) Len() int {
+	return len(s)
+}
+
+// Subtable copies the ith Subtable into sub.
+func (s SubtableList) Subtable(i int, sub *Subtable) {
+	*sub = s[i]
+}
+
+// Encode encodes the list into dst.
+func (s SubtableList) Encode(st *ion.Symtab, dst *ion.Buffer) error {
+	dst.BeginList(-1)
+	for i := range s {
+		if err := s[i].encode(st, dst); err != nil {
+			return err
+		}
+	}
+	dst.EndList()
+	return nil
+}
+
+// Filter applies the given filter expression to every
+// TableHandle in the list.
+func (s SubtableList) Filter(e expr.Node) {
+	for i := range s {
+		if fh, ok := s[i].Handle.(Filterable); ok {
+			s[i].Handle = fh.Filter(e)
+		}
+	}
+}
+
+// Append combines this list with another list. The
+// argument sub must have concrete type SubtableList.
+func (s SubtableList) Append(sub Subtables) Subtables {
+	return append(s, sub.(SubtableList)...)
+}
+
+// DecodeSubtables decodes a list of Subtable objects
+func DecodeSubtables(d Decoder, st *ion.Symtab, body []byte) (Subtables, error) {
+	if d, ok := d.(SubtableDecoder); ok {
+		return d.DecodeSubtables(st, body)
+	}
+	var sub SubtableList
+	err := unpackList(body, func(field []byte) error {
+		body, err := nonemptyList(field)
+		if err != nil {
+			return err
+		}
+		t, err := DecodeTransport(st, body)
+		if err != nil {
+			return err
+		}
+		body = body[ion.SizeOf(body):]
+		e, body, err := expr.Decode(st, body)
+		if err != nil {
+			return err
+		}
+		tbl, ok := e.(*expr.Table)
+		if !ok {
+			return fmt.Errorf("decoding UnionMap: cannot use %T as expr.Table", e)
+		}
+		var th TableHandle
+		if len(body) > 0 && ion.TypeOf(body) != ion.NullType {
+			th, err = decodeHandle(d, st, body)
+			if err != nil {
+				return err
+			}
+		}
+		sub = append(sub, Subtable{
+			Transport: t,
+			Table:     tbl,
+			Handle:    th,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sub, nil
+}
+
 // Subtable is a (Transport, Table) tuple
 // that is returned by Splitter.Split
 // to indicate how queries that access
@@ -44,8 +152,24 @@ type Subtable struct {
 	// as the table value.
 	*expr.Table
 
-	Handle    TableHandle
-	handlemem []byte
+	Handle TableHandle
+}
+
+// encode as [transport, table-expr, handle]
+func (s *Subtable) encode(st *ion.Symtab, dst *ion.Buffer) error {
+	dst.BeginList(-1)
+	err := EncodeTransport(s.Transport, st, dst)
+	if err != nil {
+		return err
+	}
+	s.Table.Encode(dst, st)
+	if s.Handle == nil {
+		dst.WriteNull()
+	} else if err := s.Handle.Encode(dst, st); err != nil {
+		return err
+	}
+	dst.EndList()
+	return nil
 }
 
 // Splitter is the interface through which
@@ -59,19 +183,8 @@ type Splitter interface {
 	// and yields a list of Subtables to
 	// be used to evaluate the sub-query
 	// in parallel.
-	Split(expr.Node, TableHandle) ([]Subtable, error)
+	Split(expr.Node, TableHandle) (Subtables, error)
 }
-
-// SplitFn is a funtion that implements Splitter
-type SplitFn func(expr.Node, TableHandle) ([]Subtable, error)
-
-// Split implements Splitter.Split
-func (s SplitFn) Split(t expr.Node, h TableHandle) ([]Subtable, error) {
-	return s(t, h)
-}
-
-// SplitFn is a Splitter
-var _ Splitter = SplitFn(nil)
 
 type frame uint32
 
@@ -114,7 +227,7 @@ func getframe(src []byte) frame {
 type server struct {
 	pipe io.ReadWriteCloser
 	rd   *bufio.Reader
-	hfn  HandleDecodeFn
+	dec  Decoder
 
 	st  ion.Symtab
 	tmp []byte
@@ -136,7 +249,7 @@ var serverPool = sync.Pool{
 // at which point it will return with no error.
 // If it encounters an internal error, it will
 // close the pipe and return the error.
-func Serve(rw io.ReadWriteCloser, hfn HandleDecodeFn) error {
+func Serve(rw io.ReadWriteCloser, dec Decoder) error {
 	s := serverPool.Get().(*server)
 	s.pipe = rw
 	if s.rd == nil {
@@ -144,7 +257,7 @@ func Serve(rw io.ReadWriteCloser, hfn HandleDecodeFn) error {
 	} else {
 		s.rd.Reset(rw)
 	}
-	s.hfn = hfn
+	s.dec = dec
 	s.st.Reset()
 	err := s.serve()
 	serverPool.Put(s)
@@ -300,7 +413,7 @@ func (s *server) runQuery(buf []byte) error {
 	if err != nil {
 		return err
 	}
-	t, err = Decode(s.hfn, &s.st, buf)
+	t, err = Decode(s.dec, &s.st, buf)
 	if err != nil {
 		return err
 	}

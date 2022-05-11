@@ -75,7 +75,7 @@ func decodeSel(dst *vm.Selection, st *ion.Symtab, src []byte) error {
 	return nil
 }
 
-func (u *Unnest) setfield(name string, st *ion.Symtab, body []byte) error {
+func (u *Unnest) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "pivot":
 		e, _, err := expr.Decode(st, body)

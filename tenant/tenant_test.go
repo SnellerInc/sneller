@@ -412,8 +412,8 @@ type split4 struct {
 	port int // local port on which the tenant is bound
 }
 
-func (s *split4) Split(tbl expr.Node, h plan.TableHandle) ([]plan.Subtable, error) {
-	out := make([]plan.Subtable, 4)
+func (s *split4) Split(tbl expr.Node, h plan.TableHandle) (plan.Subtables, error) {
+	out := make(plan.SubtableList, 4)
 	out[0].Handle = h
 	out[0].Table = &expr.Table{
 		Binding: expr.Bind(tbl, "copy-0"),

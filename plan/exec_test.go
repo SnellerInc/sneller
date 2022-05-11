@@ -85,7 +85,7 @@ func (t *testenv) encode(h TableHandle, dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (t *testenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+func (t *testenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)
 	}
@@ -1317,7 +1317,7 @@ func BenchmarkPlan(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				_, err = Decode(env.decode, &st, buf.Bytes())
+				_, err = Decode(env, &st, buf.Bytes())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -1390,7 +1390,7 @@ func testRemoteEquivalent(t *testing.T, tree *Tree,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		remoteerr = Serve(funkyPipe{remote}, env.decode)
+		remoteerr = Serve(funkyPipe{remote}, env)
 	}()
 
 	var stats ExecStats
@@ -1422,17 +1422,6 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 		t.Fatal(err)
 	}
 
-	// Since we're using nopSplitter{}, ShouldSplit
-	// should indicate that we shouldn't split,
-	// but we're going to do it anyway.
-	ok, err := ShouldSplit(s, e, nopSplitter{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok {
-		t.Error("ShouldSplit returned true?")
-	}
-
 	tree, err := NewSplit(s, e, nopSplitter{})
 	if err != nil {
 		t.Fatal(err)
@@ -1447,7 +1436,7 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err = Decode(e.decode, &st, ib.Bytes())
+	tree, err = Decode(e, &st, ib.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1506,7 +1495,7 @@ func testPlanSerialize(t *testing.T, tree *Tree, env *testenv) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree2, err := Decode(env.decode, &st, obuf.Bytes())
+	tree2, err := Decode(env, &st, obuf.Bytes())
 	if err != nil {
 		t.Logf("json: %s", buf2json(&st, &obuf))
 		t.Fatal(err)
@@ -1530,7 +1519,7 @@ func TestServerError(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		serverr = Serve(remote, env.decode)
+		serverr = Serve(remote, env)
 	}()
 
 	query := `select * from 'parking.10n' limit 1`
@@ -1589,14 +1578,13 @@ func TestServerError(t *testing.T) {
 type nopSplitter struct{}
 
 // Split returns the original table and the local transport
-func (n nopSplitter) Split(t expr.Node, th TableHandle) ([]Subtable, error) {
+func (n nopSplitter) Split(t expr.Node, th TableHandle) (Subtables, error) {
 	bind := expr.Bind(t, "local-copy")
-	return []Subtable{
-		Subtable{
-			Transport: &LocalTransport{},
-			Table: &expr.Table{
-				Binding: bind,
-			},
-			Handle: th,
-		}}, nil
+	return SubtableList{{
+		Transport: &LocalTransport{},
+		Table: &expr.Table{
+			Binding: bind,
+		},
+		Handle: th,
+	}}, nil
 }

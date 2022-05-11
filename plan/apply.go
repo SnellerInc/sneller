@@ -92,7 +92,7 @@ func (a *Apply) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (a *Apply) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (a *Apply) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "funcs":
 		bind, err := expr.DecodeBindings(st, buf)

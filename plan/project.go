@@ -49,7 +49,7 @@ func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (p *Project) setfield(name string, st *ion.Symtab, body []byte) error {
+func (p *Project) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "project":
 		bind, err := expr.DecodeBindings(st, body)

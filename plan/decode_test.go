@@ -42,7 +42,7 @@ func BenchmarkDecodeTree(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := Decode(be.decode, &st, buf.Bytes())
+				_, err := Decode(&be, &st, buf.Bytes())
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -74,7 +74,7 @@ func (b *benchenv) encode(h TableHandle, dst *ion.Buffer, st *ion.Symtab) error 
 	return nil
 }
 
-func (b *benchenv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+func (b *benchenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	l, err := blob.DecodeList(st, mem)
 	if err != nil {
 		return nil, err

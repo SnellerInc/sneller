@@ -48,8 +48,8 @@ func (e *filterEnv) Stat(t, filter expr.Node) (TableHandle, error) {
 	}, nil
 }
 
-func (e *filterEnv) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
-	h, err := e.env.decode(st, mem)
+func (e *filterEnv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	h, err := e.env.DecodeHandle(st, mem)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func TestFilter(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tree, err = Decode(env.decode, &st, buf.Bytes())
+			tree, err = Decode(&env, &st, buf.Bytes())
 			if err != nil {
 				t.Fatal(err)
 			}

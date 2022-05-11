@@ -20,19 +20,31 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-// HandleDecodeFn is a function used to decode a
-// TableHandle produced by TableHandle.Encode. If a
-// list is encountered when decoding a TableHandle,
-// this function will be called for each item in the
-// list to produce a concatenated table.
-type HandleDecodeFn func(st *ion.Symtab, mem []byte) (TableHandle, error)
+type Decoder interface {
+	// DecodeHandle is used to decode a TableHandle
+	// produced by TableHandle.Encode. If a list is
+	// encountered when decoding a TableHandle,
+	// this function will be called for each item
+	// in the list to produce a concatenated table.
+	DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error)
+}
 
-// decode calls f with special handling for lists
-func (f HandleDecodeFn) decode(st *ion.Symtab, mem []byte) (TableHandle, error) {
+// SubtableDecoder can optionally be implemented by
+// Decoder to handle decoding subtables using a more
+// sophisticated representation than the default.
+type SubtableDecoder interface {
+	// DecodeSubtables decodes Subtables produced
+	// by Subtables.Encode.
+	DecodeSubtables(st *ion.Symtab, mem []byte) (Subtables, error)
+}
+
+// decodeHandle calls d.DecodeHandle with special
+// handling for lists.
+func decodeHandle(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
 	if ion.TypeOf(mem) == ion.ListType {
-		return decodeHandles(f, st, mem)
+		return decodeHandles(d, st, mem)
 	}
-	return f(st, mem)
+	return d.DecodeHandle(st, mem)
 }
 
 // Decode decodes an ion-encoded tree
@@ -40,7 +52,7 @@ func (f HandleDecodeFn) decode(st *ion.Symtab, mem []byte) (TableHandle, error) 
 // During decoding, each Leaf op in the Tree
 // will have its TableHandle populated with env.Stat.
 // See also: Tree.Encode, Tree.EncodePart.
-func Decode(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (*Tree, error) {
+func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
 	if ion.TypeOf(buf) != ion.StructType {
 		return nil, fmt.Errorf("plan.Decode: unexpected ion type %s for Tree", ion.TypeOf(buf))
 	}
@@ -65,13 +77,13 @@ func Decode(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (*Tree, error) {
 			}
 			var body []byte
 			body, inner = ion.Contents(inner)
-			out.Op, err = decodeOps(hfn, st, body)
+			out.Op, err = decodeOps(d, st, body)
 			if err != nil {
 				return nil, err
 			}
 		case "children":
 			err = unpackList(inner, func(field []byte) error {
-				tt, err := Decode(hfn, st, field)
+				tt, err := Decode(d, st, field)
 				if err != nil {
 					return err
 				}
@@ -104,7 +116,7 @@ func Decode(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (*Tree, error) {
 //
 // During decoding, each *Leaf plan that references
 // a table has its TableHandle populated with env.Stat.
-func decodeOps(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (Op, error) {
+func decodeOps(d Decoder, st *ion.Symtab, buf []byte) (Op, error) {
 	typesym, ok := st.Symbolize("type")
 	if !ok {
 		return nil, fmt.Errorf("plan.Decode: symbol table missing \"type\" symbol")
@@ -134,27 +146,9 @@ func decodeOps(hfn HandleDecodeFn, st *ion.Symtab, buf []byte) (Op, error) {
 		if err != nil {
 			return nil, fmt.Errorf("plan.Decode: reading \"type\" symbol: %w", err)
 		}
-		op, err := decodetyp(st.Get(typ), st, inner)
+		op, err := decodetyp(d, st.Get(typ), st, inner)
 		if err != nil {
 			return nil, fmt.Errorf("plan.Decode: reading op %d: %w", count, err)
-		}
-		if tbl, ok := op.(*Leaf); hfn != nil && ok && tbl.handlebuf != nil {
-			tbl.Handle, err = hfn.decode(st, tbl.handlebuf)
-			if err != nil {
-				return nil, err
-			}
-			tbl.handlebuf = nil
-		} else if um, ok := op.(*UnionMap); hfn != nil && ok {
-			for i := range um.Sub {
-				if um.Sub[i].handlemem == nil {
-					continue
-				}
-				um.Sub[i].Handle, err = hfn.decode(st, um.Sub[i].handlemem)
-				if err != nil {
-					return nil, err
-				}
-				um.Sub[i].handlemem = nil
-			}
 		}
 		if top == nil {
 			top = op
@@ -201,7 +195,7 @@ func empty(name string) Op {
 	return nil
 }
 
-func decodetyp(name string, st *ion.Symtab, body []byte) (Op, error) {
+func decodetyp(d Decoder, name string, st *ion.Symtab, body []byte) (Op, error) {
 	op := empty(name)
 	if op == nil {
 		return nil, fmt.Errorf("plan.Decode: unrecognized type name %q", name)
@@ -213,7 +207,7 @@ func decodetyp(name string, st *ion.Symtab, body []byte) (Op, error) {
 		if err != nil {
 			return nil, err
 		}
-		err = op.setfield(st.Get(lbl), st, body)
+		err = op.setfield(d, st.Get(lbl), st, body)
 		if err != nil {
 			return nil, fmt.Errorf("decoding %T: %w", op, err)
 		}

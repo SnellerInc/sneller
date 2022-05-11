@@ -58,7 +58,7 @@ type Op interface {
 	// setfield should take the field label name "name"
 	// and use it to set the corresponding struct field
 	// to the decoded value of 'obj'
-	setfield(name string, st *ion.Symtab, obj []byte) error
+	setfield(d Decoder, name string, st *ion.Symtab, obj []byte) error
 }
 
 // Nonterminal is embedded in every
@@ -229,7 +229,7 @@ func (s *SimpleAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (s *SimpleAggregate) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (s *SimpleAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "agg":
 		return decodeAggregation(&s.Outputs, st, buf)
@@ -247,9 +247,6 @@ type Leaf struct {
 	// Handle is the handle to the return value
 	// of Env.Stat when the query was planned.
 	Handle TableHandle
-
-	// used during decoding
-	handlebuf []byte
 }
 
 func (l *Leaf) String() string { return expr.ToString(l.Expr) }
@@ -314,7 +311,7 @@ func (l *Leaf) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) erro
 	return nil
 }
 
-func (l *Leaf) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (l *Leaf) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "expr":
 		e, _, err := expr.Decode(st, buf)
@@ -327,7 +324,11 @@ func (l *Leaf) setfield(name string, st *ion.Symtab, buf []byte) error {
 		}
 		l.Expr = t
 	case "handle":
-		l.handlebuf = buf[:ion.SizeOf(buf)]
+		th, err := decodeHandle(d, st, buf[:ion.SizeOf(buf)])
+		if err != nil {
+			return err
+		}
+		l.Handle = th
 	}
 	return nil
 }
@@ -371,7 +372,7 @@ func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (n NoOutput) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (n NoOutput) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	return nil
 }
 
@@ -419,7 +420,7 @@ func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (n DummyOutput) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (n DummyOutput) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	return nil
 }
 
@@ -445,7 +446,7 @@ func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (l *Limit) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (l *Limit) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "limit":
 		i, _, err := ion.ReadInt(buf)
@@ -516,7 +517,7 @@ func (c *CountStar) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (c *CountStar) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (c *CountStar) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "as":
 		n, _, err := ion.ReadString(buf)
@@ -617,7 +618,7 @@ func nonemptyList(buf []byte) ([]byte, error) {
 	return buf, nil
 }
 
-func (h *HashAggregate) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "agg":
 		return decodeAggregation(&h.Agg, st, buf)
@@ -801,7 +802,7 @@ func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (o *OrderBy) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (o *OrderBy) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "columns":
 		return unpackList(buf, func(inner []byte) error {
@@ -883,7 +884,7 @@ func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (d *Distinct) setfield(name string, st *ion.Symtab, buf []byte) error {
+func (d *Distinct) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
 	case "fields":
 		return unpackList(buf, func(inner []byte) error {

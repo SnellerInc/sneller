@@ -51,7 +51,7 @@ func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (f *Filter) setfield(name string, st *ion.Symtab, body []byte) error {
+func (f *Filter) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "expr":
 		e, _, err := expr.Decode(st, body)
@@ -83,10 +83,6 @@ func (l *Leaf) filter(e expr.Node) {
 }
 
 func (u *UnionMap) filter(e expr.Node) {
-	for i := range u.Sub {
-		if fh, ok := u.Sub[i].Handle.(Filterable); ok {
-			u.Sub[i].Handle = fh.Filter(e)
-		}
-	}
+	u.Sub.Filter(e)
 	push(e, u.From)
 }

@@ -39,8 +39,8 @@ func (f fuzzEnv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
 
 type fuzzSplitter struct{}
 
-func (f fuzzSplitter) Split(t expr.Node, h plan.TableHandle) ([]plan.Subtable, error) {
-	return []plan.Subtable{
+func (f fuzzSplitter) Split(t expr.Node, h plan.TableHandle) (plan.Subtables, error) {
+	return plan.SubtableList{
 		plan.Subtable{
 			Transport: &plan.LocalTransport{},
 			Table: &expr.Table{

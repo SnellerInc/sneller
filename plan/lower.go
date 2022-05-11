@@ -237,7 +237,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 		return nil, err
 	}
 	// no subtables means no output
-	if len(tbls) == 0 {
+	if tbls.Len() == 0 {
 		return NoOutput{}, nil
 	}
 	return &UnionMap{
@@ -249,18 +249,22 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 
 // doSplit calls s.Split(tbl, th) with special handling
 // for tableHandles.
-func doSplit(s Splitter, tbl expr.Node, th TableHandle) ([]Subtable, error) {
+func doSplit(s Splitter, tbl expr.Node, th TableHandle) (Subtables, error) {
 	hs, ok := th.(tableHandles)
 	if !ok {
 		return s.Split(tbl, th)
 	}
-	var out []Subtable
+	var out Subtables
 	for i := range hs {
 		sub, err := doSplit(s, tbl, hs[i])
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, sub...)
+		if out == nil {
+			out = sub
+		} else {
+			out = out.Append(sub)
+		}
 	}
 	return out, nil
 }
@@ -395,36 +399,4 @@ func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
 		return nil, err
 	}
 	return toTree(reduce, env, split)
-}
-
-// ShouldSplit walks the tables referenced in q
-// and returns true if split.Split(table) returns
-// no errors and a list of more than one target transport.
-func ShouldSplit(q *expr.Query, env Env, split Splitter) (bool, error) {
-	var visit visitfn
-	var err error
-	ret := false
-	visit = visitfn(func(node expr.Node) expr.Visitor {
-		if ret || err != nil {
-			return nil
-		}
-		t, ok := node.(*expr.Table)
-		if !ok {
-			return visit
-		}
-		var handle TableHandle
-		handle, err = stat(env, t.Expr, nil)
-		if err != nil {
-			return nil
-		}
-		var lst []Subtable
-		lst, err = split.Split(t.Expr, handle)
-		if err == nil && len(lst) > 1 {
-			ret = true
-			return nil
-		}
-		return visit
-	})
-	expr.Walk(visit, q.Body)
-	return ret, err
 }
