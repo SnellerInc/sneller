@@ -180,8 +180,7 @@ func (h *tenantHandle) Open() (vm.Table, error) {
 		}
 		b := lst.Contents[i]
 		if pc, ok := b.(*blob.CompressedPart); ok && flt != nil {
-			b, _ = filterBlob(pc, flt, 0)
-			if b == nil {
+			if scan := maxscan(pc, flt); scan == 0 {
 				continue
 			}
 		}

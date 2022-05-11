@@ -100,24 +100,14 @@ func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 		if err != nil {
 			return nil, err
 		}
-		if flt != nil {
+		for i := range sub {
 			// only insert blobs that satisfy
 			// the predicate pushdown conditions
-			scan := int64(0)
-			for i := range sub {
-				b, scan = filterBlob(&sub[i], flt, scan)
-				if b == nil {
-					continue
-				}
-				if err := insert(b); err != nil {
-					return nil, err
-				}
+			scan := maxscan(&sub[i], flt)
+			if scan == 0 {
+				continue
 			}
 			s.maxscan += scan
-			continue
-		}
-		s.maxscan += c.Trailer.Decompressed()
-		for i := range sub {
 			if err := insert(&sub[i]); err != nil {
 				return nil, err
 			}
@@ -150,26 +140,19 @@ func compact(splits []split) []split {
 	return out
 }
 
-// filterBlob applies a filter to a blob. If the entire
-// blob is excluded by the filter, this returns (nil, 0);
-// otherwise, it returns the filtered blob and the number
-// of bytes to be scanned in the blob
-func filterBlob(pc *blob.CompressedPart, f filter, size int64) (blob.Interface, int64) {
+// maxscan calculates the max scan size of a blob,
+// optionally with filter f applied. If this returns 0,
+// the entire blob is excluded by the filter.
+func maxscan(pc *blob.CompressedPart, f filter) (scan int64) {
 	t := pc.Parent.Trailer
-	self := int64(0)
-	any := false
 	blocks := t.Blocks[pc.StartBlock:pc.EndBlock]
 	for i := range blocks {
 		ranges := blocks[i].Ranges
-		self += int64(blocks[i].Chunks) << t.BlockShift
-		if len(ranges) == 0 || f(ranges) != never {
-			any = true
+		if len(ranges) == 0 || f == nil || f(ranges) != never {
+			scan += int64(blocks[i].Chunks) << t.BlockShift
 		}
 	}
-	if !any {
-		return nil, size
-	}
-	return pc, size + self
+	return scan
 }
 
 // partition returns the index of the peer which should
