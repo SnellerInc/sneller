@@ -916,6 +916,32 @@ ORDER BY m, d, h`,
 			},
 			results: []expr.TypeSet{expr.StringType},
 		},
+		{
+			// EXISTS -> semi-join
+			input: `SELECT x, EXISTS(SELECT * FROM other WHERE key = x) AS has_other FROM input`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE other",
+				"	FILTER DISTINCT [key]",
+				"	PROJECT key AS $_0_0",
+				") AS REPLACEMENT(0)",
+				"ITERATE input",
+				"PROJECT x AS x, IN_REPLACEMENT(x, 0) AS has_other",
+			},
+		},
+		{
+			// weird NOT EXISTS -> semi-join
+			input: `SELECT x, (SELECT TRUE FROM other WHERE key = x LIMIT 1) IS MISSING AS no_other FROM input`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE other",
+				"	FILTER DISTINCT [key]",
+				"	PROJECT key AS $_0_0",
+				") AS REPLACEMENT(0)",
+				"ITERATE input",
+				"PROJECT x AS x, !(IN_REPLACEMENT(x, 0)) AS no_other",
+			},
+		},
 	}
 
 	for i := range tests {

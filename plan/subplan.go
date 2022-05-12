@@ -45,7 +45,6 @@ func (r *replacement) toScalarList() ([]expr.Constant, bool) {
 	out := make([]expr.Constant, 0, len(r.rows))
 	for i := range r.rows {
 		if len(r.rows[i].Fields) == 0 {
-			out = append(out, expr.Null{})
 			continue
 		}
 		v, ok := expr.AsConstant(r.rows[i].Fields[0].Value)

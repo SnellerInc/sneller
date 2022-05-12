@@ -335,7 +335,67 @@ var (
 	listkind   expr.Node = expr.String("list")
 )
 
+// when interpreted as a HASH_REPLACEMENT() result,
+// does the set of output bindings given by lst
+// never produce a MISSING result?
+func replacementNeverMissing(t *Trace, lst []expr.Binding, except string) bool {
+	if len(lst) > 2 {
+		return true
+	}
+	b := &lst[0]
+	if b.Result() == except {
+		b = &lst[1]
+	}
+	return t.TypeOf(b.Expr)&expr.MissingType == 0
+}
+
+// strip all the final bindings except for one
+func stripFinal(t *Trace, except string) bool {
+	b, ok := t.top.(*Bind)
+	if !ok {
+		return false
+	}
+	old := b.bind
+	keep := -1
+	for i := range old {
+		if old[i].Result() == except {
+			keep = i
+			break
+		}
+	}
+	if keep == -1 {
+		return false
+	}
+	b.bind = []expr.Binding{old[keep]}
+	return true
+}
+
 func (h *hoistwalk) Rewrite(e expr.Node) expr.Node {
+	// if we have
+	//   HASH_REPLACEMENT(id, kind, label, var) IS NOT MISSING
+	// and the replacement var is never MISSING,
+	// then this equivalent to a semi-join:
+	//   IN_REPLACEMENT(var, id)
+	if is, ok := e.(*expr.IsKey); ok && (is.Key == expr.IsMissing || is.Key == expr.IsNotMissing) {
+		if b, ok := is.Expr.(*expr.Builtin); ok && b.Func == expr.HashReplacement {
+			rep := h.in[int(b.Args[0].(expr.Integer))]
+			label := string(b.Args[2].(expr.String))
+			corrv := b.Args[3]
+			if replacementNeverMissing(rep, rep.FinalBindings(), label) &&
+				stripFinal(rep, label) {
+				ret := (expr.Node)(&expr.Builtin{
+					Func: expr.InReplacement,
+					Args: []expr.Node{corrv, b.Args[0]},
+				})
+				if is.Key == expr.IsMissing {
+					ret = &expr.Not{ret}
+				}
+				return ret
+			}
+		}
+		return e
+	}
+
 	if b, ok := e.(*expr.Builtin); ok {
 		switch b.Func {
 		case expr.InSubquery:
