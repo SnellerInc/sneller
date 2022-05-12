@@ -92,12 +92,9 @@ func (s *server) handler() *http.ServeMux {
 	r := http.NewServeMux()
 	r.HandleFunc("/", s.handle(s.versionHandler, http.MethodGet))
 	r.HandleFunc("/ping", s.handle(s.pingHandler, http.MethodGet))
-	r.HandleFunc("/connect", s.handle(s.connectHandler, http.MethodGet))
 	r.HandleFunc("/executeQuery", s.handle(s.executeQueryHandler, http.MethodHead, http.MethodGet, http.MethodPost))
-	r.HandleFunc("/queryStatistics", s.handle(s.queryStatsHandler, http.MethodGet))
 	r.HandleFunc("/databases", s.handle(s.databasesHandler, http.MethodGet))
 	r.HandleFunc("/tables", s.handle(s.tablesHandler, http.MethodGet))
-	r.HandleFunc("/columns", s.handle(s.columnsHandler, http.MethodGet))
 	r.HandleFunc("/inputs", s.handle(s.inputsHandler, http.MethodGet))
 	return r
 }
