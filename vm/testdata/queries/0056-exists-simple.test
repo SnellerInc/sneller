@@ -1,0 +1,9 @@
+SELECT
+  EXISTS (SELECT x, y FROM input WHERE z = 3) AS yes
+---
+{"x": 2, "y": 3, "z": 3}
+{"x": 2, "y": 3, "z": 4}
+{"x": 2, "y": 3, "z": 5}
+{"x": 2, "y": 3, "z": 6}
+---
+{"yes": true}

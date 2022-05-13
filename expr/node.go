@@ -3000,6 +3000,8 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		return (*Rational)(new(big.Rat).SetInt((*big.Int)(d))), true
 	case ion.Timestamp:
 		return &Timestamp{Value: date.Time(d)}, true
+	case ion.Bool:
+		return Bool(d), true
 	default:
 		// TODO: add blob, clob, bags, etc.
 		return nil, false

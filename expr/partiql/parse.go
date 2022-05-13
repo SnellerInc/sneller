@@ -124,3 +124,18 @@ func timePart(id string) (expr.Timepart, bool) {
 	}
 	return part, true
 }
+
+func exists(s *expr.Select) expr.Node {
+	if s.Limit != nil && int(*s.Limit) == 0 {
+		return expr.Bool(false)
+	}
+	// if this is a correlated sub-query, we would
+	// reject it if it didn't specify column(s) explicitly;
+	// just insert a dummy column instead
+	if len(s.Columns) == 1 && s.Columns[0].Expr == (expr.Star{}) {
+		s.Columns[0].Expr = expr.Bool(true)
+	}
+	lim := expr.Integer(1)
+	s.Limit = &lim
+	return expr.Is(s, expr.IsNotMissing)
+}

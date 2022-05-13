@@ -1,0 +1,17 @@
+SELECT x, EXISTS(SELECT * FROM input1 WHERE x = y) AS exist
+FROM input0
+---
+{"x": 3}
+{"x": 4}
+{"x": 5}
+{"x": 6}
+---
+{"y": 0}
+{"y": 3}
+{"y": 5}
+{"y": "a string"}
+---
+{"x": 3, "exist": true}
+{"x": 4, "exist": false}
+{"x": 5, "exist": true}
+{"x": 6, "exist": false}

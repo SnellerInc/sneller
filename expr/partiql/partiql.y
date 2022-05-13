@@ -303,6 +303,10 @@ datum_or_parens
 {
   $$ = expr.In($1, $4...)
 }
+| EXISTS '(' select_stmt ')'
+{
+  $$ = exists($3)
+}
 | expr '+' expr
 {
   $$ = expr.Add($1, $3)

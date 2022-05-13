@@ -48,6 +48,7 @@ func init() {
 		{"DISTINCT", DISTINCT},
 		{"DATE_TRUNC", DATE_TRUNC},
 		{"EXTRACT", EXTRACT},
+		{"EXISTS", EXISTS},
 		{"UNION", UNION},
 		{"OR", OR},
 		{"ON", ON},

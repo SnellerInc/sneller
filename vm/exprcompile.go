@@ -1072,6 +1072,9 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 	}
 	switch v.primary() {
 	case stValue:
+		if _, ok := e.(*expr.IsKey); ok {
+			return p.ssa2(sboxmask, v, p.ValidLanes()), nil
+		}
 		// already got one
 		return v, nil
 	case stBool:

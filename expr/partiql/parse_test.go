@@ -225,6 +225,10 @@ func TestParseNormalization(t *testing.T) {
 			"SELECT * FROM t1 ++ t2 ++ t3 WHERE foo = bar",
 			"SELECT * FROM (t1 ++ t2 ++ t3) WHERE foo = bar",
 		},
+		{
+			"SELECT EXISTS(SELECT x, y FROM foo WHERE x = 3) AS exist",
+			"SELECT (SELECT x, y FROM foo WHERE x = 3 LIMIT 1) IS NOT MISSING AS exist",
+		},
 	}
 
 	tm, ok := date.Parse([]byte("2006-01-02T15:04:05.999Z"))
