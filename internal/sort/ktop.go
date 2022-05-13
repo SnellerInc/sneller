@@ -47,6 +47,23 @@ func (k *Ktop) Add(rec *IonRecord) bool {
 	return k.add(rec, true)
 }
 
+// Greatest returns the "largest" element
+// in the heap, where "largest" is defined
+// as the element furthest from the beginning
+// of the sort order.
+func (k *Ktop) Greatest() *IonRecord {
+	if len(k.indirect) == 0 {
+		return nil
+	}
+	return &k.records[k.indirect[0]]
+}
+
+// Full returns true if there are as many
+// entries in the heap as LIMIT, otherwise false.
+func (k *Ktop) Full() bool {
+	return len(k.indirect) == k.limit
+}
+
 func (k *Ktop) add(rec *IonRecord, copyrec bool) bool {
 	if len(k.records) < k.limit {
 		if copyrec {

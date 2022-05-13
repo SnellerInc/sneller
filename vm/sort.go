@@ -15,6 +15,7 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"sync"
@@ -543,12 +544,32 @@ type sortstateKtop struct {
 
 	// a buffer to keep the fields for the current record in `writeRows`
 	fields [][2]uint32
+
+	// if prefilter is true,
+	// then filtbc is a program that
+	// prefilters input rows
+	prefilter bool
+	recent    []byte
+	filtbc    bytecode
+	filtprog  prog
+}
+
+func (s *sortstateKtop) invalidatePrefilter() {
+	s.prefilter = false
+	s.recent = nil
+	s.filtbc.reset()
+	s.filtprog = prog{}
 }
 
 func (s *sortstateKtop) symbolize(st *ion.Symtab) error {
 	if s.captures > 0 || len(s.symtabs) == 0 {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
 	}
+
+	if s.prefilter && s.filtprog.IsStale(st) {
+		s.invalidatePrefilter()
+	}
+
 	// copy the source symbol table
 	// so that we can still use it after
 	// it has been updated
@@ -560,9 +581,118 @@ func (s *sortstateKtop) bcfind(delims []vmref) ([]vRegLayout, error) {
 	return bcfind(s.parent, &s.findbc, delims)
 }
 
+func (s *sortstateKtop) bcfilter(delims []vmref) ([]vmref, error) {
+	n := evalfilterbc(&s.filtbc, delims)
+	if s.filtbc.err != 0 {
+		return nil, fmt.Errorf("ktop prefilter: %w", s.filtbc.err)
+	}
+	return delims[:n], nil
+}
+
+// peek at the "greatest" retained element
+// and compile a filter that drops everything
+// that is larger/smaller than this element
+func (s *sortstateKtop) maybePrefilter() error {
+	if s.prefilter {
+		// already enabled
+		return nil
+	}
+	if len(s.parent.columns) > 1 {
+		// TODO: implement for multiple columns
+		return nil
+	}
+	rec := s.ktop.Greatest()
+	if rec == nil {
+		return nil
+	}
+	f := rec.UnsafeField(0)
+	if bytes.Equal(f, s.recent) {
+		return nil // up-to-date
+	}
+	t := ion.TypeOf(f)
+	p := &s.filtprog
+	p.Begin()
+	var (
+		imm       *value
+		unmatched func(*value) *value
+		cmp       func(*value, *value) *value
+	)
+	switch t {
+	case ion.FloatType:
+		fp, _, err := ion.ReadFloat64(f)
+		if err != nil {
+			return err
+		}
+		imm = p.Constant(fp)
+		unmatched = p.notNumber
+		cmp = p.Less
+	case ion.UintType:
+		u, _, err := ion.ReadUint(f)
+		if err != nil {
+			return err
+		}
+		imm = p.Constant(u)
+		unmatched = p.notNumber
+		cmp = p.Less
+	case ion.IntType:
+		i, _, err := ion.ReadInt(f)
+		if err != nil {
+			return err
+		}
+		imm = p.Constant(i)
+		unmatched = p.notNumber
+		cmp = p.Less
+	case ion.TimestampType:
+		d, _, err := ion.ReadTime(f)
+		if err != nil {
+			return err
+		}
+		imm = p.Constant(d)
+		unmatched = p.notTime
+		cmp = p.compileTimeOrdered
+	default:
+		// TODO: support string comparison
+		return nil
+	}
+	v, err := compile(p, s.parent.columns[0].Node)
+	if err != nil {
+		return err
+	}
+	var keep *value
+	switch s.parent.columns[0].Direction {
+	case sort.Ascending:
+		keep = cmp(v, imm)
+	case sort.Descending:
+		keep = cmp(imm, v)
+	default:
+		return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Direction)
+	}
+	keep = p.Or(keep, unmatched(v))
+	p.Return(keep)
+	p.symbolize(&s.symtabs[len(s.symtabs)-1])
+	err = p.compile(&s.filtbc)
+	if err != nil {
+		return err
+	}
+	// record the current prefilter state
+	s.prefilter = true
+	s.recent = f
+	return nil
+}
+
 func (s *sortstateKtop) writeRows(delims []vmref) error {
 	if len(delims) == 0 {
 		return nil
+	}
+	if s.prefilter {
+		var err error
+		delims, err = s.bcfilter(delims)
+		if err != nil {
+			return err
+		}
+		if len(delims) == 0 {
+			return nil
+		}
 	}
 
 	// locate fields within the src
@@ -582,6 +712,7 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 	var record sort.IonRecord
 	record.SymtabID = len(s.symtabs) - 1
 
+outer:
 	for rowID := 0; rowID < len(delims); rowID++ {
 		// extract the record data
 		bytes := delims[rowID].mem()
@@ -608,6 +739,9 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 		for columnID := 0; columnID < columnCount; columnID++ {
 			it := getdelim(fieldsView, rowID, columnID, columnCount)
 			size := it.size()
+			if size == 0 {
+				continue outer // MISSING field (cannot sort)
+			}
 			s.fields[columnID][0] = uint32(boxedOffset)
 			s.fields[columnID][1] = uint32(size)
 			copy(s.buffer[boxedOffset:], it.mem())
@@ -617,12 +751,22 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 		record.Raw = s.buffer
 		record.FieldDelims = s.fields
 
-		// when record is added, its data is being copied
+		// when record is added, its data is being copied,
+		// and there will be a new item we need to prefilter against
 		if s.ktop.Add(&record) {
 			s.captures++
+			s.invalidatePrefilter()
 		}
 	}
-
+	if s.ktop.Full() {
+		// since the heap is full,
+		// we can begin trying to prefilter
+		// anything that wouldn't be added trivially
+		err := s.maybePrefilter()
+		if err != nil {
+			return fmt.Errorf("ktop: compiling prefilter: %w", err)
+		}
+	}
 	return nil
 }
 

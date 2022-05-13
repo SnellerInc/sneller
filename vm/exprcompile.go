@@ -1462,6 +1462,30 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 	}
 }
 
+func (p *prog) notNumber(v *value) *value {
+	switch v.primary() {
+	case stValue:
+		// must have type bits corresponding to
+		// something other than numeric
+		return p.checkTag(v, ^expr.NumericType)
+	case stInt, stFloat:
+		return p.ssa0(skfalse) // false, definitely a number
+	default:
+		return p.ValidLanes() // true, never a number
+	}
+}
+
+func (p *prog) notTime(v *value) *value {
+	switch v.primary() {
+	case stValue:
+		return p.checkTag(v, ^expr.TimeType)
+	case stTime, stTimeInt:
+		return p.ssa0(skfalse) // false; definitely a timestamp
+	default:
+		return p.ValidLanes() // true; never a timestamp
+	}
+}
+
 func (p *prog) checkTag(from *value, typ expr.TypeSet) *value {
 	return p.ssa2imm(schecktag, from, from, uint16(typ))
 }
