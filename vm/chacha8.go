@@ -112,9 +112,9 @@ func xorcopy(dst, src []byte) int {
 // see https://keccak.team/sponge_duplex.html
 // for details on sponge capacity + rate tradeoffs
 
-// Chacha8Hash uses Chacha8 as a permutation function
+// chacha8Hash uses Chacha8 as a permutation function
 // to construct a 128-bit hash of 'buf'
-func Chacha8Hash(buf []byte, out []byte) {
+func chacha8Hash(buf []byte, out []byte) {
 	var state [16]uint32
 	chachainit(&state, uint32(len(buf)))
 
@@ -125,9 +125,9 @@ func Chacha8Hash(buf []byte, out []byte) {
 	copy(out[:16], bstate[:])
 }
 
-// Chacha8HashSeed is like Chacha8 but uses a 16-byte seed
+// chacha8HashSeed is like Chacha8 but uses a 16-byte seed
 // to populate part of the IV for the hash.
-func Chacha8HashSeed(buf []byte, out []byte, seed []byte) {
+func chacha8HashSeed(buf []byte, out []byte, seed []byte) {
 	if len(seed) != 16 {
 		panic("bad len(seed)")
 	}

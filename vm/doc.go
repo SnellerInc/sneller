@@ -16,4 +16,20 @@
 // query-processing "physical operators"
 // that process streams of ion-encoded
 // data.
+//
+// Each of the "physical operators"
+// (such as Filter, FilterDistinct, Project, etc.)
+// implements QuerySink, and generally operators
+// also accept a QuerySink into which they will
+// write their outputs. Typically, each of
+// the operators will inspect the interfaces implemented
+// by the output QuerySink and choose a method of
+// passing rows to that QuerySink that is more
+// efficient than passing serialized rows via an
+// io.WriteCloser.
+//
+// Data is fed to a chain of vm.QuerySink
+// operators via a call to vm.SplitInput or vm.Table.WriteChunks,
+// and the final output of the query sink is directed to
+// an io.Writer that is wrapped with vm.LockedSink.
 package vm

@@ -312,7 +312,7 @@ type aggregateLocal struct {
 	parent      *Aggregate
 	prog        prog
 	bc          bytecode
-	dst         RowConsumer
+	dst         rowConsumer
 	rowCount    uint64
 	partialData []byte
 }
@@ -353,9 +353,9 @@ func (q *Aggregate) Open() (io.WriteCloser, error) {
 	partialData := make([]byte, aggregateDataSize)
 	copy(partialData, q.initialData)
 
-	return Splitter(&aggregateLocal{
+	return splitter(&aggregateLocal{
 		parent:      q,
-		dst:         AsRowConsumer(r),
+		dst:         asRowConsumer(r),
 		rowCount:    0,
 		partialData: partialData,
 	}), nil

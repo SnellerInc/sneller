@@ -110,7 +110,7 @@ type projector struct {
 	// that wants to perform additional row operations;
 	// in that case we should preserve the delimiters
 	// as we compute them
-	dstrc RowConsumer // if dst is a RowConsumer, this is set
+	dstrc rowConsumer // if dst is a RowConsumer, this is set
 }
 
 // implements sort.Interface for outsel + outslot
@@ -135,14 +135,14 @@ func (p *Projection) Open() (io.WriteCloser, error) {
 		return nil, err
 	}
 
-	rc, _ := dst.(RowConsumer)
+	rc, _ := dst.(rowConsumer)
 	pj := &projector{parent: p, dst: dst, dstrc: rc}
 
 	// set alignedWriter.out so that even if the
 	// projection goroutine receives zero rows of
 	// input, it still calls Close() on the destination
 	pj.aw.out = pj.dst
-	return Splitter(pj), nil
+	return splitter(pj), nil
 }
 
 func (p *Projection) Close() error {

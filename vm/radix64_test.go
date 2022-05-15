@@ -130,7 +130,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 			continue
 		}
 		h := make([]byte, 16)
-		Chacha8Hash(obj, h)
+		chacha8Hash(obj, h)
 		h64 := binary.LittleEndian.Uint64(h)
 		hashes = append(hashes, h64)
 		t.Logf("row %d: hash %x", i, h64)
@@ -246,7 +246,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 			t.Errorf("grouped name %q twice", str)
 		}
 		names[str] = true
-		Chacha8Hash(repr, hmem)
+		chacha8Hash(repr, hmem)
 		h := binary.LittleEndian.Uint64(hmem)
 		// note: hashof can return either hash(repr) or rotl(hash(repr), 32)
 		// depending on how the item was inserted into the table
@@ -371,7 +371,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 		if err != nil {
 			t.Errorf("%x not an ion string...?", repr)
 		}
-		Chacha8Hash(repr, hmem)
+		chacha8Hash(repr, hmem)
 		h := binary.LittleEndian.Uint64(hmem)
 		// note: hashof can return either hash(repr) or rotl(hash(repr), 32)
 		// depending on how the item was inserted into the table

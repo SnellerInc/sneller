@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -44,6 +45,19 @@ func names(p *prog) []string {
 		out = append(out, v.imm.(string))
 	}
 	return out
+}
+
+// CopyRows copies row from src to dst
+// using the provided parallelism hint
+// to indicate how many goroutines to use
+// for processing rows.
+//
+// Deprecated: just call dst.WriteChunks directly
+func CopyRows(dst QuerySink, src Table, parallel int) error {
+	if parallel <= 0 {
+		parallel = runtime.GOMAXPROCS(0)
+	}
+	return src.WriteChunks(dst, parallel)
 }
 
 func TestCompileSSA(t *testing.T) {

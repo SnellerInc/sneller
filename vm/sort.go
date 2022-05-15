@@ -158,14 +158,14 @@ func (s *Order) Open() (io.WriteCloser, error) {
 	s.wg.Add(1)
 
 	if s.useKtop() {
-		return Splitter(&sortstateKtop{parent: s, ktop: s.newKtop()}), nil
+		return splitter(&sortstateKtop{parent: s, ktop: s.newKtop()}), nil
 	} else if s.useSingleColumnSorter() {
 		chunkID := atomic.AddUint32(&s.chunkID, 1) - 1
 		recordID := uint64(chunkID) << 32 // start with ID().chunk() = chunkID and ID().row() == 0
-		return Splitter(&sortstateSingleColumn{parent: s, chunkID: chunkID, recordID: recordID}), nil
+		return splitter(&sortstateSingleColumn{parent: s, chunkID: chunkID, recordID: recordID}), nil
 	}
 
-	return Splitter(&sortstateMulticolumn{parent: s}), nil
+	return splitter(&sortstateMulticolumn{parent: s}), nil
 }
 
 // Close implements QuerySink.Close

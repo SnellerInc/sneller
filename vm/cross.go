@@ -68,7 +68,7 @@ func (c *CrossJoin) Open() (io.WriteCloser, error) {
 		return nil, err
 	}
 	out := &cross{parent: c, out: dst}
-	return Splitter(out), nil
+	return splitter(out), nil
 }
 
 func (c *CrossJoin) Close() error {

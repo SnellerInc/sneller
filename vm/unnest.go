@@ -56,10 +56,10 @@ func (u *UnnestProjection) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc, _ := dst.(RowConsumer)
+	rc, _ := dst.(rowConsumer)
 	unnest := &unnesting{parent: u, out: dst, dstrc: rc}
 	unnest.aw.out = dst
-	return Splitter(unnest), nil
+	return splitter(unnest), nil
 }
 
 func (u *UnnestProjection) Close() error {
@@ -76,7 +76,7 @@ type unnesting struct {
 	st      ion.Symtab
 	delims  []vmref
 	perms   []int32
-	dstrc   RowConsumer
+	dstrc   rowConsumer
 	out     io.WriteCloser
 }
 

@@ -56,7 +56,7 @@ func (r *Filter) Open() (io.WriteCloser, error) {
 	// we know we'd like to write to a RowConsumer,
 	// so determine if we have one already or if we
 	// need to create one with a rematerializer
-	return Splitter(&wherebc{parent: r, dst: AsRowConsumer(q)}), nil
+	return splitter(&wherebc{parent: r, dst: asRowConsumer(q)}), nil
 }
 
 // Close implements io.Closer
@@ -72,7 +72,7 @@ type Count struct {
 }
 
 func (c *Count) Open() (io.WriteCloser, error) {
-	return Splitter(c), nil
+	return splitter(c), nil
 }
 
 func (c *Count) Close() error {
@@ -94,7 +94,7 @@ type wherebc struct {
 	parent *Filter
 	ssa    prog
 	bc     bytecode
-	dst    RowConsumer
+	dst    rowConsumer
 }
 
 //go:noescape

@@ -72,7 +72,7 @@ type applicator struct {
 	during    []localop      // intermediate (non-projected) outputs
 	outmap    []outfield     // projected outputs
 	dst       io.WriteCloser // destination of writes
-	rc        RowConsumer    // non-nil when dst is a RowConsumer
+	rc        rowConsumer    // non-nil when dst is a RowConsumer
 	bc        bytecode
 	prog      prog
 	nlocals   int
@@ -360,8 +360,8 @@ func (a *Applicator) Open() (io.WriteCloser, error) {
 	for i := range outputs {
 		outputs[i].op = a.outputs[i].op.dup()
 	}
-	rc, _ := dst.(RowConsumer)
-	return Splitter(&applicator{
+	rc, _ := dst.(rowConsumer)
+	return splitter(&applicator{
 		parent:    a,
 		during:    locals,
 		outmap:    outputs,

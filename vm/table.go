@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"sync"
 	"sync/atomic"
 )
@@ -243,26 +242,10 @@ func (r *ReaderAtTable) run(dst io.Writer) error {
 
 // WriteChunks implements Table.WriteChunks
 func (r *ReaderAtTable) WriteChunks(dst QuerySink, parallel int) error {
-	if h, ok := dst.(sizedConsumer); ok {
-		h.hint(r.size)
-	}
 	if c := r.Chunks(); c < parallel && c > 0 {
 		parallel = c
 	}
 	return SplitInput(dst, parallel, r.run)
-}
-
-// CopyRows copies row from src to dst
-// using the provided parallelism hint
-// to indicate how many goroutines to use
-// for processing rows.
-//
-// Deprecated: just call dst.WriteChunks directly
-func CopyRows(dst QuerySink, src Table, parallel int) error {
-	if parallel <= 0 {
-		parallel = runtime.GOMAXPROCS(0)
-	}
-	return src.WriteChunks(dst, parallel)
 }
 
 // BufferedTable is a Table implementation
@@ -307,9 +290,6 @@ func (b *BufferedTable) run(w io.Writer) error {
 
 // WriteChunks implements Table.WriteChunks
 func (b *BufferedTable) WriteChunks(dst QuerySink, parallel int) error {
-	if h, ok := dst.(sizedConsumer); ok {
-		h.hint(int64(len(b.buf)))
-	}
 	return SplitInput(dst, parallel, b.run)
 }
 

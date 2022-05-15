@@ -34,13 +34,6 @@ type QuerySink interface {
 	io.Closer
 }
 
-// HACK:
-// some QuerySink implementations want a hint
-// about the size of the table to be written
-type sizedConsumer interface {
-	hint(size int64)
-}
-
 // RowConsumer represents part of a QuerySink
 // that consumes vectors of rows.
 // (It is often the case that the io.WriteCloser
@@ -48,7 +41,7 @@ type sizedConsumer interface {
 // a RowConsumer, in which case the caller may choose
 // to use this interface instead of re-materializing
 // the data.)
-type RowConsumer interface {
+type rowConsumer interface {
 	// symbolize is called every time
 	// the current symbol table changes
 	symbolize(st *ion.Symtab) error
@@ -67,7 +60,7 @@ type RowConsumer interface {
 	io.Closer
 }
 
-// AsRowConsumer converts and arbitrary stream
+// asRowConsumer converts and arbitrary stream
 // into a RowConsumer. If the destination implements
 // RowConsumer, that implementation will be returned
 // directly. Otherwise, the returned RowConsumer will
@@ -77,17 +70,21 @@ type RowConsumer interface {
 // Use this function when you've been given the
 // return value of QuerySink.Open() and you want
 // to write row data to it.
-func AsRowConsumer(dst io.WriteCloser) RowConsumer {
-	if rc, ok := dst.(RowConsumer); ok {
+func asRowConsumer(dst io.WriteCloser) rowConsumer {
+	if s, ok := dst.(*rowSplitter); ok {
+		// most common case
+		return s.rowConsumer
+	}
+	if rc, ok := dst.(rowConsumer); ok {
 		return rc
 	}
 	return Rematerialize(dst)
 }
 
-// RowSplitter is a QueryConsumer that implements io.WriteCloser
+// rowSplitter is a QuerySink that implements io.WriteCloser
 // so that materialized data can be fed to a RowConsumer
-type RowSplitter struct {
-	RowConsumer            // automatically adopts writeRows() and Close()
+type rowSplitter struct {
+	rowConsumer            // automatically adopts writeRows() and Close()
 	st, shared  ion.Symtab // current symbol table
 	delims      []vmref    // buffer of delimiters; allocated lazily
 	delimhint   int
@@ -99,15 +96,15 @@ type RowSplitter struct {
 // default number of rows to process per batch
 const defaultDelims = 512
 
-// Splitter takes a QueryConsumer and a default batch size
-// and produces a RowSplitter that splits materialized row data
+// splitter takes a rowConsumer and a default batch size
+// and produces a rowSplitter that splits materialized row data
 // into individual rows for consumption by a RowConsumer
-func Splitter(q RowConsumer) *RowSplitter {
-	return &RowSplitter{RowConsumer: q, delimhint: defaultDelims}
+func splitter(q rowConsumer) *rowSplitter {
+	return &rowSplitter{rowConsumer: q, delimhint: defaultDelims}
 }
 
 // write vmm-allocated bytes w/o copying
-func (q *RowSplitter) writeVM(src []byte, delims []vmref) error {
+func (q *rowSplitter) writeVM(src []byte, delims []vmref) error {
 	for len(src) > 0 {
 		n, nb := scanvmm(src, delims)
 		if nb == 0 {
@@ -127,7 +124,7 @@ func (q *RowSplitter) writeVM(src []byte, delims []vmref) error {
 }
 
 // write non-vmm bytes by copying immediately after scanning
-func (q *RowSplitter) writeVMCopy(src []byte, delims []vmref) error {
+func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 	if q.vmcache == nil {
 		q.vmcache = Malloc()
 	}
@@ -185,12 +182,12 @@ func (q *RowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 	return nil
 }
 
-func (q *RowSplitter) Close() error {
+func (q *rowSplitter) Close() error {
 	if q.vmcache != nil {
 		Free(q.vmcache)
 		q.vmcache = nil
 	}
-	return q.RowConsumer.Close()
+	return q.rowConsumer.Close()
 }
 
 // Write implements io.Writer
@@ -199,9 +196,9 @@ func (q *RowSplitter) Close() error {
 // zero or more complete ion objects.
 // The data passed to Write may contain a symbol table,
 // but if it does, it must come first.
-func (q *RowSplitter) Write(buf []byte) (int, error) {
+func (q *rowSplitter) Write(buf []byte) (int, error) {
 	if !q.symbolized && (len(buf) < 4 || !ion.IsBVM(buf)) {
-		return 0, fmt.Errorf("first RowSplitter.Write does not have a new symbol table")
+		return 0, fmt.Errorf("first rowSplitter.Write does not have a new symbol table")
 	}
 	boff := int32(0)
 	// if we have a symbol table, then parse it
@@ -209,7 +206,7 @@ func (q *RowSplitter) Write(buf []byte) (int, error) {
 	if len(buf) >= 4 && ion.IsBVM(buf) || ion.TypeOf(buf) == ion.AnnotationType {
 		rest, err := q.st.Unmarshal(buf)
 		if err != nil {
-			return 0, fmt.Errorf("RowSplitter.Write: %w", err)
+			return 0, fmt.Errorf("rowSplitter.Write: %w", err)
 		}
 		q.symbolized = true
 		boff = int32(len(buf) - len(rest))
@@ -392,8 +389,8 @@ func (m *Rematerializer) Close() error {
 // Locked turns an io.Writer into a goroutine-safe
 // io.Writer where each write is serialized against
 // other writes. Locked takes into account whether
-// dst implements RowConsumer and optimizes the
-// calls to Write accordingly.
+// dst is the result of another call to Locked or
+// LockedSink and optimizes accordingly.
 func Locked(dst io.Writer) io.Writer {
 	if _, ok := dst.(*sink); ok {
 		return dst

@@ -33,21 +33,21 @@ func chacha8bulk(buf []byte, in [][2]uint32, out []uint64) int
 //go:noescape
 func chacha8bulkseed(buf []byte, in [][2]uint32, seed []uint64) int
 
-// Chacha8Bulk computes the hash of every member
+// chacha8Bulk computes the hash of every member
 // of 'buf' delimited by 'in' and writes the output
 // to 'out' (two qwords for each intput), returning
 // len(in)
-func Chacha8Bulk(buf []byte, in [][2]uint32, out []uint64) int {
+func chacha8Bulk(buf []byte, in [][2]uint32, out []uint64) int {
 	if len(out) < 2*len(in) {
 		panic("len(out) too small")
 	}
 	return chacha8bulk(buf, in, out)
 }
 
-// Chacha8BulkSeed works like Chacha8Bulk except that it
+// chacha8BulkSeed works like Chacha8Bulk except that it
 // uses the 'seed' array as the seed *and* the output of
 // the hash function
-func Chacha8BulkSeed(buf []byte, in [][2]uint32, seed []uint64) int {
+func chacha8BulkSeed(buf []byte, in [][2]uint32, seed []uint64) int {
 	if len(seed) < 2*len(in) {
 		panic("len(out) too small")
 	}
@@ -71,7 +71,7 @@ func TestChaCha8Portable(t *testing.T) {
 
 	const trials = 1 << 16
 	for i := 0; i < trials; i++ {
-		Chacha8Hash(buf, buf)
+		chacha8Hash(buf, buf)
 
 		for j := 0; j < 128; j++ {
 			k := j / 8
@@ -120,7 +120,7 @@ func TestChaCha8x4(t *testing.T) {
 		got := chacha8x4(&buf[0], &offsets, &lengths)
 		for i := range got {
 			want := make([]byte, 16)
-			Chacha8Hash(buf[offsets[i]:offsets[i]+lengths[i]], want)
+			chacha8Hash(buf[offsets[i]:offsets[i]+lengths[i]], want)
 			if !bytes.Equal(want, got[i][:]) {
 				xor16(want, got[i][:])
 				t.Logf("lengths: %d", lengths)
@@ -155,7 +155,7 @@ func TestChaCha8x4(t *testing.T) {
 	})
 }
 
-func TestChacha8Bulk(t *testing.T) {
+func Testchacha8Bulk(t *testing.T) {
 	buf := make([]byte, 512)
 	src := make([][2]uint32, 32)
 	out := make([]uint64, 2*len(src)+1)
@@ -167,7 +167,7 @@ func TestChacha8Bulk(t *testing.T) {
 		src[i][1] = uint32(len(buf) - i)
 	}
 
-	n := Chacha8Bulk(buf, src, out)
+	n := chacha8Bulk(buf, src, out)
 	if n != len(src) {
 		t.Errorf("got %d expected %d entries hashed", n, len(src))
 	}
@@ -182,7 +182,7 @@ func TestChacha8Bulk(t *testing.T) {
 		binary.LittleEndian.PutUint64(h[:], h0)
 		binary.LittleEndian.PutUint64(h[8:], h1)
 		off := src[i][0]
-		Chacha8Hash(buf[off:off+src[i][1]], want[:])
+		chacha8Hash(buf[off:off+src[i][1]], want[:])
 		if h != want {
 			t.Errorf("src %d got %x want %x", i, h[:], want[:])
 		}
@@ -193,7 +193,7 @@ func TestChacha8Bulk(t *testing.T) {
 	}
 
 	// test unaligned
-	n = Chacha8Bulk(buf, src[:27], out)
+	n = chacha8Bulk(buf, src[:27], out)
 	if n != 27 {
 		t.Errorf("got %b expected %d entries hashed", n, 27)
 	}
@@ -213,7 +213,7 @@ func TestChacha8Bulk(t *testing.T) {
 		binary.LittleEndian.PutUint64(h[:], h0)
 		binary.LittleEndian.PutUint64(h[8:], h1)
 		off := src[i][0]
-		Chacha8Hash(buf[off:off+src[i][1]], want[:])
+		chacha8Hash(buf[off:off+src[i][1]], want[:])
 		if h != want {
 			t.Errorf("src %d got %x want %x", i, h[:], want[:])
 		}
@@ -222,7 +222,7 @@ func TestChacha8Bulk(t *testing.T) {
 	// test hashing with seed
 	out2 := make([]uint64, len(out))
 	copy(out2, out[:27*2])
-	n = Chacha8BulkSeed(buf, src[:27], out2[:27*2])
+	n = chacha8BulkSeed(buf, src[:27], out2[:27*2])
 	if n != 27 {
 		t.Errorf("got %b expected %b entries hashed", n, 27)
 	}
@@ -244,7 +244,7 @@ func TestChacha8Bulk(t *testing.T) {
 		binary.LittleEndian.PutUint64(seed[8:], s1)
 
 		off := src[i][0]
-		Chacha8HashSeed(buf[off:off+src[i][1]], want[:], seed[:])
+		chacha8HashSeed(buf[off:off+src[i][1]], want[:], seed[:])
 		if h != want {
 			t.Errorf("src %d got %x want %x", i, h[:], want[:])
 		}
@@ -276,7 +276,7 @@ func BenchmarkChaCha8Bulk(b *testing.B) {
 	b.SetBytes(int64(len(buf[0xb7:])))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = Chacha8Bulk(buf, locs, out)
+		_ = chacha8Bulk(buf, locs, out)
 	}
 }
 
@@ -289,6 +289,6 @@ func BenchmarkChaCha8BulkSeed(b *testing.B) {
 	b.SetBytes(int64(len(buf[0xb7:])))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = Chacha8BulkSeed(buf, locs, out)
+		_ = chacha8BulkSeed(buf, locs, out)
 	}
 }

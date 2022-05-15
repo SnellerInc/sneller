@@ -1028,7 +1028,7 @@ func (p *prog) mkhash(st *ion.Symtab, imm interface{}) *hashResult {
 
 		tmp.Reset()
 		ifeq.Encode(&tmp, st)
-		Chacha8Hash(tmp.Bytes(), hmem[:])
+		chacha8Hash(tmp.Bytes(), hmem[:])
 		buf, _ := tree.Insert(binary.LittleEndian.Uint64(hmem[:]))
 
 		// encode reference to scratch buffer
@@ -1056,7 +1056,7 @@ func (p *prog) mktree(st *ion.Symtab, imm interface{}) *radixTree64 {
 		dat := values[i].Datum()
 		dat.Encode(&tmp, st)
 		p.recordDatum(dat, st)
-		Chacha8Hash(tmp.Bytes(), hmem[:])
+		chacha8Hash(tmp.Bytes(), hmem[:])
 		tree.insertSlow(binary.LittleEndian.Uint64(hmem[:]))
 	}
 	return tree

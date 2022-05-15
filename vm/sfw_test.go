@@ -73,8 +73,8 @@ func TestRematerializeIssue561(t *testing.T) {
 		buf1.Set(nil)
 	}
 
-	rc := AsRowConsumer(&noClose{&tmp}) // create rematerializer
-	splitter := Splitter(rc)
+	rc := asRowConsumer(&noClose{&tmp}) // create rematerializer
+	splitter := splitter(rc)
 
 	mem := Malloc()
 	defer Free(mem)

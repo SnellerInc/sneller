@@ -275,7 +275,7 @@ func (h *HashAggregate) Open() (io.WriteCloser, error) {
 	at.aggregateKinds = h.aggregateKinds
 
 	atomic.AddInt64(&h.children, 1)
-	return Splitter(at), nil
+	return splitter(at), nil
 }
 
 func (h *HashAggregate) sort(pairs []hpair) {

@@ -100,9 +100,9 @@ func (d *DistinctFilter) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Splitter(&deduper{
+	return splitter(&deduper{
 		parent: d,
-		dst:    AsRowConsumer(dst),
+		dst:    asRowConsumer(dst),
 	}), nil
 }
 
@@ -114,7 +114,7 @@ type deduper struct {
 	prog   prog
 	parent *DistinctFilter
 	local  *radixTree64
-	dst    RowConsumer
+	dst    rowConsumer
 	bc     bytecode
 
 	// temporary buffer for

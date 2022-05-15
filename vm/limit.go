@@ -33,7 +33,7 @@ type Limit struct {
 
 type limiter struct {
 	parent *Limit
-	dst    RowConsumer
+	dst    rowConsumer
 	done   bool
 }
 
@@ -52,9 +52,9 @@ func (l *Limit) Open() (io.WriteCloser, error) {
 		return nil, err
 	}
 
-	return Splitter(&limiter{
+	return splitter(&limiter{
 		parent: l,
-		dst:    AsRowConsumer(w),
+		dst:    asRowConsumer(w),
 	}), nil
 }
 
