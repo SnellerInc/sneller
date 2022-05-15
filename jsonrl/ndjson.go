@@ -51,7 +51,7 @@ func trim(buf []byte) []byte {
 	return buf
 }
 
-func (s *Splitter) process(st *State, buf []byte) (int, error) {
+func (s *Splitter) process(st *state, buf []byte) (int, error) {
 	end := bytes.LastIndexByte(buf, '\n')
 	if end < 0 {
 		// TODO: grow the window if this happens?
@@ -63,7 +63,7 @@ func (s *Splitter) process(st *State, buf []byte) (int, error) {
 	buf = bytes.TrimSpace(buf)
 	off := 0
 	for off < len(buf) {
-		n, err := ParseObject(st, buf[off:])
+		n, err := parseObject(st, buf[off:])
 		if err != nil {
 			return 0, fmt.Errorf("in text %q %w", trim(buf[off:]), err)
 		}
@@ -91,7 +91,7 @@ func (s *Splitter) splitAt(r io.ReaderAt, off, end int64, rem []int64) error {
 	}
 	defer w.Close()
 	cn := &ion.Chunker{W: w, Align: s.Alignment}
-	st := NewState(cn)
+	st := newState(cn)
 	start := 0
 	if off != 0 {
 		start = bytes.IndexByte(local[:n], '\n')

@@ -12,9 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Package jsonrl implements a Ragel-accelerated
-// JSON parser that can be used to translate
-// JSON data into ion data.
+// Package jsonrl implements a Ragel-generated
+// JSON parser that converts JSON data into ion data (see Convert).
 package jsonrl
 
 import (
@@ -70,7 +69,7 @@ func (f *fieldlist) start(sym ion.Symbol, off int32) {
 	f.rotidx = j
 }
 
-func (s *State) shift(f *fieldlist) {
+func (s *state) shift(f *fieldlist) {
 	// need to rotate the last field
 	// to the position occupied by f.fields[f.rotidx]
 	buf := s.out.Bytes()
@@ -126,7 +125,7 @@ type Hint struct {
 	wildcard            *Hint
 }
 
-// The ParseHint function parses a json byte array to a Hint structure which can
+// ParseHint parses a json byte array into a Hint structure which can
 // later be used to pass type-hints and/or other flags to the json parser.
 //
 // The input must contain a valid json object with the individual rules:
@@ -520,7 +519,7 @@ func (s *hintState) afterListEntered() {
 	s.field([]byte{})
 }
 
-type State struct {
+type state struct {
 	out *ion.Chunker
 
 	// stack of structure state;
@@ -552,41 +551,41 @@ type State struct {
 	hints hintState
 }
 
-func NewState(dst *ion.Chunker) *State {
-	return &State{
+func newState(dst *ion.Chunker) *state {
+	return &state{
 		out: dst,
 	}
 }
 
-func (s *State) UseHints(hints *Hint) {
+func (s *state) UseHints(hints *Hint) {
 	s.hints = makeHintState(hints)
 }
 
-func (s *State) shouldIgnore() bool {
+func (s *state) shouldIgnore() bool {
 	return s.hints.hints&hintIgnore != 0
 }
 
-func (s *State) shouldNotIndex() bool {
+func (s *state) shouldNotIndex() bool {
 	return s.hints.hints&hintNoIndex != 0
 }
 
-func (s *State) coerceString() bool {
+func (s *state) coerceString() bool {
 	return s.hints.hints&hintString != 0
 }
 
-func (s *State) coerceNumber() bool {
+func (s *state) coerceNumber() bool {
 	return s.hints.hints&hintNumber != 0
 }
 
-func (s *State) coerceInt() bool {
+func (s *state) coerceInt() bool {
 	return s.hints.hints&hintInt != 0
 }
 
-func (s *State) coerceDateTime() bool {
+func (s *state) coerceDateTime() bool {
 	return s.hints.hints&hintDateTime != 0
 }
 
-func (s *State) coerceUnixSeconds() bool {
+func (s *state) coerceUnixSeconds() bool {
 	return s.hints.hints&hintUnixSeconds != 0
 }
 
@@ -594,7 +593,7 @@ func (s *State) coerceUnixSeconds() bool {
 // parse objects incrementally; this needs
 // to reset all of the internal state that
 // gets set up during object parsing
-func (s *State) rewind(snapshot *ion.Snapshot) {
+func (s *state) rewind(snapshot *ion.Snapshot) {
 	s.out.Load(snapshot)
 	s.stack = s.stack[:0]
 	s.flags = 0
@@ -602,7 +601,7 @@ func (s *State) rewind(snapshot *ion.Snapshot) {
 	s.hints.reset()
 }
 
-func (s *State) Commit() error {
+func (s *state) Commit() error {
 	if len(s.stack) != 0 {
 		return fmt.Errorf("State.Commit inside object?")
 	}
@@ -611,7 +610,7 @@ func (s *State) Commit() error {
 
 // adjust the parser state after each
 // object is inserted
-func (s *State) after() {
+func (s *state) after() {
 	if s.flags&flagField == 0 {
 		return
 	}
@@ -625,7 +624,7 @@ func (s *State) after() {
 
 // addTimeRange adds a time to the range for the path
 // to the current field.
-func (s *State) addTimeRange(t date.Time) {
+func (s *state) addTimeRange(t date.Time) {
 	if s.shouldNotIndex() {
 		return
 	}
@@ -646,7 +645,7 @@ func (s *State) addTimeRange(t date.Time) {
 	s.out.Ranges.AddTime(s.pathbuf, t)
 }
 
-func (s *State) parseInt(i int64) {
+func (s *state) parseInt(i int64) {
 	if s.shouldIgnore() {
 		return
 	}
@@ -676,7 +675,7 @@ func appendRune(dst []byte, r rune) []byte {
 
 // unescaped processes strings that include
 // backslash escape sequences
-func (s *State) unescaped(buf []byte) []byte {
+func (s *state) unescaped(buf []byte) []byte {
 	tmp := s.tmp[:0]
 
 	for i := 0; i < len(buf); i++ {
@@ -753,7 +752,7 @@ func (s *State) unescaped(buf []byte) []byte {
 	return tmp
 }
 
-func (s *State) parseFloat(f float64) {
+func (s *state) parseFloat(f float64) {
 	if s.shouldIgnore() {
 		return
 	}
@@ -773,7 +772,7 @@ func (s *State) parseFloat(f float64) {
 	s.after()
 }
 
-func (s *State) pushRecord() {
+func (s *state) pushRecord() {
 	// push a new stack state
 	if len(s.stack) == cap(s.stack) {
 		s.stack = append(s.stack, fieldlist{})
@@ -783,21 +782,21 @@ func (s *State) pushRecord() {
 	s.stack[len(s.stack)-1].init()
 }
 
-func (s *State) popRecord() {
+func (s *state) popRecord() {
 	s.stack = s.stack[:len(s.stack)-1]
 }
 
-func (s *State) pushFlags(u uint) {
+func (s *state) pushFlags(u uint) {
 	s.oldflags = append(s.oldflags, s.flags)
 	s.flags = u
 }
 
-func (s *State) popFlags() {
+func (s *state) popFlags() {
 	s.flags = s.oldflags[len(s.oldflags)-1]
 	s.oldflags = s.oldflags[:len(s.oldflags)-1]
 }
 
-func (s *State) beginRecord() {
+func (s *state) beginRecord() {
 	ignore := s.shouldIgnore()
 	s.hints.enter()
 	if ignore {
@@ -809,7 +808,7 @@ func (s *State) beginRecord() {
 	s.out.BeginStruct(-1)
 }
 
-func (s *State) endRecord() {
+func (s *state) endRecord() {
 	ignore := s.shouldIgnore()
 	s.hints.leave()
 	if ignore {
@@ -838,7 +837,7 @@ func dumb(buf []byte) (int, bool) {
 	return 0, false
 }
 
-func (s *State) beginField(label []byte, esc bool) {
+func (s *state) beginField(label []byte, esc bool) {
 	if esc {
 		label = s.unescaped(label)
 	}
@@ -871,7 +870,7 @@ func (s *State) beginField(label []byte, esc bool) {
 	s.out.BeginField(sym)
 }
 
-func (s *State) beginList() {
+func (s *state) beginList() {
 	ignore := s.shouldIgnore()
 	s.hints.enter()
 	s.hints.afterListEntered()
@@ -883,7 +882,7 @@ func (s *State) beginList() {
 	s.out.BeginList(-1)
 }
 
-func (s *State) endList() {
+func (s *state) endList() {
 	ignore := s.shouldIgnore()
 	s.hints.leave()
 	if ignore {
@@ -895,7 +894,7 @@ func (s *State) endList() {
 	s.after()
 }
 
-func (s *State) parseBool(b bool) {
+func (s *state) parseBool(b bool) {
 	if s.shouldIgnore() {
 		return
 	}
@@ -919,7 +918,7 @@ func (s *State) parseBool(b bool) {
 	s.after()
 }
 
-func (s *State) parseNull() {
+func (s *state) parseNull() {
 	if s.shouldIgnore() {
 		return
 	}
@@ -928,7 +927,7 @@ func (s *State) parseNull() {
 	s.after()
 }
 
-func (s *State) parseString(seg []byte, esc bool) {
+func (s *state) parseString(seg []byte, esc bool) {
 	if s.shouldIgnore() {
 		return
 	}

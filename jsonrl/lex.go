@@ -37,7 +37,7 @@ const object_en_main int = 1
 
 var ErrNoMatch = errors.New("jsonrl: bad object text")
 
-func ParseObject(s *State, data []byte) (int, error) {
+func parseObject(s *state, data []byte) (int, error) {
 	neg, nege, esc := false, false, false
 	sbegin, send := 0, 0
 	curi, cure, dc := uint64(0), int(0), int(0)
@@ -1266,7 +1266,7 @@ func ParseObject(s *State, data []byte) (int, error) {
 
 //line lex.rl:139
 
-	return p, fmt.Errorf("ParseObject: position %d of %d: %w", p, pe, ErrNoMatch)
+	return p, fmt.Errorf("parseObject: position %d of %d: %w", p, pe, ErrNoMatch)
 }
 
 //line lex.rl:152
@@ -1279,7 +1279,7 @@ const recfields_en_main int = 1
 
 //line lex.rl:155
 
-func parseRecord(s *State, data []byte) (int, error) {
+func parseRecord(s *state, data []byte) (int, error) {
 	neg, nege, esc := false, false, false
 	sbegin, send := 0, 0
 	curi, cure, dc := uint64(0), int(0), int(0)
@@ -3333,7 +3333,7 @@ const listfields_en_main int = 1
 
 //line lex.rl:180
 
-func parseList(s *State, data []byte) (int, error) {
+func parseList(s *state, data []byte) (int, error) {
 	neg, nege, esc := false, false, false
 	sbegin, send := 0, 0
 	curi, cure, dc := uint64(0), int(0), int(0)

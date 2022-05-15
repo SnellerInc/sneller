@@ -81,8 +81,8 @@ func TestParseOK(t *testing.T) {
 		text := objs[i]
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
-			st := NewState(cn)
-			n, err := ParseObject(st, []byte(text))
+			st := newState(cn)
+			n, err := parseObject(st, []byte(text))
 			if err != nil {
 				t.Fatalf("position %d: %s", n, err)
 			}
@@ -129,8 +129,8 @@ func TestParseFail(t *testing.T) {
 	for i := range objs {
 		text := objs[i]
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			st := NewState(&ion.Chunker{W: ioutil.Discard, Align: 10000})
-			_, err := ParseObject(st, []byte(text))
+			st := newState(&ion.Chunker{W: ioutil.Discard, Align: 10000})
+			_, err := parseObject(st, []byte(text))
 			if err == nil {
 				t.Fatal("no error?")
 			}
@@ -268,7 +268,7 @@ func TestParseWithHints(t *testing.T) {
 	for i := range objs {
 		test := objs[i]
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			st := NewState(&ion.Chunker{W: ioutil.Discard, Align: 1000000})
+			st := newState(&ion.Chunker{W: ioutil.Discard, Align: 1000000})
 
 			if test.hints != "" {
 				entry, err := ParseHint([]byte(test.hints))
@@ -278,7 +278,7 @@ func TestParseWithHints(t *testing.T) {
 				st.UseHints(entry)
 			}
 
-			n, err := ParseObject(st, []byte(test.input))
+			n, err := parseObject(st, []byte(test.input))
 			if err != nil {
 				t.Fatalf("position %d: %s", n, err)
 			}
@@ -364,9 +364,9 @@ func TestParseRanges(t *testing.T) {
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			var rw rangeWriter
 			cn := &ion.Chunker{W: &rw, Align: 1024 * 1024}
-			st := NewState(cn)
+			st := newState(cn)
 			for _, in := range tc.inputs {
-				n, err := ParseObject(st, []byte(in))
+				n, err := parseObject(st, []byte(in))
 				if err != nil {
 					t.Fatalf("position %d: %s", n, err)
 				}
@@ -402,13 +402,13 @@ func BenchmarkTranslate(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
-				s := NewState(cn)
+				s := newState(cn)
 				for pb.Next() {
 					s.out.Reset()
 					cur := buf
 					objn := 0
 					for len(cur) > 0 {
-						n, err := ParseObject(s, cur)
+						n, err := parseObject(s, cur)
 						if err != nil {
 							b.Fatalf("object %d pos %d: %s", objn, n, err)
 						}
@@ -483,14 +483,14 @@ func BenchmarkTranslateWithHints(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
-				s := NewState(cn)
+				s := newState(cn)
 				s.UseHints(hints)
 				for pb.Next() {
 					s.out.Reset()
 					cur := buf
 					objn := 0
 					for len(cur) > 0 {
-						n, err := ParseObject(s, cur)
+						n, err := parseObject(s, cur)
 						if err != nil {
 							b.Fatalf("object %d pos %d: %s", objn, n, err)
 						}

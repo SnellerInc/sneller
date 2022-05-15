@@ -121,21 +121,20 @@ func (l *listState) skip(next byte) bool {
 	return false
 }
 
-// Convert converts json data from src
-// into aligned ion chunks in dst using
-// the provided alignment.
+// Convert converts JSON data from src and writes the data into dst.
+// If hints is non-nil, Convert will use hints to determine which portions of
+// the original JSON data to write into dst.
 //
-// If src is a Scanner (i.e. an io.Reader
-// that has been wrapped in a bufio.Reader),
-// and the Scanner has a buffer capacity of
-// at least MaxObjectSize,
+// If src is a Scanner (i.e. an io.Reader that has been wrapped in a bufio.Reader),
+// and the Scanner has a buffer capacity of at least MaxObjectSize,
 // then the Scanner will be used directly.
 // Otherwise, src will be wrapped in a bufio.Reader.
 //
-// Convert does not support translating
-// objects above MaxObjectSize.
+// Convert does not support translating objects above MaxObjectSize.
+// If Convert can not find the terminating token of an object
+// in src after scanning MaxObjectSize bytes, it will return ErrTooLarge.
 func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
-	st := NewState(dst)
+	st := newState(dst)
 	st.UseHints(hints)
 	var rd Scanner
 	if s, ok := src.(Scanner); ok && s.Size() >= MaxObjectSize {
@@ -183,7 +182,7 @@ func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
 		var n int
 		for {
 			st.out.Save(&snapshot)
-			n, err = ParseObject(st, buf)
+			n, err = parseObject(st, buf)
 			if err == nil {
 				break
 			}

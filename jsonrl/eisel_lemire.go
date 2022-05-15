@@ -39,7 +39,7 @@ import (
 	"math/bits"
 )
 
-func atof(s *State, man uint64, exp10 int, neg bool) {
+func atof(s *state, man uint64, exp10 int, neg bool) {
 	if man == 0 {
 		// if the mantissa is zero, just
 		// parse this as zero; we don't care
