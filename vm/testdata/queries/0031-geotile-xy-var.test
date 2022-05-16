@@ -1,0 +1,70 @@
+SELECT
+  name,
+  GEO_TILE_X(lon, precision) AS x,
+  GEO_TILE_Y(lat, precision) AS y
+FROM
+  input
+---
+{"country": "NL", "name": "Amsterdam", "lat": 52.37403, "lon": 4.88969, "precision": 1}
+{"country": "GR", "name": "Athens", "lat": 37.97945, "lon": 23.71622, "precision": 2}
+{"country": "DE", "name": "Berlin", "lat": 52.52437, "lon": 13.41053, "precision": 3}
+{"country": "SK", "name": "Bratislava", "lat": 48.14816, "lon": 17.10674, "precision": 4}
+{"country": "BE", "name": "Brussels", "lat": 50.85045, "lon": 4.34878, "precision": 5}
+{"country": "RO", "name": "Bucharest", "lat": 44.43225, "lon": 26.10626, "precision": 6}
+{"country": "HU", "name": "Budapest", "lat": 47.49801, "lon": 19.03991, "precision": 7}
+{"country": "MD", "name": "Chisinau", "lat": 47.00556, "lon": 28.8575, "precision": 8}
+{"country": "DK", "name": "Copenhagen", "lat": 55.67594, "lon": 12.56553, "precision": 9}
+{"country": "IE", "name": "Dublin", "lat": 53.33306, "lon": -6.24889, "precision": 10}
+{"country": "FI", "name": "Helsinki", "lat": 60.16952, "lon": 24.93545, "precision": 11}
+{"country": "PT", "name": "Lisbon", "lat": 38.71667, "lon": -9.13333, "precision": 12}
+{"country": "SI", "name": "Ljubljana", "lat": 46.05108, "lon": 14.50513, "precision": 1}
+{"country": "GB", "name": "London", "lat": 51.50853, "lon": -0.12574, "precision": 2}
+{"country": "LU", "name": "Luxembourg", "lat": 49.61167, "lon": 6.13, "precision": 3}
+{"country": "ES", "name": "Madrid", "lat": 40.4165, "lon": -3.70256, "precision": 4}
+{"country": "MC", "name": "Monaco", "lat": 43.73333, "lon": 7.41667, "precision": 5}
+{"country": "CY", "name": "Nicosia", "lat": 35.17531, "lon": 33.3642, "precision": 6}
+{"country": "NO", "name": "Oslo", "lat": 59.91273, "lon": 10.74609, "precision": 7}
+{"country": "FR", "name": "Paris", "lat": 48.85341, "lon": 2.3488, "precision": 8}
+{"country": "CZ", "name": "Prague", "lat": 50.08804, "lon": 14.42076, "precision": 9}
+{"country": "IS", "name": "Reykjavík", "lat": 64.13548, "lon": -21.89541, "precision": 10}
+{"country": "LV", "name": "Riga", "lat": 56.946, "lon": 24.10589, "precision": 11}
+{"country": "IT", "name": "Rome", "lat": 41.89193, "lon": 12.51133, "precision": 12}
+{"country": "BG", "name": "Sofia", "lat": 42.69751, "lon": 23.32415, "precision": 1}
+{"country": "EE", "name": "Tallinn", "lat": 59.43696, "lon": 24.75353, "precision": 2}
+{"country": "AT", "name": "Vienna", "lat": 48.20849, "lon": 16.37208, "precision": 3}
+{"country": "PL", "name": "Warsaw", "lat": 52.22977, "lon": 21.01178, "precision": 4}
+{"country": "US", "name": "Washington, D.C.", "lat": 38.89511, "lon": -77.03637, "precision": 5}
+{"country": "HR", "name": "Zagreb", "lat": 45.81444, "lon": 15.97798, "precision": 6}
+{"country": "CH", "name": "Zürich", "lat": 47.36667, "lon": 8.55, "precision": 7}
+---
+{"name": "Amsterdam", "x": 1, "y": 0}
+{"name": "Athens", "x": 2, "y": 1}
+{"name": "Berlin", "x": 4, "y": 2}
+{"name": "Bratislava", "x": 8, "y": 5}
+{"name": "Brussels", "x": 16, "y": 10}
+{"name": "Bucharest", "x": 36, "y": 23}
+{"name": "Budapest", "x": 70, "y": 44}
+{"name": "Chisinau", "x": 148, "y": 90}
+{"name": "Copenhagen", "x": 273, "y": 160}
+{"name": "Dublin", "x": 494, "y": 331}
+{"name": "Helsinki", "x": 1165, "y": 592}
+{"name": "Lisbon", "x": 1944, "y": 1569}
+{"name": "Ljubljana", "x": 1, "y": 0}
+{"name": "London", "x": 1, "y": 1}
+{"name": "Luxembourg", "x": 4, "y": 2}
+{"name": "Madrid", "x": 7, "y": 6}
+{"name": "Monaco", "x": 16, "y": 11}
+{"name": "Nicosia", "x": 37, "y": 25}
+{"name": "Oslo", "x": 67, "y": 37}
+{"name": "Paris", "x": 129, "y": 88}
+{"name": "Prague", "x": 276, "y": 173}
+{"name": "Reykjavík", "x": 449, "y": 272}
+{"name": "Riga", "x": 1161, "y": 627}
+{"name": "Rome", "x": 2190, "y": 1522}
+{"name": "Sofia", "x": 1, "y": 0}
+{"name": "Tallinn", "x": 2, "y": 1}
+{"name": "Vienna", "x": 4, "y": 2}
+{"name": "Warsaw", "x": 8, "y": 5}
+{"name": "Washington, D.C.", "x": 9, "y": 12}
+{"name": "Zagreb", "x": 34, "y": 22}
+{"name": "Zürich", "x": 67, "y": 44}

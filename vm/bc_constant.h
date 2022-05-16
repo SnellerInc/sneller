@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#define BC_CONSTANT_H_DEFINED
+
 // Constants Machinery
 // -------------------
 
@@ -380,6 +382,13 @@ CONST_DATA_U32(constpool, 624, $0b11001110_01110011_10011100_11100111)
 #define CONSTQ_0b00000000_00000000_00000000_00000000_00011111_00000000_00000000_00011111() CONST_GET_PTR(constpool, 632)
 CONST_DATA_U64(constpool, 632, $0b0000000000000000000000000000000000011111000000000000000000011111)
 
+#define CONSTQ_0x0000FFFFFFFFFFFF() CONST_GET_PTR(constpool, 640)
+CONST_DATA_U64(constpool, 640, $0x0000FFFFFFFFFFFF)
+
+#define CONSTD_100000000() CONST_GET_PTR(constpool, 648)
+#define CONSTQ_100000000() CONST_GET_PTR(constpool, 648)
+CONST_DATA_U64(constpool, 648, $100000000)
+
 // Integer Division Reciprocals
 // ----------------------------
 
@@ -429,9 +438,13 @@ CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 64, $1125899907)
 #define CONSTQ_18764999() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 72)
 CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 72, $18764999)
 
+// Unsigned 32-bit division by 100000000 => Result = (uint64(Value) * 1441151881) >> 57
+#define CONSTQ_1441151881() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80, $1441151881)
+
 // Unsigned 44-bit division by 3600000000 => Result = (Value >> 12) * 2562048517 >> 51
-#define CONSTQ_2562048517() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80)
-CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80, $2562048517)
+#define CONSTQ_2562048517() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 88)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 88, $2562048517)
 
 
 // 64-Bit Floating Point Constants
@@ -479,13 +492,37 @@ CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 88, $0x4241C37937E08000)
 #define CONSTF64_65536() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 96)
 CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 96, $0x40F0000000000000)
 
+#define CONSTF64_180() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 104)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 104, $0x4066800000000000)
+
+// (1 << 48) / 360.0
+#define CONSTF64_281474976710656_DIV_360() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 112)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 112, $0x4266c16c16c16c17)
+
+// (1 << 48) / 2.0
+#define CONSTF64_140737488355328() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 120)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 120, $0x42e0000000000000)
+
+// PI / 180
+#define CONSTF64_PI_DIV_180() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 128)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 128, $0x3f91df46a2529d39)
+
+// (1 << 48) / (3.1415926535897931 * 4);
+#define CONSTF64_281474976710656_DIV_4PI() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 136)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 136, $0x42b45f306dc9c883)
+
+#define CONSTF64_0p9999() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 144)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 144, $0x3fefff2e48e8a71e)
+
+#define CONSTF64_MINUS_0p9999() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 152)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 152, $0xbfefff2e48e8a71e)
 
 // Other Constants
 // ---------------
 //
 // Add new or uncategorized constants here...
 
-#define CONSTPOOL_OTHER_INDEX (CONSTPOOL_F64_INDEX + 128)
+#define CONSTPOOL_OTHER_INDEX (CONSTPOOL_F64_INDEX + 160)
 
 #define CONSTD_0x0000C080() CONST_GET_PTR(constpool, CONSTPOOL_OTHER_INDEX + 0)
 #define CONSTD_UTF8_R2() CONST_GET_PTR(constpool, CONSTPOOL_OTHER_INDEX + 0)
@@ -593,25 +630,8 @@ CONST_DATA_U32(n_bytes_utf8, 56, $3)
 CONST_DATA_U32(n_bytes_utf8, 60, $4)
 CONST_GLOBAL(n_bytes_utf8, $64)
 
-
-// 32-bit and 64-bit byteswap constants applicable to VPSHUFB
-CONST_DATA_U32(bswap32, 0, $0x00010203)
-CONST_DATA_U32(bswap32, 4, $0x04050607)
-CONST_DATA_U32(bswap32, 8, $0x08090A0B)
-CONST_DATA_U32(bswap32, 12, $0x0C0D0E0F)
-CONST_DATA_U32(bswap32, 16, $0x00010203)
-CONST_DATA_U32(bswap32, 20, $0x04050607)
-CONST_DATA_U32(bswap32, 24, $0x08090A0B)
-CONST_DATA_U32(bswap32, 28, $0x0C0D0E0F)
-CONST_DATA_U32(bswap32, 32, $0x00010203)
-CONST_DATA_U32(bswap32, 36, $0x04050607)
-CONST_DATA_U32(bswap32, 40, $0x08090A0B)
-CONST_DATA_U32(bswap32, 44, $0x0C0D0E0F)
-CONST_DATA_U32(bswap32, 48, $0x00010203)
-CONST_DATA_U32(bswap32, 52, $0x04050607)
-CONST_DATA_U32(bswap32, 56, $0x08090A0B)
-CONST_DATA_U32(bswap32, 60, $0x0C0D0E0F)
-CONST_GLOBAL(bswap32, $64)
+// Byteswap predicates applicable to VPSHUFB
+// -----------------------------------------
 
 CONST_DATA_U32(bswap24_zero_last_byte, 0, $0xFF010203)
 CONST_DATA_U32(bswap24_zero_last_byte, 4, $0xFF050607)
@@ -630,6 +650,24 @@ CONST_DATA_U32(bswap24_zero_last_byte, 52, $0xFF050607)
 CONST_DATA_U32(bswap24_zero_last_byte, 56, $0xFF090A0B)
 CONST_DATA_U32(bswap24_zero_last_byte, 60, $0xFF0D0E0F)
 CONST_GLOBAL(bswap24_zero_last_byte, $64)
+
+CONST_DATA_U32(bswap32, 0, $0x00010203)
+CONST_DATA_U32(bswap32, 4, $0x04050607)
+CONST_DATA_U32(bswap32, 8, $0x08090A0B)
+CONST_DATA_U32(bswap32, 12, $0x0C0D0E0F)
+CONST_DATA_U32(bswap32, 16, $0x00010203)
+CONST_DATA_U32(bswap32, 20, $0x04050607)
+CONST_DATA_U32(bswap32, 24, $0x08090A0B)
+CONST_DATA_U32(bswap32, 28, $0x0C0D0E0F)
+CONST_DATA_U32(bswap32, 32, $0x00010203)
+CONST_DATA_U32(bswap32, 36, $0x04050607)
+CONST_DATA_U32(bswap32, 40, $0x08090A0B)
+CONST_DATA_U32(bswap32, 44, $0x0C0D0E0F)
+CONST_DATA_U32(bswap32, 48, $0x00010203)
+CONST_DATA_U32(bswap32, 52, $0x04050607)
+CONST_DATA_U32(bswap32, 56, $0x08090A0B)
+CONST_DATA_U32(bswap32, 60, $0x0C0D0E0F)
+CONST_GLOBAL(bswap32, $64)
 
 CONST_DATA_U64(bswap64, 0, $0x0001020304050607)
 CONST_DATA_U64(bswap64, 8, $0x08090A0B0C0D0E0F)
@@ -695,22 +733,22 @@ CONST_DATA_U32(aggregate_conflictdq_norm, 60, $55)
 CONST_GLOBAL(aggregate_conflictdq_norm, $64)
 
 // Consecutive DWORD offsets for 1 ZMM register incremented by 16, for each lane.
-CONST_DATA_U32(consts_offsets_d_16,  0, $0)
-CONST_DATA_U32(consts_offsets_d_16,  4, $16)
-CONST_DATA_U32(consts_offsets_d_16,  8, $32)
-CONST_DATA_U32(consts_offsets_d_16, 12, $48)
-CONST_DATA_U32(consts_offsets_d_16, 16, $64)
-CONST_DATA_U32(consts_offsets_d_16, 20, $80)
-CONST_DATA_U32(consts_offsets_d_16, 24, $96)
-CONST_DATA_U32(consts_offsets_d_16, 28, $112)
-CONST_DATA_U32(consts_offsets_d_16, 32, $128)
-CONST_DATA_U32(consts_offsets_d_16, 36, $144)
-CONST_DATA_U32(consts_offsets_d_16, 40, $160)
-CONST_DATA_U32(consts_offsets_d_16, 44, $176)
-CONST_DATA_U32(consts_offsets_d_16, 48, $192)
-CONST_DATA_U32(consts_offsets_d_16, 52, $208)
-CONST_DATA_U32(consts_offsets_d_16, 56, $224)
-CONST_DATA_U32(consts_offsets_d_16, 60, $240)
+CONST_DATA_U32(consts_offsets_d_16,  0, $(0  * 16))
+CONST_DATA_U32(consts_offsets_d_16,  4, $(1  * 16))
+CONST_DATA_U32(consts_offsets_d_16,  8, $(2  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 12, $(3  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 16, $(4  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 20, $(5  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 24, $(6  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 28, $(7  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 32, $(8  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 36, $(9  * 16))
+CONST_DATA_U32(consts_offsets_d_16, 40, $(10 * 16))
+CONST_DATA_U32(consts_offsets_d_16, 44, $(11 * 16))
+CONST_DATA_U32(consts_offsets_d_16, 48, $(12 * 16))
+CONST_DATA_U32(consts_offsets_d_16, 52, $(13 * 16))
+CONST_DATA_U32(consts_offsets_d_16, 56, $(14 * 16))
+CONST_DATA_U32(consts_offsets_d_16, 60, $(15 * 16))
 CONST_GLOBAL(consts_offsets_d_16, $64)
 
 // Consecutive DWORD offsets for 1 ZMM register incremented by 16, for each lane.
@@ -737,24 +775,44 @@ CONST_DATA_U32(consts_offsets_interleaved_d_16, 60, $(15 * 16))
 CONST_GLOBAL(consts_offsets_interleaved_d_16, $64)
 
 // Consecutive DWORD offsets for 1 ZMM register incremented by 20, for each lane.
-CONST_DATA_U32(consts_offsets_d_20,  0, $0)
-CONST_DATA_U32(consts_offsets_d_20,  4, $20)
-CONST_DATA_U32(consts_offsets_d_20,  8, $40)
-CONST_DATA_U32(consts_offsets_d_20, 12, $60)
-CONST_DATA_U32(consts_offsets_d_20, 16, $80)
-CONST_DATA_U32(consts_offsets_d_20, 20, $100)
-CONST_DATA_U32(consts_offsets_d_20, 24, $120)
-CONST_DATA_U32(consts_offsets_d_20, 28, $140)
-CONST_DATA_U32(consts_offsets_d_20, 32, $160)
-CONST_DATA_U32(consts_offsets_d_20, 36, $180)
-CONST_DATA_U32(consts_offsets_d_20, 40, $200)
-CONST_DATA_U32(consts_offsets_d_20, 44, $220)
-CONST_DATA_U32(consts_offsets_d_20, 48, $240)
-CONST_DATA_U32(consts_offsets_d_20, 52, $260)
-CONST_DATA_U32(consts_offsets_d_20, 56, $280)
-CONST_DATA_U32(consts_offsets_d_20, 60, $300)
-CONST_DATA_U32(consts_offsets_d_20, 64, $320)
+CONST_DATA_U32(consts_offsets_d_20,  0, $(0  * 20))
+CONST_DATA_U32(consts_offsets_d_20,  4, $(1  * 20))
+CONST_DATA_U32(consts_offsets_d_20,  8, $(2  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 12, $(3  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 16, $(4  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 20, $(5  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 24, $(6  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 28, $(7  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 32, $(8  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 36, $(9  * 20))
+CONST_DATA_U32(consts_offsets_d_20, 40, $(10 * 20))
+CONST_DATA_U32(consts_offsets_d_20, 44, $(11 * 20))
+CONST_DATA_U32(consts_offsets_d_20, 48, $(12 * 20))
+CONST_DATA_U32(consts_offsets_d_20, 52, $(13 * 20))
+CONST_DATA_U32(consts_offsets_d_20, 56, $(14 * 20))
+CONST_DATA_U32(consts_offsets_d_20, 60, $(15 * 20))
+CONST_DATA_U32(consts_offsets_d_20, 64, $(16 * 20))
 CONST_GLOBAL(consts_offsets_d_20, $68)
+
+// Consecutive DWORD offsets for 1 ZMM register incremented by 32, for each lane.
+CONST_DATA_U32(consts_offsets_d_32,  0, $(0  * 32))
+CONST_DATA_U32(consts_offsets_d_32,  4, $(1  * 32))
+CONST_DATA_U32(consts_offsets_d_32,  8, $(2  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 12, $(3  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 16, $(4  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 20, $(5  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 24, $(6  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 28, $(7  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 32, $(8  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 36, $(9  * 32))
+CONST_DATA_U32(consts_offsets_d_32, 40, $(10 * 32))
+CONST_DATA_U32(consts_offsets_d_32, 44, $(11 * 32))
+CONST_DATA_U32(consts_offsets_d_32, 48, $(12 * 32))
+CONST_DATA_U32(consts_offsets_d_32, 52, $(13 * 32))
+CONST_DATA_U32(consts_offsets_d_32, 56, $(14 * 32))
+CONST_DATA_U32(consts_offsets_d_32, 60, $(15 * 32))
+CONST_DATA_U32(consts_offsets_d_32, 64, $(16 * 32))
+CONST_GLOBAL(consts_offsets_d_32, $68)
 
 // Consecutive QWORD offsets for 2 ZMM registers incremented by 16, for each lane.
 CONST_DATA_U64(consts_offsets_q_16,  0, $0)
@@ -774,6 +832,26 @@ CONST_DATA_U64(consts_offsets_q_16, 104, $208)
 CONST_DATA_U64(consts_offsets_q_16, 112, $224)
 CONST_DATA_U64(consts_offsets_q_16, 120, $240)
 CONST_GLOBAL(consts_offsets_q_16, $128)
+
+// Consecutive QWORD offsets for 2 ZMM registers incremented by 32, for each lane.
+CONST_DATA_U64(consts_offsets_q_32,   0, $(0  * 32))
+CONST_DATA_U64(consts_offsets_q_32,   8, $(1  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  16, $(2  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  24, $(3  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  32, $(4  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  40, $(5  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  48, $(6  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  56, $(7  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  64, $(8  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  72, $(9  * 32))
+CONST_DATA_U64(consts_offsets_q_32,  80, $(10 * 32))
+CONST_DATA_U64(consts_offsets_q_32,  88, $(11 * 32))
+CONST_DATA_U64(consts_offsets_q_32,  96, $(12 * 32))
+CONST_DATA_U64(consts_offsets_q_32, 104, $(13 * 32))
+CONST_DATA_U64(consts_offsets_q_32, 112, $(14 * 32))
+CONST_DATA_U64(consts_offsets_q_32, 120, $(15 * 32))
+CONST_DATA_U64(consts_offsets_q_32, 128, $(16 * 32))
+CONST_GLOBAL(consts_offsets_q_32, $136)
 
 // A DWORD table designed for VPERMD that can be used to map months of the year into the number
 // of days preceeding the month, where the index 0 represents March (months start from March).

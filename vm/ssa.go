@@ -328,8 +328,10 @@ const (
 
 	sgeohash
 	sgeohashimm
-	sgeogridi
-	sgeogridimmi
+	sgeotilex
+	sgeotiley
+	sgeotilees
+	sgeotileesimm
 	sobjectsize // built-in function SIZE()
 
 	sboxmask   // box a mask
@@ -818,11 +820,13 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitBinaryOp},
 	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
 
-	sgeohash:    {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitGeoHashOp},
-	sgeohashimm: {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitGeoHashImmOp},
-
-	sgeogridi:    {text: "geogrid.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, immfmt: fmtother, bc: opgeogridi, emit: emitGeoGridOp},
-	sgeogridimmi: {text: "geogrid.imm.i", rettype: stInt, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmtother, bc: opgeogridimmi, emit: emitGeoGridImmOp},
+	// GEO functions
+	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitGeoHash},
+	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitGeoHashImm},
+	sgeotilex:     {text: "geotilex", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitGeoTileXY},
+	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitGeoTileXY},
+	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitGeoHash},
+	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitGeoHashImm},
 
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
 
@@ -3020,17 +3024,31 @@ func (p *prog) GeoHash(latitude, longitude, numChars *value) *value {
 	return p.ssa4(sgeohash, latV, lonV, charsV, mask)
 }
 
-func (p *prog) GeoGridI(latitude, longitude, precision *value) *value {
+func (p *prog) GeoTileX(longitude, precision *value) *value {
+	lonV, lonM := p.coercefp(longitude)
+	precV, precM := p.coerceInt(precision)
+	mask := p.And(lonM, precM)
+	return p.ssa3(sgeotilex, lonV, precV, mask)
+}
+
+func (p *prog) GeoTileY(latitude, precision *value) *value {
+	latV, latM := p.coercefp(latitude)
+	precV, precM := p.coerceInt(precision)
+	mask := p.And(latM, precM)
+	return p.ssa3(sgeotiley, latV, precV, mask)
+}
+
+func (p *prog) GeoTileES(latitude, longitude, precision *value) *value {
 	latV, latM := p.coercefp(latitude)
 	lonV, lonM := p.coercefp(longitude)
 
 	if precision.op == sliteral && isIntImmediate(precision.imm) {
-		return p.ssa3imm(sgeogridimmi, latV, lonV, p.And(latM, lonM), precision.imm)
+		return p.ssa3imm(sgeotileesimm, latV, lonV, p.And(latM, lonM), precision.imm)
 	}
 
-	precV, precM := p.coerceInt(precision)
-	mask := p.And(p.And(latM, lonM), precM)
-	return p.ssa4(sgeogridi, latV, lonV, precV, mask)
+	charsV, charsM := p.coerceInt(precision)
+	mask := p.And(p.And(latM, lonM), charsM)
+	return p.ssa4(sgeotilees, latV, lonV, charsV, mask)
 }
 
 func emitAddMulImmI(v *value, c *compilestate) {
@@ -3062,7 +3080,7 @@ func emitBinaryOp(v *value, c *compilestate) {
 	c.ops16(v, bc, arg1Slot)
 }
 
-func emitGeoHashOp(v *value, c *compilestate) {
+func emitGeoHash(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // latitude
 	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
 	arg2Slot := c.forceStackRef(v.args[2], regS) // precision
@@ -3077,7 +3095,7 @@ func emitGeoHashOp(v *value, c *compilestate) {
 	c.ops16s16(v, bc, arg1Slot, arg2Slot)
 }
 
-func emitGeoHashImmOp(v *value, c *compilestate) {
+func emitGeoHashImm(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // latitude
 	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
 	mask := v.args[2]                            // predicate
@@ -3091,24 +3109,9 @@ func emitGeoHashImmOp(v *value, c *compilestate) {
 	c.ops16u16(v, bc, arg1Slot, uint16(toi64(v.imm)))
 }
 
-func emitGeoGridOp(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // latitude
-	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
-	arg2Slot := c.forceStackRef(v.args[2], regS) // precision
-	mask := v.args[3]                            // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16s16(v, bc, arg1Slot, arg2Slot)
-}
-
-func emitGeoGridImmOp(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // latitude
-	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
+func emitGeoTileXY(v *value, c *compilestate) {
+	arg0 := v.args[0]                            // coordinate
+	arg1Slot := c.forceStackRef(v.args[1], regS) // precision
 	mask := v.args[2]                            // predicate
 
 	info := ssainfo[v.op]
@@ -3117,7 +3120,7 @@ func emitGeoGridImmOp(v *value, c *compilestate) {
 	c.loadk(v, mask)
 	c.loads(v, arg0)
 	c.clobbers(v)
-	c.ops16u16(v, bc, arg1Slot, uint16(toi64(v.imm)))
+	c.ops16(v, bc, arg1Slot)
 }
 
 func emitdatediffparam(v *value, c *compilestate) {

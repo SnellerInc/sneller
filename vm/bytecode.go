@@ -345,10 +345,12 @@ var opinfo = [_maxbcop]bcopinfo{
 	optimebucketts: {text: "timebucket.ts", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 
 	// Geo instructions
-	opgeohash:     {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opgeohashimm:  {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
-	opgeogridi:    {text: "geogrid.i", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opgeogridimmi: {text: "geogrid.imm.i", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
+	opgeohash:      {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
+	opgeohashimm:   {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
+	opgeotilex:     {text: "geotilex", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opgeotiley:     {text: "geotiley", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opgeotilees:    {text: "geotilees", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
+	opgeotileesimm: {text: "geotilees.imm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
 
 	// Find Symbol instructions
 	//   - findsym - computes 'current struct' . 'symbol'

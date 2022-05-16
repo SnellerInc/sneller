@@ -190,7 +190,9 @@ const (
 	DateTruncYear
 
 	GeoHash
-	GeoGridIndex
+	GeoTileX
+	GeoTileY
+	GeoTileES
 
 	ObjectSize // SIZE(x)
 
@@ -294,7 +296,9 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_TRUNC_MONTH":         DateTruncMonth,
 	"DATE_TRUNC_YEAR":          DateTruncYear,
 	"GEO_HASH":                 GeoHash,
-	"GEO_GRID_INDEX":           GeoGridIndex,
+	"GEO_TILE_X":               GeoTileX,
+	"GEO_TILE_Y":               GeoTileY,
+	"GEO_TILE_ES":              GeoTileES,
 	"IN_SUBQUERY":              InSubquery,
 	"HASH_LOOKUP":              HashLookup,
 	"IN_REPLACEMENT":           InReplacement,
@@ -931,9 +935,10 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateToUnixEpoch:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixEpoch},
 	DateToUnixMicro:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixMicro},
 
-	GeoHash: {check: fixedArgs(FloatType, FloatType, IntegerType), ret: StringType | MissingType},
-
-	GeoGridIndex: {check: fixedArgs(FloatType, FloatType, IntegerType), ret: IntegerType | MissingType},
+	GeoHash:   {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
+	GeoTileX:  {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},
+	GeoTileY:  {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},
+	GeoTileES: {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
 
 	ObjectSize: {check: checkObjectSize, ret: NumericType | MissingType, simplify: simplifyObjectSize},
 

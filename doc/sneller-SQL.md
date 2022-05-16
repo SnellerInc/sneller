@@ -892,6 +892,79 @@ See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-
 
 #### `CEILING`
 
+### GEO Functions
+
+#### `GEO_HASH`
+
+`GEO_HASH(lat, long, num_chars)` encodes a string representing a geo-hash
+of the latitude `lat` and longitude `long` having `num_chars` characters.
+Each `GEO_HASH` character encodes 5 bits of interleaved latitude and
+longitude. When the number of characters is even the count of latitude
+and longitude bits is the same; when it's odd, latitude has one bit less
+than longitude.
+
+`GEO_HASH()` is just a hash calculated from scaled latitude and longitude
+coordinates; it doesn't project the coordinates in any way.
+
+The `num_chars` parameter's range is 1 to 12. Out of range parameters are
+automatically clamped to a valid range. For example `GEO_HASH(a, b, 100)`
+would produce the same result as `GEO_HASH(a, b, 12)`.
+
+Forwards compatibility notice: At the moment the maximum precision of
+`GEO_HASH()` is 12 characters, which represents 60 bits of interleaved
+latitude and longitude values. We may increase the range of `num_chars` in
+the future, so please always specify the precision and do not rely on
+parameter clamping.
+
+External resources:
+
+  - https://en.wikipedia.org/wiki/Geohash provides insight into geo-hash
+    encoding
+
+#### `GEO_TILE_X` and `GEO_TILE_Y`
+
+`GEO_TILE_X(long, precision)` and `GEO_TILE_Y(lat, precision)` functions
+calculate the corresponding X and Y tiles for the given `lat`, `long`
+coordinates and the specified `precision`. The `precision` is sometimes
+called zoom and specifies the number of bits.
+
+The latitude and longitude coordinates are first projected by using Mercator
+function and then X and Y cell indexes are calculated by quantizing the
+projected coordinates into the given `precision`, which specifies the
+number of bits of each value. For example precision of 8 bits would produce
+values within a [0, 255] range.
+
+The `precision` parameter will be clamped into a [0, 32] range, where 0
+means 0 bits (both output tiles will be 0/0) and 32 means 32 bits for
+both X and Y, which describes a tile around 3x3 cm.
+
+Forwards compatibility notice: At the moment the maximum precision of
+`GEO_TILE_X()` and `GEO_TILE_Y()` is 32 bits, which is slightly more
+than ElasticSearch, which limits the precision to 29 bits. We may
+increase the range of `precision` in the future, so please always
+specify the precision and do not rely on parameter clamping.
+
+External resources:
+
+  - https://en.wikipedia.org/wiki/Mercator_projection provides insight
+    into Mercator projection
+
+  - https://en.wikipedia.org/wiki/Tiled_web_map provides insight into
+    geo tiling, our implementation is desiged to be compatible
+
+#### `GEO_TILE_ES`
+
+`GEO_TILE_ES(lat, long, precision)` does the same projection as the
+`GEO_TILE_X(long. precision)` and `GEO_TILE_Y(lat, precision)` functions.
+The `precision` has the same restriction and the output X and Y coordinates
+are the same. What `GEO_TILE_ES()` does differently is the output encoding.
+
+`GEO_TILE_ES(lat, long, precision)` encodes a string representing a cell of
+a map tile in a "precision/x/y" format, which is compatible with ElasticSearch
+geotile aggregation.
+
+See `GEO_TILE_X()` and `GEO_TILE_Y()` functions for more details.
+
 ### Built-in Functions
 
 #### `DATE_ADD`
@@ -1013,42 +1086,6 @@ The expression `TIME_BUCKET(time, interval)` is mathematically equivalent to
 
 A typical use of `TIME_BUCKET` is to produce a
 bucket value for use in a `GROUP BY` clause.
-
-#### `GEO_HASH`
-
-`GEO_HASH(lat, long, num_chars)` encodes a string representing a geo-hash
-of the latitude `lat` and longitude `long` having `num_chars` characters.
-Each `GEO_HASH` character encodes 5 bits of interleaved latitude and
-longitude. When the number of characters is even the count of latitude
-and longitude bits is the same; when it's odd, latitude has one bit less
-than longitude.
-
-`GEO_HASH()` is just a hash calculated from scaled latitude and longitude
-coordinates, it doesn't project the coordinates in any way.
-
-The `num_chars` parameter's range is 1 to 12. Out of range parameters are
-automatically clamped to a valid range. For example `GEO_HASH(a, b, 100)`
-would produce the same result as `GEO_HASH(a, b, 12)`.
-
-Future notice: At the moment the maximum precision of `GEO_HASH()` is 12
-characters, which represents 60 bits of interleaved latitude and longitude
-values. We may increase the range of `num_chars` in the future, so please
-always specify the precision and do not rely on parameter clamping.
-
-External resources:
-
-  - https://en.wikipedia.org/wiki/Geohash provides insight into geo-hash
-    encoding
-
-#### `GEO_GRID_INDEX`
-
-`GEO_GRID_INDEX(lat, long, prec)` computes an integer
-representing the location of the latitude `lat` and longitude `long`
-on a "geo grid" with the integer precision `prec`.
-
-`GEO_GRID_INDEX` can be used to aggregate facets
-by geographic bounding boxes when it is used
-as a column in `GROUP BY`.
 
 #### `BEFORE`
 

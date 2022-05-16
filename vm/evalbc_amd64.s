@@ -53,6 +53,7 @@
 #include "bc_imm_amd64.h"
 #include "bc_constant.h"
 #include "bc_constant_rempi.h"
+#include "bc_macros_amd64.h"
 #include "ops_mask.h" // provides OPMASK
 
 // decodes the next instruction from the virtual pc
@@ -7969,8 +7970,10 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(2)
 
-// Geo Instructions
-// ----------------
+// GEO Functions
+// -------------
+
+#define CONST_GEO_TILE_MAX_PRECISION() CONSTQ_32()
 
 // Calculates GEO HASH bits with full precision.
 //
@@ -8002,140 +8005,12 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ TMP_0, DST_LON_A, DST_LON_A                           \
   VPADDQ TMP_0, DST_LON_B, DST_LON_B
 
-// GEO_GRID_INDEX is a 64-bit value that has encoded the following fields:
-//
-//   - Precision
-//   - Latitude bits
-//   - Longitude bits
-//
-// The value is encoded the following way:
-//
-//   - [zeros][precision bit][latitude bits][longitude bits]
-//
-// We can encode at most lat/lon with 31 bits of precision, how it works is
-// illustrated below:
-//
-//   - [0      ][1][31 bits latitude][31 bits longitude]
-//   - [000    ][1][30 bits latitude][30 bits longitude]
-//   - [00000  ][1][29 bits latitude][29 bits longitude]
-//   - [0000000][1][28 bits latitude][28 bits longitude]
-//
-// To get the precision you just have to count leading zeros:
-//
-//   - Precision = (63 - LZCNT(gg_index)) / 2
-//
-// This design has the following properties:
-//
-//   - GG_INDEX is always non-zero (there is always a bit present that determines precision)
-//   - GG_INDEX is never negative (the precision bit is never at [63])
-//   - It's trivial to encode/decode GG_INDEX
-//
-// In the original design of GG_INDEX, the precision was represented by 4 MSB bits, but this
-// design had an issue - it was impossible to describe the precision required by ElasticSearch,
-// because it allows to gradually set precision in bits up to 30 for each coordinate. With the
-// current design, we can actually do that by counting zeros of each GG_INDEX value.
-TEXT bcgeogridi(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R15
-  ADDQ $4, VIRT_PCREG
-
-  // Z4/Z5 <- Latitude.
-  VMOVAPD.Z Z2, K1, Z4
-  VMOVAPD.Z Z3, K2, Z5
-
-  // Z6/Z7 <- Longitude.
-  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
-
-  // Z8/Z9 <- Precision in bits.
-  VMOVDQU64.Z 0(VIRT_VALUES)(R15*1), K1, Z8
-  VMOVDQU64.Z 64(VIRT_VALUES)(R15*1), K2, Z9
-
-  JMP geogridi_tail(SB)
-
-TEXT bcgeogridimmi(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R15
-  ADDQ $4, VIRT_PCREG
-
-  // Z4/Z5 <- Latitude.
-  VMOVAPD.Z Z2, K1, Z4
-  VMOVAPD.Z Z3, K2, Z5
-
-  // Z6/Z7 <- Longitude.
-  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
-
-  // Z8/Z9 <- Precision in bits.
-  VPBROADCASTQ R15, Z8
-  VPBROADCASTQ R15, Z9
-
-  JMP geogridi_tail(SB)
-
-TEXT geogridi_tail(SB), NOSPLIT|NOFRAME, $0
-  // Z4/Z5/Z6/Z7 <- Scaled latitude and longitude bits with full precision.
-  BC_SCALE_GEO_COORDINATES(Z4, Z5, Z6, Z7, Z4, Z5, Z6, Z7, Z10)
-
-  // Z14/Z15 <- Useful constants.
-  VPBROADCASTQ CONSTQ_1(), Z14
-  VPBROADCASTQ CONSTQ_46(), Z15
-
-  // Z10/Z11 <- Mask calculated as (1 << Precision) - 1.
-  VPSLLVQ Z8, Z14, Z10
-  VPSLLVQ Z9, Z14, Z11
-  VPSUBQ Z14, Z10, Z10
-  VPSUBQ Z14, Z11, Z11
-
-  // Z12/Z13 <- 1 << (Precision * 2).
-  VPSLLQ $1, Z8, Z12
-  VPSLLQ $1, Z9, Z13
-  VPSLLVQ Z12, Z14, Z12
-  VPSLLVQ Z13, Z14, Z13
-
-  // Z8/Z9 <- How many bits to shift the scaled latitude/longitude to get the final bits.
-  VPSUBQ Z8, Z15, Z14
-  VPSUBQ Z9, Z15, Z15
-
-  VPSRLVQ Z14, Z4, Z4
-  VPSRLVQ Z15, Z5, Z5
-  VPSRLVQ Z14, Z6, Z6
-  VPSRLVQ Z15, Z7, Z7
-
-  VPANDQ Z10, Z4, Z4
-  VPANDQ Z11, Z5, Z5
-  VPANDQ Z10, Z6, Z6
-  VPANDQ Z11, Z7, Z7
-
-  // Z2/Z3 <- Scaled latitude bits and shifted to the correct place.
-  VPSLLVQ Z8, Z4, K1, Z2
-  VPSLLVQ Z9, Z5, K2, Z3
-
-  // Z2/Z3 <- Final index - precision bit marker, latitude, and longitude bits.
-  VPTERNLOGQ $0xFE, Z12, Z6, K1, Z2
-  VPTERNLOGQ $0xFE, Z13, Z7, K2, Z3
-
-  NEXT()
-
 // GEO_HASH is a string representing longitude, latitude, and precision as "HASH" where each
 // 5 bits of interleaved latitude and longitude data are encoded by a single ASCII character.
 TEXT bcgeohash(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-
   MOVWQZX 0(VIRT_PCREG), R8
   MOVWQZX 2(VIRT_PCREG), R15
-  ADDQ $4, VIRT_PCREG
-
-  // Z4/Z5 <- Latitude.
-  VMOVAPD.Z Z2, K1, Z4
-  VMOVAPD.Z Z3, K2, Z5
-
-  // Z6/Z7 <- Longitude.
-  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
 
   // Z8/Z9 <- Precision in bits.
   VMOVDQU64.Z 0(VIRT_VALUES)(R15*1), K1, Z8
@@ -8145,18 +8020,8 @@ TEXT bcgeohash(SB), NOSPLIT|NOFRAME, $0
 
 TEXT bcgeohashimm(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-
   MOVWQZX 0(VIRT_PCREG), R8
   MOVWQZX 2(VIRT_PCREG), R15
-  ADDQ $4, VIRT_PCREG
-
-  // Z4/Z5 <- Latitude.
-  VMOVAPD.Z Z2, K1, Z4
-  VMOVAPD.Z Z3, K2, Z5
-
-  // Z6/Z7 <- Longitude.
-  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
 
   // Z8/Z9 <- Precision in bits.
   VPBROADCASTQ R15, Z8
@@ -8165,6 +8030,14 @@ TEXT bcgeohashimm(SB), NOSPLIT|NOFRAME, $0
   JMP geohash_tail(SB)
 
 TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
+  // Z4/Z5 <- Latitude.
+  VMOVAPD.Z Z2, K1, Z4
+  VMOVAPD.Z Z3, K2, Z5
+
+  // Z6/Z7 <- Longitude.
+  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
+  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
+
   VPMOVSQD Z8, Y8
   VPMOVSQD Z9, Y9
   VINSERTI32X8 $1, Y9, Z8, Z3
@@ -8313,7 +8186,508 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VMOVDQU32 Z6, 128(R8)
   VMOVDQU32 Z7, 192(R8)
 
-  NEXT()
+  NEXT_ADVANCE(4)
+
+abort:
+  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
+  RET_ABORT()
+
+// GEO_TILE_X and GEO_TILE_Y functions project latitude and logitude by using Mercator.
+
+// X = FLOOR( (longitude + 180.0) / 360.0 * (1 << zoom) )
+//   = FLOOR( [(1 << 48) / 2] + FMA(longitude * [(1 << 48) / 360]) >> (48 - precision)
+TEXT bcgeotilex(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  MOVWQZX 0(VIRT_PCREG), R8
+
+  VBROADCASTSD CONSTF64_281474976710656_DIV_360(), Z6
+  VBROADCASTSD CONSTF64_140737488355328(), Z7
+
+  VFMADD132PD.RZ_SAE Z6, Z7, K1, Z2
+  VFMADD132PD.RZ_SAE Z6, Z7, K2, Z3
+
+  VCVTPD2UQQ.RZ_SAE Z2, Z4
+  VCVTPD2UQQ.RZ_SAE Z3, Z5
+
+  VPXORQ X8, X8, X8
+  VPBROADCASTQ CONST_GEO_TILE_MAX_PRECISION(), Z9
+  VPMAXSQ 0(VIRT_VALUES)(R8*1), Z8, Z6
+  VPMAXSQ 64(VIRT_VALUES)(R8*1), Z8, Z7
+
+  VPBROADCASTQ CONSTQ_0x0000FFFFFFFFFFFF(), Z11
+  VPMINSQ Z9, Z6, Z6
+  VPMINSQ Z9, Z7, Z7
+
+  VPBROADCASTQ CONSTQ_48(), Z9
+  VPMINSQ Z11, Z4, Z4
+  VPMINSQ Z11, Z5, Z5
+
+  VPSUBQ Z6, Z9, Z6
+  VPSUBQ Z7, Z9, Z7
+
+  VPSRLVQ Z6, Z4, K1, Z2
+  VPSRLVQ Z7, Z5, K2, Z3
+
+  NEXT_ADVANCE(2)
+
+// Y = FLOOR( {0.5 - [LN((1 + SIN(lat)) / (1 - SIN(lat))] / (4*PI)} * (1 << precision) );
+//   = FLOOR( [1 << 48) / 2] - [LN((1 + SIN(lat)) / (1 - SIN(lat)) * (1 << 48) / (4*PI)] ) >> (48 - precision));
+TEXT bcgeotiley(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  MOVWQZX 0(VIRT_PCREG), R8
+
+  VBROADCASTSD CONSTF64_PI_DIV_180(), Z11
+  VBROADCASTSD CONSTF64_1(), Z10
+
+  VMULPD Z11, Z2, K1, Z2
+  VMULPD Z11, Z3, K2, Z3
+  BC_FAST_SIN_4ULP(Z4, Z5, Z2, Z3)
+
+  // Truncate to [-0.9999, 0.9999] to avoid infinity in border cases.
+  VBROADCASTSD CONSTF64_0p9999(), Z11
+  VBROADCASTSD CONSTF64_MINUS_0p9999(), Z12
+  VMINPD Z11, Z4, Z4
+  VMINPD Z11, Z5, Z5
+  VMAXPD Z12, Z4, Z4
+  VMAXPD Z12, Z5, Z5
+
+  // Z6/Z7 <- 1 - SIN(lat)
+  VSUBPD Z4, Z10, Z6
+  VSUBPD Z5, Z10, Z7
+
+  // Z4/Z5 <- 1 + SIN(lat)
+  VADDPD Z4, Z10, Z4
+  VADDPD Z5, Z10, Z5
+
+  // Z4/Z5 <- LN((1 + SIN(lat)) / (1 - SIN(lat)))
+  VDIVPD Z6, Z4, Z6
+  VDIVPD Z7, Z5, Z7
+  BC_FAST_LN_4ULP(Z4, Z5, Z6, Z7)
+
+  VBROADCASTSD CONSTF64_281474976710656_DIV_4PI(), Z10
+  VBROADCASTSD CONSTF64_140737488355328(), Z11
+
+  // Z6/Z7 <- [(1 << 48) / 2] - (LN((1 + SIN(lat)) / (1 - SIN(lat))) * [(1 << 48) / 4*PI]
+  VFNMADD213PD Z11, Z10, Z4 // Z4 = Z11 - (Z10 * Z4)
+  VFNMADD213PD Z11, Z10, Z5 // Z5 = Z11 - (Z10 * Z5)
+
+  VPXORQ X8, X8, X8
+  VPBROADCASTQ CONST_GEO_TILE_MAX_PRECISION(), Z9
+  VPMAXSQ 0(VIRT_VALUES)(R8*1), Z8, Z6
+  VPMAXSQ 64(VIRT_VALUES)(R8*1), Z8, Z7
+
+  VCVTPD2UQQ.RZ_SAE Z4, Z4
+  VCVTPD2UQQ.RZ_SAE Z5, Z5
+
+  VPBROADCASTQ CONSTQ_0x0000FFFFFFFFFFFF(), Z11
+  VPMINSQ Z9, Z6, Z6
+  VPMINSQ Z9, Z7, Z7
+
+  VPBROADCASTQ CONSTQ_48(), Z9
+  VPMINSQ Z11, Z4, Z4
+  VPMINSQ Z11, Z5, Z5
+
+  VPSUBQ Z6, Z9, Z6
+  VPSUBQ Z7, Z9, Z7
+
+  VPSRLVQ Z6, Z4, K1, Z2
+  VPSRLVQ Z7, Z5, K2, Z3
+
+  NEXT_ADVANCE(2)
+
+// GEO_TILE_ES() projects latitude and longitude coordinates by using Mercator function
+// and encodes them as "Precision/X/Y" string, which is compatible with Elastic Search.
+
+// Extracts uint16[0|1] of each 64-bit lane and byteswaps it - ((input >> (Index * 16)) & 0xFFFF) << 48
+CONST_DATA_U64(const_geotilees_extract_u16, 0, $0x0100FFFFFFFFFFFF)
+CONST_DATA_U64(const_geotilees_extract_u16, 8, $0x0908FFFFFFFFFFFF)
+CONST_DATA_U64(const_geotilees_extract_u16, 16, $0x0302FFFFFFFFFFFF)
+CONST_DATA_U64(const_geotilees_extract_u16, 24, $0x0B0AFFFFFFFFFFFF)
+CONST_GLOBAL(const_geotilees_extract_u16, $32)
+
+// Extracts uint16[0|1|2] of each 64-bit lane and byteswaps it - bswap16((input >> (Index * 16)) & 0xFFFF)
+CONST_DATA_U64(const_geotilees_extract_u16_bswap, 0, $0xFFFFFFFFFFFF0001)
+CONST_DATA_U64(const_geotilees_extract_u16_bswap, 8, $0xFFFFFFFFFFFF0809)
+CONST_DATA_U64(const_geotilees_extract_u16_bswap, 16, $0xFFFFFFFFFFFF0203)
+CONST_DATA_U64(const_geotilees_extract_u16_bswap, 24, $0xFFFFFFFFFFFF0A0B)
+CONST_DATA_U64(const_geotilees_extract_u16_bswap, 32, $0xFFFFFFFFFFFF0405)
+CONST_DATA_U64(const_geotilees_extract_u16_bswap, 40, $0xFFFFFFFFFFFF0C0D)
+CONST_GLOBAL(const_geotilees_extract_u16_bswap, $48)
+
+TEXT bcgeotilees(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  MOVWQZX 0(VIRT_PCREG), R8
+  MOVWQZX 2(VIRT_PCREG), R15
+
+  // Z8/Z9 <- Precision in bits.
+  VMOVDQU64.Z 0(VIRT_VALUES)(R15*1), K1, Z8
+  VMOVDQU64.Z 64(VIRT_VALUES)(R15*1), K2, Z9
+
+  JMP geotilees_tail(SB)
+
+TEXT bcgeotileesimm(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  MOVWQZX 0(VIRT_PCREG), R8
+  MOVWQZX 2(VIRT_PCREG), R15
+
+  // Z8/Z9 <- Precision in bits.
+  VPBROADCASTQ R15, Z8
+  VPBROADCASTQ R15, Z9
+
+  JMP geotilees_tail(SB)
+
+TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
+  // Make sure we have at least 32 bytes for each lane, we always overallocate to make the conversion easier.
+  VM_CHECK_SCRATCH_CAPACITY($(32 * 16), R15, abort)
+
+  VM_GET_SCRATCH_BASE_GP(R15)
+
+  // Update the length of the output buffer.
+  ADDQ $(32 * 16), bytecode_scratch+8(VIRT_BCPTR)
+
+  // Z4/Z5 <- Projected latitude to Y.
+  VBROADCASTSD CONSTF64_PI_DIV_180(), Z11
+  VBROADCASTSD CONSTF64_1(), Z10
+  VMULPD Z11, Z2, K1, Z2
+  VMULPD Z11, Z3, K2, Z3
+
+  BC_FAST_SIN_4ULP(Z4, Z5, Z2, Z3)
+
+  // Truncate to [-0.9999, 0.9999] to avoid infinity in border cases.
+  VBROADCASTSD CONSTF64_0p9999(), Z11
+  VBROADCASTSD CONSTF64_MINUS_0p9999(), Z12
+  VMINPD Z11, Z4, Z4
+  VMINPD Z11, Z5, Z5
+  VMAXPD Z12, Z4, Z4
+  VMAXPD Z12, Z5, Z5
+
+  // Z6/Z7 <- 1 - SIN(lat)
+  VSUBPD Z4, Z10, Z6
+  VSUBPD Z5, Z10, Z7
+
+  // Z4/Z5 <- 1 + SIN(lat)
+  VADDPD Z4, Z10, Z4
+  VADDPD Z5, Z10, Z5
+
+  // Z4/Z5 <- LN((1 + SIN(lat)) / (1 - SIN(lat)))
+  VDIVPD Z6, Z4, Z6
+  VDIVPD Z7, Z5, Z7
+  BC_FAST_LN_4ULP(Z4, Z5, Z6, Z7)
+
+  VBROADCASTSD CONSTF64_281474976710656_DIV_4PI(), Z10
+  VBROADCASTSD CONSTF64_140737488355328(), Z11
+  VFNMADD213PD Z11, Z10, Z4 // Z4 = Z11 - (Z10 * Z4)
+  VFNMADD213PD Z11, Z10, Z5 // Z5 = Z11 - (Z10 * Z5)
+
+  VBROADCASTSD CONSTF64_281474976710656_DIV_360(), Z10
+  VCVTPD2UQQ.RZ_SAE Z4, Z4
+  VCVTPD2UQQ.RZ_SAE Z5, Z5
+
+  // Z6/Z7 <- Projected longitude to X.
+  VMOVUPD 0(VIRT_VALUES)(R8*1), Z6
+  VMOVUPD 64(VIRT_VALUES)(R8*1), Z7
+  VFMADD132PD.RZ_SAE Z10, Z11, K1, Z6
+  VFMADD132PD.RZ_SAE Z10, Z11, K2, Z7
+
+  VCVTPD2UQQ.RZ_SAE Z6, Z6
+  VCVTPD2UQQ.RZ_SAE Z7, Z7
+
+  // Z8/Z9 <- Clamped precision.
+  VPXORQ X10, X10, X10
+  VPBROADCASTQ CONST_GEO_TILE_MAX_PRECISION(), Z11
+  VPMAXSQ Z10, Z8, Z8
+  VPMAXSQ Z10, Z9, Z9
+  VPMINSQ Z11, Z8, Z8
+  VPMINSQ Z11, Z9, Z9
+
+  VPBROADCASTQ CONSTQ_0x0000FFFFFFFFFFFF(), Z10
+  VPBROADCASTQ CONSTQ_48(), Z11
+  VPMINSQ Z10, Z4, Z4
+  VPMINSQ Z10, Z5, Z5
+
+  // Z8/Z9 <- How many bits to shift X and Y to get the desired precision.
+  VPSUBQ Z8, Z11, Z10
+  VPSUBQ Z9, Z11, Z11
+
+  // Z4/Z5 <- Y bits.
+  // Z6/Z7 <- X bits.
+  VPSRLVQ Z10, Z4, Z4
+  VPSRLVQ Z11, Z5, Z5
+  VPSRLVQ Z10, Z6, Z6
+  VPSRLVQ Z11, Z7, Z7
+
+  // We have two 32-bit numbers in Z4/Z5 and Z6/Z7 representing Y/X tiles. We can
+  // use the same approach as we use in 'i64tostr' instruction, however, it's
+  // slightly different as we need to stringify only 32-bit unsigned numbers (so
+  // no sign handling, for example) and one value representing the precision,
+  // which only requires 1-2 digits.
+  //
+  // Stringifying a 32-bit number can be split into the following
+  //
+  //   - stringify low 8 characters
+  //   - stringify high 2 characters.
+  //
+  // This means that we need four registers to strinfigy low 8-char X/Y tiles,
+  // and two registers to strinfigy the rest, which represents 2 high characters
+  // of latitude and longitude, and 2 characters of precision. We do a bit of
+  // shuffling to actually only need one register pair to stringify the remaining
+  // 2 high characters of latitude and longitude, and also the whole precision as
+  // it's guaranteed to be less than 100.
+
+  VPBROADCASTQ CONSTQ_1441151881(), Z17
+  VPBROADCASTQ CONSTQ_100000000(), Z13
+
+  VPMULUDQ Z17, Z4, Z14
+  VPMULUDQ Z17, Z5, Z15
+  VPMULUDQ Z17, Z6, Z16
+  VPMULUDQ Z17, Z7, Z17
+
+  // Z14/Z15 - Y / 100000000 (high 2 chars)
+  // Z16/Z17 - X / 100000000 (high 2 chars)
+  VPSRLQ $57, Z14, Z14
+  VPSRLQ $57, Z15, Z15
+  VPSRLQ $57, Z16, Z16
+  VPSRLQ $57, Z17, Z17
+
+  VPMULUDQ Z13, Z14, Z10
+  VPMULUDQ Z13, Z15, Z11
+  VPMULUDQ Z13, Z16, Z12
+  VPMULUDQ Z13, Z17, Z13
+
+  // Z4/Z5 - Y % 100000000 (low 8 chars)
+  // Z6/Z7 - X % 100000000 (low 8 chars)
+  VPSUBQ Z10, Z4, Z4
+  VPSUBQ Z11, Z5, Z5
+  VPSUBQ Z12, Z6, Z6
+  VPSUBQ Z13, Z7, Z7
+
+  // Z14/Z15 <- [0][Z][X][Y]
+  VPSLLQ $16, Z16, Z16
+  VPSLLQ $16, Z17, Z17
+  VPSLLQ $32, Z8, Z8
+  VPSLLQ $32, Z9, Z9
+
+  VPTERNLOGQ $0xFE, Z16, Z14, Z8 // Z14 = Z14 | Z16 | Z8
+  VPTERNLOGQ $0xFE, Z17, Z15, Z9 // Z15 = Z15 | Z17 | Z9
+
+  // Stringify
+  // ---------
+
+  BC_UINT_TO_STR_STEP_10000_PREPARE(OUT(Z26), OUT(Z27))
+  BC_UINT_TO_STR_STEP_10000_4X(IN_OUT(Z4), IN_OUT(Z5), IN_OUT(Z6), IN_OUT(Z7), IN(Z26), IN(Z27), CLOBBER(Z22), CLOBBER(Z23), CLOBBER(Z24), CLOBBER(Z25))
+
+  BC_UINT_TO_STR_STEP_100_PREPARE(OUT(Z26), OUT(Z27))
+  BC_UINT_TO_STR_STEP_100_4X(IN_OUT(Z4), IN_OUT(Z5), IN_OUT(Z6), IN_OUT(Z7), IN(Z26), IN(Z27), CLOBBER(Z22), CLOBBER(Z23), CLOBBER(Z24), CLOBBER(Z25))
+
+  BC_UINT_TO_STR_STEP_10_PREPARE(OUT(Z26), OUT(Z27))
+  BC_UINT_TO_STR_STEP_10_6X(IN_OUT(Z4), IN_OUT(Z5), IN_OUT(Z6), IN_OUT(Z7), IN_OUT(Z8), IN_OUT(Z9), IN(Z26), IN(Z27), CLOBBER(Z22), CLOBBER(Z23), CLOBBER(Z24), CLOBBER(Z25))
+
+  // Prepare Outputs
+  // ---------------
+
+  VPBROADCASTQ R15, Z21
+  VPBROADCASTQ CONSTQ_64(), Z24
+  VPBROADCASTD CONSTD_7(), Z25
+  VPSLLQ.BCST $56, CONSTQ_1(), Z26
+
+  VPADDQ.Z CONST_GET_PTR(consts_offsets_q_32, 8), Z21, K1, Z20
+  VPADDQ.Z CONST_GET_PTR(consts_offsets_q_32, 8+64), Z21, K2, Z21
+
+  // Prepend "/Y"
+  // ------------
+
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z27
+  VPSHUFB Z27, Z4, Z10
+  VPSHUFB Z27, Z5, Z11
+  VPORQ Z24, Z10, Z10
+  VPORQ Z24, Z11, Z11
+
+  VBROADCASTI32X4 CONST_GET_PTR(const_geotilees_extract_u16_bswap, 0), Z13
+  VPSHUFB Z13, Z8, Z12
+  VPSHUFB Z13, Z9, Z13
+
+  VPLZCNTQ Z12, Z12
+  VPLZCNTQ Z13, Z13
+
+  VPCMPEQQ Z24, Z12, K3
+  VPCMPEQQ Z24, Z13, K4
+
+  VPLZCNTQ.Z Z10, K3, Z10
+  VPLZCNTQ.Z Z11, K4, Z11
+
+  VPANDNQ Z10, Z25, Z10
+  VPANDNQ Z11, Z25, Z11
+  VPANDNQ Z12, Z25, Z12
+  VPANDNQ Z13, Z25, Z13
+
+  VPSUBQ Z10, Z24, Z14
+  VPSUBQ Z11, Z24, Z15
+  VPSUBQ Z12, Z24, Z16
+  VPSUBQ Z13, Z24, Z17
+
+  VPSRLVQ Z14, Z26, Z10
+  VPSRLVQ Z15, Z26, Z11
+  VPSRLVQ Z16, Z26, Z12
+  VPSRLVQ Z17, Z26, Z13
+
+  VPADDQ Z14, Z16, Z14
+  VPADDQ Z15, Z17, Z15
+  VPSRLQ $3, Z14, Z14
+  VPSRLQ $3, Z15, Z15
+  VPADDQ.BCST CONSTQ_1(), Z14, Z22
+  VPADDQ.BCST CONSTQ_1(), Z15, Z23
+
+  VBROADCASTI32X4 CONST_GET_PTR(const_geotilees_extract_u16, 0), Z15
+  VPSHUFB Z15, Z8, Z14
+  VPSHUFB Z15, Z9, Z15
+
+  VPSUBB Z10, Z4, Z4
+  VPSUBB Z11, Z5, Z5
+  VPSUBB Z12, Z14, Z12
+  VPSUBB Z13, Z15, Z13
+
+  VPBROADCASTB CONSTD_48(), Z27
+  VPADDB Z27, Z4, Z4
+  VPADDB Z27, Z5, Z5
+  KMOVB K1, K3
+  KMOVB K2, K4
+  VPSCATTERQQ Z4, K3, -8(SI)(Z20*1)
+  VPSCATTERQQ Z5, K4, -8(SI)(Z21*1)
+
+  VPADDB Z27, Z12, Z12
+  VPADDB Z27, Z13, Z13
+  KMOVB K1, K3
+  KMOVB K2, K4
+  VPSCATTERQQ Z12, K3, -16(SI)(Z20*1)
+  VPSCATTERQQ Z13, K4, -16(SI)(Z21*1)
+
+  VPSUBQ Z22, Z20, Z20
+  VPSUBQ Z23, Z21, Z21
+
+  // Prepend "/X"
+  // ------------
+
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z27
+  VPSHUFB Z27, Z6, Z10
+  VPSHUFB Z27, Z7, Z11
+  VPORQ Z24, Z10, Z10
+  VPORQ Z24, Z11, Z11
+
+  VBROADCASTI32X4 CONST_GET_PTR(const_geotilees_extract_u16_bswap, 16), Z13
+  VPSHUFB Z13, Z8, Z12
+  VPSHUFB Z13, Z9, Z13
+
+  VPLZCNTQ Z12, Z12
+  VPLZCNTQ Z13, Z13
+
+  VPCMPEQQ Z24, Z12, K3
+  VPCMPEQQ Z24, Z13, K4
+
+  VPLZCNTQ.Z Z10, K3, Z10
+  VPLZCNTQ.Z Z11, K4, Z11
+
+  VPANDNQ Z10, Z25, Z10
+  VPANDNQ Z11, Z25, Z11
+  VPANDNQ Z12, Z25, Z12
+  VPANDNQ Z13, Z25, Z13
+
+  VPSUBQ Z10, Z24, Z14
+  VPSUBQ Z11, Z24, Z15
+  VPSUBQ Z12, Z24, Z16
+  VPSUBQ Z13, Z24, Z17
+
+  VPSRLVQ Z14, Z26, Z10
+  VPSRLVQ Z15, Z26, Z11
+  VPSRLVQ Z16, Z26, Z12
+  VPSRLVQ Z17, Z26, Z13
+
+  VPADDQ Z14, Z16, Z14
+  VPADDQ Z15, Z17, Z15
+  VPSRLQ $3, Z14, Z14
+  VPSRLQ $3, Z15, Z15
+  VPADDQ.BCST CONSTQ_1(), Z14, Z22
+  VPADDQ.BCST CONSTQ_1(), Z15, Z23
+
+  VBROADCASTI32X4 CONST_GET_PTR(const_geotilees_extract_u16, 16), Z15
+  VPSHUFB Z15, Z8, Z14
+  VPSHUFB Z15, Z9, Z15
+
+  VPSUBB Z10, Z6, Z6
+  VPSUBB Z11, Z7, Z7
+  VPSUBB Z12, Z14, Z12
+  VPSUBB Z13, Z15, Z13
+
+  VPBROADCASTB CONSTD_48(), Z27
+  VPADDB Z27, Z6, Z6
+  VPADDB Z27, Z7, Z7
+  KMOVB K1, K3
+  KMOVB K2, K4
+  VPSCATTERQQ Z6, K3, -8(SI)(Z20*1)
+  VPSCATTERQQ Z7, K4, -8(SI)(Z21*1)
+
+  VPADDB Z27, Z12, Z12
+  VPADDB Z27, Z13, Z13
+  KMOVB K1, K3
+  KMOVB K2, K4
+  VPSCATTERQQ Z12, K3, -16(SI)(Z20*1)
+  VPSCATTERQQ Z13, K4, -16(SI)(Z21*1)
+
+  VPSUBQ Z22, Z20, Z20
+  VPSUBQ Z23, Z21, Z21
+
+  // Prepend "/Z"
+  // ------------
+
+  VBROADCASTI32X4 CONST_GET_PTR(const_geotilees_extract_u16_bswap, 32), Z13
+  VPSHUFB Z13, Z8, Z12
+  VPSHUFB Z13, Z9, Z13
+  VPORQ Z24, Z12, Z12
+  VPORQ Z24, Z13, Z13
+
+  VPLZCNTQ Z12, Z12
+  VPLZCNTQ Z13, Z13
+
+  VPANDNQ Z12, Z25, Z12
+  VPANDNQ Z13, Z25, Z13
+
+  VPSUBQ Z12, Z24, Z16
+  VPSUBQ Z13, Z24, Z17
+
+  VPSRLVQ Z16, Z26, Z12
+  VPSRLVQ Z17, Z26, Z13
+
+  VPSRLQ $3, Z16, Z22
+  VPSRLQ $3, Z17, Z23
+
+  VPSLLQ $16, Z8, Z12
+  VPSLLQ $16, Z9, Z13
+
+  VPBROADCASTB CONSTD_48(), Z27
+  VPADDB Z27, Z12, Z12
+  VPADDB Z27, Z13, Z13
+  KMOVB K1, K3
+  KMOVB K2, K4
+  VPSCATTERQQ Z12, K3, -8(SI)(Z20*1)
+  VPSCATTERQQ Z13, K4, -8(SI)(Z21*1)
+
+  VPSUBQ Z22, Z20, Z20
+  VPSUBQ Z23, Z21, Z21
+
+  // Finalize
+  // --------
+
+  // This calculates the length of each output string based on the current indexes
+  // in Z20/Z21 by subtracting them from the initial state (the end of each string).
+  VPMOVQD Z20, Y20
+  VPMOVQD Z21, Y21
+  VINSERTI32X8 $1, Y21, Z20, Z20
+  VPBROADCASTD R15, K1, Z3
+
+  VMOVDQA32.Z Z20, K1, Z2
+  VPADDD CONST_GET_PTR(consts_offsets_d_32, 4), Z3, K1, Z3
+  VPSUBD Z2, Z3, K1, Z3
+
+  NEXT_ADVANCE(4)
 
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)

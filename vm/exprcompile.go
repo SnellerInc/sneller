@@ -812,9 +812,10 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			return nil, err
 		}
 		return p.DateToUnixMicro(arg), nil
-	case expr.GeoHash:
+
+	case expr.GeoHash, expr.GeoTileES:
 		if len(args) != 3 {
-			return nil, fmt.Errorf("GEO_HASH requires 3 arguments, %d given", len(args))
+			return nil, fmt.Errorf("%s requires 3 arguments, %d given", fn, len(args))
 		}
 
 		arg0, err1 := p.compileAsNumber(args[0])
@@ -832,11 +833,17 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			return nil, err3
 		}
 
-		return p.GeoHash(arg0, arg1, arg2), nil
+		var val *value
+		if fn == expr.GeoHash {
+			val = p.GeoHash(arg0, arg1, arg2)
+		} else {
+			val = p.GeoTileES(arg0, arg1, arg2)
+		}
+		return val, nil
 
-	case expr.GeoGridIndex:
-		if len(args) != 3 {
-			return nil, fmt.Errorf("GEO_GRID_INDEX requires 3 arguments, %d given", len(args))
+	case expr.GeoTileX, expr.GeoTileY:
+		if len(args) != 2 {
+			return nil, fmt.Errorf("%s must have exactly 2 arguments", fn)
 		}
 
 		arg0, err1 := p.compileAsNumber(args[0])
@@ -849,12 +856,15 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			return nil, err2
 		}
 
-		arg2, err3 := p.compileAsNumber(args[2])
-		if err3 != nil {
-			return nil, err3
+		var val *value
+		if fn == expr.GeoTileX {
+			val = p.GeoTileX(arg0, arg1)
+		} else {
+			val = p.GeoTileY(arg0, arg1)
 		}
 
-		return p.GeoGridI(arg0, arg1, arg2), nil
+		return val, nil
+
 	case expr.ObjectSize:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("SIZE does not accept %d arguments", len(args))

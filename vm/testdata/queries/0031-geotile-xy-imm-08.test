@@ -1,10 +1,9 @@
 SELECT
-  GEO_GRID_INDEX(lat, lon, 5) AS bits, name
+  name,
+  GEO_TILE_X(lon, 8) AS x,
+  GEO_TILE_Y(lat, 8) AS y
 FROM
   input
-ORDER BY
-  name
-LIMIT 1000
 ---
 {"country": "NL", "name": "Amsterdam", "lat": 52.37403, "lon": 4.88969}
 {"country": "GR", "name": "Athens", "lat": 37.97945, "lon": 23.71622}
@@ -38,34 +37,34 @@ LIMIT 1000
 {"country": "HR", "name": "Zagreb", "lat": 45.81444, "lon": 15.97798}
 {"country": "CH", "name": "Zürich", "lat": 47.36667, "lon": 8.55}
 ---
-{"name": "Amsterdam", "bits": 1840}
-{"name": "Athens", "bits": 1746}
-{"name": "Berlin", "bits": 1841}
-{"name": "Bratislava", "bits": 1809}
-{"name": "Brussels", "bits": 1840}
-{"name": "Bucharest", "bits": 1778}
-{"name": "Budapest", "bits": 1809}
-{"name": "Chisinau", "bits": 1810}
-{"name": "Copenhagen", "bits": 1841}
-{"name": "Dublin", "bits": 1839}
-{"name": "Helsinki", "bits": 1874}
-{"name": "Lisbon", "bits": 1743}
-{"name": "Ljubljana", "bits": 1809}
-{"name": "London", "bits": 1839}
-{"name": "Luxembourg", "bits": 1808}
-{"name": "Madrid", "bits": 1775}
-{"name": "Monaco", "bits": 1776}
-{"name": "Nicosia", "bits": 1746}
-{"name": "Oslo", "bits": 1872}
-{"name": "Paris", "bits": 1808}
-{"name": "Prague", "bits": 1809}
-{"name": "Reykjavík", "bits": 1902}
-{"name": "Riga", "bits": 1874}
-{"name": "Rome", "bits": 1777}
-{"name": "Sofia", "bits": 1778}
-{"name": "Tallinn", "bits": 1874}
-{"name": "Vienna", "bits": 1809}
-{"name": "Warsaw", "bits": 1841}
-{"name": "Washington, D.C.", "bits": 1737}
-{"name": "Zagreb", "bits": 1809}
-{"name": "Zürich", "bits": 1808}
+{"name": "Amsterdam", "x": 131, "y": 84}
+{"name": "Athens", "x": 144, "y": 98}
+{"name": "Berlin", "x": 137, "y": 83}
+{"name": "Bratislava", "x": 140, "y": 88}
+{"name": "Brussels", "x": 131, "y": 85}
+{"name": "Bucharest", "x": 146, "y": 92}
+{"name": "Budapest", "x": 141, "y": 89}
+{"name": "Chisinau", "x": 148, "y": 90}
+{"name": "Copenhagen", "x": 136, "y": 80}
+{"name": "Dublin", "x": 123, "y": 82}
+{"name": "Helsinki", "x": 145, "y": 74}
+{"name": "Lisbon", "x": 121, "y": 98}
+{"name": "Ljubljana", "x": 138, "y": 91}
+{"name": "London", "x": 127, "y": 85}
+{"name": "Luxembourg", "x": 132, "y": 87}
+{"name": "Madrid", "x": 125, "y": 96}
+{"name": "Monaco", "x": 133, "y": 93}
+{"name": "Nicosia", "x": 151, "y": 101}
+{"name": "Oslo", "x": 135, "y": 74}
+{"name": "Paris", "x": 129, "y": 88}
+{"name": "Prague", "x": 138, "y": 86}
+{"name": "Reykjavík", "x": 112, "y": 68}
+{"name": "Riga", "x": 145, "y": 78}
+{"name": "Rome", "x": 136, "y": 95}
+{"name": "Sofia", "x": 144, "y": 94}
+{"name": "Tallinn", "x": 145, "y": 75}
+{"name": "Vienna", "x": 139, "y": 88}
+{"name": "Warsaw", "x": 142, "y": 84}
+{"name": "Washington, D.C.", "x": 73, "y": 97}
+{"name": "Zagreb", "x": 139, "y": 91}
+{"name": "Zürich", "x": 134, "y": 89}
