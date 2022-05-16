@@ -89,6 +89,10 @@ type binfo struct {
 	// be created during parsing; it can
 	// only be created by the query planner
 	private bool
+
+	// isTable is set if this builtin
+	// is expected only in the table position
+	isTable bool
 }
 
 type BuiltinOp int
@@ -955,8 +959,13 @@ var builtinInfo = [maxBuiltin]binfo{
 
 	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType},
 
-	TableGlob:    {check: checkTableGlob, ret: AnyType},
-	TablePattern: {check: checkTablePattern, ret: AnyType},
+	TableGlob:    {check: checkTableGlob, ret: AnyType, isTable: true},
+	TablePattern: {check: checkTablePattern, ret: AnyType, isTable: true},
+}
+
+func (b *Builtin) isTable() bool {
+	i := b.info()
+	return i == nil || i.isTable
 }
 
 func (b *Builtin) info() *binfo {

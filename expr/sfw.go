@@ -392,7 +392,7 @@ func (s *Select) walk(v Visitor) {
 	// walking happens in PartiQL binding order:
 	// from -> where -> groupby -> select -> orderby -> limit
 	if s.From != nil {
-		s.From.walk(v)
+		Walk(v, s.From)
 	}
 	if s.Where != nil {
 		Walk(v, s.Where)

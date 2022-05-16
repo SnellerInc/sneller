@@ -90,8 +90,37 @@ type checker interface {
 }
 
 type checkwalk struct {
-	errors []error
-	hint   Hint
+	errors  []error
+	hint    Hint
+	inTable bool
+	tdepth  int
+}
+
+type checktable struct {
+	parent *checkwalk
+}
+
+func (c *checktable) errorf(f string, args ...interface{}) {
+	c.parent.errors = append(c.parent.errors, errsyntaxf(f, args...))
+}
+
+func (c *checktable) Visit(n Node) Visitor {
+	// TODO: allow list literals in table position
+	switch t := n.(type) {
+	case *Builtin:
+		if !t.isTable() {
+			c.errorf("cannot use %s in table position", ToString(n))
+			return nil
+		}
+	case *Path:
+		// ok
+	case *Select:
+		// ok
+	default:
+		errsyntaxf("cannot use %s in table position", n)
+		return nil
+	}
+	return c.parent
 }
 
 func (c *checkwalk) Visit(n Node) Visitor {
@@ -105,6 +134,15 @@ func (c *checkwalk) Visit(n Node) Visitor {
 			c.errors = append(c.errors, err)
 			return nil
 		}
+	}
+	if b, ok := n.(*Builtin); ok {
+		if b.isTable() {
+			c.errors = append(c.errors, errsyntaxf("cannot use %s in non-table position", ToString(n)))
+			return nil
+		}
+	}
+	if _, ok := n.(*Table); ok {
+		return &checktable{parent: c}
 	}
 	return c
 }
@@ -129,6 +167,9 @@ func Check(n Node) error {
 func CheckHint(n Node, h Hint) error {
 	c := &checkwalk{hint: h}
 	Walk(c, n)
+	if c.inTable || c.tdepth > 0 {
+		return fmt.Errorf("expr.Check: unexpected table depth %d", c.tdepth)
+	}
 	if c.errors == nil {
 		return nil
 	}
