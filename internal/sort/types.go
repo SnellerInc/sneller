@@ -63,6 +63,22 @@ type IonRecord struct {
 	SymtabID int
 }
 
+func setSlice[T any](v *[]T, other []T) {
+	if cap(*v) >= len(other) {
+		*v = (*v)[:len(other)]
+	} else {
+		*v = make([]T, len(other))
+	}
+	copy((*v), other)
+}
+
+func (r *IonRecord) set(other *IonRecord) {
+	setSlice(&r.FieldDelims, other.FieldDelims)
+	setSlice(&r.Raw, other.Raw)
+	r.Boxed = other.Boxed
+	r.SymtabID = other.SymtabID
+}
+
 // Bytes returns Ion bytes
 func (r *IonRecord) Bytes() []byte {
 	return r.Raw[int(r.Boxed):]

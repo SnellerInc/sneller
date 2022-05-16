@@ -75,12 +75,10 @@ func (k *Ktop) add(rec *IonRecord, copyrec bool) bool {
 		return true
 	}
 
-	// new record less than max - add it to the heap and discard the current max
+	// new record less than max - overwite the max record
+	// and then fix the heap to preserve the ordering
 	if k.recGreater(&k.records[k.indirect[0]], rec) {
-		if copyrec {
-			rec.snapshot()
-		}
-		k.records[k.indirect[0]] = *rec
+		k.records[k.indirect[0]].set(rec)
 		heap.FixSlice(k.indirect, 0, k.greater)
 		return true
 	}
