@@ -332,6 +332,8 @@ const (
 	sgeotiley
 	sgeotilees
 	sgeotileesimm
+	sgeodistance
+
 	sobjectsize // built-in function SIZE()
 
 	sboxmask   // box a mask
@@ -827,6 +829,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitGeoTileXY},
 	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitGeoHash},
 	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitGeoHashImm},
+	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitGeoDistance},
 
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
 
@@ -3051,6 +3054,16 @@ func (p *prog) GeoTileES(latitude, longitude, precision *value) *value {
 	return p.ssa4(sgeotilees, latV, lonV, charsV, mask)
 }
 
+func (p *prog) GeoDistance(latitude1, longitude1, latitude2, longitude2 *value) *value {
+	lat1V, lat1M := p.coercefp(latitude1)
+	lon1V, lon1M := p.coercefp(longitude1)
+	lat2V, lat2M := p.coercefp(latitude2)
+	lon2V, lon2M := p.coercefp(longitude2)
+
+	mask := p.And(p.And(lat1M, lon1M), p.And(lat2M, lon2M))
+	return p.ssa5(sgeodistance, lat1V, lon1V, lat2V, lon2V, mask)
+}
+
 func emitAddMulImmI(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // t0
 	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
@@ -3121,6 +3134,22 @@ func emitGeoTileXY(v *value, c *compilestate) {
 	c.loads(v, arg0)
 	c.clobbers(v)
 	c.ops16(v, bc, arg1Slot)
+}
+
+func emitGeoDistance(v *value, c *compilestate) {
+	arg0 := v.args[0]                            // lat1
+	arg1Slot := c.forceStackRef(v.args[1], regS) // lon1
+	arg2Slot := c.forceStackRef(v.args[2], regS) // lat2
+	arg3Slot := c.forceStackRef(v.args[3], regS) // lon2
+	mask := v.args[4]                            // predicate
+
+	info := ssainfo[v.op]
+	bc := info.bc
+
+	c.loadk(v, mask)
+	c.loads(v, arg0)
+	c.clobbers(v)
+	c.ops16s16s16(v, bc, arg1Slot, arg2Slot, arg3Slot)
 }
 
 func emitdatediffparam(v *value, c *compilestate) {

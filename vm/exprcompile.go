@@ -841,6 +841,33 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 		return val, nil
 
+	case expr.GeoDistance:
+		if len(args) != 4 {
+			return nil, fmt.Errorf("%s requires 4 arguments, %d given", fn, len(args))
+		}
+
+		arg0, err0 := p.compileAsNumber(args[0])
+		if err0 != nil {
+			return nil, err0
+		}
+
+		arg1, err1 := p.compileAsNumber(args[1])
+		if err1 != nil {
+			return nil, err1
+		}
+
+		arg2, err2 := p.compileAsNumber(args[2])
+		if err2 != nil {
+			return nil, err2
+		}
+
+		arg3, err3 := p.compileAsNumber(args[3])
+		if err3 != nil {
+			return nil, err3
+		}
+
+		return p.GeoDistance(arg0, arg1, arg2, arg3), nil
+
 	case expr.GeoTileX, expr.GeoTileY:
 		if len(args) != 2 {
 			return nil, fmt.Errorf("%s must have exactly 2 arguments", fn)

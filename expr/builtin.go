@@ -193,6 +193,7 @@ const (
 	GeoTileX
 	GeoTileY
 	GeoTileES
+	GeoDistance
 
 	ObjectSize // SIZE(x)
 
@@ -299,6 +300,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"GEO_TILE_X":               GeoTileX,
 	"GEO_TILE_Y":               GeoTileY,
 	"GEO_TILE_ES":              GeoTileES,
+	"GEO_DISTANCE":             GeoDistance,
 	"IN_SUBQUERY":              InSubquery,
 	"HASH_LOOKUP":              HashLookup,
 	"IN_REPLACEMENT":           InReplacement,
@@ -935,10 +937,11 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateToUnixEpoch:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixEpoch},
 	DateToUnixMicro:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixMicro},
 
-	GeoHash:   {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
-	GeoTileX:  {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},
-	GeoTileY:  {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},
-	GeoTileES: {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
+	GeoHash:     {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
+	GeoTileX:    {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},
+	GeoTileY:    {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},
+	GeoTileES:   {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
+	GeoDistance: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: FloatType | MissingType},
 
 	ObjectSize: {check: checkObjectSize, ret: NumericType | MissingType, simplify: simplifyObjectSize},
 

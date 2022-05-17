@@ -1,0 +1,938 @@
+SELECT
+  "from",
+  "to",
+  FLOOR(GEO_DISTANCE(fromLat, fromLon, toLat, toLon) / 1000) AS distance_km
+FROM
+  input
+---
+{"from": "Athens", "to": "Amsterdam", "fromLat": 37.97945, "fromLon": 23.71622, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Berlin", "to": "Amsterdam", "fromLat": 52.52437, "fromLon": 13.41053, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Berlin", "to": "Athens", "fromLat": 52.52437, "fromLon": 13.41053, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Bratislava", "to": "Amsterdam", "fromLat": 48.14816, "fromLon": 17.10674, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Bratislava", "to": "Athens", "fromLat": 48.14816, "fromLon": 17.10674, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Bratislava", "to": "Berlin", "fromLat": 48.14816, "fromLon": 17.10674, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Brussels", "to": "Amsterdam", "fromLat": 50.85045, "fromLon": 4.34878, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Brussels", "to": "Athens", "fromLat": 50.85045, "fromLon": 4.34878, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Brussels", "to": "Berlin", "fromLat": 50.85045, "fromLon": 4.34878, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Brussels", "to": "Bratislava", "fromLat": 50.85045, "fromLon": 4.34878, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Bucharest", "to": "Amsterdam", "fromLat": 44.43225, "fromLon": 26.10626, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Bucharest", "to": "Athens", "fromLat": 44.43225, "fromLon": 26.10626, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Bucharest", "to": "Berlin", "fromLat": 44.43225, "fromLon": 26.10626, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Bucharest", "to": "Bratislava", "fromLat": 44.43225, "fromLon": 26.10626, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Bucharest", "to": "Brussels", "fromLat": 44.43225, "fromLon": 26.10626, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Budapest", "to": "Amsterdam", "fromLat": 47.49801, "fromLon": 19.03991, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Budapest", "to": "Athens", "fromLat": 47.49801, "fromLon": 19.03991, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Budapest", "to": "Berlin", "fromLat": 47.49801, "fromLon": 19.03991, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Budapest", "to": "Bratislava", "fromLat": 47.49801, "fromLon": 19.03991, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Budapest", "to": "Brussels", "fromLat": 47.49801, "fromLon": 19.03991, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Budapest", "to": "Bucharest", "fromLat": 47.49801, "fromLon": 19.03991, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Chisinau", "to": "Amsterdam", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Chisinau", "to": "Athens", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Chisinau", "to": "Berlin", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Chisinau", "to": "Bratislava", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Chisinau", "to": "Brussels", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Chisinau", "to": "Bucharest", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Chisinau", "to": "Budapest", "fromLat": 47.00556, "fromLon": 28.8575, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Copenhagen", "to": "Amsterdam", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Copenhagen", "to": "Athens", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Copenhagen", "to": "Berlin", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Copenhagen", "to": "Bratislava", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Copenhagen", "to": "Brussels", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Copenhagen", "to": "Bucharest", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Copenhagen", "to": "Budapest", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Copenhagen", "to": "Chisinau", "fromLat": 55.67594, "fromLon": 12.56553, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Dublin", "to": "Amsterdam", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Dublin", "to": "Athens", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Dublin", "to": "Berlin", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Dublin", "to": "Bratislava", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Dublin", "to": "Brussels", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Dublin", "to": "Bucharest", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Dublin", "to": "Budapest", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Dublin", "to": "Chisinau", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Dublin", "to": "Copenhagen", "fromLat": 53.33306, "fromLon": -6.24889, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Helsinki", "to": "Amsterdam", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Helsinki", "to": "Athens", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Helsinki", "to": "Berlin", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Helsinki", "to": "Bratislava", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Helsinki", "to": "Brussels", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Helsinki", "to": "Bucharest", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Helsinki", "to": "Budapest", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Helsinki", "to": "Chisinau", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Helsinki", "to": "Copenhagen", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Helsinki", "to": "Dublin", "fromLat": 60.16952, "fromLon": 24.93545, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Lisbon", "to": "Amsterdam", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Lisbon", "to": "Athens", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Lisbon", "to": "Berlin", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Lisbon", "to": "Bratislava", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Lisbon", "to": "Brussels", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Lisbon", "to": "Bucharest", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Lisbon", "to": "Budapest", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Lisbon", "to": "Chisinau", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Lisbon", "to": "Copenhagen", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Lisbon", "to": "Dublin", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Lisbon", "to": "Helsinki", "fromLat": 38.71667, "fromLon": -9.13333, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Ljubljana", "to": "Amsterdam", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Ljubljana", "to": "Athens", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Ljubljana", "to": "Berlin", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Ljubljana", "to": "Bratislava", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Ljubljana", "to": "Brussels", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Ljubljana", "to": "Bucharest", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Ljubljana", "to": "Budapest", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Ljubljana", "to": "Chisinau", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Ljubljana", "to": "Copenhagen", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Ljubljana", "to": "Dublin", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Ljubljana", "to": "Helsinki", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Ljubljana", "to": "Lisbon", "fromLat": 46.05108, "fromLon": 14.50513, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "London", "to": "Amsterdam", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "London", "to": "Athens", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "London", "to": "Berlin", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "London", "to": "Bratislava", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "London", "to": "Brussels", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "London", "to": "Bucharest", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "London", "to": "Budapest", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "London", "to": "Chisinau", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "London", "to": "Copenhagen", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "London", "to": "Dublin", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "London", "to": "Helsinki", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "London", "to": "Lisbon", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "London", "to": "Ljubljana", "fromLat": 51.50853, "fromLon": -0.12574, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Luxembourg", "to": "Amsterdam", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Luxembourg", "to": "Athens", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Luxembourg", "to": "Berlin", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Luxembourg", "to": "Bratislava", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Luxembourg", "to": "Brussels", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Luxembourg", "to": "Bucharest", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Luxembourg", "to": "Budapest", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Luxembourg", "to": "Chisinau", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Luxembourg", "to": "Copenhagen", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Luxembourg", "to": "Dublin", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Luxembourg", "to": "Helsinki", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Luxembourg", "to": "Lisbon", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Luxembourg", "to": "Ljubljana", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Luxembourg", "to": "London", "fromLat": 49.61167, "fromLon": 6.13, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Madrid", "to": "Amsterdam", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Madrid", "to": "Athens", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Madrid", "to": "Berlin", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Madrid", "to": "Bratislava", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Madrid", "to": "Brussels", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Madrid", "to": "Bucharest", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Madrid", "to": "Budapest", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Madrid", "to": "Chisinau", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Madrid", "to": "Copenhagen", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Madrid", "to": "Dublin", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Madrid", "to": "Helsinki", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Madrid", "to": "Lisbon", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Madrid", "to": "Ljubljana", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Madrid", "to": "London", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Madrid", "to": "Luxembourg", "fromLat": 40.4165, "fromLon": -3.70256, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Monaco", "to": "Amsterdam", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Monaco", "to": "Athens", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Monaco", "to": "Berlin", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Monaco", "to": "Bratislava", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Monaco", "to": "Brussels", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Monaco", "to": "Bucharest", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Monaco", "to": "Budapest", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Monaco", "to": "Chisinau", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Monaco", "to": "Copenhagen", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Monaco", "to": "Dublin", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Monaco", "to": "Helsinki", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Monaco", "to": "Lisbon", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Monaco", "to": "Ljubljana", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Monaco", "to": "London", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Monaco", "to": "Luxembourg", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Monaco", "to": "Madrid", "fromLat": 43.73333, "fromLon": 7.41667, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Nicosia", "to": "Amsterdam", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Nicosia", "to": "Athens", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Nicosia", "to": "Berlin", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Nicosia", "to": "Bratislava", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Nicosia", "to": "Brussels", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Nicosia", "to": "Bucharest", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Nicosia", "to": "Budapest", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Nicosia", "to": "Chisinau", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Nicosia", "to": "Copenhagen", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Nicosia", "to": "Dublin", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Nicosia", "to": "Helsinki", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Nicosia", "to": "Lisbon", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Nicosia", "to": "Ljubljana", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Nicosia", "to": "London", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Nicosia", "to": "Luxembourg", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Nicosia", "to": "Madrid", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Nicosia", "to": "Monaco", "fromLat": 35.17531, "fromLon": 33.3642, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Oslo", "to": "Amsterdam", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Oslo", "to": "Athens", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Oslo", "to": "Berlin", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Oslo", "to": "Bratislava", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Oslo", "to": "Brussels", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Oslo", "to": "Bucharest", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Oslo", "to": "Budapest", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Oslo", "to": "Chisinau", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Oslo", "to": "Copenhagen", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Oslo", "to": "Dublin", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Oslo", "to": "Helsinki", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Oslo", "to": "Lisbon", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Oslo", "to": "Ljubljana", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Oslo", "to": "London", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Oslo", "to": "Luxembourg", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Oslo", "to": "Madrid", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Oslo", "to": "Monaco", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Oslo", "to": "Nicosia", "fromLat": 59.91273, "fromLon": 10.74609, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Paris", "to": "Amsterdam", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Paris", "to": "Athens", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Paris", "to": "Berlin", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Paris", "to": "Bratislava", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Paris", "to": "Brussels", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Paris", "to": "Bucharest", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Paris", "to": "Budapest", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Paris", "to": "Chisinau", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Paris", "to": "Copenhagen", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Paris", "to": "Dublin", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Paris", "to": "Helsinki", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Paris", "to": "Lisbon", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Paris", "to": "Ljubljana", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Paris", "to": "London", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Paris", "to": "Luxembourg", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Paris", "to": "Madrid", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Paris", "to": "Monaco", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Paris", "to": "Nicosia", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Paris", "to": "Oslo", "fromLat": 48.85341, "fromLon": 2.3488, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Prague", "to": "Amsterdam", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Prague", "to": "Athens", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Prague", "to": "Berlin", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Prague", "to": "Bratislava", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Prague", "to": "Brussels", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Prague", "to": "Bucharest", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Prague", "to": "Budapest", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Prague", "to": "Chisinau", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Prague", "to": "Copenhagen", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Prague", "to": "Dublin", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Prague", "to": "Helsinki", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Prague", "to": "Lisbon", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Prague", "to": "Ljubljana", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Prague", "to": "London", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Prague", "to": "Luxembourg", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Prague", "to": "Madrid", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Prague", "to": "Monaco", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Prague", "to": "Nicosia", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Prague", "to": "Oslo", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Prague", "to": "Paris", "fromLat": 50.08804, "fromLon": 14.42076, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Reykjavík", "to": "Amsterdam", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Reykjavík", "to": "Athens", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Reykjavík", "to": "Berlin", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Reykjavík", "to": "Bratislava", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Reykjavík", "to": "Brussels", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Reykjavík", "to": "Bucharest", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Reykjavík", "to": "Budapest", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Reykjavík", "to": "Chisinau", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Reykjavík", "to": "Copenhagen", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Reykjavík", "to": "Dublin", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Reykjavík", "to": "Helsinki", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Reykjavík", "to": "Lisbon", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Reykjavík", "to": "Ljubljana", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Reykjavík", "to": "London", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Reykjavík", "to": "Luxembourg", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Reykjavík", "to": "Madrid", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Reykjavík", "to": "Monaco", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Reykjavík", "to": "Nicosia", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Reykjavík", "to": "Oslo", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Reykjavík", "to": "Paris", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Reykjavík", "to": "Prague", "fromLat": 64.13548, "fromLon": -21.89541, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Riga", "to": "Amsterdam", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Riga", "to": "Athens", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Riga", "to": "Berlin", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Riga", "to": "Bratislava", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Riga", "to": "Brussels", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Riga", "to": "Bucharest", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Riga", "to": "Budapest", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Riga", "to": "Chisinau", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Riga", "to": "Copenhagen", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Riga", "to": "Dublin", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Riga", "to": "Helsinki", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Riga", "to": "Lisbon", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Riga", "to": "Ljubljana", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Riga", "to": "London", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Riga", "to": "Luxembourg", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Riga", "to": "Madrid", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Riga", "to": "Monaco", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Riga", "to": "Nicosia", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Riga", "to": "Oslo", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Riga", "to": "Paris", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Riga", "to": "Prague", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Riga", "to": "Reykjavík", "fromLat": 56.946, "fromLon": 24.10589, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Rome", "to": "Amsterdam", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Rome", "to": "Athens", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Rome", "to": "Berlin", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Rome", "to": "Bratislava", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Rome", "to": "Brussels", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Rome", "to": "Bucharest", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Rome", "to": "Budapest", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Rome", "to": "Chisinau", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Rome", "to": "Copenhagen", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Rome", "to": "Dublin", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Rome", "to": "Helsinki", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Rome", "to": "Lisbon", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Rome", "to": "Ljubljana", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Rome", "to": "London", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Rome", "to": "Luxembourg", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Rome", "to": "Madrid", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Rome", "to": "Monaco", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Rome", "to": "Nicosia", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Rome", "to": "Oslo", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Rome", "to": "Paris", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Rome", "to": "Prague", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Rome", "to": "Reykjavík", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Rome", "to": "Riga", "fromLat": 41.89193, "fromLon": 12.51133, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Sofia", "to": "Amsterdam", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Sofia", "to": "Athens", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Sofia", "to": "Berlin", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Sofia", "to": "Bratislava", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Sofia", "to": "Brussels", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Sofia", "to": "Bucharest", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Sofia", "to": "Budapest", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Sofia", "to": "Chisinau", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Sofia", "to": "Copenhagen", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Sofia", "to": "Dublin", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Sofia", "to": "Helsinki", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Sofia", "to": "Lisbon", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Sofia", "to": "Ljubljana", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Sofia", "to": "London", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Sofia", "to": "Luxembourg", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Sofia", "to": "Madrid", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Sofia", "to": "Monaco", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Sofia", "to": "Nicosia", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Sofia", "to": "Oslo", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Sofia", "to": "Paris", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Sofia", "to": "Prague", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Sofia", "to": "Reykjavík", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Sofia", "to": "Riga", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Sofia", "to": "Rome", "fromLat": 42.69751, "fromLon": 23.32415, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Tallinn", "to": "Amsterdam", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Tallinn", "to": "Athens", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Tallinn", "to": "Berlin", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Tallinn", "to": "Bratislava", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Tallinn", "to": "Brussels", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Tallinn", "to": "Bucharest", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Tallinn", "to": "Budapest", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Tallinn", "to": "Chisinau", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Tallinn", "to": "Copenhagen", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Tallinn", "to": "Dublin", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Tallinn", "to": "Helsinki", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Tallinn", "to": "Lisbon", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Tallinn", "to": "Ljubljana", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Tallinn", "to": "London", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Tallinn", "to": "Luxembourg", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Tallinn", "to": "Madrid", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Tallinn", "to": "Monaco", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Tallinn", "to": "Nicosia", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Tallinn", "to": "Oslo", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Tallinn", "to": "Paris", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Tallinn", "to": "Prague", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Tallinn", "to": "Reykjavík", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Tallinn", "to": "Riga", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Tallinn", "to": "Rome", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Tallinn", "to": "Sofia", "fromLat": 59.43696, "fromLon": 24.75353, "toLat": 42.69751, "toLon": 23.32415}
+{"from": "Vienna", "to": "Amsterdam", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Vienna", "to": "Athens", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Vienna", "to": "Berlin", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Vienna", "to": "Bratislava", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Vienna", "to": "Brussels", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Vienna", "to": "Bucharest", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Vienna", "to": "Budapest", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Vienna", "to": "Chisinau", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Vienna", "to": "Copenhagen", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Vienna", "to": "Dublin", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Vienna", "to": "Helsinki", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Vienna", "to": "Lisbon", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Vienna", "to": "Ljubljana", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Vienna", "to": "London", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Vienna", "to": "Luxembourg", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Vienna", "to": "Madrid", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Vienna", "to": "Monaco", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Vienna", "to": "Nicosia", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Vienna", "to": "Oslo", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Vienna", "to": "Paris", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Vienna", "to": "Prague", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Vienna", "to": "Reykjavík", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Vienna", "to": "Riga", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Vienna", "to": "Rome", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Vienna", "to": "Sofia", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 42.69751, "toLon": 23.32415}
+{"from": "Vienna", "to": "Tallinn", "fromLat": 48.20849, "fromLon": 16.37208, "toLat": 59.43696, "toLon": 24.75353}
+{"from": "Warsaw", "to": "Amsterdam", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Warsaw", "to": "Athens", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Warsaw", "to": "Berlin", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Warsaw", "to": "Bratislava", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Warsaw", "to": "Brussels", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Warsaw", "to": "Bucharest", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Warsaw", "to": "Budapest", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Warsaw", "to": "Chisinau", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Warsaw", "to": "Copenhagen", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Warsaw", "to": "Dublin", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Warsaw", "to": "Helsinki", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Warsaw", "to": "Lisbon", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Warsaw", "to": "Ljubljana", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Warsaw", "to": "London", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Warsaw", "to": "Luxembourg", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Warsaw", "to": "Madrid", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Warsaw", "to": "Monaco", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Warsaw", "to": "Nicosia", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Warsaw", "to": "Oslo", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Warsaw", "to": "Paris", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Warsaw", "to": "Prague", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Warsaw", "to": "Reykjavík", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Warsaw", "to": "Riga", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Warsaw", "to": "Rome", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Warsaw", "to": "Sofia", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 42.69751, "toLon": 23.32415}
+{"from": "Warsaw", "to": "Tallinn", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 59.43696, "toLon": 24.75353}
+{"from": "Warsaw", "to": "Vienna", "fromLat": 52.22977, "fromLon": 21.01178, "toLat": 48.20849, "toLon": 16.37208}
+{"from": "Washington, D.C.", "to": "Amsterdam", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Washington, D.C.", "to": "Athens", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Washington, D.C.", "to": "Berlin", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Washington, D.C.", "to": "Bratislava", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Washington, D.C.", "to": "Brussels", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Washington, D.C.", "to": "Bucharest", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Washington, D.C.", "to": "Budapest", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Washington, D.C.", "to": "Chisinau", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Washington, D.C.", "to": "Copenhagen", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Washington, D.C.", "to": "Dublin", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Washington, D.C.", "to": "Helsinki", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Washington, D.C.", "to": "Lisbon", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Washington, D.C.", "to": "Ljubljana", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Washington, D.C.", "to": "London", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Washington, D.C.", "to": "Luxembourg", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Washington, D.C.", "to": "Madrid", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Washington, D.C.", "to": "Monaco", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Washington, D.C.", "to": "Nicosia", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Washington, D.C.", "to": "Oslo", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Washington, D.C.", "to": "Paris", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Washington, D.C.", "to": "Prague", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Washington, D.C.", "to": "Reykjavík", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Washington, D.C.", "to": "Riga", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Washington, D.C.", "to": "Rome", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Washington, D.C.", "to": "Sofia", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 42.69751, "toLon": 23.32415}
+{"from": "Washington, D.C.", "to": "Tallinn", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 59.43696, "toLon": 24.75353}
+{"from": "Washington, D.C.", "to": "Vienna", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 48.20849, "toLon": 16.37208}
+{"from": "Washington, D.C.", "to": "Warsaw", "fromLat": 38.89511, "fromLon": -77.03637, "toLat": 52.22977, "toLon": 21.01178}
+{"from": "Zagreb", "to": "Amsterdam", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Zagreb", "to": "Athens", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Zagreb", "to": "Berlin", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Zagreb", "to": "Bratislava", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Zagreb", "to": "Brussels", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Zagreb", "to": "Bucharest", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Zagreb", "to": "Budapest", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Zagreb", "to": "Chisinau", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Zagreb", "to": "Copenhagen", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Zagreb", "to": "Dublin", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Zagreb", "to": "Helsinki", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Zagreb", "to": "Lisbon", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Zagreb", "to": "Ljubljana", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Zagreb", "to": "London", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Zagreb", "to": "Luxembourg", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Zagreb", "to": "Madrid", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Zagreb", "to": "Monaco", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Zagreb", "to": "Nicosia", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Zagreb", "to": "Oslo", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Zagreb", "to": "Paris", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Zagreb", "to": "Prague", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Zagreb", "to": "Reykjavík", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Zagreb", "to": "Riga", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Zagreb", "to": "Rome", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Zagreb", "to": "Sofia", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 42.69751, "toLon": 23.32415}
+{"from": "Zagreb", "to": "Tallinn", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 59.43696, "toLon": 24.75353}
+{"from": "Zagreb", "to": "Vienna", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 48.20849, "toLon": 16.37208}
+{"from": "Zagreb", "to": "Warsaw", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 52.22977, "toLon": 21.01178}
+{"from": "Zagreb", "to": "Washington, D.C.", "fromLat": 45.81444, "fromLon": 15.97798, "toLat": 38.89511, "toLon": -77.03637}
+{"from": "Zürich", "to": "Amsterdam", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 52.37403, "toLon": 4.88969}
+{"from": "Zürich", "to": "Athens", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 37.97945, "toLon": 23.71622}
+{"from": "Zürich", "to": "Berlin", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 52.52437, "toLon": 13.41053}
+{"from": "Zürich", "to": "Bratislava", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 48.14816, "toLon": 17.10674}
+{"from": "Zürich", "to": "Brussels", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 50.85045, "toLon": 4.34878}
+{"from": "Zürich", "to": "Bucharest", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 44.43225, "toLon": 26.10626}
+{"from": "Zürich", "to": "Budapest", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 47.49801, "toLon": 19.03991}
+{"from": "Zürich", "to": "Chisinau", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 47.00556, "toLon": 28.8575}
+{"from": "Zürich", "to": "Copenhagen", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 55.67594, "toLon": 12.56553}
+{"from": "Zürich", "to": "Dublin", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 53.33306, "toLon": -6.24889}
+{"from": "Zürich", "to": "Helsinki", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 60.16952, "toLon": 24.93545}
+{"from": "Zürich", "to": "Lisbon", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 38.71667, "toLon": -9.13333}
+{"from": "Zürich", "to": "Ljubljana", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 46.05108, "toLon": 14.50513}
+{"from": "Zürich", "to": "London", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 51.50853, "toLon": -0.12574}
+{"from": "Zürich", "to": "Luxembourg", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 49.61167, "toLon": 6.13}
+{"from": "Zürich", "to": "Madrid", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 40.4165, "toLon": -3.70256}
+{"from": "Zürich", "to": "Monaco", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 43.73333, "toLon": 7.41667}
+{"from": "Zürich", "to": "Nicosia", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 35.17531, "toLon": 33.3642}
+{"from": "Zürich", "to": "Oslo", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 59.91273, "toLon": 10.74609}
+{"from": "Zürich", "to": "Paris", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 48.85341, "toLon": 2.3488}
+{"from": "Zürich", "to": "Prague", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 50.08804, "toLon": 14.42076}
+{"from": "Zürich", "to": "Reykjavík", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 64.13548, "toLon": -21.89541}
+{"from": "Zürich", "to": "Riga", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 56.946, "toLon": 24.10589}
+{"from": "Zürich", "to": "Rome", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 41.89193, "toLon": 12.51133}
+{"from": "Zürich", "to": "Sofia", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 42.69751, "toLon": 23.32415}
+{"from": "Zürich", "to": "Tallinn", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 59.43696, "toLon": 24.75353}
+{"from": "Zürich", "to": "Vienna", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 48.20849, "toLon": 16.37208}
+{"from": "Zürich", "to": "Warsaw", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 52.22977, "toLon": 21.01178}
+{"from": "Zürich", "to": "Washington, D.C.", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 38.89511, "toLon": -77.03637}
+{"from": "Zürich", "to": "Zagreb", "fromLat": 47.36667, "fromLon": 8.55, "toLat": 45.81444, "toLon": 15.97798}
+---
+{"from": "Athens", "to": "Amsterdam", "distance_km": 2164}
+{"from": "Berlin", "to": "Amsterdam", "distance_km": 577}
+{"from": "Berlin", "to": "Athens", "distance_km": 1803}
+{"from": "Bratislava", "to": "Amsterdam", "distance_km": 985}
+{"from": "Bratislava", "to": "Athens", "distance_km": 1250}
+{"from": "Bratislava", "to": "Berlin", "distance_km": 552}
+{"from": "Brussels", "to": "Amsterdam", "distance_km": 173}
+{"from": "Brussels", "to": "Athens", "distance_km": 2089}
+{"from": "Brussels", "to": "Berlin", "distance_km": 651}
+{"from": "Brussels", "to": "Bratislava", "distance_km": 967}
+{"from": "Bucharest", "to": "Amsterdam", "distance_km": 1788}
+{"from": "Bucharest", "to": "Athens", "distance_km": 744}
+{"from": "Bucharest", "to": "Berlin", "distance_km": 1294}
+{"from": "Bucharest", "to": "Bratislava", "distance_km": 804}
+{"from": "Bucharest", "to": "Brussels", "distance_km": 1770}
+{"from": "Budapest", "to": "Amsterdam", "distance_km": 1145}
+{"from": "Budapest", "to": "Athens", "distance_km": 1124}
+{"from": "Budapest", "to": "Berlin", "distance_km": 688}
+{"from": "Budapest", "to": "Bratislava", "distance_km": 161}
+{"from": "Budapest", "to": "Brussels", "distance_km": 1128}
+{"from": "Budapest", "to": "Bucharest", "distance_km": 643}
+{"from": "Chisinau", "to": "Amsterdam", "distance_km": 1814}
+{"from": "Chisinau", "to": "Athens", "distance_km": 1087}
+{"from": "Chisinau", "to": "Berlin", "distance_km": 1264}
+{"from": "Chisinau", "to": "Bratislava", "distance_km": 889}
+{"from": "Chisinau", "to": "Brussels", "distance_km": 1831}
+{"from": "Chisinau", "to": "Bucharest", "distance_km": 357}
+{"from": "Chisinau", "to": "Budapest", "distance_km": 742}
+{"from": "Copenhagen", "to": "Amsterdam", "distance_km": 620}
+{"from": "Copenhagen", "to": "Athens", "distance_km": 2136}
+{"from": "Copenhagen", "to": "Berlin", "distance_km": 354}
+{"from": "Copenhagen", "to": "Bratislava", "distance_km": 892}
+{"from": "Copenhagen", "to": "Brussels", "distance_km": 764}
+{"from": "Copenhagen", "to": "Bucharest", "distance_km": 1574}
+{"from": "Copenhagen", "to": "Budapest", "distance_km": 1012}
+{"from": "Copenhagen", "to": "Chisinau", "distance_km": 1480}
+{"from": "Dublin", "to": "Amsterdam", "distance_km": 754}
+{"from": "Dublin", "to": "Athens", "distance_km": 2853}
+{"from": "Dublin", "to": "Berlin", "distance_km": 1316}
+{"from": "Dublin", "to": "Bratislava", "distance_km": 1732}
+{"from": "Dublin", "to": "Brussels", "distance_km": 773}
+{"from": "Dublin", "to": "Bucharest", "distance_km": 2537}
+{"from": "Dublin", "to": "Budapest", "distance_km": 1893}
+{"from": "Dublin", "to": "Chisinau", "distance_km": 2568}
+{"from": "Dublin", "to": "Copenhagen", "distance_km": 1238}
+{"from": "Helsinki", "to": "Amsterdam", "distance_km": 1501}
+{"from": "Helsinki", "to": "Athens", "distance_km": 2468}
+{"from": "Helsinki", "to": "Berlin", "distance_km": 1104}
+{"from": "Helsinki", "to": "Bratislava", "distance_km": 1428}
+{"from": "Helsinki", "to": "Brussels", "distance_km": 1647}
+{"from": "Helsinki", "to": "Bucharest", "distance_km": 1751}
+{"from": "Helsinki", "to": "Budapest", "distance_km": 1459}
+{"from": "Helsinki", "to": "Chisinau", "distance_km": 1485}
+{"from": "Helsinki", "to": "Copenhagen", "distance_km": 882}
+{"from": "Helsinki", "to": "Dublin", "distance_km": 2023}
+{"from": "Lisbon", "to": "Amsterdam", "distance_km": 1863}
+{"from": "Lisbon", "to": "Athens", "distance_km": 2850}
+{"from": "Lisbon", "to": "Berlin", "distance_km": 2312}
+{"from": "Lisbon", "to": "Bratislava", "distance_km": 2348}
+{"from": "Lisbon", "to": "Brussels", "distance_km": 1712}
+{"from": "Lisbon", "to": "Bucharest", "distance_km": 2975}
+{"from": "Lisbon", "to": "Budapest", "distance_km": 2469}
+{"from": "Lisbon", "to": "Chisinau", "distance_km": 3195}
+{"from": "Lisbon", "to": "Copenhagen", "distance_km": 2477}
+{"from": "Lisbon", "to": "Dublin", "distance_km": 1640}
+{"from": "Lisbon", "to": "Helsinki", "distance_km": 3360}
+{"from": "Ljubljana", "to": "Amsterdam", "distance_km": 989}
+{"from": "Ljubljana", "to": "Athens", "distance_km": 1175}
+{"from": "Ljubljana", "to": "Berlin", "distance_km": 724}
+{"from": "Ljubljana", "to": "Bratislava", "distance_km": 305}
+{"from": "Ljubljana", "to": "Brussels", "distance_km": 918}
+{"from": "Ljubljana", "to": "Bucharest", "distance_km": 925}
+{"from": "Ljubljana", "to": "Budapest", "distance_km": 380}
+{"from": "Ljubljana", "to": "Chisinau", "distance_km": 1101}
+{"from": "Ljubljana", "to": "Copenhagen", "distance_km": 1078}
+{"from": "Ljubljana", "to": "Dublin", "distance_km": 1689}
+{"from": "Ljubljana", "to": "Helsinki", "distance_km": 1712}
+{"from": "Ljubljana", "to": "Lisbon", "distance_km": 2095}
+{"from": "London", "to": "Amsterdam", "distance_km": 356}
+{"from": "London", "to": "Athens", "distance_km": 2391}
+{"from": "London", "to": "Berlin", "distance_km": 931}
+{"from": "London", "to": "Bratislava", "distance_km": 1287}
+{"from": "London", "to": "Brussels", "distance_km": 320}
+{"from": "London", "to": "Bucharest", "distance_km": 2091}
+{"from": "London", "to": "Budapest", "distance_km": 1449}
+{"from": "London", "to": "Chisinau", "distance_km": 2146}
+{"from": "London", "to": "Copenhagen", "distance_km": 955}
+{"from": "London", "to": "Dublin", "distance_km": 461}
+{"from": "London", "to": "Helsinki", "distance_km": 1820}
+{"from": "London", "to": "Lisbon", "distance_km": 1585}
+{"from": "London", "to": "Ljubljana", "distance_km": 1228}
+{"from": "Luxembourg", "to": "Amsterdam", "distance_km": 319}
+{"from": "Luxembourg", "to": "Athens", "distance_km": 1905}
+{"from": "Luxembourg", "to": "Berlin", "distance_km": 602}
+{"from": "Luxembourg", "to": "Bratislava", "distance_km": 818}
+{"from": "Luxembourg", "to": "Brussels", "distance_km": 187}
+{"from": "Luxembourg", "to": "Bucharest", "distance_km": 1614}
+{"from": "Luxembourg", "to": "Budapest", "distance_km": 977}
+{"from": "Luxembourg", "to": "Chisinau", "distance_km": 1698}
+{"from": "Luxembourg", "to": "Copenhagen", "distance_km": 801}
+{"from": "Luxembourg", "to": "Dublin", "distance_km": 950}
+{"from": "Luxembourg", "to": "Helsinki", "distance_km": 1669}
+{"from": "Luxembourg", "to": "Lisbon", "distance_km": 1711}
+{"from": "Luxembourg", "to": "Ljubljana", "distance_km": 739}
+{"from": "Luxembourg", "to": "London", "distance_km": 489}
+{"from": "Madrid", "to": "Amsterdam", "distance_km": 1481}
+{"from": "Madrid", "to": "Athens", "distance_km": 2368}
+{"from": "Madrid", "to": "Berlin", "distance_km": 1869}
+{"from": "Madrid", "to": "Bratislava", "distance_km": 1858}
+{"from": "Madrid", "to": "Brussels", "distance_km": 1316}
+{"from": "Madrid", "to": "Bucharest", "distance_km": 2472}
+{"from": "Madrid", "to": "Budapest", "distance_km": 1974}
+{"from": "Madrid", "to": "Chisinau", "distance_km": 2695}
+{"from": "Madrid", "to": "Copenhagen", "distance_km": 2072}
+{"from": "Madrid", "to": "Dublin", "distance_km": 1448}
+{"from": "Madrid", "to": "Helsinki", "distance_km": 2948}
+{"from": "Madrid", "to": "Lisbon", "distance_km": 502}
+{"from": "Madrid", "to": "Ljubljana", "distance_km": 1597}
+{"from": "Madrid", "to": "London", "distance_km": 1263}
+{"from": "Madrid", "to": "Luxembourg", "distance_km": 1279}
+{"from": "Monaco", "to": "Amsterdam", "distance_km": 978}
+{"from": "Monaco", "to": "Athens", "distance_km": 1509}
+{"from": "Monaco", "to": "Berlin", "distance_km": 1073}
+{"from": "Monaco", "to": "Bratislava", "distance_km": 894}
+{"from": "Monaco", "to": "Brussels", "distance_km": 824}
+{"from": "Monaco", "to": "Bucharest", "distance_km": 1491}
+{"from": "Monaco", "to": "Budapest", "distance_km": 994}
+{"from": "Monaco", "to": "Chisinau", "distance_km": 1708}
+{"from": "Monaco", "to": "Copenhagen", "distance_km": 1377}
+{"from": "Monaco", "to": "Dublin", "distance_km": 1462}
+{"from": "Monaco", "to": "Helsinki", "distance_km": 2171}
+{"from": "Monaco", "to": "Lisbon", "distance_km": 1488}
+{"from": "Monaco", "to": "Ljubljana", "distance_km": 614}
+{"from": "Monaco", "to": "London", "distance_km": 1031}
+{"from": "Monaco", "to": "Luxembourg", "distance_km": 660}
+{"from": "Monaco", "to": "Madrid", "distance_km": 988}
+{"from": "Nicosia", "to": "Amsterdam", "distance_km": 2946}
+{"from": "Nicosia", "to": "Athens", "distance_km": 915}
+{"from": "Nicosia", "to": "Berlin", "distance_km": 2489}
+{"from": "Nicosia", "to": "Bratislava", "distance_km": 1967}
+{"from": "Nicosia", "to": "Brussels", "distance_km": 2902}
+{"from": "Nicosia", "to": "Bucharest", "distance_km": 1200}
+{"from": "Nicosia", "to": "Budapest", "distance_km": 1812}
+{"from": "Nicosia", "to": "Chisinau", "distance_km": 1367}
+{"from": "Nicosia", "to": "Copenhagen", "distance_km": 2774}
+{"from": "Nicosia", "to": "Dublin", "distance_km": 3675}
+{"from": "Nicosia", "to": "Helsinki", "distance_km": 2844}
+{"from": "Nicosia", "to": "Lisbon", "distance_km": 3763}
+{"from": "Nicosia", "to": "Ljubljana", "distance_km": 1990}
+{"from": "Nicosia", "to": "London", "distance_km": 3217}
+{"from": "Nicosia", "to": "Luxembourg", "distance_km": 2728}
+{"from": "Nicosia", "to": "Madrid", "distance_km": 3283}
+{"from": "Nicosia", "to": "Monaco", "distance_km": 2409}
+{"from": "Oslo", "to": "Amsterdam", "distance_km": 912}
+{"from": "Oslo", "to": "Athens", "distance_km": 2605}
+{"from": "Oslo", "to": "Berlin", "distance_km": 837}
+{"from": "Oslo", "to": "Bratislava", "distance_km": 1371}
+{"from": "Oslo", "to": "Brussels", "distance_km": 1084}
+{"from": "Oslo", "to": "Bucharest", "distance_km": 2004}
+{"from": "Oslo", "to": "Budapest", "distance_km": 1481}
+{"from": "Oslo", "to": "Chisinau", "distance_km": 1857}
+{"from": "Oslo", "to": "Copenhagen", "distance_km": 483}
+{"from": "Oslo", "to": "Dublin", "distance_km": 1265}
+{"from": "Oslo", "to": "Helsinki", "distance_km": 786}
+{"from": "Oslo", "to": "Lisbon", "distance_km": 2738}
+{"from": "Oslo", "to": "Ljubljana", "distance_km": 1561}
+{"from": "Oslo", "to": "London", "distance_km": 1153}
+{"from": "Oslo", "to": "Luxembourg", "distance_km": 1182}
+{"from": "Oslo", "to": "Madrid", "distance_km": 2387}
+{"from": "Oslo", "to": "Monaco", "distance_km": 1812}
+{"from": "Oslo", "to": "Nicosia", "distance_km": 3196}
+{"from": "Paris", "to": "Amsterdam", "distance_km": 430}
+{"from": "Paris", "to": "Athens", "distance_km": 2095}
+{"from": "Paris", "to": "Berlin", "distance_km": 878}
+{"from": "Paris", "to": "Bratislava", "distance_km": 1088}
+{"from": "Paris", "to": "Brussels", "distance_km": 264}
+{"from": "Paris", "to": "Bucharest", "distance_km": 1870}
+{"from": "Paris", "to": "Budapest", "distance_km": 1244}
+{"from": "Paris", "to": "Chisinau", "distance_km": 1975}
+{"from": "Paris", "to": "Copenhagen", "distance_km": 1026}
+{"from": "Paris", "to": "Dublin", "distance_km": 779}
+{"from": "Paris", "to": "Helsinki", "distance_km": 1908}
+{"from": "Paris", "to": "Lisbon", "distance_km": 1452}
+{"from": "Paris", "to": "Ljubljana", "distance_km": 964}
+{"from": "Paris", "to": "London", "distance_km": 343}
+{"from": "Paris", "to": "Luxembourg", "distance_km": 287}
+{"from": "Paris", "to": "Madrid", "distance_km": 1052}
+{"from": "Paris", "to": "Monaco", "distance_km": 689}
+{"from": "Paris", "to": "Nicosia", "distance_km": 2949}
+{"from": "Paris", "to": "Oslo", "distance_km": 1342}
+{"from": "Prague", "to": "Amsterdam", "distance_km": 709}
+{"from": "Prague", "to": "Athens", "distance_km": 1535}
+{"from": "Prague", "to": "Berlin", "distance_km": 279}
+{"from": "Prague", "to": "Bratislava", "distance_km": 291}
+{"from": "Prague", "to": "Brussels", "distance_km": 717}
+{"from": "Prague", "to": "Bucharest", "distance_km": 1081}
+{"from": "Prague", "to": "Budapest", "distance_km": 444}
+{"from": "Prague", "to": "Chisinau", "distance_km": 1114}
+{"from": "Prague", "to": "Copenhagen", "distance_km": 633}
+{"from": "Prague", "to": "Dublin", "distance_km": 1463}
+{"from": "Prague", "to": "Helsinki", "distance_km": 1301}
+{"from": "Prague", "to": "Lisbon", "distance_km": 2243}
+{"from": "Prague", "to": "Ljubljana", "distance_km": 448}
+{"from": "Prague", "to": "London", "distance_km": 1032}
+{"from": "Prague", "to": "Luxembourg", "distance_km": 596}
+{"from": "Prague", "to": "Madrid", "distance_km": 1772}
+{"from": "Prague", "to": "Monaco", "distance_km": 883}
+{"from": "Prague", "to": "Nicosia", "distance_km": 2256}
+{"from": "Prague", "to": "Oslo", "distance_km": 1116}
+{"from": "Prague", "to": "Paris", "distance_km": 882}
+{"from": "Reykjavík", "to": "Amsterdam", "distance_km": 2014}
+{"from": "Reykjavík", "to": "Athens", "distance_km": 4160}
+{"from": "Reykjavík", "to": "Berlin", "distance_km": 2385}
+{"from": "Reykjavík", "to": "Bratislava", "distance_km": 2924}
+{"from": "Reykjavík", "to": "Brussels", "distance_km": 2125}
+{"from": "Reykjavík", "to": "Bucharest", "distance_km": 3672}
+{"from": "Reykjavík", "to": "Budapest", "distance_km": 3070}
+{"from": "Reykjavík", "to": "Chisinau", "distance_km": 3578}
+{"from": "Reykjavík", "to": "Copenhagen", "distance_km": 2104}
+{"from": "Reykjavík", "to": "Dublin", "distance_km": 1494}
+{"from": "Reykjavík", "to": "Helsinki", "distance_km": 2414}
+{"from": "Reykjavík", "to": "Lisbon", "distance_km": 2948}
+{"from": "Reykjavík", "to": "Ljubljana", "distance_km": 2994}
+{"from": "Reykjavík", "to": "London", "distance_km": 1887}
+{"from": "Reykjavík", "to": "Luxembourg", "distance_km": 2311}
+{"from": "Reykjavík", "to": "Madrid", "distance_km": 2889}
+{"from": "Reykjavík", "to": "Monaco", "distance_km": 2918}
+{"from": "Reykjavík", "to": "Nicosia", "distance_km": 4872}
+{"from": "Reykjavík", "to": "Oslo", "distance_km": 1744}
+{"from": "Reykjavík", "to": "Paris", "distance_km": 2230}
+{"from": "Reykjavík", "to": "Prague", "distance_km": 2634}
+{"from": "Riga", "to": "Amsterdam", "distance_km": 1330}
+{"from": "Riga", "to": "Athens", "distance_km": 2109}
+{"from": "Riga", "to": "Berlin", "distance_km": 842}
+{"from": "Riga", "to": "Bratislava", "distance_km": 1085}
+{"from": "Riga", "to": "Brussels", "distance_km": 1453}
+{"from": "Riga", "to": "Bucharest", "distance_km": 1398}
+{"from": "Riga", "to": "Budapest", "distance_km": 1105}
+{"from": "Riga", "to": "Chisinau", "distance_km": 1151}
+{"from": "Riga", "to": "Copenhagen", "distance_km": 724}
+{"from": "Riga", "to": "Dublin", "distance_km": 1953}
+{"from": "Riga", "to": "Helsinki", "distance_km": 361}
+{"from": "Riga", "to": "Lisbon", "distance_km": 3150}
+{"from": "Riga", "to": "Ljubljana", "distance_km": 1378}
+{"from": "Riga", "to": "London", "distance_km": 1676}
+{"from": "Riga", "to": "Luxembourg", "distance_km": 1439}
+{"from": "Riga", "to": "Madrid", "distance_km": 2712}
+{"from": "Riga", "to": "Monaco", "distance_km": 1876}
+{"from": "Riga", "to": "Nicosia", "distance_km": 2518}
+{"from": "Riga", "to": "Oslo", "distance_km": 842}
+{"from": "Riga", "to": "Paris", "distance_km": 1703}
+{"from": "Riga", "to": "Prague", "distance_km": 993}
+{"from": "Riga", "to": "Reykjavík", "distance_km": 2574}
+{"from": "Rome", "to": "Amsterdam", "distance_km": 1298}
+{"from": "Rome", "to": "Athens", "distance_km": 1048}
+{"from": "Rome", "to": "Berlin", "distance_km": 1184}
+{"from": "Rome", "to": "Bratislava", "distance_km": 783}
+{"from": "Rome", "to": "Brussels", "distance_km": 1175}
+{"from": "Rome", "to": "Bucharest", "distance_km": 1136}
+{"from": "Rome", "to": "Budapest", "distance_km": 808}
+{"from": "Rome", "to": "Chisinau", "distance_km": 1413}
+{"from": "Rome", "to": "Copenhagen", "distance_km": 1532}
+{"from": "Rome", "to": "Dublin", "distance_km": 1885}
+{"from": "Rome", "to": "Helsinki", "distance_km": 2201}
+{"from": "Rome", "to": "Lisbon", "distance_km": 1863}
+{"from": "Rome", "to": "Ljubljana", "distance_km": 489}
+{"from": "Rome", "to": "London", "distance_km": 1435}
+{"from": "Rome", "to": "Luxembourg", "distance_km": 990}
+{"from": "Rome", "to": "Madrid", "distance_km": 1365}
+{"from": "Rome", "to": "Monaco", "distance_km": 463}
+{"from": "Rome", "to": "Nicosia", "distance_km": 1955}
+{"from": "Rome", "to": "Oslo", "distance_km": 2007}
+{"from": "Rome", "to": "Paris", "distance_km": 1106}
+{"from": "Rome", "to": "Prague", "distance_km": 923}
+{"from": "Rome", "to": "Reykjavík", "distance_km": 3300}
+{"from": "Rome", "to": "Riga", "distance_km": 1866}
+{"from": "Sofia", "to": "Amsterdam", "distance_km": 1744}
+{"from": "Sofia", "to": "Athens", "distance_km": 525}
+{"from": "Sofia", "to": "Berlin", "distance_km": 1318}
+{"from": "Sofia", "to": "Bratislava", "distance_km": 775}
+{"from": "Sofia", "to": "Brussels", "distance_km": 1698}
+{"from": "Sofia", "to": "Bucharest", "distance_km": 295}
+{"from": "Sofia", "to": "Budapest", "distance_km": 630}
+{"from": "Sofia", "to": "Chisinau", "distance_km": 647}
+{"from": "Sofia", "to": "Copenhagen", "distance_km": 1637}
+{"from": "Sofia", "to": "Dublin", "distance_km": 2472}
+{"from": "Sofia", "to": "Helsinki", "distance_km": 1945}
+{"from": "Sofia", "to": "Lisbon", "distance_km": 2754}
+{"from": "Sofia", "to": "Ljubljana", "distance_km": 793}
+{"from": "Sofia", "to": "London", "distance_km": 2014}
+{"from": "Sofia", "to": "Luxembourg", "distance_km": 1526}
+{"from": "Sofia", "to": "Madrid", "distance_km": 2253}
+{"from": "Sofia", "to": "Monaco", "distance_km": 1292}
+{"from": "Sofia", "to": "Nicosia", "distance_km": 1204}
+{"from": "Sofia", "to": "Oslo", "distance_km": 2096}
+{"from": "Sofia", "to": "Paris", "distance_km": 1757}
+{"from": "Sofia", "to": "Prague", "distance_km": 1066}
+{"from": "Sofia", "to": "Reykjavík", "distance_km": 3700}
+{"from": "Sofia", "to": "Riga", "distance_km": 1585}
+{"from": "Sofia", "to": "Rome", "distance_km": 893}
+{"from": "Tallinn", "to": "Amsterdam", "distance_km": 1457}
+{"from": "Tallinn", "to": "Athens", "distance_km": 2387}
+{"from": "Tallinn", "to": "Berlin", "distance_km": 1040}
+{"from": "Tallinn", "to": "Bratislava", "distance_km": 1349}
+{"from": "Tallinn", "to": "Brussels", "distance_km": 1599}
+{"from": "Tallinn", "to": "Bucharest", "distance_km": 1670}
+{"from": "Tallinn", "to": "Budapest", "distance_km": 1379}
+{"from": "Tallinn", "to": "Chisinau", "distance_km": 1408}
+{"from": "Tallinn", "to": "Copenhagen", "distance_km": 836}
+{"from": "Tallinn", "to": "Dublin", "distance_km": 2003}
+{"from": "Tallinn", "to": "Helsinki", "distance_km": 82}
+{"from": "Tallinn", "to": "Lisbon", "distance_km": 3311}
+{"from": "Tallinn", "to": "Ljubljana", "distance_km": 1636}
+{"from": "Tallinn", "to": "London", "distance_km": 1783}
+{"from": "Tallinn", "to": "Luxembourg", "distance_km": 1614}
+{"from": "Tallinn", "to": "Madrid", "distance_km": 2893}
+{"from": "Tallinn", "to": "Monaco", "distance_km": 2103}
+{"from": "Tallinn", "to": "Nicosia", "distance_km": 2769}
+{"from": "Tallinn", "to": "Oslo", "distance_km": 786}
+{"from": "Tallinn", "to": "Paris", "distance_km": 1858}
+{"from": "Tallinn", "to": "Prague", "distance_km": 1229}
+{"from": "Tallinn", "to": "Reykjavík", "distance_km": 2447}
+{"from": "Tallinn", "to": "Riga", "distance_km": 279}
+{"from": "Tallinn", "to": "Rome", "distance_km": 2125}
+{"from": "Tallinn", "to": "Sofia", "distance_km": 1863}
+{"from": "Vienna", "to": "Amsterdam", "distance_km": 936}
+{"from": "Vienna", "to": "Athens", "distance_km": 1282}
+{"from": "Vienna", "to": "Berlin", "distance_km": 523}
+{"from": "Vienna", "to": "Bratislava", "distance_km": 54}
+{"from": "Vienna", "to": "Brussels", "distance_km": 914}
+{"from": "Vienna", "to": "Bucharest", "distance_km": 856}
+{"from": "Vienna", "to": "Budapest", "distance_km": 214}
+{"from": "Vienna", "to": "Chisinau", "distance_km": 944}
+{"from": "Vienna", "to": "Copenhagen", "distance_km": 870}
+{"from": "Vienna", "to": "Dublin", "distance_km": 1681}
+{"from": "Vienna", "to": "Helsinki", "distance_km": 1439}
+{"from": "Vienna", "to": "Lisbon", "distance_km": 2298}
+{"from": "Vienna", "to": "Ljubljana", "distance_km": 278}
+{"from": "Vienna", "to": "London", "distance_km": 1235}
+{"from": "Vienna", "to": "Luxembourg", "distance_km": 763}
+{"from": "Vienna", "to": "Madrid", "distance_km": 1809}
+{"from": "Vienna", "to": "Monaco", "distance_km": 851}
+{"from": "Vienna", "to": "Nicosia", "distance_km": 2013}
+{"from": "Vienna", "to": "Oslo", "distance_km": 1351}
+{"from": "Vienna", "to": "Paris", "distance_km": 1033}
+{"from": "Vienna", "to": "Prague", "distance_km": 252}
+{"from": "Vienna", "to": "Reykjavík", "distance_km": 2885}
+{"from": "Vienna", "to": "Riga", "distance_km": 1101}
+{"from": "Vienna", "to": "Rome", "distance_km": 764}
+{"from": "Vienna", "to": "Sofia", "distance_km": 817}
+{"from": "Vienna", "to": "Tallinn", "distance_km": 1361}
+{"from": "Warsaw", "to": "Amsterdam", "distance_km": 1094}
+{"from": "Warsaw", "to": "Athens", "distance_km": 1598}
+{"from": "Warsaw", "to": "Berlin", "distance_km": 516}
+{"from": "Warsaw", "to": "Bratislava", "distance_km": 532}
+{"from": "Warsaw", "to": "Brussels", "distance_km": 1159}
+{"from": "Warsaw", "to": "Bucharest", "distance_km": 944}
+{"from": "Warsaw", "to": "Budapest", "distance_km": 544}
+{"from": "Warsaw", "to": "Chisinau", "distance_km": 809}
+{"from": "Warsaw", "to": "Copenhagen", "distance_km": 671}
+{"from": "Warsaw", "to": "Dublin", "distance_km": 1826}
+{"from": "Warsaw", "to": "Helsinki", "distance_km": 915}
+{"from": "Warsaw", "to": "Lisbon", "distance_km": 2759}
+{"from": "Warsaw", "to": "Ljubljana", "distance_km": 833}
+{"from": "Warsaw", "to": "London", "distance_km": 1448}
+{"from": "Warsaw", "to": "Luxembourg", "distance_km": 1080}
+{"from": "Warsaw", "to": "Madrid", "distance_km": 2289}
+{"from": "Warsaw", "to": "Monaco", "distance_km": 1380}
+{"from": "Warsaw", "to": "Nicosia", "distance_km": 2133}
+{"from": "Warsaw", "to": "Oslo", "distance_km": 1063}
+{"from": "Warsaw", "to": "Paris", "distance_km": 1366}
+{"from": "Warsaw", "to": "Prague", "distance_km": 517}
+{"from": "Warsaw", "to": "Reykjavík", "distance_km": 2769}
+{"from": "Warsaw", "to": "Riga", "distance_km": 560}
+{"from": "Warsaw", "to": "Rome", "distance_km": 1315}
+{"from": "Warsaw", "to": "Sofia", "distance_km": 1073}
+{"from": "Warsaw", "to": "Tallinn", "distance_km": 834}
+{"from": "Warsaw", "to": "Vienna", "distance_km": 555}
+{"from": "Washington, D.C.", "to": "Amsterdam", "distance_km": 6189}
+{"from": "Washington, D.C.", "to": "Athens", "distance_km": 8252}
+{"from": "Washington, D.C.", "to": "Berlin", "distance_km": 6711}
+{"from": "Washington, D.C.", "to": "Bratislava", "distance_km": 7174}
+{"from": "Washington, D.C.", "to": "Brussels", "distance_km": 6216}
+{"from": "Washington, D.C.", "to": "Bucharest", "distance_km": 7977}
+{"from": "Washington, D.C.", "to": "Budapest", "distance_km": 7335}
+{"from": "Washington, D.C.", "to": "Chisinau", "distance_km": 7973}
+{"from": "Washington, D.C.", "to": "Copenhagen", "distance_km": 6511}
+{"from": "Washington, D.C.", "to": "Dublin", "distance_km": 5444}
+{"from": "Washington, D.C.", "to": "Helsinki", "distance_km": 6930}
+{"from": "Washington, D.C.", "to": "Lisbon", "distance_km": 5737}
+{"from": "Washington, D.C.", "to": "Ljubljana", "distance_km": 7122}
+{"from": "Washington, D.C.", "to": "London", "distance_km": 5898}
+{"from": "Washington, D.C.", "to": "Luxembourg", "distance_km": 6386}
+{"from": "Washington, D.C.", "to": "Madrid", "distance_km": 6088}
+{"from": "Washington, D.C.", "to": "Monaco", "distance_km": 6756}
+{"from": "Washington, D.C.", "to": "Nicosia", "distance_km": 9112}
+{"from": "Washington, D.C.", "to": "Oslo", "distance_km": 6233}
+{"from": "Washington, D.C.", "to": "Paris", "distance_km": 6165}
+{"from": "Washington, D.C.", "to": "Prague", "distance_km": 6898}
+{"from": "Washington, D.C.", "to": "Reykjavík", "distance_km": 4516}
+{"from": "Washington, D.C.", "to": "Riga", "distance_km": 7074}
+{"from": "Washington, D.C.", "to": "Rome", "distance_km": 7219}
+{"from": "Washington, D.C.", "to": "Sofia", "distance_km": 7912}
+{"from": "Washington, D.C.", "to": "Tallinn", "distance_km": 6963}
+{"from": "Washington, D.C.", "to": "Vienna", "distance_km": 7124}
+{"from": "Washington, D.C.", "to": "Warsaw", "distance_km": 7178}
+{"from": "Zagreb", "to": "Amsterdam", "distance_km": 1085}
+{"from": "Zagreb", "to": "Athens", "distance_km": 1080}
+{"from": "Zagreb", "to": "Berlin", "distance_km": 768}
+{"from": "Zagreb", "to": "Bratislava", "distance_km": 273}
+{"from": "Zagreb", "to": "Brussels", "distance_km": 1024}
+{"from": "Zagreb", "to": "Bucharest", "distance_km": 808}
+{"from": "Zagreb", "to": "Budapest", "distance_km": 299}
+{"from": "Zagreb", "to": "Chisinau", "distance_km": 995}
+{"from": "Zagreb", "to": "Copenhagen", "distance_km": 1122}
+{"from": "Zagreb", "to": "Dublin", "distance_km": 1797}
+{"from": "Zagreb", "to": "Helsinki", "distance_km": 1701}
+{"from": "Zagreb", "to": "Lisbon", "distance_km": 2200}
+{"from": "Zagreb", "to": "Ljubljana", "distance_km": 116}
+{"from": "Zagreb", "to": "London", "distance_km": 1337}
+{"from": "Zagreb", "to": "Luxembourg", "distance_km": 848}
+{"from": "Zagreb", "to": "Madrid", "distance_km": 1701}
+{"from": "Zagreb", "to": "Monaco", "distance_km": 713}
+{"from": "Zagreb", "to": "Nicosia", "distance_km": 1879}
+{"from": "Zagreb", "to": "Oslo", "distance_km": 1605}
+{"from": "Zagreb", "to": "Paris", "distance_km": 1079}
+{"from": "Zagreb", "to": "Prague", "distance_km": 489}
+{"from": "Zagreb", "to": "Reykjavík", "distance_km": 3081}
+{"from": "Zagreb", "to": "Riga", "distance_km": 1358}
+{"from": "Zagreb", "to": "Rome", "distance_km": 517}
+{"from": "Zagreb", "to": "Sofia", "distance_km": 679}
+{"from": "Zagreb", "to": "Tallinn", "distance_km": 1623}
+{"from": "Zagreb", "to": "Vienna", "distance_km": 267}
+{"from": "Zagreb", "to": "Warsaw", "distance_km": 801}
+{"from": "Zagreb", "to": "Washington, D.C.", "distance_km": 7233}
+{"from": "Zürich", "to": "Amsterdam", "distance_km": 615}
+{"from": "Zürich", "to": "Athens", "distance_km": 1615}
+{"from": "Zürich", "to": "Berlin", "distance_km": 670}
+{"from": "Zürich", "to": "Bratislava", "distance_km": 645}
+{"from": "Zürich", "to": "Brussels", "distance_km": 493}
+{"from": "Zürich", "to": "Bucharest", "distance_km": 1393}
+{"from": "Zürich", "to": "Budapest", "distance_km": 788}
+{"from": "Zürich", "to": "Chisinau", "distance_km": 1530}
+{"from": "Zürich", "to": "Copenhagen", "distance_km": 964}
+{"from": "Zürich", "to": "Dublin", "distance_km": 1238}
+{"from": "Zürich", "to": "Helsinki", "distance_km": 1774}
+{"from": "Zürich", "to": "Lisbon", "distance_km": 1722}
+{"from": "Zürich", "to": "Ljubljana", "distance_km": 476}
+{"from": "Zürich", "to": "London", "distance_km": 777}
+{"from": "Zürich", "to": "Luxembourg", "distance_km": 306}
+{"from": "Zürich", "to": "Madrid", "distance_km": 1247}
+{"from": "Zürich", "to": "Monaco", "distance_km": 413}
+{"from": "Zürich", "to": "Nicosia", "distance_km": 2460}
+{"from": "Zürich", "to": "Oslo", "distance_km": 1402}
+{"from": "Zürich", "to": "Paris", "distance_km": 489}
+{"from": "Zürich", "to": "Prague", "distance_km": 526}
+{"from": "Zürich", "to": "Reykjavík", "distance_km": 2618}
+{"from": "Zürich", "to": "Riga", "distance_km": 1496}
+{"from": "Zürich", "to": "Rome", "distance_km": 684}
+{"from": "Zürich", "to": "Sofia", "distance_km": 1269}
+{"from": "Zürich", "to": "Tallinn", "distance_km": 1709}
+{"from": "Zürich", "to": "Vienna", "distance_km": 591}
+{"from": "Zürich", "to": "Warsaw", "distance_km": 1043}
+{"from": "Zürich", "to": "Washington, D.C.", "distance_km": 6653}
+{"from": "Zürich", "to": "Zagreb", "distance_km": 592}

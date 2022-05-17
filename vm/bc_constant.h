@@ -517,12 +517,17 @@ CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 144, $0x3fefff2e48e8a71e)
 #define CONSTF64_MINUS_0p9999() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 152)
 CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 152, $0xbfefff2e48e8a71e)
 
+// Earth radius multiplied by 2 for geo distance calculation
+#define CONSTF64_12742000() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 160)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 160, $0x41684dae00000000)
+
+
 // Other Constants
 // ---------------
 //
 // Add new or uncategorized constants here...
 
-#define CONSTPOOL_OTHER_INDEX (CONSTPOOL_F64_INDEX + 160)
+#define CONSTPOOL_OTHER_INDEX (CONSTPOOL_F64_INDEX + 200)
 
 #define CONSTD_0x0000C080() CONST_GET_PTR(constpool, CONSTPOOL_OTHER_INDEX + 0)
 #define CONSTD_UTF8_R2() CONST_GET_PTR(constpool, CONSTPOOL_OTHER_INDEX + 0)

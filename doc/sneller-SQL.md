@@ -894,6 +894,17 @@ See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-
 
 ### GEO Functions
 
+#### `GEO_DISTANCE`
+
+`GEO_DISTANCE(lat1, long1, lat2, long2)` calculates the distance between
+two latitude and longitude points and returns the result in meters. The
+result is an approximation that uses a Haversine formula, which determines
+the great-circle distance between two points on a sphere.
+
+External Resources:
+
+  - [Haversine formula](https://en.wikipedia.org/wiki/Haversine_formula)
+
 #### `GEO_HASH`
 
 `GEO_HASH(lat, long, num_chars)` encodes a string representing a geo-hash

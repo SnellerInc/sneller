@@ -351,6 +351,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opgeotiley:     {text: "geotiley", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 	opgeotilees:    {text: "geotilees", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
 	opgeotileesimm: {text: "geotilees.imm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
+	opgeodistance:  {text: "geodistance", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
 
 	// Find Symbol instructions
 	//   - findsym - computes 'current struct' . 'symbol'
