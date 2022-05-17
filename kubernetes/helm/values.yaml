@@ -4,7 +4,7 @@ fullnameOverride: ""
 snellerd:
   #name: snellerd
   replicaCount: 3
-  repository: 671229366946.dkr.ecr.us-east-1.amazonaws.com/sneller/snellerd
+  repository: snellerinc/snellerd
   tag: latest
   pullPolicy: IfNotPresent
   ports:
@@ -36,7 +36,7 @@ snellerd:
 
 sdb:
   #name: sdb
-  repository: 671229366946.dkr.ecr.us-east-1.amazonaws.com/sneller/sdb
+  repository: snellerinc/sdb
   tag: latest
   pullPolicy: IfNotPresent
 

@@ -49,28 +49,28 @@ else
     exit 5
 fi
 
-# Download the customer data
-TEMPFILE=$(mktemp)
-curl --output $TEMPFILE 'https://sneller-example-data.s3.amazonaws.com/docker/sf1/customer.json'
+# Download the Github archive data
+mkdir data
+wget -P data/ https://data.gharchive.org/2022-01-{01..31}-{0..23}.json.gz)
 
-# Copy the customer data to the test bucket
+# Copy the data to the test bucket
 if docker run \
-    --rm --net sneller-network --env-file .env -v "$TEMPFILE:/data/customer.json" \
+    --rm --net sneller-network --env-file .env -v "$(pwd)/data/:/data/" \
     amazon/aws-cli --endpoint http://minio:9100 \
-    s3 cp /data/customer.json s3://test/sf1/customer.json
+    s3 sync /data s3://test/gha/
 then
-    rm $TEMPFILE
+    echo "Copied Github archive data to Minio"
 else
-    rm $TEMPFILE
     exit 6
 fi
 
 # Create table definition in Minio bucket
-echo '{"name": "customer", "input": [{"pattern": "s3://test/sf1/*.json","format": "json"}]}' > $TEMPFILE
+TEMPFILE=$(mktemp)
+echo '{"name": "gharchive", "input": [{"pattern": "s3://test/gha/*.json.gz","format": "json.gz"}]}' > $TEMPFILE
 if docker run \
     --rm --net sneller-network --env-file .env -v "$TEMPFILE:/data/definition.json" \
     amazon/aws-cli --endpoint http://minio:9100 \
-    s3 cp /data/definition.json s3://test/db/sf1/customer/definition.json
+    s3 cp /data/definition.json s3://test/db/gha/gharchive/definition.json
 then
     rm $TEMPFILE
 else
@@ -79,10 +79,7 @@ else
 fi
 
 # Ingest data
-if docker run \
-   --rm --net sneller-network --env-file .env \
-   ${SNELLER_REPO}sneller/sdb \
-   -v sync sf1 customer
+if docker run --rm --net sneller-network --env-file .env snellerinc/sdb -v sync gha gharchive
 then
     echo "Data ingested"
 else
@@ -91,7 +88,7 @@ fi
 
 # Query the number of items
 curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
-    --data-urlencode "database=sf1" \
+    --data-urlencode "database=gha" \
     --data-urlencode 'json' \
-    --data-urlencode 'query=SELECT COUNT(*) FROM customer' \
+    --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' \
     'http://localhost:9180/executeQuery'

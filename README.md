@@ -151,82 +151,23 @@ Sneller is capable of scaling beyond a single server and for instance a medium-s
 in scanning performance, even running non-trivial queries.
 
 ## Spin up stack locally
+It is easiest to spin up a local stack, comprising of just Sneller as the query engine and Minio as the S3 storage layer, by using Docker. Detailed instructions can be found [here](docker/README.md) using sample data from the GitHub archive (but swapping this out for your own data is trivial). Note that this setup is a single node install and therefore no-HA.
 
-It is easiest to spin up a local stack (non-HA/single node) via `docker compose`. Make sure you have `docker` and `docker-compose` installed and follow these instructions.
-
-#### Spin up sneller and minio
-```console
-$ cd docker
-$
-$ # login to ECR (Elastic Container Repository on AWS)
-$ aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 671229366946.dkr.ecr.us-east-1.amazonaws.com
-Login Succeeded
-$
-$ # create unique credentials for sneller and minio (used as S3-compatible object store)
-$ ./generate-env.sh
-Minio ACCESS_KEY_ID: AKxxxxxxxxxxxxxxxxxxxxx
-Minio SECRET_ACCESS_KEY: SAKyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
-Sneller bearer token: STzzzzzzzzzzzzzzzzzzzz
-$
-$ # spin up sneller and minio
-$ docker-compose up
-Attaching to docker-minio-1, docker-snellerd-1
-docker-snellerd-1  | run_daemon.go:90: Sneller daemon 9a3d6ae-master listening on [::]:9180
-docker-minio-1     | API: http://172.18.0.3:9100  http://127.0.0.1:9100 
+Once you have followed the instructions, you can interact with Sneller on port `localhost:9180` via curl, eg. as per:
+```sh
+$ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" --data-urlencode "database=gha" \
+    --data-urlencode 'json' --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' \
+    'http://localhost:9180/executeQuery'
+{"count": 2141038}
+$ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" --data-urlencode "database=gha" \
+    --data-urlencode 'json' --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP BY type ORDER BY COUNT(*) DESC' \
+    'http://localhost:9180/executeQuery'
+{"type": "PushEvent", "count": 1303922}
+{"type": "CreateEvent", "count": 261401}
 ...
-docker-minio-1     | Finished loading IAM sub-system (took 0.0s of 0.0s to load data).
+{"type": "GollumEvent", "count": 4035}
+{"type": "MemberEvent", "count": 2644}
 ```
-
-#### Copy input data into object storage
-```console
-$ # fetch some sample data
-$ wget https://sneller-samples.s3.amazonaws.com/gharchive-1million.json.gz
-$ 
-$ # create bucket for source data
-$ docker run --rm --net 'sneller-network' --env-file .env \ 
-  amazon/aws-cli --endpoint 'http://minio:9100' s3 mb 's3://test'
-...
-make_bucket: test
-$
-$ # copy data into object storage (at source path)
-$ docker run --rm --net 'sneller-network' --env-file .env \
-  -v "`pwd`:/data" amazon/aws-cli --endpoint 'http://minio:9100' s3 cp '/data/gharchive-1million.json.gz' 's3://test/gharchive/'
-```
-
-#### Create table definition and sync data
-```console
-$ # create table definition file (with wildcard pattern for source input data path)
-$ cat << EOF > definition.json
-{ "name": "gharchive", "input": [ { "pattern": "s3://test/gharchive/*.json.gz", "format": "json.gz" } ] }
-EOF
-$
-$ # copy the definition.json file
-$ docker run --rm --net 'sneller-network' --env-file .env \
-  -v "`pwd`:/data" amazon/aws-cli --endpoint 'http://minio:9100' s3 cp '/data/definition.json' 's3://test/db/gharchive/gharchive/definition.json'
-$
-$ # sync the data
-$ docker run --rm --net 'sneller-network' --env-file .env \
-  671229366946.dkr.ecr.us-east-1.amazonaws.com/sneller/sdb -v sync gharchive gharchive
-...
-updating table gharchive/gharchive...
-table gharchive: wrote object db/gharchive/gharchive/packed-G6JF75KRUAGREYAGJIJ5NCSLSQ.ion.zst ETag "40c7ffbf758c0782930a55a8ffe43a93-1"
-update of table gharchive complete
-```
-
-#### Query the data with `curl`
-```console
-$ # query the data (replace STzzzzzzzzzzzzzzzzzzzz with SNELLER_TOKEN from .env file!)
-$ curl -s -G --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' -H 'Authorization: Bearer STzzzzzzzzzzzzzzzzzzzz' --data-urlencode 'json' --data-urlencode 'database=gharchive' http://localhost:9180/executeQuery
-{"count": 1000000}
-$
-$ # yet another query: number of events per type
-$ curl -s -G --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP BY type ORDER BY COUNT(*) DESC' -H 'Authorization: Bearer STzzzzzzzzzzzzzzzzzzzz' --data-urlencode 'json' --data-urlencode 'database=gharchive' http://localhost:9180/executeQuery
-{"type": "PushEvent", "count": 1234}
-...
-{"type": "GollumEvent", "count": 567}
-```
-
-Note that it is perfectly possible to sync more JSON data by copying additional objects into the source bucket and (incrementally) syncing just the newly added data. See [Sneller on Docker](https://docs.sneller.io/docker.html) for more detailed instructions.
 
 ## Spin up sneller stack in the cloud
 

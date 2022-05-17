@@ -262,6 +262,12 @@ func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 		_, err := dec.CopyBytes(dst, src)
 		return err
 	}
+	if c, ok := b.blob.(*blob.Compressed); ok {
+		var dec blockfmt.Decoder
+		dec.Set(c.Trailer, len(c.Trailer.Blocks))
+		_, err := dec.CopyBytes(dst, src)
+		return err
+	}
 	// default: just write the segments directly
 	for off := int64(0); off < b.info.Size; off += int64(b.info.Align) {
 		mem := src[off:]

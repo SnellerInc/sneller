@@ -89,7 +89,7 @@ Kubernetes resources all have a name and the Helm template typically uses a comm
 |----|-----------|-------|
 |snellerd.name|Name of the Sneller daemon deployment and pods|""|
 |snellerd.replicaCount|Number of replicas that run the Sneller daemon/worker|3|
-|snellerd.repository|Repository that holds the Sneller container image|sneller/snellerd|
+|snellerd.repository|Repository that holds the Sneller container image|snellerinc/snellerd|
 |snellerd.tag|Tag of the Sneller container image|latest|
 |snellerd.pullPolicy|Sneller image pull policy|IfNotPresent|
 |snellerd.ports.snellerd|Port of the Sneller daemon|8000|
@@ -110,7 +110,7 @@ Kubernetes resources all have a name and the Helm template typically uses a comm
 |Name|Description|Default|
 |----|-----------|-------|
 |sdb.name|Name of the SDB cronjob and pods|""|
-|sdb.repository|Repository that holds the SDB container image|sneller/sdb|
+|sdb.repository|Repository that holds the SDB container image|snellerinc/sdb|
 |sdb.tag|Tag of the SDB container image|latest|
 |sdb.pullPolicy|SDB image pull policy|IfNotPresent|
 

@@ -8,5 +8,5 @@ done
 for image in snellerd sdb
 do
     echo Creating docker image $image
-    docker build -f $image.dockerfile -t sneller/$image:latest .
+    docker build -f $image.dockerfile -t snellerinc/$image:latest .
 done

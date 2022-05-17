@@ -10,16 +10,6 @@ Sneller heavily depends on AVX-512 to achieve its high perfomance. So make sure 
 
 Sneller caches data using `tmpfs` that is a memory-backed storage (RAM-disk). All cache data is stored in `/var/cache/sneller` and the default environment that is generated allocates 1GB of storage. You can change this amount in `.env` (after generation, but before spinning up the containers).
  
-## Login to ECR
-The Sneller docker images are currently stored in a private AWS Elastic Container Repository (ECR), so you need read-only access to this repo to obtain the docker images. With the proper AWS credentials, you should be able to log in using:
-```
-$ aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 671229366946.dkr.ecr.us-east-1.amazonaws.com
-Login Succeeded
-
-Logging in with your password grants your terminal complete access to your account. 
-For better security, log in with a limited-privilege personal access token. Learn more at https://docs.docker.com/go/access-tokens/
-```
-
 ## Automatic run script
 We have provided an automatic script `run.sh` that will perform all the steps (as described in the next chapter) and will execute a query on the Sneller engine.
 
@@ -42,14 +32,10 @@ Sneller bearer token: STzzzzzzzzzzzzzzzzzzzz
 ```
 In the examples we use these values, but you should replace the values with the values that you generated. Once this has been done, you're ready to spin up the containers.
 ```
-$ docker-compose up
-Attaching to docker-minio-1, docker-snellerd-1
-docker-snellerd-1    | run_daemon.go:130: Sneller daemon 1234567-master listening on [::]:9180
-docker-minio-1       | API: http://172.18.0.4:9100  http://127.0.0.1:9100 
-docker-minio-1       | 
-docker-minio-1       | Console: http://172.18.0.4:9101 http://127.0.0.1:9101 
-docker-minio-1       | 
-docker-minio-1       | Documentation: https://docs.min.io
+$ docker-compose up -d
+[+] Running 2/2
+ ⠿ Container docker-minio-1     Started                                                                                                                                 0.7s
+ ⠿ Container docker-snellerd-1  Started
 ```
 It does expose the following ports:
 
@@ -62,10 +48,18 @@ If you prefer not to use docker-compose, you can also create and run the contain
 ### Add some data
 Sneller uses S3 (or compatible) object storage to fetch the data. When running in AWS it's trivial to use AWS S3 for this purpose, but in this environment we are using Minio for this.
 
-We provide some sample data from s3://sneller-example-data/docker/test/sf1 that needs to be copied over to Minio. First download the sample data:
+We use some sample data from the Github archive. You can choose how much data you want to ingest, but this will download the data for a single day:
 ```sh
-$ wget 'https://sneller-example-data.s3.amazonaws.com/docker/sf1/customer.json'
+$ mkdir data
+$ wget -P data/ https://data.gharchive.org/2022-01-01-{0..23}.json.gz
 ```
+or if you're feeling a bit more adventurous, the data for a single month:
+```sh
+$ mkdir data
+$ wget -P data/ https://data.gharchive.org/2022-01-{01..31}-{0..23}.json.gz
+```
+Depending on your internet speed this download may take a while.
+
 **NOTE:** In the following examples we are using the `amazon/aws-cli` docker image to copy the data. If you prefer to use the AWS CLI directly, then you can also use the CLI. Replace the endpoint `http://minio:9100` with `http://localhost:9100` in that case and make sure you set the AWS environment variables properly.
 
 Use the following statement to create the source bucket:
@@ -80,48 +74,78 @@ The `.env` file specifies that all Sneller data is stored inside the `s3://test`
 Use the following statement to copy the data to the Minio container.
 ```sh
 $ docker run \
-   --rm --net 'sneller-network' --env-file .env -v "`pwd`:/data" \
+   --rm --net 'sneller-network' --env-file .env -v "`pwd`/data/:/data" \
    amazon/aws-cli --endpoint 'http://minio:9100' \
-   s3 cp '/data/customer.json' 's3://test/sf1/'
+   s3 sync '/data' 's3://test/gharchive/'
 ```
 ### Create the table definition
-Sneller is a schemaless database engine, but it does need to know which databases and tables exist. All Sneller data is stored in the `s3://test` bucket (defined in `.env`) and is always stored in the `db` folder. This folder holds the database, which holds the tables. So if we want to name the database `sf1` and the table `customer`, then the full path is `s3://test/db/sf1/customer`.
+Sneller is a schemaless database engine, but it does need to know which databases and tables exist. All Sneller data is stored in the `s3://test` bucket (defined in `.env`) and is always stored in the `db` folder. This folder holds the database, which holds the tables. So if we want to name the database `gha` and the table `gharchive`, then the full path is `s3://test/db/gha/gharchive`.
 
-Now we need to create a definition for this customer table. Create a file named `definiton.json` with the following content:
+Now we need to create a definition for this customer table. Create a file named `definition.json` with the following content:
 ```json
 {
-    "name": "customer",
+    "name": "gharchive",
     "input": [
         {
-            "pattern": "s3://test/sf1/*.json",
-            "format": "json"
+            "pattern": "s3://test/gharchive/*.json.gz",
+            "format": "json.gz"
         }
     ]
 }
 ```
-It specifies that the table is named `customer` and it will scan the `s3://test/sf1` folder for all files with the `.json` extension. Now upload this file to `s3://test/db/sf1/customer/definition.json`:
+It specifies that the table is named `gharchive` and it will scan the `s3://test/gharchive` folder for all files with the `.json.gz` extension. Now upload this file to `s3://test/db/gha/gharchive/definition.json`:
 ```sh
 $ docker run \
    --rm --net 'sneller-network' --env-file .env -v "`pwd`:/data" \
    amazon/aws-cli --endpoint 'http://minio:9100' \
-   s3 cp '/data/definition.json' 's3://test/db/sf1/customer/definition.json'
+   s3 cp '/data/definition.json' 's3://test/db/gha/gharchive/definition.json'
 ```
 ### Ingest the data
-Now it's time to ingest the data. This is done using the `sdb` tool that has its own image. You can ingest the data for the sf1/customer table using:
+Now it's time to ingest the data. This is done using the `sdb` tool that has its own image. You can ingest the data for the table using:
 ```sh
 $ docker run \
    --rm --net 'sneller-network' --env-file .env \
-   671229366946.dkr.ecr.us-east-1.amazonaws.com/sneller/sdb \
-   -v sync sf1 customer
+   snellerinc/sdb \
+   -v sync gha gharchive
 ```
 
 ### Query the data
-Now it's time to query the data:
+Now it's time to query the data. First we'll read the token information from the environment:
 ```sh
-$ curl -G -H "Authorization: Bearer STzzzzzzzzzzzzzzzzzzzz" \
-    --data-urlencode "database=sf1" \
-    --data-urlencode 'json' \
-    --data-urlencode 'query=SELECT COUNT(*) FROM customer' \
-    'http://localhost:9180/executeQuery'
-{"count": 150000}
+$ . .env
 ```
+Now run a query using a simple CURL statement:
+```sh
+$ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
+    --data-urlencode "database=gha" \
+    --data-urlencode 'json' \
+    --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' \
+    'http://localhost:9180/executeQuery'
+{"count": 2141038}
+```
+Or to obtain the number of items per type:
+```sh
+$ curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
+    --data-urlencode "database=gha" \
+    --data-urlencode 'json' \
+    --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP BY type ORDER BY COUNT(*) DESC' \
+    'http://localhost:9180/executeQuery'
+{"type": "PushEvent", "count": 1303922}
+{"type": "CreateEvent", "count": 261401}
+{"type": "PullRequestEvent", "count": 159442}
+{"type": "WatchEvent", "count": 111123}
+{"type": "IssueCommentEvent", "count": 88850}
+{"type": "DeleteEvent", "count": 72318}
+{"type": "IssuesEvent", "count": 35029}
+{"type": "ForkEvent", "count": 33686}
+{"type": "PullRequestReviewEvent", "count": 29841}
+{"type": "ReleaseEvent", "count": 13642}
+{"type": "CommitCommentEvent", "count": 10727}
+{"type": "PullRequestReviewCommentEvent", "count": 9020}
+{"type": "PublicEvent", "count": 5358}
+{"type": "GollumEvent", "count": 4035}
+{"type": "MemberEvent", "count": 2644}
+```
+
+### Adding more data
+If you have more data, then simply add it to the Minio source container and run the `sdb sync` again. It will ingest the new data and it will be available for processing when the synchronization has completed.

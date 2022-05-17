@@ -13,7 +13,7 @@ services:
     command: server /data --address ":9100" --console-address ":9101"
 
   snellerd:
-    image: ${SNELLER_REPO}sneller/snellerd:latest
+    image: snellerinc/snellerd:latest
     ports:
      - "127.0.0.1:9180:9180"
     environment:
