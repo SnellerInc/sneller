@@ -46,7 +46,7 @@ type Op interface {
 
 	// exec executes the op into 'dst'
 	// using the given parallelism
-	exec(dst vm.QuerySink, parallel int, stat *ExecStats) error
+	exec(dst vm.QuerySink, parallel int, stat *ExecStats, rw TableRewrite) error
 
 	// encode should write the op as an ion structure
 	// to 'dst'; the first field of the structure
@@ -207,12 +207,12 @@ func (s *SimpleAggregate) String() string {
 	return "AGGREGATE " + s.Outputs.String()
 }
 
-func (s *SimpleAggregate) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (s *SimpleAggregate) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	a, err := vm.NewAggregate(s.Outputs, dst)
 	if err != nil {
 		return err
 	}
-	return s.From.exec(a, parallel, stats)
+	return s.From.exec(a, parallel, stats, rw)
 }
 
 func settype(name string, dst *ion.Buffer, st *ion.Symtab) {
@@ -259,11 +259,15 @@ func (l *Leaf) rewrite(rw expr.Rewriter) {
 	l.Expr.Expr = expr.Rewrite(rw, l.Expr.Expr)
 }
 
-func (l *Leaf) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
-	if l.Handle == nil {
-		panic("nope!")
+func (l *Leaf) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
+	handle := l.Handle
+	if rw != nil {
+		_, handle = rw(l.Expr, handle)
 	}
-	tbl, err := l.Handle.Open()
+	if handle == nil {
+		panic("nil table handle")
+	}
+	tbl, err := handle.Open()
 	if err != nil {
 		return err
 	}
@@ -342,7 +346,7 @@ func (n NoOutput) setinput(o Op) {
 	panic("NoOutput: cannot setinput()")
 }
 
-func (n NoOutput) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (n NoOutput) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -385,7 +389,7 @@ func (n DummyOutput) setinput(o Op) {
 	panic("DummyOutput: cannot setinput()")
 }
 
-func (n DummyOutput) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (n DummyOutput) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -433,8 +437,8 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %d", l.Num)
 }
 
-func (l *Limit) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
-	return l.From.exec(vm.NewLimit(l.Num, dst), parallel, stats)
+func (l *Limit) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
+	return l.From.exec(vm.NewLimit(l.Num, dst), parallel, stats, rw)
 }
 
 func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -475,9 +479,9 @@ func (c *CountStar) String() string {
 	return "COUNT(*) AS " + c.name()
 }
 
-func (c *CountStar) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (c *CountStar) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	var qs vm.Count
-	err := c.From.exec(&qs, parallel, stats)
+	err := c.From.exec(&qs, parallel, stats, rw)
 	if err != nil {
 		return err
 	}
@@ -659,7 +663,7 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 	return nil
 }
 
-func (h *HashAggregate) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (h *HashAggregate) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	ha, err := vm.NewHashAggregate(h.Agg, h.By, dst)
 	if err != nil {
 		return err
@@ -676,7 +680,7 @@ func (h *HashAggregate) exec(dst vm.QuerySink, parallel int, stats *ExecStats) e
 		}
 	}
 
-	return h.From.exec(ha, parallel, stats)
+	return h.From.exec(ha, parallel, stats, rw)
 }
 
 // OrderByColumn represents a single column and its sorting settings in an ORDER BY clause.
@@ -732,7 +736,7 @@ func (o *OrderBy) String() string {
 	return s
 }
 
-func (o *OrderBy) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (o *OrderBy) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	writer, err := dst.Open()
 	if err != nil {
 		return err
@@ -771,7 +775,7 @@ func (o *OrderBy) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
 
 	sorter := vm.NewOrder(writer, orderBy, limit, parallel)
 
-	return o.From.exec(sorter, parallel, stats)
+	return o.From.exec(sorter, parallel, stats, rw)
 }
 
 func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -856,7 +860,7 @@ func (d *Distinct) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (d *Distinct) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (d *Distinct) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	df, err := vm.NewDistinct(d.Fields, dst)
 	if err != nil {
 		return err
@@ -864,7 +868,7 @@ func (d *Distinct) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error 
 	if d.Limit > 0 {
 		df.Limit(d.Limit)
 	}
-	return d.From.exec(df, parallel, stats)
+	return d.From.exec(df, parallel, stats, rw)
 }
 
 func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab) error {

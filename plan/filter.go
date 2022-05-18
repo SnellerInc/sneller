@@ -37,9 +37,9 @@ func (f *Filter) rewrite(rw expr.Rewriter) {
 	f.Expr = expr.Rewrite(rw, f.Expr)
 }
 
-func (f *Filter) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (f *Filter) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	push(f.Expr, f.From)
-	return f.From.exec(vm.NewFilter(f.Expr, dst), parallel, stats)
+	return f.From.exec(vm.NewFilter(f.Expr, dst), parallel, stats, rw)
 }
 
 func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab) error {

@@ -146,7 +146,7 @@ func decodeLocal(st *ion.Symtab, body []byte) (Transport, error) {
 	return t, nil
 }
 
-func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err

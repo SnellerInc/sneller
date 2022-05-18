@@ -106,9 +106,9 @@ func (t *Tree) String() string {
 	return out.String()
 }
 
-func (t *Tree) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
+func (t *Tree) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
 	if len(t.Children) == 0 {
-		return t.Op.exec(dst, parallel, stats)
+		return t.Op.exec(dst, parallel, stats, rw)
 	}
 	var wg sync.WaitGroup
 	wg.Add(len(t.Children))
@@ -121,7 +121,7 @@ func (t *Tree) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
 	for i := range t.Children {
 		go func(i int) {
 			defer wg.Done()
-			errors[i] = t.Children[i].exec(&rp[i], subp, stats)
+			errors[i] = t.Children[i].exec(&rp[i], subp, stats, rw)
 		}(i)
 	}
 	wg.Wait()
@@ -142,12 +142,12 @@ func (t *Tree) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
 	if outerr != nil {
 		return outerr
 	}
-	rw := &replacer{
+	repl := &replacer{
 		inputs: rp,
 	}
-	t.Op.rewrite(rw)
-	if rw.err != nil {
-		return rw.err
+	t.Op.rewrite(repl)
+	if repl.err != nil {
+		return repl.err
 	}
-	return t.Op.exec(dst, parallel, stats)
+	return t.Op.exec(dst, parallel, stats, rw)
 }

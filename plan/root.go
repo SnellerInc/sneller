@@ -15,11 +15,9 @@
 package plan
 
 import (
-	"fmt"
 	"io"
 	"runtime"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -57,14 +55,7 @@ func (l *LocalTransport) Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *Ex
 	if parallel <= 0 {
 		parallel = runtime.GOMAXPROCS(0)
 	}
-	if rw != nil {
-		var err error
-		t, err = t.Rewrite(rw)
-		if err != nil {
-			return err
-		}
-	}
-	return t.exec(s, parallel, stats)
+	return t.exec(s, parallel, stats, rw)
 }
 
 type wrappedHandle int
@@ -76,49 +67,6 @@ func (w wrappedHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 func (w wrappedHandle) Open() (vm.Table, error) {
 	panic("wrappedHandle.Open")
-}
-
-func (f *fakeenv) rewrite(in *expr.Table, h TableHandle) (*expr.Table, TableHandle) {
-	in, h = f.rw(in, h)
-	f.handles = append(f.handles, h)
-	h = wrappedHandle(len(f.handles) - 1)
-	return in, h
-}
-
-// DecodeHandle implements Decoder
-func (f *fakeenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
-	i, _, err := ion.ReadInt(mem)
-	if err != nil {
-		return nil, fmt.Errorf("fakeenv: %w", err)
-	}
-	return f.handles[i], nil
-}
-
-// Rewrite returns a copy of a tree
-// with tables rewritten according
-// to the supplied rewrite rule.
-func (t *Tree) Rewrite(rw TableRewrite) (*Tree, error) {
-	fe := &fakeenv{rw: rw}
-	var st ion.Symtab
-	var buf ion.Buffer
-	err := t.EncodePart(&buf, &st, fe.rewrite)
-	if err != nil {
-		return nil, err
-	}
-	ret, err := Decode(fe, &st, buf.Bytes())
-	if err != nil {
-		panic(err.Error())
-	}
-	return ret, nil
-}
-
-// fakeenv is a TableRewriter and an Env
-// for performing deep copies of a Plan
-// with a table rewrite
-type fakeenv struct {
-	rw      TableRewrite
-	tables  []*expr.Table
-	handles []TableHandle
 }
 
 // Transport models the exection environment

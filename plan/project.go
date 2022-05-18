@@ -36,8 +36,8 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (p *Project) exec(dst vm.QuerySink, parallel int, stats *ExecStats) error {
-	return p.From.exec(vm.NewProjection(vm.Selection(p.Using), dst), parallel, stats)
+func (p *Project) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
+	return p.From.exec(vm.NewProjection(vm.Selection(p.Using), dst), parallel, stats, rw)
 }
 
 func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab) error {
