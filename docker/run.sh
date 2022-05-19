@@ -51,7 +51,7 @@ fi
 
 # Download the Github archive data
 mkdir data
-wget -P data/ https://data.gharchive.org/2022-01-{01..31}-{0..23}.json.gz)
+wget -c -P data/ https://data.gharchive.org/2022-01-{01..31}-{0..23}.json.gz
 
 # Copy the data to the test bucket
 if docker run \
