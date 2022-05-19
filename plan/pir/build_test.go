@@ -259,16 +259,17 @@ func TestBuild(t *testing.T) {
 			results: []expr.TypeSet{intType, expr.NumericType, expr.BoolType},
 		},
 		{
-			input: `select count(*) from foo`,
+			// test that we do not duplicate the "count" field
+			input: `select count(*), count(field) from foo`,
 			expect: []string{
 				"ITERATE foo",
-				"AGGREGATE COUNT(*) AS \"count\"",
+				"AGGREGATE COUNT(*) AS \"count\", COUNT(field) AS count_2",
 			},
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE COUNT(*) AS $_0_0)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\"",
+				"	AGGREGATE COUNT(*) AS $_0_0, COUNT(field) AS $_0_1)",
+				"AGGREGATE SUM_COUNT($_0_0) AS \"count\", SUM_COUNT($_0_1) AS count_2",
 			},
 		},
 		{
@@ -417,7 +418,7 @@ where x > (select min(f) from y) and x < (select max(f) from y)`,
 				"ITERATE foo",
 				// FIXME: teach aggregates to merge with
 				// projections that produce useless bindings
-				"PROJECT x", // note y is no longer present
+				"PROJECT x AS x", // note y is no longer present
 				"AGGREGATE COUNT(x) AS \"count\"",
 			},
 			results: []expr.TypeSet{countType},

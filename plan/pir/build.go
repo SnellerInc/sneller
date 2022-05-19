@@ -274,15 +274,29 @@ func replaceTables(body expr.Node, with []expr.CTE) (expr.Node, error) {
 // are not present; otherwise we won't
 // know what to project
 func pickOutputs(s *expr.Select) {
+	auto := make(map[string]struct{})
+	used := func(x string) bool {
+		_, ok := auto[x]
+		return ok
+	}
+	use := func(x string) {
+		auto[x] = struct{}{}
+	}
 	for i := range s.Columns {
 		if s.Columns[i].Explicit() {
+			use(s.Columns[i].Result())
 			continue
 		}
-		// in the absence of a natural output name,
-		// produce an ordinal column name
-		if res := s.Columns[i].Result(); res == "" {
-			s.Columns[i].As(fmt.Sprintf("_%d", i+1))
+		// do not *implicitly* assign the same
+		// result name more than once;
+		// if we see that, then append _%d until
+		// we find something unique
+		res := s.Columns[i].Result()
+		for res == "" || used(res) {
+			res += fmt.Sprintf("_%d", i+1)
 		}
+		use(res)
+		s.Columns[i].As(res)
 	}
 }
 
