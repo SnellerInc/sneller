@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -134,6 +135,17 @@ func parse(arg string) *expr.Query {
 	}
 	q, err := partiql.Parse(buf)
 	if err != nil {
+		var lexError *partiql.LexerError
+		if errors.As(err, &lexError) {
+			fmt.Printf("%s\n", buf)
+			fmt.Printf("%s", strings.Repeat(" ", lexError.Position-1))
+			n := lexError.Length
+			if n == 0 {
+				n = 2
+			}
+
+			fmt.Printf("%s\n", strings.Repeat("^", n))
+		}
 		exit(err)
 	}
 	return q

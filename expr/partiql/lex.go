@@ -198,7 +198,11 @@ func (s *scanner) Lex(l *yySymType) int {
 		s.pos++
 		return int(b)
 	default:
-		s.err = fmt.Errorf("pos %d: unexpected character %q", s.pos, b)
+		s.err = &LexerError{
+			Position: s.pos,
+			Length:   1,
+			Message:  fmt.Sprintf("unexpected character %q", b)}
+
 		return ERROR
 	}
 }
@@ -424,10 +428,24 @@ func toint(e expr.Node) (int, error) {
 	return int(r.Num().Int64()), nil
 }
 
-func (s *scanner) Error(err string) {
+func (s *scanner) Error(msg string) {
+	err := &LexerError{Position: s.pos}
 	if s.err != nil {
-		s.err = fmt.Errorf("at position %d, %s (%w)", s.pos, err, s.err)
-		return
+		err.Message = fmt.Sprintf("%s (%s)", msg, s.err)
+	} else {
+		err.Message = msg
 	}
-	s.err = fmt.Errorf("at position %d: %s", s.pos, err)
+
+	s.err = err
+}
+
+// LexerError describes a lexing error
+type LexerError struct {
+	Position int    // offset in the input string
+	Length   int    // length of wrong substring (0 if unknown)
+	Message  string // textual descritption of an error
+}
+
+func (e *LexerError) Error() string {
+	return fmt.Sprintf("at position %d: %s", e.Position, e.Message)
 }
