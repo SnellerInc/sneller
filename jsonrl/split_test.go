@@ -97,6 +97,7 @@ func check(t *testing.T, contents []byte, objcount int) {
 }
 
 func TestSplit(t *testing.T) {
+	t.Parallel()
 	files := []struct {
 		name    string
 		objects int
@@ -198,13 +199,14 @@ func synthesize(t testing.TB, corpus string, size int) *testCorpus {
 }
 
 func TestSplitVersified(t *testing.T) {
+	t.Parallel()
 	files := []string{
 		"parking2.json",
 		"parking3.json",
 	}
 	for i := range files {
 		t.Run(files[i], func(t *testing.T) {
-			tc := synthesize(t, filepath.Join("../testdata/", files[i]), 32*1024*1024)
+			tc := synthesize(t, filepath.Join("../testdata/", files[i]), 1024*1024)
 			var sp Splitter
 			// we're making the window size
 			// extra amll and the parallelism high

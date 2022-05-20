@@ -25,6 +25,14 @@ import (
 	"github.com/SnellerInc/sneller/date"
 )
 
+var (
+	ErrTooLarge = errors.New("ion: object size exceeds max size")
+)
+
+func err2big(max int) error {
+	return fmt.Errorf("%w: %d", ErrTooLarge, max)
+}
+
 // Chunker is a wrapper for a Buffer
 // and Symtab that allows objects to
 // be written to an output stream on
@@ -306,6 +314,16 @@ func noppad(buf []byte) {
 	}
 }
 
+// CheckSize checks that the current number
+// of un-commited bytes will fit within c.Align.
+// If the object would not fit, it returns an error immediately.
+func (c *Chunker) CheckSize() error {
+	if c.Buffer.Size()-c.lastoff < c.Align {
+		return nil
+	}
+	return err2big(c.Align)
+}
+
 // Commit commits an object to the state buffer,
 // taking care to flush it if we would
 // exceed the block alignment.
@@ -323,7 +341,7 @@ func (c *Chunker) Commit() error {
 	cur := c.Buffer.Bytes()
 	lastsize := len(cur) - c.lastoff
 	if lastsize > c.Align {
-		return fmt.Errorf("object size %d exceeds block size %d", lastsize, c.Align)
+		return err2big(c.Align)
 	}
 	// we're guessing here that if we leave enough
 	// slack space for the symbol table to double
@@ -398,7 +416,7 @@ func (c *Chunker) ReadFrom(r io.Reader) (int64, error) {
 			continue
 		}
 		if size >= c.Align {
-			return n, fmt.Errorf("ion.Chunker.ReadFrom: object size %d >= align %d", size, c.Align)
+			return n, err2big(c.Align)
 		}
 		var this []byte
 		peeked := false

@@ -219,6 +219,7 @@ type Converter struct {
 var isFatal = []error{
 	jsonrl.ErrNoMatch,
 	jsonrl.ErrTooLarge,
+	ion.ErrTooLarge,
 	gzip.ErrHeader,
 	zstd.ErrReservedBlockType,
 	zstd.ErrMagicMismatch,

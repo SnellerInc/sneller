@@ -31,8 +31,6 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-//go:generate ragel -L -Z -G2 lex.rl
-
 //go:generate gofmt -w .
 
 type fieldoff struct {
@@ -603,7 +601,7 @@ func (s *state) rewind(snapshot *ion.Snapshot) {
 
 func (s *state) Commit() error {
 	if len(s.stack) != 0 {
-		return fmt.Errorf("State.Commit inside object?")
+		return fmt.Errorf("state.Commit inside object?")
 	}
 	return s.out.Commit()
 }

@@ -34,6 +34,10 @@ func TestConvertTestdata(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
+			if path == "fuzz" {
+				// ignore testdata/fuzz
+				return fs.SkipDir
+			}
 			return nil
 		}
 		t.Run(path, func(t *testing.T) {
