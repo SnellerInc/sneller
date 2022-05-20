@@ -33,14 +33,14 @@ type readerTable struct {
 	block int64
 }
 
-var allBytes int64
+var allBytes uint64
 
 type byteTracker struct {
 	io.Writer
 }
 
 func (b *byteTracker) Write(p []byte) (int, error) {
-	atomic.AddInt64(&allBytes, int64(len(p)))
+	atomic.AddUint64(&allBytes, uint64(len(p)))
 	return b.Writer.Write(p)
 }
 

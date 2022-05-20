@@ -35,7 +35,6 @@ type jsquery struct {
 }
 
 func (j *jsquery) CloseError(err error) {
-	panic(err)
 	exit(fmt.Errorf("jsquery: %s", err))
 }
 

@@ -34,15 +34,14 @@ import (
 )
 
 var (
-	dashf       bool
-	dashj       bool
-	dashN       bool
-	dashg       bool
-	dasho       string
-	dashi       string
-	dashnommap  bool
-	printTime   bool
-	printAllocs bool
+	dashf      bool
+	dashj      bool
+	dashN      bool
+	dashg      bool
+	dasho      string
+	dashi      string
+	dashnommap bool
+	printStats bool
 
 	dst   io.WriteCloser
 	stdin io.Reader
@@ -55,28 +54,38 @@ func init() {
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
 	flag.StringVar(&dashi, "i", "-", "file named stdin (default is stdin)")
-	flag.BoolVar(&printTime, "t", false, "print execution time on stderr")
-	flag.BoolVar(&printAllocs, "A", false, "print allocations stats on stderr")
-	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files when possible")
+	flag.BoolVar(&printStats, "S", false, "print exection statistics on stderr")
+	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files (Linux only)")
 }
 
-type memStats struct {
-	mallocs uint64 // runtime.MemStats.Mallocs
-	bytes   uint64 // runtime.MemStats.TotalAlloc
+type execStatistics struct {
+	mallocs   uint64 // runtime.MemStats.Mallocs
+	bytes     uint64 // runtime.MemStats.TotalAlloc
+	startTime time.Time
+	elapsed   time.Duration
 }
 
-func (m *memStats) Start() {
+func (e *execStatistics) Start() {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
-	m.mallocs = stats.Mallocs
-	m.bytes = stats.TotalAlloc
+	e.mallocs = stats.Mallocs
+	e.bytes = stats.TotalAlloc
+	e.startTime = time.Now()
 }
 
-func (m *memStats) Stop() {
+func (e *execStatistics) Stop() {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
-	m.mallocs = stats.Mallocs - m.mallocs
-	m.bytes = stats.TotalAlloc - m.bytes
+	e.mallocs = stats.Mallocs - e.mallocs
+	e.bytes = stats.TotalAlloc - e.bytes
+	e.elapsed = time.Since(e.startTime)
+}
+
+func (e *execStatistics) Print() {
+	rate := (float64(allBytes) / float64(e.elapsed)) * 1000.0 / 1024.0 // bytes/ns ~= GB/s -> GiB/s*/
+
+	fmt.Fprintf(os.Stderr, "%.3gGiB/s (scanned %s in %v), allocated memory: %s, allocations: %d\n",
+		rate, formatSize(allBytes), e.elapsed, formatSize(e.bytes), e.mallocs)
 }
 
 func formatSize(size uint64) string {
@@ -227,8 +236,7 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	startTime := time.Now()
-	var stats memStats
+	var stats execStatistics
 	stats.Start()
 
 	for i := range args {
@@ -239,13 +247,7 @@ func main() {
 	bg.Wait()
 
 	stats.Stop()
-	elapsed := time.Since(startTime)
-	if printTime {
-		fmt.Fprintf(os.Stderr, "execution time: %v\n", elapsed)
-	}
-	if printAllocs {
-		fmt.Fprintf(os.Stderr, "allocated memory: %s, allocations: %d, scanned: %d, %.3gGiB/s\n",
-			formatSize(stats.bytes), stats.mallocs, allBytes,
-			(float64(allBytes)/float64(elapsed))*(float64(1000)/float64(1024))) // bytes/ns ~= GB/s -> GiB/s
+	if printStats {
+		stats.Print()
 	}
 }
