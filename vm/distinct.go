@@ -69,15 +69,15 @@ func NewDistinct(on []expr.Node, dst QuerySink) (*DistinctFilter, error) {
 	p.Begin()
 	var hash, pred *value
 	for i := range on {
-		val, err := compile(p, on[i])
+		val, err := p.serialized(on[i])
 		if err != nil {
 			return nil, err
 		}
 		if hash == nil {
-			pred = val
+			pred = p.mask(val)
 			hash = p.hash(val)
 		} else {
-			pred = p.And(pred, val)
+			pred = p.And(pred, p.mask(val))
 			hash = p.hashplus(hash, val)
 		}
 	}
@@ -245,5 +245,6 @@ func (d *deduper) writeRows(delims []vmref) error {
 }
 
 func (d *deduper) Close() error {
+	d.bc.reset()
 	return d.dst.Close()
 }

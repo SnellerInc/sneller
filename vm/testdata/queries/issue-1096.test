@@ -1,0 +1,23 @@
+SELECT DISTINCT
+  CHAR_LENGTH(str) AS c
+FROM input
+ORDER BY c DESC LIMIT 10
+---
+{"str": ""}
+{"str": "abc"}
+{"str": "abcdef"}
+{"str": "abcdef123abc"}
+{"str": "abcdef"}
+{"str": "abc"}
+{"str": ""}
+{"str": "abc"}
+{"str": "abcdef"}
+{"str": "abcdef123abc"}
+{"str": "abcdef"}
+{"str": "abc"}
+{"str": ""}
+---
+{"c": 12}
+{"c": 6}
+{"c": 3}
+{"c": 0}
