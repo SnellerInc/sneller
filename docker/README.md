@@ -51,12 +51,12 @@ Sneller uses S3 (or compatible) object storage to fetch the data. When running i
 We use some sample data from the Github archive. You can choose how much data you want to ingest, but this will download the data for a single day:
 ```sh
 $ mkdir data
-$ wget -P data/ https://data.gharchive.org/2022-01-01-{0..23}.json.gz
+$ wget -c -P data/ https://data.gharchive.org/2021-08-01-{0..23}.json.gz
 ```
 or if you're feeling a bit more adventurous, the data for a single month:
 ```sh
 $ mkdir data
-$ wget -P data/ https://data.gharchive.org/2022-01-{01..31}-{0..23}.json.gz
+$ wget -c -P data/ https://data.gharchive.org/2021-08-{01..31}-{0..23}.json.gz
 ```
 Depending on your internet speed this download may take a while.
 

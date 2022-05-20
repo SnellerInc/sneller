@@ -51,7 +51,7 @@ fi
 
 # Download the Github archive data
 mkdir data
-wget -c -P data/ https://data.gharchive.org/2022-01-{01..31}-{0..23}.json.gz
+wget -c -P data/ https://data.gharchive.org/2021-08-{01..31}-{0..23}.json.gz
 
 # Copy the data to the test bucket
 if docker run \
@@ -90,5 +90,5 @@ fi
 curl -G -H "Authorization: Bearer $SNELLER_TOKEN" \
     --data-urlencode "database=gha" \
     --data-urlencode 'json' \
-    --data-urlencode 'query=SELECT COUNT(*) FROM gharchive' \
+    --data-urlencode 'query=SELECT type, COUNT(*) FROM gharchive GROUP BY type ORDER BY COUNT(*) DESC' \
     'http://localhost:9180/executeQuery'

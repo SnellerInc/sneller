@@ -1,3 +1,4 @@
 .env
+definition.json
 minio/
-output/
+data/
