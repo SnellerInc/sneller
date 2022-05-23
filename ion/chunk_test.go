@@ -208,6 +208,16 @@ func TestChunkerRange(t *testing.T) {
 		max:  timestamp("2021-11-18T16:00:00Z"),
 	}}}
 
+	for i := range rw.allRanges {
+		rng := rw.allRanges[i]
+		// make sure things are sorted deterministically
+		if len(rng) == 2 &&
+			len(rng[1].path) == 1 &&
+			rng[1].path[0] == "foo" {
+			rng[0], rng[1] = rng[1], rng[0]
+		}
+	}
+
 	if !reflect.DeepEqual(expected, rw.allRanges) {
 		t.Errorf("ranges not equal")
 		t.Errorf("want: %v", expected)
@@ -261,6 +271,33 @@ func TestChunkerSnapshot(t *testing.T) {
 	}
 }
 
+func checkEncoding(t *testing.T, buf *rangeBuf, align int) {
+	mem := buf.Bytes()
+	var st ion.Symtab
+	var err error
+	var d ion.Datum
+	insize := len(mem)
+	for len(mem) > 0 {
+		d, mem, err = ion.ReadDatum(&st, mem)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s, ok := d.(*ion.Struct)
+		if !ok {
+			continue
+		}
+		max := st.MaxID()
+		for i := range s.Fields {
+			if int(s.Fields[i].Sym) >= max {
+				offset := insize - len(mem)
+				t.Logf("fields: %v", s.Fields)
+				t.Logf("offset %d (chunk %d)", offset, offset/align)
+				t.Errorf("invalid symbol %d of %d", s.Fields[i].Sym, max)
+			}
+		}
+	}
+}
+
 func TestChunkReadFrom(t *testing.T) {
 	files := []string{
 		"nyc-taxi.block",
@@ -311,6 +348,7 @@ func TestChunkReadFrom(t *testing.T) {
 					if outsize%cn.Align != 0 {
 						t.Errorf("outsize is %d?", outsize)
 					}
+					checkEncoding(t, &buf, cn.Align)
 					checkRanges(t, &buf, cn.Align)
 					checkChunkerWrite(t, &buf, &cn)
 				})
@@ -540,7 +578,16 @@ func checkEquivalent(t *testing.T, left, right []byte) {
 		zeroSymbols(gotleft[i])
 		zeroSymbols(gotright[i])
 		if !reflect.DeepEqual(gotleft[i], gotright[i]) {
-			t.Fatalf("%v != %v", gotleft[i], gotright[i])
+			f0 := gotleft[i].Fields
+			f1 := gotright[i].Fields
+			for len(f0) > 0 &&
+				len(f1) > 0 &&
+				f0[0] == f1[0] {
+				f0 = f0[1:]
+				f1 = f1[1:]
+			}
+			t.Errorf("left %v", f0)
+			t.Errorf("right %v", f1)
 		}
 	}
 }
@@ -842,7 +889,9 @@ func TestChunkerChangingSymbols(t *testing.T) {
 			})
 
 			if !reflect.DeepEqual(s, want) {
-				t.Fatalf("not equal: %#v %#v", s, want)
+				t.Errorf("first: %#v", s)
+				t.Errorf("want : %#v", want)
+				t.Fatal("not equal")
 			}
 		}
 

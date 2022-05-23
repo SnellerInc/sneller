@@ -15,6 +15,8 @@
 package ion
 
 import (
+	"fmt"
+	"io"
 	"testing"
 )
 
@@ -43,6 +45,42 @@ func TestPathLess(t *testing.T) {
 			if pathLess(tail[j], ord[i]) {
 				t.Errorf("%v < %v ?", tail[j], ord[i])
 			}
+		}
+	}
+}
+
+func TestUniqueFields(t *testing.T) {
+	x := Struct{
+		Fields: []Field{
+			{Value: Uint(1000)},
+			{Value: String("foobarbaz")},
+			{Value: UntypedNull{}},
+			{Value: &Struct{
+				Fields: []Field{
+					{Value: String("inner")},
+					{Value: Float(3.5)},
+				},
+			}},
+		},
+	}
+	cn := Chunker{
+		W:     io.Discard,
+		Align: 2048,
+	}
+	// test that infinite unique fields
+	// do not cause the symbol table to explode
+	for i := 0; i < 1000; i++ {
+		x.Fields[0].Label = fmt.Sprintf("f0_%d", i)
+		x.Fields[1].Label = fmt.Sprintf("f1_%d", i)
+		x.Fields[2].Label = fmt.Sprintf("f2_%d", i)
+		x.Fields[3].Label = fmt.Sprintf("f3_%d", i)
+		y := x.Fields[3].Value.(*Struct)
+		y.Fields[0].Label = fmt.Sprintf("f0_%d", i-1)
+		y.Fields[1].Label = fmt.Sprintf("f1_%d", i+1)
+		x.Encode(&cn.Buffer, &cn.Symbols)
+		err := cn.Commit()
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 }

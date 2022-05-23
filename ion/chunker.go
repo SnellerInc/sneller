@@ -87,6 +87,9 @@ type Chunker struct {
 
 	// marshalled and flushed maximum symbol IDs, respectively:
 	tmpID, flushID int
+
+	// resymbolization is disabled
+	noResymbolize bool
 }
 
 // Snapshot holds the state of a Chunker at a point in
@@ -258,7 +261,10 @@ func (c *Chunker) forceFlush(final bool) error {
 	if len(cur) == c.lastst {
 		return nil
 	}
-	if c.Buffer.Size() > c.Align {
+	if c.Buffer.Size() > c.Align || c.tmpID < c.Symbols.MaxID() {
+		if final {
+			panic("final && too much data")
+		}
 		// create a new copy of the tail so
 		// that we can clobber it with nop padding;
 		// this should only be 1 object worth of data
@@ -290,12 +296,25 @@ func (c *Chunker) forceFlush(final bool) error {
 	// plus the reserved
 	c.Buffer.Set(cur[:0])
 	if tail != nil {
-		c.Buffer.UnsafeAppend(tail)
+		if final {
+			panic("final && tail != nil")
+		}
+		if c.flushID == 0 && !c.noResymbolize {
+			// if we are going to need a full symbol table
+			// in the next block, resymbolize so that we
+			// don't carry over old symbols
+			resymbolize(&c.Buffer, &c.Ranges, &c.Symbols, tail)
+		} else {
+			c.Buffer.UnsafeAppend(tail)
+		}
 	}
 	c.tmpbuf.Reset()
 	// save the offset of either zero or one objects
 	c.lastoff = c.Buffer.Size()
 	c.lastst = 0
+	if final {
+		return nil
+	}
 	// at this point we have either
 	// zero or one object in the buffer,
 	// plus maybe the symbol table, so if this
@@ -438,14 +457,6 @@ func (c *Chunker) ReadFrom(r io.Reader) (int64, error) {
 				return n, err
 			}
 		}
-		if IsBVM(this) {
-			// if we are going to reset the symbol table,
-			// ensure we don't output a partial symbol table
-			// on the next flush
-			if err := c.resetPrepare(); err != nil {
-				return 0, err
-			}
-		}
 		dat, _, err := ReadDatum(&st, this)
 		if err != nil {
 			return n, err
@@ -483,19 +494,6 @@ func noteTimeFields(d Datum, c *Chunker) {
 	}
 }
 
-func (c *Chunker) resetPrepare() error {
-	if err := c.forceFlush(false); err != nil {
-		return err
-	}
-	c.Buffer.Reset()
-	c.tmpID = 0
-	c.flushID = 0
-	c.lastoff = 0
-	c.lastst = 0
-	c.rangeSyms = c.rangeSyms[:0]
-	return nil
-}
-
 // Write writes a block of ion data from a stream.
 // If write does not begin with a BVM and/or symbol table,
 // then previous calls to Write must have already set the symbol table.
@@ -503,6 +501,15 @@ func (c *Chunker) resetPrepare() error {
 //
 // NOTE: this is *not* safe to use on un-trusted data!
 func (c *Chunker) Write(block []byte) (int, error) {
+	// we cannot resymbolize inside Write because
+	// sequential Write calls are allowed to assume
+	// that the symbol table has not changed between calls;
+	// resymbolization is only allowed during ordinary building
+	c.noResymbolize = true
+	defer func() {
+		c.noResymbolize = false
+	}()
+
 	var err error
 	n := len(block)
 	if IsBVM(block) {
@@ -514,38 +521,36 @@ func (c *Chunker) Write(block []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		// easiest case: the current symbol table
-		// already contains all of these symbols
-		// at these positions, so do nothing
-		if !c.Symbols.Contains(&newsyms) {
-			// if newsyms contains the current symbol table,
-			// then we have to change the symbol table,
-			// but we can still avoid flushing
-			if !newsyms.Contains(&c.Symbols) {
-				// Since ranges are encoded using Symbuf (symbols),
-				// we can't actually record new ranges values unless
-				// everything up to this point is fully flushed.
-				// We can let blockfmt.MultiWriter handle coalescing
-				// Flushes that happen too frequently.
-				//
-				// TODO: this can leave some padding
-				// that we might not want to keep around;
-				// we could transcode the contents of the
-				// buffer w/ the new symbol table...
-				err := c.Flush()
-				if err != nil {
-					return 0, err
-				}
-				// force the next adjustSyms call
-				// to emit a BVM
-				c.tmpID = 0
-				c.flushID = 0
-				c.Ranges.reset()
+		// if newsyms contains the current symbol table,
+		// then we have to change the symbol table,
+		// but we can still avoid flushing
+		if !newsyms.Contains(&c.Symbols) {
+			// Since ranges are encoded using Symbuf (symbols),
+			// we can't actually record new ranges values unless
+			// everything up to this point is fully flushed.
+			// We can let blockfmt.MultiWriter handle coalescing
+			// Flushes that happen too frequently.
+			//
+			// TODO: this can leave some padding
+			// that we might not want to keep around;
+			// we could transcode the contents of the
+			// buffer w/ the new symbol table...
+			err := c.Flush()
+			if err != nil {
+				return 0, err
 			}
-			c.Symbols = newsyms
-			// new symbols mean the range symbols are stale
-			c.rangeSyms = c.rangeSyms[:0]
+			if c.Buffer.Size() > 0 {
+				panic("data left over after Flush()?")
+			}
+			// force the next adjustSyms call
+			// to emit a BVM
+			c.tmpID = 0
+			c.flushID = 0
+			c.Ranges.reset()
 		}
+		newsyms.CloneInto(&c.Symbols)
+		// new symbols mean the range symbols are stale
+		c.rangeSyms = c.rangeSyms[:0]
 	} else if TypeOf(block) == AnnotationType {
 		block, err = c.Symbols.Unmarshal(block)
 		if err != nil {
