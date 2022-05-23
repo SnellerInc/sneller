@@ -210,13 +210,24 @@ func (l *Logical) check(h Hint) error {
 }
 
 func (c *Comparison) check(h Hint) error {
-	if c.Op == Like {
+	if c.Op == Like || c.Op == Ilike {
 		_, ok := c.Right.(String)
 		if !ok {
 			return errsyntax("LIKE requires a literal string on the right-hand-side")
 		}
-	} else if !TypeOf(c.Left, h).Comparable(TypeOf(c.Right, h)) {
-		return errtype(c, "left- and right-hand-side do not have compatible types")
+		if t := TypeOf(c.Left, h); t&StringType == 0 {
+			return errtype(c, "lhs of LIKE/ILIKE is never a string")
+		}
+		return nil
+	}
+	oktypes := AnyType &^ MissingType
+	if c.Op.ordinal() {
+		oktypes = NumericType | TimeType // only types supported for ordinal comparison for now
+	}
+	lt := TypeOf(c.Left, h) & oktypes
+	rt := TypeOf(c.Right, h) & oktypes
+	if lt&rt == 0 {
+		return errtype(c, "lhs and rhs of comparison are never comparable")
 	}
 	return nil
 }

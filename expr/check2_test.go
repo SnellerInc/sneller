@@ -53,6 +53,18 @@ func TestCheck2(t *testing.T) {
 			`SELECT (a ++ b ++ c)`,
 			"non-table",
 		},
+		{
+			`SELECT * FROM table WHERE x < 'y'`,
+			"lhs and rhs.*never comparable",
+		},
+		{
+			`SELECT * FROM table WHERE 'x' < 'y'`,
+			"lhs and rhs.*never comparable",
+		},
+		{
+			"SELECT * FROM table WHERE 3 = `2022-01-02T03:04:05.67Z`",
+			"lhs and rhs.*never comparable",
+		},
 	}
 	for i := range testcases {
 		text := testcases[i].query
