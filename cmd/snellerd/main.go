@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"golang.org/x/sys/cpu"
 )
 
 var version = "development"
@@ -27,6 +29,11 @@ var version = "development"
 var testmode = false
 
 func main() {
+	if !cpu.X86.HasAVX512 {
+		fmt.Fprintln(os.Stderr, "CPU doesn't support AVX-512")
+		os.Exit(1)
+	}
+
 	args := os.Args[1:]
 	useSubCommand := len(args) > 0 && !strings.HasPrefix(args[0], "-")
 	if useSubCommand {

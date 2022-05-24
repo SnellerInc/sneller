@@ -32,6 +32,7 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/vm"
+	"golang.org/x/sys/cpu"
 )
 
 var (
@@ -186,6 +187,12 @@ func do(arg string) {
 		plan.Graphviz(tree, dst)
 		return
 	}
+
+	if !cpu.X86.HasAVX512 {
+		fmt.Fprintln(os.Stderr, "CPU doesn't support AVX-512")
+		os.Exit(1)
+	}
+
 	var stat plan.ExecStats
 	err = plan.Exec(tree, dst, &stat)
 	if err != nil {
