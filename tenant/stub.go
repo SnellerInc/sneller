@@ -32,6 +32,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/dcache"
@@ -48,6 +49,12 @@ type Env struct {
 func (e *Env) post() {
 	binary.LittleEndian.PutUint64(e.evbuf[:], 1)
 	e.eventfd.Write(e.evbuf[:])
+}
+
+var _ plan.UploaderDecoder = (*Env)(nil)
+
+func (e *Env) DecodeUploader(st *ion.Symtab, buf []byte) (plan.UploadFS, error) {
+	return db.DecodeDirFS(st, buf)
 }
 
 // handle implements plan.Handle and cache.Segment

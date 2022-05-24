@@ -15,12 +15,14 @@
 package db
 
 import (
+	"fmt"
 	"io/fs"
 	"net/http"
 	"strings"
 
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/aws/s3"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -33,6 +35,42 @@ type S3FS struct {
 // URL implements db.URL
 func (s *S3FS) URL(name string, info fs.FileInfo, etag string) (string, error) {
 	return s3.URL(s.Key, s.Bucket, name)
+}
+
+// Encode implements plan.UploadFS
+func (s *S3FS) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("key"))
+	s.Key.Encode(st, dst)
+	dst.BeginField(st.Intern("bucket"))
+	dst.WriteString(s.Bucket)
+	dst.EndStruct()
+	return nil
+}
+
+// DecodeS3FS decodes the output of (*S3FS).Encode.
+func DecodeS3FS(st *ion.Symtab, buf []byte) (*S3FS, error) {
+	s := &S3FS{}
+	_, err := ion.UnpackStruct(st, buf, func(field string, buf []byte) error {
+		var err error
+		switch field {
+		case "key":
+			s.Key, err = aws.DecodeKey(st, buf)
+		case "bucket":
+			s.Bucket, _, err = ion.ReadString(buf)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if s.Key == nil {
+		return nil, fmt.Errorf("missing key")
+	}
+	if s.Bucket == "" {
+		return nil, fmt.Errorf("missing bucket")
+	}
+	return s, nil
 }
 
 // S3Resolver is a resolver that expects only s3:// schemes.

@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
@@ -150,6 +151,16 @@ func (t *tenantEnv) DecodeSubtables(st *ion.Symtab, buf []byte) (plan.Subtables,
 		return &tenantHandle{parent: t, inner: h}
 	}
 	return decodeSubtables(st, buf, thfn)
+}
+
+var _ plan.UploaderDecoder = (*tenantEnv)(nil)
+
+// DecodeUploader implements plan.UploaderDecoder.
+func (t *tenantEnv) DecodeUploader(st *ion.Symtab, buf []byte) (plan.UploadFS, error) {
+	if testmode {
+		return db.DecodeDirFS(st, buf)
+	}
+	return db.DecodeS3FS(st, buf)
 }
 
 func (e *tenantEnv) post() {

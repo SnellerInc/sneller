@@ -495,14 +495,15 @@ func (o *OutputPart) rewrite(func(expr.Node, bool) expr.Node) {}
 // OutputIndex is a step that takes the "part" field
 // of incoming rows and constructs an index out of them,
 // returning a single row like
-//   {"table_name": "basename-XXXXXX"}
+//   {"table": "db.table-XXXXXX"}
 type OutputIndex struct {
+	Table    *expr.Path
 	Basename string
 	parented
 }
 
 func (o *OutputIndex) describe(dst io.Writer) {
-	fmt.Fprintf(dst, "OUTPUT INDEX %s\n", o.Basename)
+	fmt.Fprintf(dst, "OUTPUT INDEX %s AT %s\n", expr.ToString(o.Table), o.Basename)
 }
 
 func (o *OutputIndex) get(x string) (Step, expr.Node) {
@@ -747,11 +748,14 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 
 // Into handles the INTO clause by pushing
 // the appropriate OutputIndex and OutputPart nodes.
-func (b *Trace) Into(basepath string) {
+func (b *Trace) Into(table *expr.Path, basepath string) {
 	op := &OutputPart{Basename: basepath}
 	op.setparent(b.top)
 	b.add(expr.Identifier("part"), op, nil)
-	oi := &OutputIndex{Basename: basepath}
+	oi := &OutputIndex{
+		Table:    table,
+		Basename: basepath,
+	}
 	oi.setparent(op)
 	b.top = oi
 	tblname := expr.Identifier("table_name")

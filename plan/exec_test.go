@@ -1486,7 +1486,7 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	}
 }
 
-func testPlanSerialize(t *testing.T, tree *Tree, env *testenv) {
+func testPlanSerialize(t *testing.T, tree *Tree, env Decoder) {
 	var obuf ion.Buffer
 	var st ion.Symtab
 

@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -46,6 +47,23 @@ func NewDirFS(dir string) *DirFS {
 	return &DirFS{
 		DirFS: blockfmt.NewDirFS(dir),
 	}
+}
+
+// DecodeDirFS decodes the output of (*DirFS).Encode.
+func DecodeDirFS(st *ion.Symtab, mem []byte) (*DirFS, error) {
+	var root string
+	_, err := ion.UnpackStruct(st, mem, func(field string, mem []byte) error {
+		var err error
+		switch field {
+		case "root":
+			root, _, err = ion.ReadString(mem)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return NewDirFS(root), nil
 }
 
 // Close closes the http server
@@ -96,4 +114,13 @@ func (d *DirFS) URL(fp string, info fs.FileInfo, etag string) (string, error) {
 	}
 	uri := "http://" + d.addr.String() + "/" + fp
 	return uri, nil
+}
+
+// Encode implements plan.UploadFS
+func (d *DirFS) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("root"))
+	dst.WriteString(d.Root)
+	dst.EndStruct()
+	return nil
 }

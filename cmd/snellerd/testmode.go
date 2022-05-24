@@ -12,36 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+//go:build test
+
 package main
 
-import (
-	"fmt"
-	"os"
-	"strings"
-)
-
-var version = "development"
-
-// testmode is true when built with the "test" tag.
-// This enables unit test specific behavior.
-var testmode = false
-
-func main() {
-	args := os.Args[1:]
-	useSubCommand := len(args) > 0 && !strings.HasPrefix(args[0], "-")
-	if useSubCommand {
-		subCommand := args[0]
-		args = args[1:]
-		switch subCommand {
-		case "daemon":
-			runDaemon(args)
-		case "worker":
-			runWorker(args)
-		default:
-			fmt.Fprintf(os.Stderr, "invalid sub-command '%v'\n", subCommand)
-			os.Exit(1)
-		}
-	} else {
-		runDaemon(args)
-	}
-}
+func init() { testmode = true }

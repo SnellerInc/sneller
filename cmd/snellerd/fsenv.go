@@ -204,3 +204,14 @@ func (f *fsEnv) ListTables(dbname string) ([]string, error) {
 	})
 	return li, nil
 }
+
+var _ plan.UploadEnv = (*fsEnv)(nil)
+
+func (f *fsEnv) Uploader() plan.UploadFS {
+	fs, _ := f.root.(plan.UploadFS)
+	return fs
+}
+
+func (f *fsEnv) Key() *blockfmt.Key {
+	return f.tenant.Key()
+}

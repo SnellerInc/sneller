@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan/pir"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -269,6 +271,59 @@ func doSplit(s Splitter, tbl expr.Node, th TableHandle) (Subtables, error) {
 	return out, nil
 }
 
+// UploadFS is a blockfmt.UploadFS that can be encoded
+// as part of a query plan.
+type UploadFS interface {
+	blockfmt.UploadFS
+	// Encode encodes the UploadFS into the
+	// provided buffer.
+	Encode(dst *ion.Buffer, st *ion.Symtab) error
+}
+
+// UploadEnv is an Env that supports uploading objects
+// which enables support for SELECT INTO.
+type UploadEnv interface {
+	// Uploader returns an UploadFS to use to
+	// upload generated objects. This may return
+	// nil if the envionment does not support
+	// uploading despite implementing the
+	// interface.
+	Uploader() UploadFS
+	// Key returns the key that should be used to
+	// sign the index.
+	Key() *blockfmt.Key
+}
+
+func lowerOutputPart(n *pir.OutputPart, env Env, input Op) (Op, error) {
+	if e, ok := env.(UploadEnv); ok {
+		if up := e.Uploader(); up != nil {
+			op := &OutputPart{
+				Basename: n.Basename,
+				Store:    up,
+			}
+			op.From = input
+			return op, nil
+		}
+	}
+	return nil, fmt.Errorf("cannot handle INTO with Env that doesn't support UploadEnv")
+}
+
+func lowerOutputIndex(n *pir.OutputIndex, env Env, input Op) (Op, error) {
+	if e, ok := env.(UploadEnv); ok {
+		if up := e.Uploader(); up != nil {
+			op := &OutputIndex{
+				Table:    n.Table,
+				Basename: n.Basename,
+				Store:    up,
+				Key:      e.Key(),
+			}
+			op.From = input
+			return op, nil
+		}
+	}
+	return nil, fmt.Errorf("cannot handle INTO with Env that doesn't support UploadEnv")
+}
+
 func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
@@ -318,9 +373,9 @@ func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	case *pir.Order:
 		return lowerOrder(n, input)
 	case *pir.OutputIndex:
-		return nil, fmt.Errorf("INTO not yet supported")
+		return lowerOutputIndex(n, env, input)
 	case *pir.OutputPart:
-		return nil, fmt.Errorf("INTO not yet supported")
+		return lowerOutputPart(n, env, input)
 	default:
 		return nil, fmt.Errorf("don't know how to lower %T", in)
 	}

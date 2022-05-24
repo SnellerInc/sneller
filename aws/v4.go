@@ -28,6 +28,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/ion"
 )
 
 var (
@@ -341,4 +344,67 @@ func (s *SigningKey) sign(src, dst []byte, when time.Time) {
 	m := hmac.New(sha256.New, s.pickKey(when))
 	m.Write(src)
 	hex.Encode(dst, m.Sum(tmp[:0]))
+}
+
+// Encode encodes s into dst.
+func (s *SigningKey) Encode(st *ion.Symtab, dst *ion.Buffer) {
+	if s == nil {
+		dst.WriteNull()
+		return
+	}
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("base_uri"))
+	dst.WriteString(s.BaseURI)
+	dst.BeginField(st.Intern("region"))
+	dst.WriteString(s.Region)
+	dst.BeginField(st.Intern("service"))
+	dst.WriteString(s.Service)
+	dst.BeginField(st.Intern("access_key"))
+	dst.WriteString(s.AccessKey)
+	dst.BeginField(st.Intern("token"))
+	dst.WriteString(s.Token)
+	dst.BeginField(st.Intern("derived"))
+	dst.WriteTime(date.FromTime(s.Derived))
+	dst.BeginField(st.Intern("clamped0"))
+	dst.WriteBlob(s.clamped0)
+	dst.BeginField(st.Intern("clamped1"))
+	dst.WriteBlob(s.clamped1)
+	dst.EndStruct()
+}
+
+// DecodeKey decodes a SigningKey encoded
+// using (*SigningKey).Encode.
+func DecodeKey(st *ion.Symtab, buf []byte) (*SigningKey, error) {
+	if ion.TypeOf(buf) == ion.NullType {
+		return nil, nil
+	}
+	s := &SigningKey{}
+	_, err := ion.UnpackStruct(st, buf, func(field string, buf []byte) error {
+		var err error
+		switch field {
+		case "base_uri":
+			s.BaseURI, _, err = ion.ReadString(buf)
+		case "region":
+			s.Region, _, err = ion.ReadString(buf)
+		case "service":
+			s.Service, _, err = ion.ReadString(buf)
+		case "access_key":
+			s.AccessKey, _, err = ion.ReadString(buf)
+		case "token":
+			s.Token, _, err = ion.ReadString(buf)
+		case "derived":
+			var t date.Time
+			t, _, err = ion.ReadTime(buf)
+			s.Derived = t.Time()
+		case "clamped0":
+			s.clamped0, _, err = ion.ReadBytes(buf)
+		case "clamped1":
+			s.clamped1, _, err = ion.ReadBytes(buf)
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
 }

@@ -20,6 +20,10 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+// Decoder wraps environment specific methods used
+// during plan decoding. Implementations may also
+// implement interfaces such as SubtableDecoder and
+// UploadEnv to provide additional functionality.
 type Decoder interface {
 	// DecodeHandle is used to decode a TableHandle
 	// produced by TableHandle.Encode. If a list is
@@ -36,6 +40,15 @@ type SubtableDecoder interface {
 	// DecodeSubtables decodes Subtables produced
 	// by Subtables.Encode.
 	DecodeSubtables(st *ion.Symtab, mem []byte) (Subtables, error)
+}
+
+// UploaderDecoder can optionally be implemented by a
+// Decoder to handle decoding an UploadFS, which is
+// required to enable support for SELECT INTO.
+//
+// See also: UploadEnv
+type UploaderDecoder interface {
+	DecodeUploader(st *ion.Symtab, mem []byte) (UploadFS, error)
 }
 
 // decodeHandle calls d.DecodeHandle with special
@@ -191,6 +204,10 @@ func empty(name string) Op {
 		return &Unnest{}
 	case "unionmap":
 		return &UnionMap{}
+	case "outpart":
+		return &OutputPart{}
+	case "outidx":
+		return &OutputIndex{}
 	}
 	return nil
 }

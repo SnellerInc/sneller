@@ -317,6 +317,51 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 	return appendSig(key, buf.Bytes())
 }
 
+// WriteDescriptor writes a single descriptor
+// to buf given the provided symbol table
+func WriteDescriptor(buf *ion.Buffer, st *ion.Symtab, desc *Descriptor) {
+	var (
+		path         = st.Intern("path")
+		etag         = st.Intern("etag")
+		lastModified = st.Intern("last-modified")
+		format       = st.Intern("format")
+		trailer      = st.Intern("trailer")
+		size         = st.Intern("size")
+	)
+	buf.BeginStruct(-1)
+	buf.BeginField(path)
+	buf.WriteString(desc.Path)
+	buf.BeginField(etag)
+	buf.WriteString(desc.ETag)
+	if !desc.LastModified.IsZero() {
+		buf.BeginField(lastModified)
+		buf.WriteTime(desc.LastModified)
+	}
+	buf.BeginField(format)
+	buf.WriteString(desc.Format)
+	buf.BeginField(size)
+	buf.WriteInt(desc.Size)
+	if t := desc.Trailer; t != nil {
+		buf.BeginField(trailer)
+		t.Encode(buf, st)
+	}
+	buf.EndStruct()
+}
+
+// ReadDescriptor reads a single descriptor from buf
+// using the provided symbol table.
+func ReadDescriptor(mem []byte, st *ion.Symtab) (*Descriptor, []byte, error) {
+	var td TrailerDecoder
+	td.Symbols = st
+	ret := new(Descriptor)
+	err := ret.decode(&td, mem, 0)
+	if err != nil {
+		return nil, mem, err
+	}
+	rest := mem[ion.SizeOf(mem):]
+	return ret, rest, nil
+}
+
 func writeContents(buf *ion.Buffer, st *ion.Symtab, contents []Descriptor) {
 	var (
 		path         = st.Intern("path")

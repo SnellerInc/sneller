@@ -172,13 +172,15 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 			// expect db.table
 			p, ok := q.Into.(*expr.Path)
 			if !ok {
-				return nil, fmt.Errorf("unsupported INTO: %q", err)
+				return nil, fmt.Errorf("unsupported INTO: %q", expr.ToString(q.Into))
 			}
 			tbl, ok := p.Rest.(*expr.Dot)
-			if !ok || tbl.Rest != nil {
-				return nil, fmt.Errorf("unsupported INTO: %q", err)
+			if !ok {
+				return nil, fmt.Errorf("INTO missing database: %q", expr.ToString(q.Into))
+			} else if tbl.Rest != nil {
+				return nil, fmt.Errorf("unsupported INTO: %q", expr.ToString(q.Into))
 			}
-			t.Into(path.Join("db", p.First, tbl.Field))
+			t.Into(p, path.Join("db", p.First, tbl.Field))
 		}
 		err = postcheck(t)
 		if err != nil {

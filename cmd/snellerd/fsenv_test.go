@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,7 +44,7 @@ import (
 func TestMain(m *testing.M) {
 	// build the test binary launched with "stub" just once
 	err := exec.Command("go", "build",
-		"-o", "snellerd-test-binary", "-buildmode=exe", "-tags=vmfence", ".").Run()
+		"-o", "snellerd-test-binary", "-buildmode=exe", "-tags=vmfence,test", ".").Run()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -343,7 +344,8 @@ func TestSimpleFS(t *testing.T) {
 	}
 
 	queries := []struct {
-		input, db, output string
+		input, db string
+		output    string // regex
 	}{
 		// get coverage of both empty db and default db
 		{"SELECT COUNT(*) FROM default.parking", "", `{"count": 1023}`},
@@ -381,6 +383,7 @@ SELECT SUM(total_amount) FROM default.taxi WHERE VendorID = (SELECT VendorID FRO
 		},
 		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 9583}`},
 		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 9583}`},
+		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\.bar-.*"}`},
 	}
 	for i := range queries {
 		r := rq.getQuery(queries[i].db, queries[i].input)
@@ -397,7 +400,8 @@ SELECT SUM(total_amount) FROM default.taxi WHERE VendorID = (SELECT VendorID FRO
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.TrimSpace(buf.String()) != queries[i].output {
+		m := regexp.MustCompile("^" + queries[i].output + "$")
+		if !m.MatchString(strings.TrimSpace(buf.String())) {
 			t.Errorf("got result %s", buf.String())
 			t.Errorf("wanted %s", queries[i].output)
 		}
