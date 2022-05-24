@@ -15,6 +15,7 @@
 package jsonrl_test
 
 import (
+	"compress/gzip"
 	"io"
 	"io/fs"
 	"os"
@@ -49,6 +50,13 @@ func TestConvertTestdata(t *testing.T) {
 			r := (io.Reader)(f)
 			if strings.HasSuffix(path, ".zst") {
 				d, err := zstd.NewReader(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer d.Close()
+				r = d
+			} else if strings.HasSuffix(path, ".gz") {
+				d, err := gzip.NewReader(f)
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -683,7 +683,7 @@ func (s *state) unescaped(buf []byte) []byte {
 			if r == utf8.RuneError {
 				tmp = appendRune(tmp, r)
 				if size == 1 {
-					size = bits.LeadingZeros(uint(^buf[0])) - 24
+					size = bits.LeadingZeros32(uint32(^buf[i])) - 24
 				}
 			} else {
 				tmp = append(tmp, buf[i:i+size]...)
