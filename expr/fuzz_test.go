@@ -67,6 +67,8 @@ func addQueries(f *testing.F) {
 	}
 	f.Add([]byte("SELECT \"*\"\"\x05\""))
 	f.Add([]byte("SELECT 1E1000000 FROM foo"))
+	f.Add([]byte("SELECT * FROM CHAR_LENGTH()%0"))
+	f.Add([]byte("SELECT (0 ++ (0 ++ 0))"))
 }
 
 func FuzzCheck(f *testing.F) {

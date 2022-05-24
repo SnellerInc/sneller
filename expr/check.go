@@ -96,31 +96,42 @@ type checkwalk struct {
 	tdepth  int
 }
 
+func (c *checkwalk) errorf(f string, args ...interface{}) {
+	c.errors = append(c.errors, errsyntaxf(f, args...))
+}
+
 type checktable struct {
 	parent *checkwalk
 }
 
 func (c *checktable) errorf(f string, args ...interface{}) {
-	c.parent.errors = append(c.parent.errors, errsyntaxf(f, args...))
+	c.parent.errorf(f, args...)
 }
 
 func (c *checktable) Visit(n Node) Visitor {
+	if n == nil {
+		return nil
+	}
 	// TODO: allow list literals in table position
 	switch t := n.(type) {
 	case *Builtin:
 		if !t.isTable() {
 			c.errorf("cannot use %s in table position", ToString(n))
-			return nil
 		}
+		return c.parent
 	case *Path:
 		// ok
+		return nil
 	case *Select:
 		// ok
+		return c.parent
+	case String:
+		// FIXME: allowed for now, but really shouldn't be...
+		return nil
 	default:
-		errsyntaxf("cannot use %s in table position", n)
+		c.errorf("cannot use %s in table position", ToString(n))
 		return nil
 	}
-	return c.parent
 }
 
 func (c *checkwalk) Visit(n Node) Visitor {
@@ -134,6 +145,10 @@ func (c *checkwalk) Visit(n Node) Visitor {
 			c.errors = append(c.errors, err)
 			return nil
 		}
+	}
+	if _, ok := n.(*Appended); ok {
+		c.errorf("cannot use %s in non-table position", ToString(n))
+		return nil
 	}
 	if b, ok := n.(*Builtin); ok {
 		if b.isTable() {

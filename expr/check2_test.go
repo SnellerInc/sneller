@@ -43,6 +43,16 @@ func TestCheck2(t *testing.T) {
 			`SELECT x, y FROM UPPER('foo')`,
 			"in table position",
 		},
+		{
+			// also ensure garbage operators aren't
+			// allowed in the table position
+			`SELECT COUNT(*) FROM CHAR_LENGTH()%0`,
+			".*",
+		},
+		{
+			`SELECT (a ++ b ++ c)`,
+			"non-table",
+		},
 	}
 	for i := range testcases {
 		text := testcases[i].query
