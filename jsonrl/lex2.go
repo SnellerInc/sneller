@@ -2184,7 +2184,7 @@ const list_field_en_main int = 1
 
 //line lex2.rl:279
 
-func (t *parser) lexListField(b *reader) error {
+func (t *parser) lexListField(b *reader, multi bool) error {
 	if !b.assertFill() {
 		if b.err != nil {
 			return b.err
@@ -3504,7 +3504,7 @@ func (t *parser) lexListField(b *reader) error {
 			}
 			b.rpos += p + 1
 			// loop if we saw ',' as our terminator
-			if t.tok == tokDatum && t.auxtok == tokComma {
+			if multi && t.tok == tokDatum && t.auxtok == tokComma {
 				err := t.output.out.CheckSize()
 				if err != nil {
 					return err

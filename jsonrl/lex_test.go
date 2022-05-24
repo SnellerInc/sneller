@@ -135,6 +135,9 @@ func TestParseFail(t *testing.T) {
 		`{"str": "\xfffd"}`,
 		`{"str": "", }`,
 		`{,}`,
+		// lexer should reject non-struct value
+		// in a top-level list
+		`[0,{}]`,
 		// lexer should reject invalid utf8
 		`{"str": "` + string([]byte{0xff, 0xf0}) + `"}`,
 	}

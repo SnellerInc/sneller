@@ -215,7 +215,7 @@ func (t *parser) parseList(b *reader) error {
 	first := true
 outer:
 	for {
-		err := t.lexListField(b)
+		err := t.lexListField(b, true)
 		if err != nil {
 			return err
 		}
@@ -295,7 +295,7 @@ func (t *parser) parseFlattenList(b *reader) error {
 	first := true
 outer:
 	for {
-		err := t.lexListField(b)
+		err := t.lexListField(b, false)
 		if err != nil {
 			return err
 		}

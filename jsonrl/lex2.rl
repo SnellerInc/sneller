@@ -278,7 +278,7 @@ func (t *parser) lexMoreStruct(b *reader) error {
     write data;
 }%%
 
-func (t *parser) lexListField(b *reader) error {
+func (t *parser) lexListField(b *reader, multi bool) error {
      if !b.assertFill() {
         if b.err != nil {
            return b.err
@@ -308,7 +308,7 @@ ret:    // jumped to from lexer
             }
             b.rpos += p+1
             // loop if we saw ',' as our terminator
-            if t.tok == tokDatum && t.auxtok == tokComma {
+            if multi && t.tok == tokDatum && t.auxtok == tokComma {
                 err := t.output.out.CheckSize()
                 if err != nil {
                    return err
