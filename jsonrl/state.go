@@ -350,6 +350,12 @@ func (n *Hint) encodeRule(path []string, hints hints) error {
 	}
 	next := n.getOrCreate(segment, nextHints, isWildcard, isRecursiveWildcard)
 
+	if isFinalSegment && !isRecursiveWildcard && hints&hintIgnore != 0 {
+		// Implicitly add a recursive wildcard to as well ignore nested elements, if the
+		// explicit field is a struct or an array
+		next.wildcard = next.getOrCreate("*", hintIgnore, true, true)
+	}
+
 	if !isFinalSegment {
 		// Recursively encode the next segment
 		err := next.encodeRule(path[1:], hints)
@@ -486,7 +492,6 @@ func (s *hintState) leave() {
 		return
 	}
 
-	s.hints = hintDefault
 	if s.current.parent != nil {
 		s.current = s.current.parent
 	} else {
@@ -808,6 +813,9 @@ func (s *state) beginRecord() {
 
 func (s *state) endRecord() {
 	ignore := s.shouldIgnore()
+	if s.hints.level == 0 && s.hints.next.isRecursiveWildcard && s.hints.hints&hintIgnore != 0 && s.hints.current.hints&hintIgnore == 0 {
+		ignore = false
+	}
 	s.hints.leave()
 	if ignore {
 		return

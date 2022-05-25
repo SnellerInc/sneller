@@ -197,13 +197,18 @@ outer:
 				q.Logf("ignoring %q due to etag mismatch (want %q got %q)", name, etag, gotEtag)
 				continue outer
 			}
+			fm := bld.Format(def.Inputs[j].Format, p)
+			err = fm.UseHints(def.Inputs[j].Hints)
+			if err != nil {
+				return err
+			}
 			q.indirect = append(q.indirect, i)
 			q.filtered = append(q.filtered, blockfmt.Input{
 				Path: p,
 				ETag: etag,
 				Size: info.Size(),
 				R:    f,
-				F:    bld.Format(def.Inputs[j].Format, p),
+				F:    fm,
 			})
 			break
 		}

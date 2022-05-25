@@ -103,6 +103,10 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 }
 
 func (j *jsonConverter) UseHints(hints []byte) error {
+	if hints == nil {
+		j.hints = nil
+		return nil
+	}
 	s, err := jsonrl.ParseHint(hints)
 	if err != nil {
 		return err
@@ -123,7 +127,7 @@ func (i ionConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 	return nil
 }
 
-func (i ionConverter) UseHints(schema []byte) error {
+func (i ionConverter) UseHints(hints []byte) error {
 	return nil
 }
 

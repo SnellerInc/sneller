@@ -40,12 +40,12 @@ type Input struct {
 	// If Format is the empty string, then the format
 	// will be inferred from the file extension.
 	Format string `json:"format,omitempty"`
-	// Schema, if non-nil, is the schema associated
-	// with the input data. The schema may perform
+	// Hints, if non-nil, is the hints associated
+	// with the input data. The hints may perform
 	// type-based coercion of certain paths, and may additionally
 	// eliminate some of the data as it is parsed.
-	// Schema data is format-specific.
-	Schema json.RawMessage `json:"schema,omitempty"`
+	// Hints data is format-specific.
+	Hints json.RawMessage `json:"hints,omitempty"`
 }
 
 // Definition describes the set of input files

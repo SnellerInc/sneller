@@ -164,13 +164,11 @@ func TestParseWithHints(t *testing.T) {
 			hints:    ``,
 			expected: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3, "exp": 3.18e-09, "exp2": 31}`,
 		},
-		/* NOTE: fails on master as well if (*state).Commit() is inserted
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
 			hints:    `{"*": "ignore"}`,
 			expected: `{}`,
 		},
-		*/
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
 			hints:    `{"foo": "int", "quux": "number", "exp2": "number", "*": "ignore"}`,
@@ -281,6 +279,11 @@ func TestParseWithHints(t *testing.T) {
 			hints:    `{"a.[*]": "int", "*": "ignore"}`,
 			expected: `{"a": [{"%": 1}]}`,
 		},
+		{
+			input:    `{"a": [{ "%": "1" }], "b": [{ "%": "2" }], "c": [{ "%": "3" }]}`,
+			hints:    `{"b": "ignore", "b.*": "int"}`,
+			expected: `{"a": [{"%": "1"}], "c": [{"%": "3"}]}`,
+		},
 	}
 	for i := range objs {
 		test := objs[i]
@@ -298,6 +301,10 @@ func TestParseWithHints(t *testing.T) {
 			n, err := parseObject(st, []byte(test.input))
 			if err != nil {
 				t.Fatalf("position %d: %s", n, err)
+			}
+			err = st.Commit()
+			if err != nil {
+				t.Fatal(err)
 			}
 			g, _, err := ion.ReadDatum(&st.out.Symbols, st.out.Bytes())
 			if err != nil {
@@ -531,7 +538,6 @@ func BenchmarkTranslate(b *testing.B) {
 }
 
 func BenchmarkTranslateWithHints(b *testing.B) {
-	b.Skip("broken")
 	objs := []struct {
 		input string
 		hints string
@@ -540,10 +546,10 @@ func BenchmarkTranslateWithHints(b *testing.B) {
 			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
 			hints: ``,
 		},
-		/*{
+		{
 			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
 			hints: `{"0": "string", "1": "string", "2": "string", "3": "string", "4": "string", "5": "string", "6": "string", "7": "string", "8": "string", "9": "string", "*": "ignore"}`,
-		},*/
+		},
 		{
 			input: `{"0": "a", "1": "a", "2": "a", "3": "a", "4": "a", "5": "a", "6": "a", "7": "a", "8": "a", "9": "a"}`,
 			hints: `{"0": "string", "1": "string", "2": "string", "3": "string", "4": "string", "*": "ignore"}`,
@@ -593,19 +599,13 @@ func BenchmarkTranslateWithHints(b *testing.B) {
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
 				cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
-				s := newState(cn)
-				s.UseHints(hints)
+				rd := bytes.NewReader(nil)
 				for pb.Next() {
-					s.out.Reset()
-					cur := buf
-					objn := 0
-					for len(cur) > 0 {
-						n, err := parseObject(s, cur)
-						if err != nil {
-							b.Fatalf("object %d pos %d: %s", objn, n, err)
-						}
-						cur = cur[n:]
-						objn++
+					cn.Reset()
+					rd.Reset(buf)
+					err := Convert(rd, cn, hints)
+					if err != nil {
+						b.Fatalf("Convert: %s", err)
 					}
 				}
 			})

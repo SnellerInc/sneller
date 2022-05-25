@@ -50,7 +50,7 @@ func TestDecodeDefinition(t *testing.T) {
 			{
 				Pattern: "s3://my-bucket/my-folder/*.json",
 				Format:  "json",
-				Schema:  json.RawMessage(`"xyz-data-is-ignored-for-now"`),
+				Hints:   json.RawMessage(`"xyz-data-is-ignored-for-now"`),
 			},
 		},
 	}

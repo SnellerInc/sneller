@@ -139,6 +139,10 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 				// matching file unambiguous
 				return fmt.Errorf("couldn't determine format of file %s", p)
 			}
+			err = fm.UseHints(def.Inputs[i].Hints)
+			if err != nil {
+				return err
+			}
 			size += info.Size()
 			collect = append(collect, blockfmt.Input{
 				Path: full,
