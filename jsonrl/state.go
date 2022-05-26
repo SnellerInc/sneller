@@ -459,16 +459,6 @@ func (s *hintState) nextIsRecursive() bool {
 	return s.next == nil || s.next.isRecursiveWildcard
 }
 
-func (s *hintState) reset() {
-	s.hints = hintDefault
-	s.current = s.root
-	s.next = nil
-	s.level = -1
-	if s.root == nil {
-		s.level = 1
-	}
-}
-
 /// enter should be invoked before a sub-structure (either record or array) is entered
 func (s *hintState) enter() {
 	if s.nextIsRecursive() || s.level > 0 {
@@ -590,18 +580,6 @@ func (s *state) coerceDateTime() bool {
 
 func (s *state) coerceUnixSeconds() bool {
 	return s.hints.hints&hintUnixSeconds != 0
-}
-
-// rewind the state when attempting to
-// parse objects incrementally; this needs
-// to reset all of the internal state that
-// gets set up during object parsing
-func (s *state) rewind(snapshot *ion.Snapshot) {
-	s.out.Load(snapshot)
-	s.stack = s.stack[:0]
-	s.flags = 0
-	s.oldflags = s.oldflags[:0]
-	s.hints.reset()
 }
 
 func (s *state) Commit() error {

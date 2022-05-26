@@ -68,12 +68,6 @@ type benchenv struct {
 	blocks int
 }
 
-func (b *benchenv) encode(h TableHandle, dst *ion.Buffer, st *ion.Symtab) error {
-	bh := h.(*blobHandle)
-	bh.Encode(dst, st)
-	return nil
-}
-
 func (b *benchenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	l, err := blob.DecodeList(st, mem)
 	if err != nil {

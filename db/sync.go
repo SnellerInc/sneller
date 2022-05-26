@@ -461,26 +461,6 @@ func combine(lst []error) error {
 	}
 }
 
-// resolve a definition to a list of inputs using a Resolver
-func (s *Definition) resolve(b *Builder, who Tenant) ([]blockfmt.Input, error) {
-	var out []blockfmt.Input
-	for i := range s.Inputs {
-		infs, pat, err := who.Split(s.Inputs[i].Pattern)
-		if err != nil {
-			return nil, err
-		}
-		fallback := func(name string) blockfmt.RowFormat {
-			return b.Format(s.Inputs[i].Format, name)
-		}
-		in, err := blockfmt.CollectGlob(infs, fallback, pat)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, in...)
-	}
-	return out, nil
-}
-
 func (b *Builder) align() int {
 	if b.Align > 0 {
 		return b.Align

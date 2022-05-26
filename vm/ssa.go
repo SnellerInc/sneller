@@ -1290,10 +1290,6 @@ func (p *prog) InitMem() *value {
 	return p.ssa0(sinitmem)
 }
 
-func (p *prog) storeBlend(mem *value, v, k *value, slot stackslot) *value {
-	return p.ssa3imm(sstorevblend, mem, v, k, int(slot))
-}
-
 // Store stores a value to a stack slot and
 // returns the associated memory token.
 // The store operation is guaranteed to happen

@@ -73,18 +73,6 @@ func (t *testenv) get(fname string) *os.File {
 	return f
 }
 
-func (t *testenv) encode(h TableHandle, dst *ion.Buffer, st *ion.Symtab) error {
-	switch h := h.(type) {
-	case *literalHandle:
-		dst.WriteBlob(h.body)
-	case *fileHandle:
-		dst.WriteString(h.name)
-	default:
-		return fmt.Errorf("can't encode %T", h)
-	}
-	return nil
-}
-
 func (t *testenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)

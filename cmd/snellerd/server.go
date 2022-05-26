@@ -19,7 +19,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	"github.com/SnellerInc/sneller/auth"
@@ -62,12 +61,6 @@ type server struct {
 	// when started, the address of the http listener
 	// and the tenant remote socket, respectively
 	bound, remote net.Addr
-
-	// stale stores either 'nil'
-	// or a []*net.TCPAddr returned
-	// from peers.EndPoints(); we use this
-	// if the end point errors out
-	stale atomic.Value
 
 	// hack to avoid data races in testing
 	aboutToServe func()

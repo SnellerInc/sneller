@@ -16,7 +16,6 @@ package vm
 
 import (
 	"math/bits"
-	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -59,9 +58,8 @@ const (
 )
 
 var (
-	memlock sync.Mutex
-	vmm     *[vmUse]byte
-	vmbits  [vmWords]uint64
+	vmm    *[vmUse]byte
+	vmbits [vmWords]uint64
 
 	// # pages in use; this may differ
 	// slightly from the bitmap count
@@ -89,6 +87,8 @@ func (v vmref) mem() []byte {
 // NOTE: valid is fairly expensive to run;
 // you should probably only use this in testing
 // or with special build flags turned on
+//
+//lint:ignore U1000 for tests
 func (v vmref) valid() bool {
 	if v[0] == 0 && v[1] == 0 {
 		return true

@@ -58,17 +58,6 @@ func (l *LocalTransport) Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *Ex
 	return t.exec(s, parallel, stats, rw)
 }
 
-type wrappedHandle int
-
-func (w wrappedHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteInt(int64(w))
-	return nil
-}
-
-func (w wrappedHandle) Open() (vm.Table, error) {
-	panic("wrappedHandle.Open")
-}
-
 // Transport models the exection environment
 // of a query plan.
 //

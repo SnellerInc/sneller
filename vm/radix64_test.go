@@ -23,11 +23,6 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-var (
-	le32   = binary.LittleEndian.Uint32
-	setu32 = binary.LittleEndian.PutUint32
-)
-
 // walk the tree and check that each value
 // has the prefix implied by its tree location
 func checklevel(tr *radixTree64, tab int, shift int, prefix uint64, t testing.TB) {
