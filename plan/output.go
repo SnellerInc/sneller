@@ -310,6 +310,10 @@ func (is *indexSink) Close() error {
 		return err
 	}
 	_, err = w.Write(buf.Bytes())
+	if err != nil {
+		w.Close()
+		return err
+	}
 	return w.Close()
 }
 
