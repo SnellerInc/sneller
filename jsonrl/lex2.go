@@ -247,7 +247,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st3
@@ -256,7 +256,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st3
@@ -265,7 +265,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st3
@@ -318,7 +318,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:90
@@ -332,7 +332,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:90
@@ -346,7 +346,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:90
@@ -448,7 +448,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st7
@@ -457,7 +457,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st7
@@ -466,7 +466,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st7
@@ -512,7 +512,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st8
@@ -521,7 +521,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st8
@@ -530,7 +530,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st8
@@ -753,7 +753,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -764,7 +764,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -775,7 +775,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -889,7 +889,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st14
@@ -898,7 +898,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st14
@@ -907,7 +907,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st14
@@ -963,7 +963,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st16
@@ -972,7 +972,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st16
@@ -981,7 +981,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st16
@@ -1046,7 +1046,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st19
@@ -1055,7 +1055,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st19
@@ -1064,7 +1064,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st19
@@ -1464,7 +1464,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -1475,7 +1475,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -1486,7 +1486,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -1600,7 +1600,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st48
@@ -1609,7 +1609,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st48
@@ -1618,7 +1618,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st48
@@ -1674,7 +1674,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st50
@@ -1683,7 +1683,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st50
@@ -1692,7 +1692,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st50
@@ -1757,7 +1757,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st53
@@ -1766,7 +1766,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st53
@@ -1775,7 +1775,7 @@ func (t *parser) lexField(b *reader) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st53
@@ -2378,7 +2378,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st3
@@ -2387,7 +2387,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st3
@@ -2396,7 +2396,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st3
@@ -2442,7 +2442,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st4
@@ -2451,7 +2451,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st4
@@ -2460,7 +2460,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st4
@@ -2664,7 +2664,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -2675,7 +2675,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -2686,7 +2686,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 //line lex2.rl:28
@@ -2800,7 +2800,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st10
@@ -2809,7 +2809,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st10
@@ -2818,7 +2818,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st10
@@ -2874,7 +2874,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st12
@@ -2883,7 +2883,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st12
@@ -2892,7 +2892,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st12
@@ -2957,7 +2957,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-2:])
 				if size != 2 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st15
@@ -2966,7 +2966,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-3:])
 				if size != 3 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st15
@@ -2975,7 +2975,7 @@ func (t *parser) lexListField(b *reader, multi bool) error {
 			{
 				r, size := utf8.DecodeRune(data[p-4:])
 				if size != 4 {
-					fmt.Errorf("bad rune %x", r)
+					return fmt.Errorf("bad rune %x", r)
 				}
 			}
 			goto st15

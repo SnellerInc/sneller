@@ -72,7 +72,7 @@ func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
 			f.blobs, err = blob.DecodeList(st, mem)
 			mem = mem[skip:]
 		default:
-			fmt.Errorf("unrecognized filterHandle field %q", st.Get(sym))
+			return fmt.Errorf("unrecognized filterHandle field %q", st.Get(sym))
 		}
 		if err != nil {
 			return err

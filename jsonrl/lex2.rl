@@ -33,19 +33,19 @@ import (
     unicode_2c = (192 .. 223) . (128 .. 191) %{{
         r, size := utf8.DecodeRune(data[p-2:])
         if size != 2 {
-           fmt.Errorf("bad rune %x", r)
+           return fmt.Errorf("bad rune %x", r)
         }
     }};
     unicode_3c = (224 .. 239) . (128 .. 191) . (128 .. 191) %{{
         r, size := utf8.DecodeRune(data[p-3:])
         if size != 3 {
-            fmt.Errorf("bad rune %x", r)
+            return fmt.Errorf("bad rune %x", r)
         }
     }};
     unicode_4c = (240 .. 247) . (128 .. 191) . (128 .. 191) . (128 .. 191) %{{
         r, size := utf8.DecodeRune(data[p-4:])
         if size != 4 {
-           fmt.Errorf("bad rune %x", r)
+           return fmt.Errorf("bad rune %x", r)
         }
     }};
 
