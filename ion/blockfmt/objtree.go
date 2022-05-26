@@ -170,6 +170,9 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, ke
 		return in, fmt.Errorf("IndirectTree: io.ReadFull: %w", err)
 	}
 	buf, err = compr.DecodeZstd(buf, nil)
+	if err != nil {
+		return in, fmt.Errorf("IndirectTree: compr.DecodeZstd: %w", err)
+	}
 	var st ion.Symtab
 	buf, err = st.Unmarshal(buf)
 	if err != nil {
