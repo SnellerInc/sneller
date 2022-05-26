@@ -41,12 +41,10 @@ var (
 	dashN      bool
 	dashg      bool
 	dasho      string
-	dashi      string
 	dashnommap bool
 	printStats bool
 
-	dst   io.WriteCloser
-	stdin io.Reader
+	dst io.WriteCloser
 )
 
 func init() {
@@ -55,7 +53,6 @@ func init() {
 	flag.BoolVar(&dashj, "j", false, "write output as JSON instead of ion")
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
-	flag.StringVar(&dashi, "i", "-", "file named stdin (default is stdin)")
 	flag.BoolVar(&printStats, "S", false, "print exection statistics on stderr")
 	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files (Linux only)")
 }
@@ -213,15 +210,6 @@ func main() {
 		dashj = false
 	}
 
-	stdin = os.Stdin
-	if dashi != "-" {
-		f, err := os.Open(dashi)
-		if err != nil {
-			exit(err)
-		}
-		stdin = f
-		defer f.Close()
-	}
 	dst = os.Stdout
 	if dasho != "" {
 		f, err := os.Create(dasho)
