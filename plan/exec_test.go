@@ -31,11 +31,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	_ "github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/plan/pir"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -43,9 +43,10 @@ import (
 // can read files from the
 // ../testdata/ directory
 type testenv struct {
-	t      testing.TB
-	open   map[string]*os.File
-	schema expr.Hint
+	t       testing.TB
+	open    map[string]*os.File
+	schema  expr.Hint
+	indexer Indexer
 
 	// Stat failure message, for testing
 	// query planning errors
@@ -106,10 +107,17 @@ func (t *testenv) clean() {
 	t.open = nil
 }
 
-var _ pir.Schemer = (*testenv)(nil)
-
 func (t *testenv) Schema(tbl expr.Node) expr.Hint {
 	return t.schema
+}
+
+var _ Indexer = (*testenv)(nil)
+
+func (t *testenv) Index(tbl expr.Node) (Index, error) {
+	if t.indexer == nil {
+		return nil, nil
+	}
+	return t.indexer.Index(tbl)
 }
 
 type literalHandle struct {
@@ -172,6 +180,23 @@ func (t *testenv) Stat(tbl, filter expr.Node) (TableHandle, error) {
 		return nil, errors.New(t.mustfail)
 	}
 	return &fileHandle{parent: t, name: filepath.Join("../testdata/", string(str))}, nil
+}
+
+var _ TableLister = (*testenv)(nil)
+
+func (t *testenv) ListTables(db string) ([]string, error) {
+	if db != "" {
+		return nil, fmt.Errorf("no such database: %s", db)
+	}
+	ds, err := os.ReadDir("../testdata")
+	if err != nil {
+		return nil, err
+	}
+	list := make([]string, len(ds))
+	for i := range ds {
+		list[i] = ds[i].Name()
+	}
+	return list, nil
 }
 
 // fileHandle is a TableHandle implementation for an *os.File
@@ -250,6 +275,9 @@ func TestExec(t *testing.T) {
 		// schema, if non-nil, is the
 		// schema used for all input tables
 		schema expr.Hint
+		// indexer, if non-nil, is used to
+		// produce indexes during planning
+		indexer Indexer
 		// query is the literal query text
 		query string
 		// rows is the number of expected rows;
@@ -1157,6 +1185,48 @@ where Make in (
 			query: `select * from 'parking.10n' ++ 'nyc-taxi.block'`,
 			rows:  9583,
 		},
+		{
+			query: `select earliest(foo), latest(foo) from 'parking.10n' ++ 'nyc-taxi.block'`,
+			indexer: testindexer{
+				"parking.10n": testindex{
+					"foo": dates(
+						"2000-01-01T00:00:00Z",
+						"2000-02-01T00:00:00Z",
+					),
+				},
+				"nyc-taxi.block": testindex{
+					"foo": dates(
+						"2000-02-01T00:00:00Z",
+						"2000-03-01T00:00:00Z",
+					),
+				},
+			},
+			rows: 1,
+			matchPlan: []string{
+				"PROJECT `2000-01-01T00:00:00Z` AS \"min\", `2000-03-01T00:00:00Z` AS \"max\"",
+			},
+		},
+		{
+			query: `select earliest(foo), latest(foo) from table_glob("*a*")`,
+			indexer: testindexer{
+				"parking.10n": testindex{
+					"foo": dates(
+						"2000-01-01T00:00:00Z",
+						"2000-02-01T00:00:00Z",
+					),
+				},
+				"nyc-taxi.block": testindex{
+					"foo": dates(
+						"2000-02-01T00:00:00Z",
+						"2000-03-01T00:00:00Z",
+					),
+				},
+			},
+			rows: 1,
+			matchPlan: []string{
+				"PROJECT `2000-01-01T00:00:00Z` AS \"min\", `2000-03-01T00:00:00Z` AS \"max\"",
+			},
+		},
 	}
 
 	for i := range tcs {
@@ -1170,6 +1240,7 @@ where Make in (
 
 		text := tcs[i].query
 		schema := tcs[i].schema
+		indexer := tcs[i].indexer
 		pmatch := tcs[i].matchPlan
 		scanned := tcs[i].expectBytes
 		t.Run(fmt.Sprintf("case-%d", i+1), func(t *testing.T) {
@@ -1188,6 +1259,7 @@ where Make in (
 
 			t.Logf("query: %s", expr.ToString(q))
 			env.schema = schema
+			env.indexer = indexer
 			tree, err := New(q, env)
 			if err != nil {
 				t.Errorf("case %d: %s", i, err)
@@ -1575,4 +1647,35 @@ func (n nopSplitter) Split(t expr.Node, th TableHandle) (Subtables, error) {
 		},
 		Handle: th,
 	}}, nil
+}
+
+type testindexer map[string]Index
+
+func (t testindexer) Index(e expr.Node) (Index, error) {
+	switch e := e.(type) {
+	case expr.String:
+		return t[string(e)], nil
+	case *expr.Path:
+		return t[e.First], nil
+	}
+	return nil, fmt.Errorf("unsupported table expr: %s", expr.ToString(e))
+}
+
+type testindex map[string][2]date.Time
+
+func (t testindex) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
+	r, ok := t[p.First]
+	return r[0], r[1], ok
+}
+
+func dates(min, max string) [2]date.Time {
+	dmin, ok := date.Parse([]byte(min))
+	if !ok {
+		panic("bad min date: " + min)
+	}
+	dmax, ok := date.Parse([]byte(max))
+	if !ok {
+		panic("bad max date: " + max)
+	}
+	return [2]date.Time{dmin, dmax}
 }

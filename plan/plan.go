@@ -19,6 +19,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/sort"
 	"github.com/SnellerInc/sneller/ion"
@@ -144,10 +145,67 @@ func stat(env Env, tbl, flt expr.Node) (TableHandle, error) {
 			if !ok {
 				return nil, fmt.Errorf("listing not supported")
 			}
-			return statGlob(tl, e, flt)
+			return statGlob(tl, env, e, flt)
 		}
 	}
 	return env.Stat(tbl, flt)
+}
+
+// Schemer may optionally be implemented by Env to
+// provide type hints for a table.
+type Schemer interface {
+	// Schema returns type hints associated
+	// with a particular table expression.
+	// In the event that there is no available
+	// type information, Schema may return nil.
+	Schema(expr.Node) expr.Hint
+}
+
+// Indexer may optionally be implemented by Env to
+// provide an index for a table.
+type Indexer interface {
+	// Index returns the index for the given table
+	// expression. This may return (nil, nil) if
+	// the index for the table is not available.
+	Index(expr.Node) (Index, error)
+}
+
+// An Index may be returned by Indexer.Index to provide
+// additional table metadata that may be used during
+// optimization.
+type Index interface {
+	// TimeRange returns the inclusive time range
+	// for the given path expression across the
+	// given table.
+	TimeRange(path *expr.Path) (min, max date.Time, ok bool)
+}
+
+// index calls idx.Index(tbl), with special handling
+// for certain table expressions.
+func index(idx Indexer, tbl expr.Node) (Index, error) {
+	switch e := tbl.(type) {
+	case *expr.Appended:
+		mi := make(multiIndex, 0, len(e.Values))
+		for i := range e.Values {
+			idx, err := index(idx, e.Values[i])
+			if err != nil {
+				return nil, err
+			} else if idx != nil {
+				mi = append(mi, idx)
+			}
+		}
+		return mi, nil
+	case *expr.Builtin:
+		switch e.Func {
+		case expr.TableGlob, expr.TablePattern:
+			tl, ok := idx.(TableLister)
+			if !ok {
+				return nil, fmt.Errorf("listing not supported")
+			}
+			return indexGlob(tl, idx, e)
+		}
+	}
+	return idx.Index(tbl)
 }
 
 // SimpleAggregate computes aggregates

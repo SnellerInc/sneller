@@ -78,7 +78,7 @@ type IterTable struct {
 	free        []string
 	Table       *expr.Table
 	Schema      expr.Hint
-	TimeRanger  TimeRanger
+	Index       Index
 	Partitioned bool
 }
 
@@ -90,11 +90,10 @@ func (i *IterTable) rewrite(rw func(expr.Node, bool) expr.Node) {
 }
 
 func (i *IterTable) timeRange(p *expr.Path) (min, max date.Time, ok bool) {
-	tbl, ok := i.Table.Expr.(*expr.Path)
-	if !ok || i.TimeRanger == nil {
+	if i.Index == nil {
 		return date.Time{}, date.Time{}, false
 	}
-	return i.TimeRanger.TimeRange(tbl, p)
+	return i.Index.TimeRange(p)
 }
 
 // Wildcard returns true if the table
@@ -580,17 +579,22 @@ type Trace struct {
 	final []expr.Binding
 }
 
-func (b *Trace) Begin(f *expr.Table, e Env) {
+func (b *Trace) Begin(f *expr.Table, e Env) error {
 	it := &IterTable{Table: f}
 	it.haveParent = b.Parent != nil
 	if f.Explicit() {
 		it.Bind = f.Result()
 	}
-	if s, ok := e.(Schemer); ok {
-		it.Schema = s.Schema(f.Expr)
+	if e != nil {
+		it.Schema = e.Schema(f.Expr)
+		idx, err := e.Index(f.Expr)
+		if err != nil {
+			return err
+		}
+		it.Index = idx
 	}
-	it.TimeRanger, _ = e.(TimeRanger)
 	b.top = it
+	return nil
 }
 
 func (b *Trace) beginUnionMap(src *Trace, table *IterTable) {

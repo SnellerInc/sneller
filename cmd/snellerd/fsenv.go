@@ -26,7 +26,6 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
-	"github.com/SnellerInc/sneller/plan/pir"
 
 	"golang.org/x/crypto/blake2b"
 )
@@ -94,6 +93,12 @@ func tsplit(p *expr.Path) (string, string, error) {
 // CacheValues implements cachedEnv.CacheValues
 func (f *fsEnv) CacheValues() ([]byte, time.Time) {
 	return f.hash.Sum(nil), f.modtime.Time()
+}
+
+var _ plan.Indexer = (*fsEnv)(nil)
+
+func (f *fsEnv) Index(p expr.Node) (plan.Index, error) {
+	return f.index(p)
 }
 
 func (f *fsEnv) index(e expr.Node) (*blockfmt.Index, error) {
@@ -169,17 +174,6 @@ func (f *fsEnv) Stat(e, where expr.Node) (plan.TableHandle, error) {
 		return nil, err
 	}
 	return &filterHandle{filter: where, compiled: match, blobs: blobs}, nil
-}
-
-var _ pir.TimeRanger = (*fsEnv)(nil)
-
-// TimeRange implements plan/pir.TimeRanger.
-func (f *fsEnv) TimeRange(tbl expr.Node, p *expr.Path) (min, max date.Time, ok bool) {
-	index, err := f.index(tbl)
-	if err != nil {
-		return date.Time{}, date.Time{}, false
-	}
-	return index.TimeRange(p)
 }
 
 var _ plan.TableLister = (*fsEnv)(nil)

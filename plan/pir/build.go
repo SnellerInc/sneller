@@ -82,7 +82,7 @@ func (b *Trace) walkFrom(f expr.From, e Env) error {
 			// we should strip 'x.' from those
 			// bindings...
 		} else {
-			b.Begin(f, e)
+			return b.Begin(f, e)
 		}
 	}
 	return nil
@@ -119,33 +119,25 @@ func hasAggregate(e expr.Node) bool {
 	return found
 }
 
-// Env is a subset of plan.Env which can implement
-// optional interfaces, such as Schemer and TimeRanger.
+// Env can be provided in calls to Build to provide
+// additional context for plan optimization purposes.
 type Env interface {
-	// Currently no methods are required.
-	// Implementations may provide optional methods
-	// to implement Schemer or TimeRanger.
-}
-
-// Schemer is an interface that may optionally be
-// implemented by Env to provide a type hint for a
-// table expression.
-type Schemer interface {
 	// Schema returns type hints associated
 	// with a particular table expression.
 	// In the event that there is no available
 	// type information, Schema may return nil.
 	Schema(expr.Node) expr.Hint
+	// Index returns the index for the given table
+	// expression. This may return (nil, nil) if
+	// the index for the table is not available.
+	Index(expr.Node) (Index, error)
 }
 
-// TimeRanger is an interface that may optionally be
-// implemented by Env to allow sparse indexing
-// information to be used during planning.
-type TimeRanger interface {
+type Index interface {
 	// TimeRange returns the inclusive time range
 	// for the given path expression across the
 	// given table.
-	TimeRange(tbl expr.Node, path *expr.Path) (min, max date.Time, ok bool)
+	TimeRange(path *expr.Path) (min, max date.Time, ok bool)
 }
 
 // Build walks the provided Query

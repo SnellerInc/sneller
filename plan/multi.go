@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion"
@@ -53,6 +54,30 @@ func (h tableHandles) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	}
 	dst.EndList()
 	return nil
+}
+
+type multiIndex []Index
+
+// TimeRange returns the union of time ranges for p in
+// all the contained indexes.
+func (m multiIndex) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
+	for i := range m {
+		min0, max0, ok := m[i].TimeRange(p)
+		if !ok {
+			return date.Time{}, date.Time{}, false
+		}
+		if i == 0 {
+			min, max = min0, max0
+			continue
+		}
+		if min0.Before(min) {
+			min = min0
+		}
+		if max0.After(max) {
+			max = max0
+		}
+	}
+	return min, max, len(m) > 0
 }
 
 func decodeHandles(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
@@ -162,24 +187,23 @@ func (w *multiWriter) Close() error {
 	return nil
 }
 
-// TableLister is an interface an Env can optionally
-// implement to support TABLE_GLOB and TABLE_PATTERN
-// expressions.
+// TableLister is an interface an Env or Index can
+// optionally implement to support TABLE_GLOB and
+// TABLE_PATTERN expressions.
 type TableLister interface {
-	Env
 	// ListTables returns the names of tables in
 	// the given db. Callers must not modify the
 	// returned list.
 	ListTables(db string) ([]string, error)
 }
 
-func statGlob(tl TableLister, e *expr.Builtin, flt expr.Node) (TableHandle, error) {
+func statGlob(tl TableLister, env Env, e *expr.Builtin, flt expr.Node) (TableHandle, error) {
 	db, m, err := compileGlob(e)
 	if err != nil {
 		return nil, err
 	}
 	if m, ok := m.(literalMatcher); ok {
-		return statTable(tl, db, string(m), flt)
+		return env.Stat(mkpath(db, string(m)), flt)
 	}
 	list, err := tl.ListTables(db)
 	if err != nil {
@@ -190,7 +214,7 @@ func statGlob(tl TableLister, e *expr.Builtin, flt expr.Node) (TableHandle, erro
 		if !m.MatchString(list[i]) {
 			continue
 		}
-		th, err := statTable(tl, db, list[i], flt)
+		th, err := env.Stat(mkpath(db, list[i]), flt)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {
@@ -208,14 +232,47 @@ func statGlob(tl TableLister, e *expr.Builtin, flt expr.Node) (TableHandle, erro
 	}
 }
 
-func statTable(env Env, db, name string, flt expr.Node) (TableHandle, error) {
-	var p *expr.Path
-	if db != "" {
-		p = &expr.Path{First: db, Rest: &expr.Dot{Field: name}}
-	} else {
-		p = &expr.Path{First: name}
+func indexGlob(tl TableLister, idx Indexer, e *expr.Builtin) (Index, error) {
+	db, m, err := compileGlob(e)
+	if err != nil {
+		return nil, err
 	}
-	return env.Stat(p, flt)
+	if m, ok := m.(literalMatcher); ok {
+		return idx.Index(mkpath(db, string(m)))
+	}
+	list, err := tl.ListTables(db)
+	if err != nil {
+		return nil, err
+	}
+	mi := make(multiIndex, 0, len(list))
+	for i := range list {
+		if !m.MatchString(list[i]) {
+			continue
+		}
+		idx, err := idx.Index(mkpath(db, list[i]))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return nil, err
+		} else if idx != nil {
+			mi = append(mi, idx)
+		}
+	}
+	switch len(mi) {
+	case 0:
+		return nil, fs.ErrNotExist
+	case 1:
+		return mi[0], nil
+	default:
+		return mi, nil
+	}
+}
+
+func mkpath(db, tbl string) *expr.Path {
+	if db == "" {
+		return &expr.Path{First: tbl}
+	}
+	return &expr.Path{First: db, Rest: &expr.Dot{Field: tbl}}
 }
 
 type matcher interface {

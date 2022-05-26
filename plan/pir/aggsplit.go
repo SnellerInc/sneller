@@ -221,7 +221,7 @@ func aggelim(b *Trace) {
 		found = true
 		break
 	}
-	if !found || a.GroupBy != nil || tbl.TimeRanger == nil {
+	if !found || a.GroupBy != nil || tbl.Index == nil {
 		return
 	}
 	// attempt to substitute aggregate expressions

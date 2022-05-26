@@ -434,24 +434,43 @@ func toTree(in *pir.Trace, env Env, split Splitter) (*Tree, error) {
 	return t, nil
 }
 
+type pirenv struct {
+	env Env
+}
+
+func (e pirenv) Schema(tbl expr.Node) expr.Hint {
+	s, ok := e.env.(Schemer)
+	if !ok {
+		return nil
+	}
+	return s.Schema(tbl)
+}
+
+func (e pirenv) Index(tbl expr.Node) (pir.Index, error) {
+	idx, ok := e.env.(Indexer)
+	if !ok {
+		return nil, nil
+	}
+	return index(idx, tbl)
+}
+
 // New creates a new Tree from raw query AST.
 func New(q *expr.Query, env Env) (*Tree, error) {
-	bld, err := pir.Build(q, env)
-	if err != nil {
-		return nil, err
-	}
-	return toTree(bld, env, nil)
+	return NewSplit(q, env, nil)
 }
 
 // NewSplit creates a new Tree from raw query AST.
 func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
-	b, err := pir.Build(q, env)
+	b, err := pir.Build(q, pirenv{env})
 	if err != nil {
 		return nil, err
 	}
-	reduce, err := pir.Split(b)
-	if err != nil {
-		return nil, err
+	if split != nil {
+		reduce, err := pir.Split(b)
+		if err != nil {
+			return nil, err
+		}
+		b = reduce
 	}
-	return toTree(reduce, env, split)
+	return toTree(b, env, split)
 }

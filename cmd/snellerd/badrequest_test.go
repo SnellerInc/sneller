@@ -149,7 +149,7 @@ func (a testAuth) Authorize(_ context.Context, token string) (db.Tenant, error) 
 	return nil, errors.New("no such tenant: " + token)
 }
 
-func empty(t *testing.T, env cachedEnv) *server {
+func empty(t *testing.T) *server {
 	tt := testdirEnviron(t)
 	s := &server{
 		logger:    testlogger(t),
@@ -167,7 +167,7 @@ func empty(t *testing.T, env cachedEnv) *server {
 
 func TestBadRequest(t *testing.T) {
 	testFiles(t)
-	s := empty(t, emptyEnv{})
+	s := empty(t)
 
 	httpsock := listen(t)
 	go s.Serve(httpsock, nil)
@@ -183,13 +183,13 @@ func TestBadRequest(t *testing.T) {
 	queries := []struct {
 		text, match string
 	}{
-		{"SELECT 3||x FROM foo", "ill-typed"},
-		{"SELECT LEAST(TRIM(x)) FROM foo WHERE x = 3", "ill-typed"},
+		{"SELECT 3||x FROM parking", "ill-typed"},
+		{"SELECT LEAST(TRIM(x)) FROM parking WHERE x = 3", "ill-typed"},
 	}
 
 	cl := http.DefaultClient
 	for i := range queries {
-		r := rqe.getQuery("db", queries[i].text)
+		r := rqe.getQuery("default", queries[i].text)
 		res, err := cl.Do(r)
 		if err != nil {
 			t.Fatal(err)

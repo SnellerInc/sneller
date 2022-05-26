@@ -39,13 +39,10 @@ func mkenv(h expr.Hint, idx *blockfmt.Index) Env {
 	if h == nil && idx == nil {
 		return nil
 	}
-	e := schemafn(func(expr.Node) expr.Hint {
-		return h
-	})
-	if idx == nil {
-		return e
+	return &testenv{
+		hint: h,
+		idx:  idx,
 	}
-	return &indexenv{env: e, idx: idx}
 }
 
 func TestBuildError(t *testing.T) {
@@ -136,28 +133,17 @@ func TestBuildError(t *testing.T) {
 	}
 }
 
-type schemafn func(expr.Node) expr.Hint
-
-func (s schemafn) Schema(e expr.Node) expr.Hint {
-	return s(e)
+type testenv struct {
+	hint expr.Hint
+	idx  *blockfmt.Index
 }
 
-// indexenv wraps an Env and implements TimeRanger.
-type indexenv struct {
-	env Env
-	idx *blockfmt.Index
+func (e *testenv) Schema(expr.Node) expr.Hint {
+	return e.hint
 }
 
-func (e *indexenv) Schema(x expr.Node) expr.Hint {
-	s, ok := e.env.(Schemer)
-	if !ok {
-		return nil
-	}
-	return s.Schema(x)
-}
-
-func (e *indexenv) TimeRange(_ expr.Node, p *expr.Path) (min, max date.Time, ok bool) {
-	return e.idx.TimeRange(p)
+func (e *testenv) Index(expr.Node) (Index, error) {
+	return e.idx, nil
 }
 
 type nameType struct {
