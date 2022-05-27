@@ -37,6 +37,14 @@ func TestLoweringErrors(t *testing.T) {
 			query: `select * from 'parking.10n' order by size * coef asc, size * coef desc limit 100`,
 			msg:   `duplicate order by expression "size * coef"`,
 		},
+		{
+			query: `select x, count(*) from 'tbl' group by x limit 10 offset 15`,
+			msg:   `plan: query not supported: non-zero OFFSET of hash aggregate result`,
+		},
+		{
+			query: `select distinct x from 'tbl' limit 5 offset 10`,
+			msg:   `plan: query not supported: non-zero OFFSET of distinct result`,
+		},
 	}
 
 	for i := range tcs {

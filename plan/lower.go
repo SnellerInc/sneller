@@ -86,13 +86,14 @@ func lowerLimit(in *pir.Limit, from Op) (Op, error) {
 		f.Offset = int(in.Offset)
 		return f, nil
 	case *Distinct:
-		if in.Offset == 0 {
-			f.Limit = in.Count
+		if in.Offset != 0 {
+			return nil, reject("non-zero OFFSET of distinct result")
 		}
+		f.Limit = in.Count
 		return f, nil
 	}
 	if in.Offset != 0 {
-		return nil, reject("OFFSET without GROUP BY not implemented")
+		return nil, reject("OFFSET without GROUP BY/ORDER BY not implemented")
 	}
 	return &Limit{
 		Nonterminal: Nonterminal{From: from},

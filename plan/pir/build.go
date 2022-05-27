@@ -629,10 +629,15 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		if limit < 0 {
 			return errorf(s, "negative limit %d not supported", limit)
 		}
-		err = b.LimitOffset(int64(*s.Limit), offset)
+		err = b.LimitOffset(limit, offset)
 		if err != nil {
 			return err
 		}
+	} else {
+		if s.Offset != nil {
+			return errorf(s, "OFFSET without LIMIT is not supported")
+		}
 	}
+
 	return b.hoist(e)
 }

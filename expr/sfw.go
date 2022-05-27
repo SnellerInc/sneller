@@ -366,6 +366,17 @@ func (o *Order) text(dst *strings.Builder, redact bool) {
 	}
 }
 
+func (o *Order) Equals(x *Order) bool {
+	if o.Desc != x.Desc {
+		return false
+	}
+	if o.NullsLast != x.NullsLast {
+		return false
+	}
+
+	return o.Column.Equals(x.Column)
+}
+
 type Select struct {
 	Distinct bool
 	Columns  []Binding
@@ -482,13 +493,7 @@ func (s *Select) Equals(x Node) bool {
 		return false
 	}
 	for i := range s.OrderBy {
-		if s.OrderBy[i].Desc != xs.OrderBy[i].Desc {
-			return false
-		}
-		if s.OrderBy[i].NullsLast != xs.OrderBy[i].NullsLast {
-			return false
-		}
-		if !s.OrderBy[i].Column.Equals(xs.OrderBy[i].Column) {
+		if !s.OrderBy[i].Equals(&xs.OrderBy[i]) {
 			return false
 		}
 	}
@@ -643,28 +648,6 @@ func (s *Select) write(out *strings.Builder, redact bool, into Node) {
 		out.WriteString(" OFFSET ")
 		fmt.Fprintf(out, "%d", int64(*s.Offset))
 	}
-}
-
-// HasOrderBy returns if ORDER BY clause is required to be executed.
-//
-// If GROUP BY is also present, then sorting is part of grouping,
-// no separate sorting is needed.
-func (s *Select) HasOrderBy() bool {
-	return s.OrderBy != nil && s.GroupBy == nil
-}
-
-// HasQueryLimit returns whether a bare query has to limit output.
-//
-// For example plain query from table like "SELECT * FROM t LIMIT n"
-// has a limit. But query used "SELECT * FROM t ORDER BY x LIMT n"
-// doesn't have limit, the limit is applied only to the ordered output.
-// Likewise for "SELECT * FROM t GROUP BY x LIMIT n" limit is applied
-// on the grouped data.
-func (s *Select) HasQueryLimit() bool {
-	if s.Limit == nil {
-		return false
-	}
-	return s.OrderBy == nil && s.GroupBy == nil
 }
 
 func decodeOrder(st *ion.Symtab, body []byte) ([]Order, error) {

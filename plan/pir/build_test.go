@@ -104,6 +104,18 @@ func TestBuildError(t *testing.T) {
 			input: `select x, y, z from foo order by x`,
 			rx:    "unlimited cardinality",
 		},
+		{
+			input: `select * from tbl limit -1`,
+			rx:    "negative limit -1 not supported",
+		},
+		{
+			input: `select * from tbl limit 10 offset -5`,
+			rx:    "negative offset -5 not supported",
+		},
+		{
+			input: `select * from tbl offset 15`,
+			rx:    "OFFSET without LIMIT is not supported",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
@@ -127,7 +139,7 @@ func TestBuildError(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !match {
-				t.Errorf("error %s didn't match", errstr)
+				t.Errorf("error '%s' didn't match '%s'", errstr, rx)
 			}
 		})
 	}
@@ -649,6 +661,37 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			},
 		},
 		{
+			input: `select * from foo order by x desc limit 10 offset 64`,
+			expect: []string{
+				"ITERATE foo",
+				"ORDER BY x DESC NULLS FIRST",
+				"LIMIT 10 OFFSET 64",
+			},
+			split: []string{
+				"UNION MAP foo (",
+				"	ITERATE PART foo",
+				"	ORDER BY x DESC NULLS FIRST",
+				"	LIMIT 74)",
+				"ORDER BY x DESC NULLS FIRST",
+				"LIMIT 10 OFFSET 64",
+			},
+		},
+		{
+			input: `select x, count(*) from foo group by x limit 10 offset 64`,
+			expect: []string{
+				"ITERATE foo",
+				"AGGREGATE COUNT(*) AS \"count\" BY x AS x",
+				"LIMIT 10 OFFSET 64",
+			},
+			split: []string{
+				"UNION MAP foo (",
+				"	ITERATE PART foo",
+				"	AGGREGATE COUNT(*) AS $_0_0 BY x AS x)",
+				"AGGREGATE SUM_COUNT($_0_0) AS \"count\" BY x AS x",
+				"LIMIT 10 OFFSET 64",
+			},
+		},
+		{
 			// check that a limit after DISTINCT is pushed
 			// into the mapping *and* reduction steps
 			input: `select distinct x from foo limit 50`,
@@ -665,6 +708,24 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 				"	LIMIT 50)",
 				"FILTER DISTINCT [x]",
 				"LIMIT 50",
+				"PROJECT x AS x",
+			},
+		},
+		{
+			input: `select distinct x from foo limit 50 offset 150`,
+			expect: []string{
+				"ITERATE foo",
+				"FILTER DISTINCT [x]",
+				"LIMIT 50 OFFSET 150",
+				"PROJECT x AS x",
+			},
+			split: []string{
+				"UNION MAP foo (",
+				"	ITERATE PART foo",
+				"	FILTER DISTINCT [x]",
+				"	LIMIT 200)",
+				"FILTER DISTINCT [x]",
+				"LIMIT 50 OFFSET 150",
 				"PROJECT x AS x",
 			},
 		},
