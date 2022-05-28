@@ -281,9 +281,6 @@ func (l *List) encode(dst *ion.Buffer, st *ion.Symtab) {
 		be.encode(l.Contents[i], dst, st)
 	}
 	dst.EndList()
-	for i := range be.interned {
-		be.interned[i].iid = 0
-	}
 }
 
 func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
@@ -345,7 +342,25 @@ func decodeList(st *ion.Symtab, body []byte) (*List, error) {
 }
 
 type blobEncoder struct {
-	interned []*Compressed
+	nextID   int
+	interned map[*Compressed]int
+}
+
+func (b *blobEncoder) id(c *Compressed) (int, bool) {
+	if b.interned == nil {
+		return 0, false
+	}
+	id, ok := b.interned[c]
+	return id, ok
+}
+
+func (b *blobEncoder) intern(c *Compressed) {
+	if b.interned == nil {
+		b.interned = make(map[*Compressed]int)
+	}
+	// always start at 1 just to be certain
+	b.nextID++
+	b.interned[c] = b.nextID
 }
 
 func (be *blobEncoder) encode(i Interface, dst *ion.Buffer, st *ion.Symtab) {

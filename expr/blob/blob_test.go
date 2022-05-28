@@ -171,7 +171,7 @@ func TestSerialization(t *testing.T) {
 						LastModified: now,
 					},
 				},
-				Trailer: &blockfmt.Trailer{Algo: "zstd"},
+				Trailer: &blockfmt.Trailer{Version: 1, Algo: "zstd"},
 			},
 			&URL{
 				Value: "http://foo.bar/baz",
@@ -198,22 +198,54 @@ func TestSerialization(t *testing.T) {
 
 func TestSerializationCompressed(t *testing.T) {
 	now := date.Now().Truncate(time.Microsecond)
-	lst := &List{
-		Contents: make([]Interface, 2000),
-	}
-	for i := range lst.Contents {
-		lst.Contents[i] = &URL{
-			Value: "http://foo.bar/baz",
-			Info: Info{
-				Size:         rand.Int63(),
-				Align:        1000,
-				LastModified: now,
+	lst := &List{}
+	for i := 0; i < 2000; i++ {
+		b := &Compressed{
+			From: &URL{
+				Value: "http://foo.bar/baz",
+				Info: Info{
+					Size:         50 * 1024 * 1024,
+					Align:        1024 * 1024,
+					LastModified: now,
+				},
 			},
+			Trailer: &blockfmt.Trailer{
+				Version:    1,
+				Algo:       "zstd",
+				BlockShift: 20,
+				Offset:     500000,
+				Blocks: []blockfmt.Blockdesc{
+					{Offset: 0, Chunks: 100},
+					{Offset: 100000, Chunks: 101},
+					{Offset: 200000, Chunks: 101},
+				},
+			},
+		}
+		parts, err := b.Split(80 * 1024 * 1024)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(parts) != 3 {
+			t.Errorf("got %d parts?", len(parts))
+		}
+		lst.Contents = append(lst.Contents, b)
+		for j := range parts {
+			lst.Contents = append(lst.Contents, &parts[j])
 		}
 	}
 	var compressed, uncompressed ion.Buffer
-	var st ion.Symtab
+	var compressed2 ion.Buffer
+	var st, st2 ion.Symtab
+
+	// tickle race detector:
+	done := make(chan struct{}, 1)
+	go func() {
+		lst.Encode(&compressed2, &st2)
+		close(done)
+	}()
 	lst.Encode(&compressed, &st)
+	<-done
+
 	lst.encode(&uncompressed, &st)
 	if ion.TypeOf(compressed.Bytes()) != ion.StructType {
 		t.Fatal("not encoded as struct")
@@ -226,7 +258,8 @@ func TestSerializationCompressed(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, lst) {
-		t.Errorf("%#v != %#v", got, lst)
+		t.Fatal("not equal")
+		// t.Errorf("%#v != %#v", got, lst)
 	}
 	// make sure we do snapshotting properly so
 	// EndStruct doesn't panic when writing a blob

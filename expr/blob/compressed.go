@@ -40,7 +40,6 @@ type Compressed struct {
 	etext string
 
 	// interned ID; used for encoding
-	iid int
 }
 
 func extend(et, extra string) string {
@@ -94,7 +93,13 @@ func (d *blobDecoder) decodeComp(fields []byte) (*Compressed, error) {
 		case "iid":
 			var id int64
 			id, fields, err = ion.ReadInt(fields)
-			c.iid = int(id)
+			if err != nil {
+				return nil, err
+			}
+			if id != int64(len(d.interned)+1) {
+				return nil, fmt.Errorf("blob.Compressed decode: unexpected iid %d (expected %d)", id, len(d.interned)+1)
+			}
+			d.interned = append(d.interned, c)
 		default:
 			err = fmt.Errorf("unrecognized field %q (sym %d)", st.Get(sym), sym)
 		}
@@ -117,9 +122,9 @@ func (c *Compressed) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
 		dst.BeginField(st.Intern("etext"))
 		dst.WriteString(c.etext)
 	}
-	if c.iid > 0 {
+	if id, ok := be.id(c); ok {
 		dst.BeginField(st.Intern("iid"))
-		dst.WriteInt(int64(c.iid))
+		dst.WriteInt(int64(id))
 	}
 	dst.EndStruct()
 }
@@ -263,12 +268,11 @@ func (c *CompressedPart) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab
 	dst.WriteInt(int64(c.StartBlock))
 	dst.BeginField(st.Intern("end"))
 	dst.WriteInt(int64(c.EndBlock))
-	if c.Parent.iid > 0 {
+	if id, ok := be.id(c.Parent); ok {
 		dst.BeginField(st.Intern("parent-id"))
-		dst.WriteInt(int64(c.Parent.iid))
+		dst.WriteInt(int64(id))
 	} else {
-		c.Parent.iid = len(be.interned) + 1
-		be.interned = append(be.interned, c.Parent)
+		be.intern(c.Parent)
 		dst.BeginField(st.Intern("parent"))
 		c.Parent.encode(be, dst, st)
 	}
@@ -323,20 +327,21 @@ func (d *blobDecoder) decodeCPart(fields []byte) (*CompressedPart, error) {
 			}
 			p, err = d.decodeComp(body)
 			out.Parent = p
-			if p != nil {
-				if p.iid != len(d.interned)+1 {
-					err = fmt.Errorf("unexpected parent iid %d (expected %d)", p.iid, len(d.interned)+1)
-					break
-				}
-				d.interned = append(d.interned, p)
-				p.iid = 0
-			}
 		default:
 			err = fmt.Errorf("unrecognized field %q", st.Get(sym))
 		}
 		if err != nil {
 			return nil, fmt.Errorf("blob.CompressedPart decode: %w", err)
 		}
+	}
+	if out.StartBlock > out.EndBlock {
+		return nil, fmt.Errorf("blob.CompressedPart decode: start %d > end %d", out.StartBlock, out.EndBlock)
+	}
+	if out.Parent == nil {
+		return nil, fmt.Errorf("blob.CompressedPart decode: missing parent or parent-id")
+	}
+	if out.EndBlock > len(out.Parent.Trailer.Blocks) {
+		return nil, fmt.Errorf("blob.CompressedPart end block %d > len(parent.Blocks)=%d", out.EndBlock, len(out.Parent.Trailer.Blocks))
 	}
 	return out, nil
 }

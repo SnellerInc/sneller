@@ -23,7 +23,7 @@ import (
 
 func TestTrailerEncode(t *testing.T) {
 	samples := []Trailer{
-		{},
+		{Version: 1},
 		{Version: 1, Offset: 0x12345, Algo: "zstd", BlockShift: 20},
 		{
 			Version:    1,

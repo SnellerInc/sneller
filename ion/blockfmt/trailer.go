@@ -118,9 +118,8 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 
 	// we're encoding trailer version 1
-	t.Version = 1
 	dst.BeginField(st.Intern("version"))
-	dst.WriteInt(int64(t.Version))
+	dst.WriteInt(int64(1))
 
 	dst.BeginField(st.Intern("offset"))
 	dst.WriteInt(t.Offset)

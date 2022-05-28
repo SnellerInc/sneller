@@ -54,6 +54,7 @@ func TestIndirectTree(t *testing.T) {
 				Size:         123456,
 			},
 			Trailer: &Trailer{
+				Version:    1,
 				Offset:     345123,
 				BlockShift: 20,
 				Algo:       "zstd",
