@@ -212,6 +212,7 @@ func (w *CompressionWriter) Close() error {
 	}
 	w.Blocks = coalesce(w.Blocks, w.MinChunksPerBlock)
 	w.Trailer.Offset = w.offset
+	w.Trailer.syncRanges()
 	trailer := w.Trailer.trailer(w.Comp, w.InputAlign)
 	w.offset += int64(len(trailer))
 	w.buffer = append(w.buffer, trailer...)
@@ -317,6 +318,7 @@ func ReadTrailer(src io.ReaderAt, size int64) (*Trailer, error) {
 	if err := fill(t, src, size); err != nil {
 		return nil, err
 	}
+	t.syncRanges()
 	return t, nil
 }
 

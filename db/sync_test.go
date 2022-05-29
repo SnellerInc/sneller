@@ -375,16 +375,16 @@ func TestSync(t *testing.T) {
 		t.Errorf("got back %d blobs?", len(blobs.Contents))
 	}
 	tr := blobs.Contents[0].(*blob.Compressed).Trailer
-	ranges := 0
-	for j := range tr.Blocks {
-		ranges += len(tr.Blocks[j].Ranges)
-	}
+	ranges := tr.Sparse.Fields()
 	if ranges == 0 {
 		// the parking2.json file
 		// will have range data
 		// that should be picked up
 		// during JSON parsing
 		t.Fatal("no ranges")
+	}
+	if tr.Sparse.Get([]string{"Issue", "Data"}) == nil {
+		t.Fatal("no ranges for Issue.Data")
 	}
 }
 

@@ -147,8 +147,7 @@ func maxscan(pc *blob.CompressedPart, f filter) (scan int64) {
 	t := pc.Parent.Trailer
 	blocks := t.Blocks[pc.StartBlock:pc.EndBlock]
 	for i := range blocks {
-		ranges := blocks[i].Ranges
-		if len(ranges) == 0 || f == nil || f(ranges) != never {
+		if f == nil || f(&t.Sparse, pc.StartBlock+i) != never {
 			scan += int64(blocks[i].Chunks) << t.BlockShift
 		}
 	}

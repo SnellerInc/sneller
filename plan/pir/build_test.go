@@ -1062,6 +1062,7 @@ func mkindex(rs [][]blockfmt.Range) *blockfmt.Index {
 	t := &blockfmt.Trailer{}
 	for _, r := range rs {
 		t.Blocks = append(t.Blocks, blockfmt.Blockdesc{Ranges: r})
+		t.Sparse.Push(r)
 	}
 	return &blockfmt.Index{
 		Inline: []blockfmt.Descriptor{{

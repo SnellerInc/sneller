@@ -103,7 +103,7 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 	if !ok {
 		return fmt.Errorf("cannot scan indirect inputs using %T", rfs)
 	}
-	descs, err := idx.Indirect.Search(ifs, func(r []blockfmt.Range) bool { return true })
+	descs, err := idx.Indirect.Search(ifs, nil)
 	if err != nil {
 		return err
 	}

@@ -116,8 +116,11 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// use the sorted taxi dataset
+	// so that we get a large number
+	// of intervals picked up in the data:
 	newname = filepath.Join(tmpdir, "b-prefix/nyc-taxi.block")
-	oldname, err = filepath.Abs("../../testdata/nyc-taxi.block")
+	oldname, err = filepath.Abs("../../testdata/nyc-taxi-sorted.block")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,44 +349,46 @@ func TestSimpleFS(t *testing.T) {
 	queries := []struct {
 		input, db string
 		output    string // regex
+		partial   bool   // expect only a partial scan
 	}{
 		// get coverage of both empty db and default db
-		{"SELECT COUNT(*) FROM default.parking", "", `{"count": 1023}`},
-		{"SELECT COUNT(*) FROM parking", "default", `{"count": 1023}`},
+		{"SELECT COUNT(*) FROM default.parking", "", `{"count": 1023}`, false},
+		{"SELECT COUNT(*) FROM parking", "default", `{"count": 1023}`, false},
 		// check base case for taxi
-		{"SELECT COUNT(*) FROM default.taxi", "", `{"count": 8560}`},
+		{"SELECT COUNT(*) FROM default.taxi", "", `{"count": 8560}`, false},
 		// this WHERE is a no-op; everything satisfies it
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-01T00:35:23Z`", "", `{"count": 8560}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-01T00:35:23Z`", "", `{"count": 8560}`, false},
 		// select all but the lowest
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime > `2009-01-01T00:35:23Z`", "", `{"count": 8559}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime > `2009-01-01T00:35:23Z`", "", `{"count": 8559}`, false},
 		// only the very first entries satisfies this:
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", "", `{"count": 1}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", "", `{"count": 1}`, true},
 
 		// ensure ORDER BY is accepted for cardinality=1 results
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", "", `{"count": 1}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", "", `{"count": 1}`, true},
 
 		// these two should be satisfied w/o scanning
-		{"SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", "", `{"min": "2009-01-01T00:35:23Z"}`},
-		{"SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", "", `{"max": "2009-01-31T23:55:00Z"}`},
+		{"SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", "", `{"min": "2009-01-01T00:35:23Z"}`, true},
+		{"SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", "", `{"max": "2009-01-31T23:55:00Z"}`, true},
 
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", "", `{"count": 0}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", "", `{"count": 0}`, true},
 		// about half of the entries satisfy this:
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", "", `{"count": 4853}`},
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-15T00:00:00Z`", "", `{"count": 3707}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", "", `{"count": 4853}`, true},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-15T00:00:00Z`", "", `{"count": 3707}`, true},
 		// similar to above; different date range
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", "", `{"count": 5169}`},
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", "", `{"count": 3391}`},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", "", `{"count": 5169}`, true},
+		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", "", `{"count": 3391}`, true},
 		{
 			// get coverage of the same table
 			// being referenced more than once
 			`WITH top_vendors AS (SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY COUNT(*) DESC)
-SELECT SUM(total_amount) FROM default.taxi WHERE VendorID = (SELECT VendorID FROM top_vendors LIMIT 1)`,
+SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SELECT VendorID FROM top_vendors LIMIT 1)`,
 			"",
-			`{"sum": 76333.22931289673}`,
+			`{"sum": 76333}`, // rounded so that floating point noise doesn't break the test
+			false,
 		},
-		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 9583}`},
-		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 9583}`},
-		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\.bar-.*"}`},
+		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 9583}`, false},
+		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 9583}`, false},
+		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\.bar-.*"}`, false},
 	}
 	for i := range queries {
 		r := rq.getQuery(queries[i].db, queries[i].input)
@@ -419,6 +424,10 @@ SELECT SUM(total_amount) FROM default.taxi WHERE VendorID = (SELECT VendorID FRO
 		}
 		if scannedsize > tablesize {
 			t.Errorf("scanned size %d > table size %d ?", scannedsize, tablesize)
+		}
+		// coarse check that sparse indexing actually did something:
+		if (tablesize == 0 || scannedsize < tablesize) != queries[i].partial {
+			t.Errorf("partial=%v, scanned=%d, all=%d", queries[i].partial, scannedsize, tablesize)
 		}
 		checkTiming(res)
 	}

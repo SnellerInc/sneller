@@ -36,8 +36,9 @@ func TestCompileFilter(t *testing.T) {
 		{node: parsePath("foo"), expect: maybe},
 		{node: expr.Bool(true), expect: always},
 	} {
+		var sparse blockfmt.SparseIndex
 		f, ok := compileFilter(c.node)
-		got := toMaybe(f, ok)(nil)
+		got := toMaybe(f, ok)(&sparse, 0)
 		if got != c.expect {
 			t.Errorf("%v: want %d, got %d", c.node, c.expect, got)
 		}
@@ -91,10 +92,11 @@ func TestCompileFilter(t *testing.T) {
 			expr.Bool(true),  // T
 		}
 		t.Run(fmt.Sprint(c.op), func(t *testing.T) {
+			var sparse blockfmt.SparseIndex
 			le := &expr.Logical{Op: c.op}
 			for i := range c.tt {
 				le.Left, le.Right = exprs[i/3], exprs[i%3]
-				got, want := toMaybe(compileFilter(le))(nil), c.tt[i]
+				got, want := toMaybe(compileFilter(le))(&sparse, 0), c.tt[i]
 				if got != want {
 					t.Errorf("%v: want %d, got %d", le, want, got)
 				}
@@ -103,7 +105,7 @@ func TestCompileFilter(t *testing.T) {
 	}
 
 	// Test some path expressions against ranges.
-	now := date.Now().Truncate(time.Microsecond)
+	now := date.Now().Truncate(time.Second)
 	type check struct {
 		ranges []blockfmt.Range
 		expect ternary
@@ -134,15 +136,16 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: maybe,
 		}, {
-			// Right at the max; before(now, now) is false
+			// Right at the max; before(now, now) is false,
+			// but we use inclusive ranges, so "maybe"
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(-time.Hour)),
 				ion.Timestamp(now),
 			)},
-			expect: never,
+			expect: maybe,
 		}, {
-			// Before the range
+			// Before the range -> always
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(time.Hour)),
@@ -150,7 +153,7 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: always,
 		}, {
-			// After the range
+			// After the range -> never
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(-2*time.Hour)),
@@ -158,7 +161,7 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: never,
 		}, {
-			// Extra ranges
+			// Extra ranges, before the range -> maybe
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"baz"},
 				ion.Int(100),
@@ -167,19 +170,6 @@ func TestCompileFilter(t *testing.T) {
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(time.Hour)),
 				ion.Timestamp(now.Add(2*time.Hour)),
-			)},
-			expect: always,
-		}, {
-			// Duplicate paths: accept
-			// first encountered
-			ranges: []blockfmt.Range{blockfmt.NewRange(
-				[]string{"foo", "bar"},
-				ion.Timestamp(now.Add(time.Hour)),
-				ion.Timestamp(now.Add(2*time.Hour)),
-			), blockfmt.NewRange(
-				[]string{"foo", "bar"},
-				ion.Timestamp(now.Add(-2*time.Hour)),
-				ion.Timestamp(now.Add(-time.Hour)),
 			)},
 			expect: always,
 		}, {
@@ -211,13 +201,14 @@ func TestCompileFilter(t *testing.T) {
 			expect: maybe,
 		}, {
 			// Right at the min; before(min, now) is false
-			// and before(max, now) is false
+			// and before(max, now) is false, but we use
+			// inclusive ranges, so maybe
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now),
 				ion.Timestamp(now.Add(time.Hour)),
 			)},
-			expect: never,
+			expect: maybe,
 		}, {
 			// Right at the max; before(max, now) is false
 			// but before(min, now) is true
@@ -228,7 +219,8 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: maybe,
 		}, {
-			// Before the range
+			// Before the range;
+			// BEFORE(foo.bar, now) is always false
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(time.Hour)),
@@ -236,7 +228,8 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: never,
 		}, {
-			// After the range
+			// After the range;
+			// BEFORE(foo.bar, now) is always true
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(-2*time.Hour)),
@@ -248,7 +241,8 @@ func TestCompileFilter(t *testing.T) {
 		expr: parseExpr("BEFORE(%s, foo.bar, %s)",
 			now.Add(-time.Hour), now.Add(time.Hour)),
 		checks: []check{{
-			// Smaller range
+			// Smaller range; result always
+			// fits within bounds
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(-time.Minute)),
@@ -268,7 +262,7 @@ func TestCompileFilter(t *testing.T) {
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(-2*time.Hour)),
-				ion.Timestamp(now.Add(-time.Hour)),
+				ion.Timestamp(now.Add(-time.Hour-1)),
 			)},
 			expect: never,
 		}},
@@ -296,7 +290,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now.Add(-1*time.Minute)),
 			), blockfmt.NewRange(
 				[]string{"bar"},
-				ion.Timestamp(now.Add(1*time.Hour)),
+				ion.Timestamp(now.Add(1*time.Hour+1)),
 				ion.Timestamp(now.Add(2*time.Hour)),
 			)},
 			expect: never,
@@ -336,14 +330,6 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: never,
 		}, {
-			// Right at max
-			ranges: []blockfmt.Range{blockfmt.NewRange(
-				[]string{"foo"},
-				ion.Timestamp(now.Add(time.Minute)),
-				ion.Timestamp(now),
-			)},
-			expect: always,
-		}, {
 			// Right at min
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo"},
@@ -363,10 +349,10 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: maybe,
 		}, {
-			// Right at min
+			// Right below min
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"bar"},
-				ion.Timestamp(now),
+				ion.Timestamp(now.Add(1)),
 				ion.Timestamp(now.Add(time.Minute)),
 			)},
 			expect: never,
@@ -396,7 +382,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now),
 				ion.Timestamp(now),
 			)},
-			expect: always,
+			expect: maybe,
 		}, {
 			// Outside range
 			ranges: []blockfmt.Range{blockfmt.NewRange(
@@ -419,8 +405,8 @@ func TestCompileFilter(t *testing.T) {
 				ranges: []blockfmt.Range{
 					blockfmt.NewRange(
 						[]string{"userIdentity", "sessionContext", "creationDate"},
-						ion.Timestamp(now.Add(12*time.Minute)),
 						ion.Timestamp(now.Add(11*time.Minute)),
+						ion.Timestamp(now.Add(12*time.Minute)),
 					),
 					blockfmt.NewRange(
 						[]string{"timestamp"},
@@ -478,7 +464,11 @@ func TestCompileFilter(t *testing.T) {
 		t.Run(fmt.Sprint(expr.ToString(c.expr)), func(t *testing.T) {
 			f := toMaybe(compileFilter(c.expr))
 			for i, c := range c.checks {
-				got := f(c.ranges)
+				var sparse blockfmt.SparseIndex
+				if len(c.ranges) > 0 {
+					sparse.Push(c.ranges)
+				}
+				got := f(&sparse, 0)
 				if got != c.expect {
 					t.Errorf("check %d did not match: %v != %v",
 						i, c.expect, got)
@@ -530,11 +520,13 @@ func BenchmarkExecuteFilter(b *testing.B) {
 		rng := cases[i].Ranges
 		b.Run(fmt.Sprintf("case-%d", i), func(b *testing.B) {
 			f := toMaybe(compileFilter(e))
+			var sparse blockfmt.SparseIndex
+			sparse.Push(rng)
 			b.ResetTimer()
 			b.ReportAllocs()
 			b.SetBytes(1024 * 1024) // 1MB per block
 			for i := 0; i < b.N; i++ {
-				_ = f(rng)
+				_ = f(&sparse, 0)
 			}
 		})
 	}

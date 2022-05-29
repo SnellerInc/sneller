@@ -486,18 +486,20 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 	if len(index) < SignatureLength {
 		return nil, fmt.Errorf("encoded size %d too small to fit signature (%d)", len(index), SignatureLength)
 	}
-	h, err := blake2b.New256(key[:])
-	if err != nil {
-		return nil, err
-	}
-	// the two-byte pad is part of the signed payload,
-	// so that's the point that marks the end of the
-	// payload and the beginning of the signature
 	split := len(index) - rawSigLength
-	h.Write(index[:split])
-	sum := h.Sum(nil)
-	if subtle.ConstantTimeCompare(sum, index[split:]) != 1 {
-		return nil, ErrBadMAC
+	if key != nil {
+		h, err := blake2b.New256(key[:])
+		if err != nil {
+			return nil, err
+		}
+		// the two-byte pad is part of the signed payload,
+		// so that's the point that marks the end of the
+		// payload and the beginning of the signature
+		h.Write(index[:split])
+		sum := h.Sum(nil)
+		if subtle.ConstantTimeCompare(sum, index[split:]) != 1 {
+			return nil, ErrBadMAC
+		}
 	}
 	// now decode the real thing
 	var st ion.Symtab
@@ -677,32 +679,22 @@ func (idx *Index) SyncOutputs(ofs UploadFS, dir string, maxInlined int64, expiry
 // TimeRange returns the inclusive time range for the
 // given path expression.
 func (idx *Index) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
-	add := func(ranges []Range) {
-		for _, r := range ranges {
-			tr, _ := r.(*TimeRange)
-			if tr == nil || !pathMatches(p, tr.path) {
-				continue
-			}
-			if !ok {
-				min, max, ok = tr.min, tr.max, true
-			} else {
-				min, max = timeUnion(min, max, tr.min, tr.max)
-			}
+	add := func(s *SparseIndex) {
+		trmin, trmax, trok := s.MinMax(p)
+		if !trok {
+			return
+		}
+		if ok {
+			min, max = timeUnion(min, max, trmin, trmax)
+		} else {
+			min, max, ok = trmin, trmax, true
 		}
 	}
 	for i := range idx.Inline {
 		desc := &idx.Inline[i]
-		if desc.Trailer == nil {
-			continue
-		}
-		for i := range desc.Trailer.Blocks {
-			blk := &desc.Trailer.Blocks[i]
-			add(blk.Ranges)
-		}
+		add(&desc.Trailer.Sparse)
 	}
-	for i := range idx.Indirect.Refs {
-		add(idx.Indirect.Refs[i].Ranges)
-	}
+	add(&idx.Indirect.Sparse)
 	return min, max, ok
 }
 

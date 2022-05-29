@@ -97,7 +97,7 @@ func mkblob(url string) blob.Interface {
 	}
 	ranges := make([]blockfmt.Range, 3)
 	for i := range ranges {
-		path := []string{"foo", "bar"}
+		path := []string{"foo", fmt.Sprintf("bar%d", i)}
 		min := now.Add(time.Duration(-20*i) * time.Hour)
 		max := now.Add(time.Duration(-10*i) * time.Hour)
 		ranges[i] = blockfmt.NewRange(path, ion.Timestamp(min), ion.Timestamp(max))

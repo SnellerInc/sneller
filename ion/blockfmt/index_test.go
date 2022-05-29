@@ -16,8 +16,11 @@ package blockfmt
 
 import (
 	"fmt"
+	"io/fs"
 	"math/rand"
+	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -36,6 +39,54 @@ func (f *FileTree) dropAll() {
 			f.toplevel[i].contents = nil
 		}
 	}
+}
+
+// find index files in testdata/ and
+// test that they decode correctly; some of these
+// were encoded with older versions of the software
+func TestIndexCompat(t *testing.T) {
+	run := func(p string) {
+		t.Run(p, func(t *testing.T) {
+			buf, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			idx, err := DecodeIndex(nil, buf, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var key Key
+			rand.Read(key[:])
+			res, err := Sign(&key, idx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("%d -> %d bytes", len(buf), len(res))
+			t.Logf("%d indirect fields", idx.Indirect.Sparse.Fields())
+			idx2, err := DecodeIndex(&key, res, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// second encode/decode operation
+			// should yield an identical index
+			if !reflect.DeepEqual(idx, idx2) {
+				t.Fatal("not reproducible after second encode")
+			}
+		})
+	}
+	fn := func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if d.Name() == "index" {
+			run(p)
+		}
+		return nil
+	}
+	filepath.WalkDir("./testdata", fn)
 }
 
 func TestLargeIndexEncoding(t *testing.T) {
@@ -101,6 +152,14 @@ func TestLargeIndexEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// drop all ranges, since they
+	// are stripped on decode:
+	for i := range idx.Inline {
+		for j := range idx.Inline[i].Trailer.Blocks {
+			idx.Inline[i].Trailer.Blocks[j].Ranges = nil
+		}
+	}
+
 	ret, err := DecodeIndex(&key, buf, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +268,11 @@ func TestIndexEncoding(t *testing.T) {
 		idx.Inputs.Backing = dfs
 		idx.SyncInputs(path.Join("db", "foo", idx.Name), 0)
 
+		for i := range idx.Inline {
+			if idx.Inline[i].Trailer != nil {
+				idx.Inline[i].Trailer.syncRanges()
+			}
+		}
 		// reset input state to appear decoded
 		idx.Inputs.Backing = nil
 		idx.Inputs.dropAll()
@@ -252,7 +316,7 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 	ranges := make([]Range, 10)
 	for i := range ranges {
 		ranges[i] = &TimeRange{
-			path: []string{"foo", "bar"},
+			path: []string{"foo", fmt.Sprintf("bar%d", i)},
 			min:  timen(i),
 			max:  timen(i + 1),
 		}
@@ -287,6 +351,12 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 		Created: now,
 		Algo:    "zstd",
 		Inline:  contents,
+	}
+
+	// get ranges set early; we can't use syncRanges()
+	// because it will clear the (shared) list of blocks
+	for i := range contents {
+		contents[i].Trailer.Sparse.setRanges(contents[i].Trailer.Blocks)
 	}
 	var key Key
 	rand.Read(key[:])

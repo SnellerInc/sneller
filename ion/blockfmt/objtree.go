@@ -35,6 +35,10 @@ type IndirectTree struct {
 	// Refs is the list of objects containing
 	// lists of descriptors, from oldest to newest.
 	Refs []IndirectRef
+
+	// Sparse describes the intervals within refs
+	// that correspond to particular time ranges.
+	Sparse SparseIndex
 }
 
 // IndirectRef references an object
@@ -45,9 +49,9 @@ type IndirectRef struct {
 	// object references inside
 	// the packed file pointed to by Path.
 	Objects int
-	// Ranges is the summary of all ranges
-	// stored in the objects pointed to by Path.
-	Ranges []Range
+
+	// for decoding compatibility only!
+	ranges []Range
 }
 
 // Objects returns the total number
@@ -66,7 +70,6 @@ func (i *IndirectTree) encode(st *ion.Symtab, buf *ion.Buffer) {
 	lastModified := st.Intern("last-modified")
 	size := st.Intern("size")
 	objects := st.Intern("objects")
-	ranges := st.Intern("ranges")
 
 	buf.BeginStruct(-1)
 	buf.BeginField(st.Intern("refs"))
@@ -83,16 +86,19 @@ func (i *IndirectTree) encode(st *ion.Symtab, buf *ion.Buffer) {
 		buf.WriteInt(i.Refs[j].Size)
 		buf.BeginField(objects)
 		buf.WriteInt(int64(i.Refs[j].Objects))
-		buf.BeginField(ranges)
-		writeRanges(buf, st, i.Refs[j].Ranges)
 		buf.EndStruct()
 	}
 	buf.EndList()
+
+	buf.BeginField(st.Intern("sparse"))
+	i.Sparse.Encode(buf, st)
+
 	buf.EndStruct()
 }
 
 func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
-	return unpackStruct(td.Symbols, body, func(name string, field []byte) error {
+	haveRanges := false
+	err := unpackStruct(td.Symbols, body, func(name string, field []byte) error {
 		switch name {
 		case "refs":
 			return unpackList(field, func(field []byte) error {
@@ -100,11 +106,12 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 				err := unpackStruct(td.Symbols, field, func(name string, field []byte) error {
 					switch name {
 					case "ranges":
+						haveRanges = true
 						ranges, err := td.unpackRanges(td.Symbols, field)
 						if err != nil {
 							return err
 						}
-						ir.Ranges = ranges
+						ir.ranges = ranges
 						return nil
 					case "objects":
 						n, _, err := ion.ReadInt(field)
@@ -124,22 +131,48 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 				i.Refs = append(i.Refs, ir)
 				return nil
 			})
+		case "sparse":
+			if haveRanges {
+				return fmt.Errorf("IndirectTree.parse: have ranges *and* sparse?")
+			}
+			err := i.Sparse.Decode(td.Symbols, field)
+			if err != nil {
+				err = fmt.Errorf("Indirect.Sparse.Decode: %w", err)
+			}
+			return err
 		default:
 			return fmt.Errorf("IndirectTree.parse: unexpected field name %q", name)
 		}
 	})
+	// build time ranges if we have them
+	if err == nil && haveRanges {
+		for j := range i.Refs {
+			for k := range i.Refs[j].ranges {
+				tr, ok := i.Refs[j].ranges[k].(*TimeRange)
+				if ok {
+					i.Sparse.push(tr.path, tr.min, tr.max)
+				}
+			}
+			i.Refs[j].ranges = nil
+			i.Sparse.bump()
+		}
+	}
+	return err
 }
 
-func keepAny(t *Trailer, keep func([]Range) bool) bool {
+func keepAny(t *Trailer, overlap func(*SparseIndex, int) bool) bool {
+	if overlap == nil {
+		return true
+	}
 	for i := range t.Blocks {
-		if keep(t.Blocks[i].Ranges) {
+		if overlap(&t.Sparse, i) {
 			return true
 		}
 	}
 	return false
 }
 
-func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, keep func([]Range) bool) ([]Descriptor, error) {
+func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, keep func(*SparseIndex, int) bool) ([]Descriptor, error) {
 	f, err := ifs.Open(src.Path)
 	if err != nil {
 		return in, err
@@ -205,11 +238,11 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, ke
 // Search traverses the IndirectTree through
 // the backing store (ifs) to produce the
 // list of blobs that match the given predicate.
-func (i *IndirectTree) Search(ifs InputFS, overlap func(r []Range) bool) ([]Descriptor, error) {
+func (i *IndirectTree) Search(ifs InputFS, overlap func(*SparseIndex, int) bool) ([]Descriptor, error) {
 	var descs []Descriptor
 	var err error
 	for j := range i.Refs {
-		if overlap != nil && !overlap(i.Refs[j].Ranges) {
+		if overlap != nil && !overlap(&i.Sparse, j) {
 			continue
 		}
 		descs, err = i.decode(ifs, &i.Refs[j], descs, overlap)
@@ -230,6 +263,20 @@ func (i *IndirectTree) Search(ifs InputFS, overlap func(r []Range) bool) ([]Desc
 // approximation of the compressed size of one ref)
 var targetRefSize = 256 * 1024
 
+func pushSummary(dst *SparseIndex, lst []Descriptor) {
+	for i := range lst {
+		lst[i].Trailer.syncRanges()
+		dst.pushSummary(&lst[i].Trailer.Sparse)
+	}
+}
+
+func updateSummary(dst *SparseIndex, lst []Descriptor) {
+	for i := range lst {
+		lst[i].Trailer.syncRanges()
+		dst.updateSummary(&lst[i].Trailer.Sparse)
+	}
+}
+
 // append appends a list of descriptors to the tree
 // and writes any new decriptor lists to files in basedir
 // relative to the root of ofs.
@@ -237,7 +284,6 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	if len(lst) == 0 {
 		return nil
 	}
-	var base []*TimeRange
 	var prepend []Descriptor
 	var err error
 	var r *IndirectRef
@@ -246,7 +292,7 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	if len(i.Refs) > 0 && i.Refs[len(i.Refs)-1].Size < int64(targetRefSize) {
 		r = &i.Refs[len(i.Refs)-1]
 		prev = r.Path
-		base = toTimeRanges(r.Ranges)
+		updateSummary(&i.Sparse, lst)
 		prepend, err = i.decode(ofs, r, nil, nil)
 		if err != nil {
 			return err
@@ -254,22 +300,8 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	} else {
 		i.Refs = append(i.Refs, IndirectRef{})
 		r = &i.Refs[len(i.Refs)-1]
+		pushSummary(&i.Sparse, lst)
 	}
-
-	for i := range lst {
-		for j := range lst[i].Trailer.Blocks {
-			blk := &lst[i].Trailer.Blocks[j]
-			if len(blk.Ranges) == 0 {
-				continue
-			}
-			if base == nil {
-				base = copyTimeRanges(toTimeRanges(blk.Ranges))
-			} else {
-				base = union(base, toTimeRanges(blk.Ranges))
-			}
-		}
-	}
-
 	all := append(prepend, lst...)
 
 	// encode the list of objects:
@@ -296,7 +328,6 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	r.ETag = etag
 	r.Size = int64(len(compressed))
 	r.Objects = len(all)
-	r.Ranges = toRanges(base)
 
 	info, err := fs.Stat(ofs, p)
 	if err != nil {

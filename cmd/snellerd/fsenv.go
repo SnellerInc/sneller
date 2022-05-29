@@ -159,13 +159,13 @@ func (f *fsEnv) Stat(e, where expr.Node) (plan.TableHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	var keep func([]blockfmt.Range) bool
+	var keep func(*blockfmt.SparseIndex, int) bool
 	var match filter
 	if where != nil {
 		if m, ok := compileFilter(where); ok {
 			match = m
-			keep = func(rng []blockfmt.Range) bool {
-				return match(rng) != never
+			keep = func(s *blockfmt.SparseIndex, n int) bool {
+				return match(s, n) != never
 			}
 		}
 	}

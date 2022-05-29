@@ -63,7 +63,7 @@ func TestIndirectTree(t *testing.T) {
 		// descriptors are 1 hour apart; blocks are 1 minute apart
 		min := start.Add(time.Duration(iter) * time.Hour)
 		for i := 0; i < blocks; i++ {
-			lo := min.Add(time.Duration(iter) * time.Minute)
+			lo := min.Add(time.Duration(i) * time.Minute)
 			hi := lo.Add(time.Minute)
 			d.Trailer.Blocks = append(d.Trailer.Blocks, Blockdesc{
 				Offset: int64(i) * 98246,
@@ -104,6 +104,7 @@ func TestIndirectTree(t *testing.T) {
 		idx.ToDelete = nil
 
 		d := newdesc(i, 30)
+		d.Trailer.syncRanges()
 		ds := d.Trailer.Decompressed()
 		all = append(all, d)
 		idx.Inline = append(idx.Inline, d)
@@ -142,6 +143,10 @@ func TestIndirectTree(t *testing.T) {
 				if all[j].Path != gotAll[j].Path {
 					t.Errorf("index %d: %s != %s", j, all[j].Path, gotAll[j].Path)
 					continue
+				}
+				if !reflect.DeepEqual(all[j].Trailer.Sparse, gotAll[j].Trailer.Sparse) {
+					t.Errorf("%#v", all[j].Trailer.Sparse)
+					t.Fatalf("%#v", gotAll[j].Trailer.Sparse)
 				}
 			}
 			t.Fatalf("iter %d: results not equal", i)

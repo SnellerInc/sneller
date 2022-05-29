@@ -15,6 +15,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -24,7 +26,7 @@ import (
 // whether rows constrained by the given ranges always
 // match, maybe match, or never match the expression
 // the filter was compiled from.
-type filter func([]blockfmt.Range) ternary
+type filter func(*blockfmt.SparseIndex, int) ternary
 
 type ternary int8
 
@@ -34,9 +36,9 @@ const (
 	never  ternary = -1
 )
 
-func alwaysMatches([]blockfmt.Range) ternary { return always }
-func maybeMatches([]blockfmt.Range) ternary  { return maybe }
-func neverMatches([]blockfmt.Range) ternary  { return never }
+func alwaysMatches(*blockfmt.SparseIndex, int) ternary { return always }
+func maybeMatches(*blockfmt.SparseIndex, int) ternary  { return maybe }
+func neverMatches(*blockfmt.SparseIndex, int) ternary  { return never }
 
 // compileFilter compiles a filter expression;
 // if it returns (nil, false), then the result
@@ -51,8 +53,8 @@ func compileFilter(e expr.Node) (filter, bool) {
 	case *expr.Not:
 		f, ok := compileFilter(e.Expr)
 		if ok {
-			return func(r []blockfmt.Range) ternary {
-				return -f(r)
+			return func(s *blockfmt.SparseIndex, n int) ternary {
+				return -f(s, n)
 			}, true
 		}
 		return nil, false
@@ -100,15 +102,15 @@ func compileLogicalFilter(e *expr.Logical) (filter, bool) {
 func logical1Arm(prim filter, op expr.LogicalOp) (filter, bool) {
 	switch op {
 	case expr.OpAnd:
-		return func(r []blockfmt.Range) ternary {
-			if prim(r) == never {
+		return func(r *blockfmt.SparseIndex, n int) ternary {
+			if prim(r, n) == never {
 				return never
 			}
 			return maybe
 		}, true
 	case expr.OpOr:
-		return func(r []blockfmt.Range) ternary {
-			if prim(r) == always {
+		return func(r *blockfmt.SparseIndex, n int) ternary {
+			if prim(r, n) == always {
 				return always
 			}
 			return maybe
@@ -123,8 +125,8 @@ func logical1Arm(prim filter, op expr.LogicalOp) (filter, bool) {
 func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 	switch op {
 	case expr.OpAnd:
-		return func(r []blockfmt.Range) ternary {
-			a, b := left(r), right(r)
+		return func(s *blockfmt.SparseIndex, n int) ternary {
+			a, b := left(s, n), right(s, n)
 			if a == never || b == never {
 				return never
 			}
@@ -134,8 +136,8 @@ func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 			return maybe
 		}, true
 	case expr.OpOr:
-		return func(r []blockfmt.Range) ternary {
-			a, b := left(r), right(r)
+		return func(s *blockfmt.SparseIndex, n int) ternary {
+			a, b := left(s, n), right(s, n)
 			if a == always || b == always {
 				return always
 			}
@@ -145,8 +147,8 @@ func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 			return maybe
 		}, true
 	case expr.OpXnor:
-		return func(r []blockfmt.Range) ternary {
-			a, b := left(r), right(r)
+		return func(s *blockfmt.SparseIndex, n int) ternary {
+			a, b := left(s, n), right(s, n)
 			if a == maybe || b == maybe {
 				return maybe
 			}
@@ -156,8 +158,8 @@ func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 			return never
 		}, true
 	case expr.OpXor:
-		return func(r []blockfmt.Range) ternary {
-			a, b := left(r), right(r)
+		return func(s *blockfmt.SparseIndex, n int) ternary {
+			a, b := left(s, n), right(s, n)
 			if a == maybe || b == maybe {
 				return maybe
 			}
@@ -191,19 +193,21 @@ func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
 	if !ok {
 		return nil, false
 	}
-	cmp := compareFunc(op)
-	if cmp == nil {
-		return nil, false
-	}
 	switch fn.Func {
 	case expr.DateToUnixEpoch:
-		return timeFilter(path, func(min, max date.Time) ternary {
-			return cmp(int64(im), min.Unix(), max.Unix())
-		}), true
+		when := date.Unix(int64(im), 0)
+		cmp := compareFunc(op, when)
+		if cmp == nil {
+			return nil, false
+		}
+		return pathFilter(path, cmp), true
 	case expr.DateToUnixMicro:
-		return timeFilter(path, func(min, max date.Time) ternary {
-			return cmp(int64(im), min.UnixMicro(), max.UnixMicro())
-		}), true
+		when := date.UnixMicro(int64(im))
+		cmp := compareFunc(op, when)
+		if cmp == nil {
+			return nil, false
+		}
+		return pathFilter(path, cmp), true
 	}
 	return nil, false
 }
@@ -213,68 +217,31 @@ func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
 // for any value v in the range [min, max] (inclusive).
 // This returns nil if op is not applicable to integers
 // (LIKE or ILIKE).
-func compareFunc(op expr.CmpOp) func(n, min, max int64) ternary {
+func compareFunc(op expr.CmpOp, when date.Time) func(*blockfmt.TimeIndex, int) ternary {
+	const epsilon = time.Microsecond
 	switch op {
 	case expr.Equals:
-		return func(n, min, max int64) ternary {
-			if n == min && n == max {
-				return always
+		return func(i *blockfmt.TimeIndex, n int) ternary {
+			if i.Contains(when) {
+				return maybe
 			}
-			if n < min || n > max {
-				return never
-			}
-			return maybe
+			return never
 		}
 	case expr.NotEquals:
-		return func(n, min, max int64) ternary {
-			if n == min && n == max {
-				return never
-			}
-			if n < min || n > max {
-				return always
-			}
-			return maybe
-		}
+		// complicated due to partiql semantics
+		return nil
 	case expr.Less:
-		return func(n, min, max int64) ternary {
-			if n < min {
-				return always
-			}
-			if n < max {
-				return maybe
-			}
-			return never
-		}
+		// when < expr
+		return pickAfter(when.Add(-epsilon))
 	case expr.LessEquals:
-		return func(n, min, max int64) ternary {
-			if n <= min {
-				return always
-			}
-			if n <= max {
-				return maybe
-			}
-			return never
-		}
+		// when <= expr
+		return pickAfter(when)
 	case expr.Greater:
-		return func(n, min, max int64) ternary {
-			if n > max {
-				return always
-			}
-			if n > min {
-				return maybe
-			}
-			return never
-		}
+		// when > expr
+		return pickBefore(when)
 	case expr.GreaterEquals:
-		return func(n, min, max int64) ternary {
-			if n >= max {
-				return always
-			}
-			if n >= min {
-				return maybe
-			}
-			return never
-		}
+		// when >= expr
+		return pickBefore(when.Add(epsilon))
 	}
 	return nil
 }
@@ -287,6 +254,38 @@ func compileBuiltin(e *expr.Builtin) (filter, bool) {
 		return compileBefore(e.Args)
 	}
 	return nil, false
+}
+
+// pickAfter returns a function that evaluates
+// whether or not the provided block and time index
+// contain a value greater than or equal to when
+func pickAfter(when date.Time) func(*blockfmt.TimeIndex, int) ternary {
+	return func(i *blockfmt.TimeIndex, n int) ternary {
+		// exclude blocks to the left of the block
+		// where max(block) < ts
+		if n < i.Start(when) {
+			return never
+		}
+		if n < i.End(when) {
+			return maybe
+		}
+		return always
+	}
+}
+
+// pickBefore returns a function that
+// evaluates whether or not the provided block
+// and time index contain a value less than when
+func pickBefore(when date.Time) func(*blockfmt.TimeIndex, int) ternary {
+	return func(i *blockfmt.TimeIndex, n int) ternary {
+		if n < i.Start(when) {
+			return always
+		}
+		if n < i.End(when) {
+			return maybe
+		}
+		return never
+	}
 }
 
 // compileBefore compiles a filter from a BEFORE
@@ -307,77 +306,42 @@ func compileBefore(args []expr.Node) (filter, bool) {
 	case *expr.Timestamp:
 		switch rhs := args[1].(type) {
 		case *expr.Path:
-			// BEFORE(ts, path)
-			return timeFilter(rhs, func(min, max date.Time) ternary {
-				if lhs.Value.Before(min) {
-					return always
-				}
-				if lhs.Value.Before(max) {
-					return maybe
-				}
-				return never
-			}), true
+			return pathFilter(rhs, pickAfter(lhs.Value)), true
 		}
 	case *expr.Path:
 		switch rhs := args[1].(type) {
 		case *expr.Timestamp:
 			// BEFORE(path, ts)
-			return timeFilter(lhs, func(min, max date.Time) ternary {
-				if max.Before(rhs.Value) {
-					return always
-				}
-				if min.Before(rhs.Value) {
-					return maybe
-				}
-				return never
-			}), true
+			return pathFilter(lhs, pickBefore(rhs.Value)), true
 		}
 	}
 	return nil, false
 }
 
-// timeFilter returns a filter that finds a time range
-// matching the given path and applies fn to it. If a
-// range for the given path was found, but it is not a
-// time range, the filter returns maybe.
-func timeFilter(path *expr.Path, fn func(min, max date.Time) ternary) filter {
-	return pathFilter(path, func(r blockfmt.Range) ternary {
-		rt, ok := r.(*blockfmt.TimeRange)
+func flatpath(path *expr.Path) ([]string, bool) {
+	ret := []string{path.First}
+	for d := path.Rest; d != nil; d = d.Next() {
+		dot, ok := d.(*expr.Dot)
 		if !ok {
-			return maybe
+			return nil, false
 		}
-		return fn(rt.MinTime(), rt.MaxTime())
-	})
+		ret = append(ret, dot.Field)
+	}
+	return ret, true
 }
 
 // pathFilter returns a filter that finds a range
 // matching the given path and applies fn to it.
-func pathFilter(path *expr.Path, fn func(blockfmt.Range) ternary) filter {
-	return func(r []blockfmt.Range) ternary {
-		for i := range r {
-			if !pathMatches(path, r[i].Path()) {
-				continue
-			}
-			return fn(r[i])
-		}
-		return maybe
+func pathFilter(path *expr.Path, fn func(*blockfmt.TimeIndex, int) ternary) filter {
+	flat, ok := flatpath(path)
+	if !ok {
+		return nil
 	}
-}
-
-func pathMatches(e *expr.Path, p []string) bool {
-	if len(p) == 0 || e.First != p[0] {
-		return false
-	}
-	p = p[1:]
-	for n := e.Rest; n != nil; n = n.Next() {
-		if len(p) == 0 {
-			return false
+	return func(s *blockfmt.SparseIndex, i int) ternary {
+		tr := s.Get(flat)
+		if tr == nil {
+			return maybe
 		}
-		d, ok := n.(*expr.Dot)
-		if !ok || d.Field != p[0] {
-			return false
-		}
-		p = p[1:]
+		return fn(tr, i)
 	}
-	return len(p) == 0
 }

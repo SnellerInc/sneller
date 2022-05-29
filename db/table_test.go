@@ -221,7 +221,7 @@ func TestBuildBlobs(t *testing.T) {
 	if !match {
 		t.Fatalf("unexpected contents[0] path %s", idx.Inline[0].Path)
 	}
-	lst, err := Blobs(dfs, idx, func([]blockfmt.Range) bool { return true })
+	lst, err := Blobs(dfs, idx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -61,6 +61,10 @@ func TestTrailerEncode(t *testing.T) {
 		var st ion.Symtab
 		var buf ion.Buffer
 		samples[i].Encode(&buf, &st)
+		for j := range samples[i].Blocks {
+			samples[i].Blocks[j].Ranges = nil
+		}
+
 		var out Trailer
 		err := out.Decode(&st, buf.Bytes())
 		if err != nil {

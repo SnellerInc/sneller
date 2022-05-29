@@ -269,17 +269,8 @@ func TestMultiRanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkRange := func(r []blockfmt.Range) {
-		for i := range r {
-			path := r[i].Path()
-			if len(path) == 1 && path[0] == "eventTime" {
-				return
-			}
-		}
-		t.Fatalf("block missing eventTime range")
-	}
-	for i := range tr.Blocks {
-		checkRange(tr.Blocks[i].Ranges)
+	if rng := tr.Sparse.Get([]string{"eventTime"}); rng == nil {
+		t.Fatal("missing eventTime range")
 	}
 }
 

@@ -46,8 +46,17 @@ type Blockdesc struct {
 	// 1 << Trailer.BlockShift) within
 	// this block
 	Chunks int
+
 	// Ranges is optional value-range metadata
 	// associated with columns in this block.
+	//
+	// NOTE: the only time this should be populated
+	// is by CompressionWriter / MultiWriter; this
+	// field is not serialized directly.
+	// The summary of Blockdesc[*].Range lives in
+	// Trailer.Sparse.
+	//
+	// TODO: remove me entirely
 	Ranges []Range
 }
 
@@ -72,6 +81,19 @@ type Trailer struct {
 	// Blocks is the list of descriptors
 	// for each block.
 	Blocks []Blockdesc
+	// Sparse contains a lossy secondary index
+	// of timestamp ranges within Blocks.
+	Sparse SparseIndex
+}
+
+// set Sparse state and clear Blocks[*].Ranges
+func (t *Trailer) syncRanges() {
+	if t.Sparse.blocks == 0 && len(t.Blocks) > 0 {
+		t.Sparse.setRanges(t.Blocks)
+		for i := range t.Blocks {
+			t.Blocks[i].Ranges = nil
+		}
+	}
 }
 
 func writeRanges(dst *ion.Buffer, st *ion.Symtab, ranges []Range) {
@@ -132,8 +154,13 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 	dst.BeginField(st.Intern("blocks"))
 
+	// if there are Ranges fields set in the blocks,
+	// encode them in the sparse index instead;
+	// we have the same sort of backwards-compatibility shim
+	// in the decoding path as well
+	t.syncRanges()
+
 	symOffset := st.Intern("offset")
-	symRanges := st.Intern("ranges")
 	symChunks := st.Intern("chunks")
 	dst.BeginList(-1)
 	for i := range t.Blocks {
@@ -142,13 +169,13 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		dst.WriteInt(t.Blocks[i].Offset)
 		dst.BeginField(symChunks)
 		dst.WriteInt(int64(t.Blocks[i].Chunks))
-		if len(t.Blocks[i].Ranges) > 0 {
-			dst.BeginField(symRanges)
-			writeRanges(dst, st, t.Blocks[i].Ranges)
-		}
 		dst.EndStruct()
 	}
 	dst.EndList()
+
+	dst.BeginField(st.Intern("sparse"))
+	t.Sparse.Encode(dst, st)
+
 	dst.EndStruct()
 }
 
@@ -331,6 +358,7 @@ func (d *TrailerDecoder) Decode(body []byte) (*Trailer, error) {
 }
 
 func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
+	seenSparse := false
 	err := unpackStruct(d.Symbols, body, func(fieldname string, body []byte) error {
 		switch fieldname {
 		case "version":
@@ -366,6 +394,9 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 				return err
 			}
 			t.BlockShift = int(shift)
+		case "sparse":
+			seenSparse = true
+			return t.Sparse.Decode(d.Symbols, body)
 		case "blocks":
 			n, err := countList(body)
 			if err != nil || n == 0 {
@@ -393,6 +424,7 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 						}
 						blk.Chunks = int(chunks)
 					case "ranges":
+						// TODO: unpack ranges into Sparse
 						ranges, err := d.unpackRanges(d.Symbols, field)
 						if err != nil {
 							return fmt.Errorf("error unpacking range %d: %w", len(ranges), err)
@@ -422,6 +454,16 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 	})
 	if err != nil {
 		return fmt.Errorf("Trailer.Decode: %w", err)
+	}
+	if !seenSparse {
+		// if this is old-style data, then we
+		// should stick the range information
+		// in the sparse index and strip it
+		// from the blocks themselves
+		t.Sparse.setRanges(t.Blocks)
+		for i := range t.Blocks {
+			t.Blocks[i].Ranges = nil
+		}
 	}
 	return nil
 }

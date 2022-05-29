@@ -402,6 +402,8 @@ func (m *MultiWriter) Close() error {
 		panic("race between stream Close() and MultiWriter Close()")
 	}
 	m.finalize()
+	// compute the final sparse index:
+	m.Trailer.syncRanges()
 	m.unallocated.buf = append(m.unallocated.buf, m.Trailer.trailer(m.Comp, m.InputAlign)...)
 	return m.Output.Close(m.unallocated.buf)
 }

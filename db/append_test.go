@@ -204,7 +204,7 @@ func TestAppend(t *testing.T) {
 	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)
-	blobs, err := Blobs(dfs, idx1, func([]blockfmt.Range) bool { return true })
+	blobs, err := Blobs(dfs, idx1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,10 +212,7 @@ func TestAppend(t *testing.T) {
 		t.Errorf("got back %d blobs?", len(blobs.Contents))
 	}
 	tr := blobs.Contents[0].(*blob.Compressed).Trailer
-	ranges := 0
-	for j := range tr.Blocks {
-		ranges += len(tr.Blocks[j].Ranges)
-	}
+	ranges := tr.Sparse.Fields()
 	if ranges == 0 {
 		// the parking2.json file
 		// will have range data

@@ -71,9 +71,9 @@ func noIfMatch(fs FS) bool {
 	return false
 }
 
-func keepAny(t *blockfmt.Trailer, keep func([]blockfmt.Range) bool) bool {
+func keepAny(t *blockfmt.Trailer, keep func(*blockfmt.SparseIndex, int) bool) bool {
 	for i := range t.Blocks {
-		if keep(t.Blocks[i].Ranges) {
+		if keep(&t.Sparse, i) {
 			return true
 		}
 	}
@@ -89,7 +89,7 @@ func keepAny(t *blockfmt.Trailer, keep func([]blockfmt.Range) bool) bool {
 //
 // Note that the returned blob.List may consist
 // of zero blobs if the index has no contents.
-func Blobs(src FS, idx *blockfmt.Index, keep func([]blockfmt.Range) bool) (*blob.List, error) {
+func Blobs(src FS, idx *blockfmt.Index, keep func(*blockfmt.SparseIndex, int) bool) (*blob.List, error) {
 	out := &blob.List{}
 	for i := range idx.Inline {
 		if idx.Inline[i].Format != blockfmt.Version {

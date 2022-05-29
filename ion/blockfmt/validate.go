@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"io"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -32,7 +30,7 @@ import (
 func Validate(src io.Reader, t *Trailer, diag io.Writer) int {
 	d := Decoder{}
 	d.Set(t, len(t.Blocks))
-	w := checkWriter{dst: diag, blocks: t.Blocks}
+	w := checkWriter{dst: diag, blocks: t.Blocks, sparse: &t.Sparse}
 	d.Copy(&w, src)
 	return w.rows
 }
@@ -42,6 +40,7 @@ type checkWriter struct {
 	block   int
 	chunk   int
 	blocks  []Blockdesc
+	sparse  *SparseIndex
 	rows    int
 	seenBVM bool
 
@@ -58,20 +57,22 @@ func (c *checkWriter) errorf(f string, args ...interface{}) {
 
 func (c *checkWriter) checkRange(tm date.Time, path []string) {
 	r := c.blocks[c.block].Ranges
-	if len(r) == 0 {
+	if len(r) > 0 {
+		// in ReadTrailer, etc. we populate Trailer.Sparse instead
+		panic("ranges should have been removed during deserialization")
+	}
+	ts := c.sparse.Get(path)
+	if ts == nil {
 		return
 	}
-	for i := range r {
-		if ts, ok := r[i].(*TimeRange); ok {
-			if slices.Equal(path, ts.Path()) {
-				min, max := ts.MinTime(), ts.MaxTime()
-				if tm.Before(min) || tm.After(max) {
-					c.errorf("block %d chunk %d time %s out of range [%s, %s]",
-						c.block, c.chunk, tm, min, max)
-				}
-				return
-			}
-		}
+	// we want ts.Start(tm) <= c.block < ts.End(tm)
+	if ts.Start(tm) > c.block {
+		c.errorf("block %d chunk %d path %s time %s: sparse Start()=%d",
+			c.block, c.chunk, path, tm, ts.Start(tm))
+	}
+	if c.block >= ts.End(tm) {
+		c.errorf("block %d chunk %d path %s time %s: sparse End()=%d",
+			c.block, c.chunk, path, tm, ts.End(tm))
 	}
 }
 
