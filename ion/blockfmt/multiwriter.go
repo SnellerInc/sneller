@@ -84,7 +84,7 @@ type MultiWriter struct {
 	// insufficient part sizes
 	unallocated struct {
 		buf    []byte
-		blocks []Blockdesc
+		blocks []blockpart
 	}
 	refcount   int32
 	skipChecks bool
@@ -101,7 +101,7 @@ type span struct {
 	// object is finalized; each Offset
 	// points to the offset within the
 	// span rather than the final offset
-	blockmap []Blockdesc
+	blockmap []blockpart
 	outsize  int64
 }
 
@@ -168,9 +168,9 @@ func (s *singleStream) Flush() error {
 	if s.flushblocks > 0 {
 		// add any recent metadata
 		// to the blocks written since the last Flush
-		s.curspan.blockmap = append(s.curspan.blockmap, Blockdesc{
-			Offset: s.lastblock,
-			Chunks: s.flushblocks,
+		s.curspan.blockmap = append(s.curspan.blockmap, blockpart{
+			offset: s.lastblock,
+			chunks: s.flushblocks,
 			ranges: s.futureRange.pop(),
 		})
 		s.lastblock = int64(len(s.buf))
@@ -246,13 +246,13 @@ func (s *singleStream) promote() bool {
 		if len(u.blocks) == 0 {
 			panic("unallocated data but no blocks?")
 		}
-		if u.blocks[0].Offset != 0 {
+		if u.blocks[0].offset != 0 {
 			panic("beginning of unallocated blocks not 0?")
 		}
 		for i := range u.blocks {
 			// adjust offset to trailing position
 			// in current span
-			u.blocks[i].Offset += off
+			u.blocks[i].offset += off
 		}
 		s.curspan.blockmap = append(s.curspan.blockmap, u.blocks...)
 		s.buf = append(s.buf, u.buf...)
@@ -267,12 +267,12 @@ func (s *singleStream) promote() bool {
 	// but those offsets have to be adjusted
 	// to be the current offset within the final span
 	blocks := s.curspan.blockmap
-	if s.curspan.outsize != 0 || blocks[0].Offset != 0 {
+	if s.curspan.outsize != 0 || blocks[0].offset != 0 {
 		panic("flush span didn't shift outsize to zero")
 	}
 	adj := int64(len(u.buf))
 	for i := range blocks {
-		blocks[i].Offset += adj
+		blocks[i].offset += adj
 	}
 	u.buf = append(u.buf, s.buf...)
 	u.blocks = append(u.blocks, blocks...)
@@ -330,6 +330,7 @@ func (m *MultiWriter) finalize() {
 	// also take the opportunity to do some sanity checking
 	offset := int64(0)
 	part := int64(0)
+	var all []blockpart
 	for i := range m.spans {
 		if m.spans[i].partnum == part {
 			panic("part re-used")
@@ -337,30 +338,30 @@ func (m *MultiWriter) finalize() {
 		part = m.spans[i].partnum
 		prev := int64(0)
 		for j := range m.spans[i].blockmap {
-			block := m.spans[i].blockmap[j]
-			if block.Offset < prev {
+			block := &m.spans[i].blockmap[j]
+			if block.offset < prev {
 				panic("blocks out-of-order")
 			}
-			prev = block.Offset
-			m.Trailer.Blocks = append(m.Trailer.Blocks, Blockdesc{
-				Offset: offset + block.Offset,
-				Chunks: block.Chunks,
+			all = append(all, blockpart{
+				offset: block.offset + offset,
+				chunks: block.chunks,
 				ranges: block.ranges,
 			})
+			prev = block.offset
 		}
 		if m.spans[i].outsize <= prev {
 			panic("span outsize < offset")
 		}
 		offset += m.spans[i].outsize
 	}
-	m.Blocks = coalesce(m.Blocks, m.MinChunksPerBlock)
+	finalize(&m.Trailer, all, m.MinChunksPerBlock)
 	m.Trailer.Offset = offset
 }
 
 // merge adjacent blocks below the minimum
 // chunks-per-block threshold and return
 // the new slice of blocks (aliases 'blocks')
-func coalesce(blocks []Blockdesc, min int) []Blockdesc {
+func coalesce(blocks []blockpart, min int) []blockpart {
 	if min <= 1 || len(blocks) <= 1 {
 		return blocks
 	}
@@ -368,7 +369,7 @@ func coalesce(blocks []Blockdesc, min int) []Blockdesc {
 	// above a certain chunk number:
 	above := make([]int, len(blocks))
 	for i := len(blocks) - 1; i > 0; i-- {
-		above[i-1] = above[i] + blocks[i].Chunks
+		above[i-1] = above[i] + blocks[i].chunks
 	}
 	// for each block, merge with subsequent
 	// blocks until the combined size reaches
@@ -376,8 +377,8 @@ func coalesce(blocks []Blockdesc, min int) []Blockdesc {
 	for i := 0; i < len(blocks); i++ {
 		j := i + 1
 		for j < len(blocks) &&
-			(blocks[i].Chunks < min || above[i] < min) {
-			above[i] -= blocks[j].Chunks
+			(blocks[i].chunks < min || above[i] < min) {
+			above[i] -= blocks[j].chunks
 			copy(above[i:], above[i+1:])
 			above = above[:len(above)-1]
 			blocks[i].merge(&blocks[j])
@@ -403,7 +404,6 @@ func (m *MultiWriter) Close() error {
 	}
 	m.finalize()
 	// compute the final sparse index:
-	m.Trailer.syncRanges()
 	m.unallocated.buf = append(m.unallocated.buf, m.Trailer.trailer(m.Comp, m.InputAlign)...)
 	return m.Output.Close(m.unallocated.buf)
 }

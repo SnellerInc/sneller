@@ -30,6 +30,24 @@ import (
 
 var debugFree = false
 
+// this is just a Blockdesc, but before
+// we have frozen the ranges and built
+// a sparse index of the offsets
+type blockpart struct {
+	offset int64
+	chunks int
+	ranges []TimeRange
+}
+
+func toDescs(lst []blockpart) []Blockdesc {
+	out := make([]Blockdesc, len(lst))
+	for i := range lst {
+		out[i].Offset = lst[i].offset
+		out[i].Chunks = lst[i].chunks
+	}
+	return out
+}
+
 // CompressionWriter is a single-stream
 // io.Writer that accepts blocks from an
 // ion.Chunker and concatenates and compresses
@@ -62,6 +80,10 @@ type CompressionWriter struct {
 	// See also MultiWriter.MinChunksPerBlock
 	MinChunksPerBlock int
 
+	// intermediate blocks, before we have
+	// merged them and stuck them in Trailer
+	blocks []blockpart
+
 	buffer, alt []byte // buffered data
 	bg          chan error
 	partnum     int64 // previous part number
@@ -76,8 +98,13 @@ type CompressionWriter struct {
 	futureRange
 }
 
+// WrittenBlocks returns the number of blocks
+// written to the CompressionWriter (i.e. the number
+// of calls to w.Write)
+func (w *CompressionWriter) WrittenBlocks() int { return len(w.blocks) }
+
 type futureRange struct {
-	buffered []*TimeRange
+	buffered []TimeRange
 }
 
 type minMaxer interface {
@@ -93,13 +120,13 @@ func (f *futureRange) SetMinMax(path []string, min, max ion.Datum) {
 	if !ok {
 		return // only supporting timestamp ranges right now
 	}
-	f.buffered = append(f.buffered, ts)
+	f.buffered = append(f.buffered, *ts)
 }
 
-func (f *futureRange) pop() []Range {
+func (f *futureRange) pop() []TimeRange {
 	ret := f.buffered
 	f.buffered = nil
-	return toRanges(ret)
+	return ret
 }
 
 func (w *CompressionWriter) target() int {
@@ -112,22 +139,6 @@ func (w *CompressionWriter) target() int {
 	return w.TargetSize
 }
 
-func toTimeRanges(lst []Range) []*TimeRange {
-	out := make([]*TimeRange, len(lst))
-	for i := range out {
-		out[i] = lst[i].(*TimeRange)
-	}
-	return out
-}
-
-func toRanges(lst []*TimeRange) []Range {
-	out := make([]Range, len(lst))
-	for i := range out {
-		out[i] = lst[i]
-	}
-	return out
-}
-
 func (w *CompressionWriter) Flush() error {
 	if w.flushblocks == 0 {
 		if w.lastblock != w.offset {
@@ -135,9 +146,9 @@ func (w *CompressionWriter) Flush() error {
 		}
 		return nil
 	}
-	w.Blocks = append(w.Blocks, Blockdesc{
-		Offset: w.lastblock,
-		Chunks: w.flushblocks,
+	w.blocks = append(w.blocks, blockpart{
+		offset: w.lastblock,
+		chunks: w.flushblocks,
 		ranges: w.futureRange.pop(),
 	})
 	w.lastblock = w.offset
@@ -195,6 +206,21 @@ func (w *CompressionWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+// use a []blockpart to populate dst.Sparse and dst.Blocks,
+// taking care to coalesce blocks where they fall below
+// the provided minimum size
+func finalize(dst *Trailer, src []blockpart, min int) {
+	src = coalesce(src, min)
+	for i := range src {
+		for j := range src[i].ranges {
+			r := &src[i].ranges[j]
+			dst.Sparse.push(r.path, r.min, r.max)
+		}
+		dst.Sparse.bump()
+	}
+	dst.Blocks = toDescs(src)
+}
+
 // Close closes the compression writer
 // and finalizes the output upload.
 func (w *CompressionWriter) Close() error {
@@ -210,9 +236,8 @@ func (w *CompressionWriter) Close() error {
 		println("flushblocks =", w.flushblocks)
 		panic("missing Flush before Close")
 	}
-	w.Blocks = coalesce(w.Blocks, w.MinChunksPerBlock)
+	finalize(&w.Trailer, w.blocks, w.MinChunksPerBlock)
 	w.Trailer.Offset = w.offset
-	w.Trailer.syncRanges()
 	trailer := w.Trailer.trailer(w.Comp, w.InputAlign)
 	w.offset += int64(len(trailer))
 	w.buffer = append(w.buffer, trailer...)
@@ -318,7 +343,6 @@ func ReadTrailer(src io.ReaderAt, size int64) (*Trailer, error) {
 	if err := fill(t, src, size); err != nil {
 		return nil, err
 	}
-	t.syncRanges()
 	return t, nil
 }
 

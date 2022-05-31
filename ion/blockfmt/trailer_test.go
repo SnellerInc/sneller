@@ -17,11 +17,14 @@ package blockfmt
 import (
 	"reflect"
 	"testing"
+	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
 func TestTrailerEncode(t *testing.T) {
+	time0 := date.Now().Truncate(time.Microsecond)
 	samples := []Trailer{
 		{Version: 1},
 		{Version: 1, Offset: 0x12345, Algo: "zstd", BlockShift: 20},
@@ -34,26 +37,16 @@ func TestTrailerEncode(t *testing.T) {
 				{
 					Offset: 0,
 					Chunks: 700,
-					ranges: []Range{
-						NewRange(
-							[]string{"x", "y"},
-							ion.Uint(1000),
-							ion.Uint(2000),
-						),
-					},
 				},
 				{
 					Offset: 1 << 20,
 					Chunks: 1,
-					ranges: []Range{
-						NewRange(
-							[]string{"x", "y"},
-							ion.Uint(0),
-							ion.Uint(1000),
-						),
-					},
 				},
 			},
+			Sparse: mksparse([]TimeRange{
+				{[]string{"foo"}, time0, time0.Add(time.Second)},
+				{[]string{"foo"}, time0.Add(time.Second), time0.Add(time.Minute)},
+			}),
 		},
 	}
 
@@ -61,9 +54,6 @@ func TestTrailerEncode(t *testing.T) {
 		var st ion.Symtab
 		var buf ion.Buffer
 		samples[i].Encode(&buf, &st)
-		for j := range samples[i].Blocks {
-			samples[i].Blocks[j].ranges = nil
-		}
 
 		var out Trailer
 		err := out.Decode(&st, buf.Bytes())
@@ -73,121 +63,5 @@ func TestTrailerEncode(t *testing.T) {
 		if !reflect.DeepEqual(samples[i], out) {
 			t.Error("results not equivalent")
 		}
-	}
-}
-
-func TestTrailerCombineWith(t *testing.T) {
-	a := Trailer{
-		Version:    1,
-		Offset:     1000,
-		Algo:       "lz4",
-		BlockShift: 20,
-		Blocks: []Blockdesc{
-			{
-				Offset: 0,
-				ranges: []Range{
-					NewRange(
-						[]string{"x", "y"},
-						ion.Uint(1000),
-						ion.Uint(2000),
-					),
-				},
-			},
-			{
-				Offset: 500,
-				ranges: []Range{
-					NewRange(
-						[]string{"z", "z"},
-						ion.Uint(0),
-						ion.Uint(1000),
-					),
-				},
-			},
-		},
-	}
-	b := Trailer{
-		Version:    1,
-		Offset:     2000,
-		Algo:       "lz4",
-		BlockShift: 20,
-		Blocks: []Blockdesc{
-			{
-				Offset: 0,
-				ranges: []Range{
-					NewRange(
-						[]string{"a", "b"},
-						ion.Uint(1337),
-						ion.Uint(1338),
-					),
-				},
-			},
-			{
-				Offset: 1000,
-				ranges: []Range{
-					NewRange(
-						[]string{"c", "d"},
-						ion.Uint(42),
-						ion.Uint(24),
-					),
-				},
-			},
-		},
-	}
-	expected := Trailer{
-		Version:    1,
-		Offset:     3000,
-		Algo:       "lz4",
-		BlockShift: 20,
-		Blocks: []Blockdesc{
-			{
-				Offset: 0,
-				ranges: []Range{
-					NewRange(
-						[]string{"x", "y"},
-						ion.Uint(1000),
-						ion.Uint(2000),
-					),
-				},
-			},
-			{
-				Offset: 500,
-				ranges: []Range{
-					NewRange(
-						[]string{"z", "z"},
-						ion.Uint(0),
-						ion.Uint(1000),
-					),
-				},
-			},
-			{
-				Offset: 1000,
-				ranges: []Range{
-					NewRange(
-						[]string{"a", "b"},
-						ion.Uint(1337),
-						ion.Uint(1338),
-					),
-				},
-			},
-			{
-				Offset: 2000,
-				ranges: []Range{
-					NewRange(
-						[]string{"c", "d"},
-						ion.Uint(42),
-						ion.Uint(24),
-					),
-				},
-			},
-		},
-	}
-
-	err := a.CombineWith(&b)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !reflect.DeepEqual(a, expected) {
-		t.Error("results not equivalent")
 	}
 }

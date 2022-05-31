@@ -249,19 +249,6 @@ func (f *futureRange2) commit() {
 	}
 }
 
-// turn "old-style" block descriptors into a sparse index:
-func (s *SparseIndex) setRanges(blocks []Blockdesc) {
-	for i := range blocks {
-		for j := range blocks[i].ranges {
-			r := blocks[i].ranges[j]
-			if tr, ok := r.(*TimeRange); ok {
-				s.push(tr.path, tr.min, tr.max)
-			}
-		}
-		s.bump()
-	}
-}
-
 // update the most recent min/max values associated
 // with a sparse index; it does not increase the number of blocks
 func (s *SparseIndex) updateSummary(from *SparseIndex) {

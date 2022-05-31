@@ -698,24 +698,6 @@ func (idx *Index) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
 	return min, max, ok
 }
 
-func pathMatches(e *expr.Path, p []string) bool {
-	if len(p) == 0 || e.First != p[0] {
-		return false
-	}
-	p = p[1:]
-	for n := e.Rest; n != nil; n = n.Next() {
-		if len(p) == 0 {
-			return false
-		}
-		d, ok := n.(*expr.Dot)
-		if !ok || d.Field != p[0] {
-			return false
-		}
-		p = p[1:]
-	}
-	return len(p) == 0
-}
-
 // Objects returns the number of packed objects
 // that are pointed to by this Index.
 func (idx *Index) Objects() int {

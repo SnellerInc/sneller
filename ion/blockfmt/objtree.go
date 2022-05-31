@@ -265,14 +265,12 @@ var targetRefSize = 256 * 1024
 
 func pushSummary(dst *SparseIndex, lst []Descriptor) {
 	for i := range lst {
-		lst[i].Trailer.syncRanges()
 		dst.pushSummary(&lst[i].Trailer.Sparse)
 	}
 }
 
 func updateSummary(dst *SparseIndex, lst []Descriptor) {
 	for i := range lst {
-		lst[i].Trailer.syncRanges()
 		dst.updateSummary(&lst[i].Trailer.Sparse)
 	}
 }

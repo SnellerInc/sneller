@@ -82,7 +82,7 @@ func synthesize(t testing.TB, corpus string, blocks int) ([]byte, [][]byte) {
 		W:     &pc,
 	}
 	src := rand.New(rand.NewSource(0))
-	for len(w.Blocks) < blocks {
+	for w.WrittenBlocks() < blocks {
 		dat := u.Generate(src)
 		dat.Encode(&cn.Buffer, &cn.Symbols)
 		err := cn.Commit()

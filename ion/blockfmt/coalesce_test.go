@@ -66,14 +66,14 @@ func TestCoalesce(t *testing.T) {
 		in := cases[i].in
 		want := cases[i].out
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			blocks := make([]Blockdesc, len(in))
+			blocks := make([]blockpart, len(in))
 			for i := range in {
-				blocks[i].Chunks = in[i]
+				blocks[i].chunks = in[i]
 			}
 			got := coalesce(blocks, min)
 			out := make([]int, len(got))
 			for i := range out {
-				out[i] = got[i].Chunks
+				out[i] = got[i].chunks
 			}
 			if !reflect.DeepEqual(out, want) {
 				t.Errorf("got : %v", out)

@@ -68,10 +68,9 @@ func TestIndirectTree(t *testing.T) {
 			d.Trailer.Blocks = append(d.Trailer.Blocks, Blockdesc{
 				Offset: int64(i) * 98246,
 				Chunks: 50,
-				ranges: []Range{
-					&TimeRange{path: []string{"timestamp"}, min: lo, max: hi},
-				},
 			})
+			d.Trailer.Sparse.push([]string{"timestamp"}, lo, hi)
+			d.Trailer.Sparse.bump()
 		}
 		return d
 	}
@@ -104,7 +103,6 @@ func TestIndirectTree(t *testing.T) {
 		idx.ToDelete = nil
 
 		d := newdesc(i, 30)
-		d.Trailer.syncRanges()
 		ds := d.Trailer.Decompressed()
 		all = append(all, d)
 		idx.Inline = append(idx.Inline, d)

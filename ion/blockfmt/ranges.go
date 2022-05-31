@@ -105,28 +105,16 @@ func pathless(a, b []string) bool {
 	return len(a) < len(b)
 }
 
-func sortByPath(lst []*TimeRange) {
-	slices.SortFunc(lst, func(left, right *TimeRange) bool {
+func sortByPath(lst []TimeRange) {
+	slices.SortFunc(lst, func(left, right TimeRange) bool {
 		return pathless(left.path, right.path)
 	})
-}
-
-func (t *TimeRange) copy() *TimeRange {
-	return &TimeRange{path: t.path, min: t.min, max: t.max}
-}
-
-func copyTimeRanges(lst []*TimeRange) []*TimeRange {
-	out := make([]*TimeRange, len(lst))
-	for i := range out {
-		out[i] = lst[i].copy()
-	}
-	return out
 }
 
 // union unions the results from b into a
 // and returns the mutated slice
 // (the result is guaranteed not to alias b)
-func union(a, b []*TimeRange) []*TimeRange {
+func union(a, b []TimeRange) []TimeRange {
 	sortByPath(a)
 	sortByPath(b)
 	pos := 0
@@ -144,38 +132,24 @@ func union(a, b []*TimeRange) []*TimeRange {
 			apath = a[pos].path
 		}
 		if slices.Equal(apath, bpath) {
-			a[pos].Union(b[i])
+			a[pos].Union(&b[i])
 		} else {
-			a = append(a, b[i].copy())
+			a = append(a, b[i])
 		}
 	}
 	sortByPath(a) // make results deterministic
 	return a
 }
 
-func (b *Blockdesc) merge(from *Blockdesc) {
-	b.Chunks += from.Chunks
-	b.ranges = toRanges(
-		union(
-			toTimeRanges(b.ranges),
-			toTimeRanges(from.ranges),
-		))
+func (b *blockpart) merge(from *blockpart) {
+	b.chunks += from.chunks
+	b.ranges = union(b.ranges, from.ranges)
 }
 
 func collectRanges(t *Trailer) [][]string {
-	var out [][]string
-	for i := range t.Blocks {
-	rangeloop:
-		for j := range t.Blocks[i].ranges {
-			p := t.Blocks[i].ranges[j].Path()
-			// FIXME: don't do polynomial-time comparison here :o
-			for k := range out {
-				if slices.Equal(out[k], p) {
-					continue rangeloop
-				}
-			}
-			out = append(out, p)
-		}
+	o := make([][]string, len(t.Sparse.indices))
+	for i := range t.Sparse.indices {
+		o[i] = t.Sparse.indices[i].path
 	}
-	return out
+	return o
 }

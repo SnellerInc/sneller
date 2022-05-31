@@ -46,18 +46,6 @@ type Blockdesc struct {
 	// 1 << Trailer.BlockShift) within
 	// this block
 	Chunks int
-
-	// Ranges is optional value-range metadata
-	// associated with columns in this block.
-	//
-	// NOTE: the only time this should be populated
-	// is by CompressionWriter / MultiWriter; this
-	// field is not serialized directly.
-	// The summary of Blockdesc[*].Range lives in
-	// Trailer.Sparse.
-	//
-	// TODO: remove me entirely
-	ranges []Range
 }
 
 // Trailer is a collection
@@ -86,53 +74,6 @@ type Trailer struct {
 	Sparse SparseIndex
 }
 
-// set Sparse state and clear Blocks[*].Ranges
-func (t *Trailer) syncRanges() {
-	if t.Sparse.blocks == 0 && len(t.Blocks) > 0 {
-		t.Sparse.setRanges(t.Blocks)
-		for i := range t.Blocks {
-			t.Blocks[i].ranges = nil
-		}
-	}
-}
-
-func writeRanges(dst *ion.Buffer, st *ion.Symtab, ranges []Range) {
-	symPath := st.Intern("path")
-	symMin := st.Intern("min")
-	symMax := st.Intern("max")
-	dst.BeginList(-1)
-	for j := range ranges {
-		dst.BeginStruct(-1)
-		{
-			dst.BeginField(symPath)
-			dst.BeginList(-1)
-			path := ranges[j].Path()
-			for k := range path {
-				dst.WriteSymbol(st.Intern(path[k]))
-			}
-			dst.EndList()
-		}
-		switch r := ranges[j].(type) {
-		case *TimeRange:
-			dst.BeginField(symMin)
-			dst.WriteTime(r.min)
-			dst.BeginField(symMax)
-			dst.WriteTime(r.max)
-		default:
-			if min := r.Min(); min != nil {
-				dst.BeginField(symMin)
-				min.Encode(dst, st)
-			}
-			if max := r.Max(); max != nil {
-				dst.BeginField(symMax)
-				max.Encode(dst, st)
-			}
-		}
-		dst.EndStruct()
-	}
-	dst.EndList()
-}
-
 // Encode encodes a trailer to the provided buffer
 // using the provided symbol table.
 // Note that Encode may add new symbols to the symbol table.
@@ -152,13 +93,17 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginField(st.Intern("blockshift"))
 	dst.WriteInt(int64(t.BlockShift))
 
-	dst.BeginField(st.Intern("blocks"))
+	if t.Sparse.blocks != len(t.Blocks) {
+		panic("Trailer.Encode: Sparse #blocks don't match trailer blocks")
+	}
+	// we always encode sparse before blocks
+	// so that when we are decoding, we know the
+	// *lack* of a sparse field means that we should
+	// build sparse as we decode blocks
+	dst.BeginField(st.Intern("sparse"))
+	t.Sparse.Encode(dst, st)
 
-	// if there are Ranges fields set in the blocks,
-	// encode them in the sparse index instead;
-	// we have the same sort of backwards-compatibility shim
-	// in the decoding path as well
-	t.syncRanges()
+	dst.BeginField(st.Intern("blocks"))
 
 	symOffset := st.Intern("offset")
 	symChunks := st.Intern("chunks")
@@ -172,9 +117,6 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		dst.EndStruct()
 	}
 	dst.EndList()
-
-	dst.BeginField(st.Intern("sparse"))
-	t.Sparse.Encode(dst, st)
 
 	dst.EndStruct()
 }
@@ -409,6 +351,7 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 				// if the 'chunks' field isn't present,
 				// then the number of chunks must be 1
 				blk.Chunks = 1
+				seenRanges := false
 				err := unpackStruct(d.Symbols, field, func(name string, field []byte) error {
 					switch name {
 					case "offset":
@@ -424,17 +367,24 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 						}
 						blk.Chunks = int(chunks)
 					case "ranges":
+						if seenSparse {
+							panic("ranges and sparse present?")
+						}
+						seenRanges = true
 						// TODO: unpack ranges into Sparse
 						ranges, err := d.unpackRanges(d.Symbols, field)
 						if err != nil {
 							return fmt.Errorf("error unpacking range %d: %w", len(ranges), err)
 						}
-						blk.ranges = ranges
+						t.Sparse.Push(ranges)
 					}
 					return nil
 				})
 				if err != nil {
 					return err
+				}
+				if !seenSparse && !seenRanges {
+					t.Sparse.Push(nil)
 				}
 				return nil
 			})
@@ -455,16 +405,6 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 	if err != nil {
 		return fmt.Errorf("Trailer.Decode: %w", err)
 	}
-	if !seenSparse {
-		// if this is old-style data, then we
-		// should stick the range information
-		// in the sparse index and strip it
-		// from the blocks themselves
-		t.Sparse.setRanges(t.Blocks)
-		for i := range t.Blocks {
-			t.Blocks[i].ranges = nil
-		}
-	}
 	return nil
 }
 
@@ -472,45 +412,6 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 func (t *Trailer) Decode(st *ion.Symtab, body []byte) error {
 	d := TrailerDecoder{Symbols: st}
 	return d.decode(t, body)
-}
-
-// CombineWith combines the current trailer with another one.
-// All blocks of the `other` trailer must immediately follow the
-// blocks of the current one (we assume the original trailer is
-// overwritten).
-func (t *Trailer) CombineWith(other *Trailer) error {
-
-	// :-------------------------:-------------------------:
-	// : blocks_a  : trailer_a   : blocks_b  : trailer_b   :
-	// :-------------------------:-------------------------:
-	// =>
-	// :------------------------------------:
-	// : blocks_a...blocks_b  : new_trailer :
-	// :------------------------------------:
-
-	if t.Version != other.Version {
-		// TODO: Later: Add code to migrate trailers from previous versions
-		return fmt.Errorf("mismatching trailer versions ['%d', '%d']", t.Version, other.Version)
-	}
-	if t.Algo != other.Algo {
-		return fmt.Errorf("mismatching compression algos ['%s', '%s']", t.Algo, other.Algo)
-	}
-	if t.BlockShift != other.BlockShift {
-		return fmt.Errorf("mismatching blockshift ['%d', '%d']", t.BlockShift, other.BlockShift)
-	}
-
-	n := len(t.Blocks)
-	offset := t.Offset
-
-	t.Offset += other.Offset
-	t.Blocks = append(t.Blocks, other.Blocks...)
-
-	// Shift all new blocks using the left-side trailer offset
-	for i := range t.Blocks[n:] {
-		t.Blocks[n+i].Offset += offset
-	}
-
-	return nil
 }
 
 // Decompressed returns the decompressed size

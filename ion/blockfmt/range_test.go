@@ -26,8 +26,8 @@ import (
 
 func TestTimeUnion(t *testing.T) {
 	now := date.Now()
-	timerange := func(path []string, min, max int) *TimeRange {
-		return &TimeRange{
+	timerange := func(path []string, min, max int) TimeRange {
+		return TimeRange{
 			path: path,
 			min:  now.Add(time.Duration(min) * time.Hour),
 			max:  now.Add(time.Duration(max) * time.Hour),
@@ -35,72 +35,72 @@ func TestTimeUnion(t *testing.T) {
 	}
 
 	cases := []struct {
-		a, b []*TimeRange
-		want []*TimeRange
+		a, b []TimeRange
+		want []TimeRange
 	}{
 		// nothing on either side:
 		{
-			[]*TimeRange{},
-			[]*TimeRange{},
-			[]*TimeRange{},
+			[]TimeRange{},
+			[]TimeRange{},
+			[]TimeRange{},
 		},
 		// just one side populated:
 		{
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b", "c"}, -1, 1),
 				timerange([]string{"d", "e", "f"}, -2, -1),
 			},
-			[]*TimeRange{},
-			[]*TimeRange{
+			[]TimeRange{},
+			[]TimeRange{
 				timerange([]string{"a", "b", "c"}, -1, 1),
 				timerange([]string{"d", "e", "f"}, -2, -1),
 			},
 		},
 		// entirely disjoint:
 		{
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b", "c"}, -1, 1),
 			},
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"d", "e", "f"}, -2, -1),
 			},
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b", "c"}, -1, 1),
 				timerange([]string{"d", "e", "f"}, -2, -1),
 			},
 		},
 		// partly overlapping:
 		{
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b"}, -1, 1),
 			},
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b"}, -2, 0),
 				timerange([]string{"a", "b", "c"}, -2, -1),
 			},
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b"}, -2, 1),
 				timerange([]string{"a", "b", "c"}, -2, -1),
 			},
 		},
 		// fully overlapping:
 		{
-			[]*TimeRange{
+			[]TimeRange{
 				// arranged out-of-order; rely on sorting:
 				timerange([]string{"a", "b", "c"}, -2, -1),
 				timerange([]string{"a", "b"}, -1, 0),
 			},
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b"}, 0, 1),
 				timerange([]string{"a", "b", "c"}, -1, 0),
 			},
-			[]*TimeRange{
+			[]TimeRange{
 				timerange([]string{"a", "b"}, -1, 1),
 				timerange([]string{"a", "b", "c"}, -2, 0),
 			},
 		},
 	}
-	text := func(lst []*TimeRange) string {
+	text := func(lst []TimeRange) string {
 		var out strings.Builder
 		out.WriteByte('[')
 		for i := range lst {
@@ -116,9 +116,9 @@ func TestTimeUnion(t *testing.T) {
 	}
 
 	for i := range cases {
-		acopy := make([]*TimeRange, len(cases[i].a))
+		acopy := make([]TimeRange, len(cases[i].a))
 		copy(acopy, cases[i].a)
-		bcopy := make([]*TimeRange, len(cases[i].b))
+		bcopy := make([]TimeRange, len(cases[i].b))
 		copy(bcopy, cases[i].b)
 
 		out := union(cases[i].a, cases[i].b)

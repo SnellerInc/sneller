@@ -91,6 +91,23 @@ func TestIndexCompat(t *testing.T) {
 
 func TestLargeIndexEncoding(t *testing.T) {
 	time0 := date.Now().Truncate(time.Microsecond)
+	tr := &Trailer{
+		Version:    1,
+		Offset:     100,
+		Algo:       "lz4",
+		BlockShift: 20,
+		Blocks: []Blockdesc{{
+			Offset: 0,
+		}, {
+			Offset: 1 << 20,
+		}},
+	}
+	tr.Sparse.Push([]Range{
+		&TimeRange{[]string{"a", "b"}, time0, time0.Add(time.Minute)},
+	})
+	tr.Sparse.Push([]Range{
+		&TimeRange{[]string{"a", "b"}, time0.Add(2 * time.Minute), time0.Add(4 * time.Minute)},
+	})
 	idx := Index{
 		Name:     "the-index",
 		Created:  time0,
@@ -107,23 +124,7 @@ func TestLargeIndexEncoding(t *testing.T) {
 					Format:       Version,
 					Size:         12000,
 				},
-				Trailer: &Trailer{
-					Version:    1,
-					Offset:     100,
-					Algo:       "lz4",
-					BlockShift: 20,
-					Blocks: []Blockdesc{{
-						Offset: 0,
-						ranges: []Range{&TimeRange{
-							[]string{"a", "b"},
-							time0,
-							time0,
-						}},
-					}, {
-						Offset: 1 << 20,
-						ranges: nil,
-					}},
-				},
+				Trailer: tr,
 			},
 		},
 	}
@@ -152,13 +153,6 @@ func TestLargeIndexEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// drop all ranges, since they
-	// are stripped on decode:
-	for i := range idx.Inline {
-		for j := range idx.Inline[i].Trailer.Blocks {
-			idx.Inline[i].Trailer.Blocks[j].ranges = nil
-		}
-	}
 
 	ret, err := DecodeIndex(&key, buf, 0)
 	if err != nil {
@@ -169,6 +163,14 @@ func TestLargeIndexEncoding(t *testing.T) {
 		t.Errorf("output: %#v", ret)
 		t.Fatal("input and output not equal")
 	}
+}
+
+func mksparse(ranges []TimeRange) SparseIndex {
+	var s SparseIndex
+	for i := range ranges {
+		s.Push([]Range{&ranges[i]})
+	}
+	return s
 }
 
 func TestIndexEncoding(t *testing.T) {
@@ -203,26 +205,15 @@ func TestIndexEncoding(t *testing.T) {
 						Offset:     100,
 						Algo:       "lz4",
 						BlockShift: 20,
+						Sparse: mksparse([]TimeRange{
+							{[]string{"a", "b"}, time0, time0.Add(time.Minute)},
+							{[]string{"a", "b"}, time0.Add(time.Minute), time0.Add(2 * time.Minute)},
+						}),
 						Blocks: []Blockdesc{{
 							Offset: 0,
-							ranges: []Range{&TimeRange{
-								[]string{"a", "b"},
-								time0,
-								time0,
-							}},
 						}, {
 							Offset: 1 << 20,
-							ranges: nil,
 						}},
-					},
-				},
-				{
-					ObjectInfo: ObjectInfo{
-						Path:         "foo/bar/quux.10n.c",
-						ETag:         "quux-etag",
-						Format:       Version,
-						LastModified: timen(4),
-						Size:         100000,
 					},
 				},
 			},
@@ -268,11 +259,6 @@ func TestIndexEncoding(t *testing.T) {
 		idx.Inputs.Backing = dfs
 		idx.SyncInputs(path.Join("db", "foo", idx.Name), 0)
 
-		for i := range idx.Inline {
-			if idx.Inline[i].Trailer != nil {
-				idx.Inline[i].Trailer.syncRanges()
-			}
-		}
 		// reset input state to appear decoded
 		idx.Inputs.Backing = nil
 		idx.Inputs.dropAll()
@@ -313,19 +299,24 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 	timen := func(n int) date.Time {
 		return now.Add(time.Duration(n) * time.Second)
 	}
-	ranges := make([]Range, 10)
-	for i := range ranges {
-		ranges[i] = &TimeRange{
-			path: []string{"foo", fmt.Sprintf("bar%d", i)},
-			min:  timen(i),
-			max:  timen(i + 1),
+	// generate a sparse index with the
+	// given number of blocks and fields per block:
+	sparse := func(blocks, fields int) SparseIndex {
+		var s SparseIndex
+		for i := 0; i < blocks; i++ {
+			for j := 0; j < fields; j++ {
+				pos := (i * fields) + j
+				s.push([]string{"foo", fmt.Sprintf("bar%d", j)},
+					timen(pos), timen(pos+1))
+			}
+			s.bump()
 		}
+		return s
 	}
 	blocks := make([]Blockdesc, 1000)
 	for i := range blocks {
 		blocks[i] = Blockdesc{
 			Offset: int64(i) << 20,
-			ranges: ranges,
 		}
 	}
 	contents := make([]Descriptor, 100)
@@ -343,6 +334,7 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 				Algo:       "lz4",
 				BlockShift: 20,
 				Blocks:     blocks,
+				Sparse:     sparse(len(blocks), 10),
 			},
 		}
 	}
@@ -353,11 +345,6 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 		Inline:  contents,
 	}
 
-	// get ranges set early; we can't use syncRanges()
-	// because it will clear the (shared) list of blocks
-	for i := range contents {
-		contents[i].Trailer.Sparse.setRanges(contents[i].Trailer.Blocks)
-	}
 	var key Key
 	rand.Read(key[:])
 	buf, err := Sign(&key, idx)
@@ -368,6 +355,7 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	b.ReportMetric(float64(len(buf)), "bytes")
+	b.ReportMetric(float64(len(buf))/float64(len(contents)), "bytes/descriptor")
 
 	for i := 0; i < b.N; i++ {
 		_, err := DecodeIndex(&key, buf, 0)
