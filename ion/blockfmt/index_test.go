@@ -114,14 +114,14 @@ func TestLargeIndexEncoding(t *testing.T) {
 					BlockShift: 20,
 					Blocks: []Blockdesc{{
 						Offset: 0,
-						Ranges: []Range{&TimeRange{
+						ranges: []Range{&TimeRange{
 							[]string{"a", "b"},
 							time0,
 							time0,
 						}},
 					}, {
 						Offset: 1 << 20,
-						Ranges: nil,
+						ranges: nil,
 					}},
 				},
 			},
@@ -156,7 +156,7 @@ func TestLargeIndexEncoding(t *testing.T) {
 	// are stripped on decode:
 	for i := range idx.Inline {
 		for j := range idx.Inline[i].Trailer.Blocks {
-			idx.Inline[i].Trailer.Blocks[j].Ranges = nil
+			idx.Inline[i].Trailer.Blocks[j].ranges = nil
 		}
 	}
 
@@ -205,14 +205,14 @@ func TestIndexEncoding(t *testing.T) {
 						BlockShift: 20,
 						Blocks: []Blockdesc{{
 							Offset: 0,
-							Ranges: []Range{&TimeRange{
+							ranges: []Range{&TimeRange{
 								[]string{"a", "b"},
 								time0,
 								time0,
 							}},
 						}, {
 							Offset: 1 << 20,
-							Ranges: nil,
+							ranges: nil,
 						}},
 					},
 				},
@@ -325,7 +325,7 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 	for i := range blocks {
 		blocks[i] = Blockdesc{
 			Offset: int64(i) << 20,
-			Ranges: ranges,
+			ranges: ranges,
 		}
 	}
 	contents := make([]Descriptor, 100)

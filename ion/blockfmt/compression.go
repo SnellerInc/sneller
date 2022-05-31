@@ -138,7 +138,7 @@ func (w *CompressionWriter) Flush() error {
 	w.Blocks = append(w.Blocks, Blockdesc{
 		Offset: w.lastblock,
 		Chunks: w.flushblocks,
-		Ranges: w.futureRange.pop(),
+		ranges: w.futureRange.pop(),
 	})
 	w.lastblock = w.offset
 	w.flushblocks = 0

@@ -17,7 +17,6 @@ package plan
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -98,10 +97,6 @@ func (b *benchenv) Stat(_, _ expr.Node) (TableHandle, error) {
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)
 	for i := range lst {
-		ranges := []blockfmt.Range{
-			blockfmt.NewRange([]string{"foo"}, ion.Timestamp(date.Now().Add(-time.Hour)), ion.Timestamp(date.Now().Add(time.Hour))),
-			blockfmt.NewRange([]string{"event", "timestamp"}, ion.Timestamp(date.Now().Add(-24*time.Hour)), ion.Timestamp(date.Now().Add(time.Hour))),
-		}
 		lst[i] = &blob.Compressed{
 			From: &blob.URL{
 				Value: "https://s3.amazonaws.com/a-very-long/path-to-the-object/finally.ion.zst",
@@ -122,7 +117,6 @@ func (b *benchenv) Stat(_, _ expr.Node) (TableHandle, error) {
 				Blocks: []blockfmt.Blockdesc{{
 					Offset: 0,
 					Chunks: 100,
-					Ranges: ranges,
 				}},
 			},
 		}

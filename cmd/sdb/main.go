@@ -195,21 +195,8 @@ func human(size int64) string {
 
 func describeTrailer(t *blockfmt.Trailer, compsize int64) {
 	size := t.Decompressed()
-	ranges := 0
-	indices := make(map[string]struct{})
-	for i := range t.Blocks {
-		ranges += len(t.Blocks[i].Ranges)
-		for j := range t.Blocks[i].Ranges {
-			field := strings.Join(t.Blocks[i].Ranges[j].Path(), ".")
-			indices[field] = struct{}{}
-		}
-	}
-	fields := make([]string, 0, len(indices))
-	for k := range indices {
-		fields = append(fields, k)
-	}
 	fmt.Printf("\ttrailer: %d blocks, %d bytes decompressed (%.2fx compression)\n", len(t.Blocks), size, float64(size)/float64(compsize))
-	fmt.Printf("\tranges: %d total, fields: %v\n", ranges, fields)
+	fmt.Printf("\tfields: %v\n", t.Sparse.FieldNames())
 }
 
 func describe(creds db.Tenant, dbname, table string) {

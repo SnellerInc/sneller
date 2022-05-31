@@ -34,7 +34,7 @@ func TestTrailerEncode(t *testing.T) {
 				{
 					Offset: 0,
 					Chunks: 700,
-					Ranges: []Range{
+					ranges: []Range{
 						NewRange(
 							[]string{"x", "y"},
 							ion.Uint(1000),
@@ -45,7 +45,7 @@ func TestTrailerEncode(t *testing.T) {
 				{
 					Offset: 1 << 20,
 					Chunks: 1,
-					Ranges: []Range{
+					ranges: []Range{
 						NewRange(
 							[]string{"x", "y"},
 							ion.Uint(0),
@@ -62,7 +62,7 @@ func TestTrailerEncode(t *testing.T) {
 		var buf ion.Buffer
 		samples[i].Encode(&buf, &st)
 		for j := range samples[i].Blocks {
-			samples[i].Blocks[j].Ranges = nil
+			samples[i].Blocks[j].ranges = nil
 		}
 
 		var out Trailer
@@ -85,7 +85,7 @@ func TestTrailerCombineWith(t *testing.T) {
 		Blocks: []Blockdesc{
 			{
 				Offset: 0,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"x", "y"},
 						ion.Uint(1000),
@@ -95,7 +95,7 @@ func TestTrailerCombineWith(t *testing.T) {
 			},
 			{
 				Offset: 500,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"z", "z"},
 						ion.Uint(0),
@@ -113,7 +113,7 @@ func TestTrailerCombineWith(t *testing.T) {
 		Blocks: []Blockdesc{
 			{
 				Offset: 0,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"a", "b"},
 						ion.Uint(1337),
@@ -123,7 +123,7 @@ func TestTrailerCombineWith(t *testing.T) {
 			},
 			{
 				Offset: 1000,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"c", "d"},
 						ion.Uint(42),
@@ -141,7 +141,7 @@ func TestTrailerCombineWith(t *testing.T) {
 		Blocks: []Blockdesc{
 			{
 				Offset: 0,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"x", "y"},
 						ion.Uint(1000),
@@ -151,7 +151,7 @@ func TestTrailerCombineWith(t *testing.T) {
 			},
 			{
 				Offset: 500,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"z", "z"},
 						ion.Uint(0),
@@ -161,7 +161,7 @@ func TestTrailerCombineWith(t *testing.T) {
 			},
 			{
 				Offset: 1000,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"a", "b"},
 						ion.Uint(1337),
@@ -171,7 +171,7 @@ func TestTrailerCombineWith(t *testing.T) {
 			},
 			{
 				Offset: 2000,
-				Ranges: []Range{
+				ranges: []Range{
 					NewRange(
 						[]string{"c", "d"},
 						ion.Uint(42),

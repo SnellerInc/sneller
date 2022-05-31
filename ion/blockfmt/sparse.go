@@ -16,6 +16,7 @@ package blockfmt
 
 import (
 	"sort"
+	"strings"
 
 	"golang.org/x/exp/slices"
 
@@ -34,7 +35,22 @@ type SparseIndex struct {
 	blocks  int
 }
 
+// Fields returns the number of individually
+// indexed fields.
 func (s *SparseIndex) Fields() int { return len(s.indices) }
+
+// FieldNames returns the list of field names
+// using '.' as a separator between the path components.
+// NOTE: FieldNames does not escape the '.' character
+// inside field names themselves, so the textual result
+// of each field name may be ambiguous.
+func (s *SparseIndex) FieldNames() []string {
+	o := make([]string, 0, len(s.indices))
+	for i := range s.indices {
+		o = append(o, strings.Join(s.indices[i].path, "."))
+	}
+	return o
+}
 
 func (s *SparseIndex) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
@@ -236,8 +252,8 @@ func (f *futureRange2) commit() {
 // turn "old-style" block descriptors into a sparse index:
 func (s *SparseIndex) setRanges(blocks []Blockdesc) {
 	for i := range blocks {
-		for j := range blocks[i].Ranges {
-			r := blocks[i].Ranges[j]
+		for j := range blocks[i].ranges {
+			r := blocks[i].ranges[j]
 			if tr, ok := r.(*TimeRange); ok {
 				s.push(tr.path, tr.min, tr.max)
 			}

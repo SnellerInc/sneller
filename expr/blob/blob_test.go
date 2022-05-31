@@ -221,6 +221,15 @@ func TestSerializationCompressed(t *testing.T) {
 				},
 			},
 		}
+		for i := range b.Trailer.Blocks {
+			b.Trailer.Sparse.Push([]blockfmt.Range{
+				blockfmt.NewRange(
+					[]string{"timestamp"},
+					ion.Timestamp(now.Add(time.Duration(i)*time.Minute)),
+					ion.Timestamp(now.Add(time.Duration(i+1)*time.Minute)),
+				),
+			})
+		}
 		parts, err := b.Split(80 * 1024 * 1024)
 		if err != nil {
 			t.Fatal(err)
@@ -279,12 +288,28 @@ func BenchmarkSerializationCompressed(b *testing.B) {
 	rng := func(n int) []blockfmt.Range {
 		return []blockfmt.Range{
 			blockfmt.NewRange([]string{"timestamp"},
-				ion.Timestamp(now.Add(-time.Duration(n)*time.Hour)),
-				ion.Timestamp(now.Add(-time.Duration(n+1)*time.Hour))),
+				ion.Timestamp(now.Add(-time.Duration(n+1)*time.Hour)),
+				ion.Timestamp(now.Add(-time.Duration(n)*time.Hour))),
 		}
 	}
 	// 2000 items * 5 blocks each ~= 10000 * 100MiB ~= 1TiB worth of blocks
 	for i := range lst.Contents {
+		t := &blockfmt.Trailer{
+			Version:    1,
+			Offset:     50*1024*1024 - rand.Int63n(1024*1024),
+			Algo:       "zstd",
+			BlockShift: 20,
+			Blocks: []blockfmt.Blockdesc{
+				{Offset: 0, Chunks: 100},
+				{Offset: 10*1024*1024 + rand.Int63n(50000), Chunks: 100},
+				{Offset: 20*1024*1024 + rand.Int63n(50000), Chunks: 100},
+				{Offset: 30*1024*1024 + rand.Int63n(50000), Chunks: 100},
+				{Offset: 40*1024*1024 + rand.Int63n(50000), Chunks: 100},
+			},
+		}
+		for i := range t.Blocks {
+			t.Sparse.Push(rng(5 - i))
+		}
 		lst.Contents[i] = &Compressed{
 			From: &URL{
 				Value: fmt.Sprintf("https://bucket.name.s3.amazonaws.com/path/to/object-%d", rand.Int63()),
@@ -294,19 +319,7 @@ func BenchmarkSerializationCompressed(b *testing.B) {
 					LastModified: now,
 				},
 			},
-			Trailer: &blockfmt.Trailer{
-				Version:    1,
-				Offset:     50*1024*1024 - rand.Int63n(1024*1024),
-				Algo:       "zstd",
-				BlockShift: 20,
-				Blocks: []blockfmt.Blockdesc{
-					{Offset: 0, Chunks: 100, Ranges: rng(5)},
-					{Offset: 10*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(4)},
-					{Offset: 20*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(3)},
-					{Offset: 30*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(2)},
-					{Offset: 40*1024*1024 + rand.Int63n(50000), Chunks: 100, Ranges: rng(1)},
-				},
-			},
+			Trailer: t,
 		}
 	}
 	b.Run("encode", func(b *testing.B) {

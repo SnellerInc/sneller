@@ -57,7 +57,7 @@ type Blockdesc struct {
 	// Trailer.Sparse.
 	//
 	// TODO: remove me entirely
-	Ranges []Range
+	ranges []Range
 }
 
 // Trailer is a collection
@@ -91,7 +91,7 @@ func (t *Trailer) syncRanges() {
 	if t.Sparse.blocks == 0 && len(t.Blocks) > 0 {
 		t.Sparse.setRanges(t.Blocks)
 		for i := range t.Blocks {
-			t.Blocks[i].Ranges = nil
+			t.Blocks[i].ranges = nil
 		}
 	}
 }
@@ -429,7 +429,7 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 						if err != nil {
 							return fmt.Errorf("error unpacking range %d: %w", len(ranges), err)
 						}
-						blk.Ranges = ranges
+						blk.ranges = ranges
 					}
 					return nil
 				})
@@ -462,7 +462,7 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 		// from the blocks themselves
 		t.Sparse.setRanges(t.Blocks)
 		for i := range t.Blocks {
-			t.Blocks[i].Ranges = nil
+			t.Blocks[i].ranges = nil
 		}
 	}
 	return nil

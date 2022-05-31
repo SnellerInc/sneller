@@ -68,7 +68,7 @@ func TestIndirectTree(t *testing.T) {
 			d.Trailer.Blocks = append(d.Trailer.Blocks, Blockdesc{
 				Offset: int64(i) * 98246,
 				Chunks: 50,
-				Ranges: []Range{
+				ranges: []Range{
 					&TimeRange{path: []string{"timestamp"}, min: lo, max: hi},
 				},
 			})

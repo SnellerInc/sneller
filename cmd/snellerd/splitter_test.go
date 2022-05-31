@@ -107,7 +107,6 @@ func mkblob(url string) blob.Interface {
 		blocks[i] = blockfmt.Blockdesc{
 			Offset: int64(1000 * i),
 			Chunks: 100,
-			Ranges: ranges,
 		}
 	}
 	trailer := &blockfmt.Trailer{
@@ -116,6 +115,11 @@ func mkblob(url string) blob.Interface {
 		Algo:       "zstd",
 		BlockShift: 20,
 		Blocks:     blocks,
+	}
+	for range blocks {
+		// FIXME: these ranges are identical,
+		// so they get compressed way too well...
+		trailer.Sparse.Push(ranges)
 	}
 	return &blob.Compressed{
 		From:    from,

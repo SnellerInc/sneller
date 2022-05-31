@@ -155,10 +155,10 @@ func union(a, b []*TimeRange) []*TimeRange {
 
 func (b *Blockdesc) merge(from *Blockdesc) {
 	b.Chunks += from.Chunks
-	b.Ranges = toRanges(
+	b.ranges = toRanges(
 		union(
-			toTimeRanges(b.Ranges),
-			toTimeRanges(from.Ranges),
+			toTimeRanges(b.ranges),
+			toTimeRanges(from.ranges),
 		))
 }
 
@@ -166,8 +166,8 @@ func collectRanges(t *Trailer) [][]string {
 	var out [][]string
 	for i := range t.Blocks {
 	rangeloop:
-		for j := range t.Blocks[i].Ranges {
-			p := t.Blocks[i].Ranges[j].Path()
+		for j := range t.Blocks[i].ranges {
+			p := t.Blocks[i].ranges[j].Path()
 			// FIXME: don't do polynomial-time comparison here :o
 			for k := range out {
 				if slices.Equal(out[k], p) {

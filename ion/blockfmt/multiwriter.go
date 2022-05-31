@@ -171,7 +171,7 @@ func (s *singleStream) Flush() error {
 		s.curspan.blockmap = append(s.curspan.blockmap, Blockdesc{
 			Offset: s.lastblock,
 			Chunks: s.flushblocks,
-			Ranges: s.futureRange.pop(),
+			ranges: s.futureRange.pop(),
 		})
 		s.lastblock = int64(len(s.buf))
 		s.flushblocks = 0
@@ -345,7 +345,7 @@ func (m *MultiWriter) finalize() {
 			m.Trailer.Blocks = append(m.Trailer.Blocks, Blockdesc{
 				Offset: offset + block.Offset,
 				Chunks: block.Chunks,
-				Ranges: block.Ranges,
+				ranges: block.ranges,
 			})
 		}
 		if m.spans[i].outsize <= prev {

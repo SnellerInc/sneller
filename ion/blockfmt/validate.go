@@ -56,7 +56,7 @@ func (c *checkWriter) errorf(f string, args ...interface{}) {
 }
 
 func (c *checkWriter) checkRange(tm date.Time, path []string) {
-	r := c.blocks[c.block].Ranges
+	r := c.blocks[c.block].ranges
 	if len(r) > 0 {
 		// in ReadTrailer, etc. we populate Trailer.Sparse instead
 		panic("ranges should have been removed during deserialization")
