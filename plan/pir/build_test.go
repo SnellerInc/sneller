@@ -990,6 +990,14 @@ ORDER BY m, d, h`,
 				"PROJECT x AS x, !(IN_REPLACEMENT(x, 0)) AS no_other",
 			},
 		},
+		{
+			input: `SELECT y, z FROM table GROUP BY x+1 AS y, z`,
+			expect: []string{
+				"ITERATE table",
+				"FILTER DISTINCT [x + 1 z]",
+				"PROJECT x + 1 AS y, z AS z",
+			},
+		},
 	}
 
 	for i := range tests {

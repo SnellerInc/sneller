@@ -48,7 +48,7 @@ func (a *agglifter) Walk(e expr.Node) expr.Rewriter {
 // but in practice they cannot be nested, so
 // let's search for those cases in advance
 // so that we can provide a more helpful error
-func rejectNestedAggregates(columns []expr.Binding) error {
+func rejectNestedAggregates(columns []expr.Binding) (int, error) {
 	var err error
 
 	// we have two AST visitors, and we switch
@@ -56,10 +56,12 @@ func rejectNestedAggregates(columns []expr.Binding) error {
 	// encountering an aggregate expression
 	// (and the inner visitor errors when it finds
 	// inner aggregates)
+	count := 0
 	var walkouter, walkinner visitor
 	walkouter = func(e expr.Node) expr.Visitor {
 		_, ok := e.(*expr.Aggregate)
 		if ok {
+			count++
 			return walkinner
 		}
 		return walkouter
@@ -78,10 +80,10 @@ func rejectNestedAggregates(columns []expr.Binding) error {
 	for i := range columns {
 		expr.Walk(walkouter, columns[i].Expr)
 		if err != nil {
-			return err
+			return count, err
 		}
 	}
-	return nil
+	return count, nil
 }
 
 type flattener struct {
@@ -123,9 +125,22 @@ func (b *Trace) splitAggregate(columns, groups []expr.Binding, having expr.Node)
 	// flattening will make nested aggregates obvious;
 	// for example COUNT(x) as c, COUNT(c) as y
 	flattenBind(columns)
-	err := rejectNestedAggregates(columns)
+	aggc, err := rejectNestedAggregates(columns)
 	if err != nil {
 		return err
+	}
+	if aggc == 0 {
+		// this is actually a DISTINCT
+		// written in a funny way:
+		err = b.Distinct(groups)
+		if err != nil {
+			return err
+		}
+		err = b.Bind(groups)
+		if err != nil {
+			return err
+		}
+		return b.Bind(columns)
 	}
 
 	var aggcols vm.Aggregation
@@ -180,10 +195,6 @@ func (b *Trace) splitAggregate(columns, groups []expr.Binding, having expr.Node)
 		columns[i].Expr = expr.Rewrite(rw, columns[i].Expr)
 		columns[i].As(res)
 	}
-	if len(aggcols) == 0 {
-		return errorf(nil, "didn't find any aggregates in %s", vm.Selection(columns).String())
-	}
-
 	// now we can push these to the builder
 	// in the correct order of evaluation
 	err = b.Aggregate(aggcols, groups)
