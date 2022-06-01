@@ -39,6 +39,11 @@ const MaxDatumSize = 512 * 1024
 // recursion allowed in a JSON object.
 const MaxObjectDepth = 64
 
+// MaxIndexingDepth is the maximum depth
+// at which sparse indexing metadata will be
+// collected.
+const MaxIndexingDepth = 3
+
 var (
 	// ErrNoMatch is returned from Convert
 	// when the size of one of the fields

@@ -71,7 +71,8 @@ type Chunker struct {
 	W io.Writer
 	// Ranges stores field ranges for the current
 	// chunk.
-	Ranges Ranges
+	Ranges   Ranges
+	rowcount int // row count associated with Ranges
 
 	// WalkTimeRanges is the list of time ranges
 	// that is automatically scanned during
@@ -227,9 +228,20 @@ func (c *Chunker) flushRanges() error {
 	c.tmpID = 0
 	c.flushID = 0
 	c.rangeSyms = c.rangeSyms[:0]
+
+	// TODO: make this configurable?
+	// Just 33% of rows containing a value
+	// seems like a pretty conservative lower-bound.
+	minRange := c.rowcount / 3
+
 	if mm, ok := c.W.(minMaxSetter); ok {
 		for _, p := range c.Ranges.paths {
 			r := c.Ranges.m[p]
+			if r.count() < minRange {
+				// don't include this range if
+				// it was too sparse to be interesting
+				continue
+			}
 			if min, max, ok := r.ranges(); ok {
 				path := p.resolve(&c.Symbols)
 				mm.SetMinMax(path, min, max)
@@ -243,6 +255,7 @@ func (c *Chunker) flushRanges() error {
 		}
 	}
 	c.Ranges.flush()
+	c.rowcount = 0
 	c.written = 0
 	return nil
 }
@@ -371,12 +384,10 @@ func (c *Chunker) Commit() error {
 		if c.lastoff > c.Align {
 			panic("bad bookkeeping")
 		}
-		c.Ranges.commit()
-		return nil
-	}
-	if err := c.forceFlush(false); err != nil {
+	} else if err := c.forceFlush(false); err != nil {
 		return err
 	}
+	c.rowcount++
 	c.Ranges.commit()
 	return nil
 }

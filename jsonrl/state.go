@@ -606,7 +606,7 @@ func (s *state) after() {
 // addTimeRange adds a time to the range for the path
 // to the current field.
 func (s *state) addTimeRange(t date.Time) {
-	if s.shouldNotIndex() {
+	if s.shouldNotIndex() || len(s.stack) >= MaxIndexingDepth {
 		return
 	}
 	if s.flags&(flagField|flagInList) != flagField {

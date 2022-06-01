@@ -103,6 +103,7 @@ func (rs *Ranges) reset() {
 // A dataRange holds an inclusive range of values a
 // field can take within a chunk.
 type dataRange interface {
+	count() int
 	// ranges returns the inclusive min and max
 	// values within this range. The returned range
 	// must reflect only values added before the
@@ -122,6 +123,7 @@ type dataRange interface {
 }
 
 type timeRange struct {
+	commits    int       // committed count
 	min, max   date.Time // committed range
 	hasRange   bool
 	pending    date.Time // uncommitted value
@@ -155,11 +157,15 @@ func (r *timeRange) commit() {
 	} else if r.pending.After(r.max) {
 		r.max = r.pending
 	}
+	r.commits++
 	r.hasPending = false
 }
 
+func (r *timeRange) count() int { return r.commits }
+
 func (r *timeRange) flush() bool {
 	r.hasRange = false
+	r.commits = 0
 	return r.hasPending
 }
 

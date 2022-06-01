@@ -99,6 +99,7 @@ func TestRangesCommit(t *testing.T) {
 				hasRange:   true,
 				pending:    t2,
 				hasPending: true,
+				commits:    1,
 			},
 			p2: &timeRange{
 				min:        t1,
@@ -106,6 +107,7 @@ func TestRangesCommit(t *testing.T) {
 				hasRange:   true,
 				pending:    t1, // not cleared
 				hasPending: false,
+				commits:    1,
 			},
 		},
 	}); !rangesEqual(want, rs) {
@@ -125,6 +127,7 @@ func TestRangesCommit(t *testing.T) {
 				hasRange:   false,
 				pending:    t2,
 				hasPending: true,
+				commits:    0,
 			},
 		},
 	}); !rangesEqual(want, rs) {
@@ -144,6 +147,7 @@ func TestRangesCommit(t *testing.T) {
 				hasRange:   true,
 				pending:    t2, // not cleared
 				hasPending: false,
+				commits:    1,
 			},
 		},
 	}); !rangesEqual(want, rs) {
