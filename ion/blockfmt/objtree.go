@@ -135,7 +135,7 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 			if haveRanges {
 				return fmt.Errorf("IndirectTree.parse: have ranges *and* sparse?")
 			}
-			err := i.Sparse.Decode(td.Symbols, field)
+			err := td.decodeSparse(&i.Sparse, field)
 			if err != nil {
 				err = fmt.Errorf("Indirect.Sparse.Decode: %w", err)
 			}

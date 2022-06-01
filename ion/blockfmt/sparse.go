@@ -75,8 +75,8 @@ func (s *SparseIndex) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s *SparseIndex) Decode(st *ion.Symtab, body []byte) error {
-	_, err := ion.UnpackStruct(st, body, func(name string, field []byte) error {
+func (d *TrailerDecoder) decodeSparse(s *SparseIndex, body []byte) error {
+	_, err := ion.UnpackStruct(d.Symbols, body, func(name string, field []byte) error {
 		switch name {
 		case "blocks":
 			n, _, err := ion.ReadInt(field)
@@ -87,20 +87,14 @@ func (s *SparseIndex) Decode(st *ion.Symtab, body []byte) error {
 		case "indices":
 			_, err := ion.UnpackList(field, func(field []byte) error {
 				var val timeIndex
-				_, err := ion.UnpackStruct(st, field, func(name string, field []byte) error {
+				_, err := ion.UnpackStruct(d.Symbols, field, func(name string, field []byte) error {
 					switch name {
 					case "path":
-						_, err := ion.UnpackList(field, func(field []byte) error {
-							sym, _, err := ion.ReadSymbol(field)
-							if err != nil {
-								return err
-							}
-							val.path = append(val.path, st.Get(sym))
-							return nil
-						})
+						var err error
+						val.path, err = d.path(field)
 						return err
 					case "ranges":
-						return val.ranges.Decode(st, field)
+						return d.decodeTimes(&val.ranges, field)
 					}
 					return nil
 				})
@@ -218,34 +212,6 @@ func (s *SparseIndex) bump() {
 			println(b, ">", s.blocks)
 			panic("bad block bookkeeping")
 		}
-	}
-}
-
-// TODO: replace futureRange with this
-type futureRange2 struct {
-	result *SparseIndex
-}
-
-var _ minMaxer = &futureRange2{}
-
-// SetMinMax Sets the `min` and `max` values for the next ION chunk.
-// This method should only be called once for each path.
-func (f *futureRange2) SetMinMax(path []string, min, max ion.Datum) {
-	ts, ok := NewRange(path, min, max).(*TimeRange)
-	if !ok {
-		return // only supporting timestamp ranges right now
-	}
-	if f.result == nil {
-		f.result = new(SparseIndex)
-	}
-	f.result.push(path, ts.min, ts.max)
-}
-
-func (f *futureRange2) commit() {
-	// make sure any ranges that were not already
-	// extended by SetMinMax are automatically extended
-	if f.result != nil {
-		f.result.bump()
 	}
 }
 

@@ -60,11 +60,15 @@ type rangeReader interface {
 func (f *readerTable) write(dst io.Writer) error {
 	var d blockfmt.Decoder
 	dst = &byteTracker{dst}
+	d.BlockShift = f.t.BlockShift
+	d.Algo = f.t.Algo
 	for n := atomic.AddInt64(&f.block, 1) - 1; int(n) < len(f.t.Blocks); n = atomic.AddInt64(&f.block, 1) - 1 {
-		nt := f.t.Slice(int(n), int(n+1))
-		d.Set(nt, len(nt.Blocks))
-		pos := nt.Blocks[0].Offset
-		end := nt.Offset
+		pos := f.t.Blocks[n].Offset
+		d.Offset = pos
+		end := f.t.Offset
+		if int(n) < len(f.t.Blocks)-1 {
+			end = f.t.Blocks[n+1].Offset
+		}
 		if f.buf != nil {
 			_, err := d.CopyBytes(dst, f.buf[pos:end])
 			if err != nil {

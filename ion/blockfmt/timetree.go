@@ -60,20 +60,25 @@ func (t *TimeIndex) Reset() {
 
 func packList(dst *ion.Buffer, lst []timespan) {
 	dst.BeginList(-1)
-	timebase := int64(0)
-	offbase := int64(0)
+	st, dt := int64(0), int64(0)
+	so, do := int64(0), int64(0)
 	for i := range lst {
-		// both the timestamp and offset components
-		// are delta-encoded relative to the previous value,
-		// since we know in practice that these tend to be
-		// small numbers, so the varint encoding should
-		// compress them relatively well
-		us := lst[i].when.UnixMicro()
-		dst.WriteInt(us - timebase)
-		timebase = us
+		// we encode only the difference between
+		// the true value and the extrapolation
+		// from the previous values; this means that
+		// perfectly-spaced values are encoded as zeros,
+		// which means they occupy only 1 ion byte
+		w := lst[i].when.UnixMicro()
+		u := w - st - dt // encoded value
+		dt = w - st      // next extrapolated error
+		st = w           // previous value
+		dst.WriteInt(u)
+
 		off := int64(lst[i].offset)
-		dst.WriteInt(off - offbase)
-		offbase = off
+		o := off - so - do // encoded value
+		do = off - so      // next extrapolated error
+		so = off           // previous value
+		dst.WriteInt(o)
 	}
 	dst.EndList()
 }
@@ -87,40 +92,45 @@ func (t *TimeIndex) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func unpackSpans(buf []byte) ([]timespan, error) {
-	var lst []timespan
-	timebase := int64(0)
-	offbase := int64(0)
+func (d *TrailerDecoder) unpackSpans(dst *[]timespan, buf []byte) error {
+	lst := d.spans[:0]
+	st, dt := int64(0), int64(0)
+	so, do := int64(0), int64(0)
 	buf, _ = ion.Contents(buf)
 	var v int64
 	var err error
 	for len(buf) > 0 {
+		// see comment in packList() for the algorithm here:
 		v, buf, err = ion.ReadInt(buf)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		when := date.UnixMicro(v + timebase)
-		timebase += v
+		u := v + st + dt // real value
+		dt = u - st      // error term to add to next result
+		st = u           // previous result
+		when := date.UnixMicro(u)
 		v, buf, err = ion.ReadInt(buf)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		off := int(v + offbase)
-		offbase += v
-		lst = append(lst, timespan{when: when, offset: off})
+		off := v + so + do
+		do = off - so
+		so = off
+		lst = append(lst, timespan{when: when, offset: int(off)})
 	}
-	return lst, nil
+	d.spans = lst[len(lst):]
+	*dst = lst[:len(lst):len(lst)]
+	return nil
 }
 
-func (t *TimeIndex) Decode(st *ion.Symtab, buf []byte) error {
-	*t = TimeIndex{}
-	_, err := ion.UnpackStruct(st, buf, func(name string, field []byte) error {
+func (d *TrailerDecoder) decodeTimes(t *TimeIndex, buf []byte) error {
+	_, err := ion.UnpackStruct(d.Symbols, buf, func(name string, field []byte) error {
 		var err error
 		switch name {
 		case "max":
-			t.max, err = unpackSpans(field)
+			err = d.unpackSpans(&t.max, field)
 		case "min":
-			t.min, err = unpackSpans(field)
+			err = d.unpackSpans(&t.min, field)
 		}
 		return err
 	})
@@ -176,11 +186,15 @@ func (t *TimeIndex) Blocks() int {
 	return t.max[len(t.max)-1].offset
 }
 
-func (t *TimeIndex) LeftIntervals() int {
+// StartIntervals returns the number of distinct
+// values that t.Start could return.
+func (t *TimeIndex) StartIntervals() int {
 	return len(t.min)
 }
 
-func (t *TimeIndex) RightIntervals() int {
+// EndIntervals returns the number of distinct
+// values that t.End could return.
+func (t *TimeIndex) EndIntervals() int {
 	return len(t.max)
 }
 
@@ -256,12 +270,18 @@ func (t *TimeIndex) Push(start, end date.Time) {
 	t.pushMax(end)
 }
 
+// PushEmpty pushes num empty blocks to the index.
+// The index should have more than zero entries
+// already present (i.e. Push should have been
+// called at least once).
 func (t *TimeIndex) PushEmpty(num int) {
 	if len(t.max) > 0 {
 		t.max[len(t.max)-1].offset += num
 	}
 }
 
+// EditLatest updatest the span associated
+// with the most recent call to Push.
 func (t *TimeIndex) EditLatest(min, max date.Time) {
 	if len(t.max) == 0 {
 		panic("EditLatest with zero entries")

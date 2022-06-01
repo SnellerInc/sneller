@@ -23,6 +23,13 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+func (t *TimeIndex) Decode(st *ion.Symtab, buf []byte) error {
+	*t = TimeIndex{}
+	var td TrailerDecoder
+	td.Symbols = st
+	return td.decodeTimes(t, buf)
+}
+
 func testTimeIndexRoundtrip(t *testing.T, ti *TimeIndex) {
 	var buf ion.Buffer
 	var st ion.Symtab
@@ -44,13 +51,13 @@ func testTimeIndexRoundtrip(t *testing.T, ti *TimeIndex) {
 	for i := range ti.max {
 		if ti.max[i] != cmp.max[i] {
 			t.Helper()
-			t.Fatalf("%v != %v", ti.max[i], cmp.max[i])
+			t.Fatalf("max %d: %v != %v", i, ti.max[i], cmp.max[i])
 		}
 	}
 	for i := range ti.min {
 		if ti.min[i] != cmp.min[i] {
 			t.Helper()
-			t.Fatalf("%v != %v", ti.min[i], cmp.min[i])
+			t.Fatalf("min %d: %v != %v", i, ti.min[i], cmp.min[i])
 		}
 	}
 }
@@ -160,11 +167,11 @@ func TestTimeTree(t *testing.T) {
 	}
 
 	// there should be ten recognized intervals (or more)
-	if ti.LeftIntervals() < 10 {
-		t.Errorf("%d left intervals", ti.LeftIntervals())
+	if ti.StartIntervals() < 10 {
+		t.Errorf("%d left intervals", ti.StartIntervals())
 	}
-	if ti.RightIntervals() < 10 {
-		t.Errorf("%d right intervals", ti.RightIntervals())
+	if ti.EndIntervals() < 10 {
+		t.Errorf("%d right intervals", ti.EndIntervals())
 	}
 
 	testTimeIndexRoundtrip(t, ti)

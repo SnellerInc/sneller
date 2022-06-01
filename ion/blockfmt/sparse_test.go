@@ -40,6 +40,12 @@ func testSparseRoundtrip(t *testing.T, si *SparseIndex) {
 	}
 }
 
+func (s *SparseIndex) Decode(st *ion.Symtab, body []byte) error {
+	var td TrailerDecoder
+	td.Symbols = st
+	return td.decodeSparse(s, body)
+}
+
 func TestSparseIndex(t *testing.T) {
 	var si SparseIndex
 
@@ -48,20 +54,18 @@ func TestSparseIndex(t *testing.T) {
 	start := date.Now().Truncate(time.Microsecond)
 	next := start.Add(time.Minute)
 
-	fr := &futureRange2{}
+	si.push([]string{"x"}, start, next)
+	si.push([]string{"x", "y"}, start, next)
+	si.push([]string{"a", "y"}, start, next)
+	si.bump()
 
-	fr.SetMinMax([]string{"x"}, ion.Timestamp(start), ion.Timestamp(next))
-	fr.SetMinMax([]string{"x", "y"}, ion.Timestamp(start), ion.Timestamp(next))
-	fr.SetMinMax([]string{"a", "y"}, ion.Timestamp(start), ion.Timestamp(next))
-	fr.commit()
-
-	if tr := fr.result.Get([]string{"x"}); tr == nil || tr.Blocks() != 1 {
+	if tr := si.Get([]string{"x"}); tr == nil || tr.Blocks() != 1 {
 		t.Error("Get(x) == nil")
 	}
-	if tr := fr.result.Get([]string{"x", "y"}); tr == nil || tr.Blocks() != 1 {
+	if tr := si.Get([]string{"x", "y"}); tr == nil || tr.Blocks() != 1 {
 		t.Error("Get([x, y]) == nil")
 	}
-	if tr := fr.result.Get([]string{"a", "y"}); tr == nil || tr.Blocks() != 1 {
+	if tr := si.Get([]string{"a", "y"}); tr == nil || tr.Blocks() != 1 {
 		t.Error("Get([a, y]) == nil")
 	}
 	testSparseRoundtrip(t, &si)
@@ -71,20 +75,20 @@ func TestSparseIndex(t *testing.T) {
 	// are extended to the correct intervals
 	start = start.Add(2 * time.Minute)
 	next = start.Add(time.Minute)
-	fr.SetMinMax([]string{"x"}, ion.Timestamp(start), ion.Timestamp(next))
-	fr.SetMinMax([]string{"x", "y"}, ion.Timestamp(start), ion.Timestamp(next))
-	fr.SetMinMax([]string{"b", "y"}, ion.Timestamp(start), ion.Timestamp(next))
-	fr.commit()
-	if tr := fr.result.Get([]string{"x"}); tr == nil || tr.Blocks() != 2 {
+	si.push([]string{"x"}, start, next)
+	si.push([]string{"x", "y"}, start, next)
+	si.push([]string{"b", "y"}, start, next)
+	si.bump()
+	if tr := si.Get([]string{"x"}); tr == nil || tr.Blocks() != 2 {
 		t.Error("Get(x) == nil")
 	}
-	if tr := fr.result.Get([]string{"x", "y"}); tr == nil || tr.Blocks() != 2 {
+	if tr := si.Get([]string{"x", "y"}); tr == nil || tr.Blocks() != 2 {
 		t.Error("Get([x, y]) == nil")
 	}
-	if tr := fr.result.Get([]string{"a", "y"}); tr == nil || tr.Blocks() != 2 {
+	if tr := si.Get([]string{"a", "y"}); tr == nil || tr.Blocks() != 2 {
 		t.Error("Get([a, y]) == nil")
 	}
-	if tr := fr.result.Get([]string{"b", "y"}); tr == nil || tr.Blocks() != 2 {
+	if tr := si.Get([]string{"b", "y"}); tr == nil || tr.Blocks() != 2 {
 		t.Error("Get([a, y]) == nil")
 	}
 	testSparseRoundtrip(t, &si)

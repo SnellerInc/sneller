@@ -149,9 +149,11 @@ type TrailerDecoder struct {
 	// decoding symbols.
 	Symbols *ion.Symtab
 
-	trailers   []Trailer
-	blockcap   int
-	blocks     []Blockdesc
+	trailers []Trailer
+	blockcap int
+	blocks   []Blockdesc
+	spans    []timespan
+
 	paths      map[string][]string
 	ranges     []Range
 	rangecap   int
@@ -338,7 +340,7 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 			t.BlockShift = int(shift)
 		case "sparse":
 			seenSparse = true
-			return t.Sparse.Decode(d.Symbols, body)
+			return d.decodeSparse(&t.Sparse, body)
 		case "blocks":
 			n, err := countList(body)
 			if err != nil || n == 0 {
@@ -422,20 +424,4 @@ func (t *Trailer) Decompressed() int64 {
 		chunks += t.Blocks[i].Chunks
 	}
 	return int64(chunks) * int64(1<<t.BlockShift)
-}
-
-// Slice returns a new Trailer corresponding
-// to the linear range of blocks t.Blocks[start:end].
-func (t *Trailer) Slice(start, end int) *Trailer {
-	newt := new(Trailer)
-	*newt = *t
-	var lastoff int64
-	if end == len(t.Blocks) {
-		lastoff = t.Offset
-	} else {
-		lastoff = t.Blocks[end].Offset
-	}
-	newt.Blocks = t.Blocks[start:end]
-	newt.Offset = lastoff
-	return newt
 }

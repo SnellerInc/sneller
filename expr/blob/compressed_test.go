@@ -55,7 +55,7 @@ func TestCompressedRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := cw.Trailer.Slice(0, len(cw.Trailer.Blocks))
+	tr := &cw.Trailer
 
 	srv := server(dst.Bytes())
 	defer srv.Close()
