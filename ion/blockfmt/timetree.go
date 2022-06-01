@@ -106,7 +106,7 @@ func (d *TrailerDecoder) unpackSpans(dst *[]timespan, buf []byte) error {
 			return err
 		}
 		u := v + st + dt // real value
-		dt = u - st      // error term to add to next result
+		dt += v          // error term to add to next result
 		st = u           // previous result
 		when := date.UnixMicro(u)
 		v, buf, err = ion.ReadInt(buf)
@@ -114,7 +114,7 @@ func (d *TrailerDecoder) unpackSpans(dst *[]timespan, buf []byte) error {
 			return err
 		}
 		off := v + so + do
-		do = off - so
+		do += v
 		so = off
 		lst = append(lst, timespan{when: when, offset: int(off)})
 	}

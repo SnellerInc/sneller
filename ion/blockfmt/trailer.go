@@ -99,22 +99,26 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	// we always encode sparse before blocks
 	// so that when we are decoding, we know the
 	// *lack* of a sparse field means that we should
-	// build sparse as we decode blocks
+	// build Sparse as we decode blocks
 	dst.BeginField(st.Intern("sparse"))
 	t.Sparse.Encode(dst, st)
 
-	dst.BeginField(st.Intern("blocks"))
-
-	symOffset := st.Intern("offset")
-	symChunks := st.Intern("chunks")
+	// block offsets are double-differential-encoded
+	// (because they tend to be evenly spaced),
+	// and chunk counts are delta-encoded (because
+	// they tend to be similar)
+	dst.BeginField(st.Intern("blocks-delta"))
 	dst.BeginList(-1)
+	so, do := int64(0), int64(0)
+	pc := int64(0)
 	for i := range t.Blocks {
-		dst.BeginStruct(-1)
-		dst.BeginField(symOffset)
-		dst.WriteInt(t.Blocks[i].Offset)
-		dst.BeginField(symChunks)
-		dst.WriteInt(int64(t.Blocks[i].Chunks))
-		dst.EndStruct()
+		off := t.Blocks[i].Offset
+		dst.WriteInt(off - so - do)
+		do = off - so
+		so = off
+		chunks := t.Blocks[i].Chunks
+		dst.WriteInt(int64(chunks) - pc)
+		pc = int64(chunks)
 	}
 	dst.EndList()
 
@@ -341,7 +345,16 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 		case "sparse":
 			seenSparse = true
 			return d.decodeSparse(&t.Sparse, body)
+		case "blocks-delta":
+			// smaller delta-encoded block list format
+			n, err := countList(body)
+			if err != nil || n == 0 {
+				return err
+			}
+			t.Blocks = d.makeBlocks(n / 2)[:0]
+			t.unpackBlocks(body)
 		case "blocks":
+			// old-format block lists
 			n, err := countList(body)
 			if err != nil || n == 0 {
 				return err
@@ -406,6 +419,36 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 	})
 	if err != nil {
 		return fmt.Errorf("Trailer.Decode: %w", err)
+	}
+	return nil
+}
+
+func (t *Trailer) unpackBlocks(body []byte) error {
+	body, _ = ion.Contents(body)
+	var v int64
+	var err error
+	so, do := int64(0), int64(0)
+	pc := int64(0)
+	for len(body) > 0 {
+		// first value: double-differential offset
+		v, body, err = ion.ReadInt(body)
+		if err != nil {
+			return err
+		}
+		off := v + so + do
+		do = off - so
+		so = off
+		// second-value: delta-encoded #chunks
+		v, body, err = ion.ReadInt(body)
+		if err != nil {
+			return err
+		}
+		chunks := v + pc
+		pc = chunks
+		t.Blocks = append(t.Blocks, Blockdesc{
+			Offset: off,
+			Chunks: int(chunks),
+		})
 	}
 	return nil
 }
