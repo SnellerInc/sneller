@@ -280,25 +280,32 @@ func (t *TimeIndex) PushEmpty(num int) {
 	}
 }
 
-// EditLatest updatest the span associated
+// EditLatest extends the range associated
 // with the most recent call to Push.
+// (EditLatest has no effect if (min, max)
+// are no less/greater than the previous (min/max) pair.)
 func (t *TimeIndex) EditLatest(min, max date.Time) {
 	if len(t.max) == 0 {
 		panic("EditLatest with zero entries")
 	}
-	// "pop" the last max block offset
-	t.max[len(t.max)-1].offset--
-	if len(t.max) > 1 && t.max[len(t.max)-1].offset == t.max[len(t.max)-2].offset {
-		t.max = t.max[:len(t.max)-1]
+	// adjust max for the latest max
+	l := &t.max[len(t.max)-1]
+	if max.After(l.when) {
+		l.when = max
 	}
-	// "pop" the last min block offset
-	// if the max offset has been trimmed
-	// back to this position
-	if len(t.min) > 0 && t.min[len(t.min)-1].offset == t.max[len(t.max)-1].offset {
-		t.min = t.min[:len(t.min)-1]
+	// strip min intervals while min < latest(min)
+	j := len(t.min)
+	for j > 0 && min.Before(t.min[j-1].when) {
+		j--
 	}
-	// ... and then push it again with latest(max, prevmax)
-	t.Push(min, max)
+	t.min = t.min[:j]
+	// if we have a new global min, add it:
+	if j == 0 {
+		t.min = append(t.min, timespan{
+			offset: 0,
+			when:   min,
+		})
+	}
 }
 
 func (t *TimeIndex) Min() (date.Time, bool) {

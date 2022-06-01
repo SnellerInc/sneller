@@ -63,8 +63,10 @@ func TestIndirectTree(t *testing.T) {
 		// descriptors are 1 hour apart; blocks are 1 minute apart
 		min := start.Add(time.Duration(iter) * time.Hour)
 		for i := 0; i < blocks; i++ {
+			// make ranges disjoint so that we can
+			// do precise queries for specific blocks:
 			lo := min.Add(time.Duration(i) * time.Minute)
-			hi := lo.Add(time.Minute)
+			hi := lo.Add(time.Minute - time.Microsecond)
 			d.Trailer.Blocks = append(d.Trailer.Blocks, Blockdesc{
 				Offset: int64(i) * 98246,
 				Chunks: 50,
@@ -82,6 +84,28 @@ func TestIndirectTree(t *testing.T) {
 			t.Fatal(err)
 		}
 		return append(head, tail...)
+	}
+
+	latestAbove := func(idx *Index, iter int) []Descriptor {
+		min := start.Add(time.Duration(iter) * time.Hour)
+		tail, err := idx.Indirect.Search(dir, func(s *SparseIndex, n int) bool {
+			return n >= s.Get([]string{"timestamp"}).Start(min)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tail
+	}
+
+	latestBelow := func(idx *Index, iter int) []Descriptor {
+		min := start.Add(time.Duration(iter)*time.Hour - 1)
+		tail, err := idx.Indirect.Search(dir, func(s *SparseIndex, n int) bool {
+			return n < s.Get([]string{"timestamp"}).End(min)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tail
 	}
 
 	var key Key
@@ -149,6 +173,37 @@ func TestIndirectTree(t *testing.T) {
 			}
 			t.Fatalf("iter %d: results not equal", i)
 		}
+		if i > 0 {
+			// Indirect should contain iters [0, i-1]
+			field := []string{"timestamp"}
+			tr := idx.Indirect.Sparse.Get(field)
+			if tr == nil {
+				t.Fatalf("iter %d no [timestamp] index?", i)
+			}
+			if min, ok := tr.Min(); !ok || !min.Equal(start) {
+				t.Errorf("iter %d min [timestamp] = %s not %s?", i, min, start)
+			}
+			wantmax := start.Add((time.Duration(i-1) * time.Hour) + 30*time.Minute - time.Microsecond)
+			if max, ok := tr.Max(); !ok || !max.Equal(wantmax) {
+				t.Errorf("iter %d max [timestamp] = %s not %s?", i, max, wantmax)
+			}
+
+			// check that sparse indexing information
+			// is updated appropriately on each insert
+			last := latestAbove(idx, i-1)
+			if !reflect.DeepEqual(last, all[len(all)-2:len(all)-1]) {
+				t.Logf("len(last)=%d", len(last))
+				t.Fatalf("iter %d latestAbove didn't match", i)
+			}
+			below := latestBelow(idx, i)
+			if !reflect.DeepEqual(below, all[:len(all)-1]) {
+				t.Logf("len(below)=%d", len(below))
+				t.Logf("got %v", below)
+				t.Logf("want %v", all[:len(all)-1])
+				t.Fatalf("iter %d latestBelow didn't match", i)
+			}
+		}
+
 		indexmem, err = Sign(&key, idx)
 		if err != nil {
 			t.Fatal(err)

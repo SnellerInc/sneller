@@ -263,10 +263,16 @@ func (i *IndirectTree) Search(ifs InputFS, overlap func(*SparseIndex, int) bool)
 // approximation of the compressed size of one ref)
 var targetRefSize = 256 * 1024
 
+// append 1 new block to dst
+// for each indexed value in lst[*].Trailer.Sparse
+// where the block summarizes the union'd (min,max)
+// across all the descriptors
 func pushSummary(dst *SparseIndex, lst []Descriptor) {
-	for i := range lst {
-		dst.pushSummary(&lst[i].Trailer.Sparse)
+	if len(lst) > 0 {
+		dst.pushSummary(&lst[0].Trailer.Sparse)
+		lst = lst[1:]
 	}
+	updateSummary(dst, lst)
 }
 
 func updateSummary(dst *SparseIndex, lst []Descriptor) {
