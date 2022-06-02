@@ -20,11 +20,24 @@ var rules = []func(t *Trace) error{
 
 func checkSortSize(t *Trace) error {
 	f, ok := t.Final().(*Order)
+	if ok {
+		if c := t.Class(); !c.Small() {
+			return errorf(f.Columns[0].Column, "cannot perform ORDER BY with very large or unlimited cardinality")
+		}
+		return nil
+	}
+	l, ok := t.Final().(*Limit)
 	if !ok {
 		return nil
 	}
-	if c := t.Class(); c > SizeColumnCardinality {
-		return errorf(f.Columns[0].Column, "cannot perform ORDER BY with unlimited cardinality")
+	p, ok := Input(l).(*Order)
+	if !ok {
+		return nil
+	}
+	pos := l.Count + l.Offset
+	if pos > LargeSize {
+		return errorf(p.Columns[0].Column,
+			"cannot perform ORDER BY with LIMIT+OFFSET %d > %d", pos, LargeSize)
 	}
 	return nil
 }

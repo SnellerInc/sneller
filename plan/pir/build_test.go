@@ -116,6 +116,14 @@ func TestBuildError(t *testing.T) {
 			input: `select * from tbl offset 15`,
 			rx:    "OFFSET without LIMIT is not supported",
 		},
+		{
+			input: `select * from tbl order by timestamp desc limit 100000000000`,
+			rx:    "LIMIT\\+OFFSET",
+		},
+		{
+			input: `select * from tbl order by timestamp desc limit 10 offset 99999`,
+			rx:    "LIMIT\\+OFFSET",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
