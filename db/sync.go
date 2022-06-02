@@ -534,7 +534,10 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
 		idx, err = st.index()
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
-				idx = &blockfmt.Index{Name: st.table}
+				idx = &blockfmt.Index{
+					Name:     st.table,
+					Scanning: st.conf.NewIndexScan,
+				}
 			} else {
 				st.conf.logf("re-opening index to record failure: %s", err)
 				return

@@ -15,6 +15,7 @@
 package db
 
 import (
+	"errors"
 	"io"
 	"math/rand"
 	"os"
@@ -289,5 +290,144 @@ func TestAppend(t *testing.T) {
 	}
 	if !saw {
 		t.Errorf("didn't find good copy in the tree?")
+	}
+}
+
+// test that Append operations on a new index
+// eventually overcome bad inputs
+func TestAppendBadScan(t *testing.T) {
+	checkFiles(t)
+	tmpdir := t.TempDir()
+	for _, dir := range []string{
+		filepath.Join(tmpdir, "a-prefix"),
+	} {
+		err := os.MkdirAll(dir, 0750)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dfs := NewDirFS(tmpdir)
+	defer dfs.Close()
+	owner := newTenant(dfs)
+	dfs.Log = t.Logf
+
+	err := WriteDefinition(dfs, "default", &Definition{
+		Name: "foo",
+		Inputs: []Input{{
+			Pattern: "file://a-prefix/*.json",
+			Format:  "json",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, x := range []struct {
+		name, text string
+	}{
+		{"a-prefix/bad.json", `{"foo": barbazquux}`},
+		{"a-prefix/good0.json", `{"foo": "bar"}`},
+		{"a-prefix/good1.json", `{"bar": "baz"}`},
+	} {
+		_, err := dfs.WriteFile(x.name, []byte(x.text))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	b := Builder{
+		Align:          2048,
+		NewIndexScan:   true,
+		MaxScanObjects: 1,
+	}
+	err = b.Append(owner, "default", "foo", nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !blockfmt.IsFatal(err) {
+		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T", err)
+	}
+	// there should still be one output object
+	idx, err := OpenIndex(dfs, "default", "foo", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Objects() != 0 {
+		t.Errorf("got idx1.Objects() = %d", idx.Objects())
+	}
+	idx.Inputs.Backing = dfs
+	ok, err := idx.Inputs.Contains("file://a-prefix/bad.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("inputs doesn't contain bad.json?")
+	}
+	if !idx.Scanning {
+		t.Error("not scanning?")
+	}
+	checkContents(t, idx, dfs)
+	checkNoGarbage(t, dfs, "db/default/foo", idx)
+	err = b.Append(owner, "default", "foo", nil)
+	if !errors.Is(err, ErrBuildAgain) {
+		if err == nil {
+			t.Fatal("nil error?")
+		}
+		t.Fatal(err)
+	}
+	idx, err = OpenIndex(dfs, "default", "foo", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Objects() != 1 {
+		t.Errorf("got idx.Objects() = %d", idx.Objects())
+	}
+	checkContents(t, idx, dfs)
+	checkNoGarbage(t, dfs, "db/default/foo", idx)
+	// now get the last object:
+	err = b.Append(owner, "default", "foo", nil)
+	if !errors.Is(err, ErrBuildAgain) {
+		if err == nil {
+			t.Fatal("nil error?")
+		}
+		t.Fatal(err)
+	}
+	idx, err = OpenIndex(dfs, "default", "foo", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Objects() != 1 {
+		t.Errorf("got idx.Objects() = %d", idx.Objects())
+	}
+	idx.Inputs.Backing = dfs
+	ok, err = idx.Inputs.Contains("file://a-prefix/good1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("doesn't contain file://a-prefix/good1.json?")
+	}
+	if !idx.Scanning {
+		t.Error("no longer scanning?")
+	}
+
+	// this one should turn off scanning:
+	err = b.Append(owner, "default", "foo", nil)
+	if !errors.Is(err, ErrBuildAgain) {
+		if err == nil {
+			t.Fatal("nil error?")
+		}
+		t.Fatal(err)
+	}
+	idx, err = OpenIndex(dfs, "default", "foo", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Scanning {
+		t.Error("still scanning?")
+	}
+	err = b.Append(owner, "default", "foo", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -30,6 +30,17 @@ func fullScan(t *testing.T, b *Builder, who Tenant, db, table string, expect int
 		n, err := b.Scan(who, db, table)
 		if err != nil {
 			if blockfmt.IsFatal(err) {
+				fs, err := who.Root()
+				if err != nil {
+					t.Fatal(err)
+				}
+				idx, err := OpenIndex(fs, db, table, who.Key())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !idx.Scanning {
+					t.Fatal("not scanning after error")
+				}
 				// should automatically recover
 				continue
 			}
