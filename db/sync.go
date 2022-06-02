@@ -145,6 +145,11 @@ type Builder struct {
 // Otherwise, Format returns nil.
 func (b *Builder) Format(chosen, name string) blockfmt.RowFormat {
 	if chosen != "" {
+		if chosen == "cloudtrail.json.gz" {
+			// this must come first, because otherwise
+			// name would match *.json.gz
+			return blockfmt.CloudtrailJSON(".gz")
+		}
 		if f := blockfmt.SuffixToFormat["."+chosen]; f != nil {
 			return f()
 		}

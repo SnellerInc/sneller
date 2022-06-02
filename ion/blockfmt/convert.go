@@ -65,9 +65,10 @@ type Input struct {
 }
 
 type jsonConverter struct {
-	decomp   func(r io.Reader) (io.Reader, error)
-	compname string
-	hints    *jsonrl.Hint
+	decomp       func(r io.Reader) (io.Reader, error)
+	compname     string
+	hints        *jsonrl.Hint
+	isCloudtrail bool
 }
 
 func (j *jsonConverter) Name() string {
@@ -86,7 +87,11 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 			return err
 		}
 	}
-	err = jsonrl.Convert(rc, dst, j.hints)
+	if j.isCloudtrail {
+		err = jsonrl.ConvertCloudtrail(rc, dst)
+	} else {
+		err = jsonrl.Convert(rc, dst, j.hints)
+	}
 	if j.decomp != nil {
 		// if the decompressor (i.e. gzip.Reader)
 		// has a Close() method, then use that;
@@ -103,6 +108,9 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 }
 
 func (j *jsonConverter) UseHints(hints []byte) error {
+	if j.isCloudtrail && hints != nil {
+		return fmt.Errorf("cloudtrail.json.gz format does not accept hints")
+	}
 	if hints == nil {
 		j.hints = nil
 		return nil
@@ -168,6 +176,38 @@ var SuffixToFormat = map[string]func() RowFormat{
 			compname: "gz",
 		}
 	},
+}
+
+// CloudtrailJSON produces the RowFormat associated
+// with parsing AWS Cloudtrail data compressed with
+// the given compression name, which should be one
+// of ".gz" ".zst" or "" (none). (The only compression
+// used in practice by AWS is ".gz")
+func CloudtrailJSON(compression string) RowFormat {
+	switch compression {
+	case "":
+		return &jsonConverter{
+			isCloudtrail: true,
+		}
+	case ".gz":
+		return &jsonConverter{
+			decomp: func(r io.Reader) (io.Reader, error) {
+				return gzip.NewReader(r)
+			},
+			compname:     "gz",
+			isCloudtrail: true,
+		}
+	case ".zst":
+		return &jsonConverter{
+			decomp: func(r io.Reader) (io.Reader, error) {
+				return zstd.NewReader(r)
+			},
+			compname:     "zst",
+			isCloudtrail: true,
+		}
+	default:
+		panic("bad compression passed to blockfmt.CloudtrailJSON")
+	}
 }
 
 // Converter performs single- or
