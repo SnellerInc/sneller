@@ -15,6 +15,7 @@
 package jsonrl
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -122,9 +123,7 @@ func (b *reader) consumed() int { return b.flushed + b.rpos }
 // copy data to the front of the buffer
 func (b *reader) shift() {
 	// kill spaces before shifting
-	for b.rpos < len(b.buf) && isSpace(b.buf[b.rpos]) {
-		b.rpos++
-	}
+	b.chomp()
 	b.flushed += b.rpos
 	if b.rpos == len(b.buf) {
 		b.buf = b.buf[:0]
@@ -132,6 +131,35 @@ func (b *reader) shift() {
 		b.buf = b.buf[:copy(b.buf, b.avail())]
 	}
 	b.rpos = 0
+}
+
+func (b *reader) chomp() {
+	for b.rpos < len(b.buf) && isSpace(b.buf[b.rpos]) {
+		b.rpos++
+	}
+}
+
+// search for (and discard) the given string constant,
+// eating whitespace as we go
+func (b *reader) lexOne(token string) error {
+	for b.err == nil {
+		if len(b.avail()) < len(token) {
+			if !b.assertFill() {
+				if b.err != nil {
+					return b.err
+				}
+				return fmt.Errorf("unexpected EOF while seeking %q %w", token, ErrNoMatch)
+			}
+			continue
+		}
+		b.chomp()
+		cur := b.avail()
+		if len(cur) >= len(token) && bytes.Equal(cur[:len(token)], []byte(token)) {
+			b.rpos += len(token)
+			return nil
+		}
+	}
+	return b.err
 }
 
 // avail is currently-buffered data
