@@ -522,6 +522,9 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
 	if empty {
 		idx = &blockfmt.Index{
 			Name: st.table,
+			// this is a new index, so we have
+			// to respect NewIndexScan configuration
+			Scanning: st.conf.NewIndexScan,
 		}
 	} else {
 		// we re-load the index so that we don't have to

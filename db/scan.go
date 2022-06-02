@@ -90,6 +90,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 	id := nextID(idx)
 	for i := range def.Inputs {
 		if len(collect) >= maxInputs || size >= maxSize {
+			complete = false
 			break
 		}
 		infs, pat, err := st.owner.Split(def.Inputs[i].Pattern)
