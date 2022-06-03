@@ -16,7 +16,6 @@ package tnproto
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -116,7 +115,7 @@ var clientPool = sync.Pool{
 // plan.Client.Exec.
 //
 // See also: Attach
-func (r *Remote) Exec(t *plan.Tree, rw plan.TableRewrite, dst io.Writer, stats *plan.ExecStats) error {
+func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
 	var conn net.Conn
 	var err error
 	if r.Timeout != 0 {
@@ -141,5 +140,5 @@ func (r *Remote) Exec(t *plan.Tree, rw plan.TableRewrite, dst io.Writer, stats *
 		cl.Close()
 		clientPool.Put(cl)
 	}()
-	return cl.Exec(t, rw, dst, stats)
+	return cl.Exec(t, ep)
 }

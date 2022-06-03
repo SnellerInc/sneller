@@ -21,6 +21,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -77,7 +78,7 @@ func (h *Handle) Read(p []byte) (int, error) {
 
 func (h *Handle) Close() error { return nil }
 
-func (h *Handle) Open() (io.ReadCloser, error) {
+func (h *Handle) Open(ctx context.Context) (io.ReadCloser, error) {
 	return h, nil
 }
 

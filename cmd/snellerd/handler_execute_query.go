@@ -255,13 +255,27 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		s.logger.Printf("query ID %s %q execution failed (do): %v", queryID, redacted, err)
 		return
 	}
+	go func() {
+		<-r.Context().Done()
+		rc.Close()
+	}()
 	s.logger.Printf("query ID %s plan transfer took %s", queryID, time.Since(startrun))
 	var stats plan.ExecStats
 	deadlined := setDeadline(rc, queryKillTimeout)
 	err = tenant.Check(rc, &stats)
 	if err != nil {
+		canceled := false
+		if ctxerr := r.Context().Err(); ctxerr != nil {
+			// see if we got an error due to cancellation
+			err = ctxerr
+			canceled = true
+		}
 		if sendTrailer {
 			setError(w)
+		}
+		if canceled {
+			s.logger.Printf("query ID %s canceled after %s", queryID, time.Since(startrun))
+			return
 		}
 		s.logger.Printf("query ID %s %q execution failed (check): %v", queryID, redacted, err)
 		if deadlined && isTimeout(err) {

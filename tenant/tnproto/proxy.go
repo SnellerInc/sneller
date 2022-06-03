@@ -18,13 +18,13 @@ package tnproto
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http/httputil"
-	"os"
 	"time"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -230,6 +230,8 @@ func (b *Buffer) Prepare(t *plan.Tree, f OutputFormat) error {
 // Otherwise, the data returned via the ReadCloser
 // will consist of error text describing how the
 // query failed to execute.
+// Closing the returned ReadCloser before reading
+// the response implicitly cancels the query execution.
 //
 // DirectExec makes multiple calls to read and
 // write data via 'ctl', so the caller is required
@@ -363,13 +365,32 @@ func serveProxy(dec plan.Decoder, conn net.Conn) {
 	plan.Serve(conn, dec)
 }
 
-func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe io.WriteCloser) {
-	defer errpipe.Close()
+// pipectx returns a context.Context that is canceled
+// when the pipe is closed
+func pipectx(errpipe net.Conn) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	go func() {
+		defer cancel()
+		var buf [1]byte
+		dl, _ := ctx.Deadline()
+		// make sure that the call to Read returns
+		// no later than the cancellation deadline:
+		errpipe.SetReadDeadline(dl)
+		errpipe.Read(buf[:])
+		// either we are already canceled (errpipe closed)
+		// or we got EOF (and should cancel) or we got
+		// unexpected data (and should probably still cancel)
+	}()
+	return ctx
+}
+
+func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn) {
+	defer errpipe.Close() // cancels ctx
+	ctx := pipectx(errpipe)
 
 	// if we encounter a panic, we don't
-	// want to close the errpipe with no output,
-	// as that would indicate the query terminated
-	// successfully; instead, just write a notification
+	// want to close the errpipe with no output;
+	// instead, just write a notification
 	// that we are going to panic before we actually
 	// do it...
 	var outbuf ion.Buffer
@@ -383,15 +404,19 @@ func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe io.WriteCloser) {
 			panic(e)
 		}
 	}()
-	var stats plan.ExecStats
-	err := plan.Exec(t, conn, &stats)
+	pl := plan.LocalTransport{}
+	ep := plan.ExecParams{
+		Output:  conn,
+		Context: ctx,
+	}
+	err := pl.Exec(t, &ep)
 	// must close the connection before
 	// indicating the query status to the caller
 	conn.Close()
 	if err != nil {
 		outbuf.WriteString(err.Error())
 	} else {
-		stats.Marshal(&outbuf)
+		ep.Stats.Marshal(&outbuf)
 	}
 	errpipe.Write(outbuf.Bytes())
 }
@@ -414,13 +439,13 @@ func errnow(ctl *net.UnixConn, err error, tmp []byte) error {
 // and have begun execution; use the returned
 // error pipe for receiving out-of-band error
 // notifications
-func detach(ctl *net.UnixConn) (io.WriteCloser, error) {
-	r, w, err := os.Pipe()
+func detach(ctl *net.UnixConn) (net.Conn, error) {
+	r, w, err := usock.SocketPair()
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
-	_, err = usock.WriteWithFile(ctl, detachmsg, r)
+	_, err = usock.WriteWithConn(ctl, detachmsg, r)
 	if err != nil {
 		w.Close()
 		return nil, err

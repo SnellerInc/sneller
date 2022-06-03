@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -26,7 +27,7 @@ import (
 
 var canVMOpen = false
 
-func (f *filterHandle) Open() (vm.Table, error) {
+func (f *filterHandle) Open(ctx context.Context) (vm.Table, error) {
 	panic("bare filterHandle.Open")
 	return nil, nil
 }

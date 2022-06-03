@@ -17,6 +17,7 @@ package tenant
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,7 +57,7 @@ type stubenv struct{}
 
 type stubHandle string
 
-func (s stubHandle) Open() (vm.Table, error) {
+func (s stubHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened stubenv locally!")
 }
 
@@ -70,7 +71,7 @@ func (s stubHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 type badHandle struct{}
 
-func (b badHandle) Open() (vm.Table, error) {
+func (b badHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened badHandle")
 }
 
@@ -84,7 +85,7 @@ type repeatHandle struct {
 	file  string
 }
 
-func (r *repeatHandle) Open() (vm.Table, error) {
+func (r *repeatHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened repeatHandle")
 }
 
@@ -98,12 +99,34 @@ func (r *repeatHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
+type hangHandle struct {
+	file string
+}
+
+func (h *hangHandle) Open(_ context.Context) (vm.Table, error) {
+	panic("hangHandle.Open in parent")
+}
+
+func (h *hangHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("filename"))
+	dst.WriteString(h.file)
+	dst.BeginField(st.Intern("hang"))
+	dst.WriteBool(true)
+	dst.EndStruct()
+	return nil
+}
+
 func (s stubenv) Stat(tbl, _ expr.Node) (plan.TableHandle, error) {
 	if b, ok := tbl.(*expr.Builtin); ok {
-		if b.Text != "REPEAT" {
+		switch b.Text {
+		case "REPEAT":
+			return &repeatHandle{count: int(b.Args[0].(expr.Integer)), file: string(b.Args[1].(expr.String))}, nil
+		case "HANG":
+			return &hangHandle{file: string(b.Args[0].(expr.String))}, nil
+		default:
 			return badHandle{}, nil
 		}
-		return &repeatHandle{count: int(b.Args[0].(expr.Integer)), file: string(b.Args[1].(expr.String))}, nil
 	}
 	// confirm that the file exists,
 	// but otherwise do nothing
@@ -390,6 +413,11 @@ func TestExec(t *testing.T) {
 		t.Logf("expected 6 cache fills; found %d (%d - %d)", f, atomic.LoadInt32(&evictcount), cachefills)
 	}
 
+	// test cancelation via closing of the returned status socket
+	t.Run("cancel", func(t *testing.T) {
+		testCancel(t, m)
+	})
+
 	t.Logf("before stop: %d fds", nfds())
 	m.Stop()
 
@@ -564,6 +592,29 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, want []str
 	}
 }
 
+func testCancel(t *testing.T, m *Manager) {
+	here, there := socketPair(t)
+	defer there.Close()
+	id := randomID()
+	// this plan should loop indefinitely until
+	// it is canceled by the
+	rc, err := m.Do(id, mkplan(t, `SELECT * FROM HANG('../testdata/parking.10n')`), tnproto.OutputRaw, here)
+	here.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	rc.Close()
+	// this will hang unless the remote end
+	// does the right thing and hangs up after
+	// noticing the cancellation
+	_, err = io.Copy(io.Discard, there)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("cancel took %s", time.Since(start))
+}
+
 // Benchmark a trivial query;
 // this gives us a sense of what
 // the overhead is of Manager.Do()
@@ -641,7 +692,7 @@ type benchHandle struct {
 	*blob.List
 }
 
-func (b *benchHandle) Open() (vm.Table, error) {
+func (b *benchHandle) Open(_ context.Context) (vm.Table, error) {
 	panic("benchHandle.Open()")
 }
 

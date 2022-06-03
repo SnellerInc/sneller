@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -31,7 +32,7 @@ func (e emptyenv) Stat(_, _ expr.Node) (TableHandle, error) {
 	return e, nil
 }
 
-func (e emptyenv) Open() (vm.Table, error) {
+func (e emptyenv) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("cannot open emptyenv table")
 }
 

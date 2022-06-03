@@ -63,12 +63,12 @@ func cannotCompile(e expr.Node) bool {
 	return o
 }
 
-func (a *Apply) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
+func (a *Apply) exec(dst vm.QuerySink, ep *ExecParams) error {
 	app, err := vm.Apply(a.Funcs, dst)
 	if err != nil {
 		return err
 	}
-	return a.From.exec(app, parallel, stats, rw)
+	return a.From.exec(app, ep)
 }
 
 func (a *Apply) String() string {

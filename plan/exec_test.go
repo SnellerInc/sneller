@@ -17,6 +17,7 @@ package plan
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,7 +125,7 @@ type literalHandle struct {
 	body []byte
 }
 
-func (l *literalHandle) Open() (vm.Table, error) {
+func (l *literalHandle) Open(_ context.Context) (vm.Table, error) {
 	return vm.BufferTable(l.body, len(l.body)), nil
 }
 
@@ -205,7 +206,7 @@ type fileHandle struct {
 	parent *testenv
 }
 
-func (fh *fileHandle) Open() (vm.Table, error) {
+func (fh *fileHandle) Open(ctx context.Context) (vm.Table, error) {
 	f := fh.parent.get(fh.name)
 	i, err := f.Stat()
 	if err != nil {
@@ -1453,9 +1454,11 @@ func testRemoteEquivalent(t *testing.T, tree *Tree,
 		remoteerr = Serve(funkyPipe{remote}, env)
 	}()
 
-	var stats ExecStats
 	c := Client{Pipe: funkyPipe{local}}
-	err := c.Exec(tree, nil, &buf, &stats)
+	ep := &ExecParams{
+		Output: &buf,
+	}
+	err := c.Exec(tree, ep)
 	if err != nil {
 		t.Errorf("local error: %s", err)
 	}
@@ -1470,8 +1473,8 @@ func testRemoteEquivalent(t *testing.T, tree *Tree,
 	if remoteerr != nil {
 		t.Errorf("remote error: %s", remoteerr)
 	}
-	if stats != *wantstat {
-		t.Errorf("got stats %#v", &stats)
+	if ep.Stats != *wantstat {
+		t.Errorf("got stats %#v", &ep.Stats)
 		t.Errorf("wanted stats %#v", wantstat)
 	}
 }
@@ -1571,7 +1574,8 @@ func testPlanSerialize(t *testing.T, tree *Tree, env Decoder) {
 // propogated into client errors
 func TestServerError(t *testing.T) {
 	remote, local := net.Pipe()
-
+	defer local.Close()
+	defer remote.Close()
 	env := &testenv{t: t}
 
 	var serverr error
@@ -1598,8 +1602,8 @@ func TestServerError(t *testing.T) {
 
 	cl := Client{Pipe: local}
 	var out bytes.Buffer
-	var stats ExecStats
-	err = cl.Exec(tree, nil, &out, &stats)
+	ep := &ExecParams{Output: &out}
+	err = cl.Exec(tree, ep)
 	if err == nil {
 		t.Fatal("no failure message?")
 	}
@@ -1609,23 +1613,102 @@ func TestServerError(t *testing.T) {
 	if out.Len() != 0 {
 		t.Errorf("accumulated buffered data (len=%d)", out.Len())
 	}
-
-	// now fix the error and confirm that
-	// the session is still ok
-	env.mustfail = ""
-	stats = ExecStats{}
-	err = cl.Exec(tree, nil, &out, &stats)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count := rowcount(t, out.Bytes()); count != 1 {
-		t.Errorf("unexpected row count %d", count)
-	}
-
 	err = cl.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
+	wg.Wait()
+	if serverr != nil {
+		t.Fatal(err)
+	}
+}
+
+type hangenv struct {
+	*testenv
+}
+
+type hangHandle struct {
+	env  *hangenv
+	real TableHandle
+}
+
+func (h *hangHandle) Open(ctx context.Context) (vm.Table, error) {
+	<-ctx.Done()
+	return nil, fmt.Errorf("hangHandle.Open")
+}
+
+func (h *hangHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	panic("hangHandle.Encode")
+}
+
+func (h *hangenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
+	real, err := h.testenv.DecodeHandle(st, mem)
+	if err != nil {
+		return nil, err
+	}
+	return &hangHandle{h, real}, nil
+}
+
+type cancelOnRead struct {
+	io.ReadWriteCloser
+	cancel func()
+}
+
+func (c *cancelOnRead) Read(p []byte) (int, error) {
+	if c.cancel != nil {
+		c.cancel()
+		c.cancel = nil
+	}
+	return c.ReadWriteCloser.Read(p)
+}
+
+func TestClientCancel(t *testing.T) {
+	remote, local := net.Pipe()
+	defer local.Close()
+	defer remote.Close()
+	env := &hangenv{testenv: &testenv{t: t}}
+
+	var serverr error
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		// on the server side, use a bad env
+		// that will hang forever when TableHandle.Open() is called
+		defer wg.Done()
+		serverr = Serve(remote, env)
+	}()
+
+	query := `select * from 'parking.10n' limit 1`
+	s, err := partiql.Parse([]byte(query))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := New(s, env.testenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	// we don't call cancel until the first
+	// call to Read, so we are guaranteed that
+	// we are in the read loop before the cancellation
+	// happens:
+	cl := Client{Pipe: &cancelOnRead{local, cancel}}
+	ep := &ExecParams{Output: &out, Context: ctx}
+	err = cl.Exec(tree, ep)
+	if err == nil {
+		t.Fatal("no failure message?")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Error("error isn't context.Cancelled?")
+	}
+	err = cl.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// because we closed the pipe,
+	// the server context should be canceled as well,
+	// and so this shouldn't block indefinitely:
 	wg.Wait()
 	if serverr != nil {
 		t.Fatal(err)

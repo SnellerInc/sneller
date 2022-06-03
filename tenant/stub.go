@@ -21,6 +21,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
@@ -63,6 +64,8 @@ type Handle struct {
 	size     int64
 	env      *Env
 	repeat   int
+	ctx      context.Context
+	hang     bool
 }
 
 func (h *Handle) Align() int { return 1024 * 1024 }
@@ -77,6 +80,7 @@ func (h *Handle) ETag() string {
 }
 
 type repeatReader struct {
+	ctx   context.Context
 	file  *os.File
 	count int
 }
@@ -103,6 +107,7 @@ func (h *Handle) Open() (io.ReadCloser, error) {
 		return nil, err
 	}
 	return &repeatReader{
+		ctx:   h.ctx,
 		file:  f,
 		count: h.repeat,
 	}, nil
@@ -111,6 +116,10 @@ func (h *Handle) Open() (io.ReadCloser, error) {
 func (h *Handle) Decode(dst io.Writer, src []byte) error {
 	if h.Align() > vm.PageSize {
 		return fmt.Errorf("align %d > vm.PageSize %d", h.Align(), vm.PageSize)
+	}
+	if h.hang {
+		<-h.ctx.Done()
+		return h.ctx.Err()
 	}
 	buf := vm.Malloc()
 	defer vm.Free(buf)
@@ -127,20 +136,24 @@ func (h *Handle) Decode(dst io.Writer, src []byte) error {
 	return nil
 }
 
-type tableHandle Handle
+type tableHandle struct {
+	Handle
+}
 
-func (t *tableHandle) Open() (vm.Table, error) {
-	return t.env.cache.Table((*Handle)(t), 0), nil
+func (t *tableHandle) Open(ctx context.Context) (vm.Table, error) {
+	o := t.Handle
+	o.ctx = ctx
+	return t.env.cache.Table(&o, 0), nil
 }
 
 func (t *tableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
-	if t.repeat > 1 {
-		dst.BeginField(st.Intern("repeat"))
-		dst.WriteInt(int64(t.repeat))
-	}
+	dst.BeginField(st.Intern("repeat"))
+	dst.WriteInt(int64(t.repeat))
 	dst.BeginField(st.Intern("filename"))
 	dst.WriteString(t.filename)
+	dst.BeginField(st.Intern("hang"))
+	dst.WriteBool(t.hang)
 	dst.EndStruct()
 	return nil
 }
@@ -150,8 +163,10 @@ func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 		return nil, fmt.Errorf("no TableHandle present")
 	}
 	th := &tableHandle{
-		env:    e,
-		repeat: 1,
+		Handle: Handle{
+			env:    e,
+			repeat: 1,
+		},
 	}
 	_, err := ion.UnpackStruct(st, buf, func(name string, field []byte) error {
 		switch name {
@@ -172,6 +187,14 @@ func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 			}
 			th.filename = str
 			th.size = fi.Size()
+		case "hang":
+			hang, _, err := ion.ReadBool(field)
+			if err != nil {
+				return err
+			}
+			th.hang = hang
+		default:
+			return fmt.Errorf("unrecognized field %q", name)
 		}
 		return nil
 	})

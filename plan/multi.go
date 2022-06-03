@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -33,10 +34,10 @@ import (
 
 type tableHandles []TableHandle
 
-func (h tableHandles) Open() (vm.Table, error) {
+func (h tableHandles) Open(ctx context.Context) (vm.Table, error) {
 	ts := make(tables, len(h))
 	for i := range h {
-		t, err := h[i].Open()
+		t, err := h[i].Open(ctx)
 		if err != nil {
 			return nil, err
 		}

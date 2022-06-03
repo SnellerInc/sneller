@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"context"
 	"io"
 	"runtime"
 
@@ -22,10 +23,38 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
+// ExecParams is a collection of all the
+// runtime parameters for a query.
+type ExecParams struct {
+	// Output is the destination of the query output.
+	Output io.Writer
+	// Stats are stats that are collected
+	// during query execution.
+	Stats ExecStats
+	// Rewrite is a function that is applied
+	// to tables before expanding them in queries.
+	// Rewrite may be nil.
+	Rewrite TableRewrite
+	// Parallel determines the (local) parallelism
+	// of plan execution. If Parallel is unset, then
+	// runtime.GOMAXPROCS(0) is used instead.
+	Parallel int
+	// Context indicates the cancellation scope
+	// of the query. Transports are expected to
+	// stop processing queries after Context is canceled.
+	Context context.Context
+}
+
 // Exec executes a plan and writes the
 // results of the query execution to dst.
 func Exec(t *Tree, dst io.Writer, stats *ExecStats) error {
-	return (&LocalTransport{}).Exec(t, nil, dst, stats)
+	ep := ExecParams{
+		Output:   dst,
+		Parallel: runtime.GOMAXPROCS(0),
+	}
+	err := (&LocalTransport{}).Exec(t, &ep)
+	stats.atomicAdd(&ep.Stats)
+	return err
 }
 
 // LocalTransport is a Transport
@@ -49,13 +78,15 @@ func (l *LocalTransport) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 // Exec implements Transport.Exec
-func (l *LocalTransport) Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *ExecStats) error {
-	s := vm.LockedSink(dst)
-	parallel := l.Threads
-	if parallel <= 0 {
-		parallel = runtime.GOMAXPROCS(0)
+func (l *LocalTransport) Exec(t *Tree, ep *ExecParams) error {
+	s := vm.LockedSink(ep.Output)
+	if ep.Parallel == 0 {
+		ep.Parallel = l.Threads
 	}
-	return t.exec(s, parallel, stats, rw)
+	if ep.Parallel == 0 {
+		ep.Parallel = runtime.GOMAXPROCS(0)
+	}
+	return t.exec(s, ep)
 }
 
 // Transport models the exection environment
@@ -65,14 +96,15 @@ func (l *LocalTransport) Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *Ex
 // See Client for executing queries remotely.
 type Transport interface {
 	// Exec executes the provided query plan,
-	// streaming the output of the query to dst.
-	// Each call to dst.Write should contain exactly
+	// streaming the output of the query to ep.Output
+	// (ep.Output may not be nil).
+	// Each call to ep.Output.Write should contain exactly
 	// one "chunk" of ion-encoded data, which will
 	// begin with an ion BVM and be followed by zero
 	// or more ion structures.
 	//
-	// The TableRewrite provided to Exec, if non-nil,
+	// The ep.Rewrite provided via ExecParams, if non-nil,
 	// determines how table expressions are re-written
 	// before they are provided to Transport.
-	Exec(t *Tree, rw TableRewrite, dst io.Writer, stats *ExecStats) error
+	Exec(t *Tree, ep *ExecParams) error
 }

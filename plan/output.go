@@ -157,7 +157,7 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (o *OutputPart) exec(dst vm.QuerySink, parallel int, stat *ExecStats, rw TableRewrite) error {
+func (o *OutputPart) exec(dst vm.QuerySink, ep *ExecParams) error {
 	if o.Basename == "" {
 		return fmt.Errorf("OutputPart: basename not set")
 	} else if o.Store == nil {
@@ -176,7 +176,7 @@ func (o *OutputPart) exec(dst vm.QuerySink, parallel int, stat *ExecStats, rw Ta
 	us.mw.Output = up
 	us.mw.Comp = compr.Compression("zstd")
 	us.mw.InputAlign = 1 << 20
-	return o.From.exec(us, parallel, stat, rw)
+	return o.From.exec(us, ep)
 }
 
 func (o *OutputPart) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -317,7 +317,7 @@ func (is *indexSink) Close() error {
 	return w.Close()
 }
 
-func (o *OutputIndex) exec(dst vm.QuerySink, parallel int, stat *ExecStats, rw TableRewrite) error {
+func (o *OutputIndex) exec(dst vm.QuerySink, ep *ExecParams) error {
 	if o.Table == nil {
 		return fmt.Errorf("OutputIndex: table not set")
 	} else if o.Basename == "" {
@@ -343,7 +343,7 @@ func (o *OutputIndex) exec(dst vm.QuerySink, parallel int, stat *ExecStats, rw T
 		idx:    idx,
 		dst:    dst,
 	}
-	err := o.From.exec(is, parallel, stat, rw)
+	err := o.From.exec(is, ep)
 	if err != nil {
 		return err
 	}

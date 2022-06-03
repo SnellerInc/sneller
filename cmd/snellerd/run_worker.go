@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -171,7 +172,7 @@ func (h *tenantHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return h.inner.Encode(dst, st)
 }
 
-func (h *tenantHandle) Open() (vm.Table, error) {
+func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
 	fh := h.inner.(*filterHandle)
 	lst := fh.blobs
 	if !canVMOpen {
@@ -213,7 +214,7 @@ func (h *tenantHandle) Open() (vm.Table, error) {
 	if cacheLimit > 0 && size > cacheLimit {
 		flags = dcache.FlagNoFill
 	}
-	return h.parent.cache.MultiTable(segs, flags), nil
+	return h.parent.cache.MultiTable(ctx, segs, flags), nil
 }
 
 func (h *tenantHandle) Filter(e expr.Node) plan.TableHandle {

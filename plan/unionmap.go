@@ -146,7 +146,7 @@ func decodeLocal(st *ion.Symtab, body []byte) (Transport, error) {
 	return t, nil
 }
 
-func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw TableRewrite) error {
+func (u *UnionMap) exec(dst vm.QuerySink, ep *ExecParams) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -172,12 +172,19 @@ func (u *UnionMap) exec(dst vm.QuerySink, parallel int, stats *ExecStats, rw Tab
 				}
 				return in, handle
 			}
+			subep := &ExecParams{
+				Output:   s,
+				Rewrite:  rw,
+				Parallel: ep.Parallel, // ...meaningful?
+				Context:  ep.Context,
+			}
 			// wrap the rest of the query in a Tree;
 			// this makes it look to the Transport
 			// like we are executing a sub-query, which
 			// is approximately true
 			stub := &Tree{Op: u.From}
-			errors[i] = sub.Exec(stub, rw, s, stats)
+			errors[i] = sub.Exec(stub, subep)
+			ep.Stats.atomicAdd(&subep.Stats)
 		}(i)
 	}
 	wg.Wait()

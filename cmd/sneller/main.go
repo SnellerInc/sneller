@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -104,7 +105,7 @@ type eenv func(expr.Node) (vm.Table, error)
 
 type handle func() (vm.Table, error)
 
-func (h handle) Open() (vm.Table, error) {
+func (h handle) Open(_ context.Context) (vm.Table, error) {
 	return h()
 }
 

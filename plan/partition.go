@@ -16,6 +16,7 @@ package plan
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -312,36 +313,45 @@ func (s *server) readn(n int) ([]byte, error) {
 	return s.tmp, nil
 }
 
+// we require Client to keep the pipe open
+// for the duration of the query (and write no additional
+// data into it); if we get an EOF on the input pipe,
+// that means the query is canceled
+func (s *server) context() (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		defer cancel()
+		dst := make([]byte, 1)
+		s.pipe.Read(dst)
+		// don't really care about results here;
+		// either we got EOF or we got unexpected client data
+	}()
+	return ctx, cancel
+}
+
 func (s *server) serve() error {
 	defer s.pipe.Close()
-	for {
-		f, err := s.frame()
-		if err != nil {
-			// clean shutdown
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-		if f.kind() != framestart {
-			s.senderr("unexpected frame")
-			return fmt.Errorf("received unexpected frame %x", f)
-		}
-		buf, err := s.readn(f.length())
-		if err != nil {
-			s.senderr(err.Error())
-			return fmt.Errorf("reading start frame: %w", err)
-		}
-		err = s.runQuery(buf)
-		if err != nil {
-			s.senderr(err.Error())
-			// note: we don't close the connection here;
-			// we let the client tear down the connection
-		}
-		if s.writeFail {
-			return nil
-		}
+	f, err := s.frame()
+	if err != nil {
+		return err
 	}
+	if f.kind() != framestart {
+		s.senderr("unexpected frame")
+		return fmt.Errorf("received unexpected frame %x", f)
+	}
+	buf, err := s.readn(f.length())
+	if err != nil {
+		s.senderr(err.Error())
+		return fmt.Errorf("reading start frame: %w", err)
+	}
+	ctx, cancel := s.context()
+	err = s.runQuery(buf, ctx, cancel)
+	if err != nil {
+		// try to respond with an error
+		// if the pipe isn't already closed:
+		s.senderr(err.Error())
+	}
+	return nil
 }
 
 // Write implements io.Writer (passed to Exec);
@@ -404,7 +414,8 @@ func (s *server) fin(stat *ExecStats) error {
 	return err
 }
 
-func (s *server) runQuery(buf []byte) error {
+func (s *server) runQuery(buf []byte, ctx context.Context, cancel func()) error {
+	defer cancel()
 	s.st.Reset()
 	var err error
 	var t *Tree
@@ -417,12 +428,16 @@ func (s *server) runQuery(buf []byte) error {
 	if err != nil {
 		return err
 	}
-	var stat ExecStats
-	err = Exec(t, s, &stat)
+	lp := LocalTransport{}
+	ep := ExecParams{
+		Output:  s,
+		Context: ctx,
+	}
+	err = lp.Exec(t, &ep)
 	if err != nil {
 		return err
 	}
-	return s.fin(&stat)
+	return s.fin(&ep.Stats)
 }
 
 // Client represents a connection to a "remote"
@@ -459,20 +474,22 @@ type Client struct {
 // and returns a new table expression.
 type TableRewrite func(*expr.Table, TableHandle) (*expr.Table, TableHandle)
 
+var _ Transport = &Client{}
+
 // Exec executes a query across the client connection.
 // Exec implements Transport.Exec.
 //
 // Exec is *not* safe to call from multiple goroutines
 // simultaneously.
-func (c *Client) Exec(t *Tree, rw TableRewrite, dst io.Writer, stat *ExecStats) error {
+func (c *Client) Exec(t *Tree, ep *ExecParams) error {
 	c.st.Reset()
 	c.iob.Reset()
 	c.valid = 0
-	err := c.send(t, rw)
+	err := c.send(t, ep.Rewrite)
 	if err != nil {
 		return err
 	}
-	return c.copyout(dst, stat)
+	return c.copyout(ep)
 }
 
 // Close closes c.Pipe
@@ -598,10 +615,36 @@ func (c *Client) decodestat(stat *ExecStats, size int) error {
 	return nil
 }
 
-func (c *Client) copyout(dst io.Writer, stat *ExecStats) error {
+func (c *Client) closeOnCancel(cancel, done <-chan struct{}) {
+	select {
+	case <-cancel:
+		c.Pipe.Close()
+	case <-done:
+	}
+}
+
+func (c *Client) copyout(ep *ExecParams) error {
+	dst := ep.Output
+	stat := &ep.Stats
+	var done chan struct{}
+	if ep.Context != nil {
+		if cancel := ep.Context.Done(); cancel != nil {
+			done = make(chan struct{})
+			defer func() {
+				close(done)
+			}()
+			go c.closeOnCancel(cancel, done)
+		}
+	}
 	for {
 		f, err := c.next()
 		if err != nil {
+			// see if the error was due to cancellation, etc:
+			if ep.Context != nil {
+				if ctxerr := ep.Context.Err(); ctxerr != nil {
+					err = ctxerr
+				}
+			}
 			return fmt.Errorf("plan.Client: reading from connection: %w", err)
 		}
 		switch f.kind() {

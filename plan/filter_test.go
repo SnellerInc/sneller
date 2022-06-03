@@ -16,6 +16,7 @@ package plan
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -61,8 +62,8 @@ type filterHandle struct {
 	env *filterEnv
 }
 
-func (h *filterHandle) Open() (vm.Table, error) {
-	return h.th.Open()
+func (h *filterHandle) Open(ctx context.Context) (vm.Table, error) {
+	return h.th.Open(ctx)
 }
 
 func (h *filterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {

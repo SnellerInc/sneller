@@ -22,8 +22,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
 type memItem struct {
@@ -108,42 +106,6 @@ func (m *memqueue) Next(pause time.Duration) (QueueItem, error) {
 	}
 }
 
-func (m *memqueue) ReadInputs(dst []QueueItem) (int, error) {
-	n := 0
-	for i := range dst {
-		if i >= len(m.retry) {
-			break
-		}
-		dst[i] = m.retry[i]
-		n++
-		m.outstanding = append(m.outstanding, m.retry[i])
-	}
-	if n > 0 {
-		copy(m.retry, m.retry[n:])
-		m.retry = m.retry[:len(m.retry)-n]
-		return n, nil
-	}
-	// block on reading at least one item
-	item, ok := <-m.in
-	if !ok {
-		return 0, io.EOF
-	}
-	dst[0] = item
-	m.outstanding = append(m.outstanding, item)
-	n++
-	for n < len(dst) {
-		select {
-		case item = <-m.in:
-			m.outstanding = append(m.outstanding, item)
-			dst[n] = item
-			n++
-		default:
-			return n, nil
-		}
-	}
-	return n, nil
-}
-
 // run queue in the background and clean it up
 // on test completion, ensuring errors are checked
 func runQueue(t *testing.T, r *QueueRunner, q *memqueue) {
@@ -174,7 +136,15 @@ func TestQueue(t *testing.T) {
 			scan:  true,
 		},
 		{
+			batch: 3,
+			scan:  true,
+		},
+		{
 			batch: 1,
+			scan:  false,
+		},
+		{
+			batch: 3,
 			scan:  false,
 		},
 		{
@@ -248,12 +218,9 @@ func testQueue(t *testing.T, batchsize int, scan bool) {
 	owner := newTenant(dfs)
 	r.Owner = owner
 	r.Conf = Builder{
-		Fallback: func(_ string) blockfmt.RowFormat {
-			return blockfmt.UnsafeION()
-		},
 		Align:        1024,
 		NewIndexScan: scan,
-		GCLikelihood: 100,
+		GCLikelihood: 2,
 	}
 
 	runQueue(t, r, q)
@@ -261,7 +228,7 @@ func testQueue(t *testing.T, batchsize int, scan bool) {
 	create("aabb/file0.json", `{"name": "aabb/file0.json", "value": 0}`)
 	create("aacc/file0.json", `{"name": "aacc/file0.json", "value": 1}`)
 	// bad file; shouldn't permanently stop ingest:
-	create("aabb/file1.json", `{"name": "aabb/file0.json"`)
+	create("aabb/file1.json", `{"name": "aabb/file1.json"`)
 	// push a file that doesn't exist; this should be ignored
 	push("aabb/file0.json", "abcdefg")
 

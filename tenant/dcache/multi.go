@@ -15,6 +15,7 @@
 package dcache
 
 import (
+	"context"
 	"io"
 	"sync/atomic"
 
@@ -25,26 +26,41 @@ import (
 type MultiTable struct {
 	Stats
 	inner []*Table
+
+	// NOTE: we don't actually look for
+	// cancellation inside Segment.Decode, etc.
+	// because of coalescing; we don't want a cancellation
+	// to cause an unrelated query that happens to touch
+	// the same data to be canceled.
+	ctx   context.Context
+	donec <-chan struct{}
 	next  int32
 }
 
 // MultiTable constructs a MultiTable from a list of segments.
-func (c *Cache) MultiTable(segs []Segment, flags Flag) *MultiTable {
+// The provided context will be used to exit WriteChunks early
+// if the context is canceled between chunk fetches.
+func (c *Cache) MultiTable(ctx context.Context, segs []Segment, flags Flag) *MultiTable {
 	inner := make([]*Table, len(segs))
 	for i := range segs {
 		inner[i] = c.Table(segs[i], flags)
 	}
-	return &MultiTable{inner: inner}
+	return &MultiTable{inner: inner, ctx: ctx, donec: ctx.Done()}
 }
 
 // acquire a reference to one of the input tables
-//
-// the table at m.inner[i] is guaranteed to
-// be open once this call returns
 func (m *MultiTable) get() *Table {
 	n := atomic.AddInt32(&m.next, 1) - 1
 	if int(n) >= len(m.inner) {
 		return nil
+	}
+	// don't continue if we are canceled:
+	if m.donec != nil {
+		select {
+		case <-m.donec:
+			return nil
+		default:
+		}
 	}
 	t := m.inner[n]
 	return t
@@ -94,19 +110,10 @@ func (m *MultiTable) Chunks() int {
 
 // WriteChunks implements vm.Table.WriteChunks
 func (m *MultiTable) WriteChunks(dst vm.QuerySink, parallel int) error {
-	// the strategy here is just to have the Table.write
-	// method return early and proceed to the next table
-	// if its input has already been exhausted; this keeps
-	// all of the parallel goroutines fully-utilized for
-	// as long as possible
-	//
-	// one drawback of opening every cache entry here
-	// is that we end up mapping everything simultaneously;
-	// this may not be ideal from a memory-pressure perspective...
-	// on the flip side, we can rely on the table implementation
-	// to simply avoid caching anything at all if we end up exhausting
-	// the local cache by trying to open everything at once
 	err := vm.SplitInput(dst, m.open(parallel), m.write)
 	m.next = 0
-	return err
+	if err != nil {
+		return err
+	}
+	return m.ctx.Err()
 }

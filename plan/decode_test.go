@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -75,7 +76,7 @@ func (b *benchenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error)
 	return &blobHandle{l}, nil
 }
 
-func (b *benchenv) Open() (vm.Table, error) {
+func (b *benchenv) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("open not allowed")
 }
 
@@ -83,7 +84,7 @@ type blobHandle struct {
 	*blob.List
 }
 
-func (b *blobHandle) Open() (vm.Table, error) {
+func (b *blobHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("Open() not allowed")
 }
 

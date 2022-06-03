@@ -15,6 +15,7 @@
 package tnproto
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"math/rand"
@@ -59,7 +60,7 @@ func TestAttach(t *testing.T) {
 
 type largeOpaque struct{}
 
-func (l largeOpaque) Open() (vm.Table, error) {
+func (l largeOpaque) Open(_ context.Context) (vm.Table, error) {
 	panic("largeOpaque.Open()")
 }
 

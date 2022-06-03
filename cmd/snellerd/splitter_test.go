@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -58,7 +57,7 @@ func decodeFakeTransport(st *ion.Symtab, buf []byte) (plan.Transport, error) {
 	return nil, errors.New("no transport field")
 }
 
-func (t fakeTransport) Exec(*plan.Tree, plan.TableRewrite, io.Writer, *plan.ExecStats) error {
+func (t fakeTransport) Exec(*plan.Tree, *plan.ExecParams) error {
 	panic("fake transport cannot exec")
 }
 

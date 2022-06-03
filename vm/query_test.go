@@ -17,6 +17,7 @@ package vm_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +46,7 @@ var sepdash = []byte("---")
 
 type bufhandle []byte
 
-func (b bufhandle) Open() (vm.Table, error) {
+func (b bufhandle) Open(_ context.Context) (vm.Table, error) {
 	return vm.BufferTable([]byte(b), len(b)), nil
 }
 
@@ -55,7 +56,7 @@ func (b bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 type chunkshandle [][]byte
 
-func (c chunkshandle) Open() (vm.Table, error) {
+func (c chunkshandle) Open(_ context.Context) (vm.Table, error) {
 	return c, nil
 }
 
@@ -100,7 +101,7 @@ func (p parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 func (p parallelchunks) Chunks() int { return len(p) }
 
-func (p parallelchunks) Open() (vm.Table, error) {
+func (p parallelchunks) Open(_ context.Context) (vm.Table, error) {
 	return p, nil
 }
 
@@ -141,7 +142,7 @@ type benchTable struct {
 	count int64
 }
 
-func (b *benchTable) Open() (vm.Table, error) {
+func (b *benchTable) Open(_ context.Context) (vm.Table, error) {
 	return b, nil
 }
 

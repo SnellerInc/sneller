@@ -83,7 +83,7 @@ func (n noTableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (n noTableHandle) Open() (vm.Table, error) {
+func (n noTableHandle) Open(_ context.Context) (vm.Table, error) {
 	panic("noTableHandle.Open()")
 	return nil, nil
 }

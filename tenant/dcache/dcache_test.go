@@ -19,6 +19,7 @@ package dcache
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -491,7 +492,7 @@ func TestConcurrentAccess(t *testing.T) {
 	for i := 0; i < parallel; i++ {
 		go func() {
 			out := seg.testrep(2)
-			tbl := cache.MultiTable([]Segment{seg, seg}, 0)
+			tbl := cache.MultiTable(context.Background(), []Segment{seg, seg}, 0)
 			err := tbl.WriteChunks(out, parallel)
 			if err != nil {
 				cc <- err
@@ -525,6 +526,43 @@ func TestConcurrentAccess(t *testing.T) {
 	if n := cache.LiveHits(); n != 0 {
 		t.Errorf("%d mappings live?", n)
 	}
+}
+
+func TestCancel(t *testing.T) {
+	testFiles(t)
+	parallel := 10
+	cc := make(chan error, parallel)
+	cache := New(t.TempDir(), func() {})
+	cache.Logger = &testLogger{out: t}
+	seg := randseg(100, 4000, 80927)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := 0; i < parallel; i++ {
+		go func() {
+			out := seg.testrep(2)
+			tbl := cache.MultiTable(ctx, []Segment{seg, seg}, 0)
+			err := tbl.WriteChunks(out, parallel)
+			if err != nil {
+				if tbl.Hits() != 0 && tbl.Misses() != 0 {
+					// we canceled before beginning any operations,
+					// so this should scan 0 segments
+					cc <- fmt.Errorf("%d hit %d misses?", tbl.Hits(), tbl.Misses())
+					return
+				}
+				cc <- err
+				return
+			}
+			cc <- out.check()
+		}()
+	}
+	for i := 0; i < parallel; i++ {
+		err := <-cc
+		if !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+	}
+	cache.Close()
+	assertUnlocked(t, cache, seg)
 }
 
 // even when allocating a cache entry fails,
@@ -617,7 +655,7 @@ func testMulti(t *testing.T, flags Flag, hits, misses int64) {
 	}}
 	c := New(t.TempDir(), func() {})
 	defer c.Close()
-	tbl := c.MultiTable([]Segment{seg0, seg1, seg2, seg3}, flags)
+	tbl := c.MultiTable(context.Background(), []Segment{seg0, seg1, seg2, seg3}, flags)
 	err := tbl.WriteChunks(mo, 8)
 	if err != nil {
 		t.Fatal(err)
