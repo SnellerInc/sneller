@@ -430,6 +430,10 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 			t.Errorf("partial=%v, scanned=%d, all=%d", queries[i].partial, scannedsize, tablesize)
 		}
 		checkTiming(res)
+		if i%4 == 3 {
+			// occasionally establish new connections
+			http.DefaultClient.CloseIdleConnections()
+		}
 	}
 
 	// get coverage of JSON responses

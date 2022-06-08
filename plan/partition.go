@@ -615,10 +615,10 @@ func (c *Client) decodestat(stat *ExecStats, size int) error {
 	return nil
 }
 
-func (c *Client) closeOnCancel(cancel, done <-chan struct{}) {
+func closeOnCancel(pipe io.ReadWriteCloser, cancel, done <-chan struct{}) {
 	select {
 	case <-cancel:
-		c.Pipe.Close()
+		pipe.Close()
 	case <-done:
 	}
 }
@@ -627,23 +627,19 @@ func (c *Client) copyout(ep *ExecParams) error {
 	dst := ep.Output
 	stat := &ep.Stats
 	var done chan struct{}
-	if ep.Context != nil {
-		if cancel := ep.Context.Done(); cancel != nil {
-			done = make(chan struct{})
-			defer func() {
-				close(done)
-			}()
-			go c.closeOnCancel(cancel, done)
-		}
+	if cancel := ep.Context.Done(); cancel != nil {
+		done = make(chan struct{})
+		defer func() {
+			close(done)
+		}()
+		go closeOnCancel(c.Pipe, cancel, done)
 	}
 	for {
 		f, err := c.next()
 		if err != nil {
 			// see if the error was due to cancellation, etc:
-			if ep.Context != nil {
-				if ctxerr := ep.Context.Err(); ctxerr != nil {
-					err = ctxerr
-				}
+			if ctxerr := ep.Context.Err(); ctxerr != nil {
+				err = ctxerr
 			}
 			return fmt.Errorf("plan.Client: reading from connection: %w", err)
 		}

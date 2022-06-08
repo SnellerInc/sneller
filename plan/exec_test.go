@@ -1456,7 +1456,8 @@ func testRemoteEquivalent(t *testing.T, tree *Tree,
 
 	c := Client{Pipe: funkyPipe{local}}
 	ep := &ExecParams{
-		Output: &buf,
+		Output:  &buf,
+		Context: context.Background(),
 	}
 	err := c.Exec(tree, ep)
 	if err != nil {
@@ -1602,7 +1603,7 @@ func TestServerError(t *testing.T) {
 
 	cl := Client{Pipe: local}
 	var out bytes.Buffer
-	ep := &ExecParams{Output: &out}
+	ep := &ExecParams{Output: &out, Context: context.Background()}
 	err = cl.Exec(tree, ep)
 	if err == nil {
 		t.Fatal("no failure message?")

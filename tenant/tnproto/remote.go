@@ -138,6 +138,7 @@ func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
 	cl.Pipe = conn
 	defer func() {
 		cl.Close()
+		cl.Pipe = nil
 		clientPool.Put(cl)
 	}()
 	return cl.Exec(t, ep)
