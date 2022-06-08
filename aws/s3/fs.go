@@ -392,7 +392,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 		"list-type=2",
 	}
 	if p.Path != "" && p.Path != "." {
-		parts = append(parts, fmt.Sprintf("prefix=%s", url.QueryEscape(p.Path)))
+		parts = append(parts, fmt.Sprintf("prefix=%s", url.PathEscape(p.Path)))
 	}
 	if n > 0 {
 		if p.Path != "." && p.Path[len(p.Path)-1] == '/' && n == 1 {

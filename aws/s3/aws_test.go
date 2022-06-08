@@ -95,7 +95,7 @@ func TestAWS(t *testing.T) {
 // write an object, read it back, and delete it
 func testBasicCrud(t *testing.T, b *BucketFS, prefix string) {
 	contents := []byte("here are some object contents")
-	fullp := path.Join(prefix, "foo/bar/contents")
+	fullp := path.Join(prefix, "foo/bar/filename with spaces")
 	etag, err := b.Put(fullp, contents)
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +131,8 @@ func testBasicCrud(t *testing.T, b *BucketFS, prefix string) {
 		t.Fatal(err)
 	}
 
-	// should get fs.ErrNotExist on another get
+	// should get fs.ErrNotExist on another get;
+	// this path exercises the list-for-get path:
 	f, err = b.Open(fullp)
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("open non-existent file yields %v", err)
