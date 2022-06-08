@@ -106,6 +106,10 @@ func TestString(t *testing.T) {
 			"c = (a AND b)",
 		},
 		{
+			Compare(Ilike, path("x", "y"), String("%xyz%")),
+			"x.y ILIKE '%xyz%'",
+		},
+		{
 			// test for valid PartiQL list literal syntax
 			&List{Values: []Constant{Integer(3), Float(2.5), String("foo")}},
 			"[3, 2.5, 'foo']",

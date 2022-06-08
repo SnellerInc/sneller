@@ -1465,6 +1465,8 @@ func (c *Comparison) text(dst *strings.Builder, redact bool) {
 		middle = " >= "
 	case Like:
 		middle = " LIKE "
+	case Ilike:
+		middle = " ILIKE "
 	default:
 		middle = " Comparison(???)"
 	}
