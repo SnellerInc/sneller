@@ -153,6 +153,11 @@ func New(dir string, onFill func()) *Cache {
 	}
 	c.queue.reserved = make(map[string]*reservation)
 	parallel := runtime.GOMAXPROCS(0)
+	extrafill := (parallel + 1) / 2
+	c.queue.bgfill = make(chan struct{}, extrafill)
+	for i := 0; i < extrafill; i++ {
+		c.queue.bgfill <- struct{}{}
+	}
 	c.queue.out = make(chan *reservation, parallel)
 	c.wg.Add(parallel)
 	for i := 0; i < parallel; i++ {

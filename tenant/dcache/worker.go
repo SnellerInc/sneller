@@ -41,6 +41,20 @@ type queue struct {
 	lock     sync.Mutex
 	reserved map[string]*reservation
 	out      chan *reservation
+	bgfill   chan struct{}
+}
+
+func (q *queue) endBackground() {
+	q.bgfill <- struct{}{}
+}
+
+func (q *queue) tryBackground() bool {
+	select {
+	case <-q.bgfill:
+		return true
+	default:
+		return false
+	}
 }
 
 func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret chan<- error) {
@@ -130,9 +144,26 @@ func (c *Cache) Close() {
 	c.wg.Wait()
 }
 
+func (c *Cache) asyncReadThrough(res *reservation, mp *mapping) bool {
+	if !c.queue.tryBackground() {
+		return false
+	}
+	go func() {
+		defer c.queue.endBackground()
+		pop, err := readThrough(res.seg, mp, res)
+		if mp != nil {
+			c.finalize(mp, pop)
+			c.unmap(mp)
+		}
+		res.close(err)
+	}()
+	return true
+}
+
 func (c *Cache) worker() {
 	defer c.wg.Done()
 	q := &c.queue
+outer:
 	for res := range q.out {
 		mp := c.mmap(res.seg, res.flags)
 
@@ -150,6 +181,10 @@ func (c *Cache) worker() {
 			c.unmap(mp)
 		} else {
 			res.miss()
+			if c.asyncReadThrough(res, mp) {
+				// res.close() will be called elsewhere
+				continue outer
+			}
 			pop, err = readThrough(res.seg, mp, res)
 			if mp != nil {
 				c.finalize(mp, pop)
