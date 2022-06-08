@@ -16,19 +16,20 @@ package tenant
 
 import (
 	"fmt"
-	"math"
 	"math/rand"
 	"testing"
+
+	"golang.org/x/exp/slices"
 )
 
 func checkheap(t *testing.T, lst []fprio) {
 	for i := range lst {
 		left := (i * 2) + 1
 		right := left + 1
-		if len(lst) > left && lst[left].atime < lst[i].atime {
+		if len(lst) > left && lst[left].atime > lst[i].atime {
 			t.Errorf("heap invariant violated: element %d > %d", left, i)
 		}
-		if len(lst) > right && lst[right].atime < lst[i].atime {
+		if len(lst) > right && lst[right].atime > lst[i].atime {
 			t.Errorf("heap invariant violated: element %d > %d", right, i)
 		}
 	}
@@ -51,21 +52,13 @@ func TestHeapOrder(t *testing.T) {
 	if len(e.lst) != entries {
 		t.Fatalf("len(e.lst)=%d, wanted %d", len(e.lst), entries)
 	}
-	prevatime := int64(math.MinInt64)
-	elem := 0
-	for len(e.lst) > 0 {
-		// pop() should yield atimes in ascending order
-		name, atime, size := e.pop()
-		if atime < prevatime {
-			t.Fatalf("unsorted at elem %d: prev=%d, atime=%d", elem, prevatime, atime)
-		}
-		if name != fmt.Sprintf("atime=%d", atime) {
-			t.Fatalf("name corrupted: %q", name)
-		}
-		if size != 1000 {
-			t.Fatalf("size corrupted: %d", size)
-		}
-		prevatime = atime
-		elem++
+	e.sort()
+	if len(e.sorted) != entries {
+		t.Errorf("len(e.sorted)=%d", len(e.sorted))
+	}
+	if !slices.IsSortedFunc(e.sorted, func(x, y fprio) bool {
+		return x.atime < y.atime
+	}) {
+		t.Error("e.sort() doesn't return a sorted slice")
 	}
 }

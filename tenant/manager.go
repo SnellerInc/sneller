@@ -500,7 +500,7 @@ func (m *Manager) clean(dir string) error {
 	if err != nil {
 		return err
 	}
-	return os.Mkdir(dir, 0755)
+	return os.Mkdir(dir, 0750)
 }
 
 func (m *Manager) launch(id tnproto.ID) (*child, error) {

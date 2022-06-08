@@ -76,19 +76,33 @@ type fprio struct {
 type evictHeap struct {
 	lst    []fprio
 	sorted []fprio
+	// we limit the number of files considered
+	// for eviction so that the number of files
+	// present in the cache directory does not
+	// affect the amount of memory we need to
+	// consume in order to select good candidates
+	maxbuffer int
 }
 
 // sort the final heap results by
 // *least recently accessed time*
 func (e *evictHeap) sort() {
-	e.sorted = e.sorted[:0]
-	for len(e.lst) > 0 {
-		e.sorted = append(e.sorted, heap.PopSlice(&e.lst, atimeLRU))
+	if cap(e.sorted) >= len(e.lst) {
+		e.sorted = e.sorted[:len(e.lst)]
+	} else {
+		e.sorted = make([]fprio, len(e.lst))
+	}
+	for i := len(e.sorted) - 1; i >= 0; i-- {
+		e.sorted[i] = heap.PopSlice(&e.lst, atimeLRU)
 	}
 }
 
 func atimeLRU(x, y fprio) bool {
-	return x.atime < y.atime
+	return y.atime < x.atime
+}
+
+func (e *evictHeap) max() int64 {
+	return e.lst[0].atime
 }
 
 func (e *evictHeap) push(path string, atime int64, size int64) {
@@ -99,22 +113,8 @@ func (e *evictHeap) push(path string, atime int64, size int64) {
 	}, atimeLRU)
 }
 
-// shrink the heap while it is larger than max elements
-func (e *evictHeap) shrink(max int) {
-	for len(e.lst) > max {
-		heap.PopSlice(&e.lst, atimeLRU)
-	}
-}
-
-// pop the *most recently accessed* file from
-// the eviction heap
-func (e *evictHeap) pop() (string, int64, int64) {
-	f := heap.PopSlice(&e.lst, atimeLRU)
-	return f.path, f.atime, f.size
-}
-
 func (m *Manager) evict(e *evictHeap, size int64) {
-	for {
+	for size > 0 {
 		if len(e.sorted) == 0 {
 			m.fill(e)
 			e.sort()
@@ -148,12 +148,6 @@ func (m *Manager) evict(e *evictHeap, size int64) {
 }
 
 func (m *Manager) fill(e *evictHeap) {
-	// we limit the number of files considered
-	// for eviction so that the number of files
-	// present in the cache directory does not
-	// affect the amount of memory we need to
-	// consume in order to select good candidates
-	const maxbuffered = 25
 	walk := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -172,8 +166,13 @@ func (m *Manager) fill(e *evictHeap) {
 			}
 			return err
 		}
-		e.push(path, atime(info), info.Size())
-		e.shrink(maxbuffered)
+		at := atime(info)
+		if len(e.lst) < e.maxbuffer || at < e.max() {
+			// push this item *only if* it is a better candidate
+			// than the worst so far *or* if we have less than
+			// the buffered min
+			e.push(path, at, info.Size())
+		}
 		return nil
 	}
 	err := filepath.WalkDir(m.CacheDir, walk)
@@ -184,6 +183,10 @@ func (m *Manager) fill(e *evictHeap) {
 }
 
 func (m *Manager) cacheEvict() {
+	if m.eheap.maxbuffer == 0 {
+		// pick a sane default for the cached list
+		m.eheap.maxbuffer = 25
+	}
 	// target usage of 90% of the disk blocks;
 	// this gives us a little headroom for polling delay
 	used, avail := usage(m.CacheDir)

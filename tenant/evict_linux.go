@@ -33,10 +33,7 @@ func eventfd() (*os.File, error) {
 		syseventfd2  = 290 // int eventfd(unsigned int count, int flags);
 		efdSemaphore = 1
 	)
-	// we supply EFD_SEMPAHORE in order
-	// to guarantee that calls to write() and read()
-	// are matched 1-to-1
-	rc, _, err := syscall.Syscall(syseventfd2, 0, syscall.O_NONBLOCK|syscall.O_CLOEXEC|efdSemaphore, 0)
+	rc, _, err := syscall.Syscall(syseventfd2, 0, syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if err != 0 {
 		return nil, err
 	}

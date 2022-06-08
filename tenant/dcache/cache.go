@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -215,6 +216,11 @@ func (c *Cache) unlockIDMapped(id string, mp *mapping) {
 	c.cond.Broadcast()
 }
 
+func mkdir(name string, mode os.FileMode) bool {
+	err := os.Mkdir(name, mode)
+	return err == nil || errors.Is(err, fs.ErrExist)
+}
+
 // how this is *currently* implemented:
 // we create a file "ID.tmp" that holds the
 // cache data while the entry is being populated,
@@ -230,7 +236,16 @@ func (c *Cache) unlockIDMapped(id string, mp *mapping) {
 // or otherwise aborted the query)
 func (c *Cache) mmap(s Segment, flags Flag) *mapping {
 	id := s.ETag()
-	target := filepath.Join(c.dir, id)
+	var target string
+	var predir string
+	if len(id) >= 2 {
+		// add 1 level of indirection so that a subsequent
+		// readdir opertion need not lock the entire directory
+		predir = filepath.Join(c.dir, id[:1])
+		target = filepath.Join(predir, id[1:])
+	} else {
+		target = filepath.Join(c.dir, id)
+	}
 	if m := c.lockID(id); m != nil {
 		atomic.AddInt64(&c.hits, 1)
 		return m
@@ -277,6 +292,13 @@ func (c *Cache) mmap(s Segment, flags Flag) *mapping {
 	c.onFill()
 	// we are creating a new entry
 	f, err = os.Create(target + ".tmp")
+	if errors.Is(err, fs.ErrNotExist) &&
+		predir != "" && mkdir(predir, 0750) {
+		// we don't insert the mkdir in this path
+		// ordinarily because this isn't something
+		// we ever deliberately delete:
+		f, err = os.Create(target + ".tmp")
+	}
 	if err != nil {
 		// couldn't even create the file
 		c.unlockID(id)

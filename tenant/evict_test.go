@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestEvict(t *testing.T) {
@@ -45,39 +47,44 @@ func TestEvict(t *testing.T) {
 
 	base := time.Now().UnixNano()
 	begin := []fsent{
-		// total size is 940/1000 in the starting state
-		{"000", 500, base + 100},
-		{"001", 100, base + 200},
-		{"002", 100, base + 300},
-		{"003", 120, base + 300},
-		{"004", 120, base + 500},
+		// total size is 2000/2000 in the starting state;
+		// target will be 1800/2000 which means removing
+		// the two oldest files (000 and 005)
+		{"0/00", 100, base + 100},
+		{"0/01", 100, base + 200},
+		{"0/02", 100, base + 300},
+		{"0/03", 100, base + 300},
+		{"1/04", 1500, base + 500},
+		{"1/05", 100, base - 200},
 	}
 	// the end state should just be the start state
 	// minus the oldest file (which is listed first)
-	end := begin[1:]
+	end := begin[1:5]
 
 	myUsage := func(dir string) (int64, int64) {
-		if dir != tmp {
-			t.Fatal("bad tmpdir", dir)
-		}
-		contents, err := os.ReadDir(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
 		sum := int64(0)
-		for i := range contents {
-			fi, err := contents[i].Info()
+		err := filepath.WalkDir(dir, func(_ string, info fs.DirEntry, err error) error {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sum += fi.Size()
+			if info.Type().IsRegular() {
+				inode, err := info.Info()
+				if err != nil {
+					return err
+				}
+				sum += inode.Size()
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		return sum, 1000
+		return sum, 2000
 	}
 	myAtime := func(i fs.FileInfo) int64 {
 		name := i.Name()
 		for i := range begin {
-			if begin[i].name == name {
+			if strings.HasSuffix(begin[i].name, name) {
 				return begin[i].atime
 			}
 		}
@@ -92,50 +99,65 @@ func TestEvict(t *testing.T) {
 	for i := range begin {
 		fullpath := filepath.Join(tmp, begin[i].name)
 		contents := []byte(strings.Repeat("a", int(begin[i].size)))
+		os.MkdirAll(filepath.Dir(fullpath), 0755)
 		err := ioutil.WriteFile(fullpath, contents, 0644)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
+	readall := func(dir string) []string {
+		var final []string
+		err := filepath.WalkDir(dir, func(p string, info fs.DirEntry, err error) error {
+			if err != nil {
+				println("WalkDir error", err.Error())
+				return err
+			}
+			if info.Type().IsRegular() {
+				final = append(final, strings.TrimPrefix(p, dir)[1:])
+			}
+			return nil
+		})
+		if err != nil {
+			t.Helper()
+			t.Fatal(err)
+		}
+		return final
+	}
+
 	m := NewManager([]string{"/bin/false"})
 	m.CacheDir = tmp
+	// we only need two items buffered
+	// to pick the right ones, so let's
+	// exercise that path:
+	m.eheap.maxbuffer = 2
 	m.cacheEvict()
 
-	final, err := os.ReadDir(tmp)
-	if err != nil {
-		t.Fatal(err)
-	}
+	final := readall(tmp)
 	if len(final) != len(end) {
-		t.Fatalf("%d files remaining?", len(final))
+		t.Fatalf("%v remaining?", final)
 	}
 	// both 'final' and 'end' are sorted
 	for i := range final {
 		e := &end[i]
-		if e.name != final[i].Name() {
-			t.Errorf("expected %s found %s", e.name, final[i].Name())
+		if e.name != final[i] {
+			t.Errorf("expected %s found %s", e.name, final[i])
 		}
 	}
-	if len(m.eheap.sorted) != len(final) {
-		t.Errorf("%d entries in sorted heap but %d final dirents?", len(m.eheap.sorted), len(final))
 
-	}
-
-	// check that sorted really means sorted;
-	// each element's atime should be less than the next
-	for i := range m.eheap.sorted[:len(m.eheap.sorted)-1] {
-		j := i + 1
-		if m.eheap.sorted[i].atime > m.eheap.sorted[j].atime {
-			t.Errorf("heap.sorted[%d] > heap.sorted[%d]", i, j)
-		}
+	if !slices.IsSortedFunc(m.eheap.sorted, func(x, y fprio) bool {
+		return x.atime < y.atime
+	}) {
+		t.Error("heap.sorted not sorted")
 	}
 
 	// since we've satisfied the usage criteria,
 	// a second call to cacheEvict() shouldn't try
 	// to remove anything
 	m.cacheEvict()
-	if len(m.eheap.sorted) != len(final) {
-		t.Errorf("second call to cacheEvict removed %d entries?", len(final)-len(m.eheap.sorted))
+	final = readall(tmp)
+	if len(final) != len(end) {
+		t.Fatalf("%d files remaining?", len(final))
 	}
 }
 
