@@ -95,7 +95,7 @@ func TestAWS(t *testing.T) {
 // write an object, read it back, and delete it
 func testBasicCrud(t *testing.T, b *BucketFS, prefix string) {
 	contents := []byte("here are some object contents")
-	fullp := path.Join(prefix, "foo/bar/filename with spaces")
+	fullp := path.Join(prefix, "foo/bar/filename-with:chars= space")
 	etag, err := b.Put(fullp, contents)
 	if err != nil {
 		t.Fatal(err)

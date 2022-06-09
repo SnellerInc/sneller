@@ -392,7 +392,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 		"list-type=2",
 	}
 	if p.Path != "" && p.Path != "." {
-		parts = append(parts, fmt.Sprintf("prefix=%s", url.PathEscape(p.Path)))
+		parts = append(parts, "prefix="+queryEscape(p.Path))
 	}
 	if n > 0 {
 		if p.Path != "." && p.Path[len(p.Path)-1] == '/' && n == 1 {
@@ -403,7 +403,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 		parts = append(parts, fmt.Sprintf("max-keys=%d", n))
 	}
 	if p.token != "" {
-		parts = append(parts, fmt.Sprintf("continuation-token=%s", url.QueryEscape(p.token)))
+		parts = append(parts, "continuation-token="+url.QueryEscape(p.token))
 	}
 	sort.Strings(parts)
 	query := "?" + strings.Join(parts, "&")

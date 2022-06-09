@@ -138,8 +138,11 @@ func rawURI(k *aws.SigningKey, bucket string, query string) string {
 // back into / because AWS accepts those
 // as part of the URI
 func almostPathEscape(s string) string {
-	full := url.PathEscape(s)
-	return strings.Replace(full, "%2F", "/", -1)
+	return strings.Replace(queryEscape(s), "%2F", "/", -1)
+}
+
+func queryEscape(s string) string {
+	return strings.Replace(url.QueryEscape(s), "+", "%20", -1)
 }
 
 // uri produces a URI by path-escaping the object string

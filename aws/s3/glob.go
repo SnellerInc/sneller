@@ -123,13 +123,13 @@ func (b *BucketFS) globAt(start, pre, pattern string, walk fsutil.WalkGlobFn) er
 		parts := []string{
 			"list-type=2",
 			"max-keys=1000",
-			"prefix=" + url.QueryEscape(pre),
+			"prefix=" + queryEscape(pre),
 		}
 		if cont != "" {
 			parts = append(parts, "continuation-token="+url.QueryEscape(cont))
 		}
 		if start != "" && start > pre {
-			parts = append(parts, "start-after="+url.QueryEscape(start))
+			parts = append(parts, "start-after="+queryEscape(start))
 		}
 		sort.Strings(parts)
 		query := "?" + strings.Join(parts, "&")
