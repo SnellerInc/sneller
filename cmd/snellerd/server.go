@@ -113,6 +113,12 @@ func (s *server) Serve(httpsock, tenantsock net.Listener) error {
 	s.srv.ConnContext = func(ctx context.Context, conn net.Conn) context.Context {
 		return context.WithValue(ctx, rawConnKey, conn)
 	}
+	// peers use the manager tenant socket, so this has
+	// to occur quite late:
+	err := s.peers.Start(5*time.Second, s.logger.Printf)
+	if err != nil {
+		s.logger.Fatal(err)
+	}
 	s.srv.Handler = s.handler()
 	if s.aboutToServe != nil {
 		s.aboutToServe()

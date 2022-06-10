@@ -15,6 +15,8 @@
 package tnproto
 
 import (
+	"errors"
+	"io"
 	"net"
 )
 
@@ -27,4 +29,20 @@ func Attach(dst net.Conn, id ID) error {
 	hdr.populate(id)
 	_, err := dst.Write(hdr.body[:])
 	return err
+}
+
+// Ping sends an Attach message with a zero
+// tenant ID and waits for the remote end to
+// close the connection.
+func Ping(dst net.Conn) error {
+	var zeroid ID
+	err := Attach(dst, zeroid)
+	if err != nil {
+		return err
+	}
+	_, err = dst.Read(zeroid[:])
+	if !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }

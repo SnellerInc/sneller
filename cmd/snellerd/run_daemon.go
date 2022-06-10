@@ -49,27 +49,6 @@ func runDaemon(args []string) {
 		tenantcmd: []string{exe, "worker"},
 		peers:     noPeers{},
 	}
-	if *peerExec != "" {
-		server.peers = &peerCmd{
-			cmd: strings.Fields(*peerExec),
-		}
-	}
-	err = server.peers.Start(5*time.Second, server.logger.Printf)
-	if err != nil {
-		server.logger.Fatal(err)
-	}
-
-	provider, err := auth.Parse(*authEndpoint)
-	if err != nil {
-		if len(*authEndpoint) == 0 {
-			// read from env
-			server.logger.Fatalf("Unable to parse authorization: %s environment variable", err)
-		} else {
-			server.logger.Fatalf("Unable to parse authorization specification from '%s': %s", *authEndpoint, err)
-		}
-	}
-	server.auth = provider
-
 	httpl, err := net.Listen("tcp", *daemonEndpoint)
 	if err != nil {
 		server.logger.Fatal(err)
@@ -81,6 +60,16 @@ func runDaemon(args []string) {
 			server.logger.Fatal(err)
 		}
 	}
+	provider, err := auth.Parse(*authEndpoint)
+	if err != nil {
+		if len(*authEndpoint) == 0 {
+			// read from env
+			server.logger.Fatalf("Unable to parse authorization: %s environment variable", err)
+		} else {
+			server.logger.Fatalf("Unable to parse authorization specification from '%s': %s", *authEndpoint, err)
+		}
+	}
+	server.auth = provider
 
 	if dir := os.Getenv("CACHEDIR"); dir != "" {
 		server.cachedir = dir
@@ -91,6 +80,11 @@ func runDaemon(args []string) {
 		server.logger.Println("sandboxing enabled")
 	}
 
+	if *peerExec != "" {
+		server.peers = &peerCmd{
+			cmd: strings.Fields(*peerExec),
+		}
+	}
 	go func() {
 		server.logger.Printf("Sneller daemon %s listening on %v\n", version, httpl.Addr())
 		err := server.Serve(httpl, tenantl)

@@ -699,8 +699,7 @@ func (m *Manager) handleRemote(conn net.Conn) {
 		return
 	}
 	if id.IsZero() {
-		m.errorf("refusing to handle zero ID from %s", conn.RemoteAddr())
-		return
+		return // ping message; just expecting a Close()
 	}
 	c, err := m.get(id)
 	if err != nil {

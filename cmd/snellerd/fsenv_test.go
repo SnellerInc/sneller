@@ -33,7 +33,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/ion"
@@ -207,12 +206,14 @@ func TestSimpleFS(t *testing.T) {
 		cachedir:  t.TempDir(),
 		tenantcmd: []string{"./snellerd-test-binary", "worker"},
 		splitSize: 16 * 1024,
-		peers:     makePeers(t, peersock0.Addr().(*net.TCPAddr), peersock1.Addr().(*net.TCPAddr)),
-		auth:      testAuth{tt},
-	}
-	err := s.peers.Start(time.Second, t.Logf)
-	if err != nil {
-		t.Fatal(err)
+		peers: makePeers(t,
+			peersock0.Addr().(*net.TCPAddr),
+			peersock1.Addr().(*net.TCPAddr),
+			// add a bad peer address that should be
+			// filtered out on peer resolution:
+			&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54423},
+		),
+		auth: testAuth{tt},
 	}
 	httpsock := listen(t)
 	// this second peer is just here
@@ -225,10 +226,6 @@ func TestSimpleFS(t *testing.T) {
 		tenantcmd: s.tenantcmd,
 		splitSize: s.splitSize,
 		peers:     makePeers(t, peersock0.Addr().(*net.TCPAddr), peersock1.Addr().(*net.TCPAddr)),
-	}
-	err = peer.peers.Start(time.Second, t.Logf)
-	if err != nil {
-		t.Fatal(err)
 	}
 	httpsock2 := listen(t)
 

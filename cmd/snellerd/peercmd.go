@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/SnellerInc/sneller/tenant/tnproto"
 )
 
 const cmdTimeout = 30 * time.Second
@@ -45,6 +47,7 @@ type peerCmd struct {
 	cmd    []string
 	recent atomic.Value
 	ticker *time.Ticker
+	logf   func(f string, args ...interface{})
 	stop   chan struct{}
 }
 
@@ -57,6 +60,7 @@ type peerJSON struct {
 }
 
 func (p *peerCmd) Start(interval time.Duration, logf func(f string, args ...interface{})) error {
+	p.logf = logf
 	err := p.run()
 	if err != nil {
 		return err
@@ -119,6 +123,9 @@ func (p *peerCmd) run() error {
 		return err
 	}
 	lst := make([]*net.TCPAddr, 0, len(ret.Peers))
+	dl := net.Dialer{
+		Timeout: time.Second,
+	}
 	for i := range ret.Peers {
 		addr := ret.Peers[i].Addr
 		host, port, err := net.SplitHostPort(addr)
@@ -133,10 +140,19 @@ func (p *peerCmd) run() error {
 		if len(ip) == 0 {
 			return fmt.Errorf("couldn't parse peer %d IP: %w", i, err)
 		}
-		lst = append(lst, &net.TCPAddr{
-			IP:   ip,
-			Port: portnum,
-		})
+		tcpaddr := &net.TCPAddr{IP: ip, Port: portnum}
+		conn, err := dl.Dial("tcp", tcpaddr.String())
+		if err != nil {
+			p.logf("discarding peer %s: %s", addr, err)
+			continue
+		}
+		err = tnproto.Ping(conn)
+		conn.Close()
+		if err != nil {
+			p.logf("discarding peer (ping) %s: %s", addr, err)
+			continue
+		}
+		lst = append(lst, tcpaddr)
 	}
 	p.recent.Store(lst)
 	return nil
