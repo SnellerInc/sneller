@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
@@ -178,9 +179,10 @@ func (s *splitter) transport(i int) plan.Transport {
 		return &plan.LocalTransport{}
 	}
 	return &tnproto.Remote{
-		Tenant: s.workerID,
-		Net:    "tcp",
-		Addr:   nodeID,
+		Tenant:  s.workerID,
+		Net:     "tcp",
+		Addr:    nodeID,
+		Timeout: 3 * time.Second,
 	}
 }
 

@@ -116,13 +116,8 @@ var clientPool = sync.Pool{
 //
 // See also: Attach
 func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
-	var conn net.Conn
-	var err error
-	if r.Timeout != 0 {
-		conn, err = net.DialTimeout(r.Net, r.Addr, r.Timeout)
-	} else {
-		conn, err = net.Dial(r.Net, r.Addr)
-	}
+	dl := net.Dialer{Timeout: r.Timeout}
+	conn, err := dl.DialContext(ep.Context, r.Net, r.Addr)
 	if err != nil {
 		return err
 	}
@@ -130,6 +125,7 @@ func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
 	// to the right tenant instance
 	err = Attach(conn, r.Tenant)
 	if err != nil {
+		conn.Close()
 		return err
 	}
 	// now we should be talking to the tenant itself;

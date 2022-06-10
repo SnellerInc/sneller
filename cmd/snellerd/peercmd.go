@@ -107,7 +107,7 @@ func (p *peerCmd) run() error {
 
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return fmt.Errorf("running peer exited with code %d: %s", exitErr.ProcessState.ExitCode(), stderr.String())
+			return fmt.Errorf("cmdline %v exited with code %d: %s", p.cmd, exitErr.ProcessState.ExitCode(), stderr.String())
 		}
 
 		return fmt.Errorf("failed running command %q: %s", p.cmd[0], err)
