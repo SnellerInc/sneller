@@ -189,8 +189,7 @@ func (u *URL) String() string {
 	return u.Value
 }
 
-// Reader implements blob.Interface.Reader
-func (u *URL) Reader(start, size int64) (io.ReadCloser, error) {
+func (u *URL) req(start, size int64) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodGet, u.Value, nil)
 	if err != nil {
 		return nil, err
@@ -206,7 +205,28 @@ func (u *URL) Reader(start, size int64) (io.ReadCloser, error) {
 	if !u.UnsafeNoIfMatch {
 		req.Header.Set("If-Match", u.Info.ETag)
 	}
-	res, err := u.client().Do(req)
+	return req, nil
+}
+
+func flakyGet(c *http.Client, req *http.Request) (*http.Response, error) {
+	res, err := c.Do(req)
+	if req.Body != nil ||
+		(err == nil && res.StatusCode != 500 && res.StatusCode != 503) {
+		return res, err
+	}
+	// force re-dialing, which will hopefully
+	// lead to a load balancer picking a healthy backend...?
+	c.CloseIdleConnections()
+	return c.Do(req)
+}
+
+// Reader implements blob.Interface.Reader
+func (u *URL) Reader(start, size int64) (io.ReadCloser, error) {
+	req, err := u.req(start, size)
+	if err != nil {
+		return nil, err
+	}
+	res, err := flakyGet(u.client(), req)
 	if err != nil {
 		return nil, err
 	}
