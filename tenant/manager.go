@@ -152,6 +152,8 @@ type Manager struct {
 	// an extended period of time will be killed.
 	gcInterval time.Duration
 
+	lastSummary time.Time
+
 	// TODO: offer a low- and high-water-mark
 	// for subprocess reaping. Ideally we have
 	// some soft and hard limits in terms of the

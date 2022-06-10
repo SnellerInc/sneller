@@ -19,6 +19,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/SnellerInc/sneller/heap"
 )
@@ -82,6 +83,9 @@ type evictHeap struct {
 	// affect the amount of memory we need to
 	// consume in order to select good candidates
 	maxbuffer int
+
+	// summary stats:
+	runs, files, bytes, maxatime int64
 }
 
 // sort the final heap results by
@@ -130,7 +134,12 @@ func (m *Manager) evict(e *evictHeap, size int64) {
 				continue
 			}
 			if os.Remove(f.path) == nil {
+				e.files++
+				e.bytes += f.size
 				size -= f.size
+				if f.atime > e.maxatime {
+					e.maxatime = f.atime
+				}
 				if size <= 0 {
 					// copy remaining entries to the front of the cache
 					// so that we begin where we left off on the
@@ -194,5 +203,19 @@ func (m *Manager) cacheEvict() {
 	if used < target {
 		return
 	}
+	m.eheap.runs++
 	m.evict(&m.eheap, used-target)
+	if m.logger != nil && m.eheap.files > 0 &&
+		time.Since(m.lastSummary) >= time.Minute {
+		// log summary and reset
+		sec := m.eheap.maxatime / 1e9
+		nsec := m.eheap.maxatime % 1e9
+		m.logger.Printf("evict stats: %d runs, %d files, %d bytes, min age %s",
+			m.eheap.runs, m.eheap.files, m.eheap.bytes, time.Since(time.Unix(sec, nsec)))
+		m.lastSummary = time.Now()
+		m.eheap.runs = 0
+		m.eheap.files = 0
+		m.eheap.bytes = 0
+		m.eheap.maxatime = 0
+	}
 }
