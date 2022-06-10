@@ -96,6 +96,8 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sort.Limit, parallelis
 		rp:          sort.NewRuntimeParameters(parallelism),
 	}
 
+	s.rp.UseStdlib = true // see #917
+
 	s.rawrecords = make(map[uint32][][]byte)
 	if s.useKtop() {
 		s.ktop = s.newKtop()
@@ -133,7 +135,6 @@ func (s *Order) useSingleColumnSorter() bool {
 	if s.limit != nil {
 		return false
 	}
-
 	return s.rp.UseSingleColumnSorter && len(s.columns) == 1
 }
 
@@ -141,8 +142,7 @@ func (s *Order) useKtop() bool {
 	if s.limit == nil {
 		return false
 	}
-
-	return s.limit.Kind == sort.LimitToHeadRows && s.limit.Limit <= s.rp.KtopLimitThreshold
+	return s.limit.Kind == sort.LimitToHeadRows
 }
 
 func (s *Order) newKtop() *sort.Ktop {
