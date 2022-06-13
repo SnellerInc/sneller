@@ -163,7 +163,9 @@ var SuffixToFormat = map[string]func() RowFormat{
 	".json.zst": func() RowFormat {
 		return &jsonConverter{
 			decomp: func(r io.Reader) (io.Reader, error) {
-				return zstd.NewReader(r)
+				rz, err := zstd.NewReader(r)
+				err = noEOF(err, zstd.ErrMagicMismatch)
+				return rz, err
 			},
 			compname: "zst",
 		}
@@ -171,7 +173,9 @@ var SuffixToFormat = map[string]func() RowFormat{
 	".json.gz": func() RowFormat {
 		return &jsonConverter{
 			decomp: func(r io.Reader) (io.Reader, error) {
-				return gzip.NewReader(r)
+				rz, err := gzip.NewReader(r)
+				err = noEOF(err, gzip.ErrHeader)
+				return rz, err
 			},
 			compname: "gz",
 		}
@@ -184,30 +188,13 @@ var SuffixToFormat = map[string]func() RowFormat{
 // of ".gz" ".zst" or "" (none). (The only compression
 // used in practice by AWS is ".gz")
 func CloudtrailJSON(compression string) RowFormat {
-	switch compression {
-	case "":
-		return &jsonConverter{
-			isCloudtrail: true,
-		}
-	case ".gz":
-		return &jsonConverter{
-			decomp: func(r io.Reader) (io.Reader, error) {
-				return gzip.NewReader(r)
-			},
-			compname:     "gz",
-			isCloudtrail: true,
-		}
-	case ".zst":
-		return &jsonConverter{
-			decomp: func(r io.Reader) (io.Reader, error) {
-				return zstd.NewReader(r)
-			},
-			compname:     "zst",
-			isCloudtrail: true,
-		}
-	default:
-		panic("bad compression passed to blockfmt.CloudtrailJSON")
+	fn := SuffixToFormat[".json"+compression]
+	if fn == nil {
+		return nil
 	}
+	ret := fn()
+	ret.(*jsonConverter).isCloudtrail = true
+	return ret
 }
 
 // Converter performs single- or
@@ -275,6 +262,13 @@ var isFatal = []error{
 	// TODO: ion errors from transcoding?
 }
 
+func noEOF(err, sub error) error {
+	if errors.Is(err, io.EOF) {
+		return sub
+	}
+	return err
+}
+
 // IsFatal returns true if the error
 // is an error known to be fatal when
 // returned from blockfmt.Format.Convert.
@@ -305,13 +299,8 @@ func (c *Converter) MultiStream() bool {
 // then subsequent items in Inputs may not
 // have been processed at all.
 func (c *Converter) Run() error {
-	if len(c.Inputs) == 0 {
+	if len(c.Inputs) == 0 && c.Prepend.R == nil {
 		return errors.New("no inputs or merge sources")
-	}
-	if len(c.Inputs) == 0 {
-		// proxy uploader is never closed by `runSingle()` or `runMulti()`
-		// in this case -> finish uploading the uncommitted parts + trailer
-		return c.Output.Close(nil)
 	}
 	if c.MultiStream() {
 		return c.runMulti()

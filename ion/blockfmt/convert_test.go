@@ -188,6 +188,27 @@ func TestConvertEmpty(t *testing.T) {
 	check(t, &out)
 }
 
+// the error produced by trying to convert
+// an empty *.gz file should be fatal
+func TestConvertEmptyGZ(t *testing.T) {
+	inputs := []Input{{
+		R: io.NopCloser(strings.NewReader("")),
+		F: SuffixToFormat[".json.gz"](),
+	}}
+	var out BufferUploader
+	out.PartSize = 4096
+	c := Converter{
+		Output: &out,
+		Comp:   "zstd",
+		Inputs: inputs,
+		Align:  4096,
+	}
+	err := c.Run()
+	if !IsFatal(err) {
+		t.Fatalf("error %T is not fatal", err)
+	}
+}
+
 func gzipped(r io.ReadCloser) io.Reader {
 	rp, wp := io.Pipe()
 	go func() {
