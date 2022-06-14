@@ -145,6 +145,8 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 		if err != nil {
 			return nil, err
 		}
+		// we always want to hash the *unsymbolized* value
+		col = prog.unsymbolized(col)
 
 		if allColumnsHash == nil {
 			allColumnsHash = prog.hash(col)

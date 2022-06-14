@@ -210,7 +210,7 @@ func symbolizeTest(findbc *bytecode, st *ion.Symtab, node expr.Node) error {
 	program.Begin()
 	mem0 := program.InitMem()
 	var mem []*value
-	val, err := program.compileStore(mem0, node, 0)
+	val, err := program.compileStore(mem0, node, 0, true)
 	if err != nil {
 		return err
 	}

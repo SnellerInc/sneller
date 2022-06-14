@@ -149,7 +149,7 @@ func (p *Projection) Close() error {
 	return p.dst.Close()
 }
 
-func (p *projector) update(st *ion.Symtab) error {
+func (p *projector) update(st *symtab) error {
 	if p.aw.buf == nil {
 		p.aw.init(p.dst, nil, defaultAlign)
 	}
@@ -163,7 +163,7 @@ func (p *projector) update(st *ion.Symtab) error {
 	return nil
 }
 
-func (p *projector) symbolize(st *ion.Symtab) error {
+func (p *projector) symbolize(st *symtab) error {
 	sel := p.parent.sel
 	// output symbol table is the union of the
 	// input symbol table plus the output bindings
@@ -181,6 +181,7 @@ func (p *projector) symbolize(st *ion.Symtab) error {
 		p.outsel[i].value = sym
 		p.outsel[i].encoded, p.outsel[i].mask, p.outsel[i].size = encoded(sym)
 	}
+	p.bc.symtab = st.symrefs
 	// if the output slot order is the same
 	// *and* the input symbol table has not changed
 	// in a meaningful way, we don't need to recompile
@@ -205,7 +206,7 @@ func (p *projector) symbolize(st *ion.Symtab) error {
 	mem0 := prg.InitMem()
 	mem := make([]*value, len(sel))
 	for i := range sel {
-		mem[i], err = prg.compileStore(mem0, sel[p.inslot[i]].Expr, stackSlotFromIndex(regV, i))
+		mem[i], err = prg.compileStore(mem0, sel[p.inslot[i]].Expr, stackSlotFromIndex(regV, i), false)
 		if err != nil {
 			return err
 		}

@@ -3004,6 +3004,8 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		return &Timestamp{Value: date.Time(d)}, true
 	case ion.Bool:
 		return Bool(d), true
+	case ion.Interned:
+		return String(d), true
 	default:
 		// TODO: add blob, clob, bags, etc.
 		return nil, false

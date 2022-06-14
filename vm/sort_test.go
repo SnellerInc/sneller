@@ -656,7 +656,7 @@ func compareIonWithExpectations(t *testing.T, output []byte, expected []string) 
 			}
 			t.Logf("%-30s %-30s\n", v, e)
 		}
-
+		t.Helper()
 		t.Error("Wrongly sorted")
 	}
 }

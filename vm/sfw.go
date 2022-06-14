@@ -44,7 +44,7 @@ type QuerySink interface {
 type rowConsumer interface {
 	// symbolize is called every time
 	// the current symbol table changes
-	symbolize(st *ion.Symtab) error
+	symbolize(st *symtab) error
 	// writeRows writes a slice of vmrefs
 	// (pointing to the inside of each row)
 	// into the next sub-query
@@ -85,7 +85,8 @@ func asRowConsumer(dst io.WriteCloser) rowConsumer {
 // so that materialized data can be fed to a RowConsumer
 type rowSplitter struct {
 	rowConsumer            // automatically adopts writeRows() and Close()
-	st, shared  ion.Symtab // current symbol table
+	st          ion.Symtab // input symbol table
+	shared      symtab     // current symbol table
 	delims      []vmref    // buffer of delimiters; allocated lazily
 	delimhint   int
 	symbolized  bool // seen any symbol tables
@@ -183,11 +184,15 @@ func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 }
 
 func (q *rowSplitter) Close() error {
+	err := q.rowConsumer.Close()
+	// the child may have references to q.shared,
+	// so it needs to be closed before we can drop it:
+	q.shared.Reset()
 	if q.vmcache != nil {
 		Free(q.vmcache)
 		q.vmcache = nil
 	}
-	return q.rowConsumer.Close()
+	return err
 }
 
 // Write implements io.Writer
@@ -210,7 +215,13 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 		}
 		q.symbolized = true
 		boff = int32(len(buf) - len(rest))
-		q.st.CloneInto(&q.shared)
+
+		// TODO: optmize this; we are re-serializing the
+		// symbol list each time here...
+		q.shared.resetNoFree()
+		q.st.CloneInto(&q.shared.Symtab)
+		q.shared.build()
+
 		err = q.symbolize(&q.shared)
 		if err != nil {
 			return 0, err
@@ -341,7 +352,7 @@ func (m *Rematerializer) flush() error {
 }
 
 // symbolize implements RowConsumer.symbolize
-func (m *Rematerializer) symbolize(st *ion.Symtab) error {
+func (m *Rematerializer) symbolize(st *symtab) error {
 	err := m.flush()
 	if err != nil {
 		return err

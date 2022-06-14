@@ -201,10 +201,37 @@ func (e *queryenv) ListTables(db string) ([]string, error) {
 	return ts, nil
 }
 
-func rows(b []byte, outst *ion.Symtab) ([]ion.Datum, error) {
+// walk d and replace 50% of the strings with stringSyms
+func symbolizeRandomly(d ion.Datum, r *rand.Rand) {
+	switch d := d.(type) {
+	case *ion.Struct:
+		for i := range d.Fields {
+			if str, ok := d.Fields[i].Value.(ion.String); ok {
+				if r.Intn(2) == 0 {
+					d.Fields[i].Value = ion.Interned(str)
+				}
+			} else {
+				symbolizeRandomly(d.Fields[i].Value, r)
+			}
+		}
+	case ion.List:
+		for i := range d {
+			if str, ok := d[i].(ion.String); ok {
+				if r.Intn(2) == 0 {
+					d[i] = ion.Interned(str)
+				}
+			} else {
+				symbolizeRandomly(d[i], r)
+			}
+		}
+	}
+}
+
+func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
 	if len(b) == 0 {
 		return nil, nil
 	}
+	r := rand.New(rand.NewSource(0))
 	d := json.NewDecoder(bytes.NewReader(b))
 	var lst []ion.Datum
 	for {
@@ -214,6 +241,9 @@ func rows(b []byte, outst *ion.Symtab) ([]ion.Datum, error) {
 				break
 			}
 			return nil, err
+		}
+		if symbolize {
+			symbolizeRandomly(d, r)
 		}
 		lst = append(lst, d)
 	}
@@ -288,7 +318,6 @@ func shuffled(st *ion.Symtab) *ion.Symtab {
 
 // run a query on the given input table and yield the output list
 func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool, parallel bool) []ion.Datum {
-	st.Reset()
 	input := make([]plan.TableHandle, len(in))
 	for i, in := range in {
 		if resymbolize && len(in) > 1 {
@@ -325,9 +354,31 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 		if err != nil {
 			t.Fatal(err)
 		}
+		unsymbolize(datum, st)
 		outlst = append(outlst, datum)
 	}
 	return outlst
+}
+
+func unsymbolize(d ion.Datum, st *ion.Symtab) {
+	switch d := d.(type) {
+	case *ion.Struct:
+		for i := range d.Fields {
+			if str, ok := d.Fields[i].Value.(ion.Interned); ok {
+				d.Fields[i].Value = ion.String(str)
+			} else {
+				unsymbolize(d.Fields[i].Value, st)
+			}
+		}
+	case ion.List:
+		for i := range d {
+			if str, ok := d[i].(ion.Interned); ok {
+				d[i] = ion.String(str)
+			} else {
+				unsymbolize(d[i], st)
+			}
+		}
+	}
 }
 
 // fix up the symbols in lst so that they
@@ -391,11 +442,11 @@ func toJSON(st *ion.Symtab, d ion.Datum) string {
 	return sb.String()
 }
 
-func testInput(t *testing.T, query []byte, in [][]ion.Datum, out []ion.Datum) {
-	var st ion.Symtab
+func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out []ion.Datum) {
 	var done bool
 	for i := 0; i < shufflecount; i++ {
 		t.Run(fmt.Sprintf("shuffle-%d", i), func(t *testing.T) {
+			st.Reset()
 			q, err := partiql.Parse(query)
 			if err != nil {
 				t.Fatal(err)
@@ -408,19 +459,26 @@ func testInput(t *testing.T, query []byte, in [][]ion.Datum, out []ion.Datum) {
 			// if the outputs are input-order-independent,
 			// then we can test the query with parallel inputs:
 			parallel := len(out) <= 1 || !shuffleOutput(q)
-			gotout := run(t, q, in, &st, resymbolize, parallel)
-			fixup(gotout, &st)
-			fixup(out, &st)
+			gotout := run(t, q, in, st, resymbolize, parallel)
+			st.Reset()
+			fixup(gotout, st)
+			fixup(out, st)
 			if len(out) != len(gotout) {
 				t.Errorf("%d rows out; expected %d", len(gotout), len(out))
 			}
+			errors := 0
 			for i := range out {
 				if i >= len(gotout) {
 					break
 				}
 				if !reflect.DeepEqual(out[i], gotout[i]) {
-					t.Errorf("row %d: got  %s", i, toJSON(&st, gotout[i]))
-					t.Errorf("row %d: want %s", i, toJSON(&st, out[i]))
+					errors++
+					t.Errorf("row %d: got  %s", i, toJSON(st, gotout[i]))
+					t.Errorf("row %d: want %s", i, toJSON(st, out[i]))
+				}
+				if errors > 10 {
+					t.Log("... and more errors")
+					break
 				}
 			}
 			if t.Failed() || !canShuffle(q) {
@@ -486,17 +544,17 @@ func testPath(t *testing.T, fname string) {
 	var inst ion.Symtab
 	inrows := make([][]ion.Datum, len(inputs))
 	for i := range inrows {
-		rows, err := rows(inputs[i], &inst)
+		rows, err := rows(inputs[i], &inst, true)
 		if err != nil {
 			t.Fatalf("parsing input[%d] rows: %s", i, err)
 		}
 		inrows[i] = rows
 	}
-	outrows, err := rows(output, &inst)
+	outrows, err := rows(output, &inst, false)
 	if err != nil {
 		t.Fatalf("parsing output rows: %s", err)
 	}
-	testInput(t, query, inrows, outrows)
+	testInput(t, query, &inst, inrows, outrows)
 }
 
 func benchInput(b *testing.B, query, inbuf []byte, rows int) {
@@ -534,7 +592,7 @@ func benchPath(b *testing.B, fname string) {
 		// skip multi-table tests, for now
 		b.Skip()
 	}
-	inrows, err := rows(inputs[0], &inst)
+	inrows, err := rows(inputs[0], &inst, false)
 	if err != nil {
 		b.Fatalf("parsing input rows: %s", err)
 	}

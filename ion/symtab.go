@@ -134,24 +134,46 @@ func (s *Symtab) Equal(o *Symtab) bool {
 }
 
 // CloneInto performs a deep copy
-// of s into o.
+// of s into o. CloneInto takes care to
+// use some of the existing storage in o
+// in order to reduce the copying overhead.
 func (s *Symtab) CloneInto(o *Symtab) {
-	if cap(o.interned) >= len(s.interned) {
-		o.interned = o.interned[:len(s.interned)]
-	} else {
-		o.interned = make([]string, len(s.interned))
+	// skip common prefix:
+	i := 0
+	for i < len(o.interned) && i < len(s.interned) && s.interned[i] == o.interned[i] {
+		i++
 	}
-	copy(o.interned, s.interned)
 	if o.toindex == nil {
-		o.toindex = make(map[string]int, len(s.toindex))
-	} else {
-		for k := range o.toindex {
-			delete(o.toindex, k)
+		o.toindex = make(map[string]int, len(s.interned))
+	}
+	// for non-overlapping elements in o,
+	// overwrite with elements from s
+	// or delete the associated toindex entry
+	tail := o.interned[i:]
+	for j, str := range tail {
+		k := i + j
+		if old, ok := o.toindex[str]; ok && old == k {
+			// we can only delete if the key
+			// was not part of an insert already
+			// (i.e. the symbol was moved from
+			// a high to a low position)
+			delete(o.toindex, str)
+		}
+		if k < len(s.interned) {
+			tail[j] = s.interned[k]
+			o.toindex[tail[j]] = k
+		} else {
+			tail[j] = ""
 		}
 	}
-	for i := range o.interned {
-		o.toindex[o.interned[i]] = i
+	// if we are inserting more elements, keep going:
+	for len(o.interned) < len(s.interned) {
+		x := s.interned[len(o.interned)]
+		o.toindex[x] = len(o.interned)
+		o.interned = append(o.interned, x)
 	}
+	// ... or, drop the tail now that we've deleted toindex[...]
+	o.interned = o.interned[:len(s.interned)]
 }
 
 // these symbols are predefined

@@ -501,7 +501,7 @@ func (a *aggtable) fasteval(delims []vmref, abort *uint16) int {
 	return evalhashagg(&a.bc, delims, a.tree, abort)
 }
 
-func (a *aggtable) symbolize(st *ion.Symtab) error {
+func (a *aggtable) symbolize(st *symtab) error {
 	err := recompile(st, &a.parent.prog, &a.prog, &a.bc)
 	if err != nil {
 		return err
@@ -528,7 +528,6 @@ func (a *aggtable) writeRows(delims []vmref) error {
 	// in a.repr[] for each aggregated item.
 	projectedGroupByCount := len(a.parent.by)
 	vRegSizeInUInt64Units := int(vRegSize >> 3)
-
 	var abort uint16
 	for len(delims) > 0 {
 		n := a.fasteval(delims, &abort)

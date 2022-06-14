@@ -403,7 +403,7 @@ func (q *Aggregate) Close() error {
 	return err
 }
 
-func (p *aggregateLocal) symbolize(st *ion.Symtab) error {
+func (p *aggregateLocal) symbolize(st *symtab) error {
 	err := recompile(st, p.parent.prog, &p.prog, &p.bc)
 	if err != nil {
 		return err

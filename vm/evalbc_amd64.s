@@ -9255,6 +9255,55 @@ next:
 trap:
   FAIL()
 
+// for Z30:Z31 that are symbols, replace with
+// symtab[symbol] instead
+TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
+  KTESTW K1, K1
+  JZ     next
+  VPBROADCASTD  CONSTD_0x0F(), Z10
+  KMOVW         K1, K2
+  VPGATHERDD    0(SI)(Z30*1), K2, Z28      // Z28 = first 4 bytes
+  VPSRLD        $4, Z28, Z29
+  VPANDD        Z10, Z29, Z29              // z29 = (bytes >> 4) & 0x0f = tag
+  VPCMPEQD.BCST CONSTD_7(), Z29, K1, K2    // K2 = lanes that are symbols (tag == 7)
+  KTESTW        K2, K2
+  JZ            next                       // fast path: no symbols
+
+  VPBROADCASTD  CONSTD_4(), Z24
+  VPANDD        Z10, Z28, Z29                   // Z29 = bytes & 0x0f = size
+  VPCMPD        $VPCMP_IMM_LT, Z24, Z29, K2, K2 // only choose lanes where size < 4
+  VPSUBD.Z      Z29, Z24, K2, Z29               // Z29 = (4 - size)
+  VPSLLD        $3, Z29, Z29                    // Z29 = (4 - size)<<3 = shift count
+  VPSRLD        $8, Z28, Z28                    // Z28 = uint value plus garbage
+  VBROADCASTI32X4 bswap32<>+0(SB), Z24
+  VPSHUFB         Z24, Z28, Z28         // Z28 = bswap32(repr)
+  VPSRLVD         Z29, Z28, Z28         // Z28 = bswap32(repr)>>(4-size) = symbol ID
+  // only keep lanes where id < len(symtab)
+  VPCMPD.BCST     $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z28, K2, K2
+  KMOVB           K2, K3
+  MOVQ            bytecode_symtab+0(VIRT_BCPTR), R8
+  TESTQ           R8, R8
+  JZ              uhoh
+  VPGATHERDQ      0(R8)(Y28*8), K3, Z22  // gather lo 8 vmrefs
+  KSHIFTRW        $8, K2, K4
+  VEXTRACTI32X8   $1, Z28, Y29
+  VPGATHERDQ      0(R8)(Y29*8), K4, Z23  // gather hi 8 vmrefs
+  VPMOVQD         Z22, Y20
+  VPMOVQD         Z23, Y21
+  VINSERTI32X8    $1, Y21, Z20, Z20      // Z20 = lo 32 bits of 16 vmrefs = offsets
+  VMOVDQA32       Z20, K2, Z30           // set offsets where successful
+  VPROLQ          $32, Z22, Z22          // flip lo/hi 32 bits of each element
+  VPROLQ          $32, Z23, Z23
+  VPMOVQD         Z22, Y20
+  VPMOVQD         Z23, Y21
+  VINSERTI32X8    $1, Y21, Z20, Z20      // Z20 = hi 32 bits of 16 vmrefs = lengths
+  VMOVDQA32       Z20, K2, Z31           // set lengths where successful
+next:
+  NEXT()
+uhoh:
+  BYTE $0xCC
+  JMP  next
+
 // unpack (Z30:Z31).K1 into Z2|Z3 when integers
 TEXT bctoint(SB), NOSPLIT|NOFRAME, $0
   KTESTW        K1, K1

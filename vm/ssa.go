@@ -79,6 +79,7 @@ const (
 	stostr
 	stolist
 	stotime
+	sunsymbolize
 
 	sfptoint   // fp to int, round nearest
 	sinttofp   // int to fp
@@ -556,6 +557,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	stostr:  {text: "tostr", argtypes: scalar1Args, rettype: stStringMasked, bc: opunpack, emit: emitslice},
 	stolist: {text: "tolist", argtypes: scalar1Args, rettype: stListMasked, bc: opunpack, emit: emitslice},
 	stotime: {text: "totime", argtypes: scalar1Args, rettype: stTimeMasked, bc: opunpack, emit: emitslice},
+
+	sunsymbolize: {text: "unsymbolize", argtypes: scalar1Args, rettype: stValue, bc: opunsymbolize},
 
 	// fp <-> int conversion ops
 	sinttofp: {text: "inttofp", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
@@ -1671,10 +1674,16 @@ func (p *prog) Equals(left, right *value) *value {
 		return p.And(p.xnor(left, right), allok)
 	case stValue:
 		if right.op == sliteral {
+			if _, ok := right.imm.(string); ok {
+				// only need this for string comparison
+				left = p.unsymbolized(left)
+			}
 			return p.ssa2imm(sequalconst, left, p.mask(left), right.imm)
 		}
 		switch right.primary() {
 		case stValue:
+			left = p.unsymbolized(left)
+			right = p.unsymbolized(right)
 			return p.ssa3(sequalv, left, right, p.ssa2(sand, p.mask(left), p.mask(right)))
 		case stInt:
 			lefti, k := p.coerceInt(left)
@@ -2021,6 +2030,7 @@ func (p *prog) toStr(str *value) *value {
 	case stString:
 		return str // no need to parse
 	case stValue:
+		str = p.unsymbolized(str)
 		return p.ssa2(stostr, str, p.mask(str))
 	default:
 		v := p.val()
@@ -3379,6 +3389,7 @@ func (p *prog) aggbucket(mem, h, k *value) *value {
 }
 
 func (p *prog) hash(v *value) *value {
+	v = p.unsymbolized(v)
 	switch v.primary() {
 	case stValue:
 		return p.ssa2(shashvalue, v, p.mask(v))
@@ -3388,6 +3399,7 @@ func (p *prog) hash(v *value) *value {
 }
 
 func (p *prog) hashplus(h *value, v *value) *value {
+	v = p.unsymbolized(v)
 	switch v.primary() {
 	case stValue:
 		return p.ssa3(shashvaluep, h, v, p.mask(v))
@@ -4894,6 +4906,7 @@ func (c *compilestate) clobberb(v *value) {
 func (c *compilestate) existingStackRef(arg *value, rc regclass) stackslot {
 	slot := c.regs.slotOf(rc, arg.id)
 	if slot == invalidstackslot {
+		fmt.Println(formatBytecode(c.instrs))
 		panic(fmt.Sprintf("Cannot get a stack slot of %v, which is not allocated", arg))
 	}
 	return slot
@@ -5080,11 +5093,13 @@ func emitdot2(v *value, c *compilestate) {
 	// mask argument)
 	if mask == addmask {
 		c.loadk(v, mask)
+		c.clobberk(v)
 		c.opu32(v, opfindsym3, uint32(sym))
 		return
 	}
 	if c.regs.cur[regK] == addmask.id {
 		c.loadk(v, addmask)
+		c.clobberk(v)
 		c.ops16u32(v, opfindsym2rev, c.existingStackRef(mask, regK), uint32(sym))
 		return
 	}
@@ -5462,7 +5477,7 @@ func emittuple2regs(v *value, c *compilestate) {
 
 func emitchecktag(v *value, c *compilestate) {
 	val := v.args[0]
-	k := v.args[0]
+	k := v.args[1]
 	imm := v.imm.(uint16)
 	c.loadv(v, val)
 	c.loadk(v, k)
@@ -5779,12 +5794,31 @@ func (p *prog) Renumber() {
 // Symbolize applies the symbol table from 'st'
 // to the program by copying the old program
 // to 'dst' and applying rewrites to findsym operations.
-func (p *prog) Symbolize(st *ion.Symtab, dst *prog) error {
+func (p *prog) Symbolize(st syms, dst *prog) error {
 	p.clone(dst)
 	return dst.symbolize(st)
 }
 
-func recompile(st *ion.Symtab, src, dst *prog, final *bytecode) error {
+// unsymbolized takes an stValue-typed instruction
+// and ensures that the result is never a symbol
+func (p *prog) unsymbolized(v *value) *value {
+	switch v.op {
+	case sdot, sdot2, ssplit:
+		return p.ssa2(sunsymbolize, v, p.mask(v))
+	case schecktag:
+		// checktag that includes symbol bits
+		// may also yield a symbol result:
+		if v.imm.(uint16)&uint16(expr.SymbolType) != 0 {
+			return p.ssa2(sunsymbolize, v, p.mask(v))
+		}
+		fallthrough
+	default: // can never be a symbol
+		return v
+	}
+}
+
+func recompile(st *symtab, src, dst *prog, final *bytecode) error {
+	final.symtab = st.symrefs
 	if !dst.IsStale(st) {
 		return nil
 	}
@@ -5792,14 +5826,13 @@ func recompile(st *ion.Symtab, src, dst *prog, final *bytecode) error {
 	if err != nil {
 		return err
 	}
-
 	return dst.compile(final)
 }
 
 // IsStale returns whether the symbolized program
 // (see prog.Symbolize) is stale with respect to
 // the provided symbol table.
-func (p *prog) IsStale(st *ion.Symtab) bool {
+func (p *prog) IsStale(st *symtab) bool {
 	if !p.symbolized || p.literals {
 		return true
 	}
@@ -5842,7 +5875,7 @@ func (p *prog) recordEmpty(str string) {
 	})
 }
 
-func (p *prog) symbolize(st *ion.Symtab) error {
+func (p *prog) symbolize(st syms) error {
 	p.resolved = p.resolved[:0]
 	for i := range p.values {
 		v := p.values[i]
@@ -5856,7 +5889,7 @@ func (p *prog) symbolize(st *ion.Symtab) error {
 			if d, ok := v.imm.(ion.Datum); ok {
 				p.literals = true
 				var tmp ion.Buffer
-				d.Encode(&tmp, st)
+				d.Encode(&tmp, ionsyms(st))
 				v.imm = rawDatum(tmp.Bytes())
 			}
 		}

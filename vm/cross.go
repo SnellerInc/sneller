@@ -53,7 +53,7 @@ func Cross(dst QuerySink, rhstab *BufferedTable, lhs, rhs string) *CrossJoin {
 
 type cross struct {
 	parent *CrossJoin
-	st     ion.Symtab
+	st     symtab
 	aw     alignedWriter
 	out    io.WriteCloser
 	rhsbuf bytes.Buffer
@@ -135,7 +135,7 @@ func structrewrite(lut []ion.Symbol, mem []byte) error {
 	return nil
 }
 
-func (c *cross) rewrite(st *ion.Symtab) error {
+func (c *cross) rewrite(st *symtab) error {
 	c.rhsbuf.Reset()
 	c.rhssep = c.rhssep[:0]
 	st.CloneInto(&c.st)
@@ -182,7 +182,7 @@ func (c *cross) rewrite(st *ion.Symtab) error {
 	return nil
 }
 
-func (c *cross) symbolize(st *ion.Symtab) error {
+func (c *cross) symbolize(st *symtab) error {
 	err := c.rewrite(st)
 	if err != nil {
 		return err

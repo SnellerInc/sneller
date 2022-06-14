@@ -62,7 +62,7 @@ func (a *alignedWriter) flush() (int, error) {
 	return a.out.Write(contents)
 }
 
-func (a *alignedWriter) setpre(st *ion.Symtab) error {
+func (a *alignedWriter) setpre(st *symtab) error {
 	if a.off != a.save {
 		_, err := a.flush()
 		if err != nil {

@@ -20,7 +20,6 @@ import (
 	"sort"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 )
 
 // UnnestProjection unnests rows on a field
@@ -73,7 +72,6 @@ type unnesting struct {
 	outerbc bytecode
 	innerbc bytecode
 	aw      alignedWriter
-	st      ion.Symtab
 	delims  []vmref
 	perms   []int32
 	dstrc   rowConsumer
@@ -95,21 +93,20 @@ func (u *uByID) Less(i, j int) bool {
 	return u.outsel[i].value < u.outsel[j].value
 }
 
-func (u *unnesting) symbolize(st *ion.Symtab) error {
-	st.CloneInto(&u.st)
+func (u *unnesting) symbolize(st *symtab) error {
 	if len(u.outsel) != len(u.parent.outer)+len(u.parent.inner) {
 		u.outsel = make([]syminfo, len(u.parent.outer)+len(u.parent.inner))
 	}
 	for i := range u.parent.outer {
 		bind := u.parent.outer[i].Result()
-		sym := u.st.Intern(bind)
+		sym := st.Intern(bind)
 		u.outsel[i].value = sym
 		u.outsel[i].encoded, u.outsel[i].mask, u.outsel[i].size = encoded(sym)
 	}
 	for i := range u.parent.inner {
 		j := len(u.parent.outer) + i
 		bind := u.parent.inner[i].Result()
-		sym := u.st.Intern(bind)
+		sym := st.Intern(bind)
 		u.outsel[j].value = sym
 		u.outsel[j].encoded, u.outsel[j].mask, u.outsel[j].size = encoded(sym)
 	}
@@ -130,7 +127,7 @@ func (u *unnesting) symbolize(st *ion.Symtab) error {
 		if !ok {
 			return fmt.Errorf("cannot handle non-path-expression %q", u.parent.outer[i].Expr)
 		}
-		mem[i], err = p.compileStore(mem0, u.parent.outer[i].Expr, stackSlotFromIndex(regV, i))
+		mem[i], err = p.compileStore(mem0, u.parent.outer[i].Expr, stackSlotFromIndex(regV, i), false)
 		if err != nil {
 			panic(err)
 		}
@@ -162,7 +159,7 @@ func (u *unnesting) symbolize(st *ion.Symtab) error {
 		if !ok {
 			return fmt.Errorf("cannot handle non-path expression %q", u.parent.inner[i].Expr)
 		}
-		mem[i], err = p.compileStore(mem0, u.parent.inner[i].Expr, stackSlotFromIndex(regV, u.outord[j]))
+		mem[i], err = p.compileStore(mem0, u.parent.inner[i].Expr, stackSlotFromIndex(regV, u.outord[j]), false)
 		if err != nil {
 			panic(err)
 		}
@@ -207,7 +204,7 @@ func (u *unnesting) symbolize(st *ion.Symtab) error {
 	u.innerbc.ensureVStackSize(len(u.outsel)*int(vRegSize) + 8)
 	u.innerbc.allocStacks()
 	if u.dstrc != nil {
-		err := u.dstrc.symbolize(&u.st)
+		err := u.dstrc.symbolize(st)
 		if err != nil {
 			return err
 		}
@@ -216,7 +213,7 @@ func (u *unnesting) symbolize(st *ion.Symtab) error {
 	if u.aw.buf == nil {
 		u.aw.init(u.out, nil, defaultAlign)
 	}
-	return u.aw.setpre(&u.st)
+	return u.aw.setpre(st)
 }
 
 //go:noescape

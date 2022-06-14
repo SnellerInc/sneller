@@ -20,7 +20,6 @@ import (
 	"sync"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 )
 
 // DistinctFilter is a QuerySink that deduplicates
@@ -131,7 +130,7 @@ type deduper struct {
 	closed bool
 }
 
-func (d *deduper) symbolize(st *ion.Symtab) error {
+func (d *deduper) symbolize(st *symtab) error {
 	err := recompile(st, &d.parent.prog, &d.prog, &d.bc)
 	if err != nil {
 		return err

@@ -167,6 +167,7 @@ func TestCompileSSA(t *testing.T) {
 			},
 			text: []string{
 				"findsym u32(0x4)",
+				"unsymbolize",
 				"unpack u8(0x8)",
 				"contains_prefix_cs dict[0]",
 				"ret",
@@ -178,6 +179,7 @@ func TestCompileSSA(t *testing.T) {
 			},
 			text: []string{
 				"findsym u32(0x4)",
+				"unsymbolize",
 				"unpack u8(0x8)",
 				"contains_prefix_ci dict[0]",
 				"ret",
@@ -319,8 +321,15 @@ func TestCompileSSA(t *testing.T) {
 			text: []string{
 				"findsym u32(0xA)",
 				"save.v [0]",
+				"save.k [128]",
 				"findsym3 u32(0xB)", // continue with mask from above!
-				"equalv [0]",
+				"unsymbolize",       // produce first unsymbolized values
+				"save.v [136]",      // save bar; load foo
+				"load.v [0]",
+				"xchg.k [128]",
+				"unsymbolize", // unsymbolize foo
+				"load.k [128]",
+				"equalv [136]", // unsymbolize(foo) = unsymbolize(bar)
 				"ret",
 			},
 		},

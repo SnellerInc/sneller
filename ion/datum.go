@@ -162,6 +162,19 @@ func (b Blob) Type() Type { return BlobType }
 
 func (b Blob) Encode(dst *Buffer, st *Symtab) { dst.WriteBlob([]byte(b)) }
 
+// Interned is a Datum that represents
+// an interned string (a Symbol).
+// Interned is always encoded as an ion symbol,
+// but it is represented as a Go string for
+// convenience.
+type Interned string
+
+func (i Interned) Type() Type { return SymbolType }
+
+func (i Interned) Encode(dst *Buffer, st *Symtab) {
+	dst.WriteSymbol(st.Intern(string(i)))
+}
+
 // Annotation objects represent
 // ion annotation datums.
 type Annotation struct {
@@ -307,12 +320,12 @@ func decodeTimestampDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 	return Timestamp(t), rest, nil
 }
 
-func decodeSymbolDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
+func decodeSymbolDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 	t, rest, err := ReadSymbol(b)
 	if err != nil {
 		return nil, rest, err
 	}
-	return t, rest, nil
+	return Interned(st.Get(t)), rest, nil
 }
 
 func decodeStringDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
@@ -426,6 +439,11 @@ func init() {
 // them into st and continues reading. It may
 // return a nil datum if buf points to a symbol
 // table followed by zero bytes of actual ion data.
+//
+// Any Symbol datums in buf are translated into
+// Interned datums rather than Symbol datums,
+// as this makes the returned Datum safe to
+// re-encode with a new symbol table.
 func ReadDatum(st *Symtab, buf []byte) (Datum, []byte, error) {
 	var err error
 	if IsBVM(buf) || TypeOf(buf) == AnnotationType {

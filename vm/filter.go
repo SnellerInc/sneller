@@ -20,7 +20,6 @@ import (
 	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 )
 
 // Filter is a concrete implementation
@@ -84,7 +83,7 @@ func (c *Count) writeRows(delims []vmref) error {
 	return nil
 }
 
-func (c *Count) symbolize(st *ion.Symtab) error {
+func (c *Count) symbolize(st *symtab) error {
 	return nil
 }
 
@@ -100,7 +99,7 @@ type wherebc struct {
 //go:noescape
 func evalfilterbc(w *bytecode, delims []vmref) int
 
-func (w *wherebc) symbolize(st *ion.Symtab) error {
+func (w *wherebc) symbolize(st *symtab) error {
 	err := recompile(st, w.parent.prog, &w.ssa, &w.bc)
 	if err != nil {
 		return err

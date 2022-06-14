@@ -126,7 +126,12 @@ func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch) (int, []byte, error)
 		if err != nil {
 			return 0, rest, fmt.Errorf("ToJSON: %w", err)
 		}
-		n, err := w.Write(s.string(st.Get(sym)))
+		var n int
+		if int(sym) >= st.MaxID() {
+			n, err = fmt.Fprintf(w, `"$%d"`, int(sym))
+		} else {
+			n, err = w.Write(s.string(st.Get(sym)))
+		}
 		return n, rest, err
 	case StringType:
 		body, rest := Contents(buf)

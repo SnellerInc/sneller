@@ -348,6 +348,7 @@ func (p *prog) compileAsString(e expr.Node) (*value, error) {
 	case stString:
 		return v, nil
 	case stValue:
+		v = p.unsymbolized(v)
 		return p.ssa2(stostr, v, p.mask(v)), nil
 	default:
 		return nil, fmt.Errorf("cannot compile expression %s as a string", e)
@@ -1041,7 +1042,7 @@ func (p *prog) member(e expr.Node, values []expr.Constant) (*value, error) {
 	return p.ssaimm(shashmember, values, h, p.mask(h)), nil
 }
 
-func (p *prog) recordDatum(d ion.Datum, st *ion.Symtab) {
+func (p *prog) recordDatum(d ion.Datum, st syms) {
 	switch d := d.(type) {
 	case *ion.Struct:
 		for i := range d.Fields {
@@ -1062,7 +1063,7 @@ type hashResult struct {
 	literals []byte
 }
 
-func (p *prog) mkhash(st *ion.Symtab, imm interface{}) *hashResult {
+func (p *prog) mkhash(st syms, imm interface{}) *hashResult {
 	values := imm.([]ion.Datum)
 	var tmp, tmp2 ion.Buffer
 	tree := newRadixTree(8)
@@ -1075,14 +1076,14 @@ func (p *prog) mkhash(st *ion.Symtab, imm interface{}) *hashResult {
 		p.recordDatum(then, st)
 
 		tmp.Reset()
-		ifeq.Encode(&tmp, st)
+		ifeq.Encode(&tmp, ionsyms(st))
 		chacha8Hash(tmp.Bytes(), hmem[:])
 		buf, _ := tree.Insert(binary.LittleEndian.Uint64(hmem[:]))
 
 		// encode reference to scratch buffer
 		// (4-byte base + 4-byte offset)
 		base := tmp2.Size()
-		then.Encode(&tmp2, st)
+		then.Encode(&tmp2, ionsyms(st))
 		binary.LittleEndian.PutUint32(buf, uint32(base))
 		size := tmp2.Size() - base
 		binary.LittleEndian.PutUint32(buf[4:], uint32(size))
@@ -1093,7 +1094,7 @@ func (p *prog) mkhash(st *ion.Symtab, imm interface{}) *hashResult {
 // hook called on symbolization of hashmember;
 // convert []expr.Constant into a hash tree
 // using the current input symbol table
-func (p *prog) mktree(st *ion.Symtab, imm interface{}) *radixTree64 {
+func (p *prog) mktree(st syms, imm interface{}) *radixTree64 {
 	values := imm.([]expr.Constant)
 
 	var tmp ion.Buffer
@@ -1102,7 +1103,7 @@ func (p *prog) mktree(st *ion.Symtab, imm interface{}) *radixTree64 {
 	for i := range values {
 		tmp.Reset()
 		dat := values[i].Datum()
-		dat.Encode(&tmp, st)
+		dat.Encode(&tmp, ionsyms(st))
 		p.recordDatum(dat, st)
 		chacha8Hash(tmp.Bytes(), hmem[:])
 		tree.insertSlow(binary.LittleEndian.Uint64(hmem[:]))
@@ -1150,10 +1151,13 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 }
 
 // turn an arbitrary expression into a store-able value
-func (p *prog) compileStore(mem *value, e expr.Node, slot stackslot) (*value, error) {
+func (p *prog) compileStore(mem *value, e expr.Node, slot stackslot, unsymbolize bool) (*value, error) {
 	v, err := p.serialized(e)
 	if err != nil {
 		return nil, err
+	}
+	if unsymbolize {
+		v = p.unsymbolized(v)
 	}
 	return p.Store(mem, v, slot)
 }
@@ -1479,7 +1483,9 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		case stInt:
 			return p.ssa2(scvti64tostr, from, p.mask(from)), nil
 		case stValue:
-			return p.checkTag(from, c.To), nil
+			// we can encode strings as symbols,
+			// so include symbols in the bits we check
+			return p.checkTag(from, c.To|expr.SymbolType), nil
 		default:
 			return p.ssa0(skfalse), nil
 		}
@@ -1535,5 +1541,5 @@ func (p *prog) notTime(v *value) *value {
 }
 
 func (p *prog) checkTag(from *value, typ expr.TypeSet) *value {
-	return p.ssa2imm(schecktag, from, from, uint16(typ))
+	return p.ssa2imm(schecktag, from, p.mask(from), uint16(typ))
 }

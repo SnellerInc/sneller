@@ -115,18 +115,17 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sort.Limit, parallelis
 // Otherwise we either have to:
 // 1. align all symtabs into a common one and recode all records;
 // 2. preprend possibliy each record with symtab.
-func (s *Order) setSymbolTable(st *ion.Symtab) error {
+func (s *Order) setSymbolTable(st *symtab) error {
 	s.symtabLock.Lock()
 	defer s.symtabLock.Unlock()
 	if s.symtab == nil {
-		s.symtab = st
+		s.symtab = new(ion.Symtab)
+		st.Symtab.CloneInto(s.symtab)
 		return nil
 	}
-
-	if !s.symtab.Equal(st) {
+	if !st.Symtab.Equal(s.symtab) {
 		return fmt.Errorf("symtab changed, can't sort data")
 	}
-
 	return nil
 }
 
@@ -276,14 +275,14 @@ func (s *Order) finalizeKtop() error {
 
 // ----------------------------------------------------------------------
 
-func symbolize(sort *Order, findbc *bytecode, st *ion.Symtab, global bool) error {
+func symbolize(sort *Order, findbc *bytecode, st *symtab, global bool) error {
 	var program prog
 
 	program.Begin()
 	mem0 := program.InitMem()
 	var mem []*value
 	for i := range sort.columns {
-		val, err := program.compileStore(mem0, sort.columns[i].Node, stackSlotFromIndex(regV, i))
+		val, err := program.compileStore(mem0, sort.columns[i].Node, stackSlotFromIndex(regV, i), true)
 		if err != nil {
 			return err
 		}
@@ -292,6 +291,7 @@ func symbolize(sort *Order, findbc *bytecode, st *ion.Symtab, global bool) error
 	program.Return(program.MergeMem(mem...))
 	program.symbolize(st)
 	err := program.compile(findbc)
+	findbc.symtab = st.symrefs
 	if err != nil {
 		return fmt.Errorf("sortstate.symbolize(): %w", err)
 	}
@@ -337,7 +337,7 @@ type sortstateMulticolumn struct {
 	findbc bytecode
 }
 
-func (s *sortstateMulticolumn) symbolize(st *ion.Symtab) error {
+func (s *sortstateMulticolumn) symbolize(st *symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
@@ -441,7 +441,7 @@ type sortstateSingleColumn struct {
 	subcolumn sort.MixedTypeColumn
 }
 
-func (s *sortstateSingleColumn) symbolize(st *ion.Symtab) error {
+func (s *sortstateSingleColumn) symbolize(st *symtab) error {
 	return symbolize(s.parent, &s.findbc, st, true)
 }
 
@@ -561,7 +561,7 @@ func (s *sortstateKtop) invalidatePrefilter() {
 	s.filtprog = prog{}
 }
 
-func (s *sortstateKtop) symbolize(st *ion.Symtab) error {
+func (s *sortstateKtop) symbolize(st *symtab) error {
 	if s.captures > 0 || len(s.symtabs) == 0 {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
 	}
@@ -573,8 +573,8 @@ func (s *sortstateKtop) symbolize(st *ion.Symtab) error {
 	// copy the source symbol table
 	// so that we can still use it after
 	// it has been updated
-	st.CloneInto(&s.symtabs[len(s.symtabs)-1])
-	return symbolize(s.parent, &s.findbc, &s.symtabs[len(s.symtabs)-1], false)
+	st.Symtab.CloneInto(&s.symtabs[len(s.symtabs)-1])
+	return symbolize(s.parent, &s.findbc, st, false)
 }
 
 func (s *sortstateKtop) bcfind(delims []vmref) ([]vRegLayout, error) {
@@ -747,7 +747,6 @@ outer:
 			copy(s.buffer[boxedOffset:], it.mem())
 			boxedOffset += size
 		}
-
 		record.Raw = s.buffer
 		record.FieldDelims = s.fields
 

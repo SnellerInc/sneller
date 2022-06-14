@@ -17,8 +17,6 @@ package vm
 import (
 	"io"
 	"sync/atomic"
-
-	"github.com/SnellerInc/sneller/ion"
 )
 
 // Limit is a QuerySink that
@@ -70,7 +68,7 @@ func (l *limiter) Close() error {
 	return nil
 }
 
-func (l *limiter) symbolize(st *ion.Symtab) error {
+func (l *limiter) symbolize(st *symtab) error {
 	return l.dst.symbolize(st)
 }
 

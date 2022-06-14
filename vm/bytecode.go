@@ -388,6 +388,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	// unpack a slice type (string/array/timestamp/etc.)
 	opunpack: {text: "unpack", imms: []bcImmType{bcImmU8Hex}, flags: bcReadWriteK | bcWriteS | bcReadV},
 
+	opunsymbolize: {text: "unsymbolize", flags: bcReadWriteV},
+
 	// Boxing instructions
 	opboxmask:   {text: "boxmask", imms: bcImmsS16, flags: bcReadK},
 	opboxmask2:  {text: "boxmask2", imms: bcImmsS16, flags: bcReadK},
@@ -543,6 +545,7 @@ type bytecode struct {
 	compiled []byte   // actual opcodes
 	vstack   []uint64 // value scratch space
 	dict     []string // string dictionary
+	symtab   []vmref  // symtab[id] -> boxed string
 
 	hashmem []uint64 // the H virtual registers (128 bits per lane)
 
