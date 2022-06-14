@@ -1,0 +1,52 @@
+SELECT
+  a || b AS ab
+FROM
+  input
+---
+{"a": ""}
+{"b": ""}
+{"a": "A"}
+{"b": "B"}
+{"a": "", "b": ""}
+{"a": "A", "b": ""}
+{"a": "", "b": "B"}
+{"a": "A", "b": "B"}
+{"a": "123", "b": "456"}
+{"a": "abc", "b": "xyz"}
+{"a": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&", "b": "|appended|"}
+{"a": "|base|", "b": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|"}
+{"a": "|ThisStringIs64CharactersLongForTesting|PaddingBytes|MorePuding|", "b": "^AnotherStringToBeAlso64CharactersLongForTesting64CharStrings:)^"}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+---
+{}
+{}
+{}
+{}
+{"ab": ""}
+{"ab": "A"}
+{"ab": "B"}
+{"ab": "AB"}
+{"ab": "123456"}
+{"ab": "abcxyz"}
+{"ab": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|appended|"}
+{"ab": "|base|abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|"}
+{"ab": "|ThisStringIs64CharactersLongForTesting|PaddingBytes|MorePuding|^AnotherStringToBeAlso64CharactersLongForTesting64CharStrings:)^"}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}

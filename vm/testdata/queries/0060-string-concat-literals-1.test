@@ -1,0 +1,52 @@
+SELECT
+  a || b || '!LITERAL!' AS out
+FROM
+  input
+---
+{"a": ""}
+{"b": ""}
+{"a": "A"}
+{"b": "B"}
+{"a": "", "b": ""}
+{"a": "A", "b": ""}
+{"a": "", "b": "B"}
+{"a": "A", "b": "B"}
+{"a": "123", "b": "456"}
+{"a": "abc", "b": "xyz"}
+{"a": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&", "b": "|appended|"}
+{"a": "|base|", "b": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|"}
+{"a": "|ThisStringIs64CharactersLongForTesting|PaddingBytes|MorePuding|", "b": "^AnotherStringToBeAlso64CharactersLongForTesting64CharStrings:)^"}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+---
+{}
+{}
+{}
+{}
+{"out": "!LITERAL!"}
+{"out": "A!LITERAL!"}
+{"out": "B!LITERAL!"}
+{"out": "AB!LITERAL!"}
+{"out": "123456!LITERAL!"}
+{"out": "abcxyz!LITERAL!"}
+{"out": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|appended|!LITERAL!"}
+{"out": "|base|abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|!LITERAL!"}
+{"out": "|ThisStringIs64CharactersLongForTesting|PaddingBytes|MorePuding|^AnotherStringToBeAlso64CharactersLongForTesting64CharStrings:)^!LITERAL!"}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}

@@ -201,10 +201,10 @@ func lowerOrder(in *pir.Order, from Op) (Op, error) {
 }
 
 func lowerBind(in *pir.Bind, from Op) (Op, error) {
-	return (&Project{
+	return &Project{
 		Nonterminal: Nonterminal{From: from},
 		Using:       in.Bindings(),
-	}).lowerApplications(1), nil
+	}, nil
 }
 
 func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {

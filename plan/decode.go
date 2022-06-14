@@ -196,8 +196,6 @@ func empty(name string) Op {
 		return &Distinct{}
 	case "project":
 		return &Project{}
-	case "apply":
-		return &Apply{}
 	case "filter":
 		return &Filter{}
 	case "unnest":

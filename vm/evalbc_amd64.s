@@ -8773,6 +8773,198 @@ TEXT bcgeodistance(SB), NOSPLIT|NOFRAME, $0
   NEXT_ADVANCE(6)
 
 
+// String Concatenation
+// --------------------
+
+#define BC_CONCAT_ACC_INIT()          \
+  VEXTRACTI32X8 $1, Z3, Y4            \
+  VPMOVZXDQ Y3, K1, Z2                \
+  VPMOVZXDQ Y4, K2, Z3
+
+#define BC_CONCAT_ACC_STEP(StackRef)  \
+  MOVWQZX (StackRef)(VIRT_PCREG), R8  \
+  VPMOVZXDQ 64(VIRT_VALUES)(R8*1), Z4 \
+  VPMOVZXDQ 96(VIRT_VALUES)(R8*1), Z5 \
+  VPADDQ Z4, Z2, K1, Z2               \
+  VPADDQ Z5, Z3, K2, Z3
+
+// Initializes string length for concatenation in Z2/Z3
+TEXT bcconcatlenget1(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_INIT()
+  NEXT_ADVANCE(0)
+
+TEXT bcconcatlenget2(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_INIT()
+  BC_CONCAT_ACC_STEP(0)
+  NEXT_ADVANCE(2)
+
+TEXT bcconcatlenget3(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_INIT()
+  BC_CONCAT_ACC_STEP(0)
+  BC_CONCAT_ACC_STEP(2)
+  NEXT_ADVANCE(4)
+
+TEXT bcconcatlenget4(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_INIT()
+  BC_CONCAT_ACC_STEP(0)
+  BC_CONCAT_ACC_STEP(2)
+  BC_CONCAT_ACC_STEP(4)
+  NEXT_ADVANCE(6)
+
+// Accumulates string length as INT64 in Z2/Z3
+TEXT bcconcatlenacc1(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_STEP(0)
+  NEXT_ADVANCE(2)
+
+TEXT bcconcatlenacc2(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_STEP(0)
+  BC_CONCAT_ACC_STEP(2)
+  NEXT_ADVANCE(4)
+
+TEXT bcconcatlenacc3(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_STEP(0)
+  BC_CONCAT_ACC_STEP(2)
+  BC_CONCAT_ACC_STEP(4)
+  NEXT_ADVANCE(6)
+
+TEXT bcconcatlenacc4(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_CONCAT_ACC_STEP(0)
+  BC_CONCAT_ACC_STEP(2)
+  BC_CONCAT_ACC_STEP(4)
+  BC_CONCAT_ACC_STEP(6)
+  NEXT_ADVANCE(8)
+
+#undef BC_CONCAT_ACC_STEP
+#undef BC_CONCAT_ACC_INIT
+
+// Allocate string, which length is described by UINT64 elements in Z2/Z3
+TEXT bcallocstr(SB), NOSPLIT|NOFRAME, $0
+  // NOTE: We want unsigned saturation here as too large objects would end up with 0xFFFFFFFF length, which is UINT32_MAX.
+  VPMOVUSQD Z2, Y4
+  VPMOVUSQD Z3, Y5
+  VINSERTI32X8 $1, Y5, Z4, Z4
+
+  VPBROADCASTD CONSTD_134217727(), Z10                 // 134217727 == 2^31 / 16 - 1 <- horizonal addition threshold
+  VPCMPD $VPCMP_IMM_LE, Z10, Z4, K1, K3                // Clear all lanes that would cause overflow during horizontal addition
+  VMOVDQA32.Z Z4, K3, Z7                               // Z7 = [15    14    13    12   |11    10    09    08   |07    06    05    04   |03    02    01    00   ]
+
+  // Horizontal addition:
+  MOVL $0xFF00F0F0, R15
+  KMOVD R15, K4
+  VPSLLDQ $4, Z7, Z4                                   // Z4 = [14    13    12    __   |10    09    08    __   |06    05    04    __   |02    01    00    __   ]
+  VPADDD Z7, Z4, Z4                                    // Z4 = [15+14 14+13 13+12 12   |11+10 10+09 09+08 08   |07+06 06+05 05+04 04   |03+02 02+01 01+00 00   ]
+  VPSLLDQ $8, Z4, Z5                                   // Z5 = [13+12 12    __    __   |09+08 08    __    __   |05+04 04    __    __   |01+00 00    __    __   ]
+  VPADDD Z5, Z4, Z4                                    // Z4 = [15:12 14:12 13:12 12   |11:08 10:08 09:08 08   |07:04 06:04 05:04 04   |03:00 02:00 01:00 00   ]
+
+  VPSHUFD $SHUFFLE_IMM_4x2b(3, 3, 3, 3), Z4, Z5        // Z5 = [15:12 15:12 15:12 15:12|11:08 11:08 11:08 11:08|07:04 07:04 07:04 07:04|03:00 03:00 03:00 03:00]
+  VPERMQ $SHUFFLE_IMM_4x2b(1, 1, 1, 1), Z5, Z5         // Z5 = [11:08 11:08 11:08 11:08|<ign> <ign> <ign> <ign>|03:00 03:00 03:00 03:00|<ign> <ign> <ign> <ign>]
+  VPADDD Z5, Z4, K4, Z4                                // Z4 = [15:08 14:08 13:08 12:08|11:08 10:08 09:08 08   |07:00 06:00 05:00 04:00|03:00 02:00 01:00 00   ]
+  KSHIFTRD $16, K4, K4
+  VPSHUFD $SHUFFLE_IMM_4x2b(3, 3, 3, 3), Z4, Z5        // Z5 = [15:08 15:08 15:08 15:08|11:08 11:08 11:08 11:08|07:00 07:00 07:00 07:00|03:00 03:00 03:00 03:00]
+  VSHUFI64X2 $SHUFFLE_IMM_4x2b(1, 1, 1, 1), Z5, Z5, Z5 // Z5 = [07:00 07:00 07:00 07:00|07:00 07:00 07:00 07:00|<ign> <ign> <ign> <ign>|<ign> <ign> <ign> <ign>]
+  VPADDD Z5, Z4, K4, Z4                                // Z4 = [15:00 14:00 13:00 12:00|11:00 10:00 09:00 08:00|07:00 06:00 05:00 04:00|03:00 02:00 01:00 00   ]
+
+  VEXTRACTI32X4 $3, Z4, X10
+  VPSUBD Z7, Z4, Z5                                    // Z5 = [14:00 13:00 12:00 11:00|10:00 09:00 08:00 07:00|06:00 05:00 04:00 03:00|02:00 01:00 00    zero ]
+  VPEXTRD $3, X10, R15                                 // R15 = Aggregated length of all objects to be allocated
+
+  // What we have:
+  //   Z4 <- Horizontally added lengths - it essentially contains the end of each object
+  //   Z5 <- Start of each object in the output buffer relative to its current end (has to be further adjusted to get an absolute index)
+  //   Z7 <- Length of each object to be allocated (describes input lengths with large objects already masked out)
+  //   R15 <- Sum of all lengths, so we can allocate
+
+  // Allocate the string
+  MOVQ bytecode_scratch+8(VIRT_BCPTR), CX              // CX = Output buffer length
+  MOVQ bytecode_scratch+16(VIRT_BCPTR), R8             // R8 = Output buffer capacity
+  SUBQ CX, R8                                          // R8 = Remaining space in the output buffer
+  CMPQ R8, R15
+  JLT abort                                            // Abort if the output buffer is too small
+
+  VPBROADCASTD CX, Z2
+  VPADDD.BCST bytecode_scratchoff(VIRT_BCPTR), Z2, Z2
+  VPADDD.Z Z5, Z2, K3, Z2                              // Beginning of each allocated object, zero index of non-allocated
+
+  ADDQ CX, R15
+  MOVQ R15, bytecode_scratch+8(VIRT_BCPTR)             // Update the length of our scratch buffer
+  VPXORD X3, X3, X3                                    // Length of each allocated object, initially zero
+
+  KMOVW K3, K1                                         // Update K1 predicate, masking out objects that were too large and thus couldn't be allocated
+  NEXT()
+
+abort:
+  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
+  RET_ABORT()
+
+
+TEXT bcappendstr(SB), NOSPLIT|NOFRAME, $0
+  KMOVW K1, BX
+  MOVWQZX (0)(VIRT_PCREG), R8
+
+  TESTL BX, BX                                         // Bail if there are no strings to append
+  JZ next
+
+  LEAQ 0(VIRT_VALUES)(R8*1), R8                        // Make R8 absolute so we can use it with index later
+  VMOVDQU32.Z 64(R8), K1, Z5                           // Length of each string to be appended
+
+  VPADDD Z2, Z3, Z6                                    // End index of each output string
+  VMOVDQU32 Z6, bytecode_spillArea(VIRT_BCPTR)         // Save the end index of each output string
+  VPADDD Z5, Z3, K1, Z3                                // Update the length of each output string
+
+iter:                                                  // Iterate over the mask and append each string where it's 1
+  TZCNTL BX, DX                                        // DX - Index of the lane to process
+  BLSRL BX, BX                                         // Clear the index of the iterator
+
+  MOVL 0(R8)(DX * 4), R14                              // Input index
+  MOVL 64(R8)(DX * 4), CX                              // Input length
+  MOVL bytecode_spillArea(VIRT_BCPTR)(DX * 4), R15     // Output index
+
+  ADDQ SI, R14                                         // Make input address from input index
+  ADDQ SI, R15                                         // Make output address from output index
+
+  SUBL $64, CX
+  JCS copy_tail
+
+  // Main copy loop that processes 64 bytes at once
+copy_iter:
+  VMOVDQU8 0(R14), Z7
+  ADDQ $64, R14
+  VMOVDQU8 Z7, 0(R15)
+  ADDQ $64, R15
+
+  SUBL $64, CX
+  JCC copy_iter
+
+copy_tail:
+  // NOTE: The following line makes sense, but it's not needed. In C it would
+  // be undefined behavior to shift with anything outside of [0, 63], but we
+  // know that X86 only uses 6 bits in our case (64-bit shift), which would
+  // not be changed by adding 64 as it has those 6 bits zero.
+  // ADDL $64, CX
+
+  MOVQ $-1, DX
+  SHLQ CL, DX
+  NOTQ DX
+  KMOVQ DX, K2
+
+  VMOVDQU8.Z 0(R14), K2, Z7
+  VMOVDQU8 Z7, K2, 0(R15)
+
+  TESTL BX, BX
+  JNE iter
+
+next:
+  NEXT_ADVANCE(2)
+
+
 // Find Symbol Instructions
 // ------------------------
 

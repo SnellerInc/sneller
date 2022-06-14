@@ -87,6 +87,10 @@ const (
 
 	scvti64tostr // int64 to string
 
+	sconcatstr2 // string concatenation (two strings)
+	sconcatstr3 // string concatenation (three strings)
+	sconcatstr4 // string concatenation (four strings)
+
 	// #region raw string comparison
 	sStrCmpEqCs     // Ascii string compare equality case-sensitive
 	sStrCmpEqCi     // Ascii string compare equality case-insensitive
@@ -458,6 +462,9 @@ var floatcmpArgs = []ssatype{stFloat, stFloat, stBool}
 var int1Args = []ssatype{stInt, stBool}
 var fp1Args = []ssatype{stFloat, stBool}
 var str1Args = []ssatype{stString, stBool}
+var str2Args = []ssatype{stString, stString, stBool}
+var str3Args = []ssatype{stString, stString, stString, stBool}
+var str4Args = []ssatype{stString, stString, stString, stString, stBool}
 var time1Args = []ssatype{stTime, stBool}
 
 var parseValueArgs = []ssatype{stScalar, stValue, stBool}
@@ -555,6 +562,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sfptoint: {text: "fptoint", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
 
 	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr},
+	sconcatstr2:  {text: "concat2.str", argtypes: str2Args, rettype: stStringMasked, emit: emitConcatStr},
+	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr},
+	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
 
 	// boolean -> scalar conversions;
 	// first argument is true/false; second is present/missing
@@ -2016,6 +2026,41 @@ func (p *prog) toStr(str *value) *value {
 		v := p.val()
 		v.errf("internal error: unsupported value %v", str.String())
 		return v
+	}
+}
+
+func (p *prog) Concat(args ...*value) *value {
+	if len(args) == 0 {
+		panic("CONCAT cannot be empty")
+	}
+
+	k := p.mask(args[0])
+	for i := 1; i < len(args); i++ {
+		k = p.And(k, p.mask(args[i]))
+	}
+
+	var v [4]*value
+	vIndex := 0
+
+	for i := 0; i < len(args); i++ {
+		v[vIndex] = p.toStr(args[i])
+		vIndex++
+
+		if vIndex >= 4 {
+			vIndex = 1
+			v[0] = p.ssa5(sconcatstr4, v[0], v[1], v[2], v[3], k)
+		}
+	}
+
+	switch vIndex {
+	case 1:
+		return v[0]
+	case 2:
+		return p.ssa3(sconcatstr2, v[0], v[1], k)
+	case 3:
+		return p.ssa4(sconcatstr3, v[0], v[1], v[2], k)
+	default:
+		panic(fmt.Sprintf("invalid number of remaining items (%d) in Concat()", vIndex))
 	}
 }
 
@@ -5157,6 +5202,36 @@ func (c *compilestate) dictimm(str string) uint16 {
 		panic("immediate for opu16 opcode > 65535!")
 	}
 	return uint16(n)
+}
+
+func emitConcatStr(v *value, c *compilestate) {
+	argCount := len(v.args) - 1
+
+	var slots [4]stackslot
+	mask := v.args[argCount]
+
+	for i := 0; i < argCount; i++ {
+		slots[i] = c.forceStackRef(v.args[i], regS)
+	}
+
+	c.loadk(v, mask)
+	c.loads(v, v.args[0])
+	c.clobbers(v)
+
+	switch argCount {
+	case 2:
+		c.ops16(v, opconcatlenget2, slots[1])
+	case 3:
+		c.ops16s16(v, opconcatlenget3, slots[1], slots[2])
+	case 4:
+		c.ops16s16s16(v, opconcatlenget4, slots[1], slots[2], slots[3])
+	}
+
+	c.op(v, opallocstr)
+
+	for i := 0; i < argCount; i++ {
+		c.ops16(v, opappendstr, slots[i])
+	}
 }
 
 func emitStrEditStack1(v *value, c *compilestate) {

@@ -353,6 +353,19 @@ var opinfo = [_maxbcop]bcopinfo{
 	opgeotileesimm: {text: "geotilees.imm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
 	opgeodistance:  {text: "geodistance", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
 
+	opconcatlenget1: {text: "concatlenget1", flags: bcReadK | bcReadWriteS},
+	opconcatlenget2: {text: "concatlenget2", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opconcatlenget3: {text: "concatlenget3", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
+	opconcatlenget4: {text: "concatlenget4", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
+
+	opconcatlenacc1: {text: "concatlenacc1", flags: bcReadK | bcReadWriteS},
+	opconcatlenacc2: {text: "concatlenacc2", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opconcatlenacc3: {text: "concatlenacc3", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
+	opconcatlenacc4: {text: "concatlenacc4", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
+
+	opallocstr:  {text: "alloc.str", flags: bcReadWriteK | bcReadWriteS},
+	opappendstr: {text: "append.str", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+
 	// Find Symbol instructions
 	//   - findsym - computes 'current struct' . 'symbol'
 	opfindsym:     {text: "findsym", imms: bcImmsH32, flags: bcReadWriteK | bcReadB | bcWriteV},

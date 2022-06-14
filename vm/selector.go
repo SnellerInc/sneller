@@ -266,6 +266,7 @@ func (p *projector) writeRows(delims []vmref) error {
 	// any call to bcproject() that doesn't consume
 	// all of the input delimiters must need more buffer space
 	lc := 0
+
 	for len(delims) > 0 {
 		off, rewrote := p.bcproject(delims, p.aw.buf[p.aw.off:], p.outsel)
 		if p.bc.err != 0 {

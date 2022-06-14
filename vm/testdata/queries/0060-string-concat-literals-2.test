@@ -1,0 +1,52 @@
+SELECT
+  '!PREFIX-LITERAL!' || a || b || '!SUFFIX-LITERAL!' AS out
+FROM
+  input
+---
+{"a": ""}
+{"b": ""}
+{"a": "A"}
+{"b": "B"}
+{"a": "", "b": ""}
+{"a": "A", "b": ""}
+{"a": "", "b": "B"}
+{"a": "A", "b": "B"}
+{"a": "123", "b": "456"}
+{"a": "abc", "b": "xyz"}
+{"a": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&", "b": "|appended|"}
+{"a": "|base|", "b": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|"}
+{"a": "|ThisStringIs64CharactersLongForTesting|PaddingBytes|MorePuding|", "b": "^AnotherStringToBeAlso64CharactersLongForTesting64CharStrings:)^"}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+---
+{}
+{}
+{}
+{}
+{"out": "!PREFIX-LITERAL!!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!A!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!B!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!AB!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!123456!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!abcxyz!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|appended|!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!|base|abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890_!@#$%^&*()_+{};:<>[].,?/|&|!SUFFIX-LITERAL!"}
+{"out": "!PREFIX-LITERAL!|ThisStringIs64CharactersLongForTesting|PaddingBytes|MorePuding|^AnotherStringToBeAlso64CharactersLongForTesting64CharStrings:)^!SUFFIX-LITERAL!"}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}
+{}

@@ -504,6 +504,17 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 		return val, nil
 
+	case expr.Concat:
+		sargs := make([]*value, len(args))
+		for i := range args {
+			sarg, err := p.compileAsString(args[i])
+			if err != nil {
+				return nil, err
+			}
+			sargs[i] = sarg
+		}
+		return p.Concat(sargs...), nil
+
 	case expr.Least, expr.Greatest:
 		least := fn == expr.Least
 		count := len(args)

@@ -823,19 +823,57 @@ func simplifyObjectSize(h Hint, args []Node) (result Node) {
 	return nil
 }
 
+// Flattens all CONCATs into the output array of nodes with literals joined and empty strings removed
+func flattenConcatRecurse(output []Node, args []Node) []Node {
+	for _, node := range args {
+		if fn, ok := node.(*Builtin); ok && fn.Func == Concat {
+			output = flattenConcatRecurse(output, fn.Args)
+			continue
+		}
+
+		if str, ok := node.(String); ok {
+			// Remove empty strings
+			if str == "" {
+				continue
+			}
+
+			if len(output) > 0 {
+				if prevStr, prevIsString := output[len(output)-1].(String); prevIsString {
+					output[len(output)-1] = prevStr + str
+					continue
+				}
+			}
+		}
+
+		output = append(output, node)
+	}
+
+	return output
+}
+
+func flattenConcat(args []Node) []Node {
+	output := flattenConcatRecurse(make([]Node, 0, len(args)), args)
+
+	// If all strings were "" there would be no string in the output node list
+	// as we have eliminated them all - so add an empty string in such case.
+	if len(output) == 0 {
+		output = append(output, String(""))
+	}
+
+	return output
+}
+
 func simplifyConcat(h Hint, args []Node) Node {
-	if len(args) != 2 {
-		return nil
+	flattenedArgs := flattenConcat(args)
+
+	// Return a string literal if all arguments were simplified to a single string literal.
+	if len(flattenedArgs) == 1 {
+		if str, ok := flattenedArgs[0].(String); ok {
+			return str
+		}
 	}
-	l, ok := args[0].(String)
-	if !ok {
-		return nil
-	}
-	r, ok := args[1].(String)
-	if !ok {
-		return nil
-	}
-	return String(l + r)
+
+	return CallOp(Concat, flattenedArgs...)
 }
 
 func checkTableGlob(h Hint, args []Node) error {
@@ -859,7 +897,7 @@ func checkTablePattern(h Hint, args []Node) error {
 }
 
 var builtinInfo = [maxBuiltin]binfo{
-	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType, simplify: simplifyConcat},
+	Concat:     {check: variadicArgs(StringType), private: true, ret: StringType | MissingType, simplify: simplifyConcat},
 	Trim:       {check: checkTrim, ret: StringType | MissingType, simplify: simplifyTrim},
 	Ltrim:      {check: checkTrim, ret: StringType | MissingType, simplify: simplifyLtrim},
 	Rtrim:      {check: checkTrim, ret: StringType | MissingType, simplify: simplifyRtrim},

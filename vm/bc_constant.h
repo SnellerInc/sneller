@@ -389,6 +389,10 @@ CONST_DATA_U64(constpool, 640, $0x0000FFFFFFFFFFFF)
 #define CONSTQ_100000000() CONST_GET_PTR(constpool, 648)
 CONST_DATA_U64(constpool, 648, $100000000)
 
+#define CONSTD_134217727() CONST_GET_PTR(constpool, 656)
+#define CONSTQ_134217727() CONST_GET_PTR(constpool, 656)
+CONST_DATA_U64(constpool, 656, $134217727)
+
 // Integer Division Reciprocals
 // ----------------------------
 
