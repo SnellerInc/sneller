@@ -64,8 +64,6 @@ func (v *validator) Write(p []byte) (int, error) {
 	}
 	objn := 0
 	var dat ion.Datum
-	var tmpbuf ion.Buffer
-	var tmpst ion.Symtab
 	for len(p) > 0 {
 		dat, p, err = ion.ReadDatum(&v.st, p)
 		if err != nil {
@@ -75,8 +73,7 @@ func (v *validator) Write(p []byte) (int, error) {
 			// nop pad
 			continue
 		}
-
-		if !equal(dat, v.recent[objn], &tmpbuf, &tmpst) {
+		if !ion.RelaxedEqual(dat, v.recent[objn]) {
 			v.t.Errorf("object %d: got  %#v", objn, dat)
 			v.t.Errorf("object %d: want %#v", objn, v.recent[objn])
 			return v.align - len(p), fmt.Errorf("unexpected object at index %d", objn)
@@ -575,9 +572,7 @@ func checkEquivalent(t *testing.T, left, right []byte) {
 		t.Fatalf("left has %d results, right has %d", len(gotleft), len(gotright))
 	}
 	for i := range gotleft {
-		zeroSymbols(gotleft[i])
-		zeroSymbols(gotright[i])
-		if !reflect.DeepEqual(gotleft[i], gotright[i]) {
+		if !ion.RelaxedEqual(gotleft[i], gotright[i]) {
 			f0 := gotleft[i].Fields
 			f1 := gotright[i].Fields
 			for len(f0) > 0 &&

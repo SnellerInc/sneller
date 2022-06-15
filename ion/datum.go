@@ -15,8 +15,8 @@
 package ion
 
 import (
+	"bytes"
 	"fmt"
-	"math/big"
 
 	"golang.org/x/exp/slices"
 
@@ -32,6 +32,9 @@ import (
 type Datum interface {
 	Encode(dst *Buffer, st *Symtab)
 	Type() Type
+
+	// used for RelaxedEqual
+	equal(Datum) bool
 }
 
 var (
@@ -42,10 +45,10 @@ var (
 	_ Datum = &Struct{}
 	_ Datum = List{}
 	_ Datum = Bool(true)
-	_ Datum = new(BigInt)
 	_ Datum = Timestamp{}
 	_ Datum = &Annotation{}
 	_ Datum = Blob(nil)
+	_ Datum = Interned("")
 )
 
 // Float is an ion float datum
@@ -57,11 +60,29 @@ func (f Float) Encode(dst *Buffer, st *Symtab) {
 
 func (f Float) Type() Type { return FloatType }
 
+func (f Float) equal(x Datum) bool {
+	if f2, ok := x.(Float); ok {
+		return f2 == f
+	}
+	if i, ok := x.(Int); ok {
+		return float64(int64(f)) == float64(f) && int64(f) == int64(i)
+	}
+	if u, ok := x.(Uint); ok {
+		return float64(uint64(f)) == float64(f) && uint64(f) == uint64(u)
+	}
+	return false
+}
+
 // UntypedNull is an ion "untyped null" datum
 type UntypedNull struct{}
 
 func (u UntypedNull) Type() Type                     { return NullType }
 func (u UntypedNull) Encode(dst *Buffer, st *Symtab) { dst.WriteNull() }
+
+func (u UntypedNull) equal(x Datum) bool {
+	_, ok := x.(UntypedNull)
+	return ok
+}
 
 // Int is an ion integer datum (signed or unsigned)
 type Int int64
@@ -73,6 +94,19 @@ func (i Int) Type() Type {
 	return IntType
 }
 
+func (i Int) equal(x Datum) bool {
+	if i2, ok := x.(Int); ok {
+		return i == i2
+	}
+	if u, ok := x.(Uint); ok {
+		return i >= 0 && Uint(i) == u
+	}
+	if f, ok := x.(Float); ok {
+		return float64(int64(f)) == float64(f) && int64(f) == int64(i)
+	}
+	return false
+}
+
 func (i Int) Encode(dst *Buffer, st *Symtab) {
 	dst.WriteInt(int64(i))
 }
@@ -82,6 +116,19 @@ type Uint uint64
 
 func (u Uint) Type() Type                     { return UintType }
 func (u Uint) Encode(dst *Buffer, st *Symtab) { dst.WriteUint(uint64(u)) }
+
+func (u Uint) equal(x Datum) bool {
+	if u2, ok := x.(Uint); ok {
+		return u == u2
+	}
+	if i, ok := x.(Int); ok {
+		return i >= 0 && Uint(i) == u
+	}
+	if f, ok := x.(Float); ok {
+		return float64(uint64(f)) == float64(f) && uint64(f) == uint64(u)
+	}
+	return false
+}
 
 // Field is a structure field in a Struct or Annotation datum
 type Field struct {
@@ -111,6 +158,28 @@ func (s *Struct) Encode(dst *Buffer, st *Symtab) {
 		s.Fields[i].Value.Encode(dst, st)
 	}
 	dst.EndStruct()
+}
+
+func (s *Struct) equal(x Datum) bool {
+	s2, ok := x.(*Struct)
+	if !ok {
+		return false
+	}
+	if len(s.Fields) != len(s2.Fields) {
+		return false
+	}
+	byname := func(x, y Field) bool {
+		return x.Label < y.Label
+	}
+	slices.SortFunc(s.Fields, byname)
+	slices.SortFunc(s2.Fields, byname)
+	for i := range s.Fields {
+		f2 := s2.Fields[i].Value
+		if !f2.equal(s.Fields[i].Value) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Struct) Field(x Symbol) *Field {
@@ -144,11 +213,32 @@ func (l List) Encode(dst *Buffer, st *Symtab) {
 	dst.EndList()
 }
 
+func (l List) equal(x Datum) bool {
+	l2, ok := x.(List)
+	if !ok {
+		return false
+	}
+	if len(l) != len(l2) {
+		return false
+	}
+	for i := range l {
+		if !l[i].equal(l2[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // Bool is an ion bool datum
 type Bool bool
 
 func (b Bool) Type() Type                     { return BoolType }
 func (b Bool) Encode(dst *Buffer, st *Symtab) { dst.WriteBool(bool(b)) }
+
+func (b Bool) equal(x Datum) bool {
+	b2, ok := x.(Bool)
+	return ok && b2 == b
+}
 
 type String string
 
@@ -156,11 +246,25 @@ func (s String) Type() Type { return StringType }
 
 func (s String) Encode(dst *Buffer, st *Symtab) { dst.WriteString(string(s)) }
 
+func (s String) equal(x Datum) bool {
+	s2, ok := x.(String)
+	if ok {
+		return s == s2
+	}
+	ir, ok := x.(Interned)
+	return ok && s == String(ir)
+}
+
 type Blob []byte
 
 func (b Blob) Type() Type { return BlobType }
 
 func (b Blob) Encode(dst *Buffer, st *Symtab) { dst.WriteBlob([]byte(b)) }
+
+func (b Blob) equal(x Datum) bool {
+	b2, ok := x.(Blob)
+	return ok && bytes.Equal(b, b2)
+}
 
 // Interned is a Datum that represents
 // an interned string (a Symbol).
@@ -173,6 +277,15 @@ func (i Interned) Type() Type { return SymbolType }
 
 func (i Interned) Encode(dst *Buffer, st *Symtab) {
 	dst.WriteSymbol(st.Intern(string(i)))
+}
+
+func (i Interned) equal(x Datum) bool {
+	i2, ok := x.(Interned)
+	if ok {
+		return i == i2
+	}
+	str, ok := x.(String)
+	return ok && Interned(str) == i
 }
 
 // Annotation objects represent
@@ -195,6 +308,10 @@ func (a *Annotation) Encode(dst *Buffer, st *Symtab) {
 	dst.EndAnnotation()
 }
 
+func (a *Annotation) equal(x Datum) bool {
+	return false
+}
+
 // Timestamp is an ion timestamp datum
 type Timestamp date.Time
 
@@ -204,61 +321,9 @@ func (t Timestamp) Encode(dst *Buffer, st *Symtab) {
 	dst.WriteTime(date.Time(t))
 }
 
-// BigNum is a datum that can hold
-// arbitrary rational numbers
-type BigNum big.Rat
-
-func (b *BigNum) Encode(dst *Buffer, st *Symtab) {
-	r := (*big.Rat)(b)
-	if r.IsInt() {
-		(*BigInt)(r.Num()).Encode(dst, st)
-	}
-	// FIXME: handle imprecise output here
-	f, _ := r.Float64()
-	Float(f).Encode(dst, st)
-}
-
-func (b *BigNum) Type() Type {
-	r := (*big.Rat)(b)
-	if r.IsInt() {
-		if r.Sign() < 0 {
-			return IntType
-		}
-		return UintType
-	}
-	// TODO: return decimal type
-	return FloatType
-}
-
-// BigInt is an ion integer that
-// can hold integers of arbitrary magnitude
-type BigInt big.Int
-
-func (b *BigInt) Type() Type {
-	i := (*big.Int)(b)
-	if i.Sign() < 0 {
-		return IntType
-	}
-	return UintType
-}
-
-func (b *BigInt) Encode(dst *Buffer, st *Symtab) {
-	i := (*big.Int)(b)
-	if i.IsInt64() {
-		dst.WriteInt(i.Int64())
-		return
-	}
-	if i.IsUint64() {
-		dst.WriteUint(i.Uint64())
-		return
-	}
-	tag := (UintType << 4) | 0xe
-	if i.Sign() < 0 {
-		tag = (IntType << 4) | 0xe
-	}
-	buf := dst.grow(1 + (i.BitLen() * 8))
-	buf[0] = byte(tag)
-	i.FillBytes(buf[1:])
+func (t Timestamp) equal(x Datum) bool {
+	t2, ok := x.(Timestamp)
+	return ok && date.Time(t).Equal(date.Time(t2))
 }
 
 func decodeNullDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
@@ -277,8 +342,7 @@ func decodeBoolDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 
 func decodeUintDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 	if SizeOf(b) > 9 {
-		body, rest := Contents(b)
-		return (*BigInt)(new(big.Int).SetBytes(body)), rest, nil
+		return nil, b, fmt.Errorf("int size %d out of range", SizeOf(b))
 	}
 	u, rest, err := ReadUint(b)
 	if err != nil {
@@ -289,9 +353,7 @@ func decodeUintDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 
 func decodeIntDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 	if SizeOf(b) > 9 {
-		body, rest := Contents(b)
-		bi := new(big.Int).SetBytes(body)
-		return (*BigInt)(bi.Neg(bi)), rest, nil
+		return nil, b, fmt.Errorf("int size %d out of range", SizeOf(b))
 	}
 	i, rest, err := ReadInt(b)
 	if err != nil {
@@ -456,4 +518,8 @@ func ReadDatum(st *Symtab, buf []byte) (Datum, []byte, error) {
 		}
 	}
 	return datumTable[TypeOf(buf)](st, buf)
+}
+
+func RelaxedEqual(a, b Datum) bool {
+	return a.equal(b)
 }

@@ -60,7 +60,12 @@ func resymValue(dst *Buffer, new, old *Symtab, buf []byte) []byte {
 		if err != nil {
 			panic(err)
 		}
-		dst.WriteSymbol(new.Intern(old.Get(sym)))
+		// we are deliberately decompressing
+		// the old interned value, because we
+		// may or may not want to re-compress it now;
+		// additionally, inserting symbols in DFS order
+		// may disturb the field name order
+		dst.WriteString(old.Get(sym))
 		return rest
 	default:
 		size := SizeOf(buf)

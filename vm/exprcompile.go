@@ -1094,8 +1094,12 @@ func (p *prog) recordDatum(d ion.Datum, st syms) {
 		for i := range d {
 			p.recordDatum(d[i], st)
 		}
-	case ion.Symbol:
-		p.record(st.Get(d), d)
+	case ion.Interned:
+		sym, ok := st.Symbolize(string(d))
+		if !ok {
+			sym = ^ion.Symbol(0)
+		}
+		p.record(string(d), sym)
 	}
 }
 

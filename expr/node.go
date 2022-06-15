@@ -3037,8 +3037,6 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 			values = append(values, val)
 		}
 		return &List{Values: values}, true
-	case *ion.BigInt:
-		return (*Rational)(new(big.Rat).SetInt((*big.Int)(d))), true
 	case ion.Timestamp:
 		return &Timestamp{Value: date.Time(d)}, true
 	case ion.Bool:

@@ -86,6 +86,8 @@ type Chunker struct {
 	lastst  int    // last symbol table size
 	written int
 
+	compressed bool
+
 	// marshalled and flushed maximum symbol IDs, respectively:
 	tmpID, flushID int
 
@@ -260,6 +262,17 @@ func (c *Chunker) flushRanges() error {
 	return nil
 }
 
+func (c *Chunker) compressOrFlush() error {
+	if !c.noResymbolize && !c.compressed {
+		c.compress()
+		c.compressed = true
+		if c.Buffer.Size() < c.Align {
+			return nil
+		}
+	}
+	return c.forceFlush(false)
+}
+
 // forceFlush flushes the current state
 // up to the last commited object,
 // then resets the output buffer with
@@ -317,6 +330,7 @@ func (c *Chunker) forceFlush(final bool) error {
 			// in the next block, resymbolize so that we
 			// don't carry over old symbols
 			resymbolize(&c.Buffer, &c.Ranges, &c.Symbols, tail)
+			c.compressed = false
 		} else {
 			c.Buffer.UnsafeAppend(tail)
 		}
@@ -375,6 +389,7 @@ func (c *Chunker) Commit() error {
 	if lastsize > c.Align {
 		return err2big(c.Align)
 	}
+	c.compressed = false
 	// we're guessing here that if we leave enough
 	// slack space for the symbol table to double
 	// in size, we will still have enough space left
@@ -384,7 +399,7 @@ func (c *Chunker) Commit() error {
 		if c.lastoff > c.Align {
 			panic("bad bookkeeping")
 		}
-	} else if err := c.forceFlush(false); err != nil {
+	} else if err := c.compressOrFlush(); err != nil {
 		return err
 	}
 	c.rowcount++
@@ -607,8 +622,9 @@ func pathLess(left, right []Symbol) bool {
 	return len(left) < len(right)
 }
 
+const badSymbol = Symbol(0xffffffff)
+
 func (c *Chunker) walkTimeRanges(rec []byte) {
-	const badSymbol = Symbol(0xffffffff)
 	if len(c.WalkTimeRanges) == 0 {
 		return
 	}

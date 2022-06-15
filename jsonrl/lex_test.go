@@ -536,7 +536,7 @@ func BenchmarkTranslate(b *testing.B) {
 			b.SetBytes(int64(len(buf)))
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
-				cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
+				cn := &ion.Chunker{W: ioutil.Discard, Align: 16 * 1024}
 				rd := bytes.NewReader(nil)
 				for pb.Next() {
 					cn.Reset()

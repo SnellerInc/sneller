@@ -67,6 +67,19 @@ func (s *Symtab) MaxID() int {
 	return len(systemsyms) + len(s.interned)
 }
 
+func (s *Symtab) getBytes(buf []byte) (Symbol, bool) {
+	if i, ok := system2id[string(buf)]; ok {
+		return Symbol(i), true
+	}
+	if s.toindex != nil {
+		i, ok := s.toindex[string(buf)]
+		if ok {
+			return Symbol(len(systemsyms) + i), true
+		}
+	}
+	return 0, false
+}
+
 // InternBytes is identical to Intern,
 // except that it accepts a []byte instead of
 // a string as an argument.

@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
@@ -115,8 +114,7 @@ func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
 			}
 			return Float(f), nil
 		}
-		r, _ := new(big.Rat).SetString(t.String())
-		return (*BigNum)(r), nil
+		return nil, fmt.Errorf("number %q out of range", t.String())
 	case string:
 		// N.B. -gcflags=-m says this conversion
 		// does not escape to the heap:
