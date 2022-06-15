@@ -86,6 +86,7 @@ type Chunker struct {
 	lastst  int    // last symbol table size
 	written int
 
+	lastcomp   int // last compressed offset
 	compressed bool
 
 	// marshalled and flushed maximum symbol IDs, respectively:
@@ -195,6 +196,7 @@ func (c *Chunker) adjustSyms() bool {
 	adj := size - c.lastst
 	c.lastst = size
 	c.lastoff += adj
+	c.lastcomp += adj
 
 	c.Buffer.Set(prepend(data, prefix))
 	c.tmpID = max
@@ -339,6 +341,7 @@ func (c *Chunker) forceFlush(final bool) error {
 	// save the offset of either zero or one objects
 	c.lastoff = c.Buffer.Size()
 	c.lastst = 0
+	c.lastcomp = 0
 	if final {
 		return nil
 	}

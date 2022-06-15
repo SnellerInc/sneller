@@ -20,15 +20,18 @@ import (
 )
 
 func (c *Chunker) compress() {
-	body := c.Buffer.Bytes()[c.lastst:]
-
 	if c.lastoff > c.Align {
 		println(c.lastoff, ">", c.Align)
 		panic("lastoff > c.Align")
 	}
 
+	if c.lastcomp < c.lastst {
+		panic("lastcomp < c.lastst")
+	}
 	// scan body for repeated strings
 	var stab strtab
+	body := c.Buffer.Bytes()[c.lastcomp:]
+	prefix := c.Buffer.Bytes()[c.lastst:c.lastcomp]
 	toscan := body
 	for len(toscan) > 0 {
 		toscan = scanstrs(&c.Symbols, toscan, &stab)
@@ -53,6 +56,9 @@ func (c *Chunker) compress() {
 	}
 	c.lastst = c.tmpbuf.Size()
 	c.tmpID = c.Symbols.MaxID()
+	// directly copy input that has
+	// already been compressed
+	c.tmpbuf.UnsafeAppend(prefix)
 	for len(body) > 0 {
 		// update c.lastoff to point to the start
 		// of the last structure so that adjustSyms
@@ -67,6 +73,7 @@ func (c *Chunker) compress() {
 	newbody := c.tmpbuf.Bytes()
 	c.tmpbuf.Set(c.Buffer.Bytes()[:0])
 	c.Buffer.Set(newbody)
+	c.lastcomp = c.Buffer.Size()
 }
 
 const (

@@ -39,6 +39,8 @@ type validator struct {
 	align  int
 	st     ion.Symtab
 	recent []ion.Datum
+	writes int
+	bytes  int
 }
 
 func equal(a, b ion.Datum, tmpbuf *ion.Buffer, tmpst *ion.Symtab) bool {
@@ -52,6 +54,8 @@ func equal(a, b ion.Datum, tmpbuf *ion.Buffer, tmpst *ion.Symtab) bool {
 }
 
 func (v *validator) Write(p []byte) (int, error) {
+	v.writes++
+	v.bytes += len(p)
 	if len(p) != v.align {
 		return 0, fmt.Errorf("bad write: %d bytes", len(p))
 	}
@@ -99,7 +103,7 @@ func TestChunker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const align = 1024 * 1024
+	const align = 16 * 1024
 	v := &validator{
 		t:     t,
 		align: align,
@@ -917,10 +921,11 @@ func BenchmarkChunkerWrite(b *testing.B) {
 			}
 			defer f.Close()
 
+			const align = 1024 * 1024
 			var tmp bytes.Buffer
 			cn := ion.Chunker{
 				W:     &tmp,
-				Align: 1024 * 1024,
+				Align: align,
 			}
 			err = jsonrl.Convert(f, &cn, nil)
 			if err != nil {
@@ -938,8 +943,8 @@ func BenchmarkChunkerWrite(b *testing.B) {
 			}
 			cn2 := ion.Chunker{
 				W:              ioutil.Discard,
-				Align:          1024 * 1024,
-				RangeAlign:     100 * 1024 * 1024,
+				Align:          cn.Align,
+				RangeAlign:     100 * cn.Align,
 				WalkTimeRanges: [][]string{{"eventTime"}},
 			}
 			b.SetBytes(int64(len(fastchunk)))
