@@ -11703,8 +11703,8 @@ TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   JZ            next                      //;1CA4B42D no, then exit; jump if zero (ZF = 1);
 
   MOVL          4(R14),R13                //;00000000                                 ;R13=n_alt; R14=needle_ptr;
-  MOVL          8(R14),R12                //;1EEAB85B                                 ;R12=alt_ptr; R14=needle_ptr;
-  ADDQ          R14, R12                  //;7B0665F3 alt_ptr += needle_ptr           ;R12=alt_ptr; R14=needle_ptr;
+  MOVL          8(R14),R11                //;1EEAB85B                                 ;R12=alt_ptr; R14=needle_ptr;
+  ADDQ          R14, R11                  //;7B0665F3 alt_ptr += needle_ptr           ;R12=alt_ptr; R14=needle_ptr;
   ADDQ          $16, R14                  //;48EB17D0 needle_ptr += 16                ;R14=needle_ptr;
 
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
@@ -11763,10 +11763,10 @@ mixed_ascii:
   VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
 
-  VPCMPD.BCST   $0,  (R12)(DX*1),Z8,  K1,  K3  //;345D0BF3 K3 := K1 & (data_msg==[alt_ptr+rune_index]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
-  VPCMPD.BCST   $0,  4(R12)(DX*1),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[alt_ptr+rune_index+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
-  VPCMPD.BCST   $0,  8(R12)(DX*1),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[alt_ptr+rune_index+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
-  VPCMPD.BCST   $0,  12(R12)(DX*1),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[alt_ptr+rune_index+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  (R11)(DX*1),Z8,  K1,  K3  //;345D0BF3 K3 := K1 & (data_msg==[alt_ptr+rune_index]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  4(R11)(DX*1),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[alt_ptr+rune_index+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  8(R11)(DX*1),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[alt_ptr+rune_index+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  12(R11)(DX*1),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[alt_ptr+rune_index+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
   KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
   KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
   KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
