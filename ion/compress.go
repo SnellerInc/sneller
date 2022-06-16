@@ -19,6 +19,12 @@ import (
 	"hash/maphash"
 )
 
+// we don't deliberately intern more
+// than 3MB of strings, since the vm
+// is required to buffer the entire
+// symbol table in VMM
+const maxInterned = 3 * 1024 * 1024
+
 func (c *Chunker) compress() {
 	if c.lastoff > c.Align {
 		println(c.lastoff, ">", c.Align)
@@ -174,6 +180,9 @@ func (s *strtab) mark(str []byte, st *Symtab) {
 func (s *strtab) choose(st *Symtab, threshold int) int {
 	n := 0
 	for i := range s.entries {
+		if st.memsize >= maxInterned {
+			break
+		}
 		if s.entries[i].enc == nil {
 			continue
 		}
@@ -189,6 +198,8 @@ func (s *strtab) choose(st *Symtab, threshold int) int {
 	return n
 }
 
+// for each string in body (recursively),
+// call stab.mark(str, st)
 func scanstrs(st *Symtab, body []byte, stab *strtab) []byte {
 	switch TypeOf(body) {
 	case ListType:

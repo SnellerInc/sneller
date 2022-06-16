@@ -25,6 +25,7 @@ import (
 type Symtab struct {
 	interned []string       // symbol -> string lookup
 	toindex  map[string]int // string -> symbol lookup
+	memsize  int
 }
 
 // Reset resets a symbol table
@@ -101,6 +102,7 @@ func (s *Symtab) InternBytes(buf []byte) Symbol {
 	}
 	s.toindex[string(buf)] = len(s.interned)
 	s.interned = append(s.interned, string(buf))
+	s.memsize += len(buf)
 	return Symbol(len(systemsyms) + len(s.interned) - 1)
 }
 
@@ -121,6 +123,7 @@ func (s *Symtab) Intern(x string) Symbol {
 	}
 	s.toindex[x] = len(s.interned)
 	s.interned = append(s.interned, x)
+	s.memsize += len(x)
 	return Symbol(len(systemsyms) + len(s.interned) - 1)
 }
 
@@ -172,8 +175,10 @@ func (s *Symtab) CloneInto(o *Symtab) {
 			// a high to a low position)
 			delete(o.toindex, str)
 		}
+		s.memsize -= len(tail[j])
 		if k < len(s.interned) {
 			tail[j] = s.interned[k]
+			s.memsize += len(s.interned[k])
 			o.toindex[tail[j]] = k
 		} else {
 			tail[j] = ""
@@ -182,6 +187,7 @@ func (s *Symtab) CloneInto(o *Symtab) {
 	// if we are inserting more elements, keep going:
 	for len(o.interned) < len(s.interned) {
 		x := s.interned[len(o.interned)]
+		o.memsize += len(x)
 		o.toindex[x] = len(o.interned)
 		o.interned = append(o.interned, x)
 	}
@@ -338,6 +344,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 				// when a string is interned more than
 				// once?
 				s.interned = append(s.interned, str)
+				s.memsize += len(str)
 				if _, ok := s.toindex[str]; !ok {
 					s.toindex[str] = len(s.interned) - 1
 				}
