@@ -39,6 +39,14 @@ func IndexPath(db, table string) string {
 	return path.Join("db", db, table, "index")
 }
 
+// DefinitionPattern returns the pattern
+// for a path at which the definition for
+// the given db and table would live relative
+// to the root of the FS.
+func DefinitionPattern(db, table string) string {
+	return path.Join("db", db, table, "definition.[yj][sa][om][nl]")
+}
+
 func part(p string, num int) (string, bool) {
 	for num > 0 {
 		s := strings.IndexByte(p, '/')
