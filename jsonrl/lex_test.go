@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -519,6 +520,32 @@ func TestMaxDepth(t *testing.T) {
 	}
 }
 
+type loopReader struct {
+	r     io.ReadSeeker
+	count int
+}
+
+func (l *loopReader) Read(p []byte) (int, error) {
+	for {
+		n, err := l.r.Read(p)
+		if n > 0 || err != io.EOF || l.count <= 0 {
+			return n, err
+		}
+		_, err = l.r.Seek(0, 0)
+		if err != nil {
+			return 0, err
+		}
+		l.count--
+	}
+}
+
+type counter int64
+
+func (c *counter) Write(p []byte) (int, error) {
+	*(*int64)(c) += int64(len(p))
+	return len(p), nil
+}
+
 func BenchmarkTranslate(b *testing.B) {
 	files := []string{
 		"parking3.json",
@@ -528,25 +555,33 @@ func BenchmarkTranslate(b *testing.B) {
 
 	for i := range files {
 		b.Run(files[i], func(b *testing.B) {
-			buf, err := ioutil.ReadFile("../testdata/" + files[i])
+			f, err := os.Open("../testdata/" + files[i])
 			if err != nil {
 				b.Fatal(err)
 			}
-			buf = bytes.TrimSpace(buf)
-			b.SetBytes(int64(len(buf)))
+			defer f.Close()
+			lp := &loopReader{
+				r:     f,
+				count: b.N,
+			}
+			info, err := f.Stat()
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(info.Size())
 			b.ReportAllocs()
-			b.RunParallel(func(pb *testing.PB) {
-				cn := &ion.Chunker{W: ioutil.Discard, Align: 16 * 1024}
-				rd := bytes.NewReader(nil)
-				for pb.Next() {
-					cn.Reset()
-					rd.Reset(buf)
-					err := Convert(rd, cn, nil)
-					if err != nil {
-						b.Fatalf("Convert: %s", err)
-					}
-				}
-			})
+			w := counter(0)
+			cn := &ion.Chunker{
+				W:          &w,
+				Align:      1024 * 1024,
+				RangeAlign: 100 * 1024 * 1024,
+			}
+			b.ResetTimer()
+			err = Convert(lp, cn, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Logf("%d symbols; %d bytes in; %d bytes out", cn.Symbols.MaxID(), info.Size()*int64(b.N), int64(w))
 		})
 	}
 }

@@ -43,16 +43,6 @@ type validator struct {
 	bytes  int
 }
 
-func equal(a, b ion.Datum, tmpbuf *ion.Buffer, tmpst *ion.Symtab) bool {
-	tmpbuf.Reset()
-	tmpst.Reset()
-	a.Encode(tmpbuf, tmpst)
-	first := tmpbuf.Bytes()
-	b.Encode(tmpbuf, tmpst)
-	second := tmpbuf.Bytes()[len(first):]
-	return bytes.Equal(first, second)
-}
-
 func (v *validator) Write(p []byte) (int, error) {
 	v.writes++
 	v.bytes += len(p)
@@ -905,7 +895,6 @@ func TestChunkerChangingSymbols(t *testing.T) {
 			}
 		}
 	}
-
 }
 
 func BenchmarkChunkerWrite(b *testing.B) {
