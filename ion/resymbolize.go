@@ -43,7 +43,6 @@ func resymbolize(dst *Buffer, rng *Ranges, st *Symtab, buf []byte) {
 	}
 	rng.m = newm
 	rng.paths = newp
-
 	newst.CloneInto(st)
 }
 

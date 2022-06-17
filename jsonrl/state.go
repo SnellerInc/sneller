@@ -949,6 +949,8 @@ func (s *state) parseString(seg []byte, esc bool) {
 		if t, ok := date.Parse(seg); ok {
 			s.addTimeRange(t)
 			s.out.WriteTime(t)
+		} else if sym, ok := s.out.Symbols.SymbolizeBytes(seg); ok {
+			s.out.WriteSymbol(sym)
 		} else {
 			s.out.BeginString(len(seg))
 			s.out.UnsafeAppend(seg)

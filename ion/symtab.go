@@ -144,6 +144,21 @@ func (s *Symtab) Symbolize(x string) (Symbol, bool) {
 	return 0, false
 }
 
+// SymbolizeBytes works identically to Symbolize,
+// except that it accepts a []byte.
+func (s *Symtab) SymbolizeBytes(x []byte) (Symbol, bool) {
+	if i, ok := system2id[string(x)]; ok {
+		return Symbol(i), true
+	}
+	if s.toindex != nil {
+		i, ok := s.toindex[string(x)]
+		if ok {
+			return Symbol(len(systemsyms) + i), true
+		}
+	}
+	return 0, false
+}
+
 // Equal checks if two symtabs are equal.
 func (s *Symtab) Equal(o *Symtab) bool {
 	return reflect.DeepEqual(s, o)

@@ -19,18 +19,23 @@ import (
 	"hash/maphash"
 )
 
-// we don't deliberately intern more
-// than 3MB of strings, since the vm
-// is required to buffer the entire
-// symbol table in VMM
-const maxInterned = 3 * 1024 * 1024
+const (
+	// we don't deliberately intern more
+	// than 3MB of strings, since the vm
+	// is required to buffer the entire
+	// symbol table in VMM
+	maxInterned = 3 * 1024 * 1024
+	// allow hash table entries to be
+	// evicted beyond some window (in bytes)
+	evictWindow = 64 * 1024
+)
 
 func (c *Chunker) compress() {
+	// we would like
+	//   c.lastst <= c.lastcomp <= c.lastoff <= c.Align
 	if c.lastoff > c.Align {
-		println(c.lastoff, ">", c.Align)
 		panic("lastoff > c.Align")
 	}
-
 	if c.lastcomp < c.lastst {
 		panic("lastcomp < c.lastst")
 	}
@@ -42,12 +47,8 @@ func (c *Chunker) compress() {
 	for len(toscan) > 0 {
 		toscan = scanstrs(&c.Symbols, toscan, &stab)
 	}
-
-	// add new symbols to symbol table,
-	// or bail out if we don't add anything
-	// and there were no pre-interned strings
-	// we could still compress away
-	if stab.choose(&c.Symbols, 3) == 0 && stab.prepop == 0 {
+	if stab.prepop == 0 {
+		// didn't turn any new strings to symbols
 		return
 	}
 
@@ -60,21 +61,32 @@ func (c *Chunker) compress() {
 	} else {
 		c.Symbols.MarshalPart(&c.tmpbuf, Symbol(c.flushID))
 	}
-	c.lastst = c.tmpbuf.Size()
-	c.tmpID = c.Symbols.MaxID()
+	newlastst := c.tmpbuf.Size()
+	newtmpID := c.Symbols.MaxID()
 	// directly copy input that has
 	// already been compressed
 	c.tmpbuf.UnsafeAppend(prefix)
+	lastoff := c.tmpbuf.Size()
 	for len(body) > 0 {
 		// update c.lastoff to point to the start
 		// of the last structure so that adjustSyms
 		// can move around the last record correctly
-		c.lastoff = c.tmpbuf.Size()
+		lastoff = c.tmpbuf.Size()
 		body = compress(&c.Symbols, &c.tmpbuf, body)
 	}
-	if c.lastoff > c.Align {
-		panic("lastoff > c.Align")
+	if lastoff > c.Align {
+		// rare situation: if the symbol table
+		// has never been encoded, then prepending
+		// it as we did above can cause lastoff to
+		// grow rather than shrink, and in that case
+		// we cannot compress because there isn't
+		// space to grow the symbol table -- just bail out
+		return
 	}
+	// commit the new compressed data
+	c.lastoff = lastoff
+	c.lastst = newlastst
+	c.tmpID = newtmpID
 	// swap tmp and main
 	newbody := c.tmpbuf.Bytes()
 	c.tmpbuf.Set(c.Buffer.Bytes()[:0])
@@ -83,15 +95,27 @@ func (c *Chunker) compress() {
 }
 
 const (
-	strtabBits = 11
+	strtabBits = 9
 	strtabSize = 1 << strtabBits
 	strtabMask = strtabSize - 1
 )
 
 type strentry struct {
-	enc    []byte
-	count  int
-	chosen Symbol
+	enc   []byte
+	count int
+}
+
+func (s *strentry) init(str []byte) {
+	s.enc = str
+	s.count = 1
+}
+
+// since all string slices point into
+// the same source buffer, we can compute
+// the distance from one to the other just
+// by looking at the remaining capacity
+func distance(from, to []byte) int {
+	return cap(from) - cap(to)
 }
 
 // strtab is a lossy hash table of strings
@@ -115,87 +139,59 @@ func (s *strtab) hash(str []byte) (*strentry, *strentry) {
 // it will avoid inserting str if it is
 // already part of the symbol table or if
 // there is a colliding hash entry already present
-func (s *strtab) mark(str []byte, st *Symtab) {
+func (s *strtab) mark(str []byte, st *Symtab, threshold int) {
 	if len(str) < 3 {
+		return
+	}
+	if _, ok := st.getBytes(str); ok {
+		s.prepop++
 		return
 	}
 	e0, e1 := s.hash(str)
 	if e0.enc == nil {
-		if _, ok := st.getBytes(str); ok {
-			s.prepop++
-			return
-		}
-		e0.chosen = badSymbol
-		e0.enc = str
-		e0.count = 1
+		e0.init(str)
 		s.hits++
 		return
 	}
 	if bytes.Equal(str, e0.enc) {
 		e0.count++
+		if e0.count >= threshold {
+			st.InternBytes(e0.enc)
+			*e0 = strentry{}
+			s.prepop++
+		}
 		return
 	}
 	if e1.enc == nil {
-		if _, ok := st.getBytes(str); ok {
-			s.prepop++
-			return
-		}
-		e1.chosen = badSymbol
-		e1.enc = str
-		e1.count = 1
+		e1.init(str)
 		s.hits++
 		return
 	}
 	if bytes.Equal(str, e1.enc) {
 		e1.count++
+		if e1.count >= threshold {
+			st.InternBytes(e1.enc)
+			*e1 = strentry{}
+			s.prepop++
+		}
 		return
 	}
 
-	// if we have an entry that isn't part
-	// of the existing hash table and collides
-	// with two candidate entries, clobber the
-	// existing candidates if they don't save
-	// as much space as interning this entry
-	if _, ok := st.getBytes(str); ok {
-		s.prepop++
+	lo := e0
+	if e1.count < e0.count || (e0.count == e1.count && distance(e0.enc, e1.enc) < 0) {
+		lo = e1
+	}
+	// if the oldest of (e0, e1) has count==1 and has
+	// existed for longer than some window size, clobber it
+	if lo.count == 1 && distance(lo.enc, str) >= evictWindow {
+		lo.init(str)
+		s.hits++
 		return
 	}
-	if e0.count == 1 && len(e0.enc) < len(str) {
-		e0.chosen = badSymbol
-		e0.enc = str
-		return
-	}
-	if e1.count == 1 && len(e1.enc) < len(str) {
-		e1.chosen = badSymbol
-		e1.enc = str
-		return
-	}
+
 	// track how many candidates we ignored
 	// due to hash table collisions
 	s.misses++
-}
-
-// allocate symbols for all entries
-// that do not already have chosen symbols
-func (s *strtab) choose(st *Symtab, threshold int) int {
-	n := 0
-	for i := range s.entries {
-		if st.memsize >= maxInterned {
-			break
-		}
-		if s.entries[i].enc == nil {
-			continue
-		}
-		if s.entries[i].count < threshold {
-			continue
-		}
-		if s.entries[i].chosen != badSymbol {
-			continue
-		}
-		s.entries[i].chosen = st.InternBytes(s.entries[i].enc)
-		n++
-	}
-	return n
 }
 
 // for each string in body (recursively),
@@ -217,7 +213,7 @@ func scanstrs(st *Symtab, body []byte, stab *strtab) []byte {
 		return rest
 	case StringType:
 		body, rest, _ := ReadStringShared(body)
-		stab.mark(body, st)
+		stab.mark(body, st, 3)
 		return rest
 	default:
 		return body[SizeOf(body):]

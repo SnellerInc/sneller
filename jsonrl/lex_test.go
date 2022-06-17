@@ -106,19 +106,7 @@ func TestParseOK(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ion.FromJSON: %s", err)
 			}
-			// test that the encoding is identical
-			// (this implicitly tests ion fields, etc.)
-			var refbuf ion.Buffer
-			dat.Encode(&refbuf, &st.out.Symbols)
-			bits := st.out.Bytes()
-			if ion.IsBVM(bits) {
-				bits = bits[4+ion.SizeOf(bits[4:]):]
-			}
-			if !bytes.Equal(refbuf.Bytes(), bits) {
-				t.Logf("got:  %#v", got)
-				t.Logf("bits: %x", bits)
-				t.Logf("want: %#v", dat)
-				t.Logf("bits: %x", refbuf.Bytes())
+			if !ion.RelaxedEqual(dat, got) {
 				t.Error("datum not equal")
 			}
 		})
@@ -459,7 +447,7 @@ func TestHuge(t *testing.T) {
 	m := make(map[string]string)
 	str := strings.Repeat("foobarbazquux\n", 1000)
 	for i := 0; i < 500; i++ {
-		m[fmt.Sprintf("field%d", i)] = str
+		m[fmt.Sprintf("field%d", i)] = fmt.Sprintf("%s%d", str, i)
 	}
 	buf, err := json.Marshal(m)
 	if err != nil {
@@ -474,7 +462,7 @@ func TestHuge(t *testing.T) {
 	// the alignment, at which point we should
 	// get an error
 	for i := 0; i < 500; i++ {
-		m[fmt.Sprintf("field%d_2", i)] = str
+		m[fmt.Sprintf("field%d_2", i)] = fmt.Sprintf("%s%d", str, i)
 	}
 	buf, err = json.Marshal(m)
 	if err != nil {
