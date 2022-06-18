@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+
+	"golang.org/x/exp/maps"
 )
 
 // Symtab is an ion symbol table
@@ -26,6 +28,10 @@ type Symtab struct {
 	interned []string       // symbol -> string lookup
 	toindex  map[string]int // string -> symbol lookup
 	memsize  int
+}
+
+func (s *Symtab) init() {
+	s.toindex = maps.Clone(system2id)
 }
 
 // Reset resets a symbol table
@@ -69,62 +75,48 @@ func (s *Symtab) MaxID() int {
 }
 
 func (s *Symtab) getBytes(buf []byte) (Symbol, bool) {
-	if i, ok := system2id[string(buf)]; ok {
-		return Symbol(i), true
+	if s.toindex == nil {
+		i, ok := system2id[string(buf)]
+		return Symbol(i), ok
 	}
-	if s.toindex != nil {
-		i, ok := s.toindex[string(buf)]
-		if ok {
-			return Symbol(len(systemsyms) + i), true
-		}
-	}
-	return 0, false
+	i, ok := s.toindex[string(buf)]
+	return Symbol(i), ok
 }
 
 // InternBytes is identical to Intern,
 // except that it accepts a []byte instead of
 // a string as an argument.
 func (s *Symtab) InternBytes(buf []byte) Symbol {
-	// We are relying on the fact that
-	// the Go compiler knows it can elide
-	// allocation when string([]byte) is
-	// called directly as part of a map access.
-	if i, ok := system2id[string(buf)]; ok {
+	if s.toindex == nil {
+		s.init()
+	}
+	i, ok := s.toindex[string(buf)]
+	if ok {
 		return Symbol(i)
 	}
-	if s.toindex != nil {
-		i, ok := s.toindex[string(buf)]
-		if ok {
-			return Symbol(len(systemsyms) + i)
-		}
-	} else {
-		s.toindex = make(map[string]int)
-	}
-	s.toindex[string(buf)] = len(s.interned)
+	id := len(s.interned) + len(systemsyms)
+	s.toindex[string(buf)] = id
 	s.interned = append(s.interned, string(buf))
 	s.memsize += len(buf)
-	return Symbol(len(systemsyms) + len(s.interned) - 1)
+	return Symbol(id)
 }
 
 // Intern interns the given string
 // if it is not already interned
 // and returns the associated Symbol
 func (s *Symtab) Intern(x string) Symbol {
-	if i, ok := system2id[x]; ok {
+	if s.toindex == nil {
+		s.init()
+	}
+	i, ok := s.toindex[x]
+	if ok {
 		return Symbol(i)
 	}
-	if s.toindex != nil {
-		i, ok := s.toindex[x]
-		if ok {
-			return Symbol(len(systemsyms) + i)
-		}
-	} else {
-		s.toindex = make(map[string]int)
-	}
-	s.toindex[x] = len(s.interned)
+	id := len(s.interned) + len(systemsyms)
+	s.toindex[x] = id
 	s.interned = append(s.interned, x)
 	s.memsize += len(x)
-	return Symbol(len(systemsyms) + len(s.interned) - 1)
+	return Symbol(id)
 }
 
 // Symbolize returns the symbol associated
@@ -132,31 +124,23 @@ func (s *Symtab) Intern(x string) Symbol {
 // or (0, false) if the string has not been
 // interned.
 func (s *Symtab) Symbolize(x string) (Symbol, bool) {
-	if i, ok := system2id[x]; ok {
-		return Symbol(i), true
+	if s.toindex == nil {
+		i, ok := system2id[x]
+		return Symbol(i), ok
 	}
-	if s.toindex != nil {
-		i, ok := s.toindex[x]
-		if ok {
-			return Symbol(len(systemsyms) + i), true
-		}
-	}
-	return 0, false
+	i, ok := s.toindex[x]
+	return Symbol(i), ok
 }
 
 // SymbolizeBytes works identically to Symbolize,
 // except that it accepts a []byte.
 func (s *Symtab) SymbolizeBytes(x []byte) (Symbol, bool) {
-	if i, ok := system2id[string(x)]; ok {
-		return Symbol(i), true
+	if s.toindex == nil {
+		i, ok := system2id[string(x)]
+		return Symbol(i), ok
 	}
-	if s.toindex != nil {
-		i, ok := s.toindex[string(x)]
-		if ok {
-			return Symbol(len(systemsyms) + i), true
-		}
-	}
-	return 0, false
+	i, ok := s.toindex[string(x)]
+	return Symbol(i), ok
 }
 
 // Equal checks if two symtabs are equal.
@@ -175,7 +159,7 @@ func (s *Symtab) CloneInto(o *Symtab) {
 		i++
 	}
 	if o.toindex == nil {
-		o.toindex = make(map[string]int, len(s.interned))
+		o.init()
 	}
 	// for non-overlapping elements in o,
 	// overwrite with elements from s
@@ -183,7 +167,7 @@ func (s *Symtab) CloneInto(o *Symtab) {
 	tail := o.interned[i:]
 	for j, str := range tail {
 		k := i + j
-		if old, ok := o.toindex[str]; ok && old == k {
+		if old, ok := o.toindex[str]; ok && old == k+len(systemsyms) {
 			// we can only delete if the key
 			// was not part of an insert already
 			// (i.e. the symbol was moved from
@@ -194,7 +178,7 @@ func (s *Symtab) CloneInto(o *Symtab) {
 		if k < len(s.interned) {
 			tail[j] = s.interned[k]
 			s.memsize += len(s.interned[k])
-			o.toindex[tail[j]] = k
+			o.toindex[tail[j]] = k + len(systemsyms)
 		} else {
 			tail[j] = ""
 		}
@@ -203,7 +187,7 @@ func (s *Symtab) CloneInto(o *Symtab) {
 	for len(o.interned) < len(s.interned) {
 		x := s.interned[len(o.interned)]
 		o.memsize += len(x)
-		o.toindex[x] = len(o.interned)
+		o.toindex[x] = len(o.interned) + len(systemsyms)
 		o.interned = append(o.interned, x)
 	}
 	// ... or, drop the tail now that we've deleted toindex[...]
@@ -267,7 +251,11 @@ func IsBVM(buf []byte) bool {
 
 func (s *Symtab) clear() {
 	s.interned = s.interned[:0]
-	s.toindex = nil
+	s.memsize = 0
+	if s.toindex != nil {
+		maps.Clear(s.toindex)
+		maps.Copy(s.toindex, system2id)
+	}
 }
 
 func start(x []byte) []byte {
@@ -328,7 +316,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 		return nil, bad(t, StructType, "Symtab.Unmarshal (in annotation)")
 	}
 	if s.toindex == nil {
-		s.toindex = make(map[string]int)
+		s.init()
 	}
 	body, _ = Contents(body)
 	if body == nil {
@@ -361,7 +349,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 				s.interned = append(s.interned, str)
 				s.memsize += len(str)
 				if _, ok := s.toindex[str]; !ok {
-					s.toindex[str] = len(s.interned) - 1
+					s.toindex[str] = len(s.interned) - 1 + len(systemsyms)
 				}
 			}
 		default:

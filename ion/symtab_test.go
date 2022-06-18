@@ -181,11 +181,19 @@ func TestSymtabMarshal(t *testing.T) {
 	var s2 Symtab
 	var b2 Buffer
 	for i := 0; i < s.MaxID(); i++ {
+		if got := s2.Intern(s.Get(Symbol(i))); got != Symbol(i) {
+			t.Fatalf("intern %d -> %d", i, got)
+		}
 		s2.Intern(s.Get(Symbol(i)))
 	}
 	s2.Marshal(&b2, true)
 	got2 := b2.Bytes()
 	if !bytes.Equal(got, got2) {
+		for i := 0; i < s.MaxID(); i++ {
+			if s2.Get(Symbol(i)) != s.Get(Symbol(i)) {
+				t.Errorf("symbol %d: %q versus %q", i, s2.Get(Symbol(i)), s.Get(Symbol(i)))
+			}
+		}
 		t.Errorf("after manually populating symbols:")
 		t.Errorf("wanted data: %x", got)
 		t.Errorf("got data   : %x", got2)
