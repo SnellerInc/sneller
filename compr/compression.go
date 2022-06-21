@@ -155,8 +155,13 @@ func (s2Compressor) Name() string { return "s2" }
 // for Compressor.Name as the specified name.
 func Compression(name string) Compressor {
 	switch name {
+	case "zstd-better":
+		z, _ := zstd.NewWriter(nil,
+			zstd.WithEncoderLevel(zstd.SpeedBetterCompression),
+			zstd.WithEncoderConcurrency(1))
+		return zstdCompressor{z}
 	case "zstd":
-		z, _ := zstd.NewWriter(nil)
+		z, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
 		return zstdCompressor{z}
 	case "s2":
 		return s2Compressor{}

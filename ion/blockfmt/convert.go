@@ -309,7 +309,11 @@ func (c *Converter) Run() error {
 }
 
 func (c *Converter) runSingle() error {
-	comp := compr.Compression(c.Comp)
+	cname := c.Comp
+	if cname == "zstd" {
+		cname = "zstd-better"
+	}
+	comp := compr.Compression(cname)
 	if comp == nil {
 		return fmt.Errorf("compression %q unavailable", c.Comp)
 	}
@@ -408,7 +412,11 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 }
 
 func (c *Converter) runMulti() error {
-	comp := compr.Compression(c.Comp)
+	cname := c.Comp
+	if cname == "zstd" {
+		cname = "zstd-better"
+	}
+	comp := compr.Compression(cname)
 	if comp == nil {
 		return fmt.Errorf("compression %q unavailable", c.Comp)
 	}
