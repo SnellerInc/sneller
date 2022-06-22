@@ -184,7 +184,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opxnork:   {text: "xnor.k", imms: bcImmsS16, flags: bcReadWriteK},
 	opnotk:    {text: "not.k", flags: bcReadWriteK},
 
-	// Arithmetic instructions
+	// Arithmetic and logical instructions
 	opbroadcastimmf: {text: "broadcast.imm.f", imms: bcImmsF64, flags: bcWriteS},
 	opbroadcastimmi: {text: "broadcast.imm.i", imms: bcImmsI64, flags: bcWriteS},
 	opabsf:          {text: "abs.f", flags: bcReadK | bcReadWriteS},
@@ -195,6 +195,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	opsigni:         {text: "sign.i", flags: bcReadK | bcReadWriteS},
 	opsquaref:       {text: "square.f", flags: bcReadK | bcReadWriteS},
 	opsquarei:       {text: "square.i", flags: bcReadK | bcReadWriteS},
+	opbitnoti:       {text: "bitnot.i", flags: bcReadK | bcReadWriteS},
+	opbitcounti:     {text: "bitcount.i", flags: bcReadK | bcReadWriteS},
 	opsqrtf:         {text: "sqrt.f", flags: bcReadK | bcReadWriteS},
 	opcbrtf:         {text: "cbrt.f", flags: bcReadK | bcReadWriteS},
 	oproundf:        {text: "round.f", flags: bcReadK | bcReadWriteS},
@@ -243,6 +245,18 @@ var opinfo = [_maxbcop]bcopinfo{
 	opmaxvaluei:     {text: "maxvalue.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 	opmaxvalueimmf:  {text: "maxvalue.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
 	opmaxvalueimmi:  {text: "maxvalue.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opandi:          {text: "and.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opandimmi:       {text: "and.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opori:           {text: "or.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	oporimmi:        {text: "or.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opxori:          {text: "xor.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opxorimmi:       {text: "xor.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opslli:          {text: "sll.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opsllimmi:       {text: "sll.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opsrai:          {text: "sra.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opsraimmi:       {text: "sra.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opsrli:          {text: "srl.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+	opsrlimmi:       {text: "srl.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
 
 	// Math functions
 	opexpf:   {text: "exp.f", flags: bcReadK | bcReadWriteS},
@@ -411,6 +425,9 @@ var opinfo = [_maxbcop]bcopinfo{
 	opaggmini:  {text: "aggmin.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggmaxf:  {text: "aggmax.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggmaxi:  {text: "aggmax.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
+	opaggandi:  {text: "aggand.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
+	opaggori:   {text: "aggor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
+	opaggxori:  {text: "aggxor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggcount: {text: "aggcount", imms: bcImmsS16, flags: bcReadK},
 
 	// Slot aggregate operations
@@ -423,6 +440,9 @@ var opinfo = [_maxbcop]bcopinfo{
 	opaggslotmaxi:  {text: "aggslotmax.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggslotminf:  {text: "aggslotmin.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggslotmini:  {text: "aggslotmin.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
+	opaggslotandi:  {text: "aggslotand.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
+	opaggslotori:   {text: "aggslotor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
+	opaggslotxori:  {text: "aggslotxor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggslotcount: {text: "aggslotcount", imms: bcImmsS16, flags: bcReadK},
 
 	// Uncategorized instructions

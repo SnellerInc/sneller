@@ -87,3 +87,48 @@ func MaxInt64(ptr *int64, value int64) {
 		}
 	}
 }
+
+func AndInt64(ptr *int64, value int64) {
+	for {
+		before := atomic.LoadInt64(ptr)
+		after := before & value
+
+		if before == after {
+			return
+		}
+
+		if atomic.CompareAndSwapInt64(ptr, before, after) {
+			return
+		}
+	}
+}
+
+func OrInt64(ptr *int64, value int64) {
+	for {
+		before := atomic.LoadInt64(ptr)
+		after := before | value
+
+		if before == after {
+			return
+		}
+
+		if atomic.CompareAndSwapInt64(ptr, before, after) {
+			return
+		}
+	}
+}
+
+func XorInt64(ptr *int64, value int64) {
+	if value == 0 {
+		return
+	}
+
+	for {
+		before := atomic.LoadInt64(ptr)
+		after := before ^ value
+
+		if atomic.CompareAndSwapInt64(ptr, before, after) {
+			return
+		}
+	}
+}

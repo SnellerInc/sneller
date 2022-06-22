@@ -1,0 +1,13 @@
+SELECT
+  9 & 8 AS out_and,
+  1 | 8 AS out_or,
+  9 ^ 8 AS out_xor,
+  1 << 8 AS out_sll,
+  -1 >> 8 AS out_sra,
+  -1 >>> 8 AS out_srl,
+  ~0 AS out_bit_not,
+  1 & 1 | 2 & 2 AS precedence_1, # `a & b` has precedence, so it becomes `1 | 2`
+  1 & 1 + 2 & 2 AS precedence_2  # `1 + 2` has precedence, so it becomes `1 & 3 & 2`
+---
+---
+{"out_and": 8, "out_or": 9, "out_xor": 1, "out_sll": 256, "out_sra": -1, "out_srl": 72057594037927935, "out_bit_not": -1, "precedence_1": 3, "precedence_2": 0}

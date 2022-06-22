@@ -112,6 +112,11 @@ const (
 	SubString
 	SplitPart
 
+	BitCount
+
+	Abs
+	Sign
+
 	Round
 	RoundEven
 	Trunc
@@ -234,6 +239,9 @@ var name2Builtin = map[string]BuiltinOp{
 	"IS_SUBNET_OF":             IsSubnetOf,
 	"SUBSTRING":                SubString,
 	"SPLIT_PART":               SplitPart,
+	"BIT_COUNT":                BitCount,
+	"ABS":                      Abs,
+	"SIGN":                     Sign,
 	"ROUND":                    Round,
 	"ROUND_EVEN":               RoundEven,
 	"TRUNC":                    Trunc,
@@ -911,6 +919,9 @@ var builtinInfo = [maxBuiltin]binfo{
 	SplitPart:  {check: checkSplitPart, ret: StringType | MissingType},
 	EqualsCI:   {ret: LogicalType},
 
+	BitCount:  {check: fixedArgs(NumericType), ret: IntegerType},
+	Abs:       {check: fixedArgs(NumericType), ret: NumericType, simplify: simplifyAbs},
+	Sign:      {check: fixedArgs(NumericType), ret: NumericType, simplify: simplifySign},
 	Round:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyRound},
 	RoundEven: {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyRoundEven},
 	Trunc:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyTrunc},

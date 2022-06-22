@@ -65,16 +65,6 @@ func bufferAddInt64(dst, src []byte) {
 	binary.LittleEndian.PutUint64(dst, result)
 }
 
-func bufferOrInt64(dst, src []byte) {
-	_ = dst[:8]
-	_ = src[:8]
-
-	a := binary.LittleEndian.Uint64(dst)
-	b := binary.LittleEndian.Uint64(src)
-	result := a | b
-	binary.LittleEndian.PutUint64(dst, result)
-}
-
 func bufferMinInt64(dst, src []byte) {
 	_ = dst[:8]
 	_ = src[:8]
@@ -99,4 +89,34 @@ func bufferMaxInt64(dst, src []byte) {
 		result = b
 	}
 	binary.LittleEndian.PutUint64(dst, uint64(result))
+}
+
+func bufferAndInt64(dst, src []byte) {
+	_ = dst[:8]
+	_ = src[:8]
+
+	a := binary.LittleEndian.Uint64(dst)
+	b := binary.LittleEndian.Uint64(src)
+	result := a & b
+	binary.LittleEndian.PutUint64(dst, result)
+}
+
+func bufferOrInt64(dst, src []byte) {
+	_ = dst[:8]
+	_ = src[:8]
+
+	a := binary.LittleEndian.Uint64(dst)
+	b := binary.LittleEndian.Uint64(src)
+	result := a | b
+	binary.LittleEndian.PutUint64(dst, result)
+}
+
+func bufferXorInt64(dst, src []byte) {
+	_ = dst[:8]
+	_ = src[:8]
+
+	a := binary.LittleEndian.Uint64(dst)
+	b := binary.LittleEndian.Uint64(src)
+	result := a ^ b
+	binary.LittleEndian.PutUint64(dst, result)
 }

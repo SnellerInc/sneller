@@ -46,6 +46,9 @@ const (
 	AggregateKindAvgI
 	AggregateKindMinI
 	AggregateKindMaxI
+	AggregateKindAndI
+	AggregateKindOrI
+	AggregateKindXorI
 	AggregateKindMinTS
 	AggregateKindMaxTS
 	AggregateKindCount
@@ -70,6 +73,9 @@ var aggregateKindInfoTable = [...]aggregateKindInfo{
 	AggregateKindAvgI: {isFloat: false, dataSize: 16, firstValue: 0},
 	AggregateKindMinI: {isFloat: false, dataSize: 16, firstValue: 0x7FFFFFFFFFFFFFFF},
 	AggregateKindMaxI: {isFloat: false, dataSize: 16, firstValue: 0x8000000000000000},
+	AggregateKindAndI: {isFloat: false, dataSize: 16, firstValue: 0xFFFFFFFFFFFFFFFF},
+	AggregateKindOrI:  {isFloat: false, dataSize: 16, firstValue: 0x0000000000000000},
+	AggregateKindXorI: {isFloat: false, dataSize: 16, firstValue: 0x0000000000000000},
 
 	AggregateKindMinTS: {isFloat: false, dataSize: 16, firstValue: 0x7FFFFFFFFFFFFFFF},
 	AggregateKindMaxTS: {isFloat: false, dataSize: 16, firstValue: 0x8000000000000000},
@@ -164,6 +170,30 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
+		case AggregateKindAndI:
+			bufferAndInt64(dst, src)
+			dst = dst[8:]
+			src = src[8:]
+			bufferOrInt64(dst, src)
+			dst = dst[8:]
+			src = src[8:]
+
+		case AggregateKindOrI:
+			bufferOrInt64(dst, src)
+			dst = dst[8:]
+			src = src[8:]
+			bufferOrInt64(dst, src)
+			dst = dst[8:]
+			src = src[8:]
+
+		case AggregateKindXorI:
+			bufferXorInt64(dst, src)
+			dst = dst[8:]
+			src = src[8:]
+			bufferOrInt64(dst, src)
+			dst = dst[8:]
+			src = src[8:]
+
 		case AggregateKindCount:
 			bufferAddInt64(dst, src)
 			dst = dst[8:]
@@ -182,6 +212,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
 		case AggregateKindMinF:
 			atomicext.MinFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
@@ -189,6 +220,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
 		case AggregateKindMaxF:
 			atomicext.MaxFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
@@ -196,6 +228,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
 		case AggregateKindSumI, AggregateKindAvgI, AggregateKindSumC:
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
@@ -203,6 +236,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
 		case AggregateKindMinI, AggregateKindMinTS:
 			atomicext.MinInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
@@ -210,6 +244,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
 		case AggregateKindMaxI, AggregateKindMaxTS:
 			atomicext.MaxInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
@@ -217,6 +252,31 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
+		case AggregateKindAndI:
+			atomicext.AndInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
+			dst = dst[8:]
+			src = src[8:]
+			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
+			dst = dst[8:]
+			src = src[8:]
+
+		case AggregateKindOrI:
+			atomicext.OrInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
+			dst = dst[8:]
+			src = src[8:]
+			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
+			dst = dst[8:]
+			src = src[8:]
+
+		case AggregateKindXorI:
+			atomicext.XorInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
+			dst = dst[8:]
+			src = src[8:]
+			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
+			dst = dst[8:]
+			src = src[8:]
+
 		case AggregateKindCount:
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
@@ -243,7 +303,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteCanonicalFloat(math.Float64frombits(binary.LittleEndian.Uint64(data)) / float64(count))
 		}
 		return 16
-	case AggregateKindSumI, AggregateKindMinI, AggregateKindMaxI:
+	case AggregateKindSumI, AggregateKindMinI, AggregateKindMaxI, AggregateKindAndI, AggregateKindOrI, AggregateKindXorI:
 		mark := binary.LittleEndian.Uint64(data[8:])
 		if mark == 0 {
 			b.WriteNull()
@@ -511,6 +571,15 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 				} else {
 					kinds[i] = AggregateKindMaxI
 				}
+			case expr.OpBitAnd:
+				mem[i] = p.AggregateAnd(argv, offset)
+				kinds[i] = AggregateKindAndI
+			case expr.OpBitOr:
+				mem[i] = p.AggregateOr(argv, offset)
+				kinds[i] = AggregateKindOrI
+			case expr.OpBitXor:
+				mem[i] = p.AggregateXor(argv, offset)
+				kinds[i] = AggregateKindXorI
 			case expr.OpEarliest:
 				mem[i] = p.AggregateEarliest(argv, offset)
 				kinds[i] = AggregateKindMinTS

@@ -200,6 +200,8 @@ const (
 	ssigni      // val = sign(val)
 	ssquaref    // val = val * val
 	ssquarei    // val = val * val
+	sbitnoti    // val = ~val
+	sbitcounti  // val = bit_count(val)
 	sroundf     // val = round(val)
 	sroundevenf // val = roundeven(val)
 	struncf     // val = trunc(val)
@@ -264,6 +266,18 @@ const (
 	smaxvaluei    // val = max(val, slot[imm])
 	smaxvalueimmf // val = max(val, imm)
 	smaxvalueimmi // val = max(val, imm)
+	sandi         // val = val & slot[imm]
+	sandimmi      // val = val & imm
+	sori          // val = val | slot[imm]
+	sorimmi       // val = val | imm
+	sxori         // val = val ^ slot[imm]
+	sxorimmi      // val = val ^ imm
+	sslli         // val = val << slot[imm]
+	ssllimmi      // val = val << imm
+	ssrai         // val = val >> slot[imm]
+	ssraimmi      // val = val >> imm
+	ssrli         // val = val >>> slot[imm]
+	ssrlimmi      // val = val >>> imm
 	satan2f       // val = atan2(y, slot[imm])
 	shypotf       // val = hypot(val, slot[imm])
 	spowf         // val = pow(val, slot[imm])
@@ -282,6 +296,9 @@ const (
 	saggmaxi
 	saggmints
 	saggmaxts
+	saggandi
+	saggori
+	saggxori
 	saggcount
 
 	saggbucket
@@ -295,6 +312,9 @@ const (
 	saggslotmaxi
 	saggslotmints
 	saggslotmaxts
+	saggslotandi
+	saggslotori
+	saggslotxori
 	saggslotcount
 
 	scmplttm
@@ -699,7 +719,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	ssignf:      {text: "sign.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsignf},
 	ssigni:      {text: "sign.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsigni},
 	ssquaref:    {text: "square.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsquaref},
-	ssquarei:    {text: "square.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsquaref},
+	ssquarei:    {text: "square.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsquarei},
+	sbitnoti:    {text: "bitnot.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opbitnoti},
+	sbitcounti:  {text: "bitcount.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opbitcounti},
 	sroundf:     {text: "round.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oproundf},
 	sroundevenf: {text: "roundeven.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oproundevenf},
 	struncf:     {text: "trunc.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: optruncf},
@@ -722,44 +744,57 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sasinf:      {text: "asin.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opasinf},
 	sacosf:      {text: "acos.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opacosf},
 	satanf:      {text: "atan.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opatanf},
-	satan2f:     {text: "atan2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opatan2f, emit: emitBinaryArithmeticOp},
+	satan2f:     {text: "atan2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opatan2f, emit: emitBinaryALUOp},
 
-	saddf:         {text: "add.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opaddf, bcrev: opaddf, emit: emitBinaryArithmeticOp},
-	saddi:         {text: "add.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opaddi, bcrev: opaddi, emit: emitBinaryArithmeticOp},
+	saddf:         {text: "add.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opaddf, bcrev: opaddf, emit: emitBinaryALUOp},
+	saddi:         {text: "add.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opaddi, bcrev: opaddi, emit: emitBinaryALUOp},
 	saddimmf:      {text: "add.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opaddimmf, bcrev: opaddimmf},
 	saddimmi:      {text: "add.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opaddimmi, bcrev: opaddimmi},
-	ssubf:         {text: "sub.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opsubf, bcrev: oprsubf, emit: emitBinaryArithmeticOp},
-	ssubi:         {text: "sub.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsubi, bcrev: oprsubi, emit: emitBinaryArithmeticOp},
+	ssubf:         {text: "sub.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opsubf, bcrev: oprsubf, emit: emitBinaryALUOp},
+	ssubi:         {text: "sub.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsubi, bcrev: oprsubi, emit: emitBinaryALUOp},
 	ssubimmf:      {text: "sub.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opsubimmf, bcrev: oprsubimmf},
 	ssubimmi:      {text: "sub.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsubimmi, bcrev: oprsubimmi},
 	srsubimmf:     {text: "rsub.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprsubimmf, bcrev: opsubimmf},
 	srsubimmi:     {text: "rsub.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprsubimmi, bcrev: opsubimmi},
-	smulf:         {text: "mul.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmulf, bcrev: opmulf, emit: emitBinaryArithmeticOp},
-	smuli:         {text: "mul.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmuli, bcrev: opmuli, emit: emitBinaryArithmeticOp},
+	smulf:         {text: "mul.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmulf, bcrev: opmulf, emit: emitBinaryALUOp},
+	smuli:         {text: "mul.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmuli, bcrev: opmuli, emit: emitBinaryALUOp},
 	smulimmf:      {text: "mul.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmulimmf, bcrev: opmulimmf},
 	smulimmi:      {text: "mul.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmulimmi, bcrev: opmulimmi},
-	sdivf:         {text: "div.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opdivf, bcrev: oprdivf, emit: emitBinaryArithmeticOp},
-	sdivi:         {text: "div.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opdivi, bcrev: oprdivi, emit: emitBinaryArithmeticOp},
+	sdivf:         {text: "div.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opdivf, bcrev: oprdivf, emit: emitBinaryALUOp},
+	sdivi:         {text: "div.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opdivi, bcrev: oprdivi, emit: emitBinaryALUOp},
 	sdivimmf:      {text: "div.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opdivimmf, bcrev: oprdivimmf},
 	sdivimmi:      {text: "div.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opdivimmi, bcrev: oprdivimmi},
 	srdivimmf:     {text: "rdiv.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprdivimmf, bcrev: opdivimmf},
 	srdivimmi:     {text: "rdiv.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprdivimmi, bcrev: opdivimmi},
-	smodf:         {text: "mod.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmodf, bcrev: oprmodf, emit: emitBinaryArithmeticOp},
-	smodi:         {text: "mod.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmodi, bcrev: oprmodi, emit: emitBinaryArithmeticOp},
+	smodf:         {text: "mod.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmodf, bcrev: oprmodf, emit: emitBinaryALUOp},
+	smodi:         {text: "mod.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmodi, bcrev: oprmodi, emit: emitBinaryALUOp},
 	smodimmf:      {text: "mod.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmodimmf, bcrev: oprmodimmf},
 	smodimmi:      {text: "mod.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmodimmi, bcrev: oprmodimmi},
 	srmodimmf:     {text: "rmod.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprmodimmf, bcrev: opmodimmf},
 	srmodimmi:     {text: "rmod.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprmodimmi, bcrev: opmodimmi},
-	sminvaluef:    {text: "minvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opminvaluef, bcrev: opminvaluef, emit: emitBinaryArithmeticOp},
-	sminvaluei:    {text: "minvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opminvaluei, bcrev: opminvaluei, emit: emitBinaryArithmeticOp},
+	sminvaluef:    {text: "minvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opminvaluef, bcrev: opminvaluef, emit: emitBinaryALUOp},
+	sminvaluei:    {text: "minvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opminvaluei, bcrev: opminvaluei, emit: emitBinaryALUOp},
 	sminvalueimmf: {text: "minvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opminvalueimmf, bcrev: opminvalueimmf},
 	sminvalueimmi: {text: "minvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opminvalueimmi, bcrev: opminvalueimmi},
-	smaxvaluef:    {text: "maxvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmaxvaluef, bcrev: opmaxvaluef, emit: emitBinaryArithmeticOp},
-	smaxvaluei:    {text: "maxvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmaxvaluei, bcrev: opmaxvaluei, emit: emitBinaryArithmeticOp},
+	smaxvaluef:    {text: "maxvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmaxvaluef, bcrev: opmaxvaluef, emit: emitBinaryALUOp},
+	smaxvaluei:    {text: "maxvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmaxvaluei, bcrev: opmaxvaluei, emit: emitBinaryALUOp},
 	smaxvalueimmf: {text: "maxvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmaxvalueimmf, bcrev: opmaxvalueimmf},
 	smaxvalueimmi: {text: "maxvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmaxvalueimmi, bcrev: opmaxvalueimmi},
-	shypotf:       {text: "hypot.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf, bcrev: ophypotf, emit: emitBinaryArithmeticOp},
-	spowf:         {text: "pow.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf, emit: emitBinaryArithmeticOp},
+	sandi:         {text: "and.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opandi, bcrev: opandi, emit: emitBinaryALUOp},
+	sandimmi:      {text: "and.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opandimmi, bcrev: opandimmi},
+	sori:          {text: "or.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opori, bcrev: opori, emit: emitBinaryALUOp},
+	sorimmi:       {text: "or.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oporimmi, bcrev: oporimmi},
+	sxori:         {text: "xor.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opxori, bcrev: opxori, emit: emitBinaryALUOp},
+	sxorimmi:      {text: "xor.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opxorimmi, bcrev: opxorimmi},
+	sslli:         {text: "sll.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opslli, emit: emitBinaryALUOp},
+	ssllimmi:      {text: "sll.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsllimmi},
+	ssrai:         {text: "sra.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsrai, emit: emitBinaryALUOp},
+	ssraimmi:      {text: "sra.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsraimmi},
+	ssrli:         {text: "srl.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsrli, emit: emitBinaryALUOp},
+	ssrlimmi:      {text: "srl.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsrlimmi},
+
+	shypotf: {text: "hypot.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf, bcrev: ophypotf, emit: emitBinaryALUOp},
+	spowf:   {text: "pow.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf, emit: emitBinaryALUOp},
 
 	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitWidthBucket},
 	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitWidthBucket},
@@ -774,6 +809,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	saggmaxi:  {text: "aggmax.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmaxi, priority: prioMem},
 	saggmints: {text: "aggmin.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmini, priority: prioMem},
 	saggmaxts: {text: "aggmax.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmaxi, priority: prioMem},
+	saggandi:  {text: "aggand.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggandi, priority: prioMem},
+	saggori:   {text: "aggor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggori, priority: prioMem},
+	saggxori:  {text: "aggxor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggxori, priority: prioMem},
 	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtslot, bc: opaggcount, priority: prioMem + 1},
 
 	// compute hash aggregate bucket location; encoded immediate will be input hash slot to use
@@ -790,6 +828,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	saggslotmaxi:  {text: "aggslotmax.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotmaxi, priority: prioMem},
 	saggslotmints: {text: "aggslotmin.ts", argtypes: []ssatype{stMem, stBucket, stTimeInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotmini, priority: prioMem},
 	saggslotmaxts: {text: "aggslotmax.ts", argtypes: []ssatype{stMem, stBucket, stTimeInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotmaxi, priority: prioMem},
+	saggslotandi:  {text: "aggslotand.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotandi, priority: prioMem},
+	saggslotori:   {text: "aggslotor.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotori, priority: prioMem},
+	saggslotxori:  {text: "aggslotxor.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotxori, priority: prioMem},
 	saggslotcount: {text: "aggslotcount", argtypes: []ssatype{stMem, stBucket, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotcount, priority: prioMem},
 
 	// boxing ops
@@ -2630,6 +2671,14 @@ func (p *prog) makeBroadcastOp(child *value) *value {
 	return p.ssa0imm(sbroadcastf, child.imm)
 }
 
+func (p *prog) broadcastI64(child *value) *value {
+	if child.op != sliteral {
+		panic(fmt.Sprintf("broadcastI64() requires a literal value, not %s", child.op.String()))
+	}
+
+	return p.ssa0imm(sbroadcasti, child.imm)
+}
+
 func isIntValue(v *value) bool {
 	if v.op == sliteral {
 		return isIntImmediate(v.imm)
@@ -2640,12 +2689,17 @@ func isIntValue(v *value) bool {
 
 // Unary arithmetic operators and functions
 func (p *prog) makeUnaryArithmeticOp(regOpF, regOpI ssaop, child *value) *value {
-	if isIntValue(child) && child.op != sliteral {
+	if (isIntValue(child) && child.op != sliteral) || regOpF == sinvalid {
 		s, k := p.coerceInt(child)
 		return p.ssa2(regOpI, s, k)
 	}
 
 	return p.makeUnaryArithmeticOpFp(regOpF, child)
+}
+
+func (p *prog) makeUnaryArithmeticOpInt(op ssaop, child *value) *value {
+	s, k := p.coerceInt(child)
+	return p.ssa2(op, s, k)
 }
 
 func (p *prog) makeUnaryArithmeticOpFp(op ssaop, child *value) *value {
@@ -2667,6 +2721,14 @@ func (p *prog) Abs(child *value) *value {
 
 func (p *prog) Sign(child *value) *value {
 	return p.makeUnaryArithmeticOp(ssignf, ssigni, child)
+}
+
+func (p *prog) BitNot(child *value) *value {
+	return p.makeUnaryArithmeticOpInt(sbitnoti, child)
+}
+
+func (p *prog) BitCount(child *value) *value {
+	return p.makeUnaryArithmeticOpInt(sbitcounti, child)
 }
 
 func (p *prog) Round(child *value) *value {
@@ -2829,6 +2891,49 @@ func (p *prog) Div(left, right *value) *value {
 
 func (p *prog) Mod(left, right *value) *value {
 	return p.makeBinaryArithmeticOp(smodf, smodi, smodimmf, smodimmi, srmodimmf, srmodimmi, left, right)
+}
+
+func (p *prog) makeBitwiseOp(regOp, immOp ssaop, canSwap bool, left *value, right *value) *value {
+	if left.op == sliteral && canSwap {
+		left, right = right, left
+	}
+
+	if left.op == sliteral {
+		left = p.broadcastI64(left)
+	}
+
+	lhs, lhk := p.coerceInt(left)
+	if right.op == sliteral {
+		i64Imm := toi64(right.imm)
+		return p.ssa2imm(immOp, lhs, lhk, i64Imm)
+	}
+
+	rhs, rhk := p.coerceInt(right)
+	return p.ssa3(regOp, lhs, rhs, p.And(lhk, rhk))
+}
+
+func (p *prog) BitAnd(left, right *value) *value {
+	return p.makeBitwiseOp(sandi, sandimmi, true, left, right)
+}
+
+func (p *prog) BitOr(left, right *value) *value {
+	return p.makeBitwiseOp(sori, sorimmi, true, left, right)
+}
+
+func (p *prog) BitXor(left, right *value) *value {
+	return p.makeBitwiseOp(sxori, sxorimmi, true, left, right)
+}
+
+func (p *prog) ShiftLeftLogical(left, right *value) *value {
+	return p.makeBitwiseOp(sslli, ssllimmi, false, left, right)
+}
+
+func (p *prog) ShiftRightArithmetic(left, right *value) *value {
+	return p.makeBitwiseOp(ssrai, ssraimmi, false, left, right)
+}
+
+func (p *prog) ShiftRightLogical(left, right *value) *value {
+	return p.makeBitwiseOp(ssrli, ssrlimmi, false, left, right)
 }
 
 func (p *prog) MinValue(left, right *value) *value {
@@ -3267,7 +3372,7 @@ func emitdatecasttoint(v *value, c *compilestate) {
 
 // Simple aggregate operations
 func (p *prog) makeAggregateOp(opF, opI ssaop, child *value, slot int) (v *value, fp bool) {
-	if isIntValue(child) {
+	if isIntValue(child) || opF == sinvalid {
 		scalar, mask := p.coerceInt(child)
 		mem := p.InitMem()
 		return p.ssa3imm(opI, mem, scalar, mask, slot), false
@@ -3305,6 +3410,21 @@ func (p *prog) AggregateMax(child *value, slot int) (v *value, fp bool) {
 	return p.makeAggregateOp(saggmaxf, saggmaxi, child, slot)
 }
 
+func (p *prog) AggregateAnd(child *value, slot int) *value {
+	val, _ := p.makeAggregateOp(sinvalid, saggandi, child, slot)
+	return val
+}
+
+func (p *prog) AggregateOr(child *value, slot int) *value {
+	val, _ := p.makeAggregateOp(sinvalid, saggori, child, slot)
+	return val
+}
+
+func (p *prog) AggregateXor(child *value, slot int) *value {
+	val, _ := p.makeAggregateOp(sinvalid, saggxori, child, slot)
+	return val
+}
+
 func (p *prog) AggregateEarliest(child *value, slot int) *value {
 	return p.makeTimeAggregateOp(saggmints, child, slot)
 }
@@ -3319,7 +3439,7 @@ func (p *prog) AggregateCount(child *value, slot int) *value {
 
 // Slot aggregate operations
 func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, offset int) (rv *value, fp bool) {
-	if isIntValue(v) {
+	if isIntValue(v) || opF == sinvalid {
 		scalar, m := p.coerceInt(v)
 		if mask != nil {
 			m = p.And(m, mask)
@@ -3364,6 +3484,21 @@ func (p *prog) AggregateSlotMin(mem, bucket, value, mask *value, offset int) (v 
 
 func (p *prog) AggregateSlotMax(mem, bucket, value, mask *value, offset int) (v *value, fp bool) {
 	return p.makeAggregateSlotOp(saggslotmaxf, saggslotmaxi, mem, bucket, value, mask, offset)
+}
+
+func (p *prog) AggregateSlotAnd(mem, bucket, value, mask *value, offset int) *value {
+	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotandi, mem, bucket, value, mask, offset)
+	return val
+}
+
+func (p *prog) AggregateSlotOr(mem, bucket, value, mask *value, offset int) *value {
+	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotori, mem, bucket, value, mask, offset)
+	return val
+}
+
+func (p *prog) AggregateSlotXor(mem, bucket, value, mask *value, offset int) *value {
+	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotxori, mem, bucket, value, mask, offset)
+	return val
 }
 
 func (p *prog) AggregateSlotEarliest(mem, bucket, value, mask *value, offset int) *value {
@@ -5284,7 +5419,7 @@ func emitStrEditStack2(v *value, c *compilestate) {
 	c.ops16s16(v, ssainfo[v.op].bc, substrOffsetSlot, substrLengthSlot)
 }
 
-func emitBinaryArithmeticOp(v *value, c *compilestate) {
+func emitBinaryALUOp(v *value, c *compilestate) {
 	arg0 := v.args[0] // left
 	arg1 := v.args[1] // right
 	mask := v.args[2] // predicate

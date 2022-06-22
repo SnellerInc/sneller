@@ -1,0 +1,13 @@
+SELECT
+  BIT_AND(x) AS out_and,
+  BIT_OR(x) AS out_or,
+  BIT_XOR(x) AS out_xor
+FROM
+  input
+---
+{}
+{}
+{}
+{}
+---
+{"out_and": null, "out_or": null, "out_xor": null}

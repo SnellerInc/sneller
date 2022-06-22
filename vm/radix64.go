@@ -476,6 +476,11 @@ var agg2cmp = [...](func([]byte, []byte) int){
 	AggregateKindAvgI:  cmpAvgInt64,
 	AggregateKindMinI:  cmpInt64,
 	AggregateKindMaxI:  cmpInt64,
+	AggregateKindAndI:  cmpInt64,
+	AggregateKindOrI:   cmpInt64,
+	AggregateKindXorI:  cmpInt64,
+	AggregateKindMinTS: cmpInt64,
+	AggregateKindMaxTS: cmpInt64,
 	AggregateKindCount: cmpCount,
 }
 

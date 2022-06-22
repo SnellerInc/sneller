@@ -32,11 +32,13 @@ func init() {
 		term int
 	}{
 		{"SELECT", SELECT},
-		{"ABS", ABS},
 		{"AND", AND},
 		{"AS", AS},
 		{"ASC", ASC},
 		{"AVG", AVG},
+		{"BIT_AND", BIT_AND},
+		{"BIT_OR", BIT_OR},
+		{"BIT_XOR", BIT_XOR},
 		{"CAST", CAST},
 		{"CONCAT", CONCAT},
 		{"COALESCE", COALESCE},
@@ -52,7 +54,6 @@ func init() {
 		{"UNION", UNION},
 		{"OR", OR},
 		{"ON", ON},
-		{"SIGN", SIGN},
 		{"FROM", FROM},
 		{"WHERE", WHERE},
 		{"GROUP", GROUP},

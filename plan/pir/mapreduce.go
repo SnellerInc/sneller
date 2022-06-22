@@ -238,10 +238,10 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			return errorf(age, "cannot split %s", expr.ToString(age))
 		case expr.OpCount:
 			// convert to SUM_COUNT(COUNT(x))
-			out = append(out, vm.AggBinding{expr.SumCount(innerref), result})
-		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount, expr.OpEarliest, expr.OpLatest:
+			out = append(out, vm.AggBinding{Expr: expr.SumCount(innerref), Result: result})
+		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount, expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpEarliest, expr.OpLatest:
 			// these are all distributive
-			out = append(out, vm.AggBinding{&expr.Aggregate{Op: age.Op, Inner: innerref}, result})
+			out = append(out, vm.AggBinding{Expr: &expr.Aggregate{Op: age.Op, Inner: innerref}, Result: result})
 		}
 	}
 	// the mapping step terminates here

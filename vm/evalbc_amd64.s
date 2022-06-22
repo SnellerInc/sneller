@@ -336,8 +336,8 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
   KANDW  K1, K7, K1
   NEXT_ADVANCE(2)
 
-// Arithmetic Instructions
-// -----------------------
+// Arithmetic & Logical Instructions
+// ---------------------------------
 
 // Arithmetic operation macros
 #define BC_ARITH_OP_VAR(instruction)                \
@@ -717,6 +717,42 @@ TEXT bcsquarei(SB), NOSPLIT|NOFRAME, $0
   VPMULLQ       Z3, Z3, K2, Z3
   NEXT()
 
+// Unary operation - bit_not (int)
+TEXT bcbitnoti(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  VPTERNLOGQ $0x01, Z2, Z2, K1, Z2
+  VPTERNLOGQ $0x01, Z3, Z3, K2, Z3
+  NEXT()
+
+// Unary operation - bit_count (int)
+TEXT bcbitcounti(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  VPBROADCASTB CONSTD_15(), Z10
+  VPSRLQ $4, Z2, Z4
+  VPSRLQ $4, Z3, Z5
+
+  VBROADCASTI32X4 CONST_GET_PTR(popcnt_nibble_vpsadbw_pos, 0), Z11
+  VPANDQ Z10, Z4, Z4
+  VPANDQ Z10, Z5, Z5
+
+  VBROADCASTI32X4 CONST_GET_PTR(popcnt_nibble_vpsadbw_neg, 0), Z12
+  VPANDQ Z10, Z2, Z6
+  VPANDQ Z10, Z3, Z7
+
+  VPSHUFB Z4, Z11, Z4
+  VPSHUFB Z6, Z12, Z6
+  VPSHUFB Z5, Z11, Z5
+  VPSHUFB Z7, Z12, Z7
+
+  VPSADBW Z6, Z4, Z4
+  VPSADBW Z7, Z5, Z5
+
+  VMOVDQA64 Z4, K1, Z2
+  VMOVDQA64 Z5, K2, Z3
+
+  NEXT()
+
 // Unary operation - rounding (float)
 TEXT bcroundf(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTSD CONSTF64_HALF(), Z4
@@ -760,6 +796,7 @@ TEXT bcceilf(SB), NOSPLIT|NOFRAME, $0
   VRNDSCALEPD   $(VROUND_IMM_UP | VROUND_IMM_SUPPRESS), Z3, K2, Z3
   NEXT()
 
+// Binary operation - add (float)
 TEXT bcaddf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VADDPD)
   NEXT_ADVANCE(2)
@@ -975,7 +1012,7 @@ TEXT bcaddmulimmi(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z5, Z3, K2, Z3
   NEXT_ADVANCE(10)
 
-// Arithmetic min/max (float)
+// Binary operation - min/max (float)
 TEXT bcminvaluef(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VMINPD)
   NEXT_ADVANCE(2)
@@ -992,7 +1029,7 @@ TEXT bcmaxvalueimmf(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VMAXPD, VBROADCASTSD)
   NEXT_ADVANCE(8)
 
-// Arithmetic min/max (int)
+// Binary operation - min/max (int)
 TEXT bcminvaluei(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_VAR(VPMINSQ)
   NEXT_ADVANCE(2)
@@ -1007,6 +1044,60 @@ TEXT bcmaxvaluei(SB), NOSPLIT|NOFRAME, $0
 
 TEXT bcmaxvalueimmi(SB), NOSPLIT|NOFRAME, $0
   BC_ARITH_OP_IMM(VPMAXSQ, VPBROADCASTQ)
+  NEXT_ADVANCE(8)
+
+// Binary operation - bitwise AND (int)
+TEXT bcandi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_VAR(VPANDQ)
+  NEXT_ADVANCE(2)
+
+TEXT bcandimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_IMM(VPANDQ, VPBROADCASTQ)
+  NEXT_ADVANCE(8)
+
+// Binary operation - bitwise OR (int)
+TEXT bcori(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_VAR(VPORQ)
+  NEXT_ADVANCE(2)
+
+TEXT bcorimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_IMM(VPORQ, VPBROADCASTQ)
+  NEXT_ADVANCE(8)
+
+// Binary operation - bitwise XOR (int)
+TEXT bcxori(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_VAR(VPXORQ)
+  NEXT_ADVANCE(2)
+
+TEXT bcxorimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_IMM(VPXORQ, VPBROADCASTQ)
+  NEXT_ADVANCE(8)
+
+// Binary operation - shift left logical (int)
+TEXT bcslli(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_VAR(VPSLLVQ)
+  NEXT_ADVANCE(2)
+
+TEXT bcsllimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_IMM(VPSLLVQ, VPBROADCASTQ)
+  NEXT_ADVANCE(8)
+
+// Binary operation - shift right arithmetic (int)
+TEXT bcsrai(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_VAR(VPSRAVQ)
+  NEXT_ADVANCE(2)
+
+TEXT bcsraimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_IMM(VPSRAVQ, VPBROADCASTQ)
+  NEXT_ADVANCE(8)
+
+// Binary operation - shift right logical (int)
+TEXT bcsrli(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_VAR(VPSRLVQ)
+  NEXT_ADVANCE(2)
+
+TEXT bcsrlimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_IMM(VPSRLVQ, VPBROADCASTQ)
   NEXT_ADVANCE(8)
 
 // Math Functions
@@ -10632,6 +10723,82 @@ TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
   ADDQ          R15, 8(R10)(R8*1)
   NEXT()
 
+TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX       0(VIRT_PCREG), R8
+  ADDQ          $2, VIRT_PCREG
+
+  VPBROADCASTQ  CONSTQ_0xFFFFFFFFFFFFFFFF(), Z5
+  KSHIFTRW      $8, K1, K2
+  KMOVW         K1, R15
+
+  VMOVQ         0(R10)(R8*1), X6
+  VPANDQ        Z5, Z2, K1, Z5
+  VPANDQ        Z5, Z3, K2, Z5
+  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VPANDQ        Y4, Y5, Y5
+  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+
+  POPCNTL       R15, R15
+
+  VPANDQ        X4, X5, X5
+  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPANDQ        X4, X5, X5
+  VPANDQ        X6, X5, X5
+
+  VMOVQ         X5, 0(R10)(R8*1)
+  ADDQ          R15, 8(R10)(R8*1)
+  NEXT()
+
+TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX       0(VIRT_PCREG), R8
+  ADDQ          $2, VIRT_PCREG
+
+  KSHIFTRW      $8, K1, K2
+  KMOVW         K1, R15
+
+  VMOVQ         0(R10)(R8*1), X6
+  VMOVDQA64.Z   Z2, K1, Z5
+  VPORQ         Z5, Z3, K2, Z5
+  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VPORQ         Y4, Y5, Y5
+  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+
+  POPCNTL       R15, R15
+
+  VPORQ         X4, X5, X5
+  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPORQ         X4, X5, X5
+  VPORQ         X6, X5, X5
+
+  VMOVQ         X5, 0(R10)(R8*1)
+  ADDQ          R15, 8(R10)(R8*1)
+  NEXT()
+
+TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX       0(VIRT_PCREG), R8
+  ADDQ          $2, VIRT_PCREG
+
+  KSHIFTRW      $8, K1, K2
+  KMOVW         K1, R15
+
+  VMOVQ         0(R10)(R8*1), X6
+  VMOVDQA64.Z   Z2, K1, Z5
+  VPXORQ        Z5, Z3, K2, Z5
+  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VPXORQ        Y4, Y5, Y5
+  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+
+  POPCNTL       R15, R15
+
+  VPXORQ        X4, X5, X5
+  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPXORQ        X4, X5, X5
+  VPXORQ        X6, X5, X5
+
+  VMOVQ         X5, 0(R10)(R8*1)
+  ADDQ          R15, 8(R10)(R8*1)
+  NEXT()
+
 TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, R15
   MOVWQZX       0(VIRT_PCREG), R8
@@ -11029,6 +11196,18 @@ TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
   BC_AGGREGATE_SLOT_MARK_OP(VPMAXSQ)
   NEXT()
 
+TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
+  BC_AGGREGATE_SLOT_MARK_OP(VPANDQ)
+  NEXT()
+
+TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
+  BC_AGGREGATE_SLOT_MARK_OP(VPORQ)
+  NEXT()
+
+TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
+  BC_AGGREGATE_SLOT_MARK_OP(VPXORQ)
+  NEXT()
+
 // COUNT is a special aggregation function that just counts active lanes stored
 // in K1. This is the simplest aggregation, which only requres a basic conflict
 // resolution that doesn't require to loop over conflicting lanes.
@@ -11064,7 +11243,7 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   // 0x0101 values, thus multiplying all bytes with 1, and summing them.
   //
   // NOTE: This chain can be replaced by `VPOPCNTD Z8, Z8`
-  VMOVDQU32 CONST_GET_PTR(popcnt_nibble, 0), Z10
+  VBROADCASTI32X4 CONST_GET_PTR(popcnt_nibble, 0), Z10
   VPSRLD $4, Z8, Z9
   VPANDD.BCST CONSTD_0x0F0F0F0F(), Z8, Z8
   VPANDD.BCST CONSTD_0x0F0F0F0F(), Z9, Z9

@@ -152,6 +152,10 @@ func (s *scanner) Lex(l *yySymType) int {
 		s.pos++
 		return NOT
 	case '<':
+		if s.peekat(1) == '<' {
+			s.pos += 2
+			return SHIFT_LEFT_LOGICAL
+		}
 		if s.peekat(1) == '=' {
 			s.pos += 2
 			return LE
@@ -163,6 +167,14 @@ func (s *scanner) Lex(l *yySymType) int {
 		s.pos++
 		return LT
 	case '>':
+		if s.peekat(1) == '>' {
+			if s.peekat(2) == '>' {
+				s.pos += 3
+				return SHIFT_RIGHT_LOGICAL
+			}
+			s.pos += 2
+			return SHIFT_RIGHT_ARITHMETIC
+		}
 		if s.peekat(1) == '=' {
 			s.pos += 2
 			return GE
@@ -192,7 +204,7 @@ func (s *scanner) Lex(l *yySymType) int {
 		s.notkw = false
 		s.pos++
 		return int(b)
-	case ',', '*', '-', '/', '%', '[', ']', '(', ')', '{', '}', ':':
+	case ',', '*', '-', '/', '%', ':', '&', '^', '~', '[', ']', '(', ')', '{', '}':
 		// literal operators
 		s.notkw = false
 		s.pos++

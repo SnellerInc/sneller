@@ -570,6 +570,49 @@ func constmath(op ArithOp, left, right *big.Rat) Node {
 			return Missing{}
 		}
 		return (*Rational)(out.Quo(left, right))
+
+	case BitAndOp:
+		a := roundBigRat(left, roundTruncOp).Num().Int64()
+		b := roundBigRat(right, roundTruncOp).Num().Int64()
+		return (*Rational)(out.SetInt64(a & b))
+
+	case BitOrOp:
+		a := roundBigRat(left, roundTruncOp).Num().Int64()
+		b := roundBigRat(right, roundTruncOp).Num().Int64()
+		return (*Rational)(out.SetInt64(a | b))
+
+	case BitXorOp:
+		a := roundBigRat(left, roundTruncOp).Num().Int64()
+		b := roundBigRat(right, roundTruncOp).Num().Int64()
+		return (*Rational)(out.SetInt64(a ^ b))
+
+	case ShiftLeftLogicalOp:
+		a := roundBigRat(left, roundTruncOp).Num().Int64()
+		b := roundBigRat(right, roundTruncOp).Num().Int64()
+
+		if b > 63 {
+			return (*Rational)(out.SetInt64(0))
+		}
+		return (*Rational)(out.SetInt64(a << b))
+
+	case ShiftRightArithmeticOp:
+		a := roundBigRat(left, roundTruncOp).Num().Int64()
+		b := roundBigRat(right, roundTruncOp).Num().Int64()
+
+		if b > 63 {
+			return (*Rational)(out.SetInt64(a >> 63))
+		}
+		return (*Rational)(out.SetInt64(a >> b))
+
+	case ShiftRightLogicalOp:
+		a := roundBigRat(left, roundTruncOp).Num().Int64()
+		b := roundBigRat(right, roundTruncOp).Num().Int64()
+
+		if b > 63 {
+			return (*Rational)(out.SetInt64(0))
+		}
+		return (*Rational)(out.SetInt64(int64(uint64(a) >> b)))
+
 	default:
 		panic("???")
 	}
@@ -647,6 +690,32 @@ func simplifyRoundOp(h Hint, args []Node, op roundOp) Node {
 	return nil
 }
 
+func simplifyAbs(h Hint, args []Node) Node {
+	if len(args) != 1 {
+		return nil
+	}
+
+	args[0] = missingUnless(args[0], h, NumericType)
+	if cn, ok := args[0].(number); ok {
+		return (*Rational)(new(big.Rat).Abs(cn.rat()))
+	}
+
+	return nil
+}
+
+func simplifySign(h Hint, args []Node) Node {
+	if len(args) != 1 {
+		return nil
+	}
+
+	args[0] = missingUnless(args[0], h, NumericType)
+	if cn, ok := args[0].(number); ok {
+		return (*Rational)(new(big.Rat).SetInt64(int64(cn.rat().Sign())))
+	}
+
+	return nil
+}
+
 func simplifyRound(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundNearestOp) }
 func simplifyRoundEven(h Hint, args []Node) Node { return simplifyRoundOp(h, args, roundEvenOp) }
 func simplifyTrunc(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundTruncOp) }
@@ -664,12 +733,8 @@ func (u *UnaryArith) simplify(h Hint) Node {
 
 	if cn, ok := u.Child.(number); ok {
 		switch u.Op {
-		case AbsOp:
-			return (*Rational)(new(big.Rat).Abs(cn.rat()))
 		case NegOp:
 			return (*Rational)(new(big.Rat).Neg(cn.rat()))
-		case SignOp:
-			return (*Rational)(new(big.Rat).SetInt64(int64(cn.rat().Sign())))
 		}
 	}
 

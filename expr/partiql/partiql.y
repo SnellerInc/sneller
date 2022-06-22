@@ -58,8 +58,8 @@ import (
 %token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH INTO
 %token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC
 %token VALUE
-%right COUNT MIN MAX SUM AVG COALESCE NULLIF EXTRACT DATE_TRUNC
-%right ABS SIGN CAST UTCNOW
+%right COUNT MIN MAX SUM AVG BIT_AND BIT_OR BIT_XOR COALESCE NULLIF EXTRACT DATE_TRUNC
+%right CAST UTCNOW
 %right DATE_ADD DATE_DIFF EARLIEST LATEST
 %left JOIN LEFT RIGHT CROSS INNER OUTER FULL
 %left ON
@@ -69,10 +69,14 @@ import (
 
 %left OR
 %left AND
-%right '!' NOT
+%right '!' '~' NOT
 %left BETWEEN CASE WHEN THEN ELSE END
 %left <empty> EQ NE LT LE GT GE
 %left <empty> ILIKE LIKE IN IS
+%left <empty> '|'
+%left <empty> '^'
+%left <empty> '&'
+%left <empty> SHIFT_LEFT_LOGICAL SHIFT_RIGHT_ARITHMETIC SHIFT_RIGHT_LOGICAL
 %left <empty> '+' '-'
 %left <empty> '*' '/' '%'
 %left <empty> CONCAT APPEND
@@ -206,6 +210,18 @@ datum_or_parens
 {
   $$ = expr.Avg($3)
 }
+| BIT_AND '(' expr ')'
+{
+  $$ = expr.AggregateAnd($3)
+}
+| BIT_OR '(' expr ')'
+{
+  $$ = expr.AggregateOr($3)
+}
+| BIT_XOR '(' expr ')'
+{
+  $$ = expr.AggregateXor($3)
+}
 | EARLIEST '(' expr ')'
 {
   $$ = expr.Earliest($3)
@@ -213,14 +229,6 @@ datum_or_parens
 | LATEST '(' expr ')'
 {
   $$ = expr.Latest($3)
-}
-| ABS '(' expr ')'
-{
-  $$ = expr.Abs($3)
-}
-| SIGN '(' expr ')'
-{
-  $$ = expr.Sign($3)
 }
 | CASE case_limbs case_optional_else END
 {
@@ -307,6 +315,30 @@ datum_or_parens
 {
   $$ = exists($3)
 }
+| expr '|' expr
+{
+  $$ = expr.BitOr($1, $3)
+}
+| expr '^' expr
+{
+  $$ = expr.BitXor($1, $3)
+}
+| expr '&' expr
+{
+  $$ = expr.BitAnd($1, $3)
+}
+| expr SHIFT_LEFT_LOGICAL expr
+{
+  $$ = expr.ShiftLeftLogical($1, $3)
+}
+| expr SHIFT_RIGHT_LOGICAL expr
+{
+  $$ = expr.ShiftRightLogical($1, $3)
+}
+| expr SHIFT_RIGHT_ARITHMETIC expr
+{
+  $$ = expr.ShiftRightArithmetic($1, $3)
+}
 | expr '+' expr
 {
   $$ = expr.Add($1, $3)
@@ -382,6 +414,10 @@ datum_or_parens
 | NOT expr
 {
   $$ = &expr.Not{Expr: $2}
+}
+| '~' expr
+{
+  $$ = expr.BitNot($2)
 }
 | expr AND expr
 {

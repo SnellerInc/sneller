@@ -496,6 +496,17 @@ SELECT COUNT(CASE WHEN x > 3 THEN TRUE ELSE MISSING END)
 FROM table
 ```
 
+#### `COUNT(DISTINCT)`
+
+`COUNT(DISTINCT expr)` counts the number of distinct
+results produced by evaluating `expr` for each row.
+
+Current limitations: `COUNT(DISTINCT expr)` is not allowed
+to occur alongside any other aggregation expressions in
+a `SELECT` clause. We implement `COUNT(DISTINCT expr)`
+by rewriting the query into a compound query that uses
+`SELECT DISTINCT` and `COUNT`.
+
 #### `MIN` and `MAX`
 
 `MIN(expr)` and `MAX(expr)` produce the largest
@@ -523,16 +534,23 @@ If `expr` never evaluates to a number, `SUM(expr)` yields `NULL`.
 for all the rows that reach the aggregation expression.
 If `expr` never evaluates to a number, `AVG(expr)` yields `NULL`.
 
-#### `COUNT(DISTINCT)`
+#### `BIT_AND`
 
-`COUNT(DISTINCT expr)` counts the number of distinct
-results produced by evaluating `expr` for each row.
+`BIT_AND(expr)` computes bitwise AND of all results produced by
+evaluating `expr` for each row. If `expr` never evaluates to a number,
+`BIT_AND(expr)` yields `NULL`.
 
-Current limitations: `COUNT(DISTINCT expr)` is not allowed
-to occur alongside any other aggregation expressions in
-a `SELECT` clause. We implement `COUNT(DISTINCT expr)`
-by rewriting the query into a compound query that uses
-`SELECT DISTINCT` and `COUNT`.
+#### `BIT_OR`
+
+`BIT_OR(expr)` computes bitwise OR of all results produced by
+evaluating `expr` for each row. If `expr` never evaluates to a number,
+`BIT_OR(expr)` yields `NULL`.
+
+#### `BIT_XOR`
+
+`BIT_XOR(expr)` computes bitwise XOR (exclusive OR) of all results
+produced by evaluating `expr` for each row. If `expr` never evaluates
+to a number, `BIT_XOR(expr)` yields `NULL`.
 
 ### Infix Operators
 
@@ -543,6 +561,23 @@ yield a number from two input numbers.
 Arithmetic operators yield `MISSING` if
 one or more of the input values is not
 a number value.
+
+#### `&`, `|`, `^`, `<<`, `>>`, `>>>`
+
+Bitwise operations yield an integer from two input integers
+or `MISSING` if one or more of the input values is not an
+integer.
+
+  * `x & y` - bitwise AND of `x` and `y`
+  * `x | y` - bitwise OR of `x` and `y`
+  * `x ^ y` - bitwise XOR (exclusive OR) of `x` and `y`
+  * `x << y` - bitwise shift left of `x` by `y`, if `y`
+    is greater than 63 the result becomes zero
+  * `x >> y` - arithmetic shift right of `x` by `y`,
+    shifting in the most significant bit (sign bit) of `x`
+  * `x >>> y` - logical shift right of `x` by `y`,
+    shifting in zeros
+
 
 #### `LIKE` and `ILIKE`
 
@@ -667,6 +702,13 @@ an implicit `ELSE MISSING` is inserted.
 
 `NULLIF(a, b)` is exactly equivalent to
 `CASE WHEN a = b THEN NULL ELSE a`.
+
+### Bit Manipulation
+
+#### `BIT_COUNT`
+
+`BIT_COUNT(expr)` returns the number of bits set of `expr` casted to a
+64-bit signed integer, or `MISSING` if `expr` is not of numeric type.
 
 ### Math Constants
 

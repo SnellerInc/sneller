@@ -145,10 +145,8 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		switch n.Op {
 		case expr.NegOp:
 			return p.Neg(child), nil
-		case expr.AbsOp:
-			return p.Abs(child), nil
-		case expr.SignOp:
-			return p.Sign(child), nil
+		case expr.BitNotOp:
+			return p.BitNot(child), nil
 		}
 
 		return nil, fmt.Errorf("unknown arithmetic expression %q", n)
@@ -173,6 +171,18 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			return p.Div(left, right), nil
 		case expr.ModOp:
 			return p.Mod(left, right), nil
+		case expr.BitAndOp:
+			return p.BitAnd(left, right), nil
+		case expr.BitOrOp:
+			return p.BitOr(left, right), nil
+		case expr.BitXorOp:
+			return p.BitXor(left, right), nil
+		case expr.ShiftLeftLogicalOp:
+			return p.ShiftLeftLogical(left, right), nil
+		case expr.ShiftRightArithmeticOp:
+			return p.ShiftRightArithmetic(left, right), nil
+		case expr.ShiftRightLogicalOp:
+			return p.ShiftRightLogical(left, right), nil
 		}
 		return nil, fmt.Errorf("unrecognized expression %q", n)
 
@@ -359,6 +369,13 @@ func (p *prog) compileAsString(e expr.Node) (*value, error) {
 func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 	fn := b.Func
 	switch fn {
+	case expr.BitCount:
+		arg, err := p.compileAsNumber(args[0])
+		if err != nil {
+			return nil, err
+		}
+		return p.BitCount(arg), nil
+
 	case expr.Pi:
 		if len(args) != 0 {
 			return nil, fmt.Errorf("%s cannot have arguments", fn)
@@ -414,6 +431,30 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 
 		return p.Mul(arg, p.Constant(c)), nil
+
+	case expr.Abs:
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
+		}
+
+		arg, err := p.compileAsNumber(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		return p.Abs(arg), nil
+
+	case expr.Sign:
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
+		}
+
+		arg, err := p.compileAsNumber(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		return p.Sign(arg), nil
 
 	case expr.Round, expr.RoundEven, expr.Trunc, expr.Floor, expr.Ceil,
 		expr.Sqrt, expr.Cbrt,

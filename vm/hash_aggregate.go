@@ -241,6 +241,15 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 				} else {
 					kinds[i] = AggregateKindMaxI
 				}
+			case expr.OpBitAnd:
+				out[i] = prog.AggregateSlotAnd(mem, bucket, argv, allColumnsMask, offset)
+				kinds[i] = AggregateKindAndI
+			case expr.OpBitOr:
+				out[i] = prog.AggregateSlotOr(mem, bucket, argv, allColumnsMask, offset)
+				kinds[i] = AggregateKindOrI
+			case expr.OpBitXor:
+				out[i] = prog.AggregateSlotXor(mem, bucket, argv, allColumnsMask, offset)
+				kinds[i] = AggregateKindXorI
 			case expr.OpEarliest:
 				out[i] = prog.AggregateSlotEarliest(mem, bucket, argv, allColumnsMask, offset)
 				kinds[i] = AggregateKindMinTS

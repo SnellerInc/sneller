@@ -135,6 +135,15 @@ const (
 	// of SUM_INT.
 	OpSumCount
 
+	// Describes SQL BIT_AND(...) aggregate operation.
+	OpBitAnd
+
+	// Describes SQL BIT_OR(...) aggregate operation.
+	OpBitOr
+
+	// Describes SQL BIT_XOR(...) aggregate operation.
+	OpBitXor
+
 	// Describes SQL MIN(timestamp).
 	//
 	// EARLIEST() function is used by Sneller to distinguish
@@ -305,6 +314,10 @@ func Min(e Node) *Aggregate { return &Aggregate{Op: OpMin, Inner: e} }
 
 // Max produces the MAX(e) aggregate
 func Max(e Node) *Aggregate { return &Aggregate{Op: OpMax, Inner: e} }
+
+func AggregateAnd(e Node) *Aggregate { return &Aggregate{Op: OpBitAnd, Inner: e} }
+func AggregateOr(e Node) *Aggregate  { return &Aggregate{Op: OpBitOr, Inner: e} }
+func AggregateXor(e Node) *Aggregate { return &Aggregate{Op: OpBitXor, Inner: e} }
 
 // Earliest produces the EARLIEST(timestamp) aggregate
 func Earliest(e Node) *Aggregate { return &Aggregate{Op: OpEarliest, Inner: e} }
@@ -1744,8 +1757,7 @@ type UnaryArithOp int
 
 const (
 	NegOp UnaryArithOp = iota
-	AbsOp
-	SignOp
+	BitNotOp
 )
 
 type UnaryArith struct {
@@ -1762,10 +1774,8 @@ func (u *UnaryArith) text(dst *strings.Builder, redact bool) {
 	switch u.Op {
 	case NegOp:
 		pre = "-"
-	case AbsOp:
-		pre = "ABS"
-	case SignOp:
-		pre = "SIGN"
+	case BitNotOp:
+		pre = "~"
 	default:
 		pre = "UNKNOWN_FUNCTION"
 	}
@@ -1779,12 +1789,8 @@ func Neg(child Node) *UnaryArith {
 	return NewUnaryArith(NegOp, child)
 }
 
-func Abs(child Node) *UnaryArith {
-	return NewUnaryArith(AbsOp, child)
-}
-
-func Sign(child Node) *UnaryArith {
-	return NewUnaryArith(SignOp, child)
+func BitNot(child Node) *UnaryArith {
+	return NewUnaryArith(BitNotOp, child)
 }
 
 func (u *UnaryArith) walk(v Visitor) {
@@ -1849,6 +1855,12 @@ const (
 	MulOp
 	DivOp
 	ModOp
+	BitAndOp
+	BitOrOp
+	BitXorOp
+	ShiftLeftLogicalOp
+	ShiftRightArithmeticOp
+	ShiftRightLogicalOp
 )
 
 // Arithmetic is an arithmetic expression
@@ -1862,11 +1874,26 @@ func NewArith(op ArithOp, left, right Node) *Arithmetic {
 	return &Arithmetic{Op: op, Left: left, Right: right}
 }
 
-func Add(left, right Node) *Arithmetic { return NewArith(AddOp, left, right) }
-func Sub(left, right Node) *Arithmetic { return NewArith(SubOp, left, right) }
-func Mul(left, right Node) *Arithmetic { return NewArith(MulOp, left, right) }
-func Div(left, right Node) *Arithmetic { return NewArith(DivOp, left, right) }
-func Mod(left, right Node) *Arithmetic { return NewArith(ModOp, left, right) }
+func Add(left, right Node) *Arithmetic    { return NewArith(AddOp, left, right) }
+func Sub(left, right Node) *Arithmetic    { return NewArith(SubOp, left, right) }
+func Mul(left, right Node) *Arithmetic    { return NewArith(MulOp, left, right) }
+func Div(left, right Node) *Arithmetic    { return NewArith(DivOp, left, right) }
+func Mod(left, right Node) *Arithmetic    { return NewArith(ModOp, left, right) }
+func BitAnd(left, right Node) *Arithmetic { return NewArith(BitAndOp, left, right) }
+func BitOr(left, right Node) *Arithmetic  { return NewArith(BitOrOp, left, right) }
+func BitXor(left, right Node) *Arithmetic { return NewArith(BitXorOp, left, right) }
+
+func ShiftLeftLogical(left, right Node) *Arithmetic {
+	return NewArith(ShiftLeftLogicalOp, left, right)
+}
+
+func ShiftRightArithmetic(left, right Node) *Arithmetic {
+	return NewArith(ShiftRightArithmeticOp, left, right)
+}
+
+func ShiftRightLogical(left, right Node) *Arithmetic {
+	return NewArith(ShiftRightLogicalOp, left, right)
+}
 
 func infix(e Node) bool {
 	if _, ok := e.(*Arithmetic); ok {
@@ -1896,6 +1923,18 @@ func (a *Arithmetic) text(dst *strings.Builder, redact bool) {
 		middle = " / "
 	case ModOp:
 		middle = " % "
+	case BitAndOp:
+		middle = " & "
+	case BitOrOp:
+		middle = " | "
+	case BitXorOp:
+		middle = " ^ "
+	case ShiftLeftLogicalOp:
+		middle = " << "
+	case ShiftRightArithmeticOp:
+		middle = " >> "
+	case ShiftRightLogicalOp:
+		middle = " >>> "
 	default:
 		middle = " ? "
 	}
