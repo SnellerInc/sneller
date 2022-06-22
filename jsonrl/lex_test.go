@@ -333,6 +333,20 @@ func timestamp(s string) ion.Timestamp {
 	return ion.Timestamp(t)
 }
 
+func TestIssue1236(t *testing.T) {
+	var dst ion.Chunker
+	st := newState(&dst)
+	b := reader{
+		buf:  []byte{' ', ' ', '\n'},
+		rpos: 0,
+	}
+	tb := &parser{output: st}
+	err := tb.lexToplevel(&b)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // This mostly exists to validate that the parser calls
 // Write and End methods on the Chunker instead of
 // Chunker.Buffer directly, since most of the range

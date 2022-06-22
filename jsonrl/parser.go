@@ -100,6 +100,9 @@ func (b *reader) fill() {
 		return
 	}
 	b.shift()
+	if b.atEOF {
+		return
+	}
 	if len(b.buf) == cap(b.buf) {
 		next := make([]byte, 2*len(b.buf))
 		b.buf = next[:copy(next, b.buf)]

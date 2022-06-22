@@ -3659,19 +3659,18 @@ func (t *parser) lexToplevel(b *reader) error {
 	for b.err == nil {
 		t.tok = tokEOF
 		if b.atEOF && b.buffered() == 0 {
-			t.tok = tokEOF
 			return nil
 		}
 		data := b.avail()
 		cs, p, pe, eof := 0, 0, len(data), len(data)
 		_ = eof
 
-//line lex2.go:3446
+//line lex2.go:3445
 		{
 			cs = toplevel_start
 		}
 
-//line lex2.go:3451
+//line lex2.go:3450
 		{
 			if p == pe {
 				goto _test_eof
@@ -3725,7 +3724,7 @@ func (t *parser) lexToplevel(b *reader) error {
 				goto _test_eof2
 			}
 		st_case_2:
-//line lex2.go:3503
+//line lex2.go:3502
 			goto st0
 		st_out:
 		_test_eof1:
@@ -3743,10 +3742,13 @@ func (t *parser) lexToplevel(b *reader) error {
 			}
 		}
 
-//line lex2.rl:396
+//line lex2.rl:395
 
-		if p < len(data) || b.atEOF {
+		if p < len(data) {
 			return fmt.Errorf("%w (couldn't find '[' or '{'", ErrNoMatch)
+		}
+		if b.atEOF {
+			return nil
 		}
 		if len(data) >= MaxDatumSize {
 			return fmt.Errorf("top-level whitespace: %w", ErrTooLarge)

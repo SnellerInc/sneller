@@ -384,7 +384,6 @@ func (t *parser) lexToplevel(b *reader) error {
      for b.err == nil {
          t.tok = tokEOF
          if b.atEOF && b.buffered() == 0 {
-            t.tok = tokEOF
             return nil
          }
          data := b.avail()
@@ -394,8 +393,12 @@ func (t *parser) lexToplevel(b *reader) error {
             write init;
             write exec;
         }%%
-        if p < len(data) || b.atEOF {
+        if p < len(data) {
             return fmt.Errorf("%w (couldn't find '[' or '{'", ErrNoMatch)
+        }
+        if b.atEOF {
+            // everything was whitespace and we are at EOF
+            return nil
         }
         if len(data) >= MaxDatumSize {
             return fmt.Errorf("top-level whitespace: %w", ErrTooLarge)
