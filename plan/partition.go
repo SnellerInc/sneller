@@ -319,10 +319,11 @@ func (s *server) readn(n int) ([]byte, error) {
 // that means the query is canceled
 func (s *server) context() (context.Context, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
+	r := s.pipe
 	go func() {
 		defer cancel()
 		dst := make([]byte, 1)
-		s.pipe.Read(dst)
+		r.Read(dst)
 		// don't really care about results here;
 		// either we got EOF or we got unexpected client data
 	}()
