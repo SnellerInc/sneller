@@ -46,3 +46,30 @@ func quicksortAVX512Float64(keys []float64, indices []uint64, pool ThreadPool, d
 
 	return nil
 }
+
+type quicksortAVX512Uint64Arguments struct {
+	keys        []uint64
+	indices     []uint64
+	consumer    SortedDataConsumer
+	mindistance int
+}
+
+func quicksortAVX512Uint64(keys []uint64, indices []uint64, pool ThreadPool, direction Direction, consumer SortedDataConsumer, rp *RuntimeParameters) error {
+	if len(keys) != len(indices) {
+		return fmt.Errorf("keys and indices lengths have to be equal")
+	}
+
+	args := quicksortAVX512Uint64Arguments{
+		keys:        keys,
+		indices:     indices,
+		consumer:    consumer,
+		mindistance: rp.QuicksortSplitThreshold}
+
+	if direction == Ascending {
+		pool.Enqueue(0, len(keys)-1, quicksortAscUint64, args)
+	} else {
+		pool.Enqueue(0, len(keys)-1, quicksortDescUint64, args)
+	}
+
+	return nil
+}

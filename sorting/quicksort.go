@@ -20,28 +20,55 @@ import (
 	"fmt"
 )
 
-type quicksortAVX512Uint64Arguments struct {
-	keys        []uint64
+type scalarSortArgumentsFloat64 struct {
+	keys        []float64
 	indices     []uint64
 	consumer    SortedDataConsumer
 	mindistance int
 }
 
-func quicksortAVX512Uint64(keys []uint64, indices []uint64, pool ThreadPool, direction Direction, consumer SortedDataConsumer, rp *RuntimeParameters) error {
+func quicksortFloat64(keys []float64, indices []uint64, pool ThreadPool, direction Direction, consumer SortedDataConsumer, rp *RuntimeParameters) error {
 	if len(keys) != len(indices) {
 		return fmt.Errorf("keys and indices lengths have to be equal")
 	}
 
-	args := quicksortAVX512Uint64Arguments{
+	args := scalarSortArgumentsFloat64{
 		keys:        keys,
 		indices:     indices,
 		consumer:    consumer,
 		mindistance: rp.QuicksortSplitThreshold}
 
 	if direction == Ascending {
-		pool.Enqueue(0, len(keys)-1, quicksortAscUint64, args)
+		pool.Enqueue(0, len(keys)-1, scalarQuicksortAscFloat64, args)
 	} else {
-		pool.Enqueue(0, len(keys)-1, quicksortDescUint64, args)
+		pool.Enqueue(0, len(keys)-1, scalarQuicksortDescFloat64, args)
+	}
+
+	return nil
+}
+
+type scalarSortArgumentsUint64 struct {
+	keys        []uint64
+	indices     []uint64
+	consumer    SortedDataConsumer
+	mindistance int
+}
+
+func quicksortUint64(keys []uint64, indices []uint64, pool ThreadPool, direction Direction, consumer SortedDataConsumer, rp *RuntimeParameters) error {
+	if len(keys) != len(indices) {
+		return fmt.Errorf("keys and indices lengths have to be equal")
+	}
+
+	args := scalarSortArgumentsUint64{
+		keys:        keys,
+		indices:     indices,
+		consumer:    consumer,
+		mindistance: rp.QuicksortSplitThreshold}
+
+	if direction == Ascending {
+		pool.Enqueue(0, len(keys)-1, scalarQuicksortAscUint64, args)
+	} else {
+		pool.Enqueue(0, len(keys)-1, scalarQuicksortDescUint64, args)
 	}
 
 	return nil

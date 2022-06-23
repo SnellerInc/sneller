@@ -75,14 +75,10 @@ type Procedure struct {
 	CmpGreater string
 }
 
-type OutputMapping struct {
-	file   string
-	params []Parameters // array, as we need to generate asc & desc variants for each procedure
-}
-
 type Mapping struct {
-	file    string
-	outputs []OutputMapping
+	inFile  string
+	outFile string
+	params  []Parameters // array, as we need to generate asc & desc variants for each procedure
 }
 
 func main() {
@@ -93,136 +89,113 @@ func main() {
 func generateCode() {
 	mapping := []Mapping{
 		{
-			file: "is_sorted.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_is_sorted.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64", CmpOp: "<"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64", CmpOp: ">"}, float64parameters),
-				}},
-				{file: "uint64_is_sorted.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64", CmpOp: "<"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64", CmpOp: ">"}, uint64parameters),
-				}},
+			inFile:  "is_sorted.go.in",
+			outFile: "../is_sorted.go",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64", CmpOp: "<"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64", CmpOp: ">"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64", CmpOp: "<"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64", CmpOp: ">"}, uint64parameters),
 			},
 		},
 		{
-			file: "counting_sort.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_counting_sort.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64", CmpConstant: "VCMP_IMM_LT_OQ"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64", CmpConstant: "VCMP_IMM_GT_OQ"}, float64parameters),
-				}},
-				{file: "uint64_counting_sort.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64", CmpConstant: "VPCMP_IMM_LT"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64", CmpConstant: "VPCMP_IMM_GT"}, uint64parameters),
-				}},
+			inFile:  "counting_sort.go.in",
+			outFile: "../counting_sort.go",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64", CmpConstant: "VCMP_IMM_LT_OQ"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64", CmpConstant: "VCMP_IMM_GT_OQ"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64", CmpConstant: "VPCMP_IMM_LT"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64", CmpConstant: "VPCMP_IMM_GT"}, uint64parameters),
 			},
 		},
 		{
-			file: "counting_sort.s.in",
-			outputs: []OutputMapping{
-				{file: "float64_counting_sort.s", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64", CmpConstant: "VCMP_IMM_LT_OQ"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64", CmpConstant: "VCMP_IMM_GT_OQ"}, float64parameters),
-				}},
-				{file: "uint64_counting_sort.s", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64", CmpConstant: "VPCMP_IMM_LT"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64", CmpConstant: "VPCMP_IMM_GT"}, uint64parameters),
-				}},
+			inFile:  "counting_sort.s.in",
+			outFile: "../counting_sort.s",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64", CmpConstant: "VCMP_IMM_LT_OQ"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64", CmpConstant: "VCMP_IMM_GT_OQ"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64", CmpConstant: "VPCMP_IMM_LT"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64", CmpConstant: "VPCMP_IMM_GT"}, uint64parameters),
 			},
 		},
 		{
-			file: "partition.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_partition.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64"}, float64parameters),
-				}},
-				{file: "uint64_partition.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64"}, uint64parameters),
-				}},
+			inFile:  "partition.go.in",
+			outFile: "../partition.go",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64"}, uint64parameters),
 			},
 		},
 		{
-			file: "partition.s.in",
-			outputs: []OutputMapping{
-				{file: "float64_partition.s", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64",
-						CmpGreaterEq: "VCMP_IMM_GE_OQ",
-						CmpLessEq:    "VCMP_IMM_LE_OQ"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64",
-						CmpGreaterEq: "VCMP_IMM_LE_OQ",
-						CmpLessEq:    "VCMP_IMM_GE_OQ"}, float64parameters),
-				}},
-				{file: "uint64_partition.s", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64",
-						CmpGreaterEq: "VPCMP_IMM_GE",
-						CmpLessEq:    "VPCMP_IMM_LE"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64",
-						CmpGreaterEq: "VPCMP_IMM_LE",
-						CmpLessEq:    "VPCMP_IMM_GE"}, uint64parameters),
-				}},
+			inFile:  "partition.s.in",
+			outFile: "../partition.s",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64",
+					CmpGreaterEq: "VCMP_IMM_GE_OQ",
+					CmpLessEq:    "VCMP_IMM_LE_OQ"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64",
+					CmpGreaterEq: "VCMP_IMM_LE_OQ",
+					CmpLessEq:    "VCMP_IMM_GE_OQ"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64",
+					CmpGreaterEq: "VPCMP_IMM_GE",
+					CmpLessEq:    "VPCMP_IMM_LE"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64",
+					CmpGreaterEq: "VPCMP_IMM_LE",
+					CmpLessEq:    "VPCMP_IMM_GE"}, uint64parameters),
 			},
 		},
 		{
-			file: "quicksort.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_quicksort.go", params: []Parameters{
-					merge(Procedure{TypeSuffix: "Float64"}, float64parameters)}},
-				{file: "uint64_quicksort.go", params: []Parameters{
-					merge(Procedure{TypeSuffix: "Uint64"}, uint64parameters)}},
+			inFile:  "quicksort.go.in",
+			outFile: "../quicksort.go",
+			params: []Parameters{
+				merge(Procedure{TypeSuffix: "Float64"}, float64parameters),
+				merge(Procedure{TypeSuffix: "Uint64"}, uint64parameters),
 			},
 		},
 		{
-			file: "quicksort_impl.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_quicksort_impl.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64", TypeSuffix: "Float64",
-						CmpLess:    "<",
-						CmpGreater: ">"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64", TypeSuffix: "Float64",
-						CmpLess:    ">",
-						CmpGreater: "<"}, float64parameters),
-				}},
-				{file: "uint64_quicksort_impl.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64", TypeSuffix: "Uint64",
-						CmpLess:    "<",
-						CmpGreater: ">"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64", TypeSuffix: "Uint64",
-						CmpLess:    ">",
-						CmpGreater: "<"}, uint64parameters),
-				}},
+			inFile:  "quicksort_impl.go.in",
+			outFile: "../quicksort_impl.go",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64", TypeSuffix: "Float64",
+					CmpLess:    "<",
+					CmpGreater: ">"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64", TypeSuffix: "Float64",
+					CmpLess:    ">",
+					CmpGreater: "<"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64", TypeSuffix: "Uint64",
+					CmpLess:    "<",
+					CmpGreater: ">"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64", TypeSuffix: "Uint64",
+					CmpLess:    ">",
+					CmpGreater: "<"}, uint64parameters),
 			},
 		},
 		{
-			file: "avx512_quicksort.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_avx512_quicksort.go", params: []Parameters{
-					merge(Procedure{TypeSuffix: "Float64"}, float64parameters)}},
-				{file: "uint64_avx512_quicksort.go", params: []Parameters{
-					merge(Procedure{TypeSuffix: "Uint64"}, uint64parameters)}},
+			inFile:  "avx512_quicksort.go.in",
+			outFile: "../avx512_quicksort.go",
+			params: []Parameters{
+				merge(Procedure{TypeSuffix: "Float64"}, float64parameters),
+				merge(Procedure{TypeSuffix: "Uint64"}, uint64parameters),
 			},
 		},
 		{
-			file: "avx512_quicksort_impl.go.in",
-			outputs: []OutputMapping{
-				{file: "float64_avx512_quicksort_impl.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscFloat64", TypeSuffix: "Float64",
-						CmpLess:    "<",
-						CmpGreater: ">"}, float64parameters),
-					merge(Procedure{Suffix: "DescFloat64", TypeSuffix: "Float64",
-						CmpLess:    ">",
-						CmpGreater: "<"}, float64parameters),
-				}},
-				{file: "uint64_avx512_quicksort_impl.go", params: []Parameters{
-					merge(Procedure{Suffix: "AscUint64", TypeSuffix: "Uint64",
-						CmpLess:    "<",
-						CmpGreater: ">"}, uint64parameters),
-					merge(Procedure{Suffix: "DescUint64", TypeSuffix: "Uint64",
-						CmpLess:    ">",
-						CmpGreater: "<"}, uint64parameters),
-				}},
+			inFile:  "avx512_quicksort_impl.go.in",
+			outFile: "../avx512_quicksort_impl.go",
+			params: []Parameters{
+				merge(Procedure{Suffix: "AscFloat64", TypeSuffix: "Float64",
+					CmpLess:    "<",
+					CmpGreater: ">"}, float64parameters),
+				merge(Procedure{Suffix: "DescFloat64", TypeSuffix: "Float64",
+					CmpLess:    ">",
+					CmpGreater: "<"}, float64parameters),
+				merge(Procedure{Suffix: "AscUint64", TypeSuffix: "Uint64",
+					CmpLess:    "<",
+					CmpGreater: ">"}, uint64parameters),
+				merge(Procedure{Suffix: "DescUint64", TypeSuffix: "Uint64",
+					CmpLess:    ">",
+					CmpGreater: "<"}, uint64parameters),
 			},
 		},
 	}
@@ -233,19 +206,16 @@ func generateCode() {
 	}
 
 	for i := range mapping {
-		tmpl, err := template.New(path.Base(mapping[i].file)).Funcs(funcMap).ParseFiles(mapping[i].file)
-
+		tmpl, err := template.New(path.Base(mapping[i].inFile)).Funcs(funcMap).ParseFiles(mapping[i].inFile)
 		die(err)
-		for j := range mapping[i].outputs {
-			output := &mapping[i].outputs[j]
-			outpath := path.Join("..", output.file)
-			f, err := os.Create(outpath)
-			die(err)
-			defer f.Close()
-			log.Printf("Generating %q", outpath)
-			err = tmpl.Execute(f, output.params)
-			die(err)
-		}
+
+		f, err := os.Create(mapping[i].outFile)
+		die(err)
+		defer f.Close()
+
+		log.Printf("Generating %q", mapping[i].outFile)
+		err = tmpl.Execute(f, mapping[i].params)
+		die(err)
 	}
 }
 

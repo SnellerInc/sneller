@@ -49,3 +49,37 @@ func isSortedDescFloat64(seq []uint64) bool {
 
 	return true
 }
+
+func isSortedAscUint64(seq []uint64) bool {
+	if len(seq) <= 1 {
+		return true
+	}
+
+	prev := seq[0]
+	for _, curr := range seq {
+		if curr < prev {
+			return false
+		}
+
+		prev = curr
+	}
+
+	return true
+}
+
+func isSortedDescUint64(seq []uint64) bool {
+	if len(seq) <= 1 {
+		return true
+	}
+
+	prev := seq[0]
+	for _, curr := range seq {
+		if curr > prev {
+			return false
+		}
+
+		prev = curr
+	}
+
+	return true
+}
