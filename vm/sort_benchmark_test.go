@@ -19,7 +19,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/SnellerInc/sneller/internal/sort"
+	"github.com/SnellerInc/sneller/sorting"
 )
 
 /*
@@ -80,7 +80,7 @@ func benchmark(b *testing.B, parallelism int, columns []string) {
 
 	orderBy := make([]SortColumn, len(columns))
 	for i, col := range columns {
-		orderBy[i] = SortColumn{Node: parsePath(col), Direction: sort.Ascending, Nulls: sort.NullsFirst}
+		orderBy[i] = SortColumn{Node: parsePath(col), Direction: sorting.Ascending, Nulls: sorting.NullsFirst}
 	}
 
 	b.SetBytes(int64(len(input)))

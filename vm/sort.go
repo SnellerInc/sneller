@@ -24,25 +24,25 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/internal/sort"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/sorting"
 )
 
 // SortColumn represents a single entry in the 'ORDER BY' clause:
 // "column-name [ASC|DESC] [NULLS FIRST|NULLS LAST]"
 type SortColumn struct {
 	Node      expr.Node
-	Direction sort.Direction
-	Nulls     sort.NullsOrder
+	Direction sorting.Direction
+	Nulls     sorting.NullsOrder
 }
 
 // Order implements a QuerySink that applies
 // an ordering to its output rows.
 type Order struct {
-	dst         io.Writer    // final destination
-	columns     []SortColumn // columns to sort
-	limit       *sort.Limit  // optional limit parameters
-	parallelism int          // number of threads
+	dst         io.Writer      // final destination
+	columns     []SortColumn   // columns to sort
+	limit       *sorting.Limit // optional limit parameters
+	parallelism int            // number of threads
 
 	// symbol table for the whole input
 	symtab *ion.Symtab
@@ -51,10 +51,10 @@ type Order struct {
 	symtabLock sync.Mutex
 
 	// collection of all records received in writeRows (for multicolumn sorting)
-	records []sort.IonRecord
+	records []sorting.IonRecord
 
 	// collection of all records received in writeRows (for single column sorting)
-	column  sort.MixedTypeColumn
+	column  sorting.MixedTypeColumn
 	chunkID uint32
 	// map chunkID -> collected rows for given chunk
 	//
@@ -64,7 +64,7 @@ type Order struct {
 	rawrecords map[uint32][][]byte
 
 	// collection of k-top rows
-	ktop    *sort.Ktop
+	ktop    *sorting.Ktop
 	symtabs []ion.Symtab
 
 	// lock for writing to `records`/`rawrecords`/'ktop'
@@ -80,20 +80,20 @@ type Order struct {
 	// with sorting threads
 	wg sync.WaitGroup
 
-	rp sort.RuntimeParameters
+	rp sorting.RuntimeParameters
 }
 
 // NewOrder constructs a new Order QuerySink that
 // sorts the provided columns (in left-to-right order).
 // If limit is non-nil, then the number of rows output
 // by the Order will be less than or equal to the limit.
-func NewOrder(dst io.Writer, columns []SortColumn, limit *sort.Limit, parallelism int) *Order {
+func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, parallelism int) *Order {
 	s := &Order{
 		columns:     columns,
 		limit:       limit,
 		parallelism: parallelism,
 		dst:         dst,
-		rp:          sort.NewRuntimeParameters(parallelism),
+		rp:          sorting.NewRuntimeParameters(parallelism),
 	}
 
 	s.rp.UseStdlib = true // see #917
@@ -141,16 +141,16 @@ func (s *Order) useKtop() bool {
 	if s.limit == nil {
 		return false
 	}
-	return s.limit.Kind == sort.LimitToHeadRows
+	return s.limit.Kind == sorting.LimitToHeadRows
 }
 
-func (s *Order) newKtop() *sort.Ktop {
-	orders := make([]sort.Ordering, len(s.columns))
+func (s *Order) newKtop() *sorting.Ktop {
+	orders := make([]sorting.Ordering, len(s.columns))
 	for i := range s.columns {
 		orders[i].Direction = s.columns[i].Direction
 		orders[i].Nulls = s.columns[i].Nulls
 	}
-	return sort.NewKtop(s.limit.Limit, orders)
+	return sorting.NewKtop(s.limit.Limit, orders)
 }
 
 // Open implements QuerySink.Open
@@ -195,19 +195,19 @@ func (s *Order) Close() error {
 }
 
 func (s *Order) finalizeMultiColumnSorting() error {
-	rowsWriter, err := sort.NewRowsWriter(s.dst, s.symtab, s.rp.ChunkAlignment)
+	rowsWriter, err := sorting.NewRowsWriter(s.dst, s.symtab, s.rp.ChunkAlignment)
 	if err != nil {
 		return err
 	}
 
-	directions := make([]sort.Direction, len(s.columns))
-	nullsOrder := make([]sort.NullsOrder, len(s.columns))
+	directions := make([]sorting.Direction, len(s.columns))
+	nullsOrder := make([]sorting.NullsOrder, len(s.columns))
 	for i := range s.columns {
 		directions[i] = s.columns[i].Direction
 		nullsOrder[i] = s.columns[i].Nulls
 	}
 
-	err = sort.ByColumns(s.records, directions, nullsOrder, s.limit, rowsWriter, &s.rp)
+	err = sorting.ByColumns(s.records, directions, nullsOrder, s.limit, rowsWriter, &s.rp)
 	err2 := rowsWriter.Close()
 	if err != nil {
 		return err
@@ -217,12 +217,12 @@ func (s *Order) finalizeMultiColumnSorting() error {
 }
 
 func (s *Order) finalizeSingleColumnSorting() error {
-	rowsWriter, err := sort.NewRowsWriter(s.dst, s.symtab, s.rp.ChunkAlignment)
+	rowsWriter, err := sorting.NewRowsWriter(s.dst, s.symtab, s.rp.ChunkAlignment)
 	if err != nil {
 		return err
 	}
 
-	err = sort.ByColumn(s.rawrecords, &s.column, s.columns[0].Direction, s.columns[0].Nulls,
+	err = sorting.ByColumn(s.rawrecords, &s.column, s.columns[0].Direction, s.columns[0].Nulls,
 		s.limit, rowsWriter, &s.rp)
 
 	err2 := rowsWriter.Close()
@@ -385,7 +385,7 @@ func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
 		d := delims[rowID]
 		bytes := d.mem()
 
-		var record sort.IonRecord
+		var record sorting.IonRecord
 
 		// calculate space for boxed values
 		for columnID := 0; columnID < columnCount; columnID++ {
@@ -440,7 +440,7 @@ type sortstateSingleColumn struct {
 	chunkID   uint32
 	recordID  uint64
 	records   [][]byte
-	subcolumn sort.MixedTypeColumn
+	subcolumn sorting.MixedTypeColumn
 }
 
 func (s *sortstateSingleColumn) symbolize(st *symtab) error {
@@ -534,7 +534,7 @@ type sortstateKtop struct {
 	findbc bytecode
 
 	// local k-top rows
-	ktop *sort.Ktop
+	ktop *sorting.Ktop
 
 	// a buffer to keep the scratch + record data of the current record in `writeRows`
 	buffer []byte
@@ -662,9 +662,9 @@ func (s *sortstateKtop) maybePrefilter() error {
 	}
 	var keep *value
 	switch s.parent.columns[0].Direction {
-	case sort.Ascending:
+	case sorting.Ascending:
 		keep = cmp(v, imm)
-	case sort.Descending:
+	case sorting.Descending:
 		keep = cmp(imm, v)
 	default:
 		return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Direction)
@@ -711,7 +711,7 @@ func (s *sortstateKtop) writeRows(delims []vmref) error {
 	// split input data into separate records
 	columnCount := len(s.parent.columns)
 
-	var record sort.IonRecord
+	var record sorting.IonRecord
 	record.SymtabID = len(s.symtabs) - 1
 
 outer:

@@ -22,8 +22,8 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/internal/sort"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/sorting"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -807,28 +807,28 @@ func (o *OrderBy) exec(dst vm.QuerySink, ep *ExecParams) error {
 		orderBy[i].Node = o.Columns[i].Node
 
 		if o.Columns[i].Desc {
-			orderBy[i].Direction = sort.Descending
+			orderBy[i].Direction = sorting.Descending
 		} else {
-			orderBy[i].Direction = sort.Ascending
+			orderBy[i].Direction = sorting.Ascending
 		}
 
 		if o.Columns[i].NullsLast {
-			orderBy[i].Nulls = sort.NullsLast
+			orderBy[i].Nulls = sorting.NullsLast
 		} else {
-			orderBy[i].Nulls = sort.NullsFirst
+			orderBy[i].Nulls = sorting.NullsFirst
 		}
 	}
 
-	var limit *sort.Limit
+	var limit *sorting.Limit
 	if o.Offset > 0 && o.Limit > 0 {
-		limit = &sort.Limit{
-			Kind:   sort.LimitToRange,
+		limit = &sorting.Limit{
+			Kind:   sorting.LimitToRange,
 			Offset: o.Offset,
 			Limit:  o.Limit,
 		}
 	} else if o.Limit > 0 {
-		limit = &sort.Limit{
-			Kind:  sort.LimitToHeadRows,
+		limit = &sorting.Limit{
+			Kind:  sorting.LimitToHeadRows,
 			Limit: o.Limit,
 		}
 	}

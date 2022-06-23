@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/internal/sort"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/sorting"
 )
 
 func TestSortSingleColumnAscendingNullsFirst(t *testing.T) {
@@ -59,7 +59,7 @@ func TestSortSingleColumnAscendingNullsFirst(t *testing.T) {
 		"'the Answer'",
 	}
 
-	testSingleColumnSorting(t, sort.Ascending, sort.NullsFirst, expected)
+	testSingleColumnSorting(t, sorting.Ascending, sorting.NullsFirst, expected)
 }
 
 func TestSortSingleColumnAscendingNullsLast(t *testing.T) {
@@ -94,7 +94,7 @@ func TestSortSingleColumnAscendingNullsLast(t *testing.T) {
 		"null",
 	}
 
-	testSingleColumnSorting(t, sort.Ascending, sort.NullsLast, expected)
+	testSingleColumnSorting(t, sorting.Ascending, sorting.NullsLast, expected)
 }
 
 func TestSortSingleColumnDescendingNulls_first(t *testing.T) {
@@ -129,7 +129,7 @@ func TestSortSingleColumnDescendingNulls_first(t *testing.T) {
 		"false",
 	}
 
-	testSingleColumnSorting(t, sort.Descending, sort.NullsFirst, expected)
+	testSingleColumnSorting(t, sorting.Descending, sorting.NullsFirst, expected)
 }
 
 func TestSortSingleColumnDescendingNullsLast(t *testing.T) {
@@ -164,10 +164,10 @@ func TestSortSingleColumnDescendingNullsLast(t *testing.T) {
 		"null",
 	}
 
-	testSingleColumnSorting(t, sort.Descending, sort.NullsLast, expected)
+	testSingleColumnSorting(t, sorting.Descending, sorting.NullsLast, expected)
 }
 
-func testSingleColumnSorting(t *testing.T, direction sort.Direction, nullsOrder sort.NullsOrder, expected []string) {
+func testSingleColumnSorting(t *testing.T, direction sorting.Direction, nullsOrder sorting.NullsOrder, expected []string) {
 	// given
 	input, err := singleColumnTestIon()
 	if err != nil {
@@ -301,10 +301,10 @@ func singleColumnTestIon() (result []byte, err error) {
 
 func TestSortMultipleColumnsCase1(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("name1"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("coef"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("num"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("flag"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
+		SortColumn{Node: parsePath("name1"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("num"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("flag"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
 	}
 
 	// note: ORDER BY name, coef, num, flag
@@ -326,8 +326,8 @@ func TestSortMultipleColumnsCase1(t *testing.T) {
 
 func TestSortMultipleColumnsCase2(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("coef"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("name1"), Direction: sort.Descending, Nulls: sort.NullsFirst},
+		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("name1"), Direction: sorting.Descending, Nulls: sorting.NullsFirst},
 	}
 
 	// note: ORDER BY coef, name1
@@ -349,9 +349,9 @@ func TestSortMultipleColumnsCase2(t *testing.T) {
 
 func TestSortMultipleColumnsCase3(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("num"), Direction: sort.Descending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("flag"), Direction: sort.Descending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("coef"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
+		SortColumn{Node: parsePath("num"), Direction: sorting.Descending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("flag"), Direction: sorting.Descending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
 	}
 
 	// note: ORDER BY num DESC, flag DESC, coef
@@ -373,9 +373,9 @@ func TestSortMultipleColumnsCase3(t *testing.T) {
 
 func TestSortWithMissingField(t *testing.T) {
 	orderBy := []SortColumn{
-		SortColumn{Node: parsePath("unknown"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("coef"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
-		SortColumn{Node: parsePath("flag"), Direction: sort.Ascending, Nulls: sort.NullsFirst},
+		SortColumn{Node: parsePath("unknown"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
+		SortColumn{Node: parsePath("flag"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
 	}
 
 	// ORDER BY unknown, coef
@@ -467,15 +467,15 @@ func multiColumnTestIon() (result []byte, err error) {
 
 func TestSortWithLimit(t *testing.T) {
 	orderBy := []SortColumn{SortColumn{Node: parsePath("key"),
-		Direction: sort.Ascending,
-		Nulls:     sort.NullsFirst}}
+		Direction: sorting.Ascending,
+		Nulls:     sorting.NullsFirst}}
 
 	input, err := limitTestIon(100000)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	limit := sort.Limit{Kind: sort.LimitToRange, Offset: 2000, Limit: 15}
+	limit := sorting.Limit{Kind: sorting.LimitToRange, Offset: 2000, Limit: 15}
 
 	const parallelism = 4
 

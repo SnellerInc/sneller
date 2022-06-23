@@ -23,8 +23,8 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
-	ionsort "github.com/SnellerInc/sneller/internal/sort"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/sorting"
 )
 
 const (
@@ -63,14 +63,14 @@ func (h *HashAggregate) OrderByGroup(n int, desc bool, nullslast bool) error {
 	if n < 0 || n >= len(h.by) {
 		return fmt.Errorf("group %d doesn't exist", n)
 	}
-	o := ionsort.Ordering{}
-	o.Direction = ionsort.Ascending
-	o.Nulls = ionsort.NullsFirst
+	o := sorting.Ordering{}
+	o.Direction = sorting.Ascending
+	o.Nulls = sorting.NullsFirst
 	if desc {
-		o.Direction = ionsort.Descending
+		o.Direction = sorting.Descending
 	}
 	if nullslast {
-		o.Nulls = ionsort.NullsLast
+		o.Nulls = sorting.NullsLast
 	}
 	h.order = append(h.order, func(agt *aggtable, left, right hpair) int {
 		leftmem := agt.repridx(&left, n)
