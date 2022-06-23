@@ -1712,7 +1712,7 @@ func TestClientCancel(t *testing.T) {
 	// and so this shouldn't block indefinitely:
 	wg.Wait()
 	if serverr != nil {
-		t.Fatal(err)
+		t.Fatal(serverr)
 	}
 }
 

@@ -95,16 +95,16 @@ func (i Int) Type() Type {
 }
 
 func (i Int) equal(x Datum) bool {
-	if i2, ok := x.(Int); ok {
-		return i == i2
+	switch x := x.(type) {
+	case Int:
+		return x == i
+	case Uint:
+		return i >= 0 && Uint(i) == x
+	case Float:
+		return float64(int64(x)) == float64(x) && int64(x) == int64(i)
+	default:
+		return false
 	}
-	if u, ok := x.(Uint); ok {
-		return i >= 0 && Uint(i) == u
-	}
-	if f, ok := x.(Float); ok {
-		return float64(int64(f)) == float64(f) && int64(f) == int64(i)
-	}
-	return false
 }
 
 func (i Int) Encode(dst *Buffer, st *Symtab) {
@@ -118,16 +118,16 @@ func (u Uint) Type() Type                     { return UintType }
 func (u Uint) Encode(dst *Buffer, st *Symtab) { dst.WriteUint(uint64(u)) }
 
 func (u Uint) equal(x Datum) bool {
-	if u2, ok := x.(Uint); ok {
-		return u == u2
+	switch x := x.(type) {
+	case Uint:
+		return u == x
+	case Int:
+		return x >= 0 && Uint(x) == u
+	case Float:
+		return float64(uint64(x)) == float64(x) && uint64(x) == uint64(u)
+	default:
+		return false
 	}
-	if i, ok := x.(Int); ok {
-		return i >= 0 && Uint(i) == u
-	}
-	if f, ok := x.(Float); ok {
-		return float64(uint64(f)) == float64(f) && uint64(f) == uint64(u)
-	}
-	return false
 }
 
 // Field is a structure field in a Struct or Annotation datum
