@@ -85,7 +85,7 @@ pairs (key, row ID).
 
 There are specializations for ints, floats and timestamps based on an
 AVX512-assisted quicksort, which is also multithreaded.  They are generated
-with `go generate` from code templates stored in `intfloat.in` directory.
+with `go generate` from code templates stored in `_generate` directory.
 Note that these sorters are guaranteed to fully sort only the indices array;
 they keep intact portions of the key array. Details can be found in
 intfloat.in/avx512/counting-sort.go.in.

@@ -12,8 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//go:build ignore
-// +build ignore
+//go:generate go run generator.go
+//go:generate gofmt -w ..
 
 package main
 
@@ -93,7 +93,7 @@ func main() {
 func generateCode() {
 	mapping := []Mapping{
 		{
-			file: "intfloat.in/is_sorted.go.in",
+			file: "is_sorted.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_is_sorted.go", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64", CmpOp: "<"}, float64parameters),
@@ -106,7 +106,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/avx512/counting_sort.go.in",
+			file: "counting_sort.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_counting_sort.go", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64", CmpConstant: "VCMP_IMM_LT_OQ"}, float64parameters),
@@ -119,7 +119,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/avx512/counting_sort.s.in",
+			file: "counting_sort.s.in",
 			outputs: []OutputMapping{
 				{file: "float64_counting_sort.s", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64", CmpConstant: "VCMP_IMM_LT_OQ"}, float64parameters),
@@ -132,7 +132,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/avx512/partition.go.in",
+			file: "partition.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_partition.go", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64"}, float64parameters),
@@ -145,7 +145,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/avx512/partition.s.in",
+			file: "partition.s.in",
 			outputs: []OutputMapping{
 				{file: "float64_partition.s", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64",
@@ -166,7 +166,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/quicksort.go.in",
+			file: "quicksort.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_quicksort.go", params: []Parameters{
 					merge(Procedure{TypeSuffix: "Float64"}, float64parameters)}},
@@ -175,7 +175,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/quicksort_impl.go.in",
+			file: "quicksort_impl.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_quicksort_impl.go", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64", TypeSuffix: "Float64",
@@ -196,7 +196,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/avx512_quicksort.go.in",
+			file: "avx512_quicksort.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_avx512_quicksort.go", params: []Parameters{
 					merge(Procedure{TypeSuffix: "Float64"}, float64parameters)}},
@@ -205,7 +205,7 @@ func generateCode() {
 			},
 		},
 		{
-			file: "intfloat.in/avx512_quicksort_impl.go.in",
+			file: "avx512_quicksort_impl.go.in",
 			outputs: []OutputMapping{
 				{file: "float64_avx512_quicksort_impl.go", params: []Parameters{
 					merge(Procedure{Suffix: "AscFloat64", TypeSuffix: "Float64",
@@ -238,10 +238,11 @@ func generateCode() {
 		die(err)
 		for j := range mapping[i].outputs {
 			output := &mapping[i].outputs[j]
-			f, err := os.Create(output.file)
+			outpath := path.Join("..", output.file)
+			f, err := os.Create(outpath)
 			die(err)
 			defer f.Close()
-			log.Printf("Generating %q", output.file)
+			log.Printf("Generating %q", outpath)
 			err = tmpl.Execute(f, output.params)
 			die(err)
 		}
@@ -292,8 +293,8 @@ func generateBenchmarks() {
 			IndexType: "uint64"},
 	}
 
-	input := "intfloat.in/quicksort_test.go.in"
-	output := "quicksort_test.go"
+	input := "quicksort_test.go.in"
+	output := "../quicksort_test.go"
 	tmpl, err := template.ParseFiles(input)
 
 	die(err)
