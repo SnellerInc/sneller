@@ -420,7 +420,6 @@ type mtcSpec struct {
 	floats     int
 	strings    int
 	timestamps int
-	decimals   int
 }
 
 func makeTestMixedTypeColumn(spec mtcSpec) (result MixedTypeColumn) {
@@ -433,7 +432,6 @@ func makeTestMixedTypeColumn(spec mtcSpec) (result MixedTypeColumn) {
 	result.floatIndices = make([]uint64, spec.floats)
 	result.stringIndices = make([]uint64, spec.strings)
 	result.timestampIndices = make([]uint64, spec.timestamps)
-	result.decimalIndices = make([]uint64, spec.decimals)
 
 	return
 }
@@ -662,10 +660,6 @@ func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
 		buf.WriteTime(date.Date(year, month, day, hour, min, sec, nsec))
 
 		add()
-	}
-
-	if spec.decimals > 0 {
-		panic("decimals not supported yet")
 	}
 
 	rand.Shuffle(len(records), func(i, j int) { records[i], records[j] = records[j], records[i] })

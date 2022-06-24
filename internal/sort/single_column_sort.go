@@ -95,8 +95,6 @@ type MixedTypeColumn struct {
 	fastTimestampIndices []uint64
 	timestampKeys        []date.Time // all other timestamps
 	timestampIndices     []uint64
-	decimalKeys          []string
-	decimalIndices       []uint64
 	// When add/remove a type, please update `subarrayTypes` const below.
 }
 
@@ -189,8 +187,6 @@ func (m *MixedTypeColumn) Append(o *MixedTypeColumn) {
 	m.fastTimestampIndices = append(m.fastTimestampIndices, o.fastTimestampIndices...)
 	m.timestampKeys = append(m.timestampKeys, o.timestampKeys...)
 	m.timestampIndices = append(m.timestampIndices, o.timestampIndices...)
-	m.decimalKeys = append(m.decimalKeys, o.decimalKeys...)
-	m.decimalIndices = append(m.decimalIndices, o.decimalIndices...)
 }
 
 // Len returns total number of rows.
@@ -198,7 +194,7 @@ func (m *MixedTypeColumn) Len() int {
 	return len(m.nullIndices) + len(m.falseIndices) + len(m.trueIndices) +
 		len(m.zeroIndices) + len(m.negintIndices) + len(m.posintIndices) +
 		len(m.floatIndices) + len(m.stringIndices) + len(m.timestampIndices) +
-		len(m.fastTimestampKeys) + len(m.decimalIndices)
+		len(m.fastTimestampKeys)
 }
 
 func (m *MixedTypeColumn) indicesByName(name string) *[]uint64 {
@@ -225,8 +221,6 @@ func (m *MixedTypeColumn) indicesByName(name string) *[]uint64 {
 		} else {
 			return &m.fastTimestampIndices
 		}
-	case "decimal":
-		return &m.decimalIndices
 	}
 
 	return nil
@@ -255,7 +249,7 @@ func (s *sortAction) String() string {
 // planSingleColumnSorting build a sequence of operations that have to be executed
 // in order to sort a column of different types.
 func planSingleColumnSorting(col *MixedTypeColumn, direction Direction, nullsOrder NullsOrder, limit indicesRange) []sortAction {
-	const subarrayTypes = 10 // count of MixedTypeColumn.XXXIndices
+	const subarrayTypes = 9 // count of MixedTypeColumn.XXXIndices
 	seq := make([]sortAction, 0, subarrayTypes)
 
 	actionAlreadySorted := func(c SortedDataConsumer, pool ThreadPool, col *MixedTypeColumn, start int, end int, rp *RuntimeParameters) error {
@@ -427,9 +421,6 @@ func planSingleColumnSorting(col *MixedTypeColumn, direction Direction, nullsOrd
 			len(col.posintIndices) + len(col.floatIndices)
 
 		add(actionSortFloats, length, "float")
-
-	case sortDecimal:
-		panic("Not supported")
 	}
 
 	// 3. sort timestamps
@@ -583,17 +574,12 @@ const (
 	sortNoNumericValues numericSorting = iota
 	sortIntegers
 	sortFloats
-	sortDecimal
 )
 
 // Find out what kind of numeric conversion is neeed to properly sort
 // numeric types. All low-level Ion numeric types (int, uint, float32,
-// float32 and decimals) are treated the same.
+// float32) are treated the same.
 func chooseNumericSorting(col *MixedTypeColumn) numericSorting {
-
-	if len(col.decimalIndices) > 0 {
-		return sortDecimal
-	}
 
 	if len(col.floatIndices) > 0 {
 		return sortFloats
