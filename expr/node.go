@@ -3043,6 +3043,8 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		return Bool(d), true
 	case ion.Interned:
 		return String(d), true
+	case ion.UntypedNull:
+		return Null{}, true
 	default:
 		// TODO: add blob, clob, bags, etc.
 		return nil, false

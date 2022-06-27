@@ -1,0 +1,10 @@
+SELECT
+  (SELECT attr, COUNT(*) "a", SUM("doesnotexist") "b" FROM input GROUP BY attr ORDER BY a DESC) "x"
+---
+{"attr": "attr0"}
+{"attr": "attr0"}
+{"attr": "attr0"}
+{"attr": "attr1"}
+{"attr": "attr1"}
+---
+{"x": [{"attr": "attr0", "a": 3, "b": null}, {"attr": "attr1", "a": 2, "b": null}]}
