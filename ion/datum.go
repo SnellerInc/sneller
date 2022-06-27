@@ -17,6 +17,7 @@ package ion
 import (
 	"bytes"
 	"fmt"
+	"io"
 
 	"golang.org/x/exp/slices"
 
@@ -254,17 +255,19 @@ func (s *Struct) equal(x Datum) bool {
 func (s *Struct) Len() int { return s.len }
 
 // Each calls fn for each field in the struct. If fn
-// returns false, this returns early.
-func (s *Struct) Each(fn func(Field) bool) {
+// returns false, Each returns early. Each may return
+// a non-nil error if the original struct encoding
+// was malformed.
+func (s *Struct) Each(fn func(Field) bool) error {
 	if len(s.buf) == 0 {
-		return
+		return nil
 	}
 	if TypeOf(s.buf) != StructType {
-		panic(fmt.Sprintf("expected a struct; found ion type %s", TypeOf(s.buf)))
+		return fmt.Errorf("expected a struct; found ion type %s", TypeOf(s.buf))
 	}
 	body, _ := Contents(s.buf)
 	if body == nil {
-		panic(fmt.Sprintf("invalid struct encoding"))
+		return errInvalidIon
 	}
 	st := s.symtab()
 	for len(body) > 0 {
@@ -272,19 +275,19 @@ func (s *Struct) Each(fn func(Field) bool) {
 		var err error
 		sym, body, err = ReadLabel(body)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		name, ok := st.Lookup(sym)
 		if !ok {
-			panic(fmt.Sprintf("symbol %d not in symbol table", sym))
+			return fmt.Errorf("symbol %d not in symbol table", sym)
 		}
 		next := SizeOf(body)
 		if next <= 0 || next > len(body) {
-			panic(fmt.Sprintf("next object size %d exceeds buffer size %d", next, len(body)))
+			return fmt.Errorf("next object size %d exceeds buffer size %d", next, len(body))
 		}
 		val, _, err := ReadDatum(&st, body[:next])
 		if err != nil {
-			panic(err)
+			return err
 		}
 		f := Field{
 			Label: name,
@@ -296,6 +299,7 @@ func (s *Struct) Each(fn func(Field) bool) {
 		}
 		body = body[next:]
 	}
+	return nil
 }
 
 // Fields appends fields to the given slice and returns
@@ -390,32 +394,37 @@ func (l *List) Encode(dst *Buffer, st *Symtab) {
 
 func (l *List) Len() int { return l.len }
 
-func (l *List) Each(fn func(Datum) bool) {
+// Each iterates over each datum in the
+// list and calls fn on each datum in order.
+// Each returns when it encounters an internal error
+// (due to malformed ion) or when fn returns false.
+func (l *List) Each(fn func(Datum) bool) error {
 	if len(l.buf) == 0 {
-		return
+		return nil
 	}
 	if TypeOf(l.buf) != ListType {
-		panic(fmt.Sprintf("expected a list; found ion type %s", TypeOf(l.buf)))
+		return fmt.Errorf("expected a list; found ion type %s", TypeOf(l.buf))
 	}
 	body, _ := Contents(l.buf)
 	if body == nil {
-		panic(fmt.Sprintf("invalid list encoding"))
+		return errInvalidIon
 	}
 	st := l.symtab()
 	for len(body) > 0 {
 		next := SizeOf(body)
 		if next <= 0 || next > len(body) {
-			panic(fmt.Sprintf("object size %d exceeds buffer size %d", next, len(body)))
+			return fmt.Errorf("object size %d exceeds buffer size %d", next, len(body))
 		}
 		val, _, err := ReadDatum(&st, body[:next])
 		if err != nil {
-			panic(err)
+			return err
 		}
 		if !fn(val) {
-			return
+			return nil
 		}
 		body = body[next:]
 	}
+	return nil
 }
 
 func (l *List) Items(items []Datum) []Datum {
@@ -554,9 +563,13 @@ func (t Timestamp) equal(x Datum) bool {
 }
 
 func decodeNullDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
+	s := SizeOf(b)
+	if s <= 0 || s > len(b) {
+		return nil, b, errInvalidIon
+	}
 	// note: we're skipping the whole datum here
 	// so that a multi-byte nop pad is skipped appropriately
-	return UntypedNull{}, b[SizeOf(b):], nil
+	return UntypedNull{}, b[s:], nil
 }
 
 func decodeBoolDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
@@ -627,6 +640,9 @@ func decodeStringDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 
 func decodeBlobDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 	buf, rest := Contents(b)
+	if buf == nil {
+		return nil, b, errInvalidIon
+	}
 	return Blob(buf), rest, nil
 }
 
@@ -636,6 +652,9 @@ func decodeListDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 		return nil, nil, fmt.Errorf("size %d exceeds buffer size %d", size, len(b))
 	}
 	body, rest := Contents(b)
+	if body == nil {
+		return nil, nil, errInvalidIon
+	}
 	count := 0
 	var err error
 	for len(body) > 0 {
@@ -660,6 +679,9 @@ func decodeStructDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 		return nil, nil, fmt.Errorf("size %d exceeds buffer size %d", size, len(b))
 	}
 	fields, rest := Contents(b)
+	if fields == nil {
+		return nil, nil, errInvalidIon
+	}
 	count := 0
 	for len(fields) > 0 {
 		var sym Symbol
@@ -667,6 +689,9 @@ func decodeStructDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 		sym, fields, err = ReadLabel(fields)
 		if err != nil {
 			return nil, nil, err
+		}
+		if len(fields) == 0 {
+			return nil, nil, io.ErrUnexpectedEOF
 		}
 		_, ok := st.Lookup(sym)
 		if !ok {
@@ -706,6 +731,9 @@ func decodeAnnotationDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 		sym, body, err = ReadLabel(body)
 		if err != nil {
 			return nil, body, err
+		}
+		if len(body) == 0 {
+			return nil, body, io.ErrUnexpectedEOF
 		}
 		val, body, err = ReadDatum(st, body)
 		if err != nil {

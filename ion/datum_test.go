@@ -153,3 +153,44 @@ func BenchmarkDatumPassthrough(b *testing.B) {
 		})
 	}
 }
+
+func FuzzReadDatum(f *testing.F) {
+	var tcs = []string{
+		"0",
+		"1",
+		"true",
+		"false",
+		`"foo"`,
+		`{"foo": {"bar": "baz"}, "quux": 3}`,
+		`{"first": 0.02, "arr": [0, false, null, {}]}`,
+	}
+	for i := range tcs {
+		var st Symtab
+		var buf Buffer
+		d := json.NewDecoder(strings.NewReader(tcs[i]))
+		dat, err := FromJSON(&st, d)
+		if err != nil {
+			f.Fatalf("decoding %q: %s", tcs[i], err)
+		}
+		st.Marshal(&buf, true)
+		dat.Encode(&buf, &st)
+		f.Add(buf.Bytes())
+	}
+	f.Fuzz(func(t *testing.T, buf []byte) {
+		var st Symtab
+		var err error
+		var d Datum
+		for len(buf) > 0 {
+			d, buf, err = ReadDatum(&st, buf)
+			if err != nil {
+				break
+			}
+			switch d := d.(type) {
+			case *List:
+				d.Each(func(d Datum) bool { return true })
+			case *Struct:
+				d.Each(func(f Field) bool { return true })
+			}
+		}
+	})
+}

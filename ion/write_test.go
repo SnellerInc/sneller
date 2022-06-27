@@ -264,6 +264,25 @@ func TestNopPadding(t *testing.T) {
 	}
 }
 
+func BenchmarkSizeOf(b *testing.B) {
+	sizes := []int{
+		0, 5, 12, 225, 18468,
+	}
+	var ib Buffer
+	for i := range sizes {
+		ib.BeginString(sizes[i])
+		ib.UnsafeAppend(make([]byte, sizes[i]))
+	}
+	mem := ib.Bytes()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buf := mem
+		for len(buf) > 0 {
+			buf = buf[SizeOf(buf):]
+		}
+	}
+}
+
 func BenchmarkUvarint(b *testing.B) {
 	dst := make([]byte, 0, 10)
 	var ib Buffer

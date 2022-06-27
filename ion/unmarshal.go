@@ -114,21 +114,21 @@ func SizeOf(msg []byte) int {
 	case 0x0f:
 		return 1
 	case 0x0e:
-		if haveFastuv && cap(msg) >= 9 {
-			uv, width := fastuv(msg[1:])
-			return 1 + width + int(uv)
-		}
 		out := 0
 		i := 0
 		rest := msg[1:]
+		if len(rest) > 8 {
+			// guard against overflow
+			rest = rest[:8]
+		}
 		for i = range rest {
 			out <<= 7
 			out += int(rest[i] & 0x7f)
 			if rest[i]&0x80 != 0 {
-				break
+				return out + i + 2
 			}
 		}
-		return out + i + 2 // descriptor byte + varint bytes
+		return -1 // unterminated rest
 	default:
 		return int(lo) + 1
 	}
@@ -162,13 +162,6 @@ func Contents(msg []byte) ([]byte, []byte) {
 		}
 		return msg[1 : 1+lo], msg[1+lo:]
 	}
-	// on architectures with bit-extract functions,
-	// we can process the entire uvarint with a single load
-	if haveFastuv && cap(msg) >= 9 {
-		rest := msg[1:]
-		uv, width := fastuv(rest)
-		return rest[width : width+int(uv)], rest[width+int(uv):]
-	}
 
 	// lo must be equal to 0x0e
 	rest := msg[1:]
@@ -178,13 +171,13 @@ func Contents(msg []byte) ([]byte, []byte) {
 		out <<= 7
 		out += int(rest[i] & 0x7f)
 		if rest[i]&0x80 != 0 {
-			break
+			if len(rest) < i+out+1 || out < 0 {
+				return nil, msg
+			}
+			return rest[i+1 : i+out+1], rest[i+out+1:]
 		}
 	}
-	if len(rest) < i+out+1 {
-		return nil, msg
-	}
-	return rest[i+1 : i+out+1], rest[i+out+1:]
+	return nil, msg
 }
 
 // Composite returns whether or not
@@ -491,25 +484,20 @@ func ReadLabel(msg []byte) (Symbol, []byte, error) {
 
 // read unsigned varint
 func readuv(msg []byte) (uint, []byte, bool) {
-	if haveFastuv && cap(msg) >= 8 {
-		uv, width := fastuv(msg)
-		if len(msg) < width {
-			return uv, msg[len(msg):], false
-		}
-		return uv, msg[width:], true
-	}
 	out := uint(0)
 	i := 0
-	done := false
-	for i = range msg {
+	prefix := msg
+	if len(prefix) > 8 {
+		prefix = prefix[:8]
+	}
+	for i = range prefix {
 		out <<= 7
-		out += uint(msg[i] & 0x7f)
-		if msg[i]&0x80 != 0 {
-			done = true
-			break
+		out += uint(prefix[i] & 0x7f)
+		if prefix[i]&0x80 != 0 {
+			return out, msg[i+1:], true
 		}
 	}
-	return out, msg[i+1:], done
+	return 0, nil, false
 }
 
 // read a 1-byte unsigned varint
@@ -524,6 +512,9 @@ func readuv2(msg []byte) (uint, []byte, bool) {
 	out := uint(msg[0] & 0x7f)
 	if msg[0]&0x80 != 0 {
 		return out, msg[1:], true
+	}
+	if len(msg) < 2 {
+		return 0, nil, false
 	}
 	out = (out << 7) + uint(msg[1]&0x7f)
 	done := msg[1]&0x80 != 0
@@ -608,7 +599,7 @@ func ReadTime(msg []byte) (date.Time, []byte, error) {
 		return out, nil, errInvalidIon
 	}
 	offset, body, ok = readiv(body)
-	if !ok {
+	if !ok || len(body) == 0 {
 		return out, nil, errInvalidIon
 	}
 	year, body, ok = readuv2(body)

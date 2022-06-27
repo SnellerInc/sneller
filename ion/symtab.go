@@ -340,6 +340,9 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 		// FIXME: add support for shared symbol tables
 		return nil, fmt.Errorf("first annotation field not $ion_symbol_table")
 	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("reading $ion_symbol_table: %w", io.ErrUnexpectedEOF)
+	}
 	if t := TypeOf(body); t != StructType {
 		return nil, bad(t, StructType, "Symtab.Unmarshal (in annotation)")
 	}

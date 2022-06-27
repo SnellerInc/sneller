@@ -615,8 +615,8 @@ func TestSyntheticRanges(t *testing.T) {
 {"bar": "2022-01-05T00:03:05Z"}
 {"foo": {"bar": "2021-01-03T01:02:03Z"}}
 {"foo": {"bar": "2021-01-04T05:06:07Z"}}
-{"a": {"b": {"quux": "2021-01-03:03:02:01Z"}}}
-{"a": {"b": {"quux": "2021-01-03:03:02:05Z"}}}
+{"a": {"b": {"quux": "2021-01-03T03:02:01Z"}}}
+{"a": {"b": {"quux": "2021-01-03T03:02:05Z"}}}
 `
 	d := json.NewDecoder(strings.NewReader(template))
 	u, _, err := versify.FromJSON(d)
