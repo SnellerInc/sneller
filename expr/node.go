@@ -2871,14 +2871,14 @@ func (s *Struct) Equals(e Node) bool {
 }
 
 func (s *Struct) Datum() ion.Datum {
-	out := new(ion.Struct)
+	out := make([]ion.Field, 0, len(s.Fields))
 	for i := range s.Fields {
-		out.Fields = append(out.Fields, ion.Field{
+		out = append(out, ion.Field{
 			Label: s.Fields[i].Label,
 			Value: s.Fields[i].Value.Datum(),
 		})
 	}
-	return out
+	return ion.NewStruct(nil, out)
 }
 
 func (s *Struct) Type() TypeSet { return StructType }
@@ -2950,7 +2950,7 @@ func (l *List) Datum() ion.Datum {
 	for i := range l.Values {
 		out[i] = l.Values[i].Datum()
 	}
-	return ion.List(out)
+	return ion.NewList(nil, out)
 }
 
 func (l *List) Equals(e Node) bool {
@@ -3015,26 +3015,38 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 	case ion.String:
 		return String(string(d)), true
 	case *ion.Struct:
-		fields := make([]Field, 0, len(d.Fields))
-		for i := range d.Fields {
-			val, ok := AsConstant(d.Fields[i].Value)
+		fields := make([]Field, 0, d.Len())
+		ok := true
+		d.Each(func(f ion.Field) bool {
+			var val Constant
+			val, ok = AsConstant(f.Value)
 			if !ok {
-				return nil, false
+				return false
 			}
 			fields = append(fields, Field{
-				Label: d.Fields[i].Label,
+				Label: f.Label,
 				Value: val,
 			})
+			return true
+		})
+		if !ok {
+			return nil, false
 		}
 		return &Struct{Fields: fields}, true
-	case ion.List:
-		values := make([]Constant, 0, len(d))
-		for i := range d {
-			val, ok := AsConstant(d[i])
+	case *ion.List:
+		values := make([]Constant, 0, d.Len())
+		ok := true
+		d.Each(func(d ion.Datum) bool {
+			var val Constant
+			val, ok = AsConstant(d)
 			if !ok {
-				return nil, false
+				return false
 			}
 			values = append(values, val)
+			return true
+		})
+		if !ok {
+			return nil, false
 		}
 		return &List{Values: values}, true
 	case ion.Timestamp:

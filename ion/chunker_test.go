@@ -50,18 +50,15 @@ func TestPathLess(t *testing.T) {
 }
 
 func TestUniqueFields(t *testing.T) {
-	x := Struct{
-		Fields: []Field{
-			{Value: Uint(1000)},
-			{Value: String("foobarbaz")},
-			{Value: UntypedNull{}},
-			{Value: &Struct{
-				Fields: []Field{
-					{Value: String("inner")},
-					{Value: Float(3.5)},
-				},
-			}},
-		},
+	fields := []Field{
+		{Value: Uint(1000)},
+		{Value: String("foobarbaz")},
+		{Value: UntypedNull{}},
+		{Value: nil}, // set below
+	}
+	fields2 := []Field{
+		{Value: String("inner")},
+		{Value: Float(3.5)},
 	}
 	cn := Chunker{
 		W:     io.Discard,
@@ -70,14 +67,14 @@ func TestUniqueFields(t *testing.T) {
 	// test that infinite unique fields
 	// do not cause the symbol table to explode
 	for i := 0; i < 1000; i++ {
-		x.Fields[0].Label = fmt.Sprintf("f0_%d", i)
-		x.Fields[1].Label = fmt.Sprintf("f1_%d", i)
-		x.Fields[2].Label = fmt.Sprintf("f2_%d", i)
-		x.Fields[3].Label = fmt.Sprintf("f3_%d", i)
-		y := x.Fields[3].Value.(*Struct)
-		y.Fields[0].Label = fmt.Sprintf("f0_%d", i-1)
-		y.Fields[1].Label = fmt.Sprintf("f1_%d", i+1)
-		x.Encode(&cn.Buffer, &cn.Symbols)
+		fields[0].Label = fmt.Sprintf("f0_%d", i)
+		fields[1].Label = fmt.Sprintf("f1_%d", i)
+		fields[2].Label = fmt.Sprintf("f2_%d", i)
+		fields[3].Label = fmt.Sprintf("f3_%d", i)
+		fields2[0].Label = fmt.Sprintf("f0_%d", i-1)
+		fields2[1].Label = fmt.Sprintf("f1_%d", i+1)
+		fields[3].Value = NewStruct(nil, fields2)
+		NewStruct(nil, fields).Encode(&cn.Buffer, &cn.Symbols)
 		err := cn.Commit()
 		if err != nil {
 			t.Fatal(err)

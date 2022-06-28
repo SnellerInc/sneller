@@ -73,8 +73,8 @@ func TestDistinct(t *testing.T) {
 		if !ok {
 			t.Fatalf("row %d is %#v", i, outrows[i])
 		}
-		vend := s.FieldByName("VendorID")
-		if vend == nil {
+		vend, ok := s.FieldByName("VendorID")
+		if !ok {
 			t.Fatalf("row %d missing VendorID", i)
 		}
 		vendors = append(vendors, string(vend.Value.(ion.String)))

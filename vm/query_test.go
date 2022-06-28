@@ -27,7 +27,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -202,29 +201,34 @@ func (e *queryenv) ListTables(db string) ([]string, error) {
 }
 
 // walk d and replace 50% of the strings with stringSyms
-func symbolizeRandomly(d ion.Datum, r *rand.Rand) {
+func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
 	switch d := d.(type) {
 	case *ion.Struct:
-		for i := range d.Fields {
-			if str, ok := d.Fields[i].Value.(ion.String); ok {
+		fields := d.Fields(nil)
+		for i := range fields {
+			if str, ok := fields[i].Value.(ion.String); ok {
 				if r.Intn(2) == 0 {
-					d.Fields[i].Value = ion.Interned(str)
+					fields[i].Value = ion.Interned(str)
 				}
 			} else {
-				symbolizeRandomly(d.Fields[i].Value, r)
+				fields[i].Value = symbolizeRandomly(fields[i].Value, st, r)
 			}
 		}
-	case ion.List:
-		for i := range d {
-			if str, ok := d[i].(ion.String); ok {
+		return ion.NewStruct(st, fields)
+	case *ion.List:
+		items := d.Items(nil)
+		for i := range items {
+			if str, ok := items[i].(ion.String); ok {
 				if r.Intn(2) == 0 {
-					d[i] = ion.Interned(str)
+					items[i] = ion.Interned(str)
 				}
 			} else {
-				symbolizeRandomly(d[i], r)
+				items[i] = symbolizeRandomly(items[i], st, r)
 			}
 		}
+		return ion.NewList(st, items)
 	}
+	return d
 }
 
 func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
@@ -243,7 +247,7 @@ func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
 			return nil, err
 		}
 		if symbolize {
-			symbolizeRandomly(d, r)
+			d = symbolizeRandomly(d, outst, r)
 		}
 		lst = append(lst, d)
 	}
@@ -354,31 +358,36 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 		if err != nil {
 			t.Fatal(err)
 		}
-		unsymbolize(datum, st)
+		datum = unsymbolize(datum, st)
 		outlst = append(outlst, datum)
 	}
 	return outlst
 }
 
-func unsymbolize(d ion.Datum, st *ion.Symtab) {
+func unsymbolize(d ion.Datum, st *ion.Symtab) ion.Datum {
 	switch d := d.(type) {
 	case *ion.Struct:
-		for i := range d.Fields {
-			if str, ok := d.Fields[i].Value.(ion.Interned); ok {
-				d.Fields[i].Value = ion.String(str)
+		fields := d.Fields(nil)
+		for i := range fields {
+			if str, ok := fields[i].Value.(ion.Interned); ok {
+				fields[i].Value = ion.String(str)
 			} else {
-				unsymbolize(d.Fields[i].Value, st)
+				fields[i].Value = unsymbolize(fields[i].Value, st)
 			}
 		}
-	case ion.List:
-		for i := range d {
-			if str, ok := d[i].(ion.Interned); ok {
-				d[i] = ion.String(str)
+		return ion.NewStruct(st, fields)
+	case *ion.List:
+		items := d.Items(nil)
+		for i := range items {
+			if str, ok := items[i].(ion.Interned); ok {
+				items[i] = ion.String(str)
 			} else {
-				unsymbolize(d[i], st)
+				items[i] = unsymbolize(items[i], st)
 			}
 		}
+		return ion.NewList(st, items)
 	}
+	return d
 }
 
 // fix up the symbols in lst so that they
@@ -471,7 +480,7 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 				if i >= len(gotout) {
 					break
 				}
-				if !reflect.DeepEqual(out[i], gotout[i]) {
+				if !ion.Equal(out[i], gotout[i]) {
 					errors++
 					t.Errorf("row %d: got  %s", i, toJSON(st, gotout[i]))
 					t.Errorf("row %d: want %s", i, toJSON(st, out[i]))

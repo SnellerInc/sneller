@@ -21,11 +21,13 @@ import (
 	"reflect"
 
 	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 // Symtab is an ion symbol table
 type Symtab struct {
 	interned []string       // symbol -> string lookup
+	aliased  int            // read-only len of interned
 	toindex  map[string]int // string -> symbol lookup
 	memsize  int
 }
@@ -55,14 +57,23 @@ func (s *Symtab) Reset() {
 // when there is no symbol with
 // the given association.
 func (s *Symtab) Get(x Symbol) string {
+	lbl, _ := s.Lookup(x)
+	return lbl
+}
+
+// Lookup gets the string associated
+// with the given interned symbol.
+// This returns ("", false) when the
+// symbol is not present in the table.
+func (s *Symtab) Lookup(x Symbol) (string, bool) {
 	if int(x) < len(systemsyms) {
-		return systemsyms[x]
+		return systemsyms[x], true
 	}
 	id := int(x) - len(systemsyms)
 	if id < len(s.interned) {
-		return s.interned[id]
+		return s.interned[id], true
 	}
-	return ""
+	return "", false
 }
 
 // MaxID returns the total number of
@@ -96,7 +107,7 @@ func (s *Symtab) InternBytes(buf []byte) Symbol {
 	}
 	id := len(s.interned) + len(systemsyms)
 	s.toindex[string(buf)] = id
-	s.interned = append(s.interned, string(buf))
+	s.append(string(buf))
 	s.memsize += len(buf)
 	return Symbol(id)
 }
@@ -114,7 +125,7 @@ func (s *Symtab) Intern(x string) Symbol {
 	}
 	id := len(s.interned) + len(systemsyms)
 	s.toindex[x] = id
-	s.interned = append(s.interned, x)
+	s.append(x)
 	s.memsize += len(x)
 	return Symbol(id)
 }
@@ -164,23 +175,20 @@ func (s *Symtab) CloneInto(o *Symtab) {
 	// for non-overlapping elements in o,
 	// overwrite with elements from s
 	// or delete the associated toindex entry
-	tail := o.interned[i:]
-	for j, str := range tail {
-		k := i + j
-		if old, ok := o.toindex[str]; ok && old == k+len(systemsyms) {
+	for ; i < len(o.interned); i++ {
+		str := o.interned[i]
+		if old, ok := o.toindex[str]; ok && old == i+len(systemsyms) {
 			// we can only delete if the key
 			// was not part of an insert already
 			// (i.e. the symbol was moved from
 			// a high to a low position)
 			delete(o.toindex, str)
 		}
-		s.memsize -= len(tail[j])
-		if k < len(s.interned) {
-			tail[j] = s.interned[k]
-			s.memsize += len(s.interned[k])
-			o.toindex[tail[j]] = k + len(systemsyms)
-		} else {
-			tail[j] = ""
+		s.memsize -= len(o.interned[i])
+		if i < len(s.interned) {
+			o.set(i, s.interned[i])
+			s.memsize += len(s.interned[i])
+			o.toindex[o.interned[i]] = i + len(systemsyms)
 		}
 	}
 	// if we are inserting more elements, keep going:
@@ -188,10 +196,30 @@ func (s *Symtab) CloneInto(o *Symtab) {
 		x := s.interned[len(o.interned)]
 		o.memsize += len(x)
 		o.toindex[x] = len(o.interned) + len(systemsyms)
-		o.interned = append(o.interned, x)
+		o.append(x)
 	}
 	// ... or, drop the tail now that we've deleted toindex[...]
 	o.interned = o.interned[:len(s.interned)]
+}
+
+func (s *Symtab) append(v string) {
+	if i := len(s.interned); i < cap(s.interned) {
+		s.interned = s.interned[:i+1]
+		s.set(i, v)
+	} else {
+		s.interned = append(s.interned, v)
+		s.aliased = 0
+	}
+}
+
+func (s *Symtab) set(i int, v string) {
+	if s.interned[i] != v {
+		if i < s.aliased {
+			s.interned = slices.Clone(s.interned)
+			s.aliased = 0
+		}
+		s.interned[i] = v
+	}
 }
 
 // these symbols are predefined
@@ -346,7 +374,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 				// XXX what is the correct behavior here
 				// when a string is interned more than
 				// once?
-				s.interned = append(s.interned, str)
+				s.append(str)
 				s.memsize += len(str)
 				if _, ok := s.toindex[str]; !ok {
 					s.toindex[str] = len(s.interned) - 1 + len(systemsyms)
@@ -428,13 +456,26 @@ func (s *Symtab) marshal(dst *Buffer, starting Symbol, withBVM bool) {
 // If x.Contains(y), then x is a semantically
 // equivalent substitute for y.
 func (s *Symtab) Contains(inner *Symtab) bool {
-	if len(inner.interned) > len(s.interned) {
-		return false
+	return s.contains(inner.interned)
+}
+
+func (s *Symtab) contains(in []string) bool {
+	return stcontains(s.interned, in)
+}
+
+// stcontains returns whether s is a superset of in.
+func stcontains(s, in []string) bool {
+	return len(in) == 0 || len(in) <= len(s) &&
+		(&in[0] == &s[0] || slices.Equal(s[:len(in)], in))
+}
+
+// alias returns a reference to the current symbol
+// table and marks the symbol table as aliased so it
+// is not overwritten when resetting or cloning.
+func (s *Symtab) alias() []string {
+	n := len(s.interned)
+	if n > s.aliased {
+		s.aliased = n
 	}
-	for i := range inner.interned {
-		if s.interned[i] != inner.interned[i] {
-			return false
-		}
-	}
-	return true
+	return s.interned[:n:n]
 }

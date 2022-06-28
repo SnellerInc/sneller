@@ -722,14 +722,13 @@ func UnpackStruct(st *Symtab, body []byte, fn func(string, []byte) error) (rest 
 		return rest, fmt.Errorf("invalid struct encoding")
 	}
 	var sym Symbol
-	var name string
 	for len(body) > 0 {
 		sym, body, err = ReadLabel(body)
 		if err != nil {
 			return rest, err
 		}
-		name = st.Get(sym)
-		if name == "" {
+		name, ok := st.Lookup(sym)
+		if !ok {
 			return rest, fmt.Errorf("symbol %d not in symbol table", sym)
 		}
 		next := SizeOf(body)

@@ -20,6 +20,8 @@ import (
 	"math/rand"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/exp/slices"
 )
 
 func testdata(t *testing.T, name string) []byte {
@@ -197,5 +199,25 @@ func TestSymtabMarshal(t *testing.T) {
 		t.Errorf("after manually populating symbols:")
 		t.Errorf("wanted data: %x", got)
 		t.Errorf("got data   : %x", got2)
+	}
+}
+
+func TestSymtabAlias(t *testing.T) {
+	want := []string{"foo", "bar", "baz"}
+	var st Symtab
+	st.Intern("foo")
+	st.Intern("bar")
+	st.Intern("baz")
+	got := st.alias()
+	var st2 Symtab
+	st2.Intern("foo")
+	st2.Intern("quux")
+	st2.CloneInto(&st)
+	if !slices.Equal(got, want) {
+		t.Errorf("want %q, got %q", want, got)
+	}
+	st.Reset()
+	if !slices.Equal(got, want) {
+		t.Errorf("want %q, got %q", want, got)
 	}
 }

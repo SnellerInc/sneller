@@ -23,7 +23,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -67,7 +66,7 @@ func (v *validator) Write(p []byte) (int, error) {
 			// nop pad
 			continue
 		}
-		if !ion.RelaxedEqual(dat, v.recent[objn]) {
+		if !ion.Equal(dat, v.recent[objn]) {
 			v.t.Errorf("object %d: got  %#v", objn, dat)
 			v.t.Errorf("object %d: want %#v", objn, v.recent[objn])
 			return v.align - len(p), fmt.Errorf("unexpected object at index %d", objn)
@@ -278,14 +277,15 @@ func checkEncoding(t *testing.T, buf *rangeBuf, align int) {
 			continue
 		}
 		max := st.MaxID()
-		for i := range s.Fields {
-			if int(s.Fields[i].Sym) >= max {
+		s.Each(func(f ion.Field) bool {
+			if int(f.Sym) >= max {
 				offset := insize - len(mem)
-				t.Logf("fields: %v", s.Fields)
+				t.Logf("field: %v", f)
 				t.Logf("offset %d (chunk %d)", offset, offset/align)
-				t.Errorf("invalid symbol %d of %d", s.Fields[i].Sym, max)
+				t.Errorf("invalid symbol %d of %d", f.Sym, max)
 			}
-		}
+			return true
+		})
 	}
 }
 
@@ -500,14 +500,14 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 			continue
 		}
 		n++
-		for i := range s.Fields {
-			ts, ok := s.Fields[i].Value.(ion.Timestamp)
+		s.Each(func(f ion.Field) bool {
+			ts, ok := f.Value.(ion.Timestamp)
 			if !ok {
-				continue
+				return true
 			}
 			found := false
 			for j := range r {
-				if len(r[j].path) == 1 && r[j].path[0] == s.Fields[i].Label {
+				if len(r[j].path) == 1 && r[j].path[0] == f.Label {
 					found = true
 					min := r[j].min.(ion.Timestamp)
 					max := r[j].max.(ion.Timestamp)
@@ -524,9 +524,10 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 				for i := range r {
 					t.Logf("have range for %s", strings.Join(r[i].path, "."))
 				}
-				t.Fatalf("no range entry for %s date %s (%d ranges)", s.Fields[i].Label, date.Time(ts), len(r))
+				t.Fatalf("no range entry for %s date %s (%d ranges)", f.Label, date.Time(ts), len(r))
 			}
-		}
+			return true
+		})
 	}
 	return n
 }
@@ -549,15 +550,6 @@ func results(t *testing.T, buf []byte) []*ion.Struct {
 	return out
 }
 
-func zeroSymbols(s *ion.Struct) {
-	for i := range s.Fields {
-		s.Fields[i].Sym = 0
-		if inner, ok := s.Fields[i].Value.(*ion.Struct); ok {
-			zeroSymbols(inner)
-		}
-	}
-}
-
 func checkEquivalent(t *testing.T, left, right []byte) {
 	gotleft := results(t, left)
 	gotright := results(t, right)
@@ -566,9 +558,9 @@ func checkEquivalent(t *testing.T, left, right []byte) {
 		t.Fatalf("left has %d results, right has %d", len(gotleft), len(gotright))
 	}
 	for i := range gotleft {
-		if !ion.RelaxedEqual(gotleft[i], gotright[i]) {
-			f0 := gotleft[i].Fields
-			f1 := gotright[i].Fields
+		if !ion.Equal(gotleft[i], gotright[i]) {
+			f0 := gotleft[i].Fields(nil)
+			f1 := gotright[i].Fields(nil)
 			for len(f0) > 0 &&
 				len(f1) > 0 &&
 				f0[0] == f1[0] {
@@ -697,7 +689,7 @@ func TestSyntheticRanges(t *testing.T) {
 					t.Errorf("value %s %s out of range [%s, %s]", path[0], date.Time(ts), date.Time(min), date.Time(max))
 				}
 			} else if st, ok := lst[i].Value.(*ion.Struct); ok {
-				walkRange(st.Fields, path[1:], min, max)
+				walkRange(st.Fields(nil), path[1:], min, max)
 			}
 		}
 		if t.Failed() {
@@ -718,7 +710,7 @@ func TestSyntheticRanges(t *testing.T) {
 				continue
 			}
 			for i := range ranges {
-				walkRange(s.Fields, ranges[i].path, ranges[i].min, ranges[i].max)
+				walkRange(s.Fields(nil), ranges[i].path, ranges[i].min, ranges[i].max)
 				if t.Failed() {
 					t.Logf("failed @ %v", ranges[i].path)
 					return
@@ -759,9 +751,9 @@ func TestChunkerChangingSymbols(t *testing.T) {
 	var block0, block1 []byte
 
 	// deterministic structure for row n
-	forRow := func(n int) *ion.Struct {
-		return &ion.Struct{
-			Fields: []ion.Field{
+	forRow := func(st *ion.Symtab, n int) *ion.Struct {
+		return ion.NewStruct(st,
+			[]ion.Field{
 				{
 					Label: "row",
 					Value: ion.Uint(n),
@@ -776,7 +768,9 @@ func TestChunkerChangingSymbols(t *testing.T) {
 				},
 				{
 					Label: "xyz",
-					Value: ion.List{ion.Int(-1), ion.Uint(1)},
+					Value: ion.NewList(nil, []ion.Datum{
+						ion.Int(-1), ion.Uint(1),
+					}),
 				},
 				{
 					Label: "quux",
@@ -787,7 +781,7 @@ func TestChunkerChangingSymbols(t *testing.T) {
 					Value: ion.Timestamp(date.Unix(int64(n), 0)),
 				},
 			},
-		}
+		)
 	}
 
 	recs := []int{
@@ -804,7 +798,7 @@ func TestChunkerChangingSymbols(t *testing.T) {
 		var tmp ion.Buffer
 		var st ion.Symtab
 		for i := 0; i < records; i++ {
-			forRow(i).Encode(&tmp, &st)
+			forRow(&st, i).Encode(&tmp, &st)
 		}
 		off := tmp.Size()
 		st.Marshal(&tmp, true)
@@ -814,15 +808,17 @@ func TestChunkerChangingSymbols(t *testing.T) {
 		st.Reset()
 		tmp.Set(nil)
 		for i := 0; i < records; i++ {
-			rec := forRow(i + records)
+			rec := forRow(&st, i+records)
 			if i == 0 {
 				// shift the order in which the symbols
 				// are interned; subsequent Encode operations
 				// will re-sort the fields to match the order
 				// that the first struct ends up in
-				rand.Shuffle(len(rec.Fields), func(i, j int) {
-					rec.Fields[i], rec.Fields[j] = rec.Fields[j], rec.Fields[i]
+				fields := rec.Fields(nil)
+				rand.Shuffle(len(fields), func(i, j int) {
+					fields[i], fields[j] = fields[j], fields[i]
 				})
+				rec = ion.NewStruct(&st, fields)
 			}
 			rec.Encode(&tmp, &st)
 		}
@@ -865,19 +861,10 @@ func TestChunkerChangingSymbols(t *testing.T) {
 				}
 				continue
 			}
-			want := forRow(n)
+			want := forRow(&outst, n)
 			n++
 
-			// normalize structure
-			zeroSymbols(s)
-			sort.Slice(s.Fields, func(i, j int) bool {
-				return s.Fields[i].Label < s.Fields[j].Label
-			})
-			sort.Slice(want.Fields, func(i, j int) bool {
-				return want.Fields[i].Label < want.Fields[j].Label
-			})
-
-			if !reflect.DeepEqual(s, want) {
+			if !ion.Equal(s, want) {
 				t.Errorf("first: %#v", s)
 				t.Errorf("want : %#v", want)
 				t.Fatal("not equal")

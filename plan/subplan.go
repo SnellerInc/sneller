@@ -30,24 +30,36 @@ type replacement struct {
 	rows []ion.Struct
 }
 
+func first(s *ion.Struct) (ion.Field, bool) {
+	var field ion.Field
+	var ok bool
+	s.Each(func(f ion.Field) bool {
+		field, ok = f, true
+		return false
+	})
+	return field, ok
+}
+
 func (r *replacement) toScalar() (expr.Constant, bool) {
 	if len(r.rows) == 0 {
 		return expr.Null{}, true
 	}
 	s := &r.rows[0]
-	if len(s.Fields) == 0 {
+	f, ok := first(s)
+	if !ok {
 		return expr.Null{}, true
 	}
-	return expr.AsConstant(s.Fields[0].Value)
+	return expr.AsConstant(f.Value)
 }
 
 func (r *replacement) toScalarList() ([]expr.Constant, bool) {
 	out := make([]expr.Constant, 0, len(r.rows))
 	for i := range r.rows {
-		if len(r.rows[i].Fields) == 0 {
+		f, ok := first(&r.rows[i])
+		if !ok {
 			continue
 		}
-		v, ok := expr.AsConstant(r.rows[i].Fields[0].Value)
+		v, ok := expr.AsConstant(f.Value)
 		if !ok {
 			return nil, false
 		}
@@ -109,21 +121,21 @@ type scalarConverter struct {
 }
 
 func (c *scalarConverter) add(row *ion.Struct) bool {
-	if len(row.Fields) != 2 {
+	if row.Len() != 2 {
 		return false
 	}
-	kf, vf := &row.Fields[0], &row.Fields[1]
-	if kf.Label != c.label {
-		kf, vf = &row.Fields[1], &row.Fields[0]
-		if kf.Label != c.label {
+	f := row.Fields(make([]ion.Field, 0, 2))
+	if f[0].Label != c.label {
+		f[0], f[1] = f[1], f[0]
+		if f[0].Label != c.label {
 			return false
 		}
 	}
-	key, ok := expr.AsConstant(kf.Value)
+	key, ok := expr.AsConstant(f[0].Value)
 	if !ok {
 		return false
 	}
-	val, ok := expr.AsConstant(vf.Value)
+	val, ok := expr.AsConstant(f[1].Value)
 	if !ok {
 		return false
 	}
@@ -141,27 +153,29 @@ type structConverter struct {
 }
 
 func (c *structConverter) add(row *ion.Struct) bool {
-	if len(row.Fields) == 0 {
+	if row.Len() == 0 {
 		return false
 	}
 	var key expr.Constant
-	fields := make([]expr.Field, 0, len(row.Fields)-1)
-	for i := range row.Fields {
-		f := &row.Fields[i]
-		val, ok := expr.AsConstant(f.Value)
+	var ok bool
+	fields := make([]expr.Field, 0, row.Len()-1)
+	row.Each(func(f ion.Field) bool {
+		var val expr.Constant
+		val, ok = expr.AsConstant(f.Value)
 		if !ok {
 			return false
 		}
 		if f.Label == c.label {
 			key = val
-			continue
+			return true
 		}
 		fields = append(fields, expr.Field{
 			Label: f.Label,
 			Value: val,
 		})
-	}
-	if key == nil {
+		return true
+	})
+	if !ok || key == nil {
 		return false
 	}
 	c.argv = append(c.argv, key, &expr.Struct{Fields: fields})
@@ -178,27 +192,29 @@ type listConverter struct {
 }
 
 func (c *listConverter) add(row *ion.Struct) bool {
-	if len(row.Fields) == 0 {
+	if row.Len() == 0 {
 		return false
 	}
 	var key expr.Constant
-	fields := make([]expr.Field, 0, len(row.Fields)-1)
-	for i := range row.Fields {
-		f := &row.Fields[i]
-		val, ok := expr.AsConstant(f.Value)
+	var ok bool
+	fields := make([]expr.Field, 0, row.Len()-1)
+	row.Each(func(f ion.Field) bool {
+		var val expr.Constant
+		val, ok = expr.AsConstant(f.Value)
 		if !ok {
 			return false
 		}
 		if f.Label == c.label {
 			key = val
-			continue
+			return true
 		}
 		fields = append(fields, expr.Field{
 			Label: f.Label,
 			Value: val,
 		})
-	}
-	if key == nil {
+		return true
+	})
+	if !ok || key == nil {
 		return false
 	}
 	lst := c.m[key]

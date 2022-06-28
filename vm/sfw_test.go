@@ -39,21 +39,21 @@ func noppad(buf []byte) {
 
 // See #561
 func TestRematerializeIssue561(t *testing.T) {
-	row0 := ion.Struct{
-		Fields: []ion.Field{
+	row0 := ion.NewStruct(nil,
+		[]ion.Field{
 			{Label: "foo", Value: ion.Int(0)},
 			{Label: "bar", Value: ion.String("the value for bar, row0")},
 		},
-	}
-	row1 := ion.Struct{
+	)
+	row1 := ion.NewStruct(nil,
 		// note: fields out-of-order w.r.t. the above
 		// will yield a different symbol table
-		Fields: []ion.Field{
+		[]ion.Field{
 			{Label: "bar", Value: ion.String("the value for bar, row1")},
 			{Label: "foo", Value: ion.Int(1)},
 			{Label: "quux", Value: ion.Bool(true)},
 		},
-	}
+	)
 
 	// encode each datum in its own chunk
 	// with a different symbol table
@@ -61,7 +61,7 @@ func TestRematerializeIssue561(t *testing.T) {
 	var st ion.Symtab
 	var tmp bytes.Buffer
 	var out [][]byte
-	for _, d := range []ion.Datum{&row0, &row1} {
+	for _, d := range []ion.Datum{row0, row1} {
 		d.Encode(&buf0, &st)
 		st.Marshal(&buf1, true)
 		tmp.Write(buf1.Bytes())

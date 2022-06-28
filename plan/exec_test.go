@@ -26,7 +26,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -1325,7 +1324,7 @@ where Make in (
 					t.Fatalf("string #%d %q is not JSON: %s", i, expected, err)
 				}
 
-				if !reflect.DeepEqual(row, want) {
+				if !ion.Equal(row, want) {
 					t.Errorf("row #%d", i)
 					t.Errorf("got : %#v", row)
 					t.Errorf("want: %#v", want)
@@ -1538,7 +1537,7 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 			t.Fatalf("string #%d %q is not JSON: %s", i, expected, err)
 		}
 
-		if !reflect.DeepEqual(row, want) {
+		if !ion.Equal(row, want) {
 			t.Errorf("row #%d", i)
 			t.Errorf("got : %#v", row)
 			t.Errorf("want: %#v", want)

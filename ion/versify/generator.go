@@ -454,7 +454,7 @@ func (s *Struct) Generate(src *rand.Rand) ion.Datum {
 		}
 		lst = append(lst, ion.Field{Label: f, Value: val})
 	}
-	return &ion.Struct{Fields: lst}
+	return ion.NewStruct(nil, lst)
 }
 
 // Add implements Union.Add
@@ -472,20 +472,21 @@ func (s *Struct) Add(value ion.Datum) Union {
 		}
 	}
 	s.touched = s.touched[:len(s.fields)]
-	for i := range st.Fields {
-		j, ok := s.indices[st.Fields[i].Label]
+	st.Each(func(f ion.Field) bool {
+		j, ok := s.indices[f.Label]
 		if !ok {
 			// new field: add the new field label
 			// and set the value to the union of MISSING or the actual field value
-			s.fields = append(s.fields, st.Fields[i].Label)
+			s.fields = append(s.fields, f.Label)
 			s.values = append(s.values,
-				(&None{hits: s.hits - 1}).Add(st.Fields[i].Value))
-			s.indices[st.Fields[i].Label] = len(s.fields) - 1
-			continue
+				(&None{hits: s.hits - 1}).Add(f.Value))
+			s.indices[f.Label] = len(s.fields) - 1
+			return true
 		}
 		s.touched[j] = true
-		s.values[j] = s.values[j].Add(st.Fields[i].Value)
-	}
+		s.values[j] = s.values[j].Add(f.Value)
+		return true
+	})
 	for i := range s.touched {
 		if s.touched[i] {
 			continue
@@ -501,11 +502,12 @@ func (s *Struct) Add(value ion.Datum) Union {
 func FromStruct(s *ion.Struct) *Struct {
 	out := &Struct{hits: 1}
 	out.indices = make(map[string]int)
-	for i := range s.Fields {
-		out.indices[s.Fields[i].Label] = len(out.fields)
-		out.fields = append(out.fields, s.Fields[i].Label)
-		out.values = append(out.values, Single(s.Fields[i].Value))
-	}
+	s.Each(func(f ion.Field) bool {
+		out.indices[f.Label] = len(out.fields)
+		out.fields = append(out.fields, f.Label)
+		out.values = append(out.values, Single(f.Value))
+		return true
+	})
 	return out
 }
 
@@ -529,12 +531,12 @@ type List struct {
 // in the returned list is drawn from the distribution of
 // input values at that position.
 func (l *List) Generate(src *rand.Rand) ion.Datum {
-	var lst ion.List
+	var lst []ion.Datum
 	n := l.min + src.Intn(1+l.max-l.min)
 	for i := range l.values[:n] {
 		lst = append(lst, l.values[i].Generate(src))
 	}
-	return lst
+	return ion.NewList(nil, lst)
 }
 
 func (l *List) String() string {
@@ -552,10 +554,11 @@ func (l *List) String() string {
 
 // Add implements Union.Add
 func (l *List) Add(value ion.Datum) Union {
-	lst, ok := value.(ion.List)
+	list, ok := value.(*ion.List)
 	if !ok {
 		return merge(l, ion.ListType, l.hits, value)
 	}
+	lst := list.Items(nil)
 	l.hits++
 	if len(lst) < l.min {
 		l.min = len(lst)
@@ -579,11 +582,14 @@ func (l *List) Add(value ion.Datum) Union {
 
 // FromList returns a List Generator
 // that always returns lst.
-func FromList(lst ion.List) *List {
-	out := &List{min: len(lst), max: len(lst), hits: 1}
-	for i := range lst {
-		out.values = append(out.values, Single(lst[i]))
-	}
+func FromList(lst *ion.List) *List {
+	out := &List{hits: 1}
+	lst.Each(func(d ion.Datum) bool {
+		out.min++
+		out.max++
+		out.values = append(out.values, Single(d))
+		return true
+	})
 	return out
 }
 
@@ -611,7 +617,7 @@ func Single(value ion.Datum) Union {
 	case ion.StringType:
 		return FromString(string(value.(ion.String)))
 	case ion.ListType:
-		return FromList(value.(ion.List))
+		return FromList(value.(*ion.List))
 	case ion.StructType:
 		return FromStruct(value.(*ion.Struct))
 	default:

@@ -166,13 +166,12 @@ func TestSizeEmptyContainers(t *testing.T) {
 func TestSizeList(t *testing.T) {
 	expectedLengths := [16]uint64{1, 10, 50, 7, 0, 12, 42, 89, 300, 111, 4, 0, 20, 30, 51, 230}
 
-	makeList := func(size int) ion.List {
-		list := make(ion.List, size)
+	makeList := func(size int) *ion.List {
+		list := make([]ion.Datum, size)
 		for i := range list {
 			list[i] = ion.Int(i + 1)
 		}
-
-		return list
+		return ion.NewList(nil, list)
 	}
 
 	var values []interface{}
@@ -212,13 +211,11 @@ func TestSizeListWithNulls(t *testing.T) {
 		if size < 0 {
 			return []byte{0xbf}
 		}
-
-		list := make(ion.List, size)
+		list := make([]ion.Datum, size)
 		for i := range list {
 			list[i] = ion.Int(i + 1)
 		}
-
-		return list
+		return ion.NewList(nil, list)
 	}
 
 	var expectedLengths [16]uint64
@@ -279,15 +276,12 @@ func TestSizeStruct(t *testing.T) {
 
 	// create structure {"field1": 1, "field2": 2, ..., "fieldN": N}
 	makeStruct := func(size int) *ion.Struct {
-		st := ion.Struct{Fields: make([]ion.Field, size)}
-
-		for i := range st.Fields {
-			st.Fields[i].Label = fmt.Sprintf("field%d", i+1)
-			st.Fields[i].Value = ion.Int(i + 1)
-			st.Fields[i].Sym = symtab.Intern(st.Fields[i].Label)
+		fields := make([]ion.Field, size)
+		for i := range fields {
+			fields[i].Label = fmt.Sprintf("field%d", i+1)
+			fields[i].Value = ion.Int(i + 1)
 		}
-
-		return &st
+		return ion.NewStruct(&symtab, fields)
 	}
 
 	var values []interface{}

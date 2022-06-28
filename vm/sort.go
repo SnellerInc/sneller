@@ -234,7 +234,8 @@ func (s *Order) finalizeSingleColumnSorting() error {
 }
 
 func (s *Order) finalizeKtop() error {
-	var row ion.Struct
+	var row []ion.Field
+	var str ion.Struct
 	var sym ion.Symbol
 	var val ion.Datum
 	var tmp ion.Buffer
@@ -246,7 +247,7 @@ func (s *Order) finalizeKtop() error {
 	// serialize into the temporary buffer
 	for i := range records {
 		st := &s.symtabs[records[i].SymtabID]
-		row.Fields = row.Fields[:0]
+		row = row[:0]
 		contents := records[i].Bytes()
 		for len(contents) > 0 {
 			sym, contents, err = ion.ReadLabel(contents)
@@ -257,12 +258,13 @@ func (s *Order) finalizeKtop() error {
 			if err != nil {
 				return err
 			}
-			row.Fields = append(row.Fields, ion.Field{
+			row = append(row, ion.Field{
 				Label: st.Get(sym),
 				Value: val,
 			})
 		}
-		row.Encode(&tmp, &globalst)
+		str.SetFields(&globalst, row)
+		str.Encode(&tmp, &globalst)
 	}
 	slice := tmp.Size()
 	globalst.Marshal(&tmp, true)

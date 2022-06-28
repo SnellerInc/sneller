@@ -67,8 +67,8 @@ func TestToJSON(t *testing.T) {
 		want string
 	}{
 		{
-			item: &Struct{
-				Fields: []Field{
+			item: NewStruct(nil,
+				[]Field{
 					{
 						Label: "blob",
 						Value: Blob([]byte{0x0, 0x1, 0x2}),
@@ -78,7 +78,7 @@ func TestToJSON(t *testing.T) {
 						Value: Int(100),
 					},
 				},
-			},
+			),
 			want: `{"blob": "AAEC", "int": 100}`,
 		},
 	}
@@ -123,18 +123,18 @@ func TestToJSON(t *testing.T) {
 }
 
 func TestJSONArray(t *testing.T) {
-	st0 := Struct{
-		Fields: []Field{
+	st0 := NewStruct(nil,
+		[]Field{
 			{Label: "Foo", Value: String("foo")},
 			{Label: "xyz", Value: UntypedNull{}},
 		},
-	}
-	st1 := Struct{
-		Fields: []Field{
+	)
+	st1 := NewStruct(nil,
+		[]Field{
 			{Label: "xyz", Value: String("xyz2")},
 			{Label: "abc", Value: Uint(123)},
 		},
-	}
+	)
 
 	var tmp Buffer
 	var st Symtab

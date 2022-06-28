@@ -43,7 +43,7 @@ var (
 	_ Datum = Int(0)
 	_ Datum = Uint(0)
 	_ Datum = &Struct{}
-	_ Datum = List{}
+	_ Datum = &List{}
 	_ Datum = Bool(true)
 	_ Datum = Timestamp{}
 	_ Datum = &Annotation{}
@@ -137,25 +137,78 @@ type Field struct {
 	Sym   Symbol // symbol, if assigned
 }
 
+type field struct {
+	sym Symbol
+	val Datum
+}
+
 // Struct is an ion structure datum
 type Struct struct {
-	Fields []Field
+	len int
+	st  []string
+	buf []byte
+}
+
+func NewStruct(st *Symtab, f []Field) *Struct {
+	s := new(Struct)
+	s.SetFields(st, f)
+	return s
+}
+
+func (s *Struct) SetFields(st *Symtab, f []Field) {
+	if st == nil {
+		st = &Symtab{}
+	}
+	var fields []field
+	for i := range f {
+		fields = append(fields, field{
+			sym: st.Intern(f[i].Label),
+			val: f[i].Value,
+		})
+	}
+	slices.SortFunc(fields, func(x, y field) bool {
+		return x.sym < y.sym
+	})
+	var dst Buffer
+	dst.BeginStruct(-1)
+	for i := range fields {
+		dst.BeginField(fields[i].sym)
+		fields[i].val.Encode(&dst, st)
+	}
+	dst.EndStruct()
+	s.len = len(f)
+	s.st = st.alias()
+	s.buf = dst.Bytes()
 }
 
 func (s *Struct) Type() Type { return StructType }
 
 func (s *Struct) Encode(dst *Buffer, st *Symtab) {
-	for i := range s.Fields {
-		s.Fields[i].Sym = st.Intern(s.Fields[i].Label)
+	if len(s.buf) == 0 {
+		dst.BeginStruct(-1)
+		dst.EndStruct()
+		return
 	}
-	slices.SortFunc(s.Fields, func(x, y Field) bool {
-		return x.Sym < y.Sym
+	// fast path: we can avoid resym
+	if st.contains(s.st) {
+		dst.UnsafeAppend(s.buf)
+		return
+	}
+	var fields []field
+	s.Each(func(f Field) bool {
+		fields = append(fields, field{
+			sym: st.Intern(f.Label),
+			val: f.Value,
+		})
+		return true
 	})
-
+	slices.SortFunc(fields, func(x, y field) bool {
+		return x.sym < y.sym
+	})
 	dst.BeginStruct(-1)
-	for i := range s.Fields {
-		dst.BeginField(s.Fields[i].Sym)
-		s.Fields[i].Value.Encode(dst, st)
+	for i := range fields {
+		dst.BeginField(fields[i].sym)
+		fields[i].val.Encode(dst, st)
 	}
 	dst.EndStruct()
 }
@@ -165,64 +218,238 @@ func (s *Struct) equal(x Datum) bool {
 	if !ok {
 		return false
 	}
-	if len(s.Fields) != len(s2.Fields) {
+	if s == s2 {
+		return true
+	}
+	if bytes.Equal(s.buf, s2.buf) && stoverlap(s.st, s2.st) {
+		return true
+	}
+	// TODO: optimize this
+	f1 := s.Fields(nil)
+	f2 := s2.Fields(nil)
+	if len(f1) != len(f2) {
 		return false
 	}
-	byname := func(x, y Field) bool {
-		return x.Label < y.Label
+	for i := range f1 {
+		f1[i].Sym = 0
+		f2[i].Sym = 0
 	}
-	slices.SortFunc(s.Fields, byname)
-	slices.SortFunc(s2.Fields, byname)
-	for i := range s.Fields {
-		f2 := s2.Fields[i].Value
-		if !f2.equal(s.Fields[i].Value) {
+	slices.SortFunc(f1, func(x, y Field) bool {
+		return x.Label < y.Label
+	})
+	slices.SortFunc(f2, func(x, y Field) bool {
+		return x.Label < y.Label
+	})
+	for i := range f1 {
+		if f1[i].Label != f2[i].Label {
+			return false
+		}
+		if !Equal(f1[i].Value, f2[i].Value) {
 			return false
 		}
 	}
 	return true
 }
 
-func (s *Struct) Field(x Symbol) *Field {
-	for i := range s.Fields {
-		if s.Fields[i].Sym == x {
-			return &s.Fields[i]
-		}
+func (s *Struct) Len() int { return s.len }
+
+// Each calls fn for each field in the struct. If fn
+// returns false, this returns early.
+func (s *Struct) Each(fn func(Field) bool) {
+	if len(s.buf) == 0 {
+		return
 	}
-	return nil
+	if TypeOf(s.buf) != StructType {
+		panic(fmt.Sprintf("expected a struct; found ion type %s", TypeOf(s.buf)))
+	}
+	body, _ := Contents(s.buf)
+	if body == nil {
+		panic(fmt.Sprintf("invalid struct encoding"))
+	}
+	st := s.symtab()
+	for len(body) > 0 {
+		var sym Symbol
+		var err error
+		sym, body, err = ReadLabel(body)
+		if err != nil {
+			panic(err)
+		}
+		name, ok := st.Lookup(sym)
+		if !ok {
+			panic(fmt.Sprintf("symbol %d not in symbol table", sym))
+		}
+		next := SizeOf(body)
+		if next <= 0 || next > len(body) {
+			panic(fmt.Sprintf("next object size %d exceeds buffer size %d", next, len(body)))
+		}
+		val, _, err := ReadDatum(&st, body[:next])
+		if err != nil {
+			panic(err)
+		}
+		f := Field{
+			Label: name,
+			Value: val,
+			Sym:   sym,
+		}
+		if !fn(f) {
+			break
+		}
+		body = body[next:]
+	}
 }
 
-func (s *Struct) FieldByName(name string) *Field {
-	for i := range s.Fields {
-		if s.Fields[i].Label == name {
-			return &s.Fields[i]
+// Fields appends fields to the given slice and returns
+// the appended slice.
+func (s *Struct) Fields(fields []Field) []Field {
+	fields = slices.Grow(fields, s.len)
+	s.Each(func(f Field) bool {
+		fields = append(fields, f)
+		return true
+	})
+	return fields
+}
+
+func (s *Struct) Field(x Symbol) (Field, bool) {
+	var field Field
+	var ok bool
+	s.Each(func(f Field) bool {
+		if f.Sym == x {
+			field, ok = f, true
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return field, ok
+}
+
+func (s *Struct) FieldByName(name string) (Field, bool) {
+	var field Field
+	var ok bool
+	s.Each(func(f Field) bool {
+		if f.Label == name {
+			field, ok = f, true
+			return false
+		}
+		return true
+	})
+	return field, ok
+}
+
+func (s *Struct) symtab() Symtab {
+	return Symtab{interned: s.st}
 }
 
 // List is an ion list datum
-type List []Datum
+type List struct {
+	len int
+	st  []string
+	buf []byte
+}
 
-func (l List) Type() Type { return ListType }
+func NewList(st *Symtab, items []Datum) *List {
+	lst := new(List)
+	lst.SetItems(st, items)
+	return lst
+}
 
-func (l List) Encode(dst *Buffer, st *Symtab) {
-	dst.BeginList(-1)
-	for i := range l {
-		l[i].Encode(dst, st)
+func (l *List) SetItems(st *Symtab, items []Datum) {
+	if st == nil {
+		st = &Symtab{}
 	}
+	var dst Buffer
+	dst.BeginList(-1)
+	for i := range items {
+		items[i].Encode(&dst, st)
+	}
+	dst.EndList()
+	l.len = len(items)
+	l.st = st.alias()
+	l.buf = dst.Bytes()
+}
+
+func (l *List) Type() Type { return ListType }
+
+func (l *List) Encode(dst *Buffer, st *Symtab) {
+	if len(l.buf) == 0 {
+		dst.BeginList(-1)
+		dst.EndList()
+		return
+	}
+	// fast path: we can avoid resym
+	if st.contains(l.st) {
+		dst.UnsafeAppend(l.buf)
+		return
+	}
+	dst.BeginList(-1)
+	l.Each(func(d Datum) bool {
+		d.Encode(dst, st)
+		return true
+	})
 	dst.EndList()
 }
 
-func (l List) equal(x Datum) bool {
-	l2, ok := x.(List)
+func (l *List) Len() int { return l.len }
+
+func (l *List) Each(fn func(Datum) bool) {
+	if len(l.buf) == 0 {
+		return
+	}
+	if TypeOf(l.buf) != ListType {
+		panic(fmt.Sprintf("expected a list; found ion type %s", TypeOf(l.buf)))
+	}
+	body, _ := Contents(l.buf)
+	if body == nil {
+		panic(fmt.Sprintf("invalid list encoding"))
+	}
+	st := l.symtab()
+	for len(body) > 0 {
+		next := SizeOf(body)
+		if next <= 0 || next > len(body) {
+			panic(fmt.Sprintf("object size %d exceeds buffer size %d", next, len(body)))
+		}
+		val, _, err := ReadDatum(&st, body[:next])
+		if err != nil {
+			panic(err)
+		}
+		if !fn(val) {
+			return
+		}
+		body = body[next:]
+	}
+}
+
+func (l *List) Items(items []Datum) []Datum {
+	items = slices.Grow(items, l.len)
+	l.Each(func(d Datum) bool {
+		items = append(items, d)
+		return true
+	})
+	return items
+}
+
+func (l *List) symtab() Symtab {
+	return Symtab{interned: l.st}
+}
+
+func (l *List) equal(x Datum) bool {
+	l2, ok := x.(*List)
 	if !ok {
 		return false
 	}
-	if len(l) != len(l2) {
+	if l == l2 {
+		return true
+	}
+	if bytes.Equal(l.buf, l2.buf) && stoverlap(l.st, l2.st) {
+		return true
+	}
+	// TODO: optimize this
+	i1 := l.Items(nil)
+	i2 := l2.Items(nil)
+	if len(i1) != len(i2) {
 		return false
 	}
-	for i := range l {
-		if !l[i].equal(l2[i]) {
+	for i := range i1 {
+		if !Equal(i1[i], i2[i]) {
 			return false
 		}
 	}
@@ -404,38 +631,60 @@ func decodeBlobDatum(_ *Symtab, b []byte) (Datum, []byte, error) {
 }
 
 func decodeListDatum(st *Symtab, b []byte) (Datum, []byte, error) {
+	size := SizeOf(b)
+	if size <= 0 || size > len(b) {
+		return nil, nil, fmt.Errorf("size %d exceeds buffer size %d", size, len(b))
+	}
 	body, rest := Contents(b)
-	var out List
-	var val Datum
+	count := 0
 	var err error
 	for len(body) > 0 {
-		val, body, err = ReadDatum(st, body)
+		body, err = validateDatum(st, body)
 		if err != nil {
 			return nil, nil, err
 		}
-		out = append(out, val)
+		count++
 	}
-	return out, rest, nil
+	b2 := make([]byte, size)
+	copy(b2, b)
+	return &List{
+		len: count,
+		st:  st.alias(),
+		buf: b2,
+	}, rest, nil
 }
 
 func decodeStructDatum(st *Symtab, b []byte) (Datum, []byte, error) {
+	size := SizeOf(b)
+	if size <= 0 || size > len(b) {
+		return nil, nil, fmt.Errorf("size %d exceeds buffer size %d", size, len(b))
+	}
 	fields, rest := Contents(b)
-	var f []Field
-	var sym Symbol
-	var val Datum
-	var err error
+	count := 0
 	for len(fields) > 0 {
+		var sym Symbol
+		var err error
 		sym, fields, err = ReadLabel(fields)
 		if err != nil {
 			return nil, nil, err
 		}
-		val, fields, err = ReadDatum(st, fields)
+		_, ok := st.Lookup(sym)
+		if !ok {
+			return nil, nil, fmt.Errorf("symbol %d not in symbol table", sym)
+		}
+		fields, err = validateDatum(st, fields)
 		if err != nil {
 			return nil, nil, err
 		}
-		f = append(f, Field{Sym: sym, Value: val, Label: st.Get(sym)})
+		count++
 	}
-	return &Struct{Fields: f}, rest, nil
+	b2 := make([]byte, size)
+	copy(b2, b)
+	return &Struct{
+		len: count,
+		st:  st.alias(),
+		buf: b2,
+	}, rest, nil
 }
 
 func decodeReserved(_ *Symtab, b []byte) (Datum, []byte, error) {
@@ -520,6 +769,33 @@ func ReadDatum(st *Symtab, buf []byte) (Datum, []byte, error) {
 	return datumTable[TypeOf(buf)](st, buf)
 }
 
-func RelaxedEqual(a, b Datum) bool {
+// validateDatum validates that the next datum in buf
+// does not exceed the bounds of buf without actually
+// interpretting it. This also handles symbol tables
+// the same way that ReadDatum does.
+func validateDatum(st *Symtab, buf []byte) (next []byte, err error) {
+	if IsBVM(buf) || TypeOf(buf) == AnnotationType {
+		buf, err = st.Unmarshal(buf)
+		if err != nil {
+			return nil, err
+		}
+		if len(buf) == 0 {
+			return nil, nil
+		}
+	}
+	size := SizeOf(buf)
+	if size <= 0 || size > len(buf) {
+		return nil, fmt.Errorf("size %d exceeds buffer size %d", size, len(buf))
+	}
+	return buf[size:], nil
+}
+
+// Equal returns whether a and b are
+// semantically equivalent.
+func Equal(a, b Datum) bool {
 	return a.equal(b)
+}
+
+func stoverlap(st1, st2 []string) bool {
+	return stcontains(st1, st2) || stcontains(st2, st1)
 }

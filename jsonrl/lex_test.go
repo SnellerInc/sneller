@@ -106,7 +106,7 @@ func TestParseOK(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ion.FromJSON: %s", err)
 			}
-			if !ion.RelaxedEqual(dat, got) {
+			if !ion.Equal(dat, got) {
 				t.Error("datum not equal")
 			}
 		})

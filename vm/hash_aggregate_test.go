@@ -145,11 +145,11 @@ func TestHashAggregate(t *testing.T) {
 				if !ok {
 					t.Fatalf("top-level datum isnt a struct: %#v", d)
 				}
-				if len(s.Fields) != len(outcols) {
-					t.Errorf("output row %d: has %d columns; want %d", rownum, len(s.Fields), len(outcols))
+				if s.Len() != len(outcols) {
+					t.Errorf("output row %d: has %d columns; want %d", rownum, s.Len(), len(outcols))
 				}
-				for i := range s.Fields {
-					name := s.Fields[i].Label
+				s.Each(func(f ion.Field) bool {
+					name := f.Label
 					var inner ion.Datum
 					for j := range outcols {
 						if outcols[j].name == name {
@@ -160,11 +160,12 @@ func TestHashAggregate(t *testing.T) {
 					if inner == nil {
 						t.Fatalf("output row %d: unexpected field %q", rownum, name)
 					}
-					val := s.Fields[i].Value
+					val := f.Value
 					if !reflect.DeepEqual(val, inner) {
 						t.Errorf("row %d field %q - got %#v want %#v", rownum, name, val, inner)
 					}
-				}
+					return true
+				})
 				rownum++
 			}
 		})

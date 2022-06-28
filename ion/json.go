@@ -24,7 +24,7 @@ import (
 )
 
 func jsonStruct(st *Symtab, d *json.Decoder) (Datum, error) {
-	out := new(Struct)
+	var out []Field
 	for {
 		tok, err := d.Token()
 		if err != nil {
@@ -45,13 +45,12 @@ func jsonStruct(st *Symtab, d *json.Decoder) (Datum, error) {
 		if err != nil {
 			return nil, err
 		}
-		out.Fields = append(out.Fields, Field{
+		out = append(out, Field{
 			Label: name,
 			Value: dat,
-			Sym:   st.Intern(name),
 		})
 	}
-	return out, nil
+	return NewStruct(st, out), nil
 }
 
 func jsonArray(st *Symtab, d *json.Decoder) (Datum, error) {
@@ -70,7 +69,7 @@ func jsonArray(st *Symtab, d *json.Decoder) (Datum, error) {
 		}
 		out = append(out, dat)
 	}
-	return List(out), nil
+	return NewList(st, out), nil
 }
 
 func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
