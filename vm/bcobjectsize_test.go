@@ -45,6 +45,7 @@ func TestSizeUnsupportedIonValues(t *testing.T) {
 
 	var ctx bctestContext
 	ctx.current = 0xffff
+	defer ctx.Free()
 	ctx.setInputIonFields(values, nil)
 
 	err := ctx.Execute(opobjectsize)
@@ -92,6 +93,7 @@ func TestSizeNullContainers(t *testing.T) {
 	values = append(values, nullList)
 
 	var ctx bctestContext
+	defer ctx.Free()
 	ctx.current = 0xffff
 	ctx.setInputIonFields(values, nil)
 
@@ -181,6 +183,7 @@ func TestSizeList(t *testing.T) {
 	}
 
 	var ctx bctestContext
+	defer ctx.Free()
 	ctx.setInputIonFields(values, nil)
 	ctx.current = 0xffff
 
@@ -235,6 +238,7 @@ func TestSizeListWithNulls(t *testing.T) {
 	}
 
 	var ctx bctestContext
+	defer ctx.Free()
 	ctx.setInputIonFields(values, nil)
 	ctx.current = 0xffff
 
@@ -291,6 +295,7 @@ func TestSizeStruct(t *testing.T) {
 	}
 
 	var ctx bctestContext
+	defer ctx.Free()
 	ctx.setInputIonFields(values, &symtab)
 	ctx.current = 0xffff
 

@@ -52,6 +52,13 @@ type bctestContext struct {
 // go:noescape
 func bctest_run_aux(bc *bytecode, ctx *bctestContext)
 
+func (c *bctestContext) Free() {
+	if c.data != nil {
+		Free(c.data)
+		c.data = nil
+	}
+}
+
 // Execute runs a single opcode. It setups all the needed
 // CPU registers and, after the opcode finished, read
 // them back.
@@ -132,6 +139,9 @@ func (c *bctestContext) setScalarIonFields(values []interface{}) {
 		panic("Can set up to 16 input values for VM opcode")
 	}
 
+	if c.data == nil {
+		c.data = Malloc()
+	}
 	c.data = c.data[:0]
 
 	var chunk []byte
@@ -146,12 +156,15 @@ func (c *bctestContext) setScalarIonFields(values []interface{}) {
 		default:
 			panic("only bytes and string are supported")
 		}
-
+		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
+		if !ok {
+			panic("c.data more than 1MB?")
+		}
 		if i%2 == 0 {
-			c.scalar[0][i/2] = uint64(len(c.data))
+			c.scalar[0][i/2] = uint64(base)
 			c.scalar[1][i/2] = uint64(len(chunk))
 		} else {
-			c.scalar[0][i/2] |= uint64(len(c.data)) << 32
+			c.scalar[0][i/2] |= uint64(base) << 32
 			c.scalar[1][i/2] |= uint64(len(chunk)) << 32
 		}
 
@@ -163,7 +176,9 @@ func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) 
 	if len(values) > 16 {
 		panic("Can set up to 16 input values for VM opcode")
 	}
-
+	if c.data == nil {
+		c.data = Malloc()
+	}
 	c.data = c.data[:0]
 	var buf ion.Buffer
 	var symtab *ion.Symtab
@@ -191,8 +206,11 @@ func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) 
 		default:
 			panic("only bytes, string and ion.Datum are supported")
 		}
-
-		c.valueBase[i] = uint32(len(c.data))
+		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
+		if !ok {
+			panic("c.data more than 1MB?")
+		}
+		c.valueBase[i] = uint32(base)
 		c.valueLen[i] = uint32(len(chunk))
 		c.data = append(c.data, chunk...)
 	}
