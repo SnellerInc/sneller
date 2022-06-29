@@ -19,7 +19,7 @@
 
 
 // func bctest_run_aux(bc *bytecode, ctx *bctestContext)
-TEXT ·bctest_run_aux(SB), NOSPLIT, $16
+TEXT ·bctest_run_aux(SB), NOSPLIT, $0
     MOVQ    ctx+8(FP), CX
 
     // setup regs for bytecode

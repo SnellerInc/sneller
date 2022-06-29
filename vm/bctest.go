@@ -49,7 +49,7 @@ type bctestContext struct {
 	dict []string
 }
 
-// go:noescape
+//go:noescape
 func bctest_run_aux(bc *bytecode, ctx *bctestContext)
 
 func (c *bctestContext) Free() {
@@ -63,12 +63,27 @@ func (c *bctestContext) Free() {
 // CPU registers and, after the opcode finished, read
 // them back.
 func (c *bctestContext) Execute(op bcop) error {
+	p := []byte{
+		byte(op), byte(op >> 8),
+		byte(opret), byte(opret >> 8),
+	}
+	return c.execute(p)
+}
+
+// ExecuteImm2 runs a single opcode with a 2-byte immediate.
+func (c *bctestContext) ExecuteImm2(op bcop, imm2 uint16) error {
+	p := []byte{
+		byte(op), byte(op >> 8),
+		byte(imm2), byte(imm2 >> 8),
+		byte(opret), byte(opret >> 8),
+	}
+	return c.execute(p)
+}
+
+func (c *bctestContext) execute(prog []byte) error {
 	bc := bytecode{
-		compiled: []byte{
-			byte(op), byte(op >> 8),
-			byte(opret), byte(opret >> 8),
-		},
-		dict: c.dict,
+		compiled: prog,
+		dict:     c.dict,
 	}
 
 	bctest_run_aux(&bc, c)

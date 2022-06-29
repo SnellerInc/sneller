@@ -41,7 +41,7 @@ func TestBytecodeStrEqual(t *testing.T) {
 	ctx.current = (1 << len(values)) - 1
 
 	// when
-	err := ctx.Execute(opCmpStrEqCs)
+	err := ctx.ExecuteImm2(opCmpStrEqCs, 0)
 	if err != nil {
 		t.Error(err)
 		t.Fail()
