@@ -47,7 +47,7 @@ func DefinitionPattern(db, table string) string {
 	return path.Join("db", db, table, "definition.[yj][sa][om][nl]")
 }
 
-func part(p string, num int) (string, bool) {
+func strpart(p string, num int) (string, bool) {
 	for num > 0 {
 		s := strings.IndexByte(p, '/')
 		if s < 0 || s == len(p)-1 {
@@ -63,22 +63,20 @@ func part(p string, num int) (string, bool) {
 	return p[:s], true
 }
 
-// List returns the list of databases
-// within a shared filesystem.
-func List(s fs.FS) ([]string, error) {
+func ListComponent(s fs.FS, pattern string, part int) ([]string, error) {
 	seen := make(map[string]struct{})
 	walk := func(p string, f fs.File, err error) error {
 		if err != nil {
 			return err
 		}
 		f.Close()
-		str, ok := part(p, 1)
+		str, ok := strpart(p, part)
 		if ok {
 			seen[str] = struct{}{}
 		}
 		return nil
 	}
-	err := fsutil.WalkGlob(s, "", IndexPath("*", "*"), walk)
+	err := fsutil.WalkGlob(s, "", pattern, walk)
 	if err != nil {
 		return nil, err
 	}
@@ -89,21 +87,16 @@ func List(s fs.FS) ([]string, error) {
 	return out, nil
 }
 
+// List returns the list of databases
+// within a shared filesystem.
+func List(s fs.FS) ([]string, error) {
+	return ListComponent(s, IndexPath("*", "*"), 1)
+}
+
 // Tables returns the list of tables
 // within a database within a shared filesystem.
 func Tables(s fs.FS, db string) ([]string, error) {
-	var out []string
-	walk := func(p string, f fs.File, err error) error {
-		if err != nil {
-			return err
-		}
-		f.Close()
-		dir, _ := path.Split(p)
-		out = append(out, path.Base(dir))
-		return nil
-	}
-	err := fsutil.WalkGlob(s, "", IndexPath(db, "*"), walk)
-	return out, err
+	return ListComponent(s, IndexPath(db, "*"), 2)
 }
 
 // MaxIndexSize is the maximum size of an
