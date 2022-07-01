@@ -15,46 +15,147 @@
 package vm
 
 import (
+	"math/rand"
+	"strings"
 	"testing"
 
+	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
+	"golang.org/x/exp/slices"
 )
 
-func TestBytecodeStrEqual(t *testing.T) {
-	// given
-	var ctx bctestContext
-	ctx.Taint()
-	ctx.dict = append(ctx.dict, "sneller")
-
-	var values []interface{}
-	values = append(values, "sneller")
-	values = append(values, "cat")
-	values = append(values, "dog")
-	values = append(values, "sneller")
-	values = append(values, "sneller")
-	values = append(values, "tree")
-	values = append(values, "sneller")
-	values = append(values, "elephant")
-	values = append(values, "sneller")
-	values = append(values, "sneller")
-	ctx.setScalarIonFields(values)
-	ctx.current = (1 << len(values)) - 1
-
-	// when
-	err := ctx.ExecuteImm2(opCmpStrEqCs, 0)
-	if err != nil {
-		t.Error(err)
-		t.Fail()
+func TestCmpStrEqCsBruteForce1(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
 	}
+	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0}
+	strSearchSpace := createRandomSearchSpaceMaxLength(4, 2000, strAlphabet)
 
-	// then
-	expected := uint16(0x0359)
-	if ctx.current != expected {
-		t.Logf("current  = %02x (%016b)", ctx.current, ctx.current)
-		t.Logf("expected = %02x (%016b)", expected, expected)
-		t.Error("wrong output mask")
+	for _, str1 := range strSearchSpace {
+		str1Bytes := []byte(str1)
+		for _, str2 := range strSearchSpace {
+			str2Bytes := []byte(str2)
+			// given
+			var ctx bctestContext
+			ctx.Taint()
+			ctx.dict = append(ctx.dict, str1)
+
+			var values []interface{}
+			for i := 0; i < 16; i++ {
+				values = append(values, str2)
+			}
+			ctx.setScalarIonFields(values)
+			ctx.current = 0xFFFF
+
+			// when
+			if err := ctx.ExecuteImm2(opCmpStrEqCs, 0); err != nil {
+				t.Error(err)
+			}
+			// then
+			expected := uint16(0x0000)
+			if slices.Equal(str1Bytes, str2Bytes) {
+				expected = 0xFFFF
+			}
+			if ctx.current != expected {
+				t.Errorf("comparing %v to data %v: observed %04x (%016b); expected %04x (%016b)", escapeNL(str1), escapeNL(str2), ctx.current, ctx.current, expected, expected)
+			}
+			ctx.Free()
+		}
 	}
+}
 
+func TestCmpStrEqCiBruteForce1(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0}
+	strSearchSpace := createRandomSearchSpaceMaxLength(4, 2000, strAlphabet)
+
+	for _, str1 := range strSearchSpace {
+		str1Norm := stringext.NormalizeStringASCIIOnly(str1)
+
+		for _, str2 := range strSearchSpace {
+			str2Norm := stringext.NormalizeStringASCIIOnly(str2)
+
+			// given
+			var ctx bctestContext
+			ctx.Taint()
+			ctx.dict = append(ctx.dict, str1Norm)
+
+			var values []interface{}
+			for i := 0; i < 16; i++ {
+				values = append(values, str2)
+			}
+			ctx.setScalarIonFields(values)
+			ctx.current = 0xFFFF
+
+			// when
+			if err := ctx.ExecuteImm2(opCmpStrEqCi, 0); err != nil {
+				t.Error(err)
+			}
+			// then
+			expected := uint16(0x0000)
+
+			if str1Norm == str2Norm {
+				expected = 0xFFFF
+			}
+			if ctx.current != expected {
+				t.Errorf("comparing %v to data %v: observed %04x (%016b); expected %04x (%016b)",
+					escapeNL(str1), escapeNL(str2), ctx.current, ctx.current, expected, expected)
+			}
+			ctx.Free()
+		}
+	}
+}
+
+// TestStrEqUTF8CiBruteForce1 tests special runes ſ and K for case-insensitive string compare
+func TestCmpStrEqUTF8CiBruteForce1(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K'}
+	strSearchSpace := createSearchSpaceMaxLength(4, strAlphabet)
+
+	for _, str1 := range strSearchSpace {
+		str1Ext := stringext.GenNeedleExt(str1, false)
+		for _, str2 := range strSearchSpace {
+			// given
+			var ctx bctestContext
+			ctx.Taint()
+			ctx.dict = append(ctx.dict, str1Ext)
+
+			var values []interface{}
+			for i := 0; i < 16; i++ {
+				values = append(values, str2)
+			}
+			ctx.setScalarIonFields(values)
+			ctx.current = 0xFFFF
+
+			// when
+			if err := ctx.ExecuteImm2(opCmpStrEqUTF8Ci, 0); err != nil {
+				t.Error(err)
+			}
+			// then
+			expected := uint16(0x0000)
+			if strings.EqualFold(str1, str2) {
+				expected = 0xFFFF
+			}
+			if ctx.current != expected {
+				t.Errorf("comparing %v to data %v: observed %04x (%016b); expected %04x (%016b)",
+					escapeNL(str1), escapeNL(str2), ctx.current, ctx.current, expected, expected)
+			}
+			ctx.Free()
+		}
+	}
 }
 
 func TestBytecodeAbsInt(t *testing.T) {
@@ -217,4 +318,69 @@ func TestBytecodeIsNull(t *testing.T) {
 		t.Logf("current  = %016b (0x%02x)", ctx.current, ctx.current)
 		t.Error("wrong mask")
 	}
+}
+
+//next updates x to the successor; return true/false whether the x is valid
+func next(x *[]byte, max byte, length int) bool {
+	for i := 0; i < length; i++ {
+		(*x)[i]++          // increment the current byte i
+		if (*x)[i] < max { // is the current byte larger than the maximum value?
+			return true // we have a valid successor
+		}
+		(*x)[i] = 0 // overflow for the current byte, try to increment the next byte i+1
+	}
+	return false // we have an overflow, return that we have no valid successor
+}
+
+//escapeNL escapes new line
+func escapeNL(str string) string {
+	return strings.ReplaceAll(str, "\n", "\\n")
+}
+
+// createSearchSpace creates strings of the provided length over the provided alphabet
+func createSearchSpace(strLength int, alphabet []rune) []string {
+	alphabetSize := byte(len(alphabet))
+	indices := make([]byte, strLength)
+	strRunes := make([]rune, strLength)
+	result := make([]string, 0)
+	done := false
+	for !done {
+		for i := 0; i < strLength; i++ {
+			strRunes[i] = alphabet[indices[i]]
+		}
+		result = append(result, string(strRunes))
+		done = !next(&indices, alphabetSize, strLength)
+	}
+	return result
+}
+
+// createSearchSpaceMaxLength creates strings of length 1 upto maxNeedleLength over the provided alphabet
+func createSearchSpaceMaxLength(maxStrLength int, alphabet []rune) []string {
+	result := make([]string, 0)
+	for i := 1; i <= maxStrLength; i++ {
+		result = append(result, createSearchSpace(i, alphabet)...)
+	}
+	return result
+}
+
+// createRandomSearchSpace creates random strings with the provided length over the provided alphabet
+func createRandomSearchSpace(strLength, numberOfStr int, alphabet []rune) []string {
+	alphabetSize := len(alphabet)
+	strRunes := make([]rune, strLength)
+	result := make([]string, 0, numberOfStr)
+	for k := 0; k < numberOfStr; k++ {
+		for i := 0; i < strLength; i++ {
+			strRunes[i] = alphabet[rand.Intn(alphabetSize)]
+		}
+		result = append(result, string(strRunes))
+	}
+	return result
+}
+
+func createRandomSearchSpaceMaxLength(maxStrLength, numberOfStr int, alphabet []rune) []string {
+	result := make([]string, 0)
+	for i := 1; i <= maxStrLength; i++ {
+		result = append(result, createRandomSearchSpace(i, numberOfStr/maxStrLength, alphabet)...)
+	}
+	return result
 }

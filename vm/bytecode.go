@@ -454,9 +454,9 @@ var opinfo = [_maxbcop]bcopinfo{
 	opobjectsize: {text: "objectsize", flags: bcReadWriteK | bcWriteS | bcReadV},
 
 	// string comparing operations
-	opCmpStrEqCs:     {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadV | bcReadWriteK},
-	opCmpStrEqCi:     {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadV | bcReadWriteK},
-	opCmpStrEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadV | bcReadWriteK},
+	opCmpStrEqCs:     {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqCi:     {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
 	// TODO: op_cmp_less_str, op_cmp_neq_str, op_cmp_between_str
 
 	// string trim operations

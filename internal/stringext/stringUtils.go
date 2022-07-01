@@ -269,14 +269,26 @@ func NormalizeRune(r rune) rune {
 	return result
 }
 
-// NormalizeString normalizes the provided string into a string with runes that are smallest and equal wrt case-folding.
-// For ascii this normalization is equal to UPPER
+// NormalizeString normalizes the provided string into a string with runes that are smallest
+// and equal wrt case-folding. For ascii this normalization is equal to UPPER
 func NormalizeString(str string) string {
 	// NOTE a counter example for an intuitive 'return strings.ToUpper(strings.ToLower(str))' is
 	// U+0130 'İ' and U+0131 'ı'
 	runes := []rune(str)
 	for i, r := range runes {
 		runes[i] = NormalizeRune(r)
+	}
+	return string(runes)
+}
+
+// NormalizeStringASCIIOnly normalizes the provided string into a string with runes that are smallest
+// and equal wrt case-folding, and leaves non-ASCII values unchanged.
+func NormalizeStringASCIIOnly(str string) string {
+	runes := []rune(str)
+	for i, r := range runes {
+		if r < utf8.RuneSelf {
+			runes[i] = NormalizeRune(r)
+		}
 	}
 	return string(runes)
 }

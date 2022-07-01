@@ -1793,7 +1793,7 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 		}
 		leftStr, _ := left.imm.(string)
 		rightStr, _ := right.imm.(string)
-		return p.Constant(strings.EqualFold(stringext.NormalizeString(leftStr), stringext.NormalizeString(rightStr)))
+		return p.Constant(strings.EqualFold(leftStr, rightStr))
 	}
 
 	if left.op == sliteral { // swap literal to the right
@@ -1805,12 +1805,11 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 			return p.ssa2imm(sStrCmpEqCs, left, left, right.imm)
 		}
 		rightStr, _ := right.imm.(string)
-		right = p.Constant(stringext.NormalizeString(rightStr))
-
 		if stringext.HasNtnString(rightStr) {
 			rightExt := p.Constant(stringext.GenNeedleExt(rightStr, false))
 			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, rightExt.imm)
 		}
+		right = p.Constant(stringext.NormalizeStringASCIIOnly(rightStr))
 		return p.ssa2imm(sStrCmpEqCi, left, left, right.imm)
 	}
 	v := p.val()
