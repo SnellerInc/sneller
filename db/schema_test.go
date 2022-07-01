@@ -20,8 +20,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-
-	"sigs.k8s.io/yaml"
 )
 
 func TestDecodeDefinition(t *testing.T) {
@@ -74,11 +72,7 @@ func TestDecodeDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	y, err := yaml.JSONToYAML([]byte(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.WriteFile(filepath.Join(dir, "db/foo/bar/definition.yaml"), y, 0640)
+	err = os.WriteFile(filepath.Join(dir, "db/foo/bar/definition.json"), []byte(data), 0640)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -337,19 +337,18 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
 	for k := range m {
 		delete(m, k)
 	}
-	pat := "db/*/*/definition.[yj][sa][om][nl]"
 	walk := func(p string, f fs.File, err error) error {
 		if err != nil {
 			return err
 		}
 		defer f.Close()
 		ext := path.Ext(p)
-		if ext != ".json" && ext != ".yaml" {
+		if ext != ".json" {
 			return nil
 		}
 		tbl, _ := path.Split(p)
 		db, _ := path.Split(tbl[:len(tbl)-1])
-		def, err := DecodeDefinition(f, ext)
+		def, err := DecodeDefinition(f)
 		if err != nil {
 			return err
 		}
@@ -358,5 +357,5 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
 		m[dbtable{db: db, table: tbl}] = def
 		return nil
 	}
-	return fsutil.WalkGlob(dir, "", pat, walk)
+	return fsutil.WalkGlob(dir, "", DefinitionPattern("*", "*"), walk)
 }

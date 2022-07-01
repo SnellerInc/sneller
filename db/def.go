@@ -20,11 +20,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 
 	"github.com/SnellerInc/sneller/fsutil"
-
-	"sigs.k8s.io/yaml"
 )
 
 // Input is one input pattern
@@ -83,67 +80,41 @@ func checkDef(f fs.File) error {
 // DecodeDefinition decodes a definition from src
 // using suffix as the hint for the format
 // of the data in src.
-// Suffix should be either ".json" or ".yaml".
 // (You may pass the result of {file}path.Ext
 // directly as suffix if you are reading from
 // an os.File or fs.File.)
 //
 // See also: OpenDefinition
-func DecodeDefinition(src io.Reader, suffix string) (*Definition, error) {
+func DecodeDefinition(src io.Reader) (*Definition, error) {
 	s := new(Definition)
-	switch suffix {
-	case ".json":
-		err := json.NewDecoder(src).Decode(s)
-		return s, err
-	case ".yaml":
-		buf, err := io.ReadAll(src)
-		if err != nil {
-			return nil, err
-		}
-		jsbuf, err := yaml.YAMLToJSON(buf)
-		if err != nil {
-			return nil, err
-		}
-		err = json.Unmarshal(jsbuf, s)
-		return s, err
-	default:
-		return nil, fmt.Errorf("DecodeDefinition: unrecognized suffix %q", suffix)
-	}
+	err := json.NewDecoder(src).Decode(s)
+	return s, err
 }
 
 // OpenDefinition opens a definition for
 // the given database and table.
 //
-// OpenDefinition calls DecodeDefinition on the
-// first definition.json or definition.yaml file
-// that is available in the appropriate
-// path for the given db and table.
+// OpenDefinition calls DecodeDefinition on
+// definition.json in the appropriate  path
+// for the given db and table.
 func OpenDefinition(s fs.FS, db, table string) (*Definition, error) {
-	match := path.Join("db", db, table, "definition.[yj][sa][om][nl]")
-	matches, err := fsutil.OpenGlob(s, match)
+	f, err := s.Open(DefinitionPattern(db, table))
 	if err != nil {
 		return nil, err
 	}
-	for i := range matches {
-		ext := path.Ext(matches[i].Path())
-		if ext == ".json" || ext == ".yaml" {
-			drop(matches[i+1:])
-			defer matches[i].Close()
-			if err := checkDef(matches[i]); err != nil {
-				return nil, err
-			}
-			d, err := DecodeDefinition(matches[i], ext)
-			if err != nil {
-				return nil, err
-			}
-			if d.Name != table {
-				return nil, fmt.Errorf("definition name %q doesn't match %q", d.Name, table)
-			}
-			return d, nil
-		}
-		matches[i].Close()
+	defer f.Close()
+
+	if err := checkDef(f); err != nil {
+		return nil, err
 	}
-	return nil, &fs.PathError{Op: "glob", Path: match, Err: fs.ErrNotExist}
+	d, err := DecodeDefinition(f)
+	if err != nil {
+		return nil, err
+	}
+	if d.Name != table {
+		return nil, fmt.Errorf("definition name %q doesn't match %q", d.Name, table)
+	}
+	return d, nil
 }
 
 // WriteDefinition writes a definition to the given database.
@@ -151,12 +122,11 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 	if s.Name == "" {
 		return fmt.Errorf("cannot write definition with no Name")
 	}
-	p := path.Join("db", db, s.Name, "definition.json")
 	buf, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
-	_, err = dst.WriteFile(p, buf)
+	_, err = dst.WriteFile(DefinitionPattern(db, s.Name), buf)
 	return err
 }
 

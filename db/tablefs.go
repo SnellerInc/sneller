@@ -44,7 +44,7 @@ func IndexPath(db, table string) string {
 // the given db and table would live relative
 // to the root of the FS.
 func DefinitionPattern(db, table string) string {
-	return path.Join("db", db, table, "definition.[yj][sa][om][nl]")
+	return path.Join("db", db, table, "definition.json")
 }
 
 func strpart(p string, num int) (string, bool) {

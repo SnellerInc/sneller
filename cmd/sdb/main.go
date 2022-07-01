@@ -419,7 +419,7 @@ type appletList []applet
 var applets = appletList{
 	{
 		name: "create",
-		help: "<db> <definition.json|definition.yaml>",
+		help: "<db> <definition.json>",
 		desc: `create a new table from a def
 The command
   $ sdb create <db> definition.json
