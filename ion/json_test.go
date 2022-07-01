@@ -63,8 +63,9 @@ func TestTicketsToJSON(t *testing.T) {
 
 func TestToJSON(t *testing.T) {
 	cases := []struct {
-		item Datum
-		want string
+		item     Datum
+		want     string
+		annotate bool
 	}{
 		{
 			item: NewStruct(nil,
@@ -81,6 +82,15 @@ func TestToJSON(t *testing.T) {
 			),
 			want: `{"blob": "AAEC", "int": 100}`,
 		},
+		{
+			// x::y -> {"$ion_annotation$x":y}
+			item: &Annotation{
+				Label: "foo",
+				Value: Int(10),
+			},
+			annotate: true,
+			want:     `{"$ion_annotation$foo":10}}`,
+		},
 	}
 	contents := func(item Datum) []byte {
 		var dst Buffer
@@ -96,23 +106,26 @@ func TestToJSON(t *testing.T) {
 		want := cases[i].want
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			var dst bytes.Buffer
-			_, err := ToJSON(&dst, bufio.NewReader(bytes.NewReader(mem)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := strings.TrimSpace(dst.String())
-			if got != want {
-				t.Errorf("got %q", got)
-				t.Errorf("want %q", want)
+			if !cases[i].annotate {
+				_, err := ToJSON(&dst, bufio.NewReader(bytes.NewReader(mem)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := strings.TrimSpace(dst.String())
+				if got != want {
+					t.Errorf("got %q", got)
+					t.Errorf("want %q", want)
+				}
 			}
 
 			dst.Reset()
 			w := NewJSONWriter(&dst, '\n')
-			_, err = w.Write(mem)
+			w.ShowAnnotations = true
+			_, err := w.Write(mem)
 			if err != nil {
 				t.Fatal(err)
 			}
-			got = strings.TrimSpace(dst.String())
+			got := strings.TrimSpace(dst.String())
 			if got != want {
 				t.Errorf("got %q", got)
 				t.Errorf("want %q", want)
@@ -135,6 +148,10 @@ func TestJSONArray(t *testing.T) {
 			{Label: "abc", Value: Uint(123)},
 		},
 	)
+	ann0 := &Annotation{
+		Label: "final_result",
+		Value: String("some text here"),
+	}
 
 	var tmp Buffer
 	var st Symtab
@@ -158,6 +175,22 @@ func TestJSONArray(t *testing.T) {
 	st.Reset()
 	tmp.Reset()
 	st1.Encode(&tmp, &st)
+	split = tmp.Size()
+	st.Marshal(&tmp, true)
+	out = append(out, tmp.Bytes()[split:]...)
+	out = append(out, tmp.Bytes()[:split]...)
+
+	_, err = w.Write(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// this should be invisible,
+	// since ShowAnnotations is not set
+	out = out[:0]
+	st.Reset()
+	tmp.Reset()
+	ann0.Encode(&tmp, &st)
 	split = tmp.Size()
 	st.Marshal(&tmp, true)
 	out = append(out, tmp.Bytes()[split:]...)

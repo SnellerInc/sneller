@@ -206,6 +206,11 @@ func (s *scratch) quoted(in []byte) []byte {
 	return s.buf
 }
 
+func (s *scratch) rawQuoted(x string) []byte {
+	str := s.string(x)
+	return str[1 : len(str)-1]
+}
+
 func (s *scratch) string(str string) []byte {
 	s.buf = append(s.buf[:0], '"')
 	start := 0

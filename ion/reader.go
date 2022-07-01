@@ -58,7 +58,7 @@ type jswriter interface {
 	WriteString(s string) (int, error)
 }
 
-func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch) (int, []byte, error) {
+func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch, annotate bool) (int, []byte, error) {
 	switch TypeOf(buf) {
 	case NullType:
 		if buf[0]&0x0f != 0x0f {
@@ -178,7 +178,7 @@ func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch) (int, []byte, error)
 					return nn, rest, err
 				}
 			}
-			n, body, err = toJSON(st, w, body, s)
+			n, body, err = toJSON(st, w, body, s, true)
 			nn += n
 			if err != nil {
 				return nn, rest, err
@@ -227,7 +227,7 @@ func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch) (int, []byte, error)
 			if err != nil {
 				return nn, rest, err
 			}
-			n, body, err = toJSON(st, w, body, s)
+			n, body, err = toJSON(st, w, body, s, true)
 			nn += n
 			if err != nil {
 				return nn, rest, err
@@ -242,6 +242,39 @@ func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch) (int, []byte, error)
 		// we will simply ignore it...
 		rest, err := st.Unmarshal(buf)
 		if err != nil {
+			if annotate {
+				nn := 0
+				sym, body, rest, err := ReadAnnotation(buf)
+				if err != nil {
+					return 0, rest, err
+				}
+				n, err := w.WriteString("{\"$ion_annotation$")
+				nn += n
+				if err != nil {
+					return nn, rest, err
+				}
+				n, err = w.Write(s.rawQuoted(st.Get(sym)))
+				nn += n
+				if err != nil {
+					return nn, rest, err
+				}
+				n, err = w.WriteString(`":`)
+				nn += n
+				if err != nil {
+					return nn, rest, err
+				}
+				n, _, err = toJSON(st, w, body, s, true)
+				nn += n
+				if err != nil {
+					return nn, rest, err
+				}
+				n, err = w.WriteString("}}")
+				nn += n
+				if err != nil {
+					return nn, rest, err
+				}
+				return nn, rest, nil
+			}
 			return 0, buf[SizeOf(buf):], nil
 		}
 		return 0, rest, nil
@@ -356,7 +389,7 @@ func ToJSON(w io.Writer, r *bufio.Reader) (int, error) {
 				return n, err
 			}
 		}
-		n, _, err = toJSON(&st, js, this, &s)
+		n, _, err = toJSON(&st, js, this, &s, false)
 		nn += n
 		if peeked {
 			r.Discard(size)
@@ -400,6 +433,19 @@ type JSONWriter struct {
 	// W is the output io.Writer into which
 	// the JSON data is written.
 	W io.Writer
+	// ShowAnnotations causes top-level annotation
+	// objects to be displayed.
+	//
+	// An ion annotation x::y is encoded
+	// as a JSON structure like
+	//   {"$ion_annotation$x":y}
+	// where x is the annotation label and
+	// y is the annotation value.
+	// Annotation structures will always have
+	// exactly one field, and that fields name
+	// will always begin with "$ion_annotation$"
+	// followed by the annotation label.
+	ShowAnnotations bool
 
 	s  scratch
 	b  *bufio.Writer
@@ -452,6 +498,17 @@ func (w *JSONWriter) Close() error {
 	return w.flush()
 }
 
+func (w *JSONWriter) invisible(src []byte) bool {
+	if TypeOf(src) != AnnotationType {
+		return false
+	}
+	if !w.ShowAnnotations {
+		return true
+	}
+	sym, _, _, _ := ReadAnnotation(src)
+	return sym != dollarIonSymbolTable
+}
+
 // Write implements io.Writer
 //
 // The buffer passed to Write must contain complete ion objects.
@@ -460,11 +517,11 @@ func (w *JSONWriter) Write(src []byte) (int, error) {
 	var size int
 	for len(src) > 0 {
 		comma := w.anyout && !w.nd
-		annot := false
+		invisible := false
 		if IsBVM(src) {
 			size = 4 + SizeOf(src[4:])
 			comma = false
-			annot = true
+			invisible = true
 		} else {
 			size = SizeOf(src)
 			if TypeOf(src) == NullType && size > 1 {
@@ -472,15 +529,15 @@ func (w *JSONWriter) Write(src []byte) (int, error) {
 				src = src[size:]
 				continue
 			}
-			annot = TypeOf(src) == AnnotationType
-			comma = comma && !annot
+			invisible = w.invisible(src)
+			comma = comma && !invisible
 		}
 		if comma {
 			w.js.WriteByte(',')
-		} else if !w.anyout && !w.nd && !annot {
+		} else if !w.anyout && !w.nd && !invisible {
 			w.js.WriteByte('[')
 		}
-		n, _, err := toJSON(&w.st, w.js, src[:size], &w.s)
+		n, _, err := toJSON(&w.st, w.js, src[:size], &w.s, w.ShowAnnotations)
 		if err != nil {
 			w.flush()
 			return 0, err

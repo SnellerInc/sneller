@@ -482,8 +482,10 @@ type writerCloser struct {
 }
 
 func httpChunkedJSON(dst io.WriteCloser) io.WriteCloser {
+	jw := ion.NewJSONWriter(httputil.NewChunkedWriter(dst), '\n')
+	jw.ShowAnnotations = true
 	return &writerCloser{
-		Writer: ion.NewJSONWriter(httputil.NewChunkedWriter(dst), '\n'),
+		Writer: jw,
 		Closer: dst,
 	}
 }
@@ -494,8 +496,10 @@ type arrayWriter struct {
 }
 
 func httpJSONArray(dst io.WriteCloser) io.WriteCloser {
+	jw := ion.NewJSONWriter(httputil.NewChunkedWriter(dst), ',')
+	jw.ShowAnnotations = true
 	return &arrayWriter{
-		JSONWriter: ion.NewJSONWriter(httputil.NewChunkedWriter(dst), ','),
+		JSONWriter: jw,
 		final:      dst,
 	}
 }

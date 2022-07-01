@@ -527,19 +527,19 @@ func (i Interned) equal(x Datum) bool {
 // Annotation objects represent
 // ion annotation datums.
 type Annotation struct {
-	Fields []Field
+	Label string
+	Value Datum
 }
 
 func (a *Annotation) Type() Type { return AnnotationType }
 
 func (a *Annotation) Encode(dst *Buffer, st *Symtab) {
-	for i := range a.Fields {
-		a.Fields[i].Sym = st.Intern(a.Fields[i].Label)
-	}
-	dst.BeginAnnotation(len(a.Fields))
-	for i := range a.Fields {
-		dst.BeginField(a.Fields[i].Sym)
-		a.Fields[i].Value.Encode(dst, st)
+	dst.BeginAnnotation(1)
+	dst.BeginField(st.Intern(a.Label))
+	if a.Value == nil {
+		dst.WriteNull()
+	} else {
+		a.Value.Encode(dst, st)
 	}
 	dst.EndAnnotation()
 }
@@ -717,34 +717,18 @@ func decodeReserved(_ *Symtab, b []byte) (Datum, []byte, error) {
 }
 
 func decodeAnnotationDatum(st *Symtab, b []byte) (Datum, []byte, error) {
-	body, rest := Contents(b)
-	var nfields Symbol
-	var f []Field
-	var err error
-	var sym Symbol
-	var val Datum
-	nfields, body, err = ReadLabel(body)
+	sym, body, rest, err := ReadAnnotation(b)
 	if err != nil {
-		return nil, body, err
+		return nil, rest, err
 	}
-	for len(body) > 0 {
-		sym, body, err = ReadLabel(body)
-		if err != nil {
-			return nil, body, err
-		}
-		if len(body) == 0 {
-			return nil, body, io.ErrUnexpectedEOF
-		}
-		val, body, err = ReadDatum(st, body)
-		if err != nil {
-			return nil, body, err
-		}
-		f = append(f, Field{Sym: sym, Value: val, Label: st.Get(sym)})
+	val, _, err := ReadDatum(st, body)
+	if err != nil {
+		return nil, rest, err
 	}
-	if int(nfields) != len(f) {
-		return nil, nil, fmt.Errorf("ion: annotation has %d fields but label says %d", len(f), nfields)
-	}
-	return &Annotation{Fields: f}, rest, nil
+	return &Annotation{
+		Label: st.Get(sym),
+		Value: val,
+	}, rest, nil
 }
 
 var _datumTable = [...](func(*Symtab, []byte) (Datum, []byte, error)){
