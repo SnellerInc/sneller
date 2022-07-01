@@ -242,6 +242,13 @@ func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfm
 	for i := range lst {
 		ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)
 		if err != nil {
+			if errors.Is(err, blockfmt.ErrETagChanged) {
+				// the file at this path has been overwritten
+				// with new content; we can't "replace" the old
+				// data so there's not much we can do here...
+				lst[i].R.Close()
+				continue
+			}
 			return nil, nil, err
 		}
 		if ret {
