@@ -655,7 +655,7 @@ func ReadAnnotation(buf []byte) (Symbol, []byte, []byte, error) {
 	}
 	var labels, first uint
 	var ok bool
-	contents, rest := buf[:size], buf[size:]
+	contents, rest := Contents(buf)
 	labels, contents, ok = readuv(contents)
 	if !ok {
 		return 0, nil, rest, fmt.Errorf("ion.ReadAnnotation: could not read #labels")

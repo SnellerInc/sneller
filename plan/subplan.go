@@ -270,7 +270,7 @@ func (s *subreplacement) Write(buf []byte) (int, error) {
 	s.parent.rows = append(s.parent.rows, s.tmp...)
 	s.tmp = s.tmp[:0]
 	if len(s.parent.rows) > pir.LargeSize {
-		return orig, fmt.Errorf("%d items in supreplacement exceeds limit", len(s.parent.rows))
+		return orig, fmt.Errorf("%d items in subreplacement exceeds limit", len(s.parent.rows))
 	}
 	return orig, nil
 }

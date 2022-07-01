@@ -38,6 +38,8 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/tenant"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestMain(m *testing.M) {
@@ -106,36 +108,44 @@ func testdirEnviron(t *testing.T) db.Tenant {
 			t.Fatal(err)
 		}
 	}
-	newname := filepath.Join(tmpdir, "a-prefix/parking.10n")
-	oldname, err := filepath.Abs("../../testdata/parking.10n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.Symlink(oldname, newname)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// use the sorted taxi dataset
-	// so that we get a large number
-	// of intervals picked up in the data:
-	newname = filepath.Join(tmpdir, "b-prefix/nyc-taxi.block")
-	oldname, err = filepath.Abs("../../testdata/nyc-taxi-sorted.block")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.Symlink(oldname, newname)
-	if err != nil {
-		t.Fatal(err)
-	}
 
+	type link struct {
+		src, dst string
+	}
+	links := []link{
+		{"parking.10n", "a-prefix/parking.10n"},
+		{"parking2.json", "a-prefix/parking2.json"},
+		{"parking3.json", "a-prefix/parking3.json"},
+		{"nyc-taxi-sorted.block", "b-prefix/nyc-taxi.block"},
+	}
+	for _, lnk := range links {
+		newname := filepath.Join(tmpdir, lnk.dst)
+		oldname, err := filepath.Abs("../../testdata/" + lnk.src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = os.Symlink(oldname, newname)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	dfs := db.NewDirFS(tmpdir)
 	t.Cleanup(func() { dfs.Close() })
 	dfs.Log = t.Logf
 
-	err = db.WriteDefinition(dfs, "default", &db.Definition{
+	err := db.WriteDefinition(dfs, "default", &db.Definition{
 		Name: "parking",
 		Inputs: []db.Input{
 			{Pattern: "file://a-prefix/*.10n"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.WriteDefinition(dfs, "default", &db.Definition{
+		Name: "parking2",
+		Inputs: []db.Input{
+			{Pattern: "file://a-prefix/*.json", Format: "json"},
 		},
 	})
 	if err != nil {
@@ -152,7 +162,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	}
 
 	b := db.Builder{
-		Align:         2048,
+		Align:         4096,
 		RangeMultiple: 10,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -192,6 +202,113 @@ func testFiles(t *testing.T) {
 	} else {
 		t.Log("(can't do file descriptor tracking)")
 	}
+}
+
+func TestQueryError(t *testing.T) {
+	tt := testdirEnviron(t)
+	peersock0, peersock1 := listen(t), listen(t)
+	_ = peersock1
+	s := server{
+		logger:    testlogger(t),
+		sandbox:   tenant.CanSandbox(),
+		cachedir:  t.TempDir(),
+		tenantcmd: []string{"./snellerd-test-binary", "worker"},
+		splitSize: 16 * 1024,
+		peers: makePeers(t,
+			peersock0.Addr().(*net.TCPAddr),
+			peersock1.Addr().(*net.TCPAddr),
+			// add a bad peer address that should be
+			// filtered out on peer resolution:
+			&net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 54423},
+		),
+		auth: testAuth{tt},
+	}
+	httpsock := listen(t)
+	// this second peer is just here
+	// to allow for the query to actually
+	// be split
+	peer := server{
+		logger:    testlogger(t),
+		sandbox:   s.sandbox,
+		cachedir:  t.TempDir(),
+		tenantcmd: s.tenantcmd,
+		splitSize: s.splitSize,
+		peers:     makePeers(t, peersock0.Addr().(*net.TCPAddr), peersock1.Addr().(*net.TCPAddr)),
+	}
+	httpsock2 := listen(t)
+
+	// start the servers and wait
+	// for them to start serving;
+	// this makes '-race' happy with
+	// the ordering of Serve() and Close()
+	// across goroutines
+	var wg sync.WaitGroup
+	wg.Add(2)
+	s.aboutToServe = (&wg).Done
+	peer.aboutToServe = (&wg).Done
+	go s.Serve(httpsock, peersock0)
+	go peer.Serve(httpsock2, peersock1)
+	wg.Wait()
+
+	defer s.Close()
+	defer peer.Close()
+
+	rq := &requester{
+		t:    t,
+		host: "http://" + httpsock.Addr().String(),
+	}
+
+	// create a sub-query that interpolates
+	// more than 10,000 results; this should
+	// result in a runtime error
+	query := `SELECT
+   (SELECT DISTINCT COALESCE(Ticket,Issue.Tick,tpep_pickup_datetime),
+                    COALESCE(Ticket,Issue.Tick,tpep_dropoff_datetime)
+     FROM default.taxi ++ default.parking2 ++ default.parking)
+   AS list`
+	r := rq.getQuery("", query)
+	res, err := http.DefaultClient.Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	buf, _ := io.ReadAll(res.Body)
+	// query should begin successfully:
+	if res.StatusCode != 200 {
+		t.Fatalf("status code %d %s", res.StatusCode, buf)
+	}
+	var st ion.Symtab
+	buf, err = st.Unmarshal(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// expect query_error::{error_message: "..."}
+	sym, body, _, err := ion.ReadAnnotation(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Get(sym) != "query_error" {
+		t.Errorf("annotation is %q?", st.Get(sym))
+	}
+	if ion.TypeOf(body) != ion.StructType {
+		t.Fatalf("type of query_error annotation is %s", ion.TypeOf(body))
+	}
+	body, _ = ion.Contents(body)
+	sym, body, err = ion.ReadLabel(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Get(sym) != "error_message" {
+		t.Errorf("first field of query_error::{...} is %q", st.Get(sym))
+	}
+	msg, _, err := ion.ReadString(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(msg, "subreplacement exceeds limit") {
+		t.Errorf("unexpected error message %q", msg)
+	}
+	t.Logf("error message: %s", msg)
 }
 
 // test the server running on a tmpfs that
@@ -288,7 +405,8 @@ func TestSimpleFS(t *testing.T) {
 			t.Fatal(err)
 		}
 		sort.Strings(tables)
-		if len(tables) != 2 || tables[0] != "parking" || tables[1] != "taxi" {
+		want := []string{"parking", "parking2", "taxi"}
+		if !slices.Equal(tables, want) {
 			t.Fatalf("got tables: %v", tables)
 		}
 	}
@@ -383,8 +501,8 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 			`{"sum": 76333}`, // rounded so that floating point noise doesn't break the test
 			false,
 		},
-		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 9583}`, false},
-		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 9583}`, false},
+		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 10666}`, false},
+		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 10666}`, false},
 		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\.bar-.*"}`, false},
 	}
 	for i := range queries {
@@ -416,7 +534,7 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 			t.Errorf("getting scanned bytes: %s", err)
 		}
 		t.Logf("scanned %d of %d", scannedsize, tablesize)
-		if scannedsize%2048 != 0 {
+		if scannedsize%4096 != 0 {
 			t.Errorf("scanned size %d not a multiple of the block size", scannedsize)
 		}
 		if scannedsize > tablesize {

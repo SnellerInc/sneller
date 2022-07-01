@@ -384,6 +384,26 @@ func pipectx(errpipe net.Conn) context.Context {
 	return ctx
 }
 
+func sendError(conn io.WriteCloser, err error) {
+	var st ion.Symtab
+	var buf ion.Buffer
+
+	// send
+	//   query_error::{error_message: "..."}
+	errsym := st.Intern("query_error")
+	message := st.Intern("error_message")
+	st.Marshal(&buf, true)
+	buf.BeginAnnotation(1)
+	buf.BeginField(errsym)
+	buf.BeginStruct(-1)
+	buf.BeginField(message)
+	buf.WriteString(err.Error())
+	buf.EndStruct()
+	buf.EndAnnotation()
+
+	conn.Write(buf.Bytes())
+}
+
 func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn) {
 	defer errpipe.Close() // cancels ctx
 	ctx := pipectx(errpipe)
@@ -410,6 +430,9 @@ func serveDirect(t *plan.Tree, conn io.WriteCloser, errpipe net.Conn) {
 		Context: ctx,
 	}
 	err := pl.Exec(t, &ep)
+	if err != nil {
+		sendError(conn, err)
+	}
 	// must close the connection before
 	// indicating the query status to the caller
 	conn.Close()

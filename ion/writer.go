@@ -237,7 +237,8 @@ func (b *Buffer) putuv(s uint) {
 	dst[len(dst)-1] |= 0x80
 }
 
-// BeginField begins a field of a structure.
+// BeginField begins a field of a structure
+// or a label of an annotation.
 // BeginField will panic if the buffer is not
 // in an appropriate structure field context
 func (b *Buffer) BeginField(sym Symbol) {

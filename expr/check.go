@@ -128,6 +128,8 @@ func (c *checktable) Visit(n Node) Visitor {
 	case String:
 		// FIXME: allowed for now, but really shouldn't be...
 		return nil
+	case *Appended:
+		return c.parent
 	default:
 		c.errorf("cannot use %s in table position", ToString(n))
 		return nil

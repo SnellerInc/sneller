@@ -4,10 +4,10 @@ go build ./cmd/dump
 go build ./cmd/json2ion
 
 < testdata/parking.10n ./dump |\
-	jq -c '{Ticket: .Ticket, Make: .Make, Color: .Color,
+	jq -c '{Make: .Make, Color: .Color,
 	IsPassenger: (.BodyStyle=="PA"), BodyStyle: .BodyStyle,
 	Fields: [(.BodyStyle=="PA"), .Agency, .Route],
-	Issue: {Data: .IssueData, Time: .IssueTime},
+	Issue: {Data: .IssueData, Time: .IssueTime, Tick: (-.Ticket-1)},
 	Coordinates: {Lat: .Latitude, Long: .Longitude}}' > testdata/parking2.json
 
 ./json2ion < testdata/parking2.json > testdata/parking2.ion
