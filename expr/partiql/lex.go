@@ -252,6 +252,11 @@ func (s *scanner) lexIdent(l *yySymType) int {
 			}
 			return term
 		}
+		aggop := aggterms.get(s.from[startpos:s.pos])
+		if aggop != -1 {
+			l.integer = aggop
+			return AGGREGATE
+		}
 	}
 	s.notkw = s.notkw || !wordend
 	l.str = string(s.from[startpos:s.pos])
@@ -460,4 +465,11 @@ type LexerError struct {
 
 func (e *LexerError) Error() string {
 	return fmt.Sprintf("at position %d: %s", e.Position, e.Message)
+}
+
+func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, over *expr.Window) *expr.Aggregate {
+	if distinct && op == expr.OpCount {
+		op = expr.OpCountDistinct
+	}
+	return &expr.Aggregate{Op: op, Inner: body, Over: over}
 }

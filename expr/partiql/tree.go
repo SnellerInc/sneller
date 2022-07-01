@@ -26,28 +26,23 @@ import (
 // case normalization or allocation
 var kwterms termlist
 
+var aggterms termlist
+
 func init() {
-	for _, pair := range []struct {
+	type pair struct {
 		name string
 		term int
-	}{
+	}
+	for _, pair := range []pair{
 		{"SELECT", SELECT},
 		{"AND", AND},
 		{"AS", AS},
 		{"ASC", ASC},
-		{"AVG", AVG},
-		{"BIT_AND", BIT_AND},
-		{"BIT_OR", BIT_OR},
-		{"BIT_XOR", BIT_XOR},
-		{"BOOL_AND", BOOL_AND},
-		{"BOOL_OR", BOOL_OR},
 		{"CAST", CAST},
 		{"CONCAT", CONCAT},
 		{"COALESCE", COALESCE},
 		{"DATE_ADD", DATE_ADD},
 		{"DATE_DIFF", DATE_DIFF},
-		{"EARLIEST", EARLIEST},
-		{"LATEST", LATEST},
 		{"DESC", DESC},
 		{"DISTINCT", DISTINCT},
 		{"DATE_TRUNC", DATE_TRUNC},
@@ -56,6 +51,7 @@ func init() {
 		{"UNION", UNION},
 		{"OR", OR},
 		{"ON", ON},
+		{"OVER", OVER},
 		{"FROM", FROM},
 		{"WHERE", WHERE},
 		{"GROUP", GROUP},
@@ -69,6 +65,7 @@ func init() {
 		{"NULL", NULL},
 		{"NULLS", NULLS},
 		{"NULLIF", NULLIF},
+		{"PARTITION", PARTITION},
 		{"MISSING", MISSING},
 		{"IS", IS},
 		{"IN", IN},
@@ -91,10 +88,6 @@ func init() {
 		{"VALUE", VALUE},
 		{"FIRST", FIRST},
 		{"LAST", LAST},
-		{"COUNT", COUNT},
-		{"SUM", SUM},
-		{"MIN", MIN},
-		{"MAX", MAX},
 		{"UTCNOW", UTCNOW},
 		{"WITH", WITH},
 	} {
@@ -105,7 +98,31 @@ func init() {
 		kwterms = append(kwterms, node{selfcode: code, terminal: pair.term})
 	}
 	sort.Sort(kwterms)
-	expr.IsKeyword = kwterms.contains
+
+	for _, pair := range []pair{
+		{"COUNT", int(expr.OpCount)},
+		{"SUM", int(expr.OpSum)},
+		{"MIN", int(expr.OpMin)},
+		{"MAX", int(expr.OpMax)},
+		{"EARLIEST", int(expr.OpEarliest)},
+		{"LATEST", int(expr.OpLatest)},
+		{"BOOL_AND", int(expr.OpBoolAnd)},
+		{"BOOL_OR", int(expr.OpBoolOr)},
+		{"AVG", int(expr.OpAvg)},
+		{"BIT_AND", int(expr.OpBitAnd)},
+		{"BIT_OR", int(expr.OpBitOr)},
+		{"BIT_XOR", int(expr.OpBitXor)},
+	} {
+		code, ok := wordcode([]byte(pair.name))
+		if !ok {
+			panic(pair.name + " not all ascii characters?")
+		}
+		aggterms = append(aggterms, node{selfcode: code, terminal: pair.term})
+	}
+	sort.Sort(aggterms)
+	expr.IsKeyword = func(x string) bool {
+		return kwterms.contains(x) || aggterms.contains(x)
+	}
 }
 
 type node struct {

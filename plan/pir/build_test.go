@@ -124,6 +124,10 @@ func TestBuildError(t *testing.T) {
 			input: `select * from tbl order by timestamp desc limit 10 offset 99999`,
 			rx:    "LIMIT\\+OFFSET",
 		},
+		{
+			input: `select x, COUNT(y) OVER (PARTITION BY z) FROM foo`,
+			rx:    "not yet supported",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input

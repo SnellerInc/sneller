@@ -24,6 +24,8 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 // Visitor is an interface that must
@@ -228,6 +230,9 @@ type Aggregate struct {
 	Op AggregateOp
 	// Inner is the expression to be aggregated
 	Inner Node
+	// Over, if non-nil, is the OVER part
+	// of the aggregation
+	Over *Window
 }
 
 func (a *Aggregate) Equals(e Node) bool {
@@ -235,7 +240,19 @@ func (a *Aggregate) Equals(e Node) bool {
 	if !ok {
 		return false
 	}
-	return ea.Op == a.Op && a.Inner.Equals(ea.Inner)
+	if ea.Op != a.Op || !a.Inner.Equals(ea.Inner) {
+		return false
+	}
+	if a.Over == nil {
+		return ea.Over == nil
+	}
+	if !slices.EqualFunc(a.Over.PartitionBy, ea.Over.PartitionBy, Equivalent) {
+		return false
+	}
+	oeq := func(a, b Order) bool {
+		return a.Equals(&b)
+	}
+	return slices.EqualFunc(a.Over.OrderBy, ea.Over.OrderBy, oeq)
 }
 
 func settype(dst *ion.Buffer, st *ion.Symtab, str string) {
@@ -250,6 +267,19 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.WriteUint(uint64(a.Op))
 	dst.BeginField(st.Intern("inner"))
 	a.Inner.Encode(dst, st)
+
+	if a.Over != nil {
+		dst.BeginField(st.Intern("over_partition"))
+		dst.BeginList(-1)
+		for i := range a.Over.PartitionBy {
+			a.Over.PartitionBy[i].Encode(dst, st)
+		}
+		dst.EndList()
+		if len(a.Over.OrderBy) > 0 {
+			dst.BeginField(st.Intern("over_order_by"))
+			EncodeOrder(a.Over.OrderBy, dst, st)
+		}
+	}
 	dst.EndStruct()
 }
 
@@ -265,6 +295,28 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 		var err error
 		a.Inner, _, err = Decode(st, body)
 		return err
+	case "over_partition":
+		if a.Over == nil {
+			a.Over = new(Window)
+		}
+		_, err := ion.UnpackList(body, func(field []byte) error {
+			item, _, err := Decode(st, field)
+			if err != nil {
+				return err
+			}
+			a.Over.PartitionBy = append(a.Over.PartitionBy, item)
+			return nil
+		})
+		return err
+	case "over_order_by":
+		if a.Over == nil {
+			a.Over = new(Window)
+		}
+		var err error
+		a.Over.OrderBy, err = decodeOrder(st, body)
+		return err
+	default:
+		return fmt.Errorf("expr.Aggregate: setfield: unexpected field %q", name)
 	}
 	return nil
 }
@@ -274,20 +326,56 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 		dst.WriteString("COUNT(DISTINCT ")
 		a.Inner.text(dst, redact)
 		dst.WriteByte(')')
+	} else {
+		dst.WriteString(a.Op.String())
+		dst.WriteByte('(')
+		a.Inner.text(dst, redact)
+		dst.WriteByte(')')
+	}
+	if a.Over == nil {
 		return
 	}
-	dst.WriteString(a.Op.String())
-	dst.WriteByte('(')
-	a.Inner.text(dst, redact)
+	dst.WriteString(" OVER (PARTITION BY ")
+	for i := range a.Over.PartitionBy {
+		if i > 0 {
+			dst.WriteString(", ")
+		}
+		a.Over.PartitionBy[i].text(dst, redact)
+	}
+	if len(a.Over.OrderBy) > 0 {
+		dst.WriteString(" ORDER BY ")
+		for i := range a.Over.OrderBy {
+			if i > 0 {
+				dst.WriteString(", ")
+			}
+			a.Over.OrderBy[i].text(dst, redact)
+		}
+	}
 	dst.WriteByte(')')
 }
 
 func (a *Aggregate) walk(v Visitor) {
 	Walk(v, a.Inner)
+	if a.Over != nil {
+		for i := range a.Over.PartitionBy {
+			Walk(v, a.Over.PartitionBy[i])
+		}
+		for i := range a.Over.OrderBy {
+			Walk(v, a.Over.OrderBy[i].Column)
+		}
+	}
 }
 
 func (a *Aggregate) rewrite(r Rewriter) Node {
 	a.Inner = Rewrite(r, a.Inner)
+	if a.Over != nil {
+		for i := range a.Over.PartitionBy {
+			a.Over.PartitionBy[i] = Rewrite(r, a.Over.PartitionBy[i])
+		}
+		for i := range a.Over.OrderBy {
+			a.Over.OrderBy[i].Column = Rewrite(r, a.Over.OrderBy[i].Column)
+		}
+	}
 	return a
 }
 
@@ -369,6 +457,12 @@ func Equivalent(a, b Node) bool {
 func IsIdentifier(e Node, s string) bool {
 	p, ok := e.(*Path)
 	return ok && p.First == s && p.Rest == nil
+}
+
+// Window is a window function call
+type Window struct {
+	PartitionBy []Node
+	OrderBy     []Order
 }
 
 // ToString returns the string

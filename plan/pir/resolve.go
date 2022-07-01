@@ -39,6 +39,9 @@ func (r rewritefn) Walk(e expr.Node) expr.Rewriter {
 // based on the additional information available
 // through the scope's references.
 func (b *Trace) Check(e expr.Node) error {
+	if err := checkNoWindow(e); err != nil {
+		return err
+	}
 	return expr.CheckHint(e, b)
 }
 
