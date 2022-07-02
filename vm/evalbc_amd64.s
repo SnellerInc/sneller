@@ -281,6 +281,10 @@ TEXT bcsavezeros(SB), NOSPLIT|NOFRAME, $0
 // Mask Instructions
 // -----------------
 
+TEXT bcbroadcastimmk(SB), NOSPLIT|NOFRAME, $0
+  KMOVW 0(VIRT_PCREG), K1
+  NEXT_ADVANCE(2)
+
 TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
   VPXORD  Z30, Z30, Z30
   VPXORD  Z31, Z31, Z31
@@ -5927,6 +5931,14 @@ TEXT bccvtktoi64(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64.Z  Z2, K1, Z2
   NEXT()
 
+TEXT bccvti64tok(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  VPXORQ X4, X4, X4
+  VPCMPQ $VPCMP_IMM_NE, Z4, Z2, K1, K1
+  VPCMPQ $VPCMP_IMM_NE, Z4, Z3, K2, K2
+  KUNPCKBW K1, K2, K1
+  NEXT()
+
 // integer to fp conversion
 TEXT bccvti64tof64(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW         $8, K1, K2
@@ -9395,6 +9407,28 @@ uhoh:
   BYTE $0xCC
   JMP  next
 
+// unbox BOOL values in (Z30:Z31).K1 into Z2/Z3 and K1
+//
+// NOTE: This opcode was designed in a way to be followed by cvti64tok,
+// because we don't have a way to describe multiple returns in our SSA.
+TEXT bcunboxktoi64(SB), NOSPLIT|NOFRAME, $0
+  VPXORQ X4, X4, X4
+  KMOVW K1, K2
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4               // Z4 <- first 4 bytes of each encoded value
+  VPANDD.BCST CONSTD_0xFF(), Z4, Z4             // Z4 <- first byte of each encoded value
+
+  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K2  // K2 <- set to ONEs for TRUE values
+  VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1 // K1 <- set to ONEs for FALSE values
+  VPBROADCASTQ CONSTQ_1(), Z4
+
+  KSHIFTRW $8, K2, K3
+  KORW K2, K1, K1                               // Active lanes written to K1
+
+  VMOVDQA64.Z Z4, K2, Z2                        // Write 8 low BOOL values into Z2
+  VMOVDQA64.Z Z4, K3, Z3                        // Write 8 high BOOL values into Z3
+
+  NEXT()
+
 // unpack (Z30:Z31).K1 into Z2|Z3 when integers
 TEXT bctoint(SB), NOSPLIT|NOFRAME, $0
   KTESTW        K1, K1
@@ -10568,10 +10602,45 @@ next:
 // Simple Aggregation Instructions
 // -------------------------------
 
+TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), DX
+  MOVWQZX 2(VIRT_PCREG), R8
+
+  KMOVW K1, BX                         // BX <- Non-null lanes
+  MOVWLZX 0(VIRT_VALUES)(DX*1), DX     // DX <- Boolean values
+  ORB BX, 8(R10)(R8*1)                 // Mark this aggregation slot if we have non-null lanes
+  ANDL BX, DX                          // DX <- Boolean values in non-null lanes
+
+  // If BX != DX it means that at least one lane is active and that not all BOOLs
+  // in active lanes are TRUE - this would result in FALSE if not already FALSE.
+  XORL R15, R15
+  CMPL BX, DX
+
+  SETEQ R15
+  ANDB R15, 0(R10)(R8*1)
+
+  NEXT_ADVANCE(4)
+
+TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), DX
+  MOVWQZX 2(VIRT_PCREG), R8
+
+  KMOVW K1, BX                         // BX <- Non-null lanes
+  MOVWLZX 0(VIRT_VALUES)(DX*1), DX     // DX <- Boolean values
+  ORB BX, 8(R10)(R8*1)                 // Mark this aggregation slot if we have non-null lanes
+
+  // If BX & DX != 0 it means that at least one lane is active and that not all BOOLs
+  // in active lanes are FALSE - this would result in TRUE if not already TRUE.
+  XORL R15, R15
+  ANDL BX, DX
+
+  SETNE R15
+  ORB R15, 0(R10)(R8*1)
+
+  NEXT_ADVANCE(4)
+
 TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   KSHIFTRW      $8, K1, K2
   VMOVDQA64.Z   Z2, K1, Z4
   VMOVDQA64.Z   Z3, K2, Z5
@@ -10590,13 +10659,10 @@ TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, R15
   POPCNTL       R15, R15
   ADDQ          R15, 8(R10)(R8*1)
-
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
   VMOVQ         0(R10)(R8*1), X6
@@ -10616,13 +10682,10 @@ TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   VBROADCASTSD  CONSTF64_POSITIVE_INF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -10642,13 +10705,10 @@ TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
   VMINSD        0(R10)(R8*1), X5, X5
   VMOVSD        X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   VPBROADCASTQ  CONSTQ_0x7FFFFFFFFFFFFFFF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -10669,12 +10729,10 @@ TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   VBROADCASTSD  CONSTF64_NEGATIVE_INF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -10694,13 +10752,10 @@ TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
   VMAXSD        0(R10)(R8*1), X5, X5
   VMOVSD        X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   VPBROADCASTQ  CONSTQ_0x8000000000000000(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -10721,12 +10776,10 @@ TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   VPBROADCASTQ  CONSTQ_0xFFFFFFFFFFFFFFFF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -10747,12 +10800,10 @@ TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
 
@@ -10772,12 +10823,10 @@ TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX       0(VIRT_PCREG), R8
-  ADDQ          $2, VIRT_PCREG
-
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
 
@@ -10797,15 +10846,14 @@ TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, R15
   MOVWQZX       0(VIRT_PCREG), R8
   POPCNTQ       R15, R15
-  ADDQ          $2, VIRT_PCREG
   ADDQ          R15, 0(R10)(R8*1)
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // Slot Aggregation Instructions
 // -----------------------------
@@ -10974,7 +11022,9 @@ bad_radix_bucket:
 // slot+1, so we can decide whether the result of the aggregation should
 // be the aggregated value or NULL - in other words it basically describes
 // whether there was at least one aggregation.
-#define BC_AGGREGATE_SLOT_MARK_OP(instruction)                                \
+//
+// Expects 64-bit sources in Z4 and Z5.
+#define BC_AGGREGATE_SLOT_MARK_OP(SlotOffset, Instruction)                    \
   /* Load buckets as early as possible so we can resolve conflicts early,  */ \
   /* because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).*/ \
   VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6                                        \
@@ -10983,8 +11033,7 @@ bad_radix_bucket:
   VEXTRACTI32X8 $1, Z6, Y7                                                    \
                                                                               \
   /* Load the aggregation data pointer. */                                    \
-  MOVWQZX 0(VIRT_PCREG), R15                                                  \
-  ADDQ $2, VIRT_PCREG                                                         \
+  MOVWQZX SlotOffset(VIRT_PCREG), R15                                         \
   ADDQ $8, R15                                                                \
   ADDQ radixTree64_values(R10), R15                                           \
                                                                               \
@@ -10992,10 +11041,6 @@ bad_radix_bucket:
   VPBROADCASTD CONSTD_1(), Z10                                                \
   KMOVW K1, K2                                                                \
   VPSCATTERDD Z10, K2, 8(R15)(Z6*1)                                           \
-                                                                              \
-  /* Z4/Z5 - source aggregates having incrementally resolved conflicts. */    \
-  VMOVDQA64 Z2, Z4                                                            \
-  VMOVDQA64 Z3, Z5                                                            \
                                                                               \
   /* Gather the first low 8 values, which are safe to gather at this point. */\
   KMOVB K1, K2                                                                \
@@ -11032,8 +11077,8 @@ loop:                                                                         \
   KANDNW K2, K4, K2                                                           \
                                                                               \
   /* Aggregate conflicting lanes and mask out lanes we have resolved. */      \
-  instruction Z8, Z4, K4, Z4                                                  \
-  instruction Z9, Z5, K5, Z5                                                  \
+  Instruction Z8, Z4, K4, Z4                                                  \
+  Instruction Z9, Z5, K5, Z5                                                  \
                                                                               \
   /* Continue looping if there are still conflicts. */                        \
   KTESTW K2, K2                                                               \
@@ -11041,7 +11086,7 @@ loop:                                                                         \
                                                                               \
 resolved:                                                                     \
   /* Finally, aggregate non-conflicting sources into buckets. */              \
-  instruction Z4, Z14, K1, Z14                                                \
+  Instruction Z4, Z14, K1, Z14                                                \
   KMOVB K1, K2                                                                \
   VSCATTERDPD Z14, K2, 0(R15)(Y6*1)                                           \
                                                                               \
@@ -11049,7 +11094,7 @@ resolved:                                                                     \
   VPXORQ X14, X14, X14                                                        \
   VGATHERDPD 0(R15)(Y7*1), K2, Z14                                            \
   KSHIFTRW $8, K1, K2                                                         \
-  instruction Z5, Z14, K2, Z14                                                \
+  Instruction Z5, Z14, K2, Z14                                                \
   VSCATTERDPD Z14, K2, 0(R15)(Y7*1)                                           \
                                                                               \
 next:
@@ -11060,7 +11105,9 @@ next:
 // of values aggregated, this count will then be used to calculate the final
 // average and also to decide whether the result is NULL or non-NULL. If the
 // COUNT is zero, the result of the aggregation is NULL.
-#define BC_AGGREGATE_SLOT_COUNT_OP(instruction)                               \
+//
+// Expects 64-bit sources in Z4 and Z5.
+#define BC_AGGREGATE_SLOT_COUNT_OP(SlotOffset, Instruction)                   \
   /* Load buckets as early as possible so we can resolve conflicts early,  */ \
   /* because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).*/ \
   VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6                                        \
@@ -11069,14 +11116,9 @@ next:
   VEXTRACTI32X8 $1, Z6, Y7                                                    \
                                                                               \
   /* Load the aggregation data pointer. */                                    \
-  MOVWQZX 0(VIRT_PCREG), R15                                                  \
-  ADDQ $2, VIRT_PCREG                                                         \
+  MOVWQZX SlotOffset(VIRT_PCREG), R15                                         \
   ADDQ $8, R15                                                                \
   ADDQ radixTree64_values(R10), R15                                           \
-                                                                              \
-  /* Z4/Z5 - source aggregates having incrementally resolved conflicts. */    \
-  VMOVDQA64 Z2, Z4                                                            \
-  VMOVDQA64 Z3, Z5                                                            \
                                                                               \
   /* Gather the first low 8 values, which are safe to gather at this point. */\
   KMOVB K1, K2                                                                \
@@ -11122,8 +11164,8 @@ loop:                                                                         \
   KANDNW K2, K4, K2                                                           \
                                                                               \
   /* Aggregate conflicting lanes and mask out lanes we have resolved. */      \
-  instruction Z8, Z4, K4, Z4                                                  \
-  instruction Z9, Z5, K5, Z5                                                  \
+  Instruction Z8, Z4, K4, Z4                                                  \
+  Instruction Z9, Z5, K5, Z5                                                  \
                                                                               \
   /* Continue looping if there are still conflicts. */                        \
   KTESTW K2, K2                                                               \
@@ -11141,7 +11183,7 @@ resolved:                                                                     \
   VPMOVZXDQ Y16, Z16                                                          \
                                                                               \
   /* Aggregate non-conflicting values and COUNTs into buckets (low). */       \
-  instruction Z4, Z14, K1, Z14                                                \
+  Instruction Z4, Z14, K1, Z14                                                \
   VPADDQ Z15, Z13, K1, Z13                                                    \
   KMOVB K1, K2                                                                \
   VSCATTERDPD Z14, K2, 0(R15)(Y6*1)                                           \
@@ -11156,7 +11198,7 @@ resolved:                                                                     \
   KSHIFTRW $8, K1, K2                                                         \
   VPGATHERDQ 8(R15)(Y7*1), K2, Z13                                            \
   KSHIFTRW $8, K1, K2                                                         \
-  instruction Z5, Z14, K2, Z14                                                \
+  Instruction Z5, Z14, K2, Z14                                                \
   VPADDQ Z16, Z13, K2, Z13                                                    \
   VSCATTERDPD Z14, K2, 0(R15)(Y7*1)                                           \
   KSHIFTRW $8, K1, K2                                                         \
@@ -11164,49 +11206,93 @@ resolved:                                                                     \
                                                                               \
 next:
 
+TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K4
+  KSHIFTRW $8, K4, K5
+
+  VPMOVM2Q K4, Z4
+  VPMOVM2Q K5, Z5
+
+  BC_AGGREGATE_SLOT_MARK_OP(2, VPANDQ)
+  NEXT_ADVANCE(4)
+
+TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW 0(VIRT_VALUES)(R8*1), K4
+  KSHIFTRW $8, K4, K5
+
+  VPMOVM2Q K4, Z4
+  VPMOVM2Q K5, Z5
+
+  BC_AGGREGATE_SLOT_MARK_OP(2, VPORQ)
+  NEXT_ADVANCE(4)
+
 TEXT bcaggslotaddf(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VADDPD)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VADDPD)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotaddi(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VPADDQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPADDQ)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotavgf(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_COUNT_OP(VADDPD)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_COUNT_OP(0, VADDPD)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_COUNT_OP(VPADDQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_COUNT_OP(0, VPADDQ)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VMINPD)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VMINPD)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VPMINSQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPMINSQ)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VMAXPD)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VMAXPD)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VPMAXSQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPMAXSQ)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VPANDQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VPORQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
+  NEXT_ADVANCE(2)
 
 TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
-  BC_AGGREGATE_SLOT_MARK_OP(VPXORQ)
-  NEXT()
+  VMOVDQA64 Z2, Z4
+  VMOVDQA64 Z3, Z5
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPXORQ)
+  NEXT_ADVANCE(2)
 
 // COUNT is a special aggregation function that just counts active lanes stored
 // in K1. This is the simplest aggregation, which only requres a basic conflict
@@ -11220,7 +11306,6 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
 
   // Load the aggregation data pointer and prepare high 8 element offsets.
   MOVWQZX 0(VIRT_PCREG), R15
-  ADDQ $2, VIRT_PCREG
   ADDQ radixTree64_values(R10), R15
   VEXTRACTI32X8 $1, Z6, Y7
 
@@ -11265,7 +11350,7 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
   VPSCATTERDQ Z5, K3, 8(R15)(Y7*1)
 
-  NEXT()
+  NEXT_ADVANCE(2)
 
 // Uncategorized Instructions
 // --------------------------

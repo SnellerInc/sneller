@@ -183,9 +183,9 @@ func (u *unnesting) symbolize(st *symtab) error {
 	u.innerbc.outer = &u.outerbc
 	u.innerbc.compiled = append(u.innerbc.compiled[:0],
 		// save.k [0]
-		byte(opsavek), byte(opsavek>>8), byte(maskSlot), byte(maskSlot>>8),
+		byte(opsavek&0xFF), byte(opsavek>>8), byte(maskSlot), byte(maskSlot>>8),
 		// tuple (parse structure in Z30:Z31; set Z0:Z1)
-		byte(optuple), byte(optuple>>8),
+		byte(optuple&0xFF), byte(optuple>>8),
 	)
 	for i := range u.parent.outer {
 		outSlot := stackSlotFromIndex(regV, u.outord[i])

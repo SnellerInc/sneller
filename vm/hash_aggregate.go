@@ -200,6 +200,21 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 
 			out[i] = prog.AggregateSlotCount(mem, bucket, k, offset)
 			kinds[i] = AggregateKindCount
+		} else if op.IsBoolOp() {
+			argv, err := prog.compileAsBool(agg[i].Expr.Inner)
+			if err != nil {
+				return nil, fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
+			}
+			switch op {
+			case expr.OpBoolAnd:
+				out[i] = prog.AggregateSlotBoolAnd(mem, bucket, argv, allColumnsMask, offset)
+				kinds[i] = AggregateKindAndK
+			case expr.OpBoolOr:
+				out[i] = prog.AggregateSlotBoolOr(mem, bucket, argv, allColumnsMask, offset)
+				kinds[i] = AggregateKindOrK
+			default:
+				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
+			}
 		} else {
 			argv, err := prog.compileAsNumber(agg[i].Expr.Inner)
 			if err != nil {

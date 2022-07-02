@@ -1,0 +1,45 @@
+SELECT
+  a < b AS a_lt_b,
+  a > b AS a_gt_b
+FROM
+  input
+---
+{}
+{"a": 1, "b": 2}
+{}
+{}
+{"a": 3, "b": 4}
+{"a": 31222, "b": 44444}
+{"a": 4, "b": -1}
+{}
+{}
+{"a": 31, "b": 41}
+{"a": 33, "b": 18}
+{"a": 99, "b": 1.4}
+{"a": 99.9, "b": 1.4}
+{"a": 99.9, "b": 99.9}
+{"a": 1.4, "b": 99.9}
+{"a": 0, "b": 0.0}
+{"a": 0.0, "b": 0}
+{"a": 1.0, "b": 1}
+{"a": 1.1111, "b": 1}
+---
+{}
+{"a_lt_b": true, "a_gt_b": false}
+{}
+{}
+{"a_lt_b": true, "a_gt_b": false}
+{"a_lt_b": true, "a_gt_b": false}
+{"a_lt_b": false, "a_gt_b": true}
+{}
+{}
+{"a_lt_b": true, "a_gt_b": false}
+{"a_lt_b": false, "a_gt_b": true}
+{"a_lt_b": false, "a_gt_b": true}
+{"a_lt_b": false, "a_gt_b": true}
+{"a_lt_b": false, "a_gt_b": false}
+{"a_lt_b": true, "a_gt_b": false}
+{"a_lt_b": false, "a_gt_b": false}
+{"a_lt_b": false, "a_gt_b": false}
+{"a_lt_b": false, "a_gt_b": false}
+{"a_lt_b": false, "a_gt_b": true}

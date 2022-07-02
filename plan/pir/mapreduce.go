@@ -239,7 +239,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		case expr.OpCount:
 			// convert to SUM_COUNT(COUNT(x))
 			out = append(out, vm.AggBinding{Expr: expr.SumCount(innerref), Result: result})
-		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount, expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpEarliest, expr.OpLatest:
+		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount, expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpBoolAnd, expr.OpBoolOr, expr.OpEarliest, expr.OpLatest:
 			// these are all distributive
 			out = append(out, vm.AggBinding{Expr: &expr.Aggregate{Op: age.Op, Inner: innerref}, Result: result})
 		}

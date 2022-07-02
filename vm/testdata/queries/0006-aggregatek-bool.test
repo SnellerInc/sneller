@@ -1,0 +1,57 @@
+SELECT
+  BOOL_AND(a) AS a_and,
+  BOOL_AND(b) AS b_and,
+  BOOL_AND(c) AS c_and,
+  BOOL_OR(a) AS a_or,
+  BOOL_OR(b) AS b_or,
+  BOOL_OR(c) AS c_or
+FROM
+  input
+---
+{}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{}
+{}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true}
+{"a": true}
+{"b": false}
+{"b": true}
+{"c": false}
+{"c": false}
+---
+{"a_and": true, "b_and": false, "c_and": false, "a_or": true, "b_or": true, "c_or": false}

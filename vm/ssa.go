@@ -37,17 +37,20 @@ import (
 type ssaop int
 
 const (
-	sinvalid  ssaop = iota
-	sinit           // initial lane pointer and mask
-	sinitmem        // initial memory state
-	sundef          // initial scalar value (undefined)
-	smergemem       // merge memory
-	skfalse         // logical bottom value; FALSE and also MISSING
-	sand            // mask = (mask0 & mask1)
-	sor             // mask = (mask0 | mask1)
-	snand           // mask = (^mask0 & mask1)
-	sxor            // mask = (mask0 ^ mask1)  (unequal bits)
-	sxnor           // mask = (mask0 ^ ^mask1) (equal bits)
+	sinvalid    ssaop = iota
+	sinit             // initial lane pointer and mask
+	sinitmem          // initial memory state
+	sundef            // initial scalar value (undefined)
+	smergemem         // merge memory
+	sbroadcastk       // mask = broadcastk(m)
+	skfalse           // logical bottom value; FALSE and also MISSING
+	sand              // mask = (mask0 & mask1)
+	sor               // mask = (mask0 | mask1)
+	snand             // mask = (^mask0 & mask1)
+	sxor              // mask = (mask0 ^ mask1)  (unequal bits)
+	sxnor             // mask = (mask0 ^ ^mask1) (equal bits)
+
+	sunboxktoi // val = unboxktoi(v)
 
 	// integer/float comparison ops
 	scmpeqf // floating-point equal
@@ -81,10 +84,11 @@ const (
 	stotime
 	sunsymbolize
 
-	sfptoint   // fp to int, round nearest
-	sinttofp   // int to fp
-	sbooltoint // bool to 0 or 1
-	sbooltofp  // bool to 0.0 or 1.0
+	scvtktoi // bool to 0 or 1
+	scvtktof // bool to 0.0 or 1.0
+	scvtitok // int64 to bool
+	scvtftoi // fp to int, round nearest
+	scvtitof // int to fp
 
 	scvti64tostr // int64 to string
 
@@ -286,6 +290,8 @@ const (
 	swidthbucketi // val = width_bucket(val, min, max, bucket_count)
 	stimebucketts // val = time_bucket(val, interval)
 
+	saggandk
+	saggork
 	saggsumf
 	saggsumi
 	saggavgf
@@ -302,6 +308,8 @@ const (
 	saggcount
 
 	saggbucket
+	saggslotandk
+	saggslotork
 	saggslotsumf
 	saggslotsumi
 	saggslotavgf
@@ -524,13 +532,15 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// because sometimes we determine that certain
 	// path expressions must yield no result due to
 	// the symbol not being present in the symbol table)
-	skfalse: {text: "false", rettype: stValue | stBool, emit: emitfalse},
+	sbroadcastk: {text: "broadcast.k", rettype: stBool},
+	skfalse:     {text: "false", rettype: stValue | stBool, emit: emitfalse},
+	sand:        {text: "and.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opandk},
+	snand:       {text: "nand.k", argtypes: logicalArgs, rettype: stBool, emit: emitnand, bc: opnandk},
+	sor:         {text: "or.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opork},
+	sxor:        {text: "xor.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opxork},
+	sxnor:       {text: "xnor.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opxnork},
 
-	sand:  {text: "and.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opandk},
-	snand: {text: "nand.k", argtypes: logicalArgs, rettype: stBool, emit: emitnand, bc: opnandk},
-	sor:   {text: "or.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opork},
-	sxor:  {text: "xor.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opxork},
-	sxnor: {text: "xnor.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opxnork},
+	sunboxktoi: {text: "unbox.k@i", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
 
 	// two-operand fp and int comparison ops
 	scmpeqf:    {text: "cmpeq.f", argtypes: floatcmpArgs, rettype: stBool, bc: opcmpeqf, inverse: scmpeqf, emit: emitcmp},
@@ -580,19 +590,20 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	sunsymbolize: {text: "unsymbolize", argtypes: scalar1Args, rettype: stValue, bc: opunsymbolize},
 
+	// boolean -> scalar conversions;
+	// first argument is true/false; second is present/missing
+	scvtktoi: {text: "cvt.k@i", argtypes: []ssatype{stBool, stBool}, rettype: stInt, bc: opcvtktoi64, emit: emitboolconv},
+	scvtktof: {text: "cvt.k@f", argtypes: []ssatype{stBool, stBool}, rettype: stFloat, bc: opcvtktof64, emit: emitboolconv},
+
 	// fp <-> int conversion ops
-	sinttofp: {text: "inttofp", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
-	sfptoint: {text: "fptoint", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
+	scvtitok: {text: "cvt.i@k", argtypes: int1Args, rettype: stBool, bc: opcvti64tok},
+	scvtitof: {text: "cvt.i@f", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
+	scvtftoi: {text: "cvt.f@i", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
 
 	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr},
 	sconcatstr2:  {text: "concat2.str", argtypes: str2Args, rettype: stStringMasked, emit: emitConcatStr},
 	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr},
 	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
-
-	// boolean -> scalar conversions;
-	// first argument is true/false; second is present/missing
-	sbooltoint: {text: "booltoint", argtypes: []ssatype{stBool, stBool}, rettype: stInt, bc: opcvtktoi64, emit: emitboolconv},
-	sbooltofp:  {text: "booltofp", argtypes: []ssatype{stBool, stBool}, rettype: stFloat, bc: opcvtktof64, emit: emitboolconv},
 
 	//#region string operations
 	sStrCmpEqCs:     {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
@@ -799,6 +810,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitWidthBucket},
 	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitWidthBucket},
 
+	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtslot, bc: opaggandk, priority: prioMem, emit: emitAggK},
+	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtslot, bc: opaggork, priority: prioMem, emit: emitAggK},
 	saggsumf:  {text: "aggsum.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf, priority: prioMem},
 	saggsumi:  {text: "aggsum.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi, priority: prioMem},
 	saggavgf:  {text: "aggavg.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf, priority: prioMem},
@@ -817,7 +830,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// compute hash aggregate bucket location; encoded immediate will be input hash slot to use
 	saggbucket: {text: "aggbucket", argtypes: []ssatype{stMem, stHash, stBool}, rettype: stBucket, immfmt: fmtslot, bc: opaggbucket},
 
-	// hash aggregate bucket ops (count, min, max, sum)
+	// hash aggregate bucket ops (count, min, max, sum, ...)
+	saggslotandk:  {text: "aggslotand.k", argtypes: []ssatype{stMem, stBucket, stBool, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotandk, priority: prioMem, emit: emitSlotAggK},
+	saggslotork:   {text: "aggslotor.k", argtypes: []ssatype{stMem, stBucket, stBool, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotork, priority: prioMem, emit: emitSlotAggK},
 	saggslotsumf:  {text: "aggslotadd.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotaddf, priority: prioMem},
 	saggslotsumi:  {text: "aggslotadd.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotaddi, priority: prioMem},
 	saggslotavgf:  {text: "aggslotavg.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotavgf, priority: prioMem},
@@ -1749,7 +1764,7 @@ func (p *prog) Equals(left, right *value) *value {
 			return p.ssa3(scmpeqi, left, right, p.And(p.mask(left), p.mask(right)))
 		}
 		// falthrough to floating-point comparison
-		left = p.ssa2(sinttofp, left, p.mask(left))
+		left = p.ssa2(scvtitof, left, p.mask(left))
 		fallthrough
 	case stFloat:
 		if right.op == sliteral {
@@ -1757,7 +1772,7 @@ func (p *prog) Equals(left, right *value) *value {
 		}
 		switch right.primary() {
 		case stInt:
-			right = p.ssa2(sinttofp, right, p.mask(right))
+			right = p.ssa2(scvtitof, right, p.mask(right))
 			fallthrough
 		case stFloat:
 			return p.ssa3(scmpeqf, left, right, p.And(p.mask(left), p.mask(right)))
@@ -1980,6 +1995,31 @@ func (p *prog) cmpimm(intop, fpop ssaop, dir int, left *value, imm interface{}) 
 	return v
 }
 
+// coerce a value to boolean
+func (p *prog) coerceBool(arg *value) (*value, *value) {
+	if arg.op == sliteral {
+		imm := toi64(arg.imm)
+		if imm != 0 {
+			imm = 0xFFFF
+		}
+		return p.ssa0imm(sbroadcastk, imm), p.ValidLanes()
+	}
+
+	if arg.primary() == stBool {
+		return arg, p.notMissing(arg)
+	}
+
+	if arg.primary() == stValue {
+		k := p.mask(arg)
+		i := p.ssa2(sunboxktoi, arg, k)
+		return p.ssa2(scvtitok, i, p.mask(i)), p.mask(i)
+	}
+
+	err := p.val()
+	err.errf("cannot convert %s to BOOL", arg)
+	return err, err
+}
+
 // coerce a value to floating point,
 // taking care to promote integers appropriately
 func (p *prog) coercefp(arg *value) (*value, *value) {
@@ -1990,7 +2030,7 @@ func (p *prog) coercefp(arg *value) (*value, *value) {
 		return arg, p.mask(arg)
 	}
 	if arg.primary() == stInt {
-		ret := p.ssa2(sinttofp, arg, p.mask(arg))
+		ret := p.ssa2(scvtitof, arg, p.mask(arg))
 		return ret, p.mask(arg)
 	}
 	// TODO: emit slightly less optimized code here
@@ -1998,7 +2038,7 @@ func (p *prog) coercefp(arg *value) (*value, *value) {
 	// float or integer conversion ops here...
 	easy := p.ssa3(stofloat, p.undef(), arg, p.mask(arg))
 	intv := p.ssa3(stoint, easy, arg, p.ssa2(snand, easy, p.mask(arg)))
-	conv := p.ssa2(sinttofp, intv, intv)
+	conv := p.ssa2(scvtitof, intv, intv)
 	return conv, p.Or(conv, easy)
 }
 
@@ -2011,7 +2051,7 @@ func (p *prog) coerceInt(v *value) (*value, *value) {
 	case stInt:
 		return v, p.mask(v)
 	case stFloat:
-		return p.ssa2(sfptoint, v, p.mask(v)), p.mask(v)
+		return p.ssa2(scvtftoi, v, p.mask(v)), p.mask(v)
 	case stValue:
 		ret := p.ssa3(stoint, p.undef(), v, p.mask(v))
 		return ret, ret
@@ -2032,7 +2072,7 @@ func (p *prog) blendv2fp(into, arg, when *value) (*value, *value) {
 	}
 	easy := p.ssa3(stofloat, into, arg, when)
 	intv := p.ssa3(stoint, easy, arg, when)
-	conv := p.ssa2(sinttofp, intv, intv)
+	conv := p.ssa2(scvtitof, intv, intv)
 	return conv, p.Or(easy, conv)
 }
 
@@ -2057,7 +2097,7 @@ func (p *prog) toint(v *value) *value {
 		// to floating-point, then we have to
 		// convert back here (and hope that we
 		// didn't lose too much precision...)
-		return p.ssa2(sfptoint, v, p.mask(v))
+		return p.ssa2(scvtftoi, v, p.mask(v))
 	default:
 		v := p.val()
 		v.errf("cannot convert %s to int", v.String())
@@ -3370,6 +3410,22 @@ func emitdatecasttoint(v *value, c *compilestate) {
 }
 
 // Simple aggregate operations
+func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v *value, slot int) *value {
+	mem := p.InitMem()
+
+	// In general we have to coerce to BOOL, however, if the input is a boxed value we
+	// will just unbox BOOL to INT64 and use INT64 aggregation instead of converting such
+	// INT64 to BOOL. This saves us some instructions.
+	if v.primary() == stValue {
+		k := p.mask(v)
+		intVal := p.ssa2(sunboxktoi, v, k)
+		return p.ssa3imm(aggIntOp, mem, intVal, p.mask(intVal), slot)
+	}
+
+	boolVal, mask := p.coerceBool(v)
+	return p.ssa3imm(aggBoolOp, mem, boolVal, mask, slot)
+}
+
 func (p *prog) makeAggregateOp(opF, opI ssaop, child *value, slot int) (v *value, fp bool) {
 	if isIntValue(child) || opF == sinvalid {
 		scalar, mask := p.coerceInt(child)
@@ -3386,6 +3442,14 @@ func (p *prog) makeTimeAggregateOp(op ssaop, child *value, slot int) *value {
 	scalar, mask := p.coerceTimestamp(child)
 	mem := p.InitMem()
 	return p.ssa3imm(op, mem, scalar, mask, slot)
+}
+
+func (p *prog) AggregateBoolAnd(child *value, slot int) *value {
+	return p.makeAggregateBoolOp(saggandk, saggandi, child, slot)
+}
+
+func (p *prog) AggregateBoolOr(child *value, slot int) *value {
+	return p.makeAggregateBoolOp(saggork, saggori, child, slot)
 }
 
 func (p *prog) AggregateSumInt(child *value, slot int) *value {
@@ -3437,6 +3501,11 @@ func (p *prog) AggregateCount(child *value, slot int) *value {
 }
 
 // Slot aggregate operations
+func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, slot int) *value {
+	boolVal, mask := p.coerceBool(v)
+	return p.ssa4imm(op, mem, bucket, boolVal, mask, slot)
+}
+
 func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, offset int) (rv *value, fp bool) {
 	if isIntValue(v) || opF == sinvalid {
 		scalar, m := p.coerceInt(v)
@@ -3498,6 +3567,14 @@ func (p *prog) AggregateSlotOr(mem, bucket, value, mask *value, offset int) *val
 func (p *prog) AggregateSlotXor(mem, bucket, value, mask *value, offset int) *value {
 	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotxori, mem, bucket, value, mask, offset)
 	return val
+}
+
+func (p *prog) AggregateSlotBoolAnd(mem, bucket, value, mask *value, offset int) *value {
+	return p.makeAggregateSlotBoolOp(saggslotandk, mem, bucket, value, mask, offset)
+}
+
+func (p *prog) AggregateSlotBoolOr(mem, bucket, value, mask *value, offset int) *value {
+	return p.makeAggregateSlotBoolOp(saggslotork, mem, bucket, value, mask, offset)
 }
 
 func (p *prog) AggregateSlotEarliest(mem, bucket, value, mask *value, offset int) *value {
@@ -5439,6 +5516,22 @@ func emitBinaryALUOp(v *value, c *compilestate) {
 	c.ops16(v, bc, slot1)
 }
 
+func emitAggK(v *value, c *compilestate) {
+	boolValSlot := c.forceStackRef(v.args[1], regK)
+	mask := v.args[2]
+
+	c.loadk(v, mask)
+	c.ops16s16(v, ssainfo[v.op].bc, boolValSlot, stackslot(v.imm.(int)))
+}
+
+func emitSlotAggK(v *value, c *compilestate) {
+	boolValSlot := c.forceStackRef(v.args[2], regK)
+	mask := v.args[3]
+
+	c.loadk(v, mask)
+	c.ops16s16(v, ssainfo[v.op].bc, boolValSlot, stackslot(v.imm.(int)))
+}
+
 func emitWidthBucket(v *value, c *compilestate) {
 	val := v.args[0]
 	minSlot := c.forceStackRef(v.args[1], regS)
@@ -5869,6 +5962,7 @@ func (p *prog) compileinto(c *compilestate) error {
 		v := p.values[i]
 		p.emit1(v, c)
 	}
+
 	return nil
 }
 

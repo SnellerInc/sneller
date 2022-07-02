@@ -144,6 +144,12 @@ const (
 	// Describes SQL BIT_XOR(...) aggregate operation.
 	OpBitXor
 
+	// Describes SQL BOOL_AND(...) aggregate operation.
+	OpBoolAnd
+
+	// Describes SQL BOOL_OR(...) aggregate operation.
+	OpBoolOr
+
 	// Describes SQL MIN(timestamp).
 	//
 	// EARLIEST() function is used by Sneller to distinguish
@@ -156,6 +162,10 @@ const (
 	// between arithmetic vs timestamp aggregation
 	OpLatest
 )
+
+func (a AggregateOp) IsBoolOp() bool {
+	return a == OpBoolAnd || a == OpBoolOr
+}
 
 func (a AggregateOp) defaultResult() string {
 	switch a {
@@ -196,6 +206,16 @@ func (a AggregateOp) String() string {
 		return "EARLIEST"
 	case OpLatest:
 		return "LATEST"
+	case OpBitAnd:
+		return "BIT_AND"
+	case OpBitOr:
+		return "BIT_OR"
+	case OpBitXor:
+		return "BIT_XOR"
+	case OpBoolAnd:
+		return "BOOL_AND"
+	case OpBoolOr:
+		return "BOOL_OR"
 	default:
 		return "none"
 	}
@@ -318,6 +338,9 @@ func Max(e Node) *Aggregate { return &Aggregate{Op: OpMax, Inner: e} }
 func AggregateAnd(e Node) *Aggregate { return &Aggregate{Op: OpBitAnd, Inner: e} }
 func AggregateOr(e Node) *Aggregate  { return &Aggregate{Op: OpBitOr, Inner: e} }
 func AggregateXor(e Node) *Aggregate { return &Aggregate{Op: OpBitXor, Inner: e} }
+
+func AggregateBoolAnd(e Node) *Aggregate { return &Aggregate{Op: OpBoolAnd, Inner: e} }
+func AggregateBoolOr(e Node) *Aggregate  { return &Aggregate{Op: OpBoolOr, Inner: e} }
 
 // Earliest produces the EARLIEST(timestamp) aggregate
 func Earliest(e Node) *Aggregate { return &Aggregate{Op: OpEarliest, Inner: e} }

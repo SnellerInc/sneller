@@ -58,7 +58,7 @@ import (
 %token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH INTO
 %token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC
 %token VALUE
-%right COUNT MIN MAX SUM AVG BIT_AND BIT_OR BIT_XOR COALESCE NULLIF EXTRACT DATE_TRUNC
+%right COUNT MIN MAX SUM AVG BIT_AND BIT_OR BIT_XOR BOOL_AND BOOL_OR COALESCE NULLIF EXTRACT DATE_TRUNC
 %right CAST UTCNOW
 %right DATE_ADD DATE_DIFF EARLIEST LATEST
 %left JOIN LEFT RIGHT CROSS INNER OUTER FULL
@@ -221,6 +221,14 @@ datum_or_parens
 | BIT_XOR '(' expr ')'
 {
   $$ = expr.AggregateXor($3)
+}
+| BOOL_AND '(' expr ')'
+{
+  $$ = expr.AggregateBoolAnd($3)
+}
+| BOOL_OR '(' expr ')'
+{
+  $$ = expr.AggregateBoolOr($3)
 }
 | EARLIEST '(' expr ')'
 {

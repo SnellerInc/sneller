@@ -1,0 +1,66 @@
+SELECT
+  category,
+  BOOL_AND(a) AS a_and,
+  BOOL_AND(b) AS b_and,
+  BOOL_AND(c) AS c_and,
+  BOOL_OR(a) AS a_or,
+  BOOL_OR(b) AS b_or,
+  BOOL_OR(c) AS c_or
+FROM
+  input
+GROUP BY
+  category
+ORDER BY
+  category
+LIMIT
+  100
+---
+{}
+{"category": "A", "a": true, "b": false, "c": false}
+{"category": "A", "a": true, "b": true, "c": false}
+{"category": "A", "a": true, "b": false, "c": false}
+{"category": "A", "a": true, "b": true, "c": false}
+{"category": "A", "a": true, "b": false, "c": false}
+{"category": "A", "a": true, "b": true, "c": false}
+{"category": "A", "a": true, "b": false, "c": false}
+{"category": "A", "a": true, "b": true, "c": false}
+{}
+{}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "B", "a": true, "b": true, "c": false}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "B", "a": true, "b": true, "c": false}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "B", "a": true, "b": true, "c": false}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "B", "a": true, "b": true, "c": false}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "B", "a": true, "b": true, "c": false}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": false}
+{"category": "C", "a": true, "b": true, "c": true}
+{"category": "B", "a": true, "b": false, "c": true}
+{"category": "C", "a": false, "b": true, "c": true}
+{"category": "A", "a": true}
+{"category": "B", "a": true}
+{"category": "C", "b": true}
+{"category": "B", "b": true}
+{"category": "C", "c": true}
+{"category": "C", "c": true}
+---
+{"category": "A", "a_and": true, "b_and": false, "c_and": false, "a_or": true, "b_or": true, "c_or": false}
+{"category": "B", "a_and": true, "b_and": false, "c_and": false, "a_or": true, "b_or": true, "c_or": true}
+{"category": "C", "a_and": false, "b_and": true, "c_and": true, "a_or": true, "b_or": true, "c_or": true}

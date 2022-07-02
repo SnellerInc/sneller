@@ -175,14 +175,15 @@ var opinfo = [_maxbcop]bcopinfo{
 	// Mask instructions:
 	//   - false - sets predicate to FALSE
 	//   - others - mask-only operations
-	opfalse:   {text: "false", flags: bcWriteK},
-	opandk:    {text: "and.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opork:     {text: "or.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opandnotk: {text: "andnot.k", imms: bcImmsS16, flags: bcReadWriteK}, // really 'and not'
-	opnandk:   {text: "nand.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opxork:    {text: "xor.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opxnork:   {text: "xnor.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opnotk:    {text: "not.k", flags: bcReadWriteK},
+	opbroadcastimmk: {text: "broadcast.imm.k", imms: bcImmsU16, flags: bcWriteK},
+	opfalse:         {text: "false", flags: bcWriteK},
+	opandk:          {text: "and.k", imms: bcImmsS16, flags: bcReadWriteK},
+	opork:           {text: "or.k", imms: bcImmsS16, flags: bcReadWriteK},
+	opandnotk:       {text: "andnot.k", imms: bcImmsS16, flags: bcReadWriteK}, // really 'and not'
+	opnandk:         {text: "nand.k", imms: bcImmsS16, flags: bcReadWriteK},
+	opxork:          {text: "xor.k", imms: bcImmsS16, flags: bcReadWriteK},
+	opxnork:         {text: "xnor.k", imms: bcImmsS16, flags: bcReadWriteK},
+	opnotk:          {text: "not.k", flags: bcReadWriteK},
 
 	// Arithmetic and logical instructions
 	opbroadcastimmf: {text: "broadcast.imm.f", imms: bcImmsF64, flags: bcWriteS},
@@ -280,6 +281,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	// Conversion instructions
 	opcvtktof64:   {text: "cvtktof64", flags: bcReadK | bcWriteS}, // convert mask -> floats
 	opcvtktoi64:   {text: "cvtktoi64", flags: bcReadK | bcWriteS}, // convert mask -> ints
+	opcvti64tok:   {text: "cvti64tok", flags: bcReadWriteK | bcReadS},
 	opcvti64tof64: {text: "cvti64tof64", flags: bcReadWriteK | bcReadWriteS},
 	opcvtf64toi64: {text: "cvtf64toi64", flags: bcReadWriteK | bcReadWriteS},
 	opfproundd:    {text: "fproundd", flags: bcReadWriteK | bcReadWriteS},
@@ -397,8 +399,9 @@ var opinfo = [_maxbcop]bcopinfo{
 
 	// Unboxing instructions:
 	//   - current scalar = coerce(current value, type)
-	optoint: {text: "toint", flags: bcReadWriteK | bcWriteS | bcReadV},
-	optof64: {text: "tof64", flags: bcWriteS | bcReadV},
+	opunboxktoi64: {text: "unboxktoi64", flags: bcReadWriteK | bcWriteS | bcReadV},
+	optoint:       {text: "toint", flags: bcReadWriteK | bcWriteS | bcReadV},
+	optof64:       {text: "tof64", flags: bcWriteS | bcReadV},
 	// unpack a slice type (string/array/timestamp/etc.)
 	opunpack: {text: "unpack", imms: []bcImmType{bcImmU8Hex}, flags: bcReadWriteK | bcWriteS | bcReadV},
 
@@ -419,6 +422,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	ophashlookup:    {text: "hashlookup", imms: bcImmsS16U16, flags: bcReadWriteK | bcWriteV | bcReadH},
 
 	// Simple aggregate operations
+	opaggandk:  {text: "aggand.k", imms: bcImmsS16S16, flags: bcReadK},
+	opaggork:   {text: "aggor.k", imms: bcImmsS16S16, flags: bcReadK},
 	opaggsumf:  {text: "aggsum.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggsumi:  {text: "aggsum.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggminf:  {text: "aggmin.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
@@ -432,6 +437,8 @@ var opinfo = [_maxbcop]bcopinfo{
 
 	// Slot aggregate operations
 	opaggbucket:    {text: "aggbucket", imms: bcImmsS16, flags: bcReadK | bcWriteS | bcReadH},
+	opaggslotandk:  {text: "aggslotand.k", imms: bcImmsS16S16, flags: bcReadK},
+	opaggslotork:   {text: "aggslotor.k", imms: bcImmsS16S16, flags: bcReadK},
 	opaggslotaddf:  {text: "aggslotadd.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggslotaddi:  {text: "aggslotadd.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
 	opaggslotavgf:  {text: "aggslotavg.f", imms: bcImmsS16, flags: bcReadK | bcReadS},

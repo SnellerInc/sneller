@@ -39,6 +39,8 @@ func init() {
 		{"BIT_AND", BIT_AND},
 		{"BIT_OR", BIT_OR},
 		{"BIT_XOR", BIT_XOR},
+		{"BOOL_AND", BOOL_AND},
+		{"BOOL_OR", BOOL_OR},
 		{"CAST", CAST},
 		{"CONCAT", CONCAT},
 		{"COALESCE", COALESCE},
