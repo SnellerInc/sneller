@@ -92,12 +92,15 @@ func (b *Trace) walkFrom(f expr.From, e Env) error {
 // any of the bindings includes an aggregate
 // expression
 func anyHasAggregate(lst []expr.Binding) bool {
-	for i := range lst {
-		if hasAggregate(lst[i].Expr) {
-			return true
-		}
-	}
-	return false
+	return matchAny(lst, func(b *expr.Binding) bool {
+		return hasAggregate(b.Expr)
+	})
+}
+
+func anyOrderHasAggregate(lst []expr.Order) bool {
+	return matchAny(lst, func(o *expr.Order) bool {
+		return hasAggregate(o.Column)
+	})
 }
 
 func hasAggregate(e expr.Node) bool {
@@ -584,14 +587,17 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	}
 
 	// walk SELECT + GROUP BY + HAVING
-	if s.Having != nil || s.GroupBy != nil || anyHasAggregate(s.Columns) {
+	if s.Having != nil ||
+		s.GroupBy != nil ||
+		anyHasAggregate(s.Columns) ||
+		anyOrderHasAggregate(s.OrderBy) {
 		if s.Distinct && s.GroupBy != nil {
 			return errorf(s, "mixed hash aggregate and DISTINCT not supported")
 			// if we have DISTINCT but no group by,
 			// just ignore it; we are only producing
 			// one output row anyway...
 		}
-		err = b.splitAggregate(s.Columns, s.GroupBy, s.Having)
+		err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
 	} else {
 		if len(s.Columns) == 1 && s.Columns[0].Expr == (expr.Star{}) {
 			err = b.BindStar()
@@ -604,16 +610,15 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 			}
 			err = b.Bind(s.Columns)
 		}
+		if s.OrderBy != nil {
+			err = b.Order(s.OrderBy)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	if err != nil {
 		return err
-	}
-
-	if s.OrderBy != nil {
-		err = b.Order(s.OrderBy)
-		if err != nil {
-			return err
-		}
 	}
 
 	// finally, LIMIT

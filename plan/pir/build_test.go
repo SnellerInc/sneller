@@ -1010,6 +1010,28 @@ ORDER BY m, d, h`,
 				"PROJECT x + 1 AS y, z AS z",
 			},
 		},
+		{
+			input: `SELECT grp FROM table GROUP BY grp ORDER BY COUNT(*) DESC`,
+			expect: []string{
+				"ITERATE table",
+				"AGGREGATE COUNT(*) AS $_0_1 BY grp AS grp",
+				"ORDER BY $_0_1 DESC NULLS FIRST",
+				"PROJECT grp AS grp",
+			},
+		},
+		{
+			input: `SELECT grp0 FROM table GROUP BY grp0, grp1 ORDER BY -COUNT(*)`,
+			expect: []string{
+				"ITERATE table",
+				"AGGREGATE COUNT(*) AS $_0_1 BY grp0 AS $_0_0, grp1",
+				// FIXME: this projection is superseded
+				// by the final one; we could eliminate this
+				// without any semantic consequences:
+				"PROJECT $_0_0 AS grp0, $_0_1 AS $_0_1",
+				"ORDER BY -($_0_1) ASC NULLS FIRST",
+				"PROJECT grp0 AS grp0",
+			},
+		},
 	}
 
 	for i := range tests {
