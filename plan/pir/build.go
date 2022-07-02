@@ -568,13 +568,132 @@ func (b *Trace) hoist(e Env) error {
 	return nil
 }
 
+type windowHoist struct {
+	outer *expr.Select
+	trace *Trace
+	env   Env
+	err   error
+}
+
+func (w *windowHoist) Walk(e expr.Node) expr.Rewriter {
+	if w.err != nil {
+		return nil
+	}
+	if _, ok := e.(*expr.Aggregate); ok {
+		return nil
+	}
+	if _, ok := e.(*expr.Select); ok {
+		// don't walk sub-queries
+		return nil
+	}
+	return w
+}
+
+func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
+	agg, ok := e.(*expr.Aggregate)
+	if !ok || agg.Over == nil {
+		return e
+	}
+	if len(agg.Over.PartitionBy) != 1 {
+		w.err = errorf(agg, "only 1 PARTITION BY column supported (for now)")
+		return e
+	}
+	partition := agg.Over.PartitionBy[0]
+	self := copyForWindow(w.outer)
+	key := expr.Copy(partition)
+
+	// if there is an existing GROUP BY,
+	// then the PARTITION BY should match
+	// one of those bindings (otherwise it
+	// is referencing an unbound variable);
+	// wrap the sub-query so that we perform
+	// a second grouping based on the first one,
+	// which we can perform simply as a DISTINCT:
+	if len(self.GroupBy) > 0 {
+		group := self.GroupBy
+		self.GroupBy = nil
+		self.Columns = group
+		self.Distinct = true
+		newt := &expr.Select{
+			From: &expr.Table{expr.Bind(self, "")},
+		}
+		self = newt
+	}
+	self.GroupBy = []expr.Binding{expr.Bind(partition, "$__key")}
+	// we want HASH_LOOKUP(<partition_expr>, ...)
+	// to replace the aggregate so that
+	//   SUM(x) OVER (PARTITION BY y)
+	// is turned into
+	//   HASH_LOOKUP($__key, (SELECT SUM(x) AS $__val, y AS $__key FROM ... GROUP BY y))
+	ret := expr.Call("HASH_REPLACEMENT",
+		expr.Integer(len(w.trace.Inputs)),
+		scalarkind,
+		expr.String("$__key"),
+		key,
+	)
+	agg.Over = nil
+	self.Columns = []expr.Binding{
+		expr.Bind(agg, "$__val"),
+		expr.Bind(expr.Identifier("$__key"), "$__key"),
+	}
+
+	// FIXME: this doesn't do anything yet
+	// because we don't have true window functions;
+	// other aggregates (COUNT, SUM, etc.) are insensitive
+	// to the input order:
+	// self.OrderBy = partition.OrderBy
+
+	t, err := build(w.trace, self, w.env)
+	if err != nil {
+		w.err = err
+		return e
+	}
+	w.trace.Inputs = append(w.trace.Inputs, t)
+	return ret
+}
+
+// copyForWindow performs a deep copy of the
+// portions of a SELECT that are relevant to
+// a window rewrite as a correlated sub-query
+// (i.e. everything that happens before SELECT)
+func copyForWindow(s *expr.Select) *expr.Select {
+	alt := &expr.Select{
+		Having:  s.Having,
+		GroupBy: s.GroupBy,
+		Where:   s.Where,
+		From:    s.From,
+	}
+	return expr.Copy(alt).(*expr.Select)
+}
+
+func (b *Trace) hoistWindows(s *expr.Select, e Env) error {
+	rw := &windowHoist{
+		trace: b,
+		outer: s,
+		env:   e,
+	}
+	for i := range s.Columns {
+		s.Columns[i].Expr = expr.Rewrite(rw, s.Columns[i].Expr)
+		if rw.err != nil {
+			return rw.err
+		}
+	}
+	return nil
+}
+
 func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	// Walk in binding order:
 	// FROM -> WHERE -> (SELECT / GROUP BY / ORDER BY)
 	pickOutputs(s)
 	normalizeOrderBy(s)
+	flattenBind(s.Columns)
 
-	err := b.walkFrom(s.From, e)
+	err := b.hoistWindows(s, e)
+	if err != nil {
+		return err
+	}
+
+	err = b.walkFrom(s.From, e)
 	if err != nil {
 		return err
 	}

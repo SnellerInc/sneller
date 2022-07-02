@@ -1,0 +1,24 @@
+SELECT x, y, COUNT(*) OVER (PARTITION BY x) AS xcount
+FROM input
+GROUP BY x, y
+ORDER BY x, y LIMIT 16
+---
+{"x": "a", "y": "00"}
+{"x": "a", "y": "01"}
+{"x": "a", "y": "02"}
+{"x": "a", "y": "03"}
+{"x": "b", "y": "00"}
+{"x": "b", "y": "01"}
+{"x": "b", "y": "02"}
+{"x": "b", "y": "03"}
+{"x": "b", "y": "04"}
+---
+{"x": "a", "y": "00", "xcount": 4}
+{"x": "a", "y": "01", "xcount": 4}
+{"x": "a", "y": "02", "xcount": 4}
+{"x": "a", "y": "03", "xcount": 4}
+{"x": "b", "y": "00", "xcount": 5}
+{"x": "b", "y": "01", "xcount": 5}
+{"x": "b", "y": "02", "xcount": 5}
+{"x": "b", "y": "03", "xcount": 5}
+{"x": "b", "y": "04", "xcount": 5}

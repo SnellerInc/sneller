@@ -115,7 +115,15 @@ func (f *flattener) Rewrite(e expr.Node) expr.Node {
 	return e
 }
 
-func (f *flattener) Walk(e expr.Node) expr.Rewriter { return f }
+func (f *flattener) Walk(e expr.Node) expr.Rewriter {
+	if _, ok := e.(*expr.Select); ok {
+		// don't walk into sub-queries;
+		// otherwise we will end up breaking
+		// subquery correlation detection
+		return nil
+	}
+	return f
+}
 
 // flattenBind takes a set of bindings like
 //    3 as x, x+1 as y, y+1 as z
@@ -139,9 +147,6 @@ func flattenBind(columns []expr.Binding) {
 }
 
 func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Binding, having expr.Node) error {
-	// flattening will make nested aggregates obvious;
-	// for example COUNT(x) as c, COUNT(c) as y
-	flattenBind(columns)
 	aggc, err := rejectNestedAggregates(columns, order)
 	if err != nil {
 		return err
@@ -157,7 +162,14 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 		if err != nil {
 			return err
 		}
-		return b.Bind(columns)
+		err = b.Bind(columns)
+		if err != nil {
+			return err
+		}
+		if order == nil {
+			return nil
+		}
+		return b.Order(order)
 	}
 
 	var aggcols vm.Aggregation
@@ -168,6 +180,10 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 	// into a previous aggregation step
 	rewrite := func(e expr.Node) expr.Node {
 		if age, ok := e.(*expr.Aggregate); ok {
+			if age.Over != nil {
+				err = errorf(e, "window function in illegal position")
+				return e
+			}
 			// see if this is a duplicate aggregate expression;
 			// if it is, simply return another path pointing to it
 			for i := range aggcols {
@@ -206,6 +222,9 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 		// that HAVING can actually introduce new aggregate
 		// bindings... I suppose that's sometimes useful?
 		having = expr.Rewrite(rw, having)
+		if err != nil {
+			return err
+		}
 	}
 	// keep a copy of the original projection
 	// in case we have to create phantom outputs
@@ -215,6 +234,9 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 		res := columns[i].Result()
 		columns[i].Expr = expr.Rewrite(rw, columns[i].Expr)
 		columns[i].As(res)
+		if err != nil {
+			return err
+		}
 	}
 	// add new aggregations as necessary if
 	// they appear in ORDER BY

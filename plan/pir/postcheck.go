@@ -30,7 +30,7 @@ func checkNoWindow(e expr.Node) error {
 		}
 		agg, ok := e.(*expr.Aggregate)
 		if ok && agg.Over != nil {
-			err = errorf(agg, "window functions not yet supported")
+			err = errorf(agg, "window function in unexpected position")
 			return false
 		}
 		return true

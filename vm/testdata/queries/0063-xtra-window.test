@@ -1,0 +1,25 @@
+SELECT SUBSTRING(str, 2, 2) AS x, SUM(y+0) OVER (PARTITION BY x) AS ysum
+FROM input
+ORDER BY x LIMIT 16
+---
+{"str": "foo", "y": -1}
+{"str": "boo", "y": 1}
+{"str": "foobar", "y": -1}
+{"str": "boofar", "y": 1}
+{"str": "xyz", "y": 3}
+{"str": "ayz", "y": 3}
+{"str": "byz", "y": 3}
+{"str": "xyz", "y": 3}
+{"str": "aaa", "y": "hello"}
+{"str": "xaa", "y": "hello"}
+---
+{"x": "aa", "ysum": null}
+{"x": "aa", "ysum": null}
+{"x": "oo", "ysum": 0}
+{"x": "oo", "ysum": 0}
+{"x": "oo", "ysum": 0}
+{"x": "oo", "ysum": 0}
+{"x": "yz", "ysum": 12}
+{"x": "yz", "ysum": 12}
+{"x": "yz", "ysum": 12}
+{"x": "yz", "ysum": 12}

@@ -1,0 +1,25 @@
+SELECT x, SUM(y) OVER (PARTITION BY x) AS sum
+FROM input
+ORDER BY x LIMIT 16
+---
+{"x": "a", "y": 1}
+{"x": "a", "y": 2}
+{"x": "a", "y": 3}
+{"x": "b", "y": 4}
+{"x": "b", "y": 5}
+{"x": "b", "y": 6}
+{"x": "b", "y": 7}
+{"x": "c", "y": 0}
+{"x": "c", "y": -1}
+{"x": "c", "y": 1}
+---
+{"x": "a", "sum": 6}
+{"x": "a", "sum": 6}
+{"x": "a", "sum": 6}
+{"x": "b", "sum": 22}
+{"x": "b", "sum": 22}
+{"x": "b", "sum": 22}
+{"x": "b", "sum": 22}
+{"x": "c", "sum": 0}
+{"x": "c", "sum": 0}
+{"x": "c", "sum": 0}

@@ -125,8 +125,8 @@ func TestBuildError(t *testing.T) {
 			rx:    "LIMIT\\+OFFSET",
 		},
 		{
-			input: `select x, COUNT(y) OVER (PARTITION BY z) FROM foo`,
-			rx:    "not yet supported",
+			input: `select x, y from tbl group by sum(x) over (partition by y)`,
+			rx:    "window",
 		},
 	}
 	for i := range tests {
@@ -1030,6 +1030,46 @@ ORDER BY m, d, h`,
 				"PROJECT $_0_0 AS grp0, $_0_1 AS $_0_1",
 				"ORDER BY -($_0_1) ASC NULLS FIRST",
 				"PROJECT grp0 AS grp0",
+			},
+		},
+		{
+			input: `select x, COUNT(y) OVER (PARTITION BY z) AS wind FROM foo`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE foo",
+				"	AGGREGATE COUNT(y) AS $__val BY z AS $__key",
+				") AS REPLACEMENT(0)",
+				"ITERATE foo",
+				"PROJECT x AS x, HASH_REPLACEMENT(0, 'scalar', '$__key', z) AS wind",
+			},
+		},
+		{
+			// window function + GROUP BY needs to compute
+			// the DISTINCT set of grouping columns before
+			// running the window function, since that is
+			// the set of bindings available in the window
+			input: `select x, y, SUM(var), COUNT(x) OVER (PARTITION BY y) AS x_per_y FROM foo WHERE z = 'foo' GROUP BY x, y`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE foo WHERE z = 'foo'",
+				"	FILTER DISTINCT [x y]",
+				"	PROJECT x AS x, y AS y",
+				"	AGGREGATE COUNT(x) AS $__val BY y AS $__key",
+				") AS REPLACEMENT(0)",
+				"ITERATE foo WHERE z = 'foo'",
+				"AGGREGATE SUM(var) AS $_0_2 BY x AS $_0_0, y AS $_0_1",
+				"PROJECT $_0_0 AS x, $_0_1 AS y, $_0_2 AS \"sum\", HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_1) AS x_per_y",
+			},
+		},
+		{
+			input: `SELECT SUBSTRING(str, 2, 2) AS x, SUM(y+0) OVER (PARTITION BY x) AS ysum FROM input`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE input",
+				"	AGGREGATE SUM(y + 0) AS $__val BY SUBSTRING(str, 2, 2) AS $__key",
+				") AS REPLACEMENT(0)",
+				"ITERATE input",
+				"PROJECT SUBSTRING(str, 2, 2) AS x, HASH_REPLACEMENT(0, 'scalar', '$__key', SUBSTRING(str, 2, 2)) AS ysum",
 			},
 		},
 	}
