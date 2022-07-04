@@ -191,7 +191,7 @@ datum_or_parens
 }
 | AGGREGATE '(' '*' ')' maybe_window // realistically only COUNT(*)
 {
-  $$ = toAggregate(expr.AggregateOp($1), expr.Star{}, $3, $6)
+  $$ = toAggregate(expr.AggregateOp($1), expr.Star{}, false, $5)
 }
 | CASE case_limbs case_optional_else END
 {
