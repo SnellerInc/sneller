@@ -90,6 +90,7 @@ func init() {
 		{"LAST", LAST},
 		{"UTCNOW", UTCNOW},
 		{"WITH", WITH},
+		{"FILTER", FILTER},
 	} {
 		code, ok := wordcode([]byte(pair.name))
 		if !ok {

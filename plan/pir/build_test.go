@@ -128,6 +128,10 @@ func TestBuildError(t *testing.T) {
 			input: `select x, y from tbl group by sum(x) over (partition by y)`,
 			rx:    "window",
 		},
+		{
+			input: `select COUNT(*) FILTER (WHERE x > 0) FROM foo`,
+			rx:    "aggregate filters not yet supported",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input

@@ -467,9 +467,9 @@ func (e *LexerError) Error() string {
 	return fmt.Sprintf("at position %d: %s", e.Position, e.Message)
 }
 
-func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, over *expr.Window) *expr.Aggregate {
+func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr.Node, over *expr.Window) *expr.Aggregate {
 	if distinct && op == expr.OpCount {
 		op = expr.OpCountDistinct
 	}
-	return &expr.Aggregate{Op: op, Inner: body, Over: over}
+	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}
 }

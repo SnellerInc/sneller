@@ -233,6 +233,8 @@ type Aggregate struct {
 	// Over, if non-nil, is the OVER part
 	// of the aggregation
 	Over *Window
+	// Filter is an optional filtering expression
+	Filter Node
 }
 
 func (a *Aggregate) Equals(e Node) bool {
@@ -280,6 +282,12 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 			EncodeOrder(a.Over.OrderBy, dst, st)
 		}
 	}
+
+	if a.Filter != nil {
+		dst.BeginField(st.Intern("filter_where"))
+		a.Filter.Encode(dst, st)
+	}
+
 	dst.EndStruct()
 }
 
@@ -315,6 +323,10 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 		var err error
 		a.Over.OrderBy, err = decodeOrder(st, body)
 		return err
+	case "filter_where":
+		var err error
+		a.Filter, _, err = Decode(st, body)
+		return err
 	default:
 		return fmt.Errorf("expr.Aggregate: setfield: unexpected field %q", name)
 	}
@@ -332,26 +344,32 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 		a.Inner.text(dst, redact)
 		dst.WriteByte(')')
 	}
-	if a.Over == nil {
-		return
+
+	if a.Filter != nil {
+		dst.WriteString(" FILTER (WHERE ")
+		a.Filter.text(dst, redact)
+		dst.WriteString(")")
 	}
-	dst.WriteString(" OVER (PARTITION BY ")
-	for i := range a.Over.PartitionBy {
-		if i > 0 {
-			dst.WriteString(", ")
-		}
-		a.Over.PartitionBy[i].text(dst, redact)
-	}
-	if len(a.Over.OrderBy) > 0 {
-		dst.WriteString(" ORDER BY ")
-		for i := range a.Over.OrderBy {
+
+	if a.Over != nil {
+		dst.WriteString(" OVER (PARTITION BY ")
+		for i := range a.Over.PartitionBy {
 			if i > 0 {
 				dst.WriteString(", ")
 			}
-			a.Over.OrderBy[i].text(dst, redact)
+			a.Over.PartitionBy[i].text(dst, redact)
 		}
+		if len(a.Over.OrderBy) > 0 {
+			dst.WriteString(" ORDER BY ")
+			for i := range a.Over.OrderBy {
+				if i > 0 {
+					dst.WriteString(", ")
+				}
+				a.Over.OrderBy[i].text(dst, redact)
+			}
+		}
+		dst.WriteByte(')')
 	}
-	dst.WriteByte(')')
 }
 
 func (a *Aggregate) walk(v Visitor) {

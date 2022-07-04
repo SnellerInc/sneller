@@ -75,7 +75,7 @@ import (
 %right '!' '~' NOT
 %left BETWEEN CASE WHEN THEN ELSE END
 %left <empty> EQ NE LT LE GT GE
-%left <empty> ILIKE LIKE IN IS OVER
+%left <empty> ILIKE LIKE IN IS OVER FILTER
 %left <empty> '|'
 %left <empty> '^'
 %left <empty> '&'
@@ -91,6 +91,7 @@ import (
 
 %type <expr> query expr datum datum_or_parens path_expression maybe_into
 %type <expr> where_expr having_expr case_optional_else parenthesized_expr
+%type <expr> optional_filter
 %type <with> maybe_cte_bindings cte_bindings
 %type <pc> path_component
 %type <yesno> ascdesc nullslast maybe_distinct
@@ -185,13 +186,14 @@ datum_or_parens
 {
   $$ = $1
 }
-| AGGREGATE '(' maybe_distinct expr ')' maybe_window
+| AGGREGATE '(' maybe_distinct expr ')' optional_filter maybe_window
 {
-  $$ = toAggregate(expr.AggregateOp($1), $4, $3, $6)
+  $$ = toAggregate(expr.AggregateOp($1), $4, $3, $6, $7)
 }
-| AGGREGATE '(' '*' ')' maybe_window // realistically only COUNT(*)
+| AGGREGATE '(' '*' ')' optional_filter maybe_window // realistically only COUNT(*)
 {
-  $$ = toAggregate(expr.AggregateOp($1), expr.Star{}, false, $5)
+  distinct := false
+  $$ = toAggregate(expr.AggregateOp($1), expr.Star{}, distinct, $5, $6)
 }
 | CASE case_limbs case_optional_else END
 {
@@ -491,6 +493,10 @@ ELSE expr { $$ = $2 }
 case_limbs:
 WHEN expr THEN expr { $$ = []expr.CaseLimb{{When: $2, Then: $4}} }
 | case_limbs WHEN expr THEN expr { $$ = append($1, expr.CaseLimb{When: $3, Then: $5}) }
+
+optional_filter:
+{ $$ = nil } |
+FILTER '(' WHERE expr ')' { $$ = $4 }
 
 where_expr:
 { $$ = nil } |
