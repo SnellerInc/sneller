@@ -1,0 +1,14 @@
+SELECT COUNT(*) FILTER (WHERE x = 0) as zeros FROM input
+---
+{"x": 0}
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 0}
+{"x": -1}
+{"x": -5}
+{"x": 4}
+{"x": 0}
+{"x": 12}
+---
+{"zeros": 3}

@@ -101,19 +101,24 @@ func lowerLimit(in *pir.Limit, from Op) (Op, error) {
 	}, nil
 }
 
-func iscountstar(e expr.Node) bool {
-	agg, ok := e.(*expr.Aggregate)
-	if ok {
-		_, ok = agg.Inner.(expr.Star)
-		return ok
+func iscountstar(a vm.Aggregation) bool {
+	if len(a) != 1 {
+		return false
 	}
-	return false
+
+	agg := a[0]
+	if agg.Expr.Filter != nil {
+		return false
+	}
+
+	_, isstar := agg.Expr.Inner.(expr.Star)
+	return isstar
 }
 
 func lowerAggregate(in *pir.Aggregate, from Op) (Op, error) {
 	if in.GroupBy == nil {
 		// simple aggregate; check for COUNT(*) first
-		if len(in.Agg) == 1 && iscountstar(in.Agg[0].Expr) {
+		if iscountstar(in.Agg) {
 			return &CountStar{
 				Nonterminal: Nonterminal{From: from},
 				As:          in.Agg[0].Result,
