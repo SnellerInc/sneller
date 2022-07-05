@@ -45,7 +45,7 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 	return err
 }
 
-func checkNoMakeList(e expr.Node) error {
+func checkNoBuiltin(op expr.BuiltinOp, e expr.Node) error {
 	var err error
 	v := visitfn(func(e expr.Node) bool {
 		if err != nil {
@@ -55,8 +55,8 @@ func checkNoMakeList(e expr.Node) error {
 		if !ok {
 			return true
 		}
-		if b.Func == expr.MakeList {
-			err = errorf(e, "list construction not yet supported")
+		if b.Func == op {
+			err = errorf(e, "operation not yet supported")
 			return false
 		}
 		return true

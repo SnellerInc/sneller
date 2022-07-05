@@ -223,7 +223,8 @@ const (
 
 	TimeBucket
 
-	MakeList // MAKE_LIST(args...) constructs a list literal
+	MakeList   // MAKE_LIST(args...) constructs a list
+	MakeStruct // MAKE_STRUCT(field, value, ...) constructs a structure
 
 	Unspecified // catch-all for opaque built-ins
 	maxBuiltin
@@ -332,6 +333,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"TABLE_GLOB":               TableGlob,
 	"TABLE_PATTERN":            TablePattern,
 	"MAKE_LIST":                MakeList,
+	"MAKE_STRUCT":              MakeStruct,
 }
 
 var builtin2Name [maxBuiltin]string
@@ -924,6 +926,28 @@ func simplifyMakeList(h Hint, args []Node) Node {
 	return &List{Values: items}
 }
 
+func simplifyMakeStruct(h Hint, args []Node) Node {
+	var fields []Field
+	for i := 0; i < len(args); i += 2 {
+		str, ok := args[i].(String)
+		if !ok {
+			return nil
+		}
+		if i+1 == len(args) {
+			return nil
+		}
+		val, ok := args[i+1].(Constant)
+		if !ok {
+			return nil
+		}
+		fields = append(fields, Field{
+			Label: string(str),
+			Value: val,
+		})
+	}
+	return &Struct{Fields: fields}
+}
+
 func makeListText(args []Node, dst *strings.Builder, redact bool) {
 	dst.WriteByte('[')
 	for i := range args {
@@ -933,6 +957,18 @@ func makeListText(args []Node, dst *strings.Builder, redact bool) {
 		args[i].text(dst, redact)
 	}
 	dst.WriteByte(']')
+}
+
+func makeStructText(args []Node, dst *strings.Builder, redact bool) {
+	dst.WriteByte('{')
+	sep := []string{", ", ": "}
+	for i := range args {
+		if i > 0 {
+			dst.WriteString(sep[i&1])
+		}
+		args[i].text(dst, redact)
+	}
+	dst.WriteByte('}')
 }
 
 var builtinInfo = [maxBuiltin]binfo{
@@ -1039,7 +1075,8 @@ var builtinInfo = [maxBuiltin]binfo{
 
 	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType},
 
-	MakeList: {simplify: simplifyMakeList, ret: ListType, private: true, text: makeListText},
+	MakeList:   {simplify: simplifyMakeList, ret: ListType, private: true, text: makeListText},
+	MakeStruct: {simplify: simplifyMakeStruct, ret: StructType, private: true, text: makeStructText},
 
 	TableGlob:    {check: checkTableGlob, ret: AnyType, isTable: true},
 	TablePattern: {check: checkTablePattern, ret: AnyType, isTable: true},

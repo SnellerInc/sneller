@@ -101,7 +101,7 @@ import (
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
-%type <values> value_list any_value_list
+%type <values> value_list any_value_list struct_field_list
 %type <order> order_one_col
 %type <orders> order_expr order_cols
 %type <jk> join_kind
@@ -428,6 +428,10 @@ datum_or_parens
 {
   $$ = expr.Call("MAKE_LIST", $2...)
 }
+| '{' struct_field_list '}'
+{
+  $$ = expr.Call("MAKE_STRUCT", $2...)
+}
 
 // match (binding)+
 binding_list:
@@ -444,6 +448,12 @@ value_list ',' expr { $$ = append($1, $3) }
 any_value_list:
 expr { $$ = []expr.Node{$1} } |
 any_value_list ',' expr { $$ = append($1, $3) } |
+{ $$ = nil }
+
+// match 'field': value (, ('field': value))*
+struct_field_list:
+STRING ':' expr { $$ = []expr.Node{expr.String($1), $3} } |
+struct_field_list ',' STRING ':' expr { $$ = append($1, expr.String($3), $5) } |
 { $$ = nil }
 
 maybe_window:

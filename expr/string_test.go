@@ -123,6 +123,10 @@ func TestString(t *testing.T) {
 			}},
 			"{'foo': 3, 'bar': [3, 'hello'], 'baz': 'quux'}",
 		},
+		{
+			Call("MAKE_STRUCT", String("foo"), Identifier("x")),
+			`{'foo': x}`,
+		},
 	}
 	for i := range testcases {
 		got := ToString(testcases[i].in)
