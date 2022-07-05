@@ -521,19 +521,29 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 	offset := 0
 
 	for i := range agg {
+		var filter *value
+		if filterExpr := agg[i].Expr.Filter; filterExpr != nil {
+			var err error
+			// Note: duplicated filter expression will be removed during CSE
+			filter, err = p.compileAsBool(filterExpr)
+			if err != nil {
+				return err
+			}
+		}
+
 		op := agg[i].Expr.Op
 
 		// COUNT(...) is the only aggregate op that doesn't accept numbers;
 		// additionally, it accepts '*', which has a special meaning in this context.
 		if op == expr.OpCount {
 			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
-				mem[i] = p.AggregateCount(p.ValidLanes(), offset)
+				mem[i] = p.AggregateCount(p.ValidLanes(), filter, offset)
 			} else {
 				v, err := compile(p, agg[i].Expr.Inner)
 				if err != nil {
 					return err
 				}
-				mem[i] = p.AggregateCount(v, offset)
+				mem[i] = p.AggregateCount(v, filter, offset)
 			}
 			kinds[i] = AggregateKindCount
 		} else if op.IsBoolOp() {
@@ -543,10 +553,10 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			}
 			switch op {
 			case expr.OpBoolAnd:
-				mem[i] = p.AggregateBoolAnd(argv, offset)
+				mem[i] = p.AggregateBoolAnd(argv, filter, offset)
 				kinds[i] = AggregateKindAndK
 			case expr.OpBoolOr:
-				mem[i] = p.AggregateBoolOr(argv, offset)
+				mem[i] = p.AggregateBoolOr(argv, filter, offset)
 				kinds[i] = AggregateKindOrK
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
@@ -559,53 +569,53 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			var fp bool
 			switch op {
 			case expr.OpSum:
-				mem[i], fp = p.AggregateSum(argv, offset)
+				mem[i], fp = p.AggregateSum(argv, filter, offset)
 				if fp {
 					kinds[i] = AggregateKindSumF
 				} else {
 					kinds[i] = AggregateKindSumI
 				}
 			case expr.OpSumInt:
-				mem[i] = p.AggregateSumInt(argv, offset)
+				mem[i] = p.AggregateSumInt(argv, filter, offset)
 				kinds[i] = AggregateKindSumI
 			case expr.OpSumCount:
-				mem[i] = p.AggregateSumInt(argv, offset)
+				mem[i] = p.AggregateSumInt(argv, filter, offset)
 				kinds[i] = AggregateKindSumC
 			case expr.OpAvg:
-				mem[i], fp = p.AggregateAvg(argv, offset)
+				mem[i], fp = p.AggregateAvg(argv, filter, offset)
 				if fp {
 					kinds[i] = AggregateKindAvgF
 				} else {
 					kinds[i] = AggregateKindAvgI
 				}
 			case expr.OpMin:
-				mem[i], fp = p.AggregateMin(argv, offset)
+				mem[i], fp = p.AggregateMin(argv, filter, offset)
 				if fp {
 					kinds[i] = AggregateKindMinF
 				} else {
 					kinds[i] = AggregateKindMinI
 				}
 			case expr.OpMax:
-				mem[i], fp = p.AggregateMax(argv, offset)
+				mem[i], fp = p.AggregateMax(argv, filter, offset)
 				if fp {
 					kinds[i] = AggregateKindMaxF
 				} else {
 					kinds[i] = AggregateKindMaxI
 				}
 			case expr.OpBitAnd:
-				mem[i] = p.AggregateAnd(argv, offset)
+				mem[i] = p.AggregateAnd(argv, filter, offset)
 				kinds[i] = AggregateKindAndI
 			case expr.OpBitOr:
-				mem[i] = p.AggregateOr(argv, offset)
+				mem[i] = p.AggregateOr(argv, filter, offset)
 				kinds[i] = AggregateKindOrI
 			case expr.OpBitXor:
-				mem[i] = p.AggregateXor(argv, offset)
+				mem[i] = p.AggregateXor(argv, filter, offset)
 				kinds[i] = AggregateKindXorI
 			case expr.OpEarliest:
-				mem[i] = p.AggregateEarliest(argv, offset)
+				mem[i] = p.AggregateEarliest(argv, filter, offset)
 				kinds[i] = AggregateKindMinTS
 			case expr.OpLatest:
-				mem[i] = p.AggregateLatest(argv, offset)
+				mem[i] = p.AggregateLatest(argv, filter, offset)
 				kinds[i] = AggregateKindMaxTS
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])

@@ -245,6 +245,14 @@ func (a *Aggregate) Equals(e Node) bool {
 	if ea.Op != a.Op || !a.Inner.Equals(ea.Inner) {
 		return false
 	}
+
+	if (a.Filter != nil) != (ea.Filter != nil) {
+		return false
+	}
+	if (a.Filter != nil) && !a.Filter.Equals(ea.Filter) {
+		return false
+	}
+
 	if a.Over == nil {
 		return ea.Over == nil
 	}

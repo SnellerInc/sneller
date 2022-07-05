@@ -3410,7 +3410,7 @@ func emitdatecasttoint(v *value, c *compilestate) {
 }
 
 // Simple aggregate operations
-func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v *value, slot int) *value {
+func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, slot int) *value {
 	mem := p.InitMem()
 
 	// In general we have to coerce to BOOL, however, if the input is a boxed value we
@@ -3419,91 +3419,119 @@ func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v *value, slot int
 	if v.primary() == stValue {
 		k := p.mask(v)
 		intVal := p.ssa2(sunboxktoi, v, k)
-		return p.ssa3imm(aggIntOp, mem, intVal, p.mask(intVal), slot)
+		mask := p.mask(intVal)
+		if filter != nil {
+			mask = p.And(mask, filter)
+		}
+		return p.ssa3imm(aggIntOp, mem, intVal, mask, slot)
 	}
 
 	boolVal, mask := p.coerceBool(v)
+	if filter != nil {
+		mask = p.And(mask, filter)
+	}
 	return p.ssa3imm(aggBoolOp, mem, boolVal, mask, slot)
 }
 
-func (p *prog) makeAggregateOp(opF, opI ssaop, child *value, slot int) (v *value, fp bool) {
+func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot int) (v *value, fp bool) {
 	if isIntValue(child) || opF == sinvalid {
 		scalar, mask := p.coerceInt(child)
+		if filter != nil {
+			mask = p.And(mask, filter)
+		}
 		mem := p.InitMem()
 		return p.ssa3imm(opI, mem, scalar, mask, slot), false
 	}
 
 	scalar, mask := p.coercefp(child)
+	if filter != nil {
+		mask = p.And(mask, filter)
+	}
+
 	mem := p.InitMem()
 	return p.ssa3imm(opF, mem, scalar, mask, slot), true
 }
 
-func (p *prog) makeTimeAggregateOp(op ssaop, child *value, slot int) *value {
+func (p *prog) makeTimeAggregateOp(op ssaop, child, filter *value, slot int) *value {
 	scalar, mask := p.coerceTimestamp(child)
+	if filter != nil {
+		mask = p.And(mask, filter)
+	}
 	mem := p.InitMem()
 	return p.ssa3imm(op, mem, scalar, mask, slot)
 }
 
-func (p *prog) AggregateBoolAnd(child *value, slot int) *value {
-	return p.makeAggregateBoolOp(saggandk, saggandi, child, slot)
+func (p *prog) AggregateBoolAnd(child, filter *value, slot int) *value {
+	return p.makeAggregateBoolOp(saggandk, saggandi, child, filter, slot)
 }
 
-func (p *prog) AggregateBoolOr(child *value, slot int) *value {
-	return p.makeAggregateBoolOp(saggork, saggori, child, slot)
+func (p *prog) AggregateBoolOr(child, filter *value, slot int) *value {
+	return p.makeAggregateBoolOp(saggork, saggori, child, filter, slot)
 }
 
-func (p *prog) AggregateSumInt(child *value, slot int) *value {
+func (p *prog) AggregateSumInt(child, filter *value, slot int) *value {
 	child = p.toint(child)
-	return p.ssa3imm(saggsumi, p.InitMem(), child, p.mask(child), slot)
+	mask := p.mask(child)
+	if filter != nil {
+		mask = p.And(mask, filter)
+	}
+	return p.ssa3imm(saggsumi, p.InitMem(), child, mask, slot)
 }
 
-func (p *prog) AggregateSum(child *value, slot int) (v *value, fp bool) {
-	return p.makeAggregateOp(saggsumf, saggsumi, child, slot)
+func (p *prog) AggregateSum(child, filter *value, slot int) (v *value, fp bool) {
+	return p.makeAggregateOp(saggsumf, saggsumi, child, filter, slot)
 }
 
-func (p *prog) AggregateAvg(child *value, slot int) (v *value, fp bool) {
-	return p.makeAggregateOp(saggavgf, saggavgi, child, slot)
+func (p *prog) AggregateAvg(child, filter *value, slot int) (v *value, fp bool) {
+	return p.makeAggregateOp(saggavgf, saggavgi, child, filter, slot)
 }
 
-func (p *prog) AggregateMin(child *value, slot int) (v *value, fp bool) {
-	return p.makeAggregateOp(saggminf, saggmini, child, slot)
+func (p *prog) AggregateMin(child, filter *value, slot int) (v *value, fp bool) {
+	return p.makeAggregateOp(saggminf, saggmini, child, filter, slot)
 }
 
-func (p *prog) AggregateMax(child *value, slot int) (v *value, fp bool) {
-	return p.makeAggregateOp(saggmaxf, saggmaxi, child, slot)
+func (p *prog) AggregateMax(child, filter *value, slot int) (v *value, fp bool) {
+	return p.makeAggregateOp(saggmaxf, saggmaxi, child, filter, slot)
 }
 
-func (p *prog) AggregateAnd(child *value, slot int) *value {
-	val, _ := p.makeAggregateOp(sinvalid, saggandi, child, slot)
+func (p *prog) AggregateAnd(child, filter *value, slot int) *value {
+	val, _ := p.makeAggregateOp(sinvalid, saggandi, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateOr(child *value, slot int) *value {
-	val, _ := p.makeAggregateOp(sinvalid, saggori, child, slot)
+func (p *prog) AggregateOr(child, filter *value, slot int) *value {
+	val, _ := p.makeAggregateOp(sinvalid, saggori, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateXor(child *value, slot int) *value {
-	val, _ := p.makeAggregateOp(sinvalid, saggxori, child, slot)
+func (p *prog) AggregateXor(child, filter *value, slot int) *value {
+	val, _ := p.makeAggregateOp(sinvalid, saggxori, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateEarliest(child *value, slot int) *value {
-	return p.makeTimeAggregateOp(saggmints, child, slot)
+func (p *prog) AggregateEarliest(child, filter *value, slot int) *value {
+	return p.makeTimeAggregateOp(saggmints, child, filter, slot)
 }
 
-func (p *prog) AggregateLatest(child *value, slot int) *value {
-	return p.makeTimeAggregateOp(saggmaxts, child, slot)
+func (p *prog) AggregateLatest(child, filter *value, slot int) *value {
+	return p.makeTimeAggregateOp(saggmaxts, child, filter, slot)
 }
 
-func (p *prog) AggregateCount(child *value, slot int) *value {
-	return p.ssa2imm(saggcount, p.InitMem(), p.notMissing(child), slot)
+func (p *prog) AggregateCount(child, filter *value, slot int) *value {
+	mask := p.notMissing(child)
+	if filter != nil {
+		mask = p.And(mask, filter)
+	}
+	return p.ssa2imm(saggcount, p.InitMem(), mask, slot)
 }
 
 // Slot aggregate operations
 func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, slot int) *value {
-	boolVal, mask := p.coerceBool(v)
-	return p.ssa4imm(op, mem, bucket, boolVal, mask, slot)
+	boolVal, m := p.coerceBool(v)
+	if mask != nil {
+		m = p.And(m, mask)
+	}
+	return p.ssa4imm(op, mem, bucket, boolVal, m, slot)
 }
 
 func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, offset int) (rv *value, fp bool) {

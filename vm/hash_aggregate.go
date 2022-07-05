@@ -175,30 +175,37 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 	offset := 0
 
 	for i := range agg {
+		var filter *value
+		if filterExpr := agg[i].Expr.Filter; filterExpr != nil {
+			var err error
+			// Note: duplicated filter expression will be removed during CSE
+			filter, err = prog.compileAsBool(filterExpr)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		mask := allColumnsMask
+		if filter != nil {
+			mask = prog.And(mask, filter)
+		}
+
 		op := agg[i].Expr.Op
 
 		// COUNT(...) is the only aggregate op that doesn't accept numbers;
 		// additionally, it accepts '*', which has a special meaning in this context.
 		if op == expr.OpCount {
-			var err error
-			var k *value
-
 			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
 				// `COUNT(*) GROUP BY X` is equivalent to `COUNT(X) GROUP BY X`
-				k = allColumnsMask
 			} else {
-				k, err = compile(prog, agg[i].Expr.Inner)
+				k, err := compile(prog, agg[i].Expr.Inner)
+				if err != nil {
+					return nil, err
+				}
+				mask = prog.And(prog.mask(k), mask)
 			}
 
-			if err != nil {
-				return nil, err
-			}
-
-			if k != allColumnsMask {
-				k = prog.And(prog.mask(k), allColumnsMask)
-			}
-
-			out[i] = prog.AggregateSlotCount(mem, bucket, k, offset)
+			out[i] = prog.AggregateSlotCount(mem, bucket, mask, offset)
 			kinds[i] = AggregateKindCount
 		} else if op.IsBoolOp() {
 			argv, err := prog.compileAsBool(agg[i].Expr.Inner)
@@ -207,10 +214,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			}
 			switch op {
 			case expr.OpBoolAnd:
-				out[i] = prog.AggregateSlotBoolAnd(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotBoolAnd(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindAndK
 			case expr.OpBoolOr:
-				out[i] = prog.AggregateSlotBoolOr(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotBoolOr(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindOrK
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
@@ -223,53 +230,53 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			var fp bool
 			switch op {
 			case expr.OpAvg:
-				out[i], fp = prog.AggregateSlotAvg(mem, bucket, argv, allColumnsMask, offset)
+				out[i], fp = prog.AggregateSlotAvg(mem, bucket, argv, mask, offset)
 				if fp {
 					kinds[i] = AggregateKindAvgF
 				} else {
 					kinds[i] = AggregateKindAvgI
 				}
 			case expr.OpSum:
-				out[i], fp = prog.AggregateSlotSum(mem, bucket, argv, allColumnsMask, offset)
+				out[i], fp = prog.AggregateSlotSum(mem, bucket, argv, mask, offset)
 				if fp {
 					kinds[i] = AggregateKindSumF
 				} else {
 					kinds[i] = AggregateKindSumI
 				}
 			case expr.OpSumInt:
-				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindSumI
 			case expr.OpSumCount:
-				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindSumC
 			case expr.OpMin:
-				out[i], fp = prog.AggregateSlotMin(mem, bucket, argv, allColumnsMask, offset)
+				out[i], fp = prog.AggregateSlotMin(mem, bucket, argv, mask, offset)
 				if fp {
 					kinds[i] = AggregateKindMinF
 				} else {
 					kinds[i] = AggregateKindMinI
 				}
 			case expr.OpMax:
-				out[i], fp = prog.AggregateSlotMax(mem, bucket, argv, allColumnsMask, offset)
+				out[i], fp = prog.AggregateSlotMax(mem, bucket, argv, mask, offset)
 				if fp {
 					kinds[i] = AggregateKindMaxF
 				} else {
 					kinds[i] = AggregateKindMaxI
 				}
 			case expr.OpBitAnd:
-				out[i] = prog.AggregateSlotAnd(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotAnd(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindAndI
 			case expr.OpBitOr:
-				out[i] = prog.AggregateSlotOr(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotOr(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindOrI
 			case expr.OpBitXor:
-				out[i] = prog.AggregateSlotXor(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotXor(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindXorI
 			case expr.OpEarliest:
-				out[i] = prog.AggregateSlotEarliest(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotEarliest(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindMinTS
 			case expr.OpLatest:
-				out[i] = prog.AggregateSlotLatest(mem, bucket, argv, allColumnsMask, offset)
+				out[i] = prog.AggregateSlotLatest(mem, bucket, argv, mask, offset)
 				kinds[i] = AggregateKindMaxTS
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])

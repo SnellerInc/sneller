@@ -1,0 +1,25 @@
+SELECT COUNT(*) as total,
+    COUNT(*) FILTER (WHERE x > 0) as positive,
+    COUNT(*) FILTER (WHERE x < 0) as negative,
+    SUM(x) FILTER (WHERE x > 0) as sum_positive,
+    SUM(x) FILTER (WHERE x < 0) as sum_negative,
+    MIN(x) FILTER (WHERE x > 0) as min_positive,
+    MIN(x) FILTER (WHERE x < 0) as min_negative,
+    MAX(x) FILTER (WHERE x > 0) as max_positive,
+    MAX(x) FILTER (WHERE x < 0) as max_negative,
+    AVG(x) as average,
+    AVG(x) FILTER (WHERE x > -3 AND x < 3) as avg_in_range
+FROM input
+---
+{"x": 0}
+{"x": 1}
+{"x": 2}
+{"x": 3}
+{"x": 0}
+{"x": -1}
+{"x": -5}
+{"x": 4}
+{"x": 0}
+{"x": 12}
+---
+{"total": 10, "positive": 5, "negative": 2, "sum_positive": 22, "sum_negative": -6, "min_positive": 1, "min_negative": -5, "max_positive": 12, "max_negative": -1, "average": 1.6, "avg_in_range": 0.3333333333333333}

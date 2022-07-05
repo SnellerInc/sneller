@@ -1,0 +1,17 @@
+SELECT BIT_OR(y) FILTER (WHERE x < 3) AS or,
+       BIT_XOR(y) FILTER (WHERE x > 7) AS xor,
+       BIT_AND(y) FILTER (WHERE x >= 4 AND x <= 6) AS and
+FROM input
+---
+{"x": 0, "y": 1}
+{"x": 1, "y": 2}
+{"x": 2, "y": 3}
+{"x": 3, "y": 1}
+{"x": 4, "y": 7}
+{"x": 5, "y": 1}
+{"x": 6, "y": 2}
+{"x": 7, "y": 1}
+{"x": 8, "y": 3}
+{"x": 9, "y": 1}
+---
+{"or": 3, "xor": 2, "and": 0}

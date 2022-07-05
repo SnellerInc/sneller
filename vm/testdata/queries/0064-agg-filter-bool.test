@@ -1,0 +1,17 @@
+SELECT BOOL_AND(b) AS and_all,
+       BOOL_AND(b) FILTER (WHERE x > 6) AS and,
+       BOOL_OR(b) FILTER (WHERE x < 3) AS or
+FROM input
+---
+{"x": 0, "b": false}
+{"x": 1, "b": false}
+{"x": 2, "b": false}
+{"x": 3, "b": true}
+{"x": 4, "b": true}
+{"x": 5, "b": true}
+{"x": 6, "b": true}
+{"x": 7, "b": true}
+{"x": 8, "b": true}
+{"x": 9, "b": true}
+---
+{"and_all": false, "and": true, "or": false}

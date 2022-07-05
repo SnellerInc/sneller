@@ -1,0 +1,30 @@
+SELECT x,
+       BOOL_OR(b) FILTER (WHERE agg) AS or,
+       BOOL_AND(b) FILTER (WHERE agg) AS and
+FROM input
+GROUP BY x ORDER BY x
+---
+{"x": 0, "b": false, "agg": true}
+{"x": 0, "b": false, "agg": true}
+{"x": 0, "b": true,  "agg": true}
+{"x": 0, "b": true,  "agg": true}
+
+{"x": 1, "b": false, "agg": false}
+{"x": 1, "b": false, "agg": true}
+{"x": 1, "b": true,  "agg": true}
+{"x": 1, "b": true,  "agg": true}
+
+{"x": 2, "b": false, "agg": false}
+{"x": 2, "b": false, "agg": false}
+{"x": 2, "b": true,  "agg": true}
+{"x": 2, "b": true,  "agg": true}
+
+{"x": 3, "b": false, "agg": true}
+{"x": 3, "b": false, "agg": true}
+{"x": 3, "b": true,  "agg": false}
+{"x": 3, "b": true,  "agg": false}
+---
+{"x": 0, "or": true,  "and": false}
+{"x": 1, "or": true,  "and": false}
+{"x": 2, "or": true,  "and": true}
+{"x": 3, "or": false, "and": false}

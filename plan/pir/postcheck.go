@@ -34,10 +34,6 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 				err = errorf(agg, "window function in unexpected position")
 				return false
 			}
-			if agg.Filter != nil {
-				err = errorf(agg, "aggregate filters not yet supported")
-				return false
-			}
 		}
 		return true
 	})

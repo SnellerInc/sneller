@@ -1,0 +1,35 @@
+SELECT SUM(x) FILTER (WHERE x > 0) as sum_positive,
+       SUM(x) FILTER (WHERE x < 0) as sum_negative,
+       MIN(x) FILTER (WHERE x > 0) as min_positive,
+       MIN(x) FILTER (WHERE x < 0) as min_negative,
+       MAX(x) FILTER (WHERE x > 0) as max_positive,
+       MAX(x) FILTER (WHERE x < 0) as max_negative,
+       AVG(x) FILTER (WHERE x > 0) as avg_positive,
+       AVG(x) FILTER (WHERE x < 0) as avg_negative
+FROM input
+---
+{"x": 0.0}
+{"x": 0.5}
+{"x": -1.5}
+{"x": 8.25}
+{"x": 0.0}
+{"x": 0.0}
+{"x": 9.75}
+{"x": 0.0}
+{"x": -9.5}
+{"x": 0.0}
+{"x": 0.0}
+{"x": 5.25}
+{"x": -6.75}
+{"x": 3.25}
+{"x": 2.5}
+{"x": 0.0}
+{"x": -1.25}
+{"x": 4.75}
+{"x": 7.5}
+{"x": 0.0}
+{"x": -0.5}
+{"x": -1.0}
+{"x": -5.75}
+---
+{"sum_positive": 41.75, "sum_negative": -26.25, "min_positive": 0.5, "min_negative": -9.5, "max_positive": 9.75, "max_negative": -0.5, "avg_positive": 5.21875, "avg_negative": -3.75}
