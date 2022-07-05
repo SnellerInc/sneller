@@ -80,6 +80,9 @@ type binfo struct {
 	// representation of the expression, or otherwise
 	// return nil if the expression could not be simplified
 	simplify func(Hint, []Node) Node
+	// text, if non-nil, provides a custom
+	// textual representation of the built-in function
+	text func([]Node, *strings.Builder, bool)
 
 	// ret, if non-zero, specifies the return type
 	// of the expression
@@ -220,6 +223,8 @@ const (
 
 	TimeBucket
 
+	MakeList // MAKE_LIST(args...) constructs a list literal
+
 	Unspecified // catch-all for opaque built-ins
 	maxBuiltin
 )
@@ -326,6 +331,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"SIZE":                     ObjectSize,
 	"TABLE_GLOB":               TableGlob,
 	"TABLE_PATTERN":            TablePattern,
+	"MAKE_LIST":                MakeList,
 }
 
 var builtin2Name [maxBuiltin]string
@@ -904,6 +910,31 @@ func checkTablePattern(h Hint, args []Node) error {
 	return nil
 }
 
+// convert MAKE_LIST(...) into a constant list
+// when all the arguments are constant:
+func simplifyMakeList(h Hint, args []Node) Node {
+	var items []Constant
+	for i := range args {
+		c, ok := args[i].(Constant)
+		if !ok {
+			return nil
+		}
+		items = append(items, c)
+	}
+	return &List{Values: items}
+}
+
+func makeListText(args []Node, dst *strings.Builder, redact bool) {
+	dst.WriteByte('[')
+	for i := range args {
+		if i > 0 {
+			dst.WriteString(", ")
+		}
+		args[i].text(dst, redact)
+	}
+	dst.WriteByte(']')
+}
+
 var builtinInfo = [maxBuiltin]binfo{
 	Concat:     {check: variadicArgs(StringType), private: true, ret: StringType | MissingType, simplify: simplifyConcat},
 	Trim:       {check: checkTrim, ret: StringType | MissingType, simplify: simplifyTrim},
@@ -1007,6 +1038,8 @@ var builtinInfo = [maxBuiltin]binfo{
 	StructReplacement: {check: checkScalarReplacement, private: true, ret: StructType},
 
 	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType},
+
+	MakeList: {simplify: simplifyMakeList, ret: ListType, private: true, text: makeListText},
 
 	TableGlob:    {check: checkTableGlob, ret: AnyType, isTable: true},
 	TablePattern: {check: checkTablePattern, ret: AnyType, isTable: true},

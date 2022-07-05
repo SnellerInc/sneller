@@ -73,6 +73,7 @@ var sameq = []string{
 	"SELECT x, SUM(x) OVER (PARTITION BY y, z ORDER BY col0 ASC NULLS FIRST, col1 DESC NULLS FIRST) FROM db.foo",
 	"SELECT COUNT(*) FROM table",
 	"SELECT COUNT(*) AS total, COUNT(x) FILTER (WHERE x > 0) AS greater FROM table",
+	"SELECT [a, b, c] AS lst FROM foo",
 }
 
 func TestParseSFW(t *testing.T) {

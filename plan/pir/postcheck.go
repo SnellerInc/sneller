@@ -45,6 +45,26 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 	return err
 }
 
+func checkNoMakeList(e expr.Node) error {
+	var err error
+	v := visitfn(func(e expr.Node) bool {
+		if err != nil {
+			return false
+		}
+		b, ok := e.(*expr.Builtin)
+		if !ok {
+			return true
+		}
+		if b.Func == expr.MakeList {
+			err = errorf(e, "list construction not yet supported")
+			return false
+		}
+		return true
+	})
+	expr.Walk(v, e)
+	return err
+}
+
 func checkSortSize(t *Trace) error {
 	f, ok := t.Final().(*Order)
 	if ok {

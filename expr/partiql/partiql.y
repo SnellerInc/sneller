@@ -101,7 +101,7 @@ import (
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
-%type <values> value_list
+%type <values> value_list any_value_list
 %type <order> order_one_col
 %type <orders> order_expr order_cols
 %type <jk> join_kind
@@ -424,6 +424,10 @@ datum_or_parens
 {
   $$ = &expr.IsKey{Key: expr.IsNotFalse, Expr: $1}
 }
+| '[' any_value_list ']'
+{
+  $$ = expr.Call("MAKE_LIST", $2...)
+}
 
 // match (binding)+
 binding_list:
@@ -435,6 +439,12 @@ value_list:
 expr { $$ = []expr.Node{$1} } |
 '*' { $$ = []expr.Node{expr.Star{}} } |
 value_list ',' expr { $$ = append($1, $3) }
+
+// match (value)*
+any_value_list:
+expr { $$ = []expr.Node{$1} } |
+any_value_list ',' expr { $$ = append($1, $3) } |
+{ $$ = nil }
 
 maybe_window:
 OVER '(' PARTITION BY value_list order_expr ')'

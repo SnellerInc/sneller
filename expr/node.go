@@ -1861,6 +1861,10 @@ func (b *Builtin) setfield(name string, st *ion.Symtab, body []byte) error {
 }
 
 func (b *Builtin) text(dst *strings.Builder, redact bool) {
+	if info := b.info(); info != nil && info.text != nil {
+		info.text(b.Args, dst, redact)
+		return
+	}
 	dst.WriteString(b.Name())
 	dst.WriteByte('(')
 	for i := range b.Args {

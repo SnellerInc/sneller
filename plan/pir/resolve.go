@@ -42,6 +42,9 @@ func (b *Trace) Check(e expr.Node) error {
 	if err := checkAggregateWorkInProgress(e); err != nil {
 		return err
 	}
+	if err := checkNoMakeList(e); err != nil {
+		return err
+	}
 	return expr.CheckHint(e, b)
 }
 
