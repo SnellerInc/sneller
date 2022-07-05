@@ -986,6 +986,29 @@ func (a *Aggregate) simplify(h Hint) Node {
 	if a.Op == OpSum && TypeOf(a.Inner, h)&^(IntegerType|MissingType) == 0 {
 		a.Op = OpSumInt
 	}
+
+	if a.Filter != nil {
+		iscount := (a.Op == OpCount || a.Op == OpCountDistinct)
+		switch v := a.Filter.(type) {
+		case Null, Missing:
+			if iscount {
+				return Integer(0)
+			} else {
+				return Null{}
+			}
+		case Bool:
+			if v == Bool(true) {
+				a.Filter = nil
+			} else {
+				if iscount {
+					return Integer(0)
+				} else {
+					return Null{}
+				}
+			}
+		}
+	}
+
 	return a
 }
 

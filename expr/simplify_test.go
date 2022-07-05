@@ -634,6 +634,56 @@ func TestSimplify(t *testing.T) {
 			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
 			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
 		},
+		{
+			// COUNT(...) FILTER (WHERE false) => 0
+			&Aggregate{Op: OpCount, Inner: Star{}, Filter: Bool(false)},
+			Integer(0),
+		},
+		{
+			// COUNT(DISTINCT ...) FILTER (WHERE false) => NULL
+			&Aggregate{Op: OpCountDistinct, Inner: Star{}, Filter: Bool(false)},
+			Integer(0),
+		},
+		{
+			// aggregate(...) FILTER (WHERE false) => NULL
+			&Aggregate{Op: OpSum, Inner: Star{}, Filter: Bool(false)},
+			Null{},
+		},
+		{
+			// aggregate(...) FILTER (WHERE true) => aggregate(...)
+			&Aggregate{Op: OpCount, Inner: Star{}, Filter: Bool(true)},
+			&Aggregate{Op: OpCount, Inner: Star{}},
+		},
+		{
+			// COUNT(...) FILTER (WHERE null) => NULL
+			&Aggregate{Op: OpCount, Inner: Star{}, Filter: Null{}},
+			Integer(0),
+		},
+		{
+			// COUNT(DISTINCT ...) FILTER (WHERE null) => NULL
+			&Aggregate{Op: OpCountDistinct, Inner: Star{}, Filter: Null{}},
+			Integer(0),
+		},
+		{
+			// aggregate(...) FILTER (WHERE null) => NULL
+			&Aggregate{Op: OpSum, Inner: Star{}, Filter: Null{}},
+			Null{},
+		},
+		{
+			// COUNT(...) FILTER (WHERE null) => NULL
+			&Aggregate{Op: OpCount, Inner: Star{}, Filter: Missing{}},
+			Integer(0),
+		},
+		{
+			// COUNT(DISTINCT ...) FILTER (WHERE null) => NULL
+			&Aggregate{Op: OpCountDistinct, Inner: Star{}, Filter: Missing{}},
+			Integer(0),
+		},
+		{
+			// aggregate(...) FILTER (WHERE null) => NULL
+			&Aggregate{Op: OpSum, Inner: Star{}, Filter: Missing{}},
+			Null{},
+		},
 	}
 
 	for i := range testcases {
