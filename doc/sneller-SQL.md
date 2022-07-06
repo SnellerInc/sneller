@@ -564,6 +564,30 @@ never evaluates to a boolean, `BOOL_AND(expr)` yields `NULL`.
 evaluating `expr` for each row coerced to a boolean type. If `expr`
 never evaluates to a boolean, `BOOL_OR(expr)` yields `NULL`.
 
+### Filtered aggregates
+
+All aggregate functions accept an optional filter clause, which causes
+an aggregate to consume only the rows matching the given condition.
+Note that such conditions are applied **after** filtering rows with
+the main `WHERE` clause.
+
+The syntax of filter is:
+
+```sql
+aggregate FILTER (WHERE condition)
+```
+
+Example:
+
+```sql
+SELECT SUM(x) FILTER (WHERE x > 0) AS sum_positive,
+       MIN(x) FILTER (WHERE x < 0) AS min_negative,
+       COUNT(*) FILTER (WHERE x = 0) AS zero_count
+FROM table
+```
+
+See also [Postgres Aggregate Expressions](https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-AGGREGATES)
+
 ### Infix Operators
 
 #### `+`, `-`, `*`, `/`, `%`
