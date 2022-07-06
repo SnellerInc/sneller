@@ -1022,28 +1022,92 @@ func (t *Tree) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return t.EncodePart(dst, st, nil)
 }
 
-// EncodePart is equivalent to Encode,
-// except that it uses the function 'part'
-// to re-write table expressions during serialization.
+// EncodePart is equivalent to Encode, except that it
+// uses rw to re-write table expressions during
+// serialization.
 func (t *Tree) EncodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+	flat := t.flatten()
+	dst.BeginList(-1)
+	for i := range flat {
+		if err := flat[i].encodePart(dst, st, rw); err != nil {
+			return err
+		}
+	}
+	dst.EndList()
+	return nil
+}
+
+func (t *tree) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 	dst.BeginStruct(-1)
-	if len(t.Children) > 0 {
+	if len(t.children) > 0 {
 		dst.BeginField(st.Intern("children"))
 		dst.BeginList(-1)
-		for i := range t.Children {
-			if err := t.Children[i].EncodePart(dst, st, rw); err != nil {
-				return err
-			}
+		for j := range t.children {
+			dst.WriteInt(int64(t.children[j]))
 		}
 		dst.EndList()
 	}
 	dst.BeginField(st.Intern("op"))
 	dst.BeginList(-1)
-	err := encoderec(t.Op, dst, st, rw)
+	err := encoderec(t.op, dst, st, rw)
 	if err != nil {
 		return err
 	}
 	dst.EndList()
 	dst.EndStruct()
 	return nil
+}
+
+func (t *Tree) flatten() []tree {
+	var tf treeflattener
+	tf.put(t)
+	return tf.trees
+}
+
+type tree struct {
+	children []int
+	op       Op
+}
+
+func reconstitute(flat []tree) (*Tree, error) {
+	trees := make([]Tree, len(flat))
+	for i := range trees {
+		t := &trees[i]
+		t.Op = flat[i].op
+		if len(flat[i].children) > 0 {
+			t.Children = make([]*Tree, len(flat[i].children))
+			for i, j := range flat[i].children {
+				if j >= len(trees) {
+					return nil, fmt.Errorf("missing tree: %d", i)
+				}
+				t.Children[i] = &trees[j]
+			}
+		}
+	}
+	return &trees[0], nil
+}
+
+type treeflattener struct {
+	trees []tree
+	m     map[*Tree]int
+}
+
+func (m *treeflattener) put(t *Tree) int {
+	if idx, ok := m.m[t]; ok {
+		return idx
+	}
+	if m.m == nil {
+		m.m = make(map[*Tree]int)
+	}
+	idx := len(m.trees)
+	m.m[t] = idx
+	m.trees = append(m.trees, tree{op: t.Op})
+	if len(t.Children) > 0 {
+		t2 := &m.trees[idx]
+		t2.children = make([]int, len(t.Children))
+		for i := range t.Children {
+			t2.children[i] = m.put(t.Children[i])
+		}
+	}
+	return idx
 }

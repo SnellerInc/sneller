@@ -17,6 +17,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/SnellerInc/sneller/date"
@@ -27,6 +28,27 @@ import (
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/vm"
 )
+
+func TestFlattenTree(t *testing.T) {
+	root := mkplan(t, 1)
+	sub1 := mkplan(t, 1)
+	sub2 := mkplan(t, 1)
+	root.Children = []*Tree{sub1, sub1, sub2, sub1}
+	flat := root.flatten()
+	if len(flat) != 3 {
+		t.Fatalf("expected 3 flattened trees, got %d", len(flat))
+	}
+	got, err := reconstitute(flat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, root) {
+		t.Fatal("reconstituted tree did not match")
+	}
+	if got.Children[0] != got.Children[1] {
+		t.Fatal("children are not identical")
+	}
+}
 
 func BenchmarkDecodeTree(b *testing.B) {
 	blocks := []int{
@@ -51,15 +73,15 @@ func BenchmarkDecodeTree(b *testing.B) {
 	}
 }
 
-func mkplan(b *testing.B, n int) *Tree {
+func mkplan(tb testing.TB, n int) *Tree {
 	query := `SELECT * FROM '../testdata/parking.10n' LIMIT 1`
 	s, err := partiql.Parse([]byte(query))
 	if err != nil {
-		b.Fatal(err)
+		tb.Fatal(err)
 	}
 	tree, err := New(s, &benchenv{blocks: n})
 	if err != nil {
-		b.Fatal(err)
+		tb.Fatal(err)
 	}
 	return tree
 }
