@@ -90,6 +90,13 @@ func readToEOF(r io.Reader, dst []byte) (int, error) {
 // care of closing the outputs returned from dst.Open()
 // and waits for each goroutine to return.
 func SplitInput(dst QuerySink, parallel int, into func(io.Writer) error) error {
+	merge := func(first, second error) error {
+		ret := first
+		if ret == nil || errors.Is(ret, io.EOF) {
+			ret = second
+		}
+		return ret
+	}
 	if parallel <= 1 {
 		// Don't use goroutines if there is no parallelism - this makes debugging a bit easier.
 		w, err := dst.Open()
@@ -98,53 +105,41 @@ func SplitInput(dst QuerySink, parallel int, into func(io.Writer) error) error {
 		}
 
 		err = into(w)
-		closeErr := w.Close()
-
-		if err == nil || errors.Is(err, io.EOF) {
-			err = closeErr
-		}
-
-		return err
-	} else {
-		var wg sync.WaitGroup
-		errlist := make([]error, parallel)
-		opendone := make(chan struct{}, 1)
-		for i := 0; i < parallel; i++ {
-			w, err := dst.Open()
-			if err != nil {
-				if i == 0 {
-					return err
-				}
-				// just stop opening
-				// more parallel streams
-				break
+		return merge(err, w.Close())
+	}
+	var wg sync.WaitGroup
+	errlist := make([]error, parallel)
+	opendone := make(chan struct{}, 1)
+	for i := 0; i < parallel; i++ {
+		w, err := dst.Open()
+		if err != nil {
+			if i == 0 {
+				return err
 			}
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				err := into(w)
-				// make sure w.Close() is safe to call
-				<-opendone
-				if err == nil || errors.Is(err, io.EOF) {
-					errlist[i] = w.Close()
-				} else {
-					w.Close()
-					errlist[i] = err
-				}
-			}(i)
+			// just stop opening
+			// more parallel streams
+			break
 		}
-		// we don't start any children goroutines
-		// in earnest until we've completed our calls
-		// to Open(); this guarantees that the QuerySink
-		// does not have to manage calls to Open() concurrently
-		// with calls to Close() for each child thread.
-		close(opendone)
-		wg.Wait()
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			err := into(w)
+			// make sure w.Close() is safe to call
+			<-opendone
+			errlist[i] = merge(err, w.Close())
+		}(i)
+	}
+	// we don't start any children goroutines
+	// in earnest until we've completed our calls
+	// to Open(); this guarantees that the QuerySink
+	// does not have to manage calls to Open() concurrently
+	// with calls to Close() for each child thread.
+	close(opendone)
+	wg.Wait()
 
-		for i := range errlist {
-			if errlist[i] != nil {
-				return errlist[i]
-			}
+	for i := range errlist {
+		if errlist[i] != nil {
+			return errlist[i]
 		}
 	}
 	return nil

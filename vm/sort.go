@@ -423,6 +423,7 @@ func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
 }
 
 func (s *sortstateMulticolumn) Close() error {
+	s.findbc.reset()
 	s.parent.wg.Done()
 
 	return nil
@@ -511,6 +512,7 @@ func (s *sortstateSingleColumn) writeRows(delims []vmref) error {
 }
 
 func (s *sortstateSingleColumn) Close() error {
+	s.findbc.reset()
 	s.parent.recordsLock.Lock()
 
 	// merge column with the global one
@@ -772,6 +774,7 @@ outer:
 }
 
 func (s *sortstateKtop) Close() error {
+	s.findbc.reset()
 	s.parent.recordsLock.Lock()
 	base := len(s.parent.symtabs)
 	recs := s.ktop.Records()

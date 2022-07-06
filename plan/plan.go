@@ -834,7 +834,12 @@ func (o *OrderBy) exec(dst vm.QuerySink, ep *ExecParams) error {
 	}
 
 	sorter := vm.NewOrder(writer, orderBy, limit, ep.Parallel)
-	return o.From.exec(sorter, ep)
+	err = o.From.exec(sorter, ep)
+	err2 := writer.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
 }
 
 func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab) error {
