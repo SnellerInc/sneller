@@ -1076,6 +1076,13 @@ ORDER BY m, d, h`,
 				"PROJECT SUBSTRING(str, 2, 2) AS x, HASH_REPLACEMENT(0, 'scalar', '$__key', SUBSTRING(str, 2, 2)) AS ysum",
 			},
 		},
+		{
+			input: `SELECT (x + 1) AS y, (y + 1) AS z FROM table`,
+			expect: []string{
+				"ITERATE table",
+				"PROJECT x + 1 AS y, x + 2 AS z",
+			},
+		},
 	}
 
 	for i := range tests {

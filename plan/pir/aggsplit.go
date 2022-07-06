@@ -110,7 +110,7 @@ type flattener struct {
 
 func (f *flattener) Rewrite(e expr.Node) expr.Node {
 	if expr.IsIdentifier(e, f.matchp) {
-		return f.result
+		return expr.Copy(f.result)
 	}
 	return e
 }
