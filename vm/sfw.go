@@ -72,8 +72,11 @@ type rowConsumer interface {
 // to write row data to it.
 func asRowConsumer(dst io.WriteCloser) rowConsumer {
 	if s, ok := dst.(*rowSplitter); ok {
+		noLeakCheck(s)
+		ret := s.rowConsumer
+		*s = rowSplitter{}
 		// most common case
-		return s.rowConsumer
+		return ret
 	}
 	if rc, ok := dst.(rowConsumer); ok {
 		return rc
@@ -101,7 +104,9 @@ const defaultDelims = 512
 // and produces a rowSplitter that splits materialized row data
 // into individual rows for consumption by a RowConsumer
 func splitter(q rowConsumer) *rowSplitter {
-	return &rowSplitter{rowConsumer: q, delimhint: defaultDelims}
+	s := &rowSplitter{rowConsumer: q, delimhint: defaultDelims}
+	leakCheck(s)
+	return s
 }
 
 // write vmm-allocated bytes w/o copying
@@ -184,6 +189,7 @@ func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 }
 
 func (q *rowSplitter) Close() error {
+	noLeakCheck(q)
 	err := q.rowConsumer.Close()
 	// the child may have references to q.shared,
 	// so it needs to be closed before we can drop it:

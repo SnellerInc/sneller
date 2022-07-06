@@ -134,7 +134,6 @@ func (p *Projection) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	rc, _ := dst.(rowConsumer)
 	pj := &projector{parent: p, dst: dst, dstrc: rc}
 

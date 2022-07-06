@@ -389,7 +389,6 @@ type aggregateLocal struct {
 	parent      *Aggregate
 	prog        prog
 	bc          bytecode
-	dst         rowConsumer
 	rowCount    uint64
 	partialData []byte
 }
@@ -421,18 +420,12 @@ func (a Aggregation) String() string {
 }
 
 func (q *Aggregate) Open() (io.WriteCloser, error) {
-	r, err := q.rest.Open()
-	if err != nil {
-		return nil, err
-	}
-
 	aggregateDataSize := len(q.initialData)
 	partialData := make([]byte, aggregateDataSize)
 	copy(partialData, q.initialData)
 
 	return splitter(&aggregateLocal{
 		parent:      q,
-		dst:         asRowConsumer(r),
 		rowCount:    0,
 		partialData: partialData,
 	}), nil
@@ -481,11 +474,7 @@ func (q *Aggregate) Close() error {
 }
 
 func (p *aggregateLocal) symbolize(st *symtab) error {
-	err := recompile(st, p.parent.prog, &p.prog, &p.bc)
-	if err != nil {
-		return err
-	}
-	return p.dst.symbolize(st)
+	return recompile(st, p.parent.prog, &p.prog, &p.bc)
 }
 
 func (p *aggregateLocal) writeRows(delims []vmref) error {
@@ -501,7 +490,7 @@ func (p *aggregateLocal) Close() error {
 	mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateKinds)
 	p.partialData = nil
 	p.bc.reset()
-	return p.dst.Close()
+	return nil
 }
 
 // NewAggregate constructs an aggregation QuerySink.
