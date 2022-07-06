@@ -254,6 +254,22 @@ func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
 	return lst, nil
 }
 
+// stripInlineComment removes comment from **correctly** formated line.
+// For example: stripInlineComment(`{"x": 5} # sample data`) => `{"x": 5}`
+func stripInlineComment(line []byte) []byte {
+	pos := bytes.LastIndexByte(line, '}')
+	if pos == -1 {
+		return line
+	}
+
+	trimmed := bytes.TrimSpace(line[pos+1:])
+	if len(trimmed) == 0 || trimmed[0] == '#' {
+		return line[:pos+1]
+	}
+
+	return line
+}
+
 func flatten(lst []ion.Datum, st *ion.Symtab) []byte {
 	var outbuf ion.Buffer
 	for i := range lst {
@@ -266,7 +282,7 @@ func flatten(lst []ion.Datum, st *ion.Symtab) []byte {
 	return outbuf.Bytes()
 }
 
-func todash(rd *bufio.Reader) ([]byte, error) {
+func todash(rd *bufio.Reader, jsonl bool) ([]byte, error) {
 	var out []byte
 	for {
 		line, pre, err := rd.ReadLine()
@@ -282,6 +298,10 @@ func todash(rd *bufio.Reader) ([]byte, error) {
 		// allow # line comments iff they begin the line
 		if len(line) > 0 && line[0] == '#' {
 			continue
+		}
+		// strip inline comment from jsonl
+		if jsonl && len(line) > 0 && line[0] == '{' {
+			line = stripInlineComment(line)
 		}
 		out = append(out, line...)
 		out = append(out, '\n')
@@ -523,17 +543,20 @@ func readPath(t testing.TB, fname string) (query []byte, inputs [][]byte, output
 	}
 	defer f.Close()
 	rd := bufio.NewReader(f)
-	query, err = todash(rd)
+	jsonl := false
+	query, err = todash(rd, jsonl)
 	if err != nil {
 		t.Fatal(err)
 	}
 	inputs = make([][]byte, 1)
-	inputs[0], err = todash(rd)
+	jsonl = true
+	inputs[0], err = todash(rd, jsonl)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for first := true; ; first = false {
-		b, err := todash(rd)
+		jsonl = true
+		b, err := todash(rd, jsonl)
 		if err != nil && err != io.EOF {
 			t.Fatal(err)
 		}
