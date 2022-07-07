@@ -17,6 +17,8 @@ package dcache
 import (
 	"io"
 	"sync"
+
+	"github.com/SnellerInc/sneller/vm"
 )
 
 type reservation struct {
@@ -111,11 +113,13 @@ func (r *reservation) Write(p []byte) (int, error) {
 
 func (r *reservation) close(err error) {
 	if r.primary.ret != nil {
+		vm.HintEndSegment(r.primary.dst)
 		r.primary.ret <- err
 		r.primary.ret = nil
 	}
 	for i := range r.aux {
 		if r.aux[i].ret != nil {
+			vm.HintEndSegment(r.aux[i].dst)
 			r.aux[i].ret <- err
 			r.aux[i].ret = nil
 		}

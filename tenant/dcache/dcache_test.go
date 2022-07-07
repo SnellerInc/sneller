@@ -62,11 +62,12 @@ func (t *testLogger) Printf(f string, args ...interface{}) {
 }
 
 type testSegOutput struct {
-	raw   int64
-	from  *testSegment
-	refs  int32
-	segok []int32
-	rep   int
+	raw     int64
+	from    *testSegment
+	refs    int32
+	endsegs int32
+	segok   []int32
+	rep     int
 
 	inject struct {
 		err    error
@@ -104,6 +105,12 @@ func (t *testSegOutput) Write(p []byte) (int, error) {
 		return 0, t.inject.err
 	}
 	return len(p), nil
+}
+
+// implement vm.EndSegmentWriter so that
+// we can test that we were notified correctly
+func (t *testSegOutput) EndSegment() {
+	atomic.AddInt32(&t.endsegs, 1)
 }
 
 func hashname(buf []byte) string {
@@ -198,6 +205,9 @@ func (t *testSegOutput) check() error {
 		if int(t.segok[i]) != t.rep {
 			return fmt.Errorf("segment %d written %d times, not %d", i, t.segok[i], t.rep)
 		}
+	}
+	if int(t.endsegs) != t.rep {
+		return fmt.Errorf("%d EndSegment calls, but written %d times", t.endsegs, t.rep)
 	}
 	return nil
 }
@@ -596,6 +606,7 @@ func TestBadDir(t *testing.T) {
 
 type multiOutput struct {
 	possible []*testSegOutput
+	endsegs  int32
 }
 
 func (mo *multiOutput) Open() (io.WriteCloser, error) {
@@ -616,8 +627,13 @@ func (mo *multiOutput) Write(p []byte) (int, error) {
 	return 0, fmt.Errorf("segment %s not recognized in any input", name)
 }
 
+func (mo *multiOutput) EndSegment() {
+	atomic.AddInt32(&mo.endsegs, 1)
+}
+
 func (mo *multiOutput) check() error {
 	for i := range mo.possible {
+		mo.possible[i].endsegs = mo.endsegs / int32(len(mo.possible))
 		if err := mo.possible[i].check(); err != nil {
 			return err
 		}

@@ -89,6 +89,12 @@ func (c chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 			return err
 		}
 	}
+	if shw, ok := w.(vm.EndSegmentWriter); ok {
+		shw.EndSegment()
+	} else {
+		w.Close()
+		return fmt.Errorf("%T not an EndSegmentWriter?", w)
+	}
 	return w.Close()
 }
 
@@ -123,6 +129,12 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 			if err != nil {
 				w.Close()
 				*errp = err
+			}
+			if shw, ok := w.(vm.EndSegmentWriter); ok {
+				shw.EndSegment()
+			} else {
+				w.Close()
+				*errp = fmt.Errorf("%T not an EndSegmentWriter?", w)
 			}
 			*errp = w.Close()
 		}(outputs[i], p[i], &errors[i])

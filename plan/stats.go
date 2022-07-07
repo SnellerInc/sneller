@@ -83,6 +83,8 @@ type bytesTracker struct {
 type writeTracker struct {
 	w      io.WriteCloser
 	parent *bytesTracker
+	// cached assertion of w to vm.EndSegmentWriter
+	hint vm.EndSegmentWriter
 }
 
 func (b *bytesTracker) Open() (io.WriteCloser, error) {
@@ -90,10 +92,18 @@ func (b *bytesTracker) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+	h, _ := dst.(vm.EndSegmentWriter)
 	return &writeTracker{
 		w:      dst,
 		parent: b,
+		hint:   h,
 	}, nil
+}
+
+func (w *writeTracker) EndSegment() {
+	if w.hint != nil {
+		w.hint.EndSegment()
+	}
 }
 
 func (w *writeTracker) Write(p []byte) (int, error) {

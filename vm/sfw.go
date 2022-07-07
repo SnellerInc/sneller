@@ -188,6 +188,39 @@ func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 	return nil
 }
 
+// EndSegmentWriter is implemented by
+// some io.WriteClosers returned by
+// QuerySink.Open.
+//
+// See also: HintEndSegment.
+type EndSegmentWriter interface {
+	io.Writer
+	EndSegment()
+}
+
+// HintEndSegment calls EndSegment() on w
+// if it can be cast to an EndSegmentWriter.
+//
+// Callers that partition data into logical
+// segments that begin with a fresh symbol table
+// can use HintEndSegment as a hint to release temporary
+// resources (like vm memory) that are specific to
+// the most-recently-processed segment.
+func HintEndSegment(w io.Writer) {
+	if esw, ok := w.(EndSegmentWriter); ok {
+		esw.EndSegment()
+	}
+}
+
+// EndSegment implements blockfmt.SegmentHintWriter.EndSegment
+func (q *rowSplitter) EndSegment() {
+	// since we know we will have to re-build the symbol table
+	// anyway, we can free the symbol table memory so that
+	// interleaved queries can use the same vm buffers
+	q.symbolized = false
+	q.shared.Reset()
+}
+
 func (q *rowSplitter) Close() error {
 	noLeakCheck(q)
 	err := q.rowConsumer.Close()
