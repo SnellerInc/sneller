@@ -62,7 +62,7 @@ func (v *validator) Write(p []byte) (int, error) {
 		if err != nil {
 			return v.align - len(p), fmt.Errorf("validator.Write: %w", err)
 		}
-		if _, ok := dat.(ion.UntypedNull); ok {
+		if dat.Null() {
 			// nop pad
 			continue
 		}
@@ -120,7 +120,7 @@ func TestChunker(t *testing.T) {
 	}
 }
 
-func timestamp(s string) ion.Timestamp {
+func timestamp(s string) ion.Datum {
 	t, ok := date.Parse([]byte(s))
 	if !ok {
 		panic("bad timestamp: " + s)
@@ -272,7 +272,7 @@ func checkEncoding(t *testing.T, buf *rangeBuf, align int) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, ok := d.(*ion.Struct)
+		s, ok := d.Struct()
 		if !ok {
 			continue
 		}
@@ -447,8 +447,10 @@ func dumpRanges(allRanges [][]ranges) {
 			if i > 0 {
 				fmt.Println("}, {")
 			}
-			min, _ := json.Marshal(date.Time(r.min.(ion.Timestamp)))
-			max, _ := json.Marshal(date.Time(r.max.(ion.Timestamp)))
+			tmin, _ := r.min.Timestamp()
+			tmax, _ := r.max.Timestamp()
+			min, _ := json.Marshal(tmin)
+			max, _ := json.Marshal(tmax)
 			fmt.Printf("\tpath: %#v,\n", r.path)
 			fmt.Printf("\tmin: timestamp(%s),\n", min)
 			fmt.Printf("\tmax: timestamp(%s),\n", max)
@@ -495,13 +497,13 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, ok := dat.(*ion.Struct)
+		s, ok := dat.Struct()
 		if !ok {
 			continue
 		}
 		n++
 		s.Each(func(f ion.Field) bool {
-			ts, ok := f.Value.(ion.Timestamp)
+			ts, ok := f.Value.Timestamp()
 			if !ok {
 				return true
 			}
@@ -509,8 +511,8 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 			for j := range r {
 				if len(r[j].path) == 1 && r[j].path[0] == f.Label {
 					found = true
-					min := r[j].min.(ion.Timestamp)
-					max := r[j].max.(ion.Timestamp)
+					min, _ := r[j].min.Timestamp()
+					max, _ := r[j].max.Timestamp()
 					if date.Time(ts).Before(date.Time(min)) {
 						t.Errorf("value %s before min for block %s", date.Time(ts), date.Time(min))
 					}
@@ -532,17 +534,17 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 	return n
 }
 
-func results(t *testing.T, buf []byte) []*ion.Struct {
+func results(t *testing.T, buf []byte) []ion.Struct {
 	var st ion.Symtab
 	var dat ion.Datum
 	var err error
-	var out []*ion.Struct
+	var out []ion.Struct
 	for len(buf) > 0 {
 		dat, buf, err = ion.ReadDatum(&st, buf)
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, ok := dat.(*ion.Struct)
+		s, ok := dat.Struct()
 		if ok {
 			out = append(out, s)
 		}
@@ -558,12 +560,12 @@ func checkEquivalent(t *testing.T, left, right []byte) {
 		t.Fatalf("left has %d results, right has %d", len(gotleft), len(gotright))
 	}
 	for i := range gotleft {
-		if !ion.Equal(gotleft[i], gotright[i]) {
+		if !gotleft[i].Equal(gotright[i]) {
 			f0 := gotleft[i].Fields(nil)
 			f1 := gotright[i].Fields(nil)
 			for len(f0) > 0 &&
 				len(f1) > 0 &&
-				f0[0] == f1[0] {
+				f0[0].Equal(&f1[0]) {
 				f0 = f0[1:]
 				f1 = f1[1:]
 			}
@@ -679,16 +681,16 @@ func TestSyntheticRanges(t *testing.T) {
 				continue
 			}
 			if len(path) == 1 {
-				ts, ok := lst[i].Value.(ion.Timestamp)
+				ts, ok := lst[i].Value.Timestamp()
 				if !ok {
 					continue
 				}
-				min := min.(ion.Timestamp)
-				max := max.(ion.Timestamp)
+				min, _ := min.Timestamp()
+				max, _ := max.Timestamp()
 				if date.Time(ts).Before(date.Time(min)) || date.Time(ts).After(date.Time(max)) {
 					t.Errorf("value %s %s out of range [%s, %s]", path[0], date.Time(ts), date.Time(min), date.Time(max))
 				}
-			} else if st, ok := lst[i].Value.(*ion.Struct); ok {
+			} else if st, ok := lst[i].Value.Struct(); ok {
 				walkRange(st.Fields(nil), path[1:], min, max)
 			}
 		}
@@ -705,7 +707,7 @@ func TestSyntheticRanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, ok := dat.(*ion.Struct)
+			s, ok := dat.Struct()
 			if !ok {
 				continue
 			}
@@ -751,12 +753,12 @@ func TestChunkerChangingSymbols(t *testing.T) {
 	var block0, block1 []byte
 
 	// deterministic structure for row n
-	forRow := func(st *ion.Symtab, n int) *ion.Struct {
+	forRow := func(st *ion.Symtab, n int) ion.Struct {
 		return ion.NewStruct(st,
 			[]ion.Field{
 				{
 					Label: "row",
-					Value: ion.Uint(n),
+					Value: ion.Uint(uint64(n)),
 				},
 				{
 					Label: "foo",
@@ -770,11 +772,11 @@ func TestChunkerChangingSymbols(t *testing.T) {
 					Label: "xyz",
 					Value: ion.NewList(nil, []ion.Datum{
 						ion.Int(-1), ion.Uint(1),
-					}),
+					}).Datum(),
 				},
 				{
 					Label: "quux",
-					Value: ion.UntypedNull{},
+					Value: ion.Null,
 				},
 				{
 					Label: "timestamp",
@@ -854,9 +856,9 @@ func TestChunkerChangingSymbols(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, ok := dat.(*ion.Struct)
+			s, ok := dat.Struct()
 			if !ok {
-				if _, ok := dat.(ion.UntypedNull); !ok {
+				if !dat.Null() {
 					t.Error("got non-null pad datum?")
 				}
 				continue
@@ -864,7 +866,7 @@ func TestChunkerChangingSymbols(t *testing.T) {
 			want := forRow(&outst, n)
 			n++
 
-			if !ion.Equal(s, want) {
+			if !s.Equal(want) {
 				t.Errorf("first: %#v", s)
 				t.Errorf("want : %#v", want)
 				t.Fatal("not equal")

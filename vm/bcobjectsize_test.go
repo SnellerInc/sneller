@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -32,9 +33,9 @@ func TestSizeUnsupportedIonValues(t *testing.T) {
 	values = append(values, ion.String("xyz123"))
 	values = append(values, ion.Bool(true))
 	values = append(values, ion.Bool(false))
-	values = append(values, ion.Timestamp{})
-	values = append(values, &ion.Annotation{})
-	values = append(values, ion.Blob{0x01, 0x02})
+	values = append(values, ion.Timestamp(date.Time{}))
+	values = append(values, ion.Annotation(nil, "", ion.Null))
+	values = append(values, ion.Blob([]byte{0x01, 0x02}))
 	values = append(values, []byte{0x00})
 	values = append(values, []byte{0x00})
 	values = append(values, []byte{0x00})
@@ -168,10 +169,10 @@ func TestSizeEmptyContainers(t *testing.T) {
 func TestSizeList(t *testing.T) {
 	expectedLengths := [16]uint64{1, 10, 50, 7, 0, 12, 42, 89, 300, 111, 4, 0, 20, 30, 51, 230}
 
-	makeList := func(size int) *ion.List {
+	makeList := func(size int) ion.List {
 		list := make([]ion.Datum, size)
 		for i := range list {
-			list[i] = ion.Int(i + 1)
+			list[i] = ion.Int(int64(i + 1))
 		}
 		return ion.NewList(nil, list)
 	}
@@ -179,7 +180,7 @@ func TestSizeList(t *testing.T) {
 	var values []interface{}
 	for i := range expectedLengths {
 		size := int(expectedLengths[i])
-		values = append(values, makeList(size))
+		values = append(values, makeList(size).Datum())
 	}
 
 	var ctx bctestContext
@@ -216,9 +217,9 @@ func TestSizeListWithNulls(t *testing.T) {
 		}
 		list := make([]ion.Datum, size)
 		for i := range list {
-			list[i] = ion.Int(i + 1)
+			list[i] = ion.Int(int64(i + 1))
 		}
-		return ion.NewList(nil, list)
+		return ion.NewList(nil, list).Datum()
 	}
 
 	var expectedLengths [16]uint64
@@ -279,11 +280,11 @@ func TestSizeStruct(t *testing.T) {
 	var symtab ion.Symtab
 
 	// create structure {"field1": 1, "field2": 2, ..., "fieldN": N}
-	makeStruct := func(size int) *ion.Struct {
+	makeStruct := func(size int) ion.Struct {
 		fields := make([]ion.Field, size)
 		for i := range fields {
 			fields[i].Label = fmt.Sprintf("field%d", i+1)
-			fields[i].Value = ion.Int(i + 1)
+			fields[i].Value = ion.Int(int64(i + 1))
 		}
 		return ion.NewStruct(&symtab, fields)
 	}
@@ -291,7 +292,7 @@ func TestSizeStruct(t *testing.T) {
 	var values []interface{}
 	for i := range expectedLengths {
 		size := int(expectedLengths[i])
-		values = append(values, makeStruct(size))
+		values = append(values, makeStruct(size).Datum())
 	}
 
 	var ctx bctestContext

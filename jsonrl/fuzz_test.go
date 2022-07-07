@@ -100,14 +100,10 @@ func FuzzConvert(f *testing.F) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if d == nil {
+			if d.Empty() || d.Null() {
 				continue
 			}
-			if _, ok := d.(ion.UntypedNull); ok {
-				continue
-			}
-			_, ok := d.(*ion.Struct)
-			if !ok {
+			if d.Type() != ion.StructType {
 				t.Errorf("got a non-struct value %#v", d)
 			}
 		}

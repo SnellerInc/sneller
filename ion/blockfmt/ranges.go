@@ -31,11 +31,8 @@ type Range interface {
 }
 
 func NewRange(path []string, min, max ion.Datum) Range {
-	if min == nil || max == nil {
-		panic("blockfmt.NewRange: min/max must not be nil")
-	}
-	if min, ok := min.(ion.Timestamp); ok {
-		if max, ok := max.(ion.Timestamp); ok {
+	if min, ok := min.Timestamp(); ok {
+		if max, ok := max.Timestamp(); ok {
 			return &TimeRange{
 				path: path,
 				min:  date.Time(min),

@@ -290,7 +290,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now.Add(-1*time.Minute)),
 			), blockfmt.NewRange(
 				[]string{"bar"},
-				ion.Timestamp(now.Add(1*time.Hour+1)),
+				ion.Timestamp(now.Add(1*time.Hour+time.Millisecond)),
 				ion.Timestamp(now.Add(2*time.Hour)),
 			)},
 			expect: never,
@@ -352,7 +352,7 @@ func TestCompileFilter(t *testing.T) {
 			// Right below min
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"bar"},
-				ion.Timestamp(now.Add(1)),
+				ion.Timestamp(now.Add(time.Millisecond)),
 				ion.Timestamp(now.Add(time.Minute)),
 			)},
 			expect: never,

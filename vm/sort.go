@@ -235,7 +235,6 @@ func (s *Order) finalizeSingleColumnSorting() error {
 
 func (s *Order) finalizeKtop() error {
 	var row []ion.Field
-	var str ion.Struct
 	var sym ion.Symbol
 	var val ion.Datum
 	var tmp ion.Buffer
@@ -263,8 +262,7 @@ func (s *Order) finalizeKtop() error {
 				Value: val,
 			})
 		}
-		str.SetFields(&globalst, row)
-		str.Encode(&tmp, &globalst)
+		tmp.WriteStruct(&globalst, row)
 	}
 	slice := tmp.Size()
 	globalst.Marshal(&tmp, true)

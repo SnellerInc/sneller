@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"reflect"
 
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -219,7 +220,8 @@ func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) 
 			chunk = buf.Bytes()
 
 		default:
-			panic("only bytes, string and ion.Datum are supported")
+			typ := reflect.TypeOf(v).String()
+			panic("only bytes, string and ion.Datum are supported, got " + typ)
 		}
 		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
 		if !ok {

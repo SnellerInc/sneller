@@ -42,6 +42,7 @@ const (
 	StructType
 	AnnotationType
 	ReservedType
+	InvalidType = Type(0xff)
 )
 
 func (t Type) String() string {
@@ -204,10 +205,9 @@ func (t Type) Integer() bool {
 	}
 }
 
-// TypeError is the type of the error
-// returned from read operations that
-// try to evaluate a function that
-// is typed incorrectly for the encoded data.
+// TypeError is the error returned by functions
+// when the concrete type of a datum does not match the
+// type expected by the function.
 type TypeError struct {
 	Wanted, Found Type
 	Func          string
@@ -314,7 +314,7 @@ func ReadFloat64(msg []byte) (float64, []byte, error) {
 	return 0, nil, fmt.Errorf("ReadFloat64: cannot parse descriptor %x", msg[0])
 }
 
-// ReadFloat32 reads an ion flaot as a float32
+// ReadFloat32 reads an ion float as a float32
 // and returns the value and the subsequent
 // message bytes.
 func ReadFloat32(msg []byte) (float32, []byte, error) {

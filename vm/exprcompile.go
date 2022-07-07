@@ -1084,24 +1084,27 @@ func (p *prog) member(e expr.Node, values []expr.Constant) (*value, error) {
 }
 
 func (p *prog) recordDatum(d ion.Datum, st syms) {
-	switch d := d.(type) {
-	case *ion.Struct:
+	switch d.Type() {
+	case ion.StructType:
+		d, _ := d.Struct()
 		d.Each(func(f ion.Field) bool {
 			p.record(st.Get(f.Sym), f.Sym)
 			p.recordDatum(f.Value, st)
 			return true
 		})
-	case *ion.List:
+	case ion.ListType:
+		d, _ := d.List()
 		d.Each(func(d ion.Datum) bool {
 			p.recordDatum(d, st)
 			return true
 		})
-	case ion.Interned:
-		sym, ok := st.Symbolize(string(d))
+	case ion.SymbolType:
+		d, _ := d.String()
+		sym, ok := st.Symbolize(d)
 		if !ok {
 			sym = ^ion.Symbol(0)
 		}
-		p.record(string(d), sym)
+		p.record(d, sym)
 	}
 }
 

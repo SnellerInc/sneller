@@ -314,7 +314,7 @@ func TestParseWithHints(t *testing.T) {
 	}
 }
 
-func timestamp(s string) ion.Timestamp {
+func timestamp(s string) ion.Datum {
 	t, ok := date.Parse([]byte(s))
 	if !ok {
 		panic("bad timestamp: " + s)

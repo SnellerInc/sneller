@@ -61,7 +61,7 @@ func TestRematerializeIssue561(t *testing.T) {
 	var st ion.Symtab
 	var tmp bytes.Buffer
 	var out [][]byte
-	for _, d := range []ion.Datum{row0, row1} {
+	for _, d := range []ion.Struct{row0, row1} {
 		d.Encode(&buf0, &st)
 		st.Marshal(&buf1, true)
 		tmp.Write(buf1.Bytes())

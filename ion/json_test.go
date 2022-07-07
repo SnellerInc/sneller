@@ -79,15 +79,12 @@ func TestToJSON(t *testing.T) {
 						Value: Int(100),
 					},
 				},
-			),
+			).Datum(),
 			want: `{"blob": "AAEC", "int": 100}`,
 		},
 		{
 			// x::y -> {"$ion_annotation$x":y}
-			item: &Annotation{
-				Label: "foo",
-				Value: Int(10),
-			},
+			item:     Annotation(nil, "foo", Int(10)),
 			annotate: true,
 			want:     `{"$ion_annotation$foo":10}}`,
 		},
@@ -139,7 +136,7 @@ func TestJSONArray(t *testing.T) {
 	st0 := NewStruct(nil,
 		[]Field{
 			{Label: "Foo", Value: String("foo")},
-			{Label: "xyz", Value: UntypedNull{}},
+			{Label: "xyz", Value: Null},
 		},
 	)
 	st1 := NewStruct(nil,
@@ -148,10 +145,7 @@ func TestJSONArray(t *testing.T) {
 			{Label: "abc", Value: Uint(123)},
 		},
 	)
-	ann0 := &Annotation{
-		Label: "final_result",
-		Value: String("some text here"),
-	}
+	ann0 := Annotation(nil, "final_result", String("some text here"))
 
 	var tmp Buffer
 	var st Symtab

@@ -29,7 +29,7 @@ func TestDatumEncode(t *testing.T) {
 		datum Datum
 		str   string
 	}{
-		{UntypedNull{}, "null"},
+		{Null, "null"},
 		{String("foo"), `"foo"`},
 		{Int(-1), "-1"},
 		{Uint(1000), "1000"},
@@ -39,13 +39,13 @@ func TestDatumEncode(t *testing.T) {
 			datum: NewStruct(nil,
 				[]Field{
 					{"foo", String("foo"), 0},
-					{"bar", UntypedNull{}, 0},
+					{"bar", Null, 0},
 					{"inner", NewList(nil, []Datum{
 						Int(-1), Uint(0), Uint(1),
-					}), 0},
+					}).Datum(), 0},
 					{"name", String("should-come-first"), 0},
 				},
-			),
+			).Datum(),
 			str: `{"name": "should-come-first", "foo": "foo", "bar": null, "inner": [-1, 0, 1]}`,
 		},
 	}
@@ -185,10 +185,12 @@ func FuzzReadDatum(f *testing.F) {
 			if err != nil {
 				break
 			}
-			switch d := d.(type) {
-			case *List:
+			switch d.Type() {
+			case ListType:
+				d, _ := d.List()
 				d.Each(func(d Datum) bool { return true })
-			case *Struct:
+			case StructType:
+				d, _ := d.Struct()
 				d.Each(func(f Field) bool { return true })
 			}
 		}

@@ -202,31 +202,33 @@ func (e *queryenv) ListTables(db string) ([]string, error) {
 
 // walk d and replace 50% of the strings with stringSyms
 func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
-	switch d := d.(type) {
-	case *ion.Struct:
+	switch d.Type() {
+	case ion.StructType:
+		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].Value.(ion.String); ok {
+			if str, ok := fields[i].Value.String(); ok {
 				if r.Intn(2) == 0 {
-					fields[i].Value = ion.Interned(str)
+					fields[i].Value = ion.Interned(st, str)
 				}
 			} else {
 				fields[i].Value = symbolizeRandomly(fields[i].Value, st, r)
 			}
 		}
-		return ion.NewStruct(st, fields)
-	case *ion.List:
+		return ion.NewStruct(st, fields).Datum()
+	case ion.ListType:
+		d, _ := d.List()
 		items := d.Items(nil)
 		for i := range items {
-			if str, ok := items[i].(ion.String); ok {
+			if str, ok := items[i].String(); ok {
 				if r.Intn(2) == 0 {
-					items[i] = ion.Interned(str)
+					items[i] = ion.Interned(st, str)
 				}
 			} else {
 				items[i] = symbolizeRandomly(items[i], st, r)
 			}
 		}
-		return ion.NewList(st, items)
+		return ion.NewList(st, items).Datum()
 	}
 	return d
 }
@@ -385,27 +387,29 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 }
 
 func unsymbolize(d ion.Datum, st *ion.Symtab) ion.Datum {
-	switch d := d.(type) {
-	case *ion.Struct:
+	switch d.Type() {
+	case ion.StructType:
+		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].Value.(ion.Interned); ok {
+			if str, ok := fields[i].Value.String(); ok {
 				fields[i].Value = ion.String(str)
 			} else {
 				fields[i].Value = unsymbolize(fields[i].Value, st)
 			}
 		}
-		return ion.NewStruct(st, fields)
-	case *ion.List:
+		return ion.NewStruct(st, fields).Datum()
+	case ion.ListType:
+		d, _ := d.List()
 		items := d.Items(nil)
 		for i := range items {
-			if str, ok := items[i].(ion.Interned); ok {
+			if str, ok := items[i].String(); ok {
 				items[i] = ion.String(str)
 			} else {
 				items[i] = unsymbolize(items[i], st)
 			}
 		}
-		return ion.NewList(st, items)
+		return ion.NewList(st, items).Datum()
 	}
 	return d
 }
@@ -456,7 +460,7 @@ func shuffleOutput(q *expr.Query) bool {
 const shufflecount = 10
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {
-	if d == nil {
+	if d.Empty() {
 		return "<nil>"
 	}
 	var ib ion.Buffer

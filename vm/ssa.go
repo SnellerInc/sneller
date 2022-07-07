@@ -4935,7 +4935,7 @@ func (c *compilestate) litcmp(v *value, i interface{}) {
 		case float64:
 			d = ion.Float(i)
 		case float32:
-			d = ion.Float(float32(i)) // TODO: maybe don't convert here...
+			d = ion.Float(float64(i)) // TODO: maybe don't convert here...
 		case int64:
 			d = ion.Int(i)
 		case int:

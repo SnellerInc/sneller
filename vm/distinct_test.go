@@ -57,8 +57,7 @@ func TestDistinct(t *testing.T) {
 			t.Error(err)
 			break
 		}
-		null := ion.UntypedNull{}
-		if dat == null {
+		if dat.Null() {
 			break
 		}
 		outrows = append(outrows, dat)
@@ -69,7 +68,7 @@ func TestDistinct(t *testing.T) {
 	// collect the VendorID fields
 	var vendors []string
 	for i := range outrows {
-		s, ok := outrows[i].(*ion.Struct)
+		s, ok := outrows[i].Struct()
 		if !ok {
 			t.Fatalf("row %d is %#v", i, outrows[i])
 		}
@@ -77,7 +76,8 @@ func TestDistinct(t *testing.T) {
 		if !ok {
 			t.Fatalf("row %d missing VendorID", i)
 		}
-		vendors = append(vendors, string(vend.Value.(ion.String)))
+		str, _ := vend.Value.String()
+		vendors = append(vendors, str)
 	}
 	// should produce the unique list of vendors;
 	// we know that RatecodeID is always zero, so

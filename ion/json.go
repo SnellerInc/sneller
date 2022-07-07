@@ -28,29 +28,29 @@ func jsonStruct(st *Symtab, d *json.Decoder) (Datum, error) {
 	for {
 		tok, err := d.Token()
 		if err != nil {
-			return nil, err
+			return Empty, err
 		}
 		if tok == json.Delim('}') {
 			break
 		}
 		name, ok := tok.(string)
 		if !ok {
-			return nil, fmt.Errorf("expected a string struct field; found %v", tok)
+			return Empty, fmt.Errorf("expected a string struct field; found %v", tok)
 		}
 		body, err := d.Token()
 		if err != nil {
-			return nil, err
+			return Empty, err
 		}
 		dat, err := fromJSON(st, body, d)
 		if err != nil {
-			return nil, err
+			return Empty, err
 		}
 		out = append(out, Field{
 			Label: name,
 			Value: dat,
 		})
 	}
-	return NewStruct(st, out), nil
+	return NewStruct(st, out).Datum(), nil
 }
 
 func jsonArray(st *Symtab, d *json.Decoder) (Datum, error) {
@@ -58,24 +58,24 @@ func jsonArray(st *Symtab, d *json.Decoder) (Datum, error) {
 	for {
 		tok, err := d.Token()
 		if err != nil {
-			return nil, err
+			return Empty, err
 		}
 		if tok == json.Delim(']') {
 			break
 		}
 		dat, err := fromJSON(st, tok, d)
 		if err != nil {
-			return nil, err
+			return Empty, err
 		}
 		out = append(out, dat)
 	}
-	return NewList(st, out), nil
+	return NewList(st, out).Datum(), nil
 }
 
 func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
 	itod := func(i int64) Datum {
 		if i >= 0 {
-			return Uint(i)
+			return Uint(uint64(i))
 		}
 		return Int(i)
 	}
@@ -87,7 +87,7 @@ func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
 		if t == json.Delim('[') {
 			return jsonArray(st, d)
 		}
-		return nil, fmt.Errorf("fromJSON: unexpected delim %v", t)
+		return Empty, fmt.Errorf("fromJSON: unexpected delim %v", t)
 	case float64:
 		// normalize integers:
 		if t > 0 {
@@ -113,7 +113,7 @@ func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
 			}
 			return Float(f), nil
 		}
-		return nil, fmt.Errorf("number %q out of range", t.String())
+		return Empty, fmt.Errorf("number %q out of range", t.String())
 	case string:
 		// N.B. -gcflags=-m says this conversion
 		// does not escape to the heap:
@@ -127,9 +127,9 @@ func fromJSON(st *Symtab, tok json.Token, d *json.Decoder) (Datum, error) {
 		// probably not possible?
 		return Timestamp(date.FromTime(t)), nil
 	case nil:
-		return UntypedNull{}, nil
+		return Null, nil
 	default:
-		return nil, fmt.Errorf("fromJSON: unexpected token %v", t)
+		return Empty, fmt.Errorf("fromJSON: unexpected token %v", t)
 	}
 }
 
@@ -139,7 +139,7 @@ func FromJSON(st *Symtab, d *json.Decoder) (Datum, error) {
 	d.UseNumber()
 	tok, err := d.Token()
 	if err != nil {
-		return nil, err
+		return Empty, err
 	}
 	dat, err := fromJSON(st, tok, d)
 	if err == io.EOF {

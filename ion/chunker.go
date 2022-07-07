@@ -490,7 +490,7 @@ func (c *Chunker) ReadFrom(r io.Reader) (int64, error) {
 		if err != nil {
 			return n, err
 		}
-		if dat != nil {
+		if !dat.Empty() {
 			dat.Encode(&c.Buffer, &c.Symbols)
 			noteTimeFields(dat, c)
 			err = c.Commit()
@@ -507,13 +507,13 @@ func (c *Chunker) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func noteTimeFields(d Datum, c *Chunker) {
-	s, ok := d.(*Struct)
+	s, ok := d.Struct()
 	if !ok {
 		return
 	}
 	var buf Symbuf
 	s.Each(func(f Field) bool {
-		ts, ok := f.Value.(Timestamp)
+		ts, ok := f.Value.Timestamp()
 		if !ok {
 			return true
 		}

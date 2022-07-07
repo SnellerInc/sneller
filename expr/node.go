@@ -617,7 +617,7 @@ func (b Bool) Type() TypeSet {
 }
 
 func (b Bool) Datum() ion.Datum {
-	return ion.Bool(b)
+	return ion.Bool(bool(b))
 }
 
 // String is a literal string AST node
@@ -632,7 +632,7 @@ func (s String) text(dst *strings.Builder, redact bool) {
 }
 
 func (s String) Datum() ion.Datum {
-	return ion.String(s)
+	return ion.String(string(s))
 }
 
 // sqlQuote produces SQL single-quoted strings;
@@ -700,7 +700,7 @@ func (f Float) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func (f Float) Datum() ion.Datum {
-	return ion.Float(f)
+	return ion.Float(float64(f))
 }
 
 func (f Float) Equals(e Node) bool {
@@ -743,7 +743,7 @@ func (i Integer) Type() TypeSet {
 }
 
 func (i Integer) Datum() ion.Datum {
-	return ion.Int(i)
+	return ion.Int(int64(i))
 }
 
 func (i Integer) Encode(dst *ion.Buffer, _ *ion.Symtab) {
@@ -1045,7 +1045,7 @@ func (n Null) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func (n Null) Datum() ion.Datum {
-	return ion.UntypedNull{}
+	return ion.Null
 }
 
 // Path is a Node that represents
@@ -3025,7 +3025,7 @@ func (s *Struct) Datum() ion.Datum {
 			Value: s.Fields[i].Value.Datum(),
 		})
 	}
-	return ion.NewStruct(nil, out)
+	return ion.NewStruct(nil, out).Datum()
 }
 
 func (s *Struct) Type() TypeSet { return StructType }
@@ -3097,7 +3097,7 @@ func (l *List) Datum() ion.Datum {
 	for i := range l.Values {
 		out[i] = l.Values[i].Datum()
 	}
-	return ion.NewList(nil, out)
+	return ion.NewList(nil, out).Datum()
 }
 
 func (l *List) Equals(e Node) bool {
@@ -3149,19 +3149,24 @@ func (l *List) setfield(name string, st *ion.Symtab, body []byte) error {
 // AsConstant converts a literal ion datum
 // into a literal PartiQL expression constant.
 func AsConstant(d ion.Datum) (Constant, bool) {
-	switch d := d.(type) {
-	case ion.Float:
-		return Float(float64(d)), true
-	case ion.Int:
-		return Integer(int64(d)), true
-	case ion.Uint:
+	switch d.Type() {
+	case ion.FloatType:
+		d, _ := d.Float()
+		return Float(d), true
+	case ion.IntType:
+		d, _ := d.Int()
+		return Integer(d), true
+	case ion.UintType:
+		d, _ := d.Uint()
 		if i := int64(d); i >= 0 {
 			return Integer(int64(d)), true
 		}
-		return (*Rational)(big.NewRat(0, 0).SetUint64(uint64(d))), true
-	case ion.String:
-		return String(string(d)), true
-	case *ion.Struct:
+		return (*Rational)(big.NewRat(0, 0).SetUint64(d)), true
+	case ion.StringType, ion.SymbolType:
+		d, _ := d.String()
+		return String(d), true
+	case ion.StructType:
+		d, _ := d.Struct()
 		fields := make([]Field, 0, d.Len())
 		ok := true
 		d.Each(func(f ion.Field) bool {
@@ -3180,7 +3185,8 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 			return nil, false
 		}
 		return &Struct{Fields: fields}, true
-	case *ion.List:
+	case ion.ListType:
+		d, _ := d.List()
 		values := make([]Constant, 0, d.Len())
 		ok := true
 		d.Each(func(d ion.Datum) bool {
@@ -3196,13 +3202,13 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 			return nil, false
 		}
 		return &List{Values: values}, true
-	case ion.Timestamp:
-		return &Timestamp{Value: date.Time(d)}, true
-	case ion.Bool:
+	case ion.TimestampType:
+		d, _ := d.Timestamp()
+		return &Timestamp{Value: d}, true
+	case ion.BoolType:
+		d, _ := d.Bool()
 		return Bool(d), true
-	case ion.Interned:
-		return String(d), true
-	case ion.UntypedNull:
+	case ion.NullType:
 		return Null{}, true
 	default:
 		// TODO: add blob, clob, bags, etc.

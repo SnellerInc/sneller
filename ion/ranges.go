@@ -141,7 +141,7 @@ func (r *timeRange) ranges() (min, max Datum, ok bool) {
 	if r.hasRange {
 		return Timestamp(r.min), Timestamp(r.max), true
 	}
-	return nil, nil, false
+	return Datum{}, Datum{}, false
 }
 
 func (r *timeRange) commit() {

@@ -56,7 +56,7 @@ func merge(self Union, kind ion.Type, hits int, value ion.Datum) Union {
 	any := &Any{}
 	any.typemap[kind] = self
 	any.hits[kind] = hits
-	if value == nil {
+	if value.Empty() {
 		any.typemap[missingType] = &None{hits: 1}
 		any.hits[missingType] = 1
 	} else {
@@ -80,12 +80,12 @@ type None struct {
 //
 // Generate always returns nil
 func (n *None) Generate(src *rand.Rand) ion.Datum {
-	return nil
+	return ion.Empty
 }
 
 // Add implments Union.Add
 func (n *None) Add(value ion.Datum) Union {
-	if value == nil {
+	if value.Empty() {
 		n.hits++
 		return n
 	}
@@ -103,12 +103,12 @@ type Null struct {
 
 // Generate implements Union.Generate
 func (n *Null) Generate(src *rand.Rand) ion.Datum {
-	return ion.UntypedNull{}
+	return ion.Null
 }
 
 // Add implements Union.Add
 func (n *Null) Add(value ion.Datum) Union {
-	if value == (ion.UntypedNull{}) {
+	if value.Null() {
 		n.hits++
 		return n
 	}
@@ -129,7 +129,7 @@ type Bool struct {
 // draws from a distribution of one value.
 func FromBool(value ion.Datum) *Bool {
 	b := &Bool{}
-	if value == ion.Bool(true) {
+	if v, _ := value.Bool(); v {
 		b.truecount++
 	} else {
 		b.falsecount++
@@ -153,8 +153,8 @@ func (b *Bool) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (b *Bool) Add(value ion.Datum) Union {
-	if value.Type() == ion.BoolType {
-		if bool(value.(ion.Bool)) {
+	if v, ok := value.Bool(); ok {
+		if v {
 			b.truecount++
 		} else {
 			b.falsecount++
@@ -216,7 +216,7 @@ func (i *Integer) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add.
 func (i *Integer) Add(value ion.Datum) Union {
-	if vi, ok := value.(ion.Int); ok {
+	if vi, ok := value.Int(); ok {
 		vii := int64(vi)
 		if vii > i.hi {
 			i.hi = vii
@@ -227,7 +227,7 @@ func (i *Integer) Add(value ion.Datum) Union {
 		i.hits++
 		return i
 	}
-	if vu, ok := value.(ion.Uint); ok {
+	if vu, ok := value.Uint(); ok {
 		vuu := uint64(vu)
 		if int64(vuu) > i.hi {
 			i.hi = int64(vuu)
@@ -275,8 +275,7 @@ func (f *Float) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (f *Float) Add(value ion.Datum) Union {
-	if value.Type() == ion.FloatType {
-		fv := float64(value.(ion.Float))
+	if fv, ok := value.Float(); ok {
 		if fv < f.lo {
 			f.lo = fv
 		}
@@ -330,7 +329,7 @@ func (t *Time) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (t *Time) Add(value ion.Datum) Union {
-	if vt, ok := value.(ion.Timestamp); ok {
+	if vt, ok := value.Timestamp(); ok {
 		vt := date.Time(vt)
 		if vt.Before(t.earliest) {
 			t.earliest = vt
@@ -379,7 +378,7 @@ func (s *String) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (s *String) Add(value ion.Datum) Union {
-	if si, ok := value.(ion.String); ok {
+	if si, ok := value.String(); ok {
 		si := string(si)
 		if _, ok := s.seen[si]; !ok {
 			s.seen[si] = len(s.set)
@@ -449,17 +448,17 @@ func (s *Struct) Generate(src *rand.Rand) ion.Datum {
 	for i := range s.fields {
 		f := s.fields[i]
 		val := s.values[i].Generate(src)
-		if val == nil {
+		if val.Empty() {
 			continue // MISSING
 		}
 		lst = append(lst, ion.Field{Label: f, Value: val})
 	}
-	return ion.NewStruct(nil, lst)
+	return ion.NewStruct(nil, lst).Datum()
 }
 
 // Add implements Union.Add
 func (s *Struct) Add(value ion.Datum) Union {
-	st, ok := value.(*ion.Struct)
+	st, ok := value.Struct()
 	if !ok {
 		return merge(s, ion.StructType, s.hits, value)
 	}
@@ -492,14 +491,14 @@ func (s *Struct) Add(value ion.Datum) Union {
 			continue
 		}
 		// add a MISSING entry
-		s.values[i] = s.values[i].Add(nil)
+		s.values[i] = s.values[i].Add(ion.Empty)
 	}
 	return s
 }
 
 // FromStruct returns a Struct Generator
 // that only returns s.
-func FromStruct(s *ion.Struct) *Struct {
+func FromStruct(s ion.Struct) *Struct {
 	out := &Struct{hits: 1}
 	out.indices = make(map[string]int)
 	s.Each(func(f ion.Field) bool {
@@ -536,7 +535,7 @@ func (l *List) Generate(src *rand.Rand) ion.Datum {
 	for i := range l.values[:n] {
 		lst = append(lst, l.values[i].Generate(src))
 	}
-	return ion.NewList(nil, lst)
+	return ion.NewList(nil, lst).Datum()
 }
 
 func (l *List) String() string {
@@ -554,7 +553,7 @@ func (l *List) String() string {
 
 // Add implements Union.Add
 func (l *List) Add(value ion.Datum) Union {
-	list, ok := value.(*ion.List)
+	list, ok := value.List()
 	if !ok {
 		return merge(l, ion.ListType, l.hits, value)
 	}
@@ -582,7 +581,7 @@ func (l *List) Add(value ion.Datum) Union {
 
 // FromList returns a List Generator
 // that always returns lst.
-func FromList(lst *ion.List) *List {
+func FromList(lst ion.List) *List {
 	out := &List{hits: 1}
 	lst.Each(func(d ion.Datum) bool {
 		out.min++
@@ -598,7 +597,7 @@ func FromList(lst *ion.List) *List {
 // a value identical (or in some cases just very similar)
 // to the input value.
 func Single(value ion.Datum) Union {
-	if value == nil {
+	if value.Empty() {
 		return &None{hits: 1}
 	}
 	switch value.Type() {
@@ -607,19 +606,26 @@ func Single(value ion.Datum) Union {
 	case ion.BoolType:
 		return FromBool(value)
 	case ion.IntType:
-		return FromInt64(int64(value.(ion.Int)))
+		v, _ := value.Int()
+		return FromInt64(v)
 	case ion.UintType:
-		return FromUint64(uint64(value.(ion.Uint)))
+		v, _ := value.Uint()
+		return FromUint64(v)
 	case ion.FloatType:
-		return FromFloat(float64(value.(ion.Float)))
+		v, _ := value.Float()
+		return FromFloat(v)
 	case ion.TimestampType:
-		return FromTime(date.Time(value.(ion.Timestamp)))
-	case ion.StringType:
-		return FromString(string(value.(ion.String)))
+		v, _ := value.Timestamp()
+		return FromTime(v)
+	case ion.StringType, ion.SymbolType:
+		v, _ := value.String()
+		return FromString(v)
 	case ion.ListType:
-		return FromList(value.(*ion.List))
+		v, _ := value.List()
+		return FromList(v)
 	case ion.StructType:
-		return FromStruct(value.(*ion.Struct))
+		v, _ := value.Struct()
+		return FromStruct(v)
 	default:
 		println("type:", fmt.Sprintf("%T", value))
 		panic("type not supported for versification")

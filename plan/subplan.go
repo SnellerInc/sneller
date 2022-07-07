@@ -22,6 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan/pir"
+	"golang.org/x/exp/slices"
 )
 
 type replacement struct {
@@ -71,7 +72,7 @@ func (r *replacement) toScalarList() ([]expr.Constant, bool) {
 func (r *replacement) toList() (expr.Constant, bool) {
 	lst := new(expr.List)
 	for i := range r.rows {
-		val, ok := expr.AsConstant(&r.rows[i])
+		val, ok := expr.AsConstant(r.rows[i].Datum())
 		if !ok {
 			return nil, false
 		}
@@ -84,7 +85,7 @@ func (r *replacement) toStruct() (expr.Constant, bool) {
 	if len(r.rows) == 0 {
 		return &expr.Struct{}, true
 	}
-	return expr.AsConstant(&r.rows[0])
+	return expr.AsConstant(r.rows[0].Datum())
 }
 
 func (r *replacement) toHashLookup(kind, label string, x expr.Node) (expr.Node, bool) {
@@ -248,6 +249,7 @@ type subreplacement struct {
 }
 
 func (s *subreplacement) Write(buf []byte) (int, error) {
+	buf = slices.Clone(buf)
 	orig := len(buf)
 	s.tmp = s.tmp[:0]
 	var err error
@@ -257,13 +259,11 @@ func (s *subreplacement) Write(buf []byte) (int, error) {
 		if err != nil {
 			return orig - len(buf), err
 		}
-		if d == nil {
-			continue // processed a symbol table
+		if d.Empty() || d.Null() {
+			continue // symbol table or nop pad
 		}
-		if _, ok := d.(ion.UntypedNull); ok {
-			continue // skip nop pad
-		}
-		s.tmp = append(s.tmp, *(d.(*ion.Struct)))
+		st, _ := d.Struct()
+		s.tmp = append(s.tmp, st)
 	}
 	s.parent.lock.Lock()
 	defer s.parent.lock.Unlock()
