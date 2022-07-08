@@ -98,7 +98,7 @@ func DecodeDefinition(src io.Reader) (*Definition, error) {
 // definition.json in the appropriate  path
 // for the given db and table.
 func OpenDefinition(s fs.FS, db, table string) (*Definition, error) {
-	f, err := s.Open(DefinitionPattern(db, table))
+	f, err := s.Open(DefinitionPath(db, table))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 	if err != nil {
 		return err
 	}
-	_, err = dst.WriteFile(DefinitionPattern(db, s.Name), buf)
+	_, err = dst.WriteFile(DefinitionPath(db, s.Name), buf)
 	return err
 }
 

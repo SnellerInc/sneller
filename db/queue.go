@@ -357,5 +357,5 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
 		m[dbtable{db: db, table: tbl}] = def
 		return nil
 	}
-	return fsutil.WalkGlob(dir, "", DefinitionPattern("*", "*"), walk)
+	return fsutil.WalkGlob(dir, "", DefinitionPath("*", "*"), walk)
 }

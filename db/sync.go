@@ -384,7 +384,7 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	if err != nil {
 		return err
 	}
-	possible, err := fs.Glob(dst, DefinitionPattern(db, tblpat))
+	possible, err := fs.Glob(dst, DefinitionPath(db, tblpat))
 	if err != nil {
 		return err
 	}

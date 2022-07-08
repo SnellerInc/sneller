@@ -39,11 +39,11 @@ func IndexPath(db, table string) string {
 	return path.Join("db", db, table, "index")
 }
 
-// DefinitionPattern returns the pattern
-// for a path at which the definition for
-// the given db and table would live relative
+// DefinitionPath returns the path
+// at which the definition file for the given
+// db and table would live relative
 // to the root of the FS.
-func DefinitionPattern(db, table string) string {
+func DefinitionPath(db, table string) string {
 	return path.Join("db", db, table, "definition.json")
 }
 
