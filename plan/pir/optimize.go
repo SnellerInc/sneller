@@ -49,6 +49,7 @@ func (b *Trace) optimize() {
 	// actual optimization passes:
 	simplify(b)
 	aggelim(b) // substitute constants for aggregates if possible
+	aggfilter(b)
 	orderelim(b)
 	projectpushdown(b)     // merge adjacent projections
 	liftprojectagg(b)      // eliminate a trivial projection after an aggregate

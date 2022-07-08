@@ -1079,6 +1079,57 @@ ORDER BY m, d, h`,
 				"PROJECT x + 1 AS y, x + 2 AS z",
 			},
 		},
+		{
+			input: `SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 1) AS b FROM input`,
+			expect: []string{
+				"ITERATE input WHERE x > 1",
+				"AGGREGATE SUM(x) AS a, SUM(y) AS b",
+			},
+		},
+		{
+			input: `SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 1) AS b FROM input WHERE x > 5 OR y < 10`,
+			expect: []string{
+				"ITERATE input WHERE x > 5 OR y < 10 AND x > 1",
+				"AGGREGATE SUM(x) AS a, SUM(y) AS b",
+			},
+		},
+		{
+			input: `SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 5) AS b FROM input WHERE x > 1 AND x > 5`,
+			expect: []string{
+				"ITERATE input WHERE x > 1 AND x > 5",
+				"AGGREGATE SUM(x) AS a, SUM(y) AS b",
+			},
+		},
+		{
+			// After optimization there are only two aggs: `SUM(y)` and `SUM(x) FILTER (WHERE x > 1)`
+			input: `SELECT
+                        SUM(y),
+                        SUM(x) FILTER (WHERE x > 1),
+                        SUM(y) FILTER (WHERE x > 5),
+                        SUM(y),
+                        SUM(x) FILTER (WHERE x > 1)
+                    FROM input WHERE x > 5`,
+			expect: []string{
+				"ITERATE input WHERE x > 5",
+				"AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1",
+				"PROJECT $_0_0 AS \"sum\", $_0_1 AS sum_2, $_0_0 AS sum_3, $_0_0 AS sum_4, $_0_1 AS sum_5",
+			},
+		},
+		{
+			// After optimization there are only two aggs: `SUM(y)` and `SUM(x) FILTER (WHERE x > 1)`
+			input: `SELECT
+                        SUM(y)                      AS a,
+                        SUM(x) FILTER (WHERE x > 1) AS b,
+                        SUM(y) FILTER (WHERE x > 5) AS c,
+                        SUM(y)                      AS d,
+                        SUM(x) FILTER (WHERE x > 1) AS e
+                    FROM input WHERE x > 5`,
+			expect: []string{
+				"ITERATE input WHERE x > 5",
+				"AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1",
+				"PROJECT $_0_0 AS a, $_0_1 AS b, $_0_0 AS c, $_0_0 AS d, $_0_1 AS e",
+			},
+		},
 	}
 
 	for i := range tests {

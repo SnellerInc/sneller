@@ -1661,6 +1661,21 @@ const (
 	OpXor                   // A XOR B (A != B)
 )
 
+func (l LogicalOp) String() string {
+	switch l {
+	case OpAnd:
+		return "AND"
+	case OpOr:
+		return "OR"
+	case OpXor:
+		return "XOR"
+	case OpXnor:
+		return "XNOR"
+	}
+
+	return "<unknown logical op>"
+}
+
 // Logical is a Node that represents
 // a logical expression
 type Logical struct {
