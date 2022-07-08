@@ -138,7 +138,6 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	normalized := parsedQuery.Text()
 	redacted := parsedQuery.Text()
-	queryID := uuid.New()
 
 	var workerID tnproto.ID
 	hash := sha256.Sum256([]byte(tenantCreds.ID()))
@@ -151,6 +150,9 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	endPoints := s.peers.Get()
+
+	queryID := uuid.New()
+	w.Header().Add("X-Sneller-Query-ID", queryID.String())
 
 	var tree *plan.Tree
 	start = time.Now()
@@ -165,7 +167,8 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		s.planError(w, err)
+		s.logger.Printf("query id %s planning failed: %s", queryID, err)
+		planError(w, err)
 		return
 	}
 	s.logger.Printf("query id %s auth %s planning %s", queryID, authElapsed, time.Since(start))
@@ -216,7 +219,6 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Add("Content-Type", acceptHeader)
-	w.Header().Add("X-Sneller-Query-ID", queryID.String())
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -349,7 +351,7 @@ func isBadQuery(err error, w http.ResponseWriter) bool {
 // type and syntax errors are returned as 400,
 // fs.ErrNotExist errors are returned as 404,
 // and others are returned as 500
-func (s *server) planError(w http.ResponseWriter, err error) {
+func planError(w http.ResponseWriter, err error) {
 	w.Header().Set("Content-Type", "text/plain")
 	if errors.Is(err, fs.ErrNotExist) {
 		w.WriteHeader(http.StatusNotFound)
@@ -361,7 +363,6 @@ func (s *server) planError(w http.ResponseWriter, err error) {
 	}
 	w.WriteHeader(http.StatusInternalServerError)
 	io.WriteString(w, "couldn't create query plan\n")
-	s.logger.Printf("query planning failed: %s", err)
 }
 
 func writeError(w http.ResponseWriter, errtext string) {
