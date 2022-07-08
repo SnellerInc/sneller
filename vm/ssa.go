@@ -972,6 +972,18 @@ func (p *prog) PopPath() {
 	p.curpath = p.curpath[:len(p.curpath)-1]
 }
 
+// dictionary strings must be padded to
+// multiples of 4 bytes so that we never
+// cross a page boundary when reading past
+// the end of the string
+func pad(x string) string {
+	buf := []byte(x)
+	for len(buf)&3 != 0 {
+		buf = append(buf, 0)
+	}
+	return string(buf)[:len(x)]
+}
+
 // used to produce a consistent bit pattern
 // for hashing common subexpressions
 func (p *prog) tobits(imm interface{}) uint64 {
@@ -1000,7 +1012,7 @@ func (p *prog) tobits(imm interface{}) uint64 {
 				return uint64(i)
 			}
 		}
-		p.dict = append(p.dict, v)
+		p.dict = append(p.dict, pad(v))
 		return uint64(len(p.dict) - 1)
 	case bool:
 		if v {
@@ -1016,7 +1028,7 @@ func (p *prog) tobits(imm interface{}) uint64 {
 				return uint64(i)
 			}
 		}
-		p.dict = append(p.dict, str)
+		p.dict = append(p.dict, pad(str))
 		return uint64(len(p.dict) - 1)
 	default:
 		panic(fmt.Sprintf("invalid immediate %+v with type %T", imm, imm))

@@ -41,7 +41,7 @@ func TestCmpStrEqCsBruteForce1(t *testing.T) {
 			// given
 			var ctx bctestContext
 			ctx.Taint()
-			ctx.dict = append(ctx.dict, str1)
+			ctx.dict = append(ctx.dict, pad(str1))
 
 			var values []interface{}
 			for i := 0; i < 16; i++ {
@@ -86,7 +86,7 @@ func TestCmpStrEqCiBruteForce1(t *testing.T) {
 			// given
 			var ctx bctestContext
 			ctx.Taint()
-			ctx.dict = append(ctx.dict, str1Norm)
+			ctx.dict = append(ctx.dict, pad(str1Norm))
 
 			var values []interface{}
 			for i := 0; i < 16; i++ {
@@ -131,7 +131,7 @@ func TestCmpStrEqUTF8CiBruteForce1(t *testing.T) {
 			// given
 			var ctx bctestContext
 			ctx.Taint()
-			ctx.dict = append(ctx.dict, str1Ext)
+			ctx.dict = append(ctx.dict, pad(str1Ext))
 
 			var values []interface{}
 			for i := 0; i < 16; i++ {
