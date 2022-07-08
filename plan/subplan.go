@@ -88,7 +88,7 @@ func (r *replacement) toStruct() (expr.Constant, bool) {
 	return expr.AsConstant(r.rows[0].Datum())
 }
 
-func (r *replacement) toHashLookup(kind, label string, x expr.Node) (expr.Node, bool) {
+func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) (expr.Node, bool) {
 	if len(r.rows) == 0 {
 		return expr.Missing{}, true
 	}
@@ -108,7 +108,11 @@ func (r *replacement) toHashLookup(kind, label string, x expr.Node) (expr.Node, 
 			return nil, false
 		}
 	}
-	return expr.Call("HASH_LOOKUP", conv.args(x)...), true
+	args := conv.args(x)
+	if elseval != nil {
+		args = append(args, elseval)
+	}
+	return expr.Call("HASH_LOOKUP", args...), true
 }
 
 type rowConverter interface {
@@ -354,7 +358,11 @@ func (r *replacer) Rewrite(e expr.Node) expr.Node {
 		id := int(b.Args[0].(expr.Integer))
 		kind := string(b.Args[1].(expr.String))
 		label := string(b.Args[2].(expr.String))
-		fn, ok := r.inputs[id].toHashLookup(kind, label, b.Args[3])
+		var elseval expr.Node
+		if len(b.Args) == 5 {
+			elseval = b.Args[4]
+		}
+		fn, ok := r.inputs[id].toHashLookup(kind, label, b.Args[3], elseval)
 		if !ok {
 			r.err = fmt.Errorf("cannot interpolate %v as case", r.inputs[id].rows)
 			return e

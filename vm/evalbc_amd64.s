@@ -9954,9 +9954,9 @@ TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA32.Z Z7, K1, Z31                              // Z31 = ION data length: Type|L + optional VarUInt + string data.
   MOVQ R15, bytecode_scratch+8(VIRT_BCPTR)             // Store output buffer length back to the bytecode_scratch slice.
 
-  MOVQ SI, R8                                          // R8 = base output address.
-  ADDQ bytecode_scratchoff(VIRT_BCPTR), R8             // R8 += location of scratch base
-  ADDQ CX, R8                                          // R8 = adjusted output address by its current length.
+  MOVL bytecode_scratchoff(VIRT_BCPTR), R8             // R8 = location of scratch base
+  ADDQ SI, R8                                          // R8 += base output address.
+  ADDQ CX, R8                                          // R8 += adjusted output address by its current length.
 
   // Unpack string data into 16-byte units, so we can use 16-byte stores.
   VPUNPCKLQDQ Z12, Z11, Z10                            // Z10 = [S06 S06 S06 S06|S04 S04 S04 S04|S02 S02 S02 S02|S00 S00 S00 S00]

@@ -753,9 +753,9 @@ func checkInReplacement(h Hint, args []Node) error {
 	return nil
 }
 
-// HASH_REPLACEMENT(id, kind, key, x)
+// HASH_REPLACEMENT(id, kind, key, x [, default])
 func checkHashReplacement(h Hint, args []Node) error {
-	if len(args) != 4 {
+	if len(args) != 4 && len(args) != 5 {
 		return mismatch(4, len(args))
 	}
 	if _, ok := args[0].(Integer); !ok {

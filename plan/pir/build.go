@@ -624,13 +624,16 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	// to replace the aggregate so that
 	//   SUM(x) OVER (PARTITION BY y)
 	// is turned into
-	//   HASH_LOOKUP($__key, (SELECT SUM(x) AS $__val, y AS $__key FROM ... GROUP BY y))
+	//   HASH_LOOKUP($__key, (SELECT SUM(x) AS $__val, y AS $__key FROM ... GROUP BY y), default)
+	def := (expr.Node)(expr.Null{})
+	if agg.Op == expr.OpCount || agg.Op == expr.OpCountDistinct {
+		def = expr.Integer(0)
+	}
 	ret := expr.Call("HASH_REPLACEMENT",
 		expr.Integer(len(w.trace.Inputs)),
 		scalarkind,
 		expr.String("$__key"),
-		key,
-	)
+		key, def)
 	agg.Over = nil
 	self.Columns = []expr.Binding{
 		expr.Bind(agg, "$__val"),

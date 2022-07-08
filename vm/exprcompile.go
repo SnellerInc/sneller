@@ -1069,6 +1069,14 @@ func (p *prog) hashLookup(e expr.Node, lookup []ion.Datum) (*value, error) {
 		return nil, err
 	}
 	h := p.hash(v)
+	if len(lookup)&1 != 0 {
+		// there is an ELSE value, so we need
+		//   ret = hash_lookup(x)?:else
+		elseval := p.Constant(lookup[len(lookup)-1])
+		fetched := p.ssaimm(shashlookup, lookup[:len(lookup)-1], h, p.mask(h))
+		blended := p.ssa3(sblendv, fetched, elseval, p.Not(fetched))
+		return p.vk(blended, p.mask(v)), nil
+	}
 	return p.ssaimm(shashlookup, lookup, h, p.mask(h)), nil
 }
 

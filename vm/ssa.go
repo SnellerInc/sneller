@@ -564,8 +564,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	scmpgeimmf: {text: "cmpge.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgeimmf},
 	scmpgeimmi: {text: "cmpge.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgeimmi},
 
-	seqstr:  {text: "eqstr", bc: opeqslice, argtypes: []ssatype{stString, stString, stBool}, rettype: stBool, emit: emitcmp},
-	seqtime: {text: "eqtime", bc: opeqslice, argtypes: []ssatype{stTime, stTime, stBool}, rettype: stBool, emit: emitcmp},
+	seqstr:  {text: "eqstr", bc: opeqslice, argtypes: []ssatype{stString, stString, stBool}, inverse: seqstr, rettype: stBool, emit: emitcmp},
+	seqtime: {text: "eqtime", bc: opeqslice, argtypes: []ssatype{stTime, stTime, stBool}, inverse: seqstr, rettype: stBool, emit: emitcmp},
 
 	// generic equality comparison
 	sequalv: {text: "equalv", argtypes: scalar2Args, rettype: stBool, emit: emitequalv},

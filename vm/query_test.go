@@ -496,15 +496,10 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 			if err != nil {
 				t.Fatal(err)
 			}
-			// when shuffling rows, split the input
-			// into multiple chunks with different symbol
-			// tables (but only if there's more than one symbol
-			// that isn't part of the pre-interned set...)
-			resymbolize := i > 0 && st.MaxID() > 11
 			// if the outputs are input-order-independent,
 			// then we can test the query with parallel inputs:
 			parallel := len(out) <= 1 || !shuffleOutput(q)
-			gotout := run(t, q, in, st, resymbolize, parallel)
+			gotout := run(t, q, in, st, i > 0, parallel)
 			st.Reset()
 			fixup(gotout, st)
 			fixup(out, st)
@@ -733,7 +728,6 @@ func TestQueries(t *testing.T) {
 			return nil
 		}
 		t.Run(strings.TrimSuffix(d.Name(), ".test"), func(t *testing.T) {
-			t.Parallel()
 			testPath(t, path)
 		})
 		return nil
