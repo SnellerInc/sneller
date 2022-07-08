@@ -153,6 +153,12 @@ func (d *deduper) symbolize(st *symtab) error {
 //go:noescape
 func evaldedup(bc *bytecode, delims []vmref, hashes []uint64, tree *radixTree64, slot int) int
 
+func (d *deduper) next() rowConsumer { return d.dst }
+
+func (d *deduper) EndSegment() {
+	d.bc.dropScratch() // restored in recompile()
+}
+
 func (d *deduper) writeRows(delims []vmref) error {
 	if d.closed {
 		return io.EOF

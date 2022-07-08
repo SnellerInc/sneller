@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"golang.org/x/exp/slices"
 )
 
 //go:generate gawk -f genops evalbc_amd64.s
@@ -590,6 +592,11 @@ type bytecode struct {
 	// relative displacment of scratch relative to vmm
 	scratchoff uint32
 
+	// this is a back-up copy if scratch[:scratchreserve]
+	// that we use if we have decided to temporarily
+	// de-allocate scratch[]
+	scratchsave []byte
+
 	outer *bytecode // outer variable bindings
 	//lint:ignore U1000 not unused; used in assembly
 	perm [16]int32 // permutation from outer to inner bindings
@@ -734,6 +741,38 @@ func (b *bytecode) allocStacks() {
 	} else if len(b.hashmem) != hSize {
 		b.hashmem = b.hashmem[:hSize]
 	}
+}
+
+// dropScratch saves a copy of the current
+// reserved memory in b.scratch (if any)
+// and frees b.scratch (if it exists);
+// this operation can be un-done with b.restoreScratch()
+func (b *bytecode) dropScratch() {
+	if b.scratch != nil {
+		// note: this will often be a 0-byte slice,
+		// but that's fine; we just need it to be
+		// non-nil so that restoreScratch() will
+		// see it and allocate b.scratch again
+		b.scratchsave = slices.Clone(b.scratch[:b.scratchreserve])
+		Free(b.scratch)
+		b.scratch = nil
+	}
+}
+
+// dropSaved drops a previously-saved scratch
+// buffer saved in b.dropScratch()
+func (b *bytecode) dropSaved() {
+	b.scratchsave = nil
+	b.scratchreserve = 0
+}
+
+func (b *bytecode) restoreScratch() {
+	if b.scratch != nil || b.scratchsave == nil {
+		return
+	}
+	b.scratch = Malloc()
+	copy(b.scratch, b.scratchsave)
+	b.scratchsave = nil
 }
 
 // called from ssa compilation;

@@ -6085,11 +6085,21 @@ func (p *prog) unsymbolized(v *value) *value {
 	}
 }
 
+// recompile updates the final bytecode
+// to use the given symbol table given the template
+// ssa program (src) and the symbolized program (dst);
+// recompile also takes care of restoring a saved scratch
+// buffer for final if it has been temporarily dropped
 func recompile(st *symtab, src, dst *prog, final *bytecode) error {
 	final.symtab = st.symrefs
 	if !dst.IsStale(st) {
+		final.restoreScratch()
 		return nil
 	}
+	// if we have dropped the scratch buffer,
+	// that's fine; we no longer care about
+	// the saved scratch buffer either
+	final.dropSaved()
 	err := src.Symbolize(st, dst)
 	if err != nil {
 		return err

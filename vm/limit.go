@@ -72,6 +72,8 @@ func (l *limiter) symbolize(st *symtab) error {
 	return l.dst.symbolize(st)
 }
 
+func (l *limiter) next() rowConsumer { return l.dst }
+
 func (l *limiter) writeRows(rows []vmref) error {
 	if l.done {
 		return io.EOF

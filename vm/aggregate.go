@@ -486,6 +486,14 @@ func (p *aggregateLocal) writeRows(delims []vmref) error {
 	return nil
 }
 
+func (p *aggregateLocal) EndSegment() {
+	p.bc.dropScratch() // restored in recompile()
+}
+
+func (p *aggregateLocal) next() rowConsumer {
+	return nil
+}
+
 func (p *aggregateLocal) Close() error {
 	mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateKinds)
 	p.partialData = nil

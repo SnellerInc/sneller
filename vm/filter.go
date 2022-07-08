@@ -87,6 +87,8 @@ func (c *Count) symbolize(st *symtab) error {
 	return nil
 }
 
+func (c *Count) next() rowConsumer { return nil }
+
 func (c *Count) Value() int64 { return c.val }
 
 type wherebc struct {
@@ -105,6 +107,12 @@ func (w *wherebc) symbolize(st *symtab) error {
 		return err
 	}
 	return w.dst.symbolize(st)
+}
+
+func (w *wherebc) next() rowConsumer { return w.dst }
+
+func (w *wherebc) EndSegment() {
+	w.bc.dropScratch() // restored in recompile()
 }
 
 func (w *wherebc) writeRows(delims []vmref) error {

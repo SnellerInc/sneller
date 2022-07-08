@@ -728,6 +728,7 @@ func TestQueries(t *testing.T) {
 			return nil
 		}
 		t.Run(strings.TrimSuffix(d.Name(), ".test"), func(t *testing.T) {
+			t.Parallel()
 			testPath(t, path)
 		})
 		return nil

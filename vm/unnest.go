@@ -93,7 +93,17 @@ func (u *uByID) Less(i, j int) bool {
 	return u.outsel[i].value < u.outsel[j].value
 }
 
+func (u *unnesting) next() rowConsumer { return u.dstrc }
+
+func (u *unnesting) EndSegment() {
+	u.aw.maybeDrop()
+	u.outerbc.dropScratch()
+	u.innerbc.dropScratch()
+}
+
 func (u *unnesting) symbolize(st *symtab) error {
+	u.outerbc.restoreScratch()
+	u.innerbc.restoreScratch()
 	if len(u.outsel) != len(u.parent.outer)+len(u.parent.inner) {
 		u.outsel = make([]syminfo, len(u.parent.outer)+len(u.parent.inner))
 	}
@@ -168,7 +178,7 @@ func (u *unnesting) symbolize(st *symtab) error {
 	if u.parent.filter != nil {
 		outk, err = compile(&p, u.parent.filter)
 		if err != nil {
-			return fmt.Errorf("Unnest: compiling inner filter: %w", err)
+			return fmt.Errorf("unnest: compiling inner filter: %w", err)
 		}
 	}
 	p.Return(p.mk(p.MergeMem(mem...), outk))

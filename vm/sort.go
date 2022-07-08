@@ -276,6 +276,7 @@ func (s *Order) finalizeKtop() error {
 // ----------------------------------------------------------------------
 
 func symbolize(sort *Order, findbc *bytecode, st *symtab, global bool) error {
+	findbc.restoreScratch()
 	var program prog
 
 	program.Begin()
@@ -335,6 +336,12 @@ type sortstateMulticolumn struct {
 
 	// bytecode for locating columns
 	findbc bytecode
+}
+
+func (s *sortstateMulticolumn) next() rowConsumer { return nil }
+
+func (s *sortstateMulticolumn) EndSegment() {
+	s.findbc.dropScratch() // restored in symbolize()
 }
 
 func (s *sortstateMulticolumn) symbolize(st *symtab) error {
@@ -440,6 +447,12 @@ type sortstateSingleColumn struct {
 	recordID  uint64
 	records   [][]byte
 	subcolumn sorting.MixedTypeColumn
+}
+
+func (s *sortstateSingleColumn) next() rowConsumer { return nil }
+
+func (s *sortstateSingleColumn) EndSegment() {
+	s.findbc.dropScratch() // restored in symbolize()
 }
 
 func (s *sortstateSingleColumn) symbolize(st *symtab) error {
@@ -563,6 +576,13 @@ func (s *sortstateKtop) invalidatePrefilter() {
 	s.filtprog = prog{}
 }
 
+func (s *sortstateKtop) next() rowConsumer { return nil }
+
+func (s *sortstateKtop) EndSegment() {
+	s.findbc.dropScratch() // restored in symbolize()
+	s.filtbc.dropScratch() // restored in s.symbolize()
+}
+
 func (s *sortstateKtop) symbolize(st *symtab) error {
 	if s.captures > 0 || len(s.symtabs) == 0 {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
@@ -570,6 +590,8 @@ func (s *sortstateKtop) symbolize(st *symtab) error {
 
 	if s.prefilter && s.filtprog.IsStale(st) {
 		s.invalidatePrefilter()
+	} else {
+		s.filtbc.restoreScratch()
 	}
 
 	// copy the source symbol table

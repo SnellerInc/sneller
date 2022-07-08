@@ -62,6 +62,19 @@ func (a *alignedWriter) flush() (int, error) {
 	return a.out.Write(contents)
 }
 
+// if there is no data in the buffer, then
+// free it and let it be re-allocated lazily
+// by the caller
+func (a *alignedWriter) maybeDrop() {
+	if a.buf == nil || a.off != a.save {
+		return
+	}
+	Free(a.buf)
+	a.buf = nil
+	a.off = 0
+	a.save = 0
+}
+
 func (a *alignedWriter) setpre(st *symtab) error {
 	if a.off != a.save {
 		_, err := a.flush()

@@ -55,6 +55,11 @@ type rowConsumer interface {
 	// it must allocate new memory for new output
 	writeRows(delims []vmref) error
 
+	// next returns the next io.WriteCloser
+	// in the chain of query operators;
+	// this may be nil
+	next() rowConsumer
+
 	// Close indicates that the caller has
 	// finished writing row data.
 	io.Closer
@@ -194,7 +199,6 @@ func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 //
 // See also: HintEndSegment.
 type EndSegmentWriter interface {
-	io.Writer
 	EndSegment()
 }
 
@@ -219,6 +223,11 @@ func (q *rowSplitter) EndSegment() {
 	// interleaved queries can use the same vm buffers
 	q.symbolized = false
 	q.shared.Reset()
+	for rc := q.rowConsumer; rc != nil; rc = rc.next() {
+		if esw, ok := rc.(EndSegmentWriter); ok {
+			esw.EndSegment()
+		}
+	}
 }
 
 func (q *rowSplitter) Close() error {
@@ -378,6 +387,8 @@ func Rematerialize(dst io.WriteCloser) *Rematerializer {
 	r := &Rematerializer{empty: true, out: dst}
 	return r
 }
+
+func (m *Rematerializer) next() rowConsumer { return nil }
 
 func (m *Rematerializer) flush() error {
 	if m.empty {

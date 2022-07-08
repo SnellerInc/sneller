@@ -199,6 +199,8 @@ func (c *cross) symbolize(st *symtab) error {
 	return err
 }
 
+func (c *cross) next() rowConsumer { return nil }
+
 // join a single lhs row with a single rhs row,
 // where we have ensured that the rhs row uses
 // the superset of the two symbol tables

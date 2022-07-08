@@ -508,6 +508,10 @@ func (a *aggtable) fasteval(delims []vmref, abort *uint16) int {
 	return evalhashagg(&a.bc, delims, a.tree, abort)
 }
 
+func (a *aggtable) EndSegment() {
+	a.bc.dropScratch() // restored in recompile()
+}
+
 func (a *aggtable) symbolize(st *symtab) error {
 	err := recompile(st, &a.parent.prog, &a.prog, &a.bc)
 	if err != nil {
@@ -528,6 +532,8 @@ func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
 
 	return lo, hi
 }
+
+func (a *aggtable) next() rowConsumer { return nil }
 
 func (a *aggtable) writeRows(delims []vmref) error {
 	// Number of projected fields that we GROUP BY. This

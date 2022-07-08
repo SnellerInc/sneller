@@ -163,6 +163,7 @@ func (p *projector) update(st *symtab) error {
 }
 
 func (p *projector) symbolize(st *symtab) error {
+	p.bc.restoreScratch() // see EndSegment
 	sel := p.parent.sel
 	// output symbol table is the union of the
 	// input symbol table plus the output bindings
@@ -243,6 +244,15 @@ func (p *projector) bcproject(delims []vmref, dst []byte, out []syminfo) (int, i
 	p.bc.allocStacks()
 
 	return evalproject(&p.bc, delims, dst, out)
+}
+
+func (p *projector) next() rowConsumer { return p.dstrc }
+
+func (p *projector) EndSegment() {
+	// if we do not have any buffered data,
+	// then do not eat up vm memory
+	p.aw.maybeDrop()
+	p.bc.dropScratch()
 }
 
 func (p *projector) writeRows(delims []vmref) error {

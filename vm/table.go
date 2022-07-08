@@ -280,6 +280,7 @@ func (b *BufferedTable) run(w io.Writer) error {
 		if err != nil {
 			return err
 		}
+		HintEndSegment(w)
 	}
 }
 
