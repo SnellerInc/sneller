@@ -15,12 +15,15 @@
 package vm
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/regexp2"
 	"golang.org/x/exp/slices"
 )
 
@@ -31,12 +34,12 @@ func TestCmpStrEqCsBruteForce1(t *testing.T) {
 	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
 	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
 	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0}
-	strSearchSpace := createRandomSearchSpaceMaxLength(4, 2000, strAlphabet)
+	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'}
+	strSpace := createSpaceRandom(4, strAlphabet, 2000)
 
-	for _, str1 := range strSearchSpace {
+	for _, str1 := range strSpace {
 		str1Bytes := []byte(str1)
-		for _, str2 := range strSearchSpace {
+		for _, str2 := range strSpace {
 			str2Bytes := []byte(str2)
 			// given
 			var ctx bctestContext
@@ -75,12 +78,12 @@ func TestCmpStrEqCiBruteForce1(t *testing.T) {
 	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
 	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
 	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0}
-	strSearchSpace := createRandomSearchSpaceMaxLength(4, 2000, strAlphabet)
+	strSpace := createSpaceRandom(4, strAlphabet, 2000)
 
-	for _, str1 := range strSearchSpace {
+	for _, str1 := range strSpace {
 		str1Norm := stringext.NormalizeStringASCIIOnly(str1)
 
-		for _, str2 := range strSearchSpace {
+		for _, str2 := range strSpace {
 			str2Norm := stringext.NormalizeStringASCIIOnly(str2)
 
 			// given
@@ -123,11 +126,11 @@ func TestCmpStrEqUTF8CiBruteForce1(t *testing.T) {
 	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
 	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
 	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K'}
-	strSearchSpace := createSearchSpaceMaxLength(4, strAlphabet)
+	strSpace := createSpace(4, strAlphabet)
 
-	for _, str1 := range strSearchSpace {
+	for _, str1 := range strSpace {
 		str1Ext := stringext.GenNeedleExt(str1, false)
-		for _, str2 := range strSearchSpace {
+		for _, str2 := range strSpace {
 			// given
 			var ctx bctestContext
 			ctx.Taint()
@@ -139,7 +142,6 @@ func TestCmpStrEqUTF8CiBruteForce1(t *testing.T) {
 			}
 			ctx.setScalarIonFields(values)
 			ctx.current = 0xFFFF
-
 			// when
 			if err := ctx.ExecuteImm2(opCmpStrEqUTF8Ci, 0); err != nil {
 				t.Error(err)
@@ -320,11 +322,298 @@ func TestBytecodeIsNull(t *testing.T) {
 	}
 }
 
+// regexMatch determines whether data-structure for DFA operation op matches needle
+func regexMatch(t *testing.T, ds *[]byte, op bcop, needle string) bool {
+	// given
+	var ctx bctestContext
+	ctx.Taint()
+	ctx.dict = append(ctx.dict, string(*ds))
+
+	var values []interface{}
+	for i := 0; i < 16; i++ {
+		values = append(values, needle)
+	}
+	ctx.setScalarIonFields(values)
+	ctx.current = (1 << len(values)) - 1
+
+	// when
+	err := ctx.ExecuteImm2(op, 0)
+
+	if err != nil {
+		t.Error(err)
+		t.Fail()
+	}
+
+	// then: all lanes should have the same answer
+	if ctx.current != 0 && ctx.current != uint16(0xFFFF) {
+		t.Logf("current  = %02x (%016b)", ctx.current, ctx.current)
+		t.Error("mixed output mask, expected either 0x0000 or 0xFFFF")
+	}
+	ctx.Free()
+	return (ctx.current & 1) == 1
+}
+
+// regexNeedleTest tests the equality for all regexes provided in the data-structure container for one provided needle
+func regexNeedleTest(t *testing.T, dsByte *[]byte, opStr string, op bcop, needle string, expected bool, ds *regexp2.DataStructures) {
+	if dsByte != nil {
+		observed := regexMatch(t, dsByte, op, needle)
+		if expected != observed {
+			t.Errorf("issue %v (with %v) for needle %v: regexGolang=%q yields %v; regexSneller=%q yields %v",
+				op, opStr, escapeNL(needle), escapeNL(ds.RegexGolang.String()), observed, escapeNL(ds.RegexSneller.String()), expected)
+		}
+	}
+}
+
+// regexNeedlesTest tests the equality for all regexes provided in the data-structure container for all provided needles
+func regexNeedlesTest(t *testing.T, ds *regexp2.DataStructures, needles []string, wg *sync.WaitGroup) {
+	if wg != nil {
+		defer wg.Done()
+	}
+	for _, needle := range needles {
+		expected := ds.RegexGolang.MatchString(needle)
+		regexNeedleTest(t, ds.DsT6, "DfaT6", opDfaT6, needle, expected, ds)
+		regexNeedleTest(t, ds.DsT6Z, "DfaT6Z", opDfaT6Z, needle, expected, ds)
+		regexNeedleTest(t, ds.DsT7, "DfaT7", opDfaT7, needle, expected, ds)
+		regexNeedleTest(t, ds.DsT7Z, "DfaT7Z", opDfaT7Z, needle, expected, ds)
+		regexNeedleTest(t, ds.DsT8, "DfaT8", opDfaT8, needle, expected, ds)
+		regexNeedleTest(t, ds.DsT8Z, "DfaT8Z", opDfaT8Z, needle, expected, ds)
+		regexNeedleTest(t, ds.DsL, "DfaL", opDfaL, needle, expected, ds)
+		regexNeedleTest(t, ds.DsLZ, "DfaLZ", opDfaLZ, needle, expected, ds)
+	}
+}
+
+func TestRegexType1(t *testing.T) {
+	needles := createSpace(6, []rune{'a', 'b', 'c', 'd', '\n', 'Ω'}) // U+2126 'Ω' (3 bytes)
+
+	testCases := []struct {
+		expr     string
+		writeDot bool
+	}{
+		//automaton with flags
+		{`a$`, false},
+		//NOT supported {CreateDs(`a|$`, false},
+		{`a|b$`, false},
+
+		//automaton without flags
+		{`.*a.b`, false},
+		{`.*a.a`, false},
+		{`a*.b`, false},
+		{`a*.b*.c`, false},
+		{`a*.b*.c*.d`, false},
+		{`c*.*(aa|cd)`, false},
+		{`(c*b|.a)`, false},
+		{`.*b*.a`, false},
+		{`b*.a*.`, false},
+		{`b*..*b`, false},
+		{`a*..*a`, false},
+		{`..|aaaa`, false},
+		{`..|aa`, false},
+		{`.ba|aa`, false},
+		{`a*...`, false},
+		{`a*..`, false},
+		{`c*.*aa`, false},
+		{`.a|aaa`, false},
+		{`ab|.c`, false},
+		{`.*ab`, false},
+		{`a*..a`, false},
+		{`a*..b`, false},
+		{`a*.b`, false},
+		{`.*ab.*cd`, false},
+	}
+	for i, data := range testCases {
+		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
+			ds := regexp2.CreateDs(data.expr, regexp2.Regexp, data.writeDot, regexp2.MaxNodesAutomaton)
+			regexNeedlesTest(t, &ds, needles, nil)
+		})
+	}
+}
+
+func TestRegexType2(t *testing.T) {
+	needles := createSpace(6, []rune{'a', 'b', 'c', 'd', '\n', 'Ω'}) // U+2126 'Ω' (3 bytes)
+
+	testCases := []struct {
+		expr     string
+		writeDot bool
+	}{
+		{`(aa|b*)`, false}, //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
+		{`a*`, false},      //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
+		{`ab|cd`, false},
+		{`%a_b`, false},
+		{`%a_a`, false},
+		{`a%b`, false},
+		{`a%b%c`, false},
+		{`a%b%c%d`, false},
+		{`c*%(aa|cd)`, false},
+		{`(c*b|_a)`, false},
+		{`c*b|_a`, false},
+		{`%b*_a`, false},
+		{`b*_a*_`, false},
+		{`b*_%b`, false},
+		{`a*_%a`, false},
+		{`__|aaaa`, false},
+		{`__|aa`, false},
+		{`_ba|aa`, false},
+		{`a*___`, false},
+		{`a*__`, false},
+		{`c*%aa`, false},
+		{`_a|aaa`, false},
+		{`ab|_c`, false},
+		{`%ab`, false},
+		{`a*__a`, false},
+		{`a*__b`, false},
+		{`a*_b`, false},
+		{`%ab%cd`, false},
+	}
+	for i, data := range testCases {
+		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
+			ds := regexp2.CreateDs(data.expr, regexp2.SimilarTo, data.writeDot, regexp2.MaxNodesAutomaton)
+			regexNeedlesTest(t, &ds, needles, nil)
+		})
+	}
+}
+
+func TestRegexIP4(t *testing.T) {
+	needles := createSpaceRandom(12, []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'}, 100000)
+	fmt.Printf("NUmber of needles %v", len(needles))
+	testCases := []struct {
+		expr      string
+		regexType regexp2.RegexType
+		writeDot  bool
+	}{
+		{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`, regexp2.SimilarTo, false},
+		{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`, regexp2.Regexp, false},
+		{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, regexp2.SimilarTo, false},
+		{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`, regexp2.Regexp, false},
+	}
+	for i, data := range testCases {
+		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
+			ds := regexp2.CreateDs(data.expr, data.regexType, data.writeDot, regexp2.MaxNodesAutomaton)
+			regexNeedlesTest(t, &ds, needles, nil)
+		})
+	}
+}
+
+// bruteForceIterateRegex iterates over all regexes with the provided regex length and regex alphabet,
+// and determines equality over all needles with the provided needle length and needle alphabet
+func bruteForceIterateRegex(t *testing.T, regexLength, needleLength int, regexAlphabet, needleAlphabet []rune, regexType regexp2.RegexType) {
+	regexAlphabetSize := len(regexAlphabet)
+	regexIndices := make([]byte, regexLength)
+	regexRunes := make([]rune, regexLength)
+	regexDone := false
+
+	needles := createSpace(needleLength, needleAlphabet)
+	nNeedles := len(needles)
+	nTests := 0
+
+	for !regexDone {
+		for i := 0; i < regexLength; i++ {
+			regexRunes[i] = regexAlphabet[regexIndices[i]]
+		}
+		regexStr := string(regexRunes)
+		if _, err := regexp2.Compile(regexStr, regexType); err != nil {
+			// ignore strings that are not valid regexes
+		} else if err := regexp2.IsSupported(regexStr); err != nil {
+			// ignore not supported regexes
+		} else {
+			ds := regexp2.CreateDs(regexStr, regexType, false, regexp2.MaxNodesAutomaton)
+			if nNeedles < 100 { // do serial
+				regexNeedlesTest(t, &ds, needles, nil)
+			} else { // do parallel
+				nGroups := 20
+				groupSize := (nNeedles / nGroups) + 1
+				var wg sync.WaitGroup
+				nItemsRemaining := len(needles)
+				i := 0
+				for nItemsRemaining > 0 {
+					wg.Add(1)
+					lowerBound := i * groupSize
+					upperBound := lowerBound + groupSize
+					if upperBound > nNeedles {
+						upperBound = nNeedles
+					}
+					needleFragment := needles[lowerBound:upperBound]
+					go regexNeedlesTest(t, &ds, needleFragment, &wg)
+					nItemsRemaining -= len(needleFragment)
+					i++
+				}
+				wg.Wait()
+			}
+			nTests += nNeedles
+		}
+		regexDone = !next(&regexIndices, regexAlphabetSize, regexLength)
+	}
+	t.Logf("brute-force did %v tests (regexLength %v; needleLength %v; nNeedles %v)", nTests, regexLength, needleLength, nNeedles)
+}
+
+// TestRegexBruteForce1 tests unicode code-points in regex and needle
+func TestRegexBruteForce1(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	regexType := regexp2.Regexp
+	regexAlphabet := []rune{'a', 'b', '.', '*', '|', 'Ω'}
+	needleAlphabet := []rune{'a', 'b', 'c', 'Ω'} // U+2126 'Ω' (3 bytes)
+
+	for regexLength := 1; regexLength < 6; regexLength++ {
+		for needleLength := 1; needleLength < 4; needleLength++ {
+			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
+		}
+	}
+}
+
+// TestRegexBruteForce2 tests newline in regex and needle
+func TestRegexBruteForce2(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	regexType := regexp2.Regexp
+	regexAlphabet := []rune{'a', 'b', '.', '*', '|', 0x0A}
+	needleAlphabet := []rune{'a', 'b', 'c', 0x0A} // 0x0A = newline
+
+	for regexLength := 1; regexLength < 6; regexLength++ {
+		for needleLength := 1; needleLength < 4; needleLength++ {
+			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
+		}
+	}
+}
+
+// TestRegexBruteForce3 tests UTF8 needles with 'SIMILAR TO'
+func TestRegexBruteForce3(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	regexType := regexp2.SimilarTo
+	regexAlphabet := []rune{'a', 'b', '_', '%', 'Ω'} //FIXME exists an issue with '|': eg "|a"
+	needleAlphabet := []rune{'a', 'b', 'c', 'Ω'}     // U+2126 'Ω' (3 bytes)
+
+	for regexLength := 1; regexLength < 6; regexLength++ {
+		for needleLength := 1; needleLength < 4; needleLength++ {
+			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
+		}
+	}
+}
+
+// TestRegexBruteForce3 tests newline with 'SIMILAR TO'
+func TestRegexBruteForce4(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+	regexType := regexp2.SimilarTo
+	regexAlphabet := []rune{'a', 'b', '_', '%', 0x0A} //FIXME (=DfaLZ): for needle a regexGolang="(^(|a))$" yields false; regexSneller="(|a)$" yields true
+	needleAlphabet := []rune{'a', 'b', 'c', 0x0A}
+
+	for regexLength := 1; regexLength < 6; regexLength++ {
+		for needleLength := 1; needleLength < 4; needleLength++ {
+			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
+		}
+	}
+}
+
 //next updates x to the successor; return true/false whether the x is valid
-func next(x *[]byte, max byte, length int) bool {
+func next(x *[]byte, max, length int) bool {
 	for i := 0; i < length; i++ {
-		(*x)[i]++          // increment the current byte i
-		if (*x)[i] < max { // is the current byte larger than the maximum value?
+		(*x)[i]++                // increment the current byte i
+		if (*x)[i] < byte(max) { // is the current byte larger than the maximum value?
 			return true // we have a valid successor
 		}
 		(*x)[i] = 0 // overflow for the current byte, try to increment the next byte i+1
@@ -337,50 +626,49 @@ func escapeNL(str string) string {
 	return strings.ReplaceAll(str, "\n", "\\n")
 }
 
-// createSearchSpace creates strings of the provided length over the provided alphabet
-func createSearchSpace(strLength int, alphabet []rune) []string {
-	alphabetSize := byte(len(alphabet))
-	indices := make([]byte, strLength)
-	strRunes := make([]rune, strLength)
+// createSpace creates strings of length 1 upto maxLength over the provided alphabet
+func createSpace(maxLength int, alphabet []rune) []string {
 	result := make([]string, 0)
-	done := false
-	for !done {
-		for i := 0; i < strLength; i++ {
-			strRunes[i] = alphabet[indices[i]]
-		}
-		result = append(result, string(strRunes))
-		done = !next(&indices, alphabetSize, strLength)
-	}
-	return result
-}
-
-// createSearchSpaceMaxLength creates strings of length 1 upto maxNeedleLength over the provided alphabet
-func createSearchSpaceMaxLength(maxStrLength int, alphabet []rune) []string {
-	result := make([]string, 0)
-	for i := 1; i <= maxStrLength; i++ {
-		result = append(result, createSearchSpace(i, alphabet)...)
-	}
-	return result
-}
-
-// createRandomSearchSpace creates random strings with the provided length over the provided alphabet
-func createRandomSearchSpace(strLength, numberOfStr int, alphabet []rune) []string {
 	alphabetSize := len(alphabet)
-	strRunes := make([]rune, strLength)
-	result := make([]string, 0, numberOfStr)
-	for k := 0; k < numberOfStr; k++ {
+	indices := make([]byte, maxLength)
+
+	for strLength := 1; strLength <= maxLength; strLength++ {
+		strRunes := make([]rune, strLength)
+		done := false
+		for !done {
+			for i := 0; i < strLength; i++ {
+				strRunes[i] = alphabet[indices[i]]
+			}
+			result = append(result, string(strRunes))
+			done = !next(&indices, alphabetSize, strLength)
+		}
+	}
+	return result
+}
+
+// createSpaceRandom creates random strings with the provided length over the provided alphabet
+func createSpaceRandom(maxLength int, alphabet []rune, maxSize int) []string {
+	type void struct{}
+	var member void
+	set := make(map[string]void) // new empty set
+
+	// Note: not the most efficient implementation: space of short strings
+	// is quickly exhausted while we are still trying to find something
+	strRunes := make([]rune, maxLength)
+	alphabetSize := len(alphabet)
+
+	for len(set) < maxSize {
+		strLength := rand.Intn(maxLength + 1)
 		for i := 0; i < strLength; i++ {
 			strRunes[i] = alphabet[rand.Intn(alphabetSize)]
 		}
-		result = append(result, string(strRunes))
+		set[string(strRunes)] = member
 	}
-	return result
-}
-
-func createRandomSearchSpaceMaxLength(maxStrLength, numberOfStr int, alphabet []rune) []string {
-	result := make([]string, 0)
-	for i := 1; i <= maxStrLength; i++ {
-		result = append(result, createRandomSearchSpace(i, numberOfStr/maxStrLength, alphabet)...)
+	result := make([]string, len(set))
+	pos := 0
+	for s := range set {
+		result[pos] = s
+		pos++
 	}
 	return result
 }

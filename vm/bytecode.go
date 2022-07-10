@@ -494,7 +494,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opMatchpatUTF8Ci: {text: "matchpat_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadWriteS},
 
 	// ip matching operations
-	opIsSubnetOfIP4: {text: "is_subnet_of_ip4", imms: bcImmsDict, flags: bcReadWriteK | bcReadV},
+	opIsSubnetOfIP4: {text: "is_subnet_of_ip4", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 
 	// char skipping
 	opSkip1charLeft:  {text: "skip_1char_left", flags: bcReadWriteK | bcReadWriteS},
@@ -505,6 +505,15 @@ var opinfo = [_maxbcop]bcopinfo{
 	opLengthStr: {text: "lengthstr", flags: bcReadK | bcReadWriteS},
 	opSubstr:    {text: "substr", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
 	opSplitPart: {text: "split_part", imms: bcImmsDictS16, flags: bcReadWriteK | bcReadWriteS},
+
+	opDfaT6:  {text: "dfa_tiny6", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaT7:  {text: "dfa_tiny7", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaT8:  {text: "dfa_tiny8", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaT6Z: {text: "dfa_tiny6Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaT7Z: {text: "dfa_tiny7Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaT8Z: {text: "dfa_tiny8Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaL:   {text: "dfa_large", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opDfaLZ:  {text: "dfa_largeZ", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 
 	optrap: {text: "trap"},
 }

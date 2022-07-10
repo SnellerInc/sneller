@@ -26,12 +26,14 @@ import (
 	"strings"
 
 	"golang.org/x/exp/slices"
+	"golang.org/x/sys/cpu"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/heap"
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/regexp2"
 )
 
 type ssaop int
@@ -96,7 +98,6 @@ const (
 	sconcatstr3 // string concatenation (three strings)
 	sconcatstr4 // string concatenation (four strings)
 
-	// #region raw string comparison
 	sStrCmpEqCs     // Ascii string compare equality case-sensitive
 	sStrCmpEqCi     // Ascii string compare equality case-insensitive
 	sStrCmpEqUTF8Ci // UTF-8 string compare equality case-insensitive
@@ -132,7 +133,15 @@ const (
 	sCharLength // count number of unicode-points
 	sSubStr     // select a substring
 	sSplitPart  // Presto split_part
-	// #endregion raw string comparison
+
+	sDfaT6  // DFA tiny 6-bit
+	sDfaT7  // DFA tiny 7-bit
+	sDfaT8  // DFA tiny 8-bit
+	sDfaT6Z // DFA tiny 6-bit Zero remaining length assertion
+	sDfaT7Z // DFA tiny 7-bit Zero remaining length assertion
+	sDfaT8Z // DFA tiny 8-bit Zero remaining length assertion
+	sDfaL   // DFA large
+	sDfaLZ  // DFA large Zero remaining length assertion
 
 	// immediate integer comparison ops
 	scmpltimmi // arg0.mask < consti
@@ -655,7 +664,15 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sCharLength: {text: "char_length", argtypes: str1Args, rettype: stIntMasked, bc: opLengthStr},
 	sSubStr:     {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSubstr, emit: emitStrEditStack2},
 	sSplitPart:  {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSplitPart, emit: emitStrEditStack1x1},
-	// #endregion string operations
+
+	sDfaT6:  {text: "dfa_tiny6", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6},
+	sDfaT7:  {text: "dfa_tiny7", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7},
+	sDfaT8:  {text: "dfa_tiny8", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8},
+	sDfaT6Z: {text: "dfa_tiny6Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6Z},
+	sDfaT7Z: {text: "dfa_tiny7Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7Z},
+	sDfaT8Z: {text: "dfa_tiny8Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8Z},
+	sDfaL:   {text: "dfa_large", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaL},
+	sDfaLZ:  {text: "dfa_large_flags", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaLZ},
 
 	// compare against a constant exactly
 	sequalconst: {text: "equalconst", argtypes: scalar1Args, rettype: stBool, immfmt: fmtother, emit: emitconstcmp},
@@ -2555,7 +2572,46 @@ func (p *prog) pattern(str *value, startStr string, middle []string, endStr stri
 	return str
 }
 
-//#endregion
+// RegexMatch matches 'str' as a string against regex
+func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
+	hasRlza := store.HasRLZA()
+	if cpu.X86.HasAVX512VBMI && store.HasOnlyASCII() { // AVX512_VBMI -> Icelake
+		if dsTiny, err := regexp2.NewDsTiny(store); err == nil {
+			if ds, valid := dsTiny.Data(6, hasRlza); valid {
+				if hasRlza {
+					return p.ssa2imm(sDfaT6Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
+				}
+				return p.ssa2imm(sDfaT6, str, p.mask(str), p.Constant(string(ds)).imm), nil
+			}
+			if ds, valid := dsTiny.Data(7, hasRlza); valid {
+				if hasRlza {
+					return p.ssa2imm(sDfaT7Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
+				}
+				return p.ssa2imm(sDfaT7, str, p.mask(str), p.Constant(string(ds)).imm), nil
+			}
+			if ds, valid := dsTiny.Data(8, hasRlza); valid {
+				if hasRlza {
+					return p.ssa2imm(sDfaT8Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
+				}
+				return p.ssa2imm(sDfaT8, str, p.mask(str), p.Constant(string(ds)).imm), nil
+			}
+		} else {
+			// NOTE when you end up here there is an internal error: generation of data-structure
+			// for TinyDFA failed. Continue to try Large.
+		}
+	}
+	if hasRlza {
+		if dsLargeZ, err := regexp2.NewDsLarge(store, true); err != nil {
+			return nil, fmt.Errorf("internal error: generation of data-structure for LargeZ failed")
+		} else {
+			return p.ssa2imm(sDfaLZ, str, p.mask(str), p.Constant(string(dsLargeZ.Data())).imm), nil
+		}
+	}
+	if dsLarge, err := regexp2.NewDsLarge(store, false); err == nil {
+		return p.ssa2imm(sDfaL, str, p.mask(str), p.Constant(string(dsLarge.Data())).imm), nil
+	}
+	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
+}
 
 // Less computes 'left < right'
 func (p *prog) Less(left, right *value) *value {

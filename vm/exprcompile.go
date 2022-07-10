@@ -21,6 +21,8 @@ import (
 	"math/big"
 	"net"
 
+	"github.com/SnellerInc/sneller/regexp2"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -113,6 +115,35 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			}
 			caseSensitive := n.Op == expr.Like
 			return p.Like(left, string(s), caseSensitive), nil
+		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:
+			left, err := p.compileAsString(n.Left)
+			if err != nil {
+				return nil, err
+			}
+			s, ok := n.Right.(expr.String)
+			if !ok {
+				return nil, fmt.Errorf("expected string expression")
+			}
+			//NOTE: We do not implement the escape char from the SQL SIMILAR TO syntax, backslash is the only used escape-char
+			regexStr := string(s)
+			if err := regexp2.IsSupported(regexStr); err != nil {
+				return nil, fmt.Errorf("regex %v is not supported: %v", regexStr, err)
+			}
+			regexType := regexp2.SimilarTo
+			if n.Op == expr.RegexpMatch {
+				regexType = regexp2.Regexp
+			} else if n.Op == expr.RegexpMatchCi {
+				regexType = regexp2.RegexpCi
+			}
+			regex, err := regexp2.Compile(regexStr, regexType)
+			if err != nil {
+				return nil, err
+			}
+			dfaStore, err := regexp2.CompileDFA(regex, regexp2.MaxNodesAutomaton)
+			if err != nil {
+				return nil, fmt.Errorf("Error: %v; construction of DFA from regex %v failed", err, regex)
+			}
+			return p.RegexMatch(left, dfaStore)
 		}
 
 		// the remaining cases expect numeric arguments

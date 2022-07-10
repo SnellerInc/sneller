@@ -294,6 +294,14 @@ const (
 	opMatchpatCi             bcop = 288
 	opMatchpatUTF8Ci         bcop = 289
 	opIsSubnetOfIP4          bcop = 290
-	optrap                   bcop = 291
-	_maxbcop                      = 292
+	opDfaT6                  bcop = 291
+	opDfaT7                  bcop = 292
+	opDfaT8                  bcop = 293
+	opDfaT6Z                 bcop = 294
+	opDfaT7Z                 bcop = 295
+	opDfaT8Z                 bcop = 296
+	opDfaL                   bcop = 297
+	opDfaLZ                  bcop = 298
+	optrap                   bcop = 299
+	_maxbcop                      = 300
 )

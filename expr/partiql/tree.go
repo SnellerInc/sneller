@@ -62,6 +62,8 @@ func init() {
 		{"OFFSET", OFFSET},
 		{"ILIKE", ILIKE},
 		{"LIKE", LIKE},
+		{"SIMILAR", SIMILAR},
+		{"TO", TO},
 		{"NULL", NULL},
 		{"NULLS", NULLS},
 		{"NULLIF", NULLIF},

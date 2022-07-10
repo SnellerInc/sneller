@@ -41,6 +41,8 @@ var (
 	dashj      bool
 	dashN      bool
 	dashg      bool
+	dashg2     bool
+	dashg3     bool
 	dasho      string
 	dashnommap bool
 	printStats bool
@@ -51,6 +53,8 @@ var (
 func init() {
 	flag.BoolVar(&dashf, "f", false, "read arguments as files containing queries")
 	flag.BoolVar(&dashg, "g", false, "just dump the query plan graphviz; do not execute")
+	flag.BoolVar(&dashg2, "g2", false, "just dump DFA of first regex graphviz; do not execute")
+	flag.BoolVar(&dashg3, "g3", false, "just dump data-structure of first regex; do not execute")
 	flag.BoolVar(&dashj, "j", false, "write output as JSON instead of ion")
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
@@ -151,7 +155,8 @@ func parse(arg string) *expr.Query {
 }
 
 func do(arg string) {
-	tree, err := plan.New(parse(arg), eenv(func(e expr.Node) (vm.Table, error) {
+	query := parse(arg)
+	tree, err := plan.New(query, eenv(func(e expr.Node) (vm.Table, error) {
 		str, ok := e.(expr.String)
 		if !ok {
 			return nil, fmt.Errorf("unexpected table expression %s", expr.ToString(e))
@@ -182,7 +187,17 @@ func do(arg string) {
 
 	if dashg {
 		// -g -> just Graphviz
-		plan.Graphviz(tree, dst)
+		if err = plan.Graphviz(tree, dst); err != nil {
+			exit(err)
+		}
+		return
+	}
+	if dashg2 || dashg3 {
+		// -g2 -> dump DFA of first regex
+		// -g3 -> dump data-structure for DFA of first regex
+		if err = GraphvizDFA(query, dst, dashg2, dashg3); err != nil {
+			exit(err)
+		}
 		return
 	}
 
@@ -192,8 +207,7 @@ func do(arg string) {
 	}
 
 	var stat plan.ExecStats
-	err = plan.Exec(tree, dst, &stat)
-	if err != nil {
+	if err = plan.Exec(tree, dst, &stat); err != nil {
 		exit(err)
 	}
 }
@@ -205,7 +219,7 @@ func exit(err error) {
 
 func main() {
 	flag.Parse()
-	if dashg && dashj {
+	if (dashg || dashg2 || dashg3) && dashj {
 		// can't write graphviz output
 		// as json, obviously...
 		dashj = false

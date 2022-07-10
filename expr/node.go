@@ -1252,8 +1252,11 @@ const (
 	Greater
 	GreaterEquals
 
-	Like  // LIKE <literal>
-	Ilike // ILIKE <literal>
+	Like          // LIKE <literal> (also ~~)
+	Ilike         // ILIKE <literal> (also ~~*)
+	SimilarTo     // SIMILAR TO <literal>
+	RegexpMatch   // ~ <literal>
+	RegexpMatchCi // ~* <literal> case-insensitive regex match
 )
 
 func (c CmpOp) ordinal() bool {
@@ -1623,6 +1626,12 @@ func (c *Comparison) text(dst *strings.Builder, redact bool) {
 		middle = " LIKE "
 	case Ilike:
 		middle = " ILIKE "
+	case SimilarTo:
+		middle = " SIMILAR_TO "
+	case RegexpMatch:
+		middle = " REGEXP_MATCH "
+	case RegexpMatchCi:
+		middle = " REGEXP_MATCH_CI "
 	default:
 		middle = " Comparison(???)"
 	}
@@ -1641,8 +1650,8 @@ func (c *Comparison) Type() TypeSet {
 }
 
 func (c *Comparison) invert() Node {
-	if c.Op == Like {
-		return nil // no NOT LIKE
+	if c.Op == Like || c.Op == Ilike || c.Op == SimilarTo || c.Op == RegexpMatch || c.Op == RegexpMatchCi {
+		return nil // no NOT LIKE, etc
 	}
 	return &Comparison{
 		Op:    c.Op.invert(),

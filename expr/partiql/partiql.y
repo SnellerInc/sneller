@@ -73,9 +73,9 @@ import (
 %left OR
 %left AND
 %right '!' '~' NOT
-%left BETWEEN CASE WHEN THEN ELSE END
+%left BETWEEN CASE WHEN THEN ELSE END TO
 %left <empty> EQ NE LT LE GT GE
-%left <empty> ILIKE LIKE IN IS OVER FILTER
+%left <empty> SIMILAR REGEXP_MATCH_CI ILIKE LIKE IN IS OVER FILTER
 %left <empty> '|'
 %left <empty> '^'
 %left <empty> '&'
@@ -344,6 +344,18 @@ datum_or_parens
 {
   $$ = expr.Compare(expr.Like, $1, expr.String($3))
 }
+| expr SIMILAR TO STRING
+{
+  $$ = expr.Compare(expr.SimilarTo, $1, expr.String($4))
+}
+| expr '~' STRING
+{
+  $$ = expr.Compare(expr.RegexpMatch, $1, expr.String($3))
+}
+| expr REGEXP_MATCH_CI STRING
+{
+  $$ = expr.Compare(expr.RegexpMatchCi, $1, expr.String($3))
+}
 | expr EQ expr
 {
   $$ = expr.Compare(expr.Equals, $1, $3)
@@ -375,6 +387,22 @@ datum_or_parens
 | expr NOT LIKE STRING
 {
   $$ = &expr.Not{Expr: expr.Compare(expr.Like, $1, expr.String($4))}
+}
+| expr NOT ILIKE STRING
+{
+  $$ = &expr.Not{Expr: expr.Compare(expr.Ilike, $1, expr.String($4))}
+}
+| expr NOT SIMILAR TO STRING
+{
+  $$ = &expr.Not{Expr: expr.Compare(expr.SimilarTo, $1, expr.String($5))}
+}
+| expr NOT '~' STRING
+{
+  $$ = &expr.Not{Expr: expr.Compare(expr.RegexpMatch, $1, expr.String($4))}
+}
+| expr NOT REGEXP_MATCH_CI STRING
+{
+  $$ = &expr.Not{Expr: expr.Compare(expr.RegexpMatchCi, $1, expr.String($4))}
 }
 | NOT expr
 {

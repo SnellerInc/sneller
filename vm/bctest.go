@@ -252,7 +252,7 @@ func (c *bctestContext) Taint() {
 	}
 
 	c.current = uint16(hash32("K1"))
-	c.valid = uint16(hash32("K2"))
+	c.valid = uint16(hash32("K7"))
 
 	z0 := hash32("Z0")
 	z1 := hash32("Z1")

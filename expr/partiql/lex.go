@@ -204,11 +204,26 @@ func (s *scanner) Lex(l *yySymType) int {
 		s.notkw = false
 		s.pos++
 		return int(b)
-	case ',', '*', '-', '/', '%', ':', '&', '^', '~', '[', ']', '(', ')', '{', '}':
+	case ',', '*', '-', '/', '%', ':', '&', '^', '[', ']', '(', ')', '{', '}':
 		// literal operators
 		s.notkw = false
 		s.pos++
 		return int(b)
+	case '~':
+		switch s.peekat(1) {
+		case '*':
+			s.pos += 2
+			return REGEXP_MATCH_CI
+		case '~':
+			if s.peekat(2) == '*' {
+				s.pos += 3
+				return ILIKE
+			}
+			s.pos += 2
+			return LIKE
+		}
+		s.pos++
+		return '~'
 	default:
 		s.err = &LexerError{
 			Position: s.pos,
