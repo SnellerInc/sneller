@@ -24,6 +24,7 @@ import (
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/regexp2"
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -323,43 +324,33 @@ func TestBytecodeIsNull(t *testing.T) {
 }
 
 // regexMatch determines whether data-structure for DFA operation op matches needle
-func regexMatch(t *testing.T, ds *[]byte, op bcop, needle string) bool {
-	// given
-	var ctx bctestContext
+func regexMatch(t *testing.T, ctx *bctestContext, ds *[]byte, op bcop, needles []string) uint16 {
 	ctx.Taint()
-	ctx.dict = append(ctx.dict, string(*ds))
-
-	var values []interface{}
-	for i := 0; i < 16; i++ {
-		values = append(values, needle)
-	}
-	ctx.setScalarIonFields(values)
-	ctx.current = (1 << len(values)) - 1
+	ctx.dict = append(ctx.dict[:0], string(*ds))
+	ctx.setScalarStrings(needles)
+	ctx.current = (1 << len(needles)) - 1
 
 	// when
 	err := ctx.ExecuteImm2(op, 0)
-
 	if err != nil {
-		t.Error(err)
-		t.Fail()
+		t.Fatal(err)
 	}
-
-	// then: all lanes should have the same answer
-	if ctx.current != 0 && ctx.current != uint16(0xFFFF) {
-		t.Logf("current  = %02x (%016b)", ctx.current, ctx.current)
-		t.Error("mixed output mask, expected either 0x0000 or 0xFFFF")
-	}
-	ctx.Free()
-	return (ctx.current & 1) == 1
+	return ctx.current
 }
 
 // regexNeedleTest tests the equality for all regexes provided in the data-structure container for one provided needle
-func regexNeedleTest(t *testing.T, dsByte *[]byte, opStr string, op bcop, needle string, expected bool, ds *regexp2.DataStructures) {
-	if dsByte != nil {
-		observed := regexMatch(t, dsByte, op, needle)
-		if expected != observed {
-			t.Errorf("issue %v (with %v) for needle %v: regexGolang=%q yields %v; regexSneller=%q yields %v",
-				op, opStr, escapeNL(needle), escapeNL(ds.RegexGolang.String()), observed, escapeNL(ds.RegexSneller.String()), expected)
+func regexNeedleTest(t *testing.T, ctx *bctestContext, dsByte *[]byte, opStr string, op bcop, needles []string, expected uint16, ds *regexp2.DataStructures) {
+	if dsByte == nil {
+		return
+	}
+	got := regexMatch(t, ctx, dsByte, op, needles)
+	if got != expected {
+		delta := got ^ expected
+		for i := 0; i < 16; i++ {
+			if delta&(1<<i) != 0 {
+				t.Errorf("issue %v (with %v) for needle %v: regexGolang=%q yields %v; regexSneller=%q yields %v",
+					op, opStr, escapeNL(needles[i]), escapeNL(ds.RegexGolang.String()), got&(1<<i) != 0, escapeNL(ds.RegexSneller.String()), expected)
+			}
 		}
 	}
 }
@@ -369,16 +360,30 @@ func regexNeedlesTest(t *testing.T, ds *regexp2.DataStructures, needles []string
 	if wg != nil {
 		defer wg.Done()
 	}
-	for _, needle := range needles {
-		expected := ds.RegexGolang.MatchString(needle)
-		regexNeedleTest(t, ds.DsT6, "DfaT6", opDfaT6, needle, expected, ds)
-		regexNeedleTest(t, ds.DsT6Z, "DfaT6Z", opDfaT6Z, needle, expected, ds)
-		regexNeedleTest(t, ds.DsT7, "DfaT7", opDfaT7, needle, expected, ds)
-		regexNeedleTest(t, ds.DsT7Z, "DfaT7Z", opDfaT7Z, needle, expected, ds)
-		regexNeedleTest(t, ds.DsT8, "DfaT8", opDfaT8, needle, expected, ds)
-		regexNeedleTest(t, ds.DsT8Z, "DfaT8Z", opDfaT8Z, needle, expected, ds)
-		regexNeedleTest(t, ds.DsL, "DfaL", opDfaL, needle, expected, ds)
-		regexNeedleTest(t, ds.DsLZ, "DfaLZ", opDfaLZ, needle, expected, ds)
+	var ctx bctestContext
+	ctx.Taint()
+	defer ctx.Free()
+	const lanes = 16
+	for len(needles) > 0 {
+		group := needles
+		if len(group) > lanes {
+			group = group[:lanes]
+		}
+		needles = needles[len(group):]
+		want := uint16(0)
+		for i := range group {
+			if ds.RegexGolang.MatchString(group[i]) {
+				want |= 1 << i
+			}
+		}
+		regexNeedleTest(t, &ctx, ds.DsT6, "DfaT6", opDfaT6, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsT7, "DfaT7", opDfaT7, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsT7Z, "DfaT7Z", opDfaT7Z, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsT8, "DfaT8", opDfaT8, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsT8Z, "DfaT8Z", opDfaT8Z, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsL, "DfaL", opDfaL, group, want, ds)
+		regexNeedleTest(t, &ctx, ds.DsLZ, "DfaLZ", opDfaLZ, group, want, ds)
 	}
 }
 
@@ -474,7 +479,7 @@ func TestRegexType2(t *testing.T) {
 
 func TestRegexIP4(t *testing.T) {
 	needles := createSpaceRandom(12, []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'}, 100000)
-	fmt.Printf("NUmber of needles %v", len(needles))
+	t.Logf("Number of needles %d", len(needles))
 	testCases := []struct {
 		expr      string
 		regexType regexp2.RegexType
@@ -664,11 +669,5 @@ func createSpaceRandom(maxLength int, alphabet []rune, maxSize int) []string {
 		}
 		set[string(strRunes)] = member
 	}
-	result := make([]string, len(set))
-	pos := 0
-	for s := range set {
-		result[pos] = s
-		pos++
-	}
-	return result
+	return maps.Keys(set)
 }

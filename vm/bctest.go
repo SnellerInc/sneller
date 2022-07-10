@@ -150,6 +150,32 @@ func (c *bctestContext) getScalarFloat64() (result [16]float64) {
 	return
 }
 
+func (c *bctestContext) setScalarStrings(values []string) {
+	if len(values) > 16 {
+		panic("Can set up to 16 input values for VM opcode")
+	}
+
+	if c.data == nil {
+		c.data = Malloc()
+	}
+	c.data = c.data[:0]
+
+	for i, str := range values {
+		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
+		if !ok {
+			panic("c.data more than 1MB?")
+		}
+		if i%2 == 0 {
+			c.scalar[0][i/2] = uint64(base)
+			c.scalar[1][i/2] = uint64(len(str))
+		} else {
+			c.scalar[0][i/2] |= uint64(base) << 32
+			c.scalar[1][i/2] |= uint64(len(str)) << 32
+		}
+		c.data = append(c.data, str...)
+	}
+}
+
 func (c *bctestContext) setScalarIonFields(values []interface{}) {
 	if len(values) > 16 {
 		panic("Can set up to 16 input values for VM opcode")
