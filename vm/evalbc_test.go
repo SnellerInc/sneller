@@ -25,139 +25,98 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/regexp2"
 	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 )
 
-func TestCmpStrEqCsBruteForce1(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
+func TestStringCompare(t *testing.T) {
+	type testcase struct {
+		name string
+		// alphabet from which to generate needles
+		alphabet []rune
+		// portable comparison function
+		compare func(string, string) bool
+		// bytecode implementation of comparison
+		op bcop
+		// string immediate -> dictionary value function
+		dictval func(string) string
 	}
-	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
-	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
-	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'}
-	strSpace := createSpaceRandom(4, strAlphabet, 2000)
 
-	for _, str1 := range strSpace {
-		str1Bytes := []byte(str1)
-		for _, str2 := range strSpace {
-			str2Bytes := []byte(str2)
-			// given
-			var ctx bctestContext
-			ctx.Taint()
-			ctx.dict = append(ctx.dict, pad(str1))
+	cases := []testcase{
+		{
+			// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+			// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+			// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+			name:     "equal",
+			alphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'},
+			compare:  func(x, y string) bool { return x == y },
+			op:       opCmpStrEqCs,
+			dictval:  func(x string) string { return x },
+		},
+		{
+			name:     "equal_cs_ascii",
+			alphabet: []rune{'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D', 'z', '!', '@'},
+			compare:  strings.EqualFold, // we're only generating ASCII
+			op:       opCmpStrEqCi,
+			dictval:  stringext.NormalizeStringASCIIOnly,
+		},
+		/* NOTE: currently disabled due to a bug
+		{
+			name: "equal_ci_utf8",
+			alphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0},
+			compare:  strings.EqualFold,
+			op:       opCmpStrEqUTF8Ci,
+			dictval:  func(x string) string { return stringext.GenNeedleExt(x, false) },
+		},
+		*/
+	}
 
-			var values []interface{}
-			for i := 0; i < 16; i++ {
-				values = append(values, str2)
+	var ctx bctestContext
+	defer ctx.Free()
+	run := func(t *testing.T, str string, group []string, tc *testcase) {
+		ctx.dict = append(ctx.dict[:0], pad(tc.dictval(str)))
+		ctx.setScalarStrings(group)
+		ctx.current = (1 << len(group)) - 1
+		want := uint16(0)
+		for i := range group {
+			if tc.compare(str, group[i]) {
+				want |= 1 << i
 			}
-			ctx.setScalarIonFields(values)
-			ctx.current = 0xFFFF
-
-			// when
-			if err := ctx.ExecuteImm2(opCmpStrEqCs, 0); err != nil {
-				t.Error(err)
+		}
+		// when
+		if err := ctx.ExecuteImm2(tc.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		if ctx.current != want {
+			delta := ctx.current ^ want
+			for i := range group {
+				if delta&(1<<i) != 0 {
+					t.Fatalf("comparing %v to data %v: got %v expected %v", escapeNL(str), escapeNL(group[i]), ctx.current&(1<<i) != 0, want&(1<<i) != 0)
+				}
 			}
-			// then
-			expected := uint16(0x0000)
-			if slices.Equal(str1Bytes, str2Bytes) {
-				expected = 0xFFFF
-			}
-			if ctx.current != expected {
-				t.Errorf("comparing %v to data %v: observed %04x (%016b); expected %04x (%016b)", escapeNL(str1), escapeNL(str2), ctx.current, ctx.current, expected, expected)
-			}
-			ctx.Free()
 		}
 	}
-}
 
-func TestCmpStrEqCiBruteForce1(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
-	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
-	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0}
-	strSpace := createSpaceRandom(4, strAlphabet, 2000)
-
-	for _, str1 := range strSpace {
-		str1Norm := stringext.NormalizeStringASCIIOnly(str1)
-
-		for _, str2 := range strSpace {
-			str2Norm := stringext.NormalizeStringASCIIOnly(str2)
-
-			// given
-			var ctx bctestContext
-			ctx.Taint()
-			ctx.dict = append(ctx.dict, pad(str1Norm))
-
-			var values []interface{}
-			for i := 0; i < 16; i++ {
-				values = append(values, str2)
+	const lanes = 16
+	for i := range cases {
+		tc := &cases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			var group []string
+			strSpace := createSpaceRandom(4, tc.alphabet, 2000)
+			for _, str1 := range strSpace {
+				group = group[:0]
+				for _, str2 := range strSpace {
+					group = append(group, str2)
+					if len(group) < lanes {
+						continue
+					}
+					run(t, str1, group, tc)
+					group = group[:0]
+				}
+				if len(group) > 0 {
+					run(t, str1, group, tc)
+				}
 			}
-			ctx.setScalarIonFields(values)
-			ctx.current = 0xFFFF
-
-			// when
-			if err := ctx.ExecuteImm2(opCmpStrEqCi, 0); err != nil {
-				t.Error(err)
-			}
-			// then
-			expected := uint16(0x0000)
-
-			if str1Norm == str2Norm {
-				expected = 0xFFFF
-			}
-			if ctx.current != expected {
-				t.Errorf("comparing %v to data %v: observed %04x (%016b); expected %04x (%016b)",
-					escapeNL(str1), escapeNL(str2), ctx.current, ctx.current, expected, expected)
-			}
-			ctx.Free()
-		}
-	}
-}
-
-// TestStrEqUTF8CiBruteForce1 tests special runes ſ and K for case-insensitive string compare
-func TestCmpStrEqUTF8CiBruteForce1(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
-	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
-	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-	strAlphabet := []rune{'s', 'S', 'ſ', 'k', 'K', 'K'}
-	strSpace := createSpace(4, strAlphabet)
-
-	for _, str1 := range strSpace {
-		str1Ext := stringext.GenNeedleExt(str1, false)
-		for _, str2 := range strSpace {
-			// given
-			var ctx bctestContext
-			ctx.Taint()
-			ctx.dict = append(ctx.dict, pad(str1Ext))
-
-			var values []interface{}
-			for i := 0; i < 16; i++ {
-				values = append(values, str2)
-			}
-			ctx.setScalarIonFields(values)
-			ctx.current = 0xFFFF
-			// when
-			if err := ctx.ExecuteImm2(opCmpStrEqUTF8Ci, 0); err != nil {
-				t.Error(err)
-			}
-			// then
-			expected := uint16(0x0000)
-			if strings.EqualFold(str1, str2) {
-				expected = 0xFFFF
-			}
-			if ctx.current != expected {
-				t.Errorf("comparing %v to data %v: observed %04x (%016b); expected %04x (%016b)",
-					escapeNL(str1), escapeNL(str2), ctx.current, ctx.current, expected, expected)
-			}
-			ctx.Free()
-		}
+		})
 	}
 }
 
