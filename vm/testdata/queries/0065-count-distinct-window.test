@@ -1,0 +1,28 @@
+SELECT COUNT(*), COUNT(DISTINCT d) AS dcount, "group"
+FROM input
+GROUP BY "group"
+ORDER BY COUNT(*) DESC
+---
+{"group": "a", "d": 0}
+{"group": "a", "d": 0}
+{"group": "a", "d": 1}
+{"group": "a", "d": 1}
+{"group": "b", "d": 2}
+{"group": "b", "d": 2}
+{"group": "b", "d": 2}
+{"group": "c", "d": 3}
+{"group": "c", "d": 4}
+{"group": "c", "d": 5}
+{"group": "c", "d": 6}
+{"group": "c", "d": 7}
+{"group": "d", "d": "first"}
+{"group": "d", "d": "second"}
+{"group": "d", "d": "third"}
+{"group": "d", "d": "first"}
+{"group": "d", "d": "second"}
+{"group": "d", "d": "third"}
+---
+{"group": "d", "count": 6, "dcount": 3}
+{"group": "c", "count": 5, "dcount": 5}
+{"group": "a", "count": 4, "dcount": 2}
+{"group": "b", "count": 3, "dcount": 1}

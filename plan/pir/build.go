@@ -589,9 +589,43 @@ func (w *windowHoist) Walk(e expr.Node) expr.Rewriter {
 	return w
 }
 
+func hasOnlyOneAggregate(outer *expr.Select) bool {
+	var seen *expr.Aggregate
+	visit := func(e expr.Node) bool {
+		if s, ok := e.(*expr.Select); ok && s != outer {
+			return false
+		}
+		agg, ok := e.(*expr.Aggregate)
+		if !ok {
+			return true
+		}
+		if seen == nil {
+			seen = agg
+		} else if !expr.Equivalent(agg, seen) {
+			seen = nil
+		}
+		return false
+	}
+	expr.Walk(visitfn(visit), outer)
+	return seen != nil
+}
+
 func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	agg, ok := e.(*expr.Aggregate)
-	if !ok || agg.Over == nil {
+	if !ok {
+		return e
+	}
+	// if we have COUNT(DISTINCT ...) along with
+	// other aggregates, we can rewrite it to
+	// work more like a window function:
+	if agg.Op == expr.OpCountDistinct &&
+		len(w.outer.GroupBy) == 1 &&
+		!hasOnlyOneAggregate(w.outer) {
+		agg.Over = &expr.Window{
+			PartitionBy: expr.BindingValues(w.outer.GroupBy),
+		}
+	}
+	if agg.Over == nil {
 		return e
 	}
 	if len(agg.Over.PartitionBy) != 1 {
@@ -601,7 +635,11 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	partition := agg.Over.PartitionBy[0]
 	self := copyForWindow(w.outer)
 	key := expr.Copy(partition)
-
+	if agg.Op == expr.OpCountDistinct {
+		self.GroupBy = append(self.GroupBy, expr.Bind(agg.Inner, "$__distinct"))
+		agg.Op = expr.OpCount
+		agg.Inner = expr.Star{}
+	}
 	// if there is an existing GROUP BY,
 	// then the PARTITION BY should match
 	// one of those bindings (otherwise it
@@ -611,6 +649,11 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	// which we can perform simply as a DISTINCT:
 	if len(self.GroupBy) > 0 {
 		group := self.GroupBy
+		for i := range group {
+			if expr.Equivalent(group[i].Expr, partition) {
+				partition = expr.Identifier(group[i].Result())
+			}
+		}
 		self.GroupBy = nil
 		self.Columns = group
 		self.Distinct = true
@@ -620,13 +663,18 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		self = newt
 	}
 	self.GroupBy = []expr.Binding{expr.Bind(partition, "$__key")}
+	self.Columns = []expr.Binding{
+		expr.Bind(agg, "$__val"),
+		expr.Bind(expr.Identifier("$__key"), "$__key"),
+	}
+	agg.Over = nil
 	// we want HASH_LOOKUP(<partition_expr>, ...)
 	// to replace the aggregate so that
 	//   SUM(x) OVER (PARTITION BY y)
 	// is turned into
 	//   HASH_LOOKUP($__key, (SELECT SUM(x) AS $__val, y AS $__key FROM ... GROUP BY y), default)
 	def := (expr.Node)(expr.Null{})
-	if agg.Op == expr.OpCount || agg.Op == expr.OpCountDistinct {
+	if agg.Op == expr.OpCount {
 		def = expr.Integer(0)
 	}
 	ret := expr.Call("HASH_REPLACEMENT",
@@ -634,11 +682,6 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		scalarkind,
 		expr.String("$__key"),
 		key, def)
-	agg.Over = nil
-	self.Columns = []expr.Binding{
-		expr.Bind(agg, "$__val"),
-		expr.Bind(expr.Identifier("$__key"), "$__key"),
-	}
 
 	// FIXME: this doesn't do anything yet
 	// because we don't have true window functions;

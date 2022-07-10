@@ -1102,7 +1102,7 @@ var IsKeyword func(s string) bool
 // if it contains non-printable characters or it is a
 // PartiQL keyword.
 func QuoteID(s string) string {
-	if IsKeyword != nil && IsKeyword(s) {
+	if IsKeyword != nil && IsKeyword(s) || strings.ContainsAny(s, "%,~+-!<>=(){}[]:") {
 		return strconv.Quote(s)
 	}
 	for _, r := range s {
@@ -2435,8 +2435,8 @@ func ParsePath(x string) (*Path, error) {
 func (p *Path) parse(x string) error {
 	var top *Path
 	var set *PathComponent
-
 	pushfield := func(s string) {
+		s = strings.Trim(s, `"`) // unquote
 		if top == nil {
 			top = p
 			top.First = s

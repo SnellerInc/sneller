@@ -312,19 +312,6 @@ func (d *Distinct) clone() *Distinct {
 	return &Distinct{Columns: d.Columns}
 }
 
-// although the core Distinct implementation technically
-// passes through all bindings, semantically only the distinct
-// columns are available, so don't allow any references to
-// parent variables here
-func (d *Distinct) get(x string) (Step, expr.Node) {
-	for i := range d.Columns {
-		if expr.IsIdentifier(d.Columns[i], x) {
-			return d, d.Columns[i]
-		}
-	}
-	return nil, nil
-}
-
 func (b *Bind) Bindings() []expr.Binding {
 	return b.bind
 }
@@ -665,6 +652,12 @@ func (b *Trace) Distinct(bind []expr.Binding) error {
 		}
 		di.Columns = append(di.Columns, bind[i].Expr)
 	}
+	for i := range bind {
+		err := b.Check(bind[i].Expr)
+		if err != nil {
+			return err
+		}
+	}
 	b.final = bind
 	b.cur = di
 	return b.push()
@@ -677,8 +670,7 @@ func (b *Trace) BindStar() error {
 
 // Bind pushes a set of variable bindings to the stack
 func (b *Trace) Bind(bind []expr.Binding) error {
-	bi := &Bind{}
-	bi.complete = false
+	bi := &Bind{complete: false}
 	bi.setparent(b.top)
 	b.cur = bi
 

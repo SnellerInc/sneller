@@ -1149,6 +1149,27 @@ ORDER BY m, d, h`,
 				"AGGREGATE SUM(x) AS \"sum\"",
 			},
 		},
+		{
+			input: `SELECT "Carrier" AS "$key:resource_id%0", COUNT(DISTINCT "OriginCountry") AS "origin_countries"
+     FROM "sample_flights"
+     GROUP BY "Carrier"
+     ORDER BY COUNT(*) DESC
+     LIMIT 10`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE sample_flights",
+				"	FILTER DISTINCT [Carrier OriginCountry]",
+				"	PROJECT Carrier AS Carrier",
+				"	AGGREGATE COUNT(*) AS $__val BY Carrier AS $__key",
+				") AS REPLACEMENT(0)",
+				"ITERATE sample_flights",
+				"AGGREGATE COUNT(*) AS $_0_1 BY Carrier AS $_0_0",
+				"PROJECT $_0_0 AS \"$key:resource_id%0\", HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS origin_countries, $_0_1 AS $_0_1",
+				"ORDER BY $_0_1 DESC NULLS FIRST",
+				"LIMIT 10",
+				"PROJECT \"$key:resource_id%0\" AS \"$key:resource_id%0\", origin_countries AS origin_countries",
+			},
+		},
 	}
 
 	for i := range tests {

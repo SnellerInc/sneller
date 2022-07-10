@@ -503,7 +503,7 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 		},
 		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 10666}`, false},
 		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 10666}`, false},
-		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\.bar-.*"}`, false},
+		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\..*`, false},
 	}
 	for i := range queries {
 		r := rq.getQuery(queries[i].db, queries[i].input)

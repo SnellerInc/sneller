@@ -90,6 +90,16 @@ func (b *Binding) Equals(o Binding) bool {
 	return b.Result() == o.Result() && b.Expr.Equals(o.Expr)
 }
 
+// BindingValues collects all of bind[*].Expr
+// and returns them as a slice.
+func BindingValues(bind []Binding) []Node {
+	out := make([]Node, len(bind))
+	for i := range bind {
+		out[i] = bind[i].Expr
+	}
+	return out
+}
+
 type JoinKind int
 
 const (

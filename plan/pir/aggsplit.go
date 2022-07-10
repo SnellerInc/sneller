@@ -153,6 +153,17 @@ func flattenBind(columns []expr.Binding) {
 	}
 }
 
+func flattenInto(x, y []expr.Binding) {
+	var f flattener
+	for i := range x {
+		f.matchp = x[i].Result()
+		f.result = x[i].Expr
+		for j := range y {
+			y[j].Expr = expr.Rewrite(&f, y[j].Expr)
+		}
+	}
+}
+
 func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Binding, having expr.Node) error {
 	aggc, err := rejectNestedAggregates(columns, order)
 	if err != nil {
@@ -165,10 +176,9 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 		if err != nil {
 			return err
 		}
-		err = b.Bind(groups)
-		if err != nil {
-			return err
-		}
+		// if there are any bindings in groups,
+		// make sure they are reflected in columns
+		flattenInto(groups, columns)
 		err = b.Bind(columns)
 		if err != nil {
 			return err
