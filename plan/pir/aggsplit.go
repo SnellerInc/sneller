@@ -86,6 +86,13 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order) (int, er
 			err = errorf(agg, "cannot handle nested aggregate %s", expr.ToString(agg))
 			return nil
 		}
+
+		_, ok = e.(*expr.Select)
+		if ok {
+			// do not check sub-queries
+			return walkouter
+		}
+
 		return walkinner
 	}
 	for i := range columns {

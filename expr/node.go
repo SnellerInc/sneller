@@ -390,6 +390,9 @@ func (a *Aggregate) walk(v Visitor) {
 			Walk(v, a.Over.OrderBy[i].Column)
 		}
 	}
+	if a.Filter != nil {
+		Walk(v, a.Filter)
+	}
 }
 
 func (a *Aggregate) rewrite(r Rewriter) Node {
@@ -401,6 +404,9 @@ func (a *Aggregate) rewrite(r Rewriter) Node {
 		for i := range a.Over.OrderBy {
 			a.Over.OrderBy[i].Column = Rewrite(r, a.Over.OrderBy[i].Column)
 		}
+	}
+	if a.Filter != nil {
+		a.Filter = Rewrite(r, a.Filter)
 	}
 	return a
 }

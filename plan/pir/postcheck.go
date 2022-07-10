@@ -61,6 +61,28 @@ func checkNoBuiltin(op expr.BuiltinOp, e expr.Node) error {
 	return err
 }
 
+func checkNoAggregateInCondition(e expr.Node, context string) error {
+	var err error
+	v := visitfn(func(e expr.Node) bool {
+		if err != nil {
+			return false
+		}
+		_, ok := e.(*expr.Select)
+		if ok {
+			// do not visit sub-selects
+			return false
+		}
+		_, ok = e.(*expr.Aggregate)
+		if ok {
+			err = errorf(e, "aggregate functions are not allowed in %s", context)
+			return false
+		}
+		return true
+	})
+	expr.Walk(v, e)
+	return err
+}
+
 func checkSortSize(t *Trace) error {
 	f, ok := t.Final().(*Order)
 	if ok {

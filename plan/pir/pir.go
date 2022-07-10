@@ -630,6 +630,9 @@ func (b *Trace) Where(e expr.Node) error {
 	if err := b.Check(e); err != nil {
 		return err
 	}
+	if err := checkNoAggregateInCondition(e, "WHERE"); err != nil {
+		return err
+	}
 	return b.push()
 }
 

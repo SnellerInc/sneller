@@ -128,6 +128,14 @@ func TestBuildError(t *testing.T) {
 			input: `select x, y from tbl group by sum(x) over (partition by y)`,
 			rx:    "window",
 		},
+		{
+			input: `SELECT x FROM table WHERE AVG(x) > 1.5`,
+			rx:    "aggregate functions are not allowed in WHERE",
+		},
+		{
+			input: `SELECT SUM(x) FILTER (WHERE MAX(x) < 42) FROM table`,
+			rx:    "cannot handle nested aggregate",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
@@ -1128,6 +1136,17 @@ ORDER BY m, d, h`,
 				"ITERATE input WHERE x > 5",
 				"AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1",
 				"PROJECT $_0_0 AS a, $_0_1 AS b, $_0_0 AS c, $_0_0 AS d, $_0_1 AS e",
+			},
+		},
+		{
+			input: `SELECT SUM(x) FILTER (WHERE x >= (SELECT MAX(y) FROM aux)) FROM table`,
+			expect: []string{
+				"WITH (",
+				"\tITERATE aux",
+				"\tAGGREGATE MAX(y) AS \"max\"",
+				") AS REPLACEMENT(0)",
+				"ITERATE table WHERE x >= SCALAR_REPLACEMENT(0)",
+				"AGGREGATE SUM(x) AS \"sum\"",
 			},
 		},
 	}
