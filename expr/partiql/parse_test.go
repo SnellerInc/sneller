@@ -75,6 +75,8 @@ var sameq = []string{
 	"SELECT COUNT(*) AS total, COUNT(x) FILTER (WHERE x > 0) AS greater FROM table",
 	"SELECT [a, b, c] AS lst FROM foo",
 	"SELECT {'first': x, 'second': y} AS structure FROM foo",
+	"SELECT DISTINCT ON (x, y) y, z, w FROM table",
+	"SELECT DISTINCT ON (x) * FROM table",
 }
 
 func TestParseSFW(t *testing.T) {

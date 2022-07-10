@@ -139,3 +139,20 @@ func exists(s *expr.Select) expr.Node {
 	s.Limit = &lim
 	return expr.Is(s, expr.IsNotMissing)
 }
+
+// decodeDistinct inteprets the node list collected by `maybe_toplevel_distinct`
+// as inputs for `expr.Select`. The matching is as follows:
+// if nodes == nil   then SELECT ...
+// if nodes == []    then SELECT DISTINCT ...
+// if nodes == [...] then SELECT DISTINCT ON (...) ...
+func decodeDistinct(nodes []expr.Node) (distinct bool, distinctExpr []expr.Node) {
+	if nodes == nil {
+		return false, nil
+	}
+
+	if len(nodes) == 0 {
+		return true, nil
+	}
+
+	return false, nodes
+}

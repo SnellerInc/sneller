@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 type Binding struct {
@@ -82,6 +84,10 @@ func (b *Binding) text(dst *strings.Builder, redact bool) {
 		dst.WriteString(" AS ")
 		dst.WriteString(QuoteID(b.Result()))
 	}
+}
+
+func (b *Binding) Equals(o Binding) bool {
+	return b.Result() == o.Result() && b.Expr.Equals(o.Expr)
 }
 
 type JoinKind int
@@ -378,8 +384,12 @@ func (o *Order) Equals(x *Order) bool {
 }
 
 type Select struct {
+	// DISTINCT presence
 	Distinct bool
-	Columns  []Binding
+	// DISTINCT ON (expressions)
+	DistinctExpr []Node
+	// List of output columns
+	Columns []Binding
 	// FROM clause
 	From From
 	// WHERE clause
@@ -420,6 +430,9 @@ func (s *Select) walk(v Visitor) {
 	for i := range s.OrderBy {
 		Walk(v, s.OrderBy[i].Column)
 	}
+	for i := range s.DistinctExpr {
+		Walk(v, s.DistinctExpr[i])
+	}
 	if s.Limit != nil {
 		Walk(v, *s.Limit)
 	}
@@ -450,15 +463,14 @@ func (s *Select) rewrite(r Rewriter) Node {
 	}
 	s.Where = Rewrite(r, s.Where)
 	s.Having = Rewrite(r, s.Having)
-	if s.GroupBy != nil {
-		for i := range s.GroupBy {
-			s.GroupBy[i] = rewritebind(r, &s.GroupBy[i])
-		}
+	for i := range s.GroupBy {
+		s.GroupBy[i] = rewritebind(r, &s.GroupBy[i])
 	}
-	if s.OrderBy != nil {
-		for i := range s.OrderBy {
-			s.OrderBy[i].Column = Rewrite(r, s.OrderBy[i].Column)
-		}
+	for i := range s.OrderBy {
+		s.OrderBy[i].Column = Rewrite(r, s.OrderBy[i].Column)
+	}
+	for i := range s.DistinctExpr {
+		s.DistinctExpr[i] = Rewrite(r, s.DistinctExpr[i])
 	}
 	return s
 }
@@ -466,25 +478,19 @@ func (s *Select) rewrite(r Rewriter) Node {
 func (s *Select) Equals(x Node) bool {
 	xs, ok := x.(*Select)
 	if !ok ||
-		len(s.Columns) != len(xs.Columns) ||
-		len(s.OrderBy) != len(xs.OrderBy) ||
 		(s.From == nil) != (xs.From == nil) ||
 		(s.Where == nil) != (xs.Where == nil) ||
 		(s.Having == nil) != (xs.Having == nil) ||
 		(s.Limit == nil) != (xs.Limit == nil) ||
-		(s.Offset == nil) != (xs.Offset == nil) {
+		(s.Offset == nil) != (xs.Offset == nil) ||
+		(s.Distinct != xs.Distinct) {
 		return false
 	}
 	if s.From != nil && !s.From.Equals(xs.From) {
 		return false
 	}
-	for i := range s.Columns {
-		if !s.Columns[i].Expr.Equals(xs.Columns[i].Expr) {
-			return false
-		}
-		if s.Columns[i].Result() != xs.Columns[i].Result() {
-			return false
-		}
+	if !slices.EqualFunc(s.Columns, xs.Columns, func(x, y Binding) bool { return x.Equals(y) }) {
+		return false
 	}
 	if s.Where != nil && !s.Where.Equals(xs.Where) {
 		return false
@@ -492,10 +498,11 @@ func (s *Select) Equals(x Node) bool {
 	if s.Having != nil && !s.Having.Equals(xs.Having) {
 		return false
 	}
-	for i := range s.OrderBy {
-		if !s.OrderBy[i].Equals(&xs.OrderBy[i]) {
-			return false
-		}
+	if !slices.EqualFunc(s.OrderBy, xs.OrderBy, func(x, y Order) bool { return x.Equals(&y) }) {
+		return false
+	}
+	if !slices.EqualFunc(s.DistinctExpr, xs.DistinctExpr, Node.Equals) {
+		return false
 	}
 	return true
 }
@@ -561,6 +568,13 @@ func (s *Select) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	if s.Distinct {
 		dst.BeginField(st.Intern("distinct"))
 		dst.WriteBool(true)
+	} else if s.DistinctExpr != nil {
+		dst.BeginField(st.Intern("distinct_expr"))
+		dst.BeginList(len(s.DistinctExpr))
+		for i := range s.DistinctExpr {
+			s.DistinctExpr[i].Encode(dst, st)
+		}
+		dst.EndList()
 	}
 	if s.Limit != nil {
 		dst.BeginField(st.Intern("limit"))
@@ -601,6 +615,16 @@ func (s *Select) write(out *strings.Builder, redact bool, into Node) {
 	out.WriteString("SELECT ")
 	if s.Distinct {
 		out.WriteString("DISTINCT ")
+	} else if s.DistinctExpr != nil {
+		out.WriteString("DISTINCT ON (")
+		for i := range s.DistinctExpr {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+
+			s.DistinctExpr[i].text(out, redact)
+		}
+		out.WriteString(") ")
 	}
 	fmtbinding(s.Columns, out, redact)
 	if into != nil {
@@ -728,6 +752,23 @@ func decodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
 	return out, nil
 }
 
+func decodeDistinctExpr(st *ion.Symtab, body []byte) ([]Node, error) {
+	var out []Node
+	_, err := ion.UnpackList(body, func(body []byte) error {
+		n, _, err := Decode(st, body)
+		if err != nil {
+			return err
+		}
+		out = append(out, n)
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
 	switch name {
@@ -754,6 +795,8 @@ func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 		s.OrderBy, err = decodeOrder(st, body)
 	case "distinct":
 		s.Distinct, _, err = ion.ReadBool(body)
+	case "distinct_expr":
+		s.DistinctExpr, err = decodeDistinctExpr(st, body)
 	case "limit":
 		var i int64
 		i, _, err = ion.ReadInt(body)

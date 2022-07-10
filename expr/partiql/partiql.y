@@ -101,7 +101,7 @@ import (
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
-%type <values> value_list any_value_list struct_field_list
+%type <values> value_list any_value_list struct_field_list node_list maybe_toplevel_distinct
 %type <order> order_one_col
 %type <orders> order_expr order_cols
 %type <jk> join_kind
@@ -114,17 +114,19 @@ import (
 %%
 
 query:
-maybe_cte_bindings SELECT maybe_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
+maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
 {
   yylex.(*scanner).with = $1
   yylex.(*scanner).into = $5
-  yylex.(*scanner).result = &expr.Select{Distinct: $3, Columns: $4, From: $6, Where: $7, GroupBy: $8, Having: $9, OrderBy: $10, Limit: $11, Offset: $12};
+  distinct, distinctExpr := decodeDistinct($3)
+  yylex.(*scanner).result = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $4, From: $6, Where: $7, GroupBy: $8, Having: $9, OrderBy: $10, Limit: $11, Offset: $12};
 }
 
 select_stmt:
-SELECT maybe_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
+SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
 {
-    $$ = &expr.Select{Distinct: $2, Columns: $3, From: $4, Where: $5, GroupBy: $6, Having: $7, OrderBy: $8, Limit: $9, Offset: $10};
+    distinct, distinctExpr := decodeDistinct($2)
+    $$ = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $3, From: $4, Where: $5, GroupBy: $6, Having: $7, OrderBy: $8, Limit: $9, Offset: $10};
 }
 
 maybe_into:
@@ -179,6 +181,12 @@ expr { $$ = $1 }
 
 maybe_distinct:
 DISTINCT { $$ = true } | { $$ = false }
+
+maybe_toplevel_distinct:
+DISTINCT ON '(' node_list ')' { $$ = $4 } |
+DISTINCT { $$ = []expr.Node{} } |
+{ $$ = nil}
+
 
 // any expression:
 expr:
@@ -467,6 +475,11 @@ value_binding { $$ = []expr.Binding{$1} } |
 binding_list ',' value_binding { $$ = append($1, $3) }
 
 // match (value)+
+node_list:
+expr { $$ = []expr.Node{$1} } |
+node_list ',' expr { $$ = append($1, $3) }
+
+// match (value)+ including '*' as a special value
 value_list:
 expr { $$ = []expr.Node{$1} } |
 '*' { $$ = []expr.Node{expr.Star{}} } |
