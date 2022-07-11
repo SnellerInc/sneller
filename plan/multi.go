@@ -157,7 +157,8 @@ func newMultiSink(dst vm.QuerySink, parallel int) (*multiSink, error) {
 			s.closeAll()
 			return nil, err
 		}
-		s.mw = append(s.mw, multiWriter{wc: wc})
+		esw, _ := wc.(vm.EndSegmentWriter)
+		s.mw = append(s.mw, multiWriter{wc: wc, esw: esw})
 	}
 	return s, nil
 }
@@ -191,6 +192,9 @@ func (s *multiSink) closeAll() error {
 
 type multiWriter struct {
 	wc io.WriteCloser
+
+	// cached assertion of w to vm.EndSegmentWriter
+	esw vm.EndSegmentWriter
 }
 
 func (w *multiWriter) Write(b []byte) (n int, err error) {
@@ -199,6 +203,12 @@ func (w *multiWriter) Write(b []byte) (n int, err error) {
 
 func (w *multiWriter) reallyClose() error {
 	return w.wc.Close()
+}
+
+func (w *multiWriter) EndSegment() {
+	if w.esw != nil {
+		w.esw.EndSegment()
+	}
 }
 
 func (w *multiWriter) Close() error {
