@@ -345,6 +345,12 @@ type sortstateMulticolumn struct {
 	// the parent context for this sorting operation
 	parent *Order
 
+	// Indicates that the parent was already informed about closing
+	// this worker. Used internally to prevent calling Close on parent
+	// multiple times, as we use simple WaitGroup to
+	// inter-task synchronisation.
+	parentNotified bool
+
 	// bytecode for locating columns
 	findbc bytecode
 }
@@ -439,6 +445,11 @@ func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
 }
 
 func (s *sortstateMulticolumn) Close() error {
+	if s.parentNotified {
+		return nil
+	}
+	s.parentNotified = true
+
 	s.findbc.reset()
 	s.parent.wg.Done()
 
@@ -450,6 +461,9 @@ func (s *sortstateMulticolumn) Close() error {
 type sortstateSingleColumn struct {
 	// the parent context for this sorting operation
 	parent *Order
+
+	// see the comment in `sortstateMulticolumn`
+	parentNotified bool
 
 	// bytecode for locating columns
 	findbc bytecode
@@ -534,6 +548,11 @@ func (s *sortstateSingleColumn) writeRows(delims []vmref) error {
 }
 
 func (s *sortstateSingleColumn) Close() error {
+	if s.parentNotified {
+		return nil
+	}
+	s.parentNotified = true
+
 	s.findbc.reset()
 	s.parent.recordsLock.Lock()
 
@@ -553,6 +572,9 @@ func (s *sortstateSingleColumn) Close() error {
 type sortstateKtop struct {
 	// the parent context for this sorting operation
 	parent *Order
+
+	// see the comment in `sortstateMulticolumn`
+	parentNotified bool
 
 	// bytecode for locating columns
 	findbc bytecode
@@ -805,6 +827,11 @@ outer:
 }
 
 func (s *sortstateKtop) Close() error {
+	if s.parentNotified {
+		return nil
+	}
+	s.parentNotified = true
+
 	s.findbc.reset()
 	s.parent.recordsLock.Lock()
 	base := len(s.parent.symtabs)
