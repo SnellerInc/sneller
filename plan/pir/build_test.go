@@ -140,6 +140,18 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT DISTINCT * FROM table`,
 			rx:    "DISTINCT \\* is not supported",
 		},
+		{
+			input: `SELECT DISTINCT x, y, z FROM table GROUP BY x, y`,
+			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
+		},
+		{
+			input: `SELECT DISTINCT x, y, z FROM table GROUP BY y, x, w, z`,
+			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
+		},
+		{
+			input: `SELECT DISTINCT x, y, sum(z) AS s, avg(w) AS a FROM table GROUP BY y, x`,
+			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
@@ -1172,6 +1184,22 @@ ORDER BY m, d, h`,
 				"ORDER BY $_0_1 DESC NULLS FIRST",
 				"LIMIT 10",
 				"PROJECT \"$key:resource_id%0\" AS \"$key:resource_id%0\", origin_countries AS origin_countries",
+			},
+		},
+		{
+			input: `SELECT DISTINCT z, x, y FROM table GROUP BY x, y, z`,
+			expect: []string{
+				"ITERATE table",
+				"FILTER DISTINCT [x y z]",
+				"PROJECT z AS z, x AS x, y AS y",
+			},
+		},
+		{
+			input: `SELECT DISTINCT z, x, AVG(y) AS y FROM table GROUP BY x, AVG(y), z`,
+			expect: []string{
+				"ITERATE table",
+				"AGGREGATE AVG(y) AS $_0_2 BY x AS $_0_1, AVG(y), z AS $_0_0",
+				"PROJECT $_0_0 AS z, $_0_1 AS x, $_0_2 AS y",
 			},
 		},
 	}

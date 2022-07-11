@@ -752,7 +752,14 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	}
 
 	// walk SELECT + GROUP BY + HAVING
-	if s.Having != nil ||
+	if s.Distinct && s.GroupBy != nil && s.Having == nil {
+		// easy case: SELECT DISTINCT exprs GROUP BY exprs => SELECT exprs GROUP BY exprs
+		if !distinctEqualsGroupBy(s) {
+			return errorf(s, "set of DISTINCT expressions has to be equal to GROUP BY expressions")
+		}
+		s.Distinct = false
+		err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
+	} else if s.Having != nil ||
 		s.GroupBy != nil ||
 		anyHasAggregate(s.Columns) ||
 		anyOrderHasAggregate(s.OrderBy) {
@@ -820,4 +827,27 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 // isselectall checks if there's only a single '*' in select
 func isselectall(s *expr.Select) bool {
 	return len(s.Columns) == 1 && s.Columns[0].Expr == (expr.Star{})
+}
+
+func distinctEqualsGroupBy(s *expr.Select) bool {
+	exists := func(e expr.Node) bool {
+		for i := range s.GroupBy {
+			if expr.Equivalent(e, s.GroupBy[i].Expr) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	n := 0
+	for i := range s.Columns {
+		if !exists(s.Columns[i].Expr) {
+			return false
+		}
+
+		n += 1
+	}
+
+	return n == len(s.GroupBy)
 }
