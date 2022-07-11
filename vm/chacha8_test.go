@@ -155,7 +155,7 @@ func TestChaCha8x4(t *testing.T) {
 	})
 }
 
-func Testchacha8Bulk(t *testing.T) {
+func TestChaCha8Bulk(t *testing.T) {
 	buf := make([]byte, 512)
 	src := make([][2]uint32, 32)
 	out := make([]uint64, 2*len(src)+1)
