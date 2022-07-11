@@ -764,10 +764,15 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		}
 		err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
 	} else {
-		if len(s.Columns) == 1 && s.Columns[0].Expr == (expr.Star{}) {
+		selectall := isselectall(s)
+		if !s.Distinct && selectall {
 			err = b.BindStar()
 		} else {
 			if s.Distinct {
+				if selectall {
+					return errorf(s, "DISTINCT * is not supported")
+				}
+
 				err = b.Distinct(s.Columns)
 				if err != nil {
 					return err
@@ -810,4 +815,9 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	}
 
 	return b.hoist(e)
+}
+
+// isselectall checks if there's only a single '*' in select
+func isselectall(s *expr.Select) bool {
+	return len(s.Columns) == 1 && s.Columns[0].Expr == (expr.Star{})
 }

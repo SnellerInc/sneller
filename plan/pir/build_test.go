@@ -136,6 +136,10 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT SUM(x) FILTER (WHERE MAX(x) < 42) FROM table`,
 			rx:    "cannot handle nested aggregate",
 		},
+		{
+			input: `SELECT DISTINCT * FROM table`,
+			rx:    "DISTINCT \\* is not supported",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
