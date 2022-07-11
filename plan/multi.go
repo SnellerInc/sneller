@@ -131,6 +131,7 @@ func (t tables) WriteChunks(dst vm.QuerySink, parallel int) error {
 	}
 	for i := range t {
 		if err := t[i].WriteChunks(sink, parallel); err != nil {
+			sink.closeAll()
 			return err
 		}
 		sink.reset()
