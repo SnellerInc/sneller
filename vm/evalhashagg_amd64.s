@@ -65,7 +65,7 @@ loop:
   VPXORD Z30, Z30, Z30
   VPXORD Z31, Z31, Z31
   MOVQ   ·vmm+0(SB), VIRT_BASE
-  VMENTER(R8, DX)
+  VMENTER()
   JC     early_end
   JMP    loop
 end:

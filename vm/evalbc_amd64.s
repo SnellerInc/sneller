@@ -59,20 +59,17 @@
 // decodes the next instruction from the virtual pc
 // register, advances virtual pc register, and jumps
 // into the next bytecode instruction.
-#define _NEXT(vm_pc, tmp, tmp2, advance) \
-  MOVWQZX (advance)(vm_pc), tmp          \
-  ADDQ $(advance + 2), vm_pc             \
-  ANDQ $OPMASK, tmp                      \
-  LEAQ opaddrs+0(SB), tmp2               \
-  JMP 0(tmp2)(tmp*8)
+#define _NEXT(vm_pc, advance) \
+  ADDQ $(advance + 8), vm_pc  \
+  JMP  -8(vm_pc)
 
 // every bytecode instruction
 // other than 'ret' should end in
 // NEXT(), which will branch into
 // the next pseudo-instruction
-#define NEXT() _NEXT(VIRT_PCREG, BX, DX, 0)
+#define NEXT() _NEXT(VIRT_PCREG, 0)
 
-#define NEXT_ADVANCE(advance) _NEXT(VIRT_PCREG, BX, DX, advance)
+#define NEXT_ADVANCE(advance) _NEXT(VIRT_PCREG, advance)
 
 // RET_ABORT returns early
 // with the carry flag set to

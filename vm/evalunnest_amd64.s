@@ -98,7 +98,7 @@ vmenter:
   // enter bytecode interpretation
   MOVQ   bc+0(FP), DI
   MOVQ   ·vmm+0(SB), SI  // real static base
-  VMENTER(R8, DX)
+  VMENTER()
 
   // now we need to scan (z2:z3).k1 as arrays
   // for distinct ion elements
@@ -216,7 +216,7 @@ doit:
 
   // enter bytecode interpretation
   MOVQ    ·vmm+0(SB), SI  // real static base
-  VMENTER(R8, DX)
+  VMENTER()
   KMOVW   K1, R15         // R15 = active rows bitmask
   MOVQ    ret+104(FP), DI // DI = output location
 

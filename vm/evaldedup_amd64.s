@@ -47,7 +47,7 @@ doit:
   // enter bytecode interpretation
   MOVQ bc+0(FP), DI
   MOVQ ·vmm+0(SB), SI       // real static base
-  VMENTER(R8, DX)
+  VMENTER()
 
   // load the low 64 bits of the sixteen hashes;
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64

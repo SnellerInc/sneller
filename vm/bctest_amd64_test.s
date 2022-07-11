@@ -38,7 +38,7 @@ TEXT ·bctest_run_aux(SB), NOSPLIT, $0
     // run the VM
     MOVQ    bc+0(FP), VIRT_BCPTR
     MOVQ    ·vmm+0(SB), SI  // real static base
-    VMENTER(BX, DX)
+    VMENTER()
 
     // gather results
     MOVQ        ctx+8(FP), CX

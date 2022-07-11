@@ -4768,7 +4768,7 @@ type compilestate struct {
 	regs regstate // register state
 
 	trees       []*radixTree64
-	instrs      []byte
+	asm         assembler
 	dict        []string
 	litbuf      []byte // output datum literals
 	needscratch bool   // need the scratch buffer to be allocated
@@ -4824,85 +4824,67 @@ func (c *compilestate) op(v *value, op bcop) {
 	if len(info.imms) != 0 {
 		panic(fmt.Sprintf("bytecode op '%s' requires %d immediate(s), not %d", info.text, len(info.imms), 0))
 	}
-	c.instrs = append(c.instrs, byte(op), byte(op>>8))
+	c.asm.emitOpcode(op)
 }
 
 func (c *compilestate) opu8(v *value, op bcop, imm uint8) {
 	checkImmediateBeforeEmit1(op, 1)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU8(imm)
 }
 
 func (c *compilestate) opu16(v *value, op bcop, imm0 uint16) {
 	checkImmediateBeforeEmit1(op, 2)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU16(imm0)
 }
 
 func (c *compilestate) opu32(v *value, op bcop, imm0 uint32) {
 	checkImmediateBeforeEmit1(op, 4)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8), byte(imm0>>16), byte(imm0>>24))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU32(imm0)
 }
 
 func (c *compilestate) opu64(v *value, op bcop, imm0 uint64) {
 	checkImmediateBeforeEmit1(op, 8)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8), byte(imm0>>16), byte(imm0>>24), byte(imm0>>32), byte(imm0>>40), byte(imm0>>48), byte(imm0>>56))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU64(imm0)
 }
 
 func (c *compilestate) opu16u16(v *value, op bcop, imm0, imm1 uint16) {
 	checkImmediateBeforeEmit2(op, 2, 2)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8),
-		byte(imm1), byte(imm1>>8))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU16(imm0)
+	c.asm.emitImmU16(imm1)
 }
 
 func (c *compilestate) opu16u32(v *value, op bcop, imm0 uint16, imm1 uint32) {
 	checkImmediateBeforeEmit2(op, 2, 4)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8),
-		byte(imm1), byte(imm1>>8), byte(imm1>>16), byte(imm1>>24))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU16(imm0)
+	c.asm.emitImmU32(imm1)
 }
 
 func (c *compilestate) opu16u64(v *value, op bcop, imm0 uint16, imm1 uint64) {
 	checkImmediateBeforeEmit2(op, 2, 8)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8),
-		byte(imm1), byte(imm1>>8), byte(imm1>>16), byte(imm1>>24), byte(imm1>>32), byte(imm1>>40), byte(imm1>>48), byte(imm1>>56))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU16(imm0)
+	c.asm.emitImmU64(imm1)
 }
 
 func (c *compilestate) opu32u32(v *value, op bcop, imm0 uint32, imm1 uint32) {
 	checkImmediateBeforeEmit2(op, 4, 4)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8), byte(imm0>>16), byte(imm0>>24),
-		byte(imm1), byte(imm1>>8), byte(imm1>>16), byte(imm1>>24))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU32(imm0)
+	c.asm.emitImmU32(imm1)
 }
 
 func (c *compilestate) opu16u16u16(v *value, op bcop, imm0, imm1, imm2 uint16) {
 	checkImmediateBeforeEmit3(op, 2, 2, 2)
-	c.instrs = append(
-		c.instrs,
-		byte(op), byte(op>>8),
-		byte(imm0), byte(imm0>>8),
-		byte(imm1), byte(imm1>>8),
-		byte(imm2), byte(imm2>>8))
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU16(imm0)
+	c.asm.emitImmU16(imm1)
+	c.asm.emitImmU16(imm2)
 }
 
 func (c *compilestate) ops16(v *value, o bcop, slot stackslot) {
@@ -5213,7 +5195,7 @@ func (c *compilestate) clobberb(v *value) {
 func (c *compilestate) existingStackRef(arg *value, rc regclass) stackslot {
 	slot := c.regs.slotOf(rc, arg.id)
 	if slot == invalidstackslot {
-		fmt.Println(formatBytecode(c.instrs))
+		fmt.Println(formatBytecode(c.asm.getCode()))
 		panic(fmt.Sprintf("Cannot get a stack slot of %v, which is not allocated", arg))
 	}
 	return slot
@@ -5995,7 +5977,7 @@ func (p *prog) compile(dst *bytecode) error {
 	dst.allocStacks()
 	dst.trees = c.trees
 	dst.dict = c.dict
-	dst.compiled = c.instrs
+	dst.compiled = c.asm.grabCode()
 	dst.scratchreserve = 0
 
 	// try to reserve scratch space destructively:
@@ -6029,7 +6011,7 @@ func (p *prog) appendcode(dst *bytecode) error {
 	dst.allocStacks()
 
 	dst.dict = c.dict
-	dst.compiled = append(dst.compiled, c.instrs...)
+	dst.compiled = append(dst.compiled, c.asm.getCode()...)
 	if c.litbuf != nil || c.needscratch {
 		return fmt.Errorf("scratch buffer not handled in appendcode (yet)")
 	}

@@ -191,22 +191,30 @@ func (u *unnesting) symbolize(st *symtab) error {
 	// FIXME: just do this in the SSA instead
 	maskSlot := stackSlotFromIndex(regV, len(u.parent.outer))
 	u.innerbc.outer = &u.outerbc
-	u.innerbc.compiled = append(u.innerbc.compiled[:0],
-		// save.k [0]
-		byte(opsavek&0xFF), byte(opsavek>>8), byte(maskSlot), byte(maskSlot>>8),
-		// tuple (parse structure in Z30:Z31; set Z0:Z1)
-		byte(optuple&0xFF), byte(optuple>>8),
-	)
+
+	asm := assembler{u.innerbc.compiled}
+
+	// save.k [0]
+	asm.emitOpcode(opsavek)
+	asm.emitImmU16(uint16(maskSlot))
+
+	// tuple (parse structure in Z30:Z31; set Z0:Z1)
+	asm.emitOpcode(optuple)
+
 	for i := range u.parent.outer {
 		outSlot := stackSlotFromIndex(regV, u.outord[i])
-		u.innerbc.compiled = append(u.innerbc.compiled,
-			// load upvalue [i]
-			byte(oploadpermzerov), byte(oploadpermzerov>>8), byte(i), byte(i>>8),
-			// store locally in slot outord[i]
-			byte(opsavezerov), byte(opsavezerov>>8), byte(outSlot), byte(outSlot>>8),
-		)
+		// load upvalue [i]
+		asm.emitOpcode(oploadpermzerov)
+		asm.emitImmU16(uint16(i))
+		// store locally in slot outord[i]
+		asm.emitOpcode(opsavezerov)
+		asm.emitImmU16(uint16(outSlot))
 	}
-	u.innerbc.compiled = append(u.innerbc.compiled, byte(oploadk), byte(oploadk>>8), byte(maskSlot), byte(maskSlot>>8))
+
+	asm.emitOpcode(oploadk)
+	asm.emitImmU16(uint16(maskSlot))
+
+	u.innerbc.compiled = asm.grabCode()
 	err = p.appendcode(&u.innerbc)
 	if err != nil {
 		return err

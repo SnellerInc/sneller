@@ -49,7 +49,7 @@ doit:
   VPXORD       Z30, Z30, Z30
   VPXORD       Z31, Z31, Z31
   MOVQ         ·vmm+0(SB), SI  // real static base
-  VMENTER(R8, DX)
+  VMENTER()
 
   // compress output into delims
   MOVQ          delims+8(FP), DX
