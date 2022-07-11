@@ -361,13 +361,20 @@ func shuffled(st *ion.Symtab) *ion.Symtab {
 }
 
 // run a query on the given input table and yield the output list
-func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool, parallel bool) []ion.Datum {
+func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool, shuffleSymtab bool, parallel bool) []ion.Datum {
 	input := make([]plan.TableHandle, len(in))
 	for i, in := range in {
 		if resymbolize && len(in) > 1 {
 			half := len(in) / 2
 			first := flatten(in[:half], st)
-			second := flatten(in[half:], shuffled(st))
+
+			var second []byte
+			if shuffleSymtab {
+				second = flatten(in[half:], shuffled(st))
+			} else {
+				second = flatten(in[half:], st)
+			}
+
 			if parallel {
 				input[i] = parallelchunks{first, second}
 			} else {
@@ -475,6 +482,38 @@ func shuffleOutput(q *expr.Query) bool {
 	return sel.OrderBy == nil && sel.GroupBy == nil && !sel.Distinct
 }
 
+type visitfn func(expr.Node) expr.Visitor
+
+func (v visitfn) Visit(e expr.Node) expr.Visitor {
+	return v(e)
+}
+
+// can symtab be safely shuffled?
+func shuffleSymtab(q *expr.Query) bool {
+	allowed := true
+	var fn visitfn
+	fn = func(n expr.Node) expr.Visitor {
+		if !allowed {
+			return nil
+		}
+
+		s, ok := n.(*expr.Select)
+		if ok {
+			// sorting fails if a symtab change (sort & limit prevents symtab changes)
+			if !(s.OrderBy == nil || (s.OrderBy != nil && s.Limit != nil)) {
+				allowed = false
+				return nil
+			}
+		}
+
+		return fn
+	}
+
+	expr.Walk(fn, q.Body)
+
+	return allowed
+}
+
 const shufflecount = 10
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {
@@ -505,7 +544,7 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 			// if the outputs are input-order-independent,
 			// then we can test the query with parallel inputs:
 			parallel := len(out) <= 1 || !shuffleOutput(q)
-			gotout := run(t, q, in, st, i > 0, parallel)
+			gotout := run(t, q, in, st, i > 0, shuffleSymtab(q), parallel)
 			st.Reset()
 			fixup(gotout, st)
 			fixup(out, st)
