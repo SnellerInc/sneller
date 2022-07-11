@@ -125,18 +125,24 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 	for i := range outputs {
 		go func(w io.WriteCloser, mem []byte, errp *error) {
 			defer wg.Done()
+			seterr := func(e error) {
+				if e != nil && *errp == nil {
+					*errp = e
+				}
+			}
+
 			_, err := w.Write(mem)
 			if err != nil {
 				w.Close()
-				*errp = err
+				seterr(err)
 			}
 			if shw, ok := w.(vm.EndSegmentWriter); ok {
 				shw.EndSegment()
 			} else {
 				w.Close()
-				*errp = fmt.Errorf("%T not an EndSegmentWriter?", w)
+				seterr(fmt.Errorf("%T not an EndSegmentWriter?", w))
 			}
-			*errp = w.Close()
+			seterr(w.Close())
 		}(outputs[i], p[i], &errors[i])
 	}
 	wg.Wait()
