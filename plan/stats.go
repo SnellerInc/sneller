@@ -16,7 +16,6 @@ package plan
 
 import (
 	"fmt"
-	"io"
 	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -51,6 +50,7 @@ type ExecStats struct {
 type CachedTable interface {
 	Hits() int64
 	Misses() int64
+	Bytes() int64
 }
 
 func (e *ExecStats) atomicAdd(tmp *ExecStats) {
@@ -66,62 +66,8 @@ func (e *ExecStats) observe(table vm.Table) {
 	}
 	atomic.AddInt64(&e.CacheHits, ct.Hits())
 	atomic.AddInt64(&e.CacheMisses, ct.Misses())
+	atomic.AddInt64(&e.BytesScanned, ct.Bytes())
 }
-
-func track(into vm.QuerySink) *bytesTracker {
-	return &bytesTracker{into: into}
-}
-
-// bytesTracker is a vm.QuerySink
-// that tracks the number of bytes
-// processed by the QuerySink
-type bytesTracker struct {
-	into    vm.QuerySink
-	scanned int64
-}
-
-type writeTracker struct {
-	w      io.WriteCloser
-	parent *bytesTracker
-	// cached assertion of w to vm.EndSegmentWriter
-	hint vm.EndSegmentWriter
-}
-
-func (b *bytesTracker) Open() (io.WriteCloser, error) {
-	dst, err := b.into.Open()
-	if err != nil {
-		return nil, err
-	}
-	h, _ := dst.(vm.EndSegmentWriter)
-	return &writeTracker{
-		w:      dst,
-		parent: b,
-		hint:   h,
-	}, nil
-}
-
-func (w *writeTracker) EndSegment() {
-	if w.hint != nil {
-		w.hint.EndSegment()
-	}
-}
-
-func (w *writeTracker) Write(p []byte) (int, error) {
-	n, err := w.w.Write(p)
-	// NOTE: we're considering every byte
-	// passed to Write as scanned, because
-	// we don't really have a more precise
-	// way of tracking how many bytes
-	// were actually touched (the core
-	// just returns len(p) after processing the block).
-	// That's probably precise enough (1MB granularity)
-	atomic.AddInt64(&w.parent.scanned, int64(len(p)))
-	return n, err
-}
-
-func (w *writeTracker) Close() error { return w.w.Close() }
-
-func (b *bytesTracker) Close() error { return b.into.Close() }
 
 // Marshal is identical to Encode except
 // that it uses the same symbol table

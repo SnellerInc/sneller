@@ -77,9 +77,8 @@ type rowConsumer interface {
 // to write row data to it.
 func asRowConsumer(dst io.WriteCloser) rowConsumer {
 	if s, ok := dst.(*rowSplitter); ok {
-		noLeakCheck(s)
+		s.drop()
 		ret := s.rowConsumer
-		*s = rowSplitter{}
 		// most common case
 		return ret
 	}
@@ -100,6 +99,8 @@ type rowSplitter struct {
 	symbolized  bool // seen any symbol tables
 
 	vmcache []byte
+
+	pos *int64
 }
 
 // default number of rows to process per batch
@@ -110,6 +111,9 @@ const defaultDelims = 512
 // into individual rows for consumption by a RowConsumer
 func splitter(q rowConsumer) *rowSplitter {
 	s := &rowSplitter{rowConsumer: q, delimhint: defaultDelims}
+	if tee, ok := q.(*teeSplitter); ok {
+		s.pos = &tee.pos
+	}
 	leakCheck(s)
 	return s
 }
@@ -230,6 +234,15 @@ func (q *rowSplitter) EndSegment() {
 	}
 }
 
+func (q *rowSplitter) drop() {
+	noLeakCheck(q)
+	q.shared.Reset()
+	if q.vmcache != nil {
+		Free(q.vmcache)
+		q.vmcache = nil
+	}
+}
+
 func (q *rowSplitter) Close() error {
 	noLeakCheck(q)
 	err := q.rowConsumer.Close()
@@ -288,6 +301,9 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 	}
 	if err != nil {
 		return 0, err
+	}
+	if q.pos != nil {
+		*q.pos += int64(len(buf))
 	}
 	return len(buf), nil
 }
@@ -481,6 +497,12 @@ func (s *sink) Write(p []byte) (int, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	return s.dst.Write(p)
+}
+
+func (s *sink) EndSegment() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	HintEndSegment(s.dst)
 }
 
 func (s *sink) Open() (io.WriteCloser, error) { return s, nil }

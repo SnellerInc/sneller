@@ -194,6 +194,10 @@ type ReaderAtTable struct {
 	align int
 }
 
+func (r *ReaderAtTable) Hits() int64   { return 1 }
+func (r *ReaderAtTable) Misses() int64 { return 0 }
+func (r *ReaderAtTable) Bytes() int64  { return r.size }
+
 // Size returns the number of bytes in the table
 func (r *ReaderAtTable) Size() int64 { return r.size }
 
@@ -250,6 +254,10 @@ type BufferedTable struct {
 	align int
 	off   int64
 }
+
+func (b *BufferedTable) Hits() int64   { return 1 }
+func (b *BufferedTable) Misses() int64 { return 0 }
+func (b *BufferedTable) Bytes() int64  { return b.Size() }
 
 // BufferTable converts a buffer with a known
 // chunk alignment into a Table

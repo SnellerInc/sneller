@@ -96,6 +96,22 @@ func decodeHandles(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
 
 type tables []vm.Table
 
+var _ CachedTable = tables(nil)
+
+func sum(t tables, fn func(ct CachedTable) int64) int64 {
+	h := int64(0)
+	for i := range t {
+		if ct, ok := t[i].(CachedTable); ok {
+			h += fn(ct)
+		}
+	}
+	return h
+}
+
+func (t tables) Hits() int64   { return sum(t, CachedTable.Hits) }
+func (t tables) Misses() int64 { return sum(t, CachedTable.Misses) }
+func (t tables) Bytes() int64  { return sum(t, CachedTable.Bytes) }
+
 func (t tables) Chunks() int {
 	total := 0
 	for i := range t {

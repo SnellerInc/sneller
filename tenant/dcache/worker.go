@@ -21,22 +21,28 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
+func (r *reservation) add(w io.Writer, ret chan<- error, stats *Stats) {
+	done := func(pos int64, e error) {
+		stats.addBytes(pos)
+		ret <- e
+	}
+	if r.out == nil {
+		r.out = vm.NewTeeWriter(w, done)
+		return
+	}
+	r.out.Add(w, done)
+}
+
 type reservation struct {
 	seg     Segment
 	etag    string
-	primary output
+	out     *vm.TeeWriter
+	primary *Stats
 
 	// guarded by queue.lock
 	// until the reservation has
 	// been deleted from queue.reserved
 	flags Flag
-	aux   []output
-}
-
-type output struct {
-	dst   io.Writer
-	ret   chan<- error
-	stats *Stats
 }
 
 type queue struct {
@@ -65,20 +71,21 @@ func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret c
 	// TODO: if len(q.reserved) is too large,
 	// reject the query here
 	if res, ok := q.reserved[etag]; ok {
-		// TODO: how should flags
-		// affect res.flags?
-		res.aux = append(res.aux, output{
-			dst:   dst,
-			ret:   ret,
-			stats: stats,
-		})
+		res.add(dst, ret, stats)
+		// treat this access as a hit, since it
+		// is coalesced with a miss
+		stats.hit()
 		q.lock.Unlock()
 		return
 	}
 	res := &reservation{
-		seg:     seg,
-		etag:    etag,
-		primary: output{dst: dst, ret: ret, stats: stats},
+		seg:  seg,
+		etag: etag,
+		out: vm.NewTeeWriter(dst, func(pos int64, e error) {
+			stats.addBytes(pos)
+			ret <- e
+		}),
+		primary: stats,
 		flags:   flags,
 	}
 	q.reserved[etag] = res
@@ -86,58 +93,24 @@ func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret c
 	q.out <- res
 }
 
-func (o *output) write(p []byte) bool {
-	if o.dst == nil {
-		return true
-	}
-	_, err := o.dst.Write(p)
-	if err != nil {
-		o.ret <- err
-		o.dst = nil
-		o.ret = nil
-		return true
-	}
-	return false
-}
-
 func (r *reservation) Write(p []byte) (int, error) {
-	done := r.primary.write(p)
-	for i := range r.aux {
-		done = r.aux[i].write(p) && done
-	}
-	if done {
-		return len(p), io.EOF
-	}
-	return len(p), nil
+	return r.out.Write(p)
 }
 
 func (r *reservation) close(err error) {
-	if r.primary.ret != nil {
-		vm.HintEndSegment(r.primary.dst)
-		r.primary.ret <- err
-		r.primary.ret = nil
-	}
-	for i := range r.aux {
-		if r.aux[i].ret != nil {
-			vm.HintEndSegment(r.aux[i].dst)
-			r.aux[i].ret <- err
-			r.aux[i].ret = nil
-		}
+	if err == nil {
+		r.out.Close()
+	} else {
+		r.out.CloseError(err)
 	}
 }
 
 func (r *reservation) hit() {
-	r.primary.stats.hit()
-	for i := range r.aux {
-		r.aux[i].stats.hit()
-	}
+	r.primary.hit()
 }
 
 func (r *reservation) miss() {
-	r.primary.stats.miss()
-	for i := range r.aux {
-		r.aux[i].stats.miss()
-	}
+	r.primary.miss()
 }
 
 // Close closes the cache.

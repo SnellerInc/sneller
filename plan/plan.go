@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -331,14 +330,12 @@ func (l *Leaf) exec(dst vm.QuerySink, ep *ExecParams) error {
 	if err != nil {
 		return err
 	}
-	tr := track(dst)
-	err = tbl.WriteChunks(tr, ep.Parallel)
+	err = tbl.WriteChunks(dst, ep.Parallel)
 	err2 := dst.Close()
 	if err == nil {
 		err = err2
 	}
 	ep.Stats.observe(tbl)
-	atomic.AddInt64(&ep.Stats.BytesScanned, tr.scanned)
 	return err
 }
 

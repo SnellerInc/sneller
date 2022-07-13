@@ -440,7 +440,7 @@ type Table struct {
 // Stats is the a collection of
 // statistics about a Table or MultiTable.
 type Stats struct {
-	hits, misses int64
+	hits, misses, bytes int64
 }
 
 // Reset zeros all of the stats fields.
@@ -462,6 +462,18 @@ func (s *Stats) hit() {
 
 func (s *Stats) miss() {
 	atomic.AddInt64(&s.misses, 1)
+}
+
+func (s *Stats) addBytes(n int64) {
+	atomic.AddInt64(&s.bytes, n)
+}
+
+// Bytes returns the number of bytes sent
+// to a table. In the context of an individual
+// Table, this is a running total of the number
+// of bytes passed through WriteChunks.
+func (s *Stats) Bytes() int64 {
+	return atomic.LoadInt64(&s.bytes)
 }
 
 // Hits returns the accumulated total

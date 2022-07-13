@@ -481,6 +481,13 @@ func TestSimpleFS(t *testing.T) {
 		// only the very first entries satisfies this:
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", output: `{"count": 1}`, partial: true},
 
+		// we don't really care about the results from these queries;
+		// we just need to get coverage of early errors from io.Writers
+		// in vm.TeeWriter
+		{input: "SELECT * FROM default.taxi LIMIT 3", output: `{(.*?\n{){2}.*`, rx: true},
+		{input: "SELECT * FROM default.taxi LIMIT 5", output: `{(.*?\n{){4}.*`, rx: true},
+		{input: "SELECT * FROM default.taxi LIMIT 7", output: `{(.*?\n{){6}.*`, rx: true},
+
 		// ensure ORDER BY is accepted for cardinality=1 results
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", output: `{"count": 1}`, partial: true},
 
