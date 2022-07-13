@@ -92,6 +92,8 @@ func newTenant(root *db.DirFS) *testTenant {
 	}
 }
 
+const testBlocksize = 4096
+
 // create an environment
 // with default.parking and default.taxi
 // as db+table names, all populated in a tempdir
@@ -162,7 +164,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	}
 
 	b := db.Builder{
-		Align:         4096,
+		Align:         testBlocksize,
 		RangeMultiple: 10,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -439,7 +441,7 @@ func TestSimpleFS(t *testing.T) {
 		}
 	}
 
-	checkTiming := func(res *http.Response) {
+	checkTiming := func(t *testing.T, res *http.Response) {
 		t.Helper()
 		timings := res.Trailer.Get("Server-Timing")
 		if timings == "" {
@@ -463,93 +465,112 @@ func TestSimpleFS(t *testing.T) {
 
 	queries := []struct {
 		input, db string
-		output    string // regex
+		output    string // exact output, or regular expression
 		partial   bool   // expect only a partial scan
+		rx        bool   // use regular expression
 	}{
 		// get coverage of both empty db and default db
-		{"SELECT COUNT(*) FROM default.parking", "", `{"count": 1023}`, false},
-		{"SELECT COUNT(*) FROM parking", "default", `{"count": 1023}`, false},
+		{input: "SELECT COUNT(*) FROM default.parking", output: `{"count": 1023}`},
+		{input: "SELECT COUNT(*) FROM parking", db: "default", output: `{"count": 1023}`},
 		// check base case for taxi
-		{"SELECT COUNT(*) FROM default.taxi", "", `{"count": 8560}`, false},
+		{input: "SELECT COUNT(*) FROM default.taxi", output: `{"count": 8560}`},
 		// this WHERE is a no-op; everything satisfies it
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-01T00:35:23Z`", "", `{"count": 8560}`, false},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-01T00:35:23Z`", output: `{"count": 8560}`},
 		// select all but the lowest
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime > `2009-01-01T00:35:23Z`", "", `{"count": 8559}`, false},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime > `2009-01-01T00:35:23Z`", output: `{"count": 8559}`},
 		// only the very first entries satisfies this:
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", "", `{"count": 1}`, true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z`", output: `{"count": 1}`, partial: true},
 
 		// ensure ORDER BY is accepted for cardinality=1 results
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", "", `{"count": 1}`, true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime <= `2009-01-01T00:35:23Z` ORDER BY COUNT(*) DESC", output: `{"count": 1}`, partial: true},
 
 		// these two should be satisfied w/o scanning
-		{"SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", "", `{"min": "2009-01-01T00:35:23Z"}`, true},
-		{"SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", "", `{"max": "2009-01-31T23:55:00Z"}`, true},
+		{input: "SELECT EARLIEST(tpep_pickup_datetime) FROM default.taxi", output: `{"min": "2009-01-01T00:35:23Z"}`, partial: true},
+		{input: "SELECT LATEST(tpep_pickup_datetime) FROM default.taxi", output: `{"max": "2009-01-31T23:55:00Z"}`, partial: true},
 
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", "", `{"count": 0}`, true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-01T00:35:23Z`", output: `{"count": 0}`, partial: true},
 		// about half of the entries satisfy this:
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", "", `{"count": 4853}`, true},
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-15T00:00:00Z`", "", `{"count": 3707}`, true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-15T00:00:00Z`", output: `{"count": 4853}`, partial: true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-15T00:00:00Z`", output: `{"count": 3707}`, partial: true},
 		// similar to above; different date range
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", "", `{"count": 5169}`, true},
-		{"SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", "", `{"count": 3391}`, true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", output: `{"count": 5169}`, partial: true},
+		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", output: `{"count": 3391}`, partial: true},
+		{input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"VendorID\": \"VTS\", \"count\": 7353}\n{\"VendorID\": \"CMT\", \"count\": 1055}\n{\"VendorID\": \"DDS\", \"count\": 152}"},
+		{input: "SELECT COUNT(DISTINCT RPState) from default.parking", output: `{"count": 25}`},
 		{
 			// get coverage of the same table
 			// being referenced more than once
-			`WITH top_vendors AS (SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY COUNT(*) DESC)
+			input: `WITH top_vendors AS (SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY COUNT(*) DESC)
 SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SELECT VendorID FROM top_vendors LIMIT 1)`,
-			"",
-			`{"sum": 76333}`, // rounded so that floating point noise doesn't break the test
-			false,
+			output: `{"sum": 76333}`, // rounded so that floating point noise doesn't break the test
 		},
-		{`SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, "default", `{"count": 10666}`, false},
-		{`SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, "default", `{"count": 10666}`, false},
-		{`SELECT * INTO foo.bar FROM default.taxi`, "", `{"table": "foo\..*`, false},
+		{input: `SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, db: "default", output: `{"count": 10666}`},
+		{input: `SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, db: "default", output: `{"count": 10666}`},
+		{input: `SELECT * INTO foo.bar FROM default.taxi`, output: `{"table": "foo\..*`, rx: true},
 	}
+	var subwg sync.WaitGroup
+	subwg.Add(len(queries))
 	for i := range queries {
-		r := rq.getQuery(queries[i].db, queries[i].input)
-		res, err := http.DefaultClient.Do(r)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.StatusCode != http.StatusOK {
-			t.Fatalf("status %s", res.Status)
-		}
-		var buf bytes.Buffer
-		_, err = ion.ToJSON(&buf, bufio.NewReader(res.Body))
-		res.Body.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		m := regexp.MustCompile("^" + queries[i].output + "$")
-		if !m.MatchString(strings.TrimSpace(buf.String())) {
-			t.Errorf("got result %s", buf.String())
-			t.Errorf("wanted %s", queries[i].output)
-		}
-		tablesize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Total-Table-Bytes"), 0, 64)
-		if err != nil {
-			t.Errorf("getting table size: %s", err)
-		}
-		scannedsize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Max-Scanned-Bytes"), 0, 64)
-		if err != nil {
-			t.Errorf("getting scanned bytes: %s", err)
-		}
-		t.Logf("scanned %d of %d", scannedsize, tablesize)
-		if scannedsize%4096 != 0 {
-			t.Errorf("scanned size %d not a multiple of the block size", scannedsize)
-		}
-		if scannedsize > tablesize {
-			t.Errorf("scanned size %d > table size %d ?", scannedsize, tablesize)
-		}
-		// coarse check that sparse indexing actually did something:
-		if (tablesize == 0 || scannedsize < tablesize) != queries[i].partial {
-			t.Errorf("partial=%v, scanned=%d, all=%d", queries[i].partial, scannedsize, tablesize)
-		}
-		checkTiming(res)
-		if i%4 == 3 {
-			// occasionally establish new connections
-			http.DefaultClient.CloseIdleConnections()
-		}
+		q := &queries[i]
+		name := fmt.Sprintf("query%d", i)
+		go func() {
+			defer subwg.Done()
+			t.Run(name, func(t *testing.T) {
+				rq := &requester{
+					t:    t,
+					host: "http://" + httpsock.Addr().String(),
+				}
+				r := rq.getQuery(q.db, q.input)
+				res, err := http.DefaultClient.Do(r)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if res.StatusCode != http.StatusOK {
+					t.Fatalf("status %s", res.Status)
+				}
+				var buf bytes.Buffer
+				_, err = ion.ToJSON(&buf, bufio.NewReader(res.Body))
+				res.Body.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := strings.TrimSpace(buf.String())
+				if q.rx {
+					m := regexp.MustCompilePOSIX("^" + q.output + "$")
+					if !m.MatchString(got) {
+						t.Errorf("got result %s", got)
+						t.Errorf("wanted %s", m.String())
+					}
+				} else {
+					if got != q.output {
+						t.Errorf("got result %s", got)
+						t.Errorf("wanted %s", q.output)
+					}
+				}
+				tablesize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Total-Table-Bytes"), 0, 64)
+				if err != nil {
+					t.Errorf("getting table size: %s", err)
+				}
+				scannedsize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Max-Scanned-Bytes"), 0, 64)
+				if err != nil {
+					t.Errorf("getting scanned bytes: %s", err)
+				}
+				t.Logf("scanned %d of %d", scannedsize, tablesize)
+				if scannedsize%testBlocksize != 0 {
+					t.Errorf("scanned size %d not a multiple of the block size", scannedsize)
+				}
+				if scannedsize > tablesize {
+					t.Errorf("scanned size %d > table size %d ?", scannedsize, tablesize)
+				}
+				// coarse check that sparse indexing actually did something:
+				if (tablesize == 0 || scannedsize < tablesize) != q.partial {
+					t.Errorf("partial=%v, scanned=%d, all=%d", q.partial, scannedsize, tablesize)
+				}
+				checkTiming(t, res)
+			})
+		}()
 	}
+	subwg.Wait()
 
 	// get coverage of JSON responses
 	jsqueries := []struct {
@@ -581,6 +602,6 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 		if string(got) != jsqueries[i].result {
 			t.Errorf("got %q, want %q", got, jsqueries[i].result)
 		}
-		checkTiming(res)
+		checkTiming(t, res)
 	}
 }

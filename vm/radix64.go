@@ -589,13 +589,20 @@ func (a *aggtable) writeRows(delims []vmref) error {
 				for n := 0; n < projectedGroupByCount; n++ {
 					lo, hi := a.bc.getVRegOffsetAndSize(n*vRegSizeInUInt64Units, i)
 					if hi == 0 {
-						// TODO: Should we specify the value to provide more info in case it happens?
-						panic("abort bit set on a MISSING value")
+						errorf("abort bit set on a MISSING value")
+						return bcerrCorrupt
 					}
-					mem := vmref{lo, hi}.mem()
+					ref := vmref{lo, hi}
+					if !ref.valid() {
+						errorf("bad ref {%#x, %d} from bytecode:\n%s\n", a.bc.String())
+						return bcerrCorrupt
+					}
+					mem := ref.mem()
 					// must be a single valid ion object
 					if ion.SizeOf(mem) != len(mem) {
-						panic(fmt.Sprintf("column %d vmref 0x%x has invalid size", n, mem))
+						errorf("column %d vmref 0x%x has invalid size %d", i, mem, ion.SizeOf(mem))
+						errorf("bad ref from bytecode:\n%s\n", a.bc.String())
+						return bcerrCorrupt
 					}
 					a.repr = append(a.repr, mem...)
 				}

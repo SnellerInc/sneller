@@ -93,13 +93,19 @@ func (v vmref) valid() bool {
 	if v[0] == 0 && v[1] == 0 {
 		return true
 	}
+	// references should not point outside
+	// the usable memory region
 	if v[0] > vmUse || v[0]+v[1] > vmUse {
+		return false
+	}
+	// references should not overlap a page boundary:
+	if (v[0]+v[1])>>pageBits != v[0]>>pageBits {
 		return false
 	}
 	// the page that this points to
 	// should have its allocated bit set
 	pfn := v[0] >> pageBits
-	bitmap := vmbits[pfn/64]
+	bitmap := atomic.LoadUint64(&vmbits[pfn/64])
 	bit := pfn % 64
 	return bitmap&(1<<bit) != 0
 }
