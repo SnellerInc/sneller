@@ -1,0 +1,335 @@
+// Copyright (C) 2022 Sneller, Inc.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+package zion
+
+import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
+	"io"
+
+	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
+)
+
+// faults are error codes returned from the assembly
+type fault int32
+
+const (
+	noFault       fault = iota // no error encountered
+	faultTooLarge              // not enough room in the output buffer
+	faultBadData               // unexpected data in the input
+)
+
+const (
+	DefaultTargetWrite = 128 * 1024
+)
+
+// Decoder is a stateful decoder of compressed
+// data produced with Encoder.Encode.
+type Decoder struct {
+	TargetWriteSize int
+
+	//lint:ignore U1000 used in assembly as a scratch buffer
+	nums [buckets]uint8 // unpacked bucket references
+
+	out []byte
+	mem []byte
+	tmp []byte
+	dst io.Writer
+	nn  int64
+
+	// these are broken up so that
+	// they can be adjusted with a
+	// single vpaddd instruction
+	pos  [buckets]int32
+	base [buckets]int32
+
+	fault fault
+
+	st         symtab
+	set        pathset
+	components []string
+
+	decomps int
+}
+
+func pad8(buf []byte) []byte {
+	l := (len(buf) + 8) & 7
+	return slices.Grow(buf, l)
+}
+
+// Reset resets the internal decoder state,
+// including the internal symbol table.
+func (d *Decoder) Reset() {
+	d.TargetWriteSize = 0
+	d.components = nil
+	d.st.reset()
+	d.set.clear()
+	d.mem = d.mem[:0]
+	d.out = d.out[:0]
+	d.tmp = d.tmp[:0]
+	d.dst = nil
+	d.fault = 0
+	d.decomps = 0
+}
+
+// SetComponents sets the leading path components
+// that should be copied out during calls to Decode.
+//
+// The "leading path component" is the first component
+// of a path, so the path x.y.z has x as its first component.
+func (d *Decoder) SetComponents(x []string) {
+	slices.Sort(x)
+	slices.Compact(x)
+	d.components = x
+	d.st.components = make([]component, len(x))
+	for i := range d.st.components {
+		d.st.components[i].name = x[i]
+		d.st.components[i].symbol = ^ion.Symbol(0)
+	}
+}
+
+func (d *Decoder) checkMagic(src []byte) ([]byte, error) {
+	if len(src) < 8 {
+		return nil, fmt.Errorf("zion.Decoder: len(input)=%d; missing magic", len(src))
+	}
+	if !bytes.Equal(src[:4], magic) {
+		return nil, fmt.Errorf("zion.Decoder: bad magic bytes %x", src[:len(magic)])
+	}
+	d.set.seed = binary.LittleEndian.Uint32(src[4:])
+	return src[8:], nil
+}
+
+func (d *Decoder) prepare(src, dst []byte) ([]byte, error) {
+	src, err := d.checkMagic(src)
+	if err != nil {
+		return nil, err
+	}
+	var skip int
+	d.mem, skip, err = decompress(src, d.mem[:0])
+	if err != nil {
+		return nil, fmt.Errorf("zion.Decoder: getting shape: %w", err)
+	}
+	src = src[skip:]
+	var shape []byte
+	if ion.IsBVM(d.mem) || ion.TypeOf(d.mem) == ion.AnnotationType {
+		shape, err = d.st.Unmarshal(d.mem)
+		if err != nil {
+			return nil, fmt.Errorf("zion.Decoder: parsing symbol table: %w", err)
+		}
+		// copy symbol table into output
+		dst = append(dst, d.mem[:len(d.mem)-len(shape)]...)
+	} else {
+		shape = d.mem
+	}
+	d.set.clear()
+	for i := range d.st.components {
+		sym := d.st.components[i].symbol
+		if sym == ^ion.Symbol(0) {
+			continue
+		}
+		d.set.set(sym)
+	}
+	d.out = dst
+
+	// we can avoid decompressing any buckets
+	// at all if none of the symbols we care about
+	// are present in any buckets
+	empty := len(d.components) > 0 && d.set.empty()
+	for i := 0; i < buckets; i++ {
+		d.base[i] = 0
+		if empty || !d.set.useBucket(i) {
+			skip, err = frameSize(src)
+			if err != nil {
+				return nil, err
+			}
+			d.pos[i] = -1
+		} else {
+			d.pos[i] = int32(len(d.mem))
+			d.mem, skip, err = decompress(src, d.mem)
+			if err != nil {
+				return nil, err
+			}
+			d.decomps++
+		}
+		src = src[skip:]
+	}
+	// always ensure any reference to d.mem
+	// can be loaded with a MOVQ:
+	d.mem = pad8(d.mem)
+	return shape, nil
+}
+
+// Decode performs a statefull decoding of src
+// by appending into dst. If a particular field selection
+// has been selected via d.SetComponents, then Decode *may*
+// omit fields that are not part of the selection.
+// Sequential calls to Decode build an ion symbol table internally,
+// so the order in which blocks are presented to Decode as src
+// should match the order in which they were presented to Encoder.Encode.
+func (d *Decoder) Decode(src, dst []byte) ([]byte, error) {
+	shape, err := d.prepare(src, dst)
+	if err != nil {
+		return nil, err
+	}
+	err = d.walk(shape)
+	ret := d.out
+	d.out = nil
+	return ret, err
+}
+
+// CopyBytes writes ion data into dst as it is decoded from src.
+// CopyBytes works similarly to Decode except that it does not
+// require as much data to be buffered at once.
+func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
+	if d.tmp == nil {
+		size := d.TargetWriteSize
+		if size <= 0 {
+			size = DefaultTargetWrite
+		}
+		d.tmp = make([]byte, size)
+	}
+	shape, err := d.prepare(src, d.tmp[:0])
+	if err != nil {
+		return 0, err
+	}
+	d.dst = dst
+	err = d.walk(shape)
+	nn := d.nn
+	d.nn = 0
+	d.dst = nil
+	d.tmp = d.out[:0]
+	d.out = nil
+	return nn, err
+}
+
+// Count counts the number of structures in src
+// rather than decompressing the body of src.
+// Note that Count is stateful (it processes symbol
+// tables) so that it may be substituted for a call
+// to Decode where only the number of stored records
+// is of interest.
+func (d *Decoder) Count(src []byte) (int, error) {
+	src, err := d.checkMagic(src)
+	if err != nil {
+		return 0, err
+	}
+	d.mem, _, err = decompress(src, d.mem[:0])
+	if err != nil {
+		return 0, fmt.Errorf("zion.Decoder.Count: getting shape: %w", err)
+	}
+	var shape []byte
+	shape, err = d.st.Unmarshal(d.mem)
+	if err != nil {
+		return 0, fmt.Errorf("zion.Decoder.Count: parsing symbol table: %w", err)
+	}
+	count := 0
+	for len(shape) > 0 {
+		fc := shape[0] & 0x1f
+		if fc > 16 {
+			return count, fmt.Errorf("illegal struct descriptor byte %#x", shape[0])
+		}
+		if fc < 16 {
+			count++
+		}
+		skip := 1 + (int(fc)+1)/2
+		if len(shape) < skip {
+			return count, fmt.Errorf("descriptor %#x but %d bytes remaining in shape", shape[0], len(shape))
+		}
+		shape = shape[skip:]
+	}
+	return count, nil
+}
+
+//go:noescape
+func zipfast(src, dst []byte, d *Decoder) (int, int)
+
+//go:noescape
+func zipall(src, dst []byte, d *Decoder) (int, int)
+
+var (
+	errCorrupt    = errors.New("corrupt input")
+	errNoProgress = errors.New("zion.zipfast says noFault but 0 bytes of progress")
+)
+
+func (d *Decoder) zip(shape, dst []byte) (int, int) {
+	if len(d.components) == 0 {
+		return zipall(shape, dst, d)
+	}
+	return zipfast(shape, dst, d)
+}
+
+// walk walks objects in shape and appends them to d.out
+func (d *Decoder) walk(shape []byte) error {
+	for len(shape) > 0 {
+		consumed, wrote := d.zip(shape, d.out[len(d.out):cap(d.out)])
+		if consumed > 0 {
+			avail := cap(d.out) - len(d.out)
+			// these two checks here are panics
+			// because they indicate that the assembly
+			// code has gone entirely off the rails:
+			if wrote > avail {
+				println("wrote", wrote, "of", avail)
+				panic("wrote out-of-bounds")
+			}
+			if consumed > len(shape) {
+				println("read", consumed, "of", len(shape))
+				panic("read out-of-bounds")
+			}
+			d.out = d.out[:len(d.out)+wrote]
+			shape = shape[consumed:]
+			if d.dst != nil {
+				// flush the fields we've got so far
+				n, err := d.dst.Write(d.out)
+				d.out = d.out[:0]
+				d.nn += int64(n)
+				if err != nil {
+					return err
+				}
+			}
+		} else if wrote > 0 {
+			// shouldn't happen; we need to consume
+			// at least 1 byte in order to produce results
+			panic("consumed == 0 but wrote > 0")
+		}
+		switch d.fault {
+		case faultBadData:
+			return errCorrupt
+		case noFault:
+			if consumed == 0 {
+				// this shouldn't happen; if we didn't consume
+				// any data, then we should get a fault
+				return errNoProgress
+			}
+		case faultTooLarge:
+			if d.dst == nil || consumed == 0 {
+				// grow the buffer if we couldn't
+				// make progress otherwise
+				avail := cap(d.out) - len(d.out)
+				if avail >= maxSize {
+					return errNoProgress
+				}
+				if avail == 0 {
+					avail = 1024 // start here at least
+				}
+				d.out = slices.Grow(d.out, avail*2)
+			}
+		}
+	}
+	return nil
+}

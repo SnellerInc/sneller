@@ -27,22 +27,15 @@ type readerTable struct {
 	src io.ReaderAt
 	clo io.Closer
 
+	fields []string
+
 	// if mmap is available, then buf
 	buf []byte
 
 	block int64
 }
 
-var allBytes uint64
-
-type byteTracker struct {
-	io.Writer
-}
-
-func (b *byteTracker) Write(p []byte) (int, error) {
-	atomic.AddUint64(&allBytes, uint64(len(p)))
-	return b.Writer.Write(p)
-}
+var allBytes int64
 
 func (f *readerTable) Chunks() int {
 	n := 0
@@ -59,9 +52,9 @@ type rangeReader interface {
 
 func (f *readerTable) write(dst io.Writer) error {
 	var d blockfmt.Decoder
-	dst = &byteTracker{dst}
 	d.BlockShift = f.t.BlockShift
 	d.Algo = f.t.Algo
+	d.Fields = f.fields
 	for n := atomic.AddInt64(&f.block, 1) - 1; int(n) < len(f.t.Blocks); n = atomic.AddInt64(&f.block, 1) - 1 {
 		pos := f.t.Blocks[n].Offset
 		d.Offset = pos
@@ -69,6 +62,7 @@ func (f *readerTable) write(dst io.Writer) error {
 		if int(n) < len(f.t.Blocks)-1 {
 			end = f.t.Blocks[n+1].Offset
 		}
+		size := int64(f.t.Blocks[n].Chunks) << d.BlockShift
 		if f.buf != nil {
 			_, err := d.CopyBytes(dst, f.buf[pos:end])
 			if err != nil {
@@ -91,6 +85,7 @@ func (f *readerTable) write(dst io.Writer) error {
 				return err
 			}
 		}
+		atomic.AddInt64(&allBytes, size)
 	}
 	return nil
 }
@@ -109,12 +104,12 @@ func (f *readerTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	return err
 }
 
-func srcTable(f io.ReaderAt, size int64) (vm.Table, error) {
+func srcTable(f io.ReaderAt, size int64, fields []string) (vm.Table, error) {
 	tr, err := blockfmt.ReadTrailer(f, size)
 	if err != nil {
 		return nil, err
 	}
-	rt := &readerTable{t: tr, src: f}
+	rt := &readerTable{t: tr, src: f, fields: fields}
 	if c, ok := f.(io.Closer); ok {
 		rt.clo = c
 	}

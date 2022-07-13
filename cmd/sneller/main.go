@@ -64,7 +64,7 @@ func init() {
 
 type execStatistics struct {
 	mallocs   uint64 // runtime.MemStats.Mallocs
-	bytes     uint64 // runtime.MemStats.TotalAlloc
+	bytes     int64  // runtime.MemStats.TotalAlloc
 	startTime time.Time
 	elapsed   time.Duration
 }
@@ -73,7 +73,7 @@ func (e *execStatistics) Start() {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 	e.mallocs = stats.Mallocs
-	e.bytes = stats.TotalAlloc
+	e.bytes = int64(stats.TotalAlloc)
 	e.startTime = time.Now()
 }
 
@@ -81,7 +81,7 @@ func (e *execStatistics) Stop() {
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 	e.mallocs = stats.Mallocs - e.mallocs
-	e.bytes = stats.TotalAlloc - e.bytes
+	e.bytes = int64(stats.TotalAlloc - uint64(e.bytes))
 	e.elapsed = time.Since(e.startTime)
 }
 
@@ -92,7 +92,7 @@ func (e *execStatistics) Print() {
 		rate, formatSize(allBytes), e.elapsed, formatSize(e.bytes), e.mallocs)
 }
 
-func formatSize(size uint64) string {
+func formatSize(size int64) string {
 	res := fmt.Sprintf("%d B", size)
 	if size > 1024*1024*1024 {
 		res += fmt.Sprintf(" (%.2f GB)", float64(size)/(1024*1024*1024))
@@ -179,7 +179,7 @@ func do(arg string) {
 		if dashN {
 			return &jstable{in: f, size: i.Size()}, nil
 		}
-		return srcTable(f, i.Size())
+		return srcTable(f, i.Size(), h.Fields)
 	}))
 	if err != nil {
 		exit(err)

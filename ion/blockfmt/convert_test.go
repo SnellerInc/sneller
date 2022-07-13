@@ -24,7 +24,7 @@ import (
 	"testing"
 )
 
-func testConvertMulti(t *testing.T, meta int) {
+func testConvertMulti(t *testing.T, algo string, meta int) {
 	var inputs []Input
 	f, err := os.Open("../../testdata/cloudtrail.json")
 	if err != nil {
@@ -56,7 +56,7 @@ func testConvertMulti(t *testing.T, meta int) {
 	out.PartSize = 2 * align
 	c := Converter{
 		Output:    &out,
-		Comp:      "zstd",
+		Comp:      algo,
 		Inputs:    inputs,
 		Align:     align,
 		FlushMeta: align * meta,
@@ -76,10 +76,13 @@ func TestConvertMulti(t *testing.T) {
 	multiples := []int{
 		1, 3, 5, 7, 10,
 	}
-	for _, m := range multiples {
-		t.Run(fmt.Sprintf("m=%d", m), func(t *testing.T) {
-			testConvertMulti(t, m)
-		})
+	algos := []string{"zstd", "zion"}
+	for _, algo := range algos {
+		for _, m := range multiples {
+			t.Run(fmt.Sprintf("algo=%s,m=%d", algo, m), func(t *testing.T) {
+				testConvertMulti(t, algo, m)
+			})
+		}
 	}
 }
 func TestConvertMultiFail(t *testing.T) {
@@ -133,35 +136,40 @@ func TestConvertSingle(t *testing.T) {
 	multiples := []int{
 		1, 3, 7, 50,
 	}
-	for _, m := range multiples {
-		t.Run(fmt.Sprintf("m=%d", m), func(t *testing.T) {
-			f, err := os.Open("../../testdata/parking2.json")
-			if err != nil {
-				t.Fatal(err)
-			}
-			inputs := []Input{{
-				R: io.NopCloser(gzipped(f)),
-				F: SuffixToFormat[".json.gz"](),
-			}}
-			var out BufferUploader
-			align := 2048
-			out.PartSize = align * m
-			c := Converter{
-				Output:    &out,
-				Comp:      "zstd",
-				Inputs:    inputs,
-				Align:     align,
-				FlushMeta: m * align,
-			}
-			if c.MultiStream() {
-				t.Fatal("expected MultiStream to be false with 1 input")
-			}
-			err = c.Run()
-			if err != nil {
-				t.Fatal(err)
-			}
-			check(t, &out)
-		})
+	formats := []string{
+		"zstd", "zion",
+	}
+	for _, algo := range formats {
+		for _, m := range multiples {
+			t.Run(fmt.Sprintf("alg=%s,m=%d", algo, m), func(t *testing.T) {
+				f, err := os.Open("../../testdata/parking2.json")
+				if err != nil {
+					t.Fatal(err)
+				}
+				inputs := []Input{{
+					R: io.NopCloser(gzipped(f)),
+					F: SuffixToFormat[".json.gz"](),
+				}}
+				var out BufferUploader
+				align := 2048
+				out.PartSize = align * m
+				c := Converter{
+					Output:    &out,
+					Comp:      algo,
+					Inputs:    inputs,
+					Align:     align,
+					FlushMeta: m * align,
+				}
+				if c.MultiStream() {
+					t.Fatal("expected MultiStream to be false with 1 input")
+				}
+				err = c.Run()
+				if err != nil {
+					t.Fatal(err)
+				}
+				check(t, &out)
+			})
+		}
 	}
 }
 

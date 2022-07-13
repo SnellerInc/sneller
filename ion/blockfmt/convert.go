@@ -22,7 +22,6 @@ import (
 	"io"
 	"runtime"
 
-	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/klauspost/compress/zstd"
@@ -313,7 +312,7 @@ func (c *Converter) runSingle() error {
 	if cname == "zstd" {
 		cname = "zstd-better"
 	}
-	comp := compr.Compression(cname)
+	comp := getCompressor(cname)
 	if comp == nil {
 		return fmt.Errorf("compression %q unavailable", c.Comp)
 	}
@@ -416,13 +415,13 @@ func (c *Converter) runMulti() error {
 	if cname == "zstd" {
 		cname = "zstd-better"
 	}
-	comp := compr.Compression(cname)
+	comp := getCompressor(cname)
 	if comp == nil {
 		return fmt.Errorf("compression %q unavailable", c.Comp)
 	}
 	w := &MultiWriter{
 		Output:     c.Output,
-		Comp:       comp,
+		Algo:       c.Comp,
 		InputAlign: c.Align,
 		TargetSize: c.TargetSize,
 		// try to make the blocks at least

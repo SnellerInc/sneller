@@ -23,6 +23,15 @@ import (
 )
 
 func TestPrependMultiSingle(t *testing.T) {
+	algos := []string{"zstd", "zion"}
+	for _, algo := range algos {
+		t.Run(algo, func(t *testing.T) {
+			testPrependMultiSingle(t, algo)
+		})
+	}
+}
+
+func testPrependMultiSingle(t *testing.T, algo string) {
 	// this is a nasty test
 	// because we have two files
 	// with disjoint sets of struct fields
@@ -50,7 +59,7 @@ func TestPrependMultiSingle(t *testing.T) {
 	out.PartSize = align * 7
 	c := Converter{
 		Output:    &out,
-		Comp:      "zstd",
+		Comp:      algo,
 		Inputs:    inputs(),
 		Align:     align,
 		FlushMeta: 7 * align,
@@ -75,7 +84,7 @@ func TestPrependMultiSingle(t *testing.T) {
 	var out2 BufferUploader
 	c = Converter{
 		Output:    &out2,
-		Comp:      "zstd",
+		Comp:      algo,
 		Inputs:    inputs(),
 		Align:     align,
 		FlushMeta: 7 * align,
@@ -94,7 +103,6 @@ func TestPrependMultiSingle(t *testing.T) {
 	if count2 != count*2 {
 		t.Errorf("went from %d to %d objects?", count, count2)
 	}
-
 }
 
 func TestPrependSingle(t *testing.T) {
@@ -181,6 +189,9 @@ func TestPrependMulti(t *testing.T) {
 	multiples := []int{
 		1, 3, 7, 50,
 	}
+	algos := []string{
+		"zstd", "zion",
+	}
 	files := []string{
 		"parking2.json",
 		"cloudtrail.json",
@@ -200,56 +211,57 @@ func TestPrependMulti(t *testing.T) {
 		}
 		return in
 	}
+	for _, algo := range algos {
+		for _, m := range multiples {
+			t.Run(fmt.Sprintf("m=%d", m), func(t *testing.T) {
+				var out BufferUploader
+				align := 2048
+				out.PartSize = align * m
+				c := Converter{
+					Output:    &out,
+					Comp:      algo,
+					Inputs:    inputs(),
+					Align:     align,
+					FlushMeta: m * align,
+				}
+				if !c.MultiStream() {
+					t.Fatal("expected MultiStream to be true")
+				}
+				err := c.Run()
+				if err != nil {
+					t.Fatal(err)
+				}
+				count := check(t, &out)
 
-	for _, m := range multiples {
-		t.Run(fmt.Sprintf("m=%d", m), func(t *testing.T) {
-			var out BufferUploader
-			align := 2048
-			out.PartSize = align * m
-			c := Converter{
-				Output:    &out,
-				Comp:      "zstd",
-				Inputs:    inputs(),
-				Align:     align,
-				FlushMeta: m * align,
-			}
-			if !c.MultiStream() {
-				t.Fatal("expected MultiStream to be true")
-			}
-			err := c.Run()
-			if err != nil {
-				t.Fatal(err)
-			}
-			count := check(t, &out)
-
-			// now do it again, but
-			// prepend the output
-			br := bytes.NewReader(out.Bytes())
-			tr, err := ReadTrailer(br, br.Size())
-			if err != nil {
-				t.Fatal(err)
-			}
-			var out2 BufferUploader
-			c = Converter{
-				Output:    &out2,
-				Comp:      "zstd",
-				Inputs:    inputs(),
-				Align:     align,
-				FlushMeta: m * align * 2, // change metadata interval
-			}
-			c.Prepend.R = io.NopCloser(io.LimitReader(br, tr.Offset))
-			c.Prepend.Trailer = tr
-			err = c.Run()
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("original size: %d", len(out.Bytes()))
-			t.Logf("doubled size: %d", len(out2.Bytes()))
-			// should have doubled the number of objects
-			count2 := check(t, &out2)
-			if count2 != count*2 {
-				t.Errorf("went from %d to %d objects?", count, count2)
-			}
-		})
+				// now do it again, but
+				// prepend the output
+				br := bytes.NewReader(out.Bytes())
+				tr, err := ReadTrailer(br, br.Size())
+				if err != nil {
+					t.Fatal(err)
+				}
+				var out2 BufferUploader
+				c = Converter{
+					Output:    &out2,
+					Comp:      algo,
+					Inputs:    inputs(),
+					Align:     align,
+					FlushMeta: m * align * 2, // change metadata interval
+				}
+				c.Prepend.R = io.NopCloser(io.LimitReader(br, tr.Offset))
+				c.Prepend.Trailer = tr
+				err = c.Run()
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("original size: %d", len(out.Bytes()))
+				t.Logf("doubled size: %d", len(out2.Bytes()))
+				// should have doubled the number of objects
+				count2 := check(t, &out2)
+				if count2 != count*2 {
+					t.Errorf("went from %d to %d objects?", count, count2)
+				}
+			})
+		}
 	}
 }

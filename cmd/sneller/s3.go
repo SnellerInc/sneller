@@ -43,7 +43,7 @@ func s3object(name string) (vm.Table, error) {
 	if err != nil {
 		return nil, err
 	}
-	return srcTable(obj, obj.Size())
+	return srcTable(obj, obj.Size(), nil)
 }
 
 // s3-backed NDJSON table

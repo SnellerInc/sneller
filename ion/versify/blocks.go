@@ -17,7 +17,6 @@ package versify
 import (
 	"math/rand"
 
-	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -60,7 +59,7 @@ func (b *BlockGenerator) Table(blocks int) ([]byte, error) {
 	}
 	cw := blockfmt.CompressionWriter{
 		Output:     &dst,
-		Comp:       compr.Compression(comp),
+		Comp:       blockfmt.CompressorByName(comp),
 		InputAlign: align,
 		TargetSize: align,
 	}

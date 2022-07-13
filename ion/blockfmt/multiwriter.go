@@ -21,7 +21,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -43,9 +42,9 @@ type MultiWriter struct {
 	// Output is the Uploader used to
 	// upload parts to backing storage.
 	Output Uploader
-	// Comp is the compression algorithm
+	// Algo is the compression algorithm
 	// used to compress blocks.
-	Comp compr.Compressor
+	Algo string
 	// InputAlign is the expected size
 	// of input blocks that are provided
 	// to io.Write in each stream.
@@ -112,6 +111,7 @@ type singleStream struct {
 	tid     int    // stream id
 	curspan span   // current span
 
+	comp        Compressor
 	lastblock   int64
 	flushblocks int
 }
@@ -128,7 +128,7 @@ func (m *MultiWriter) init() {
 	if m.nextpart == 0 {
 		m.nextpart = 1
 	}
-	if m.Comp == nil || m.Output == nil {
+	if m.Output == nil {
 		panic("can't use MultiWriter w/o Comp and Output fields")
 	}
 }
@@ -157,7 +157,11 @@ func (m *MultiWriter) Open() (io.WriteCloser, error) {
 
 	// allocate a starting span for this stream eagerly
 	// so that we can predict output span ordering in tests
-	s := &singleStream{parent: m, tid: tid}
+	c := getCompressor(m.Algo)
+	if c == nil {
+		return nil, fmt.Errorf("blockfmt: no such compression algorithm %q", m.Algo)
+	}
+	s := &singleStream{parent: m, tid: tid, comp: c}
 	s.curspan.partnum = m.nextpart
 	m.nextpart++
 	return s, nil
@@ -211,8 +215,9 @@ func (s *singleStream) Write(p []byte) (int, error) {
 		return 0, fmt.Errorf("blockfmt.MultiWriter: flush, but then no BVM")
 	}
 	s.flushblocks++
-	s.buf = appendFrame(s.buf, s.parent.Comp, p)
-	return len(p), nil
+	var err error
+	s.buf, err = appendFrame(s.buf, s.comp, p)
+	return len(p), err
 }
 
 // promote returns true if the current span
@@ -291,6 +296,12 @@ func (s *singleStream) Close() error {
 	if s.flushblocks != 0 {
 		return fmt.Errorf("singleStream.Close() missing call to Flush() first")
 	}
+	defer func() {
+		if s.comp != nil {
+			s.comp.Close()
+			s.comp = nil
+		}
+	}()
 	if len(s.buf) == 0 {
 		if len(s.curspan.blockmap) != 0 {
 			panic("unflushed blocks?")
@@ -403,7 +414,13 @@ func (m *MultiWriter) Close() error {
 		panic("race between stream Close() and MultiWriter Close()")
 	}
 	m.finalize()
+	finalcomp := getCompressor(m.Algo)
+	if finalcomp == nil {
+		return fmt.Errorf("blockfmt: no such compression algorithm %q", m.Algo)
+	}
+
 	// compute the final sparse index:
-	m.unallocated.buf = append(m.unallocated.buf, m.Trailer.trailer(m.Comp, m.InputAlign)...)
+	m.unallocated.buf = append(m.unallocated.buf, m.Trailer.trailer(finalcomp, m.InputAlign)...)
+	finalcomp.Close()
 	return m.Output.Close(m.unallocated.buf)
 }

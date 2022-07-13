@@ -24,7 +24,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
@@ -174,7 +173,7 @@ func (o *OutputPart) exec(dst vm.QuerySink, ep *ExecParams) error {
 		dst:   dst,
 	}
 	us.mw.Output = up
-	us.mw.Comp = compr.Compression("zstd")
+	us.mw.Algo = "zstd" // FIXME: grab this from elsewhere
 	us.mw.InputAlign = 1 << 20
 	return o.From.exec(us, ep)
 }
