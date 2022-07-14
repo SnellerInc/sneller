@@ -16,6 +16,7 @@ package ion
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"path/filepath"
@@ -220,4 +221,72 @@ func TestSymtabAlias(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("want %q, got %q", want, got)
 	}
+}
+
+func TestMergeSymtabs(t *testing.T) {
+	testcases := []struct {
+		existing []string
+		incoming []string
+		merged   []string
+		changed  bool
+		ok       bool
+	}{
+		{
+			changed:  true,
+			ok:       true, // it's fine to add new symbols
+			existing: []string{"a", "b", "c"},
+			incoming: []string{"a", "b", "c", "d"},
+			merged:   []string{"a", "b", "c", "d"},
+		},
+		{
+			changed:  false,
+			ok:       true, // it's fine not to add anything
+			existing: []string{"a", "b", "c"},
+			incoming: []string{"a", "b"},
+			merged:   []string{"a", "b", "c"},
+		},
+		{
+			changed:  false,
+			ok:       false, // symbols 'b' and 'c' mismatch
+			existing: []string{"a", "b", "c"},
+			incoming: []string{"a", "c", "b"},
+			merged:   []string{"a", "b", "c"},
+		},
+	}
+
+	for i := range testcases {
+		// given
+		existing := makeSymtab(testcases[i].existing)
+		incoming := makeSymtab(testcases[i].incoming)
+		expected := makeSymtab(testcases[i].merged)
+
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			// when
+			changed, ok := existing.Merge(incoming)
+
+			// then
+			if ok != testcases[i].ok {
+				t.Errorf("wrong 'ok' flag: got %v, want %v", ok, testcases[i].ok)
+			}
+
+			if changed != testcases[i].changed {
+				t.Errorf("wrong 'changed' flag: got %v, want %v", changed, testcases[i].changed)
+			}
+
+			if !slices.Equal(expected.interned, existing.interned) {
+				t.Logf("want %s", expected)
+				t.Logf("got %s", existing)
+				t.Error("wrong merged symtab")
+			}
+		})
+	}
+}
+
+func makeSymtab(symbols []string) *Symtab {
+	var st Symtab
+	for i := range symbols {
+		st.Intern(symbols[i])
+	}
+
+	return &st
 }

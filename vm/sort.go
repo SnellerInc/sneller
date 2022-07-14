@@ -116,14 +116,13 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, paralle
 // 1. align all symtabs into a common one and recode all records;
 // 2. preprend possibliy each record with symtab.
 func (s *Order) setSymbolTable(st *symtab) error {
-	s.symtabLock.Lock()
-	defer s.symtabLock.Unlock()
 	if s.symtab == nil {
 		s.symtab = new(ion.Symtab)
 		st.Symtab.CloneInto(s.symtab)
 		return nil
 	}
-	if !st.Symtab.Equal(s.symtab) {
+	_, ok := s.symtab.Merge(&st.Symtab)
+	if !ok {
 		return fmt.Errorf("symtab changed, can't sort data")
 	}
 	return nil
@@ -276,6 +275,21 @@ func (s *Order) finalizeKtop() error {
 // ----------------------------------------------------------------------
 
 func symbolize(sort *Order, findbc *bytecode, st *symtab, global bool) error {
+	if global {
+		sort.symtabLock.Lock()
+		defer sort.symtabLock.Unlock()
+		err := sort.setSymbolTable(st)
+		if err != nil {
+			return err
+		}
+
+		return symbolizeLocal(sort, findbc, st)
+	} else {
+		return symbolizeLocal(sort, findbc, st)
+	}
+}
+
+func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab) error {
 	findbc.restoreScratch()
 	var program prog
 
@@ -295,9 +309,6 @@ func symbolize(sort *Order, findbc *bytecode, st *symtab, global bool) error {
 	findbc.symtab = st.symrefs
 	if err != nil {
 		return fmt.Errorf("sortstate.symbolize(): %w", err)
-	}
-	if global {
-		return sort.setSymbolTable(st)
 	}
 	return nil
 }

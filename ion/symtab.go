@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"strconv"
+	"strings"
 
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
@@ -220,6 +222,51 @@ func (s *Symtab) set(i int, v string) {
 		}
 		s.interned[i] = v
 	}
+}
+
+// Merge adds new symbols from symtab `o` providing that
+// the common symbols of the both symtabs are the same.
+//
+// Returns whether merge was OK. If it was, return if
+// new symbols were added.
+func (s *Symtab) Merge(o *Symtab) (modified bool, ok bool) {
+	n1 := len(s.interned)
+	n2 := len(o.interned)
+
+	k := n1
+	if n2 < n1 {
+		k = n2
+	}
+
+	// check if prefixes are equal
+	if !slices.Equal(s.interned[:k], o.interned[:k]) {
+		return false, false
+	}
+
+	// copy new symbols
+	for i := n1; i < n2; i++ {
+		s.append(o.interned[i])
+	}
+
+	return (n1 < n2), true
+}
+
+func (s *Symtab) String() string {
+	var b strings.Builder
+
+	b.WriteString("{")
+	for i, s := range s.interned {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+
+		b.WriteString(s)
+		b.WriteString(": ")
+		b.WriteString(strconv.Itoa(i))
+	}
+	b.WriteString("}")
+
+	return b.String()
 }
 
 // these symbols are predefined
