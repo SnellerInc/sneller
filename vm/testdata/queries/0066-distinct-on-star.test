@@ -1,0 +1,40 @@
+SELECT * FROM (SELECT DISTINCT ON (id) * FROM input) ORDER BY id
+---
+{"id": 5, "y": 123.5}
+{"id": 0, "s": "test"}
+{"id": 1, "b": true}
+{"id": 2, "b": false}
+{"id": 1, "b": true}
+{"id": 0, "s": "test"}
+{"id": 5, "y": 123.5}
+{"id": 0, "s": "test"}
+{"id": 0, "s": "test"}
+{"id": 1, "b": true}
+{"id": 5, "y": 123.5}
+{"id": 0, "s": "test"}
+{"id": 1, "b": true}
+{"id": 0, "s": "test"}
+{"id": 1, "b": true}
+{"id": 3, "s": "test", "x": 42}
+{"id": 4, "s": "test", "y": 77, "z": 1.25}
+{"id": 3, "s": "test", "x": 42}
+{"id": 5, "y": 123.5}
+{"id": 3, "s": "test", "x": 42}
+{"id": 4, "s": "test", "y": 77, "z": 1.25}
+{"id": 2, "b": false}
+{"id": 3, "s": "test", "x": 42}
+{"id": 4, "s": "test", "y": 77, "z": 1.25}
+{"id": 4, "s": "test", "y": 77, "z": 1.25}
+{"id": 3, "s": "test", "x": 42}
+{"id": 4, "s": "test", "y": 77, "z": 1.25}
+{"id": 2, "b": false}
+{"id": 5, "y": 123.5}
+{"id": 1, "b": true}
+{"id": 2, "b": false}
+---
+{"id": 0, "s": "test"}
+{"id": 1, "b": true}
+{"id": 2, "b": false}
+{"id": 3, "s": "test", "x": 42}
+{"id": 4, "s": "test", "y": 77, "z": 1.25}
+{"id": 5, "y": 123.5}

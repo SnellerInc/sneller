@@ -50,6 +50,17 @@ func (b *Trace) Check(e expr.Node) error {
 	return expr.CheckHint(e, b)
 }
 
+func (b *Trace) checkExpressions(n []expr.Node) error {
+	for i := range n {
+		err := b.Check(n[i])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (b *Trace) add(p *expr.Path, step Step, n expr.Node) {
 	if b.scope == nil {
 		b.scope = make(map[*expr.Path]scopeinfo)

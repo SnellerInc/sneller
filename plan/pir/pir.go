@@ -642,25 +642,32 @@ func (b *Trace) Iterate(bind *expr.Binding) error {
 // Distinct takes a sets of bindings
 // and produces only distinct sets of output tuples
 // of the given variable bindings
-func (b *Trace) Distinct(bind []expr.Binding) error {
+func (b *Trace) Distinct(exprs []expr.Node) error {
 	b.cur = b.top
 	di := &Distinct{}
-	for i := range bind {
-		expr.Walk(b, bind[i].Expr)
+	for i := range exprs {
+		expr.Walk(b, exprs[i])
 		if b.err != nil {
 			return b.combine()
 		}
-		di.Columns = append(di.Columns, bind[i].Expr)
+		di.Columns = append(di.Columns, exprs[i])
 	}
-	for i := range bind {
-		err := b.Check(bind[i].Expr)
-		if err != nil {
-			return err
-		}
+
+	if err := b.checkExpressions(exprs); err != nil {
+		return err
 	}
-	b.final = bind
+
 	b.cur = di
 	return b.push()
+}
+
+func (b *Trace) DistinctFromBindings(bind []expr.Binding) error {
+	exprs := make([]expr.Node, len(bind))
+	for i := range bind {
+		exprs[i] = bind[i].Expr
+	}
+
+	return b.Distinct(exprs)
 }
 
 func (b *Trace) BindStar() error {

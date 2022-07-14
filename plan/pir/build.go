@@ -772,20 +772,34 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
 	} else {
 		selectall := isselectall(s)
-		if !s.Distinct && selectall {
+		if selectall && !s.HasDistinct() {
 			err = b.BindStar()
 		} else {
+			bindcolumns := true
 			if s.Distinct {
 				if selectall {
 					return errorf(s, "DISTINCT * is not supported")
 				}
 
-				err = b.Distinct(s.Columns)
+				err = b.DistinctFromBindings(s.Columns)
 				if err != nil {
 					return err
 				}
+			} else if s.DistinctExpr != nil {
+				err = b.Distinct(s.DistinctExpr)
+				if err != nil {
+					return err
+				}
+
+				if selectall {
+					// do not bind '*' in queries 'SELECT DISTINCT ON (...) * FROM ...'
+					bindcolumns = false
+				}
 			}
-			err = b.Bind(s.Columns)
+
+			if bindcolumns {
+				err = b.Bind(s.Columns)
+			}
 		}
 		if s.OrderBy != nil {
 			err = b.Order(s.OrderBy)

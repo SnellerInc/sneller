@@ -684,6 +684,12 @@ func (s *Select) write(out *strings.Builder, redact bool, into Node) {
 	}
 }
 
+// HasDistinct returns if select implements 'SELECT DISTINCT ... FROM ...'
+// or 'SELECT DISTINCT ON (...) ... FROM ...'
+func (s *Select) HasDistinct() bool {
+	return s.Distinct || s.DistinctExpr != nil
+}
+
 func decodeOrder(st *ion.Symtab, body []byte) ([]Order, error) {
 	var out []Order
 	_, err := ion.UnpackList(body, func(body []byte) error {

@@ -1202,6 +1202,21 @@ ORDER BY m, d, h`,
 				"PROJECT $_0_0 AS z, $_0_1 AS x, $_0_2 AS y",
 			},
 		},
+		{
+			input: `SELECT DISTINCT ON (x, y, z) a, b FROM table`,
+			expect: []string{
+				"ITERATE table",
+				"FILTER DISTINCT [x y z]",
+				"PROJECT a AS a, b AS b",
+			},
+		},
+		{
+			input: `SELECT DISTINCT ON (x, y) * FROM table`,
+			expect: []string{
+				"ITERATE table",
+				"FILTER DISTINCT [x y]",
+			},
+		},
 	}
 
 	for i := range tests {

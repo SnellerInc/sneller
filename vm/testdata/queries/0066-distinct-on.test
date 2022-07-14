@@ -1,0 +1,21 @@
+SELECT a, b FROM (SELECT DISTINCT ON (x, y) a, b FROM input) ORDER BY a, b
+---
+# The input rows are fully duplicated to make comparison
+# of output fields a and b repeatable. Otherwise, we wouldn't
+# be able to make assertions on these fields.
+{"x": 0, "y": 0, "a": "group 1", "b": 0}
+{"x": 0, "y": 0, "a": "group 1", "b": 0}
+{"x": 0, "y": 0, "a": "group 1", "b": 0}
+{"x": 0, "y": 1, "a": "group 2", "b": 1}
+{"x": 0, "y": 1, "a": "group 2", "b": 1}
+{"x": 1, "y": 0, "a": "group 3", "b": 2}
+{"x": 1, "y": 0, "a": "group 3", "b": 2}
+{"x": 1, "y": 0, "a": "group 3", "b": 2}
+{"x": 1, "y": 0, "a": "group 3", "b": 2}
+{"x": 1, "y": 0, "a": "group 3", "b": 2}
+{"x": 1, "y": 1, "a": "group 4", "b": 3}
+---
+{"a": "group 1", "b": 0}
+{"a": "group 2", "b": 1}
+{"a": "group 3", "b": 2}
+{"a": "group 4", "b": 3}

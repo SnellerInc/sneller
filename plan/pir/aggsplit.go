@@ -172,7 +172,7 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 	if aggc == 0 {
 		// this is actually a DISTINCT
 		// written in a funny way:
-		err = b.Distinct(groups)
+		err = b.DistinctFromBindings(groups)
 		if err != nil {
 			return err
 		}
