@@ -20,6 +20,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
@@ -52,7 +55,7 @@ func TestStringCompare(t *testing.T) {
 			dictval:  func(x string) string { return x },
 		},
 		{
-			name:     "equal_cs_ascii",
+			name:     "equal_ci_ascii",
 			alphabet: []rune{'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D', 'z', '!', '@'},
 			compare:  strings.EqualFold, // we're only generating ASCII
 			op:       opCmpStrEqCi,
@@ -69,11 +72,12 @@ func TestStringCompare(t *testing.T) {
 		*/
 	}
 
+	var padding []byte // empty padding
 	var ctx bctestContext
 	defer ctx.Free()
 	run := func(t *testing.T, str string, group []string, tc *testcase) {
 		ctx.dict = append(ctx.dict[:0], pad(tc.dictval(str)))
-		ctx.setScalarStrings(group)
+		ctx.setScalarStrings(group, padding)
 		ctx.current = (1 << len(group)) - 1
 		want := uint16(0)
 		for i := range group {
@@ -114,6 +118,134 @@ func TestStringCompare(t *testing.T) {
 				}
 				if len(group) > 0 {
 					run(t, str1, group, tc)
+				}
+			}
+		})
+	}
+}
+
+func TestPatMatch(t *testing.T) {
+	type testcase struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet, patternAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen, patternMaxlen int
+		// portable reference implementation: f(data, dictval) -> match, offset, length
+		refImpl func(string, string) (bool, int, int)
+		// bytecode implementation of comparison
+		op bcop
+		// string immediate -> dictionary value function
+		encode func(string) string
+		// evaluate equality function: wanted (match, offset, length); observed (match, offset, length) -> equality
+		evalEq func(bool, int, int, bool, uint32, uint32) bool
+	}
+
+	eqfunc1 := func(wantMatch bool, wantOffset, wantLength int, obsMatch bool, obsOffset, obsLength uint32) bool {
+		if wantMatch != obsMatch {
+			return false
+		}
+		if obsMatch { // if the wanted and observed match are equal, and the match is true, then also check the offset and length
+			return (wantOffset == int(obsOffset)) && (wantLength == int(obsLength))
+		}
+		return true
+	}
+
+	cases := []testcase{
+		{
+			name:            "opMatchpatCs",
+			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
+			dataMaxlen:      4,
+			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
+			patternMaxlen:   5,
+			refImpl: func(data, dictval string) (match bool, offset, length int) {
+				return matchPatternReference([]byte(data), 0, len(data), []byte(dictval), true)
+			},
+			op:     opMatchpatCs,
+			encode: func(dictval string) string { return dictval },
+			evalEq: eqfunc1,
+		},
+		// NOTE: currently disabled due to a bug
+		/* {
+			name:            "opMatchpatCi",
+			dataAlphabet:    []rune{'s', 'S', 'ſ', 'k'},
+			dataMaxlen:      4,
+			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
+			patternMaxlen:   5,
+			refImpl: func(data, dictval string) (match bool, offset, length int) {
+				return matchPatternReference([]byte(data), 0, len(data), []byte(dictval), false)
+			},
+			op:     opMatchpatCi,
+			encode: func(dictval string) string { return dictval },
+			evalEq: eqfunc1,
+		},
+		*/
+		{
+			name:            "opMatchpatUTF8Ci",
+			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
+			dataMaxlen:      4,
+			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
+			patternMaxlen:   5,
+			refImpl: func(data, dictval string) (match bool, offset, length int) {
+				return matchPatternReference([]byte(data), 0, len(data), []byte(dictval), false)
+			},
+			op: opMatchpatUTF8Ci,
+			encode: func(dictval string) string { //NOTE: dictval is encoded for regular pattern
+				return stringext.GenPatternExt(stringext.PatternToSegments([]byte(dictval)))
+			},
+			evalEq: eqfunc1,
+		},
+	}
+	//FIXME opMatchpatUTF8Ci only seems to work when padding is not empty
+	padding := []byte{0x0}
+
+	var ctx bctestContext
+	defer ctx.Free()
+	run := func(t *testing.T, dictval string, data []string, tc *testcase) {
+		ctx.dict = append(ctx.dict[:0], pad(tc.encode(dictval)))
+		ctx.setScalarStrings(data, padding)
+		ctx.current = (1 << len(data)) - 1
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(tc.op, 0); err != nil {
+			t.Error(err)
+		}
+		scalarAfter := ctx.getScalarUint32()
+
+		// then
+		for i := range data {
+			wantLane, wantOffset, wantLength := tc.refImpl(data[i], dictval)
+			obsLane := ctx.current&(1<<i) != 0
+			obsOffset := scalarAfter[0][i] - scalarBefore[0][i] // NOTE the reference implementation returns offset starting from zero
+			obsLength := scalarAfter[1][i]
+
+			if !tc.evalEq(wantLane, wantOffset, wantLength, obsLane, obsOffset, obsLength) {
+				t.Fatalf("matching data %q to pattern %q = %v: observed %v (offset %v; length %v); expected %v (offset %v; length %v)",
+					escapeNL(data[i]), dictval, []byte(dictval), obsLane, obsOffset, obsLength, wantLane, wantOffset, wantLength)
+			}
+		}
+	}
+
+	const lanes = 16
+	for i := range cases {
+		tc := &cases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			var group []string
+			dataSpace := createSpace(tc.dataMaxlen, tc.dataAlphabet)
+			patternSpace := createSpacePatternRandom(tc.patternMaxlen, tc.patternAlphabet, 1000)
+			for _, pattern := range patternSpace {
+				group = group[:0]
+				for _, data := range dataSpace {
+					group = append(group, data)
+					if len(group) < lanes {
+						continue
+					}
+					run(t, pattern, group, tc)
+					group = group[:0]
+				}
+				if len(group) > 0 {
+					run(t, pattern, group, tc)
 				}
 			}
 		})
@@ -286,7 +418,7 @@ func TestBytecodeIsNull(t *testing.T) {
 func regexMatch(t *testing.T, ctx *bctestContext, ds *[]byte, op bcop, needles []string) uint16 {
 	ctx.Taint()
 	ctx.dict = append(ctx.dict[:0], string(*ds))
-	ctx.setScalarStrings(needles)
+	ctx.setScalarStrings(needles, []byte{})
 	ctx.current = (1 << len(needles)) - 1
 
 	// when
@@ -573,6 +705,101 @@ func TestRegexBruteForce4(t *testing.T) {
 	}
 }
 
+/////////////////////////////////////////////////////////////
+// Helper functions
+
+// MatchPatternReference matches the first occurrence of the provided pattern.
+// The MatchPatternReference implementation is used for fuzzing since it is 10x faster than matchPatternRegex
+func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseSensitive bool) (laneOut bool, offsetOut, lengthOut int) {
+
+	// indexRune is similar to strings.Index; this function accepts rune arrays
+	indexRune := func(s, substr []rune) int {
+		idx := strings.Index(string(s), string(substr))
+		if idx == -1 {
+			return -1
+		}
+		off := 0
+		for i := range string(s) {
+			if i == idx {
+				return off
+			}
+			off++
+		}
+		return off
+	}
+
+	// hasPrefixRune is similar to strings.HasPrefix; this function accepts rune arrays
+	hasPrefixRune := func(s, prefix []rune) bool {
+		return len(prefix) <= len(s) && slices.Equal(s[:len(prefix)], prefix)
+	}
+
+	if len(pattern) == 0 { // not sure how to handle an empty pattern, currently it always matches
+		return true, offset, length
+	}
+	msgStrOrg := string(stringext.ExtractFromMsg(msg, int32(offset), int32(length)))
+	msgStr := msgStrOrg
+
+	if !caseSensitive { // normalize msg and pattern to make case-insensitive comparison possible
+		msgStr = stringext.NormalizeString(msgStrOrg)
+		pattern = stringext.PatternNormalize(pattern)
+	}
+	segments := stringext.PatternToSegments(pattern)
+	msgRunesOrg := []rune(msgStrOrg)
+	msgRunes := []rune(msgStr)
+	nRunesMsg := len(msgRunes)
+
+	for runePos := 0; runePos < nRunesMsg; runePos++ {
+		nRunesInWildcards := 0 // only add the number of wildcards to the position once the segment has been found
+		runePos1 := runePos
+		for i, segment := range segments {
+			if runePos1 >= nRunesMsg {
+				break // exit the for loop; we have not found the pattern
+			}
+			isFirstSegment := i == 0
+			isLastSegment := i == (len(segments) - 1)
+
+			if len(segment) == 0 {
+				nRunesInWildcards++ // we found an empty segment, that counts as one wildcard
+			} else {
+				remainingStartPos := runePos1 + nRunesInWildcards
+				if remainingStartPos >= nRunesMsg {
+					return false, offset + length, 0
+				}
+				remainingMsg := string(msgRunes[remainingStartPos:])
+				remainingRunes := []rune(remainingMsg)
+				segmentRunes := []rune(segment)
+
+				if isFirstSegment {
+					positionOfSegment := indexRune(remainingRunes, segmentRunes)
+					if positionOfSegment == -1 { // segment not found
+						runePos1++
+						break
+					} else { // found segment
+						runePos1 += nRunesInWildcards + positionOfSegment + len(segmentRunes)
+						nRunesInWildcards = 1
+					}
+				} else {
+					if !hasPrefixRune(remainingRunes, segmentRunes) {
+						break // segment not found
+					} else { // found segment
+						runePos1 += nRunesInWildcards + len(segmentRunes)
+						nRunesInWildcards = 1
+					}
+				}
+			}
+			if isLastSegment {
+				if runePos1 <= nRunesMsg {
+					nBytesTillLastRune := len(string(msgRunesOrg[0:runePos1]))
+					offsetOut := offset + nBytesTillLastRune
+					lengthOut := length - nBytesTillLastRune
+					return true, offsetOut, lengthOut
+				}
+			}
+		}
+	}
+	return false, offset + length, 0
+}
+
 //next updates x to the successor; return true/false whether the x is valid
 func next(x *[]byte, max, length int) bool {
 	for i := 0; i < length; i++ {
@@ -612,9 +839,7 @@ func createSpace(maxLength int, alphabet []rune) []string {
 
 // createSpaceRandom creates random strings with the provided length over the provided alphabet
 func createSpaceRandom(maxLength int, alphabet []rune, maxSize int) []string {
-	type void struct{}
-	var member void
-	set := make(map[string]void) // new empty set
+	set := make(map[string]struct{}) // new empty set
 
 	// Note: not the most efficient implementation: space of short strings
 	// is quickly exhausted while we are still trying to find something
@@ -622,11 +847,39 @@ func createSpaceRandom(maxLength int, alphabet []rune, maxSize int) []string {
 	alphabetSize := len(alphabet)
 
 	for len(set) < maxSize {
-		strLength := rand.Intn(maxLength + 1)
+		strLength := rand.Intn(maxLength) + 1
 		for i := 0; i < strLength; i++ {
 			strRunes[i] = alphabet[rand.Intn(alphabetSize)]
 		}
-		set[string(strRunes)] = member
+		set[string(strRunes)] = struct{}{}
 	}
 	return maps.Keys(set)
+}
+
+func createSpacePatternRandom(maxLength int, alphabet []rune, maxSize int) []string {
+	set := make(map[string]struct{})          // new empty set
+	alphabet = append(alphabet, utf8.MaxRune) // use maxRune as a segment boundary
+	alphabetSize := len(alphabet)
+
+	for len(set) < maxSize {
+		strLength := rand.Intn(maxLength) + 1
+		strRunes := make([]rune, strLength)
+		for i := 0; i < strLength; i++ {
+			strRunes[i] = alphabet[rand.Intn(alphabetSize)]
+		}
+		s := string(strRunes)
+		segments := strings.Split(s, string(utf8.MaxRune))
+		if (len(segments[0]) > 0) && (len(segments[len(segments)-1]) > 0) {
+			set[s] = struct{}{}
+		}
+	}
+
+	result := make([]string, len(set))
+	pos := 0
+	for s := range set {
+		segments := strings.Split(s, string(utf8.MaxRune))
+		result[pos] = string(stringext.SegmentsToPattern(segments))
+		pos++
+	}
+	return result
 }

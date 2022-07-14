@@ -319,6 +319,10 @@ func EqualRuneFold(a, b rune) bool {
 	return NormalizeRune(a) == NormalizeRune(b)
 }
 
+func ExtractFromMsg(msg []byte, offset, length int32) []byte {
+	return msg[offset : offset+length]
+}
+
 // FlattenRunes flattens a string into 32-bit runes so we can stick it in a dictionary
 func FlattenRunes(p string) string {
 	size := 4 * utf8.RuneCountInString(p)
@@ -341,6 +345,9 @@ func PatternToSegments(pattern []byte) []string {
 	var result []string
 	for len(pattern) > 0 {
 		segmentLength := pattern[0] //NOTE: 1byte segment length
+		if int(segmentLength) >= len(pattern) {
+			panic(fmt.Sprintf("invalid segment length %v (char %v)", segmentLength, string(rune(segmentLength))))
+		}
 		result = append(result, string(pattern[1:segmentLength+1]))
 		pattern = pattern[segmentLength+1:]
 	}
@@ -364,7 +371,7 @@ func SegmentsToPattern(segments []string) (pattern []byte) {
 func PatternToPrettyString(pattern []byte, method1 int) (result string) {
 	switch method1 {
 	case 0:
-		result = PatternToRegex(pattern)
+		result = PatternToRegex(pattern, true)
 	case 1:
 		pos := 0
 		for pos < len(pattern) {
@@ -415,7 +422,7 @@ func PatternNormalize(pattern []byte) []byte {
 	return SegmentsToPattern(segments)
 }
 
-func PatternToRegex(pattern []byte) string {
+func PatternToRegex(pattern []byte, caseSensitive bool) string {
 	regex := ".*"
 	segments := PatternToSegments(pattern)
 	lastSegmentIndex := len(segments) - 1
@@ -424,6 +431,9 @@ func PatternToRegex(pattern []byte) string {
 		if i == lastSegmentIndex { // we are at the last segment
 			regex += "*"
 		}
+	}
+	if !caseSensitive {
+		regex = "(?i)" + regex
 	}
 	return regex
 }

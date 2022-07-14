@@ -27,7 +27,7 @@ func mapVM() *[vmUse]byte {
 	if err != nil {
 		panic("VirtualAlloc(reserve) failed: " + err.Error())
 	}
-	_, err = windows.VirtualAlloc(base+vmStart, vmUse, windows.MEM_COMMIT, windows.PAGE_READWRITE)
+	_, err = windows.VirtualAlloc(base+vmStart, vmUse+1, windows.MEM_COMMIT, windows.PAGE_READWRITE)
 	if err != nil {
 		panic("VirtualAlloc(commit) failed: " + err.Error())
 	}

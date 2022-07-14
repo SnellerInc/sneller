@@ -95,17 +95,6 @@ func (c *bctestContext) execute(prog []byte) error {
 	return nil
 }
 
-//lint:ignore U1000 kept for symmetry
-func (c *bctestContext) setScalarUint64(values []uint64) {
-	if len(values) > 16 {
-		panic("Can set up to 16 scalar values for VM opcode")
-	}
-
-	for i, v := range values {
-		c.scalar[i/8][i%8] = v
-	}
-}
-
 func (c *bctestContext) getScalarUint64() (result [16]uint64) {
 	for i := 0; i < 16; i++ {
 		result[i] = c.scalar[i/8][i%8]
@@ -132,6 +121,19 @@ func (c *bctestContext) getScalarInt64() (result [16]int64) {
 	return
 }
 
+func (c *bctestContext) getScalarUint32() (result [2][16]uint32) {
+	for i := 0; i < 16; i++ {
+		if i%2 == 0 {
+			result[0][i] = uint32(c.scalar[0][i/2]) // offset
+			result[1][i] = uint32(c.scalar[1][i/2]) // length
+		} else {
+			result[0][i] = uint32(c.scalar[0][i/2] >> 32) // offset
+			result[1][i] = uint32(c.scalar[1][i/2] >> 32) // length
+		}
+	}
+	return
+}
+
 func (c *bctestContext) setScalarFloat64(values []float64) {
 	if len(values) > 16 {
 		panic("Can set up to 16 scalar values for VM opcode")
@@ -150,7 +152,7 @@ func (c *bctestContext) getScalarFloat64() (result [16]float64) {
 	return
 }
 
-func (c *bctestContext) setScalarStrings(values []string) {
+func (c *bctestContext) setScalarStrings(values []string, padding []byte) {
 	if len(values) > 16 {
 		panic("Can set up to 16 input values for VM opcode")
 	}
@@ -173,44 +175,7 @@ func (c *bctestContext) setScalarStrings(values []string) {
 			c.scalar[1][i/2] |= uint64(len(str)) << 32
 		}
 		c.data = append(c.data, str...)
-	}
-}
-
-func (c *bctestContext) setScalarIonFields(values []interface{}) {
-	if len(values) > 16 {
-		panic("Can set up to 16 input values for VM opcode")
-	}
-
-	if c.data == nil {
-		c.data = Malloc()
-	}
-	c.data = c.data[:0]
-
-	var chunk []byte
-	for i := range values {
-		switch v := values[i].(type) {
-		case []byte:
-			chunk = v
-
-		case string:
-			chunk = []byte(v)
-
-		default:
-			panic("only bytes and string are supported")
-		}
-		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
-		if !ok {
-			panic("c.data more than 1MB?")
-		}
-		if i%2 == 0 {
-			c.scalar[0][i/2] = uint64(base)
-			c.scalar[1][i/2] = uint64(len(chunk))
-		} else {
-			c.scalar[0][i/2] |= uint64(base) << 32
-			c.scalar[1][i/2] |= uint64(len(chunk)) << 32
-		}
-
-		c.data = append(c.data, chunk...)
+		c.data = append(c.data, padding...)
 	}
 }
 
