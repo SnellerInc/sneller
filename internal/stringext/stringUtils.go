@@ -319,7 +319,7 @@ func EqualRuneFold(a, b rune) bool {
 	return NormalizeRune(a) == NormalizeRune(b)
 }
 
-func ExtractFromMsg(msg []byte, offset, length int32) []byte {
+func ExtractFromMsg(msg []byte, offset, length int) []byte {
 	return msg[offset : offset+length]
 }
 

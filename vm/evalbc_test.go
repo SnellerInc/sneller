@@ -17,6 +17,7 @@ package vm
 import (
 	"fmt"
 	"math/rand"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+// TestStringCompare tests opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompare(t *testing.T) {
 	type testcase struct {
 		name string
@@ -124,6 +126,39 @@ func TestStringCompare(t *testing.T) {
 	}
 }
 
+// TestMatchpatRef tests the reference implementation of matchpat (matchPatternReference) with a much slower regex impl
+func TestMatchpatRef(t *testing.T) {
+	dataSpace := createSpace(4, []rune{'a', 'b', 's', 'ſ'})
+	patternSpace := createSpacePatternRandom(6, []rune{'s', 'S', 'k', 'K'}, 500)
+
+	// matchPatternRegex matches the first occurrence of the provided pattern similar to matchPatternReference
+	// matchPatternRegex implementation is the refImpl for the matchPatternReference implementation.
+	// the regex impl is about 10x slower and does not return expected value registers (offset and length)
+	matchPatternRegex := func(msg []byte, offset, length int, pattern []byte, caseSensitive bool) (laneOut bool) {
+		regex := stringext.PatternToRegex(pattern, caseSensitive)
+		r, err := regexp.Compile(regex)
+		if err != nil {
+			t.Errorf("Could not compile regex %v", regex)
+		}
+		loc := r.FindIndex(stringext.ExtractFromMsg(msg, offset, length))
+		return loc != nil
+	}
+
+	for _, caseSensitive := range []bool{false, true} {
+		for _, pattern := range patternSpace {
+			for _, data := range dataSpace {
+				wantMatch := matchPatternRegex([]byte(data), 0, len(data), []byte(pattern), caseSensitive)
+				obsMatch, obsOffset, obsLength := matchPatternReference([]byte(data), 0, len(data), []byte(pattern), caseSensitive)
+				if wantMatch != obsMatch {
+					t.Fatalf("matching data %q to pattern %q = %v: observed %v (offset %v; length %v); expected %v",
+						escapeNL(data), pattern, []byte(pattern), wantMatch, obsOffset, obsLength, wantMatch)
+				}
+			}
+		}
+	}
+}
+
+// TestPatMatch tests opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
 func TestPatMatch(t *testing.T) {
 	type testcase struct {
 		name string
@@ -736,7 +771,7 @@ func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseS
 	if len(pattern) == 0 { // not sure how to handle an empty pattern, currently it always matches
 		return true, offset, length
 	}
-	msgStrOrg := string(stringext.ExtractFromMsg(msg, int32(offset), int32(length)))
+	msgStrOrg := string(stringext.ExtractFromMsg(msg, offset, length))
 	msgStr := msgStrOrg
 
 	if !caseSensitive { // normalize msg and pattern to make case-insensitive comparison possible
