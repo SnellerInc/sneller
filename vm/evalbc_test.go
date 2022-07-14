@@ -15,7 +15,6 @@
 package vm
 
 import (
-	"fmt"
 	"math/rand"
 	"regexp"
 	"strings"
@@ -31,8 +30,8 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// TestStringCompare tests opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
-func TestStringCompare(t *testing.T) {
+// TestStringCompareBF brute-force tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
+func TestStringCompareBF(t *testing.T) {
 	type testcase struct {
 		name string
 		// alphabet from which to generate needles
@@ -126,8 +125,8 @@ func TestStringCompare(t *testing.T) {
 	}
 }
 
-// TestMatchpatRef tests the reference implementation of matchpat (matchPatternReference) with a much slower regex impl
-func TestMatchpatRef(t *testing.T) {
+// TestMatchpatRefBF brute-force tests for: the reference implementation of matchpat (matchPatternReference) with a much slower regex impl
+func TestMatchpatRefBF(t *testing.T) {
 	dataSpace := createSpace(4, []rune{'a', 'b', 's', 'ſ'})
 	patternSpace := createSpacePatternRandom(6, []rune{'s', 'S', 'k', 'K'}, 500)
 
@@ -158,8 +157,8 @@ func TestMatchpatRef(t *testing.T) {
 	}
 }
 
-// TestPatMatch tests opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
-func TestPatMatch(t *testing.T) {
+// TestPatMatchBF brute-force tests for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
+func TestPatMatchBF(t *testing.T) {
 	type testcase struct {
 		name string
 		// alphabet from which to generate needles and patterns
@@ -282,6 +281,210 @@ func TestPatMatch(t *testing.T) {
 				if len(group) > 0 {
 					run(t, pattern, group, tc)
 				}
+			}
+		})
+	}
+}
+
+// TestRegexMatchBF brute-force tests for: opDfaT6, opDfaT6Z, opDfaT7, opDfaT7Z, opDfaT8, opDfaT8Z, opDfaL, opDfaLZ
+func TestRegexMatchBF(t *testing.T) {
+	type testcase struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet, regexAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen, regexMaxlen int
+		// maximum number of elements in dataSpace; -1 means infinite
+		dataMaxSize int
+		// type of regex to test: can be regexp2.Regexp or regexp2.SimilarTo
+		regexType regexp2.RegexType
+	}
+	cases := []testcase{
+		{
+			name:          "Regexp with UTF8",
+			dataAlphabet:  []rune{'a', 'b', 'c', 'Ω'}, // U+2126 'Ω' (3 bytes)
+			dataMaxlen:    4,
+			dataMaxSize:   -1, // negative means infinite
+			regexAlphabet: []rune{'a', 'b', '.', '*', '|', 'Ω'},
+			regexMaxlen:   5,
+			regexType:     regexp2.Regexp,
+		},
+		{
+			name:          "Regexp with NewLine",
+			dataAlphabet:  []rune{'a', 'b', 'c', 0x0A}, // 0x0A = newline
+			dataMaxlen:    4,
+			dataMaxSize:   -1, // negative means infinite
+			regexAlphabet: []rune{'a', 'b', '.', '*', '|', 0x0A},
+			regexMaxlen:   5,
+			regexType:     regexp2.Regexp,
+		},
+		{
+			name:          "SimilarTo with UTF8",
+			dataAlphabet:  []rune{'a', 'b', 'c', 'Ω'}, // U+2126 'Ω' (3 bytes)
+			dataMaxlen:    4,
+			dataMaxSize:   -1,                              // negative means infinite
+			regexAlphabet: []rune{'a', 'b', '_', '%', 'Ω'}, //FIXME exists an issue with '|': eg "|a"
+			regexMaxlen:   5,
+			regexType:     regexp2.SimilarTo,
+		},
+		{
+			name:          "SimilarTo with NewLine",
+			dataAlphabet:  []rune{'a', 'b', 'c', 0x0A}, // 0x0A = newline
+			dataMaxlen:    4,
+			dataMaxSize:   -1,                               // negative means infinite
+			regexAlphabet: []rune{'a', 'b', '_', '%', 0x0A}, //FIXME (=DfaLZ): for needle a regexGolang="(^(|a))$" yields false; regexSneller="(|a)$" yields true
+			regexMaxlen:   5,
+			regexType:     regexp2.SimilarTo,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var dataSpace []string
+			if tc.dataMaxSize == -1 {
+				dataSpace = createSpace(tc.dataMaxlen, tc.dataAlphabet)
+			} else {
+				dataSpace = createSpaceRandom(tc.dataMaxlen, tc.dataAlphabet, tc.dataMaxSize)
+			}
+			regexSpace := createSpaceRegex(tc.regexMaxlen, tc.regexAlphabet, tc.regexType)
+			runRegexTests(t, dataSpace, regexSpace, tc.regexType, false)
+		})
+	}
+}
+
+// TestRegexMatchUT unit-tests for regexp2.Regexp and regexp2.SimilarTo
+func TestRegexMatchUT(t *testing.T) {
+
+	type testcase2 struct {
+		// regex expression to test
+		expr string
+		// boolean for debugging: to dump the data-structures to file
+		writeDot bool
+	}
+	type testcase struct {
+		name string
+		// the actual test-cases to run
+		tc2 []testcase2
+		// alphabet from which to generate needles
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means infinite
+		dataMaxSize int
+		// type of regex to test: can be regexp2.Regexp or regexp2.SimilarTo
+		regexType regexp2.RegexType
+	}
+	cases := []testcase{
+		{
+			name:         "Regexp UnitTests",
+			regexType:    regexp2.Regexp,
+			dataAlphabet: []rune{'a', 'b', 'c', 'd', '\n', 'Ω'},
+			dataMaxlen:   6,
+			dataMaxSize:  -1, // negative means infinite
+			tc2: []testcase2{
+				//automaton with flags
+				{`a$`, false},
+				//NOT supported {CreateDs(`a|$`, false},
+				{`a|b$`, false},
+				//automaton without flags
+				{`.*a.b`, false},
+				{`.*a.a`, false},
+				{`a*.b`, false},
+				{`a*.b*.c`, false},
+				{`a*.b*.c*.d`, false},
+				{`c*.*(aa|cd)`, false},
+				{`(c*b|.a)`, false},
+				{`.*b*.a`, false},
+				{`b*.a*.`, false},
+				{`b*..*b`, false},
+				{`a*..*a`, false},
+				{`..|aaaa`, false},
+				{`..|aa`, false},
+				{`.ba|aa`, false},
+				{`a*...`, false},
+				{`a*..`, false},
+				{`c*.*aa`, false},
+				{`.a|aaa`, false},
+				{`ab|.c`, false},
+				{`.*ab`, false},
+				{`a*..a`, false},
+				{`a*..b`, false},
+				{`a*.b`, false},
+				{`.*ab.*cd`, false},
+			},
+		},
+		{
+			name:         "SimilarTo UnitTests",
+			regexType:    regexp2.SimilarTo,
+			dataAlphabet: []rune{'a', 'b', 'c', 'd', '\n', 'Ω'},
+			dataMaxlen:   6,
+			dataMaxSize:  -1, // negative means infinite
+			tc2: []testcase2{
+				{`(aa|b*)`, false}, //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
+				{`a*`, false},      //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
+				{`ab|cd`, false},
+				{`%a_b`, false},
+				{`%a_a`, false},
+				{`a%b`, false},
+				{`a%b%c`, false},
+				{`a%b%c%d`, false},
+				{`c*%(aa|cd)`, false},
+				{`(c*b|_a)`, false},
+				{`c*b|_a`, false},
+				{`%b*_a`, false},
+				{`b*_a*_`, false},
+				{`b*_%b`, false},
+				{`a*_%a`, false},
+				{`__|aaaa`, false},
+				{`__|aa`, false},
+				{`_ba|aa`, false},
+				{`a*___`, false},
+				{`a*__`, false},
+				{`c*%aa`, false},
+				{`_a|aaa`, false},
+				{`ab|_c`, false},
+				{`%ab`, false},
+				{`a*__a`, false},
+				{`a*__b`, false},
+				{`a*_b`, false},
+				{`%ab%cd`, false},
+			},
+		},
+		{
+			name:         "Regexp with IP4",
+			regexType:    regexp2.Regexp,
+			dataAlphabet: []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'},
+			dataMaxlen:   12,
+			dataMaxSize:  100000,
+			tc2: []testcase2{
+				{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`, false},
+				{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`, false},
+			},
+		},
+		{
+			name:         "SimilarTo with IP4",
+			regexType:    regexp2.SimilarTo,
+			dataAlphabet: []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'},
+			dataMaxlen:   12,
+			dataMaxSize:  100000,
+			tc2: []testcase2{
+				{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`, false},
+				{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, false},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var dataSpace []string
+			if tc.dataMaxSize == -1 {
+				dataSpace = createSpace(tc.dataMaxlen, tc.dataAlphabet)
+			} else {
+				dataSpace = createSpaceRandom(tc.dataMaxlen, tc.dataAlphabet, tc.dataMaxSize)
+			}
+			for _, tc2 := range tc.tc2 {
+				regexSpace := []string{tc2.expr} // space with only one element
+				runRegexTests(t, dataSpace, regexSpace, tc.regexType, tc2.writeDot)
 			}
 		})
 	}
@@ -449,297 +652,6 @@ func TestBytecodeIsNull(t *testing.T) {
 	}
 }
 
-// regexMatch determines whether data-structure for DFA operation op matches needle
-func regexMatch(t *testing.T, ctx *bctestContext, ds *[]byte, op bcop, needles []string) uint16 {
-	ctx.Taint()
-	ctx.dict = append(ctx.dict[:0], string(*ds))
-	ctx.setScalarStrings(needles, []byte{})
-	ctx.current = (1 << len(needles)) - 1
-
-	// when
-	err := ctx.ExecuteImm2(op, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return ctx.current
-}
-
-// regexNeedleTest tests the equality for all regexes provided in the data-structure container for one provided needle
-func regexNeedleTest(t *testing.T, ctx *bctestContext, dsByte *[]byte, opStr string, op bcop, needles []string, expected uint16, ds *regexp2.DataStructures) {
-	if dsByte == nil {
-		return
-	}
-	got := regexMatch(t, ctx, dsByte, op, needles)
-	if got != expected {
-		delta := got ^ expected
-		for i := 0; i < 16; i++ {
-			if delta&(1<<i) != 0 {
-				t.Errorf("issue %v (with %v) for needle %v: regexGolang=%q yields %v; regexSneller=%q yields %v",
-					op, opStr, escapeNL(needles[i]), escapeNL(ds.RegexGolang.String()), got&(1<<i) != 0, escapeNL(ds.RegexSneller.String()), expected)
-			}
-		}
-	}
-}
-
-// regexNeedlesTest tests the equality for all regexes provided in the data-structure container for all provided needles
-func regexNeedlesTest(t *testing.T, ds *regexp2.DataStructures, needles []string, wg *sync.WaitGroup) {
-	if wg != nil {
-		defer wg.Done()
-	}
-	var ctx bctestContext
-	ctx.Taint()
-	defer ctx.Free()
-	const lanes = 16
-	for len(needles) > 0 {
-		group := needles
-		if len(group) > lanes {
-			group = group[:lanes]
-		}
-		needles = needles[len(group):]
-		want := uint16(0)
-		for i := range group {
-			if ds.RegexGolang.MatchString(group[i]) {
-				want |= 1 << i
-			}
-		}
-		regexNeedleTest(t, &ctx, ds.DsT6, "DfaT6", opDfaT6, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsT7, "DfaT7", opDfaT7, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsT7Z, "DfaT7Z", opDfaT7Z, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsT8, "DfaT8", opDfaT8, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsT8Z, "DfaT8Z", opDfaT8Z, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsL, "DfaL", opDfaL, group, want, ds)
-		regexNeedleTest(t, &ctx, ds.DsLZ, "DfaLZ", opDfaLZ, group, want, ds)
-	}
-}
-
-func TestRegexType1(t *testing.T) {
-	needles := createSpace(6, []rune{'a', 'b', 'c', 'd', '\n', 'Ω'}) // U+2126 'Ω' (3 bytes)
-
-	testCases := []struct {
-		expr     string
-		writeDot bool
-	}{
-		//automaton with flags
-		{`a$`, false},
-		//NOT supported {CreateDs(`a|$`, false},
-		{`a|b$`, false},
-
-		//automaton without flags
-		{`.*a.b`, false},
-		{`.*a.a`, false},
-		{`a*.b`, false},
-		{`a*.b*.c`, false},
-		{`a*.b*.c*.d`, false},
-		{`c*.*(aa|cd)`, false},
-		{`(c*b|.a)`, false},
-		{`.*b*.a`, false},
-		{`b*.a*.`, false},
-		{`b*..*b`, false},
-		{`a*..*a`, false},
-		{`..|aaaa`, false},
-		{`..|aa`, false},
-		{`.ba|aa`, false},
-		{`a*...`, false},
-		{`a*..`, false},
-		{`c*.*aa`, false},
-		{`.a|aaa`, false},
-		{`ab|.c`, false},
-		{`.*ab`, false},
-		{`a*..a`, false},
-		{`a*..b`, false},
-		{`a*.b`, false},
-		{`.*ab.*cd`, false},
-	}
-	for i, data := range testCases {
-		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
-			ds := regexp2.CreateDs(data.expr, regexp2.Regexp, data.writeDot, regexp2.MaxNodesAutomaton)
-			regexNeedlesTest(t, &ds, needles, nil)
-		})
-	}
-}
-
-func TestRegexType2(t *testing.T) {
-	needles := createSpace(6, []rune{'a', 'b', 'c', 'd', '\n', 'Ω'}) // U+2126 'Ω' (3 bytes)
-
-	testCases := []struct {
-		expr     string
-		writeDot bool
-	}{
-		{`(aa|b*)`, false}, //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
-		{`a*`, false},      //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
-		{`ab|cd`, false},
-		{`%a_b`, false},
-		{`%a_a`, false},
-		{`a%b`, false},
-		{`a%b%c`, false},
-		{`a%b%c%d`, false},
-		{`c*%(aa|cd)`, false},
-		{`(c*b|_a)`, false},
-		{`c*b|_a`, false},
-		{`%b*_a`, false},
-		{`b*_a*_`, false},
-		{`b*_%b`, false},
-		{`a*_%a`, false},
-		{`__|aaaa`, false},
-		{`__|aa`, false},
-		{`_ba|aa`, false},
-		{`a*___`, false},
-		{`a*__`, false},
-		{`c*%aa`, false},
-		{`_a|aaa`, false},
-		{`ab|_c`, false},
-		{`%ab`, false},
-		{`a*__a`, false},
-		{`a*__b`, false},
-		{`a*_b`, false},
-		{`%ab%cd`, false},
-	}
-	for i, data := range testCases {
-		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
-			ds := regexp2.CreateDs(data.expr, regexp2.SimilarTo, data.writeDot, regexp2.MaxNodesAutomaton)
-			regexNeedlesTest(t, &ds, needles, nil)
-		})
-	}
-}
-
-func TestRegexIP4(t *testing.T) {
-	needles := createSpaceRandom(12, []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'}, 100000)
-	t.Logf("Number of needles %d", len(needles))
-	testCases := []struct {
-		expr      string
-		regexType regexp2.RegexType
-		writeDot  bool
-	}{
-		{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`, regexp2.SimilarTo, false},
-		{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`, regexp2.Regexp, false},
-		{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, regexp2.SimilarTo, false},
-		{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`, regexp2.Regexp, false},
-	}
-	for i, data := range testCases {
-		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
-			ds := regexp2.CreateDs(data.expr, data.regexType, data.writeDot, regexp2.MaxNodesAutomaton)
-			regexNeedlesTest(t, &ds, needles, nil)
-		})
-	}
-}
-
-// bruteForceIterateRegex iterates over all regexes with the provided regex length and regex alphabet,
-// and determines equality over all needles with the provided needle length and needle alphabet
-func bruteForceIterateRegex(t *testing.T, regexLength, needleLength int, regexAlphabet, needleAlphabet []rune, regexType regexp2.RegexType) {
-	regexAlphabetSize := len(regexAlphabet)
-	regexIndices := make([]byte, regexLength)
-	regexRunes := make([]rune, regexLength)
-	regexDone := false
-
-	needles := createSpace(needleLength, needleAlphabet)
-	nNeedles := len(needles)
-	nTests := 0
-
-	for !regexDone {
-		for i := 0; i < regexLength; i++ {
-			regexRunes[i] = regexAlphabet[regexIndices[i]]
-		}
-		regexStr := string(regexRunes)
-		if _, err := regexp2.Compile(regexStr, regexType); err != nil {
-			// ignore strings that are not valid regexes
-		} else if err := regexp2.IsSupported(regexStr); err != nil {
-			// ignore not supported regexes
-		} else {
-			ds := regexp2.CreateDs(regexStr, regexType, false, regexp2.MaxNodesAutomaton)
-			if nNeedles < 100 { // do serial
-				regexNeedlesTest(t, &ds, needles, nil)
-			} else { // do parallel
-				nGroups := 20
-				groupSize := (nNeedles / nGroups) + 1
-				var wg sync.WaitGroup
-				nItemsRemaining := len(needles)
-				i := 0
-				for nItemsRemaining > 0 {
-					wg.Add(1)
-					lowerBound := i * groupSize
-					upperBound := lowerBound + groupSize
-					if upperBound > nNeedles {
-						upperBound = nNeedles
-					}
-					needleFragment := needles[lowerBound:upperBound]
-					go regexNeedlesTest(t, &ds, needleFragment, &wg)
-					nItemsRemaining -= len(needleFragment)
-					i++
-				}
-				wg.Wait()
-			}
-			nTests += nNeedles
-		}
-		regexDone = !next(&regexIndices, regexAlphabetSize, regexLength)
-	}
-	t.Logf("brute-force did %v tests (regexLength %v; needleLength %v; nNeedles %v)", nTests, regexLength, needleLength, nNeedles)
-}
-
-// TestRegexBruteForce1 tests unicode code-points in regex and needle
-func TestRegexBruteForce1(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-	regexType := regexp2.Regexp
-	regexAlphabet := []rune{'a', 'b', '.', '*', '|', 'Ω'}
-	needleAlphabet := []rune{'a', 'b', 'c', 'Ω'} // U+2126 'Ω' (3 bytes)
-
-	for regexLength := 1; regexLength < 6; regexLength++ {
-		for needleLength := 1; needleLength < 4; needleLength++ {
-			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
-		}
-	}
-}
-
-// TestRegexBruteForce2 tests newline in regex and needle
-func TestRegexBruteForce2(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-	regexType := regexp2.Regexp
-	regexAlphabet := []rune{'a', 'b', '.', '*', '|', 0x0A}
-	needleAlphabet := []rune{'a', 'b', 'c', 0x0A} // 0x0A = newline
-
-	for regexLength := 1; regexLength < 6; regexLength++ {
-		for needleLength := 1; needleLength < 4; needleLength++ {
-			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
-		}
-	}
-}
-
-// TestRegexBruteForce3 tests UTF8 needles with 'SIMILAR TO'
-func TestRegexBruteForce3(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-	regexType := regexp2.SimilarTo
-	regexAlphabet := []rune{'a', 'b', '_', '%', 'Ω'} //FIXME exists an issue with '|': eg "|a"
-	needleAlphabet := []rune{'a', 'b', 'c', 'Ω'}     // U+2126 'Ω' (3 bytes)
-
-	for regexLength := 1; regexLength < 6; regexLength++ {
-		for needleLength := 1; needleLength < 4; needleLength++ {
-			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
-		}
-	}
-}
-
-// TestRegexBruteForce3 tests newline with 'SIMILAR TO'
-func TestRegexBruteForce4(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-	regexType := regexp2.SimilarTo
-	regexAlphabet := []rune{'a', 'b', '_', '%', 0x0A} //FIXME (=DfaLZ): for needle a regexGolang="(^(|a))$" yields false; regexSneller="(|a)$" yields true
-	needleAlphabet := []rune{'a', 'b', 'c', 0x0A}
-
-	for regexLength := 1; regexLength < 6; regexLength++ {
-		for needleLength := 1; needleLength < 4; needleLength++ {
-			bruteForceIterateRegex(t, regexLength, needleLength, regexAlphabet, needleAlphabet, regexType)
-		}
-	}
-}
-
 /////////////////////////////////////////////////////////////
 // Helper functions
 
@@ -835,6 +747,101 @@ func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseS
 	return false, offset + length, 0
 }
 
+// runRegexTests iterates over all regexes with the provided regex length and regex alphabet,
+// and determines equality over all needles with the provided needle length and needle alphabet
+func runRegexTests(t *testing.T, dataSpace, regexSpace []string, regexType regexp2.RegexType, writeDot bool) {
+
+	// regexDataSpaceTest tests the equality for all regexes provided in the data-structure container for all provided needles
+	regexDataSpaceTest := func(ds *regexp2.DataStructures, needleSpace []string, wg *sync.WaitGroup) {
+
+		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
+		regexDataTest := func(ctx *bctestContext, dsByte *[]byte, opStr string, op bcop, needleSubSpace []string, expected uint16) {
+			if dsByte == nil {
+				return
+			}
+
+			ctx.Taint()
+			ctx.dict = append(ctx.dict[:0], string(*dsByte))
+			ctx.setScalarStrings(needleSubSpace, []byte{})
+			ctx.current = (1 << len(needleSubSpace)) - 1
+
+			// when
+			err := ctx.ExecuteImm2(op, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			observed := ctx.current
+			if observed != expected {
+				delta := observed ^ expected
+				for i := 0; i < 16; i++ {
+					if delta&(1<<i) != 0 {
+						t.Errorf("%v: issue with needle %q: regexGolang=%q yields %v; regexSneller=%q yields %v",
+							opStr, escapeNL(needleSubSpace[i]), escapeNL(ds.RegexGolang.String()), observed&(1<<i) != 0, escapeNL(ds.RegexSneller.String()), expected&(1<<i) != 0)
+					}
+				}
+			}
+		}
+
+		if wg != nil {
+			defer wg.Done()
+		}
+		var ctx bctestContext
+		ctx.Taint()
+		defer ctx.Free()
+		const lanes = 16
+		for len(needleSpace) > 0 {
+			group := needleSpace
+			if len(group) > lanes {
+				group = group[:lanes]
+			}
+			needleSpace = needleSpace[len(group):]
+			want := uint16(0)
+			for i := range group {
+				if ds.RegexGolang.MatchString(group[i]) {
+					want |= 1 << i
+				}
+			}
+			regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, group, want)
+			regexDataTest(&ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, group, want)
+			regexDataTest(&ctx, ds.DsT7, "DfaT7", opDfaT7, group, want)
+			regexDataTest(&ctx, ds.DsT7Z, "DfaT7Z", opDfaT7Z, group, want)
+			regexDataTest(&ctx, ds.DsT8, "DfaT8", opDfaT8, group, want)
+			regexDataTest(&ctx, ds.DsT8Z, "DfaT8Z", opDfaT8Z, group, want)
+			regexDataTest(&ctx, ds.DsL, "DfaL", opDfaL, group, want)
+			regexDataTest(&ctx, ds.DsLZ, "DfaLZ", opDfaLZ, group, want)
+		}
+	}
+
+	nNeedles := len(dataSpace)
+
+	for _, regexStr := range regexSpace {
+		ds := regexp2.CreateDs(regexStr, regexType, writeDot, regexp2.MaxNodesAutomaton)
+		if nNeedles < 100 { // do serial
+			regexDataSpaceTest(&ds, dataSpace, nil)
+		} else { // do parallel
+			nGroups := 50
+			groupSize := (nNeedles / nGroups) + 1
+			var wg sync.WaitGroup
+			nItemsRemaining := len(dataSpace)
+			i := 0
+			for nItemsRemaining > 0 {
+				wg.Add(1)
+				lowerBound := i * groupSize
+				upperBound := lowerBound + groupSize
+				if upperBound > nNeedles {
+					upperBound = nNeedles
+				}
+				needleFragment := dataSpace[lowerBound:upperBound]
+				go regexDataSpaceTest(&ds, needleFragment, &wg)
+				nItemsRemaining -= len(needleFragment)
+				i++
+			}
+			wg.Wait()
+		}
+	}
+}
+
 //next updates x to the successor; return true/false whether the x is valid
 func next(x *[]byte, max, length int) bool {
 	for i := 0; i < length; i++ {
@@ -915,6 +922,33 @@ func createSpacePatternRandom(maxLength int, alphabet []rune, maxSize int) []str
 		segments := strings.Split(s, string(utf8.MaxRune))
 		result[pos] = string(stringext.SegmentsToPattern(segments))
 		pos++
+	}
+	return result
+}
+
+// createSpace creates strings of length 1 upto maxLength over the provided alphabet
+func createSpaceRegex(maxLength int, alphabet []rune, regexType regexp2.RegexType) []string {
+	result := make([]string, 0)
+	alphabetSize := len(alphabet)
+	indices := make([]byte, maxLength)
+
+	for strLength := 1; strLength <= maxLength; strLength++ {
+		strRunes := make([]rune, strLength)
+		done := false
+		for !done {
+			for i := 0; i < strLength; i++ {
+				strRunes[i] = alphabet[indices[i]]
+			}
+			regexStr := string(strRunes)
+			if _, err := regexp2.Compile(regexStr, regexType); err != nil {
+				// ignore strings that are not valid regexes
+			} else if err := regexp2.IsSupported(regexStr); err != nil {
+				// ignore not supported regexes
+			} else {
+				result = append(result, regexStr)
+			}
+			done = !next(&indices, alphabetSize, strLength)
+		}
 	}
 	return result
 }
