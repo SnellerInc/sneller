@@ -717,23 +717,15 @@ func benchPath(b *testing.B, fname string) {
 }
 
 func BenchmarkTestQueries(b *testing.B) {
-	err := filepath.WalkDir("./testdata/queries/", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(d.Name(), ".bench") {
-			return nil
-		}
-		b.Run(strings.TrimSuffix(d.Name(), ".bench"), func(b *testing.B) {
-			benchPath(b, path)
-		})
-		return nil
-	})
+	bench, err := findQueries(".bench")
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	for i := range bench {
+		b.Run(bench[i].name, func(b *testing.B) {
+			benchPath(b, bench[i].path)
+		})
 	}
 }
 
@@ -761,24 +753,55 @@ func TestQueries(t *testing.T) {
 			t.Errorf("pages used: %d -> %d", start, end)
 		}
 	})
-	err := filepath.WalkDir("./testdata/queries/", func(path string, d fs.DirEntry, err error) error {
+	test, err := findQueries(".test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range test {
+		t.Run(test[i].name, func(t *testing.T) {
+			t.Parallel()
+			testPath(t, test[i].path)
+		})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+type queryTest struct {
+	name, path string
+}
+
+func findQueries(suffix string) ([]queryTest, error) {
+	var tests []queryTest
+
+	rootdir := filepath.Clean("./testdata/queries/")
+	prefix := rootdir + "/"
+
+	err := filepath.WalkDir(rootdir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(d.Name(), ".test") {
-			t.Log("skip", d.Name())
+		if !strings.HasSuffix(d.Name(), suffix) {
 			return nil
 		}
-		t.Run(strings.TrimSuffix(d.Name(), ".test"), func(t *testing.T) {
-			t.Parallel()
-			testPath(t, path)
-		})
+
+		name := strings.TrimPrefix(path, prefix)
+		name = strings.TrimSuffix(name, suffix)
+		name = strings.ReplaceAll(name, "/", "-")
+
+		t := queryTest{
+			name: name,
+			path: path,
+		}
+
+		tests = append(tests, t)
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	return tests, err
 }
