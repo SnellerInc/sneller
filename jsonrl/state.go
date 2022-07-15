@@ -170,7 +170,7 @@ func ParseHint(rules []byte) (*Hint, error) {
 
 	for _, path := range keys {
 		value := obj[path]
-		hints, err := hintsFromJson(value)
+		hints, err := hintsFromJSON(value)
 		if err != nil {
 			return nil, err
 		}
@@ -216,21 +216,21 @@ func skipValue(d *json.Decoder) error {
 	case json.Delim('['), json.Delim('{'):
 		for {
 			if err := skipValue(d); err != nil {
-				if err == end {
+				if err == errErrDelim {
 					break
 				}
 				return err
 			}
 		}
 	case json.Delim(']'), json.Delim('}'):
-		return end
+		return errErrDelim
 	}
 	return nil
 }
 
-var end = errors.New("invalid end of array or object")
+var errErrDelim = errors.New("invalid end of array or object")
 
-func hintsFromJson(value interface{}) (hints, error) {
+func hintsFromJSON(value interface{}) (hints, error) {
 	s, ok := value.(string)
 	if ok {
 		return hintFromString(s)

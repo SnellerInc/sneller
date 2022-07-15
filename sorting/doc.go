@@ -13,7 +13,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 /*
-Package sort contains low-level procedures that implement `ORDER BY`
+Package sorting contains low-level procedures that implement `ORDER BY`
 queries execution.
 
 

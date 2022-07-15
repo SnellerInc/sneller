@@ -164,8 +164,8 @@ func (t *tenantEnv) DecodeUploader(st *ion.Symtab, buf []byte) (plan.UploadFS, e
 	return db.DecodeS3FS(st, buf)
 }
 
-func (e *tenantEnv) post() {
-	e.evfd.Write(e.onebuf[:])
+func (t *tenantEnv) post() {
+	t.evfd.Write(t.onebuf[:])
 }
 
 func (h *tenantHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {

@@ -121,12 +121,12 @@ func hopcroft(symbolSet setT[symbolRangeT], revEdges revEdgesT, dfaStore *DFASto
 
 	ids, _ := dfaStore.getIDs()
 
-	for _, nodeId := range ids {
-		node, _ := dfaStore.get(nodeId)
+	for _, nodeID := range ids {
+		node, _ := dfaStore.get(nodeID)
 		if node.accept {
-			group1A.pushBack(nodeId)
+			group1A.pushBack(nodeID)
 		} else {
-			group2A.pushBack(nodeId)
+			group2A.pushBack(nodeID)
 		}
 	}
 	{

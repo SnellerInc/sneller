@@ -249,10 +249,10 @@ type indexWriter struct {
 	parent *indexSink
 }
 
-func (i *indexSink) rawAppend(desc *blockfmt.Descriptor) {
-	i.lock.Lock()
-	defer i.lock.Unlock()
-	i.idx.Inline = append(i.idx.Inline, *desc)
+func (is *indexSink) rawAppend(desc *blockfmt.Descriptor) {
+	is.lock.Lock()
+	defer is.lock.Unlock()
+	is.idx.Inline = append(is.idx.Inline, *desc)
 }
 
 func (i *indexWriter) Write(p []byte) (int, error) {

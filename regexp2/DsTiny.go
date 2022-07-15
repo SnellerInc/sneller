@@ -191,15 +191,6 @@ func DumpDebug(writer io.Writer, data []byte, nBits, nNodes, nGroups int, rlza, 
 	}
 }
 
-func (d *DsTiny) findCharGroup(charGroupID int) symbolRangeT {
-	for symbolRange, id := range d.charGroupMap {
-		if id == charGroupID {
-			return symbolRange
-		}
-	}
-	return 0
-}
-
 func (d *DsTiny) NumberOfGroups() int {
 	return d.charGroupMap.size()
 }

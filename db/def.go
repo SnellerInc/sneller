@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-
-	"github.com/SnellerInc/sneller/fsutil"
 )
 
 // Input is one input pattern
@@ -55,12 +53,6 @@ type Definition struct {
 	Name string `json:"name"`
 	// Inputs is the list of inputs that comprise the table.
 	Inputs []Input `json:"input"`
-}
-
-func drop(lst []fsutil.NamedFile) {
-	for i := range lst {
-		lst[i].Close()
-	}
 }
 
 // just pick an upper limit to prevent DoS

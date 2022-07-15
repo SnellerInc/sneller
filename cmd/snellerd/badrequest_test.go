@@ -27,13 +27,8 @@ import (
 	"regexp"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/SnellerInc/sneller/db"
-	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/plan"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 // tsbuf is a threadsafe buffer;
@@ -68,28 +63,6 @@ func testlogger(t *testing.T) *log.Logger {
 type requester struct {
 	t    *testing.T
 	host string
-}
-
-type emptyEnv struct{}
-
-func (e emptyEnv) CacheValues() ([]byte, time.Time) {
-	return nil, time.Time{}
-}
-
-type noTableHandle struct{}
-
-func (n noTableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	dst.WriteNull()
-	return nil
-}
-
-func (n noTableHandle) Open(_ context.Context) (vm.Table, error) {
-	panic("noTableHandle.Open()")
-	return nil, nil
-}
-
-func (e emptyEnv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
-	return noTableHandle{}, nil
 }
 
 func (r *requester) get(uri string) *http.Request {

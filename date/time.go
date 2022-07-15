@@ -93,7 +93,7 @@ func Now() Time {
 	return FromTime(time.Now())
 }
 
-// UnixMicro returns a Time from the given Unix time in
+// Unix returns a Time from the given Unix time in
 // seconds and nanoseconds.
 func Unix(sec, ns int64) Time {
 	return FromTime(time.Unix(sec, ns))
@@ -153,13 +153,13 @@ func (t Time) Unix() int64 {
 	return t.Time().Unix()
 }
 
-// Unix returns t as the number of microseconds since
+// UnixMicro returns t as the number of microseconds since
 // the Unix epoch.
 func (t Time) UnixMicro() int64 {
 	return t.Time().UnixMicro()
 }
 
-// Unix returns t as the number of nanoseconds since
+// UnixNano returns t as the number of nanoseconds since
 // the Unix epoch.
 func (t Time) UnixNano() int64 {
 	return t.Time().UnixNano()
@@ -175,7 +175,7 @@ func (t Time) Before(t2 Time) bool {
 	return t.ts < t2.ts || (t.ts == t2.ts && t.ns < t2.ns)
 }
 
-// Before returns whether t is after t2.
+// After returns whether t is after t2.
 func (t Time) After(t2 Time) bool {
 	return t.ts > t2.ts || (t.ts == t2.ts && t.ns > t2.ns)
 }

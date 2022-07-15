@@ -22,11 +22,6 @@ func newMap[K comparable, V comparable]() mapT[K, V] {
 	return map[K]V{}
 }
 
-// empty test whether map is empty
-func (m *mapT[K, V]) empty() bool {
-	return len(*m) == 0
-}
-
 // size gets size of map
 func (m *mapT[K, V]) size() int {
 	return len(*m)
@@ -53,14 +48,4 @@ func (m *mapT[K, V]) clear() {
 func (m *mapT[K, V]) containsKey(k K) bool {
 	_, present := (*m)[k]
 	return present
-}
-
-func (m *mapT[K, V]) containsValue(v V) (bool, K) {
-	var key K
-	for key, value := range *m {
-		if v == value {
-			return true, key
-		}
-	}
-	return false, key // return dummy key
 }

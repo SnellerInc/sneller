@@ -36,25 +36,25 @@ func (op bcop) address() uintptr {
 
 // Reverse mapping from opcode adresses to opcode IDs. For pretty printers, serializers etc.
 
-var opcodeToIdMapOnce sync.Once
-var opcodeToIdMap map[uintptr]bcop
+var opcodeToIDMapOnce sync.Once
+var opcodeToIDMap map[uintptr]bcop
 
 func opcodeID(addr uintptr) (bcop, bool) {
 
 	// Lazy initialization of the map
 
-	opcodeToIdMapOnce.Do(func() {
+	opcodeToIDMapOnce.Do(func() {
 
-		opcodeToIdMap = make(map[uintptr]bcop)
+		opcodeToIDMap = make(map[uintptr]bcop)
 
 		for i := 0; i != _maxbcop; i++ {
 
 			id := bcop(i)
 			addr := id.address()
-			opcodeToIdMap[addr] = id
+			opcodeToIDMap[addr] = id
 		}
 	})
 
-	val, present := opcodeToIdMap[addr]
+	val, present := opcodeToIDMap[addr]
 	return val, present
 }

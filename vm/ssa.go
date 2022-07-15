@@ -2595,10 +2595,10 @@ func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 				}
 				return p.ssa2imm(sDfaT8, str, p.mask(str), p.Constant(string(ds)).imm), nil
 			}
-		} else {
-			// NOTE when you end up here there is an internal error: generation of data-structure
-			// for TinyDFA failed. Continue to try Large.
 		}
+
+		// NOTE: when you end up here there is an internal error: generation of data-structure
+		// for TinyDFA failed. Continue to try Large.
 	}
 	if hasRlza {
 		if dsLargeZ, err := regexp2.NewDsLarge(store, true); err != nil {

@@ -156,11 +156,11 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 			}
 		}
 		for id := range idSet {
-			nodeId, err := store.newNode()
+			nodeID, err := store.newNode()
 			if err != nil {
 				return nil, err
 			}
-			translation.insert(id, nodeId)
+			translation.insert(id, nodeID)
 		}
 	}
 
@@ -221,7 +221,7 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 				node.addEdgeRune(i.Rune[0], translation.at(int(i.Out)), caseSensitive)
 			} else {
 				if (nRunes & 1) == 1 {
-					return nil, fmt.Errorf("received invalid sequence of rune ranges from GOLANG: %#U\n", i.Rune)
+					return nil, fmt.Errorf("received invalid sequence of rune ranges from GOLANG: %#U", i.Rune)
 				}
 				seq := i.Rune
 				for nRunes > 0 {

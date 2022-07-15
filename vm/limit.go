@@ -35,7 +35,7 @@ type limiter struct {
 	done   bool
 }
 
-// Limit constructs a Limit that will
+// NewLimit constructs a Limit that will
 // write no more than 'n' rows to 'dst'.
 func NewLimit(n int64, dst QuerySink) *Limit {
 	return &Limit{

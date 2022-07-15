@@ -45,8 +45,8 @@ func NewDsLarge(store *DFAStore, rlzaCapable bool) (*DsLarge, error) {
 	ids, _ := store.getIDs()
 	slices.Sort(ids) // NOTE sorting necessary to get node0 (start node) first
 
-	for _, nodeId := range ids {
-		node, err := store.get(nodeId)
+	for _, nodeID := range ids {
+		node, err := store.get(nodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +65,7 @@ func NewDsLarge(store *DFAStore, rlzaCapable bool) (*DsLarge, error) {
 			result.addUint32(runeToUtf8int(min)) // first int32 is UTF8 with min of range
 			result.addUint32(runeToUtf8int(max)) // second int32 is UTF8 with max of range
 
-			node, err := nodeIdForDs(edge.to, store, rlza)
+			node, err := nodeIDForDs(edge.to, store, rlza)
 			if err != nil {
 				return nil, err
 			}
@@ -83,7 +83,7 @@ func (d *DsLarge) addInt(i int) {
 	d.addUint32(uint32(i))
 }
 
-func nodeIdForDs(id nodeIDT, store *DFAStore, rlza bool) (uint32, error) {
+func nodeIDForDs(id nodeIDT, store *DFAStore, rlza bool) (uint32, error) {
 	node, err := store.get(id)
 	if err != nil {
 		return 0, err

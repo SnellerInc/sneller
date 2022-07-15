@@ -62,7 +62,7 @@ func Parse(spec string) (Provider, error) {
 	}
 }
 
-// Create an authorization provider based
+// FromEnvironment creates an authorization provider based
 // on environment variables.
 func FromEnvironment() (Provider, error) {
 	mustGetenv := func(env string) (string, error) {
@@ -129,9 +129,8 @@ func FromEnvironment() (Provider, error) {
 	return &creds, nil
 }
 
-// Create an authorization provider that uses
-// and endpoint to validate and return the
-// proper credentials.
+// FromEndPoint creates an authorization provider that uses
+// and endpoint to validate and return the proper credentials.
 // See alse S3Bearer.
 func FromEndPoint(uri string) (Provider, error) {
 	return &S3Bearer{
@@ -139,9 +138,8 @@ func FromEndPoint(uri string) (Provider, error) {
 	}, nil
 }
 
-// Create an authorization provider that reads
-// the credential information from the given
-// file-name.
+// FromFile creates an authorization provider that reads
+// the credential information from the given file-name.
 // See alse S3Static.
 func FromFile(fileName string) (Provider, error) {
 	// for clarity, allow file:// in the spec

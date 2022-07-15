@@ -23,7 +23,6 @@ import (
 
 type nfa struct {
 	id     nodeIDT
-	key    string
 	edges  []edgeT
 	start  bool
 	accept bool
@@ -58,7 +57,7 @@ func (n *nfa) removeEdge(symbolRange symbolRangeT, to nodeIDT) {
 type NFAStore struct {
 	nextID     nodeIDT
 	startIDi   nodeIDT
-	startIdRLZ bool // indicate that the start node has Remaining Length Zero Assertion (RLZ)
+	startIDRLZ bool // indicate that the start node has Remaining Length Zero Assertion (RLZ)
 	data       map[nodeIDT]*nfa
 	maxNodes   int
 }
@@ -67,7 +66,7 @@ func newNFAStore(maxNodes int) NFAStore {
 	return NFAStore{
 		nextID:     0,
 		startIDi:   -1,
-		startIdRLZ: false,
+		startIDRLZ: false,
 		data:       map[nodeIDT]*nfa{},
 		maxNodes:   maxNodes,
 	}
@@ -79,7 +78,7 @@ func (store *NFAStore) dot() *Graphviz {
 	for _, nodeID := range ids {
 		node, _ := store.get(nodeID)
 		fromStr := fmt.Sprintf("%v", nodeID)
-		result.addNode(fromStr, node.start, node.accept, store.startIdRLZ)
+		result.addNode(fromStr, node.start, node.accept, store.startIDRLZ)
 		for _, edge := range node.edges {
 			result.addEdge(fromStr, fmt.Sprintf("%v", edge.to), edge.symbolRange.String())
 		}
@@ -100,19 +99,19 @@ func (store *NFAStore) newNode() (nodeIDT, error) {
 	return nodeID, nil
 }
 
-func (store *NFAStore) get(nodeId nodeIDT) (*nfa, error) {
-	if nfa, present := store.data[nodeId]; present {
+func (store *NFAStore) get(nodeID nodeIDT) (*nfa, error) {
+	if nfa, present := store.data[nodeID]; present {
 		return nfa, nil
 	}
-	return nil, fmt.Errorf("NFAStore.get(%v): nfaId %v not present in map %v", nodeId, nodeId, store.data)
+	return nil, fmt.Errorf("NFAStore.get(%v): nfaId %v not present in map %v", nodeID, nodeID, store.data)
 }
 
 func (store *NFAStore) startID() (nodeIDT, error) {
 	if store.startIDi == -1 {
-		for nodeId, node := range store.data {
+		for nodeID, node := range store.data {
 			if node.start {
-				store.startIDi = nodeId
-				return nodeId, nil
+				store.startIDi = nodeID
+				return nodeID, nil
 			}
 		}
 		return -1, fmt.Errorf("NFAStore does not have a start node")
@@ -123,66 +122,19 @@ func (store *NFAStore) startID() (nodeIDT, error) {
 //getIDs returns vector of the ids; first element is the start node
 func (store *NFAStore) getIDs() (vectorT[nodeIDT], error) {
 	ids := make([]nodeIDT, len(store.data))
-	if startId, err := store.startID(); err != nil {
+	if startID, err := store.startID(); err != nil {
 		return nil, err
 	} else {
-		ids[0] = startId
+		ids[0] = startID
 		index := 1
-		for nodeId := range store.data {
-			if nodeId != startId {
-				ids[index] = nodeId
+		for nodeID := range store.data {
+			if nodeID != startID {
+				ids[index] = nodeID
 				index++
 			}
 		}
 		return ids, nil
 	}
-}
-
-// numberOfStates return the number of nodes in this dfa store
-func (store *NFAStore) numberOfStates() int {
-	return len(store.data)
-}
-
-func (store *NFAStore) reachableNodesTraverse(nodeId nodeIDT, reachable *setT[nodeIDT]) error {
-	if !reachable.contains(nodeId) {
-		reachable.insert(nodeId)
-		if node, err := store.get(nodeId); err != nil {
-			return err
-		} else {
-			for _, edge := range node.edges {
-				if err := store.reachableNodesTraverse(edge.to, reachable); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// reachableNodes return set of all nodes that are reachable from the start-state
-func (store *NFAStore) reachableNodes() (*setT[nodeIDT], error) {
-	if startId, err := store.startID(); err != nil {
-		return nil, err
-	} else {
-		reachable := newSet[nodeIDT]()
-		err = store.reachableNodesTraverse(startId, &reachable)
-		return &reachable, err
-	}
-}
-
-// removeNonReachableNodes removes states that are not reachable from the start-state
-func (store *NFAStore) removeNonReachableNodes() (bool, error) {
-	changed := false
-	if reachableNodes, err := store.reachableNodes(); err != nil {
-		return false, err
-	} else {
-		for nodeId := range store.data {
-			if !reachableNodes.contains(nodeId) {
-				delete(store.data, nodeId)
-			}
-		}
-	}
-	return changed, nil
 }
 
 func (store *NFAStore) moveRLZAUpstream(nodeID, nodeIDDest nodeIDT, rlza bool, done *setT[nodeIDT]) (err error) {
@@ -199,7 +151,7 @@ func (store *NFAStore) moveRLZAUpstream(nodeID, nodeIDDest nodeIDT, rlza bool, d
 					return fmt.Errorf("remaining Length Zero Assertion $ for non empty regex is not supported")
 				}
 			}
-			store.startIdRLZ = true
+			store.startIDRLZ = true
 			node.addEdge(newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeIDDest)
 		} else {
 			for nodeID2, node2 := range store.data {
@@ -299,11 +251,11 @@ func (store *NFAStore) refactorEdges() (err error) {
 		done := newSet[nodeIDT]()
 
 		changed := false
-		for nodeId, node := range store.data {
+		for nodeID, node := range store.data {
 			for _, edge := range node.edges {
 				if edge.epsilon() {
 					if _, _, rlza := edge.symbolRange.split(); rlza {
-						if err := store.moveRLZAUpstream(nodeId, edge.to, rlza, &done); err != nil {
+						if err := store.moveRLZAUpstream(nodeID, edge.to, rlza, &done); err != nil {
 							return err
 						}
 						node.removeEdge(edge.symbolRange, edge.to) // remove the edge with the flag
@@ -315,9 +267,9 @@ func (store *NFAStore) refactorEdges() (err error) {
 		// optional: remove dead nodes, ie remove nodes that cannot reach an accept state
 		if changed {
 			reachable := store.reachableAccept()
-			for nodeId := range store.data {
-				if !reachable.containsKey(nodeId) || !reachable.at(nodeId) {
-					store.removeNode(nodeId)
+			for nodeID := range store.data {
+				if !reachable.containsKey(nodeID) || !reachable.at(nodeID) {
+					store.removeNode(nodeID)
 				}
 			}
 		}

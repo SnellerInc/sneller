@@ -45,14 +45,6 @@ func (d *DFA) addEdge(e edgeT) {
 	d.edges = slices.Insert(d.edges, 0, e)
 }
 
-func (d *DFA) removeEdge(symbolRange symbolRangeT, to nodeIDT) {
-	for index, edge := range d.edges {
-		if (edge.to == to) && (edge.symbolRange == symbolRange) {
-			d.edges = slices.Delete(d.edges, index, index+1)
-		}
-	}
-}
-
 func addWithMerge(edge1 edgeT, edges *[]edgeT) {
 	min1, max1, rlza1 := edge1.symbolRange.split()
 	for index2, edge2 := range *edges {
@@ -133,19 +125,19 @@ func (store *DFAStore) newNode() (nodeIDT, error) {
 	return id, nil
 }
 
-func (store *DFAStore) get(nodeId nodeIDT) (*DFA, error) {
-	if dfa, present := store.data[nodeId]; present {
+func (store *DFAStore) get(nodeID nodeIDT) (*DFA, error) {
+	if dfa, present := store.data[nodeID]; present {
 		return dfa, nil
 	}
-	return nil, fmt.Errorf("DFAStore.get(nodeIDT) c7de4d3a: nodeIDT %v not present in map %v", nodeId, store.data)
+	return nil, fmt.Errorf("DFAStore.get(nodeIDT) c7de4d3a: nodeIDT %v not present in map %v", nodeID, store.data)
 }
 
 func (store *DFAStore) startID() (nodeIDT, error) {
 	if store.startIDi == -1 {
-		for nodeId, dfa := range store.data {
+		for nodeID, dfa := range store.data {
 			if dfa.start {
-				store.startIDi = nodeId
-				return nodeId, nil
+				store.startIDi = nodeID
+				return nodeID, nil
 			}
 		}
 		return -1, fmt.Errorf("DFAStore does not have a start node")
@@ -156,14 +148,14 @@ func (store *DFAStore) startID() (nodeIDT, error) {
 // getIDs returns vector of unique ids; first element is the start node
 func (store *DFAStore) getIDs() (vectorT[nodeIDT], error) {
 	ids := make([]nodeIDT, len(store.data))
-	if startId, err := store.startID(); err != nil {
+	if startID, err := store.startID(); err != nil {
 		return nil, err
 	} else {
-		ids[0] = startId
+		ids[0] = startID
 		index := 1
-		for nodeId := range store.data {
-			if nodeId != startId {
-				ids[index] = nodeId
+		for nodeID := range store.data {
+			if nodeID != startID {
+				ids[index] = nodeID
 				index++
 			}
 		}
@@ -176,10 +168,10 @@ func (store *DFAStore) NumberOfNodes() int {
 	return len(store.data)
 }
 
-func (store *DFAStore) reachableNodesTraverse(nodeId nodeIDT, reachable *setT[nodeIDT]) {
-	if !reachable.contains(nodeId) {
-		reachable.insert(nodeId)
-		node, _ := store.get(nodeId)
+func (store *DFAStore) reachableNodesTraverse(nodeID nodeIDT, reachable *setT[nodeIDT]) {
+	if !reachable.contains(nodeID) {
+		reachable.insert(nodeID)
+		node, _ := store.get(nodeID)
 		for _, edge := range node.edges {
 			store.reachableNodesTraverse(edge.to, reachable)
 		}
@@ -188,12 +180,12 @@ func (store *DFAStore) reachableNodesTraverse(nodeId nodeIDT, reachable *setT[no
 
 // reachableNodes return set of all nodes that are reachable from the start-state
 func (store *DFAStore) reachableNodes() (*setT[nodeIDT], error) {
-	startId, err := store.startID()
+	startID, err := store.startID()
 	if err != nil {
 		return nil, err
 	}
 	reachable := newSet[nodeIDT]()
-	store.reachableNodesTraverse(startId, &reachable)
+	store.reachableNodesTraverse(startID, &reachable)
 	return &reachable, nil
 }
 
@@ -202,9 +194,9 @@ func (store *DFAStore) removeNonReachableNodes() error {
 	if reachableNodes, err := store.reachableNodes(); err != nil {
 		return err
 	} else {
-		for nodeId := range store.data {
-			if !reachableNodes.contains(nodeId) {
-				delete(store.data, nodeId)
+		for nodeID := range store.data {
+			if !reachableNodes.contains(nodeID) {
+				delete(store.data, nodeID)
 			}
 		}
 		return nil
@@ -312,24 +304,24 @@ func (store *DFAStore) renumberNodes() error {
 	if ids, err := store.getIDs(); err != nil {
 		return err
 	} else {
-		for _, oldId := range ids { //NOTE: first element of getIDs() is the start state
-			if oldId > maxID {
-				maxID = oldId
+		for _, oldID := range ids { //NOTE: first element of getIDs() is the start state
+			if oldID > maxID {
+				maxID = oldID
 			}
-			names.insert(oldId, newID)
+			names.insert(oldID, newID)
 			newID++
 		}
 		if maxID >= newID {
 			newData := newMap[nodeIDT, *DFA]()
-			for oldId, node := range store.data {
-				newId := names.at(oldId)
-				node.id = newId
+			for oldID, node := range store.data {
+				newID := names.at(oldID)
+				node.id = newID
 				newEdges := newVector[edgeT]()
 				for _, edge := range node.edges {
 					newEdges.pushBack(edgeT{edge.symbolRange, names.at(edge.to)})
 				}
 				node.edges = newEdges
-				newData.insert(newId, node)
+				newData.insert(newID, node)
 			}
 			store.data = newData
 		}

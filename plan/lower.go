@@ -17,7 +17,6 @@ package plan
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
@@ -384,17 +383,6 @@ func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 		return lowerOutputPart(n, env, input)
 	default:
 		return nil, fmt.Errorf("don't know how to lower %T", in)
-	}
-}
-
-func autoname(e expr.Node, pos int) string {
-	switch n := e.(type) {
-	case *expr.Path:
-		return n.Binding()
-	case *expr.Builtin:
-		return strings.ToLower(n.Func.String())
-	default:
-		return gensym(pos)
 	}
 }
 

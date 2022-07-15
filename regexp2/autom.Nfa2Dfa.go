@@ -50,16 +50,16 @@ func getClosure(nodes *vectorT[nodeIDT], nfaStore *NFAStore, dfaStore *DFAStore)
 	symbolSet := newSet[symbolRangeT]()
 	accept := false
 
-	for _, nodeId := range *nodes {
-		stack.push(nodeId)
-		node, err := nfaStore.get(nodeId)
+	for _, nodeID := range *nodes {
+		stack.push(nodeID)
+		node, err := nfaStore.get(nodeID)
 		if err != nil {
 			return -1, err
 		}
 		if node.accept {
 			accept = true
 		}
-		closure.insert(nodeId)
+		closure.insert(nodeID)
 	}
 	for !stack.empty() {
 		top := stack.top()
@@ -107,8 +107,8 @@ func getClosedMove(closureID nodeIDT, symbolRange symbolRangeT, nfaStore *NFASto
 		return -1, err
 	}
 	nextNodes := newVector[nodeIDT]()
-	for nodeId := range closure.items {
-		node, err := nfaStore.get(nodeId)
+	for nodeID := range closure.items {
+		node, err := nfaStore.get(nodeID)
 		if err != nil {
 			return -1, err
 		}
@@ -124,7 +124,7 @@ func getClosedMove(closureID nodeIDT, symbolRange symbolRangeT, nfaStore *NFASto
 //nfaToDfa converts the provided NFA into a DFA
 func nfaToDfa(nfaStore *NFAStore, maxNodes int) (*DFAStore, error) {
 	dfaStore := newDFAStore(maxNodes)
-	dfaStore.StartRLZA = nfaStore.startIdRLZ
+	dfaStore.StartRLZA = nfaStore.startIDRLZ
 
 	v := newVector[nodeIDT]()
 	startNode, err := nfaStore.startID()

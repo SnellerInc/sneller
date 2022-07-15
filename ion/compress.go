@@ -20,11 +20,6 @@ import (
 )
 
 const (
-	// we don't deliberately intern more
-	// than 3MB of strings, since the vm
-	// is required to buffer the entire
-	// symbol table in VMM
-	maxInterned = 3 * 1024 * 1024
 	// allow hash table entries to be
 	// evicted beyond some window (in bytes)
 	evictWindow = 64 * 1024

@@ -383,12 +383,12 @@ func (b *blobEncoder) intern(c *Compressed) {
 	b.interned[c] = b.nextID
 }
 
-func (be *blobEncoder) encode(i Interface, dst *ion.Buffer, st *ion.Symtab) {
+func (b *blobEncoder) encode(i Interface, dst *ion.Buffer, st *ion.Symtab) {
 	type encoder interface {
-		encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab)
+		encode(b *blobEncoder, dst *ion.Buffer, st *ion.Symtab)
 	}
 	if e, ok := i.(encoder); ok {
-		e.encode(be, dst, st)
+		e.encode(b, dst, st)
 		return
 	}
 	dst.WriteString(fmt.Sprintf("cannot encode %T", i))
