@@ -504,6 +504,10 @@ func TestSimpleFS(t *testing.T) {
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", output: `{"count": 3391}`, partial: true},
 		{input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"VendorID\": \"VTS\", \"count\": 7353}\n{\"VendorID\": \"CMT\", \"count\": 1055}\n{\"VendorID\": \"DDS\", \"count\": 152}"},
 		{input: "SELECT COUNT(DISTINCT RPState) from default.parking", output: `{"count": 25}`},
+
+		// don't care much about the result here; this just
+		// exercises the vm scratch save+restore code
+		{input: "SELECT COUNT(*), tm FROM default.taxi GROUP BY DATE_TRUNC(DAY, tpep_pickup_datetime) AS tm", output: ".*", rx: true},
 		{
 			// get coverage of the same table
 			// being referenced more than once

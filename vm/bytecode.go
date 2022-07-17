@@ -773,6 +773,8 @@ func (b *bytecode) dropScratch() {
 		b.scratchsave = slices.Clone(b.scratch[:b.scratchreserve])
 		Free(b.scratch)
 		b.scratch = nil
+		// this will trigger a fault if it is used:
+		b.scratchoff = 0x80000000
 	}
 }
 
@@ -788,7 +790,8 @@ func (b *bytecode) restoreScratch() {
 		return
 	}
 	b.scratch = Malloc()
-	copy(b.scratch, b.scratchsave)
+	b.scratch = b.scratch[:copy(b.scratch, b.scratchsave)]
+	b.scratchoff, _ = vmdispl(b.scratch[:1])
 	b.scratchsave = nil
 }
 
