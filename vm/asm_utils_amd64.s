@@ -17,9 +17,10 @@
 #include "go_asm.h"
 
   // Takes a single uint16 parameter denoting opcode ID and returns the address of the associated handler
-TEXT ·opcodeAddressUnsafe(SB), NOSPLIT|NOFRAME, $0-8
-  MOVWQZX 8(SP), AX      // 16-bit opcode ID
+TEXT ·opcodeAddressUnsafe(SB), NOSPLIT|NOFRAME, $0-16
+  MOVWQZX op+0(FP), AX   // 16-bit opcode ID
   LEAQ opaddrs+0(SB), CX // opaddrs table base address
   MOVQ (CX)(AX*8), AX
-  MOVQ AX, 16(SP)        // return value
+  MOVQ AX, ret+8(FP)     // return value
   RET
+
