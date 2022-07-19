@@ -751,6 +751,10 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		}
 	}
 
+	if s.DistinctExpr != nil {
+		dropConstantsFromDistinctOn(s)
+	}
+
 	// walk SELECT + GROUP BY + HAVING
 	if s.Distinct && s.GroupBy != nil && s.Having == nil {
 		// easy case: SELECT DISTINCT exprs GROUP BY exprs => SELECT exprs GROUP BY exprs
@@ -864,4 +868,34 @@ func distinctEqualsGroupBy(s *expr.Select) bool {
 	}
 
 	return n == len(s.GroupBy)
+}
+
+// dropConstantsFromDistinctOn simplified DISTINCT ON with constant argument.
+// Case 1:
+//    SELECT DISTINCT ON (expr, const1, const2) ...
+// => SELECT DISTINCT ON (expr) ...
+//
+// Case 2:
+//    SELECT DISTINCT ON (const1, const2) ...
+// => SELECT ... LIMIT 1
+func dropConstantsFromDistinctOn(s *expr.Select) {
+	nonconst := make([]expr.Node, 0, len(s.DistinctExpr))
+	for i := range s.DistinctExpr {
+		_, ok := s.DistinctExpr[i].(expr.Constant)
+		if !ok {
+			nonconst = append(nonconst, s.DistinctExpr[i])
+		}
+	}
+
+	if len(nonconst) == len(s.DistinctExpr) {
+		return
+	}
+
+	if len(nonconst) > 0 {
+		s.DistinctExpr = nonconst
+	} else {
+		s.DistinctExpr = nil
+		s.Limit = new(expr.Integer)
+		*s.Limit = 1
+	}
 }

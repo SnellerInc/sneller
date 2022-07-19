@@ -1217,6 +1217,20 @@ ORDER BY m, d, h`,
 				"FILTER DISTINCT [x y]",
 			},
 		},
+		{
+			input: `SELECT DISTINCT ON (1, true, x, 'test', 42.5, y) * FROM table`,
+			expect: []string{
+				"ITERATE table",
+				"FILTER DISTINCT [x y]",
+			},
+		},
+		{
+			input: `SELECT DISTINCT ON (5, false, 'go', -55.85) * FROM table`,
+			expect: []string{
+				"ITERATE table",
+				"LIMIT 1",
+			},
+		},
 	}
 
 	for i := range tests {
