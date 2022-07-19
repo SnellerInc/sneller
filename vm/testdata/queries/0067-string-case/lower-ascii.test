@@ -1,0 +1,59 @@
+SELECT LOWER(s) FROM input
+---
+{"s": ""}
+{"s": "A"}
+{"s": "AB"}
+{"s": "ABC"}
+{"s": "ABCD"}
+{"s": "ABCDE"}
+{"s": "ABCDEF"}
+{"s": "ABCDEFG"}
+{"s": "ABCDEFGH"}
+{"s": "ABCDEFGHI"}
+{"s": "ABCDEFGHIJ"}
+{"s": "ABCDEFGHIJK"}
+{"s": "ABCDEFGHIJKL"}
+{"s": "ABCDEFGHIJKLM"}
+{"s": "ABCDEFGHIJKLMN"}
+{"s": "ABCDEFGHIJKLMNO"}
+{"s": "ABCDEFGHIJKLMNOP"}
+{"s": "ABCDEFGHIJKLMNOPQ"}
+{"s": "ABCDEFGHIJKLMNOPQR"}
+{"s": "ABCDEFGHIJKLMNOPQRS"}
+{"s": "ABCDEFGHIJKLMNOPQRST"}
+{"s": "ABCDEFGHIJKLMNOPQRSTU"}
+{"s": "ABCDEFGHIJKLMNOPQRSTUV"}
+{"s": "ABCDEFGHIJKLMNOPQRSTUVW"}
+{"s": "ABCDEFGHIJKLMNOPQRSTUVWX"}
+{"s": "ABCDEFGHIJKLMNOPQRSTUVWXY"}
+{"s": "ABCDEFGHIJKLMNOPQRSTUVWXYZ"}
+{"s": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000a\u000b\u000c\u000d\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\u0022#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\u005c]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f"}
+---
+{"lower": ""}
+{"lower": "a"}
+{"lower": "ab"}
+{"lower": "abc"}
+{"lower": "abcd"}
+{"lower": "abcde"}
+{"lower": "abcdef"}
+{"lower": "abcdefg"}
+{"lower": "abcdefgh"}
+{"lower": "abcdefghi"}
+{"lower": "abcdefghij"}
+{"lower": "abcdefghijk"}
+{"lower": "abcdefghijkl"}
+{"lower": "abcdefghijklm"}
+{"lower": "abcdefghijklmn"}
+{"lower": "abcdefghijklmno"}
+{"lower": "abcdefghijklmnop"}
+{"lower": "abcdefghijklmnopq"}
+{"lower": "abcdefghijklmnopqr"}
+{"lower": "abcdefghijklmnopqrs"}
+{"lower": "abcdefghijklmnopqrst"}
+{"lower": "abcdefghijklmnopqrstu"}
+{"lower": "abcdefghijklmnopqrstuv"}
+{"lower": "abcdefghijklmnopqrstuvw"}
+{"lower": "abcdefghijklmnopqrstuvwx"}
+{"lower": "abcdefghijklmnopqrstuvwxy"}
+{"lower": "abcdefghijklmnopqrstuvwxyz"}
+{"lower": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000a\u000b\u000c\u000d\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\u0022#$%&'()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\u005c]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f"}

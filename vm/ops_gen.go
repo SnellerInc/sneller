@@ -302,6 +302,8 @@ const (
 	opDfaT8Z                 bcop = 296
 	opDfaL                   bcop = 297
 	opDfaLZ                  bcop = 298
-	optrap                   bcop = 299
-	_maxbcop                      = 300
+	opslower                 bcop = 299
+	opsupper                 bcop = 300
+	optrap                   bcop = 301
+	_maxbcop                      = 302
 )

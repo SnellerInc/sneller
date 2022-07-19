@@ -989,6 +989,23 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		return p.ssa2(sobjectsize, arg, p.mask(arg)), nil
 	case expr.HashLookup:
 		return p.compileHashLookup(b.Args)
+	case expr.Lower, expr.Upper:
+		if len(args) != 1 {
+			return nil, fmt.Errorf("%s does not accept %d arguments", fn, len(args))
+		}
+		s, err := p.compileAsString(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		var v *value
+		if fn == expr.Lower {
+			v = p.Lower(s)
+		} else {
+			v = p.Upper(s)
+		}
+		return v, nil
+
 	default:
 		return nil, fmt.Errorf("unhandled builtin function name %q", fn)
 	}

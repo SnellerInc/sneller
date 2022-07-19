@@ -15063,7 +15063,123 @@ next:
   NEXT()
 //; #endregion bcDfaLZ
 
-//; #endregion string methods
+// BC_STR_CHANGE_CASE generates body of string lower/upper functions.
+// They differ only in the way of transforming ASCII bytes:
+#define BC_STR_CHANGE_CASE(QWORD_LO, QWORD_HI)                                \
+    KTESTW K1, K1                                                             \
+    JZ next                                                                   \
+                                                                              \
+    KMOVW K1, BX                                                              \
+    MOVWQZX (0)(VIRT_PCREG), R8                                               \
+                                                                              \
+    /* Load input strings lengths */                                          \
+    LEAQ 0(VIRT_VALUES)(R8*1), R8                                             \
+    VMOVDQU32.Z 64(R8), K1, Z5                                                \
+                                                                              \
+    /* Calculate offsets of output strings in the scratch area */             \
+    VPADDD Z2, Z3, Z6                                                         \
+    VMOVDQU32 Z6, bytecode_spillArea(VIRT_BCPTR)                              \
+    VPADDD Z5, Z3, K1, Z3                                                     \
+                                                                              \
+    /* First copy-with-lower-case ASCII values. */                            \
+    /* Mask which lanes contains non-ASCII chars in R11. */                   \
+    MOVQ R10, 64+bytecode_spillArea(VIRT_BCPTR)                               \
+    MOVQ R11, 72+bytecode_spillArea(VIRT_BCPTR)                               \
+                                                                              \
+                                                                              \
+scalar_loop:                                                                  \
+    TZCNTL  BX, DX  /* First active lane */                                   \
+                                                                              \
+    MOVL 0(R8)(DX * 4), R14 /* Input offset */                                \
+    MOVL 64(R8)(DX * 4), CX /* Input length */                                \
+    MOVL bytecode_spillArea(VIRT_BCPTR)(DX * 4), R15 /* Output offset */      \
+                                                                              \
+    ADDQ SI, R14                                                              \
+    ADDQ SI, R15                                                              \
+                                                                              \
+    /* R11 = mask of strings containing non-ASCII chars */                    \
+    XORQ    R11, R11                                                          \
+    CMPQ    CX, $8                                                            \
+    JL      copy_tail                                                         \
+                                                                              \
+copy_8bytes:                                                                  \
+    /* Load 8 bytes at once & check if all are ASCII chars */                 \
+    MOVQ    (R14), DX                                                         \
+    MOVQ    $0x8080808080808080, R13                                          \
+    ANDQ    DX, R13                                                           \
+    JNZ     found_non_ascii                                                   \
+                                                                              \
+    /* Change case (manipluate the 5th bit of lower/upper case letters) */    \
+    /* Algorithm: http://0x80.pl/notesen/2016-01-06-swar-swap-case.html */    \
+    MOVQ    QWORD_LO, R10                                                     \
+    MOVQ    QWORD_HI, R13                                                     \
+    ADDQ    DX,  R10 /* R10 - MSB set for bytes above QWORD_LO  */            \
+    ADDQ    DX,  R13 /* R13 - MSB set for bytes above QWORD_HI  */            \
+    ANDNQ   R13, R10, R13                                                     \
+    MOVQ    $0x8080808080808080, R10                                          \
+    ANDQ    R10, R13 /* R13 - MSB set if byte was in range  */                \
+    SHRQ    $3,  R13                                                          \
+    XORQ    R13 , DX /* Conditionally change the 5th bit */                   \
+    MOVQ    DX, (R15)                                                         \
+                                                                              \
+    ADDQ    $8, R14                                                           \
+    ADDQ    $8, R15                                                           \
+    SUBQ    $8, CX                                                            \
+                                                                              \
+    CMPQ    CX, $8                                                            \
+    JGE     copy_8bytes                                                       \
+                                                                              \
+copy_tail:                                                                    \
+    CMPQ    CX, $0                                                            \
+    JLE     continue_scalar_loop                                              \
+                                                                              \
+    MOVBQZX (R14), DX                                                         \
+    TESTB   DX, DX                                                            \
+    JS      found_non_ascii                                                   \
+                                                                              \
+    MOVQ    QWORD_LO, R10                                                     \
+    MOVQ    QWORD_HI, R13                                                     \
+    ADDQ    DX,  R10 /* R10 - MSB set for bytes above QWORD_LO  */            \
+    ADDQ    DX,  R13 /* R13 - MSB set for bytes above QWORD_HI  */            \
+    ANDNQ   R13, R10, R13                                                     \
+    MOVQ    $0x8080808080808080, R10                                          \
+    ANDQ    R10, R13 /* R13 - MSB set if byte was in range  */                \
+    SHRQ    $3,  R13                                                          \
+    XORQ    R13 , DX /* Conditionally change the 5th bit */                   \
+    MOVB    DX, (R15)                                                         \
+                                                                              \
+    INCQ    R14                                                               \
+    INCQ    R15                                                               \
+    DECQ    CX                                                                \
+    JMP     copy_tail                                                         \
+                                                                              \
+found_non_ascii:                                                              \
+    TZCNTL  BX, DX                                                            \
+    BTSQ    DX, R11                                                           \
+                                                                              \
+continue_scalar_loop:                                                         \
+    BLSRL   BX, BX                                                            \
+    JNZ     scalar_loop                                                       \
+                                                                              \
+    TESTQ   R11, R11                                                          \
+    JNZ     utf8                                                              \
+next:                                                                         \
+    MOVQ 64+bytecode_spillArea(VIRT_BCPTR), R11                               \
+    NEXT_ADVANCE(2)                                                           \
+                                                                              \
+utf8:                                                                         \
+    MOVQ 64+bytecode_spillArea(VIRT_BCPTR), R11                               \
+    RET_ABORT()
+
+TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
+    // 0x1f = 128 - ord('a')
+    // 0x07 = 128 - ord('z') + 1
+    BC_STR_CHANGE_CASE($0x1f1f1f1f1f1f1f1f, $0x0707070707070707)
+
+TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
+    // 0x3f = 128 - ord('A')
+    // 0x27 = 128 - ord('Z') + 1
+    BC_STR_CHANGE_CASE($0x3f3f3f3f3f3f3f3f, $0x2727272727272727)
 
 // this is the 'unimplemented!' op
 TEXT bctrap(SB), NOSPLIT|NOFRAME, $0

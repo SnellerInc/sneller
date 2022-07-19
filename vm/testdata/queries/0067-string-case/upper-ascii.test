@@ -1,0 +1,60 @@
+SELECT UPPER(s) FROM input
+---
+{"s": ""}
+{"s": "a"}
+{"s": "ab"}
+{"s": "abc"}
+{"s": "abcd"}
+{"s": "abcde"}
+{"s": "abcdef"}
+{"s": "abcdefg"}
+{"s": "abcdefgh"}
+{"s": "abcdefghi"}
+{"s": "abcdefghij"}
+{"s": "abcdefghijk"}
+{"s": "abcdefghijkl"}
+{"s": "abcdefghijklm"}
+{"s": "abcdefghijklmn"}
+{"s": "abcdefghijklmno"}
+{"s": "abcdefghijklmnop"}
+{"s": "abcdefghijklmnopq"}
+{"s": "abcdefghijklmnopqr"}
+{"s": "abcdefghijklmnopqrs"}
+{"s": "abcdefghijklmnopqrst"}
+{"s": "abcdefghijklmnopqrstu"}
+{"s": "abcdefghijklmnopqrstuv"}
+{"s": "abcdefghijklmnopqrstuvw"}
+{"s": "abcdefghijklmnopqrstuvwx"}
+{"s": "abcdefghijklmnopqrstuvwxy"}
+{"s": "abcdefghijklmnopqrstuvwxyz"}
+{"s": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000a\u000b\u000c\u000d\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\u0022#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\u005c]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f"}
+---
+{"upper": ""}
+{"upper": "A"}
+{"upper": "AB"}
+{"upper": "ABC"}
+{"upper": "ABCD"}
+{"upper": "ABCDE"}
+{"upper": "ABCDEF"}
+{"upper": "ABCDEFG"}
+{"upper": "ABCDEFGH"}
+{"upper": "ABCDEFGHI"}
+{"upper": "ABCDEFGHIJ"}
+{"upper": "ABCDEFGHIJK"}
+{"upper": "ABCDEFGHIJKL"}
+{"upper": "ABCDEFGHIJKLM"}
+{"upper": "ABCDEFGHIJKLMN"}
+{"upper": "ABCDEFGHIJKLMNO"}
+{"upper": "ABCDEFGHIJKLMNOP"}
+{"upper": "ABCDEFGHIJKLMNOPQ"}
+{"upper": "ABCDEFGHIJKLMNOPQR"}
+{"upper": "ABCDEFGHIJKLMNOPQRS"}
+{"upper": "ABCDEFGHIJKLMNOPQRST"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTU"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTUV"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTUVW"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTUVWX"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTUVWXY"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTUVWXYZ"}
+{"upper": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*().,()[]{}`;:'\"<>/?"}
+{"upper": "\u0001\u0002\u0003\u0004\u0005\u0006\u0007\u0008\u0009\u000a\u000b\u000c\u000d\u000e\u000f\u0010\u0011\u0012\u0013\u0014\u0015\u0016\u0017\u0018\u0019\u001a\u001b\u001c\u001d\u001e\u001f !\u0022#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\u005c]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f"}

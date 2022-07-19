@@ -1,0 +1,10 @@
+SELECT LOWER(s), UPPER(s) FROM input
+---
+{"no-string": 42}
+{"s": null}
+{"s": true}
+{"s": []}
+{"s": 32}
+{"s": 0.5}
+---
+{}

@@ -98,6 +98,10 @@ const (
 	sconcatstr3 // string concatenation (three strings)
 	sconcatstr4 // string concatenation (four strings)
 
+	slowerstr
+	supperstr
+
+	// #region raw string comparison
 	sStrCmpEqCs     // Ascii string compare equality case-sensitive
 	sStrCmpEqCi     // Ascii string compare equality case-insensitive
 	sStrCmpEqUTF8Ci // UTF-8 string compare equality case-insensitive
@@ -615,6 +619,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
 
 	//#region string operations
+	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opslower)},
+	supperstr: {text: "upper.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opsupper)},
+
 	sStrCmpEqCs:     {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
 	sStrCmpEqCi:     {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
 	sStrCmpEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
@@ -3327,6 +3334,14 @@ func (p *prog) GeoDistance(latitude1, longitude1, latitude2, longitude2 *value) 
 	return p.ssa5(sgeodistance, lat1V, lon1V, lat2V, lon2V, mask)
 }
 
+func (p *prog) Lower(s *value) *value {
+	return p.ssa2(slowerstr, s, p.mask(s))
+}
+
+func (p *prog) Upper(s *value) *value {
+	return p.ssa2(supperstr, s, p.mask(s))
+}
+
 func emitAddMulImmI(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // t0
 	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
@@ -5936,6 +5951,24 @@ func emitauto(v *value, c *compilestate) {
 		c.ops16s16(v, info.bc, stackslot(v.imm.(int)), c.existingStackRef(v, regH))
 	default:
 		panic("unsupported immfmt for emitauto")
+	}
+}
+
+func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
+	return func(v *value, c *compilestate) {
+		arg := v.args[0]  // string
+		mask := v.args[1] // predicate
+
+		originalInput := c.forceStackRef(arg, regS) // copy input refrence
+
+		c.loadk(v, mask)
+		c.loads(v, arg)
+		c.clobbers(v)
+		c.needscratch = true
+
+		c.op(v, opconcatlenget1)
+		c.op(v, opallocstr)
+		c.ops16(v, opcode, originalInput)
 	}
 }
 

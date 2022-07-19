@@ -1,0 +1,12 @@
+SELECT id FROM input WHERE LOWER(pet) = "cat"
+---
+{"id": 0, "pet": "dog"}
+{"id": 1, "pet": "Cat"}
+{"id": 2, "pet": "Spider"}
+{"id": 3, "pet": "CAT"}
+{"id": 4, "pet": "cat"}
+{"id": 5, "pet": "DOG"}
+---
+{"id": 1}
+{"id": 3}
+{"id": 4}
