@@ -1,0 +1,5 @@
+SELECT DISTINCT z, x, AVG(y) AS y FROM table GROUP BY x, AVG(y), z
+---
+ITERATE table
+AGGREGATE AVG(y) AS $_0_2 BY x AS $_0_1, AVG(y), z AS $_0_0
+PROJECT $_0_0 AS z, $_0_1 AS x, $_0_2 AS y

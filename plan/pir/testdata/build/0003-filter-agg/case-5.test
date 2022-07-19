@@ -1,0 +1,12 @@
+# After optimization there are only two aggs: `SUM(y)` and `SUM(x) FILTER (WHERE x > 1)`
+SELECT
+    SUM(y)                      AS a,
+    SUM(x) FILTER (WHERE x > 1) AS b,
+    SUM(y) FILTER (WHERE x > 5) AS c,
+    SUM(y)                      AS d,
+    SUM(x) FILTER (WHERE x > 1) AS e
+FROM input WHERE x > 5
+---
+ITERATE input WHERE x > 5
+AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1
+PROJECT $_0_0 AS a, $_0_1 AS b, $_0_0 AS c, $_0_0 AS d, $_0_1 AS e

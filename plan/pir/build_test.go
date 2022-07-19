@@ -15,7 +15,13 @@
 package pir
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -229,19 +235,21 @@ func mkschema(args ...interface{}) expr.Hint {
 	return out
 }
 
+type buildTestcase struct {
+	input   string
+	expect  []string
+	split   []string
+	results []expr.TypeSet
+	schema  expr.Hint // applied to the inner-most table expression
+	index   *blockfmt.Index
+}
+
 func TestBuild(t *testing.T) {
 	basetime, _ := date.Parse([]byte("2022-02-22T20:22:22Z"))
 	now := func(hours int) date.Time {
 		return basetime.Add(time.Duration(hours) * time.Hour)
 	}
-	tests := []struct {
-		input   string
-		expect  []string
-		split   []string
-		results []expr.TypeSet
-		schema  expr.Hint // applied to the inner-most table expression
-		index   *blockfmt.Index
-	}{
+	tests := []buildTestcase{
 		{
 			input: "select 3, 'foo' || 'bar'",
 			expect: []string{
@@ -1104,68 +1112,6 @@ ORDER BY m, d, h`,
 			},
 		},
 		{
-			input: `SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 1) AS b FROM input`,
-			expect: []string{
-				"ITERATE input WHERE x > 1",
-				"AGGREGATE SUM(x) AS a, SUM(y) AS b",
-			},
-		},
-		{
-			input: `SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 1) AS b FROM input WHERE x > 5 OR y < 10`,
-			expect: []string{
-				"ITERATE input WHERE x > 5 OR y < 10 AND x > 1",
-				"AGGREGATE SUM(x) AS a, SUM(y) AS b",
-			},
-		},
-		{
-			input: `SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 5) AS b FROM input WHERE x > 1 AND x > 5`,
-			expect: []string{
-				"ITERATE input WHERE x > 1 AND x > 5",
-				"AGGREGATE SUM(x) AS a, SUM(y) AS b",
-			},
-		},
-		{
-			// After optimization there are only two aggs: `SUM(y)` and `SUM(x) FILTER (WHERE x > 1)`
-			input: `SELECT
-                        SUM(y),
-                        SUM(x) FILTER (WHERE x > 1),
-                        SUM(y) FILTER (WHERE x > 5),
-                        SUM(y),
-                        SUM(x) FILTER (WHERE x > 1)
-                    FROM input WHERE x > 5`,
-			expect: []string{
-				"ITERATE input WHERE x > 5",
-				"AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1",
-				"PROJECT $_0_0 AS \"sum\", $_0_1 AS sum_2, $_0_0 AS sum_3, $_0_0 AS sum_4, $_0_1 AS sum_5",
-			},
-		},
-		{
-			// After optimization there are only two aggs: `SUM(y)` and `SUM(x) FILTER (WHERE x > 1)`
-			input: `SELECT
-                        SUM(y)                      AS a,
-                        SUM(x) FILTER (WHERE x > 1) AS b,
-                        SUM(y) FILTER (WHERE x > 5) AS c,
-                        SUM(y)                      AS d,
-                        SUM(x) FILTER (WHERE x > 1) AS e
-                    FROM input WHERE x > 5`,
-			expect: []string{
-				"ITERATE input WHERE x > 5",
-				"AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1",
-				"PROJECT $_0_0 AS a, $_0_1 AS b, $_0_0 AS c, $_0_0 AS d, $_0_1 AS e",
-			},
-		},
-		{
-			input: `SELECT SUM(x) FILTER (WHERE x >= (SELECT MAX(y) FROM aux)) FROM table`,
-			expect: []string{
-				"WITH (",
-				"\tITERATE aux",
-				"\tAGGREGATE MAX(y) AS \"max\"",
-				") AS REPLACEMENT(0)",
-				"ITERATE table WHERE x >= SCALAR_REPLACEMENT(0)",
-				"AGGREGATE SUM(x) AS \"sum\"",
-			},
-		},
-		{
 			input: `SELECT "Carrier" AS "$key:resource_id%0", COUNT(DISTINCT "OriginCountry") AS "origin_countries"
      FROM "sample_flights"
      GROUP BY "Carrier"
@@ -1186,109 +1132,72 @@ ORDER BY m, d, h`,
 				"PROJECT \"$key:resource_id%0\" AS \"$key:resource_id%0\", origin_countries AS origin_countries",
 			},
 		},
-		{
-			input: `SELECT DISTINCT z, x, y FROM table GROUP BY x, y, z`,
-			expect: []string{
-				"ITERATE table",
-				"FILTER DISTINCT [x y z]",
-				"PROJECT z AS z, x AS x, y AS y",
-			},
-		},
-		{
-			input: `SELECT DISTINCT z, x, AVG(y) AS y FROM table GROUP BY x, AVG(y), z`,
-			expect: []string{
-				"ITERATE table",
-				"AGGREGATE AVG(y) AS $_0_2 BY x AS $_0_1, AVG(y), z AS $_0_0",
-				"PROJECT $_0_0 AS z, $_0_1 AS x, $_0_2 AS y",
-			},
-		},
-		{
-			input: `SELECT DISTINCT ON (x, y, z) a, b FROM table`,
-			expect: []string{
-				"ITERATE table",
-				"FILTER DISTINCT [x y z]",
-				"PROJECT a AS a, b AS b",
-			},
-		},
-		{
-			input: `SELECT DISTINCT ON (x, y) * FROM table`,
-			expect: []string{
-				"ITERATE table",
-				"FILTER DISTINCT [x y]",
-			},
-		},
-		{
-			input: `SELECT DISTINCT ON (1, true, x, 'test', 42.5, y) * FROM table`,
-			expect: []string{
-				"ITERATE table",
-				"FILTER DISTINCT [x y]",
-			},
-		},
-		{
-			input: `SELECT DISTINCT ON (5, false, 'go', -55.85) * FROM table`,
-			expect: []string{
-				"ITERATE table",
-				"LIMIT 1",
-			},
-		},
 	}
 
 	for i := range tests {
-		in := tests[i].input
-		expect := tests[i].expect
-		split := tests[i].split
-		results := tests[i].results
-		schema := tests[i].schema
-		index := tests[i].index
-		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			t.Log("query:", in)
-			s, err := partiql.Parse([]byte(in))
-			if err != nil {
-				t.Fatal(err)
-			}
-			b, err := Build(s, mkenv(schema, index))
-			if err != nil {
-				t.Fatal(err)
-			}
-			var out strings.Builder
-			b.Describe(&out)
-			got := out.String()
-			want := strings.Join(expect, "\n") + "\n"
-			if got != want {
-				t.Errorf("got : %s", got)
-				t.Errorf("want: %s", want)
-			}
-			if results != nil {
-				t.Logf("match %v", results)
-				outresults := b.FinalTypes()
-				t.Logf("got %v", outresults)
-				for i := range outresults {
-					if outresults[i] != results[i] {
-						t.Errorf("output %d: result type %v; wanted %v", i, outresults[i], results[i])
-					}
-				}
-				if t.Failed() {
-					t.Log(in)
-				}
-			}
-
-			if len(split) == 0 {
-				return
-			}
-			reduce, err := Split(b)
-			if err != nil {
-				t.Fatalf("split: %s", err)
-			}
-			out.Reset()
-			reduce.Describe(&out)
-			got = out.String()
-			want = strings.Join(split, "\n") + "\n"
-			if got != want {
-				t.Errorf("split: got : %s", got)
-				t.Errorf("split: want: %s", want)
-			}
-		})
+		testcase := func() (*buildTestcase, error) {
+			return &tests[i], nil
+		}
+		testBuild(t, fmt.Sprintf("case-%d", i), testcase)
 	}
+
+	runTestcasesFromFiles(t)
+}
+
+func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error)) {
+	t.Run(name, func(t *testing.T) {
+		tc, err := testcase()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		t.Log("query:", tc.input)
+		s, err := partiql.Parse([]byte(tc.input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := Build(s, mkenv(tc.schema, tc.index))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out strings.Builder
+		b.Describe(&out)
+		got := out.String()
+		want := strings.Join(tc.expect, "\n") + "\n"
+		if got != want {
+			t.Errorf("got : %s", got)
+			t.Errorf("want: %s", want)
+		}
+		if tc.results != nil {
+			t.Logf("match %v", tc.results)
+			outresults := b.FinalTypes()
+			t.Logf("got %v", outresults)
+			for i := range outresults {
+				if outresults[i] != tc.results[i] {
+					t.Errorf("output %d: result type %v; wanted %v", i, outresults[i], tc.results[i])
+				}
+			}
+			if t.Failed() {
+				t.Log(tc.input)
+			}
+		}
+
+		if len(tc.split) == 0 {
+			return
+		}
+		reduce, err := Split(b)
+		if err != nil {
+			t.Fatalf("split: %s", err)
+		}
+		out.Reset()
+		reduce.Describe(&out)
+		got = out.String()
+		want = strings.Join(tc.split, "\n") + "\n"
+		if got != want {
+			t.Errorf("split: got : %s", got)
+			t.Errorf("split: want: %s", want)
+		}
+	})
 }
 
 func mkindex(rs [][]blockfmt.Range) *blockfmt.Index {
@@ -1307,4 +1216,104 @@ func mkindex(rs [][]blockfmt.Range) *blockfmt.Index {
 func timeRange(path string, min, max date.Time) blockfmt.Range {
 	p := strings.Split(path, ".")
 	return blockfmt.NewRange(p, ion.Timestamp(min), ion.Timestamp(max))
+}
+
+func runTestcasesFromFiles(t *testing.T) {
+	rootdir := filepath.Clean("./testdata/build/")
+	prefix := rootdir + "/"
+	suffix := ".test"
+
+	err := filepath.WalkDir(rootdir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), suffix) {
+			return nil
+		}
+
+		name := strings.TrimPrefix(path, prefix)
+		name = strings.TrimSuffix(name, suffix)
+		name = strings.ReplaceAll(name, "/", "-")
+
+		testcase := func() (*buildTestcase, error) {
+			return parseTestcase(path)
+		}
+
+		testBuild(t, name, testcase)
+
+		return nil
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+var sepdash = []byte("---")
+
+func parseTestcase(fname string) (*buildTestcase, error) {
+	f, err := os.Open(fname)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	rd := bufio.NewReader(f)
+
+	// 0 - query part
+	// 1 - expected plan
+	// 2 - split plan
+	rawID := 0
+	var raw [3][]string
+
+	for {
+		line, pre, err := rd.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return nil, err
+		}
+		if pre {
+			return nil, fmt.Errorf("buffer not big enough to fit line beginning with %s", line)
+		}
+		if bytes.HasPrefix(line, sepdash) {
+			rawID += 1
+			if rawID > 2 {
+				return nil, fmt.Errorf("too many separators %s (up to two are allowed)", sepdash)
+			}
+
+			continue
+		}
+
+		// allow # line comments iff they begin the line
+		if len(line) > 0 && line[0] == '#' {
+			continue
+		}
+
+		if len(line) == 0 {
+			continue
+		}
+
+		raw[rawID] = append(raw[rawID], string(line))
+	}
+
+	tc := buildTestcase{
+		input:  strings.Join(raw[0], "\n"),
+		expect: raw[1],
+		split:  raw[2],
+	}
+
+	if len(tc.expect) == 0 {
+		return nil, fmt.Errorf("expected part of testcase is required")
+	}
+
+	if len(tc.split) == 0 {
+		tc.split = nil
+	}
+
+	return &tc, nil
 }

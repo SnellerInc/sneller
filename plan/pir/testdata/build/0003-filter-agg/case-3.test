@@ -1,0 +1,6 @@
+SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 5) AS b
+FROM input
+WHERE x > 1 AND x > 5
+---
+ITERATE input WHERE x > 1 AND x > 5
+AGGREGATE SUM(x) AS a, SUM(y) AS b

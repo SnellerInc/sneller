@@ -1,0 +1,5 @@
+SELECT DISTINCT ON (x, y, z) a, b FROM table
+---
+ITERATE table
+FILTER DISTINCT [x y z]
+PROJECT a AS a, b AS b
