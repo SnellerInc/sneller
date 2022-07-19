@@ -22,7 +22,7 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-//go:generate gawk -f genops evalbc_amd64.s
+//go:generate go run _generate/genops.go
 //go:generate gofmt -w ops_gen.go
 
 // --- VM machine model ---

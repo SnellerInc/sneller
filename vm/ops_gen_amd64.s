@@ -1,6 +1,5 @@
 #include "textflag.h"
 
-
 // Code generated automatically; DO NOT EDIT
 
 DATA opaddrs+0x000(SB)/8, $bcret(SB)
