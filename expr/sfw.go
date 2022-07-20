@@ -73,8 +73,6 @@ func (b *Binding) result() string {
 		return e.Binding()
 	case *Aggregate:
 		return e.Op.defaultResult()
-	case *Builtin:
-		return strings.ToLower(e.Func.String())
 	default:
 		return ""
 	}

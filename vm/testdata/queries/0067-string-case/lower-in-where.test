@@ -1,4 +1,4 @@
-SELECT id FROM input WHERE LOWER(pet) = "cat"
+SELECT id FROM input WHERE LOWER(pet) = 'cat' ORDER BY id LIMIT 100
 ---
 {"id": 0, "pet": "dog"}
 {"id": 1, "pet": "Cat"}

@@ -497,22 +497,27 @@ func (c *Comparison) simplify(h Hint) Node {
 			case Upper:
 				if c.Op == Equals {
 					rhsStr, ok := right.(String)
-					if ok && strings.ToUpper(string(rhsStr)) != string(rhsStr) {
-						// (UPPER(x) = "fred") -> FALSE
-						return Bool(false)
+					if ok {
+						if strings.ToUpper(string(rhsStr)) != string(rhsStr) {
+							// (UPPER(x) = "fred") -> FALSE
+							return Bool(false)
+						}
+						// (UPPER(z.name) = "FRED") -> EQUALS_CI(z.name, "FRED")
+						return Call("EQUALS_CI", lhs.Args[0], right)
 					}
-					// (UPPER(z.name) = "FRED") -> EQUALS_CI(z.name, "FRED")
-					return Call("EQUALS_CI", lhs.Args[0], right)
 				}
 			case Lower:
 				if c.Op == Equals {
 					rhsStr, ok := right.(String)
-					if ok && strings.ToLower(string(rhsStr)) != string(rhsStr) {
-						// (LOWER(z.name) = "FRED") -> FALSE
-						return Bool(false)
+					if ok {
+
+						if strings.ToLower(string(rhsStr)) != string(rhsStr) {
+							// (LOWER(z.name) = "FRED") -> FALSE
+							return Bool(false)
+						}
+						// (LOWER(z.name) = "fred" -> EQUALS_CI(z.name, "fred")
+						return Call("EQUALS_CI", lhs.Args[0], right)
 					}
-					// (LOWER(z.name) = "fred" -> EQUALS_CI(z.name, "fred")
-					return Call("EQUALS_CI", lhs.Args[0], right)
 				}
 			}
 		}

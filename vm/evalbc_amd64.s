@@ -15086,7 +15086,6 @@ next:
     MOVQ R10, 64+bytecode_spillArea(VIRT_BCPTR)                               \
     MOVQ R11, 72+bytecode_spillArea(VIRT_BCPTR)                               \
                                                                               \
-                                                                              \
 scalar_loop:                                                                  \
     TZCNTL  BX, DX  /* First active lane */                                   \
                                                                               \
@@ -15118,7 +15117,7 @@ copy_8bytes:                                                                  \
     ANDNQ   R13, R10, R13                                                     \
     MOVQ    $0x8080808080808080, R10                                          \
     ANDQ    R10, R13 /* R13 - MSB set if byte was in range  */                \
-    SHRQ    $3,  R13                                                          \
+    SHRQ    $2,  R13                                                          \
     XORQ    R13 , DX /* Conditionally change the 5th bit */                   \
     MOVQ    DX, (R15)                                                         \
                                                                               \
@@ -15144,7 +15143,7 @@ copy_tail:                                                                    \
     ANDNQ   R13, R10, R13                                                     \
     MOVQ    $0x8080808080808080, R10                                          \
     ANDQ    R10, R13 /* R13 - MSB set if byte was in range  */                \
-    SHRQ    $3,  R13                                                          \
+    SHRQ    $2,  R13                                                          \
     XORQ    R13 , DX /* Conditionally change the 5th bit */                   \
     MOVB    DX, (R15)                                                         \
                                                                               \
@@ -15164,22 +15163,24 @@ continue_scalar_loop:                                                         \
     TESTQ   R11, R11                                                          \
     JNZ     utf8                                                              \
 next:                                                                         \
-    MOVQ 64+bytecode_spillArea(VIRT_BCPTR), R11                               \
+    MOVQ 64+bytecode_spillArea(VIRT_BCPTR), R10                               \
+    MOVQ 72+bytecode_spillArea(VIRT_BCPTR), R11                               \
     NEXT_ADVANCE(2)                                                           \
                                                                               \
 utf8:                                                                         \
-    MOVQ 64+bytecode_spillArea(VIRT_BCPTR), R11                               \
+    MOVQ 64+bytecode_spillArea(VIRT_BCPTR), R10                               \
+    MOVQ 72+bytecode_spillArea(VIRT_BCPTR), R11                               \
     RET_ABORT()
 
 TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
-    // 0x1f = 128 - ord('a')
-    // 0x07 = 128 - ord('z') + 1
-    BC_STR_CHANGE_CASE($0x1f1f1f1f1f1f1f1f, $0x0707070707070707)
+    // 0x3f = 128 - ord('A')
+    // 0x25 = 128 - ord('Z') - 1
+    BC_STR_CHANGE_CASE($0x2525252525252525, $0x3f3f3f3f3f3f3f3f)
 
 TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
-    // 0x3f = 128 - ord('A')
-    // 0x27 = 128 - ord('Z') + 1
-    BC_STR_CHANGE_CASE($0x3f3f3f3f3f3f3f3f, $0x2727272727272727)
+    // 0x1f = 128 - ord('a')
+    // 0x05 = 128 - ord('z') - 1
+    BC_STR_CHANGE_CASE($0x0505050505050505, $0x1f1f1f1f1f1f1f1f)
 
 // this is the 'unimplemented!' op
 TEXT bctrap(SB), NOSPLIT|NOFRAME, $0

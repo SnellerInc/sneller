@@ -8,3 +8,8 @@ SELECT LOWER(s), UPPER(s) FROM input
 {"s": 0.5}
 ---
 {}
+{}
+{}
+{}
+{}
+{}

@@ -1,4 +1,4 @@
-SELECT LOWER(s) FROM input
+SELECT LOWER(s) AS lower FROM input
 ---
 {"s": ""}
 {"s": "A"}

@@ -759,9 +759,10 @@ func TestQueries(t *testing.T) {
 	}
 
 	for i := range test {
+		path := test[i].path
 		t.Run(test[i].name, func(t *testing.T) {
 			t.Parallel()
-			testPath(t, test[i].path)
+			testPath(t, path)
 		})
 	}
 	if err != nil {
