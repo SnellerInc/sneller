@@ -72,8 +72,13 @@ func ValidBucket(bucket string) bool {
 		if bucket[i] >= '0' && bucket[i] <= '9' {
 			continue
 		}
-		if bucket[i] == '-' {
-			continue
+		if i > 0 && i < len(bucket)-1 {
+			if bucket[i] == '-' {
+				continue
+			}
+			if bucket[i] == '.' && bucket[i-1] != '.' {
+				continue
+			}
 		}
 		return false
 	}

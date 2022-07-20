@@ -88,13 +88,13 @@ func (s *S3Resolver) Split(pattern string) (InputFS, string, error) {
 	if !strings.HasPrefix(pattern, "s3://") {
 		return nil, "", badPattern(pattern)
 	}
-	pattern = strings.TrimPrefix(pattern, "s3://")
-	i := strings.IndexByte(pattern, '/')
+	trimmedPattern := strings.TrimPrefix(pattern, "s3://")
+	i := strings.IndexByte(trimmedPattern, '/')
 	if i == len(pattern)-1 || i <= 0 {
 		return nil, "", badPattern(pattern)
 	}
-	bucket := pattern[:i]
-	rest := pattern[i+1:]
+	bucket := trimmedPattern[:i]
+	rest := trimmedPattern[i+1:]
 	if !s3.ValidBucket(bucket) {
 		return nil, "", badPattern(pattern)
 	}
