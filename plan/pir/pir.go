@@ -21,6 +21,8 @@ import (
 	"path"
 	"strings"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
@@ -37,13 +39,23 @@ import (
 // cache that view rather than the whole table if it
 // ends up getting touched multiple times)
 type table struct {
-	references []*expr.Path
+	refs []*expr.Path
 	// free variable references
 	outer      []string
 	Filter     expr.Node
 	Bind       string
 	star       bool // this table is referenced via '*'
 	haveParent bool // free variable references are allowed
+}
+
+func (t *table) equals(x *table) bool {
+	peq := (*expr.Path).EqualsPath
+	return t == x || slices.EqualFunc(t.refs, x.refs, peq) &&
+		slices.Equal(t.outer, x.outer) &&
+		expreq(t.Filter, x.Filter) &&
+		t.Bind == x.Bind &&
+		t.star == x.star &&
+		t.haveParent == x.haveParent
 }
 
 // strip a path that has been determined
@@ -65,7 +77,7 @@ func (t *table) strip(p *expr.Path) error {
 	}
 	p.First = d.Field
 	p.Rest = d.Rest
-	t.references = append(t.references, p)
+	t.refs = append(t.refs, p)
 	return nil
 }
 
@@ -80,6 +92,16 @@ type IterTable struct {
 	Schema      expr.Hint
 	Index       Index
 	Partitioned bool
+}
+
+func (i *IterTable) equals(x Step) bool {
+	i2, ok := x.(*IterTable)
+	return ok && (i == i2 || i.table.equals(&i2.table) &&
+		slices.Equal(i.free, i2.free) &&
+		i.Table.Equals(i2.Table) &&
+		i.Schema == i2.Schema && // necessary?
+		i.Index == i2.Index && // necessary?
+		i.Partitioned == i2.Partitioned)
 }
 
 func (i *IterTable) rewrite(rw func(expr.Node, bool) expr.Node) {
@@ -109,7 +131,7 @@ func (i *IterTable) Wildcard() bool {
 // returns true, then any binding in the table
 // could be referenced.
 func (i *IterTable) References() []*expr.Path {
-	return i.references
+	return i.refs
 }
 
 func (i *IterTable) get(x string) (Step, expr.Node) {
@@ -160,6 +182,14 @@ func bindstr(bind []expr.Binding) string {
 	return out.String()
 }
 
+func (i *IterValue) equals(x Step) bool {
+	i2, ok := x.(*IterValue)
+	return ok && (i == i2 || i.table.equals(&i2.table) &&
+		expreq(i.Value, i2.Value) &&
+		slices.EqualFunc(i.liveat, i2.liveat, expr.Binding.Equals) &&
+		slices.EqualFunc(i.liveacross, i2.liveacross, expr.Binding.Equals))
+}
+
 func (i *IterValue) describe(dst io.Writer) {
 	if i.Filter == nil {
 		fmt.Fprintf(dst, "ITERATE FIELD %s (ref: [%s], live: [%s])\n", expr.ToString(i.Value), bindstr(i.liveat), bindstr(i.liveacross))
@@ -184,7 +214,7 @@ func (i *IterValue) Wildcard() bool {
 
 // References returns the references to this value
 func (i *IterValue) References() []*expr.Path {
-	return i.references
+	return i.refs
 }
 
 type parented struct {
@@ -201,6 +231,10 @@ func (p *parented) get(x string) (Step, expr.Node) {
 
 type binds struct {
 	bind []expr.Binding
+}
+
+func (b *binds) equal(b2 *binds) bool {
+	return slices.EqualFunc(b.bind, b2.bind, expr.Binding.Equals)
 }
 
 func (i *IterValue) get(x string) (Step, expr.Node) {
@@ -221,6 +255,7 @@ type Step interface {
 	get(string) (Step, expr.Node)
 	describe(dst io.Writer)
 	rewrite(func(expr.Node, bool) expr.Node)
+	equals(Step) bool
 }
 
 // Input returns the input to a Step
@@ -244,6 +279,12 @@ type UnionMap struct {
 
 func (u *UnionMap) parent() Step   { return nil }
 func (u *UnionMap) setparent(Step) { panic("cannot UnionMap.setparent()") }
+
+func (u *UnionMap) equals(x Step) bool {
+	u2, ok := x.(*UnionMap)
+	return ok && (u == u2 || u.Inner.equals(u2.Inner) &&
+		u.Child.Equals(u2.Child))
+}
 
 func (u *UnionMap) get(x string) (Step, expr.Node) {
 	results := u.Child.FinalBindings()
@@ -277,6 +318,11 @@ type Filter struct {
 	Where expr.Node
 }
 
+func (f *Filter) equals(x Step) bool {
+	f2, ok := x.(*Filter)
+	return ok && (f == f2 || expreq(f.Where, f2.Where))
+}
+
 func (f *Filter) rewrite(rw func(expr.Node, bool) expr.Node) {
 	f.Where = rw(f.Where, true)
 }
@@ -296,6 +342,12 @@ func toStrings(in []expr.Node) []string {
 		out[i] = expr.ToString(in[i])
 	}
 	return out
+}
+
+func (d *Distinct) equals(x Step) bool {
+	d2, ok := x.(*Distinct)
+	return ok && (d == d2 ||
+		slices.EqualFunc(d.Columns, d2.Columns, expr.Node.Equals))
 }
 
 func (d *Distinct) describe(dst io.Writer) {
@@ -324,6 +376,13 @@ type Bind struct {
 	binds
 	complete bool
 	star     bool // referenced by '*'
+}
+
+func (b *Bind) equals(x Step) bool {
+	b2, ok := x.(*Bind)
+	return ok && (b == b2 || b.binds.equal(&b2.binds) &&
+		b.complete == b2.complete &&
+		b.star == b2.star)
 }
 
 func (b *Bind) rewrite(rw func(expr.Node, bool) expr.Node) {
@@ -376,6 +435,13 @@ type Aggregate struct {
 	complete bool
 }
 
+func (a *Aggregate) equals(x Step) bool {
+	a2, ok := x.(*Aggregate)
+	return ok && (a == a2 || a.Agg.Equals(a2.Agg) &&
+		slices.EqualFunc(a.GroupBy, a2.GroupBy, expr.Binding.Equals) &&
+		a.complete == a2.complete)
+}
+
 func (a *Aggregate) describe(dst io.Writer) {
 	if a.GroupBy == nil {
 		fmt.Fprintf(dst, "AGGREGATE %s\n", a.Agg)
@@ -416,6 +482,12 @@ type Order struct {
 	Columns []expr.Order
 }
 
+func (o *Order) equals(x Step) bool {
+	o2, ok := x.(*Order)
+	return ok && (o == o2 ||
+		slices.EqualFunc(o.Columns, o2.Columns, expr.Order.Equals))
+}
+
 func (o *Order) clone() *Order {
 	return &Order{Columns: o.Columns}
 }
@@ -443,6 +515,12 @@ type Limit struct {
 	Offset int64
 }
 
+func (l *Limit) equals(x Step) bool {
+	l2, ok := x.(*Limit)
+	return ok && (l == l2 || l.Count == l2.Count &&
+		l.Offset == l2.Offset)
+}
+
 func (l *Limit) describe(dst io.Writer) {
 	if l.Offset == 0 {
 		fmt.Fprintf(dst, "LIMIT %d\n", l.Count)
@@ -459,6 +537,11 @@ func (l *Limit) rewrite(func(expr.Node, bool) expr.Node) {}
 type OutputPart struct {
 	Basename string
 	parented
+}
+
+func (o *OutputPart) equals(x Step) bool {
+	o2, ok := x.(*OutputPart)
+	return ok && (o == o2 || o.Basename == o2.Basename)
 }
 
 func (o *OutputPart) describe(dst io.Writer) {
@@ -488,6 +571,12 @@ type OutputIndex struct {
 	parented
 }
 
+func (o *OutputIndex) equals(x Step) bool {
+	o2, ok := x.(*OutputIndex)
+	return ok && (o == o2 || o.Table.Equals(o2.Table) &&
+		o.Basename == o2.Basename)
+}
+
 func (o *OutputIndex) describe(dst io.Writer) {
 	fmt.Fprintf(dst, "OUTPUT INDEX %s AT %s\n", expr.ToString(o.Table), o.Basename)
 }
@@ -505,6 +594,11 @@ func (o *OutputIndex) rewrite(func(expr.Node, bool) expr.Node) {}
 // NoOutput is a dummy input of 0 rows.
 type NoOutput struct{}
 
+func (n NoOutput) equals(x Step) bool {
+	_, ok := x.(NoOutput)
+	return ok
+}
+
 func (n NoOutput) describe(dst io.Writer) {
 	io.WriteString(dst, "NO OUTPUT\n")
 }
@@ -519,6 +613,11 @@ func (n NoOutput) setparent(Step) { panic("NoOutput.setparent") }
 
 // DummyOutput is a dummy input of one record, {}
 type DummyOutput struct{}
+
+func (d DummyOutput) equals(x Step) bool {
+	_, ok := x.(DummyOutput)
+	return ok
+}
 
 func (d DummyOutput) rewrite(func(expr.Node, bool) expr.Node) {}
 func (d DummyOutput) get(x string) (Step, expr.Node)          { return nil, nil }
@@ -544,7 +643,7 @@ type Trace struct {
 	// then Parent will be a trace that
 	// has this trace as one of its inputs.
 	Parent *Trace
-	// Inputs are traces that produce
+	// Replacements are traces that produce
 	// results that are necessary in order
 	// to execute this trace.
 	// The results of input traces
@@ -553,7 +652,7 @@ type Trace struct {
 	// and IN_REPLACEMENT(index) expressions.
 	// The traces in Input may be executed
 	// in any order.
-	Inputs []*Trace
+	Replacements []*Trace
 
 	top   Step
 	cur   Step
@@ -564,6 +663,26 @@ type Trace struct {
 	// complete set of bindings
 	// produced by an expression
 	final []expr.Binding
+}
+
+// Equal returns true if b and x would produce the same
+// rows and thus can be substituted for one another.
+func (b *Trace) Equals(x *Trace) bool {
+	return b == x || stepsEqual(b.top, x.top) &&
+		slices.EqualFunc(b.final, x.final, expr.Binding.Equals) &&
+		slices.EqualFunc(b.Replacements, x.Replacements, (*Trace).Equals)
+}
+
+func stepsEqual(a, b Step) bool {
+	for {
+		if a == nil || b == nil {
+			return a == nil && b == nil
+		}
+		if !a.equals(b) {
+			return false
+		}
+		a, b = a.parent(), b.parent()
+	}
 }
 
 func (b *Trace) Begin(f *expr.Table, e Env) error {
@@ -815,10 +934,10 @@ func (b *Trace) String() string {
 // be deserialized back into a trace.
 func (b *Trace) Describe(dst io.Writer) {
 	var tmp bytes.Buffer
-	for i := range b.Inputs {
+	for i := range b.Replacements {
 		io.WriteString(dst, "WITH (\n\t")
 		tmp.Reset()
-		b.Inputs[i].Describe(&tmp)
+		b.Replacements[i].Describe(&tmp)
 		inner := bytes.Replace(tmp.Bytes(), []byte{'\n'}, []byte{'\n', '\t'}, -1)
 		inner = inner[:len(inner)-1] // chomp \t on last entry
 		dst.Write(inner)
@@ -873,4 +992,11 @@ func (b *Trace) Rewrite(rw expr.Rewriter) {
 	for cur := b.top; cur != nil; cur = cur.parent() {
 		cur.rewrite(inner)
 	}
+}
+
+func expreq(a, b expr.Node) bool {
+	if a == nil {
+		return b == nil
+	}
+	return b != nil && a.Equals(b)
 }

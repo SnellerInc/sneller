@@ -23,6 +23,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/internal/atomicext"
@@ -405,6 +407,10 @@ func (a *AggBinding) String() string {
 	return expr.ToString(a.Expr) + " AS " + expr.QuoteID(a.Result)
 }
 
+func (a AggBinding) Equals(x AggBinding) bool {
+	return a.Result == x.Result && a.Expr.Equals(x.Expr)
+}
+
 // Aggregation is a list of aggregate bindings
 type Aggregation []AggBinding
 
@@ -417,6 +423,10 @@ func (a Aggregation) String() string {
 		out.WriteString(a[i].String())
 	}
 	return out.String()
+}
+
+func (a Aggregation) Equals(x Aggregation) bool {
+	return slices.EqualFunc(a, x, AggBinding.Equals)
 }
 
 func (q *Aggregate) Open() (io.WriteCloser, error) {

@@ -86,7 +86,7 @@ func (b *Binding) text(dst *strings.Builder, redact bool) {
 	}
 }
 
-func (b *Binding) Equals(o Binding) bool {
+func (b Binding) Equals(o Binding) bool {
 	return b.Result() == o.Result() && b.Expr.Equals(o.Expr)
 }
 
@@ -382,7 +382,7 @@ func (o *Order) text(dst *strings.Builder, redact bool) {
 	}
 }
 
-func (o *Order) Equals(x *Order) bool {
+func (o Order) Equals(x Order) bool {
 	if o.Desc != x.Desc {
 		return false
 	}
@@ -508,7 +508,7 @@ func (s *Select) Equals(x Node) bool {
 	if s.Having != nil && !s.Having.Equals(xs.Having) {
 		return false
 	}
-	if !slices.EqualFunc(s.OrderBy, xs.OrderBy, func(x, y Order) bool { return x.Equals(&y) }) {
+	if !slices.EqualFunc(s.OrderBy, xs.OrderBy, Order.Equals) {
 		return false
 	}
 	if !slices.EqualFunc(s.DistinctExpr, xs.DistinctExpr, Node.Equals) {

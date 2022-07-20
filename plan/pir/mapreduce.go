@@ -47,19 +47,19 @@ func Split(b *Trace) (*Trace, error) {
 		return b, nil
 	}
 	reduce := &Trace{}
-	reduce.Inputs, b.Inputs = b.Inputs, nil
+	reduce.Replacements, b.Replacements = b.Replacements, nil
 	_, err := splitOne(b.top, b, reduce)
 	if err != nil {
-		b.Inputs = reduce.Inputs
+		b.Replacements = reduce.Replacements
 		return nil, err
 	}
-	for i := range reduce.Inputs {
-		in, err := Split(reduce.Inputs[i])
+	for i := range reduce.Replacements {
+		in, err := Split(reduce.Replacements[i])
 		if err != nil {
-			b.Inputs = reduce.Inputs
+			b.Replacements = reduce.Replacements
 			return nil, err
 		}
-		reduce.Inputs[i] = in
+		reduce.Replacements[i] = in
 	}
 	return reduce, nil
 }

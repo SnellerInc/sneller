@@ -259,10 +259,7 @@ func (a *Aggregate) Equals(e Node) bool {
 	if !slices.EqualFunc(a.Over.PartitionBy, ea.Over.PartitionBy, Equivalent) {
 		return false
 	}
-	oeq := func(a, b Order) bool {
-		return a.Equals(&b)
-	}
-	return slices.EqualFunc(a.Over.OrderBy, ea.Over.OrderBy, oeq)
+	return slices.EqualFunc(a.Over.OrderBy, ea.Over.OrderBy, Order.Equals)
 }
 
 func settype(dst *ion.Buffer, st *ion.Symtab, str string) {
@@ -1063,7 +1060,11 @@ type Path struct {
 
 func (p *Path) Equals(e Node) bool {
 	ep, ok := e.(*Path)
-	if ok && p.First == ep.First {
+	return ok && p.EqualsPath(ep)
+}
+
+func (p *Path) EqualsPath(ep *Path) bool {
+	if p.First == ep.First {
 		if p.Rest == nil {
 			return ep.Rest == nil
 		}

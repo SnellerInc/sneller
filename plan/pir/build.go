@@ -564,7 +564,7 @@ func (b *Trace) hoist(e Env) error {
 			return hw.err
 		}
 	}
-	b.Inputs = append(b.Inputs, hw.in...)
+	b.Replacements = append(b.Replacements, hw.in...)
 	return nil
 }
 
@@ -678,7 +678,7 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		def = expr.Integer(0)
 	}
 	ret := expr.Call("HASH_REPLACEMENT",
-		expr.Integer(len(w.trace.Inputs)),
+		expr.Integer(len(w.trace.Replacements)),
 		scalarkind,
 		expr.String("$__key"),
 		key, def)
@@ -694,7 +694,7 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		w.err = err
 		return e
 	}
-	w.trace.Inputs = append(w.trace.Inputs, t)
+	w.trace.Replacements = append(w.trace.Replacements, t)
 	return ret
 }
 

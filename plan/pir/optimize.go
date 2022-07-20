@@ -60,6 +60,7 @@ func (b *Trace) optimize() {
 	projectelim(b)         // drop un-used bindings
 	limitpushdown(b)       // push down LIMIT
 	flatten(b)             // eliminate left-to-right bindings
+	mergereplacements(b)   // eliminate common sub-traces
 	simplify(b)            // final simplification pass
 
 	// informational passes to make

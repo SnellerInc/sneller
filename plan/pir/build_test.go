@@ -1132,6 +1132,22 @@ ORDER BY m, d, h`,
 				"PROJECT \"$key:resource_id%0\" AS \"$key:resource_id%0\", origin_countries AS origin_countries",
 			},
 		},
+		{
+			// test that duplicate inputs
+			// are removed and replaced
+			input: `SELECT * FROM foo WHERE
+x = (SELECT a FROM bar LIMIT 1) AND
+y = (SELECT a FROM bar LIMIT 1) AND
+z = (SELECT a FROM bar LIMIT 1)`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE bar",
+				"	LIMIT 1",
+				"	PROJECT a AS a",
+				") AS REPLACEMENT(0)",
+				"ITERATE foo WHERE x = SCALAR_REPLACEMENT(0) AND y = SCALAR_REPLACEMENT(0) AND z = SCALAR_REPLACEMENT(0)",
+			},
+		},
 	}
 
 	for i := range tests {

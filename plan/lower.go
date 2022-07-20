@@ -418,8 +418,8 @@ func toTree(in *pir.Trace, env Env, split Splitter) (*Tree, error) {
 		Op:         op,
 		OutputType: results(in),
 	}
-	for i := range in.Inputs {
-		ct, err := toTree(in.Inputs[i], env, split)
+	for i := range in.Replacements {
+		ct, err := toTree(in.Replacements[i], env, split)
 		if err != nil {
 			return nil, err
 		}
