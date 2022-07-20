@@ -310,8 +310,8 @@ func TestBuild(t *testing.T) {
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE COUNT(*) AS $_0_0, COUNT(field) AS $_0_1)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\", SUM_COUNT($_0_1) AS count_2",
+				"	AGGREGATE COUNT(*) AS $_2_0, COUNT(field) AS $_2_1)",
+				"AGGREGATE SUM_COUNT($_2_0) AS \"count\", SUM_COUNT($_2_1) AS count_2",
 			},
 		},
 		{
@@ -338,8 +338,8 @@ func TestBuild(t *testing.T) {
 				") AS REPLACEMENT(0)",
 				"UNION MAP foo (",
 				"	ITERATE PART foo WHERE IN_REPLACEMENT(y, 0)",
-				"	AGGREGATE SUM(x) AS $_0_0)",
-				"AGGREGATE SUM($_0_0) AS \"sum\"",
+				"	AGGREGATE SUM(x) AS $_2_0)",
+				"AGGREGATE SUM($_2_0) AS \"sum\"",
 			},
 		},
 		{
@@ -352,8 +352,8 @@ func TestBuild(t *testing.T) {
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE COUNT(x) AS $_0_0 BY x AS x)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\" BY x AS x",
+				"	AGGREGATE COUNT(x) AS $_2_0 BY x AS x)",
+				"AGGREGATE SUM_COUNT($_2_0) AS \"count\" BY x AS x",
 			},
 			results: []expr.TypeSet{stringType, countType},
 		},
@@ -366,8 +366,8 @@ func TestBuild(t *testing.T) {
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE SUM(x) AS $_0_0, COUNT(x + 0) AS $_0_1 BY y AS y)",
-				"AGGREGATE SUM($_0_0) AS \"avg\", SUM_COUNT($_0_1) AS $_1_0 BY y AS y",
+				"	AGGREGATE SUM(x) AS $_2_0, COUNT(x + 0) AS $_2_1 BY y AS y)",
+				"AGGREGATE SUM($_2_0) AS \"avg\", SUM_COUNT($_2_1) AS $_1_0 BY y AS y",
 				"PROJECT \"avg\" / $_1_0 AS \"avg\", y AS y",
 			},
 		},
@@ -425,8 +425,8 @@ where grp in (select grp from (select count(*), grp from foo group by grp order 
 				"WITH (",
 				"	UNION MAP foo (",
 				"		ITERATE PART foo",
-				"		AGGREGATE COUNT(*) AS $_0_0 BY grp AS grp)",
-				"	AGGREGATE SUM_COUNT($_0_0) AS \"count\" BY grp AS grp",
+				"		AGGREGATE COUNT(*) AS $_2_0 BY grp AS grp)",
+				"	AGGREGATE SUM_COUNT($_2_0) AS \"count\" BY grp AS grp",
 				"	ORDER BY \"count\" DESC NULLS FIRST",
 				"	LIMIT 5",
 				"	PROJECT grp AS grp",
@@ -506,8 +506,8 @@ where x > (select min(f) from y) and x < (select max(f) from y)`,
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE COUNT(x) AS $_0_0 BY y AS y, z AS z)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\" BY y AS y, z AS z",
+				"	AGGREGATE COUNT(x) AS $_2_0 BY y AS y, z AS z)",
+				"AGGREGATE SUM_COUNT($_2_0) AS \"count\" BY y AS y, z AS z",
 				"ORDER BY \"count\" ASC NULLS FIRST",
 			},
 			// TODO: we know the grouping column for a
@@ -527,8 +527,8 @@ where x > (select min(f) from y) and x < (select max(f) from y)`,
 			split: []string{
 				"UNION MAP 'parking.10n' (",
 				"	ITERATE PART 'parking.10n'",
-				"	AGGREGATE COUNT(Make) AS $_0_0 BY Make AS $_0_1)",
-				"AGGREGATE SUM_COUNT($_0_0) AS $_0_0 BY $_0_1 AS $_0_1",
+				"	AGGREGATE COUNT(Make) AS $_2_0 BY Make AS $_0_1)",
+				"AGGREGATE SUM_COUNT($_2_0) AS $_0_0 BY $_0_1 AS $_0_1",
 				"FILTER $_0_0 = 122",
 				"PROJECT $_0_1 AS Make, $_0_0 AS c",
 			},
@@ -618,8 +618,8 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			split: []string{
 				"UNION MAP table (",
 				"	ITERATE PART table",
-				"	AGGREGATE COUNT(x) AS $_0_0)",
-				"AGGREGATE SUM_COUNT($_0_0) AS $_0_0",
+				"	AGGREGATE COUNT(x) AS $_2_0)",
+				"AGGREGATE SUM_COUNT($_2_0) AS $_0_0",
 				"PROJECT $_0_0 + 1 AS x",
 			},
 			results: []expr.TypeSet{expr.IntegerType},
@@ -730,8 +730,8 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE COUNT(*) AS $_0_0 BY x AS x)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\" BY x AS x",
+				"	AGGREGATE COUNT(*) AS $_2_0 BY x AS x)",
+				"AGGREGATE SUM_COUNT($_2_0) AS \"count\" BY x AS x",
 				"LIMIT 10 OFFSET 64",
 			},
 		},
@@ -798,8 +798,8 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE EARLIEST(x) AS $_0_0, LATEST(x) AS $_0_1)",
-				"AGGREGATE EARLIEST($_0_0) AS \"min\", LATEST($_0_1) AS \"max\"",
+				"	AGGREGATE EARLIEST(x) AS $_2_0, LATEST(x) AS $_2_1)",
+				"AGGREGATE EARLIEST($_2_0) AS \"min\", LATEST($_2_1) AS \"max\"",
 			},
 		},
 		{
@@ -880,8 +880,8 @@ ORDER BY m, d, h`,
 				"UNION MAP foo (",
 				"	ITERATE PART foo WHERE DATE_EXTRACT_MONTH(timestamp) = 3 AND DATE_EXTRACT_DAY(timestamp) >= 9",
 				"	PROJECT DATE_EXTRACT_MONTH(timestamp) AS m, DATE_EXTRACT_DAY(timestamp) AS d, DATE_EXTRACT_HOUR(timestamp) AS h",
-				"	AGGREGATE COUNT(*) AS $_0_0 BY m AS m, d AS d, h AS h)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\" BY m AS m, d AS d, h AS h",
+				"	AGGREGATE COUNT(*) AS $_2_0 BY m AS m, d AS d, h AS h)",
+				"AGGREGATE SUM_COUNT($_2_0) AS \"count\" BY m AS m, d AS d, h AS h",
 				"ORDER BY m ASC NULLS FIRST, d ASC NULLS FIRST, h ASC NULLS FIRST",
 			},
 		},
@@ -965,8 +965,8 @@ ORDER BY m, d, h`,
 			split: []string{
 				"UNION MAP kibana_sample_data_flights (",
 				"	ITERATE PART kibana_sample_data_flights WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)",
-				"	AGGREGATE COUNT(*) AS $_0_0, SUM(AvgTicketPrice) AS $_0_1, COUNT(AvgTicketPrice + 0) AS $_0_2 BY TIME_BUCKET(timestamp, 864000) AS _tmbucket1)",
-				"AGGREGATE SUM_COUNT($_0_0) AS \"count\", SUM($_0_1) AS _sum1, SUM_COUNT($_0_2) AS $_1_1 BY _tmbucket1 AS _tmbucket1",
+				"	AGGREGATE COUNT(*) AS $_2_0, SUM(AvgTicketPrice) AS $_2_1, COUNT(AvgTicketPrice + 0) AS $_2_2 BY TIME_BUCKET(timestamp, 864000) AS _tmbucket1)",
+				"AGGREGATE SUM_COUNT($_2_0) AS \"count\", SUM($_2_1) AS _sum1, SUM_COUNT($_2_2) AS $_1_1 BY _tmbucket1 AS _tmbucket1",
 				"PROJECT \"count\" AS \"count\", _sum1 / $_1_1 AS _sum1, _tmbucket1 AS _tmbucket1",
 				"ORDER BY _tmbucket1 ASC NULLS FIRST",
 			},
@@ -1001,8 +1001,8 @@ ORDER BY m, d, h`,
 			split: []string{
 				"UNION MAP foo (",
 				"	ITERATE PART foo",
-				"	AGGREGATE SUM(y) AS $_0_0 BY x AS x)",
-				"AGGREGATE SUM($_0_0) AS \"sum\" BY x AS x",
+				"	AGGREGATE SUM(y) AS $_2_0 BY x AS x)",
+				"AGGREGATE SUM($_2_0) AS \"sum\" BY x AS x",
 				"OUTPUT PART db/my/stats",
 				"OUTPUT INDEX my.stats AT db/my/stats",
 			},
@@ -1167,6 +1167,17 @@ func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error
 		if got != want {
 			t.Errorf("got : %s", got)
 			t.Errorf("want: %s", want)
+			lines := strings.Split(got, "\n")
+			for i := range lines {
+				if i >= len(tc.expect) {
+					t.Error("unexpected line:", lines[i])
+					continue
+				}
+				if lines[i] != tc.expect[i] {
+					t.Errorf("line %d: got %q", i, lines[i])
+					t.Errorf("        want %q", tc.expect[i])
+				}
+			}
 		}
 		if tc.results != nil {
 			t.Logf("match %v", tc.results)
@@ -1196,6 +1207,18 @@ func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error
 		if got != want {
 			t.Errorf("split: got : %s", got)
 			t.Errorf("split: want: %s", want)
+			lines := strings.Split(got, "\n")
+			for i := range lines {
+				if i >= len(tc.split) {
+					t.Error("unexpected line:", lines[i])
+					continue
+				}
+				if lines[i] != tc.split[i] {
+					t.Errorf("line %d: got %q", i, lines[i])
+					t.Errorf("        want %q", tc.split[i])
+				}
+			}
+
 		}
 	})
 }

@@ -229,7 +229,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		result := a.Agg[i].Result
 		// rename the outputs of the mapping-step aggregates;
 		// we will re-map them to their original outputs
-		gen := gensym(0, i)
+		gen := gensym(2, i)
 		a.Agg[i].Result = gen
 		innerref := expr.Identifier(gen)
 		switch age.Op {
