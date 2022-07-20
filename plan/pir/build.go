@@ -763,13 +763,77 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	}
 
 	// walk SELECT + GROUP BY + HAVING
-	if s.Distinct && s.GroupBy != nil && s.Having == nil {
-		// easy case: SELECT DISTINCT exprs GROUP BY exprs => SELECT exprs GROUP BY exprs
-		if !distinctEqualsGroupBy(s) {
-			return errorf(s, "set of DISTINCT expressions has to be equal to GROUP BY expressions")
+	if s.HasDistinct() && s.GroupBy != nil && s.Having == nil {
+		if s.Distinct {
+			// easy case:
+			// SELECT DISTINCT exprs FROM ... GROUP BY exprs
+			// => SELECT exprs FROM ... GROUP BY exprs
+			if !distinctEqualsGroupBy(s) {
+				return errorf(s, "set of DISTINCT expressions has to be equal to GROUP BY expressions")
+			}
+			s.Distinct = false
+			err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
+		} else {
+			distinctOnPullGroupByBindings(s)
+
+			if distinctOnEqualsGroupBy(s) {
+				// easy case: DISTINCT ON & GROUP BY equals
+				// SELECT DISTINCT ON (exprs) bindings FROM ... GROUP BY exprs
+				// => SELECT bindings FROM ... GROUP BY exprs
+				s.DistinctExpr = nil
+				err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
+			} else {
+				// more complex case: DISTINCT ON & GROUP BY differs
+				// SELECT DISTINCT ON (exprs1) bindings FROM ... GROUP BY exprs2
+				// => SELECT DISTINCT ON (exprs1) bindings FROM (SELECT bindings2 FROM ... GROUP BY exprs2)
+				// where bindings2 are bindings extended with the missing ones from exprs1
+				exists := func(e expr.Node) bool {
+					for i := range s.Columns {
+						if expr.Equivalent(e, s.Columns[i].Expr) {
+							return true
+						}
+					}
+
+					return false
+				}
+
+				var missingBindings []expr.Binding
+				for i := range s.DistinctExpr {
+					if !exists(s.DistinctExpr[i]) {
+						b := expr.Binding{Expr: s.DistinctExpr[i]}
+						missingBindings = append(missingBindings, b)
+					}
+				}
+
+				if len(missingBindings) > 0 {
+					bind := append(missingBindings, s.Columns...)
+					err = b.splitAggregate(s.OrderBy, bind, s.GroupBy, s.Having)
+					if err != nil {
+						return err
+					}
+
+					err = b.Distinct(s.DistinctExpr)
+					if err != nil {
+						return err
+					}
+
+					err = b.Bind(s.Columns)
+					if err != nil {
+						return err
+					}
+				} else {
+					err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
+					if err != nil {
+						return err
+					}
+
+					err = b.Distinct(s.DistinctExpr)
+					if err != nil {
+						return err
+					}
+				}
+			}
 		}
-		s.Distinct = false
-		err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
 	} else if s.Having != nil ||
 		s.GroupBy != nil ||
 		anyHasAggregate(s.Columns) ||
@@ -811,6 +875,9 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 
 			if bindcolumns {
 				err = b.Bind(s.Columns)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		if s.OrderBy != nil {
@@ -906,4 +973,38 @@ func dropConstantsFromDistinctOn(s *expr.Select) {
 		s.Limit = new(expr.Integer)
 		*s.Limit = 1
 	}
+}
+
+// distinctOnEqualsGroupBy checks whether the expressions
+// listed in DISTINCT ON clause are the same as in GROUP BY
+// clause.
+func distinctOnEqualsGroupBy(s *expr.Select) bool {
+	exists := func(e expr.Node) bool {
+		for i := range s.GroupBy {
+			if expr.Equivalent(e, s.GroupBy[i].Expr) {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	n := 0
+	for i := range s.DistinctExpr {
+		if !exists(s.DistinctExpr[i]) {
+			return false
+		}
+
+		n += 1
+	}
+
+	return n == len(s.GroupBy)
+}
+
+// distinctOnPullGroupByBindings pulls bindings introduced
+// by the GROUP BY clause into DISTINCT ON list.
+func distinctOnPullGroupByBindings(s *expr.Select) {
+	flattenIntoFunc(s.GroupBy, len(s.DistinctExpr), func(i int) *expr.Node {
+		return &s.DistinctExpr[i]
+	})
 }

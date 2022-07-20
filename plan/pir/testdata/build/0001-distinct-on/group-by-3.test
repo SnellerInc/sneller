@@ -1,0 +1,6 @@
+SELECT DISTINCT ON (x, y) x, y, z FROM table GROUP BY x, y, z
+---
+ITERATE table FIELDS [x, y, z]
+FILTER DISTINCT [x y z]
+PROJECT x AS x, y AS y, z AS z
+FILTER DISTINCT [x y]

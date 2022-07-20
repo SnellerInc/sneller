@@ -158,12 +158,19 @@ func flattenBind(columns []expr.Binding) {
 }
 
 func flattenInto(x, y []expr.Binding) {
+	flattenIntoFunc(x, len(y), func(j int) *expr.Node {
+		return &y[j].Expr
+	})
+}
+
+func flattenIntoFunc(x []expr.Binding, n int, item func(int) *expr.Node) {
 	var f flattener
 	for i := range x {
 		f.matchp = x[i].Result()
 		f.result = x[i].Expr
-		for j := range y {
-			y[j].Expr = expr.Rewrite(&f, y[j].Expr)
+		for j := 0; j < n; j++ {
+			e := item(j)
+			*e = expr.Rewrite(&f, *e)
 		}
 	}
 }

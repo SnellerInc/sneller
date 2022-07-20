@@ -1,0 +1,5 @@
+SELECT DISTINCT ON (x, y) a, b FROM table GROUP BY x, y
+---
+ITERATE table FIELDS [a, b, x, y]
+FILTER DISTINCT [x y]
+PROJECT a AS a, b AS b
