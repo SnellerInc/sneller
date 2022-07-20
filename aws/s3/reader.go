@@ -132,7 +132,13 @@ func (r *Reader) Bucket() string {
 func rawURI(k *aws.SigningKey, bucket string, query string) string {
 	endPoint := k.BaseURI
 	if endPoint == "" {
-		return "https://" + bucket + ".s3." + k.Region + ".amazonaws.com" + "/" + query
+		// use virtual-host style if the bucket is compatible
+		// (fallback to path-style if not)
+		if strings.IndexByte(bucket, '.') < 0 {
+			return "https://" + bucket + ".s3." + k.Region + ".amazonaws.com" + "/" + query
+		} else {
+			return "https://s3." + k.Region + ".amazonaws.com" + "/" + bucket + "/" + query
+		}
 	}
 	return endPoint + "/" + bucket + "/" + query
 }
@@ -324,8 +330,8 @@ func BucketRegion(k *aws.SigningKey, bucket string) (string, error) {
 	if k.BaseURI != "" {
 		return k.Region, nil
 	}
-	host := bucket + ".s3." + k.Region + ".amazonaws.com"
-	req, err := http.NewRequest(http.MethodGet, "https://"+host+"/?location=", nil)
+	uri := rawURI(k, bucket, "?location=")
+	req, err := http.NewRequest(http.MethodGet, uri, nil)
 	if err != nil {
 		return "", err
 	}
