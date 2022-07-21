@@ -37,6 +37,7 @@ type memqueue struct {
 	retry       []*memItem
 	outstanding []*memItem
 	ticker      *time.Ticker
+	closed      bool
 }
 
 func newQueue() *memqueue {
@@ -47,7 +48,15 @@ func (m *memqueue) push(path, etag string, complete func()) {
 	m.in <- &memItem{path, etag, complete}
 }
 
+func (m *memqueue) Close() error {
+	m.closed = true
+	return nil
+}
+
 func (m *memqueue) Finalize(item QueueItem, status QueueStatus) {
+	if m.closed {
+		panic("Finalize on closed queue")
+	}
 	want := item.(*memItem)
 	idx := -1
 	for i := 0; i < len(m.outstanding); i++ {
@@ -73,6 +82,9 @@ func (m *memqueue) close() {
 }
 
 func (m *memqueue) Next(pause time.Duration) (QueueItem, error) {
+	if m.closed {
+		panic("Next on closed queue")
+	}
 	if len(m.retry) > 0 {
 		tail := m.retry[len(m.retry)-1]
 		m.retry = m.retry[:len(m.retry)-1]

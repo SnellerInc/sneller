@@ -56,6 +56,14 @@ type QueueItem interface {
 }
 
 type Queue interface {
+	// Close should be called when the
+	// runner has finished processing items
+	// from the queue (usually due to receiving
+	// and external signal to stop processing events).
+	// Close should only be called after all events
+	// returned by Next have been processed via calls
+	// to Finalize.
+	io.Closer
 	// Next should return the next item
 	// in the queue. If the provided pause
 	// duration is non-negative, then Next
@@ -67,12 +75,13 @@ type Queue interface {
 	// has been closed and no further processing should
 	// be performed.
 	Next(pause time.Duration) (QueueItem, error)
-
 	// Finalize is called to return the final status
 	// of a QueueItem that was previously returned by
 	// ReadInputs. If status is anything other than
 	// StatusOK, then the Queue should arrange for the
 	// item to be read by a future call to ReadInputs.
+	//
+	// Finalize may panic if Queue.Close has been called.
 	Finalize(item QueueItem, status QueueStatus)
 }
 
@@ -285,7 +294,8 @@ func (q *QueueRunner) gather(in Queue) error {
 	return nil
 }
 
-// Run processes entries from in until ReadInputs returns io.EOF.
+// Run processes entries from in until ReadInputs returns io.EOF,
+// at which point it will call in.Close.
 func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
 	subdefs := make(map[dbtable]*Definition)
@@ -294,8 +304,9 @@ readloop:
 	for {
 		err := q.gather(in)
 		if err != nil {
+			cerr := in.Close()
 			if err == io.EOF {
-				err = nil
+				err = cerr
 			}
 			return err
 		}
