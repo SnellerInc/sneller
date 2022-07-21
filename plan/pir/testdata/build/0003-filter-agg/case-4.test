@@ -7,6 +7,6 @@ SELECT
     SUM(x) FILTER (WHERE x > 1)
 FROM input WHERE x > 5
 ---
-ITERATE input WHERE x > 5
+ITERATE input FIELDS [x, y] WHERE x > 5
 AGGREGATE SUM(y) AS $_0_0, SUM(x) FILTER (WHERE x > 1) AS $_0_1
 PROJECT $_0_0 AS "sum", $_0_1 AS sum_2, $_0_0 AS sum_3, $_0_0 AS sum_4, $_0_1 AS sum_5

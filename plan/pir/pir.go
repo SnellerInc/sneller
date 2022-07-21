@@ -21,11 +21,11 @@ import (
 	"path"
 	"strings"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/slices"
 )
 
 // table is the base type for operations
@@ -87,7 +87,9 @@ type IterTable struct {
 	// within this trace that ostensibly
 	// reference this table; they may actually
 	// be correlated with a parent trace!
-	free        []string
+	free     []string
+	definite []string
+
 	Table       *expr.Table
 	Schema      expr.Hint
 	Index       Index
@@ -126,12 +128,20 @@ func (i *IterTable) Wildcard() bool {
 	return i.star
 }
 
-// References returns all of the references
-// to the table. Note that if IterTable.Wildcard
-// returns true, then any binding in the table
-// could be referenced.
-func (i *IterTable) References() []*expr.Path {
-	return i.refs
+// Fields returns the fields belonging to
+// the table that are actually referenced.
+// Note that zero fields are returned if
+// *either* the table is referenced with *
+// or if no fields are actually referenced.
+// Use IterTable.Wilcard to determine if the
+// table is referenced with *
+func (i *IterTable) Fields() []string {
+	if i.star {
+		return nil
+	}
+	all := append(i.free[:len(i.free):len(i.free)], i.definite...)
+	slices.Sort(all)
+	return slices.Compact(all)
 }
 
 func (i *IterTable) get(x string) (Step, expr.Node) {
@@ -140,7 +150,7 @@ func (i *IterTable) get(x string) (Step, expr.Node) {
 		return i, nil
 	}
 	result := i.Table.Result()
-	if result == "" || result == x {
+	if result != "" && result == x {
 		return i, i.Table
 	}
 	i.free = append(i.free, x)
@@ -152,10 +162,14 @@ func (i *IterTable) describe(dst io.Writer) {
 	if i.Partitioned {
 		prefix = "ITERATE PART"
 	}
+	fields := "*"
+	if !i.star {
+		fields = "[" + strings.Join(i.Fields(), ", ") + "]"
+	}
 	if i.Filter == nil {
-		fmt.Fprintf(dst, "%s %s\n", prefix, expr.ToString(i.Table))
+		fmt.Fprintf(dst, "%s %s FIELDS %s\n", prefix, expr.ToString(i.Table), fields)
 	} else {
-		fmt.Fprintf(dst, "%s %s WHERE %s\n", prefix, expr.ToString(i.Table), expr.ToString(i.Filter))
+		fmt.Fprintf(dst, "%s %s FIELDS %s WHERE %s\n", prefix, expr.ToString(i.Table), fields, expr.ToString(i.Filter))
 	}
 }
 

@@ -107,6 +107,10 @@ func (b *Trace) Visit(e expr.Node) expr.Visitor {
 			if err := rt.strip(p); err != nil {
 				b.err = append(b.err, err)
 			}
+			if it, ok := src.(*IterTable); ok && node != nil {
+				// make sure we record this as a definite reference
+				it.definite = append(it.definite, p.First)
+			}
 			// references to tables, etc.
 			// do not need to be additionally
 			// type-checked

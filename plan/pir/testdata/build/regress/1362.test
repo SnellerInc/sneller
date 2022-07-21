@@ -8,12 +8,12 @@ ORDER BY COUNT(*) DESC
 LIMIT 10
 ---
 WITH (
-	ITERATE table WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
+	ITERATE table FIELDS [a, accountName, b, timestamp, type] WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
 	FILTER DISTINCT [a.x b.y]
 	PROJECT a.x AS x
 	AGGREGATE COUNT(*) AS $__val BY x AS $__key
 ) AS REPLACEMENT(0)
-ITERATE table WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
+ITERATE table FIELDS [a, accountName, timestamp, type] WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
 AGGREGATE COUNT(*) AS $_0_1 BY a.x AS $_0_0
 PROJECT $_0_0 AS key0, HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS dest_type_count, $_0_1 AS $_0_1
 ORDER BY $_0_1 DESC NULLS FIRST
@@ -22,14 +22,14 @@ PROJECT key0 AS key0, dest_type_count AS dest_type_count
 ---
 WITH (
 	UNION MAP table (
-		ITERATE PART table WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
+		ITERATE PART table FIELDS [a, accountName, b, timestamp, type] WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
 		FILTER DISTINCT [a.x b.y])
 	FILTER DISTINCT [a.x b.y]
 	PROJECT a.x AS x
 	AGGREGATE COUNT(*) AS $__val BY x AS $__key
 ) AS REPLACEMENT(0)
 UNION MAP table (
-	ITERATE PART table WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
+	ITERATE PART table FIELDS [a, accountName, timestamp, type] WHERE BEFORE(`2022-07-18T21:06:09.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-19T21:06:10.000001Z`) AND type = 'pattern0' AND accountName = 'pattern1'
 	AGGREGATE COUNT(*) AS $_2_0 BY a.x AS $_0_0)
 AGGREGATE SUM_COUNT($_2_0) AS $_0_1 BY $_0_0 AS $_0_0
 PROJECT $_0_0 AS key0, HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS dest_type_count, $_0_1 AS $_0_1

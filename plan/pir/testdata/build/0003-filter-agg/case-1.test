@@ -1,4 +1,4 @@
 SELECT SUM(x) FILTER (WHERE x > 1) AS a, SUM(y) FILTER (WHERE x > 1) AS b FROM input
 ---
-ITERATE input WHERE x > 1
+ITERATE input FIELDS [x, y] WHERE x > 1
 AGGREGATE SUM(x) AS a, SUM(y) AS b

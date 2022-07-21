@@ -1,5 +1,5 @@
 SELECT DISTINCT z, x, y FROM table GROUP BY x, y, z
 ---
-ITERATE table
+ITERATE table FIELDS [x, y, z]
 FILTER DISTINCT [x y z]
 PROJECT z AS z, x AS x, y AS y

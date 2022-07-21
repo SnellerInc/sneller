@@ -796,6 +796,7 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 				}
 
 				if selectall {
+					b.top.get("*")
 					// do not bind '*' in queries 'SELECT DISTINCT ON (...) * FROM ...'
 					bindcolumns = false
 				}

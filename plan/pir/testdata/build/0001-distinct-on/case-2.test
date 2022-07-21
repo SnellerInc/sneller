@@ -1,4 +1,4 @@
 SELECT DISTINCT ON (x, y) * FROM table
 ---
-ITERATE table
+ITERATE table FIELDS *
 FILTER DISTINCT [x y]

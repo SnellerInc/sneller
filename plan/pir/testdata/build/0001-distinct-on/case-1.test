@@ -1,5 +1,5 @@
 SELECT DISTINCT ON (x, y, z) a, b FROM table
 ---
-ITERATE table
+ITERATE table FIELDS [a, b, x, y, z]
 FILTER DISTINCT [x y z]
 PROJECT a AS a, b AS b
