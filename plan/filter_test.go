@@ -34,14 +34,14 @@ type filterEnv struct {
 	filters []string
 }
 
-func (e *filterEnv) Stat(t, filter expr.Node) (TableHandle, error) {
-	th, err := e.env.Stat(t, filter)
+func (e *filterEnv) Stat(t expr.Node, h *Hints) (TableHandle, error) {
+	th, err := e.env.Stat(t, h)
 	if err != nil {
 		return nil, err
 	}
 	e.filters = nil
-	if filter != nil {
-		e.filters = append(e.filters, expr.ToString(filter))
+	if h.Filter != nil {
+		e.filters = append(e.filters, expr.ToString(h.Filter))
 	}
 	return &filterHandle{
 		th:  th,

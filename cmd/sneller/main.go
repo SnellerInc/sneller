@@ -105,7 +105,7 @@ func formatSize(size uint64) string {
 	return res
 }
 
-type eenv func(expr.Node) (vm.Table, error)
+type eenv func(expr.Node, *plan.Hints) (vm.Table, error)
 
 type handle func() (vm.Table, error)
 
@@ -117,10 +117,10 @@ func (h handle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected call to handle.Encode")
 }
 
-// FIXME: use filter when we are reading ion data!
-func (e eenv) Stat(tbl, filter expr.Node) (plan.TableHandle, error) {
+// FIXME: use hints!
+func (e eenv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	return handle(func() (vm.Table, error) {
-		return e(tbl)
+		return e(tbl, h)
 	}), nil
 }
 
@@ -156,7 +156,7 @@ func parse(arg string) *expr.Query {
 
 func do(arg string) {
 	query := parse(arg)
-	tree, err := plan.New(query, eenv(func(e expr.Node) (vm.Table, error) {
+	tree, err := plan.New(query, eenv(func(e expr.Node, h *plan.Hints) (vm.Table, error) {
 		str, ok := e.(expr.String)
 		if !ok {
 			return nil, fmt.Errorf("unexpected table expression %s", expr.ToString(e))

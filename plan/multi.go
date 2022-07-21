@@ -225,13 +225,13 @@ type TableLister interface {
 	ListTables(db string) ([]string, error)
 }
 
-func statGlob(tl TableLister, env Env, e *expr.Builtin, flt expr.Node) (TableHandle, error) {
+func statGlob(tl TableLister, env Env, e *expr.Builtin, h *Hints) (TableHandle, error) {
 	db, m, err := compileGlob(e)
 	if err != nil {
 		return nil, err
 	}
 	if m, ok := m.(literalMatcher); ok {
-		return env.Stat(mkpath(db, string(m)), flt)
+		return env.Stat(mkpath(db, string(m)), h)
 	}
 	list, err := tl.ListTables(db)
 	if err != nil {
@@ -242,7 +242,7 @@ func statGlob(tl TableLister, env Env, e *expr.Builtin, flt expr.Node) (TableHan
 		if !m.MatchString(list[i]) {
 			continue
 		}
-		th, err := env.Stat(mkpath(db, list[i]), flt)
+		th, err := env.Stat(mkpath(db, list[i]), h)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {

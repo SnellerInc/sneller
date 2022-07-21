@@ -332,7 +332,12 @@ func lowerOutputIndex(n *pir.OutputIndex, env Env, input Op) (Op, error) {
 func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
-		handle, err := stat(env, it.Table.Expr, it.Filter)
+		h := &Hints{
+			Filter:    it.Filter,
+			Fields:    it.Fields(),
+			AllFields: it.Wildcard(),
+		}
+		handle, err := stat(env, it.Table.Expr, h)
 		if err != nil {
 			return nil, err
 		}

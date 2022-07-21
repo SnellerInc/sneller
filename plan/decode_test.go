@@ -115,7 +115,7 @@ func (b *blobHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (b *benchenv) Stat(_, _ expr.Node) (TableHandle, error) {
+func (b *benchenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)

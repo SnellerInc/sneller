@@ -28,7 +28,7 @@ import (
 
 type emptyenv struct{}
 
-func (e emptyenv) Stat(_, _ expr.Node) (TableHandle, error) {
+func (e emptyenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
 	return e, nil
 }
 

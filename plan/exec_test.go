@@ -162,7 +162,7 @@ func str2json(arg expr.Node) (TableHandle, error) {
 	return &literalHandle{buf.Bytes()}, nil
 }
 
-func (t *testenv) Stat(tbl, filter expr.Node) (TableHandle, error) {
+func (t *testenv) Stat(tbl expr.Node, h *Hints) (TableHandle, error) {
 	b, ok := tbl.(*expr.Builtin)
 	if ok {
 		switch b.Name() {

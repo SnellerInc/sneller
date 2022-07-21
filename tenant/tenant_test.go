@@ -117,7 +117,7 @@ func (h *hangHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (s stubenv) Stat(tbl, _ expr.Node) (plan.TableHandle, error) {
+func (s stubenv) Stat(tbl expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 	if b, ok := tbl.(*expr.Builtin); ok {
 		switch b.Text {
 		case "REPEAT":
@@ -701,7 +701,7 @@ func (b *benchHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (b *benchenv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
+func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 	// produce N fake compressed blobs
 	// with data that is reasonably sized
 	lst := make([]blob.Interface, b.blocks)

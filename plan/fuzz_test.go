@@ -33,7 +33,7 @@ import (
 
 type fuzzEnv struct{}
 
-func (f fuzzEnv) Stat(_, _ expr.Node) (plan.TableHandle, error) {
+func (f fuzzEnv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 	return nil, nil
 }
 

@@ -110,29 +110,49 @@ type Filterable interface {
 	Filter(expr.Node) TableHandle
 }
 
+// Hints describes a set of hints passed
+// to Env.Stat that can be used to optimize
+// the access to a table.
+type Hints struct {
+	// Filter, if non-nil, is a predicate
+	// that is applied to every row of the table.
+	// (Env.Stat may use this to produce a TableHandle
+	// that produces fewer rows than it otherwise would
+	// due to the presence of some secondary indexing information.)
+	Filter expr.Node
+	// Fields is a list of top-level record fields explicitly
+	// referenced by the query. The list of fields will always
+	// be in lexicographical order.
+	Fields []string
+	// AllFields is set to true if all of the fields
+	// are implicitly referenced in the query (i.e. via "*");
+	// otherwise it is set to false.
+	AllFields bool
+}
+
 // Env represents the global binding environment
 // at the time that the query was compiled
 type Env interface {
 	// Stat returns a TableHandle
 	// associated with the given PartiQL expression.
-	// The filter expression provided in the second
+	// The Hints provided in the second
 	// argument can be used to constrain the set of
-	// rows that are present in the returned TableHandle.
+	// rows and columns that are present in the returned TableHandle.
 	// The information provided by the TableHandle
 	// is used by the query planner to make query-splitting
 	// decisions.
-	Stat(tbl, filter expr.Node) (TableHandle, error)
+	Stat(tbl expr.Node, h *Hints) (TableHandle, error)
 }
 
 // stat handles calling env.Stat(tbl, flt), with
 // special handling for certain table expressions
 // (TABLE_GLOB, TABLE_PATTERN, ++ operator).
-func stat(env Env, tbl, flt expr.Node) (TableHandle, error) {
+func stat(env Env, tbl expr.Node, h *Hints) (TableHandle, error) {
 	switch e := tbl.(type) {
 	case *expr.Appended:
 		ths := make(tableHandles, len(e.Values))
 		for i := range e.Values {
-			th, err := stat(env, e.Values[i], flt)
+			th, err := stat(env, e.Values[i], h)
 			if err != nil {
 				return nil, err
 			}
@@ -146,10 +166,10 @@ func stat(env Env, tbl, flt expr.Node) (TableHandle, error) {
 			if !ok {
 				return nil, fmt.Errorf("listing not supported")
 			}
-			return statGlob(tl, env, e, flt)
+			return statGlob(tl, env, e, h)
 		}
 	}
-	return env.Stat(tbl, flt)
+	return env.Stat(tbl, h)
 }
 
 // Schemer may optionally be implemented by Env to

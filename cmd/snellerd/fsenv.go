@@ -154,15 +154,15 @@ func (f *fsEnv) index(e expr.Node) (*blockfmt.Index, error) {
 }
 
 // Stat implements plan.Env.Stat
-func (f *fsEnv) Stat(e, where expr.Node) (plan.TableHandle, error) {
+func (f *fsEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	index, err := f.index(e)
 	if err != nil {
 		return nil, err
 	}
 	var keep func(*blockfmt.SparseIndex, int) bool
 	var match filter
-	if where != nil {
-		if m, ok := compileFilter(where); ok {
+	if h.Filter != nil {
+		if m, ok := compileFilter(h.Filter); ok {
 			match = m
 			keep = func(s *blockfmt.SparseIndex, n int) bool {
 				return match(s, n) != never
@@ -173,7 +173,7 @@ func (f *fsEnv) Stat(e, where expr.Node) (plan.TableHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &filterHandle{filter: where, compiled: match, blobs: blobs}, nil
+	return &filterHandle{filter: h.Filter, compiled: match, blobs: blobs}, nil
 }
 
 var _ plan.TableLister = (*fsEnv)(nil)

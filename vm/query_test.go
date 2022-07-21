@@ -187,7 +187,7 @@ type queryenv struct {
 	in []plan.TableHandle
 }
 
-func (e *queryenv) Stat(t, filter expr.Node) (plan.TableHandle, error) {
+func (e *queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	p, ok := t.(*expr.Path)
 	if !ok || p.Rest != nil {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
