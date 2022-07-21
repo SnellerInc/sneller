@@ -628,6 +628,13 @@ func pathLess(left, right []Symbol) bool {
 
 const badSymbol = Symbol(0xffffffff)
 
+func resize[T any](x []T, size int) []T {
+	if cap(x) >= size {
+		return x[:size]
+	}
+	return make([]T, size)
+}
+
 func (c *Chunker) walkTimeRanges(rec []byte) {
 	if len(c.WalkTimeRanges) == 0 {
 		return
@@ -635,7 +642,7 @@ func (c *Chunker) walkTimeRanges(rec []byte) {
 	// rebuild rangeSyms
 	if len(c.rangeSyms) == 0 {
 		nranges := len(c.WalkTimeRanges)
-		c.rangeSyms = slices.Grow(c.rangeSyms, nranges)[:nranges]
+		c.rangeSyms = resize(c.rangeSyms, nranges)
 		for i := range c.WalkTimeRanges {
 			path := c.WalkTimeRanges[i]
 			sl := c.rangeSyms[i][:0]

@@ -388,13 +388,7 @@ func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
 
 	// make room for the incoming records
 	s.parent.recordsLock.Lock()
-	if len(s.parent.records)+len(delims) > cap(s.parent.records) {
-		newCapacity := 2 * cap(s.parent.records)
-		if newCapacity == 0 {
-			newCapacity = 1024
-		}
-		s.parent.records = slices.Grow(s.parent.records, newCapacity)
-	}
+	s.parent.records = slices.Grow(s.parent.records, len(delims))
 
 	// split input data into separate records
 	blockID := 0

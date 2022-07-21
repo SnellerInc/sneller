@@ -136,8 +136,7 @@ func (t *radixTree64) newtable() int {
 // guarantee that there are at least 16 free value slots
 func (t *radixTree64) reserve() {
 	if len(t.values)+(t.vsize*16) > cap(t.values) {
-		t.values = slices.Grow(t.values,
-			(len(t.values)+(t.vsize*16))*2)
+		t.values = slices.Grow(t.values, t.vsize*16)
 	}
 }
 

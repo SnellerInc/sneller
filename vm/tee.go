@@ -16,8 +16,6 @@ package vm
 
 import (
 	"io"
-
-	"golang.org/x/exp/slices"
 )
 
 // TeeWriter is an io.Writer that writes
@@ -173,7 +171,10 @@ type teeSplitter struct {
 }
 
 func (t *teeSplitter) clone(refs []vmref) []vmref {
-	t.cache = slices.Grow(t.cache, len(refs))[:len(refs)]
+	if cap(t.cache) < len(refs) {
+		t.cache = make([]vmref, len(refs))
+	}
+	t.cache = t.cache[:len(refs)]
 	copy(t.cache, refs)
 	return t.cache
 }
