@@ -590,24 +590,25 @@ func (w *windowHoist) Walk(e expr.Node) expr.Rewriter {
 }
 
 func hasOnlyOneAggregate(outer *expr.Select) bool {
-	var seen *expr.Aggregate
+	var uniq []*expr.Aggregate
 	visit := func(e expr.Node) bool {
-		if s, ok := e.(*expr.Select); ok && s != outer {
-			return false
+		if s, ok := e.(*expr.Select); ok {
+			return s == outer
 		}
 		agg, ok := e.(*expr.Aggregate)
 		if !ok {
 			return true
 		}
-		if seen == nil {
-			seen = agg
-		} else if !expr.Equivalent(agg, seen) {
-			seen = nil
+		for i := range uniq {
+			if uniq[i].Equals(agg) {
+				return false
+			}
 		}
+		uniq = append(uniq, agg)
 		return false
 	}
 	expr.Walk(visitfn(visit), outer)
-	return seen != nil
+	return len(uniq) == 1
 }
 
 func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
@@ -651,6 +652,12 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		group := self.GroupBy
 		for i := range group {
 			if expr.Equivalent(group[i].Expr, partition) {
+				// since we want to reference this expression
+				// by name, we need to generate a temporary for it
+				// if it doesn't have one already
+				if !group[i].Explicit() {
+					group[i].As(gensym(3, i))
+				}
 				partition = expr.Identifier(group[i].Result())
 			}
 		}
