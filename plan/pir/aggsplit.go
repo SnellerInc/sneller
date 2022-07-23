@@ -116,8 +116,12 @@ type flattener struct {
 }
 
 func (f *flattener) Rewrite(e expr.Node) expr.Node {
-	if expr.IsIdentifier(e, f.matchp) {
-		return expr.Copy(f.result)
+	if p, ok := e.(*expr.Path); ok && p.First == f.matchp {
+		cp := expr.Copy(f.result)
+		if p.Rest == nil {
+			return cp
+		}
+		return joinpath(cp, p.Rest)
 	}
 	return e
 }

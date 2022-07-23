@@ -75,7 +75,11 @@ type bindreplacer struct {
 //   joinpath("x[0]", ".y") -> "x[0].y"
 // and so forth
 // (does not currently handle "x.*", etc.)
-func joinpath(orig *expr.Path, rest expr.PathComponent) *expr.Path {
+func joinpath(from expr.Node, rest expr.PathComponent) expr.Node {
+	orig, ok := from.(*expr.Path)
+	if !ok {
+		return expr.Missing{}
+	}
 	n := &expr.Path{First: orig.First}
 	bp := &n.Rest
 	r := orig.Rest
@@ -93,7 +97,7 @@ func joinpath(orig *expr.Path, rest expr.PathComponent) *expr.Path {
 			r = n.Rest
 		default:
 			// *, etc.
-			return nil
+			return expr.Missing{}
 		}
 	}
 	*bp = rest
@@ -113,23 +117,41 @@ func (b *bindreplacer) Rewrite(e expr.Node) expr.Node {
 		return e
 	}
 	if p.Rest != nil {
-		// update this path expression
-		// so that it begins with the lhs
-		// path expression
-		if pout, ok := out.(*expr.Path); ok {
-			if out := joinpath(pout, p.Rest); out != nil {
-				p.First = out.First
-				p.Rest = out.Rest
-			}
-		}
-		// otherwise, we don't know how
-		// to flatten these results... yikes
-		return e
+		out = joinpath(out, p.Rest)
 	}
 	return out
 }
 
 func (b *bindreplacer) Walk(e expr.Node) expr.Rewriter {
+	return b
+}
+
+type bindflattener struct {
+	from []expr.Binding
+}
+
+func (b *bindflattener) Rewrite(e expr.Node) expr.Node {
+	p, ok := e.(*expr.Path)
+	if !ok {
+		return e
+	}
+	var into expr.Node
+	for i := range b.from {
+		if p.First == b.from[i].Result() {
+			into = b.from[i].Expr
+			break
+		}
+	}
+	if into == nil {
+		return e // probably shouldn't happen
+	}
+	if p.Rest != nil {
+		return joinpath(into, p.Rest)
+	}
+	return into
+}
+
+func (b *bindflattener) Walk(e expr.Node) expr.Rewriter {
 	return b
 }
 
@@ -158,7 +180,7 @@ outer:
 			// of the inner bind and replace the
 			// outer binding references with those
 			// expressions
-			rw := bindreplacer{scope: scope, fromstep: p}
+			rw := bindflattener{from: pb.bind}
 			for i := range b.bind {
 				b.bind[i].Expr = expr.Simplify(expr.Rewrite(&rw, b.bind[i].Expr), scope)
 			}

@@ -857,10 +857,6 @@ select * from (select c from ccount) where c is not missing`,
 				"AGGREGATE COUNT(t) AS $_0_0",
 				"PROJECT $_0_0 AS \"count\", `2022-02-22T22:22:22Z` AS \"max\"",
 			},
-			results: []expr.TypeSet{
-				countType,
-				expr.TimeType,
-			},
 		},
 		{
 			input: `
