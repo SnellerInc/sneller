@@ -98,6 +98,7 @@ func (s *S3BearerIdentity) Tenant() (db.Tenant, error) {
 		return nil, fmt.Errorf("S3BearerIdentity missing proper credentials")
 	}
 	root := &db.S3FS{}
+	root.Client = &s3.DefaultClient
 	root.Bucket = u.Host
 	root.Key = aws.DeriveKey(c.BaseURI, c.AccessKeyID, c.SecretAccessKey, s.Region, "s3")
 	root.Key.Token = c.SessionToken
@@ -106,6 +107,7 @@ func (s *S3BearerIdentity) Tenant() (db.Tenant, error) {
 		root: root,
 		ikey: k,
 	}
+	ret.Client = root.Client
 	ret.DeriveKey = func(_ string) (*aws.SigningKey, error) {
 		return ret.root.Key, nil
 	}
