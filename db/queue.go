@@ -22,7 +22,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/SnellerInc/sneller/fsutil"
+	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -74,6 +74,12 @@ type Queue interface {
 	// Next should return (nil, io.EOF) is the queue
 	// has been closed and no further processing should
 	// be performed.
+	//
+	// As an optimization, the returned QueueItem
+	// can implement fs.File, which will obviate
+	// the need for the caller to perform additional
+	// I/O to produce a file handle associated with
+	// the QueueItem.
 	Next(pause time.Duration) (QueueItem, error)
 	// Finalize is called to return the final status
 	// of a QueueItem that was previously returned by
@@ -97,6 +103,11 @@ type QueueRunner struct {
 	// while processing entries from a queue.
 	// Logf may be nil.
 	Logf func(f string, args ...interface{})
+
+	// Open is a hook that can be used to override
+	// how queue items are opened.
+	// The default behavior is to use ifs.Open(item.Path())
+	Open func(ifs InputFS, item QueueItem) (fs.File, error)
 
 	// TableRefresh is the interval at which
 	// table definitions are refreshed.
@@ -165,6 +176,26 @@ func (q *QueueRunner) delay() {
 	}
 }
 
+// perform the equivalent of infs.Open(name),
+// but take care to skip the I/O of the FS implementation
+// can just produce a handle directly
+func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, error) {
+	type sizer interface {
+		Size() int64
+	}
+	// an s3-specific optimization: don't do any
+	// I/O if we have enough information to produce
+	// an s3.File handle already
+	if b, ok := infs.(*S3FS); ok {
+		if sz, ok := item.(sizer); ok {
+			f := s3.NewFile(b.Key, b.Bucket, name, item.ETag(), sz.Size())
+			f.Client = b.Client
+			return f, nil
+		}
+	}
+	return infs.Open(name)
+}
+
 // populate q.filtered and q.indirect
 // from q.inputs based on def.Inputs[*].Pattern
 func (q *QueueRunner) filter(bld *Builder, def *Definition) error {
@@ -183,7 +214,7 @@ outer:
 			if err != nil {
 				return err
 			}
-			f, err := infs.Open(name)
+			f, err := q.open(infs, name, q.inputs[i])
 			if err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					q.Logf("ignoring %q (doesn't exist)", name)
@@ -348,25 +379,31 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
 	for k := range m {
 		delete(m, k)
 	}
-	walk := func(p string, f fs.File, err error) error {
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		ext := path.Ext(p)
-		if ext != ".json" {
-			return nil
-		}
-		tbl, _ := path.Split(p)
-		db, _ := path.Split(tbl[:len(tbl)-1])
-		def, err := DecodeDefinition(f)
-		if err != nil {
-			return err
-		}
-		tbl = path.Base(tbl)
-		db = path.Base(db)
-		m[dbtable{db: db, table: tbl}] = def
-		return nil
+	dbs, err := fs.ReadDir(dir, "db")
+	if err != nil {
+		return err
 	}
-	return fsutil.WalkGlob(dir, "", DefinitionPath("*", "*"), walk)
+	for i := range dbs {
+		dbname := dbs[i].Name()
+		curp := path.Join("db", dbname)
+		tables, err := fs.ReadDir(dir, curp)
+		if err != nil {
+			return err
+		}
+		for j := range tables {
+			want := path.Join(curp, tables[j].Name(), "definition.json")
+			f, err := dir.Open(want)
+			if err != nil {
+				// ignore non-existent path
+				continue
+			}
+			def, err := DecodeDefinition(f)
+			if err != nil {
+				// don't get hung up on invalid definitions
+				continue
+			}
+			m[dbtable{db: dbname, table: tables[j].Name()}] = def
+		}
+	}
+	return nil
 }

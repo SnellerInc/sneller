@@ -20,8 +20,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"runtime"
 
+	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/klauspost/compress/zstd"
@@ -257,6 +259,11 @@ var isFatal = []error{
 	zstd.ErrWindowSizeExceeded,
 	zstd.ErrWindowSizeTooSmall,
 	zstd.ErrBlockTooSmall,
+
+	// these can be produced from the first
+	// fs.File.Read call on at least s3.File
+	fs.ErrNotExist,
+	s3.ErrETagChanged,
 
 	// TODO: ion errors from transcoding?
 }

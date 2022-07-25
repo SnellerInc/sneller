@@ -41,7 +41,18 @@ var DefaultClient = http.Client{
 	},
 }
 
-var ErrInvalidBucket = errors.New("invalid bucket name")
+var (
+	// ErrInvalidBucket is returned from calls that attempt
+	// to use a bucket name that isn't valid according to
+	// the S3 specification.
+	ErrInvalidBucket = errors.New("invalid bucket name")
+	// ErrETagChanged is returned from read operations where
+	// the ETag of the underlying file has changed since
+	// the file handle was constructed. (This package guarantees
+	// that file read operations are always consistent with respect
+	// to the ETag originally associated with the file handle.)
+	ErrETagChanged = errors.New("file ETag changed")
+)
 
 func badBucket(name string) error {
 	return fmt.Errorf("%w: %s", ErrInvalidBucket, name)
@@ -181,6 +192,24 @@ func Stat(k *aws.SigningKey, bucket, object string) (*Reader, error) {
 	return r, err
 }
 
+// NewFile constructs a File that points to the given
+// bucket, object, etag, and file size. The caller is
+// assumed to have correctly determined these attributes
+// in advance; this call does not perform any I/O to verify
+// that the provided object exists or has a matching ETag
+// and size.
+func NewFile(k *aws.SigningKey, bucket, object, etag string, size int64) *File {
+	return &File{
+		Reader: &Reader{
+			Key:    k,
+			bucket: bucket,
+			object: object,
+			ETag:   etag,
+			size:   size,
+		},
+	}
+}
+
 // Open performs a GET on an S3 object
 // and returns the associated File.
 func Open(k *aws.SigningKey, bucket, object string) (*File, error) {
@@ -302,11 +331,18 @@ func (r *Reader) RangeReader(off, width int64) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	// if we ask for the whole file range we get a 200
-	// instead of a 206; that's fine
-	if res.StatusCode != 206 && res.StatusCode != 200 {
+	switch res.StatusCode {
+	default:
 		defer res.Body.Close()
 		return nil, fmt.Errorf("s3.Reader.RangeReader: status %s %q", res.Status, extractMessage(res.Body))
+	case 412:
+		res.Body.Close()
+		return nil, ErrETagChanged
+	case 404:
+		res.Body.Close()
+		return nil, &fs.PathError{Op: "read", Path: r.object, Err: fs.ErrNotExist}
+	case 206, 200:
+		// okay; fallthrough
 	}
 	return res.Body, nil
 }
