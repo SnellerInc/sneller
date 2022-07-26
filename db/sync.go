@@ -238,6 +238,11 @@ func nextID(idx *blockfmt.Index) int {
 func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, error) {
 	prepend := st.conf.popPrepend(idx)
 	descID := nextID(idx)
+
+	// try to ensure the Append operations don't block;
+	// fetch all the tree leaves in parallel
+	idx.Inputs.Prefetch(lst)
+
 	var kept []blockfmt.Input
 	for i := range lst {
 		ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)

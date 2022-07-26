@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SnellerInc/sneller/compr"
@@ -634,14 +635,19 @@ func uuid() string {
 // Callers are required to call SyncInputs after
 // updating idx.Inputs.
 func (idx *Index) SyncInputs(dir string, expiry time.Duration) error {
+	var lock sync.Mutex
 	return idx.Inputs.sync(func(old string, buf []byte) (string, string, error) {
 		p := path.Join(dir, "inputs-"+uuid())
 		etag, err := idx.Inputs.Backing.WriteFile(p, buf)
 		if err == nil && old != "" {
+			// this closure can be called
+			// from multiple goroutines at once, hence the lock:
+			lock.Lock()
 			idx.ToDelete = append(idx.ToDelete, Quarantined{
 				Path:   old,
 				Expiry: date.Now().Add(expiry),
 			})
+			lock.Unlock()
 		}
 		return p, etag, err
 	})

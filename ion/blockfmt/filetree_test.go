@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -84,7 +85,10 @@ func TestFiletreeInsert(t *testing.T) {
 	}
 
 	nextpath := 0
+	var synclock sync.Mutex
 	sync := func(old string, buf []byte) (path, etag string, err error) {
+		synclock.Lock()
+		defer synclock.Unlock()
 		if old != "" {
 			f.Backing.(*DirFS).Remove(old)
 		}

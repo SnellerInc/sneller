@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"sync"
 
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
@@ -241,6 +242,34 @@ func (f *filetree) decode(in []byte) error {
 // a file that has had its ETag change.
 var ErrETagChanged = errors.New("FileTree: ETag changed")
 
+// Prefetch takes a list of inputs and prefetches
+// leaves of the file tree that ought to contain
+// data related to the list of inputs. Prefetching
+// is done in parallel on each leaf, and Prefetch
+// blocks until all of the prefetching has completed.
+func (f *FileTree) Prefetch(input []Input) {
+	var wg sync.WaitGroup
+	fetching := make([]bool, len(f.toplevel))
+	for i := range input {
+		name := input[i].Path
+		pos := sort.Search(len(f.toplevel), func(i int) bool {
+			// find the lowest toplevel entry w/
+			// path <= largest path
+			return bytes.Compare([]byte(name), f.toplevel[i].last) <= 0
+		})
+		if pos < len(f.toplevel) && !fetching[pos] && len(f.toplevel[pos].contents) == 0 {
+			ent := &f.toplevel[pos]
+			wg.Add(1)
+			fetching[pos] = true
+			go func() {
+				defer wg.Done()
+				f.load(ent)
+			}()
+		}
+	}
+	wg.Wait()
+}
+
 // Append assigns an ID to a path and etag.
 // Append returns (true, nil) if the (path, etag)
 // tuple is inserted, or (false, nil) if the (path, etag)
@@ -336,22 +365,41 @@ func (f *FileTree) Append(path, etag string, id int) (bool, error) {
 type syncfn func(oldpath string, mem []byte) (path, etag string, err error)
 
 func (f *FileTree) sync(fn syncfn) error {
-	var st ion.Symtab
-	var buf ion.Buffer
+	errc := make(chan error, 10)
+	count := 0
 	for i := range f.toplevel {
 		if !f.dirty[i] {
 			continue
 		}
-		buf := f.toplevel[i].marshal(&buf, &st)
-		path, etag, err := fn(string(f.toplevel[i].path), buf)
-		if err != nil {
-			return err
-		}
-		f.toplevel[i].path = []byte(path)
-		f.toplevel[i].etag = []byte(etag)
-		f.dirty[i] = false
+		t := &f.toplevel[i]
+		d := &f.dirty[i]
+		count++
+		go func() {
+			var st ion.Symtab
+			var buf ion.Buffer
+			contents := t.marshal(&buf, &st)
+			path, etag, err := fn(string(t.path), contents)
+			if err != nil {
+				errc <- err
+				return
+			}
+			t.path = []byte(path)
+			t.etag = []byte(etag)
+			*d = false
+			errc <- nil
+		}()
 	}
-	return nil
+	// wait for all of the operations
+	// to complete and return the final error:
+	var err error
+	for count > 0 {
+		ec := <-errc
+		count--
+		if err == nil {
+			err = ec
+		}
+	}
+	return err
 }
 
 func (f *FileTree) encode(dst *ion.Buffer, st *ion.Symtab) {

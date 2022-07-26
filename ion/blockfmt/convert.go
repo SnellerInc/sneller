@@ -451,6 +451,11 @@ func (c *Converter) runMulti() error {
 		readyc = doPrefetch(startc, max, wantInflight)
 	}
 	errs := make(chan error, p)
+	// NOTE: consume must be called
+	// before the send on errs so that
+	// the consumption of inputs happens
+	// strictly before we return from this
+	// function call
 	consume := func(in chan *Input) {
 		for in := range in {
 			in.R.Close()
@@ -463,9 +468,6 @@ func (c *Converter) runMulti() error {
 			return err
 		}
 		go func(i int) {
-			// if we encounter an error,
-			// drain the queue and close each item
-			defer consume(startc)
 			cn := ion.Chunker{
 				W:          wc,
 				Align:      w.InputAlign,
@@ -474,6 +476,7 @@ func (c *Converter) runMulti() error {
 			if i == 0 {
 				err := c.runPrepend(&cn)
 				if err != nil {
+					consume(startc)
 					errs <- fmt.Errorf("prepend: %w", err)
 					return
 				}
@@ -485,6 +488,7 @@ func (c *Converter) runMulti() error {
 					err = err2
 				}
 				if err != nil {
+					consume(startc)
 					in.Err = err
 					errs <- fmt.Errorf("%s: %w", in.Path, err)
 					return
@@ -492,6 +496,7 @@ func (c *Converter) runMulti() error {
 			}
 			err := cn.Flush()
 			if err != nil {
+				consume(startc)
 				errs <- err
 				return
 			}
