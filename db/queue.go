@@ -195,18 +195,13 @@ func (q *QueueRunner) delay() {
 // but take care to skip the I/O of the FS implementation
 // can just produce a handle directly
 func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, error) {
-	type sizer interface {
-		Size() int64
-	}
 	// an s3-specific optimization: don't do any
 	// I/O if we have enough information to produce
 	// an s3.File handle already
 	if b, ok := infs.(*S3FS); ok {
-		if sz, ok := item.(sizer); ok {
-			f := s3.NewFile(b.Key, b.Bucket, name, item.ETag(), sz.Size())
-			f.Client = b.Client
-			return f, nil
-		}
+		f := s3.NewFile(b.Key, b.Bucket, name, item.ETag(), item.Size())
+		f.Client = b.Client
+		return f, nil
 	}
 	return infs.Open(name)
 }

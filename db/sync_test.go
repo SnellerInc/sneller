@@ -33,7 +33,7 @@ import (
 
 // simple db.Resolver wrapping a DirFS
 type dirResolver struct {
-	*DirFS
+	OutputFS
 }
 
 func checkFiles(t *testing.T) {
@@ -90,7 +90,7 @@ func (d *dirResolver) Split(pattern string) (InputFS, string, error) {
 		return nil, "", fmt.Errorf("bad pattern %q", pattern)
 	}
 	pattern = strings.TrimPrefix(pattern, "file://")
-	return d.DirFS, pattern, nil
+	return d.OutputFS, pattern, nil
 }
 
 // noOutputFS is an OutputFS that

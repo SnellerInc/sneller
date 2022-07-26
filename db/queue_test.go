@@ -15,13 +15,19 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/exp/maps"
 )
 
 type memItem struct {
@@ -172,6 +178,65 @@ func TestQueue(t *testing.T) {
 	}
 }
 
+// this simulates the situation we can
+// end up in with S3FS where we construct
+// a file handle that points to nothing;
+// in that case the calls to fs.File.Read
+// return fs.ErrNotExist, and we need to
+// correctly interpret that as a fatal error
+type s3DirFS struct {
+	*DirFS
+}
+
+func (s *s3DirFS) Open(x string) (fs.File, error) {
+	f, err := s.DirFS.Open(x)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) &&
+			strings.Contains(x, "does-not-exist") {
+			return &errNotExistFile{
+				path: x,
+				etag: "does-not-exist",
+				size: 100,
+			}, nil
+		}
+		return nil, err
+	}
+	return f, nil
+}
+
+func (s *s3DirFS) ETag(fp string, info fs.FileInfo) (string, error) {
+	if enx, ok := info.(*errNotExistFile); ok {
+		return enx.etag, nil
+	}
+	return s.DirFS.ETag(fp, info)
+}
+
+type errNotExistFile struct {
+	path string
+	etag string
+	size int64
+}
+
+func (e *errNotExistFile) Name() string {
+	return path.Base(e.path)
+}
+
+func (e *errNotExistFile) Size() int64        { return e.size }
+func (e *errNotExistFile) Mode() fs.FileMode  { return 0 }
+func (e *errNotExistFile) ModTime() time.Time { return time.Time{} }
+func (e *errNotExistFile) IsDir() bool        { return false }
+func (e *errNotExistFile) Sys() interface{}   { return nil }
+
+func (e *errNotExistFile) Stat() (fs.FileInfo, error) {
+	return e, nil
+}
+
+func (e *errNotExistFile) Read(p []byte) (int, error) {
+	return 0, fs.ErrNotExist
+}
+
+func (e *errNotExistFile) Close() error { return nil }
+
 func testQueue(t *testing.T, batchsize int64, scan bool) {
 	q := newQueue()
 	r := &QueueRunner{
@@ -196,7 +261,7 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 		check(os.MkdirAll(dir, 0750))
 	}
 
-	dfs := NewDirFS(tmpdir)
+	dfs := &s3DirFS{NewDirFS(tmpdir)}
 	defer dfs.Close()
 	dfs.Log = t.Logf
 
@@ -225,7 +290,7 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 	check(WriteDefinition(dfs, "db1", &Definition{
 		Name: "wide",
 		Inputs: []Input{
-			{Pattern: "file://aa*/file*.json"},
+			{Pattern: "file://aa*/*.json"},
 		},
 	}))
 
@@ -244,12 +309,13 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 	// bad file; shouldn't permanently stop ingest:
 	create("aabb/file1.json", `{"name": "aabb/file1.json"`)
 	// push a file that doesn't exist; this should be ignored
-	push("aabb/file0.json", "abcdefg", 6)
+	// (we have the error show up during fs.File.Read)
+	push("file://aabb/does-not-exist.json", "does-not-exist", 6)
 
 	queued.Wait()
 
 	checkIndex := func(db, table string, want map[string]bool) {
-		idx, err := OpenIndex(dfs, "db0", "narrow", owner.Key())
+		idx, err := OpenIndex(dfs, db, table, owner.Key())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -263,16 +329,22 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 			if accept != (id >= 0) {
 				t.Errorf("file %q: accepted: %v", name, id >= 0)
 			}
+			delete(want, name)
 			return true
 		}))
+		if len(want) > 0 {
+			remaining := maps.Keys(want)
+			t.Errorf("didn't find items %v", remaining)
+		}
 	}
 	checkIndex("db0", "narrow", map[string]bool{
 		"file://aabb/file0.json": true,
 		"file://aabb/file1.json": false,
 	})
 	checkIndex("db1", "wide", map[string]bool{
-		"file://aabb/file0.json": true,
-		"file://aabb/file1.json": false,
-		"file://aacc/file0.json": true,
+		"file://aabb/file0.json":          true,
+		"file://aabb/file1.json":          false,
+		"file://aacc/file0.json":          true,
+		"file://aabb/does-not-exist.json": false,
 	})
 }

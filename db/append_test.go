@@ -28,7 +28,7 @@ import (
 )
 
 type testTenant struct {
-	root *DirFS
+	root OutputFS
 	key  *blockfmt.Key
 	ro   bool
 }
@@ -53,7 +53,7 @@ func randomKey() *blockfmt.Key {
 	return ret
 }
 
-func newTenant(root *DirFS) *testTenant {
+func newTenant(root OutputFS) *testTenant {
 	return &testTenant{
 		root: root,
 		key:  randomKey(),
