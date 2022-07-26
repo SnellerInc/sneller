@@ -26,11 +26,13 @@ import (
 
 type memItem struct {
 	path, etag string
+	size       int64
 	complete   func()
 }
 
 func (m *memItem) Path() string { return m.path }
 func (m *memItem) ETag() string { return m.etag }
+func (m *memItem) Size() int64  { return m.size }
 
 type memqueue struct {
 	in          chan *memItem
@@ -44,8 +46,8 @@ func newQueue() *memqueue {
 	return &memqueue{in: make(chan *memItem, 1)}
 }
 
-func (m *memqueue) push(path, etag string, complete func()) {
-	m.in <- &memItem{path, etag, complete}
+func (m *memqueue) push(path, etag string, size int64, complete func()) {
+	m.in <- &memItem{path, etag, size, complete}
 }
 
 func (m *memqueue) Close() error {
@@ -144,11 +146,11 @@ func TestQueue(t *testing.T) {
 			scan:  true,
 		},
 		{
-			batch: 10,
+			batch: 40,
 			scan:  true,
 		},
 		{
-			batch: 3,
+			batch: 1000,
 			scan:  true,
 		},
 		{
@@ -156,21 +158,21 @@ func TestQueue(t *testing.T) {
 			scan:  false,
 		},
 		{
-			batch: 3,
+			batch: 40,
 			scan:  false,
 		},
 		{
-			batch: 10,
+			batch: 1000,
 			scan:  false,
 		},
 	} {
 		t.Run(fmt.Sprintf("batch=%d,scan=%v", conf.batch, conf.scan), func(t *testing.T) {
-			testQueue(t, conf.batch, conf.scan)
+			testQueue(t, int64(conf.batch), conf.scan)
 		})
 	}
 }
 
-func testQueue(t *testing.T, batchsize int, scan bool) {
+func testQueue(t *testing.T, batchsize int64, scan bool) {
 	q := newQueue()
 	r := &QueueRunner{
 		Logf:          t.Logf,
@@ -199,9 +201,9 @@ func testQueue(t *testing.T, batchsize int, scan bool) {
 	dfs.Log = t.Logf
 
 	var queued sync.WaitGroup
-	push := func(name, etag string) {
+	push := func(name, etag string, size int64) {
 		queued.Add(1)
-		q.push(name, etag, queued.Done)
+		q.push(name, etag, size, queued.Done)
 	}
 
 	create := func(name, text string) {
@@ -210,7 +212,7 @@ func testQueue(t *testing.T, batchsize int, scan bool) {
 			t.Helper()
 			t.Fatal(err)
 		}
-		push(dfs.Prefix()+name, etag)
+		push(dfs.Prefix()+name, etag, int64(len(text)))
 	}
 
 	check(WriteDefinition(dfs, "db0", &Definition{
@@ -242,7 +244,7 @@ func testQueue(t *testing.T, batchsize int, scan bool) {
 	// bad file; shouldn't permanently stop ingest:
 	create("aabb/file1.json", `{"name": "aabb/file1.json"`)
 	// push a file that doesn't exist; this should be ignored
-	push("aabb/file0.json", "abcdefg")
+	push("aabb/file0.json", "abcdefg", 6)
 
 	queued.Wait()
 

@@ -26,6 +26,12 @@ import (
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
+const (
+	// DefaultBatchSize is the default queue
+	// batching size that is used when none is set.
+	DefaultBatchSize = 100 * mega
+)
+
 // QueueStatus indicates the processing
 // status of a QueueItem.
 type QueueStatus int
@@ -53,6 +59,9 @@ type QueueItem interface {
 	// ETag should return the ETag of
 	// the file.
 	ETag() string
+	// Size should return the size of
+	// the file at Path in bytes.
+	Size() int64
 }
 
 type Queue interface {
@@ -115,16 +124,22 @@ type QueueRunner struct {
 	// to zero, then tables are refreshed every minute.
 	TableRefresh time.Duration
 
-	// BatchSize is the maximum number of items
+	// BatchSize is the maximum number of bytes
 	// that the QueueRunner will attempt to read
 	// from a Queue in Run before comitting the
 	// returned items. Batches may be smaller than
 	// BatchSize due to the expiration of BatchInterval
 	// or due to receiving an error from the queue
 	// after batching a non-zero number of items.
+	// (The size of a batch is computed by summing
+	// the QueueItem.Size values from each QueueItem
+	// returned from Next.)
+	//
+	// If BatchSize is less than or equal to zero,
+	// then DefaultBatchSize is used instead.
 	//
 	// See also: BatchInterval
-	BatchSize int
+	BatchSize int64
 
 	// BatchInterval is the maximum amount of
 	// time the queue should wait for successive
@@ -145,11 +160,11 @@ type QueueRunner struct {
 	indirect []int
 }
 
-func (q *QueueRunner) max() int {
+func (q *QueueRunner) max() int64 {
 	if q.BatchSize > 0 {
 		return q.BatchSize
 	}
-	return 20
+	return DefaultBatchSize
 }
 
 // Merge returns the more sever status
@@ -307,11 +322,13 @@ func (q *QueueRunner) gather(in Queue) error {
 	if first == nil {
 		return fmt.Errorf("Queue implementation bug: Next(-1) should block")
 	}
+	const hardlimit = 1000
+	total := first.Size()
 	// keep gathering items up to the max batch size
 	// or the max delay time
 	q.inputs = append(q.inputs, first)
 	end := time.Now().Add(q.BatchInterval)
-	for len(q.inputs) < q.BatchSize {
+	for total < q.max() && len(q.inputs) < hardlimit {
 		u := time.Until(end)
 		if u <= 0 {
 			break
@@ -321,6 +338,7 @@ func (q *QueueRunner) gather(in Queue) error {
 			break
 		}
 		q.inputs = append(q.inputs, item)
+		total += item.Size()
 	}
 	return nil
 }
