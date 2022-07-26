@@ -106,7 +106,7 @@ func (f *Filter) filter(e expr.Node, scope *Trace) {
 // redundant computation is negligible compared to
 // the the reduction in total projection size
 func (b *Bind) filter(e expr.Node, scope *Trace) {
-	e = expr.Rewrite(&bindreplacer{scope: scope, fromstep: b}, e)
+	e = expr.Rewrite(&bindflattener{from: b.bind}, e)
 	f := new(Filter)
 	f.Where = expr.SimplifyLogic(e, scope)
 	f.setparent(b.parent())

@@ -65,11 +65,6 @@ func projectelim(b *Trace) {
 	}
 }
 
-type bindreplacer struct {
-	fromstep Step
-	scope    *Trace
-}
-
 // concatenate orig with rest, i.e.
 //   joinpath("x.y", ".z") -> "x.y.z"
 //   joinpath("x[0]", ".y") -> "x[0].y"
@@ -102,28 +97,6 @@ func joinpath(from expr.Node, rest expr.PathComponent) expr.Node {
 	}
 	*bp = rest
 	return n
-}
-
-func (b *bindreplacer) Rewrite(e expr.Node) expr.Node {
-	p, ok := e.(*expr.Path)
-	if !ok {
-		return e
-	}
-	if b.scope.origin(p) != b.fromstep {
-		return e
-	}
-	out := b.scope.get(p)
-	if out == nil {
-		return e
-	}
-	if p.Rest != nil {
-		out = joinpath(out, p.Rest)
-	}
-	return out
-}
-
-func (b *bindreplacer) Walk(e expr.Node) expr.Rewriter {
-	return b
 }
 
 type bindflattener struct {
@@ -208,14 +181,7 @@ func flatten(b *Trace) {
 		if bind == nil {
 			continue
 		}
-		// replace references to bindings produced
-		// in this step with the expanded expression
-		// (this will get CSE'd in the core SSA, so
-		// there isn't really any cost to duplicating the expression)
-		rw := bindreplacer{scope: b, fromstep: s}
-		for i := range bind {
-			bind[i].Expr = expr.Simplify(expr.Rewrite(&rw, bind[i].Expr), b)
-		}
+		flattenBind(bind)
 	}
 }
 
