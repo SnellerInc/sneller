@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
-	"sort"
+	"sync"
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
@@ -184,21 +184,40 @@ func (c *GCConfig) preciseGC(rfs RemoveFS, idx *blockfmt.Index) bool {
 	if len(idx.ToDelete) == 0 {
 		return false
 	}
-	// FIXME: just make this heap-ordered
-	sort.Slice(idx.ToDelete, func(i, j int) bool {
-		return idx.ToDelete[i].Expiry.Before(idx.ToDelete[j].Expiry)
-	})
-	any := false
+	saved := idx.ToDelete[:0]
 	now := date.Now()
-	for len(idx.ToDelete) > 0 && idx.ToDelete[0].Expiry.Before(now) {
-		err := rfs.Remove(idx.ToDelete[0].Path)
-		if err == nil || errors.Is(err, fs.ErrNotExist) {
-			any = true
-			idx.ToDelete = idx.ToDelete[1:]
-		} else {
-			c.logf("deleting ToDelete %q: %s", idx.ToDelete[0].Path, err)
-			return any
+	var failed chan blockfmt.Quarantined
+	var wg sync.WaitGroup
+	for i := range idx.ToDelete {
+		if idx.ToDelete[i].Expiry.After(now) {
+			saved = append(saved, idx.ToDelete[i])
+			continue
 		}
+		x := idx.ToDelete[i]
+		if failed == nil {
+			failed = make(chan blockfmt.Quarantined, 1)
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := rfs.Remove(x.Path)
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				c.logf("deleting ToDelete %q: %s", x.Path, err)
+				failed <- x
+			}
+		}()
 	}
-	return any
+	// didn't remove anything:
+	if failed == nil {
+		return false
+	}
+	go func() {
+		wg.Wait()
+		close(failed)
+	}()
+	for x := range failed {
+		saved = append(saved, x)
+	}
+	idx.ToDelete = saved
+	return true
 }
