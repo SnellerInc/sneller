@@ -317,7 +317,7 @@ func (q *QueueRunner) gather(in Queue) error {
 	if first == nil {
 		return fmt.Errorf("Queue implementation bug: Next(-1) should block")
 	}
-	const hardlimit = 1000
+	const hardlimit = 5000
 	total := first.Size()
 	// keep gathering items up to the max batch size
 	// or the max delay time
