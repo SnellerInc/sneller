@@ -58,5 +58,8 @@ func ConvertCloudtrail(src io.Reader, dst *ion.Chunker) error {
 	if err != nil {
 		return err
 	}
-	return dst.Flush()
+	// We do *not* flush here.
+	// Input files can be small, and flushing
+	// forces us to emit a block boundary!
+	return nil
 }

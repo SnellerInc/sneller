@@ -40,6 +40,10 @@ func TestCloudtrail(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		err = cn.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	walk := func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
