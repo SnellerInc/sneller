@@ -108,12 +108,15 @@ type singleStream struct {
 	futureRange
 	parent  *MultiWriter
 	buf     []byte // compressed buffer
+	buf2    []byte // double-buffer for upload
 	tid     int    // stream id
 	curspan span   // current span
 
 	comp        Compressor
 	lastblock   int64
 	flushblocks int
+
+	bg chan error
 }
 
 var _ minMaxer = &singleStream{}
@@ -167,6 +170,35 @@ func (m *MultiWriter) Open() (io.WriteCloser, error) {
 	return s, nil
 }
 
+// upload begins the upload of s.buf
+// and swaps s.buf and s.buf2; the result
+// of the upload is only received the next
+// time upload is called
+//
+// as an invariant, s.bg is non-nil iff
+// there is a background upload happening
+func (s *singleStream) upload() error {
+	if s.bg == nil {
+		s.bg = make(chan error, 1)
+	} else {
+		err := <-s.bg
+		if err != nil {
+			s.bg = nil
+			return err
+		}
+	}
+	output := s.buf
+	// swap buffers; buf2 is always the
+	// one that is "owned" by the background upload
+	s.buf, s.buf2 = s.buf2[:0], s.buf[:0]
+	up := s.parent.Output
+	num := s.curspan.partnum
+	go func() {
+		s.bg <- up.Upload(num, output)
+	}()
+	return nil
+}
+
 // Flush implements ion.Flusher
 func (s *singleStream) Flush() error {
 	if s.flushblocks > 0 {
@@ -184,12 +216,10 @@ func (s *singleStream) Flush() error {
 	// enough to satisfy the upload invariants
 	if len(s.buf) >= s.parent.TargetSize {
 		s.curspan.outsize = int64(len(s.buf))
-		n := s.curspan.partnum
-		err := s.parent.Output.Upload(n, s.buf)
+		err := s.upload()
 		if err != nil {
 			return err
 		}
-		s.buf = s.buf[:0]
 		// flush span and assign a new part number;
 		// reset the local state back to zero
 		s.parent.lock.Lock()
@@ -290,6 +320,15 @@ func (s *singleStream) promote() bool {
 	return true
 }
 
+func (s *singleStream) flushbg() error {
+	if s.bg != nil {
+		err := <-s.bg
+		s.bg = nil
+		return err
+	}
+	return nil
+}
+
 // Close implements io.Closer
 func (s *singleStream) Close() error {
 	defer atomic.AddInt32(&s.parent.refcount, -1)
@@ -306,17 +345,24 @@ func (s *singleStream) Close() error {
 		if len(s.curspan.blockmap) != 0 {
 			panic("unflushed blocks?")
 		}
-		return nil
+		return s.flushbg()
 	}
 	if len(s.buf) >= s.parent.TargetSize || !s.promote() {
-		return s.Flush()
+		err := s.Flush()
+		err2 := s.flushbg()
+		if err == nil {
+			err = err2
+		}
+		return err
 	}
 	// the promote() call took care of the data;
 	// it will be handled in MultiWriter.Close()
 	if len(s.buf) != 0 || len(s.curspan.blockmap) != 0 {
 		panic("didn't actually flush!")
 	}
-	return nil
+	// ... but ensure that anything we have flushed
+	// up to this point is actually finished:
+	return s.flushbg()
 }
 
 func (m *MultiWriter) finalize() {
