@@ -38,6 +38,11 @@ import (
 var DefaultClient = http.Client{
 	Transport: &http.Transport{
 		ResponseHeaderTimeout: 5 * time.Second,
+		// Empirically, AWS creates about 40
+		// DNS entries for S3, so 5 connections
+		// per host is about 100 total connections.
+		// (Note that the default here is 2!)
+		MaxIdleConnsPerHost: 5,
 	},
 }
 
