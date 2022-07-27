@@ -1,0 +1,19 @@
+SELECT LOWER(s) AS l FROM input
+---
+{"s": "Ą"}
+{"s": "ĄA"}
+{"s": "ĄAA"}
+{"s": "ĄAAA"}
+{"s": "ĄAAAA"}
+{"s": "ĄAAAAA"}
+{"s": "ĄAAAAAA"}
+{"s": "ĄAAAAAAA"}
+---
+{"l": "ą"}
+{"l": "ąa"}
+{"l": "ąaa"}
+{"l": "ąaaa"}
+{"l": "ąaaaa"}
+{"l": "ąaaaaa"}
+{"l": "ąaaaaaa"}
+{"l": "ąaaaaaaa"}

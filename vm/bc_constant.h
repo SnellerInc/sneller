@@ -18,10 +18,12 @@
 // -------------------
 
 #ifndef BC_CONSTANTS_CONSUME_ONLY
+  #define CONST_DATA_U8(name, offset, value) DATA name<>+(offset)(SB)/1, value
   #define CONST_DATA_U32(name, offset, value) DATA name<>+(offset)(SB)/4, value
   #define CONST_DATA_U64(name, offset, value) DATA name<>+(offset)(SB)/8, value
   #define CONST_GLOBAL(name, size) GLOBL name<>(SB), RODATA|NOPTR, size
 #else
+  #define CONST_DATA_U8(name, offset, value)
   #define CONST_DATA_U32(name, offset, value)
   #define CONST_DATA_U64(name, offset, value)
   #define CONST_GLOBAL(name, size)
@@ -918,3 +920,5 @@ CONST_DATA_U64(consts_byte_mask_q, 40, $0x0000FFFFFFFFFFFF)
 CONST_DATA_U64(consts_byte_mask_q, 48, $0x00FFFFFFFFFFFFFF)
 CONST_DATA_U64(consts_byte_mask_q, 56, $0xFFFFFFFFFFFFFFFF)
 CONST_GLOBAL(consts_byte_mask_q, $64)
+
+// UTF-8 related constants

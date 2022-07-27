@@ -1,0 +1,11 @@
+SELECT UPPER(s) AS upper FROM input
+---
+{"s": "ąćęłńóśżź"}      # all Polish diacritics (2-byte UTF-8 chars)
+{"s": "wąż"}            # PL: a snake
+{"s": "żółw"}           # PL: a tortoise
+{"s": "korzeń"}         # PL: a root
+---
+{"upper": "ĄĆĘŁŃÓŚŻŹ"}
+{"upper": "WĄŻ"}
+{"upper": "ŻÓŁW"}
+{"upper": "KORZEŃ"}

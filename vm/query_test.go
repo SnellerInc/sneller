@@ -717,15 +717,17 @@ func benchPath(b *testing.B, fname string) {
 }
 
 func BenchmarkTestQueries(b *testing.B) {
-	bench, err := findQueries(".bench")
-	if err != nil {
-		b.Fatal(err)
-	}
+	for _, dir := range []string{"./testdata/queries/", "./testdata/benchmarks/"} {
+		bench, err := findQueries(dir, ".bench")
+		if err != nil {
+			b.Fatal(err)
+		}
 
-	for i := range bench {
-		b.Run(bench[i].name, func(b *testing.B) {
-			benchPath(b, bench[i].path)
-		})
+		for i := range bench {
+			b.Run(bench[i].name, func(b *testing.B) {
+				benchPath(b, bench[i].path)
+			})
+		}
 	}
 }
 
@@ -753,7 +755,7 @@ func TestQueries(t *testing.T) {
 			t.Errorf("pages used: %d -> %d", start, end)
 		}
 	})
-	test, err := findQueries(".test")
+	test, err := findQueries("./testdata/queries/", ".test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,10 +776,10 @@ type queryTest struct {
 	name, path string
 }
 
-func findQueries(suffix string) ([]queryTest, error) {
+func findQueries(dir, suffix string) ([]queryTest, error) {
 	var tests []queryTest
 
-	rootdir := filepath.Clean("./testdata/queries/")
+	rootdir := filepath.Clean(dir)
 	prefix := rootdir + "/"
 
 	err := filepath.WalkDir(rootdir, func(path string, d fs.DirEntry, err error) error {

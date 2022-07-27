@@ -1,0 +1,11 @@
+SELECT LOWER(s) AS lower FROM input
+---
+{"s": "ĄĆĘŁŃÓŚŻŹ"}      # all Polish diacritics (2-byte UTF-8 chars)
+{"s": "WĄŻ"}            # PL: a snake
+{"s": "ŻÓŁW"}           # PL: a tortoise
+{"s": "KORZEŃ"}         # PL: a root
+---
+{"lower": "ąćęłńóśżź"}
+{"lower": "wąż"}
+{"lower": "żółw"}
+{"lower": "korzeń"}
