@@ -157,11 +157,10 @@ func Compression(name string) Compressor {
 	switch name {
 	case "zstd-better":
 		z, _ := zstd.NewWriter(nil,
-			zstd.WithEncoderLevel(zstd.SpeedBetterCompression),
-			zstd.WithEncoderConcurrency(1))
+			zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
 		return zstdCompressor{z}
 	case "zstd":
-		z, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+		z, _ := zstd.NewWriter(nil)
 		return zstdCompressor{z}
 	case "s2":
 		return s2Compressor{}
