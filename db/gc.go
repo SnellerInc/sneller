@@ -38,9 +38,14 @@ var (
 	_ RemoveFS = &DirFS{}
 )
 
-// DefaultMinimumAge is the default minimum
-// age of packed files to be deleted.
-const DefaultMinimumAge = 15 * time.Minute
+const (
+	// DefaultMinimumAge is the default minimum
+	// age of packed-* files to be deleted.
+	DefaultMinimumAge = 15 * time.Minute
+	// DefaultInputMinimumAge is the default
+	// minimuma ge of inputs-* files to be deleted.
+	DefaultInputMinimumAge = 30 * time.Second
+)
 
 // GCConfig is a configuration for
 // garbage collection.
@@ -55,7 +60,9 @@ type GCConfig struct {
 	// is only necessary if it is possible for GC and ingest
 	// to run simultaneously. In that case, MinimumAge should be
 	// set to some duration longer than any possible ingest cycle.
-	MinimumAge time.Duration
+	MinimumAge      time.Duration
+	InputMinimumAge time.Duration
+
 	// Logf, if non-nil, is a callback used for logging
 	// detailed information regarding GC decisions.
 	Logf func(f string, args ...interface{})
@@ -119,8 +126,12 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 	}
 
 	packedmin := c.MinimumAge
-	if packedmin == 0 {
+	if packedmin <= 0 {
 		packedmin = DefaultMinimumAge
+	}
+	inputmin := c.InputMinimumAge
+	if inputmin <= 0 {
+		inputmin = DefaultInputMinimumAge
 	}
 	for _, spc := range []spec{
 		// queries can use packed files during execution,
@@ -129,7 +140,7 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 		// inputs can really only be referenced by
 		// the index, more-or-less as soon as an index
 		// becomes visible, the old inputs can be deleted
-		{inputsPattern, 30 * time.Second},
+		{inputsPattern, inputmin},
 	} {
 		walk := func(p string, f fs.File, err error) error {
 			if err != nil {

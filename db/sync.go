@@ -126,6 +126,12 @@ type Builder struct {
 	// how this value is used.
 	GCMinimumAge time.Duration
 
+	// InputMinimumAge is the mininum time
+	// that an input file leaf should be left
+	// around after it is no longer referenced.
+	// See blockfmt.Index.ToDelete.Expiry
+	InputMinimumAge time.Duration
+
 	// Logf, if non-nil, will be where
 	// the builder will log build actions
 	// as it is executing. Logf must be
@@ -594,11 +600,18 @@ func (b *Builder) maxInlineBytes() int64 {
 	return b.MaxInlineBytes
 }
 
+func (b *Builder) inputMinAge() time.Duration {
+	if b.InputMinimumAge <= 0 {
+		return DefaultInputMinimumAge
+	}
+	return b.InputMinimumAge
+}
+
 func (st *tableState) flush(idx *blockfmt.Index) error {
 	idx.Name = st.table
 	idx.Inputs.Backing = st.ofs
 	dir := path.Join("db", st.db, st.table)
-	err := idx.SyncInputs(dir, st.conf.GCMinimumAge)
+	err := idx.SyncInputs(dir, st.conf.inputMinAge())
 	if err != nil {
 		return err
 	}
@@ -699,6 +712,10 @@ func (st *tableState) runGC(idx *blockfmt.Index) error {
 	if !ok {
 		return nil
 	}
-	conf := GCConfig{Logf: st.conf.Logf, MinimumAge: st.conf.GCMinimumAge}
+	conf := GCConfig{
+		Logf:            st.conf.Logf,
+		MinimumAge:      st.conf.GCMinimumAge,
+		InputMinimumAge: st.conf.InputMinimumAge,
+	}
 	return conf.Run(rmfs, st.db, idx)
 }
