@@ -304,6 +304,7 @@ const (
 	opDfaLZ                  bcop = 298
 	opslower                 bcop = 299
 	opsupper                 bcop = 300
-	optrap                   bcop = 301
-	_maxbcop                      = 302
+	opsadjustsize            bcop = 301
+	optrap                   bcop = 302
+	_maxbcop                      = 303
 )

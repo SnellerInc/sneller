@@ -5967,6 +5967,7 @@ func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
 		c.needscratch = true
 
 		c.op(v, opconcatlenget1)
+		c.op(v, opsadjustsize)
 		c.op(v, opallocstr)
 		c.ops16(v, opcode, originalInput)
 	}

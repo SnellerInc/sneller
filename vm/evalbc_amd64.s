@@ -8948,11 +8948,6 @@ TEXT bcconcatlenacc4(SB), NOSPLIT|NOFRAME, $0
 // Allocate string, which length is described by UINT64 elements in Z2/Z3
 TEXT bcallocstr(SB), NOSPLIT|NOFRAME, $0
   // NOTE: We want unsigned saturation here as too large objects would end up with 0xFFFFFFFF length, which is UINT32_MAX.
-  // XXX: 4-byte padding for lower/upper
-  VPBROADCASTQ CONSTQ_4(), Z4
-  VPADDQ Z4, Z2, Z2
-  VPADDQ Z4, Z3, Z3
-  // XXX: end padding
 
   VPMOVUSQD Z2, Y4
   VPMOVUSQD Z3, Y5
@@ -15085,6 +15080,29 @@ TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
     // 0x1f = 128 - ord('a')
     // 0x05 = 128 - ord('z') - 1
     BC_STR_CHANGE_CASE($0x0505050505050505, $0x1f1f1f1f1f1f1f1f, str_toupper_lookup, str_toupper_data)
+
+// bcsadjustsize adjusts buffer sizes before calling `bcallocstr` for LOWER/UPPER purposes.
+//
+// There are two reasons for that:
+// 1. LOWER/UPPER writes data with VPSCATTERDD, thus we need a 4-byte padding.
+// 2. There are exactly 20 cases when LOWER/UPPER would produce more
+//    UTF-8 bytes than input. Fortunately, all the cases are the same:
+//    a 2-byte input char is translated into a 3-byte char.
+//
+// Thus, in the worst case -- if all N input chars are 2-byte ones -- the
+// output has N + N/2 + 4 bytes.
+//
+// Input/output:
+// - Z2/Z3 (uint64)
+TEXT bcsadjustsize(SB), NOSPLIT|NOFRAME, $0
+    VPBROADCASTQ CONSTQ_4(), Z6
+    VPSRLQ  $1, Z2, Z4
+    VPSRLQ  $1, Z3, Z5
+    VPADDQ  Z4, Z2, Z2
+    VPADDQ  Z5, Z3, Z3
+    VPADDQ  Z6, Z2, Z2
+    VPADDQ  Z6, Z3, Z3
+    NEXT()
 
 // this is the 'unimplemented!' op
 TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
