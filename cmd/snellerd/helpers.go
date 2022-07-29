@@ -47,6 +47,14 @@ func (s *server) handle(handler func(http.ResponseWriter, *http.Request), method
 		if version != "" {
 			w.Header().Set("X-Sneller-Version", version)
 		}
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		for _, httpMethod := range methods {
 			if r.Method == httpMethod {
 				handler(w, r)
