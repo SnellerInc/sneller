@@ -23,6 +23,22 @@ import (
 	"unicode/utf8"
 )
 
+//GetTail returns the bytes between the length and the capacity of the provided array
+func GetTail(array []byte) []byte {
+	return array[len(array):cap(array)]
+}
+
+// AddTail concats the tail to the capacity of the string
+func AddTail(str, tail string) []byte {
+	return append([]byte(str), tail...)[:len(str)]
+}
+
+func StringInfo(str []byte) string {
+	len := len(str)
+	cap := cap(str)
+	return fmt.Sprintf("str=%v; (len %v, cap %v); tail=%v", string(str), len, cap, string(GetTail(str)))
+}
+
 func runeToUtf8Array(r rune) []byte {
 	buf := make([]byte, 4)
 	utf8.EncodeRune(buf, r)
@@ -239,7 +255,7 @@ func GenNeedleExt(needle string, reversed bool) string {
 }
 
 // GenPatternExt generates an extended pattern representation needed for UTF8 ci comparisons
-func GenPatternExt(segments []string) string {
+func GenPatternExt(segments []string) []byte {
 	const nAlternatives = 4
 	nBytes := 0
 	for _, segment := range segments {
@@ -253,7 +269,7 @@ func GenPatternExt(segments []string) string {
 		_, alt := stringAlternatives(segment, nAlternatives, false)
 		result = append(result, alt...)
 	}
-	return string(result[0:nBytes])
+	return result[0:nBytes]
 }
 
 // NormalizeRune normalizes the provided rune into the smallest and equal rune wrt case-folding.
@@ -369,10 +385,11 @@ func SegmentsToPattern(segments []string) (pattern []byte) {
 	return
 }
 
-func PatternToPrettyString(pattern []byte, method1 int) (result string) {
-	switch method1 {
+func PatternToPrettyString(pattern []byte, method int) (result string) {
+	switch method {
 	case 0:
-		result = PatternToRegex(pattern, true)
+		segments := PatternToSegments(pattern)
+		result = PatternToRegex(segments, true)
 	case 1:
 		pos := 0
 		for pos < len(pattern) {
@@ -423,9 +440,8 @@ func PatternNormalize(pattern []byte) []byte {
 	return SegmentsToPattern(segments)
 }
 
-func PatternToRegex(pattern []byte, caseSensitive bool) string {
+func PatternToRegex(segments []string, caseSensitive bool) string {
 	regex := ".*"
-	segments := PatternToSegments(pattern)
 	lastSegmentIndex := len(segments) - 1
 	for i, segment := range segments {
 		regex += regexp.QuoteMeta(segment) + "."

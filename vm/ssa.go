@@ -2327,7 +2327,7 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 	if stringext.HasNtnString(needle) {
 		segments := make([]string, 0)
 		segments = append(segments, needle) // only one single segment
-		patternExt := p.Constant(stringext.GenPatternExt(segments))
+		patternExt := p.Constant(string(stringext.GenPatternExt(segments)))
 		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
 	}
 	//return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), enc)
@@ -2443,7 +2443,7 @@ func (p *prog) patmatch(str *value, pat string, wc byte, caseSensitive bool) *va
 		return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), p.Constant(enc).imm)
 	}
 	if hasNtn { // segment has non-trivial normalization
-		patternExt := p.Constant(stringext.GenPatternExt(segments))
+		patternExt := p.Constant(string(stringext.GenPatternExt(segments)))
 		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
 	}
 	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), p.Constant(enc).imm)

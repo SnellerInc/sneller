@@ -82,14 +82,14 @@ func (dot *Graphviz) DotContent(dst io.Writer, graphName, graphTitle string) err
 	}
 	slices.Sort(dot.nodes)
 	for _, s := range dot.nodes {
-		_, err := fmt.Fprintf(dst, s)
+		_, err := fmt.Fprint(dst, s)
 		if err != nil {
 			return err
 		}
 	}
 	slices.Sort(dot.edges)
 	for _, s := range dot.edges {
-		_, err := fmt.Fprintf(dst, s)
+		_, err := fmt.Fprint(dst, s)
 		if err != nil {
 			return err
 		}

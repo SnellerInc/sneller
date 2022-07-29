@@ -15,11 +15,14 @@
 package vm
 
 import (
+	"fmt"
 	"math/rand"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
@@ -29,6 +32,11 @@ import (
 	"github.com/SnellerInc/sneller/regexp2"
 	"golang.org/x/exp/maps"
 )
+
+func TestMain(m *testing.M) {
+	rand.Seed(time.Now().UnixNano())
+	os.Exit(m.Run())
+}
 
 // TestStringCompareBF brute-force tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareBF(t *testing.T) {
@@ -133,8 +141,8 @@ func TestMatchpatRefBF(t *testing.T) {
 	// matchPatternRegex matches the first occurrence of the provided pattern similar to matchPatternReference
 	// matchPatternRegex implementation is the refImpl for the matchPatternReference implementation.
 	// the regex impl is about 10x slower and does not return expected value registers (offset and length)
-	matchPatternRegex := func(msg []byte, offset, length int, pattern []byte, caseSensitive bool) (laneOut bool) {
-		regex := stringext.PatternToRegex(pattern, caseSensitive)
+	matchPatternRegex := func(msg []byte, offset, length int, segments []string, caseSensitive bool) (laneOut bool) {
+		regex := stringext.PatternToRegex(segments, caseSensitive)
 		r, err := regexp.Compile(regex)
 		if err != nil {
 			t.Errorf("Could not compile regex %v", regex)
@@ -145,32 +153,38 @@ func TestMatchpatRefBF(t *testing.T) {
 
 	for _, caseSensitive := range []bool{false, true} {
 		for _, pattern := range patternSpace {
+			segments := stringext.PatternToSegments([]byte(pattern))
 			for _, data := range dataSpace {
-				wantMatch := matchPatternRegex([]byte(data), 0, len(data), []byte(pattern), caseSensitive)
-				obsMatch, obsOffset, obsLength := matchPatternReference([]byte(data), 0, len(data), []byte(pattern), caseSensitive)
+				wantMatch := matchPatternRegex([]byte(data), 0, len(data), segments, caseSensitive)
+				obsMatch, obsOffset, obsLength := matchPatternReference([]byte(data), 0, len(data), segments, caseSensitive)
 				if wantMatch != obsMatch {
-					t.Fatalf("matching data %q to pattern %q = %v: observed %v (offset %v; length %v); expected %v",
-						escapeNL(data), pattern, []byte(pattern), wantMatch, obsOffset, obsLength, wantMatch)
+					t.Fatalf("matching data %q to pattern %q = %v (case-sensitive %v): observed %v (offset %v; length %v); expected %v",
+						escapeNL(data), pattern, []byte(pattern), caseSensitive, obsMatch, obsOffset, obsLength, wantMatch)
 				}
 			}
 		}
 	}
 }
 
-// TestPatMatchBF brute-force tests for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
-func TestPatMatchBF(t *testing.T) {
-	type testcase struct {
+// TestMatchpatBF1 brute-force tests 1 for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
+func TestMatchpatBF1(t *testing.T) {
+
+	//FIXME opMatchpatUTF8Ci only seems to work when padding is not empty
+	padding := []byte{0x0}
+
+	type testSuite struct {
+		// name to describe this test-suite
 		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet, patternAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen, patternMaxlen int
 		// portable reference implementation: f(data, dictval) -> match, offset, length
-		refImpl func(string, string) (bool, int, int)
+		refImpl func([]byte, []string) (bool, int, int)
 		// bytecode implementation of comparison
 		op bcop
-		// string immediate -> dictionary value function
-		encode func(string) string
+		// encoder for segments -> dictionary value
+		encode func(segments []string) []byte
 		// evaluate equality function: wanted (match, offset, length); observed (match, offset, length) -> equality
 		evalEq func(bool, int, int, bool, uint32, uint32) bool
 	}
@@ -185,34 +199,35 @@ func TestPatMatchBF(t *testing.T) {
 		return true
 	}
 
-	cases := []testcase{
+	testSuites := []testSuite{
 		{
 			name:            "opMatchpatCs",
 			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
 			dataMaxlen:      4,
 			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
 			patternMaxlen:   5,
-			refImpl: func(data, dictval string) (match bool, offset, length int) {
-				return matchPatternReference([]byte(data), 0, len(data), []byte(dictval), true)
+			refImpl: func(data []byte, segments []string) (match bool, offset, length int) {
+				return matchPatternReference(data, 0, len(data), segments, true)
 			},
 			op:     opMatchpatCs,
-			encode: func(dictval string) string { return dictval },
+			encode: stringext.SegmentsToPattern,
 			evalEq: eqfunc1,
 		},
-		// NOTE: currently disabled due to a bug
-		/* {
-			name:            "opMatchpatCi",
-			dataAlphabet:    []rune{'s', 'S', 'ſ', 'k'},
-			dataMaxlen:      4,
-			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
-			patternMaxlen:   5,
-			refImpl: func(data, dictval string) (match bool, offset, length int) {
-				return matchPatternReference([]byte(data), 0, len(data), []byte(dictval), false)
+		// FIXME currently disabled due to a bug
+		/*
+			{
+				name:            "opMatchpatCi",
+				dataAlphabet:    []rune{'s', 'S', 'ſ', 'k'},
+				dataMaxlen:      4,
+				patternAlphabet: []rune{'s', 'S', 'k', 'K'},
+				patternMaxlen:   5,
+				refImpl: func(data []byte, segments []string) (match bool, offset, length int) {
+					return matchPatternReference(data, 0, len(data), segments, false)
+				},
+				op:     opMatchpatCi,
+				encode: stringext.SegmentsToPattern,
+				evalEq: eqfunc1,
 			},
-			op:     opMatchpatCi,
-			encode: func(dictval string) string { return dictval },
-			evalEq: eqfunc1,
-		},
 		*/
 		{
 			name:            "opMatchpatUTF8Ci",
@@ -220,23 +235,20 @@ func TestPatMatchBF(t *testing.T) {
 			dataMaxlen:      4,
 			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
 			patternMaxlen:   5,
-			refImpl: func(data, dictval string) (match bool, offset, length int) {
-				return matchPatternReference([]byte(data), 0, len(data), []byte(dictval), false)
+			refImpl: func(data []byte, segments []string) (match bool, offset, length int) {
+				return matchPatternReference(data, 0, len(data), segments, false)
 			},
-			op: opMatchpatUTF8Ci,
-			encode: func(dictval string) string { //NOTE: dictval is encoded for regular pattern
-				return stringext.GenPatternExt(stringext.PatternToSegments([]byte(dictval)))
-			},
+			op:     opMatchpatUTF8Ci,
+			encode: stringext.GenPatternExt,
 			evalEq: eqfunc1,
 		},
 	}
-	//FIXME opMatchpatUTF8Ci only seems to work when padding is not empty
-	padding := []byte{0x0}
 
 	var ctx bctestContext
 	defer ctx.Free()
-	run := func(t *testing.T, dictval string, data []string, tc *testcase) {
-		ctx.dict = append(ctx.dict[:0], pad(tc.encode(dictval)))
+	run := func(segments, data []string, tc *testSuite) {
+		dictval := string(tc.encode(segments))
+		ctx.dict = append(ctx.dict[:0], pad(dictval))
 		ctx.setScalarStrings(data, padding)
 		ctx.current = (1 << len(data)) - 1
 		scalarBefore := ctx.getScalarUint32()
@@ -249,7 +261,7 @@ func TestPatMatchBF(t *testing.T) {
 
 		// then
 		for i := range data {
-			wantLane, wantOffset, wantLength := tc.refImpl(data[i], dictval)
+			wantLane, wantOffset, wantLength := tc.refImpl([]byte(data[i]), segments)
 			obsLane := ctx.current&(1<<i) != 0
 			obsOffset := scalarAfter[0][i] - scalarBefore[0][i] // NOTE the reference implementation returns offset starting from zero
 			obsLength := scalarAfter[1][i]
@@ -262,33 +274,464 @@ func TestPatMatchBF(t *testing.T) {
 	}
 
 	const lanes = 16
-	for i := range cases {
-		tc := &cases[i]
-		t.Run(tc.name, func(t *testing.T) {
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
 			var group []string
-			dataSpace := createSpace(tc.dataMaxlen, tc.dataAlphabet)
-			patternSpace := createSpacePatternRandom(tc.patternMaxlen, tc.patternAlphabet, 1000)
+			dataSpace := createSpace(ts.dataMaxlen, ts.dataAlphabet)
+			patternSpace := createSpacePatternRandom(ts.patternMaxlen, ts.patternAlphabet, 1000)
 			for _, pattern := range patternSpace {
 				group = group[:0]
+				segments := stringext.PatternToSegments([]byte(pattern))
 				for _, data := range dataSpace {
 					group = append(group, data)
 					if len(group) < lanes {
 						continue
 					}
-					run(t, pattern, group, tc)
+					run(segments, group, &ts)
 					group = group[:0]
 				}
 				if len(group) > 0 {
-					run(t, pattern, group, tc)
+					run(segments, group, &ts)
 				}
 			}
 		})
 	}
 }
 
-// TestRegexMatchBF brute-force tests for: opDfaT6, opDfaT6Z, opDfaT7, opDfaT7Z, opDfaT8, opDfaT8Z, opDfaL, opDfaLZ
-func TestRegexMatchBF(t *testing.T) {
-	type testcase struct {
+// TestMatchpatBF2 brute-force tests 2 for: opMatchpatCs
+func TestMatchpatBF2(t *testing.T) {
+	info := "match-pattern case-sensitive (opMatchpatCs) BF2"
+	dataSpace := createSpace(6, []rune{'a', 'b', 'c', 's', 'ſ'})
+
+	testCases := []struct {
+		segments []string
+	}{
+		{[]string{"a"}},
+		{[]string{"ab"}},
+		{[]string{"a", "b"}},
+
+		{[]string{"aa", "b"}},
+		{[]string{"aaa", "b"}},
+		{[]string{"aaaa", "b"}},
+		{[]string{"aaaaa", "b"}},
+
+		{[]string{"aa", "b"}},
+		{[]string{"aaa", "b"}},
+		{[]string{"aaaa", "b"}},
+		{[]string{"aaaaa", "b"}},
+
+		{[]string{"a", "bc"}},
+		{[]string{"aa", "bc"}},
+		{[]string{"aaa", "bc"}},
+		{[]string{"aaaa", "bc"}},
+
+		{[]string{"aa", "bc"}},
+		{[]string{"aaa", "bc"}},
+		{[]string{"aaaa", "bc"}},
+
+		{[]string{"a", "", "b"}},
+		{[]string{"a", "", "", "b"}},
+
+		{[]string{"3", "", "1"}},
+		{[]string{"h"}},
+		{[]string{"11", "3"}},
+		{[]string{"ſ"}},
+		{[]string{"ſΩ"}},
+	}
+	type validateFun2 = func(data []byte, segments []string, ctx *bctestContext) (correct bool)
+
+	//uT unitTest structure
+	type unitTest struct {
+		msg          []byte // data pointed to by SI
+		dictValue    []byte // dictValue of the pattern: need to be encoded and passed as string constant via the immediate dictionary
+		resultLane   bool   // resulting lanes K1
+		resultOffset uint32 // resulting offset Z2
+		resultLength uint32 // resulting length Z3
+	}
+
+	toString := func(ut *unitTest) string {
+		return fmt.Sprintf("lane=%v; offset=%v; length=%v", ut.resultLane, ut.resultOffset, ut.resultLength)
+	}
+
+	equal := func(ut1, ut2 *unitTest) bool {
+		if ut1.resultLane != ut2.resultLane {
+			return false
+		}
+		if ut1.resultLane {
+			return (ut1.resultOffset == ut2.resultOffset) && (ut1.resultLength == ut2.resultLength)
+		}
+		return true
+	}
+
+	// createUData creates unit-test data from the provided data
+	createUData := func(lane bool, offset, length int) unitTest {
+		return unitTest{
+			resultLane:   lane,
+			resultOffset: uint32(offset),
+			resultLength: uint32(length),
+		}
+	}
+
+	// createUDataCtx creates unit-test data from the provided bctestContext
+	createUDataCtx := func(ctx *bctestContext) unitTest {
+		return unitTest{
+			resultLane:   (ctx.current & 1) == 1,
+			resultOffset: uint32(ctx.scalar[0][0] & 0xFFFFF),
+			resultLength: uint32(ctx.scalar[1][0] & 0xFFFFF),
+		}
+	}
+
+	logError := func(equal bool, info string, expected, observed *unitTest) {
+		if !equal {
+			dictionaryStr := fmt.Sprintf("'%v' = %v", string(expected.dictValue), expected.dictValue)
+			if expected.resultLane == observed.resultLane {
+				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: %v\nobserved: %v",
+					info, escapeNL(string(expected.msg)), dictionaryStr, toString(expected), toString(observed))
+			} else {
+				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: lane=%v\nobserved: lane=%v",
+					info, escapeNL(string(expected.msg)), dictionaryStr, expected.resultLane, observed.resultLane)
+			}
+		}
+	}
+
+	// checkSpace2 tests all combinations of elements in dataSpace and all elements of dictionarySpace
+	checkSpace2 := func(dataSpace []string, segmentsSpace [][]string, op bcop, valFun2 validateFun2) {
+		for _, dataStr := range dataSpace {
+			data := []byte(dataStr)
+			values := make([]string, 16)
+			for i := 0; i < 16; i++ {
+				values[i] = dataStr
+			}
+			for _, segments := range segmentsSpace {
+				dictElementEnc := string(stringext.SegmentsToPattern(segments))
+
+				var ctx bctestContext
+				ctx.Taint()
+				ctx.dict = append(ctx.dict, pad(dictElementEnc))
+				ctx.setScalarStrings(values, []byte{})
+				ctx.current = 0xFFFF
+
+				if err := ctx.ExecuteImm2(op, 0); err != nil {
+					t.Error(err)
+				}
+				if !valFun2(data, segments, &ctx) {
+					t.FailNow()
+				}
+				ctx.Free()
+			}
+		}
+	}
+
+	valFunc2 := func(data []byte, segments []string, ctx *bctestContext) (correct bool) {
+		expected := createUData(matchPatternReference(data, 0, len(data), segments, true))
+		observed := createUDataCtx(ctx)
+		correct = equal(&observed, &expected)
+		logError(correct, info, &expected, &observed)
+		return
+	}
+	for i, expected := range testCases {
+		t.Run(fmt.Sprintf(`case %d`, i), func(t *testing.T) {
+			segmentsSpace := [][]string{expected.segments}
+			checkSpace2(dataSpace, segmentsSpace, opMatchpatCs, valFunc2)
+		})
+	}
+}
+
+// TestMatchpatUT unit-tests for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
+func TestMatchpatUT(t *testing.T) {
+
+	//FIXME opMatchpatUTF8Ci only seems to work when padding is not empty
+	padding := []byte{0x0}
+
+	type unitTest struct {
+		msg          []byte   // data pointed to by SI
+		segments     []string // segments of the pattern: needs to be encoded and passed as string constant via the immediate dictionary
+		resultLane   bool     // resulting lanes K1
+		resultOffset uint32   // resulting offset Z2
+		resultLength uint32   // resulting length Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// portable reference implementation: f(data, dictval) -> match, offset, length
+		refImpl func(data []byte, segments []string) unitTest
+		// bytecode implementation of comparison
+		op bcop
+		// encoder for segments -> dictionary value
+		encode func(segments []string) []byte
+	}
+
+	equal := func(ut1, ut2 *unitTest) bool {
+		if ut1.resultLane != ut2.resultLane {
+			return false
+		}
+		if ut1.resultLane {
+			return (ut1.resultOffset == ut2.resultOffset) && (ut1.resultLength == ut2.resultLength)
+		}
+		return true
+	}
+
+	// createUT creates unit-test data from the provided data
+	createUT := func(lane bool, offset, length int) (uData unitTest) {
+		uData.resultLane = lane
+		uData.resultOffset = uint32(offset)
+		uData.resultLength = uint32(length)
+		return
+	}
+
+	logError := func(equal bool, info string, expected, observed *unitTest) {
+		toString := func(unit *unitTest) string {
+			return fmt.Sprintf("lane=%v; offset=%v; length=%v", unit.resultLane, unit.resultOffset, unit.resultLength)
+		}
+		if !equal {
+			patternEnc := stringext.SegmentsToPattern(expected.segments)
+			segmentsStr := stringext.PatternToPrettyString(patternEnc, 3)
+			dictionaryStr := fmt.Sprintf("'%v' = %v", string(patternEnc), segmentsStr)
+			if expected.resultLane == observed.resultLane {
+				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: %v\nobserved: %v",
+					info, escapeNL(string(expected.msg)), dictionaryStr, toString(expected), toString(observed))
+			} else {
+				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: lane=%v\nobserved: lane=%v",
+					info, escapeNL(string(expected.msg)), dictionaryStr, expected.resultLane, observed.resultLane)
+			}
+		}
+	}
+
+	run := func(ts *testSuite, expected *unitTest) {
+		data := string(expected.msg)
+
+		values := make([]string, 16)
+		for i := 0; i < 16; i++ {
+			values[i] = data
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.dict = append(ctx.dict, pad(string(ts.encode(expected.segments))))
+		ctx.setScalarStrings(values, padding)
+		ctx.current = 0xFFFF
+
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		observed1 := ts.refImpl(expected.msg, expected.segments)
+		equal1 := equal(expected, &observed1)
+		logError(equal1, "refImpl: "+ts.name, expected, &observed1)
+
+		observed2 := unitTest{
+			msg:          nil,
+			segments:     nil,
+			resultLane:   (ctx.current & 1) == 1,
+			resultOffset: uint32(ctx.scalar[0][0] & 0xFFFFF),
+			resultLength: uint32(ctx.scalar[1][0] & 0xFFFFF),
+		}
+
+		equal2 := equal(expected, &observed2)
+		logError(equal2, "skylakeX: "+ts.name, expected, &observed2)
+
+		correct := equal1 && equal2
+		if !correct {
+			t.Fail()
+		}
+		ctx.Free()
+	}
+
+	testSuites := []testSuite{
+		{
+			name: "match-pattern case-sensitive (opMatchpatCs)",
+			op:   opMatchpatCs,
+			refImpl: func(data []byte, segments []string) unitTest {
+				return createUT(matchPatternReference(data, 0, len(data), segments, true))
+			},
+			encode: stringext.SegmentsToPattern,
+			unitTests: []unitTest{
+				{[]byte("aa"), []string{"s", ""}, false, 0, 2},
+				{[]byte("a"), []string{"ab"}, false, 0, 0},
+				{[]byte("a"), []string{"a"}, true, 1, 0},
+
+				{stringext.AddTail("ab", "-----"), []string{"a"}, true, 1, 1},
+				{stringext.AddTail("ab", "-----"), []string{"ab"}, true, 2, 0},
+				{stringext.AddTail("a-b", "-----"), []string{"a"}, true, 1, 2},
+				{stringext.AddTail("a-b", "-----"), []string{"a", "b"}, true, 3, 0},
+				{stringext.AddTail("a-b-", "-----"), []string{"a", "b"}, true, 3, 1},
+				{stringext.AddTail("a-b", "-----"), []string{"ab"}, false, 3, 0},
+				{stringext.AddTail("-ab", "-----"), []string{"a"}, true, 2, 1},
+
+				// reading beyond the buffer issues:
+				{stringext.AddTail("a", "b---"), []string{"a", "b"}, false, 1, 0},
+				{stringext.AddTail("aa", "b---"), []string{"aa", "b"}, false, 2, 0},
+				{stringext.AddTail("aaa", "b---"), []string{"aaa", "b"}, false, 3, 0},
+				{stringext.AddTail("aaaa", "b---"), []string{"aaaa", "b"}, false, 4, 0},
+				{stringext.AddTail("aaaaa", "b---"), []string{"aaaaa", "b"}, false, 5, 0},
+
+				{stringext.AddTail("a", "b---"), []string{"ab"}, false, 1, 0},
+				{stringext.AddTail("aa", "b---"), []string{"ab"}, false, 2, 0},
+				{stringext.AddTail("aaa", "b---"), []string{"ab"}, false, 3, 0},
+				{stringext.AddTail("aaaa", "b---"), []string{"ab"}, false, 4, 0},
+				{stringext.AddTail("aaaaa", "b---"), []string{"ab"}, false, 5, 0},
+
+				{stringext.AddTail("a", "-b---"), []string{"a", "b"}, false, 1, 0},
+				{stringext.AddTail("aa", "-b---"), []string{"aa", "b"}, false, 2, 0},
+				{stringext.AddTail("aaa", "-b---"), []string{"aaa", "b"}, false, 3, 0},
+				{stringext.AddTail("aaaa", "-b---"), []string{"aaaa", "b"}, false, 4, 0},
+				{stringext.AddTail("aaaaa", "-b---"), []string{"aaaaa", "b"}, false, 5, 0},
+
+				{stringext.AddTail("a-b", "c----"), []string{"a", "bc"}, false, 3, 0},
+				{stringext.AddTail("aa-b", "c----"), []string{"aa", "bc"}, false, 4, 0},
+				{stringext.AddTail("aaa-b", "c----"), []string{"aaa", "bc"}, false, 5, 0},
+				{stringext.AddTail("aaaa-b", "c----"), []string{"aaaa", "bc"}, false, 6, 0},
+
+				{stringext.AddTail("a-", "bc----"), []string{"a", "bc"}, false, 2, 0},
+				{stringext.AddTail("aa-", "bc----"), []string{"aa", "bc"}, false, 3, 0},
+				{stringext.AddTail("aaa-", "bc----"), []string{"aaa", "bc"}, false, 4, 0},
+				{stringext.AddTail("aaaa-", "bc----"), []string{"aaaa", "bc"}, false, 5, 0},
+
+				{stringext.AddTail("a--b", "----"), []string{"a", "", "b"}, true, 4, 0},
+
+				{stringext.AddTail("a--", "b---"), []string{"a", "", "", "b"}, false, 3, 0},
+				{stringext.AddTail("-a--", "b---"), []string{"a", "", "", "b"}, false, 4, 0},
+				{stringext.AddTail("--a--", "b---"), []string{"a", "", "", "b"}, false, 5, 0},
+				{stringext.AddTail("---a--", "b---"), []string{"a", "", "", "b"}, false, 6, 0},
+
+				{stringext.AddTail("a-", "-b---"), []string{"a", "", "", "b"}, false, 2, 0},
+				{stringext.AddTail("-a-", "-b---"), []string{"a", "", "", "b"}, false, 3, 0},
+				{stringext.AddTail("--a-", "-b---"), []string{"a", "", "", "b"}, false, 4, 0},
+				{stringext.AddTail("---a-", "-b---"), []string{"a", "", "", "b"}, false, 5, 0},
+
+				{stringext.AddTail("a", "--b---"), []string{"a", "", "", "b"}, false, 1, 0},
+				{stringext.AddTail("-a", "--b---"), []string{"a", "", "", "b"}, false, 2, 0},
+				{stringext.AddTail("--a", "--b---"), []string{"a", "", "", "b"}, false, 3, 0},
+				{stringext.AddTail("---a", "--b---"), []string{"a", "", "", "b"}, false, 4, 0},
+
+				{[]byte("__ab_c_d__"), []string{"ab", "c", "d"}, true, 8, 2},
+				{[]byte("__ab_z_d__"), []string{"ab", "c", "d"}, false, 10, 0},
+				{[]byte("__ab__c_d__"), []string{"ab", "c", "d"}, false, 11, 0},
+				{[]byte("a---b"), []string{"a", "b"}, false, 5, 0},
+				{[]byte("__ab_ab_c_d__"), []string{"ab", "c", "d"}, true, 11, 2},
+				{[]byte("__ab_ab_z_d__"), []string{"ab", "c", "d"}, false, 13, 0}, // incorrect char z
+				{[]byte("a_c"), []string{"a", "", "c"}, false, 3, 0},              // one char too few between b and c
+				{[]byte("__ab_c_d__"), []string{"ab", "z", "d"}, false, 10, 0},
+
+				//NOTE skipchar is not allowed at the beginning or ending, thus these tests fail. Keeping them for reminder.
+				//{[]byte("aabb"), []string{"", "a"}, true},// initial skipchar is not allowed
+				//{[]byte("aaaa"), []string{"a", ""}, true},// final skipchar is not allowed
+
+				{ // bugfix: 21A93561 JGE -> JG
+					msg:          stringext.AddTail("aaaa", "-b"),
+					segments:     []string{"aaaa", "b"},
+					resultLane:   false,
+					resultOffset: 4,
+					resultLength: 0,
+				},
+
+				{[]byte("33--1"), []string{"3", "", "1"}, true, 5, 0},
+				{[]byte("€𐍈€¢"), []string{"h"}, false, 12, 0},
+				{[]byte("111-3"), []string{"11", "3"}, true, 5, 0},
+				{[]byte("$𐍈"), []string{"𐍈€¢"}, false, 5, 0},
+				{[]byte("ac¢A"), []string{"a"}, true, 1, 4},
+
+				{[]byte("a-b"), []string{"a", "b"}, true, 3, 0},
+				{[]byte("a¢b"), []string{"a", "b"}, true, 4, 0},
+
+				{[]byte("1a-b"), []string{"a", "b"}, true, 4, 0},
+				{[]byte("¢a-b"), []string{"a", "b"}, true, 5, 0},
+
+				{[]byte("ĳsh"), []string{"ĳ"}, true, 2, 2},
+			},
+		},
+		{
+			name: "match-pattern case-insensitive (opMatchpatCi)",
+			op:   opMatchpatCi,
+			refImpl: func(data []byte, segments []string) unitTest {
+				return createUT(matchPatternReference(data, 0, len(data), segments, false))
+			},
+			encode: stringext.SegmentsToPattern,
+			unitTests: []unitTest{
+				//FIXME next ut seems to trigger a bug, but this issue does not exists say 1 year ago
+				//{[]byte("a"), []string{"a"}, true, 1, 0},
+				{[]byte("a"), []string{"A"}, true, 1, 0},
+				{[]byte("11-2"), []string{"1", "2"}, true, 4, 0},
+				{[]byte("€€-𐍈"), []string{"€", "𐍈"}, true, 11, 0},
+				//FIXME {[]byte("ksss"), []string{"kssS"}[, true, 4, 0},
+			},
+		},
+		{
+			name: "match-pattern case-insensitive UTF8 (opMatchpatUTF8Ci)",
+			op:   opMatchpatUTF8Ci,
+			refImpl: func(data []byte, segments []string) unitTest {
+				return createUT(matchPatternReference(data, 0, len(data), segments, false))
+			},
+			encode: stringext.GenPatternExt,
+			unitTests: []unitTest{
+				//TODO the next test only succeeds when there is padding between the messages, the test code adds some but that should not be
+				{[]byte("s"), []string{"Ss"}, false, 1, 0},
+				//TODO the next test triggers a bug
+				//{[]byte("s"), []string{"sxs"), false, 1, 0},
+
+				{[]byte("c-d"), []string{"c"}, true, 1, 2},
+				{[]byte("cc-d"), []string{"cc"}, true, 2, 2},
+
+				{[]byte("bb-cc-d"), []string{"bb", "cc"}, true, 5, 2},
+				{[]byte("aa-bb-cc-d"), []string{"aa", "bb", "cc"}, true, 8, 2},
+				{[]byte("aa-bb-ce-d"), []string{"aa", "bb", "cc"}, false, 0, 0},
+
+				{[]byte("aaaaa"), []string{"ab"}, false, 0, 0},
+				{[]byte("aa"), []string{"ab"}, false, 0, 0},
+				{[]byte("a"), []string{"ab"}, false, 0, 0},
+
+				{[]byte("a"), []string{"a"}, true, 1, 0},
+				{[]byte("€"), []string{"€"}, true, 3, 0},
+				{[]byte("ba"), []string{"a"}, true, 2, 0},
+				{[]byte("b€"), []string{"€"}, true, 4, 0},
+
+				{[]byte("a"), []string{"A"}, true, 1, 0},
+				{[]byte("1-2"), []string{"1", "2"}, true, 3, 0},
+				{[]byte("11-2"), []string{"1", "2"}, true, 4, 0},
+
+				{[]byte("€-𐍈"), []string{"€", "𐍈"}, true, 8, 0},
+				{[]byte("€€-𐍈"), []string{"€", "𐍈"}, true, 11, 0},
+				{[]byte("€1€2"), []string{"1", "2"}, true, 8, 0},
+				{[]byte("€1€2€"), []string{"1", "2"}, true, 8, 3},
+
+				// regular non-trivial normalization ĳ -> Ĳ
+				// hard code-points with non-trivial normalization with different byte length encodings
+				{[]byte("ĳsh"), []string{"ĳ"}, true, 2, 2},
+				{[]byte("ĳsh"), []string{"Ĳ"}, true, 2, 2},
+				{[]byte("1ĳ1ĳ1"), []string{"Ĳ", "Ĳ"}, true, 6, 1},
+
+				// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+				// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+				// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+
+				{[]byte("ſ"), []string{"S"}, true, 2, 0},
+				{[]byte("Ω"), []string{"Ω"}, true, 3, 0},
+				{[]byte("K"), []string{"K"}, true, 3, 0},
+
+				{[]byte("S"), []string{"ſ"}, true, 1, 0},
+				{[]byte("Ω"), []string{"Ω"}, true, 2, 0},
+				{[]byte("K"), []string{"K"}, true, 1, 0},
+
+				{[]byte("1ſ1ĳ1"), []string{"S", "Ĳ"}, true, 6, 1},
+				{[]byte("1Ω1ĳ1"), []string{"Ω", "Ĳ"}, true, 7, 1},
+				{[]byte("1K1ĳ1"), []string{"K", "Ĳ"}, true, 7, 1},
+			},
+		},
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestRegexMatchBF1 brute-force tests 1 for: opDfaT6, opDfaT6Z, opDfaT7, opDfaT7Z, opDfaT8, opDfaT8Z, opDfaL, opDfaLZ
+func TestRegexMatchBF1(t *testing.T) {
+	type testSuite struct {
 		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet, regexAlphabet []rune
@@ -299,7 +742,7 @@ func TestRegexMatchBF(t *testing.T) {
 		// type of regex to test: can be regexp2.Regexp or regexp2.SimilarTo
 		regexType regexp2.RegexType
 	}
-	cases := []testcase{
+	testSuites := []testSuite{
 		{
 			name:          "Regexp with UTF8",
 			dataAlphabet:  []rune{'a', 'b', 'c', 'Ω'}, // U+2126 'Ω' (3 bytes)
@@ -338,33 +781,33 @@ func TestRegexMatchBF(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
 			var dataSpace []string
-			if tc.dataMaxSize == -1 {
-				dataSpace = createSpace(tc.dataMaxlen, tc.dataAlphabet)
+			if ts.dataMaxSize == -1 {
+				dataSpace = createSpace(ts.dataMaxlen, ts.dataAlphabet)
 			} else {
-				dataSpace = createSpaceRandom(tc.dataMaxlen, tc.dataAlphabet, tc.dataMaxSize)
+				dataSpace = createSpaceRandom(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
 			}
-			regexSpace := createSpaceRegex(tc.regexMaxlen, tc.regexAlphabet, tc.regexType)
-			runRegexTests(t, dataSpace, regexSpace, tc.regexType, false)
+			regexSpace := createSpaceRegex(ts.regexMaxlen, ts.regexAlphabet, ts.regexType)
+			runRegexTests(t, dataSpace, regexSpace, ts.regexType, false)
 		})
 	}
 }
 
-// TestRegexMatchUT unit-tests for regexp2.Regexp and regexp2.SimilarTo
-func TestRegexMatchUT(t *testing.T) {
+// TestRegexMatchBF2 brute-force tests 2 for: regexp2.Regexp and regexp2.SimilarTo
+func TestRegexMatchBF2(t *testing.T) {
 
-	type testcase2 struct {
+	type unitTest struct {
 		// regex expression to test
 		expr string
-		// boolean for debugging: to dump the data-structures to file
+		// boolean to dump the data-structures to file
 		writeDot bool
 	}
-	type testcase struct {
+	type testSuite struct {
 		name string
-		// the actual test-cases to run
-		tc2 []testcase2
+		// the actual unit-test to run
+		unitTests []unitTest
 		// alphabet from which to generate needles
 		dataAlphabet []rune
 		// max length of the words made of alphabet
@@ -374,43 +817,43 @@ func TestRegexMatchUT(t *testing.T) {
 		// type of regex to test: can be regexp2.Regexp or regexp2.SimilarTo
 		regexType regexp2.RegexType
 	}
-	cases := []testcase{
+	testSuites := []testSuite{
 		{
 			name:         "Regexp UnitTests",
 			regexType:    regexp2.Regexp,
 			dataAlphabet: []rune{'a', 'b', 'c', 'd', '\n', 'Ω'},
 			dataMaxlen:   6,
 			dataMaxSize:  -1, // negative means infinite
-			tc2: []testcase2{
+			unitTests: []unitTest{
 				//automaton with flags
-				{`a$`, false},
+				{expr: `a$`},
 				//NOT supported {CreateDs(`a|$`, false},
-				{`a|b$`, false},
+				{expr: `a|b$`},
 				//automaton without flags
-				{`.*a.b`, false},
-				{`.*a.a`, false},
-				{`a*.b`, false},
-				{`a*.b*.c`, false},
-				{`a*.b*.c*.d`, false},
-				{`c*.*(aa|cd)`, false},
-				{`(c*b|.a)`, false},
-				{`.*b*.a`, false},
-				{`b*.a*.`, false},
-				{`b*..*b`, false},
-				{`a*..*a`, false},
-				{`..|aaaa`, false},
-				{`..|aa`, false},
-				{`.ba|aa`, false},
-				{`a*...`, false},
-				{`a*..`, false},
-				{`c*.*aa`, false},
-				{`.a|aaa`, false},
-				{`ab|.c`, false},
-				{`.*ab`, false},
-				{`a*..a`, false},
-				{`a*..b`, false},
-				{`a*.b`, false},
-				{`.*ab.*cd`, false},
+				{expr: `.*a.b`},
+				{expr: `.*a.a`},
+				{expr: `a*.b`},
+				{expr: `a*.b*.c`},
+				{expr: `a*.b*.c*.d`},
+				{expr: `c*.*(aa|cd)`},
+				{expr: `(c*b|.a)`},
+				{expr: `.*b*.a`},
+				{expr: `b*.a*.`},
+				{expr: `b*..*b`},
+				{expr: `a*..*a`},
+				{expr: `..|aaaa`},
+				{expr: `..|aa`},
+				{expr: `.ba|aa`},
+				{expr: `a*...`},
+				{expr: `a*..`},
+				{expr: `c*.*aa`},
+				{expr: `.a|aaa`},
+				{expr: `ab|.c`},
+				{expr: `.*ab`},
+				{expr: `a*..a`},
+				{expr: `a*..b`},
+				{expr: `a*.b`},
+				{expr: `.*ab.*cd`},
 			},
 		},
 		{
@@ -419,35 +862,35 @@ func TestRegexMatchUT(t *testing.T) {
 			dataAlphabet: []rune{'a', 'b', 'c', 'd', '\n', 'Ω'},
 			dataMaxlen:   6,
 			dataMaxSize:  -1, // negative means infinite
-			tc2: []testcase2{
-				{`(aa|b*)`, false}, //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
-				{`a*`, false},      //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
-				{`ab|cd`, false},
-				{`%a_b`, false},
-				{`%a_a`, false},
-				{`a%b`, false},
-				{`a%b%c`, false},
-				{`a%b%c%d`, false},
-				{`c*%(aa|cd)`, false},
-				{`(c*b|_a)`, false},
-				{`c*b|_a`, false},
-				{`%b*_a`, false},
-				{`b*_a*_`, false},
-				{`b*_%b`, false},
-				{`a*_%a`, false},
-				{`__|aaaa`, false},
-				{`__|aa`, false},
-				{`_ba|aa`, false},
-				{`a*___`, false},
-				{`a*__`, false},
-				{`c*%aa`, false},
-				{`_a|aaa`, false},
-				{`ab|_c`, false},
-				{`%ab`, false},
-				{`a*__a`, false},
-				{`a*__b`, false},
-				{`a*_b`, false},
-				{`%ab%cd`, false},
+			unitTests: []unitTest{
+				{expr: `(aa|b*)`}, //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
+				{expr: `a*`},      //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
+				{expr: `ab|cd`},
+				{expr: `%a_b`},
+				{expr: `%a_a`},
+				{expr: `a%b`},
+				{expr: `a%b%c`},
+				{expr: `a%b%c%d`},
+				{expr: `c*%(aa|cd)`},
+				{expr: `(c*b|_a)`},
+				{expr: `c*b|_a`},
+				{expr: `%b*_a`},
+				{expr: `b*_a*_`},
+				{expr: `b*_%b`},
+				{expr: `a*_%a`},
+				{expr: `__|aaaa`},
+				{expr: `__|aa`},
+				{expr: `_ba|aa`},
+				{expr: `a*___`},
+				{expr: `a*__`},
+				{expr: `c*%aa`},
+				{expr: `_a|aaa`},
+				{expr: `ab|_c`},
+				{expr: `%ab`},
+				{expr: `a*__a`},
+				{expr: `a*__b`},
+				{expr: `a*_b`},
+				{expr: `%ab%cd`},
 			},
 		},
 		{
@@ -456,9 +899,9 @@ func TestRegexMatchUT(t *testing.T) {
 			dataAlphabet: []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'},
 			dataMaxlen:   12,
 			dataMaxSize:  100000,
-			tc2: []testcase2{
-				{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`, false},
-				{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`, false},
+			unitTests: []unitTest{
+				{expr: `^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$`},
+				{expr: `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`},
 			},
 		},
 		{
@@ -467,27 +910,656 @@ func TestRegexMatchUT(t *testing.T) {
 			dataAlphabet: []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'x', '.'},
 			dataMaxlen:   12,
 			dataMaxSize:  100000,
-			tc2: []testcase2{
-				{`^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`, false},
-				{`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, false},
+			unitTests: []unitTest{
+				{expr: `^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`},
+				{expr: `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`},
 			},
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
 			var dataSpace []string
-			if tc.dataMaxSize == -1 {
-				dataSpace = createSpace(tc.dataMaxlen, tc.dataAlphabet)
+			if ts.dataMaxSize == -1 {
+				dataSpace = createSpace(ts.dataMaxlen, ts.dataAlphabet)
 			} else {
-				dataSpace = createSpaceRandom(tc.dataMaxlen, tc.dataAlphabet, tc.dataMaxSize)
+				dataSpace = createSpaceRandom(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
 			}
-			for _, tc2 := range tc.tc2 {
-				regexSpace := []string{tc2.expr} // space with only one element
-				runRegexTests(t, dataSpace, regexSpace, tc.regexType, tc2.writeDot)
+			for _, ut := range ts.unitTests {
+				regexSpace := []string{ut.expr} // space with only one element
+				runRegexTests(t, dataSpace, regexSpace, ts.regexType, ut.writeDot)
 			}
 		})
 	}
+}
+
+// TestRegexMatchUT unit-tests for: regexp2.Regexp and regexp2.SimilarTo
+func TestRegexMatchUT(t *testing.T) {
+	type unitTest struct {
+		msg       string // data pointed to by SI
+		expr      string // dictValue of the pattern: need to be encoded and passed as string constant via the immediate dictionary
+		result    bool   // resulting lanes K1
+		regexType regexp2.RegexType
+	}
+
+	const regexType = regexp2.Regexp
+	unitTests := []unitTest{
+		//FIXME{`a`, `$`, true, regexp2.Regexp},
+		//FIXME{`a`, `(a|)`, true, regexp2.SimilarTo},
+		//FIXME{`ab`, `(a|)($|c)`, true, regexp2.Regexp},
+		//FIXME{`ab`, `(a|$)($|c)`, true, regexp2.Regexp},
+		//NOT supported {`a`, `a|$`, true, regexp2.Regexp},
+		//NOT supported {`b`, `a|$`, false,  regexp2.Regexp},
+		//NOT supported {`ab`, `a|$`, true, regexp2.Regexp},
+
+		{"a", "|", true, regexp2.Regexp}, //NOTE regex "|" is incorrectly handled in DFALZ
+
+		{`a`, ``, false, regexp2.SimilarTo},
+		{`a`, ``, true, regexp2.Regexp},
+		{`a`, `^$`, false, regexp2.Regexp},
+		{`a`, `^`, true, regexp2.Regexp},
+		{`bb`, `(a|)`, true, regexp2.Regexp},
+
+		//regex used for blog post
+		//{`0.0.000.0`, `^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`, true,  regexp2.Regexp, true},
+		//{`1.1.1.1`, `^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, true, regexp2.Regexp, true},
+
+		{"a", "^a", true, regexp2.Regexp},
+		{"ab", "ab", true, regexp2.SimilarTo},
+		{"abc", "ab", false, regexp2.SimilarTo},
+		{"a", "(a|b)", true, regexp2.SimilarTo},
+		{"ab", "(a|b)", false, regexp2.SimilarTo},
+		{"ba", "(a|b)", false, regexp2.SimilarTo},
+		{"aaa", `__|aa`, false, regexp2.SimilarTo},
+		{"aba", `ab|_c`, false, regexp2.SimilarTo},
+		{"aaba", `%a_b`, false, regexp2.SimilarTo},
+		{"xaxb", `.*a.b`, true, regexp2.Regexp},
+
+		{`ab`, `a(b|$)($|c)`, true, regexp2.Regexp}, //two outgoing edges b and b$
+
+		// end-of-line assertion $, and begin-of-line assertion '^' are not defined for SIMILAR TO
+		{`a`, `.$`, true, regexp2.Regexp},
+		{`a`, `a`, true, regexp2.Regexp},
+		{`a`, `a$`, true, regexp2.Regexp},
+		{`ab`, `a`, true, regexp2.Regexp},
+		{`ab`, `a$`, false, regexp2.Regexp},
+		{`b`, `a|b$`, true, regexp2.Regexp},
+
+		{`ab`, `a($|b)`, true, regexp2.Regexp},
+		{`ab`, `a($|b)($|c)`, true, regexp2.Regexp},
+		{`abc`, `a($|b)($|c)`, true, regexp2.Regexp},
+		{`abcx`, `a($|b)($|c)`, true, regexp2.Regexp},
+		{`0a0`, `0.0$`, true, regexp2.Regexp},
+		{`a\nb`, `a$`, false, regexp2.Regexp}, // equal to postgres
+		{`ba`, `a$`, true, regexp2.Regexp},    // equal to postgres; fault: sneller
+		{`a\nx`, `a$`, false, regexp2.Regexp}, // equal to postgres
+
+		// in POSIX (?s) is the default
+		{`a`, `(?s)a$`, true, regexp2.Regexp},
+		{`ax`, `(?s)a$`, false, regexp2.Regexp},
+		{"a\n", `(?s)a$`, false, regexp2.Regexp},
+		{"a\n", `(?m)a$`, true, regexp2.Regexp},
+
+		//INVESTIGATE {`a`, `$*`, false, regexp2.Regexp}, // not equal to postgres; fault: golang
+		{`e`, `^(.*e$)`, true, regexp2.Regexp},
+
+		// \b will issue InstEmptyWidth with EmptyWordBoundary
+		//FIXME{`0`, `\b`, true,  regexp2.Regexp, true},    // `\b` assert position at a word boundary
+		{`0`, `\\B`, false, regexp2.Regexp}, // `\b` assert position at a word boundary
+
+		{"\nb", "(\x0A|\x0B)b|.a", true, regexp2.Regexp}, // range with \n
+		{"\nb", ".a|((.|\n)b)", true, regexp2.Regexp},
+		{"\na", ".a|((.|\n)b)", false, regexp2.Regexp},
+		{`xa`, "\n|.|.a", true, regexp2.Regexp}, // merge newline with .
+		{`xa`, "\n|.a", true, regexp2.Regexp},
+
+		// not sure how to use ^\B not at ASCII word boundary
+		{`abc`, `x\Babc`, false, regexp2.Regexp},
+		{`0`, `.*0.......1`, false, regexp2.Regexp}, // combinatoric explosion of states
+
+		{`200000`, `^(.*1|0)`, false, regexp2.Regexp}, //cannot add .* before begin-of-line assertion
+		{`a`, `[^0-9]`, true, regexp2.Regexp},
+
+		//IPv6
+		{`2001:0db8:85a3:0000:0000:8a2e:0370:7334`, `(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))`, true, regexp2.Regexp},
+
+		//url
+		{`google.com`, `(?:[a-zA-Z0-9]{1,62}(?:[-\.][a-zA-Z0-9]{1,62})+)(:\d+)?`, true, regexp2.Regexp},
+
+		//email address
+		{`blah@gmail.com`, `[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}`, true, regexp2.Regexp},
+
+		{`x`, `\D`, true, regexp2.Regexp},
+		{`x`, `[^0-9]`, true, regexType},
+		{`xx`, `..|0001`, true, regexType},
+
+		// counted repetition: repetition count larger than 1000 is not allowed
+		{`aab`, `a{1,1000}b`, true, regexType},
+
+		// case insensitive flag (?i) default: false
+		{`ſ`, `ſ`, true, regexp2.Regexp},
+		{`aS`, `(?i)aſ`, true, regexp2.Regexp},
+		{`as`, `(?i)aſ`, true, regexp2.Regexp},
+		{`aſ`, `(?i)aſ`, true, regexp2.Regexp},
+		{`aSv`, `(?i)aſ`, true, regexp2.Regexp},
+		{`ASv`, `(?i)aſ`, true, regexp2.Regexp},
+		{`asv`, `(?i)aſ`, true, regexp2.Regexp},
+		{`aſv`, `(?i)aſ`, true, regexp2.Regexp},
+		{`v`, `(?i)aſ`, false, regexp2.Regexp},
+
+		// multi-line mode (?m) default: false. Multi-line mode only affects the behavior of ^ and $.
+		// In the multiline mode they match not only at the beginning and the end of the string, but
+		// also at start/end of line.
+		{`xxab`, `ab$`, true, regexp2.Regexp},
+		//INVESTIGATE {`a\nxb`, `(?m)a$.b`, true, regexp2.Regexp},
+
+		// single-line mode (?s) let . match \n, default: false
+		{"a\nb", `(?s)a.b`, true, regexp2.Regexp}, //not regexType: (?s) = dot all flag (thus including nl )
+		{"a\nb", `a.b`, false, regexType},
+		{"a\r\nb", `(?s)a.b`, false, regexp2.Regexp}, // Note: windows eol is not recognized
+
+		// ungreedy (?U) swap meaning of x* and x*?, x+ and x+?, etc, default: false
+		// SIMILAR TO: performs only matches and once the first accepting substring is found it returns true
+
+		{`0`, `%001207890`, false, regexType},
+		{`aaaaxbbbbxc`, `a*.b*.c`, true, regexType},
+		{`cca`, `^(c*b|.a)`, false, regexType},
+		{`\n`, `.`, true, regexp2.Regexp}, //. matches any character (except for line terminators)
+
+		{`200000`, `.*1|0`, true, regexType},
+		{`!\\`, `a`, false, regexType},
+
+		{`0`, `00000000'7'`, false, regexType},
+		{`a`, `^a^`, false, regexType},
+
+		{`Ա`, `\x00`, false, regexType},
+		{`Ա`, `\x01`, false, regexType},
+
+		{"\x00", "\x00", true, regexType},
+		{``, "\x00", false, regexType},
+		{`0`, "0\x01", false, regexType},
+		{`0`, "0\x00", false, regexType},
+		//FIXME{`0`, `^$0`, false, regexp2.Regexp},
+		{`b`, `.*aa`, false, regexp2.Regexp},
+		{`ba`, `.*aa`, false, regexp2.Regexp},
+		{`baa`, `.*aa`, true, regexp2.Regexp},
+		{`0`, ".*\x00", false, regexp2.Regexp},
+		{`ac`, `(.*ac)|(.*bc)`, true, regexp2.Regexp},
+		{`xayb`, `%a_b`, true, regexp2.SimilarTo},
+		{`acdx`, `(.*a.*c)|(.*cd)`, true, regexp2.Regexp},
+
+		{`acd`, `(.*a.*cd)|(.*cd)`, true, regexp2.Regexp},
+		{`cd`, `(.*a.*cd)|(.*cd)`, true, regexp2.Regexp},
+		{`axcd`, `(.*a.*cd)|(.*cd)`, true, regexp2.Regexp},
+		{`axacd`, `(.*a.*cd)|(.*cd)`, true, regexp2.Regexp},
+
+		{`abcd`, `.*ab.*cd`, true, regexp2.Regexp},
+		{`cd`, `.*ab.*cd`, false, regexp2.Regexp},
+		{`aabccd`, `.*ab.*cd`, true, regexp2.Regexp},
+		{`aabacd`, `.*ab.*cd`, true, regexp2.Regexp},
+		{`xabxcd`, `.*ab.*cd`, true, regexp2.Regexp},
+
+		{`abcd`, `(.*ab)*cd`, true, regexp2.Regexp},
+		{`cd`, `(.*ab)*cd`, true, regexp2.Regexp},
+		{`aabcd`, `(.*ab)*cd`, true, regexp2.Regexp},
+		{`xabcd`, `(.*ab)*cd`, true, regexp2.Regexp},
+		{`abxcd`, `(.*ab)*cd`, true, regexp2.Regexp},
+
+		{`abcd`, `.*abcd`, true, regexp2.Regexp},
+		{`xabcd`, `.*abcd`, true, regexp2.Regexp},
+		{`xbcd`, `.*abcd`, false, regexp2.Regexp},
+		{`aabcd`, `.*abcd`, true, regexp2.Regexp},  // backtrack from pos1
+		{`abbcd`, `.*abcd`, false, regexp2.Regexp}, // backtrack from pos2
+		{`ababcd`, `.*abcd`, true, regexp2.Regexp},
+		{`abcbcd`, `.*abcd`, false, regexp2.Regexp},
+		{`abccd`, `.*abcd`, false, regexp2.Regexp}, // backtrack from pos3
+
+		{`ab`, `.*ab`, true, regexp2.Regexp},
+		{`xab`, `.*ab`, true, regexp2.Regexp},
+		{`xb`, `.*ab`, false, regexp2.Regexp},
+		{`xab`, `.*ab`, true, regexp2.Regexp},
+		{`Արամab`, `.*ab`, true, regexp2.Regexp}, //NOTE UTF8 only supported in Large
+
+		{`aab`, `.*ab`, true, regexp2.Regexp}, // backtrack from pos1
+		{`xaab`, `.ab`, true, regexp2.Regexp},
+		{`xxab`, `.ab`, true, regexp2.Regexp},
+		{`Աab`, `.*ab`, true, regexp2.Regexp}, //NOTE UTF8 only supported in Large
+		{`aab`, `.ab`, true, regexp2.Regexp},
+		{`ab`, `.ab`, false, regexp2.Regexp},
+		{`xab`, `.ab`, true, regexp2.Regexp},
+
+		{`xa`, `%_a`, true, regexp2.SimilarTo},
+		{`aa`, `%_a`, true, regexp2.SimilarTo},
+		{`a`, `%_a`, false, regexp2.SimilarTo},
+		{`x`, `%_a`, false, regexp2.SimilarTo},
+		{`Աa`, `%_a`, true, regexp2.SimilarTo}, //NOTE UTF8 only supported in Large
+
+		{`ac`, `(a|b)+c`, true, regexType},
+		{`bc`, `(a|b)+c`, true, regexType},
+		{`abc`, `(a|b)+c`, true, regexType},
+
+		{`Xab`, `X([a-c]+)b`, true, regexType},
+		{`Xaby`, `X([a-c]+)b`, true, regexType},
+		{`Xbb`, `X([a-c]+)b`, true, regexType},
+		{`Xcb`, `X([a-c]+)b`, true, regexType},
+		{`Xbb`, `X([a-c]+)b`, true, regexType},
+		{`Xdb`, `X([a-c]+)b`, false, regexType},
+
+		{`0.0.000.0`, `^(?:[0-9]{1,3}\.){3}[0-9]{1,3}`, true, regexp2.Regexp},
+		{`1.1.1.1`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, true, regexp2.SimilarTo},
+		{`255.255.255.255`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, true, regexp2.SimilarTo},
+		{`999.999.999.999`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, true, regexp2.SimilarTo},
+		{`1.1.1`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, false, regexp2.SimilarTo},
+		{`1.1.1a`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, false, regexp2.SimilarTo},
+		{`1.1.1.1a`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, false, regexp2.SimilarTo},
+		{`10.1000.10.10`, `(?:[0-9]{1,3}.){3}[0-9]{1,3}`, false, regexp2.SimilarTo},
+
+		{`1.1.1.1`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, true, regexp2.SimilarTo},
+		{`255.255.255.255`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, true, regexp2.SimilarTo},
+		{`1.1.1`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, false, regexp2.SimilarTo},
+		{`1.1.1a`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, false, regexp2.SimilarTo},
+		{`1.1.1.1a`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, false, regexp2.SimilarTo},
+		{`10.1000.10.10`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, false, regexp2.SimilarTo},
+		{`0.0.0.0`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, true, regexp2.SimilarTo},
+
+		// examples from https://firebirdsql.org/refdocs/langrefupd25-similar-to.html
+
+		//A regular expression that doesn't contain any special or escape characters only
+		//matches strings that are identical to itself (subject to the collation in use).
+		//That is, it functions just like the “=” operator:
+		//
+		//'Apple' similar to 'Apple'              -- true
+		//'Apples' similar to 'Apple'             -- false
+		//'Apple' similar to 'Apples'             -- false
+		//'APPLE' similar to 'Apple'              -- depends on collation
+		{`Apple`, `Apple`, true, regexp2.SimilarTo},
+		//TODO our code   : {`Apples`, `Apple`, true, regexp2.SimilarTo},
+		//TODO firebirdSQL: {`Apples`, `Apple`, false, regexp2.SimilarTo},
+		//TODO mySql      : {`Apples`, `Apple`, true, regexp2.SimilarTo},
+		{`Apple`, `Apples`, false, regexp2.SimilarTo},
+		{`APPLE`, `(?i)Apple`, true, regexp2.SimilarTo},
+
+		//A bunch of characters enclosed in brackets define a character class. A character
+		//in the string matches a class in the pattern if the character is a member of the class:
+		//
+		//'Citroen' similar to 'Cit[arju]oen'     -- true
+		//'Citroen' similar to 'Ci[tr]oen'        -- false
+		//'Citroen' similar to 'Ci[tr][tr]oen'    -- true
+		{`Citroen`, `Cit[arju]oen`, true, regexp2.SimilarTo},
+		{`Citroen`, `Ci[tr]oenn`, false, regexp2.SimilarTo},
+		{`Citroen`, `Ci[tr][tr]oen`, true, regexp2.SimilarTo},
+
+		//As can be seen from the second line, the class only matches a single character, not a sequence.
+		//
+		//Within a class definition, two characters connected by a hyphen define a range. A range
+		//comprises the two endpoints and all the characters that lie between them in the active
+		//collation. Ranges can be placed anywhere in the class definition without special delimiters
+		//to keep them apart from the other elements.
+		//
+		//'Datte' similar to 'Dat[q-u]e'          -- true
+		//'Datte' similar to 'Dat[abq-uy]e'       -- true
+		//'Datte' similar to 'Dat[bcg-km-pwz]e'   -- false
+		{`Datte`, `Dat[q-u]e`, true, regexp2.SimilarTo},
+		{`Datte`, `Dat[abq-uy]e`, true, regexp2.SimilarTo},
+		{`Datte`, `Dat[bcg-km-pwz]e`, false, regexp2.SimilarTo},
+
+		//The following predefined character classes can also be used in a class definition:
+		// FOR go: see https://yourbasic.org/golang/regexp-cheat-sheet/
+		//
+		//[:ALPHA:]
+		//	Latin letters a..z and A..Z. With an accent-insensitive collation, this class also matches
+		//	accented forms of these characters.
+		//
+		//[:DIGIT:]  (in Go \d)
+		//	Decimal digits 0..9.
+		//
+		//[:ALNUM:] (
+		//	Union of [:ALPHA:] and [:DIGIT:].
+		//
+		//[:UPPER:]
+		//	Uppercase Latin letters A..Z. Also matches lowercase with case-insensitive collation and
+		//	accented forms with accent-insensitive collation.
+		//
+		//[:LOWER:]  (in Go [a-z])
+		//	Lowercase Latin letters a..z. Also matches uppercase with case-insensitive collation and
+		//	accented forms with accent-insensitive collation.
+		//
+		//[:SPACE:]  (in Go \s)
+		//	Matches the space character (ASCII 32).
+		//
+		//[:WHITESPACE:]
+		//	Matches vertical tab (ASCII 9), linefeed (ASCII 10), horizontal tab (ASCII 11), form feed
+		//	(ASCII 12), carriage return (ASCII 13) and space (ASCII 32).
+		//
+		//Including a predefined class has the same effect as including all its members. Predefined
+		//classes are only allowed within class definitions. If you need to match against a predefined
+		//class and nothing more, place an extra pair of brackets around it.
+		//
+		//'Erdbeere' similar to 'Erd[[:ALNUM:]]eere'     -- true
+		//'Erdbeere' similar to 'Erd[[:DIGIT:]]eere'     -- false
+		//'Erdbeere' similar to 'Erd[a[:SPACE:]b]eere'   -- true
+		//'Erdbeere' similar to [[:ALPHA:]]              -- false
+		//'E'        similar to [[:ALPHA:]]              -- true
+		{`Erdbeere`, `Erd[[:ALNUM:]]eere`, true, regexp2.SimilarTo},
+		{`Erdbeere`, `Erd[[:DIGIT:]]eere`, false, regexp2.SimilarTo},
+		{`Erdbeere`, `Erd[a[:SPACE:]b]eere`, true, regexp2.SimilarTo},
+		{`Erdbeere`, `[[:ALPHA:]]`, false, regexp2.SimilarTo},
+		{`E`, `[[:ALPHA:]]`, true, regexp2.SimilarTo},
+
+		//If a class definition starts with a caret, everything that follows is excluded from the class.
+		//All other characters match:
+		//
+		//'Framboise' similar to 'Fra[^ck-p]boise'       -- false
+		//'Framboise' similar to 'Fr[^a][^a]boise'       -- false
+		//'Framboise' similar to 'Fra[^[:DIGIT:]]boise'  -- true
+		//FIXME {`Framboise`, `Fra[^ck-p]boise`, false, regexp2.SimilarTo}, //golang differs
+		{`Framboise`, `Fr[^a][^a]boise`, false, regexp2.SimilarTo},
+		//FIXME {`Framboise`, `Fra[^\d]boise`, true, regexp2.SimilarTo}, golang differs
+
+		//If the caret is not placed at the start of the sequence, the class contains everything before
+		//the caret, except for the elements that also occur after the caret:
+		//
+		//'Grapefruit' similar to 'Grap[a-m^f-i]fruit'   -- true
+		//'Grapefruit' similar to 'Grap[abc^xyz]fruit'   -- false
+		//'Grapefruit' similar to 'Grap[abc^de]fruit'    -- false
+		//'3' similar to '[[:DIGIT:]^4-8]'               -- true
+		//'6' similar to '[[:DIGIT:]^4-8]'               -- false
+		//TODO DIFF {`Grapefruit`, `Grap[a-m^f-i]fruit`, true, regexp2.SimilarTo}, //MySQL:equal
+		//TODO DIFF {`Grapefruit`,`Grap[abc^xyz]fruit`,  false, regexp2.SimilarTo}, //MySQL:equal
+		//TODO DIFF {`Grapefruit`, `Grap[abc^de]fruit`, false, regexp2.SimilarTo}, //MySQL:NOT-equal
+		//TODO DIFF {`3`, `\d^4-8]`, true, regexp2.SimilarTo}, //MySQL:equal (use `[[:DIGIT:]^4-8]`)
+		//TODO DIFF {`6`, `\d^4-8]`, false, regexp2.SimilarTo}, //MySQL:equal (use `[[:DIGIT:]^4-8]`)
+
+		//Lastly, the already mentioned wildcard “_” is a character class of its own, matching any
+		//single character.
+		//
+		//Quantifiers
+		//A question mark immediately following a character or class indicates that the preceding
+		//item may occur 0 or 1 times in order to match:
+		//
+		//'Hallon' similar to 'Hal?on'                   -- false
+		//'Hallon' similar to 'Hal?lon'                  -- true
+		//'Hallon' similar to 'Halll?on'                 -- true
+		//'Hallon' similar to 'Hallll?on'                -- false
+		//'Hallon' similar to 'Halx?lon'                 -- true
+		//'Hallon' similar to 'H[a-c]?llon[x-z]?'        -- true
+		{`Hallon`, `Hal?on`, false, regexp2.SimilarTo},
+		{`Hallon`, `Hal?lon`, true, regexp2.SimilarTo},
+		{`Hallon`, `Halll?on`, true, regexp2.SimilarTo},
+		{`Hallon`, `Hallll?on`, false, regexp2.SimilarTo},
+		{`Hallon`, `Halx?lon`, true, regexp2.SimilarTo},
+		{`Hallon`, `H[a-c]?llon[x-z]?`, true, regexp2.SimilarTo},
+
+		//An asterisk immediately following a character or class indicates that the preceding item
+		//may occur 0 or more times in order to match:
+		//
+		//'Icaque' similar to 'Ica*que'                  -- true
+		//'Icaque' similar to 'Icar*que'                 -- true
+		//'Icaque' similar to 'I[a-c]*que'               -- true
+		//'Icaque' similar to '_*'                       -- true
+		//'Icaque' similar to '[[:ALPHA:]]*'             -- true
+		//'Icaque' similar to 'Ica[xyz]*e'               -- false
+		{`Icaque`, `Ica*que`, true, regexp2.SimilarTo},
+		{`Icaque`, `Icar*que`, true, regexp2.SimilarTo},
+		{`Icaque`, `I[a-c]*que`, true, regexp2.SimilarTo},
+		//FIXME {`Icaque`, `_*`, true, regexp2.SimilarTo, true}, the implicit end-of-line assertions does seem to hold in this situation??
+		//FIXME {`Icaque`, `[a-zA-Z]*`, true, regexp2.SimilarTo, true}, the implicit end-of-line assertions does seem to hold in this situation??
+		{`Icaque`, `Ica[xyz]*e`, false, regexp2.SimilarTo},
+
+		//A plus sign immediately following a character or class indicates that the preceding item
+		//must occur 1 or more times in order to match:
+		//
+		//'Jujube' similar to 'Ju_+'                     -- true
+		//'Jujube' similar to 'Ju+jube'                  -- true
+		//'Jujube' similar to 'Jujuber+'                 -- false
+		//'Jujube' similar to 'J[jux]+be'                -- true
+		//'Jujube' sililar to 'J[[:DIGIT:]]+ujube'       -- false
+		{`Jujube`, `Ju_+`, true, regexp2.SimilarTo},
+		{`Jujube`, `Ju+jube`, true, regexp2.SimilarTo},
+		{`Jujube`, `Jujuber+`, false, regexp2.SimilarTo},
+		{`Jujube`, `J[jux]+be`, true, regexp2.SimilarTo},
+		{`Jujube`, `J\d+ujube`, false, regexp2.SimilarTo},
+
+		//If a character or class is followed by a number enclosed in braces, it must be repeated
+		//exactly that number of times in order to match:
+		//
+		//'Kiwi' similar to 'Ki{2}wi'                    -- false
+		//'Kiwi' similar to 'K[ipw]{2}i'                 -- true
+		//'Kiwi' similar to 'K[ipw]{2}'                  -- false
+		//'Kiwi' similar to 'K[ipw]{3}'                  -- true
+		{`Kiwi`, `Ki{2}wi`, false, regexp2.SimilarTo},
+		{`Kiwi`, `K[ipw]{2}i`, true, regexp2.SimilarTo},
+		//TODO DIFF {`Kiwi`, `K[ipw]{2}`, false, regexp2.SimilarTo},
+		{`Kiwi`, `K[ipw]{3}`, true, regexp2.SimilarTo},
+
+		//If the number is followed by a comma, the item must be repeated at least that number of
+		//times in order to match:
+		//
+		//'Limone' similar to 'Li{2,}mone'               -- false
+		//'Limone' similar to 'Li{1,}mone'               -- true
+		//'Limone' similar to 'Li[nezom]{2,}'            -- true
+		{`Limone`, `Li{2,}mone`, false, regexp2.SimilarTo},
+		{`Limone`, `Li{1,}mone`, true, regexp2.SimilarTo},
+		{`Limone`, `Li[nezom]{2,}`, true, regexp2.SimilarTo},
+
+		//If the braces contain two numbers separated by a comma, the second number not smaller than
+		//the first, then the item must be repeated at least the first number and at most the second
+		//number of times in order to match:
+		//
+		//'Mandarijn' similar to 'M[a-p]{2,5}rijn'       -- true
+		//'Mandarijn' similar to 'M[a-p]{2,3}rijn'       -- false
+		//'Mandarijn' similar to 'M[a-p]{2,3}arijn'      -- true
+		{`Mandarijn`, `M[a-p]{2,5}rijn`, true, regexp2.SimilarTo},
+		{`Mandarijn`, `M[a-p]{2,3}rijn`, false, regexp2.SimilarTo},
+		{`Mandarijn`, `M[a-p]{2,3}arijn`, true, regexp2.SimilarTo},
+
+		//The quantifiers ?, * and + are shorthand for {0,1}, {0,} and {1,}, respectively.
+		//
+		//OR-ing terms
+		//Regular expression terms can be OR'ed with the | operator. A match is made when the
+		//argument string matches at least one of the terms:
+		//
+		//'Nektarin' similar to 'Nek|tarin'              -- false
+		//'Nektarin' similar to 'Nektarin|Persika'       -- true
+		//'Nektarin' similar to 'M_+|N_+|P_+'            -- true
+		//TODO DIFF {`Nektarin`, `Nek|tarin`, false, regexp2.SimilarTo},
+		{`Nektarin`, `Nektarin|Persika`, true, regexp2.SimilarTo},
+		{`Nektarin`, `M_+|N_+|P_+`, true, regexp2.SimilarTo},
+
+		//Subexpressions
+		//One or more parts of the regular expression can be grouped into subexpressions (also
+		//called subpatterns) by placing them between parentheses. A subexpression is a regular
+		//expression in its own right. It can contain all the elements allowed in a regular
+		//expression, and can also have quantifiers added to it.
+		//
+		//'Orange' similar to 'O(ra|ri|ro)nge'           -- true
+		//'Orange' similar to 'O(r[a-e])+nge'            -- true
+		//'Orange' similar to 'O(ra){2,4}nge'            -- false
+		//'Orange' similar to 'O(r(an|in)g|rong)?e'      -- true
+		{`Orange`, `O(ra|ri|ro)nge`, true, regexp2.SimilarTo},
+		{`Orange`, `O(r[a-e])+nge`, true, regexp2.SimilarTo},
+		{`Orange`, `O(ra){2,4}nge`, false, regexp2.SimilarTo},
+		{`Orange`, `O(r(an|in)g|rong)?e`, true, regexp2.SimilarTo},
+	}
+
+	run := func(tc unitTest) {
+
+		data := make([]string, 16)
+		for i := 0; i < 16; i++ {
+			data[i] = tc.msg
+		}
+
+		ds := regexp2.CreateDs(tc.expr, tc.regexType, false, regexp2.MaxNodesAutomaton)
+
+		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
+		regexDataTest := func(ctx *bctestContext, dsByte *[]byte, info string, op bcop, needle string, expected bool) {
+			if dsByte == nil {
+				return
+			}
+
+			ctx.Taint()
+			ctx.dict = append(ctx.dict[:0], string(*dsByte))
+			ctx.setScalarStrings(data, []byte{})
+			ctx.current = 0xFFFF
+
+			// when
+			err := ctx.ExecuteImm2(op, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			observed := ctx.current
+			if (expected && (observed != 0xFFFF)) || (!expected && (observed != 0)) {
+				t.Errorf("%v: issue with needle %q: expected %v; regexSneller=%q yields %x",
+					info, escapeNL(needle), expected, escapeNL(ds.RegexSneller.String()), observed)
+			}
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		defer ctx.Free()
+
+		regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsT7, "DfaT7", opDfaT7, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsT7Z, "DfaT7Z", opDfaT7Z, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsT8, "DfaT8", opDfaT8, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsT8Z, "DfaT8Z", opDfaT8Z, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsL, "DfaL", opDfaL, tc.expr, tc.result)
+		regexDataTest(&ctx, ds.DsLZ, "DfaLZ", opDfaLZ, tc.expr, tc.result)
+	}
+
+	for i, ut := range unitTests {
+		t.Run(fmt.Sprintf(`case %d:`, i), func(t *testing.T) {
+			run(ut)
+		})
+	}
+}
+
+// FuzzRegexMatchRun runs fuzzer to search both regexes and data and compares the with a reference implementation
+func FuzzRegexMatchRun(f *testing.F) {
+
+	var padding []byte //empty padding
+
+	run := func(t *testing.T, ds *[]byte, matchExpected bool, needle, regexString, info string, op bcop) {
+		regexMatch := func(ds []byte, needle string, op bcop) (match bool) {
+
+			values := make([]string, 16)
+			for i := 0; i < 16; i++ {
+				values[i] = needle
+			}
+
+			var ctx bctestContext
+			ctx.Taint()
+			ctx.dict = append(ctx.dict, pad(string(ds)))
+			ctx.setScalarStrings(values, padding)
+			ctx.current = 0xFFFF
+
+			if err := ctx.ExecuteImm2(op, 0); err != nil {
+				t.Error(err)
+			}
+
+			if ctx.current == 0 {
+				return false
+			}
+			if ctx.current == 0xFFFF {
+				return true
+			}
+			t.Errorf("inconstent results %x", ctx.current)
+			return false
+		}
+
+		if ds != nil {
+			matchObserved := regexMatch(*ds, needle, op)
+			if matchExpected != matchObserved {
+				t.Errorf(`Fuzzer found: %v yields '%v' while expected '%v'. (regexString %q; needle %q)`, info, matchObserved, matchExpected, regexString, needle)
+			}
+		}
+	}
+
+	f.Add(`.*a.b`, `xayb`)
+	f.Add(`ac`, `(a|b)+c`)
+	f.Add(`0`, `\B`)
+	f.Add(`01|.`, `0`)
+	f.Add(`\nb`, `(\n|.)|.|.a`)
+	f.Add(`z`, `ab.cd`)
+	f.Add(`A`, `^.*ſ$`)
+	f.Add(`B`, `..x[:lower:]`)
+	f.Add(`C`, `[:ascii:]+$`)
+	f.Add(`D`, `[a-z0-9]+`)
+	f.Add(`E`, `[0-9a-fA-F]+\r\n`)
+
+	f.Fuzz(func(t *testing.T, expr, needle string) {
+		if utf8.ValidString(needle) && utf8.ValidString(expr) {
+			if err := regexp2.IsSupported(expr); err != nil {
+				regexSneller, err1 := regexp2.Compile(expr, regexp2.Regexp)
+				regexGolang, err2 := regexp2.Compile(expr, regexp2.GolangRegexp)
+
+				if (err1 == nil) && (err2 == nil) && (regexSneller != nil) && (regexGolang != nil) {
+					regexString2 := regexSneller.String()
+					ds := regexp2.CreateDs(regexString2, regexp2.Regexp, false, regexp2.MaxNodesAutomaton)
+					matchExpected := regexGolang.MatchString(needle)
+					run(t, ds.DsT6, matchExpected, needle, regexString2, "DfaT6", opDfaT6)
+					run(t, ds.DsT7, matchExpected, needle, regexString2, "DfaT7", opDfaT7)
+					run(t, ds.DsT8, matchExpected, needle, regexString2, "DfaT8", opDfaT8)
+					run(t, ds.DsT6Z, matchExpected, needle, regexString2, "DfaT6Z", opDfaT6Z)
+					run(t, ds.DsT7Z, matchExpected, needle, regexString2, "DfaT7Z", opDfaT7Z)
+					run(t, ds.DsT8Z, matchExpected, needle, regexString2, "DfaT8Z", opDfaT8Z)
+					run(t, ds.DsL, matchExpected, needle, regexString2, "DfaL", opDfaL)
+					run(t, ds.DsLZ, matchExpected, needle, regexString2, "DfaLZ", opDfaLZ)
+				}
+			}
+		}
+	})
+}
+
+// FuzzRegexMatchCompile runs fuzzer to search regexes and determines that their compilation does not fail
+func FuzzRegexMatchCompile(f *testing.F) {
+	f.Add(`ab.cd`)
+	//f.add(`^.*x$`)
+	f.Add(`..x[:lower:]`)
+	//f.add(`[:ascii:]+$`)
+	f.Add(`[a-z0-9]+`)
+	f.Add(`[0-9a-fA-F]+\r\n`)
+	f.Add(`^.$+^+`)      // invalid noise regex
+	f.Add(`.*a.......b`) // combinatorial explosion in NFA -> DFA
+
+	f.Fuzz(func(t *testing.T, re string) {
+		rec, err := regexp.Compile(re)
+		if err != nil {
+			return
+		}
+		if err := regexp2.IsSupported(re); err != nil {
+			return
+		}
+		// this is a simplified version
+		// of the code in vm/ssa.go:
+		store, err := regexp2.CompileDFA(rec, regexp2.MaxNodesAutomaton)
+		if err != nil {
+			return
+		}
+		if store == nil {
+			t.Fatalf(`unhandled regexp: %s`, re)
+		}
+
+		hasRLZA := store.HasRLZA()
+		hasASCIIOnly := store.HasOnlyASCII()
+
+		// none of this should panic:
+		if hasASCIIOnly && !hasRLZA { // AVX512_VBMI -> Icelake
+			dsTiny, _ := regexp2.NewDsTiny(store)
+			dsTiny.Data(6, false)
+			dsTiny.Data(7, false)
+			dsTiny.Data(8, false)
+			dsTiny.Data(6, true)
+			dsTiny.Data(7, true)
+			dsTiny.Data(8, true)
+		}
+		_, err = regexp2.NewDsLarge(store, hasRLZA)
+		if err != nil {
+			panic(fmt.Sprintf("DFALarge: error %v for regex \"%v\"", err, re))
+		}
+	})
 }
 
 func TestBytecodeAbsInt(t *testing.T) {
@@ -655,9 +1727,9 @@ func TestBytecodeIsNull(t *testing.T) {
 /////////////////////////////////////////////////////////////
 // Helper functions
 
-// MatchPatternReference matches the first occurrence of the provided pattern.
-// The MatchPatternReference implementation is used for fuzzing since it is 10x faster than matchPatternRegex
-func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseSensitive bool) (laneOut bool, offsetOut, lengthOut int) {
+// matchPatternReference matches the first occurrence of the provided pattern.
+// The matchPatternReference implementation is used for fuzzing since it is 10x faster than matchPatternRegex
+func matchPatternReference(msg []byte, offset, length int, segments []string, caseSensitive bool) (laneOut bool, offsetOut, lengthOut int) {
 
 	// indexRune is similar to strings.Index; this function accepts rune arrays
 	indexRune := func(s, substr []rune) int {
@@ -680,7 +1752,7 @@ func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseS
 		return len(prefix) <= len(s) && slices.Equal(s[:len(prefix)], prefix)
 	}
 
-	if len(pattern) == 0 { // not sure how to handle an empty pattern, currently it always matches
+	if len(segments) == 0 { // not sure how to handle an empty pattern, currently it always matches
 		return true, offset, length
 	}
 	msgStrOrg := string(stringext.ExtractFromMsg(msg, offset, length))
@@ -688,9 +1760,10 @@ func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseS
 
 	if !caseSensitive { // normalize msg and pattern to make case-insensitive comparison possible
 		msgStr = stringext.NormalizeString(msgStrOrg)
-		pattern = stringext.PatternNormalize(pattern)
+		for i, segment := range segments {
+			segments[i] = stringext.NormalizeString(segment)
+		}
 	}
-	segments := stringext.PatternToSegments(pattern)
 	msgRunesOrg := []rune(msgStrOrg)
 	msgRunes := []rune(msgStr)
 	nRunesMsg := len(msgRunes)
@@ -747,8 +1820,8 @@ func matchPatternReference(msg []byte, offset, length int, pattern []byte, caseS
 	return false, offset + length, 0
 }
 
-// runRegexTests iterates over all regexes with the provided regex length and regex alphabet,
-// and determines equality over all needles with the provided needle length and needle alphabet
+// runRegexTests iterates over all regexes with the provided regex space,and determines equality over all
+// needles from the provided data space
 func runRegexTests(t *testing.T, dataSpace, regexSpace []string, regexType regexp2.RegexType, writeDot bool) {
 
 	// regexDataSpaceTest tests the equality for all regexes provided in the data-structure container for all provided needles
