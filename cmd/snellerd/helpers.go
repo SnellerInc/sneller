@@ -51,6 +51,7 @@ func (s *server) handle(handler func(http.ResponseWriter, *http.Request), method
 		w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+		w.Header().Set("Access-Control-Expose-Headers", "Etag, X-Sneller-Max-Scanned-Bytes, X-Sneller-Query-ID, X-Sneller-Total-Table-Bytes, X-Sneller-Version")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
