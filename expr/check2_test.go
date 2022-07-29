@@ -15,6 +15,7 @@
 package expr_test
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 
@@ -65,21 +66,34 @@ func TestCheck2(t *testing.T) {
 			"SELECT * FROM table WHERE 3 = `2022-01-02T03:04:05.67Z`",
 			"lhs and rhs.*never comparable",
 		},
+		{
+			// issue #1390
+			"SELECT * FROM table WHERE CAST(x AS integer) < DATE_ADD(day, -1, timestamp)",
+			"can compare only number with number",
+		},
+		{
+			// issue #1390
+			"SELECT * FROM table WHERE DATE_ADD(day, -1, timestamp) >= CAST(x AS float)",
+			"can compare only timestamp with timestamp",
+		},
 	}
-	for i := range testcases {
-		text := testcases[i].query
-		rx := regexp.MustCompile(testcases[i].errrx)
-		q, err := partiql.Parse([]byte(text))
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = expr.Check(q.Body)
-		if err == nil {
-			t.Errorf("query %s didn't yield an error", text)
-			continue
-		}
-		if !rx.MatchString(err.Error()) {
-			t.Errorf("rx %q didn't match error %q", rx, err)
-		}
+	for j := range testcases {
+		i := j
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			text := testcases[i].query
+			rx := regexp.MustCompile(testcases[i].errrx)
+			q, err := partiql.Parse([]byte(text))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = expr.Check(q.Body)
+			if err == nil {
+				t.Errorf("query %s didn't yield an error", text)
+				return
+			}
+			if !rx.MatchString(err.Error()) {
+				t.Errorf("rx %q didn't match error %q", rx, err)
+			}
+		})
 	}
 }
