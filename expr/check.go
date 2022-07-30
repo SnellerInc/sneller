@@ -222,28 +222,15 @@ func (c *Comparison) check(h Hint) error {
 		}
 		return nil
 	}
-
-	lt := TypeOf(c.Left, h)
-	rt := TypeOf(c.Right, h)
-
 	oktypes := AnyType &^ MissingType
 	if c.Op.ordinal() {
 		oktypes = NumericType | TimeType // only types supported for ordinal comparison for now
-		if lt&oktypes != 0 && rt&oktypes != 0 {
-			if lt&NumericType != 0 && rt&NumericType == 0 {
-				return errtype(c, "can compare only number with number")
-			}
-			if lt&TimeType != 0 && rt&TimeType == 0 {
-				return errtype(c, "can compare only timestamp with timestamp")
-			}
-			return nil
-		}
 	}
-
-	if lt&rt&oktypes == 0 {
+	lt := TypeOf(c.Left, h) & oktypes
+	rt := TypeOf(c.Right, h) & oktypes
+	if lt&rt == 0 {
 		return errtype(c, "lhs and rhs of comparison are never comparable")
 	}
-
 	return nil
 }
 
