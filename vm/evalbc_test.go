@@ -15,8 +15,11 @@
 package vm
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -1416,7 +1419,6 @@ func TestRegexMatchUT(t *testing.T) {
 		}
 
 		var ctx bctestContext
-		ctx.Taint()
 		defer ctx.Free()
 
 		regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, tc.expr, tc.result)
@@ -1441,7 +1443,7 @@ func FuzzRegexMatchRun(f *testing.F) {
 
 	var padding []byte //empty padding
 
-	run := func(t *testing.T, ds *[]byte, matchExpected bool, needle, regexString, info string, op bcop) {
+	run := func(t *testing.T, ds *[]byte, matchExpected bool, data, regexString, info string, op bcop) {
 		regexMatch := func(ds []byte, needle string, op bcop) (match bool) {
 
 			values := make([]string, 16)
@@ -1470,9 +1472,9 @@ func FuzzRegexMatchRun(f *testing.F) {
 		}
 
 		if ds != nil {
-			matchObserved := regexMatch(*ds, needle, op)
+			matchObserved := regexMatch(*ds, data, op)
 			if matchExpected != matchObserved {
-				t.Errorf(`Fuzzer found: %v yields '%v' while expected '%v'. (regexString %q; needle %q)`, info, matchObserved, matchExpected, regexString, needle)
+				t.Errorf(`Fuzzer found: %v yields '%v' while expected '%v'. (regexString %q; data %q)`, info, matchObserved, matchExpected, regexString, data)
 			}
 		}
 	}
@@ -1489,8 +1491,8 @@ func FuzzRegexMatchRun(f *testing.F) {
 	f.Add(`D`, `[a-z0-9]+`)
 	f.Add(`E`, `[0-9a-fA-F]+\r\n`)
 
-	f.Fuzz(func(t *testing.T, expr, needle string) {
-		if utf8.ValidString(needle) && utf8.ValidString(expr) {
+	f.Fuzz(func(t *testing.T, data, expr string) {
+		if utf8.ValidString(data) && utf8.ValidString(expr) {
 			if err := regexp2.IsSupported(expr); err != nil {
 				regexSneller, err1 := regexp2.Compile(expr, regexp2.Regexp)
 				regexGolang, err2 := regexp2.Compile(expr, regexp2.GolangRegexp)
@@ -1498,15 +1500,15 @@ func FuzzRegexMatchRun(f *testing.F) {
 				if (err1 == nil) && (err2 == nil) && (regexSneller != nil) && (regexGolang != nil) {
 					regexString2 := regexSneller.String()
 					ds := regexp2.CreateDs(regexString2, regexp2.Regexp, false, regexp2.MaxNodesAutomaton)
-					matchExpected := regexGolang.MatchString(needle)
-					run(t, ds.DsT6, matchExpected, needle, regexString2, "DfaT6", opDfaT6)
-					run(t, ds.DsT7, matchExpected, needle, regexString2, "DfaT7", opDfaT7)
-					run(t, ds.DsT8, matchExpected, needle, regexString2, "DfaT8", opDfaT8)
-					run(t, ds.DsT6Z, matchExpected, needle, regexString2, "DfaT6Z", opDfaT6Z)
-					run(t, ds.DsT7Z, matchExpected, needle, regexString2, "DfaT7Z", opDfaT7Z)
-					run(t, ds.DsT8Z, matchExpected, needle, regexString2, "DfaT8Z", opDfaT8Z)
-					run(t, ds.DsL, matchExpected, needle, regexString2, "DfaL", opDfaL)
-					run(t, ds.DsLZ, matchExpected, needle, regexString2, "DfaLZ", opDfaLZ)
+					matchExpected := regexGolang.MatchString(data)
+					run(t, ds.DsT6, matchExpected, data, regexString2, "DfaT6", opDfaT6)
+					run(t, ds.DsT7, matchExpected, data, regexString2, "DfaT7", opDfaT7)
+					run(t, ds.DsT8, matchExpected, data, regexString2, "DfaT8", opDfaT8)
+					run(t, ds.DsT6Z, matchExpected, data, regexString2, "DfaT6Z", opDfaT6Z)
+					run(t, ds.DsT7Z, matchExpected, data, regexString2, "DfaT7Z", opDfaT7Z)
+					run(t, ds.DsT8Z, matchExpected, data, regexString2, "DfaT8Z", opDfaT8Z)
+					run(t, ds.DsL, matchExpected, data, regexString2, "DfaL", opDfaL)
+					run(t, ds.DsLZ, matchExpected, data, regexString2, "DfaLZ", opDfaLZ)
 				}
 			}
 		}
@@ -1560,6 +1562,145 @@ func FuzzRegexMatchCompile(f *testing.F) {
 			panic(fmt.Sprintf("DFALarge: error %v for regex \"%v\"", err, re))
 		}
 	})
+}
+
+func TestIsSubnetOfBF(t *testing.T) {
+
+	//randomIP4Addr will generate all sorts of questionable addresses; things like 0.0.0.0 and 255.255.255.255, as well as private IP address ranges and multicast addresses.
+	randomIP4Addr := func() net.IP {
+		bs := make([]byte, 4)
+		binary.BigEndian.PutUint32(bs, rand.Uint32())
+		return net.IPv4(bs[0], bs[1], bs[2], bs[3]).To4()
+	}
+
+	randomIP4Range := func() (min, max net.IP) {
+		maxInt := rand.Uint32()
+		minInt := uint32(rand.Intn(int(maxInt)))
+
+		minBs := make([]byte, 4)
+		maxBs := make([]byte, 4)
+
+		binary.BigEndian.PutUint32(minBs, minInt)
+		binary.BigEndian.PutUint32(maxBs, maxInt)
+
+		return net.IPv4(minBs[0], minBs[1], minBs[2], minBs[3]).To4(), net.IPv4(maxBs[0], maxBs[1], maxBs[2], maxBs[3]).To4()
+	}
+
+	run := func(ip, ipMin, ipMax net.IP) {
+		ipStr := ip.String()
+		expected := referenceIsSubnetOf([]byte(ipStr), ipMin, ipMax)
+		data := make([]string, 16)
+		for i := 0; i < 16; i++ {
+			data[i] = ipStr
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.dict = append(ctx.dict[:0], string(toBCD2(ipMin, ipMax)))
+		ctx.setScalarStrings(data, []byte{})
+		ctx.current = 0xFFFF
+
+		// when
+		err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		observed := ctx.current
+		if (expected && (observed != 0xFFFF)) || (!expected && (observed != 0)) {
+			t.Errorf("IsSubnetOf: issue with ip %q; min=%q max=%q; expected %v; observed %x",
+				ip, ipMin, ipMax, expected, observed)
+		}
+		ctx.Free()
+	}
+
+	for i := 0; i < 100000; i++ {
+		ipMin, ipMax := randomIP4Range()
+		ip := randomIP4Addr()
+		run(ip, ipMin, ipMax)
+	}
+}
+
+func TestIsSubnetOfUT(t *testing.T) {
+	type unitTest struct {
+		ip, min, max string
+		result       bool
+	}
+	unitTests := []unitTest{
+		{"10.1.0.0", "10.1.0.0", "20.0.0.0", true},
+		{"10.2.0.0", "9.0.0.0", "10.1.0.0", false},
+		{"2.0.0.0", "1.0.0.0", "3.0.0.0", true},  // min_0 < ip_0 < max_0
+		{"2.0.0.0", "2.0.0.0", "3.0.0.0", true},  // min_0 = ip_0 < max_0
+		{"2.0.0.0", "1.0.0.0", "2.0.0.0", true},  // min_0 < ip_0 = max_0
+		{"2.0.0.0", "2.0.0.0", "2.0.0.0", true},  // min_0 = ip_0 = max_0
+		{"0.0.0.0", "1.0.0.0", "3.0.0.0", false}, // min_0 > ip_0 < max_0
+		{"2.0.0.0", "1.0.0.0", "1.0.0.0", false}, // min_0 < ip_0 > max_0
+
+		{"1.2.0.0", "1.1.0.0", "2.0.0.0", true},
+		{"8.2.0.0", "8.1.0.0", "8.3.0.0", true},  // min_1 < ip_1 < max_1
+		{"8.2.0.0", "8.2.0.0", "8.3.0.0", true},  // min_1 = ip_1 < max_1
+		{"8.2.0.0", "8.1.0.0", "8.2.0.0", true},  // min_1 < ip_1 = max_1
+		{"8.2.0.0", "8.2.0.0", "8.2.0.0", true},  // min_1 = ip_1 = max_1
+		{"8.0.0.0", "8.1.0.0", "8.3.0.0", false}, // min_1 > ip_1 < max_1
+		{"8.2.0.0", "8.1.0.0", "8.1.0.0", false}, // min_1 < ip_1 > max_1
+
+		{"1.2.1.0", "1.2.0.0", "1.3.0.0", true},
+		{"8.8.2.0", "8.8.1.0", "8.8.3.0", true},  // min_2 < ip_2 < max_2
+		{"8.8.2.0", "8.8.2.0", "8.8.3.0", true},  // min_2 = ip_2 < max_2
+		{"8.8.2.0", "8.8.1.0", "8.8.2.0", true},  // min_2 < ip_2 = max_2
+		{"8.8.2.0", "8.8.2.0", "8.8.2.0", true},  // min_2 = ip_2 = max_2
+		{"8.8.0.0", "8.8.1.0", "8.8.3.0", false}, // min_2 > ip_2 < max_2
+		{"8.8.2.0", "8.8.1.0", "8.8.1.0", false}, // min_2 < ip_2 > max_2
+
+		{"1.2.3.1", "1.2.3.0", "1.2.4.0", true},
+		{"8.8.8.2", "8.8.8.1", "8.8.8.3", true},  // min_3 < ip_3 < max_3
+		{"8.8.8.2", "8.8.8.2", "8.8.8.3", true},  // min_3 = ip_3 < max_3
+		{"8.8.8.2", "8.8.8.1", "8.8.8.2", true},  // min_3 < ip_3 = max_3
+		{"8.8.8.2", "8.8.8.2", "8.8.8.2", true},  // min_3 = ip_3 = max_3
+		{"8.8.8.0", "8.8.8.1", "8.8.8.3", false}, // min_3 > ip_3 < max_3
+		{"8.8.8.2", "8.8.8.1", "8.8.8.1", false}, // min_3 < ip_3 > max_3
+	}
+
+	run := func(ut unitTest) {
+		ipMin := net.ParseIP(ut.min)
+		ipMax := net.ParseIP(ut.max)
+
+		refObservation := referenceIsSubnetOf([]byte(ut.ip), ipMin, ipMax)
+		if refObservation != ut.result {
+			t.Fatalf("IsSubnetOf reference: msg=%q; min=%q; max=%q; observed=%v; expected=%v\n", ut.ip, ut.min, ut.max, refObservation, ut.result)
+		}
+
+		data := make([]string, 16)
+		for i := 0; i < 16; i++ {
+			data[i] = ut.ip
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.dict = append(ctx.dict[:0], string(toBCD2(ipMin, ipMax)))
+		ctx.setScalarStrings(data, []byte{})
+		ctx.current = 0xFFFF
+
+		// when
+		err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expected := ut.result
+		observed := ctx.current
+		if (expected && (observed != 0xFFFF)) || (!expected && (observed != 0)) {
+			t.Errorf("IsSubnetOf: issue with ip %q; min=%q max=%q; expected %v; observed %x",
+				ut.ip, ut.min, ut.max, expected, observed)
+		}
+		ctx.Free()
+	}
+
+	for i, ut := range unitTests {
+		t.Run(fmt.Sprintf("case %d:", i), func(t *testing.T) {
+			run(ut)
+		})
+	}
 }
 
 func TestBytecodeAbsInt(t *testing.T) {
@@ -1726,6 +1867,44 @@ func TestBytecodeIsNull(t *testing.T) {
 
 /////////////////////////////////////////////////////////////
 // Helper functions
+
+func referenceIsSubnetOf(msg []byte, min, max net.IP) bool {
+	ip4 := net.ParseIP(string(msg)).To4()
+	if ip4 == nil {
+		return false
+	}
+	return bytes.Compare(ip4, min.To4()) >= 0 && bytes.Compare(max.To4(), ip4) >= 0
+}
+
+func toBCD2(ip1, ip2 net.IP) []byte {
+	if ip1 == nil {
+		panic("A ip1 is nil")
+	}
+	if ip2 == nil {
+		panic("A ip2 is nil")
+	}
+
+	ipBCD := make([]byte, 32)
+	min := ip1.To4()
+	max := ip2.To4()
+
+	if min == nil {
+		panic(fmt.Sprintf("B ip1 is nil, %v\n", ip1.String()))
+	}
+	if max == nil {
+		panic(fmt.Sprintf("B ip2 is nil, %v\n", ip2.String()))
+	}
+
+	minStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", min[0], min[1], min[2], min[3]))
+	maxStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", max[0], max[1], max[2], max[3]))
+	for i := 0; i < 16; i += 4 {
+		ipBCD[0+i] = (minStr[3+i] & 0b1111) | ((maxStr[3+i] & 0b1111) << 4) // keep only the lower nibble from ascii '0'-'9' gives byte 0-9
+		ipBCD[1+i] = (minStr[2+i] & 0b1111) | ((maxStr[2+i] & 0b1111) << 4)
+		ipBCD[2+i] = (minStr[1+i] & 0b1111) | ((maxStr[1+i] & 0b1111) << 4)
+		ipBCD[3+i] = (minStr[0+i] & 0b1111) | ((maxStr[0+i] & 0b1111) << 4)
+	}
+	return ipBCD
+}
 
 // matchPatternReference matches the first occurrence of the provided pattern.
 // The matchPatternReference implementation is used for fuzzing since it is 10x faster than matchPatternRegex
