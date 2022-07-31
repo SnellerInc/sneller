@@ -340,13 +340,13 @@ func (r *Reader) RangeReader(off, width int64) (io.ReadCloser, error) {
 	default:
 		defer res.Body.Close()
 		return nil, fmt.Errorf("s3.Reader.RangeReader: status %s %q", res.Status, extractMessage(res.Body))
-	case 412:
+	case http.StatusPreconditionFailed:
 		res.Body.Close()
 		return nil, ErrETagChanged
-	case 404:
+	case http.StatusNotFound:
 		res.Body.Close()
 		return nil, &fs.PathError{Op: "read", Path: r.object, Err: fs.ErrNotExist}
-	case 206, 200:
+	case http.StatusPartialContent, http.StatusOK:
 		// okay; fallthrough
 	}
 	return res.Body, nil
