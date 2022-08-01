@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -34,7 +33,7 @@ func TestCompressedRange(t *testing.T) {
 	var dst blockfmt.BufferUploader
 	cw := blockfmt.CompressionWriter{
 		Output:     &dst,
-		Comp:       compr.Compression("zstd"),
+		Comp:       blockfmt.CompressorByName("zstd"),
 		InputAlign: 512,
 		TargetSize: 512,
 	}
