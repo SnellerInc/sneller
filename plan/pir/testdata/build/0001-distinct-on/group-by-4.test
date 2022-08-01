@@ -1,7 +1,7 @@
 SELECT DISTINCT ON (x, y) a, b FROM table GROUP BY x, y, z
 ---
 ITERATE table FIELDS [a, b, x, y, z]
-FILTER DISTINCT [x y z]
+FILTER DISTINCT [x, y, z]
 PROJECT x, y, a AS a, b AS b
-FILTER DISTINCT [x y]
+FILTER DISTINCT [x, y]
 PROJECT a AS a, b AS b

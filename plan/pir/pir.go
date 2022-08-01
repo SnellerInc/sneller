@@ -164,7 +164,7 @@ func (i *IterTable) describe(dst io.Writer) {
 	}
 	fields := "*"
 	if !i.star {
-		fields = "[" + strings.Join(i.Fields(), ", ") + "]"
+		fields = formatFields(i.Fields())
 	}
 	if i.Filter == nil {
 		fmt.Fprintf(dst, "%s %s FIELDS %s\n", prefix, expr.ToString(i.Table), fields)
@@ -350,6 +350,10 @@ type Distinct struct {
 	Columns []expr.Node
 }
 
+func formatFields(fields []string) string {
+	return "[" + strings.Join(fields, ", ") + "]"
+}
+
 func toStrings(in []expr.Node) []string {
 	out := make([]string, len(in))
 	for i := range in {
@@ -365,7 +369,7 @@ func (d *Distinct) equals(x Step) bool {
 }
 
 func (d *Distinct) describe(dst io.Writer) {
-	fmt.Fprintf(dst, "FILTER DISTINCT %s\n", toStrings(d.Columns))
+	fmt.Fprintf(dst, "FILTER DISTINCT %s\n", formatFields(toStrings(d.Columns)))
 }
 
 func (d *Distinct) rewrite(rw func(expr.Node, bool) expr.Node) {

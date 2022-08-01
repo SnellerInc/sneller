@@ -9,13 +9,13 @@ ORDER BY "$key:2%0" ASC
 ---
 WITH (
 	ITERATE sample_flights FIELDS [DestCountry, FlightDelayMin, timestamp] WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)
-	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 DestCountry]
+	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30, DestCountry]
 	PROJECT WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 AS $_3_0
 	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
 ) AS REPLACEMENT(0)
 WITH (
 	ITERATE sample_flights FIELDS [FlightDelayMin, OriginCountry, timestamp] WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)
-	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 OriginCountry]
+	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30, OriginCountry]
 	PROJECT WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 AS $_3_0
 	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
 ) AS REPLACEMENT(1)
@@ -27,16 +27,16 @@ ORDER BY "$key:2%0" ASC NULLS FIRST
 WITH (
 	UNION MAP sample_flights (
 		ITERATE PART sample_flights FIELDS [DestCountry, FlightDelayMin, timestamp] WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)
-		FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 DestCountry])
-	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 DestCountry]
+		FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30, DestCountry])
+	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30, DestCountry]
 	PROJECT WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 AS $_3_0
 	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
 ) AS REPLACEMENT(0)
 WITH (
 	UNION MAP sample_flights (
 		ITERATE PART sample_flights FIELDS [FlightDelayMin, OriginCountry, timestamp] WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)
-		FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 OriginCountry])
-	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 OriginCountry]
+		FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30, OriginCountry])
+	FILTER DISTINCT [WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30, OriginCountry]
 	PROJECT WIDTH_BUCKET(FlightDelayMin + 15, 0, 30000, 1000) * 30 - 30 AS $_3_0
 	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
 ) AS REPLACEMENT(1)
