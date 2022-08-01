@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -350,4 +351,24 @@ func BenchmarkSerializationCompressed(b *testing.B) {
 			}
 		}
 	})
+}
+
+// ensure that http request errors
+// do not include any secrets that
+// might be present in the query params
+// (the domain and path are assumed not to be secret)
+func TestFlakyNoSecrets(t *testing.T) {
+	req, err := http.NewRequest(http.MethodGet, "http://does.not.exist/path/to/object?query=secret&query2=another%2Fsecret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = flakyGet(http.DefaultClient, req)
+	if err == nil {
+		t.Fatal("impossible?")
+	}
+	errmsg := err.Error()
+	t.Logf("message: %q", errmsg)
+	if strings.Contains(errmsg, "secret") {
+		t.Fatal("error message contains secret")
+	}
 }

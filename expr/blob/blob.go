@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 	"unsafe"
 
@@ -208,16 +209,32 @@ func (u *URL) req(start, size int64) (*http.Request, error) {
 	return req, nil
 }
 
+func redactQuery(err error) error {
+	ue, ok := err.(*url.Error)
+	if !ok {
+		return err
+	}
+	u, _ := url.Parse(ue.URL)
+	if u == nil {
+		return err
+	}
+	u.RawQuery = ""
+	u.RawFragment = ""
+	ue.URL = u.String()
+	return ue
+}
+
 func flakyGet(c *http.Client, req *http.Request) (*http.Response, error) {
 	res, err := c.Do(req)
 	if req.Body != nil ||
 		(err == nil && res.StatusCode != 500 && res.StatusCode != 503) {
-		return res, err
+		return res, redactQuery(err)
 	}
 	// force re-dialing, which will hopefully
 	// lead to a load balancer picking a healthy backend...?
 	c.CloseIdleConnections()
-	return c.Do(req)
+	res, err = c.Do(req)
+	return res, redactQuery(err)
 }
 
 // Reader implements blob.Interface.Reader
