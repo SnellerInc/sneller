@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"unicode/utf8"
@@ -910,6 +911,23 @@ var (
 	dateAddYear    = adjtime(adjpart(Year))
 )
 
+func mathfunc(fn func(float64) float64) func(Hint, []Node) Node {
+	return func(h Hint, args []Node) Node {
+		if len(args) != 1 {
+			return nil
+		}
+		f, ok := args[0].(Float)
+		if !ok {
+			i, ok := args[0].(Integer)
+			if !ok {
+				return nil
+			}
+			f = Float(int64(i))
+		}
+		return Float(fn(float64(f)))
+	}
+}
+
 var builtinInfo = [maxBuiltin]binfo{
 	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType},
 	Trim:       {check: checkTrim(Trim), ret: StringType | MissingType},
@@ -925,7 +943,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	SplitPart:  {check: checkSplitPart, ret: StringType | MissingType},
 	EqualsCI:   {ret: LogicalType},
 
-	BitCount:  {check: fixedArgs(NumericType), ret: IntegerType},
+	BitCount:  {check: fixedArgs(NumericType), ret: IntegerType | MissingType},
 	Abs:       {check: fixedArgs(NumericType), ret: NumericType},
 	Sign:      {check: fixedArgs(NumericType), ret: NumericType},
 	Round:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyRound},
@@ -933,27 +951,27 @@ var builtinInfo = [maxBuiltin]binfo{
 	Trunc:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyTrunc},
 	Floor:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyFloor},
 	Ceil:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyCeil},
-	Sqrt:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Sqrt:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Sqrt)},
 	Cbrt:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Exp:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Exp2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Exp:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Exp)},
+	Exp2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Exp2)},
 	Exp10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	ExpM1:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Hypot:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
-	Ln:        {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Ln:        {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log)},
 	Log:       {check: variadicArgs(NumericType), ret: FloatType | MissingType},
-	Log2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Log10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Log2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log2)},
+	Log10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log10)},
 	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
 	Pi:        {check: fixedArgs(), ret: FloatType | MissingType},
 	Degrees:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Radians:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Sin:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Cos:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Sin:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Sin)},
+	Cos:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Cos)},
 	Tan:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Asin:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Acos:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
-	Atan:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Asin:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Asin)},
+	Acos:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Acos)},
+	Atan:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Atan)},
 	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
 
 	Least:       {check: variadicNumeric, ret: NumericType | MissingType},

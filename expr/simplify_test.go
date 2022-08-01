@@ -832,6 +832,14 @@ func TestSimplify(t *testing.T) {
 			Is(Count(path("c")), IsNotMissing),
 			Bool(true),
 		},
+		{
+			CallOp(Sqrt, Integer(4)),
+			Float(2.0),
+		},
+		{
+			CallOp(Cos, Integer(0)),
+			Float(1.0),
+		},
 	}
 
 	for i := range testcases {
