@@ -11955,40 +11955,41 @@ TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
-  VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_length != 0); empty data are dead lanes;K1=lane_active; Z3=str_length;
+  VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
 
   VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=n_runes;
   VPTESTMD      Z26, Z26, K1,  K1         //;CD49D8A5 K1 &= (scratch_Z26 != 0); empty needles are dead lanes;K1=lane_active; Z26=scratch_Z26;
-  VPCMPD        $5,  Z26, Z3,  K1,  K1    //;74222733 K1 &= (str_length>=scratch_Z26) ;K1=lane_active; Z3=str_length; Z26=scratch_Z26; 5=GreaterEq;
   KTESTW        K1,  K1                   //;A808AD8E any lanes still todo?           ;K1=lane_active;
   JZ            next                      //;1CA4B42D no, then exit; jump if zero (ZF = 1);
 
-  MOVL          4(R14),R13                //;00000000                                 ;R13=n_alt; R14=needle_ptr;
-  MOVL          8(R14),R11                //;1EEAB85B                                 ;R12=alt_ptr; R14=needle_ptr;
-  ADDQ          R14, R11                  //;7B0665F3 alt_ptr += needle_ptr           ;R12=alt_ptr; R14=needle_ptr;
+  MOVL          4(R14),R13                //;2B7E3A82 load number of alternatives     ;R13=n_alt; R14=needle_ptr;
+  MOVL          8(R14),R8                 //;1EEAB85B load alt_ptr offset             ;R8=alt_ptr; R14=needle_ptr;
+  ADDQ          R14, R8                   //;7B0665F3 alt_ptr += needle_ptr           ;R8=alt_ptr; R14=needle_ptr;
   ADDQ          $16, R14                  //;48EB17D0 needle_ptr += 16                ;R14=needle_ptr;
 
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   XORL          DX,  DX                   //;CF90D470                                 ;DX=rune_index;
 //; #region loading to_upper constants
   MOVL          $0x7A6120,R15             //;00000000                                 ;R15=tmp_constant;
   VPBROADCASTB  R15, Z15                  //;00000000                                 ;Z15=c_0b00100000; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
+  SHRL          $8,  R15                  //;00000000 tmp_constant >>= 8              ;R15=tmp_constant;
   VPBROADCASTB  R15, Z16                  //;00000000                                 ;Z16=c_char_a; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
+  SHRL          $8,  R15                  //;00000000 tmp_constant >>= 8              ;R15=tmp_constant;
   VPBROADCASTB  R15, Z17                  //;00000000                                 ;Z17=c_char_z; R15=tmp_constant;
 //; #endregion
 
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data_msg := 0                   ;Z8=data_msg;
+//; NOTE next line: clearing data for dead lanes is needed for 5303B427
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
-  VPBROADCASTD.Z (R14),K1,  Z9            //;B556F1BC load needle data                ;Z9=data_needle; K1=lane_active; R14=needle_ptr;
+//; NOTE next line: broadcasting the needle to all lanes is needed for 18D7AD2B
+  VPBROADCASTD  (R14),Z9                  //;B556F1BC load needle data                ;Z9=data_needle; R14=needle_ptr;
 
 //; clear tail from data
-  VPMINSD       Z3,  Z20, Z7              //;DEC17BF3 n_bytes_data := min(4, str_length);Z7=n_bytes_data; Z20=constd_4; Z3=str_length;
+  VPMINSD       Z3,  Z20, Z7              //;DEC17BF3 n_bytes_data := min(4, str_len) ;Z7=n_bytes_data; Z20=4; Z3=str_len;
   VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
   VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
 
@@ -12012,7 +12013,7 @@ loop:
 
 //; advance:
   VPADDD        Z7,  Z2,  Z2              //;302348A4 str_start += n_bytes_data       ;Z2=str_start; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  Z3              //;6569898C str_length -= n_bytes_data      ;Z3=str_length; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  Z3              //;6569898C str_len -= n_bytes_data         ;Z3=str_len; Z7=n_bytes_data;
   ADDQ          $4,  R14                  //;2BC9E208 needle_ptr += 4                 ;R14=needle_ptr;
   ADDL          $48, DX                   //;F0BC3163 rune_index += 48                ;DX=rune_index;
   SUBL          $4,  CX                   //;646B86C9 n_runes -= 4                    ;CX=n_runes;
@@ -12024,10 +12025,10 @@ mixed_ascii:
   VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
 
-  VPCMPD.BCST   $0,  (R11)(DX*1),Z8,  K1,  K3  //;345D0BF3 K3 := K1 & (data_msg==[alt_ptr+rune_index]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
-  VPCMPD.BCST   $0,  4(R11)(DX*1),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[alt_ptr+rune_index+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
-  VPCMPD.BCST   $0,  8(R11)(DX*1),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[alt_ptr+rune_index+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
-  VPCMPD.BCST   $0,  12(R11)(DX*1),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[alt_ptr+rune_index+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R12=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  (R8)(DX*1),Z8,  K1,  K3  //;345D0BF3 K3 := K1 & (data_msg==[alt_ptr+rune_index]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R8=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  4(R8)(DX*1),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[alt_ptr+rune_index+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R8=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  8(R8)(DX*1),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[alt_ptr+rune_index+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R8=alt_ptr; DX=rune_index;
+  VPCMPD.BCST   $0,  12(R8)(DX*1),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[alt_ptr+rune_index+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R8=alt_ptr; DX=rune_index;
   KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
   KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
   KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
@@ -12038,7 +12039,7 @@ mixed_ascii:
   VPSRLD        $4,  Z9,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z9=data_needle;
   VPERMD        Z21, Z26, Z4              //;68FECBA0 get n_bytes_needle              ;Z4=n_bytes_needle; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
   VPADDD        Z7,  Z2,  Z2              //;DFE8D20B str_start += n_bytes_data       ;Z2=str_start; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  Z3              //;24E04BE7 str_length -= n_bytes_data      ;Z3=str_length; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  Z3              //;24E04BE7 str_len -= n_bytes_data         ;Z3=str_len; Z7=n_bytes_data;
   MOVL          X4,  R15                  //;18D7AD2B extract Z4                      ;R15=scratch; Z4=n_bytes_needle;
   ADDQ          R15, R14                  //;B2EF9837 needle_ptr += scratch           ;R14=needle_ptr; R15=scratch;
 
@@ -12046,7 +12047,7 @@ mixed_ascii:
   DECL          CX                        //;A99E9290 n_runes--                       ;CX=n_runes;
   JNZ           loop                      //;80013DFA jump if not zero (ZF = 0)       ;
 next:
-  VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_length == 0)         ;K1=lane_active; Z3=str_length;
+  VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_len == 0)            ;K1=lane_active; Z3=str_len;
   NEXT()
 
 //; #endregion bcCmpStrEqUTF8Ci

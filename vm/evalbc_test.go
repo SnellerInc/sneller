@@ -41,97 +41,269 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// TestStringCompareUT unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
+func TestStringCompareUT(t *testing.T) {
+	type unitTest struct {
+		data, needle string
+		expected     bool
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// portable comparison function
+		compare func(string, string) bool
+		// bytecode to run
+		op bcop
+		// encoder for string literals -> dictionary value
+		encode func(string) string
+	}
+	testSuites := []testSuite{
+		{
+			name: "compare string case-sensitive (opCmpStrEqCs)",
+			unitTests: []unitTest{
+				{"aaaa", "aaaa", true},
+				{"aaa", "aaaa", false},
+				{"aaaa", "aaa", false},
+				{"aaaa", "aaab", false},
+				{"aaaa", "Aaaa", false},
+				{"𐍈aaa", "𐍈aaa", true},
+				{"a𐍈aa", "a𐍈aa", true},
+				{"aa𐍈a", "aa𐍈a", true},
+				{"aaa𐍈", "aaa𐍈", true},
+			},
+			compare: func(x, y string) bool { return x == y },
+			op:      opCmpStrEqCs,
+			encode:  func(x string) string { return x },
+		},
+		{
+			name: "compare string case-insensitive (opCmpStrEqCi)",
+			unitTests: []unitTest{
+				{"aaaa", "aaaa", true},
+				{"aaa", "aaaa", false},
+				{"aaaa", "aaa", false},
+				{"aaaa", "aaab", false},
+				{"aaaa", "Aaaa", true},
+				{"𐍈aaa", "𐍈aaa", true},
+				{"a𐍈aa", "A𐍈aa", true},
+				{"aa𐍈a", "Aa𐍈a", true},
+				{"aaa𐍈", "Aaa𐍈", true},
+				{"aaa𐍈", "Aaa𐍈", true},
+			},
+			compare: strings.EqualFold, // we're only generating ASCII
+			op:      opCmpStrEqCi,
+			encode:  stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+		},
+		{
+			name: "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
+			unitTests: []unitTest{
+				{"aΩa\nb", "aΩa\nB", true},
+				{"aΩaa", "aΩaa", true},
+				{"aksb", "AKſB", true},
+				{"kSK", "KSK", true},
+				{"KſK", "KSK", true},
+				{"KſKſ", "KSK", false},
+				{"KſK", "KS", false},
+				{"Kſ", "K", false},
+				{"Kſ", "K", false},
+				{"KK", "K", false},
+
+				{"", "", false},
+				{"", "X", false},
+				{"X", "", false},
+
+				{"S", "S", true},
+				{"a", "A", true},
+				{"ab", "AB", true},
+
+				{"$¢", "$¢", true},
+				{"𐍈", "𐍈", true},
+				{"¢𐍈", "€𐍈", false},
+
+				{"¢¢", "¢¢", true},
+				{"$¢€𐍈", "$¢€𐍈", true},
+				{string([]byte{0x41, 0x41, 0xC2, 0xA2, 0xC2, 0xA2, 0x41, 0x41, 0xC2, 0xA2})[6:7], "A", true},
+
+				{"AA¢¢¢¢"[0:4], "AA¢", true},
+				{"$¢€𐍈ĳĲ", "$¢€𐍈ĲĲ", true},
+
+				// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+				// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+				// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+
+				{"ſ", "S", true},
+				{"Ω", "Ω", true},
+				{"K", "K", true},
+			},
+			compare: strings.EqualFold,
+			op:      opCmpStrEqUTF8Ci,
+			encode:  func(x string) string { return stringext.GenNeedleExt(x, false) },
+		},
+	}
+
+	var padding []byte // no padding
+
+	run := func(ts *testSuite, ut *unitTest) {
+		values := make([]string, 16)
+		for i := 0; i < 16; i++ {
+			values[i] = ut.data
+		}
+
+		enc := ts.encode(ut.needle)
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.dict = append(ctx.dict[:0], pad(enc))
+		ctx.setScalarStrings(values, padding)
+		ctx.current = 0xFFFF
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		for i := 0; i < 16; i++ {
+			observed := (ctx.current>>i)&1 == 1
+			if observed != ut.expected {
+				t.Fatalf("lane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
+					i, ut.needle, ut.data, observed, ut.expected, []byte(ut.data), []byte(ut.needle), []byte(enc))
+			}
+		}
+		ctx.Free()
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
 // TestStringCompareBF brute-force tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareBF(t *testing.T) {
-	type testcase struct {
+	type testSuite struct {
 		name string
-		// alphabet from which to generate needles
-		alphabet []rune
+		// alphabet from which to generate words
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
 		// portable comparison function
 		compare func(string, string) bool
 		// bytecode implementation of comparison
 		op bcop
-		// string immediate -> dictionary value function
-		dictval func(string) string
+		// encoder for string literals -> dictionary value
+		encode func(string) string
 	}
-
-	cases := []testcase{
+	testSuites := []testSuite{
 		{
 			// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
 			// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
 			// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-			name:     "equal",
-			alphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'},
-			compare:  func(x, y string) bool { return x == y },
-			op:       opCmpStrEqCs,
-			dictval:  func(x string) string { return x },
+			name:         "compare string case-sensitive (opCmpStrEqCs)",
+			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'},
+			dataMaxlen:   4,
+			dataMaxSize:  -1,
+			compare:      func(x, y string) bool { return x == y },
+			op:           opCmpStrEqCs,
+			encode:       func(x string) string { return x },
 		},
 		{
-			name:     "equal_ci_ascii",
-			alphabet: []rune{'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D', 'z', '!', '@'},
-			compare:  strings.EqualFold, // we're only generating ASCII
-			op:       opCmpStrEqCi,
-			dictval:  stringext.NormalizeStringASCIIOnly,
+			name:         "compare string case-insensitive (opCmpStrEqCi)",
+			dataAlphabet: []rune{'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D', 'z', '!', '@'},
+			dataMaxlen:   10,
+			dataMaxSize:  3000,
+			compare:      strings.EqualFold, // we're only generating ASCII
+			op:           opCmpStrEqCi,
+			encode:       stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
 		},
-		/* NOTE: currently disabled due to a bug
 		{
-			name: "equal_ci_utf8",
-			alphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω', 0x0},
-			compare:  strings.EqualFold,
-			op:       opCmpStrEqUTF8Ci,
-			dictval:  func(x string) string { return stringext.GenNeedleExt(x, false) },
+			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
+			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K'},
+			dataMaxlen:   4,
+			dataMaxSize:  -1, // -1 = exhaustive
+			compare:      strings.EqualFold,
+			op:           opCmpStrEqUTF8Ci,
+			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
 		},
-		*/
+		{ // test to explicitly check that byte length changing normalizations work
+			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci) 2",
+			dataAlphabet: []rune{'a', 'Ω', 'Ω'}, // U+2126 'Ω' (E2 84 A6 = 226 132 166) -> U+03A9 'Ω' (CE A9 = 207 137)
+			dataMaxlen:   4,
+			dataMaxSize:  -1, // -1 = exhaustive
+			compare:      strings.EqualFold,
+			op:           opCmpStrEqUTF8Ci,
+			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
+		},
 	}
 
 	var padding []byte // empty padding
-	var ctx bctestContext
-	defer ctx.Free()
-	run := func(t *testing.T, str string, group []string, tc *testcase) {
-		ctx.dict = append(ctx.dict[:0], pad(tc.dictval(str)))
-		ctx.setScalarStrings(group, padding)
-		ctx.current = (1 << len(group)) - 1
-		want := uint16(0)
-		for i := range group {
-			if tc.compare(str, group[i]) {
-				want |= 1 << i
+
+	run := func(ts *testSuite, dataSpace []string) {
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		check := func(needle string, group []string) {
+			enc := ts.encode(needle)
+
+			ctx.dict = append(ctx.dict[:0], pad(enc))
+			ctx.setScalarStrings(group, padding)
+			ctx.current = (1 << len(group)) - 1
+			expected16 := uint16(0)
+			for i := range group {
+				if ts.compare(needle, group[i]) {
+					expected16 |= 1 << i
+				}
+			}
+			// when
+			if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+				t.Error(err)
+			}
+			// then
+			if ctx.current != expected16 {
+				for i := range group {
+					observed := (ctx.current>>i)&1 == 1
+					expected := (expected16>>i)&1 == 1
+					if observed != expected {
+						t.Fatalf("lane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
+							i, needle, group[i], observed, expected, []byte(group[i]), []byte(needle), []byte(enc))
+					}
+				}
 			}
 		}
-		// when
-		if err := ctx.ExecuteImm2(tc.op, 0); err != nil {
-			t.Error(err)
-		}
-		// then
-		if ctx.current != want {
-			delta := ctx.current ^ want
-			for i := range group {
-				if delta&(1<<i) != 0 {
-					t.Fatalf("comparing %v to data %v: got %v expected %v", escapeNL(str), escapeNL(group[i]), ctx.current&(1<<i) != 0, want&(1<<i) != 0)
+
+		var group []string
+
+		for _, data1 := range dataSpace {
+			group = group[:0]
+			for _, data2 := range dataSpace {
+				group = append(group, data2)
+				if len(group) < 16 {
+					continue
 				}
+				check(data1, group)
+				group = group[:0]
+			}
+			if len(group) > 0 {
+				check(data1, group)
 			}
 		}
 	}
 
-	const lanes = 16
-	for i := range cases {
-		tc := &cases[i]
-		t.Run(tc.name, func(t *testing.T) {
-			var group []string
-			strSpace := createSpaceRandom(4, tc.alphabet, 2000)
-			for _, str1 := range strSpace {
-				group = group[:0]
-				for _, str2 := range strSpace {
-					group = append(group, str2)
-					if len(group) < lanes {
-						continue
-					}
-					run(t, str1, group, tc)
-					group = group[:0]
-				}
-				if len(group) > 0 {
-					run(t, str1, group, tc)
-				}
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			var dataSpace []string
+			if ts.dataMaxSize == -1 {
+				dataSpace = createSpace(ts.dataMaxlen, ts.dataAlphabet)
+			} else {
+				dataSpace = createSpaceRandom(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
 			}
+			run(&ts, dataSpace)
 		})
 	}
 }
@@ -162,7 +334,7 @@ func TestMatchpatRefBF(t *testing.T) {
 				obsMatch, obsOffset, obsLength := matchPatternReference([]byte(data), 0, len(data), segments, caseSensitive)
 				if wantMatch != obsMatch {
 					t.Fatalf("matching data %q to pattern %q = %v (case-sensitive %v): observed %v (offset %v; length %v); expected %v",
-						escapeNL(data), pattern, []byte(pattern), caseSensitive, obsMatch, obsOffset, obsLength, wantMatch)
+						data, pattern, []byte(pattern), caseSensitive, obsMatch, obsOffset, obsLength, wantMatch)
 				}
 			}
 		}
@@ -271,7 +443,7 @@ func TestMatchpatBF1(t *testing.T) {
 
 			if !tc.evalEq(wantLane, wantOffset, wantLength, obsLane, obsOffset, obsLength) {
 				t.Fatalf("matching data %q to pattern %q = %v: observed %v (offset %v; length %v); expected %v (offset %v; length %v)",
-					escapeNL(data[i]), dictval, []byte(dictval), obsLane, obsOffset, obsLength, wantLane, wantOffset, wantLength)
+					data[i], dictval, []byte(dictval), obsLane, obsOffset, obsLength, wantLane, wantOffset, wantLength)
 			}
 		}
 	}
@@ -388,11 +560,11 @@ func TestMatchpatBF2(t *testing.T) {
 		if !equal {
 			dictionaryStr := fmt.Sprintf("'%v' = %v", string(expected.dictValue), expected.dictValue)
 			if expected.resultLane == observed.resultLane {
-				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: %v\nobserved: %v",
-					info, escapeNL(string(expected.msg)), dictionaryStr, toString(expected), toString(observed))
+				t.Logf("for %v: comparing data %q with dictionary value %v:\nexpected: %v\nobserved: %v",
+					info, string(expected.msg), dictionaryStr, toString(expected), toString(observed))
 			} else {
-				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: lane=%v\nobserved: lane=%v",
-					info, escapeNL(string(expected.msg)), dictionaryStr, expected.resultLane, observed.resultLane)
+				t.Logf("for %v: comparing data %q with dictionary value %v:\nexpected: lane=%v\nobserved: lane=%v",
+					info, string(expected.msg), dictionaryStr, expected.resultLane, observed.resultLane)
 			}
 		}
 	}
@@ -493,11 +665,11 @@ func TestMatchpatUT(t *testing.T) {
 			segmentsStr := stringext.PatternToPrettyString(patternEnc, 3)
 			dictionaryStr := fmt.Sprintf("'%v' = %v", string(patternEnc), segmentsStr)
 			if expected.resultLane == observed.resultLane {
-				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: %v\nobserved: %v",
-					info, escapeNL(string(expected.msg)), dictionaryStr, toString(expected), toString(observed))
+				t.Logf("for %v: comparing data %q with dictionary value %v:\nexpected: %v\nobserved: %v",
+					info, string(expected.msg), dictionaryStr, toString(expected), toString(observed))
 			} else {
-				t.Logf("for %v: comparing data '%v' with dictionary value %v:\nexpected: lane=%v\nobserved: lane=%v",
-					info, escapeNL(string(expected.msg)), dictionaryStr, expected.resultLane, observed.resultLane)
+				t.Logf("for %v: comparing data %q with dictionary value %v:\nexpected: lane=%v\nobserved: lane=%v",
+					info, string(expected.msg), dictionaryStr, expected.resultLane, observed.resultLane)
 			}
 		}
 	}
@@ -1414,7 +1586,7 @@ func TestRegexMatchUT(t *testing.T) {
 			observed := ctx.current
 			if (expected && (observed != 0xFFFF)) || (!expected && (observed != 0)) {
 				t.Errorf("%v: issue with needle %q: expected %v; regexSneller=%q yields %x",
-					info, escapeNL(needle), expected, escapeNL(ds.RegexSneller.String()), observed)
+					info, needle, expected, ds.RegexSneller.String(), observed)
 			}
 		}
 
@@ -2029,7 +2201,7 @@ func runRegexTests(t *testing.T, dataSpace, regexSpace []string, regexType regex
 				for i := 0; i < 16; i++ {
 					if delta&(1<<i) != 0 {
 						t.Errorf("%v: issue with needle %q: regexGolang=%q yields %v; regexSneller=%q yields %v",
-							opStr, escapeNL(needleSubSpace[i]), escapeNL(ds.RegexGolang.String()), observed&(1<<i) != 0, escapeNL(ds.RegexSneller.String()), expected&(1<<i) != 0)
+							opStr, needleSubSpace[i], ds.RegexGolang.String(), observed&(1<<i) != 0, ds.RegexSneller.String(), expected&(1<<i) != 0)
 					}
 				}
 			}
@@ -2104,11 +2276,6 @@ func next(x *[]byte, max, length int) bool {
 		(*x)[i] = 0 // overflow for the current byte, try to increment the next byte i+1
 	}
 	return false // we have an overflow, return that we have no valid successor
-}
-
-//escapeNL escapes new line
-func escapeNL(str string) string {
-	return strings.ReplaceAll(str, "\n", "\\n")
 }
 
 // createSpace creates strings of length 1 upto maxLength over the provided alphabet

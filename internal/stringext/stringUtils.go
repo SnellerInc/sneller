@@ -178,17 +178,23 @@ func alternativeString(str string) (upper []rune, alt [][]rune) {
 		switch len(alt) {
 		case 1:
 			alt1[i] = alt[0]
+			alt2[i] = alt[0]
+			alt3[i] = alt[0]
+			alt4[i] = alt[0]
 			upper[i] = alt[0]
 			inUse1 = true
 		case 2:
 			alt1[i] = alt[0]
 			alt2[i] = alt[1]
+			alt3[i] = alt[1]
+			alt4[i] = alt[1]
 			upper[i] = min2(alt[0], alt[1])
 			inUse2 = true
 		case 3:
 			alt1[i] = alt[0]
 			alt2[i] = alt[1]
 			alt3[i] = alt[2]
+			alt4[i] = alt[2]
 			upper[i] = min3(alt[0], alt[1], alt[2])
 			inUse3 = true
 		case 4:
