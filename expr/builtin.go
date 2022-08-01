@@ -22,6 +22,8 @@ import (
 	"net"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 func mismatch(want, got int) error {
@@ -971,6 +973,64 @@ func makeStructText(args []Node, dst *strings.Builder, redact bool) {
 	dst.WriteByte('}')
 }
 
+func adjtime(fn func(x int64, val date.Time) date.Time) func(Hint, []Node) Node {
+	return func(h Hint, args []Node) Node {
+		if len(args) != 2 {
+			return nil
+		}
+		amt, ok := args[0].(Integer)
+		if !ok {
+			return nil
+		}
+		stamp, ok := args[1].(*Timestamp)
+		if !ok {
+			return nil
+		}
+		return &Timestamp{Value: fn(int64(amt), stamp.Value)}
+	}
+}
+
+func adjpart(part Timepart) func(x int64, val date.Time) date.Time {
+	return func(x int64, val date.Time) date.Time {
+		year, month := val.Year(), val.Month()
+		day, hour := val.Day(), val.Hour()
+		minute, sec := val.Minute(), val.Second()
+		switch part {
+		default:
+			panic("bad timepart")
+		case Second:
+			sec += int(x)
+		case Minute:
+			minute += int(x)
+		case Hour:
+			hour += int(x)
+		case Day:
+			day += int(x)
+		case Month:
+			month += int(x)
+		case Year:
+			year += int(x)
+		}
+		return date.Date(year, month, day, hour, minute, sec, val.Nanosecond())
+	}
+}
+
+var (
+	dateAddMicrosecond = adjtime(func(x int64, val date.Time) date.Time {
+		return date.UnixMicro(val.UnixMicro() + x)
+	})
+	dateAddMillisecond = adjtime(func(x int64, val date.Time) date.Time {
+		us := val.UnixMicro() + (1000 * x)
+		return date.UnixMicro(us)
+	})
+	dateAddSecond = adjtime(adjpart(Second))
+	dateAddMinute = adjtime(adjpart(Minute))
+	dateAddHour   = adjtime(adjpart(Hour))
+	dateAddDay    = adjtime(adjpart(Day))
+	dateAddMonth  = adjtime(adjpart(Month))
+	dateAddYear   = adjtime(adjpart(Year))
+)
+
 var builtinInfo = [maxBuiltin]binfo{
 	Concat:     {check: variadicArgs(StringType), private: true, ret: StringType | MissingType, simplify: simplifyConcat},
 	Trim:       {check: checkTrim, ret: StringType | MissingType, simplify: simplifyTrim},
@@ -1022,30 +1082,30 @@ var builtinInfo = [maxBuiltin]binfo{
 	WidthBucket: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: NumericType},
 	Before:      {check: checkBefore, ret: LogicalType, simplify: simplifyBefore},
 
-	DateAddMicrosecond:     {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddMillisecond:     {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddSecond:          {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddMinute:          {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddHour:            {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddDay:             {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddMonth:           {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateAddYear:            {check: fixedArgs(IntegerType, TimeType|IntegerType), private: true, ret: TimeType | MissingType},
-	DateDiffMicrosecond:    {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffMillisecond:    {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffSecond:         {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffMinute:         {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffHour:           {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffDay:            {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffMonth:          {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateDiffYear:           {check: fixedArgs(TimeType|IntegerType, TimeType|IntegerType), private: true, ret: IntegerType | MissingType},
-	DateExtractMicrosecond: {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Microsecond)},
-	DateExtractMillisecond: {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Millisecond)},
-	DateExtractSecond:      {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Second)},
-	DateExtractMinute:      {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Minute)},
-	DateExtractHour:        {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Hour)},
-	DateExtractDay:         {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Day)},
-	DateExtractMonth:       {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Month)},
-	DateExtractYear:        {check: fixedArgs(TimeType | IntegerType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Year)},
+	DateAddMicrosecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMicrosecond},
+	DateAddMillisecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMillisecond},
+	DateAddSecond:          {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddSecond},
+	DateAddMinute:          {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMinute},
+	DateAddHour:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddHour},
+	DateAddDay:             {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddDay},
+	DateAddMonth:           {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMonth},
+	DateAddYear:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddYear},
+	DateDiffMicrosecond:    {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffMillisecond:    {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffSecond:         {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffMinute:         {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffHour:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffDay:            {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffMonth:          {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffYear:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractMicrosecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Microsecond)},
+	DateExtractMillisecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Millisecond)},
+	DateExtractSecond:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Second)},
+	DateExtractMinute:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Minute)},
+	DateExtractHour:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Hour)},
+	DateExtractDay:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Day)},
+	DateExtractMonth:       {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Month)},
+	DateExtractYear:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Year)},
 	DateTruncMicrosecond:   {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Microsecond)},
 	DateTruncMillisecond:   {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Millisecond)},
 	DateTruncSecond:        {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Second)},

@@ -684,6 +684,45 @@ func TestSimplify(t *testing.T) {
 			&Aggregate{Op: OpSum, Inner: Star{}, Filter: Missing{}},
 			Null{},
 		},
+		{
+			DateAdd(Microsecond, Integer(-1), ts("2017-01-02T03:04:05.000001Z")),
+			ts("2017-01-02T03:04:05Z"),
+		},
+		{
+			DateAdd(Millisecond, Integer(-1), ts("2017-01-02T03:04:05Z")),
+			ts("2017-01-02T03:04:04.999Z"),
+		},
+		{
+			DateAdd(Second, Integer(-1), ts("2017-01-02T03:04:00.999Z")),
+			ts("2017-01-02T03:03:59.999Z"),
+		},
+		// the following are from here:
+		// https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-glacier-select-sql-reference-date.html
+		{
+			DateAdd(Year, Integer(5), ts("2010-01-01T00:00:00Z")),
+			ts("2015-01-01T00:00:00Z"),
+		},
+		{
+
+			DateAdd(Month, Integer(1), ts("2010-01-01T00:00:00Z")),
+			ts("2010-02-01T00:00:00Z"),
+		},
+		{
+			DateAdd(Day, Integer(-1), ts("2017-01-10T00:00:00Z")),
+			ts("2017-01-09T00:00:00Z"),
+		},
+		{
+			DateAdd(Hour, Integer(1), ts("2017-01-01T00:00:00Z")),
+			ts("2017-01-01T01:00:00Z"),
+		},
+		{
+			DateAdd(Hour, Integer(1), ts("2017-01-02T03:04:05Z")),
+			ts("2017-01-02T04:04:05Z"),
+		},
+		{
+			DateAdd(Minute, Integer(1), ts("2017-01-02T03:04:05.006Z")),
+			ts("2017-01-02T03:05:05.006Z"),
+		},
 	}
 
 	for i := range testcases {
