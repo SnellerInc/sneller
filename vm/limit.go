@@ -85,17 +85,25 @@ func (l *limiter) writeRows(rows []vmref) error {
 		// write the rows we are interested
 		// in writing
 		c += avail
-		if c < 0 {
+		if c <= 0 {
 			// close early so that the next
 			// sub-query can begin finalization
 			// as early as possible
 			l.done = true
 			err := l.dst.Close()
 			if err == nil {
-				return io.EOF
+				err = io.EOF
 			}
 			return err
 		}
 	}
-	return l.dst.writeRows(rows[:c])
+	err := l.dst.writeRows(rows[:c])
+	if avail == 0 && err == nil {
+		l.done = true
+		err = l.dst.Close()
+		if err == nil {
+			err = io.EOF
+		}
+	}
+	return err
 }

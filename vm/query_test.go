@@ -112,7 +112,7 @@ func (p parallelchunks) Open(_ context.Context) (vm.Table, error) {
 
 func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 	outputs := make([]io.WriteCloser, len(p))
-	errors := make([]error, len(p))
+	errlist := make([]error, len(p))
 	var wg sync.WaitGroup
 	for i := range outputs {
 		w, err := dst.Open()
@@ -126,7 +126,7 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 		go func(w io.WriteCloser, mem []byte, errp *error) {
 			defer wg.Done()
 			seterr := func(e error) {
-				if e != nil && *errp == nil {
+				if e != nil && !errors.Is(e, io.EOF) && *errp == nil {
 					*errp = e
 				}
 			}
@@ -143,12 +143,12 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 				seterr(fmt.Errorf("%T not an EndSegmentWriter?", w))
 			}
 			seterr(w.Close())
-		}(outputs[i], p[i], &errors[i])
+		}(outputs[i], p[i], &errlist[i])
 	}
 	wg.Wait()
-	for i := range errors {
-		if errors[i] != nil {
-			return errors[i]
+	for i := range errlist {
+		if errlist[i] != nil {
+			return errlist[i]
 		}
 	}
 	return nil
