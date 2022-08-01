@@ -809,22 +809,24 @@ func (b *Trace) BindStar() error {
 }
 
 // Bind pushes a set of variable bindings to the stack
-func (b *Trace) Bind(bind []expr.Binding) error {
+func (b *Trace) Bind(bindings ...[]expr.Binding) error {
 	bi := &Bind{complete: false}
 	bi.setparent(b.top)
 	b.cur = bi
 
 	// walk for each binding introduced,
 	// then add it to the current binding set
-	for i := range bind {
-		expr.Walk(b, bind[i].Expr)
-		if b.err != nil {
-			return b.combine()
+	for _, bind := range bindings {
+		for i := range bind {
+			expr.Walk(b, bind[i].Expr)
+			if b.err != nil {
+				return b.combine()
+			}
+			bi.bind = append(bi.bind, bind[i])
 		}
-		bi.bind = append(bi.bind, bind[i])
 	}
-	for i := range bind {
-		if err := b.Check(bind[i].Expr); err != nil {
+	for i := range bi.bind {
+		if err := b.Check(bi.bind[i].Expr); err != nil {
 			return err
 		}
 	}

@@ -806,8 +806,7 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 				}
 
 				if len(missingBindings) > 0 {
-					bind := append(missingBindings, s.Columns...)
-					err = b.splitAggregate(s.OrderBy, bind, s.GroupBy, s.Having)
+					finalColumns, err := b.splitAggregateWithAuxiliary(s.OrderBy, missingBindings, s.Columns, s.GroupBy, s.Having)
 					if err != nil {
 						return err
 					}
@@ -817,7 +816,7 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 						return err
 					}
 
-					err = b.Bind(s.Columns)
+					err = b.Bind(identityBindings(finalColumns))
 					if err != nil {
 						return err
 					}
