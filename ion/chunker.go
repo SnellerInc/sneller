@@ -432,6 +432,10 @@ func (c *Chunker) Flush() error {
 		}
 		return nil
 	}
+	if !c.noResymbolize && !c.compressed {
+		c.compress()
+		c.compressed = true
+	}
 	return c.forceFlush(true)
 }
 

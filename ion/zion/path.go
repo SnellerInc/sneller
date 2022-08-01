@@ -19,9 +19,9 @@ import (
 )
 
 type pathset struct {
-	bits    []uint64
-	buckets uint32
-	seed    uint32
+	bits     []uint64
+	buckets  uint32
+	selector uint8
 }
 
 func (p *pathset) empty() bool {
@@ -35,7 +35,7 @@ func (p *pathset) set(x ion.Symbol) {
 		p.bits = append(p.bits, 0)
 	}
 	p.bits[word] |= 1 << (v & 63)
-	p.buckets |= 1 << sym2bucket(uint64(p.seed), x)
+	p.buckets |= 1 << sym2bucket(0, p.selector, x)
 }
 
 func (p *pathset) useBucket(i int) bool {

@@ -132,7 +132,7 @@ func (p *projectionTester) Write(block []byte) (int, error) {
 			}
 			// the encoder's idea of which symbols
 			// correspond to which buckets should map 1:1 to the decoder's:
-			if int(p.enc.sym2bucket[c.symbol]) != sym2bucket(uint64(p.dec.set.seed), c.symbol) {
+			if int(p.enc.sym2bucket[c.symbol]) != sym2bucket(0, p.dec.set.selector, c.symbol) {
 				p.t.Fatal("bucket mismatches")
 			}
 			if !p.dec.set.useBucket(int(p.enc.sym2bucket[c.symbol])) {

@@ -28,8 +28,12 @@ const (
 	bucketMask = buckets - 1
 )
 
-func sym2bucket(seed uint64, sym ion.Symbol) int {
+func hash64(seed uint32, sym ion.Symbol) uint64 {
 	var buf [9]byte
 	size := binary.PutUvarint(buf[:], uint64(sym))
-	return int(siphash.Hash(0, seed, buf[:size]) & bucketMask)
+	return siphash.Hash(0, uint64(seed), buf[:size])
+}
+
+func sym2bucket(seed uint32, selector uint8, sym ion.Symbol) int {
+	return int((hash64(seed, sym) >> (selector * bucketBits)) & bucketMask)
 }

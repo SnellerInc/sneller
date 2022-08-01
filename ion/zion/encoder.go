@@ -16,6 +16,7 @@ package zion
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -46,23 +47,13 @@ type Encoder struct {
 }
 
 // Reset resets the Encoder's internal
-// symbol table and its seed (see SetSeed).
+// symbol table and its seed.
 func (e *Encoder) Reset() {
 	e.st.Reset()
 	e.sym2bucket = e.sym2bucket[:0]
 	e.shape = e.shape[:0]
 	e.seed = 0
 	e.enc = shapeEncoder{}
-}
-
-// SetSeed sets the seed used for hashing
-// symbol IDs to buckets.
-func (e *Encoder) SetSeed(x uint32) {
-	// precomputed symbol->bucket mapping
-	// is invalidated each time the seed
-	// is changed:
-	e.sym2bucket = e.sym2bucket[:0]
-	e.seed = x
 }
 
 // Encode encodes ion data from src by appending it to dst.
@@ -80,25 +71,29 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 		e.buck[i].mem = e.buck[i].mem[:0]
 		e.buck[i].base = 0
 	}
-	if ion.IsBVM(src) {
-		// reset precomputed bucket numbers
-		// if the symbol table isn't a strict append
-		e.sym2bucket = e.sym2bucket[:0]
-	}
+	isBVM := ion.IsBVM(src)
 	var body []byte
 	var err error
-	if ion.IsBVM(src) || ion.TypeOf(src) == ion.AnnotationType {
+	if isBVM || ion.TypeOf(src) == ion.AnnotationType {
 		body, err = e.st.Unmarshal(src)
 		if err != nil {
 			return nil, err
 		}
 		// shape starts with the symbol table
 		e.shape = append(e.shape[:0], src[:len(src)-len(body)]...)
+		if isBVM {
+			e.sym2bucket = e.sym2bucket[:0]
+			err = e.pickSeed(body)
+			if err != nil {
+				return nil, err
+			}
+		}
 	} else {
 		body = src
 		e.shape = e.shape[:0]
 	}
 	e.precompute()
+
 	// walk for shape, pushing fields into buckets,
 	// appending to shape for metadata
 	err = e.walk(body)
@@ -127,7 +122,7 @@ func (e *Encoder) precompute() {
 	syms := e.st.MaxID()
 	for len(e.sym2bucket) < syms {
 		n := len(e.sym2bucket)
-		e.sym2bucket = append(e.sym2bucket, uint8(sym2bucket(uint64(e.seed), ion.Symbol(n))))
+		e.sym2bucket = append(e.sym2bucket, uint8(sym2bucket(0, uint8(e.seed), ion.Symbol(n))))
 	}
 }
 
@@ -218,4 +213,101 @@ func (e *Encoder) encodeField(mem []byte) ([]byte, error) {
 	s += len(mem) - len(rest)
 	e.encodeFlat(sym, mem[:s])
 	return mem[s:], nil
+}
+
+const trials = (64 / bucketBits)
+
+type histogram struct {
+	buckets [trials][buckets]int
+	total   int
+}
+
+func (h *histogram) record(sym ion.Symbol, size int) {
+	// we use one 64-bit hash and produce
+	// sixteen trial bucket layouts by picking
+	// different nibble positions from the hash function:
+	u := hash64(0, sym)
+	for i := 0; i < trials; i++ {
+		h.buckets[i][u&bucketMask] += size
+		u >>= bucketBits
+	}
+	h.total += size
+}
+
+// best picks the best seed of the candidate seeds
+func (h *histogram) best() uint32 {
+	// not even worth evaluating:
+	if h.total < (buckets * buckets) {
+		return uint32(0)
+	}
+	// pick the bucket with the best sum-squared
+	// distance from a perfectly-even distribution;
+	// effectively we are minimizing the variance
+	// of bucket sizes around the mean bucket size
+	want := h.total / buckets
+	entropy := math.MaxInt
+	best := 0
+	for i := 0; i < trials; i++ {
+		total := 0
+		for j := 0; j < buckets; j++ {
+			residual := h.buckets[i][j] - want
+			total += residual * residual
+		}
+		if total < entropy {
+			best = i
+			entropy = total
+		}
+	}
+	return uint32(best)
+}
+
+func (e *Encoder) pickSeed(body []byte) error {
+	h := histogram{}
+	var err error
+	for len(body) > 0 {
+		body, err = e.pickSeed1(&h, body)
+		if err != nil {
+			return err
+		}
+	}
+	e.seed = h.best()
+	return nil
+}
+
+func (e *Encoder) pickSeed1(h *histogram, body []byte) ([]byte, error) {
+	t := ion.TypeOf(body)
+	switch t {
+	default:
+		// make sure we don't run into a symbol table
+		// or something else that would be semantically important!
+		return nil, fmt.Errorf("zion.Encoder.pickSeed1: top-level value of type %s", t)
+	case ion.NullType:
+		// nop pad
+		return skipOne(body)
+	case ion.StructType:
+		// okay
+	}
+	self, rest := ion.Contents(body)
+	if self == nil {
+		return nil, fmt.Errorf("invalid ion body")
+	}
+	if len(body)-len(rest) >= maxSize {
+		return nil, fmt.Errorf("structure size %d exceeds max size %d", len(body)-len(rest), maxSize)
+	}
+	var sym ion.Symbol
+	var err error
+	for len(self) > 0 {
+		before := len(self)
+		sym, self, err = ion.ReadLabel(self)
+		if err != nil {
+			return nil, err
+		}
+		s := ion.SizeOf(self)
+		if s <= 0 || s > len(self) {
+			return nil, fmt.Errorf("pickSeed1: corrupt ion (size %d)", s)
+		}
+		self = self[s:]
+		h.record(sym, before-len(self))
+	}
+	return rest, nil
 }

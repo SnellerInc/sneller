@@ -37,7 +37,6 @@ type testWriter struct {
 }
 
 func (t *testWriter) Write(buf []byte) (int, error) {
-	t.enc.SetSeed(0xf00fbeef)
 	chunk, err := t.enc.Encode(buf, nil)
 	if err != nil {
 		return 0, err
@@ -146,7 +145,6 @@ type testBuffer struct {
 }
 
 func (t *testBuffer) Write(p []byte) (int, error) {
-	t.enc.SetSeed(uint32(len(t.output)) + 0x10000)
 	chunk, err := t.enc.Encode(p, nil)
 	if err != nil {
 		return 0, err
@@ -536,4 +534,62 @@ func BenchmarkDecompressFields(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkEncode(b *testing.B) {
+	type benchcase struct {
+		file string
+	}
+	cases := []benchcase{
+		{
+			file: "cloudtrail.json",
+		},
+	}
+	for i := range cases {
+		f := cases[i].file
+		b.Run(f, func(b *testing.B) {
+			fp := filepath.Join("..", "..", "testdata", f)
+			f, err := os.Open(fp)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer f.Close()
+			var buf bytes.Buffer
+			cn := ion.Chunker{
+				W:     &buf,
+				Align: 1024 * 1024,
+			}
+			err = jsonrl.Convert(f, &cn, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			err = cn.Flush()
+			if err != nil {
+				b.Fatal(err)
+			}
+			var enc Encoder
+			var st ion.Symtab
+			in := trimnop(buf.Bytes())
+			// same as in, minus symtab:
+			tail, _ := st.Unmarshal(in)
+			b.SetBytes(int64(len(in)))
+			b.ResetTimer()
+
+			// we are doing the first Encode with
+			// the symbol table, and then doing the
+			// rest without it so that we don't inadvertently
+			// just benchmark the seed-picking code
+			out, err := enc.Encode(in, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			for i := 1; i < b.N; i++ {
+				out, err = enc.Encode(tail, out[:0])
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+
 }

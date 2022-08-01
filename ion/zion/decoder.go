@@ -66,6 +66,10 @@ type Decoder struct {
 	components []string
 
 	decomps int
+	// seed is the full 32-bit value
+	// from the input stream; currently
+	// only the lowest nibble is used
+	seed uint32
 }
 
 func pad8(buf []byte) []byte {
@@ -111,7 +115,8 @@ func (d *Decoder) checkMagic(src []byte) ([]byte, error) {
 	if !bytes.Equal(src[:4], magic) {
 		return nil, fmt.Errorf("zion.Decoder: bad magic bytes %x", src[:len(magic)])
 	}
-	d.set.seed = binary.LittleEndian.Uint32(src[4:])
+	d.seed = binary.LittleEndian.Uint32(src[4:])
+	d.set.selector = uint8(d.seed & 0xf)
 	return src[8:], nil
 }
 

@@ -39,6 +39,10 @@ func IsMagic(x []byte) bool {
 		bytes.Equal(x[:4], magic)
 }
 
+// NOTE: we append a 4-byte value to every magic marker,
+// but right now we only use the lowest 4 bits for the
+// descriptor selector in sym2bucket(). The other bits
+// are free for future feature flags, etc.
 func appendMagic(dst []byte, seed uint32) []byte {
 	return append(append(dst, magic...),
 		byte(seed), byte(seed>>8), byte(seed>>16), byte(seed>>24))
