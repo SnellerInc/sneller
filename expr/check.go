@@ -222,15 +222,27 @@ func (c *Comparison) check(h Hint) error {
 		}
 		return nil
 	}
+
+	lt := TypeOf(c.Left, h)
+	rt := TypeOf(c.Right, h)
+
 	oktypes := AnyType &^ MissingType
 	if c.Op.ordinal() {
+		// only numeric types (int/float with int/float) and timestamps are comparable
+		// we can compare ints with floats too
+		for _, types := range []TypeSet{NumericType, TimeType} {
+			if lt&types != 0 && rt&types != 0 {
+				return nil
+			}
+		}
+
 		oktypes = NumericType | TimeType // only types supported for ordinal comparison for now
 	}
-	lt := TypeOf(c.Left, h) & oktypes
-	rt := TypeOf(c.Right, h) & oktypes
-	if lt&rt == 0 {
+
+	if lt&rt&oktypes == 0 {
 		return errtype(c, "lhs and rhs of comparison are never comparable")
 	}
+
 	return nil
 }
 
