@@ -15,6 +15,7 @@
 package expr
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -216,18 +217,30 @@ func TestParsePath(t *testing.T) {
 			str:  "first[1][2]",
 			want: &Path{First: "first", Rest: &LiteralIndex{Field: 1, Rest: &LiteralIndex{Field: 2}}},
 		},
+		{
+			str:  "first.foo[2].bar",
+			want: &Path{First: "first", Rest: &Dot{Field: "foo", Rest: &LiteralIndex{Field: 2, Rest: &Dot{Field: "bar"}}}},
+		},
 	}
 	for i := range tcs {
-		p, err := ParsePath(tcs[i].str)
-		if err != nil {
-			t.Errorf("case %d: %s", i, err)
-			continue
-		}
-		if !p.Equals(tcs[i].want) {
-			t.Errorf("case %d: got %q, want %q", i, p, tcs[i].want)
-		}
-	}
+		tc := tcs[i]
 
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			p, err := ParsePath(tc.str)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if !p.Equals(tc.want) {
+				t.Logf("got:  %s", ToString(p))
+				t.Logf("want: %s", ToString(tc.want))
+				t.Error("wrong result")
+			}
+		})
+	}
+}
+
+func TestParsePathErrors(t *testing.T) {
 	bad := []string{
 		"",
 		"field.",
@@ -235,9 +248,17 @@ func TestParsePath(t *testing.T) {
 		"[2]",
 		"x..y",
 		"x.[2]",
+		"x....",
+		"x[[",
+		"x[foo]",
+		"x[2][]",
+		"x[2].[]",
+		"x[2].[3]",
+		"x[2][3].",
 	}
 	for i := range bad {
 		p, err := ParsePath(bad[i])
+		t.Log(err)
 		if err == nil {
 			t.Errorf("%q - expected error but got back %s", bad[i], p)
 		}

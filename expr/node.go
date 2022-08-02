@@ -2467,7 +2467,6 @@ func (p *Path) parse(x string) error {
 				state = parsingIndex
 			} else {
 				state = parsingField
-				field = append(field, x[0])
 			}
 		case parsingField:
 			if x[0] == '.' || x[0] == '[' {
