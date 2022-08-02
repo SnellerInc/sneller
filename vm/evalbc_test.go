@@ -145,11 +145,7 @@ func TestStringCompareUT(t *testing.T) {
 	var padding []byte // no padding
 
 	run := func(ts *testSuite, ut *unitTest) {
-		values := make([]string, 16)
-		for i := 0; i < 16; i++ {
-			values[i] = ut.data
-		}
-
+		values := fill16(ut.data)
 		enc := ts.encode(ut.needle)
 
 		var ctx bctestContext
@@ -277,6 +273,8 @@ func TestStringCompareBF(t *testing.T) {
 			}
 		}
 
+		//TODO make a generic space partitioner that can be reused by other BF tests
+
 		var group []string
 
 		for _, data1 := range dataSpace {
@@ -297,20 +295,14 @@ func TestStringCompareBF(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			var dataSpace []string
-			if ts.dataMaxSize == -1 {
-				dataSpace = createSpace(ts.dataMaxlen, ts.dataAlphabet)
-			} else {
-				dataSpace = createSpaceRandom(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
-			}
-			run(&ts, dataSpace)
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
 
 // TestMatchpatRefBF brute-force tests for: the reference implementation of matchpat (matchPatternReference) with a much slower regex impl
 func TestMatchpatRefBF(t *testing.T) {
-	dataSpace := createSpace(4, []rune{'a', 'b', 's', 'ſ'})
+	dataSpace := createSpaceExhaustive(4, []rune{'a', 'b', 's', 'ſ'})
 	patternSpace := createSpacePatternRandom(6, []rune{'s', 'S', 'k', 'K'}, 500)
 
 	// matchPatternRegex matches the first occurrence of the provided pattern similar to matchPatternReference
@@ -452,7 +444,7 @@ func TestMatchpatBF1(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			var group []string
-			dataSpace := createSpace(ts.dataMaxlen, ts.dataAlphabet)
+			dataSpace := createSpaceExhaustive(ts.dataMaxlen, ts.dataAlphabet)
 			patternSpace := createSpacePatternRandom(ts.patternMaxlen, ts.patternAlphabet, 1000)
 			for _, pattern := range patternSpace {
 				group = group[:0]
@@ -476,7 +468,7 @@ func TestMatchpatBF1(t *testing.T) {
 // TestMatchpatBF2 brute-force tests 2 for: opMatchpatCs
 func TestMatchpatBF2(t *testing.T) {
 	info := "match-pattern case-sensitive (opMatchpatCs) BF2"
-	dataSpace := createSpace(6, []rune{'a', 'b', 'c', 's', 'ſ'})
+	dataSpace := createSpaceExhaustive(6, []rune{'a', 'b', 'c', 's', 'ſ'})
 
 	testCases := []struct {
 		segments []string
@@ -573,10 +565,7 @@ func TestMatchpatBF2(t *testing.T) {
 	checkSpace2 := func(dataSpace []string, segmentsSpace [][]string, op bcop, valFun2 validateFun2) {
 		for _, dataStr := range dataSpace {
 			data := []byte(dataStr)
-			values := make([]string, 16)
-			for i := 0; i < 16; i++ {
-				values[i] = dataStr
-			}
+			values := fill16(dataStr)
 			for _, segments := range segmentsSpace {
 				dictElementEnc := string(stringext.SegmentsToPattern(segments))
 
@@ -676,11 +665,7 @@ func TestMatchpatUT(t *testing.T) {
 
 	run := func(ts *testSuite, expected *unitTest) {
 		data := string(expected.msg)
-
-		values := make([]string, 16)
-		for i := 0; i < 16; i++ {
-			values[i] = data
-		}
+		values := fill16(data)
 
 		var ctx bctestContext
 		ctx.Taint()
@@ -958,12 +943,7 @@ func TestRegexMatchBF1(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			var dataSpace []string
-			if ts.dataMaxSize == -1 {
-				dataSpace = createSpace(ts.dataMaxlen, ts.dataAlphabet)
-			} else {
-				dataSpace = createSpaceRandom(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
-			}
+			dataSpace := createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
 			regexSpace := createSpaceRegex(ts.regexMaxlen, ts.regexAlphabet, ts.regexType)
 			runRegexTests(t, dataSpace, regexSpace, ts.regexType, false)
 		})
@@ -1094,12 +1074,7 @@ func TestRegexMatchBF2(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			var dataSpace []string
-			if ts.dataMaxSize == -1 {
-				dataSpace = createSpace(ts.dataMaxlen, ts.dataAlphabet)
-			} else {
-				dataSpace = createSpaceRandom(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
-			}
+			dataSpace := createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
 			for _, ut := range ts.unitTests {
 				regexSpace := []string{ut.expr} // space with only one element
 				runRegexTests(t, dataSpace, regexSpace, ts.regexType, ut.writeDot)
@@ -1558,11 +1533,7 @@ func TestRegexMatchUT(t *testing.T) {
 	}
 
 	run := func(tc unitTest) {
-
-		data := make([]string, 16)
-		for i := 0; i < 16; i++ {
-			data[i] = tc.msg
-		}
+		data := fill16(tc.msg)
 
 		ds := regexp2.CreateDs(tc.expr, tc.regexType, false, regexp2.MaxNodesAutomaton)
 
@@ -1617,11 +1588,7 @@ func FuzzRegexMatchRun(f *testing.F) {
 
 	run := func(t *testing.T, ds *[]byte, matchExpected bool, data, regexString, info string, op bcop) {
 		regexMatch := func(ds []byte, needle string, op bcop) (match bool) {
-
-			values := make([]string, 16)
-			for i := 0; i < 16; i++ {
-				values[i] = needle
-			}
+			values := fill16(needle)
 
 			var ctx bctestContext
 			ctx.Taint()
@@ -1760,11 +1727,8 @@ func TestIsSubnetOfBF(t *testing.T) {
 
 	run := func(ip, ipMin, ipMax net.IP) {
 		ipStr := ip.String()
+		data := fill16(ipStr)
 		expected := referenceIsSubnetOf([]byte(ipStr), ipMin, ipMax)
-		data := make([]string, 16)
-		for i := 0; i < 16; i++ {
-			data[i] = ipStr
-		}
 
 		var ctx bctestContext
 		ctx.Taint()
@@ -1842,10 +1806,7 @@ func TestIsSubnetOfUT(t *testing.T) {
 			t.Fatalf("IsSubnetOf reference: msg=%q; min=%q; max=%q; observed=%v; expected=%v\n", ut.ip, ut.min, ut.max, refObservation, ut.result)
 		}
 
-		data := make([]string, 16)
-		for i := 0; i < 16; i++ {
-			data[i] = ut.ip
-		}
+		data := fill16(ut.ip)
 
 		var ctx bctestContext
 		ctx.Taint()
@@ -1871,6 +1832,192 @@ func TestIsSubnetOfUT(t *testing.T) {
 	for i, ut := range unitTests {
 		t.Run(fmt.Sprintf("case %d:", i), func(t *testing.T) {
 			run(ut)
+		})
+	}
+}
+
+// TestSkip1CharUT unit-tests for opSkip1charLeft, opSkip1charRight
+func TestSkip1CharUT(t *testing.T) {
+	type unitTest struct {
+		data      string // data at SI
+		expLane   bool   // expected lane K1
+		expOffset int    // expected offset Z2
+		expLength int    // expected length Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+	}
+	testSuites := []testSuite{
+		{
+			name: "skip 1 char from left (opSkip1charLeft)",
+			unitTests: []unitTest{
+				{"", false, 0, 0},
+				{"a", true, 1, 0},
+				{"aa", true, 1, 1},
+				{"aaa", true, 1, 2},
+				{"aaaa", true, 1, 3},
+				{"aaaaa", true, 1, 4},
+
+				{"𐍈", true, 4, 0},
+				{"𐍈a", true, 4, 1},
+				{"𐍈aa", true, 4, 2},
+				{"𐍈aaa", true, 4, 3},
+				{"𐍈aaaa", true, 4, 4},
+				{"𐍈aaaaa", true, 4, 5},
+
+				{"a𐍈", true, 1, 4},
+				{"a𐍈a", true, 1, 5},
+				{"a𐍈aa", true, 1, 6},
+				{"a𐍈aaa", true, 1, 7},
+				{"a𐍈aaaa", true, 1, 8},
+			},
+			op: opSkip1charLeft,
+		},
+		{
+			name: "skip 1 char from right (opSkip1charRight)",
+			unitTests: []unitTest{
+				{"", false, 0, 0},
+				{"a", true, 0, 0},
+				{"aa", true, 0, 1},
+				{"aaa", true, 0, 2},
+				{"aaaa", true, 0, 3},
+				{"aaaaa", true, 0, 4},
+
+				{"𐍈", true, 0, 0},
+				{"a𐍈", true, 0, 1},
+				{"aa𐍈", true, 0, 2},
+				{"aaa𐍈", true, 0, 3},
+				{"aaaa𐍈", true, 0, 4},
+				{"aaaaa𐍈", true, 0, 5},
+
+				{"𐍈a", true, 0, 4},
+				{"a𐍈a", true, 0, 5},
+				{"aa𐍈a", true, 0, 6},
+				{"aaa𐍈a", true, 0, 7},
+				{"aaaa𐍈a", true, 0, 8},
+			},
+			op: opSkip1charRight,
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		dataPrefix := string([]byte{0, 0, 0})
+		ctx.addData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.Execute(ts.op); err != nil {
+			t.Error(err)
+		}
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+
+			if (obsLane != ut.expLane) || (obsOffset != ut.expOffset) || (obsLength != ut.expLength) {
+				t.Errorf("lane %v: skipping 1 char from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+					i, ut.data, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
+				return
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestSkip1CharBF brute-force tests for: opSkip1charLeft, opSkip1charRight
+func TestSkip1CharBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, skipCount) -> lane, offset, length
+		refImpl func(string, int) (bool, int, int)
+	}
+	testSuites := []testSuite{
+		{
+			name:         "skip 1 char from left (opSkip1charLeft)",
+			dataAlphabet: []rune{'s', 'S', 'ſ', '\n', 0},
+			dataMaxlen:   6,
+			dataMaxSize:  -1,
+			op:           opSkip1charLeft,
+			refImpl:      referenceSkipCharLeft,
+		},
+		{
+			name:         "skip 1 char from right (opSkip1charRight)",
+			dataAlphabet: []rune{'s', 'S', 'ſ', '\n', 0},
+			dataMaxlen:   6,
+			dataMaxSize:  -1,
+			op:           opSkip1charRight,
+			refImpl:      referenceSkipCharRight,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace []string) {
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		//TODO make a generic space partitioner that can be reused by other BF tests
+
+		dataPrefix := string([]byte{0, 0, 0})
+
+		for _, data := range dataSpace {
+			expLane, expOffset, expLength := ts.refImpl(data, 1)
+
+			ctx.addData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+			ctx.addScalarStrings(fill16(data), []byte{})
+			ctx.current = 0xFFFF
+			scalarBefore := ctx.getScalarUint32()
+
+			// when
+			if err := ctx.Execute(ts.op); err != nil {
+				t.Error(err)
+			}
+			// then
+			scalarAfter := ctx.getScalarUint32()
+			for i := 0; i < 16; i++ {
+				obsLane := (ctx.current>>i)&1 == 1
+				obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+				obsLength := int(scalarAfter[1][i])
+
+				if (obsLane != expLane) || (obsOffset != expOffset) || (obsLength != expLength) {
+					t.Errorf("lane %v: skipping 1 char from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+						i, data, obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
+					return
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -2039,6 +2186,63 @@ func TestBytecodeIsNull(t *testing.T) {
 
 /////////////////////////////////////////////////////////////
 // Helper functions
+
+func fill16(msg string) (result []string) {
+	result = make([]string, 16)
+	for i := 0; i < 16; i++ {
+		result[i] = msg
+	}
+	return
+}
+
+// referenceSkipCharLeft skips n code-point from msg; valid is true if successful, false if provided string is not UTF-8
+func referenceSkipCharLeft(msg string, skipCount int) (laneOut bool, offsetOut, lengthOut int) {
+	length := len(msg)
+	if !utf8.ValidString(msg) {
+		panic("invalid msg provided")
+	}
+	laneOut = true
+	nRunes := utf8.RuneCountInString(msg)
+	nRunesToRemove := skipCount
+	if nRunesToRemove > nRunes {
+		nRunesToRemove = nRunes
+		laneOut = false
+	}
+	strToRemove := string([]rune(msg)[:nRunesToRemove])
+	nBytesToSkip := len(strToRemove)
+	if nBytesToSkip > length {
+		nBytesToSkip = length
+	}
+	offsetOut = nBytesToSkip
+	lengthOut = length - nBytesToSkip
+	return
+}
+
+// referenceSkipCharRight skips n code-point from msg; valid is true if successful, false if provided string is not UTF-8
+func referenceSkipCharRight(msg string, skipCount int) (laneOut bool, offsetOut, lengthOut int) {
+	length := len(msg)
+	if !utf8.ValidString(msg) {
+		panic("invalid msg provided")
+	}
+	laneOut = true
+	nRunes := utf8.RuneCountInString(msg)
+
+	nRunesToRemove := skipCount
+	if nRunesToRemove > nRunes {
+		nRunesToRemove = nRunes
+		laneOut = false
+	}
+	nRunesToKeep := nRunes - nRunesToRemove
+
+	strToRemove := string([]rune(msg)[nRunesToKeep:])
+	nBytesToSkip := len(strToRemove)
+	if nBytesToSkip > length {
+		nBytesToSkip = length
+	}
+	offsetOut = 0
+	lengthOut = length - nBytesToSkip
+	return
+}
 
 func referenceIsSubnetOf(msg []byte, min, max net.IP) bool {
 	ip4 := net.ParseIP(string(msg)).To4()
@@ -2278,8 +2482,8 @@ func next(x *[]byte, max, length int) bool {
 	return false // we have an overflow, return that we have no valid successor
 }
 
-// createSpace creates strings of length 1 upto maxLength over the provided alphabet
-func createSpace(maxLength int, alphabet []rune) []string {
+// createSpaceExhaustive creates strings of length 1 upto maxLength over the provided alphabet
+func createSpaceExhaustive(maxLength int, alphabet []rune) []string {
 	result := make([]string, 0)
 	alphabetSize := len(alphabet)
 	indices := make([]byte, maxLength)
@@ -2298,23 +2502,31 @@ func createSpace(maxLength int, alphabet []rune) []string {
 	return result
 }
 
-// createSpaceRandom creates random strings with the provided length over the provided alphabet
-func createSpaceRandom(maxLength int, alphabet []rune, maxSize int) []string {
-	set := make(map[string]struct{}) // new empty set
+func createSpace(maxLength int, alphabet []rune, maxSize int) []string {
 
-	// Note: not the most efficient implementation: space of short strings
-	// is quickly exhausted while we are still trying to find something
-	strRunes := make([]rune, maxLength)
-	alphabetSize := len(alphabet)
+	// createSpaceRandom creates random strings with the provided length over the provided alphabet
+	createSpaceRandom := func(maxLength int, alphabet []rune, maxSize int) []string {
+		set := make(map[string]struct{}) // new empty set
 
-	for len(set) < maxSize {
-		strLength := rand.Intn(maxLength) + 1
-		for i := 0; i < strLength; i++ {
-			strRunes[i] = alphabet[rand.Intn(alphabetSize)]
+		// Note: not the most efficient implementation: space of short strings
+		// is quickly exhausted while we are still trying to find something
+		strRunes := make([]rune, maxLength)
+		alphabetSize := len(alphabet)
+
+		for len(set) < maxSize {
+			strLength := rand.Intn(maxLength) + 1
+			for i := 0; i < strLength; i++ {
+				strRunes[i] = alphabet[rand.Intn(alphabetSize)]
+			}
+			set[string(strRunes)] = struct{}{}
 		}
-		set[string(strRunes)] = struct{}{}
+		return maps.Keys(set)
 	}
-	return maps.Keys(set)
+
+	if maxSize == -1 {
+		return createSpaceExhaustive(maxLength, alphabet)
+	}
+	return createSpaceRandom(maxLength, alphabet, maxSize)
 }
 
 func createSpacePatternRandom(maxLength int, alphabet []rune, maxSize int) []string {
@@ -2345,7 +2557,7 @@ func createSpacePatternRandom(maxLength int, alphabet []rune, maxSize int) []str
 	return result
 }
 
-// createSpace creates strings of length 1 upto maxLength over the provided alphabet
+// createSpaceExhaustive creates strings of length 1 upto maxLength over the provided alphabet
 func createSpaceRegex(maxLength int, alphabet []rune, regexType regexp2.RegexType) []string {
 	result := make([]string, 0)
 	alphabetSize := len(alphabet)

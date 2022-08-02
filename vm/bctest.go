@@ -152,16 +152,21 @@ func (c *bctestContext) getScalarFloat64() (result [16]float64) {
 	return
 }
 
-func (c *bctestContext) setScalarStrings(values []string, padding []byte) {
-	if len(values) > 16 {
-		panic("Can set up to 16 input values for VM opcode")
-	}
-
+func (c *bctestContext) addData(value string) {
 	if c.data == nil {
 		c.data = Malloc()
 	}
 	c.data = c.data[:0]
+	c.data = append(c.data, value...)
+}
 
+func (c *bctestContext) addScalarStrings(values []string, padding []byte) {
+	if len(values) > 16 {
+		panic("Can set up to 16 input values for VM opcode")
+	}
+	if c.data == nil {
+		c.data = Malloc()
+	}
 	for i, str := range values {
 		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
 		if !ok {
@@ -177,6 +182,14 @@ func (c *bctestContext) setScalarStrings(values []string, padding []byte) {
 		c.data = append(c.data, str...)
 		c.data = append(c.data, padding...)
 	}
+}
+
+func (c *bctestContext) setScalarStrings(values []string, padding []byte) {
+	if c.data == nil {
+		c.data = Malloc()
+	}
+	c.data = c.data[:0] // clear data and then add new values
+	c.addScalarStrings(values, padding)
 }
 
 func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) {
