@@ -139,18 +139,12 @@ func mksubs0(blobs, splits int) plan.Subtables {
 		b[i] = mkblob("https://example.com/blobs/" + words[i%len(words)])
 	}
 	f := expr.Is(expr.Identifier("foo"), expr.IsNull)
-	fn := func(blobs []blob.Interface, flt expr.Node) plan.TableHandle {
-		return &filterHandle{
-			blobs:  &blob.List{Contents: blobs},
-			filter: flt,
-		}
-	}
 	return &subtables{
 		splits: s,
 		table:  t,
 		blobs:  b,
 		filter: f,
-		fn:     fn,
+		fn:     blobsToHandle,
 	}
 }
 

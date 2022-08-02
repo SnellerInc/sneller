@@ -44,6 +44,18 @@ func (f *filterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 		dst.BeginField(st.Intern("filter"))
 		f.filter.Encode(dst, st)
 	}
+	if len(f.fields) > 0 {
+		dst.BeginField(st.Intern("fields"))
+		dst.BeginList(-1)
+		for i := range f.fields {
+			dst.WriteString(f.fields[i])
+		}
+		dst.EndList()
+	}
+	if f.allFields {
+		dst.BeginField(st.Intern("all_fields"))
+		dst.WriteBool(true)
+	}
 	dst.BeginField(st.Intern("blobs"))
 	f.blobs.Encode(dst, st)
 	dst.EndStruct()
@@ -72,6 +84,18 @@ func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
 			skip := ion.SizeOf(mem)
 			f.blobs, err = blob.DecodeList(st, mem)
 			mem = mem[skip:]
+		case "fields":
+			mem, err = ion.UnpackList(mem, func(field []byte) error {
+				var str string
+				str, _, err = ion.ReadString(field)
+				if err != nil {
+					return err
+				}
+				f.fields = append(f.fields, str)
+				return nil
+			})
+		case "all_fields":
+			f.allFields, mem, err = ion.ReadBool(mem)
 		default:
 			return fmt.Errorf("unrecognized filterHandle field %q", st.Get(sym))
 		}
@@ -83,8 +107,10 @@ func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
 }
 
 type filterHandle struct {
-	filter expr.Node
-	blobs  *blob.List
+	filter    expr.Node
+	fields    []string
+	allFields bool
+	blobs     *blob.List
 
 	// cached result of compileFilter(filter)
 	compiled filter

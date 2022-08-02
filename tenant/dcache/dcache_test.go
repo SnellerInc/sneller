@@ -136,6 +136,13 @@ func (ts *testSegment) populate() {
 	}
 }
 
+func (ts *testSegment) Merge(other Segment) {
+	ts2 := other.(*testSegment)
+	if ts2.ETag() != ts.ETag() {
+		panic("mis-matched segment merge")
+	}
+}
+
 func (ts *testSegment) ETag() string {
 	return hashname(ts.all)
 }

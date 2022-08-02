@@ -34,6 +34,9 @@ import (
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/constraints"
+	"golang.org/x/exp/slices"
 )
 
 // Blob segments will not be cached if the total scan
@@ -144,10 +147,12 @@ var _ plan.SubtableDecoder = (*tenantEnv)(nil)
 
 // DecodeSubtables implements plan.SubtableDecoder.
 func (t *tenantEnv) DecodeSubtables(st *ion.Symtab, buf []byte) (plan.Subtables, error) {
-	thfn := func(blobs []blob.Interface, flt expr.Node) plan.TableHandle {
+	thfn := func(blobs []blob.Interface, hint *plan.Hints) plan.TableHandle {
 		h := &filterHandle{
-			blobs:  &blob.List{Contents: blobs},
-			filter: flt,
+			blobs:     &blob.List{Contents: blobs},
+			fields:    hint.Fields,
+			allFields: hint.AllFields,
+			filter:    hint.Filter,
 		}
 		return &tenantHandle{parent: t, inner: h}
 	}
@@ -197,7 +202,9 @@ func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
 			}
 		}
 		seg := &blobSegment{
-			blob: b,
+			fields:    fh.fields,
+			allFields: fh.allFields,
+			blob:      b,
 		}
 		// make sure info can be populated successfully
 		s, err := seg.stat()
@@ -238,8 +245,62 @@ func (emptyTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 
 // blobSegment implements dcache.Segment
 type blobSegment struct {
-	blob blob.Interface
-	info *blob.Info
+	blob      blob.Interface
+	info      *blob.Info
+	fields    []string
+	allFields bool
+}
+
+// merge two sorted slices
+func merge[T constraints.Ordered](dst, src []T) []T {
+	if slices.Equal(dst, src) {
+		return dst
+	}
+	var out []T
+	j := 0
+	for i := 0; i < len(dst); i++ {
+		if j >= len(src) {
+			out = append(out, dst[i:]...)
+			break
+		}
+		if dst[i] == src[j] {
+			out = append(out, dst[i])
+			j++
+		} else if dst[i] < src[j] {
+			out = append(out, dst[i])
+		} else {
+			out = append(out, src[j])
+			j++
+			i--
+		}
+	}
+	out = append(out, src[j:]...)
+	return out
+}
+
+// fieldList produces the canonical field list
+// for use in blockfmt.Decoder.Fields (see the
+// doc comment about the difference btw a nil
+// slice versus a zero-length slice)
+func (b *blobSegment) fieldList() []string {
+	if b.allFields {
+		return nil
+	}
+	ret := b.fields
+	if ret == nil {
+		ret = []string{}
+	}
+	return ret
+}
+
+func (b *blobSegment) Merge(other dcache.Segment) {
+	o := other.(*blobSegment)
+	b.allFields = b.allFields || o.allFields
+	if b.allFields {
+		b.fields = nil
+		return
+	}
+	b.fields = merge(b.fields, o.fields)
 }
 
 func (b *blobSegment) stat() (*blob.Info, error) {
@@ -270,6 +331,7 @@ func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 	if c, ok := b.blob.(*blob.CompressedPart); ok {
 		// compressed: do decoding
 		var dec blockfmt.Decoder
+		dec.Fields = b.fieldList()
 		dec.Set(c.Parent.Trailer, c.EndBlock)
 		_, err := dec.CopyBytes(dst, src)
 		return err
@@ -277,6 +339,7 @@ func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 	if c, ok := b.blob.(*blob.Compressed); ok {
 		var dec blockfmt.Decoder
 		dec.Set(c.Trailer, len(c.Trailer.Blocks))
+		dec.Fields = b.fieldList()
 		_, err := dec.CopyBytes(dst, src)
 		return err
 	}

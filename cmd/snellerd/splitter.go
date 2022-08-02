@@ -114,18 +114,14 @@ func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 			}
 		}
 	}
-	thfn := func(blobs []blob.Interface, flt expr.Node) plan.TableHandle {
-		return &filterHandle{
-			blobs:  &blob.List{Contents: blobs},
-			filter: flt,
-		}
-	}
 	return &subtables{
-		splits: compact(splits),
-		table:  table,
-		blobs:  blobs,
-		filter: nil, // pushed down later
-		fn:     thfn,
+		splits:    compact(splits),
+		table:     table,
+		blobs:     blobs,
+		fields:    fh.fields,
+		allFields: fh.allFields,
+		filter:    nil, // pushed down later
+		fn:        blobsToHandle,
 	}, nil
 }
 
@@ -234,7 +230,7 @@ func decodeSplit(st *ion.Symtab, body []byte) (split, error) {
 
 // A tableHandleFn is used to produce a TableHandle
 // from a list of blobs and a filter.
-type tableHandleFn func(blobs []blob.Interface, flt expr.Node) plan.TableHandle
+type tableHandleFn func(blobs []blob.Interface, h *plan.Hints) plan.TableHandle
 
 // subtables is the plan.Subtables implementation
 // returned by (*splitter).Split.
@@ -242,8 +238,13 @@ type subtables struct {
 	splits []split
 	table  expr.Node
 	blobs  []blob.Interface
-	filter expr.Node
-	next   *subtables // set if combined
+
+	// from plan.Hints:
+	filter    expr.Node
+	fields    []string
+	allFields bool
+
+	next *subtables // set if combined
 
 	// fn is called to produce the TableHandles
 	// embedded in the subtables
@@ -274,16 +275,30 @@ func (s *subtables) Subtable(i int, sub *plan.Subtable) {
 	for i, bi := range sp.blobs {
 		blobs[i] = s.blobs[bi]
 	}
+	hint := plan.Hints{
+		Filter:    s.filter,
+		Fields:    s.fields,
+		AllFields: s.allFields,
+	}
 	*sub = plan.Subtable{
 		Transport: sp.tp,
 		Table:     table,
-		Handle:    s.fn(blobs, s.filter),
+		Handle:    s.fn(blobs, &hint),
+	}
+}
+
+func blobsToHandle(blobs []blob.Interface, hints *plan.Hints) plan.TableHandle {
+	return &filterHandle{
+		blobs:     &blob.List{Contents: blobs},
+		fields:    hints.Fields,
+		allFields: hints.AllFields,
+		filter:    hints.Filter,
 	}
 }
 
 // Encode implements plan.Subtables.Encode.
 func (s *subtables) Encode(st *ion.Symtab, dst *ion.Buffer) error {
-	// encode as [splits, table, blobs, filter, next]
+	// encode as [splits, table, blobs, filter, fields, next]
 	dst.BeginList(-1)
 	dst.BeginList(-1)
 	for i := range s.splits {
@@ -299,6 +314,16 @@ func (s *subtables) Encode(st *ion.Symtab, dst *ion.Buffer) error {
 		dst.WriteNull()
 	} else {
 		s.filter.Encode(dst, st)
+	}
+	// we write null for allFields and [] for zero fields
+	if s.allFields {
+		dst.WriteNull()
+	} else {
+		dst.BeginList(-1)
+		for i := range s.fields {
+			dst.WriteString(s.fields[i])
+		}
+		dst.EndList()
 	}
 	if s.next == nil {
 		dst.WriteNull()
@@ -345,6 +370,24 @@ func decodeSubtables(st *ion.Symtab, body []byte, fn tableHandleFn) (*subtables,
 			return nil, err
 		}
 	} else {
+		body = body[ion.SizeOf(body):]
+	}
+	if ion.TypeOf(body) != ion.NullType {
+		s.allFields = false
+		body, err = ion.UnpackList(body, func(field []byte) error {
+			var str string
+			str, _, err = ion.ReadString(field)
+			if err != nil {
+				return err
+			}
+			s.fields = append(s.fields, str)
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		s.allFields = true
 		body = body[ion.SizeOf(body):]
 	}
 	if ion.TypeOf(body) != ion.NullType {

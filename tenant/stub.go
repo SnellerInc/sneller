@@ -68,6 +68,13 @@ type Handle struct {
 	hang     bool
 }
 
+func (h *Handle) Merge(other dcache.Segment) {
+	h2 := other.(*Handle)
+	if h.ETag() != h2.ETag() {
+		panic("merging bad etags")
+	}
+}
+
 func (h *Handle) Align() int { return 1024 * 1024 }
 
 func (h *Handle) Size() int64 { return h.size * int64(h.repeat) }

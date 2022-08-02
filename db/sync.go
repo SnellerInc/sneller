@@ -59,6 +59,10 @@ const (
 // flushing references to blockfmt.Index.Indirect.
 const DefaultMaxInlineBytes = 100 * giga
 
+// DefaultAlgo is the default compression algorithm
+// for compressing data blocks.
+const DefaultAlgo = "zstd"
+
 // ErrBuildAgain is returned by db.Builder.Sync
 // when only some of the input objects were successfully
 // ingested.
@@ -68,6 +72,11 @@ var ErrBuildAgain = errors.New("partial db update")
 // for synchronizing an Index to match
 // a specification from a Definition.
 type Builder struct {
+	// Algo is the compression algorithm
+	// used for producing output data blocks.
+	// If Algo is the empty string, Builder
+	// uses DefaultAlgo instead.
+	Algo string
 	// Align is the alignment of new
 	// blocks to be produced in objects
 	// inserted into the index.
@@ -486,6 +495,13 @@ func (b *Builder) align() int {
 	return 1024 * 1024
 }
 
+func (b *Builder) comp() string {
+	if b.Algo != "" {
+		return b.Algo
+	}
+	return DefaultAlgo
+}
+
 func uuid() string {
 	var buf [16]byte
 	_, err := rand.Read(buf[:])
@@ -636,7 +652,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 		Inputs:    lst,
 		Align:     st.conf.align(),
 		FlushMeta: st.conf.flushMeta(),
-		Comp:      "zstd",
+		Comp:      st.conf.comp(),
 	}
 
 	if prepend != nil {

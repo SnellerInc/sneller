@@ -59,11 +59,11 @@ top:
     INCQ    SI          // advance by 1 byte
     CMPL    R13, AX
     JA      ret_err     // assert len(src)-1 >= # needed bytes
-    TESTL   R11, R11
-    JZ      done
     MOVQ    0(SI), R12             // R12 = descriptor bits
     ADDQ    R13, SI                // adjust source base
     MOVQ    SI, 0(SP)              // save SI; will restore later
+    TESTL   R11, R11
+    JZ      done
 unpack_loop:
     MOVQ    R12, R13
     ANDL    $0xf, R13                    // R13 = bucket number

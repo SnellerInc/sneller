@@ -173,7 +173,13 @@ func (f *fsEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &filterHandle{filter: h.Filter, compiled: match, blobs: blobs}, nil
+	return &filterHandle{
+		filter:    h.Filter,
+		compiled:  match,
+		fields:    h.Fields,
+		allFields: h.AllFields,
+		blobs:     blobs,
+	}, nil
 }
 
 var _ plan.TableLister = (*fsEnv)(nil)

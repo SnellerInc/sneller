@@ -404,6 +404,11 @@ func (c *Cache) unmap(mp *mapping) {
 // Segment describes a particular region
 // of data to be cached.
 type Segment interface {
+	// Merge is called when segments are coalesced
+	// due to being accessed simultaneously, and
+	// will only be called when the other segment
+	// has an ETag that matches the target segment.
+	Merge(other Segment)
 	// ETag should return a unique identifier
 	// associated with the data backing this segment.
 	// Any unique identifier may be used, as long as

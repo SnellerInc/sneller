@@ -39,9 +39,6 @@ func (p *pathset) set(x ion.Symbol) {
 }
 
 func (p *pathset) useBucket(i int) bool {
-	if p.empty() {
-		return true
-	}
 	return p.buckets&(1<<i) != 0
 }
 

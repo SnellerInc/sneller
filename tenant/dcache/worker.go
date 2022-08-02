@@ -71,6 +71,7 @@ func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret c
 	// TODO: if len(q.reserved) is too large,
 	// reject the query here
 	if res, ok := q.reserved[etag]; ok {
+		res.seg.Merge(seg)
 		res.add(dst, ret, stats)
 		// treat this access as a hit, since it
 		// is coalesced with a miss

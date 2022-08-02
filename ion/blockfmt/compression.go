@@ -507,11 +507,26 @@ func getAlgo(algo string) decompressor {
 	}
 }
 
+// Decoder is used to decode blocks from a Trailer
+// and an associated data stream.
 type Decoder struct {
+	// BlockShift is the log2 of the block size.
+	// BlockShift is set automatically by Decoder.Set.
 	BlockShift int
-	Offset     int64
-	Algo       string
-	Fields     []string
+	// Offset is the offset at which to begin decoding.
+	// Offset is set automatically by Decoder.Set.
+	Offset int64
+	// Algo is the algorithm to use for decompressing
+	// the input data blocks.
+	// Algo is set automatically by Decoder.Set.
+	Algo string
+
+	// Fields is the dereference push-down hint
+	// for the fields that should be decompressed
+	// from the input. Note that the zero value (nil)
+	// means all fields, but a zero-length slice explicitly
+	// means zero fields (i.e. decode empty structures).
+	Fields []string
 
 	decomp decompressor
 	frame  [5]byte
@@ -599,8 +614,10 @@ func (d *Decoder) getDecomp(algo string) error {
 	if d.decomp == nil {
 		return fmt.Errorf("decompression %q not supported", d.Algo)
 	}
-	if len(d.Fields) > 0 {
-		if z, ok := d.decomp.(*zionDecompressor); ok {
+	if z, ok := d.decomp.(*zionDecompressor); ok {
+		if d.Fields == nil {
+			z.dec.SetWildcard()
+		} else {
 			z.dec.SetComponents(d.Fields)
 		}
 	}

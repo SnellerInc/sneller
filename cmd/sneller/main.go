@@ -179,7 +179,14 @@ func do(arg string) {
 		if dashN {
 			return &jstable{in: f, size: i.Size()}, nil
 		}
-		return srcTable(f, i.Size(), h.Fields)
+		fields := h.Fields
+		if h.AllFields {
+			fields = nil
+		} else if fields == nil {
+			// len(fields)==0 but non-nil really means zero fields
+			fields = []string{}
+		}
+		return srcTable(f, i.Size(), fields)
 	}))
 	if err != nil {
 		exit(err)

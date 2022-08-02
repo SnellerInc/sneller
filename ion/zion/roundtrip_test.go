@@ -162,6 +162,12 @@ func TestDecodePart(t *testing.T) {
 	}
 	cases := []testcase{
 		{
+			input:     `{"foo": "bar"} {"baz": "quux"}`,
+			output:    `[{},{}]`,
+			selection: []string{},
+			decomps:   0,
+		},
+		{
 			input:     `{"x": 3, "y": 5} {"x": 4, "y": 6}`,
 			output:    `[{"x": 3, "y": 5},{"x": 4, "y": 6}]`,
 			selection: []string{"x", "y"},
@@ -318,8 +324,12 @@ func TestRoundtrip(t *testing.T) {
 		}
 	}
 
-	testAll := func(t *testing.T, f *os.File) {
+	testAll := func(t *testing.T, f *os.File, none bool) {
 		tw := testWriter{t: t}
+		if none {
+			tw.dec.SetComponents(nil)
+			tw.dec2.SetComponents(nil)
+		}
 		cn := ion.Chunker{
 			W:     &tw,
 			Align: 256 * 1024,
@@ -343,7 +353,10 @@ func TestRoundtrip(t *testing.T) {
 			}
 			defer f.Close()
 			t.Run("all", func(t *testing.T) {
-				testAll(t, f)
+				testAll(t, f, false)
+			})
+			t.Run("none", func(t *testing.T) {
+				testAll(t, f, true)
 			})
 			f.Seek(0, 0)
 			t.Run("count(*)", func(t *testing.T) {
@@ -507,7 +520,9 @@ func BenchmarkDecompressFields(b *testing.B) {
 					n := int64(0)
 					var err error
 					var dec Decoder
-					dec.SetComponents(sel)
+					if len(sel) > 0 {
+						dec.SetComponents(sel)
+					}
 					for j := range tb.output {
 						var nn int64
 						nn, err = dec.CopyBytes(io.Discard, tb.output[j])
@@ -520,7 +535,9 @@ func BenchmarkDecompressFields(b *testing.B) {
 					b.RunParallel(func(pb *testing.PB) {
 						var err error
 						var dec Decoder
-						dec.SetComponents(sel)
+						if len(sel) > 0 {
+							dec.SetComponents(sel)
+						}
 						for pb.Next() {
 							for j := range tb.output {
 								_, err = dec.CopyBytes(io.Discard, tb.output[j])

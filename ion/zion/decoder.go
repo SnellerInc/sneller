@@ -41,6 +41,13 @@ const (
 
 // Decoder is a stateful decoder of compressed
 // data produced with Encoder.Encode.
+//
+// The zero value of Decoder has the "wildcard"
+// flag set, which means it decodes 100% of the
+// structure fields in the input.
+// Calls to Decoder.SetComponents can pick a subset
+// of the fields that are to be projected, and calls
+// to Decoder.SetWildcard can re-enable the wildcard flag.
 type Decoder struct {
 	TargetWriteSize int
 
@@ -63,7 +70,8 @@ type Decoder struct {
 
 	st         symtab
 	set        pathset
-	components []string
+	components []string // if precise, decode these fields
+	precise    bool     // if !precise, decode everything
 
 	decomps int
 	// seed is the full 32-bit value
@@ -92,15 +100,39 @@ func (d *Decoder) Reset() {
 	d.decomps = 0
 }
 
+// SetWildcard tells the decoder to decode
+// all input fields. This clears any field
+// selection made by SetComponents.
+//
+// The zero value of Decoder has the wildcard flag set.
+func (d *Decoder) SetWildcard() {
+	d.precise = false
+	d.components = d.components[:0]
+	d.st.components = nil
+}
+
+// Wildcard reads the status of the decoder wildcard flag.
+// See also SetWildcard and SetComponents.
+func (d *Decoder) Wildcard() bool { return !d.precise }
+
 // SetComponents sets the leading path components
 // that should be copied out during calls to Decode.
+// SetComponents may be overridden by another call
+// to SetComponents or SetWildcard.
 //
 // The "leading path component" is the first component
 // of a path, so the path x.y.z has x as its first component.
 func (d *Decoder) SetComponents(x []string) {
-	slices.Sort(x)
-	slices.Compact(x)
-	d.components = x
+	// for safety, make a copy of x so that
+	// the caller doesn't have to worry about
+	// us sorting+compacting x
+	d.components = slices.Grow(d.components[:0], len(x))
+	d.components = d.components[:len(x)]
+	copy(d.components, x)
+	slices.Sort(d.components)
+	d.components = slices.Compact(d.components)
+	d.precise = true
+
 	d.st.components = make([]component, len(x))
 	for i := range d.st.components {
 		d.st.components[i].name = x[i]
@@ -155,10 +187,9 @@ func (d *Decoder) prepare(src, dst []byte) ([]byte, error) {
 	// we can avoid decompressing any buckets
 	// at all if none of the symbols we care about
 	// are present in any buckets
-	empty := len(d.components) > 0 && d.set.empty()
 	for i := 0; i < buckets; i++ {
 		d.base[i] = 0
-		if empty || !d.set.useBucket(i) {
+		if d.precise && !d.set.useBucket(i) {
 			skip, err = frameSize(src)
 			if err != nil {
 				return nil, err
@@ -273,7 +304,7 @@ var (
 )
 
 func (d *Decoder) zip(shape, dst []byte) (int, int) {
-	if len(d.components) == 0 {
+	if !d.precise {
 		return zipall(shape, dst, d)
 	}
 	return zipfast(shape, dst, d)
