@@ -3245,3 +3245,71 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		return nil, false
 	}
 }
+
+// Unpivot captures the UNPIVOT t AS v AT a statement
+type Unpivot struct {
+	TupleRef Node   // t
+	As       string // v
+	At       string // a
+}
+
+func (u *Unpivot) Equals(brhs Node) bool {
+	rhs, ok := brhs.(*Unpivot)
+	if !ok {
+		return false
+	}
+	if u.As != rhs.As {
+		return false
+	}
+	if u.At != rhs.At {
+		return false
+	}
+	return Equivalent(u.TupleRef, rhs.TupleRef)
+}
+
+func (u *Unpivot) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "unpivot")
+	dst.BeginField(st.Intern("TupleRef"))
+	u.TupleRef.Encode(dst, st)
+	dst.BeginField(st.Intern("As"))
+	dst.WriteString(u.As)
+	dst.BeginField(st.Intern("At"))
+	dst.WriteString(u.At)
+	dst.EndStruct()
+}
+
+func (u *Unpivot) setfield(name string, st *ion.Symtab, body []byte) error {
+	var err error
+	switch name {
+	case "As":
+		u.As, _, err = ion.ReadString(body)
+	case "At":
+		u.At, _, err = ion.ReadString(body)
+	case "TupleRef":
+		u.TupleRef, _, err = Decode(st, body)
+	default:
+		err = fmt.Errorf("expr.Unpivot: setfield: unexpected field %q", name)
+	}
+	return err
+}
+
+func (u *Unpivot) walk(v Visitor) {
+	Walk(v, u.TupleRef)
+}
+
+func (u *Unpivot) text(dst *strings.Builder, redact bool) {
+	dst.WriteString("UNPIVOT ")
+	u.TupleRef.text(dst, redact)
+	dst.WriteString(" AS ")
+	dst.WriteString(u.As)
+	if u.At != "" {
+		dst.WriteString(" AT ")
+		dst.WriteString(u.At)
+	}
+}
+
+func (u *Unpivot) Tables() []Binding {
+	panic("Unpivot.Encode() has not been implemented. No idea what it should do. A piece of documentation is most wanted.")
+	return nil
+}

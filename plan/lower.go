@@ -38,19 +38,23 @@ func lowerIterValue(in *pir.IterValue, from Op) (Op, error) {
 	if in.Wildcard() {
 		return nil, reject("cannot project '*' from a cross-join")
 	}
-	pivot, ok := in.Value.(*expr.Path)
-	if !ok {
-		return nil, reject("cross-join on non-path expression")
+	if pivot, ok := in.Value.(*expr.Path); ok {
+		return &Unnest{
+			Nonterminal: Nonterminal{
+				From: from,
+			},
+			PivotField:   pivot,
+			InnerProject: vm.Selection(in.InnerBind()),
+			OuterProject: vm.Selection(in.OuterBind()),
+			InnerMatch:   in.Filter,
+		}, nil
+	} else {
+		if _ /*unpivot*/, ok := in.Value.(*expr.Unpivot); ok {
+			return nil, reject("UNPIVOT is not supported yet")
+		} else {
+			return nil, reject("cross-join on non-path nor UNPIVOT expression")
+		}
 	}
-	return &Unnest{
-		Nonterminal: Nonterminal{
-			From: from,
-		},
-		PivotField:   pivot,
-		InnerProject: vm.Selection(in.InnerBind()),
-		OuterProject: vm.Selection(in.OuterBind()),
-		InnerMatch:   in.Filter,
-	}, nil
 }
 
 func lowerFilter(in *pir.Filter, from Op) (Op, error) {

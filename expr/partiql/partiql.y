@@ -57,7 +57,7 @@ import (
 %token ERROR EOF
 %left UNION
 %token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH INTO
-%token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC
+%token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC UNPIVOT AT
 %token PARTITION
 %token VALUE
 %right COALESCE NULLIF EXTRACT DATE_TRUNC
@@ -92,6 +92,8 @@ import (
 %type <expr> query expr datum datum_or_parens path_expression maybe_into
 %type <expr> where_expr having_expr case_optional_else parenthesized_expr
 %type <expr> optional_filter
+%type <expr> unpivot explicit_struct_definition explicit_list_definition
+%type <expr> tuple_reference
 %type <with> maybe_cte_bindings cte_bindings
 %type <pc> path_component
 %type <yesno> ascdesc nullslast maybe_distinct
@@ -101,7 +103,7 @@ import (
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
-%type <values> value_list any_value_list struct_field_list node_list maybe_toplevel_distinct
+%type <values> value_list any_value_list field_value_list field_value_pair node_list maybe_toplevel_distinct
 %type <order> order_one_col
 %type <orders> order_expr order_cols
 %type <jk> join_kind
@@ -136,8 +138,8 @@ maybe_cte_bindings:
 cte_bindings { $$ = $1 } | { $$ = nil }
 
 cte_bindings:
-WITH identifier AS '(' select_stmt ')' { $$ = []expr.CTE{{$2, $5}} } |
-cte_bindings ',' identifier AS '(' select_stmt ')' { $$ = append($1, expr.CTE{$3, $6})}
+WITH identifier AS '(' select_stmt ')' { $$ = []expr.CTE{{Table: $2, As: $5}} } |
+cte_bindings ',' identifier AS '(' select_stmt ')' { $$ = append($1, expr.CTE{Table: $3, As: $6})}
 
 // a regular value expression OR
 // a value expression plus a binding
@@ -460,13 +462,20 @@ datum_or_parens
 {
   $$ = &expr.IsKey{Key: expr.IsNotFalse, Expr: $1}
 }
-| '[' any_value_list ']'
+|
+explicit_list_definition
 {
-  $$ = expr.Call("MAKE_LIST", $2...)
+    $$ = $1
 }
-| '{' struct_field_list '}'
+|
+explicit_struct_definition
 {
-  $$ = expr.Call("MAKE_STRUCT", $2...)
+    $$ = $1
+}
+|
+unpivot
+{
+    $$ = $1
 }
 
 // match (binding)+
@@ -491,11 +500,15 @@ expr { $$ = []expr.Node{$1} } |
 any_value_list ',' expr { $$ = append($1, $3) } |
 { $$ = nil }
 
-// match 'field': value (, ('field': value))*
-struct_field_list:
-STRING ':' expr { $$ = []expr.Node{expr.String($1), $3} } |
-struct_field_list ',' STRING ':' expr { $$ = append($1, expr.String($3), $5) } |
+// match [field_value_pair (, field_value_pair)*]
+field_value_list:
+field_value_pair { $$ = $1 } |
+field_value_list ',' field_value_pair { $$ = append($1, $3...) } |
 { $$ = nil }
+
+// match 'field': value
+field_value_pair:
+STRING ':' expr { $$ = []expr.Node{expr.String($1), $3} }
 
 maybe_window:
 OVER '(' PARTITION BY value_list order_expr ')'
@@ -602,3 +615,18 @@ LIMIT literal_int { n := expr.Integer($2); $$ = &n }
 offset_expr:
 { $$ = nil } |
 OFFSET literal_int { n := expr.Integer($2); $$ = &n }
+
+unpivot:
+UNPIVOT tuple_reference AS identifier { $$ = &expr.Unpivot{ TupleRef: $2, As: $4, At: "" } } |
+UNPIVOT tuple_reference AS identifier AT identifier { $$ = &expr.Unpivot{ TupleRef: $2, As: $4, At: $6 } } |
+UNPIVOT tuple_reference AT identifier AS identifier { $$ = &expr.Unpivot{ TupleRef: $2, As: $6, At: $4 } }
+
+tuple_reference:
+path_expression { $$ = $1 } |
+explicit_struct_definition { $$ = $1 }
+
+explicit_struct_definition:
+'{' field_value_list '}' { $$ = expr.Call("MAKE_STRUCT", $2...) }
+
+explicit_list_definition:
+'[' any_value_list ']' { $$ = expr.Call("MAKE_LIST", $2...) }

@@ -1020,3 +1020,36 @@ func expreq(a, b expr.Node) bool {
 	}
 	return b != nil && a.Equals(b)
 }
+
+type Unpivot struct {
+	Step
+	par Step
+}
+
+func (u Unpivot) parent() Step {
+	panic("Unpivot.parent() is not implemented")
+	return u.par
+}
+
+func (u Unpivot) setparent(p Step) {
+	u.par = p
+	panic("Unpivot.setparent() is not implemented")
+}
+
+func (u Unpivot) get(string) (Step, expr.Node) {
+	panic("Unpivot.get() is not implemented")
+}
+
+func (u Unpivot) describe(dst io.Writer) {
+	panic("Unpivot.describe() is not implemented")
+}
+
+func (u Unpivot) rewrite(func(expr.Node, bool) expr.Node) {
+	panic("Unpivot.rewrite() is not implemented")
+}
+
+func (lhs Unpivot) equals(brhs Step) bool {
+	panic("Unpivot.equals() is not implemented")
+	rhs, ok := brhs.(Unpivot)
+	return ok && (lhs.par == rhs.par)
+}

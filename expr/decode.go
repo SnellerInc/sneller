@@ -64,7 +64,7 @@ func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 	}
 }
 
-func decodeStruct(st *ion.Symtab, msg []byte) (Node, []byte, error) {
+func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 	var node composite
 	rest, err := ion.UnpackStruct(st, msg, func(name string, field []byte) error {
 		if node != nil {
@@ -146,6 +146,8 @@ func getEmpty(name string) composite {
 		return &Struct{}
 	case "list":
 		return &List{}
+	case "unpivot":
+		return &Unpivot{}
 	default:
 		return nil
 	}

@@ -37,6 +37,7 @@ func init() {
 		{"SELECT", SELECT},
 		{"AND", AND},
 		{"AS", AS},
+		{"AT", AT},
 		{"ASC", ASC},
 		{"CAST", CAST},
 		{"CONCAT", CONCAT},
@@ -93,6 +94,7 @@ func init() {
 		{"UTCNOW", UTCNOW},
 		{"WITH", WITH},
 		{"FILTER", FILTER},
+		{"UNPIVOT", UNPIVOT},
 	} {
 		code, ok := wordcode([]byte(pair.name))
 		if !ok {

@@ -77,6 +77,9 @@ var sameq = []string{
 	"SELECT {'first': x, 'second': y} AS structure FROM foo",
 	"SELECT DISTINCT ON (x, y) y, z, w FROM table",
 	"SELECT DISTINCT ON (x) * FROM table",
+	"SELECT * FROM UNPIVOT t AS a AT b",
+	"SELECT * FROM UNPIVOT t AS a",
+	"SELECT * FROM UNPIVOT {'x': 'y'} AS a",
 }
 
 func TestParseSFW(t *testing.T) {
