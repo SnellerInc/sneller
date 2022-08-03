@@ -732,6 +732,86 @@ func TestSimplify(t *testing.T) {
 			CallOp(Lower, String("SNELLER")),
 			String("sneller"),
 		},
+		{
+			// LOWER(s) == "fred"
+			Compare(Equals, CallOp(Lower, path("s")), String("fred")),
+			CallOp(EqualsCI, path("s"), String("fred")),
+		},
+		{
+			// "fred" == LOWER(s)
+			Compare(Equals, String("fred"), CallOp(Lower, path("s"))),
+			CallOp(EqualsCI, path("s"), String("fred")),
+		},
+		{
+			// LOWER(s) != "fred"
+			Compare(NotEquals, CallOp(Lower, path("s")), String("fred")),
+			&Not{Expr: CallOp(EqualsCI, path("s"), String("fred"))},
+		},
+		{
+			// "fred" != LOWER(s)
+			Compare(NotEquals, String("fred"), CallOp(Lower, path("s"))),
+			&Not{Expr: CallOp(EqualsCI, path("s"), String("fred"))},
+		},
+		{
+			// LOWER(s) == "FRED"
+			Compare(Equals, CallOp(Lower, path("s")), String("FRED")),
+			Bool(false),
+		},
+		{
+			// "FRED" == LOWER(s)
+			Compare(Equals, String("FRED"), CallOp(Lower, path("s"))),
+			Bool(false),
+		},
+		{
+			// LOWER(s) != "FRED"
+			Compare(NotEquals, CallOp(Lower, path("s")), String("FRED")),
+			Bool(true),
+		},
+		{
+			// "FRED" != LOWER(s)
+			Compare(NotEquals, String("FRED"), CallOp(Lower, path("s"))),
+			Bool(true),
+		},
+		{
+			// UPPER(s) == "FRED"
+			Compare(Equals, CallOp(Upper, path("s")), String("FRED")),
+			CallOp(EqualsCI, path("s"), String("FRED")),
+		},
+		{
+			// "FRED" == UPPER(s)
+			Compare(Equals, String("FRED"), CallOp(Upper, path("s"))),
+			CallOp(EqualsCI, path("s"), String("FRED")),
+		},
+		{
+			// UPPER(s) != "FRED"
+			Compare(NotEquals, CallOp(Upper, path("s")), String("FRED")),
+			&Not{Expr: CallOp(EqualsCI, path("s"), String("FRED"))},
+		},
+		{
+			// "FRED" != UPPER(s)
+			Compare(NotEquals, String("FRED"), CallOp(Upper, path("s"))),
+			&Not{Expr: CallOp(EqualsCI, path("s"), String("FRED"))},
+		},
+		{
+			// UPPER(s) == "fred"
+			Compare(Equals, CallOp(Upper, path("s")), String("fred")),
+			Bool(false),
+		},
+		{
+			// "fred" == UPPER(s)
+			Compare(Equals, String("fred"), CallOp(Upper, path("s"))),
+			Bool(false),
+		},
+		{
+			// UPPER(s) != "fred"
+			Compare(NotEquals, CallOp(Upper, path("s")), String("fred")),
+			Bool(true),
+		},
+		{
+			// "fred" != UPPER(s)
+			Compare(NotEquals, String("fred"), CallOp(Upper, path("s"))),
+			Bool(true),
+		},
 	}
 
 	for i := range testcases {

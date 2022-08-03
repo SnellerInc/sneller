@@ -492,32 +492,14 @@ func (c *Comparison) simplify(h Hint) Node {
 			return Xor(left, right)
 		}
 
-		if lhs, ok := left.(*Builtin); ok {
-			switch lhs.Func {
-			case Upper:
-				if c.Op == Equals {
-					rhsStr, ok := right.(String)
-					if ok {
-						if strings.ToUpper(string(rhsStr)) != string(rhsStr) {
-							// (UPPER(x) = "fred") -> FALSE
-							return Bool(false)
-						}
-						// (UPPER(z.name) = "FRED") -> EQUALS_CI(z.name, "FRED")
-						return Call("EQUALS_CI", lhs.Args[0], right)
-					}
+		if builtin, str := matchStringCaseCompare(left, right); builtin != nil {
+			node := simplifyStringEqualsComparison(builtin, str)
+			if node != nil {
+				if c.Op == NotEquals {
+					return Simplify(&Not{Expr: node}, h)
 				}
-			case Lower:
-				if c.Op == Equals {
-					rhsStr, ok := right.(String)
-					if ok {
-						if strings.ToLower(string(rhsStr)) != string(rhsStr) {
-							// (LOWER(z.name) = "FRED") -> FALSE
-							return Bool(false)
-						}
-						// (LOWER(z.name) = "fred" -> EQUALS_CI(z.name, "fred")
-						return Call("EQUALS_CI", lhs.Args[0], right)
-					}
-				}
+
+				return node
 			}
 		}
 	case Like:
@@ -525,7 +507,7 @@ func (c *Comparison) simplify(h Hint) Node {
 			switch lhs.Func {
 			case Upper:
 				rhsStr := string(right.(String))
-				if strings.ToUpper(rhsStr) != rhsStr {
+				if !isUpper(rhsStr) {
 					// UPPER(z.name) LIKE "%fred%" -> FALSE
 					return Bool(false)
 				}
@@ -538,7 +520,7 @@ func (c *Comparison) simplify(h Hint) Node {
 				}
 			case Lower:
 				rhsStr := string(right.(String))
-				if strings.ToLower(rhsStr) != rhsStr {
+				if !isLower(rhsStr) {
 					// LOWER(z.name) LIKE "%FRED%" -> FALSE
 					return Bool(false)
 				}
@@ -553,6 +535,70 @@ func (c *Comparison) simplify(h Hint) Node {
 		}
 	}
 	return c.canonical()
+}
+
+// matchStringCaseCompare extracts a builtin and string from
+// either `builtin op const string` or `const string op builtin`
+// expression.
+//
+// If no match is found, builtin is nil.
+func matchStringCaseCompare(left, right Node) (*Builtin, String) {
+	switch l := left.(type) {
+	case *Builtin:
+		if r, ok := right.(String); ok {
+			return l, r
+		}
+
+	case String:
+		if r, ok := right.(*Builtin); ok {
+			return r, l
+		}
+	}
+
+	return nil, ""
+}
+
+func simplifyStringEqualsComparison(builtin *Builtin, str String) Node {
+	switch builtin.Func {
+	case Upper:
+		rhsStr := string(str)
+		if !isUpper(rhsStr) {
+			// UPPER(z.name) LIKE "%fred%" -> FALSE
+			return Bool(false)
+		}
+		if rhsStr2, ok2 := isSubstringSearchPattern(rhsStr); ok2 {
+			// UPPER(z.name) LIKE "%FRED%" -> CONTAINS_CI(z.name, "FRED")
+			return CallOp(ContainsCI, builtin.Args[0], String(rhsStr2))
+		} else if isRegularString(rhsStr) {
+			// UPPER(z.name) LIKE "FRED" -> EQUALS_CI(z.name, "FRED")
+			return CallOp(EqualsCI, builtin.Args[0], str)
+		}
+	case Lower:
+		rhsStr := string(str)
+		if !isLower(rhsStr) {
+			// LOWER(z.name) LIKE "%FRED%" -> FALSE
+			return Bool(false)
+		}
+		if rhsStr2, ok2 := isSubstringSearchPattern(rhsStr); ok2 {
+			// LOWER(z.name) LIKE "%fred%" -> CONTAINS_CI(z.name, "fred")
+			return CallOp(ContainsCI, builtin.Args[0], String(rhsStr2))
+		} else if isRegularString(rhsStr) {
+			// LOWER(z.name) LIKE "fred" -> EQUALS_CI(z.name, "fred")
+			return CallOp(EqualsCI, builtin.Args[0], str)
+		}
+	}
+
+	return nil
+}
+
+// isLower returns true all characters are in lower-case
+func isLower(s string) bool {
+	return strings.ToLower(s) == s
+}
+
+// isUpper returns true all characters are in upper-case
+func isUpper(s string) bool {
+	return strings.ToUpper(s) == s
 }
 
 func constmath(op ArithOp, left, right *big.Rat) Node {
