@@ -187,7 +187,7 @@ func (b *Builder) logf(f string, args ...interface{}) {
 }
 
 type tableState struct {
-	conf      *Builder
+	conf      Builder
 	owner     Tenant
 	ofs       OutputFS
 	db, table string
@@ -203,7 +203,7 @@ func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
 		return nil, fmt.Errorf("root %T is read-only", ifs)
 	}
 	return &tableState{
-		conf:  b,
+		conf:  *b, // copy config so we can update it w/ features
 		owner: owner,
 		ofs:   ofs,
 		db:    db,
@@ -216,7 +216,12 @@ func (st *tableState) index() (*blockfmt.Index, error) {
 }
 
 func (st *tableState) def() (*Definition, error) {
-	return OpenDefinition(st.ofs, st.db, st.table)
+	def, err := OpenDefinition(st.ofs, st.db, st.table)
+	if err != nil {
+		return nil, err
+	}
+	st.conf.SetFeatures(def.Features)
+	return def, nil
 }
 
 var (
@@ -647,6 +652,17 @@ func (st *tableState) flush(idx *blockfmt.Index) error {
 	return err
 }
 
+func suffixForComp(c string) string {
+	switch c {
+	case "zstd":
+		return ".ion.zst"
+	case "zion":
+		return ".zion"
+	default:
+		panic("bad suffixForComp value")
+	}
+}
+
 func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input) error {
 	c := blockfmt.Converter{
 		Inputs:    lst,
@@ -676,7 +692,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 		c.Prepend.Trailer = tr
 	}
 
-	name := "packed-" + uuid() + ".ion.zst"
+	name := "packed-" + uuid() + suffixForComp(c.Comp)
 	fp := path.Join("db", st.db, st.table, name)
 	out, err := st.ofs.Create(fp)
 	if err != nil {

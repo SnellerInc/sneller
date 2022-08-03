@@ -267,9 +267,13 @@ outer:
 }
 
 func (q *QueueRunner) runTable(db string, def *Definition) {
+	// clone the config and add features:
+	conf := q.Conf
+	conf.SetFeatures(def.Features)
+
 	err := q.filter(&q.Conf, def)
 	if err == nil && len(q.filtered) > 0 {
-		err = q.Conf.Append(q.Owner, db, def.Name, q.filtered)
+		err = conf.Append(q.Owner, db, def.Name, q.filtered)
 	}
 	if err != nil {
 		q.logf("updating %s.%s: %s", db, def.Name, err)

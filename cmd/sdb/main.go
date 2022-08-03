@@ -210,7 +210,7 @@ func human(size int64) string {
 
 func describeTrailer(t *blockfmt.Trailer, compsize int64) {
 	size := t.Decompressed()
-	fmt.Printf("\ttrailer: %d blocks, %d bytes decompressed (%.2fx compression)\n", len(t.Blocks), size, float64(size)/float64(compsize))
+	fmt.Printf("\ttrailer: %d blocks, %d bytes decompressed (%.2fx compression, %s)\n", len(t.Blocks), size, float64(size)/float64(compsize), t.Algo)
 	names := t.Sparse.FieldNames()
 	for i := range names {
 		ti := t.Sparse.Get(strings.Split(names[i], "."))

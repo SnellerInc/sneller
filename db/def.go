@@ -53,6 +53,9 @@ type Definition struct {
 	Name string `json:"name"`
 	// Inputs is the list of inputs that comprise the table.
 	Inputs []Input `json:"input"`
+	// Features is a list of feature flags that
+	// can be used to turn on features for beta-testing.
+	Features []string `json:"beta_features"`
 }
 
 // just pick an upper limit to prevent DoS

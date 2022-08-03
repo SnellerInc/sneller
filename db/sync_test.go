@@ -220,6 +220,7 @@ func TestSync(t *testing.T) {
 			{Pattern: "file://a-prefix/*.10n"},
 			{Pattern: "file://a-prefix/*.json"},
 		},
+		Features: []string{"zion"},
 	})
 	if err != nil {
 		t.Fatal(err)
