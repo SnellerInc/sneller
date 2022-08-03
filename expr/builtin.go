@@ -633,6 +633,7 @@ func simplifySubString(h Hint, args []Node) (result Node) {
 
 	if len(args) == 2 { // third arguments 'length' is optional; when not present it signals 'till the end of the string'
 		arg2 = Node(Integer(math.MaxInt32))
+		returnNewNode = true
 	} else {
 		arg2 = args[2]
 	}
@@ -640,8 +641,9 @@ func simplifySubString(h Hint, args []Node) (result Node) {
 	if term, ok := arg1.(Integer); ok {
 		// according to this doc (https://docs.aws.amazon.com/qldb/latest/developerguide/ql-functions.substring.html)
 		// offsets smaller than 1 are equal to offsets equal to 1
-		if int(term) < 0 {
+		if int(term) < 1 {
 			arg1 = Integer(1)
+			returnNewNode = true
 		}
 	}
 	if term, ok := arg0.(*Builtin); ok {

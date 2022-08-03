@@ -1,0 +1,23 @@
+# Note: SUBSTRING(s, <= 0, n) is changed into SUBSTRING(s, 1, n)
+SELECT
+    SUBSTRING(s, 1, 5) AS p,
+    SUBSTRING(s, 3) AS t,
+    SUBSTRING(s, 1, 5) = SUBSTRING(s, 0, 5) AS eq1,
+    SUBSTRING(s, 1, 5) = SUBSTRING(s, -1, 5) AS eq2
+FROM input
+---
+{"s": "a"}
+{"s": "ab"}
+{"s": "abc"}
+{"s": "abcd"}
+{"s": "abcde"}
+{"s": "abcdef"}
+{"s": "abcdefg"}
+---
+{"p": "a",      "t": "",      "eq1": true, "eq2": true}
+{"p": "ab",     "t": "",      "eq1": true, "eq2": true}
+{"p": "abc",    "t": "c",     "eq1": true, "eq2": true}
+{"p": "abcd",   "t": "cd",    "eq1": true, "eq2": true}
+{"p": "abcde",  "t": "cde",   "eq1": true, "eq2": true}
+{"p": "abcde",  "t": "cdef",  "eq1": true, "eq2": true}
+{"p": "abcde",  "t": "cdefg", "eq1": true, "eq2": true}
