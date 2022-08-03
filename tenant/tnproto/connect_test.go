@@ -99,12 +99,16 @@ func TestDirectExecHugeBody(t *testing.T) {
 	go func() {
 		var b Buffer
 		b.Prepare(&plan.Tree{
-			Op: &plan.Leaf{
-				Expr: &expr.Table{
+			Inputs: []plan.Input{{
+				Table: &expr.Table{
 					Binding: expr.Bind(expr.Identifier("foo"), ""),
 				},
 				Handle: largeOpaque{},
-			}}, OutputRaw)
+			}},
+			Root: plan.Node{
+				Op: &plan.Leaf{Input: 0},
+			},
+		}, OutputRaw)
 		rc, err := b.DirectExec(there, myconn)
 		if err != nil {
 			panic(err)

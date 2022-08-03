@@ -26,7 +26,7 @@ func Graphviz(t *Tree, dst io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, _, err = gv(t, dst, 0, 0)
+	_, _, err = gv(&t.Root, dst, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -34,13 +34,13 @@ func Graphviz(t *Tree, dst io.Writer) error {
 	return err
 }
 
-func gv(t *Tree, dst io.Writer, tid, oid int) (int, int, error) {
+func gv(n *Node, dst io.Writer, tid, oid int) (int, int, error) {
 	_, err := fmt.Fprintf(dst, "subgraph cluster_%d {\n", tid)
 	if err != nil {
 		return tid, oid, err
 	}
 	var prev Op
-	for o := t.Op; o != nil; o = o.input() {
+	for o := n.Op; o != nil; o = o.input() {
 		fmt.Fprintf(dst, "n%d [label=%q];\n", oid, o.String())
 		if prev != nil {
 			fmt.Fprintf(dst, "n%d -> n%d;\n", oid, oid-1)
@@ -62,9 +62,9 @@ func gv(t *Tree, dst io.Writer, tid, oid int) (int, int, error) {
 	}
 	tid++
 	self := oid - 1 // id of this Tree's terminal
-	for i := range t.Children {
+	for i := range n.Children {
 		start := oid // id of last op in child
-		tid, oid, err = gv(t.Children[i], dst, tid, oid)
+		tid, oid, err = gv(n.Children[i], dst, tid, oid)
 		if err != nil {
 			return tid, oid, err
 		}

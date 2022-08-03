@@ -18,6 +18,8 @@ import (
 	"errors"
 	"fmt"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
@@ -215,35 +217,23 @@ func lowerBind(in *pir.Bind, from Op) (Op, error) {
 	}, nil
 }
 
-func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
-	tbl := in.Inner.Table
+func (w *walker) lowerUnionMap(in *pir.UnionMap) (Op, error) {
+	input := w.put(in.Inner)
 	// NOTE: we're passing the same splitter
 	// to the child here. We don't currently
 	// produce nested split queries, so it isn't
 	// meaningful at the moment, but it's possible
 	// at some point we will need to indicate that
 	// we are splitting an already-split query
-	sub, err := walkBuild(in.Child.Final(), env, split)
+	sub, err := w.walkBuild(in.Child.Final())
 	if err != nil {
 		return nil, err
 	}
-	// don't call Stat; wait for it to be called
-	// on the Leaf table and then grab the handle
-	// returned from that Stat operation
-	var handle TableHandle
-	for o := sub; o != nil; o = o.input() {
-		if l, ok := o.(*Leaf); ok && l.Expr == tbl {
-			// the inner handle should never be
-			// referenced directly; strip it
-			// from the query plan
-			handle, l.Handle = l.Handle, nil
-			break
-		}
+	handle, err := w.inputs[input].stat(w.env)
+	if err != nil {
+		return nil, err
 	}
-	if handle == nil {
-		return nil, fmt.Errorf("lowerUnionMap: couldn't find %s", expr.ToString(tbl))
-	}
-	tbls, err := doSplit(split, in.Inner.Table.Expr, handle)
+	tbls, err := doSplit(w.split, in.Inner.Table.Expr, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +243,7 @@ func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	}
 	return &UnionMap{
 		Nonterminal: Nonterminal{From: sub},
-		Orig:        in.Inner.Table,
+		Orig:        input,
 		Sub:         tbls,
 	}, nil
 }
@@ -333,19 +323,90 @@ func lowerOutputIndex(n *pir.OutputIndex, env Env, input Op) (Op, error) {
 	return nil, fmt.Errorf("cannot handle INTO with Env that doesn't support UploadEnv")
 }
 
-func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
-	// IterTable is the terminal node
-	if it, ok := in.(*pir.IterTable); ok {
-		h := &Hints{
+type input struct {
+	table  *expr.Table
+	hints  Hints
+	handle TableHandle // if already statted
+}
+
+func (i *input) finish(env Env) (Input, error) {
+	th, err := i.stat(env)
+	if err != nil {
+		return Input{}, err
+	}
+	return Input{
+		Table:  i.table,
+		Handle: th,
+	}, nil
+}
+
+func (i *input) stat(env Env) (TableHandle, error) {
+	if i.handle != nil {
+		return i.handle, nil
+	}
+	th, err := stat(env, i.table.Expr, &i.hints)
+	if err != nil {
+		return nil, err
+	}
+	i.handle = th
+	return th, nil
+}
+
+func (i *input) merge(in *input) bool {
+	if !i.table.Equals(in.table) {
+		return false
+	}
+	if !expr.Equal(i.hints.Filter, in.hints.Filter) {
+		return false
+	}
+	i.handle = nil
+	if i.hints.AllFields {
+		return true
+	}
+	if in.hints.AllFields {
+		i.hints.Fields = nil
+		i.hints.AllFields = true
+		return true
+	}
+	i.hints.Fields = append(i.hints.Fields, in.hints.Fields...)
+	slices.Sort(i.hints.Fields)
+	i.hints.Fields = slices.Compact(i.hints.Fields)
+	return true
+}
+
+type walker struct {
+	env    Env
+	split  Splitter
+	inputs []input
+}
+
+func (w *walker) put(it *pir.IterTable) int {
+	in := input{
+		table: it.Table,
+		hints: Hints{
 			Filter:    it.Filter,
 			Fields:    it.Fields(),
 			AllFields: it.Wildcard(),
+		},
+	}
+	for i := range w.inputs {
+		if w.inputs[i].merge(&in) {
+			return i
 		}
-		handle, err := stat(env, it.Table.Expr, h)
-		if err != nil {
-			return nil, err
-		}
-		out := (Op)(&Leaf{Expr: it.Table, Handle: handle})
+	}
+	i := len(w.inputs)
+	w.inputs = append(w.inputs, in)
+	return i
+}
+
+func (w *walker) walkBuild(in pir.Step) (Op, error) {
+	// IterTable is the terminal node
+	if it, ok := in.(*pir.IterTable); ok {
+		// TODO: we should handle table globs and
+		// the ++ operator specially
+		out := Op(&Leaf{
+			Input: w.put(it),
+		})
 		if it.Filter != nil {
 			out = &Filter{
 				Nonterminal: Nonterminal{From: out},
@@ -364,10 +425,10 @@ func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 
 	// ... and UnionMap as well
 	if u, ok := in.(*pir.UnionMap); ok {
-		return lowerUnionMap(u, env, split)
+		return w.lowerUnionMap(u)
 	}
 
-	input, err := walkBuild(pir.Input(in), env, split)
+	input, err := w.walkBuild(pir.Input(in))
 	if err != nil {
 		return nil, err
 	}
@@ -387,12 +448,27 @@ func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	case *pir.Order:
 		return lowerOrder(n, input)
 	case *pir.OutputIndex:
-		return lowerOutputIndex(n, env, input)
+		return lowerOutputIndex(n, w.env, input)
 	case *pir.OutputPart:
-		return lowerOutputPart(n, env, input)
+		return lowerOutputPart(n, w.env, input)
 	default:
 		return nil, fmt.Errorf("don't know how to lower %T", in)
 	}
+}
+
+func (w *walker) finish() ([]Input, error) {
+	if w.inputs == nil {
+		return nil, nil
+	}
+	inputs := make([]Input, len(w.inputs))
+	for i := range w.inputs {
+		in, err := w.inputs[i].finish(w.env)
+		if err != nil {
+			return nil, err
+		}
+		inputs[i] = in
+	}
+	return inputs, nil
 }
 
 // Result is a (field, type) tuple
@@ -419,22 +495,48 @@ func results(b *pir.Trace) ResultSet {
 }
 
 func toTree(in *pir.Trace, env Env, split Splitter) (*Tree, error) {
-	op, err := walkBuild(in.Final(), env, split)
+	w := walker{
+		env:   env,
+		split: split,
+	}
+	t := &Tree{}
+	err := w.toNode(&t.Root, in)
 	if err != nil {
 		return nil, err
 	}
-	t := &Tree{
-		Op:         op,
-		OutputType: results(in),
+	inputs, err := w.finish()
+	if err != nil {
+		return nil, err
+	}
+	t.Inputs = inputs
+	return t, nil
+}
+
+func (w *walker) toNode(t *Node, in *pir.Trace) error {
+	op, err := w.walkBuild(in.Final())
+	if err != nil {
+		return err
+	}
+	t.Op = op
+	t.OutputType = results(in)
+	t.Children = make([]*Node, len(in.Replacements))
+	sub := walker{
+		env:   w.env,
+		split: w.split,
 	}
 	for i := range in.Replacements {
-		ct, err := toTree(in.Replacements[i], env, split)
+		t.Children[i] = &Node{}
+		err := sub.toNode(t.Children[i], in.Replacements[i])
 		if err != nil {
-			return nil, err
+			return err
 		}
-		t.Children = append(t.Children, ct)
 	}
-	return t, nil
+	inputs, err := sub.finish()
+	if err != nil {
+		return err
+	}
+	t.Inputs = inputs
+	return nil
 }
 
 type pirenv struct {

@@ -66,10 +66,11 @@ func TestSplit(t *testing.T) {
 		{
 			query: `SELECT COUNT(*) FROM foo`,
 			lines: []string{
-				"foo",
+				"WITH INPUT(0) AS foo",
+				"INPUT(0)",
 				"COUNT(*) AS $_2_0",
 				// describes table -> [tables...] mapping
-				"UNION MAP foo [\"foo-part1\" \"foo-part2\"]",
+				"UNION MAP INPUT(0) [\"foo-part1\" \"foo-part2\"]",
 				"AGGREGATE SUM_COUNT($_2_0) AS \"count\"",
 			},
 		},

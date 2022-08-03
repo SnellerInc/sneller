@@ -19,28 +19,69 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 )
 
-// Tree is an executable query plan
-// represented as a tree of linear subsequences
-// of operations.
-// Simple operations like filtering,
-// aggregation, extended projection, etc.
-// are grouped into sequences, and
-// relational operations and sub-queries
-// are handled by connecting their constituent
-// subsequences together into a Tree.
-//
-// (One motivating analogy might be that
-// of basic blocks within a control flow graph,
-// except that we restrict the vertices to
-// form a tree rather than any directed graph.)
+type Input struct {
+	// TODO: we should encode the underlying table
+	// expr only so different bindings don't cause
+	// the same table to be scanned multiple times
+	Table  *expr.Table
+	Handle TableHandle
+}
+
+func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+	dst.BeginStruct(-1)
+	tbl, handle := i.Table, i.Handle
+	if rw != nil {
+		tbl, handle = rw(tbl, handle)
+	}
+	dst.BeginField(st.Intern("table"))
+	tbl.Encode(dst, st)
+	if handle != nil {
+		dst.BeginField(st.Intern("handle"))
+		err := handle.Encode(dst, st)
+		if err != nil {
+			return err
+		}
+	}
+	dst.EndStruct()
+	return nil
+}
+
+// A Tree is the root an executable query plan
+// tree as well as the inputs for the plan.
 //
 // A Tree can be constructed with New
 // or NewSplit and it can be executed
 // with Exec or Transport.Exec.
 type Tree struct {
+	// Inputs are the tables to use as inputs to
+	// the root of the plan tree.
+	Inputs []Input
+	// Root is the root node of the plan tree.
+	Root Node
+}
+
+// A Node is one node of a query plan tree and
+// contains the operation sequence for one step
+// of the plan, as well as links to subtrees
+// this step of the plan depends on.
+//
+// Simple operations like filtering,
+// aggregation, extended projection, etc.
+// are grouped into sequences, and
+// relational operations and sub-queries
+// are handled by connecting their constituent
+// subsequences together into a Node.
+//
+// (One motivating analogy might be that
+// of basic blocks within a control flow graph,
+// except that we restrict the vertices to
+// form a tree rather than any directed graph.)
+type Node struct {
 	// OutputType is the type of
 	// the output column(s) of the
 	// sub-query produced by this tree.
@@ -51,10 +92,14 @@ type Tree struct {
 	// a known ResultSet.
 	OutputType ResultSet
 
+	// Inputs are the tables to use as inputs to
+	// the children of this plan tree node.
+	Inputs []Input
+
 	// Children is the list of sub-queries
 	// that produce results that are prerequisites
 	// to computing this query.
-	Children []*Tree
+	Children []*Node
 
 	// Op is the first element of a linked list
 	// of query execution steps. The linked list
@@ -90,45 +135,70 @@ func printops(dst *strings.Builder, indent int, op Op) {
 	tabline(dst, indent, op.String())
 }
 
-func (t *Tree) describe(indent int, dst *strings.Builder) {
-	for i := range t.Children {
-		tabfprintf(dst, indent, "WITH REPLACEMENT(%d) AS (", i)
-		t.Children[i].describe(indent+1, dst)
+func (t *Tree) describe(dst *strings.Builder) {
+	for i := range t.Inputs {
+		tbl := expr.ToString(t.Inputs[i].Table)
+		fmt.Fprintf(dst, "WITH INPUT(%d) AS %s\n", i, tbl)
+	}
+	t.Root.describe(0, dst)
+}
+
+func (n *Node) describe(indent int, dst *strings.Builder) {
+	for i := range n.Children {
+		tabfprintf(dst, indent, "WITH REPLACEMENT(%d) AS (\n", i)
+		for i := range n.Inputs {
+			tbl := expr.ToString(n.Inputs[i].Table)
+			tabfprintf(dst, indent+1, "WITH INPUT(%d) AS %s\n", i, tbl)
+		}
+		n.Children[i].describe(indent+1, dst)
 		tabline(dst, indent, ")")
 	}
-	printops(dst, indent, t.Op)
+	printops(dst, indent, n.Op)
 }
 
 // String implements fmt.Stringer
 func (t *Tree) String() string {
 	var out strings.Builder
-	t.describe(0, &out)
+	t.describe(&out)
 	return out.String()
 }
 
 func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
-	if len(t.Children) == 0 {
-		return t.Op.exec(dst, ep)
+	// TODO: we should prepare inputs for scanning
+	// before passing them to (*Node).exec
+	ep2 := execParams{
+		ExecParams: ep,
+		inputs:     t.Inputs,
+	}
+	return t.Root.exec(dst, &ep2)
+}
+
+func (n *Node) exec(dst vm.QuerySink, ep *execParams) error {
+	if len(n.Children) == 0 {
+		return n.Op.exec(dst, ep)
 	}
 	parallel := ep.Parallel
 	var wg sync.WaitGroup
-	wg.Add(len(t.Children))
-	rp := make([]replacement, len(t.Children))
-	errors := make([]error, len(t.Children))
-	subp := (parallel + len(t.Children) - 1) / len(t.Children)
+	wg.Add(len(n.Children))
+	rp := make([]replacement, len(n.Children))
+	errors := make([]error, len(n.Children))
+	subp := (parallel + len(n.Children) - 1) / len(n.Children)
 	if subp <= 0 {
 		subp = 1
 	}
-	for i := range t.Children {
+	for i := range n.Children {
 		go func(i int) {
 			defer wg.Done()
-			sub := &ExecParams{
-				Output:   nil,
-				Parallel: subp,
-				Rewrite:  ep.Rewrite,
-				Context:  ep.Context,
+			sub := &execParams{
+				ExecParams: &ExecParams{
+					Output:   nil,
+					Parallel: subp,
+					Rewrite:  ep.Rewrite,
+					Context:  ep.Context,
+				},
+				inputs: n.Inputs,
 			}
-			errors[i] = t.Children[i].exec(&rp[i], sub)
+			errors[i] = n.Children[i].exec(&rp[i], sub)
 			ep.Stats.atomicAdd(&sub.Stats)
 		}(i)
 	}
@@ -153,9 +223,9 @@ func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
 	repl := &replacer{
 		inputs: rp,
 	}
-	t.Op.rewrite(repl)
+	n.Op.rewrite(repl)
 	if repl.err != nil {
 		return repl.err
 	}
-	return t.Op.exec(dst, ep)
+	return n.Op.exec(dst, ep)
 }

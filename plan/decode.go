@@ -17,6 +17,7 @@ package plan
 import (
 	"fmt"
 
+	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -60,82 +61,99 @@ func decodeHandle(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
 	return d.DecodeHandle(st, mem)
 }
 
-// Decode decodes an ion-encoded tree from the provided
-// symbol table and buffer. The provided Decoder will
-// be used to decode the TableHandles associated with
-// each Leaf op in the Tree.
-//
-// See also: Tree.Encode, Tree.EncodePart.
-func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
-	var trees []tree
-	err := unpackList(buf, func(body []byte) error {
-		t, err := decode(d, st, body)
-		if err != nil {
-			return err
+// decode decodes an input structure.
+func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
+	if ion.TypeOf(mem) != ion.StructType {
+		return fmt.Errorf("plan.Decode: unexpected ion type %s for Input", ion.TypeOf(mem))
+	}
+	_, err := ion.UnpackStruct(st, mem, func(field string, buf []byte) error {
+		switch field {
+		case "table":
+			e, _, err := expr.Decode(st, buf)
+			if err != nil {
+				return err
+			}
+			t, ok := e.(*expr.Table)
+			if !ok {
+				return fmt.Errorf("plan.Decode: input expr %T not a table", e)
+			}
+			i.Table = t
+		case "handle":
+			th, err := decodeHandle(d, st, buf[:ion.SizeOf(buf)])
+			if err != nil {
+				return err
+			}
+			i.Handle = th
 		}
-		trees = append(trees, t)
 		return nil
+	})
+	return err
+}
+
+// Decode decodes an ion-encoded tree
+// from the provided symbol table and buffer.
+// During decoding, each Leaf op in the Tree
+// will have its TableHandle populated with env.Stat.
+// See also: Plan.Encode, Plan.EncodePart.
+func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
+	t := &Tree{}
+	_, err := ion.UnpackStruct(st, buf, func(field string, inner []byte) error {
+		switch field {
+		case "inputs":
+			return unpackList(inner, func(field []byte) error {
+				t.Inputs = append(t.Inputs, Input{})
+				return t.Inputs[len(t.Inputs)-1].decode(d, st, field)
+			})
+		case "root":
+			return t.Root.decode(d, st, inner)
+		default:
+			return nil
+		}
 	})
 	if err != nil {
 		return nil, err
 	}
-	return reconstitute(trees)
+	return t, nil
 }
 
-func decode(d Decoder, st *ion.Symtab, buf []byte) (tree, error) {
-	if ion.TypeOf(buf) != ion.StructType {
-		return tree{}, fmt.Errorf("plan.Decode: unexpected ion type %s for Tree", ion.TypeOf(buf))
-	}
-	inner, _ := ion.Contents(buf)
-	if inner == nil {
-		return tree{}, fmt.Errorf("plan.Decode: corrupted input")
-	}
-	var out tree
-	var sym ion.Symbol
-	var err error
-	for len(inner) > 0 {
-		sym, inner, err = ion.ReadLabel(inner)
-		if err != nil {
-			return tree{}, fmt.Errorf("plan.Decode: %w", err)
-		}
-		switch st.Get(sym) {
-		case "":
-			return tree{}, fmt.Errorf("plan.Decode: symbol %d not in symbol table", sym)
+func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
+	_, err := ion.UnpackStruct(st, buf, func(field string, inner []byte) error {
+		switch field {
 		case "op":
 			if ion.TypeOf(inner) != ion.ListType {
-				return tree{}, fmt.Errorf("plan.Decode: expected op to be a list; found %s", ion.TypeOf(inner))
+				return fmt.Errorf("plan.Decode: expected op to be a list; found %s", ion.TypeOf(inner))
 			}
 			var body []byte
+			var err error
 			body, inner = ion.Contents(inner)
-			out.op, err = decodeOps(d, st, body)
-			if err != nil {
-				return tree{}, err
-			}
+			n.Op, err = decodeOps(d, st, body)
+			return err
+		case "inputs":
+			return unpackList(inner, func(field []byte) error {
+				n.Inputs = append(n.Inputs, Input{})
+				return n.Inputs[len(n.Inputs)-1].decode(d, st, field)
+			})
 		case "children":
-			err = unpackList(inner, func(field []byte) error {
-				i, _, err := ion.ReadInt(field)
+			return unpackList(inner, func(field []byte) error {
+				nn := &Node{}
+				err := nn.decode(d, st, field)
 				if err != nil {
 					return err
 				}
-				out.children = append(out.children, int(i))
+				n.Children = append(n.Children, nn)
 				return nil
 			})
-			if err != nil {
-				return tree{}, err
-			}
-			fallthrough
 		default:
-			step := ion.SizeOf(inner)
-			if step > len(inner) {
-				return tree{}, fmt.Errorf("plan.Decode: corrupt input (field len %d greater than size %d)", step, len(inner))
-			}
-			inner = inner[step:]
+			return nil
 		}
+	})
+	if err != nil {
+		return err
 	}
-	if out.op == nil {
-		return tree{}, fmt.Errorf("plan.Decode: no Op field present")
+	if n.Op == nil {
+		return fmt.Errorf("plan.Decode: no Op field present")
 	}
-	return out, nil
+	return nil
 }
 
 // Decode decodes a query plan from 'buf'

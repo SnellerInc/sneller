@@ -48,7 +48,7 @@ type Op interface {
 	// exec executes the op into dst
 	// using ep to determine parallelism,
 	// cancellation status, table rewrites, etc.
-	exec(dst vm.QuerySink, ep *ExecParams) error
+	exec(dst vm.QuerySink, ep *execParams) error
 
 	// encode should write the op as an ion structure
 	// to 'dst'; the first field of the structure
@@ -286,7 +286,7 @@ func (s *SimpleAggregate) String() string {
 	return "AGGREGATE " + s.Outputs.String()
 }
 
-func (s *SimpleAggregate) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (s *SimpleAggregate) exec(dst vm.QuerySink, ep *execParams) error {
 	a, err := vm.NewAggregate(s.Outputs, dst)
 	if err != nil {
 		return err
@@ -320,28 +320,27 @@ func (s *SimpleAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf [
 // and just contains the table from
 // which the data will be processed.
 type Leaf struct {
-	// Expr is the table expression from the query
-	Expr *expr.Table
-
-	// Handle is the handle to the return value
-	// of Env.Stat when the query was planned.
-	Handle TableHandle
+	// Input is an index into plan inputs that
+	// determines which table is scanned.
+	Input int
+	// Filter is pushed down before exec if the
+	// parent node supports filter pushdown.
+	Filter expr.Node
 }
 
-func (l *Leaf) String() string { return expr.ToString(l.Expr) }
+func (l *Leaf) String() string { return fmt.Sprintf("INPUT(%d)", l.Input) }
 func (l *Leaf) input() Op      { return nil }
 func (l *Leaf) setinput(o Op) {
 	panic("Leaf: cannot setinput")
 }
 
-func (l *Leaf) rewrite(rw expr.Rewriter) {
-	l.Expr.Expr = expr.Rewrite(rw, l.Expr.Expr)
-}
+func (l *Leaf) rewrite(rw expr.Rewriter) {}
 
-func (l *Leaf) exec(dst vm.QuerySink, ep *ExecParams) error {
-	handle := l.Handle
+func (l *Leaf) exec(dst vm.QuerySink, ep *execParams) error {
+	in := &ep.inputs[l.Input]
+	handle := filter(in.Handle, l.Filter)
 	if ep.Rewrite != nil {
-		_, handle = ep.Rewrite(l.Expr, handle)
+		_, handle = ep.Rewrite(in.Table, handle)
 	}
 	if handle == nil {
 		panic("nil table handle")
@@ -362,31 +361,11 @@ func (l *Leaf) exec(dst vm.QuerySink, ep *ExecParams) error {
 func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	settype("leaf", dst, st)
-	dst.BeginField(st.Intern("expr"))
-	l.Expr.Encode(dst, st)
-	if l.Handle != nil {
-		dst.BeginField(st.Intern("handle"))
-		err := l.Handle.Encode(dst, st)
-		if err != nil {
-			return err
-		}
-	}
-	dst.EndStruct()
-	return nil
-}
-
-func (l *Leaf) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
-	tbl, handle := rw(l.Expr, l.Handle)
-	dst.BeginStruct(-1)
-	settype("leaf", dst, st)
-	dst.BeginField(st.Intern("expr"))
-	tbl.Encode(dst, st)
-	if handle != nil {
-		dst.BeginField(st.Intern("handle"))
-		err := handle.Encode(dst, st)
-		if err != nil {
-			return err
-		}
+	dst.BeginField(st.Intern("input"))
+	dst.WriteInt(int64(l.Input))
+	if l.Filter != nil {
+		dst.BeginField(st.Intern("filter"))
+		l.Filter.Encode(dst, st)
 	}
 	dst.EndStruct()
 	return nil
@@ -394,22 +373,18 @@ func (l *Leaf) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) erro
 
 func (l *Leaf) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
 	switch name {
-	case "expr":
-		e, _, err := expr.Decode(st, buf)
+	case "input":
+		in, _, err := ion.ReadInt(buf)
 		if err != nil {
 			return err
 		}
-		t, ok := e.(*expr.Table)
-		if !ok {
-			return fmt.Errorf("decoding plan.Leaf: %T not a table", e)
-		}
-		l.Expr = t
-	case "handle":
-		th, err := decodeHandle(d, st, buf[:ion.SizeOf(buf)])
+		l.Input = int(in)
+	case "filter":
+		f, _, err := expr.Decode(st, buf)
 		if err != nil {
 			return err
 		}
-		l.Handle = th
+		l.Filter = f
 	}
 	return nil
 }
@@ -423,7 +398,7 @@ func (n NoOutput) setinput(o Op) {
 	panic("NoOutput: cannot setinput()")
 }
 
-func (n NoOutput) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (n NoOutput) exec(dst vm.QuerySink, ep *execParams) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -466,7 +441,7 @@ func (n DummyOutput) setinput(o Op) {
 	panic("DummyOutput: cannot setinput()")
 }
 
-func (n DummyOutput) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (n DummyOutput) exec(dst vm.QuerySink, ep *execParams) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -514,7 +489,7 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %d", l.Num)
 }
 
-func (l *Limit) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (l *Limit) exec(dst vm.QuerySink, ep *execParams) error {
 	return l.From.exec(vm.NewLimit(l.Num, dst), ep)
 }
 
@@ -556,7 +531,7 @@ func (c *CountStar) String() string {
 	return "COUNT(*) AS " + c.name()
 }
 
-func (c *CountStar) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (c *CountStar) exec(dst vm.QuerySink, ep *execParams) error {
 	var qs vm.Count
 	err := c.From.exec(&qs, ep)
 	if err != nil {
@@ -740,7 +715,7 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 	return nil
 }
 
-func (h *HashAggregate) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (h *HashAggregate) exec(dst vm.QuerySink, ep *execParams) error {
 	ha, err := vm.NewHashAggregate(h.Agg, h.By, dst)
 	if err != nil {
 		return err
@@ -813,7 +788,7 @@ func (o *OrderBy) String() string {
 	return s
 }
 
-func (o *OrderBy) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (o *OrderBy) exec(dst vm.QuerySink, ep *execParams) error {
 	writer, err := dst.Open()
 	if err != nil {
 		return err
@@ -941,7 +916,7 @@ func (d *Distinct) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (d *Distinct) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (d *Distinct) exec(dst vm.QuerySink, ep *execParams) error {
 	df, err := vm.NewDistinct(d.Fields, dst)
 	if err != nil {
 		return err
@@ -1016,10 +991,6 @@ func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 	// nodes without parents:
 	// should just be Leaf or NoOutput
 	if l, ok := p.(*Leaf); ok {
-		if rw != nil {
-			l.encodePart(dst, st, rw)
-			return nil
-		}
 		return l.encode(dst, st)
 	}
 	if no, ok := p.(NoOutput); ok {
@@ -1043,88 +1014,54 @@ func (t *Tree) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 // uses rw to re-write table expressions during
 // serialization.
 func (t *Tree) EncodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
-	flat := t.flatten()
-	dst.BeginList(-1)
-	for i := range flat {
-		if err := flat[i].encodePart(dst, st, rw); err != nil {
-			return err
+	dst.BeginStruct(-1)
+	if len(t.Inputs) > 0 {
+		dst.BeginField(st.Intern("inputs"))
+		dst.BeginList(-1)
+		for i := range t.Inputs {
+			if err := t.Inputs[i].encode(dst, st, rw); err != nil {
+				return err
+			}
 		}
+		dst.EndList()
 	}
-	dst.EndList()
+	dst.BeginField(st.Intern("root"))
+	if err := t.Root.encodePart(dst, st, rw); err != nil {
+		return err
+	}
+	dst.EndStruct()
 	return nil
 }
 
-func (t *tree) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+func (n *Node) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 	dst.BeginStruct(-1)
-	if len(t.children) > 0 {
+	if len(n.Inputs) > 0 {
+		dst.BeginField(st.Intern("inputs"))
+		dst.BeginList(-1)
+		for i := range n.Inputs {
+			if err := n.Inputs[i].encode(dst, st, rw); err != nil {
+				return err
+			}
+		}
+		dst.EndList()
+	}
+	if len(n.Children) > 0 {
 		dst.BeginField(st.Intern("children"))
 		dst.BeginList(-1)
-		for j := range t.children {
-			dst.WriteInt(int64(t.children[j]))
+		for i := range n.Children {
+			if err := n.Children[i].encodePart(dst, st, rw); err != nil {
+				return err
+			}
 		}
 		dst.EndList()
 	}
 	dst.BeginField(st.Intern("op"))
 	dst.BeginList(-1)
-	err := encoderec(t.op, dst, st, rw)
+	err := encoderec(n.Op, dst, st, rw)
 	if err != nil {
 		return err
 	}
 	dst.EndList()
 	dst.EndStruct()
 	return nil
-}
-
-func (t *Tree) flatten() []tree {
-	var tf treeflattener
-	tf.put(t)
-	return tf.trees
-}
-
-type tree struct {
-	children []int
-	op       Op
-}
-
-func reconstitute(flat []tree) (*Tree, error) {
-	trees := make([]Tree, len(flat))
-	for i := range trees {
-		t := &trees[i]
-		t.Op = flat[i].op
-		if len(flat[i].children) > 0 {
-			t.Children = make([]*Tree, len(flat[i].children))
-			for i, j := range flat[i].children {
-				if j >= len(trees) {
-					return nil, fmt.Errorf("missing tree: %d", i)
-				}
-				t.Children[i] = &trees[j]
-			}
-		}
-	}
-	return &trees[0], nil
-}
-
-type treeflattener struct {
-	trees []tree
-	m     map[*Tree]int
-}
-
-func (m *treeflattener) put(t *Tree) int {
-	if idx, ok := m.m[t]; ok {
-		return idx
-	}
-	if m.m == nil {
-		m.m = make(map[*Tree]int)
-	}
-	idx := len(m.trees)
-	m.m[t] = idx
-	m.trees = append(m.trees, tree{op: t.Op})
-	if len(t.Children) > 0 {
-		t2 := &m.trees[idx]
-		t2.children = make([]int, len(t.Children))
-		for i := range t.Children {
-			t2.children[i] = m.put(t.Children[i])
-		}
-	}
-	return idx
 }

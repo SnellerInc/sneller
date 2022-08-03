@@ -45,6 +45,12 @@ type ExecParams struct {
 	Context context.Context
 }
 
+type execParams struct {
+	*ExecParams
+	// inputs are the table inputs to the query.
+	inputs []Input
+}
+
 // Exec executes a plan and writes the
 // results of the query execution to dst.
 func Exec(t *Tree, dst io.Writer, stats *ExecStats) error {

@@ -39,7 +39,6 @@ func (e *filterEnv) Stat(t expr.Node, h *Hints) (TableHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	e.filters = nil
 	if h.Filter != nil {
 		e.filters = append(e.filters, expr.ToString(h.Filter))
 	}
@@ -97,6 +96,7 @@ func TestFilter(t *testing.T) {
 		query: `SELECT * FROM 'parking.10n' WHERE BEFORE(IssueData, (SELECT LATEST(IssueData) FROM 'parking.10n' WHERE Make IS MISSING))`,
 		newFilters: []string{
 			"Make IS MISSING",
+			"BEFORE(IssueData, SCALAR_REPLACEMENT(0))",
 		}, execFilters: []string{
 			"Make IS MISSING",
 			"BEFORE(IssueData, `2000-01-01T00:00:00Z`)",
@@ -109,7 +109,7 @@ func TestFilter(t *testing.T) {
 
 	for i := range tcs {
 		tc := &tcs[i]
-		t.Run(fmt.Sprintf("case-%d", i+1), func(t *testing.T) {
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			// Test that filters are pushed
 			// down when a tree is created
 			// from a parsed query.

@@ -543,6 +543,15 @@ type Node interface {
 	walk(Visitor)
 }
 
+// Equal returns whether a and b are equivalent.
+// a or b may be nil.
+func Equal(a, b Node) bool {
+	if a == nil {
+		return b == nil
+	}
+	return b != nil && a.Equals(b)
+}
+
 // Constant is a Node that is
 // a constant value.
 type Constant interface {

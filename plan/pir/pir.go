@@ -52,7 +52,7 @@ func (t *table) equals(x *table) bool {
 	peq := (*expr.Path).EqualsPath
 	return t == x || slices.EqualFunc(t.refs, x.refs, peq) &&
 		slices.Equal(t.outer, x.outer) &&
-		expreq(t.Filter, x.Filter) &&
+		expr.Equal(t.Filter, x.Filter) &&
 		t.Bind == x.Bind &&
 		t.star == x.star &&
 		t.haveParent == x.haveParent
@@ -199,7 +199,7 @@ func bindstr(bind []expr.Binding) string {
 func (i *IterValue) equals(x Step) bool {
 	i2, ok := x.(*IterValue)
 	return ok && (i == i2 || i.table.equals(&i2.table) &&
-		expreq(i.Value, i2.Value) &&
+		expr.Equal(i.Value, i2.Value) &&
 		slices.EqualFunc(i.liveat, i2.liveat, expr.Binding.Equals) &&
 		slices.EqualFunc(i.liveacross, i2.liveacross, expr.Binding.Equals))
 }
@@ -334,7 +334,7 @@ type Filter struct {
 
 func (f *Filter) equals(x Step) bool {
 	f2, ok := x.(*Filter)
-	return ok && (f == f2 || expreq(f.Where, f2.Where))
+	return ok && (f == f2 || expr.Equal(f.Where, f2.Where))
 }
 
 func (f *Filter) rewrite(rw func(expr.Node, bool) expr.Node) {
@@ -1012,13 +1012,6 @@ func (b *Trace) Rewrite(rw expr.Rewriter) {
 	for cur := b.top; cur != nil; cur = cur.parent() {
 		cur.rewrite(inner)
 	}
-}
-
-func expreq(a, b expr.Node) bool {
-	if a == nil {
-		return b == nil
-	}
-	return b != nil && a.Equals(b)
 }
 
 type Unpivot struct {

@@ -36,7 +36,7 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (p *Project) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (p *Project) exec(dst vm.QuerySink, ep *execParams) error {
 	return p.From.exec(vm.NewProjection(vm.Selection(p.Using), dst), ep)
 }
 

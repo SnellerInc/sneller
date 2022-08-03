@@ -37,7 +37,7 @@ func (f *Filter) rewrite(rw expr.Rewriter) {
 	f.Expr = expr.Rewrite(rw, f.Expr)
 }
 
-func (f *Filter) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (f *Filter) exec(dst vm.QuerySink, ep *execParams) error {
 	push(f.Expr, f.From)
 	return f.From.exec(vm.NewFilter(f.Expr, dst), ep)
 }
@@ -63,6 +63,19 @@ func (f *Filter) setfield(d Decoder, name string, st *ion.Symtab, body []byte) e
 	return nil
 }
 
+// filter applies a filter f to a table handle if
+// filtering is supported and f is non-nil
+func filter(th TableHandle, f expr.Node) TableHandle {
+	if f == nil {
+		return th
+	}
+	fh, ok := th.(Filterable)
+	if !ok {
+		return th
+	}
+	return fh.Filter(f)
+}
+
 // push a filter expression into op
 func push(e expr.Node, op Op) {
 	type filterer interface {
@@ -75,12 +88,7 @@ func push(e expr.Node, op Op) {
 
 func (f *Filter) filter(e expr.Node)  { push(expr.And(f.Expr, e), f.From) }
 func (o *OrderBy) filter(e expr.Node) { push(e, o.From) }
-
-func (l *Leaf) filter(e expr.Node) {
-	if fh, ok := l.Handle.(Filterable); ok {
-		l.Handle = fh.Filter(e)
-	}
-}
+func (l *Leaf) filter(e expr.Node)    { l.Filter = e }
 
 func (u *UnionMap) filter(e expr.Node) {
 	u.Sub.Filter(e)

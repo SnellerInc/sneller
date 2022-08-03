@@ -1227,6 +1227,37 @@ where Make in (
 				"PROJECT `2000-01-01T00:00:00Z` AS \"min\", `2000-03-01T00:00:00Z` AS \"max\"",
 			},
 		},
+		{
+			// multiple references to the same table
+			// should be merged into a single input,
+			// but inputs used as replacements should
+			// not be merged
+			query: `select a, (select b from 'parking.10n' limit 1), (select c from 'parking.10n' limit 1) from 'parking.10n' where d = (select IssueData from 'parking.10n' limit 1)`,
+			matchPlan: []string{
+				`WITH INPUT\(0\) AS 'parking.10n'`,
+				`WITH REPLACEMENT\(0\) AS \(`,
+				`	WITH INPUT\(0\) AS 'parking.10n'`,
+				`	INPUT\(0\)`,
+				`	LIMIT 1`,
+				`	PROJECT b AS b`,
+				`\)`,
+				`WITH REPLACEMENT\(1\) AS \(`,
+				`	WITH INPUT\(0\) AS 'parking.10n'`,
+				`	INPUT\(0\)`,
+				`	LIMIT 1`,
+				`	PROJECT c AS c`,
+				`\)`,
+				`WITH REPLACEMENT\(2\) AS \(`,
+				`	WITH INPUT\(0\) AS 'parking.10n'`,
+				`	INPUT\(0\)`,
+				`	LIMIT 1`,
+				`	PROJECT IssueData AS IssueData`,
+				`\)`,
+				`INPUT\(0\)`,
+				`WHERE d = SCALAR_REPLACEMENT\(2\)`,
+				`PROJECT a AS a, SCALAR_REPLACEMENT\(0\) AS _2, SCALAR_REPLACEMENT\(1\) AS _3`,
+			},
+		},
 	}
 
 	for i := range tcs {

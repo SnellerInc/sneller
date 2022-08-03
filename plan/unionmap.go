@@ -30,7 +30,7 @@ import (
 type UnionMap struct {
 	Nonterminal
 
-	Orig *expr.Table
+	Orig int
 	Sub  Subtables
 }
 
@@ -146,7 +146,7 @@ func decodeLocal(st *ion.Symtab, body []byte) (Transport, error) {
 	return t, nil
 }
 
-func (u *UnionMap) exec(dst vm.QuerySink, ep *ExecParams) error {
+func (u *UnionMap) exec(dst vm.QuerySink, ep *execParams) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
@@ -166,8 +166,9 @@ func (u *UnionMap) exec(dst vm.QuerySink, ep *ExecParams) error {
 			defer wg.Done()
 			var sub Subtable
 			u.Sub.Subtable(i, &sub)
+			orig := ep.inputs[u.Orig]
 			rw := func(in *expr.Table, handle TableHandle) (*expr.Table, TableHandle) {
-				if in.Equals(u.Orig) {
+				if in.Equals(orig.Table) {
 					return sub.Table, sub.Handle
 				}
 				return in, handle
@@ -182,7 +183,10 @@ func (u *UnionMap) exec(dst vm.QuerySink, ep *ExecParams) error {
 			// this makes it look to the Transport
 			// like we are executing a sub-query, which
 			// is approximately true
-			stub := &Tree{Op: u.From}
+			stub := &Tree{
+				Root:   Node{Op: u.From},
+				Inputs: ep.inputs,
+			}
 			errors[i] = sub.Exec(stub, subep)
 			ep.Stats.atomicAdd(&subep.Stats)
 		}(i)
@@ -215,7 +219,7 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	settype("unionmap", dst, st)
 	dst.BeginField(st.Intern("orig"))
-	u.Orig.Encode(dst, st)
+	dst.WriteInt(int64(u.Orig))
 	// subtables are encoded as
 	//   [[transport, table-expr] ...]
 	dst.BeginField(st.Intern("sub"))
@@ -229,15 +233,11 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 func (u *UnionMap) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "orig":
-		nod, _, err := expr.Decode(st, body)
+		orig, _, err := ion.ReadInt(body)
 		if err != nil {
 			return err
 		}
-		t, ok := nod.(*expr.Table)
-		if !ok {
-			return fmt.Errorf("UnionMap.Orig: cannot use node of type %T", nod)
-		}
-		u.Orig = t
+		u.Orig = int(orig)
 	case "sub":
 		sub, err := DecodeSubtables(d, st, body[:ion.SizeOf(body)])
 		if err != nil {
@@ -259,5 +259,5 @@ func tableStrings(lst Subtables) []string {
 }
 
 func (u *UnionMap) String() string {
-	return fmt.Sprintf("UNION MAP %s %v", expr.ToString(u.Orig), tableStrings(u.Sub))
+	return fmt.Sprintf("UNION MAP INPUT(%d) %v", u.Orig, tableStrings(u.Sub))
 }
