@@ -812,6 +812,51 @@ func TestSimplify(t *testing.T) {
 			Compare(NotEquals, String("fred"), CallOp(Upper, path("s"))),
 			Bool(true),
 		},
+		{
+			// LOWER(x) || ' and ' || LOWER(y) => LOWER(x || ' and ' || y)
+			CallOp(Concat, CallOp(Lower, path("x")), String(" and "), CallOp(Lower, path("y"))),
+			CallOp(Lower, CallOp(Concat, path("x"), String(" and "), path("y"))),
+		},
+		{
+			// LOWER(x) || ' AND ' || LOWER(y) => no change
+			CallOp(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
+			CallOp(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
+		},
+		{
+			// 'x=' || LOWER(x) || ', y=' || LOWER(y) => LOWER('x=' || x || ', y=' || y)
+			CallOp(Concat, String("x="), CallOp(Lower, path("x")), String(", y="), CallOp(Lower, path("y"))),
+			CallOp(Lower, CallOp(Concat, String("x="), path("x"), String(", y="), path("y"))),
+		},
+		{
+			// 'X=' || LOWER(x) || ', Y=' || LOWER(y) => no change
+			CallOp(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
+			CallOp(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
+		},
+		{
+			// UPPER(x) || ' AND ' || UPPER(y) => UPPER(x || ' AND ' || y)
+			CallOp(Concat, CallOp(Upper, path("x")), String(" AND "), CallOp(Upper, path("y"))),
+			CallOp(Upper, CallOp(Concat, path("x"), String(" AND "), path("y"))),
+		},
+		{
+			// UPPER(x) || ' and ' || UPPER(y) => no change
+			CallOp(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
+			CallOp(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
+		},
+		{
+			// 'X=' || UPPER(x) || ', Y=' || UPPER(y) => UPPER('X=' || x || ', Y=' || y)
+			CallOp(Concat, String("X="), CallOp(Upper, path("x")), String(", Y="), CallOp(Upper, path("y"))),
+			CallOp(Upper, CallOp(Concat, String("X="), path("x"), String(", Y="), path("y"))),
+		},
+		{
+			// 'X=' || UPPER(x) || ', Y=' || UPPER(y) => no change
+			CallOp(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
+			CallOp(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
+		},
+		{
+			// LOWER(x) || UPPER(x) => no change
+			CallOp(Concat, CallOp(Lower, path("x")), CallOp(Upper, path("x"))),
+			CallOp(Concat, CallOp(Lower, path("x")), CallOp(Upper, path("x"))),
+		},
 	}
 
 	for i := range testcases {

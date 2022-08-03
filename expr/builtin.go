@@ -909,7 +909,66 @@ func simplifyConcat(h Hint, args []Node) Node {
 		}
 	}
 
+	if op := concatLowerUpper(flattenedArgs); op != Unspecified {
+		final := make([]Node, len(flattenedArgs))
+		for i := range flattenedArgs {
+			if builtin, ok := flattenedArgs[i].(*Builtin); ok {
+				final[i] = builtin.Args[0]
+			} else {
+				final[i] = flattenedArgs[i]
+			}
+		}
+
+		return CallOp(op, CallOp(Concat, final...))
+	}
+
 	return CallOp(Concat, flattenedArgs...)
+}
+
+// concatLowerUpper returns whether all arguments
+// are either: uppercase strings and calls to UPPER,
+// or lowercase strings and calls to LOWER. Returns
+// appropriate operation or Unspecified otherwise.
+//
+// Note that len(args) > 1 and at least one item
+// on that list is not a string -- that properties
+// are guaranteed by the prior steps of simplify.
+func concatLowerUpper(args []Node) BuiltinOp {
+	result := Unspecified
+
+	for i := range args {
+		op := Unspecified
+		switch n := args[i].(type) {
+		case *Builtin:
+			switch n.Func {
+			case Lower:
+				op = Lower
+			case Upper:
+				op = Upper
+			}
+
+		case String:
+			if isLower(string(n)) {
+				op = Lower
+			} else if isUpper(string(n)) {
+				op = Upper
+			}
+		}
+
+		if op == Unspecified {
+			// not a string nor LOWER/UPPER
+			return Unspecified
+		}
+
+		if result == Unspecified {
+			result = op
+		} else if result != op {
+			// case mismatch
+			return Unspecified
+		}
+	}
+
+	return result
 }
 
 func checkTableGlob(h Hint, args []Node) error {
