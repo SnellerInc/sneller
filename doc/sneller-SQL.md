@@ -184,7 +184,9 @@ cte_clause = WITH identifier 'AS' '(' sfw_query ')' { ',' identifier 'AS' '(' sf
 
 binding_list = expr [ 'AS' identifier ] { ',' expr [ 'AS' identifier ] } ;
 
-sfw_query = 'SELECT' [ 'DISTINCT' ] ('*' | binding_list) [ from_clause ] [ where_clause ] [ group_by_clause ] [ order_by_clause ] [ limit_clause ] ;
+expression_list = expr { ',' expr } ;
+
+sfw_query = 'SELECT' [ 'DISTINCT' ['ON' '(' expression_list ')'] ] ('*' | binding_list) [ from_clause ] [ where_clause ] [ group_by_clause ] [ order_by_clause ] [ limit_clause ] ;
 
 from_clause = 'FROM' path_expr [ 'AS' identifier]  { ',' path_expr [ 'AS' identifier] } ;
 
@@ -1246,21 +1248,50 @@ returns the number of Unicode points in a string as an integer.
 
 #### `LOWER` and `UPPER`
 
-<!---
-Document me!
--->
+`LOWER(str)` and `UPPER(str)` changes case of letters from the
+input string.
+
+Examples:
+
+```sql
+LOWER('SnElLeR') -- returns 'sneller'
+UPPER('SnElLeR') -- returns 'SNELLER'
+```
 
 #### `EQUALS_CI`
 
-<!---
-Document me!
--->
+`EQUALS_CI(str, constant_str)` compares case-sensitive
+a string expression with a **constant** string.
+
+Example:
+
+```sql
+SELECT * FROM table WHERE EQUALS_CI(status, 'IDLE')
+```
+
+Note: `EQUALS_CI` is an optimized implementation of
+expression `LOWER(str) == LOWER(constant_str)`.
 
 #### `SUBSTRING`
 
-<!---
-Document me!
--->
+`SUBSTRING(str, start, length)` extracts a substring from
+the input string. A substring is described with the starting
+position (counted from 1) and length.
+
+If `start` is negative or is larger than the length of `str`,
+then the result is an empty string.
+
+If `start` + `length` is larger than the length of `str`,
+then the output is trimmed to the length of `str`. Likewise,
+when `length` is zero or negative.
+
+Examples:
+
+```sql
+SUBSTRING('kitten', 3, 2)   -- returns 'tt'
+SUBSTRING('kitten', 5, -1)  -- returns 'ten'
+SUBSTRING('kitten', -1, 20) -- returns ''
+```
 
 #### `SPLIT_PART`
 
@@ -1311,9 +1342,37 @@ and the `cidr` string in the two-argument form must be constant strings.*
 
 #### `CAST`
 
-<!---
-Document me!
--->
+`CAST` allows to convert an arbitrary expression into
+equivalent expression of given type. The syntax is
+
+```sql
+CAST(expr AS type)
+```
+
+Known types are:
+
+* `MISSING` (forcibly removes a column from the result),
+* `NULL`,
+* `STRING`,
+* `INTEGER`,
+* `FLOAT`,
+* `BOOLEAN`,
+* `TIMESTAMP`,
+* `STRUCT`,
+* `LIST`,
+* `DECIMAL`,
+* `SYMBOL`.
+
+The only implemented conversions are:
+
+* `INTEGER` -> `FLOAT`;
+* `INTEGER` -> `STRING`;
+* `FLOAT` -> `INTEGER`;
+* `BOOLEAN` -> `INTEGER`;
+* `BOOLEAN` -> `FLOAT`;
+
+Any other conversions yield `MISSING`.
+
 
 #### `TABLE_GLOB` and `TABLE_PATTERN`
 
