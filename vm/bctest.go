@@ -18,6 +18,7 @@ package vm
 // For sample usage please see evalbc_test.go.
 
 import (
+	"encoding/binary"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -31,7 +32,7 @@ import (
 //
 // This matches specification from bc_amd64.h
 type bctestContext struct {
-	data    []byte // SI = the input buffer
+	data    []byte // SI = VIRT_BASE; the input buffer
 	current uint16 // K1 = current mask bits
 	valid   uint16 // K7 = valid mask bits
 
@@ -45,6 +46,8 @@ type bctestContext struct {
 	// 'current value'
 	valueBase [16]uint32 // Z30 = this field base
 	valueLen  [16]uint32 // Z31 = this field len
+
+	stack []byte // R12 = VIRT_VALUES
 
 	// dictionary for bytecode
 	dict []string
@@ -152,7 +155,7 @@ func (c *bctestContext) getScalarFloat64() (result [16]float64) {
 	return
 }
 
-func (c *bctestContext) addData(value string) {
+func (c *bctestContext) setData(value string) {
 	if c.data == nil {
 		c.data = Malloc()
 	}
@@ -234,6 +237,19 @@ func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) 
 		c.valueBase[i] = uint32(base)
 		c.valueLen[i] = uint32(len(chunk))
 		c.data = append(c.data, chunk...)
+	}
+}
+
+func (c *bctestContext) addStack(value []byte) {
+	c.stack = append(c.stack, value...)
+}
+
+func (c *bctestContext) setStackUint64(values []uint64) {
+	c.stack = c.stack[:0]
+	buf := make([]byte, 8)
+	for i := range values {
+		binary.LittleEndian.PutUint64(buf, values[i])
+		c.addStack(buf)
 	}
 }
 

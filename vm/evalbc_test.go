@@ -1911,7 +1911,7 @@ func TestSkip1CharUT(t *testing.T) {
 		ctx.Taint()
 
 		dataPrefix := string([]byte{0, 0, 0})
-		ctx.addData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data), []byte{})
 		ctx.current = 0xFFFF
 		scalarBefore := ctx.getScalarUint32()
@@ -1927,7 +1927,7 @@ func TestSkip1CharUT(t *testing.T) {
 			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
 			obsLength := int(scalarAfter[1][i])
 
-			if (obsLane != ut.expLane) || (obsOffset != ut.expOffset) || (obsLength != ut.expLength) {
+			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
 				t.Errorf("lane %v: skipping 1 char from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
 					i, ut.data, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
 				return
@@ -1990,7 +1990,7 @@ func TestSkip1CharBF(t *testing.T) {
 		for _, data := range dataSpace {
 			expLane, expOffset, expLength := ts.refImpl(data, 1)
 
-			ctx.addData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+			ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 			ctx.addScalarStrings(fill16(data), []byte{})
 			ctx.current = 0xFFFF
 			scalarBefore := ctx.getScalarUint32()
@@ -2006,10 +2006,229 @@ func TestSkip1CharBF(t *testing.T) {
 				obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
 				obsLength := int(scalarAfter[1][i])
 
-				if (obsLane != expLane) || (obsOffset != expOffset) || (obsLength != expLength) {
+				if fault(obsLane, expLane, obsOffset, expOffset, obsLength, expLength) {
 					t.Errorf("lane %v: skipping 1 char from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
 						i, data, obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
 					return
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
+// TestSkipNCharUT unit-tests for opSkipNcharLeft, opSkipNcharRight
+func TestSkipNCharUT(t *testing.T) {
+	type unitTest struct {
+		data      string // data at SI
+		skipCount int    // number of code-points to skip
+		expLane   bool   // expected lane K1
+		expOffset int    // expected offset Z2
+		expLength int    // expected length Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+	}
+	testSuites := []testSuite{
+		{
+			name: "skip N char from left (opSkipNcharLeft)",
+			unitTests: []unitTest{
+				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"a", 1, true, 1, 0},
+				{"aa", 1, true, 1, 1},
+				{"aaa", 1, true, 1, 2},
+				{"aaaa", 1, true, 1, 3},
+				{"aaaaa", 1, true, 1, 4},
+
+				{"𐍈", 1, true, 4, 0},
+				{"𐍈a", 1, true, 4, 1},
+				{"𐍈aa", 1, true, 4, 2},
+				{"𐍈aaa", 1, true, 4, 3},
+				{"𐍈aaaa", 1, true, 4, 4},
+				{"𐍈aaaaa", 1, true, 4, 5},
+
+				{"a𐍈", 1, true, 1, 4},
+				{"a𐍈a", 1, true, 1, 5},
+				{"a𐍈aa", 1, true, 1, 6},
+				{"a𐍈aaa", 1, true, 1, 7},
+				{"a𐍈aaaa", 1, true, 1, 8},
+
+				{"a", 2, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"a𐍈", 2, true, 5, 0},
+				{"a𐍈a", 2, true, 5, 1},
+				{"a𐍈aa", 2, true, 5, 2},
+				{"a𐍈aaa", 2, true, 5, 3},
+				{"a𐍈aaaa", 2, true, 5, 4},
+			},
+			op: opSkipNcharLeft,
+		},
+		{
+			name: "skip N char from right (opSkipNcharRight)",
+			unitTests: []unitTest{
+				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"a", 1, true, 0, 0},
+				{"aa", 1, true, 0, 1},
+				{"aaa", 1, true, 0, 2},
+				{"aaaa", 1, true, 0, 3},
+				{"aaaaa", 1, true, 0, 4},
+
+				{"𐍈", 1, true, 0, 0},
+				{"a𐍈", 1, true, 0, 1},
+				{"aa𐍈", 1, true, 0, 2},
+				{"aaa𐍈", 1, true, 0, 3},
+				{"aaaa𐍈", 1, true, 0, 4},
+				{"aaaaa𐍈", 1, true, 0, 5},
+
+				{"𐍈a", 1, true, 0, 4},
+				{"a𐍈a", 1, true, 0, 5},
+				{"aa𐍈a", 1, true, 0, 6},
+				{"aaa𐍈a", 1, true, 0, 7},
+				{"aaaa𐍈a", 1, true, 0, 8},
+
+				{"a", 2, false, -1, -1}, //NOTE offset and length are irrelevant
+				{"𐍈a", 2, true, 0, 0},
+				{"a𐍈a", 2, true, 0, 1},
+				{"aa𐍈a", 2, true, 0, 2},
+				{"aaa𐍈a", 2, true, 0, 3},
+				{"aaaa𐍈a", 2, true, 0, 4},
+			},
+			op: opSkipNcharRight,
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		stackContent := make([]uint64, 16)
+		for i := 0; i < 16; i++ {
+			stackContent[i] = uint64(ut.skipCount)
+		}
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		dataPrefix := string([]byte{0, 0, 0})
+		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.setStackUint64(stackContent)
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+
+			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
+				t.Errorf("lane %v: skipping %v char(s) from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+					i, ut.skipCount, ut.data, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
+				return
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestSkip1CharBF brute-force tests for: opSkipNcharLeft, opSkipNcharRight
+func TestSkipNCharBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
+		// space of skip counts
+		skipCountSpace []int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, skipCount) -> lane, offset, length
+		refImpl func(string, int) (bool, int, int)
+	}
+
+	//FIXME skipCount equal to zero crashes
+	testSuites := []testSuite{
+		{
+			name:           "skip N char from left (opSkipNcharLeft)",
+			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
+			dataMaxlen:     5,
+			dataMaxSize:    -1,
+			skipCountSpace: []int{1, 2, 3, 4, 5, 6},
+			op:             opSkipNcharLeft,
+			refImpl:        referenceSkipCharLeft,
+		},
+		{
+			name:           "skip N char from right (opSkipNcharRight)",
+			dataAlphabet:   []rune{'s', 'S', '\n', 0}, //FIXME bug with 'ſ'
+			dataMaxlen:     5,
+			dataMaxSize:    -1,
+			skipCountSpace: []int{1, 2, 3, 4, 5, 6},
+			op:             opSkipNcharRight,
+			refImpl:        referenceSkipCharRight,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace []string) {
+		//TODO make a generic space partitioner that can be reused by other BF tests
+
+		stackContent := make([]uint64, 16)
+		dataPrefix := string([]byte{0, 0, 0})
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		for _, skipCount := range ts.skipCountSpace {
+			for i := 0; i < 16; i++ {
+				stackContent[i] = uint64(skipCount)
+			}
+			for _, data := range dataSpace {
+				expLane, expOffset, expLength := ts.refImpl(data, skipCount)
+
+				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+				ctx.addScalarStrings(fill16(data), []byte{})
+				ctx.setStackUint64(stackContent)
+				ctx.current = 0xFFFF
+				scalarBefore := ctx.getScalarUint32()
+
+				// when
+				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+					t.Error(err)
+				}
+				// then
+				scalarAfter := ctx.getScalarUint32()
+				for i := 0; i < 16; i++ {
+					obsLane := (ctx.current>>i)&1 == 1
+					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+					obsLength := int(scalarAfter[1][i])
+
+					if fault(obsLane, expLane, obsOffset, expOffset, obsLength, expLength) {
+						t.Errorf("lane %v: skipping %v char(s) from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+							i, skipCount, data, obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
+						return
+					}
 				}
 			}
 		}
@@ -2193,6 +2412,14 @@ func fill16(msg string) (result []string) {
 		result[i] = msg
 	}
 	return
+}
+
+func fault(obsLane, expLane bool, obsOffset, expOffset, obsLength, expLength int) bool {
+	if obsLane { // if the observed lane is active, all fields need to be equal
+		return (obsLane != expLane) || (obsOffset != expOffset) || (obsLength != expLength)
+	}
+	// when the observed lane is dead, the expected lane should also be dead
+	return expLane
 }
 
 // referenceSkipCharLeft skips n code-point from msg; valid is true if successful, false if provided string is not UTF-8
