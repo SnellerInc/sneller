@@ -510,7 +510,6 @@ func (c *Comparison) simplify(h Hint) Node {
 				if c.Op == Equals {
 					rhsStr, ok := right.(String)
 					if ok {
-
 						if strings.ToLower(string(rhsStr)) != string(rhsStr) {
 							// (LOWER(z.name) = "FRED") -> FALSE
 							return Bool(false)

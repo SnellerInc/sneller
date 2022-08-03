@@ -17,6 +17,7 @@ package expr
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -723,17 +724,29 @@ func TestSimplify(t *testing.T) {
 			DateAdd(Minute, Integer(1), ts("2017-01-02T03:04:05.006Z")),
 			ts("2017-01-02T03:05:05.006Z"),
 		},
+		{
+			CallOp(Upper, String("sneller")),
+			String("SNELLER"),
+		},
+		{
+			CallOp(Lower, String("SNELLER")),
+			String("sneller"),
+		},
 	}
 
 	for i := range testcases {
-		before := testcases[i].before
-		after := testcases[i].after
-		opt := Simplify(before, HintFn(NoHint))
-		if !opt.Equals(after) {
-			t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(before), ToString(opt), ToString(after))
-		}
-		testEquivalence(before, t)
-		testEquivalence(after, t)
+		tc := testcases[i]
+
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			before := tc.before
+			after := tc.after
+			opt := Simplify(before, HintFn(NoHint))
+			if !opt.Equals(after) {
+				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(before), ToString(opt), ToString(after))
+			}
+			testEquivalence(before, t)
+			testEquivalence(after, t)
+		})
 	}
 }
 

@@ -492,6 +492,24 @@ func simplifyContains(h Hint, args []Node) Node {
 	return nil
 }
 
+func simplifyUpper(h Hint, args []Node) Node {
+	arg0 := missingUnless(args[0], h, StringType)
+	if s, ok := arg0.(String); ok {
+		return String(strings.ToUpper(string(s)))
+	}
+
+	return nil
+}
+
+func simplifyLower(h Hint, args []Node) Node {
+	arg0 := missingUnless(args[0], h, StringType)
+	if s, ok := arg0.(String); ok {
+		return String(strings.ToLower(string(s)))
+	}
+
+	return nil
+}
+
 func checkIsSubnetOf(h Hint, args []Node) error {
 	nArgs := len(args)
 	if nArgs != 2 && nArgs != 3 {
@@ -1036,8 +1054,8 @@ var builtinInfo = [maxBuiltin]binfo{
 	Trim:       {check: checkTrim, ret: StringType | MissingType, simplify: simplifyTrim},
 	Ltrim:      {check: checkTrim, ret: StringType | MissingType, simplify: simplifyLtrim},
 	Rtrim:      {check: checkTrim, ret: StringType | MissingType, simplify: simplifyRtrim},
-	Upper:      {check: unaryStringArgs, ret: StringType | MissingType},
-	Lower:      {check: unaryStringArgs, ret: StringType | MissingType},
+	Upper:      {check: unaryStringArgs, ret: StringType | MissingType, simplify: simplifyUpper},
+	Lower:      {check: unaryStringArgs, ret: StringType | MissingType, simplify: simplifyLower},
 	Contains:   {check: checkContains, private: true, ret: LogicalType, simplify: simplifyContains},
 	ContainsCI: {check: checkContains, private: true, ret: LogicalType},
 	CharLength: {check: unaryStringArgs, ret: UnsignedType | MissingType, simplify: simplifyCharLength},
