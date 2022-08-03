@@ -591,9 +591,14 @@ func simplifyIsSubnetOf(h Hint, args []Node) Node {
 }
 
 func simplifyCharLength(h Hint, args []Node) Node {
-	if term1, ok := args[0].(String); ok {
-		length := utf8.RuneCountInString(string(term1))
-		return Integer(length)
+	switch v := args[0].(type) {
+	case String:
+		return Integer(utf8.RuneCountInString(string(v)))
+
+	case *Builtin:
+		if v.Func == Lower || v.Func == Upper {
+			return CallOp(CharLength, v.Args[0])
+		}
 	}
 	return nil
 }
