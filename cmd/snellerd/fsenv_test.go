@@ -474,6 +474,50 @@ func TestSimpleFS(t *testing.T) {
 		}
 	}
 
+	checkAnnotation := func(t *testing.T, body []byte, maxscan int64) {
+		var st ion.Symtab
+		var d ion.Datum
+		var err error
+		seen := false
+		for len(body) > 0 {
+			d, body, err = ion.ReadDatum(&st, body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			label, kv, ok := d.Annotation()
+			if !ok || label != "final_status" {
+				continue
+			}
+			seen = true
+			stats, ok := kv.Struct()
+			if !ok {
+				t.Fatal("final_status not a structure")
+			}
+			f, ok := stats.FieldByName("scanned")
+			if maxscan == 0 && !ok {
+				// scanned can be missing iff it is zero
+				return
+			}
+			if !ok {
+				t.Fatal("final_status missing scanned field")
+			}
+			i, ok := f.Value.Uint()
+			if !ok {
+				t.Fatalf("final_status.scanned not an int: %s", f.Value.Type())
+			}
+			if maxscan > 0 && i == 0 {
+				t.Fatalf("scanned = 0; maxscan = %d", maxscan)
+			} else if int64(i) > maxscan {
+				t.Fatalf("maxscan = %d, scanned = %d", maxscan, i)
+			}
+			t.Logf("scanned = %d", i)
+			break
+		}
+		if !seen {
+			t.Fatal("missing trailing label annotation")
+		}
+	}
+
 	queries := []struct {
 		input, db string
 		output    string // exact output, or regular expression
@@ -550,8 +594,8 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 				if res.StatusCode != http.StatusOK {
 					t.Fatalf("status %s", res.Status)
 				}
-				var buf bytes.Buffer
-				_, err = ion.ToJSON(&buf, bufio.NewReader(res.Body))
+				var buf, body bytes.Buffer
+				_, err = ion.ToJSON(&buf, bufio.NewReader(io.TeeReader(res.Body, &body)))
 				res.Body.Close()
 				if err != nil {
 					t.Fatal(err)
@@ -588,6 +632,7 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 				if (tablesize == 0 || scannedsize < tablesize) != q.partial {
 					t.Errorf("partial=%v, scanned=%d, all=%d", q.partial, scannedsize, tablesize)
 				}
+				checkAnnotation(t, body.Bytes(), scannedsize)
 				checkTiming(t, res)
 			})
 		}()

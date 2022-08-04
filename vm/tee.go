@@ -109,6 +109,9 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 				dst:   []rowConsumer{split.rowConsumer, rs},
 				final: []func(int64, error){t.final[t.splitter], final},
 			}
+			// have the rowSplitter update ts.pos
+			// on each call to Write:
+			split.pos = &ts.pos
 			split.rowConsumer = ts
 			t.final[t.splitter] = func(i int64, e error) {
 				ts.close(i, e)

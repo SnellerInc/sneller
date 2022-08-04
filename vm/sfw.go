@@ -288,7 +288,13 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 			return 0, err
 		}
 	}
-
+	// we round up rather than down for each
+	// call to Write so that a LIMIT that is
+	// satisfied on the first block yields a
+	// non-zero number of bytes scanned
+	if q.pos != nil {
+		*q.pos += int64(len(buf))
+	}
 	// allocate q.delims lazily
 	if len(q.delims) < q.delimhint {
 		q.delims = make([]vmref, q.delimhint)
@@ -299,13 +305,7 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 	} else {
 		err = q.writeVMCopy(buf[boff:], q.delims)
 	}
-	if err != nil {
-		return 0, err
-	}
-	if q.pos != nil {
-		*q.pos += int64(len(buf))
-	}
-	return len(buf), nil
+	return len(buf), err
 }
 
 // QueryBuffer is an in-memory implementation
