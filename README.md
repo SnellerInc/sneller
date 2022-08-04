@@ -28,7 +28,7 @@ Please make sure that your CPU has [AVX-512](https://en.wikipedia.org/wiki/AVX-5
 
 ## Quick test drive 
 
-The easiest way to try out sneller is via the (standalone) `sneller` executable. (Note: this is more of a development tool, for application use see either the Docker or Kubernetes section below.)
+The easiest way to try out sneller is via the (standalone) `sneller` executable. (note: this is more of a development tool, for application use see either the Docker or Kubernetes section below.)
 
 We've made some sample data available in the `sneller-samples` bucket, based on the (excellent) [GitHub archive](https://www.gharchive.org). Here are some queries that illustrate what you can do with Sneller on [fairly complex](https://api.github.com/events) JSON event structures containing 100+ fields.
 
