@@ -681,6 +681,17 @@ func simplifySubString(h Hint, args []Node) (result Node) {
 			returnNewNode = true
 		}
 	}
+
+	if length, ok := arg2.(Integer); ok {
+		if position, ok := arg1.(Integer); ok {
+			// SUBSTRING(s, 1) => s
+			// SUBSTRING(s, 1, num<=0) => s
+			if position == 1 && (length == math.MaxInt32 || length < 0) {
+				return arg0
+			}
+		}
+	}
+
 	if term, ok := arg0.(*Builtin); ok {
 		switch term.Func {
 		case Upper: // push SUBSTRING downwards: SUBSTRING(UPPER(x),a,b) -> UPPER(SUBSTRING(x,a,b))

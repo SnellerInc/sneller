@@ -883,6 +883,16 @@ func TestSimplify(t *testing.T) {
 			CallOp(CharLength, CallOp(Concat, path("x"), String("test"), path("y"), String("xyz"), String("foo"), path("z"))),
 			Add(Add(Add(CallOp(CharLength, path("x")), CallOp(CharLength, path("y"))), CallOp(CharLength, path("z"))), Integer(10)),
 		},
+		{
+			// SUBSTRING(s, 1) => s
+			CallOp(SubString, path("s"), Integer(1)),
+			path("s"),
+		},
+		{
+			// SUBSTRING(s, 1, -5) => s
+			CallOp(SubString, path("s"), Integer(1), Integer(-5)),
+			path("s"),
+		},
 	}
 
 	for i := range testcases {
