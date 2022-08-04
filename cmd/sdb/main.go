@@ -235,7 +235,7 @@ func describe(creds db.Tenant, dbname, table string) {
 		totalComp += descs[i].Size
 		totalDecomp += descs[i].Trailer.Decompressed()
 		blocks += len(descs[i].Trailer.Blocks)
-		fmt.Printf("%s %s %s\n", descs[i].Path, descs[i].ETag, human(descs[i].Size))
+		fmt.Printf("%s%s %s %s\n", ofs.Prefix(), descs[i].Path, descs[i].ETag, human(descs[i].Size))
 		if i < nindirect {
 			fmt.Printf("\t (indirect)\n")
 		}
