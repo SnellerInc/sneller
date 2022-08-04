@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -105,6 +106,21 @@ func create(creds db.Tenant, dbname, defpath string) {
 	if err != nil {
 		exitf("writing new definition: %s\n", err)
 	}
+}
+
+// entry point for 'sdb def ...'
+func def(creds db.Tenant, dbname, tablename string) {
+	ofs := outfs(creds)
+
+	def, err := db.OpenDefinition(ofs, dbname, tablename)
+	if err != nil {
+		exitf("error reading definition: %s\n", err)
+	}
+	jsonDef, err := json.MarshalIndent(def, "", "  ")
+	if err != nil {
+		exitf("error creating JSON from definition: %s\n", err)
+	}
+	fmt.Println(string(jsonDef))
 }
 
 func gc(creds db.Tenant, dbname, tblpat string) {
@@ -462,6 +478,18 @@ document with the following structure:
 				return false
 			}
 			create(creds(), args[1], args[2])
+			return true
+		},
+	},
+	{
+		name: "def",
+		help: "<db> <table>",
+		desc: `show the table definition`,
+		run: func(args []string) bool {
+			if len(args) != 3 {
+				return false
+			}
+			def(creds(), args[1], args[2])
 			return true
 		},
 	},
