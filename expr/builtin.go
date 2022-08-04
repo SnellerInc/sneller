@@ -596,11 +596,46 @@ func simplifyCharLength(h Hint, args []Node) Node {
 		return Integer(utf8.RuneCountInString(string(v)))
 
 	case *Builtin:
-		if v.Func == Lower || v.Func == Upper {
+		switch v.Func {
+		case Lower, Upper:
 			return CallOp(CharLength, v.Args[0])
+
+		case Concat:
+			strlength := 0
+			var nodes []Node
+			for i := range v.Args {
+				if s, ok := v.Args[i].(String); ok {
+					strlength += utf8.RuneCountInString(string(s))
+				} else {
+					nodes = append(nodes, CallOp(CharLength, v.Args[i]))
+				}
+			}
+
+			if strlength > 0 {
+				nodes = append(nodes, Integer(strlength))
+			}
+
+			if len(nodes) > 0 {
+				return reduce(nodes, func(n1, n2 Node) Node {
+					return Add(n1, n2)
+				})
+			}
 		}
 	}
 	return nil
+}
+
+func reduce(nodes []Node, binop func(n1, n2 Node) Node) Node {
+	if len(nodes) == 1 {
+		return nodes[0]
+	}
+
+	top := binop(nodes[0], nodes[1])
+	for i := 2; i < len(nodes); i++ {
+		top = binop(top, nodes[i])
+	}
+
+	return top
 }
 
 func checkTrim(h Hint, args []Node) error {

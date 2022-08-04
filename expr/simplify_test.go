@@ -877,6 +877,12 @@ func TestSimplify(t *testing.T) {
 			CallOp(SubString, CallOp(Upper, path("s")), Integer(1), Integer(5)),
 			CallOp(Upper, CallOp(SubString, path("s"), Integer(1), Integer(5))),
 		},
+		{
+			// CHAR_LENGTH(x || "test" || y || "xyz" || "foo" || z) =>
+			//   CHAR_LENGTH(x) + CHAR_LENGTH(y) + CHAR_LENGTH(z) + Integer(10)
+			CallOp(CharLength, CallOp(Concat, path("x"), String("test"), path("y"), String("xyz"), String("foo"), path("z"))),
+			Add(Add(Add(CallOp(CharLength, path("x")), CallOp(CharLength, path("y"))), CallOp(CharLength, path("z"))), Integer(10)),
+		},
 	}
 
 	for i := range testcases {
