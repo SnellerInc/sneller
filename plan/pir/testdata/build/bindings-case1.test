@@ -1,0 +1,4 @@
+SELECT x AS a, y AS a, z AS a FROM input
+---
+ITERATE input FIELDS [z]
+PROJECT z AS a

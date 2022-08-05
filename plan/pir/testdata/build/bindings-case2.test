@@ -1,0 +1,4 @@
+SELECT 1 AS x, x + 1 AS y, x + 2 AS z, y + 10 as w FROM input
+---
+ITERATE input FIELDS []
+PROJECT 1 AS x, 2 AS y, 3 AS z, 12 AS w

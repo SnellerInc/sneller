@@ -739,7 +739,7 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	// FROM -> WHERE -> (SELECT / GROUP BY / ORDER BY)
 	pickOutputs(s)
 	normalizeOrderBy(s)
-	flattenBind(s.Columns)
+	s.Columns = flattenBind(s.Columns)
 
 	err := b.hoistWindows(s, e)
 	if err != nil {

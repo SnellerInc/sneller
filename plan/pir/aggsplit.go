@@ -17,6 +17,8 @@ package pir
 import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/slices"
 )
 
 type visitor func(e expr.Node) expr.Visitor
@@ -108,20 +110,80 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order) (int, er
 	return count, nil
 }
 
+type flattenerItem struct {
+	node expr.Binding
+	id   int // ordinal position within binding
+}
+
 type flattener struct {
-	result expr.Node
-	matchp string
+	bindings map[string]flattenerItem
+	id       int
+}
+
+func newFlattener() *flattener {
+	return &flattener{bindings: make(map[string]flattenerItem)}
+}
+
+// add adds a new binding to the current set
+func (f *flattener) add(b expr.Binding) {
+	f.bindings[b.Result()] = flattenerItem{
+		node: b,
+		id:   f.id,
+	}
+
+	f.id += 1
+}
+
+// hasduplicates returns if there are any duplicated aliases
+func (f *flattener) hasduplicates() bool {
+	return f.id != len(f.bindings)
+}
+
+// final returns new bindings without duplicates
+func (f *flattener) final() []expr.Binding {
+	type item struct {
+		node expr.Binding
+		id   int
+	}
+
+	tmp := make([]item, len(f.bindings))
+	i := 0
+	for _, v := range f.bindings {
+		tmp[i] = item{
+			node: v.node,
+			id:   v.id,
+		}
+		i += 1
+	}
+
+	slices.SortFunc(tmp, func(a, b item) bool {
+		return a.id < b.id
+	})
+
+	bindings := make([]expr.Binding, len(tmp))
+	for i := range tmp {
+		bindings[i] = tmp[i].node
+	}
+
+	return bindings
 }
 
 func (f *flattener) Rewrite(e expr.Node) expr.Node {
-	if p, ok := e.(*expr.Path); ok && p.First == f.matchp {
-		cp := expr.Copy(f.result)
-		if p.Rest == nil {
-			return cp
-		}
-		return joinpath(cp, p.Rest)
+	p, ok := e.(*expr.Path)
+	if !ok {
+		return e
 	}
-	return e
+
+	result, ok2 := f.bindings[p.First]
+	if !ok2 {
+		return e
+	}
+
+	cp := expr.Copy(result.node.Expr)
+	if p.Rest == nil {
+		return cp
+	}
+	return joinpath(cp, p.Rest)
 }
 
 func (f *flattener) Walk(e expr.Node) expr.Rewriter {
@@ -138,21 +200,32 @@ func (f *flattener) Walk(e expr.Node) expr.Rewriter {
 //    3 as x, x+1 as y, y+1 as z
 // and rewrites them to
 //    3 as x, 3+1 as y, 3+1+1 as z
-// so that there are no references to adjacent columns
-// in the final projection
-func flattenBind(columns []expr.Binding) {
+// so that there are no references to previous
+// columns in the final projection
+//
+// Also removes the duplicated bindings, for instance:
+//    x as a, y as a, z as a
+// becomes
+//    z as a
+func flattenBind(columns []expr.Binding) []expr.Binding {
 	if len(columns) <= 1 {
-		return
+		return columns
 	}
+	f := newFlattener()
+	f.add(columns[0])
 	// walk the expressions in order and replace
 	// any references to previous columns with
 	// the actual expression on the left-hand-side
-	f := &flattener{matchp: columns[0].Result(), result: columns[0].Expr}
 	for i := 1; i < len(columns); i++ {
 		columns[i].Expr = expr.Rewrite(f, columns[i].Expr)
-		f.matchp = columns[i].Result()
-		f.result = columns[i].Expr
+		f.add(columns[i])
 	}
+
+	if f.hasduplicates() {
+		return f.final()
+	}
+
+	return columns
 }
 
 func flattenInto(x, y []expr.Binding) {
@@ -162,14 +235,14 @@ func flattenInto(x, y []expr.Binding) {
 }
 
 func flattenIntoFunc(x []expr.Binding, n int, item func(int) *expr.Node) {
-	var f flattener
+	f := newFlattener()
 	for i := range x {
-		f.matchp = x[i].Result()
-		f.result = x[i].Expr
-		for j := 0; j < n; j++ {
-			e := item(j)
-			*e = expr.Rewrite(&f, *e)
-		}
+		f.add(x[i])
+	}
+
+	for j := 0; j < n; j++ {
+		e := item(j)
+		*e = expr.Rewrite(f, *e)
 	}
 }
 
