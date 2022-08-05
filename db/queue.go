@@ -347,7 +347,6 @@ func (q *QueueRunner) gather(in Queue) error {
 func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
 	subdefs := make(map[dbtable]*Definition)
-	q.inputs = make([]QueueItem, q.max())
 readloop:
 	for {
 		err := q.gather(in)
