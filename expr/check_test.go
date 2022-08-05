@@ -129,7 +129,7 @@ func TestCheck(t *testing.T) {
 			"SIZE is undefined for values of type expr.Star",
 		},
 		{
-			CallOp(ObjectSize, CallOp(SubString, String("test"), Integer(2))),
+			CallOp(ObjectSize, CallOp(Substring, String("test"), Integer(2))),
 			&TypeError{},
 			"SIZE is undefined for values of type *expr.Builtin",
 		},

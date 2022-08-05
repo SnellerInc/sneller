@@ -1,0 +1,188 @@
+// The general rule format is as follows:
+//
+//  (op args...), predicate, ... -> result
+//
+// Predicates are typically specified with strings
+// (using Go string syntax), and those snippets are
+// pasted verbatim into the generated output.
+// (More generally, anything you see here as a Go string
+// is directly pasted into the output.)
+//
+// List patterns are expanded into pattern-matching code
+// for the ops in question. The head of the list is used
+// to determine what op to match and how to de-structure
+// its arguments. Constants (i.e. int, float, etc.) also
+// appear as ops for symmetry. 0-operand ops like NULL
+// and MISSING appear as lists like (null) and (missing).
+
+(and x x), `TypeOf(x, h) == LogicalType` -> x
+(and (bool x) y), `x && TypeOf(y, h) == LogicalType` -> y
+(and x (bool y)), `y && TypeOf(x, h) == LogicalType` -> x
+(and (bool x) (bool y)) -> (bool "x && y")
+
+(or x x), `TypeOf(x, h) == LogicalType` -> x
+(or (bool x) y), `!x`, `TypeOf(y, h) == LogicalType` -> y
+(or x (bool y)), `!y`, `TypeOf(x, h) == LogicalType` -> x
+(or (bool x) (bool y)) -> (bool "x || y")
+
+(xor (bool x) (bool y)) -> (bool "x != y")
+(xnor (bool x) (bool y)) -> (bool "x == y")
+
+(eq x x), `TypeOf(x, h)&MissingType == 0` -> (bool `true`)
+(gte x x), `TypeOf(x, h)&MissingType == 0` -> (bool `true`)
+(lte x x), `TypeOf(x, h)&MissingType == 0` -> (bool `true`)
+(neq x x), `TypeOf(x, h)&MissingType == 0` -> (bool `true`)
+
+// arithmetic simplifications
+// (note that we have to preserve the missing-ness of the result)
+(add x (int `0`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
+(sub x (int `0`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
+(mul x (int `1`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
+(div x (int `1`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
+(div _ (int `0`)) -> (missing)
+(mod _ (int `0`)) -> (missing)
+
+// normalize constants to rhs of commutative ops
+(add (constant x) y), `_, ok := y.(Constant); !ok` -> (add y x)
+(mul (constant x) y), `_, ok := y.(Constant); !ok` -> (mul y x)
+
+// expose constprop for commutative ops
+(add (add x (constant y)) (constant z)) -> (add x (add y z))
+(add (add a (constant b)) (add c (constant d))) -> (add (add a c) (add b d))
+(mul (mul x (constant y)) (constant z)) -> (mul x (mul y z))
+(mul (mul a (constant b)) (mul c (constant d))) -> (mul (mul a c) (mul b d))
+
+// a 'like' w/o any meta-characters is just a string equality check:
+(like x (string pat)), `!strings.ContainsAny(string(pat), "%_")` -> (eq x pat)
+(ilike x (string pat)), `!strings.ContainsAny(string(pat), "%_")` -> (equals_ci x pat)
+
+// a 'like' w/ a trivial pattern can be converted
+// into a slightly faster substring search:
+(like x (string pat)), `term, ok := isSubstringSearchPattern(string(pat)); ok` -> (contains x "String(term)")
+(ilike x (string pat)), `term, ok := isSubstringSearchPattern(string(pat)); ok` -> (contains_ci x "String(term)")
+
+// convert upper/lower + like -> ilike or false
+(like (upper x) (string pat)), `isUpper(string(pat))` -> (ilike x pat)
+(like (lower x) (string pat)), `isLower(string(pat))` -> (ilike x pat)
+(like (upper _) (string pat)), `!isUpper(string(pat))` -> (bool `false`)
+(like (lower _) (string pat)), `!isLower(string(pat))` -> (bool `false`)
+
+// produced via the rewrite above:
+(eq (upper _) (string lit)), `!isUpper(string(lit))` -> (bool `false`)
+(eq (lower _) (string lit)), `!isLower(string(lit))` -> (bool `false`)
+(eq (upper x) (string lit)), `isUpper(string(lit))` -> (equals_ci x lit)
+(eq (lower x) (string lit)), `isLower(string(lit))` -> (equals_ci x lit)
+
+(neq (upper x) (string lit)), `isUpper(string(lit))` -> `&Not{Call("EQUALS_CI", x, lit)}`
+(neq (lower x) (string lit)), `isLower(string(lit))` -> `&Not{Call("EQUALS_CI", x, lit)}`
+
+// SUBSTRING(s, 1) is the identity function
+// as long as s is a string or missing
+(substring s (int "1")), `TypeOf(s, h) == StringType|MissingType` -> s
+(substring (string s) (int len)) -> `staticSubstr(s, len)`
+
+// finally, normalize 2-argument substring to 3-argument substring
+(substring s x) -> (substring s x (int `1<<21`))
+
+// concat constprop
+(concat (string x) (string y)) -> (string "x + y")
+(concat (string x) (concat (string y) z)) -> (concat (string "x + y") z)
+
+// timestamp comparison constprop
+(lt (ts x) (ts y)) -> (bool `x.Value.Before(y.Value)`)
+(lte (ts x) (ts y)) -> (bool `x.Value.Before(y.Value) || x.Value == y.Value`)
+(gt (ts x) (ts y)) -> (bool `y.Value.Before(x.Value)`)
+(gte (ts x) (ts y)) -> (bool `y.Value.Before(x.Value) || x.Value == y.Value`)
+
+// to_unix_xxx constprop
+(to_unix_micro (ts x)) -> (int `x.Value.UnixMicro()`)
+(to_unix_epoch (ts x)) -> (int `x.Value.Unix()`)
+
+// conatins constprop
+(contains (string x) (string y)) -> `Bool(strings.Contains(string(x), string(y)))`
+(contains (upper x) (string y)), `isUpper(string(y))` -> (contains_ci x y)
+(contains (upper _) (string y)), `!isUpper(string(y))` -> (bool `false`)
+(contains (lower x) (string y)), `isLower(string(y))` -> (contains_ci x y)
+(contains (lower _) (string y)), `!isLower(string(y))` -> (bool `false`)
+
+// upper/lower constprop
+(upper (string x)) -> (string `strings.ToUpper(string(x))`)
+(lower (string x)) -> (string `strings.ToLower(string(x))`)
+
+// trim simplifications
+(rtrim (ltrim x)) -> (trim x)
+(ltrim (rtrim x)) -> (trim x)
+(ltrim inner:(trim _)) -> inner
+(ltrim inner:(ltrim _)) -> inner
+(rtrim inner:(rtrim _)) -> inner
+(rtrim inner:(trim _)) -> inner
+(trim inner:(trim _))-> inner
+
+// canonicalization of string manipulation:
+// push upper/lower to the outside of expressions
+(ltrim (upper x)) -> (upper (ltrim x))
+(ltrim (upper x)) -> (upper (ltrim x))
+(rtrim (lower x)) -> (lower (rtrim x))
+(rtrim (lower x)) -> (lower (rtrim x))
+(trim (lower x)) -> (lower (trim x))
+(trim (upper x)) -> (upper (trim x))
+(substring (lower x) off len) -> (lower (substring x off len))
+(substring (upper x) off len) -> (upper (substring x off len))
+(substring (lower x) off) -> (lower (substring x off))
+(substring (upper x) off) -> (upper (substring x off))
+
+// distribute CHAR_LENGTH onto concatenation
+(char_length (concat x y)) -> (add (char_length x) (char_length y))
+// char_length constprop:
+(char_length (string x)) -> (int `utf8.RuneCountInString(string(x))`)
+(char_length (lower x)) -> (char_length x)
+(char_length (upper x)) -> (char_length x)
+
+// un-distribute lower/upper ops
+(concat (upper x) (string y)), `isUpper(string(y))` -> (upper (concat x y))
+(concat (upper x) (upper y)) -> (upper (concat x y))
+(concat (lower x) (string y)), `isLower(string(y))` -> (lower (concat x y))
+(concat (lower x) (lower y)) -> (lower (concat x y))
+(concat (string x) (upper y)), `isUpper(string(x))` -> (upper (concat x y))
+(concat (string x) (lower y)), `isLower(string(x))` -> (lower (concat x y))
+
+// math constprop
+(abs (number x)) -> "(*Rational)(new(big.Rat).Abs(x.rat()))"
+(sign (number x)) -> "(*Rational)(new(big.Rat).SetInt64(int64(x.rat().Sign())))"
+
+(date_extract_microsecond (ts x)) -> (int `x.Value.Nanosecond() / 1000`)
+(date_extract_millisecond (ts x)) -> (int `x.Value.Nanosecond() / 1000000`)
+(date_extract_second (ts x)) -> (int `x.Value.Second()`)
+(date_extract_minute (ts x)) -> (int `x.Value.Minute()`)
+(date_extract_hour (ts x)) -> (int `x.Value.Hour()`)
+(date_extract_day (ts x)) -> (int `x.Value.Day()`)
+(date_extract_month (ts x)) -> (int `x.Value.Month()`)
+(date_extract_year (ts x)) -> (int `x.Value.Year()`)
+
+// trivial is_xxx constprop
+(is_true (bool x)) -> (bool x)
+(is_false (bool x)) -> (bool `!x`)
+(is_not_true (bool x)) -> (bool `!x`)
+(is_not_false (bool x)) -> (bool x)
+(is_true x), `TypeOf(x, h)&BoolType == 0` -> (bool `false`)
+(is_not_true x), `TypeOf(x, h)&BoolType == 0` -> (bool `true`)
+(is_false x), `TypeOf(x, h)&BoolType == 0` -> (bool `false`)
+(is_not_false x), `TypeOf(x, h)&BoolType == 0` -> (bool `true`)
+
+(is_null (null)) -> (bool `true`)
+(is_null x), `null(x, h)` -> (bool `true`)
+(is_null x), `TypeOf(x, h)&NullType == 0` -> (bool `false`)
+
+(is_not_null (null)) -> (bool `false`)
+(is_not_null x), `null(x, h)` -> (bool `false`)
+(is_not_null x), `TypeOf(x, h)&NullType == 0` -> (bool `true`)
+
+(is_missing (missing)) -> (bool `true`)
+(is_missing (constant _)) -> (bool `false`)
+(is_missing x), `miss(x, h)` -> (bool `true`)
+(is_missing x), `TypeOf(x, h)&MissingType == 0` -> (bool `false`)
+
+(is_not_missing (missing)) -> (bool `false`)
+(is_not_missing (constant _)) -> (bool `true`)
+(is_not_missing x), `TypeOf(x, h) == MissingType` -> (bool `false`)
+(is_not_missing x), `TypeOf(x, h)&MissingType == 0` -> (bool `true`)

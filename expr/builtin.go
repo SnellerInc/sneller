@@ -18,10 +18,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"net"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
@@ -115,7 +113,7 @@ const (
 	EqualsCI
 	CharLength
 	IsSubnetOf
-	SubString
+	Substring
 	SplitPart
 
 	BitCount
@@ -184,8 +182,8 @@ const (
 	DateExtractDay
 	DateExtractMonth
 	DateExtractYear
-	DateToUnixEpoch
-	DateToUnixMicro
+	ToUnixEpoch
+	ToUnixMicro
 
 	DateTruncMicrosecond
 	DateTruncMillisecond
@@ -240,7 +238,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"CHAR_LENGTH":              CharLength,
 	"CHARACTER_LENGTH":         CharLength,
 	"IS_SUBNET_OF":             IsSubnetOf,
-	"SUBSTRING":                SubString,
+	"SUBSTRING":                Substring,
 	"SPLIT_PART":               SplitPart,
 	"BIT_COUNT":                BitCount,
 	"ABS":                      Abs,
@@ -323,8 +321,8 @@ var name2Builtin = map[string]BuiltinOp{
 	"STRUCT_REPLACEMENT":       StructReplacement,
 	"LIST_REPLACEMENT":         ListReplacement,
 	"TIME_BUCKET":              TimeBucket,
-	"TO_UNIX_EPOCH":            DateToUnixEpoch,
-	"TO_UNIX_MICRO":            DateToUnixMicro,
+	"TO_UNIX_EPOCH":            ToUnixEpoch,
+	"TO_UNIX_MICRO":            ToUnixMicro,
 	"SIZE":                     ObjectSize,
 	"TABLE_GLOB":               TableGlob,
 	"TABLE_PATTERN":            TablePattern,
@@ -363,121 +361,6 @@ func checkContains(h Hint, args []Node) error {
 	if !TypeOf(args[0], h).AnyOf(StringType) {
 		return errtype(args[0], "not a string")
 	}
-	return nil
-}
-
-func simplifyRtrim(h Hint, args []Node) Node {
-	if len(args) != 1 {
-		return nil
-	}
-	args[0] = missingUnless(args[0], h, StringType)
-	if innerTerm1, ok := args[0].(*Builtin); ok {
-		switch innerTerm1.Func {
-		case Ltrim: // RTRIM(LTRIM(x)) -> TRIM(x)
-			return CallOp(Trim, innerTerm1.Args[0])
-		case Rtrim: // redundant RTRIM:  RTRIM(RTRIM(x)) -> RTRIM(x)
-			return CallOp(Rtrim, innerTerm1.Args[0])
-		case Trim: // redundant LTRIM: RTRIM(TRIM(x)) -> TRIM(x)
-			return CallOp(Trim, innerTerm1.Args[0])
-		case Upper: // push TRIM downwards: RTRIM(UPPER(x)) -> UPPER(RTRIM(x))
-			return CallOp(Upper, CallOp(Rtrim, innerTerm1.Args[0]))
-		case Lower: // push TRIM downwards: RTRIM(LOWER(x)) -> LOWER(RTRIM(x))
-			return CallOp(Lower, CallOp(Rtrim, innerTerm1.Args[0]))
-		}
-	}
-	return nil
-}
-
-func simplifyLtrim(h Hint, args []Node) Node {
-	args[0] = missingUnless(args[0], h, StringType)
-	if len(args) != 1 {
-		return nil
-	}
-	// LTRIM() function returns a string after removing all leading characters (remChars) from str.
-	// If remChar is not provided all leading whitespaces are trimmed.
-	// LTRIM([remChars] FROM str)
-	if innerTerm1, ok := args[0].(*Builtin); ok {
-		switch innerTerm1.Func {
-		case Rtrim: // LTRIM(RTRIM(x)) -> TRIM(x)
-			return CallOp(Trim, innerTerm1.Args[0])
-		case Ltrim: // redundant LTRIM:  LTRIM(LTRIM(x)) -> LTRIM(x)
-			return CallOp(Ltrim, innerTerm1.Args[0])
-		case Trim: // redundant TRIM:  TRIM(TRIM(x)) -> TRIM(x)
-			return CallOp(Trim, innerTerm1.Args[0])
-		case Upper: // push TRIM downwards: LTRIM(UPPER(x)) -> UPPER(LTRIM(x))
-			return CallOp(Upper, CallOp(Ltrim, innerTerm1.Args[0]))
-		case Lower: // push TRIM downwards: LTRIM(LOWER(x)) -> LOWER(LTRIM(x))
-			return CallOp(Lower, CallOp(Rtrim, innerTerm1.Args[0]))
-		}
-	}
-	return nil
-}
-
-func simplifyTrim(h Hint, args []Node) Node {
-	if len(args) != 1 {
-		return nil
-	}
-	// TRIM() function returns a string after removing all prefixes or suffixes (remstr) from str.
-	// If remStr is not provided all leading or trailing whitespaces are trimmed.
-	// TRIM([{BOTH | LEADING | TRAILING} [remstr] FROM ] str)
-	args[0] = missingUnless(args[0], h, StringType)
-	if term, ok := args[0].(*Builtin); ok {
-		switch term.Func {
-		case Ltrim: // redundant LTRIM: TRIM(LTRIM(x)) -> TRIM(x)
-			return CallOp(Trim, term.Args[0])
-		case Rtrim: // redundant RTRIM:  TRIM(RTRIM(x)) -> TRIM(x)
-			return CallOp(Trim, term.Args[0])
-		case Trim: // redundant TRIM: TRIM(TRIM(x)) -> TRIM(x)
-			return CallOp(Trim, term.Args[0])
-		case Upper: // push TRIM downwards: RTRIM(UPPER(x)) -> UPPER(TRIM(x))
-			return CallOp(Upper, CallOp(Trim, term.Args[0]))
-		case Lower: // push TRIM downwards: RTRIM(LOWER(x)) -> LOWER(TRIM(x))
-			return CallOp(Lower, CallOp(Trim, term.Args[0]))
-		}
-	}
-	return nil
-}
-
-func simplifyContains(h Hint, args []Node) Node {
-	args[0] = missingUnless(args[0], h, StringType)
-	if term1, ok := args[0].(*Builtin); ok {
-		switch term1.Func {
-		case Upper:
-			term2String := string(args[1].(String))
-			if strings.ToUpper(term2String) != term2String {
-				// CONTAINS(UPPER(x), "fred") -> FALSE
-				return Bool(false)
-			}
-			// CONTAINS(UPPER(x), "FRED") -> CONTAINS_CI(x, "FRED")
-			return CallOp(ContainsCI, term1.Args[0], args[1])
-		case Lower:
-			term2String := string(args[1].(String))
-			if strings.ToLower(term2String) != term2String {
-				// CONTAINS(LOWER(x), "FRED") -> FALSE
-				return Bool(false)
-			}
-			// CONTAINS(LOWER(x), "fred") -> CONTAINS_CI(x, "fred")
-			return CallOp(ContainsCI, term1.Args[0], args[1])
-		}
-	}
-	return nil
-}
-
-func simplifyUpper(h Hint, args []Node) Node {
-	arg0 := missingUnless(args[0], h, StringType)
-	if s, ok := arg0.(String); ok {
-		return String(strings.ToUpper(string(s)))
-	}
-
-	return nil
-}
-
-func simplifyLower(h Hint, args []Node) Node {
-	arg0 := missingUnless(args[0], h, StringType)
-	if s, ok := arg0.(String); ok {
-		return String(strings.ToLower(string(s)))
-	}
-
 	return nil
 }
 
@@ -561,41 +444,6 @@ func simplifyIsSubnetOf(h Hint, args []Node) Node {
 	return nil
 }
 
-func simplifyCharLength(h Hint, args []Node) Node {
-	switch v := args[0].(type) {
-	case String:
-		return Integer(utf8.RuneCountInString(string(v)))
-
-	case *Builtin:
-		switch v.Func {
-		case Lower, Upper:
-			return CallOp(CharLength, v.Args[0])
-
-		case Concat:
-			strlength := 0
-			var nodes []Node
-			for i := range v.Args {
-				if s, ok := v.Args[i].(String); ok {
-					strlength += utf8.RuneCountInString(string(s))
-				} else {
-					nodes = append(nodes, CallOp(CharLength, v.Args[i]))
-				}
-			}
-
-			if strlength > 0 {
-				nodes = append(nodes, Integer(strlength))
-			}
-
-			if len(nodes) > 0 {
-				return reduce(nodes, func(n1, n2 Node) Node {
-					return Add(n1, n2)
-				})
-			}
-		}
-	}
-	return nil
-}
-
 func reduce(nodes []Node, binop func(n1, n2 Node) Node) Node {
 	if len(nodes) == 1 {
 		return nodes[0]
@@ -631,53 +479,7 @@ func checkTrim(h Hint, args []Node) error {
 	}
 }
 
-func simplifySubString(h Hint, args []Node) (result Node) {
-	returnNewNode := false
-	arg0 := args[0]
-	arg1 := args[1]
-	var arg2 Node
-
-	if len(args) == 2 { // third arguments 'length' is optional; when not present it signals 'till the end of the string'
-		arg2 = Node(Integer(math.MaxInt32))
-		returnNewNode = true
-	} else {
-		arg2 = args[2]
-	}
-
-	if term, ok := arg1.(Integer); ok {
-		// according to this doc (https://docs.aws.amazon.com/qldb/latest/developerguide/ql-functions.substring.html)
-		// offsets smaller than 1 are equal to offsets equal to 1
-		if int(term) < 1 {
-			arg1 = Integer(1)
-			returnNewNode = true
-		}
-	}
-
-	if length, ok := arg2.(Integer); ok {
-		if position, ok := arg1.(Integer); ok {
-			// SUBSTRING(s, 1) => s
-			// SUBSTRING(s, 1, num<=0) => s
-			if position == 1 && (length == math.MaxInt32 || length < 0) {
-				return arg0
-			}
-		}
-	}
-
-	if term, ok := arg0.(*Builtin); ok {
-		switch term.Func {
-		case Upper: // push SUBSTRING downwards: SUBSTRING(UPPER(x),a,b) -> UPPER(SUBSTRING(x,a,b))
-			return CallOp(Upper, CallOp(SubString, term.Args[0], arg1, arg2))
-		case Lower: // push SUBSTRING downwards: SUBSTRING(LOWER(x),a,b) -> LOWER(SUBSTRING(x,a,b))
-			return CallOp(Lower, CallOp(SubString, term.Args[0], arg1, arg2))
-		}
-	}
-	if returnNewNode {
-		return CallOp(SubString, arg0, arg1, arg2)
-	}
-	return nil
-}
-
-func checkSubString(h Hint, args []Node) error {
+func checkSubstring(h Hint, args []Node) error {
 	nArgs := len(args)
 	if nArgs != 2 && nArgs != 3 {
 		return errsyntaxf("SUBSTRING expects 2 or 3 arguments, but found %d", nArgs)
@@ -715,40 +517,6 @@ func checkSplitPart(h Hint, args []Node) error {
 var unaryStringArgs = fixedArgs(StringType)
 var variadicNumeric = variadicArgs(NumericType)
 var fixedTime = fixedArgs(TimeType)
-
-func simplifyDateExtract(part Timepart) func(Hint, []Node) Node {
-	return func(h Hint, args []Node) Node {
-		if len(args) != 1 {
-			return nil
-		}
-		if ts, ok := args[0].(*Timestamp); ok {
-			return DateExtract(part, ts)
-		}
-		return nil
-	}
-}
-
-func simplifyToUnixEpoch(h Hint, args []Node) Node {
-	if len(args) != 1 {
-		return nil
-	}
-	ts, ok := args[0].(*Timestamp)
-	if !ok {
-		return nil
-	}
-	return Integer(ts.Value.Unix())
-}
-
-func simplifyToUnixMicro(h Hint, args []Node) Node {
-	if len(args) != 1 {
-		return nil
-	}
-	ts, ok := args[0].(*Timestamp)
-	if !ok {
-		return nil
-	}
-	return Integer(ts.Value.UnixMicro())
-}
 
 func simplifyDateTrunc(part Timepart) func(Hint, []Node) Node {
 	return func(h Hint, args []Node) Node {
@@ -923,78 +691,6 @@ func flattenConcat(args []Node) []Node {
 	return output
 }
 
-func simplifyConcat(h Hint, args []Node) Node {
-	flattenedArgs := flattenConcat(args)
-
-	// Return a string literal if all arguments were simplified to a single string literal.
-	if len(flattenedArgs) == 1 {
-		if str, ok := flattenedArgs[0].(String); ok {
-			return str
-		}
-	}
-
-	if op := concatLowerUpper(flattenedArgs); op != Unspecified {
-		final := make([]Node, len(flattenedArgs))
-		for i := range flattenedArgs {
-			if builtin, ok := flattenedArgs[i].(*Builtin); ok {
-				final[i] = builtin.Args[0]
-			} else {
-				final[i] = flattenedArgs[i]
-			}
-		}
-
-		return CallOp(op, CallOp(Concat, final...))
-	}
-
-	return CallOp(Concat, flattenedArgs...)
-}
-
-// concatLowerUpper returns whether all arguments
-// are either: uppercase strings and calls to UPPER,
-// or lowercase strings and calls to LOWER. Returns
-// appropriate operation or Unspecified otherwise.
-//
-// Note that len(args) > 1 and at least one item
-// on that list is not a string -- that properties
-// are guaranteed by the prior steps of simplify.
-func concatLowerUpper(args []Node) BuiltinOp {
-	result := Unspecified
-
-	for i := range args {
-		op := Unspecified
-		switch n := args[i].(type) {
-		case *Builtin:
-			switch n.Func {
-			case Lower:
-				op = Lower
-			case Upper:
-				op = Upper
-			}
-
-		case String:
-			if isLower(string(n)) {
-				op = Lower
-			} else if isUpper(string(n)) {
-				op = Upper
-			}
-		}
-
-		if op == Unspecified {
-			// not a string nor LOWER/UPPER
-			return Unspecified
-		}
-
-		if result == Unspecified {
-			result = op
-		} else if result != op {
-			// case mismatch
-			return Unspecified
-		}
-	}
-
-	return result
-}
-
 func checkTableGlob(h Hint, args []Node) error {
 	if len(args) != 1 {
 		return mismatch(1, len(args))
@@ -1133,23 +829,23 @@ var (
 )
 
 var builtinInfo = [maxBuiltin]binfo{
-	Concat:     {check: variadicArgs(StringType), private: true, ret: StringType | MissingType, simplify: simplifyConcat},
-	Trim:       {check: checkTrim, ret: StringType | MissingType, simplify: simplifyTrim},
-	Ltrim:      {check: checkTrim, ret: StringType | MissingType, simplify: simplifyLtrim},
-	Rtrim:      {check: checkTrim, ret: StringType | MissingType, simplify: simplifyRtrim},
-	Upper:      {check: unaryStringArgs, ret: StringType | MissingType, simplify: simplifyUpper},
-	Lower:      {check: unaryStringArgs, ret: StringType | MissingType, simplify: simplifyLower},
-	Contains:   {check: checkContains, private: true, ret: LogicalType, simplify: simplifyContains},
+	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType},
+	Trim:       {check: checkTrim, ret: StringType | MissingType},
+	Ltrim:      {check: checkTrim, ret: StringType | MissingType},
+	Rtrim:      {check: checkTrim, ret: StringType | MissingType},
+	Upper:      {check: unaryStringArgs, ret: StringType | MissingType},
+	Lower:      {check: unaryStringArgs, ret: StringType | MissingType},
+	Contains:   {check: checkContains, private: true, ret: LogicalType},
 	ContainsCI: {check: checkContains, private: true, ret: LogicalType},
-	CharLength: {check: unaryStringArgs, ret: UnsignedType | MissingType, simplify: simplifyCharLength},
+	CharLength: {check: unaryStringArgs, ret: UnsignedType | MissingType},
 	IsSubnetOf: {check: checkIsSubnetOf, ret: LogicalType, simplify: simplifyIsSubnetOf},
-	SubString:  {check: checkSubString, ret: StringType | MissingType, simplify: simplifySubString},
+	Substring:  {check: checkSubstring, ret: StringType | MissingType},
 	SplitPart:  {check: checkSplitPart, ret: StringType | MissingType},
 	EqualsCI:   {ret: LogicalType},
 
 	BitCount:  {check: fixedArgs(NumericType), ret: IntegerType},
-	Abs:       {check: fixedArgs(NumericType), ret: NumericType, simplify: simplifyAbs},
-	Sign:      {check: fixedArgs(NumericType), ret: NumericType, simplify: simplifySign},
+	Abs:       {check: fixedArgs(NumericType), ret: NumericType},
+	Sign:      {check: fixedArgs(NumericType), ret: NumericType},
 	Round:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyRound},
 	RoundEven: {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyRoundEven},
 	Trunc:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyTrunc},
@@ -1198,14 +894,14 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateDiffDay:            {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffMonth:          {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffYear:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
-	DateExtractMicrosecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Microsecond)},
-	DateExtractMillisecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Millisecond)},
-	DateExtractSecond:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Second)},
-	DateExtractMinute:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Minute)},
-	DateExtractHour:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Hour)},
-	DateExtractDay:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Day)},
-	DateExtractMonth:       {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Month)},
-	DateExtractYear:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType, simplify: simplifyDateExtract(Year)},
+	DateExtractMicrosecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractMillisecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractSecond:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractMinute:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractHour:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractDay:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractMonth:       {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractYear:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateTruncMicrosecond:   {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Microsecond)},
 	DateTruncMillisecond:   {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Millisecond)},
 	DateTruncSecond:        {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Second)},
@@ -1214,8 +910,8 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateTruncDay:           {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Day)},
 	DateTruncMonth:         {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Month)},
 	DateTruncYear:          {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Year)},
-	DateToUnixEpoch:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixEpoch},
-	DateToUnixMicro:        {check: fixedTime, ret: IntegerType | MissingType, simplify: simplifyToUnixMicro},
+	ToUnixEpoch:            {check: fixedTime, ret: IntegerType | MissingType},
+	ToUnixMicro:            {check: fixedTime, ret: IntegerType | MissingType},
 
 	GeoHash:     {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
 	GeoTileX:    {check: fixedArgs(NumericType, IntegerType), ret: StringType | MissingType},

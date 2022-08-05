@@ -229,14 +229,14 @@ func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
 	}
 
 	switch fn.Func {
-	case expr.DateToUnixEpoch:
+	case expr.ToUnixEpoch:
 		when := date.Unix(int64(im), 0)
 		cmp := compareFunc(op, when)
 		if cmp == nil {
 			return nil, false
 		}
 		return pathFilter(path, cmp), true
-	case expr.DateToUnixMicro:
+	case expr.ToUnixMicro:
 		when := date.UnixMicro(int64(im))
 		cmp := compareFunc(op, when)
 		if cmp == nil {

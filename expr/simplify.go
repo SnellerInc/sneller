@@ -187,6 +187,7 @@ func (s simplerw) Rewrite(n Node) Node {
 	if rs, ok := n.(simplifier); ok {
 		n = rs.simplify(s.Hint)
 	}
+	n = autoSimplify(n, s.Hint)
 	return n
 }
 
@@ -386,11 +387,6 @@ func isSubstringSearchPattern(str string) (term string, ok bool) {
 	return "", false
 }
 
-// isRegularString determines whether the provided str is a normal string that should not be used by LIKE but by EQUALS
-func isRegularString(str string) bool {
-	return !strings.ContainsAny(str, "%_")
-}
-
 // cmpCase pushes a comparison into CASE limbs
 // so that the result-set of the case can be determined
 // statically to be a boolean result (these are cheaper
@@ -491,104 +487,8 @@ func (c *Comparison) simplify(h Hint) Node {
 			}
 			return Xor(left, right)
 		}
-
-		if builtin, str := matchStringCaseCompare(left, right); builtin != nil {
-			node := simplifyStringEqualsComparison(builtin, str)
-			if node != nil {
-				if c.Op == NotEquals {
-					return Simplify(&Not{Expr: node}, h)
-				}
-
-				return node
-			}
-		}
-	case Like:
-		if lhs, ok := left.(*Builtin); ok {
-			switch lhs.Func {
-			case Upper:
-				rhsStr := string(right.(String))
-				if !isUpper(rhsStr) {
-					// UPPER(z.name) LIKE "%fred%" -> FALSE
-					return Bool(false)
-				}
-				if rhsStr2, ok2 := isSubstringSearchPattern(rhsStr); ok2 {
-					// UPPER(z.name) LIKE "%FRED%" -> CONTAINS_CI(z.name, "FRED")
-					return Call("CONTAINS_CI", lhs.Args[0], String(rhsStr2))
-				} else if isRegularString(rhsStr) {
-					// UPPER(z.name) LIKE "FRED" -> EQUALS_CI(z.name, "FRED")
-					return Call("EQUALS_CI", lhs.Args[0], String(rhsStr))
-				}
-			case Lower:
-				rhsStr := string(right.(String))
-				if !isLower(rhsStr) {
-					// LOWER(z.name) LIKE "%FRED%" -> FALSE
-					return Bool(false)
-				}
-				if rhsStr2, ok2 := isSubstringSearchPattern(rhsStr); ok2 {
-					// LOWER(z.name) LIKE "%fred%" -> CONTAINS_CI(z.name, "fred")
-					return Call("CONTAINS_CI", lhs.Args[0], String(rhsStr2))
-				} else if isRegularString(rhsStr) {
-					// LOWER(z.name) LIKE "fred" -> EQUALS_CI(z.name, "fred")
-					return Call("EQUALS_CI", lhs.Args[0], String(rhsStr))
-				}
-			}
-		}
 	}
 	return c.canonical()
-}
-
-// matchStringCaseCompare extracts a builtin and string from
-// either `builtin op const string` or `const string op builtin`
-// expression.
-//
-// If no match is found, builtin is nil.
-func matchStringCaseCompare(left, right Node) (*Builtin, String) {
-	switch l := left.(type) {
-	case *Builtin:
-		if r, ok := right.(String); ok {
-			return l, r
-		}
-
-	case String:
-		if r, ok := right.(*Builtin); ok {
-			return r, l
-		}
-	}
-
-	return nil, ""
-}
-
-func simplifyStringEqualsComparison(builtin *Builtin, str String) Node {
-	switch builtin.Func {
-	case Upper:
-		rhsStr := string(str)
-		if !isUpper(rhsStr) {
-			// UPPER(z.name) LIKE "%fred%" -> FALSE
-			return Bool(false)
-		}
-		if rhsStr2, ok2 := isSubstringSearchPattern(rhsStr); ok2 {
-			// UPPER(z.name) LIKE "%FRED%" -> CONTAINS_CI(z.name, "FRED")
-			return CallOp(ContainsCI, builtin.Args[0], String(rhsStr2))
-		} else if isRegularString(rhsStr) {
-			// UPPER(z.name) LIKE "FRED" -> EQUALS_CI(z.name, "FRED")
-			return CallOp(EqualsCI, builtin.Args[0], str)
-		}
-	case Lower:
-		rhsStr := string(str)
-		if !isLower(rhsStr) {
-			// LOWER(z.name) LIKE "%FRED%" -> FALSE
-			return Bool(false)
-		}
-		if rhsStr2, ok2 := isSubstringSearchPattern(rhsStr); ok2 {
-			// LOWER(z.name) LIKE "%fred%" -> CONTAINS_CI(z.name, "fred")
-			return CallOp(ContainsCI, builtin.Args[0], String(rhsStr2))
-		} else if isRegularString(rhsStr) {
-			// LOWER(z.name) LIKE "fred" -> EQUALS_CI(z.name, "fred")
-			return CallOp(EqualsCI, builtin.Args[0], str)
-		}
-	}
-
-	return nil
 }
 
 // isLower returns true all characters are in lower-case
@@ -735,32 +635,6 @@ func simplifyRoundOp(h Hint, args []Node, op roundOp) Node {
 	args[0] = missingUnless(args[0], h, NumericType)
 	if cn, ok := args[0].(number); ok {
 		return (*Rational)(roundBigRat(cn.rat(), op))
-	}
-
-	return nil
-}
-
-func simplifyAbs(h Hint, args []Node) Node {
-	if len(args) != 1 {
-		return nil
-	}
-
-	args[0] = missingUnless(args[0], h, NumericType)
-	if cn, ok := args[0].(number); ok {
-		return (*Rational)(new(big.Rat).Abs(cn.rat()))
-	}
-
-	return nil
-}
-
-func simplifySign(h Hint, args []Node) Node {
-	if len(args) != 1 {
-		return nil
-	}
-
-	args[0] = missingUnless(args[0], h, NumericType)
-	if cn, ok := args[0].(number); ok {
-		return (*Rational)(new(big.Rat).SetInt64(int64(cn.rat().Sign())))
 	}
 
 	return nil
@@ -930,80 +804,6 @@ func (n *Not) simplify(h Hint) Node {
 func (i *IsKey) simplify(h Hint) Node {
 	if i.Key == IsTrue {
 		i.Expr = SimplifyLogic(i.Expr, h)
-	}
-	ts := TypeOf(i.Expr, h)
-
-	// if the lhs can never be missing,
-	// then IS NOT MISSING is TRUE
-	if !ts.MaybeMissing() && i.Key == IsNotMissing {
-		return Bool(true)
-	}
-	// if the lhs is never bool-typed,
-	// then IS TRUE / IS FALSE will always be FALSE,
-	// and IS NOT TRUE / IS NOT FALSE will always be TRUE
-	if !ts.Contains(ion.BoolType) {
-		switch i.Key {
-		case IsTrue, IsFalse:
-			return Bool(false)
-		case IsNotTrue, IsNotFalse:
-			return Bool(true)
-		}
-	}
-
-	if miss(i.Expr, h) {
-		switch i.Key {
-		case IsMissing, IsNotTrue, IsNotFalse:
-			// MISSING IS MISSING -> TRUE
-			// MISSING IS NOT (TRUE/FALSE) -> TRUE
-			return Bool(true)
-		default:
-			return Bool(false)
-		}
-	}
-	if null(i.Expr, h) {
-		switch i.Key {
-		case IsNull, IsNotMissing, IsNotFalse, IsNotTrue:
-			// NULL IS (NULL | NOT MISSING | NOT FALSE | NOT TRUE)
-			// -> TRUE
-			return Bool(true)
-		default:
-			// NULL IS (NOT NULL | MISSING | FALSE | TRUE)
-			// -> FALSE
-			return Bool(false)
-		}
-	}
-	// now do the reverse of the above:
-	// if the argument is known to never be
-	// NULL or MISSING, we can eliminate
-	// the IS (NOT) NULL|MISSING ops
-	etype := TypeOf(i.Expr, h)
-	if etype&MissingType == 0 {
-		switch i.Key {
-		case IsMissing:
-			return Bool(false)
-		case IsNotMissing:
-			return Bool(true)
-		}
-	}
-	if etype&NullType == 0 {
-		switch i.Key {
-		case IsNull:
-			return Bool(false)
-		case IsNotNull:
-			return Bool(true)
-		}
-	}
-
-	if b, ok := i.Expr.(Bool); ok {
-		// TRUE IS (TRUE / NOT FALSE) -> TRUE
-		// FALSE IS (FALSE / NOT TRUE) -> TRUE
-		return Bool(b == (i.Key == IsTrue || i.Key == IsNotFalse))
-	}
-
-	// non-bool immediate; won't match anything
-	// except IS NOT MISSING or IS NOT NULL
-	if immediate(i.Expr) {
-		return Bool(i.Key == IsNotMissing || i.Key == IsNotNull)
 	}
 
 	// push the IS comparison into CASE

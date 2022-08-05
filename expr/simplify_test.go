@@ -41,6 +41,15 @@ func casen(args ...Node) *Case {
 	return c
 }
 
+// apply op onto a list of arguments in a left-associative manner,
+// i.e. apply2 op x y z produces (op (op x y) z)
+func apply2(op BuiltinOp, left, right Node, rest ...Node) *Builtin {
+	if len(rest) == 0 {
+		return CallOp(op, left, right)
+	}
+	return apply2(op, CallOp(op, left, right), rest[0], rest[1:]...)
+}
+
 func ts(str string) Node {
 	tm, ok := date.Parse([]byte(str))
 	if !ok {
@@ -706,36 +715,6 @@ func TestSimplify(t *testing.T) {
 			CallOp(EqualsCI, path("s"), String("fred")),
 		},
 		{
-			// LOWER(s) != "fred"
-			Compare(NotEquals, CallOp(Lower, path("s")), String("fred")),
-			&Not{Expr: CallOp(EqualsCI, path("s"), String("fred"))},
-		},
-		{
-			// "fred" != LOWER(s)
-			Compare(NotEquals, String("fred"), CallOp(Lower, path("s"))),
-			&Not{Expr: CallOp(EqualsCI, path("s"), String("fred"))},
-		},
-		{
-			// LOWER(s) == "FRED"
-			Compare(Equals, CallOp(Lower, path("s")), String("FRED")),
-			Bool(false),
-		},
-		{
-			// "FRED" == LOWER(s)
-			Compare(Equals, String("FRED"), CallOp(Lower, path("s"))),
-			Bool(false),
-		},
-		{
-			// LOWER(s) != "FRED"
-			Compare(NotEquals, CallOp(Lower, path("s")), String("FRED")),
-			Bool(true),
-		},
-		{
-			// "FRED" != LOWER(s)
-			Compare(NotEquals, String("FRED"), CallOp(Lower, path("s"))),
-			Bool(true),
-		},
-		{
 			// UPPER(s) == "FRED"
 			Compare(Equals, CallOp(Upper, path("s")), String("FRED")),
 			CallOp(EqualsCI, path("s"), String("FRED")),
@@ -756,64 +735,44 @@ func TestSimplify(t *testing.T) {
 			&Not{Expr: CallOp(EqualsCI, path("s"), String("FRED"))},
 		},
 		{
-			// UPPER(s) == "fred"
-			Compare(Equals, CallOp(Upper, path("s")), String("fred")),
-			Bool(false),
-		},
-		{
-			// "fred" == UPPER(s)
-			Compare(Equals, String("fred"), CallOp(Upper, path("s"))),
-			Bool(false),
-		},
-		{
-			// UPPER(s) != "fred"
-			Compare(NotEquals, CallOp(Upper, path("s")), String("fred")),
-			Bool(true),
-		},
-		{
-			// "fred" != UPPER(s)
-			Compare(NotEquals, String("fred"), CallOp(Upper, path("s"))),
-			Bool(true),
-		},
-		{
 			// LOWER(x) || ' and ' || LOWER(y) => LOWER(x || ' and ' || y)
-			CallOp(Concat, CallOp(Lower, path("x")), String(" and "), CallOp(Lower, path("y"))),
-			CallOp(Lower, CallOp(Concat, path("x"), String(" and "), path("y"))),
+			apply2(Concat, CallOp(Lower, path("x")), String(" and "), CallOp(Lower, path("y"))),
+			CallOp(Lower, apply2(Concat, path("x"), String(" and "), path("y"))),
 		},
 		{
 			// LOWER(x) || ' AND ' || LOWER(y) => no change
-			CallOp(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
-			CallOp(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
+			apply2(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
+			apply2(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
 		},
 		{
 			// 'x=' || LOWER(x) || ', y=' || LOWER(y) => LOWER('x=' || x || ', y=' || y)
-			CallOp(Concat, String("x="), CallOp(Lower, path("x")), String(", y="), CallOp(Lower, path("y"))),
-			CallOp(Lower, CallOp(Concat, String("x="), path("x"), String(", y="), path("y"))),
+			apply2(Concat, String("x="), CallOp(Lower, path("x")), String(", y="), CallOp(Lower, path("y"))),
+			CallOp(Lower, apply2(Concat, String("x="), path("x"), String(", y="), path("y"))),
 		},
 		{
 			// 'X=' || LOWER(x) || ', Y=' || LOWER(y) => no change
-			CallOp(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
-			CallOp(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
+			apply2(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
+			apply2(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
 		},
 		{
 			// UPPER(x) || ' AND ' || UPPER(y) => UPPER(x || ' AND ' || y)
-			CallOp(Concat, CallOp(Upper, path("x")), String(" AND "), CallOp(Upper, path("y"))),
-			CallOp(Upper, CallOp(Concat, path("x"), String(" AND "), path("y"))),
+			apply2(Concat, CallOp(Upper, path("x")), String(" AND "), CallOp(Upper, path("y"))),
+			CallOp(Upper, apply2(Concat, path("x"), String(" AND "), path("y"))),
 		},
 		{
 			// UPPER(x) || ' and ' || UPPER(y) => no change
-			CallOp(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
-			CallOp(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
+			apply2(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
+			apply2(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
 		},
 		{
 			// 'X=' || UPPER(x) || ', Y=' || UPPER(y) => UPPER('X=' || x || ', Y=' || y)
-			CallOp(Concat, String("X="), CallOp(Upper, path("x")), String(", Y="), CallOp(Upper, path("y"))),
-			CallOp(Upper, CallOp(Concat, String("X="), path("x"), String(", Y="), path("y"))),
+			apply2(Concat, String("X="), CallOp(Upper, path("x")), String(", Y="), CallOp(Upper, path("y"))),
+			CallOp(Upper, apply2(Concat, String("X="), path("x"), String(", Y="), path("y"))),
 		},
 		{
 			// 'X=' || UPPER(x) || ', Y=' || UPPER(y) => no change
-			CallOp(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
-			CallOp(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
+			apply2(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
+			apply2(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
 		},
 		{
 			// LOWER(x) || UPPER(x) => no change
@@ -832,29 +791,21 @@ func TestSimplify(t *testing.T) {
 		},
 		{
 			// SUBSTRING(LOWER(s), p, l) => LOWER(SUBSTRING(s, p, l))
-			CallOp(SubString, CallOp(Lower, path("s")), Integer(1), Integer(5)),
-			CallOp(Lower, CallOp(SubString, path("s"), Integer(1), Integer(5))),
+			CallOp(Substring, CallOp(Lower, path("s")), Integer(1), Integer(5)),
+			CallOp(Lower, CallOp(Substring, path("s"), Integer(1), Integer(5))),
 		},
 		{
 			// SUBSTRING(UPPER(s), p, l) => UPPER(SUBSTRING(s, p, l))
-			CallOp(SubString, CallOp(Upper, path("s")), Integer(1), Integer(5)),
-			CallOp(Upper, CallOp(SubString, path("s"), Integer(1), Integer(5))),
+			CallOp(Substring, CallOp(Upper, path("s")), Integer(1), Integer(5)),
+			CallOp(Upper, CallOp(Substring, path("s"), Integer(1), Integer(5))),
 		},
 		{
 			// CHAR_LENGTH(x || "test" || y || "xyz" || "foo" || z) =>
 			//   CHAR_LENGTH(x) + CHAR_LENGTH(y) + CHAR_LENGTH(z) + Integer(10)
-			CallOp(CharLength, CallOp(Concat, path("x"), String("test"), path("y"), String("xyz"), String("foo"), path("z"))),
-			Add(Add(Add(CallOp(CharLength, path("x")), CallOp(CharLength, path("y"))), CallOp(CharLength, path("z"))), Integer(10)),
-		},
-		{
-			// SUBSTRING(s, 1) => s
-			CallOp(SubString, path("s"), Integer(1)),
-			path("s"),
-		},
-		{
-			// SUBSTRING(s, 1, -5) => s
-			CallOp(SubString, path("s"), Integer(1), Integer(-5)),
-			path("s"),
+			CallOp(CharLength, apply2(Concat, path("x"), String("test"), path("y"), String("xyz"), String("foo"), path("z"))),
+			Add(Add(CallOp(CharLength, path("x")),
+				Add(CallOp(CharLength, path("y")), Integer(10))),
+				CallOp(CharLength, path("z"))),
 		},
 		{
 			CallOp(TypeBit, Integer(1)),

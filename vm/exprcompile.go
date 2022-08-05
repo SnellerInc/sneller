@@ -802,7 +802,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 		return p.CharLength(lhs), nil
 
-	case expr.SubString:
+	case expr.Substring:
 		if len(args) != 3 {
 			return nil, fmt.Errorf("preprocessing %s went wrong, got %d args expected 3", fn, len(args))
 		}
@@ -852,7 +852,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		default:
 			return nil, fmt.Errorf("unhandled builtin %q", b.Name())
 		}
-	case expr.DateToUnixEpoch:
+	case expr.ToUnixEpoch:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("TO_UNIX_EPOCH has %d arguments?", len(args))
 		}
@@ -861,7 +861,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			return nil, err
 		}
 		return p.DateToUnixEpoch(arg), nil
-	case expr.DateToUnixMicro:
+	case expr.ToUnixMicro:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("TO_UNIX_MICRO has %d arguments?", len(args))
 		}

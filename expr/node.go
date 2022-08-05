@@ -2945,26 +2945,6 @@ func DateDiff(part Timepart, timestamp1, timestamp2 Node) Node {
 }
 
 func DateExtract(part Timepart, from Node) Node {
-	if ts, ok := from.(*Timestamp); ok {
-		switch part {
-		case Microsecond:
-			return Integer(ts.Value.Nanosecond() / 1000)
-		case Millisecond:
-			return Integer(ts.Value.Nanosecond() / 1000000)
-		case Second:
-			return Integer(ts.Value.Second())
-		case Minute:
-			return Integer(ts.Value.Minute())
-		case Hour:
-			return Integer(ts.Value.Hour())
-		case Day:
-			return Integer(ts.Value.Day())
-		case Month:
-			return Integer(ts.Value.Month())
-		case Year:
-			return Integer(ts.Value.Year())
-		}
-	}
 	return Call("DATE_EXTRACT_"+part.String(), from)
 }
 
