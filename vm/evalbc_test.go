@@ -1703,6 +1703,7 @@ func FuzzRegexMatchCompile(f *testing.F) {
 	})
 }
 
+// TestIsSubnetOfBF runs brute-force tests for: opIsSubnetOfIP4
 func TestIsSubnetOfBF(t *testing.T) {
 
 	//randomIP4Addr will generate all sorts of questionable addresses; things like 0.0.0.0 and 255.255.255.255, as well as private IP address ranges and multicast addresses.
@@ -1757,6 +1758,7 @@ func TestIsSubnetOfBF(t *testing.T) {
 	}
 }
 
+// TestIsSubnetOfUT runs unit-tests for: opIsSubnetOfIP4
 func TestIsSubnetOfUT(t *testing.T) {
 	type unitTest struct {
 		ip, min, max string
@@ -2230,6 +2232,249 @@ func TestSkipNCharBF(t *testing.T) {
 						return
 					}
 				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
+// referenceSplitPart splits data on delimiter and returns the offset and length of the idx part (NOTE 1-based index)
+func referenceSplitPart(data string, idx int, delimiter rune) (lane bool, offset, length int) {
+	idx-- // because this method is written as 0-indexed, but called as 1-indexed.
+	offset = 0
+	length = len(data)
+	lane = false
+
+	bytePosBegin := -1
+	bytePosEnd := len(data)
+
+	if idx == 0 {
+		bytePosBegin = 0
+		if x := strings.IndexRune(data, delimiter); x != -1 {
+			bytePosEnd = x
+		}
+	} else {
+		delimiterCount := 0
+		for i, r := range data {
+			if r == delimiter {
+				delimiterCount++
+				if delimiterCount == idx {
+					bytePosBegin = i + utf8.RuneLen(delimiter)
+				} else if delimiterCount == (idx + 1) {
+					bytePosEnd = i
+					break
+				}
+			}
+		}
+		if bytePosBegin == -1 {
+			return
+		}
+	}
+
+	offset = bytePosBegin
+	length = bytePosEnd - bytePosBegin
+	lane = true
+	return
+}
+
+// TestSplitPartUT unit-tests for: opSplitPart
+func TestSplitPartUT(t *testing.T) {
+	name := "split part (opSplitPart)"
+
+	type unitTest struct {
+		data      string
+		idx       int
+		delimiter rune
+		expLane   bool // expected lane K1
+		expOffset int  // expected offset Z2
+		expLength int  // expected length Z3
+	}
+	unitTests := []unitTest{
+
+		{"aa;bb", 0, ';', false, -1, -1}, // 0th part not present: offset and length are irrelevant
+		{"aa;bb", 1, ';', true, 0, 2},    // select "aa"
+		{"aa;bb", 2, ';', true, 3, 2},    // select "bb"
+		{"aa;bb", 3, ';', false, -1, -1}, // 3rd part not present: offset and length are irrelevant
+
+		{";bb", 0, ';', false, -1, -1}, // 0th part not present
+		{";bb", 1, ';', true, 0, 0},    // select ""
+		{";bb", 2, ';', true, 1, 2},    // select "bb"
+		{";bb", 3, ';', false, -1, -1}, // 3rd part not present
+
+		{";bbbbb", 0, ';', false, -1, -1}, // 0th part not present
+		{";bbbbb", 1, ';', true, 0, 0},    // select ""
+		{";bbbbb", 2, ';', true, 1, 5},    // select "bbbbb"
+		{";bbbbb", 3, ';', false, -1, -1}, // 3rd part not present
+
+		{"aa", 0, ';', false, -1, -1}, // 0th part not present
+		{"aa", 1, ';', true, 0, 2},    // select "aa"
+		{"aa", 2, ';', false, -1, -1}, // 2nd not present
+
+		{"aa;", 0, ';', false, -1, -1}, // 0th part not present
+		{"aa;", 1, ';', true, 0, 2},    // select "aa"
+		{"aa;", 2, ';', true, 3, 0},    // select ""
+		{"aa;", 3, ';', false, -1, -1}, // 3rd part not present
+
+		{"aa;;", 0, ';', false, -1, -1}, // 0th part not present
+		{"aa;;", 1, ';', true, 0, 2},    // select "aa"
+		{"aa;;", 2, ';', true, 3, 0},    // select ""
+		{"aa;;", 3, ';', true, 4, 0},    // select ""
+		{"aa;;", 4, ';', false, -1, -1}, // 4th part not present
+
+		{";", 0, ';', false, -1, -1}, // 0th part not present
+		{";", 1, ';', true, 0, 0},    // select ""
+		{";", 2, ';', true, 1, 0},    // select ""
+		{";", 3, ';', false, -1, -1}, // 3rd part not present
+
+		{"𐍈;bb", 1, ';', true, 0, 4}, // select "𐍈"
+		{"𐍈;bb", 2, ';', true, 5, 2}, // select "bb"
+		{"aa;𐍈", 1, ';', true, 0, 2}, // select "aa"
+		{"aa;𐍈", 2, ';', true, 3, 4}, // select "𐍈"
+	}
+
+	run := func(ut unitTest) {
+		// first: check reference implementation
+		{
+			obsLane, obsOffset, obsLength := referenceSplitPart(ut.data, ut.idx, ut.delimiter)
+			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
+				t.Errorf("refImpl: splitting %q; idx=%v; delim=%q; observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+					ut.data, ut.idx, ut.delimiter, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
+			}
+		}
+
+		// second: check bytecode implementation
+		stackContent := make([]uint64, 16)
+		for i := 0; i < 16; i++ {
+			stackContent[i] = uint64(ut.idx)
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.dict = append(ctx.dict[:0], string(ut.delimiter))
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.setStackUint64(stackContent)
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		offsetDict := uint16(0)
+		offsetStackSlot := uint16(0)
+		err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+
+			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
+				t.Errorf("lane %v: splitting %q; idx=%v; delim=%q; observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+					i, ut.data, ut.idx, ut.delimiter, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
+				return
+			}
+		}
+		ctx.Free()
+	}
+
+	t.Run(name, func(t *testing.T) {
+		for _, ut := range unitTests {
+			run(ut)
+		}
+	})
+}
+
+// TestSplitPartBF brute-force tests for: opSplitPart
+func TestSplitPartBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
+		// space of field indexes
+		idxSpace []int
+		// delimiter that separates fields (can only be ASCII)
+		delimiter rune
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, idx, delimiter) -> lane, offset, length
+		refImpl func(string, int, rune) (bool, int, int)
+	}
+	testSuites := []testSuite{
+		{
+			name:         "split part (opSplitPart)",
+			dataAlphabet: []rune{'a', 'b', 0, ';'},
+			dataMaxlen:   7,
+			dataMaxSize:  -1, // -1 = exhaustive
+			idxSpace:     []int{0, 1, 2, 3, 4, 5},
+			delimiter:    ';',
+			op:           opSplitPart,
+			refImpl:      referenceSplitPart,
+		},
+		{
+			name:         "split part (opSplitPart) UTF8",
+			dataAlphabet: []rune{'$', '¢', '€', '𐍈', ';'},
+			dataMaxlen:   7,
+			dataMaxSize:  -1, // -1 = exhaustive
+			idxSpace:     []int{0, 1, 2, 3, 4, 5},
+			delimiter:    ';',
+			op:           opSplitPart,
+			refImpl:      referenceSplitPart,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace []string) {
+		//TODO make a generic space partitioner that can be reused by other BF tests
+		stackContent := make([]uint64, 16)
+
+		for _, idx := range ts.idxSpace {
+			for i := 0; i < 16; i++ {
+				stackContent[i] = uint64(idx)
+			}
+			for _, data := range dataSpace {
+				var ctx bctestContext
+				ctx.Taint()
+
+				expLane, expOffset, expLength := ts.refImpl(data, idx, ts.delimiter)
+
+				ctx.dict = append(ctx.dict[:0], string(ts.delimiter))
+				ctx.addScalarStrings(fill16(data), []byte{})
+				ctx.setStackUint64(stackContent)
+				ctx.current = 0xFFFF
+				scalarBefore := ctx.getScalarUint32()
+
+				// when
+				offsetDict := uint16(0)
+				offsetStackSlot := uint16(0)
+				err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				// then
+				scalarAfter := ctx.getScalarUint32()
+				for i := 0; i < 16; i++ {
+					obsLane := (ctx.current>>i)&1 == 1
+					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+					obsLength := int(scalarAfter[1][i])
+
+					if fault(obsLane, expLane, obsOffset, expOffset, obsLength, expLength) {
+						t.Errorf("lane %v: splitting %q; idx=%v; delim=%q; observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+							i, data, idx, ts.delimiter, obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
+						return
+					}
+				}
+				ctx.Free()
 			}
 		}
 	}

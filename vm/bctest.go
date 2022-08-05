@@ -84,6 +84,17 @@ func (c *bctestContext) ExecuteImm2(op bcop, imm2 uint16) error {
 	return c.execute(p)
 }
 
+// Execute2Imm2 runs a single opcode with two 2-byte immediate.
+func (c *bctestContext) Execute2Imm2(op bcop, imm2a, imm2b uint16) error {
+	asm := assembler{}
+	asm.emitOpcode(op)
+	asm.emitImmU16(imm2a)
+	asm.emitImmU16(imm2b)
+	asm.emitOpcode(opret)
+	p := asm.grabCode()
+	return c.execute(p)
+}
+
 func (c *bctestContext) execute(prog []byte) error {
 	bc := bytecode{
 		compiled: prog,
@@ -169,6 +180,7 @@ func (c *bctestContext) addScalarStrings(values []string, padding []byte) {
 	}
 	if c.data == nil {
 		c.data = Malloc()
+		c.data = c.data[:0]
 	}
 	for i, str := range values {
 		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])

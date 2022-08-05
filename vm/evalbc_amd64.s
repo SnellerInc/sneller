@@ -13721,58 +13721,57 @@ test2:
 //; #region bcSplitPart
 //; NOTE: the delimiter cannot be byte 0
 TEXT bcSplitPart(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;FEE415A0                                 ;R14=split_info;
-  VPBROADCASTB  (R14),Z21                 //;B4B43F80 bcst delimiter                  ;Z21=delimiter; R14=split_info;
-
+  VPBROADCASTB  (R14),Z21                 //;B4B43F80 bcst delimiter                  ;Z21=delim; R14=split_info;
 //; #region load from stack-slot: load 16x uint32 into Z7
   LOADARG1Z(Z27, Z26)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z7         //;3944001B merge into 16x uint32           ;Z7=counter_delim; Z27=scratch_Z27; Z26=scratch_Z26;
 //; #endregion load from stack-slot
-  VPCMPD        $5,  Z7,  Z3,  K1,  K1    //;502E314F K1 &= (str_length>=counter_delim);K1=lane_active; Z3=str_length; Z7=counter_delim; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;1C6F0B57                                 ;K1=lane_active;
-  JZ            next                      //;F22A6A94 jump if zero (ZF = 1)           ;
-
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
 
   KMOVW         K1,  K2                   //;FE3838B3 lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
   VMOVDQU32     Z2,  Z4                   //;CFB0D832 search_base := str_start        ;Z4=search_base; Z2=str_start;
-  VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_length + str_start;Z5=o_data_end; Z3=str_length; Z2=str_start;
-  VPSUBD        Z10, Z7, Z7               // index-- (1-based indexing)
+  VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_len + str_start;Z5=o_data_end; Z3=str_len; Z2=str_start;
+  VPSUBD        Z10, Z7,  Z7              //;68858B39 counter_delim--; (1-based indexing);Z7=counter_delim; Z10=1;
+
 //; #region find n-th delimiter
   JMP           tail1                     //;9DD42F87                                 ;
 loop1:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 clear data_msg                  ;Z8=data_msg;
   VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-
-  VPCMPB        $0,  Z21, Z8,  K3         //;8E3317B0 K3 := (data_msg==delimiter)     ;K3=tmp_mask; Z8=data_msg; Z21=delimiter; 0=Eq;
+//; clear tail from data
+  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
+  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
+  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+//; calculate skip_count in zmm14
+  VPCMPB        $0,  Z21, Z8,  K3         //;8E3317B0 K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
   VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
   VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count; Z22=constant_bswap32;
   VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count;
   VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count;
-
 //; advance
   VPADDD        Z14, Z4,  K2,  Z4         //;5034DEA0 search_base += skip_count       ;Z4=search_base; K2=lane2_mask; Z14=skip_count;
-
+  VPSUBD        Z14, Z3,  K2,  Z3         //;95AAE700 str_len -= skip_count           ;Z3=str_len; K2=lane2_mask; Z14=skip_count;
 //; did we encounter a delimiter?
-  VPCMPD        $4,  Z20, Z14, K2,  K3    //;80B9AEA2 K3 := K2 & (skip_count!=4); active lanes where skip != 4;K3=tmp_mask; K2=lane2_mask; Z14=skip_count; Z20=constd_4; 4=NotEqual;
-  VPSUBD        Z10, Z7,  K3,  Z7         //;35E75E57 counter_delim--                 ;Z7=counter_delim; K3=tmp_mask; Z10=constd_1;
-  VPADDD        Z10, Z4,  K3,  Z4         //;D5281D43 search_base++                   ;Z4=search_base; K3=tmp_mask; Z10=constd_1;
+  VPCMPD        $4,  Z20, Z14, K2,  K3    //;80B9AEA2 K3 := K2 & (skip_count!=4); active lanes where skip != 4;K3=tmp_mask; K2=lane2_mask; Z14=skip_count; Z20=4; 4=NotEqual;
+  VPSUBD        Z10, Z7,  K3,  Z7         //;35E75E57 counter_delim--                 ;Z7=counter_delim; K3=tmp_mask; Z10=1;
+  VPSUBD        Z10, Z3,  K3,  Z3         //;AF759B00 str_len--                       ;Z3=str_len; K3=tmp_mask; Z10=1;
+  VPADDD        Z10, Z4,  K3,  Z4         //;D5281D43 search_base++                   ;Z4=search_base; K3=tmp_mask; Z10=1;
 
 tail1:
 //; still a lane todo?
-  VPCMPD        $1,  Z7,  Z11, K2,  K2    //;50E6D99D K2 &= (0<counter_delim)         ;K2=lane2_mask; Z11=constd_0; Z7=counter_delim; 1=LessThen;
-  VPCMPD        $1,  Z5,  Z4,  K2,  K3    //;A052FCB6 K3 := K2 & (search_base<o_data_end);K3=tmp_mask; K2=lane2_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
-  KTESTW        K3,  K3                   //;799F076E all lanes done? 0 means lane is done;K3=tmp_mask;
+  VPCMPD        $1,  Z7,  Z11, K2,  K2    //;50E6D99D K2 &= (0<counter_delim)         ;K2=lane2_mask; Z11=0; Z7=counter_delim; 1=LessThen;
+  VPCMPD        $1,  Z5,  Z4,  K3         //;A052FCB6 K3 := (search_base<o_data_end)  ;K3=tmp_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
+  KTESTW        K3,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask; K3=tmp_mask;
   JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-
-  VPCMPD        $0,  Z7,  Z11, K1,  K1    //;A0ABF51F K1 &= (0==counter_delim)        ;K1=lane_active; Z11=constd_0; Z7=counter_delim; 0=Eq;
+  VPCMPD        $0,  Z7,  Z11, K1,  K1    //;A0ABF51F K1 &= (0==counter_delim)        ;K1=lane_active; Z11=0; Z7=counter_delim; 0=Eq;
 //; #endregion find n-th delimiter
 
   VMOVDQU32     Z4,  K1,  Z2              //;B69A81FE str_start := search_base        ;Z2=str_start; K1=lane_active; Z4=search_base;
@@ -13781,27 +13780,24 @@ tail1:
   KMOVW         K1,  K2                   //;A543DE2E lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
 loop2:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 clear data_msg                  ;Z8=data_msg;
   VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-
-  VPCMPB        $0,  Z21, Z8,  K3         //;E8DC9CCA K3 := (data_msg==delimiter)     ;K3=tmp_mask; Z8=data_msg; Z21=delimiter; 0=Eq;
+//; calculate skip_count in zmm14
+  VPCMPB        $0,  Z21, Z8,  K3         //;E8DC9CCA K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
   VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
   VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count; Z22=constant_bswap32;
   VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count;
   VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count;
-
 //; advance
   VPADDD        Z14, Z4,  K2,  Z4         //;5034DEA0 search_base += skip_count       ;Z4=search_base; K2=lane2_mask; Z14=skip_count;
-
 //; did we encounter a delimiter?
-  VPCMPD        $0,  Z20, Z14, K2,  K2    //;80B9AEA2 K2 &= (skip_count==4); active lanes where skip != 4;K2=lane2_mask; Z14=skip_count; Z20=constd_4; 0=Eq;
-  VPCMPD        $1,  Z5,  Z4,  K2,  K3    //;E2BEF075 K3 := K2 & (search_base<o_data_end);K3=tmp_mask; K2=lane2_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
-  KTESTW        K3,  K3                   //;799F076E all lanes still todo?           ;K3=tmp_mask;
+  VPCMPD        $0,  Z20, Z14, K2,  K2    //;80B9AEA2 K2 &= (skip_count==4); active lanes where skip != 4;K2=lane2_mask; Z14=skip_count; Z20=4; 0=Eq;
+  VPCMPD        $1,  Z5,  Z4,  K3         //;E2BEF075 K3 := (search_base<o_data_end)  ;K3=tmp_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
+  KTESTW        K3,  K2                   //;799F076E all lanes still todo?           ;K2=lane2_mask; K3=tmp_mask;
   JNZ           loop2                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
 //; #endregion find next delimiter
 
   VPMINSD       Z5,  Z4,  Z4              //;C62A5921 search_base := min(search_base, o_data_end);Z4=search_base; Z5=o_data_end;
-  VPSUBD        Z2,  Z4,  K1,  Z3         //;E24AE85F str_length := search_base - str_start;Z3=str_length; K1=lane_active; Z4=search_base; Z2=str_start;
+  VPSUBD        Z2,  Z4,  K1,  Z3         //;E24AE85F str_len := search_base - str_start;Z3=str_len; K1=lane_active; Z4=search_base; Z2=str_start;
 next:
   NEXT()
 //; #endregion bcSplitPart
@@ -15065,6 +15061,7 @@ next:
   NEXT()
 //; #endregion bcDfaLZ
 
+//; #endregion string methods
 
 // LOWER/UPPER functions
 // --------------------------------------------------
