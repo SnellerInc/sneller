@@ -2486,6 +2486,141 @@ func TestSplitPartBF(t *testing.T) {
 	}
 }
 
+// TestSplitPartUT unit-tests for: bcLengthStr
+func TestLengthStrUT(t *testing.T) {
+	name := "length string (bcLengthStr)"
+
+	type unitTest struct {
+		data   string
+		nChars int //number of code-points in data
+	}
+	unitTests := []unitTest{
+		{"a", 1},
+		{"¢", 1},
+		{"€", 1},
+		{"𐍈", 1},
+		{"ab", 2},
+		{"a¢", 2},
+		{"a€", 2},
+		{"a𐍈", 2},
+		{"abb", 3},
+		{"ab¢", 3},
+		{"ab€", 3},
+		{"ab𐍈", 3},
+		{"$¢€𐍈", 4},
+		{string([]byte{0xC2, 0xA2, 0xC2, 0xA2, 0x24}), 3},
+	}
+
+	run := func(ut unitTest) {
+		// first: check reference implementation
+		{
+			nCharsObs := utf8.RuneCountInString(ut.data)
+			if ut.nChars != nCharsObs {
+				t.Errorf("refImpl: length of %q; observed %v; expected: %v", ut.data, nCharsObs, ut.nChars)
+			}
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.current = 0xFFFF
+
+		// when
+		err := ctx.Execute(opLengthStr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		scalarAfter := ctx.getScalarInt64()
+		for i := 0; i < 16; i++ {
+			nCharsObs := int(scalarAfter[i])
+			if ut.nChars != nCharsObs {
+				t.Errorf("lane %v: length of %q; observed %v; expected: %v", i, ut.data, nCharsObs, ut.nChars)
+				return
+			}
+		}
+		ctx.Free()
+	}
+
+	t.Run(name, func(t *testing.T) {
+		for _, ut := range unitTests {
+			run(ut)
+		}
+	})
+}
+
+// TestSplitPartBF brute-force tests for: bcLengthStr
+func TestLengthStrBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data) -> nChars
+		refImpl func(string) int
+	}
+	testSuites := []testSuite{
+		{
+			name:         "length string (bcLengthStr)",
+			dataAlphabet: []rune{'a', 'b', '\n', 0},
+			dataMaxlen:   7,
+			dataMaxSize:  -1, // -1 = exhaustive
+			op:           opLengthStr,
+			refImpl:      utf8.RuneCountInString,
+		},
+		{
+			name:         "length string (bcLengthStr) UTF8",
+			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
+			dataMaxlen:   7,
+			dataMaxSize:  -1, // -1 = exhaustive
+			op:           opLengthStr,
+			refImpl:      utf8.RuneCountInString,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace []string) {
+		//TODO make a generic space partitioner that can be reused by other BF tests
+
+		for _, data := range dataSpace {
+			var ctx bctestContext
+			ctx.Taint()
+
+			cCharsExp := ts.refImpl(data)
+
+			ctx.addScalarStrings(fill16(data), []byte{})
+			ctx.current = 0xFFFF
+
+			// when
+			err := ctx.Execute(opLengthStr)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// then
+			scalarAfter := ctx.getScalarInt64()
+			for i := 0; i < 16; i++ {
+				nCharsObs := int(scalarAfter[i])
+				if cCharsExp != nCharsObs {
+					t.Errorf("lane %v: length of %q; observed %v; expected: %v", i, data, nCharsObs, cCharsExp)
+					return
+				}
+			}
+			ctx.Free()
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
 func TestBytecodeAbsInt(t *testing.T) {
 	// given
 	var ctx bctestContext
