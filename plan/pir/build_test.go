@@ -158,6 +158,14 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT DISTINCT x, y, sum(z) AS s, avg(w) AS a FROM table GROUP BY y, x`,
 			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
 		},
+		{
+			input: `SELECT x, * FROM table`,
+			rx:    "'*' cannot be mixed with other values",
+		},
+		{
+			input: `SELECT *, *, * FROM table`,
+			rx:    "'*' cannot be mixed with other values",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input

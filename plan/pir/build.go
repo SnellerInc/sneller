@@ -740,8 +740,12 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	pickOutputs(s)
 	normalizeOrderBy(s)
 	s.Columns = flattenBind(s.Columns)
+	err := checkColumns(s.Columns)
+	if err != nil {
+		return err
+	}
 
-	err := b.hoistWindows(s, e)
+	err = b.hoistWindows(s, e)
 	if err != nil {
 		return err
 	}
@@ -1006,4 +1010,18 @@ func distinctOnPullGroupByBindings(s *expr.Select) {
 	flattenIntoFunc(s.GroupBy, len(s.DistinctExpr), func(i int) *expr.Node {
 		return &s.DistinctExpr[i]
 	})
+}
+
+// checkColumns check if '*' is present and is so,
+// is the only column
+func checkColumns(cols []expr.Binding) error {
+	for i := range cols {
+		if _, ok := cols[i].Expr.(expr.Star); ok {
+			if len(cols) > 1 {
+				return fmt.Errorf("'*' cannot be mixed with other values")
+			}
+		}
+	}
+
+	return nil
 }
