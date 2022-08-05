@@ -683,7 +683,7 @@ type Trace struct {
 	final []expr.Binding
 }
 
-// Equal returns true if b and x would produce the same
+// Equals returns true if b and x would produce the same
 // rows and thus can be substituted for one another.
 func (b *Trace) Equals(x *Trace) bool {
 	return b == x || stepsEqual(b.top, x.top) &&

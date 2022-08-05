@@ -61,7 +61,6 @@ var zionEncPool = sync.Pool{
 
 type zionCompressor struct {
 	enc *zion.Encoder
-	dec zion.Decoder
 }
 
 func (z *zionCompressor) Compress(src, dst []byte) ([]byte, error) {

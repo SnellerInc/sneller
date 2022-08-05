@@ -24,10 +24,6 @@ type pathset struct {
 	selector uint8
 }
 
-func (p *pathset) empty() bool {
-	return len(p.bits) == 0
-}
-
 func (p *pathset) set(x ion.Symbol) {
 	v := uint(x)
 	word := int(v >> 6)

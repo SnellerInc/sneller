@@ -125,7 +125,7 @@ func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
 			}
 			var body []byte
 			var err error
-			body, inner = ion.Contents(inner)
+			body, _ = ion.Contents(inner)
 			n.Op, err = decodeOps(d, st, body)
 			return err
 		case "inputs":

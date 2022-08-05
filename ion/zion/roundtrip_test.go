@@ -103,22 +103,6 @@ func (t *testWriter) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
-func toJSON(t *testing.T, src []byte) string {
-	var buf bytes.Buffer
-	w := ion.NewJSONWriter(&buf, ',')
-	_, err := w.Write(src)
-	if err != nil {
-		t.Helper()
-		t.Fatal(err)
-	}
-	err = w.Close()
-	if err != nil {
-		t.Helper()
-		t.Fatal(err)
-	}
-	return buf.String()
-}
-
 func TestSimple(t *testing.T) {
 	str := `
 {"foo": 0, "bar": {"baz": "quux", "other": null}, "lst": [3, null, false, "xyzabc"]}
