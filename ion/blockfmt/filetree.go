@@ -24,7 +24,6 @@ import (
 
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/klauspost/compress/zstd"
 )
 
 // last-level contents
@@ -223,9 +222,8 @@ func (f *filetree) marshal(tmp *ion.Buffer, st *ion.Symtab) []byte {
 		tmp.EndStruct()
 	}
 	tmp.EndList()
-	enc, _ := zstd.NewWriter(nil)
-	ret := enc.EncodeAll(tmp.Bytes(), nil)
-	enc.Close()
+	c := compr.Compression("zstd")
+	ret := c.Compress(tmp.Bytes(), nil)
 	return ret
 }
 

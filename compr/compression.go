@@ -64,8 +64,10 @@ func (z zstdCompressor) Compress(src, dst []byte) []byte {
 func (z zstdCompressor) Name() string { return "zstd" }
 
 var (
-	zstdDecoder     *zstd.Decoder
-	zstdFastDecoder *zstd.Decoder
+	zstdDecoder       *zstd.Decoder
+	zstdFastDecoder   *zstd.Decoder
+	zstdEncoder       *zstd.Encoder
+	zstdBetterEncoder *zstd.Encoder
 )
 
 func init() {
@@ -82,6 +84,16 @@ func init() {
 		panic(err)
 	}
 	zstdFastDecoder = z
+
+	enc, err := zstd.NewWriter(nil)
+	if err != nil {
+		panic(err)
+	}
+	zstdEncoder = enc
+
+	enc, err = zstd.NewWriter(nil,
+		zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
+	zstdBetterEncoder = enc
 }
 
 // DecodeZstd calls DecodeAll on the global zstd
@@ -156,12 +168,9 @@ func (s2Compressor) Name() string { return "s2" }
 func Compression(name string) Compressor {
 	switch name {
 	case "zstd-better":
-		z, _ := zstd.NewWriter(nil,
-			zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
-		return zstdCompressor{z}
+		return zstdCompressor{zstdBetterEncoder}
 	case "zstd":
-		z, _ := zstd.NewWriter(nil)
-		return zstdCompressor{z}
+		return zstdCompressor{zstdEncoder}
 	case "s2":
 		return s2Compressor{}
 	default:
