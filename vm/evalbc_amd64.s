@@ -12108,7 +12108,7 @@ next:
 //; #endregion bcSkip1charRight
 
 //; #region bcSkipNcharLeft
-//; skip the first n UTF-8 codepoints in Z2:Z3
+//; skip the first n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
 //; #region load from stack-slot: load 16x uint32 into Z6
   LOADARG1Z(Z27, Z26)
@@ -12116,39 +12116,37 @@ TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
 //; #endregion load from stack-slot
-  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_length>=counter)     ;K1=lane_active; Z3=str_length; Z6=counter; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;69D1CDA2                                 ;K1=lane_active;
+
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
+  VPCMPD        $1,  Z6,  Z11, K1,  K2    //;7E49CD56 K2 := K1 & (0<counter)          ;K2=lane_todo; K1=lane_active; Z11=0; Z6=counter; 1=LessThen;
+  KTESTW        K2,  K2                   //;69D1CDA2 ZF := (K2==0); CF := 1          ;K2=lane_todo;
   JZ            next                      //;A5924904 jump if zero (ZF = 1)           ;
 
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
 loop:
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
-  VPADDD        Z7,  Z2,  K1,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane_todo; Z7=n_bytes_data;
+  VPADDD        Z7,  Z2,  K2,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K2=lane_todo; Z7=n_bytes_data;
 
-  VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=constd_1;
-  VPCMPD        $2,  Z3,  Z11, K1,  K1    //;DF88A710 K1 &= (0<=str_length); was the codepoint present?;K1=lane_active; Z11=constd_0; Z3=str_length; 2=LessEq;
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;2E4360D2 any chars left to trim          ;K3=tmp_mask; K1=lane_active; Z6=counter;
-  KTESTW        K3,  K3                   //;799F076E                                 ;K3=tmp_mask;
-  JZ            next                      //;203DDAE1 any chars left? NO, loop next; jump if zero (ZF = 1);
+  VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=1;
+  VPCMPD        $1,  Z6,  Z11, K2,  K2    //;DF88A710 K2 &= (0<counter)               ;K2=lane_todo; Z11=0; Z6=counter; 1=LessThen;
+  VPCMPD        $5,  Z3,  Z11, K2,  K3    //;2E4360D2 K3 := K2 & (0>=str_len)         ;K3=tmp_mask; K2=lane_todo; Z11=0; Z3=str_len; 5=GreaterEq;
+  KANDNW        K1,  K3,  K1              //;21163EF3 lane_active &= ~tmp_mask        ;K1=lane_active; K3=tmp_mask;
+  KTESTW        K2,  K1                   //;799F076E ZF := ((K1&K2)==0); CF := ((~K1&K2)==0);K1=lane_active; K2=lane_todo;
+  JNZ           loop                      //;203DDAE1 any chars left? NO, loop next; jump if not zero (ZF = 0);
 
-  VPTERNLOGD.Z  $15, Z3,  Z3,  K1,  Z7    //;5D4D882F negate                          ;Z7=n_bytes_data; K1=lane_active; Z3=str_length;
-  VPMOVD2M      Z7,  K3                   //;E1D7C41C                                 ;K3=tmp_mask; Z7=n_bytes_data;
-  KANDW         K1,  K3,  K1              //;21163EF3                                 ;K1=lane_active; K3=tmp_mask;
-  KTESTW        K1,  K1                   //;218EF478 any string left that are non-empty?;K1=lane_active;
-  JNZ           loop                      //;B5466486 any chars left? Yes, loop again; jump if not zero (ZF = 0);
 next:
   NEXT()
 //; #endregion bcSkipNcharLeft
 
 //; #region bcSkipNcharRight
-//; skip the last n UTF-8 codepoints in the Z2:Z3
+//; skip the last n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
 //; #region load from stack-slot: load 16x uint32 into Z6
   LOADARG1Z(Z27, Z26)
@@ -12156,46 +12154,44 @@ TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
 //; #endregion load from stack-slot
-  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_length>=counter)     ;K1=lane_active; Z3=str_length; Z6=counter; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;69D1CDA2                                 ;K1=lane_active;
+
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
+  VPCMPD        $1,  Z6,  Z11, K1,  K2    //;7E49CD56 K2 := K1 & (0<counter)          ;K2=lane_todo; K1=lane_active; Z11=0; Z6=counter; 1=LessThen;
+  KTESTW        K2,  K2                   //;69D1CDA2 ZF := (K2==0); CF := 1          ;K2=lane_todo;
   JZ            next                      //;A5924904 jump if zero (ZF = 1)           ;
 
   VPBROADCASTD  CONSTD_UTF8_2B_MASK(),Z27 //;F6E81301 load constant UTF8 2byte mask   ;Z27=UTF8_2byte_mask;
   VPBROADCASTD  CONSTD_UTF8_3B_MASK(),Z28 //;B1E12620 load constant UTF8 3byte mask   ;Z28=UTF8_3byte_mask;
   VPBROADCASTD  CONSTD_UTF8_4B_MASK(),Z29 //;D896A9E1 load constant UTF8 4byte mask   ;Z29=UTF8_4byte_mask;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
-  VPADDD        Z10, Z10, Z22             //;EDD57CAF load constant 2                 ;Z22=constd_2; Z10=constd_1;
-  VPADDD        Z10, Z22, Z23             //;7E7A1CB0 load constant 3                 ;Z23=constd_3; Z22=constd_2; Z10=constd_1;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPADDD        Z10, Z10, Z22             //;EDD57CAF load constant 2                 ;Z22=2; Z10=1;
+  VPADDD        Z10, Z22, Z23             //;7E7A1CB0 load constant 3                 ;Z23=3; Z22=2; Z10=1;
 loop:
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPADDD        Z2,  Z3,  Z4              //;5684E300 end_of_str := str_length + str_start;Z4=end_of_str; Z3=str_length; Z2=str_start;
-  VPGATHERDD    -4(SI)(Z4*1),K3,  Z8      //;573D089A gather data from end            ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=end_of_str;
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPADDD        Z2,  Z3,  Z4              //;5684E300 str_end := str_len + str_start  ;Z4=str_end; Z3=str_len; Z2=str_start;
+  VPGATHERDD    -4(SI)(Z4*1),K3,  Z8      //;573D089A gather data from end            ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=str_end;
 
 //; #region count_bytes_code_point_right; data in Z8; result out Z7
   VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z27=UTF8_2byte_mask;
-  VPCMPD        $0,  Z27, Z26, K1,  K3    //;C6890BF4 K3 := K1 & (scratch_Z26==UTF8_2byte_mask); create 2byte mask;K3=tmp_mask; K1=lane_active; Z26=scratch_Z26; Z27=UTF8_2byte_mask; 0=Eq;
+  VPCMPD        $0,  Z27, Z26, K2,  K3    //;C6890BF4 K3 := K2 & (scratch_Z26==UTF8_2byte_mask); create 2byte mask;K3=tmp_mask; K2=lane_todo; Z26=scratch_Z26; Z27=UTF8_2byte_mask; 0=Eq;
   VPANDD        Z28, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data_msg; Z28=UTF8_3byte_mask;
-  VPCMPD        $0,  Z28, Z26, K1,  K4    //;14C32DC0 K4 := K1 & (scratch_Z26==UTF8_3byte_mask); create 3byte mask;K4=tmp_mask2; K1=lane_active; Z26=scratch_Z26; Z28=UTF8_3byte_mask; 0=Eq;
+  VPCMPD        $0,  Z28, Z26, K2,  K4    //;14C32DC0 K4 := K2 & (scratch_Z26==UTF8_3byte_mask); create 3byte mask;K4=tmp_mask2; K2=lane_todo; Z26=scratch_Z26; Z28=UTF8_3byte_mask; 0=Eq;
   VPANDD        Z29, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data_msg; Z29=UTF8_4byte_mask;
-  VPCMPD        $0,  Z29, Z26, K1,  K5    //;1AE0A51C K5 := K1 & (scratch_Z26==UTF8_4byte_mask); create 4byte mask;K5=tmp_mask3; K1=lane_active; Z26=scratch_Z26; Z29=UTF8_4byte_mask; 0=Eq;
-  VMOVDQU32     Z10, Z7                   //;A7640B64 n_bytes_data := 1               ;Z7=n_bytes_data; Z10=constd_1;
-  VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_data; K3=tmp_mask; Z10=constd_1;
-  VPADDD        Z22, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_data; K4=tmp_mask2; Z22=constd_2;
-  VPADDD        Z23, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_data; K5=tmp_mask3; Z23=constd_3;
+  VPCMPD        $0,  Z29, Z26, K2,  K5    //;1AE0A51C K5 := K2 & (scratch_Z26==UTF8_4byte_mask); create 4byte mask;K5=tmp_mask3; K2=lane_todo; Z26=scratch_Z26; Z29=UTF8_4byte_mask; 0=Eq;
+  VMOVDQU32     Z10, Z7                   //;A7640B64 n_bytes_data := 1               ;Z7=n_bytes_data; Z10=1;
+  VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_data; K3=tmp_mask; Z10=1;
+  VPADDD        Z22, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_data; K4=tmp_mask2; Z22=2;
+  VPADDD        Z23, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_data; K5=tmp_mask3; Z23=3;
 //; #endregion count_bytes_code_point_right; data in Z8; result out Z7
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=constd_1;
-  VPCMPD        $2,  Z3,  Z11, K1,  K1    //;DF88A710 K1 &= (0<=str_length); was the codepoint present?;K1=lane_active; Z11=constd_0; Z3=str_length; 2=LessEq;
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;2E4360D2 any chars left to trim          ;K3=tmp_mask; K1=lane_active; Z6=counter;
-  KTESTW        K3,  K3                   //;799F076E                                 ;K3=tmp_mask;
-  JZ            next                      //;203DDAE1 any chars left? NO, loop next; jump if zero (ZF = 1);
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane_todo; Z7=n_bytes_data;
+  VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=1;
+  VPCMPD        $1,  Z6,  Z11, K2,  K2    //;DF88A710 K2 &= (0<counter)               ;K2=lane_todo; Z11=0; Z6=counter; 1=LessThen;
+  VPCMPD        $5,  Z3,  Z11, K2,  K3    //;2E4360D2 K3 := K2 & (0>=str_len)         ;K3=tmp_mask; K2=lane_todo; Z11=0; Z3=str_len; 5=GreaterEq;
+  KANDNW        K1,  K3,  K1              //;21163EF3 lane_active &= ~tmp_mask        ;K1=lane_active; K3=tmp_mask;
+  KTESTW        K2,  K1                   //;799F076E ZF := ((K1&K2)==0); CF := ((~K1&K2)==0);K1=lane_active; K2=lane_todo;
+  JNZ           loop                      //;203DDAE1 any chars left? NO, loop next; jump if not zero (ZF = 0);
 
-  VPTERNLOGD.Z  $15, Z3,  Z3,  K1,  Z7    //;5D4D882F negate                          ;Z7=n_bytes_data; K1=lane_active; Z3=str_length;
-  VPMOVD2M      Z7,  K3                   //;E1D7C41C                                 ;K3=tmp_mask; Z7=n_bytes_data;
-  KANDW         K1,  K3,  K1              //;21163EF3                                 ;K1=lane_active; K3=tmp_mask;
-  KTESTW        K1,  K1                   //;218EF478 any string left that are non-empty?;K1=lane_active;
-  JNZ           loop                      //;B5466486 any chars left? Yes, loop again; jump if not zero (ZF = 0);
 next:
   NEXT()
 //; #endregion bcSkipNcharRight

@@ -2071,6 +2071,10 @@ func TestSkipNCharUT(t *testing.T) {
 				{"a𐍈aa", 2, true, 5, 2},
 				{"a𐍈aaa", 2, true, 5, 3},
 				{"a𐍈aaaa", 2, true, 5, 4},
+
+				{"", 0, true, 0, 0},
+				{"a", 0, true, 0, 1},
+				{"𐍈", 2, false, -1, -1},
 			},
 			op: opSkipNcharLeft,
 		},
@@ -2079,6 +2083,7 @@ func TestSkipNCharUT(t *testing.T) {
 			unitTests: []unitTest{
 				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
 				{"a", 1, true, 0, 0},
+
 				{"aa", 1, true, 0, 1},
 				{"aaa", 1, true, 0, 2},
 				{"aaaa", 1, true, 0, 3},
@@ -2103,6 +2108,10 @@ func TestSkipNCharUT(t *testing.T) {
 				{"aa𐍈a", 2, true, 0, 2},
 				{"aaa𐍈a", 2, true, 0, 3},
 				{"aaaa𐍈a", 2, true, 0, 4},
+
+				{"", 0, true, 0, 0},
+				{"a", 0, true, 0, 1},
+				{"𐍈", 2, false, -1, -1},
 			},
 			op: opSkipNcharRight,
 		},
@@ -2170,23 +2179,22 @@ func TestSkipNCharBF(t *testing.T) {
 		refImpl func(string, int) (bool, int, int)
 	}
 
-	//FIXME skipCount equal to zero crashes
 	testSuites := []testSuite{
 		{
 			name:           "skip N char from left (opSkipNcharLeft)",
 			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
 			dataMaxlen:     5,
 			dataMaxSize:    -1,
-			skipCountSpace: []int{1, 2, 3, 4, 5, 6},
+			skipCountSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			op:             opSkipNcharLeft,
 			refImpl:        referenceSkipCharLeft,
 		},
 		{
 			name:           "skip N char from right (opSkipNcharRight)",
-			dataAlphabet:   []rune{'s', 'S', '\n', 0}, //FIXME bug with 'ſ'
+			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
 			dataMaxlen:     5,
 			dataMaxSize:    -1,
-			skipCountSpace: []int{1, 2, 3, 4, 5, 6},
+			skipCountSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			op:             opSkipNcharRight,
 			refImpl:        referenceSkipCharRight,
 		},
