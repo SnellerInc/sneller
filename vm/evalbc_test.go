@@ -2629,6 +2629,191 @@ func TestLengthStrBF(t *testing.T) {
 	}
 }
 
+// TestTrimWhiteSpaceUT unit-tests for: opTrimWsLeft, opTrimWsRight
+func TestTrimWhiteSpaceUT(t *testing.T) {
+
+	//FIXME: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
+	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
+
+	type unitTest struct {
+		data      string // data at SI
+		expResult string // expected result Z2:Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data) -> result
+		refImpl func(string) string
+	}
+	testSuites := []testSuite{
+		{
+			name: "trim white-space from left (opTrimWsLeft)",
+			unitTests: []unitTest{
+				{"a", "a"},
+				{" a", "a"},
+				{" a ", "a "},
+				{" a a", "a a"},
+				{"  a", "a"},
+				{"     a", "a"},
+				{" €", "€"},
+			},
+			op: opTrimWsLeft,
+			refImpl: func(data string) string {
+				return strings.TrimLeft(data, whiteSpace)
+			},
+		},
+		{
+			name: "trim white-space from right (opTrimWsRight)",
+			unitTests: []unitTest{
+				{"a", "a"},
+				{"a ", "a"},
+				{" a ", " a"},
+				{"a a ", "a a"},
+				{"a  ", "a"},
+				{"a     ", "a"},
+				{"€ ", "€"},
+			},
+			op: opTrimWsRight,
+			refImpl: func(data string) string {
+				return strings.TrimRight(data, whiteSpace)
+			},
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		// first: check reference implementation
+		{
+			resultObs := ts.refImpl(ut.data)
+			if ut.expResult != resultObs {
+				t.Errorf("refImpl: trim %q; observed %q; expected: %q", ut.data, resultObs, ut.expResult)
+			}
+		}
+		// second: check the bytecode implementation
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
+		ctx.setData(dataPrefix)                  // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.Execute(ts.op); err != nil {
+			t.Error(err)
+		}
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+			resultObs := ut.data[obsOffset : obsOffset+obsLength]
+
+			if ut.expResult != resultObs {
+				t.Errorf("lane %v: trim %q; observed %q; expected: %q", i, ut.data, resultObs, ut.expResult)
+				return
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestTrimWhiteSpaceBF brute-force for: opTrimWsLeft, opTrimWsRight
+func TestTrimWhiteSpaceBF(t *testing.T) {
+	//FIXME: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
+	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
+
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data) -> string
+		refImpl func(string) string
+	}
+	testSuites := []testSuite{
+		{
+			name:         "trim whitespace from left (opTrimWsLeft)",
+			dataAlphabet: []rune{'a', '¢', '\t', '\n', '\v', '\f', '\r', ' '},
+			dataMaxlen:   5,
+			dataMaxSize:  -1, // -1 = exhaustive
+			op:           opTrimWsLeft,
+			refImpl: func(data string) string {
+				return strings.TrimLeft(data, whiteSpace)
+			},
+		},
+		{
+			name:         "trim whitespace from right (opTrimWsRight)",
+			dataAlphabet: []rune{'a', '¢', '\t', '\n', '\v', '\f', '\r', ' '},
+			dataMaxlen:   5,
+			dataMaxSize:  -1, // -1 = exhaustive
+			op:           opTrimWsRight,
+			refImpl: func(data string) string {
+				return strings.TrimRight(data, whiteSpace)
+			},
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace []string) {
+		for _, data := range dataSpace {
+			data16 := fill16(data)
+			expResult := ts.refImpl(data) // expected result
+
+			var ctx bctestContext
+			ctx.Taint()
+
+			dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
+			ctx.setData(dataPrefix)                  // prepend three bytes to data such that we can read backwards 4bytes at a time
+			ctx.addScalarStrings(data16, []byte{})
+			ctx.current = 0xFFFF
+			scalarBefore := ctx.getScalarUint32()
+
+			// when
+			if err := ctx.Execute(ts.op); err != nil {
+				t.Fatal(err)
+			}
+
+			// then
+			scalarAfter := ctx.getScalarUint32()
+			for i := 0; i < 16; i++ {
+				obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+				obsLength := int(scalarAfter[1][i])
+				resultObs := data[obsOffset : obsOffset+obsLength] // observed result
+
+				if expResult != resultObs {
+					t.Errorf("lane %v: trim %q: observed %q; expected: %q", i, data, resultObs, expResult)
+					return
+				}
+			}
+			ctx.Free()
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
 func TestBytecodeAbsInt(t *testing.T) {
 	// given
 	var ctx bctestContext
