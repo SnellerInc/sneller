@@ -25,6 +25,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
@@ -108,6 +109,9 @@ const (
 	hintBool
 	hintDateTime
 	hintUnixSeconds
+	hintUnixMilliSeconds
+	hintUnixMicroSeconds
+	hintUnixNanoSeconds
 
 	hintIgnore
 	hintNoIndex
@@ -268,6 +272,12 @@ func hintFromString(value string) (hints, error) {
 		return hintDateTime, nil
 	case "unix_seconds":
 		return hintUnixSeconds, nil
+	case "unix_milli_seconds":
+		return hintUnixMilliSeconds, nil
+	case "unix_micro_seconds":
+		return hintUnixMicroSeconds, nil
+	case "unix_nano_seconds":
+		return hintUnixNanoSeconds, nil
 	case "ignore":
 		return hintIgnore, nil
 	case "no_index":
@@ -582,6 +592,18 @@ func (s *state) coerceUnixSeconds() bool {
 	return s.hints.hints&hintUnixSeconds != 0
 }
 
+func (s *state) coerceUnixMilliSeconds() bool {
+	return s.hints.hints&hintUnixMilliSeconds != 0
+}
+
+func (s *state) coerceUnixMicroSeconds() bool {
+	return s.hints.hints&hintUnixMicroSeconds != 0
+}
+
+func (s *state) coerceUnixNanoSeconds() bool {
+	return s.hints.hints&hintUnixNanoSeconds != 0
+}
+
 func (s *state) Commit() error {
 	if len(s.stack) != 0 {
 		return fmt.Errorf("state.Commit inside object?")
@@ -636,6 +658,18 @@ func (s *state) parseInt(i int64) {
 		s.out.WriteString(v)
 	} else if s.coerceUnixSeconds() {
 		t := date.Unix(i, 0)
+		s.addTimeRange(t)
+		s.out.WriteTime(t)
+	} else if s.coerceUnixMilliSeconds() {
+		t := date.FromTime(time.UnixMilli(i))
+		s.addTimeRange(t)
+		s.out.WriteTime(t)
+	} else if s.coerceUnixMicroSeconds() {
+		t := date.UnixMicro(i)
+		s.addTimeRange(t)
+		s.out.WriteTime(t)
+	} else if s.coerceUnixNanoSeconds() {
+		t := date.Unix(i/1e9, i%1e9)
 		s.addTimeRange(t)
 		s.out.WriteTime(t)
 	} else {

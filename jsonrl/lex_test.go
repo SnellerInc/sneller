@@ -179,6 +179,21 @@ func TestParseWithHints(t *testing.T) {
 			expected: `{"value": "2021-10-12T15:58:05Z"}`,
 		},
 		{
+			input:    `{"value": 1634054285123}`,
+			hints:    `{"value": "unix_milli_seconds"}`,
+			expected: `{"value": "2021-10-12T15:58:05.123Z"}`,
+		},
+		{
+			input:    `{"value": 1634054285123456}`,
+			hints:    `{"value": "unix_micro_seconds"}`,
+			expected: `{"value": "2021-10-12T15:58:05.123456Z"}`,
+		},
+		{
+			input:    `{"value": 1634054285123456789}`,
+			hints:    `{"value": "unix_nano_seconds"}`,
+			expected: `{"value": "2021-10-12T15:58:05.123456Z"}`,
+		},
+		{
 			input:    `{"value": 1337}`,
 			hints:    `{"value": "string"}`,
 			expected: `{"value": "1337"}`,

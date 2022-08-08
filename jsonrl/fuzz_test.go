@@ -142,6 +142,18 @@ func FuzzConvertWithHints(f *testing.F) {
 			hints: `{"value": "unix_seconds"}`,
 		},
 		{
+			input: `{"value": 1634054285123}`,
+			hints: `{"value": "unix_milli_seconds"}`,
+		},
+		{
+			input: `{"value": 1634054285123456}`,
+			hints: `{"value": "unix_micro_seconds"}`,
+		},
+		{
+			input: `{"value": 1634054285123456789}`,
+			hints: `{"value": "unix_nano_seconds"}`,
+		},
+		{
 			input: `{"value": 1337}`,
 			hints: `{"value": "string"}`,
 		},
