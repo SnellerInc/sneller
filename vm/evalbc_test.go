@@ -2372,8 +2372,7 @@ func TestSplitPartUT(t *testing.T) {
 		// when
 		offsetDict := uint16(0)
 		offsetStackSlot := uint16(0)
-		err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot)
-		if err != nil {
+		if err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot); err != nil {
 			t.Fatal(err)
 		}
 
@@ -2464,8 +2463,7 @@ func TestSplitPartBF(t *testing.T) {
 				// when
 				offsetDict := uint16(0)
 				offsetStackSlot := uint16(0)
-				err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot)
-				if err != nil {
+				if err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot); err != nil {
 					t.Fatal(err)
 				}
 
@@ -2527,15 +2525,14 @@ func TestLengthStrUT(t *testing.T) {
 				t.Errorf("refImpl: length of %q; observed %v; expected: %v", ut.data, nCharsObs, ut.nChars)
 			}
 		}
-
+		// second: check the bytecode implementation
 		var ctx bctestContext
 		ctx.Taint()
 		ctx.addScalarStrings(fill16(ut.data), []byte{})
 		ctx.current = 0xFFFF
 
 		// when
-		err := ctx.Execute(opLengthStr)
-		if err != nil {
+		if err := ctx.Execute(opLengthStr); err != nil {
 			t.Fatal(err)
 		}
 
@@ -2604,8 +2601,7 @@ func TestLengthStrBF(t *testing.T) {
 			ctx.current = 0xFFFF
 
 			// when
-			err := ctx.Execute(opLengthStr)
-			if err != nil {
+			if err := ctx.Execute(opLengthStr); err != nil {
 				t.Fatal(err)
 			}
 
@@ -2625,6 +2621,223 @@ func TestLengthStrBF(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
+// TestTrimCharUT unit-tests for: bcTrim4charLeft, bcTrim4charRight
+func TestTrimCharUT(t *testing.T) {
+	type unitTest struct {
+		data      string // data at SI
+		cutset    string // characters to trim
+		expResult string // expected result in Z2:Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, cutset) -> result
+		refImpl func(string, string) string
+	}
+	testSuites := []testSuite{
+		{
+			name: "trim char from left (opTrim4charLeft)",
+			unitTests: []unitTest{
+				{"ae", "a", "e"},
+				//FIXME{"aaaaae", "a", "e"}, // only first 4 chars are trimmed, other chars remain due to typo in asm
+				{"aa", "a", ""},
+				//FIXME{"aaaaa", "a", ""},// only first 4 chars are trimmed, other chars remain due to typo in asm
+				{"ab", "ab", ""},
+				{"ba", "ab", ""},
+
+				{"a\ne", string([]rune{'a', '\n', 'c', 'd'}), "e"},
+				{"a\nc", string([]rune{'a', '\n', 'c', 'd'}), ""},
+				{"", string([]rune{'a', '\n', 'c', 'd'}), ""},
+
+				{"a¢€𐍈", "a", "¢€𐍈"},
+				//FIXME{"a", "a¢", ""}, //cutset with non-ascii not supported
+			},
+			op:      opTrim4charLeft,
+			refImpl: strings.TrimLeft,
+		},
+		{
+			name: "trim char from right (opTrim4charRight)",
+			unitTests: []unitTest{
+				{"ea", "abcd", "e"},
+				//FIXME{"eaaaaa", "a", "e"},
+				{"aa", "abcd", ""},
+				//FIXME{"aaaaa", "a", ""},
+				{"ab", "ab", ""},
+				{"ba", "ab", ""},
+
+				{"e\na", string([]rune{'a', '\n', 'c', 'd'}), "e"},
+				{"c\na", string([]rune{'a', '\n', 'c', 'd'}), ""},
+				{"", string([]rune{'a', '\n', 'c', 'd'}), ""},
+
+				{"¢€𐍈a", "a", "¢€𐍈"},
+				//FIXME{"a", "a¢", ""}, //cutset with non-ascii not supported
+			},
+			op:      opTrim4charRight,
+			refImpl: strings.TrimRight,
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		// first: check reference implementation
+		{
+			resultObs := ts.refImpl(ut.data, ut.cutset)
+			if ut.expResult != resultObs {
+				t.Errorf("refImpl: trim %q; cutset %q: observed %q; expected: %q", ut.data, ut.cutset, resultObs, ut.expResult)
+			}
+		}
+		// second: check the bytecode implementation
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
+		ctx.dict = append(ctx.dict[:0], fill4(ut.cutset))
+		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+			resultObs := ut.data[obsOffset : obsOffset+obsLength]
+
+			if ut.expResult != resultObs {
+				t.Errorf("lane %v: trim %q; cutset %q: observed %q; expected: %q", i, ut.data, ut.cutset, resultObs, ut.expResult)
+				return
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestTrimCharBF brute-force for: bcTrim4charLeft, bcTrim4charRight
+func TestTrimCharBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet, cutsetAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen, cutsetMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize, cutsetMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, cutset) -> string
+		refImpl func(string, string) string
+	}
+	testSuites := []testSuite{
+		{
+			name:           "trim char from left (opTrim4charLeft)",
+			dataAlphabet:   []rune{'a', 'b', '\n'},
+			dataMaxlen:     4,  //FIXME data length larger than 4 triggers a bug
+			dataMaxSize:    -1, // -1 = exhaustive
+			cutsetAlphabet: []rune{'a', 'b'},
+			cutsetMaxlen:   4,
+			cutsetMaxSize:  -1, // -1 = exhaustive
+			op:             opTrim4charLeft,
+			refImpl:        strings.TrimLeft,
+		},
+		{
+			name:           "trim char from left (opTrim4charLeft) UTF8",
+			dataAlphabet:   []rune{'a', '¢', '€', '𐍈', '\n', 0},
+			dataMaxlen:     4,
+			dataMaxSize:    -1,               // -1 = exhaustive
+			cutsetAlphabet: []rune{'a', 'b'}, //FIXME cutset can only be ASCII
+			cutsetMaxlen:   4,
+			cutsetMaxSize:  -1, // -1 = exhaustive
+			op:             opTrim4charLeft,
+			refImpl:        strings.TrimLeft,
+		},
+		{
+			name:           "trim char from right (opTrim4charRight)",
+			dataAlphabet:   []rune{'a', 'b', '\n'},
+			dataMaxlen:     4,  //FIXME data length larger than 4 triggers a bug
+			dataMaxSize:    -1, // -1 = exhaustive
+			cutsetAlphabet: []rune{'a', 'b'},
+			cutsetMaxlen:   4,
+			cutsetMaxSize:  -1, // -1 = exhaustive
+			op:             opTrim4charRight,
+			refImpl:        strings.TrimRight,
+		},
+		{
+			name:           "trim char from right (opTrim4charRight) UTF8",
+			dataAlphabet:   []rune{'a', '¢', '€', '𐍈', '\n', 0},
+			dataMaxlen:     4,
+			dataMaxSize:    -1,               // -1 = exhaustive
+			cutsetAlphabet: []rune{'a', 'b'}, //FIXME cutset can only be ASCII
+			cutsetMaxlen:   4,
+			cutsetMaxSize:  -1, // -1 = exhaustive
+			op:             opTrim4charRight,
+			refImpl:        strings.TrimRight,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace, cutsetSpace []string) {
+		for _, data := range dataSpace {
+			data16 := fill16(data)
+			for _, cutset := range cutsetSpace {
+				expResult := ts.refImpl(data, cutset) // expected result
+
+				var ctx bctestContext
+				ctx.Taint()
+
+				dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
+				ctx.dict = append(ctx.dict[:0], fill4(cutset))
+				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+				ctx.addScalarStrings(data16, []byte{})
+				ctx.current = 0xFFFF
+				scalarBefore := ctx.getScalarUint32()
+
+				// when
+				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+					t.Fatal(err)
+				}
+
+				// then
+				scalarAfter := ctx.getScalarUint32()
+				for i := 0; i < 16; i++ {
+					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+					obsLength := int(scalarAfter[1][i])
+					resultObs := data[obsOffset : obsOffset+obsLength] // observed result
+
+					if expResult != resultObs {
+						t.Errorf("lane %v: trim %q; cutset %q: observed %q; expected: %q", i, data, cutset, resultObs, expResult)
+						return
+					}
+				}
+				ctx.Free()
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			dataSpace := createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
+			cutsetSpace := createSpace(ts.cutsetMaxlen, ts.cutsetAlphabet, ts.cutsetMaxSize)
+			run(&ts, dataSpace, cutsetSpace)
 		})
 	}
 }
@@ -2985,6 +3198,29 @@ func fill16(msg string) (result []string) {
 		result[i] = msg
 	}
 	return
+}
+
+func fill4(cutset string) string {
+	switch len(cutset) {
+	case 0:
+		panic("cutset cannot be empty")
+	case 1:
+		r0 := []rune(cutset)[0]
+		return string([]rune{r0, r0, r0, r0})
+	case 2:
+		r0 := []rune(cutset)[0]
+		r1 := []rune(cutset)[1]
+		return string([]rune{r0, r1, r1, r1})
+	case 3:
+		r0 := []rune(cutset)[0]
+		r1 := []rune(cutset)[1]
+		r2 := []rune(cutset)[2]
+		return string([]rune{r0, r1, r2, r2})
+	case 4:
+		return cutset
+	default:
+		panic("cutset larger than 4 not supported")
+	}
 }
 
 func fault(obsLane, expLane bool, obsOffset, expOffset, obsLength, expLength int) bool {
