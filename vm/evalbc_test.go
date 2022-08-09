@@ -1703,6 +1703,204 @@ func FuzzRegexMatchCompile(f *testing.F) {
 	})
 }
 
+func referenceSubstr(input string, start, length int) string {
+	start-- // this method is called as 1-based indexed, the implementation is 0-based indexed
+	if start < 0 {
+		start = 0
+	}
+	if length < 0 {
+		length = 0
+	}
+	asRunes := []rune(input)
+	if start >= len(asRunes) {
+		return ""
+	}
+	if start+length > len(asRunes) {
+		length = len(asRunes) - start
+	}
+	return string(asRunes[start : start+length])
+}
+
+// TestSubstrUT unit-tests for: opSubstr
+func TestSubstrUT(t *testing.T) {
+	name := "substring (opSubstr)"
+
+	type unitTest struct {
+		data      string
+		begin     int
+		length    int
+		expResult string // expected result
+	}
+	unitTests := []unitTest{
+		//FIXME{"ba", 1, -1, ""}, // length smaller than 0 should be handled as 0
+		//FIXME{"ba", 0, 2, "ba"}, // begin smaller than 1 should be handled as 1
+		{"abbc", 2, 2, "bb"},
+		{"abc", 2, 1, "b"},
+		{"ab", 2, 1, "b"},
+		{"ba", 1, 0, ""},
+		{"ba", 1, 1, "b"},
+		{"ba", 1, 2, "ba"},
+		{"ba", 1, 3, "ba"},
+	}
+
+	run := func(ut unitTest) {
+		// first: check reference implementation
+		{
+			obsResult := referenceSubstr(ut.data, ut.begin, ut.length)
+			if obsResult != ut.expResult {
+				t.Errorf("refImpl: substring %q; begin=%v; length=%v; observed %v; expected %v",
+					ut.data, ut.begin, ut.length, obsResult, ut.expResult)
+			}
+		}
+
+		// second: check bytecode implementation
+		stackContent1 := make([]uint64, 16)
+		stackContent2 := make([]uint64, 16)
+		for i := 0; i < 16; i++ {
+			stackContent1[i] = uint64(ut.begin)
+			stackContent2[i] = uint64(ut.length)
+		}
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.setStackUint64(stackContent1)
+		ctx.addStackUint64(stackContent2)
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		offsetStackSlot1 := uint16(0)
+		offsetStackSlot2 := uint16(len(stackContent1) * 8)
+		err := ctx.Execute2Imm2(opSubstr, offsetStackSlot1, offsetStackSlot2)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+			obsResult := ut.data[obsOffset : obsOffset+obsLength]
+
+			if obsResult != ut.expResult {
+				t.Errorf("lane %v: substring %q; begin=%v; length=%v; observed %q; expected %q",
+					i, ut.data, ut.begin, ut.length, obsResult, ut.expResult)
+				return
+			}
+		}
+		ctx.Free()
+	}
+
+	t.Run(name, func(t *testing.T) {
+		for _, ut := range unitTests {
+			run(ut)
+		}
+	})
+}
+
+// TestSubstrBF brute-force tests for: opSubstr
+func TestSubstrBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace; -1 means exhaustive
+		dataMaxSize int
+		// space of possible begin positions
+		beginSpace []int
+		// space of possible lengths
+		lengthSpace []int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, begin, length) -> result
+		refImpl func(string, int, int) string
+	}
+	testSuites := []testSuite{
+		{
+			name:         "substring (opSubstr)",
+			dataAlphabet: []rune{'a', 'b', '\n', 0},
+			dataMaxlen:   6,
+			dataMaxSize:  -1,                // -1 = exhaustive
+			beginSpace:   []int{1, 2, 4, 5}, //FIXME begin smaller than 1 should be handled as 1
+			lengthSpace:  []int{0, 1, 3, 4}, //FIXME length smaller than 0 should be handled as 0
+			op:           opSubstr,
+			refImpl:      referenceSubstr,
+		},
+		{
+			name:         "substring (opSubstr) UTF8",
+			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
+			dataMaxlen:   5,
+			dataMaxSize:  -1, // -1 = exhaustive
+			beginSpace:   []int{1, 3, 4, 5},
+			lengthSpace:  []int{0, 1, 3, 4},
+			op:           opSubstr,
+			refImpl:      referenceSubstr,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace []string) {
+		//TODO make a generic space partitioner that can be reused by other BF tests
+		stackContent2 := make([]uint64, 16)
+		stackContent1 := make([]uint64, 16)
+		offsetStackSlot1 := uint16(0)
+		offsetStackSlot2 := uint16(len(stackContent1) * 8)
+
+		for _, data := range dataSpace {
+			data16 := fill16(data)
+			for _, length := range ts.lengthSpace {
+				for i := 0; i < 16; i++ {
+					stackContent2[i] = uint64(length)
+				}
+
+				for _, begin := range ts.beginSpace {
+					expResult := ts.refImpl(data, begin, length)
+
+					for i := 0; i < 16; i++ {
+						stackContent1[i] = uint64(begin)
+					}
+
+					var ctx bctestContext
+					ctx.Taint()
+					ctx.addScalarStrings(data16, []byte{})
+					ctx.setStackUint64(stackContent1)
+					ctx.addStackUint64(stackContent2)
+					ctx.current = 0xFFFF
+					scalarBefore := ctx.getScalarUint32()
+
+					// when
+					if err := ctx.Execute2Imm2(ts.op, offsetStackSlot1, offsetStackSlot2); err != nil {
+						t.Fatal(err)
+					}
+
+					// then
+					scalarAfter := ctx.getScalarUint32()
+					for i := 0; i < 16; i++ {
+						obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+						obsLength := int(scalarAfter[1][i])
+						obsResult := data[obsOffset : obsOffset+obsLength]
+
+						if obsResult != expResult {
+							t.Errorf("lane %v: substring %q; begin=%v; length=%v; observed %q; expected %q",
+								i, data, begin, length, obsResult, expResult)
+							return
+						}
+					}
+					ctx.Free()
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
 // TestIsSubnetOfBF runs brute-force tests for: opIsSubnetOfIP4
 func TestIsSubnetOfBF(t *testing.T) {
 

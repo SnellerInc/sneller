@@ -258,6 +258,10 @@ func (c *bctestContext) addStack(value []byte) {
 
 func (c *bctestContext) setStackUint64(values []uint64) {
 	c.stack = c.stack[:0]
+	c.addStackUint64(values)
+}
+
+func (c *bctestContext) addStackUint64(values []uint64) {
 	buf := make([]byte, 8)
 	for i := range values {
 		binary.LittleEndian.PutUint64(buf, values[i])
