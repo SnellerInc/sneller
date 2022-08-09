@@ -12299,56 +12299,49 @@ next:
 //; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
 //; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
 TEXT bcTrim4charLeft(SB), NOSPLIT|NOFRAME, $0
-//; #region load constants
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
-//; #region load 4chars
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;26BB22F5 Load ptr of string              ;R14=chars_ptr; R14=chars_slice;
   MOVL          (R14),R14                 //;B7C25D43 Load first 4 chars              ;R14=chars_ptr;
   VPBROADCASTB  R14, Z9                   //;96085025                                 ;Z9=c_char0; R14=chars_ptr;
-  SHRL          $8,  R14                  //;63D19F3B                                 ;R14=chars_ptr;
+  SHRL          $8,  R14                  //;63D19F3B chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z10                  //;FCEBCAA6                                 ;Z10=c_char1; R14=chars_ptr;
-  SHRL          $8,  R14                  //;E5627E10                                 ;R14=chars_ptr;
+  SHRL          $8,  R14                  //;E5627E10 chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z12                  //;66A9E2D3                                 ;Z12=c_char2; R14=chars_ptr;
-  SHRL          $8,  R14                  //;C5E83B19                                 ;R14=chars_ptr;
+  SHRL          $8,  R14                  //;C5E83B19 chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z13                  //;C18E3641                                 ;Z13=c_char3; R14=chars_ptr;
-//; #endregion load 4chars
-//; #endregion load constants
-
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 //; #region trim left/right 4char comparison
   VPCMPB        $0,  Z9,  Z8,  K3         //;D8545E6D K3 := (data_msg==c_char0); is char == char0;K3=tmp_mask; Z8=data_msg; Z9=c_char0; 0=Eq;
   VPCMPB        $0,  Z10, Z8,  K2         //;933CFC19 K2 := (data_msg==c_char1); is char == char1;K2=scratch2_mask; Z8=data_msg; Z10=c_char1; 0=Eq;
-  KORQ          K2,  K3,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  KORQ          K2,  K3,  K3              //;7B471502 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   VPCMPB        $0,  Z12, Z8,  K2         //;D206A939 K2 := (data_msg==c_char2); is char == char2;K2=scratch2_mask; Z8=data_msg; Z12=c_char2; 0=Eq;
-  KORQ          K2,  K3,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  KORQ          K2,  K3,  K3              //;FD738F32 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   VPCMPB        $0,  Z13, Z8,  K2         //;AB8B7AAA K2 := (data_msg==c_char3); is char == char3;K2=scratch2_mask; Z8=data_msg; Z13=c_char3; 0=Eq;
-  KORQ          K2,  K3,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  KORQ          K2,  K3,  K3              //;CDC8B5A9 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   KORTESTQ      K3,  K3                   //;A522D4C2 1 for every whitespace          ;K3=tmp_mask;
   JZ            next                      //;DC07C307 no matching chars found : no need to update string_start_position; jump if zero (ZF = 1);
 //; #endregion
 
-//; #region convert mask to selected byte count
+//; #region convert mask k3 to selected byte count zmm7
   VPMOVM2B      K3,  Z7                   //;B0C4D1C5 promote 64x bit to 64x byte     ;Z7=n_bytes_data; K3=tmp_mask;
   VPTERNLOGQ    $15, Z7,  Z7,  Z7         //;249B4036 negate                          ;Z7=n_bytes_data;
   VPSHUFB       Z22, Z7,  Z7              //;8CF1488E reverse byte order              ;Z7=n_bytes_data; Z22=constant_bswap32;
   VPLZCNTD      Z7,  K1,  Z7              //;90920F43 count leading zeros             ;Z7=n_bytes_data; K1=lane_active;
   VPSRLD        $3,  Z7,  K1,  Z7         //;68276EFE divide by 8 yields byte_count   ;Z7=n_bytes_data; K1=lane_active;
-  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_data; K1=lane_active; Z3=str_length;
+  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_data; K1=lane_active; Z3=str_len;
 //; #endregion zmm7 = #bytes
 
   VPADDD        Z7,  Z2,  K1,  Z2         //;40C40F7D str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
-//; select lanes that have([essential] remaining string length > 0)
-  VPCMPD        $2,  Z3,  Z11, K1,  K2    //;94B55922 K2 := K1 & (0<=str_length)      ;K2=scratch_mask1; K1=lane_active; Z11=constd_0; Z3=str_length; 2=LessEq;
-//; select lanes that have([optimization] number of trimmed chars = 4)
-  VPCMPD        $0,  Z20, Z8,  K2,  K2    //;D3BA3C05 K2 &= (data_msg==4)             ;K2=scratch_mask1; Z8=data_msg; Z20=constd_4; 0=Eq;
-  KTESTW        K2,  K2                   //;7CB2A200                                 ;K2=scratch_mask1;
-  JNZ           loop                      //;00000000 jump if not zero (ZF = 0)       ;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
+  VPCMPD        $2,  Z3,  Z11, K1,  K2    //;94B55922 K2 := K1 & (0<=str_len)         ;K2=scratch_mask1; K1=lane_active; Z11=0; Z3=str_len; 2=LessEq;
+  VPCMPD        $0,  Z20, Z7,  K2,  K2    //;D3BA3C05 K2 &= (n_bytes_data==4)         ;K2=scratch_mask1; Z7=n_bytes_data; Z20=4; 0=Eq;
+  KTESTW        K2,  K2                   //;7CB2A200 ZF := (K2==0); CF := 1          ;K2=scratch_mask1;
+  JNZ           loop                      //;7E49CD56 jump if not zero (ZF = 0)       ;
 
 next:
   NEXT()
@@ -12358,57 +12351,50 @@ next:
 //; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
 //; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
 TEXT bcTrim4charRight(SB), NOSPLIT|NOFRAME, $0
-//; #region load constants
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
-//; #region load 4chars
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;26BB22F5 Load ptr of string              ;R14=chars_ptr; R14=chars_slice;
   MOVL          (R14),R14                 //;B7C25D43 Load first 4 chars              ;R14=chars_ptr;
   VPBROADCASTB  R14, Z9                   //;96085025                                 ;Z9=c_char0; R14=chars_ptr;
-  SHRL          $8,  R14                  //;63D19F3B                                 ;R14=chars_ptr;
+  SHRL          $8,  R14                  //;63D19F3B chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z10                  //;FCEBCAA6                                 ;Z10=c_char1; R14=chars_ptr;
-  SHRL          $8,  R14                  //;E5627E10                                 ;R14=chars_ptr;
+  SHRL          $8,  R14                  //;E5627E10 chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z12                  //;66A9E2D3                                 ;Z12=c_char2; R14=chars_ptr;
-  SHRL          $8,  R14                  //;C5E83B19                                 ;R14=chars_ptr;
+  SHRL          $8,  R14                  //;C5E83B19 chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z13                  //;C18E3641                                 ;Z13=c_char3; R14=chars_ptr;
-//; #endregion load 4chars
-//; #endregion load constants
-
-  VPADDD        Z3,  Z2,  Z14             //;813A5F04 str_pos_end := str_start + str_length;Z14=str_pos_end; Z2=str_start; Z3=str_length;
-  VPSUBD        Z20, Z14, Z14             //;EAF06C41 str_pos_end -= 4                ;Z14=str_pos_end; Z20=constd_4;
+  VPADDD        Z3,  Z2,  Z14             //;813A5F04 str_end := str_start + str_len  ;Z14=str_end; Z2=str_start; Z3=str_len;
+  VPSUBD        Z20, Z14, Z14             //;EAF06C41 str_end -= 4                    ;Z14=str_end; Z20=4;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z14*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_pos_end;
+  VPGATHERDD    (SI)(Z14*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_end;
 //; #region trim left/right 4char comparison
   VPCMPB        $0,  Z9,  Z8,  K3         //;D8545E6D K3 := (data_msg==c_char0); is char == char0;K3=tmp_mask; Z8=data_msg; Z9=c_char0; 0=Eq;
   VPCMPB        $0,  Z10, Z8,  K2         //;933CFC19 K2 := (data_msg==c_char1); is char == char1;K2=scratch2_mask; Z8=data_msg; Z10=c_char1; 0=Eq;
-  KORQ          K2,  K3,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  KORQ          K2,  K3,  K3              //;7B471502 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   VPCMPB        $0,  Z12, Z8,  K2         //;D206A939 K2 := (data_msg==c_char2); is char == char2;K2=scratch2_mask; Z8=data_msg; Z12=c_char2; 0=Eq;
-  KORQ          K2,  K3,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  KORQ          K2,  K3,  K3              //;FD738F32 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   VPCMPB        $0,  Z13, Z8,  K2         //;AB8B7AAA K2 := (data_msg==c_char3); is char == char3;K2=scratch2_mask; Z8=data_msg; Z13=c_char3; 0=Eq;
-  KORQ          K2,  K3,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  KORQ          K2,  K3,  K3              //;CDC8B5A9 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   KORTESTQ      K3,  K3                   //;A522D4C2 1 for every whitespace          ;K3=tmp_mask;
   JZ            next                      //;DC07C307 no matching chars found : no need to update string_start_position; jump if zero (ZF = 1);
 //; #endregion
 
-//; #region convert mask to selected byte count
+//; #region convert mask k3 to selected byte count zmm7
   VPMOVM2B      K3,  Z7                   //;B0C4D1C5 promote 64x bit to 64x byte     ;Z7=n_bytes_data; K3=tmp_mask;
   VPTERNLOGQ    $15, Z7,  Z7,  Z7         //;249B4036 negate                          ;Z7=n_bytes_data;
   VPLZCNTD      Z7,  K1,  Z7              //;90920F43 count leading zeros             ;Z7=n_bytes_data; K1=lane_active;
   VPSRLD        $3,  Z7,  K1,  Z7         //;68276EFE divide by 8 yields byte_count   ;Z7=n_bytes_data; K1=lane_active;
-  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_data; K1=lane_active; Z3=str_length;
+  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_data; K1=lane_active; Z3=str_len;
 //; #endregion zmm7 = #bytes
 
-  VPSUBD        Z7,  Z14, K1,  Z14        //;40C40F7D str_pos_end -= n_bytes_data     ;Z14=str_pos_end; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
-//; select lanes that have([essential] remaining string length > 0)
-  VPCMPD        $2,  Z3,  Z11, K1,  K2    //;94B55922 K2 := K1 & (0<=str_length)      ;K2=scratch_mask1; K1=lane_active; Z11=constd_0; Z3=str_length; 2=LessEq;
-//; select lanes that have([optimization] number of trimmed chars = 4)
-  VPCMPD        $0,  Z20, Z8,  K2,  K2    //;D3BA3C05 K2 &= (data_msg==4)             ;K2=scratch_mask1; Z8=data_msg; Z20=constd_4; 0=Eq;
-  KTESTW        K2,  K2                   //;7CB2A200                                 ;K2=scratch_mask1;
-  JNZ           loop                      //;00000000 jump if not zero (ZF = 0)       ;
+  VPSUBD        Z7,  Z14, K1,  Z14        //;40C40F7D str_end -= n_bytes_data         ;Z14=str_end; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
+  VPCMPD        $2,  Z3,  Z11, K1,  K2    //;94B55922 K2 := K1 & (0<=str_len)         ;K2=scratch_mask1; K1=lane_active; Z11=0; Z3=str_len; 2=LessEq;
+  VPCMPD        $0,  Z20, Z7,  K2,  K2    //;D3BA3C05 K2 &= (n_bytes_data==4)         ;K2=scratch_mask1; Z7=n_bytes_data; Z20=4; 0=Eq;
+  KTESTW        K2,  K2                   //;7CB2A200 ZF := (K2==0); CF := 1          ;K2=scratch_mask1;
+  JNZ           loop                      //;7E49CD56 jump if not zero (ZF = 0)       ;
 
 next:
   NEXT()
