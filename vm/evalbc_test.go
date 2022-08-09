@@ -41,6 +41,9 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// exhaustive search space: all combinations are explored
+const exhaustive = -1
+
 // TestStringCompareUT unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareUT(t *testing.T) {
 	type unitTest struct {
@@ -203,7 +206,7 @@ func TestStringCompareBF(t *testing.T) {
 			name:         "compare string case-sensitive (opCmpStrEqCs)",
 			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'},
 			dataMaxlen:   4,
-			dataMaxSize:  -1,
+			dataMaxSize:  exhaustive,
 			compare:      func(x, y string) bool { return x == y },
 			op:           opCmpStrEqCs,
 			encode:       func(x string) string { return x },
@@ -221,7 +224,7 @@ func TestStringCompareBF(t *testing.T) {
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
 			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K'},
 			dataMaxlen:   4,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			compare:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
 			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
@@ -230,7 +233,7 @@ func TestStringCompareBF(t *testing.T) {
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci) 2",
 			dataAlphabet: []rune{'a', 'Ω', 'Ω'}, // U+2126 'Ω' (E2 84 A6 = 226 132 166) -> U+03A9 'Ω' (CE A9 = 207 137)
 			dataMaxlen:   4,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			compare:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
 			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
@@ -907,7 +910,7 @@ func TestRegexMatchBF1(t *testing.T) {
 			name:          "Regexp with UTF8",
 			dataAlphabet:  []rune{'a', 'b', 'c', 'Ω'}, // U+2126 'Ω' (3 bytes)
 			dataMaxlen:    4,
-			dataMaxSize:   -1, // negative means infinite
+			dataMaxSize:   exhaustive,
 			regexAlphabet: []rune{'a', 'b', '.', '*', '|', 'Ω'},
 			regexMaxlen:   5,
 			regexType:     regexp2.Regexp,
@@ -916,7 +919,7 @@ func TestRegexMatchBF1(t *testing.T) {
 			name:          "Regexp with NewLine",
 			dataAlphabet:  []rune{'a', 'b', 'c', 0x0A}, // 0x0A = newline
 			dataMaxlen:    4,
-			dataMaxSize:   -1, // negative means infinite
+			dataMaxSize:   exhaustive,
 			regexAlphabet: []rune{'a', 'b', '.', '*', '|', 0x0A},
 			regexMaxlen:   5,
 			regexType:     regexp2.Regexp,
@@ -925,7 +928,7 @@ func TestRegexMatchBF1(t *testing.T) {
 			name:          "SimilarTo with UTF8",
 			dataAlphabet:  []rune{'a', 'b', 'c', 'Ω'}, // U+2126 'Ω' (3 bytes)
 			dataMaxlen:    4,
-			dataMaxSize:   -1,                              // negative means infinite
+			dataMaxSize:   exhaustive,
 			regexAlphabet: []rune{'a', 'b', '_', '%', 'Ω'}, //FIXME exists an issue with '|': eg "|a"
 			regexMaxlen:   5,
 			regexType:     regexp2.SimilarTo,
@@ -934,7 +937,7 @@ func TestRegexMatchBF1(t *testing.T) {
 			name:          "SimilarTo with NewLine",
 			dataAlphabet:  []rune{'a', 'b', 'c', 0x0A}, // 0x0A = newline
 			dataMaxlen:    4,
-			dataMaxSize:   -1,                               // negative means infinite
+			dataMaxSize:   exhaustive,
 			regexAlphabet: []rune{'a', 'b', '_', '%', 0x0A}, //FIXME (=DfaLZ): for needle a regexGolang="(^(|a))$" yields false; regexSneller="(|a)$" yields true
 			regexMaxlen:   5,
 			regexType:     regexp2.SimilarTo,
@@ -978,7 +981,7 @@ func TestRegexMatchBF2(t *testing.T) {
 			regexType:    regexp2.Regexp,
 			dataAlphabet: []rune{'a', 'b', 'c', 'd', '\n', 'Ω'},
 			dataMaxlen:   6,
-			dataMaxSize:  -1, // negative means infinite
+			dataMaxSize:  exhaustive,
 			unitTests: []unitTest{
 				//automaton with flags
 				{expr: `a$`},
@@ -1016,7 +1019,7 @@ func TestRegexMatchBF2(t *testing.T) {
 			regexType:    regexp2.SimilarTo,
 			dataAlphabet: []rune{'a', 'b', 'c', 'd', '\n', 'Ω'},
 			dataMaxlen:   6,
-			dataMaxSize:  -1, // negative means infinite
+			dataMaxSize:  exhaustive,
 			unitTests: []unitTest{
 				{expr: `(aa|b*)`}, //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
 				{expr: `a*`},      //issue: In Tiny: pushing $ upstream makes the start-node accepting and optimizes outgoing edges away
@@ -1732,8 +1735,8 @@ func TestSubstrUT(t *testing.T) {
 		expResult string // expected result
 	}
 	unitTests := []unitTest{
-		//FIXME{"ba", 1, -1, ""}, // length smaller than 0 should be handled as 0
-		//FIXME{"ba", 0, 2, "ba"}, // begin smaller than 1 should be handled as 1
+		{"ba", 1, -1, ""},  // length smaller than 0 should be handled as 0
+		{"ba", 0, 2, "ba"}, // begin smaller than 1 should be handled as 1
 		{"abbc", 2, 2, "bb"},
 		{"abc", 2, 1, "b"},
 		{"ab", 2, 1, "b"},
@@ -1823,9 +1826,9 @@ func TestSubstrBF(t *testing.T) {
 			name:         "substring (opSubstr)",
 			dataAlphabet: []rune{'a', 'b', '\n', 0},
 			dataMaxlen:   6,
-			dataMaxSize:  -1,                // -1 = exhaustive
-			beginSpace:   []int{1, 2, 4, 5}, //FIXME begin smaller than 1 should be handled as 1
-			lengthSpace:  []int{0, 1, 3, 4}, //FIXME length smaller than 0 should be handled as 0
+			dataMaxSize:  exhaustive,
+			beginSpace:   []int{0, 1, 2, 4, 5},
+			lengthSpace:  []int{-1, 0, 1, 3, 4},
 			op:           opSubstr,
 			refImpl:      referenceSubstr,
 		},
@@ -1833,7 +1836,7 @@ func TestSubstrBF(t *testing.T) {
 			name:         "substring (opSubstr) UTF8",
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
 			dataMaxlen:   5,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			beginSpace:   []int{1, 3, 4, 5},
 			lengthSpace:  []int{0, 1, 3, 4},
 			op:           opSubstr,
@@ -2164,7 +2167,7 @@ func TestSkip1CharBF(t *testing.T) {
 			name:         "skip 1 char from left (opSkip1charLeft)",
 			dataAlphabet: []rune{'s', 'S', 'ſ', '\n', 0},
 			dataMaxlen:   6,
-			dataMaxSize:  -1,
+			dataMaxSize:  exhaustive,
 			op:           opSkip1charLeft,
 			refImpl:      referenceSkipCharLeft,
 		},
@@ -2172,7 +2175,7 @@ func TestSkip1CharBF(t *testing.T) {
 			name:         "skip 1 char from right (opSkip1charRight)",
 			dataAlphabet: []rune{'s', 'S', 'ſ', '\n', 0},
 			dataMaxlen:   6,
-			dataMaxSize:  -1,
+			dataMaxSize:  exhaustive,
 			op:           opSkip1charRight,
 			refImpl:      referenceSkipCharRight,
 		},
@@ -2382,7 +2385,7 @@ func TestSkipNCharBF(t *testing.T) {
 			name:           "skip N char from left (opSkipNcharLeft)",
 			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
 			dataMaxlen:     5,
-			dataMaxSize:    -1,
+			dataMaxSize:    exhaustive,
 			skipCountSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			op:             opSkipNcharLeft,
 			refImpl:        referenceSkipCharLeft,
@@ -2391,7 +2394,7 @@ func TestSkipNCharBF(t *testing.T) {
 			name:           "skip N char from right (opSkipNcharRight)",
 			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
 			dataMaxlen:     5,
-			dataMaxSize:    -1,
+			dataMaxSize:    exhaustive,
 			skipCountSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			op:             opSkipNcharRight,
 			refImpl:        referenceSkipCharRight,
@@ -2620,7 +2623,7 @@ func TestSplitPartBF(t *testing.T) {
 			name:         "split part (opSplitPart)",
 			dataAlphabet: []rune{'a', 'b', 0, ';'},
 			dataMaxlen:   7,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			idxSpace:     []int{0, 1, 2, 3, 4, 5},
 			delimiter:    ';',
 			op:           opSplitPart,
@@ -2630,7 +2633,7 @@ func TestSplitPartBF(t *testing.T) {
 			name:         "split part (opSplitPart) UTF8",
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', ';'},
 			dataMaxlen:   7,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			idxSpace:     []int{0, 1, 2, 3, 4, 5},
 			delimiter:    ';',
 			op:           opSplitPart,
@@ -2772,7 +2775,7 @@ func TestLengthStrBF(t *testing.T) {
 			name:         "length string (bcLengthStr)",
 			dataAlphabet: []rune{'a', 'b', '\n', 0},
 			dataMaxlen:   7,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			op:           opLengthStr,
 			refImpl:      utf8.RuneCountInString,
 		},
@@ -2780,7 +2783,7 @@ func TestLengthStrBF(t *testing.T) {
 			name:         "length string (bcLengthStr) UTF8",
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
 			dataMaxlen:   7,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			op:           opLengthStr,
 			refImpl:      utf8.RuneCountInString,
 		},
@@ -2845,9 +2848,9 @@ func TestTrimCharUT(t *testing.T) {
 			name: "trim char from left (opTrim4charLeft)",
 			unitTests: []unitTest{
 				{"ae", "a", "e"},
-				//FIXME{"aaaaae", "a", "e"}, // only first 4 chars are trimmed, other chars remain due to typo in asm
+				{"aaaaae", "a", "e"},
 				{"aa", "a", ""},
-				//FIXME{"aaaaa", "a", ""},// only first 4 chars are trimmed, other chars remain due to typo in asm
+				{"aaaaa", "a", ""},
 				{"ab", "ab", ""},
 				{"ba", "ab", ""},
 
@@ -2865,9 +2868,9 @@ func TestTrimCharUT(t *testing.T) {
 			name: "trim char from right (opTrim4charRight)",
 			unitTests: []unitTest{
 				{"ea", "abcd", "e"},
-				//FIXME{"eaaaaa", "a", "e"},
+				{"eaaaaa", "a", "e"},
 				{"aa", "abcd", ""},
-				//FIXME{"aaaaa", "a", ""},
+				{"aaaaa", "a", ""},
 				{"ab", "ab", ""},
 				{"ba", "ab", ""},
 
@@ -2950,11 +2953,11 @@ func TestTrimCharBF(t *testing.T) {
 		{
 			name:           "trim char from left (opTrim4charLeft)",
 			dataAlphabet:   []rune{'a', 'b', '\n'},
-			dataMaxlen:     4,  //FIXME data length larger than 4 triggers a bug
-			dataMaxSize:    -1, // -1 = exhaustive
+			dataMaxlen:     5,
+			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'},
 			cutsetMaxlen:   4,
-			cutsetMaxSize:  -1, // -1 = exhaustive
+			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charLeft,
 			refImpl:        strings.TrimLeft,
 		},
@@ -2962,21 +2965,21 @@ func TestTrimCharBF(t *testing.T) {
 			name:           "trim char from left (opTrim4charLeft) UTF8",
 			dataAlphabet:   []rune{'a', '¢', '€', '𐍈', '\n', 0},
 			dataMaxlen:     4,
-			dataMaxSize:    -1,               // -1 = exhaustive
+			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'}, //FIXME cutset can only be ASCII
 			cutsetMaxlen:   4,
-			cutsetMaxSize:  -1, // -1 = exhaustive
+			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charLeft,
 			refImpl:        strings.TrimLeft,
 		},
 		{
 			name:           "trim char from right (opTrim4charRight)",
 			dataAlphabet:   []rune{'a', 'b', '\n'},
-			dataMaxlen:     4,  //FIXME data length larger than 4 triggers a bug
-			dataMaxSize:    -1, // -1 = exhaustive
+			dataMaxlen:     5,
+			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'},
 			cutsetMaxlen:   4,
-			cutsetMaxSize:  -1, // -1 = exhaustive
+			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charRight,
 			refImpl:        strings.TrimRight,
 		},
@@ -2984,10 +2987,10 @@ func TestTrimCharBF(t *testing.T) {
 			name:           "trim char from right (opTrim4charRight) UTF8",
 			dataAlphabet:   []rune{'a', '¢', '€', '𐍈', '\n', 0},
 			dataMaxlen:     4,
-			dataMaxSize:    -1,               // -1 = exhaustive
+			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'}, //FIXME cutset can only be ASCII
 			cutsetMaxlen:   4,
-			cutsetMaxSize:  -1, // -1 = exhaustive
+			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charRight,
 			refImpl:        strings.TrimRight,
 		},
@@ -3165,7 +3168,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 			name:         "trim whitespace from left (opTrimWsLeft)",
 			dataAlphabet: []rune{'a', '¢', '\t', '\n', '\v', '\f', '\r', ' '},
 			dataMaxlen:   5,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			op:           opTrimWsLeft,
 			refImpl: func(data string) string {
 				return strings.TrimLeft(data, whiteSpace)
@@ -3175,7 +3178,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 			name:         "trim whitespace from right (opTrimWsRight)",
 			dataAlphabet: []rune{'a', '¢', '\t', '\n', '\v', '\f', '\r', ' '},
 			dataMaxlen:   5,
-			dataMaxSize:  -1, // -1 = exhaustive
+			dataMaxSize:  exhaustive,
 			op:           opTrimWsRight,
 			refImpl: func(data string) string {
 				return strings.TrimRight(data, whiteSpace)
@@ -3757,7 +3760,7 @@ func createSpace(maxLength int, alphabet []rune, maxSize int) []string {
 		return maps.Keys(set)
 	}
 
-	if maxSize == -1 {
+	if maxSize == exhaustive {
 		return createSpaceExhaustive(maxLength, alphabet)
 	}
 	return createSpaceRandom(maxLength, alphabet, maxSize)
