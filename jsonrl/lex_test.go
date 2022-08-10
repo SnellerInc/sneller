@@ -155,6 +155,11 @@ func TestParseWithHints(t *testing.T) {
 		},
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
+			hints:    `{}`,
+			expected: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3, "exp": 3.18e-09, "exp2": 31}`,
+		},
+		{
+			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
 			hints:    `{"*": "ignore"}`,
 			expected: `{}`,
 		},

@@ -825,7 +825,7 @@ func (s *state) beginRecord() {
 
 func (s *state) endRecord() {
 	ignore := s.shouldIgnore()
-	if s.hints.level == 0 && s.hints.next.isRecursiveWildcard && s.hints.hints&hintIgnore != 0 && s.hints.current.hints&hintIgnore == 0 {
+	if s.hints.level == 0 && s.hints.next != nil && s.hints.next.isRecursiveWildcard && s.hints.hints&hintIgnore != 0 && s.hints.current.hints&hintIgnore == 0 {
 		ignore = false
 	}
 	s.hints.leave()
