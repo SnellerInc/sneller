@@ -19,16 +19,14 @@ import (
 	"flag"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
-	_ "net/http/pprof"
-
 	"github.com/SnellerInc/sneller/auth"
+	"github.com/SnellerInc/sneller/debug"
 	"github.com/SnellerInc/sneller/tenant"
 )
 
@@ -47,16 +45,7 @@ func runDaemon(args []string) {
 
 	// if -debug=fd is provided, make /debug/pprof/* available
 	if fd := *debugSock; fd >= 0 {
-		f := os.NewFile(uintptr(fd), "debug_sock")
-		l, err := net.FileListener(f)
-		f.Close()
-		if err != nil {
-			logger.Printf("warning: unable to bind to debug socket fd=%d: %s", fd, err)
-		} else {
-			go func() {
-				logger.Println(http.Serve(l, nil))
-			}()
-		}
+		debug.Fd(fd, logger)
 	}
 
 	exe, err := os.Readlink("/proc/self/exe")
