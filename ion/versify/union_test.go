@@ -62,7 +62,6 @@ func testFile(t *testing.T, p, descr string) {
 	for i := range descparts {
 		if i >= len(res.fields) {
 			t.Fatalf("missing field %d", i)
-			break
 		}
 		got := fmt.Sprintf("%s: %s", res.fields[i], res.values[i])
 		if got != descparts[i] {
