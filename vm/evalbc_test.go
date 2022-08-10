@@ -189,7 +189,7 @@ func TestStringCompareBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// portable comparison function
 		compare func(string, string) bool
@@ -1810,7 +1810,7 @@ func TestSubstrBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// space of possible begin positions
 		beginSpace []int
@@ -2155,7 +2155,7 @@ func TestSkip1CharBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// bytecode to run
 		op bcop
@@ -2370,7 +2370,7 @@ func TestSkipNCharBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// space of skip counts
 		skipCountSpace []int
@@ -2607,7 +2607,7 @@ func TestSplitPartBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// space of field indexes
 		idxSpace []int
@@ -2763,7 +2763,7 @@ func TestLengthStrBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// bytecode to run
 		op bcop
@@ -2822,6 +2822,375 @@ func TestLengthStrBF(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
+		})
+	}
+}
+
+// hasPrefixCI tests whether the string s begins with prefix equal under case-folding.
+func hasPrefixCI(s, prefix string) bool {
+	sRunes := []rune(s)
+	prefixLength := utf8.RuneCountInString(prefix)
+	if prefixLength > len(sRunes) {
+		return false
+	}
+	return strings.EqualFold(string(sRunes[:prefixLength]), prefix)
+}
+
+// trimPrefixCI returns s without the provided leading prefix string equal under case-folding.
+// If s doesn't start with prefix, s is returned unchanged.
+func trimPrefixCI(s, prefix string) string {
+	if hasPrefixCI(s, prefix) {
+		sRunes := []rune(s)
+		return string(sRunes[utf8.RuneCountInString(prefix):])
+	}
+	return s
+}
+
+// hasSuffixCI tests whether the string s ends with suffix equal under case-folding.
+func hasSuffixCI(s, suffix string) bool {
+	sRunes := []rune(s)
+	sLength := len(sRunes)
+	suffixLength := utf8.RuneCountInString(suffix)
+	if suffixLength > sLength {
+		return false
+	}
+	return strings.EqualFold(string(sRunes[sLength-suffixLength:]), suffix)
+}
+
+// trimSuffixCI returns s without the provided trailing suffix string equal under case-folding.
+// If s doesn't end with suffix, s is returned unchanged.
+func trimSuffixCI(s, suffix string) string {
+	if hasSuffixCI(s, suffix) {
+		sRunes := []rune(s)
+		return string(sRunes[:len(sRunes)-utf8.RuneCountInString(suffix)])
+	}
+	return s
+}
+
+// TestTrimPrefixSuffixUT unit-tests for: bcTrimPrefixCs, bcTrimPrefixCi, bcTrimSuffixCs, bcTrimSuffixCi
+// (NOTE trimming prefix/suffix for UTF8 does not exist)
+func TestTrimPrefixSuffixUT(t *testing.T) {
+	type unitTest struct {
+		data      string // data at SI
+		needle    string // prefix/suffix to trim
+		expResult string // expected result in Z2:Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, needle) -> expResult
+		refImpl func(string, string) string
+	}
+
+	// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
+	// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
+	// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
+
+	testSuites := []testSuite{
+		{
+			name: "trim prefix case-sensitive (opTrimPrefixCs)",
+			unitTests: []unitTest{
+				{"ab", "a", "b"},
+				{"ab", "b", "ab"},
+				{"ab", "c", "ab"},
+				{"ab", "", "ab"},
+				{"a", "a", ""},
+				{"a", "b", "a"},
+				{"a", "a", ""},
+				{"", "a", ""},
+				{"", "", ""},
+
+				{"aſ", "a", "ſ"},
+				{"aſ", "ſ", "aſ"},
+				{"ſa", "a", "ſa"},
+				{"ſa", "ſ", "a"},
+
+				//FIXME{"aaaa", "aaaa", ""}, // prefix of length 4 fails to trim
+				{"aaaaa", "aaaaa", ""},
+			},
+			op:      opTrimPrefixCs,
+			refImpl: strings.TrimPrefix,
+		},
+		{
+			name: "trim prefix case-insensitive (opTrimPrefixCi)",
+			unitTests: []unitTest{
+				{"ab", "A", "b"},
+				{"aB", "a", "B"},
+				{"ab", "", "ab"},
+				{"a", "A", ""},
+				{"a", "b", "a"},
+				{"", "a", ""},
+				{"", "", ""},
+
+				/* //FIXME UTF8 is not supported
+				{"ſa", "ſ", "a"},
+				{"ſa", "S", "a"},
+				{"ſa", "s", "a"},
+				{"ſa", "x", "aſ"},
+				{"aſ", "a", "ſa"},
+				{"aſ", "ſ", "ſ"},
+				*/
+			},
+			op:      opTrimPrefixCi,
+			refImpl: trimPrefixCI,
+		},
+		{
+			name: "trim suffix case-sensitive (opTrimSuffixCs)",
+			unitTests: []unitTest{
+				{"ab", "a", "ab"},
+				{"ab", "b", "a"},
+				{"ab", "c", "ab"},
+				{"ab", "", "ab"},
+				{"a", "a", ""},
+				{"a", "b", "a"},
+				{"a", "a", ""},
+				{"", "a", ""},
+				{"", "", ""},
+
+				{"aſ", "a", "aſ"},
+				{"aſ", "ſ", "a"},
+				{"ſa", "a", "ſ"},
+				{"ſa", "ſ", "ſa"},
+			},
+			op:      opTrimSuffixCs,
+			refImpl: strings.TrimSuffix,
+		},
+		{
+			name: "trim suffix case-insensitive (opTrimSuffixCi)",
+			unitTests: []unitTest{
+				{"ab", "B", "a"},
+				{"aB", "b", "a"},
+				{"ab", "", "ab"},
+				{"a", "A", ""},
+				{"a", "b", "a"},
+				{"", "a", ""},
+				{"", "", ""},
+
+				/* //FIXME UTF8 is not supported
+				{"aſ", "ſ", "a"},
+				{"aſ", "S", "a"},
+				{"aſ", "s", "a"},
+				{"aſ", "x", "aſ"},
+				{"ſa", "a", "ſ"},
+				{"ſa", "ſ", "ſa"},
+				*/
+			},
+			op:      opTrimSuffixCi,
+			refImpl: trimSuffixCI,
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		enc := ""
+		//NOTE: the case-insensitive bytecode (opTrimPrefixCi, opTrimSuffixCi) expect that the needle is uppercase
+		if (ts.op == opTrimPrefixCi) || (ts.op == opTrimSuffixCi) {
+			enc = strings.ToUpper(ut.needle)
+		} else {
+			enc = ut.needle
+		}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		ctx.dict = append(ctx.dict[:0], pad(enc))
+		ctx.addScalarStrings(fill16(ut.data), []byte{})
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+			resultObs := ut.data[obsOffset : obsOffset+obsLength]
+
+			if ut.expResult != resultObs {
+				t.Errorf("lane %v: trim from data %q; needle %q: observed %q; expected: %q",
+					i, ut.data, ut.needle, resultObs, ut.expResult)
+				return
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestTrimPrefixSuffixBF brute-force tests for: bcTrimPrefixCs, bcTrimPrefixCi, bcTrimSuffixCs, bcTrimSuffixCi
+// (NOTE bcTrimPrefixCi for UTF8 does not exist)
+func TestTrimPrefixSuffixBF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet, needleAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen, needleMaxlen int
+		// maximum number of elements in dataSpace
+		dataMaxSize, needleMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, needle) -> expResult
+		refImpl func(string, string) string
+	}
+	testSuites := []testSuite{
+		{
+			name:           "trim prefix case-sensitive (opTrimPrefixCs)",
+			dataAlphabet:   []rune{'a', 'b', '\n'},
+			dataMaxlen:     5,
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 'b'},
+			needleMaxlen:   3, //FIXME prefix of length 4 fails to trim
+			needleMaxSize:  exhaustive,
+			op:             opTrimPrefixCs,
+			refImpl:        strings.TrimPrefix,
+		},
+		/* //FIXME needle with UTF8 is not recognized
+		{
+			name:          "trim prefix case-sensitive (opTrimPrefixCs) UTF8",
+			dataAlphabet:  []rune{'s', 'S', 'ſ'},
+			dataMaxlen:    5,
+			dataMaxSize:   exhaustive,
+			needleAlphabet: []rune{'s', 'S', 'ſ'},
+			needleMaxlen:   5,
+			needleMaxSize:  exhaustive,
+			op:            opTrimPrefixCs,
+			refImpl:       strings.TrimPrefix,
+		}, */
+		{
+			name:           "trim prefix case-insensitive (opTrimPrefixCi)",
+			dataAlphabet:   []rune{'a', 's', 'S'},
+			dataMaxlen:     5,
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 's', 'S'},
+			needleMaxlen:   3, //FIXME prefix of length 4 fails to trim
+			needleMaxSize:  exhaustive,
+			op:             opTrimPrefixCi,
+			refImpl:        trimPrefixCI,
+		},
+		/* //FIXME needle with UTF8 is not recognized
+		{
+			name:          "trim prefix case-insensitive (opTrimPrefixCi) UTF8",
+			dataAlphabet:  []rune{'a', 's', 'S', 'ſ'},
+			dataMaxlen:    5,
+			dataMaxSize:   exhaustive,
+			needleAlphabet: []rune{'a', 's', 'S', 'ſ'},
+			needleMaxlen:   5,
+			needleMaxSize:  exhaustive,
+			op:            opTrimPrefixCi,
+			refImpl:       refTrimPrefixCI,
+		}, */
+		{
+			name:           "trim suffix case-sensitive (opTrimSuffixCs)",
+			dataAlphabet:   []rune{'a', 'b', '\n'},
+			dataMaxlen:     5,
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 'b'},
+			needleMaxlen:   5,
+			needleMaxSize:  exhaustive,
+			op:             opTrimSuffixCs,
+			refImpl:        strings.TrimSuffix,
+		},
+		/* //FIXME needle with UTF8 is not recognized
+		{
+			name:          "trim suffix case-sensitive (opTrimSuffixCs) UTF8",
+			dataAlphabet:  []rune{'a', 'ſ', '\n'},
+			dataMaxlen:    5,
+			dataMaxSize:   exhaustive,
+			needleAlphabet: []rune{'a', 'ſ'},
+			needleMaxlen:   5,
+			needleMaxSize:  exhaustive,
+			op:            opTrimSuffixCs,
+			refImpl:       strings.TrimSuffix,
+		}, */
+		{
+			name:           "trim suffix case-insensitive (opTrimSuffixCi)",
+			dataAlphabet:   []rune{'a', 's', 'S'},
+			dataMaxlen:     5,
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 's', 'S'},
+			needleMaxlen:   5,
+			needleMaxSize:  exhaustive,
+			op:             opTrimSuffixCi,
+			refImpl:        trimSuffixCI,
+		},
+		/* //FIXME needle with UTF8 is not recognized
+		{
+			name:          "trim suffix case-insensitive (opTrimSuffixCi) UTF8",
+			dataAlphabet:  []rune{'a', 's', 'S', 'ſ'},
+			dataMaxlen:    5,
+			dataMaxSize:   exhaustive,
+			needleAlphabet: []rune{'a', 's', 'S', 'ſ'},
+			needleMaxlen:   5,
+			needleMaxSize:  exhaustive,
+			op:            opTrimSuffixCi,
+			refImpl:       refTrimSuffixCI,
+		}, */
+	}
+
+	run := func(ts *testSuite, dataSpace, needleSpace []string) {
+		for _, data := range dataSpace {
+			data16 := fill16(data)
+			for _, needle := range needleSpace {
+				expResult := ts.refImpl(data, needle) // expected result
+
+				enc := ""
+				//NOTE: the case-insensitive bytecode (opTrimPrefixCi, opTrimSuffixCi) expect that the needle is uppercase
+				if (ts.op == opTrimPrefixCi) || (ts.op == opTrimSuffixCi) {
+					enc = strings.ToUpper(needle)
+				} else {
+					enc = needle
+				}
+
+				var ctx bctestContext
+				ctx.Taint()
+
+				ctx.dict = append(ctx.dict[:0], enc)
+				ctx.addScalarStrings(data16, []byte{})
+				ctx.current = 0xFFFF
+				scalarBefore := ctx.getScalarUint32()
+
+				// when
+				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+					t.Fatal(err)
+				}
+
+				// then
+				scalarAfter := ctx.getScalarUint32()
+				for i := 0; i < 16; i++ {
+					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+					obsLength := int(scalarAfter[1][i])
+					resultObs := data[obsOffset : obsOffset+obsLength] // observed result
+
+					if expResult != resultObs {
+						t.Errorf("lane %v: trim from data %q; needle %q: observed %q; expected: %q",
+							i, data, needle, resultObs, expResult)
+						return
+					}
+				}
+				ctx.Free()
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			dataSpace := createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize)
+			cutsetSpace := createSpace(ts.needleMaxlen, ts.needleAlphabet, ts.needleMaxSize)
+			run(&ts, dataSpace, cutsetSpace)
 		})
 	}
 }
@@ -2942,7 +3311,7 @@ func TestTrimCharBF(t *testing.T) {
 		dataAlphabet, cutsetAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen, cutsetMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize, cutsetMaxSize int
 		// bytecode to run
 		op bcop
@@ -3156,7 +3525,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 		dataAlphabet []rune
 		// max length of the words made of alphabet
 		dataMaxlen int
-		// maximum number of elements in dataSpace; -1 means exhaustive
+		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// bytecode to run
 		op bcop
@@ -3707,7 +4076,7 @@ func runRegexTests(t *testing.T, dataSpace, regexSpace []string, regexType regex
 	}
 }
 
-//next updates x to the successor; return true/false whether the x is valid
+// next updates x to the successor; return true/false whether the x is valid
 func next(x *[]byte, max, length int) bool {
 	for i := 0; i < length; i++ {
 		(*x)[i]++                // increment the current byte i
