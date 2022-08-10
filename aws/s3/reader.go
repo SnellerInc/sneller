@@ -43,6 +43,10 @@ var DefaultClient = http.Client{
 		// per host is about 100 total connections.
 		// (Note that the default here is 2!)
 		MaxIdleConnsPerHost: 5,
+		// Don't set Accept-Encoding: gzip
+		// because it leads to the go client natively
+		// decompressing gzipped objects.
+		DisableCompression: true,
 	},
 }
 
