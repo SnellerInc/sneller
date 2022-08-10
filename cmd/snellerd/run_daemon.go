@@ -53,7 +53,9 @@ func runDaemon(args []string) {
 		if err != nil {
 			logger.Printf("warning: unable to bind to debug socket fd=%d: %s", fd, err)
 		} else {
-			go logger.Println(http.Serve(l, nil))
+			go func() {
+				logger.Println(http.Serve(l, nil))
+			}()
 		}
 	}
 
