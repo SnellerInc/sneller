@@ -27,8 +27,9 @@ import (
 	"path"
 	"strings"
 
-	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
+
+	"golang.org/x/exp/slices"
 )
 
 // IndexPath returns the path
@@ -63,28 +64,27 @@ func strpart(p string, num int) (string, bool) {
 	return p[:s], true
 }
 
+// ListComponents performs a glob match on s
+// for the given pattern and then yields a deduplicated
+// list of path components corresponding to the given
+// 0-indexed part number.
+//
+// For example, part 1 of "/foo/*/baz" would yield
+// all of the components that matched "*".
 func ListComponent(s fs.FS, pattern string, part int) ([]string, error) {
-	seen := make(map[string]struct{})
-	walk := func(p string, f fs.File, err error) error {
-		if err != nil {
-			return err
-		}
-		f.Close()
-		str, ok := strpart(p, part)
-		if ok {
-			seen[str] = struct{}{}
-		}
-		return nil
-	}
-	err := fsutil.WalkGlob(s, "", pattern, walk)
+	var out []string
+	all, err := fs.Glob(s, pattern)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(seen))
-	for k := range seen {
-		out = append(out, k)
+	for i := range all {
+		str, ok := strpart(all[i], part)
+		if ok {
+			out = append(out, str)
+		}
 	}
-	return out, nil
+	slices.Sort(out)
+	return slices.Compact(out), nil
 }
 
 // List returns the list of databases
