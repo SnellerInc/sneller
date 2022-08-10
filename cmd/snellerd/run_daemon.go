@@ -19,10 +19,14 @@ import (
 	"flag"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
+
+	_ "net/http/pprof"
 
 	"github.com/SnellerInc/sneller/auth"
 	"github.com/SnellerInc/sneller/tenant"
@@ -34,8 +38,23 @@ func runDaemon(args []string) {
 	daemonEndpoint := daemonCmd.String("e", "127.0.0.1:8000", "endpoint to listen on (REST API)")
 	remoteEndpoint := daemonCmd.String("r", "127.0.0.1:9000", "endpoint to listen on for remote requests (inter-node)")
 	peerExec := daemonCmd.String("x", "", "command to exec for fetching peers")
+	debugSock := daemonCmd.Int("debug", -1, "file descriptor to listen on for pprof debug activity")
+
 	if daemonCmd.Parse(args) != nil {
 		os.Exit(1)
+	}
+	logger := log.New(os.Stderr, "", log.Lshortfile)
+
+	// if -debug=fd is provided, make /debug/pprof/* available
+	if fd := *debugSock; fd >= 0 {
+		f := os.NewFile(uintptr(fd), "debug_sock")
+		l, err := net.FileListener(f)
+		f.Close()
+		if err != nil {
+			logger.Printf("warning: unable to bind to debug socket fd=%d: %s", fd, err)
+		} else {
+			go logger.Println(http.Serve(l, nil))
+		}
 	}
 
 	exe, err := os.Readlink("/proc/self/exe")
@@ -44,7 +63,7 @@ func runDaemon(args []string) {
 	}
 
 	server := &server{
-		logger:    log.New(os.Stderr, "", log.Lshortfile),
+		logger:    logger,
 		sandbox:   tenant.CanSandbox(),
 		tenantcmd: []string{exe, "worker"},
 		peers:     noPeers{},
@@ -97,7 +116,7 @@ func runDaemon(args []string) {
 
 	// We'll accept graceful shutdowns when quit via SIGINT (Ctrl+C)
 	// SIGKILL, SIGQUIT or SIGTERM (Ctrl+/) will not be caught
-	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	// Block until we receive our signal
 	<-c
