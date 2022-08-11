@@ -531,6 +531,9 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 		case "input-size":
 			isize, _, err = ion.ReadInt(field)
 		case "inputs":
+			// set this so Index objects can be
+			// compared directly:
+			idx.Inputs.root.isInner = true
 			if opts&FlagSkipInputs == 0 {
 				err = idx.readInputs(&st, field, isize, idx.Algo)
 			}

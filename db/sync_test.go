@@ -108,7 +108,11 @@ func (n *noOutputFS) Create(path string) (blockfmt.Uploader, error) {
 }
 
 func contains(t *testing.T, idx *blockfmt.Index, path string) bool {
-	ret, err := idx.Inputs.Contains(path)
+	ret := false
+	err := idx.Inputs.Walk(path, func(p, etag string, id int) bool {
+		ret = p == path
+		return false
+	})
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)

@@ -17,6 +17,7 @@ package blockfmt
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"sync"
 	"testing"
@@ -24,49 +25,95 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+func checkLevel(t *testing.T, fs UploadFS, f *level, load, dirtyok bool) {
+	// dirty-ness is transitive: a dirty child means
+	// that all its parent tree nodes must also be dirty
+	if f.isDirty && !dirtyok {
+		t.Error("dirty level with !dirty parent")
+	}
+	if f.isInner {
+		checkInner(t, fs, f, load, dirtyok)
+	} else {
+		checkLeaf(t, f)
+	}
+}
+
 func checkTree(t *testing.T, f *FileTree, load bool) {
-	for i := range f.toplevel {
-		if f.toplevel[i].contents == nil {
-			if f.dirty[i] {
-				t.Errorf("toplevel[%d] dirty but no contents", i)
+	checkLevel(t, f.Backing, &f.root, load, f.root.isDirty)
+	if t.Failed() {
+		t.FailNow()
+	}
+}
+
+func checkInner(t *testing.T, fs UploadFS, f *level, load, dirtyok bool) {
+	last := f.last
+	var prev []byte
+	for i := range f.levels {
+		if i < len(f.levels)-1 && bytes.Compare(f.levels[i].last, last) >= 0 {
+			t.Errorf("inner[%d] last = %s; outer last = %s", i, f.levels[i].last, last)
+		}
+		if i == len(f.levels)-1 && !bytes.Equal(f.levels[i].last, last) {
+			t.Errorf("inner last = %s, outer last = %s", f.levels[i].last, last)
+		}
+		if bytes.Compare(f.levels[i].last, prev) <= 0 {
+			t.Errorf("inner[%d] = %s, inner[%d-1] = %s", i, f.levels[i].last, i-1, prev)
+		}
+		prev = f.levels[i].last
+		if f.levels[i].levels == nil &&
+			f.levels[i].contents == nil {
+			// an empty entry is only legal if it
+			// has been stored somewhere
+			if f.levels[i].path == nil {
+				t.Errorf("inner[%d] dirty but no contents %s %s (inner: %v)", i, f.levels[i].path, f.levels[i].last, f.levels[i].isInner)
 			}
 			if !load {
 				continue
 			}
-			err := f.load(&f.toplevel[i])
+			err := f.levels[i].load(fs)
 			if err != nil {
 				t.Fatal(err)
 			}
-		} else {
-			if !f.dirty[i] && len(f.toplevel[i].path) == 0 {
-				t.Errorf("entry %d not dirty, has contents, but no filesystem path?", i)
-			}
 		}
-		// assert top-level is ordered
-		if bytes.Compare(f.toplevel[i].first(), f.toplevel[i].last) > 0 {
-			t.Errorf("first %q > last %q", f.toplevel[i].first(), f.toplevel[i].last)
+		checkLevel(t, fs, &f.levels[i], load, dirtyok && f.isDirty)
+	}
+}
+
+func checkLeaf(t *testing.T, f *level) {
+	// assert top-level is ordered
+	if bytes.Compare(f.first(), f.last) > 0 {
+		t.Errorf("first %q > last %q", f.first(), f.last)
+	}
+	// assert contents are ordered
+	for j := range f.contents {
+		ent := &f.contents[j]
+		if j == 0 && !bytes.Equal(ent.path, f.first()) {
+			t.Errorf("list %d entry 0 path %q != first %q", j, ent.path, f.first())
 		}
-		if i > 0 && bytes.Compare(f.toplevel[i-1].last, f.toplevel[i].first()) >= 0 {
-			t.Errorf("last %q [%d] >= first %q [%d]", f.toplevel[i-1].last, i-1, f.toplevel[i].first(), i)
+		if j == len(f.contents)-1 && !bytes.Equal(ent.path, f.last) {
+			t.Errorf("entry %d %q != %q", j, ent.path, f.last)
 		}
-		// assert contents are ordered
-		for j := range f.toplevel[i].contents {
-			ent := &f.toplevel[i].contents[j]
-			if j == 0 && !bytes.Equal(ent.path, f.toplevel[i].first()) {
-				t.Errorf("list %d entry 0 path %q != first %q", i, ent.path, f.toplevel[i].first())
-			}
-			if j == len(f.toplevel[i].contents)-1 && !bytes.Equal(ent.path, f.toplevel[i].last) {
-				t.Errorf("entry %d %q != %q", j, ent.path, f.toplevel[i].last)
-			}
-			if j > 0 && bytes.Compare(ent.path, f.toplevel[i].contents[j-1].path) <= 0 {
-				t.Errorf("table %d entry %d out-of-order", i, j)
-			}
+		if j > 0 && bytes.Compare(ent.path, f.contents[j-1].path) <= 0 {
+			t.Errorf("table %d entry %d out-of-order", j-1, j)
 		}
 	}
 }
 
+// adjust splitlevel for testing
+func lowsplit(t *testing.T, fanout int) {
+	old := splitlevel
+	splitlevel = fanout
+	t.Cleanup(func() {
+		splitlevel = old
+	})
+}
+
 func TestFiletreeInsert(t *testing.T) {
-	const inserts = 30000
+
+	// do super lower fan-out to cover
+	// the splitting logic
+	lowsplit(t, 16)
+
+	const inserts = 5000
 	triple := func() (string, string, int) {
 		n := rand.Intn(inserts / 2) // 50% likelihood of collision
 		name := fmt.Sprintf("data/random-name-%d", n)
@@ -83,6 +130,7 @@ func TestFiletreeInsert(t *testing.T) {
 	f := FileTree{
 		Backing: dir,
 	}
+	f.Reset()
 
 	nextpath := 0
 	var synclock sync.Mutex
@@ -142,6 +190,9 @@ func TestFiletreeInsert(t *testing.T) {
 			continue
 		}
 		if ret {
+			if !f.root.isDirty {
+				t.Fatalf("root !dirty after insert (appended=%d)", appended)
+			}
 			appended++
 			_, ok := sofar[path]
 			if ok {
@@ -159,15 +210,55 @@ func TestFiletreeInsert(t *testing.T) {
 			}
 		}
 	}
-	for i := range f.toplevel {
-		t.Logf("final level %d: %d", i, len(f.toplevel[i].contents))
-	}
 	checkTree(t, &f, true)
 	t.Logf("resyncs: %d", resyncs)
 	t.Logf("%d appended, %d overwritten", appended, overwritten)
+
+	err := f.Walk("", func(p, etag string, id int) bool {
+		sf, ok := sofar[p]
+		if !ok {
+			t.Errorf("didn't find path %s", p)
+			return false
+		}
+		if sf.etag != etag {
+			t.Errorf("bad etag %s for path %s", etag, p)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// test for garbage; the state of f should
+	// precisely match the set of files that
+	// are currently in the tempdir
+	live, err := fs.Glob(dir, "orig/out-file-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect := make(map[string]struct{})
+	for _, l := range live {
+		expect[l] = struct{}{}
+	}
+	startExpect := len(expect)
+	err = f.EachFile(func(file string) {
+		_, ok := expect[file]
+		if !ok {
+			t.Fatalf("unexpected garbage file %s", file)
+		}
+		delete(expect, file)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expect) != 0 {
+		t.Errorf("%d files of %d not accounted for by EachFile", len(expect), startExpect)
+	}
 }
 
 func TestFiletreeOverwrite(t *testing.T) {
+	lowsplit(t, 16)
 	dir := NewDirFS(t.TempDir())
 	f := FileTree{
 		Backing: dir,
@@ -192,7 +283,7 @@ func TestFiletreeOverwrite(t *testing.T) {
 	if !ret {
 		t.Fatal("expected new insert")
 	}
-	if !f.dirty[0] {
+	if f.root.levels[0].path != nil {
 		t.Fatal("entry[0] not dirty")
 	}
 	// success -> failure should be allowed for matching etag
@@ -203,7 +294,7 @@ func TestFiletreeOverwrite(t *testing.T) {
 	if !ret {
 		t.Fatal("expected new insert")
 	}
-	if !f.dirty[0] {
+	if f.root.levels[0].path != nil {
 		t.Fatal("entry[0] not dirty")
 	}
 
@@ -212,7 +303,7 @@ func TestFiletreeOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	// force reload
-	f.toplevel[0].contents = nil
+	f.root.levels[0].contents = nil
 
 	// failure -> success should be disallowed
 	// if the etag has not changed
@@ -238,7 +329,7 @@ func TestFiletreeOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.toplevel[0].contents = nil
+	f.root.levels[0].contents = nil
 
 	// ordinary re-insert
 	ret, err = f.Append("foo/bar", "etag:foo/bar2", 1)

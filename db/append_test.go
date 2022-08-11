@@ -356,10 +356,7 @@ func TestAppendBadScan(t *testing.T) {
 		t.Errorf("got idx1.Objects() = %d", idx.Objects())
 	}
 	idx.Inputs.Backing = dfs
-	ok, err := idx.Inputs.Contains("file://a-prefix/bad.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	ok := contains(t, idx, "file://a-prefix/bad.json")
 	if !ok {
 		t.Error("inputs doesn't contain bad.json?")
 	}
@@ -400,10 +397,7 @@ func TestAppendBadScan(t *testing.T) {
 		t.Errorf("got idx.Objects() = %d", idx.Objects())
 	}
 	idx.Inputs.Backing = dfs
-	ok, err = idx.Inputs.Contains("file://a-prefix/good1.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	ok = contains(t, idx, "file://a-prefix/good1.json")
 	if !ok {
 		t.Error("doesn't contain file://a-prefix/good1.json?")
 	}
