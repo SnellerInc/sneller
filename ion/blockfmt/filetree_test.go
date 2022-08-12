@@ -16,6 +16,7 @@ package blockfmt
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -341,4 +342,63 @@ func TestFiletreeOverwrite(t *testing.T) {
 	}
 
 	checkTree(t, &f, true)
+}
+
+func BenchmarkFiletree(b *testing.B) {
+	sizes := []int{
+		5000,
+		10000,
+		500000,
+	}
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("insert-ordered-%d", size), func(b *testing.B) {
+			var path, etag [8]byte
+			var f FileTree
+			b.ReportAllocs()
+			reset := 0
+			f.Reset()
+			for i := 0; i < b.N; i++ {
+				if reset == size {
+					f.Reset()
+					reset = 0
+				}
+				// big-endian ints will be sorted by path:
+				binary.BigEndian.PutUint64(path[:], uint64(i))
+				copy(etag[:], path[:])
+				ret, err := f.Append(string(path[:]), string(etag[:]), 0)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if !ret {
+					b.Fatalf("failed to insert entry %d", i)
+				}
+				reset++
+			}
+		})
+		b.Run(fmt.Sprintf("insert-%d", size), func(b *testing.B) {
+			var path, etag [8]byte
+			var f FileTree
+			b.ReportAllocs()
+			reset := 0
+			f.Reset()
+			for i := 0; i < b.N; i++ {
+				if reset == size {
+					f.Reset()
+					reset = 0
+				}
+				// little-endian ints will be out-of-order
+				// when sorted as bytes
+				binary.LittleEndian.PutUint64(path[:], uint64(i))
+				copy(etag[:], path[:])
+				ret, err := f.Append(string(path[:]), string(etag[:]), 0)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if !ret {
+					b.Fatalf("failed to insert entry %d", i)
+				}
+				reset++
+			}
+		})
+	}
 }

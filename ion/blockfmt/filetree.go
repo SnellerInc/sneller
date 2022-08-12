@@ -318,8 +318,7 @@ func (f *level) compressInner(tmp *ion.Buffer, st *ion.Symtab) []byte {
 	tmp.Reset()
 	f.encodeInner(tmp, st, true)
 	c := compr.Compression("zstd")
-	ret := c.Compress(tmp.Bytes(), nil)
-	return ret
+	return c.Compress(tmp.Bytes(), nil)
 }
 
 func (f *level) compressLeaf(tmp *ion.Buffer, st *ion.Symtab) []byte {
