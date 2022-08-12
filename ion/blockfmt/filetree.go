@@ -28,20 +28,17 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// last-level contents
+// fentry is the last-level leaf contents
+// (typically a few thousand of these):
 type fentry struct {
-	// path and etag are the raw
-	// filepath and ETag of the input
-	path, etag []byte
+	// path is parent.raw[ppos:epos]
+	// etag is parent.raw[epos:endpos]
+	ppos, epos, endpos int
 	// desc is the output file that
 	// ended up containing this input,
 	// or a negative number if the entry
 	// has failed insertion
 	desc int
-}
-
-func (f *fentry) equalp(p string) bool {
-	return bytes.Equal(f.path, []byte(p))
 }
 
 // failed returns true if this insert
@@ -66,12 +63,17 @@ type level struct {
 	path, etag []byte
 
 	// last is the last path of all children of this node (recursively);
-	// if this is a leaf node then it is contents[len(contents)-1].last
+	// if this is a leaf node then it is contents[len(contents)-1].path
 	last []byte
 
 	// contents is loaded lazily;
 	// these are present if this is a leaf level
 	contents []fentry
+	// raw holds the etags and paths within contents;
+	// it is not guaranteed to be sorted w.r.t contents
+	// (this just makes it explicit where the aliased memory lives)
+	// see also: level.compact()
+	raw []byte
 
 	// inner is loaded lazily;
 	// these are present if this is an inner level
@@ -83,18 +85,56 @@ type level struct {
 	isDirty bool
 }
 
+func (f *level) equalp(e *fentry, p string) bool {
+	return bytes.Equal(f.entryPath(e), []byte(p))
+}
+
+func (f *level) entryPath(e *fentry) []byte {
+	return f.raw[e.ppos:e.epos]
+}
+
+func (f *level) entryETag(e *fentry) []byte {
+	return f.raw[e.epos:e.endpos]
+}
+
+func (f *level) set(e *fentry, path, etag string, id int) {
+	e.ppos = len(f.raw)
+	f.raw = append(f.raw, path...)
+	e.epos = len(f.raw)
+	f.raw = append(f.raw, etag...)
+	e.endpos = len(f.raw)
+	e.desc = id
+}
+
+// re-write f.raw for all of f.contents
+// to only include the current entries (in sorted order)
+func (f *level) compact() {
+	var out []byte
+	for i := range f.contents {
+		c := &f.contents[i]
+		p := f.entryPath(c)
+		e := f.entryETag(c)
+		c.ppos = len(out)
+		out = append(out, p...)
+		c.epos = len(out)
+		out = append(out, e...)
+		c.endpos = len(out)
+	}
+	f.raw = out
+}
+
 func (f *level) search(p string) int {
 	if f.contents == nil {
 		panic("level.search on non-leaf")
 	}
 	return sort.Search(len(f.contents), func(i int) bool {
-		return bytes.Compare(f.contents[i].path, []byte(p)) >= 0
+		return bytes.Compare(f.entryPath(&f.contents[i]), []byte(p)) >= 0
 	})
 }
 
 func (f *level) first() []byte {
 	if len(f.contents) != 0 {
-		return f.contents[0].path
+		return f.entryPath(&f.contents[0])
 	}
 	return nil
 }
@@ -120,49 +160,54 @@ func (f *level) appendLeaf(p, etag string, id int) (bool, error) {
 	i := f.search(p)
 	if i < len(f.contents) {
 		ent := &f.contents[i]
-		if ent.equalp(p) {
-			if id < 0 && !ent.failed() && string(ent.etag) == etag {
+		if f.equalp(ent, p) {
+			ematch := string(f.entryETag(ent)) == etag
+			if id < 0 && !ent.failed() && ematch {
 				// allowed to turn OK -> failing
 				ent.desc = id
 				return true, nil
-			} else if ent.failed() && string(ent.etag) != etag {
+			} else if ent.failed() && !ematch {
 				// allowed to modify ETag for failing entries
-				ent.desc = id
-				ent.etag = []byte(etag)
+				f.set(ent, p, etag, id)
 				return true, nil
 			}
 			var err error
-			if string(ent.etag) != etag {
+			if !ematch {
 				err = ErrETagChanged
 			}
 			return false, err
 		}
 		f.contents = append(f.contents, fentry{})
 		copy(f.contents[i+1:], f.contents[i:])
-		f.contents[i].path = []byte(p)
-		f.contents[i].etag = []byte(etag)
-		f.contents[i].desc = id
+		f.set(&f.contents[i], p, etag, id)
 		return true, nil
 	}
 	// this is the largest item
-	key := []byte(p)
-	f.contents = append(f.contents, fentry{
-		path: key,
-		etag: []byte(etag),
-		desc: id,
-	})
-	f.last = key
+	f.contents = append(f.contents, fentry{})
+	c := &f.contents[len(f.contents)-1]
+	f.set(c, p, etag, id)
+	f.last = f.entryPath(c)
 	return true, nil
 }
 
+// FileTree is a B+-tree that holds a list of (path, etag, id)
+// triples in sorted order by path.
 type FileTree struct {
-	root    level
+	// root is always an inner node with its levels
+	// stored "inline" in the FileTree
+	//
+	// unlike other inner node in a B+ tree,
+	// the root inner node may not always be at least half full
+	root level
+
+	// Backing is the backing store for the tree.
+	// Backing must be set to perform tree operations.
 	Backing UploadFS
 }
 
 // this is adjusted in testing
 //
-// trees are only guaranteed to
+// tree levels are only guaranteed to
 // be half full, so worst-case capacity is:
 // 2500 * 2500 = 6.25 million files in the second level
 // 2500 cubed  = 15.625 billion files in the third level
@@ -191,9 +236,8 @@ func (f *level) load(fs UploadFS) error {
 	if etag != string(f.etag) {
 		return fmt.Errorf("FileTree.load: etag mismatch for path %s (%s versus %s)", p, etag, string(f.etag))
 	}
-	// TODO: src aliases buf, so if
-	// we know when the FileTree is dropped,
-	// we could recycle this buffer
+	// NOTE: we keep this buffer around
+	// in the nodes themselves
 	buf := make([]byte, info.Size())
 	_, err = io.ReadFull(file, buf)
 	if err != nil {
@@ -210,17 +254,32 @@ func (f *level) unmarshalLeaf(st *ion.Symtab, in []byte) error {
 		return fmt.Errorf("unexpected ion type %s", ion.TypeOf(in))
 	}
 	f.isInner = false
+
+	// subtle: we can re-use this buffer
+	// because the data we stash is strictly
+	// smaller than the original ion input
+	f.raw = in[:0]
 	err := unpackList(in, func(item []byte) error {
 		f.contents = append(f.contents, fentry{})
 		fe := &f.contents[len(f.contents)-1]
 		return unpackStruct(st, item, func(name string, field []byte) error {
 			var err error
 			var id int64
+			var contents []byte
 			switch name {
 			case "path":
-				fe.path, _, err = ion.ReadStringShared(field)
+				contents, _, err = ion.ReadStringShared(field)
+				if err == nil {
+					fe.ppos = len(f.raw)
+					f.raw = append(f.raw, contents...)
+				}
 			case "etag":
-				fe.etag, _, err = ion.ReadStringShared(field)
+				contents, _, err = ion.ReadStringShared(field)
+				if err == nil {
+					fe.epos = len(f.raw)
+					f.raw = append(f.raw, contents...)
+					fe.endpos = len(f.raw)
+				}
 			case "desc":
 				id, _, err = ion.ReadInt(field)
 				if err == nil {
@@ -273,18 +332,20 @@ func (f *level) compressLeaf(tmp *ion.Buffer, st *ion.Symtab) []byte {
 	st.Reset()
 	tmp.Reset()
 	pathsym := st.Intern("path")
-	etag := st.Intern("etag")
+	etagsym := st.Intern("etag")
 	desc := st.Intern("desc")
 	st.Marshal(tmp, true)
 	tmp.BeginList(-1)
 	for i := range f.contents {
 		tmp.BeginStruct(-1)
 		tmp.BeginField(pathsym)
-		tmp.BeginString(len(f.contents[i].path))
-		tmp.UnsafeAppend(f.contents[i].path)
-		tmp.BeginField(etag)
-		tmp.BeginString(len(f.contents[i].etag))
-		tmp.UnsafeAppend(f.contents[i].etag)
+		path := f.entryPath(&f.contents[i])
+		tmp.BeginString(len(path))
+		tmp.UnsafeAppend(path)
+		tmp.BeginField(etagsym)
+		etag := f.entryETag(&f.contents[i])
+		tmp.BeginString(len(etag))
+		tmp.UnsafeAppend(etag)
 		tmp.BeginField(desc)
 		tmp.WriteInt(int64(f.contents[i].desc))
 		tmp.EndStruct()
@@ -385,12 +446,11 @@ func (f *level) split() {
 	if !f.isInner {
 		panic("level.split() on non-inner level")
 	}
-	l := len(f.levels)
-	lower, upper := f.levels[:l/2], f.levels[l/2:]
+	lower, upper := safeSplit(f.levels)
 	f.isDirty = true
 	f.levels = []level{
 		level{
-			levels:  slices.Clip(lower),
+			levels:  lower,
 			last:    lower[len(lower)-1].last,
 			isDirty: true,
 			isInner: true,
@@ -416,6 +476,14 @@ func (f *level) checkSplit(parent *level, pos int) {
 	}
 }
 
+// split x into two pieces, taking care
+// to limit the capacity of the lower half
+// so that appends do not clobber the upper half
+func safeSplit[T any](x []T) ([]T, []T) {
+	l := len(x)
+	return slices.Clip(x[:l/2]), x[l/2:]
+}
+
 func (f *level) splitInner(parent *level, pos int) {
 	if !parent.isInner {
 		panic("level.splitInner: !parent.isInner")
@@ -424,14 +492,10 @@ func (f *level) splitInner(parent *level, pos int) {
 		panic("level.splitInner: invalid argument")
 	}
 
-	l := len(f.levels)
-	lower := f.levels[:l/2]
-	upper := f.levels[l/2:]
-
 	// cut f in half:
-	f.levels = slices.Clip(lower)
+	lower, upper := safeSplit(f.levels)
+	f.levels = lower
 	f.last = lower[len(lower)-1].last
-	// should already be dirty, but just in case:
 	f.isDirty = true
 
 	// push a new level to parent
@@ -471,24 +535,28 @@ func (f *level) splitLeaf(parent *level, pos int) {
 	if f != &parent.levels[pos] {
 		panic("level.splitLeaf: bad argument")
 	}
-
-	l := len(f.contents)
-	lower := f.contents[:l/2]
-	upper := f.contents[l/2:]
+	raw := f.raw
 
 	// update existing entry to use just
 	// half of its current contents
-	f.contents = slices.Clip(lower)
-	f.last = lower[len(lower)-1].path
+	lower, upper := safeSplit(f.contents)
+	f.contents = lower
+	// make a smaller copy of f.raw
+	f.compact()
+	f.last = f.entryPath(&lower[len(lower)-1])
 	f.isDirty = true
 
+	newlvl := level{
+		contents: upper,
+		raw:      raw,
+		isDirty:  true,
+	}
+	// make a smaller copy of f.raw
+	newlvl.compact()
+	newlvl.last = newlvl.entryPath(&upper[len(upper)-1])
 	// push a new entry into the parent
 	// just past the position of the lower half
-	parent.insertAt(pos+1, level{
-		last:     upper[len(upper)-1].path,
-		contents: upper,
-		isDirty:  true,
-	})
+	parent.insertAt(pos+1, newlvl)
 }
 
 func (f *level) appendInner(fs UploadFS, path, etag string, id int) (bool, error) {
@@ -499,17 +567,16 @@ func (f *level) appendInner(fs UploadFS, path, etag string, id int) (bool, error
 	})
 	if i == len(f.levels) {
 		if len(f.levels) == 0 {
-			key := []byte(path)
-			f.levels = append(f.levels, level{
-				last: key,
-				contents: []fentry{{
-					path: key,
-					etag: []byte(etag),
-					desc: id,
-				}},
-				isDirty: true,
-			})
-			f.last = key
+			// create new leaf
+			l := level{isDirty: true}
+			l.contents = append(l.contents, fentry{})
+			c := &l.contents[len(l.contents)-1]
+			l.set(c, path, etag, id)
+			l.last = l.entryPath(c)
+
+			// update parent
+			f.levels = append(f.levels, l)
+			f.last = l.last
 			f.isDirty = true
 			return true, nil
 		}
@@ -613,6 +680,9 @@ func (f *level) encodeInner(dst *ion.Buffer, st *ion.Symtab, inline bool) {
 	dst.EndList()
 }
 
+// unmarshalInner unmarshals an inner node's contents
+//
+// NOTE: f.levels[i].{path,etag,last} will alias in!
 func (f *level) unmarshalInner(st *ion.Symtab, in []byte, root bool) error {
 	if f.contents != nil {
 		panic("level.unmarshalInner on leaf")
@@ -690,11 +760,17 @@ func (f *level) eachFile(fs UploadFS, fn func(filename string)) error {
 	return nil
 }
 
-// for an inner node, drop inner entry i
-// (which itself may be another inner entry or a leaf)
-func (f *level) drop(i int) {
-	if !f.isInner && !f.isDirty {
-		f.levels[i].contents = nil
+// drop drops the lazily-loaded contents
+// of a tree node, but only if it is a leaf
+// and it is not dirty
+func (f *level) drop() {
+	// since f.last usually aliases f.raw,
+	// we can only cause f.raw to be GC'd if
+	// we produce a fresh copy:
+	f.last = slices.Clone(f.last)
+	if !f.isDirty && !f.isInner {
+		f.contents = nil
+		f.raw = nil
 	}
 }
 
@@ -712,8 +788,8 @@ type walkFunc func(name, etag string, id int) bool
 
 func (f *level) walkLeaf(start string, walk walkFunc) (error, bool) {
 	for j := f.search(start); j < len(f.contents); j++ {
-		name := string(f.contents[j].path)
-		etag := string(f.contents[j].etag)
+		name := string(f.entryPath(&f.contents[j]))
+		etag := string(f.entryETag(&f.contents[j]))
 		id := f.contents[j].desc
 		if !walk(name, etag, id) {
 			return nil, false
@@ -746,9 +822,7 @@ func (f *level) walkInner(fs UploadFS, start string, walk walkFunc) (error, bool
 			return err, false
 		}
 		err, cont = f.levels[i].walk(fs, start, walk)
-		// limit memory usage by droping
-		// leaf nodes as we scan
-		f.drop(i)
+		f.levels[i].drop()
 		if err != nil || !cont {
 			return err, cont
 		}

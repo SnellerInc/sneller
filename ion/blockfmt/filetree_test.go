@@ -86,13 +86,13 @@ func checkLeaf(t *testing.T, f *level) {
 	// assert contents are ordered
 	for j := range f.contents {
 		ent := &f.contents[j]
-		if j == 0 && !bytes.Equal(ent.path, f.first()) {
-			t.Errorf("list %d entry 0 path %q != first %q", j, ent.path, f.first())
+		if j == 0 && !bytes.Equal(f.entryPath(ent), f.first()) {
+			t.Errorf("list %d entry 0 path %q != first %q", j, f.entryPath(ent), f.first())
 		}
-		if j == len(f.contents)-1 && !bytes.Equal(ent.path, f.last) {
-			t.Errorf("entry %d %q != %q", j, ent.path, f.last)
+		if j == len(f.contents)-1 && !bytes.Equal(f.entryPath(ent), f.last) {
+			t.Errorf("entry %d %q != %q", j, f.entryPath(ent), f.last)
 		}
-		if j > 0 && bytes.Compare(ent.path, f.contents[j-1].path) <= 0 {
+		if j > 0 && bytes.Compare(f.entryPath(ent), f.entryPath(&f.contents[j-1])) <= 0 {
 			t.Errorf("table %d entry %d out-of-order", j-1, j)
 		}
 	}
@@ -152,7 +152,7 @@ func TestFiletreeInsert(t *testing.T) {
 	var appended, overwritten int
 	var resyncs int
 	for i := 0; i < inserts; i++ {
-		if i%1000 == 123 {
+		if i%500 == 123 {
 			checkTree(t, &f, false)
 			resyncs++
 			// evict everything
