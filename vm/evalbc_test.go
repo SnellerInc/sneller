@@ -2909,7 +2909,7 @@ func TestTrimPrefixSuffixUT(t *testing.T) {
 				{"ſa", "a", "ſa"},
 				{"ſa", "ſ", "a"},
 
-				//FIXME{"aaaa", "aaaa", ""}, // prefix of length 4 fails to trim
+				{"aaaa", "aaaa", ""},
 				{"aaaaa", "aaaaa", ""},
 			},
 			op:      opTrimPrefixCs,
@@ -3045,6 +3045,8 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 		op bcop
 		// portable reference implementation: f(data, needle) -> expResult
 		refImpl func(string, string) string
+		// encoder for needle -> dictionary value
+		encode func(needle string) string
 	}
 	testSuites := []testSuite{
 		{
@@ -3053,10 +3055,11 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			dataMaxlen:     5,
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
-			needleMaxlen:   3, //FIXME prefix of length 4 fails to trim
+			needleMaxlen:   5,
 			needleMaxSize:  exhaustive,
 			op:             opTrimPrefixCs,
 			refImpl:        strings.TrimPrefix,
+			encode:         func(needle string) string { return needle },
 		},
 		/* //FIXME needle with UTF8 is not recognized
 		{
@@ -3069,6 +3072,7 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:            opTrimPrefixCs,
 			refImpl:       strings.TrimPrefix,
+			encode:        func(needle string) string { return needle },
 		}, */
 		{
 			name:           "trim prefix case-insensitive (opTrimPrefixCi)",
@@ -3076,10 +3080,11 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			dataMaxlen:     5,
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 's', 'S'},
-			needleMaxlen:   3, //FIXME prefix of length 4 fails to trim
+			needleMaxlen:   5,
 			needleMaxSize:  exhaustive,
 			op:             opTrimPrefixCi,
 			refImpl:        trimPrefixCI,
+			encode:         stringext.NormalizeString,
 		},
 		/* //FIXME needle with UTF8 is not recognized
 		{
@@ -3092,6 +3097,7 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:            opTrimPrefixCi,
 			refImpl:       refTrimPrefixCI,
+			encode:         stringext.NormalizeString,
 		}, */
 		{
 			name:           "trim suffix case-sensitive (opTrimSuffixCs)",
@@ -3103,6 +3109,7 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opTrimSuffixCs,
 			refImpl:        strings.TrimSuffix,
+			encode:         func(needle string) string { return needle },
 		},
 		/* //FIXME needle with UTF8 is not recognized
 		{
@@ -3115,6 +3122,7 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:            opTrimSuffixCs,
 			refImpl:       strings.TrimSuffix,
+			encode:         func(needle string) string { return needle },
 		}, */
 		{
 			name:           "trim suffix case-insensitive (opTrimSuffixCi)",
@@ -3126,6 +3134,7 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opTrimSuffixCi,
 			refImpl:        trimSuffixCI,
+			encode:         stringext.NormalizeString,
 		},
 		/* //FIXME needle with UTF8 is not recognized
 		{
@@ -3138,6 +3147,7 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:            opTrimSuffixCi,
 			refImpl:       refTrimSuffixCI,
+			encode:         stringext.NormalizeString,
 		}, */
 	}
 
@@ -3147,18 +3157,9 @@ func TestTrimPrefixSuffixBF(t *testing.T) {
 			for _, needle := range needleSpace {
 				expResult := ts.refImpl(data, needle) // expected result
 
-				enc := ""
-				//NOTE: the case-insensitive bytecode (opTrimPrefixCi, opTrimSuffixCi) expect that the needle is uppercase
-				if (ts.op == opTrimPrefixCi) || (ts.op == opTrimSuffixCi) {
-					enc = strings.ToUpper(needle)
-				} else {
-					enc = needle
-				}
-
 				var ctx bctestContext
 				ctx.Taint()
-
-				ctx.dict = append(ctx.dict[:0], enc)
+				ctx.dict = append(ctx.dict[:0], ts.encode(needle))
 				ctx.addScalarStrings(data16, []byte{})
 				ctx.current = 0xFFFF
 				scalarBefore := ctx.getScalarUint32()
