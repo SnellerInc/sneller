@@ -402,12 +402,6 @@ two supported values (a number and a timestamp) are present
 on either side of the comparison, but the result is still
 `MISSING` because there isn't a good way to compare those two values.
 
-For ordering timestamp values, we have a built-in function
-called `BEFORE()` that returns whether its arguments are
-strictly ordered in time with respect to one another.
-In other words, `BEFORE(a, b)` returns `TRUE` if `a` is before `b`,
-and `FALSE` otherwise (or `MISSING` if one of the arguments isn't a timestamp).
-
 For aggregating timestamp values, we have the built-in
 aggregation operations `EARLIEST` and `LATEST`, which
 perform the equivalent of `MIN` and `MAX` operations
@@ -1177,15 +1171,6 @@ The expression `TIME_BUCKET(time, interval)` is mathematically equivalent to
 
 A typical use of `TIME_BUCKET` is to produce a
 bucket value for use in a `GROUP BY` clause.
-
-#### `BEFORE`
-
-`BEFORE(x, ...)` accepts one or more expressions
-that evaluate to timestamps and returns `TRUE` if
-the expressions yield times that are ordered.
-If the arguments to `BEFORE` are out-of-order, then
-it returns `FALSE`. If one or more of the arguments
-are not timestamps, then it returns `MISSING`.
 
 #### `TO_UNIX_EPOCH`
 

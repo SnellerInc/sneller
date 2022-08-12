@@ -14,6 +14,12 @@
 
 #define BC_CONSTANT_H_DEFINED
 
+// Globals Affecting BC Instructions Flow
+// --------------------------------------
+
+// Number of lanes to trigger scalar loop instead of vector loop consisting of GATHERs.
+#define BC_SCALAR_PROCESSING_LANE_COUNT 6
+
 // Constants Machinery
 // -------------------
 

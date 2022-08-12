@@ -1,0 +1,509 @@
+SELECT
+  x < y AS x_lt_y,
+  x <= y AS x_le_y,
+  x > y AS x_gt_y,
+  x >= y AS x_ge_y
+FROM
+  input
+---
+{"x": "1900-02-27T07:41:03.000000Z", "y": "2387-08-04T18:32:20.738245Z"}
+{"x": "1906-08-03T02:14:37.000000Z", "y": "1906-08-03T02:14:37.000000Z"}
+{"x": "1916-11-22T23:14:10.776326Z", "y": "2358-02-28T20:41:28.000000Z"}
+{"x": "1918-10-10T16:36:27.000000Z", "y": "2240-08-28T09:28:23.000000Z"}
+{"x": "1921-02-10T06:43:34.000000Z", "y": "1980-10-21T23:31:06.000000Z"}
+{"x": "1923-08-14T16:58:14.000000Z", "y": "1923-08-14T16:58:14.000000Z"}
+{"x": "1926-04-03T03:09:13.000000Z", "y": "2097-03-14T18:56:56.000000Z"}
+{"x": "1926-07-29T11:30:15.000000Z", "y": "2364-02-06T17:22:01.000000Z"}
+{"x": "1927-06-18T12:04:54.000000Z", "y": "2211-02-02T01:44:29.290141Z"}
+{"x": "1929-03-26T20:25:19.000000Z", "y": "2184-10-06T01:15:55.608236Z"}
+{"x": "1932-02-26T22:36:54.000000Z", "y": "2072-04-22T14:47:22.524551Z"}
+{"x": "1932-03-26T21:23:56.000000Z", "y": "2065-04-22T07:05:26.668946Z"}
+{"x": "1932-12-06T23:57:31.321494Z", "y": "2005-08-01T06:28:26.000000Z"}
+{"x": "1933-02-10T15:30:22.996456Z", "y": "1933-02-10T15:30:22.996456Z"}
+{"x": "1936-06-24T07:21:09.788969Z", "y": "1936-06-24T07:21:09.788969Z"}
+{"x": "1940-03-11T12:56:55.459569Z", "y": "2332-12-19T11:16:45.571906Z"}
+{"x": "1940-09-18T10:27:32.000000Z", "y": "2351-07-17T11:25:04.000000Z"}
+{"x": "1943-06-28T01:11:27.000000Z", "y": "2165-03-14T07:14:16.000000Z"}
+{"x": "1944-12-20T01:16:34.000000Z", "y": "1907-01-19T05:42:40.719278Z"}
+{"x": "1946-08-04T00:06:50.454380Z", "y": "2073-09-05T19:57:12.033081Z"}
+{"x": "1951-07-17T04:50:20.739650Z", "y": "2113-09-03T14:01:56.000000Z"}
+{"x": "1953-08-17T03:44:15.000000Z", "y": "2378-03-13T11:31:12.000000Z"}
+{"x": "1954-01-29T15:02:07.436044Z", "y": "2200-09-16T10:54:27.000000Z"}
+{"x": "1956-02-14T21:29:09.000000Z", "y": "2243-04-28T11:45:38.000000Z"}
+{"x": "1958-02-24T17:42:02.232980Z", "y": "2081-02-21T19:26:23.000000Z"}
+{"x": "1960-08-05T22:33:41.000000Z", "y": "2035-01-24T03:02:52.000000Z"}
+{"x": "1962-03-26T18:05:37.000000Z", "y": "1971-09-16T20:17:16.526618Z"}
+{"x": "1963-12-07T06:39:07.476462Z", "y": "2038-01-29T03:18:03.723205Z"}
+{"x": "1964-05-23T14:36:28.000000Z", "y": "1941-03-29T18:17:32.000000Z"}
+{"x": "1964-06-03T11:16:12.560510Z", "y": "1934-03-10T09:09:37.193754Z"}
+{"x": "1967-12-23T00:28:16.645275Z", "y": "1964-04-10T17:34:12.249231Z"}
+{"x": "1971-04-08T17:48:41.703111Z", "y": "2171-09-05T11:25:23.990072Z"}
+{"x": "1975-10-08T18:17:55.111143Z", "y": "2262-06-26T07:23:17.088120Z"}
+{"x": "1976-04-26T18:03:20.565509Z", "y": "2222-05-21T11:54:13.000000Z"}
+{"x": "1977-06-03T15:29:02.000000Z", "y": "1990-08-26T00:45:19.925081Z"}
+{"x": "1980-10-26T21:33:22.502140Z", "y": "1965-04-03T15:48:47.924480Z"}
+{"x": "1988-03-20T04:06:11.224515Z", "y": "2089-09-04T06:25:01.952924Z"}
+{"x": "1989-07-11T14:43:37.000000Z", "y": "1957-04-19T01:06:29.000000Z"}
+{"x": "1991-06-25T09:28:37.000000Z", "y": "1905-09-14T02:01:26.763670Z"}
+{"x": "1996-03-30T04:57:49.000000Z", "y": "2087-05-01T09:51:51.000000Z"}
+{"x": "1997-03-27T00:32:00.579206Z", "y": "2310-12-28T12:50:14.000000Z"}
+{"x": "2001-05-16T20:05:00.000000Z", "y": "2309-02-12T15:16:17.000000Z"}
+{"x": "2002-02-11T00:02:34.416447Z", "y": "2093-09-02T08:54:18.443561Z"}
+{"x": "2002-07-27T00:32:47.000000Z", "y": "1956-10-01T15:29:36.000000Z"}
+{"x": "2002-09-26T19:04:03.848447Z", "y": "2289-07-26T19:35:26.000000Z"}
+{"x": "2003-05-08T19:43:39.554657Z", "y": "2310-10-14T09:13:52.685869Z"}
+{"x": "2006-06-18T05:55:24.840079Z", "y": "2349-12-22T10:27:11.695091Z"}
+{"x": "2010-04-19T18:00:55.785117Z", "y": "2062-10-15T14:36:13.292234Z"}
+{"x": "2013-04-15T09:06:08.000000Z", "y": "2299-01-03T11:34:36.110734Z"}
+{"x": "2016-07-30T22:26:56.000000Z", "y": "2147-03-16T15:36:42.221288Z"}
+{"x": "2016-10-10T11:18:18.002753Z", "y": "2082-10-08T05:44:42.438934Z"}
+{"x": "2017-12-14T14:16:36.384120Z", "y": "2274-08-16T16:39:45.000000Z"}
+{"x": "2025-07-26T23:48:07.631287Z", "y": "2182-04-29T16:31:35.000000Z"}
+{"x": "2031-04-08T16:45:06.000000Z", "y": "2031-04-08T16:45:06.000000Z"}
+{"x": "2033-05-15T00:18:57.000000Z", "y": "2241-04-03T18:02:46.000000Z"}
+{"x": "2033-10-25T19:05:08.000000Z", "y": "2033-10-25T19:05:08.000000Z"}
+{"x": "2039-07-29T10:17:10.603687Z", "y": "2383-03-11T11:08:08.000000Z"}
+{"x": "2045-03-02T03:50:23.000000Z", "y": "2020-01-22T00:39:36.000000Z"}
+{"x": "2048-04-09T15:39:04.162897Z", "y": "2168-11-10T05:02:47.626872Z"}
+{"x": "2048-04-15T01:20:40.000000Z", "y": "2290-04-16T11:31:41.000000Z"}
+{"x": "2048-07-11T22:14:59.000000Z", "y": "2048-07-11T22:14:59.000000Z"}
+{"x": "2049-02-17T17:28:57.361928Z", "y": "1909-12-01T03:09:42.002457Z"}
+{"x": "2051-08-06T05:54:13.599553Z", "y": "2274-05-04T13:04:16.000000Z"}
+{"x": "2053-02-15T17:50:31.000000Z", "y": "2053-02-15T17:50:31.000000Z"}
+{"x": "2054-10-04T10:51:00.427578Z", "y": "2069-12-04T02:47:18.000000Z"}
+{"x": "2057-03-01T22:18:10.000000Z", "y": "2221-03-20T11:42:59.917560Z"}
+{"x": "2059-03-23T04:06:08.909180Z", "y": "2244-01-09T23:45:42.383727Z"}
+{"x": "2060-07-14T02:25:48.000000Z", "y": "2060-07-14T02:25:48.000000Z"}
+{"x": "2061-11-04T05:11:09.000000Z", "y": "1972-02-08T02:08:42.000000Z"}
+{"x": "2063-04-12T18:15:55.000000Z", "y": "2349-05-03T03:49:36.000000Z"}
+{"x": "2065-10-12T12:34:08.000000Z", "y": "2306-03-18T12:51:31.000000Z"}
+{"x": "2065-11-03T21:10:36.000000Z", "y": "2282-08-16T14:38:50.279642Z"}
+{"x": "2067-01-04T03:17:54.000000Z", "y": "2262-08-07T02:28:02.265465Z"}
+{"x": "2067-07-28T06:45:44.000000Z", "y": "2394-12-14T05:37:43.306586Z"}
+{"x": "2069-06-05T15:41:43.741223Z", "y": "2245-10-11T19:42:34.000000Z"}
+{"x": "2069-06-07T23:10:31.000000Z", "y": "2069-06-07T23:10:31.000000Z"}
+{"x": "2072-04-27T16:41:16.000000Z", "y": "2347-10-22T06:26:22.761143Z"}
+{"x": "2073-07-13T07:24:00.243724Z", "y": "2363-12-21T04:05:10.000000Z"}
+{"x": "2074-04-12T23:49:00.793681Z", "y": "2315-01-30T15:52:53.000000Z"}
+{"x": "2074-09-01T05:38:55.929583Z", "y": "2074-09-01T05:38:55.929583Z"}
+{"x": "2076-01-04T04:43:20.804447Z", "y": "2076-01-04T04:43:20.804447Z"}
+{"x": "2076-07-21T10:00:26.000000Z", "y": "2076-07-21T10:00:26.000000Z"}
+{"x": "2077-11-03T21:28:31.444809Z", "y": "2372-11-06T01:20:02.000000Z"}
+{"x": "2079-01-11T16:42:48.763587Z", "y": "2234-02-03T10:46:42.000000Z"}
+{"x": "2082-01-24T22:35:57.000000Z", "y": "1921-08-20T05:47:49.000000Z"}
+{"x": "2088-07-12T07:16:48.000000Z", "y": "2095-03-02T03:55:00.000000Z"}
+{"x": "2089-02-10T16:09:12.600743Z", "y": "2305-05-03T06:06:04.000000Z"}
+{"x": "2090-09-16T08:54:00.000000Z", "y": "2109-04-10T06:16:32.870598Z"}
+{"x": "2093-01-11T18:53:32.000000Z", "y": "1903-01-04T05:31:59.390269Z"}
+{"x": "2093-10-11T10:18:28.667619Z", "y": "2173-02-19T05:16:47.000000Z"}
+{"x": "2093-11-20T00:09:37.294253Z", "y": "2336-08-19T13:44:25.000000Z"}
+{"x": "2094-09-09T14:11:41.000000Z", "y": "2198-05-09T22:04:31.731059Z"}
+{"x": "2096-02-28T09:39:32.000000Z", "y": "1958-07-29T22:05:04.728012Z"}
+{"x": "2096-05-09T12:33:05.164894Z", "y": "2051-05-07T19:01:29.755641Z"}
+{"x": "2097-04-25T02:02:15.697353Z", "y": "1982-04-01T20:04:58.000000Z"}
+{"x": "2099-03-10T14:56:06.880701Z", "y": "1994-10-28T18:15:58.503947Z"}
+{"x": "2104-02-24T07:10:11.627331Z", "y": "2300-07-19T17:17:46.103413Z"}
+{"x": "2111-08-13T14:20:29.000000Z", "y": "2164-08-28T15:50:00.492505Z"}
+{"x": "2114-09-24T08:34:19.000000Z", "y": "2007-02-09T05:39:02.385143Z"}
+{"x": "2117-11-12T15:53:00.000000Z", "y": "2305-04-25T10:14:57.000000Z"}
+{"x": "2122-01-05T20:52:47.075424Z", "y": "2020-03-04T00:18:21.000000Z"}
+{"x": "2122-05-25T11:53:00.435007Z", "y": "2122-05-25T11:53:00.435007Z"}
+{"x": "2124-04-03T03:13:09.000000Z", "y": "2009-03-11T13:40:45.479115Z"}
+{"x": "2128-01-11T21:07:55.000000Z", "y": "2030-08-03T17:13:18.000000Z"}
+{"x": "2130-03-07T15:35:37.325893Z", "y": "2085-11-24T07:02:29.760113Z"}
+{"x": "2130-10-13T22:47:44.000000Z", "y": "2225-03-25T03:00:51.395927Z"}
+{"x": "2131-02-01T11:42:29.119729Z", "y": "2350-10-22T15:58:18.000000Z"}
+{"x": "2132-06-23T00:09:13.000000Z", "y": "2227-09-11T18:16:10.000000Z"}
+{"x": "2135-03-29T00:38:23.000000Z", "y": "2011-03-13T16:24:31.000000Z"}
+{"x": "2139-01-23T22:21:37.000000Z", "y": "2381-05-03T11:04:51.032089Z"}
+{"x": "2140-11-09T10:20:12.231866Z", "y": "2362-06-04T07:22:02.000000Z"}
+{"x": "2142-04-26T06:59:18.150604Z", "y": "1987-03-21T16:14:28.000000Z"}
+{"x": "2143-08-21T20:43:07.747041Z", "y": "2091-10-03T02:27:18.227068Z"}
+{"x": "2144-10-10T22:44:22.000000Z", "y": "1954-03-30T00:19:29.000000Z"}
+{"x": "2146-09-02T02:48:33.285825Z", "y": "2077-01-01T07:49:37.000000Z"}
+{"x": "2146-11-13T00:25:56.000000Z", "y": "2146-11-13T00:25:56.000000Z"}
+{"x": "2152-08-21T02:26:16.000000Z", "y": "1995-08-04T19:54:45.000000Z"}
+{"x": "2152-10-06T02:01:41.254508Z", "y": "2209-11-07T05:04:25.553325Z"}
+{"x": "2157-10-08T00:18:13.863509Z", "y": "2099-05-04T19:17:40.000000Z"}
+{"x": "2163-11-02T17:38:16.000000Z", "y": "1941-05-02T20:26:35.454791Z"}
+{"x": "2164-11-03T01:27:51.000000Z", "y": "2298-10-07T17:12:16.000000Z"}
+{"x": "2168-01-28T12:36:32.000000Z", "y": "2065-01-24T22:00:13.109514Z"}
+{"x": "2169-04-05T13:13:00.412091Z", "y": "2224-10-14T17:37:30.000000Z"}
+{"x": "2169-06-29T20:40:08.000000Z", "y": "2382-03-01T10:04:22.000000Z"}
+{"x": "2173-01-23T16:14:22.000000Z", "y": "2112-09-23T12:07:41.800649Z"}
+{"x": "2173-04-27T21:29:23.430180Z", "y": "2231-01-01T14:01:58.000000Z"}
+{"x": "2180-02-09T01:40:50.477905Z", "y": "2174-07-30T09:26:07.247986Z"}
+{"x": "2183-06-01T01:19:13.745428Z", "y": "2280-10-27T14:23:29.000000Z"}
+{"x": "2184-03-14T02:21:28.000000Z", "y": "2124-12-02T16:31:10.000000Z"}
+{"x": "2185-10-10T12:11:37.000000Z", "y": "2235-01-10T04:51:55.063431Z"}
+{"x": "2185-12-24T16:20:37.000000Z", "y": "2226-05-24T00:06:16.454883Z"}
+{"x": "2186-05-28T13:12:11.194883Z", "y": "2327-11-20T05:58:46.460548Z"}
+{"x": "2186-10-30T14:41:16.000000Z", "y": "2373-01-28T19:13:04.000000Z"}
+{"x": "2188-05-25T21:11:08.997530Z", "y": "1915-07-20T14:23:44.000000Z"}
+{"x": "2188-06-23T10:28:32.556814Z", "y": "2178-08-16T11:05:50.000000Z"}
+{"x": "2189-10-20T22:44:27.350037Z", "y": "2183-10-19T04:30:13.000000Z"}
+{"x": "2190-11-07T15:41:26.513459Z", "y": "1967-04-10T14:40:03.000000Z"}
+{"x": "2194-09-19T05:54:24.000000Z", "y": "2294-10-25T09:47:27.000000Z"}
+{"x": "2203-03-09T05:51:34.000000Z", "y": "2080-05-27T12:17:46.944147Z"}
+{"x": "2206-02-24T04:11:34.000000Z", "y": "2042-07-21T13:26:39.000000Z"}
+{"x": "2209-09-23T06:14:07.839779Z", "y": "2211-03-13T08:28:18.409994Z"}
+{"x": "2210-02-09T06:14:38.897751Z", "y": "1901-06-06T00:28:38.880103Z"}
+{"x": "2210-07-20T14:08:34.050516Z", "y": "2101-01-08T02:21:39.000000Z"}
+{"x": "2211-09-02T16:48:17.888454Z", "y": "2400-03-25T12:03:38.000000Z"}
+{"x": "2221-09-04T04:35:40.128030Z", "y": "2309-05-19T23:12:27.548981Z"}
+{"x": "2221-10-16T04:44:25.137174Z", "y": "2208-08-02T02:08:14.534894Z"}
+{"x": "2222-06-11T03:31:09.000000Z", "y": "1987-04-04T23:18:13.775211Z"}
+{"x": "2223-09-30T01:55:27.000000Z", "y": "2303-10-16T03:33:02.839337Z"}
+{"x": "2224-02-23T04:22:11.000000Z", "y": "2345-10-30T07:53:19.000000Z"}
+{"x": "2224-06-20T10:41:50.000000Z", "y": "2391-04-26T21:51:30.000000Z"}
+{"x": "2225-12-12T07:55:02.465257Z", "y": "2038-05-03T16:37:21.000000Z"}
+{"x": "2228-08-05T10:49:51.000000Z", "y": "2263-03-14T02:09:30.396768Z"}
+{"x": "2230-06-18T21:59:11.556270Z", "y": "2015-10-09T10:31:26.000000Z"}
+{"x": "2232-02-16T07:33:25.437098Z", "y": "2201-01-22T08:41:38.000000Z"}
+{"x": "2233-05-10T08:18:06.000000Z", "y": "2392-04-19T05:48:38.000000Z"}
+{"x": "2235-10-24T06:31:12.000000Z", "y": "2163-07-07T06:36:30.043028Z"}
+{"x": "2236-06-23T03:55:53.000000Z", "y": "2236-06-23T03:55:53.000000Z"}
+{"x": "2237-03-05T22:46:56.112990Z", "y": "2051-10-25T10:00:35.500488Z"}
+{"x": "2240-09-06T20:50:46.000000Z", "y": "2338-05-23T11:51:11.000000Z"}
+{"x": "2240-11-07T12:53:27.000000Z", "y": "2374-01-25T04:05:06.000000Z"}
+{"x": "2241-02-23T07:03:51.441607Z", "y": "2228-03-29T13:33:47.035766Z"}
+{"x": "2243-07-25T10:51:27.228702Z", "y": "2151-01-23T21:09:48.633396Z"}
+{"x": "2243-09-06T06:11:04.280408Z", "y": "1962-11-16T06:07:00.519396Z"}
+{"x": "2244-01-27T02:01:56.100598Z", "y": "2218-12-07T02:51:22.022171Z"}
+{"x": "2248-10-14T05:37:55.000000Z", "y": "2194-04-18T15:20:52.364278Z"}
+{"x": "2249-09-01T05:06:19.000000Z", "y": "2249-09-01T05:06:19.000000Z"}
+{"x": "2252-12-15T02:31:00.985310Z", "y": "2348-06-23T14:44:42.302818Z"}
+{"x": "2257-11-23T20:35:24.571178Z", "y": "2016-09-08T06:25:54.229468Z"}
+{"x": "2258-07-11T03:11:14.000000Z", "y": "2045-05-25T00:57:26.000000Z"}
+{"x": "2259-05-13T10:08:51.228598Z", "y": "2180-02-06T05:36:22.916977Z"}
+{"x": "2259-09-17T01:52:47.000000Z", "y": "2399-07-09T03:18:04.540881Z"}
+{"x": "2260-10-14T14:45:14.774078Z", "y": "1955-04-10T11:31:39.667488Z"}
+{"x": "2262-03-14T08:15:21.711870Z", "y": "2113-12-03T02:33:22.856535Z"}
+{"x": "2268-08-14T04:30:31.000000Z", "y": "2067-11-02T09:48:23.867818Z"}
+{"x": "2269-04-02T03:38:50.837298Z", "y": "2058-09-03T21:14:32.000000Z"}
+{"x": "2269-04-14T15:16:03.956084Z", "y": "2340-06-11T22:01:40.061467Z"}
+{"x": "2269-08-17T11:22:56.000000Z", "y": "2269-08-17T11:22:56.000000Z"}
+{"x": "2277-02-12T18:24:23.016156Z", "y": "2131-01-03T17:45:53.000000Z"}
+{"x": "2280-12-19T19:20:50.000000Z", "y": "1926-01-30T14:04:25.738458Z"}
+{"x": "2281-05-27T04:13:35.000000Z", "y": "2251-09-11T22:29:57.217169Z"}
+{"x": "2282-05-15T06:26:20.289992Z", "y": "2375-12-06T16:59:57.517733Z"}
+{"x": "2282-09-30T08:09:34.000000Z", "y": "2063-05-07T13:39:17.909604Z"}
+{"x": "2283-01-28T14:11:21.000000Z", "y": "1966-11-03T14:13:49.000000Z"}
+{"x": "2284-03-09T07:22:06.000000Z", "y": "1935-11-03T19:25:45.000000Z"}
+{"x": "2286-04-19T17:15:50.767444Z", "y": "2129-04-19T02:06:11.000000Z"}
+{"x": "2292-09-13T04:19:59.761578Z", "y": "1984-08-30T03:57:40.493480Z"}
+{"x": "2294-06-13T10:26:56.917897Z", "y": "2296-04-19T19:10:42.279894Z"}
+{"x": "2294-09-03T18:44:48.425551Z", "y": "2190-02-11T14:27:53.000000Z"}
+{"x": "2296-12-25T23:14:41.000000Z", "y": "2225-09-07T21:09:22.242067Z"}
+{"x": "2298-03-02T01:45:56.000000Z", "y": "1957-03-07T19:57:36.000000Z"}
+{"x": "2300-03-30T10:34:51.304935Z", "y": "2371-11-30T23:03:06.692522Z"}
+{"x": "2301-12-09T18:27:39.000000Z", "y": "2149-03-01T07:26:44.783324Z"}
+{"x": "2303-05-12T13:21:19.824901Z", "y": "2328-08-23T03:01:40.824474Z"}
+{"x": "2304-11-10T19:42:03.000000Z", "y": "2038-02-07T14:10:38.268263Z"}
+{"x": "2305-03-23T19:31:29.777424Z", "y": "2042-04-26T02:40:08.000000Z"}
+{"x": "2306-06-17T19:37:23.613279Z", "y": "2165-12-07T02:32:47.000000Z"}
+{"x": "2309-04-15T10:56:34.442363Z", "y": "2159-01-10T05:27:30.797629Z"}
+{"x": "2309-10-25T02:52:00.000000Z", "y": "1903-01-30T19:35:26.076551Z"}
+{"x": "2310-12-03T00:28:58.000000Z", "y": "2269-01-27T07:35:48.000000Z"}
+{"x": "2313-05-25T14:38:11.000000Z", "y": "2235-09-22T07:33:45.000000Z"}
+{"x": "2314-05-30T12:33:10.000000Z", "y": "2314-05-30T12:33:10.000000Z"}
+{"x": "2315-05-22T02:37:29.000000Z", "y": "2034-03-20T05:45:12.431423Z"}
+{"x": "2315-10-25T13:53:31.000000Z", "y": "2067-03-28T15:00:07.000000Z"}
+{"x": "2315-12-01T14:46:35.000000Z", "y": "2040-10-03T10:51:30.292972Z"}
+{"x": "2316-05-21T03:17:08.998810Z", "y": "2305-05-29T10:29:38.870402Z"}
+{"x": "2319-04-11T09:46:20.000000Z", "y": "2280-02-09T22:51:53.940626Z"}
+{"x": "2320-05-16T07:59:39.000000Z", "y": "2297-11-16T12:29:37.000000Z"}
+{"x": "2321-03-24T21:56:51.000000Z", "y": "2306-03-18T12:45:20.024086Z"}
+{"x": "2322-04-04T08:19:49.244052Z", "y": "2279-07-11T00:21:15.000000Z"}
+{"x": "2323-01-20T11:55:30.786732Z", "y": "1934-08-29T16:37:07.000000Z"}
+{"x": "2323-06-18T16:49:05.000000Z", "y": "2099-01-28T10:39:47.331262Z"}
+{"x": "2326-05-14T07:55:19.000000Z", "y": "2067-09-24T21:38:38.000000Z"}
+{"x": "2328-11-29T22:20:03.000000Z", "y": "2185-03-30T23:16:58.000000Z"}
+{"x": "2330-04-06T06:13:56.000000Z", "y": "2338-06-20T17:20:57.452966Z"}
+{"x": "2333-06-30T11:57:52.094453Z", "y": "2123-12-23T14:37:41.313228Z"}
+{"x": "2334-01-27T18:29:27.159553Z", "y": "2026-10-15T17:24:07.000000Z"}
+{"x": "2337-07-10T02:56:54.000000Z", "y": "2319-11-24T04:38:53.000000Z"}
+{"x": "2342-12-14T11:53:43.632881Z", "y": "2110-02-11T21:37:49.000000Z"}
+{"x": "2343-02-22T17:40:55.253885Z", "y": "2222-01-25T07:41:40.000000Z"}
+{"x": "2343-12-29T09:55:13.000000Z", "y": "2137-05-23T21:45:09.000000Z"}
+{"x": "2350-09-13T21:40:08.545156Z", "y": "2342-08-05T21:39:46.000000Z"}
+{"x": "2352-10-04T22:52:32.655338Z", "y": "1979-01-11T00:49:39.000000Z"}
+{"x": "2354-12-24T11:52:17.652397Z", "y": "2233-03-09T01:51:25.000000Z"}
+{"x": "2359-02-18T16:55:12.000000Z", "y": "2144-03-29T23:14:46.000000Z"}
+{"x": "2360-06-16T06:36:01.258943Z", "y": "2008-10-19T07:37:50.531335Z"}
+{"x": "2362-10-24T15:30:09.000000Z", "y": "2112-05-25T19:19:21.000000Z"}
+{"x": "2363-04-08T00:48:02.000000Z", "y": "1928-01-25T23:20:12.358666Z"}
+{"x": "2363-12-29T06:50:04.415086Z", "y": "2045-10-23T07:11:29.170998Z"}
+{"x": "2365-10-20T15:22:02.120941Z", "y": "2128-12-21T10:07:58.526057Z"}
+{"x": "2368-06-09T16:13:13.908750Z", "y": "2310-07-08T21:03:41.802301Z"}
+{"x": "2370-06-18T03:28:15.720636Z", "y": "2320-05-05T23:56:01.390777Z"}
+{"x": "2370-08-04T18:01:59.000000Z", "y": "2113-04-19T23:10:22.285032Z"}
+{"x": "2371-01-16T02:08:32.431114Z", "y": "2054-03-28T20:51:45.000000Z"}
+{"x": "2372-01-24T21:32:13.000000Z", "y": "1974-03-16T00:48:29.116741Z"}
+{"x": "2372-03-17T04:22:33.000000Z", "y": "2217-10-16T01:15:29.000000Z"}
+{"x": "2372-09-23T04:41:46.000000Z", "y": "2316-04-03T19:42:00.027304Z"}
+{"x": "2372-10-09T08:05:33.938981Z", "y": "2349-03-13T05:41:24.829791Z"}
+{"x": "2374-10-09T10:30:28.000000Z", "y": "2374-10-09T10:30:28.000000Z"}
+{"x": "2375-10-14T11:44:14.704844Z", "y": "2276-10-25T08:20:42.000000Z"}
+{"x": "2381-03-22T19:18:35.336888Z", "y": "1978-11-13T02:56:21.000000Z"}
+{"x": "2381-10-07T18:43:52.000000Z", "y": "2052-08-15T07:48:28.000000Z"}
+{"x": "2383-05-24T09:53:51.000000Z", "y": "1966-07-25T18:07:33.000000Z"}
+{"x": "2384-12-02T12:21:36.637855Z", "y": "2222-05-19T03:27:52.217420Z"}
+{"x": "2387-05-10T22:01:31.424233Z", "y": "2010-11-03T16:25:27.000000Z"}
+{"x": "2387-08-07T16:58:03.304077Z", "y": "1907-05-27T18:30:45.000000Z"}
+{"x": "2392-07-12T12:17:38.000000Z", "y": "2132-11-02T23:58:48.000000Z"}
+{"x": "2395-02-07T19:32:40.000000Z", "y": "2395-02-07T19:32:40.000000Z"}
+{"x": "2397-01-18T13:02:13.930766Z", "y": "2175-09-25T14:44:02.285016Z"}
+{"x": "2398-06-06T14:26:42.742580Z", "y": "2391-08-22T12:43:34.000000Z"}
+{"x": "2400-09-25T00:34:29.000000Z", "y": "2286-02-27T13:55:07.323669Z"}
+---
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}

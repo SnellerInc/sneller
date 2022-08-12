@@ -157,14 +157,6 @@ const (
 	Greatest
 	WidthBucket
 
-	// generic time-ordering routine;
-	// the semantics of
-	//   BEFORE(x, y, z...)
-	// are equivalent to
-	//   x < y && y < z && ...
-	// at least two arguments must be present
-	Before
-
 	DateAddMicrosecond
 	DateAddMillisecond
 	DateAddSecond
@@ -283,7 +275,6 @@ var name2Builtin = map[string]BuiltinOp{
 	"LEAST":                    Least,
 	"GREATEST":                 Greatest,
 	"WIDTH_BUCKET":             WidthBucket,
-	"BEFORE":                   Before,
 	"DATE_ADD_MICROSECOND":     DateAddMicrosecond,
 	"DATE_ADD_MILLISECOND":     DateAddMillisecond,
 	"DATE_ADD_SECOND":          DateAddSecond,
@@ -1210,7 +1201,6 @@ var builtinInfo = [maxBuiltin]binfo{
 	Least:       {check: variadicNumeric, ret: NumericType | MissingType},
 	Greatest:    {check: variadicNumeric, ret: NumericType | MissingType},
 	WidthBucket: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: NumericType},
-	Before:      {check: checkBefore, ret: LogicalType, simplify: simplifyBefore},
 
 	DateAddMicrosecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMicrosecond},
 	DateAddMillisecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMillisecond},

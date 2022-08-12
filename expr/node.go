@@ -19,7 +19,6 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
@@ -1275,7 +1274,7 @@ const (
 	RegexpMatchCi // ~* <literal> case-insensitive regex match
 )
 
-func (c CmpOp) ordinal() bool {
+func (c CmpOp) Ordinal() bool {
 	return c >= Less && c <= GreaterEquals
 }
 
@@ -1541,40 +1540,6 @@ func (n *Not) setfield(name string, st *ion.Symtab, buf []byte) error {
 // Compare generates a comparison operation
 // of the given type and with the given arguments
 func Compare(op CmpOp, left, right Node) Node {
-	if op.ordinal() {
-		delta := time.Duration(0)
-		switch op {
-		case LessEquals:
-			delta = time.Microsecond
-		case GreaterEquals:
-			delta = -time.Microsecond
-		}
-		// NOTE: the core code doesn't
-		// support </> on timestamps
-		// natively; we have to tell it
-		// that we would like a timestamp comparison
-		//
-		// we handle '<=' and '>=' by adjusting the
-		// input time by one nanosecond so that
-		// we always end up with true inequality,
-		// so we don't need multiple BEFORE_xx() functions
-		flip := op >= Greater
-		if ts, ok := left.(*Timestamp); ok {
-			delta = -delta
-			left = &Timestamp{Value: ts.Value.Add(delta)}
-			if flip {
-				left, right = right, left
-			}
-			return Call("BEFORE", left, right)
-		}
-		if ts, ok := right.(*Timestamp); ok {
-			right = &Timestamp{Value: ts.Value.Add(delta)}
-			if flip {
-				left, right = right, left
-			}
-			return Call("BEFORE", left, right)
-		}
-	}
 	return &Comparison{Op: op, Left: left, Right: right}
 }
 

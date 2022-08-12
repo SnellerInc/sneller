@@ -125,11 +125,13 @@ type bcopinfo struct {
 // Shared immediate combinations used in opinfo (to reduce the number of dynamic memory allocations on init).
 var bcImmsS16 = []bcImmType{bcImmS16}
 var bcImmsS16S16 = []bcImmType{bcImmS16, bcImmS16}
+var bcImmsS16U8 = []bcImmType{bcImmS16, bcImmU8}
 var bcImmsS16U16 = []bcImmType{bcImmS16, bcImmU16}
 var bcImmsS16H32 = []bcImmType{bcImmS16, bcImmU32Hex}
 var bcImmsS16I64 = []bcImmType{bcImmS16, bcImmI64}
 var bcImmsS16U64 = []bcImmType{bcImmS16, bcImmU64}
 var bcImmsS16S16S16 = []bcImmType{bcImmS16, bcImmS16, bcImmS16}
+var bcImmsU8 = []bcImmType{bcImmU8}
 var bcImmsU16 = []bcImmType{bcImmU16}
 var bcImmsU32 = []bcImmType{bcImmU32}
 var bcImmsU32H32 = []bcImmType{bcImmU32, bcImmU32Hex}
@@ -291,26 +293,45 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS},
 
 	// Comparison instructions
-	opcmpeqf:    {text: "cmpeq.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpeqf},
-	opcmpeqi:    {text: "cmpeq.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
-	opcmpeqimmf: {text: "cmpeq.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS},
-	opcmpeqimmi: {text: "cmpeq.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS},
-	opcmpltf:    {text: "cmplt.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgef},
-	opcmplti:    {text: "cmplt.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgei},
-	opcmpltimmf: {text: "cmplt.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmf},
-	opcmpltimmi: {text: "cmplt.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmi},
-	opcmplef:    {text: "cmple.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgtf},
-	opcmplei:    {text: "cmple.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgti},
-	opcmpleimmf: {text: "cmple.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgtimmf},
-	opcmpleimmi: {text: "cmple.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpgtimmi},
-	opcmpgtf:    {text: "cmpgt.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplef},
-	opcmpgti:    {text: "cmpgt.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplei},
-	opcmpgtimmf: {text: "cmpgt.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmf},
-	opcmpgtimmi: {text: "cmpgt.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpleimmi},
-	opcmpgef:    {text: "cmpge.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpltf},
-	opcmpgei:    {text: "cmpge.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplti},
-	opcmpgeimmf: {text: "cmpge.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpltimmf},
-	opcmpgeimmi: {text: "cmpge.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpltimmi},
+	opcmpv:       {text: "cmpv", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
+	opcmpvk:      {text: "cmpv.k", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
+	opcmpvimmk:   {text: "cmpv.imm.k", imms: bcImmsU8, flags: bcReadWriteK | bcReadV | bcWriteS},
+	opcmpvi64:    {text: "cmpv.i64", flags: bcReadWriteK | bcReadV | bcReadWriteS},
+	opcmpvimmi64: {text: "cmpv.imm.i64", imms: bcImmsI64, flags: bcReadWriteK | bcReadV | bcWriteS},
+	opcmpvf64:    {text: "cmpv.f64", flags: bcReadWriteK | bcReadV | bcReadWriteS},
+	opcmpvimmf64: {text: "cmpv.imm.f64", imms: bcImmsF64, flags: bcReadWriteK | bcReadV | bcWriteS},
+	opcmpltstr:   {text: "cmplt.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
+	opcmplestr:   {text: "cmple.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
+	opcmpgtstr:   {text: "cmpgt.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
+	opcmpgestr:   {text: "cmpge.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
+	opcmpltk:     {text: "cmplt.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmpgtk},
+	opcmpltimmk:  {text: "cmplt.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpgtimmk},
+	opcmplek:     {text: "cmple.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmpgek},
+	opcmpleimmk:  {text: "cmple.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpgeimmk},
+	opcmpgtk:     {text: "cmpgt.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmpltk},
+	opcmpgtimmk:  {text: "cmpgt.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpgtimmk},
+	opcmpgek:     {text: "cmpge.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmplek},
+	opcmpgeimmk:  {text: "cmpge.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpleimmk},
+	opcmpeqf:     {text: "cmpeq.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpeqf},
+	opcmpeqi:     {text: "cmpeq.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
+	opcmpeqimmf:  {text: "cmpeq.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS},
+	opcmpeqimmi:  {text: "cmpeq.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS},
+	opcmpltf:     {text: "cmplt.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgtf},
+	opcmplti:     {text: "cmplt.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgti},
+	opcmpltimmf:  {text: "cmplt.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgtimmf},
+	opcmpltimmi:  {text: "cmplt.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpgtimmi},
+	opcmplef:     {text: "cmple.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgef},
+	opcmplei:     {text: "cmple.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgei},
+	opcmpleimmf:  {text: "cmple.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmf},
+	opcmpleimmi:  {text: "cmple.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmi},
+	opcmpgtf:     {text: "cmpgt.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpltf},
+	opcmpgti:     {text: "cmpgt.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplti},
+	opcmpgtimmf:  {text: "cmpgt.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpltimmf},
+	opcmpgtimmi:  {text: "cmpgt.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpltimmi},
+	opcmpgef:     {text: "cmpge.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplef},
+	opcmpgei:     {text: "cmpge.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplei},
+	opcmpgeimmf:  {text: "cmpge.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpleimmf},
+	opcmpgeimmi:  {text: "cmpge.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpleimmi},
 
 	// Test instructions:
 	//   - null checks - each of these evaluates mask &= is{not}{false,true}(current value)
@@ -616,11 +637,11 @@ type bytecode struct {
 
 	//lint:ignore U1000 not unused; used in assembly
 	// Area that is used by bytecode instructions to temporarily spill registers.
-	// 256 bytes can be used to spill up to 4 ZMM registers (or more registers of
+	// 512 bytes can be used to spill up to 8 ZMM registers (or more registers of
 	// any choice). Note that spill area is designed to be used only by a single
 	// bytecode instruction at a time, it should not be used to persist any data
 	// during the execution of bytecode.
-	spillArea [256]byte
+	spillArea [512]byte
 
 	vstacksize int
 	hstacksize int

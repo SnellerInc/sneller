@@ -114,7 +114,7 @@ func TestCompileFilter(t *testing.T) {
 		expr   expr.Node
 		checks []check
 	}{{
-		expr: parseExpr("BEFORE(%s, foo.bar)", now),
+		expr: parseExpr("%s < foo.bar", now),
 		checks: []check{{
 			// No ranges
 			ranges: nil,
@@ -136,7 +136,7 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: maybe,
 		}, {
-			// Right at the max; before(now, now) is false,
+			// Right at the max; `now < now` is false,
 			// but we use inclusive ranges, so "maybe"
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
@@ -190,7 +190,7 @@ func TestCompileFilter(t *testing.T) {
 			expect: maybe,
 		}},
 	}, {
-		expr: parseExpr("BEFORE(foo.bar, %s)", now),
+		expr: parseExpr("foo.bar < %s", now),
 		checks: []check{{
 			// Within the range
 			ranges: []blockfmt.Range{blockfmt.NewRange(
@@ -200,8 +200,8 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: maybe,
 		}, {
-			// Right at the min; before(min, now) is false
-			// and before(max, now) is false, but we use
+			// Right at the min; `min < now` is false
+			// and `max < now`) is false, but we use
 			// inclusive ranges, so maybe
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
@@ -238,11 +238,10 @@ func TestCompileFilter(t *testing.T) {
 			expect: always,
 		}},
 	}, {
-		expr: parseExpr("BEFORE(%s, foo.bar, %s)",
+		expr: parseExpr("%s < foo.bar AND foo.bar < %s",
 			now.Add(-time.Hour), now.Add(time.Hour)),
 		checks: []check{{
-			// Smaller range; result always
-			// fits within bounds
+			// Smaller range; result always fits within bounds
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"foo", "bar"},
 				ion.Timestamp(now.Add(-time.Minute)),
@@ -267,8 +266,8 @@ func TestCompileFilter(t *testing.T) {
 			expect: never,
 		}},
 	}, {
-		expr: parseExpr("BEFORE(%s, foo, %s, bar, %s)",
-			now.Add(-time.Hour), now, now.Add(time.Hour)),
+		expr: parseExpr("%s < foo AND foo < %s AND %s < bar AND bar < %s",
+			now.Add(-time.Hour), now, now, now.Add(time.Hour)),
 		checks: []check{{
 			// Both smaller ranges
 			ranges: []blockfmt.Range{blockfmt.NewRange(
@@ -320,7 +319,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now.Add(-2*time.Minute)),
 				ion.Timestamp(now.Add(-1*time.Minute)),
 			)},
-			expect: always,
+			expect: never,
 		}, {
 			// Before the range
 			ranges: []blockfmt.Range{blockfmt.NewRange(
@@ -328,7 +327,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now.Add(1*time.Minute)),
 				ion.Timestamp(now.Add(2*time.Minute)),
 			)},
-			expect: never,
+			expect: always,
 		}, {
 			// Right at min
 			ranges: []blockfmt.Range{blockfmt.NewRange(
@@ -336,7 +335,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now),
 				ion.Timestamp(now.Add(time.Minute)),
 			)},
-			expect: maybe,
+			expect: always,
 		}},
 	}, {
 		expr: parseExpr("%d < TO_UNIX_EPOCH(bar)", now.Unix()),
@@ -349,13 +348,13 @@ func TestCompileFilter(t *testing.T) {
 			)},
 			expect: maybe,
 		}, {
-			// Right below min
+			// Before the range
 			ranges: []blockfmt.Range{blockfmt.NewRange(
 				[]string{"bar"},
 				ion.Timestamp(now.Add(time.Millisecond)),
 				ion.Timestamp(now.Add(time.Minute)),
 			)},
-			expect: never,
+			expect: always,
 		}, {
 			// After the range
 			ranges: []blockfmt.Range{blockfmt.NewRange(
@@ -363,7 +362,7 @@ func TestCompileFilter(t *testing.T) {
 				ion.Timestamp(now.Add(-2*time.Minute)),
 				ion.Timestamp(now.Add(-1*time.Minute)),
 			)},
-			expect: always,
+			expect: never,
 		}},
 	}, {
 		expr: parseExpr("TO_UNIX_MICRO(foo) = %d", now.UnixMicro()),
@@ -470,8 +469,8 @@ func TestCompileFilter(t *testing.T) {
 				}
 				got := f(&sparse, 0)
 				if got != c.expect {
-					t.Errorf("check %d did not match: %v != %v",
-						i, c.expect, got)
+					t.Errorf("check %d did not match: want '%s', got '%s'",
+						i, c.expect.String(), got.String())
 				}
 			}
 		})
@@ -508,7 +507,7 @@ func BenchmarkExecuteFilter(b *testing.B) {
 		Ranges []blockfmt.Range
 	}{
 		{
-			Expr: parseExpr(`(foo = 'baz' OR foo = 'bar') AND BEFORE(x, %s)`, now),
+			Expr: parseExpr(`(foo = 'baz' OR foo = 'bar') AND x < %s`, now),
 			Ranges: []blockfmt.Range{
 				blockfmt.NewRange([]string{"quux"}, ion.Int(0), ion.Int(100)),
 				blockfmt.NewRange([]string{"x"}, ion.Timestamp(now.Add(-time.Minute)), ion.Timestamp(now.Add(time.Minute))),

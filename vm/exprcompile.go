@@ -23,6 +23,7 @@ import (
 
 	"github.com/SnellerInc/sneller/regexp2"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -146,12 +147,11 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			return p.RegexMatch(left, dfaStore)
 		}
 
-		// the remaining cases expect numeric arguments
-		left, err := p.compileAsNumber(n.Left)
+		left, err := compile(p, n.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := p.compileAsNumber(n.Right)
+		right, err := compile(p, n.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -849,35 +849,6 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		default:
 			return nil, fmt.Errorf("unhandled builtin %q", b.Name())
 		}
-	case expr.Before:
-		if len(args) < 2 {
-			return nil, fmt.Errorf("BEFORE needs at least two arguments")
-		}
-		var out, next *value
-		for i := range args[:len(args)-1] {
-			var err error
-			var left, right *value
-			if next != nil {
-				left = next
-			} else {
-				left, err = p.compileAsTime(args[i])
-				if err != nil {
-					return nil, err
-				}
-			}
-			right, err = p.compileAsTime(args[i+1])
-			if err != nil {
-				return nil, err
-			}
-			v := p.compileTimeOrdered(left, right)
-			if out == nil {
-				out = v
-			} else {
-				out = p.And(out, v)
-			}
-			next = right
-		}
-		return out, nil
 	case expr.DateToUnixEpoch:
 		if len(args) != 1 {
 			return nil, fmt.Errorf("TO_UNIX_EPOCH has %d arguments?", len(args))
@@ -1040,7 +1011,10 @@ func (p *prog) toTime(v *value) *value {
 
 func (p *prog) toTimeInt(v *value) *value {
 	if v.op == sliteral {
-		return p.ssa0imm(sbroadcastts, v.imm)
+		ts, ok := v.imm.(date.Time)
+		if ok {
+			return p.ssa0imm(sbroadcastts, ts.UnixMicro())
+		}
 	}
 	switch v.primary() {
 	case stValue:
@@ -1055,12 +1029,11 @@ func (p *prog) toTimeInt(v *value) *value {
 	return p.errorf("cannot convert result of %s to timeInt", v)
 }
 
-// produce BEFORE(left, right)
-// by forcing everything to unixmicro integers
+// produce left < right by forcing everything to unixmicro integers
 func (p *prog) timeIntLess(left, right *value) *value {
 	left = p.toTimeInt(left)
 	right = p.toTimeInt(right)
-	return p.ssa3(scmplttm, left, right, p.And(p.mask(left), p.mask(right)))
+	return p.ssa3(scmpltts, left, right, p.And(p.mask(left), p.mask(right)))
 }
 
 func (p *prog) compileTimeOrdered(left, right *value) *value {

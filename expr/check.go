@@ -227,7 +227,7 @@ func (c *Comparison) check(h Hint) error {
 	rt := TypeOf(c.Right, h)
 
 	oktypes := AnyType &^ MissingType
-	if c.Op.ordinal() {
+	if c.Op.Ordinal() {
 		// only numeric types (int/float with int/float) and timestamps are comparable
 		// we can compare ints with floats too
 		for _, types := range []TypeSet{NumericType, TimeType} {
@@ -236,7 +236,7 @@ func (c *Comparison) check(h Hint) error {
 			}
 		}
 
-		oktypes = NumericType | TimeType // only types supported for ordinal comparison for now
+		oktypes = BoolType | NumericType | TimeType | StringType // only types supported for ordinal comparison for now
 	}
 
 	if lt&rt&oktypes == 0 {

@@ -954,13 +954,13 @@ ORDER BY m, d, h`,
 		{
 			input: "SELECT TIME_BUCKET(timestamp, 864000) AS _tmbucket1, COUNT(*), AVG(AvgTicketPrice) AS _sum1 FROM kibana_sample_data_flights WHERE timestamp BETWEEN `2022-03-01T00:00:00.000Z` AND `2022-07-01T00:00:00.000Z` GROUP BY TIME_BUCKET(timestamp, 864000) ORDER BY _tmbucket1",
 			expect: []string{
-				"ITERATE kibana_sample_data_flights FIELDS [AvgTicketPrice, timestamp] WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)",
+				"ITERATE kibana_sample_data_flights FIELDS [AvgTicketPrice, timestamp] WHERE timestamp >= `2022-03-01T00:00:00Z` AND timestamp <= `2022-07-01T00:00:00Z`",
 				"AGGREGATE COUNT(*) AS \"count\", AVG(AvgTicketPrice) AS _sum1 BY TIME_BUCKET(timestamp, 864000) AS _tmbucket1",
 				"ORDER BY _tmbucket1 ASC NULLS FIRST",
 			},
 			split: []string{
 				"UNION MAP kibana_sample_data_flights (",
-				"	ITERATE PART kibana_sample_data_flights FIELDS [AvgTicketPrice, timestamp] WHERE BEFORE(`2022-02-28T23:59:59.999999Z`, timestamp) AND BEFORE(timestamp, `2022-07-01T00:00:00.000001Z`)",
+				"	ITERATE PART kibana_sample_data_flights FIELDS [AvgTicketPrice, timestamp] WHERE timestamp >= `2022-03-01T00:00:00Z` AND timestamp <= `2022-07-01T00:00:00Z`",
 				"	AGGREGATE COUNT(*) AS $_2_0, SUM(AvgTicketPrice) AS $_2_1, COUNT(AvgTicketPrice + 0) AS $_2_2 BY TIME_BUCKET(timestamp, 864000) AS _tmbucket1)",
 				"AGGREGATE SUM_COUNT($_2_0) AS \"count\", SUM($_2_1) AS _sum1, SUM_COUNT($_2_2) AS $_1_1 BY _tmbucket1 AS _tmbucket1",
 				"PROJECT \"count\" AS \"count\", _sum1 / $_1_1 AS _sum1, _tmbucket1 AS _tmbucket1",

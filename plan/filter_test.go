@@ -93,13 +93,13 @@ func TestFilter(t *testing.T) {
 			"Make IS MISSING",
 		},
 	}, {
-		query: `SELECT * FROM 'parking.10n' WHERE BEFORE(IssueData, (SELECT LATEST(IssueData) FROM 'parking.10n' WHERE Make IS MISSING))`,
+		query: `SELECT * FROM 'parking.10n' WHERE IssueData < (SELECT LATEST(IssueData) FROM 'parking.10n' WHERE Make IS MISSING)`,
 		newFilters: []string{
 			"Make IS MISSING",
-			"BEFORE(IssueData, SCALAR_REPLACEMENT(0))",
+			"IssueData < SCALAR_REPLACEMENT(0)",
 		}, execFilters: []string{
 			"Make IS MISSING",
-			"BEFORE(IssueData, `2000-01-01T00:00:00Z`)",
+			"IssueData < `2000-01-01T00:00:00Z`",
 		},
 	}, {
 		query:       `SELECT * FROM (SELECT COUNT(*) AS foo FROM 'parking.10n') WHERE foo < 1000`,

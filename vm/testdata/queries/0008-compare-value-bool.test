@@ -1,0 +1,187 @@
+SELECT
+  x < y AS x_lt_y,
+  x <= y AS x_le_y,
+  x > y AS x_gt_y,
+  x >= y AS x_ge_y
+FROM
+  input
+---
+{"x": true, "y": false}
+{"x": true, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": false, "y": true}
+{"x": true, "y": false}
+{"x": true, "y": true}
+{"x": true, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": true, "y": true}
+{"x": true, "y": true}
+{"x": true, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": true, "y": false}
+{"x": false, "y": false}
+{"x": true, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": true, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": true, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": true, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": true, "y": true}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": true}
+{"x": true, "y": false}
+{"x": false, "y": false}
+{"x": true, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": true, "y": false}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": false}
+{"x": true, "y": true}
+{"x": false, "y": true}
+{"x": false, "y": false}
+{"x": true, "y": false}
+{"x": true, "y": false}
+{"x": false, "y": true}
+{"x": true, "y": false}
+---
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}

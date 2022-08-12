@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,10 +45,19 @@ import (
 
 func TestMain(m *testing.M) {
 	// build the test binary launched with "stub" just once
+
+	tags := "test"
+
+	// vmfence is only available on Linux
+	if runtime.GOOS == "linux" {
+		tags += ",vmfence"
+	}
+
 	err := exec.Command("go", "build",
-		"-o", "snellerd-test-binary", "-buildmode=exe", "-tags=vmfence,test", ".").Run()
+		"-o", "snellerd-test-binary", "-buildmode=exe", "-tags="+tags, ".").Run()
+
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "failed to compile snellerd-test-binary: status %d", err)
 		os.Exit(1)
 	}
 	os.Exit(m.Run())

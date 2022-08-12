@@ -507,43 +507,6 @@ func TestSimplify(t *testing.T) {
 			&Cast{From: coalesce(path("x"), String("foo")), To: IntegerType},
 			&Cast{From: path("x"), To: IntegerType},
 		},
-		// test that <= and >= with constant
-		// timestamps get turned into the correct
-		// BEFORE() function application
-		// (the target times should be adjusted up
-		// or down one nanosecond)
-		{
-			Compare(LessEquals, path("x"), ts("2009-01-14T23:59:59Z")),
-			Call("BEFORE", path("x"), ts("2009-01-14T23:59:59.000001Z")),
-		},
-		{
-			Compare(Less, path("x"), ts("2009-01-14T23:59:59Z")),
-			Call("BEFORE", path("x"), ts("2009-01-14T23:59:59Z")),
-		},
-		{
-			Compare(GreaterEquals, path("x"), ts("2009-01-14T23:59:59Z")),
-			Call("BEFORE", ts("2009-01-14T23:59:58.999999Z"), path("x")),
-		},
-		{
-			Compare(Greater, path("x"), ts("2009-01-14T23:59:59Z")),
-			Call("BEFORE", ts("2009-01-14T23:59:59Z"), path("x")),
-		},
-		{
-			Compare(LessEquals, ts("2009-01-14T23:59:59Z"), path("x")),
-			Call("BEFORE", ts("2009-01-14T23:59:58.999999Z"), path("x")),
-		},
-		{
-			Compare(Less, ts("2009-01-14T23:59:59Z"), path("x")),
-			Call("BEFORE", ts("2009-01-14T23:59:59Z"), path("x")),
-		},
-		{
-			Compare(GreaterEquals, ts("2009-01-14T23:59:59Z"), path("x")),
-			Call("BEFORE", path("x"), ts("2009-01-14T23:59:59.000001Z")),
-		},
-		{
-			Compare(Greater, ts("2009-01-14T23:59:59Z"), path("x")),
-			Call("BEFORE", path("x"), ts("2009-01-14T23:59:59Z")),
-		},
 		{
 			DateExtract(Year, ts("2009-01-14T23:59:59Z")),
 			Integer(2009),

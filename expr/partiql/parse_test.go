@@ -200,18 +200,6 @@ func TestParseNormalization(t *testing.T) {
 			`SELECT CASE WHEN x = y THEN NULL ELSE x END FROM foo`,
 		},
 		{
-			"SELECT * FROM foo WHERE date < `2006-01-02T15:04:05.999Z`",
-			"SELECT * FROM foo WHERE BEFORE(date, `2006-01-02T15:04:05.999Z`)",
-		},
-		{
-			"SELECT * FROM foo WHERE date > `2006-01-02T15:04:05.999Z`",
-			"SELECT * FROM foo WHERE BEFORE(`2006-01-02T15:04:05.999Z`, date)",
-		},
-		{
-			"SELECT * FROM foo WHERE date > UTCNOW()",
-			"SELECT * FROM foo WHERE BEFORE(`2006-01-02T15:04:05.999Z`, date)",
-		},
-		{
 			"SELECT EXTRACT(minute FROM x) FROM foo",
 			"SELECT DATE_EXTRACT_MINUTE(x) FROM foo",
 		},

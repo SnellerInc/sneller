@@ -36,6 +36,19 @@ const (
 	never  ternary = -1
 )
 
+func (t ternary) String() string {
+	switch t {
+	case always:
+		return "always"
+	case maybe:
+		return "maybe"
+	case never:
+		return "never"
+	default:
+		return "<unknown>"
+	}
+}
+
 func alwaysMatches(*blockfmt.SparseIndex, int) ternary { return always }
 func maybeMatches(*blockfmt.SparseIndex, int) ternary  { return maybe }
 func neverMatches(*blockfmt.SparseIndex, int) ternary  { return never }
@@ -175,17 +188,38 @@ func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 // compileComparisonFilter compiles a filter from a
 // comparison expression.
 func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
-	fn, ok1 := e.Left.(*expr.Builtin)
-	im, ok2 := e.Right.(expr.Integer)
 	op := e.Op
-	if !ok1 || !ok2 {
-		fn, ok1 = e.Right.(*expr.Builtin)
-		im, ok2 = e.Left.(expr.Integer)
-		if !ok1 || !ok2 {
-			return nil, false
+	left := e.Left
+	right := e.Right
+
+	// if there is a literal on the left side, flip the expression and swap
+	// left/right so we always compare with literals on the right side.
+	if op.Ordinal() {
+		switch left.(type) {
+		case expr.Integer, expr.Float, expr.String, *expr.Timestamp:
+			left, right = right, left
+			op = op.Flip()
 		}
-		op = e.Op.Flip()
 	}
+
+	leftPath, leftIsPath := left.(*expr.Path)
+	if leftIsPath {
+		switch right := right.(type) {
+		case *expr.Timestamp:
+			cmp := compareFunc(op, right.Value)
+			if cmp == nil {
+				return nil, false
+			}
+			return pathFilter(leftPath, cmp), true
+		}
+	}
+
+	fn, ok1 := left.(*expr.Builtin)
+	im, ok2 := right.(expr.Integer)
+	if !ok1 || !ok2 {
+		return nil, false
+	}
+
 	if len(fn.Args) != 1 {
 		return nil, false
 	}
@@ -193,6 +227,7 @@ func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
 	if !ok {
 		return nil, false
 	}
+
 	switch fn.Func {
 	case expr.DateToUnixEpoch:
 		when := date.Unix(int64(im), 0)
@@ -232,16 +267,16 @@ func compareFunc(op expr.CmpOp, when date.Time) func(*blockfmt.TimeIndex, int) t
 		return nil
 	case expr.Less:
 		// when < expr
-		return pickAfter(when.Add(-epsilon))
+		return pickBefore(when)
 	case expr.LessEquals:
 		// when <= expr
-		return pickAfter(when)
+		return pickBefore(when.Add(epsilon))
 	case expr.Greater:
 		// when > expr
-		return pickBefore(when)
+		return pickAfter(when)
 	case expr.GreaterEquals:
 		// when >= expr
-		return pickBefore(when.Add(epsilon))
+		return pickAfter(when.Add(-epsilon))
 	}
 	return nil
 }
@@ -249,10 +284,6 @@ func compareFunc(op expr.CmpOp, when date.Time) func(*blockfmt.TimeIndex, int) t
 // compileBuiltin compiles a filter from a builtin
 // expression.
 func compileBuiltin(e *expr.Builtin) (filter, bool) {
-	switch e.Func {
-	case expr.Before:
-		return compileBefore(e.Args)
-	}
 	return nil, false
 }
 
@@ -286,36 +317,6 @@ func pickBefore(when date.Time) func(*blockfmt.TimeIndex, int) ternary {
 		}
 		return never
 	}
-}
-
-// compileBefore compiles a filter from a BEFORE
-// expression.
-func compileBefore(args []expr.Node) (filter, bool) {
-	if len(args) < 2 {
-		return nil, false
-	}
-	if len(args) > 2 {
-		f1, ok1 := compileBefore(args[:2])
-		f2, ok2 := compileBefore(args[1:])
-		if ok1 || ok2 {
-			return logical(toMaybe(f1, ok1), expr.OpAnd, toMaybe(f2, ok2))
-		}
-		return nil, false
-	}
-	switch lhs := args[0].(type) {
-	case *expr.Timestamp:
-		switch rhs := args[1].(type) {
-		case *expr.Path:
-			return pathFilter(rhs, pickAfter(lhs.Value)), true
-		}
-	case *expr.Path:
-		switch rhs := args[1].(type) {
-		case *expr.Timestamp:
-			// BEFORE(path, ts)
-			return pathFilter(lhs, pickBefore(rhs.Value)), true
-		}
-	}
-	return nil, false
 }
 
 func flatpath(path *expr.Path) ([]string, bool) {

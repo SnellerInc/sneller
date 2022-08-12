@@ -57,14 +57,6 @@ func TestCheck2(t *testing.T) {
 			"non-table",
 		},
 		{
-			`SELECT * FROM table WHERE x < 'y'`,
-			"lhs and rhs.*never comparable",
-		},
-		{
-			`SELECT * FROM table WHERE 'x' < 'y'`,
-			"lhs and rhs.*never comparable",
-		},
-		{
 			"SELECT * FROM table WHERE 3 = `2022-01-02T03:04:05.67Z`",
 			"lhs and rhs.*never comparable",
 		},
@@ -102,7 +94,12 @@ func TestCheckIssue1390(t *testing.T) {
 		switch t1 {
 		case COLUMN:
 			switch t2 {
-			case "INTEGER", "FLOAT", "TIMESTAMP", COLUMN:
+			case "BOOLEAN", "INTEGER", "FLOAT", "TIMESTAMP", "STRING", COLUMN:
+				return true
+			}
+		case "BOOLEAN":
+			switch t2 {
+			case "BOOLEAN", COLUMN:
 				return true
 			}
 		case "INTEGER", "FLOAT":
@@ -114,6 +111,12 @@ func TestCheckIssue1390(t *testing.T) {
 		case "TIMESTAMP":
 			switch t2 {
 			case "TIMESTAMP", COLUMN:
+				return true
+			}
+
+		case "STRING":
+			switch t2 {
+			case "STRING", COLUMN:
 				return true
 			}
 		}

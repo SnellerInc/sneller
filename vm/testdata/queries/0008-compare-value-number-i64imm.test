@@ -1,0 +1,1043 @@
+SELECT
+  x < 1000 AS x_lt_imm,
+  x <= 1000 AS x_le_imm,
+  x > 1000 AS x_gt_imm,
+  x >= 1000 AS x_ge_imm
+FROM
+  input
+---
+{"x": 776.1275236594804}
+{"x": 387.5738077808205}
+{"x": 463575511851010}
+{"x": 58279052}
+{"x": 392.4215333762052}
+{"x": -291.2946949226168}
+{"x": 700.3878230210065}
+{"x": -29840478}
+{"x": -244050235}
+{"x": 541.743466797534}
+{"x": 1000}
+{"x": 47.15455312814054}
+{"x": 56029552}
+{"x": 2680035630471381037}
+{"x": 977.4413828852126}
+{"x": 1000}
+{"x": -64.60583741384262}
+{"x": 681.9975601692141}
+{"x": -742317286832914}
+{"x": -285619}
+{"x": 714.7399218196564}
+{"x": 100.88960578032736}
+{"x": 1000}
+{"x": 39844863898824486}
+{"x": 3126532222192}
+{"x": 135.586873642772}
+{"x": -492.58508283357236}
+{"x": 421.0684404885271}
+{"x": 1000}
+{"x": -6}
+{"x": -567073}
+{"x": 543.0034587476484}
+{"x": 1000}
+{"x": 393.89828091629755}
+{"x": 97567214023745263}
+{"x": 1000}
+{"x": 38758306605}
+{"x": 551.72113706823}
+{"x": -762.0372240335902}
+{"x": 905.4002960998616}
+{"x": -187165477}
+{"x": 1000}
+{"x": -206802991248}
+{"x": 876.0930251746205}
+{"x": 308.483731719731}
+{"x": 1000}
+{"x": 1316736406035394}
+{"x": 63317079142}
+{"x": 1000}
+{"x": 951.1105630052582}
+{"x": -31.983954449023244}
+{"x": 83.41974529522167}
+{"x": -188811356}
+{"x": 1000}
+{"x": -333231610}
+{"x": 322.70714202642034}
+{"x": 234.70748543196518}
+{"x": 773764688501787}
+{"x": 3904184}
+{"x": 860.134412333175}
+{"x": -678.7087018997869}
+{"x": 810.5498982407066}
+{"x": -2342}
+{"x": -5422986907512}
+{"x": 418.4955104538721}
+{"x": 705.4948293707425}
+{"x": 14332245951}
+{"x": 3699789903981}
+{"x": 514.367585454929}
+{"x": -595.1123239554418}
+{"x": 1000}
+{"x": 72.18124914393609}
+{"x": -27880743067}
+{"x": -1672536}
+{"x": 1000}
+{"x": 577.6501623337107}
+{"x": 407.4453191677719}
+{"x": 936468876}
+{"x": 0}
+{"x": 642.938604296717}
+{"x": -886.3610413654972}
+{"x": 747.5800006023828}
+{"x": -1084650193620713}
+{"x": -3917693}
+{"x": 820.1085964083992}
+{"x": 343.4118325754476}
+{"x": 79276}
+{"x": 61}
+{"x": 539.6635206049564}
+{"x": 1000}
+{"x": -834.0649335956847}
+{"x": 736.6837488150425}
+{"x": -203}
+{"x": -267}
+{"x": 902.1554556981588}
+{"x": 17.30973599578467}
+{"x": 264122957159967}
+{"x": 123658}
+{"x": 347.5812926062334}
+{"x": -649.6689412497916}
+{"x": 178.89935241073772}
+{"x": -10721321496002178}
+{"x": -35505194800}
+{"x": 109.69653073808749}
+{"x": 580.2190154307511}
+{"x": 1953273214303}
+{"x": 119213924}
+{"x": 941.1722602250021}
+{"x": -584.5205061734318}
+{"x": 127.00323425696969}
+{"x": -143906249735551}
+{"x": 1000}
+{"x": -544377883464830288}
+{"x": 91.8605908615866}
+{"x": 45.98076907684045}
+{"x": 194}
+{"x": 1000}
+{"x": 6295367441}
+{"x": 310.2365906083644}
+{"x": -917.4589789468604}
+{"x": 489.5814441914862}
+{"x": -55331343073090}
+{"x": -7030}
+{"x": 1000}
+{"x": 882.2545719718948}
+{"x": 741.9142833225818}
+{"x": 763764281252548}
+{"x": 1000}
+{"x": 48}
+{"x": 129.20132634239278}
+{"x": -125.17043887274792}
+{"x": 639.5206047736119}
+{"x": -132349088960188}
+{"x": -299198027903633313}
+{"x": 276.7701242043762}
+{"x": 11.577449676904994}
+{"x": 1000}
+{"x": 722166632}
+{"x": 1121664}
+{"x": 330.4833202302552}
+{"x": 1000}
+{"x": -963.9885161456846}
+{"x": 44.834361856952995}
+{"x": -15711440980}
+{"x": -60639666501496185}
+{"x": 670.6975213163443}
+{"x": 199.3887955935746}
+{"x": 284935994}
+{"x": 13}
+{"x": 540.2651510555735}
+{"x": 1000}
+{"x": -428.6908361180641}
+{"x": 121.88858568399186}
+{"x": -148471955150395}
+{"x": -971523846}
+{"x": 496.5358372348438}
+{"x": 750.0497509329001}
+{"x": 21}
+{"x": 1000}
+{"x": 121}
+{"x": 480.5662869585111}
+{"x": -146.73706088544557}
+{"x": 622.1452736832975}
+{"x": -57677921327379404}
+{"x": 1000}
+{"x": -39940173992916}
+{"x": 862.3509954680779}
+{"x": 880.5831901424973}
+{"x": 279}
+{"x": 73072564814626824}
+{"x": 346.8969123513875}
+{"x": -211.43103455935008}
+{"x": 588.442498633971}
+{"x": -285964477532}
+{"x": -480281018388432}
+{"x": 746.3837021332668}
+{"x": 739.4291158621203}
+{"x": 1000}
+{"x": 6716403519}
+{"x": 1065417719193}
+{"x": 106.44372588541506}
+{"x": 1000}
+{"x": -363.72925859571427}
+{"x": 1000}
+{"x": 454.49369004224303}
+{"x": -462}
+{"x": -132540917325297}
+{"x": 1000}
+{"x": 696.0153994634155}
+{"x": 41.91348972428388}
+{"x": 17067804842272}
+{"x": 3797650341616197344}
+{"x": 922.3628476324939}
+{"x": -377.3160868748}
+{"x": 448.31526300035284}
+{"x": -1524247185245071}
+{"x": -268107188539806772}
+{"x": 187.98132840413427}
+{"x": 1000}
+{"x": 218.56444276304643}
+{"x": 1}
+{"x": 5361041149}
+{"x": 323.8216050883995}
+{"x": -40.28732252836021}
+{"x": 29.28866887719628}
+{"x": -10613853430249871}
+{"x": 1000}
+{"x": -4}
+{"x": 26.245226613222485}
+{"x": 236.662078709043}
+{"x": 5333320}
+{"x": 604324296777563}
+{"x": 951.5361328656227}
+{"x": -590.0956822917703}
+{"x": 14.480727085243949}
+{"x": 1000}
+{"x": -2061168}
+{"x": -4272601936164278430}
+{"x": 1000}
+{"x": 463.369005844269}
+{"x": 760.3735294512528}
+{"x": 13211}
+{"x": 58182}
+{"x": 702.8208045313271}
+{"x": 1000}
+{"x": -157.7558946393557}
+{"x": 1000}
+{"x": 918.5886116955786}
+{"x": -5208497}
+{"x": 1000}
+{"x": -1460023334382889}
+{"x": 748.493326565527}
+{"x": 1000}
+{"x": 277.255363680605}
+{"x": 1000}
+{"x": 127547003666116}
+{"x": 3}
+{"x": 14.41058679807805}
+{"x": -12.42915449312143}
+{"x": 315.2248519356504}
+{"x": -1}
+{"x": -1886557284300741}
+{"x": 505.53171737277745}
+{"x": 796.7089560063413}
+{"x": 6}
+{"x": 468834183797}
+{"x": 254.26893536001373}
+{"x": -936.130972639517}
+{"x": 338.9478038292051}
+{"x": -6932982815118}
+{"x": -10282322429436}
+{"x": 467.481797794288}
+{"x": 312.07116316092186}
+{"x": 1285}
+{"x": 12298898}
+{"x": 873.0579069038846}
+{"x": 1000}
+{"x": -141.71715707285415}
+{"x": 114.37160646789957}
+{"x": -122429816372626}
+{"x": -349115}
+{"x": 243.57086347641587}
+{"x": 615.1464863347073}
+{"x": 33}
+{"x": 78866409}
+{"x": 868.3959664341178}
+{"x": -346.6845553713007}
+{"x": 136.46112840691927}
+{"x": -833534}
+{"x": -13125877}
+{"x": 995.923217856193}
+{"x": 196.09191769514322}
+{"x": 2354}
+{"x": 2211076057662664}
+{"x": 483.49660016169}
+{"x": 1000}
+{"x": -258.7976167508768}
+{"x": 643.9782503034902}
+{"x": 1000}
+{"x": 0}
+{"x": -198246}
+{"x": 681.1031984059467}
+{"x": 1000}
+{"x": 319.8958162934242}
+{"x": 108641622562}
+{"x": 817325930400176}
+{"x": 274.47442632345064}
+{"x": 1000}
+{"x": -426.9812031296034}
+{"x": 217.68321983809102}
+{"x": -33055576625616343}
+{"x": 1000}
+{"x": -14695464521536}
+{"x": 1000}
+{"x": 1000}
+{"x": 448.3232892400971}
+{"x": 376.649329971224}
+{"x": 1967906839685}
+{"x": 49}
+{"x": 777.3245828635105}
+{"x": -866.9360988017195}
+{"x": 679.4523221479453}
+{"x": -177546626949}
+{"x": 1000}
+{"x": -1}
+{"x": 1000}
+{"x": 398.4851506208855}
+{"x": 1000}
+{"x": 408.6277647447406}
+{"x": 1000}
+{"x": 50}
+{"x": 630}
+{"x": 979.7478918054411}
+{"x": -26.682906000549455}
+{"x": 82.99631073958513}
+{"x": -5987940093855998}
+{"x": -450078989334}
+{"x": 1000}
+{"x": 873.4352463518952}
+{"x": 530.9996042574704}
+{"x": 6343853246767678}
+{"x": 2}
+{"x": 484.01753730453413}
+{"x": -58.38896384095482}
+{"x": 1000}
+{"x": 597.3459229852725}
+{"x": -524}
+{"x": 1000}
+{"x": -993467}
+{"x": 199.71772232107642}
+{"x": 935.3198071630654}
+{"x": 116952263846055}
+{"x": 8428439319}
+{"x": 980.3184811719973}
+{"x": -947.7740080061823}
+{"x": 71.69512603901407}
+{"x": -16108684639}
+{"x": -82311}
+{"x": 655.0830314945475}
+{"x": 794.1973452855303}
+{"x": 10646051386585305}
+{"x": 142460121938333}
+{"x": 760.7261408272037}
+{"x": -537.4207348467805}
+{"x": 823.4224310814378}
+{"x": -1884752882435204}
+{"x": -6}
+{"x": 867.3039351557541}
+{"x": 641.9544992751323}
+{"x": 139647}
+{"x": 1000}
+{"x": 0}
+{"x": 98.55562343380609}
+{"x": -25.794416145201282}
+{"x": 1000}
+{"x": 333.37003155338607}
+{"x": -15232}
+{"x": -1008}
+{"x": 613.0221224692169}
+{"x": 743.039774767135}
+{"x": 5}
+{"x": 7348498439415}
+{"x": 1.6987186076853344}
+{"x": -989.0127899837186}
+{"x": 1000}
+{"x": 106.75491050263186}
+{"x": -468164}
+{"x": -121}
+{"x": 202.89450083399973}
+{"x": 265.98819628455817}
+{"x": 922595}
+{"x": 4063094713692490684}
+{"x": 334.44713680052763}
+{"x": -591.4413365632485}
+{"x": 140.13110024601093}
+{"x": -511608721}
+{"x": -618069}
+{"x": 583.3930023247375}
+{"x": 440.20112488682537}
+{"x": 6964453}
+{"x": 17992659711}
+{"x": 48.476710422403315}
+{"x": -508.3647089771627}
+{"x": 790.5648191131371}
+{"x": -3929563545117673524}
+{"x": -390815349}
+{"x": 1000}
+{"x": 168.3902813833462}
+{"x": 706.7694219872831}
+{"x": 124853}
+{"x": 1}
+{"x": 712.6699510540091}
+{"x": -455.2999882865273}
+{"x": 729.2107713818924}
+{"x": -438945136054988003}
+{"x": -1573096}
+{"x": 301.72749728504414}
+{"x": 470.6203017701528}
+{"x": 64311657237265290}
+{"x": 85036337873}
+{"x": 776.2786324318266}
+{"x": -330.72667880249173}
+{"x": 127.274818808903}
+{"x": -910403258189423837}
+{"x": -4}
+{"x": 1000}
+{"x": 302.5136741502608}
+{"x": 523.318918344061}
+{"x": 41416159518}
+{"x": 1000}
+{"x": 150714}
+{"x": 488.74447191299265}
+{"x": -206.05385739958538}
+{"x": 637.2780300844361}
+{"x": -134}
+{"x": -1452892683156}
+{"x": 1000}
+{"x": 947.2852400058958}
+{"x": 655.3730057897989}
+{"x": 1524}
+{"x": 1000}
+{"x": 108469732946761686}
+{"x": 203.9945455520691}
+{"x": -304.0755931132019}
+{"x": 757.3932933395032}
+{"x": -11481827571673420}
+{"x": -3115247154}
+{"x": 851.5871666357299}
+{"x": 914.6182521004199}
+{"x": 130797146}
+{"x": 1326}
+{"x": 895.9983266452205}
+{"x": -585.1574856034447}
+{"x": 427.27148619439726}
+{"x": -60380188}
+{"x": -2498}
+{"x": 1000}
+{"x": 501.1544013316144}
+{"x": 40.27816125365713}
+{"x": 59}
+{"x": 3348}
+{"x": 1000}
+{"x": 359.12210741129525}
+{"x": 1000}
+{"x": -696.9164604520057}
+{"x": 215.05469088844808}
+{"x": -13013645717532220}
+{"x": -1277}
+{"x": 802.4384375574175}
+{"x": 322.4588473385228}
+{"x": 23390883440141575}
+{"x": 4044214580}
+{"x": 90.56985592978639}
+{"x": -848.7761183179828}
+{"x": 579.0243283311847}
+{"x": -214004927721337}
+{"x": -86063602697471}
+{"x": 920.2359570489195}
+{"x": 140.1314299235026}
+{"x": 7679898199862427}
+{"x": 163295042}
+{"x": 54.83861080441466}
+{"x": -377.82950939064153}
+{"x": 844.15980396644}
+{"x": -286388100076062637}
+{"x": -185592097557}
+{"x": 414.7957613589649}
+{"x": 837.1535758727501}
+{"x": 161058381}
+{"x": 3383154}
+{"x": 1000}
+{"x": 597.4565734942373}
+{"x": -310.02734992598033}
+{"x": 157.7066069092461}
+{"x": -15840262024965894}
+{"x": -225228086111}
+{"x": 403.8986968140268}
+{"x": 1000}
+{"x": 167.00849837195275}
+{"x": 0}
+{"x": 1138082428980422}
+{"x": 577.6588603178079}
+{"x": -813.1175877382112}
+{"x": 1000}
+{"x": 300.4409810357079}
+{"x": -81}
+{"x": -81939724696576}
+{"x": 752.4617387405914}
+{"x": 877.6944795867779}
+{"x": 644317519064}
+{"x": 1000}
+{"x": 3}
+{"x": 669.4125415495889}
+{"x": -331.1470001300576}
+{"x": 306.4483802222283}
+{"x": -3452917044563}
+{"x": -29}
+{"x": 164.49011943330805}
+{"x": 671.1575838684931}
+{"x": 7232025578885}
+{"x": 327720818845}
+{"x": 448.894785153925}
+{"x": -190.04551150437842}
+{"x": 520.3155384548143}
+{"x": 1000}
+{"x": -214648255603642286}
+{"x": -608824176537290}
+{"x": 417.0089779129331}
+{"x": 304.6686081062269}
+{"x": 227952676793600}
+{"x": 1468114319973164}
+{"x": 916.7869781686312}
+{"x": 1000}
+{"x": -480.4484487038571}
+{"x": 171.74201479317662}
+{"x": -100228247}
+{"x": -25495704637}
+---
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}

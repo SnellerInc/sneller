@@ -1,0 +1,127 @@
+SELECT
+  x < `2018-12-11T15:09:12.744899Z` AS x_lt_imm,
+  x <= `2018-12-11T15:09:12.744899Z` AS x_le_imm,
+  x > `2018-12-11T15:09:12.744899Z` AS x_gt_imm,
+  x >= `2018-12-11T15:09:12.744899Z` AS x_ge_imm
+FROM
+  input
+---
+{"x": "2066-12-12T22:55:41.000000Z"}
+{"x": "2157-10-06T19:22:30.000000Z"}
+{"x": "1926-11-30T10:59:45.505221Z"}
+{"x": "2043-07-15T21:23:34.601521Z"}
+{"x": "2087-10-26T04:03:49.000000Z"}
+{"x": "2135-02-19T06:11:41.010248Z"}
+{"x": "2199-08-01T23:58:35.000000Z"}
+{"x": "1992-09-11T13:35:36.512900Z"}
+{"x": "2300-10-10T20:30:21.380669Z"}
+{"x": "2074-02-16T18:53:21.748952Z"}
+{"x": "2372-05-03T00:20:28.000000Z"}
+{"x": "1943-05-25T04:19:54.359155Z"}
+{"x": "2366-12-12T06:07:25.000000Z"}
+{"x": "2323-11-14T17:41:31.520316Z"}
+{"x": "2109-11-05T22:27:56.653971Z"}
+{"x": "2284-02-26T12:59:56.000000Z"}
+{"x": "2020-08-13T01:46:22.804580Z"}
+{"x": "2048-01-26T06:16:49.560871Z"}
+{"x": "2252-07-23T00:53:28.917931Z"}
+{"x": "2008-06-04T06:18:02.000000Z"}
+{"x": "2335-04-23T00:40:32.433464Z"}
+{"x": "2354-06-09T19:36:17.000000Z"}
+{"x": "2367-03-12T03:50:45.000000Z"}
+{"x": "2124-07-10T04:05:37.000000Z"}
+{"x": "2400-03-29T00:07:03.000000Z"}
+{"x": "2027-03-21T09:06:52.689017Z"}
+{"x": "2001-02-11T05:54:10.744262Z"}
+{"x": "2018-12-11T15:09:12.744899Z"}
+{"x": "2279-03-07T14:33:59.004056Z"}
+{"x": "2168-09-25T17:31:59.000000Z"}
+{"x": "2018-12-11T15:09:12.744899Z"}
+{"x": "2378-10-12T15:02:46.700612Z"}
+{"x": "1904-06-19T15:52:53.939949Z"}
+{"x": "2151-03-02T10:21:25.481947Z"}
+{"x": "2308-09-24T11:00:49.840954Z"}
+{"x": "2002-11-11T19:16:01.340528Z"}
+{"x": "2166-02-15T18:47:16.000000Z"}
+{"x": "2276-05-18T17:22:43.000000Z"}
+{"x": "1914-05-08T13:35:45.000000Z"}
+{"x": "2030-04-28T16:13:02.000000Z"}
+{"x": "2353-06-02T17:56:01.525772Z"}
+{"x": "1969-01-27T01:57:20.169057Z"}
+{"x": "1938-01-28T17:16:39.631772Z"}
+{"x": "1930-12-11T22:23:12.487203Z"}
+{"x": "2070-11-18T06:09:49.000000Z"}
+{"x": "2317-02-04T23:07:38.638549Z"}
+{"x": "2289-01-22T08:31:46.780398Z"}
+{"x": "1942-06-23T10:53:12.000000Z"}
+{"x": "1932-09-13T10:42:10.000000Z"}
+{"x": "2162-08-08T09:31:02.000000Z"}
+{"x": "2340-02-17T22:52:18.619679Z"}
+{"x": "2075-03-20T01:49:01.000000Z"}
+{"x": "1984-11-04T11:11:20.666390Z"}
+{"x": "2299-10-07T02:10:50.000000Z"}
+{"x": "1941-01-06T07:36:08.719148Z"}
+{"x": "2224-06-27T18:17:42.000000Z"}
+{"x": "1960-08-19T23:53:36.000000Z"}
+{"x": "2270-05-12T17:59:34.442143Z"}
+{"x": "1952-10-04T04:13:19.000000Z"}
+---
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}
+{"x_lt_imm": false, "x_le_imm": false, "x_gt_imm": true, "x_ge_imm": true}
+{"x_lt_imm": true, "x_le_imm": true, "x_gt_imm": false, "x_ge_imm": false}

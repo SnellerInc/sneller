@@ -1,0 +1,91 @@
+SELECT
+  x < TRUE AS x_lt_true,
+  x <= TRUE AS x_le_true,
+  x > TRUE AS x_gt_true,
+  x >= TRUE AS x_ge_true,
+  x < FALSE AS x_lt_false,
+  x <= FALSE AS x_le_false,
+  x > FALSE AS x_gt_false,
+  x >= FALSE AS x_ge_false
+FROM
+  input
+---
+{"x": true}
+{"x": true}
+{"x": false}
+{"x": true}
+{"x": true}
+{"x": true}
+{"x": false}
+{"x": false}
+{"x": false}
+{"x": true}
+{"x": true}
+{"x": true}
+{"x": true}
+{"x": false}
+{"x": false}
+{"x": true}
+{"x": true}
+{"x": true}
+{"x": false}
+{"x": false}
+{"x": false}
+{"x": true}
+{"x": true}
+{"x": false}
+{"x": false}
+{"x": true}
+{"x": true}
+{"x": true}
+{"x": false}
+{"x": false}
+{"x": true}
+{"x": false}
+{"x": false}
+{"x": false}
+{"x": false}
+{"x": true}
+{"x": false}
+{"x": true}
+{"x": true}
+---
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": true, "x_le_true": true, "x_gt_true": false, "x_ge_true": false, "x_lt_false": false, "x_le_false": true, "x_gt_false": false, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}
+{"x_lt_true": false, "x_le_true": true, "x_gt_true": false, "x_ge_true": true, "x_lt_false": false, "x_le_false": false, "x_gt_false": true, "x_ge_false": true}

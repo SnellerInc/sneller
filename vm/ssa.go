@@ -54,17 +54,54 @@ const (
 
 	sunboxktoi // val = unboxktoi(v)
 
-	// integer/float comparison ops
-	scmpeqf // floating-point equal
-	scmpeqi // signed 64-bit integer equal
-	scmplti // mask = arg0.mask < arg1.mask
+	// comparison ops
+	scmpv
+	scmpvk
+	scmpvimmk
+	scmpvi64
+	scmpvimmi64
+	scmpvf64
+	scmpvimmf64
+
+	scmpltstr
+	scmplestr
+	scmpgtstr
+	scmpgestr
+
+	scmpltk
+	scmpltimmk
+	scmpgtk
+	scmpgtimmk
+	scmplek
+	scmpleimmk
+	scmpgek
+	scmpgeimmk
+
+	scmpeqf
+	scmpeqimmf
+	scmpeqi
+	scmpeqimmi
 	scmpltf
-	scmpgti // mask = arg0.mask > arg1.mask
+	scmpltimmf
+	scmplti
+	scmpltimmi
 	scmpgtf
-	scmplei // ...
+	scmpgtimmf
+	scmpgti
+	scmpgtimmi
 	scmplef
-	scmpgei
+	scmpleimmf
+	scmplei
+	scmpleimmi
 	scmpgef
+	scmpgeimmf
+	scmpgei
+	scmpgeimmi
+
+	scmpltts
+	scmplets
+	scmpgtts
+	scmpgets
 
 	seqstr  // str = str
 	seqtime // time = time
@@ -146,21 +183,6 @@ const (
 	sDfaT8Z // DFA tiny 8-bit Zero remaining length assertion
 	sDfaL   // DFA large
 	sDfaLZ  // DFA large Zero remaining length assertion
-
-	// immediate integer comparison ops
-	scmpltimmi // arg0.mask < consti
-	scmpgtimmi // arg0.mask > consti
-	scmpleimmi // ...
-	scmpgeimmi
-	scmpeqimmi
-
-	// floating-point comparison ops
-	// (all implicitly on double-precision)
-	scmpltimmf // val < constf
-	scmpgtimmf // val > constf
-	scmpleimmf // val <= constf
-	scmpgeimmf // val >= constf
-	scmpeqimmf // val == constf
 
 	// raw literal comparison
 	sequalconst // arg0.mask == const
@@ -338,8 +360,6 @@ const (
 	saggslotxori
 	saggslotcount
 
-	scmplttm
-	scmpgttm
 	sbroadcastts
 	sunix
 	sunixmicro
@@ -487,6 +507,7 @@ type immfmt uint8
 const (
 	fmtnone       immfmt = iota // no immediate
 	fmtslot                     // immediate should be encoded as a uint16 slot reference from an integer
+	fmtbool                     // immediate should be encoded as an uint8 and represents a BOOL value
 	fmti64                      // immediate should be encoded as an int64
 	fmtf64                      // immediate is a float64; should be encoded as 8 bytes (little-endian)
 	fmtdict                     // immediate is a string; emit a dict reference
@@ -495,11 +516,20 @@ const (
 	fmtother // immediate is present, but not available for automatic encoding
 )
 
+var immfmtsize = [...]uint8{
+	fmtnone:       0,
+	fmtslot:       2,
+	fmtbool:       1,
+	fmti64:        8,
+	fmtf64:        8,
+	fmtdict:       2,
+	fmtslotx2hash: 2,
+	fmtother:      uint8(0xFF),
+}
+
 // canonically, the last argument of any function
 // is the operation's mask
-var logicalArgs = []ssatype{stBool, stBool}
-var intcmpArgs = []ssatype{stInt, stInt, stBool}
-var floatcmpArgs = []ssatype{stFloat, stFloat, stBool}
+var value2Args = []ssatype{stValue, stValue, stBool}
 
 var int1Args = []ssatype{stInt, stBool}
 var fp1Args = []ssatype{stFloat, stBool}
@@ -513,6 +543,11 @@ var parseValueArgs = []ssatype{stScalar, stValue, stBool}
 
 var scalar1Args = []ssatype{stValue, stBool}
 var scalar2Args = []ssatype{stValue, stValue, stBool}
+
+var argsIntIntBool = []ssatype{stInt, stInt, stBool}
+var argsFloatFloatBool = []ssatype{stFloat, stFloat, stBool}
+var argsBoolBool = []ssatype{stBool, stBool}
+var argsBoolBoolBool = []ssatype{stBool, stBool, stBool}
 
 // due to an initialization loop, there
 // are two copies of this table
@@ -547,35 +582,61 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// the symbol not being present in the symbol table)
 	sbroadcastk: {text: "broadcast.k", rettype: stBool},
 	skfalse:     {text: "false", rettype: stValue | stBool, emit: emitfalse},
-	sand:        {text: "and.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opandk},
-	snand:       {text: "nand.k", argtypes: logicalArgs, rettype: stBool, emit: emitnand, bc: opnandk},
-	sor:         {text: "or.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opork},
-	sxor:        {text: "xor.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opxork},
-	sxnor:       {text: "xnor.k", argtypes: logicalArgs, rettype: stBool, emit: emitlogical, bc: opxnork},
+	sand:        {text: "and.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opandk},
+	snand:       {text: "nand.k", argtypes: argsBoolBool, rettype: stBool, emit: emitnand, bc: opnandk},
+	sor:         {text: "or.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opork},
+	sxor:        {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxork},
+	sxnor:       {text: "xnor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxnork},
 
 	sunboxktoi: {text: "unbox.k@i", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
 
-	// two-operand fp and int comparison ops
-	scmpeqf:    {text: "cmpeq.f", argtypes: floatcmpArgs, rettype: stBool, bc: opcmpeqf, inverse: scmpeqf, emit: emitcmp},
-	scmpeqi:    {text: "cmpeq.i", argtypes: intcmpArgs, rettype: stBool, bc: opcmpeqi, inverse: scmpeqi, emit: emitcmp},
+	// two-operand comparison ops
+	scmpv:       {text: "cmpv", argtypes: value2Args, rettype: stInt | stBool, bc: opcmpv, emit: emitauto2},
+	scmpvk:      {text: "cmpv.k", argtypes: []ssatype{stValue, stBool, stBool}, rettype: stInt | stBool, bc: opcmpvk, emit: emitauto2},
+	scmpvimmk:   {text: "cmpv.imm.k", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmk, emit: emitauto2},
+	scmpvi64:    {text: "cmpv.i64", argtypes: []ssatype{stValue, stInt, stBool}, rettype: stInt | stBool, bc: opcmpvi64, emit: emitauto2},
+	scmpvimmi64: {text: "cmpv.imm.i64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmi64, emit: emitauto2},
+	scmpvf64:    {text: "cmpv.f64", argtypes: []ssatype{stValue, stFloat, stBool}, rettype: stInt | stBool, bc: opcmpvf64, emit: emitauto2},
+	scmpvimmf64: {text: "cmpv.imm.f64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmf64, emit: emitauto2},
+	scmpltstr:   {text: "cmplt.str", argtypes: str2Args, rettype: stBool, bc: opcmpltstr, emit: emitauto2},
+	scmplestr:   {text: "cmple.str", argtypes: str2Args, rettype: stBool, bc: opcmplestr, emit: emitauto2},
+	scmpgtstr:   {text: "cmpgt.str", argtypes: str2Args, rettype: stBool, bc: opcmpgtstr, emit: emitauto2},
+	scmpgestr:   {text: "cmpge.str", argtypes: str2Args, rettype: stBool, bc: opcmpgestr, emit: emitauto2},
+
+	scmpltk:    {text: "cmplt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpltk, inverse: scmpgtk, emit: emitauto2},
+	scmpltimmk: {text: "cmplt.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpltimmk, emit: emitauto2},
+	scmplek:    {text: "cmple.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmplek, inverse: scmpgek, emit: emitauto2},
+	scmpleimmk: {text: "cmple.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpleimmk, emit: emitauto2},
+	scmpgtk:    {text: "cmpgt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgtk, inverse: scmpltk, emit: emitauto2},
+	scmpgtimmk: {text: "cmpgt.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpgtimmk, emit: emitauto2},
+	scmpgek:    {text: "cmpge.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgek, inverse: scmplek, emit: emitauto2},
+	scmpgeimmk: {text: "cmpge.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpgeimmk, emit: emitauto2},
+
+	scmpeqf:    {text: "cmpeq.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpeqf, inverse: scmpeqf, emit: emitcmp},
 	scmpeqimmf: {text: "cmpeq.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpeqimmf},
+	scmpeqi:    {text: "cmpeq.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpeqi, inverse: scmpeqi, emit: emitcmp},
 	scmpeqimmi: {text: "cmpeq.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpeqimmi},
-	scmpltf:    {text: "cmplt.f", argtypes: floatcmpArgs, rettype: stBool, bc: opcmpltf, inverse: scmpgtf, emit: emitcmp},
-	scmplti:    {text: "cmplt.i", argtypes: intcmpArgs, rettype: stBool, bc: opcmplti, inverse: scmpgti, emit: emitcmp},
+	scmpltf:    {text: "cmplt.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpltf, inverse: scmpgtf, emit: emitcmp},
 	scmpltimmf: {text: "cmplt.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpltimmf},
+	scmplti:    {text: "cmplt.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplti, inverse: scmpgti, emit: emitcmp},
 	scmpltimmi: {text: "cmplt.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpltimmi},
-	scmplef:    {text: "cmple.f", argtypes: floatcmpArgs, rettype: stBool, bc: opcmplef, inverse: scmpgef, emit: emitcmp},
-	scmplei:    {text: "cmple.i", argtypes: intcmpArgs, rettype: stBool, bc: opcmplei, inverse: scmpgei, emit: emitcmp},
+	scmplef:    {text: "cmple.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmplef, inverse: scmpgef, emit: emitcmp},
 	scmpleimmf: {text: "cmple.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpleimmf},
+	scmplei:    {text: "cmple.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplei, inverse: scmpgei, emit: emitcmp},
 	scmpleimmi: {text: "cmple.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpleimmi},
-	scmpgtf:    {text: "cmpgt.f", argtypes: floatcmpArgs, rettype: stBool, bc: opcmpgtf, inverse: scmpltf, emit: emitcmp},
-	scmpgti:    {text: "cmpgt.i", argtypes: intcmpArgs, rettype: stBool, bc: opcmpgti, inverse: scmplti, emit: emitcmp},
+	scmpgtf:    {text: "cmpgt.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgtf, inverse: scmpltf, emit: emitcmp},
 	scmpgtimmf: {text: "cmpgt.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgtimmf},
+	scmpgti:    {text: "cmpgt.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgti, inverse: scmplti, emit: emitcmp},
 	scmpgtimmi: {text: "cmpgt.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgtimmi},
-	scmpgef:    {text: "cmpge.f", argtypes: floatcmpArgs, rettype: stBool, bc: opcmpgef, inverse: scmplef, emit: emitcmp},
-	scmpgei:    {text: "cmpge.i", argtypes: intcmpArgs, rettype: stBool, bc: opcmpgei, inverse: scmplei, emit: emitcmp},
+	scmpgef:    {text: "cmpge.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgef, inverse: scmplef, emit: emitcmp},
 	scmpgeimmf: {text: "cmpge.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgeimmf},
+	scmpgei:    {text: "cmpge.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgei, inverse: scmplei, emit: emitcmp},
 	scmpgeimmi: {text: "cmpge.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgeimmi},
+
+	scmpltts: {text: "cmplt.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplti, emit: emitcmp, inverse: scmpgtts},
+	scmplets: {text: "cmple.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplei, emit: emitcmp, inverse: scmpgets},
+	scmpgtts: {text: "cmpgt.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmpgti, emit: emitcmp, inverse: scmpltts},
+	scmpgets: {text: "cmpge.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmpgei, emit: emitcmp, inverse: scmplets},
 
 	seqstr:  {text: "eqstr", bc: opeqslice, argtypes: []ssatype{stString, stString, stBool}, inverse: seqstr, rettype: stBool, emit: emitcmp},
 	seqtime: {text: "eqtime", bc: opeqslice, argtypes: []ssatype{stTime, stTime, stBool}, inverse: seqstr, rettype: stBool, emit: emitcmp},
@@ -881,8 +942,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstring, scratch: true},
 
 	// timestamp operations
-	scmplttm:                {text: "cmplt.tm", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplti, emit: emitcmp, inverse: scmpgttm},
-	scmpgttm:                {text: "cmpgt.tm", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmpgti, emit: emitcmp, inverse: scmplttm},
 	sbroadcastts:            {text: "broadcast.ts", rettype: stTimeInt, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcastimmi},
 	sunboxtime:              {text: "unboxtime", argtypes: []ssatype{stTime, stBool}, rettype: stTimeInt, bc: opunboxts},
 	sdateadd:                {text: "dateadd", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opaddi, emit: emitBinaryOp},
@@ -1943,17 +2002,80 @@ func roundi(imm interface{}, dir int) uint64 {
 	}
 }
 
-func isIntImmediate(imm interface{}) bool {
+func isBoolImmediate(imm interface{}) bool {
 	switch imm.(type) {
-	case int, int64, uint, uint64:
+	case bool:
 		return true
 	default:
 		return false
 	}
 }
 
+func isIntImmediate(imm interface{}) bool {
+	switch v := imm.(type) {
+	case int, int64, uint, uint64:
+		return true
+	case float64:
+		return float64(int64(v)) == v
+	default:
+		return false
+	}
+}
+
+func isFloatImmediate(imm interface{}) bool {
+	switch imm.(type) {
+	case float64:
+		return true
+	default:
+		return false
+	}
+}
+
+func isStringImmediate(imm interface{}) bool {
+	switch imm.(type) {
+	case string:
+		return true
+	default:
+		return false
+	}
+}
+
+func isTimestampImmediate(imm interface{}) bool {
+	switch imm.(type) {
+	case date.Time:
+		return true
+	default:
+		return false
+	}
+}
+func tobool(imm interface{}) bool {
+	switch v := imm.(type) {
+	case bool:
+		return v
+	case int:
+		return v != 0
+	case int64:
+		return v != 0
+	case uint64:
+		return v != 0
+	case uint:
+		return v != 0
+	case float64:
+		return v != 0
+	case float32:
+		return v != 0
+	default:
+		panic("invalid immediate for tobool()")
+	}
+}
+
 func tof64(imm interface{}) float64 {
 	switch i := imm.(type) {
+	case bool:
+		if i {
+			return float64(1)
+		}
+		return float64(0)
 	case int:
 		return float64(i)
 	case int64:
@@ -1973,6 +2095,11 @@ func tof64(imm interface{}) float64 {
 
 func toi64(imm interface{}) uint64 {
 	switch i := imm.(type) {
+	case bool:
+		if i {
+			return 1
+		}
+		return 0
 	case int:
 		return uint64(i)
 	case int64:
@@ -2620,60 +2747,238 @@ func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
 }
 
+type compareOp uint8
+
+const (
+	comparelt compareOp = iota
+	comparele
+	comparegt
+	comparege
+)
+
+type compareOpInfo struct {
+	cmpk    ssaop
+	cmpimmk ssaop
+	cmpi    ssaop
+	cmpimmi ssaop
+	cmpf    ssaop
+	cmpimmf ssaop
+	cmps    ssaop
+	cmpts   ssaop
+}
+
+var compareOpReverseTable = [...]compareOp{
+	comparelt: comparegt,
+	comparele: comparege,
+	comparegt: comparelt,
+	comparege: comparele,
+}
+
+var compareOpInfoTable = [...]compareOpInfo{
+	comparelt: {cmpk: scmpltk, cmpimmk: scmpltimmk, cmpi: scmplti, cmpimmi: scmpltimmi, cmpf: scmpltf, cmpimmf: scmpltimmf, cmps: scmpltstr, cmpts: scmpltts},
+	comparele: {cmpk: scmplek, cmpimmk: scmpleimmk, cmpi: scmplei, cmpimmi: scmpleimmi, cmpf: scmplef, cmpimmf: scmpleimmf, cmps: scmplestr, cmpts: scmplets},
+	comparegt: {cmpk: scmpgtk, cmpimmk: scmpgtimmk, cmpi: scmpgti, cmpimmi: scmpgtimmi, cmpf: scmpgtf, cmpimmf: scmpgtimmf, cmps: scmpgtstr, cmpts: scmpgtts},
+	comparege: {cmpk: scmpgek, cmpimmk: scmpgeimmk, cmpi: scmpgei, cmpimmi: scmpgeimmi, cmpf: scmpgef, cmpimmf: scmpgeimmf, cmps: scmpgestr, cmpts: scmpgets},
+}
+
+// compareValueWith computes 'left <op> right' when left is guaranteed to be a value
+//
+// This function is only designed to be used by `compare()`
+func (p *prog) compareValueWith(left, right *value, op compareOp) *value {
+	info := compareOpInfoTable[op]
+
+	// Compare value vs scalar/immediate
+	if right.op == sliteral {
+		imm := right.imm
+		if isBoolImmediate(imm) {
+			cmpv := p.ssa2imm(scmpvimmk, left, p.mask(left), tobool(imm))
+			return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		}
+		if isIntImmediate(imm) {
+			cmpv := p.ssa2imm(scmpvimmi64, left, p.mask(left), toi64(imm))
+			return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		}
+		if isFloatImmediate(imm) {
+			cmpv := p.ssa2imm(scmpvimmf64, left, p.mask(left), tof64(imm))
+			return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		}
+		if isStringImmediate(imm) {
+			left = p.toStr(left)
+			right = p.toStr(right)
+			return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
+		}
+	}
+
+	rType := right.primary()
+	if rType == stBool {
+		cmpv := p.ssa3(scmpvk, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+	}
+	if rType == stInt {
+		cmpv := p.ssa3(scmpvi64, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+	}
+	if rType == stFloat {
+		cmpv := p.ssa3(scmpvf64, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+	}
+	if rType == stString {
+		left = p.toStr(left)
+		return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
+	}
+	if rType == stTimeInt || rType == stTime {
+		lhs, lhk := p.coerceTimestamp(left)
+		rhs, rhk := p.coerceTimestamp(right)
+		return p.ssa3(info.cmpts, lhs, rhs, p.And(lhk, p.mask(rhk)))
+	}
+
+	return nil
+}
+
+// compare computes 'left <op> right'
+func (p *prog) compare(left, right *value, op compareOp) *value {
+	info := compareOpInfoTable[op]
+	revInfo := compareOpInfoTable[compareOpReverseTable[op]]
+
+	lLiteral := left.op == sliteral
+	rLiteral := right.op == sliteral
+
+	lType := left.primary()
+	rType := right.primary()
+
+	// compare value vs non-value (scalar/immediate)
+	if lType == stValue {
+		v := p.compareValueWith(left, right, op)
+		if v != nil {
+			return v
+		}
+	}
+
+	// compare non-value (scalar/immediate) vs value
+	if rType == stValue {
+		v := p.compareValueWith(right, left, compareOpReverseTable[op])
+		if v != nil {
+			return v
+		}
+	}
+
+	// compare bool vs immediate
+	if lType == stBool && rLiteral {
+		if isBoolImmediate(right.imm) {
+			return p.ssa2imm(info.cmpimmk, left, p.mask(left), tobool(right.imm))
+		}
+		return p.ssa0(skfalse)
+	}
+
+	// compare immediate vs bool
+	if lLiteral && rType == stBool {
+		if isBoolImmediate(left.imm) {
+			return p.ssa2imm(revInfo.cmpimmk, right, p.mask(right), tobool(left.imm))
+		}
+		return p.ssa0(skfalse)
+	}
+
+	// compare bool vs bool
+	if lType == stBool && rType == stBool {
+		return p.ssa3(info.cmpk, left, right, p.And(p.mask(left), p.mask(right)))
+	}
+
+	// compare int/float vs immediate
+	if lType == stInt && rLiteral {
+		if isIntImmediate(right.imm) {
+			return p.ssa2imm(info.cmpimmi, left, p.mask(left), toi64(right.imm))
+		}
+
+		lhs, lhk := p.coercefp(left)
+		return p.ssa2imm(info.cmpimmf, lhs, lhk, tof64(right.imm))
+	}
+
+	if lType == stFloat && rLiteral {
+		return p.ssa2imm(info.cmpimmf, left, p.mask(left), tof64(right.imm))
+	}
+
+	// compare immediate vs int/float
+	if lLiteral && rType == stInt {
+		if isIntImmediate(left.imm) {
+			return p.ssa2imm(revInfo.cmpimmi, right, p.mask(right), toi64(left.imm))
+		}
+
+		rhs, rhk := p.coercefp(right)
+		return p.ssa2imm(info.cmpimmf, rhs, rhk, tof64(left.imm))
+	}
+
+	if lLiteral && rType == stFloat {
+		return p.ssa2imm(revInfo.cmpimmf, right, p.mask(right), tof64(left.imm))
+	}
+
+	// compare int/float vs int/float (if the types are mixed, int is coerced to float)
+	if lType == stInt && rType == stInt {
+		return p.ssa3(info.cmpi, left, right, p.And(p.mask(left), p.mask(right)))
+	}
+
+	if lType == stInt && rType == stFloat {
+		lhs, lhk := p.coercefp(left)
+		return p.ssa3(info.cmpi, lhs, right, p.And(lhk, p.mask(right)))
+	}
+
+	if lType == stFloat && rType == stInt {
+		rhs, rhk := p.coercefp(right)
+		return p.ssa3(info.cmpi, left, rhs, p.And(p.mask(left), rhk))
+	}
+
+	if lType == stFloat && rType == stFloat {
+		return p.ssa3(info.cmpf, left, right, p.And(p.mask(left), p.mask(right)))
+	}
+
+	// compare timestamp vs timestamp
+	lTimeCompat := lType == stTimeInt || lType == stTime || (lLiteral && isTimestampImmediate(left.imm))
+	rTimeCompat := rType == stTimeInt || rType == stTime || (rLiteral && isTimestampImmediate(right.imm))
+
+	if lTimeCompat && rTimeCompat {
+		lhs, lhk := p.coerceTimestamp(left)
+		rhs, rhk := p.coerceTimestamp(right)
+		return p.ssa3(info.cmpts, lhs, rhs, p.And(p.mask(lhk), p.mask(rhk)))
+	}
+
+	// Compare string vs string
+	lStringCompat := lType == stString || (lLiteral && isStringImmediate(left.imm))
+	rStringCompat := rType == stString || (rLiteral && isStringImmediate(right.imm))
+
+	if lStringCompat && rStringCompat {
+		left = p.toStr(left)
+		right = p.toStr(right)
+		return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
+	}
+
+	// Compare value vs value
+	if lType == stValue && rType == stValue {
+		mask := p.And(p.mask(left), p.mask(right))
+		cmpv := p.ssa3(scmpv, left, right, mask)
+		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+	}
+
+	// Uncomparable...
+	return p.ssa0(skfalse)
+}
+
 // Less computes 'left < right'
 func (p *prog) Less(left, right *value) *value {
-	if left.op == sliteral {
-		if right.op == sliteral {
-			panic("missed constprop opportunity")
-		}
-		return p.GreaterEqual(right, left)
-	}
-	if right.op == sliteral {
-		return p.cmpimm(scmpltimmi, scmpltimmf, 1, left, right.imm)
-	}
-	return p.cmp(scmpltf, left, right)
-}
-
-// Greater computes 'left > right'
-func (p *prog) Greater(left, right *value) *value {
-	if left.op == sliteral {
-		if right.op == sliteral {
-			panic("TODO: constprop")
-		}
-		return p.LessEqual(right, left)
-	}
-	if right.op == sliteral {
-		return p.cmpimm(scmpgtimmi, scmpgtimmf, -1, left, right.imm)
-	}
-	return p.cmp(scmpgtf, left, right)
-}
-
-// GreaterEqual computes 'left >= right'
-func (p *prog) GreaterEqual(left, right *value) *value {
-	if left.op == sliteral {
-		if right.op == sliteral {
-			panic("TODO: constprop")
-		}
-		return p.Less(right, left)
-	}
-	if right.op == sliteral {
-		return p.cmpimm(scmpgeimmi, scmpgeimmf, 1, left, right.imm)
-	}
-	return p.cmp(scmpgef, left, right)
+	return p.compare(left, right, comparelt)
 }
 
 // LessEqual computes 'left <= right'
 func (p *prog) LessEqual(left, right *value) *value {
-	if left.op == sliteral {
-		if right.op == sliteral {
-			panic("TODO: constprop")
-		}
-		return p.Greater(right, left)
-	}
-	if right.op == sliteral {
-		return p.cmpimm(scmpleimmi, scmpleimmf, -1, left, right.imm)
-	}
-	return p.cmp(scmplef, left, right)
+	return p.compare(left, right, comparele)
+}
+
+// Greater computes 'left > right'
+func (p *prog) Greater(left, right *value) *value {
+	return p.compare(left, right, comparegt)
+}
+
+// GreaterEqual computes 'left >= right'
+func (p *prog) GreaterEqual(left, right *value) *value {
+	return p.compare(left, right, comparege)
 }
 
 // And computes 'left AND right'
@@ -4842,6 +5147,46 @@ func (c *compilestate) op(v *value, op bcop) {
 	c.asm.emitOpcode(op)
 }
 
+func (c *compilestate) opvar(op bcop, slots []stackslot, imm interface{}) {
+	info := &opinfo[op]
+	immCount := len(slots)
+
+	if imm != nil {
+		immCount++
+	}
+
+	if immCount != len(info.imms) {
+		panic(fmt.Sprintf("error when emitting '%s': required %d immediates, not %d", info.text, len(info.imms), immCount))
+	}
+
+	// emit opcode
+	c.asm.emitOpcode(op)
+
+	// emit optional stack slots
+	for i, slot := range slots {
+		if info.imms[i] != bcImmS16 {
+			panic(fmt.Sprintf("error when emitting '%s': argument %d is not 'stackslot'", info.text, i))
+		}
+		c.asm.emitImmU16(uint16(slot))
+	}
+
+	// emit an optional immediate that follows
+	if imm != nil {
+		switch info.imms[len(info.imms)-1] {
+		case bcImmI8, bcImmU8, bcImmU8Hex:
+			c.asm.emitImmU8(uint8(toi64(imm)))
+		case bcImmS16, bcImmI16, bcImmU16, bcImmU16Hex, bcImmDict:
+			c.asm.emitImmU16(uint16(toi64(imm)))
+		case bcImmI32, bcImmU32, bcImmU32Hex:
+			c.asm.emitImmU32(uint32(toi64(imm)))
+		case bcImmI64, bcImmU64, bcImmU64Hex:
+			c.asm.emitImmU64(toi64(imm))
+		case bcImmF64:
+			c.asm.emitImmU64(math.Float64bits(tof64(imm)))
+		}
+	}
+}
+
 func (c *compilestate) opu8(v *value, op bcop, imm uint8) {
 	checkImmediateBeforeEmit1(op, 1)
 	c.asm.emitOpcode(op)
@@ -5210,7 +5555,6 @@ func (c *compilestate) clobberb(v *value) {
 func (c *compilestate) existingStackRef(arg *value, rc regclass) stackslot {
 	slot := c.regs.slotOf(rc, arg.id)
 	if slot == invalidstackslot {
-		fmt.Println(formatBytecode(c.asm.getCode()))
 		panic(fmt.Sprintf("Cannot get a stack slot of %v, which is not allocated", arg))
 	}
 	return slot
@@ -5940,6 +6284,8 @@ func emitauto(v *value, c *compilestate) {
 		c.op(v, info.bc)
 	case fmtslot:
 		c.ops16(v, info.bc, stackslot(v.imm.(int)))
+	case fmtbool:
+		c.opu8(v, info.bc, uint8(toi64(v.imm)))
 	case fmti64:
 		c.opu64(v, info.bc, toi64(v.imm))
 	case fmtf64:
@@ -5952,6 +6298,139 @@ func emitauto(v *value, c *compilestate) {
 	default:
 		panic("unsupported immfmt for emitauto")
 	}
+}
+
+// emitauto2 is a generic emitter that emits bytecode based on both SSA and BC info tables
+//
+// If the SSA/BC instruction is predicated, and the predicate is the last argument, it's
+// allocated to a predicate register. The remaining arguments are allocated from left to
+// right - the first argument of a specific register type is allocated in register, the
+// remaining arguments are passed via stack slots.
+func emitauto2(v *value, c *compilestate) {
+	info := &ssainfo[v.op]
+	argCount := len(v.args)
+
+	if info.bc == 0 {
+		panic("emitauto doesn't work if ssainfo.bc is not set")
+	}
+
+	if argCount != len(info.argtypes) {
+		panic("argument count mismatch")
+	}
+
+	if info.scratch {
+		c.needscratch = true
+	}
+
+	var slots []stackslot
+	var kRegArg *value
+	var sRegArg *value
+	var vRegArg *value
+	var bRegArg *value
+
+	// process active lanes predicate first, as this is supposed to be in K1
+	if argCount > 0 && info.argtypes[argCount-1] == stBool {
+		arg := v.args[argCount-1]
+
+		if (arg.ret() & stBool) == 0 {
+			panic("Invalid argument found during SSA to BC lowering")
+		}
+
+		// Remove this argument from further processing as it's done
+		kRegArg = arg
+		argCount--
+	}
+
+	for i := 0; i < argCount; i++ {
+		arg := v.args[i]
+		infoArgType := info.argtypes[i]
+
+		if arg.op == sundef {
+			continue
+		}
+
+		ret := arg.ret() & infoArgType
+		if ret == 0 {
+			panic(fmt.Sprintf("argument %d doesn't reflect the required argument", i))
+		}
+
+		// memory arguments are just for ordering
+		if ret == stMem {
+			continue
+		}
+
+		reg := ret.vregs()
+
+		switch reg {
+		case onlyreg(regK):
+			if kRegArg == nil {
+				kRegArg = arg
+			} else {
+				slots = append(slots, c.forceStackRef(arg, regK))
+			}
+		case onlyreg(regS):
+			if sRegArg == nil {
+				sRegArg = arg
+			} else {
+				slots = append(slots, c.forceStackRef(arg, regS))
+			}
+		case onlyreg(regV):
+			if vRegArg == nil {
+				vRegArg = arg
+			} else {
+				slots = append(slots, c.forceStackRef(arg, regV))
+			}
+		case onlyreg(regB):
+			if bRegArg == nil {
+				bRegArg = arg
+			} else {
+				slots = append(slots, c.forceStackRef(arg, regB))
+			}
+		case onlyreg(regL):
+			if c.regs.cur[regL] != arg.id {
+				panic("L register cannot be clobbered")
+			}
+		default:
+			panic("Unhandled register type")
+		}
+	}
+
+	opInfo := &opinfo[info.bc]
+	opFlags := opInfo.flags
+
+	if kRegArg != nil {
+		c.loadk(v, kRegArg)
+	}
+
+	if sRegArg != nil {
+		c.loads(v, sRegArg)
+	}
+
+	if vRegArg != nil {
+		c.loadv(v, vRegArg)
+	}
+
+	if bRegArg != nil {
+		c.loadb(v, bRegArg)
+	}
+
+	if (opFlags & bcWriteK) != 0 {
+		c.clobberk(v)
+	}
+
+	if (opFlags & bcWriteS) != 0 {
+		c.clobbers(v)
+	}
+
+	if (opFlags & bcWriteV) != 0 {
+		c.clobberv(v)
+	}
+
+	if (opFlags & bcWriteB) != 0 {
+		c.clobberb(v)
+	}
+
+	c.opvar(info.bc, slots, v.imm)
 }
 
 func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {

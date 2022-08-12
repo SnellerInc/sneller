@@ -268,6 +268,22 @@ const (
 	parkingBytes = 116243
 )
 
+func toJSON(st *ion.Symtab, d ion.Datum) string {
+	if d.Empty() {
+		return "<nil>"
+	}
+	var ib ion.Buffer
+	ib.StartChunk(st)
+	d.Encode(&ib, st)
+	br := bufio.NewReader(bytes.NewReader(ib.Bytes()))
+	var sb strings.Builder
+	_, err := ion.ToJSON(&sb, br)
+	if err != nil {
+		panic(err)
+	}
+	return sb.String()
+}
+
 func TestExec(t *testing.T) {
 	env := &testenv{t: t}
 
@@ -440,15 +456,15 @@ where coalesce(x, y, z) = 3`,
 		{
 			query:    `select avg(fare_amount) from 'nyc-taxi.block'`,
 			rows:     1,
-			firstrow: fmt.Sprintf(`{"avg": %g}`, 9.475478887557983),
+			firstrow: fmt.Sprintf(`{"avg": %g}`, 9.475478898890188),
 		},
 		{
 			query: `select avg(fare_amount), VendorID from 'nyc-taxi.block' group by VendorID order by avg(fare_amount)`,
 			rows:  3,
 			expectedRows: []string{
-				`{"VendorID": "VTS", "avg": 9.435699629099469}`,
-				`{"VendorID": "CMT", "avg": 9.685402762381386}`,
-				`{"VendorID": "DDS", "avg": 9.942763094839297}`,
+				`{"VendorID": "VTS", "avg": 9.435699641166872}`,
+				`{"VendorID": "CMT", "avg": 9.685402771563982}`,
+				`{"VendorID": "DDS", "avg": 9.942763085526316}`,
 			},
 		},
 		// Test arithmetic expressions with immediate values, which should use optimized bytecode.
@@ -672,12 +688,8 @@ where t.passenger_count>1 or t.trip_distance<1`,
 select t.VendorID as vendor, t.fare_amount as fare, t.passenger_count as passengers
 from 'nyc-taxi.block' t
 where t.passenger_count>1 or t.trip_distance<1`,
-			rows: 4699,
-			// FIXME: there is some imprecision in the output fare
-			// due to the fact that the nyc-taxi dataset uses float32
-			// values for fares, and we normalize everything to float64
-			// when it is non-integral
-			firstrow: `{"vendor": "VTS", "fare": 12.100000381469727, "passengers": 3}`,
+			rows:     4699,
+			firstrow: `{"vendor": "VTS", "fare": 12.1, "passengers": 3}`,
 		},
 		{
 			query: `
@@ -700,12 +712,12 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 		{
 			query:    `select min(passenger_count), sum(fare_amount) as sum from 'nyc-taxi.block'`,
 			rows:     1,
-			firstrow: `{"min": 1, "sum": 81110.09927749634}`,
+			firstrow: `{"min": 1, "sum": 81110.09937450002}`,
 		},
 		{
 			query:    `select fare_amount + 0.1, total_amount + 0.5, total_amount - 1 from 'nyc-taxi.block' limit 1`,
 			rows:     1,
-			firstrow: `{"_1": 8.999999618530273, "_2": 9.899999618530273, "_3": 8.399999618530273}`,
+			firstrow: `{"_1": 9, "_2": 9.9, "_3": 8.4}`,
 		},
 		{
 			query:    `select count(Make) from 'parking.10n'`,
@@ -978,10 +990,10 @@ from 'parking.10n' limit 1`,
 		{
 			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from 'nyc-taxi.block' group by payment_type order by diff desc`,
 			expectedRows: []string{
-				`{"diff": 4993.760008811951, "payment_type": "Credit"}`,
-				`{"diff": 2475.249926328659, "payment_type": "CASH"}`,
-				`{"diff": 93.10000324249268, "payment_type": "CREDIT"}`,
-				`{"diff": 59.149993896484375, "payment_type": "Cash"}`,
+				`{"diff": 4993.759996700028, "payment_type": "Credit"}`,
+				`{"diff": 2475.2499420999884, "payment_type": "CASH"}`,
+				`{"diff": 93.1000019, "payment_type": "CREDIT"}`,
+				`{"diff": 59.149993999999424, "payment_type": "Cash"}`,
 				`{"diff": 0, "payment_type": "No Charge"}`,
 				`{"diff": 0, "payment_type": "Dispute"}`,
 			},
@@ -992,10 +1004,10 @@ from 'parking.10n' limit 1`,
 			query: `select sum(total_amount-fare_amount) as diff, payment_type from 'nyc-taxi.block' group by payment_type order by diff desc`,
 			rows:  6, // can confirm with 'select count(distinct payment_type) ...'
 			expectedRows: []string{
-				`{"payment_type": "Credit", "diff": 4993.760008811951}`,
-				`{"payment_type": "CASH", "diff": 2475.249926328659}`,
-				`{"payment_type": "CREDIT", "diff": 93.10000324249268}`,
-				`{"payment_type": "Cash", "diff": 59.149993896484375}`,
+				`{"payment_type": "Credit", "diff": 4993.7599967000015}`,
+				`{"payment_type": "CASH", "diff": 2475.249942100005}`,
+				`{"payment_type": "CREDIT", "diff": 93.1000019}`,
+				`{"payment_type": "Cash", "diff": 59.149993999999985}`,
 				`{"payment_type": "No Charge", "diff": 0}`,
 				`{"payment_type": "Dispute", "diff": 0}`,
 			},
@@ -1572,6 +1584,9 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 			t.Errorf("row #%d", i)
 			t.Errorf("got : %#v", row)
 			t.Errorf("want: %#v", want)
+
+			t.Errorf("got JSON: %s", toJSON(&st, row))
+			t.Errorf("want JSON: %s", toJSON(&st, want))
 		}
 	}
 	if stat != *wantstat {

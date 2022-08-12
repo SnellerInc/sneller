@@ -1,0 +1,447 @@
+SELECT
+  x < y AS x_lt_y,
+  x <= y AS x_le_y,
+  x > y AS x_gt_y,
+  x >= y AS x_ge_y
+FROM
+  input
+---
+{"x": 639.6220517379479, "y": 351.49649157797023}
+{"x": null, "y": null}
+{"x": 3050312275848250140, "y": 928.1786879260061}
+{"x": false, "y": false}
+{"x": 473.41114492338966, "y": 290.5842704525787}
+{"x": true, "y": true}
+{"x": true, "y": false}
+{"x": "mDQC1hpQrqVYMg91Uo67wv1Ef", "y": "mDQC1hpQrqVYMg91UoWBtdhUdqknvQTEKuucURPiYmS0Zcv1SyrrA1i9cjQrZOBLNpUOT1"}
+{"x": null, "y": null}
+{"x": false, "y": true}
+{"x": "2285-12-21T21:50:48.000000Z", "y": "2285-12-21T21:50:48.000000Z"}
+{"x": "rYECJwUQkmEmsdCE8oSveCY0uKNxX4hsBUN4SCUz5pRFn1mWGyXTyi0weAguOCcRCinV", "y": "rYECJwUQkmEmsdCE8oSveCY0uKNxX4hsBUN4SCUz5pRFn1mWGyXTyi0weAguOCcRCin"}
+{"x": true, "y": true}
+{"x": 7057870229785655845, "y": 584.223284418371}
+{"x": "d5eYzc5VlFB4Y6OFSsFeSX6fQ5oj8eaTtTexiD82ONJn99eGZduPD1ogCBz7meCM8LzwWe", "y": "d5eYzc5VlFB4Y6OFSsFeSX6fQ5oj8eaTtTexiD82ONJn99eGZduPD1ogCBz7meCpyEJge"}
+{"x": 103.30110130694037, "y": 711.3744610642275}
+{"x": "1984-03-23T21:31:02.820494Z", "y": "2344-05-04T04:09:26.190767Z"}
+{"x": 230.86102391919894, "y": 712.7486276275441}
+{"x": "2302-07-18T14:03:06.602977Z", "y": "2302-07-18T14:03:06.602977Z"}
+{"x": null, "y": null}
+{"x": "oIaOsEjMeCZH5lqQQ2WaiUCh4H5v29btLmUADe0l5kD2ZE1BMwSr7lsOetrqBrW0Hh63du", "y": "oIaOsEjMeCZH5lqQQ2WaiUCh4H5v29btLmUADe0l5kD2ZE1BMwSr7lsOetrqBrW0Hh63"}
+{"x": "2273-10-18T22:13:21.000000Z", "y": "2165-03-11T15:08:54.000000Z"}
+{"x": 474.89698532577694, "y": 571.7465506894282}
+{"x": true, "y": false}
+{"x": 654.7160784527642, "y": 7762590578565742449}
+{"x": "2388-07-14T02:46:52.000000Z", "y": "2283-08-02T12:20:07.600823Z"}
+{"x": 511.1253037956439, "y": 2366596899219389833}
+{"x": "pQczbQx5ghQM35r2Glcev", "y": "pQc9vBINLQpUvD3HDUd7gfo"}
+{"x": true, "y": false}
+{"x": null, "y": null}
+{"x": 630.1369484839394, "y": 449.12276771546254}
+{"x": null, "y": null}
+{"x": 2509750115559068237, "y": 289.32313061852824}
+{"x": "44aJ4dHZEEKOyvunSZ34KfZE213MtmmhP8eA4amO5bFAkX", "y": "44aJ4dHZEllxPHBQfkaAWyMF4nSkRxLEGpCgfVhzzRaW5FySditaAuoIpvzZZ"}
+{"x": 613.2624467224869, "y": 511.7607443949156}
+{"x": "hLlXTYiNxq7fBgIserdIDKrXg4aXw3NPN8440wpdeR4DNbKTkuMt16PePGJCSRQXmQBZ", "y": "hLlXTYiNxq7fBgIserdIDKrXg4aXw3NPN844030NxXZQ1hXtNzSbPB9LZU3"}
+{"x": null, "y": null}
+{"x": null, "y": null}
+{"x": 8539759379010695612, "y": 355.4961900653262}
+{"x": 4982629899021426155, "y": 859.6908412705177}
+{"x": "2210-08-27T04:32:23.000000Z", "y": "2316-09-04T00:55:03.000000Z"}
+{"x": null, "y": null}
+{"x": false, "y": false}
+{"x": 507.58497504633124, "y": 20.516015283234545}
+{"x": "8Gm6b9hG1BtDYuC9IHFwyxcXNMMcIZgr0aQw9agvUWEY2QV7MTZEgg7", "y": "8Gm6b9hG1BtDYuC9IHFwyxcXNMMcIZgr0aQw9agvUWEY2QVTdn5g5qoRjRC8C6R"}
+{"x": "GEqfp2vSOtPaHc4YxuS9i5EThapwKgQidFlALMJHS3H42pYTe", "y": "GEqfp2vSOtPaHc4YxuS9i5EThapwKgQidFlALJNb8D54QyLLlZYjLcX9eLrzLKB"}
+{"x": 570.079161711946, "y": 7741588979320287912}
+{"x": false, "y": false}
+{"x": 6805029259723145279, "y": 195.1644404463021}
+{"x": 242.54319203212282, "y": 596.8315786121744}
+{"x": null, "y": null}
+{"x": 82.36414524510816, "y": 2081188463892452999}
+{"x": 999.9167800824233, "y": 4732376578150634454}
+{"x": null, "y": null}
+{"x": "IZfvwJiABUaWzHkwZU", "y": "IZfJjPupcqW9XAsHUgGagOW294tTyZdfYX762KqFUlU8Okjxc0tWISWF"}
+{"x": 4492163271725276471, "y": 328.395841767672}
+{"x": 854.8232258375082, "y": 517.7781233806897}
+{"x": "Now3vaQp2KfsWBEePYyoPo1C84u09x5vzfA8ULh5ERkznlDyGWCbvXJqy3y", "y": "Now3vaQp2KfsWBEePYyoPo1C84u09x5vzfA8ULh5ERkzTdqVZ8nhkB"}
+{"x": "FSYK1oDHV9ZZCzoyWC3M5kgZjkm8odBWNqJBxKqvkrvNhWHEmdDiX", "y": "FSYK1oDHV9ZZCzoyWC3M5kgZjkm8odBWNqJBxKqvkrvVAAN0O2hUp"}
+{"x": "1994-09-21T15:21:17.000000Z", "y": "2161-03-30T22:03:40.149936Z"}
+{"x": "8dYrQ0b88mZRlt6Gvqz5XXkSZ", "y": "8dYrQ0b88mZV8HPNhPirji8S5Hd5akxNvqk"}
+{"x": 635.5455741128151, "y": 866.3810100343937}
+{"x": "LrasjhkNltXhUelBwKQKhBU31A4adazCWS24q6WAYcNstn", "y": "LrasjhkNltXhUelBwKQKhBU31mQ94pU1CdqhESleNx8cQIv4DsaCTWq7"}
+{"x": 8343156742233066855, "y": 419.23087305240125}
+{"x": true, "y": false}
+{"x": "2278-01-19T01:25:45.000000Z", "y": "2286-11-07T00:04:54.000000Z"}
+{"x": 3648278834609155453, "y": 560.8987352394656}
+{"x": false, "y": false}
+{"x": 499.3148473867193, "y": 342.30144709595254}
+{"x": true, "y": true}
+{"x": 693.9939722709564, "y": 566.9713147237646}
+{"x": false, "y": true}
+{"x": 6911229473259600593, "y": 943.7860113953639}
+{"x": 562.6164273895542, "y": 700.9082791714808}
+{"x": true, "y": true}
+{"x": "3Sr6VK8PIPKVuxxiPSqTzWF4svQASWSlFMItWNbb9EauxpRylggZqoK0jTm3H8mytrJZp1", "y": "3Sr6VK8PIPKVuxxiPSqTzWF4svQASWSlFMItWNbb9EauxpRylggZqoK0jTm3H8mytrJZp1"}
+{"x": 256.1719115007628, "y": 1950326728341821690}
+{"x": "87cMFJZBSeycWTJQf1RlQSa7gQ1tzda3UQNyWDG5es3LPEXZYnrDVLKdmD5njZwxdT7sjb", "y": "87cMFJZBSeycWTJQf1RlQSa7gQ1tzda3UQNyWDG5es3LPEXZYnrDVLKdmD5njZwxdT7s"}
+{"x": null, "y": null}
+{"x": "2256-03-10T07:25:30.327116Z", "y": "2092-02-26T22:21:14.118632Z"}
+{"x": "2CcUXgEFfjIwmi5WTDimpsxTDsfCFaFw", "y": "2CcUXgEFfjIwmi5WTDimpsxTD7OmgMNwjfAs1Bq7grO56KoM"}
+{"x": "2111-08-22T02:58:16.000000Z", "y": "2117-02-17T05:23:37.000000Z"}
+{"x": 777.467204577808, "y": 837.5623668505369}
+{"x": 439.43196906529437, "y": 7944464262792003467}
+{"x": 6472781603724536084, "y": 30.758701722809146}
+{"x": 785.9666731205225, "y": 99.77045356789205}
+{"x": 7492019839806720481, "y": 419.6807929444121}
+{"x": "tDD0YMPG9Zl6g9udUHtRCYK72ZeYXa5EwuOgCjdslV26TKfYIpC5Yu2sU5mLXuw2Py8b", "y": "tDD0YMPG9Zl6g9udUHtRCYK72ZeYXa5EwuOgCjdstgDVyeM23dgGRDdEsPm0CGtV9"}
+{"x": 583.1499569877, "y": 386.564815149577}
+{"x": 832.4542720978076, "y": 407.1358623649004}
+{"x": 971.94272528099, "y": 417032463350046650}
+{"x": null, "y": null}
+{"x": "2225-02-09T00:40:23.000000Z", "y": "1959-07-14T10:26:17.000000Z"}
+{"x": false, "y": false}
+{"x": 592.2038048125471, "y": 393.555400685028}
+{"x": true, "y": false}
+{"x": null, "y": null}
+{"x": true, "y": false}
+{"x": 20.325888982987152, "y": 2285179351277679299}
+{"x": 476.81028826672866, "y": 1975103330406029006}
+{"x": "2193-12-14T23:15:26.000000Z", "y": "1937-11-17T23:34:36.361625Z"}
+{"x": "2190-12-25T02:54:27.117014Z", "y": "2045-10-30T18:43:51.000000Z"}
+{"x": null, "y": null}
+{"x": 7117380197859368357, "y": 119.97785656411142}
+{"x": true, "y": true}
+{"x": true, "y": false}
+{"x": 8613322543751508766, "y": 772.392955741665}
+{"x": 1750503206569928299, "y": 720.6786239337829}
+{"x": false, "y": false}
+{"x": 820151851917200195, "y": 582.9434778423573}
+{"x": "kqcR2KnMPDSlGV0JQoZlTOp4LguyfPgrL98IX5qOtf9gDVQH0GWaJ", "y": "kqcR2KnMPDSlGV0JQoZlTOp4LguyfPgrL98IX5qOtf9gDVt"}
+{"x": null, "y": null}
+{"x": 267425645126304043, "y": 98.71771808038498}
+{"x": 640.0947818630747, "y": 85.12971739101371}
+{"x": 844.2838032901855, "y": 1119863014359723750}
+{"x": "caCjlBKdldot0tQ9ZVObU5s42idNElhF9hvRS", "y": "caCjlBKdldot0tQ9ZJgUbG0r"}
+{"x": false, "y": false}
+{"x": false, "y": false}
+{"x": "2380-11-01T05:13:58.000000Z", "y": "2156-08-06T15:37:27.000000Z"}
+{"x": true, "y": false}
+{"x": "2302-11-10T10:44:07.000000Z", "y": "2382-02-10T17:19:59.000000Z"}
+{"x": true, "y": false}
+{"x": 277.0895124607401, "y": 853.3244862469464}
+{"x": "2326-09-16T14:34:49.000000Z", "y": "2024-10-02T13:00:03.000000Z"}
+{"x": 119.45160267050281, "y": 1444982032402632214}
+{"x": "a61ZZJfx2xJdHUdmTOaxIMwwYBXBePnjKAl0Pdqbkvqri", "y": "a61ZZJfx2xJdHUdmTOaxIMwwYBXBePnjZ5OzK92zq"}
+{"x": "2214-10-04T18:17:52.550444Z", "y": "2185-07-27T22:49:37.839430Z"}
+{"x": 558.2593522108996, "y": 245952959653658488}
+{"x": null, "y": null}
+{"x": 343.89071017092874, "y": 592.5838393206858}
+{"x": "c1GJUr38wXqynyjVyz0wpdMzLz3BlaecAw7zUotcjPiRS2Zoz6KgcwqG73xaG2xKyjqyM", "y": "c1GJUr38wXqynyjVyz0wpdMzLz3BlaecAw7zUotcjPiRS2Zoz6KgcwqG73xaG2xKyjqyMX"}
+{"x": 5415657602454232029, "y": 556.3594403869589}
+{"x": 265.46283654437684, "y": 7203554094444279249}
+{"x": null, "y": null}
+{"x": 8037949167067510926, "y": 78.12041783495948}
+{"x": 180.3257614617718, "y": 973.5904615628401}
+{"x": "1998-02-02T02:33:02.000000Z", "y": "2260-04-11T06:18:07.000000Z"}
+{"x": null, "y": null}
+{"x": null, "y": null}
+{"x": 221.1829358297901, "y": 760711159223083754}
+{"x": 125.4412724469255, "y": 153.96465101004907}
+{"x": null, "y": null}
+{"x": 822.5293641235511, "y": 36.25570022249802}
+{"x": 2535819906936001983, "y": 278.74229874178866}
+{"x": "yGCUzSew8KiNjXy3ScKmszMJbkeoEy6YZ9uUY76tm6G3TGuumlsnKYf6bgNSgh0ZOy6s", "y": "yGCUzSew8KiNjXy3ScKmszMJbkeoEy6YZ9uUY76tm6G3TGuumlsnKYf6bgNSgh0ZOy6"}
+{"x": 546803374498282207, "y": 921.771850962684}
+{"x": "2333-11-27T01:03:39.000000Z", "y": "2029-07-20T14:46:06.000000Z"}
+{"x": "2382-04-30T18:24:45.083693Z", "y": "2178-08-21T03:32:12.617555Z"}
+{"x": 671.2106791870445, "y": 2818970010911564900}
+{"x": 901.0558734761765, "y": 633.5955477297231}
+{"x": true, "y": false}
+{"x": "TgOmDRKrBIKIGU4PnKB", "y": "TgOmDRKrBIKIGU42j5ZTOcHFWKg4uVO8ve78rdSuULPcD7ds5AyVcPjs"}
+{"x": 604.8760970175945, "y": 753.5146670166508}
+{"x": 6603820944653557768, "y": 699.0020124636143}
+{"x": 147.0527446307812, "y": 595.6592825399488}
+{"x": "1e9c8pVvK5oE32dkOMYWd10uoELy", "y": "1e9c8pVvK5oE32dkOMYWd10uoEL2uiXOvzSsVWXSw4zlh"}
+{"x": null, "y": null}
+{"x": 2262372940581100065, "y": 540.66538804913}
+{"x": "WqAmfK8W5ZjCLyAv5LzSHXit3tY61AUf3VFFP9oUsuFDoH7sBJXh48b", "y": "WqAmfK8W5ZjCLyAv5LzSHXit3tY61AUf3VFFPazPW5YG9ZKQCUMf9c"}
+{"x": "1908-05-17T05:27:30.000000Z", "y": "1908-05-17T05:27:30.000000Z"}
+{"x": 813.5248188351262, "y": 389.67743481922025}
+{"x": 223.17100643909015, "y": 461.71325389137405}
+{"x": 776.0578699267409, "y": 2920178548669398431}
+{"x": false, "y": true}
+{"x": "2124-05-16T21:36:10.361540Z", "y": "2375-07-20T09:14:13.000000Z"}
+{"x": null, "y": null}
+{"x": null, "y": null}
+{"x": 4578833123801082292, "y": 191.67018940025505}
+{"x": "B829z3ddhUur4KiaR3ogUJIKiqPcemJ87l8t5J0NmRxmJ0RbeLbTY9Tl9", "y": "B829z3ddhUur4KiaR3ogUJIKiRnUr"}
+{"x": false, "y": false}
+{"x": 388.3014845379894, "y": 8835160676254404126}
+{"x": 740.0392423557576, "y": 276.97136804181423}
+{"x": "2120-05-08T03:06:13.000000Z", "y": "2189-11-01T00:44:29.000000Z"}
+{"x": 8051495001269162788, "y": 798.4087505943703}
+{"x": 336.4852933989315, "y": 913.0413258391366}
+{"x": 4307289843678118810, "y": 240.66557824351608}
+{"x": 384.83328371515825, "y": 3854682775166353537}
+{"x": "2285-09-12T19:27:10.000000Z", "y": "2316-11-30T01:36:49.000000Z"}
+{"x": 4218831697313170128, "y": 381.506585477283}
+{"x": 455577996935662905, "y": 650.7622175451137}
+{"x": 1713550987187229680, "y": 56.19817138227434}
+{"x": 485.5438729228172, "y": 6086280434546050604}
+{"x": 2466834493737759106, "y": 877.2038371308272}
+{"x": null, "y": null}
+{"x": "tBOOUS1XpwV8VeJfrCWu4BxlViLLe21NPHn94el8LznHhwOKdJR", "y": "tBOOUS1XpwV8VeJfrCWu4BxlViLLe21NPHn94elSKdh1FnHUGJLbdJxHzV1Wuk9G3n"}
+{"x": true, "y": true}
+{"x": null, "y": null}
+{"x": 9222910648315198976, "y": 176.7894363654975}
+{"x": "2066-10-22T21:52:33.715868Z", "y": "2034-08-28T17:37:20.000000Z"}
+{"x": 38447352990614312, "y": 517.4251672595556}
+{"x": 221.67296557956928, "y": 9.925471017149023}
+{"x": "XbRYDUa0JS49xDiDzNLiHWTOaEJkmKCyBSQ", "y": "XbRYDUa0JS49xDiDzNLiHWTOaEJBRM5pEQ9as9WA6V0r5ltvDBwv"}
+{"x": 137.101566561743, "y": 516.9105075280122}
+{"x": null, "y": null}
+{"x": true, "y": true}
+{"x": "LmsvYEhfkABpdB2nZtmJg8cKAcmPIV0QmCQy3QxYFrVkRcZnrwz4fktKs0Oln1", "y": "LmsvYEhfkABpdB2nZtmJg8cKAcmPIV0QmCQy3QxYFrVkRcZnrwz4fktKs0Oln5"}
+{"x": false, "y": true}
+{"x": 948.9106758632042, "y": 469.2955952439423}
+{"x": null, "y": null}
+{"x": "QM7Stj3GJ4sCJWOQf5OpgntbXFjBxRH2k4dbZIgo527xytofOB67XMGQoOBEN8W3a", "y": "QM7Stj3GJ4sCJWOQf5OpgntbXFjBxRH2k4dbZIgo527xytofOB67XMGQoOCFpRarBB"}
+{"x": null, "y": null}
+{"x": false, "y": false}
+{"x": null, "y": null}
+{"x": 840.7962055602229, "y": 867.257264752514}
+{"x": null, "y": null}
+{"x": 981.6116434739436, "y": 620.7716877076999}
+{"x": "1900-11-30T02:05:54.000000Z", "y": "2212-10-27T10:11:44.439398Z"}
+{"x": "eLP5pb7nqoWhTYOZyrlMJzRtnDCx5qN5AsRaK16Ozl0gjPYXy1uD6y", "y": "eLP5pb7nvDC64KTP0zeKXNSYOqVvtnMehD"}
+{"x": "yAg8Uf2mPAslVoIzeHLFDyBX6tjisGQh1OUwzAZDU9E6DbenW1yFoNVAf1SjrHTYfC", "y": "yAg8Uf2mP4Lspk4I9oWPmoycC5pz9"}
+{"x": null, "y": null}
+{"x": "wo47pYWtQqQNN9nJmrSyw1gw5Yc4enWjc3KrJKVRcbi2otX7MujVaetFDimxn3DCxJ", "y": "wo47pYWtQqQNN9nJmrSyw1gw5Yc4enWjc3KrJKVRcbi2otX7MujVaetFfeBFz1u3jwl"}
+{"x": 6715510190357163408, "y": 360.1516392025724}
+{"x": 6060558154274249437, "y": 176.2957317965561}
+{"x": 6653642743241078744, "y": 3.969095594231309}
+{"x": 1061250085926295006, "y": 925.7029760367668}
+{"x": "oP4Lg6T83SNl6hruOQVAAz3BhIMVtyy7b0OHymjSjAHRwzuqzpSSjDU", "y": "oP4Lg6T83SNl6hruOQVAAz3BhIMV"}
+{"x": "2061-01-03T01:58:15.075172Z", "y": "1996-11-16T15:13:36.000000Z"}
+{"x": null, "y": null}
+{"x": 154.10917020346017, "y": 3237569476239456421}
+---
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}

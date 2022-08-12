@@ -1,7 +1,7 @@
 SELECT
   COUNT(*) FROM input
 WHERE
-  BEFORE(timestamp, DATE_ADD(DAY, -1, `2022-01-03T00:00:00Z`))
+  timestamp < DATE_ADD(DAY, -1, `2022-01-03T00:00:00Z`)
 ---
 {"timestamp": "2022-01-02T00:00:00Z"}
 {"timestamp": "2022-01-01T23:59:59Z"}
