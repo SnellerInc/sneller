@@ -349,30 +349,6 @@ func (b BuiltinOp) String() string {
 	return "UNKNOWN"
 }
 
-func checkBefore(h Hint, args []Node) error {
-	if len(args) < 2 {
-		return mismatch(len(args), 2)
-	}
-	for i := range args {
-		if !TypeOf(args[i], h).AnyOf(TimeType) {
-			return errtype(args[i], "not a timestamp")
-		}
-	}
-	return nil
-}
-
-func simplifyBefore(h Hint, args []Node) Node {
-	for i := range args[:len(args)-1] {
-		left, right := args[i], args[i+1]
-		if lt, ok := left.(*Timestamp); ok {
-			if rt, ok := right.(*Timestamp); ok {
-				return Bool(lt.Value.Before(rt.Value))
-			}
-		}
-	}
-	return nil
-}
-
 func checkContains(h Hint, args []Node) error {
 	if len(args) != 2 {
 		return mismatch(len(args), 2)

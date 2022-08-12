@@ -149,10 +149,7 @@ func (f *flattener) final() []expr.Binding {
 	tmp := make([]item, len(f.bindings))
 	i := 0
 	for _, v := range f.bindings {
-		tmp[i] = item{
-			node: v.node,
-			id:   v.id,
-		}
+		tmp[i] = item(v)
 		i += 1
 	}
 

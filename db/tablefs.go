@@ -64,7 +64,7 @@ func strpart(p string, num int) (string, bool) {
 	return p[:s], true
 }
 
-// ListComponents performs a glob match on s
+// ListComponent performs a glob match on s
 // for the given pattern and then yields a deduplicated
 // list of path components corresponding to the given
 // 0-indexed part number.

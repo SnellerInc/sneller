@@ -93,6 +93,9 @@ func init() {
 
 	enc, err = zstd.NewWriter(nil,
 		zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
+	if err != nil {
+		panic(err)
+	}
 	zstdBetterEncoder = enc
 }
 

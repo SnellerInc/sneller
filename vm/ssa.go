@@ -1961,43 +1961,6 @@ func (p *prog) isnonnull(v *value) *value {
 	return p.ssa2(sisnonnull, v, p.mask(v))
 }
 
-// round an immediate to an integer
-//
-// if the input is floating-point, 'dir'
-// determines the rounding mode:
-//
-//	+1: up, 0: nearest, -1: down
-func roundi(imm interface{}, dir int) uint64 {
-	switch i := imm.(type) {
-	case int:
-		return uint64(i)
-	case int64:
-		return uint64(i)
-	case uint:
-		return uint64(i)
-	case uint64:
-		return uint64(i)
-	case float32:
-		v := int64(i)
-		if dir > 0 && float32(v) < i {
-			v++
-		} else if dir < 0 && float32(v) > i {
-			v--
-		}
-		return uint64(v)
-	case float64:
-		v := int64(i)
-		if dir > 0 && float64(v) < i {
-			v++
-		} else if dir < 0 && float64(v) > i {
-			v--
-		}
-		return uint64(v)
-	default:
-		panic("invalid immediate for rounding")
-	}
-}
-
 func isBoolImmediate(imm interface{}) bool {
 	switch imm.(type) {
 	case bool:
@@ -2113,47 +2076,6 @@ func toi64(imm interface{}) uint64 {
 	}
 }
 
-// General strategy for immediate comparisons:
-//
-// We're given an immediate integer or float to
-// compare lanes against, and it's possible that
-// lanes are integers are floats themselves.
-//
-// Therefore, we compute this approximately as
-//
-//	intcmp(toint(val), imm) OR floatcmp(tofp(val), imm)
-//
-// ... but taking care to use the appropriate rounding when
-// converting floating-point immediates.
-func (p *prog) cmpimm(intop, fpop ssaop, dir int, left *value, imm interface{}) *value {
-	rt := left.primary()
-	if rt == stFloat {
-		// just do fp compare
-		return p.ssa2imm(fpop, left, p.mask(left), tof64(imm))
-	}
-	if rt == stInt {
-		return p.ssa2imm(intop, left, p.mask(left), roundi(imm, dir))
-	}
-	// at this point we know we need to do
-	// a complete unboxing of a value
-	if rt != stValue {
-		v := p.val()
-		v.errf("invalid immediate comparison between %s and %v", left, imm)
-		return v
-	}
-	i := p.ssa3(stoint, p.undef(), left, p.mask(left))
-	icmp := p.ssa2imm(intop, i, i, roundi(imm, dir))
-	f := p.ssa3(stofloat, p.undef(), left, p.ssa2(snand, i, p.mask(left)))
-	fcmp := p.ssa2imm(fpop, f, f, tof64(imm))
-	v := p.Or(fcmp, icmp)
-	// the result of this OR has non-standard
-	// NOT MISSING behavior, because we don't
-	// care if one of the comparisons didn't
-	// convert correctly; we only care if they *both* did
-	v.notMissing = p.Or(i, f)
-	return v
-}
-
 // coerce a value to boolean
 func (p *prog) coerceBool(arg *value) (*value, *value) {
 	if arg.op == sliteral {
@@ -2233,12 +2155,6 @@ func (p *prog) blendv2fp(into, arg, when *value) (*value, *value) {
 	intv := p.ssa3(stoint, easy, arg, when)
 	conv := p.ssa2(scvtitof, intv, intv)
 	return conv, p.Or(easy, conv)
-}
-
-func (p *prog) cmp(fpop ssaop, left, right *value) *value {
-	lhs, lhk := p.coercefp(left)
-	rhs, rhk := p.coercefp(right)
-	return p.ssa3(fpop, lhs, rhs, p.ssa2(sand, lhk, rhk))
 }
 
 func (p *prog) toint(v *value) *value {
