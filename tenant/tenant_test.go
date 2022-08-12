@@ -322,9 +322,9 @@ func TestExec(t *testing.T) {
 		{
 			query: `select avg(fare_amount), VendorID from '../testdata/nyc-taxi.block' group by VendorID order by avg(fare_amount)`,
 			want: []string{
-				`{"VendorID": "VTS", "avg": 9.435699629099469}`,
-				`{"VendorID": "CMT", "avg": 9.685402762381386}`,
-				`{"VendorID": "DDS", "avg": 9.942763094839297}`,
+				`{"VendorID": "VTS", "avg": 9.435699641166872}`,
+				`{"VendorID": "CMT", "avg": 9.685402771563982}`,
+				`{"VendorID": "DDS", "avg": 9.942763085526316}`,
 			},
 			scan: nycSize * 4,
 		},
@@ -344,10 +344,10 @@ func TestExec(t *testing.T) {
 		{
 			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from '../testdata/nyc-taxi.block' group by payment_type order by diff desc`,
 			want: []string{
-				`{"diff": 19975.040035247804, "payment_type": "Credit"}`,
-				`{"diff": 9900.999705314636, "payment_type": "CASH"}`,
-				`{"diff": 372.40001296997072, "payment_type": "CREDIT"}`,
-				`{"diff": 236.599975585937500, "payment_type": "Cash"}`,
+				`{"diff": 19975.03998680011, "payment_type": "Credit"}`,
+				`{"diff": 9900.999768399954, "payment_type": "CASH"}`,
+				`{"diff": 372.4000076, "payment_type": "CREDIT"}`,
+				`{"diff": 236.5999759999977, "payment_type": "Cash"}`,
 				`{"diff": 0, "payment_type": "No Charge"}`,
 				`{"diff": 0, "payment_type": "Dispute"}`,
 			},
