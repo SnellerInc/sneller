@@ -147,10 +147,6 @@ const (
 	sStrTrimCharRight // String trim specific chars right
 	sStrTrimWsLeft    // String trim whitespace left
 	sStrTrimWsRight   // String trim whitespace right
-	sStrTrimPrefixCs  // String trim prefix case-sensitive
-	sStrTrimPrefixCi  // String trim prefix case-insensitive
-	sStrTrimSuffixCs  // String trim suffix case-sensitive
-	sStrTrimSuffixCi  // String trim suffix case-insensitive
 
 	sStrMatchPatternCs       // String match pattern case-sensitive
 	sStrMatchPatternCi       // String match pattern case-insensitive
@@ -687,15 +683,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sStrCmpEqCi:     {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
 	sStrCmpEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
 
-	sStrTrimWsLeft:  {text: "trim_ws_left", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsLeft},
-	sStrTrimWsRight: {text: "trim_ws_right", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsRight},
-
+	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsLeft},
+	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsRight},
 	sStrTrimCharLeft:  {text: "trim_char_left", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charLeft},
 	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charRight},
-	sStrTrimPrefixCs:  {text: "trim_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrimPrefixCs},
-	sStrTrimPrefixCi:  {text: "trim_prefix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrimPrefixCi},
-	sStrTrimSuffixCs:  {text: "trim_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrimSuffixCs},
-	sStrTrimSuffixCi:  {text: "trim_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrimSuffixCi},
 
 	// s, k = matchpat s, k, $const
 	sStrMatchPatternCs:     {text: "match_pat_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opMatchpatCs},
@@ -1669,11 +1660,15 @@ func (p *prog) dot(col string, base *value) *value {
 // by a call to PushPath are added to the
 // full path.
 //
-//   prog.Path("a.b.c")
+//	prog.Path("a.b.c")
+//
 // is sugar for
-//   prog.Dot("c", prog.Dot("b", prog.Dot("a", prog.ValidLanes()))),
+//
+//	prog.Dot("c", prog.Dot("b", prog.Dot("a", prog.ValidLanes()))),
+//
 // which is also equivalent to
-//   prog.PushPath("a"); prog.Path("b.c")
+//
+//	prog.PushPath("a"); prog.Path("b.c")
 func (p *prog) Path(str string) *value {
 	return p.RelPath(p.ValidLanes(), str)
 }
@@ -1970,7 +1965,8 @@ func (p *prog) isnonnull(v *value) *value {
 //
 // if the input is floating-point, 'dir'
 // determines the rounding mode:
-//  +1: up, 0: nearest, -1: down
+//
+//	+1: up, 0: nearest, -1: down
 func roundi(imm interface{}, dir int) uint64 {
 	switch i := imm.(type) {
 	case int:
@@ -2125,7 +2121,7 @@ func toi64(imm interface{}) uint64 {
 //
 // Therefore, we compute this approximately as
 //
-//   intcmp(toint(val), imm) OR floatcmp(tofp(val), imm)
+//	intcmp(toint(val), imm) OR floatcmp(tofp(val), imm)
 //
 // ... but taking care to use the appropriate rounding when
 // converting floating-point immediates.
@@ -2362,42 +2358,6 @@ func (p *prog) TrimChar(str *value, chars string, left, right bool) *value {
 		str = p.ssa2imm(sStrTrimCharRight, str, p.mask(str), preparedChars)
 	}
 	return str
-}
-
-// TrimPrefix trim the provided prefix
-func (p *prog) TrimPrefix(str *value, prefix string, caseSensitive bool) *value {
-	str = p.toStr(str)
-	if prefix == "" {
-		return str
-	}
-	if caseSensitive {
-		return p.ssa2imm(sStrTrimPrefixCs, str, p.mask(str), prefix)
-	}
-	prefix = stringext.NormalizeString(prefix)
-	if stringext.HasNtnString(prefix) {
-		//TODO sStrTrimPrefixUTF8Ci is not implemented yet
-		//return p.ssa2imm(sStrTrimPrefixUTF8Ci, str, p.mask(str), p.Constant(prefix).imm)
-		return p.ssa2imm(sStrTrimPrefixCi, str, p.mask(str), p.Constant(prefix).imm)
-	}
-	return p.ssa2imm(sStrTrimPrefixCi, str, p.mask(str), p.Constant(prefix).imm)
-}
-
-// TrimSuffix trim the provided suffix
-func (p *prog) TrimSuffix(str *value, suffix string, caseSensitive bool) *value {
-	str = p.toStr(str)
-	if suffix == "" {
-		return str
-	}
-	if caseSensitive {
-		return p.ssa2imm(sStrTrimSuffixCs, str, p.mask(str), suffix)
-	}
-	suffix = stringext.NormalizeString(suffix)
-	if stringext.HasNtnString(suffix) {
-		//TODO sStrTrimSuffixUTFCi is not implemented yet
-		//return p.ssa2imm(sStrTrimSuffixUTFCi, str, p.mask(str), p.Constant(suffix).imm)
-		return p.ssa2imm(sStrTrimSuffixCi, str, p.mask(str), p.Constant(suffix).imm)
-	}
-	return p.ssa2imm(sStrTrimSuffixCi, str, p.mask(str), p.Constant(suffix).imm)
 }
 
 // HasPrefix returns true when str contains the provided prefix; false otherwise

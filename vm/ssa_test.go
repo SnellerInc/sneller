@@ -401,14 +401,6 @@ var ticketsTestQueries = []struct {
 		},
 	},
 	{
-		//TODO trimPrefix manges something such that findsym crashes
-		name: "LTRIM(\"H\", Make) = \"OND\"",
-		rows: 122, //TODO double check the correct number of rows
-		expr: func(p *prog) *value {
-			return p.Equals(p.TrimPrefix(p.Dot("Make", p.ValidLanes()), "H", true), p.Constant("OND"))
-		},
-	},
-	{
 		name: ".ViolationDescr LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
@@ -417,7 +409,7 @@ var ticketsTestQueries = []struct {
 	},
 	{
 		name: "LTRIM(.ViolationDescr) LIKE \"NO%\"",
-		rows: 524, //TODO double check the correct number of rows
+		rows: 524,
 		expr: func(p *prog) *value {
 			return p.HasPrefix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), true, false), "NO", true)
 		},

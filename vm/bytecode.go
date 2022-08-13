@@ -494,10 +494,6 @@ var opinfo = [_maxbcop]bcopinfo{
 	opTrimWsRight:    {text: "trim_ws_right", flags: bcReadK | bcReadWriteS},
 	opTrim4charLeft:  {text: "trim_char_left", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 	opTrim4charRight: {text: "trim_char_right", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
-	opTrimPrefixCs:   {text: "trim_prefix_cs", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
-	opTrimPrefixCi:   {text: "trim_prefix_ci", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
-	opTrimSuffixCs:   {text: "trim_suffix_cs", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
-	opTrimSuffixCi:   {text: "trim_suffix_ci", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 
 	// string prefix/suffix/contains matching operations
 	opContainsSubstrCs:     {text: "contains_substr_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
