@@ -3228,6 +3228,27 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 	}
 }
 
+// hasPrefixCI tests whether the string s begins with prefix equal under case-folding.
+func hasPrefixCI(s, prefix string) bool {
+	sRunes := []rune(s)
+	prefixLength := utf8.RuneCountInString(prefix)
+	if prefixLength > len(sRunes) {
+		return false
+	}
+	return strings.EqualFold(string(sRunes[:prefixLength]), prefix)
+}
+
+// hasSuffixCI tests whether the string s ends with suffix equal under case-folding.
+func hasSuffixCI(s, suffix string) bool {
+	sRunes := []rune(s)
+	sLength := len(sRunes)
+	suffixLength := utf8.RuneCountInString(suffix)
+	if suffixLength > sLength {
+		return false
+	}
+	return strings.EqualFold(string(sRunes[sLength-suffixLength:]), suffix)
+}
+
 func refContainsPrefix(s, prefix string, caseSensitive bool) (lane bool, offset, length int) {
 	if prefix == "" { //NOTE: empty needles are dead lanes
 		return false, 0, len(s)

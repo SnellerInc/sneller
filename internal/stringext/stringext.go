@@ -23,20 +23,9 @@ import (
 	"unicode/utf8"
 )
 
-//GetTail returns the bytes between the length and the capacity of the provided array
-func GetTail(array []byte) []byte {
-	return array[len(array):cap(array)]
-}
-
 // AddTail concats the tail to the capacity of the string
 func AddTail(str, tail string) []byte {
 	return append([]byte(str), tail...)[:len(str)]
-}
-
-func StringInfo(str []byte) string {
-	len := len(str)
-	cap := cap(str)
-	return fmt.Sprintf("str=%v; (len %v, cap %v); tail=%v", string(str), len, cap, string(GetTail(str)))
 }
 
 func runeToUtf8Array(r rune) []byte {
@@ -147,22 +136,23 @@ func alternativeRune(r0 rune) []rune {
 	return []rune{r0, r1, r2, r3}
 }
 
-func min2(r0, r1 rune) rune {
-	if r0 < r1 {
-		return r0
-	}
-	return r1
-}
-
-func min3(r0, r1, r2 rune) rune {
-	return min2(r0, min2(r1, r2))
-}
-
-func min4(r0, r1, r2, r3 rune) rune {
-	return min2(r0, min3(r1, r2, r3))
-}
-
 func alternativeString(str string) (upper []rune, alt [][]rune) {
+
+	min2 := func(r0, r1 rune) rune {
+		if r0 < r1 {
+			return r0
+		}
+		return r1
+	}
+
+	min3 := func(r0, r1, r2 rune) rune {
+		return min2(r0, min2(r1, r2))
+	}
+
+	min4 := func(r0, r1, r2, r3 rune) rune {
+		return min2(r0, min3(r1, r2, r3))
+	}
+
 	runes := []rune(str)
 	nRunes := len(runes)
 	alt1 := make([]rune, nRunes)
@@ -316,11 +306,7 @@ func NormalizeStringASCIIOnly(str string) string {
 	return string(runes)
 }
 
-func NormalizeByteArray(a []byte) []byte {
-	return []byte(NormalizeString(string(a)))
-}
-
-//HasNtnRune return true when the provided rune contains a non-trivial normalization; false otherwise
+// HasNtnRune return true when the provided rune contains a non-trivial normalization; false otherwise
 func HasNtnRune(r rune) bool {
 	if EqualRuneFold(r, 'S') || EqualRuneFold(r, 'K') {
 		return true
@@ -328,7 +314,7 @@ func HasNtnRune(r rune) bool {
 	return (r >= utf8.RuneSelf) && (r != unicode.SimpleFold(r))
 }
 
-//HasNtnString return true when the provided string contains a non-trivial normalization; false otherwise
+// HasNtnString return true when the provided string contains a non-trivial normalization; false otherwise
 func HasNtnString(str string) bool {
 	for _, r := range str {
 		if HasNtnRune(r) {
@@ -344,24 +330,6 @@ func EqualRuneFold(a, b rune) bool {
 
 func ExtractFromMsg(msg []byte, offset, length int) []byte {
 	return msg[offset : offset+length]
-}
-
-// FlattenRunes flattens a string into 32-bit runes so we can stick it in a dictionary
-func FlattenRunes(p string) string {
-	size := 4 * utf8.RuneCountInString(p)
-	// ensure that we can always load the
-	// next 16 FlattenRunes using a regular VMOVDQA*
-	cap := size
-	if cap < 16*4 {
-		cap = 16 * 4
-	}
-	out := make([]byte, cap)
-	i := 0
-	for _, r := range p {
-		binary.LittleEndian.PutUint32(out[i:], uint32(r))
-		i += 4
-	}
-	return string(out)[:size]
 }
 
 func PatternToSegments(pattern []byte) []string {
@@ -438,14 +406,6 @@ func PatternToPrettyString(pattern []byte, method int) (result string) {
 	return result
 }
 
-func PatternNormalize(pattern []byte) []byte {
-	segments := PatternToSegments(pattern)
-	for i, segment := range segments {
-		segments[i] = NormalizeString(segment)
-	}
-	return SegmentsToPattern(segments)
-}
-
 func PatternToRegex(segments []string, caseSensitive bool) string {
 	regex := ".*"
 	lastSegmentIndex := len(segments) - 1
@@ -459,18 +419,4 @@ func PatternToRegex(segments []string, caseSensitive bool) string {
 		regex = "(?i)" + regex
 	}
 	return regex
-}
-
-// PatternLength returns the number of bytes in the provided pattern when the pattern is written as a string,
-// e.g., pattern ["ab", "", "c"] matches with "ab--c" thus length is 5
-func PatternLength(pattern []byte) int {
-	segments := PatternToSegments(pattern)
-	length := 0
-	for _, segment := range segments {
-		length += len(segment) + 1 // plus 1 for the trailing skipchar
-	}
-	if length > 0 {
-		length-- // remove the last trailing skipchar
-	}
-	return length
 }
