@@ -418,7 +418,7 @@ func TestMatchpatBF1(t *testing.T) {
 	defer ctx.Free()
 	run := func(segments, data []string, tc *testSuite) {
 		dictval := string(tc.encode(segments))
-		ctx.dict = append(ctx.dict[:0], pad(dictval))
+		ctx.dict = append(ctx.dict[:0], padNBytes(dictval, 4))
 		ctx.setScalarStrings(data, padding)
 		ctx.current = (1 << len(data)) - 1
 		scalarBefore := ctx.getScalarUint32()
@@ -574,7 +574,7 @@ func TestMatchpatBF2(t *testing.T) {
 
 				var ctx bctestContext
 				ctx.Taint()
-				ctx.dict = append(ctx.dict, pad(dictElementEnc))
+				ctx.dict = append(ctx.dict, padNBytes(dictElementEnc, 4))
 				ctx.setScalarStrings(values, []byte{})
 				ctx.current = 0xFFFF
 
@@ -672,7 +672,7 @@ func TestMatchpatUT(t *testing.T) {
 
 		var ctx bctestContext
 		ctx.Taint()
-		ctx.dict = append(ctx.dict, pad(string(ts.encode(expected.segments))))
+		ctx.dict = append(ctx.dict, padNBytes(string(ts.encode(expected.segments)), 4))
 		ctx.setScalarStrings(values, padding)
 		ctx.current = 0xFFFF
 
@@ -3622,6 +3622,14 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 	}
 }
 
+func padNBytes(s string, nBytes int) string {
+	buf := []byte(s)
+	for i := 0; i < nBytes; i++ {
+		buf = append(buf, 0)
+	}
+	return string(buf)[:len(s)]
+}
+
 // TestContainsSubstrUT unit-tests for: opContainsSubstrCs, opContainsSubstrCi
 func TestContainsSubstrUT(t *testing.T) {
 	type unitTest struct {
@@ -3691,7 +3699,7 @@ func TestContainsSubstrUT(t *testing.T) {
 		var ctx bctestContext
 		ctx.Taint()
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSubstrCs
-		ctx.dict = append(ctx.dict[:0], pad(ts.encode(ut.needle)))
+		ctx.dict = append(ctx.dict[:0], padNBytes(ts.encode(ut.needle), 64))
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data), []byte{})
 		ctx.current = 0xFFFF
@@ -3774,7 +3782,7 @@ func TestContainsSubstrBF(t *testing.T) {
 	run := func(ts *testSuite, dataSpace, needleSpace []string) {
 		encNeedleSpace := make([]string, len(needleSpace))
 		for i, needle := range needleSpace { // precompute encoded needles for speed
-			encNeedleSpace[i] = pad(ts.encode(needle))
+			encNeedleSpace[i] = padNBytes(ts.encode(needle), 64)
 		}
 
 		for _, data := range dataSpace {
