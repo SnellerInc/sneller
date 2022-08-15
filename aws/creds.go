@@ -110,6 +110,9 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 
 	if id != "" && secret != "" && region != "" {
 		s3baseURI := os.Getenv("S3_ENDPOINT")
+		if s3baseURI == "" {
+			s3baseURI = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
+		}
 		return derive(s3baseURI, id, secret, token, region, service)
 	}
 
