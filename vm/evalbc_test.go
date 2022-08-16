@@ -48,15 +48,15 @@ const exhaustive = -1
 func TestStringCompareUT(t *testing.T) {
 	type unitTest struct {
 		data, needle string
-		expected     bool
+		expLane      bool
 	}
 	type testSuite struct {
 		// name to describe this test-suite
 		name string
 		// the actual tests to run
 		unitTests []unitTest
-		// portable comparison function
-		compare func(string, string) bool
+		// portable reference implementation: f(data, needle) -> lane
+		refImpl func(string, string) bool
 		// bytecode to run
 		op bcop
 		// encoder for string literals -> dictionary value
@@ -76,12 +76,12 @@ func TestStringCompareUT(t *testing.T) {
 				{"aa𐍈a", "aa𐍈a", true},
 				{"aaa𐍈", "aaa𐍈", true},
 			},
-			compare: func(x, y string) bool { return x == y },
+			refImpl: func(x, y string) bool { return x == y },
 			op:      opCmpStrEqCs,
 			encode:  func(x string) string { return x },
 		},
 		{
-			name: "compare string case-insensitive (opCmpStrEqCi)",
+			name: "refImpl string case-insensitive (opCmpStrEqCi)",
 			unitTests: []unitTest{
 				{"aaaa", "aaaa", true},
 				{"aaa", "aaaa", false},
@@ -94,13 +94,16 @@ func TestStringCompareUT(t *testing.T) {
 				{"aaa𐍈", "Aaa𐍈", true},
 				{"aaa𐍈", "Aaa𐍈", true},
 			},
-			compare: strings.EqualFold, // we're only generating ASCII
-			op:      opCmpStrEqCi,
-			encode:  stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+			refImpl: func(x, y string) bool {
+				return stringext.NormalizeStringASCIIOnly(x) == stringext.NormalizeStringASCIIOnly(y)
+			},
+			op:     opCmpStrEqCi,
+			encode: stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
 		},
 		{
 			name: "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
 			unitTests: []unitTest{
+				//NOTE all UTF8 byte code assumes valid UTF8 input
 				{"aΩa\nb", "aΩa\nB", true},
 				{"aΩaa", "aΩaa", true},
 				{"aksb", "AKſB", true},
@@ -139,7 +142,7 @@ func TestStringCompareUT(t *testing.T) {
 				{"Ω", "Ω", true},
 				{"K", "K", true},
 			},
-			compare: strings.EqualFold,
+			refImpl: strings.EqualFold,
 			op:      opCmpStrEqUTF8Ci,
 			encode:  func(x string) string { return stringext.GenNeedleExt(x, false) },
 		},
@@ -148,13 +151,16 @@ func TestStringCompareUT(t *testing.T) {
 	var padding []byte // no padding
 
 	run := func(ts *testSuite, ut *unitTest) {
-		values := fill16(ut.data)
+		if !utf8.ValidString(ut.needle) {
+			t.Logf("needle is not valid UTF8; skipping this test")
+			return
+		}
 		enc := ts.encode(ut.needle)
 
 		var ctx bctestContext
 		ctx.Taint()
-		ctx.dict = append(ctx.dict[:0], pad(enc))
-		ctx.setScalarStrings(values, padding)
+		ctx.dict = append(ctx.dict[:0], padNBytes(enc, 4))
+		ctx.setScalarStrings(fill16(ut.data), padding)
 		ctx.current = 0xFFFF
 
 		// when
@@ -163,10 +169,11 @@ func TestStringCompareUT(t *testing.T) {
 		}
 		// then
 		for i := 0; i < 16; i++ {
-			observed := (ctx.current>>i)&1 == 1
-			if observed != ut.expected {
-				t.Fatalf("lane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
-					i, ut.needle, ut.data, observed, ut.expected, []byte(ut.data), []byte(ut.needle), []byte(enc))
+			obsLane := (ctx.current>>i)&1 == 1
+			if obsLane != ut.expLane {
+				t.Errorf("%v\nlane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
+					ts.name, i, ut.needle, ut.data, obsLane, ut.expLane, []byte(ut.data), []byte(ut.needle), []byte(enc))
+				break
 			}
 		}
 		ctx.Free()
@@ -191,8 +198,8 @@ func TestStringCompareBF(t *testing.T) {
 		dataMaxlen int
 		// maximum number of elements in dataSpace
 		dataMaxSize int
-		// portable comparison function
-		compare func(string, string) bool
+		// portable reference implementation: f(data, needle) -> lane
+		refImpl func(string, string) bool
 		// bytecode implementation of comparison
 		op bcop
 		// encoder for string literals -> dictionary value
@@ -207,7 +214,7 @@ func TestStringCompareBF(t *testing.T) {
 			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'},
 			dataMaxlen:   4,
 			dataMaxSize:  exhaustive,
-			compare:      func(x, y string) bool { return x == y },
+			refImpl:      func(x, y string) bool { return x == y },
 			op:           opCmpStrEqCs,
 			encode:       func(x string) string { return x },
 		},
@@ -215,17 +222,19 @@ func TestStringCompareBF(t *testing.T) {
 			name:         "compare string case-insensitive (opCmpStrEqCi)",
 			dataAlphabet: []rune{'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D', 'z', '!', '@'},
 			dataMaxlen:   10,
-			dataMaxSize:  3000,
-			compare:      strings.EqualFold, // we're only generating ASCII
-			op:           opCmpStrEqCi,
-			encode:       stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+			dataMaxSize:  1000,
+			refImpl: func(x, y string) bool {
+				return stringext.NormalizeStringASCIIOnly(x) == stringext.NormalizeStringASCIIOnly(y)
+			},
+			op:     opCmpStrEqCi,
+			encode: stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
 		},
 		{
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
 			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K'},
 			dataMaxlen:   4,
 			dataMaxSize:  exhaustive,
-			compare:      strings.EqualFold,
+			refImpl:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
 			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
 		},
@@ -234,7 +243,7 @@ func TestStringCompareBF(t *testing.T) {
 			dataAlphabet: []rune{'a', 'Ω', 'Ω'}, // U+2126 'Ω' (E2 84 A6 = 226 132 166) -> U+03A9 'Ω' (CE A9 = 207 137)
 			dataMaxlen:   6,
 			dataMaxSize:  exhaustive,
-			compare:      strings.EqualFold,
+			refImpl:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
 			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
 		},
@@ -250,12 +259,12 @@ func TestStringCompareBF(t *testing.T) {
 		check := func(needle string, group []string) {
 			enc := ts.encode(needle)
 
-			ctx.dict = append(ctx.dict[:0], pad(enc))
+			ctx.dict = append(ctx.dict[:0], padNBytes(enc, 4))
 			ctx.setScalarStrings(group, padding)
 			ctx.current = (1 << len(group)) - 1
 			expected16 := uint16(0)
 			for i := range group {
-				if ts.compare(needle, group[i]) {
+				if ts.refImpl(needle, group[i]) {
 					expected16 |= 1 << i
 				}
 			}
@@ -269,8 +278,9 @@ func TestStringCompareBF(t *testing.T) {
 					observed := (ctx.current>>i)&1 == 1
 					expected := (expected16>>i)&1 == 1
 					if observed != expected {
-						t.Fatalf("lane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
-							i, needle, group[i], observed, expected, []byte(group[i]), []byte(needle), []byte(enc))
+						t.Errorf("%v\nlane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
+							ts.name, i, needle, group[i], observed, expected, []byte(group[i]), []byte(needle), []byte(enc))
+						break
 					}
 				}
 			}
@@ -301,6 +311,83 @@ func TestStringCompareBF(t *testing.T) {
 			run(&ts, createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
+}
+
+// FuzzStringCompareUTF8 fuzz tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
+func FuzzStringCompareUTF8(f *testing.F) {
+	var padding []byte // no padding
+
+	f.Add("a", "a")
+	f.Add("ss", "SS")
+	f.Add("ss", "ſſ")
+
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// portable comparison function
+		refImpl func(string, string) bool
+		// bytecode to run
+		op bcop
+		// encoder for string literals -> dictionary value
+		encode func(string) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name:    "compare string case-sensitive (opCmpStrEqCs)",
+			refImpl: func(x, y string) bool { return x == y },
+			op:      opCmpStrEqCs,
+			encode:  func(x string) string { return x },
+		},
+		{
+			name: "compare string case-insensitive (opCmpStrEqCi)",
+			refImpl: func(x, y string) bool {
+				return stringext.NormalizeStringASCIIOnly(x) == stringext.NormalizeStringASCIIOnly(y)
+			},
+			op:     opCmpStrEqCi,
+			encode: stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+		},
+		{
+			name:    "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
+			refImpl: strings.EqualFold,
+			op:      opCmpStrEqUTF8Ci,
+			encode:  func(x string) string { return stringext.GenNeedleExt(x, false) },
+		},
+	}
+
+	run := func(t *testing.T, ts *testSuite, data, needle string) {
+		if !utf8.ValidString(needle) || (needle == "") {
+			return // invalid needles are ignored
+		}
+		expLane := ts.refImpl(data, needle)
+		enc := ts.encode(needle)
+
+		var ctx bctestContext
+		ctx.Taint()
+		ctx.dict = append(ctx.dict[:0], padNBytes(enc, 4))
+		ctx.setScalarStrings(fill16(data), padding)
+		ctx.current = 0xFFFF
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			if obsLane != expLane {
+				t.Fatalf("%v\nlane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
+					ts.name, i, needle, data, obsLane, expLane, []byte(data), []byte(needle), []byte(enc))
+			}
+		}
+		ctx.Free()
+	}
+
+	f.Fuzz(func(t *testing.T, data, needle string) {
+		for _, ts := range testSuites {
+			run(t, &ts, data, needle)
+		}
+	})
 }
 
 // TestMatchpatRefBF brute-force tests for: the reference implementation of matchpat (matchPatternReference) with a much slower regex impl

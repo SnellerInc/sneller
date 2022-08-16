@@ -24,6 +24,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
@@ -1911,6 +1912,9 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 		}
 		rightStr, _ := right.imm.(string)
 		if stringext.HasNtnString(rightStr) {
+			if !utf8.ValidString(rightStr) {
+				return p.Constant(false)
+			}
 			rightExt := p.Constant(stringext.GenNeedleExt(rightStr, false))
 			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, rightExt.imm)
 		}
@@ -2287,6 +2291,9 @@ func (p *prog) HasPrefix(str *value, prefix string, caseSensitive bool) *value {
 	}
 	prefix = stringext.NormalizeString(prefix)
 	if stringext.HasNtnString(prefix) {
+		if !utf8.ValidString(prefix) {
+			return p.Constant(false)
+		}
 		prefixExt := p.Constant(stringext.GenNeedleExt(prefix, false))
 		return p.ssa2imm(sStrContainsPrefixUTF8Ci, str, p.mask(str), prefixExt.imm)
 	}
@@ -2304,6 +2311,9 @@ func (p *prog) HasSuffix(str *value, suffix string, caseSensitive bool) *value {
 	}
 	suffix = stringext.NormalizeString(suffix)
 	if stringext.HasNtnString(suffix) {
+		if !utf8.ValidString(suffix) {
+			return p.Constant(false)
+		}
 		suffixExt := p.Constant(stringext.GenNeedleExt(suffix, true))
 		return p.ssa2imm(sStrContainsSuffixUTF8Ci, str, p.mask(str), suffixExt.imm)
 	}
@@ -2328,8 +2338,10 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 	}
 	enc = stringext.NormalizeString(enc)
 	if stringext.HasNtnString(needle) {
-		segments := make([]string, 0)
-		segments = append(segments, needle) // only one single segment
+		if !utf8.ValidString(needle) {
+			return p.Constant(false)
+		}
+		segments := []string{needle} // only one single segment
 		patternExt := p.Constant(string(stringext.GenPatternExt(segments)))
 		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
 	}
