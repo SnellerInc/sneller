@@ -162,6 +162,9 @@ const (
 	// LATEST() function is used by Sneller to distinguish
 	// between arithmetic vs timestamp aggregation
 	OpLatest
+
+	// Describes APPROX_COUNT_DISTINCT
+	OpApproxCountDistinct
 )
 
 func (a AggregateOp) IsBoolOp() bool {
@@ -170,7 +173,7 @@ func (a AggregateOp) IsBoolOp() bool {
 
 func (a AggregateOp) defaultResult() string {
 	switch a {
-	case OpCount, OpCountDistinct, OpSumCount:
+	case OpCount, OpCountDistinct, OpSumCount, OpApproxCountDistinct:
 		return "count"
 	case OpSum, OpSumInt:
 		return "sum"
@@ -217,6 +220,8 @@ func (a AggregateOp) String() string {
 		return "BOOL_AND"
 	case OpBoolOr:
 		return "BOOL_OR"
+	case OpApproxCountDistinct:
+		return "APPROX_COUNT_DISTINCT"
 	default:
 		return "none"
 	}
@@ -409,7 +414,7 @@ func (a *Aggregate) rewrite(r Rewriter) Node {
 
 func (a *Aggregate) typeof(h Hint) TypeSet {
 	switch a.Op {
-	case OpCount, OpCountDistinct, OpSumCount:
+	case OpCount, OpCountDistinct, OpSumCount, OpApproxCountDistinct:
 		return UnsignedType
 	case OpSumInt:
 		// if the inner type is only ever unsigned,

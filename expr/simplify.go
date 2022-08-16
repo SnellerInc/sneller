@@ -1038,7 +1038,7 @@ func (a *Aggregate) simplify(h Hint) Node {
 	}
 
 	if a.Filter != nil {
-		iscount := (a.Op == OpCount || a.Op == OpCountDistinct)
+		iscount := (a.Op == OpCount || a.Op == OpCountDistinct || a.Op == OpApproxCountDistinct)
 		switch v := a.Filter.(type) {
 		case Null, Missing:
 			if iscount {

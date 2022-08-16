@@ -198,12 +198,20 @@ datum_or_parens
 }
 | AGGREGATE '(' maybe_distinct expr ')' optional_filter maybe_window
 {
-  $$ = toAggregate(expr.AggregateOp($1), $4, $3, $6, $7)
+  agg, err := toAggregate(expr.AggregateOp($1), $4, $3, $6, $7)
+  if err != nil {
+    yylex.Error(__yyfmt__.Sprintf("%s", err))
+  }
+  $$ = agg
 }
 | AGGREGATE '(' '*' ')' optional_filter maybe_window // realistically only COUNT(*)
 {
   distinct := false
-  $$ = toAggregate(expr.AggregateOp($1), expr.Star{}, distinct, $5, $6)
+  agg, err := toAggregate(expr.AggregateOp($1), expr.Star{}, distinct, $5, $6)
+  if err != nil {
+    yylex.Error(__yyfmt__.Sprintf("%s", err))
+  }
+  $$ = agg
 }
 | CASE case_limbs case_optional_else END
 {

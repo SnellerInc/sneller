@@ -67,7 +67,7 @@ state 7
 state 8
 	identifier:  ID.    (129)
 
-	.  reduce 129 (src line 560)
+	.  reduce 129 (src line 568)
 
 
 state 9
@@ -149,7 +149,7 @@ state 13
 state 14
 	binding_list:  value_binding.    (94)
 
-	.  reduce 94 (src line 482)
+	.  reduce 94 (src line 490)
 
 
 state 15
@@ -328,7 +328,7 @@ state 28
 	'('  shift 99
 	'['  shift 101
 	'.'  shift 100
-	.  reduce 125 (src line 548)
+	.  reduce 125 (src line 556)
 
 	path_component  goto 98
 
@@ -462,19 +462,19 @@ state 32
 state 33
 	expr:  explicit_list_definition.    (91)
 
-	.  reduce 91 (src line 465)
+	.  reduce 91 (src line 473)
 
 
 state 34
 	expr:  explicit_struct_definition.    (92)
 
-	.  reduce 92 (src line 470)
+	.  reduce 92 (src line 478)
 
 
 state 35
 	expr:  unpivot.    (93)
 
-	.  reduce 93 (src line 475)
+	.  reduce 93 (src line 483)
 
 
 state 36
@@ -556,7 +556,7 @@ state 38
 	NUMBER  shift 41
 	ION  shift 47
 	STRING  shift 46
-	.  reduce 103 (src line 500)
+	.  reduce 103 (src line 508)
 
 	expr  goto 111
 	datum  goto 36
@@ -573,7 +573,7 @@ state 39
 	field_value_list: .    (106)
 
 	STRING  shift 114
-	.  reduce 106 (src line 506)
+	.  reduce 106 (src line 514)
 
 	field_value_list  goto 112
 	field_value_pair  goto 113
@@ -667,7 +667,7 @@ state 52
 	from_expr: .    (120)
 
 	FROM  shift 124
-	.  reduce 120 (src line 532)
+	.  reduce 120 (src line 540)
 
 	from_expr  goto 122
 	lhs_from_expr  goto 123
@@ -1690,7 +1690,7 @@ state 88
 
 	WHEN  shift 170
 	ELSE  shift 171
-	.  reduce 130 (src line 563)
+	.  reduce 130 (src line 571)
 
 	case_optional_else  goto 169
 
@@ -2012,7 +2012,7 @@ state 103
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	.  reduce 61 (src line 345)
+	.  reduce 61 (src line 353)
 
 
 state 104
@@ -2088,7 +2088,7 @@ state 104
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 79 (src line 417)
+	.  reduce 79 (src line 425)
 
 
 state 105
@@ -2164,7 +2164,7 @@ state 105
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 80 (src line 421)
+	.  reduce 80 (src line 429)
 
 
 state 106
@@ -2351,7 +2351,7 @@ state 111
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 101 (src line 498)
+	.  reduce 101 (src line 506)
 
 
 state 112
@@ -2366,7 +2366,7 @@ state 112
 state 113
 	field_value_list:  field_value_pair.    (104)
 
-	.  reduce 104 (src line 504)
+	.  reduce 104 (src line 512)
 
 
 state 114
@@ -2389,13 +2389,13 @@ state 115
 state 116
 	tuple_reference:  path_expression.    (160)
 
-	.  reduce 160 (src line 624)
+	.  reduce 160 (src line 632)
 
 
 state 117
 	tuple_reference:  explicit_struct_definition.    (161)
 
-	.  reduce 161 (src line 625)
+	.  reduce 161 (src line 633)
 
 
 state 118
@@ -2404,7 +2404,7 @@ state 118
 
 	'['  shift 101
 	'.'  shift 100
-	.  reduce 125 (src line 548)
+	.  reduce 125 (src line 556)
 
 	path_component  goto 98
 
@@ -2469,7 +2469,7 @@ state 122
 	where_expr: .    (136)
 
 	WHERE  shift 204
-	.  reduce 136 (src line 575)
+	.  reduce 136 (src line 583)
 
 	where_expr  goto 203
 
@@ -2485,7 +2485,7 @@ state 123
 	INNER  shift 210
 	FULL  shift 213
 	','  shift 207
-	.  reduce 119 (src line 531)
+	.  reduce 119 (src line 539)
 
 	join_kind  goto 206
 	cross_symbol  goto 205
@@ -2535,7 +2535,7 @@ state 124
 state 125
 	binding_list:  binding_list ',' value_binding.    (95)
 
-	.  reduce 95 (src line 483)
+	.  reduce 95 (src line 491)
 
 
 state 126
@@ -2652,7 +2652,7 @@ state 129
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 48 (src line 293)
+	.  reduce 48 (src line 301)
 
 
 state 130
@@ -2711,7 +2711,7 @@ state 130
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 49 (src line 297)
+	.  reduce 49 (src line 305)
 
 
 state 131
@@ -2769,7 +2769,7 @@ state 131
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 50 (src line 301)
+	.  reduce 50 (src line 309)
 
 
 state 132
@@ -2824,7 +2824,7 @@ state 132
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 51 (src line 305)
+	.  reduce 51 (src line 313)
 
 
 state 133
@@ -2879,7 +2879,7 @@ state 133
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 52 (src line 309)
+	.  reduce 52 (src line 317)
 
 
 state 134
@@ -2934,7 +2934,7 @@ state 134
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 53 (src line 313)
+	.  reduce 53 (src line 321)
 
 
 state 135
@@ -2987,7 +2987,7 @@ state 135
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 54 (src line 317)
+	.  reduce 54 (src line 325)
 
 
 state 136
@@ -3040,7 +3040,7 @@ state 136
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 55 (src line 321)
+	.  reduce 55 (src line 329)
 
 
 state 137
@@ -3090,7 +3090,7 @@ state 137
 
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 56 (src line 325)
+	.  reduce 56 (src line 333)
 
 
 state 138
@@ -3140,7 +3140,7 @@ state 138
 
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 57 (src line 329)
+	.  reduce 57 (src line 337)
 
 
 state 139
@@ -3190,7 +3190,7 @@ state 139
 
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 58 (src line 333)
+	.  reduce 58 (src line 341)
 
 
 state 140
@@ -3238,7 +3238,7 @@ state 140
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	.  reduce 59 (src line 337)
+	.  reduce 59 (src line 345)
 
 
 state 141
@@ -3286,19 +3286,19 @@ state 141
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	.  reduce 60 (src line 341)
+	.  reduce 60 (src line 349)
 
 
 state 142
 	expr:  expr ILIKE STRING.    (62)
 
-	.  reduce 62 (src line 349)
+	.  reduce 62 (src line 357)
 
 
 state 143
 	expr:  expr LIKE STRING.    (63)
 
-	.  reduce 63 (src line 353)
+	.  reduce 63 (src line 361)
 
 
 state 144
@@ -3311,13 +3311,13 @@ state 144
 state 145
 	expr:  expr '~' STRING.    (65)
 
-	.  reduce 65 (src line 361)
+	.  reduce 65 (src line 369)
 
 
 state 146
 	expr:  expr REGEXP_MATCH_CI STRING.    (66)
 
-	.  reduce 66 (src line 365)
+	.  reduce 66 (src line 373)
 
 
 state 147
@@ -3384,7 +3384,7 @@ state 147
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 67 (src line 369)
+	.  reduce 67 (src line 377)
 
 
 state 148
@@ -3451,7 +3451,7 @@ state 148
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 68 (src line 373)
+	.  reduce 68 (src line 381)
 
 
 state 149
@@ -3518,7 +3518,7 @@ state 149
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 69 (src line 377)
+	.  reduce 69 (src line 385)
 
 
 state 150
@@ -3585,7 +3585,7 @@ state 150
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 70 (src line 381)
+	.  reduce 70 (src line 389)
 
 
 state 151
@@ -3652,7 +3652,7 @@ state 151
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 71 (src line 385)
+	.  reduce 71 (src line 393)
 
 
 state 152
@@ -3719,7 +3719,7 @@ state 152
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 72 (src line 389)
+	.  reduce 72 (src line 397)
 
 
 state 153
@@ -3837,7 +3837,7 @@ state 159
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 81 (src line 425)
+	.  reduce 81 (src line 433)
 
 
 state 160
@@ -3914,13 +3914,13 @@ state 160
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 82 (src line 429)
+	.  reduce 82 (src line 437)
 
 
 state 161
 	expr:  expr IS NULL.    (83)
 
-	.  reduce 83 (src line 433)
+	.  reduce 83 (src line 441)
 
 
 state 162
@@ -3939,19 +3939,19 @@ state 162
 state 163
 	expr:  expr IS MISSING.    (85)
 
-	.  reduce 85 (src line 441)
+	.  reduce 85 (src line 449)
 
 
 state 164
 	expr:  expr IS TRUE.    (87)
 
-	.  reduce 87 (src line 449)
+	.  reduce 87 (src line 457)
 
 
 state 165
 	expr:  expr IS FALSE.    (89)
 
-	.  reduce 89 (src line 457)
+	.  reduce 89 (src line 465)
 
 
 state 166
@@ -4257,13 +4257,13 @@ state 174
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 98 (src line 492)
+	.  reduce 98 (src line 500)
 
 
 state 175
 	value_list:  '*'.    (99)
 
-	.  reduce 99 (src line 493)
+	.  reduce 99 (src line 501)
 
 
 state 176
@@ -4455,13 +4455,13 @@ state 181
 state 182
 	expr:  UTCNOW '(' ')'.    (42)
 
-	.  reduce 42 (src line 261)
+	.  reduce 42 (src line 269)
 
 
 state 183
 	expr:  identifier '(' ')'.    (43)
 
-	.  reduce 43 (src line 265)
+	.  reduce 43 (src line 273)
 
 
 state 184
@@ -4479,7 +4479,7 @@ state 185
 
 	'['  shift 101
 	'.'  shift 100
-	.  reduce 125 (src line 548)
+	.  reduce 125 (src line 556)
 
 	path_component  goto 243
 
@@ -4500,7 +4500,7 @@ state 187
 state 188
 	literal_int:  NUMBER.    (124)
 
-	.  reduce 124 (src line 545)
+	.  reduce 124 (src line 553)
 
 
 state 189
@@ -4602,7 +4602,7 @@ state 192
 state 193
 	explicit_list_definition:  '[' any_value_list ']'.    (163)
 
-	.  reduce 163 (src line 631)
+	.  reduce 163 (src line 639)
 
 
 state 194
@@ -4616,7 +4616,7 @@ state 194
 state 195
 	explicit_struct_definition:  '{' field_value_list '}'.    (162)
 
-	.  reduce 162 (src line 628)
+	.  reduce 162 (src line 636)
 
 
 state 196
@@ -4760,7 +4760,7 @@ state 200
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 96 (src line 487)
+	.  reduce 96 (src line 495)
 
 
 state 201
@@ -4781,7 +4781,7 @@ state 203
 	group_expr: .    (140)
 
 	GROUP  shift 257
-	.  reduce 140 (src line 583)
+	.  reduce 140 (src line 591)
 
 	group_expr  goto 256
 
@@ -4912,7 +4912,7 @@ state 206
 state 207
 	cross_symbol:  ','.    (117)
 
-	.  reduce 117 (src line 529)
+	.  reduce 117 (src line 537)
 
 
 state 208
@@ -4925,7 +4925,7 @@ state 208
 state 209
 	join_kind:  JOIN.    (110)
 
-	.  reduce 110 (src line 520)
+	.  reduce 110 (src line 528)
 
 
 state 210
@@ -4963,7 +4963,7 @@ state 213
 state 214
 	lhs_from_expr:  FROM value_binding.    (121)
 
-	.  reduce 121 (src line 539)
+	.  reduce 121 (src line 547)
 
 
 state 215
@@ -4985,7 +4985,7 @@ state 216
 state 217
 	expr:  expr SIMILAR TO STRING.    (64)
 
-	.  reduce 64 (src line 357)
+	.  reduce 64 (src line 365)
 
 
 state 218
@@ -5010,13 +5010,13 @@ state 218
 state 219
 	expr:  expr NOT LIKE STRING.    (74)
 
-	.  reduce 74 (src line 397)
+	.  reduce 74 (src line 405)
 
 
 state 220
 	expr:  expr NOT ILIKE STRING.    (75)
 
-	.  reduce 75 (src line 401)
+	.  reduce 75 (src line 409)
 
 
 state 221
@@ -5029,37 +5029,37 @@ state 221
 state 222
 	expr:  expr NOT '~' STRING.    (77)
 
-	.  reduce 77 (src line 409)
+	.  reduce 77 (src line 417)
 
 
 state 223
 	expr:  expr NOT REGEXP_MATCH_CI STRING.    (78)
 
-	.  reduce 78 (src line 413)
+	.  reduce 78 (src line 421)
 
 
 state 224
 	expr:  expr IS NOT NULL.    (84)
 
-	.  reduce 84 (src line 437)
+	.  reduce 84 (src line 445)
 
 
 state 225
 	expr:  expr IS NOT MISSING.    (86)
 
-	.  reduce 86 (src line 445)
+	.  reduce 86 (src line 453)
 
 
 state 226
 	expr:  expr IS NOT TRUE.    (88)
 
-	.  reduce 88 (src line 453)
+	.  reduce 88 (src line 461)
 
 
 state 227
 	expr:  expr IS NOT FALSE.    (90)
 
-	.  reduce 90 (src line 461)
+	.  reduce 90 (src line 469)
 
 
 state 228
@@ -5146,14 +5146,14 @@ state 229
 	optional_filter: .    (134)
 
 	FILTER  shift 274
-	.  reduce 134 (src line 571)
+	.  reduce 134 (src line 579)
 
 	optional_filter  goto 273
 
 state 230
 	expr:  CASE case_limbs case_optional_else END.    (34)
 
-	.  reduce 34 (src line 208)
+	.  reduce 34 (src line 216)
 
 
 state 231
@@ -5310,7 +5310,7 @@ state 232
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 131 (src line 564)
+	.  reduce 131 (src line 572)
 
 
 state 233
@@ -5356,7 +5356,7 @@ state 233
 state 234
 	expr:  COALESCE '(' value_list ')'.    (35)
 
-	.  reduce 35 (src line 212)
+	.  reduce 35 (src line 220)
 
 
 state 235
@@ -5609,13 +5609,13 @@ state 241
 state 242
 	expr:  identifier '(' value_list ')'.    (44)
 
-	.  reduce 44 (src line 273)
+	.  reduce 44 (src line 281)
 
 
 state 243
 	path_component:  '.' identifier path_component.    (126)
 
-	.  reduce 126 (src line 550)
+	.  reduce 126 (src line 558)
 
 
 state 244
@@ -5624,7 +5624,7 @@ state 244
 
 	'['  shift 101
 	'.'  shift 100
-	.  reduce 125 (src line 548)
+	.  reduce 125 (src line 556)
 
 	path_component  goto 284
 
@@ -5634,14 +5634,14 @@ state 245
 
 	'['  shift 101
 	'.'  shift 100
-	.  reduce 125 (src line 548)
+	.  reduce 125 (src line 556)
 
 	path_component  goto 285
 
 state 246
 	expr:  EXISTS '(' select_stmt ')'.    (47)
 
-	.  reduce 47 (src line 289)
+	.  reduce 47 (src line 297)
 
 
 state 247
@@ -5651,7 +5651,7 @@ state 247
 
 	FROM  shift 124
 	','  shift 53
-	.  reduce 120 (src line 532)
+	.  reduce 120 (src line 540)
 
 	from_expr  goto 286
 	lhs_from_expr  goto 123
@@ -5731,13 +5731,13 @@ state 248
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 102 (src line 499)
+	.  reduce 102 (src line 507)
 
 
 state 249
 	field_value_list:  field_value_list ',' field_value_pair.    (105)
 
-	.  reduce 105 (src line 505)
+	.  reduce 105 (src line 513)
 
 
 state 250
@@ -5815,7 +5815,7 @@ state 250
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 107 (src line 510)
+	.  reduce 107 (src line 518)
 
 
 state 251
@@ -5823,7 +5823,7 @@ state 251
 	unpivot:  UNPIVOT tuple_reference AS identifier.AT identifier
 
 	AT  shift 287
-	.  reduce 157 (src line 619)
+	.  reduce 157 (src line 627)
 
 
 state 252
@@ -5890,7 +5890,7 @@ state 256
 	having_expr: .    (138)
 
 	HAVING  shift 291
-	.  reduce 138 (src line 579)
+	.  reduce 138 (src line 587)
 
 	having_expr  goto 290
 
@@ -5976,13 +5976,13 @@ state 258
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 137 (src line 576)
+	.  reduce 137 (src line 584)
 
 
 state 259
 	lhs_from_expr:  lhs_from_expr cross_symbol value_binding.    (122)
 
-	.  reduce 122 (src line 540)
+	.  reduce 122 (src line 548)
 
 
 state 260
@@ -5995,19 +5995,19 @@ state 260
 state 261
 	cross_symbol:  CROSS JOIN.    (118)
 
-	.  reduce 118 (src line 529)
+	.  reduce 118 (src line 537)
 
 
 state 262
 	join_kind:  INNER JOIN.    (111)
 
-	.  reduce 111 (src line 521)
+	.  reduce 111 (src line 529)
 
 
 state 263
 	join_kind:  LEFT JOIN.    (112)
 
-	.  reduce 112 (src line 522)
+	.  reduce 112 (src line 530)
 
 
 state 264
@@ -6020,7 +6020,7 @@ state 264
 state 265
 	join_kind:  RIGHT JOIN.    (114)
 
-	.  reduce 114 (src line 524)
+	.  reduce 114 (src line 532)
 
 
 state 266
@@ -6033,31 +6033,31 @@ state 266
 state 267
 	join_kind:  FULL JOIN.    (116)
 
-	.  reduce 116 (src line 526)
+	.  reduce 116 (src line 534)
 
 
 state 268
 	expr:  expr IN '(' select_stmt ')'.    (45)
 
-	.  reduce 45 (src line 281)
+	.  reduce 45 (src line 289)
 
 
 state 269
 	expr:  expr IN '(' value_list ')'.    (46)
 
-	.  reduce 46 (src line 285)
+	.  reduce 46 (src line 293)
 
 
 state 270
 	expr:  expr BETWEEN datum_or_parens AND datum_or_parens.    (73)
 
-	.  reduce 73 (src line 393)
+	.  reduce 73 (src line 401)
 
 
 state 271
 	expr:  expr NOT SIMILAR TO STRING.    (76)
 
-	.  reduce 76 (src line 405)
+	.  reduce 76 (src line 413)
 
 
 state 272
@@ -6065,7 +6065,7 @@ state 272
 	optional_filter: .    (134)
 
 	FILTER  shift 274
-	.  reduce 134 (src line 571)
+	.  reduce 134 (src line 579)
 
 	optional_filter  goto 296
 
@@ -6074,7 +6074,7 @@ state 273
 	maybe_window: .    (109)
 
 	OVER  shift 298
-	.  reduce 109 (src line 518)
+	.  reduce 109 (src line 526)
 
 	maybe_window  goto 297
 
@@ -6200,7 +6200,7 @@ state 276
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 132 (src line 567)
+	.  reduce 132 (src line 575)
 
 
 state 277
@@ -6278,7 +6278,7 @@ state 277
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 100 (src line 494)
+	.  reduce 100 (src line 502)
 
 
 state 278
@@ -6686,13 +6686,13 @@ state 283
 state 284
 	path_component:  '[' literal_int ']' path_component.    (127)
 
-	.  reduce 127 (src line 551)
+	.  reduce 127 (src line 559)
 
 
 state 285
 	path_component:  '[' ID ']' path_component.    (128)
 
-	.  reduce 128 (src line 552)
+	.  reduce 128 (src line 560)
 
 
 state 286
@@ -6700,7 +6700,7 @@ state 286
 	where_expr: .    (136)
 
 	WHERE  shift 204
-	.  reduce 136 (src line 575)
+	.  reduce 136 (src line 583)
 
 	where_expr  goto 307
 
@@ -6795,7 +6795,7 @@ state 289
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 97 (src line 488)
+	.  reduce 97 (src line 496)
 
 
 state 290
@@ -6803,7 +6803,7 @@ state 290
 	order_expr: .    (151)
 
 	ORDER  shift 311
-	.  reduce 151 (src line 607)
+	.  reduce 151 (src line 615)
 
 	order_expr  goto 310
 
@@ -6933,13 +6933,13 @@ state 293
 state 294
 	join_kind:  LEFT OUTER JOIN.    (113)
 
-	.  reduce 113 (src line 523)
+	.  reduce 113 (src line 531)
 
 
 state 295
 	join_kind:  RIGHT OUTER JOIN.    (115)
 
-	.  reduce 115 (src line 525)
+	.  reduce 115 (src line 533)
 
 
 state 296
@@ -6947,14 +6947,14 @@ state 296
 	maybe_window: .    (109)
 
 	OVER  shift 298
-	.  reduce 109 (src line 518)
+	.  reduce 109 (src line 526)
 
 	maybe_window  goto 315
 
 state 297
 	expr:  AGGREGATE '(' '*' ')' optional_filter maybe_window.    (33)
 
-	.  reduce 33 (src line 203)
+	.  reduce 33 (src line 207)
 
 
 state 298
@@ -7046,19 +7046,19 @@ state 300
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 133 (src line 569)
+	.  reduce 133 (src line 577)
 
 
 state 301
 	expr:  NULLIF '(' expr ',' expr ')'.    (36)
 
-	.  reduce 36 (src line 216)
+	.  reduce 36 (src line 224)
 
 
 state 302
 	expr:  CAST '(' expr AS ID ')'.    (37)
 
-	.  reduce 37 (src line 220)
+	.  reduce 37 (src line 228)
 
 
 state 303
@@ -7144,13 +7144,13 @@ state 304
 state 305
 	expr:  DATE_TRUNC '(' ID ',' expr ')'.    (40)
 
-	.  reduce 40 (src line 245)
+	.  reduce 40 (src line 253)
 
 
 state 306
 	expr:  EXTRACT '(' ID FROM expr ')'.    (41)
 
-	.  reduce 41 (src line 253)
+	.  reduce 41 (src line 261)
 
 
 state 307
@@ -7158,20 +7158,20 @@ state 307
 	group_expr: .    (140)
 
 	GROUP  shift 257
-	.  reduce 140 (src line 583)
+	.  reduce 140 (src line 591)
 
 	group_expr  goto 320
 
 state 308
 	unpivot:  UNPIVOT tuple_reference AS identifier AT identifier.    (158)
 
-	.  reduce 158 (src line 620)
+	.  reduce 158 (src line 628)
 
 
 state 309
 	unpivot:  UNPIVOT tuple_reference AT identifier AS identifier.    (159)
 
-	.  reduce 159 (src line 621)
+	.  reduce 159 (src line 629)
 
 
 state 310
@@ -7179,7 +7179,7 @@ state 310
 	limit_expr: .    (153)
 
 	LIMIT  shift 322
-	.  reduce 153 (src line 611)
+	.  reduce 153 (src line 619)
 
 	limit_expr  goto 321
 
@@ -7265,7 +7265,7 @@ state 312
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 139 (src line 580)
+	.  reduce 139 (src line 588)
 
 
 state 313
@@ -7273,7 +7273,7 @@ state 313
 	group_expr:  GROUP BY binding_list.    (141)
 
 	','  shift 53
-	.  reduce 141 (src line 584)
+	.  reduce 141 (src line 592)
 
 
 state 314
@@ -7570,7 +7570,7 @@ state 320
 	having_expr: .    (138)
 
 	HAVING  shift 291
-	.  reduce 138 (src line 579)
+	.  reduce 138 (src line 587)
 
 	having_expr  goto 329
 
@@ -7579,7 +7579,7 @@ state 321
 	offset_expr: .    (155)
 
 	OFFSET  shift 331
-	.  reduce 155 (src line 615)
+	.  reduce 155 (src line 623)
 
 	offset_expr  goto 330
 
@@ -7763,13 +7763,13 @@ state 326
 state 327
 	expr:  DATE_ADD '(' ID ',' expr ',' expr ')'.    (38)
 
-	.  reduce 38 (src line 229)
+	.  reduce 38 (src line 237)
 
 
 state 328
 	expr:  DATE_DIFF '(' ID ',' expr ',' expr ')'.    (39)
 
-	.  reduce 39 (src line 237)
+	.  reduce 39 (src line 245)
 
 
 state 329
@@ -7777,7 +7777,7 @@ state 329
 	order_expr: .    (151)
 
 	ORDER  shift 311
-	.  reduce 151 (src line 607)
+	.  reduce 151 (src line 615)
 
 	order_expr  goto 339
 
@@ -7798,7 +7798,7 @@ state 331
 state 332
 	limit_expr:  LIMIT literal_int.    (154)
 
-	.  reduce 154 (src line 612)
+	.  reduce 154 (src line 620)
 
 
 state 333
@@ -7806,13 +7806,13 @@ state 333
 	order_expr:  ORDER BY order_cols.    (152)
 
 	','  shift 341
-	.  reduce 152 (src line 608)
+	.  reduce 152 (src line 616)
 
 
 state 334
 	order_cols:  order_one_col.    (150)
 
-	.  reduce 150 (src line 604)
+	.  reduce 150 (src line 612)
 
 
 state 335
@@ -7893,7 +7893,7 @@ state 335
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 145 (src line 594)
+	.  reduce 145 (src line 602)
 
 	ascdesc  goto 342
 
@@ -7943,17 +7943,17 @@ state 336
 	expr:  expr.IS NOT FALSE
 	lhs_from_expr:  lhs_from_expr join_kind value_binding ON expr EQ expr.    (123)
 
-	OR  reduce 67 (src line 369)
-	AND  reduce 67 (src line 369)
-	'~'  reduce 67 (src line 369)
-	NOT  reduce 67 (src line 369)
-	BETWEEN  reduce 67 (src line 369)
-	EQ  reduce 67 (src line 369)
-	NE  reduce 67 (src line 369)
-	LT  reduce 67 (src line 369)
-	LE  reduce 67 (src line 369)
-	GT  reduce 67 (src line 369)
-	GE  reduce 67 (src line 369)
+	OR  reduce 67 (src line 377)
+	AND  reduce 67 (src line 377)
+	'~'  reduce 67 (src line 377)
+	NOT  reduce 67 (src line 377)
+	BETWEEN  reduce 67 (src line 377)
+	EQ  reduce 67 (src line 377)
+	NE  reduce 67 (src line 377)
+	LT  reduce 67 (src line 377)
+	LE  reduce 67 (src line 377)
+	GT  reduce 67 (src line 377)
+	GE  reduce 67 (src line 377)
 	SIMILAR  shift 73
 	REGEXP_MATCH_CI  shift 75
 	ILIKE  shift 71
@@ -7973,7 +7973,7 @@ state 336
 	'%'  shift 68
 	CONCAT  shift 69
 	APPEND  shift 70
-	.  reduce 123 (src line 541)
+	.  reduce 123 (src line 549)
 
 
 state 337
@@ -8021,7 +8021,7 @@ state 337
 state 338
 	optional_filter:  FILTER '(' WHERE expr ')'.    (135)
 
-	.  reduce 135 (src line 572)
+	.  reduce 135 (src line 580)
 
 
 state 339
@@ -8029,14 +8029,14 @@ state 339
 	limit_expr: .    (153)
 
 	LIMIT  shift 322
-	.  reduce 153 (src line 611)
+	.  reduce 153 (src line 619)
 
 	limit_expr  goto 346
 
 state 340
 	offset_expr:  OFFSET literal_int.    (156)
 
-	.  reduce 156 (src line 616)
+	.  reduce 156 (src line 624)
 
 
 state 341
@@ -8085,20 +8085,20 @@ state 342
 	nullslast: .    (142)
 
 	NULLS  shift 349
-	.  reduce 142 (src line 588)
+	.  reduce 142 (src line 596)
 
 	nullslast  goto 348
 
 state 343
 	ascdesc:  ASC.    (146)
 
-	.  reduce 146 (src line 595)
+	.  reduce 146 (src line 603)
 
 
 state 344
 	ascdesc:  DESC.    (147)
 
-	.  reduce 147 (src line 596)
+	.  reduce 147 (src line 604)
 
 
 state 345
@@ -8108,7 +8108,7 @@ state 345
 
 	ORDER  shift 311
 	','  shift 235
-	.  reduce 151 (src line 607)
+	.  reduce 151 (src line 615)
 
 	order_expr  goto 350
 
@@ -8117,20 +8117,20 @@ state 346
 	offset_expr: .    (155)
 
 	OFFSET  shift 331
-	.  reduce 155 (src line 615)
+	.  reduce 155 (src line 623)
 
 	offset_expr  goto 351
 
 state 347
 	order_cols:  order_cols ',' order_one_col.    (149)
 
-	.  reduce 149 (src line 603)
+	.  reduce 149 (src line 611)
 
 
 state 348
 	order_one_col:  expr ascdesc nullslast.    (148)
 
-	.  reduce 148 (src line 600)
+	.  reduce 148 (src line 608)
 
 
 state 349
@@ -8158,19 +8158,19 @@ state 351
 state 352
 	nullslast:  NULLS FIRST.    (143)
 
-	.  reduce 143 (src line 589)
+	.  reduce 143 (src line 597)
 
 
 state 353
 	nullslast:  NULLS LAST.    (144)
 
-	.  reduce 144 (src line 590)
+	.  reduce 144 (src line 598)
 
 
 state 354
 	maybe_window:  OVER '(' PARTITION BY value_list order_expr ')'.    (108)
 
-	.  reduce 108 (src line 513)
+	.  reduce 108 (src line 521)
 
 
 106 terminals, 45 nonterminals

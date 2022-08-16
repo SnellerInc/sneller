@@ -267,7 +267,7 @@ func (s *scanner) lexIdent(l *yySymType) int {
 			}
 			return term
 		}
-		aggop := aggterms.get(s.from[startpos:s.pos])
+		aggop := lookupAggregate(s.from[startpos:s.pos])
 		if aggop != -1 {
 			l.integer = aggop
 			return AGGREGATE
@@ -482,9 +482,15 @@ func (e *LexerError) Error() string {
 	return fmt.Sprintf("at position %d: %s", e.Position, e.Message)
 }
 
-func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr.Node, over *expr.Window) *expr.Aggregate {
-	if distinct && op == expr.OpCount {
-		op = expr.OpCountDistinct
+func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+	if distinct {
+		switch op {
+		case expr.OpCount:
+			op = expr.OpCountDistinct
+		case expr.OpApproxCountDistinct:
+			return nil, fmt.Errorf("cannot use DISTINCT with %v", expr.OpApproxCountDistinct)
+		}
 	}
-	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}
+
+	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}, nil
 }

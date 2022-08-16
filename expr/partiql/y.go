@@ -1166,36 +1166,44 @@ yydefault:
 		yyDollar = yyS[yypt-7 : yypt+1]
 //line partiql.y:200
 		{
-			yyVAL.expr = toAggregate(expr.AggregateOp(yyDollar[1].integer), yyDollar[4].expr, yyDollar[3].yesno, yyDollar[6].expr, yyDollar[7].wind)
+			agg, err := toAggregate(expr.AggregateOp(yyDollar[1].integer), yyDollar[4].expr, yyDollar[3].yesno, yyDollar[6].expr, yyDollar[7].wind)
+			if err != nil {
+				yylex.Error(__yyfmt__.Sprintf("%s", err))
+			}
+			yyVAL.expr = agg
 		}
 	case 33:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:204
+//line partiql.y:208
 		{
 			distinct := false
-			yyVAL.expr = toAggregate(expr.AggregateOp(yyDollar[1].integer), expr.Star{}, distinct, yyDollar[5].expr, yyDollar[6].wind)
+			agg, err := toAggregate(expr.AggregateOp(yyDollar[1].integer), expr.Star{}, distinct, yyDollar[5].expr, yyDollar[6].wind)
+			if err != nil {
+				yylex.Error(__yyfmt__.Sprintf("%s", err))
+			}
+			yyVAL.expr = agg
 		}
 	case 34:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:209
+//line partiql.y:217
 		{
 			yyVAL.expr = &expr.Case{Limbs: yyDollar[2].limbs, Else: yyDollar[3].expr}
 		}
 	case 35:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:213
+//line partiql.y:221
 		{
 			yyVAL.expr = expr.Coalesce(yyDollar[3].values)
 		}
 	case 36:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:217
+//line partiql.y:225
 		{
 			yyVAL.expr = expr.NullIf(yyDollar[3].expr, yyDollar[5].expr)
 		}
 	case 37:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:221
+//line partiql.y:229
 		{
 			nod, ok := buildCast(yyDollar[3].expr, yyDollar[5].str)
 			if !ok {
@@ -1206,7 +1214,7 @@ yydefault:
 		}
 	case 38:
 		yyDollar = yyS[yypt-8 : yypt+1]
-//line partiql.y:230
+//line partiql.y:238
 		{
 			part, ok := timePart(yyDollar[3].str)
 			if !ok {
@@ -1216,7 +1224,7 @@ yydefault:
 		}
 	case 39:
 		yyDollar = yyS[yypt-8 : yypt+1]
-//line partiql.y:238
+//line partiql.y:246
 		{
 			part, ok := timePart(yyDollar[3].str)
 			if !ok {
@@ -1226,7 +1234,7 @@ yydefault:
 		}
 	case 40:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:246
+//line partiql.y:254
 		{
 			part, ok := timePart(yyDollar[3].str)
 			if !ok {
@@ -1236,7 +1244,7 @@ yydefault:
 		}
 	case 41:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:254
+//line partiql.y:262
 		{
 			part, ok := timePart(yyDollar[3].str)
 			if !ok {
@@ -1246,13 +1254,13 @@ yydefault:
 		}
 	case 42:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:262
+//line partiql.y:270
 		{
 			yyVAL.expr = yylex.(*scanner).utcnow()
 		}
 	case 43:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:266
+//line partiql.y:274
 		{
 			op := expr.Call(yyDollar[1].str)
 			if op.Private() {
@@ -1262,7 +1270,7 @@ yydefault:
 		}
 	case 44:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:274
+//line partiql.y:282
 		{
 			op := expr.Call(yyDollar[1].str, yyDollar[3].values...)
 			if op.Private() {
@@ -1272,469 +1280,469 @@ yydefault:
 		}
 	case 45:
 		yyDollar = yyS[yypt-5 : yypt+1]
-//line partiql.y:282
+//line partiql.y:290
 		{
 			yyVAL.expr = expr.CallOp(expr.InSubquery, yyDollar[1].expr, yyDollar[4].sel)
 		}
 	case 46:
 		yyDollar = yyS[yypt-5 : yypt+1]
-//line partiql.y:286
+//line partiql.y:294
 		{
 			yyVAL.expr = expr.In(yyDollar[1].expr, yyDollar[4].values...)
 		}
 	case 47:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:290
+//line partiql.y:298
 		{
 			yyVAL.expr = exists(yyDollar[3].sel)
 		}
 	case 48:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:294
+//line partiql.y:302
 		{
 			yyVAL.expr = expr.BitOr(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 49:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:298
+//line partiql.y:306
 		{
 			yyVAL.expr = expr.BitXor(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 50:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:302
+//line partiql.y:310
 		{
 			yyVAL.expr = expr.BitAnd(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 51:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:306
+//line partiql.y:314
 		{
 			yyVAL.expr = expr.ShiftLeftLogical(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 52:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:310
+//line partiql.y:318
 		{
 			yyVAL.expr = expr.ShiftRightLogical(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 53:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:314
+//line partiql.y:322
 		{
 			yyVAL.expr = expr.ShiftRightArithmetic(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 54:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:318
+//line partiql.y:326
 		{
 			yyVAL.expr = expr.Add(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 55:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:322
+//line partiql.y:330
 		{
 			yyVAL.expr = expr.Sub(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 56:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:326
+//line partiql.y:334
 		{
 			yyVAL.expr = expr.Mul(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 57:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:330
+//line partiql.y:338
 		{
 			yyVAL.expr = expr.Div(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 58:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:334
+//line partiql.y:342
 		{
 			yyVAL.expr = expr.Mod(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 59:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:338
+//line partiql.y:346
 		{
 			yyVAL.expr = expr.Call("CONCAT", yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 60:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:342
+//line partiql.y:350
 		{
 			yyVAL.expr = expr.Append(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 61:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:346
+//line partiql.y:354
 		{
 			yyVAL.expr = expr.Neg(yyDollar[2].expr)
 		}
 	case 62:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:350
+//line partiql.y:358
 		{
 			yyVAL.expr = expr.Compare(expr.Ilike, yyDollar[1].expr, expr.String(yyDollar[3].str))
 		}
 	case 63:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:354
+//line partiql.y:362
 		{
 			yyVAL.expr = expr.Compare(expr.Like, yyDollar[1].expr, expr.String(yyDollar[3].str))
 		}
 	case 64:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:358
+//line partiql.y:366
 		{
 			yyVAL.expr = expr.Compare(expr.SimilarTo, yyDollar[1].expr, expr.String(yyDollar[4].str))
 		}
 	case 65:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:362
+//line partiql.y:370
 		{
 			yyVAL.expr = expr.Compare(expr.RegexpMatch, yyDollar[1].expr, expr.String(yyDollar[3].str))
 		}
 	case 66:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:366
+//line partiql.y:374
 		{
 			yyVAL.expr = expr.Compare(expr.RegexpMatchCi, yyDollar[1].expr, expr.String(yyDollar[3].str))
 		}
 	case 67:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:370
+//line partiql.y:378
 		{
 			yyVAL.expr = expr.Compare(expr.Equals, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 68:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:374
+//line partiql.y:382
 		{
 			yyVAL.expr = expr.Compare(expr.NotEquals, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 69:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:378
+//line partiql.y:386
 		{
 			yyVAL.expr = expr.Compare(expr.Less, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 70:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:382
+//line partiql.y:390
 		{
 			yyVAL.expr = expr.Compare(expr.LessEquals, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 71:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:386
+//line partiql.y:394
 		{
 			yyVAL.expr = expr.Compare(expr.Greater, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 72:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:390
+//line partiql.y:398
 		{
 			yyVAL.expr = expr.Compare(expr.GreaterEquals, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 73:
 		yyDollar = yyS[yypt-5 : yypt+1]
-//line partiql.y:394
+//line partiql.y:402
 		{
 			yyVAL.expr = expr.Between(yyDollar[1].expr, yyDollar[3].expr, yyDollar[5].expr)
 		}
 	case 74:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:398
+//line partiql.y:406
 		{
 			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.Like, yyDollar[1].expr, expr.String(yyDollar[4].str))}
 		}
 	case 75:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:402
+//line partiql.y:410
 		{
 			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.Ilike, yyDollar[1].expr, expr.String(yyDollar[4].str))}
 		}
 	case 76:
 		yyDollar = yyS[yypt-5 : yypt+1]
-//line partiql.y:406
+//line partiql.y:414
 		{
 			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.SimilarTo, yyDollar[1].expr, expr.String(yyDollar[5].str))}
 		}
 	case 77:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:410
+//line partiql.y:418
 		{
 			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.RegexpMatch, yyDollar[1].expr, expr.String(yyDollar[4].str))}
 		}
 	case 78:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:414
+//line partiql.y:422
 		{
 			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.RegexpMatchCi, yyDollar[1].expr, expr.String(yyDollar[4].str))}
 		}
 	case 79:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:418
+//line partiql.y:426
 		{
 			yyVAL.expr = &expr.Not{Expr: yyDollar[2].expr}
 		}
 	case 80:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:422
+//line partiql.y:430
 		{
 			yyVAL.expr = expr.BitNot(yyDollar[2].expr)
 		}
 	case 81:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:426
+//line partiql.y:434
 		{
 			yyVAL.expr = expr.And(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 82:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:430
+//line partiql.y:438
 		{
 			yyVAL.expr = expr.Or(yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 83:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:434
+//line partiql.y:442
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsNull, Expr: yyDollar[1].expr}
 		}
 	case 84:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:438
+//line partiql.y:446
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsNotNull, Expr: yyDollar[1].expr}
 		}
 	case 85:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:442
+//line partiql.y:450
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsMissing, Expr: yyDollar[1].expr}
 		}
 	case 86:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:446
+//line partiql.y:454
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsNotMissing, Expr: yyDollar[1].expr}
 		}
 	case 87:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:450
+//line partiql.y:458
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsTrue, Expr: yyDollar[1].expr}
 		}
 	case 88:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:454
+//line partiql.y:462
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsNotTrue, Expr: yyDollar[1].expr}
 		}
 	case 89:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:458
+//line partiql.y:466
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsFalse, Expr: yyDollar[1].expr}
 		}
 	case 90:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:462
+//line partiql.y:470
 		{
 			yyVAL.expr = &expr.IsKey{Key: expr.IsNotFalse, Expr: yyDollar[1].expr}
 		}
 	case 91:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:467
+//line partiql.y:475
 		{
 			yyVAL.expr = yyDollar[1].expr
 		}
 	case 92:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:472
+//line partiql.y:480
 		{
 			yyVAL.expr = yyDollar[1].expr
 		}
 	case 93:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:477
+//line partiql.y:485
 		{
 			yyVAL.expr = yyDollar[1].expr
 		}
 	case 94:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:483
+//line partiql.y:491
 		{
 			yyVAL.bindings = []expr.Binding{yyDollar[1].bind}
 		}
 	case 95:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:484
+//line partiql.y:492
 		{
 			yyVAL.bindings = append(yyDollar[1].bindings, yyDollar[3].bind)
 		}
 	case 96:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:488
+//line partiql.y:496
 		{
 			yyVAL.values = []expr.Node{yyDollar[1].expr}
 		}
 	case 97:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:489
+//line partiql.y:497
 		{
 			yyVAL.values = append(yyDollar[1].values, yyDollar[3].expr)
 		}
 	case 98:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:493
+//line partiql.y:501
 		{
 			yyVAL.values = []expr.Node{yyDollar[1].expr}
 		}
 	case 99:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:494
+//line partiql.y:502
 		{
 			yyVAL.values = []expr.Node{expr.Star{}}
 		}
 	case 100:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:495
+//line partiql.y:503
 		{
 			yyVAL.values = append(yyDollar[1].values, yyDollar[3].expr)
 		}
 	case 101:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:499
+//line partiql.y:507
 		{
 			yyVAL.values = []expr.Node{yyDollar[1].expr}
 		}
 	case 102:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:500
+//line partiql.y:508
 		{
 			yyVAL.values = append(yyDollar[1].values, yyDollar[3].expr)
 		}
 	case 103:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:501
+//line partiql.y:509
 		{
 			yyVAL.values = nil
 		}
 	case 104:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:505
+//line partiql.y:513
 		{
 			yyVAL.values = yyDollar[1].values
 		}
 	case 105:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:506
+//line partiql.y:514
 		{
 			yyVAL.values = append(yyDollar[1].values, yyDollar[3].values...)
 		}
 	case 106:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:507
+//line partiql.y:515
 		{
 			yyVAL.values = nil
 		}
 	case 107:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:511
+//line partiql.y:519
 		{
 			yyVAL.values = []expr.Node{expr.String(yyDollar[1].str), yyDollar[3].expr}
 		}
 	case 108:
 		yyDollar = yyS[yypt-7 : yypt+1]
-//line partiql.y:515
+//line partiql.y:523
 		{
 			yyVAL.wind = &expr.Window{PartitionBy: yyDollar[5].values, OrderBy: yyDollar[6].orders}
 		}
 	case 109:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:518
+//line partiql.y:526
 		{
 			yyVAL.wind = nil
 		}
 	case 110:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:521
+//line partiql.y:529
 		{
 			yyVAL.jk = expr.InnerJoin
 		}
 	case 111:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:522
+//line partiql.y:530
 		{
 			yyVAL.jk = expr.InnerJoin
 		}
 	case 112:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:523
+//line partiql.y:531
 		{
 			yyVAL.jk = expr.LeftJoin
 		}
 	case 113:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:524
+//line partiql.y:532
 		{
 			yyVAL.jk = expr.LeftJoin
 		}
 	case 114:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:525
+//line partiql.y:533
 		{
 			yyVAL.jk = expr.RightJoin
 		}
 	case 115:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:526
+//line partiql.y:534
 		{
 			yyVAL.jk = expr.RightJoin
 		}
 	case 116:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:527
+//line partiql.y:535
 		{
 			yyVAL.jk = expr.FullJoin
 		}
 	case 119:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:532
+//line partiql.y:540
 		{
 			yyVAL.from = yyDollar[1].from
 		}
 	case 120:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:533
+//line partiql.y:541
 		{
 			yyVAL.from = nil
 		}
 	case 121:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:540
+//line partiql.y:548
 		{
 			yyVAL.from = &expr.Table{Binding: yyDollar[2].bind}
 		}
 	case 122:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:541
+//line partiql.y:549
 		{
 			yyVAL.from = &expr.Join{Kind: expr.CrossJoin, Left: yyDollar[1].from, Right: yyDollar[3].bind}
 		}
 	case 123:
 		yyDollar = yyS[yypt-7 : yypt+1]
-//line partiql.y:543
+//line partiql.y:551
 		{
 			yyVAL.from = &expr.Join{Kind: yyDollar[2].jk, Left: yyDollar[1].from, Right: yyDollar[3].bind, On: &expr.OnEquals{Left: yyDollar[5].expr, Right: yyDollar[7].expr}}
 		}
 	case 124:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:546
+//line partiql.y:554
 		{
 			var idxerr error
 			yyVAL.integer, idxerr = toint(yyDollar[1].expr)
@@ -1744,237 +1752,237 @@ yydefault:
 		}
 	case 125:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:549
+//line partiql.y:557
 		{
 			yyVAL.pc = nil
 		}
 	case 126:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:550
+//line partiql.y:558
 		{
 			yyVAL.pc = &expr.Dot{Field: yyDollar[2].str, Rest: yyDollar[3].pc}
 		}
 	case 127:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:551
+//line partiql.y:559
 		{
 			yyVAL.pc = &expr.LiteralIndex{Field: yyDollar[2].integer, Rest: yyDollar[4].pc}
 		}
 	case 128:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:552
+//line partiql.y:560
 		{
 			yyVAL.pc = &expr.Dot{Field: yyDollar[2].str, Rest: yyDollar[4].pc}
 		}
 	case 129:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:561
+//line partiql.y:569
 		{
 			yyVAL.str = yyDollar[1].str
 		}
 	case 130:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:564
+//line partiql.y:572
 		{
 			yyVAL.expr = nil
 		}
 	case 131:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:565
+//line partiql.y:573
 		{
 			yyVAL.expr = yyDollar[2].expr
 		}
 	case 132:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:568
+//line partiql.y:576
 		{
 			yyVAL.limbs = []expr.CaseLimb{{When: yyDollar[2].expr, Then: yyDollar[4].expr}}
 		}
 	case 133:
 		yyDollar = yyS[yypt-5 : yypt+1]
-//line partiql.y:569
+//line partiql.y:577
 		{
 			yyVAL.limbs = append(yyDollar[1].limbs, expr.CaseLimb{When: yyDollar[3].expr, Then: yyDollar[5].expr})
 		}
 	case 134:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:572
+//line partiql.y:580
 		{
 			yyVAL.expr = nil
 		}
 	case 135:
 		yyDollar = yyS[yypt-5 : yypt+1]
-//line partiql.y:573
+//line partiql.y:581
 		{
 			yyVAL.expr = yyDollar[4].expr
 		}
 	case 136:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:576
+//line partiql.y:584
 		{
 			yyVAL.expr = nil
 		}
 	case 137:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:577
+//line partiql.y:585
 		{
 			yyVAL.expr = yyDollar[2].expr
 		}
 	case 138:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:580
+//line partiql.y:588
 		{
 			yyVAL.expr = nil
 		}
 	case 139:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:581
+//line partiql.y:589
 		{
 			yyVAL.expr = yyDollar[2].expr
 		}
 	case 140:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:584
+//line partiql.y:592
 		{
 			yyVAL.bindings = nil
 		}
 	case 141:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:585
+//line partiql.y:593
 		{
 			yyVAL.bindings = yyDollar[3].bindings
 		}
 	case 142:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:589
+//line partiql.y:597
 		{
 			yyVAL.yesno = false
 		}
 	case 143:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:590
+//line partiql.y:598
 		{
 			yyVAL.yesno = false
 		}
 	case 144:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:591
+//line partiql.y:599
 		{
 			yyVAL.yesno = true
 		}
 	case 145:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:595
+//line partiql.y:603
 		{
 			yyVAL.yesno = false
 		}
 	case 146:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:596
+//line partiql.y:604
 		{
 			yyVAL.yesno = false
 		}
 	case 147:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:597
+//line partiql.y:605
 		{
 			yyVAL.yesno = true
 		}
 	case 148:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:601
+//line partiql.y:609
 		{
 			yyVAL.order = expr.Order{Column: yyDollar[1].expr, Desc: yyDollar[2].yesno, NullsLast: yyDollar[3].yesno}
 		}
 	case 149:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:604
+//line partiql.y:612
 		{
 			yyVAL.orders = append(yyDollar[1].orders, yyDollar[3].order)
 		}
 	case 150:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:605
+//line partiql.y:613
 		{
 			yyVAL.orders = []expr.Order{yyDollar[1].order}
 		}
 	case 151:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:608
+//line partiql.y:616
 		{
 			yyVAL.orders = nil
 		}
 	case 152:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:609
+//line partiql.y:617
 		{
 			yyVAL.orders = yyDollar[3].orders
 		}
 	case 153:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:612
+//line partiql.y:620
 		{
 			yyVAL.exprint = nil
 		}
 	case 154:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:613
+//line partiql.y:621
 		{
 			n := expr.Integer(yyDollar[2].integer)
 			yyVAL.exprint = &n
 		}
 	case 155:
 		yyDollar = yyS[yypt-0 : yypt+1]
-//line partiql.y:616
+//line partiql.y:624
 		{
 			yyVAL.exprint = nil
 		}
 	case 156:
 		yyDollar = yyS[yypt-2 : yypt+1]
-//line partiql.y:617
+//line partiql.y:625
 		{
 			n := expr.Integer(yyDollar[2].integer)
 			yyVAL.exprint = &n
 		}
 	case 157:
 		yyDollar = yyS[yypt-4 : yypt+1]
-//line partiql.y:620
+//line partiql.y:628
 		{
 			yyVAL.expr = &expr.Unpivot{TupleRef: yyDollar[2].expr, As: yyDollar[4].str, At: ""}
 		}
 	case 158:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:621
+//line partiql.y:629
 		{
 			yyVAL.expr = &expr.Unpivot{TupleRef: yyDollar[2].expr, As: yyDollar[4].str, At: yyDollar[6].str}
 		}
 	case 159:
 		yyDollar = yyS[yypt-6 : yypt+1]
-//line partiql.y:622
+//line partiql.y:630
 		{
 			yyVAL.expr = &expr.Unpivot{TupleRef: yyDollar[2].expr, As: yyDollar[6].str, At: yyDollar[4].str}
 		}
 	case 160:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:625
+//line partiql.y:633
 		{
 			yyVAL.expr = yyDollar[1].expr
 		}
 	case 161:
 		yyDollar = yyS[yypt-1 : yypt+1]
-//line partiql.y:626
+//line partiql.y:634
 		{
 			yyVAL.expr = yyDollar[1].expr
 		}
 	case 162:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:629
+//line partiql.y:637
 		{
 			yyVAL.expr = expr.Call("MAKE_STRUCT", yyDollar[2].values...)
 		}
 	case 163:
 		yyDollar = yyS[yypt-3 : yypt+1]
-//line partiql.y:632
+//line partiql.y:640
 		{
 			yyVAL.expr = expr.Call("MAKE_LIST", yyDollar[2].values...)
 		}

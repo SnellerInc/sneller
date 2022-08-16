@@ -166,6 +166,23 @@ func charcode(b byte) (uint64, bool) {
 	return 0, false
 }
 
+func equalsci(buf1, buf2 []byte) bool {
+	n := len(buf1)
+	if n != len(buf2) {
+		return false
+	}
+
+	for i := 0; i < n; i++ {
+		c1, ok1 := charcode(buf1[i])
+		c2, ok2 := charcode(buf2[i])
+		if !(ok1 && ok2 && c1 == c2) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // wordcode produces an integer from
 // a string of ascii characters
 //
@@ -226,4 +243,15 @@ func (t termlist) contains(s string) bool {
 		return t[i].selfcode >= code
 	})
 	return idx < len(t) && t[idx].selfcode == code
+}
+
+func lookupAggregate(buf []byte) int {
+	aggop := aggterms.get(buf)
+	if aggop == -1 {
+		if equalsci(buf, []byte("APPROX_COUNT_DISTINCT")) {
+			return int(expr.OpApproxCountDistinct)
+		}
+	}
+
+	return aggop
 }

@@ -80,28 +80,31 @@ var sameq = []string{
 	"SELECT * FROM UNPIVOT t AS a AT b",
 	"SELECT * FROM UNPIVOT t AS a",
 	"SELECT * FROM UNPIVOT {'x': 'y'} AS a",
+	`SELECT APPROX_COUNT_DISTINCT(x) FROM table`,
 }
 
 func TestParseSFW(t *testing.T) {
 	for i := range sameq {
-		e, err := Parse([]byte(sameq[i]))
-		if err != nil {
-			t.Errorf("case %q: %s", sameq[i], err)
-			// do it again, this time with debug
-			yyDebug = 3
-			Parse([]byte(sameq[i]))
-			yyDebug = 0
-			continue
-		}
-		if e == nil {
-			t.Errorf("case %q: didn't match...?", sameq[i])
-			continue
-		}
-		want := sameq[i]
-		if got := e.Text(); got != want {
-			t.Errorf("case %d: got %q, want %q", i, got, want)
-		}
-		testEquivalence(t, e.Body)
+		query := sameq[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			e, err := Parse([]byte(query))
+			if err != nil {
+				t.Error(err)
+				// do it again, this time with debug
+				yyDebug = 3
+				Parse([]byte(query))
+				yyDebug = 0
+				return
+			}
+			if e == nil {
+				t.Error("didn't match")
+				return
+			}
+			if got := e.Text(); got != query {
+				t.Errorf("got %q, want %q", got, query)
+			}
+			testEquivalence(t, e.Body)
+		})
 	}
 }
 
