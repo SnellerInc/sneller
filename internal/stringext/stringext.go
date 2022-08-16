@@ -232,21 +232,77 @@ func reverseString(s string) string { // nicked from https://stackoverflow.com/q
 
 // GenNeedleExt generates an extended string representation needed for UTF8 ci comparisons
 func GenNeedleExt(needle string, reversed bool) string {
-	const nAlternatives = 4
-	const nTailPadding = 4 // number of bytes placed with content 0 directly after the needle such that we can load 32 bytes
-	nRunes := utf8.RuneCountInString(needle)
-	needleUpper, alt := stringAlternatives(needle, nAlternatives, reversed)
-	nBytesNeedle := len(needleUpper)
-	offsetAlt := (4 * 4) + nBytesNeedle + nTailPadding
+
+	stringAlternatives := func(str string, reversed bool) (alt []byte) {
+		nRunes := utf8.RuneCountInString(str)
+		alt = make([]byte, 0) // alt = alternative list of runes encoded as utf8 code-points stored in 32bits int
+		upperRunes, altArr := alternativeString(str)
+
+		upper := []byte(string(upperRunes))
+		upper = append(upper, 0, 0, 0)
+
+		var alt1, alt2, alt3, alt4 []rune
+		switch len(altArr) {
+		case 1:
+			alt1 = altArr[0]
+			alt2 = altArr[0]
+			alt3 = altArr[0]
+			alt4 = altArr[0]
+		case 2:
+			alt1 = altArr[0]
+			alt2 = altArr[1]
+			alt3 = altArr[1]
+			alt4 = altArr[1]
+		case 3:
+			alt1 = altArr[0]
+			alt2 = altArr[1]
+			alt3 = altArr[2]
+			alt4 = altArr[2]
+		case 4:
+			alt1 = altArr[0]
+			alt2 = altArr[1]
+			alt3 = altArr[2]
+			alt4 = altArr[3]
+		}
+
+		for i := 0; i < nRunes; i++ {
+			if reversed {
+
+				x3 := byte(0)
+				if i-3 >= 0 {
+					x3 = upper[i-3]
+				}
+				x2 := byte(0)
+				if i-2 >= 0 {
+					x2 = upper[i-2]
+				}
+				x1 := byte(0)
+				if i-1 >= 0 {
+					x1 = upper[i-1]
+				}
+				x0 := byte(0)
+				if i-0 >= 0 {
+					x0 = upper[i-0]
+				}
+				alt = append([]byte{x3, x2, x1, x0}, alt...)
+				alt = append(runeToUtf8Array(alt1[i]), alt...)
+				alt = append(runeToUtf8Array(alt2[i]), alt...)
+				alt = append(runeToUtf8Array(alt3[i]), alt...)
+				alt = append(runeToUtf8Array(alt4[i]), alt...)
+			} else {
+				alt = append(alt, runeToUtf8Array(alt1[i])...)
+				alt = append(alt, runeToUtf8Array(alt2[i])...)
+				alt = append(alt, runeToUtf8Array(alt3[i])...)
+				alt = append(alt, runeToUtf8Array(alt4[i])...)
+				alt = append(alt, upper[i+0], upper[i+1], upper[i+2], upper[i+3])
+			}
+		}
+		return
+	}
 
 	result := make([]byte, 0)
-	result = append(result, to4ByteArray(nRunes)...)
-	result = append(result, to4ByteArray(nAlternatives)...)
-	result = append(result, to4ByteArray(offsetAlt)...)
-	result = append(result, to4ByteArray(nBytesNeedle)...)
-	result = append(result, needleUpper...)
-	result = append(result, make([]byte, nTailPadding)...)
-	result = append(result, alt...)
+	result = append(result, to4ByteArray(utf8.RuneCountInString(needle))...)
+	result = append(result, stringAlternatives(needle, reversed)...)
 	return string(result)
 }
 

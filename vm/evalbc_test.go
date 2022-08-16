@@ -232,7 +232,7 @@ func TestStringCompareBF(t *testing.T) {
 		{ // test to explicitly check that byte length changing normalizations work
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci) 2",
 			dataAlphabet: []rune{'a', 'Ω', 'Ω'}, // U+2126 'Ω' (E2 84 A6 = 226 132 166) -> U+03A9 'Ω' (CE A9 = 207 137)
-			dataMaxlen:   4,
+			dataMaxlen:   6,
 			dataMaxSize:  exhaustive,
 			compare:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
@@ -3345,14 +3345,14 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 		{
 			name: "contains prefix case-insensitive (opContainsPrefixUTF8Ci)",
 			unitTests: []unitTest{
-				//FIXME {"sſsSa", "ssss", true, 5, 1}, // fixed in new implementation
+				{"sſsSa", "ssss", true, 5, 1},
 				{"ssss", "ssss", true, 4, 0},
 				{"abc", "abc", true, 3, 0},
 				{"abcd", "abcd", true, 4, 0},
 				{"a", "aa", false, 1, 1},
-				//FIXME {"aa", "a", true, 1, 1}, // fixed in new implementation
+				{"aa", "a", true, 1, 1},
 				{"ſb", "s", true, 2, 1},
-				//FIXME {"sb", "ſ", true, 1, 1}, // fixed in new implementation
+				{"sb", "ſ", true, 1, 1},
 				{"ſ", "s", true, 2, 0},
 				{"s", "ſ", true, 1, 0},
 				{"s", "", false, 0, 1}, //NOTE: empty needles are dead lanes
@@ -3400,6 +3400,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 		{
 			name: "contains suffix case-insensitive (opContainsSuffixUTF8Ci)",
 			unitTests: []unitTest{
+				{"sss", "ſss", true, 0, 0},
 				{"abcd", "abcd", true, 0, 0},
 				{"ſ", "ss", false, 0, 0},
 				{"a", "a", true, 0, 0},
@@ -3414,7 +3415,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"sssss", "ssss", true, 0, 1},
 				{"ſssss", "ssss", true, 0, 2}, //NOTE 'ſ' is 2 bytes
 				{"sſsss", "ssss", true, 0, 1},
-				//FIXME{"ssſss", "ssss", true, 0, 1}, // fixed in new implementation: when 4 bytes data with unicode is loaded, the test fails
+				{"ssſss", "ssss", true, 0, 1},
 				{"s", "", false, 0, 1}, //NOTE: empty needles are dead lanes
 				{"", "", false, 0, 0},  //NOTE: empty needles are dead lanes
 				{"ss", "b", false, 0, 2},
@@ -3516,7 +3517,6 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
 			encode:         stringext.NormalizeString,
 		},
-		/* //FIXME this test is switched off and fixed in new implementation
 		{
 			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
@@ -3529,7 +3529,18 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
 			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, false) },
 		},
-		*/
+		{
+			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
+			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
+			dataMaxlen:     20,
+			dataMaxSize:    1000,
+			needleAlphabet: []rune{'s', 'S', 'ſ'},
+			needleMaxlen:   20,
+			needleMaxSize:  1000,
+			op:             opContainsPrefixUTF8Ci,
+			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
+			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, false) },
+		},
 		{
 			name:           "contains suffix case-sensitive (opContainsSuffixCs)",
 			dataAlphabet:   []rune{'a', 'b', '\n'},
@@ -3554,7 +3565,6 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false) },
 			encode:         stringext.NormalizeString,
 		},
-		/* //FIXME this test is switched off and fixed in new implementation
 		{
 			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
@@ -3567,7 +3577,18 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false) },
 			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, true) },
 		},
-		*/
+		{
+			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
+			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
+			dataMaxlen:     20,
+			dataMaxSize:    1000,
+			needleAlphabet: []rune{'s', 'S', 'ſ'},
+			needleMaxlen:   20,
+			needleMaxSize:  1000,
+			op:             opContainsSuffixUTF8Ci,
+			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false) },
+			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, true) },
+		},
 	}
 
 	run := func(ts *testSuite, dataSpace, needleSpace []string) {
@@ -3623,10 +3644,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 }
 
 func padNBytes(s string, nBytes int) string {
-	buf := []byte(s)
-	for i := 0; i < nBytes; i++ {
-		buf = append(buf, 0)
-	}
+	buf := []byte(s + strings.Repeat(string([]byte{0}), nBytes))
 	return string(buf)[:len(s)]
 }
 

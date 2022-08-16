@@ -406,6 +406,15 @@ CONST_DATA_U64(constpool, 656, $134217727)
 #define CONSTD_0x3FFFFFFF() CONST_GET_PTR(constpool, 664)
 CONST_DATA_U32(constpool, 664, $0x3FFFFFFF)
 
+#define CONSTB_32() CONST_GET_PTR(constpool, 672)
+CONST_DATA_U8(constpool, 672, $0b00100000)
+
+#define CONSTB_97() CONST_GET_PTR(constpool, 673)
+CONST_DATA_U8(constpool, 673, $97)
+
+#define CONSTB_122() CONST_GET_PTR(constpool, 674)
+CONST_DATA_U8(constpool, 674, $122)
+
 // Integer Division Reciprocals
 // ----------------------------
 
