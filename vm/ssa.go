@@ -2683,6 +2683,11 @@ func (p *prog) compareValueWith(left, right *value, op compareOp) *value {
 			right = p.toStr(right)
 			return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
 		}
+		if isTimestampImmediate(imm) {
+			lhs, lhk := p.coerceTimestamp(left)
+			rhs, rhk := p.coerceTimestamp(right)
+			return p.ssa3(info.cmpts, lhs, rhs, p.And(lhk, rhk))
+		}
 	}
 
 	rType := right.primary()
