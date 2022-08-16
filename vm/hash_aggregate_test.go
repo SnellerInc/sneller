@@ -17,7 +17,7 @@ package vm
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"runtime"
 	"testing"
@@ -96,7 +96,7 @@ var haggTests = []struct {
 }
 
 func TestHashAggregate(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	buf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func (n nopSink) Write(p []byte) (int, error) {
 func (n nopSink) Close() error { return nil }
 
 func BenchmarkHashAggregate(b *testing.B) {
-	nycbuf, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	nycbuf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -16,7 +16,7 @@ package vm
 
 import (
 	"io"
-	"io/ioutil"
+	"os"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -149,7 +149,7 @@ func TestSelect(t *testing.T) {
 }
 
 func TestSelectNested(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/parking2.ion")
+	buf, err := os.ReadFile("../testdata/parking2.ion")
 	if err != nil {
 		t.Fatal(err)
 	}

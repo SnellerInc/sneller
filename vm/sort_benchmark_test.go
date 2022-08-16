@@ -16,7 +16,7 @@ package vm
 
 import (
 	"bytes"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/SnellerInc/sneller/sorting"
@@ -73,7 +73,7 @@ func BenchmarkSortThreeColumnsStringFloatInt(b *testing.B) {
 
 func benchmark(b *testing.B, parallelism int, columns []string) {
 	// given
-	input, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	input, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		b.Fatal(err)
 	}

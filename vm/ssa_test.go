@@ -17,7 +17,6 @@ package vm
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
@@ -356,7 +355,7 @@ func TestCompileSSA(t *testing.T) {
 			if os.Getenv("GRAPHVIZ") != "" {
 				var buf bytes.Buffer
 				p.Graphviz(&buf)
-				ioutil.WriteFile(name+".dot", buf.Bytes(), 0666)
+				os.WriteFile(name+".dot", buf.Bytes(), 0666)
 			}
 
 			err := ps.compile(&bc)
@@ -947,7 +946,7 @@ func TestSSATicketsQueries(t *testing.T) {
 
 func TestSSATickets2Queries(t *testing.T) {
 	var st ion.Symtab
-	buf, err := ioutil.ReadFile("../testdata/parking2.ion")
+	buf, err := os.ReadFile("../testdata/parking2.ion")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1002,7 +1001,7 @@ func TestSSATickets2Queries(t *testing.T) {
 
 func TestSSANYCQueries(t *testing.T) {
 	var st ion.Symtab
-	buf, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	buf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1119,7 +1118,7 @@ func TestSSANYCQueries(t *testing.T) {
 }
 
 func TestNestedTicketsQueries(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
+	buf, err := os.ReadFile("../testdata/parking3.ion")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1204,7 +1203,7 @@ func BenchmarkParkingTicketsQueries(b *testing.B) {
 }
 
 func BenchmarkNYCQueries(b *testing.B) {
-	buf, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	buf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		b.Fatal(err)
 	}

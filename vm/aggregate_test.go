@@ -17,8 +17,8 @@ package vm
 import (
 	"bytes"
 	"encoding/binary"
-	"io/ioutil"
 	"math"
+	"os"
 	"testing"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -58,7 +58,7 @@ var nycAggregateTestQueries = []struct {
 }
 
 func TestAggregateSSANYCQueries(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	buf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		t.Fatal(err)
 	}

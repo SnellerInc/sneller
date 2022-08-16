@@ -15,12 +15,12 @@
 package vm
 
 import (
-	"io/ioutil"
+	"os"
 	"testing"
 )
 
 func TestLimit(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/parking.10n")
+	buf, err := os.ReadFile("../testdata/parking.10n")
 	if err != nil {
 		t.Fatal(err)
 	}

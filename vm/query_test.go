@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -664,7 +663,7 @@ func benchInput(b *testing.B, query, inbuf []byte, rows int) {
 	b.ResetTimer()
 	start := time.Now()
 	var stats plan.ExecStats
-	err = plan.Exec(tree, ioutil.Discard, &stats)
+	err = plan.Exec(tree, io.Discard, &stats)
 	if err != nil {
 		b.Fatal(err)
 	}

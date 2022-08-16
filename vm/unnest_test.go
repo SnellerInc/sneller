@@ -16,7 +16,6 @@ package vm
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"testing"
@@ -164,7 +163,7 @@ func TestSplat(t *testing.T) {
 }
 
 func TestUnnest(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
+	buf, err := os.ReadFile("../testdata/parking3.ion")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +240,7 @@ func TestUnnest(t *testing.T) {
 }
 
 func TestUnnestWhere(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
+	buf, err := os.ReadFile("../testdata/parking3.ion")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +294,7 @@ func TestUnnestWhere(t *testing.T) {
 
 func BenchmarkUnnestParking3(b *testing.B) {
 	var c Count
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
+	buf, err := os.ReadFile("../testdata/parking3.ion")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -318,7 +317,7 @@ func BenchmarkUnnestParking3(b *testing.B) {
 }
 
 func BenchmarkUnnestWhereParking3(b *testing.B) {
-	buf, err := ioutil.ReadFile("../testdata/parking3.ion")
+	buf, err := os.ReadFile("../testdata/parking3.ion")
 	if err != nil {
 		b.Fatal(err)
 	}

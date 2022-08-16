@@ -15,7 +15,7 @@
 package vm
 
 import (
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -27,7 +27,7 @@ func buftbl(buf []byte) *BufferedTable {
 
 func TestCrossCount(t *testing.T) {
 	buf := unhex(parkingCitations1KLines)
-	rhsbuf, err := ioutil.ReadFile("../testdata/quintuple.ion")
+	rhsbuf, err := os.ReadFile("../testdata/quintuple.ion")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,11 +61,11 @@ func TestCrossCount(t *testing.T) {
 // what the new number of expected return values
 // of each query should be
 func TestNYCCrossJoined(t *testing.T) {
-	buf, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	buf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		t.Fatal(err)
 	}
-	rhsbuf, err := ioutil.ReadFile("../testdata/quintuple.ion")
+	rhsbuf, err := os.ReadFile("../testdata/quintuple.ion")
 	if err != nil {
 		t.Fatal(err)
 	}

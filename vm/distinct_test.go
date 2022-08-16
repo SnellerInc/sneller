@@ -15,7 +15,7 @@
 package vm
 
 import (
-	"io/ioutil"
+	"os"
 	"reflect"
 	"sort"
 	"testing"
@@ -31,7 +31,7 @@ func TestDistinct(t *testing.T) {
 		&expr.Path{First: "RatecodeID"},
 	}
 	var dst QueryBuffer
-	src, err := ioutil.ReadFile("../testdata/nyc-taxi.block")
+	src, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		t.Fatal(err)
 	}
