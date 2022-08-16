@@ -35,10 +35,9 @@ type splitter struct {
 	peers     []*net.TCPAddr
 	selfAddr  string
 
-	// compute total size of input blobs
-	// and the maximum # of bytes scanned after
+	// computed maximum # of bytes scanned after
 	// sparse indexing has been applied
-	total, maxscan int64
+	maxscan int64
 }
 
 func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *splitter {
@@ -92,11 +91,9 @@ func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 			if err := insert(b); err != nil {
 				return nil, err
 			}
-			s.total += stat.Size
 			s.maxscan += stat.Size
 			continue
 		}
-		s.total += c.Trailer.Decompressed()
 		sub, err := c.Split(int(size))
 		if err != nil {
 			return nil, err

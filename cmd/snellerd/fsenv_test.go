@@ -613,24 +613,13 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 						t.Errorf("wanted %s", q.output)
 					}
 				}
-				tablesize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Total-Table-Bytes"), 0, 64)
-				if err != nil {
-					t.Errorf("getting table size: %s", err)
-				}
 				scannedsize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Max-Scanned-Bytes"), 0, 64)
 				if err != nil {
 					t.Errorf("getting scanned bytes: %s", err)
 				}
-				t.Logf("scanned %d of %d", scannedsize, tablesize)
+				t.Logf("scanned %d bytes", scannedsize)
 				if scannedsize%testBlocksize != 0 {
 					t.Errorf("scanned size %d not a multiple of the block size", scannedsize)
-				}
-				if scannedsize > tablesize {
-					t.Errorf("scanned size %d > table size %d ?", scannedsize, tablesize)
-				}
-				// coarse check that sparse indexing actually did something:
-				if (tablesize == 0 || scannedsize < tablesize) != q.partial {
-					t.Errorf("partial=%v, scanned=%d, all=%d", q.partial, scannedsize, tablesize)
 				}
 				checkAnnotation(t, body.Bytes(), scannedsize)
 				checkTiming(t, res)

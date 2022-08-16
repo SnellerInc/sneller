@@ -163,7 +163,6 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		tree, err = plan.NewSplit(parsedQuery, planEnv, planSplitter)
 		if err == nil {
 			w.Header().Set("X-Sneller-Max-Scanned-Bytes", itoa(planSplitter.maxscan))
-			w.Header().Set("X-Sneller-Total-Table-Bytes", itoa(planSplitter.total))
 		}
 	}
 	if err != nil {
