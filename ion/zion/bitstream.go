@@ -55,7 +55,7 @@ func (s *shapeEncoder) finish() {
 func (s *shapeEncoder) flush() {
 	extra := 1 + 8
 	start := len(s.output)
-	s.output = slices.Grow(s.output, len(s.output)+extra)
+	s.output = slices.Grow(s.output, extra)
 	s.output = s.output[:len(s.output)+extra]
 	s.output[start] = byte(s.pos)
 	binary.LittleEndian.PutUint64(s.output[start+1:], s.contents)
