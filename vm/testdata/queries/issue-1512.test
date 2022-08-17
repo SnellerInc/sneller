@@ -1,0 +1,9 @@
+SELECT SUM(CASE WHEN x.y IS MISSING THEN 0 ELSE x.y END) FROM input
+---
+{"x": 0}
+{"x": {"z": 0}}
+{"x": "foo"}
+{"y": "bar"}
+{"z": {"x": {"y": -1}}}
+---
+{"sum": 0}
