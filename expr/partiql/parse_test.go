@@ -323,6 +323,34 @@ func TestParseErrors(t *testing.T) {
 			query: `SELECT APPROX_COUNT_DISTINCT(DISTINCT x)`,
 			msg:   `cannot use DISTINCT with APPROX_COUNT_DISTINCT`,
 		},
+		{
+			query: `SELECT SUM(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with SUM`,
+		},
+		{
+			query: `SELECT AVG(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with AVG`,
+		},
+		{
+			query: `SELECT BOOL_OR(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with BOOL_OR`,
+		},
+		{
+			query: `SELECT BOOL_AND(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with BOOL_AND`,
+		},
+		{
+			query: `SELECT BIT_AND(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with BIT_AND`,
+		},
+		{
+			query: `SELECT BIT_OR(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with BIT_OR`,
+		},
+		{
+			query: `SELECT BIT_XOR(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with BIT_XOR`,
+		},
 	}
 
 	for i := range testcases {

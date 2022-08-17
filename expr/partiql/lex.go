@@ -487,8 +487,9 @@ func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr
 		switch op {
 		case expr.OpCount:
 			op = expr.OpCountDistinct
-		case expr.OpApproxCountDistinct:
-			return nil, fmt.Errorf("cannot use DISTINCT with %v", expr.OpApproxCountDistinct)
+		case expr.OpSum, expr.OpAvg, expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor,
+			expr.OpBoolAnd, expr.OpBoolOr, expr.OpApproxCountDistinct:
+			return nil, fmt.Errorf("cannot use DISTINCT with %v", op)
 		}
 	}
 
