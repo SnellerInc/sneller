@@ -16,6 +16,7 @@ package partiql
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/SnellerInc/sneller/date"
@@ -278,6 +279,68 @@ func TestParseGarbage(t *testing.T) {
 		if err == nil {
 			t.Errorf("case %q: err == nil?", queries[i])
 		}
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	testcases := []struct {
+		query string
+		msg   string
+	}{
+		{
+			query: "SELECT `xyz`",
+			msg:   `couldn't parse ion literal`,
+		},
+		{
+			query: `SELECT x.foo[9999999999999999999] FROM table`,
+			msg:   `cannot use 1e+19 as an index`,
+		},
+		{
+			query: `SELECT DATE_ADD(TEST, x, y)`,
+			msg:   `bad DATE_ADD part "TEST"`,
+		},
+		{
+			query: `SELECT DATE_DIFF(TEST, x, y)`,
+			msg:   `bad DATE_DIFF part "TEST"`,
+		},
+		{
+			query: `SELECT DATE_TRUNC(TEST, x)`,
+			msg:   `bad DATE_TRUNC part "TEST"`,
+		},
+		{
+			query: `SELECT EXTRACT(TEST FROM x)`,
+			msg:   `bad EXTRACT part "TEST"`,
+		},
+		{
+			query: `SELECT CONTAINS(x)`,
+			msg:   `cannot use reserved builtin`,
+		},
+		{
+			query: `SELECT CONTAINS(x, y, z)`,
+			msg:   `cannot use reserved builtin`,
+		},
+		{
+			query: `SELECT APPROX_COUNT_DISTINCT(DISTINCT x)`,
+			msg:   `cannot use DISTINCT with APPROX_COUNT_DISTINCT`,
+		},
+	}
+
+	for i := range testcases {
+		tc := testcases[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			_, err := Parse([]byte(tc.query))
+			if err == nil {
+				t.Error("expected an error")
+				return
+			}
+
+			msg := fmt.Sprintf("%s", err)
+			if !strings.Contains(msg, tc.msg) {
+				t.Logf("got:  %s", msg)
+				t.Logf("want: %s", tc.msg)
+				t.Error("error message does not contain the expected substring")
+			}
+		})
 	}
 }
 
