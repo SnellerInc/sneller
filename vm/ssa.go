@@ -4559,10 +4559,24 @@ func (p *prog) falseprop(pi *proginfo) {
 					opt = true
 					break
 				}
+				// nand false v -> v
+				if v.args[0].op == skfalse {
+					if rewrite == nil {
+						rewrite = make([]*value, len(p.values))
+					}
+					rewrite[v.id] = v.args[1]
+					break
+				}
 				fallthrough
 			default:
-				if m := v.maskarg(); m != nil &&
-					m.op == skfalse &&
+				m := v.maskarg()
+				if m != nil && m.op == sinit && ssainfo[v.op].blend {
+					if rewrite == nil {
+						rewrite = make([]*value, len(p.values))
+					}
+					rewrite[v.id] = v.args[1]
+				}
+				if m != nil && m.op == skfalse &&
 					ssainfo[v.op].rettype&stMem == 0 {
 					if ssainfo[v.op].blend {
 						if rewrite == nil {
