@@ -18,6 +18,6 @@ WITH (
 ITERATE table FIELDS [c, v]
 FILTER DISTINCT [c.dst, v.i]
 AGGREGATE COUNT(c.dst) AS $_0_1 BY v.i AS $_0_0
-PROJECT $_0_0 AS i, HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS src, $_0_1 AS dst, HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) + $_0_1 AS plus
-ORDER BY plus DESC NULLS FIRST
+ORDER BY HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) + $_0_1 DESC NULLS FIRST
 LIMIT 10
+PROJECT $_0_0 AS i, HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS src, $_0_1 AS dst, HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) + $_0_1 AS plus

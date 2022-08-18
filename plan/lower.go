@@ -168,11 +168,15 @@ func lowerOrder(in *pir.Order, from Op) (Op, error) {
 					continue outer
 				}
 			}
-			return nil, fmt.Errorf("cannot ORDER BY expression %q", ex)
+			// there are cases where we ORDER BY an expression
+			// that is composed of multiple aggregate results,
+			// and in those cases we cannot merge these operations
+			goto slowpath
 		}
 		return ha, nil
 	}
 
+slowpath:
 	// ordinary Order node
 	columns := make([]OrderByColumn, 0, len(in.Columns))
 	for i := range in.Columns {
@@ -576,6 +580,8 @@ func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
 			return nil, err
 		}
 		b = reduce
+	} else {
+		b = pir.NoSplit(b)
 	}
 	return toTree(b, env, split)
 }

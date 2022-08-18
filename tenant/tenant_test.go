@@ -28,7 +28,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -580,7 +579,7 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, want []str
 		if err != nil {
 			t.Fatalf("bad test table entry %q %s", want[0], err)
 		}
-		if !reflect.DeepEqual(row, wantrow) {
+		if !row.Equal(wantrow) {
 			t.Errorf("row %d: got : %#v", rownum, row)
 			t.Errorf("row %d: want: %#v", rownum, wantrow)
 		}

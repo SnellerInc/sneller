@@ -2,8 +2,7 @@ SELECT DISTINCT ON (x) y FROM input GROUP BY x, y, z ORDER BY COUNT(*)
 ---
 ITERATE input FIELDS [x, y, z]
 AGGREGATE COUNT(*) AS $_0_2 BY x AS $_0_1, y AS $_0_0, z
-PROJECT $_0_1 AS x, $_0_0 AS y, $_0_2 AS $_0_2
 ORDER BY $_0_2 ASC NULLS FIRST
-PROJECT x AS x, y AS y
+PROJECT $_0_1 AS x, $_0_0 AS y
 FILTER DISTINCT [x]
 PROJECT y AS y

@@ -971,8 +971,8 @@ ORDER BY m, d, h`,
 				"	ITERATE PART kibana_sample_data_flights FIELDS [AvgTicketPrice, timestamp] WHERE timestamp >= `2022-03-01T00:00:00Z` AND timestamp <= `2022-07-01T00:00:00Z`",
 				"	AGGREGATE COUNT(*) AS $_2_0, SUM(AvgTicketPrice) AS $_2_1, COUNT(AvgTicketPrice + 0) AS $_2_2 BY TIME_BUCKET(timestamp, 864000) AS _tmbucket1)",
 				"AGGREGATE SUM_COUNT($_2_0) AS \"count\", SUM($_2_1) AS _sum1, SUM_COUNT($_2_2) AS $_1_1 BY _tmbucket1 AS _tmbucket1",
-				"PROJECT \"count\" AS \"count\", _sum1 / $_1_1 AS _sum1, _tmbucket1 AS _tmbucket1",
 				"ORDER BY _tmbucket1 ASC NULLS FIRST",
+				"PROJECT \"count\" AS \"count\", _sum1 / $_1_1 AS _sum1, _tmbucket1 AS _tmbucket1",
 			},
 		},
 		{
@@ -1060,12 +1060,8 @@ ORDER BY m, d, h`,
 			expect: []string{
 				"ITERATE table FIELDS [grp0, grp1]",
 				"AGGREGATE COUNT(*) AS $_0_1 BY grp0 AS $_0_0, grp1",
-				// FIXME: this projection is superseded
-				// by the final one; we could eliminate this
-				// without any semantic consequences:
-				"PROJECT $_0_0 AS grp0, $_0_1 AS $_0_1",
 				"ORDER BY -($_0_1) ASC NULLS FIRST",
-				"PROJECT grp0 AS grp0",
+				"PROJECT $_0_0 AS grp0",
 			},
 		},
 		{
@@ -1130,10 +1126,9 @@ ORDER BY m, d, h`,
 				") AS REPLACEMENT(0)",
 				"ITERATE sample_flights FIELDS [Carrier]",
 				"AGGREGATE COUNT(*) AS $_0_1 BY Carrier AS $_0_0",
-				"PROJECT $_0_0 AS \"$key:resource_id%0\", HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS origin_countries, $_0_1 AS $_0_1",
 				"ORDER BY $_0_1 DESC NULLS FIRST",
 				"LIMIT 10",
-				"PROJECT \"$key:resource_id%0\" AS \"$key:resource_id%0\", origin_countries AS origin_countries",
+				"PROJECT $_0_0 AS \"$key:resource_id%0\", HASH_REPLACEMENT(0, 'scalar', '$__key', $_0_0, 0) AS origin_countries",
 			},
 		},
 		{
@@ -1164,6 +1159,25 @@ z = (SELECT a FROM bar LIMIT 1)`,
 	runTestcasesFromFiles(t)
 }
 
+func buildSplit(t *testing.T, tc *buildTestcase, split bool) *Trace {
+	s, err := partiql.Parse([]byte(tc.input))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Build(s, mkenv(tc.schema, tc.index))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if split {
+		b, err = Split(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	return NoSplit(b)
+}
+
 func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error)) {
 	t.Run(name, func(t *testing.T) {
 		tc, err := testcase()
@@ -1172,14 +1186,7 @@ func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error
 		}
 
 		t.Log("query:", tc.input)
-		s, err := partiql.Parse([]byte(tc.input))
-		if err != nil {
-			t.Fatal(err)
-		}
-		b, err := Build(s, mkenv(tc.schema, tc.index))
-		if err != nil {
-			t.Fatal(err)
-		}
+		b := buildSplit(t, tc, false)
 		var out strings.Builder
 		b.Describe(&out)
 		got := out.String()
@@ -1216,10 +1223,7 @@ func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error
 		if len(tc.split) == 0 {
 			return
 		}
-		reduce, err := Split(b)
-		if err != nil {
-			t.Fatalf("split: %s", err)
-		}
+		reduce := buildSplit(t, tc, true)
 		out.Reset()
 		reduce.Describe(&out)
 		got = out.String()

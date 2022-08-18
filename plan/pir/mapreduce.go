@@ -61,7 +61,15 @@ func Split(b *Trace) (*Trace, error) {
 		}
 		reduce.Replacements[i] = in
 	}
+	postoptimize(reduce)
 	return reduce, nil
+}
+
+// NoSplit optimizes a trace assuming
+// it won't ever be passed to Split.
+func NoSplit(t *Trace) *Trace {
+	postoptimize(t)
+	return t
 }
 
 func fusesLimit(s Step) bool {
@@ -271,4 +279,87 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		reduce.top = bind
 	}
 	return nil
+}
+
+// try to push o past steps that
+// do not permute the order of outputs
+func pushOrder(o *Order, s Step) Step {
+	switch s := s.(type) {
+	case *Filter:
+		// no bindings to adjust;
+		// we can do this trivially
+		if next := pushOrder(o, s.parent()); next != nil {
+			return next
+		}
+		return s
+	case *Bind:
+		// adjust bindings to reflect the
+		// state before rather than after
+		// the projection:
+		bf := bindflattener{from: s.bind}
+		for i := range o.Columns {
+			o.Columns[i].Column = expr.Rewrite(&bf, o.Columns[i].Column)
+		}
+		if next := pushOrder(o, s.parent()); next != nil {
+			return next
+		}
+		return s
+	default:
+		return nil
+	}
+}
+
+// run optimizations on a trace that
+// has been frozen for splitting
+func postoptimize(t *Trace) {
+	// steps that follow an aggregation
+	// operation are single-stream; in those
+	// cases we can move around ORDER BY operations
+	// to try to make them more efficient
+	if agg := findAggregate(t); agg != nil {
+		pushReduceOrder(t, agg)
+	}
+}
+
+func findAggregate(t *Trace) Step {
+	for x := t.top; x != nil; x = x.parent() {
+		if _, ok := x.(*Aggregate); ok {
+			return x
+		}
+	}
+	return nil
+}
+
+// we know that reduction steps are "single-threaded,"
+// so we can shift an ORDER BY past the operations that
+// do not permute the row order
+func pushReduceOrder(t *Trace, upto Step) {
+	var parent Step
+	for x := t.top; x != nil && x != upto; x = x.parent() {
+		ord, ok := x.(*Order)
+		if !ok {
+			parent = x
+			continue
+		}
+		next := ord.parent()
+		newparent := pushOrder(ord, next)
+		if newparent != nil {
+			// newparent -> ord -> newparent.parent()
+			ord.setparent(newparent.parent())
+			newparent.setparent(ord)
+			if parent == nil {
+				t.top = newparent
+			} else {
+				parent.setparent(newparent)
+			}
+			// let's assume only 1 ORDER BY;
+			// let's also check to see if moving
+			// the ORDER BY around exposed some simple
+			// optimizations w.r.t. BIND and LIMIT
+			limitpushdown(t)
+			projectpushdown(t)
+			return
+		}
+		parent = x
+	}
 }

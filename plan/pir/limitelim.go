@@ -15,9 +15,11 @@
 package pir
 
 func limitpushdown(b *Trace) {
+	var parent Step
 	for s := b.top; s != nil; s = s.parent() {
 		lim, ok := s.(*Limit)
 		if !ok {
+			parent = s
 			continue
 		}
 		next := s.parent()
@@ -28,10 +30,13 @@ func limitpushdown(b *Trace) {
 			// past them
 			lim.setparent(n.parent())
 			n.setparent(lim)
-			if s == b.top {
+			if parent == nil {
 				b.top = n
+			} else {
+				parent.setparent(n)
 			}
 		default:
 		}
+		parent = s
 	}
 }
