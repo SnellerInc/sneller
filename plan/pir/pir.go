@@ -58,6 +58,12 @@ func (t *table) equals(x *table) bool {
 		t.haveParent == x.haveParent
 }
 
+func (t *table) walk(v expr.Visitor) {
+	if t.Filter != nil {
+		expr.Walk(v, t.Filter)
+	}
+}
+
 // strip a path that has been determined
 // to resolve to a reference to this table
 func (t *table) strip(p *expr.Path) error {
@@ -185,6 +191,11 @@ type IterValue struct {
 	liveacross []expr.Binding
 }
 
+func (i *IterValue) walk(v expr.Visitor) {
+	expr.Walk(v, i.Value)
+	i.table.walk(v)
+}
+
 func bindstr(bind []expr.Binding) string {
 	var out strings.Builder
 	for i := range bind {
@@ -247,9 +258,20 @@ type binds struct {
 	bind []expr.Binding
 }
 
+func (b *binds) walk(v expr.Visitor) {
+	for i := range b.bind {
+		expr.Walk(v, b.bind[i].Expr)
+	}
+}
+
 func (b *binds) equal(b2 *binds) bool {
 	return slices.EqualFunc(b.bind, b2.bind, expr.Binding.Equals)
 }
+
+type noexprs struct{}
+
+func (n *noexprs) walk(_ expr.Visitor)                     {}
+func (n *noexprs) rewrite(func(expr.Node, bool) expr.Node) {}
 
 func (i *IterValue) get(x string) (Step, expr.Node) {
 	if x == "*" {
@@ -269,6 +291,7 @@ type Step interface {
 	get(string) (Step, expr.Node)
 	describe(dst io.Writer)
 	rewrite(func(expr.Node, bool) expr.Node)
+	walk(expr.Visitor)
 	equals(Step) bool
 }
 
@@ -289,6 +312,7 @@ type UnionMap struct {
 	// Child is the sub-query that is
 	// applied to the partitioned table.
 	Child *Trace
+	noexprs
 }
 
 func (u *UnionMap) parent() Step   { return nil }
@@ -325,8 +349,6 @@ func (u *UnionMap) describe(dst io.Writer) {
 	io.WriteString(dst, ")\n")
 }
 
-func (u *UnionMap) rewrite(func(expr.Node, bool) expr.Node) {}
-
 type Filter struct {
 	parented
 	Where expr.Node
@@ -339,6 +361,10 @@ func (f *Filter) equals(x Step) bool {
 
 func (f *Filter) rewrite(rw func(expr.Node, bool) expr.Node) {
 	f.Where = rw(f.Where, true)
+}
+
+func (f *Filter) walk(v expr.Visitor) {
+	expr.Walk(v, f.Where)
 }
 
 func (f *Filter) describe(dst io.Writer) {
@@ -375,6 +401,12 @@ func (d *Distinct) describe(dst io.Writer) {
 func (d *Distinct) rewrite(rw func(expr.Node, bool) expr.Node) {
 	for i := range d.Columns {
 		d.Columns[i] = rw(d.Columns[i], false)
+	}
+}
+
+func (d *Distinct) walk(v expr.Visitor) {
+	for i := range d.Columns {
+		expr.Walk(v, d.Columns[i])
 	}
 }
 
@@ -477,6 +509,15 @@ func (a *Aggregate) rewrite(rw func(expr.Node, bool) expr.Node) {
 	}
 }
 
+func (a *Aggregate) walk(v expr.Visitor) {
+	for i := range a.Agg {
+		expr.Walk(v, a.Agg[i].Expr)
+	}
+	for i := range a.GroupBy {
+		expr.Walk(v, a.GroupBy[i].Expr)
+	}
+}
+
 func (a *Aggregate) get(x string) (Step, expr.Node) {
 	for i := len(a.Agg) - 1; i >= 0; i-- {
 		if a.Agg[i].Result == x {
@@ -527,8 +568,15 @@ func (o *Order) rewrite(rw func(expr.Node, bool) expr.Node) {
 	}
 }
 
+func (o *Order) walk(v expr.Visitor) {
+	for i := range o.Columns {
+		expr.Walk(v, o.Columns[i].Column)
+	}
+}
+
 type Limit struct {
 	parented
+	noexprs
 	Count  int64
 	Offset int64
 }
@@ -547,14 +595,14 @@ func (l *Limit) describe(dst io.Writer) {
 	fmt.Fprintf(dst, "LIMIT %d OFFSET %d\n", l.Count, l.Offset)
 }
 
-func (l *Limit) rewrite(func(expr.Node, bool) expr.Node) {}
-
 // OutputPart writes output rows into
 // a single part and returns a row like
-//   {"part": "path/to/packed-XXXXX.ion.zst"}
+//
+//	{"part": "path/to/packed-XXXXX.ion.zst"}
 type OutputPart struct {
 	Basename string
 	parented
+	noexprs
 }
 
 func (o *OutputPart) equals(x Step) bool {
@@ -577,16 +625,16 @@ func (o *OutputPart) get(x string) (Step, expr.Node) {
 	return nil, nil
 }
 
-func (o *OutputPart) rewrite(func(expr.Node, bool) expr.Node) {}
-
 // OutputIndex is a step that takes the "part" field
 // of incoming rows and constructs an index out of them,
 // returning a single row like
-//   {"table": "db.table-XXXXXX"}
+//
+//	{"table": "db.table-XXXXXX"}
 type OutputIndex struct {
 	Table    *expr.Path
 	Basename string
 	parented
+	noexprs
 }
 
 func (o *OutputIndex) equals(x Step) bool {
@@ -606,8 +654,6 @@ func (o *OutputIndex) get(x string) (Step, expr.Node) {
 	// see comment in OutputPart.get
 	return nil, nil
 }
-
-func (o *OutputIndex) rewrite(func(expr.Node, bool) expr.Node) {}
 
 // NoOutput is a dummy input of 0 rows.
 type NoOutput struct{}
@@ -629,6 +675,8 @@ func (n NoOutput) parent() Step { return nil }
 
 func (n NoOutput) setparent(Step) { panic("NoOutput.setparent") }
 
+func (o NoOutput) walk(expr.Visitor) {}
+
 // DummyOutput is a dummy input of one record, {}
 type DummyOutput struct{}
 
@@ -638,6 +686,7 @@ func (d DummyOutput) equals(x Step) bool {
 }
 
 func (d DummyOutput) rewrite(func(expr.Node, bool) expr.Node) {}
+func (d DummyOutput) walk(expr.Visitor)                       {}
 func (d DummyOutput) get(x string) (Step, expr.Node)          { return nil, nil }
 func (d DummyOutput) parent() Step                            { return nil }
 func (d DummyOutput) setparent(Step)                          { panic("DummyOutput.setparent") }
@@ -978,7 +1027,9 @@ func (b *Trace) Describe(dst io.Writer) {
 // by appending the results to 'lst'
 //
 // this is used for predicate pushdown so that
-//   <a> AND <b> AND <c>
+//
+//	<a> AND <b> AND <c>
+//
 // can be split and evaluated as early as possible
 // in the query-processing pipeline
 func conjunctions(e expr.Node, lst []expr.Node) []expr.Node {
@@ -1015,34 +1066,30 @@ func (b *Trace) Rewrite(rw expr.Rewriter) {
 }
 
 type Unpivot struct {
-	Step
 	par Step
+	noexprs
 }
 
-func (u Unpivot) parent() Step {
+func (u *Unpivot) parent() Step {
 	panic("Unpivot.parent() is not implemented")
 	return u.par
 }
 
-func (u Unpivot) setparent(p Step) {
+func (u *Unpivot) setparent(p Step) {
 	u.par = p
 	panic("Unpivot.setparent() is not implemented")
 }
 
-func (u Unpivot) get(string) (Step, expr.Node) {
+func (u *Unpivot) get(string) (Step, expr.Node) {
 	panic("Unpivot.get() is not implemented")
 }
 
-func (u Unpivot) describe(dst io.Writer) {
+func (u *Unpivot) describe(dst io.Writer) {
 	panic("Unpivot.describe() is not implemented")
 }
 
-func (u Unpivot) rewrite(func(expr.Node, bool) expr.Node) {
-	panic("Unpivot.rewrite() is not implemented")
-}
-
-func (lhs Unpivot) equals(brhs Step) bool {
+func (lhs *Unpivot) equals(brhs Step) bool {
 	panic("Unpivot.equals() is not implemented")
-	rhs, ok := brhs.(Unpivot)
+	rhs, ok := brhs.(*Unpivot)
 	return ok && (lhs.par == rhs.par)
 }

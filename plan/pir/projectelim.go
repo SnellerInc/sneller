@@ -16,7 +16,32 @@ package pir
 
 import (
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/maps"
 )
+
+func deleteAt[T any](x []T, i int) []T {
+	x[i] = x[len(x)-1]
+	return x[:len(x)-1]
+}
+
+func filterSlice[T any](x []T, keep func(*T) bool) []T {
+	for i := 0; i < len(x); i++ {
+		if !keep(&x[i]) {
+			x = deleteAt(x, i)
+			i--
+		}
+	}
+	return x
+}
+
+type walkfn func(e expr.Node)
+
+func (w walkfn) Visit(e expr.Node) expr.Visitor {
+	w(e)
+	return w
+}
 
 // for each Bind step, eliminate bindings
 // that are not referenced in subsequent steps
@@ -24,50 +49,61 @@ func projectelim(b *Trace) {
 	// build a reverse-lookup from step
 	// to path bindings that have been resolved
 	// from other subsequent steps
-	used := make(map[expr.Node]bool)
-	final := b.final
-	for i := range final {
-		used[final[i].Expr] = true
-	}
-	for _, info := range b.scope {
-		if info.node != nil {
-			used[info.node] = true
+	used := make(map[string]struct{})
+
+	// make each path expression we see "used"
+	walk := func(e expr.Node) {
+		p, ok := e.(*expr.Path)
+		if ok {
+			used[p.First] = struct{}{}
 		}
 	}
 
 	// eliminiate unused bindings for each bind pass
-	var child Step
+	first := true
+	var parent Step
 	for s := b.top; s != nil; s = s.parent() {
-		bind, ok := s.(*Bind)
-		if !ok {
-			child = s
-			continue
-		}
-		binds := bind.bind[:0]
-		for i := range bind.bind {
-			if used[bind.bind[i].Expr] {
-				binds = append(binds, bind.bind[i])
+		switch s := s.(type) {
+		case *Bind:
+			if first {
+				first = false
+				break
 			}
-		}
-		bind.bind = binds
-		// this can happen if we are doing
-		// a count(*) of a projection
-		if len(bind.bind) == 0 {
-			if child != nil {
-				child.setparent(s.parent())
-			} else {
-				// we should be succeeded by at least
-				// a count(*) operation, so we should
-				// never be Builder.top
-				panic("elimination of top projection?")
+			s.bind = filterSlice(s.bind, func(b *expr.Binding) bool {
+				_, ok := used[b.Result()]
+				return ok
+			})
+			maps.Clear(used)
+			if len(s.bind) == 0 {
+				// inconsequential PROJECT; usually we are
+				// being passed to COUNT(*)
+				parent.setparent(s.parent())
 			}
+			first = false
+		case *Aggregate:
+			if first {
+				first = false
+				break
+			}
+			s.Agg = filterSlice(s.Agg, func(ab *vm.AggBinding) bool {
+				_, ok := used[ab.Result]
+				return ok
+			})
+			maps.Clear(used)
+			first = false
+		default:
+			// nothing
 		}
+		s.walk(walkfn(walk))
+		parent = s
 	}
 }
 
 // concatenate orig with rest, i.e.
-//   joinpath("x.y", ".z") -> "x.y.z"
-//   joinpath("x[0]", ".y") -> "x[0].y"
+//
+//	joinpath("x.y", ".z") -> "x.y.z"
+//	joinpath("x[0]", ".y") -> "x[0].y"
+//
 // and so forth
 // (does not currently handle "x.*", etc.)
 func joinpath(from expr.Node, rest expr.PathComponent) expr.Node {

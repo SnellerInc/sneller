@@ -950,11 +950,15 @@ func distinctEqualsGroupBy(s *expr.Select) bool {
 
 // dropConstantsFromDistinctOn simplified DISTINCT ON with constant argument.
 // Case 1:
-//    SELECT DISTINCT ON (expr, const1, const2) ...
+//
+//	SELECT DISTINCT ON (expr, const1, const2) ...
+//
 // => SELECT DISTINCT ON (expr) ...
 //
 // Case 2:
-//    SELECT DISTINCT ON (const1, const2) ...
+//
+//	SELECT DISTINCT ON (const1, const2) ...
+//
 // => SELECT ... LIMIT 1
 func dropConstantsFromDistinctOn(s *expr.Select) {
 	nonconst := make([]expr.Node, 0, len(s.DistinctExpr))

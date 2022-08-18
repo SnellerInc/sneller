@@ -23,11 +23,11 @@ import (
 // subquery must meet the following conditions to be
 // decorrelated:
 //
-//   * The subquery contains only one correlated
+//   - The subquery contains only one correlated
 //     reference (x).
-//   * x must be related to a column (y) by an equality
+//   - x must be related to a column (y) by an equality
 //     comparison (x = y).
-//   * There must be no other conditions referencing x.
+//   - There must be no other conditions referencing x.
 //
 // If the subquery had a correlated reference and was
 // successfully rewritten, This returns the name of the

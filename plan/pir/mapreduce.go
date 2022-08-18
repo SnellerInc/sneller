@@ -187,13 +187,13 @@ func numberOrMissing(e expr.Node) expr.Node {
 // for the reduction step to produce the correct
 // final output
 //
-//  for example,
-//    AVG(x) AS avg
-//      -> map:    SUM(x) AS s, COUNT(CAST(x AS FLOAT)) AS c
-//      -> reduce: (SUM(s) / SUM_INT(c)) AS avg
-//    COUNT(x) AS count -> map: (COUNT(x) AS c)
-//      -> map:    COUNT(x) AS c
-//      -> reduce: SUM_INT(c) AS count
+//	for example,
+//	  AVG(x) AS avg
+//	    -> map:    SUM(x) AS s, COUNT(CAST(x AS FLOAT)) AS c
+//	    -> reduce: (SUM(s) / SUM_INT(c)) AS avg
+//	  COUNT(x) AS count -> map: (COUNT(x) AS c)
+//	    -> map:    COUNT(x) AS c
+//	    -> reduce: SUM_INT(c) AS count
 func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 	// transform AVG into two aggregations
 	orig := len(a.Agg)

@@ -194,16 +194,23 @@ func (f *flattener) Walk(e expr.Node) expr.Rewriter {
 }
 
 // flattenBind takes a set of bindings like
-//    3 as x, x+1 as y, y+1 as z
+//
+//	3 as x, x+1 as y, y+1 as z
+//
 // and rewrites them to
-//    3 as x, 3+1 as y, 3+1+1 as z
+//
+//	3 as x, 3+1 as y, 3+1+1 as z
+//
 // so that there are no references to previous
 // columns in the final projection
 //
 // Also removes the duplicated bindings, for instance:
-//    x as a, y as a, z as a
+//
+//	x as a, y as a, z as a
+//
 // becomes
-//    z as a
+//
+//	z as a
 func flattenBind(columns []expr.Binding) []expr.Binding {
 	if len(columns) <= 1 {
 		return columns
@@ -249,10 +256,11 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 }
 
 // Note: `extra` and `columns` are bindings required by the next step,
-//       function returns transformed `columns` to be used later by that
-//       step. Introduced to handle DISTINCT ON + GROUP BY combining;
-//       in the remaining cases, `auxiliary` is nil and the returned `columns `
-//       are ignored.
+//
+//	function returns transformed `columns` to be used later by that
+//	step. Introduced to handle DISTINCT ON + GROUP BY combining;
+//	in the remaining cases, `auxiliary` is nil and the returned `columns `
+//	are ignored.
 func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, groups []expr.Binding, having expr.Node) ([]expr.Binding, error) {
 	aggc, err := rejectNestedAggregates(columns, order)
 	if err != nil {
