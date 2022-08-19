@@ -6990,33 +6990,31 @@ TEXT bccmpvi64(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z4, Z3, K2, Z4
   VPSUBQ Z5, Z3, K3, Z5
 
-  VPCMPGTD Z13, Z8, K1, K2                             // K2 <- mask of floating point values (all)
+  VPCMPGTD Z13, Z8, K1, K2                             // K2 <- mask of floating point values (low / all)
   KSHIFTRW $8, K2, K3                                  // K3 <- mask of floating point values (high)
 
   VCVTQQ2PD Z6, K2, Z6                                 // Z6 <- mixed i64|f64 values depending on left value type (low)
   VCVTQQ2PD Z7, K3, Z7                                 // Z7 <- mixed i64|f64 values depending on left value type (high)
 
-  KSHIFTRW $8, K1, K6
+  VPANDQ.Z Z6, Z4, K2, Z10                             // Z10 <- MSB bits of left & right negative floats (low)
+  VPANDQ.Z Z7, Z5, K3, Z11                             // Z11 <- MSB bits of left & right negative floats (high)
+  VPMOVQ2M Z10, K5                                     // K4 <- floating point negative values (low)
+  VPMOVQ2M Z11, K6                                     // K5 <- floating point negative values (high)
 
-  VPCMPQ $VPCMP_IMM_LT, Z6, Z4, K1, K0                 // K0 <- integer less than (low)
-  VPCMPQ $VPCMP_IMM_LT, Z7, Z5, K6, K4                 // K4 <- integer less than (high)
-  KUNPCKBW K0, K4, K4                                  // K4 <- integer less than (all)
-  VMOVDQA32 Z14, K4, Z2                                // Z2 <- merge less than results (-1)
+  VPXORQ X10, X10, X10
+  KUNPCKBW K5, K6, K5                                  // K5 <- floating point negative values (all)
 
-  VPCMPQ $VPCMP_IMM_GT, Z6, Z4, K1, K5                 // K5 <- integer greater than (low)
-  VPCMPQ $VPCMP_IMM_GT, Z7, Z5, K6, K6                 // K6 <- integer greater than (high)
-  KUNPCKBW K5, K6, K5                                  // K5 <- integer greater than (all)
-  VMOVDQA32 Z12, K5, Z2                                // Z2 <- merge greater than results (1)
+  KSHIFTRW $8, K1, K2
+  VPCMPQ $VPCMP_IMM_LT, Z6, Z4, K1, K3                 // K3 <- less than (low)
+  VPCMPQ $VPCMP_IMM_LT, Z7, Z5, K2, K4                 // K4 <- less than (high)
+  KUNPCKBW K3, K4, K3                                  // K3 <- less than (all)
+  VMOVDQA32 Z14, K3, Z2                                // Z2 <- merge less than results (-1)
 
-  VCMPPD $VCMP_IMM_LT_OQ, Z6, Z4, K2, K0               // K0 <- floating point less than (low)
-  VCMPPD $VCMP_IMM_LT_OQ, Z7, Z5, K3, K4               // K4 <- floating point less than (high)
-  KUNPCKBW K0, K4, K4                                  // K4 <- floating point less than (all)
-  VMOVDQA32 Z14, K4, Z2                                // Z2 <- merge less than results (-1)
-
-  VCMPPD $VCMP_IMM_GT_OQ, Z6, Z4, K2, K5               // K5 <- floating point greater than (low)
-  VCMPPD $VCMP_IMM_GT_OQ, Z7, Z5, K3, K6               // K6 <- floating point greater than (high)
-  KUNPCKBW K5, K6, K5                                  // K5 <- floating point greater than (all)
-  VMOVDQA32 Z12, K5, Z2                                // Z2 <- merge greater than results (1)
+  VPCMPQ $VPCMP_IMM_GT, Z6, Z4, K1, K3                 // K3 <- greater than (low)
+  VPCMPQ $VPCMP_IMM_GT, Z7, Z5, K2, K4                 // K4 <- greater than (high)
+  KUNPCKBW K3, K4, K3                                  // K3 <- greater than (all)
+  VMOVDQA32 Z12, K3, Z2                                // Z2 <- merge greater than results (1)
+  VPSUBD Z2, Z10, K5, Z2                               // Z2 <- results with corrected floating point comparison
 
   VEXTRACTI32X8 $1, Z2, Y3
   VPMOVSXDQ Y2, Z2                                     // Z2 <- comparison results (low)
@@ -7102,15 +7100,24 @@ TEXT bccmpvf64(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2                                  // K1 <- active lanes (high)
   VCVTQQ2PD Z5, K3, Z5                                 // Z5 <- left numbers converted to float64 (high)
 
-  VCMPPD $VCMP_IMM_LT_OQ, Z6, Z4, K1, K3               // K3 <- floating point less than (low)
-  VCMPPD $VCMP_IMM_LT_OQ, Z7, Z5, K2, K4               // K4 <- floating point less than (high)
-  KUNPCKBW K3, K4, K3                                  // K3 <- floating point less than (all)
+  VPANDQ.Z Z6, Z4, K1, Z10                             // Z10 <- MSB bits of left & right negative floats (low)
+  VPANDQ.Z Z7, Z5, K2, Z11                             // Z11 <- MSB bits of left & right negative floats (high)
+  VPMOVQ2M Z10, K5                                     // K4 <- floating point negative values (low)
+  VPMOVQ2M Z11, K6                                     // K5 <- floating point negative values (high)
+
+  VPXORQ X10, X10, X10
+  KUNPCKBW K5, K6, K5                                  // K5 <- floating point negative values (all)
+
+  VPCMPQ $VPCMP_IMM_LT, Z6, Z4, K1, K3                 // K3 <- less than (low)
+  VPCMPQ $VPCMP_IMM_LT, Z7, Z5, K2, K4                 // K4 <- less than (high)
+  KUNPCKBW K3, K4, K3                                  // K3 <- less than (all)
   VMOVDQA32 Z14, K3, Z2                                // Z2 <- merge less than results (-1)
 
-  VCMPPD $VCMP_IMM_GT_OQ, Z6, Z4, K1, K3               // K3 <- floating point greater than (low)
-  VCMPPD $VCMP_IMM_GT_OQ, Z7, Z5, K2, K4               // K4 <- floating point greater than (high)
-  KUNPCKBW K3, K4, K3                                  // K3 <- floating point greater than (all)
+  VPCMPQ $VPCMP_IMM_GT, Z6, Z4, K1, K3                 // K3 <- greater than (low)
+  VPCMPQ $VPCMP_IMM_GT, Z7, Z5, K2, K4                 // K4 <- greater than (high)
+  KUNPCKBW K3, K4, K3                                  // K3 <- greater than (all)
   VMOVDQA32 Z12, K3, Z2                                // Z2 <- merge greater than results (1)
+  VPSUBD Z2, Z10, K5, Z2                               // Z2 <- results with corrected floating point comparison
 
   VEXTRACTI32X8 $1, Z2, Y3
   VPMOVSXDQ Y2, Z2                                     // Z2 <- comparison results (low)
@@ -7219,135 +7226,206 @@ TEXT bccmpgeimmk(SB), NOSPLIT|NOFRAME, $0
 #undef BC_CMPXX_OP_K_IMM
 #undef BC_CMPXX_OP_K
 
+
 // Comparison Instructions - Number
 // --------------------------------
 
-// computes cmp(Z2|Z3, stack[slot])
-#define BC_CMP_OP_I64(imm)                      \
-  MOVWQZX 0(VIRT_PCREG), R8                     \
-  KSHIFTRW $8, K1, K2                           \
-  VPCMPQ imm, 0(VIRT_VALUES)(R8*1), Z2, K1, K1  \
-  VPCMPQ imm, 64(VIRT_VALUES)(R8*1), Z3, K2, K2 \
-  KUNPCKBW K1, K2, K1
-
-// computes cmp(Z2|Z3, imm)
-#define BC_CMP_OP_I64_IMM(imm)                  \
-  VPBROADCASTQ 0(VIRT_PCREG), Z4                \
-  KSHIFTRW $8, K1, K2                           \
-  VPCMPQ imm, Z4, Z2, K1, K1                    \
-  VPCMPQ imm, Z4, Z3, K2, K2                    \
-  KUNPCKBW K1, K2, K1
+// computes cmp(Z2|Z3, f64imm)
+#define BC_CMP_OP_F64_IMM(fPred)                  \
+  VPBROADCASTQ 0(VIRT_PCREG), Z4                  \
+  KSHIFTRW $8, K1, K2                             \
+  VCMPPD fPred, Z4, Z2, K1, K1                    \
+  VCMPPD fPred, Z4, Z3, K2, K2                    \
+  KUNPCKBW K1, K2, K1                             \
+                                                  \
+  NEXT_ADVANCE(8)
 
 // computes cmp(Z2|Z3, stack[slot])
-#define BC_CMP_OP_F64(imm)                      \
-  MOVWQZX 0(VIRT_PCREG), R8                     \
-  KSHIFTRW $8, K1, K2                           \
-  VCMPPD imm, 0(VIRT_VALUES)(R8*1), Z2, K1, K1  \
-  VCMPPD imm, 64(VIRT_VALUES)(R8*1), Z3, K2, K2 \
-  KUNPCKBW K1, K2, K1
-
-// computes cmp(Z2|Z3, imm)
-#define BC_CMP_OP_F64_IMM(imm)                  \
-  VBROADCASTSD 0(VIRT_PCREG), Z4                \
-  KSHIFTRW $8, K1, K2                           \
-  VCMPPD imm, Z4, Z2, K1, K1                    \
-  VCMPPD imm, Z4, Z3, K2, K2                    \
-  KUNPCKBW K1, K2, K1
-
-TEXT bccmpeqf(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64($VCMP_IMM_EQ_OQ)
+#define BC_CMP_OP_I64(iPred)                      \
+  MOVWQZX 0(VIRT_PCREG), R8                       \
+  KSHIFTRW $8, K1, K2                             \
+  VPCMPQ iPred, 0(VIRT_VALUES)(R8*1), Z2, K1, K1  \
+  VPCMPQ iPred, 64(VIRT_VALUES)(R8*1), Z3, K2, K2 \
+  KUNPCKBW K1, K2, K1                             \
+                                                  \
   NEXT_ADVANCE(2)
 
-// current integer scalar == saved integer scalar
-TEXT bccmpeqi(SB), NOSPLIT|NOFRAME, $0
+// computes cmp(Z2|Z3, i64imm)
+#define BC_CMP_OP_I64_IMM(iPred)                  \
+  VPBROADCASTQ 0(VIRT_PCREG), Z4                  \
+  KSHIFTRW $8, K1, K2                             \
+  VPCMPQ iPred, Z4, Z2, K1, K1                    \
+  VPCMPQ iPred, Z4, Z3, K2, K2                    \
+  KUNPCKBW K1, K2, K1                             \
+                                                  \
+  NEXT_ADVANCE(8)
+
+// Floating point equality in the sense that
+// `-0 == 0`, `NaN == NaN`, and `-NaN != NaN`
+TEXT bccmpeqf(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
   KSHIFTRW $8, K1, K2
-  VPCMPEQQ 0(VIRT_VALUES)(R8*1), Z2, K1, K1
-  VPCMPEQQ 64(VIRT_VALUES)(R8*1), Z3, K2, K2
+
+  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
+  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
+
+  // Floating point comparison handles `-0 == 0` properly
+  VCMPPD $VCMP_IMM_EQ_OQ, Z4, Z2, K1, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z5, Z3, K2, K4
+
+  // Integer comparison handles `NaN == NaN` properly
+  VPCMPEQQ Z4, Z2, K1, K1
+  VPCMPEQQ Z5, Z3, K2, K2
+
+  KORW K3, K1, K1
+  KORW K4, K2, K2
   KUNPCKBW K1, K2, K1
+
   NEXT_ADVANCE(2)
 
 // current scalar float == f64(imm)
 TEXT bccmpeqimmf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  0(VIRT_PCREG), Z4
-  KSHIFTRW      $8, K1, K2
-  VCMPPD        $0, Z2, Z4, K1, K1
-  VCMPPD        $0, Z3, Z4, K2, K2
-  KUNPCKBW      K1, K2, K1
-  NEXT_ADVANCE(8)
-
-// current scalar int == i64(imm)
-TEXT bccmpeqimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ  0(VIRT_PCREG), Z4
-  KSHIFTRW      $8, K1, K2
-  VPCMPQ        $0, Z2, Z4, K1, K1
-  VPCMPQ        $0, Z3, Z4, K2, K2
-  KUNPCKBW      K1, K2, K1
-  NEXT_ADVANCE(8)
+  // We expect that the immediate is not NaN or -0 here. If the immediate
+  // value is NaN 'bcisnanf' should be used instead. This gives us the
+  // opportunity to make this function smaller as we know what the second
+  // value isn't.
+  BC_CMP_OP_F64_IMM($VCMP_IMM_EQ_OQ)
 
 TEXT bccmpltf(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64($VCMP_IMM_LT_OQ)
-  NEXT_ADVANCE(2)
+  // Implements `cmp_unordered_lt(a, b) ^ isnan(a)`:
+  //   - `val < val` -> result
+  //   - `NaN < val` -> false
+  //   - `val < NaN` -> true
+  //   - `NaN < NaN` -> false
+  MOVWQZX 0(VIRT_PCREG), R8
+  KSHIFTRW $8, K1, K2
 
-TEXT bccmplti(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64($VPCMP_IMM_LT)
+  VCMPPD $VCMP_IMM_UNORD_Q, Z2, Z2, K1, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z3, Z3, K2, K4
+  VCMPPD $VCMP_IMM_NGE_UQ, 0(VIRT_VALUES)(R8*1), Z2, K1, K1
+  VCMPPD $VCMP_IMM_NGE_UQ, 64(VIRT_VALUES)(R8*1), Z3, K2, K2
+
+  KUNPCKBW K3, K4, K3
+  KUNPCKBW K1, K2, K1
+  KXORW K3, K1, K1
   NEXT_ADVANCE(2)
 
 TEXT bccmpltimmf(SB), NOSPLIT|NOFRAME, $0
+  // `val < imm` -> result
+  // `NaN < imm` -> false
   BC_CMP_OP_F64_IMM($VCMP_IMM_LT_OQ)
-  NEXT_ADVANCE(8)
-
-TEXT bccmpltimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64_IMM($VPCMP_IMM_LT)
-  NEXT_ADVANCE(8)
 
 TEXT bccmplef(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64($VCMP_IMM_LE_OQ)
-  NEXT_ADVANCE(2)
+  // Implements `cmp_ordered_le(a, b) | isnan(b)`:
+  //   - `val <= val` -> result
+  //   - `NaN <= val` -> false
+  //   - `val <= NaN` -> true
+  //   - `NaN <= NaN` -> true
+  MOVWQZX 0(VIRT_PCREG), R8
+  KSHIFTRW $8, K1, K2
 
-TEXT bccmplei(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64($VPCMP_IMM_LE)
+  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
+  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
+
+  VCMPPD $VCMP_IMM_UNORD_Q, Z4, Z4, K1, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z5, Z5, K2, K4
+  VCMPPD $VCMP_IMM_LE_OQ, Z4, Z2, K1, K1
+  VCMPPD $VCMP_IMM_LE_OQ, Z5, Z3, K2, K2
+
+  KUNPCKBW K3, K4, K3
+  KUNPCKBW K1, K2, K1
+  KORW K3, K1, K1
   NEXT_ADVANCE(2)
 
 TEXT bccmpleimmf(SB), NOSPLIT|NOFRAME, $0
+  // `val <= imm` -> result
+  // `NaN <= imm` -> false
   BC_CMP_OP_F64_IMM($VCMP_IMM_LE_OQ)
-  NEXT_ADVANCE(8)
-
-TEXT bccmpleimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64_IMM($VPCMP_IMM_LE)
-  NEXT_ADVANCE(8)
 
 TEXT bccmpgtf(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64($VCMP_IMM_GT_OQ)
-  NEXT_ADVANCE(2)
+  // Implements `cmp_unordered_gt(a, b) ^ isnan(b)`
+  //   - `val > val` -> result
+  //   - `NaN > val` -> true
+  //   - `val > NaN` -> false
+  //   - `NaN > NaN` -> false
+  MOVWQZX 0(VIRT_PCREG), R8
+  KSHIFTRW $8, K1, K2
 
-TEXT bccmpgti(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64($VPCMP_IMM_GT)
+  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
+  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
+
+  VCMPPD $VCMP_IMM_UNORD_Q, Z4, Z4, K1, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z5, Z5, K2, K4
+  VCMPPD $VCMP_IMM_NLE_UQ, Z4, Z2, K1, K1
+  VCMPPD $VCMP_IMM_NLE_UQ, Z5, Z3, K2, K2
+
+  KUNPCKBW K3, K4, K3
+  KUNPCKBW K1, K2, K1
+  KXORW K3, K1, K1
   NEXT_ADVANCE(2)
 
 TEXT bccmpgtimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64_IMM($VCMP_IMM_GT_OQ)
-  NEXT_ADVANCE(8)
-
-TEXT bccmpgtimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64_IMM($VPCMP_IMM_GT)
-  NEXT_ADVANCE(8)
+  // `val > imm` -> result
+  // `NaN > imm` -> true
+  BC_CMP_OP_F64_IMM($VCMP_IMM_NLE_UQ)
 
 TEXT bccmpgef(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64($VCMP_IMM_GE_OQ)
-  NEXT_ADVANCE(2)
+  // Implements `cmp_ordered_ge(a, b) | isnan(a)`
+  //   - `val >= val` -> result
+  //   - `NaN >= val` -> true
+  //   - `val >= NaN` -> false
+  //   - `NaN >= NaN` -> true
+  MOVWQZX 0(VIRT_PCREG), R8
+  KSHIFTRW $8, K1, K2
 
-TEXT bccmpgei(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_I64($VPCMP_IMM_GE)
+  VCMPPD $VCMP_IMM_UNORD_Q, Z2, Z2, K1, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z3, Z3, K2, K4
+  VCMPPD $VCMP_IMM_GE_OQ, 0(VIRT_VALUES)(R8*1), Z2, K1, K1
+  VCMPPD $VCMP_IMM_GE_OQ, 64(VIRT_VALUES)(R8*1), Z3, K2, K2
+
+  KUNPCKBW K3, K4, K3
+  KUNPCKBW K1, K2, K1
+  KXORW K3, K1, K1
   NEXT_ADVANCE(2)
 
 TEXT bccmpgeimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_CMP_OP_F64_IMM($VCMP_IMM_GE_OQ)
-  NEXT_ADVANCE(8)
+  // `val >= imm` -> result
+  // `NaN >= imm` -> true
+  BC_CMP_OP_F64_IMM($VCMP_IMM_NLT_UQ)
+
+TEXT bccmpeqi(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64($VPCMP_IMM_EQ)
+
+TEXT bccmpeqimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_EQ)
+
+TEXT bccmplti(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64($VPCMP_IMM_LT)
+
+TEXT bccmpltimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_LT)
+
+TEXT bccmplei(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64($VPCMP_IMM_LE)
+
+TEXT bccmpleimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_LE)
+
+TEXT bccmpgti(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64($VPCMP_IMM_GT)
+
+TEXT bccmpgtimmi(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64_IMM($VPCMP_IMM_GT)
+
+TEXT bccmpgei(SB), NOSPLIT|NOFRAME, $0
+  BC_CMP_OP_I64($VPCMP_IMM_GE)
 
 TEXT bccmpgeimmi(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GE)
-  NEXT_ADVANCE(8)
+
+#undef BC_CMP_OP_F64_IMM
+#undef BC_CMP_OP_I64_IMM
+#undef BC_CMP_OP_I64
 
 
 // Test Instructions
@@ -7355,10 +7433,10 @@ TEXT bccmpgeimmi(SB), NOSPLIT|NOFRAME, $0
 
 // isnanf(x) is the same as x != x
 TEXT bcisnanf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW   $8, K1, K2
-  VCMPPD     $4, Z2, Z2, K1, K1
-  VCMPPD     $4, Z3, Z3, K2, K2
-  KUNPCKBW   K1, K2, K1
+  KSHIFTRW $8, K1, K2
+  VCMPPD $VCMP_IMM_NEQ_UQ, Z2, Z2, K1, K1
+  VCMPPD $VCMP_IMM_NEQ_UQ, Z3, Z3, K2, K2
+  KUNPCKBW K1, K2, K1
   NEXT()
 
 // take the tag pointed to in Z30:Z31

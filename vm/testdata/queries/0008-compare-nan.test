@@ -1,0 +1,45 @@
+# Compare unboxed numbers against NaN (0 / 0 -> NaN) and Inf (1 / 0 -> Infinity)
+SELECT
+  (x0 / x1) = (y0 / y1) AS x_eq_y,
+  (x0 / x1) < (y0 / y1) AS x_lt_y,
+  (x0 / x1) <= (y0 / y1) AS x_le_y,
+  (x0 / x1) > (y0 / y1) AS x_gt_y,
+  (x0 / x1) >= (y0 / y1) AS x_ge_y
+FROM
+  input
+---
+{"x0": 0, "x1": 0, "y0": 0, "y1": 0} # NaN <cmp> NaN
+{"x0": 1, "x1": 1, "y0": 0, "y1": 0} # 1.0 <cmp> NaN
+{"x0": 0, "x1": 1, "y0": 0, "y1": 0} # Inf <cmp> NaN
+{"x0": 0, "x1": 0, "y0": 1, "y1": 1} # NaN <cmp> 1.0
+{"x0": 0, "x1": 0, "y0": 0, "y1": 1} # NaN <cmp> Inf
+{"x0": 1, "x1": 1, "y0": 1, "y1": 1} # 1.0 <cmp> 1.0
+{"x0": 6, "x1": 1, "y0": 3, "y1": 1} # 6.0 <cmp> 3.0
+{"x0": 3, "x1": 1, "y0": 6, "y1": 1} # 3.0 <cmp> 6.0
+{}
+{"x0": 0, "x1": 0, "y0": 0, "y1": 0} # NaN <cmp> NaN
+{"x0": 1, "x1": 1, "y0": 0, "y1": 0} # 1.0 <cmp> NaN
+{"x0": 0, "x1": 1, "y0": 0, "y1": 0} # Inf <cmp> NaN
+{"x0": 0, "x1": 0, "y0": 1, "y1": 1} # NaN <cmp> 1.0
+{"x0": 0, "x1": 0, "y0": 0, "y1": 1} # NaN <cmp> Inf
+{"x0": 1, "x1": 1, "y0": 1, "y1": 1} # 1.0 <cmp> 1.0
+{"x0": 6, "x1": 1, "y0": 3, "y1": 1} # 6.0 <cmp> 3.0
+{"x0": 3, "x1": 1, "y0": 6, "y1": 1} # 3.0 <cmp> 6.0
+---
+{"x_eq_y": true, "x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_eq_y": false, "x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_eq_y": false, "x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_eq_y": true, "x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{}
+{"x_eq_y": true, "x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_eq_y": false, "x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
+{"x_eq_y": false, "x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_eq_y": true, "x_lt_y": false, "x_le_y": true, "x_gt_y": false, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": false, "x_le_y": false, "x_gt_y": true, "x_ge_y": true}
+{"x_eq_y": false, "x_lt_y": true, "x_le_y": true, "x_gt_y": false, "x_ge_y": false}
