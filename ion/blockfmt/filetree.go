@@ -427,7 +427,10 @@ func (f *FileTree) Prefetch(input []Input) {
 // path but non-matching etag, then (false, ErrETagChanged)
 // is returned.
 func (f *FileTree) Append(path, etag string, id int) (bool, error) {
-	// the root is always constructed as a non-leaf entry
+	// the root is always constructed as a non-leaf entry;
+	// make sure as soon as anything is inserted that the
+	// root is marked correctly
+	f.root.isInner = true
 	ret, err := f.root.appendInner(f.Backing, path, etag, id)
 	if err != nil || !ret {
 		return ret, err

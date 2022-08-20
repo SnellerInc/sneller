@@ -131,7 +131,6 @@ func TestFiletreeInsert(t *testing.T) {
 	f := FileTree{
 		Backing: dir,
 	}
-	f.Reset()
 
 	nextpath := 0
 	var synclock sync.Mutex
