@@ -190,22 +190,22 @@ func sync(dbname, tblpat string) {
 	}
 }
 
-var hsizes = []byte{'K', 'M', 'G', 'T', 'P'}
+var hsizes = []byte{'K', 'M', 'G', 'T', 'P', 'E'}
 
 func human(size int64) string {
 	dec := int64(0)
 	trail := -1
-	for size > 1024 {
+	for size >= 1024 {
 		trail++
 		// decimal component needs to be
 		// converted from parts-per-1024
-		dec = ((size % 1023) * 1024) / 1000
+		dec = ((size%1024)*1000 + 512) / 1024
 		size /= 1024
 	}
 	if trail < 0 {
 		return fmt.Sprintf("%d", size)
 	}
-	return fmt.Sprintf("%d.%d %ciB", size, dec, hsizes[trail])
+	return fmt.Sprintf("%d.%03d %ciB", size, dec, hsizes[trail])
 }
 
 func describeTrailer(t *blockfmt.Trailer, compsize int64) {
