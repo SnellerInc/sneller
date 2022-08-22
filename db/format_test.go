@@ -46,7 +46,7 @@ func TestFormat(t *testing.T) {
 		{
 			name: "foo.bar.baz",
 			fallback: func(_ string) blockfmt.RowFormat {
-				return blockfmt.SuffixToFormat[".json.zst"]()
+				return blockfmt.MustSuffixToFormat(".json.zst")
 			},
 			want: "json.zst",
 		},
@@ -69,7 +69,10 @@ func TestFormat(t *testing.T) {
 		b := Builder{
 			Fallback: cases[i].fallback,
 		}
-		f := b.Format(cases[i].explicit, cases[i].name)
+		f, err := b.Format(cases[i].explicit, cases[i].name, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 		if f == nil {
 			if cases[i].want != "" {
 				t.Errorf("couldn't get format for %q %q", cases[i].explicit, cases[i].name)

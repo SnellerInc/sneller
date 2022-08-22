@@ -364,7 +364,7 @@ func TestSync(t *testing.T) {
 		// deliberately omit LastModified
 		Size: info.Size(),
 		R:    noReadCloser{t},
-		F:    blockfmt.SuffixToFormat[".json"](),
+		F:    blockfmt.MustSuffixToFormat(".json"),
 	}}
 	owner.ro = true
 	err = b.Append(owner, "default", "parking", lst)

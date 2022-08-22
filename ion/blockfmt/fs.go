@@ -271,7 +271,8 @@ var (
 func inferFormat(name string, fallback func(name string) RowFormat) RowFormat {
 	for suff, cons := range SuffixToFormat {
 		if strings.HasSuffix(name, suff) {
-			return cons()
+			f, _ := cons(nil)
+			return f
 		}
 	}
 	if fallback == nil {

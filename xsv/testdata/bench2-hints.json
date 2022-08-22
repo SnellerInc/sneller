@@ -1,0 +1,29 @@
+{
+    "fields": [
+        { "name": "time.start", "type": "datetime", "format": "datetime" },
+        { "name": "time.end", "type": "datetime", "format": "datetime" },
+        { "name": "customer", "type": "string" },
+        { "name": "src.ip", "type": "int" },
+        { "name": "dest.ip", "type": "int" },
+        { "name": "src.port", "type": "int" },
+        { "name": "dest.port", "type": "int" },
+        { "name": "protocol", "type": "int" },
+        { "name": "stats.octets.in", "type": "int" },
+        { "name": "stats.octets.out", "type": "int" },
+        { "name": "stats.packets.in", "type": "int" },
+        { "name": "stats.packets.out", "type": "int" },
+        { "name": "first.direction", "type": "int" },
+        { "name": "src.netid", "type": "int" },
+        { "name": "dest.netid", "type": "int" },
+        { "name": "src.profile_tag", "type": "string" },
+        { "name": "dest.profile_tag", "type": "string" },
+        { "name": "src.flags", "type": "int" },
+        { "name": "dest.flags", "type": "int" },
+        { "name": "load_id", "type": "string" },
+        { "name": "src.deviceId", "type": "int" },
+        { "name": "dest.deviceId", "type": "int" },
+        { "name": "nspace", "type": "string" },
+        { "name": "src.ipv6", "type": "string" },
+        { "name": "dest.ipv6", "type": "string" }
+    ]
+}

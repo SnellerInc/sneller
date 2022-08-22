@@ -247,8 +247,7 @@ outer:
 				q.Logf("ignoring %q due to etag mismatch (want %q got %q)", name, etag, gotEtag)
 				continue outer
 			}
-			fm := bld.Format(def.Inputs[j].Format, p)
-			err = fm.UseHints(def.Inputs[j].Hints)
+			fm, err := bld.Format(def.Inputs[j].Format, p, def.Inputs[j].Hints)
 			if err != nil {
 				return err
 			}

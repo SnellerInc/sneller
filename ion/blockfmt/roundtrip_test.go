@@ -240,7 +240,7 @@ func TestMultiRanges(t *testing.T) {
 		}
 		inputs = append(inputs, blockfmt.Input{
 			R: f,
-			F: blockfmt.SuffixToFormat[".json"](),
+			F: blockfmt.MustSuffixToFormat(".json"),
 		})
 	}
 

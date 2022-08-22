@@ -49,7 +49,7 @@ func testPrependMultiSingle(t *testing.T, algo string) {
 			}
 			in = append(in, Input{
 				R: f,
-				F: SuffixToFormat[".json"](),
+				F: MustSuffixToFormat(".json"),
 			})
 		}
 		return in
@@ -123,7 +123,7 @@ func TestPrependSingle(t *testing.T) {
 				}
 				inputs := []Input{{
 					R: f,
-					F: SuffixToFormat[".json"](),
+					F: MustSuffixToFormat(".json"),
 				}}
 				var out BufferUploader
 				align := 2048
@@ -157,7 +157,7 @@ func TestPrependSingle(t *testing.T) {
 				}
 				inputs = []Input{{
 					R: f,
-					F: SuffixToFormat[".json"](),
+					F: MustSuffixToFormat(".json"),
 				}}
 				var out2 BufferUploader
 				c = Converter{
@@ -206,7 +206,7 @@ func TestPrependMulti(t *testing.T) {
 			}
 			in = append(in, Input{
 				R: f,
-				F: SuffixToFormat[".json"](),
+				F: MustSuffixToFormat(".json"),
 			})
 		}
 		return in

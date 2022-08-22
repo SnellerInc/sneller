@@ -231,7 +231,7 @@ func TestAppend(t *testing.T) {
 		ETag: "bad-ETag",
 		Size: int64(len(badtext)),
 		R:    io.NopCloser(strings.NewReader(badtext)),
-		F:    blockfmt.SuffixToFormat[".json"](),
+		F:    blockfmt.MustSuffixToFormat(".json"),
 	}}
 
 	err = b.Append(owner, "default", "parking", bad)

@@ -26,6 +26,7 @@ import (
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
+	"github.com/SnellerInc/sneller/xsv"
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -42,7 +43,6 @@ type RowFormat interface {
 	// Name is the name of the format
 	// that will be included in an index description.
 	Name() string
-	UseHints(schema []byte) error
 }
 
 // Input is a combination of
@@ -66,17 +66,14 @@ type Input struct {
 }
 
 type jsonConverter struct {
+	name         string
 	decomp       func(r io.Reader) (io.Reader, error)
-	compname     string
 	hints        *jsonrl.Hint
 	isCloudtrail bool
 }
 
 func (j *jsonConverter) Name() string {
-	if j.compname == "" {
-		return "json"
-	}
-	return "json." + j.compname
+	return j.name
 }
 
 func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
@@ -108,20 +105,41 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 	return err
 }
 
-func (j *jsonConverter) UseHints(hints []byte) error {
-	if j.isCloudtrail && hints != nil {
-		return fmt.Errorf("cloudtrail.json.gz format does not accept hints")
+type xsvConverter struct {
+	name   string
+	ch     xsv.RowChopper
+	decomp func(r io.Reader) (io.Reader, error)
+	hints  *xsv.Hint
+}
+
+func (t *xsvConverter) Convert(r io.Reader, dst *ion.Chunker) error {
+	rc := r
+	var err, err2 error
+	if t.decomp != nil {
+		rc, err = t.decomp(r)
+		if err != nil {
+			return err
+		}
 	}
-	if hints == nil {
-		j.hints = nil
-		return nil
+
+	err = xsv.Convert(rc, dst, t.ch, t.hints)
+	if t.decomp != nil {
+		// if the decompressor (i.e. gzip.Reader)
+		// has a Close() method, then use that;
+		// this lets us check the integrity of
+		// gzip checksums, etc.
+		if cc, ok := rc.(io.Closer); ok {
+			err2 = cc.Close()
+		}
 	}
-	s, err := jsonrl.ParseHint(hints)
-	if err != nil {
-		return err
+	if err == nil {
+		err = err2
 	}
-	j.hints = s
-	return nil
+	return err
+}
+
+func (t *xsvConverter) Name() string {
+	return t.name
 }
 
 type ionConverter struct{}
@@ -133,10 +151,6 @@ func (i ionConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 	if err != nil {
 		return fmt.Errorf("converting UnsafeION: %w", err)
 	}
-	return nil
-}
-
-func (i ionConverter) UseHints(hints []byte) error {
 	return nil
 }
 
@@ -157,45 +171,118 @@ func UnsafeION() RowFormat {
 // filename suffixes that correspond
 // to known constructors for RowFormat
 // objects.
-var SuffixToFormat = map[string]func() RowFormat{
-	".json": func() RowFormat {
-		return &jsonConverter{decomp: nil}
-	},
-	".json.zst": func() RowFormat {
-		return &jsonConverter{
-			decomp: func(r io.Reader) (io.Reader, error) {
-				rz, err := zstd.NewReader(r)
-				err = noEOF(err, zstd.ErrMagicMismatch)
-				return rz, err
-			},
-			compname: "zst",
-		}
-	},
-	".json.gz": func() RowFormat {
-		return &jsonConverter{
-			decomp: func(r io.Reader) (io.Reader, error) {
-				rz, err := gzip.NewReader(r)
-				err = noEOF(err, gzip.ErrHeader)
-				return rz, err
-			},
-			compname: "gz",
-		}
-	},
+var SuffixToFormat = make(map[string]func(hints []byte) (RowFormat, error))
+
+func MustSuffixToFormat(suffix string) RowFormat {
+	f := SuffixToFormat[suffix]
+	if f == nil {
+		panic(fmt.Sprintf("cannot find suffix %q", suffix))
+	}
+	rf, err := f(nil) // create the format (without hints)
+	if err != nil {
+		panic(err)
+	}
+	return rf
 }
 
-// CloudtrailJSON produces the RowFormat associated
-// with parsing AWS Cloudtrail data compressed with
-// the given compression name, which should be one
-// of ".gz" ".zst" or "" (none). (The only compression
-// used in practice by AWS is ".gz")
-func CloudtrailJSON(compression string) RowFormat {
-	fn := SuffixToFormat[".json"+compression]
-	if fn == nil {
-		return nil
+func init() {
+	decompressors := map[string]func(r io.Reader) (io.Reader, error){
+		"": nil,
+		".gz": func(r io.Reader) (io.Reader, error) {
+			rz, err := gzip.NewReader(r)
+			err = noEOF(err, gzip.ErrHeader)
+			return rz, err
+		},
+		".zst": func(r io.Reader) (io.Reader, error) {
+			rz, err := zstd.NewReader(r)
+			err = noEOF(err, zstd.ErrMagicMismatch)
+			return rz, err
+		},
 	}
-	ret := fn()
-	ret.(*jsonConverter).isCloudtrail = true
-	return ret
+
+	// JSON formats
+	for dn, dc := range decompressors {
+		decName := dn
+		decomp := dc
+		SuffixToFormat[".json"+decName] = func(h []byte) (RowFormat, error) {
+			var hints *jsonrl.Hint
+			if h != nil {
+				var err error
+				hints, err = jsonrl.ParseHint(h)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			return &jsonConverter{
+				name:   "json" + decName,
+				decomp: decomp,
+				hints:  hints,
+			}, nil
+		}
+	}
+
+	// Cloudtrail JSON format (only GZIP needed)
+	SuffixToFormat[".cloudtrail.json.gz"] = func(h []byte) (RowFormat, error) {
+		if h != nil {
+			return nil, errors.New("cloudtrail doesn't support hints")
+		}
+		return &jsonConverter{
+			name:         "cloudtrail.json.gz",
+			decomp:       decompressors[".gz"],
+			isCloudtrail: true,
+		}, nil
+	}
+
+	// CSV encoder
+	for dn, dc := range decompressors {
+		decName := dn
+		decomp := dc
+		SuffixToFormat[".csv"+decName] = func(h []byte) (RowFormat, error) {
+			if h == nil {
+				return nil, errors.New("CSV requires hints")
+			}
+			hints, err := xsv.ParseHint(h)
+			if err != nil {
+				return nil, err
+			}
+			return &xsvConverter{
+				name:   "csv" + decName,
+				decomp: decomp,
+				hints:  hints,
+				ch: &xsv.CsvChopper{
+					SkipRecords: hints.SkipRecords,
+					Separator:   hints.Separator,
+				},
+			}, nil
+		}
+	}
+
+	// TSV encoder
+	for dn, dc := range decompressors {
+		decName := dn
+		decomp := dc
+		SuffixToFormat[".tsv"+decName] = func(h []byte) (RowFormat, error) {
+			if h == nil {
+				return nil, errors.New("TSV requires hints")
+			}
+			hints, err := xsv.ParseHint(h)
+			if err != nil {
+				return nil, err
+			}
+			if hints.Separator != 0 && hints.Separator != '\t' {
+				return nil, errors.New("TSV doesn't support a custom separator")
+			}
+			return &xsvConverter{
+				name:   "tsv" + decName,
+				decomp: decomp,
+				hints:  hints,
+				ch: &xsv.TsvChopper{
+					SkipRecords: hints.SkipRecords,
+				},
+			}, nil
+		}
+	}
 }
 
 // Converter performs single- or

@@ -158,26 +158,21 @@ type Builder struct {
 //      then that format is returned.
 //   3. If b.Fallback is non-nil, then Fallback(name) is returned.
 // Otherwise, Format returns nil.
-func (b *Builder) Format(chosen, name string) blockfmt.RowFormat {
+func (b *Builder) Format(chosen, name string, hints []byte) (blockfmt.RowFormat, error) {
 	if chosen != "" {
-		if chosen == "cloudtrail.json.gz" {
-			// this must come first, because otherwise
-			// name would match *.json.gz
-			return blockfmt.CloudtrailJSON(".gz")
-		}
 		if f := blockfmt.SuffixToFormat["."+chosen]; f != nil {
-			return f()
+			return f(hints)
 		}
 	}
 	for suff, f := range blockfmt.SuffixToFormat {
 		if strings.HasSuffix(name, suff) {
-			return f()
+			return f(hints)
 		}
 	}
 	if b.Fallback != nil {
-		return b.Fallback(name)
+		return b.Fallback(name), nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (b *Builder) logf(f string, args ...interface{}) {

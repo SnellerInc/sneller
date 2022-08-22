@@ -133,16 +133,15 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 				seek = p
 				return nil
 			}
-			fm := st.conf.Format(format, p)
+			fm, err := st.conf.Format(format, p, def.Inputs[i].Hints)
+			if err != nil {
+				return err
+			}
 			if fm == nil {
 				// TODO: insist that definitions contain
 				// patterns that make the format of any
 				// matching file unambiguous
 				return fmt.Errorf("couldn't determine format of file %s", p)
-			}
-			err = fm.UseHints(def.Inputs[i].Hints)
-			if err != nil {
-				return err
 			}
 			size += info.Size()
 			collect = append(collect, blockfmt.Input{

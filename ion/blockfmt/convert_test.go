@@ -32,7 +32,7 @@ func testConvertMulti(t *testing.T, algo string, meta int) {
 	}
 	inputs = append(inputs, Input{
 		R: f,
-		F: SuffixToFormat[".json"](),
+		F: MustSuffixToFormat(".json"),
 	})
 	f, err = os.Open("../../testdata/parking2.json")
 	if err != nil {
@@ -40,7 +40,7 @@ func testConvertMulti(t *testing.T, algo string, meta int) {
 	}
 	inputs = append(inputs, Input{
 		R: io.NopCloser(gzipped(f)),
-		F: SuffixToFormat[".json.gz"](),
+		F: MustSuffixToFormat(".json.gz"),
 	})
 	f, err = os.Open("../../testdata/parking3.json")
 	if err != nil {
@@ -48,7 +48,7 @@ func testConvertMulti(t *testing.T, algo string, meta int) {
 	}
 	inputs = append(inputs, Input{
 		R: f,
-		F: SuffixToFormat[".json"](),
+		F: MustSuffixToFormat(".json"),
 	})
 
 	var out BufferUploader
@@ -95,7 +95,7 @@ func TestConvertMultiFail(t *testing.T) {
 	}
 	inputs = append(inputs, Input{
 		R: io.NopCloser(gzipped(f)),
-		F: SuffixToFormat[".json.gz"](),
+		F: MustSuffixToFormat(".json.gz"),
 	})
 	f, err = os.Open("../../testdata/parking3.json")
 	if err != nil {
@@ -103,13 +103,13 @@ func TestConvertMultiFail(t *testing.T) {
 	}
 	inputs = append(inputs, Input{
 		R: f,
-		F: SuffixToFormat[".json"](),
+		F: MustSuffixToFormat(".json"),
 	})
 
 	// now, populate with some bad JSON data
 	inputs = append(inputs, Input{
 		R: io.NopCloser(strings.NewReader("{\"unterminated\": true")),
-		F: SuffixToFormat[".json"](),
+		F: MustSuffixToFormat(".json"),
 	})
 
 	var out BufferUploader
@@ -148,7 +148,7 @@ func TestConvertSingle(t *testing.T) {
 				}
 				inputs := []Input{{
 					R: io.NopCloser(gzipped(f)),
-					F: SuffixToFormat[".json.gz"](),
+					F: MustSuffixToFormat(".json.gz"),
 				}}
 				var out BufferUploader
 				align := 2048
@@ -176,7 +176,7 @@ func TestConvertSingle(t *testing.T) {
 func TestConvertEmpty(t *testing.T) {
 	inputs := []Input{{
 		R: io.NopCloser(strings.NewReader("")),
-		F: SuffixToFormat[".json"](),
+		F: MustSuffixToFormat(".json"),
 	}}
 	var out BufferUploader
 	out.PartSize = 4096
@@ -201,7 +201,7 @@ func TestConvertEmpty(t *testing.T) {
 func TestConvertEmptyGZ(t *testing.T) {
 	inputs := []Input{{
 		R: io.NopCloser(strings.NewReader("")),
-		F: SuffixToFormat[".json.gz"](),
+		F: MustSuffixToFormat(".json.gz"),
 	}}
 	var out BufferUploader
 	out.PartSize = 4096
