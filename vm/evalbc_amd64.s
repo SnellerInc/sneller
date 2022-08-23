@@ -12774,44 +12774,38 @@ trap:
 //; #region bcCmpStrEqCs
 //; equal ascii string in slice in Z2:Z3, with stack[imm]
 TEXT bcCmpStrEqCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter_needle; R14=needle_slice;
-  VPCMPD        $0,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_length==counter_needle);K1=lane_active; Z3=str_length; Z6=counter_needle; 0=Eq;
-  KTESTW        K1,  K1                   //;6E50BE85 any lanes eligible?             ;K1=lane_active;
-  JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
-
+  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter_needle != 0)     ;K1=lane_active; Z6=counter_needle;
+  VPCMPD        $0,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len==counter_needle) ;K1=lane_active; Z3=str_len; Z6=counter_needle; 0=Eq;
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VMOVDQU32     Z2,  Z4                   //;6F6F1342 search_base := str_start        ;Z4=search_base; Z2=str_start;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
 
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  JMP           tail                      //;F2A3982D                                 ;
+  JMP           tests                     //;F2A3982D                                 ;
 loop:
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==Address())     ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter_needle -= 4             ;Z6=counter_needle; Z20=constd_4;
-  VPADDD        Z20, Z4,  Z4              //;D7CC90DD search_base += 4                ;Z4=search_base; Z20=constd_4;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
+  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-tail:
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;E0E548E4 any chars left in needle?       ;K3=tmp_mask; K1=lane_active; Z6=counter_needle;
-  KTESTW        K3,  K3                   //;C28D3832                                 ;K3=tmp_mask;
-  JZ            next                      //;4DA2206F no, update results; jump if zero (ZF = 1);
-
-  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter_needle>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter_needle; Z20=constd_4; 5=GreaterEq;
-  KTESTW        K3,  K3                   //;77067C8D                                 ;K3=tmp_mask;
+tests:
+  VPCMPD        $2,  Z3,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=str_len)              ;K1=lane_active; Z11=0; Z3=str_len; 2=LessEq;
+  VPCMPD        $6,  Z20, Z3,  K3         //;99392208 K3 := (str_len>4)               ;K3=tmp_mask; Z3=str_len; Z20=4; 6=Greater;
+  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
+  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPERMD        Z18, Z6,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z6=counter_needle; Z18=tail_mask_data;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;BF3EB085 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-
-  VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;474761AE K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
 next:
   NEXT()
 //; #endregion bcCmpStrEqCs
@@ -12819,65 +12813,51 @@ next:
 //; #region bcCmpStrEqCi
 //; equal ascii string in slice in Z2:Z3, with stack[imm]
 TEXT bcCmpStrEqCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter_needle; R14=needle_slice;
-  VPCMPD        $0,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_length==counter_needle);K1=lane_active; Z3=str_length; Z6=counter_needle; 0=Eq;
-  KTESTW        K1,  K1                   //;6E50BE85 any lanes eligible?             ;K1=lane_active;
-  JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
-
+  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter_needle != 0)     ;K1=lane_active; Z6=counter_needle;
+  VPCMPD        $0,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len==counter_needle) ;K1=lane_active; Z3=str_len; Z6=counter_needle; 0=Eq;
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VMOVDQU32     Z2,  Z4                   //;6F6F1342 search_base := str_start        ;Z4=search_base; Z2=str_start;
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
 
-//; #region loading to_upper constants
-  MOVL          $0x7A6120,R15             //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z15                  //;00000000                                 ;Z15=c_0b00100000; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z16                  //;00000000                                 ;Z16=c_char_a; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z17                  //;00000000                                 ;Z17=c_char_z; R15=tmp_constant;
-//; #endregion
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  JMP           tail                      //;F2A3982D                                 ;
+  JMP           tests                     //;F2A3982D                                 ;
 loop:
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=c_char_a)      ;K3=tmp_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=c_char_z)      ;K3=tmp_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
+  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==Address());K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter_needle -= 4             ;Z6=counter_needle; Z20=constd_4;
-  VPADDD        Z20, Z4,  Z4              //;D7CC90DD search_base += 4                ;Z4=search_base; Z20=constd_4;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-tail:
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;E0E548E4 any chars left in needle?       ;K3=tmp_mask; K1=lane_active; Z6=counter_needle;
-  KTESTW        K3,  K3                   //;C28D3832                                 ;K3=tmp_mask;
-  JZ            next                      //;4DA2206F no, update results; jump if zero (ZF = 1);
-
-  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter_needle>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter_needle; Z20=constd_4; 5=GreaterEq;
-  KTESTW        K3,  K3                   //;77067C8D                                 ;K3=tmp_mask;
+tests:
+  VPCMPD        $2,  Z3,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=str_len)              ;K1=lane_active; Z11=0; Z3=str_len; 2=LessEq;
+  VPCMPD        $6,  Z20, Z3,  K3         //;99392208 K3 := (str_len>4)               ;K3=tmp_mask; Z3=str_len; Z20=4; 6=Greater;
+  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
+  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPERMD        Z18, Z6,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z6=counter_needle; Z18=tail_mask_data;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;BF3EB085 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=c_char_a)      ;K3=tmp_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=c_char_z)      ;K3=tmp_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
-  VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;474761AE K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
 next:
   NEXT()
 //; #endregion bcCmpStrEqCi
@@ -14027,117 +14007,106 @@ next:
 //; #endregion bcContainsSuffixUTF8Ci
 
 //; #region bcContainsPrefixCs
+//; equal ascii string in slice in Z2:Z3, with stack[imm]
 TEXT bcContainsPrefixCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
-  VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_length              ;Z25=needle_length; R14=needle_slice;
-  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_length>=needle_length); cmp len(needle) len(data);K1=lane_active; Z3=str_length; Z25=needle_length; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;6E50BE85 any lanes eligible?             ;K1=lane_active;
-  JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
-
-  VMOVDQU32     Z25, Z6                   //;6F6F1342 counter := needle_length        ;Z6=counter; Z25=needle_length;
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter; R14=needle_slice;
+  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter != 0)            ;K1=lane_active; Z6=counter;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;C28D3832 any lane still alive            ;K1=lane_active;
+  JZ            next                      //;4DA2206F no, exit; jump if zero (ZF = 1) ;
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VMOVDQU32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
 
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  JMP           tail                      //;F2A3982D                                 ;
+  VMOVDQU32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
+  VMOVDQU32     Z6,  Z25                  //;6F6F1343 needle_length := counter        ;Z25=needle_length; Z6=counter;
+  JMP           tests                     //;F2A3982D                                 ;
 loop:
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==Address()); cmp data with needle;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=constd_4;
+  VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
+  VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=constd_4;
-tail:
-  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=constd_4; 5=GreaterEq;
-  KTESTW        K3,  K3                   //;77067C8D                                 ;K3=tmp_mask;
+tests:
+  VPCMPD        $2,  Z6,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=counter)              ;K1=lane_active; Z11=0; Z6=counter; 2=LessEq;
+  VPCMPD        $6,  Z20, Z6,  K3         //;99392208 K3 := (counter>4)               ;K3=tmp_mask; Z6=counter; Z20=4; 6=Greater;
+  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
+  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;E0E548E4 any chars left in needle?       ;K3=tmp_mask; K1=lane_active; Z6=counter;
-  KTESTW        K3,  K3                   //;C28D3832                                 ;K3=tmp_mask;
-  JZ            next                      //;4DA2206F no, update results; jump if zero (ZF = 1);
-
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPERMD        Z18, Z6,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z6=counter; Z18=tail_mask_data;
+  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+//; compare data with needle
   VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
   VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_length -= needle_length     ;Z3=str_length; K1=lane_active; Z25=needle_length;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_length        ;Z3=str_len; K1=lane_active; Z25=needle_length;
 next:
   NEXT()
 //; #endregion bcContainsPrefixCs
 
 //; #region bcContainsPrefixCi
+//; equal ascii string in slice in Z2:Z3, with stack[imm]
 TEXT bcContainsPrefixCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
-  VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_length              ;Z25=needle_length; R14=needle_slice;
-  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_length>=needle_length); cmp len(needle) len(data);K1=lane_active; Z3=str_length; Z25=needle_length; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;6E50BE85 any lanes eligible?             ;K1=lane_active;
-  JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
-
-  VMOVDQU32     Z25, Z6                   //;6F6F1342 counter := needle_length        ;Z6=counter; Z25=needle_length;
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter; R14=needle_slice;
+  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter != 0)            ;K1=lane_active; Z6=counter;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;C28D3832 any lane still alive            ;K1=lane_active;
+  JZ            next                      //;4DA2206F no, exit; jump if zero (ZF = 1) ;
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VMOVDQU32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
 
-//; #region loading to_upper constants
-  MOVL          $0x7A6120,R15             //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z15                  //;00000000                                 ;Z15=c_0b00100000; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z16                  //;00000000                                 ;Z16=c_char_a; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z17                  //;00000000                                 ;Z17=c_char_z; R15=tmp_constant;
-//; #endregion
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  JMP           tail                      //;F2A3982D                                 ;
+  VMOVDQU32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
+  VMOVDQU32     Z6,  Z25                  //;6F6F1343 needle_length := counter        ;Z25=needle_length; Z6=counter;
+  JMP           tests                     //;F2A3982D                                 ;
 loop:
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=c_char_a)      ;K3=tmp_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=c_char_z)      ;K3=tmp_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
+  VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
+  VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
-  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==Address()); cmp data with needle;K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=constd_4;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=constd_4;
-tail:
-  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=constd_4; 5=GreaterEq;
-  KTESTW        K3,  K3                   //;77067C8D                                 ;K3=tmp_mask;
+tests:
+  VPCMPD        $2,  Z6,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=counter)              ;K1=lane_active; Z11=0; Z6=counter; 2=LessEq;
+  VPCMPD        $6,  Z20, Z6,  K3         //;99392208 K3 := (counter>4)               ;K3=tmp_mask; Z6=counter; Z20=4; 6=Greater;
+  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
+  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;E0E548E4 any chars left in needle?       ;K3=tmp_mask; K1=lane_active; Z6=counter;
-  KTESTW        K3,  K3                   //;C28D3832                                 ;K3=tmp_mask;
-  JZ            next                      //;4DA2206F no, update results; jump if zero (ZF = 1);
-
+//; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPERMD        Z18, Z6,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z6=counter; Z18=tail_mask_data;
+  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=c_char_a)      ;K3=tmp_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=c_char_z)      ;K3=tmp_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
+//; compare data with needle
   VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
   VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_length -= needle_length     ;Z3=str_length; K1=lane_active; Z25=needle_length;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_length        ;Z3=str_len; K1=lane_active; Z25=needle_length;
 next:
   NEXT()
 //; #endregion bcContainsPrefixCi

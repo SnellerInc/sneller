@@ -3185,9 +3185,9 @@ func TestTrimCharUT(t *testing.T) {
 	run := func(ts *testSuite, ut *unitTest) {
 		// first: check reference implementation
 		{
-			resultObs := ts.refImpl(ut.data, ut.cutset)
-			if ut.expResult != resultObs {
-				t.Errorf("refImpl: trim %q; cutset %q: observed %q; expected: %q", ut.data, ut.cutset, resultObs, ut.expResult)
+			obsResult := ts.refImpl(ut.data, ut.cutset)
+			if ut.expResult != obsResult {
+				t.Errorf("refImpl: trim %q; cutset %q: observed %q; expected: %q", ut.data, ut.cutset, obsResult, ut.expResult)
 			}
 		}
 		// second: check the bytecode implementation
@@ -3195,7 +3195,6 @@ func TestTrimCharUT(t *testing.T) {
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
 		ctx.dict = append(ctx.dict[:0], fill4(ut.cutset))
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
@@ -3212,10 +3211,11 @@ func TestTrimCharUT(t *testing.T) {
 		for i := 0; i < 16; i++ {
 			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
 			obsLength := int(scalarAfter[1][i])
-			resultObs := ut.data[obsOffset : obsOffset+obsLength]
+			obsResult := ut.data[obsOffset : obsOffset+obsLength]
 
-			if ut.expResult != resultObs {
-				t.Errorf("lane %v: trim %q; cutset %q: observed %q; expected: %q", i, ut.data, ut.cutset, resultObs, ut.expResult)
+			if ut.expResult != obsResult {
+				t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
+					ts.name, i, ut.data, ut.cutset, obsResult, ut.expResult)
 				return
 			}
 		}
@@ -3293,18 +3293,20 @@ func TestTrimCharBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, dataSpace, cutsetSpace []string) {
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
+
 		for _, data := range dataSpace {
 			data16 := fill16(data)
+
+			var ctx bctestContext
+			ctx.Taint()
+
 			for _, cutset := range cutsetSpace {
 				expResult := ts.refImpl(data, cutset) // expected result
 
-				var ctx bctestContext
-				ctx.Taint()
-
-				dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
 				ctx.dict = append(ctx.dict[:0], fill4(cutset))
 				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-				ctx.addScalarStrings(data16, []byte{})
+				ctx.setScalarStrings(data16, []byte{})
 				ctx.current = 0xFFFF
 				scalarBefore := ctx.getScalarUint32()
 
@@ -3318,15 +3320,16 @@ func TestTrimCharBF(t *testing.T) {
 				for i := 0; i < 16; i++ {
 					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
 					obsLength := int(scalarAfter[1][i])
-					resultObs := data[obsOffset : obsOffset+obsLength] // observed result
+					obsResult := data[obsOffset : obsOffset+obsLength] // observed result
 
-					if expResult != resultObs {
-						t.Errorf("lane %v: trim %q; cutset %q: observed %q; expected: %q", i, data, cutset, resultObs, expResult)
-						return
+					if expResult != obsResult {
+						t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
+							ts.name, i, data, cutset, obsResult, expResult)
+						break
 					}
 				}
-				ctx.Free()
 			}
+			ctx.Free()
 		}
 	}
 
@@ -3337,6 +3340,84 @@ func TestTrimCharBF(t *testing.T) {
 			run(&ts, dataSpace, cutsetSpace)
 		})
 	}
+}
+
+// FuzzTrimCharFT fuzz-tests for: bcTrim4charLeft, bcTrim4charRight
+func FuzzTrimCharFT(f *testing.F) {
+	f.Add("abcd", "a")
+	f.Add("x𐍈y", "𐍈x")
+	f.Add("a;\n", ";")
+
+	type testSuite struct {
+		name string
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, cutset) -> string
+		refImpl func(string, string) string
+	}
+	testSuites := []testSuite{
+		{
+			name:    "trim char from left (opTrim4charLeft)",
+			op:      opTrim4charLeft,
+			refImpl: strings.TrimLeft,
+		},
+		{
+			name:    "trim char from right (opTrim4charRight)",
+			op:      opTrim4charRight,
+			refImpl: strings.TrimRight,
+		},
+	}
+
+	run := func(t *testing.T, ts *testSuite, data, cutset string) {
+		//FIXME cutset does not yet support non-ASCII
+		for _, c := range cutset {
+			if c >= utf8.RuneSelf {
+				return // only cutset with ASCII is currently supported
+			}
+		}
+		if (cutset == "") || (utf8.RuneCountInString(cutset) > 4) {
+			return // only cutset with up to 4 runes is considered
+		}
+		if !utf8.ValidString(data) {
+			return // assume all input data will be valid codepoints
+		}
+		expResult := ts.refImpl(data, fill4(cutset)) // expected result
+
+		var ctx bctestContext
+		ctx.Taint()
+		defer ctx.Free()
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
+		ctx.dict = append(ctx.dict[:0], fill4(cutset))
+		ctx.setData(dataPrefix) // prepend 4 bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(data), []byte{})
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+			obsResult := data[obsOffset : obsOffset+obsLength] // observed result
+
+			if expResult != obsResult {
+				t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
+					ts.name, i, data, cutset, obsResult, expResult)
+				break
+			}
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data, cutset string) {
+		for _, ts := range testSuites {
+			run(t, &ts, data, cutset)
+		}
+	})
 }
 
 // TestTrimWhiteSpaceUT unit-tests for: opTrimWsLeft, opTrimWsRight
@@ -3609,11 +3690,11 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 		{
 			name: "contains prefix case-sensitive (opContainsPrefixCs)",
 			unitTests: []unitTest{
-				{"sb", "s", true, 1, 1},
 				{"s", "s", true, 1, 0},
-				//FIXME{"s", "", false, 0, 1}, // Empty needle should yield failing match
-				//FIXME{"", "", false, 0, 0}, // Empty needle should yield failing match
-				//FIXME{"ssss", "ssss", true, 4, 0}, // offset and length are not updated when needle has length 4
+				{"sb", "s", true, 1, 1},
+				{"s", "", false, 0, 1},
+				{"", "", false, 0, 0},
+				{"ssss", "ssss", true, 4, 0},
 				{"sssss", "sssss", true, 5, 0},
 				{"ss", "b", false, 0, 2},
 			},
@@ -3628,9 +3709,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"sb", "S", true, 1, 1},
 				{"S", "s", true, 1, 0},
 				{"s", "S", true, 1, 0},
-				//FIXME{"s", "", false, 0, 1}, // Empty needle should yield failing match
-				//FIXME{"", "", false, 0, 0}, // Empty needle should yield failing match
-				//FIXME{"sSsS", "ssss", true, 4, 0}, // offset and length are not updated when needle has length 4
+				{"s", "", false, 0, 1},
+				{"", "", false, 0, 0},
+				{"sSsS", "ssss", true, 4, 0},
 				{"sSsSs", "sssss", true, 5, 0},
 				{"ss", "b", false, 0, 2},
 			},
@@ -3755,7 +3836,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
 				t.Errorf("%v\nlane %v: data %q contains needle %q; observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
 					ts.name, i, ut.data, ut.needle, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
-				return
+				break
 			}
 		}
 		ctx.Free()
@@ -3795,7 +3876,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			dataMaxlen:     5,
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
-			needleMaxlen:   3, //FIXME 5 needle of length 4 fails to match
+			needleMaxlen:   5,
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true) },
@@ -3807,7 +3888,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			dataMaxlen:     5,
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 's', 'S'},
-			needleMaxlen:   3, //FIXME 5 needle of length 4 fails to match
+			needleMaxlen:   5,
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCi,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
@@ -3937,6 +4018,116 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			run(&ts, dataSpace, needleSpace)
 		})
 	}
+}
+
+// FuzzContainsPrefixSuffixFT fuzz-tests for: opContainsPrefixCs, opContainsPrefixCi, opContainsPrefixUTF8Ci,
+// opContainsSuffixCs, opContainsSuffixCi, opContainsSuffixUTF8Ci
+func FuzzContainsPrefixSuffixFT(f *testing.F) {
+	f.Add("abcd", "a")
+	f.Add("𐍈y𐍈", "𐍈")
+	f.Add("a;\n", ";")
+
+	type testSuite struct {
+		name string
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, needle) -> lane, offset, length
+		refImpl func(string, string) (bool, int, int)
+		// encoder for needle -> dictionary value
+		encode func(needle string) string
+		// eligible determines wither the op is eligible for the needle: needle -> bool
+		eligible func(needle string) bool
+	}
+	testSuites := []testSuite{
+		{
+			name:    "contains prefix case-sensitive (opContainsPrefixCs)",
+			op:      opContainsPrefixCs,
+			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true) },
+			encode:  func(needle string) string { return needle },
+		},
+		{
+			name:    "contains prefix case-insensitive (opContainsPrefixCi)",
+			op:      opContainsPrefixCi,
+			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
+			encode:  stringext.NormalizeString,
+		},
+		{
+			name:    "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
+			op:      opContainsPrefixUTF8Ci,
+			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
+			encode:  func(needle string) string { return stringext.GenNeedleExt(needle, false) },
+		},
+		{
+			name:    "contains suffix case-sensitive (opContainsSuffixCs)",
+			op:      opContainsSuffixCs,
+			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true) },
+			encode:  func(needle string) string { return needle },
+		},
+		{
+			name:    "contains suffix case-insensitive (opContainsSuffixCi)",
+			op:      opContainsSuffixCi,
+			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false) },
+			encode:  stringext.NormalizeString,
+		},
+		{
+			name:    "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
+			op:      opContainsSuffixUTF8Ci,
+			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false) },
+			encode:  func(needle string) string { return stringext.GenNeedleExt(needle, true) },
+		},
+	}
+
+	run := func(t *testing.T, ts *testSuite, data, needle string) {
+		if needle == "" {
+			return // empty needle is invalid
+		}
+		if !utf8.ValidString(data) {
+			return // assume all input data will be valid codepoints
+		}
+		// only UTF8 code is supposed to handle UTF8 needle data
+		if (ts.op != opContainsPrefixUTF8Ci) && (ts.op != opContainsSuffixUTF8Ci) {
+			for _, c := range needle {
+				if c >= utf8.RuneSelf {
+					return
+				}
+			}
+		}
+		expLane, expOffset, expLength := ts.refImpl(data, needle)
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
+		ctx.dict = append(ctx.dict[:0], pad(ts.encode(needle)))
+		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(data), []byte{})
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Error(err)
+		}
+		// then
+		scalarAfter := ctx.getScalarUint32()
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
+			obsLength := int(scalarAfter[1][i])
+
+			if fault(obsLane, expLane, obsOffset, expOffset, obsLength, expLength) {
+				t.Errorf("%v\nlane %v: data %q contains needle %q; observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
+					ts.name, i, data, needle, obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
+				break
+			}
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, data, cutset string) {
+		for _, ts := range testSuites {
+			run(t, &ts, data, cutset)
+		}
+	})
 }
 
 func padNBytes(s string, nBytes int) string {
@@ -4315,20 +4506,22 @@ func fill16(msg string) (result []string) {
 }
 
 func fill4(cutset string) string {
-	switch len(cutset) {
+
+	cutsetRunes := []rune(cutset)
+	switch len(cutsetRunes) {
 	case 0:
 		panic("cutset cannot be empty")
 	case 1:
-		r0 := []rune(cutset)[0]
+		r0 := cutsetRunes[0]
 		return string([]rune{r0, r0, r0, r0})
 	case 2:
-		r0 := []rune(cutset)[0]
-		r1 := []rune(cutset)[1]
+		r0 := cutsetRunes[0]
+		r1 := cutsetRunes[1]
 		return string([]rune{r0, r1, r1, r1})
 	case 3:
-		r0 := []rune(cutset)[0]
-		r1 := []rune(cutset)[1]
-		r2 := []rune(cutset)[2]
+		r0 := cutsetRunes[0]
+		r1 := cutsetRunes[1]
+		r2 := cutsetRunes[2]
 		return string([]rune{r0, r1, r2, r2})
 	case 4:
 		return cutset
