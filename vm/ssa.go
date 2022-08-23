@@ -884,8 +884,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	shypotf: {text: "hypot.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf, bcrev: ophypotf, emit: emitBinaryALUOp},
 	spowf:   {text: "pow.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf, emit: emitBinaryALUOp},
 
-	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitWidthBucket},
-	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitWidthBucket},
+	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitauto2},
+	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitauto2},
 
 	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtslot, bc: opaggandk, priority: prioMem, emit: emitAggK},
 	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtslot, bc: opaggork, priority: prioMem, emit: emitAggK},
@@ -936,25 +936,25 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// timestamp operations
 	sbroadcastts:            {text: "broadcast.ts", rettype: stTimeInt, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcastimmi},
 	sunboxtime:              {text: "unboxtime", argtypes: []ssatype{stTime, stBool}, rettype: stTimeInt, bc: opunboxts},
-	sdateadd:                {text: "dateadd", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opaddi, emit: emitBinaryOp},
+	sdateadd:                {text: "dateadd", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opaddi, emit: emitauto2},
 	sdateaddimm:             {text: "dateadd.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opaddimmi},
-	sdateaddmulimm:          {text: "dateaddmul.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, immfmt: fmti64, bc: opaddmulimmi, emit: emitAddMulImmI},
-	sdateaddmonth:           {text: "dateaddmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddmonth, emit: emitBinaryOp},
+	sdateaddmulimm:          {text: "dateaddmul.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, immfmt: fmti64, bc: opaddmulimmi, emit: emitauto2},
+	sdateaddmonth:           {text: "dateaddmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddmonth, emit: emitauto2},
 	sdateaddmonthimm:        {text: "dateaddmonth.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opdateaddmonthimm},
-	sdateaddyear:            {text: "dateaddyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddyear, emit: emitBinaryOp},
-	sdatediffmicro:          {text: "datediffmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: oprsubi, emit: emitBinaryOp},
-	sdatediffparam:          {text: "datediffparam", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffparam, immfmt: fmti64, emit: emitdatediffparam},
+	sdateaddyear:            {text: "dateaddyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddyear, emit: emitauto2},
+	sdatediffmicro:          {text: "datediffmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: oprsubi, emit: emitauto2},
+	sdatediffparam:          {text: "datediffparam", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffparam, immfmt: fmti64, emit: emitauto2},
 	sdatediffmonth:          {text: "datediffmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitdatediffmonthyear},
 	sdatediffyear:           {text: "datediffyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitdatediffmonthyear},
-	sdateextractmicrosecond: {text: "dateextractmicrosecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmicrosecond, emit: emitdateextract},
-	sdateextractmillisecond: {text: "dateextractmillisecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmillisecond, emit: emitdateextract},
-	sdateextractsecond:      {text: "dateextractsecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractsecond, emit: emitdateextract},
-	sdateextractminute:      {text: "dateextractminute", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractminute, emit: emitdateextract},
-	sdateextracthour:        {text: "dateextracthour", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextracthour, emit: emitdateextract},
-	sdateextractday:         {text: "dateextractday", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractday, emit: emitdateextract},
-	sdateextractmonth:       {text: "dateextractmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmonth, emit: emitdateextract},
-	sdateextractyear:        {text: "dateextractyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractyear, emit: emitdateextract},
-	sdatetounixepoch:        {text: "datetounixepoch", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitdateextract},
+	sdateextractmicrosecond: {text: "dateextractmicrosecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmicrosecond, emit: emitauto2},
+	sdateextractmillisecond: {text: "dateextractmillisecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmillisecond, emit: emitauto2},
+	sdateextractsecond:      {text: "dateextractsecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractsecond, emit: emitauto2},
+	sdateextractminute:      {text: "dateextractminute", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractminute, emit: emitauto2},
+	sdateextracthour:        {text: "dateextracthour", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextracthour, emit: emitauto2},
+	sdateextractday:         {text: "dateextractday", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractday, emit: emitauto2},
+	sdateextractmonth:       {text: "dateextractmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmonth, emit: emitauto2},
+	sdateextractyear:        {text: "dateextractyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractyear, emit: emitauto2},
+	sdatetounixepoch:        {text: "datetounixepoch", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitauto2},
 	sdatetounixmicro:        {text: "datetounixmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitdatecasttoint},
 	sdatetruncmillisecond:   {text: "datetruncmillisecond", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmillisecond},
 	sdatetruncsecond:        {text: "datetruncsecond", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncsecond},
@@ -963,17 +963,17 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetruncday:           {text: "datetruncday", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncday},
 	sdatetruncmonth:         {text: "datetruncmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmonth},
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
-	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitBinaryOp},
+	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitauto2},
 	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
 
 	// GEO functions
-	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitGeoHash},
-	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitGeoHashImm},
-	sgeotilex:     {text: "geotilex", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitGeoTileXY},
-	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitGeoTileXY},
-	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitGeoHash},
-	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitGeoHashImm},
-	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitGeoDistance},
+	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2},
+	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2},
+	sgeotilex:     {text: "geotilex", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitauto2},
+	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitauto2},
+	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitauto2},
+	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2},
+	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
 
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
 
@@ -3540,109 +3540,6 @@ func (p *prog) Upper(s *value) *value {
 	return p.ssa2(supperstr, s, p.mask(s))
 }
 
-func emitAddMulImmI(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // t0
-	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
-	mask := v.args[2]                            // predicate
-	imm64 := v.imm.(uint64)
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16u64(v, bc, arg1Slot, imm64)
-}
-
-func emitBinaryOp(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // t0
-	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
-	mask := v.args[2]                            // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16(v, bc, arg1Slot)
-}
-
-func emitGeoHash(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // latitude
-	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
-	arg2Slot := c.forceStackRef(v.args[2], regS) // precision
-	mask := v.args[3]                            // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16s16(v, bc, arg1Slot, arg2Slot)
-}
-
-func emitGeoHashImm(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // latitude
-	arg1Slot := c.forceStackRef(v.args[1], regS) // longitude
-	mask := v.args[2]                            // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16u16(v, bc, arg1Slot, uint16(toi64(v.imm)))
-}
-
-func emitGeoTileXY(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // coordinate
-	arg1Slot := c.forceStackRef(v.args[1], regS) // precision
-	mask := v.args[2]                            // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16(v, bc, arg1Slot)
-}
-
-func emitGeoDistance(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // lat1
-	arg1Slot := c.forceStackRef(v.args[1], regS) // lon1
-	arg2Slot := c.forceStackRef(v.args[2], regS) // lat2
-	arg3Slot := c.forceStackRef(v.args[3], regS) // lon2
-	mask := v.args[4]                            // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16s16s16(v, bc, arg1Slot, arg2Slot, arg3Slot)
-}
-
-func emitdatediffparam(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // t0
-	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
-	mask := v.args[2]                            // predicate
-	imm64 := v.imm.(uint64)                      // parameter
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16u64(v, bc, arg1Slot, imm64)
-}
-
 func emitdatediffmonthyear(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // t0
 	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
@@ -3661,19 +3558,6 @@ func emitdatediffmonthyear(v *value, c *compilestate) {
 	}
 
 	c.ops16u16(v, bc, arg1Slot, isYearImm)
-}
-
-func emitdateextract(v *value, c *compilestate) {
-	arg0 := v.args[0] // t0
-	mask := v.args[1] // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.op(v, bc)
 }
 
 func emitdatecasttoint(v *value, c *compilestate) {
@@ -5874,19 +5758,6 @@ func emitSlotAggK(v *value, c *compilestate) {
 
 	c.loadk(v, mask)
 	c.ops16s16(v, ssainfo[v.op].bc, boolValSlot, stackslot(v.imm.(int)))
-}
-
-func emitWidthBucket(v *value, c *compilestate) {
-	val := v.args[0]
-	minSlot := c.forceStackRef(v.args[1], regS)
-	maxSlot := c.forceStackRef(v.args[2], regS)
-	cntSlot := c.forceStackRef(v.args[3], regS)
-	msk := v.args[4]
-
-	c.loadk(v, msk)
-	c.loads(v, val)
-	c.clobbers(v)
-	c.ops16s16s16(v, ssainfo[v.op].bc, minSlot, maxSlot, cntSlot)
 }
 
 func emitboxmask(v *value, c *compilestate) {
