@@ -151,11 +151,22 @@ func (ts *testSegment) Size() int64 {
 	return int64(len(ts.all))
 }
 
+type segmentReader struct {
+	*bytes.Reader
+	ts *testSegment
+}
+
+func (s *segmentReader) Close() error { return nil }
+
+func (s *segmentReader) WriteTo(dst io.Writer) (int64, error) {
+	return s.ts.decode(dst, s.ts.all)
+}
+
 func (ts *testSegment) Open() (io.ReadCloser, error) {
 	if ts.inject.err != nil {
 		return nil, ts.inject.err
 	}
-	return io.NopCloser(bytes.NewReader(ts.all)), nil
+	return &segmentReader{Reader: bytes.NewReader(ts.all), ts: ts}, nil
 }
 
 func (ts *testSegment) Decode(dst io.Writer, src []byte) error {
