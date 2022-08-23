@@ -101,6 +101,10 @@ func (s *symtab) free() {
 	s.symrefs = s.symrefs[:0]
 }
 
+func (s *symtab) resident() bool {
+	return s.curpage.mem != nil
+}
+
 // drop auxilliary pages and reset
 // the write offset into the current page
 func (s *symtab) resetNoFree() {

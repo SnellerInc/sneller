@@ -162,7 +162,6 @@ func (q *rowSplitter) writeVM(src []byte, delims []vmref) error {
 // write non-vmm bytes by copying immediately after scanning
 func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 	if q.vmcache == nil {
-		leakCheck(q)
 		q.vmcache = Malloc()
 	}
 
@@ -299,6 +298,9 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 		q.symbolized = true
 		boff = int32(len(buf) - len(rest))
 
+		if !q.shared.resident() {
+			leakCheck(q)
+		}
 		// TODO: optmize this; we are re-serializing the
 		// symbol list each time here...
 		q.shared.resetNoFree()

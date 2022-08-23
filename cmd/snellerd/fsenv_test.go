@@ -557,6 +557,11 @@ func TestSimpleFS(t *testing.T) {
 		// similar to above; different date range
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime >= `2009-01-14T00:06:00Z`", output: `{"count": 5169}`, partial: true},
 		{input: "SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`", output: `{"count": 3391}`, partial: true},
+		{
+			input:   "SELECT (SELECT COUNT(tpep_pickup_datetime) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`) AS count0, (SELECT COUNT(*) FROM default.taxi WHERE tpep_pickup_datetime < `2009-01-14T00:06:00Z`) AS count1",
+			output:  `{"count0": 3391, "count1": 3391}`,
+			partial: true,
+		},
 		{input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"VendorID\": \"VTS\", \"count\": 7353}\n{\"VendorID\": \"CMT\", \"count\": 1055}\n{\"VendorID\": \"DDS\", \"count\": 152}"},
 		{input: "SELECT COUNT(DISTINCT RPState) from default.parking", output: `{"count": 25}`},
 
