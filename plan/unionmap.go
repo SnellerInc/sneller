@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -146,10 +147,10 @@ func decodeLocal(st *ion.Symtab, body []byte) (Transport, error) {
 	return t, nil
 }
 
-func (u *UnionMap) exec(dst vm.QuerySink, ep *execParams) error {
+func (u *UnionMap) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 	s := vm.Locked(w)
 
@@ -191,24 +192,42 @@ func (u *UnionMap) exec(dst vm.QuerySink, ep *execParams) error {
 			ep.Stats.atomicAdd(&subep.Stats)
 		}(i)
 	}
-	wg.Wait()
+	return -1, &unionMapSink{
+		w: w, dst: dst, wg: &wg, errors: errors,
+	}, nil
+}
+
+type unionMapSink struct {
+	dst    vm.QuerySink
+	w      io.Closer
+	wg     *sync.WaitGroup
+	errors []error
+}
+
+func (s *unionMapSink) Open() (io.WriteCloser, error) {
+	panic("(*unionMapSink).Open should never be called")
+}
+
+func (s *unionMapSink) Close() error {
+	s.wg.Wait()
 
 	// for now, just yield the first error;
 	// it's not clear what we would do differently
 	// if we had a whole bunch of them turn up
-	for i := range errors {
-		if errors[i] != nil {
-			err = errors[i]
+	var err error
+	for i := range s.errors {
+		if s.errors[i] != nil {
+			err = s.errors[i]
 			break
 		}
 	}
 	if err != nil {
-		w.Close()
-		dst.Close()
+		s.w.Close()
+		s.dst.Close()
 		return err
 	}
-	err = w.Close()
-	err2 := dst.Close()
+	err = s.w.Close()
+	err2 := s.dst.Close()
 	if err == nil {
 		err = err2
 	}

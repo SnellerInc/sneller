@@ -15,7 +15,6 @@
 package plan
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"reflect"
@@ -78,33 +77,25 @@ func (h *filterHandle) Filter(f expr.Node) TableHandle {
 // TableHandle implementing Filterable.
 func TestFilter(t *testing.T) {
 	tcs := []struct {
-		query       string
-		newFilters  []string
-		execFilters []string
+		query   string
+		filters []string
 	}{{
-		query:       `SELECT * FROM 'parking.10n'`,
-		newFilters:  nil,
-		execFilters: nil,
+		query:   `SELECT * FROM 'parking.10n'`,
+		filters: nil,
 	}, {
 		query: `SELECT * FROM 'parking.10n' WHERE Make IS MISSING`,
-		newFilters: []string{
-			"Make IS MISSING",
-		}, execFilters: []string{
+		filters: []string{
 			"Make IS MISSING",
 		},
 	}, {
 		query: `SELECT * FROM 'parking.10n' WHERE IssueData < (SELECT LATEST(IssueData) FROM 'parking.10n' WHERE Make IS MISSING)`,
-		newFilters: []string{
+		filters: []string{
 			"Make IS MISSING",
 			"IssueData < SCALAR_REPLACEMENT(0)",
-		}, execFilters: []string{
-			"Make IS MISSING",
-			"IssueData < `2000-01-01T00:00:00Z`",
 		},
 	}, {
-		query:       `SELECT * FROM (SELECT COUNT(*) AS foo FROM 'parking.10n') WHERE foo < 1000`,
-		newFilters:  nil, // shouldn't push past COUNT(*)
-		execFilters: nil,
+		query:   `SELECT * FROM (SELECT COUNT(*) AS foo FROM 'parking.10n') WHERE foo < 1000`,
+		filters: nil, // shouldn't push past COUNT(*)
 	}}
 
 	for i := range tcs {
@@ -125,35 +116,10 @@ func TestFilter(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Log("tree:", tree)
-			if !reflect.DeepEqual(env.filters, tc.newFilters) {
+			if !reflect.DeepEqual(env.filters, tc.filters) {
 				t.Errorf("New: filter expression mismatch")
 				t.Errorf("\tgot:  %q", env.filters)
-				t.Errorf("\twant: %q", tc.newFilters)
-			}
-			// Test that filters are pushed
-			// down when exec is called on
-			// a deserialized tree.
-			var buf ion.Buffer
-			var st ion.Symtab
-			err = tree.Encode(&buf, &st)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tree, err = Decode(&env, &st, buf.Bytes())
-			if err != nil {
-				t.Fatal(err)
-			}
-			env.filters = nil
-			var dst bytes.Buffer
-			var stat ExecStats
-			err = Exec(tree, &dst, &stat)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(env.filters, tc.execFilters) {
-				t.Errorf("Exec: filter expression mismatch")
-				t.Errorf("\tgot:  %q", env.filters)
-				t.Errorf("\twant: %q", tc.execFilters)
+				t.Errorf("\twant: %q", tc.filters)
 			}
 		})
 	}

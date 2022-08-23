@@ -737,23 +737,6 @@ func BenchmarkTestQueries(b *testing.B) {
 // as quickly as possible, tests are
 // run in parallel.
 func TestQueries(t *testing.T) {
-	vm.LeakCheckHook = func(stack []byte, x any) {
-		t.Logf("leaked value: %+v\n", x)
-		t.Fatalf("memory leak:\n%s\n", stack)
-	}
-
-	start := vm.PagesUsed()
-	vm.Errorf = t.Errorf
-	t.Cleanup(func() {
-		vm.Errorf = nil
-	})
-	t.Cleanup(func() {
-		// detect a page leak
-		end := vm.PagesUsed()
-		if end != start {
-			t.Errorf("pages used: %d -> %d", start, end)
-		}
-	})
 	test, err := findQueries("./testdata/queries/", ".test")
 	if err != nil {
 		t.Fatal(err)
@@ -765,9 +748,6 @@ func TestQueries(t *testing.T) {
 			t.Parallel()
 			testPath(t, path)
 		})
-	}
-	if err != nil {
-		t.Fatal(err)
 	}
 }
 

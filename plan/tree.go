@@ -17,11 +17,9 @@ package plan
 import (
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 type Input struct {
@@ -63,6 +61,46 @@ type Tree struct {
 	Inputs []Input
 	// Root is the root node of the plan tree.
 	Root Node
+}
+
+func tabify(n int, dst *strings.Builder) {
+	for n > 0 {
+		dst.WriteByte('\t')
+		n--
+	}
+}
+
+func tabfprintf(dst *strings.Builder, indent int, f string, args ...interface{}) {
+	tabify(indent, dst)
+	fmt.Fprintf(dst, f, args...)
+}
+
+func tabline(dst *strings.Builder, indent int, line string) {
+	tabify(indent, dst)
+	dst.WriteString(line)
+	dst.WriteByte('\n')
+}
+
+func printops(dst *strings.Builder, indent int, op Op) {
+	if in := op.input(); in != nil {
+		printops(dst, indent, in)
+	}
+	tabline(dst, indent, op.String())
+}
+
+func (t *Tree) describe(dst *strings.Builder) {
+	for i := range t.Inputs {
+		tbl := expr.ToString(t.Inputs[i].Table)
+		fmt.Fprintf(dst, "WITH INPUT(%d) AS %s\n", i, tbl)
+	}
+	t.Root.describe(0, dst)
+}
+
+// String implements fmt.Stringer
+func (t *Tree) String() string {
+	var out strings.Builder
+	t.describe(&out)
+	return out.String()
 }
 
 // A Node is one node of a query plan tree and
@@ -110,39 +148,6 @@ type Node struct {
 	Op Op
 }
 
-func tabify(n int, dst *strings.Builder) {
-	for n > 0 {
-		dst.WriteByte('\t')
-		n--
-	}
-}
-
-func tabfprintf(dst *strings.Builder, indent int, f string, args ...interface{}) {
-	tabify(indent, dst)
-	fmt.Fprintf(dst, f, args...)
-}
-
-func tabline(dst *strings.Builder, indent int, line string) {
-	tabify(indent, dst)
-	dst.WriteString(line)
-	dst.WriteByte('\n')
-}
-
-func printops(dst *strings.Builder, indent int, op Op) {
-	if in := op.input(); in != nil {
-		printops(dst, indent, in)
-	}
-	tabline(dst, indent, op.String())
-}
-
-func (t *Tree) describe(dst *strings.Builder) {
-	for i := range t.Inputs {
-		tbl := expr.ToString(t.Inputs[i].Table)
-		fmt.Fprintf(dst, "WITH INPUT(%d) AS %s\n", i, tbl)
-	}
-	t.Root.describe(0, dst)
-}
-
 func (n *Node) describe(indent int, dst *strings.Builder) {
 	for i := range n.Children {
 		tabfprintf(dst, indent, "WITH REPLACEMENT(%d) AS (\n", i)
@@ -157,75 +162,8 @@ func (n *Node) describe(indent int, dst *strings.Builder) {
 }
 
 // String implements fmt.Stringer
-func (t *Tree) String() string {
+func (n *Node) String() string {
 	var out strings.Builder
-	t.describe(&out)
+	n.describe(0, &out)
 	return out.String()
-}
-
-func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
-	// TODO: we should prepare inputs for scanning
-	// before passing them to (*Node).exec
-	ep2 := execParams{
-		ExecParams: ep,
-		inputs:     t.Inputs,
-	}
-	return t.Root.exec(dst, &ep2)
-}
-
-func (n *Node) exec(dst vm.QuerySink, ep *execParams) error {
-	if len(n.Children) == 0 {
-		return n.Op.exec(dst, ep)
-	}
-	parallel := ep.Parallel
-	var wg sync.WaitGroup
-	wg.Add(len(n.Children))
-	rp := make([]replacement, len(n.Children))
-	errors := make([]error, len(n.Children))
-	subp := (parallel + len(n.Children) - 1) / len(n.Children)
-	if subp <= 0 {
-		subp = 1
-	}
-	for i := range n.Children {
-		go func(i int) {
-			defer wg.Done()
-			sub := &execParams{
-				ExecParams: &ExecParams{
-					Output:   nil,
-					Parallel: subp,
-					Rewrite:  ep.Rewrite,
-					Context:  ep.Context,
-				},
-				inputs: n.Inputs,
-			}
-			errors[i] = n.Children[i].exec(&rp[i], sub)
-			ep.Stats.atomicAdd(&sub.Stats)
-		}(i)
-	}
-	wg.Wait()
-	var outerr error
-	for i := range errors {
-		if errors[i] != nil {
-			if outerr == nil {
-				outerr = errors[i]
-			} else {
-				// wrap so that the first error
-				// is the one that we see in errors.Unwrap();
-				// not sure this is ideal, but there isn't
-				// really a way to make a tree out of them
-				outerr = fmt.Errorf("%w (and %s)", outerr, errors[i])
-			}
-		}
-	}
-	if outerr != nil {
-		return outerr
-	}
-	repl := &replacer{
-		inputs: rp,
-	}
-	n.Op.rewrite(repl)
-	if repl.err != nil {
-		return repl.err
-	}
-	return n.Op.exec(dst, ep)
 }

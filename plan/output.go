@@ -107,7 +107,7 @@ func (up *uploadSink) Close() error {
 	// if we don't need to
 	if is, ok := up.dst.(*indexSink); ok {
 		is.rawAppend(&desc)
-		return nil
+		return up.dst.Close()
 	}
 
 	// write the descriptor
@@ -156,16 +156,16 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (o *OutputPart) exec(dst vm.QuerySink, ep *execParams) error {
+func (o *OutputPart) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	if o.Basename == "" {
-		return fmt.Errorf("OutputPart: basename not set")
+		return -1, nil, fmt.Errorf("OutputPart: basename not set")
 	} else if o.Store == nil {
-		return fmt.Errorf("OutputPart: store not set")
+		return -1, nil, fmt.Errorf("OutputPart: store not set")
 	}
 	name := path.Join(o.Basename, "packed-"+uuid())
 	up, err := o.Store.Create(name)
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 	us := &uploadSink{
 		store: o.Store,
@@ -175,7 +175,7 @@ func (o *OutputPart) exec(dst vm.QuerySink, ep *execParams) error {
 	us.mw.Output = up
 	us.mw.Algo = "zstd" // FIXME: grab this from elsewhere
 	us.mw.InputAlign = 1 << 20
-	return o.From.exec(us, ep)
+	return o.From.wrap(us, ep)
 }
 
 func (o *OutputPart) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -316,15 +316,15 @@ func (is *indexSink) Close() error {
 	return w.Close()
 }
 
-func (o *OutputIndex) exec(dst vm.QuerySink, ep *execParams) error {
+func (o *OutputIndex) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	if o.Table == nil {
-		return fmt.Errorf("OutputIndex: table not set")
+		return -1, nil, fmt.Errorf("OutputIndex: table not set")
 	} else if o.Basename == "" {
-		return fmt.Errorf("OutputIndex: basename not set")
+		return -1, nil, fmt.Errorf("OutputIndex: basename not set")
 	} else if o.Store == nil {
-		return fmt.Errorf("OutputIndex: store not set")
+		return -1, nil, fmt.Errorf("OutputIndex: store not set")
 	} else if o.Key == nil {
-		return fmt.Errorf("OutputIndex: key not set")
+		return -1, nil, fmt.Errorf("OutputIndex: key not set")
 	}
 	tbl := &expr.Path{
 		First: o.Table.First,
@@ -342,11 +342,7 @@ func (o *OutputIndex) exec(dst vm.QuerySink, ep *execParams) error {
 		idx:    idx,
 		dst:    dst,
 	}
-	err := o.From.exec(is, ep)
-	if err != nil {
-		return err
-	}
-	return is.Close()
+	return o.From.wrap(is, ep)
 }
 
 func (o *OutputIndex) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {

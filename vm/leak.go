@@ -29,7 +29,7 @@ func leakCheck(x any) {
 	}
 	hook := LeakCheckHook
 	stk := make([]byte, 1024)
-	runtime.Stack(stk, false)
+	stk = stk[:runtime.Stack(stk, false)]
 	runtime.SetFinalizer(x, func(x any) {
 		hook(stk, x)
 	})

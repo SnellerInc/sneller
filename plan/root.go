@@ -48,7 +48,7 @@ type ExecParams struct {
 type execParams struct {
 	*ExecParams
 	// inputs are the table inputs to the query.
-	inputs []Input
+	inputs []Input // XXX: deprecated
 }
 
 // Exec executes a plan and writes the

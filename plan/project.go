@@ -36,8 +36,8 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (p *Project) exec(dst vm.QuerySink, ep *execParams) error {
-	return p.From.exec(vm.NewProjection(vm.Selection(p.Using), dst), ep)
+func (p *Project) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+	return p.From.wrap(vm.NewProjection(vm.Selection(p.Using), dst), ep)
 }
 
 func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab) error {

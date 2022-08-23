@@ -18,6 +18,8 @@ import (
 	"io"
 )
 
+var _ EndSegmentWriter = (*TeeWriter)(nil)
+
 // TeeWriter is an io.Writer that writes
 // to multiple streams simultaneously,
 // taking care to handle the errors from
@@ -66,6 +68,15 @@ func (t *TeeWriter) Close() error {
 	return nil
 }
 
+// EndSegment implements EndSegmentWriter.EndSegment.
+// This calls HintEndSegment on all the
+// remaining writers.
+func (t *TeeWriter) EndSegment() {
+	for i := range t.writers {
+		HintEndSegment(t.writers[i])
+	}
+}
+
 // Add adds a writer to the TeeWriter.
 // Calls to t.Write will be forwarded to w
 // for as long as it does not return an error.
@@ -81,41 +92,36 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 	if rs, ok := w.(*rowSplitter); ok {
 		if t.splitter < 0 {
 			t.splitter = len(t.writers)
+			// create a new teeSplitter that shares
+			// a symbol table with one top-level rowSplitter
+			ts := &teeSplitter{
+				dst:   []rowConsumer{rs.rowConsumer},
+				final: []func(int64, error){final},
+			}
 			// produce a new splitter so that a caller
 			// calling rs.Close() does not close the
 			// splitter we are actually using for (potentially)
 			// multiple outputs
-			sp := splitter(rs.rowConsumer)
+			sp := splitter(ts)
+			// have the rowSplitter update ts.pos
+			// on each call to Write:
+			sp.pos = &ts.pos
+			sp.rowConsumer = ts
 			t.writers = append(t.writers, sp)
-			t.final = append(t.final, final)
+			t.final = append(t.final, func(i int64, e error) {
+				ts.close(i, e)
+				sp.Close()
+			})
 			return
 		}
 		split := t.writers[t.splitter].(*rowSplitter)
-		ts, ok := split.rowConsumer.(*teeSplitter)
-		if ok {
-			// we are already tee-ing a splitter,
-			// so just push the entries down into the tee
-			if tee2, ok := rs.rowConsumer.(*teeSplitter); ok {
-				ts.dst = append(ts.dst, tee2.dst...)
-				ts.final = append(ts.final, tee2.final...)
-			} else {
-				ts.dst = append(ts.dst, rs.rowConsumer)
-				ts.final = append(ts.final, final)
-			}
+		ts := split.rowConsumer.(*teeSplitter)
+		if tee2, ok := rs.rowConsumer.(*teeSplitter); ok {
+			ts.dst = append(ts.dst, tee2.dst...)
+			ts.final = append(ts.final, tee2.final...)
 		} else {
-			// create a new teeSplitter that shares
-			// a symbol table with one top-level rowSplitter
-			ts := &teeSplitter{
-				dst:   []rowConsumer{split.rowConsumer, rs},
-				final: []func(int64, error){t.final[t.splitter], final},
-			}
-			// have the rowSplitter update ts.pos
-			// on each call to Write:
-			split.pos = &ts.pos
-			split.rowConsumer = ts
-			t.final[t.splitter] = func(i int64, e error) {
-				ts.close(i, e)
-			}
+			ts.dst = append(ts.dst, rs.rowConsumer)
+			ts.final = append(ts.final, final)
 		}
 		return
 	}

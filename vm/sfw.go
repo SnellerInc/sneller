@@ -114,7 +114,6 @@ func splitter(q rowConsumer) *rowSplitter {
 	if tee, ok := q.(*teeSplitter); ok {
 		s.pos = &tee.pos
 	}
-	leakCheck(s)
 	return s
 }
 
@@ -141,6 +140,7 @@ func (q *rowSplitter) writeVM(src []byte, delims []vmref) error {
 // write non-vmm bytes by copying immediately after scanning
 func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 	if q.vmcache == nil {
+		leakCheck(q)
 		q.vmcache = Malloc()
 	}
 

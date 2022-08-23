@@ -17,6 +17,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/SnellerInc/sneller/date"
@@ -45,10 +46,21 @@ type Op interface {
 	// expression nodes in the op
 	rewrite(rw expr.Rewriter)
 
-	// exec executes the op into dst
-	// using ep to determine parallelism,
-	// cancellation status, table rewrites, etc.
-	exec(dst vm.QuerySink, ep *execParams) error
+	// wrap returns a vm.QuerySink that will
+	// accept rows, perform any necessary
+	// operations, and write results into dst.
+	//
+	// wrap also returns the index of the input
+	// table that should be written into the
+	// returned sink.
+	//
+	// wrap may open and write rows into dst, and
+	// may return -1 as the first return value if
+	// the returned sink should not be opened and
+	// no rows should be written into it. If the
+	// returned sink is non-nil, it will still be
+	// closed, even if -1 was returned.
+	wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error)
 
 	// encode should write the op as an ion structure
 	// to 'dst'; the first field of the structure
@@ -286,12 +298,12 @@ func (s *SimpleAggregate) String() string {
 	return "AGGREGATE " + s.Outputs.String()
 }
 
-func (s *SimpleAggregate) exec(dst vm.QuerySink, ep *execParams) error {
+func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	a, err := vm.NewAggregate(s.Outputs, dst)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
-	return s.From.exec(a, ep)
+	return s.From.wrap(a, ep)
 }
 
 func settype(name string, dst *ion.Buffer, st *ion.Symtab) {
@@ -336,26 +348,8 @@ func (l *Leaf) setinput(o Op) {
 
 func (l *Leaf) rewrite(rw expr.Rewriter) {}
 
-func (l *Leaf) exec(dst vm.QuerySink, ep *execParams) error {
-	in := &ep.inputs[l.Input]
-	handle := filter(in.Handle, l.Filter)
-	if ep.Rewrite != nil {
-		_, handle = ep.Rewrite(in.Table, handle)
-	}
-	if handle == nil {
-		panic("nil table handle")
-	}
-	tbl, err := handle.Open(ep.Context)
-	if err != nil {
-		return err
-	}
-	err = tbl.WriteChunks(dst, ep.Parallel)
-	err2 := dst.Close()
-	if err == nil {
-		err = err2
-	}
-	ep.Stats.observe(tbl)
-	return err
+func (l *Leaf) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+	return l.Input, dst, nil
 }
 
 func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -398,10 +392,10 @@ func (n NoOutput) setinput(o Op) {
 	panic("NoOutput: cannot setinput()")
 }
 
-func (n NoOutput) exec(dst vm.QuerySink, ep *execParams) error {
+func (n NoOutput) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 	// just output an empty symbol table
 	// and no data following it
@@ -411,14 +405,14 @@ func (n NoOutput) exec(dst vm.QuerySink, ep *execParams) error {
 	_, err = w.Write(b.Bytes())
 	if err != nil {
 		w.Close()
-		return err
+		return -1, nil, err
 	}
 	err = w.Close()
 	err2 := dst.Close()
 	if err == nil {
 		err = err2
 	}
-	return err
+	return -1, nil, err
 }
 
 func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -441,10 +435,10 @@ func (n DummyOutput) setinput(o Op) {
 	panic("DummyOutput: cannot setinput()")
 }
 
-func (n DummyOutput) exec(dst vm.QuerySink, ep *execParams) error {
+func (n DummyOutput) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 	// just output an empty symbol table
 	// plus an empty structure
@@ -459,14 +453,14 @@ func (n DummyOutput) exec(dst vm.QuerySink, ep *execParams) error {
 	_, err = w.Write(b.Bytes())
 	if err != nil {
 		w.Close()
-		return err
+		return -1, nil, err
 	}
 	err = w.Close()
 	err2 := dst.Close()
 	if err == nil {
 		err = err2
 	}
-	return err
+	return -1, nil, err
 }
 
 func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -489,8 +483,8 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %d", l.Num)
 }
 
-func (l *Limit) exec(dst vm.QuerySink, ep *execParams) error {
-	return l.From.exec(vm.NewLimit(l.Num, dst), ep)
+func (l *Limit) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+	return l.From.wrap(vm.NewLimit(l.Num, dst), ep)
 }
 
 func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -531,22 +525,35 @@ func (c *CountStar) String() string {
 	return "COUNT(*) AS " + c.name()
 }
 
-func (c *CountStar) exec(dst vm.QuerySink, ep *execParams) error {
-	var qs vm.Count
-	err := c.From.exec(&qs, ep)
-	if err != nil {
+func (c *CountStar) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+	qs := countSink{dst: dst, as: c.name()}
+	return c.From.wrap(&qs, ep)
+}
+
+type countSink struct {
+	dst vm.QuerySink
+	c   vm.Count
+	as  string
+}
+
+func (c *countSink) Open() (io.WriteCloser, error) {
+	return c.c.Open()
+}
+
+func (c *countSink) Close() error {
+	if err := c.c.Close(); err != nil {
 		return err
 	}
 	var b ion.Buffer
 	var st ion.Symtab
 
-	field := st.Intern(c.name())
+	field := st.Intern(c.as)
 	st.Marshal(&b, true)
 	b.BeginStruct(-1)
 	b.BeginField(field)
-	b.WriteInt(qs.Value())
+	b.WriteInt(c.c.Value())
 	b.EndStruct()
-	w, err := dst.Open()
+	w, err := c.dst.Open()
 	if err != nil {
 		return err
 	}
@@ -554,7 +561,7 @@ func (c *CountStar) exec(dst vm.QuerySink, ep *execParams) error {
 	// the buffer is small so it's fine
 	_, err = w.Write(b.Bytes())
 	err2 := w.Close()
-	err3 := dst.Close()
+	err3 := c.dst.Close()
 	if err == nil {
 		err = err2
 	}
@@ -715,10 +722,10 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 	return nil
 }
 
-func (h *HashAggregate) exec(dst vm.QuerySink, ep *execParams) error {
+func (h *HashAggregate) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	ha, err := vm.NewHashAggregate(h.Agg, h.By, dst)
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 	if h.Limit > 0 {
 		ha.Limit(h.Limit)
@@ -732,7 +739,7 @@ func (h *HashAggregate) exec(dst vm.QuerySink, ep *execParams) error {
 		}
 	}
 
-	return h.From.exec(ha, ep)
+	return h.From.wrap(ha, ep)
 }
 
 // OrderByColumn represents a single column and its sorting settings in an ORDER BY clause.
@@ -788,10 +795,10 @@ func (o *OrderBy) String() string {
 	return s
 }
 
-func (o *OrderBy) exec(dst vm.QuerySink, ep *execParams) error {
+func (o *OrderBy) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	writer, err := dst.Open()
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 
 	orderBy := make([]vm.SortColumn, len(o.Columns))
@@ -825,11 +832,34 @@ func (o *OrderBy) exec(dst vm.QuerySink, ep *execParams) error {
 		}
 	}
 
-	sorter := vm.NewOrder(writer, orderBy, limit, ep.Parallel)
-	err = o.From.exec(sorter, ep)
-	err2 := writer.Close()
+	// NOTE: vm.Order does not accept an
+	// io.WriteCloser and thus cannot close the
+	// passed writer, so we have to do it
+	// ourselves. If that ever changes, we can
+	// remove orderSink and return a *vm.Order
+	// directly.
+	sorter := &orderSink{
+		Order: vm.NewOrder(writer, orderBy, limit, ep.Parallel),
+		w:     writer,
+		dst:   dst,
+	}
+	return o.From.wrap(sorter, ep)
+}
+
+type orderSink struct {
+	*vm.Order
+	w, dst io.Closer
+}
+
+func (s *orderSink) Close() error {
+	err := s.Order.Close()
+	err2 := s.w.Close()
+	err3 := s.dst.Close()
 	if err == nil {
 		err = err2
+	}
+	if err == nil {
+		err = err3
 	}
 	return err
 }
@@ -916,15 +946,15 @@ func (d *Distinct) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (d *Distinct) exec(dst vm.QuerySink, ep *execParams) error {
+func (d *Distinct) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
 	df, err := vm.NewDistinct(d.Fields, dst)
 	if err != nil {
-		return err
+		return -1, nil, err
 	}
 	if d.Limit > 0 {
 		df.Limit(d.Limit)
 	}
-	return d.From.exec(df, ep)
+	return d.From.wrap(df, ep)
 }
 
 func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab) error {
