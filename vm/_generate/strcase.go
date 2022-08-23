@@ -16,7 +16,7 @@
 Alternative to-{upper,lower} approach
 --------------------------------------------------
 
-Overally the design is strighforward
+# Overally the design is strighforward
 
 1. We consider only characters in range 0..1ffff --- it is 17 bits.
 2. We split the char code into two parts: lower 8 bits (col), and higher 9 bits (row).
@@ -32,17 +32,16 @@ table. Each entry of lookup[row] contains three values:
 
 Thus, the real lookup looks like this:
 
-    if row > maxRow {
-        return no-change
-    }
+	if row > maxRow {
+	    return no-change
+	}
 
-    entry := lookup[row]
-    if col >= entry.lo && col <= entry.hi {
-        return values[col - entry.lo + entry.offset]
-    }
+	entry := lookup[row]
+	if col >= entry.lo && col <= entry.hi {
+	    return values[col - entry.lo + entry.offset]
+	}
 
 For detailed implementation please see method `LookupDiff.translate below`.
-
 
 Comparison with the current approach
 --------------------------------------------------

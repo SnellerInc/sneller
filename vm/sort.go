@@ -274,7 +274,7 @@ func (s *Order) finalizeKtop() error {
 
 // ----------------------------------------------------------------------
 
-func symbolize(sort *Order, findbc *bytecode, st *symtab, global bool) error {
+func symbolize(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings, global bool) error {
 	if global {
 		sort.symtabLock.Lock()
 		defer sort.symtabLock.Unlock()
@@ -283,13 +283,13 @@ func symbolize(sort *Order, findbc *bytecode, st *symtab, global bool) error {
 			return err
 		}
 
-		return symbolizeLocal(sort, findbc, st)
+		return symbolizeLocal(sort, findbc, st, aux)
 	} else {
-		return symbolizeLocal(sort, findbc, st)
+		return symbolizeLocal(sort, findbc, st, aux)
 	}
 }
 
-func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab) error {
+func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings) error {
 	findbc.restoreScratch()
 	var program prog
 
@@ -361,15 +361,15 @@ func (s *sortstateMulticolumn) EndSegment() {
 	s.findbc.dropScratch() // restored in symbolize()
 }
 
-func (s *sortstateMulticolumn) symbolize(st *symtab) error {
-	return symbolize(s.parent, &s.findbc, st, true)
+func (s *sortstateMulticolumn) symbolize(st *symtab, aux *auxbindings) error {
+	return symbolize(s.parent, &s.findbc, st, aux, true)
 }
 
 func (s *sortstateMulticolumn) bcfind(delims []vmref) ([]vRegLayout, error) {
 	return bcfind(s.parent, &s.findbc, delims)
 }
 
-func (s *sortstateMulticolumn) writeRows(delims []vmref) error {
+func (s *sortstateMulticolumn) writeRows(delims []vmref, _ *rowParams) error {
 	// Note: we have to copy all input data, as:
 	// 1. the 'src' buffer is mutable,
 	// 2. the 'delims' array is mutable too.
@@ -474,15 +474,15 @@ func (s *sortstateSingleColumn) EndSegment() {
 	s.findbc.dropScratch() // restored in symbolize()
 }
 
-func (s *sortstateSingleColumn) symbolize(st *symtab) error {
-	return symbolize(s.parent, &s.findbc, st, true)
+func (s *sortstateSingleColumn) symbolize(st *symtab, aux *auxbindings) error {
+	return symbolize(s.parent, &s.findbc, st, aux, true)
 }
 
 func (s *sortstateSingleColumn) bcfind(delims []vmref) ([]vRegLayout, error) {
 	return bcfind(s.parent, &s.findbc, delims)
 }
 
-func (s *sortstateSingleColumn) writeRows(delims []vmref) error {
+func (s *sortstateSingleColumn) writeRows(delims []vmref, _ *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -610,7 +610,7 @@ func (s *sortstateKtop) EndSegment() {
 	s.filtbc.dropScratch() // restored in s.symbolize()
 }
 
-func (s *sortstateKtop) symbolize(st *symtab) error {
+func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 	if s.captures > 0 || len(s.symtabs) == 0 {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
 	}
@@ -625,7 +625,7 @@ func (s *sortstateKtop) symbolize(st *symtab) error {
 	// so that we can still use it after
 	// it has been updated
 	st.Symtab.CloneInto(&s.symtabs[len(s.symtabs)-1])
-	return symbolize(s.parent, &s.findbc, st, false)
+	return symbolize(s.parent, &s.findbc, st, aux, false)
 }
 
 func (s *sortstateKtop) bcfind(delims []vmref) ([]vRegLayout, error) {
@@ -731,7 +731,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 	return nil
 }
 
-func (s *sortstateKtop) writeRows(delims []vmref) error {
+func (s *sortstateKtop) writeRows(delims []vmref, _ *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}

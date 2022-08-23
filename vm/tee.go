@@ -194,7 +194,7 @@ func deleteOne[T any](src []T, i int) []T {
 	return src
 }
 
-func (t *teeSplitter) symbolize(st *symtab) error {
+func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 	any := false
 	for i := 0; i < len(t.dst); i++ {
 		// XXX: we are really relying here on the
@@ -202,7 +202,7 @@ func (t *teeSplitter) symbolize(st *symtab) error {
 		// modify the symbol table; they can add to it
 		// (which is fine; they are allowed to see each
 		// other's symbols) but they cannot remove anything
-		err := t.dst[i].symbolize(st)
+		err := t.dst[i].symbolize(st, aux)
 		if err != nil {
 			t.final[i](t.pos, err)
 			t.dst = deleteOne(t.dst, i)
@@ -218,13 +218,13 @@ func (t *teeSplitter) symbolize(st *symtab) error {
 	return nil
 }
 
-func (t *teeSplitter) writeRows(delims []vmref) error {
+func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 	any := false
 	for i := 0; i < len(t.dst); i++ {
 		// we have to clone the delimiter slice,
 		// since callees are allowed to use it
 		// as scratch space during execution
-		err := t.dst[i].writeRows(t.clone(delims))
+		err := t.dst[i].writeRows(t.clone(delims), params)
 		if err != nil {
 			t.final[i](t.pos, err)
 			t.dst = deleteOne(t.dst, i)

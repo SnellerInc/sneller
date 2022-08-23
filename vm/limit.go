@@ -32,6 +32,7 @@ type Limit struct {
 type limiter struct {
 	parent *Limit
 	dst    rowConsumer
+	params rowParams
 	done   bool
 }
 
@@ -68,13 +69,13 @@ func (l *limiter) Close() error {
 	return nil
 }
 
-func (l *limiter) symbolize(st *symtab) error {
-	return l.dst.symbolize(st)
+func (l *limiter) symbolize(st *symtab, aux *auxbindings) error {
+	return l.dst.symbolize(st, aux)
 }
 
 func (l *limiter) next() rowConsumer { return l.dst }
 
-func (l *limiter) writeRows(rows []vmref) error {
+func (l *limiter) writeRows(rows []vmref, _ *rowParams) error {
 	if l.done {
 		return io.EOF
 	}
@@ -97,7 +98,7 @@ func (l *limiter) writeRows(rows []vmref) error {
 			return err
 		}
 	}
-	err := l.dst.writeRows(rows[:c])
+	err := l.dst.writeRows(rows[:c], &l.params)
 	if avail == 0 && err == nil {
 		l.done = true
 		err = l.dst.Close()

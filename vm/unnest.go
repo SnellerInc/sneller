@@ -76,6 +76,8 @@ type unnesting struct {
 	perms   []int32
 	dstrc   rowConsumer
 	out     io.WriteCloser
+
+	params rowParams
 }
 
 type uByID unnesting
@@ -101,7 +103,7 @@ func (u *unnesting) EndSegment() {
 	u.innerbc.dropScratch()
 }
 
-func (u *unnesting) symbolize(st *symtab) error {
+func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 	u.outerbc.restoreScratch()
 	u.innerbc.restoreScratch()
 	if len(u.outsel) != len(u.parent.outer)+len(u.parent.inner) {
@@ -222,7 +224,7 @@ func (u *unnesting) symbolize(st *symtab) error {
 	u.innerbc.ensureVStackSize(len(u.outsel)*int(vRegSize) + 8)
 	u.innerbc.allocStacks()
 	if u.dstrc != nil {
-		err := u.dstrc.symbolize(st)
+		err := u.dstrc.symbolize(st, aux)
 		if err != nil {
 			return err
 		}
@@ -243,7 +245,7 @@ func evalunnest(bc *bytecode, delims []vmref, perm []int32, dst []byte, symbols 
 //go:noescape
 func compress(delims []vmref) int
 
-func (u *unnesting) writeRows(delims []vmref) error {
+func (u *unnesting) writeRows(delims []vmref, _ *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -294,7 +296,7 @@ func (u *unnesting) writeRows(delims []vmref) error {
 				if u.parent.filter != nil {
 					subrows = subrows[:compress(subrows)]
 				}
-				err := u.dstrc.writeRows(subrows)
+				err := u.dstrc.writeRows(subrows, &u.params)
 				if err != nil {
 					return err
 				}

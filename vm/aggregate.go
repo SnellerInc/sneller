@@ -483,11 +483,11 @@ func (q *Aggregate) Close() error {
 	return err
 }
 
-func (p *aggregateLocal) symbolize(st *symtab) error {
+func (p *aggregateLocal) symbolize(st *symtab, aux *auxbindings) error {
 	return recompile(st, p.parent.prog, &p.prog, &p.bc)
 }
 
-func (p *aggregateLocal) writeRows(delims []vmref) error {
+func (p *aggregateLocal) writeRows(delims []vmref, _ *rowParams) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
 	}

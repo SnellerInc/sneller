@@ -34,6 +34,24 @@ type QuerySink interface {
 	io.Closer
 }
 
+type auxbindings struct {
+	bound []string
+}
+
+// dummy auxbindings for most rowConsumers
+var nobindings auxbindings
+
+// rowParams is auxilliary data passed
+// to rowConsumer.writeRows that indicates
+// things like extra variable bindings, etc.
+type rowParams struct {
+	// auxbound contains a list of auxilliary bindings
+	// corresponding to the aux binding list provided
+	// in symbolize(); the length of each vmref slice
+	// will be the same as the number of rows passed to writeRows()
+	auxbound [][]vmref
+}
+
 // RowConsumer represents part of a QuerySink
 // that consumes vectors of rows.
 // (It is often the case that the io.WriteCloser
@@ -44,7 +62,10 @@ type QuerySink interface {
 type rowConsumer interface {
 	// symbolize is called every time
 	// the current symbol table changes
-	symbolize(st *symtab) error
+	//
+	// aux provides a list of bindings that supersedes
+	// the bindings provided by writeRows
+	symbolize(st *symtab, aux *auxbindings) error
 	// writeRows writes a slice of vmrefs
 	// (pointing to the inside of each row)
 	// into the next sub-query
@@ -53,7 +74,7 @@ type rowConsumer interface {
 	// re-use the delims slice, but it *may not*
 	// write to the memory pointed to by delims;
 	// it must allocate new memory for new output
-	writeRows(delims []vmref) error
+	writeRows(delims []vmref, params *rowParams) error
 
 	// next returns the next io.WriteCloser
 	// in the chain of query operators;
@@ -97,6 +118,7 @@ type rowSplitter struct {
 	delims      []vmref    // buffer of delimiters; allocated lazily
 	delimhint   int
 	symbolized  bool // seen any symbol tables
+	params      rowParams
 
 	vmcache []byte
 
@@ -127,7 +149,7 @@ func (q *rowSplitter) writeVM(src []byte, delims []vmref) error {
 			panic("scanned past end of src")
 		}
 		if n > 0 {
-			err := q.writeRows(delims[:n])
+			err := q.writeRows(delims[:n], &q.params)
 			if err != nil {
 				return err
 			}
@@ -189,7 +211,7 @@ func (q *rowSplitter) writeVMCopy(src []byte, delims []vmref) error {
 			mem = mem[:off+int(bytes)] // only keep good data
 			src = src[bytes:]          // chomp off input
 		}
-		err := q.writeRows(delims[:nd])
+		err := q.writeRows(delims[:nd], &q.params)
 		if err != nil {
 			return err
 		}
@@ -283,7 +305,7 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 		q.st.CloneInto(&q.shared.Symtab)
 		q.shared.build()
 
-		err = q.symbolize(&q.shared)
+		err = q.symbolize(&q.shared, &nobindings)
 		if err != nil {
 			return 0, err
 		}
@@ -418,7 +440,7 @@ func (m *Rematerializer) flush() error {
 }
 
 // symbolize implements RowConsumer.symbolize
-func (m *Rematerializer) symbolize(st *symtab) error {
+func (m *Rematerializer) symbolize(st *symtab, aux *auxbindings) error {
 	err := m.flush()
 	if err != nil {
 		return err
@@ -430,7 +452,7 @@ func (m *Rematerializer) symbolize(st *symtab) error {
 }
 
 // writeRows implements RowConsumer.writeRows
-func (m *Rematerializer) writeRows(delims []vmref) error {
+func (m *Rematerializer) writeRows(delims []vmref, _ *rowParams) error {
 	if m.stsize == 0 {
 		return fmt.Errorf("Rematerializer.WriteRows() before symbolize()")
 	}

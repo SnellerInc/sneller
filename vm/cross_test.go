@@ -56,7 +56,9 @@ func TestCrossCount(t *testing.T) {
 }
 
 // Test NYC queries cross-joined so that we have
-//   { left: { ... }, right: { n: ... }}
+//
+//	{ left: { ... }, right: { n: ... }}
+//
 // for n=1 through n=5, so we can easily calculate
 // what the new number of expected return values
 // of each query should be

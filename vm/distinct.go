@@ -115,6 +115,7 @@ type deduper struct {
 	local  *radixTree64
 	dst    rowConsumer
 	bc     bytecode
+	params rowParams
 
 	// temporary buffer for
 	// storing computed hashes
@@ -130,7 +131,7 @@ type deduper struct {
 	closed bool
 }
 
-func (d *deduper) symbolize(st *symtab) error {
+func (d *deduper) symbolize(st *symtab, aux *auxbindings) error {
 	err := recompile(st, &d.parent.prog, &d.prog, &d.bc)
 	if err != nil {
 		return err
@@ -147,7 +148,8 @@ func (d *deduper) symbolize(st *symtab) error {
 	if !ok {
 		d.hashslot = -1
 	}
-	return d.dst.symbolize(st)
+	// pass on aux bindings:
+	return d.dst.symbolize(st, aux)
 }
 
 //go:noescape
@@ -159,7 +161,7 @@ func (d *deduper) EndSegment() {
 	d.bc.dropScratch() // restored in recompile()
 }
 
-func (d *deduper) writeRows(delims []vmref) error {
+func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
 	if d.closed {
 		return io.EOF
 	}
@@ -174,7 +176,7 @@ func (d *deduper) writeRows(delims []vmref) error {
 	if d.local == nil {
 		d.local = newRadixTree(0)
 		if len(delims) > 16 {
-			d.writeRows(delims[:16])
+			d.writeRows(delims[:16], &d.params)
 			delims = delims[16:]
 		}
 	}
@@ -245,8 +247,7 @@ func (d *deduper) writeRows(delims []vmref) error {
 	if len(delims) == 0 {
 		return nil
 	}
-	// delims are absolute now, so write relative to vmm
-	return d.dst.writeRows(delims)
+	return d.dst.writeRows(delims, &d.params)
 }
 
 func (d *deduper) Close() error {

@@ -182,7 +182,7 @@ func (c *cross) rewrite(st *symtab) error {
 	return nil
 }
 
-func (c *cross) symbolize(st *symtab) error {
+func (c *cross) symbolize(st *symtab, aux *auxbindings) error {
 	err := c.rewrite(st)
 	if err != nil {
 		return err
@@ -239,7 +239,7 @@ func (c *cross) join(lhs, rhs []byte) error {
 	return nil
 }
 
-func (c *cross) writeRows(delims []vmref) error {
+func (c *cross) writeRows(delims []vmref, _ *rowParams) error {
 	rhsmem := c.rhsbuf.Bytes()
 	for i := range delims {
 		lhsmem := delims[i].mem()

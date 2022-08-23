@@ -511,7 +511,7 @@ func (a *aggtable) EndSegment() {
 	a.bc.dropScratch() // restored in recompile()
 }
 
-func (a *aggtable) symbolize(st *symtab) error {
+func (a *aggtable) symbolize(st *symtab, aux *auxbindings) error {
 	err := recompile(st, &a.parent.prog, &a.prog, &a.bc)
 	if err != nil {
 		return err
@@ -534,7 +534,7 @@ func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
 
 func (a *aggtable) next() rowConsumer { return nil }
 
-func (a *aggtable) writeRows(delims []vmref) error {
+func (a *aggtable) writeRows(delims []vmref, _ *rowParams) error {
 	// Number of projected fields that we GROUP BY. This
 	// specifies how many concatenated values will be stored
 	// in a.repr[] for each aggregated item.

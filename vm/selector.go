@@ -105,6 +105,7 @@ type projector struct {
 	dst    io.WriteCloser
 	outsel []syminfo // output symbol IDs (sorted)
 	inslot []int     // parent.sel[p.inslot[i]] = outsel[i]
+	params rowParams
 
 	// sometimes we're projecting into a sub-query
 	// that wants to perform additional row operations;
@@ -148,7 +149,7 @@ func (p *Projection) Close() error {
 	return p.dst.Close()
 }
 
-func (p *projector) update(st *symtab) error {
+func (p *projector) update(st *symtab, aux *auxbindings) error {
 	if p.aw.buf == nil {
 		p.aw.init(p.dst, nil, defaultAlign)
 	}
@@ -157,12 +158,12 @@ func (p *projector) update(st *symtab) error {
 		return err
 	}
 	if p.dstrc != nil {
-		return p.dstrc.symbolize(st)
+		return p.dstrc.symbolize(st, aux)
 	}
 	return nil
 }
 
-func (p *projector) symbolize(st *symtab) error {
+func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	p.bc.restoreScratch() // see EndSegment
 	sel := p.parent.sel
 	// output symbol table is the union of the
@@ -187,7 +188,7 @@ func (p *projector) symbolize(st *symtab) error {
 	// in a meaningful way, we don't need to recompile
 	// the bytecode
 	if allsame && !p.prog.IsStale(st) {
-		return p.update(st)
+		return p.update(st, aux)
 	}
 
 	// re-order the output symbols + slots
@@ -219,7 +220,7 @@ func (p *projector) symbolize(st *symtab) error {
 	if err != nil {
 		return fmt.Errorf("projector.symbolize(): %w", err)
 	}
-	return p.update(st)
+	return p.update(st, aux)
 }
 
 func (p *projector) Close() error {
@@ -255,7 +256,7 @@ func (p *projector) EndSegment() {
 	p.bc.dropScratch()
 }
 
-func (p *projector) writeRows(delims []vmref) error {
+func (p *projector) writeRows(delims []vmref, _ *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -293,7 +294,7 @@ func (p *projector) writeRows(delims []vmref) error {
 			panic("memory corruption")
 		}
 		if p.dstrc != nil && rewrote > 0 {
-			err := p.dstrc.writeRows(delims[:rewrote])
+			err := p.dstrc.writeRows(delims[:rewrote], &p.params)
 			if err != nil {
 				return fmt.Errorf("Projection.dst.WriteRows: %w", err)
 			}
