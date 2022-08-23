@@ -150,7 +150,7 @@ func TestCheck(t *testing.T) {
 			t.Errorf("testcase %d (%s): no error", i, ToString(testcases[i].expr))
 			continue
 		}
-		into := testcases[i].kind
+		into := (any)(testcases[i].kind)
 		if !errors.As(err, &into) {
 			t.Errorf("testcase %d (%s): error %T not a type error", i, testcases[i].expr, err)
 			continue
