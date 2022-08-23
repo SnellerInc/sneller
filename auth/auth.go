@@ -89,8 +89,11 @@ func FromEnvironment() (Provider, error) {
 		return nil, err
 	}
 	indexKey, err := base64.StdEncoding.DecodeString(indexKeyText)
-	if err != nil || len(indexKey) != blockfmt.KeyLength {
-		return nil, errors.New("invalid 'SNELLER_INDEX_KEY'")
+	if err != nil {
+		return nil, fmt.Errorf("invalid 'SNELLER_INDEX_KEY': %s", err)
+	}
+	if len(indexKey) != blockfmt.KeyLength {
+		return nil, fmt.Errorf("length of 'SNELLER_INDEX_KEY' is %d, has to be %d", len(indexKey), blockfmt.KeyLength)
 	}
 
 	creds := S3Static{
