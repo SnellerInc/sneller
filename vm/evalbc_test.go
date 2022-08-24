@@ -15,17 +15,18 @@
 package vm
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
@@ -313,8 +314,8 @@ func TestStringCompareBF(t *testing.T) {
 	}
 }
 
-// FuzzStringCompareUTF8 fuzz tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
-func FuzzStringCompareUTF8(f *testing.F) {
+// FuzzStringCompareFT fuzz tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
+func FuzzStringCompareFT(f *testing.F) {
 	var padding []byte // no padding
 
 	f.Add("a", "a")
@@ -2062,69 +2063,88 @@ func FuzzSubstrFT(f *testing.F) {
 	})
 }
 
-// TestIsSubnetOfBF runs brute-force tests for: opIsSubnetOfIP4
-func TestIsSubnetOfBF(t *testing.T) {
-
-	//randomIP4Addr will generate all sorts of questionable addresses; things like 0.0.0.0 and 255.255.255.255, as well as private IP address ranges and multicast addresses.
-	randomIP4Addr := func() net.IP {
-		bs := make([]byte, 4)
-		binary.BigEndian.PutUint32(bs, rand.Uint32())
-		return net.IPv4(bs[0], bs[1], bs[2], bs[3]).To4()
-	}
-
-	randomIP4Range := func() (min, max net.IP) {
-		maxInt := rand.Uint32()
-		minInt := uint32(rand.Intn(int(maxInt)))
-
-		minBs := make([]byte, 4)
-		maxBs := make([]byte, 4)
-
-		binary.BigEndian.PutUint32(minBs, minInt)
-		binary.BigEndian.PutUint32(maxBs, maxInt)
-
-		return net.IPv4(minBs[0], minBs[1], minBs[2], minBs[3]).To4(), net.IPv4(maxBs[0], maxBs[1], maxBs[2], maxBs[3]).To4()
-	}
-
-	run := func(ip, ipMin, ipMax net.IP) {
-		ipStr := ip.String()
-		data := fill16(ipStr)
-		expected := referenceIsSubnetOf([]byte(ipStr), ipMin, ipMax)
-
-		var ctx bctestContext
-		ctx.Taint()
-		ctx.dict = append(ctx.dict[:0], string(toBCD2(ipMin, ipMax)))
-		ctx.setScalarStrings(data, []byte{})
-		ctx.current = 0xFFFF
-
-		// when
-		err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0)
-		if err != nil {
-			t.Fatal(err)
+// referenceIsSubnetOfIP4 reference implementation for opIsSubnetOfIP4
+func referenceIsSubnetOfIP4(msg string, min, max uint32) bool {
+	// str2ByteArray parses an IP; will also parse leasing zeros: eg. "000.001.010.100" is returned as [0,1,10,100]
+	str2ByteArray := func(str string) (result []byte, ok bool) {
+		result = make([]byte, 4)
+		components := strings.Split(str, ".")
+		if len(components) != 4 {
+			return result, false
 		}
-
-		observed := ctx.current
-		if (expected && (observed != 0xFFFF)) || (!expected && (observed != 0)) {
-			t.Errorf("IsSubnetOf: issue with ip %q; min=%q max=%q; expected %v; observed %x",
-				ip, ipMin, ipMax, expected, observed)
+		for i, segStr := range components {
+			if len(segStr) > 3 {
+				return result, false
+			}
+			for _, digit := range segStr {
+				if !unicode.IsDigit(digit) {
+					return result, false
+				}
+			}
+			seg, err := strconv.Atoi(segStr)
+			if err != nil {
+				return result, false
+			}
+			if seg < 0 || seg > 255 {
+				return result, false
+			}
+			result[i] = byte(seg)
 		}
-		ctx.Free()
+		return result, true
 	}
 
-	for i := 0; i < 100000; i++ {
-		ipMin, ipMax := randomIP4Range()
-		ip := randomIP4Addr()
-		run(ip, ipMin, ipMax)
+	inRangeByteWise := func(value []byte, min, max [4]byte) bool {
+		for i := 0; i < 4; i++ {
+			if (min[i] > value[i]) || (value[i] > max[i]) {
+				return false
+			}
+		}
+		return true
 	}
+
+	if byteSlice, ok := str2ByteArray(msg); ok {
+		r2 := inRangeByteWise(byteSlice, toArray(min), toArray(max))
+		return r2
+	}
+	return false
 }
 
-// TestIsSubnetOfUT runs unit-tests for: opIsSubnetOfIP4
-func TestIsSubnetOfUT(t *testing.T) {
+// TestIsSubnetOfIP4UT runs unit-tests for: opIsSubnetOfIP4
+func TestIsSubnetOfIP4UT(t *testing.T) {
+	name := "is-subnet-of IP4 (opIsSubnetOfIP4)"
+
 	type unitTest struct {
 		ip, min, max string
-		result       bool
+		expLane      bool
 	}
 	unitTests := []unitTest{
-		{"10.1.0.0", "10.1.0.0", "20.0.0.0", true},
+		{"100.20.", "100.20.100.20", "100.20.100.20", false}, // read beyond buffer check
+		{"0.0.0.A", "0.0.0.1", "0.0.0.23", false},
+
+		{"10.1.0.0", "10.1.0.0", "20.0.0.0", false},
+
+		{"111.111.111.11", "100.100.100.100", "200.200.200.200", false},
+		{"0.0.0.\x002", "0.0.0.1", "0.0.0.3", false},
+		{"\x000.0.0.0", "0.0.0.0", "0.0.0.68", false},
+		{"110.1.01.0000", "24.216.71.104", "138.13.200.124", false},
+		{"1.00.0.0", "1.0.0.0", "2.0.0.0", true},
+
+		{"052.723.308.0119", "6.255.253.81", "90.161.40.157", false},
+		{"2.2.300.0", "1.1.3.0", "3.3.3.0", false},
+		{"1.256.0.0", "0.0.0.0", "2.0.0.0", false}, // segment 256 is too large
+		{"10...00", "0.0.0.0", "10.0.0.0", false},
+		{"0.0.0.0", "1.0.0.0", "3.0.0.0", false}, // min_0 > ip_0 < max_0
+
+		{"A.010.0", "0.0.0.0", "2.0.0.0", false},
+		{"10.1.0.0", "10.1.0.0", "20.0.0.0", false},
+
+		{"8.8.8.2", "8.8.8.1", "8.8.8.3", true},
+		{"1.2", "1.1.0.0", "2.0.0.0", false},
+		{string([]byte("100.100.0.0")[0:8]), "0.0.0.0", "100.100.0.0", false},  // test whether length of msg is respected
+		{"1.00000", "0.0.0.0", "1.0.0.0", false},                               // check if there is a dot
+		{string([]byte("100.100.0.0")[0:10]), "0.0.0.0", "100.100.0.0", false}, // test whether length of msg is respected
+		{string([]byte("100.100.1.0")[0:8]), "0.0.0.0", "100.100.0.0", false},  // test whether length of msg is respected
+
 		{"10.2.0.0", "9.0.0.0", "10.1.0.0", false},
 		{"2.0.0.0", "1.0.0.0", "3.0.0.0", true},  // min_0 < ip_0 < max_0
 		{"2.0.0.0", "2.0.0.0", "3.0.0.0", true},  // min_0 = ip_0 < max_0
@@ -2133,7 +2153,7 @@ func TestIsSubnetOfUT(t *testing.T) {
 		{"0.0.0.0", "1.0.0.0", "3.0.0.0", false}, // min_0 > ip_0 < max_0
 		{"2.0.0.0", "1.0.0.0", "1.0.0.0", false}, // min_0 < ip_0 > max_0
 
-		{"1.2.0.0", "1.1.0.0", "2.0.0.0", true},
+		{"1.2.0.0", "1.1.0.0", "2.0.0.0", false},
 		{"8.2.0.0", "8.1.0.0", "8.3.0.0", true},  // min_1 < ip_1 < max_1
 		{"8.2.0.0", "8.2.0.0", "8.3.0.0", true},  // min_1 = ip_1 < max_1
 		{"8.2.0.0", "8.1.0.0", "8.2.0.0", true},  // min_1 < ip_1 = max_1
@@ -2141,7 +2161,7 @@ func TestIsSubnetOfUT(t *testing.T) {
 		{"8.0.0.0", "8.1.0.0", "8.3.0.0", false}, // min_1 > ip_1 < max_1
 		{"8.2.0.0", "8.1.0.0", "8.1.0.0", false}, // min_1 < ip_1 > max_1
 
-		{"1.2.1.0", "1.2.0.0", "1.3.0.0", true},
+		{"1.2.1.0", "1.2.0.0", "1.3.0.0", false},
 		{"8.8.2.0", "8.8.1.0", "8.8.3.0", true},  // min_2 < ip_2 < max_2
 		{"8.8.2.0", "8.8.2.0", "8.8.3.0", true},  // min_2 = ip_2 < max_2
 		{"8.8.2.0", "8.8.1.0", "8.8.2.0", true},  // min_2 < ip_2 = max_2
@@ -2149,7 +2169,7 @@ func TestIsSubnetOfUT(t *testing.T) {
 		{"8.8.0.0", "8.8.1.0", "8.8.3.0", false}, // min_2 > ip_2 < max_2
 		{"8.8.2.0", "8.8.1.0", "8.8.1.0", false}, // min_2 < ip_2 > max_2
 
-		{"1.2.3.1", "1.2.3.0", "1.2.4.0", true},
+		{"1.2.3.1", "1.2.3.0", "1.2.4.0", false},
 		{"8.8.8.2", "8.8.8.1", "8.8.8.3", true},  // min_3 < ip_3 < max_3
 		{"8.8.8.2", "8.8.8.2", "8.8.8.3", true},  // min_3 = ip_3 < max_3
 		{"8.8.8.2", "8.8.8.1", "8.8.8.2", true},  // min_3 < ip_3 = max_3
@@ -2159,42 +2179,246 @@ func TestIsSubnetOfUT(t *testing.T) {
 	}
 
 	run := func(ut unitTest) {
-		ipMin := net.ParseIP(ut.min)
-		ipMax := net.ParseIP(ut.max)
-
-		refObservation := referenceIsSubnetOf([]byte(ut.ip), ipMin, ipMax)
-		if refObservation != ut.result {
-			t.Fatalf("IsSubnetOf reference: msg=%q; min=%q; max=%q; observed=%v; expected=%v\n", ut.ip, ut.min, ut.max, refObservation, ut.result)
+		min := binary.BigEndian.Uint32(net.ParseIP(ut.min).To4())
+		max := binary.BigEndian.Uint32(net.ParseIP(ut.max).To4())
+		// first: check reference implementation
+		{
+			obsLane := referenceIsSubnetOfIP4(ut.ip, min, max)
+			if obsLane != ut.expLane {
+				t.Errorf("refImpl: msg=%q; min=%q; max=%q; observed=%v; expected=%v",
+					ut.ip, ut.min, ut.max, obsLane, ut.expLane)
+			}
 		}
-
-		data := fill16(ut.ip)
+		// second: check the bytecode implementation
+		minA := toArray(min)
+		maxA := toArray(max)
 
 		var ctx bctestContext
+		defer ctx.Free()
 		ctx.Taint()
-		ctx.dict = append(ctx.dict[:0], string(toBCD2(ipMin, ipMax)))
-		ctx.setScalarStrings(data, []byte{})
+		ctx.dict = append(ctx.dict[:0], toBCD(&minA, &maxA))
+		ctx.setScalarStrings(fill16(ut.ip), []byte{})
 		ctx.current = 0xFFFF
 
 		// when
-		err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0)
-		if err != nil {
+		if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
 			t.Fatal(err)
 		}
-
-		expected := ut.result
-		observed := ctx.current
-		if (expected && (observed != 0xFFFF)) || (!expected && (observed != 0)) {
-			t.Errorf("IsSubnetOf: issue with ip %q; min=%q max=%q; expected %v; observed %x",
-				ut.ip, ut.min, ut.max, expected, observed)
+		// then
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			if obsLane != ut.expLane {
+				t.Errorf("%v\nlane %v: ip %q; min %q; max %q; observed %v; expected %v",
+					name, i, ut.ip, ut.min, ut.max, obsLane, ut.expLane)
+				return
+			}
 		}
-		ctx.Free()
 	}
 
-	for i, ut := range unitTests {
-		t.Run(fmt.Sprintf("case %d:", i), func(t *testing.T) {
+	t.Run(name, func(t *testing.T) {
+		for _, ut := range unitTests {
 			run(ut)
+		}
+	})
+}
+
+func toStr(v uint32) string {
+	return fmt.Sprintf("%v.%v.%v.%v", (v>>(3*8))&0xFF, (v>>(2*8))&0xFF, (v>>(1*8))&0xFF, (v>>(0*8))&0xFF)
+}
+
+func toArray(v uint32) [4]byte {
+	return [4]byte{byte(v >> (3 * 8)), byte(v >> (2 * 8)), byte(v >> (1 * 8)), byte(v >> (0 * 8))}
+}
+
+// TestIsSubnetOfIP4BF runs brute-force tests for: opIsSubnetOfIP4
+func TestIsSubnetOfIP4BF(t *testing.T) {
+	type testSuite struct {
+		name string
+		// alphabet from which to generate data
+		dataAlphabet []rune
+		// max length of the words made of alphabet
+		dataMaxlen int
+		// maximum number of elements in dataSpace
+		dataMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, min, max) -> lane
+		refImpl func(string, uint32, uint32) bool
+	}
+	testSuites := []testSuite{
+		{
+			name:         "is-subnet-of IP4 IP (opIsSubnetOfIP4)",
+			dataAlphabet: []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'A', 0},
+			dataMaxlen:   16,
+			dataMaxSize:  100000,
+			op:           opIsSubnetOfIP4,
+			refImpl:      referenceIsSubnetOfIP4,
+		},
+		{
+			name:         "is-subnet-of IP4 IP (opIsSubnetOfIP4) 2",
+			dataAlphabet: []rune{'0', '1', '.'},
+			dataMaxlen:   12,
+			dataMaxSize:  exhaustive,
+			op:           opIsSubnetOfIP4,
+			refImpl:      referenceIsSubnetOfIP4,
+		},
+	}
+
+	// randomIP4Addr will generate all sorts of questionable addresses; things like 0.0.0.0 and 255.255.255.255,
+	// as well as private IP address ranges and multicast addresses.
+	randomIP4Addr := func() net.IP {
+		bs := make([]byte, 4)
+		binary.BigEndian.PutUint32(bs, rand.Uint32())
+		return net.IPv4(bs[0], bs[1], bs[2], bs[3]).To4()
+	}
+
+	randomMinMaxValues := func() (min, max uint32) {
+		max = rand.Uint32()
+		min = uint32(rand.Intn(int(max)))
+		return
+	}
+
+	run := func(ts testSuite, dataSpace []string) {
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		for _, ipStr := range dataSpace {
+			min, max := randomMinMaxValues()
+			expLane := referenceIsSubnetOfIP4(ipStr, min, max) // calculate the expected lane value
+
+			minA := toArray(min)
+			maxA := toArray(max)
+
+			ctx.dict = append(ctx.dict[:0], toBCD(&minA, &maxA))
+			ctx.setScalarStrings(fill16(ipStr), []byte{})
+			ctx.current = 0xFFFF
+
+			// when
+			if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
+				t.Fatal(err)
+			}
+			// then
+			for i := 0; i < 16; i++ {
+				obsLane := (ctx.current>>i)&1 == 1
+				if obsLane != expLane {
+					t.Errorf("%v\nlane %v: ip %q; min %q; max %q; observed %v; expected %v",
+						ts.name, i, ipStr, toStr(min), toStr(max), obsLane, expLane)
+					return
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			var dataSpace []string
+			if ts.dataMaxSize == exhaustive {
+				dataSpace = make([]string, 0)
+				for _, data := range createSpace(ts.dataMaxlen, ts.dataAlphabet, ts.dataMaxSize) {
+					if net.ParseIP(data).To4() != nil {
+						dataSpace = append(dataSpace, data)
+					}
+				}
+			} else {
+				dataSpace = make([]string, ts.dataMaxSize)
+				for i := 0; i < ts.dataMaxSize; i++ {
+					dataSpace[i] = randomIP4Addr().String()
+				}
+			}
+			run(ts, dataSpace)
 		})
 	}
+}
+
+// FuzzIsSubnetOfIP4FT runs fuzz tests for: opIsSubnetOfIP4
+func FuzzIsSubnetOfIP4FT(f *testing.F) {
+	name := "is-subnet-of IP4 (opIsSubnetOfIP4)"
+
+	str2Uint32 := func(str string) uint32 {
+		result := uint32(0)
+		for i, segStr := range strings.Split(str, ".") {
+			seg, _ := strconv.Atoi(segStr)
+			if seg < 0 || seg > 255 {
+				panic("invalid ip4")
+			}
+			result |= uint32(seg) << (i * 8)
+		}
+		return result
+	}
+
+	type unitTest struct {
+		ip       string
+		min, max uint32
+	}
+	unitTests := []unitTest{
+		{"10.1.0.0", str2Uint32("10.1.0.0"), str2Uint32("20.0.0.0")},
+		{"10.2.0.0", str2Uint32("9.0.0.0"), str2Uint32("10.1.0.0")},
+		{"2.0.0.0", str2Uint32("1.0.0.0"), str2Uint32("3.0.0.0")}, // min_0 < ip_0 < max_0
+		{"2.0.0.0", str2Uint32("2.0.0.0"), str2Uint32("3.0.0.0")}, // min_0 = ip_0 < max_0
+		{"2.0.0.0", str2Uint32("1.0.0.0"), str2Uint32("2.0.0.0")}, // min_0 < ip_0 = max_0
+		{"2.0.0.0", str2Uint32("2.0.0.0"), str2Uint32("2.0.0.0")}, // min_0 = ip_0 = max_0
+		{"0.0.0.0", str2Uint32("1.0.0.0"), str2Uint32("3.0.0.0")}, // min_0 > ip_0 < max_0
+		{"2.0.0.0", str2Uint32("1.0.0.0"), str2Uint32("1.0.0.0")}, // min_0 < ip_0 > max_0
+
+		{"1.2.0.0", str2Uint32("1.1.0.0"), str2Uint32("2.0.0.0")},
+		{"8.2.0.0", str2Uint32("8.1.0.0"), str2Uint32("8.3.0.0")}, // min_1 < ip_1 < max_1
+		{"8.2.0.0", str2Uint32("8.2.0.0"), str2Uint32("8.3.0.0")}, // min_1 = ip_1 < max_1
+		{"8.2.0.0", str2Uint32("8.1.0.0"), str2Uint32("8.2.0.0")}, // min_1 < ip_1 = max_1
+		{"8.2.0.0", str2Uint32("8.2.0.0"), str2Uint32("8.2.0.0")}, // min_1 = ip_1 = max_1
+		{"8.0.0.0", str2Uint32("8.1.0.0"), str2Uint32("8.3.0.0")}, // min_1 > ip_1 < max_1
+		{"8.2.0.0", str2Uint32("8.1.0.0"), str2Uint32("8.1.0.0")}, // min_1 < ip_1 > max_1
+
+		{"1.2.1.0", str2Uint32("1.2.0.0"), str2Uint32("1.3.0.0")},
+		{"8.8.2.0", str2Uint32("8.8.1.0"), str2Uint32("8.8.3.0")}, // min_2 < ip_2 < max_2
+		{"8.8.2.0", str2Uint32("8.8.2.0"), str2Uint32("8.8.3.0")}, // min_2 = ip_2 < max_2
+		{"8.8.2.0", str2Uint32("8.8.1.0"), str2Uint32("8.8.2.0")}, // min_2 < ip_2 = max_2
+		{"8.8.2.0", str2Uint32("8.8.2.0"), str2Uint32("8.8.2.0")}, // min_2 = ip_2 = max_2
+		{"8.8.0.0", str2Uint32("8.8.1.0"), str2Uint32("8.8.3.0")}, // min_2 > ip_2 < max_2
+		{"8.8.2.0", str2Uint32("8.8.1.0"), str2Uint32("8.8.1.0")}, // min_2 < ip_2 > max_2
+
+		{"1.2.3.1", str2Uint32("1.2.3.0"), str2Uint32("1.2.4.0")},
+		{"8.8.8.2", str2Uint32("8.8.8.1"), str2Uint32("8.8.8.3")}, // min_3 < ip_3 < max_3
+		{"8.8.8.2", str2Uint32("8.8.8.2"), str2Uint32("8.8.8.3")}, // min_3 = ip_3 < max_3
+		{"8.8.8.2", str2Uint32("8.8.8.1"), str2Uint32("8.8.8.2")}, // min_3 < ip_3 = max_3
+		{"8.8.8.2", str2Uint32("8.8.8.2"), str2Uint32("8.8.8.2")}, // min_3 = ip_3 = max_3
+		{"8.8.8.0", str2Uint32("8.8.8.1"), str2Uint32("8.8.8.3")}, // min_3 > ip_3 < max_3
+		{"8.8.8.2", str2Uint32("8.8.8.1"), str2Uint32("8.8.8.1")}, // min_3 < ip_3 > max_3
+	}
+	for _, ut := range unitTests {
+		f.Add(ut.ip, ut.min, ut.max)
+	}
+
+	run := func(t *testing.T, ip string, min, max uint32) {
+		expLane := referenceIsSubnetOfIP4(ip, min, max)
+
+		minA := toArray(min)
+		maxA := toArray(max)
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		ctx.dict = append(ctx.dict[:0], toBCD(&minA, &maxA))
+		ctx.setScalarStrings(fill16(ip), []byte{})
+		ctx.current = 0xFFFF
+
+		// when
+		if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		for i := 0; i < 16; i++ {
+			obsLane := (ctx.current>>i)&1 == 1
+			if obsLane != expLane {
+				t.Errorf("%v\nlane %v: ip %q; min %q; max %q; observed %v; expected %v",
+					name, i, ip, toStr(min), toStr(max), obsLane, expLane)
+				break
+			}
+		}
+	}
+	f.Fuzz(func(t *testing.T, ip string, min, max uint32) {
+		run(t, ip, min, max)
+	})
 }
 
 // TestSkip1CharUT unit-tests for opSkip1charLeft, opSkip1charRight
@@ -2268,7 +2492,6 @@ func TestSkip1CharUT(t *testing.T) {
 
 	run := func(ts *testSuite, ut *unitTest) {
 		var ctx bctestContext
-		defer ctx.Free()
 		ctx.Taint()
 
 		dataPrefix := string([]byte{0, 0, 0})
@@ -2291,9 +2514,10 @@ func TestSkip1CharUT(t *testing.T) {
 			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
 				t.Errorf("lane %v: skipping 1 char from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
 					i, ut.data, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
-				return
+				break
 			}
 		}
+		ctx.Free()
 	}
 
 	for _, ts := range testSuites {
@@ -2482,7 +2706,6 @@ func TestSkipNCharUT(t *testing.T) {
 			stackContent[i] = uint64(ut.skipCount)
 		}
 		var ctx bctestContext
-		defer ctx.Free()
 		ctx.Taint()
 
 		dataPrefix := string([]byte{0, 0, 0})
@@ -2506,9 +2729,10 @@ func TestSkipNCharUT(t *testing.T) {
 			if fault(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength) {
 				t.Errorf("lane %v: skipping %v char(s) from data %q: observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
 					i, ut.skipCount, ut.data, obsLane, obsOffset, obsLength, ut.expLane, ut.expOffset, ut.expLength)
-				return
+				break
 			}
 		}
+		ctx.Free()
 	}
 
 	for _, ts := range testSuites {
@@ -3191,7 +3415,6 @@ func TestTrimCharUT(t *testing.T) {
 			}
 		}
 		// second: check the bytecode implementation
-
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
@@ -3216,7 +3439,7 @@ func TestTrimCharUT(t *testing.T) {
 			if ut.expResult != obsResult {
 				t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
 					ts.name, i, ut.data, ut.cutset, obsResult, ut.expResult)
-				return
+				break
 			}
 		}
 	}
@@ -3484,11 +3707,8 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 			}
 		}
 		// second: check the bytecode implementation
-
 		var ctx bctestContext
-		defer ctx.Free()
 		ctx.Taint()
-
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
 		ctx.setData(dataPrefix)                  // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data), []byte{})
@@ -3508,9 +3728,10 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 
 			if ut.expResult != resultObs {
 				t.Errorf("lane %v: trim %q; observed %q; expected: %q", i, ut.data, resultObs, ut.expResult)
-				return
+				break
 			}
 		}
+		ctx.Free()
 	}
 
 	for _, ts := range testSuites {
@@ -3591,7 +3812,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 
 				if expResult != resultObs {
 					t.Errorf("lane %v: trim %q: observed %q; expected: %q", i, data, resultObs, expResult)
-					return
+					break
 				}
 			}
 			ctx.Free()
@@ -4003,7 +4224,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 					if fault(obsLane, expLane, obsOffset, expOffset, obsLength, expLength) {
 						t.Errorf("%v\nlane %v: data %q contains needle %q; observed (lane; offset; length) %v, %v, %v; expected: %v, %v, %v)",
 							ts.name, i, data, needle, obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
-						return
+						break
 					}
 				}
 				ctx.Free()
@@ -4130,11 +4351,6 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 	})
 }
 
-func padNBytes(s string, nBytes int) string {
-	buf := []byte(s + strings.Repeat(string([]byte{0}), nBytes))
-	return string(buf)[:len(s)]
-}
-
 // TestContainsSubstrUT unit-tests for: opContainsSubstrCs, opContainsSubstrCi
 func TestContainsSubstrUT(t *testing.T) {
 	type unitTest struct {
@@ -4216,11 +4432,10 @@ func TestContainsSubstrUT(t *testing.T) {
 		// then
 		for i := 0; i < 16; i++ {
 			obsLane := (ctx.current>>i)&1 == 1
-
 			if obsLane != ut.expLane {
 				t.Errorf("%v\nlane %v: data %q contains substr %q; observed %v; expected %v",
 					ts.name, i, ut.data, ut.needle, obsLane, ut.expLane)
-				return
+				break
 			}
 		}
 		ctx.Free()
@@ -4315,7 +4530,7 @@ func TestContainsSubstrBF(t *testing.T) {
 					if obsLane != expLane {
 						t.Errorf("%v\nlane %v: data %q contains substr %q; observed %v; expected %v",
 							ts.name, i, data, needle, obsLane, expLane)
-						return
+						break
 					}
 				}
 				ctx.Free()
@@ -4497,6 +4712,11 @@ func TestBytecodeIsNull(t *testing.T) {
 /////////////////////////////////////////////////////////////
 // Helper functions
 
+func padNBytes(s string, nBytes int) string {
+	buf := []byte(s + strings.Repeat(string([]byte{0}), nBytes))
+	return string(buf)[:len(s)]
+}
+
 func fill16(msg string) (result []string) {
 	result = make([]string, 16)
 	for i := 0; i < 16; i++ {
@@ -4585,44 +4805,6 @@ func referenceSkipCharRight(msg string, skipCount int) (laneOut bool, offsetOut,
 	offsetOut = 0
 	lengthOut = length - nBytesToSkip
 	return
-}
-
-func referenceIsSubnetOf(msg []byte, min, max net.IP) bool {
-	ip4 := net.ParseIP(string(msg)).To4()
-	if ip4 == nil {
-		return false
-	}
-	return bytes.Compare(ip4, min.To4()) >= 0 && bytes.Compare(max.To4(), ip4) >= 0
-}
-
-func toBCD2(ip1, ip2 net.IP) []byte {
-	if ip1 == nil {
-		panic("A ip1 is nil")
-	}
-	if ip2 == nil {
-		panic("A ip2 is nil")
-	}
-
-	ipBCD := make([]byte, 32)
-	min := ip1.To4()
-	max := ip2.To4()
-
-	if min == nil {
-		panic(fmt.Sprintf("B ip1 is nil, %v\n", ip1.String()))
-	}
-	if max == nil {
-		panic(fmt.Sprintf("B ip2 is nil, %v\n", ip2.String()))
-	}
-
-	minStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", min[0], min[1], min[2], min[3]))
-	maxStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", max[0], max[1], max[2], max[3]))
-	for i := 0; i < 16; i += 4 {
-		ipBCD[0+i] = (minStr[3+i] & 0b1111) | ((maxStr[3+i] & 0b1111) << 4) // keep only the lower nibble from ascii '0'-'9' gives byte 0-9
-		ipBCD[1+i] = (minStr[2+i] & 0b1111) | ((maxStr[2+i] & 0b1111) << 4)
-		ipBCD[2+i] = (minStr[1+i] & 0b1111) | ((maxStr[1+i] & 0b1111) << 4)
-		ipBCD[3+i] = (minStr[0+i] & 0b1111) | ((maxStr[0+i] & 0b1111) << 4)
-	}
-	return ipBCD
 }
 
 // matchPatternReference matches the first occurrence of the provided pattern.

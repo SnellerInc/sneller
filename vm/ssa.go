@@ -20,7 +20,6 @@ import (
 	"io"
 	"math"
 	"math/bits"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -2350,14 +2349,11 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 	return p.ssa2imm(sStrContainsSubstrCi, str, p.mask(str), p.Constant(enc).imm)
 }
 
-// IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
-func (p *prog) IsSubnetOfIP4(str *value, min, max net.IP) *value {
-	str = p.toStr(str)
-
-	// Create an encoding of an IP4 as 16 bytes that is convenient. eg., string "192.1.2.3" becomes byte sequence 2,9,1,0, 1,0,0,0, 2,0,0,0, 3,0,0,0
-	ipBCD := make([]byte, 16)
-	min = min.To4()
-	max = max.To4()
+// toBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.
+// Create an encoding of an IP4 as 16 bytes that is convenient. eg., byte sequence [192,1,2,3] becomes byte
+// sequence 2,9,1,0, 1,0,0,0, 2,0,0,0, 3,0,0,0
+func toBCD(min, max *[4]byte) string {
+	ipBCD := make([]byte, 32)
 	minStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", min[0], min[1], min[2], min[3]))
 	maxStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", max[0], max[1], max[2], max[3]))
 	for i := 0; i < 16; i += 4 {
@@ -2366,7 +2362,13 @@ func (p *prog) IsSubnetOfIP4(str *value, min, max net.IP) *value {
 		ipBCD[2+i] = (minStr[1+i] & 0b1111) | ((maxStr[1+i] & 0b1111) << 4)
 		ipBCD[3+i] = (minStr[0+i] & 0b1111) | ((maxStr[0+i] & 0b1111) << 4)
 	}
-	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), string(ipBCD))
+	return string(ipBCD)
+}
+
+// IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
+func (p *prog) IsSubnetOfIP4(str *value, min, max [4]byte) *value {
+	str = p.toStr(str)
+	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), toBCD(&min, &max))
 }
 
 // SkipCharLeft skips a variable number of UTF-8 code-points from the left side of a string

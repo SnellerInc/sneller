@@ -787,7 +787,10 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		if err != nil {
 			return nil, err
 		}
-		return p.IsSubnetOfIP4(lhs, net.ParseIP(string(minStr)), net.ParseIP(string(maxStr))), nil
+		// the min/max are byte wise min/max values encoded as a string with dot as a separator.
+		min := (*[4]byte)(net.ParseIP(string(minStr)).To4())
+		max := (*[4]byte)(net.ParseIP(string(maxStr)).To4())
+		return p.IsSubnetOfIP4(lhs, *min, *max), nil
 
 	case expr.CharLength:
 		if len(args) != 1 {

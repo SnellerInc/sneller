@@ -14871,92 +14871,104 @@ reset_and_skip:
 //; #endregion bcMatchpatUTF8Ci
 
 //; #region bcIsSubnetOfIP4
-//; Determine whether the string at Z2:Z3 is an IP address in the range of the provided IP address range
+//; Determine whether the string at Z2:Z3 is an IP address between the 4 provided bytewise min/max values
+//; To prevent parsing of the IP string into an integer, every component is compared with a BCD min/max values
 TEXT bcIsSubnetOfIP4(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
-  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VMOVDQU32     Z2,  Z4                   //;6F6F1342 search_base := str_start        ;Z4=search_base; Z2=str_start;
 
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
+  VPCMPD.BCST   $6,  CONSTD_6(),Z3,  K1,  K1  //;46C90536 K1 &= (str_len>6); only data larger than 6 is considered;K1=lane_active; Z3=str_len; 6=Greater;
+  KTESTW        K1,  K1                   //;39066704 any lane still alive?           ;K1=lane_active;
+  JZ            next                      //;47931531 no, exit; jump if zero (ZF = 1) ;
+
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   VPBROADCASTB  CONSTD_0x2E(),Z21         //;487A092B load constant char_dot          ;Z21=char_dot;
-  VPBROADCASTB  CONSTD_0x0F(),Z19         //;7E33FF0D load constant 0b00001111        ;Z19=bcd_mask;
+  VPBROADCASTB  CONSTD_48(),Z16           //;62E46916 load constant char_0            ;Z16=char_0;
+  VPBROADCASTB  CONSTB_57(),Z17           //;3D8FD928 load constant char_9            ;Z17=char_9;
+  VPBROADCASTB  CONSTD_0x0F(),Z19         //;7E33FF0D load constant 0b00001111        ;Z19=0b00001111;
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-//; first 3 numbers in IP address (that end with a dot)
-  MOVL          $3,  CX                   //;97E4B0BB compare the first 3 ints of IP  ;CX=counter;
-  KMOVW         K1,  K4                   //;E40C8014 lane_todo_min := lane_active    ;K4=lane_todo_min; K1=lane_active;
-  KMOVW         K1,  K5                   //;C82AE9DA lane_todo_max := lane_active    ;K5=lane_todo_max; K1=lane_active;
-  KMOVW         K1,  K6                   //;CA9B839F lane_active_min := lane_active  ;K6=lane_active_min; K1=lane_active;
-  KMOVW         K1,  K0                   //;7159F950 lane_active_max := lane_active  ;K0=lane_active_max; K1=lane_active;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+
+  MOVL          $3,  CX                   //;97E4B0BB compare the first 3 components of IP;CX=counter;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-
-  VPADDD        Z10, Z4,  Z4              //;E66940CD search_base++                   ;Z4=search_base; Z10=constd_1;
-
-  VPBROADCASTD  (R14),Z26                 //;85FE2A68 load ip_range                   ;Z26=ip_min; R14=needle_ptr;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+//; load min and max values for the next component of the IP
+  VPBROADCASTD  (R14),Z14                 //;85FE2A68 load min/max BCD values         ;Z14=ip_min; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPSRLD        $4,  Z26, Z27             //;7D831D80                                 ;Z27=ip_max; Z26=ip_min;
-  VPANDD        Z26, Z19, Z26             //;C8F73FDE ip_min &= bcd_mask              ;Z26=ip_min; Z19=bcd_mask;
-  VPANDD        Z27, Z19, Z27             //;E5C42B44 ip_max &= bcd_mask              ;Z27=ip_max; Z19=bcd_mask;
-
+  VPSRLD        $4,  Z14, Z15             //;7D831D80 ip_max := ip_min>>4             ;Z15=ip_max; Z14=ip_min;
+  VPANDD        Z14, Z19, Z14             //;C8F73FDE ip_min &= 0b00001111            ;Z14=ip_min; Z19=0b00001111;
+  VPANDD        Z15, Z19, Z15             //;E5C42B44 ip_max &= 0b00001111            ;Z15=ip_max; Z19=0b00001111;
+//; find position of the dot in zmm13, and shift data zmm8 accordingly
   VPSHUFB       Z22, Z8,  Z8              //;4F265F03 reverse byte order              ;Z8=data_msg; Z22=constant_bswap32;
   VPCMPB        $0,  Z21, Z8,  K3         //;FDA19C68 K3 := (data_msg==char_dot)      ;K3=tmp_mask; Z8=data_msg; Z21=char_dot; 0=Eq;
-  VPANDD        Z8,  Z19, Z8              //;C318FD02 data_msg &= bcd_mask            ;Z8=data_msg; Z19=bcd_mask;
-
-  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=dot_pos; K3=tmp_mask;
-  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=dot_pos;
-  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields dot_pos      ;Z14=dot_pos;
-  VPSUBD        Z14, Z20, Z28             //;BC43621D scratch_Z28 := 4 - dot_pos      ;Z28=scratch_Z28; Z20=constd_4; Z14=dot_pos;
-  VPADDD        Z14, Z4,  Z4              //;9077E42E search_base += dot_pos          ;Z4=search_base; Z14=dot_pos;
-  VPSLLD        $3,  Z28, Z28             //;B533D91C times 8 gives bytes to shift    ;Z28=scratch_Z28;
-  VPSRLVD       Z28, Z8,  Z8              //;6D4B355C adjust data                     ;Z8=data_msg; Z28=scratch_Z28;
-
-  VPCMPD        $5,  Z26, Z8,  K4,  K3    //;982B35DE K3 := K4 & (data_msg>=ip_min)   ;K3=tmp_mask; K4=lane_todo_min; Z8=data_msg; Z26=ip_min; 5=GreaterEq;
-  KANDNW        K6,  K4,  K2              //;27235B6C scratch_K2 := ~lane_todo_min & lane_active_min;K2=scratch_K2; K4=lane_todo_min; K6=lane_active_min;
-  VPCMPD        $0,  Z26, Z8,  K4,  K4    //;7347068C K4 &= (data_msg==ip_min)        ;K4=lane_todo_min; Z8=data_msg; Z26=ip_min; 0=Eq;
-  KORW          K3,  K2,  K6              //;5A29F035 lane_active_min := scratch_K2 | tmp_mask;K6=lane_active_min; K2=scratch_K2; K3=tmp_mask;
-
-  VPCMPD        $2,  Z27, Z8,  K5,  K3    //;27BFCA91 K3 := K5 & (data_msg<=ip_max)   ;K3=tmp_mask; K5=lane_todo_max; Z8=data_msg; Z27=ip_max; 2=LessEq;
-  KANDNW        K0,  K5,  K2              //;C52B6681 scratch_K2 := ~lane_todo_max & lane_active_max;K2=scratch_K2; K5=lane_todo_max; K0=lane_active_max;
-  VPCMPD        $0,  Z27, Z8,  K5,  K5    //;A70DC3C3 K5 &= (data_msg==ip_max)        ;K5=lane_todo_max; Z8=data_msg; Z27=ip_max; 0=Eq;
-  KORW          K3,  K2,  K0              //;E588CF91 lane_active_max := scratch_K2 | tmp_mask;K0=lane_active_max; K2=scratch_K2; K3=tmp_mask;
-
-  KORTESTW      K4,  K5                   //;2BFBF8CE any lanes still todo?           ;K5=lane_todo_max; K4=lane_todo_min;
+  VPMOVM2B      K3,  Z13                  //;E74FDEBD promote 64x bit to 64x byte     ;Z13=dot_pos; K3=tmp_mask;
+  VPLZCNTD      Z13, Z13                  //;72202F9A count leading zeros             ;Z13=dot_pos;
+  VPSRLD        $3,  Z13, Z13             //;6DC91432 divide by 8 yields dot_pos      ;Z13=dot_pos;
+  VPSUBD        Z13, Z20, Z26             //;BC43621D scratch_Z26 := 4 - dot_pos      ;Z26=scratch_Z26; Z20=4; Z13=dot_pos;
+  VPSLLD        $3,  Z26, Z26             //;B533D91C times 8 gives bytes to shift    ;Z26=scratch_Z26;
+  VPSRLVD       Z26, Z8,  Z8              //;6D4B355C adjust data                     ;Z8=data_msg; Z26=scratch_Z26;
+//; component has length > 0 and < 4
+  VPCMPD        $6,  Z11, Z13, K1,  K1    //;DD83DE79 K1 &= (dot_pos>0)               ;K1=lane_active; Z13=dot_pos; Z11=0; 6=Greater;
+  VPCMPD        $1,  Z20, Z13, K1,  K1    //;164BDB97 K1 &= (dot_pos<4)               ;K1=lane_active; Z13=dot_pos; Z20=4; 1=LessThen;
+//; component length to mask
+  VPERMD        Z18, Z13, Z26             //;54D8DBC3 get tail_mask                   ;Z26=scratch_Z26; Z13=dot_pos; Z18=tail_mask_data;
+  VPCMPB        $4,  Z26, Z11, K2         //;2F692D99 K2 := (0!=scratch_Z26)          ;K2=ip_component; Z11=0; Z26=scratch_Z26; 4=NotEqual;
+//; create mask with numbers in k3
+  VPCMPB        $5,  Z16, Z8,  K2,  K3    //;4C1DDB1A K3 := K2 & (data_msg>=char_0)   ;K3=tmp_mask; K2=ip_component; Z8=data_msg; Z16=char_0; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;90E4A177 K3 &= (data_msg<=char_9)        ;K3=tmp_mask; Z8=data_msg; Z17=char_9; 2=LessEq;
+//; every character in component should be a number
+  KXORQ         K3,  K2,  K3              //;32403AF0 tmp_mask ^= ip_component        ;K3=tmp_mask; K2=ip_component;
+  VPMOVM2B      K3,  Z26                  //;E74FDEBD promote 64x bit to 64x byte     ;Z26=scratch_Z26; K3=tmp_mask;
+  VPTESTNMD     Z26, Z26, K1,  K1         //;3014812A K1 &= (scratch_Z26==0)          ;K1=lane_active; Z26=scratch_Z26;
+//; remaining length should be larger than 1
+  VPCMPD        $6,  Z10, Z3,  K1,  K1    //;90F775EC K1 &= (str_len>1)               ;K1=lane_active; Z3=str_len; Z10=1; 6=Greater;
+//; remove upper nibble from data zmm8 such that we can compare
+  VPANDD        Z8,  Z19, Z8              //;C318FD02 data_msg &= 0b00001111          ;Z8=data_msg; Z19=0b00001111;
+  VPCMPD        $5,  Z14, Z8,  K1,  K1    //;982B35DE K1 &= (data_msg>=ip_min)        ;K1=lane_active; Z8=data_msg; Z14=ip_min; 5=GreaterEq;
+  VPCMPD        $2,  Z15, Z8,  K1,  K1    //;27BFCA91 K1 &= (data_msg<=ip_max)        ;K1=lane_active; Z8=data_msg; Z15=ip_max; 2=LessEq;
+  KTESTW        K1,  K1                   //;50A3F3F1 any lane still alive?           ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+//; update length and offset
+  VPADDD        Z10, Z13, Z26             //;E66940CD scratch_Z26 := dot_pos + 1      ;Z26=scratch_Z26; Z13=dot_pos; Z10=1;
+  VPSUBD        Z26, Z3,  K1,  Z3         //;E060A4BE str_len -= scratch_Z26          ;Z3=str_len; K1=lane_active; Z26=scratch_Z26;
+  VPADDD        Z26, Z2,  K1,  Z2         //;8DD591CA str_start += scratch_Z26        ;Z2=str_start; K1=lane_active; Z26=scratch_Z26;
 
   DECL          CX                        //;18ACCC03 counter--                       ;CX=counter;
-  JNZ           loop                      //;6929AA0C another number in IP present?; jump if not zero (ZF = 0);
-
-//; load last numbers in IP address
+  JNZ           loop                      //;6929AA0C another component in IP present?; jump if not zero (ZF = 0);
+//; load last component of IP address
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+//; load min and max values for the last component of the IP
+  VPBROADCASTD  (R14),Z14                 //;85FE2A68 load min/max BCD values         ;Z14=ip_min; R14=needle_ptr;
+  VPSRLD        $4,  Z14, Z15             //;7D831D80 ip_max := ip_min>>4             ;Z15=ip_max; Z14=ip_min;
+  VPANDD        Z14, Z19, Z14             //;C8F73FDE ip_min &= 0b00001111            ;Z14=ip_min; Z19=0b00001111;
+  VPANDD        Z15, Z19, Z15             //;E5C42B44 ip_max &= 0b00001111            ;Z15=ip_max; Z19=0b00001111;
+//; find position of the dot in zmm13, and shift data zmm8 accordingly; but since there is no dot, use remaining bytes instead
   VPSHUFB       Z22, Z8,  Z8              //;4F265F03 reverse byte order              ;Z8=data_msg; Z22=constant_bswap32;
-//; calculate the number of remaining bytes and use that instead of finding a dot.
-  VPSUBD        Z2,  Z4,  Z14             //;800D09BC dot_pos := search_base - str_start;Z14=dot_pos; Z4=search_base; Z2=str_start;
-  VPSUBD        Z14, Z3,  Z14             //;52D7FB45 dot_pos := str_length - dot_pos ;Z14=dot_pos; Z3=str_length;
-  VPANDD        Z8,  Z19, Z8              //;C318FD02 data_msg &= bcd_mask            ;Z8=data_msg; Z19=bcd_mask;
-
-  VPSUBD        Z14, Z20, Z28             //;BC43621D scratch_Z28 := 4 - dot_pos      ;Z28=scratch_Z28; Z20=constd_4; Z14=dot_pos;
-  VPSLLD        $3,  Z28, Z28             //;B533D91C times 8 gives bytes to shift    ;Z28=scratch_Z28;
-  VPSRLVD       Z28, Z8,  Z8              //;6D4B355C adjust data                     ;Z8=data_msg; Z28=scratch_Z28;
-
-  VPBROADCASTD  (R14),Z26                 //;85FE2A68 load ip_range                   ;Z26=ip_min; R14=needle_ptr;
-  VPSRLD        $4,  Z26, Z27             //;7D831D80                                 ;Z27=ip_max; Z26=ip_min;
-  VPANDD        Z26, Z19, Z26             //;C8F73FDE ip_min &= bcd_mask              ;Z26=ip_min; Z19=bcd_mask;
-  VPANDD        Z27, Z19, Z27             //;E5C42B44 ip_max &= bcd_mask              ;Z27=ip_max; Z19=bcd_mask;
-
-  VPCMPD        $5,  Z26, Z8,  K4,  K3    //;982B35DE K3 := K4 & (data_msg>=ip_min)   ;K3=tmp_mask; K4=lane_todo_min; Z8=data_msg; Z26=ip_min; 5=GreaterEq;
-  KANDNW        K6,  K4,  K2              //;6F7C6F6E scratch_K2 := ~lane_todo_min & lane_active_min;K2=scratch_K2; K4=lane_todo_min; K6=lane_active_min;
-  KORW          K3,  K2,  K6              //;7B1A3448 lane_active_min := scratch_K2 | tmp_mask;K6=lane_active_min; K2=scratch_K2; K3=tmp_mask;
-
-  VPCMPD        $2,  Z27, Z8,  K5,  K3    //;327EA9E2 K3 := K5 & (data_msg<=ip_max)   ;K3=tmp_mask; K5=lane_todo_max; Z8=data_msg; Z27=ip_max; 2=LessEq;
-  KANDNW        K0,  K5,  K2              //;85D2E03D scratch_K2 := ~lane_todo_max & lane_active_max;K2=scratch_K2; K5=lane_todo_max; K0=lane_active_max;
-  KORW          K3,  K2,  K0              //;CB00427A lane_active_max := scratch_K2 | tmp_mask;K0=lane_active_max; K2=scratch_K2; K3=tmp_mask;
-
+  VPSUBD        Z3,  Z20, Z26             //;BC43621D scratch_Z26 := 4 - str_len      ;Z26=scratch_Z26; Z20=4; Z3=str_len;
+  VPSLLD        $3,  Z26, Z26             //;B533D91C times 8 gives bytes to shift    ;Z26=scratch_Z26;
+  VPSRLVD       Z26, Z8,  Z8              //;6D4B355C adjust data                     ;Z8=data_msg; Z26=scratch_Z26;
+//; component has length > 0 and < 4
+  VPCMPD        $6,  Z11, Z3,  K1,  K1    //;C57C0EDA K1 &= (str_len>0)               ;K1=lane_active; Z3=str_len; Z11=0; 6=Greater;
+  VPCMPD        $1,  Z20, Z3,  K1,  K1    //;F144CD35 K1 &= (str_len<4)               ;K1=lane_active; Z3=str_len; Z20=4; 1=LessThen;
+//; component length to mask
+  VPERMD        Z18, Z3,  Z26             //;716E0F84 get tail_mask                   ;Z26=scratch_Z26; Z3=str_len; Z18=tail_mask_data;
+  VPCMPB        $4,  Z26, Z11, K2         //;BDEDF5D8 K2 := (0!=scratch_Z26)          ;K2=ip_component; Z11=0; Z26=scratch_Z26; 4=NotEqual;
+//; create mask with numbers in k3
+  VPCMPB        $5,  Z16, Z8,  K2,  K3    //;7812E56D K3 := K2 & (data_msg>=char_0)   ;K3=tmp_mask; K2=ip_component; Z8=data_msg; Z16=char_0; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;1A6DB788 K3 &= (data_msg<=char_9)        ;K3=tmp_mask; Z8=data_msg; Z17=char_9; 2=LessEq;
+//; every character in component should be a number
+  KXORQ         K3,  K2,  K3              //;4F099B70 tmp_mask ^= ip_component        ;K3=tmp_mask; K2=ip_component;
+  VPMOVM2B      K3,  Z26                  //;E74FDEBD promote 64x bit to 64x byte     ;Z26=scratch_Z26; K3=tmp_mask;
+  VPTESTNMD     Z26, Z26, K1,  K1         //;88DAC27C K1 &= (scratch_Z26==0)          ;K1=lane_active; Z26=scratch_Z26;
+//; remove upper nibble from data zmm8 such that we can compare
+  VPANDD        Z8,  Z19, Z8              //;C318FD02 data_msg &= 0b00001111          ;Z8=data_msg; Z19=0b00001111;
+  VPCMPD        $5,  Z14, Z8,  K1,  K1    //;982B35DE K1 &= (data_msg>=ip_min)        ;K1=lane_active; Z8=data_msg; Z14=ip_min; 5=GreaterEq;
+  VPCMPD        $2,  Z15, Z8,  K1,  K1    //;27BFCA91 K1 &= (data_msg<=ip_max)        ;K1=lane_active; Z8=data_msg; Z15=ip_max; 2=LessEq;
 next:
-  KANDW         K6,  K0,  K1              //;5F783BA8 lane_active := lane_active_max & lane_active_min;K1=lane_active; K0=lane_active_max; K6=lane_active_min;
   NEXT()
 //; #endregion bcIsSubnetOfIP4
 
