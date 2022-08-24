@@ -1,0 +1,33 @@
+# test distinct recovering an auxval
+SELECT distinct val
+FROM input AS input, input.fields as val
+ORDER BY val LIMIT 20
+---
+{"fields": ["foo", "bar", "baz"]}
+{"fields": ["quux"]}
+{"fields": ["foo"]}
+{"fields": ["bar", "baz"]}
+{"fields": ["quux"]}
+{"fields": ["xyzabc"]}
+{"fields": []}
+{"fields": ["foo", "bar"]}
+{"fields": []}
+{"fields": ["quux"]}
+{"fields": ["bar", "baz"]}
+{"fields": ["quux"]}
+{"fields": ["foo"]}
+{"fields": ["bar", "baz"]}
+{"fields": ["quux"]}
+{"fields": ["xyzabc"]}
+{"fields": ["foo", "bar", "baz"]}
+{"fields": []}
+{"fields": ["foo", "bar"]}
+{"fields": []}
+{"fields": ["quux"]}
+{"fields": ["bar", "baz"]}
+---
+{"val": "bar"}
+{"val": "baz"}
+{"val": "foo"}
+{"val": "quux"}
+{"val": "xyzabc"}

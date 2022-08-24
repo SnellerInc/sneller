@@ -304,7 +304,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 		mem = append(mem, val)
 	}
 	program.Return(program.MergeMem(mem...))
-	program.symbolize(st)
+	program.symbolize(st, aux)
 	err := program.compile(findbc)
 	findbc.symtab = st.symrefs
 	if err != nil {
@@ -313,7 +313,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 	return nil
 }
 
-func bcfind(sort *Order, findbc *bytecode, delims []vmref) (out []vRegLayout, err error) {
+func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out []vRegLayout, err error) {
 	if findbc.compiled == nil {
 		return out, fmt.Errorf("sortstate.bcfind() before symbolize()")
 	}
@@ -330,6 +330,7 @@ func bcfind(sort *Order, findbc *bytecode, delims []vmref) (out []vRegLayout, er
 		findbc.scratch = findbc.scratch[:findbc.scratchreserve]
 	}
 
+	findbc.prepare(rp)
 	err = evalfind(findbc, delims, len(sort.columns))
 	if err != nil {
 		return
@@ -365,11 +366,11 @@ func (s *sortstateMulticolumn) symbolize(st *symtab, aux *auxbindings) error {
 	return symbolize(s.parent, &s.findbc, st, aux, true)
 }
 
-func (s *sortstateMulticolumn) bcfind(delims []vmref) ([]vRegLayout, error) {
-	return bcfind(s.parent, &s.findbc, delims)
+func (s *sortstateMulticolumn) bcfind(delims []vmref, rp *rowParams) ([]vRegLayout, error) {
+	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
-func (s *sortstateMulticolumn) writeRows(delims []vmref, _ *rowParams) error {
+func (s *sortstateMulticolumn) writeRows(delims []vmref, rp *rowParams) error {
 	// Note: we have to copy all input data, as:
 	// 1. the 'src' buffer is mutable,
 	// 2. the 'delims' array is mutable too.
@@ -381,7 +382,7 @@ func (s *sortstateMulticolumn) writeRows(delims []vmref, _ *rowParams) error {
 	}
 
 	// locate fields within the src
-	fieldsView, err := s.bcfind(delims)
+	fieldsView, err := s.bcfind(delims, rp)
 	if err != nil {
 		return err
 	}
@@ -478,11 +479,11 @@ func (s *sortstateSingleColumn) symbolize(st *symtab, aux *auxbindings) error {
 	return symbolize(s.parent, &s.findbc, st, aux, true)
 }
 
-func (s *sortstateSingleColumn) bcfind(delims []vmref) ([]vRegLayout, error) {
-	return bcfind(s.parent, &s.findbc, delims)
+func (s *sortstateSingleColumn) bcfind(delims []vmref, rp *rowParams) ([]vRegLayout, error) {
+	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
-func (s *sortstateSingleColumn) writeRows(delims []vmref, _ *rowParams) error {
+func (s *sortstateSingleColumn) writeRows(delims []vmref, rp *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -499,7 +500,7 @@ func (s *sortstateSingleColumn) writeRows(delims []vmref, _ *rowParams) error {
 	}
 
 	// locate fields within the src
-	fieldsView, err := s.bcfind(delims)
+	fieldsView, err := s.bcfind(delims, rp)
 	if err != nil {
 		return err
 	}
@@ -567,6 +568,10 @@ type sortstateKtop struct {
 	// the parent context for this sorting operation
 	parent *Order
 
+	// most recent aux bindings
+	// passed to symbolize()
+	aux *auxbindings
+
 	// see the comment in `sortstateMulticolumn`
 	parentNotified bool
 
@@ -620,6 +625,12 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 	} else {
 		s.filtbc.restoreScratch()
 	}
+	if len(aux.bound) > 0 {
+		// FIXME: we'd need to permute the auxilliary binding variables
+		// in the same way that we manipulate the input rows
+		return fmt.Errorf("ORDER BY cannot handle auxilliary bindings")
+	}
+	s.aux = aux
 
 	// copy the source symbol table
 	// so that we can still use it after
@@ -628,8 +639,8 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 	return symbolize(s.parent, &s.findbc, st, aux, false)
 }
 
-func (s *sortstateKtop) bcfind(delims []vmref) ([]vRegLayout, error) {
-	return bcfind(s.parent, &s.findbc, delims)
+func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegLayout, error) {
+	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
 func (s *sortstateKtop) bcfilter(delims []vmref) ([]vmref, error) {
@@ -720,7 +731,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 	}
 	keep = p.Or(keep, unmatched(v))
 	p.Return(keep)
-	p.symbolize(&s.symtabs[len(s.symtabs)-1])
+	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
 	err = p.compile(&s.filtbc)
 	if err != nil {
 		return err
@@ -731,12 +742,13 @@ func (s *sortstateKtop) maybePrefilter() error {
 	return nil
 }
 
-func (s *sortstateKtop) writeRows(delims []vmref, _ *rowParams) error {
+func (s *sortstateKtop) writeRows(delims []vmref, rp *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
 	if s.prefilter {
 		var err error
+		s.filtbc.prepare(rp)
 		delims, err = s.bcfilter(delims)
 		if err != nil {
 			return err
@@ -747,7 +759,7 @@ func (s *sortstateKtop) writeRows(delims []vmref, _ *rowParams) error {
 	}
 
 	// locate fields within the src
-	fieldsView, err := s.bcfind(delims)
+	fieldsView, err := s.bcfind(delims, rp)
 	if err != nil {
 		return err
 	}

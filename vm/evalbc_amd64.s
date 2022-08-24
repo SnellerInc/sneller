@@ -142,6 +142,10 @@
 
 // the 'return' instruction
 TEXT bcret(SB), NOSPLIT|NOFRAME, $0
+  // bytecode.auxpos += popcnt(lanes)
+  KMOVW   K7, R8
+  POPCNTL R8, R8
+  ADDQ    R8, bytecode_auxpos(VIRT_BCPTR)
   CLC
   RET
 
@@ -11801,6 +11805,27 @@ TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
   VPADDD.BCST   bytecode_scratchoff(VIRT_BCPTR), Z30, Z30 // offset += displ
   ADDQ          $8, VIRT_PCREG
   NEXT()
+
+TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX    0(VIRT_PCREG), R8
+  IMULQ      $24, R8
+  MOVQ       bytecode_auxvals+0(VIRT_BCPTR), R15
+  MOVQ       0(R15)(R8*1), R15
+  MOVQ       bytecode_auxpos(VIRT_BCPTR), R8
+  LEAQ       0(R15)(R8*8), R15 // skip entries in group
+  VMOVDQU32  0(R15), Z8   // Z8 = first 8, packed
+  VPMOVQD    Z8, Y10      // Y10 = first 8 offsets
+  VPSRLQ     $32, Z8, Z8  // Z8 = first 8 >>= 32
+  VPMOVQD    Z8, Y11      // Y11 = first 8 lengths
+  VMOVDQU32  64(R15), Z9  // Z9 = second 8, packed
+  VPMOVQD    Z9, Y12      // Y12 = second 8 offsets
+  VPSRLQ     $32, Z9, Z9  // Z9 = second 8 >>= 32
+  VPMOVQD    Z9, Y13      // Y13 = second 8 lengths
+
+  VINSERTI32X8 $1, Y12, Z10, Z30 // concatenate offsets
+  VINSERTI32X8 $1, Y13, Z11, Z31 // concatenate lengths
+  VPTESTMD     Z31, Z31, K1      // zero-length values -> MISSING
+  NEXT_ADVANCE(2)
 
 // take the list slice in Z2:Z3
 // and put the first object slice in Z30:Z31,

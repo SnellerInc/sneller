@@ -25,6 +25,7 @@ TEXT ·evalfilterbc(SB), NOSPLIT, $8
   JMP  tail
 loop:
   // load delims
+  MOVQ         R9, 0(SP) // save for later
   CMPQ         CX, $16
   JLT          genmask
   KXNORW       K0, K0, K1
@@ -58,6 +59,7 @@ doit:
   KMOVB         K1, K1
 
   // first 8 words: compress w/ K1
+  MOVQ          R10, R14
   KMOVD         K1, R8
   POPCNTL       R8, R8
   VPMOVZXDQ     Y1, Z2               // Z2 = first 8 lengths
@@ -70,6 +72,7 @@ doit:
   ADDQ          R8, R10
 
   // second 8 words: compress w/ k2
+  MOVQ          R10, R15
   KMOVW         K2, R8
   POPCNTL       R8, R8
   VPMOVZXDQ     Y1, Z2
@@ -78,6 +81,21 @@ doit:
   VPORD         Z2, Z3, Z2
   VPCOMPRESSQ   Z2, K2, 0(DX)(R10*8)
   ADDQ          R8, R10
+
+  MOVQ          bytecode_auxvals+8(DI), CX
+  TESTQ         CX, CX
+  JZ            tail
+  MOVQ          bytecode_auxvals+0(DI), AX
+  MOVQ          0(SP), R11             // R11 = old rows consumed
+compress_auxvals:
+  MOVQ          0(AX), R8
+  VMOVDQA32     0(R8)(R11*8), Z2       // load from rows consumed
+  VPCOMPRESSQ   Z2, K1, 0(R8)(R14*8)
+  VMOVDQA32     64(R8)(R11*8), Z2      // load more rows consumed
+  VPCOMPRESSQ   Z2, K2, 0(R8)(R15*8)
+  ADDQ          $24, AX
+  DECQ          CX
+  JNZ           compress_auxvals
 tail:
   MOVQ delims_len+16(FP), CX
   SUBQ R9, CX

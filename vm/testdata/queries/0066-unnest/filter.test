@@ -1,0 +1,27 @@
+# test filtering on an auxval before projection
+SELECT input.x, val
+FROM input AS input, input.fields as val
+WHERE val < 4
+ORDER BY val LIMIT 20
+---
+{"x": "first", "fields": [0, 1, 2, 3]}
+{"x": "second", "fields": [4, 5]}
+{"x": "third", "fields": [6]}
+{"x": "fourth", "fields": [7, 8]}
+{"x": "fifth", "fields": [9, 10, 11]}
+{"x": "sixth", "fields": [12, 13, 14, 15]}
+{"x": "seventh", "fields": [16, 17]}
+{"x": "eighth", "fields": []}
+{"x": "first", "fields": [20, 21, 22, 23]}
+{"x": "second", "fields": [24, 25]}
+{"x": "third", "fields": [26]}
+{"x": "fourth", "fields": [27, 28]}
+{"x": "fifth", "fields": [29, 30, 31]}
+{"x": "sixth", "fields": [22, 23, 24, 25]}
+{"x": "seventh", "fields": [36, 37]}
+{"x": "eighth", "fields": []}
+---
+{"x": "first", "val": 0}
+{"x": "first", "val": 1}
+{"x": "first", "val": 2}
+{"x": "first", "val": 3}

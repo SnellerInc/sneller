@@ -479,6 +479,7 @@ var opinfo = [_maxbcop]bcopinfo{
 
 	// Uncategorized instructions
 	oplitref:     {text: "litref", imms: bcImmsH32H32, flags: bcWriteV},
+	opauxval:     {text: "auxval", imms: bcImmsS16, flags: bcWriteV | bcWriteK},
 	opsplit:      {text: "split", flags: bcReadWriteK | bcReadWriteS | bcWriteV}, // split a list into head and tail components
 	optuple:      {text: "tuple", flags: bcReadV | bcWriteB},
 	opdupv:       {text: "dup.v", imms: bcImmsS16S16, flags: 0}, // duplicates a saved stack slot
@@ -601,12 +602,19 @@ func (b bcerr) Error() string {
 	}
 }
 
+func (b *bytecode) prepare(rp *rowParams) {
+	b.auxvals = rp.auxbound
+	b.auxpos = 0
+}
+
 type bytecode struct {
 	// XXX struct offsets known to assembly!
 	compiled []byte   // actual opcodes
 	vstack   []uint64 // value scratch space
 	dict     []string // string dictionary
 	symtab   []vmref  // symtab[id] -> boxed string
+	auxvals  [][]vmref
+	auxpos   int
 
 	hashmem []uint64 // the H virtual registers (128 bits per lane)
 

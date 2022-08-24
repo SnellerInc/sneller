@@ -24,6 +24,7 @@ TEXT ·evaldedup(SB), NOSPLIT, $8
   JMP  tail
 loop:
   // load delims
+  MOVQ         R9, 0(SP) // save rows consumed; we re-use this
   CMPQ         CX, $16
   JLT          genmask
   KXNORW       K0, K0, K1
@@ -190,6 +191,7 @@ radix_loop_tail:
   KSHIFTRW      $8, K1, K2
   KMOVB         K1, K1
 
+  MOVQ          R10, R15
   VPCOMPRESSQ   Z15, K1, 0(R11)(R10*8) // compress hashes
   KMOVD         K1, R8
   POPCNTL       R8, R8
@@ -201,6 +203,7 @@ radix_loop_tail:
   VPORD         Z2, Z3, Z2           // Z2 = first 8 qword(length << 32 | offset)
   VPCOMPRESSQ   Z2, K1, 0(DX)(R10*8) // compress delims
   ADDQ          R8, R10
+  MOVQ          R10, R14
   // repeat above for next 8 lanes
   VPCOMPRESSQ   Z16, K2, 0(R11)(R10*8)
   KMOVW         K2, R8
@@ -212,6 +215,23 @@ radix_loop_tail:
   VPCOMPRESSQ   Z2, K2, 0(DX)(R10*8)
   ADDQ          R8, R10
   MOVQ          R10, ret+72(FP)
+
+  // compress each of auxvals[*][auxpos:]
+  // identically to how we compressed the main rows
+  MOVQ          bytecode_auxvals+8(DI), CX
+  TESTQ         CX, CX
+  JZ            tail
+  MOVQ          bytecode_auxvals+0(DI), AX
+  MOVQ          0(SP), R11
+compress_auxvals:
+  MOVQ          0(AX), R8
+  VMOVDQA32     0(R8)(R11*8), Z2       // load from rows consumed
+  VPCOMPRESSQ   Z2, K1, 0(R8)(R15*8)
+  VMOVDQA32     64(R8)(R11*8), Z2      // load more rows consumed
+  VPCOMPRESSQ   Z2, K2, 0(R8)(R14*8)
+  ADDQ          $24, AX
+  DECQ          CX
+  JNZ           compress_auxvals
 tail:
   MOVQ delims_len+16(FP), CX
   SUBQ R9, CX

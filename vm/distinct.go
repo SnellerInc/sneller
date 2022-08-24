@@ -132,7 +132,7 @@ type deduper struct {
 }
 
 func (d *deduper) symbolize(st *symtab, aux *auxbindings) error {
-	err := recompile(st, &d.parent.prog, &d.prog, &d.bc)
+	err := recompile(st, &d.parent.prog, &d.prog, &d.bc, aux)
 	if err != nil {
 		return err
 	}
@@ -161,7 +161,16 @@ func (d *deduper) EndSegment() {
 	d.bc.dropScratch() // restored in recompile()
 }
 
-func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
+// produce compressed auxilliary bindings
+func (d *deduper) clone(rp *rowParams, c int) *rowParams {
+	d.params.auxbound = shrink(d.params.auxbound, len(rp.auxbound))
+	for i := range d.params.auxbound {
+		d.params.auxbound[i] = rp.auxbound[i][:c]
+	}
+	return &d.params
+}
+
+func (d *deduper) writeRows(delims []vmref, rp *rowParams) error {
 	if d.closed {
 		return io.EOF
 	}
@@ -176,7 +185,7 @@ func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
 	if d.local == nil {
 		d.local = newRadixTree(0)
 		if len(delims) > 16 {
-			d.writeRows(delims[:16], &d.params)
+			d.writeRows(delims[:16], rp)
 			delims = delims[16:]
 		}
 	}
@@ -186,6 +195,7 @@ func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
 	} else {
 		d.hashes = make([]uint64, len(delims))
 	}
+	d.bc.prepare(rp)
 	count := evaldedup(&d.bc, delims, d.hashes, d.local, d.hashslot)
 	if d.bc.err != 0 {
 		return fmt.Errorf("distinct: bytecode error: %w", d.bc.err)
@@ -196,17 +206,27 @@ func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
 
 	delims = delims[:count]
 	hashes := d.hashes[:count]
+	aux := shrink(d.params.auxbound, len(rp.auxbound))
+	for j := range aux {
+		aux[j] = rp.auxbound[j][:count]
+	}
 	outpos := 0
 	for i := range hashes {
 		_, ok := d.local.insertSlow(hashes[i])
 		if ok {
 			delims[outpos] = delims[i]
 			hashes[outpos] = hashes[i]
+			for j := range aux {
+				aux[j][outpos] = aux[j][i]
+			}
 			outpos++
 		}
 	}
 	delims = delims[:outpos]
 	hashes = hashes[:outpos]
+	for j := range aux {
+		aux[j] = aux[j][:outpos]
+	}
 
 	// we may not insert len(delims) entries
 	// (due to duplicates), but we should have
@@ -228,6 +248,9 @@ func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
 		_, ok := all.insertSlow(hashes[i])
 		if ok {
 			delims[outpos] = delims[i]
+			for j := range aux {
+				aux[j][outpos] = aux[j][i]
+			}
 			outpos++
 		}
 	}
@@ -247,6 +270,10 @@ func (d *deduper) writeRows(delims []vmref, _ *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
+	for j := range aux {
+		aux[j] = aux[j][:outpos]
+	}
+	d.params.auxbound = aux
 	return d.dst.writeRows(delims, &d.params)
 }
 

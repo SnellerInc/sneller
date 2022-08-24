@@ -27,6 +27,10 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+func buftbl(buf []byte) *BufferedTable {
+	return &BufferedTable{buf: buf, align: defaultAlign}
+}
+
 // bctestContext defines input/output parameters
 // for an opcode.
 //

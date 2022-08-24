@@ -484,13 +484,14 @@ func (q *Aggregate) Close() error {
 }
 
 func (p *aggregateLocal) symbolize(st *symtab, aux *auxbindings) error {
-	return recompile(st, p.parent.prog, &p.prog, &p.bc)
+	return recompile(st, p.parent.prog, &p.prog, &p.bc, aux)
 }
 
-func (p *aggregateLocal) writeRows(delims []vmref, _ *rowParams) error {
+func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
 	}
+	p.bc.prepare(rp)
 	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
 	p.rowCount += uint64(rowsCount)
 	return nil

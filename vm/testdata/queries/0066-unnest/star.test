@@ -1,0 +1,11 @@
+# test clobbering a binding with itself
+SELECT *
+FROM input as input, input.x as x
+---
+{"row": 0, "x": [{"foo": "bar"}, 3]}
+{"row": 1, "x": [5, "six"]}
+---
+{"row": 0, "x": {"foo": "bar"}}
+{"row": 0, "x": 3}
+{"row": 1, "x": 5}
+{"row": 1, "x": "six"}

@@ -184,16 +184,12 @@ func (i *IterTable) setparent(s Step) { panic("IterTable cannot set parent") }
 
 type IterValue struct {
 	parented
-	table
-	Value expr.Node // the expression to be iterated
-
-	liveat     []expr.Binding
-	liveacross []expr.Binding
+	Value  expr.Node // the expression to be iterated
+	Result string    // the binding produced by iteration
 }
 
 func (i *IterValue) walk(v expr.Visitor) {
 	expr.Walk(v, i.Value)
-	i.table.walk(v)
 }
 
 func bindstr(bind []expr.Binding) string {
@@ -209,37 +205,16 @@ func bindstr(bind []expr.Binding) string {
 
 func (i *IterValue) equals(x Step) bool {
 	i2, ok := x.(*IterValue)
-	return ok && (i == i2 || i.table.equals(&i2.table) &&
-		expr.Equal(i.Value, i2.Value) &&
-		slices.EqualFunc(i.liveat, i2.liveat, expr.Binding.Equals) &&
-		slices.EqualFunc(i.liveacross, i2.liveacross, expr.Binding.Equals))
+	return ok && (i == i2 ||
+		(expr.Equal(i.Value, i2.Value) && i.Result == i2.Result))
 }
 
 func (i *IterValue) describe(dst io.Writer) {
-	if i.Filter == nil {
-		fmt.Fprintf(dst, "ITERATE FIELD %s (ref: [%s], live: [%s])\n", expr.ToString(i.Value), bindstr(i.liveat), bindstr(i.liveacross))
-	} else {
-		fmt.Fprintf(dst, "ITERATE FIELD %s WHERE %s (ref: [%v], live: [%v])\n", expr.ToString(i.Value), expr.ToString(i.Filter), bindstr(i.liveat), bindstr(i.liveacross))
-	}
+	fmt.Fprintf(dst, "ITERATE FIELD %s AS %s\n", expr.ToString(i.Value), i.Result)
 }
 
 func (i *IterValue) rewrite(rw func(expr.Node, bool) expr.Node) {
 	i.Value = rw(i.Value, false)
-	if i.Filter != nil {
-		i.Filter = rw(i.Filter, true)
-	}
-}
-
-// Wildcard returns whether the value is referenced
-// via the '*' operator
-// (see also: IterTable.Wildcard)
-func (i *IterValue) Wildcard() bool {
-	return i.star
-}
-
-// References returns the references to this value
-func (i *IterValue) References() []*expr.Path {
-	return i.refs
 }
 
 type parented struct {
@@ -274,12 +249,7 @@ func (n *noexprs) walk(_ expr.Visitor)                     {}
 func (n *noexprs) rewrite(func(expr.Node, bool) expr.Node) {}
 
 func (i *IterValue) get(x string) (Step, expr.Node) {
-	if x == "*" {
-		i.table.star = true
-		// don't return; the '*'
-		// captures the upstream values
-		// as well...
-	} else if x == i.Bind {
+	if x == i.Result {
 		return i, i.Value
 	}
 	return i.par.get(x)
@@ -812,7 +782,7 @@ func (b *Trace) Where(e expr.Node) error {
 // Iterate pushes an implicit iteration to the stack
 func (b *Trace) Iterate(bind *expr.Binding) error {
 	iv := &IterValue{Value: bind.Expr}
-	iv.Bind = bind.Result()
+	iv.Result = bind.Result()
 	// walk with the current scope
 	// set to the parent scope; we don't
 	// introduce any bindings here that

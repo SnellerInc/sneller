@@ -503,7 +503,6 @@ func (a *aggtable) fasteval(delims []vmref, abort *uint16) int {
 	if a.bc.compiled == nil {
 		panic("aggtable.bc.compiled == nil")
 	}
-
 	return evalhashagg(&a.bc, delims, a.tree, abort)
 }
 
@@ -512,7 +511,7 @@ func (a *aggtable) EndSegment() {
 }
 
 func (a *aggtable) symbolize(st *symtab, aux *auxbindings) error {
-	err := recompile(st, &a.parent.prog, &a.prog, &a.bc)
+	err := recompile(st, &a.parent.prog, &a.prog, &a.bc, aux)
 	if err != nil {
 		return err
 	}
@@ -534,13 +533,14 @@ func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
 
 func (a *aggtable) next() rowConsumer { return nil }
 
-func (a *aggtable) writeRows(delims []vmref, _ *rowParams) error {
+func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 	// Number of projected fields that we GROUP BY. This
 	// specifies how many concatenated values will be stored
 	// in a.repr[] for each aggregated item.
 	projectedGroupByCount := len(a.parent.by)
 	vRegSizeInUInt64Units := int(vRegSize >> 3)
 	var abort uint16
+	a.bc.prepare(rp)
 	for len(delims) > 0 {
 		n := a.fasteval(delims, &abort)
 		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {

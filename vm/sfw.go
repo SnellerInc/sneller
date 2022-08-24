@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
+	"golang.org/x/exp/slices"
 )
 
 // QuerySink represents a sink for query outputs.
@@ -38,9 +39,26 @@ type auxbindings struct {
 	bound []string
 }
 
-// dummy auxbindings for most rowConsumers
-var nobindings auxbindings
+func (a *auxbindings) reset() {
+	a.bound = a.bound[:0]
+}
 
+func (a *auxbindings) push(x string) int {
+	n := len(a.bound)
+	a.bound = append(a.bound, x)
+	return n
+}
+
+func (a *auxbindings) id(x string) (int, bool) {
+	for i := len(a.bound) - 1; i >= 0; i-- {
+		if a.bound[i] == x {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+// dummy auxbindings for most rowConsumers
 // rowParams is auxilliary data passed
 // to rowConsumer.writeRows that indicates
 // things like extra variable bindings, etc.
@@ -119,6 +137,7 @@ type rowSplitter struct {
 	delimhint   int
 	symbolized  bool // seen any symbol tables
 	params      rowParams
+	aux         auxbindings
 
 	vmcache []byte
 
@@ -307,7 +326,8 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 		q.st.CloneInto(&q.shared.Symtab)
 		q.shared.build()
 
-		err = q.symbolize(&q.shared, &nobindings)
+		q.aux.reset()
+		err = q.symbolize(&q.shared, &q.aux)
 		if err != nil {
 			return 0, err
 		}
@@ -417,7 +437,10 @@ type Rematerializer struct {
 	buf    ion.Buffer
 	out    io.WriteCloser
 	stsize int
-	empty  bool
+	aux    []ion.Symbol
+	auxpos []int
+
+	empty bool
 }
 
 // Rematerialize returns a RowConsumer that guarantees
@@ -448,16 +471,71 @@ func (m *Rematerializer) symbolize(st *symtab, aux *auxbindings) error {
 		return err
 	}
 	m.buf.Reset()
+	m.aux = shrink(m.aux, len(aux.bound))
+	m.auxpos = shrink(m.auxpos, len(aux.bound))
+	for i := range aux.bound {
+		m.aux[i] = st.Intern(aux.bound[i])
+		m.auxpos[i] = i
+	}
+	// produce aux symbols in sorted order
+	slices.SortFunc(m.auxpos, func(i, j int) bool {
+		return m.aux[i] < m.aux[j]
+	})
 	st.Marshal(&m.buf, true)
 	m.stsize = m.buf.Size()
 	return nil
 }
 
-// writeRows implements RowConsumer.writeRows
-func (m *Rematerializer) writeRows(delims []vmref, _ *rowParams) error {
+func (m *Rematerializer) writeRows(delims []vmref, rp *rowParams) error {
 	if m.stsize == 0 {
 		return fmt.Errorf("Rematerializer.WriteRows() before symbolize()")
 	}
+	if len(m.aux) == 0 {
+		return m.writeRowsFast(delims)
+	}
+	for i := range delims {
+		mem := delims[i].mem()
+		auxp := 0
+		var sym ion.Symbol
+		var err error
+		m.buf.BeginStruct(-1)
+		for len(mem) > 0 {
+			before := mem
+			sym, mem, err = ion.ReadLabel(mem)
+			if err != nil {
+				return fmt.Errorf("vm.Rematerializer: writeRows: %x %w", before, err)
+			}
+			// write out all auxilliary fields with symbol ID < current
+			for auxp < len(m.auxpos) && sym > m.aux[m.auxpos[auxp]] {
+				m.buf.BeginField(m.aux[m.auxpos[auxp]])
+				m.buf.UnsafeAppend(rp.auxbound[m.auxpos[auxp]][i].mem())
+				auxp++
+			}
+			size := ion.SizeOf(mem)
+			// check to see if this field has been overwritten
+			if auxp < len(m.auxpos) && sym == m.aux[m.auxpos[auxp]] {
+				m.buf.BeginField(m.aux[m.auxpos[auxp]])
+				m.buf.UnsafeAppend(rp.auxbound[m.auxpos[auxp]][i].mem())
+				auxp++
+			} else {
+				m.buf.BeginField(sym)
+				m.buf.UnsafeAppend(mem[:size])
+			}
+			mem = mem[size:]
+		}
+		for auxp < len(m.auxpos) {
+			m.buf.BeginField(m.aux[m.auxpos[auxp]])
+			m.buf.UnsafeAppend(rp.auxbound[m.auxpos[auxp]][i].mem())
+			auxp++
+		}
+		m.buf.EndStruct()
+		m.empty = false
+	}
+	return nil
+}
+
+// writeRows implements RowConsumer.writeRows
+func (m *Rematerializer) writeRowsFast(delims []vmref) error {
 	for i := range delims {
 		if delims[i][1] == 0 {
 			continue

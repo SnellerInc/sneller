@@ -1,0 +1,21 @@
+SELECT SUM(x)
+FROM input as outer, outer.fields as x
+---
+{"fields": [0, 1, 2]}
+{"fields": [3, 4, 5]}
+{"fields": [6, 7, 8]}
+{"fields": [9, 10, 11]}
+{"fields": [9, 10, 11]}
+{"fields": [6, 7, 8]}
+{"fields": [3, 4, 5]}
+{"fields": [0, 1, 2]}
+{"fields": [0, 1, 2]}
+{"fields": [3, 4, 5]}
+{"fields": [6, 7, 8]}
+{"fields": [9, 10, 11]}
+{"fields": [9, 10, 11]}
+{"fields": [6, 7, 8]}
+{"fields": [3, 4, 5]}
+{"fields": [0, 1, 2]}
+---
+{"sum": 264}

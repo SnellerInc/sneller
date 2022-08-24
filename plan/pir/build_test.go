@@ -417,8 +417,9 @@ func TestBuild(t *testing.T) {
 			input: "select o.x, i.y from foo as o, o.field as i where o.x <> i.y",
 			expect: []string{
 				"ITERATE foo AS o FIELDS [field, x]",
-				"ITERATE FIELD field WHERE LOAD(0) <> y (ref: [y AS $_0_1], live: [x AS $_0_0])", // comparison pushed down
-				"PROJECT $_0_0 AS x, $_0_1 AS y",
+				"ITERATE FIELD field AS i",
+				"FILTER x <> i.y",
+				"PROJECT x AS x, i.y AS y",
 			},
 		},
 		{
@@ -427,8 +428,9 @@ func TestBuild(t *testing.T) {
 			input: `select o.x, i.y from foo as o, o.field as i where o.x < 3 and i.y < 3`,
 			expect: []string{
 				"ITERATE foo AS o FIELDS [field, x] WHERE x < 3",
-				"ITERATE FIELD field WHERE y < 3 (ref: [y AS $_0_1], live: [x AS $_0_0])",
-				"PROJECT $_0_0 AS x, $_0_1 AS y",
+				"ITERATE FIELD field AS i",
+				"FILTER i.y < 3",
+				"PROJECT x AS x, i.y AS y",
 			},
 		},
 		{
@@ -530,8 +532,9 @@ where x > (select min(f) from y) and x < (select max(f) from y)`,
 			input: `select * from (select o.x, i.y from foo as o, o.field as i) where x = y`,
 			expect: []string{
 				"ITERATE foo AS o FIELDS [field, x]",
-				"ITERATE FIELD field WHERE LOAD(0) = y (ref: [y AS $_0_1], live: [x AS $_0_0])", // x = y pushed down
-				"PROJECT $_0_0 AS x, $_0_1 AS y",
+				"ITERATE FIELD field AS i",
+				"FILTER x = i.y",
+				"PROJECT x AS x, i.y AS y",
 			},
 		},
 		{
@@ -582,9 +585,11 @@ from table as top, top.field as middle, middle.field as bottom
 where top.x = middle.y and middle.y = bottom.z`,
 			expect: []string{
 				"ITERATE table AS top FIELDS [field, x]",
-				"ITERATE FIELD field WHERE LOAD(0) = y (ref: [field AS $_1_2, y AS $_1_1], live: [x AS $_1_0])",
-				"ITERATE FIELD $_1_2 WHERE LOAD(1) = z (ref: [z AS $_0_2], live: [$_1_0 AS $_0_0, $_1_1 AS $_0_1])",
-				"PROJECT $_0_0 AS x, $_0_1 AS y, $_0_2 AS z",
+				"ITERATE FIELD field AS middle",
+				"FILTER x = middle.y",
+				"ITERATE FIELD middle.field AS bottom",
+				"FILTER middle.y = bottom.z",
+				"PROJECT x AS x, middle.y AS y, bottom.z AS z",
 			},
 		},
 		{
@@ -593,8 +598,9 @@ from 'parking3.ion' as out, out.Entries as entry
 where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			expect: []string{
 				"ITERATE 'parking3.ion' AS out FIELDS [Entries, Make] WHERE Make = 'CHRY'",
-				"ITERATE FIELD Entries WHERE BodyStyle = 'PA' (ref: [Color AS $_0_2, Ticket AS $_0_1], live: [Make AS $_0_0])",
-				"PROJECT $_0_0 AS make, $_0_1 AS ticket, $_0_2 AS color",
+				"ITERATE FIELD Entries AS entry",
+				"FILTER entry.BodyStyle = 'PA'",
+				"PROJECT Make AS make, entry.Ticket AS ticket, entry.Color AS color",
 			},
 		},
 		{
@@ -1179,6 +1185,24 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"	PROJECT a AS a",
 				") AS REPLACEMENT(0)",
 				"ITERATE foo FIELDS * WHERE x = SCALAR_REPLACEMENT(0) AND y = SCALAR_REPLACEMENT(0) AND z = SCALAR_REPLACEMENT(0)",
+			},
+		},
+		{
+			input: `SELECT outer."group", MAX(item) FROM input as outer, outer.fields as item GROUP BY outer."group" ORDER BY MAX(item)`,
+			expect: []string{
+				"ITERATE input AS outer FIELDS [fields, group]",
+				"ITERATE FIELD fields AS item",
+				"AGGREGATE MAX(item) AS \"max\" BY \"group\" AS \"group\"",
+				"ORDER BY \"max\" ASC NULLS FIRST",
+			},
+		},
+		{
+			// check that the unnesting is removed appropriately:
+			input: "SELECT o.x, o.z FROM table AS o, o.lst as y",
+			expect: []string{
+				// TODO: remove lst from fields since it is eliminated
+				"ITERATE table AS o FIELDS [lst, x, z]",
+				"PROJECT x AS x, z AS z",
 			},
 		},
 	}

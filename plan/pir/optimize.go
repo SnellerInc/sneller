@@ -63,10 +63,6 @@ func (b *Trace) optimize() {
 	mergereplacements(b)   // eliminate common sub-traces
 	simplify(b)            // final simplification pass
 
-	// informational passes to make
-	// final planning easier
-	itervalueinfo(b) // massage IterValue for plan.Unnest
-
 	// TODO:
 	//  - push down DISTINCT when it occurs
 	//  after a simple projection (but not extended projection)

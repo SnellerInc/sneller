@@ -84,7 +84,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	}
 	b := p.aggbucket(mem, p.hash(makeval), makeval)
 	p.Return(p.AggregateSlotCount(mem, b, makeval, 0))
-	err = p.symbolize(&st)
+	err = p.symbolize(&st, &auxbindings{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	}
 	b := p.aggbucket(mem, p.hash(makeval), makeval)
 	p.Return(p.AggregateSlotCount(mem, b, makeval, 0))
-	err = p.symbolize(&st)
+	err = p.symbolize(&st, &auxbindings{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +416,7 @@ func BenchmarkAggregate(b *testing.B) {
 	}
 	bucket := p.aggbucket(mem, p.hash(makeval), makeval)
 	p.Return(p.AggregateSlotCount(mem, bucket, makeval, 0))
-	err = p.symbolize(&st)
+	err = p.symbolize(&st, &auxbindings{})
 	if err != nil {
 		b.Fatal(err)
 	}

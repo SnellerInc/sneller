@@ -103,9 +103,10 @@ type projector struct {
 	bc     bytecode
 	aw     alignedWriter
 	dst    io.WriteCloser
-	outsel []syminfo // output symbol IDs (sorted)
-	inslot []int     // parent.sel[p.inslot[i]] = outsel[i]
-	params rowParams
+	outsel []syminfo   // output symbol IDs (sorted)
+	inslot []int       // parent.sel[p.inslot[i]] = outsel[i]
+	params rowParams   // always starts empty
+	aux    auxbindings // always starts empty
 
 	// sometimes we're projecting into a sub-query
 	// that wants to perform additional row operations;
@@ -158,7 +159,8 @@ func (p *projector) update(st *symtab, aux *auxbindings) error {
 		return err
 	}
 	if p.dstrc != nil {
-		return p.dstrc.symbolize(st, aux)
+		p.aux.reset()
+		return p.dstrc.symbolize(st, &p.aux)
 	}
 	return nil
 }
@@ -215,7 +217,7 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	// preserve the initial predicate mask
 	// so that we can use it for projection
 	prg.Return(prg.mk(prg.MergeMem(mem...), prg.ValidLanes()))
-	prg.symbolize(st)
+	prg.symbolize(st, aux)
 	err = prg.compile(&p.bc)
 	if err != nil {
 		return fmt.Errorf("projector.symbolize(): %w", err)
@@ -256,7 +258,7 @@ func (p *projector) EndSegment() {
 	p.bc.dropScratch()
 }
 
-func (p *projector) writeRows(delims []vmref, _ *rowParams) error {
+func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
@@ -278,6 +280,7 @@ func (p *projector) writeRows(delims []vmref, _ *rowParams) error {
 	// all of the input delimiters must need more buffer space
 	lc := 0
 
+	p.bc.prepare(rp)
 	for len(delims) > 0 {
 		off, rewrote := p.bcproject(delims, p.aw.buf[p.aw.off:], p.outsel)
 		if p.bc.err != 0 {

@@ -103,7 +103,7 @@ type wherebc struct {
 func evalfilterbc(w *bytecode, delims []vmref) int
 
 func (w *wherebc) symbolize(st *symtab, aux *auxbindings) error {
-	err := recompile(st, w.parent.prog, &w.ssa, &w.bc)
+	err := recompile(st, w.parent.prog, &w.ssa, &w.bc, aux)
 	if err != nil {
 		return err
 	}
@@ -117,16 +117,21 @@ func (w *wherebc) EndSegment() {
 	w.bc.dropScratch() // restored in recompile()
 }
 
-func (w *wherebc) writeRows(delims []vmref, _ *rowParams) error {
+func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	if w.bc.compiled == nil {
 		panic("bytecode writeRows() before Symbolize()")
 	}
+	w.bc.prepare(rp)
 	valid := evalfilterbc(&w.bc, delims)
 	if w.bc.err != 0 {
 		return fmt.Errorf("filter: bytecode error: %w", w.bc.err)
 	}
 	if valid > 0 {
-		// delims are absolute now, so use vmm as base
+		// the assembly already did the compression for us:
+		w.params.auxbound = shrink(w.params.auxbound, len(rp.auxbound))
+		for i := range w.params.auxbound {
+			w.params.auxbound[i] = rp.auxbound[i][:valid]
+		}
 		return w.dst.writeRows(delims[:valid], &w.params)
 	}
 	return nil

@@ -17,317 +17,175 @@ package vm
 import (
 	"fmt"
 	"io"
-	"sort"
 
 	"github.com/SnellerInc/sneller/expr"
+	"golang.org/x/exp/slices"
 )
 
-// UnnestProjection unnests rows on a field
-// and projects the outer and inner row elements,
-// optionally with a filter that restricts the
-// inner rows that are cross-joined with the outer rows.
-type UnnestProjection struct {
-	dst          QuerySink
-	field        *expr.Path
-	outer, inner Selection
-	filter       expr.Node
+// Unnest un-nests an array and produces rows
+// that have their contents cross-joined with
+// the array contents as an auxilliary binding
+type Unnest struct {
+	dst    QuerySink
+	field  expr.Node
+	result string
 }
 
-// NewUnnest creates a new UnnestProjection.
-// The provided 'field' expression is the slice
-// to be unnested, and the outer and inner selections
-// are the fields from outside and inside the slice, respectively,
-// that need to be projected.
-// The filter expression is applied to slice fields
-// in order to limit the number of output cross-joined rows.
-func NewUnnest(dst QuerySink, field *expr.Path, outer, inner Selection, filter expr.Node) *UnnestProjection {
-	return &UnnestProjection{
+// NewUnnest creates an Unnest QuerySink that cross-joins
+// the given field (which should be an array) into the
+// input stream as an auxilliary binding with the given name.
+func NewUnnest(dst QuerySink, field expr.Node, result string) *Unnest {
+	return &Unnest{
 		dst:    dst,
 		field:  field,
-		outer:  outer.outputSorted(),
-		inner:  inner.outputSorted(),
-		filter: filter,
+		result: result,
 	}
 }
 
-func (u *UnnestProjection) Open() (io.WriteCloser, error) {
+func (u *Unnest) Open() (io.WriteCloser, error) {
 	dst, err := u.dst.Open()
 	if err != nil {
 		return nil, err
 	}
-	rc, _ := dst.(rowConsumer)
-	unnest := &unnesting{parent: u, out: dst, dstrc: rc}
-	unnest.aw.out = dst
+	unnest := &unnesting{parent: u, dstrc: asRowConsumer(dst)}
 	return splitter(unnest), nil
 }
 
-func (u *UnnestProjection) Close() error {
+func (u *Unnest) Close() error {
 	return u.dst.Close()
 }
 
 type unnesting struct {
-	parent  *UnnestProjection
-	outsel  []syminfo
-	outord  []int
-	outerbc bytecode
-	innerbc bytecode
-	aw      alignedWriter
-	delims  []vmref
-	perms   []int32
-	dstrc   rowConsumer
-	out     io.WriteCloser
-
+	parent *Unnest
+	splat  bytecode
+	perms  []int32
+	dstrc  rowConsumer
 	params rowParams
-}
+	auxnum int
 
-type uByID unnesting
-
-func (u *uByID) Len() int {
-	return len(u.outord)
-}
-
-func (u *uByID) Swap(i, j int) {
-	u.outord[i], u.outord[j] = u.outord[j], u.outord[i]
-	u.outsel[i], u.outsel[j] = u.outsel[j], u.outsel[i]
-}
-
-func (u *uByID) Less(i, j int) bool {
-	return u.outsel[i].value < u.outsel[j].value
+	// cached buffers for inner and outer refs
+	inner, outer []vmref
 }
 
 func (u *unnesting) next() rowConsumer { return u.dstrc }
 
 func (u *unnesting) EndSegment() {
-	u.aw.maybeDrop()
-	u.outerbc.dropScratch()
-	u.innerbc.dropScratch()
+	u.splat.dropScratch()
 }
 
 func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
-	u.outerbc.restoreScratch()
-	u.innerbc.restoreScratch()
-	if len(u.outsel) != len(u.parent.outer)+len(u.parent.inner) {
-		u.outsel = make([]syminfo, len(u.parent.outer)+len(u.parent.inner))
-	}
-	for i := range u.parent.outer {
-		bind := u.parent.outer[i].Result()
-		sym := st.Intern(bind)
-		u.outsel[i].value = sym
-		u.outsel[i].encoded, u.outsel[i].mask, u.outsel[i].size = encoded(sym)
-	}
-	for i := range u.parent.inner {
-		j := len(u.parent.outer) + i
-		bind := u.parent.inner[i].Result()
-		sym := st.Intern(bind)
-		u.outsel[j].value = sym
-		u.outsel[j].encoded, u.outsel[j].mask, u.outsel[j].size = encoded(sym)
-	}
-	if len(u.outord) != len(u.outsel) {
-		u.outord = make([]int, len(u.outsel))
-	}
-	for i := range u.outord {
-		u.outord[i] = i
-	}
-	sort.Stable((*uByID)(u))
+	u.splat.restoreScratch()
 	var p prog
 	var err error
 	p.Begin()
-	mem0 := p.InitMem()
-	mem := make([]*value, len(u.parent.outer))
-	for i := range u.parent.outer {
-		_, ok := u.parent.outer[i].Expr.(*expr.Path)
-		if !ok {
-			return fmt.Errorf("cannot handle non-path-expression %q", u.parent.outer[i].Expr)
-		}
-		mem[i], err = p.compileStore(mem0, u.parent.outer[i].Expr, stackSlotFromIndex(regV, i), false)
-		if err != nil {
-			panic(err)
-		}
-	}
-	// the list slice storage is past the end
-	// of the slots used for projection
-	listv := p.walk(u.parent.field)
-	list := p.ssa2(stolist, listv, listv)
-	p.Return(p.msk(p.MergeMem(mem...), list, list))
-	p.symbolize(st)
-	err = p.compile(&u.outerbc)
+	// produce a program that sticks the slice
+	// to be splat-ed into Z2:Z3
+	v, err := compile(&p, u.parent.field)
 	if err != nil {
 		return err
 	}
-
-	// second sub-program
-	p.Begin()
-	mem0 = p.InitMem()
-	// reserve input slots
-	// so that the register allocator
-	// does not clobber them
-	for i := range u.outord[:len(u.parent.outer)] {
-		p.ReserveSlot(stackSlotFromIndex(regV, u.outord[i]))
-	}
-	mem = make([]*value, len(u.parent.inner))
-	for i := range u.parent.inner {
-		j := len(u.parent.outer) + i
-		_, ok := u.parent.inner[i].Expr.(*expr.Path)
-		if !ok {
-			return fmt.Errorf("cannot handle non-path expression %q", u.parent.inner[i].Expr)
-		}
-		mem[i], err = p.compileStore(mem0, u.parent.inner[i].Expr, stackSlotFromIndex(regV, u.outord[j]), false)
-		if err != nil {
-			panic(err)
-		}
-	}
-	outk := p.ValidLanes()
-	if u.parent.filter != nil {
-		outk, err = compile(&p, u.parent.filter)
-		if err != nil {
-			return fmt.Errorf("unnest: compiling inner filter: %w", err)
-		}
-	}
-	p.Return(p.mk(p.MergeMem(mem...), outk))
-	p.symbolize(st)
-
-	// generate permutation at the beginning
-	// of the program so that the values in the stack slots
-	// appear as if they were bound correctly in advance
-	//
-	// FIXME: just do this in the SSA instead
-	maskSlot := stackSlotFromIndex(regV, len(u.parent.outer))
-	u.innerbc.outer = &u.outerbc
-
-	asm := assembler{u.innerbc.compiled}
-
-	// save.k [0]
-	asm.emitOpcode(opsavek)
-	asm.emitImmU16(uint16(maskSlot))
-
-	// tuple (parse structure in Z30:Z31; set Z0:Z1)
-	asm.emitOpcode(optuple)
-
-	for i := range u.parent.outer {
-		outSlot := stackSlotFromIndex(regV, u.outord[i])
-		// load upvalue [i]
-		asm.emitOpcode(oploadpermzerov)
-		asm.emitImmU16(uint16(i))
-		// store locally in slot outord[i]
-		asm.emitOpcode(opsavezerov)
-		asm.emitImmU16(uint16(outSlot))
-	}
-
-	asm.emitOpcode(oploadk)
-	asm.emitImmU16(uint16(maskSlot))
-
-	u.innerbc.compiled = asm.grabCode()
-	err = p.appendcode(&u.innerbc)
+	list := p.ssa2(stolist, v, p.mask(v))
+	p.Return(p.msk(p.InitMem(), list, p.mask(list)))
+	p.symbolize(st, aux)
+	err = p.compile(&u.splat)
 	if err != nil {
 		return err
 	}
-	u.innerbc.ensureVStackSize(len(u.outsel)*int(vRegSize) + 8)
-	u.innerbc.allocStacks()
-	if u.dstrc != nil {
-		err := u.dstrc.symbolize(st, aux)
-		if err != nil {
-			return err
-		}
-	}
-
-	if u.aw.buf == nil {
-		u.aw.init(u.out, nil, defaultAlign)
-	}
-	return u.aw.setpre(st)
+	u.auxnum = aux.push(u.parent.result)
+	return u.dstrc.symbolize(st, aux)
 }
 
 //go:noescape
 func evalsplat(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int)
 
 //go:noescape
-func evalunnest(bc *bytecode, delims []vmref, perm []int32, dst []byte, symbols []syminfo) (int, int)
-
-//go:noescape
 func compress(delims []vmref) int
 
-func (u *unnesting) writeRows(delims []vmref, _ *rowParams) error {
+func shrink[T any](s []T, n int) []T {
+	if cap(s) < n {
+		s = make([]T, n)
+	} else {
+		s = s[:n]
+	}
+	return s
+}
+
+func (u *unnesting) splatParams(in *rowParams, consumed int, perm []int32, inner []vmref) *rowParams {
+	if len(perm) != len(inner) {
+		panic("???")
+	}
+	if len(in.auxbound) != u.auxnum {
+		panic("unexpected auxilliary inputs")
+	}
+	// splat existing row-oriented bindings
+	u.params.auxbound = shrink(u.params.auxbound, u.auxnum+1)
+	for i := range in.auxbound {
+		u.params.auxbound[i] = shrink(u.params.auxbound[i], len(inner))
+		for j, n := range perm {
+			u.params.auxbound[i][j] = in.auxbound[i][consumed+int(n)]
+		}
+	}
+	// add new bindings
+	u.params.auxbound[u.auxnum] = inner
+	return &u.params
+}
+
+func (u *unnesting) writeRows(delims []vmref, rp *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
-	if u.aw.space() < (4 + 7) {
-		_, err := u.aw.flush()
-		if err != nil {
-			return err
-		}
+	if cap(u.outer) == 0 {
+		u.outer = make([]vmref, 1024)
+		u.perms = make([]int32, 1024)
 	}
-	if len(u.delims) == 0 {
-		u.delims = make([]vmref, 1023)
-		u.perms = make([]int32, 1023)
-	}
-	if u.outerbc.compiled == nil {
+	if u.splat.compiled == nil {
 		return fmt.Errorf("unnesting.writeRows() before symbolize()")
 	}
 
-	for len(delims) > 0 {
-		shouldgrow := false
-		in, out := evalsplat(&u.outerbc, delims, u.delims, u.perms)
-		if u.outerbc.err != 0 {
-			return fmt.Errorf("unnest: splatting arrays: %w", u.outerbc.err)
+	u.splat.prepare(rp)
+	consumed := 0
+	for consumed < len(delims) {
+		// provide as much space as possible:
+		u.outer = u.outer[:cap(u.outer)]
+		u.perms = u.perms[:cap(u.perms)]
+		in, out := evalsplat(&u.splat, delims[consumed:], u.outer, u.perms)
+		if u.splat.err != 0 {
+			return fmt.Errorf("unnest: splatting arrays: %w", u.splat.err)
 		}
+		// adjust this to take into account the fact
+		// that we may not have actually handled all the lanes
+		u.splat.auxpos = consumed + in
 		if in == 0 {
+			if out == 0 {
+				// field never found; no output rows
+				return nil
+			}
 			// there wasn't enough room to splat a single
-			// lane's array members! we need more space
-			u.delims = make([]vmref, 2*len(u.delims))
-			u.perms = make([]int32, 2*len(u.perms))
+			// lane's array members! we need more space,
+			// so double the slice sizes here
+			u.outer = slices.Grow(u.outer, len(u.outer))
+			u.perms = slices.Grow(u.perms, len(u.perms))
 			continue
 		}
-		if in < 16 && in < len(delims) {
-			shouldgrow = true
-		}
-		delims = delims[in:]
-
-		inner := u.delims[:out] // absolute addresses
+		// incorporate inner and outer values
+		// in two slices adjacent to one another:
+		outer := u.outer[:out]
+		u.inner = shrink(u.inner, len(outer))
 		innerperm := u.perms[:out]
-		for len(inner) > 0 {
-			wrote, consumed := evalunnest(&u.innerbc, inner, innerperm, u.aw.buf[u.aw.off:], u.outsel)
-			if u.innerbc.err != 0 {
-				return fmt.Errorf("unnest inner bytecode: %w", u.innerbc.err)
-			}
-			if wrote > u.aw.space() {
-				panic("memory corruption")
-			}
-			if u.dstrc != nil {
-				subrows := inner[:consumed]
-				if u.parent.filter != nil {
-					subrows = subrows[:compress(subrows)]
-				}
-				err := u.dstrc.writeRows(subrows, &u.params)
-				if err != nil {
-					return err
-				}
-			} else {
-				if consumed != 0 {
-					u.aw.off += wrote
-				}
-				if consumed < len(inner) {
-					_, err := u.aw.flush()
-					if err != nil {
-						return err
-					}
-				}
-			}
-			inner = inner[consumed:]
-			innerperm = innerperm[consumed:]
+		// permute delimiters into unrolled delimiters:
+		for i, n := range innerperm {
+			u.inner[i] = delims[consumed+int(n)]
 		}
-		if shouldgrow {
-			// there wasn't enough space to splat sixteen
-			// lanes worth of data at once, so lets allocate
-			// more space for the next go-around to improve
-			// lane utilization
-			u.delims = make([]vmref, 2*len(u.delims))
-			u.perms = make([]int32, 2*len(u.perms))
+		err := u.dstrc.writeRows(u.inner, u.splatParams(rp, consumed, innerperm, outer))
+		if err != nil {
+			return err
 		}
+		consumed += in
 	}
 	return nil
 }
 
 func (u *unnesting) Close() error {
-	u.outerbc.reset()
-	u.innerbc.reset()
-	return u.aw.Close()
+	u.splat.reset()
+	return u.dstrc.Close()
 }

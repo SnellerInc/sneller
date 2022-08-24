@@ -188,6 +188,7 @@ const (
 	sdot2    // compute 'value . arg0.mask' from previous offset
 	ssplit   // compute 'value[0] and value[1:]'
 	sliteral // literal operand
+	sauxval  // auxilliary literal
 
 	shashvalue  // hash a value
 	shashvaluep // hash a value and add it to the current hash
@@ -744,6 +745,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	// find a struct field by name relative to a base pointer
 	sdot: {text: "dot", argtypes: []ssatype{stBase, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitdot, priority: prioParse},
+
+	sauxval: {text: "auxval", argtypes: []ssatype{}, rettype: stValueMasked, immfmt: fmtslot, priority: prioParse, bc: opauxval},
 
 	// find a struct field by name relative
 	// to a previously-computed base pointer;
@@ -6393,9 +6396,9 @@ func (p *prog) Renumber() {
 // Symbolize applies the symbol table from 'st'
 // to the program by copying the old program
 // to 'dst' and applying rewrites to findsym operations.
-func (p *prog) Symbolize(st syms, dst *prog) error {
+func (p *prog) Symbolize(st syms, dst *prog, aux *auxbindings) error {
 	p.clone(dst)
-	return dst.symbolize(st)
+	return dst.symbolize(st, aux)
 }
 
 // unsymbolized takes an stValue-typed instruction
@@ -6421,7 +6424,7 @@ func (p *prog) unsymbolized(v *value) *value {
 // ssa program (src) and the symbolized program (dst);
 // recompile also takes care of restoring a saved scratch
 // buffer for final if it has been temporarily dropped
-func recompile(st *symtab, src, dst *prog, final *bytecode) error {
+func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings) error {
 	final.symtab = st.symrefs
 	if !dst.IsStale(st) {
 		final.restoreScratch()
@@ -6431,7 +6434,7 @@ func recompile(st *symtab, src, dst *prog, final *bytecode) error {
 	// that's fine; we no longer care about
 	// the saved scratch buffer either
 	final.dropSaved()
-	err := src.Symbolize(st, dst)
+	err := src.Symbolize(st, dst, aux)
 	if err != nil {
 		return err
 	}
@@ -6484,7 +6487,7 @@ func (p *prog) recordEmpty(str string) {
 	})
 }
 
-func (p *prog) symbolize(st syms) error {
+func (p *prog) symbolize(st syms, aux *auxbindings) error {
 	p.resolved = p.resolved[:0]
 	for i := range p.values {
 		v := p.values[i]
@@ -6506,6 +6509,15 @@ func (p *prog) symbolize(st syms) error {
 			continue
 		}
 		str := v.imm.(string)
+
+		// first, check auxilliary bindings:
+		if id, ok := aux.id(str); ok {
+			v.op = sauxval
+			v.args = v.args[:0]
+			v.imm = id
+			continue
+		}
+
 		sym, ok := st.Symbolize(str)
 		if !ok {
 			// if a symbol isn't present, the

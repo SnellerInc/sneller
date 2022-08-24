@@ -347,7 +347,7 @@ func TestCompileSSA(t *testing.T) {
 			}()
 
 			st := progsyms(&p)
-			p.Symbolize(st, &ps)
+			p.Symbolize(st, &ps, &auxbindings{})
 			testDomtree(&ps, t)
 
 			// if GRAPHVIZ=1, dump test case SSA
@@ -913,7 +913,7 @@ func TestSSATicketsQueries(t *testing.T) {
 			p.Return(p.RowsMasked(p.ValidLanes(), tcs[i].expr(p)))
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample)
+			err = p.Symbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -968,7 +968,7 @@ func TestSSATickets2Queries(t *testing.T) {
 			p.Return(p.RowsMasked(p.ValidLanes(), expr(p)))
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample)
+			err = p.Symbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -1054,7 +1054,7 @@ func TestSSANYCQueries(t *testing.T) {
 
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample)
+			err = p.Symbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -1094,7 +1094,7 @@ func TestSSANYCQueries(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
-				err = p.Symbolize(&st, &sample)
+				err = p.Symbolize(&st, &sample, &auxbindings{})
 				if err != nil {
 					t.Error(err)
 				}
@@ -1156,7 +1156,7 @@ func TestNestedTicketsQueries(t *testing.T) {
 
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample)
+			err = p.Symbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}

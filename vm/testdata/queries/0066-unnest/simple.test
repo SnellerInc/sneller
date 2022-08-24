@@ -1,0 +1,31 @@
+SELECT input.x, val
+FROM input AS input, input.fields as val
+ORDER BY val LIMIT 20
+---
+{"x": "first", "fields": [0, 1, 2, 3]}
+{"x": "second", "fields": [4, 5]}
+{"x": "third", "fields": [6]}
+{"x": "fourth", "fields": [7, 8]}
+{"x": "fifth", "fields": [9, 10, 11]}
+{"x": "sixth", "fields": [12, 13, 14, 15]}
+{"x": "seventh", "fields": [16, 17]}
+{"x": "eighth", "fields": []}
+---
+{"x": "first", "val": 0}
+{"x": "first", "val": 1}
+{"x": "first", "val": 2}
+{"x": "first", "val": 3}
+{"x": "second", "val": 4}
+{"x": "second", "val": 5}
+{"x": "third", "val": 6}
+{"x": "fourth", "val": 7}
+{"x": "fourth", "val": 8}
+{"x": "fifth", "val": 9}
+{"x": "fifth", "val": 10}
+{"x": "fifth", "val": 11}
+{"x": "sixth", "val": 12}
+{"x": "sixth", "val": 13}
+{"x": "sixth", "val": 14}
+{"x": "sixth", "val": 15}
+{"x": "seventh", "val": 16}
+{"x": "seventh", "val": 17}

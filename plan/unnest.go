@@ -15,7 +15,6 @@
 package plan
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -27,41 +26,23 @@ import (
 // within that row and computes a projection
 // plus an optional conditional clause
 type Unnest struct {
-	Nonterminal               // source op
-	PivotField   *expr.Path   // pivot field (array) binding from outer
-	InnerProject vm.Selection // projected fields from inside pivot
-	OuterProject vm.Selection // projected fields
-	InnerMatch   expr.Node    // WHERE that uses inner match fields
+	Nonterminal // source op
+	Expr        expr.Node
+	Result      string
 }
 
 func (u *Unnest) rewrite(rw expr.Rewriter) {
 	u.From.rewrite(rw)
-	for i := range u.InnerProject {
-		u.InnerProject[i].Expr = expr.Rewrite(rw, u.InnerProject[i].Expr)
-	}
-	for i := range u.OuterProject {
-		u.OuterProject[i].Expr = expr.Rewrite(rw, u.OuterProject[i].Expr)
-	}
-	u.InnerMatch = expr.Rewrite(rw, u.InnerMatch)
+	u.Expr = expr.Rewrite(rw, u.Expr)
 }
 
 func (u *Unnest) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	settype("unnest", dst, st)
-
-	dst.BeginField(st.Intern("pivot"))
-	u.PivotField.Encode(dst, st)
-
-	dst.BeginField(st.Intern("inner"))
-	expr.EncodeBindings(u.InnerProject, dst, st)
-
-	dst.BeginField(st.Intern("outer"))
-	expr.EncodeBindings(u.OuterProject, dst, st)
-
-	if u.InnerMatch != nil {
-		dst.BeginField(st.Intern("match"))
-		u.InnerMatch.Encode(dst, st)
-	}
+	dst.BeginField(st.Intern("expr"))
+	u.Expr.Encode(dst, st)
+	dst.BeginField(st.Intern("result"))
+	dst.WriteString(u.Result)
 	dst.EndStruct()
 	return nil
 }
@@ -77,66 +58,31 @@ func decodeSel(dst *vm.Selection, st *ion.Symtab, src []byte) error {
 
 func (u *Unnest) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
-	case "pivot":
+	case "result":
+		s, _, err := ion.ReadString(body)
+		if err != nil {
+			return err
+		}
+		u.Result = s
+	case "expr":
 		e, _, err := expr.Decode(st, body)
 		if err != nil {
 			return err
 		}
-		p, ok := e.(*expr.Path)
-		if !ok {
-			return fmt.Errorf("cannot use node of type %T as plan.Unnest.Pivot", e)
-		}
-		u.PivotField = p
-	case "inner":
-		return decodeSel(&u.InnerProject, st, body)
-	case "outer":
-		return decodeSel(&u.OuterProject, st, body)
-	case "match":
-		e, _, err := expr.Decode(st, body)
-		if err != nil {
-			return err
-		}
-		u.InnerMatch = e
+		u.Expr = e
 	}
 	return nil
 }
 
 func (u *Unnest) String() string {
 	var out strings.Builder
-	if len(u.OuterProject) != 0 {
-		out.WriteString("PROJECT ")
-		for i := range u.OuterProject {
-			out.WriteString(expr.ToString(&u.OuterProject[i]))
-			if i != len(u.OuterProject)-1 {
-				out.WriteString(", ")
-			}
-		}
-		out.WriteString(" + ")
-	}
 	out.WriteString("UNNEST ")
-	out.WriteString(expr.ToString(u.PivotField))
-	if len(u.InnerProject) != 0 {
-		out.WriteString(" PROJECT ")
-		for i := range u.InnerProject {
-			out.WriteString(expr.ToString(&u.InnerProject[i]))
-			if i != len(u.InnerProject)-1 {
-				out.WriteString(", ")
-			}
-		}
-	}
-	if u.InnerMatch != nil {
-		out.WriteString(" WHERE ")
-		out.WriteString(expr.ToString(u.InnerMatch))
-	}
+	out.WriteString(expr.ToString(u.Expr))
+	out.WriteString(" AS ")
+	out.WriteString(u.Result)
 	return out.String()
 }
 
 func (u *Unnest) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
-	return u.From.wrap(vm.NewUnnest(
-		dst,
-		u.PivotField,
-		u.OuterProject,
-		u.InnerProject,
-		u.InnerMatch,
-	), ep)
+	return u.From.wrap(vm.NewUnnest(dst, u.Expr, u.Result), ep)
 }

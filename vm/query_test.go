@@ -451,6 +451,39 @@ func fixup(lst []ion.Datum, st *ion.Symtab) {
 	}
 }
 
+func anyHasAggregate(lst []expr.Binding) bool {
+	for i := range lst {
+		e := lst[i].Expr
+		if hasAggregate(e) {
+			return true
+		}
+	}
+	return false
+}
+
+type walkfn func(e expr.Node) bool
+
+func (w walkfn) Visit(e expr.Node) expr.Visitor {
+	if w(e) {
+		return w
+	}
+	return nil
+}
+
+func hasAggregate(e expr.Node) bool {
+	any := false
+	w := walkfn(func(e expr.Node) bool {
+		_, ok := e.(*expr.Aggregate)
+		if ok {
+			any = true
+			return false
+		}
+		return !any
+	})
+	expr.Walk(w, e)
+	return any
+}
+
 // can the inputs to this query be shuffled?
 func canShuffle(q *expr.Query) bool {
 	sel, ok := q.Body.(*expr.Select)
@@ -460,6 +493,16 @@ func canShuffle(q *expr.Query) bool {
 	if sel.OrderBy != nil {
 		// FIXME: not always true; sorting is not stable...
 		return true
+	}
+	// any aggregate produces only one output row,
+	// so the result can be shuffled trivially
+	if anyHasAggregate(sel.Columns) && len(sel.GroupBy) == 0 {
+		return true
+	}
+	if _, ok := sel.From.(*expr.Join); ok {
+		// cross-join permutes row order;
+		// need an ORDER BY to make results deterministic
+		return false
 	}
 	if sel.GroupBy != nil || sel.Distinct {
 		// these permute the output ordering by hash

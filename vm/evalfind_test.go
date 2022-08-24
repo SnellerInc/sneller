@@ -216,7 +216,7 @@ func symbolizeTest(findbc *bytecode, st *ion.Symtab, node expr.Node) error {
 	}
 	mem = append(mem, val)
 	program.Return(program.MergeMem(mem...))
-	program.symbolize(st)
+	program.symbolize(st, &auxbindings{})
 	err = program.compile(findbc)
 	if err != nil {
 		return fmt.Errorf("symbolizeTest: %w", err)

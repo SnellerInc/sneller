@@ -62,6 +62,7 @@ func projectelim(b *Trace) {
 	// eliminiate unused bindings for each bind pass
 	first := true
 	var parent Step
+loop:
 	for s := b.top; s != nil; s = s.parent() {
 		switch s := s.(type) {
 		case *Bind:
@@ -78,6 +79,7 @@ func projectelim(b *Trace) {
 				// inconsequential PROJECT; usually we are
 				// being passed to COUNT(*)
 				parent.setparent(s.parent())
+				continue loop
 			}
 			first = false
 		case *Aggregate:
@@ -90,6 +92,20 @@ func projectelim(b *Trace) {
 				return ok
 			})
 			maps.Clear(used)
+			first = false
+		case *IterValue:
+			if first {
+				first = false
+				break
+			}
+			if _, ok := used[s.Result]; !ok {
+				// cross-join result isn't used
+				parent.setparent(s.parent())
+				continue loop
+			}
+			// we are *not* clearing used because
+			// we only introduce 1 new binding;
+			// we do not overwrite existing bindings
 			first = false
 		default:
 			// nothing

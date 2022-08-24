@@ -64,7 +64,7 @@ func (v visitfn) Visit(e expr.Node) expr.Visitor {
 //
 // n.b. false negatives are okay here; they will
 // just end up inhibiting optimizations
-func doesNotReference(e expr.Node, step Step, scope *Trace) bool {
+func doesNotReference(e expr.Node, bind string) bool {
 	ref := false
 	visit := func(e expr.Node) bool {
 		if ref {
@@ -74,7 +74,7 @@ func doesNotReference(e expr.Node, step Step, scope *Trace) bool {
 		if !ok {
 			return true
 		}
-		if scope.origin(p) == step {
+		if p.First == bind {
 			ref = true
 		}
 		return false
@@ -123,25 +123,8 @@ func forcepush(where expr.Node, at Step, scope *Trace) Step {
 	}
 	f := new(Filter)
 	f.Where = where
-	f.setparent(at.parent())
-	at.setparent(f)
+	f.setparent(at)
 	return f
-}
-
-// IterValue accepts filters directly,
-// but we push down parts of the filter that
-// do not reference the inner values into
-// a parent node (which may be subsequently pushed down)
-func (i *IterValue) filter(e expr.Node, scope *Trace) {
-	conj := conjunctions(e, nil)
-	par := i.parent()
-	for j := range conj {
-		if doesNotReference(conj[j], i, scope) {
-			par = forcepush(conj[j], par, scope)
-		} else {
-			i.Filter = conjoin(i.Filter, conj[j], scope)
-		}
-	}
 }
 
 // unconditionally push ordinary filters ahead of DISTINCT,
@@ -158,6 +141,36 @@ func push(f *Filter, dst Step, s *Trace) bool {
 	type filterer interface {
 		filter(e expr.Node, s *Trace)
 	}
+	// this is an unusual case because we
+	// can only push down *part* of the filter:
+	if iv, ok := dst.(*IterValue); ok {
+		conj := conjunctions(f.Where, nil)
+		par := iv.parent()
+		newparent := false
+		var remaining expr.Node
+		for j := range conj {
+			if doesNotReference(conj[j], iv.Result) {
+				par = forcepush(conj[j], par, s)
+				newparent = true
+			} else {
+				if remaining == nil {
+					remaining = conj[j]
+				} else {
+					remaining = conjoin(remaining, conj[j], s)
+				}
+			}
+		}
+		if newparent {
+			iv.setparent(par)
+		}
+		if remaining == nil {
+			return true
+		}
+		f.Where = remaining
+		return false
+	}
+
+	// in some cases we can always push:
 	if fi, ok := dst.(filterer); ok {
 		fi.filter(f.Where, s)
 		return true
