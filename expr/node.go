@@ -3227,9 +3227,9 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 
 // Unpivot captures the UNPIVOT t AS v AT a statement
 type Unpivot struct {
-	TupleRef Node   // t
-	As       string // v
-	At       string // a
+	TupleRef Node    // t
+	As       *string // v
+	At       *string // a
 }
 
 func (u *Unpivot) Equals(brhs Node) bool {
@@ -3237,10 +3237,10 @@ func (u *Unpivot) Equals(brhs Node) bool {
 	if !ok {
 		return false
 	}
-	if u.As != rhs.As {
+	if !equalPointed(u.As, rhs.As) {
 		return false
 	}
-	if u.At != rhs.At {
+	if !equalPointed(u.At, rhs.At) {
 		return false
 	}
 	return Equivalent(u.TupleRef, rhs.TupleRef)
@@ -3251,10 +3251,14 @@ func (u *Unpivot) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	settype(dst, st, "unpivot")
 	dst.BeginField(st.Intern("TupleRef"))
 	u.TupleRef.Encode(dst, st)
-	dst.BeginField(st.Intern("As"))
-	dst.WriteString(u.As)
-	dst.BeginField(st.Intern("At"))
-	dst.WriteString(u.At)
+	if u.As != nil {
+		dst.BeginField(st.Intern("As"))
+		dst.WriteString(*u.As)
+	}
+	if u.At != nil {
+		dst.BeginField(st.Intern("At"))
+		dst.WriteString(*u.At)
+	}
 	dst.EndStruct()
 }
 
@@ -3262,9 +3266,13 @@ func (u *Unpivot) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
 	switch name {
 	case "As":
-		u.As, _, err = ion.ReadString(body)
+		var s string
+		s, _, err = ion.ReadString(body)
+		u.As = &s
 	case "At":
-		u.At, _, err = ion.ReadString(body)
+		var s string
+		s, _, err = ion.ReadString(body)
+		u.At = &s
 	case "TupleRef":
 		u.TupleRef, _, err = Decode(st, body)
 	default:
@@ -3280,15 +3288,19 @@ func (u *Unpivot) walk(v Visitor) {
 func (u *Unpivot) text(dst *strings.Builder, redact bool) {
 	dst.WriteString("UNPIVOT ")
 	u.TupleRef.text(dst, redact)
-	dst.WriteString(" AS ")
-	dst.WriteString(u.As)
-	if u.At != "" {
+	if u.As != nil {
+		dst.WriteString(" AS ")
+		dst.WriteString(*u.As)
+	}
+	if u.At != nil {
 		dst.WriteString(" AT ")
-		dst.WriteString(u.At)
+		dst.WriteString(*u.At)
 	}
 }
 
-func (u *Unpivot) Tables() []Binding {
-	panic("Unpivot.Encode() has not been implemented. No idea what it should do. A piece of documentation is most wanted.")
-	return nil
+func equalPointed[T comparable](lhs, rhs *T) bool {
+	if lhs != nil {
+		return (rhs != nil) && ((lhs == rhs) || (*lhs == *rhs))
+	}
+	return rhs == nil
 }

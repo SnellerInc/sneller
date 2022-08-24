@@ -241,6 +241,8 @@ func empty(name string) Op {
 		return &OutputPart{}
 	case "outidx":
 		return &OutputIndex{}
+	case "unpivot":
+		return &Unpivot{}
 	}
 	return nil
 }

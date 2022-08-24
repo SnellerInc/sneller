@@ -166,6 +166,14 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT *, *, * FROM table`,
 			rx:    "'*' cannot be mixed with other values",
 		},
+		{
+			input: "SELECT x FROM UNPIVOT table AS v AT a",
+			rx:    "path x references an unbound variable",
+		},
+		{
+			input: "SELECT a FROM UNPIVOT table AS a AT a",
+			rx:    "the AS and AT UNPIVOT labels must not be the same 'a'",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
@@ -258,6 +266,32 @@ func TestBuild(t *testing.T) {
 		return basetime.Add(time.Duration(hours) * time.Hour)
 	}
 	tests := []buildTestcase{
+		/* FAILS due to a bug in pir/optimize.go. Please uncomment it when the fix is provided. {
+					input: "SELECT cols FROM UNPIVOT (SELECT key FROM input) AT cols GROUP BY cols",
+					expect: []string{
+						"ITERATE input FIELDS [key]",
+		                "PROJECT key AS key",
+		                "UNPIVOT AT cols",
+		                "FILTER DISTINCT [cols]",
+		                "PROJECT cols AS cols",
+					},
+				},*/
+		{
+			input: "SELECT COUNT(*), key FROM UNPIVOT input AS val AT key GROUP BY key",
+			expect: []string{
+				"ITERATE input FIELDS *",
+				"UNPIVOT AS val AT key",
+				"AGGREGATE COUNT(*) AS \"count\" BY key AS key",
+			},
+		},
+		{
+			input: "SELECT v FROM UNPIVOT input AS v AT a",
+			expect: []string{
+				"ITERATE input FIELDS *",
+				"UNPIVOT AS v AT a",
+				"PROJECT v AS v",
+			},
+		},
 		{
 			input: "select 3, 'foo' || 'bar'",
 			expect: []string{

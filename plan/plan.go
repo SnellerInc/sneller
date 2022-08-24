@@ -1009,6 +1009,64 @@ func (d *Distinct) String() string {
 	return str.String()
 }
 
+type Unpivot struct {
+	Nonterminal
+	As *string
+	At *string
+}
+
+func (u *Unpivot) String() string {
+	var str strings.Builder
+	str.WriteString("UNPIVOT")
+	if u.As != nil {
+		fmt.Fprintf(&str, " AS %s", *u.As)
+	}
+	if u.At != nil {
+		fmt.Fprintf(&str, " AT %s", *u.At)
+	}
+	return str.String()
+}
+
+func (u *Unpivot) encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	settype("unpivot", dst, st)
+	if u.As != nil {
+		dst.BeginField(st.Intern("As"))
+		dst.WriteString(*u.As)
+	}
+	if u.At != nil {
+		dst.BeginField(st.Intern("At"))
+		dst.WriteString(*u.At)
+	}
+	dst.EndStruct()
+	return nil
+}
+
+func (u *Unpivot) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) error {
+	var err error
+	switch name {
+	case "As":
+		var x string
+		x, _, err = ion.ReadString(buf)
+		u.As = &x
+	case "At":
+		var x string
+		x, _, err = ion.ReadString(buf)
+		u.At = &x
+	default:
+		err = fmt.Errorf("plan.Unpivot: setfield: unexpected field %q", name)
+	}
+	return err
+}
+
+func (u *Unpivot) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+	vmu, err := vm.NewUnpivot(u.As, u.At, dst)
+	if err != nil {
+		return -1, nil, err
+	}
+	return u.From.wrap(vmu, ep)
+}
+
 func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 	// encode the parent(s) of this op first
 	if parent := p.input(); parent != nil {

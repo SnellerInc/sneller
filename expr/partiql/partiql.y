@@ -92,8 +92,7 @@ import (
 %type <expr> query expr datum datum_or_parens path_expression maybe_into
 %type <expr> where_expr having_expr case_optional_else parenthesized_expr
 %type <expr> optional_filter
-%type <expr> unpivot explicit_struct_definition explicit_list_definition
-%type <expr> tuple_reference
+%type <expr> unpivot unpivot_source explicit_struct_definition explicit_list_definition
 %type <with> maybe_cte_bindings cte_bindings
 %type <pc> path_component
 %type <yesno> ascdesc nullslast maybe_distinct
@@ -148,7 +147,8 @@ value_binding:
 expr AS identifier { $$ = expr.Bind($1, $3) } |
 expr identifier { $$ = expr.Bind($1, $2) } |
 expr { $$ = expr.Bind($1, "") } |
-'*' { $$ = expr.Bind(expr.Star{}, "") }
+'*' { $$ = expr.Bind(expr.Star{}, "") } |
+unpivot { $$ = expr.Bind($1, "") }
 
 path_expression:
 identifier path_component { $$ = &expr.Path{First: $1, Rest: $2} }
@@ -480,11 +480,6 @@ explicit_struct_definition
 {
     $$ = $1
 }
-|
-unpivot
-{
-    $$ = $1
-}
 
 // match (binding)+
 binding_list:
@@ -625,13 +620,13 @@ offset_expr:
 OFFSET literal_int { n := expr.Integer($2); $$ = &n }
 
 unpivot:
-UNPIVOT tuple_reference AS identifier { $$ = &expr.Unpivot{ TupleRef: $2, As: $4, At: "" } } |
-UNPIVOT tuple_reference AS identifier AT identifier { $$ = &expr.Unpivot{ TupleRef: $2, As: $4, At: $6 } } |
-UNPIVOT tuple_reference AT identifier AS identifier { $$ = &expr.Unpivot{ TupleRef: $2, As: $6, At: $4 } }
+UNPIVOT unpivot_source AS identifier AT identifier { /*Cloning, as the buffer gets overwritten*/ as := $4; at := $6; $$ = &expr.Unpivot{ TupleRef: $2, As: &as, At: &at } } |
+UNPIVOT unpivot_source AT identifier AS identifier { /*Cloning, as the buffer gets overwritten*/ as := $6; at := $4; $$ = &expr.Unpivot{ TupleRef: $2, As: &as, At: &at } } |
+UNPIVOT unpivot_source AS identifier { /*Cloning, as the buffer gets overwritten*/ as := $4; $$ = &expr.Unpivot{ TupleRef: $2, As: &as, At: nil } } |
+UNPIVOT unpivot_source AT identifier { /*Cloning, as the buffer gets overwritten*/ at := $4; $$ = &expr.Unpivot{ TupleRef: $2, As: nil, At: &at } }
 
-tuple_reference:
-path_expression { $$ = $1 } |
-explicit_struct_definition { $$ = $1 }
+unpivot_source:
+expr { $$ = &expr.Table{Binding: expr.Bind($1, "")} }
 
 explicit_struct_definition:
 '{' field_value_list '}' { $$ = expr.Call("MAKE_STRUCT", $2...) }

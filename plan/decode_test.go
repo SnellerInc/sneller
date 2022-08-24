@@ -122,5 +122,5 @@ func (b *benchenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
 			},
 		}
 	}
-	return &blobHandle{&blob.List{lst}}, nil
+	return &blobHandle{&blob.List{Contents: lst}}, nil
 }

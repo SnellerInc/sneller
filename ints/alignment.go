@@ -14,25 +14,77 @@
 
 package ints
 
-import (
-	"golang.org/x/exp/constraints"
-)
-
 // IsAligned returns true if and only if v is an integer multiple of alignment
-func IsAligned[T constraints.Integer](v, alignment T) bool {
+func IsAligned(v, alignment uint) bool {
+	return v%alignment == 0
+}
+
+// IsAligned8 returns true if and only if v is an integer multiple of alignment
+func IsAligned8(v, alignment uint8) bool {
+	return v%alignment == 0
+}
+
+// IsAligned16 returns true if and only if v is an integer multiple of alignment
+func IsAligned16(v, alignment uint16) bool {
+	return v%alignment == 0
+}
+
+// IsAligned32 returns true if and only if v is an integer multiple of alignment
+func IsAligned32(v, alignment uint32) bool {
+	return v%alignment == 0
+}
+
+// IsAligned64 returns true if and only if v is an integer multiple of alignment
+func IsAligned64(v, alignment uint64) bool {
 	return v%alignment == 0
 }
 
 // AlignDown returns v aligned down to a given alignment.
-// In other words, the return value is the largest integer multiple of alignment not greater than v.
-// AlignDown(3, 4) == 0; AlignDown(11, 5) == 10; AlignDown(2, 2) == 2.
-func AlignDown[T constraints.Integer](v, alignment T) T {
+func AlignDown(v, alignment uint) uint {
+	return (v / alignment) * alignment
+}
+
+// AlignDown8 returns v aligned down to a given alignment.
+func AlignDown8(v, alignment uint8) uint8 {
+	return (v / alignment) * alignment
+}
+
+// AlignDown16 returns v aligned down to a given alignment.
+func AlignDown16(v, alignment uint16) uint16 {
+	return (v / alignment) * alignment
+}
+
+// AlignDown32 returns v aligned down to a given alignment.
+func AlignDown32(v, alignment uint32) uint32 {
+	return (v / alignment) * alignment
+}
+
+// AlignDown64 returns v aligned down to a given alignment.
+func AlignDown64(v, alignment uint64) uint64 {
 	return (v / alignment) * alignment
 }
 
 // AlignUp returns v aligned up to a given alignment.
-// In other words, the return value is the smallest integer multiple of alignment not lesser than v.
-// AlignUp(3, 4) == 4; AlignUp(11, 5) == 15; AlignUp(2, 2) == 2.
-func AlignUp[T constraints.Integer](v, alignment T) T {
-	return AlignDown(v+alignment-1, alignment)
+func AlignUp(v, alignment uint) uint {
+	return ((v + alignment - 1) / alignment) * alignment
+}
+
+// AlignUp8 returns v aligned up to a given alignment.
+func AlignUp8(v, alignment uint8) uint8 {
+	return ((v + alignment - 1) / alignment) * alignment
+}
+
+// AlignUp16 returns v aligned up to a given alignment.
+func AlignUp16(v, alignment uint16) uint16 {
+	return ((v + alignment - 1) / alignment) * alignment
+}
+
+// AlignUp32 returns v aligned up to a given alignment.
+func AlignUp32(v, alignment uint32) uint32 {
+	return ((v + alignment - 1) / alignment) * alignment
+}
+
+// AlignUp64 returns v aligned up to a given alignment.
+func AlignUp64(v, alignment uint64) uint64 {
+	return ((v + alignment - 1) / alignment) * alignment
 }

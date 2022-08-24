@@ -39,11 +39,13 @@ func (c *CompileError) Error() string { return c.Err }
 // WriteTo writes a plaintext representation
 // of the error to dst, including the expression
 // associated with the error.
-func (c *CompileError) WriteTo(dst io.Writer) (int, error) {
+func (c *CompileError) WriteTo(dst io.Writer) (int64, error) {
 	if c.In == nil {
-		return fmt.Fprintf(dst, "%s\n", c.Err)
+		i, err := fmt.Fprintf(dst, "%s\n", c.Err)
+		return int64(i), err
 	}
-	return fmt.Fprintf(dst, "in expression:\n\t%s\n%s\n", expr.ToString(c.In), c.Err)
+	i, err := fmt.Fprintf(dst, "in expression:\n\t%s\n%s\n", expr.ToString(c.In), c.Err)
+	return int64(i), err
 }
 
 func errorf(e expr.Node, f string, args ...interface{}) error {
@@ -59,33 +61,44 @@ func (b *Trace) walkFrom(f expr.From, e Env) error {
 		return nil
 	}
 	switch f := f.(type) {
+	case *expr.Join:
+		return b.walkFromJoin(f, e)
+	case *expr.Table:
+		return b.walkFromTable(f, e)
 	default:
 		return errorf(f, "unexpected expression %q", f)
-	case *expr.Join:
-		if f.Kind != expr.CrossJoin {
-			return errorf(f, "join %q not yet supported", f.Kind)
-		}
-		err := b.walkFrom(f.Left, e)
-		if err != nil {
-			return err
-		}
-		// FIXME: if the rhs expression is a SELECT,
-		// then this is almost certainly a correlated
-		// sub-query ...
-		return b.Iterate(&f.Right)
-	case *expr.Table:
-		if s, ok := f.Expr.(*expr.Select); ok {
-			b.walkSelect(s, e)
-			// TODO: if any subsequent expressions
-			// refer to a binding created by
-			//   FROM (SELECT ...) AS x,
-			// we should strip 'x.' from those
-			// bindings...
-		} else {
-			return b.Begin(f, e)
-		}
 	}
-	return nil
+}
+
+func (b *Trace) walkFromTable(f *expr.Table, e Env) error {
+	switch s := f.Expr.(type) {
+	case *expr.Select:
+		b.walkSelect(s, e)
+		// TODO: if any subsequent expressions
+		// refer to a binding created by
+		//   FROM (SELECT ...) AS x,
+		// we should strip 'x.' from those
+		// bindings...
+		return nil
+	case *expr.Unpivot:
+		return b.buildUnpivot(s, e)
+	default:
+		return b.Begin(f, e)
+	}
+}
+
+func (b *Trace) walkFromJoin(f *expr.Join, e Env) error {
+	if f.Kind != expr.CrossJoin {
+		return errorf(f, "join %q not yet supported", f.Kind)
+	}
+	err := b.walkFrom(f.Left, e)
+	if err != nil {
+		return err
+	}
+	// FIXME: if the rhs expression is a SELECT,
+	// then this is almost certainly a correlated
+	// sub-query ...
+	return b.Iterate(&f.Right)
 }
 
 // walk a list of bindings and determine if
@@ -399,7 +412,7 @@ func (h *hoistwalk) Rewrite(e expr.Node) expr.Node {
 					Args: []expr.Node{corrv, b.Args[0]},
 				})
 				if is.Key == expr.IsMissing {
-					ret = &expr.Not{ret}
+					ret = &expr.Not{Expr: ret}
 				}
 				return ret
 			}
@@ -665,7 +678,7 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		self.Columns = group
 		self.Distinct = true
 		newt := &expr.Select{
-			From: &expr.Table{expr.Bind(self, "")},
+			From: &expr.Table{Binding: expr.Bind(self, "")},
 		}
 		self = newt
 	}
@@ -1026,6 +1039,37 @@ func checkColumns(cols []expr.Binding) error {
 			}
 		}
 	}
+	return nil
+}
 
+func (b *Trace) buildUnpivot(u *expr.Unpivot, e Env) error {
+	// Validation
+	if (u.As != nil) && (u.At != nil) && (*u.As == *u.At) {
+		return fmt.Errorf("the AS and AT UNPIVOT labels must not be the same '%s'", *u.As)
+	}
+	if (u.As == nil) && (u.At == nil) {
+		return fmt.Errorf("the AS and AT UNPIVOT labels must not be empty simultaneously")
+	}
+	// Emission
+	switch ref := u.TupleRef.(type) {
+	case *expr.Table: // UNPIVOT table
+		if err := b.walkFromTable(ref, e); err != nil {
+			return err
+		}
+		b.top.get("*")
+
+	case *expr.Builtin: // UNPIVOT {...}
+		// CAUTION: when MAKE_STRUCT is implemented, the output might be expr.Table as well.
+		if ref.Func != expr.MakeStruct {
+			return fmt.Errorf("UNPIVOT expects a path or an explicit structure, but '%s' is provided", ref)
+		}
+		return fmt.Errorf("buildUnpivot *expr.Builtin.MakeStruct has not been implemented yet")
+	default:
+		return fmt.Errorf("UNPIVOT expects a path or an explicit structure, but '%s' is provided", ref)
+	}
+
+	unp := &Unpivot{Ast: u}
+	unp.setparent(b.top)
+	b.top = unp
 	return nil
 }

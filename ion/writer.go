@@ -96,9 +96,9 @@ func (b *Buffer) BeginStruct(hint int) {
 	b.buf = append(b.buf, 0xde, 0)
 }
 
-// uvsize returns the encoded size
+// Uvsize returns the encoded size
 // of value as a uvarint
-func uvsize(value uint) int {
+func Uvsize(value uint) int {
 	// a bit of a hack: oring in 1
 	// does not change the result except
 	// for the number 0, because we need
@@ -119,7 +119,7 @@ func (b *Buffer) term(seg *segment) {
 	}
 	// need one byte for descriptor
 	// plus space for the uvarint
-	needwidth := uvsize(uint(size)) + 1
+	needwidth := Uvsize(uint(size)) + 1
 	if seg.width != needwidth {
 		// if we didn't allocate enough space,
 		// make sure there is enough space at
@@ -229,7 +229,7 @@ func (b *Buffer) grow(n int) []byte {
 
 // write an integer as a uvarint
 func (b *Buffer) putuv(s uint) {
-	dst := b.grow(uvsize(s))
+	dst := b.grow(Uvsize(s))
 	for i := len(dst) - 1; i >= 0; i-- {
 		dst[i] = byte(s & 0x7f)
 		s >>= 7

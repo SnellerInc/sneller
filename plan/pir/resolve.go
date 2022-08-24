@@ -83,58 +83,74 @@ func (b *Trace) combine() error {
 }
 
 func (b *Trace) Visit(e expr.Node) expr.Visitor {
+	switch n := e.(type) {
+	case *expr.Select:
+		return b.visitSelect(n)
+	case *expr.Path:
+		return b.visitPath(n)
+	case *expr.Unpivot:
+		return b.visitUnpivot(n)
+	default:
+		return b
+	}
+}
+
+func (b *Trace) visitSelect(e *expr.Select) expr.Visitor {
 	// don't visit subqueries, we'll hoist those
 	// into inputs in a later step
-	if _, ok := e.(*expr.Select); ok {
-		return nil
-	}
-	if p, ok := e.(*expr.Path); ok {
-		if b.origin(p) != nil {
-			return nil
-		}
-		src, node := b.cur.get(p.First)
-		if src == nil {
-			b.errorf(p, "path %s references an unbound variable", expr.ToString(p))
-			return nil
-		}
-		b.add(p, src, node)
-		// if the source of a binding is an iterator,
-		// add this path expression to the set of variable
-		// references that originate from that table;
-		// this lets us compute the set of bindings produced
-		// from a table
-		if rt, ok := src.(reftracker); ok {
-			if err := rt.strip(p); err != nil {
-				b.err = append(b.err, err)
-			}
-			if it, ok := src.(*IterTable); ok && node != nil {
-				// make sure we record this as a definite reference
-				it.definite = append(it.definite, p.First)
-			}
-			// references to tables, etc.
-			// do not need to be additionally
-			// type-checked
-			return nil
-		}
+	return nil
+}
 
-		t := expr.TypeOf(node, b)
-		if t == expr.AnyType || p.Rest == nil {
-			return nil
-		}
-		// type-check the path expression against
-		// the node that produces the value when
-		// the path has multiple components
-		switch p.Rest.(type) {
-		case *expr.LiteralIndex:
-			if !t.Contains(ion.ListType) {
-				b.errorf(p, "path expression %q indexes a non-list object", p)
-			}
-		case *expr.Dot:
-			if !t.Contains(ion.StructType) {
-				b.errorf(p, "path expression %q dots a non-structure object", p)
-			}
-		}
+func (b *Trace) visitPath(p *expr.Path) expr.Visitor {
+	if b.origin(p) != nil {
 		return nil
 	}
-	return b
+	src, node := b.cur.get(p.First)
+	if src == nil {
+		b.errorf(p, "path %s references an unbound variable", expr.ToString(p))
+		return nil
+	}
+	b.add(p, src, node)
+	// if the source of a binding is an iterator,
+	// add this path expression to the set of variable
+	// references that originate from that table;
+	// this lets us compute the set of bindings produced
+	// from a table
+	if rt, ok := src.(reftracker); ok {
+		if err := rt.strip(p); err != nil {
+			b.err = append(b.err, err)
+		}
+		if it, ok := src.(*IterTable); ok && node != nil {
+			// make sure we record this as a definite reference
+			it.definite = append(it.definite, p.First)
+		}
+		// references to tables, etc.
+		// do not need to be additionally
+		// type-checked
+		return nil
+	}
+
+	t := expr.TypeOf(node, b)
+	if t == expr.AnyType || p.Rest == nil {
+		return nil
+	}
+	// type-check the path expression against
+	// the node that produces the value when
+	// the path has multiple components
+	switch p.Rest.(type) {
+	case *expr.LiteralIndex:
+		if !t.Contains(ion.ListType) {
+			b.errorf(p, "path expression %q indexes a non-list object", p)
+		}
+	case *expr.Dot:
+		if !t.Contains(ion.StructType) {
+			b.errorf(p, "path expression %q dots a non-structure object", p)
+		}
+	}
+	return nil
+}
+
+func (b *Trace) visitUnpivot(u *expr.Unpivot) expr.Visitor {
+	b.errorf(u, "the UNPIVOT cross join case is not supported yet")
+	return nil
 }

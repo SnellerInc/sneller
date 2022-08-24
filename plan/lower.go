@@ -455,6 +455,8 @@ func (w *walker) walkBuild(in pir.Step) (Op, error) {
 		return lowerOutputIndex(n, w.env, input)
 	case *pir.OutputPart:
 		return lowerOutputPart(n, w.env, input)
+	case *pir.Unpivot:
+		return lowerUnpivot(n, input)
 	default:
 		return nil, fmt.Errorf("don't know how to lower %T", in)
 	}
@@ -584,4 +586,13 @@ func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
 		b = pir.NoSplit(b)
 	}
 	return toTree(b, env, split)
+}
+
+func lowerUnpivot(in *pir.Unpivot, from Op) (Op, error) {
+	u := &Unpivot{
+		Nonterminal: Nonterminal{From: from},
+		As:          in.Ast.As,
+		At:          in.Ast.At,
+	}
+	return u, nil
 }

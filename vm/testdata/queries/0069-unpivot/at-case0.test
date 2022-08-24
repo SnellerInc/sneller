@@ -1,0 +1,13 @@
+SELECT
+    field
+FROM UNPIVOT input AT field
+---
+{"this": "a"}
+{"is": "ab"}
+{"a": "abc"}
+{"test": "abcd"}
+---
+{"field": "this"}
+{"field": "is"}
+{"field": "a"}
+{"field": "test"}

@@ -1,0 +1,13 @@
+SELECT
+    key
+FROM UNPIVOT input AS val AT key
+---
+{"this": "a"}
+{"is": "ab"}
+{"a": "abc"}
+{"test": "abcd"}
+---
+{"key": "this"}
+{"key": "is"}
+{"key": "a"}
+{"key": "test"}

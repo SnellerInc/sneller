@@ -71,7 +71,7 @@ type rowConsumer interface {
 	// into the next sub-query
 	//
 	// the implementation of writeRows *may*
-	// re-use the delims slice, but it *may not*
+	// re-use the delims slice, but it *must not*
 	// write to the memory pointed to by delims;
 	// it must allocate new memory for new output
 	writeRows(delims []vmref, params *rowParams) error

@@ -78,9 +78,11 @@ var sameq = []string{
 	"SELECT {'first': x, 'second': y} AS structure FROM foo",
 	"SELECT DISTINCT ON (x, y) y, z, w FROM table",
 	"SELECT DISTINCT ON (x) * FROM table",
+	"SELECT a FROM UNPIVOT t AS a AT b",
+	"SELECT a FROM UNPIVOT t AS a",
+	"SELECT a FROM UNPIVOT t AT a",
+	"SELECT a FROM UNPIVOT {'x': 'y'} AS a",
 	"SELECT * FROM UNPIVOT t AS a AT b",
-	"SELECT * FROM UNPIVOT t AS a",
-	"SELECT * FROM UNPIVOT {'x': 'y'} AS a",
 	`SELECT APPROX_COUNT_DISTINCT(x) FROM table`,
 }
 
@@ -230,6 +232,10 @@ func TestParseNormalization(t *testing.T) {
 		{
 			"SELECT EXISTS(SELECT x, y FROM foo WHERE x = 3) AS exist",
 			"SELECT (SELECT x, y FROM foo WHERE x = 3 LIMIT 1) IS NOT MISSING AS exist",
+		},
+		{
+			"SELECT a FROM UNPIVOT t AT b AS a",
+			"SELECT a FROM UNPIVOT t AS a AT b",
 		},
 	}
 

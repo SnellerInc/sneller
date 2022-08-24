@@ -1,0 +1,13 @@
+SELECT
+    val
+FROM UNPIVOT input AS val
+---
+{"this": "a"}
+{"is": "ab"}
+{"a": "abc"}
+{"test": "abcd"}
+---
+{"val": "a"}
+{"val": "ab"}
+{"val": "abc"}
+{"val": "abcd"}

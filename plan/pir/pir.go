@@ -1065,31 +1065,39 @@ func (b *Trace) Rewrite(rw expr.Rewriter) {
 	}
 }
 
+// Unpivot represents the UNPIVOT expr AS as AT at statement
 type Unpivot struct {
-	par Step
+	parented
+	Ast *expr.Unpivot // The AST node this node was constructed from
 	noexprs
 }
 
-func (u *Unpivot) parent() Step {
-	panic("Unpivot.parent() is not implemented")
-	return u.par
-}
-
-func (u *Unpivot) setparent(p Step) {
-	u.par = p
-	panic("Unpivot.setparent() is not implemented")
-}
-
-func (u *Unpivot) get(string) (Step, expr.Node) {
-	panic("Unpivot.get() is not implemented")
+func (u *Unpivot) get(x string) (Step, expr.Node) {
+	if (u.Ast.As != nil) && (*u.Ast.As == x) {
+		return u, u.Ast
+	} else if (u.Ast.At != nil) && (*u.Ast.At == x) {
+		return u, u.Ast
+	}
+	// Binding cannot be resolved
+	return nil, nil
 }
 
 func (u *Unpivot) describe(dst io.Writer) {
-	panic("Unpivot.describe() is not implemented")
+	io.WriteString(dst, "UNPIVOT")
+	if u.Ast.As != nil {
+		fmt.Fprintf(dst, " AS %s", *u.Ast.As)
+	}
+	if u.Ast.At != nil {
+		fmt.Fprintf(dst, " AT %s", *u.Ast.At)
+	}
+	io.WriteString(dst, "\n")
 }
 
-func (lhs *Unpivot) equals(brhs Step) bool {
-	panic("Unpivot.equals() is not implemented")
+func (u *Unpivot) equals(brhs Step) bool {
+	lhs := u
 	rhs, ok := brhs.(*Unpivot)
-	return ok && (lhs.par == rhs.par)
+	if !ok {
+		return false
+	}
+	return lhs.Ast.Equals(rhs.Ast)
 }

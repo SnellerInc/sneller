@@ -131,6 +131,11 @@ func SizeOf(msg []byte) int {
 		}
 		return -1 // unterminated rest
 	default:
+		// CAUTION: the 0xd1 case (the struct has at least one symbol/value pair, the length field
+		// exists, and the field name integers are sorted in increasing order) is not handled correctly.
+		// The VarUInt length should be used, but the result of masking (0x01) is used instead. Therefore,
+		// the function returns 2 instead of the VarUInt. The 0xd1 case has not been used in the codebase
+		// so far, allowing for the simplification of the function, but if this ever changes, the bug hides here.
 		return int(lo) + 1
 	}
 }
