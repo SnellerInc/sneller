@@ -19,7 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -170,7 +170,7 @@ func TestBadRequest(t *testing.T) {
 		if res.StatusCode != http.StatusBadRequest {
 			t.Errorf("got status code %d", res.StatusCode)
 		}
-		bodytext, err := ioutil.ReadAll(res.Body)
+		bodytext, err := io.ReadAll(res.Body)
 		res.Body.Close()
 		if err != nil {
 			t.Fatal(err)

@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -520,7 +519,7 @@ func splitquery(t *testing.T, query string, m *Manager, id tnproto.ID) (io.ReadC
 }
 
 func openfds(t *testing.T) []string {
-	fi, err := ioutil.ReadDir("/proc/self/fd")
+	fi, err := os.ReadDir("/proc/self/fd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -541,7 +540,7 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, want []str
 	var row, wantrow ion.Datum
 	var st ion.Symtab
 
-	out, err := ioutil.ReadAll(qr)
+	out, err := io.ReadAll(qr)
 	if err != nil {
 		t.Fatal(err)
 	}

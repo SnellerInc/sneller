@@ -17,8 +17,8 @@ package ion
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -26,7 +26,7 @@ import (
 )
 
 func testdata(t *testing.T, name string) []byte {
-	buf, err := ioutil.ReadFile(filepath.Join("../testdata/", name))
+	buf, err := os.ReadFile(filepath.Join("../testdata/", name))
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)

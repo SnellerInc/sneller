@@ -19,7 +19,7 @@ package usock
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -106,7 +106,7 @@ func TestConn(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.Close()
-	out, err := ioutil.ReadAll(f)
+	out, err := io.ReadAll(f)
 	if err != nil {
 		t.Fatal(err)
 	}

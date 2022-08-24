@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,12 +47,12 @@ func BenchmarkConvertSubObjectsTSV(b *testing.B) {
 func benchmarkConvertTSV(b *testing.B, tsvFile, hintsFile string) {
 	// read file into memory to prevent I/O and
 	// measure the raw conversion performance.
-	f, err := ioutil.ReadFile(testFolder + "/" + tsvFile)
+	f, err := os.ReadFile(testFolder + "/" + tsvFile)
 	if err != nil {
 		b.Fatalf("cannot open %q: %s", tsvFile, err)
 	}
 
-	hf, err := ioutil.ReadFile(testFolder + "/" + hintsFile)
+	hf, err := os.ReadFile(testFolder + "/" + hintsFile)
 	if err != nil {
 		b.Fatalf("cannot read %q: %s", hintsFile, err)
 	}
@@ -85,7 +84,7 @@ func TestConvertTSV(t *testing.T) {
 		t.Run(tsvFile, func(t *testing.T) {
 			base := testFolder + "/" + strings.TrimSuffix(tsvFile, filepath.Ext(tsvFile))
 			hintsFile := base + "-hints.json"
-			hf, err := ioutil.ReadFile(hintsFile)
+			hf, err := os.ReadFile(hintsFile)
 			if err != nil {
 				t.Fatalf("cannot read %q: %s", hintsFile, err)
 			}
@@ -104,7 +103,7 @@ func FuzzTSV(f *testing.F) {
 	f.Add("2022-06-01 21:04:04	2022-06-01 21:04:15	dev-generated-netflow	1143993974	2502817533	31065	58485	6	4873982	9399852	3250	6267	0	65535	65535	PostGresClient	PostGresServer			2022/06/01T21:00:00Z	2251	875	awsv2:000111222333:us-east-2:vpc-54312981872898173	0000:0000:0000:0000:0000:0000:442f:f676	0000:0000:0000:0000:0000:0000:952d:f6fd")
 	f.Fuzz(func(t *testing.T, input string) {
 		hintsFile := testFolder + "/fuzz-hints.json"
-		hf, err := ioutil.ReadFile(hintsFile)
+		hf, err := os.ReadFile(hintsFile)
 		if err != nil {
 			t.Fatalf("cannot read %q: %s", hintsFile, err)
 		}

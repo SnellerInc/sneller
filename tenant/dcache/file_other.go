@@ -18,7 +18,7 @@
 package dcache
 
 import (
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 )
@@ -33,7 +33,7 @@ func mmap(f *os.File, size int64, ro bool) ([]byte, error) {
 	if istmp(f) {
 		return make([]byte, size), nil
 	}
-	return ioutil.ReadAll(f)
+	return io.ReadAll(f)
 }
 
 func unmap(f *os.File, buf []byte) error {

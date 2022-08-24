@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,12 +45,12 @@ func BenchmarkConvertSubObjectsCSV(b *testing.B) {
 func benchmarkConvertCSV(b *testing.B, tsvFile, hintsFile string) {
 	// read file into memory to prevent I/O and
 	// measure the raw conversion performance.
-	f, err := ioutil.ReadFile(testFolder + "/" + tsvFile)
+	f, err := os.ReadFile(testFolder + "/" + tsvFile)
 	if err != nil {
 		b.Fatalf("cannot open %q: %s", tsvFile, err)
 	}
 
-	hf, err := ioutil.ReadFile(testFolder + "/" + hintsFile)
+	hf, err := os.ReadFile(testFolder + "/" + hintsFile)
 	if err != nil {
 		b.Fatalf("cannot read %q: %s", hintsFile, err)
 	}
@@ -83,7 +82,7 @@ func TestConvertCSV(t *testing.T) {
 		t.Run(csvFile, func(t *testing.T) {
 			base := testFolder + "/" + strings.TrimSuffix(csvFile, filepath.Ext(csvFile))
 			hintsFile := base + "-hints.json"
-			hf, err := ioutil.ReadFile(hintsFile)
+			hf, err := os.ReadFile(hintsFile)
 			if err != nil {
 				t.Fatalf("cannot read %q: %s", hintsFile, err)
 			}

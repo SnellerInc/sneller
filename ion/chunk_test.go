@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -250,11 +250,11 @@ func TestChunkerSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if want := ([][]ranges{{{
+	if want := [][]ranges{{{
 		path: []string{"foo"},
 		min:  timestamp("2021-12-12T12:12:12Z"),
 		max:  timestamp("2021-12-12T12:12:12Z"),
-	}}}); !reflect.DeepEqual(want, rw.allRanges) {
+	}}}; !reflect.DeepEqual(want, rw.allRanges) {
 		t.Errorf("ranges not equal")
 		t.Errorf("want: %v", want)
 		t.Errorf("got:  %v", rw.allRanges)
@@ -435,6 +435,7 @@ func (w *rangeWriter) Write(p []byte) (n int, err error) {
 // This can be used to generate a statically defined
 // slice of ranges from the current state of the
 // writer.
+//
 //lint:ignore U1000 kept for generating test fixtures
 func dumpRanges(allRanges [][]ranges) {
 	fmt.Println("expected := [][]ranges{{{")
@@ -920,7 +921,7 @@ func BenchmarkChunkerWrite(b *testing.B) {
 				b.Fatal(err)
 			}
 			cn2 := ion.Chunker{
-				W:              ioutil.Discard,
+				W:              io.Discard,
 				Align:          cn.Align,
 				RangeAlign:     100 * cn.Align,
 				WalkTimeRanges: [][]string{{"eventTime"}},

@@ -70,7 +70,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -663,7 +662,7 @@ func (m *Manager) Quit(id tnproto.ID) bool {
 // has been closed, and then closes this end of the pipe.
 func Check(rc io.ReadCloser, stats *plan.ExecStats) error {
 	defer rc.Close()
-	msg, err := ioutil.ReadAll(rc)
+	msg, err := io.ReadAll(rc)
 	if err != nil {
 		return err
 	}

@@ -19,7 +19,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -314,7 +314,7 @@ func BenchmarkToJSON(b *testing.B) {
 	defer f.Close()
 	b.ReportAllocs()
 	r := bufio.NewReader(f)
-	dst := bufio.NewWriter(ioutil.Discard)
+	dst := bufio.NewWriter(io.Discard)
 	b.SetBytes(1048576)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -333,7 +333,7 @@ func BenchmarkJSONWriter(b *testing.B) {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
-	w := NewJSONWriter(ioutil.Discard, '\n')
+	w := NewJSONWriter(io.Discard, '\n')
 	b.SetBytes(int64(len(buf)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

@@ -21,7 +21,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
@@ -129,7 +128,7 @@ func parse(arg string) *expr.Query {
 	var err error
 	if dashf {
 		// arg is a file
-		buf, err = ioutil.ReadFile(arg)
+		buf, err = os.ReadFile(arg)
 		if err != nil {
 			exit(err)
 		}

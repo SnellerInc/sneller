@@ -17,7 +17,6 @@ package s3
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"testing"
@@ -62,7 +61,7 @@ func (t *testRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 	}
 	if !t.expect.skipBody && t.expect.body != "" {
-		body, err := ioutil.ReadAll(req.Body)
+		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			return nil, err
 		}

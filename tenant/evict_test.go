@@ -16,7 +16,6 @@ package tenant
 
 import (
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -100,7 +99,7 @@ func TestEvict(t *testing.T) {
 		fullpath := filepath.Join(tmp, begin[i].name)
 		contents := []byte(strings.Repeat("a", int(begin[i].size)))
 		os.MkdirAll(filepath.Dir(fullpath), 0755)
-		err := ioutil.WriteFile(fullpath, contents, 0644)
+		err := os.WriteFile(fullpath, contents, 0644)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -230,7 +229,7 @@ func TestIssue645(t *testing.T) {
 	for i := range begin {
 		fullpath := filepath.Join(tmp, begin[i].name)
 		contents := []byte(strings.Repeat("a", int(begin[i].size)))
-		err := ioutil.WriteFile(fullpath, contents, 0644)
+		err := os.WriteFile(fullpath, contents, 0644)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -277,7 +276,7 @@ func TestIssue645(t *testing.T) {
 	for i := range begin {
 		fullpath := filepath.Join(tmp, begin[i].name)
 		contents := []byte(strings.Repeat("a", int(begin[i].size)))
-		err := ioutil.WriteFile(fullpath, contents, 0644)
+		err := os.WriteFile(fullpath, contents, 0644)
 		if err != nil {
 			t.Fatal(err)
 		}

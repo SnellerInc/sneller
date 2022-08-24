@@ -16,7 +16,7 @@ package versify
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,7 +25,7 @@ import (
 )
 
 func testFile(t *testing.T, p, descr string) {
-	buf, err := ioutil.ReadFile(p)
+	buf, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal(err)
 	}

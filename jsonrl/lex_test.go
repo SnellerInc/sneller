@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -84,7 +83,7 @@ func TestParseOK(t *testing.T) {
 	for i := range objs {
 		text := objs[i]
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
+			cn := &ion.Chunker{W: io.Discard, Align: 1024 * 1024}
 			st := newState(cn)
 			in := &reader{
 				buf:   make([]byte, 0, 10),
@@ -133,7 +132,7 @@ func TestParseFail(t *testing.T) {
 	for i := range objs {
 		text := objs[i]
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			st := newState(&ion.Chunker{W: ioutil.Discard, Align: 10000})
+			st := newState(&ion.Chunker{W: io.Discard, Align: 10000})
 			_, err := parseObject(st, []byte(text))
 			if err == nil {
 				t.Fatal("no error?")
@@ -297,7 +296,7 @@ func TestParseWithHints(t *testing.T) {
 	for i := range objs {
 		test := objs[i]
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			st := newState(&ion.Chunker{W: ioutil.Discard, Align: 10000})
+			st := newState(&ion.Chunker{W: io.Discard, Align: 10000})
 
 			if test.hints != "" {
 				entry, err := ParseHint([]byte(test.hints))
@@ -473,7 +472,7 @@ func TestHuge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cn := &ion.Chunker{W: ioutil.Discard, Align: 10000000}
+	cn := &ion.Chunker{W: io.Discard, Align: 10000000}
 	err = Convert(bytes.NewReader(buf), cn, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -495,7 +494,7 @@ func TestHuge(t *testing.T) {
 
 	// test that a struct field that is too large
 	// produces the right error *and* context
-	cn = &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
+	cn = &ion.Chunker{W: io.Discard, Align: 1024 * 1024}
 	text := io.MultiReader(
 		strings.NewReader(`{"x": "`),
 		repeat("xy", MaxDatumSize),
@@ -514,7 +513,7 @@ func TestHuge(t *testing.T) {
 func TestMaxDepth(t *testing.T) {
 	t.Parallel()
 	text := strings.Repeat("{\"x\":", MaxObjectDepth+1) + strings.Repeat("}", MaxObjectDepth+1)
-	cn := &ion.Chunker{W: ioutil.Discard, Align: 1000}
+	cn := &ion.Chunker{W: io.Discard, Align: 1000}
 	err := Convert(strings.NewReader(text), cn, nil)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("expected ErrTooLarge, got %v", err)
@@ -655,7 +654,7 @@ func BenchmarkTranslateWithHints(b *testing.B) {
 			b.SetBytes(int64(len(buf)))
 			b.ReportAllocs()
 			b.RunParallel(func(pb *testing.PB) {
-				cn := &ion.Chunker{W: ioutil.Discard, Align: 1024 * 1024}
+				cn := &ion.Chunker{W: io.Discard, Align: 1024 * 1024}
 				rd := bytes.NewReader(nil)
 				for pb.Next() {
 					cn.Reset()
