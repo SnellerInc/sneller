@@ -213,7 +213,8 @@ func do(arg string) {
 	}
 
 	var stat plan.ExecStats
-	if err = plan.Exec(tree, dst, &stat); err != nil {
+	err = plan.Exec(tree, dst, &stat)
+	if err != nil {
 		exit(err)
 	}
 }

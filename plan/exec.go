@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -135,12 +136,7 @@ func (e *executor) run() error {
 		}
 		go func(i int) {
 			t := &e.tasks[i]
-			err := t.input.WriteChunks(t.sink, e.subp)
-			err2 := t.sink.Close()
-			if err == nil {
-				err = err2
-			}
-			errors[i] = err
+			errors[i] = e.runtask(t)
 			e.ep.Stats.observe(t.input)
 			wg.Done()
 		}(i)
@@ -149,6 +145,18 @@ func (e *executor) run() error {
 	err := appenderrs(nil, errors)
 	for i := range e.extra {
 		err = appenderr(err, e.extra[i].Close())
+	}
+	return err
+}
+
+func (e *executor) runtask(t *task) error {
+	err := t.input.WriteChunks(t.sink, e.subp)
+	err2 := t.sink.Close()
+	if err == nil {
+		err = err2
+	}
+	if errors.Is(err, io.EOF) {
+		err = nil
 	}
 	return err
 }
