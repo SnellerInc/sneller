@@ -60,7 +60,7 @@ type Op interface {
 	// no rows should be written into it. If the
 	// returned sink is non-nil, it will still be
 	// closed, even if -1 was returned.
-	wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error)
+	wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error)
 
 	// encode should write the op as an ion structure
 	// to 'dst'; the first field of the structure
@@ -298,7 +298,7 @@ func (s *SimpleAggregate) String() string {
 	return "AGGREGATE " + s.Outputs.String()
 }
 
-func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	a, err := vm.NewAggregate(s.Outputs, dst)
 	if err != nil {
 		return 0, nil, err
@@ -340,15 +340,22 @@ type Leaf struct {
 	Filter expr.Node
 }
 
-func (l *Leaf) String() string { return fmt.Sprintf("INPUT(%d)", l.Input) }
+func (l *Leaf) String() string { return l.describe(nil) }
 func (l *Leaf) input() Op      { return nil }
 func (l *Leaf) setinput(o Op) {
 	panic("Leaf: cannot setinput")
 }
 
+func (l *Leaf) describe(in []Input) string {
+	if l.Input < len(in) {
+		return expr.ToString(in[l.Input].Table)
+	}
+	return fmt.Sprintf("INPUT(%d)", l.Input)
+}
+
 func (l *Leaf) rewrite(rw expr.Rewriter) {}
 
-func (l *Leaf) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (l *Leaf) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	return l.Input, dst, nil
 }
 
@@ -392,7 +399,7 @@ func (n NoOutput) setinput(o Op) {
 	panic("NoOutput: cannot setinput()")
 }
 
-func (n NoOutput) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (n NoOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
 		return -1, nil, err
@@ -435,7 +442,7 @@ func (n DummyOutput) setinput(o Op) {
 	panic("DummyOutput: cannot setinput()")
 }
 
-func (n DummyOutput) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (n DummyOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
 		return -1, nil, err
@@ -483,7 +490,7 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %d", l.Num)
 }
 
-func (l *Limit) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (l *Limit) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	return l.From.wrap(vm.NewLimit(l.Num, dst), ep)
 }
 
@@ -525,7 +532,7 @@ func (c *CountStar) String() string {
 	return "COUNT(*) AS " + c.name()
 }
 
-func (c *CountStar) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (c *CountStar) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	qs := countSink{dst: dst, as: c.name()}
 	return c.From.wrap(&qs, ep)
 }
@@ -722,7 +729,7 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 	return nil
 }
 
-func (h *HashAggregate) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (h *HashAggregate) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	ha, err := vm.NewHashAggregate(h.Agg, h.By, dst)
 	if err != nil {
 		return -1, nil, err
@@ -795,7 +802,7 @@ func (o *OrderBy) String() string {
 	return s
 }
 
-func (o *OrderBy) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	writer, err := dst.Open()
 	if err != nil {
 		return -1, nil, err
@@ -946,7 +953,7 @@ func (d *Distinct) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (d *Distinct) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (d *Distinct) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	df, err := vm.NewDistinct(d.Fields, dst)
 	if err != nil {
 		return -1, nil, err
@@ -1059,7 +1066,7 @@ func (u *Unpivot) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) e
 	return err
 }
 
-func (u *Unpivot) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (u *Unpivot) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	vmu, err := vm.NewUnpivot(u.As, u.At, dst)
 	if err != nil {
 		return -1, nil, err

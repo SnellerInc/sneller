@@ -156,7 +156,7 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (o *OutputPart) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (o *OutputPart) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	if o.Basename == "" {
 		return -1, nil, fmt.Errorf("OutputPart: basename not set")
 	} else if o.Store == nil {
@@ -316,7 +316,7 @@ func (is *indexSink) Close() error {
 	return w.Close()
 }
 
-func (o *OutputIndex) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (o *OutputIndex) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	if o.Table == nil {
 		return -1, nil, fmt.Errorf("OutputIndex: table not set")
 	} else if o.Basename == "" {

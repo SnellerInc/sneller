@@ -221,23 +221,26 @@ func lowerBind(in *pir.Bind, from Op) (Op, error) {
 	}, nil
 }
 
-func (w *walker) lowerUnionMap(in *pir.UnionMap) (Op, error) {
-	input := w.put(in.Inner)
+func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
 	// NOTE: we're passing the same splitter
 	// to the child here. We don't currently
 	// produce nested split queries, so it isn't
 	// meaningful at the moment, but it's possible
 	// at some point we will need to indicate that
 	// we are splitting an already-split query
-	sub, err := w.walkBuild(in.Child.Final())
+	sub, err := walkBuild(in.Child.Final(), env, split)
 	if err != nil {
 		return nil, err
 	}
-	handle, err := w.inputs[input].stat(w.env)
+	handle, err := stat(env, in.Inner.Table.Expr, &Hints{
+		Filter:    in.Inner.Filter,
+		Fields:    in.Inner.Fields(),
+		AllFields: in.Inner.Wildcard(),
+	})
 	if err != nil {
 		return nil, err
 	}
-	tbls, err := doSplit(w.split, in.Inner.Table.Expr, handle)
+	tbls, err := doSplit(split, in.Inner.Table.Expr, handle)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +250,7 @@ func (w *walker) lowerUnionMap(in *pir.UnionMap) (Op, error) {
 	}
 	return &UnionMap{
 		Nonterminal: Nonterminal{From: sub},
-		Orig:        input,
+		Orig:        in.Inner.Table,
 		Sub:         tbls,
 	}, nil
 }
@@ -378,9 +381,11 @@ func (i *input) merge(in *input) bool {
 	return true
 }
 
+// A walker is used when walking a pir.Trace to
+// accumulate identical inputs so leaf nodes
+// that reference the same inputs can be
+// deduplicated.
 type walker struct {
-	env    Env
-	split  Splitter
 	inputs []input
 }
 
@@ -403,7 +408,12 @@ func (w *walker) put(it *pir.IterTable) int {
 	return i
 }
 
-func (w *walker) walkBuild(in pir.Step) (Op, error) {
+func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
+	w := walker{}
+	return w.walkBuild(in, env, split)
+}
+
+func (w *walker) walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
 		// TODO: we should handle table globs and
@@ -429,10 +439,10 @@ func (w *walker) walkBuild(in pir.Step) (Op, error) {
 
 	// ... and UnionMap as well
 	if u, ok := in.(*pir.UnionMap); ok {
-		return w.lowerUnionMap(u)
+		return lowerUnionMap(u, env, split)
 	}
 
-	input, err := w.walkBuild(pir.Input(in))
+	input, err := w.walkBuild(pir.Input(in), env, split)
 	if err != nil {
 		return nil, err
 	}
@@ -452,9 +462,9 @@ func (w *walker) walkBuild(in pir.Step) (Op, error) {
 	case *pir.Order:
 		return lowerOrder(n, input)
 	case *pir.OutputIndex:
-		return lowerOutputIndex(n, w.env, input)
+		return lowerOutputIndex(n, env, input)
 	case *pir.OutputPart:
-		return lowerOutputPart(n, w.env, input)
+		return lowerOutputPart(n, env, input)
 	case *pir.Unpivot:
 		return lowerUnpivot(n, input)
 	default:
@@ -462,13 +472,13 @@ func (w *walker) walkBuild(in pir.Step) (Op, error) {
 	}
 }
 
-func (w *walker) finish() ([]Input, error) {
+func (w *walker) finish(env Env) ([]Input, error) {
 	if w.inputs == nil {
 		return nil, nil
 	}
 	inputs := make([]Input, len(w.inputs))
 	for i := range w.inputs {
-		in, err := w.inputs[i].finish(w.env)
+		in, err := w.inputs[i].finish(env)
 		if err != nil {
 			return nil, err
 		}
@@ -501,16 +511,13 @@ func results(b *pir.Trace) ResultSet {
 }
 
 func toTree(in *pir.Trace, env Env, split Splitter) (*Tree, error) {
-	w := walker{
-		env:   env,
-		split: split,
-	}
+	w := walker{}
 	t := &Tree{}
-	err := w.toNode(&t.Root, in)
+	err := w.toNode(&t.Root, in, env, split)
 	if err != nil {
 		return nil, err
 	}
-	inputs, err := w.finish()
+	inputs, err := w.finish(env)
 	if err != nil {
 		return nil, err
 	}
@@ -518,26 +525,23 @@ func toTree(in *pir.Trace, env Env, split Splitter) (*Tree, error) {
 	return t, nil
 }
 
-func (w *walker) toNode(t *Node, in *pir.Trace) error {
-	op, err := w.walkBuild(in.Final())
+func (w *walker) toNode(t *Node, in *pir.Trace, env Env, split Splitter) error {
+	op, err := w.walkBuild(in.Final(), env, split)
 	if err != nil {
 		return err
 	}
 	t.Op = op
 	t.OutputType = results(in)
 	t.Children = make([]*Node, len(in.Replacements))
-	sub := walker{
-		env:   w.env,
-		split: w.split,
-	}
+	sub := walker{}
 	for i := range in.Replacements {
 		t.Children[i] = &Node{}
-		err := sub.toNode(t.Children[i], in.Replacements[i])
+		err := sub.toNode(t.Children[i], in.Replacements[i], env, split)
 		if err != nil {
 			return err
 		}
 	}
-	inputs, err := sub.finish()
+	inputs, err := sub.finish(env)
 	if err != nil {
 		return err
 	}

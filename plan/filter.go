@@ -37,7 +37,7 @@ func (f *Filter) rewrite(rw expr.Rewriter) {
 	f.Expr = expr.Rewrite(rw, f.Expr)
 }
 
-func (f *Filter) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (f *Filter) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	push(f.Expr, f.From)
 	return f.From.wrap(vm.NewFilter(f.Expr, dst), ep)
 }

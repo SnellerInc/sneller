@@ -131,7 +131,7 @@ func (u *Unnest) String() string {
 	return out.String()
 }
 
-func (u *Unnest) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (u *Unnest) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	return u.From.wrap(vm.NewUnnest(
 		dst,
 		u.PivotField,

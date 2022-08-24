@@ -30,11 +30,11 @@ func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
 	return e.run()
 }
 
-func (n *Node) subexec(ep *execParams) error {
+func (n *Node) subexec(ep *ExecParams) error {
 	if len(n.Children) == 0 {
 		return nil
 	}
-	e := mkexec(ep.ExecParams, n.Inputs)
+	e := mkexec(ep, n.Inputs)
 	rp := make([]replacement, len(n.Children))
 	var wg sync.WaitGroup
 	wg.Add(len(n.Children))
@@ -65,20 +65,19 @@ type task struct {
 }
 
 type executor struct {
-	ep    *execParams
-	subp  int
-	tasks []task
-	extra []io.Closer // sinks with no inputs
-	lock  sync.Mutex
+	ep     *ExecParams
+	inputs []Input
+	subp   int
+	tasks  []task
+	extra  []io.Closer // sinks with no inputs
+	lock   sync.Mutex
 }
 
 func mkexec(ep *ExecParams, inputs []Input) *executor {
 	e := &executor{
-		ep: &execParams{
-			ExecParams: ep,
-			inputs:     inputs,
-		},
-		subp: 1,
+		ep:     ep,
+		inputs: inputs,
+		subp:   1,
 	}
 	if len(inputs) > 0 {
 		e.tasks = make([]task, len(inputs))
@@ -111,9 +110,9 @@ func (e *executor) add(dst vm.QuerySink, n *Node) error {
 		return fmt.Errorf("input %d not in plan", in)
 	}
 	if e.tasks[in].input == nil {
-		handle := e.ep.inputs[in].Handle
+		handle := e.inputs[in].Handle
 		if e.ep.Rewrite != nil {
-			_, handle = e.ep.Rewrite(e.ep.inputs[in].Table, handle)
+			_, handle = e.ep.Rewrite(e.inputs[in].Table, handle)
 		}
 		tbl, err := handle.Open(e.ep.Context)
 		if err != nil {

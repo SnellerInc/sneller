@@ -31,7 +31,7 @@ import (
 type UnionMap struct {
 	Nonterminal
 
-	Orig int
+	Orig *expr.Table
 	Sub  Subtables
 }
 
@@ -147,7 +147,7 @@ func decodeLocal(st *ion.Symtab, body []byte) (Transport, error) {
 	return t, nil
 }
 
-func (u *UnionMap) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, error) {
+func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
 		return -1, nil, err
@@ -167,16 +167,8 @@ func (u *UnionMap) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, er
 			defer wg.Done()
 			var sub Subtable
 			u.Sub.Subtable(i, &sub)
-			orig := ep.inputs[u.Orig]
-			rw := func(in *expr.Table, handle TableHandle) (*expr.Table, TableHandle) {
-				if in.Equals(orig.Table) {
-					return sub.Table, sub.Handle
-				}
-				return in, handle
-			}
 			subep := &ExecParams{
 				Output:   s,
-				Rewrite:  rw,
 				Parallel: ep.Parallel, // ...meaningful?
 				Context:  ep.Context,
 			}
@@ -185,8 +177,11 @@ func (u *UnionMap) wrap(dst vm.QuerySink, ep *execParams) (int, vm.QuerySink, er
 			// like we are executing a sub-query, which
 			// is approximately true
 			stub := &Tree{
-				Root:   Node{Op: u.From},
-				Inputs: ep.inputs,
+				Root: Node{Op: u.From},
+				Inputs: []Input{{
+					Table:  sub.Table,
+					Handle: sub.Handle,
+				}},
 			}
 			errors[i] = sub.Exec(stub, subep)
 			ep.Stats.atomicAdd(&subep.Stats)
@@ -238,7 +233,7 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	settype("unionmap", dst, st)
 	dst.BeginField(st.Intern("orig"))
-	dst.WriteInt(int64(u.Orig))
+	u.Orig.Encode(dst, st)
 	// subtables are encoded as
 	//   [[transport, table-expr] ...]
 	dst.BeginField(st.Intern("sub"))
@@ -252,11 +247,15 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 func (u *UnionMap) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "orig":
-		orig, _, err := ion.ReadInt(body)
+		nod, _, err := expr.Decode(st, body)
 		if err != nil {
 			return err
 		}
-		u.Orig = int(orig)
+		t, ok := nod.(*expr.Table)
+		if !ok {
+			return fmt.Errorf("UnionMap.Orig: cannot use node of type %T", nod)
+		}
+		u.Orig = t
 	case "sub":
 		sub, err := DecodeSubtables(d, st, body[:ion.SizeOf(body)])
 		if err != nil {
@@ -278,5 +277,5 @@ func tableStrings(lst Subtables) []string {
 }
 
 func (u *UnionMap) String() string {
-	return fmt.Sprintf("UNION MAP INPUT(%d) %v", u.Orig, tableStrings(u.Sub))
+	return fmt.Sprintf("UNION MAP %s %v", expr.ToString(u.Orig), tableStrings(u.Sub))
 }

@@ -81,19 +81,22 @@ func tabline(dst *strings.Builder, indent int, line string) {
 	dst.WriteByte('\n')
 }
 
-func printops(dst *strings.Builder, indent int, op Op) {
-	if in := op.input(); in != nil {
-		printops(dst, indent, in)
+func printops(dst *strings.Builder, indent int, op Op, in []Input) {
+	if u, ok := op.(*UnionMap); ok {
+		in = []Input{{Table: u.Orig}}
+	}
+	if from := op.input(); from != nil {
+		printops(dst, indent, from, in)
+	}
+	if l, ok := op.(*Leaf); ok {
+		tabline(dst, indent, l.describe(in))
+		return
 	}
 	tabline(dst, indent, op.String())
 }
 
 func (t *Tree) describe(dst *strings.Builder) {
-	for i := range t.Inputs {
-		tbl := expr.ToString(t.Inputs[i].Table)
-		fmt.Fprintf(dst, "WITH INPUT(%d) AS %s\n", i, tbl)
-	}
-	t.Root.describe(0, dst)
+	t.Root.describe(0, dst, t.Inputs)
 }
 
 // String implements fmt.Stringer
@@ -148,22 +151,18 @@ type Node struct {
 	Op Op
 }
 
-func (n *Node) describe(indent int, dst *strings.Builder) {
+func (n *Node) describe(indent int, dst *strings.Builder, in []Input) {
 	for i := range n.Children {
 		tabfprintf(dst, indent, "WITH REPLACEMENT(%d) AS (\n", i)
-		for i := range n.Inputs {
-			tbl := expr.ToString(n.Inputs[i].Table)
-			tabfprintf(dst, indent+1, "WITH INPUT(%d) AS %s\n", i, tbl)
-		}
-		n.Children[i].describe(indent+1, dst)
+		n.Children[i].describe(indent+1, dst, n.Inputs)
 		tabline(dst, indent, ")")
 	}
-	printops(dst, indent, n.Op)
+	printops(dst, indent, n.Op, in)
 }
 
 // String implements fmt.Stringer
 func (n *Node) String() string {
 	var out strings.Builder
-	n.describe(0, &out)
+	n.describe(0, &out, nil)
 	return out.String()
 }
