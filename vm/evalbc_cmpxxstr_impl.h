@@ -14,7 +14,7 @@
 
 // This file provides an implementation of 'bccmpxxstr' operations (unboxed string vs string compare).
 //
-// It needs the following macros to be defined:
+// It uses the following macros:
 //   - BC_CMP_NAME  - name of the bc instruction
 //   - BC_CMP_I_IMM - predicate for integer comparison (VPCMPx instruction)
 
@@ -31,8 +31,6 @@ TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
   KXORW K1, K1, K1                                    // K1 <- results of all comparisons, initially all false
 
   JZ next
-
-  // Store slices into spillArea so we can read them in scalar loops
 
   LEAQ bytecode_spillArea+0(VIRT_BCPTR), R8           // R8 <- Spill area
   VPSUBD Z5, Z7, Z9                                   // Z9 <- Comparison results in case all the bytes are equal

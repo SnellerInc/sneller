@@ -1,0 +1,65 @@
+SELECT
+  key
+FROM
+  input
+ORDER BY
+  key NULLS LAST
+LIMIT 1000
+---
+{"key": 1.5}
+{"key": "2066-12-12T22:55:41.000000Z"}
+{"key": "Axx0"}
+{"key": "2157-10-06T19:22:30.000000Z"}
+{"key": -1e100}
+{"key": 1}
+{"key": "Bbxx1"}
+{"key": "Cbcxx2"}
+{"key": -1}
+{"key": "2043-07-15T21:23:34.601521Z"}
+{"key": "Dbcdxx3"}
+{"key": "Ebcdexx4"}
+{"key": null}
+{"key": "Fbcdefxx5"}
+{"key": ""}
+{"key": "Gbcdefgxx6"}
+{"key": "1926-11-30T10:59:45.505221Z"}
+{"key": "Hbcdefghxx7"}
+{"key": "2087-10-26T04:03:49.000000Z"}
+{"key": "Ibcdefghixx8"}
+{"key": "Jqr123456789X"}
+{"key": 1.5}
+{"key": 1}
+{"key": 1e100}
+{"key": false}
+{"key": true}
+{"key": "xyz"}
+{"key": null}
+---
+{"key": false}
+{"key": true}
+{"key": -1e100}
+{"key": -1}
+{"key": 1}
+{"key": 1}
+{"key": 1.5}
+{"key": 1.5}
+{"key": 1e100}
+{"key": "1926-11-30T10:59:45.505221Z"}
+{"key": "2043-07-15T21:23:34.601521Z"}
+{"key": "2066-12-12T22:55:41.000000Z"}
+{"key": "2087-10-26T04:03:49.000000Z"}
+{"key": "2157-10-06T19:22:30.000000Z"}
+{"key": ""}
+{"key": "Axx0"}
+{"key": "Bbxx1"}
+{"key": "Cbcxx2"}
+{"key": "Dbcdxx3"}
+{"key": "Ebcdexx4"}
+{"key": "Fbcdefxx5"}
+{"key": "Gbcdefgxx6"}
+{"key": "Hbcdefghxx7"}
+{"key": "Ibcdefghixx8"}
+{"key": "Jqr123456789X"}
+{"key": "xyz"}
+{"key": null}
+{"key": null}

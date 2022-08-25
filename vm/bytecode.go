@@ -293,6 +293,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS},
 
 	// Comparison instructions
+	opsortcmpvnf: {text: "sortcmpv@nf", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
+	opsortcmpvnl: {text: "sortcmpv@nl", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
 	opcmpv:       {text: "cmpv", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
 	opcmpvk:      {text: "cmpv.k", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
 	opcmpvimmk:   {text: "cmpv.imm.k", imms: bcImmsU8, flags: bcReadWriteK | bcReadV | bcWriteS},
