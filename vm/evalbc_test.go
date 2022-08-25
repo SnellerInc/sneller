@@ -3958,6 +3958,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"sſsſ", "ssss", true, 6, 0},
 				{"sſsſs", "sssss", true, 7, 0},
 				{"ss", "b", false, 0, 2},
+				{"a", "a\x00\x00\x00", false, 0, 1},
 			},
 			op:      opContainsPrefixUTF8Ci,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false) },
@@ -4017,6 +4018,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"s", "", false, 0, 1}, //NOTE: empty needles are dead lanes
 				{"", "", false, 0, 0},  //NOTE: empty needles are dead lanes
 				{"ss", "b", false, 0, 2},
+				{"a", "a\x00\x00\x00", false, 0, 1},
 			},
 			op:      opContainsSuffixUTF8Ci,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false) },
