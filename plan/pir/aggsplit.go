@@ -39,8 +39,10 @@ func (a *agglifter) Rewrite(e expr.Node) expr.Node {
 }
 
 func (a *agglifter) Walk(e expr.Node) expr.Rewriter {
-	if _, ok := e.(*expr.Aggregate); ok {
+	switch e.(type) {
+	case *expr.Aggregate, *expr.Select:
 		return nil
+
 	}
 	return a
 }

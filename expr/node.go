@@ -428,6 +428,11 @@ func (a *Aggregate) typeof(h Hint) TypeSet {
 	}
 }
 
+// IsDistinct returns if the aggregate has DISTINCT clause.
+func (a *Aggregate) IsDistinct() bool {
+	return a.Op == OpCountDistinct
+}
+
 // Count produces the COUNT(e) aggregate
 func Count(e Node) *Aggregate { return &Aggregate{Op: OpCount, Inner: e} }
 

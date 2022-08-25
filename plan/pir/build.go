@@ -779,6 +779,11 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		dropConstantsFromDistinctOn(s)
 	}
 
+	err = aggdistinctpromote(s)
+	if err != nil {
+		return err
+	}
+
 	// walk SELECT + GROUP BY + HAVING
 	if s.HasDistinct() && s.GroupBy != nil && s.Having == nil {
 		if s.Distinct {
@@ -888,7 +893,6 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 					bindcolumns = false
 				}
 			}
-
 			if bindcolumns {
 				err = b.Bind(s.Columns)
 				if err != nil {

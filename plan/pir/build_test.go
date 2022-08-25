@@ -32,6 +32,7 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
+	"github.com/SnellerInc/sneller/tests"
 )
 
 const (
@@ -1252,15 +1253,20 @@ func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error
 		if got != want {
 			t.Errorf("got : %s", got)
 			t.Errorf("want: %s", want)
-			lines := strings.Split(got, "\n")
-			for i := range lines {
-				if i >= len(tc.expect) {
-					t.Error("unexpected line:", lines[i])
-					continue
-				}
-				if lines[i] != tc.expect[i] {
-					t.Errorf("line %d: got %q", i, lines[i])
-					t.Errorf("        want %q", tc.expect[i])
+			diff, ok := tests.Diff(want, got)
+			if ok {
+				t.Error("\n" + diff)
+			} else {
+				lines := strings.Split(got, "\n")
+				for i := range lines {
+					if i >= len(tc.expect) {
+						t.Error("unexpected line:", lines[i])
+						continue
+					}
+					if lines[i] != tc.expect[i] {
+						t.Errorf("line %d: got %q", i, lines[i])
+						t.Errorf("        want %q", tc.expect[i])
+					}
 				}
 			}
 		}
@@ -1289,18 +1295,22 @@ func testBuild(t *testing.T, name string, testcase func() (*buildTestcase, error
 		if got != want {
 			t.Errorf("split: got : %s", got)
 			t.Errorf("split: want: %s", want)
-			lines := strings.Split(got, "\n")
-			for i := range lines {
-				if i >= len(tc.split) {
-					t.Error("unexpected line:", lines[i])
-					continue
-				}
-				if lines[i] != tc.split[i] {
-					t.Errorf("line %d: got %q", i, lines[i])
-					t.Errorf("        want %q", tc.split[i])
+			diff, ok := tests.Diff(want, got)
+			if ok {
+				t.Error("\n" + diff)
+			} else {
+				lines := strings.Split(got, "\n")
+				for i := range lines {
+					if i >= len(tc.split) {
+						t.Error("unexpected line:", lines[i])
+						continue
+					}
+					if lines[i] != tc.split[i] {
+						t.Errorf("line %d: got %q", i, lines[i])
+						t.Errorf("        want %q", tc.split[i])
+					}
 				}
 			}
-
 		}
 	})
 }
