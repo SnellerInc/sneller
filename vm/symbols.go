@@ -14,12 +14,6 @@
 
 package vm
 
-import (
-	"encoding/binary"
-
-	"github.com/SnellerInc/sneller/ion"
-)
-
 // objsize parses an ion object TLV descriptor
 // and returns the number of bytes in the descriptor
 // and the size of the subsequent object (in that order)
@@ -38,18 +32,6 @@ func objsize(buf []byte) (int32, int32) {
 	default:
 		return 1, int32(nibble)
 	}
-}
-
-func putenc(dst []byte, val uint32, size int8) int {
-	if len(dst) >= 4 {
-		binary.LittleEndian.PutUint32(dst, val)
-	} else {
-		for i := 0; i < int(size); i++ {
-			dst[i] = byte(val)
-			val >>= 8
-		}
-	}
-	return int(size)
 }
 
 // copyobj copies an 10n binary object from 'src'
@@ -95,14 +77,4 @@ func uvint(buf []byte) (uint, int) {
 		i++
 	}
 	return out, i + 1
-}
-
-// encsize returns the number of bytes
-// required to encode an object of size 'l'
-// (including the 1-byte descriptor tag)
-func encsize(l uint) int {
-	if l < 14 {
-		return 1
-	}
-	return 1 + ion.UVarintSize(l)
 }

@@ -47,12 +47,6 @@ func (a *alignedWriter) space() int {
 	return len(a.buf) - a.off
 }
 
-func (a *alignedWriter) reserve(n int) []byte {
-	buf := a.buf[a.off : a.off+n]
-	a.off += n
-	return buf
-}
-
 func (a *alignedWriter) flush() (int, error) {
 	if a.off == a.save {
 		return 0, nil

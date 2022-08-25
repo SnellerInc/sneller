@@ -192,17 +192,6 @@ func (i *IterValue) walk(v expr.Visitor) {
 	expr.Walk(v, i.Value)
 }
 
-func bindstr(bind []expr.Binding) string {
-	var out strings.Builder
-	for i := range bind {
-		if i != 0 {
-			out.WriteString(", ")
-		}
-		out.WriteString(expr.ToString(&bind[i]))
-	}
-	return out.String()
-}
-
 func (i *IterValue) equals(x Step) bool {
 	i2, ok := x.(*IterValue)
 	return ok && (i == i2 ||
@@ -645,7 +634,7 @@ func (n NoOutput) parent() Step { return nil }
 
 func (n NoOutput) setparent(Step) { panic("NoOutput.setparent") }
 
-func (o NoOutput) walk(expr.Visitor) {}
+func (n NoOutput) walk(expr.Visitor) {}
 
 // DummyOutput is a dummy input of one record, {}
 type DummyOutput struct{}

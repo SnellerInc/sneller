@@ -161,15 +161,6 @@ func (d *deduper) EndSegment() {
 	d.bc.dropScratch() // restored in recompile()
 }
 
-// produce compressed auxilliary bindings
-func (d *deduper) clone(rp *rowParams, c int) *rowParams {
-	d.params.auxbound = shrink(d.params.auxbound, len(rp.auxbound))
-	for i := range d.params.auxbound {
-		d.params.auxbound[i] = rp.auxbound[i][:c]
-	}
-	return &d.params
-}
-
 func (d *deduper) writeRows(delims []vmref, rp *rowParams) error {
 	if d.closed {
 		return io.EOF

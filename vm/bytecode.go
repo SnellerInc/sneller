@@ -637,6 +637,7 @@ type bytecode struct {
 	// de-allocate scratch[]
 	scratchsave []byte
 
+	//lint:ignore U1000 not unused; used in assembly
 	outer *bytecode // outer variable bindings
 	//lint:ignore U1000 not unused; used in assembly
 	perm [16]int32 // permutation from outer to inner bindings

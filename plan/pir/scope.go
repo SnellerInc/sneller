@@ -79,17 +79,6 @@ func (b *Trace) origin(p *expr.Path) Step {
 	return origin
 }
 
-// run an expr.Visitor on each node up to
-// a particular step (but not past it)
-func rewriteupto(b *Trace, s Step, rw expr.Rewriter) {
-	inner := func(e expr.Node, _ bool) expr.Node {
-		return expr.Rewrite(rw, e)
-	}
-	for cur := b.top; cur != nil && cur != s; cur = cur.parent() {
-		cur.rewrite(inner)
-	}
-}
-
 // make equivalent paths the same object
 // so that re-naming passes can efficiently
 // rename all references at once

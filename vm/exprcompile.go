@@ -1063,15 +1063,6 @@ func (p *prog) compileTimeOrdered(left, right *value) *value {
 	return p.ssa2imm(op, v, p.mask(v), right.imm)
 }
 
-// convert a path expression into a value
-func (p *prog) walk(steps *expr.Path) *value {
-	v, err := compilepath(p, p.Dot(steps.First, p.ValidLanes()), steps.Rest)
-	if err != nil {
-		panic(err)
-	}
-	return v
-}
-
 // compile a path expression from its top-level value
 func compilepath(p *prog, top *value, rest expr.PathComponent) (*value, error) {
 	for r := rest; r != nil; r = r.Next() {

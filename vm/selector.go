@@ -20,8 +20,6 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -38,16 +36,6 @@ func (s Selection) String() string {
 		sub[i] = expr.ToString(&s[i])
 	}
 	return strings.Join(sub, ", ")
-}
-
-// sort s such that it is sorted where
-// output bindings that are system
-// symbols will come first
-func (s Selection) outputSorted() Selection {
-	slices.SortFunc(s, func(x, y expr.Binding) bool {
-		return ion.MinimumID(x.Result()) < ion.MinimumID(y.Result())
-	})
-	return s
 }
 
 // short-hand for testing, etc.

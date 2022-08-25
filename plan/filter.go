@@ -63,19 +63,6 @@ func (f *Filter) setfield(d Decoder, name string, st *ion.Symtab, body []byte) e
 	return nil
 }
 
-// filter applies a filter f to a table handle if
-// filtering is supported and f is non-nil
-func filter(th TableHandle, f expr.Node) TableHandle {
-	if f == nil {
-		return th
-	}
-	fh, ok := th.(Filterable)
-	if !ok {
-		return th
-	}
-	return fh.Filter(f)
-}
-
 // push a filter expression into op
 func push(e expr.Node, op Op) {
 	type filterer interface {

@@ -302,12 +302,3 @@ func (b *BufferedTable) WriteChunks(dst QuerySink, parallel int) error {
 func (b *BufferedTable) Reset() {
 	b.off = 0
 }
-
-func (b *BufferedTable) chunk(n int) []byte {
-	off := b.align * n
-	size := b.align
-	if off+size > len(b.buf) {
-		size = len(b.buf) - off
-	}
-	return b.buf[off : off+size]
-}

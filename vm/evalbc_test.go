@@ -4258,8 +4258,6 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 		refImpl func(string, string) (bool, int, int)
 		// encoder for needle -> dictionary value
 		encode func(needle string) string
-		// eligible determines wither the op is eligible for the needle: needle -> bool
-		eligible func(needle string) bool
 	}
 	testSuites := []testSuite{
 		{

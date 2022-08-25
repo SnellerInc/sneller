@@ -6293,27 +6293,6 @@ func (p *prog) compile(dst *bytecode) error {
 	return dst.finalize()
 }
 
-// append a second program to 'dst'
-func (p *prog) appendcode(dst *bytecode) error {
-	var c compilestate
-	c.dict = dst.dict
-
-	if err := p.compileinto(&c); err != nil {
-		return err
-	}
-
-	dst.ensureVStackSize(c.regs.stack.stackSize(stackTypeV))
-	dst.ensureHStackSize(c.regs.stack.stackSize(stackTypeH))
-	dst.allocStacks()
-
-	dst.dict = c.dict
-	dst.compiled = append(dst.compiled, c.asm.getCode()...)
-	if c.litbuf != nil || c.needscratch {
-		return fmt.Errorf("scratch buffer not handled in appendcode (yet)")
-	}
-	return dst.finalize()
-}
-
 func (p *prog) compileinto(c *compilestate) error {
 	var inval []*value
 	for _, v := range p.values {
