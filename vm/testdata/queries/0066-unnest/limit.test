@@ -1,0 +1,13 @@
+SELECT label.id
+FROM input i, i.labels as label
+LIMIT 3
+---
+{"labels": [{"id": 0}, {"id": 1}]}
+{"labels": [{"id": 2}]}
+{"labels": [{"id": 3}]}
+{"labels": [{"id": 4}]}
+{"labels": [{"id": 5}]}
+---
+{"id": 0}
+{"id": 1}
+{"id": 2}

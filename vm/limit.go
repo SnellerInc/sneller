@@ -75,7 +75,7 @@ func (l *limiter) symbolize(st *symtab, aux *auxbindings) error {
 
 func (l *limiter) next() rowConsumer { return l.dst }
 
-func (l *limiter) writeRows(rows []vmref, _ *rowParams) error {
+func (l *limiter) writeRows(rows []vmref, rp *rowParams) error {
 	if l.done {
 		return io.EOF
 	}
@@ -98,7 +98,11 @@ func (l *limiter) writeRows(rows []vmref, _ *rowParams) error {
 			return err
 		}
 	}
-	err := l.dst.writeRows(rows[:c], &l.params)
+	// limit aux rows as well
+	for j := range rp.auxbound {
+		rp.auxbound[j] = rp.auxbound[j][:c]
+	}
+	err := l.dst.writeRows(rows[:c], rp)
 	if avail == 0 && err == nil {
 		l.done = true
 		err = l.dst.Close()
