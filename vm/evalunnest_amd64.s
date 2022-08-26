@@ -75,17 +75,21 @@ ret:
 
 TEXT ·evalsplat(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
-  MOVQ         indelims_len+16(FP), CX
+  XORQ         R9, R9         // # rows consumed
+  XORQ         R10, R10       // # delims output
+  JMP          loop_tail
+loop:
   CMPQ         CX, $16
   JLT          genmask
   KXNORW       K0, K0, K1
+  MOVQ         $16, CX        // plan on consuming 16 rows
 vmenter:
   // unpack the next 16 (or fewer) delims
   // into Z0=indices, Z1=lengths
   MOVQ         indelims+8(FP), DX
-  VMOVDQU64.Z  0(DX), K1, Z2
+  VMOVDQU64.Z  0(DX)(R9*8), K1, Z2
   KSHIFTRW     $8, K1, K2
-  VMOVDQU64.Z  64(DX), K2, Z3
+  VMOVDQU64.Z  64(DX)(R9*8), K2, Z3
   VPMOVQD      Z2, Y0
   VPMOVQD      Z3, Y1
   VINSERTI32X8 $1, Y1, Z0, Z0
@@ -94,6 +98,7 @@ vmenter:
   VPMOVQD      Z2, Y1
   VPMOVQD      Z3, Y2
   VINSERTI32X8 $1, Y2, Z1, Z1
+  ADDQ         CX, R9           // provisional rows consumed += cx
 
   // enter bytecode interpretation
   MOVQ   bc+0(FP), DI
@@ -102,62 +107,57 @@ vmenter:
 
   // now we need to scan (z2:z3).k1 as arrays
   // for distinct ion elements
-  XORL    AX, AX                // lane number
+  MOVQ    ret+80(FP), AX        // lane number
   KMOVW   K1, R15
-  MOVQ    perm+56(FP), R9       // R9 = &perm[0]
-  MOVQ    outdelims+32(FP), R10 // R10 = &outdelims[0]
-  MOVQ    outdelims_len+40(FP), R11
-  LEAQ    0(R10)(R11*8), R11    // R11 = &outdelims[len(outdelims)]
+  MOVQ    perm+56(FP), R14      // R14 = &perm[0]
+  MOVQ    outdelims+32(FP), BX  // BX  = &outdelims[0]
   TESTL   R15, R15              // no lanes are arrays?
-  JZ      done
+  JZ      loop_tail             // then we are trivially done
 splat_lane:
-  CMPQ    R10, R11              // no more output space?
-  JGE     done
   VMOVD   X2, R12               // R12 = base pointer
   VMOVD   X3, R13               // R13 = length
-  ADDQ    R12, R13              // R13 = end-of-array offset
   VALIGND $1, Z2, Z2, Z2        // shift away dword in z2 and z3
   VALIGND $1, Z3, Z3, Z3
-  TESTL   $1, R15               // don't do anything here
-  JZ      next_lane
+  TESTL   $1, R15               //
+  JZ      next_lane             // skip to next lane if not a list
+  ADDQ    R12, R13              // R13 = end-of-array offset
   JMP     splat_array_tail
 splat_array:
-  MOVL    R12, 0(R10)           // store offset
-  MOVQ    0(SI)(R12*1), DX      // DX = element bits
-  MOVL    DX, BX
-  ANDB    $0x0f, BX
-  CMPB    BX, $0x0f             // size bits = 0x0f? size = 1
+  CMPQ    R10, outdelims_len+40(FP)
+  JAE     out_of_space          // no more space if out >= len(outdelims)
+  MOVL    R12, 0(BX)(R10*8)     // store offset
+  MOVL    0(SI)(R12*1), DX      // DX = element bits
+  MOVL    DX, R8
+  ANDB    $0x0f, R8
+  CMPB    R8, $0x0f             // size bits = 0x0f? size = 1
   JNE     not_null
   MOVQ    $1, DX
   JMP     size_done
 not_null:
-  CMPB    BX, $0x0e             // size bits = 0x0e? varint
+  CMPB    R8, $0x0e             // size bits = 0x0e? varint
   JNE     fixed_size
-  XORL    BX, BX                // BX = uvarint accumulator
-  MOVL    $1, R8                // R8 = header size (currently 1)
+  XORL    R8, R8                // R8 = uvarint accumulator
+  MOVL    $1, DI                // DI = header size (currently 1)
 varint:
-  INCL    R8                    // header bytes++
-  SHLL    $7, BX                // uvarint <<= 7
+  INCL    DI                    // header bytes++
+  SHLL    $7, R8                // uvarint <<= 7
   SHRQ    $8, DX                // input >>= 8
   MOVQ    DX, CX
   ANDL    $0x7f, CX
-  ADDL    CX, BX                // uvarint += (input & 0x7f)
-  TESTQ   $0x80, DX             // loop while (input & 0x80) == 0
+  ADDL    CX, R8                // uvarint += (input & 0x7f)
+  TESTL   $0x80, DX             // loop while (input & 0x80) == 0
   JZ      varint
-  MOVQ    BX, DX                // output = uvarint
-  ADDQ    R8, DX                // output += header bytes
+  MOVQ    R8, DX                // output = uvarint
+  ADDQ    DI, DX                // output += header bytes
   JMP     size_done
 fixed_size:
   ANDL    $0x0f, DX             // size = descriptor&0x0f
   INCQ    DX                    // + descriptor byte
 size_done:
-  MOVL    DX, 4(R10)            // store length
+  MOVL    DX, 4(BX)(R10*8)      // store length
   ADDQ    DX, R12               // input pointer += length
-  MOVL    AX, 0(R9)             // perm[n] = lane number
-  LEAQ    8(R10), R10           // *outdelims[n++] = length
-  LEAQ    4(R9), R9             // perm++
-  CMPQ    R10, R11              // no more space?
-  JGE     done                  // then we're really done
+  MOVL    AX, 0(R14)(R10*4)     // perm[n] = lane number
+  INCQ    R10
 splat_array_tail:
   CMPQ    R12, R13
   JLT     splat_array           // continue while R12 < R13
@@ -165,11 +165,15 @@ next_lane:
   INCL    AX
   SHRL    $1, R15
   JNZ     splat_lane
-done:
-  MOVQ    AX, ret+80(FP)         // ret0 = # lanes output
-  SUBQ    outdelims+32(FP), R10
-  SHRQ    $3, R10                // R10 = (R10-&outdelims[0])/8
-  MOVQ    R10, ret1+88(FP)       // ret1 = # delims output
+loop_tail:
+  // all input lanes handled and
+  // written to output, so R9 and R10 are in-sync
+  // with their respective return values
+  MOVQ    R9, ret+80(FP)
+  MOVQ    R10, ret1+88(FP)
+  MOVQ    indelims_len+16(FP), CX
+  SUBQ    R9, CX
+  JNZ     loop                 // continue while len(delims) > r9
   RET
 genmask:
   MOVL    $1, R8
@@ -177,3 +181,7 @@ genmask:
   SUBL    $1, R8
   KMOVW   R8, K1
   JMP     vmenter
+out_of_space:
+  MOVQ    AX, ret+80(FP) // AX = # lanes processed
+  MOVQ    R10, ret1+88(FP)
+  RET

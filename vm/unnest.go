@@ -156,15 +156,15 @@ func (u *unnesting) writeRows(delims []vmref, rp *rowParams) error {
 		// that we may not have actually handled all the lanes
 		u.splat.auxpos = consumed + in
 		if in == 0 {
-			if out == 0 {
-				// field never found; no output rows
-				return nil
-			}
 			// there wasn't enough room to splat a single
 			// lane's array members! we need more space,
 			// so double the slice sizes here
 			u.outer = slices.Grow(u.outer, len(u.outer))
 			u.perms = slices.Grow(u.perms, len(u.perms))
+			continue
+		}
+		if out == 0 {
+			consumed += in
 			continue
 		}
 		// incorporate inner and outer values

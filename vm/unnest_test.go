@@ -102,17 +102,16 @@ func TestSplat(t *testing.T) {
 		totalentries += entrylengths[i]
 	}
 
+	// there are 1023 inner records, so we
+	// should expect this to be able to process everything:
 	outdelims := make([]vmref, 1024)
 	outperm := make([]int32, len(outdelims))
 	in, out := evalsplat(&bc, delims[:n], outdelims, outperm)
-	if in != 16 {
-		// we know we provided enough space
-		// for all sixteen lanes to be
-		// splatted
-		t.Errorf("in: %d", in)
+	if in != n {
+		t.Errorf("in = %d (expected %d)", in, n)
 	}
-	if out != totalentries {
-		t.Errorf("out: %d, want %d", out, totalentries)
+	if out != 1023 {
+		t.Errorf("out = %d (expected 1023)", out)
 	}
 
 	// test that the output permutation
@@ -129,6 +128,20 @@ func TestSplat(t *testing.T) {
 		j += span
 	}
 
+	// test providing just enough space
+	// for entries [0, ...]
+	want := 0
+	for j, elen := range entrylengths {
+		want += elen
+		in, out = evalsplat(&bc, delims[:n], outdelims[:want], outperm[:want])
+		if in != j+1 {
+			t.Errorf("with %d outdelims available expected %d in; got %d", want, j+1, in)
+		}
+		if out != want {
+			t.Errorf("with %d outdelims available expected %d out; got %d", want, want, out)
+		}
+	}
+
 	// test that delimiter object sizes
 	// are sane
 	for i := range outdelims[:out] {
@@ -137,26 +150,5 @@ func TestSplat(t *testing.T) {
 		if outsize != int(outdelims[i][1]) {
 			t.Errorf("delim %d: size %d, but computed %d", i, outdelims[i][1], outsize)
 		}
-	}
-
-	// try consuming all the rows and
-	// confirm that we get 1023 outputs
-	total := 0
-	delims = delims[:n]
-	for len(delims) > 0 {
-		in, out := evalsplat(&bc, delims, outdelims, outperm)
-		if in > 16 {
-			t.Errorf("consumed %d rows?", in)
-		}
-		if out > len(outdelims) {
-			t.Errorf("output %d rows? (only space for %d)", out, len(outdelims))
-		}
-		total += out
-		delims = delims[in:]
-		outdelims = outdelims[out:]
-		outperm = outperm[out:]
-	}
-	if total != 1023 {
-		t.Errorf("splatted %d entries? (want 1023)", total)
 	}
 }
