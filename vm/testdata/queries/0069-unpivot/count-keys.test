@@ -1,0 +1,23 @@
+SELECT key, COUNT(*)
+FROM UNPIVOT input AS val AT key
+GROUP BY key
+ORDER BY COUNT(*) DESC
+---
+{"foo": "bar"}
+{"foo": "bar"}
+{"foo": "bar", "bar": "baz"}
+{"foo": "bar", "bar": "baz"}
+{"foo": "bar", "bar": "baz", "quux": 1}
+{"foo": "bar", "bar": "baz", "quux": 1}
+{"foo": "bar", "bar": "baz", "quux": 1}
+{"foo": "bar", "bar": "baz", "quux": 1}
+{"foo": "bar", "bar": "baz", "another": null}
+{"foo": "bar", "bar": "baz", "another": null}
+{"foo": "bar", "bar": "baz", "another": null}
+{"xyzabc": {"foo": "bar", "bar": "baz", "another": null}}
+---
+{"key": "foo", "count": 11}
+{"key": "bar", "count": 9}
+{"key": "quux", "count": 4}
+{"key": "another", "count": 3}
+{"key": "xyzabc", "count": 1}

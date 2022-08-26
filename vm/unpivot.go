@@ -15,19 +15,19 @@
 package vm
 
 import (
-	"encoding/binary"
+	"fmt"
 	"io"
-	"math/bits"
 
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
 	outRowsCapacity = 1024 // The size of a buffer for the metadata describing individual rows
-	atBufCapacity   = 16   // 1 byte for the ION prefix + 8 bytes for the symbol ID, aligned to the power of 2
 )
 
-type creatorFunc func(u *Unpivot, w io.WriteCloser, buf []byte, disp uint32) rowConsumer
+type creatorFunc func(u *Unpivot, w io.WriteCloser) rowConsumer
 
 type Unpivot struct {
 	out      QuerySink
@@ -36,35 +36,29 @@ type Unpivot struct {
 	fnCreate creatorFunc
 }
 
-func createUnpivoterAsAt(u *Unpivot, w io.WriteCloser, buf []byte, disp uint32) rowConsumer {
+func createUnpivoterAsAt(u *Unpivot, w io.WriteCloser) rowConsumer {
 	return &unpivoterAsAt{
 		unpivoterBase: unpivoterBase{
-			parent:          u,
-			out:             asRowConsumer(w),
-			buf:             buf,
-			bufDisplacement: disp,
+			parent: u,
+			out:    asRowConsumer(w),
 		},
 	}
 }
 
-func createUnpivoterAs(u *Unpivot, w io.WriteCloser, buf []byte, disp uint32) rowConsumer {
+func createUnpivoterAs(u *Unpivot, w io.WriteCloser) rowConsumer {
 	return &unpivoterAs{
 		unpivoterBase: unpivoterBase{
-			parent:          u,
-			out:             asRowConsumer(w),
-			buf:             buf,
-			bufDisplacement: disp,
+			parent: u,
+			out:    asRowConsumer(w),
 		},
 	}
 }
 
-func createUnpivoterAt(u *Unpivot, w io.WriteCloser, buf []byte, disp uint32) rowConsumer {
+func createUnpivoterAt(u *Unpivot, w io.WriteCloser) rowConsumer {
 	return &unpivoterAt{
 		unpivoterBase: unpivoterBase{
-			parent:          u,
-			out:             asRowConsumer(w),
-			buf:             buf,
-			bufDisplacement: disp,
+			parent: u,
+			out:    asRowConsumer(w),
 		},
 	}
 }
@@ -101,9 +95,7 @@ func (u *Unpivot) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf := Malloc()
-	disp, _ := vmdispl(buf)
-	c := u.fnCreate(u, w, buf, disp)
+	c := u.fnCreate(u, w)
 	return splitter(c), nil
 }
 
@@ -112,16 +104,14 @@ func (u *Unpivot) Close() error {
 }
 
 type unpivoterBase struct {
-	parent          *Unpivot
-	out             rowConsumer // The downstream kernel
-	buf             []byte      // The buffer for the underlying ION data
-	bufDisplacement uint32
-	outRows         [outRowsCapacity]vmref // The buffer for the metadata describing individual rows
+	parent *Unpivot
+	out    rowConsumer // The downstream kernel
+	params rowParams
+	dummy  []vmref // dummy rows
+	syms   *symtab
 }
 
 func (u *unpivoterBase) Close() error {
-	Free(u.buf)
-	u.buf = nil
 	return u.out.Close()
 }
 
@@ -134,57 +124,25 @@ type varUInt []byte
 // unpivoterAsAt handles the "UNPIVOT AS val AT key" case
 type unpivoterAsAt struct {
 	unpivoterBase
-	encodedAs  varUInt
-	encodedAt  varUInt
-	asBeforeAt bool
-}
-
-// toVarUInt translates x into the ION VarUInt format
-func toVarUInt(x uint) varUInt {
-	const maxData = 10 // 64 bits/7 is 9.something bytes
-	var data [maxData]byte
-	data[maxData-1] = byte(x | 0x80)
-	i := maxData - 2
-
-	for x = x >> 7; x != 0; x = x >> 7 {
-		data[i] = byte(x & 0x7f)
-		i--
-	}
-	return data[i+1:]
-}
-
-// symbolToVarUInt translates an ION Symbol into the ION VarUInt format
-func symbolToVarUInt(s ion.Symbol) varUInt {
-	return toVarUInt(uint(s))
-}
-
-func skipVarUInt(data []byte) []byte {
-	i := 0
-	for data[i]&0x80 == 0 {
-		i++
-	}
-	return data[i+1:]
 }
 
 func (u *unpivoterAsAt) symbolize(st *symtab, aux *auxbindings) error {
-	asSym := st.Intern(*u.parent.as)
-	u.encodedAs = symbolToVarUInt(asSym)
-	atSym := st.Intern(*u.parent.at)
-	u.encodedAt = symbolToVarUInt(atSym)
-	u.asBeforeAt = asSym < atSym
-	return u.out.symbolize(st, aux)
+	if len(aux.bound) > 0 {
+		return fmt.Errorf("UNPIVOT does not handle auxilliary bindings yet")
+	}
+
+	selfaux := auxbindings{}
+	selfaux.push(*u.parent.at) // aux 1 = at
+	selfaux.push(*u.parent.as) // aux 0 = as
+	u.syms = st
+	u.params.auxbound = shrink(u.params.auxbound, 2)
+	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
+	u.params.auxbound[1] = slices.Grow(u.params.auxbound[1][:0], outRowsCapacity)
+	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+	return u.out.symbolize(st, &selfaux)
 }
 
 func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
-	outRowsCount := 0
-	bufOffs := 0
-	bufRemaining := len(u.buf)
-	bufDisplacement := u.bufDisplacement
-
-	asSymbolLen := len(u.encodedAs)
-	atSymbolLen := len(u.encodedAt)
-	var atBuffer [atBufCapacity]byte
-
 	for i := range rows {
 		data := rows[i].mem()
 		// Iterate over all the struct fields
@@ -193,54 +151,41 @@ func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
 			if err != nil {
 				return err
 			}
-			asContentSize := ion.SizeOf(rest)
-			data = rest[asContentSize:] // Seek to the next field of the input ION structure
+			// add a dummy record with 0 bytes of contents
+			// for the "main" row; the rowParams contain
+			// the only live bindings after this step
+			v := rows[i]
+			v[1] = 0
+			u.dummy = append(u.dummy, v)
+			restsize := ion.SizeOf(rest)
+			u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
+			restpos, _ := vmdispl(rest)
+			u.params.auxbound[1] = append(u.params.auxbound[1], vmref{restpos, uint32(restsize)})
+			data = rest[restsize:]
 
-			// Create the ION symbol working backwards to seamlessly handle the embedded variable-length uints
-			// The symbol goes last in the Big Endian format
-			binary.BigEndian.PutUint64(atBuffer[atBufCapacity-8:], uint64(sym))
-			atContentSize := (bits.Len64(uint64(sym)) + 15) / 8
-			atBufOffs := atBufCapacity - atContentSize
-			atBuffer[atBufOffs] = byte(0x70 + atContentSize - 1) // The ION Symbol prefix
-
-			// The total size of the struct representing the output pair
-			structSize := asSymbolLen + asContentSize + atSymbolLen + atContentSize
-
-			// Ensure there is enough room for the resulting serialized struct
-			if (outRowsCount == outRowsCapacity) || (structSize > bufRemaining) {
-				// Overflow, flush the buffers to the downstream kernel
-				if err := u.out.writeRows(u.outRows[:outRowsCount], params); err != nil {
+			if len(u.dummy) == cap(u.dummy) {
+				// flush; note that the actual row content
+				// will be ignored
+				err := u.out.writeRows(u.dummy, &u.params)
+				if err != nil {
 					return err
 				}
-				outRowsCount = 0
-				bufOffs = 0
-				bufRemaining = len(u.buf)
-				bufDisplacement = u.bufDisplacement
-			}
-
-			u.outRows[outRowsCount][0] = bufDisplacement
-			u.outRows[outRowsCount][1] = uint32(structSize)
-			outRowsCount++
-			bufDisplacement += uint32(structSize)
-			bufRemaining -= structSize
-
-			// Ensure the fields appear in the sorted order
-			if u.asBeforeAt {
-				bufOffs += copy(u.buf[bufOffs:], u.encodedAs)          // The AS field name [VarUInt]
-				bufOffs += copy(u.buf[bufOffs:], rest[:asContentSize]) // The AS field value, taken verbatim from the input ION
-				bufOffs += copy(u.buf[bufOffs:], u.encodedAt)          // The AT field name [VarUInt]
-				bufOffs += copy(u.buf[bufOffs:], atBuffer[atBufOffs:]) // The AT field value, encoded as ION symbol
-			} else {
-				bufOffs += copy(u.buf[bufOffs:], u.encodedAt)          // The AT field name [VarUInt]
-				bufOffs += copy(u.buf[bufOffs:], atBuffer[atBufOffs:]) // The AT field value, encoded as ION symbol
-				bufOffs += copy(u.buf[bufOffs:], u.encodedAs)          // The AS field name [VarUInt]
-				bufOffs += copy(u.buf[bufOffs:], rest[:asContentSize]) // The AS field value, taken verbatim from the input ION
+				u.dummy = u.dummy[:0]
+				u.params.auxbound[0] = u.params.auxbound[0][:0]
+				u.params.auxbound[1] = u.params.auxbound[1][:0]
 			}
 		}
 	}
-	if outRowsCount != 0 {
-		// There is an unprocessed residue, flush it to the downstream kernel
-		return u.out.writeRows(u.outRows[:outRowsCount], params)
+	if len(u.dummy) > 0 {
+		// flush; note that the actual row content
+		// will be ignored
+		err := u.out.writeRows(u.dummy, &u.params)
+		if err != nil {
+			return err
+		}
+		u.dummy = u.dummy[:0]
+		u.params.auxbound[0] = u.params.auxbound[0][:0]
+		u.params.auxbound[1] = u.params.auxbound[1][:0]
 	}
 	return nil
 }
@@ -252,55 +197,57 @@ type unpivoterAs struct {
 }
 
 func (u *unpivoterAs) symbolize(st *symtab, aux *auxbindings) error {
-	asSym := st.Intern(*u.parent.as)
-	u.encodedAs = symbolToVarUInt(asSym)
-	return u.out.symbolize(st, aux)
+	if len(aux.bound) > 0 {
+		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
+	}
+	selfaux := auxbindings{}
+	selfaux.push(*u.parent.as) // aux[0] = as
+	u.syms = st
+	u.params.auxbound = shrink(u.params.auxbound, 1)
+	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
+	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+	return u.out.symbolize(st, &selfaux)
+}
+
+func skipVarUInt(buf []byte) []byte {
+	for len(buf) > 0 && buf[0]&0x80 == 0 {
+		buf = buf[1:]
+	}
+	return buf[1:]
 }
 
 func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
-	outRowsCount := 0
-	bufOffs := 0
-	bufRemaining := len(u.buf)
-	bufDisplacement := u.bufDisplacement
-	asSymbolLen := len(u.encodedAs)
-
 	for i := range rows {
 		data := rows[i].mem()
 		// Iterate over all the struct fields
 		for len(data) != 0 {
 			// Skip the fileld ID
 			rest := skipVarUInt(data)
-			asContentSize := ion.SizeOf(rest)
-			data = rest[asContentSize:] // Seek to the next field of the input ION structure
+			size := ion.SizeOf(rest)
+			data = rest[size:] // Seek to the next field of the input ION structure
 
-			// The total size of the struct representing the output pair
-			structSize := asSymbolLen + asContentSize
-
-			// Ensure there is enough room for the resulting serialized struct
-			if (outRowsCount == outRowsCapacity) || (structSize > bufRemaining) {
-				// Overflow, flush the buffers to the downstream kernel
-				if err := u.out.writeRows(u.outRows[:outRowsCount], params); err != nil {
+			v := rows[i]
+			v[1] = 0
+			u.dummy = append(u.dummy, v)
+			vmoff, _ := vmdispl(rest)
+			u.params.auxbound[0] = append(u.params.auxbound[0], vmref{vmoff, uint32(size)})
+			if len(u.params.auxbound) == cap(u.params.auxbound) {
+				err := u.out.writeRows(u.dummy, &u.params)
+				if err != nil {
 					return err
 				}
-				outRowsCount = 0
-				bufOffs = 0
-				bufRemaining = len(u.buf)
-				bufDisplacement = u.bufDisplacement
+				u.dummy = u.dummy[:0]
+				u.params.auxbound[0] = u.params.auxbound[0][:0]
 			}
-
-			u.outRows[outRowsCount][0] = bufDisplacement
-			u.outRows[outRowsCount][1] = uint32(structSize)
-			outRowsCount++
-			bufDisplacement += uint32(structSize)
-			bufRemaining -= structSize
-
-			bufOffs += copy(u.buf[bufOffs:], u.encodedAs)          // The AS field name [VarUInt]
-			bufOffs += copy(u.buf[bufOffs:], rest[:asContentSize]) // The AS field value, taken verbatim from the input ION
 		}
 	}
-	if outRowsCount != 0 {
-		// There is an unprocessed residue, flush it to the downstream kernel
-		return u.out.writeRows(u.outRows[:outRowsCount], params)
+	if len(u.dummy) > 0 {
+		err := u.out.writeRows(u.dummy, &u.params)
+		if err != nil {
+			return err
+		}
+		u.dummy = u.dummy[:0]
+		u.params.auxbound[0] = u.params.auxbound[0][:0]
 	}
 	return nil
 }
@@ -312,20 +259,19 @@ type unpivoterAt struct {
 }
 
 func (u *unpivoterAt) symbolize(st *symtab, aux *auxbindings) error {
-	atSym := st.Intern(*u.parent.at)
-	u.encodedAt = symbolToVarUInt(atSym)
-	return u.out.symbolize(st, aux)
+	if len(aux.bound) > 0 {
+		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
+	}
+	selfaux := auxbindings{}
+	selfaux.push(*u.parent.at) // aux[0] = as
+	u.syms = st
+	u.params.auxbound = shrink(u.params.auxbound, 1)
+	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
+	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+	return u.out.symbolize(st, &selfaux)
 }
 
 func (u *unpivoterAt) writeRows(rows []vmref, params *rowParams) error {
-	outRowsCount := 0
-	bufOffs := 0
-	bufRemaining := len(u.buf)
-	bufDisplacement := u.bufDisplacement
-
-	atSymbolLen := len(u.encodedAt)
-	var atBuffer [atBufCapacity]byte
-
 	for i := range rows {
 		data := rows[i].mem()
 		// Iterate over all the struct fields
@@ -334,44 +280,30 @@ func (u *unpivoterAt) writeRows(rows []vmref, params *rowParams) error {
 			if err != nil {
 				return err
 			}
-			asContentSize := ion.SizeOf(rest)
-			data = rest[asContentSize:] // Seek to the next field of the input ION structure
+			data = rest[ion.SizeOf(rest):] // Seek to the next field of the input ION structure
 
-			// Create the ION symbol working backwards to seamlessly handle the embedded variable-length uints
-			// The symbol goes last in the Big Endian format
-			binary.BigEndian.PutUint64(atBuffer[atBufCapacity-8:], uint64(sym))
-			atContentSize := (bits.Len64(uint64(sym)) + 15) / 8
-			atBufOffs := atBufCapacity - atContentSize
-			atBuffer[atBufOffs] = byte(0x70 + atContentSize - 1) // The ION Symbol prefix
+			v := rows[i]
+			v[1] = 0
+			u.dummy = append(u.dummy, v)
+			u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
 
-			// The total size of the struct representing the output pair
-			structSize := atSymbolLen + atContentSize
-
-			// Ensure there is enough room for the resulting serialized struct
-			if (outRowsCount == outRowsCapacity) || (structSize > bufRemaining) {
-				// Overflow, flush the buffers to the downstream kernel
-				if err := u.out.writeRows(u.outRows[:outRowsCount], params); err != nil {
+			if len(u.dummy) == cap(u.dummy) {
+				err := u.out.writeRows(u.dummy, &u.params)
+				if err != nil {
 					return err
 				}
-				outRowsCount = 0
-				bufOffs = 0
-				bufRemaining = len(u.buf)
-				bufDisplacement = u.bufDisplacement
+				u.dummy = u.dummy[:0]
+				u.params.auxbound[0] = u.params.auxbound[0][:0]
 			}
-
-			u.outRows[outRowsCount][0] = bufDisplacement
-			u.outRows[outRowsCount][1] = uint32(structSize)
-			outRowsCount++
-			bufDisplacement += uint32(structSize)
-			bufRemaining -= structSize
-
-			bufOffs += copy(u.buf[bufOffs:], u.encodedAt)          // The AT field name [VarUInt]
-			bufOffs += copy(u.buf[bufOffs:], atBuffer[atBufOffs:]) // The AT field value, encoded as ION symbol
 		}
 	}
-	if outRowsCount != 0 {
-		// There is an unprocessed residue, flush it to the downstream kernel
-		return u.out.writeRows(u.outRows[:outRowsCount], params)
+	if len(u.dummy) > 0 {
+		err := u.out.writeRows(u.dummy, &u.params)
+		if err != nil {
+			return err
+		}
+		u.dummy = u.dummy[:0]
+		u.params.auxbound[0] = u.params.auxbound[0][:0]
 	}
 	return nil
 }

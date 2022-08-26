@@ -35,7 +35,14 @@ type QuerySink interface {
 	io.Closer
 }
 
+// auxbindings is passed along with
+// symtab to rowConsumer.symbolize to indicate
+// that some variable bindings should be assumed
+// to arrive via rowParams rather than via the
+// primary delimiters provided in writeRows
 type auxbindings struct {
+	// bound[i] corresponds to the variable that
+	// is bound to future rowParams.auxbound[i] values
 	bound []string
 }
 
@@ -43,12 +50,16 @@ func (a *auxbindings) reset() {
 	a.bound = a.bound[:0]
 }
 
+// push creates a new binding and returns its index
+// (to be used in rowParams.auxbound)
 func (a *auxbindings) push(x string) int {
 	n := len(a.bound)
 	a.bound = append(a.bound, x)
 	return n
 }
 
+// id returns the id associated with a binding in a,
+// or (-1, false) if no such binding is present
 func (a *auxbindings) id(x string) (int, bool) {
 	for i := len(a.bound) - 1; i >= 0; i-- {
 		if a.bound[i] == x {
@@ -82,7 +93,8 @@ type rowConsumer interface {
 	// the current symbol table changes
 	//
 	// aux provides a list of bindings that supersedes
-	// the bindings provided by writeRows
+	// the bindings provided by delims in writeRows;
+	// see auxbindings
 	symbolize(st *symtab, aux *auxbindings) error
 	// writeRows writes a slice of vmrefs
 	// (pointing to the inside of each row)
@@ -92,6 +104,11 @@ type rowConsumer interface {
 	// re-use the delims slice, but it *must not*
 	// write to the memory pointed to by delims;
 	// it must allocate new memory for new output
+	//
+	// the rules for modification of delims also
+	// apply to all of params.auxbound[*]; the slices
+	// themselves may be modified, but the values pointed
+	// to by the vmrefs should not be modified
 	writeRows(delims []vmref, params *rowParams) error
 
 	// next returns the next io.WriteCloser
