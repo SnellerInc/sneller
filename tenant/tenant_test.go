@@ -26,6 +26,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -159,6 +160,18 @@ func fsize(fname string) int64 {
 	return f.Size()
 }
 
+func TestMain(m *testing.M) {
+	// build the test binary launched with "stub" just once
+	err := exec.Command("go", "build",
+		"-o", "test-stub", "-buildmode=exe", "stub.go").Run()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to compile test-stub: %s", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
+
 func TestExec(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("this test will not work on windows")
@@ -186,7 +199,7 @@ func TestExec(t *testing.T) {
 	id := randomID()
 	var logbuf bytes.Buffer
 
-	m := NewManager([]string{"go", "run", "stub.go", "worker"},
+	m := NewManager([]string{"./test-stub", "worker"},
 		WithGCInterval(time.Hour),
 		WithLogger(log.New(&logbuf, "manager-log: ", 0)),
 		WithRemote(l),
