@@ -697,7 +697,7 @@ select out.Make as make, entry.Color as color
 from 'parking3.ion' as out, out.Entries as entry
 where entry.Color = 'BK'
 `,
-			rows:     223,
+			rows:     221,
 			firstrow: `{"make": "ACUR", "color": "BK"}`,
 		},
 		{
