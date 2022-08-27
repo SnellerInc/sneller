@@ -44,7 +44,6 @@ func simplify(b *Trace) {
 func (b *Trace) optimize() {
 	// pre-passes to make optimization easier:
 	freezefinal(b) // explicitly choose final output names
-	pathunify(b)   // make all equivalent *Path nodes the same object
 
 	// actual optimization passes:
 	simplify(b)

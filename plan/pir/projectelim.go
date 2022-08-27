@@ -273,7 +273,7 @@ outer:
 		// to one of the outputs of the aggregate
 		for i := range bi.bind {
 			p, ok := bi.bind[i].Expr.(*expr.Path)
-			if !ok || b.origin(p) != ag {
+			if !ok || p.Rest != nil {
 				child = s
 				continue outer
 			}
@@ -287,7 +287,7 @@ outer:
 				if agg2bind[j] != -1 {
 					continue
 				}
-				if agr == ag.Agg[j].Expr {
+				if agr.Equals(ag.Agg[j].Expr) {
 					agg2bind[j] = i
 					matched = true
 					break
@@ -300,7 +300,7 @@ outer:
 				if agg2bind[len(ag.Agg)+j] != -1 {
 					continue
 				}
-				if agr == ag.GroupBy[j].Expr {
+				if agr.Equals(ag.GroupBy[j].Expr) {
 					agg2bind[len(ag.Agg)+j] = i
 					matched = true
 					break
