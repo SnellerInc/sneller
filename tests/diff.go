@@ -28,12 +28,14 @@ func Diff(s1, s2 string) (string, bool) {
 		return "", false
 	}
 	defer f1.Close()
+	defer os.Remove(f1.Name())
 
 	f2, err := os.CreateTemp("", "diff*")
 	if err != nil {
 		return "", false
 	}
 	defer f2.Close()
+	defer os.Remove(f1.Name())
 
 	_, err = f1.WriteString(s1)
 	if err != nil {
