@@ -32,8 +32,8 @@ func max(r1, r2 rune) rune {
 	return r1
 }
 
-//overlapRange returns the overlap between the two provided ranges, returns true
-//if there exists overlap; false otherwise
+// overlapRange returns the overlap between the two provided ranges, returns true
+// if there exists overlap; false otherwise
 func overlapRange(range1, range2 symbolRangeT) ([]symbolRangeT, bool) {
 	min1, max1, rlza1 := range1.split()
 	min2, max2, rlza2 := range2.split()
@@ -96,7 +96,7 @@ func (cg *charGroupsRange) add(newRange symbolRangeT) {
 	}
 }
 
-//refactor will refactor the provided symbol range
+// refactor will refactor the provided symbol range
 func (cg *charGroupsRange) refactor(symbolRange symbolRangeT) (*[]symbolRangeT, bool) {
 	if cg.data.contains(symbolRange) {
 		return nil, false

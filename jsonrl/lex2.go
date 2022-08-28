@@ -3536,9 +3536,9 @@ const list_cont_error int = 0
 
 const list_cont_en_main int = 1
 
-//line lex2.rl:342
-
 // lex either tokComma or tokRBrack
+//
+//line lex2.rl:342
 func (t *parser) lexMoreList(b *reader) error {
 	if !b.assertFill() {
 		if b.err != nil {

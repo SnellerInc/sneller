@@ -53,12 +53,12 @@
 // For example, a structure with one field that
 // lives in bucket 0xe would be encoded as:
 //
-//   0x01 0xe0
+//	0x01 0xe0
 //
 // A structure with four fields that live in
 // buckets 0, 1, 2, 3:
 //
-//   0x04 0x01 0x23
+//	0x04 0x01 0x23
 //
 // Notice that structures with odd field lengths
 // still consume an integral number of bytes;
@@ -66,9 +66,9 @@
 // In other words, the length of the fields following
 // a descriptor can be computed by:
 //
-//   class := shape[0]>>6            // size class
-//   size := shape[0]&0x1f           // descriptor
-//   body := shape[1:1+((size+1)/2)] // bytes of nibbles
+//	class := shape[0]>>6            // size class
+//	size := shape[0]&0x1f           // descriptor
+//	body := shape[1:1+((size+1)/2)] // bytes of nibbles
 //
 // Since we can only record up to 16 fields in one sequence,
 // a sequence of 16 fields does not terminate a structure,

@@ -78,9 +78,11 @@ func atof(s *state, man uint64, exp10 int, neg bool) {
 // If possible to convert decimal representation to 64-bit float f exactly,
 // entirely in floating-point math, do so, avoiding the expense of decimalToFloatBits.
 // Three common cases:
+//
 //	value is exact integer
 //	value is exact integer * exact power of ten
 //	value is exact integer / exact power of ten
+//
 // These all produce potentially inexact but correctly rounded answers.
 func atof64exact(mantissa uint64, exp int, neg bool) (f float64, ok bool) {
 	if mantissa>>53 != 0 {
@@ -200,8 +202,8 @@ var float64pow10 = []float64{
 // detailedPowersOfTen contains 128-bit mantissa approximations (rounded down)
 // to the powers of 10. For example:
 //
-//  - 1e43 ≈ (0xE596B7B0_C643C719                   * (2 ** 79))
-//  - 1e43 = (0xE596B7B0_C643C719_6D9CCD05_D0000000 * (2 ** 15))
+//   - 1e43 ≈ (0xE596B7B0_C643C719                   * (2 ** 79))
+//   - 1e43 = (0xE596B7B0_C643C719_6D9CCD05_D0000000 * (2 ** 15))
 //
 // The mantissas are explicitly listed. The exponents are implied by a linear
 // expression with slope 217706.0/65536.0 ≈ log(10)/log(2).

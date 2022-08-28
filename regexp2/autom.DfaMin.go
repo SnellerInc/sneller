@@ -315,7 +315,7 @@ func buildMinDfa(
 	return &dfaStoreNew, nil
 }
 
-//minDfa Minimizes the provided DFA with Hopcroft's algorithm and returns a new (minimized) DFA
+// minDfa Minimizes the provided DFA with Hopcroft's algorithm and returns a new (minimized) DFA
 func minDfa(dfaStore *DFAStore, maxNodes int) (*DFAStore, error) {
 	dfaStore.rebuildInternals()
 	startNodeID, err := dfaStore.startID()

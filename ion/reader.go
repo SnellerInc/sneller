@@ -31,10 +31,9 @@ import (
 // read only the next object from the buffer.
 // For example:
 //
-//  t, s, _ := Peek(r)
-//  buf := make([]byte, s)
-//  io.ReadFull(r, buf)
-//
+//	t, s, _ := Peek(r)
+//	buf := make([]byte, s)
+//	io.ReadFull(r, buf)
 func Peek(r *bufio.Reader) (Type, int, error) {
 	p, err := r.Peek(10)
 	if len(p) == 0 {
@@ -460,14 +459,14 @@ type JSONWriter struct {
 // which writes either NDJSON or a JSON array
 // depending on the value of sep:
 //
-//  If sep is '\n', then the returned JSONWriter
-//  writes NDJSON lines from each input object,
-//  and the Close method is a no-op.
+//	If sep is '\n', then the returned JSONWriter
+//	writes NDJSON lines from each input object,
+//	and the Close method is a no-op.
 //
-//  If sep is ',', then the return JSONWriter
-//  writes a JSON array containing all the ion
-//  values passed to Write. The call to Close
-//  writes the final ']' byte.
+//	If sep is ',', then the return JSONWriter
+//	writes a JSON array containing all the ion
+//	values passed to Write. The call to Close
+//	writes the final ']' byte.
 //
 // NewJSONWriter will panic if sep is not one
 // of the recognized bytes.

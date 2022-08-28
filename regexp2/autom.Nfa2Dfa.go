@@ -121,7 +121,7 @@ func getClosedMove(closureID nodeIDT, symbolRange symbolRangeT, nfaStore *NFASto
 	return getClosure(&nextNodes, nfaStore, dfaStore)
 }
 
-//nfaToDfa converts the provided NFA into a DFA
+// nfaToDfa converts the provided NFA into a DFA
 func nfaToDfa(nfaStore *NFAStore, maxNodes int) (*DFAStore, error) {
 	dfaStore := newDFAStore(maxNodes)
 	dfaStore.StartRLZA = nfaStore.startIDRLZ

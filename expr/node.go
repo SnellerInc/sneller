@@ -1325,7 +1325,8 @@ func (c CmpOp) invert() CmpOp {
 }
 
 // Between yields an expression equivalent to
-//   <val> BETWEEN <lo> AND <hi>
+//
+//	<val> BETWEEN <lo> AND <hi>
 func Between(val, lo, hi Node) *Logical {
 	return &Logical{
 		Op:    OpAnd,
@@ -1435,7 +1436,8 @@ func allConst(lst []Node) bool {
 }
 
 // In yields an expression equivalent to
-//   <val> IN (cmp ...)
+//
+//	<val> IN (cmp ...)
 func In(val Node, cmp ...Node) Node {
 	if len(cmp) > 1 && allConst(cmp) {
 		mem := &Member{Arg: val}
@@ -1496,7 +1498,8 @@ func (c *Comparison) setfield(name string, st *ion.Symtab, buf []byte) error {
 }
 
 // Not yields
-//   ! (Expr)
+//
+//	! (Expr)
 type Not struct {
 	Expr Node
 }
@@ -2375,7 +2378,8 @@ func (i *IsKey) setfield(name string, st *ion.Symtab, body []byte) error {
 }
 
 // Is yields
-//   <e> IS <k>
+//
+//	<e> IS <k>
 func Is(e Node, k Keyword) *IsKey {
 	return &IsKey{Expr: e, Key: k}
 }
@@ -2508,7 +2512,9 @@ func (p *Path) parse(x string) error {
 // binding parameters.
 //
 // For example
-//   a.b as b, a.x[3] as foo
+//
+//	a.b as b, a.x[3] as foo
+//
 // is parsed into two Binding structures
 // with the path expressions 'a.b' and 'a.x[3]'
 func ParseBindings(str string) ([]Binding, error) {
@@ -2716,7 +2722,8 @@ func Coalesce(nodes []Node) *Case {
 
 // NullIf implements SQL NULLIF(a, b);
 // it is transformed into an equivalent CASE expression:
-//   CASE WHEN a = b THEN NULL ELSE a
+//
+//	CASE WHEN a = b THEN NULL ELSE a
 func NullIf(a, b Node) Node {
 	return &Case{
 		Limbs: []CaseLimb{{

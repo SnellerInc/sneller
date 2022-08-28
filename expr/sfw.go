@@ -198,7 +198,9 @@ func (t *Table) walk(v Visitor) {
 }
 
 // OnEquals represents a single
-//   <left> = <right>
+//
+//	<left> = <right>
+//
 // statement inside an ON clause
 type OnEquals struct {
 	Left, Right Node

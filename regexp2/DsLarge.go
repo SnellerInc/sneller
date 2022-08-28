@@ -35,7 +35,7 @@ func edgeSort(srn []edgeT) {
 	})
 }
 
-//NewDsLarge creates a data structure that is accepted by the large DFA
+// NewDsLarge creates a data structure that is accepted by the large DFA
 func NewDsLarge(store *DFAStore, rlzaCapable bool) (*DsLarge, error) {
 	result := new(DsLarge)
 	result.rlzaCapable = rlzaCapable
@@ -98,7 +98,7 @@ func nodeIDForDs(id nodeIDT, store *DFAStore, rlza bool) (uint32, error) {
 	return result, nil
 }
 
-//runeToUtf8int transforms a rune to a UTF8 byte sequence; eg: for ſ (unicode 0x17F) yield 0000C5BF (UTF8)
+// runeToUtf8int transforms a rune to a UTF8 byte sequence; eg: for ſ (unicode 0x17F) yield 0000C5BF (UTF8)
 func runeToUtf8int(r rune) uint32 {
 	buf := make([]byte, 4)
 	utf8.EncodeRune(buf, r)

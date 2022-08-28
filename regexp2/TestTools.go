@@ -40,12 +40,12 @@ func createFileWriter(filename string) (io.Writer, error) {
 	return io.Writer(f), nil
 }
 
-//EscapeNL escapes new line
+// EscapeNL escapes new line
 func EscapeNL(str string) string {
 	return strings.ReplaceAll(str, "\n", "\\n")
 }
 
-//CreateDs creates data-structures for the provided regex string
+// CreateDs creates data-structures for the provided regex string
 func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) DataStructures {
 	tmpPath := os.TempDir() + "\\sneller\\"
 

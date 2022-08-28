@@ -43,19 +43,19 @@
 // There are two sorts of requests that can be
 // made to a tenant:
 //
-//  - "Direct Execution" requests, which are produced
-//  by Mangager.Do, provide a query plan to
-//  a specific local tenant process, along with an output
-//  file descriptor for the tenant to write to.
-//  The tenant performs the query and writes the results
-//  to the file descriptor.
+//   - "Direct Execution" requests, which are produced
+//     by Mangager.Do, provide a query plan to
+//     a specific local tenant process, along with an output
+//     file descriptor for the tenant to write to.
+//     The tenant performs the query and writes the results
+//     to the file descriptor.
 //
-//  - "Proxy Execution" requests, which are produced
-//  by tenant processes themselves, provide the ability
-//  for a tenant on one machine to "fan out" a query to
-//  multiple tenant processes across different machines.
-//  These are made available through Manager.Remote
-//  (see also: tnproto.Remote).
+//   - "Proxy Execution" requests, which are produced
+//     by tenant processes themselves, provide the ability
+//     for a tenant on one machine to "fan out" a query to
+//     multiple tenant processes across different machines.
+//     These are made available through Manager.Remote
+//     (see also: tnproto.Remote).
 //
 // In practice, "split" query plans (ones that are meant
 // to run on multiple machines) will use both of the
@@ -99,12 +99,11 @@ const (
 // Broadly speaking, the tenant manager has
 // two similar responsibilities:
 //
-//   1. Allow *this* process to talk to
-//   a sub-process tenant directly.
-//   2. Allow other tenants inside other tenant
-//   managers to connect to the tenants running
-//   locally via Manager.Remote.
-//
+//  1. Allow *this* process to talk to
+//     a sub-process tenant directly.
+//  2. Allow other tenants inside other tenant
+//     managers to connect to the tenants running
+//     locally via Manager.Remote.
 type Manager struct {
 	// CacheDir is the root of the directory
 	// tree used for caching data.
@@ -219,11 +218,12 @@ const DefaultCacheDir = "/tmp/tenant-cache"
 // (see Manager.CacheDir).
 //
 // It sets the following:
-//   PATH=$PATH
-//   SHELL=$SHELL
-//   HOME=$HOME
-//   LANG=C.UTF-8
-//   CACHEDIR=<cache>
+//
+//	PATH=$PATH
+//	SHELL=$SHELL
+//	HOME=$HOME
+//	LANG=C.UTF-8
+//	CACHEDIR=<cache>
 func DefaultEnv(cache string, id tnproto.ID) []string {
 	x := []string{
 		"LANG=C.UTF-8",

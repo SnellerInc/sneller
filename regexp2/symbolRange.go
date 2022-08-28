@@ -31,8 +31,8 @@ func newSymbolRange(min, max rune, rlza bool) symbolRangeT {
 	return result
 }
 
-//split returns the min and maximum rune (of the range), and the remaining length
-//zero assertion (RLZA) bool
+// split returns the min and maximum rune (of the range), and the remaining length
+// zero assertion (RLZA) bool
 func (symbolRange symbolRangeT) split() (min, max rune, rlza bool) {
 	min = rune(symbolRange & 0xFFFFFFFF)
 	max = rune((symbolRange >> 32) & 0x7FFFFFFF) // clear the rlza flag
@@ -161,7 +161,7 @@ func symbolRangeSubtract1(a []symbolRangeT, b symbolRangeT) []symbolRangeT {
 	return result
 }
 
-//symbolRangeSubtract subtract b from a
+// symbolRangeSubtract subtract b from a
 func symbolRangeSubtract(a, b []symbolRangeT) []symbolRangeT {
 	for _, symbolRange := range b {
 		a = symbolRangeSubtract1(a, symbolRange)

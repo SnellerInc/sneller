@@ -132,10 +132,10 @@ type Hint struct {
 //
 // The input must contain a valid json object with the individual rules:
 //
-//   {
-// 	   "path.to.value.a": "hint",
-// 	   "path.to.value.b": ["hint_a", "hint_b"]
-//   }
+//	  {
+//		   "path.to.value.a": "hint",
+//		   "path.to.value.b": ["hint_a", "hint_b"]
+//	  }
 //
 // The precedence of overlapping rules is determined by the order in which the rules
 // are written.
@@ -146,8 +146,8 @@ type Hint struct {
 // levels. Must be the last segment in the path.
 //
 // Supported actions:
-// 	 - `ignore` -> do not parse this property
-// 	 - `no_index` -> do not add this property to the sparse index
+//   - `ignore` -> do not parse this property
+//   - `no_index` -> do not add this property to the sparse index
 //
 // Supported hints:
 //   - string
@@ -469,7 +469,7 @@ func (s *hintState) nextIsRecursive() bool {
 	return s.next == nil || s.next.isRecursiveWildcard
 }
 
-/// enter should be invoked before a sub-structure (either record or array) is entered
+// / enter should be invoked before a sub-structure (either record or array) is entered
 func (s *hintState) enter() {
 	if s.nextIsRecursive() || s.level > 0 {
 		s.level++
@@ -482,7 +482,7 @@ func (s *hintState) enter() {
 	}
 }
 
-/// leave should be invoked before a sub-structure (either record or array) is left
+// / leave should be invoked before a sub-structure (either record or array) is left
 func (s *hintState) leave() {
 	if s.level > 0 {
 		s.level--
@@ -499,7 +499,7 @@ func (s *hintState) leave() {
 	}
 }
 
-/// field should be invoked before a field label is parsed
+// / field should be invoked before a field label is parsed
 func (s *hintState) field(label []byte) {
 	if s.level > 0 {
 		return
@@ -515,7 +515,7 @@ func (s *hintState) field(label []byte) {
 	s.next = next
 }
 
-/// afterListEntered should be invoked after a list has been entered
+// / afterListEntered should be invoked after a list has been entered
 func (s *hintState) afterListEntered() {
 	// Invoking `field` with an empty `label` sets `next` to `current` and updates the
 	// currently effective hints

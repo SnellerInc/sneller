@@ -31,10 +31,10 @@ package sorting
 // 2. all keys must not be strictly less nor strictly greater than the pivot.
 //
 // Postconditions:
-// 1. none of keys on the left (before `unprocessed_left`)
-//    is greater than the pivot;
-// 2. none of keys on the right (after `unprocessed_right`)
-//    is less than the pivot.
+//  1. none of keys on the left (before `unprocessed_left`)
+//     is greater than the pivot;
+//  2. none of keys on the right (after `unprocessed_right`)
+//     is less than the pivot.
 //
 // go:noescape
 func partitionAscFloat64(keys *float64, indices *uint64, pivot float64, left int, right int) (unprocessedLeft int, unprocessedRight int)
@@ -54,10 +54,10 @@ func partitionAscFloat64(keys *float64, indices *uint64, pivot float64, left int
 // 2. all keys must not be strictly less nor strictly greater than the pivot.
 //
 // Postconditions:
-// 1. none of keys on the left (before `unprocessed_left`)
-//    is greater than the pivot;
-// 2. none of keys on the right (after `unprocessed_right`)
-//    is less than the pivot.
+//  1. none of keys on the left (before `unprocessed_left`)
+//     is greater than the pivot;
+//  2. none of keys on the right (after `unprocessed_right`)
+//     is less than the pivot.
 //
 // go:noescape
 func partitionDescFloat64(keys *float64, indices *uint64, pivot float64, left int, right int) (unprocessedLeft int, unprocessedRight int)
@@ -77,10 +77,10 @@ func partitionDescFloat64(keys *float64, indices *uint64, pivot float64, left in
 // 2. all keys must not be strictly less nor strictly greater than the pivot.
 //
 // Postconditions:
-// 1. none of keys on the left (before `unprocessed_left`)
-//    is greater than the pivot;
-// 2. none of keys on the right (after `unprocessed_right`)
-//    is less than the pivot.
+//  1. none of keys on the left (before `unprocessed_left`)
+//     is greater than the pivot;
+//  2. none of keys on the right (after `unprocessed_right`)
+//     is less than the pivot.
 //
 // go:noescape
 func partitionAscUint64(keys *uint64, indices *uint64, pivot uint64, left int, right int) (unprocessedLeft int, unprocessedRight int)
@@ -100,10 +100,10 @@ func partitionAscUint64(keys *uint64, indices *uint64, pivot uint64, left int, r
 // 2. all keys must not be strictly less nor strictly greater than the pivot.
 //
 // Postconditions:
-// 1. none of keys on the left (before `unprocessed_left`)
-//    is greater than the pivot;
-// 2. none of keys on the right (after `unprocessed_right`)
-//    is less than the pivot.
+//  1. none of keys on the left (before `unprocessed_left`)
+//     is greater than the pivot;
+//  2. none of keys on the right (after `unprocessed_right`)
+//     is less than the pivot.
 //
 // go:noescape
 func partitionDescUint64(keys *uint64, indices *uint64, pivot uint64, left int, right int) (unprocessedLeft int, unprocessedRight int)

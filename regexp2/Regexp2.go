@@ -24,10 +24,10 @@ import (
 	"strings"
 )
 
-//MaxNodesAutomaton is the maximum number of states when constructing and transforming NFAs and DFAs.
+// MaxNodesAutomaton is the maximum number of states when constructing and transforming NFAs and DFAs.
 const MaxNodesAutomaton = 3000
 
-//IsSupported determines whether expr is a supported regex; return nil if supported, error otherwise
+// IsSupported determines whether expr is a supported regex; return nil if supported, error otherwise
 func IsSupported(expr string) error {
 	// issues with regex "^(a^)" which gives a machine s1 -a> s2, but that machine is not correct
 	regexRunes := []rune(expr)
@@ -127,12 +127,12 @@ func Compile(expr string, regexType RegexType) (regex *regexp.Regexp, err error)
 	return regexp.Compile(expr)
 }
 
-//extractProg extracts the internal syntax.Prog from regexp.Regexp instance using reflection
+// extractProg extracts the internal syntax.Prog from regexp.Regexp instance using reflection
 func extractProg(regex *regexp.Regexp) *syntax.Prog {
 	return (*syntax.Prog)(reflect.ValueOf(regex).Elem().FieldByName("prog").UnsafePointer())
 }
 
-//extractNFA extracts the NFA from regexp.Regexp instance using Go
+// extractNFA extracts the NFA from regexp.Regexp instance using Go
 func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 	p := extractProg(regex)
 	store := newNFAStore(maxNodes)

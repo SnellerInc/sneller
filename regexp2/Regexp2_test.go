@@ -19,8 +19,8 @@ import (
 	"testing"
 )
 
-//TestExtractProg tests whether the internals of Golang are
-//kept unchanged and still allow the extraction of Prog with reflection
+// TestExtractProg tests whether the internals of Golang are
+// kept unchanged and still allow the extraction of Prog with reflection
 func TestExtractProg(t *testing.T) {
 	regexStr := "foo"
 	r := regexp.MustCompile(regexStr)

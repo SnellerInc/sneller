@@ -447,7 +447,6 @@ func (s *server) runQuery(buf []byte, ctx context.Context, cancel func()) error 
 // A Client can be constructed simply by
 // declaring a zero-value Client and then
 // assigning the Pipe field to the desired connection.
-//
 type Client struct {
 	// Pipe is the connection to the
 	// remote query environment.

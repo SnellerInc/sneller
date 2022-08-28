@@ -190,8 +190,7 @@ func (t Time) IsZero() bool {
 // compliant string (including nanoseconds) to b. This
 // method is functionally equivalent to:
 //
-//   t.Time().AppendFormat(b, time.RFC3339Nano)
-//
+//	t.Time().AppendFormat(b, time.RFC3339Nano)
 func (t Time) AppendRFC3339Nano(b []byte) []byte {
 	year, month, day := t.Year(), t.Month(), t.Day()
 	hour, min, sec := t.Hour(), t.Minute(), t.Second()

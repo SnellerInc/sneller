@@ -152,11 +152,12 @@ type Builder struct {
 // Format picks the row format for an object
 // based on an explicit format hint and the object name.
 // The following are tried, in order:
-//   1. If 'chosen' is the name of a known format,
-//      then that format is returned.
-//   2. If 'name' has a suffix that indicates a known format,
-//      then that format is returned.
-//   3. If b.Fallback is non-nil, then Fallback(name) is returned.
+//  1. If 'chosen' is the name of a known format,
+//     then that format is returned.
+//  2. If 'name' has a suffix that indicates a known format,
+//     then that format is returned.
+//  3. If b.Fallback is non-nil, then Fallback(name) is returned.
+//
 // Otherwise, Format returns nil.
 func (b *Builder) Format(chosen, name string, hints []byte) (blockfmt.RowFormat, error) {
 	if chosen != "" {

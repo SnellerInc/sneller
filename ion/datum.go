@@ -27,9 +27,9 @@ import (
 // Datum represents an Ion datum
 //
 // A Datum should be one of
-//   Float, Int, Uint, Struct, List, Bool,
-//   BigInt, Timestamp, Annotation, ...
 //
+//	Float, Int, Uint, Struct, List, Bool,
+//	BigInt, Timestamp, Annotation, ...
 type Datum struct {
 	st  []string
 	buf []byte

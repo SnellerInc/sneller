@@ -28,13 +28,12 @@ import (
 //
 // For example, an input like this:
 //
-//   {"Records": [{"a": "b"}, {"c": "d"}]}
+//	{"Records": [{"a": "b"}, {"c": "d"}]}
 //
 // would become
 //
-//   {"a": "b"}
-//   {"c": "d"}
-//
+//	{"a": "b"}
+//	{"c": "d"}
 func ConvertCloudtrail(src io.Reader, dst *ion.Chunker) error {
 	st := newState(dst)
 	tb := &parser{output: st}

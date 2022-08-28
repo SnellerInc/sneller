@@ -16,8 +16,7 @@
 Package sorting contains low-level procedures that implement `ORDER BY`
 queries execution.
 
-
-Overview
+# Overview
 
 Sorting handles different sorting directions ('ASC' or 'DESC') as well
 as placing NULL/MISSING values in output ('NULLS FIRST', 'NULLS LAST').
@@ -35,8 +34,7 @@ Data types are ordered as follows:
 * array,
 * struct.
 
-
-Limitations
+# Limitations
 
 1. Sorting requires that symbol tables in all input chunks are exactly the same.
 
@@ -47,11 +45,11 @@ any 'ORDER BY' clauses from nested queries.
 Sorting does not perform any projection, it outputs Ion rows without
 modification. A query like:
 
-    SELECT name, surname, age FROM users ORDER BY surname, name
+	SELECT name, surname, age FROM users ORDER BY surname, name
 
 is expected to be rewritten into the following form:
 
-    SELECT * FROM (SELECT name, surname, age FROM users) ORDER BY surname, name
+	SELECT * FROM (SELECT name, surname, age FROM users) ORDER BY surname, name
 
 3. Floating point numbers should be ordered as follows:
 
@@ -63,8 +61,7 @@ is expected to be rewritten into the following form:
 The Go comparison operator returns true for NaN < non-NaN, there's no
 workaround for this in our code.
 
-
-Design
+# Design
 
 There are three major procedures:
 

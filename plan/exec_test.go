@@ -245,7 +245,8 @@ func rowcount(t *testing.T, buf []byte) int {
 
 // partial produces a partial schema
 // from pairs of identifiers and type sets, i.e.
-//   partial("x", expr.UnsignedType, ...)
+//
+//	partial("x", expr.UnsignedType, ...)
 //
 // any references that are not part of the
 // schema are returned as AnyType rather than

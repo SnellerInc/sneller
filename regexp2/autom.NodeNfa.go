@@ -119,7 +119,7 @@ func (store *NFAStore) startID() (nodeIDT, error) {
 	return store.startIDi, nil
 }
 
-//getIDs returns vector of the ids; first element is the start node
+// getIDs returns vector of the ids; first element is the start node
 func (store *NFAStore) getIDs() (vectorT[nodeIDT], error) {
 	ids := make([]nodeIDT, len(store.data))
 	if startID, err := store.startID(); err != nil {
@@ -223,7 +223,7 @@ func (store *NFAStore) reachableAccept() mapT[nodeIDT, bool] {
 	return reachable
 }
 
-//refactorEdges changes and adds edges such that nodes become choice free
+// refactorEdges changes and adds edges such that nodes become choice free
 func (store *NFAStore) refactorEdges() (err error) {
 
 	//refactor any edges: replaces any-edges (meta edges) with regular edges with ranges

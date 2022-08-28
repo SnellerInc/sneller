@@ -77,7 +77,8 @@ func ByColumn(rawrecords map[uint32][][]byte, column *MixedTypeColumn, direction
 // classes of values do not have keys.
 //
 // Note: We don't distinguish float32 and float64, float32
-//       values are convert into float64 during building the structure.
+//
+//	values are convert into float64 during building the structure.
 type MixedTypeColumn struct {
 	nullIndices          []uint64 // null or missing
 	falseIndices         []uint64 // bool == false

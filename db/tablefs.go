@@ -16,7 +16,6 @@
 // the policy layout of databases,
 // tables, and indices as a virtual
 // filesystem tree.
-//
 package db
 
 import (
