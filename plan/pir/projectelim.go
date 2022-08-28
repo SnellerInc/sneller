@@ -107,6 +107,8 @@ loop:
 			// we only introduce 1 new binding;
 			// we do not overwrite existing bindings
 			first = false
+		case *Unpivot:
+			return // all incoming fields are used
 		default:
 			// nothing
 		}

@@ -267,16 +267,16 @@ func TestBuild(t *testing.T) {
 		return basetime.Add(time.Duration(hours) * time.Hour)
 	}
 	tests := []buildTestcase{
-		/* FAILS due to a bug in pir/optimize.go. Please uncomment it when the fix is provided. {
-					input: "SELECT cols FROM UNPIVOT (SELECT key FROM input) AT cols GROUP BY cols",
-					expect: []string{
-						"ITERATE input FIELDS [key]",
-		                "PROJECT key AS key",
-		                "UNPIVOT AT cols",
-		                "FILTER DISTINCT [cols]",
-		                "PROJECT cols AS cols",
-					},
-				},*/
+		{
+			input: "SELECT cols FROM UNPIVOT (SELECT key FROM input) AT cols GROUP BY cols",
+			expect: []string{
+				"ITERATE input FIELDS [key]",
+				"PROJECT key AS key",
+				"UNPIVOT AT cols",
+				"FILTER DISTINCT [cols]",
+				"PROJECT cols AS cols",
+			},
+		},
 		{
 			input: "SELECT COUNT(*), key FROM UNPIVOT input AS val AT key GROUP BY key",
 			expect: []string{
