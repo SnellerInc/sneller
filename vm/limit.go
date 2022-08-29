@@ -32,7 +32,6 @@ type Limit struct {
 type limiter struct {
 	parent *Limit
 	dst    rowConsumer
-	params rowParams
 	done   bool
 }
 

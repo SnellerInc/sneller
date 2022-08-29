@@ -98,9 +98,6 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 //go:noescape
 func evalsplat(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int)
 
-//go:noescape
-func compress(delims []vmref) int
-
 func shrink[T any](s []T, n int) []T {
 	if cap(s) < n {
 		s = make([]T, n)

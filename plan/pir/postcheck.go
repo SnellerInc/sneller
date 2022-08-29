@@ -41,26 +41,6 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 	return err
 }
 
-func checkNoBuiltin(op expr.BuiltinOp, e expr.Node) error {
-	var err error
-	v := visitfn(func(e expr.Node) bool {
-		if err != nil {
-			return false
-		}
-		b, ok := e.(*expr.Builtin)
-		if !ok {
-			return true
-		}
-		if b.Func == op {
-			err = errorf(e, "operation not yet supported")
-			return false
-		}
-		return true
-	})
-	expr.Walk(v, e)
-	return err
-}
-
 func checkNoAggregateInCondition(e expr.Node, context string) error {
 	var err error
 	v := visitfn(func(e expr.Node) bool {

@@ -17,62 +17,6 @@
 #include "go_asm.h"
 #include "bc_amd64.h"
 
-DATA indexb<>+0(SB)/1, $0
-DATA indexb<>+1(SB)/1, $1
-DATA indexb<>+2(SB)/1, $2
-DATA indexb<>+3(SB)/1, $3
-DATA indexb<>+4(SB)/1, $4
-DATA indexb<>+5(SB)/1, $5
-DATA indexb<>+6(SB)/1, $6
-DATA indexb<>+7(SB)/1, $7
-DATA indexb<>+8(SB)/1, $8
-DATA indexb<>+9(SB)/1, $9
-DATA indexb<>+10(SB)/1, $10
-DATA indexb<>+11(SB)/1, $11
-DATA indexb<>+12(SB)/1, $12
-DATA indexb<>+13(SB)/1, $13
-DATA indexb<>+14(SB)/1, $14
-DATA indexb<>+15(SB)/1, $15
-GLOBL indexb<>(SB), RODATA|NOPTR, $16
-
-TEXT ·compress(SB), NOSPLIT, $0
-  NO_LOCAL_POINTERS
-  MOVQ  delims+0(FP), SI
-  MOVQ  SI, DI
-  MOVQ  delims_len+8(FP), CX
-  XORL  AX, AX
-  XORL  DX, DX
-  JMP   tail
-loop:
-  KXNORB      K0, K0, K1
-  VMOVDQU64.Z 0(SI), K1, Z0
-  VPTESTMQ    Z0, Z0, K1, K1
-  KMOVB       K1, R15
-  VPCOMPRESSQ Z0, K1, 0(DI)
-  POPCNTL     R15, R15
-  ADDL        R15, AX
-  LEAQ        0(DI)(R15*8), DI
-  ADDQ        $64, SI
-  SUBL        $8, CX
-tail:
-  CMPL        CX, $8
-  JG          loop
-  TESTL       CX, CX
-  JZ          ret
-  MOVL        $1, R8
-  SHLL        CX, R8
-  SUBL        $1, R8
-  KMOVB       R8, K1
-  VMOVDQU64.Z 0(SI), K1, Z0
-  VPTESTMQ    Z0, Z0, K1, K1
-  KMOVB       K1, R15
-  VPCOMPRESSQ Z0, K1, 0(DI)
-  POPCNTL     R15, R15
-  ADDL        R15, AX
-ret:
-  MOVQ  AX, ret+24(FP)
-  RET
-
 TEXT ·evalsplat(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
   XORQ         R9, R9         // # rows consumed

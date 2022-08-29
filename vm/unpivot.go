@@ -119,8 +119,6 @@ func (u *unpivoterBase) next() rowConsumer {
 	return u.out
 }
 
-type varUInt []byte
-
 // unpivoterAsAt handles the "UNPIVOT AS val AT key" case
 type unpivoterAsAt struct {
 	unpivoterBase
@@ -193,7 +191,6 @@ func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
 // unpivoterAt handles the "UNPIVOT AS val" case
 type unpivoterAs struct {
 	unpivoterBase
-	encodedAs varUInt
 }
 
 func (u *unpivoterAs) symbolize(st *symtab, aux *auxbindings) error {
@@ -221,7 +218,7 @@ func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
 		data := rows[i].mem()
 		// Iterate over all the struct fields
 		for len(data) != 0 {
-			// Skip the fileld ID
+			// Skip the field ID
 			rest := skipVarUInt(data)
 			size := ion.SizeOf(rest)
 			data = rest[size:] // Seek to the next field of the input ION structure
@@ -255,7 +252,6 @@ func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
 // unpivoterAt handles the "UNPIVOT AT key" case
 type unpivoterAt struct {
 	unpivoterBase
-	encodedAt varUInt
 }
 
 func (u *unpivoterAt) symbolize(st *symtab, aux *auxbindings) error {

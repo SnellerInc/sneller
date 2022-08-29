@@ -25,16 +25,6 @@ type reftracker interface {
 	strip(p *expr.Path) error
 }
 
-type rewritefn func(e expr.Node) expr.Node
-
-func (r rewritefn) Rewrite(e expr.Node) expr.Node {
-	return r(e)
-}
-
-func (r rewritefn) Walk(e expr.Node) expr.Rewriter {
-	return r
-}
-
 // Check performs sanity-checking of an expression
 // based on the additional information available
 // through the scope's references.
