@@ -205,6 +205,8 @@ integer = ... ; // decimal integer literal
 float = ... ; // decimal floating-point literal
 string = ''' (unescaped_char | escaped_char) ''' ;
 timestamp = '`' rfc3339-timestamp '`' ; // See RFC3339
+list = '[' expr { ', ' expr } ']' ;
+structure = '{' string ':' expr { ',' string ':' expr } '}' ;
 
 expr = compare_expr | arith_expr | in_expr | case_expr | like_expr |
        is_expr | not_expr | function_expr | subquery_expr |
@@ -468,6 +470,44 @@ Bindings can be used to avoid repeating complicated
 expressions in multiple places within the same query.
 
 ## Operators
+
+### Composite Constructors
+
+#### Structure Expressions
+
+Sneller SQL supports structure literal expressions.
+
+For example, the following query produces records
+with one fields called `rec` that is itself a record
+of two fields (`x` and `y`):
+```SQL
+SELECT {'x': fields.x, 'y': z} AS rec
+FROM table
+```
+
+In other words, the results of the query above might look like:
+```json
+{"rec": {"x": 3, "y": "foo"}}
+{"rec": {"x": 2, "y": "bar"}}
+```
+
+If a field in a structure expression evaluates to `MISSING`,
+then the field will be omitted from the structure representation.
+
+#### List Expressions
+
+Comma-separated expression wrapped in square brackets
+(i.e. `[3, foo, bar]`) are evaluated as lists.
+
+For example, the following query produces a single
+field called `lst` that is a list:
+```SQL
+SELECT [x, y] AS lst
+FROM table
+```
+
+If a field within a list expression evaluates to `MISSING`,
+it will be omitted from the list.
 
 ### Aggregations
 
@@ -1358,6 +1398,27 @@ The only implemented conversions are:
 
 Any other conversions yield `MISSING`.
 
+#### `TYPE_BIT`
+
+The `TYPE_BIT` function produces an integer
+that represents the JSON type of its argument.
+Each bit in the resulting integer is reserved
+for one specific type, which allows the results
+of `TYPE_BIT` to be aggregated together with
+`BIT_OR` to produce a bitmask representing all
+the possible types of a value.
+`TYPE_BIT` produces `0` if its argument is `MISSING`.
+
+The return values for `TYPE_BIT` are as follows:
+
+ - 0 : Missing
+ - 1 : Null
+ - 2 : Boolean
+ - 4 : Number
+ - 8 : Timestamp
+ - 16 : String
+ - 32 : List
+ - 64 : Struct
 
 #### `TABLE_GLOB` and `TABLE_PATTERN`
 

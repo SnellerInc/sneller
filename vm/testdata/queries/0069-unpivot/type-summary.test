@@ -1,0 +1,28 @@
+SELECT key, BIT_OR(TYPE_BIT(val)) AS bits
+FROM UNPIVOT input AS val AT key
+GROUP BY key
+ORDER BY key
+---
+{"a": true, "b": 0, "c": null, "d": null}
+{"a": true, "b": -3, "c": null, "d": false}
+{"a": false, "b": -1, "c": null, "d": "a string"}
+{"e": {}}
+{"f": ["a", "b", "c"]}
+{"d": "2022-03-04T05:06:07.80910Z"}
+{"a": true, "b": 1.6, "c": null, "d": {"a": "record"}}
+{"a": true, "b": 1.4, "c": null, "d": ["a", 3, "list"]}
+{"a": false, "b": 1.2, "c": null, "d": 3.1415926535}
+{"d": "2022-01-01T03:03:04Z"}
+{"a": true, "b": -3, "c": null, "d": false}
+{"a": true, "b": 0, "c": null, "d": null}
+{"a": false, "b": -1, "c": null, "d": "a string"}
+{"e": {"a": "record", "with": "fields"}}
+{"f": []}
+{"f": [null, null, {}]}
+---
+{"key": "a", "bits": 2}
+{"key": "b", "bits": 4}
+{"key": "c", "bits": 1}
+{"key": "d", "bits": 127}
+{"key": "e", "bits": 64}
+{"key": "f", "bits": 32}

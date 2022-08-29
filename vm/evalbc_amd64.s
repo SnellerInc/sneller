@@ -6966,6 +6966,39 @@ TEXT bcchecktag(SB), NOSPLIT|NOFRAME, $0
   VPTESTMD     Z14, Z15, K1, K1        // test tag&z15 != 0
   NEXT_ADVANCE(2)
 
+// LUT for ion type bits -> json "type" bits
+CONST_DATA_U8(consts_typebits_shuf, 0, $(1 << 0))  // null -> null
+CONST_DATA_U8(consts_typebits_shuf, 1, $(1 << 1))  // bool -> bool
+CONST_DATA_U8(consts_typebits_shuf, 2, $(1 << 2))  // uint -> number
+CONST_DATA_U8(consts_typebits_shuf, 3, $(1 << 2))  // int -> number
+CONST_DATA_U8(consts_typebits_shuf, 4, $(1 << 2))  // float -> number
+CONST_DATA_U8(consts_typebits_shuf, 5, $(1 << 2))  // decimal -> number
+CONST_DATA_U8(consts_typebits_shuf, 6, $(1 << 3))  // timestamp -> timestamp
+CONST_DATA_U8(consts_typebits_shuf, 7, $(1 << 4))  // symbol -> string
+CONST_DATA_U8(consts_typebits_shuf, 8, $(1 << 4))  // string -> string
+CONST_DATA_U8(consts_typebits_shuf, 9, $0)         // clob is unused
+CONST_DATA_U8(consts_typebits_shuf, 10, $0)        // blob is unused
+CONST_DATA_U8(consts_typebits_shuf, 11, $(1 << 5)) // list -> list
+CONST_DATA_U8(consts_typebits_shuf, 12, $0)        // sexp is unused
+CONST_DATA_U8(consts_typebits_shuf, 13, $(1 << 6)) // struct -> struct
+CONST_DATA_U8(consts_typebits_shuf, 14, $0)        // annotation is unused
+CONST_DATA_U8(consts_typebits_shuf, 15, $0)        // reserved is unused
+CONST_GLOBAL(consts_typebits_shuf, $16)
+
+// turn the tag bits in z30:z31 into an integer
+TEXT bctypebits(SB), NOSPLIT|NOFRAME, $0
+  KMOVW         K1, K3
+  VPXORD        Z15, Z15, Z15
+  VPMOVZXBD     CONST_GET_PTR(consts_typebits_shuf, 0), Z14
+  VPGATHERDD    0(SI)(Z30*1), K3, Z15   // Z15 = initial object bytes
+  VPSRLD        $4, Z15, Z15            // Z15 >>= 4
+  VPANDD.BCST   CONSTD_0x0F(), Z15, Z15 // Z15 = (bytes >> 4) & 0xf
+  VPERMD.Z      Z14, Z15, K1, Z15       // Z15 = json type bits
+  VPMOVZXDQ     Y15, Z2
+  VEXTRACTI32X8 $1, Z15, Y15
+  VPMOVZXDQ     Y15, Z3
+  NEXT_ADVANCE(0)
+
 // current value == NULL
 TEXT bcisnull(SB), NOSPLIT|NOFRAME, $0
   // compute data[0]&0xf == 0xf

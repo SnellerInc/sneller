@@ -547,6 +547,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	opsupper:      {text: "supper", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},
 	opsadjustsize: {text: "saddjustsize", flags: bcReadWriteS},
 
+	optypebits: {text: "typebits", flags: bcReadK | bcReadV | bcWriteS},
+
 	optrap: {text: "trap"},
 }
 

@@ -410,6 +410,7 @@ const (
 	smakestructkey
 	sboxlist
 
+	stypebits // get encoded tag bits
 	schecktag // check encoded tag bits
 	_ssamax
 )
@@ -1013,6 +1014,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
 
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
+	stypebits: {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
 
 	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
 }
@@ -4305,8 +4307,8 @@ func (t tree) number(v *value, n int) int {
 // returns the edge (v, arg) that is the articulation point
 func (p *prog) articulation(v *value, tr tree) (*value, *value) {
 	parent := v
-	child := parent.maskarg()
-	for child.op != sinit && tr.postdom(v, child) {
+	child := v.maskarg()
+	for child != nil && child.op != sinit && tr.postdom(v, child) {
 		// if we find an OR, we have to
 		// postdominate both sides
 		if child.op == sor {
@@ -4366,7 +4368,7 @@ func (p *prog) androtate(v, left, right *value, tr tree, pi *proginfo) *value {
 		if lchild == right {
 			return left
 		}
-		if !p.depends(pi, right, lparent) {
+		if lchild != nil && !p.depends(pi, right, lparent) {
 			if lchild.op == sinit || lchild.op == stuples {
 				lparent.setmask(right)
 				return left
@@ -4380,7 +4382,7 @@ func (p *prog) androtate(v, left, right *value, tr tree, pi *proginfo) *value {
 		if rchild == left {
 			return right
 		}
-		if !p.depends(pi, left, rparent) {
+		if rchild != nil && !p.depends(pi, left, rparent) {
 			if rchild.op == sinit || rchild.op == stuples {
 				rparent.setmask(left)
 				return right
@@ -5240,6 +5242,23 @@ func (c regclass) saveop() bcop {
 		return opsaves
 	default:
 		panic("invalid register class for save")
+	}
+}
+
+func ionType(imm interface{}) ion.Type {
+	switch i := imm.(type) {
+	case ion.Datum:
+		return i.Type()
+	case float64, float32:
+		return ion.FloatType
+	case uint64, int64, int:
+		return ion.IntType
+	case string:
+		return ion.StringType
+	case date.Time:
+		return ion.TimestampType
+	default:
+		return 0
 	}
 }
 

@@ -24,6 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/ion"
 )
 
 func mismatch(want, got int) error {
@@ -220,6 +221,8 @@ const (
 	MakeList   // MAKE_LIST(args...) constructs a list
 	MakeStruct // MAKE_STRUCT(field, value, ...) constructs a structure
 
+	TypeBit // TYPE_BIT(arg) produces the bits associated with the type of arg
+
 	Unspecified // catch-all for opaque built-ins
 	maxBuiltin
 )
@@ -327,6 +330,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"TABLE_PATTERN":            TablePattern,
 	"MAKE_LIST":                MakeList,
 	"MAKE_STRUCT":              MakeStruct,
+	"TYPE_BIT":                 TypeBit,
 }
 
 var builtin2Name [maxBuiltin]string
@@ -1146,37 +1150,37 @@ var builtinInfo = [maxBuiltin]binfo{
 	BitCount:  {check: fixedArgs(NumericType), ret: IntegerType},
 	Abs:       {check: fixedArgs(NumericType), ret: NumericType, simplify: simplifyAbs},
 	Sign:      {check: fixedArgs(NumericType), ret: NumericType, simplify: simplifySign},
-	Round:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyRound},
-	RoundEven: {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyRoundEven},
-	Trunc:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyTrunc},
-	Floor:     {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyFloor},
-	Ceil:      {check: fixedArgs(NumericType), ret: FloatType, simplify: simplifyCeil},
-	Sqrt:      {check: fixedArgs(NumericType), ret: FloatType},
-	Cbrt:      {check: fixedArgs(NumericType), ret: FloatType},
-	Exp:       {check: fixedArgs(NumericType), ret: FloatType},
-	Exp2:      {check: fixedArgs(NumericType), ret: FloatType},
-	Exp10:     {check: fixedArgs(NumericType), ret: FloatType},
-	ExpM1:     {check: fixedArgs(NumericType), ret: FloatType},
-	Hypot:     {check: fixedArgs(NumericType, NumericType), ret: FloatType},
-	Ln:        {check: fixedArgs(NumericType), ret: FloatType},
-	Log:       {check: variadicArgs(NumericType), ret: FloatType},
-	Log2:      {check: fixedArgs(NumericType), ret: FloatType},
-	Log10:     {check: fixedArgs(NumericType), ret: FloatType},
-	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType},
-	Pi:        {check: fixedArgs(), ret: FloatType},
-	Degrees:   {check: fixedArgs(NumericType), ret: FloatType},
-	Radians:   {check: fixedArgs(NumericType), ret: FloatType},
-	Sin:       {check: fixedArgs(NumericType), ret: FloatType},
-	Cos:       {check: fixedArgs(NumericType), ret: FloatType},
-	Tan:       {check: fixedArgs(NumericType), ret: FloatType},
-	Asin:      {check: fixedArgs(NumericType), ret: FloatType},
-	Acos:      {check: fixedArgs(NumericType), ret: FloatType},
-	Atan:      {check: fixedArgs(NumericType), ret: FloatType},
-	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType},
+	Round:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyRound},
+	RoundEven: {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyRoundEven},
+	Trunc:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyTrunc},
+	Floor:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyFloor},
+	Ceil:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: simplifyCeil},
+	Sqrt:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Cbrt:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Exp:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Exp2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Exp10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	ExpM1:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Hypot:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
+	Ln:        {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Log:       {check: variadicArgs(NumericType), ret: FloatType | MissingType},
+	Log2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Log10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
+	Pi:        {check: fixedArgs(), ret: FloatType | MissingType},
+	Degrees:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Radians:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Sin:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Cos:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Tan:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Asin:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Acos:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Atan:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
 
 	Least:       {check: variadicNumeric, ret: NumericType | MissingType},
 	Greatest:    {check: variadicNumeric, ret: NumericType | MissingType},
-	WidthBucket: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: NumericType},
+	WidthBucket: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: NumericType | MissingType},
 
 	DateAddMicrosecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMicrosecond},
 	DateAddMillisecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMillisecond},
@@ -1229,13 +1233,52 @@ var builtinInfo = [maxBuiltin]binfo{
 	ListReplacement:   {check: checkScalarReplacement, private: true, ret: ListType},
 	StructReplacement: {check: checkScalarReplacement, private: true, ret: StructType},
 
-	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType},
+	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType | MissingType},
 
 	MakeList:   {ret: ListType, private: true, text: makeListText, simplify: simplifyMakeList},
 	MakeStruct: {ret: StructType, private: true, text: makeStructText, simplify: simplifyMakeStruct},
 
+	TypeBit:      {check: fixedArgs(AnyType), ret: UnsignedType, simplify: simplifyTypeBit},
 	TableGlob:    {check: checkTableGlob, ret: AnyType, isTable: true},
 	TablePattern: {check: checkTablePattern, ret: AnyType, isTable: true},
+}
+
+// JSONTypeBits returns a unique bit pattern
+// associated with the given ion type.
+// (This is the constprop'd version of the TYPE_BIT function.)
+func JSONTypeBits(typ ion.Type) uint {
+	switch typ {
+	case ion.NullType:
+		return 1 << 0
+	case ion.BoolType:
+		return 1 << 1
+	case ion.UintType, ion.IntType, ion.FloatType, ion.DecimalType:
+		return 1 << 2
+	case ion.TimestampType:
+		return 1 << 3
+	case ion.StringType, ion.SymbolType:
+		return 1 << 4
+	case ion.ListType:
+		return 1 << 5
+	case ion.StructType:
+		return 1 << 6
+	default:
+		return 0
+	}
+}
+
+func simplifyTypeBit(h Hint, args []Node) Node {
+	if len(args) != 1 {
+		return nil
+	}
+	arg := args[0]
+	if c, ok := arg.(Constant); ok {
+		return Integer(JSONTypeBits(c.Datum().Type()))
+	}
+	if arg == (Missing{}) {
+		return Integer(0)
+	}
+	return nil
 }
 
 func (b *Builtin) isTable() bool {

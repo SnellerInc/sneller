@@ -856,6 +856,22 @@ func TestSimplify(t *testing.T) {
 			CallOp(SubString, path("s"), Integer(1), Integer(-5)),
 			path("s"),
 		},
+		{
+			CallOp(TypeBit, Integer(1)),
+			Integer(JSONTypeBits(ion.IntType)),
+		},
+		{
+			CallOp(TypeBit, Null{}),
+			Integer(JSONTypeBits(ion.NullType)),
+		},
+		{
+			CallOp(TypeBit, Missing{}),
+			Integer(0),
+		},
+		{
+			CallOp(TypeBit, Float(3.5)),
+			Integer(JSONTypeBits(ion.FloatType)),
+		},
 	}
 
 	for i := range testcases {

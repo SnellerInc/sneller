@@ -1019,7 +1019,34 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			structArgs = append(structArgs, p.ssa0imm(smakestructkey, string(key)), val, p.mask(val))
 		}
 		return p.MakeStruct(structArgs), nil
-
+	case expr.TypeBit:
+		arg, err := compile(p, args[0])
+		if err != nil {
+			return nil, err
+		}
+		if arg.op == skfalse {
+			return p.Constant(0), nil
+		}
+		if arg.op == sliteral {
+			return p.Constant(expr.JSONTypeBits(ionType(arg.imm))), nil
+		}
+		k := p.mask(arg)
+		var n uint
+		switch arg.primary() {
+		case stValue:
+			return p.ssa2(stypebits, arg, k), nil
+		case stList:
+			n = expr.JSONTypeBits(ion.ListType)
+		case stInt, stFloat:
+			n = expr.JSONTypeBits(ion.FloatType)
+		case stTime, stTimeInt:
+			n = expr.JSONTypeBits(ion.TimestampType)
+		}
+		v := p.Constant(uint64(n))
+		if k.op != sinit {
+			v = p.vk(v, k)
+		}
+		return v, nil
 	default:
 		return nil, fmt.Errorf("unhandled builtin function name %q", fn)
 	}
