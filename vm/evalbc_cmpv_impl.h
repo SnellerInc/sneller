@@ -409,7 +409,7 @@ skip_unsymbolize:
   // We keep K2 alive - it's not really necessary in the current implementation, but it's
   // likely we would want to extend this to support lists and structs in the future.
   // Additionally - to prevent bugs triggered by empty strings that have arbitrary offsets,
-  // but zero lenghts, we filter them here. Any string that is zero would be already compared
+  // but zero lengths, we filter them here. Any string that is zero would be already compared
   // before entering vector or scalar loop.
 
   VPSUBD Z13, Z12, K2, Z2                             // Z2 <- merged length comparison

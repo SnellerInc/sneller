@@ -980,6 +980,46 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 		return v, nil
 
+	case expr.MakeList:
+		if len(args) == 0 {
+			return nil, fmt.Errorf("%s failed to perform constant propagation (empty list must be a constant)", fn)
+		}
+
+		items := make([]*value, len(args))
+		for i := range args {
+			item, err := p.serialized(args[i])
+			if err != nil {
+				return nil, err
+			}
+			items[i] = item
+		}
+		return p.MakeList(items...), nil
+
+	case expr.MakeStruct:
+		if len(args) == 0 {
+			return nil, fmt.Errorf("%s failed to perform constant propagation (empty struct must be a constant)", fn)
+		}
+
+		if (len(args) & 1) != 0 {
+			return nil, fmt.Errorf("%s must have an even number of arguments representing key/value pairs", fn)
+		}
+
+		structArgs := make([]*value, 0, len(args)*3+1)
+		structArgs = append(structArgs, p.ValidLanes())
+		for i := 0; i < len(args); i += 2 {
+			key, ok := args[i].(expr.String)
+			if !ok {
+				return nil, fmt.Errorf("%s key must be a string", fn)
+			}
+
+			val, err := p.serialized(args[i+1])
+			if err != nil {
+				return nil, err
+			}
+			structArgs = append(structArgs, p.ssa0imm(smakestructkey, string(key)), val, p.mask(val))
+		}
+		return p.MakeStruct(structArgs), nil
+
 	default:
 		return nil, fmt.Errorf("unhandled builtin function name %q", fn)
 	}
@@ -1215,6 +1255,8 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 		return p.ssa2(sboxstring, v, p.mask(v)), nil
 	case stTimeInt:
 		return p.ssa2(sboxts, v, p.mask(v)), nil
+	case stList:
+		return p.ssa2(sboxlist, v, p.mask(v)), nil
 	default:
 		if v.op == sinvalid {
 			return nil, errors.New(v.imm.(string))

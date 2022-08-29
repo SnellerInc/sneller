@@ -405,6 +405,11 @@ const (
 	sboxstring // box a string
 	sboxts     // box a timestamp (unpacked)
 
+	smakelist
+	smakestruct
+	smakestructkey
+	sboxlist
+
 	schecktag // check encoded tag bits
 	_ssamax
 )
@@ -479,7 +484,14 @@ func (s ssatype) char() byte {
 type ssaopinfo struct {
 	text     string
 	argtypes []ssatype
-	rettype  ssatype
+
+	// vaArgs indicates arguments tuple that follow mandatory arguments. If
+	// vaArgs is for example [X, Y] then the function accepts variable arguments
+	// as [X, Y] pairs, so [], [X, Y], [X, Y, X, Y], [X, Y, X, Y, ...] signatures
+	// are valid, but not [X, Y, X]. This makes sure to enfore values with predicates.
+	vaArgs  []ssatype
+	rettype ssatype
+
 	inverse  ssaop // for two-operand ops, flip the arguments
 	priority int   // instruction scheduling priority; high = early, low = late
 
@@ -496,6 +508,23 @@ type ssaopinfo struct {
 
 	scratch bool // op uses scratch
 	blend   bool // equivalent to args[0] when mask arg is false
+}
+
+func (o *ssaopinfo) argType(index int) ssatype {
+	// most instructions don't have variable arguments, so this is a likely path
+	if index < len(o.argtypes) {
+		return o.argtypes[index]
+	}
+
+	if len(o.vaArgs) == 0 {
+		panic(fmt.Sprintf("%s doesn't have argument at %d", o.text, index))
+	}
+
+	vaIndex := len(o.argtypes)
+	vaTupleSize := len(o.vaArgs)
+
+	vaTupleIndex := (index - vaIndex) % vaTupleSize
+	return o.vaArgs[vaTupleIndex]
 }
 
 // immfmt is an immediate format indicator
@@ -526,6 +555,7 @@ var immfmtsize = [...]uint8{
 
 // canonically, the last argument of any function
 // is the operation's mask
+var memArgs = []ssatype{stMem}
 var value2Args = []ssatype{stValue, stValue, stBool}
 
 var int1Args = []ssatype{stInt, stBool}
@@ -566,7 +596,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// initial top-level values:
 	sinit:     {text: "init", rettype: stBase | stBool, emit: emitinit, priority: prioInit},
 	sinitmem:  {text: "initmem", rettype: stMem, emit: emitinit, priority: prioMem},
-	smergemem: {text: "mergemem", rettype: stMem, emit: emitinit, priority: prioMem},
+	smergemem: {text: "mergemem", vaArgs: memArgs, rettype: stMem, emit: emitinit, priority: prioMem},
 	// initial scalar register value;
 	// not legal to use except to overwrite
 	// with value-parsing ops
@@ -772,7 +802,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sstorelist: {text: "storelist.z", rettype: stMem, argtypes: []ssatype{stMem, stList, stBool}, immfmt: fmtother, emit: emitstores, priority: prioMem},
 
 	// these tuple-construction ops
-	// sipmly combine a set of separate instructions
+	// simply combine a set of separate instructions
 	// into a single arugment value;
 	// note that they are all compiled similarly
 	// (they just load the arguments into the appropriate
@@ -968,6 +998,11 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitauto2},
 	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
 
+	sboxlist:       {text: "boxlist", rettype: stValue, argtypes: []ssatype{stList, stBool}, scratch: true},
+	smakelist:      {text: "makelist", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stValue, stBool}, bc: opmakelist, scratch: true, emit: emitMakeList},
+	smakestruct:    {text: "makestruct", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stString, stValue, stBool}, bc: opmakestruct, scratch: true, emit: emitMakeStruct},
+	smakestructkey: {text: "makestructkey", rettype: stString, immfmt: fmtother, emit: emitNone},
+
 	// GEO functions
 	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2},
 	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2},
@@ -1162,12 +1197,10 @@ func (v *value) checkarg(arg *value, idx int) {
 	if v.op == sinvalid {
 		return
 	}
+
 	in := ssainfo[arg.op].rettype
-	argtypes := ssainfo[v.op].argtypes
-	if len(argtypes) <= idx {
-		v.errf("op %q does not have argument %d", v.op, idx+1)
-		return
-	}
+	argtype := ssainfo[v.op].argType(idx)
+
 	if arg.op == sinvalid {
 		v.op = sinvalid
 		v.args = nil
@@ -1181,7 +1214,7 @@ func (v *value) checkarg(arg *value, idx int) {
 	//
 	// (the only case where this doesn't hold is if the
 	// input argument is an undef value)
-	want := ssainfo[v.op].argtypes[idx]
+	want := argtype
 	if bits.OnesCount(uint(in&want)) != 1 && arg.op != sundef {
 		v.errf("ambiguous assignment type (%s=%s as argument to %s)", arg.Name(), arg, v.op)
 	}
@@ -1426,6 +1459,31 @@ func (p *prog) ssaimm(op ssaop, imm interface{}, args ...*value) *value {
 	if v.op == sinvalid {
 		panic("invalid op " + v.String())
 	}
+	return v
+}
+
+func (p *prog) ssava(op ssaop, args []*value) *value {
+	opInfo := &ssainfo[op]
+	baseArgCount := len(opInfo.argtypes)
+
+	v := p.val()
+	v.op = op
+	v.args = args
+
+	if len(opInfo.vaArgs) == 0 {
+		v.errf("%s doesn't support variable arguments", op)
+		return v
+	}
+
+	if len(args) < baseArgCount {
+		v.errf("%s requires at least %d arguments (%d given)", op, baseArgCount, len(args))
+		return v
+	}
+
+	for i := range args {
+		v.checkarg(args[i], i)
+	}
+
 	return v
 }
 
@@ -2233,6 +2291,23 @@ func (p *prog) Concat(args ...*value) *value {
 	default:
 		panic(fmt.Sprintf("invalid number of remaining items (%d) in Concat()", vIndex))
 	}
+}
+
+func (p *prog) MakeList(args ...*value) *value {
+	var values []*value = make([]*value, 0, len(args)*2+1)
+
+	values = append(values, p.ValidLanes())
+	for _, arg := range args {
+		if arg.primary() != stValue {
+			panic("MakeList arguments must be values, and values only")
+		}
+		values = append(values, arg, p.mask(arg))
+	}
+	return p.ssava(smakelist, values)
+}
+
+func (p *prog) MakeStruct(args []*value) *value {
+	return p.ssava(smakestruct, args)
 }
 
 // TrimWhitespace trim chars: ' ', '\t', '\n', '\v', '\f', '\r'
@@ -3545,12 +3620,16 @@ func (p *prog) Upper(s *value) *value {
 	return p.ssa2(supperstr, s, p.mask(s))
 }
 
+func emitNone(v *value, c *compilestate) {
+	// does nothing...
+}
+
 func emitdatediffmonthyear(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // t0
 	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
 	mask := v.args[2]                            // predicate
 
-	info := ssainfo[v.op]
+	info := &ssainfo[v.op]
 	bc := info.bc
 
 	c.loadk(v, mask)
@@ -3839,13 +3918,11 @@ func (v *value) String() string {
 		return fmt.Sprintf("invalid(%q)", v.imm.(string))
 	}
 	str := v.op.String()
-	argtypes := ssainfo[v.op].argtypes
+	info := &ssainfo[v.op]
+
 	for i := range v.args {
-		if len(argtypes) == 0 {
-			str += " m" + strconv.Itoa(v.args[i].id)
-			continue
-		}
-		str += " " + string(argtypes[i].char()) + strconv.Itoa(v.args[i].id)
+		argtype := info.argType(i)
+		str += " " + string(argtype.char()) + strconv.Itoa(v.args[i].id)
 	}
 	if v.imm != nil {
 		str += fmt.Sprintf(" $%v", v.imm)
@@ -4810,21 +4887,23 @@ func (p *prog) liveranges(dst *lranges) {
 	p.optimize()
 	dst.krange = make([]int, len(p.values))
 	dst.vrange = make([]int, len(p.values))
-	for i := range p.values {
-		v := p.values[i]
+	for i, v := range p.values {
 		if v.id != i {
 			panic("liveranges() before re-numbering")
 		}
+
 		op := v.op
+		args := v.args
+
 		if op == smergemem {
 			// variadic, and only
 			// memory args anyway...
 			continue
 		}
-		types := ssainfo[op].argtypes
-		args := p.values[i].args
+
+		info := &ssainfo[op]
 		for j := range args {
-			switch types[j] {
+			switch info.argType(j) {
 			case stBool:
 				dst.krange[args[j].id] = i
 			case stMem:
@@ -4979,6 +5058,50 @@ func (c *compilestate) opvar(op bcop, slots []stackslot, imm interface{}) {
 			c.asm.emitImmU64(toi64(imm))
 		case bcImmF64:
 			c.asm.emitImmU64(math.Float64bits(tof64(imm)))
+		}
+	}
+}
+
+func (c *compilestate) opva(op bcop, imms []uint64) {
+	info := &opinfo[op]
+
+	// Verify the number of immediates matches the signature. vaImms contains a signature of each
+	// immediate tuple that is considered a single va argument. For example if the bc instruction
+	// uses [stString, stBool] tuple, it's a group of 2 immediate values for each va argument.
+	baseImmCount := len(info.imms)
+	vaTupleSize := len(info.vaImms)
+
+	if vaTupleSize == 0 {
+		panic(fmt.Sprintf("cannot use opva as the opcode '%v' doesn't provide variable operands", op))
+	}
+
+	if len(imms) < baseImmCount {
+		panic(fmt.Sprintf("invalid immediate count while emitting opcode '%v' (count=%d mandatory=%d tupleSize=%d)",
+			op, len(imms), baseImmCount, vaTupleSize))
+	}
+
+	vaLength := (len(imms) - baseImmCount) / vaTupleSize
+	if baseImmCount+vaLength*vaTupleSize != len(imms) {
+		panic(fmt.Sprintf("invalid immediate count while emitting opcode '%v' (count=%d mandatory=%d tupleSize=%d)",
+			op, len(imms), baseImmCount, vaTupleSize))
+	}
+
+	// emit opcode + va_length
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU32(uint32(vaLength))
+
+	// emit base immediates
+	for i := 0; i < baseImmCount; i++ {
+		c.asm.emitImm(imms[i], int(bcImmWidth[info.imms[i]]))
+	}
+
+	// emit va immediates
+	j := 0
+	for i := baseImmCount; i < len(imms); i++ {
+		c.asm.emitImm(imms[i], int(bcImmWidth[info.vaImms[j]]))
+		j++
+		if j >= len(info.vaImms) {
+			j = 0
 		}
 	}
 }
@@ -5213,10 +5336,9 @@ func (c *compilestate) final(v *value) {
 		return
 	}
 	info := &ssainfo[v.op]
-	types := info.argtypes
 	for i := range v.args {
 		arg := v.args[i]
-		argType := types[i]
+		argType := info.argType(i)
 		if argType == stMem {
 			continue
 		}
@@ -6216,6 +6338,74 @@ func emitauto2(v *value, c *compilestate) {
 	c.opvar(info.bc, slots, v.imm)
 }
 
+func emitMakeList(v *value, c *compilestate) {
+	imms := make([]uint64, 0, (len(v.args)-1)*2)
+	for i := 1; i < len(v.args); i += 2 {
+		imms = append(imms, uint64(c.forceStackRef(v.args[i], regV)), uint64(c.forceStackRef(v.args[i+1], regK)))
+	}
+
+	info := &ssainfo[v.op]
+	op := info.bc
+
+	c.needscratch = true
+	c.loadk(v, v.args[0])
+	c.clobberk(v)
+	c.clobberv(v)
+	c.opva(op, imms)
+}
+
+func encodeSymbolIDForMakeStruct(id ion.Symbol) uint32 {
+	if id >= (1<<28)-1 {
+		panic(fmt.Sprintf("symbol id too large: %d", id))
+	}
+
+	encoded := uint32((id & 0x7F) | 0x80)
+	id >>= 7
+	for id != 0 {
+		encoded = (encoded << 8) | (uint32(id) & 0x7F)
+		id >>= 7
+	}
+	return encoded
+}
+
+func emitMakeStruct(v *value, c *compilestate) {
+	j := 0
+	orderedSymbols := make([]uint64, (len(v.args)-1)/3)
+	for i := 1; i < len(v.args); i += 3 {
+		key := v.args[i]
+		if key.op != smakestructkey {
+			panic(fmt.Sprintf("invalid value '%v' in struct composition, only 'smakestructkey' expected", key.op))
+		}
+		sym := key.imm.(ion.Symbol)
+		orderedSymbols[j] = (uint64(sym) << 32) | uint64(i)
+		j++
+	}
+	slices.Sort(orderedSymbols)
+
+	imms := make([]uint64, 0, (len(v.args) - 1))
+	for _, orderedSymbol := range orderedSymbols {
+		i := int(orderedSymbol & 0xFFFFFFFF)
+		sym := ion.Symbol(orderedSymbol >> 32)
+
+		val := v.args[i+1]
+		mask := v.args[i+2]
+
+		imms = append(imms,
+			uint64(encodeSymbolIDForMakeStruct(sym)),
+			uint64(c.forceStackRef(val, regV)),
+			uint64(c.forceStackRef(mask, regK)))
+	}
+
+	info := &ssainfo[v.op]
+	op := info.bc
+
+	c.needscratch = true
+	c.loadk(v, v.args[0])
+	c.clobberk(v)
+	c.clobberv(v)
+	c.opva(op, imms)
+}
+
 func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
 	return func(v *value, c *compilestate) {
 		arg := v.args[0]  // string
@@ -6470,13 +6660,15 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 	p.resolved = p.resolved[:0]
 	for i := range p.values {
 		v := p.values[i]
-		if v.op == shashmember {
+		op := v.op
+
+		if op == shashmember {
 			p.literals = true
 			v.imm = p.mktree(st, v.imm)
-		} else if v.op == shashlookup {
+		} else if op == shashlookup {
 			p.literals = true
 			v.imm = p.mkhash(st, v.imm)
-		} else if v.op == sliteral {
+		} else if op == sliteral {
 			if d, ok := v.imm.(ion.Datum); ok {
 				p.literals = true
 				var tmp ion.Buffer
@@ -6484,39 +6676,53 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 				v.imm = rawDatum(tmp.Bytes())
 			}
 		}
-		if v.op != sdot {
-			continue
-		}
-		str := v.imm.(string)
 
-		// first, check auxilliary bindings:
-		if id, ok := aux.id(str); ok {
-			v.op = sauxval
-			v.args = v.args[:0]
-			v.imm = id
+		if op == sdot {
+			str := v.imm.(string)
+
+			// first, check auxilliary bindings:
+			if id, ok := aux.id(str); ok {
+				v.op = sauxval
+				v.args = v.args[:0]
+				v.imm = id
+				continue
+			}
+
+			sym, ok := st.Symbolize(str)
+			if !ok {
+				// if a symbol isn't present, the
+				// search will always fail (and this
+				// will cause the optimizer to eliminate
+				// any code that depends on this value)
+				v.op = skfalse
+				v.args = nil
+				v.imm = nil
+				// the compilation of the program depends
+				// on this symbol not existing, so we need
+				// to record that fact for IsStale to work
+				p.recordEmpty(str)
+				continue
+			}
+			if sym > MaxSymbolID {
+				return fmt.Errorf("symbol %x (%q) greater than max symbol ID", sym, str)
+			}
+			v.imm = sym
+			p.record(str, sym)
 			continue
 		}
 
-		sym, ok := st.Symbolize(str)
-		if !ok {
-			// if a symbol isn't present, the
-			// search will always fail (and this
-			// will cause the optimizer to eliminate
-			// any code that depends on this value)
-			v.op = skfalse
-			v.args = nil
-			v.imm = nil
-			// the compilation of the program depends
-			// on this symbol not existing, so we need
-			// to record that fact for IsStale to work
-			p.recordEmpty(str)
+		if op == smakestructkey {
+			str := v.imm.(string)
+			sym := st.Intern(str)
+
+			if sym > MaxSymbolID {
+				return fmt.Errorf("symbol %x (%q) greater than max symbol ID", sym, str)
+			}
+
+			v.imm = sym
+			p.record(str, sym)
 			continue
 		}
-		if sym > MaxSymbolID {
-			return fmt.Errorf("symbol %x (%q) greater than max symbol ID", sym, str)
-		}
-		v.imm = sym
-		p.record(str, sym)
 	}
 	p.symbolized = true
 	return nil

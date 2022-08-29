@@ -15,6 +15,7 @@
 package vm
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"strings"
@@ -117,6 +118,7 @@ var bcImmWidth = [...]uint8{
 type bcopinfo struct {
 	text     string
 	imms     []bcImmType
+	vaImms   []bcImmType
 	flags    bcflags
 	immwidth uint8 // immediate size
 	inverse  bcop  // for comparisons, etc., the inverse operation
@@ -135,6 +137,7 @@ var bcImmsU8 = []bcImmType{bcImmU8}
 var bcImmsU16 = []bcImmType{bcImmU16}
 var bcImmsU32 = []bcImmType{bcImmU32}
 var bcImmsU32H32 = []bcImmType{bcImmU32, bcImmU32Hex}
+var bcImmsH32S16S16 = []bcImmType{bcImmU32Hex, bcImmS16, bcImmS16}
 var bcImmsH32 = []bcImmType{bcImmU32Hex}
 var bcImmsH32H32 = []bcImmType{bcImmU32Hex, bcImmU32Hex}
 var bcImmsI64 = []bcImmType{bcImmI64}
@@ -439,6 +442,11 @@ var opinfo = [_maxbcop]bcopinfo{
 	opboxint:    {text: "boxint", flags: bcReadK | bcReadS},
 	opboxfloat:  {text: "boxfloat", flags: bcReadK | bcReadS},
 	opboxstring: {text: "boxstring", flags: bcReadK | bcReadS},
+	opboxlist:   {text: "boxlist", flags: bcReadK | bcReadS},
+
+	// Make instructions
+	opmakelist:   {text: "makelist", vaImms: bcImmsS16S16, flags: bcReadWriteK | bcWriteV},
+	opmakestruct: {text: "makestruct", vaImms: bcImmsH32S16S16, flags: bcReadWriteK | bcWriteV},
 
 	// Hash instructions
 	ophashvalue:     {text: "hashvalue", imms: bcImmsS16, flags: bcReadK | bcReadV | bcWriteH},
@@ -545,7 +553,7 @@ var opinfo = [_maxbcop]bcopinfo{
 func init() {
 	// Multiple purposes:
 	//   - Verify that new ops have been added to the opinfo table
-	//   - Automatically calculate a final immediate width from all immediates
+	//   - Automatically calculate the final immediate width from all immediates
 	for i := 0; i < _maxbcop; i++ {
 		info := &opinfo[i]
 		if info.text == "" {
@@ -556,6 +564,15 @@ func init() {
 		for j := 0; j < len(info.imms); j++ {
 			immw += uint(bcImmWidth[info.imms[j]])
 		}
+
+		if len(info.vaImms) != 0 {
+			immw += 4 // variable argument count is 4 bytes
+		}
+
+		if immw >= 256 {
+			panic(fmt.Sprintf("%s immediate width too large: %d bytes", info.text, immw))
+		}
+
 		info.immwidth = uint8(immw)
 	}
 }
@@ -661,19 +678,81 @@ type bytecode struct {
 	errinfo int
 }
 
-func formatBytecode(compiled []byte) string {
+func formatImmediatesTo(b *strings.Builder, imms []bcImmType, bc []byte) int {
+	i := 0
+	size := len(bc)
+
+	for immIndex := 0; immIndex < len(imms); immIndex++ {
+		immType := imms[immIndex]
+		immWidth := int(bcImmWidth[immType])
+
+		if size-i < immWidth {
+			fmt.Fprintf(b, "<bytecode is truncated, cannot decode immediate value of size %d while there is only %d bytes left>", immWidth, size-i)
+			return -1
+		}
+
+		immValue := uint64(0)
+		for immByte := 0; immByte < immWidth; immByte++ {
+			immValue |= uint64(bc[i]) << (immByte * 8)
+			i++
+		}
+
+		if immIndex != 0 {
+			b.WriteString(", ")
+		}
+
+		switch immType {
+		case bcImmI8:
+			fmt.Fprintf(b, "i8(%d)", int8(immValue))
+		case bcImmI16:
+			fmt.Fprintf(b, "i16(%d)", int16(immValue))
+		case bcImmI32:
+			fmt.Fprintf(b, "i32(%d)", int32(immValue))
+		case bcImmI64:
+			fmt.Fprintf(b, "i64(%d)", int64(immValue))
+		case bcImmU8:
+			fmt.Fprintf(b, "u8(%d)", immValue)
+		case bcImmU16:
+			fmt.Fprintf(b, "u16(%d)", immValue)
+		case bcImmU32:
+			fmt.Fprintf(b, "u32(%d)", immValue)
+		case bcImmU64:
+			fmt.Fprintf(b, "u64(%d)", immValue)
+		case bcImmU8Hex:
+			fmt.Fprintf(b, "u8(0x%X)", immValue)
+		case bcImmU16Hex:
+			fmt.Fprintf(b, "u16(0x%X)", immValue)
+		case bcImmU32Hex:
+			fmt.Fprintf(b, "u32(0x%X)", immValue)
+		case bcImmU64Hex:
+			fmt.Fprintf(b, "u64(0x%X)", immValue)
+		case bcImmF64:
+			fmt.Fprintf(b, "f64(%g)", math.Float64frombits(immValue))
+		case bcImmS16:
+			fmt.Fprintf(b, "[%d]", immValue)
+		case bcImmDict:
+			fmt.Fprintf(b, "dict[%d]", immValue)
+		default:
+			panic(fmt.Sprintf("Unhandled immediate type %v", immType))
+		}
+	}
+
+	return i
+}
+
+func formatBytecode(bc []byte) string {
 	var b strings.Builder
 
-	size := len(compiled)
 	i := int(0)
+	size := len(bc)
+
 	for i < size {
-		if size-i < 2 {
-			fmt.Fprintf(&b, "<bytecode is truncated, remaining '0x%02X' byte>", compiled[i])
+		if size-i < 8 {
+			fmt.Fprintf(&b, "<bytecode is truncated, cannot decode opcode of size %d while there is only %d bytes left>", 8, size-i)
 			break
 		}
 
-		opaddr := uintptr(compiled[i]) + (uintptr(compiled[i+1]) << 8) + (uintptr(compiled[i+2]) << 16) + (uintptr(compiled[i+3]) << 24) +
-			(uintptr(compiled[i+4]) << 32) + (uintptr(compiled[i+5]) << 40) + (uintptr(compiled[i+6]) << 48) + (uintptr(compiled[i+7]) << 56)
+		opaddr := uintptr(binary.LittleEndian.Uint64(bc))
 		i += 8
 
 		op, ok := opcodeID(opaddr)
@@ -686,60 +765,39 @@ func formatBytecode(compiled []byte) string {
 		info := &opinfo[op]
 		b.WriteString(info.text)
 
-		for immIndex := 0; immIndex < len(info.imms); immIndex++ {
-			immType := info.imms[immIndex]
-			immWidth := int(bcImmWidth[immType])
+		if len(info.imms) != 0 {
+			b.WriteString(" ")
+			immSize := formatImmediatesTo(&b, info.imms, bc[i:])
+			if immSize == -1 {
+				break
+			}
+			i += immSize
+		}
 
-			if size-i < immWidth {
-				fmt.Fprintf(&b, "<bytecode is truncated, cannot decode immediate value of size %d while there is only %d bytes left>", immWidth, size-i)
+		if len(info.vaImms) != 0 {
+			if size-i < 4 {
+				fmt.Fprintf(&b, "<bytecode is truncated, cannot decode va-length consisting of %d bytes while there is only %d bytes left>", 4, size-i)
 				break
 			}
 
-			immValue := uint64(0)
-			for immByte := 0; immByte < immWidth; immByte++ {
-				immValue |= uint64(compiled[i]) << (immByte * 8)
-				i++
-			}
+			vaLength := uint(binary.LittleEndian.Uint32(bc[i:]))
+			i += 4
 
-			if immIndex == 0 {
-				b.WriteString(" ")
-			} else {
+			if len(info.imms) != 0 {
 				b.WriteString(", ")
+			} else {
+				b.WriteString(" ")
 			}
 
-			switch immType {
-			case bcImmI8:
-				fmt.Fprintf(&b, "i8(%d)", int8(immValue))
-			case bcImmI16:
-				fmt.Fprintf(&b, "i16(%d)", int16(immValue))
-			case bcImmI32:
-				fmt.Fprintf(&b, "i32(%d)", int32(immValue))
-			case bcImmI64:
-				fmt.Fprintf(&b, "i64(%d)", int64(immValue))
-			case bcImmU8:
-				fmt.Fprintf(&b, "u8(%d)", immValue)
-			case bcImmU16:
-				fmt.Fprintf(&b, "u16(%d)", immValue)
-			case bcImmU32:
-				fmt.Fprintf(&b, "u32(%d)", immValue)
-			case bcImmU64:
-				fmt.Fprintf(&b, "u64(%d)", immValue)
-			case bcImmU8Hex:
-				fmt.Fprintf(&b, "u8(0x%X)", immValue)
-			case bcImmU16Hex:
-				fmt.Fprintf(&b, "u16(0x%X)", immValue)
-			case bcImmU32Hex:
-				fmt.Fprintf(&b, "u32(0x%X)", immValue)
-			case bcImmU64Hex:
-				fmt.Fprintf(&b, "u64(0x%X)", immValue)
-			case bcImmF64:
-				fmt.Fprintf(&b, "f64(%g)", math.Float64frombits(immValue))
-			case bcImmS16:
-				fmt.Fprintf(&b, "[%d]", immValue)
-			case bcImmDict:
-				fmt.Fprintf(&b, "dict[%d]", immValue)
-			default:
-				panic(fmt.Sprintf("Unhandled immediate type %v", immType))
+			fmt.Fprintf(&b, "va(%d)", vaLength)
+			for vaIndex := 0; vaIndex < int(vaLength); vaIndex++ {
+				b.WriteString(", {")
+				immSize := formatImmediatesTo(&b, info.vaImms, bc[i:])
+				if immSize == -1 {
+					break
+				}
+				i += immSize
+				b.WriteString("}")
 			}
 		}
 

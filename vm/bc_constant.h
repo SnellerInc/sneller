@@ -418,11 +418,17 @@ CONST_DATA_U8(constpool, 674, $122)
 #define CONSTB_57() CONST_GET_PTR(constpool, 675)
 CONST_DATA_U8(constpool, 675, $57)
 
+#define CONSTD_0xB0() CONST_GET_PTR(constpool, 680)
+CONST_DATA_U8(constpool, 680, $0xB0)
+
+#define CONSTD_0xD0() CONST_GET_PTR(constpool, 688)
+CONST_DATA_U8(constpool, 688, $0xD0)
+
 
 // Integer Division Reciprocals
 // ----------------------------
 
-#define CONSTPOOL_RECIPROCALS_INDEX 680
+#define CONSTPOOL_RECIPROCALS_INDEX 696
 
 // Unsigned 32-bit division by 25: (Value * 1374389535) >> 35.
 // Unsigned 32-bit division by 50: (Value * 1374389535) >> 36.

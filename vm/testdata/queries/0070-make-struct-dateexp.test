@@ -1,0 +1,132 @@
+SELECT
+  x AS timestamp,
+  {
+    'year': EXTRACT(YEAR FROM x),
+    'month': EXTRACT(MONTH FROM x),
+    'day': EXTRACT(DAY FROM x),
+    'hour': EXTRACT(HOUR FROM x),
+    'minute': EXTRACT(MINUTE FROM x),
+    'second': EXTRACT(SECOND FROM x)
+  } AS decomposed
+FROM
+  input
+---
+{"x": "2373-05-07T07:29:01"}
+{"x": "2077-02-28T12:20:01"}
+{"x": "2114-01-03T07:58:18"}
+{"x": "2397-12-09T15:23:47"}
+{"x": "2020-04-27T14:00:03"}
+{"x": "2311-05-28T19:01:53"}
+{"x": "2123-07-06T07:08:30"}
+{"x": "2307-02-11T00:57:01"}
+{"x": "1931-04-11T09:58:17"}
+{"x": "2195-05-15T17:59:40"}
+{"x": "2278-06-10T07:38:45"}
+{"x": "2178-04-19T12:20:45"}
+{"x": "2391-09-22T14:44:03"}
+{"x": "2326-06-16T03:43:37"}
+{"x": "2016-06-06T22:15:02"}
+{"x": "2188-04-28T16:30:58"}
+{"x": "2176-11-15T04:04:04"}
+{"x": "2322-12-10T04:51:45"}
+{"x": "1965-10-19T14:02:45"}
+{"x": "2330-07-16T01:21:09"}
+{"x": "2392-04-06T03:06:46"}
+{"x": "2007-04-25T02:59:34"}
+{"x": "1990-02-02T05:36:52"}
+{"x": "2024-12-29T03:31:24"}
+{"x": "1991-12-05T08:19:10"}
+{"x": "2337-08-25T07:23:40"}
+{"x": "2081-11-04T08:46:03"}
+{"x": "2137-05-01T19:30:11"}
+{"x": "2024-05-15T14:19:49"}
+{"x": "2253-10-30T03:19:49"}
+{"x": "1925-08-24T12:16:48"}
+{"x": "2350-11-22T16:45:52"}
+{"x": "1909-05-18T01:06:09"}
+{"x": "2051-02-24T18:00:11"}
+{"x": "2196-07-28T09:40:54"}
+{"x": "2319-04-12T12:07:45"}
+{"x": "2102-01-26T07:36:20"}
+{"x": "2399-12-11T15:34:35"}
+{"x": "1951-01-24T01:21:45"}
+{"x": "2277-06-03T14:55:28"}
+{"x": "2320-01-05T03:05:46"}
+{"x": "2277-11-22T11:54:58"}
+{"x": "2130-07-24T06:40:53"}
+{"x": "2007-02-07T04:57:05"}
+{"x": "2374-04-10T01:37:14"}
+{"x": "2186-09-17T16:40:48"}
+{"x": "2089-09-21T17:03:53"}
+{"x": "2285-06-02T21:50:28"}
+{"x": "2398-09-13T02:57:30"}
+{"x": "1960-11-19T03:10:39"}
+{"x": "2161-12-05T10:15:20"}
+{"x": "2044-02-02T18:19:58"}
+{"x": "1964-03-28T15:05:14"}
+{"x": "2169-01-16T02:45:08"}
+{"x": "1997-08-06T08:17:13"}
+{"x": "2148-09-19T17:23:34"}
+{"x": "2360-03-08T00:24:17"}
+{"x": "2182-06-25T03:03:43"}
+{"x": "2230-02-15T23:56:53"}
+---
+{"timestamp": "2373-05-07T07:29:01", "decomposed":{"year": 2373, "month": 5, "day": 7, "hour": 7, "minute": 29, "second": 1}}
+{"timestamp": "2077-02-28T12:20:01", "decomposed":{"year": 2077, "month": 2, "day": 28, "hour": 12, "minute": 20, "second": 1}}
+{"timestamp": "2114-01-03T07:58:18", "decomposed":{"year": 2114, "month": 1, "day": 3, "hour": 7, "minute": 58, "second": 18}}
+{"timestamp": "2397-12-09T15:23:47", "decomposed":{"year": 2397, "month": 12, "day": 9, "hour": 15, "minute": 23, "second": 47}}
+{"timestamp": "2020-04-27T14:00:03", "decomposed":{"year": 2020, "month": 4, "day": 27, "hour": 14, "minute": 0, "second": 3}}
+{"timestamp": "2311-05-28T19:01:53", "decomposed":{"year": 2311, "month": 5, "day": 28, "hour": 19, "minute": 1, "second": 53}}
+{"timestamp": "2123-07-06T07:08:30", "decomposed":{"year": 2123, "month": 7, "day": 6, "hour": 7, "minute": 8, "second": 30}}
+{"timestamp": "2307-02-11T00:57:01", "decomposed":{"year": 2307, "month": 2, "day": 11, "hour": 0, "minute": 57, "second": 1}}
+{"timestamp": "1931-04-11T09:58:17", "decomposed":{"year": 1931, "month": 4, "day": 11, "hour": 9, "minute": 58, "second": 17}}
+{"timestamp": "2195-05-15T17:59:40", "decomposed":{"year": 2195, "month": 5, "day": 15, "hour": 17, "minute": 59, "second": 40}}
+{"timestamp": "2278-06-10T07:38:45", "decomposed":{"year": 2278, "month": 6, "day": 10, "hour": 7, "minute": 38, "second": 45}}
+{"timestamp": "2178-04-19T12:20:45", "decomposed":{"year": 2178, "month": 4, "day": 19, "hour": 12, "minute": 20, "second": 45}}
+{"timestamp": "2391-09-22T14:44:03", "decomposed":{"year": 2391, "month": 9, "day": 22, "hour": 14, "minute": 44, "second": 3}}
+{"timestamp": "2326-06-16T03:43:37", "decomposed":{"year": 2326, "month": 6, "day": 16, "hour": 3, "minute": 43, "second": 37}}
+{"timestamp": "2016-06-06T22:15:02", "decomposed":{"year": 2016, "month": 6, "day": 6, "hour": 22, "minute": 15, "second": 2}}
+{"timestamp": "2188-04-28T16:30:58", "decomposed":{"year": 2188, "month": 4, "day": 28, "hour": 16, "minute": 30, "second": 58}}
+{"timestamp": "2176-11-15T04:04:04", "decomposed":{"year": 2176, "month": 11, "day": 15, "hour": 4, "minute": 4, "second": 4}}
+{"timestamp": "2322-12-10T04:51:45", "decomposed":{"year": 2322, "month": 12, "day": 10, "hour": 4, "minute": 51, "second": 45}}
+{"timestamp": "1965-10-19T14:02:45", "decomposed":{"year": 1965, "month": 10, "day": 19, "hour": 14, "minute": 2, "second": 45}}
+{"timestamp": "2330-07-16T01:21:09", "decomposed":{"year": 2330, "month": 7, "day": 16, "hour": 1, "minute": 21, "second": 9}}
+{"timestamp": "2392-04-06T03:06:46", "decomposed":{"year": 2392, "month": 4, "day": 6, "hour": 3, "minute": 6, "second": 46}}
+{"timestamp": "2007-04-25T02:59:34", "decomposed":{"year": 2007, "month": 4, "day": 25, "hour": 2, "minute": 59, "second": 34}}
+{"timestamp": "1990-02-02T05:36:52", "decomposed":{"year": 1990, "month": 2, "day": 2, "hour": 5, "minute": 36, "second": 52}}
+{"timestamp": "2024-12-29T03:31:24", "decomposed":{"year": 2024, "month": 12, "day": 29, "hour": 3, "minute": 31, "second": 24}}
+{"timestamp": "1991-12-05T08:19:10", "decomposed":{"year": 1991, "month": 12, "day": 5, "hour": 8, "minute": 19, "second": 10}}
+{"timestamp": "2337-08-25T07:23:40", "decomposed":{"year": 2337, "month": 8, "day": 25, "hour": 7, "minute": 23, "second": 40}}
+{"timestamp": "2081-11-04T08:46:03", "decomposed":{"year": 2081, "month": 11, "day": 4, "hour": 8, "minute": 46, "second": 3}}
+{"timestamp": "2137-05-01T19:30:11", "decomposed":{"year": 2137, "month": 5, "day": 1, "hour": 19, "minute": 30, "second": 11}}
+{"timestamp": "2024-05-15T14:19:49", "decomposed":{"year": 2024, "month": 5, "day": 15, "hour": 14, "minute": 19, "second": 49}}
+{"timestamp": "2253-10-30T03:19:49", "decomposed":{"year": 2253, "month": 10, "day": 30, "hour": 3, "minute": 19, "second": 49}}
+{"timestamp": "1925-08-24T12:16:48", "decomposed":{"year": 1925, "month": 8, "day": 24, "hour": 12, "minute": 16, "second": 48}}
+{"timestamp": "2350-11-22T16:45:52", "decomposed":{"year": 2350, "month": 11, "day": 22, "hour": 16, "minute": 45, "second": 52}}
+{"timestamp": "1909-05-18T01:06:09", "decomposed":{"year": 1909, "month": 5, "day": 18, "hour": 1, "minute": 6, "second": 9}}
+{"timestamp": "2051-02-24T18:00:11", "decomposed":{"year": 2051, "month": 2, "day": 24, "hour": 18, "minute": 0, "second": 11}}
+{"timestamp": "2196-07-28T09:40:54", "decomposed":{"year": 2196, "month": 7, "day": 28, "hour": 9, "minute": 40, "second": 54}}
+{"timestamp": "2319-04-12T12:07:45", "decomposed":{"year": 2319, "month": 4, "day": 12, "hour": 12, "minute": 7, "second": 45}}
+{"timestamp": "2102-01-26T07:36:20", "decomposed":{"year": 2102, "month": 1, "day": 26, "hour": 7, "minute": 36, "second": 20}}
+{"timestamp": "2399-12-11T15:34:35", "decomposed":{"year": 2399, "month": 12, "day": 11, "hour": 15, "minute": 34, "second": 35}}
+{"timestamp": "1951-01-24T01:21:45", "decomposed":{"year": 1951, "month": 1, "day": 24, "hour": 1, "minute": 21, "second": 45}}
+{"timestamp": "2277-06-03T14:55:28", "decomposed":{"year": 2277, "month": 6, "day": 3, "hour": 14, "minute": 55, "second": 28}}
+{"timestamp": "2320-01-05T03:05:46", "decomposed":{"year": 2320, "month": 1, "day": 5, "hour": 3, "minute": 5, "second": 46}}
+{"timestamp": "2277-11-22T11:54:58", "decomposed":{"year": 2277, "month": 11, "day": 22, "hour": 11, "minute": 54, "second": 58}}
+{"timestamp": "2130-07-24T06:40:53", "decomposed":{"year": 2130, "month": 7, "day": 24, "hour": 6, "minute": 40, "second": 53}}
+{"timestamp": "2007-02-07T04:57:05", "decomposed":{"year": 2007, "month": 2, "day": 7, "hour": 4, "minute": 57, "second": 5}}
+{"timestamp": "2374-04-10T01:37:14", "decomposed":{"year": 2374, "month": 4, "day": 10, "hour": 1, "minute": 37, "second": 14}}
+{"timestamp": "2186-09-17T16:40:48", "decomposed":{"year": 2186, "month": 9, "day": 17, "hour": 16, "minute": 40, "second": 48}}
+{"timestamp": "2089-09-21T17:03:53", "decomposed":{"year": 2089, "month": 9, "day": 21, "hour": 17, "minute": 3, "second": 53}}
+{"timestamp": "2285-06-02T21:50:28", "decomposed":{"year": 2285, "month": 6, "day": 2, "hour": 21, "minute": 50, "second": 28}}
+{"timestamp": "2398-09-13T02:57:30", "decomposed":{"year": 2398, "month": 9, "day": 13, "hour": 2, "minute": 57, "second": 30}}
+{"timestamp": "1960-11-19T03:10:39", "decomposed":{"year": 1960, "month": 11, "day": 19, "hour": 3, "minute": 10, "second": 39}}
+{"timestamp": "2161-12-05T10:15:20", "decomposed":{"year": 2161, "month": 12, "day": 5, "hour": 10, "minute": 15, "second": 20}}
+{"timestamp": "2044-02-02T18:19:58", "decomposed":{"year": 2044, "month": 2, "day": 2, "hour": 18, "minute": 19, "second": 58}}
+{"timestamp": "1964-03-28T15:05:14", "decomposed":{"year": 1964, "month": 3, "day": 28, "hour": 15, "minute": 5, "second": 14}}
+{"timestamp": "2169-01-16T02:45:08", "decomposed":{"year": 2169, "month": 1, "day": 16, "hour": 2, "minute": 45, "second": 8}}
+{"timestamp": "1997-08-06T08:17:13", "decomposed":{"year": 1997, "month": 8, "day": 6, "hour": 8, "minute": 17, "second": 13}}
+{"timestamp": "2148-09-19T17:23:34", "decomposed":{"year": 2148, "month": 9, "day": 19, "hour": 17, "minute": 23, "second": 34}}
+{"timestamp": "2360-03-08T00:24:17", "decomposed":{"year": 2360, "month": 3, "day": 8, "hour": 0, "minute": 24, "second": 17}}
+{"timestamp": "2182-06-25T03:03:43", "decomposed":{"year": 2182, "month": 6, "day": 25, "hour": 3, "minute": 3, "second": 43}}
+{"timestamp": "2230-02-15T23:56:53", "decomposed":{"year": 2230, "month": 2, "day": 15, "hour": 23, "minute": 56, "second": 53}}

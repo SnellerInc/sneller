@@ -1,0 +1,40 @@
+SELECT
+  [a, 'literal', b] AS out
+FROM
+  input
+---
+{"a": 13.3, "b": 13.333}
+{"a": 1, "b": 11}
+{"a": 2, "b": 12}
+{"a": 3, "b": 13}
+{"a": 4, "b": 253}
+{"a": 554, "b": 1253}
+{"a": 5, "b": 125}
+{"a": 119222, "b": 11922211}
+{}
+{"a": "longer string to make the object need Type|L+Length", "b": null}
+{"a": true, "b": false}
+{"a": "abcd", "b": 1234}
+{"a": 0, "b": 999.9}
+{"a": 999.9, "b": 1}
+{"a": "b is missing"}
+{"b": "a is missing"}
+{"xxx": "a and b are missing"}
+---
+{"out":[13.3, "literal", 13.333]}
+{"out":[1, "literal", 11]}
+{"out":[2, "literal", 12]}
+{"out":[3, "literal", 13]}
+{"out":[4, "literal", 253]}
+{"out":[554, "literal", 1253]}
+{"out":[5, "literal", 125]}
+{"out":[119222, "literal", 11922211]}
+{"out":["literal"]}
+{"out":["longer string to make the object need Type|L+Length", "literal", null]}
+{"out":[true, "literal", false]}
+{"out":["abcd", "literal", 1234]}
+{"out":[0, "literal", 999.9]}
+{"out":[999.9, "literal", 1]}
+{"out":["b is missing", "literal"]}
+{"out":["literal", "a is missing"]}
+{"out":["literal"]}

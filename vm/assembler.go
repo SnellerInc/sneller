@@ -14,6 +14,10 @@
 
 package vm
 
+import (
+	"fmt"
+)
+
 type assembler struct {
 	code []byte
 }
@@ -26,6 +30,21 @@ func (a *assembler) grabCode() []byte {
 	r := a.code
 	a.code = nil
 	return r
+}
+
+func (a *assembler) emitImm(imm uint64, size int) {
+	switch size {
+	case 1:
+		a.emitImmU8(uint8(imm))
+	case 2:
+		a.emitImmU16(uint16(imm))
+	case 4:
+		a.emitImmU32(uint32(imm))
+	case 8:
+		a.emitImmU64(imm)
+	default:
+		panic(fmt.Sprintf("invalid immediate size: %d", size))
+	}
 }
 
 func (a *assembler) emitImmU8(imm uint8) {

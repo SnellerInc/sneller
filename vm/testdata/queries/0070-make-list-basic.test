@@ -1,0 +1,40 @@
+SELECT
+  [a, b] AS out
+FROM
+  input
+---
+{"a": 13.3, "b": 13.333}
+{"a": 1, "b": 11}
+{"a": 2, "b": 12}
+{"a": 3, "b": 13}
+{"a": 4, "b": 253}
+{"a": 554, "b": 1253}
+{"a": 5, "b": 125}
+{"a": 119222, "b": 11922211}
+{}
+{"a": "longer string to make the object need Type|L+Length", "b": null}
+{"a": true, "b": false}
+{"a": "abcd", "b": 1234}
+{"a": 0, "b": 999.9}
+{"a": 999.9, "b": 1}
+{"a": "b is missing"}
+{"b": "a is missing"}
+{"xxx": "a and b are missing"}
+---
+{"out":[13.3, 13.333]}
+{"out":[1, 11]}
+{"out":[2, 12]}
+{"out":[3, 13]}
+{"out":[4, 253]}
+{"out":[554, 1253]}
+{"out":[5, 125]}
+{"out":[119222, 11922211]}
+{"out":[]}
+{"out":["longer string to make the object need Type|L+Length", null]}
+{"out":[true, false]}
+{"out":["abcd", 1234]}
+{"out":[0, 999.9]}
+{"out":[999.9, 1]}
+{"out":["b is missing"]}
+{"out":["a is missing"]}
+{"out":[]}

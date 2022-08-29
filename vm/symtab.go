@@ -20,6 +20,7 @@ import (
 
 type syms interface {
 	Get(ion.Symbol) string
+	Intern(x string) ion.Symbol
 	Symbolize(string) (ion.Symbol, bool)
 }
 

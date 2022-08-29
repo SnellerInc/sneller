@@ -1,0 +1,40 @@
+SELECT
+  {'nested_a': a, 'nested_b': b} AS out
+FROM
+  input
+---
+{"a": 13.3, "b": 13.333}
+{"a": 1, "b": 11}
+{"a": 2, "b": 12}
+{"a": 3, "b": 13}
+{"a": 4, "b": 253}
+{"a": 554, "b": 1253}
+{"a": 5, "b": 125}
+{"a": 119222, "b": 11922211}
+{}
+{"a": "longer string to make the object need Type|L+Length", "b": null}
+{"a": true, "b": false}
+{"a": "abcd", "b": 1234}
+{"a": 0, "b": 999.9}
+{"a": 999.9, "b": 1}
+{"a": "b is missing"}
+{"b": "a is missing"}
+{"xxx": "a and b are missing"}
+---
+{"out": {"nested_a": 13.3, "nested_b": 13.333}}
+{"out": {"nested_a": 1, "nested_b": 11}}
+{"out": {"nested_a": 2, "nested_b": 12}}
+{"out": {"nested_a": 3, "nested_b": 13}}
+{"out": {"nested_a": 4, "nested_b": 253}}
+{"out": {"nested_a": 554, "nested_b": 1253}}
+{"out": {"nested_a": 5, "nested_b": 125}}
+{"out": {"nested_a": 119222, "nested_b": 11922211}}
+{"out": {}}
+{"out": {"nested_a": "longer string to make the object need Type|L+Length", "nested_b": null}}
+{"out": {"nested_a": true, "nested_b": false}}
+{"out": {"nested_a": "abcd", "nested_b": 1234}}
+{"out": {"nested_a": 0, "nested_b": 999.9}}
+{"out": {"nested_a": 999.9, "nested_b": 1}}
+{"out": {"nested_a": "b is missing"}}
+{"out": {"nested_b": "a is missing"}}
+{"out": {}}

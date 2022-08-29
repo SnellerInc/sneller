@@ -1231,8 +1231,8 @@ var builtinInfo = [maxBuiltin]binfo{
 
 	TimeBucket: {check: fixedArgs(TimeType, NumericType), ret: NumericType},
 
-	MakeList:   {simplify: simplifyMakeList, ret: ListType, private: true, text: makeListText},
-	MakeStruct: {simplify: simplifyMakeStruct, ret: StructType, private: true, text: makeStructText},
+	MakeList:   {ret: ListType, private: true, text: makeListText, simplify: simplifyMakeList},
+	MakeStruct: {ret: StructType, private: true, text: makeStructText, simplify: simplifyMakeStruct},
 
 	TableGlob:    {check: checkTableGlob, ret: AnyType, isTable: true},
 	TablePattern: {check: checkTablePattern, ret: AnyType, isTable: true},

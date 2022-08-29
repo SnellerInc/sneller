@@ -10251,24 +10251,35 @@ abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
   RET_ABORT()
 
-// Boxes string slices held in RSI(Z2:Z3)
+// Boxes string slice held in RSI(Z2:Z3)
+TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
+  VPSLLD.BCST $4, CONSTD_8(), Z20 // ION type of a boxed string is 0x8
+  JMP boxslice_tail(SB)
+
+// Boxes list data held in RSI(Z2:Z3)
+TEXT bcboxlist(SB), NOSPLIT|NOFRAME, $0
+  VPSLLD.BCST $4, CONSTD_0x0B(), Z20 // ION type of a boxed list is 0xB
+  JMP boxslice_tail(SB)
+
+// Boxes [string, list, object] slice held in RSI(Z2:Z3)
 //
 // Inputs:
 //   - K1 - 16-bit lane mask
 //   - Z2 - 32-bit offsets relative to RSI
-//   - Z3 - 32-bit lengths of each string slice
+//   - Z3 - 32-bit lengths of each data slice
 //
 // Implementation notes:
-//   - Two paths - small strings (up to 13 bytes), large strings (more than 13).
-//   - Do gathers of the leading 16 bytes of each string as early as possible.
+//   - Two paths - small slices (up to 13 bytes), large slices (more than 13 bytes).
+//   - Do gathers of the leading 16 bytes of each slice as early as possible.
 //     These bytes are gathered to Z11, Z12, Z13, and Z14 and used by both code
-//     paths - this optimizes a bit storing smaller strings in both cases.
-//   - Encoding of the Type|L + Length happens regardless of string lengths, we
+//     paths - this optimizes a bit storing smaller slices in both cases.
+//   - Encoding of the Type|L + Length happens regardless of slice lengths, we
 //     do gathers meanwhile so the CPU should be busy enough to hide the latency.
-TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
+TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // Quickly skip this instruction if there is nothing to box.
   VPXORD Z30, Z30, Z30
   VPXORD Z31, Z31, Z31
+
   KTESTW K1, K1
   JZ next
 
@@ -10391,7 +10402,7 @@ TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
 
   // Update the output buffer length and Z30/Z31 (boxed value outputs).
   VPBROADCASTD.Z CX, K1, Z30
-  VPADDD.BCST    bytecode_scratchoff(VIRT_BCPTR), Z30, K1, Z30
+  VPADDD.BCST bytecode_scratchoff(VIRT_BCPTR), Z30, K1, Z30
   ADDQ CX, R15
   VPADDD Z9, Z30, K1, Z30
   VMOVDQA32.Z Z7, K1, Z31                              // Z31 = ION data length: Type|L + optional VarUInt + string data.
@@ -10414,8 +10425,8 @@ TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
 
   // --- Fast path for small strings (small string in each lane or MISSING) ---
 
-  // Make Z7 contain Type|L - 128 == 8 (ION String) << 4.
-  VPORD.BCST.Z CONSTD_128(), Z3, K1, Z7                // Z7  = [L15 L14 L13 L12|L11 L10 L09 L08|L07 L06 L05 L04|L03 L02 L01 L00]
+  // Make Z7 contain Type|L where Type is the requested ION type
+  VPORD.Z Z20, Z3, K1, Z7                              // Z7  = [L15 L14 L13 L12|L11 L10 L09 L08|L07 L06 L05 L04|L03 L02 L01 L00]
   VPMOVZXDQ Y7, Z5                                     // Z5  = [___ L07 ___ L06|___ L05 ___ L04|___ L03 ___ L02|___ L01 ___ L00]
   VSHUFI64X2 $SHUFFLE_IMM_4x2b(1, 0, 3, 2), Z7, Z7, Z7
 
@@ -10478,11 +10489,11 @@ large_string:
   // We already have encoded ION length, including the information regarding how "long" the length is.
   VPBROADCASTD.Z CONSTD_0x0E(), K1, Z15
   VMOVDQA32 Z3, K3, Z15                                // Z15 = [L15 L14 L13 L12|L11 L10 L09 L08|L07 L06 L05 L04|L03 L02 L01 L00]
-  VPORD.BCST.Z CONSTD_128(), Z15, K1, Z15              // Z15 = [T15 T14 T13 T12|T11 T10 T09 T08|T07 T06 T05 T04|T03 T02 T01 T00]
+  VPORD.Z Z20, Z15, K1, Z15                            // Z15 = [T15 T14 T13 T12|T11 T10 T09 T08|T07 T06 T05 T04|T03 T02 T01 T00]
   VPSLLD $24, Z15, Z15
 
   VPUNPCKLDQ Z5, Z15, Z14                              // Z14 = [L13 T13 L12 T12|L09 T09 L08 T08|L05 T05 L04 T04|L01 T01 L00 T00]
-  VPUNPCKHDQ Z5, Z15, Z15                              // Z15 = [L15 T15 L14 T14|L11 T11 L10 T10|L07 T07 L06 T06|L01 T03 L02 T02]
+  VPUNPCKHDQ Z5, Z15, Z15                              // Z15 = [L15 T15 L14 T14|L11 T11 L10 T10|L07 T07 L06 T06|L03 T03 L02 T02]
 
   // This will make each QWORD look like [__ __ __ VU VU VU VU TL] where
   // TL is Type|L and VU is VarUInt representing string length in bytes.
@@ -10586,6 +10597,25 @@ next:
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
   RET_ABORT()
+
+
+// Make List / Struct
+// ------------------
+
+/*
+(for our script to pick up the opcodes)
+TEXT bcmakelist(SB), NOSPLIT|NOFRAME, $0
+TEXT bcmakestruct(SB), NOSPLIT|NOFRAME, $0
+*/
+
+#define BC_GENERATE_MAKE_LIST
+#include "evalbc_make_object_impl.h"
+#undef BC_GENERATE_MAKE_LIST
+
+#define BC_GENERATE_MAKE_STRUCT
+#include "evalbc_make_object_impl.h"
+#undef BC_GENERATE_MAKE_STRUCT
+
 
 // Hash Instructions
 // -----------------
