@@ -752,7 +752,7 @@ func formatBytecode(bc []byte) string {
 			break
 		}
 
-		opaddr := uintptr(binary.LittleEndian.Uint64(bc))
+		opaddr := uintptr(binary.LittleEndian.Uint64(bc[i:]))
 		i += 8
 
 		op, ok := opcodeID(opaddr)
