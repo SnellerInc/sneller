@@ -24,7 +24,6 @@ import (
 	"io"
 	"io/fs"
 	"math/rand"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -37,10 +36,9 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/versify"
 	"github.com/SnellerInc/sneller/plan"
+	"github.com/SnellerInc/sneller/tests"
 	"github.com/SnellerInc/sneller/vm"
 )
-
-var sepdash = []byte("---")
 
 type bufhandle []byte
 
@@ -299,32 +297,6 @@ func flatten(lst []ion.Datum, st *ion.Symtab) []byte {
 	st.Marshal(&outbuf, true)
 	outbuf.UnsafeAppend(tail)
 	return outbuf.Bytes()
-}
-
-func todash(rd *bufio.Reader, jsonl bool) ([]byte, error) {
-	var out []byte
-	for {
-		line, pre, err := rd.ReadLine()
-		if err != nil {
-			return out, err
-		}
-		if pre {
-			return nil, fmt.Errorf("buffer not big enough to fit line beginning with %s", line)
-		}
-		if bytes.HasPrefix(line, sepdash) {
-			return out, nil
-		}
-		// allow # line comments iff they begin the line
-		if len(line) > 0 && line[0] == '#' {
-			continue
-		}
-		// strip inline comment from jsonl
-		if jsonl && len(line) > 0 && line[0] == '{' {
-			line = stripInlineComment(line)
-		}
-		out = append(out, line...)
-		out = append(out, '\n')
-	}
 }
 
 // return a symbol table with the symbols
@@ -635,37 +607,43 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 }
 
 func readPath(t testing.TB, fname string) (query []byte, inputs [][]byte, output []byte) {
-	f, err := os.Open(fname)
+	parts, err := tests.ParseTestcase(fname)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	rd := bufio.NewReader(f)
-	jsonl := false
-	query, err = todash(rd, jsonl)
-	if err != nil {
-		t.Fatal(err)
+
+	n := len(parts)
+	if n < 3 {
+		t.Fatalf("expected at least 3 parts of testcase, got %d", n)
 	}
-	inputs = make([][]byte, 1)
-	jsonl = true
-	inputs[0], err = todash(rd, jsonl)
-	if err != nil {
-		t.Fatal(err)
+
+	part2bytes := func(part []string) []byte {
+		var res []byte
+		for i := range part {
+			res = append(res, []byte(part[i])...)
+			res = append(res, '\n')
+		}
+
+		return res
 	}
-	for first := true; ; first = false {
-		jsonl = true
-		b, err := todash(rd, jsonl)
-		if err != nil && err != io.EOF {
-			t.Fatal(err)
+
+	jsonrl2bytes := func(part []string) []byte {
+		var res []byte
+		for i := range part {
+			res = append(res, stripInlineComment([]byte(part[i]))...)
+			res = append(res, '\n')
 		}
-		if !first {
-			inputs = append(inputs, output)
-		}
-		output = b
-		if err == io.EOF {
-			break
-		}
+
+		return res
 	}
+
+	query = part2bytes(parts[0])
+	output = jsonrl2bytes(parts[n-1])
+
+	for i := 1; i < n-1; i++ {
+		inputs = append(inputs, jsonrl2bytes(parts[i]))
+	}
+
 	return query, inputs, output
 }
 

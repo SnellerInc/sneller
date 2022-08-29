@@ -15,12 +15,8 @@
 package pir
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -1367,67 +1363,27 @@ func runTestcasesFromFiles(t *testing.T) {
 	}
 }
 
-var sepdash = []byte("---")
-
 func parseTestcase(fname string) (*buildTestcase, error) {
-	f, err := os.Open(fname)
+	parts, err := tests.ParseTestcase(fname)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	rd := bufio.NewReader(f)
 
-	// 0 - query part
-	// 1 - expected plan
-	// 2 - split plan
-	rawID := 0
-	var raw [3][]string
-
-	for {
-		line, pre, err := rd.ReadLine()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return nil, err
-		}
-		if pre {
-			return nil, fmt.Errorf("buffer not big enough to fit line beginning with %s", line)
-		}
-		if bytes.HasPrefix(line, sepdash) {
-			rawID += 1
-			if rawID > 2 {
-				return nil, fmt.Errorf("too many separators %s (up to two are allowed)", sepdash)
-			}
-
-			continue
-		}
-
-		// allow # line comments iff they begin the line
-		if len(line) > 0 && line[0] == '#' {
-			continue
-		}
-
-		if len(line) == 0 {
-			continue
-		}
-
-		raw[rawID] = append(raw[rawID], string(line))
+	if len(parts) < 2 || len(parts) > 3 {
+		return nil, fmt.Errorf("expected 2 or 3 sections in testcase, got %d", len(parts))
 	}
 
 	tc := buildTestcase{
-		input:  strings.Join(raw[0], "\n"),
-		expect: raw[1],
-		split:  raw[2],
+		input:  strings.Join(parts[0], "\n"),
+		expect: parts[1],
+	}
+
+	if len(parts) == 3 {
+		tc.split = parts[2]
 	}
 
 	if len(tc.expect) == 0 {
 		return nil, fmt.Errorf("expected part of testcase is required")
-	}
-
-	if len(tc.split) == 0 {
-		tc.split = nil
 	}
 
 	return &tc, nil
