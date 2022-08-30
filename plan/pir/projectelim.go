@@ -93,6 +93,15 @@ loop:
 			})
 			maps.Clear(used)
 			first = false
+		case *IterTable:
+			if first {
+				first = false
+				break
+			}
+
+			s.trim(used)
+			first = false
+
 		case *IterValue:
 			if first {
 				first = false

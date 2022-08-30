@@ -1,0 +1,4 @@
+SELECT a, a.w FROM (SELECT a, b.x, c.z, d.x FROM input)
+---
+ITERATE input FIELDS [a]
+PROJECT a AS a, a.w AS w

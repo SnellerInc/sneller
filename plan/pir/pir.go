@@ -25,6 +25,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -161,6 +162,32 @@ func (i *IterTable) get(x string) (Step, expr.Node) {
 	}
 	i.free = append(i.free, x)
 	return i, nil
+}
+
+// trim keeps only the fields listed on `used` list
+func (i *IterTable) trim(used map[string]struct{}) {
+	// 1. copy is needed because we modify the map
+	tmp := maps.Clone(used)
+
+	// 2. extend the used fields with ones from the Filter node
+	if i.Filter != nil {
+		collect := func(e expr.Node) {
+			p, ok := e.(*expr.Path)
+			if ok {
+				tmp[p.First] = struct{}{}
+			}
+		}
+		expr.Walk(walkfn(collect), i.Filter)
+	}
+
+	// 3. filter out unused fields
+	pred := func(s *string) bool {
+		_, ok := tmp[*s]
+		return ok
+	}
+
+	i.definite = filterSlice(i.definite, pred)
+	i.free = filterSlice(i.free, pred)
 }
 
 func (i *IterTable) describe(dst io.Writer) {

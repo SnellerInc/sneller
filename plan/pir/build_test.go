@@ -498,9 +498,7 @@ where x > (select min(f) from y) and x < (select max(f) from y)`,
 			// test elimination of un-used bindings
 			input: `select count(x) from (select x, y from foo)`,
 			expect: []string{
-				"ITERATE foo FIELDS [x, y]",
-				// FIXME: teach aggregates to merge with
-				// projections that produce useless bindings
+				"ITERATE foo FIELDS [x]",
 				"PROJECT x AS x", // note y is no longer present
 				"AGGREGATE COUNT(x) AS \"count\"",
 			},
@@ -852,7 +850,7 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 						 cte1 as (SELECT x, y FROM cte0)
 					SELECT x FROM cte1`,
 			expect: []string{
-				"ITERATE foo FIELDS [x, y, z]", // FIXME: trim un-used fields
+				"ITERATE foo FIELDS [x]",
 				"PROJECT x AS x",
 			},
 		},
@@ -1197,8 +1195,7 @@ z = (SELECT a FROM bar LIMIT 1)`,
 			// check that the unnesting is removed appropriately:
 			input: "SELECT o.x, o.z FROM table AS o, o.lst as y",
 			expect: []string{
-				// TODO: remove lst from fields since it is eliminated
-				"ITERATE table AS o FIELDS [lst, x, z]",
+				"ITERATE table AS o FIELDS [x, z]",
 				"PROJECT x AS x, z AS z",
 			},
 		},

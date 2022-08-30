@@ -16,6 +16,7 @@ package pir
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -36,22 +37,26 @@ func TestUnsupported(t *testing.T) {
 		`select x, (select x+y from bar where x = z limit 1) from foo`,
 	}
 	for i := range tests {
-		s, err := partiql.Parse([]byte(tests[i]))
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = Build(s, nil)
-		if err == nil {
-			t.Errorf("didn't error on query %s", tests[i])
-			continue
-		}
-		var cerr *CompileError
-		if !errors.As(err, &cerr) {
-			t.Errorf("couldn't convert %T to a CompileError", err)
-			continue
-		}
-		var txt strings.Builder
-		cerr.WriteTo(&txt)
-		t.Log(txt.String())
+		query := tests[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			s, err := partiql.Parse([]byte(query))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = Build(s, nil)
+			if err == nil {
+				t.Errorf("didn't error on query %s", query)
+				return
+			}
+			t.Log(err)
+			var cerr *CompileError
+			if !errors.As(err, &cerr) {
+				t.Errorf("couldn't convert %T to a CompileError", err)
+				return
+			}
+			var txt strings.Builder
+			cerr.WriteTo(&txt)
+			t.Log(txt.String())
+		})
 	}
 }
