@@ -212,7 +212,6 @@ const (
 	sbk  // base+predicate tuple
 	smk  // mem+predicate tuple
 	svk
-	sintk
 	sfloatk
 	sstrk
 
@@ -825,7 +824,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// associated with a different not-missing mask
 	// (generally they do not lead to any code being emitted)
 	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, emit: emittuple2regs},
-	sintk:   {text: "intk", rettype: stInt, argtypes: []ssatype{stInt, stBool}, emit: emittuple2regs},
 	sstrk:   {text: "strk", rettype: stString, argtypes: []ssatype{stString, stBool}, emit: emittuple2regs},
 	svk:     {text: "vk", rettype: stValue, argtypes: []ssatype{stValue, stBool}, emit: emittuple2regs},
 
@@ -1680,11 +1678,6 @@ func (p *prog) vk(v, k *value) *value {
 // float+K tuple
 func (p *prog) floatk(f, k *value) *value {
 	return p.ssa2(sfloatk, f, k)
-}
-
-// int+K tuple
-func (p *prog) intk(f, k *value) *value {
-	return p.ssa2(sintk, f, k)
 }
 
 // RowsMasked constructs a (base value, predicate) tuple
