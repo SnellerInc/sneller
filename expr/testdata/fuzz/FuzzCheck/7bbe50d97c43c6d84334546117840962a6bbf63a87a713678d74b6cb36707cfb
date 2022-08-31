@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("seleCt CoAlesCe((CoAlesCe(A)))<0")

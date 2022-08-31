@@ -16,6 +16,7 @@ package expr
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -849,6 +850,13 @@ func (r *Rational) setfield(name string, st *ion.Symtab, body []byte) error {
 	return nil
 }
 
+func sign(f float64) int {
+	if math.Signbit(f) {
+		return -1
+	}
+	return 1
+}
+
 func (r *Rational) Equals(e Node) bool {
 	er, ok := e.(*Rational)
 	if ok {
@@ -857,7 +865,10 @@ func (r *Rational) Equals(e Node) bool {
 	ef, ok := e.(Float)
 	if ok {
 		f, ok := (*big.Rat)(r).Float64()
-		return ok && f == float64(ef)
+		if !ok && math.IsInf(f, 0) && math.IsInf(float64(ef), sign(f)) {
+			return true
+		}
+		return math.Abs(f-float64(ef)) < 1e-16
 	}
 	if (*big.Rat)(r).IsInt() {
 		ei, ok := e.(Integer)

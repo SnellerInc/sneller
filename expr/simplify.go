@@ -540,29 +540,26 @@ func constmath(op ArithOp, left, right *big.Rat) Node {
 		a := roundBigRat(left, roundTruncOp).Num().Int64()
 		b := roundBigRat(right, roundTruncOp).Num().Int64()
 
-		if b > 63 {
+		if b > 63 || b < 0 {
 			return (*Rational)(out.SetInt64(0))
 		}
 		return (*Rational)(out.SetInt64(a << b))
-
 	case ShiftRightArithmeticOp:
 		a := roundBigRat(left, roundTruncOp).Num().Int64()
 		b := roundBigRat(right, roundTruncOp).Num().Int64()
 
-		if b > 63 {
+		if b > 63 || b < 0 {
 			return (*Rational)(out.SetInt64(a >> 63))
 		}
 		return (*Rational)(out.SetInt64(a >> b))
-
 	case ShiftRightLogicalOp:
 		a := roundBigRat(left, roundTruncOp).Num().Int64()
 		b := roundBigRat(right, roundTruncOp).Num().Int64()
 
-		if b > 63 {
+		if b > 63 || b < 0 {
 			return (*Rational)(out.SetInt64(0))
 		}
 		return (*Rational)(out.SetInt64(int64(uint64(a) >> b)))
-
 	default:
 		panic("???")
 	}

@@ -88,6 +88,11 @@ func FuzzCheck(f *testing.F) {
 		}
 		q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
 
+		// sometimes the next Check succeeds; sometimes it doesn't.
+		// simplification may often expose type errors that we couldn't
+		// discern before the simplification
+		expr.Check(q.Body)
+
 		// test encode doesn't panic,
 		// and decode doesn't return an error
 		var buf ion.Buffer

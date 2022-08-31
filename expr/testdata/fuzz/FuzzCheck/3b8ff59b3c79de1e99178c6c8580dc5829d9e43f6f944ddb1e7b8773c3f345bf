@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SELECT DATEZADD(DAY,0,UTCNOW())")

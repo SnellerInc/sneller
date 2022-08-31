@@ -20,6 +20,7 @@ import (
 	"io"
 	"math/big"
 	"strconv"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
@@ -57,7 +58,7 @@ func (s *scanner) utcnow() *expr.Timestamp {
 		return faketime
 	}
 	if s.now == nil {
-		s.now = &expr.Timestamp{Value: date.Now()}
+		s.now = &expr.Timestamp{Value: date.Now().Truncate(time.Microsecond)}
 	}
 	return s.now
 }
@@ -437,6 +438,7 @@ func (s *scanner) lexIon(l *yySymType) int {
 		s.err = fmt.Errorf("couldn't parse ion literal %q", s.from[s.pos:s.pos+end])
 		return ERROR
 	}
+	t = t.Truncate(time.Microsecond)
 	s.pos = s.pos + end + 2
 	l.expr = &expr.Timestamp{Value: t}
 	return ION
