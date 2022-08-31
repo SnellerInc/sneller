@@ -827,13 +827,6 @@ func (b *bytecode) ensureVStackSize(size int) {
 	}
 }
 
-// Makes sure that the hash stack size is at least `size` (in bytes).
-func (b *bytecode) ensureHStackSize(size int) {
-	if b.hstacksize < size {
-		b.hstacksize = size
-	}
-}
-
 // Allocates all stacks that are needed to execute the bytecode program.
 func (b *bytecode) allocStacks() {
 	vSize := (b.vstacksize + 7) >> 3

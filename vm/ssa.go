@@ -5146,13 +5146,6 @@ func (c *compilestate) opu16u32(v *value, op bcop, imm0 uint16, imm1 uint32) {
 	c.asm.emitImmU32(imm1)
 }
 
-func (c *compilestate) opu16u64(v *value, op bcop, imm0 uint16, imm1 uint64) {
-	checkImmediateBeforeEmit2(op, 2, 8)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU16(imm0)
-	c.asm.emitImmU64(imm1)
-}
-
 func (c *compilestate) opu32u32(v *value, op bcop, imm0 uint32, imm1 uint32) {
 	checkImmediateBeforeEmit2(op, 4, 4)
 	c.asm.emitOpcode(op)
@@ -5178,10 +5171,6 @@ func (c *compilestate) ops16u16(v *value, op bcop, imm0 stackslot, imm1 uint16) 
 
 func (c *compilestate) ops16u32(v *value, op bcop, imm0 stackslot, imm1 uint32) {
 	c.opu16u32(v, op, uint16(imm0), imm1)
-}
-
-func (c *compilestate) ops16u64(v *value, op bcop, imm0 stackslot, imm1 uint64) {
-	c.opu16u64(v, op, uint16(imm0), imm1)
 }
 
 func (c *compilestate) opu16s16(v *value, op bcop, imm0 uint16, imm1 stackslot) {

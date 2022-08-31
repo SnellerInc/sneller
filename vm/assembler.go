@@ -22,10 +22,6 @@ type assembler struct {
 	code []byte
 }
 
-func (a *assembler) getCode() []byte {
-	return a.code
-}
-
 func (a *assembler) grabCode() []byte {
 	r := a.code
 	a.code = nil
