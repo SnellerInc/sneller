@@ -1,0 +1,54 @@
+SELECT
+  EVERY(a) AS every_a,
+  EVERY(b) AS every_b,
+  EVERY(c) AS every_c
+FROM
+  input
+---
+{}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{}
+{}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true, "b": false, "c": false}
+{"a": true, "b": true, "c": false}
+{"a": true}
+{"a": true}
+{"b": false}
+{"b": true}
+{"c": false}
+{"c": false}
+---
+{"every_a": true, "every_b": false, "every_c": false}

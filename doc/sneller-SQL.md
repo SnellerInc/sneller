@@ -588,11 +588,13 @@ evaluating `expr` for each row. If `expr` never evaluates to a number,
 produced by evaluating `expr` for each row. If `expr` never evaluates
 to a number, `BIT_XOR(expr)` yields `NULL`.
 
-### `BOOL_AND`
+### `BOOL_AND` and `EVERY`
 
 `BOOL_AND(expr)` computes bitwise AND of all results produced by
 evaluating `expr` for each row coerced to a boolean type. If `expr`
 never evaluates to a boolean, `BOOL_AND(expr)` yields `NULL`.
+
+`EVERY(expr)` is an alias of `BOOL_AND(expr)`.
 
 ### `BOOL_OR`
 

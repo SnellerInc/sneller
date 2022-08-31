@@ -111,6 +111,7 @@ func init() {
 		{"MAX", int(expr.OpMax)},
 		{"EARLIEST", int(expr.OpEarliest)},
 		{"LATEST", int(expr.OpLatest)},
+		{"EVERY", int(expr.OpBoolAnd)},
 		{"BOOL_AND", int(expr.OpBoolAnd)},
 		{"BOOL_OR", int(expr.OpBoolOr)},
 		{"AVG", int(expr.OpAvg)},
