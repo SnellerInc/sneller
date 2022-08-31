@@ -1564,57 +1564,31 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		}
 	case expr.IntegerType:
 		switch from.primary() {
+		case stBool:
+			// true/false/missing -> 1/0/missing
+			return p.ssa2(scvtktoi, from, p.notMissing(from)), nil
 		case stInt:
 			return from, nil
 		case stFloat:
 			return p.ssa2(sroundi, from, p.mask(from)), nil
 		case stValue:
-			// parse int   -> int
-			//       float -> int
-			//       bool  -> int
-			// and merge the masks
-			istrue := p.IsTrue(from)
-			isbool := p.checkTag(from, expr.BoolType)
-			vi := p.ssa2(scvtktoi, istrue, isbool)
-			k := p.mask(vi)
-			vi = p.ssa3(stoint, vi, from, p.nand(k, p.mask(from)))
-			k = p.Or(k, vi)
-			vf := p.ssa3(stofloat, vi, from, p.nand(k, p.mask(from)))
-			v := p.ssa2(sroundi, vf, vf)
-			k = p.Or(k, vf)
-			return p.intk(v, k), nil
-		case stBool:
-			// true/false/missing -> 1/0/missing
-			return p.ssa2(scvtktoi, from, p.notMissing(from)), nil
+			return p.ssa2(sunboxcvti64, from, p.mask(from)), nil
 		default:
-			return nil, fmt.Errorf("unable to convert %s to an integer", c)
+			return p.ssa0(skfalse), nil
 		}
 	case expr.FloatType:
 		if from.op == sliteral {
 			return from, nil // FIXME: check that from.imm is actually numeric
 		}
 		switch from.primary() {
-		case stFloat:
-			return from, nil
-		case stInt:
-			return p.ssa2(scvtitof, from, p.mask(from)), nil
-		case stValue:
-			// parse bool  -> float
-			//       int   -> float
-			//       float -> float
-			// all simultaneously
-			istrue := p.IsTrue(from)
-			isbool := p.checkTag(from, expr.BoolType)
-			s := p.ssa2(scvtktof, istrue, isbool)
-			k := p.mask(s)
-			s = p.ssa3(stoint, s, from, p.nand(k, p.ValidLanes()))
-			s = p.ssa2(scvtitof, s, s)
-			k = p.Or(k, s)
-			s = p.ssa3(stofloat, s, from, p.nand(k, p.ValidLanes()))
-			k = p.Or(k, s)
-			return p.floatk(s, k), nil
 		case stBool:
 			return p.ssa2(scvtktof, from, p.notMissing(from)), nil
+		case stInt:
+			return p.ssa2(scvtitof, from, p.mask(from)), nil
+		case stFloat:
+			return from, nil
+		case stValue:
+			return p.ssa2(sunboxcvtf64, from, p.mask(from)), nil
 		default:
 			return p.ssa0(skfalse), nil
 		}

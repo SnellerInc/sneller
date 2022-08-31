@@ -1,6 +1,7 @@
 SELECT
-  CAST(x AS boolean) AS b
-FROM input
+  CAST(x AS BOOLEAN) AS b
+FROM
+  input
 ---
 {"x": true}
 {"x": false}
@@ -9,6 +10,16 @@ FROM input
 {"x": 0}
 {"x": -1}
 {"x": 1.5}
+{"x": true}
+{"x": false}
+{"x": null}
+{"x": -1}
+{"x": 1.5}
+{"x": true}
+{"x": false}
+{"x": null}
+{"x": true}
+{"x": false}
 ---
 {"b": true}
 {"b": false}
@@ -17,3 +28,13 @@ FROM input
 {"b": false}
 {"b": true}
 {"b": true}
+{"b": true}
+{"b": false}
+{}
+{"b": true}
+{"b": true}
+{"b": true}
+{"b": false}
+{}
+{"b": true}
+{"b": false}

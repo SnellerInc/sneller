@@ -1,8 +1,9 @@
-# test casting of floats
+# test casting of booleans and integers to floats
 SELECT
-  CAST(x AS float) AS "float",
-  CAST(x > 1.1 AS float) AS "cmp"
-FROM input
+  CAST(x AS FLOAT) AS "float",
+  CAST(x > 1.1 AS FLOAT) AS "cmp"
+FROM
+  input
 ---
 {"x": 1.5}
 {"x": 1}
@@ -10,6 +11,18 @@ FROM input
 {"x": true}
 {"x": "xyz"}
 {"x": null}
+{}
+{"x": 2.5}
+{"x": 2}
+{"x": false}
+{"x": 3.5}
+{"x": 3}
+{"x": false}
+{}
+{"x": true}
+{"x": false}
+{"x": 1.5}
+{"x": false}
 ---
 {"float": 1.5, "cmp": 1}
 {"float": 1, "cmp": 0}
@@ -17,3 +30,15 @@ FROM input
 {"float": 1}
 {}
 {}
+{}
+{"float": 2.5, "cmp": 1}
+{"float": 2, "cmp": 1}
+{"float": 0}
+{"float": 3.5, "cmp": 1}
+{"float": 3, "cmp": 1}
+{"float": 0}
+{}
+{"float": 1}
+{"float": 0}
+{"float": 1.5, "cmp": 1}
+{"float": 0}

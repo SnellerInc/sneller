@@ -9890,19 +9890,270 @@ uhoh:
 TEXT bcunboxktoi64(SB), NOSPLIT|NOFRAME, $0
   VPXORQ X4, X4, X4
   KMOVW K1, K2
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4               // Z4 <- first 4 bytes of each encoded value
-  VPANDD.BCST CONSTD_0xFF(), Z4, Z4             // Z4 <- first byte of each encoded value
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- first 4 bytes of each encoded value
+  VPANDD.BCST CONSTD_0xFF(), Z4, Z4                   // Z4 <- first byte of each encoded value
 
-  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K2  // K2 <- set to ONEs for TRUE values
-  VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1 // K1 <- set to ONEs for FALSE values
+  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K2        // K2 <- set to ONEs for TRUE values
+  VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1       // K1 <- set to ONEs for FALSE values
   VPBROADCASTQ CONSTQ_1(), Z4
 
   KSHIFTRW $8, K2, K3
-  KORW K2, K1, K1                               // Active lanes written to K1
+  KORW K2, K1, K1                                     // K1 <- active lanes written
 
-  VMOVDQA64.Z Z4, K2, Z2                        // Write 8 low BOOL values into Z2
-  VMOVDQA64.Z Z4, K3, Z3                        // Write 8 high BOOL values into Z3
+  VMOVDQA64.Z Z4, K2, Z2                              // Z2 <- bools converted to i64 (low)
+  VMOVDQA64.Z Z4, K3, Z3                              // Z3 <- bools converted to i64 (high)
 
+  NEXT()
+
+// unboxcoerce instructions unbox a numeric value and coerce it to either f64 or i64
+TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW K1, K2
+  VPXORQ X4, X4, X4
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
+
+  VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
+  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
+  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
+
+  VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
+  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
+
+  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
+  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPSUBD Z11, Z5, Z4                                  // Z4 <- ION type - 2 (this saves us some instructions / constants)
+
+  VPCMPUD $VPCMP_IMM_LE, Z11, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x2, 0x3, or 0x4 ION type
+  VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
+  VPXORQ X3, X3, X3                                   // Z3 <- zero all lanes in case there are no numbers (high)
+
+  KTESTW K1, K1
+  JZ next                                             // Skip unboxing if there are no numbers
+
+  VEXTRACTI32X8 $1, Z30, Y13
+  KMOVB K1, K3
+  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+  KSHIFTRW $8, K1, K4
+  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
+
+  VEXTRACTI32X8 $1, Z12, Y13
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z5
+  VPMOVZXDQ Y12, Z12                                  // Z12 <- (8 - L) << 3 (low)
+  VPMOVZXDQ Y13, Z13                                  // Z13 <- (8 - L) << 3 (high)
+
+  VPSHUFB Z5, Z2, Z2                                  // Z2 <- byteswapped lanes (low)
+  VPSHUFB Z5, Z3, Z3                                  // Z3 <- byteswapped lanes (high)
+
+  VPCMPEQD Z10, Z4, K1, K3                            // K3 <- negative integers (low/all)
+  VPSRLVQ Z12, Z2, Z2                                 // Z2 <- byteswapped lanes, shifted right by `(8 - L) << 3` (low)
+  KSHIFTRW $8, K3, K4                                 // K4 <- negative integers (high)
+  VPSRLVQ Z13, Z3, Z3                                 // Z3 <- byteswapped lanes, shifted right by `(8 - L) << 3` (high)
+
+  VPXORQ X10, X10, X10
+  VPSUBQ Z2, Z10, K3, Z2                              // Z2 <- negate integer if negative (low)
+  VPCMPD $VPCMP_IMM_NE, Z11, Z4, K1, K3               // K3 <- integer values (low/all)
+  VPSUBQ Z3, Z10, K4, Z3                              // Z3 <- negate integer if negative (high)
+  KSHIFTRW $8, K3, K4                                 // K4 <- integer values (high)
+
+  VCVTQQ2PD Z2, K3, Z2                                // Z2 <- final 64-bit floats (low)
+  VCVTQQ2PD Z3, K4, Z3                                // Z3 <- final 64-bit floats (high)
+
+next:
+  NEXT()
+
+TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW K1, K2
+  VPXORQ X4, X4, X4
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
+
+  VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
+  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
+  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
+
+  VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
+  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
+
+  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
+  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPSUBD Z11, Z5, Z4                                  // Z4 <- ION type - 2 (this saves us some instructions / constants)
+
+  VPCMPUD $VPCMP_IMM_LE, Z11, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x2, 0x3, or 0x4 ION type
+  VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
+  VPXORQ X3, X3, X3                                   // Z3 <- zero all lanes in case there are no numbers (high)
+
+  KTESTW K1, K1
+  JZ next                                             // Skip unboxing if there are no numbers
+
+  VEXTRACTI32X8 $1, Z30, Y13
+  KMOVB K1, K3
+  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+  KSHIFTRW $8, K1, K4
+  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
+
+  VEXTRACTI32X8 $1, Z12, Y13
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z5
+  VPMOVZXDQ Y12, Z12                                  // Z12 <- (8 - L) << 3 (low)
+  VPMOVZXDQ Y13, Z13                                  // Z13 <- (8 - L) << 3 (high)
+
+  VPSHUFB Z5, Z2, Z2                                  // Z2 <- byteswapped lanes (low)
+  VPSHUFB Z5, Z3, Z3                                  // Z3 <- byteswapped lanes (high)
+
+  VPCMPEQD Z10, Z4, K1, K3                            // K3 <- negative integers (low/all)
+  VPSRLVQ Z12, Z2, Z2                                 // Z2 <- byteswapped lanes, shifted right by `(8 - L) << 3` (low)
+  KSHIFTRW $8, K3, K4                                 // K4 <- negative integers (high)
+  VPSRLVQ Z13, Z3, Z3                                 // Z3 <- byteswapped lanes, shifted right by `(8 - L) << 3` (high)
+
+  VPXORQ X10, X10, X10
+  VPSUBQ Z2, Z10, K3, Z2                              // Z2 <- negate integer if negative (low)
+  VPCMPEQD Z11, Z4, K1, K3                            // K3 <- floating points (low/all)
+  VPSUBQ Z3, Z10, K4, Z3                              // Z3 <- negate integer if negative (high)
+  KSHIFTRW $8, K3, K4                                 // K4 <- floating points (high)
+
+  VCVTTPD2QQ Z2, K3, Z2                               // Z2 <- final 64-bit integers (low)
+  VCVTTPD2QQ Z3, K4, Z3                               // Z3 <- final 64-bit integers (high)
+
+next:
+  NEXT()
+
+// unboxcoerce instructions unbox a value that is castable to either f64 and i64
+//
+// A little trick is used to cast bool to i64/f64 - if a value type is bool, we assign
+// 0x01 to its binary representation - then if the value is false all bytes are cleared
+// (shifted out) as L field is zero; however, if L field is 1 (representing a true value)
+// then 0x01 byte would remain, which would be then kept to coerce to i64 or converted to
+// a floating point 1.0 representation.
+TEXT bcunboxcvtf64(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW K1, K2
+  VPXORQ X4, X4, X4
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
+
+  VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
+  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
+  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
+  VPADDD Z10, Z11, Z14                                // Z14 <- constant(3)
+
+  VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
+  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
+
+  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
+  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPSUBD Z10, Z5, Z4                                  // Z4 <- ION type - 1 (this saves us some instructions / constants)
+
+  VPCMPUD $VPCMP_IMM_LE, Z14, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x1, 0x2, 0x3, or 0x4 ION type
+  VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
+  VPXORQ X3, X3, X3                                   // Z3 <- zero all lanes in case there are no numbers (high)
+
+  KTESTW K1, K1
+  JZ next                                             // Skip unboxing if there are no numbers
+
+  VEXTRACTI32X8 $1, Z30, Y13
+  KMOVB K1, K3
+  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+  KSHIFTRW $8, K1, K4
+  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
+
+  VEXTRACTI32X8 $1, Z12, Y13
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z5
+  VPXORQ X15, X15, X15                                // Z15 <- constant(0)
+  VPMOVZXDQ Y12, Z12                                  // Z12 <- (8 - L) << 3 (low)
+  VPMOVZXDQ Y13, Z13                                  // Z13 <- (8 - L) << 3 (high)
+
+  VPCMPEQD Z15, Z4, K1, K3                            // K3 <- mask of bool values (low/all)
+  KSHIFTRW $8, K3, K4                                 // K4 <- mask of bool values (high)
+
+  VMOVDQA64 Z10, K3, Z2                               // Z2 <- value data fixed to have ones for bool values (low)
+  VMOVDQA64 Z10, K4, Z3                               // Z3 <- value data fixed to have ones for bool values (high)
+
+  VPSHUFB Z5, Z2, Z2                                  // Z2 <- byteswapped lanes (low)
+  VPSHUFB Z5, Z3, Z3                                  // Z3 <- byteswapped lanes (high)
+
+  VPCMPEQD Z11, Z4, K1, K3                            // K3 <- negative integers (low/all)
+  VPSRLVQ Z12, Z2, Z2                                 // Z2 <- byteswapped lanes, shifted right by `(8 - L) << 3` (low)
+  KSHIFTRW $8, K3, K4                                 // K4 <- negative integers (high)
+  VPSRLVQ Z13, Z3, Z3                                 // Z3 <- byteswapped lanes, shifted right by `(8 - L) << 3` (high)
+
+  VPSUBQ Z2, Z15, K3, Z2                              // Z2 <- negate integer if negative (low)
+  VPCMPD $VPCMP_IMM_NE, Z14, Z4, K1, K3               // K3 <- integer values (low/all)
+  VPSUBQ Z3, Z15, K4, Z3                              // Z3 <- negate integer if negative (high)
+  KSHIFTRW $8, K3, K4                                 // K4 <- integer values (high)
+
+  VCVTQQ2PD Z2, K3, Z2                                // Z2 <- final 64-bit floats (low)
+  VCVTQQ2PD Z3, K4, Z3                                // Z3 <- final 64-bit floats (high)
+
+next:
+  NEXT()
+
+TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  KMOVW K1, K2
+  VPXORQ X4, X4, X4
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
+
+  VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
+  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
+  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
+  VPADDD Z10, Z11, Z14                                // Z14 <- constant(3)
+
+  VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
+  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
+
+  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
+  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPSUBD Z10, Z5, Z4                                  // Z4 <- ION type - 1 (this saves us some instructions / constants)
+
+  VPCMPUD $VPCMP_IMM_LE, Z14, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x2, 0x3, or 0x4 ION type
+  VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
+  VPXORQ X3, X3, X3                                   // Z3 <- zero all lanes in case there are no numbers (high)
+
+  KTESTW K1, K1
+  JZ next                                             // Skip unboxing if there are no numbers
+
+  VEXTRACTI32X8 $1, Z30, Y13
+  KMOVB K1, K3
+  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+  KSHIFTRW $8, K1, K4
+  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
+
+  VEXTRACTI32X8 $1, Z12, Y13
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z5
+  VPXORQ X15, X15, X15                                // Z15 <- constant(0)
+  VPMOVZXDQ Y12, Z12                                  // Z12 <- (8 - L) << 3 (low)
+  VPMOVZXDQ Y13, Z13                                  // Z13 <- (8 - L) << 3 (high)
+
+  VPCMPEQD Z15, Z4, K1, K3                            // K3 <- mask of bool values (low/all)
+  KSHIFTRW $8, K3, K4                                 // K4 <- mask of bool values (high)
+
+  VMOVDQA64 Z10, K3, Z2                               // Z2 <- value data fixed to have ones for bool values (low)
+  VMOVDQA64 Z10, K4, Z3                               // Z3 <- value data fixed to have ones for bool values (high)
+
+  VPSHUFB Z5, Z2, Z2                                  // Z2 <- byteswapped lanes (low)
+  VPSHUFB Z5, Z3, Z3                                  // Z3 <- byteswapped lanes (high)
+
+  VPCMPEQD Z11, Z4, K1, K3                            // K3 <- negative integers (low/all)
+  VPSRLVQ Z12, Z2, Z2                                 // Z2 <- byteswapped lanes, shifted right by `(8 - L) << 3` (low)
+  KSHIFTRW $8, K3, K4                                 // K4 <- negative integers (high)
+  VPSRLVQ Z13, Z3, Z3                                 // Z3 <- byteswapped lanes, shifted right by `(8 - L) << 3` (high)
+
+  VPXORQ X10, X10, X10
+  VPSUBQ Z2, Z10, K3, Z2                              // Z2 <- negate integer if negative (low)
+  VPCMPEQD Z14, Z4, K1, K3                            // K3 <- floating points (low/all)
+  VPSUBQ Z3, Z10, K4, Z3                              // Z3 <- negate integer if negative (high)
+  KSHIFTRW $8, K3, K4                                 // K4 <- floating points (high)
+
+  VCVTTPD2QQ Z2, K3, Z2                               // Z2 <- final 64-bit integers (low)
+  VCVTTPD2QQ Z3, K4, Z3                               // Z3 <- final 64-bit integers (high)
+
+next:
   NEXT()
 
 // unpack (Z30:Z31).K1 into Z2|Z3 when integers

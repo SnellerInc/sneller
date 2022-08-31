@@ -53,6 +53,10 @@ const (
 	sxnor             // mask = (mask0 ^ ^mask1) (equal bits)
 
 	sunboxktoi // val = unboxktoi(v)
+	sunboxcoercei64
+	sunboxcoercef64
+	sunboxcvti64
+	sunboxcvtf64
 
 	// comparison ops
 	scmpv
@@ -616,7 +620,11 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sxor:        {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxork},
 	sxnor:       {text: "xnor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxnork},
 
-	sunboxktoi: {text: "unbox.k@i", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
+	sunboxktoi:      {text: "unbox.k@i", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
+	sunboxcoercef64: {text: "unboxcoerce.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcoercef64},
+	sunboxcoercei64: {text: "unboxcoerce.i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcoercei64},
+	sunboxcvtf64:    {text: "unboxcvt.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcvtf64},
+	sunboxcvti64:    {text: "unboxcvt.i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcvti64},
 
 	// two-operand comparison ops
 	scmpv:       {text: "cmpv", argtypes: value2Args, rettype: stInt | stBool, bc: opcmpv, emit: emitauto2},
@@ -2169,24 +2177,24 @@ func (p *prog) coerceBool(arg *value) (*value, *value) {
 
 // coerce a value to floating point,
 // taking care to promote integers appropriately
-func (p *prog) coercefp(arg *value) (*value, *value) {
-	if arg.op == sliteral {
-		return p.ssa0imm(sbroadcastf, arg.imm), p.ValidLanes()
+func (p *prog) coercefp(v *value) (*value, *value) {
+	if v.op == sliteral {
+		return p.ssa0imm(sbroadcastf, v.imm), p.ValidLanes()
 	}
-	if arg.primary() == stFloat {
-		return arg, p.mask(arg)
+	switch v.primary() {
+	case stFloat:
+		return v, p.mask(v)
+	case stInt:
+		ret := p.ssa2(scvtitof, v, p.mask(v))
+		return ret, p.mask(v)
+	case stValue:
+		ret := p.ssa2(sunboxcoercef64, v, p.mask(v))
+		return ret, p.mask(ret)
+	default:
+		err := p.val()
+		err.errf("cannot convert %s to a floating point", v)
+		return err, err
 	}
-	if arg.primary() == stInt {
-		ret := p.ssa2(scvtitof, arg, p.mask(arg))
-		return ret, p.mask(arg)
-	}
-	// TODO: emit slightly less optimized code here
-	// so that CSE could choose to hoist either the
-	// float or integer conversion ops here...
-	easy := p.ssa3(stofloat, p.undef(), arg, p.mask(arg))
-	intv := p.ssa3(stoint, easy, arg, p.ssa2(snand, easy, p.mask(arg)))
-	conv := p.ssa2(scvtitof, intv, intv)
-	return conv, p.Or(conv, easy)
 }
 
 // coerceInt coerces a value to integer

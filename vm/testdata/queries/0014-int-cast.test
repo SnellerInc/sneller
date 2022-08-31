@@ -1,8 +1,9 @@
-# test casting of booleans
+# test casting of booleans and floats to integers
 SELECT
   CAST(b AS INTEGER) AS "int",
   CAST(b > 0 AS INTEGER) AS "cmp"
-FROM input
+FROM
+  input
 ---
 {"b": true}
 {"b": false}
@@ -10,7 +11,17 @@ FROM input
 {"b": 0}
 {"b": 1}
 {"b": 1.7}
+{"b": 22.7}
 {"b": "foo"}
+{}
+{"b": true}
+{"b": false}
+{"b": true}
+{"b": null}
+{"b": 0}
+{"b": 22.99}
+{"b": 123456.7}
+{"b": 1}
 ---
 {"int": 1}
 {"int": 0}
@@ -18,4 +29,14 @@ FROM input
 {"int": 0, "cmp": 0}
 {"int": 1, "cmp": 1}
 {"int": 1, "cmp": 1}
+{"int": 22, "cmp": 1}
 {}
+{}
+{"int": 1}
+{"int": 0}
+{"int": 1}
+{}
+{"int": 0, "cmp": 0}
+{"int": 22, "cmp": 1}
+{"int": 123456, "cmp": 1}
+{"int": 1, "cmp": 1}

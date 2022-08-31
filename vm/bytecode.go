@@ -426,10 +426,13 @@ var opinfo = [_maxbcop]bcopinfo{
 	opblendrevv:     {text: "blendrev.v", imms: bcImmsS16, flags: bcReadK | bcReadWriteV},
 
 	// Unboxing instructions:
-	//   - current scalar = coerce(current value, type)
-	opunboxktoi64: {text: "unboxktoi64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	optoint:       {text: "toint", flags: bcReadWriteK | bcWriteS | bcReadV},
-	optof64:       {text: "tof64", flags: bcWriteS | bcReadV},
+	opunboxktoi64:    {text: "unboxktoi64", flags: bcReadWriteK | bcWriteS | bcReadV},
+	opunboxcoercef64: {text: "unboxcoerce.f64", flags: bcReadWriteK | bcWriteS | bcReadV},
+	opunboxcoercei64: {text: "unboxcoerce.i64", flags: bcReadWriteK | bcWriteS | bcReadV},
+	opunboxcvtf64:    {text: "unboxcvt.f64", flags: bcReadWriteK | bcWriteS | bcReadV},
+	opunboxcvti64:    {text: "unboxcvt.i64", flags: bcReadWriteK | bcWriteS | bcReadV},
+	optoint:          {text: "toint", flags: bcReadWriteK | bcWriteS | bcReadV},
+	optof64:          {text: "tof64", flags: bcWriteS | bcReadV},
 	// unpack a slice type (string/array/timestamp/etc.)
 	opunpack: {text: "unpack", imms: []bcImmType{bcImmU8Hex}, flags: bcReadWriteK | bcWriteS | bcReadV},
 
