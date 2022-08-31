@@ -280,6 +280,7 @@ func TestParseGarbage(t *testing.T) {
 		"select CAST(x AS notatype) from y",
 		"select a[1E100] from y",
 		"seleCt CoAlesC%(CoAlesC%(A[10000000000000000000]))",
+		"select DATEZADD(HOUR,0,UTCNOW())",
 	}
 	for i := range queries {
 		_, err := Parse([]byte(queries[i]))

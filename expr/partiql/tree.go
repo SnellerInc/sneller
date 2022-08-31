@@ -159,10 +159,10 @@ func charcode(b byte) (uint64, bool) {
 		return uint64(b-'A') + 1, true
 	}
 	if b == '_' {
-		return uint64(26), true
+		return uint64(27), true
 	}
-	if b >= '0' && b <= '4' {
-		return uint64(b-'0') + 27, true
+	if b >= '0' && b <= '3' {
+		return uint64(b-'0') + 28, true
 	}
 	return 0, false
 }
