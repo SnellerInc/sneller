@@ -18,33 +18,59 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 
 	"github.com/SnellerInc/sneller/vm"
 )
 
+// totalInputs returns the total number of
+// inputs in the entire tree.
+func (t *Tree) totalInputs() int {
+	return len(t.Inputs) + t.Root.totalInputs()
+}
+
+func (n *Node) totalInputs() int {
+	sum := len(n.Inputs)
+	for i := range n.Children {
+		sum += n.Children[i].totalInputs()
+	}
+	return sum
+}
+
 func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
-	e := mkexec(ep, t.Inputs)
+	parallel := ep.Parallel
+	if parallel <= 0 {
+		parallel = runtime.NumCPU()
+	}
+	if n := t.totalInputs(); n <= 0 {
+		parallel = 1
+	} else if n < parallel {
+		parallel = n
+	}
+	p := mkpool(parallel)
+	defer close(p)
+	e := mkexec(p, ep, t.Inputs)
 	if err := e.add(dst, &t.Root); err != nil {
 		return err
 	}
 	return e.run()
 }
 
-func (n *Node) subexec(ep *ExecParams) error {
+func (n *Node) subexec(p pool, ep *ExecParams) error {
 	if len(n.Children) == 0 {
 		return nil
 	}
-	e := mkexec(ep, n.Inputs)
+	e := mkexec(p, ep, n.Inputs)
 	rp := make([]replacement, len(n.Children))
 	var wg sync.WaitGroup
 	wg.Add(len(n.Children))
 	errors := make([]error, len(n.Children))
 	for i := range n.Children {
-		go func(i int) {
+		e.pool.do(i, func(i int) {
 			errors[i] = e.add(&rp[i], n.Children[i])
 			wg.Done()
-		}(i)
+		})
 	}
 	wg.Wait()
 	if err := appenderrs(nil, errors); err != nil {
@@ -66,6 +92,7 @@ type task struct {
 }
 
 type executor struct {
+	pool   pool
 	ep     *ExecParams
 	inputs []Input
 	subp   int
@@ -74,8 +101,9 @@ type executor struct {
 	lock   sync.Mutex
 }
 
-func mkexec(ep *ExecParams, inputs []Input) *executor {
+func mkexec(p pool, ep *ExecParams, inputs []Input) *executor {
 	e := &executor{
+		pool:   p,
 		ep:     ep,
 		inputs: inputs,
 		subp:   1,
@@ -91,7 +119,7 @@ func mkexec(ep *ExecParams, inputs []Input) *executor {
 }
 
 func (e *executor) add(dst vm.QuerySink, n *Node) error {
-	if err := n.subexec(e.ep); err != nil {
+	if err := n.subexec(e.pool, e.ep); err != nil {
 		return err
 	}
 	in, sink, err := n.Op.wrap(dst, e.ep)
@@ -134,12 +162,12 @@ func (e *executor) run() error {
 			wg.Done()
 			continue
 		}
-		go func(i int) {
+		e.pool.do(i, func(i int) {
 			t := &e.tasks[i]
 			errors[i] = e.runtask(t)
 			e.ep.Stats.observe(t.input)
 			wg.Done()
-		}(i)
+		})
 	}
 	wg.Wait()
 	err := appenderrs(nil, errors)
@@ -159,4 +187,33 @@ func (e *executor) runtask(t *task) error {
 		err = nil
 	}
 	return err
+}
+
+// pool is a work queue for a goroutine pool.
+// Closing the pool cleans up the goroutines.
+type pool chan struct {
+	i int
+	f func(int)
+}
+
+func mkpool(parallel int) pool {
+	if parallel <= 0 {
+		panic("mkpool: size out of range")
+	}
+	ch := make(pool, parallel)
+	for i := 0; i < parallel; i++ {
+		go func() {
+			for t := range ch {
+				t.f(t.i)
+			}
+		}()
+	}
+	return ch
+}
+
+func (p pool) do(i int, f func(int)) {
+	p <- struct {
+		i int
+		f func(int)
+	}{i, f}
 }
