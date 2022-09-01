@@ -1276,7 +1276,7 @@ where Make in (
 			query: `SELECT Color, APPROX_COUNT_DISTINCT(Make) FROM 'parking.10n' GROUP BY Color ORDER BY Color LIMIT 5`,
 			expectedRows: []string{
 				`{"Color": "BG", "count": 2}`,
-				`{"Color": "BK", "count": 37}`,
+				`{"Color": "BK", "count": 36}`,
 				`{"Color": "BL", "count": 24}`,
 				`{"Color": "BN", "count": 4}`,
 				`{"Color": "BR", "count": 3}`,

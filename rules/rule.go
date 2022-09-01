@@ -135,7 +135,7 @@ func (t *Term) String() string {
 	return t.Name + ":" + t.Value.String()
 }
 
-// Value is one of List or String
+// Value is one of List, String, Int, or Float
 type Value interface {
 	String() string
 }
@@ -164,6 +164,16 @@ type String string
 // you want to use the raw string value.
 func (s String) String() string { return strconv.Quote(string(s)) }
 
+// Int is a literal integer
+type Int int64
+
+// Float is a literal float
+type Float float64
+
+func (i Int) String() string { return strconv.FormatInt(int64(i), 10) }
+
+func (f Float) String() string { return strconv.FormatFloat(float64(f), 'g', -1, 64) }
+
 func equal(x, y Value) bool {
 	if l, ok := x.(List); ok {
 		if l2, ok := y.(List); ok {
@@ -173,8 +183,8 @@ func equal(x, y Value) bool {
 		}
 		return false
 	}
-	// should be String, which can
-	// be compared directly with ==
+	// should be String, Int, or Float,
+	// so we can use == for equality
 	return x == y
 }
 

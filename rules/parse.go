@@ -20,7 +20,20 @@ import (
 	"os"
 	"strconv"
 	"text/scanner"
+	"unicode"
 )
+
+func isIdent(ch rune, i int) bool {
+	if unicode.IsLetter(ch) || ch == '_' {
+		return true
+	}
+	if i == 0 {
+		return false // only allow letters or '_' in the leading position
+	}
+	// allow some non-Go identifier characters
+	// as long as they aren't the first character:
+	return ch == '.' || ch == '!' || ch == '@' || ch == '_' || ch == '-' || unicode.IsNumber(ch)
+}
 
 // Parse parses a list of rules from a file.
 func Parse(r io.Reader) ([]Rule, error) {
@@ -32,6 +45,8 @@ func Parse(r io.Reader) ([]Rule, error) {
 		}
 	}
 	s := new(scanner.Scanner)
+	s.Mode = scanner.ScanIdents | scanner.ScanFloats | scanner.ScanInts | scanner.ScanStrings | scanner.ScanRawStrings | scanner.ScanComments | scanner.SkipComments
+	s.IsIdentRune = isIdent
 	s = s.Init(r)
 	if f, ok := r.(*os.File); ok {
 		s.Position.Filename = f.Name()
@@ -140,6 +155,18 @@ func (p *parser) value() Value {
 		return unquote(p.src.TokenText())
 	case '(':
 		return p.list()
+	case scanner.Float:
+		f, err := strconv.ParseFloat(p.src.TokenText(), 64)
+		if err != nil {
+			p.src.Error(p.src, err.Error())
+		}
+		return Float(f)
+	case scanner.Int:
+		i, err := strconv.ParseInt(p.src.TokenText(), 0, 64)
+		if err != nil {
+			p.src.Error(p.src, err.Error())
+		}
+		return Int(i)
 	default:
 		p.src.Error(p.src, "unexpected token "+scanner.TokenString(r)+" "+p.src.TokenText())
 		return nil
@@ -181,8 +208,20 @@ func (p *parser) term() Term {
 			v = p.value()
 		}
 		return Term{Name: name, Value: v, Location: pos}
+	case scanner.Float:
+		f, err := strconv.ParseFloat(p.src.TokenText(), 64)
+		if err != nil {
+			p.src.Error(p.src, err.Error())
+		}
+		return Term{Value: Float(f), Location: p.src.Pos()}
+	case scanner.Int:
+		i, err := strconv.ParseInt(p.src.TokenText(), 0, 64)
+		if err != nil {
+			p.src.Error(p.src, err.Error())
+		}
+		return Term{Value: Int(i), Location: p.src.Pos()}
 	default:
-		p.src.Error(p.src, "unexpected token "+scanner.TokenString(r))
+		p.src.Error(p.src, "unexpected token "+scanner.TokenString(r)+" "+p.src.TokenText())
 	}
 	return Term{}
 }

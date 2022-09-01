@@ -26,6 +26,15 @@ func TestParse(t *testing.T) {
 		want []Rule
 	}{
 		{
+			text: `(rx:"^x.*y$" foo 0) -> foo`,
+			want: []Rule{
+				{
+					From: []Value{List{{Name: "rx", Value: String("^x.*y$")}, {Name: "foo"}, {Value: Int(0)}}},
+					To:   Term{Name: "foo"},
+				},
+			},
+		},
+		{
 			text: ` // some comment text
 (x y), "isOkay()" -> z
 (x y:("z")) -> (bar baz)

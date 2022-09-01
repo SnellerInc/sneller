@@ -1,0 +1,98 @@
+// logical rules:
+(and.k (init) x) -> x
+(and.k x (init)) -> x
+(and.k _ f:(false)) -> f
+(and.k f:(false) _) -> f
+(and.k x x) -> x
+
+(or.k t:(init) _) -> t
+(or.k _ t:(init)) -> t
+(or.k (false) x) -> x
+(or.k x (false)) -> x
+(or.k x x) -> x
+
+(nand.k x x) -> (false)
+(nand.k _ f:(false)) -> f
+(nand.k t:(init) _) -> (false)
+(nand.k (false) x) -> x
+
+// x ^ x -> false
+(xor.k x x) -> (false)
+// TRUE ^ x -> !x
+(xor.k x t:(init)) -> (nand.k x t)
+(xor.k t:(init) x) -> (nand.k x t)
+(xor.k x (false)) -> x
+(xor.k (false) x) -> x
+
+// x == x -> true
+(xnor.k x x) -> (init)
+// x == true -> x
+(xnor.k f (init)) -> f
+(xnor.k (init) f) -> f
+// x == false -> !x
+(xnor.k f (false)) -> (nand.k f (init))
+(xnor.k (false) f) -> (nand.k f (init))
+
+// identity tuple simplifications
+(vk val k), `p.mask(v) == k` -> val
+(floatk f k), `p.mask(f) == k` -> f
+
+// trivial conversion
+// (the use sites should have picked up
+// the mask argument if they need it)
+(cvt.k@i (init)  _) -> (broadcast.i 1)
+(cvt.k@i (false) _) -> (broadcast.i 0)
+(cvt.k@f (init)  _) -> (broadcast.f 1.0)
+(cvt.k@f (false) _) -> (broadcast.f 0.0)
+
+(cvt.i@k (broadcast.i imm) k) -> (and.k "p.choose(imm != 0)" k)
+
+// fold in float immediates
+(add.f f (broadcast.f imm) k) -> (add.imm.f f k imm)
+(add.f (broadcast.f imm) f k) -> (add.imm.f f k imm)
+(sub.f f (broadcast.f imm) k) -> (sub.imm.f f k imm)
+(sub.f (broadcast.f imm) f k) -> (rsub.imm.f f k imm)
+(mul.f f (broadcast.f imm) k) -> (mul.imm.f f k imm)
+(mul.f (broadcast.f imm) f k) -> (mul.imm.f f k imm)
+(div.f f (broadcast.f imm) k) -> (div.imm.f f k imm)
+(div.f (broadcast.f imm) f k) -> (rdiv.imm.f f k imm)
+
+// x == x, x <= x, x >= x -> true
+("^cmp(eq|le|ge)\\.(i|f)$" x x k) -> k
+
+// identity fp math (uses should already be aware of mask)
+("^(add|sub).imm.f$" f _ 0.0) -> f
+(mul.imm.f f _ 1.0) -> f
+(rsub.imm.f f k 0.0) -> (neg.f f k)
+// identity integer math
+(mul.imm.i i _ 1) -> i
+(rsub.imm.i i k 0) -> (neg.i i k)
+("^(add|sub|or|srl|sra|sll).imm.i$" i _ 0) -> i
+
+// aggregates with the empty mask produce
+// no interesting side-effects:
+("^agg(and|or|sum|min|max|xor).*" mem _ (false) _) -> mem
+(aggcount mem (false) _) -> mem
+("^aggslot(and|or|sum|min|max|xor).*" mem _ _ (false) _) -> mem
+(aggslotcount mem _ (false) _) -> mem
+("^aggslotapprox.*" mem _ _ (false) _) -> mem
+("^aggapprox.*" mem (false) _) -> mem
+
+// some basic string concat simplification
+(concat2.str x (literal "") k), `p.mask(x) == k` -> x
+(concat3.str x y (literal "") k) -> (concat2.str x y k)
+(concat3.str (literal "") x y k) -> (concat2.str x y k)
+(concat3.str x (literal "") y k) -> (concat2.str x y k)
+(concat4.str x y z (literal "") k) -> (concat3.str x y z k)
+(concat2.str x (concat2.str y z _) k1) -> (concat3.str x y z k1)
+(concat2.str (concat2.str x y _) z k1) -> (concat3.str x y z k1)
+
+// trivial mergemem reduction
+(mergemem x) -> x
+
+// blend simplifications
+("^blend.*" _ y (init)) -> y
+("^blend.*" x _ (false)) -> x
+
+// make a store with k=false not depend on the input value
+(store.z mem ov k:(false) slot), "ov != k" -> (store.z mem k k slot)

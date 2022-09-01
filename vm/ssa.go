@@ -563,7 +563,15 @@ type ssaopinfo struct {
 	// when emitted as code
 	immfmt immfmt
 
-	blend bool // equivalent to args[0] when mask arg is false
+	// disjunctive must be set if an op
+	// can produce meaningful results when
+	// its canonical mask argument (the last argument) is false;
+	// examples include blends, OR, XOR, etc.
+	//
+	// *most* ops that yield a mask are conjunctive
+	// (i.e. they yield a mask that has no bits set that
+	// weren't already set in the input)
+	disjunctive bool
 }
 
 func (o *ssaopinfo) argType(index int) ssatype {
@@ -659,10 +667,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sbroadcastk: {text: "broadcast.k", rettype: stBool},
 	skfalse:     {text: "false", rettype: stValue | stBool, emit: emitfalse},
 	sand:        {text: "and.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opandk},
-	snand:       {text: "nand.k", argtypes: argsBoolBool, rettype: stBool, emit: emitnand, bc: opnandk},
-	sor:         {text: "or.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opork},
-	sxor:        {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxork},
-	sxnor:       {text: "xnor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxnork},
+	snand:       {text: "nand.k", argtypes: argsBoolBool, rettype: stBool, emit: emitnand, bc: opnandk, disjunctive: true},
+	sor:         {text: "or.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opork, disjunctive: true},
+	sxor:        {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxork, disjunctive: true},
+	sxnor:       {text: "xnor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxnork, disjunctive: true},
 
 	sunboxktoi:      {text: "unbox.k@i", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
 	sunboxcoercef64: {text: "unboxcoerce.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcoercef64},
@@ -841,7 +849,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
 
 	// store value m, v, k, $slot
-	sstorev:    {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
+	sstorev:    {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtslot, emit: emitstorev, priority: prioMem},
 	sloadv:     {text: "load.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadzerov, priority: prioParse},
 	sloadvperm: {text: "load.perm.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadpermzerov, priority: prioParse},
 
@@ -865,10 +873,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, emit: emittuple2regs},
 	svk:     {text: "vk", rettype: stValue, argtypes: []ssatype{stValue, stBool}, emit: emittuple2regs},
 
-	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv, blend: true},
-	sblendint:   {text: "blendint", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opblendnum, emit: emitblends, blend: true},
-	sblendstr:   {text: "blendstr", rettype: stString, argtypes: []ssatype{stString, stString, stBool}, bc: opblendslice, emit: emitblends, blend: true},
-	sblendfloat: {text: "blendfloat", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opblendnum, emit: emitblends, blend: true},
+	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv, disjunctive: true},
+	sblendint:   {text: "blendint", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opblendnum, emit: emitblends, disjunctive: true},
+	sblendstr:   {text: "blendstr", rettype: stString, argtypes: []ssatype{stString, stString, stBool}, bc: opblendslice, emit: emitblends, disjunctive: true},
+	sblendfloat: {text: "blendfloat", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opblendnum, emit: emitblends, disjunctive: true},
 
 	// compare timestamp against immediate
 	sltconsttm: {text: "ltconsttm", argtypes: time1Args, rettype: stBool, immfmt: fmtother, bc: optimelt, emit: emitcmptm, inverse: sgtconsttm},
@@ -1337,6 +1345,14 @@ func (p *prog) ValidLanes() *value {
 	return p.values[0]
 }
 
+// helper for simplification rules
+func (p *prog) choose(yes bool) *value {
+	if yes {
+		return p.values[0]
+	}
+	return p.ssa0(skfalse)
+}
+
 func (p *prog) ssa0(op ssaop) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
@@ -1545,11 +1561,30 @@ func (p *prog) ssa5(op ssaop, arg0, arg1, arg2, arg3, arg4 *value) *value {
 	return v
 }
 
+// overwrite a value with new opcode + args, etc.
+func (p *prog) setssa(v *value, op ssaop, imm interface{}, args ...*value) *value {
+	v.notMissing = nil
+	v.op = op
+	v.args = shrink(v.args, len(args))
+	copy(v.args, args)
+	for i := range args {
+		v.checkarg(args[i], i)
+	}
+	if imm == nil {
+		v.imm = nil
+	} else {
+		v.setimm(imm)
+	}
+	return v
+}
+
 func (p *prog) ssaimm(op ssaop, imm interface{}, args ...*value) *value {
 	v := p.val()
 	v.op = op
 	v.args = args
-	v.setimm(imm)
+	if imm != nil {
+		v.setimm(imm)
+	}
 	for i := range args {
 		v.checkarg(args[i], i)
 	}
@@ -3986,8 +4021,12 @@ func (p *prog) AggregateSlotCount(mem, bucket, mask *value, offset aggregateslot
 }
 
 func (p *prog) aggregateSlotApproxCountDistinct(op ssaop, mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+	k := p.mask(argv)
+	if mask != nil {
+		k = p.And(k, mask)
+	}
 	h := p.hash(argv)
-	return p.ssa4imm(op, mem, bucket, h, mask, (uint64(offset)<<8)|uint64(precision))
+	return p.ssa4imm(op, mem, bucket, h, k, (uint64(offset)<<8)|uint64(precision))
 }
 
 func (p *prog) AggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
@@ -4533,183 +4572,6 @@ func (p *prog) androtate(v, left, right *value, tr tree, pi *proginfo) *value {
 	return nil
 }
 
-// perform a series of boolean reductions
-// so that we simplify expressions that
-// depend on values we have determined
-// to be constantly false
-func (p *prog) falseprop(pi *proginfo) {
-	var rewrite []*value
-	opt := true
-	for opt {
-		opt = false
-		// walking in order means we always examine
-		// values before their uses, so every argument
-		// to each instruction should be rewritten by
-		// the time we get to it...
-		ord := p.order(pi)
-		for i := range ord {
-			v := ord[i]
-			if rewrite != nil {
-				for j, arg := range v.args {
-					for rewrite[arg.id] != nil {
-						v.args[j] = rewrite[arg.id]
-						arg = v.args[j]
-						opt = true
-					}
-				}
-			}
-
-			switch v.op {
-			case sand:
-				// x AND false -> false,
-				// false AND x -> false
-				if v.args[0].op == skfalse || v.args[1].op == skfalse {
-					v.op = skfalse
-					v.args = nil
-					v.imm = nil
-					opt = true
-				} else if v.args[0].op == sinit {
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					// TRUE AND x -> x
-					rewrite[v.id] = v.args[1]
-					opt = true
-				} else if v.args[1].op == sinit {
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					// x AND TRUE -> x
-					rewrite[v.id] = v.args[0]
-					opt = true
-				}
-			case sor:
-				if v.args[0].op == skfalse {
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[1]
-					opt = true
-				} else if v.args[1].op == skfalse {
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[0]
-					opt = true
-				}
-			case sxor:
-				// x ^ x = false
-				if v.args[0] == v.args[1] {
-					v.op = skfalse
-					v.args = nil
-					opt = true
-				} else if v.args[0].op == sinit {
-					// true ^ x -> !x
-					v.op = snand
-					v.args[0], v.args[1] = v.args[1], v.args[0]
-					opt = true
-				} else if v.args[1].op == sinit {
-					// x ^ true -> !x
-					v.op = snand
-					opt = true
-				} else if v.args[0].op == skfalse {
-					// x ^ false -> x
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[1]
-					opt = true
-				} else if v.args[1].op == skfalse {
-					// false ^ x -> x
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[0]
-					opt = true
-				}
-			case sxnor:
-				if v.args[0] == v.args[1] {
-					// x xnor x -> true
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = p.values[0] // sinit = true
-					opt = true
-				} else if v.args[0].op == sinit {
-					// true xnor x -> x
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[1]
-					opt = true
-				} else if v.args[1].op == sinit {
-					// x xnor true -> x
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[0]
-					opt = true
-				} else if v.args[0].op == skfalse {
-					// false xnor x -> !x
-					v.op = snand
-					v.args[0] = v.args[1]
-					v.args[1] = p.values[0] // sinit
-					opt = true
-				} else if v.args[1].op == skfalse {
-					// x xnor false -> !x
-					v.op = snand
-					v.args[1] = p.values[0]
-					opt = true
-				}
-			case snand:
-				if v.args[0] == v.args[1] {
-					v.op = skfalse
-					v.args = nil
-					opt = true
-					break
-				}
-				// nand false v -> v
-				if v.args[0].op == skfalse {
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[1]
-					break
-				}
-				fallthrough
-			default:
-				m := v.maskarg()
-				if m != nil && m.op == sinit && ssainfo[v.op].blend {
-					if rewrite == nil {
-						rewrite = make([]*value, len(p.values))
-					}
-					rewrite[v.id] = v.args[1]
-				}
-				if m != nil && m.op == skfalse &&
-					ssainfo[v.op].rettype&stMem == 0 {
-					if ssainfo[v.op].blend {
-						if rewrite == nil {
-							rewrite = make([]*value, len(p.values))
-						}
-						rewrite[v.id] = v.args[0]
-					} else {
-						v.op = skfalse
-						v.args = nil
-						v.imm = nil
-						opt = true
-					}
-				}
-			}
-		}
-		if opt {
-			pi.invalidate()
-			if rewrite != nil && rewrite[p.ret.id] != nil {
-				p.ret = rewrite[p.ret.id]
-			}
-		}
-	}
-}
-
 func (p *prog) anyDepends(pi *proginfo, any []*value, val *value) bool {
 	for i := range any {
 		if p.depends(pi, any[i], val) {
@@ -4921,24 +4783,15 @@ func (p *prog) GraphvizDomtree(pi *proginfo, dst io.Writer) {
 // optimize the program and set
 // p.values to the values in program order
 func (p *prog) optimize() {
-	// Two renumbering passes here;
-	// each effectively acts as dead
-	// code elimination
 	var pi proginfo
-	order := p.order(&pi)
-	for i := range order {
-		order[i].id = i
-	}
-	// p.exprs is invalidated if we re-number
-	p.exprs = nil
-	p.values = p.values[:copy(p.values, order)]
 	// optimization passes
-	p.falseprop(&pi)
+	p.simplify(&pi)
+	p.exprs = nil // invalidated in ordersyms
 	p.ordersyms(&pi)
 	p.andprop(&pi)
 
 	// final dead code elimination and scheduling
-	order = p.finalorder(p.order(&pi), p.numbering(&pi))
+	order := p.finalorder(p.order(&pi), p.numbering(&pi))
 	for i := range order {
 		order[i].id = i
 	}
@@ -6753,19 +6606,6 @@ func (p *prog) clone(dst *prog) {
 // MaxSymbolID is the largest symbol ID
 // supported by the system.
 const MaxSymbolID = (1 << 21) - 1
-
-// Renumber performs some simple dead-code elimination
-// and re-orders and re-numbers each value in prog.
-//
-// Renumber must be called before prog.Symbolize.
-func (p *prog) Renumber() {
-	var pi proginfo
-	ord := p.order(&pi)
-	for i := range ord {
-		ord[i].id = i
-	}
-	p.values = ord
-}
 
 // Symbolize applies the symbol table from 'st'
 // to the program by copying the old program

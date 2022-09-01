@@ -37,7 +37,6 @@ func NewFilter(e expr.Node, rest QuerySink) (*Filter, error) {
 	if err != nil {
 		return nil, err
 	}
-	prog.Renumber()
 	return where(prog, rest), nil
 }
 
