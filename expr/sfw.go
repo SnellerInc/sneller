@@ -525,9 +525,9 @@ func EncodeBindings(bind []Binding, dst *ion.Buffer, st *ion.Symtab) {
 		dst.BeginStruct(-1)
 		dst.BeginField(st.Intern("expr"))
 		bind[i].Expr.Encode(dst, st)
-		if res := bind[i].Result(); res != "" {
+		if bind[i].Explicit() {
 			dst.BeginField(st.Intern("bind"))
-			dst.WriteString(res)
+			dst.WriteString(bind[i].Result())
 		}
 		dst.EndStruct()
 	}

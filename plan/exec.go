@@ -68,8 +68,8 @@ func (n *Node) subexec(p pool, ep *ExecParams) error {
 	errors := make([]error, len(n.Children))
 	for i := range n.Children {
 		e.pool.do(i, func(i int) {
+			defer wg.Done()
 			errors[i] = e.add(&rp[i], n.Children[i])
-			wg.Done()
 		})
 	}
 	wg.Wait()
@@ -143,6 +143,9 @@ func (e *executor) add(dst vm.QuerySink, n *Node) error {
 		if e.ep.Rewrite != nil {
 			_, handle = e.ep.Rewrite(e.inputs[in].Table, handle)
 		}
+		if handle == nil {
+			return fmt.Errorf("nil table handle")
+		}
 		tbl, err := handle.Open(e.ep.Context)
 		if err != nil {
 			return err
@@ -163,10 +166,10 @@ func (e *executor) run() error {
 			continue
 		}
 		e.pool.do(i, func(i int) {
+			defer wg.Done()
 			t := &e.tasks[i]
 			errors[i] = e.runtask(t)
 			e.ep.Stats.observe(t.input)
-			wg.Done()
 		})
 	}
 	wg.Wait()
