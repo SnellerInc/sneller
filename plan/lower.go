@@ -346,11 +346,111 @@ func (i *input) stat(env Env) (TableHandle, error) {
 	return th, nil
 }
 
+// conjunctions returns the list of top-level
+// conjunctions from a logical expression
+// by appending the results to 'lst'
+//
+// this is used for predicate pushdown so that
+//
+//	<a> AND <b> AND <c>
+//
+// can be split and evaluated as early as possible
+// in the query-processing pipeline
+func conjunctions(e expr.Node, lst []expr.Node) []expr.Node {
+	a, ok := e.(*expr.Logical)
+	if !ok || a.Op != expr.OpAnd {
+		return append(lst, e)
+	}
+	return conjunctions(a.Left, conjunctions(a.Right, lst))
+}
+
+func conjoin(x []expr.Node) expr.Node {
+	o := x[0]
+	rest := x[1:]
+	for _, n := range rest {
+		o = expr.And(o, n)
+	}
+	return o
+}
+
+func isTimestamp(e expr.Node) bool {
+	_, ok := e.(*expr.Timestamp)
+	return ok
+}
+
+// canRemoveHint should return true if it
+// is "safe" (i.e. likely to be profitable)
+// to remove a hint from an input
+//
+// right now we avoid removing any expressions
+// that contain timestamp comparisons
+// (or logical compositions thereof)
+func canRemoveHint(e expr.Node) bool {
+	l, ok := e.(*expr.Logical)
+	if ok {
+		return canRemoveHint(l.Left) && canRemoveHint(l.Right)
+	}
+	cmp, ok := e.(*expr.Comparison)
+	if !ok {
+		return true
+	}
+	return !(isTimestamp(cmp.Left) || isTimestamp(cmp.Right))
+}
+
+func mergeFilterHint(x, y *input) bool {
+	var xconj, yconj []expr.Node
+	if x.hints.Filter != nil {
+		xconj = conjunctions(x.hints.Filter, nil)
+	}
+	if y.hints.Filter != nil {
+		yconj = conjunctions(y.hints.Filter, nil)
+	}
+	var overlap []expr.Node
+	i := 0
+outer:
+	for ; i < len(xconj) && len(yconj) > 0; i++ {
+		v := xconj[i]
+		for j := range yconj {
+			if expr.Equivalent(yconj[j], v) {
+				yconj[j], yconj = yconj[len(yconj)-1], yconj[:len(yconj)-1]
+				xconj[i], xconj = xconj[len(xconj)-1], xconj[:len(xconj)-1]
+				overlap = append(overlap, v)
+				i--
+				continue outer
+			}
+		}
+		// not part of an overlap, so
+		// make sure we are allowed to
+		// eliminate this hint
+		if !canRemoveHint(v) {
+			return false
+		}
+	}
+	for _, v := range xconj[i:] {
+		if !canRemoveHint(v) {
+			return false
+		}
+	}
+	// make sure any remaining rhs values
+	// can be safely eliminated as well
+	for _, v := range yconj {
+		if !canRemoveHint(v) {
+			return false
+		}
+	}
+	if len(overlap) > 0 {
+		x.hints.Filter = conjoin(overlap)
+	} else {
+		x.hints.Filter = nil
+	}
+	return true
+}
+
 func (i *input) merge(in *input) bool {
-	if !i.table.Equals(in.table) {
+	if !i.table.Expr.Equals(in.table.Expr) {
 		return false
 	}
-	if !expr.Equal(i.hints.Filter, in.hints.Filter) {
+	if !mergeFilterHint(i, in) {
 		return false
 	}
 	i.handle = nil
