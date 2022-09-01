@@ -610,36 +610,62 @@ func (f *FileTree) sync(fn syncfn) error {
 	if !f.root.isDirty {
 		return nil
 	}
+	// launch all of the uploads asynchronously
+	// and then wait for all of them to complete
 	return f.root.syncInner(fn)
 }
 
 func (f *level) syncInner(fn syncfn) error {
-	var st ion.Symtab
-	var buf ion.Buffer
-	for i := range f.levels {
-		t := &f.levels[i]
-		if !t.isDirty {
-			continue
-		}
-		// recurse if this is an inner node
+	var wg sync.WaitGroup
+	errc := make(chan error, 1)
+
+	dosync := func(t *level) {
+		defer wg.Done()
 		if t.isInner {
+			// we cannot compress this node
+			// until all its children have
+			// been assigned pathnames + etags
 			err := t.syncInner(fn)
 			if err != nil {
-				return err
+				errc <- err
+				return
 			}
 		}
+		var st ion.Symtab
+		var buf ion.Buffer
 		contents := t.compress(&buf, &st)
 		path, etag, err := fn(string(t.path), contents)
 		if err != nil {
-			return err
+			errc <- err
+			return
 		}
 		// we can set path and ditch oldpath
 		t.path = []byte(path)
 		t.etag = []byte(etag)
 		t.isDirty = false
+		errc <- nil
 	}
-	f.isDirty = false
-	return nil
+	for i := range f.levels {
+		t := &f.levels[i]
+		if !t.isDirty {
+			continue
+		}
+		wg.Add(1)
+		go dosync(t)
+	}
+	go func() {
+		wg.Wait()
+		close(errc)
+	}()
+	// take the first error:
+	var err error
+	for e := range errc {
+		if e != nil && err == nil {
+			err = e
+		}
+	}
+	f.isDirty = err == nil
+	return err
 }
 
 func (f *FileTree) encode(dst *ion.Buffer, st *ion.Symtab) {
