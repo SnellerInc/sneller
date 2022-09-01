@@ -444,19 +444,6 @@ func simplifyIsSubnetOf(h Hint, args []Node) Node {
 	return nil
 }
 
-func reduce(nodes []Node, binop func(n1, n2 Node) Node) Node {
-	if len(nodes) == 1 {
-		return nodes[0]
-	}
-
-	top := binop(nodes[0], nodes[1])
-	for i := 2; i < len(nodes); i++ {
-		top = binop(top, nodes[i])
-	}
-
-	return top
-}
-
 func checkTrim(h Hint, args []Node) error {
 	switch len(args) {
 	case 2:
@@ -649,46 +636,6 @@ func simplifyObjectSize(h Hint, args []Node) (result Node) {
 	}
 
 	return nil
-}
-
-// Flattens all CONCATs into the output array of nodes with literals joined and empty strings removed
-func flattenConcatRecurse(output []Node, args []Node) []Node {
-	for _, node := range args {
-		if fn, ok := node.(*Builtin); ok && fn.Func == Concat {
-			output = flattenConcatRecurse(output, fn.Args)
-			continue
-		}
-
-		if str, ok := node.(String); ok {
-			// Remove empty strings
-			if str == "" {
-				continue
-			}
-
-			if len(output) > 0 {
-				if prevStr, prevIsString := output[len(output)-1].(String); prevIsString {
-					output[len(output)-1] = prevStr + str
-					continue
-				}
-			}
-		}
-
-		output = append(output, node)
-	}
-
-	return output
-}
-
-func flattenConcat(args []Node) []Node {
-	output := flattenConcatRecurse(make([]Node, 0, len(args)), args)
-
-	// If all strings were "" there would be no string in the output node list
-	// as we have eliminated them all - so add an empty string in such case.
-	if len(output) == 0 {
-		output = append(output, String(""))
-	}
-
-	return output
 }
 
 func checkTableGlob(h Hint, args []Node) error {

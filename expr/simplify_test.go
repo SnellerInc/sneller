@@ -823,6 +823,10 @@ func TestSimplify(t *testing.T) {
 			CallOp(TypeBit, Float(3.5)),
 			Integer(JSONTypeBits(ion.FloatType)),
 		},
+		{
+			Is(Count(path("c")), IsNotMissing),
+			Bool(true),
+		},
 	}
 
 	for i := range testcases {

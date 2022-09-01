@@ -37,7 +37,7 @@ func TestParse(t *testing.T) {
 							{Name: "x"},
 							{Name: "y"},
 						},
-						String("\"isOkay()\""),
+						String("isOkay()"),
 					},
 					To: Term{Name: "z"},
 				},
@@ -45,7 +45,7 @@ func TestParse(t *testing.T) {
 					From: []Value{
 						List{
 							{Name: "x"},
-							{Name: "y", Value: List{{Value: String("\"z\"")}}},
+							{Name: "y", Value: List{{Value: String("z")}}},
 						},
 					},
 					To: Term{

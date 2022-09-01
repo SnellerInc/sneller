@@ -31,10 +31,11 @@ func simplify(b *Trace) {
 	log := expr.LogicSimplifier(b)
 
 	fn := func(e expr.Node, logic bool) expr.Node {
+		e = expr.Rewrite(reg, e)
 		if logic {
 			return expr.Rewrite(log, e)
 		}
-		return expr.Rewrite(reg, e)
+		return e
 	}
 	for s := b.top; s != nil; s = s.parent() {
 		s.rewrite(fn)
