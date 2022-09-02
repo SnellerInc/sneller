@@ -386,27 +386,80 @@ var ErrETagChanged = errors.New("FileTree: ETag changed")
 // Currently, Prefetch only fetches "down" one
 // level of the tree structure.
 func (f *FileTree) Prefetch(input []Input) {
-	var wg sync.WaitGroup
-	fetching := make([]bool, len(f.root.levels))
+	if len(f.root.levels) == 0 {
+		return // empty tree; nothing to do
+	}
+	lst := make([]string, len(input))
 	for i := range input {
-		name := input[i].Path
-		pos := sort.Search(len(f.root.levels), func(i int) bool {
+		lst[i] = input[i].Path
+	}
+	slices.Sort(lst)
+	f.root.prefetchInner(f.Backing, lst)
+}
+
+func (f *level) prefetchInner(src UploadFS, lst []string) {
+	var wg sync.WaitGroup
+	// we sub-divide the sorted input list
+	// into groups that correspond to sub-trees
+	// and then dispatch those recursively
+	type group struct {
+		pos    int // level position
+		lstpos int // input name list position
+	}
+	var groups []group
+	for j, name := range lst {
+		pos := sort.Search(len(f.levels), func(i int) bool {
 			// find the lowest toplevel entry w/
 			// path <= largest path
-			return bytes.Compare([]byte(name), f.root.levels[i].last) <= 0
+			return bytes.Compare([]byte(name), f.levels[i].last) <= 0
 		})
-		if pos < len(f.root.levels) && !fetching[pos] &&
-			f.root.levels[pos].contents == nil && f.root.levels[pos].levels == nil {
-			ent := &f.root.levels[pos]
-			wg.Add(1)
-			fetching[pos] = true
-			go func() {
-				defer wg.Done()
-				ent.load(f.Backing)
-			}()
+		if pos == len(f.levels) {
+			pos--
+		}
+		// list should be sorted, so see if we
+		// sorted into the previous group
+		if len(groups) > 0 && groups[len(groups)-1].pos == pos {
+			continue
+		}
+		// sanity check: input list should be sorted
+		if len(groups) > 0 && pos < groups[len(groups)-1].pos {
+			panic("pos out-of-order")
+		}
+		// collect groups for all non-populated entries
+		if pos < len(f.levels) {
+			groups = append(groups, group{
+				pos:    pos,
+				lstpos: j,
+			})
 		}
 	}
+	for i, grp := range groups {
+		start := grp.lstpos
+		end := len(lst)
+		if i < len(groups)-1 {
+			end = groups[i+1].lstpos
+		}
+		names := lst[start:end]
+		ent := &f.levels[grp.pos]
+		if ent.contents != nil || ent.levels != nil {
+			continue // level already present
+		}
+		wg.Add(1)
+		go func(lst []string) {
+			defer wg.Done()
+			ent.prefetch(src, lst)
+		}(names)
+	}
 	wg.Wait()
+}
+
+func (f *level) prefetch(src UploadFS, paths []string) {
+	if f.load(src) != nil {
+		return
+	}
+	if f.isInner {
+		f.prefetchInner(src, paths)
+	}
 }
 
 // Append assigns an ID to a path and etag.

@@ -24,6 +24,9 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 func checkLevel(t *testing.T, fs UploadFS, f *level, load, dirtyok bool) {
@@ -134,15 +137,22 @@ func TestFiletreeInsert(t *testing.T) {
 
 	nextpath := 0
 	var synclock sync.Mutex
+	livefiles := 0
+	maxsize := 0
 	sync := func(old string, buf []byte) (path, etag string, err error) {
 		synclock.Lock()
 		defer synclock.Unlock()
 		if old != "" {
 			f.Backing.(*DirFS).Remove(old)
+			livefiles--
 		}
 		name := fmt.Sprintf("orig/out-file-%d", nextpath)
 		ret, err := f.Backing.WriteFile(name, buf)
 		nextpath++
+		livefiles++
+		if livefiles > maxsize {
+			maxsize = livefiles
+		}
 		return name, ret, err
 	}
 
@@ -229,6 +239,7 @@ func TestFiletreeInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("%d files live; %d max", livefiles, maxsize)
 
 	// test for garbage; the state of f should
 	// precisely match the set of files that
@@ -341,6 +352,146 @@ func TestFiletreeOverwrite(t *testing.T) {
 	}
 
 	checkTree(t, &f, true)
+}
+
+func TestFiletreeShrink(t *testing.T) {
+
+	lowsplit(t, 1000)
+	const inserts = 5000
+	triple := func() (string, string, int) {
+		n := rand.Intn(inserts / 2) // 50% likelihood of collision
+		name := fmt.Sprintf("data/random-name-%d", n)
+		etag := fmt.Sprintf("etag-%d", rand.Intn(2)+n)
+		return name, etag, n
+	}
+	type inserted struct {
+		etag string
+		desc int
+	}
+	dir := NewDirFS(t.TempDir())
+
+	sofar := make(map[string]inserted)
+	f := FileTree{
+		Backing: dir,
+	}
+
+	nextpath := 0
+	var synclock sync.Mutex
+	livefiles := 0
+	maxsize := 0
+	totalout := 0
+	sync := func(old string, buf []byte) (path, etag string, err error) {
+		synclock.Lock()
+		defer synclock.Unlock()
+		if old != "" {
+			f.Backing.(*DirFS).Remove(old)
+			livefiles--
+		}
+		name := fmt.Sprintf("orig/out-file-%d", nextpath)
+		ret, err := f.Backing.WriteFile(name, buf)
+		nextpath++
+		livefiles++
+		totalout++
+		if livefiles > maxsize {
+			maxsize = livefiles
+		}
+		return name, ret, err
+	}
+
+	var tmpbuf ion.Buffer
+	var tmpst ion.Symtab
+
+	var appended, overwritten int
+	var resyncs int
+	for i := 0; i < inserts; i++ {
+		if i == 4000 {
+			lowsplit(t, 100)
+		}
+		if i%123 == 0 {
+			checkTree(t, &f, false)
+			resyncs++
+			// evict everything
+			// and let it get paged back in
+			// incrementally
+			err := f.sync(sync)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tmpbuf.Set(nil) // should not alias previous iteration
+			tmpst.Reset()
+			f.encode(&tmpbuf, &tmpst)
+			f.Reset()
+			err = f.decode(&tmpst, tmpbuf.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("%d files live; %d max; %d total written", livefiles, maxsize, totalout)
+			checkTree(t, &f, false)
+		}
+		path, etag, desc := triple()
+		ret, err := f.Append(path, etag, desc)
+		if err != nil {
+			overwritten++
+			if err != ErrETagChanged {
+				t.Fatal(err)
+			}
+			// should be old path with different etag
+			sf, ok := sofar[path]
+			if !ok {
+				t.Fatalf("got overwrite, but %q not yet written", path)
+			}
+			if sf.etag == etag {
+				t.Fatalf("etag %q matches; it should have changed", etag)
+			}
+			continue
+		}
+		if ret {
+			if !f.root.isDirty {
+				t.Fatalf("root !dirty after insert (appended=%d)", appended)
+			}
+			appended++
+			_, ok := sofar[path]
+			if ok {
+				t.Fatalf("got append with path %q even though we have inserted it already!", path)
+			}
+			sofar[path] = inserted{etag, desc}
+		} else {
+			// should be old path with same etag
+			sf, ok := sofar[path]
+			if !ok {
+				t.Fatalf("got !append for %q but not yet inserted?", path)
+			}
+			if sf.etag != etag {
+				t.Fatalf("got !append with non-matching etags %q, %q", sf.etag, etag)
+			}
+		}
+	}
+	err := f.sync(sync)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpbuf.Set(nil) // should not alias previous iteration
+	tmpst.Reset()
+	f.encode(&tmpbuf, &tmpst)
+	f.Reset()
+	err = f.decode(&tmpst, tmpbuf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%d files live; %d max; %d total written", livefiles, maxsize, totalout)
+	// prefetch elements;
+	// we should get a panic in checkTree
+	// if we try to load anything
+	keys := maps.Keys(sofar)
+	slices.Sort(keys)
+	f.root.prefetchInner(f.Backing, keys)
+
+	f.Backing = nil
+	checkTree(t, &f, true)
+
+	t.Logf("resyncs: %d", resyncs)
+	t.Logf("%d appended, %d overwritten", appended, overwritten)
+	t.Logf("%d files live; %d max; %d total written", livefiles, maxsize, totalout)
 }
 
 func BenchmarkFiletree(b *testing.B) {
