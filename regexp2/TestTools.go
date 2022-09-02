@@ -65,7 +65,7 @@ func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) Dat
 		//Internal error when compiling regex
 		return result
 	}
-	if err = IsSupported(expr); err != nil {
+	if IsSupported(expr) != nil {
 		return result
 	}
 	result.RegexSupported = true

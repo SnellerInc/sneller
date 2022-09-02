@@ -46,22 +46,19 @@ func NewDsTiny(store *DFAStore) (*DsTiny, error) {
 			stateID++
 		}
 	}
-	{
-		symbolRanges := newSet[symbolRangeT]()
-		for _, node := range store.data {
-			for _, edge := range node.edges {
-				if edge.epsilon() {
-					return nil, fmt.Errorf("illegal epsilon edge in DFA")
-				} else {
-					symbolRanges.insert(edge.symbolRange.clearRLZA())
-				}
+	symbolRanges := newSet[symbolRangeT]()
+	for _, node := range store.data {
+		for _, edge := range node.edges {
+			if edge.epsilon() {
+				return nil, fmt.Errorf("illegal epsilon edge in DFA")
 			}
+			symbolRanges.insert(edge.symbolRange.clearRLZA())
 		}
-		charGroupID := 1 // NOTE charGroupID = 0 is reserved for non-matching characters
-		for charGroup := range symbolRanges {
-			result.charGroupMap.insert(charGroup, charGroupID)
-			charGroupID++
-		}
+	}
+	charGroupID := 1 // NOTE charGroupID = 0 is reserved for non-matching characters
+	for charGroup := range symbolRanges {
+		result.charGroupMap.insert(charGroup, charGroupID)
+		charGroupID++
 	}
 	return result, nil
 }
@@ -207,26 +204,27 @@ func (d *DsTiny) DataWithGraphviz(writeDot bool, nBits int, rlza bool) ([]byte, 
 	if d.Store.StartRLZA {
 		//NOTE: although it should be possible to handle RLZA in tiny implementations, there are issues
 		//(that need fixes) thus (for the time being) handle these regexes with large implementations
-		return make([]byte, 0), false, nil
+		return []byte{}, false, nil
 	}
 	nNodes := d.Store.NumberOfNodes()
 	if nNodes > 64 {
-		return make([]byte, 0), false, nil
+		return []byte{}, false, nil
 	}
 
 	nCharGroups := d.NumberOfGroups()
 	nBitsCharGroup := nBitsNeeded(nCharGroups)
 	nBitsNodes := nBitsNeeded(nNodes)
 
+	// I know this is 'quoted code' but I need it EVERY time this code needs debugging!
 	//log.Printf("08d5b39d: nBitsCharGroup=%v (nCharGroups=%v); nBitsNodes=%v; (nNodes=%v)", nBitsCharGroup, nCharGroups, nBitsNodes, nNodes)
 
 	if rlza {
 		if (nBitsCharGroup + nBitsNodes + 1) > nBits { // plus 1 for the RLZA bit part of state
-			return make([]byte, 0), false, nil
+			return []byte{}, false, nil
 		}
 	} else {
 		if (nBitsCharGroup + nBitsNodes) > nBits {
-			return make([]byte, 0), false, nil
+			return []byte{}, false, nil
 		}
 	}
 
@@ -269,6 +267,8 @@ func (d *DsTiny) DataWithGraphviz(writeDot bool, nBits int, rlza bool) ([]byte, 
 			if writeDot {
 				dot.addEdgeInt(fromID, fromID, fmt.Sprintf("%v:%v", 0, ""))
 			}
+			addTrans2Ds(fromID, 0, false, fromID, nBitsNodes, nBits, &data)
+
 			for symbolRange, charGroupID := range d.charGroupMap {
 				if writeDot {
 					dot.addEdgeInt(fromID, fromID, fmt.Sprintf("%v:%v", charGroupID, symbolRange))
