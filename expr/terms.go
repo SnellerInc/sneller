@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"text/scanner"
 	"unicode"
 
@@ -245,7 +244,8 @@ var (
 	classConst            *opclass
 	classNull             *opclass
 
-	op2class map[string]*opclass
+	op2class   map[string]*opclass
+	op2builtin map[string]string
 )
 
 func init() {
@@ -376,6 +376,21 @@ func init() {
 
 		"null":    classNull,
 		"missing": classNull,
+	}
+
+	// name => BuiltinOp
+	op2builtin = map[string]string{
+		"char_length": "CharLength",
+		"concat":      "Concat",
+		"lower":       "Lower",
+		"upper":       "Upper",
+		"trim":        "Trim",
+		"rtrim":       "Rtrim",
+		"ltrim":       "Ltrim",
+		"substring":   "Substring",
+		"contains":    "Contains",
+		"contains_ci": "ContainsCI",
+		"equals_ci":   "EqualsCI",
 	}
 }
 
@@ -545,7 +560,11 @@ func isKeyCons(c *opclass, op string, args []rules.Term) {
 }
 
 func builtinCons(c *opclass, op string, args []rules.Term) {
-	fmt.Fprintf(stdout, "Call(%q", strings.ToUpper(op))
+	enum, ok := op2builtin[op]
+	if !ok {
+		panic(fmt.Sprintf("function %q is not know; upgrade op2builtin lookup", op))
+	}
+	fmt.Fprintf(stdout, "CallOp(%s", enum)
 	for i := range args {
 		fmt.Fprintf(stdout, ", ")
 		emitCons(&args[i])
@@ -579,7 +598,7 @@ type rule struct {
 
 // group rules by name, then by argument count
 func orderRules(rules []rule) {
-	slices.SortFunc(rules, func(x, y rule) bool {
+	slices.SortStableFunc(rules, func(x, y rule) bool {
 		if x.op == y.op {
 			return len(x.args) < len(y.args)
 		}
