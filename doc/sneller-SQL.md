@@ -538,10 +538,7 @@ FROM table
 results produced by evaluating `expr` for each row.
 
 Current limitations: `COUNT(DISTINCT expr)` is not allowed
-to occur alongside any other aggregation expressions in
-a `SELECT` clause. We implement `COUNT(DISTINCT expr)`
-by rewriting the query into a compound query that uses
-`SELECT DISTINCT` and `COUNT`.
+to occur inside a `GROUP BY` query.
 
 #### `MIN` and `MAX`
 
@@ -685,7 +682,7 @@ using Unicode "Simple Case Folding" rules.)
 The `IN` operator matches a value against a list of values.
 
 For example:
-```
+```sql
 SELECT * FROM table WHERE val IN (3, 'foo', NULL)
 ```
 The query above returns all the rows in `table`
@@ -950,9 +947,9 @@ The `ROUND_EVEN(num)` function rounds a number to the nearest integer,
 taking care to use the parity of the integer component of `num` to break
 ties when `num` is exactly halfway between two integers.
 
-```
-ROUND_EVEN(1.5) -> 2 # note: same result as ROUND()
-ROUND_EVEN(2.5) -> 2 # note: ROUND(2.5) -> 3
+```sql
+ROUND_EVEN(1.5) -> 2 -- note: same result as ROUND()
+ROUND_EVEN(2.5) -> 2 -- note: ROUND(2.5) -> 3
 ```
 
 See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
@@ -1005,8 +1002,6 @@ CEIL(-42.8) -> -42
 NOTE: `CEILING(num)` is a synonym of `CEIL(num)`.
 
 See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
-
-#### `CEILING`
 
 ### GEO Functions
 
@@ -1244,16 +1239,16 @@ respectively. Both `LTRIM` and `RTRIM` support the single- and
 two-argument forms of `TRIM`.
 
 *Known limitations: the `cutset` string must be a constant
-string of four or fewer characters.*
+string of four or fewer ASCII characters.*
 
 Examples:
-```
-# one-argument form
+```sql
+-- one-argument form
 TRIM(' xyz ') -> 'xyz'
 RTRIM(' xyz ') -> ' xyz'
 LTRIM(' xyz ') -> 'xyz '
 
-# two-argument form
+-- two-argument form
 TRIM('\r\nline\r\n', '\r\n') -> 'line'
 RTRIM('\r\nline\r\n', '\r\n') -> '\r\nline'
 LTRIM('\r\nline\r\n', '\r\n') -> 'line\r\n'
@@ -1301,9 +1296,15 @@ expression `LOWER(str) == LOWER(constant_str)`.
 
 #### `SUBSTRING`
 
-`SUBSTRING(str, start, length)` extracts a substring from
-the input string. A substring is described with the starting
-position (counted from 1) and length.
+`SUBSTRING` extracts a substring from the input string.
+The function accepts two forms:
+
+1. `SUBSTRING(str, start, length)` - substring is
+   described with the starting position (counted from 1)
+   and length.
+
+2. `SUBSTRING(str, start)` - substring is denoted
+   with the starting position and spans to the string's end.
 
 If `start` is negative or is larger than the length of `str`,
 then the result is an empty string.
@@ -1315,8 +1316,11 @@ when `length` is zero or negative.
 Examples:
 
 ```sql
+SUBSTRING('kitten', 1)      -- returns 'kitten'
+SUBSTRING('kitten', 3)      -- returns 'ten'
+
 SUBSTRING('kitten', 3, 2)   -- returns 'tt'
-SUBSTRING('kitten', 5, -1)  -- returns 'ten'
+SUBSTRING('kitten', 3, -1)  -- returns 'ten'
 SUBSTRING('kitten', -1, 20) -- returns ''
 ```
 
@@ -1351,14 +1355,14 @@ a boolean indicating if `str` is an IPv4 address that belongs
 to the subnet `cidr` in CIDR address notation.
 
 Examples:
-```
-# three-argument form
+```sql
+-- three-argument form
 IS_SUBNET_OF('128.1.2.3', '128.1.2.5', '128.1.2.3') -> TRUE
 IS_SUBNET_OF('128.1.2.3', '128.1.2.5', '128.1.2.4') -> TRUE
 IS_SUBNET_OF('128.1.2.3', '128.1.2.5', '128.1.2.5') -> TRUE
 IS_SUBNET_OF('128.1.2.3', '128.1.2.5', '128.1.2.6') -> FALSE
 
-# two-argument form
+-- two-argument form
 IS_SUBNET_OF('128.1.2.3/24', '128.1.2.4') -> TRUE
 IS_SUBNET_OF('128.1.2.3/24', '128.1.2.3') -> TRUE
 IS_SUBNET_OF('128.1.2.3/24', '128.1.3.0') -> FALSE
@@ -1433,7 +1437,7 @@ respectively.
 Path segments used as patterns will generally need to
 be enclosed in double-quotes to avoid special
 characters causing syntax errors, for example:
-```
+```sql
 SELECT * FROM TABLE_GLOB("table[0-9][0-9]")
 SELECT * FROM TABLE_PATTERN("(access|error)_logs")
 ```
@@ -1441,8 +1445,8 @@ SELECT * FROM TABLE_PATTERN("(access|error)_logs")
 within a particular database by including the database
 name as the first segment of the path argument, for
 example:
-```
-# searching within a database named "db"
+```sql
+-- searching within a database named "db"
 SELECT * FROM TABLE_GLOB(db."*_logs")
 ```
 
