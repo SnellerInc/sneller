@@ -12,8 +12,8 @@ LIMIT 10
 WITH (
 	ITERATE table FIELDS [c, v]
 	FILTER DISTINCT [v.i, c.src]
-	PROJECT v.i AS i
-	AGGREGATE COUNT(*) AS $__val BY i AS $__key
+	PROJECT v.i AS $_3_0
+	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
 ) AS REPLACEMENT(0)
 ITERATE table FIELDS [c, v]
 FILTER DISTINCT [c.dst, v.i]

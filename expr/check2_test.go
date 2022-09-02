@@ -70,6 +70,10 @@ func TestCheck2(t *testing.T) {
 			"SELECT * FROM table WHERE DATE_ADD(day, -1, timestamp) >= CAST(x AS float)",
 			"lhs and rhs.*never comparable",
 		},
+		{
+			"SELECT DATEZADD(HOUR, -1, UTCNOW())",
+			"builtin",
+		},
 	}
 	for j := range testcases {
 		i := j

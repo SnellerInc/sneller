@@ -157,40 +157,17 @@ type Table struct {
 	Binding
 }
 
-func vbind(v Visitor, x string, expr Node) {
-	sv, ok := v.(ScopedVisitor)
-	if ok {
-		sv.Bind(x, expr)
-	}
-}
-
-func rbind(r Rewriter, x string, expr Node) {
-	sv, ok := r.(ScopedVisitor)
-	if ok {
-		sv.Bind(x, expr)
-	}
-}
-
 func (t *Table) Tables() []Binding {
 	return []Binding{t.Binding}
 }
 
 func walkbind(v Visitor, b *Binding) {
 	Walk(v, b.Expr)
-	if b.as != "" {
-		vbind(v, b.as, b.Expr)
-	}
 }
 
 func rewritebind(r Rewriter, b *Binding) Binding {
-	out := Rewrite(r, b.Expr)
-	if b.as != "" {
-		rbind(r, b.as, out)
-	}
-	if out == b.Expr {
-		return *b
-	}
-	return Binding{Expr: out, as: b.as}
+	b.Expr = Rewrite(r, b.Expr)
+	return *b
 }
 
 func (t *Table) walk(v Visitor) {

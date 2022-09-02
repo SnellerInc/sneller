@@ -56,14 +56,6 @@ type Rewriter interface {
 	Walk(Node) Rewriter
 }
 
-// ScopedVisitor is an interface that
-// can be implemented by Visitor and Rewriter
-// to indicate that variable bindings should
-// be introduced when they come into scope
-type ScopedVisitor interface {
-	Bind(string, Node)
-}
-
 type nonleaf interface {
 	rewrite(r Rewriter) Node
 }
