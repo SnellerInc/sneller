@@ -17,7 +17,7 @@ package expr
 //go:generate go run terms.go -o simplify_gen.go simplify.rules
 //go:generate goimports -w .
 
-func staticSubstr(x String, i Integer) String {
+func staticSubstr(x String, i Integer, n Integer) String {
 	start := int(i) - 1
 	if start <= 0 {
 		return x
@@ -25,7 +25,19 @@ func staticSubstr(x String, i Integer) String {
 	if start >= len(x) {
 		return String("")
 	}
-	return x[start:]
+	length := int(n)
+	if length < 0 {
+		// According to the doc: "This number [length] can't be negative".
+		// But the doc does not say what exactly do in such cases.
+		return String("")
+	}
+
+	res := x[start:]
+	if length > len(res) {
+		length = len(res)
+	}
+
+	return res[:length]
 }
 
 func autoSimplify(e Node, h Hint) Node {

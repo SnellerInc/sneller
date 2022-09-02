@@ -79,7 +79,8 @@
 // SUBSTRING(s, 1) is the identity function
 // as long as s is a string or missing
 (substring s (int "1")), `TypeOf(s, h) == StringType|MissingType` -> s
-(substring (string s) (int len)) -> `staticSubstr(s, len)`
+(substring (string s) (int start)) -> `staticSubstr(s, start, 1<<21)`
+(substring (string s) (int start) (int len)) -> `staticSubstr(s, start, len)`
 
 // finally, normalize 2-argument substring to 3-argument substring
 (substring s x) -> (substring s x (int `1<<21`))
