@@ -20,10 +20,14 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -34,7 +38,7 @@ const (
 
 // QueueStatus indicates the processing
 // status of a QueueItem.
-type QueueStatus int
+type QueueStatus int32
 
 const (
 	// StatusOK indicates that a QueueItem
@@ -154,10 +158,8 @@ type QueueRunner struct {
 	IOErrDelay time.Duration
 
 	// scratch space for processing batches
-	inputs   []QueueItem
-	status   []QueueStatus
-	filtered []blockfmt.Input
-	indirect []int
+	inputs []QueueItem
+	status []QueueStatus
 }
 
 func (q *QueueRunner) max() int64 {
@@ -174,6 +176,16 @@ func (s QueueStatus) Merge(other QueueStatus) QueueStatus {
 		return s
 	}
 	return other
+}
+
+func (s *QueueStatus) atomicMerge(other QueueStatus) {
+	for {
+		got := atomic.LoadInt32((*int32)(s))
+		want := QueueStatus(got).Merge(other)
+		if got == int32(want) || atomic.CompareAndSwapInt32((*int32)(s), got, int32(want)) {
+			break
+		}
+	}
 }
 
 func errResult(err error) QueueStatus {
@@ -206,11 +218,13 @@ func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, 
 	return infs.Open(name)
 }
 
-// populate q.filtered and q.indirect
-// from q.inputs based on def.Inputs[*].Pattern
-func (q *QueueRunner) filter(bld *Builder, def *Definition) error {
-	q.filtered = q.filtered[:0]
-	q.indirect = q.indirect[:0]
+// populate dst from q.inputs based on
+// the patterns in def and the config in bld
+//
+// this is supposed to be safe to call from multiple goroutines
+func (q *QueueRunner) filter(bld *Builder, def *Definition, dst *batch) error {
+	dst.filtered = dst.filtered[:0]
+	dst.indirect = dst.indirect[:0]
 outer:
 	for i := range q.inputs {
 		p := q.inputs[i].Path()
@@ -251,8 +265,8 @@ outer:
 			if err != nil {
 				return err
 			}
-			q.indirect = append(q.indirect, i)
-			q.filtered = append(q.filtered, blockfmt.Input{
+			dst.indirect = append(dst.indirect, i)
+			dst.filtered = append(dst.filtered, blockfmt.Input{
 				Path: p,
 				ETag: etag,
 				Size: info.Size(),
@@ -265,21 +279,32 @@ outer:
 	return nil
 }
 
+type batch struct {
+	filtered []blockfmt.Input
+	indirect []int // indices into Queue.items[] for each of filtered
+}
+
 func (q *QueueRunner) runTable(db string, def *Definition) {
-	// clone the config and add features:
+	// clone the config and add features;
+	// note that runTable is invoked in separate
+	// goroutines for each table, so we need to
+	// deep-copy these structures to keep things race-free
 	conf := q.Conf
 	conf.SetFeatures(def.Features)
 
-	err := q.filter(&q.Conf, def)
-	if err == nil && len(q.filtered) > 0 {
-		err = conf.Append(q.Owner, db, def.Name, q.filtered)
+	var dst batch
+	err := q.filter(&conf, def, &dst)
+	if err == nil && len(dst.filtered) > 0 {
+		err = conf.Append(q.Owner, db, def.Name, dst.filtered)
 	}
 	if err != nil {
-		q.logf("updating %s.%s: %s", db, def.Name, err)
+		q.logf("updating %s/%s: %s", db, def.Name, err)
 	}
+
+	// atomically merge status codes back into parent
 	status := errResult(err)
-	for _, j := range q.indirect {
-		q.status[j] = q.status[j].Merge(status)
+	for _, j := range dst.indirect {
+		q.status[j].atomicMerge(status)
 	}
 }
 
@@ -370,17 +395,21 @@ readloop:
 }
 
 func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*Definition) {
-	if cap(q.status) >= len(q.inputs) {
-		q.status = q.status[:len(q.inputs)]
-		for i := range q.status {
-			q.status[i] = StatusOK
-		}
-	} else {
-		q.status = make([]QueueStatus, len(q.inputs))
+	var wg sync.WaitGroup
+	q.status = slices.Grow(q.status[:0], len(q.inputs))[:len(q.inputs)]
+	for i := range q.status {
+		q.status[i] = StatusOK
 	}
 	for dbt, def := range dst {
-		q.runTable(dbt.db, def)
+		wg.Add(1)
+		go func(db string, def *Definition) {
+			defer wg.Done()
+			q.runTable(db, def)
+		}(dbt.db, def)
 	}
+	// wait for q.status[*] to be updated (atomically!)
+	// by runTable()
+	wg.Wait()
 	for i := range q.status {
 		parent.Finalize(q.inputs[i], q.status[i])
 	}
@@ -413,6 +442,7 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
 				continue
 			}
 			def, err := DecodeDefinition(f)
+			f.Close()
 			if err != nil {
 				// don't get hung up on invalid definitions
 				continue
