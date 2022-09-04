@@ -60,6 +60,7 @@ import (
 %token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC UNPIVOT AT
 %token PARTITION
 %token VALUE
+%token LEADING TRAILING BOTH
 %right COALESCE NULLIF EXTRACT DATE_TRUNC
 %right CAST UTCNOW
 %right DATE_ADD DATE_DIFF EARLIEST LATEST
@@ -73,7 +74,7 @@ import (
 %left OR
 %left AND
 %right '!' '~' NOT
-%left BETWEEN CASE WHEN THEN ELSE END TO
+%left BETWEEN CASE WHEN THEN ELSE END TO TRIM
 %left <empty> EQ NE LT LE GT GE
 %left <empty> SIMILAR REGEXP_MATCH_CI ILIKE LIKE IN IS OVER FILTER
 %left <empty> '|'
@@ -110,6 +111,7 @@ import (
 %type <exprint> offset_expr
 %type <limbs> case_limbs
 %type <wind> maybe_window
+%type <integer> trim_type
 %start query
 
 %%
@@ -200,7 +202,7 @@ datum_or_parens
 {
   agg, err := toAggregate(expr.AggregateOp($1), $4, $3, $6, $7)
   if err != nil {
-    yylex.Error(__yyfmt__.Sprintf("%s", err))
+    yylex.Error(err.Error())
   }
   $$ = agg
 }
@@ -209,7 +211,7 @@ datum_or_parens
   distinct := false
   agg, err := toAggregate(expr.AggregateOp($1), expr.Star{}, distinct, $5, $6)
   if err != nil {
-    yylex.Error(__yyfmt__.Sprintf("%s", err))
+    yylex.Error(err.Error())
   }
   $$ = agg
 }
@@ -230,7 +232,6 @@ datum_or_parens
   nod, ok := buildCast($3, $5)
   if !ok {
     yylex.Error(__yyfmt__.Sprintf("bad CAST type %q", $5))
-    return 1
   }
   $$ = nod
 }
@@ -269,6 +270,38 @@ datum_or_parens
 | UTCNOW '(' ')'
 {
   $$ = yylex.(*scanner).utcnow()
+}
+| TRIM '(' expr ')'
+{
+  node, err := createTrimInvocation(trimBoth, $3, nil)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = node
+}
+| TRIM '(' expr ',' expr ')'
+{
+  node, err := createTrimInvocation(trimBoth, $3, $5)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = node
+}
+| TRIM '(' expr FROM expr ')'
+{
+  node, err := createTrimInvocation(trimBoth, $5, $3)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = node
+}
+| TRIM '(' trim_type expr FROM expr ')'
+{
+  node, err := createTrimInvocation($3, $6, $4)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = node
 }
 | identifier '(' ')'
 {
@@ -344,7 +377,7 @@ datum_or_parens
 }
 | expr CONCAT expr
 {
-  $$ = expr.Call("CONCAT", $1, $3)
+  $$ = expr.CallOp(expr.Concat, $1, $3)
 }
 | expr APPEND expr
 {
@@ -633,3 +666,8 @@ explicit_struct_definition:
 
 explicit_list_definition:
 '[' any_value_list ']' { $$ = expr.Call("MAKE_LIST", $2...) }
+
+trim_type:
+LEADING { $$ = trimLeading } |
+TRAILING { $$ = trimTrailing } |
+BOTH { $$ = trimBoth }

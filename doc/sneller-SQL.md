@@ -1242,8 +1242,16 @@ trim only from the left- or right-hand-side of the input string,
 respectively. Both `LTRIM` and `RTRIM` support the single- and
 two-argument forms of `TRIM`.
 
+There is also support for more verbose `TRIM` syntax available
+in other SQL engines:
+
+- `TRIM(cutset FROM str)` or `TRIM(BOTH cutset FROM str)` are both
+  equivalent to `TRIM(str, cutset)`;
+- `TRIM(LEADING cutset FROM str) is equivalent to `LTRIM(str, cutset);
+- `TRIM(TRAILING cutset FROM str) is equivalent to `RTRIM(str, cutset).
+
 *Known limitations: the `cutset` string must be a constant
-string of four or fewer ASCII characters.*
+string of one to four ASCII characters.*
 
 Examples:
 ```sql

@@ -84,6 +84,8 @@ var sameq = []string{
 	"SELECT a FROM UNPIVOT {'x': 'y'} AS a",
 	"SELECT * FROM UNPIVOT t AS a AT b",
 	`SELECT APPROX_COUNT_DISTINCT(x) FROM table`,
+	"SELECT TRIM(x) FROM table",
+	"SELECT TRIM(x, y) FROM table",
 }
 
 func TestParseSFW(t *testing.T) {
@@ -92,6 +94,7 @@ func TestParseSFW(t *testing.T) {
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			e, err := Parse([]byte(query))
 			if err != nil {
+				t.Logf("query: %s", query)
 				t.Error(err)
 				// do it again, this time with debug
 				yyDebug = 3
@@ -236,6 +239,22 @@ func TestParseNormalization(t *testing.T) {
 		{
 			"SELECT a FROM UNPIVOT t AT b AS a",
 			"SELECT a FROM UNPIVOT t AS a AT b",
+		},
+		{
+			"SELECT TRIM(x FROM y) FROM table",
+			"SELECT TRIM(y, x) FROM table",
+		},
+		{
+			"SELECT TRIM(LEADING x FROM y) FROM table",
+			"SELECT LTRIM(y, x) FROM table",
+		},
+		{
+			"SELECT TRIM(TRAILING x FROM y) FROM table",
+			"SELECT RTRIM(y, x) FROM table",
+		},
+		{
+			"SELECT TRIM(BOTH x FROM y) FROM table",
+			"SELECT TRIM(y, x) FROM table",
 		},
 	}
 

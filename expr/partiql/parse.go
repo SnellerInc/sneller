@@ -158,3 +158,32 @@ func decodeDistinct(nodes []expr.Node) (distinct bool, distinctExpr []expr.Node)
 
 	return false, nodes
 }
+
+const (
+	trimLeading = iota
+	trimTrailing
+	trimBoth
+)
+
+// createTrimInvocation creates trim/ltrim/rtrim invocation from an SQL query.
+func createTrimInvocation(trimType int, str, charset expr.Node) (expr.Node, error) {
+	op := expr.Unspecified
+	switch trimType {
+	case trimLeading:
+		op = expr.Ltrim
+	case trimTrailing:
+		op = expr.Rtrim
+	case trimBoth:
+		op = expr.Trim
+	}
+
+	if op == expr.Unspecified {
+		return nil, fmt.Errorf("value %d is not a valid trim type", trimType)
+	}
+
+	if charset != nil {
+		return expr.CallOp(op, str, charset), nil
+	}
+
+	return expr.CallOp(op, str), nil
+}

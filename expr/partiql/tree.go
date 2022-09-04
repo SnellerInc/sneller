@@ -95,6 +95,10 @@ func init() {
 		{"WITH", WITH},
 		{"FILTER", FILTER},
 		{"UNPIVOT", UNPIVOT},
+		{"TRIM", TRIM},
+		{"LEADING", LEADING},
+		{"TRAILING", TRAILING},
+		{"BOTH", BOTH},
 	} {
 		code, ok := wordcode([]byte(pair.name))
 		if !ok {
