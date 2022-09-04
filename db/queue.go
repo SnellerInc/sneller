@@ -389,6 +389,7 @@ readloop:
 				q.delay()
 				continue readloop
 			}
+			lastRefresh = time.Now()
 		}
 		q.runBatches(in, subdefs)
 	}
