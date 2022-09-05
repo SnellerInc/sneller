@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
@@ -452,25 +453,38 @@ func simplifyIsSubnetOf(h Hint, args []Node) Node {
 	return nil
 }
 
-func checkTrim(h Hint, args []Node) error {
-	switch len(args) {
-	case 2:
-		// [LR]?TRIM(cutset, str)
-		if _, ok := args[0].(String); !ok {
-			return errsyntax("TRIM-family functions require a constant string argument for cutset")
+func checkTrim(op BuiltinOp) func(Hint, []Node) error {
+	return func(h Hint, args []Node) error {
+		switch len(args) {
+		case 2:
+			// [LR]?TRIM(str, cutset)
+			if !TypeOf(args[0], h).AnyOf(StringType) {
+				return errtype(args[0], "not a string")
+			}
+			s, ok := args[1].(String)
+			if !ok {
+				return errsyntaxf("%s requires a constant string argument for cutset", op)
+			}
+
+			// Note: the constraints imposed by the current implementation
+			n := len(s)
+			if n != utf8.RuneCount([]byte(s)) {
+				return errsyntaxf("cutset must contain only ASCII chars")
+			}
+			if n < 1 || n > 4 {
+				return errsyntaxf("the length of cutset has to be from 1 to 4, it is %d", n)
+			}
+
+			return nil
+		case 1:
+			// [LR]?TRIM(str)
+			if !TypeOf(args[0], h).AnyOf(StringType) {
+				return errtype(args[0], "not a string")
+			}
+			return nil
+		default:
+			return errsyntaxf("%s functions expect 1 or 2 arguments, but found %d", op, len(args))
 		}
-		if !TypeOf(args[1], h).AnyOf(StringType) {
-			return errtype(args[1], "not a string")
-		}
-		return nil
-	case 1:
-		// [LR]?TRIM(str)
-		if !TypeOf(args[0], h).AnyOf(StringType) {
-			return errtype(args[0], "not a string")
-		}
-		return nil
-	default:
-		return errsyntaxf("TRIM-family functions expect 1 or 2 arguments, but found %d", len(args))
 	}
 }
 
@@ -773,9 +787,9 @@ var (
 
 var builtinInfo = [maxBuiltin]binfo{
 	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType},
-	Trim:       {check: checkTrim, ret: StringType | MissingType},
-	Ltrim:      {check: checkTrim, ret: StringType | MissingType},
-	Rtrim:      {check: checkTrim, ret: StringType | MissingType},
+	Trim:       {check: checkTrim(Trim), ret: StringType | MissingType},
+	Ltrim:      {check: checkTrim(Ltrim), ret: StringType | MissingType},
+	Rtrim:      {check: checkTrim(Rtrim), ret: StringType | MissingType},
 	Upper:      {check: unaryStringArgs, ret: StringType | MissingType},
 	Lower:      {check: unaryStringArgs, ret: StringType | MissingType},
 	Contains:   {check: checkContains, private: true, ret: LogicalType},

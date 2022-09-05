@@ -707,34 +707,25 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		return p.TimeBucket(arg, interval), nil
 
 	case expr.Trim, expr.Ltrim, expr.Rtrim:
+		tt := trimtype(fn)
 		if len(args) == 1 { // TRIM(arg) is a regular space (ascii 0x20) trim
 			s, err := p.compileAsString(args[0])
 			if err != nil {
 				return nil, err
 			}
-			if fn == expr.Trim {
-				return p.TrimSpace(s, true, true), nil
-			} else if fn == expr.Ltrim {
-				return p.TrimSpace(s, true, false), nil
-			} else {
-				return p.TrimSpace(s, false, true), nil
-			}
-		} else if len(args) == 2 { //TRIM("$", "$$arg) is a char trim
-			chars, ok := args[0].(expr.String)
-			if !ok {
-				return nil, fmt.Errorf("the first argument of %s should be a literal string; found %s with type %T", fn, args[0], args[0])
-			}
-			s, err := p.compileAsString(args[1])
+
+			return p.TrimSpace(s, tt), nil
+		} else if len(args) == 2 { //TRIM("$$arg", "$") is a char trim
+			s, err := p.compileAsString(args[0])
 			if err != nil {
 				return nil, err
 			}
-			if fn == expr.Trim {
-				return p.TrimChar(s, string(chars), true, true), nil
-			} else if fn == expr.Ltrim {
-				return p.TrimChar(s, string(chars), true, false), nil
-			} else {
-				return p.TrimChar(s, string(chars), false, true), nil
+			chars, ok := args[1].(expr.String)
+			if !ok {
+				return nil, fmt.Errorf("the second argument of %s has to be a literal string; found %s with type %T", fn, args[1], args[1])
 			}
+
+			return p.TrimChar(s, string(chars), tt), nil
 		} else {
 			return nil, fmt.Errorf("%s should have one or two argument, got %v", fn, len(args))
 		}

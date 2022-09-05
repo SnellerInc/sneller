@@ -396,7 +396,7 @@ var ticketsTestQueries = []struct {
 		name: "TRIM(Make) = \"HOND\"",
 		rows: 122,
 		expr: func(p *prog) *value {
-			return p.Equals(p.TrimWhitespace(p.Dot("Make", p.ValidLanes()), true, true), p.Constant("HOND"))
+			return p.Equals(p.TrimWhitespace(p.Dot("Make", p.ValidLanes()), trimBoth), p.Constant("HOND"))
 		},
 	},
 	{
@@ -410,14 +410,14 @@ var ticketsTestQueries = []struct {
 		name: "LTRIM(.ViolationDescr) LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
-			return p.HasPrefix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), true, false), "NO", true)
+			return p.HasPrefix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimLeading), "NO", true)
 		},
 	},
 	{
 		name: "RTRIM(.ViolationDescr) LIKE \"%NO\"",
 		rows: 3,
 		expr: func(p *prog) *value {
-			return p.HasSuffix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), false, true), "NO", true)
+			return p.HasSuffix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimTrailing), "NO", true)
 		},
 	},
 	{

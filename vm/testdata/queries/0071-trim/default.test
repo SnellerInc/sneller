@@ -1,0 +1,5 @@
+SELECT TRIM(s) AS trim, LTRIM(s) AS ltrim, RTRIM(s) AS rtrim FROM input
+---
+{"s": "    text   "}
+---
+{"trim": "text", "ltrim": "text   ", "rtrim": "    text"}

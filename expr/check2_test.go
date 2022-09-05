@@ -74,6 +74,66 @@ func TestCheck2(t *testing.T) {
 			"SELECT DATEZADD(HOUR, -1, UTCNOW())",
 			"builtin",
 		},
+		{
+			"SELECT TRIM(CAST(x AS TIMESTAMP))",
+			"not a string",
+		},
+		{
+			"SELECT LTRIM(CAST(x AS TIMESTAMP))",
+			"not a string",
+		},
+		{
+			"SELECT RTRIM(CAST(x AS TIMESTAMP))",
+			"not a string",
+		},
+		{
+			"SELECT TRIM(CAST(x AS FLOAT), 'XYZ')",
+			"not a string",
+		},
+		{
+			"SELECT LTRIM(CAST(x AS FLOAT), 'XYZ')",
+			"not a string",
+		},
+		{
+			"SELECT RTRIM(CAST(x AS FLOAT), 'XYZ')",
+			"not a string",
+		},
+		{
+			"SELECT TRIM(x, 1)",
+			"TRIM requires a constant string argument for cutset",
+		},
+		{
+			"SELECT LTRIM(x, 1)",
+			"LTRIM requires a constant string argument for cutset",
+		},
+		{
+			"SELECT RTRIM(x, 1)",
+			"RTRIM requires a constant string argument for cutset",
+		},
+		{
+			"SELECT TRIM(x, 'abcdefg')",
+			"the length of cutset has to be from 1 to 4, it is 7",
+		},
+		{
+			"SELECT LTRIM(x, 'abcdefgi')",
+			"the length of cutset has to be from 1 to 4, it is 8",
+		},
+		{
+			"SELECT RTRIM(x, 'abcdefgij')",
+			"the length of cutset has to be from 1 to 4, it is 9",
+		},
+		{
+			"SELECT TRIM(x, 'aąbc')",
+			"cutset must contain only ASCII chars",
+		},
+		{
+			"SELECT LTRIM(x, 'aąbc')",
+			"cutset must contain only ASCII chars",
+		},
+		{
+			"SELECT RTRIM(x, 'aąbc')",
+			"cutset must contain only ASCII chars",
+		},
 	}
 	for j := range testcases {
 		i := j

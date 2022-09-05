@@ -1,0 +1,5 @@
+SELECT TRIM(s, 'XYZ') AS trim, LTRIM(s, 'XYZ') AS ltrim, RTRIM(s, 'XYZ') AS rtrim FROM input
+---
+{"s": "XXXYZZtestXYZtestYYYZZZXXXXYZ"}
+---
+{"trim": "testXYZtest", "ltrim": "testXYZtestYYYZZZXXXXYZ", "rtrim": "XXXYZZtestXYZtest"}

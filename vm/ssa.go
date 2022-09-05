@@ -2321,25 +2321,46 @@ func (p *prog) MakeStruct(args []*value) *value {
 	return p.ssava(smakestruct, args)
 }
 
+type trimType uint8
+
+const (
+	trimLeading  = 1
+	trimTrailing = 2
+	trimBoth     = trimLeading | trimTrailing
+)
+
+func trimtype(op expr.BuiltinOp) trimType {
+	switch op {
+	case expr.Ltrim:
+		return trimLeading
+	case expr.Rtrim:
+		return trimTrailing
+	case expr.Trim:
+		return trimBoth
+	}
+
+	return trimBoth
+}
+
 // TrimWhitespace trim chars: ' ', '\t', '\n', '\v', '\f', '\r'
-func (p *prog) TrimWhitespace(str *value, left, right bool) *value {
+func (p *prog) TrimWhitespace(str *value, trimtype trimType) *value {
 	str = p.toStr(str)
-	if left {
+	if trimtype&trimLeading != 0 {
 		str = p.ssa2(sStrTrimWsLeft, str, p.mask(str))
 	}
-	if right {
+	if trimtype&trimTrailing != 0 {
 		str = p.ssa2(sStrTrimWsRight, str, p.mask(str))
 	}
 	return str
 }
 
 // TrimSpace trim char: ' '
-func (p *prog) TrimSpace(str *value, left, right bool) *value {
-	return p.TrimChar(str, " ", left, right)
+func (p *prog) TrimSpace(str *value, trimtype trimType) *value {
+	return p.TrimChar(str, " ", trimtype)
 }
 
 // TrimChar trim provided chars
-func (p *prog) TrimChar(str *value, chars string, left, right bool) *value {
+func (p *prog) TrimChar(str *value, chars string, trimtype trimType) *value {
 	str = p.toStr(str)
 	numberOfChars := len(chars)
 	if numberOfChars == 0 {
@@ -2359,10 +2380,10 @@ func (p *prog) TrimChar(str *value, chars string, left, right bool) *value {
 		}
 	}
 	preparedChars := string(charsByteArray)
-	if left {
+	if trimtype&trimLeading != 0 {
 		str = p.ssa2imm(sStrTrimCharLeft, str, p.mask(str), preparedChars)
 	}
-	if right {
+	if trimtype&trimTrailing != 0 {
 		str = p.ssa2imm(sStrTrimCharRight, str, p.mask(str), preparedChars)
 	}
 	return str
