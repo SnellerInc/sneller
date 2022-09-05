@@ -12889,13 +12889,12 @@ TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0
   KTESTW        K1,  K1                   //;69D1CDA2 all lanes empty?                ;K1=lane_active;
   JZ            next                      //;A5924904 yes, then exit; jump if zero (ZF = 1);
 
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
+  VPERMD        CONST_N_BYTES_UTF8(),Z26, Z7  //;CFC7AA76 get n_bytes_data            ;Z7=n_bytes_data; Z26=scratch_Z26;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
   VPADDD        Z7,  Z2,  K1,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
 next:
   NEXT()
@@ -12939,12 +12938,11 @@ next:
 //; #region bcSkipNcharLeft
 //; skip the first n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
-//; #region load from stack-slot: load 16x uint32 into Z6
+//; load from stack-slot: load 16x uint32 into Z6
   LOADARG1Z(Z27, Z26)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
-//; #endregion load from stack-slot
 
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
@@ -12958,12 +12956,13 @@ loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
   VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane_todo; Z7=n_bytes_data;
   VPADDD        Z7,  Z2,  K2,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K2=lane_todo; Z7=n_bytes_data;
 
   VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=1;
+//; tests
   VPCMPD        $1,  Z6,  Z11, K2,  K2    //;DF88A710 K2 &= (0<counter)               ;K2=lane_todo; Z11=0; Z6=counter; 1=LessThen;
   VPCMPD        $5,  Z3,  Z11, K2,  K3    //;2E4360D2 K3 := K2 & (0>=str_len)         ;K3=tmp_mask; K2=lane_todo; Z11=0; Z3=str_len; 5=GreaterEq;
   KANDNW        K1,  K3,  K1              //;21163EF3 lane_active &= ~tmp_mask        ;K1=lane_active; K3=tmp_mask;
@@ -12977,12 +12976,11 @@ next:
 //; #region bcSkipNcharRight
 //; skip the last n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
-//; #region load from stack-slot: load 16x uint32 into Z6
+//; load from stack-slot: load 16x uint32 into Z6
   LOADARG1Z(Z27, Z26)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
-//; #endregion load from stack-slot
 
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
@@ -13001,7 +12999,7 @@ loop:
   VPADDD        Z2,  Z3,  Z4              //;5684E300 str_end := str_len + str_start  ;Z4=str_end; Z3=str_len; Z2=str_start;
   VPGATHERDD    -4(SI)(Z4*1),K3,  Z8      //;573D089A gather data from end            ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=str_end;
 
-//; #region count_bytes_code_point_right; data in Z8; result out Z7
+//; count_bytes_code_point_right; data in Z8; result out Z7
   VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z27=UTF8_2byte_mask;
   VPCMPD        $0,  Z27, Z26, K2,  K3    //;C6890BF4 K3 := K2 & (scratch_Z26==UTF8_2byte_mask); create 2byte mask;K3=tmp_mask; K2=lane_todo; Z26=scratch_Z26; Z27=UTF8_2byte_mask; 0=Eq;
   VPANDD        Z28, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data_msg; Z28=UTF8_3byte_mask;
@@ -13012,10 +13010,12 @@ loop:
   VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_data; K3=tmp_mask; Z10=1;
   VPADDD        Z22, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_data; K4=tmp_mask2; Z22=2;
   VPADDD        Z23, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_data; K5=tmp_mask3; Z23=3;
-//; #endregion count_bytes_code_point_right; data in Z8; result out Z7
+//; advance
   VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane_todo; Z7=n_bytes_data;
   VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=1;
+//; tests
   VPCMPD        $1,  Z6,  Z11, K2,  K2    //;DF88A710 K2 &= (0<counter)               ;K2=lane_todo; Z11=0; Z6=counter; 1=LessThen;
+  VPCMPD        $2,  Z3,  Z11, K2,  K2    //;B623ED13 K2 &= (0<=str_len)              ;K2=lane_todo; Z11=0; Z3=str_len; 2=LessEq;
   VPCMPD        $5,  Z3,  Z11, K2,  K3    //;2E4360D2 K3 := K2 & (0>=str_len)         ;K3=tmp_mask; K2=lane_todo; Z11=0; Z3=str_len; 5=GreaterEq;
   KANDNW        K1,  K3,  K1              //;21163EF3 lane_active &= ~tmp_mask        ;K1=lane_active; K3=tmp_mask;
   KTESTW        K2,  K1                   //;799F076E ZF := ((K1&K2)==0); CF := ((~K1&K2)==0);K1=lane_active; K2=lane_todo;
@@ -14179,63 +14179,66 @@ non_ascii:  //; NOTE: this is the assumed to be a somewhat unlikely branch
 //; of the string (which ever is first). The start-index is 1-based! The first index of the
 //; string starts at 1. The substring is stored in Z2:Z3 (str interpretation)
 TEXT bcSubstr(SB), NOSPLIT|NOFRAME, $0
-//; #region load from stack-slot: load 16x uint32 into Z6
+//; load from stack-slot: load 16x uint32 into Z6
   LOADARG1Z(Z27, Z28)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
   VINSERTI64X4  $1,  Y28, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z28=scratch_Z28;
-//; #endregion load from stack-slot
-//; #region load from stack-slot: load 16x uint32 into Z12
+//; load from stack-slot: load 16x uint32 into Z12
   LOADARG1Z(Z27, Z28)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
   VINSERTI64X4  $1,  Y28, Z27, Z12        //;3944001B merge into 16x uint32           ;Z12=substr_length; Z27=scratch_Z27; Z28=scratch_Z28;
-//; #endregion load from stack-slot
+//; load constants
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
   VMOVDQU32     Z2,  Z4                   //;CFB0D832 curr_offset := str_start        ;Z4=curr_offset; Z2=str_start;
+//; fixup parameters
   VPSUBD        Z10, Z6,  Z6              //;34951830 1-based to 0-based indices      ;Z6=counter; Z10=1;
   VPMAXSD       Z6,  Z11, Z6              //;18F03020 counter := max(0, counter)      ;Z6=counter; Z11=0;
-  VPMAXSD       Z12, Z11, Z12             //;7273D26D substr_length := max(0, substr_length);Z12=substr_length; Z11=0;
-//; #region find start of substring
+
+//; find start of substring
   JMP           test1                     //;4CAF1B53                                 ;
 loop1:
+//; load next code-point
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
   VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
   VPSUBD        Z10, Z6,  Z6              //;19C9DC47 counter--                       ;Z6=counter; Z10=1;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+//; get number of bytes in next code-point
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+//; advance
   VPADDD        Z7,  Z4,  K2,  Z4         //;45909060 curr_offset += n_bytes_data     ;Z4=curr_offset; K2=lane2_mask; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
-
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane2_mask; Z7=n_bytes_data;
 test1:
-  VPTESTMD      Z6,  Z6,  K1,  K2         //;2E4360D2 K2 := K1 & (counter != 0); any chars left to skip?;K2=lane2_mask; K1=lane_active; Z6=counter;
+  VPCMPD        $6,  Z11, Z6,  K1,  K2    //;2E4360D2 K2 := K1 & (counter>0); any chars left to skip?;K2=lane2_mask; K1=lane_active; Z6=counter; Z11=0; 6=Greater;
   VPCMPD        $6,  Z11, Z3,  K2,  K2    //;DA211F9B K2 &= (str_len>0)               ;K2=lane2_mask; Z3=str_len; Z11=0; 6=Greater;
   KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
   JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-//; #endregion find start of substring
 
+//; At this moment Z4 has the start position of the substring. Next we will calculate the length of the substring in Z3.
   VMOVDQU32     Z4,  Z2                   //;60EBBEED str_start := curr_offset        ;Z2=str_start; Z4=curr_offset;
-//; #region find end of substring
+
+//; find end of substring
   JMP           test2                     //;4CAF1B53                                 ;
 loop2:
+//; load next code-point
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
   VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
   VPSUBD        Z10, Z12, Z12             //;61D287CD substr_length--                 ;Z12=substr_length; Z10=1;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+//; get number of bytes in next code-point
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+//; advance
   VPADDD        Z7,  Z4,  K2,  Z4         //;45909060 curr_offset += n_bytes_data     ;Z4=curr_offset; K2=lane2_mask; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
-
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane2_mask; Z7=n_bytes_data;
 test2:
-  VPTESTMD      Z12, Z12, K1,  K2         //;2E4360D2 K2 := K1 & (substr_length != 0); any chars left to trim;K2=lane2_mask; K1=lane_active; Z12=substr_length;
+  VPCMPD        $6,  Z11, Z12, K1,  K2    //;2E4360D2 K2 := K1 & (substr_length>0); any chars left to trim;K2=lane2_mask; K1=lane_active; Z12=substr_length; Z11=0; 6=Greater;
   VPCMPD        $6,  Z11, Z3,  K2,  K2    //;DA211F9B K2 &= (str_len>0); all lanes done?;K2=lane2_mask; Z3=str_len; Z11=0; 6=Greater;
   KTESTW        K2,  K2                   //;799F076E 0 means lane is done            ;K2=lane2_mask;
   JNZ           loop2                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-//; #endregion find end of substring
+//; overwrite str_length with correct values
   VPSUBD        Z2,  Z4,  Z3              //;E24AE85F str_len := curr_offset - str_start;Z3=str_len; Z4=curr_offset; Z2=str_start;
   NEXT()
 //; #endregion bcSubstr
@@ -14290,8 +14293,8 @@ loop1:
 tail1:
 //; still a lane todo?
   VPCMPD        $1,  Z7,  Z11, K2,  K2    //;50E6D99D K2 &= (0<counter_delim)         ;K2=lane2_mask; Z11=0; Z7=counter_delim; 1=LessThen;
-  VPCMPD        $1,  Z5,  Z4,  K3         //;A052FCB6 K3 := (search_base<o_data_end)  ;K3=tmp_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
-  KTESTW        K3,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask; K3=tmp_mask;
+  VPCMPD        $1,  Z5,  Z4,  K2,  K2    //;A052FCB6 K2 &= (search_base<o_data_end)  ;K2=lane2_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
+  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
   JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
   VPCMPD        $0,  Z7,  Z11, K1,  K1    //;A0ABF51F K1 &= (0==counter_delim)        ;K1=lane_active; Z11=0; Z7=counter_delim; 0=Eq;
 //; #endregion find n-th delimiter
