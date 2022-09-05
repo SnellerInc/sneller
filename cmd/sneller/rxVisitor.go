@@ -17,6 +17,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/regexp2"
@@ -60,7 +61,8 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 		if store, err := regexp2.CompileDFA(regex, regexp2.MaxNodesAutomaton); err != nil {
 			r.err = err
 		} else {
-			exprEscaped := regexp2.EscapeNL(regex.String())
+			exprEscaped := strconv.Quote(regex.String())
+			exprEscaped = exprEscaped[1 : len(exprEscaped)-1] // trim leading and trailing '"'
 			infoStr := fmt.Sprintf("\nregex=%v  (original)\nregex=%v  (effective)\n", regexStrOrg, exprEscaped)
 			hasRLZA := store.HasRLZA()
 

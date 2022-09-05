@@ -16,10 +16,9 @@ package regexp2
 
 import (
 	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -57,30 +56,24 @@ type revEdgesT map[edgeT][]nodeIDT
 type edgesT map[nodeIDT]map[nodeIDT]setT[symbolRangeT]
 
 func joinSortSetInt(set *setT[nodeIDT]) string {
-	length := set.size()
-	vec2 := make([]nodeIDT, length)
-	index := 0
-	for nodeID := range *set {
-		vec2[index] = nodeID
-		index++
-	}
+	var vec2 []nodeIDT = set.toVector()
 	slices.Sort(vec2)
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprint(vec2[0]))
-	for i := 1; i < length; i++ {
-		sb.WriteRune('.')
-		sb.WriteString(fmt.Sprint(vec2[i]))
-	}
-	return sb.String()
+	return joinVector(vec2)
 }
 
-func joinVector(vec *vectorT[nodeIDT]) string {
-	arr := make([]string, vec.size())
-	for index, nodeID := range *vec {
-		arr[index] = fmt.Sprint(nodeID)
+// joinVector is the inverse of splitVector
+func joinVector(vec vectorT[nodeIDT]) string {
+	return string(vec)
+}
+
+// splitVector is the inverse of joinVector
+func splitVector(str string) vectorT[nodeIDT] {
+	runes := []rune(str)
+	var result vectorT[nodeIDT] = make([]nodeIDT, len(runes))
+	for i, r := range runes {
+		result[i] = nodeIDT(r)
 	}
-	return strings.Join(arr[:], splitChar)
+	return result
 }
 
 func getReverseEdges(startID nodeIDT, dfaStore *DFAStore) (setT[symbolRangeT], revEdgesT) {
@@ -115,9 +108,8 @@ func hopcroft(symbolSet setT[symbolRangeT], revEdges revEdgesT, dfaStore *DFASto
 	group1A := newVector[nodeIDT]()
 	group2A := newVector[nodeIDT]()
 	partitionMap := map[string]vectorT[nodeIDT]{}
-	visited := newMap[string, int]()
-	vec := make([]string, 0)
-	keySplitMap := map[string]vectorT[nodeIDT]{}
+	visited := newMap[string, uint32]()
+	vec := make([]*string, 0)
 
 	ids, _ := dfaStore.getIDs()
 
@@ -130,103 +122,92 @@ func hopcroft(symbolSet setT[symbolRangeT], revEdges revEdgesT, dfaStore *DFASto
 		}
 	}
 	{
-		key3str := joinVector(&ids)
+		key3str := joinVector(ids)
 		partitionMap[key3str] = group1A
-		vec = append(vec, key3str)
-		keySplitMap[key3str] = ids
+		vec = append(vec, &key3str)
 		visited.insert(key3str, 0)
 
 		if !group2A.empty() {
-			key4str := joinVector(&group2A)
+			key4str := joinVector(group2A)
 			partitionMap[key4str] = group2A
-			vec = append(vec, key4str)
-			keySplitMap[key4str] = group2A
+			vec = append(vec, &key4str)
 		}
 	}
 	front := 0
+	var key1strB strings.Builder
+	var key2strB strings.Builder
+
 	for front < len(vec) {
-		top := vec[front]
+		topStr := vec[front]
 		front++
 
-		if top != "EMPTY" {
-			top2 := keySplitMap[top]
+		if topStr != nil {
+			top := splitVector(*topStr)
 
 			for symbolRange := range symbolSet {
-				revGroup := newSet[nodeIDT]()
-				for _, topj := range top2 {
+				revGroup := newBitSet()
+				for _, topj := range top {
 					e := edgeT{symbolRange, topj}
 					if x2, ok2 := revEdges[e]; ok2 {
 						for _, x3 := range x2 {
-							revGroup.insert(x3)
+							revGroup.insert(int(x3))
 						}
 					}
 				}
-				keys := make([]string, len(partitionMap))
-				for key := range partitionMap {
-					keys = append(keys, key)
-				}
-				//sort.Strings(keys[:]) // seems not necessary
-				for _, keyX := range keys {
-					group1B := newVector[nodeIDT]()
-					group2B := newVector[nodeIDT]()
+				for partKey, partMap := range partitionMap {
+					key1strEmpty := true
+					key2strEmpty := true
 
-					for _, p := range partitionMap[keyX] {
-						if revGroup.contains(p) {
-							group1B.pushBack(p)
-						} else {
-							group2B.pushBack(p)
+					for _, nodeID := range partMap {
+						if revGroup.contains(int(nodeID)) {
+							key1strEmpty = false
+							break
 						}
 					}
-					if !group1B.empty() && !group2B.empty() {
-						delete(partitionMap, keyX)
-						key1str := joinVector(&group1B)
-						key2str := joinVector(&group2B)
-						partitionMap[key1str] = group1B
-						partitionMap[key2str] = group2B
+					if !key1strEmpty {
+						for _, nodeID := range partMap {
+							if !revGroup.contains(int(nodeID)) {
+								key2strEmpty = false
+								break
+							}
+						}
+					}
+					if !key1strEmpty && !key2strEmpty {
+						key1strB.Reset()
+						key2strB.Reset()
+
+						for _, nodeID := range partMap {
+							if revGroup.contains(int(nodeID)) {
+								key1strB.WriteRune(rune(nodeID))
+							} else {
+								key2strB.WriteRune(rune(nodeID))
+							}
+						}
+						delete(partitionMap, partKey)
+						key1str := key1strB.String()
+						key2str := key2strB.String()
+						partitionMap[key1str] = splitVector(key1str)
+						partitionMap[key2str] = splitVector(key2str)
 
 						if visited.containsKey(key1str) {
-							vec[visited[key1str]] = "EMPTY"
-							visited.insert(key1str, len(vec))
-							vec = append(vec, key1str)
-							keySplitMap[key1str] = group1B
-							visited.insert(key2str, len(vec))
-							vec = append(vec, key2str)
-							keySplitMap[key2str] = group2B
-						} else if group1B.size() <= group2B.size() {
-							visited.insert(key1str, len(vec))
-							vec = append(vec, key1str)
-							keySplitMap[key1str] = group1B
+							vec[visited[key1str]] = nil
+							xKey := uint32(len(vec))
+							visited.insert(key1str, xKey)
+							visited.insert(key2str, xKey+1)
+							vec = append(vec, &key1str, &key2str)
+						} else if len(key1str) <= len(key2str) {
+							visited.insert(key1str, uint32(len(vec)))
+							vec = append(vec, &key1str)
 						} else {
-							visited.insert(key2str, len(vec))
-							vec = append(vec, key2str)
-							keySplitMap[key2str] = group2B
+							visited.insert(key2str, uint32(len(vec)))
+							vec = append(vec, &key2str)
 						}
 					}
 				}
 			}
 		}
 	}
-	partitions := make(partitionsType, len(partitionMap))
-	{
-		//TODO make efficient sort
-		tmp := make([]string, len(partitionMap))
-		index := 0
-		for _, v := range partitionMap {
-			tmp[index] = joinVector(&v)
-			index++
-		}
-		sort.Strings(tmp[:])
-
-		for i, v := range tmp {
-			partitions[i] = make([]nodeIDT, 0)
-
-			for _, s := range strings.Split(v, splitChar) {
-				x, _ := strconv.ParseInt(s, 10, 64)
-				partitions[i] = append(partitions[i], nodeIDT(x))
-			}
-		}
-	}
-	return partitions
+	return maps.Values(partitionMap)
 }
 
 type partitionsType []vectorT[nodeIDT]
@@ -260,17 +241,17 @@ func buildMinDfa(
 
 		nodeID, err := dfaStoreNew.newNode()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%v::buildMinDfa", err)
 		}
 		node, err := dfaStoreNew.get(nodeID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%v::buildMinDfa", err)
 		}
 		node.id = nodeIDT(i + 1)
-		node.key = joinVector(&part)
+		node.key = joinVector(part)
 		dfaOld, err := dfaStoreOld.get(part[0])
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%v::buildMinDfa", err)
 		}
 		node.accept = dfaOld.accept
 		node.start = dfaOld.start
@@ -300,7 +281,7 @@ func buildMinDfa(
 		for to, v := range toMap {
 			dfaNew, err := dfaStoreNew.get(from)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%v::buildMinDfa", err)
 			}
 			for symbolRange := range v {
 				dfaNew.addEdge(edgeT{symbolRange, nodes.at(int(to))})
@@ -320,7 +301,7 @@ func minDfa(dfaStore *DFAStore, maxNodes int) (*DFAStore, error) {
 	dfaStore.rebuildInternals()
 	startNodeID, err := dfaStore.startID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::minDfa", err)
 	}
 	symbolSet, revEdges := getReverseEdges(startNodeID, dfaStore)
 

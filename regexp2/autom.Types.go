@@ -27,5 +27,3 @@ const edgeEpsilonRune = rune(utf8.MaxRune)
 const edgeAnyRune = rune(utf8.MaxRune + 1)
 const edgeAnyNotLfRune = rune(utf8.MaxRune + 2)
 const edgeLfRune = rune('\n')
-
-const splitChar = "_"

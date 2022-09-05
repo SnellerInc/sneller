@@ -1080,6 +1080,8 @@ func TestRegexMatchBF2(t *testing.T) {
 			dataMaxlen:   6,
 			dataMaxSize:  exhaustive,
 			unitTests: []unitTest{
+				// following regex takes 600ms
+				{expr: `(.|\n)*(71009.$qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\\x00\\x7fqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0000A20)`},
 				//automaton with flags
 				{expr: `a$`},
 				//NOT supported {CreateDs(`a|$`, false},
@@ -1111,6 +1113,7 @@ func TestRegexMatchBF2(t *testing.T) {
 				{expr: `.*ab.*cd`},
 			},
 		},
+
 		{
 			name:         "SimilarTo UnitTests",
 			regexType:    regexp2.SimilarTo,
@@ -1635,8 +1638,10 @@ func TestRegexMatchUT(t *testing.T) {
 	run := func(tc unitTest) {
 		data := fill16(tc.msg)
 
-		ds := regexp2.CreateDs(tc.expr, tc.regexType, false, regexp2.MaxNodesAutomaton)
-
+		ds, err := regexp2.CreateDs(tc.expr, tc.regexType, false, regexp2.MaxNodesAutomaton)
+		if err != nil {
+			t.Log(err)
+		}
 		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
 		regexDataTest := func(ctx *bctestContext, dsByte *[]byte, info string, op bcop, needle string, expected bool) {
 			if dsByte == nil {
@@ -1732,13 +1737,18 @@ func FuzzRegexMatchRun(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, data, expr string) {
 		if utf8.ValidString(data) && utf8.ValidString(expr) {
-			if err := regexp2.IsSupported(expr); err != nil {
+			if err := regexp2.IsSupported(expr); err == nil {
+				t.Log(err)
+			} else {
 				regexSneller, err1 := regexp2.Compile(expr, regexp2.Regexp)
 				regexGolang, err2 := regexp2.Compile(expr, regexp2.GolangRegexp)
 
 				if (err1 == nil) && (err2 == nil) && (regexSneller != nil) && (regexGolang != nil) {
 					regexString2 := regexSneller.String()
-					ds := regexp2.CreateDs(regexString2, regexp2.Regexp, false, regexp2.MaxNodesAutomaton)
+					ds, err := regexp2.CreateDs(regexString2, regexp2.Regexp, false, regexp2.MaxNodesAutomaton)
+					if err != nil {
+						t.Log(err)
+					}
 					matchExpected := regexGolang.MatchString(data)
 					run(t, ds.DsT6, matchExpected, data, regexString2, "DfaT6", opDfaT6)
 					run(t, ds.DsT7, matchExpected, data, regexString2, "DfaT7", opDfaT7)
@@ -1768,11 +1778,9 @@ func FuzzRegexMatchCompile(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if err := regexp2.IsSupported(re); err != nil {
+		if regexp2.IsSupported(re) != nil {
 			return
 		}
-		// this is a simplified version
-		// of the code in vm/ssa.go:
 		store, err := regexp2.CompileDFA(rec, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			return
@@ -1794,9 +1802,8 @@ func FuzzRegexMatchCompile(f *testing.F) {
 			dsTiny.Data(7, true)
 			dsTiny.Data(8, true)
 		}
-		_, err = regexp2.NewDsLarge(store, hasRLZA)
-		if err != nil {
-			panic(fmt.Sprintf("DFALarge: error %v for regex \"%v\"", err, re))
+		if _, err = regexp2.NewDsLarge(store, hasRLZA); err != nil {
+			t.Fatalf(fmt.Sprintf("DFALarge: error %v for regex \"%v\"", err, re))
 		}
 	})
 }
@@ -5385,8 +5392,7 @@ func runRegexTests(t *testing.T, dataSpace, regexSpace []string, regexType regex
 			ctx.current = (1 << len(needleSubSpace)) - 1
 
 			// when
-			err := ctx.ExecuteImm2(op, 0)
-			if err != nil {
+			if err := ctx.ExecuteImm2(op, 0); err != nil {
 				t.Fatal(err)
 			}
 
@@ -5435,7 +5441,10 @@ func runRegexTests(t *testing.T, dataSpace, regexSpace []string, regexType regex
 	nNeedles := len(dataSpace)
 
 	for _, regexStr := range regexSpace {
-		ds := regexp2.CreateDs(regexStr, regexType, writeDot, regexp2.MaxNodesAutomaton)
+		ds, err := regexp2.CreateDs(regexStr, regexType, writeDot, regexp2.MaxNodesAutomaton)
+		if err != nil {
+			t.Log(err)
+		}
 		if nNeedles < 100 { // do serial
 			regexDataSpaceTest(&ds, dataSpace, nil)
 		} else { // do parallel

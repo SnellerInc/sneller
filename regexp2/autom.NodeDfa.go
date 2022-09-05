@@ -112,17 +112,17 @@ func (store *DFAStore) Dot() *Graphviz {
 
 func (store *DFAStore) newNode() (nodeIDT, error) {
 	if int(store.nextID) >= store.maxNodes {
-		return 0, fmt.Errorf("DFA exceeds max number of nodes %v", store.maxNodes)
+		return -1, fmt.Errorf("DFA exceeds max number of nodes %v::newNode", store.maxNodes)
 	}
-	id := store.nextID
+	nodeID := store.nextID
 	store.nextID++
-	dfa := new(DFA)
-	dfa.id = id
-	dfa.symbolSet = newSet[symbolRangeT]()
-	dfa.items = newSet[nodeIDT]()
-	dfa.trans = newMap[symbolRangeT, nodeIDT]()
-	store.data[id] = dfa
-	return id, nil
+	node := new(DFA)
+	node.id = nodeID
+	node.symbolSet = newSet[symbolRangeT]()
+	node.items = newSet[nodeIDT]()
+	node.trans = newMap[symbolRangeT, nodeIDT]()
+	store.data[nodeID] = node
+	return nodeID, nil
 }
 
 func (store *DFAStore) get(nodeID nodeIDT) (*DFA, error) {
@@ -149,7 +149,7 @@ func (store *DFAStore) startID() (nodeIDT, error) {
 func (store *DFAStore) getIDs() (vectorT[nodeIDT], error) {
 	ids := make([]nodeIDT, len(store.data))
 	if startID, err := store.startID(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::getIDs", err)
 	} else {
 		ids[0] = startID
 		index := 1
@@ -182,7 +182,7 @@ func (store *DFAStore) reachableNodesTraverse(nodeID nodeIDT, reachable *setT[no
 func (store *DFAStore) reachableNodes() (*setT[nodeIDT], error) {
 	startID, err := store.startID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::reachableNodes", err)
 	}
 	reachable := newSet[nodeIDT]()
 	store.reachableNodesTraverse(startID, &reachable)
@@ -192,7 +192,7 @@ func (store *DFAStore) reachableNodes() (*setT[nodeIDT], error) {
 // removeNonReachableNodes removes states that are not reachable from the start-state
 func (store *DFAStore) removeNonReachableNodes() error {
 	if reachableNodes, err := store.reachableNodes(); err != nil {
-		return err
+		return fmt.Errorf("%v::removeNonReachableNodes", err)
 	} else {
 		for nodeID := range store.data {
 			if !reachableNodes.contains(nodeID) {
@@ -302,7 +302,7 @@ func (store *DFAStore) renumberNodes() error {
 	newID := nodeIDT(0)
 	maxID := nodeIDT(0)
 	if ids, err := store.getIDs(); err != nil {
-		return err
+		return fmt.Errorf("%v::renumberNodes", err)
 	} else {
 		for _, oldID := range ids { //NOTE: first element of getIDs() is the start state
 			if oldID > maxID {

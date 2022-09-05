@@ -15,10 +15,11 @@
 package regexp2
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"regexp"
-	"strings"
+	"strconv"
 
 	"golang.org/x/sys/cpu"
 )
@@ -40,13 +41,8 @@ func createFileWriter(filename string) (io.Writer, error) {
 	return io.Writer(f), nil
 }
 
-// EscapeNL escapes new line
-func EscapeNL(str string) string {
-	return strings.ReplaceAll(str, "\n", "\\n")
-}
-
 // CreateDs creates data-structures for the provided regex string
-func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) DataStructures {
+func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) (DataStructures, error) {
 	tmpPath := os.TempDir() + "\\sneller\\"
 
 	result := DataStructures{}
@@ -58,33 +54,30 @@ func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) Dat
 	var err error
 	result.RegexSupported = false
 	if result.RegexGolang, err = Compile(expr, x); err != nil {
-		//Internal error when compiling regex
-		return result
+		return result, fmt.Errorf("%v::CreateDs", err)
 	}
 	if result.RegexSneller, err = Compile(expr, regexType); err != nil {
-		//Internal error when compiling regex
-		return result
+		return result, fmt.Errorf("%v::CreateDs", err)
 	}
 	if IsSupported(expr) != nil {
-		return result
+		return result, err
 	}
 	result.RegexSupported = true
 	store, err := CompileDFADebug(result.RegexSneller, writeDot, maxNodes)
 	if err != nil {
-		//Internal error when compiling regex
-		return result
+		return result, fmt.Errorf("%v::CreateDs", err)
 	}
 
 	nNodes := 0
 	nGroups := 0
 
-	exprEscaped := EscapeNL(result.RegexGolang.String())
+	exprEscaped := strconv.Quote(result.RegexGolang.String())
+	exprEscaped = exprEscaped[1 : len(exprEscaped)-1] // trim leading and trailing '"'
 	hasRLZA := store.HasRLZA()
 
 	if cpu.X86.HasAVX512VBMI && store.HasOnlyASCII() { // AVX512_VBMI -> Icelake
 		if dsTiny, err := NewDsTiny(store); err != nil {
-			//Internal error when compiling regex
-			return result
+			return result, err
 		} else {
 			nNodes = dsTiny.Store.NumberOfNodes()
 			nGroups = dsTiny.NumberOfGroups()
@@ -189,5 +182,5 @@ func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) Dat
 			}
 		}
 	}
-	return result
+	return result, nil
 }

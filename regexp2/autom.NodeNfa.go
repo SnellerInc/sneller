@@ -55,20 +55,20 @@ func (n *nfa) removeEdge(symbolRange symbolRangeT, to nodeIDT) {
 }
 
 type NFAStore struct {
-	nextID     nodeIDT
-	startIDi   nodeIDT
-	startIDRLZ bool // indicate that the start node has Remaining Length Zero Assertion (RLZ)
-	data       map[nodeIDT]*nfa
-	maxNodes   int
+	nextID    nodeIDT
+	startIDi  nodeIDT
+	startRLZA bool // indicate that the start node has Remaining Length Zero Assertion (RLZ)
+	data      map[nodeIDT]*nfa
+	maxNodes  int
 }
 
 func newNFAStore(maxNodes int) NFAStore {
 	return NFAStore{
-		nextID:     0,
-		startIDi:   -1,
-		startIDRLZ: false,
-		data:       map[nodeIDT]*nfa{},
-		maxNodes:   maxNodes,
+		nextID:    0,
+		startIDi:  -1,
+		startRLZA: false,
+		data:      map[nodeIDT]*nfa{},
+		maxNodes:  maxNodes,
 	}
 }
 
@@ -78,7 +78,7 @@ func (store *NFAStore) dot() *Graphviz {
 	for _, nodeID := range ids {
 		node, _ := store.get(nodeID)
 		fromStr := fmt.Sprintf("%v", nodeID)
-		result.addNode(fromStr, node.start, node.accept, store.startIDRLZ)
+		result.addNode(fromStr, node.start, node.accept, store.startRLZA)
 		for _, edge := range node.edges {
 			result.addEdge(fromStr, fmt.Sprintf("%v", edge.to), edge.symbolRange.String())
 		}
@@ -88,7 +88,7 @@ func (store *NFAStore) dot() *Graphviz {
 
 func (store *NFAStore) newNode() (nodeIDT, error) {
 	if int(store.nextID) >= store.maxNodes {
-		return -1, fmt.Errorf("NFA exceeds max number of nodes %v", store.maxNodes)
+		return -1, fmt.Errorf("NFA exceeds max number of nodes %v::newNode", store.maxNodes)
 	}
 	nodeID := store.nextID
 	store.nextID++
@@ -151,7 +151,7 @@ func (store *NFAStore) moveRLZAUpstream(nodeID, nodeIDDest nodeIDT, rlza bool, d
 					return fmt.Errorf("remaining Length Zero Assertion $ for non empty regex is not supported")
 				}
 			}
-			store.startIDRLZ = true
+			store.startRLZA = true
 			node.addEdge(newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeIDDest)
 		} else {
 			for nodeID2, node2 := range store.data {
@@ -256,7 +256,7 @@ func (store *NFAStore) refactorEdges() (err error) {
 				if edge.epsilon() {
 					if _, _, rlza := edge.symbolRange.split(); rlza {
 						if err := store.moveRLZAUpstream(nodeID, edge.to, rlza, &done); err != nil {
-							return err
+							return fmt.Errorf("%v::refactorEdges", err)
 						}
 						node.removeEdge(edge.symbolRange, edge.to) // remove the edge with the flag
 						changed = true

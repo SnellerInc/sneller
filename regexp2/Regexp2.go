@@ -22,13 +22,22 @@ import (
 	"regexp"
 	"regexp/syntax"
 	"strings"
+	"unicode/utf8"
 )
 
 // MaxNodesAutomaton is the maximum number of states when constructing and transforming NFAs and DFAs.
 const MaxNodesAutomaton = 3000
 
+// MaxCharInRegex is the maximum number of characters in a regex string
+const MaxCharInRegex = 1000
+
 // IsSupported determines whether expr is a supported regex; return nil if supported, error otherwise
 func IsSupported(expr string) error {
+	nRunesExpr := utf8.RuneCountInString(expr)
+	if nRunesExpr > MaxCharInRegex {
+		return fmt.Errorf("provided regex expression contains %v code-points which is more than the max %v", nRunesExpr, MaxCharInRegex)
+	}
+
 	// issues with regex "^(a^)" which gives a machine s1 -a> s2, but that machine is not correct
 	regexRunes := []rune(expr)
 	startOfLineCount := 0
@@ -158,7 +167,7 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 		for id := range idSet {
 			nodeID, err := store.newNode()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%v::extractNFA", err)
 			}
 			translation.insert(id, nodeID)
 		}
@@ -252,13 +261,13 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 	tmpPath := os.TempDir() + "\\sneller\\"
 	if writeDot {
 		os.MkdirAll(tmpPath, os.ModeDir)
-		log.Printf("6af9e7a9 going to write dot files to your temp dir %v", tmpPath)
+		log.Printf("6af9e7a9 going to write dot files to your temp dir %v for regex %q", tmpPath, regex.String())
 	}
 	name := "sneller"
 
 	nfaStore, err := extractNFA(regex, maxNodes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 	if writeDot {
 		name += "_nfa"
@@ -266,7 +275,7 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 	}
 	err = nfaStore.refactorEdges()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 	if writeDot {
 		name += "_ref"
@@ -274,7 +283,7 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 	}
 	dfaStore, err := nfaToDfa(nfaStore, maxNodes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 	if writeDot {
 		name += "_dfa"
@@ -282,13 +291,13 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 	}
 	dfaStore, err = minDfa(dfaStore, maxNodes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 	dfaStore.removeEdgesFromAcceptNodes() // needed eg for regex "a|"
 	dfaStore.mergeAcceptNodes()
 
 	if err = dfaStore.renumberNodes(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 
 	if writeDot {

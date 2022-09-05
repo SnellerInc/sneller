@@ -14,6 +14,8 @@
 
 package regexp2
 
+import "fmt"
+
 type stackT []nodeIDT
 
 func newStack() stackT {
@@ -54,7 +56,7 @@ func getClosure(nodes *vectorT[nodeIDT], nfaStore *NFAStore, dfaStore *DFAStore)
 		stack.push(nodeID)
 		node, err := nfaStore.get(nodeID)
 		if err != nil {
-			return -1, err
+			return -1, fmt.Errorf("%v::getClosure", err)
 		}
 		if node.accept {
 			accept = true
@@ -66,7 +68,7 @@ func getClosure(nodes *vectorT[nodeIDT], nfaStore *NFAStore, dfaStore *DFAStore)
 		stack.pop()
 		node, err := nfaStore.get(top)
 		if err != nil {
-			return -1, err
+			return -1, fmt.Errorf("%v::getClosure", err)
 		}
 		for _, edge := range node.edges {
 			if edge.epsilon() {
@@ -74,7 +76,7 @@ func getClosure(nodes *vectorT[nodeIDT], nfaStore *NFAStore, dfaStore *DFAStore)
 					stack.push(edge.to)
 					node, err := nfaStore.get(edge.to)
 					if err != nil {
-						return -1, err
+						return -1, fmt.Errorf("%v::getClosure", err)
 					}
 					if node.accept {
 						accept = node.accept
@@ -88,11 +90,11 @@ func getClosure(nodes *vectorT[nodeIDT], nfaStore *NFAStore, dfaStore *DFAStore)
 	}
 	resultID, err := dfaStore.newNode() //Note: only place where nodes are created in NFA->DFA
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("%v::getClosure", err)
 	}
 	result, err := dfaStore.get(resultID)
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("%v::getClosure", err)
 	}
 	result.key = joinSortSetInt(&closure)
 	result.items = closure
@@ -104,13 +106,13 @@ func getClosure(nodes *vectorT[nodeIDT], nfaStore *NFAStore, dfaStore *DFAStore)
 func getClosedMove(closureID nodeIDT, symbolRange symbolRangeT, nfaStore *NFAStore, dfaStore *DFAStore) (nodeIDT, error) {
 	closure, err := dfaStore.get(closureID)
 	if err != nil {
-		return -1, err
+		return -1, fmt.Errorf("%v::getClosedMove", err)
 	}
 	nextNodes := newVector[nodeIDT]()
 	for nodeID := range closure.items {
 		node, err := nfaStore.get(nodeID)
 		if err != nil {
-			return -1, err
+			return -1, fmt.Errorf("%v::getClosedMove", err)
 		}
 		for _, edge := range node.edges {
 			if symbolRange == edge.symbolRange {
@@ -124,24 +126,24 @@ func getClosedMove(closureID nodeIDT, symbolRange symbolRangeT, nfaStore *NFASto
 // nfaToDfa converts the provided NFA into a DFA
 func nfaToDfa(nfaStore *NFAStore, maxNodes int) (*DFAStore, error) {
 	dfaStore := newDFAStore(maxNodes)
-	dfaStore.StartRLZA = nfaStore.startIDRLZ
+	dfaStore.StartRLZA = nfaStore.startRLZA
 
 	v := newVector[nodeIDT]()
 	startNode, err := nfaStore.startID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::nfaToDfa", err)
 	}
 	v.pushBack(startNode)
 
 	startID, err := getClosure(&v, nfaStore, &dfaStore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::nfaToDfa", err)
 	}
 	dfaStore.startIDi = startID
 
 	first, err := dfaStore.get(startID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::nfaToDfa", err)
 	}
 	first.start = true
 
@@ -156,16 +158,16 @@ func nfaToDfa(nfaStore *NFAStore, maxNodes int) (*DFAStore, error) {
 		queue.pop()
 		top, err := dfaStore.get(topID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%v::nfaToDfa", err)
 		}
 		for symbolRange := range top.symbolSet {
 			closureID, err := getClosedMove(topID, symbolRange, nfaStore, &dfaStore)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%v::nfaToDfa", err)
 			}
 			node, err := dfaStore.get(closureID)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("%v::nfaToDfa", err)
 			}
 			key := node.key
 			if !states.containsKey(key) {
@@ -178,7 +180,7 @@ func nfaToDfa(nfaStore *NFAStore, maxNodes int) (*DFAStore, error) {
 	}
 	dfaStore.removeEdgesFromAcceptNodes()
 	if err = dfaStore.removeNonReachableNodes(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%v::nfaToDfa", err)
 	}
 	dfaStore.mergeAcceptNodes()
 	return &dfaStore, nil

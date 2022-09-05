@@ -14,43 +14,28 @@
 
 package regexp2
 
-import "golang.org/x/exp/maps"
+type bitSetT []uint64
 
-type setT[T comparable] map[T]struct{}
-
-func newSet[T comparable]() setT[T] {
-	return map[T]struct{}{}
-}
-
-// Empty test whether set is empty
-func (s *setT[T]) empty() bool {
-	return len(*s) == 0
+func newBitSet() bitSetT {
+	return make([]uint64, 0)
 }
 
 // contains test whether value is present
-func (s *setT[T]) contains(e T) bool {
-	_, present := (*s)[e]
-	return present
+func (s *bitSetT) contains(e int) bool {
+	idx := e >> 6
+	if idx >= len(*s) {
+		return false
+	}
+	return ((*s)[idx] & (uint64(1) << uint(e&0b111111))) != 0
 }
 
-// insert element to set
-func (s *setT[T]) insert(e T) {
-	(*s)[e] = struct{}{}
-}
-
-// Erase element from set
-func (s *setT[T]) erase(e T) {
-	delete(*s, e)
-}
-
-func (s *setT[T]) clear() {
-	*s = map[T]struct{}{}
-}
-
-func (s *setT[T]) toVector() vectorT[T] {
-	return maps.Keys(*s)
-}
-
-func (s *setT[T]) equal(other *setT[T]) bool {
-	return maps.Equal(*s, *other)
+// insert element to set, return true when set changed; false otherwise
+func (s *bitSetT) insert(e int) {
+	idx := e >> 6
+	length := len(*s)
+	for idx >= length {
+		*s = append(*s, 0)
+		length++
+	}
+	(*s)[idx] |= uint64(1) << (e & 0b111111)
 }
