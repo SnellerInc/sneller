@@ -117,6 +117,10 @@ func (t Time) Year() int {
 	return int(t.ts & 0xffff0000000000 >> 40)
 }
 
+func (t Time) Quarter() int {
+	return (t.Month()-1)/3 + 1
+}
+
 // Month returns the month component of t.
 func (t Time) Month() int {
 	return int(t.ts&0xff00000000>>32) + 1

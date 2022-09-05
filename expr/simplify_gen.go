@@ -269,12 +269,10 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 					}
 				}
 			}
-			// (contains (upper _) (string y)), "!isUpper(string(y))" -> (bool "false")
-			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
+			// (contains (string x) (string y)) -> "Bool(strings.Contains(string(x), string(y)))"
+			if x, ok := (src.Args[0]).(String); ok {
 				if y, ok := (src.Args[1]).(String); ok {
-					if !isUpper(string(y)) {
-						return Bool(false)
-					}
+					return Bool(strings.Contains(string(x), string(y)))
 				}
 			}
 			// (contains (upper x) (string y)), "isUpper(string(y))" -> (contains_ci x y)
@@ -287,10 +285,12 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 					}
 				}
 			}
-			// (contains (string x) (string y)) -> "Bool(strings.Contains(string(x), string(y)))"
-			if x, ok := (src.Args[0]).(String); ok {
+			// (contains (upper _) (string y)), "!isUpper(string(y))" -> (bool "false")
+			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if y, ok := (src.Args[1]).(String); ok {
-					return Bool(strings.Contains(string(x), string(y)))
+					if !isUpper(string(y)) {
+						return Bool(false)
+					}
 				}
 			}
 		}
@@ -334,6 +334,13 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (date_extract_month (ts x)) -> (int "x.Value.Month()")
 			if x, ok := (src.Args[0]).(*Timestamp); ok {
 				return Integer(x.Value.Month())
+			}
+		}
+	case DateExtractQuarter:
+		if len(src.Args) == 1 {
+			// (date_extract_quarter (ts x)) -> (int "x.Value.Quarter()")
+			if x, ok := (src.Args[0]).(*Timestamp); ok {
+				return Integer(x.Value.Quarter())
 			}
 		}
 	case DateExtractSecond:
@@ -392,15 +399,15 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			if inner, ok := (src.Args[0]).(*Builtin); ok && inner.Func == Rtrim && len(inner.Args) == 1 {
 				return inner
 			}
+			// (rtrim inner:(trim _)) -> inner
+			if inner, ok := (src.Args[0]).(*Builtin); ok && inner.Func == Trim && len(inner.Args) == 1 {
+				return inner
+			}
 			// (rtrim (lower x)) -> (lower (rtrim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
 					return Call("LOWER", Call("RTRIM", x))
 				}
-			}
-			// (rtrim inner:(trim _)) -> inner
-			if inner, ok := (src.Args[0]).(*Builtin); ok && inner.Func == Trim && len(inner.Args) == 1 {
-				return inner
 			}
 			// (rtrim (lower x)) -> (lower (rtrim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
@@ -424,26 +431,6 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 		}
 	case Substring:
 		if len(src.Args) == 2 {
-			// (substring (string s) (int start)) -> "staticSubstr(s, start, -1)"
-			if s, ok := (src.Args[0]).(String); ok {
-				if start, ok := (src.Args[1]).(Integer); ok {
-					return staticSubstr(s, start, -1)
-				}
-			}
-			// (substring (upper x) off) -> (upper (substring x off))
-			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
-				if off := src.Args[1]; true {
-					if x := _tmp001000.Args[0]; true {
-						return Call("UPPER", Call("SUBSTRING", x, off))
-					}
-				}
-			}
-			// (substring s x) -> (substring s x (int "1<<21"))
-			if s := src.Args[0]; true {
-				if x := src.Args[1]; true {
-					return Call("SUBSTRING", s, x, Integer(1<<21))
-				}
-			}
 			// (substring s (int "1")), "TypeOf(s, h) == StringType|MissingType" -> s
 			if s := src.Args[0]; true {
 				if _tmp001001, ok := (src.Args[1]).(Integer); ok {
@@ -451,6 +438,14 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 						if TypeOf(s, h) == StringType|MissingType {
 							return s
 						}
+					}
+				}
+			}
+			// (substring (upper x) off) -> (upper (substring x off))
+			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
+				if off := src.Args[1]; true {
+					if x := _tmp001000.Args[0]; true {
+						return Call("UPPER", Call("SUBSTRING", x, off))
 					}
 				}
 			}
@@ -462,24 +457,36 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 					}
 				}
 			}
-		}
-		if len(src.Args) == 3 {
-			// (substring (upper x) off len) -> (upper (substring x off len))
-			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
-				if off := src.Args[1]; true {
-					if len := src.Args[2]; true {
-						if x := _tmp001000.Args[0]; true {
-							return Call("UPPER", Call("SUBSTRING", x, off, len))
-						}
-					}
+			// (substring (string s) (int start)) -> "staticSubstr(s, start, 1<<21)"
+			if s, ok := (src.Args[0]).(String); ok {
+				if start, ok := (src.Args[1]).(Integer); ok {
+					return staticSubstr(s, start, 1<<21)
 				}
 			}
+			// (substring s x) -> (substring s x (int "1<<21"))
+			if s := src.Args[0]; true {
+				if x := src.Args[1]; true {
+					return Call("SUBSTRING", s, x, Integer(1<<21))
+				}
+			}
+		}
+		if len(src.Args) == 3 {
 			// (substring (lower x) off len) -> (lower (substring x off len))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if off := src.Args[1]; true {
 					if len := src.Args[2]; true {
 						if x := _tmp001000.Args[0]; true {
 							return Call("LOWER", Call("SUBSTRING", x, off, len))
+						}
+					}
+				}
+			}
+			// (substring (upper x) off len) -> (upper (substring x off len))
+			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
+				if off := src.Args[1]; true {
+					if len := src.Args[2]; true {
+						if x := _tmp001000.Args[0]; true {
+							return Call("UPPER", Call("SUBSTRING", x, off, len))
 						}
 					}
 				}
@@ -509,12 +516,6 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 		}
 	case Trim:
 		if len(src.Args) == 1 {
-			// (trim (upper x)) -> (upper (trim x))
-			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
-				if x := _tmp001000.Args[0]; true {
-					return Call("UPPER", Call("TRIM", x))
-				}
-			}
 			// (trim inner:(trim _)) -> inner
 			if inner, ok := (src.Args[0]).(*Builtin); ok && inner.Func == Trim && len(inner.Args) == 1 {
 				return inner
@@ -523,6 +524,12 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
 					return Call("LOWER", Call("TRIM", x))
+				}
+			}
+			// (trim (upper x)) -> (upper (trim x))
+			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
+				if x := _tmp001000.Args[0]; true {
+					return Call("UPPER", Call("TRIM", x))
 				}
 			}
 		}

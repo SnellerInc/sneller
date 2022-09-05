@@ -1103,6 +1103,7 @@ to the timestamp `time`.
  - `HOUR`
  - `DAY`
  - `MONTH`
+ - `QUARTER`
  - `YEAR`
 
 See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/datetime.html)
@@ -1121,6 +1122,7 @@ between `from` and `to` in terms of the date interval `part`.
  - `HOUR`
  - `DAY`
  - `MONTH`
+ - `QUARTER`
  - `YEAR`
 
 See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/datetime.html)
@@ -1138,6 +1140,7 @@ See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/dateti
  - `HOUR`
  - `DAY`
  - `MONTH`
+ - `QUARTER`
  - `YEAR`
 
 `DATE_TRUNC()` returns a timestamp that contains only
@@ -1162,6 +1165,7 @@ with buckets corresponding to calendar dates.)
  - `HOUR`
  - `DAY`
  - `MONTH`
+ - `QUARTER`
  - `YEAR`
 
 `EXTRACT` yields the integer corresponding to the requested
@@ -1193,7 +1197,7 @@ match the `width_bucket()` function from Postgres.
 A typical use of `WIDTH_BUCKET` is to produce a
 bucket value for use in a `GROUP BY` clause.
 
-See [Postgres Math Functions](https://www.postgresql.org/docs/9.1/functions-math.html)
+See [Postgres Math Functions](https://www.postgresql.org/docs/current/functions-math.html)
 
 #### `TIME_BUCKET`
 
@@ -1342,7 +1346,7 @@ then `MISSING` is returned.
 *Known limitation: the separator string `sep`
 must be a single-character string constant.*
 
-See [Postgres string functions](https://www.postgresql.org/docs/9.1/functions-string.html).
+See [Postgres string functions](https://www.postgresql.org/docs/current/functions-string.html).
 
 #### `IS_SUBNET_OF`
 

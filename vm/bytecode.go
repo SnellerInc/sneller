@@ -356,7 +356,8 @@ var opinfo = [_maxbcop]bcopinfo{
 
 	// Timestamp instructions
 	opdateaddmonth:           {text: "dateaddmonth", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opdateaddmonthimm:        {text: "dateaddmonthimm", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opdateaddmonthimm:        {text: "dateaddmonth.imm", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+	opdateaddquarter:         {text: "dateaddquarter", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 	opdateaddyear:            {text: "dateaddyear", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 	opdatediffparam:          {text: "datediffparam", imms: bcImmsS16U64, flags: bcReadK | bcReadWriteS},
 	opdatediffmonthyear:      {text: "datediffmonthyear", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
@@ -367,6 +368,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opdateextracthour:        {text: "dateextracthour", flags: bcReadK | bcReadWriteS},
 	opdateextractday:         {text: "dateextractday", flags: bcReadK | bcReadWriteS},
 	opdateextractmonth:       {text: "dateextractmonth", flags: bcReadK | bcReadWriteS},
+	opdateextractquarter:     {text: "dateextractquarter", flags: bcReadK | bcReadWriteS},
 	opdateextractyear:        {text: "dateextractyear", flags: bcReadK | bcReadWriteS},
 	opdatetounixepoch:        {text: "datetounixepoch", flags: bcReadK | bcReadWriteS},
 	opdatetruncmillisecond:   {text: "datetruncmillisecond", flags: bcReadK | bcReadWriteS},
@@ -375,6 +377,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opdatetrunchour:          {text: "datetrunchour", flags: bcReadK | bcReadWriteS},
 	opdatetruncday:           {text: "datetruncday", flags: bcReadK | bcReadWriteS},
 	opdatetruncmonth:         {text: "datetruncmonth", flags: bcReadK | bcReadWriteS},
+	opdatetruncquarter:       {text: "datetruncquarter", flags: bcReadK | bcReadWriteS},
 	opdatetruncyear:          {text: "datetruncyear", flags: bcReadK | bcReadWriteS},
 	opunboxts:                {text: "unboxts", flags: bcReadK | bcWriteS},
 	opboxts:                  {text: "boxts", flags: bcReadK | bcReadS},

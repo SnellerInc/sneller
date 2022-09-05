@@ -616,7 +616,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 
 		return val, nil
 
-	case expr.DateAddMicrosecond, expr.DateAddMillisecond, expr.DateAddSecond, expr.DateAddMinute, expr.DateAddHour, expr.DateAddDay, expr.DateAddMonth, expr.DateAddYear:
+	case expr.DateAddYear, expr.DateAddQuarter, expr.DateAddMonth, expr.DateAddDay, expr.DateAddHour, expr.DateAddMinute, expr.DateAddSecond, expr.DateAddMillisecond, expr.DateAddMicrosecond:
 		part := expr.Timepart(fn - expr.DateAddMicrosecond)
 		val0, err0 := p.compileAsNumber(args[0])
 		if err0 != nil {
@@ -631,7 +631,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		val := p.DateAdd(part, val0, val1)
 		return val, nil
 
-	case expr.DateDiffMicrosecond, expr.DateDiffMillisecond, expr.DateDiffSecond, expr.DateDiffMinute, expr.DateDiffHour, expr.DateDiffDay, expr.DateDiffMonth, expr.DateDiffYear:
+	case expr.DateDiffYear, expr.DateDiffQuarter, expr.DateDiffMonth, expr.DateDiffDay, expr.DateDiffHour, expr.DateDiffMinute, expr.DateDiffSecond, expr.DateDiffMillisecond, expr.DateDiffMicrosecond:
 		part := expr.Timepart(fn - expr.DateDiffMicrosecond)
 		val0, err0 := p.compileAsTime(args[0])
 		if err0 != nil {
@@ -646,7 +646,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		val := p.DateDiff(part, val0, val1)
 		return val, nil
 
-	case expr.DateExtractMicrosecond, expr.DateExtractMillisecond, expr.DateExtractSecond, expr.DateExtractMinute, expr.DateExtractHour, expr.DateExtractDay, expr.DateExtractMonth, expr.DateExtractYear:
+	case expr.DateExtractYear, expr.DateExtractQuarter, expr.DateExtractMonth, expr.DateExtractDay, expr.DateExtractHour, expr.DateExtractMinute, expr.DateExtractSecond, expr.DateExtractMillisecond, expr.DateExtractMicrosecond:
 		part := expr.Timepart(fn - expr.DateExtractMicrosecond)
 		val0, err := p.compileAsTime(args[0])
 		if err != nil {
@@ -654,7 +654,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 		return p.DateExtract(part, val0), nil
 
-	case expr.DateTruncYear, expr.DateTruncMonth, expr.DateTruncDay, expr.DateTruncHour, expr.DateTruncMinute, expr.DateTruncSecond:
+	case expr.DateTruncYear, expr.DateTruncMonth, expr.DateTruncDay, expr.DateTruncHour, expr.DateTruncMinute, expr.DateTruncQuarter, expr.DateTruncSecond, expr.DateTruncMillisecond, expr.DateTruncMicrosecond:
 		part := expr.Timepart(fn - expr.DateTruncMicrosecond)
 		val, err := p.compileAsTime(args[0])
 		if err != nil {

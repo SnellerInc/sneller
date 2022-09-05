@@ -2917,6 +2917,7 @@ const (
 	Hour
 	Day
 	Month
+	Quarter
 	Year
 )
 
@@ -2929,6 +2930,7 @@ var partstring = []string{
 	Hour:        "HOUR",
 	Day:         "DAY",
 	Month:       "MONTH",
+	Quarter:     "QUARTER",
 	Year:        "YEAR",
 }
 
@@ -2961,9 +2963,21 @@ func DateTrunc(part Timepart, from Node) Node {
 		second := ts.Value.Second()
 		nsec := ts.Value.Nanosecond()
 
+		// QUARTER truncates months the following way:
+		//   - [1,2,3] to 1st,
+		//   - [4,5,6] to 4th,
+		//   - [7,8,9] to 7th,
+		//   - [10,11,12] to 10th
+		if part == Quarter {
+			month = ((month-1)/3)*3 + 1
+		}
+
 		switch part {
 		case Year:
 			month = 1
+			fallthrough
+		case Quarter:
+			// already truncated...
 			fallthrough
 		case Month:
 			day = 1

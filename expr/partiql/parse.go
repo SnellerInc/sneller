@@ -117,6 +117,8 @@ func timePart(id string) (expr.Timepart, bool) {
 		part = expr.Day
 	case "MONTH":
 		part = expr.Month
+	case "QUARTER":
+		part = expr.Quarter
 	case "YEAR":
 		part = expr.Year
 	default:

@@ -158,6 +158,7 @@
 (date_extract_hour (ts x)) -> (int `x.Value.Hour()`)
 (date_extract_day (ts x)) -> (int `x.Value.Day()`)
 (date_extract_month (ts x)) -> (int `x.Value.Month()`)
+(date_extract_quarter (ts x)) -> (int `x.Value.Quarter()`)
 (date_extract_year (ts x)) -> (int `x.Value.Year()`)
 
 // trivial is_xxx constprop

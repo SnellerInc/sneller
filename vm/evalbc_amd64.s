@@ -7416,11 +7416,25 @@ TEXT bcdateaddyear(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
   ADDQ $2, VIRT_PCREG
 
-  // Multiply years by 12 (shifts have lesser latency than VPMULLQ).
+  // multiply years by 12
   VPSLLQ $3, 0(VIRT_VALUES)(R8*1), Z20
   VPSLLQ $3, 64(VIRT_VALUES)(R8*1), Z21
   VPSRLQ $1, Z20, Z4
   VPSRLQ $1, Z21, Z5
+  VPADDQ Z4, Z20, Z20
+  VPADDQ Z5, Z21, Z21
+
+  JMP dateaddmonth_tail(SB)
+
+TEXT bcdateaddquarter(SB), NOSPLIT|NOFRAME, $0
+  MOVWQZX 0(VIRT_PCREG), R8
+  ADDQ $2, VIRT_PCREG
+
+  // multiply quarters by 3
+  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z20
+  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z21
+  VPSLLQ $1, Z20, Z4
+  VPSLLQ $1, Z21, Z5
   VPADDQ Z4, Z20, Z20
   VPADDQ Z5, Z21, Z21
 
@@ -7536,7 +7550,7 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(10)
 
-// DATE_DIFF(MONTH|YEAR, interval, timestamp)
+// DATE_DIFF(MONTH|QUARTER|YEAR, interval, timestamp)
 TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
   KSHIFTRW $8, K1, K2
@@ -7701,6 +7715,26 @@ TEXT bcdateextractmonth(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z11, K2, Z3
   NEXT()
 
+// EXTRACT(QUARTER FROM timestamp)
+TEXT bcdateextractquarter(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
+
+  VPBROADCASTQ CONSTQ_1(), Z4
+  VBROADCASTI32X4 CONST_GET_PTR(consts_quarter_from_month_1_is_march, 0), Z5
+
+  // convert a resulting month index into [1, 12] range, where 1 represents March
+  VPADDQ Z4, Z10, Z10
+  VPADDQ Z4, Z11, Z11
+
+  // use VPSHUFB to convert the month index into a quarter
+  VPSHUFB Z10, Z5, Z10
+  VPSHUFB Z11, Z5, Z11
+
+  VMOVDQA64 Z10, K1, Z2
+  VMOVDQA64 Z11, K2, Z3
+  NEXT()
+
 // EXTRACT(YEAR FROM timestamp)
 TEXT bcdateextractyear(SB), NOSPLIT|NOFRAME, $0
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
@@ -7817,6 +7851,55 @@ TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
 
   NEXT()
 
+// VPSHUFB predicate that aligns a month in [1, 12] range (where 1 is March) to a quarter
+// month in [0, 11] range (our processing range that can be then easily composed). This
+// is a special predicate designed only for 'bcdatetruncquarter' operation.
+CONST_DATA_U64(consts_align_month_to_quarter_1_is_march, 0, $0x0404040101010A00)
+CONST_DATA_U64(consts_align_month_to_quarter_1_is_march, 8, $0x0000000A0A070707)
+CONST_GLOBAL(consts_align_month_to_quarter_1_is_march, $16)
+
+// DATE_TRUNC(QUARTER, timestamp)
+TEXT bcdatetruncquarter(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  // Z8/Z9 <- Year index.
+  // Z10/Z11 <- Month index - starting from zero, where zero represents March.
+  BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
+
+  // make month index from [1, 12] so we can safely use VPSHUFB (so zero can stay zero)
+  VPBROADCASTQ CONSTQ_1(), Z4
+  VBROADCASTI32X4 CONST_GET_PTR(consts_align_month_to_quarter_1_is_march, 0), Z5
+
+  VPADDQ Z4, Z10, Z10
+  VPADDQ Z4, Z11, Z11
+
+  // since month index starts in March, we have to decrease one year if the month is March
+  VPCMPEQQ Z4, Z10, K1, K3
+  VPCMPEQQ Z4, Z11, K2, K4
+  VPSUBQ Z4, Z8, K3, Z8
+  VPSUBQ Z4, Z9, K4, Z9
+
+  VMOVDQU64 CONST_GET_PTR(consts_days_until_month_from_march, 0), Z13
+  VPSHUFB Z10, Z5, Z10
+  VPSHUFB Z11, Z5, Z11
+
+  // Z4/Z5 <- Number of days in a year [0, 365] got from MonthIndex.
+  VPERMD Z13, Z10, Z4
+  VPERMD Z13, Z11, Z5
+
+  // Z4/Z5 <- Number of days of all years, including days in the last month.
+  BC_COMPOSE_YEAR_TO_DAYS(Z4, Z5, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15)
+
+  // Z4/Z5 <- Final number of days converted to microseconds.
+  VPMULLQ.BCST CONSTQ_86400000000(), Z4, Z4
+  VPMULLQ.BCST CONSTQ_86400000000(), Z5, Z5
+
+  // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
+  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
+  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
+
+  NEXT()
+
 // DATE_TRUNC(YEAR, timestamp)
 TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
@@ -7826,11 +7909,11 @@ TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
   // Since the month starts from March, we have to check whether the truncation doesn't
-  // need to increment one year (January/Februare have 10/11 indexes, respectively)
+  // need to decrement one year (January/February have 10/11 indexes, respectively)
   VPCMPUQ.BCST $VPCMP_IMM_LT, CONSTQ_10(), Z10, K3
   VPCMPUQ.BCST $VPCMP_IMM_LT, CONSTQ_10(), Z11, K4
 
-  // Increment one year if required.
+  // Decrement one year if required.
   VPSUBQ.BCST CONSTQ_1(), Z8, K3, Z8
   VPSUBQ.BCST CONSTQ_1(), Z9, K4, Z9
 

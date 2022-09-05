@@ -921,12 +921,18 @@ CONST_DATA_U32(consts_days_until_month_from_march, 56, $0)
 CONST_DATA_U32(consts_days_until_month_from_march, 60, $0)
 CONST_GLOBAL(consts_days_until_month_from_march, $64)
 
+// VPSHUFB predicate that calculates a quarter [1, 4] from a month in a [1, 12] range, where [1] represents March
+CONST_DATA_U64(consts_quarter_from_month_1_is_march, 0, $0x0303030202020100)
+CONST_DATA_U64(consts_quarter_from_month_1_is_march, 8, $0x0000000101040404)
+CONST_GLOBAL(consts_quarter_from_month_1_is_march, $16)
+
 // The final value of DATE_DIFF(MONTH|YEAR, interval, timestamp) is calculated as:
 //
 //   Result = Month * consts_datediff_month_year_div_rcp[imm] >> 35
 CONST_DATA_U64(consts_datediff_month_year_div_rcp, 0, $34359738368)
-CONST_DATA_U64(consts_datediff_month_year_div_rcp, 8, $2863311531)
-CONST_GLOBAL(consts_datediff_month_year_div_rcp, $16)
+CONST_DATA_U64(consts_datediff_month_year_div_rcp, 8, $11453246124)
+CONST_DATA_U64(consts_datediff_month_year_div_rcp, 16, $2863311531)
+CONST_GLOBAL(consts_datediff_month_year_div_rcp, $24)
 
 // A predicate for VPSHUFB that is use to byteswap microseconds - used by timestamp boxing.
 CONST_DATA_U64(consts_boxts_microsecond_swap, 0, $0xFF000102FFFFFFFF)

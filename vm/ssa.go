@@ -369,10 +369,12 @@ const (
 	sdateaddmulimm
 	sdateaddmonth
 	sdateaddmonthimm
+	sdateaddquarter
 	sdateaddyear
 	sdatediffmicro
 	sdatediffparam
 	sdatediffmonth
+	sdatediffquarter
 	sdatediffyear
 	sdateextractmicrosecond
 	sdateextractmillisecond
@@ -381,6 +383,7 @@ const (
 	sdateextracthour
 	sdateextractday
 	sdateextractmonth
+	sdateextractquarter
 	sdateextractyear
 	sdatetounixepoch
 	sdatetounixmicro
@@ -390,6 +393,7 @@ const (
 	sdatetrunchour
 	sdatetruncday
 	sdatetruncmonth
+	sdatetruncquarter
 	sdatetruncyear
 
 	sgeohash
@@ -980,11 +984,13 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdateaddmulimm:          {text: "dateaddmul.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, immfmt: fmti64, bc: opaddmulimmi, emit: emitauto2},
 	sdateaddmonth:           {text: "dateaddmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddmonth, emit: emitauto2},
 	sdateaddmonthimm:        {text: "dateaddmonth.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opdateaddmonthimm},
+	sdateaddquarter:         {text: "dateaddquarter", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddquarter, emit: emitauto2},
 	sdateaddyear:            {text: "dateaddyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddyear, emit: emitauto2},
 	sdatediffmicro:          {text: "datediffmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: oprsubi, emit: emitauto2},
 	sdatediffparam:          {text: "datediffparam", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffparam, immfmt: fmti64, emit: emitauto2},
-	sdatediffmonth:          {text: "datediffmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitdatediffmonthyear},
-	sdatediffyear:           {text: "datediffyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitdatediffmonthyear},
+	sdatediffmonth:          {text: "datediffmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitDateDiffMQY},
+	sdatediffquarter:        {text: "datediffquarter", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitDateDiffMQY},
+	sdatediffyear:           {text: "datediffyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitDateDiffMQY},
 	sdateextractmicrosecond: {text: "dateextractmicrosecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmicrosecond, emit: emitauto2},
 	sdateextractmillisecond: {text: "dateextractmillisecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmillisecond, emit: emitauto2},
 	sdateextractsecond:      {text: "dateextractsecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractsecond, emit: emitauto2},
@@ -992,6 +998,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdateextracthour:        {text: "dateextracthour", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextracthour, emit: emitauto2},
 	sdateextractday:         {text: "dateextractday", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractday, emit: emitauto2},
 	sdateextractmonth:       {text: "dateextractmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmonth, emit: emitauto2},
+	sdateextractquarter:     {text: "dateextractquarter", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractquarter, emit: emitauto2},
 	sdateextractyear:        {text: "dateextractyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractyear, emit: emitauto2},
 	sdatetounixepoch:        {text: "datetounixepoch", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitauto2},
 	sdatetounixmicro:        {text: "datetounixmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitdatecasttoint},
@@ -1001,6 +1008,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetrunchour:          {text: "datetrunchour", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetrunchour},
 	sdatetruncday:           {text: "datetruncday", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncday},
 	sdatetruncmonth:         {text: "datetruncmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmonth},
+	sdatetruncquarter:       {text: "datetruncquarter", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncquarter},
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitauto2},
 	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
@@ -3423,6 +3431,10 @@ func (p *prog) DateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 			return p.ssa2imm(sdateaddmonthimm, arg1Time, arg1Mask, i64Imm)
 		}
 
+		if part == expr.Quarter {
+			return p.ssa2imm(sdateaddmonthimm, arg1Time, arg1Mask, i64Imm*3)
+		}
+
 		if part == expr.Year {
 			return p.ssa2imm(sdateaddmonthimm, arg1Time, arg1Mask, i64Imm*12)
 		}
@@ -3443,12 +3455,16 @@ func (p *prog) DateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 			return p.ssa3(sdateaddmonth, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
 		}
 
+		if part == expr.Quarter {
+			return p.ssa3(sdateaddquarter, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
+		}
+
 		if part == expr.Year {
 			return p.ssa3(sdateaddyear, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
 		}
 	}
 
-	return p.errorf("unhandled date part in DateAdd()")
+	return p.errorf("unhandled date part %v in DateAdd()", part)
 }
 
 func (p *prog) DateDiff(part expr.Timepart, arg0, arg1 *value) *value {
@@ -3466,6 +3482,10 @@ func (p *prog) DateDiff(part expr.Timepart, arg0, arg1 *value) *value {
 
 	if part == expr.Month {
 		return p.ssa3(sdatediffmonth, t0, t1, p.And(m0, m1))
+	}
+
+	if part == expr.Quarter {
+		return p.ssa3(sdatediffquarter, t0, t1, p.And(m0, m1))
 	}
 
 	if part == expr.Year {
@@ -3490,7 +3510,7 @@ func immediateForBoxedDateInstruction(part expr.Timepart) int {
 	case expr.Year:
 		return 0
 	default:
-		panic("Sub-second precision is invalid here")
+		panic(fmt.Sprintf("Time part %v is invalid here", part))
 	}
 }
 
@@ -3512,11 +3532,19 @@ func (p *prog) DateExtract(part expr.Timepart, val *value) *value {
 			return p.ssa2(sdateextractday, v, m)
 		case expr.Month:
 			return p.ssa2(sdateextractmonth, v, m)
+		case expr.Quarter:
+			return p.ssa2(sdateextractquarter, v, m)
 		case expr.Year:
 			return p.ssa2(sdateextractyear, v, m)
 		default:
 			return p.errorf("unhandled date part in DateExtract()")
 		}
+	}
+
+	// Quarter is not supported by stmextract, so do it this way
+	if part == expr.Quarter {
+		v, m := p.coerceTimestamp(val)
+		return p.ssa2(sdateextractquarter, v, m)
 	}
 
 	v := p.toTime(val)
@@ -3552,6 +3580,8 @@ func (p *prog) DateTrunc(part expr.Timepart, val *value) *value {
 		return p.ssa2(sdatetruncday, v, m)
 	case expr.Month:
 		return p.ssa2(sdatetruncmonth, v, m)
+	case expr.Quarter:
+		return p.ssa2(sdatetruncquarter, v, m)
 	case expr.Year:
 		return p.ssa2(sdatetruncyear, v, m)
 	default:
@@ -3627,7 +3657,18 @@ func emitNone(v *value, c *compilestate) {
 	// does nothing...
 }
 
-func emitdatediffmonthyear(v *value, c *compilestate) {
+func dateDiffMQYImm(op ssaop) int {
+	switch op {
+	case sdatediffquarter:
+		return 1
+	case sdatediffyear:
+		return 2
+	default:
+		return 0
+	}
+}
+
+func emitDateDiffMQY(v *value, c *compilestate) {
 	arg0 := v.args[0]                            // t0
 	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
 	mask := v.args[2]                            // predicate
@@ -3638,13 +3679,7 @@ func emitdatediffmonthyear(v *value, c *compilestate) {
 	c.loadk(v, mask)
 	c.loads(v, arg0)
 	c.clobbers(v)
-
-	isYearImm := uint16(0)
-	if v.op == sdatediffyear {
-		isYearImm = 1
-	}
-
-	c.ops16u16(v, bc, arg1Slot, isYearImm)
+	c.ops16u16(v, bc, arg1Slot, uint16(dateDiffMQYImm(v.op)))
 }
 
 func emitdatecasttoint(v *value, c *compilestate) {

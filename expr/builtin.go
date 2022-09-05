@@ -163,6 +163,7 @@ const (
 	DateAddHour
 	DateAddDay
 	DateAddMonth
+	DateAddQuarter
 	DateAddYear
 
 	DateDiffMicrosecond
@@ -172,6 +173,7 @@ const (
 	DateDiffHour
 	DateDiffDay
 	DateDiffMonth
+	DateDiffQuarter
 	DateDiffYear
 
 	DateExtractMicrosecond
@@ -181,6 +183,7 @@ const (
 	DateExtractHour
 	DateExtractDay
 	DateExtractMonth
+	DateExtractQuarter
 	DateExtractYear
 	ToUnixEpoch
 	ToUnixMicro
@@ -192,6 +195,7 @@ const (
 	DateTruncHour
 	DateTruncDay
 	DateTruncMonth
+	DateTruncQuarter
 	DateTruncYear
 
 	GeoHash
@@ -283,6 +287,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_ADD_HOUR":            DateAddHour,
 	"DATE_ADD_DAY":             DateAddDay,
 	"DATE_ADD_MONTH":           DateAddMonth,
+	"DATE_ADD_QUARTER":         DateAddQuarter,
 	"DATE_ADD_YEAR":            DateAddYear,
 	"DATE_DIFF_MICROSECOND":    DateDiffMicrosecond,
 	"DATE_DIFF_MILLISECOND":    DateDiffMillisecond,
@@ -291,6 +296,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_DIFF_HOUR":           DateDiffHour,
 	"DATE_DIFF_DAY":            DateDiffDay,
 	"DATE_DIFF_MONTH":          DateDiffMonth,
+	"DATE_DIFF_QUARTER":        DateDiffQuarter,
 	"DATE_DIFF_YEAR":           DateDiffYear,
 	"DATE_EXTRACT_MICROSECOND": DateExtractMicrosecond,
 	"DATE_EXTRACT_MILLISECOND": DateExtractMillisecond,
@@ -299,6 +305,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_EXTRACT_HOUR":        DateExtractHour,
 	"DATE_EXTRACT_DAY":         DateExtractDay,
 	"DATE_EXTRACT_MONTH":       DateExtractMonth,
+	"DATE_EXTRACT_QUARTER":     DateExtractQuarter,
 	"DATE_EXTRACT_YEAR":        DateExtractYear,
 	"DATE_TRUNC_MICROSECOND":   DateTruncMicrosecond,
 	"DATE_TRUNC_MILLISECOND":   DateTruncMillisecond,
@@ -307,6 +314,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_TRUNC_HOUR":          DateTruncHour,
 	"DATE_TRUNC_DAY":           DateTruncDay,
 	"DATE_TRUNC_MONTH":         DateTruncMonth,
+	"DATE_TRUNC_QUARTER":       DateTruncQuarter,
 	"DATE_TRUNC_YEAR":          DateTruncYear,
 	"GEO_HASH":                 GeoHash,
 	"GEO_TILE_X":               GeoTileX,
@@ -736,9 +744,12 @@ func adjtime(fn func(x int64, val date.Time) date.Time) func(Hint, []Node) Node 
 
 func adjpart(part Timepart) func(x int64, val date.Time) date.Time {
 	return func(x int64, val date.Time) date.Time {
-		year, month := val.Year(), val.Month()
-		day, hour := val.Day(), val.Hour()
+		year := val.Year()
+		month := val.Month()
+		day := val.Day()
+		hour := val.Hour()
 		minute, sec := val.Minute(), val.Second()
+
 		switch part {
 		default:
 			panic("bad timepart")
@@ -752,6 +763,8 @@ func adjpart(part Timepart) func(x int64, val date.Time) date.Time {
 			day += int(x)
 		case Month:
 			month += int(x)
+		case Quarter:
+			month += int(x * 3)
 		case Year:
 			year += int(x)
 		}
@@ -767,12 +780,13 @@ var (
 		us := val.UnixMicro() + (1000 * x)
 		return date.UnixMicro(us)
 	})
-	dateAddSecond = adjtime(adjpart(Second))
-	dateAddMinute = adjtime(adjpart(Minute))
-	dateAddHour   = adjtime(adjpart(Hour))
-	dateAddDay    = adjtime(adjpart(Day))
-	dateAddMonth  = adjtime(adjpart(Month))
-	dateAddYear   = adjtime(adjpart(Year))
+	dateAddSecond  = adjtime(adjpart(Second))
+	dateAddMinute  = adjtime(adjpart(Minute))
+	dateAddHour    = adjtime(adjpart(Hour))
+	dateAddDay     = adjtime(adjpart(Day))
+	dateAddMonth   = adjtime(adjpart(Month))
+	dateAddQuarter = adjtime(adjpart(Quarter))
+	dateAddYear    = adjtime(adjpart(Year))
 )
 
 var builtinInfo = [maxBuiltin]binfo{
@@ -832,6 +846,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateAddHour:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddHour},
 	DateAddDay:             {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddDay},
 	DateAddMonth:           {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMonth},
+	DateAddQuarter:         {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddQuarter},
 	DateAddYear:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddYear},
 	DateDiffMicrosecond:    {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffMillisecond:    {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
@@ -840,6 +855,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateDiffHour:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffDay:            {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffMonth:          {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffQuarter:        {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffYear:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractMicrosecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractMillisecond: {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
@@ -848,6 +864,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateExtractHour:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractDay:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractMonth:       {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractQuarter:     {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractYear:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateTruncMicrosecond:   {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Microsecond)},
 	DateTruncMillisecond:   {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Millisecond)},
@@ -856,6 +873,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateTruncHour:          {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Hour)},
 	DateTruncDay:           {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Day)},
 	DateTruncMonth:         {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Month)},
+	DateTruncQuarter:       {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Quarter)},
 	DateTruncYear:          {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Year)},
 	ToUnixEpoch:            {check: fixedTime, ret: IntegerType | MissingType},
 	ToUnixMicro:            {check: fixedTime, ret: IntegerType | MissingType},
