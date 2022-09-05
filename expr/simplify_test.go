@@ -555,6 +555,11 @@ func TestSimplify(t *testing.T) {
 			Missing{},
 		},
 		{
+			// SIZE(null) => null
+			CallOp(ObjectSize, Null{}),
+			Null{},
+		},
+		{
 			// SIZE({foo:1, bar:42, baz:123}) => 3
 			CallOp(ObjectSize, &Struct{Fields: []Field{
 				Field{"foo", Integer(1)},

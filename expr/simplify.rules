@@ -151,6 +151,12 @@
 (abs (number x)) -> "(*Rational)(new(big.Rat).Abs(x.rat()))"
 (sign (number x)) -> "(*Rational)(new(big.Rat).SetInt64(int64(x.rat().Sign())))"
 
+// object size
+(object_size (list l)) -> `Integer(len(l.Values))`
+(object_size (struct s)) -> `Integer(len(s.Fields))`
+(object_size (missing)) -> (missing)
+(object_size (null)) -> (null)
+
 (date_extract_microsecond (ts x)) -> (int `x.Value.Nanosecond() / 1000`)
 (date_extract_millisecond (ts x)) -> (int `x.Value.Nanosecond() / 1000000`)
 (date_extract_second (ts x)) -> (int `x.Value.Second()`)

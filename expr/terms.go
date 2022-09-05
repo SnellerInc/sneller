@@ -269,6 +269,8 @@ func init() {
 			"number":   "number",
 			"constant": "Constant",
 			"bool":     "Bool",
+			"struct":   "*Struct",
+			"list":     "*List",
 		},
 	}
 	classBuiltin = &opclass{
@@ -369,6 +371,8 @@ func init() {
 		"constant": classConst,
 		"number":   classConst,
 		"ts":       classConst,
+		"list":     classConst,
+		"struct":   classConst,
 
 		"null":    classNull,
 		"missing": classNull,

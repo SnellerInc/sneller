@@ -628,24 +628,6 @@ func checkObjectSize(h Hint, args []Node) error {
 	return errtypef(args[0], "SIZE is undefined for values of type %s", nodeTypeName(args[0]))
 }
 
-func simplifyObjectSize(h Hint, args []Node) (result Node) {
-	switch v := args[0].(type) {
-	case *Struct:
-		return Integer(len(v.Fields))
-
-	case *List:
-		return Integer(len(v.Values))
-
-	case Missing:
-		return v
-
-	case Null:
-		return v
-	}
-
-	return nil
-}
-
 func checkTableGlob(h Hint, args []Node) error {
 	if len(args) != 1 {
 		return mismatch(1, len(args))
@@ -884,7 +866,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	GeoTileES:   {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
 	GeoDistance: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: FloatType | MissingType},
 
-	ObjectSize: {check: checkObjectSize, ret: NumericType | MissingType, simplify: simplifyObjectSize},
+	ObjectSize: {check: checkObjectSize, ret: NumericType | MissingType},
 
 	InSubquery:        {check: checkInSubquery, private: true, ret: LogicalType},
 	HashLookup:        {check: checkHashLookup, private: true, ret: AnyType},
