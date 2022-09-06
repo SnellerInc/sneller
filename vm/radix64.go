@@ -313,7 +313,7 @@ type aggtable struct {
 	// Kinds of aggregate operations - required to be able to reserve
 	// the correct number of bytes for each kind, and to be able to
 	// aggergate partially aggregated results.
-	aggregateKinds []AggregateKind
+	aggregateOps []AggregateOp
 
 	// distinct ion values, concatenated;
 	// pointed to by pairs[].reprloc
@@ -465,30 +465,30 @@ func cmpAvgFloat64(left, right []byte) int {
 }
 
 var agg2cmp = [...](func([]byte, []byte) int){
-	AggregateKindNone:  nil,
-	AggregateKindSumF:  cmpFloat,
-	AggregateKindAvgF:  cmpAvgFloat64,
-	AggregateKindMinF:  cmpFloat,
-	AggregateKindMaxF:  cmpFloat,
-	AggregateKindSumI:  cmpInt64,
-	AggregateKindSumC:  cmpInt64,
-	AggregateKindAvgI:  cmpAvgInt64,
-	AggregateKindMinI:  cmpInt64,
-	AggregateKindMaxI:  cmpInt64,
-	AggregateKindAndI:  cmpInt64,
-	AggregateKindOrI:   cmpInt64,
-	AggregateKindXorI:  cmpInt64,
-	AggregateKindAndK:  cmpInt64,
-	AggregateKindOrK:   cmpInt64,
-	AggregateKindMinTS: cmpInt64,
-	AggregateKindMaxTS: cmpInt64,
-	AggregateKindCount: cmpCount,
+	AggregateOpNone:  nil,
+	AggregateOpSumF:  cmpFloat,
+	AggregateOpAvgF:  cmpAvgFloat64,
+	AggregateOpMinF:  cmpFloat,
+	AggregateOpMaxF:  cmpFloat,
+	AggregateOpSumI:  cmpInt64,
+	AggregateOpSumC:  cmpInt64,
+	AggregateOpAvgI:  cmpAvgInt64,
+	AggregateOpMinI:  cmpInt64,
+	AggregateOpMaxI:  cmpInt64,
+	AggregateOpAndI:  cmpInt64,
+	AggregateOpOrI:   cmpInt64,
+	AggregateOpXorI:  cmpInt64,
+	AggregateOpAndK:  cmpInt64,
+	AggregateOpOrK:   cmpInt64,
+	AggregateOpMinTS: cmpInt64,
+	AggregateOpMaxTS: cmpInt64,
+	AggregateOpCount: cmpCount,
 }
 
 // return an integer that can be used to sort
 // the results of the aggregate expression
 // (< 0 for less, 0 for equal, > 0 for greater)
-func aggcmp(kind AggregateKind, left, right []byte) int {
+func aggcmp(kind AggregateOpFn, left, right []byte) int {
 	return agg2cmp[kind](left, right)
 }
 
@@ -674,6 +674,6 @@ func (a *aggtable) merge(r *aggtable) {
 			a.initentry(a.tree.values[off+8:])
 		}
 
-		mergeAggregatedValues(a.tree.values[off+8:], value, a.aggregateKinds)
+		mergeAggregatedValues(a.tree.values[off+8:], value, a.aggregateOps)
 	}
 }

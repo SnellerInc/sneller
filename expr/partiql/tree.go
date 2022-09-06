@@ -250,13 +250,15 @@ func (t termlist) contains(s string) bool {
 	return idx < len(t) && t[idx].selfcode == code
 }
 
-func lookupAggregate(buf []byte) int {
-	aggop := aggterms.get(buf)
-	if aggop == -1 {
-		if equalsci(buf, []byte("APPROX_COUNT_DISTINCT")) {
-			return int(expr.OpApproxCountDistinct)
+var approxkw = []byte("APPROX_COUNT_DISTINCT")
+
+func lookupKeyword(buf []byte) int {
+	term := kwterms.get(buf)
+	if term == -1 {
+		if equalsci(buf, approxkw) {
+			return APPROX_COUNT_DISTINCT
 		}
 	}
 
-	return aggop
+	return term
 }

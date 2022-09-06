@@ -258,7 +258,7 @@ func (s *scanner) lexIdent(l *yySymType) int {
 	wordend := s.pos == len(s.from) || issep(s.from[s.pos])
 	if !s.notkw && wordend {
 		// don't perform string allocation if we have a keyword
-		term := kwterms.get(s.from[startpos:s.pos])
+		term := lookupKeyword(s.from[startpos:s.pos])
 		if term != -1 {
 			// following AS or BY, interpret the
 			// next word as a case-sensitive identifier
@@ -268,7 +268,7 @@ func (s *scanner) lexIdent(l *yySymType) int {
 			}
 			return term
 		}
-		aggop := lookupAggregate(s.from[startpos:s.pos])
+		aggop := aggterms.get(s.from[startpos:s.pos])
 		if aggop != -1 {
 			l.integer = aggop
 			return AGGREGATE
@@ -496,4 +496,18 @@ func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr
 	}
 
 	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}, nil
+}
+
+func createApproxCountDistinct(body expr.Node, precision int, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
+	if precision < expr.ApproxCountDistinctMinPrecision || precision > expr.ApproxCountDistinctMaxPrecision {
+		return nil, fmt.Errorf("precision has to be in range [%d, %d]",
+			expr.ApproxCountDistinctMinPrecision, expr.ApproxCountDistinctMaxPrecision)
+	}
+
+	return &expr.Aggregate{
+		Op:        expr.OpApproxCountDistinct,
+		Precision: uint8(precision),
+		Inner:     body,
+		Over:      over,
+		Filter:    filter}, nil
 }

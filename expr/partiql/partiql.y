@@ -66,6 +66,7 @@ import (
 %right DATE_ADD DATE_DIFF EARLIEST LATEST
 %left JOIN LEFT RIGHT CROSS INNER OUTER FULL
 %left ON
+%left APPROX_COUNT_DISTINCT
 %token <integer> AGGREGATE
 %token <str> ID
 %token <empty> '(' ',' ')' '[' ']' '{' '}'
@@ -210,6 +211,22 @@ datum_or_parens
 {
   distinct := false
   agg, err := toAggregate(expr.AggregateOp($1), expr.Star{}, distinct, $5, $6)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = agg
+}
+| APPROX_COUNT_DISTINCT '(' expr ')' optional_filter maybe_window
+{
+  agg, err := createApproxCountDistinct($3, expr.ApproxCountDistinctDefaultPrecision, $5, $6)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = agg
+}
+| APPROX_COUNT_DISTINCT '(' expr ',' literal_int ')' optional_filter maybe_window
+{
+  agg, err := createApproxCountDistinct($3, $5, $7, $8)
   if err != nil {
     yylex.Error(err.Error())
   }

@@ -334,6 +334,7 @@ const (
 	opslower                 bcop = 328
 	opsupper                 bcop = 329
 	opsadjustsize            bcop = 330
-	optrap                   bcop = 331
-	_maxbcop                      = 332
+	opaggapproxcount         bcop = 331
+	optrap                   bcop = 332
+	_maxbcop                      = 333
 )

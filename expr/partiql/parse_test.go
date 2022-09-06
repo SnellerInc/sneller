@@ -83,9 +83,10 @@ var sameq = []string{
 	"SELECT a FROM UNPIVOT t AT a",
 	"SELECT a FROM UNPIVOT {'x': 'y'} AS a",
 	"SELECT * FROM UNPIVOT t AS a AT b",
-	`SELECT APPROX_COUNT_DISTINCT(x) FROM table`,
 	"SELECT TRIM(x) FROM table",
 	"SELECT TRIM(x, y) FROM table",
+	`SELECT APPROX_COUNT_DISTINCT(x) FROM table`,
+	`SELECT APPROX_COUNT_DISTINCT(x, 5) FROM table`,
 }
 
 func TestParseSFW(t *testing.T) {
@@ -346,10 +347,6 @@ func TestParseErrors(t *testing.T) {
 			msg:   `cannot use reserved builtin`,
 		},
 		{
-			query: `SELECT APPROX_COUNT_DISTINCT(DISTINCT x)`,
-			msg:   `cannot use DISTINCT with APPROX_COUNT_DISTINCT`,
-		},
-		{
 			query: `SELECT SUM(DISTINCT x)`,
 			msg:   `cannot use DISTINCT with SUM`,
 		},
@@ -377,6 +374,14 @@ func TestParseErrors(t *testing.T) {
 			query: `SELECT BIT_XOR(DISTINCT x)`,
 			msg:   `cannot use DISTINCT with BIT_XOR`,
 		},
+		{
+			query: `SELECT APPROX_COUNT_DISTINCT(x, -5)`,
+			msg:   `precision has to be in range [4, 16]`,
+		},
+		{
+			query: `SELECT APPROX_COUNT_DISTINCT(x, 42)`,
+			msg:   `precision has to be in range [4, 16]`,
+		},
 	}
 
 	for i := range testcases {
@@ -390,8 +395,9 @@ func TestParseErrors(t *testing.T) {
 
 			msg := fmt.Sprintf("%s", err)
 			if !strings.Contains(msg, tc.msg) {
-				t.Logf("got:  %s", msg)
-				t.Logf("want: %s", tc.msg)
+				t.Logf("query: %s", tc.query)
+				t.Logf("got:   %s", msg)
+				t.Logf("want:  %s", tc.msg)
 				t.Error("error message does not contain the expected substring")
 			}
 		})

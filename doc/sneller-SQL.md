@@ -585,7 +585,7 @@ evaluating `expr` for each row. If `expr` never evaluates to a number,
 produced by evaluating `expr` for each row. If `expr` never evaluates
 to a number, `BIT_XOR(expr)` yields `NULL`.
 
-### `BOOL_AND` and `EVERY`
+#### `BOOL_AND` and `EVERY`
 
 `BOOL_AND(expr)` computes bitwise AND of all results produced by
 evaluating `expr` for each row coerced to a boolean type. If `expr`
@@ -593,11 +593,86 @@ never evaluates to a boolean, `BOOL_AND(expr)` yields `NULL`.
 
 `EVERY(expr)` is an alias of `BOOL_AND(expr)`.
 
-### `BOOL_OR`
+#### `BOOL_OR`
 
 `BOOL_OR(expr)` computes bitwise OR of all results produced by
 evaluating `expr` for each row coerced to a boolean type. If `expr`
 never evaluates to a boolean, `BOOL_OR(expr)` yields `NULL`.
+
+#### `APPROX_COUNT_DISTINCT`
+
+`APPROX_COUNT_DISTINCT(expr)` counts the approximate number of
+distinct results produced by evaluating `expr` for each row.
+
+`APPROX_COUNT_DISTINCT(expr, precision)` allows to set the
+precision. The precision is given as number from 4 to 16. The
+default precision is 11.
+
+The table below shows relative error for each precision value.
+
+| precision | error |
+| --------- | ------|
+| 4         | 0.520 |
+| 5         | 0.465 |
+| 6         | 0.425 |
+| 7         | 0.393 |
+| 8         | 0.368 |
+| 9         | 0.347 |
+| 10        | 0.329 |
+| 11        | 0.314 |
+| 12        | 0.300 |
+| 13        | 0.288 |
+| 14        | 0.278 |
+| 15        | 0.269 |
+| 16        | 0.260 |
+
+This aggregate is faster than `COUNT(DISTINCT expr)`, and it
+does not have the same limitations regarding the cardinality
+of the input expression.
+
+Example
+
+```sql
+SELECT
+    COUNT(id) AS exact,
+    APPROX_COUNT_DISTINCT(id, 4) AS approx4,
+    APPROX_COUNT_DISTINCT(id, 5) AS approx5,
+    APPROX_COUNT_DISTINCT(id, 6) AS approx6,
+    APPROX_COUNT_DISTINCT(id, 7) AS approx7,
+    APPROX_COUNT_DISTINCT(id, 8) AS approx8,
+    APPROX_COUNT_DISTINCT(id, 9) AS approx9,
+    APPROX_COUNT_DISTINCT(id, 10) AS approx10,
+    APPROX_COUNT_DISTINCT(id, 11) AS approx11,
+    APPROX_COUNT_DISTINCT(id, 12) AS approx12,
+    APPROX_COUNT_DISTINCT(id, 13) AS approx13,
+    APPROX_COUNT_DISTINCT(id, 14) AS approx14,
+    APPROX_COUNT_DISTINCT(id, 15) AS approx15,
+    APPROX_COUNT_DISTINCT(id, 16) AS approx16
+FROM sample_input
+```
+
+The result for sample data:
+
+```json
+{
+    "exact"   : 150000,
+    "approx4" : 305163, -- diff: 155163, relative error: 103.442%
+    "approx5" : 221944, -- diff:  71944, relative error:  47.963%
+    "approx6" : 191157, -- diff:  41157, relative error:  27.438%
+    "approx7" : 168042, -- diff:  18042, relative error:  12.028%
+    "approx8" : 166567, -- diff:  16567, relative error:  11.045%
+    "approx9" : 161878, -- diff:  11878, relative error:   7.919%
+    "approx10": 154556, -- diff:   4556, relative error:   3.037%
+    "approx11": 154406, -- diff:   4406, relative error:   2.937%
+    "approx12": 151081, -- diff:   1081, relative error:   0.721%
+    "approx13": 149152, -- diff:    848, relative error:   0.565%
+    "approx14": 149845, -- diff:    155, relative error:   0.103%
+    "approx15": 149775, -- diff:    225, relative error:   0.150%
+    "approx16": 149630  -- diff:    370, relative error:   0.247%
+}
+
+```
+
 
 ### Filtered aggregates
 

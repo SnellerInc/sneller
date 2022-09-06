@@ -417,8 +417,9 @@ const (
 	smakestructkey
 	sboxlist
 
-	stypebits // get encoded tag bits
-	schecktag // check encoded tag bits
+	stypebits       // get encoded tag bits
+	schecktag       // check encoded tag bits
+	saggapproxcount // APPROX_COUNT_DISTINCT
 	_ssamax
 )
 
@@ -487,6 +488,46 @@ func (s ssatype) char() byte {
 	default:
 		return '?'
 	}
+}
+
+func (s ssatype) String() string {
+	var b strings.Builder
+
+	lookup := []struct {
+		bit  ssatype
+		name string
+	}{
+		{bit: stBool, name: "bool"},
+		{bit: stBase, name: "base"},
+		{bit: stValue, name: "value"},
+		{bit: stFloat, name: "float"},
+		{bit: stInt, name: "int"},
+		{bit: stString, name: "string"},
+		{bit: stList, name: "list"},
+		{bit: stTime, name: "time"},
+		{bit: stTimeInt, name: "time-int"},
+		{bit: stHash, name: "hash"},
+		{bit: stBucket, name: "bucket"},
+		{bit: stMem, name: "mem"},
+	}
+
+	first := true
+	b.WriteString("{")
+	for i := range lookup {
+		if s&lookup[i].bit == 0 {
+			continue
+		}
+
+		if !first {
+			b.WriteString(" | ")
+			first = false
+		}
+
+		b.WriteString(lookup[i].name)
+	}
+	b.WriteString("}")
+
+	return b.String()
 }
 
 type ssaopinfo struct {
@@ -1031,6 +1072,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	stypebits: {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
 
 	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
+
+	saggapproxcount: {text: "aggapproxcount", argtypes: []ssatype{stHash, stBool}, rettype: stIntMasked, bc: opaggapproxcount, emit: emitaggapproxcount},
 }
 
 type value struct {
@@ -1232,7 +1275,8 @@ func (v *value) checkarg(arg *value, idx int) {
 	// input argument is an undef value)
 	want := argtype
 	if bits.OnesCount(uint(in&want)) != 1 && arg.op != sundef {
-		v.errf("ambiguous assignment type (%s=%s as argument to %s)", arg.Name(), arg, v.op)
+		v.errf("ambiguous assignment type (%s=%s as argument of type %s to %s of type %s)",
+			arg.Name(), arg, in.String(), v.op, want.String())
 	}
 }
 
@@ -3833,6 +3877,17 @@ func (p *prog) AggregateCount(child, filter *value, slot int) *value {
 	return p.ssa2imm(saggcount, p.InitMem(), mask, slot)
 }
 
+func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot int, precision uint8) *value {
+	mask := p.mask(child)
+	if filter != nil {
+		mask = p.And(mask, filter)
+	}
+
+	h := p.hash(child)
+
+	return p.ssa2imm(saggapproxcount, h, mask, (uint64(slot)<<8)|uint64(precision))
+}
+
 // Slot aggregate operations
 func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, slot int) *value {
 	boolVal, m := p.coerceBool(v)
@@ -5203,19 +5258,19 @@ func (c *compilestate) opu16u32(v *value, op bcop, imm0 uint16, imm1 uint32) {
 	c.asm.emitImmU32(imm1)
 }
 
-func (c *compilestate) opu32u32(v *value, op bcop, imm0 uint32, imm1 uint32) {
-	checkImmediateBeforeEmit2(op, 4, 4)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU32(imm0)
-	c.asm.emitImmU32(imm1)
-}
-
 func (c *compilestate) opu16u16u16(v *value, op bcop, imm0, imm1, imm2 uint16) {
 	checkImmediateBeforeEmit3(op, 2, 2, 2)
 	c.asm.emitOpcode(op)
 	c.asm.emitImmU16(imm0)
 	c.asm.emitImmU16(imm1)
 	c.asm.emitImmU16(imm2)
+}
+
+func (c *compilestate) opu32u32(v *value, op bcop, imm0 uint32, imm1 uint32) {
+	checkImmediateBeforeEmit2(op, 4, 4)
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU32(imm0)
+	c.asm.emitImmU32(imm1)
 }
 
 func (c *compilestate) ops16(v *value, o bcop, slot stackslot) {
@@ -6488,6 +6543,24 @@ func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
 		c.op(v, opallocstr)
 		c.ops16(v, opcode, originalInput)
 	}
+}
+
+func emitaggapproxcount(v *value, c *compilestate) {
+	hash := v.args[0]
+	mask := v.args[1]
+	hashSlot := c.existingStackRef(hash, regH)
+
+	imm := v.imm.(uint64)
+	aggSlot := imm >> 8
+	precision := uint8(imm)
+
+	c.loadk(v, mask)
+	op := ssainfo[v.op].bc
+	checkImmediateBeforeEmit3(op, 8, 2, 2)
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU64(aggSlot)
+	c.asm.emitImmU16(uint16(hashSlot))
+	c.asm.emitImmU16(uint16(precision))
 }
 
 func (p *prog) emit1(v *value, c *compilestate) {

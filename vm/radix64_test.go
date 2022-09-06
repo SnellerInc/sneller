@@ -209,9 +209,9 @@ func TestRadixBytecodeInsert(t *testing.T) {
 		by: []expr.Binding{
 			{},
 		},
-		aggregateKinds: []AggregateKind{AggregateKindCount},
+		aggregateOps: []AggregateOp{AggregateOp{fn: AggregateOpCount}},
 	}
-	agt.aggregateKinds = agt.parent.aggregateKinds
+	agt.aggregateOps = agt.parent.aggregateOps
 
 	delims := make([]vmref, 1024)
 	n, _ := scanvmm(buf, delims)
@@ -339,7 +339,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	}
 	agt2.tree = newRadixTree(8)
 	agt2.parent = agt.parent
-	agt2.aggregateKinds = agt.parent.aggregateKinds
+	agt2.aggregateOps = agt.parent.aggregateOps
 	err = agt.prog.compile(&agt2.bc)
 	if err != nil {
 		t.Fatal(err)

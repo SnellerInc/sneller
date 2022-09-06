@@ -20,6 +20,7 @@ import (
 	"io"
 	"math"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 
@@ -34,78 +35,144 @@ import (
 //go:noescape
 func evalaggregatebc(w *bytecode, delims []vmref, aggregateDataBuffer []byte) int
 
-// AggregateKind Specifies the aggregate operation and its type.
-type AggregateKind uint8
+// AggregateOpFn specifies the aggregate operation and its type.
+type AggregateOpFn uint8
 
 const (
-	AggregateKindNone AggregateKind = iota
-	AggregateKindSumF
-	AggregateKindAvgF
-	AggregateKindMinF
-	AggregateKindMaxF
-	AggregateKindSumI
-	AggregateKindSumC
-	AggregateKindAvgI
-	AggregateKindMinI
-	AggregateKindMaxI
-	AggregateKindAndI
-	AggregateKindOrI
-	AggregateKindXorI
-	AggregateKindAndK
-	AggregateKindOrK
-	AggregateKindMinTS
-	AggregateKindMaxTS
-	AggregateKindCount
+	AggregateOpNone AggregateOpFn = iota
+	AggregateOpSumF
+	AggregateOpAvgF
+	AggregateOpMinF
+	AggregateOpMaxF
+	AggregateOpSumI
+	AggregateOpSumC
+	AggregateOpAvgI
+	AggregateOpMinI
+	AggregateOpMaxI
+	AggregateOpAndI
+	AggregateOpOrI
+	AggregateOpXorI
+	AggregateOpAndK
+	AggregateOpOrK
+	AggregateOpMinTS
+	AggregateOpMaxTS
+	AggregateOpCount
+	AggregateOpApproxCountDistinct
 )
 
-type aggregateKindInfo struct {
-	isFloat    bool
-	dataSize   uint8
-	firstValue uint64
+// AggregateOp describes aggregate operation
+type AggregateOp struct {
+	fn        AggregateOpFn
+	precision uint8 // precision for AggregateOpApproxCountDistinct
 }
 
-var aggregateKindInfoTable = [...]aggregateKindInfo{
-	AggregateKindNone: {isFloat: false, dataSize: 8, firstValue: 0},
+func (a *AggregateOp) dataSize() int {
+	switch a.fn {
+	case AggregateOpNone:
+		return 8
 
-	AggregateKindSumF: {isFloat: true, dataSize: 16, firstValue: 0},
-	AggregateKindAvgF: {isFloat: true, dataSize: 16, firstValue: 0},
-	AggregateKindMinF: {isFloat: true, dataSize: 16, firstValue: math.Float64bits(math.Inf(1))},
-	AggregateKindMaxF: {isFloat: true, dataSize: 16, firstValue: math.Float64bits(math.Inf(-1))},
+	case AggregateOpSumF:
+		return 16
+	case AggregateOpAvgF:
+		return 16
+	case AggregateOpMinF:
+		return 16
+	case AggregateOpMaxF:
+		return 16
 
-	AggregateKindSumI: {isFloat: false, dataSize: 16, firstValue: 0},
-	AggregateKindSumC: {isFloat: false, dataSize: 16, firstValue: 0},
-	AggregateKindAvgI: {isFloat: false, dataSize: 16, firstValue: 0},
-	AggregateKindMinI: {isFloat: false, dataSize: 16, firstValue: 0x7FFFFFFFFFFFFFFF},
-	AggregateKindMaxI: {isFloat: false, dataSize: 16, firstValue: 0x8000000000000000},
-	AggregateKindAndI: {isFloat: false, dataSize: 16, firstValue: 0xFFFFFFFFFFFFFFFF},
-	AggregateKindOrI:  {isFloat: false, dataSize: 16, firstValue: 0x0000000000000000},
-	AggregateKindXorI: {isFloat: false, dataSize: 16, firstValue: 0x0000000000000000},
+	case AggregateOpSumI:
+		return 16
+	case AggregateOpSumC:
+		return 16
+	case AggregateOpAvgI:
+		return 16
+	case AggregateOpMinI:
+		return 16
+	case AggregateOpMaxI:
+		return 16
+	case AggregateOpAndI:
+		return 16
+	case AggregateOpOrI:
+		return 16
+	case AggregateOpXorI:
+		return 16
 
-	AggregateKindAndK: {isFloat: false, dataSize: 16, firstValue: 0x0000000000000001},
-	AggregateKindOrK:  {isFloat: false, dataSize: 16, firstValue: 0x0000000000000000},
+	case AggregateOpAndK:
+		return 16
+	case AggregateOpOrK:
+		return 16
 
-	AggregateKindMinTS: {isFloat: false, dataSize: 16, firstValue: 0x7FFFFFFFFFFFFFFF},
-	AggregateKindMaxTS: {isFloat: false, dataSize: 16, firstValue: 0x8000000000000000},
+	case AggregateOpMinTS:
+		return 16
+	case AggregateOpMaxTS:
+		return 16
 
-	AggregateKindCount: {isFloat: false, dataSize: 8, firstValue: 0},
+	case AggregateOpCount:
+		return 8
+
+	case AggregateOpApproxCountDistinct:
+		return 1 << a.precision
+	}
+
+	return 0
 }
 
-func initAggregateValues(data []byte, aggregateKinds []AggregateKind) {
+type aggregateOpInfo struct {
+	isFloat      bool
+	firstValue   uint64
+	fnFirstValue func([]byte)
+}
+
+var aggregateOpInfoTable = [...]aggregateOpInfo{
+	AggregateOpNone: {isFloat: false, firstValue: 0},
+
+	AggregateOpSumF: {isFloat: true, firstValue: 0},
+	AggregateOpAvgF: {isFloat: true, firstValue: 0},
+	AggregateOpMinF: {isFloat: true, firstValue: math.Float64bits(math.Inf(1))},
+	AggregateOpMaxF: {isFloat: true, firstValue: math.Float64bits(math.Inf(-1))},
+
+	AggregateOpSumI: {isFloat: false, firstValue: 0},
+	AggregateOpSumC: {isFloat: false, firstValue: 0},
+	AggregateOpAvgI: {isFloat: false, firstValue: 0},
+	AggregateOpMinI: {isFloat: false, firstValue: 0x7FFFFFFFFFFFFFFF},
+	AggregateOpMaxI: {isFloat: false, firstValue: 0x8000000000000000},
+	AggregateOpAndI: {isFloat: false, firstValue: 0xFFFFFFFFFFFFFFFF},
+	AggregateOpOrI:  {isFloat: false, firstValue: 0x0000000000000000},
+	AggregateOpXorI: {isFloat: false, firstValue: 0x0000000000000000},
+
+	AggregateOpAndK: {isFloat: false, firstValue: 0x0000000000000001},
+	AggregateOpOrK:  {isFloat: false, firstValue: 0x0000000000000000},
+
+	AggregateOpMinTS: {isFloat: false, firstValue: 0x7FFFFFFFFFFFFFFF},
+	AggregateOpMaxTS: {isFloat: false, firstValue: 0x8000000000000000},
+
+	AggregateOpCount: {isFloat: false, firstValue: 0},
+
+	AggregateOpApproxCountDistinct: {fnFirstValue: aggApproxCountDistinctInit},
+}
+
+func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
 	offset := int(0)
-	for i := range aggregateKinds {
+	for i := range aggregateOps {
 		// First value is initialized to `firstValue`.
-		kind := aggregateKinds[i]
-		binary.LittleEndian.PutUint64(data[offset:], aggregateKindInfoTable[kind].firstValue)
+		op := &aggregateOps[i]
+		info := &aggregateOpInfoTable[op.fn]
+		dataSize := op.dataSize()
+		if info.fnFirstValue != nil {
+			info.fnFirstValue(data[offset : offset+dataSize])
+		} else {
+			binary.LittleEndian.PutUint64(data[offset:], info.firstValue)
+		}
 
 		// All succeeding values were already zero initialized.
-		offset += int(aggregateKindInfoTable[kind].dataSize)
+		offset += dataSize
 	}
 }
 
-func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
-	for i := range aggregateKinds {
-		switch aggregateKinds[i] {
-		case AggregateKindSumF:
+func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
+	for i := range aggregateOps {
+		switch aggregateOps[i].fn {
+		case AggregateOpSumF:
 			bufferAddFloat64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -113,7 +180,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindAvgF:
+		case AggregateOpAvgF:
 			bufferAddFloat64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -121,7 +188,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMinF:
+		case AggregateOpMinF:
 			bufferMinFloat64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -129,7 +196,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMaxF:
+		case AggregateOpMaxF:
 			bufferMaxFloat64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -137,7 +204,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindSumI:
+		case AggregateOpSumI:
 			bufferAddInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -145,7 +212,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindSumC:
+		case AggregateOpSumC:
 			bufferAddInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -153,7 +220,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindAvgI:
+		case AggregateOpAvgI:
 			bufferAddInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -161,7 +228,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMinI, AggregateKindMinTS:
+		case AggregateOpMinI, AggregateOpMinTS:
 			bufferMinInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -169,7 +236,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMaxI, AggregateKindMaxTS:
+		case AggregateOpMaxI, AggregateOpMaxTS:
 			bufferMaxInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -177,7 +244,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindAndI, AggregateKindAndK:
+		case AggregateOpAndI, AggregateOpAndK:
 			bufferAndInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -185,7 +252,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindOrI, AggregateKindOrK:
+		case AggregateOpOrI, AggregateOpOrK:
 			bufferOrInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -193,7 +260,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindXorI:
+		case AggregateOpXorI:
 			bufferXorInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
@@ -201,18 +268,24 @@ func mergeAggregatedValues(dst, src []byte, aggregateKinds []AggregateKind) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindCount:
+		case AggregateOpCount:
 			bufferAddInt64(dst, src)
 			dst = dst[8:]
 			src = src[8:]
+
+		case AggregateOpApproxCountDistinct:
+			n := aggregateOps[i].dataSize()
+			aggApproxCountDistinctUpdateBuckets(n, dst, src)
+			dst = dst[n:]
+			src = src[n:]
 		}
 	}
 }
 
-func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []AggregateKind) {
-	for i := range aggregateKinds {
-		switch aggregateKinds[i] {
-		case AggregateKindSumF, AggregateKindAvgF:
+func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp) {
+	for i := range aggregateOps {
+		switch aggregateOps[i].fn {
+		case AggregateOpSumF, AggregateOpAvgF:
 			atomicext.AddFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -220,7 +293,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMinF:
+		case AggregateOpMinF:
 			atomicext.MinFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -228,7 +301,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMaxF:
+		case AggregateOpMaxF:
 			atomicext.MaxFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -236,7 +309,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindSumI, AggregateKindAvgI, AggregateKindSumC:
+		case AggregateOpSumI, AggregateOpAvgI, AggregateOpSumC:
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
@@ -244,7 +317,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMinI, AggregateKindMinTS:
+		case AggregateOpMinI, AggregateOpMinTS:
 			atomicext.MinInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -252,7 +325,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindMaxI, AggregateKindMaxTS:
+		case AggregateOpMaxI, AggregateOpMaxTS:
 			atomicext.MaxInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -260,7 +333,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindAndI, AggregateKindAndK:
+		case AggregateOpAndI, AggregateOpAndK:
 			atomicext.AndInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -268,7 +341,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindOrI, AggregateKindOrK:
+		case AggregateOpOrI, AggregateOpOrK:
 			atomicext.OrInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -276,7 +349,7 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindXorI:
+		case AggregateOpXorI:
 			atomicext.XorInt64((*int64)(unsafe.Pointer(&dst[0])), int64(binary.LittleEndian.Uint64(src)))
 			dst = dst[8:]
 			src = src[8:]
@@ -284,17 +357,24 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateKinds []Aggregate
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateKindCount:
+		case AggregateOpCount:
 			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
 			dst = dst[8:]
 			src = src[8:]
+
+		case AggregateOpApproxCountDistinct:
+			// Note: realies on the implicit lock, not a real atomic op
+			n := aggregateOps[i].dataSize()
+			aggApproxCountDistinctUpdateBuckets(n, dst, src)
+			dst = dst[n:]
+			src = src[n:]
 		}
 	}
 }
 
-func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
-	switch kind {
-	case AggregateKindSumF, AggregateKindMinF, AggregateKindMaxF:
+func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
+	switch op.fn {
+	case AggregateOpSumF, AggregateOpMinF, AggregateOpMaxF:
 		mark := binary.LittleEndian.Uint64(data[8:])
 		if mark == 0 {
 			b.WriteNull()
@@ -302,7 +382,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteCanonicalFloat(math.Float64frombits(binary.LittleEndian.Uint64(data)))
 		}
 		return 16
-	case AggregateKindAvgF:
+	case AggregateOpAvgF:
 		count := binary.LittleEndian.Uint64(data[8:])
 		if count == 0 {
 			b.WriteNull()
@@ -310,7 +390,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteCanonicalFloat(math.Float64frombits(binary.LittleEndian.Uint64(data)) / float64(count))
 		}
 		return 16
-	case AggregateKindSumI, AggregateKindMinI, AggregateKindMaxI, AggregateKindAndI, AggregateKindOrI, AggregateKindXorI:
+	case AggregateOpSumI, AggregateOpMinI, AggregateOpMaxI, AggregateOpAndI, AggregateOpOrI, AggregateOpXorI:
 		mark := binary.LittleEndian.Uint64(data[8:])
 		if mark == 0 {
 			b.WriteNull()
@@ -318,7 +398,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteInt(int64(binary.LittleEndian.Uint64(data)))
 		}
 		return 16
-	case AggregateKindAndK, AggregateKindOrK:
+	case AggregateOpAndK, AggregateOpOrK:
 		mark := binary.LittleEndian.Uint64(data[8:])
 		if mark == 0 {
 			b.WriteNull()
@@ -330,11 +410,11 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteBool(val)
 		}
 		return 16
-	case AggregateKindSumC:
+	case AggregateOpSumC:
 		count := int64(binary.LittleEndian.Uint64(data))
 		b.WriteInt(count)
 		return 16
-	case AggregateKindAvgI:
+	case AggregateOpAvgI:
 		count := binary.LittleEndian.Uint64(data[8:])
 		if count == 0 {
 			b.WriteNull()
@@ -342,7 +422,7 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteInt(int64(binary.LittleEndian.Uint64(data)) / int64(count))
 		}
 		return 16
-	case AggregateKindMinTS, AggregateKindMaxTS:
+	case AggregateOpMinTS, AggregateOpMaxTS:
 		mark := binary.LittleEndian.Uint64(data[8:])
 		if mark == 0 {
 			b.WriteNull()
@@ -350,12 +430,18 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, kind AggregateKind) int {
 			b.WriteTime(date.UnixMicro(int64(binary.LittleEndian.Uint64(data))))
 		}
 		return 16
-	case AggregateKindCount:
+	case AggregateOpCount:
 		count := binary.LittleEndian.Uint64(data)
 		b.WriteUint(count)
 		return 8
+
+	case AggregateOpApproxCountDistinct:
+		n := op.dataSize()
+		count := aggApproxCountDistinctHLL(data[:n])
+		b.WriteUint(count)
+		return n
 	default:
-		panic(fmt.Sprintf("Invalid aggregate kind: %v", kind))
+		panic(fmt.Sprintf("Invalid aggregate op: %v", op.fn))
 	}
 }
 
@@ -366,7 +452,7 @@ type Aggregate struct {
 	bind Aggregation
 	rest QuerySink
 
-	// AggregateKind for each aggregated value.
+	// AggregateOp for each aggregated value.
 	//
 	// This member has multiple purposes:
 	//   - The length of the array describes how many aggregated fields are projected.
@@ -376,7 +462,7 @@ type Aggregate struct {
 	//     type. This is required to merge partially aggregated data with another data,
 	//     possibly final.
 	//   - Aggregate kind can be used to calculate the final size of the aggregation buffer.
-	aggregateKinds []AggregateKind
+	aggregateOps []AggregateOp
 
 	// Initial values that the Aggregate will be used in every AggregateLocal instance.
 	// These must be set accordingly to the aggregation operator. For example min operator
@@ -385,6 +471,25 @@ type Aggregate struct {
 
 	// Aggregated values (results from executing queries, even in parallel)
 	AggregatedData []byte
+
+	// Lock used only when there are APPROX_COUNT_DISTINCT aggregate(s)
+	// This kind of aggregate uses more complex state update.
+	lock sync.Mutex
+}
+
+// requiresLock returns if the Aggregate contain any APPROX_COUNT_DISTINCT function.
+//
+// Unlike other aggregate functions that can update the global state using
+// atomic operations, APPROX_COUNT_DISTINCT cannot do it and this is
+// why we need a regular lock in such cases.
+func (q *Aggregate) requiresLock() bool {
+	for i := range q.aggregateOps {
+		if q.aggregateOps[i].fn == AggregateOpApproxCountDistinct {
+			return true
+		}
+	}
+
+	return false
 }
 
 type aggregateLocal struct {
@@ -456,10 +561,10 @@ func (q *Aggregate) Close() error {
 
 	st.Marshal(&b, true)
 	b.BeginStruct(-1)
-	for i := range q.aggregateKinds {
+	for i := range q.aggregateOps {
 		sym := st.Intern(q.bind[i].Result)
 		b.BeginField(sym)
-		offset += writeAggregatedValue(&b, data[offset:], q.aggregateKinds[i])
+		offset += writeAggregatedValue(&b, data[offset:], q.aggregateOps[i])
 	}
 	b.EndStruct()
 
@@ -491,6 +596,7 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 	if p.bc.compiled == nil {
 		panic("bytecode WriteRows() before Symbolize()")
 	}
+
 	p.bc.prepare(rp)
 	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
 	p.rowCount += uint64(rowsCount)
@@ -506,7 +612,14 @@ func (p *aggregateLocal) next() rowConsumer {
 }
 
 func (p *aggregateLocal) Close() error {
-	mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateKinds)
+	lock := p.parent.requiresLock()
+	if lock {
+		p.parent.lock.Lock()
+	}
+	mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateOps)
+	if lock {
+		p.parent.lock.Unlock()
+	}
 	p.partialData = nil
 	p.bc.reset()
 	return nil
@@ -536,7 +649,7 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 	p.Begin()
 
 	mem := make([]*value, len(agg))
-	kinds := make([]AggregateKind, len(agg))
+	ops := make([]AggregateOp, len(agg))
 	offset := 0
 
 	for i := range agg {
@@ -564,7 +677,15 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 				}
 				mem[i] = p.AggregateCount(v, filter, offset)
 			}
-			kinds[i] = AggregateKindCount
+			ops[i].fn = AggregateOpCount
+		} else if op == expr.OpApproxCountDistinct {
+			v, err := compile(p, agg[i].Expr.Inner)
+			if err != nil {
+				return err
+			}
+			mem[i] = p.AggregateApproxCountDistinct(v, filter, offset, agg[i].Expr.Precision)
+			ops[i].fn = AggregateOpApproxCountDistinct
+			ops[i].precision = agg[i].Expr.Precision
 		} else if op.IsBoolOp() {
 			argv, err := p.compileAsBool(agg[i].Expr.Inner)
 			if err != nil {
@@ -573,10 +694,10 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			switch op {
 			case expr.OpBoolAnd:
 				mem[i] = p.AggregateBoolAnd(argv, filter, offset)
-				kinds[i] = AggregateKindAndK
+				ops[i].fn = AggregateOpAndK
 			case expr.OpBoolOr:
 				mem[i] = p.AggregateBoolOr(argv, filter, offset)
-				kinds[i] = AggregateKindOrK
+				ops[i].fn = AggregateOpOrK
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}
@@ -590,52 +711,52 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			case expr.OpSum:
 				mem[i], fp = p.AggregateSum(argv, filter, offset)
 				if fp {
-					kinds[i] = AggregateKindSumF
+					ops[i].fn = AggregateOpSumF
 				} else {
-					kinds[i] = AggregateKindSumI
+					ops[i].fn = AggregateOpSumI
 				}
 			case expr.OpSumInt:
 				mem[i] = p.AggregateSumInt(argv, filter, offset)
-				kinds[i] = AggregateKindSumI
+				ops[i].fn = AggregateOpSumI
 			case expr.OpSumCount:
 				mem[i] = p.AggregateSumInt(argv, filter, offset)
-				kinds[i] = AggregateKindSumC
+				ops[i].fn = AggregateOpSumC
 			case expr.OpAvg:
 				mem[i], fp = p.AggregateAvg(argv, filter, offset)
 				if fp {
-					kinds[i] = AggregateKindAvgF
+					ops[i].fn = AggregateOpAvgF
 				} else {
-					kinds[i] = AggregateKindAvgI
+					ops[i].fn = AggregateOpAvgI
 				}
 			case expr.OpMin:
 				mem[i], fp = p.AggregateMin(argv, filter, offset)
 				if fp {
-					kinds[i] = AggregateKindMinF
+					ops[i].fn = AggregateOpMinF
 				} else {
-					kinds[i] = AggregateKindMinI
+					ops[i].fn = AggregateOpMinI
 				}
 			case expr.OpMax:
 				mem[i], fp = p.AggregateMax(argv, filter, offset)
 				if fp {
-					kinds[i] = AggregateKindMaxF
+					ops[i].fn = AggregateOpMaxF
 				} else {
-					kinds[i] = AggregateKindMaxI
+					ops[i].fn = AggregateOpMaxI
 				}
 			case expr.OpBitAnd:
 				mem[i] = p.AggregateAnd(argv, filter, offset)
-				kinds[i] = AggregateKindAndI
+				ops[i].fn = AggregateOpAndI
 			case expr.OpBitOr:
 				mem[i] = p.AggregateOr(argv, filter, offset)
-				kinds[i] = AggregateKindOrI
+				ops[i].fn = AggregateOpOrI
 			case expr.OpBitXor:
 				mem[i] = p.AggregateXor(argv, filter, offset)
-				kinds[i] = AggregateKindXorI
+				ops[i].fn = AggregateOpXorI
 			case expr.OpEarliest:
 				mem[i] = p.AggregateEarliest(argv, filter, offset)
-				kinds[i] = AggregateKindMinTS
+				ops[i].fn = AggregateOpMinTS
 			case expr.OpLatest:
 				mem[i] = p.AggregateLatest(argv, filter, offset)
-				kinds[i] = AggregateKindMaxTS
+				ops[i].fn = AggregateOpMaxTS
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}
@@ -645,14 +766,14 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 		// they can potentially be computed in the order in which the fields
 		// are present in the input row rather than the order in which the
 		// query presents them.
-		offset += int(aggregateKindInfoTable[kinds[i]].dataSize)
+		offset += ops[i].dataSize()
 	}
 
 	aggregateDataSize := offset
 	initialData := make([]byte, aggregateDataSize)
-	initAggregateValues(initialData, kinds)
+	initAggregateValues(initialData, ops)
 
-	q.aggregateKinds = kinds
+	q.aggregateOps = ops
 	q.initialData = initialData
 
 	p.Return(p.MergeMem(mem...))

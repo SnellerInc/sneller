@@ -38,8 +38,8 @@ type HashAggregate struct {
 	by       Selection
 	dst      QuerySink
 
-	aggregateKinds []AggregateKind
-	initialData    []byte
+	aggregateOps []AggregateOp
+	initialData  []byte
 
 	pos2id []int
 
@@ -84,11 +84,11 @@ func (h *HashAggregate) OrderByAggregate(n int, desc bool) error {
 	if n >= len(h.agg) {
 		return fmt.Errorf("aggregate %d doesn't exist", n)
 	}
-	aggregateKind := h.aggregateKinds[n]
+	aggregateFn := h.aggregateOps[n].fn
 	h.order = append(h.order, func(agt *aggtable, left, right hpair) int {
 		lmem := agt.valueof(&left)
 		rmem := agt.valueof(&right)
-		dir := aggcmp(aggregateKind, lmem, rmem)
+		dir := aggcmp(aggregateFn, lmem, rmem)
 		if desc {
 			return -dir
 		}
@@ -170,7 +170,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 
 	mem := prog.MergeMem(colmem...)
 	out := make([]*value, len(agg))
-	kinds := make([]AggregateKind, len(agg))
+	ops := make([]AggregateOp, len(agg))
 	bucket := prog.aggbucket(mem, allColumnsHash, allColumnsMask)
 	offset := 0
 
@@ -206,7 +206,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			}
 
 			out[i] = prog.AggregateSlotCount(mem, bucket, mask, offset)
-			kinds[i] = AggregateKindCount
+			ops[i].fn = AggregateOpCount
 		} else if op.IsBoolOp() {
 			argv, err := prog.compileAsBool(agg[i].Expr.Inner)
 			if err != nil {
@@ -215,10 +215,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			switch op {
 			case expr.OpBoolAnd:
 				out[i] = prog.AggregateSlotBoolAnd(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindAndK
+				ops[i].fn = AggregateOpAndK
 			case expr.OpBoolOr:
 				out[i] = prog.AggregateSlotBoolOr(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindOrK
+				ops[i].fn = AggregateOpOrK
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}
@@ -232,52 +232,52 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			case expr.OpAvg:
 				out[i], fp = prog.AggregateSlotAvg(mem, bucket, argv, mask, offset)
 				if fp {
-					kinds[i] = AggregateKindAvgF
+					ops[i].fn = AggregateOpAvgF
 				} else {
-					kinds[i] = AggregateKindAvgI
+					ops[i].fn = AggregateOpAvgI
 				}
 			case expr.OpSum:
 				out[i], fp = prog.AggregateSlotSum(mem, bucket, argv, mask, offset)
 				if fp {
-					kinds[i] = AggregateKindSumF
+					ops[i].fn = AggregateOpSumF
 				} else {
-					kinds[i] = AggregateKindSumI
+					ops[i].fn = AggregateOpSumI
 				}
 			case expr.OpSumInt:
 				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindSumI
+				ops[i].fn = AggregateOpSumI
 			case expr.OpSumCount:
 				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindSumC
+				ops[i].fn = AggregateOpSumC
 			case expr.OpMin:
 				out[i], fp = prog.AggregateSlotMin(mem, bucket, argv, mask, offset)
 				if fp {
-					kinds[i] = AggregateKindMinF
+					ops[i].fn = AggregateOpMinF
 				} else {
-					kinds[i] = AggregateKindMinI
+					ops[i].fn = AggregateOpMinI
 				}
 			case expr.OpMax:
 				out[i], fp = prog.AggregateSlotMax(mem, bucket, argv, mask, offset)
 				if fp {
-					kinds[i] = AggregateKindMaxF
+					ops[i].fn = AggregateOpMaxF
 				} else {
-					kinds[i] = AggregateKindMaxI
+					ops[i].fn = AggregateOpMaxI
 				}
 			case expr.OpBitAnd:
 				out[i] = prog.AggregateSlotAnd(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindAndI
+				ops[i].fn = AggregateOpAndI
 			case expr.OpBitOr:
 				out[i] = prog.AggregateSlotOr(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindOrI
+				ops[i].fn = AggregateOpOrI
 			case expr.OpBitXor:
 				out[i] = prog.AggregateSlotXor(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindXorI
+				ops[i].fn = AggregateOpXorI
 			case expr.OpEarliest:
 				out[i] = prog.AggregateSlotEarliest(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindMinTS
+				ops[i].fn = AggregateOpMinTS
 			case expr.OpLatest:
 				out[i] = prog.AggregateSlotLatest(mem, bucket, argv, mask, offset)
-				kinds[i] = AggregateKindMaxTS
+				ops[i].fn = AggregateOpMaxTS
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}
@@ -287,13 +287,13 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 		// they can potentially be computed in the order in which the fields
 		// are present in the input row rather than the order in which the
 		// query presents them.
-		offset += int(aggregateKindInfoTable[kinds[i]].dataSize)
+		offset += ops[i].dataSize()
 	}
 
 	initialData := make([]byte, offset)
-	initAggregateValues(initialData, kinds)
+	initAggregateValues(initialData, ops)
 
-	h.aggregateKinds = kinds
+	h.aggregateOps = ops
 	h.initialData = initialData
 
 	prog.Return(prog.MergeMem(out...))
@@ -302,10 +302,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 
 func (h *HashAggregate) Open() (io.WriteCloser, error) {
 	at := &aggtable{
-		parent: h,
-		tree:   newRadixTree(len(h.initialData)),
+		parent:       h,
+		tree:         newRadixTree(len(h.initialData)),
+		aggregateOps: h.aggregateOps,
 	}
-	at.aggregateKinds = h.aggregateKinds
 
 	atomic.AddInt64(&h.children, 1)
 	return splitter(at), nil
@@ -366,14 +366,14 @@ func (h *HashAggregate) Close() error {
 	// we take special care to
 	// emit the fields in an order that
 	// guarantees that the symbol IDs are sorted
-	aggregateKinds := h.aggregateKinds
+	aggregateOps := h.aggregateOps
 
 	// turn the i'th 'agg' output
 	// into an offset
 	offset := func(i int) int {
 		off := 0
-		for _, k := range h.aggregateKinds[:i] {
-			off += int(aggregateKindInfoTable[k].dataSize)
+		for _, kind := range h.aggregateOps[:i] {
+			off += kind.dataSize()
 		}
 		return off
 	}
@@ -400,7 +400,7 @@ func (h *HashAggregate) Close() error {
 				}
 				prevsym = sym
 				outbuf.BeginField(aggsyms[pos])
-				writeAggregatedValue(&outbuf, valmem[offset(pos):], aggregateKinds[pos])
+				writeAggregatedValue(&outbuf, valmem[offset(pos):], aggregateOps[pos])
 			}
 		}
 		outbuf.EndStruct()

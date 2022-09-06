@@ -112,6 +112,32 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order) (int, er
 	return count, nil
 }
 
+func hasApproxCountDistinctAggregate(columns []expr.Binding, order []expr.Order) bool {
+	exists := false
+	var walkfn visitor
+	walkfn = func(e expr.Node) expr.Visitor {
+		if exists {
+			return nil
+		}
+
+		agg, ok := e.(*expr.Aggregate)
+		if ok && agg.Op == expr.OpApproxCountDistinct {
+			exists = true
+			return nil
+		}
+
+		return walkfn
+	}
+
+	for i := range columns {
+		expr.Walk(walkfn, columns[i].Expr)
+	}
+	for i := range order {
+		expr.Walk(walkfn, order[i].Column)
+	}
+	return exists
+}
+
 type flattenerItem struct {
 	node expr.Binding
 	id   int // ordinal position within binding

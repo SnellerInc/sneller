@@ -160,6 +160,12 @@ const (
 	OpApproxCountDistinct
 )
 
+const (
+	ApproxCountDistinctMinPrecision     = 4
+	ApproxCountDistinctMaxPrecision     = 16
+	ApproxCountDistinctDefaultPrecision = 11
+)
+
 func (a AggregateOp) IsBoolOp() bool {
 	return a == OpBoolAnd || a == OpBoolOr
 }
@@ -225,6 +231,8 @@ type Aggregate struct {
 	// Op is the aggregation operation
 	// (sum, min, max, etc.)
 	Op AggregateOp
+	// Precision is the parameter for OpApproxCountDistinct
+	Precision uint8
 	// Inner is the expression to be aggregated
 	Inner Node
 	// Over, if non-nil, is the OVER part
@@ -240,6 +248,9 @@ func (a *Aggregate) Equals(e Node) bool {
 		return false
 	}
 	if ea.Op != a.Op || !a.Inner.Equals(ea.Inner) {
+		return false
+	}
+	if ea.Precision != a.Precision {
 		return false
 	}
 
@@ -269,6 +280,10 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	settype(dst, st, "aggregate")
 	dst.BeginField(st.Intern("op"))
 	dst.WriteUint(uint64(a.Op))
+	if a.Op == OpApproxCountDistinct {
+		dst.BeginField(st.Intern("precision"))
+		dst.WriteUint(uint64(a.Precision))
+	}
 	dst.BeginField(st.Intern("inner"))
 	a.Inner.Encode(dst, st)
 
@@ -329,6 +344,12 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 		var err error
 		a.Filter, _, err = Decode(st, body)
 		return err
+	case "precision":
+		p, _, err := ion.ReadUint(body)
+		if err != nil {
+			return err
+		}
+		a.Precision = uint8(p)
 	default:
 		return fmt.Errorf("expr.Aggregate: setfield: unexpected field %q", name)
 	}
@@ -336,11 +357,22 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 }
 
 func (a *Aggregate) text(dst *strings.Builder, redact bool) {
-	if a.Op == OpCountDistinct {
+	switch a.Op {
+	case OpCountDistinct:
 		dst.WriteString("COUNT(DISTINCT ")
 		a.Inner.text(dst, redact)
 		dst.WriteByte(')')
-	} else {
+
+	case OpApproxCountDistinct:
+		dst.WriteString(a.Op.String())
+		dst.WriteByte('(')
+		a.Inner.text(dst, redact)
+		if a.Precision > 0 && a.Precision != ApproxCountDistinctDefaultPrecision {
+			dst.WriteString(fmt.Sprintf(", %d", a.Precision))
+		}
+		dst.WriteByte(')')
+
+	default:
 		dst.WriteString(a.Op.String())
 		dst.WriteByte('(')
 		a.Inner.text(dst, redact)

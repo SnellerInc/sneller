@@ -15638,6 +15638,14 @@ TEXT bcsadjustsize(SB), NOSPLIT|NOFRAME, $0
     VPADDQ  Z6, Z3, Z3
     NEXT()
 
+// APPROX_COUNT_DISTINCT
+// --------------------------------------------------
+
+/*
+TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
+*/
+#include "evalbc_approxcount.h"
+
 // this is the 'unimplemented!' op
 TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
   BYTE $0xCC
