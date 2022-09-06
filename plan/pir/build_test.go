@@ -668,11 +668,11 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			results: []expr.TypeSet{expr.IntegerType},
 		},
 		{
-			input: `select count(x)+count(y) as both from table`,
+			input: `select count(x)+count(y) as "both" from table`,
 			expect: []string{
 				"ITERATE table FIELDS [x, y]",
 				"AGGREGATE COUNT(x) AS $_0_0, COUNT(y) AS $_0_1",
-				"PROJECT $_0_0 + $_0_1 AS both",
+				`PROJECT $_0_0 + $_0_1 AS "both"`,
 			},
 			results: []expr.TypeSet{expr.UnsignedType},
 		},
