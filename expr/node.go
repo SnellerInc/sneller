@@ -158,6 +158,8 @@ const (
 
 	// Describes APPROX_COUNT_DISTINCT
 	OpApproxCountDistinct
+
+	maxAggregateOp
 )
 
 const (
@@ -224,6 +226,17 @@ func (a AggregateOp) String() string {
 	default:
 		return "none"
 	}
+}
+
+func (a AggregateOp) private() bool {
+	switch a {
+	case OpCount, OpSum, OpAvg, OpMin, OpMax, OpEarliest, OpLatest,
+		OpBitAnd, OpBitOr, OpBitXor, OpBoolAnd, OpBoolOr,
+		OpApproxCountDistinct:
+		return false
+	}
+
+	return true
 }
 
 // Aggregate is an aggregation expression

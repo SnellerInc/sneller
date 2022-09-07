@@ -35,13 +35,17 @@ func TestBuiltinDocs(t *testing.T) {
 	defer f.Close()
 	s := bufio.NewScanner(f)
 
-	var unseen []string
+	unseen := make(map[string]struct{})
 	for name, op := range name2Builtin {
-		info := &builtinInfo[op]
-		if info.private {
-			continue
+		if !builtinInfo[op].private {
+			unseen[name] = struct{}{}
 		}
-		unseen = append(unseen, name)
+	}
+
+	for op := OpNone + 1; op < maxAggregateOp; op++ {
+		if !op.private() {
+			unseen[op.String()] = struct{}{}
+		}
 	}
 
 	for s.Scan() {
@@ -52,19 +56,32 @@ func TestBuiltinDocs(t *testing.T) {
 		if !strings.HasPrefix(text, "#### ") {
 			continue
 		}
-		for i := 0; i < len(unseen); i++ {
-			if strings.Contains(text, unseen[i]) {
-				unseen[i] = unseen[len(unseen)-1]
-				unseen = unseen[:len(unseen)-1]
-				i--
-				continue
-			}
+		terms := normalizeTitle(text)
+		for i := range terms {
+			delete(unseen, terms[i])
 		}
 	}
 	if err := s.Err(); err != nil {
 		t.Fatal(err)
 	}
-	for i := range unseen {
-		t.Errorf("no documentation for builtin %s", unseen[i])
+	for name := range unseen {
+		t.Errorf("no documentation for builtin or aggregate %s", name)
 	}
+}
+
+func normalizeTitle(s string) []string {
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			return r
+		case r >= '0' && r <= '9':
+			return r
+		case r == '_':
+			return r
+		default:
+			return ' '
+		}
+	}, s)
+
+	return strings.Split(s, " ")
 }
