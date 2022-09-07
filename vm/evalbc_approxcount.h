@@ -18,7 +18,7 @@
 #define AggregateDataBuffer R10
 
 TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
-    MOVQ    R12, bytecode_spillArea(VIRT_PCREG)
+    MOVQ    R12, bytecode_spillArea(VIRT_BCPTR)
 
     // Note: The virtual hash registers are 128-bit ones, we use the higher 64 bits of each.
     MOVQ    0(VIRT_PCREG), R15
@@ -50,6 +50,6 @@ scalar_loop:
     JNZ     scalar_loop
 
 next:
-    MOVQ    bytecode_spillArea(VIRT_PCREG), R12
+    MOVQ    bytecode_spillArea(VIRT_BCPTR), R12
 
     NEXT_ADVANCE(12)
