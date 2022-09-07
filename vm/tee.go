@@ -136,6 +136,11 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 		for i := range tw.writers {
 			t.Add(tw.writers[i], tw.final[i])
 		}
+		// add a nil writer to call finalizer
+		if final != nil {
+			t.writers = append(t.writers, nil)
+			t.final = append(t.final, final)
+		}
 		return
 	}
 	t.writers = append(t.writers, w)
@@ -146,6 +151,9 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 func (t *TeeWriter) Write(p []byte) (int, error) {
 	any := false
 	for i := 0; i < len(t.writers); i++ {
+		if t.writers[i] == nil {
+			continue
+		}
 		n, err := t.writers[i].Write(p)
 		if err != nil {
 			t.final[i](int64(n)+t.pos, err)
