@@ -447,6 +447,11 @@ outer:
 }
 
 func (i *input) merge(in *input) bool {
+	// FIXME: merging inputs appears to cause
+	// hangs with certain queries (see #1632)
+	// so disable input merging as a workaround
+	return false
+
 	if !i.table.Expr.Equals(in.table.Expr) {
 		return false
 	}
