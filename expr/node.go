@@ -239,6 +239,21 @@ func (a AggregateOp) private() bool {
 	return true
 }
 
+// AcceptDistinct returns true if the aggregate can be used with DISTINCT keyword.
+func (a AggregateOp) AcceptDistinct() bool {
+	switch a {
+	case OpCount, OpMin, OpMax, OpCountDistinct, OpEarliest, OpLatest:
+		return true
+	}
+
+	return false
+}
+
+// AcceptStar returns true if the aggregate can be used with '*'.
+func (a AggregateOp) AcceptStar() bool {
+	return a == OpCount
+}
+
 // Aggregate is an aggregation expression
 type Aggregate struct {
 	// Op is the aggregation operation

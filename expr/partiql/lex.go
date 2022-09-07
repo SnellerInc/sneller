@@ -484,15 +484,20 @@ func (e *LexerError) Error() string {
 	return fmt.Sprintf("at position %d: %s", e.Position, e.Message)
 }
 
+var exprstar = expr.Star{}
+
 func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr.Node, over *expr.Window) (*expr.Aggregate, error) {
 	if distinct {
-		switch op {
-		case expr.OpCount:
+		if op == expr.OpCount {
 			op = expr.OpCountDistinct
-		case expr.OpSum, expr.OpAvg, expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor,
-			expr.OpBoolAnd, expr.OpBoolOr, expr.OpApproxCountDistinct:
+		}
+		if !op.AcceptDistinct() {
 			return nil, fmt.Errorf("cannot use DISTINCT with %v", op)
 		}
+	}
+
+	if !op.AcceptStar() && expr.Equal(body, exprstar) {
+		return nil, fmt.Errorf("cannot use * with %v", op)
 	}
 
 	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}, nil

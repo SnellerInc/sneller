@@ -216,6 +216,7 @@ func checkError(t *testing.T, tc *testcaseError) {
 	text := tc.query
 	q, err := partiql.Parse([]byte(text))
 	if err != nil {
+		t.Logf("query: %s", text)
 		t.Fatal(err)
 	}
 

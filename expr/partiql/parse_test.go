@@ -382,6 +382,38 @@ func TestParseErrors(t *testing.T) {
 			query: `SELECT APPROX_COUNT_DISTINCT(x, 42)`,
 			msg:   `precision has to be in range [4, 16]`,
 		},
+		{
+			query: `SELECT SUM(*)`,
+			msg:   `cannot use * with SUM`,
+		},
+		{
+			query: `SELECT MIN(*)`,
+			msg:   `cannot use * with MIN`,
+		},
+		{
+			query: `SELECT MAX(*)`,
+			msg:   `cannot use * with MAX`,
+		},
+		{
+			query: `SELECT BOOL_OR(*)`,
+			msg:   `cannot use * with BOOL_OR`,
+		},
+		{
+			query: `SELECT BOOL_AND(*)`,
+			msg:   `cannot use * with BOOL_AND`,
+		},
+		{
+			query: `SELECT BIT_AND(*)`,
+			msg:   `cannot use * with BIT_AND`,
+		},
+		{
+			query: `SELECT BIT_OR(*)`,
+			msg:   `cannot use * with BIT_OR`,
+		},
+		{
+			query: `SELECT BIT_XOR(*)`,
+			msg:   `cannot use * with BIT_XOR`,
+		},
 	}
 
 	for i := range testcases {
