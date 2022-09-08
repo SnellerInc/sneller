@@ -216,7 +216,13 @@ func TestExec(t *testing.T) {
 		t.Logf("using cgroup %s", cgroot)
 		opts = append(opts, WithCgroup(func(id tnproto.ID) cgroup.Dir {
 			return cgroot.Sub(id.String())
-		}))
+		}),
+			// pass the desired cgroup in the environment
+			// so that the stub can test it is in the right place
+			WithTenantEnv(func(cache string, id tnproto.ID) []string {
+				base := DefaultEnv(cache, id)
+				return append(base, fmt.Sprintf("WANT_CGROUP=%s", string(cgroot.Sub(id.String()))))
+			}))
 	}
 	m := NewManager([]string{"./test-stub", "worker"}, opts...)
 	// if bwrap(1) is installed,

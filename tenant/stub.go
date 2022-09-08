@@ -33,6 +33,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/SnellerInc/sneller/cgroup"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
@@ -216,6 +217,23 @@ func die(err error) {
 	os.Exit(111)
 }
 
+// if we are in a recognized cgroup2 hierarchy
+// *and* we are not in the root cgroup, check
+// that our cgroup ends with the tenant ID
+func testCgroupOK() {
+	want := os.Getenv("WANT_CGROUP")
+	if want == "" {
+		return
+	}
+	cur, err := cgroup.Self()
+	if err != nil {
+		die(fmt.Errorf("reading /proc/self/cgroup: %s", err))
+	}
+	if string(cur) != want {
+		die(fmt.Errorf("got cgroup %s but want %s", string(cur), want))
+	}
+}
+
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "worker" {
 		die(errors.New("expected to run in worker mode"))
@@ -235,6 +253,8 @@ func main() {
 	if *eventfd == -1 {
 		die(errors.New("no eventfd file descriptor"))
 	}
+
+	testCgroupOK()
 
 	_ = *workerTenant
 

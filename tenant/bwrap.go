@@ -15,6 +15,7 @@
 package tenant
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"runtime"
@@ -51,10 +52,18 @@ func CanSandbox() bool {
 func (m *Manager) sandboxStart(cmd *exec.Cmd, cg cgroup.Dir, cachedir string) error {
 	bw := bwrapPath()
 	// pipe for --block-fd
-	piper, pipew, err := os.Pipe()
+	blockr, blockw, err := os.Pipe()
 	if err != nil {
 		return err
 	}
+	// pipe for --info-fd
+	infor, infow, err := os.Pipe()
+	if err != nil {
+		blockw.Close()
+		blockr.Close()
+		return err
+	}
+
 	// mount / as read-only,
 	// and bind-mount CACHEDIR over /tmp
 	//
@@ -75,29 +84,42 @@ func (m *Manager) sandboxStart(cmd *exec.Cmd, cg cgroup.Dir, cachedir string) er
 		// to a new location
 		"--setenv", "CACHEDIR", "/tmp",
 		"--block-fd", strconv.Itoa(len(cmd.ExtraFiles) + 3),
+		"--info-fd", strconv.Itoa(len(cmd.ExtraFiles) + 4),
 		"--",
 	}
-	cmd.ExtraFiles = append(cmd.ExtraFiles, piper)
+	cmd.ExtraFiles = append(cmd.ExtraFiles, blockr, infow)
 	args = append(args, cmd.Args...)
 	cmd.Path = bw
 	cmd.Args = append(args, cmd.Args...)
 	err = cmd.Start()
+	// these are never used subsequently
+	blockr.Close()
+	infow.Close()
 	if err != nil {
-		piper.Close()
-		pipew.Close()
+		infor.Close()
+		blockw.Close()
 		return err
 	}
-	piper.Close()
-	// move the child into the new target cgroup
-	if !cg.IsZero() {
-		err = cgroup.Move(cmd.Process.Pid, cg)
+
+	// the --info-fd argument to bwrap
+	// produces a json structure describing
+	// the container; extract the true child pid
+	// so we can move it into the target cgroup
+	type info struct {
+		Pid int `json:"child-pid"`
+	}
+	var chld info
+	if json.NewDecoder(infor).Decode(&chld) == nil && !cg.IsZero() {
+		// move the real child into the new target cgroup
+		err = cgroup.Move(chld.Pid, cg)
 		if err != nil {
 			m.errorf("moving child into cgroup: %s", err)
 		}
 	}
+	infor.Close()
 	// produce signal for child to start
 	// now that we have changed its cgroup:
-	pipew.WriteString("\n")
-	pipew.Close()
+	blockw.WriteString("\n")
+	blockw.Close()
 	return nil
 }
