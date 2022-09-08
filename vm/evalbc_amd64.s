@@ -15603,17 +15603,11 @@ next:
 // LOWER/UPPER functions
 // --------------------------------------------------
 
-#include "evalbc_strcase.h"
-
+/*
 TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
-    // 0x3f = 128 - ord('A')
-    // 0x25 = 128 - ord('Z') - 1
-    BC_STR_CHANGE_CASE($0x2525252525252525, $0x3f3f3f3f3f3f3f3f, str_tolower_lookup, str_tolower_data)
-
 TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
-    // 0x1f = 128 - ord('a')
-    // 0x05 = 128 - ord('z') - 1
-    BC_STR_CHANGE_CASE($0x0505050505050505, $0x1f1f1f1f1f1f1f1f, str_toupper_lookup, str_toupper_data)
+*/
+#include "evalbc_strcase.h"
 
 // bcsadjustsize adjusts buffer sizes before calling `bcallocstr` for LOWER/UPPER purposes.
 //

@@ -360,3 +360,39 @@ BC_STR_DEF_CONSTD(utf32_change_case_lookup_mask, $0x1ff)
     1110:  3  // 3-byte char
     1111:  4  // 4-byte char */
 BC_STR_DEF_VPSHUFB_LANE_CONST(utf8_length, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2, 2, 3, 4)
+
+
+TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
+    // 0x3f = 128 - ord('A')
+    // 0x25 = 128 - ord('Z') - 1
+    BC_STR_CHANGE_CASE($0x2525252525252525, $0x3f3f3f3f3f3f3f3f, str_tolower_lookup, str_tolower_data)
+
+TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
+    // 0x1f = 128 - ord('a')
+    // 0x05 = 128 - ord('z') - 1
+    BC_STR_CHANGE_CASE($0x0505050505050505, $0x1f1f1f1f1f1f1f1f, str_toupper_lookup, str_toupper_data)
+
+
+#undef TERN_MERGE
+#undef QWORD_LO_VEC
+#undef QWORD_HI_VEC
+#undef CONSTD_0x00000001
+#undef CONSTD_0x00000004
+#undef CONSTD_0x00000080
+#undef CONSTD_0x000000ff
+#undef CONSTD_0x20202020
+#undef CONSTD_0x3f3f3f3f
+#undef utf8_to_utf32_merge_step1
+#undef utf8_to_utf32_merge_step2
+#undef utf8_to_utf32_shl_lookup
+#undef utf8_to_utf32_shr_lookup
+#undef utf8_length_lookup
+#undef BC_STR_SET_CONSTD
+#undef BC_STR_SET_VPSHUFB
+#undef BC_STR_DEF_CONSTD
+#undef BC_STR_DEF_VPSHUFB_LANE_CONST
+#undef BC_STR_CHANGE_CASE
+#undef BC_UTF8_TO_UTF32
+#undef BC_UTF32_CHANGE_CASE
+#undef BC_UTF8_LENGTH
+#undef BC_UTF8_LENGTH_AUX

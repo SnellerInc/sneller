@@ -53,3 +53,5 @@ next:
     MOVQ    bytecode_spillArea(VIRT_BCPTR), R12
 
     NEXT_ADVANCE(12)
+
+#undef AggregateDataBuffer
