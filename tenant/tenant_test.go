@@ -35,6 +35,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/cgroup"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
@@ -160,6 +161,8 @@ func fsize(fname string) int64 {
 	return f.Size()
 }
 
+var cgroot cgroup.Dir
+
 func TestMain(m *testing.M) {
 	// build the test binary launched with "stub" just once
 	err := exec.Command("go", "build",
@@ -168,6 +171,10 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to compile test-stub: %s", err)
 		os.Exit(1)
+	}
+	// allow testing w/ cgroups
+	if c := os.Getenv("CGROOT"); c != "" {
+		cgroot = cgroup.Dir(c)
 	}
 	os.Exit(m.Run())
 }
@@ -199,11 +206,19 @@ func TestExec(t *testing.T) {
 	id := randomID()
 	var logbuf bytes.Buffer
 
-	m := NewManager([]string{"./test-stub", "worker"},
+	opts := []Option{
 		WithGCInterval(time.Hour),
 		WithLogger(log.New(&logbuf, "manager-log: ", 0)),
 		WithRemote(l),
-	)
+	}
+	// try to do delegated cgroup trickery
+	if !cgroot.IsZero() {
+		t.Logf("using cgroup %s", cgroot)
+		opts = append(opts, WithCgroup(func(id tnproto.ID) cgroup.Dir {
+			return cgroot.Sub(id.String())
+		}))
+	}
+	m := NewManager([]string{"./test-stub", "worker"}, opts...)
 	// if bwrap(1) is installed,
 	// test that sandboxing works
 	m.Sandbox = CanSandbox()

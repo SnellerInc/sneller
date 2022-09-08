@@ -22,8 +22,10 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/auth"
+	"github.com/SnellerInc/sneller/cgroup"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant"
+	"github.com/SnellerInc/sneller/tenant/tnproto"
 )
 
 type cachedEnv interface {
@@ -43,6 +45,7 @@ type server struct {
 
 	sandbox   bool
 	cachedir  string
+	cgroot    string
 	tenantcmd []string
 
 	peers peerlist
@@ -93,10 +96,16 @@ func (s *server) handler() *http.ServeMux {
 }
 
 func (s *server) Serve(httpsock, tenantsock net.Listener) error {
-	s.manager = tenant.NewManager(s.tenantcmd,
+	opts := []tenant.Option{
 		tenant.WithLogger(s.logger),
 		tenant.WithRemote(tenantsock),
-	)
+	}
+	if s.cgroot != "" {
+		opts = append(opts, tenant.WithCgroup(func(id tnproto.ID) cgroup.Dir {
+			return cgroup.Dir(s.cgroot).Sub(id.String())
+		}))
+	}
+	s.manager = tenant.NewManager(s.tenantcmd, opts...)
 	s.manager.Sandbox = s.sandbox
 	s.manager.CacheDir = s.cachedir
 	if tenantsock != nil {

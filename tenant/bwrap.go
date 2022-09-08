@@ -15,9 +15,13 @@
 package tenant
 
 import (
+	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"sync"
+
+	"github.com/SnellerInc/sneller/cgroup"
 )
 
 var (
@@ -44,11 +48,13 @@ func CanSandbox() bool {
 	return bwrapPath() != ""
 }
 
-// wrap a command + environment + cachedir
-// in an invocation of bwrap that sandboxes
-// access to the filesystem (and other pids)
-func bubblewrap(cmd []string, cachedir string) *exec.Cmd {
+func (m *Manager) sandboxStart(cmd *exec.Cmd, cg cgroup.Dir, cachedir string) error {
 	bw := bwrapPath()
+	// pipe for --block-fd
+	piper, pipew, err := os.Pipe()
+	if err != nil {
+		return err
+	}
 	// mount / as read-only,
 	// and bind-mount CACHEDIR over /tmp
 	//
@@ -56,6 +62,7 @@ func bubblewrap(cmd []string, cachedir string) *exec.Cmd {
 	// and instead make a template for a
 	// minimal rootfs visible to the tenant process?
 	args := []string{
+		bw,
 		"--unshare-pid",
 		"--ro-bind", "/", "/",
 		"--proc", "/proc",
@@ -67,8 +74,30 @@ func bubblewrap(cmd []string, cachedir string) *exec.Cmd {
 		// we have bind-mounted the original cache directory
 		// to a new location
 		"--setenv", "CACHEDIR", "/tmp",
+		"--block-fd", strconv.Itoa(len(cmd.ExtraFiles) + 3),
+		"--",
 	}
-	args = append(args, "--")
-	args = append(args, cmd...)
-	return exec.Command(bw, args...)
+	cmd.ExtraFiles = append(cmd.ExtraFiles, piper)
+	args = append(args, cmd.Args...)
+	cmd.Path = bw
+	cmd.Args = append(args, cmd.Args...)
+	err = cmd.Start()
+	if err != nil {
+		piper.Close()
+		pipew.Close()
+		return err
+	}
+	piper.Close()
+	// move the child into the new target cgroup
+	if !cg.IsZero() {
+		err = cgroup.Move(cmd.Process.Pid, cg)
+		if err != nil {
+			m.errorf("moving child into cgroup: %s", err)
+		}
+	}
+	// produce signal for child to start
+	// now that we have changed its cgroup:
+	pipew.WriteString("\n")
+	pipew.Close()
+	return nil
 }

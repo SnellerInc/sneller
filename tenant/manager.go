@@ -79,6 +79,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SnellerInc/sneller/cgroup"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
@@ -144,6 +145,9 @@ type Manager struct {
 	// If ExecStderr is nil, then the children's stderr
 	// is attached to the parent's stderr.
 	execStderr func(id tnproto.ID) io.Writer
+
+	// cg maps tenants to cgroups
+	cg func(id tnproto.ID) cgroup.Dir
 
 	// gcInterval is the interval at which
 	// processes that have been inactive for
@@ -283,6 +287,17 @@ func WithLogger(l *log.Logger) Option {
 	}
 }
 
+// WithCgroup sets the delegated cgroup that
+// the Manager will use to launch tenant processes.
+// If the returned cgroup already exists, all the
+// processes within it will be killed before spawning
+// a new tenant process.
+func WithCgroup(fn func(id tnproto.ID) cgroup.Dir) Option {
+	return func(m *Manager) {
+		m.cg = fn
+	}
+}
+
 // NewManager makes a new Manager from the
 // list of command-line arguments provided
 // and the list of additional options.
@@ -326,6 +341,7 @@ type child struct {
 	proc    *os.Process
 	ctl     *net.UnixConn
 	touched time.Time
+	cg      cgroup.Dir
 }
 
 var bufPool = sync.Pool{
@@ -416,6 +432,9 @@ func (m *Manager) reap(c *child, id tnproto.ID) {
 	if m.live != nil && m.live[id] == c {
 		delete(m.live, id)
 		os.RemoveAll(m.cacheDir(id))
+		if !c.cg.IsZero() {
+			c.cg.Remove()
+		}
 	}
 	m.lock.Unlock()
 	// the Close may race with a send,
@@ -460,6 +479,9 @@ func (m *Manager) gc() {
 			for id, c := range m.live {
 				if time.Since(c.touched) >= interval {
 					c.proc.Kill()
+					if !c.cg.IsZero() {
+						c.cg.Kill()
+					}
 					delete(m.live, id)
 					os.RemoveAll(m.cacheDir(id))
 				}
@@ -536,18 +558,7 @@ func (m *Manager) launch(id tnproto.ID) (*child, error) {
 	// the first file descriptor in exec.Cmd.ExtraFiles
 	// is always "3", so we pass that as the argument
 	// immediately following the tenant id
-	arglist := append(m.execArgs, "-t", id.String(), "-c", "3", "-e", "4")
-	var cmd *exec.Cmd
-	if m.Sandbox && CanSandbox() {
-		cmd = bubblewrap(append([]string{m.execPath}, arglist...), m.cacheDir(id))
-	} else {
-		if m.Sandbox {
-			m.warnOnce.Do(func() {
-				m.errorf("warning: bwrap(1) unavailable even though Manager.Sandbox is set!")
-			})
-		}
-		cmd = exec.Command(m.execPath, append(m.execArgs, "-t", id.String(), "-c", "3", "-e", "4")...)
-	}
+	cmd := exec.Command(m.execPath, append(m.execArgs, "-t", id.String(), "-c", "3", "-e", "4")...)
 	// note: sandboxing will override
 	cmd.Env = m.envfn(m.cacheDir(id), id)
 	cmd.Stdin = nil
@@ -561,9 +572,24 @@ func (m *Manager) launch(id tnproto.ID) (*child, error) {
 	}
 	cmd.ExtraFiles = []*os.File{fd, m.eventfd}
 
-	// TODO: populate cmd.Stdout, cmd.Stderr
-	// so that logs go to the right place
-	err = cmd.Start()
+	var cg cgroup.Dir
+	if m.Sandbox && CanSandbox() {
+		if m.cg != nil {
+			cg = m.cg(id)
+			_, err = cg.Create("", true)
+			if err != nil {
+				return nil, err
+			}
+		}
+		err = m.sandboxStart(cmd, cg, m.cacheDir(id))
+	} else {
+		if m.Sandbox {
+			m.warnOnce.Do(func() {
+				m.errorf("warning: bwrap(1) unavailable even though Manager.Sandbox is set!")
+			})
+		}
+		err = cmd.Start()
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -574,6 +600,7 @@ func (m *Manager) launch(id tnproto.ID) (*child, error) {
 		proc:    cmd.Process,
 		ctl:     local,
 		touched: time.Now(),
+		cg:      cg,
 	}, nil
 }
 
@@ -726,8 +753,14 @@ func (m *Manager) Stop() {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	for _, c := range m.live {
-		c.proc.Kill()
 		c.ctl.Close()
+		// if the process is in a cgroup,
+		// then we can clean it up more easily:
+		if !c.cg.IsZero() {
+			c.cg.Kill()
+		} else {
+			c.proc.Kill()
+		}
 	}
 	m.live = nil
 	if m.eventfd != nil {

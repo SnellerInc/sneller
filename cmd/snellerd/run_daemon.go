@@ -35,6 +35,7 @@ func runDaemon(args []string) {
 	authEndpoint := daemonCmd.String("a", "", "authorization specification (file://, http://, https://, empty uses environment)")
 	daemonEndpoint := daemonCmd.String("e", "127.0.0.1:8000", "endpoint to listen on (REST API)")
 	remoteEndpoint := daemonCmd.String("r", "127.0.0.1:9000", "endpoint to listen on for remote requests (inter-node)")
+	cgroupRoot := daemonCmd.String("cgroot", "", "delegated cgroup root for tenant processes")
 	peerExec := daemonCmd.String("x", "", "command to exec for fetching peers")
 	debugSock := daemonCmd.Int("debug", -1, "file descriptor to listen on for pprof debug activity")
 
@@ -55,6 +56,7 @@ func runDaemon(args []string) {
 
 	server := &server{
 		logger:    logger,
+		cgroot:    *cgroupRoot,
 		sandbox:   tenant.CanSandbox(),
 		tenantcmd: []string{exe, "worker"},
 		peers:     noPeers{},
