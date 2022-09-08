@@ -130,14 +130,16 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 
 			_, err := w.Write(mem)
 			if err != nil {
-				w.Close()
 				seterr(err)
+				w.Close()
+				return
 			}
 			if shw, ok := w.(vm.EndSegmentWriter); ok {
 				shw.EndSegment()
 			} else {
-				w.Close()
 				seterr(fmt.Errorf("%T not an EndSegmentWriter?", w))
+				w.Close()
+				return
 			}
 			seterr(w.Close())
 		}(outputs[i], p[i], &errlist[i])
