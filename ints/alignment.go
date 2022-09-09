@@ -14,6 +14,10 @@
 
 package ints
 
+import (
+	"golang.org/x/exp/constraints"
+)
+
 // IsAligned returns true if and only if v is an integer multiple of alignment
 func IsAligned(v, alignment uint) bool {
 	return v%alignment == 0
@@ -87,4 +91,9 @@ func AlignUp32(v, alignment uint32) uint32 {
 // AlignUp64 returns v aligned up to a given alignment.
 func AlignUp64(v, alignment uint64) uint64 {
 	return ((v + alignment - 1) / alignment) * alignment
+}
+
+// ChunkCount returns the number of chunkSize-bit chunks needed to store n bits
+func ChunkCount[T constraints.Unsigned](n, chunkSize T) T {
+	return (n + chunkSize - 1) / chunkSize
 }

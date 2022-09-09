@@ -1087,3 +1087,33 @@ func (u *Unpivot) equals(brhs Step) bool {
 	}
 	return lhs.Ast.Equals(rhs.Ast)
 }
+
+// UnpivotAtDistinct represents the UNPIVOT expr AT x GROUP BY x statement
+type UnpivotAtDistinct struct {
+	parented
+	Ast *expr.Unpivot // The AST node this node was constructed from
+	noexprs
+}
+
+func (u *UnpivotAtDistinct) get(x string) (Step, expr.Node) {
+	if *u.Ast.At == x {
+		return u, u.Ast
+	}
+	// Binding cannot be resolved
+	return nil, nil
+}
+
+func (u *UnpivotAtDistinct) describe(dst io.Writer) {
+	fmt.Fprintf(dst, "UNPIVOT_AT_DISTINCT %s\n", *u.Ast.At)
+}
+
+func (u *UnpivotAtDistinct) rewrite(rw func(expr.Node, bool) expr.Node) {}
+
+func (u *UnpivotAtDistinct) equals(brhs Step) bool {
+	lhs := u
+	rhs, ok := brhs.(*UnpivotAtDistinct)
+	if !ok {
+		return false
+	}
+	return *lhs.Ast.At == *rhs.Ast.At
+}

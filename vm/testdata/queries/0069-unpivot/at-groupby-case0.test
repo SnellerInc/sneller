@@ -1,0 +1,15 @@
+SELECT
+    field
+FROM UNPIVOT input AT field GROUP BY field
+---
+{"this": "a"}
+{"is": "ab"}
+{"a": "abc"}
+{"test": "abcd"}
+{"is": "abcde"}
+{"this": "abcdef"}
+---
+{"field": "this"}
+{"field": "a"}
+{"field": "is"}
+{"field": "test"}

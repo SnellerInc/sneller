@@ -15,17 +15,23 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"math/bits"
+	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
-
 	"golang.org/x/exp/slices"
 )
 
 const (
-	outRowsCapacity = 1024 // The size of a buffer for the metadata describing individual rows
+	outRowsCapacity      = 1024 // The size of a buffer for the metadata describing individual rows
+	simdChunkBits   uint = 512
 )
+
+var dummyVMRef vmref = vmref{0, 0}
 
 type creatorFunc func(u *Unpivot, w io.WriteCloser) rowConsumer
 
@@ -36,27 +42,27 @@ type Unpivot struct {
 	fnCreate creatorFunc
 }
 
-func createUnpivoterAsAt(u *Unpivot, w io.WriteCloser) rowConsumer {
-	return &unpivoterAsAt{
-		unpivoterBase: unpivoterBase{
+func createKernelUnpivotAsAt(u *Unpivot, w io.WriteCloser) rowConsumer {
+	return &kernelUnpivotAsAt{
+		kernelUnpivotBase: kernelUnpivotBase{
 			parent: u,
 			out:    asRowConsumer(w),
 		},
 	}
 }
 
-func createUnpivoterAs(u *Unpivot, w io.WriteCloser) rowConsumer {
-	return &unpivoterAs{
-		unpivoterBase: unpivoterBase{
+func createKernelUnpivotAs(u *Unpivot, w io.WriteCloser) rowConsumer {
+	return &kernelUnpivotAs{
+		kernelUnpivotBase: kernelUnpivotBase{
 			parent: u,
 			out:    asRowConsumer(w),
 		},
 	}
 }
 
-func createUnpivoterAt(u *Unpivot, w io.WriteCloser) rowConsumer {
-	return &unpivoterAt{
-		unpivoterBase: unpivoterBase{
+func createKernelUnpivotAt(u *Unpivot, w io.WriteCloser) rowConsumer {
+	return &kernelUnpivotAt{
+		kernelUnpivotBase: kernelUnpivotBase{
 			parent: u,
 			out:    asRowConsumer(w),
 		},
@@ -69,13 +75,13 @@ func NewUnpivot(as *string, at *string, dst QuerySink) (*Unpivot, error) {
 	var creator creatorFunc
 	if as != nil {
 		if at != nil {
-			creator = createUnpivoterAsAt
+			creator = createKernelUnpivotAsAt
 		} else {
-			creator = createUnpivoterAs
+			creator = createKernelUnpivotAs
 		}
 	} else {
 		if at != nil {
-			creator = createUnpivoterAt
+			creator = createKernelUnpivotAt
 		} else {
 			panic("'as' and 'at' cannot both be nil") // should have been validated before, double-checking here
 		}
@@ -103,7 +109,7 @@ func (u *Unpivot) Close() error {
 	return u.out.Close()
 }
 
-type unpivoterBase struct {
+type kernelUnpivotBase struct {
 	parent *Unpivot
 	out    rowConsumer // The downstream kernel
 	params rowParams
@@ -111,20 +117,20 @@ type unpivoterBase struct {
 	syms   *symtab
 }
 
-func (u *unpivoterBase) Close() error {
+func (u *kernelUnpivotBase) Close() error {
 	return u.out.Close()
 }
 
-func (u *unpivoterBase) next() rowConsumer {
+func (u *kernelUnpivotBase) next() rowConsumer {
 	return u.out
 }
 
-// unpivoterAsAt handles the "UNPIVOT AS val AT key" case
-type unpivoterAsAt struct {
-	unpivoterBase
+// kernelUnpivotAsAt handles the "UNPIVOT AS val AT key" case
+type kernelUnpivotAsAt struct {
+	kernelUnpivotBase
 }
 
-func (u *unpivoterAsAt) symbolize(st *symtab, aux *auxbindings) error {
+func (u *kernelUnpivotAsAt) symbolize(st *symtab, aux *auxbindings) error {
 	if len(aux.bound) > 0 {
 		return fmt.Errorf("UNPIVOT does not handle auxilliary bindings yet")
 	}
@@ -140,9 +146,9 @@ func (u *unpivoterAsAt) symbolize(st *symtab, aux *auxbindings) error {
 	return u.out.symbolize(st, &selfaux)
 }
 
-func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
-	for i := range rows {
-		data := rows[i].mem()
+func (u *kernelUnpivotAsAt) writeRows(rows []vmref, params *rowParams) error {
+	for _, x := range rows {
+		data := x.mem()
 		// Iterate over all the struct fields
 		for len(data) != 0 {
 			sym, rest, err := ion.ReadLabel(data)
@@ -152,9 +158,7 @@ func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
 			// add a dummy record with 0 bytes of contents
 			// for the "main" row; the rowParams contain
 			// the only live bindings after this step
-			v := rows[i]
-			v[1] = 0
-			u.dummy = append(u.dummy, v)
+			u.dummy = append(u.dummy, dummyVMRef)
 			restsize := ion.SizeOf(rest)
 			u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
 			restpos, _ := vmdispl(rest)
@@ -164,8 +168,7 @@ func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
 			if len(u.dummy) == cap(u.dummy) {
 				// flush; note that the actual row content
 				// will be ignored
-				err := u.out.writeRows(u.dummy, &u.params)
-				if err != nil {
+				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 					return err
 				}
 				u.dummy = u.dummy[:0]
@@ -177,8 +180,7 @@ func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
 	if len(u.dummy) > 0 {
 		// flush; note that the actual row content
 		// will be ignored
-		err := u.out.writeRows(u.dummy, &u.params)
-		if err != nil {
+		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 			return err
 		}
 		u.dummy = u.dummy[:0]
@@ -188,12 +190,12 @@ func (u *unpivoterAsAt) writeRows(rows []vmref, params *rowParams) error {
 	return nil
 }
 
-// unpivoterAt handles the "UNPIVOT AS val" case
-type unpivoterAs struct {
-	unpivoterBase
+// kernelUnpivotAt handles the "UNPIVOT AS val" case
+type kernelUnpivotAs struct {
+	kernelUnpivotBase
 }
 
-func (u *unpivoterAs) symbolize(st *symtab, aux *auxbindings) error {
+func (u *kernelUnpivotAs) symbolize(st *symtab, aux *auxbindings) error {
 	if len(aux.bound) > 0 {
 		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
 	}
@@ -213,9 +215,9 @@ func skipVarUInt(buf []byte) []byte {
 	return buf[1:]
 }
 
-func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
-	for i := range rows {
-		data := rows[i].mem()
+func (u *kernelUnpivotAs) writeRows(rows []vmref, params *rowParams) error {
+	for _, x := range rows {
+		data := x.mem()
 		// Iterate over all the struct fields
 		for len(data) != 0 {
 			// Skip the field ID
@@ -223,14 +225,11 @@ func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
 			size := ion.SizeOf(rest)
 			data = rest[size:] // Seek to the next field of the input ION structure
 
-			v := rows[i]
-			v[1] = 0
-			u.dummy = append(u.dummy, v)
+			u.dummy = append(u.dummy, dummyVMRef)
 			vmoff, _ := vmdispl(rest)
 			u.params.auxbound[0] = append(u.params.auxbound[0], vmref{vmoff, uint32(size)})
 			if len(u.params.auxbound) == cap(u.params.auxbound) {
-				err := u.out.writeRows(u.dummy, &u.params)
-				if err != nil {
+				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 					return err
 				}
 				u.dummy = u.dummy[:0]
@@ -239,8 +238,7 @@ func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
 		}
 	}
 	if len(u.dummy) > 0 {
-		err := u.out.writeRows(u.dummy, &u.params)
-		if err != nil {
+		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 			return err
 		}
 		u.dummy = u.dummy[:0]
@@ -249,17 +247,17 @@ func (u *unpivoterAs) writeRows(rows []vmref, params *rowParams) error {
 	return nil
 }
 
-// unpivoterAt handles the "UNPIVOT AT key" case
-type unpivoterAt struct {
-	unpivoterBase
+// kernelUnpivotAt handles the "UNPIVOT AT key" case
+type kernelUnpivotAt struct {
+	kernelUnpivotBase
 }
 
-func (u *unpivoterAt) symbolize(st *symtab, aux *auxbindings) error {
+func (u *kernelUnpivotAt) symbolize(st *symtab, aux *auxbindings) error {
 	if len(aux.bound) > 0 {
 		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
 	}
 	selfaux := auxbindings{}
-	selfaux.push(*u.parent.at) // aux[0] = as
+	selfaux.push(*u.parent.at) // aux[0] = at
 	u.syms = st
 	u.params.auxbound = shrink(u.params.auxbound, 1)
 	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
@@ -267,9 +265,9 @@ func (u *unpivoterAt) symbolize(st *symtab, aux *auxbindings) error {
 	return u.out.symbolize(st, &selfaux)
 }
 
-func (u *unpivoterAt) writeRows(rows []vmref, params *rowParams) error {
-	for i := range rows {
-		data := rows[i].mem()
+func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
+	for _, x := range rows {
+		data := x.mem()
 		// Iterate over all the struct fields
 		for len(data) != 0 {
 			sym, rest, err := ion.ReadLabel(data)
@@ -277,15 +275,11 @@ func (u *unpivoterAt) writeRows(rows []vmref, params *rowParams) error {
 				return err
 			}
 			data = rest[ion.SizeOf(rest):] // Seek to the next field of the input ION structure
-
-			v := rows[i]
-			v[1] = 0
-			u.dummy = append(u.dummy, v)
+			u.dummy = append(u.dummy, dummyVMRef)
 			u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
 
 			if len(u.dummy) == cap(u.dummy) {
-				err := u.out.writeRows(u.dummy, &u.params)
-				if err != nil {
+				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 					return err
 				}
 				u.dummy = u.dummy[:0]
@@ -294,8 +288,212 @@ func (u *unpivoterAt) writeRows(rows []vmref, params *rowParams) error {
 		}
 	}
 	if len(u.dummy) > 0 {
-		err := u.out.writeRows(u.dummy, &u.params)
-		if err != nil {
+		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+			return err
+		}
+		u.dummy = u.dummy[:0]
+		u.params.auxbound[0] = u.params.auxbound[0][:0]
+	}
+	return nil
+}
+
+type randomTreeUnifierNode struct {
+	link [2]atomic.Pointer[randomTreeUnifierNode]
+	hash uint64
+	data []byte
+}
+
+// randomTreeUnifier eliminates in a lock-free way duplicate byte arrays, storing a single
+// unique instance of the input data in a random tree data structure of my own invention.
+// The tree is a regular BST with the following properties:
+//
+//  1. A composite key is used. First the hash is compared, and -- only on a match -- the actual
+//     data (in lexicographic order). Tree traversal is therefore very cheap (collisions are
+//     extremely unlikely, so typically there is just one full data compare necessary to resolve
+//     the matching.
+//  2. As there is a secondary comparator, the tree handles colliding hashes just fine without
+//     compromising data integrity.
+//  3. The semantics of the unifier assures that new keys can only be added. There is no rebalancing:
+//     the tree can only grow downwards by inserting new leaf nodes, so all the already valid paths
+//     from the root remain valid, no matter how many new nodes have been inserted. This property
+//     immediately enables lock-free concurrent insertion from multiple cores with a very efficient
+//     contention-handling restart protocol.
+//  4. The better the hash function, the more uniform its output distribution is. Under the
+//     generally accepted one-way hash function existence assumption, it is impossible
+//     to distinguish between a strong hash function and a truly random stream. Per
+//     https://en.wikipedia.org/wiki/Random_binary_tree#The_longest_path, this implies
+//     a very strong statistical cap of ~4.3log(N) on the height of the tree, making rotations
+//     unnecessary. In practice it is even better than that: the height rarely exceeds ~2log(N),
+//     putting random trees on par with red-black trees without the added complexity and inherently
+//     serial nature of the latter. It suffices to provide a hash function that is good enough.
+//     FNV64a is used at the moment.
+
+type randomTreeUnifier struct {
+	root atomic.Pointer[randomTreeUnifierNode]
+}
+
+func newRandomTreeUnifier() randomTreeUnifier {
+	return randomTreeUnifier{}
+}
+
+func (u *randomTreeUnifier) hash(data []byte) uint64 {
+	// Simply calculate a FNV64a hash value without the go/hash package overhead.
+	// TODO: might be worth SIMD acceleration, good enough for now.
+	const offset64 = uint64(14695981039346656037)
+	const prime64 = uint64(1099511628211)
+	h := offset64
+	for _, v := range data {
+		h ^= uint64(v)
+		h *= prime64
+	}
+	return h
+}
+
+func (u *randomTreeUnifier) unify(data []byte) bool {
+	h := u.hash(data)
+	var p *randomTreeUnifierNode
+	ip := &u.root // insertion point
+	for {
+		if q := ip.Load(); q != nil {
+			if q.hash == h {
+				c := bytes.Compare(data, q.data)
+				if c == 0 {
+					// a matching node already exists
+					return false
+				} else {
+					// a hash collision
+					ip = &q.link[ints.BoolTo[uint](c > 0)]
+				}
+			} else {
+				// hash mismatch
+				ip = &q.link[ints.BoolTo[uint](h > q.hash)]
+			}
+		} else {
+			// an empty insertion point has been found
+			if p == nil {
+				// deferred this expensive step for as long as possible
+				buf := make([]byte, len(data))
+				copy(buf, data)
+				p = &randomTreeUnifierNode{hash: h, data: buf}
+			}
+			if ip.CompareAndSwap(nil, p) {
+				// insertion succeeded
+				return true
+			}
+			// insertion failed: either ip is no longer nil or a spurious CAS failure.
+			// Retry, as the current insertion path prefix remains valid due to the grow-only nature of the tree.
+		}
+	}
+}
+
+type UnpivotAtDistinct struct {
+	out     QuerySink
+	at      string
+	unifier randomTreeUnifier
+}
+
+// NewUnpivotAtDistinct creates a new UnpivotAtDistinct kernel that returns the list of pairs describing the encountered columns
+func NewUnpivotAtDistinct(at string, dst QuerySink) (*UnpivotAtDistinct, error) {
+	u := &UnpivotAtDistinct{
+		out:     dst,
+		at:      at,
+		unifier: newRandomTreeUnifier(),
+	}
+	return u, nil
+}
+
+func (u *UnpivotAtDistinct) Open() (io.WriteCloser, error) {
+	w, err := u.out.Open()
+	if err != nil {
+		return nil, err
+	}
+	k := &kernelUnpivotAtDistinct{
+		parent: u,
+		out:    asRowConsumer(w),
+	}
+	return splitter(k), nil
+}
+
+func (u *UnpivotAtDistinct) Close() error {
+	return u.out.Close()
+}
+
+// kernelUnpivotAtDistinct handles the "UNPIVOT AT key GROUP BY key" case
+type kernelUnpivotAtDistinct struct {
+	parent *UnpivotAtDistinct
+	buf    []uint
+	out    rowConsumer // The downstream kernel
+	params rowParams
+	dummy  []vmref // dummy rows
+	syms   *symtab
+}
+
+func (u *kernelUnpivotAtDistinct) symbolize(st *symtab, aux *auxbindings) error {
+	if len(aux.bound) > 0 {
+		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
+	}
+
+	selfaux := auxbindings{}
+	selfaux.push(u.parent.at) // aux[0] = at
+	u.syms = st
+	u.params.auxbound = shrink(u.params.auxbound, 1)
+	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
+	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+
+	maxID := uint(st.MaxID())
+	chunkCount := ints.ChunkCount(maxID, simdChunkBits) // The number of full SIMD registers, not the scalar ones!
+	u.buf = make([]uint, chunkCount*(simdChunkBits/bits.UintSize))
+	return u.out.symbolize(st, &selfaux)
+}
+
+func (u *kernelUnpivotAtDistinct) Close() error {
+	return u.out.Close()
+}
+
+func (u *kernelUnpivotAtDistinct) next() rowConsumer {
+	return u.out
+}
+
+//go:noescape
+//go:nosplit
+func unpivotAtDistinctDeduplicate(rows []vmref, vmbase uintptr, bitvector *uint)
+
+func (u *kernelUnpivotAtDistinct) writeRows(rows []vmref, params *rowParams) error {
+	// Deduplicate the symbol IDs using a bitvector
+	unpivotAtDistinctDeduplicate(rows, vmbase(), &u.buf[0])
+
+	// The field names should remain quite stable across the entire input,
+	// hence the result vector is expected to be sparse. This statistics
+	// makes the SIMD-accelerated dense vector index rematerialization not
+	// worth the trouble.
+	for i, v := range u.buf {
+		if v == 0 {
+			continue // skip empty chunks
+		}
+		for {
+			k := bits.TrailingZeros(v)
+			v ^= uint(1) << k
+			sym := i*bits.UintSize + k
+			ref := u.syms.symrefs[sym]
+			if u.parent.unifier.unify(ref.mem()) {
+				u.dummy = append(u.dummy, dummyVMRef)
+				u.params.auxbound[0] = append(u.params.auxbound[0], ref)
+
+				if len(u.dummy) == cap(u.dummy) {
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
+				}
+			}
+			if v == 0 {
+				break
+			}
+		}
+	}
+	if len(u.dummy) > 0 {
+		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 			return err
 		}
 		u.dummy = u.dummy[:0]

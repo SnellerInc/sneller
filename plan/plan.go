@@ -1160,3 +1160,40 @@ func (n *Node) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) erro
 	dst.EndStruct()
 	return nil
 }
+
+type UnpivotAtDistinct struct {
+	Nonterminal
+	At string
+}
+
+func (u *UnpivotAtDistinct) String() string {
+	return fmt.Sprintf("UNPIVOT_AT_DISTINCT %s", u.At)
+}
+
+func (u *UnpivotAtDistinct) encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	settype("unpivotatdistinct", dst, st)
+	dst.BeginField(st.Intern("At"))
+	dst.WriteString(u.At)
+	dst.EndStruct()
+	return nil
+}
+
+func (u *UnpivotAtDistinct) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+	vmu, err := vm.NewUnpivotAtDistinct(u.At, dst)
+	if err != nil {
+		return -1, nil, err
+	}
+	return u.From.wrap(vmu, ep)
+}
+
+func (u *UnpivotAtDistinct) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) error {
+	var err error
+	switch name {
+	case "At":
+		u.At, _, err = ion.ReadString(buf)
+	default:
+		err = fmt.Errorf("plan.UnpivotAtDistinct: setfield: unexpected field %q", name)
+	}
+	return err
+}

@@ -272,8 +272,7 @@ func TestBuild(t *testing.T) {
 			expect: []string{
 				"ITERATE input FIELDS [key]",
 				"PROJECT key AS key",
-				"UNPIVOT AT cols",
-				"FILTER DISTINCT [cols]",
+				"UNPIVOT_AT_DISTINCT cols",
 				"PROJECT cols AS cols",
 			},
 		},

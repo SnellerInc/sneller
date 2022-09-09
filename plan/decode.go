@@ -243,6 +243,8 @@ func empty(name string) Op {
 		return &OutputIndex{}
 	case "unpivot":
 		return &Unpivot{}
+	case "unpivotatdistinct":
+		return &UnpivotAtDistinct{}
 	}
 	return nil
 }
