@@ -1,0 +1,28 @@
+# This query forces the aggregate array to be bigger than 64kB --
+# APPROX_COUNT_DISTINCT(x, 16) does it. Other aggregate functions
+# used to use 16-bit offsets, thus this query didn't return
+# a correct result, although the code did not crash.
+SELECT
+    GREATEST(APPROX_COUNT_DISTINCT(x, 16), 100) AS approx,
+    COUNT(*),
+    MIN(CAST(x AS integer)) AS mini,
+    MAX(CAST(x AS integer)) AS maxi,
+    SUM(CAST(x AS integer)) AS sumi,
+    MIN(CAST(x AS float)) AS minf,
+    MAX(CAST(x AS float)) AS maxf,
+    SUM(CAST(x AS float)) AS sumf,
+    BIT_AND(CAST(x AS integer)) AS bitand,
+    BIT_OR(CAST(x AS integer)) AS bitor,
+    BIT_XOR(CAST(x AS integer)) AS bitxor,
+    BOOL_AND(x > 0) AS booland,
+    BOOL_OR(x > 0) AS boolor
+FROM input
+---
+{"x": 10}
+{"x": 20}
+{"x": 30}
+{"x": 40}
+{"x": 50}
+{"x": 60}
+---
+{"approx": 100, "count": 6, "mini": 10, "maxi": 60, "sumi": 210, "minf": 10, "maxf": 60, "sumf": 210, "bitand": 0, "bitor": 62, "bitxor": 38, "booland": true, "boolor": true}

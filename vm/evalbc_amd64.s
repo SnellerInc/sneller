@@ -11658,7 +11658,7 @@ next:
 
 TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), DX
-  MOVWQZX 2(VIRT_PCREG), R8
+  MOVL    2(VIRT_PCREG), R8
 
   KMOVW K1, BX                         // BX <- Non-null lanes
   MOVWLZX 0(VIRT_VALUES)(DX*1), DX     // DX <- Boolean values
@@ -11673,11 +11673,11 @@ TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
   SETEQ R15
   ANDB R15, 0(R10)(R8*1)
 
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(6)
 
 TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), DX
-  MOVWQZX 2(VIRT_PCREG), R8
+  MOVL    2(VIRT_PCREG), R8
 
   KMOVW K1, BX                         // BX <- Non-null lanes
   MOVWLZX 0(VIRT_VALUES)(DX*1), DX     // DX <- Boolean values
@@ -11691,10 +11691,10 @@ TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
   SETNE R15
   ORB R15, 0(R10)(R8*1)
 
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(6)
 
 TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   KSHIFTRW      $8, K1, K2
   VMOVDQA64.Z   Z2, K1, Z4
   VMOVDQA64.Z   Z3, K2, Z5
@@ -11713,10 +11713,10 @@ TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, R15
   POPCNTL       R15, R15
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
   VMOVQ         0(R10)(R8*1), X6
@@ -11736,10 +11736,10 @@ TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   VBROADCASTSD  CONSTF64_POSITIVE_INF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -11759,10 +11759,10 @@ TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
   VMINSD        0(R10)(R8*1), X5, X5
   VMOVSD        X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   VPBROADCASTQ  CONSTQ_0x7FFFFFFFFFFFFFFF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -11783,10 +11783,10 @@ TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   VBROADCASTSD  CONSTF64_NEGATIVE_INF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -11806,10 +11806,10 @@ TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
   VMAXSD        0(R10)(R8*1), X5, X5
   VMOVSD        X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   VPBROADCASTQ  CONSTQ_0x8000000000000000(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -11830,10 +11830,10 @@ TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   VPBROADCASTQ  CONSTQ_0xFFFFFFFFFFFFFFFF(), Z5
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
@@ -11854,10 +11854,10 @@ TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
 
@@ -11877,10 +11877,10 @@ TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   KSHIFTRW      $8, K1, K2
   KMOVW         K1, R15
 
@@ -11900,14 +11900,14 @@ TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
 
   VMOVQ         X5, 0(R10)(R8*1)
   ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
   KMOVW         K1, R15
-  MOVWQZX       0(VIRT_PCREG), R8
+  MOVL          0(VIRT_PCREG), R8
   POPCNTQ       R15, R15
   ADDQ          R15, 0(R10)(R8*1)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 // Slot Aggregation Instructions
 // -----------------------------

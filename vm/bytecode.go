@@ -115,6 +115,10 @@ var bcImmWidth = [...]uint8{
 	bcImmDict:   2,
 }
 
+func (t bcImmType) Size() int {
+	return int(bcImmWidth[t])
+}
+
 type bcopinfo struct {
 	text     string
 	imms     []bcImmType
@@ -131,6 +135,7 @@ var bcImmsS16U8 = []bcImmType{bcImmS16, bcImmU8}
 var bcImmsS16U16 = []bcImmType{bcImmS16, bcImmU16}
 var bcImmsS16H32 = []bcImmType{bcImmS16, bcImmU32Hex}
 var bcImmsS16I64 = []bcImmType{bcImmS16, bcImmI64}
+var bcImmsS16U32 = []bcImmType{bcImmS16, bcImmU32}
 var bcImmsS16U64 = []bcImmType{bcImmS16, bcImmU64}
 var bcImmsS16S16S16 = []bcImmType{bcImmS16, bcImmS16, bcImmS16}
 var bcImmsU8 = []bcImmType{bcImmU8}
@@ -463,18 +468,18 @@ var opinfo = [_maxbcop]bcopinfo{
 	ophashlookup:    {text: "hashlookup", imms: bcImmsS16U16, flags: bcReadWriteK | bcWriteV | bcReadH},
 
 	// Simple aggregate operations
-	opaggandk:  {text: "aggand.k", imms: bcImmsS16S16, flags: bcReadK},
-	opaggork:   {text: "aggor.k", imms: bcImmsS16S16, flags: bcReadK},
-	opaggsumf:  {text: "aggsum.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggsumi:  {text: "aggsum.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggminf:  {text: "aggmin.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggmini:  {text: "aggmin.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggmaxf:  {text: "aggmax.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggmaxi:  {text: "aggmax.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggandi:  {text: "aggand.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggori:   {text: "aggor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggxori:  {text: "aggxor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggcount: {text: "aggcount", imms: bcImmsS16, flags: bcReadK},
+	opaggandk:  {text: "aggand.k", imms: bcImmsS16U32, flags: bcReadK},
+	opaggork:   {text: "aggor.k", imms: bcImmsS16U32, flags: bcReadK},
+	opaggsumf:  {text: "aggsum.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggsumi:  {text: "aggsum.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggminf:  {text: "aggmin.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggmini:  {text: "aggmin.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggmaxf:  {text: "aggmax.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggmaxi:  {text: "aggmax.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggandi:  {text: "aggand.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggori:   {text: "aggor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggxori:  {text: "aggxor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggcount: {text: "aggcount", imms: bcImmsU32, flags: bcReadK},
 
 	// Slot aggregate operations
 	opaggbucket:    {text: "aggbucket", imms: bcImmsS16, flags: bcReadK | bcWriteS | bcReadH},
@@ -573,7 +578,7 @@ func init() {
 
 		immw := uint(0)
 		for j := 0; j < len(info.imms); j++ {
-			immw += uint(bcImmWidth[info.imms[j]])
+			immw += uint(info.imms[j].Size())
 		}
 
 		if len(info.vaImms) != 0 {
@@ -695,7 +700,7 @@ func formatImmediatesTo(b *strings.Builder, imms []bcImmType, bc []byte) int {
 
 	for immIndex := 0; immIndex < len(imms); immIndex++ {
 		immType := imms[immIndex]
-		immWidth := int(bcImmWidth[immType])
+		immWidth := immType.Size()
 
 		if size-i < immWidth {
 			fmt.Fprintf(b, "<bytecode is truncated, cannot decode immediate value of size %d while there is only %d bytes left>", immWidth, size-i)

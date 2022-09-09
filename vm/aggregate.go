@@ -650,7 +650,7 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 
 	mem := make([]*value, len(agg))
 	ops := make([]AggregateOp, len(agg))
-	offset := 0
+	offset := aggregateslot(0)
 
 	for i := range agg {
 		var filter *value
@@ -766,7 +766,7 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 		// they can potentially be computed in the order in which the fields
 		// are present in the input row rather than the order in which the
 		// query presents them.
-		offset += ops[i].dataSize()
+		offset += aggregateslot(ops[i].dataSize())
 	}
 
 	aggregateDataSize := offset

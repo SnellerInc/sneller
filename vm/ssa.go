@@ -578,6 +578,9 @@ func (o *ssaopinfo) argType(index int) ssatype {
 	return o.vaArgs[vaTupleIndex]
 }
 
+// aggregateslot is an offset within aggregates buffer
+type aggregateslot uint32
+
 // immfmt is an immediate format indicator
 type immfmt uint8
 
@@ -589,20 +592,10 @@ const (
 	fmtf64                      // immediate is a float64; should be encoded as 8 bytes (little-endian)
 	fmtdict                     // immediate is a string; emit a dict reference
 	fmtslotx2hash               // immediate is input hash slot; encode 1-byte input hash slot + 1-byte output
+	fmtaggslot                  // immediate should be encoded as a uint32 slot reference from an integer
 
 	fmtother // immediate is present, but not available for automatic encoding
 )
-
-var immfmtsize = [...]uint8{
-	fmtnone:       0,
-	fmtslot:       2,
-	fmtbool:       1,
-	fmti64:        8,
-	fmtf64:        8,
-	fmtdict:       2,
-	fmtslotx2hash: 2,
-	fmtother:      uint8(0xFF),
-}
 
 // canonically, the last argument of any function
 // is the operation's mask
@@ -973,22 +966,22 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitauto2},
 	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitauto2},
 
-	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtslot, bc: opaggandk, priority: prioMem, emit: emitAggK},
-	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtslot, bc: opaggork, priority: prioMem, emit: emitAggK},
-	saggsumf:  {text: "aggsum.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf, priority: prioMem},
-	saggsumi:  {text: "aggsum.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi, priority: prioMem},
-	saggavgf:  {text: "aggavg.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggsumf, priority: prioMem},
-	saggavgi:  {text: "aggavg.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggsumi, priority: prioMem},
-	saggminf:  {text: "aggmin.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggminf, priority: prioMem},
-	saggmini:  {text: "aggmin.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmini, priority: prioMem},
-	saggmaxf:  {text: "aggmax.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtslot, bc: opaggmaxf, priority: prioMem},
-	saggmaxi:  {text: "aggmax.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggmaxi, priority: prioMem},
-	saggmints: {text: "aggmin.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmini, priority: prioMem},
-	saggmaxts: {text: "aggmax.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtslot, bc: opaggmaxi, priority: prioMem},
-	saggandi:  {text: "aggand.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggandi, priority: prioMem},
-	saggori:   {text: "aggor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggori, priority: prioMem},
-	saggxori:  {text: "aggxor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtslot, bc: opaggxori, priority: prioMem},
-	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtslot, bc: opaggcount, priority: prioMem + 1},
+	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggandk, priority: prioMem, emit: emitAggK},
+	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggork, priority: prioMem, emit: emitAggK},
+	saggsumf:  {text: "aggsum.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggsumf, priority: prioMem},
+	saggsumi:  {text: "aggsum.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggsumi, priority: prioMem},
+	saggavgf:  {text: "aggavg.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggsumf, priority: prioMem},
+	saggavgi:  {text: "aggavg.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggsumi, priority: prioMem},
+	saggminf:  {text: "aggmin.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggminf, priority: prioMem},
+	saggmini:  {text: "aggmin.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggmini, priority: prioMem},
+	saggmaxf:  {text: "aggmax.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggmaxf, priority: prioMem},
+	saggmaxi:  {text: "aggmax.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggmaxi, priority: prioMem},
+	saggmints: {text: "aggmin.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtaggslot, bc: opaggmini, priority: prioMem},
+	saggmaxts: {text: "aggmax.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtaggslot, bc: opaggmaxi, priority: prioMem},
+	saggandi:  {text: "aggand.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggandi, priority: prioMem},
+	saggori:   {text: "aggor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggori, priority: prioMem},
+	saggxori:  {text: "aggxor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggxori, priority: prioMem},
+	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtaggslot, bc: opaggcount, priority: prioMem + 1},
 
 	// compute hash aggregate bucket location; encoded immediate will be input hash slot to use
 	saggbucket: {text: "aggbucket", argtypes: []ssatype{stMem, stHash, stBool}, rettype: stBucket, immfmt: fmtslot, bc: opaggbucket},
@@ -1180,6 +1173,8 @@ func (p *prog) tobits(imm interface{}) uint64 {
 	case int:
 		return uint64(v)
 	case ion.Symbol:
+		return uint64(v)
+	case aggregateslot:
 		return uint64(v)
 	case string:
 		for i := range p.dict {
@@ -3770,7 +3765,7 @@ func emitdatecasttoint(v *value, c *compilestate) {
 }
 
 // Simple aggregate operations
-func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, slot int) *value {
+func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, slot aggregateslot) *value {
 	mem := p.InitMem()
 
 	// In general we have to coerce to BOOL, however, if the input is a boxed value we
@@ -3793,7 +3788,7 @@ func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, 
 	return p.ssa3imm(aggBoolOp, mem, boolVal, mask, slot)
 }
 
-func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot int) (v *value, fp bool) {
+func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	if isIntValue(child) || opF == sinvalid {
 		scalar, mask := p.coerceInt(child)
 		if filter != nil {
@@ -3812,7 +3807,7 @@ func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot int) (
 	return p.ssa3imm(opF, mem, scalar, mask, slot), true
 }
 
-func (p *prog) makeTimeAggregateOp(op ssaop, child, filter *value, slot int) *value {
+func (p *prog) makeTimeAggregateOp(op ssaop, child, filter *value, slot aggregateslot) *value {
 	scalar, mask := p.coerceTimestamp(child)
 	if filter != nil {
 		mask = p.And(mask, filter)
@@ -3821,15 +3816,15 @@ func (p *prog) makeTimeAggregateOp(op ssaop, child, filter *value, slot int) *va
 	return p.ssa3imm(op, mem, scalar, mask, slot)
 }
 
-func (p *prog) AggregateBoolAnd(child, filter *value, slot int) *value {
+func (p *prog) AggregateBoolAnd(child, filter *value, slot aggregateslot) *value {
 	return p.makeAggregateBoolOp(saggandk, saggandi, child, filter, slot)
 }
 
-func (p *prog) AggregateBoolOr(child, filter *value, slot int) *value {
+func (p *prog) AggregateBoolOr(child, filter *value, slot aggregateslot) *value {
 	return p.makeAggregateBoolOp(saggork, saggori, child, filter, slot)
 }
 
-func (p *prog) AggregateSumInt(child, filter *value, slot int) *value {
+func (p *prog) AggregateSumInt(child, filter *value, slot aggregateslot) *value {
 	child = p.toint(child)
 	mask := p.mask(child)
 	if filter != nil {
@@ -3838,46 +3833,46 @@ func (p *prog) AggregateSumInt(child, filter *value, slot int) *value {
 	return p.ssa3imm(saggsumi, p.InitMem(), child, mask, slot)
 }
 
-func (p *prog) AggregateSum(child, filter *value, slot int) (v *value, fp bool) {
+func (p *prog) AggregateSum(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggsumf, saggsumi, child, filter, slot)
 }
 
-func (p *prog) AggregateAvg(child, filter *value, slot int) (v *value, fp bool) {
+func (p *prog) AggregateAvg(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggavgf, saggavgi, child, filter, slot)
 }
 
-func (p *prog) AggregateMin(child, filter *value, slot int) (v *value, fp bool) {
+func (p *prog) AggregateMin(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggminf, saggmini, child, filter, slot)
 }
 
-func (p *prog) AggregateMax(child, filter *value, slot int) (v *value, fp bool) {
+func (p *prog) AggregateMax(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggmaxf, saggmaxi, child, filter, slot)
 }
 
-func (p *prog) AggregateAnd(child, filter *value, slot int) *value {
+func (p *prog) AggregateAnd(child, filter *value, slot aggregateslot) *value {
 	val, _ := p.makeAggregateOp(sinvalid, saggandi, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateOr(child, filter *value, slot int) *value {
+func (p *prog) AggregateOr(child, filter *value, slot aggregateslot) *value {
 	val, _ := p.makeAggregateOp(sinvalid, saggori, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateXor(child, filter *value, slot int) *value {
+func (p *prog) AggregateXor(child, filter *value, slot aggregateslot) *value {
 	val, _ := p.makeAggregateOp(sinvalid, saggxori, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateEarliest(child, filter *value, slot int) *value {
+func (p *prog) AggregateEarliest(child, filter *value, slot aggregateslot) *value {
 	return p.makeTimeAggregateOp(saggmints, child, filter, slot)
 }
 
-func (p *prog) AggregateLatest(child, filter *value, slot int) *value {
+func (p *prog) AggregateLatest(child, filter *value, slot aggregateslot) *value {
 	return p.makeTimeAggregateOp(saggmaxts, child, filter, slot)
 }
 
-func (p *prog) AggregateCount(child, filter *value, slot int) *value {
+func (p *prog) AggregateCount(child, filter *value, slot aggregateslot) *value {
 	mask := p.notMissing(child)
 	if filter != nil {
 		mask = p.And(mask, filter)
@@ -3885,7 +3880,7 @@ func (p *prog) AggregateCount(child, filter *value, slot int) *value {
 	return p.ssa2imm(saggcount, p.InitMem(), mask, slot)
 }
 
-func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot int, precision uint8) *value {
+func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
 	mask := p.mask(child)
 	if filter != nil {
 		mask = p.And(mask, filter)
@@ -6004,7 +5999,12 @@ func emitAggK(v *value, c *compilestate) {
 	mask := v.args[2]
 
 	c.loadk(v, mask)
-	c.ops16s16(v, ssainfo[v.op].bc, boolValSlot, stackslot(v.imm.(int)))
+
+	op := ssainfo[v.op].bc
+	checkImmediateBeforeEmit2(op, 2, 4)
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU16(uint16(boolValSlot))
+	c.asm.emitImmU32(uint32(v.imm.(aggregateslot)))
 }
 
 func emitSlotAggK(v *value, c *compilestate) {
@@ -6317,6 +6317,8 @@ func emitauto(v *value, c *compilestate) {
 		c.op(v, info.bc)
 	case fmtslot:
 		c.ops16(v, info.bc, stackslot(v.imm.(int)))
+	case fmtaggslot:
+		c.opu32(v, info.bc, uint32(v.imm.(aggregateslot)))
 	case fmtbool:
 		c.opu8(v, info.bc, uint8(toi64(v.imm)))
 	case fmti64:
