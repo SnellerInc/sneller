@@ -399,6 +399,57 @@ func (p *prog) compileAsString(e expr.Node) (*value, error) {
 // handle FN(args...) expressions
 func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 	fn := b.Func
+
+	if fn.IsDateAdd() {
+		part, _ := fn.TimePart()
+		val0, err0 := p.compileAsNumber(args[0])
+		if err0 != nil {
+			return nil, err0
+		}
+
+		val1, err1 := p.compileAsTime(args[1])
+		if err1 != nil {
+			return nil, err1
+		}
+
+		val := p.DateAdd(part, val0, val1)
+		return val, nil
+	}
+
+	if fn.IsDateDiff() {
+		part, _ := fn.TimePart()
+		val0, err0 := p.compileAsTime(args[0])
+		if err0 != nil {
+			return nil, err0
+		}
+
+		val1, err1 := p.compileAsTime(args[1])
+		if err1 != nil {
+			return nil, err1
+		}
+
+		val := p.DateDiff(part, val0, val1)
+		return val, nil
+	}
+
+	if fn.IsDateExtract() {
+		part, _ := fn.TimePart()
+		val0, err := p.compileAsTime(args[0])
+		if err != nil {
+			return nil, err
+		}
+		return p.DateExtract(part, val0), nil
+	}
+
+	if fn.IsDateTrunc() {
+		part, _ := fn.TimePart()
+		val, err := p.compileAsTime(args[0])
+		if err != nil {
+			return nil, err
+		}
+		return p.DateTrunc(part, val), nil
+	}
+
 	switch fn {
 	case expr.BitCount:
 		arg, err := p.compileAsNumber(args[0])
@@ -615,52 +666,6 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		}
 
 		return val, nil
-
-	case expr.DateAddYear, expr.DateAddQuarter, expr.DateAddMonth, expr.DateAddDay, expr.DateAddHour, expr.DateAddMinute, expr.DateAddSecond, expr.DateAddMillisecond, expr.DateAddMicrosecond:
-		part := expr.Timepart(fn - expr.DateAddMicrosecond)
-		val0, err0 := p.compileAsNumber(args[0])
-		if err0 != nil {
-			return nil, err0
-		}
-
-		val1, err1 := p.compileAsTime(args[1])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		val := p.DateAdd(part, val0, val1)
-		return val, nil
-
-	case expr.DateDiffYear, expr.DateDiffQuarter, expr.DateDiffMonth, expr.DateDiffDay, expr.DateDiffHour, expr.DateDiffMinute, expr.DateDiffSecond, expr.DateDiffMillisecond, expr.DateDiffMicrosecond:
-		part := expr.Timepart(fn - expr.DateDiffMicrosecond)
-		val0, err0 := p.compileAsTime(args[0])
-		if err0 != nil {
-			return nil, err0
-		}
-
-		val1, err1 := p.compileAsTime(args[1])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		val := p.DateDiff(part, val0, val1)
-		return val, nil
-
-	case expr.DateExtractYear, expr.DateExtractQuarter, expr.DateExtractMonth, expr.DateExtractDay, expr.DateExtractHour, expr.DateExtractMinute, expr.DateExtractSecond, expr.DateExtractMillisecond, expr.DateExtractMicrosecond:
-		part := expr.Timepart(fn - expr.DateExtractMicrosecond)
-		val0, err := p.compileAsTime(args[0])
-		if err != nil {
-			return nil, err
-		}
-		return p.DateExtract(part, val0), nil
-
-	case expr.DateTruncYear, expr.DateTruncMonth, expr.DateTruncDay, expr.DateTruncHour, expr.DateTruncMinute, expr.DateTruncQuarter, expr.DateTruncSecond, expr.DateTruncMillisecond, expr.DateTruncMicrosecond:
-		part := expr.Timepart(fn - expr.DateTruncMicrosecond)
-		val, err := p.compileAsTime(args[0])
-		if err != nil {
-			return nil, err
-		}
-		return p.DateTrunc(part, val), nil
 
 	case expr.WidthBucket:
 		if len(args) != 4 {

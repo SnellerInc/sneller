@@ -115,6 +115,12 @@ func timePart(id string) (expr.Timepart, bool) {
 		part = expr.Hour
 	case "DAY":
 		part = expr.Day
+	case "DOW":
+		part = expr.DOW
+	case "DOY":
+		part = expr.DOY
+	case "WEEK":
+		part = expr.Week
 	case "MONTH":
 		part = expr.Month
 	case "QUARTER":
@@ -125,6 +131,40 @@ func timePart(id string) (expr.Timepart, bool) {
 		return 0, false
 	}
 	return part, true
+}
+
+// timePartFor parses an expr.Timepart for a particular function `fn`.
+//
+// The reason for having this function is asymmetricity of time parts
+// that can be used with date manipulation and extraction functions.
+// For example EXTRACT() supports more time parts than DATE_TRUNC().
+func timePartFor(id, fn string) (expr.Timepart, bool) {
+	part, ok := timePart(id)
+	if !ok {
+		return 0, false
+	}
+
+	// reject parts that are not supported by some timestamp related functions
+	switch fn {
+	case "DATE_ADD":
+		if part == expr.DOW || part == expr.DOY {
+			return 0, false
+		}
+	case "DATE_DIFF":
+		if part == expr.DOW || part == expr.DOY {
+			return 0, false
+		}
+	case "DATE_TRUNC":
+		if part == expr.DOW || part == expr.DOY || part == expr.Week {
+			return 0, false
+		}
+	case "EXTRACT":
+		if part == expr.Week {
+			return 0, false
+		}
+	}
+
+	return part, ok
 }
 
 func exists(s *expr.Select) expr.Node {

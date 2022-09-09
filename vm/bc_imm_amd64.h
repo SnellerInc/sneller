@@ -19,12 +19,17 @@
 #define VEXTRACT_IMM_HI     1
 
 // Immediates for VROUND[PD|PS|SD|SS]
-#define VROUND_IMM_NEAREST  0x00
-#define VROUND_IMM_DOWN     0x01
-#define VROUND_IMM_UP       0x02
-#define VROUND_IMM_TRUNC    0x03
-#define VROUND_IMM_CURRENT  0x04
-#define VROUND_IMM_SUPPRESS 0x08
+#define VROUND_IMM_NEAREST     0x00
+#define VROUND_IMM_DOWN        0x01
+#define VROUND_IMM_UP          0x02
+#define VROUND_IMM_TRUNC       0x03
+#define VROUND_IMM_CURRENT     0x04
+#define VROUND_IMM_SUPPRESS    0x08
+#define VROUND_IMM_NEAREST_SAE 0x08
+#define VROUND_IMM_DOWN_SAE    0x09
+#define VROUND_IMM_UP_SAE      0x0A
+#define VROUND_IMM_TRUNC_SAE   0x0B
+#define VROUND_IMM_CURRENT_SAE 0x0C
 
 // Immediates for VPCMP[D|Q]
 #define VPCMP_IMM_EQ        0x00   // ==

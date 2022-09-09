@@ -482,6 +482,17 @@ CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 80, $1441151881)
 #define CONSTQ_2562048517() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 88)
 CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 88, $2562048517)
 
+// Unsigned 32-bit division by 1875000 => Result = (Value >> 3) * 600479951 >> 47
+#define CONSTQ_600479951() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 96)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 96, $600479951)
+
+// Unsigned 32-bit division by (3600000000 >> 8) => Result = (Value >> 2) * 1281023895 >> 52
+#define CONSTQ_1281023895() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 104)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 104, $1281023895)
+
+// Unsigned 32-bit division by 60 => Result = Value * 2290649225 >> 37
+#define CONSTQ_2290649225() CONST_GET_PTR(constpool, CONSTPOOL_RECIPROCALS_INDEX + 112)
+CONST_DATA_U64(constpool, CONSTPOOL_RECIPROCALS_INDEX + 112, $2290649225)
 
 // 64-Bit Floating Point Constants
 // -------------------------------
@@ -515,7 +526,7 @@ CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 56, $0x7FF0000000000000)
 #define CONSTF64_NEGATIVE_INF() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 64)
 CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 64, $0xFFF0000000000000)
 
-// float64((60 * 60 * 24 * 1000000) >> 13)
+// float64((60 * 60 * 24 * 1000000) >> 13) == float64(10546875)
 #define CONSTF64_MICROSECONDS_IN_1_DAY_SHR_13() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 72)
 CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 72, $0x41641DD760000000)
 
@@ -556,6 +567,12 @@ CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 152, $0xbfefff2e48e8a71e)
 // Earth radius multiplied by 2 for geo distance calculation
 #define CONSTF64_12742000() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 160)
 CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 160, $0x41684dae00000000)
+
+#define CONSTF64_4() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 168)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 168, $0x4010000000000000)
+
+#define CONSTF64_7() CONST_GET_PTR(constpool, CONSTPOOL_F64_INDEX + 176)
+CONST_DATA_U64(constpool, CONSTPOOL_F64_INDEX + 176, $0x401c000000000000)
 
 
 // Other Constants
@@ -897,7 +914,7 @@ CONST_DATA_U64(consts_offsets_q_32, 128, $(16 * 32))
 CONST_GLOBAL(consts_offsets_q_32, $136)
 
 // A DWORD table designed for VPERMD that can be used to map months of the year into the number
-// of days preceeding the month, where the index 0 represents March (months start from March).
+// of days preceeding the month, where the index 0 represents March (internal month indexing).
 //
 // Months list and values explanation:
 //

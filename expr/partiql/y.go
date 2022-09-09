@@ -1299,7 +1299,7 @@ yydefault:
 		yyDollar = yyS[yypt-8 : yypt+1]
 //line partiql.y:256
 		{
-			part, ok := timePart(yyDollar[3].str)
+			part, ok := timePartFor(yyDollar[3].str, "DATE_ADD")
 			if !ok {
 				yylex.Error(__yyfmt__.Sprintf("bad DATE_ADD part %q", yyDollar[3].str))
 			}
@@ -1309,7 +1309,7 @@ yydefault:
 		yyDollar = yyS[yypt-8 : yypt+1]
 //line partiql.y:264
 		{
-			part, ok := timePart(yyDollar[3].str)
+			part, ok := timePartFor(yyDollar[3].str, "DATE_DIFF")
 			if !ok {
 				yylex.Error(__yyfmt__.Sprintf("bad DATE_DIFF part %q", yyDollar[3].str))
 			}
@@ -1319,7 +1319,7 @@ yydefault:
 		yyDollar = yyS[yypt-6 : yypt+1]
 //line partiql.y:272
 		{
-			part, ok := timePart(yyDollar[3].str)
+			part, ok := timePartFor(yyDollar[3].str, "DATE_TRUNC")
 			if !ok {
 				yylex.Error(__yyfmt__.Sprintf("bad DATE_TRUNC part %q", yyDollar[3].str))
 			}
@@ -1329,7 +1329,7 @@ yydefault:
 		yyDollar = yyS[yypt-6 : yypt+1]
 //line partiql.y:280
 		{
-			part, ok := timePart(yyDollar[3].str)
+			part, ok := timePartFor(yyDollar[3].str, "EXTRACT")
 			if !ok {
 				yylex.Error(__yyfmt__.Sprintf("bad EXTRACT part %q", yyDollar[3].str))
 			}

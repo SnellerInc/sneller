@@ -2932,6 +2932,54 @@ func (t *Timestamp) UnixMicro() int64 {
 
 func (t *Timestamp) Type() TypeSet { return TimeType }
 
+func (t *Timestamp) Trunc(part Timepart) Timestamp {
+	year := t.Value.Year()
+	month := t.Value.Month()
+	day := t.Value.Day()
+	hour := t.Value.Hour()
+	minute := t.Value.Minute()
+	second := t.Value.Second()
+	nsec := t.Value.Nanosecond()
+
+	// QUARTER truncates months the following way:
+	//   - [1,2,3] to 1st,
+	//   - [4,5,6] to 4th,
+	//   - [7,8,9] to 7th,
+	//   - [10,11,12] to 10th
+	if part == Quarter {
+		month = ((month-1)/3)*3 + 1
+	}
+
+	switch part {
+	case Year:
+		month = 1
+		fallthrough
+	case Quarter:
+		// already truncated...
+		fallthrough
+	case Month:
+		day = 1
+		fallthrough
+	case Day:
+		hour = 0
+		fallthrough
+	case Hour:
+		minute = 0
+		fallthrough
+	case Minute:
+		second = 0
+		fallthrough
+	case Second:
+		nsec = 0
+	case Millisecond:
+		nsec = (nsec / 1000000) * 1000000
+	case Microsecond:
+		nsec = (nsec / 1000) * 1000
+	}
+
+	return Timestamp{Value: date.Date(year, month, day, hour, minute, second, nsec)}
+}
+
 func (t *Timestamp) Datum() ion.Datum {
 	return ion.Timestamp(t.Value)
 }
@@ -2976,6 +3024,9 @@ const (
 	Minute
 	Hour
 	Day
+	DOW
+	DOY
+	Week
 	Month
 	Quarter
 	Year
@@ -2989,6 +3040,9 @@ var partstring = []string{
 	Minute:      "MINUTE",
 	Hour:        "HOUR",
 	Day:         "DAY",
+	DOW:         "DOW",
+	DOY:         "DOY",
+	Week:        "WEEK",
 	Month:       "MONTH",
 	Quarter:     "QUARTER",
 	Year:        "YEAR",
@@ -3014,52 +3068,6 @@ func DateExtract(part Timepart, from Node) Node {
 }
 
 func DateTrunc(part Timepart, from Node) Node {
-	if ts, ok := from.(*Timestamp); ok {
-		year := ts.Value.Year()
-		month := ts.Value.Month()
-		day := ts.Value.Day()
-		hour := ts.Value.Hour()
-		minute := ts.Value.Minute()
-		second := ts.Value.Second()
-		nsec := ts.Value.Nanosecond()
-
-		// QUARTER truncates months the following way:
-		//   - [1,2,3] to 1st,
-		//   - [4,5,6] to 4th,
-		//   - [7,8,9] to 7th,
-		//   - [10,11,12] to 10th
-		if part == Quarter {
-			month = ((month-1)/3)*3 + 1
-		}
-
-		switch part {
-		case Year:
-			month = 1
-			fallthrough
-		case Quarter:
-			// already truncated...
-			fallthrough
-		case Month:
-			day = 1
-			fallthrough
-		case Day:
-			hour = 0
-			fallthrough
-		case Hour:
-			minute = 0
-			fallthrough
-		case Minute:
-			second = 0
-			fallthrough
-		case Second:
-			nsec = 0
-		case Millisecond:
-			nsec = (nsec / 1000000) * 1000000
-		case Microsecond:
-			nsec = (nsec / 1000) * 1000
-		}
-		return &Timestamp{Value: date.Date(year, month, day, hour, minute, second, nsec)}
-	}
 	return Call("DATE_TRUNC_"+part.String(), from)
 }
 

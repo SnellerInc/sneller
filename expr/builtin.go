@@ -163,6 +163,7 @@ const (
 	DateAddMinute
 	DateAddHour
 	DateAddDay
+	DateAddWeek
 	DateAddMonth
 	DateAddQuarter
 	DateAddYear
@@ -173,6 +174,7 @@ const (
 	DateDiffMinute
 	DateDiffHour
 	DateDiffDay
+	DateDiffWeek
 	DateDiffMonth
 	DateDiffQuarter
 	DateDiffYear
@@ -183,11 +185,11 @@ const (
 	DateExtractMinute
 	DateExtractHour
 	DateExtractDay
+	DateExtractDOW
+	DateExtractDOY
 	DateExtractMonth
 	DateExtractQuarter
 	DateExtractYear
-	ToUnixEpoch
-	ToUnixMicro
 
 	DateTruncMicrosecond
 	DateTruncMillisecond
@@ -198,6 +200,9 @@ const (
 	DateTruncMonth
 	DateTruncQuarter
 	DateTruncYear
+
+	ToUnixEpoch
+	ToUnixMicro
 
 	GeoHash
 	GeoTileX
@@ -229,6 +234,114 @@ const (
 	Unspecified // catch-all for opaque built-ins
 	maxBuiltin
 )
+
+// IsDateAdd checks whether the built-in function is `DATE_ADD_xxx`
+func (b BuiltinOp) IsDateAdd() bool {
+	return b >= DateAddMicrosecond && b <= DateAddYear
+}
+
+// IsDateDiff checks whether the built-in function is `DATE_DIFF_xxx`
+func (b BuiltinOp) IsDateDiff() bool {
+	return b >= DateDiffMicrosecond && b <= DateDiffYear
+}
+
+// IsDateExtract checks whether the built-in function is `EXTRACT_xxx`
+func (b BuiltinOp) IsDateExtract() bool {
+	return b >= DateExtractMicrosecond && b <= DateExtractYear
+}
+
+// IsDateTrunc checks whether the built-in function is `DATE_TRUNC_xxx`
+func (b BuiltinOp) IsDateTrunc() bool {
+	return b >= DateTruncMicrosecond && b <= DateTruncYear
+}
+
+// TimePart returns a time part of a built-in date function
+func (b BuiltinOp) TimePart() (Timepart, bool) {
+	switch b {
+	case DateAddMicrosecond:
+		return Microsecond, true
+	case DateAddMillisecond:
+		return Millisecond, true
+	case DateAddSecond:
+		return Second, true
+	case DateAddMinute:
+		return Minute, true
+	case DateAddHour:
+		return Hour, true
+	case DateAddDay:
+		return Day, true
+	case DateAddWeek:
+		return Week, true
+	case DateAddMonth:
+		return Month, true
+	case DateAddQuarter:
+		return Quarter, true
+	case DateAddYear:
+		return Year, true
+	case DateDiffMicrosecond:
+		return Microsecond, true
+	case DateDiffMillisecond:
+		return Millisecond, true
+	case DateDiffSecond:
+		return Second, true
+	case DateDiffMinute:
+		return Minute, true
+	case DateDiffHour:
+		return Hour, true
+	case DateDiffDay:
+		return Day, true
+	case DateDiffWeek:
+		return Week, true
+	case DateDiffMonth:
+		return Month, true
+	case DateDiffQuarter:
+		return Quarter, true
+	case DateDiffYear:
+		return Year, true
+	case DateExtractMicrosecond:
+		return Microsecond, true
+	case DateExtractMillisecond:
+		return Millisecond, true
+	case DateExtractSecond:
+		return Second, true
+	case DateExtractMinute:
+		return Minute, true
+	case DateExtractHour:
+		return Hour, true
+	case DateExtractDay:
+		return Day, true
+	case DateExtractDOW:
+		return DOW, true
+	case DateExtractDOY:
+		return DOY, true
+	case DateExtractMonth:
+		return Month, true
+	case DateExtractQuarter:
+		return Quarter, true
+	case DateExtractYear:
+		return Year, true
+	case DateTruncMicrosecond:
+		return Microsecond, true
+	case DateTruncMillisecond:
+		return Millisecond, true
+	case DateTruncSecond:
+		return Second, true
+	case DateTruncMinute:
+		return Minute, true
+	case DateTruncHour:
+		return Hour, true
+	case DateTruncDay:
+		return Day, true
+	case DateTruncMonth:
+		return Month, true
+	case DateTruncQuarter:
+		return Quarter, true
+	case DateTruncYear:
+		return Year, true
+	}
+
+	return 0, false
+}
 
 var name2Builtin = map[string]BuiltinOp{
 	"CONCAT":                   Concat,
@@ -287,6 +400,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_ADD_MINUTE":          DateAddMinute,
 	"DATE_ADD_HOUR":            DateAddHour,
 	"DATE_ADD_DAY":             DateAddDay,
+	"DATE_ADD_WEEK":            DateAddWeek,
 	"DATE_ADD_MONTH":           DateAddMonth,
 	"DATE_ADD_QUARTER":         DateAddQuarter,
 	"DATE_ADD_YEAR":            DateAddYear,
@@ -296,6 +410,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_DIFF_MINUTE":         DateDiffMinute,
 	"DATE_DIFF_HOUR":           DateDiffHour,
 	"DATE_DIFF_DAY":            DateDiffDay,
+	"DATE_DIFF_WEEK":           DateDiffWeek,
 	"DATE_DIFF_MONTH":          DateDiffMonth,
 	"DATE_DIFF_QUARTER":        DateDiffQuarter,
 	"DATE_DIFF_YEAR":           DateDiffYear,
@@ -305,6 +420,8 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_EXTRACT_MINUTE":      DateExtractMinute,
 	"DATE_EXTRACT_HOUR":        DateExtractHour,
 	"DATE_EXTRACT_DAY":         DateExtractDay,
+	"DATE_EXTRACT_DOW":         DateExtractDOW,
+	"DATE_EXTRACT_DOY":         DateExtractDOY,
 	"DATE_EXTRACT_MONTH":       DateExtractMonth,
 	"DATE_EXTRACT_QUARTER":     DateExtractQuarter,
 	"DATE_EXTRACT_YEAR":        DateExtractYear,
@@ -533,7 +650,8 @@ func simplifyDateTrunc(part Timepart) func(Hint, []Node) Node {
 			return nil
 		}
 		if ts, ok := args[0].(*Timestamp); ok {
-			return DateTrunc(part, ts)
+			simplified := ts.Trunc(part)
+			return &simplified
 		}
 		return nil
 	}
@@ -757,10 +875,12 @@ func adjpart(part Timepart) func(x int64, val date.Time) date.Time {
 			hour += int(x)
 		case Day:
 			day += int(x)
+		case Week:
+			day += int(x) * 7
 		case Month:
 			month += int(x)
 		case Quarter:
-			month += int(x * 3)
+			month += int(x) * 3
 		case Year:
 			year += int(x)
 		}
@@ -780,6 +900,7 @@ var (
 	dateAddMinute  = adjtime(adjpart(Minute))
 	dateAddHour    = adjtime(adjpart(Hour))
 	dateAddDay     = adjtime(adjpart(Day))
+	dateAddWeek    = adjtime(adjpart(Week))
 	dateAddMonth   = adjtime(adjpart(Month))
 	dateAddQuarter = adjtime(adjpart(Quarter))
 	dateAddYear    = adjtime(adjpart(Year))
@@ -841,6 +962,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateAddMinute:          {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMinute},
 	DateAddHour:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddHour},
 	DateAddDay:             {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddDay},
+	DateAddWeek:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddWeek},
 	DateAddMonth:           {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMonth},
 	DateAddQuarter:         {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddQuarter},
 	DateAddYear:            {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddYear},
@@ -850,6 +972,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateDiffMinute:         {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffHour:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffDay:            {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
+	DateDiffWeek:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffMonth:          {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffQuarter:        {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
 	DateDiffYear:           {check: fixedArgs(TimeType, TimeType), private: true, ret: IntegerType | MissingType},
@@ -859,6 +982,8 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateExtractMinute:      {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractHour:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractDay:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractDOW:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
+	DateExtractDOY:         {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractMonth:       {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractQuarter:     {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},
 	DateExtractYear:        {check: fixedArgs(TimeType), private: true, ret: IntegerType | MissingType},

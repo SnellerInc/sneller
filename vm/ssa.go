@@ -382,6 +382,8 @@ const (
 	sdateextractminute
 	sdateextracthour
 	sdateextractday
+	sdateextractdow
+	sdateextractdoy
 	sdateextractmonth
 	sdateextractquarter
 	sdateextractyear
@@ -1038,6 +1040,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdateextractminute:      {text: "dateextractminute", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractminute, emit: emitauto2},
 	sdateextracthour:        {text: "dateextracthour", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextracthour, emit: emitauto2},
 	sdateextractday:         {text: "dateextractday", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractday, emit: emitauto2},
+	sdateextractdow:         {text: "dateextractdow", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractdow, emit: emitauto2},
+	sdateextractdoy:         {text: "dateextractdoy", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractdoy, emit: emitauto2},
 	sdateextractmonth:       {text: "dateextractmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmonth, emit: emitauto2},
 	sdateextractquarter:     {text: "dateextractquarter", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractquarter, emit: emitauto2},
 	sdateextractyear:        {text: "dateextractyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractyear, emit: emitauto2},
@@ -3481,13 +3485,19 @@ var timePartMultiplier = [...]uint64{
 	expr.Minute:      1000000 * 60,
 	expr.Hour:        1000000 * 60 * 60,
 	expr.Day:         1000000 * 60 * 60 * 24,
+	expr.DOW:         0,
+	expr.DOY:         0,
+	expr.Week:        1000000 * 60 * 60 * 24 * 7,
+	expr.Month:       0,
+	expr.Quarter:     0,
+	expr.Year:        0,
 }
 
 func (p *prog) DateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 	arg1Time, arg1Mask := p.coerceTimestamp(arg1)
 	if arg0.op == sliteral && isIntImmediate(arg0.imm) {
 		i64Imm := toi64(arg0.imm)
-		if int(part) < len(timePartMultiplier) {
+		if timePartMultiplier[part] != 0 {
 			i64Imm *= timePartMultiplier[part]
 			return p.ssa2imm(sdateaddimm, arg1Time, arg1Mask, i64Imm)
 		}
@@ -3512,7 +3522,7 @@ func (p *prog) DateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 		}
 
 		// If the part is lesser than Month, we can just use addmulimm operation with the required scale.
-		if int(part) < len(timePartMultiplier) {
+		if timePartMultiplier[part] != 0 {
 			return p.ssa3imm(sdateaddmulimm, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask), timePartMultiplier[part])
 		}
 
@@ -3540,7 +3550,7 @@ func (p *prog) DateDiff(part expr.Timepart, arg0, arg1 *value) *value {
 		return p.ssa3(sdatediffmicro, t0, t1, p.And(m0, m1))
 	}
 
-	if int(part) < len(timePartMultiplier) {
+	if timePartMultiplier[part] != 0 {
 		imm := timePartMultiplier[part]
 		return p.ssa3imm(sdatediffparam, t0, t1, p.And(m0, m1), imm)
 	}
@@ -3580,7 +3590,7 @@ func immediateForBoxedDateInstruction(part expr.Timepart) int {
 }
 
 func (p *prog) DateExtract(part expr.Timepart, val *value) *value {
-	if val.primary() == stTimeInt || part < expr.Second {
+	if val.primary() == stTimeInt || part < expr.Second || part == expr.Quarter || part == expr.DOW || part == expr.DOY {
 		v, m := p.coerceTimestamp(val)
 		switch part {
 		case expr.Microsecond:
@@ -3595,6 +3605,10 @@ func (p *prog) DateExtract(part expr.Timepart, val *value) *value {
 			return p.ssa2(sdateextracthour, v, m)
 		case expr.Day:
 			return p.ssa2(sdateextractday, v, m)
+		case expr.DOW:
+			return p.ssa2(sdateextractdow, v, m)
+		case expr.DOY:
+			return p.ssa2(sdateextractdoy, v, m)
 		case expr.Month:
 			return p.ssa2(sdateextractmonth, v, m)
 		case expr.Quarter:
@@ -3604,12 +3618,6 @@ func (p *prog) DateExtract(part expr.Timepart, val *value) *value {
 		default:
 			return p.errorf("unhandled date part in DateExtract()")
 		}
-	}
-
-	// Quarter is not supported by stmextract, so do it this way
-	if part == expr.Quarter {
-		v, m := p.coerceTimestamp(val)
-		return p.ssa2(sdateextractquarter, v, m)
 	}
 
 	v := p.toTime(val)

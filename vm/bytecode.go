@@ -367,6 +367,8 @@ var opinfo = [_maxbcop]bcopinfo{
 	opdateextractminute:      {text: "dateextractminute", flags: bcReadK | bcReadWriteS},
 	opdateextracthour:        {text: "dateextracthour", flags: bcReadK | bcReadWriteS},
 	opdateextractday:         {text: "dateextractday", flags: bcReadK | bcReadWriteS},
+	opdateextractdow:         {text: "dateextractdow", flags: bcReadK | bcReadWriteS},
+	opdateextractdoy:         {text: "dateextractdoy", flags: bcReadK | bcReadWriteS},
 	opdateextractmonth:       {text: "dateextractmonth", flags: bcReadK | bcReadWriteS},
 	opdateextractquarter:     {text: "dateextractquarter", flags: bcReadK | bcReadWriteS},
 	opdateextractyear:        {text: "dateextractyear", flags: bcReadK | bcReadWriteS},

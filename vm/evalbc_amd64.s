@@ -372,12 +372,12 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
   instruction   Z3, Z4, K2, Z3
 
 // Left = Left - Trunc(Left / Right) * Right
-#define BC_MODF64_OP(LEFT1, LEFT2, RIGHT1, RIGHT2, TMP1, TMP2)              \
-  VDIVPD.RZ_SAE.Z RIGHT1, LEFT1, K1, TMP1                                   \
-  VDIVPD.RZ_SAE.Z RIGHT2, LEFT2, K2, TMP2                                   \
-  VRNDSCALEPD.Z   $(VROUND_IMM_TRUNC | VROUND_IMM_SUPPRESS), TMP1, K1, TMP1 \
-  VRNDSCALEPD.Z   $(VROUND_IMM_TRUNC | VROUND_IMM_SUPPRESS), TMP2, K2, TMP2 \
-  VFNMADD231PD    RIGHT1, TMP1, K1, LEFT1                                   \
+#define BC_MODF64_OP(LEFT1, LEFT2, RIGHT1, RIGHT2, TMP1, TMP2) \
+  VDIVPD.RZ_SAE.Z RIGHT1, LEFT1, K1, TMP1                      \
+  VDIVPD.RZ_SAE.Z RIGHT2, LEFT2, K2, TMP2                      \
+  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, TMP1, K1, TMP1        \
+  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, TMP2, K2, TMP2        \
+  VFNMADD231PD    RIGHT1, TMP1, K1, LEFT1                      \
   VFNMADD231PD    RIGHT2, TMP2, K2, LEFT2
 
 // This macro implements INT64 division that can be used in bytecode instructions.
@@ -772,33 +772,33 @@ TEXT bcroundf(SB), NOSPLIT|NOFRAME, $0
   VADDPD.RZ_SAE Z4, Z2, K1, Z2
   VADDPD.RZ_SAE Z5, Z3, K2, Z3
 
-  VRNDSCALEPD $(VROUND_IMM_TRUNC | VROUND_IMM_SUPPRESS), Z2, K1, Z2
-  VRNDSCALEPD $(VROUND_IMM_TRUNC | VROUND_IMM_SUPPRESS), Z3, K2, Z3
+  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, Z2, K1, Z2
+  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, Z3, K2, Z3
 
   NEXT()
 
 TEXT bcroundevenf(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $(VROUND_IMM_NEAREST | VROUND_IMM_SUPPRESS), Z2, K1, Z2
-  VRNDSCALEPD   $(VROUND_IMM_NEAREST | VROUND_IMM_SUPPRESS), Z3, K2, Z3
+  VRNDSCALEPD   $VROUND_IMM_NEAREST_SAE, Z2, K1, Z2
+  VRNDSCALEPD   $VROUND_IMM_NEAREST_SAE, Z3, K2, Z3
   NEXT()
 
 TEXT bctruncf(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $(VROUND_IMM_TRUNC | VROUND_IMM_SUPPRESS), Z2, K1, Z2
-  VRNDSCALEPD   $(VROUND_IMM_TRUNC | VROUND_IMM_SUPPRESS), Z3, K2, Z3
+  VRNDSCALEPD   $VROUND_IMM_TRUNC_SAE, Z2, K1, Z2
+  VRNDSCALEPD   $VROUND_IMM_TRUNC_SAE, Z3, K2, Z3
   NEXT()
 
 TEXT bcfloorf(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z2, K1, Z2
-  VRNDSCALEPD   $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z3, K2, Z3
+  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z2, K1, Z2
+  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z3, K2, Z3
   NEXT()
 
 TEXT bcceilf(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $(VROUND_IMM_UP | VROUND_IMM_SUPPRESS), Z2, K1, Z2
-  VRNDSCALEPD   $(VROUND_IMM_UP | VROUND_IMM_SUPPRESS), Z3, K2, Z3
+  VRNDSCALEPD   $VROUND_IMM_UP_SAE, Z2, K1, Z2
+  VRNDSCALEPD   $VROUND_IMM_UP_SAE, Z3, K2, Z3
   NEXT()
 
 // Binary operation - add (float)
@@ -6022,8 +6022,8 @@ TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
   VCVTUQQ2PD Z21, Z21
   VCVTUQQ2PD Z20, Z20
 
-  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z8, Z8
-  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z9, Z9
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z8, Z8
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z9, Z9
 
   VFNMADD231PD Z19, Z8, Z12
   VFNMADD231PD Z19, Z9, Z13
@@ -6037,8 +6037,8 @@ TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
   VDIVPD.RD_SAE Z18, Z12, Z2
   VDIVPD.RD_SAE Z18, Z13, Z3
 
-  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z2, Z2
-  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z3, Z3
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z2, Z2
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z3, Z3
 
   VFNMADD231PD Z18, Z2, Z12
   VFNMADD231PD Z18, Z3, Z13
@@ -7177,6 +7177,39 @@ TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
 //
 //  - https://howardhinnant.github.io/date_algorithms.html - The best resource for composing / decomposing.
 
+#define BC_DIV_U32_RCP_2X(OUT1, OUT2, IN1, IN2, RCP, N_SHR)                      \
+  VPMULUDQ RCP, IN1, OUT1                                                        \
+  VPMULUDQ RCP, IN2, OUT2                                                        \
+  VPSRLQ $(N_SHR), OUT1, OUT1                                                    \
+  VPSRLQ $(N_SHR), OUT2, OUT2
+
+#define BC_DIV_U32_RCP_2X_MASKED(OUT1, OUT2, IN1, IN2, RCP, N_SHR, MASK1, MASK2) \
+  VPMULUDQ RCP, IN1, MASK1, OUT1                                                 \
+  VPMULUDQ RCP, IN2, MASK2, OUT2                                                 \
+  VPSRLQ $(N_SHR), OUT1, MASK1, OUT1                                             \
+  VPSRLQ $(N_SHR), OUT2, MASK2, OUT2
+
+// calculates `OUT = IN % DIVISOR` as `OUT = IN - ((IN * RCP) / N_SHR) * DIVISOR`
+#define BC_MOD_U32_RCP_2X(OUT1, OUT2, IN1, IN2, DIVISOR, RCP, N_SHR, TMP1, TMP2) \
+  VPMULUDQ RCP, IN1, TMP1                                                        \
+  VPMULUDQ RCP, IN2, TMP2                                                        \
+  VPSRLQ $(N_SHR), TMP1, TMP1                                                    \
+  VPSRLQ $(N_SHR), TMP2, TMP2                                                    \
+  VPMULUDQ DIVISOR, TMP1, TMP1                                                   \
+  VPMULUDQ DIVISOR, TMP2, TMP2                                                   \
+  VPSUBQ TMP1, IN1, OUT1                                                         \
+  VPSUBQ TMP2, IN2, OUT2
+
+#define BC_MOD_U32_RCP_2X_MASKED(OUT1, OUT2, IN1, IN2, DIVISOR, RCP, N_SHR, MASK1, MASK2, TMP1, TMP2) \
+  VPMULUDQ RCP, IN1, TMP1                                                                             \
+  VPMULUDQ RCP, IN2, TMP2                                                                             \
+  VPSRLQ $(N_SHR), TMP1, TMP1                                                                         \
+  VPSRLQ $(N_SHR), TMP2, TMP2                                                                         \
+  VPMULUDQ DIVISOR, TMP1, TMP1                                                                        \
+  VPMULUDQ DIVISOR, TMP2, TMP2                                                                        \
+  VPSUBQ TMP1, IN1, MASK1, OUT1                                                                       \
+  VPSUBQ TMP2, IN2, MASK2, OUT2
+
 #define BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST(DST_A, DST_B, SRC_A, SRC_B, RECIP, N_SHR) \
   VPMULLQ.BCST RECIP, SRC_A, DST_A \
   VPMULLQ.BCST RECIP, SRC_B, DST_B \
@@ -7205,8 +7238,7 @@ TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
 //   Z4...Z19
 //   K Regs (TODO: Specify)
 #define BC_DECOMPOSE_TIMESTAMP_PARTS(INPUT1, INPUT2)                                        \
-  /* First cut off some bits that we don't need to calculate Year/Month/Day, we will */     \
-  /* use these bits later to box microseconds. */                                           \
+  /* First cut off some bits that we don't need to calculate Year/Month/Day. */             \
   VPSRAQ.Z $13, INPUT1, K1, Z4                                                              \
   VPSRAQ.Z $13, INPUT2, K2, Z5                                                              \
                                                                                             \
@@ -7227,8 +7259,8 @@ TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
   VDIVPD.RD_SAE Z15, Z6, Z8                                                                 \
   VDIVPD.RD_SAE Z15, Z7, Z9                                                                 \
                                                                                             \
-  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z8, Z8                              \
-  VRNDSCALEPD $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z9, Z9                              \
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z8, Z8                                                  \
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z9, Z9                                                  \
                                                                                             \
   /* Z12/Z13 - Number of days as integers (adjusted to be unsigned). */                     \
   /*           In this case, always less than 2^32. */                                      \
@@ -7534,13 +7566,13 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z3, Z5, Z5
 
   // We never need the last 3 bits of the value, so cut it off to increase precision.
+  VPSRAQ $3, Z6, Z6
   VPSRAQ $3, Z4, Z4
   VPSRAQ $3, Z5, Z5
-  VPSRAQ $3, Z6, Z6
 
-  VCVTQQ2PD Z6, Z6
-  VCVTQQ2PD Z4, Z4
-  VCVTQQ2PD Z5, Z5
+  VCVTQQ2PD.RD_SAE Z6, Z6
+  VCVTQQ2PD.RD_SAE Z4, Z4
+  VCVTQQ2PD.RD_SAE Z5, Z5
 
   VDIVPD.RZ_SAE Z6, Z4, Z4
   VDIVPD.RZ_SAE Z6, Z5, Z5
@@ -7645,55 +7677,237 @@ TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(4)
 
+#define BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT1, OUT2, IN1, IN2, TMP1, TMP2, TMP3, TMP4, TMP5) \
+  /* First cut off some bits and convert to float64 without losing the precision. */      \
+  VBROADCASTSD CONSTF64_MICROSECONDS_IN_1_DAY_SHR_13(), TMP5                              \
+  VPSRAQ $13, IN1, TMP1                                                                   \
+  VPSRAQ $13, IN2, TMP2                                                                   \
+  VCVTQQ2PD TMP1, TMP1                                                                    \
+  VCVTQQ2PD TMP2, TMP2                                                                    \
+                                                                                          \
+  /* Z8/Z9 <- floor(float64(input >> 13) / float64((60 * 60 * 24 * 1000000) >> 13)). */   \
+  VDIVPD.RD_SAE TMP5, TMP1, TMP3                                                          \
+  VDIVPD.RD_SAE TMP5, TMP2, TMP4                                                          \
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, TMP3, TMP3                                            \
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, TMP4, TMP4                                            \
+                                                                                          \
+  /* TMP1/TMP2 <- Number of (hours, minutes, seconds, and microseconds) >> 13. */         \
+  VMULPD TMP5, TMP3, TMP3                                                                 \
+  VMULPD TMP5, TMP4, TMP4                                                                 \
+  VSUBPD TMP3, TMP1, TMP1                                                                 \
+  VSUBPD TMP4, TMP2, TMP2                                                                 \
+  VCVTPD2UQQ TMP1, TMP1                                                                   \
+  VCVTPD2UQQ TMP2, TMP2                                                                   \
+                                                                                          \
+  /* OUT1/OUT2 <- Number of hours, minutes, seconds, and microseconds combined. */        \
+  VPBROADCASTQ CONSTQ_0x1FFF(), TMP3                                                      \
+  VPSLLQ $13, TMP1, OUT1                                                                  \
+  VPSLLQ $13, TMP2, OUT2                                                                  \
+  VPTERNLOGQ $0xD8, TMP3, IN1, OUT1 /* (A & ~C) | (B & C) */                              \
+  VPTERNLOGQ $0xD8, TMP3, IN2, OUT2 /* (A & ~C) | (B & C) */
+
 // EXTRACT(MICROSECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmicrosecond(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-  VPBROADCASTQ CONSTQ_60000000(), Z4
-  BC_MODU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
+
+  // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
+  BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
+
+  // discard hours and minutes, keep microseconds that include also seconds
+  VPBROADCASTQ CONSTQ_600479951(), Z8
+  VPBROADCASTQ CONSTQ_60000000(), Z9
+  VPSRLQ $8, Z4, Z6
+  VPSRLQ $8, Z5, Z7
+  BC_DIV_U32_RCP_2X(OUT(Z6), OUT(Z7), IN(Z6), IN(Z7), IN(Z8), 47)
+  VPMULUDQ Z9, Z6, Z6
+  VPMULUDQ Z9, Z7, Z7
+  VPSUBQ Z6, Z4, K1, Z2
+  VPSUBQ Z7, Z5, K2, Z3
+
   NEXT()
 
 // EXTRACT(MILLISECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmillisecond(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-  VPBROADCASTQ CONSTQ_60000000(), Z4
-  BC_MODU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST_MASKED(Z2, Z3, Z2, Z3, K1, K2, CONSTQ_274877907(), 38)
+
+  // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
+  BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
+
+  // discard hours and minutes, keep milliseconds that include also seconds
+  VPBROADCASTQ CONSTQ_600479951(), Z8
+  VPBROADCASTQ CONSTQ_60000000(), Z9
+  VPSRLQ $8, Z4, Z6
+  VPSRLQ $8, Z5, Z7
+  BC_DIV_U32_RCP_2X(OUT(Z6), OUT(Z7), IN(Z6), IN(Z7), IN(Z8), 47)
+  VPMULUDQ Z9, Z6, Z6
+  VPMULUDQ Z9, Z7, Z7
+  VPBROADCASTQ CONSTQ_274877907(), Z8
+  VPSUBQ Z6, Z4, Z4
+  VPSUBQ Z7, Z5, Z5
+  BC_DIV_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z8), 38, IN(K1), IN(K2))
+
   NEXT()
 
 // EXTRACT(SECOND FROM timestamp)
 TEXT bcdateextractsecond(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-  VPBROADCASTQ CONSTQ_60000000(), Z4
-  BC_MODU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST_MASKED(Z2, Z3, Z2, Z3, K1, K2, CONSTQ_1125899907(), 50)
+
+  // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
+  BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
+
+  // discard hours and minutes, keep seconds
+  VPBROADCASTQ CONSTQ_600479951(), Z8
+  VPBROADCASTQ CONSTQ_60000000(), Z9
+  VPSRLQ $8, Z4, Z6
+  VPSRLQ $8, Z5, Z7
+  BC_DIV_U32_RCP_2X(OUT(Z6), OUT(Z7), IN(Z6), IN(Z7), IN(Z8), 47)
+  VPMULUDQ Z9, Z6, Z6
+  VPMULUDQ Z9, Z7, Z7
+  VPBROADCASTQ CONSTQ_1125899907(), Z8
+  VPSUBQ Z6, Z4, Z4
+  VPSUBQ Z7, Z5, Z5
+  BC_DIV_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z8), 50, IN(K1), IN(K2))
+
   NEXT()
 
 // EXTRACT(MINUTE FROM timestamp)
 TEXT bcdateextractminute(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-  VPBROADCASTQ CONSTQ_3600000000(), Z4
-  BC_MODU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPSRLQ $8, Z2, K1, Z2
-  VPSRLQ $8, Z3, K2, Z3
-  BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST_MASKED(Z2, Z3, Z2, Z3, K1, K2, CONSTQ_18764999(), 42)
+
+  // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
+  BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
+
+  // discard seconds
+  VPBROADCASTQ CONSTQ_600479951(), Z8
+  VPBROADCASTQ CONSTQ_60000000(), Z9
+  VPSRLQ $8, Z4, Z6
+  VPSRLQ $8, Z5, Z7
+  BC_DIV_U32_RCP_2X(OUT(Z4), OUT(Z5), IN(Z6), IN(Z7), IN(Z8), 47)
+
+  // now keep only minutes (% 60)
+  VPBROADCASTQ CONSTQ_2290649225(), Z6
+  VPBROADCASTQ CONSTQ_60(), Z7
+  BC_MOD_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z7), IN(Z6), 37, IN(K1), IN(K2), Z8, Z9)
+
   NEXT()
 
 // EXTRACT(HOUR FROM timestamp)
 TEXT bcdateextracthour(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
-  VPBROADCASTQ CONSTQ_86400000000(), Z4
-  BC_MODU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
-  VPSRLQ $12, Z2, K1, Z2
-  VPSRLQ $12, Z3, K2, Z3
-  BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST_MASKED(Z2, Z3, Z2, Z3, K1, K2, CONSTQ_2562048517(), 51)
+
+  // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
+  BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
+
+  // discard minutes and seconds
+  VPBROADCASTQ CONSTQ_1281023895(), Z8
+  VPSRLQ $10, Z4, Z4
+  VPSRLQ $10, Z5, Z5
+  BC_DIV_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z8), 52, IN(K1), IN(K2))
+
   NEXT()
 
 // EXTRACT(DAY FROM timestamp)
 TEXT bcdateextractday(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
-  VPADDQ.BCST CONSTQ_1(), Z14, K1, Z2
-  VPADDQ.BCST CONSTQ_1(), Z15, K2, Z3
+  VPBROADCASTQ CONSTQ_1(), Z4
+  VPADDQ Z4, Z14, K1, Z2
+  VPADDQ Z4, Z15, K2, Z3
+  NEXT()
+
+// EXTRACT(DOW FROM timestamp)
+TEXT bcdateextractdow(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  // divide Z2:Z3 by (60 * 60 * 24 * 1000000) (microseconds per day)
+  // to get days from the start of unix time
+  VBROADCASTSD CONSTF64_MICROSECONDS_IN_1_DAY_SHR_13(), Z6
+  VPSRAQ $13, Z2, Z4
+  VPSRAQ $13, Z3, Z5
+  VCVTQQ2PD.Z Z4, K1, Z4
+  VCVTQQ2PD.Z Z5, K2, Z5
+
+  VDIVPD.RD_SAE Z6, Z4, Z4
+  VDIVPD.RD_SAE Z6, Z5, Z5
+
+  // The internal [unboxed] representation is a unix microtime, which
+  // starts at 1970-01-01, which is Thursday - so add 4 and then modulo
+  // it by 7 to get a value in [0, 6] range, where 0 is Sunday.
+  VBROADCASTSD CONSTF64_4(), Z6
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z4, Z4
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z5, Z5
+
+  VBROADCASTSD CONSTF64_7(), Z8
+  VADDPD Z6, Z4, Z4
+  VADDPD Z6, Z5, Z5
+
+  VDIVPD.RD_SAE Z8, Z4, Z6
+  VDIVPD.RD_SAE Z8, Z5, Z7
+
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z6, Z6
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z7, Z7
+
+  VMULPD Z8, Z6, Z6
+  VMULPD Z8, Z7, Z7
+
+  VSUBPD Z6, Z4, Z4
+  VSUBPD Z7, Z5, Z5
+
+  VCVTPD2QQ Z4, K1, Z2
+  VCVTPD2QQ Z5, K2, Z3
+
+  NEXT()
+
+// A DWORD table designed for VPERMD that can be used to map month of the year into the number
+// of days preceeding the month + 1, excluding leap day.
+CONST_DATA_U32(extract_doy_predicate,  0, $0)         // Zero index is unused
+CONST_DATA_U32(extract_doy_predicate,  4, $(59 + 1))  // March
+CONST_DATA_U32(extract_doy_predicate,  8, $(90 + 1))  // April
+CONST_DATA_U32(extract_doy_predicate, 12, $(120 + 1)) // May
+CONST_DATA_U32(extract_doy_predicate, 16, $(151 + 1)) // June
+CONST_DATA_U32(extract_doy_predicate, 20, $(181 + 1)) // July
+CONST_DATA_U32(extract_doy_predicate, 24, $(212 + 1)) // August
+CONST_DATA_U32(extract_doy_predicate, 28, $(243 + 1)) // September
+CONST_DATA_U32(extract_doy_predicate, 32, $(273 + 1)) // October
+CONST_DATA_U32(extract_doy_predicate, 36, $(304 + 1)) // November
+CONST_DATA_U32(extract_doy_predicate, 40, $(334 + 1)) // December
+CONST_DATA_U32(extract_doy_predicate, 44, $(0 + 1))   // January
+CONST_DATA_U32(extract_doy_predicate, 48, $(31 + 1))  // February
+CONST_DATA_U32(extract_doy_predicate, 52, $0)
+CONST_DATA_U32(extract_doy_predicate, 56, $0)
+CONST_DATA_U32(extract_doy_predicate, 60, $0)
+CONST_GLOBAL(extract_doy_predicate, $64)
+
+// EXTRACT(DOY FROM timestamp)
+//
+// Extacting DOY is implemented as (x - DATE_TRUNC(x)) / MICROSECONDS_PER_DAY + 1
+TEXT bcdateextractdoy(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  // Z8/Z9 <- Year index
+  // Z10/Z11 <- Month index - starting from zero, where zero represents March
+  // Z14/Z15 <- Day of month
+  BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
+
+  VPBROADCASTQ CONSTQ_10(), Z12
+  VPBROADCASTQ CONSTQ_1(), Z13
+
+  VPCMPUQ $VPCMP_IMM_LT, Z12, Z10, K3, K3
+  VPCMPUQ $VPCMP_IMM_LT, Z12, Z11, K4, K4
+
+  VMOVDQU64 CONST_GET_PTR(extract_doy_predicate, 0), Z12
+  VPADDQ Z13, Z10, Z10
+  VPADDQ Z13, Z11, Z11
+
+  VPERMD Z12, Z10, Z4
+  VPERMD Z12, Z11, Z5
+
+  VPADDQ Z13, Z4, K3, Z4
+  VPADDQ Z13, Z5, K4, Z5
+
+  VPADDQ Z14, Z4, K1, Z2
+  VPADDQ Z15, Z5, K2, Z3
+
   NEXT()
 
 // EXTRACT(MONTH FROM timestamp)
@@ -8530,8 +8744,8 @@ TEXT bcwidthbucketf(SB), NOSPLIT|NOFRAME, $0
   VMULPD.RD_SAE Z5, Z3, K2, Z3
 
   // Round to integer - this operation would preserve special numbers (Inf/NaN).
-  VRNDSCALEPD   $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z2, K1, Z2
-  VRNDSCALEPD   $(VROUND_IMM_DOWN | VROUND_IMM_SUPPRESS), Z3, K2, Z3
+  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z2, K1, Z2
+  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z3, K2, Z3
 
   // Restrict output values to [0, BucketCount + 1] range
   VBROADCASTSD  CONSTF64_1(), Z6

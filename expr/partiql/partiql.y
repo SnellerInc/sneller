@@ -254,7 +254,7 @@ datum_or_parens
 }
 | DATE_ADD '(' ID ',' expr ',' expr ')'
 {
-  part, ok := timePart($3)
+  part, ok := timePartFor($3, "DATE_ADD")
   if !ok {
     yylex.Error(__yyfmt__.Sprintf("bad DATE_ADD part %q", $3))
   }
@@ -262,7 +262,7 @@ datum_or_parens
 }
 | DATE_DIFF '(' ID ',' expr ',' expr ')'
 {
-  part, ok := timePart($3)
+  part, ok := timePartFor($3, "DATE_DIFF")
   if !ok {
     yylex.Error(__yyfmt__.Sprintf("bad DATE_DIFF part %q", $3))
   }
@@ -270,7 +270,7 @@ datum_or_parens
 }
 | DATE_TRUNC '(' ID ',' expr ')'
 {
-  part, ok := timePart($3)
+  part, ok := timePartFor($3, "DATE_TRUNC")
   if !ok {
     yylex.Error(__yyfmt__.Sprintf("bad DATE_TRUNC part %q", $3))
   }
@@ -278,7 +278,7 @@ datum_or_parens
 }
 | EXTRACT '(' ID FROM expr ')'
 {
-  part, ok := timePart($3)
+  part, ok := timePartFor($3, "EXTRACT")
   if !ok {
     yylex.Error(__yyfmt__.Sprintf("bad EXTRACT part %q", $3))
   }

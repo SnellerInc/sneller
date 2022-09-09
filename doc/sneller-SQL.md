@@ -1177,6 +1177,7 @@ to the timestamp `time`.
  - `MINUTE`
  - `HOUR`
  - `DAY`
+ - `WEEK`
  - `MONTH`
  - `QUARTER`
  - `YEAR`
@@ -1196,6 +1197,7 @@ between `from` and `to` in terms of the date interval `part`.
  - `MINUTE`
  - `HOUR`
  - `DAY`
+ - `WEEK`
  - `MONTH`
  - `QUARTER`
  - `YEAR`
@@ -1233,12 +1235,14 @@ with buckets corresponding to calendar dates.)
 
 `part` can be one of the following keywords:
 
- - `MICROSECOND`
- - `MILLISECOND`
+ - `MICROSECOND` (the result includes seconds)
+ - `MILLISECOND` (the result includes seconds)
  - `SECOND`
  - `MINUTE`
  - `HOUR`
  - `DAY`
+ - `DOW` (day of week in [0-6] range where 0 represents Sunday)
+ - `DOY` (day of year in [1-366] range)
  - `MONTH`
  - `QUARTER`
  - `YEAR`
