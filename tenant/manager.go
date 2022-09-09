@@ -67,6 +67,7 @@
 package tenant
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -139,12 +140,6 @@ type Manager struct {
 	// used to populate the tenant
 	// environment when it is launched
 	envfn func(cache string, id tnproto.ID) []string
-
-	// execStderr should return the stderr attached
-	// to each of the exec'd children.
-	// If ExecStderr is nil, then the children's stderr
-	// is attached to the parent's stderr.
-	execStderr func(id tnproto.ID) io.Writer
 
 	// cg maps tenants to cgroups
 	cg func(id tnproto.ID) cgroup.Dir
@@ -252,20 +247,6 @@ func WithTenantEnv(fn func(string, tnproto.ID) []string) Option {
 	}
 }
 
-// WithTenantStderr is an option that
-// can be passed to NewManager to indicate
-// where the stdout+stderr of tenant processes
-// should be directed. The io.Writer produced
-// by the function will be passed directly
-// to exec.Cmd.Stdout and exec.Cmd.Stderr
-//
-// See also: exec.Cmd
-func WithTenantStderr(fn func(tnproto.ID) io.Writer) Option {
-	return func(m *Manager) {
-		m.execStderr = fn
-	}
-}
-
 // WithRemote is an option that can
 // be passed to NewManager to indicate
 // the listener on which to serve
@@ -278,9 +259,15 @@ func WithRemote(l net.Listener) Option {
 
 // WithLogger is an option that
 // can be passed to NewManager to
-// have it log diagnostic information.
-// If no logger is set for the manager,
-// it will not write out any diagnostics.
+// have it log diagnostic information
+// and information from child subprocesses.
+// If WithLogger is not provided, then the
+// children share stdout and stderr with
+// the parent process.
+//
+// For child subprocesses, each line of output
+// to stdout and stderr will be prefixed with
+// the ID os the subprocess.
 func WithLogger(l *log.Logger) Option {
 	return func(m *Manager) {
 		m.logger = l
@@ -526,6 +513,21 @@ func (m *Manager) clean(dir string) error {
 	return os.Mkdir(dir, 0750)
 }
 
+func tenantLog(id tnproto.ID, l *log.Logger) (*os.File, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		defer r.Close()
+		s := bufio.NewScanner(r)
+		for s.Scan() {
+			l.Printf("%s: %s", id, s.Bytes())
+		}
+	}()
+	return w, nil
+}
+
 func (m *Manager) launch(id tnproto.ID) (*child, error) {
 	// make sure the tenant's cache directory
 	// is created and empty
@@ -562,13 +564,17 @@ func (m *Manager) launch(id tnproto.ID) (*child, error) {
 	// note: sandboxing will override
 	cmd.Env = m.envfn(m.cacheDir(id), id)
 	cmd.Stdin = nil
-	if m.execStderr == nil {
+	if m.logger == nil {
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
 	} else {
-		w := m.execStderr(id)
+		w, err := tenantLog(id, m.logger)
+		if err != nil {
+			return nil, err
+		}
 		cmd.Stdout = w
 		cmd.Stderr = w
+		defer w.Close() // we don't need the write end
 	}
 	cmd.ExtraFiles = []*os.File{fd, m.eventfd}
 

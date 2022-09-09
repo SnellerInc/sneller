@@ -71,7 +71,7 @@ func runWorker(args []string) {
 	if *eventfd == -1 {
 		panic("no eventfd passed")
 	}
-	logger := log.New(os.Stderr, "tid:"+*workerTenant+" ", 0)
+	logger := log.New(os.Stderr, "", 0)
 
 	// capture vm errors associated with this tenant
 	vm.Errorf = logger.Printf
