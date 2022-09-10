@@ -288,12 +288,21 @@ func (t *radixTree64) value(i int32) (uint64, []byte) {
 	return binary.LittleEndian.Uint64(buf), buf[aggregateTagSize:]
 }
 
-// MaxAggregateBuckets is the maximum cardinality
-// of a hash aggregate (SUM(...) ... GROUP BY ...);
-// this is chosen somewhat arbitrarily to prevent
-// ridiculous memory consumption and the higher
-// likelihood of hash collissions
-const MaxAggregateBuckets = 1 << 24
+const (
+	// MaxAggregateBuckets is the maximum cardinality
+	// of a hash aggregate (SUM(...) ... GROUP BY ...);
+	// this is chosen somewhat arbitrarily to prevent
+	// ridiculous memory consumption and the higher
+	// likelihood of hash collisions
+	MaxAggregateBuckets = 1 << 18
+
+	// MaxAggregateMemory is the maximum number of
+	// bytes that the aggregate groups or values
+	// can occupy. (This limit is applied to groups
+	// and values separately, so the true max memory use
+	// is roughly double this value.)
+	MaxAggregateMemory = 1 << 24
+)
 
 type hpair struct {
 	reprloc int32
@@ -578,8 +587,13 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 			off, ok := a.tree.insertSlow(h)
 			if ok {
 				// new distinct value
-				if len(a.pairs) >= MaxAggregateBuckets {
+				// enforce max # of pairs
+				if len(a.pairs) > MaxAggregateBuckets {
 					return fmt.Errorf("cannot create more than %d aggregate pairs", len(a.pairs))
+				}
+				// enforce max aggregate value memory
+				if off > MaxAggregateMemory {
+					return fmt.Errorf("aggregate value memory (%d bytes) exceeds limit (%d bytes)", off, MaxAggregateMemory)
 				}
 
 				// start of the index in `a.repr` where all GROUP BY fields will be appended.
@@ -593,7 +607,7 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 					}
 					ref := vmref{lo, hi}
 					if !ref.valid() {
-						errorf("bad ref {%#x, %d} from bytecode:\n%s\n", a.bc.String())
+						errorf("bad ref {%#x, %d} from bytecode:\n%s\n", lo, hi, a.bc.String())
 						return bcerrCorrupt
 					}
 					mem := ref.mem()
@@ -602,6 +616,10 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 						errorf("column %d vmref 0x%x has invalid size %d", i, mem, ion.SizeOf(mem))
 						errorf("bad ref from bytecode:\n%s\n", a.bc.String())
 						return bcerrCorrupt
+					}
+					// enforce max aggregate group memory
+					if len(a.repr)+len(mem) > MaxAggregateMemory {
+						return fmt.Errorf("total aggregated groups size (%d bytes) exceeds max (%d bytes)", len(a.repr)+len(mem), MaxAggregateMemory)
 					}
 					a.repr = append(a.repr, mem...)
 				}
