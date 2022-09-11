@@ -455,7 +455,7 @@ const (
 )
 
 func (idx *Index) readInputs(st *ion.Symtab, body []byte, isize int64, alg string) error {
-	if ion.TypeOf(body) == ion.ListType {
+	if ion.TypeOf(body) != ion.BlobType {
 		// stored decompressed
 		return idx.Inputs.decode(st, body)
 	}

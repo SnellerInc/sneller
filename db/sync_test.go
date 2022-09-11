@@ -366,8 +366,9 @@ func TestSync(t *testing.T) {
 		R:    noReadCloser{t},
 		F:    blockfmt.MustSuffixToFormat(".json"),
 	}}
+
 	owner.ro = true
-	err = b.Append(owner, "default", "parking", lst)
+	err = b.Append(owner, "default", "parking", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

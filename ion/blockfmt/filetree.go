@@ -25,6 +25,7 @@ import (
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -190,6 +191,82 @@ func (f *level) appendLeaf(p, etag string, id int) (bool, error) {
 	return true, nil
 }
 
+type jentry struct {
+	etag string
+	id   int
+}
+
+type journal struct {
+	entries map[string]jentry
+}
+
+func (j *journal) marshal(dst *ion.Buffer, st *ion.Symtab) {
+	path := st.Intern("path")
+	etag := st.Intern("etag")
+	id := st.Intern("id")
+	dst.BeginList(-1)
+	for k, v := range j.entries {
+		dst.BeginStruct(-1)
+		dst.BeginField(path)
+		dst.WriteString(k)
+		dst.BeginField(etag)
+		dst.WriteString(v.etag)
+		dst.BeginField(id)
+		dst.WriteInt(int64(v.id))
+		dst.EndStruct()
+	}
+	dst.EndList()
+}
+
+func (j *journal) unmarshal(st *ion.Symtab, buf []byte) error {
+	j.clear()
+	return unpackList(buf, func(field []byte) error {
+		var path, etag string
+		var id int64
+		err := unpackStruct(st, field, func(name string, field []byte) error {
+			var err error
+			switch name {
+			case "path":
+				path, _, err = ion.ReadString(field)
+			case "etag":
+				etag, _, err = ion.ReadString(field)
+			case "id":
+				id, _, err = ion.ReadInt(field)
+			}
+			return err
+		})
+		if err != nil {
+			return err
+		}
+		if j.entries == nil {
+			j.entries = make(map[string]jentry)
+		}
+		j.entries[path] = jentry{etag, int(id)}
+		return nil
+	})
+}
+
+func (j *journal) memsize() int {
+	m := 0
+	for k, v := range j.entries {
+		m += len(k) + len(v.etag) + 8
+	}
+	return m
+}
+
+func (j *journal) append(path, etag string, id int) {
+	if j.entries == nil {
+		j.entries = make(map[string]jentry)
+	}
+	j.entries[path] = jentry{etag, id}
+}
+
+func (j *journal) clear() {
+	if j.entries != nil {
+		maps.Clear(j.entries)
+	}
+}
+
 // FileTree is a B+-tree that holds a list of (path, etag, id)
 // triples in sorted order by path.
 type FileTree struct {
@@ -198,7 +275,22 @@ type FileTree struct {
 	//
 	// unlike other inner node in a B+ tree,
 	// the root inner node may not always be at least half full
-	root level
+	//
+	// oldroot is a shallow copy of root that is used
+	// to write out the "old" state when we decide to
+	// just write out a journal entry
+	root    level
+	oldroot ion.Datum
+
+	// journal is a list of items that have been
+	// committed to the tree but are not yet reflected
+	// in the actual tree structure; these are stored in-line
+	// in the root to reduce write latency
+	journal journal
+
+	// replayed is true if the journal contents
+	// is reflected in the tree, or false otherwise
+	replayed bool
 
 	// Backing is the backing store for the tree.
 	// Backing must be set to perform tree operations.
@@ -254,7 +346,6 @@ func (f *level) unmarshalLeaf(st *ion.Symtab, in []byte) error {
 		return fmt.Errorf("unexpected ion type %s", ion.TypeOf(in))
 	}
 	f.isInner = false
-
 	// subtle: we can re-use this buffer
 	// because the data we stash is strictly
 	// smaller than the original ion input
@@ -356,7 +447,39 @@ func (f *level) compressLeaf(tmp *ion.Buffer, st *ion.Symtab) []byte {
 }
 
 func (f *FileTree) decode(st *ion.Symtab, buf []byte) error {
-	return f.root.unmarshalInner(st, buf, true)
+	readInner := func(st *ion.Symtab, buf []byte) error {
+		err := f.root.unmarshalInner(st, buf, true)
+		if err == nil {
+			f.oldroot, _, err = ion.ReadDatum(st, buf)
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			return fmt.Errorf("FileTree.decode: unmarshalInner: %s", err)
+		}
+		return nil
+	}
+	switch t := ion.TypeOf(buf); t {
+	case ion.StructType:
+		_, err := ion.UnpackStruct(st, buf, func(field string, body []byte) error {
+			switch field {
+			case "inner":
+				return readInner(st, body)
+			case "journal":
+				f.replayed = false
+				return f.journal.unmarshal(st, body)
+			default:
+				return fmt.Errorf("blockfmt.FileTree.decode: unrecognized field %q", field)
+			}
+		})
+		return err
+	case ion.ListType:
+		f.journal.clear()
+		f.replayed = true // empty journal; fully replayed
+		return readInner(st, buf)
+	default:
+		return fmt.Errorf("blockfmt.FileTree.decode: unexpected type %s", t)
+	}
 }
 
 func (f *level) decode(in []byte) error {
@@ -389,11 +512,27 @@ func (f *FileTree) Prefetch(input []Input) {
 	if len(f.root.levels) == 0 {
 		return // empty tree; nothing to do
 	}
-	lst := make([]string, len(input))
-	for i := range input {
-		lst[i] = input[i].Path
+	var lst []string
+	if f.replayed {
+		lst = make([]string, len(input))
+		for i := range input {
+			lst[i] = input[i].Path
+		}
+	} else {
+		// if the next Append operation will require
+		// replaying the journal, then make sure we
+		// prefetch leaves associated with journal
+		// entries as well
+		lst = make([]string, 0, len(input)+len(f.journal.entries))
+		for i := range input {
+			lst = append(lst, input[i].Path)
+		}
+		for path := range f.journal.entries {
+			lst = append(lst, path)
+		}
 	}
 	slices.Sort(lst)
+	slices.Compact(lst)
 	f.root.prefetchInner(f.Backing, lst)
 }
 
@@ -462,6 +601,28 @@ func (f *level) prefetch(src UploadFS, paths []string) {
 	}
 }
 
+// ensure journal contents are reflected in the tree
+func (f *FileTree) replay() error {
+	if f.replayed {
+		return nil
+	}
+	for k, v := range f.journal.entries {
+		ret, err := f.root.appendInner(f.Backing, k, v.etag, v.id)
+		if err != nil {
+			return err
+		}
+		// each of these should be a new entry
+		if !ret {
+			panic("FileTree.replay: journal and tree out-of-sync")
+		}
+	}
+	if len(f.root.levels) >= splitlevel {
+		f.root.split()
+	}
+	f.replayed = true
+	return nil
+}
+
 // Append assigns an ID to a path and etag.
 // Append returns (true, nil) if the (path, etag)
 // tuple is inserted, or (false, nil) if the (path, etag)
@@ -484,10 +645,20 @@ func (f *FileTree) Append(path, etag string, id int) (bool, error) {
 	// make sure as soon as anything is inserted that the
 	// root is marked correctly
 	f.root.isInner = true
+	err := f.replay()
+	if err != nil {
+		return false, err
+	}
+	// perform a real tree insert:
 	ret, err := f.root.appendInner(f.Backing, path, etag, id)
 	if err != nil || !ret {
 		return ret, err
 	}
+	if !f.root.isDirty {
+		panic("appendInner succeeded w/o setting isDirty")
+	}
+	// replicate the tree state in the journal:
+	f.journal.append(path, etag, id)
 	// once we accumulate enough data in the root,
 	// split the root itself into more inner nodes
 	if len(f.root.levels) >= splitlevel {
@@ -660,12 +831,50 @@ func (f *level) appendInner(fs UploadFS, path, etag string, id int) (bool, error
 type syncfn func(oldpath string, mem []byte) (path, etag string, err error)
 
 func (f *FileTree) sync(fn syncfn) error {
-	if !f.root.isDirty {
+	const (
+		// with fewer than 50 items in the journal,
+		// don't bother writing out a new tree
+		minJournaled = 50
+		// ... but always write out the tree if we
+		// are using more than 10MB of memory for leaf nodes
+		// (we can't buffer forever)
+		maxLeafResident = 10 * 1024 * 1024
+	)
+	resident := f.root.leafSizes() + f.journal.memsize()
+	if !f.root.isDirty ||
+		(len(f.journal.entries) < minJournaled && resident < maxLeafResident) {
 		return nil
 	}
 	// launch all of the uploads asynchronously
 	// and then wait for all of them to complete
-	return f.root.syncInner(fn)
+	err := f.root.syncInner(fn)
+	if err != nil {
+		return err
+	}
+	// if we write out a new tree, then
+	// this journal is committed and we can restart
+	f.journal.clear()
+	{
+		// update oldroot; we maintain the invariant
+		// that oldroot is the root associated with the
+		// tree state that has been synchronized
+		var st ion.Symtab
+		var buf ion.Buffer
+		f.root.encodeInner(&buf, &st, false)
+		f.oldroot, _, err = ion.ReadDatum(&st, buf.Bytes())
+		if err != nil {
+			panic(err) // should not be possible
+		}
+	}
+	// if we wrote out entries because we had
+	// too much resident memory, reclaim it from
+	// all of the resident leaf nodes
+	// (we don't bother with inner nodes because
+	// by definition they consume exponentially less memory)
+	if resident >= maxLeafResident {
+		f.root.dropLeaves()
+	}
+	return nil
 }
 
 func (f *level) syncInner(fn syncfn) error {
@@ -723,6 +932,21 @@ func (f *level) syncInner(fn syncfn) error {
 
 func (f *FileTree) encode(dst *ion.Buffer, st *ion.Symtab) {
 	f.root.isInner = true
+	if len(f.journal.entries) > 0 {
+		dst.BeginStruct(-1)
+		dst.BeginField(st.Intern("inner"))
+		if f.oldroot.Empty() {
+			// only journal entries; just encode [] as the tree
+			dst.BeginList(-1)
+			dst.EndList()
+		} else {
+			f.oldroot.Encode(dst, st)
+		}
+		dst.BeginField(st.Intern("journal"))
+		f.journal.marshal(dst, st)
+		dst.EndStruct()
+		return
+	}
 	f.root.encodeInner(dst, st, false)
 }
 
@@ -804,10 +1028,12 @@ func (f *level) unmarshalInner(st *ion.Symtab, in []byte, root bool) error {
 
 // Reset resets the contents of the tree
 func (f *FileTree) Reset() {
-	f.root.levels = nil
+	// reset all private fields
+	// except f.root.isInner
+	*f = FileTree{
+		Backing: f.Backing,
+	}
 	f.root.isInner = true
-	f.root.last = nil
-	f.root.isDirty = false
 }
 
 // EachFile iterates the backing of f and
@@ -855,13 +1081,41 @@ func (f *level) drop() {
 	}
 }
 
+// drop all leaf nodes of the tree
+func (f *level) dropLeaves() {
+	if f.isInner {
+		for i := range f.levels {
+			f.levels[i].dropLeaves()
+		}
+		return
+	}
+	f.drop()
+}
+
+// leafSizes computes the total amount
+// of memory devoted to leaf nodes in the tree
+func (f *level) leafSizes() int {
+	if f.isInner {
+		sz := 0
+		for i := range f.levels {
+			sz += f.levels[i].leafSizes()
+		}
+		return sz
+	}
+	return len(f.raw)
+}
+
 // Walk performs an in-order walk of the filetree
 // starting at the first item greater than or
 // equal to start. The walk function is called
 // on each item in turn until it returns false
 // or until an I/O error is encountered.
 func (f *FileTree) Walk(start string, walk func(name, etag string, id int) bool) error {
-	err, _ := f.root.walkInner(f.Backing, start, walk)
+	err := f.replay()
+	if err != nil {
+		return err
+	}
+	err, _ = f.root.walkInner(f.Backing, start, walk)
 	return err
 }
 

@@ -46,7 +46,7 @@ func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	idx, err := st.index()
+	idx, err := st.index(nil)
 	if err != nil {
 		// if the index isn't present
 		// or is out-of-date, create a new one
@@ -176,7 +176,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 		}
 		return 0, nil
 	}
-	err := st.force(idx, prepend, collect)
+	err := st.force(idx, prepend, collect, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -189,7 +189,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 // along the way (other than scanning for cursors)
 // are discarded
 func (st *tableState) flushScanDone(cursors []string) error {
-	old, err := st.index()
+	old, err := st.index(nil)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			old = &blockfmt.Index{

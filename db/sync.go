@@ -207,8 +207,16 @@ func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
 	}, nil
 }
 
-func (st *tableState) index() (*blockfmt.Index, error) {
-	return OpenIndex(st.ofs, st.db, st.table, st.owner.Key())
+func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
+	if cache != nil && cache.value != nil {
+		return cache.value, nil
+	}
+	idx, err := OpenIndex(st.ofs, st.db, st.table, st.owner.Key())
+	if err != nil {
+		return nil, err
+	}
+	overwrite(cache, idx)
+	return idx, nil
 }
 
 func (st *tableState) def() (*Definition, error) {
@@ -315,14 +323,14 @@ func shouldRebuild(err error) bool {
 // Append will continue to return ErrBuildAgain until scanning is complete,
 // at which point Append operations will be accepted. (The caller must continuously
 // call Append for scanning to occur.)
-func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) error {
+func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cache *IndexCache) error {
 	st, err := b.open(db, table, who)
 	if err != nil {
 		return err
 	}
 
 	var prepend *blockfmt.Descriptor
-	idx, err := st.index()
+	idx, err := st.index(cache)
 	if err == nil {
 		// begin by removing any unreferenced files,
 		// if we have some left around that need removing
@@ -351,7 +359,7 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) err
 			b.logf("index for %s already up-to-date", table)
 			return nil
 		}
-		return st.append(idx, prepend, lst)
+		return st.append(idx, prepend, lst, cache)
 	}
 	if b.NewIndexScan && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		def, err := OpenDefinition(st.ofs, db, table)
@@ -375,16 +383,16 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input) err
 		// caller should probably Sync instead
 		return err
 	}
-	return st.append(nil, prepend, lst)
+	return st.append(nil, prepend, lst, cache)
 }
 
-func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input) error {
+func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input, cache *IndexCache) error {
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
 	if len(lst) == 0 {
 		err = st.emptyIndex()
 	} else {
-		err = st.force(idx, prepend, lst)
+		err = st.force(idx, prepend, lst, cache)
 	}
 	if err != nil {
 		return fmt.Errorf("force: %w", err)
@@ -425,7 +433,7 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 			return err
 		}
 		fresh := false
-		idx, err := st.index()
+		idx, err := st.index(nil)
 		if err != nil {
 			// if the index isn't present
 			// or is out-of-date, create a new one
@@ -539,7 +547,10 @@ func (b *Builder) flushMeta() int {
 
 // after failing to read an object,
 // update the index state to reflect the fatal errors we encountered
-func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
+func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *IndexCache) {
+	// invalidate cache so that a reload pulls the previous one
+	invalidate(cache)
+
 	any := false
 	for i := range lst {
 		if lst[i].Err != nil && blockfmt.IsFatal(lst[i].Err) {
@@ -566,13 +577,14 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
 		// worry about reverting any changes we made
 		// to the index object
 		// (it is expensive to preemptively perform a deep copy)
-		idx, err = st.index()
+		idx, err = st.index(cache)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				idx = &blockfmt.Index{
 					Name:     st.table,
 					Scanning: st.conf.NewIndexScan,
 				}
+				overwrite(cache, idx)
 			} else {
 				st.conf.logf("re-opening index to record failure: %s", err)
 				return
@@ -586,7 +598,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
 		}
 		_, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, -1)
 		if err != nil {
-			st.conf.logf("updateFailed: Append: %s", err)
+			st.conf.logf("updateFailed: %s", err)
 			return
 		}
 	}
@@ -595,6 +607,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input) {
 	err = st.flush(idx)
 	if err != nil {
 		st.conf.logf("flushing index in updateFailed: %s", err)
+		invalidate(cache)
 	}
 }
 
@@ -659,7 +672,7 @@ func suffixForComp(c string) string {
 	}
 }
 
-func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input) error {
+func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input, cache *IndexCache) error {
 	c := blockfmt.Converter{
 		Inputs:    lst,
 		Align:     st.conf.align(),
@@ -698,7 +711,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	err = c.Run()
 	if err != nil {
 		abort(out)
-		st.updateFailed(idx == nil, c.Inputs)
+		st.updateFailed(idx == nil, c.Inputs, cache)
 		return fmt.Errorf("db.Builder: running blockfmt.Converter: %w", err)
 	}
 	etag, lastmod, err := getInfo(st.ofs, fp, out)

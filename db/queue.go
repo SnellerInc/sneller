@@ -27,6 +27,7 @@ import (
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -284,7 +285,22 @@ type batch struct {
 	indirect []int // indices into Queue.items[] for each of filtered
 }
 
-func (q *QueueRunner) runTable(db string, def *Definition) {
+// IndexCache is an opaque cache for index objects.
+type IndexCache struct {
+	value *blockfmt.Index
+}
+
+func invalidate(cache *IndexCache) {
+	overwrite(cache, nil)
+}
+
+func overwrite(cache *IndexCache, value *blockfmt.Index) {
+	if cache != nil {
+		cache.value = value
+	}
+}
+
+func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
 	// clone the config and add features;
 	// note that runTable is invoked in separate
 	// goroutines for each table, so we need to
@@ -295,9 +311,15 @@ func (q *QueueRunner) runTable(db string, def *Definition) {
 	var dst batch
 	err := q.filter(&conf, def, &dst)
 	if err == nil && len(dst.filtered) > 0 {
-		err = conf.Append(q.Owner, db, def.Name, dst.filtered)
+		err = conf.Append(q.Owner, db, def.Name, dst.filtered, cache)
 	}
 	if err != nil {
+		// for safety, invalidate the cache whenever
+		// we encounter an error; the index file is
+		// likely not in a consistent state
+		if err != ErrBuildAgain {
+			invalidate(cache)
+		}
 		q.logf("updating %s/%s: %s", db, def.Name, err)
 	}
 
@@ -366,11 +388,16 @@ func (q *QueueRunner) gather(in Queue) error {
 	return nil
 }
 
+type tableInfo struct {
+	def   *Definition
+	cache IndexCache
+}
+
 // Run processes entries from in until ReadInputs returns io.EOF,
 // at which point it will call in.Close.
 func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
-	subdefs := make(map[dbtable]*Definition)
+	subdefs := make(map[dbtable]*tableInfo)
 readloop:
 	for {
 		err := q.gather(in)
@@ -395,7 +422,7 @@ readloop:
 	}
 }
 
-func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*Definition) {
+func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*tableInfo) {
 	var wg sync.WaitGroup
 	q.status = slices.Grow(q.status[:0], len(q.inputs))[:len(q.inputs)]
 	for i := range q.status {
@@ -403,10 +430,10 @@ func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*Definition) {
 	}
 	for dbt, def := range dst {
 		wg.Add(1)
-		go func(db string, def *Definition) {
+		go func(db string, def *Definition, cache *IndexCache) {
 			defer wg.Done()
-			q.runTable(db, def)
-		}(dbt.db, def)
+			q.runTable(db, def, cache)
+		}(dbt.db, def.def, &def.cache)
 	}
 	// wait for q.status[*] to be updated (atomically!)
 	// by runTable()
@@ -416,14 +443,13 @@ func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*Definition) {
 	}
 }
 
-func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
+func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 	dir, err := q.Owner.Root()
 	if err != nil {
 		return err
 	}
-	for k := range m {
-		delete(m, k)
-	}
+	// flush known tables, including the table cache
+	maps.Clear(m)
 	dbs, err := fs.ReadDir(dir, "db")
 	if err != nil {
 		return err
@@ -448,7 +474,9 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*Definition) error {
 				// don't get hung up on invalid definitions
 				continue
 			}
-			m[dbtable{db: dbname, table: tables[j].Name()}] = def
+			m[dbtable{db: dbname, table: tables[j].Name()}] = &tableInfo{
+				def: def,
+			}
 		}
 	}
 	return nil

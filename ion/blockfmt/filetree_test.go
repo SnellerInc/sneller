@@ -155,9 +155,17 @@ func TestFiletreeInsert(t *testing.T) {
 		}
 		return name, ret, err
 	}
-
-	var tmpbuf ion.Buffer
-	var tmpst ion.Symtab
+	reset := func(f *FileTree) {
+		var st ion.Symtab
+		var buf ion.Buffer
+		err := f.sync(sync)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.encode(&buf, &st)
+		f.Reset()
+		f.decode(&st, buf.Bytes())
+	}
 
 	var appended, overwritten int
 	var resyncs int
@@ -165,21 +173,7 @@ func TestFiletreeInsert(t *testing.T) {
 		if i%500 == 123 {
 			checkTree(t, &f, false)
 			resyncs++
-			// evict everything
-			// and let it get paged back in
-			// incrementally
-			err := f.sync(sync)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tmpbuf.Set(nil) // should not alias previous iteration
-			tmpst.Reset()
-			f.encode(&tmpbuf, &tmpst)
-			f.Reset()
-			err = f.decode(&tmpst, tmpbuf.Bytes())
-			if err != nil {
-				t.Fatal(err)
-			}
+			reset(&f)
 			checkTree(t, &f, false)
 		}
 		path, etag, desc := triple()
@@ -286,6 +280,18 @@ func TestFiletreeOverwrite(t *testing.T) {
 		return name, ret, err
 	}
 
+	reset := func(f *FileTree) {
+		var st ion.Symtab
+		var buf ion.Buffer
+		err := f.sync(sync)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.encode(&buf, &st)
+		f.Reset()
+		f.decode(&st, buf.Bytes())
+	}
+
 	// insert should succeed
 	ret, err := f.Append("foo/bar", "etag:foo/bar", 1)
 	if err != nil {
@@ -309,13 +315,6 @@ func TestFiletreeOverwrite(t *testing.T) {
 		t.Fatal("entry[0] not dirty")
 	}
 
-	err = f.sync(sync)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// force reload
-	f.root.levels[0].contents = nil
-
 	// failure -> success should be disallowed
 	// if the etag has not changed
 	ret, err = f.Append("foo/bar", "etag:foo/bar", 1)
@@ -325,6 +324,8 @@ func TestFiletreeOverwrite(t *testing.T) {
 	if ret {
 		t.Fatal("expected no new entry")
 	}
+
+	reset(&f)
 
 	// failure -> success should be allowed
 	// if the etag has been changed
@@ -336,11 +337,7 @@ func TestFiletreeOverwrite(t *testing.T) {
 		t.Fatal("expected new entry when etag changed")
 	}
 
-	err = f.sync(sync)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.root.levels[0].contents = nil
+	reset(&f)
 
 	// ordinary re-insert
 	ret, err = f.Append("foo/bar", "etag:foo/bar2", 1)
@@ -355,7 +352,17 @@ func TestFiletreeOverwrite(t *testing.T) {
 }
 
 func TestFiletreeShrink(t *testing.T) {
+	likelihoods := []float64{
+		0, 0.3, 0.5, 0.8, 1.0,
+	}
+	for _, f := range likelihoods {
+		t.Run(fmt.Sprintf("reload-%g", f), func(t *testing.T) {
+			testFiletreeShrink(t, f)
+		})
+	}
+}
 
+func testFiletreeShrink(t *testing.T, reloadLikelihood float64) {
 	lowsplit(t, 1000)
 	const inserts = 5000
 	triple := func() (string, string, int) {
@@ -397,9 +404,19 @@ func TestFiletreeShrink(t *testing.T) {
 		}
 		return name, ret, err
 	}
-
-	var tmpbuf ion.Buffer
-	var tmpst ion.Symtab
+	reset := func(f *FileTree) {
+		var st ion.Symtab
+		var buf ion.Buffer
+		err := f.sync(sync)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.encode(&buf, &st)
+		if rand.Float64() < reloadLikelihood {
+			f.Reset()
+			f.decode(&st, buf.Bytes())
+		}
+	}
 
 	var appended, overwritten int
 	var resyncs int
@@ -410,22 +427,8 @@ func TestFiletreeShrink(t *testing.T) {
 		if i%123 == 0 {
 			checkTree(t, &f, false)
 			resyncs++
-			// evict everything
-			// and let it get paged back in
-			// incrementally
-			err := f.sync(sync)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tmpbuf.Set(nil) // should not alias previous iteration
-			tmpst.Reset()
-			f.encode(&tmpbuf, &tmpst)
-			f.Reset()
-			err = f.decode(&tmpst, tmpbuf.Bytes())
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Logf("%d files live; %d max; %d total written", livefiles, maxsize, totalout)
+			reset(&f)
+			t.Logf("%d files live; %d max; %d total written (%d items)", livefiles, maxsize, totalout, appended)
 			checkTree(t, &f, false)
 		}
 		path, etag, desc := triple()
@@ -466,18 +469,8 @@ func TestFiletreeShrink(t *testing.T) {
 			}
 		}
 	}
-	err := f.sync(sync)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpbuf.Set(nil) // should not alias previous iteration
-	tmpst.Reset()
-	f.encode(&tmpbuf, &tmpst)
-	f.Reset()
-	err = f.decode(&tmpst, tmpbuf.Bytes())
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	reset(&f)
 	t.Logf("%d files live; %d max; %d total written", livefiles, maxsize, totalout)
 	// prefetch elements;
 	// we should get a panic in checkTree

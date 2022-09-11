@@ -142,23 +142,13 @@ func TestOpenIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	idx2, err := OpenIndex(os.DirFS(base), "db0", "table", &k)
+	idx2, err := OpenPartialIndex(os.DirFS(base), "db0", "table", &k)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(&idx, idx2) {
 		t.Errorf("first index : %#v", &idx)
-		t.Errorf("second index: %#v", idx2)
-		t.Fatal("index object differs")
-	}
-
-	idx3, err := OpenPartialIndex(os.DirFS(base), "db0", "table", &k)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(&idx, idx3) {
-		t.Errorf("first index : %#v", &idx)
-		t.Errorf("partial index: %#v", idx3)
+		t.Errorf("partial index: %#v", idx2)
 		t.Fatal("index object differs")
 	}
 }

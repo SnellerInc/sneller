@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
+	"golang.org/x/exp/slices"
 )
 
 func init() {
@@ -58,9 +59,18 @@ func TestIndexCompat(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// don't compare these with DeepEqual;
+			// just check that they are equivalent
+			// and then assign one to the other
+			if !idx2.Inputs.oldroot.Equal(idx.Inputs.oldroot) {
+				t.Fatal("oldroot not equal equal")
+			}
+			idx2.Inputs.oldroot = idx.Inputs.oldroot
 			// second encode/decode operation
 			// should yield an identical index
 			if !reflect.DeepEqual(idx, idx2) {
+				t.Errorf("original: %+v", idx.Inputs)
+				t.Errorf("second:   %+v", idx2.Inputs)
 				t.Fatal("not reproducible after second encode")
 			}
 		})
@@ -264,6 +274,8 @@ func TestIndexEncoding(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// slice is aliased and modified:
+		other := slices.Clone(buf)
 		ret, err := DecodeIndex(&key, buf, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -278,7 +290,7 @@ func TestIndexEncoding(t *testing.T) {
 		}
 		idx.Inputs.Reset() // not decoded with FlagSkipInputs
 		idx.ToDelete = nil // not decoded with FlagSkipInputs
-		ret, err = DecodeIndex(&key, buf, FlagSkipInputs)
+		ret, err = DecodeIndex(&key, other, FlagSkipInputs)
 		if err != nil {
 			t.Fatal(err)
 		}
