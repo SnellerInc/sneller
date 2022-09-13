@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package core
 
 import (
 	"fmt"
@@ -30,6 +30,11 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
+type CachedEnv interface {
+	plan.Env
+	CacheValues() ([]byte, time.Time)
+}
+
 type savedIndex struct {
 	db, table string
 	index     *blockfmt.Index
@@ -40,9 +45,9 @@ type savedList struct {
 	list []string
 }
 
-// fsEnv provides a plan.Env from a db.FS
-type fsEnv struct {
-	root   db.FS
+// FSEnv provides a plan.Env from a db.FS
+type FSEnv struct {
+	Root   db.FS
 	db     string
 	tenant db.Tenant
 
@@ -55,7 +60,7 @@ type fsEnv struct {
 	modtime date.Time
 }
 
-func environ(t db.Tenant, dbname string) (cachedEnv, error) {
+func Environ(t db.Tenant, dbname string) (CachedEnv, error) {
 	root, err := t.Root()
 	if err != nil {
 		return nil, err
@@ -65,9 +70,9 @@ func environ(t db.Tenant, dbname string) (cachedEnv, error) {
 		return nil, fmt.Errorf("db %T from auth cannot be used for reading", root)
 	}
 	h, _ := blake2b.New256(nil)
-	return &fsEnv{
+	return &FSEnv{
 		tenant: t,
-		root:   src,
+		Root:   src,
 		db:     dbname,
 		hash:   h,
 	}, nil
@@ -91,17 +96,17 @@ func tsplit(p *expr.Path) (string, string, error) {
 }
 
 // CacheValues implements cachedEnv.CacheValues
-func (f *fsEnv) CacheValues() ([]byte, time.Time) {
+func (f *FSEnv) CacheValues() ([]byte, time.Time) {
 	return f.hash.Sum(nil), f.modtime.Time()
 }
 
-var _ plan.Indexer = (*fsEnv)(nil)
+var _ plan.Indexer = (*FSEnv)(nil)
 
-func (f *fsEnv) Index(p expr.Node) (plan.Index, error) {
+func (f *FSEnv) Index(p expr.Node) (plan.Index, error) {
 	return f.index(p)
 }
 
-func (f *fsEnv) index(e expr.Node) (*blockfmt.Index, error) {
+func (f *FSEnv) index(e expr.Node) (*blockfmt.Index, error) {
 	var dbname, table string
 	var err error
 	p, ok := e.(*expr.Path)
@@ -132,7 +137,7 @@ func (f *fsEnv) index(e expr.Node) (*blockfmt.Index, error) {
 			return f.recent[i].index, nil
 		}
 	}
-	index, err := db.OpenPartialIndex(f.root, dbname, table, f.tenant.Key())
+	index, err := db.OpenPartialIndex(f.Root, dbname, table, f.tenant.Key())
 	if err != nil {
 		return nil, err
 	}
@@ -154,38 +159,38 @@ func (f *fsEnv) index(e expr.Node) (*blockfmt.Index, error) {
 }
 
 // Stat implements plan.Env.Stat
-func (f *fsEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
+func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	index, err := f.index(e)
 	if err != nil {
 		return nil, err
 	}
 	var keep func(*blockfmt.SparseIndex, int) bool
-	var match filter
+	var match Filter
 	if h.Filter != nil {
 		if m, ok := compileFilter(h.Filter); ok {
 			match = m
 			keep = func(s *blockfmt.SparseIndex, n int) bool {
-				return match(s, n) != never
+				return match(s, n) != Never
 			}
 		}
 	}
-	blobs, err := db.Blobs(f.root, index, keep)
+	blobs, err := db.Blobs(f.Root, index, keep)
 	if err != nil {
 		return nil, err
 	}
-	return &filterHandle{
-		filter:    h.Filter,
+	return &FilterHandle{
+		Expr:      h.Filter,
 		compiled:  match,
-		fields:    h.Fields,
-		allFields: h.AllFields,
-		blobs:     blobs,
+		Fields:    h.Fields,
+		AllFields: h.AllFields,
+		Blobs:     blobs,
 	}, nil
 }
 
-var _ plan.TableLister = (*fsEnv)(nil)
+var _ plan.TableLister = (*FSEnv)(nil)
 
 // ListTables implements plan.TableLister.ListTables
-func (f *fsEnv) ListTables(dbname string) ([]string, error) {
+func (f *FSEnv) ListTables(dbname string) ([]string, error) {
 	if dbname == "" {
 		dbname = f.db
 	}
@@ -194,7 +199,7 @@ func (f *fsEnv) ListTables(dbname string) ([]string, error) {
 			return f.lists[i].list, nil
 		}
 	}
-	li, err := db.ListTables(f.root, dbname)
+	li, err := db.ListTables(f.Root, dbname)
 	if err != nil {
 		return nil, err
 	}
@@ -205,13 +210,13 @@ func (f *fsEnv) ListTables(dbname string) ([]string, error) {
 	return li, nil
 }
 
-var _ plan.UploadEnv = (*fsEnv)(nil)
+var _ plan.UploadEnv = (*FSEnv)(nil)
 
-func (f *fsEnv) Uploader() plan.UploadFS {
-	fs, _ := f.root.(plan.UploadFS)
+func (f *FSEnv) Uploader() plan.UploadFS {
+	fs, _ := f.Root.(plan.UploadFS)
 	return fs
 }
 
-func (f *fsEnv) Key() *blockfmt.Key {
+func (f *FSEnv) Key() *blockfmt.Key {
 	return f.tenant.Key()
 }

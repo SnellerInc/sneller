@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SnellerInc/sneller/core"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
@@ -143,7 +144,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	hash := sha256.Sum256([]byte(tenantCreds.ID()))
 	copy(workerID[:], hash[:])
 
-	planEnv, err := environ(tenantCreds, defaultDatabase)
+	planEnv, err := core.Environ(tenantCreds, defaultDatabase)
 	if err != nil {
 		http.Error(w, "tenant ID disallowed", http.StatusForbidden)
 		s.logger.Printf("refusing query: %s", err)

@@ -23,15 +23,9 @@ import (
 
 	"github.com/SnellerInc/sneller/auth"
 	"github.com/SnellerInc/sneller/cgroup"
-	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 )
-
-type cachedEnv interface {
-	plan.Env
-	CacheValues() ([]byte, time.Time)
-}
 
 type contextKey struct {
 	key string

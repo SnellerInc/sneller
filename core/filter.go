@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package core
 
 import (
 	"time"
@@ -22,41 +22,41 @@ import (
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
-// A filter returns a ternary truth value indicating
+// A Filter returns a ternary truth value indicating
 // whether rows constrained by the given ranges always
 // match, maybe match, or never match the expression
-// the filter was compiled from.
-type filter func(*blockfmt.SparseIndex, int) ternary
+// the Filter was compiled from.
+type Filter func(*blockfmt.SparseIndex, int) Ternary
 
-type ternary int8
+type Ternary int8
 
 const (
-	always ternary = 1
-	maybe  ternary = 0
-	never  ternary = -1
+	Always Ternary = 1
+	Maybe  Ternary = 0
+	Never  Ternary = -1
 )
 
-func (t ternary) String() string {
+func (t Ternary) String() string {
 	switch t {
-	case always:
+	case Always:
 		return "always"
-	case maybe:
+	case Maybe:
 		return "maybe"
-	case never:
+	case Never:
 		return "never"
 	default:
 		return "<unknown>"
 	}
 }
 
-func alwaysMatches(*blockfmt.SparseIndex, int) ternary { return always }
-func maybeMatches(*blockfmt.SparseIndex, int) ternary  { return maybe }
-func neverMatches(*blockfmt.SparseIndex, int) ternary  { return never }
+func alwaysMatches(*blockfmt.SparseIndex, int) Ternary { return Always }
+func maybeMatches(*blockfmt.SparseIndex, int) Ternary  { return Maybe }
+func neverMatches(*blockfmt.SparseIndex, int) Ternary  { return Never }
 
 // compileFilter compiles a filter expression;
 // if it returns (nil, false), then the result
 // of the expression is intederminate
-func compileFilter(e expr.Node) (filter, bool) {
+func compileFilter(e expr.Node) (Filter, bool) {
 	switch e := e.(type) {
 	case expr.Bool:
 		if e {
@@ -66,7 +66,7 @@ func compileFilter(e expr.Node) (filter, bool) {
 	case *expr.Not:
 		f, ok := compileFilter(e.Expr)
 		if ok {
-			return func(s *blockfmt.SparseIndex, n int) ternary {
+			return func(s *blockfmt.SparseIndex, n int) Ternary {
 				return -f(s, n)
 			}, true
 		}
@@ -81,7 +81,7 @@ func compileFilter(e expr.Node) (filter, bool) {
 	return nil, false
 }
 
-func toMaybe(f filter, ok bool) filter {
+func toMaybe(f Filter, ok bool) Filter {
 	if ok {
 		return f
 	}
@@ -90,7 +90,7 @@ func toMaybe(f filter, ok bool) filter {
 
 // compileLogicalFilter compiles a filter from a
 // logical expression.
-func compileLogicalFilter(e *expr.Logical) (filter, bool) {
+func compileLogicalFilter(e *expr.Logical) (Filter, bool) {
 	left, okl := compileFilter(e.Left)
 	right, okr := compileFilter(e.Right)
 	if !okl && !okr {
@@ -112,21 +112,21 @@ func compileLogicalFilter(e *expr.Logical) (filter, bool) {
 // evaluate a logical expression when
 // only one side of the expression has
 // an interesting result
-func logical1Arm(prim filter, op expr.LogicalOp) (filter, bool) {
+func logical1Arm(prim Filter, op expr.LogicalOp) (Filter, bool) {
 	switch op {
 	case expr.OpAnd:
-		return func(r *blockfmt.SparseIndex, n int) ternary {
-			if prim(r, n) == never {
-				return never
+		return func(r *blockfmt.SparseIndex, n int) Ternary {
+			if prim(r, n) == Never {
+				return Never
 			}
-			return maybe
+			return Maybe
 		}, true
 	case expr.OpOr:
-		return func(r *blockfmt.SparseIndex, n int) ternary {
-			if prim(r, n) == always {
-				return always
+		return func(r *blockfmt.SparseIndex, n int) Ternary {
+			if prim(r, n) == Always {
+				return Always
 			}
-			return maybe
+			return Maybe
 		}, true
 	default:
 		return nil, false
@@ -135,51 +135,51 @@ func logical1Arm(prim filter, op expr.LogicalOp) (filter, bool) {
 
 // logical returns a filter applying op to the results
 // of the left and right filters.
-func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
+func logical(left Filter, op expr.LogicalOp, right Filter) (Filter, bool) {
 	switch op {
 	case expr.OpAnd:
-		return func(s *blockfmt.SparseIndex, n int) ternary {
+		return func(s *blockfmt.SparseIndex, n int) Ternary {
 			a, b := left(s, n), right(s, n)
-			if a == never || b == never {
-				return never
+			if a == Never || b == Never {
+				return Never
 			}
-			if a == always && b == always {
-				return always
+			if a == Always && b == Always {
+				return Always
 			}
-			return maybe
+			return Maybe
 		}, true
 	case expr.OpOr:
-		return func(s *blockfmt.SparseIndex, n int) ternary {
+		return func(s *blockfmt.SparseIndex, n int) Ternary {
 			a, b := left(s, n), right(s, n)
-			if a == always || b == always {
-				return always
+			if a == Always || b == Always {
+				return Always
 			}
-			if a == never && b == never {
-				return never
+			if a == Never && b == Never {
+				return Never
 			}
-			return maybe
+			return Maybe
 		}, true
 	case expr.OpXnor:
-		return func(s *blockfmt.SparseIndex, n int) ternary {
+		return func(s *blockfmt.SparseIndex, n int) Ternary {
 			a, b := left(s, n), right(s, n)
-			if a == maybe || b == maybe {
-				return maybe
+			if a == Maybe || b == Maybe {
+				return Maybe
 			}
 			if a == b {
-				return always
+				return Always
 			}
-			return never
+			return Never
 		}, true
 	case expr.OpXor:
-		return func(s *blockfmt.SparseIndex, n int) ternary {
+		return func(s *blockfmt.SparseIndex, n int) Ternary {
 			a, b := left(s, n), right(s, n)
-			if a == maybe || b == maybe {
-				return maybe
+			if a == Maybe || b == Maybe {
+				return Maybe
 			}
 			if a == b {
-				return never
+				return Never
 			}
-			return always
+			return Always
 		}, true
 	}
 	return nil, false
@@ -187,7 +187,7 @@ func logical(left filter, op expr.LogicalOp, right filter) (filter, bool) {
 
 // compileComparisonFilter compiles a filter from a
 // comparison expression.
-func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
+func compileComparisonFilter(e *expr.Comparison) (Filter, bool) {
 	op := e.Op
 	left := e.Left
 	right := e.Right
@@ -252,15 +252,15 @@ func compileComparisonFilter(e *expr.Comparison) (filter, bool) {
 // for any value v in the range [min, max] (inclusive).
 // This returns nil if op is not applicable to integers
 // (LIKE or ILIKE).
-func compareFunc(op expr.CmpOp, when date.Time) func(*blockfmt.TimeIndex, int) ternary {
+func compareFunc(op expr.CmpOp, when date.Time) func(*blockfmt.TimeIndex, int) Ternary {
 	const epsilon = time.Microsecond
 	switch op {
 	case expr.Equals:
-		return func(i *blockfmt.TimeIndex, n int) ternary {
+		return func(i *blockfmt.TimeIndex, n int) Ternary {
 			if i.Contains(when) {
-				return maybe
+				return Maybe
 			}
-			return never
+			return Never
 		}
 	case expr.NotEquals:
 		// complicated due to partiql semantics
@@ -283,39 +283,39 @@ func compareFunc(op expr.CmpOp, when date.Time) func(*blockfmt.TimeIndex, int) t
 
 // compileBuiltin compiles a filter from a builtin
 // expression.
-func compileBuiltin(e *expr.Builtin) (filter, bool) {
+func compileBuiltin(e *expr.Builtin) (Filter, bool) {
 	return nil, false
 }
 
 // pickAfter returns a function that evaluates
 // whether or not the provided block and time index
 // contain a value greater than or equal to when
-func pickAfter(when date.Time) func(*blockfmt.TimeIndex, int) ternary {
-	return func(i *blockfmt.TimeIndex, n int) ternary {
+func pickAfter(when date.Time) func(*blockfmt.TimeIndex, int) Ternary {
+	return func(i *blockfmt.TimeIndex, n int) Ternary {
 		// exclude blocks to the left of the block
 		// where max(block) < ts
 		if n < i.Start(when) {
-			return never
+			return Never
 		}
 		if n < i.End(when) {
-			return maybe
+			return Maybe
 		}
-		return always
+		return Always
 	}
 }
 
 // pickBefore returns a function that
 // evaluates whether or not the provided block
 // and time index contain a value less than when
-func pickBefore(when date.Time) func(*blockfmt.TimeIndex, int) ternary {
-	return func(i *blockfmt.TimeIndex, n int) ternary {
+func pickBefore(when date.Time) func(*blockfmt.TimeIndex, int) Ternary {
+	return func(i *blockfmt.TimeIndex, n int) Ternary {
 		if n < i.Start(when) {
-			return always
+			return Always
 		}
 		if n < i.End(when) {
-			return maybe
+			return Maybe
 		}
-		return never
+		return Never
 	}
 }
 
@@ -333,15 +333,15 @@ func flatpath(path *expr.Path) ([]string, bool) {
 
 // pathFilter returns a filter that finds a range
 // matching the given path and applies fn to it.
-func pathFilter(path *expr.Path, fn func(*blockfmt.TimeIndex, int) ternary) filter {
+func pathFilter(path *expr.Path, fn func(*blockfmt.TimeIndex, int) Ternary) Filter {
 	flat, ok := flatpath(path)
 	if !ok {
 		return nil
 	}
-	return func(s *blockfmt.SparseIndex, i int) ternary {
+	return func(s *blockfmt.SparseIndex, i int) Ternary {
 		tr := s.Get(flat)
 		if tr == nil {
-			return maybe
+			return Maybe
 		}
 		return fn(tr, i)
 	}

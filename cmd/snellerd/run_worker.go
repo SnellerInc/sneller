@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/SnellerInc/sneller/core"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
@@ -38,6 +39,8 @@ import (
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/slices"
 )
+
+var canVMOpen = false
 
 // Blob segments will not be cached if the total scan
 // size of a request in bytes exceeds this limit.
@@ -130,8 +133,8 @@ type tenantHandle struct {
 
 func (t *tenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
 	decodeHandle := func(st *ion.Symtab, mem []byte) (plan.TableHandle, error) {
-		fh := new(filterHandle)
-		if err := fh.decode(st, mem); err != nil {
+		fh := new(core.FilterHandle)
+		if err := fh.Decode(st, mem); err != nil {
 			return nil, err
 		}
 		return fh, nil
@@ -148,11 +151,11 @@ var _ plan.SubtableDecoder = (*tenantEnv)(nil)
 // DecodeSubtables implements plan.SubtableDecoder.
 func (t *tenantEnv) DecodeSubtables(st *ion.Symtab, buf []byte) (plan.Subtables, error) {
 	thfn := func(blobs []blob.Interface, hint *plan.Hints) plan.TableHandle {
-		h := &filterHandle{
-			blobs:     &blob.List{Contents: blobs},
-			fields:    hint.Fields,
-			allFields: hint.AllFields,
-			filter:    hint.Filter,
+		h := &core.FilterHandle{
+			Blobs:     &blob.List{Contents: blobs},
+			Fields:    hint.Fields,
+			AllFields: hint.AllFields,
+			Expr:      hint.Filter,
 		}
 		return &tenantHandle{parent: t, inner: h}
 	}
@@ -178,18 +181,13 @@ func (h *tenantHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
-	fh := h.inner.(*filterHandle)
-	lst := fh.blobs
+	fh := h.inner.(*core.FilterHandle)
+	lst := fh.Blobs
 	if !canVMOpen {
-		panic("shouldn't have called filterHandle.Open()")
+		panic("shouldn't have called tenantHandle.Open()")
 	}
 	segs := make([]dcache.Segment, 0, len(lst.Contents))
-	var flt filter
-	if fh.filter != nil {
-		if m, ok := compileFilter(fh.filter); ok {
-			flt = m
-		}
-	}
+	flt, _ := fh.CompileFilter()
 	var size int64
 	for i := range lst.Contents {
 		if h.parent.HTTPClient != nil {
@@ -202,8 +200,8 @@ func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
 			}
 		}
 		seg := &blobSegment{
-			fields:    fh.fields,
-			allFields: fh.allFields,
+			fields:    fh.Fields,
+			allFields: fh.AllFields,
 			blob:      b,
 		}
 		// make sure info can be populated successfully
@@ -227,7 +225,7 @@ func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
 func (h *tenantHandle) Filter(e expr.Node) plan.TableHandle {
 	return &tenantHandle{
 		parent: h.parent,
-		inner:  h.inner.(*filterHandle).Filter(e),
+		inner:  h.inner.(*core.FilterHandle).Filter(e),
 	}
 }
 

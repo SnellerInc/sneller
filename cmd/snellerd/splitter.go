@@ -19,6 +19,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/SnellerInc/sneller/core"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
@@ -54,7 +55,7 @@ func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *splitte
 
 func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtables, error) {
 	var blobs []blob.Interface
-	fh, ok := handle.(*filterHandle)
+	fh, ok := handle.(*core.FilterHandle)
 	if !ok {
 		return nil, fmt.Errorf("cannot split table handle of type %T", handle)
 	}
@@ -62,10 +63,7 @@ func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 	if s.SplitSize == 0 {
 		size = defaultSplitSize
 	}
-	flt := fh.compiled
-	if flt == nil && fh.filter != nil {
-		flt, _ = compileFilter(fh.filter)
-	}
+	flt, _ := fh.CompileFilter()
 	splits := make([]split, len(s.peers))
 	for i := range splits {
 		splits[i].tp = s.transport(i)
@@ -79,7 +77,7 @@ func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 		blobs = append(blobs, b)
 		return nil
 	}
-	for _, b := range fh.blobs.Contents {
+	for _, b := range fh.Blobs.Contents {
 		stat, err := b.Stat()
 		if err != nil {
 			return nil, err
@@ -115,8 +113,8 @@ func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 		splits:    compact(splits),
 		table:     table,
 		blobs:     blobs,
-		fields:    fh.fields,
-		allFields: fh.allFields,
+		fields:    fh.Fields,
+		allFields: fh.AllFields,
 		filter:    nil, // pushed down later
 		fn:        blobsToHandle,
 	}, nil
@@ -137,11 +135,11 @@ func compact(splits []split) []split {
 // maxscan calculates the max scan size of a blob,
 // optionally with filter f applied. If this returns 0,
 // the entire blob is excluded by the filter.
-func maxscan(pc *blob.CompressedPart, f filter) (scan int64) {
+func maxscan(pc *blob.CompressedPart, f core.Filter) (scan int64) {
 	t := pc.Parent.Trailer
 	blocks := t.Blocks[pc.StartBlock:pc.EndBlock]
 	for i := range blocks {
-		if f == nil || f(&t.Sparse, pc.StartBlock+i) != never {
+		if f == nil || f(&t.Sparse, pc.StartBlock+i) != core.Never {
 			scan += int64(blocks[i].Chunks) << t.BlockShift
 		}
 	}
@@ -285,11 +283,11 @@ func (s *subtables) Subtable(i int, sub *plan.Subtable) {
 }
 
 func blobsToHandle(blobs []blob.Interface, hints *plan.Hints) plan.TableHandle {
-	return &filterHandle{
-		blobs:     &blob.List{Contents: blobs},
-		fields:    hints.Fields,
-		allFields: hints.AllFields,
-		filter:    hints.Filter,
+	return &core.FilterHandle{
+		Blobs:     &blob.List{Contents: blobs},
+		Fields:    hints.Fields,
+		AllFields: hints.AllFields,
+		Expr:      hints.Filter,
 	}
 }
 

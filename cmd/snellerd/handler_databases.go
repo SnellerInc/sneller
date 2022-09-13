@@ -17,6 +17,7 @@ package main
 import (
 	"net/http"
 
+	"github.com/SnellerInc/sneller/core"
 	"github.com/SnellerInc/sneller/db"
 )
 
@@ -30,13 +31,13 @@ func (s *server) databasesHandler(w http.ResponseWriter, r *http.Request) {
 
 	pattern := r.URL.Query().Get("pattern")
 
-	e, err := environ(tenant, "")
+	e, err := core.Environ(tenant, "")
 	if err != nil {
 		s.logger.Printf("unable to load databases for tenant '%v' %s\n", tenant, err)
 		writeInternalServerResponse(w, err)
 		return
 	}
-	res, err := db.List(e.(*fsEnv).root)
+	res, err := db.List(e.(*core.FSEnv).Root)
 	if err != nil {
 		s.logger.Printf("unable to load databases for tenant '%v' %s\n", tenant, err)
 		writeInternalServerResponse(w, err)

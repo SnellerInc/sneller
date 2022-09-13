@@ -12,7 +12,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+// Package core contains core functions and data
+// types shared by the sneller and snellerd
+// executables.
+package core
 
 import (
 	"context"
@@ -25,44 +28,42 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
-var canVMOpen = false
-
-func (f *filterHandle) Open(ctx context.Context) (vm.Table, error) {
+func (f *FilterHandle) Open(ctx context.Context) (vm.Table, error) {
 	panic("bare filterHandle.Open")
 	return nil, nil
 }
 
-func (f *filterHandle) Filter(e expr.Node) plan.TableHandle {
+func (f *FilterHandle) Filter(e expr.Node) plan.TableHandle {
 	o := *f
-	o.filter = e
+	o.Expr = e
 	return &o
 }
 
-func (f *filterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (f *FilterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
-	if f.filter != nil {
+	if f.Expr != nil {
 		dst.BeginField(st.Intern("filter"))
-		f.filter.Encode(dst, st)
+		f.Expr.Encode(dst, st)
 	}
-	if len(f.fields) > 0 {
+	if len(f.Fields) > 0 {
 		dst.BeginField(st.Intern("fields"))
 		dst.BeginList(-1)
-		for i := range f.fields {
-			dst.WriteString(f.fields[i])
+		for i := range f.Fields {
+			dst.WriteString(f.Fields[i])
 		}
 		dst.EndList()
 	}
-	if f.allFields {
+	if f.AllFields {
 		dst.BeginField(st.Intern("all_fields"))
 		dst.WriteBool(true)
 	}
 	dst.BeginField(st.Intern("blobs"))
-	f.blobs.Encode(dst, st)
+	f.Blobs.Encode(dst, st)
 	dst.EndStruct()
 	return nil
 }
 
-func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
+func (f *FilterHandle) Decode(st *ion.Symtab, mem []byte) error {
 	if len(mem) == 0 {
 		return fmt.Errorf("filterHandle.decode: no data?")
 	}
@@ -79,10 +80,10 @@ func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
 		}
 		switch st.Get(sym) {
 		case "filter":
-			f.filter, mem, err = expr.Decode(st, mem)
+			f.Expr, mem, err = expr.Decode(st, mem)
 		case "blobs":
 			skip := ion.SizeOf(mem)
-			f.blobs, err = blob.DecodeList(st, mem)
+			f.Blobs, err = blob.DecodeList(st, mem)
 			mem = mem[skip:]
 		case "fields":
 			mem, err = ion.UnpackList(mem, func(field []byte) error {
@@ -91,11 +92,11 @@ func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
 				if err != nil {
 					return err
 				}
-				f.fields = append(f.fields, str)
+				f.Fields = append(f.Fields, str)
 				return nil
 			})
 		case "all_fields":
-			f.allFields, mem, err = ion.ReadBool(mem)
+			f.AllFields, mem, err = ion.ReadBool(mem)
 		default:
 			return fmt.Errorf("unrecognized filterHandle field %q", st.Get(sym))
 		}
@@ -106,12 +107,44 @@ func (f *filterHandle) decode(st *ion.Symtab, mem []byte) error {
 	return nil
 }
 
-type filterHandle struct {
-	filter    expr.Node
-	fields    []string
-	allFields bool
-	blobs     *blob.List
+// FilterHandle is a plan.TableHandle
+// implementation that stores a list of blobs
+// with associated filter and scanning hints.
+type FilterHandle struct {
+	// Expr is the filter expression.
+	Expr expr.Node
+	// Fields are the fields that will be accessed
+	// during scanning, to be used as a hint
+	// during blob decompression.
+	Fields []string
+	// AllFields indicates that all fields are
+	// used during scanning.
+	AllFields bool
+	// Blobs is the list of blobs that make up the
+	// table this handle refers to.
+	Blobs *blob.List
 
-	// cached result of compileFilter(filter)
-	compiled filter
+	// cached result of compileFilter(Expr)
+	compiled Filter
+}
+
+// CompileFilter compiles the filter expression
+// in h.Expr, returning a cached filter if it
+// has already been compiled. If h.Expr is nil,
+// this returns (nil, true). This will only
+// return false if there is a filter expression
+// present and it fails to compile.
+func (f *FilterHandle) CompileFilter() (Filter, bool) {
+	if f.compiled != nil {
+		return f.compiled, true
+	}
+	if f.Expr == nil {
+		return nil, true
+	}
+	flt, ok := compileFilter(f.Expr)
+	if !ok {
+		return nil, false
+	}
+	f.compiled = flt
+	return flt, true
 }
