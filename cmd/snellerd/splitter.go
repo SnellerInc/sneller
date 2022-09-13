@@ -19,7 +19,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/SnellerInc/sneller/core"
+	"github.com/SnellerInc/sneller"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
@@ -55,7 +55,7 @@ func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *splitte
 
 func (s *splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtables, error) {
 	var blobs []blob.Interface
-	fh, ok := handle.(*core.FilterHandle)
+	fh, ok := handle.(*sneller.FilterHandle)
 	if !ok {
 		return nil, fmt.Errorf("cannot split table handle of type %T", handle)
 	}
@@ -135,11 +135,11 @@ func compact(splits []split) []split {
 // maxscan calculates the max scan size of a blob,
 // optionally with filter f applied. If this returns 0,
 // the entire blob is excluded by the filter.
-func maxscan(pc *blob.CompressedPart, f core.Filter) (scan int64) {
+func maxscan(pc *blob.CompressedPart, f sneller.Filter) (scan int64) {
 	t := pc.Parent.Trailer
 	blocks := t.Blocks[pc.StartBlock:pc.EndBlock]
 	for i := range blocks {
-		if f == nil || f(&t.Sparse, pc.StartBlock+i) != core.Never {
+		if f == nil || f(&t.Sparse, pc.StartBlock+i) != sneller.Never {
 			scan += int64(blocks[i].Chunks) << t.BlockShift
 		}
 	}
@@ -283,7 +283,7 @@ func (s *subtables) Subtable(i int, sub *plan.Subtable) {
 }
 
 func blobsToHandle(blobs []blob.Interface, hints *plan.Hints) plan.TableHandle {
-	return &core.FilterHandle{
+	return &sneller.FilterHandle{
 		Blobs:     &blob.List{Contents: blobs},
 		Fields:    hints.Fields,
 		AllFields: hints.AllFields,

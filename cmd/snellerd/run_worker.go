@@ -25,7 +25,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/SnellerInc/sneller/core"
+	"github.com/SnellerInc/sneller"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
@@ -133,7 +133,7 @@ type tenantHandle struct {
 
 func (t *tenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
 	decodeHandle := func(st *ion.Symtab, mem []byte) (plan.TableHandle, error) {
-		fh := new(core.FilterHandle)
+		fh := new(sneller.FilterHandle)
 		if err := fh.Decode(st, mem); err != nil {
 			return nil, err
 		}
@@ -151,7 +151,7 @@ var _ plan.SubtableDecoder = (*tenantEnv)(nil)
 // DecodeSubtables implements plan.SubtableDecoder.
 func (t *tenantEnv) DecodeSubtables(st *ion.Symtab, buf []byte) (plan.Subtables, error) {
 	thfn := func(blobs []blob.Interface, hint *plan.Hints) plan.TableHandle {
-		h := &core.FilterHandle{
+		h := &sneller.FilterHandle{
 			Blobs:     &blob.List{Contents: blobs},
 			Fields:    hint.Fields,
 			AllFields: hint.AllFields,
@@ -181,7 +181,7 @@ func (h *tenantHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
-	fh := h.inner.(*core.FilterHandle)
+	fh := h.inner.(*sneller.FilterHandle)
 	lst := fh.Blobs
 	if !canVMOpen {
 		panic("shouldn't have called tenantHandle.Open()")
@@ -225,7 +225,7 @@ func (h *tenantHandle) Open(ctx context.Context) (vm.Table, error) {
 func (h *tenantHandle) Filter(e expr.Node) plan.TableHandle {
 	return &tenantHandle{
 		parent: h.parent,
-		inner:  h.inner.(*core.FilterHandle).Filter(e),
+		inner:  h.inner.(*sneller.FilterHandle).Filter(e),
 	}
 }
 
