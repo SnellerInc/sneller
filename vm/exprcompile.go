@@ -447,6 +447,15 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		if part == expr.DOW {
+			dow, ok := args[1].(expr.Integer)
+			if !ok {
+				panic("DATE_TRUNC() requires day of week to be a constant")
+			}
+			return p.DateTruncWeekday(val, expr.Weekday(dow)), nil
+		}
+
 		return p.DateTrunc(part, val), nil
 	}
 

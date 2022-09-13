@@ -197,6 +197,7 @@ const (
 	DateTruncMinute
 	DateTruncHour
 	DateTruncDay
+	DateTruncDOW
 	DateTruncMonth
 	DateTruncQuarter
 	DateTruncYear
@@ -332,6 +333,8 @@ func (b BuiltinOp) TimePart() (Timepart, bool) {
 		return Hour, true
 	case DateTruncDay:
 		return Day, true
+	case DateTruncDOW:
+		return DOW, true
 	case DateTruncMonth:
 		return Month, true
 	case DateTruncQuarter:
@@ -431,6 +434,7 @@ var name2Builtin = map[string]BuiltinOp{
 	"DATE_TRUNC_MINUTE":        DateTruncMinute,
 	"DATE_TRUNC_HOUR":          DateTruncHour,
 	"DATE_TRUNC_DAY":           DateTruncDay,
+	"DATE_TRUNC_DOW":           DateTruncDOW,
 	"DATE_TRUNC_MONTH":         DateTruncMonth,
 	"DATE_TRUNC_QUARTER":       DateTruncQuarter,
 	"DATE_TRUNC_YEAR":          DateTruncYear,
@@ -993,6 +997,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	DateTruncMinute:        {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Minute)},
 	DateTruncHour:          {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Hour)},
 	DateTruncDay:           {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Day)},
+	DateTruncDOW:           {check: fixedArgs(TimeType, IntegerType), private: true, ret: TimeType | MissingType},
 	DateTruncMonth:         {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Month)},
 	DateTruncQuarter:       {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Quarter)},
 	DateTruncYear:          {check: fixedTime, private: true, ret: TimeType | MissingType, simplify: simplifyDateTrunc(Year)},

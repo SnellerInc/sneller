@@ -100,12 +100,34 @@ func buildCast(inner expr.Node, id string) (expr.Node, bool) {
 	return &expr.Cast{From: inner, To: ts}, true
 }
 
+// weekday parses a weekday from string
+func weekday(id string) (expr.Weekday, bool) {
+	switch strings.ToUpper(id) {
+	case "SUNDAY":
+		return expr.Sunday, true
+	case "MONDAY":
+		return expr.Monday, true
+	case "TUESDAY":
+		return expr.Tuesday, true
+	case "WEDNESDAY":
+		return expr.Wednesday, true
+	case "THURSDAY":
+		return expr.Thursday, true
+	case "FRIDAY":
+		return expr.Friday, true
+	case "SATURDAY":
+		return expr.Saturday, true
+	default:
+		return 0, false
+	}
+}
+
 func timePart(id string) (expr.Timepart, bool) {
 	var part expr.Timepart
 	switch strings.ToUpper(id) {
-	case "MICROSECOND":
+	case "MICROSECOND", "MICROSECONDS":
 		part = expr.Microsecond
-	case "MILLISECOND":
+	case "MILLISECOND", "MILLISECONDS":
 		part = expr.Millisecond
 	case "SECOND":
 		part = expr.Second
@@ -155,7 +177,7 @@ func timePartFor(id, fn string) (expr.Timepart, bool) {
 			return 0, false
 		}
 	case "DATE_TRUNC":
-		if part == expr.DOW || part == expr.DOY || part == expr.Week {
+		if part == expr.DOW || part == expr.DOY {
 			return 0, false
 		}
 	case "EXTRACT":

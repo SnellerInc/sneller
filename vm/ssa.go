@@ -394,6 +394,7 @@ const (
 	sdatetruncminute
 	sdatetrunchour
 	sdatetruncday
+	sdatetruncdow
 	sdatetruncmonth
 	sdatetruncquarter
 	sdatetruncyear
@@ -1045,6 +1046,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetruncminute:        {text: "datetruncminute", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncminute},
 	sdatetrunchour:          {text: "datetrunchour", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetrunchour},
 	sdatetruncday:           {text: "datetruncday", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncday},
+	sdatetruncdow:           {text: "datetruncdow", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opdatetruncdow, emit: emitauto2},
 	sdatetruncmonth:         {text: "datetruncmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmonth},
 	sdatetruncquarter:       {text: "datetruncquarter", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncquarter},
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
@@ -3655,6 +3657,11 @@ func (p *prog) DateTrunc(part expr.Timepart, val *value) *value {
 	default:
 		return p.errorf("unhandled date part in DateTrunc()")
 	}
+}
+
+func (p *prog) DateTruncWeekday(val *value, dow expr.Weekday) *value {
+	v, m := p.coerceTimestamp(val)
+	return p.ssa2imm(sdatetruncdow, v, m, int64(dow))
 }
 
 func (p *prog) TimeBucket(timestamp, interval *value) *value {

@@ -8039,6 +8039,60 @@ TEXT bcdatetruncday(SB), NOSPLIT|NOFRAME, $0
   VPMULLQ Z4, Z3, K2, Z3
   NEXT()
 
+// DATE_TRUNC(WEEK(dow), timestamp)
+//
+// Truncating a timestamp to a DOW can be implemented the following way:
+//   days = unix_time_in_days(ts)
+//   off = days + 4 - dow
+//   adj = floor(off / 7) * 7
+//   truncated_ts = days_to_microseconds(adj - 4 + dow)
+TEXT bcdatetruncdow(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+  VPBROADCASTW 0(VIRT_PCREG), Z7
+
+  // divide Z2:Z3 by (60 * 60 * 24 * 1000000) (microseconds per day)
+  // to get days from the start of unix time. Calculate also Z7 to
+  // be `4 - DOW`.
+  VBROADCASTSD CONSTF64_MICROSECONDS_IN_1_DAY_SHR_13(), Z6
+  VPBROADCASTQ CONSTQ_4(), Z8
+  VPSRAQ $13, Z2, Z4
+  VPSRAQ $13, Z3, Z5
+  VCVTQQ2PD.Z Z4, K1, Z4
+  VCVTQQ2PD.Z Z5, K2, Z5
+  VPSRLQ $48, Z7, Z7
+  VDIVPD.RD_SAE Z6, Z4, Z4
+  VDIVPD.RD_SAE Z6, Z5, Z5
+  VPSUBQ Z7, Z8, Z7
+
+  // The internal [unboxed] representation is a unix microtime, which
+  // starts at 1970-01-01, which is Thursday - so add 4 - the requested
+  // DayOfWeek so we can calculate the adjustment.
+  VBROADCASTSD CONSTF64_7(), Z10
+  VCVTQQ2PD Z7, Z7
+
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z4, Z4 // Z4 <- Days since 1970-01-01 (low)
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z5, Z5 // Z5 <- Days since 1970-01-01 (high)
+
+  VADDPD Z7, Z4, Z4                        // Z4 <- days + 4 - dow (low)
+  VADDPD Z7, Z5, Z5                        // Z5 <- days + 4 - dow (high)
+  VDIVPD.RD_SAE Z10, Z4, Z4                // Z4 <- (days + 4 - dow) / 7 (low)
+  VDIVPD.RD_SAE Z10, Z5, Z5                // Z5 <- (days + 4 - dow) / 7 (high)
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z4, Z4 // Z4 <- floor((days + 4 - dow) / 7) (low)
+  VRNDSCALEPD $VROUND_IMM_DOWN_SAE, Z5, Z5 // Z5 <- floor((days + 4 - dow) / 7) (high)
+  VMULPD Z10, Z4, Z4                       // Z4 <- floor((days + 4 - dow) / 7) * 7 (low)
+  VMULPD Z10, Z5, Z5                       // Z5 <- floor((days + 4 - dow) / 7) * 7 (high)
+
+  VSUBPD Z7, Z4, Z4                        // Z8 <- days since 1970-01-01 truncated to DOW (low) (low)
+  VSUBPD Z7, Z5, Z5                        // Z9 <- days since 1970-01-01 truncated to DOW (low) (high)
+
+  VPBROADCASTQ CONSTQ_86400000000(), Z6
+  VCVTPD2QQ Z4, Z4
+  VCVTPD2QQ Z5, Z5
+  VPMULLQ Z6, Z4, K1, Z2                   // Z2 <- Truncated timestamp in unix microseconds (low)
+  VPMULLQ Z6, Z5, K2, Z3                   // Z3 <- Truncated timestamp in unix microseconds (high)
+
+  NEXT_ADVANCE(2)
+
 // DATE_TRUNC(MONTH, timestamp)
 TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
   KSHIFTRW $8, K1, K2

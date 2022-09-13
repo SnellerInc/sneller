@@ -29,6 +29,8 @@
 package partiql
 
 import (
+    "strings"
+
     "github.com/SnellerInc/sneller/expr"
 )
 %}
@@ -267,6 +269,14 @@ datum_or_parens
     yylex.Error(__yyfmt__.Sprintf("bad DATE_DIFF part %q", $3))
   }
   $$ = expr.DateDiff(part, $5, $7)
+}
+| DATE_TRUNC '(' ID '(' ID ')' ',' expr ')'
+{
+  dow, ok := weekday($5)
+  if strings.ToUpper($3) != "WEEK" || !ok {
+    yylex.Error(__yyfmt__.Sprintf("bad DATE_TRUNC part %q(%q)", $3, $5))
+  }
+  $$ = expr.DateTruncWeekday($8, dow)
 }
 | DATE_TRUNC '(' ID ',' expr ')'
 {

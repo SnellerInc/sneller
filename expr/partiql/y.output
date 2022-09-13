@@ -4,7 +4,7 @@ state 0
 	maybe_cte_bindings: .    (6)
 
 	WITH  shift 4
-	.  reduce 6 (src line 140)
+	.  reduce 6 (src line 142)
 
 	query  goto 1
 	maybe_cte_bindings  goto 2
@@ -29,7 +29,7 @@ state 3
 	cte_bindings:  cte_bindings.',' identifier AS '(' select_stmt ')' 
 
 	','  shift 6
-	.  reduce 5 (src line 139)
+	.  reduce 5 (src line 141)
 
 
 state 4
@@ -45,7 +45,7 @@ state 5
 	maybe_toplevel_distinct: .    (31)
 
 	DISTINCT  shift 10
-	.  reduce 31 (src line 192)
+	.  reduce 31 (src line 194)
 
 	maybe_toplevel_distinct  goto 9
 
@@ -65,9 +65,9 @@ state 7
 
 
 state 8
-	identifier:  ID.    (135)
+	identifier:  ID.    (136)
 
-	.  reduce 135 (src line 613)
+	.  reduce 136 (src line 623)
 
 
 state 9
@@ -120,7 +120,7 @@ state 10
 	maybe_toplevel_distinct:  DISTINCT.    (30)
 
 	ON  shift 51
-	.  reduce 30 (src line 191)
+	.  reduce 30 (src line 193)
 
 
 state 11
@@ -144,14 +144,14 @@ state 13
 
 	INTO  shift 56
 	','  shift 55
-	.  reduce 4 (src line 137)
+	.  reduce 4 (src line 139)
 
 	maybe_into  goto 54
 
 state 14
-	binding_list:  value_binding.    (100)
+	binding_list:  value_binding.    (101)
 
-	.  reduce 100 (src line 535)
+	.  reduce 101 (src line 545)
 
 
 state 15
@@ -233,26 +233,26 @@ state 15
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 11 (src line 151)
+	.  reduce 11 (src line 153)
 
 	identifier  goto 58
 
 state 16
 	value_binding:  '*'.    (12)
 
-	.  reduce 12 (src line 152)
+	.  reduce 12 (src line 154)
 
 
 state 17
 	value_binding:  unpivot.    (13)
 
-	.  reduce 13 (src line 153)
+	.  reduce 13 (src line 155)
 
 
 state 18
 	expr:  datum_or_parens.    (32)
 
-	.  reduce 32 (src line 197)
+	.  reduce 32 (src line 199)
 
 
 state 19
@@ -315,6 +315,7 @@ state 26
 
 
 state 27
+	expr:  DATE_TRUNC.'(' ID '(' ID ')' ',' expr ')'
 	expr:  DATE_TRUNC.'(' ID ',' expr ')'
 
 	'('  shift 98
@@ -349,12 +350,12 @@ state 31
 	path_expression:  identifier.path_component
 	expr:  identifier.'(' ')'
 	expr:  identifier.'(' value_list ')'
-	path_component: .    (131)
+	path_component: .    (132)
 
 	'('  shift 103
 	'['  shift 105
 	'.'  shift 104
-	.  reduce 131 (src line 601)
+	.  reduce 132 (src line 611)
 
 	path_component  goto 102
 
@@ -486,15 +487,15 @@ state 35
 	identifier  goto 31
 
 state 36
-	expr:  explicit_list_definition.    (98)
+	expr:  explicit_list_definition.    (99)
 
-	.  reduce 98 (src line 523)
+	.  reduce 99 (src line 533)
 
 
 state 37
-	expr:  explicit_struct_definition.    (99)
+	expr:  explicit_struct_definition.    (100)
 
-	.  reduce 99 (src line 528)
+	.  reduce 100 (src line 538)
 
 
 state 38
@@ -544,7 +545,7 @@ state 38
 state 39
 	datum_or_parens:  datum.    (23)
 
-	.  reduce 23 (src line 179)
+	.  reduce 23 (src line 181)
 
 
 state 40
@@ -592,7 +593,7 @@ state 40
 
 state 41
 	explicit_list_definition:  '['.any_value_list ']'
-	any_value_list: .    (109)
+	any_value_list: .    (110)
 
 	EXISTS  shift 32
 	COALESCE  shift 22
@@ -621,7 +622,7 @@ state 41
 	NUMBER  shift 43
 	ION  shift 49
 	STRING  shift 48
-	.  reduce 109 (src line 553)
+	.  reduce 110 (src line 563)
 
 	expr  goto 117
 	datum  goto 39
@@ -634,10 +635,10 @@ state 41
 
 state 42
 	explicit_struct_definition:  '{'.field_value_list '}'
-	field_value_list: .    (112)
+	field_value_list: .    (113)
 
 	STRING  shift 120
-	.  reduce 112 (src line 559)
+	.  reduce 113 (src line 569)
 
 	field_value_list  goto 118
 	field_value_pair  goto 119
@@ -645,49 +646,49 @@ state 42
 state 43
 	datum:  NUMBER.    (15)
 
-	.  reduce 15 (src line 160)
+	.  reduce 15 (src line 162)
 
 
 state 44
 	datum:  TRUE.    (16)
 
-	.  reduce 16 (src line 161)
+	.  reduce 16 (src line 163)
 
 
 state 45
 	datum:  FALSE.    (17)
 
-	.  reduce 17 (src line 162)
+	.  reduce 17 (src line 164)
 
 
 state 46
 	datum:  NULL.    (18)
 
-	.  reduce 18 (src line 163)
+	.  reduce 18 (src line 165)
 
 
 state 47
 	datum:  MISSING.    (19)
 
-	.  reduce 19 (src line 164)
+	.  reduce 19 (src line 166)
 
 
 state 48
 	datum:  STRING.    (20)
 
-	.  reduce 20 (src line 165)
+	.  reduce 20 (src line 167)
 
 
 state 49
 	datum:  ION.    (21)
 
-	.  reduce 21 (src line 166)
+	.  reduce 21 (src line 168)
 
 
 state 50
 	datum:  path_expression.    (22)
 
-	.  reduce 22 (src line 167)
+	.  reduce 22 (src line 169)
 
 
 state 51
@@ -714,10 +715,10 @@ state 53
 
 state 54
 	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into.from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
-	from_expr: .    (126)
+	from_expr: .    (127)
 
 	FROM  shift 126
-	.  reduce 126 (src line 585)
+	.  reduce 127 (src line 595)
 
 	from_expr  goto 124
 	lhs_from_expr  goto 125
@@ -786,7 +787,7 @@ state 57
 state 58
 	value_binding:  expr identifier.    (10)
 
-	.  reduce 10 (src line 150)
+	.  reduce 10 (src line 152)
 
 
 state 59
@@ -1731,7 +1732,7 @@ state 89
 
 	DISTINCT  shift 171
 	'*'  shift 170
-	.  reduce 28 (src line 188)
+	.  reduce 28 (src line 190)
 
 	maybe_distinct  goto 169
 
@@ -1779,11 +1780,11 @@ state 90
 state 91
 	expr:  CASE case_limbs.case_optional_else END
 	case_limbs:  case_limbs.WHEN expr THEN expr
-	case_optional_else: .    (136)
+	case_optional_else: .    (137)
 
 	WHEN  shift 174
 	ELSE  shift 175
-	.  reduce 136 (src line 616)
+	.  reduce 137 (src line 626)
 
 	case_optional_else  goto 173
 
@@ -1964,6 +1965,7 @@ state 97
 
 
 state 98
+	expr:  DATE_TRUNC '('.ID '(' ID ')' ',' expr ')'
 	expr:  DATE_TRUNC '('.ID ',' expr ')'
 
 	ID  shift 184
@@ -2034,7 +2036,7 @@ state 101
 state 102
 	path_expression:  identifier path_component.    (14)
 
-	.  reduce 14 (src line 156)
+	.  reduce 14 (src line 158)
 
 
 state 103
@@ -2123,7 +2125,7 @@ state 107
 	expr:  expr.'%' expr
 	expr:  expr.CONCAT expr
 	expr:  expr.APPEND expr
-	expr:  '-' expr.    (68)
+	expr:  '-' expr.    (69)
 	expr:  expr.ILIKE STRING
 	expr:  expr.LIKE STRING
 	expr:  expr.SIMILAR TO STRING
@@ -2152,7 +2154,7 @@ state 107
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	.  reduce 68 (src line 403)
+	.  reduce 69 (src line 413)
 
 
 state 108
@@ -2188,7 +2190,7 @@ state 108
 	expr:  expr.NOT SIMILAR TO STRING
 	expr:  expr.NOT '~' STRING
 	expr:  expr.NOT REGEXP_MATCH_CI STRING
-	expr:  NOT expr.    (86)
+	expr:  NOT expr.    (87)
 	expr:  expr.AND expr
 	expr:  expr.OR expr
 	expr:  expr.IS NULL
@@ -2228,7 +2230,7 @@ state 108
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 86 (src line 475)
+	.  reduce 87 (src line 485)
 
 
 state 109
@@ -2264,7 +2266,7 @@ state 109
 	expr:  expr.NOT SIMILAR TO STRING
 	expr:  expr.NOT '~' STRING
 	expr:  expr.NOT REGEXP_MATCH_CI STRING
-	expr:  '~' expr.    (87)
+	expr:  '~' expr.    (88)
 	expr:  expr.AND expr
 	expr:  expr.OR expr
 	expr:  expr.IS NULL
@@ -2304,7 +2306,7 @@ state 109
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 87 (src line 479)
+	.  reduce 88 (src line 489)
 
 
 state 110
@@ -2361,7 +2363,7 @@ state 111
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	unpivot_source:  expr.    (167)
+	unpivot_source:  expr.    (168)
 
 	OR  shift 87
 	AND  shift 86
@@ -2393,7 +2395,7 @@ state 111
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 167 (src line 678)
+	.  reduce 168 (src line 688)
 
 
 state 112
@@ -2406,7 +2408,7 @@ state 112
 state 113
 	parenthesized_expr:  select_stmt.    (25)
 
-	.  reduce 25 (src line 183)
+	.  reduce 25 (src line 185)
 
 
 state 114
@@ -2484,7 +2486,7 @@ state 114
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 26 (src line 184)
+	.  reduce 26 (src line 186)
 
 
 state 115
@@ -2492,7 +2494,7 @@ state 115
 	maybe_toplevel_distinct: .    (31)
 
 	DISTINCT  shift 10
-	.  reduce 31 (src line 192)
+	.  reduce 31 (src line 194)
 
 	maybe_toplevel_distinct  goto 202
 
@@ -2548,7 +2550,7 @@ state 117
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	any_value_list:  expr.    (107)
+	any_value_list:  expr.    (108)
 
 	OR  shift 87
 	AND  shift 86
@@ -2580,7 +2582,7 @@ state 117
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 107 (src line 551)
+	.  reduce 108 (src line 561)
 
 
 state 118
@@ -2593,9 +2595,9 @@ state 118
 
 
 state 119
-	field_value_list:  field_value_pair.    (110)
+	field_value_list:  field_value_pair.    (111)
 
-	.  reduce 110 (src line 557)
+	.  reduce 111 (src line 567)
 
 
 state 120
@@ -2663,15 +2665,15 @@ state 123
 
 state 124
 	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr.where_expr group_expr having_expr order_expr limit_expr offset_expr
-	where_expr: .    (142)
+	where_expr: .    (143)
 
 	WHERE  shift 213
-	.  reduce 142 (src line 628)
+	.  reduce 143 (src line 638)
 
 	where_expr  goto 212
 
 state 125
-	from_expr:  lhs_from_expr.    (125)
+	from_expr:  lhs_from_expr.    (126)
 	lhs_from_expr:  lhs_from_expr.cross_symbol value_binding
 	lhs_from_expr:  lhs_from_expr.join_kind value_binding ON expr EQ expr
 
@@ -2682,7 +2684,7 @@ state 125
 	INNER  shift 219
 	FULL  shift 222
 	','  shift 216
-	.  reduce 125 (src line 584)
+	.  reduce 126 (src line 594)
 
 	join_kind  goto 215
 	cross_symbol  goto 214
@@ -2732,31 +2734,31 @@ state 126
 	value_binding  goto 223
 
 state 127
-	binding_list:  binding_list ',' value_binding.    (101)
+	binding_list:  binding_list ',' value_binding.    (102)
 
-	.  reduce 101 (src line 536)
+	.  reduce 102 (src line 546)
 
 
 state 128
 	maybe_into:  INTO path_expression.    (3)
 
-	.  reduce 3 (src line 136)
+	.  reduce 3 (src line 138)
 
 
 state 129
 	path_expression:  identifier.path_component
-	path_component: .    (131)
+	path_component: .    (132)
 
 	'['  shift 105
 	'.'  shift 104
-	.  reduce 131 (src line 601)
+	.  reduce 132 (src line 611)
 
 	path_component  goto 102
 
 state 130
 	value_binding:  expr AS identifier.    (9)
 
-	.  reduce 9 (src line 149)
+	.  reduce 9 (src line 151)
 
 
 state 131
@@ -2808,7 +2810,7 @@ state 132
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
-	expr:  expr '|' expr.    (55)
+	expr:  expr '|' expr.    (56)
 	expr:  expr.'^' expr
 	expr:  expr.'&' expr
 	expr:  expr.SHIFT_LEFT_LOGICAL expr
@@ -2861,7 +2863,7 @@ state 132
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 55 (src line 351)
+	.  reduce 56 (src line 361)
 
 
 state 133
@@ -2869,7 +2871,7 @@ state 133
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
 	expr:  expr.'^' expr
-	expr:  expr '^' expr.    (56)
+	expr:  expr '^' expr.    (57)
 	expr:  expr.'&' expr
 	expr:  expr.SHIFT_LEFT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_LOGICAL expr
@@ -2920,7 +2922,7 @@ state 133
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 56 (src line 355)
+	.  reduce 57 (src line 365)
 
 
 state 134
@@ -2929,7 +2931,7 @@ state 134
 	expr:  expr.'|' expr
 	expr:  expr.'^' expr
 	expr:  expr.'&' expr
-	expr:  expr '&' expr.    (57)
+	expr:  expr '&' expr.    (58)
 	expr:  expr.SHIFT_LEFT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
@@ -2978,7 +2980,7 @@ state 134
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 57 (src line 359)
+	.  reduce 58 (src line 369)
 
 
 state 135
@@ -2988,7 +2990,7 @@ state 135
 	expr:  expr.'^' expr
 	expr:  expr.'&' expr
 	expr:  expr.SHIFT_LEFT_LOGICAL expr
-	expr:  expr SHIFT_LEFT_LOGICAL expr.    (58)
+	expr:  expr SHIFT_LEFT_LOGICAL expr.    (59)
 	expr:  expr.SHIFT_RIGHT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
 	expr:  expr.'+' expr
@@ -3033,7 +3035,7 @@ state 135
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 58 (src line 363)
+	.  reduce 59 (src line 373)
 
 
 state 136
@@ -3044,7 +3046,7 @@ state 136
 	expr:  expr.'&' expr
 	expr:  expr.SHIFT_LEFT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_LOGICAL expr
-	expr:  expr SHIFT_RIGHT_LOGICAL expr.    (59)
+	expr:  expr SHIFT_RIGHT_LOGICAL expr.    (60)
 	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
 	expr:  expr.'+' expr
 	expr:  expr.'-' expr
@@ -3088,7 +3090,7 @@ state 136
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 59 (src line 367)
+	.  reduce 60 (src line 377)
 
 
 state 137
@@ -3100,7 +3102,7 @@ state 137
 	expr:  expr.SHIFT_LEFT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
-	expr:  expr SHIFT_RIGHT_ARITHMETIC expr.    (60)
+	expr:  expr SHIFT_RIGHT_ARITHMETIC expr.    (61)
 	expr:  expr.'+' expr
 	expr:  expr.'-' expr
 	expr:  expr.'*' expr
@@ -3143,7 +3145,7 @@ state 137
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 60 (src line 371)
+	.  reduce 61 (src line 381)
 
 
 state 138
@@ -3156,7 +3158,7 @@ state 138
 	expr:  expr.SHIFT_RIGHT_LOGICAL expr
 	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
 	expr:  expr.'+' expr
-	expr:  expr '+' expr.    (61)
+	expr:  expr '+' expr.    (62)
 	expr:  expr.'-' expr
 	expr:  expr.'*' expr
 	expr:  expr.'/' expr
@@ -3196,7 +3198,7 @@ state 138
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 61 (src line 375)
+	.  reduce 62 (src line 385)
 
 
 state 139
@@ -3210,7 +3212,7 @@ state 139
 	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
 	expr:  expr.'+' expr
 	expr:  expr.'-' expr
-	expr:  expr '-' expr.    (62)
+	expr:  expr '-' expr.    (63)
 	expr:  expr.'*' expr
 	expr:  expr.'/' expr
 	expr:  expr.'%' expr
@@ -3249,7 +3251,7 @@ state 139
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 62 (src line 379)
+	.  reduce 63 (src line 389)
 
 
 state 140
@@ -3264,7 +3266,7 @@ state 140
 	expr:  expr.'+' expr 
 	expr:  expr.'-' expr 
 	expr:  expr.'*' expr 
-	expr:  expr '*' expr.    (63)
+	expr:  expr '*' expr.    (64)
 	expr:  expr.'/' expr 
 	expr:  expr.'%' expr 
 	expr:  expr.CONCAT expr 
@@ -3299,7 +3301,7 @@ state 140
 
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 63 (src line 383)
+	.  reduce 64 (src line 393)
 
 
 state 141
@@ -3315,7 +3317,7 @@ state 141
 	expr:  expr.'-' expr
 	expr:  expr.'*' expr
 	expr:  expr.'/' expr
-	expr:  expr '/' expr.    (64)
+	expr:  expr '/' expr.    (65)
 	expr:  expr.'%' expr
 	expr:  expr.CONCAT expr
 	expr:  expr.APPEND expr
@@ -3349,7 +3351,7 @@ state 141
 
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 64 (src line 387)
+	.  reduce 65 (src line 397)
 
 
 state 142
@@ -3366,7 +3368,7 @@ state 142
 	expr:  expr.'*' expr
 	expr:  expr.'/' expr
 	expr:  expr.'%' expr
-	expr:  expr '%' expr.    (65)
+	expr:  expr '%' expr.    (66)
 	expr:  expr.CONCAT expr
 	expr:  expr.APPEND expr
 	expr:  expr.ILIKE STRING
@@ -3399,7 +3401,7 @@ state 142
 
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 65 (src line 391)
+	.  reduce 66 (src line 401)
 
 
 state 143
@@ -3417,7 +3419,7 @@ state 143
 	expr:  expr.'/' expr
 	expr:  expr.'%' expr
 	expr:  expr.CONCAT expr
-	expr:  expr CONCAT expr.    (66)
+	expr:  expr CONCAT expr.    (67)
 	expr:  expr.APPEND expr
 	expr:  expr.ILIKE STRING
 	expr:  expr.LIKE STRING
@@ -3447,7 +3449,7 @@ state 143
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	.  reduce 66 (src line 395)
+	.  reduce 67 (src line 405)
 
 
 state 144
@@ -3466,7 +3468,7 @@ state 144
 	expr:  expr.'%' expr
 	expr:  expr.CONCAT expr
 	expr:  expr.APPEND expr
-	expr:  expr APPEND expr.    (67)
+	expr:  expr APPEND expr.    (68)
 	expr:  expr.ILIKE STRING
 	expr:  expr.LIKE STRING
 	expr:  expr.SIMILAR TO STRING
@@ -3495,19 +3497,19 @@ state 144
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	.  reduce 67 (src line 399)
+	.  reduce 68 (src line 409)
 
 
 state 145
-	expr:  expr ILIKE STRING.    (69)
+	expr:  expr ILIKE STRING.    (70)
 
-	.  reduce 69 (src line 407)
+	.  reduce 70 (src line 417)
 
 
 state 146
-	expr:  expr LIKE STRING.    (70)
+	expr:  expr LIKE STRING.    (71)
 
-	.  reduce 70 (src line 411)
+	.  reduce 71 (src line 421)
 
 
 state 147
@@ -3518,15 +3520,15 @@ state 147
 
 
 state 148
-	expr:  expr '~' STRING.    (72)
+	expr:  expr '~' STRING.    (73)
 
-	.  reduce 72 (src line 419)
+	.  reduce 73 (src line 429)
 
 
 state 149
-	expr:  expr REGEXP_MATCH_CI STRING.    (73)
+	expr:  expr REGEXP_MATCH_CI STRING.    (74)
 
-	.  reduce 73 (src line 423)
+	.  reduce 74 (src line 433)
 
 
 state 150
@@ -3551,7 +3553,7 @@ state 150
 	expr:  expr.'~' STRING
 	expr:  expr.REGEXP_MATCH_CI STRING
 	expr:  expr.EQ expr
-	expr:  expr EQ expr.    (74)
+	expr:  expr EQ expr.    (75)
 	expr:  expr.NE expr
 	expr:  expr.LT expr
 	expr:  expr.LE expr
@@ -3593,7 +3595,7 @@ state 150
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 74 (src line 427)
+	.  reduce 75 (src line 437)
 
 
 state 151
@@ -3619,7 +3621,7 @@ state 151
 	expr:  expr.REGEXP_MATCH_CI STRING
 	expr:  expr.EQ expr
 	expr:  expr.NE expr
-	expr:  expr NE expr.    (75)
+	expr:  expr NE expr.    (76)
 	expr:  expr.LT expr
 	expr:  expr.LE expr
 	expr:  expr.GT expr
@@ -3660,7 +3662,7 @@ state 151
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 75 (src line 431)
+	.  reduce 76 (src line 441)
 
 
 state 152
@@ -3687,7 +3689,7 @@ state 152
 	expr:  expr.EQ expr
 	expr:  expr.NE expr
 	expr:  expr.LT expr
-	expr:  expr LT expr.    (76)
+	expr:  expr LT expr.    (77)
 	expr:  expr.LE expr
 	expr:  expr.GT expr
 	expr:  expr.GE expr
@@ -3727,7 +3729,7 @@ state 152
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 76 (src line 435)
+	.  reduce 77 (src line 445)
 
 
 state 153
@@ -3755,7 +3757,7 @@ state 153
 	expr:  expr.NE expr
 	expr:  expr.LT expr
 	expr:  expr.LE expr
-	expr:  expr LE expr.    (77)
+	expr:  expr LE expr.    (78)
 	expr:  expr.GT expr
 	expr:  expr.GE expr
 	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens
@@ -3794,7 +3796,7 @@ state 153
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 77 (src line 439)
+	.  reduce 78 (src line 449)
 
 
 state 154
@@ -3823,7 +3825,7 @@ state 154
 	expr:  expr.LT expr
 	expr:  expr.LE expr
 	expr:  expr.GT expr
-	expr:  expr GT expr.    (78)
+	expr:  expr GT expr.    (79)
 	expr:  expr.GE expr
 	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens
 	expr:  expr.NOT LIKE STRING
@@ -3861,7 +3863,7 @@ state 154
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 78 (src line 443)
+	.  reduce 79 (src line 453)
 
 
 state 155
@@ -3891,7 +3893,7 @@ state 155
 	expr:  expr.LE expr
 	expr:  expr.GT expr
 	expr:  expr.GE expr
-	expr:  expr GE expr.    (79)
+	expr:  expr GE expr.    (80)
 	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens
 	expr:  expr.NOT LIKE STRING
 	expr:  expr.NOT ILIKE STRING
@@ -3928,7 +3930,7 @@ state 155
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 79 (src line 447)
+	.  reduce 80 (src line 457)
 
 
 state 156
@@ -4007,7 +4009,7 @@ state 162
 	expr:  expr.NOT '~' STRING
 	expr:  expr.NOT REGEXP_MATCH_CI STRING
 	expr:  expr.AND expr
-	expr:  expr AND expr.    (88)
+	expr:  expr AND expr.    (89)
 	expr:  expr.OR expr
 	expr:  expr.IS NULL
 	expr:  expr.IS NOT NULL
@@ -4046,7 +4048,7 @@ state 162
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 88 (src line 483)
+	.  reduce 89 (src line 493)
 
 
 state 163
@@ -4084,7 +4086,7 @@ state 163
 	expr:  expr.NOT REGEXP_MATCH_CI STRING
 	expr:  expr.AND expr
 	expr:  expr.OR expr
-	expr:  expr OR expr.    (89)
+	expr:  expr OR expr.    (90)
 	expr:  expr.IS NULL
 	expr:  expr.IS NOT NULL
 	expr:  expr.IS MISSING
@@ -4123,13 +4125,13 @@ state 163
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 89 (src line 487)
+	.  reduce 90 (src line 497)
 
 
 state 164
-	expr:  expr IS NULL.    (90)
+	expr:  expr IS NULL.    (91)
 
-	.  reduce 90 (src line 491)
+	.  reduce 91 (src line 501)
 
 
 state 165
@@ -4146,21 +4148,21 @@ state 165
 
 
 state 166
-	expr:  expr IS MISSING.    (92)
+	expr:  expr IS MISSING.    (93)
 
-	.  reduce 92 (src line 499)
+	.  reduce 93 (src line 509)
 
 
 state 167
-	expr:  expr IS TRUE.    (94)
+	expr:  expr IS TRUE.    (95)
 
-	.  reduce 94 (src line 507)
+	.  reduce 95 (src line 517)
 
 
 state 168
-	expr:  expr IS FALSE.    (96)
+	expr:  expr IS FALSE.    (97)
 
-	.  reduce 96 (src line 515)
+	.  reduce 97 (src line 525)
 
 
 state 169
@@ -4213,7 +4215,7 @@ state 170
 state 171
 	maybe_distinct:  DISTINCT.    (27)
 
-	.  reduce 27 (src line 187)
+	.  reduce 27 (src line 189)
 
 
 state 172
@@ -4515,7 +4517,7 @@ state 178
 	expr:  expr.IS NOT TRUE 
 	expr:  expr.IS FALSE 
 	expr:  expr.IS NOT FALSE 
-	value_list:  expr.    (104)
+	value_list:  expr.    (105)
 
 	OR  shift 87
 	AND  shift 86
@@ -4547,13 +4549,13 @@ state 178
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 104 (src line 545)
+	.  reduce 105 (src line 555)
 
 
 state 179
-	value_list:  '*'.    (105)
+	value_list:  '*'.    (106)
 
-	.  reduce 105 (src line 546)
+	.  reduce 106 (src line 556)
 
 
 state 180
@@ -4729,23 +4731,25 @@ state 183
 
 
 state 184
+	expr:  DATE_TRUNC '(' ID.'(' ID ')' ',' expr ')'
 	expr:  DATE_TRUNC '(' ID.',' expr ')'
 
-	','  shift 251
+	'('  shift 251
+	','  shift 252
 	.  error
 
 
 state 185
 	expr:  EXTRACT '(' ID.FROM expr ')'
 
-	FROM  shift 252
+	FROM  shift 253
 	.  error
 
 
 state 186
-	expr:  UTCNOW '(' ')'.    (45)
+	expr:  UTCNOW '(' ')'.    (46)
 
-	.  reduce 45 (src line 287)
+	.  reduce 46 (src line 297)
 
 
 state 187
@@ -4795,9 +4799,9 @@ state 187
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	FROM  shift 255
-	','  shift 254
-	')'  shift 253
+	FROM  shift 256
+	','  shift 255
+	')'  shift 254
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -4863,7 +4867,7 @@ state 188
 	STRING  shift 48
 	.  error
 
-	expr  goto 256
+	expr  goto 257
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -4872,27 +4876,27 @@ state 188
 	identifier  goto 31
 
 state 189
-	trim_type:  LEADING.    (170)
+	trim_type:  LEADING.    (171)
 
-	.  reduce 170 (src line 687)
+	.  reduce 171 (src line 697)
 
 
 state 190
-	trim_type:  TRAILING.    (171)
+	trim_type:  TRAILING.    (172)
 
-	.  reduce 171 (src line 688)
+	.  reduce 172 (src line 698)
 
 
 state 191
-	trim_type:  BOTH.    (172)
+	trim_type:  BOTH.    (173)
 
-	.  reduce 172 (src line 689)
+	.  reduce 173 (src line 699)
 
 
 state 192
-	expr:  identifier '(' ')'.    (50)
+	expr:  identifier '(' ')'.    (51)
 
-	.  reduce 50 (src line 323)
+	.  reduce 51 (src line 333)
 
 
 state 193
@@ -4900,44 +4904,44 @@ state 193
 	value_list:  value_list.',' expr
 
 	','  shift 246
-	')'  shift 257
+	')'  shift 258
 	.  error
 
 
 state 194
 	path_component:  '.' identifier.path_component
-	path_component: .    (131)
+	path_component: .    (132)
 
 	'['  shift 105
 	'.'  shift 104
-	.  reduce 131 (src line 601)
+	.  reduce 132 (src line 611)
 
-	path_component  goto 258
+	path_component  goto 259
 
 state 195
 	path_component:  '[' literal_int.']' path_component
 
-	']'  shift 259
+	']'  shift 260
 	.  error
 
 
 state 196
 	path_component:  '[' ID.']' path_component
 
-	']'  shift 260
+	']'  shift 261
 	.  error
 
 
 state 197
-	literal_int:  NUMBER.    (130)
+	literal_int:  NUMBER.    (131)
 
-	.  reduce 130 (src line 598)
+	.  reduce 131 (src line 608)
 
 
 state 198
 	expr:  EXISTS '(' select_stmt.')'
 
-	')'  shift 261
+	')'  shift 262
 	.  error
 
 
@@ -4948,7 +4952,7 @@ state 199
 	ID  shift 8
 	.  error
 
-	identifier  goto 262
+	identifier  goto 263
 
 state 200
 	unpivot:  UNPIVOT unpivot_source AT.identifier AS identifier
@@ -4957,12 +4961,12 @@ state 200
 	ID  shift 8
 	.  error
 
-	identifier  goto 263
+	identifier  goto 264
 
 state 201
 	datum_or_parens:  '(' parenthesized_expr ')'.    (24)
 
-	.  reduce 24 (src line 180)
+	.  reduce 24 (src line 182)
 
 
 state 202
@@ -5007,7 +5011,7 @@ state 202
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	binding_list  goto 264
+	binding_list  goto 265
 	value_binding  goto 14
 
 state 203
@@ -5042,7 +5046,7 @@ state 203
 	STRING  shift 48
 	.  error
 
-	expr  goto 265
+	expr  goto 266
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5051,9 +5055,9 @@ state 203
 	identifier  goto 31
 
 state 204
-	explicit_list_definition:  '[' any_value_list ']'.    (169)
+	explicit_list_definition:  '[' any_value_list ']'.    (170)
 
-	.  reduce 169 (src line 684)
+	.  reduce 170 (src line 694)
 
 
 state 205
@@ -5062,12 +5066,12 @@ state 205
 	STRING  shift 120
 	.  error
 
-	field_value_pair  goto 266
+	field_value_pair  goto 267
 
 state 206
-	explicit_struct_definition:  '{' field_value_list '}'.    (168)
+	explicit_struct_definition:  '{' field_value_list '}'.    (169)
 
-	.  reduce 168 (src line 681)
+	.  reduce 169 (src line 691)
 
 
 state 207
@@ -5102,7 +5106,7 @@ state 207
 	STRING  shift 48
 	.  error
 
-	expr  goto 267
+	expr  goto 268
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5114,8 +5118,8 @@ state 208
 	maybe_toplevel_distinct:  DISTINCT ON '(' node_list.')'
 	node_list:  node_list.',' expr
 
-	','  shift 269
-	')'  shift 268
+	','  shift 270
+	')'  shift 269
 	.  error
 
 
@@ -5162,7 +5166,7 @@ state 209
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	node_list:  expr.    (102)
+	node_list:  expr.    (103)
 
 	OR  shift 87
 	AND  shift 86
@@ -5194,30 +5198,30 @@ state 209
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 102 (src line 540)
+	.  reduce 103 (src line 550)
 
 
 state 210
 	cte_bindings:  cte_bindings ',' identifier AS '(' select_stmt.')'
 
-	')'  shift 270
+	')'  shift 271
 	.  error
 
 
 state 211
 	cte_bindings:  WITH identifier AS '(' select_stmt ')'.    (7)
 
-	.  reduce 7 (src line 142)
+	.  reduce 7 (src line 144)
 
 
 state 212
 	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr.group_expr having_expr order_expr limit_expr offset_expr
-	group_expr: .    (146)
+	group_expr: .    (147)
 
-	GROUP  shift 272
-	.  reduce 146 (src line 636)
+	GROUP  shift 273
+	.  reduce 147 (src line 646)
 
-	group_expr  goto 271
+	group_expr  goto 272
 
 state 213
 	where_expr:  WHERE.expr
@@ -5251,7 +5255,7 @@ state 213
 	STRING  shift 48
 	.  error
 
-	expr  goto 273
+	expr  goto 274
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5301,7 +5305,7 @@ state 214
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	value_binding  goto 274
+	value_binding  goto 275
 
 state 215
 	lhs_from_expr:  lhs_from_expr join_kind.value_binding ON expr EQ expr
@@ -5345,31 +5349,31 @@ state 215
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	value_binding  goto 275
+	value_binding  goto 276
 
 state 216
-	cross_symbol:  ','.    (123)
+	cross_symbol:  ','.    (124)
 
-	.  reduce 123 (src line 582)
+	.  reduce 124 (src line 592)
 
 
 state 217
 	cross_symbol:  CROSS.JOIN
 
-	JOIN  shift 276
+	JOIN  shift 277
 	.  error
 
 
 state 218
-	join_kind:  JOIN.    (116)
+	join_kind:  JOIN.    (117)
 
-	.  reduce 116 (src line 573)
+	.  reduce 117 (src line 583)
 
 
 state 219
 	join_kind:  INNER.JOIN
 
-	JOIN  shift 277
+	JOIN  shift 278
 	.  error
 
 
@@ -5377,8 +5381,8 @@ state 220
 	join_kind:  LEFT.JOIN
 	join_kind:  LEFT.OUTER JOIN
 
-	JOIN  shift 278
-	OUTER  shift 279
+	JOIN  shift 279
+	OUTER  shift 280
 	.  error
 
 
@@ -5386,28 +5390,28 @@ state 221
 	join_kind:  RIGHT.JOIN
 	join_kind:  RIGHT.OUTER JOIN
 
-	JOIN  shift 280
-	OUTER  shift 281
+	JOIN  shift 281
+	OUTER  shift 282
 	.  error
 
 
 state 222
 	join_kind:  FULL.JOIN
 
-	JOIN  shift 282
+	JOIN  shift 283
 	.  error
 
 
 state 223
-	lhs_from_expr:  FROM value_binding.    (127)
+	lhs_from_expr:  FROM value_binding.    (128)
 
-	.  reduce 127 (src line 592)
+	.  reduce 128 (src line 602)
 
 
 state 224
 	expr:  expr IN '(' select_stmt.')'
 
-	')'  shift 283
+	')'  shift 284
 	.  error
 
 
@@ -5416,14 +5420,14 @@ state 225
 	value_list:  value_list.',' expr
 
 	','  shift 246
-	')'  shift 284
+	')'  shift 285
 	.  error
 
 
 state 226
-	expr:  expr SIMILAR TO STRING.    (71)
+	expr:  expr SIMILAR TO STRING.    (72)
 
-	.  reduce 71 (src line 415)
+	.  reduce 72 (src line 425)
 
 
 state 227
@@ -5441,63 +5445,63 @@ state 227
 	.  error
 
 	datum  goto 39
-	datum_or_parens  goto 285
+	datum_or_parens  goto 286
 	path_expression  goto 50
 	identifier  goto 129
 
 state 228
-	expr:  expr NOT LIKE STRING.    (81)
+	expr:  expr NOT LIKE STRING.    (82)
 
-	.  reduce 81 (src line 455)
+	.  reduce 82 (src line 465)
 
 
 state 229
-	expr:  expr NOT ILIKE STRING.    (82)
+	expr:  expr NOT ILIKE STRING.    (83)
 
-	.  reduce 82 (src line 459)
+	.  reduce 83 (src line 469)
 
 
 state 230
 	expr:  expr NOT SIMILAR TO.STRING
 
-	STRING  shift 286
+	STRING  shift 287
 	.  error
 
 
 state 231
-	expr:  expr NOT '~' STRING.    (84)
+	expr:  expr NOT '~' STRING.    (85)
 
-	.  reduce 84 (src line 467)
+	.  reduce 85 (src line 477)
 
 
 state 232
-	expr:  expr NOT REGEXP_MATCH_CI STRING.    (85)
+	expr:  expr NOT REGEXP_MATCH_CI STRING.    (86)
 
-	.  reduce 85 (src line 471)
+	.  reduce 86 (src line 481)
 
 
 state 233
-	expr:  expr IS NOT NULL.    (91)
+	expr:  expr IS NOT NULL.    (92)
 
-	.  reduce 91 (src line 495)
+	.  reduce 92 (src line 505)
 
 
 state 234
-	expr:  expr IS NOT MISSING.    (93)
+	expr:  expr IS NOT MISSING.    (94)
 
-	.  reduce 93 (src line 503)
+	.  reduce 94 (src line 513)
 
 
 state 235
-	expr:  expr IS NOT TRUE.    (95)
+	expr:  expr IS NOT TRUE.    (96)
 
-	.  reduce 95 (src line 511)
+	.  reduce 96 (src line 521)
 
 
 state 236
-	expr:  expr IS NOT FALSE.    (97)
+	expr:  expr IS NOT FALSE.    (98)
 
-	.  reduce 97 (src line 519)
+	.  reduce 98 (src line 529)
 
 
 state 237
@@ -5545,7 +5549,7 @@ state 237
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	')'  shift 287
+	')'  shift 288
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -5581,21 +5585,21 @@ state 237
 
 state 238
 	expr:  AGGREGATE '(' '*' ')'.optional_filter maybe_window
-	optional_filter: .    (140)
+	optional_filter: .    (141)
 
-	FILTER  shift 289
-	.  reduce 140 (src line 624)
+	FILTER  shift 290
+	.  reduce 141 (src line 634)
 
-	optional_filter  goto 288
+	optional_filter  goto 289
 
 state 239
 	expr:  APPROX_COUNT_DISTINCT '(' expr ')'.optional_filter maybe_window
-	optional_filter: .    (140)
+	optional_filter: .    (141)
 
-	FILTER  shift 289
-	.  reduce 140 (src line 624)
+	FILTER  shift 290
+	.  reduce 141 (src line 634)
 
-	optional_filter  goto 290
+	optional_filter  goto 291
 
 state 240
 	expr:  APPROX_COUNT_DISTINCT '(' expr ','.literal_int ')' optional_filter maybe_window
@@ -5603,12 +5607,12 @@ state 240
 	NUMBER  shift 197
 	.  error
 
-	literal_int  goto 291
+	literal_int  goto 292
 
 state 241
 	expr:  CASE case_limbs case_optional_else END.    (37)
 
-	.  reduce 37 (src line 235)
+	.  reduce 37 (src line 237)
 
 
 state 242
@@ -5661,7 +5665,7 @@ state 242
 	'~'  shift 76
 	NOT  shift 85
 	BETWEEN  shift 84
-	THEN  shift 292
+	THEN  shift 293
 	EQ  shift 78
 	NE  shift 79
 	LT  shift 80
@@ -5733,7 +5737,7 @@ state 243
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	case_optional_else:  ELSE expr.    (137)
+	case_optional_else:  ELSE expr.    (138)
 
 	OR  shift 87
 	AND  shift 86
@@ -5765,7 +5769,7 @@ state 243
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 137 (src line 617)
+	.  reduce 138 (src line 627)
 
 
 state 244
@@ -5800,7 +5804,7 @@ state 244
 	STRING  shift 48
 	.  error
 
-	expr  goto 293
+	expr  goto 294
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5811,7 +5815,7 @@ state 244
 state 245
 	expr:  COALESCE '(' value_list ')'.    (38)
 
-	.  reduce 38 (src line 239)
+	.  reduce 38 (src line 241)
 
 
 state 246
@@ -5846,7 +5850,7 @@ state 246
 	STRING  shift 48
 	.  error
 
-	expr  goto 294
+	expr  goto 295
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5886,7 +5890,7 @@ state 247
 	STRING  shift 48
 	.  error
 
-	expr  goto 295
+	expr  goto 296
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5897,7 +5901,7 @@ state 247
 state 248
 	expr:  CAST '(' expr AS.ID ')'
 
-	ID  shift 296
+	ID  shift 297
 	.  error
 
 
@@ -5933,7 +5937,7 @@ state 249
 	STRING  shift 48
 	.  error
 
-	expr  goto 297
+	expr  goto 298
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -5973,46 +5977,6 @@ state 250
 	STRING  shift 48
 	.  error
 
-	expr  goto 298
-	datum  goto 39
-	datum_or_parens  goto 18
-	path_expression  goto 50
-	explicit_struct_definition  goto 37
-	explicit_list_definition  goto 36
-	identifier  goto 31
-
-state 251
-	expr:  DATE_TRUNC '(' ID ','.expr ')'
-
-	EXISTS  shift 32
-	COALESCE  shift 22
-	NULLIF  shift 23
-	EXTRACT  shift 28
-	DATE_TRUNC  shift 27
-	CAST  shift 24
-	UTCNOW  shift 29
-	DATE_ADD  shift 25
-	DATE_DIFF  shift 26
-	APPROX_COUNT_DISTINCT  shift 20
-	AGGREGATE  shift 19
-	ID  shift 8
-	'('  shift 40
-	'['  shift 41
-	'{'  shift 42
-	NULL  shift 46
-	TRUE  shift 44
-	FALSE  shift 45
-	MISSING  shift 47
-	'~'  shift 35
-	NOT  shift 34
-	CASE  shift 21
-	TRIM  shift 30
-	'-'  shift 33
-	NUMBER  shift 43
-	ION  shift 49
-	STRING  shift 48
-	.  error
-
 	expr  goto 299
 	datum  goto 39
 	datum_or_parens  goto 18
@@ -6021,54 +5985,15 @@ state 251
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 252
-	expr:  EXTRACT '(' ID FROM.expr ')'
+state 251
+	expr:  DATE_TRUNC '(' ID '('.ID ')' ',' expr ')'
 
-	EXISTS  shift 32
-	COALESCE  shift 22
-	NULLIF  shift 23
-	EXTRACT  shift 28
-	DATE_TRUNC  shift 27
-	CAST  shift 24
-	UTCNOW  shift 29
-	DATE_ADD  shift 25
-	DATE_DIFF  shift 26
-	APPROX_COUNT_DISTINCT  shift 20
-	AGGREGATE  shift 19
-	ID  shift 8
-	'('  shift 40
-	'['  shift 41
-	'{'  shift 42
-	NULL  shift 46
-	TRUE  shift 44
-	FALSE  shift 45
-	MISSING  shift 47
-	'~'  shift 35
-	NOT  shift 34
-	CASE  shift 21
-	TRIM  shift 30
-	'-'  shift 33
-	NUMBER  shift 43
-	ION  shift 49
-	STRING  shift 48
+	ID  shift 300
 	.  error
 
-	expr  goto 300
-	datum  goto 39
-	datum_or_parens  goto 18
-	path_expression  goto 50
-	explicit_struct_definition  goto 37
-	explicit_list_definition  goto 36
-	identifier  goto 31
 
-state 253
-	expr:  TRIM '(' expr ')'.    (46)
-
-	.  reduce 46 (src line 291)
-
-
-state 254
-	expr:  TRIM '(' expr ','.expr ')'
+state 252
+	expr:  DATE_TRUNC '(' ID ','.expr ')'
 
 	EXISTS  shift 32
 	COALESCE  shift 22
@@ -6107,8 +6032,8 @@ state 254
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 255
-	expr:  TRIM '(' expr FROM.expr ')'
+state 253
+	expr:  EXTRACT '(' ID FROM.expr ')'
 
 	EXISTS  shift 32
 	COALESCE  shift 22
@@ -6147,7 +6072,93 @@ state 255
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
+state 254
+	expr:  TRIM '(' expr ')'.    (47)
+
+	.  reduce 47 (src line 301)
+
+
+state 255
+	expr:  TRIM '(' expr ','.expr ')'
+
+	EXISTS  shift 32
+	COALESCE  shift 22
+	NULLIF  shift 23
+	EXTRACT  shift 28
+	DATE_TRUNC  shift 27
+	CAST  shift 24
+	UTCNOW  shift 29
+	DATE_ADD  shift 25
+	DATE_DIFF  shift 26
+	APPROX_COUNT_DISTINCT  shift 20
+	AGGREGATE  shift 19
+	ID  shift 8
+	'('  shift 40
+	'['  shift 41
+	'{'  shift 42
+	NULL  shift 46
+	TRUE  shift 44
+	FALSE  shift 45
+	MISSING  shift 47
+	'~'  shift 35
+	NOT  shift 34
+	CASE  shift 21
+	TRIM  shift 30
+	'-'  shift 33
+	NUMBER  shift 43
+	ION  shift 49
+	STRING  shift 48
+	.  error
+
+	expr  goto 303
+	datum  goto 39
+	datum_or_parens  goto 18
+	path_expression  goto 50
+	explicit_struct_definition  goto 37
+	explicit_list_definition  goto 36
+	identifier  goto 31
+
 state 256
+	expr:  TRIM '(' expr FROM.expr ')'
+
+	EXISTS  shift 32
+	COALESCE  shift 22
+	NULLIF  shift 23
+	EXTRACT  shift 28
+	DATE_TRUNC  shift 27
+	CAST  shift 24
+	UTCNOW  shift 29
+	DATE_ADD  shift 25
+	DATE_DIFF  shift 26
+	APPROX_COUNT_DISTINCT  shift 20
+	AGGREGATE  shift 19
+	ID  shift 8
+	'('  shift 40
+	'['  shift 41
+	'{'  shift 42
+	NULL  shift 46
+	TRUE  shift 44
+	FALSE  shift 45
+	MISSING  shift 47
+	'~'  shift 35
+	NOT  shift 34
+	CASE  shift 21
+	TRIM  shift 30
+	'-'  shift 33
+	NUMBER  shift 43
+	ION  shift 49
+	STRING  shift 48
+	.  error
+
+	expr  goto 304
+	datum  goto 39
+	datum_or_parens  goto 18
+	path_expression  goto 50
+	explicit_struct_definition  goto 37
+	explicit_list_definition  goto 36
+	identifier  goto 31
+
+state 257
 	expr:  TRIM '(' trim_type expr.FROM expr ')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
@@ -6192,7 +6203,7 @@ state 256
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	FROM  shift 303
+	FROM  shift 305
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -6226,73 +6237,73 @@ state 256
 	.  error
 
 
-state 257
-	expr:  identifier '(' value_list ')'.    (51)
-
-	.  reduce 51 (src line 331)
-
-
 state 258
-	path_component:  '.' identifier path_component.    (132)
+	expr:  identifier '(' value_list ')'.    (52)
 
-	.  reduce 132 (src line 603)
+	.  reduce 52 (src line 341)
 
 
 state 259
-	path_component:  '[' literal_int ']'.path_component
-	path_component: .    (131)
+	path_component:  '.' identifier path_component.    (133)
 
-	'['  shift 105
-	'.'  shift 104
-	.  reduce 131 (src line 601)
+	.  reduce 133 (src line 613)
 
-	path_component  goto 304
 
 state 260
-	path_component:  '[' ID ']'.path_component
-	path_component: .    (131)
+	path_component:  '[' literal_int ']'.path_component
+	path_component: .    (132)
 
 	'['  shift 105
 	'.'  shift 104
-	.  reduce 131 (src line 601)
+	.  reduce 132 (src line 611)
 
-	path_component  goto 305
+	path_component  goto 306
 
 state 261
-	expr:  EXISTS '(' select_stmt ')'.    (54)
+	path_component:  '[' ID ']'.path_component
+	path_component: .    (132)
 
-	.  reduce 54 (src line 347)
+	'['  shift 105
+	'.'  shift 104
+	.  reduce 132 (src line 611)
 
+	path_component  goto 307
 
 state 262
-	unpivot:  UNPIVOT unpivot_source AS identifier.AT identifier
-	unpivot:  UNPIVOT unpivot_source AS identifier.    (165)
+	expr:  EXISTS '(' select_stmt ')'.    (55)
 
-	AT  shift 306
-	.  reduce 165 (src line 674)
+	.  reduce 55 (src line 357)
 
 
 state 263
-	unpivot:  UNPIVOT unpivot_source AT identifier.AS identifier
-	unpivot:  UNPIVOT unpivot_source AT identifier.    (166)
+	unpivot:  UNPIVOT unpivot_source AS identifier.AT identifier
+	unpivot:  UNPIVOT unpivot_source AS identifier.    (166)
 
-	AS  shift 307
-	.  reduce 166 (src line 675)
+	AT  shift 308
+	.  reduce 166 (src line 684)
 
 
 state 264
+	unpivot:  UNPIVOT unpivot_source AT identifier.AS identifier
+	unpivot:  UNPIVOT unpivot_source AT identifier.    (167)
+
+	AS  shift 309
+	.  reduce 167 (src line 685)
+
+
+state 265
 	select_stmt:  SELECT maybe_toplevel_distinct binding_list.from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
 	binding_list:  binding_list.',' value_binding
-	from_expr: .    (126)
+	from_expr: .    (127)
 
 	FROM  shift 126
 	','  shift 55
-	.  reduce 126 (src line 585)
+	.  reduce 127 (src line 595)
 
-	from_expr  goto 308
+	from_expr  goto 310
 	lhs_from_expr  goto 125
 
-state 265
+state 266
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -6335,7 +6346,7 @@ state 265
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	any_value_list:  any_value_list ',' expr.    (108)
+	any_value_list:  any_value_list ',' expr.    (109)
 
 	OR  shift 87
 	AND  shift 86
@@ -6367,16 +6378,16 @@ state 265
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 108 (src line 552)
-
-
-state 266
-	field_value_list:  field_value_list ',' field_value_pair.    (111)
-
-	.  reduce 111 (src line 558)
+	.  reduce 109 (src line 562)
 
 
 state 267
+	field_value_list:  field_value_list ',' field_value_pair.    (112)
+
+	.  reduce 112 (src line 568)
+
+
+state 268
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -6419,7 +6430,7 @@ state 267
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	field_value_pair:  STRING ':' expr.    (113)
+	field_value_pair:  STRING ':' expr.    (114)
 
 	OR  shift 87
 	AND  shift 86
@@ -6451,16 +6462,16 @@ state 267
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 113 (src line 563)
-
-
-state 268
-	maybe_toplevel_distinct:  DISTINCT ON '(' node_list ')'.    (29)
-
-	.  reduce 29 (src line 190)
+	.  reduce 114 (src line 573)
 
 
 state 269
+	maybe_toplevel_distinct:  DISTINCT ON '(' node_list ')'.    (29)
+
+	.  reduce 29 (src line 192)
+
+
+state 270
 	node_list:  node_list ','.expr
 
 	EXISTS  shift 32
@@ -6492,7 +6503,7 @@ state 269
 	STRING  shift 48
 	.  error
 
-	expr  goto 309
+	expr  goto 311
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -6500,29 +6511,29 @@ state 269
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 270
+state 271
 	cte_bindings:  cte_bindings ',' identifier AS '(' select_stmt ')'.    (8)
 
-	.  reduce 8 (src line 143)
+	.  reduce 8 (src line 145)
 
-
-state 271
-	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr.having_expr order_expr limit_expr offset_expr
-	having_expr: .    (144)
-
-	HAVING  shift 311
-	.  reduce 144 (src line 632)
-
-	having_expr  goto 310
 
 state 272
+	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr.having_expr order_expr limit_expr offset_expr
+	having_expr: .    (145)
+
+	HAVING  shift 313
+	.  reduce 145 (src line 642)
+
+	having_expr  goto 312
+
+state 273
 	group_expr:  GROUP.BY binding_list
 
-	BY  shift 312
+	BY  shift 314
 	.  error
 
 
-state 273
+state 274
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -6565,7 +6576,7 @@ state 273
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	where_expr:  WHERE expr.    (143)
+	where_expr:  WHERE expr.    (144)
 
 	OR  shift 87
 	AND  shift 86
@@ -6597,132 +6608,132 @@ state 273
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 143 (src line 629)
-
-
-state 274
-	lhs_from_expr:  lhs_from_expr cross_symbol value_binding.    (128)
-
-	.  reduce 128 (src line 593)
+	.  reduce 144 (src line 639)
 
 
 state 275
-	lhs_from_expr:  lhs_from_expr join_kind value_binding.ON expr EQ expr
+	lhs_from_expr:  lhs_from_expr cross_symbol value_binding.    (129)
 
-	ON  shift 313
-	.  error
+	.  reduce 129 (src line 603)
 
 
 state 276
-	cross_symbol:  CROSS JOIN.    (124)
+	lhs_from_expr:  lhs_from_expr join_kind value_binding.ON expr EQ expr
 
-	.  reduce 124 (src line 582)
+	ON  shift 315
+	.  error
 
 
 state 277
-	join_kind:  INNER JOIN.    (117)
+	cross_symbol:  CROSS JOIN.    (125)
 
-	.  reduce 117 (src line 574)
+	.  reduce 125 (src line 592)
 
 
 state 278
-	join_kind:  LEFT JOIN.    (118)
+	join_kind:  INNER JOIN.    (118)
 
-	.  reduce 118 (src line 575)
+	.  reduce 118 (src line 584)
 
 
 state 279
-	join_kind:  LEFT OUTER.JOIN
+	join_kind:  LEFT JOIN.    (119)
 
-	JOIN  shift 314
-	.  error
+	.  reduce 119 (src line 585)
 
 
 state 280
-	join_kind:  RIGHT JOIN.    (120)
+	join_kind:  LEFT OUTER.JOIN
 
-	.  reduce 120 (src line 577)
+	JOIN  shift 316
+	.  error
 
 
 state 281
-	join_kind:  RIGHT OUTER.JOIN
+	join_kind:  RIGHT JOIN.    (121)
 
-	JOIN  shift 315
-	.  error
+	.  reduce 121 (src line 587)
 
 
 state 282
-	join_kind:  FULL JOIN.    (122)
+	join_kind:  RIGHT OUTER.JOIN
 
-	.  reduce 122 (src line 579)
+	JOIN  shift 317
+	.  error
 
 
 state 283
-	expr:  expr IN '(' select_stmt ')'.    (52)
+	join_kind:  FULL JOIN.    (123)
 
-	.  reduce 52 (src line 339)
+	.  reduce 123 (src line 589)
 
 
 state 284
-	expr:  expr IN '(' value_list ')'.    (53)
+	expr:  expr IN '(' select_stmt ')'.    (53)
 
-	.  reduce 53 (src line 343)
+	.  reduce 53 (src line 349)
 
 
 state 285
-	expr:  expr BETWEEN datum_or_parens AND datum_or_parens.    (80)
+	expr:  expr IN '(' value_list ')'.    (54)
 
-	.  reduce 80 (src line 451)
+	.  reduce 54 (src line 353)
 
 
 state 286
-	expr:  expr NOT SIMILAR TO STRING.    (83)
+	expr:  expr BETWEEN datum_or_parens AND datum_or_parens.    (81)
 
-	.  reduce 83 (src line 463)
+	.  reduce 81 (src line 461)
 
 
 state 287
-	expr:  AGGREGATE '(' maybe_distinct expr ')'.optional_filter maybe_window
-	optional_filter: .    (140)
+	expr:  expr NOT SIMILAR TO STRING.    (84)
 
-	FILTER  shift 289
-	.  reduce 140 (src line 624)
+	.  reduce 84 (src line 473)
 
-	optional_filter  goto 316
 
 state 288
-	expr:  AGGREGATE '(' '*' ')' optional_filter.maybe_window
-	maybe_window: .    (115)
+	expr:  AGGREGATE '(' maybe_distinct expr ')'.optional_filter maybe_window
+	optional_filter: .    (141)
 
-	OVER  shift 318
-	.  reduce 115 (src line 571)
+	FILTER  shift 290
+	.  reduce 141 (src line 634)
 
-	maybe_window  goto 317
+	optional_filter  goto 318
 
 state 289
-	optional_filter:  FILTER.'(' WHERE expr ')'
+	expr:  AGGREGATE '(' '*' ')' optional_filter.maybe_window
+	maybe_window: .    (116)
 
-	'('  shift 319
-	.  error
+	OVER  shift 320
+	.  reduce 116 (src line 581)
 
+	maybe_window  goto 319
 
 state 290
-	expr:  APPROX_COUNT_DISTINCT '(' expr ')' optional_filter.maybe_window
-	maybe_window: .    (115)
+	optional_filter:  FILTER.'(' WHERE expr ')'
 
-	OVER  shift 318
-	.  reduce 115 (src line 571)
-
-	maybe_window  goto 320
-
-state 291
-	expr:  APPROX_COUNT_DISTINCT '(' expr ',' literal_int.')' optional_filter maybe_window
-
-	')'  shift 321
+	'('  shift 321
 	.  error
 
 
+state 291
+	expr:  APPROX_COUNT_DISTINCT '(' expr ')' optional_filter.maybe_window
+	maybe_window: .    (116)
+
+	OVER  shift 320
+	.  reduce 116 (src line 581)
+
+	maybe_window  goto 322
+
 state 292
+	expr:  APPROX_COUNT_DISTINCT '(' expr ',' literal_int.')' optional_filter maybe_window
+
+	')'  shift 323
+	.  error
+
+
+state 293
 	case_limbs:  case_limbs WHEN expr THEN.expr
 
 	EXISTS  shift 32
@@ -6754,91 +6765,13 @@ state 292
 	STRING  shift 48
 	.  error
 
-	expr  goto 322
+	expr  goto 324
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-
-state 293
-	expr:  expr.IN '(' select_stmt ')'
-	expr:  expr.IN '(' value_list ')'
-	expr:  expr.'|' expr
-	expr:  expr.'^' expr
-	expr:  expr.'&' expr
-	expr:  expr.SHIFT_LEFT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
-	expr:  expr.'+' expr
-	expr:  expr.'-' expr
-	expr:  expr.'*' expr
-	expr:  expr.'/' expr
-	expr:  expr.'%' expr
-	expr:  expr.CONCAT expr
-	expr:  expr.APPEND expr
-	expr:  expr.ILIKE STRING
-	expr:  expr.LIKE STRING
-	expr:  expr.SIMILAR TO STRING
-	expr:  expr.'~' STRING
-	expr:  expr.REGEXP_MATCH_CI STRING
-	expr:  expr.EQ expr
-	expr:  expr.NE expr
-	expr:  expr.LT expr
-	expr:  expr.LE expr
-	expr:  expr.GT expr
-	expr:  expr.GE expr
-	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens
-	expr:  expr.NOT LIKE STRING
-	expr:  expr.NOT ILIKE STRING
-	expr:  expr.NOT SIMILAR TO STRING
-	expr:  expr.NOT '~' STRING
-	expr:  expr.NOT REGEXP_MATCH_CI STRING
-	expr:  expr.AND expr
-	expr:  expr.OR expr
-	expr:  expr.IS NULL
-	expr:  expr.IS NOT NULL
-	expr:  expr.IS MISSING
-	expr:  expr.IS NOT MISSING
-	expr:  expr.IS TRUE
-	expr:  expr.IS NOT TRUE
-	expr:  expr.IS FALSE
-	expr:  expr.IS NOT FALSE
-	case_limbs:  WHEN expr THEN expr.    (138)
-
-	OR  shift 87
-	AND  shift 86
-	'~'  shift 76
-	NOT  shift 85
-	BETWEEN  shift 84
-	EQ  shift 78
-	NE  shift 79
-	LT  shift 80
-	LE  shift 81
-	GT  shift 82
-	GE  shift 83
-	SIMILAR  shift 75
-	REGEXP_MATCH_CI  shift 77
-	ILIKE  shift 73
-	LIKE  shift 74
-	IN  shift 59
-	IS  shift 88
-	'|'  shift 60
-	'^'  shift 61
-	'&'  shift 62
-	SHIFT_LEFT_LOGICAL  shift 63
-	SHIFT_RIGHT_ARITHMETIC  shift 65
-	SHIFT_RIGHT_LOGICAL  shift 64
-	'+'  shift 66
-	'-'  shift 67
-	'*'  shift 68
-	'/'  shift 69
-	'%'  shift 70
-	CONCAT  shift 71
-	APPEND  shift 72
-	.  reduce 138 (src line 620)
-
 
 state 294
 	expr:  expr.IN '(' select_stmt ')'
@@ -6883,7 +6816,7 @@ state 294
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	value_list:  value_list ',' expr.    (106)
+	case_limbs:  WHEN expr THEN expr.    (139)
 
 	OR  shift 87
 	AND  shift 86
@@ -6915,10 +6848,88 @@ state 294
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 106 (src line 547)
+	.  reduce 139 (src line 630)
 
 
 state 295
+	expr:  expr.IN '(' select_stmt ')'
+	expr:  expr.IN '(' value_list ')'
+	expr:  expr.'|' expr
+	expr:  expr.'^' expr
+	expr:  expr.'&' expr
+	expr:  expr.SHIFT_LEFT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
+	expr:  expr.'+' expr
+	expr:  expr.'-' expr
+	expr:  expr.'*' expr
+	expr:  expr.'/' expr
+	expr:  expr.'%' expr
+	expr:  expr.CONCAT expr
+	expr:  expr.APPEND expr
+	expr:  expr.ILIKE STRING
+	expr:  expr.LIKE STRING
+	expr:  expr.SIMILAR TO STRING
+	expr:  expr.'~' STRING
+	expr:  expr.REGEXP_MATCH_CI STRING
+	expr:  expr.EQ expr
+	expr:  expr.NE expr
+	expr:  expr.LT expr
+	expr:  expr.LE expr
+	expr:  expr.GT expr
+	expr:  expr.GE expr
+	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens
+	expr:  expr.NOT LIKE STRING
+	expr:  expr.NOT ILIKE STRING
+	expr:  expr.NOT SIMILAR TO STRING
+	expr:  expr.NOT '~' STRING
+	expr:  expr.NOT REGEXP_MATCH_CI STRING
+	expr:  expr.AND expr
+	expr:  expr.OR expr
+	expr:  expr.IS NULL
+	expr:  expr.IS NOT NULL
+	expr:  expr.IS MISSING
+	expr:  expr.IS NOT MISSING
+	expr:  expr.IS TRUE
+	expr:  expr.IS NOT TRUE
+	expr:  expr.IS FALSE
+	expr:  expr.IS NOT FALSE
+	value_list:  value_list ',' expr.    (107)
+
+	OR  shift 87
+	AND  shift 86
+	'~'  shift 76
+	NOT  shift 85
+	BETWEEN  shift 84
+	EQ  shift 78
+	NE  shift 79
+	LT  shift 80
+	LE  shift 81
+	GT  shift 82
+	GE  shift 83
+	SIMILAR  shift 75
+	REGEXP_MATCH_CI  shift 77
+	ILIKE  shift 73
+	LIKE  shift 74
+	IN  shift 59
+	IS  shift 88
+	'|'  shift 60
+	'^'  shift 61
+	'&'  shift 62
+	SHIFT_LEFT_LOGICAL  shift 63
+	SHIFT_RIGHT_ARITHMETIC  shift 65
+	SHIFT_RIGHT_LOGICAL  shift 64
+	'+'  shift 66
+	'-'  shift 67
+	'*'  shift 68
+	'/'  shift 69
+	'%'  shift 70
+	CONCAT  shift 71
+	APPEND  shift 72
+	.  reduce 107 (src line 557)
+
+
+state 296
 	expr:  NULLIF '(' expr ',' expr.')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
@@ -6963,7 +6974,7 @@ state 295
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	')'  shift 323
+	')'  shift 325
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -6997,14 +7008,14 @@ state 295
 	.  error
 
 
-state 296
+state 297
 	expr:  CAST '(' expr AS ID.')'
 
-	')'  shift 324
+	')'  shift 326
 	.  error
 
 
-state 297
+state 298
 	expr:  DATE_ADD '(' ID ',' expr.',' expr ')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
@@ -7049,7 +7060,7 @@ state 297
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	','  shift 325
+	','  shift 327
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -7083,7 +7094,7 @@ state 297
 	.  error
 
 
-state 298
+state 299
 	expr:  DATE_DIFF '(' ID ',' expr.',' expr ')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
@@ -7128,86 +7139,7 @@ state 298
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	','  shift 326
-	OR  shift 87
-	AND  shift 86
-	'~'  shift 76
-	NOT  shift 85
-	BETWEEN  shift 84
-	EQ  shift 78
-	NE  shift 79
-	LT  shift 80
-	LE  shift 81
-	GT  shift 82
-	GE  shift 83
-	SIMILAR  shift 75
-	REGEXP_MATCH_CI  shift 77
-	ILIKE  shift 73
-	LIKE  shift 74
-	IN  shift 59
-	IS  shift 88
-	'|'  shift 60
-	'^'  shift 61
-	'&'  shift 62
-	SHIFT_LEFT_LOGICAL  shift 63
-	SHIFT_RIGHT_ARITHMETIC  shift 65
-	SHIFT_RIGHT_LOGICAL  shift 64
-	'+'  shift 66
-	'-'  shift 67
-	'*'  shift 68
-	'/'  shift 69
-	'%'  shift 70
-	CONCAT  shift 71
-	APPEND  shift 72
-	.  error
-
-
-state 299
-	expr:  DATE_TRUNC '(' ID ',' expr.')'
-	expr:  expr.IN '(' select_stmt ')'
-	expr:  expr.IN '(' value_list ')'
-	expr:  expr.'|' expr
-	expr:  expr.'^' expr
-	expr:  expr.'&' expr
-	expr:  expr.SHIFT_LEFT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
-	expr:  expr.'+' expr 
-	expr:  expr.'-' expr 
-	expr:  expr.'*' expr 
-	expr:  expr.'/' expr 
-	expr:  expr.'%' expr 
-	expr:  expr.CONCAT expr 
-	expr:  expr.APPEND expr
-	expr:  expr.ILIKE STRING
-	expr:  expr.LIKE STRING
-	expr:  expr.SIMILAR TO STRING
-	expr:  expr.'~' STRING
-	expr:  expr.REGEXP_MATCH_CI STRING
-	expr:  expr.EQ expr
-	expr:  expr.NE expr
-	expr:  expr.LT expr
-	expr:  expr.LE expr 
-	expr:  expr.GT expr 
-	expr:  expr.GE expr 
-	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens 
-	expr:  expr.NOT LIKE STRING 
-	expr:  expr.NOT ILIKE STRING
-	expr:  expr.NOT SIMILAR TO STRING
-	expr:  expr.NOT '~' STRING
-	expr:  expr.NOT REGEXP_MATCH_CI STRING
-	expr:  expr.AND expr 
-	expr:  expr.OR expr 
-	expr:  expr.IS NULL 
-	expr:  expr.IS NOT NULL 
-	expr:  expr.IS MISSING 
-	expr:  expr.IS NOT MISSING 
-	expr:  expr.IS TRUE 
-	expr:  expr.IS NOT TRUE 
-	expr:  expr.IS FALSE
-	expr:  expr.IS NOT FALSE
-
-	')'  shift 327
+	','  shift 328
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -7242,165 +7174,14 @@ state 299
 
 
 state 300
-	expr:  EXTRACT '(' ID FROM expr.')'
-	expr:  expr.IN '(' select_stmt ')'
-	expr:  expr.IN '(' value_list ')'
-	expr:  expr.'|' expr
-	expr:  expr.'^' expr
-	expr:  expr.'&' expr
-	expr:  expr.SHIFT_LEFT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
-	expr:  expr.'+' expr 
-	expr:  expr.'-' expr 
-	expr:  expr.'*' expr 
-	expr:  expr.'/' expr 
-	expr:  expr.'%' expr 
-	expr:  expr.CONCAT expr 
-	expr:  expr.APPEND expr
-	expr:  expr.ILIKE STRING
-	expr:  expr.LIKE STRING
-	expr:  expr.SIMILAR TO STRING
-	expr:  expr.'~' STRING
-	expr:  expr.REGEXP_MATCH_CI STRING
-	expr:  expr.EQ expr
-	expr:  expr.NE expr
-	expr:  expr.LT expr
-	expr:  expr.LE expr 
-	expr:  expr.GT expr 
-	expr:  expr.GE expr 
-	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens 
-	expr:  expr.NOT LIKE STRING 
-	expr:  expr.NOT ILIKE STRING
-	expr:  expr.NOT SIMILAR TO STRING
-	expr:  expr.NOT '~' STRING
-	expr:  expr.NOT REGEXP_MATCH_CI STRING
-	expr:  expr.AND expr 
-	expr:  expr.OR expr 
-	expr:  expr.IS NULL 
-	expr:  expr.IS NOT NULL 
-	expr:  expr.IS MISSING 
-	expr:  expr.IS NOT MISSING 
-	expr:  expr.IS TRUE 
-	expr:  expr.IS NOT TRUE 
-	expr:  expr.IS FALSE
-	expr:  expr.IS NOT FALSE
+	expr:  DATE_TRUNC '(' ID '(' ID.')' ',' expr ')'
 
-	')'  shift 328
-	OR  shift 87
-	AND  shift 86
-	'~'  shift 76
-	NOT  shift 85
-	BETWEEN  shift 84
-	EQ  shift 78
-	NE  shift 79
-	LT  shift 80
-	LE  shift 81
-	GT  shift 82
-	GE  shift 83
-	SIMILAR  shift 75
-	REGEXP_MATCH_CI  shift 77
-	ILIKE  shift 73
-	LIKE  shift 74
-	IN  shift 59
-	IS  shift 88
-	'|'  shift 60
-	'^'  shift 61
-	'&'  shift 62
-	SHIFT_LEFT_LOGICAL  shift 63
-	SHIFT_RIGHT_ARITHMETIC  shift 65
-	SHIFT_RIGHT_LOGICAL  shift 64
-	'+'  shift 66
-	'-'  shift 67
-	'*'  shift 68
-	'/'  shift 69
-	'%'  shift 70
-	CONCAT  shift 71
-	APPEND  shift 72
+	')'  shift 329
 	.  error
 
 
 state 301
-	expr:  TRIM '(' expr ',' expr.')'
-	expr:  expr.IN '(' select_stmt ')'
-	expr:  expr.IN '(' value_list ')'
-	expr:  expr.'|' expr
-	expr:  expr.'^' expr
-	expr:  expr.'&' expr
-	expr:  expr.SHIFT_LEFT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_LOGICAL expr
-	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
-	expr:  expr.'+' expr 
-	expr:  expr.'-' expr 
-	expr:  expr.'*' expr 
-	expr:  expr.'/' expr 
-	expr:  expr.'%' expr 
-	expr:  expr.CONCAT expr 
-	expr:  expr.APPEND expr
-	expr:  expr.ILIKE STRING
-	expr:  expr.LIKE STRING
-	expr:  expr.SIMILAR TO STRING
-	expr:  expr.'~' STRING
-	expr:  expr.REGEXP_MATCH_CI STRING
-	expr:  expr.EQ expr
-	expr:  expr.NE expr
-	expr:  expr.LT expr
-	expr:  expr.LE expr 
-	expr:  expr.GT expr 
-	expr:  expr.GE expr 
-	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens 
-	expr:  expr.NOT LIKE STRING 
-	expr:  expr.NOT ILIKE STRING
-	expr:  expr.NOT SIMILAR TO STRING
-	expr:  expr.NOT '~' STRING
-	expr:  expr.NOT REGEXP_MATCH_CI STRING
-	expr:  expr.AND expr 
-	expr:  expr.OR expr 
-	expr:  expr.IS NULL 
-	expr:  expr.IS NOT NULL 
-	expr:  expr.IS MISSING 
-	expr:  expr.IS NOT MISSING 
-	expr:  expr.IS TRUE 
-	expr:  expr.IS NOT TRUE 
-	expr:  expr.IS FALSE
-	expr:  expr.IS NOT FALSE
-
-	')'  shift 329
-	OR  shift 87
-	AND  shift 86
-	'~'  shift 76
-	NOT  shift 85
-	BETWEEN  shift 84
-	EQ  shift 78
-	NE  shift 79
-	LT  shift 80
-	LE  shift 81
-	GT  shift 82
-	GE  shift 83
-	SIMILAR  shift 75
-	REGEXP_MATCH_CI  shift 77
-	ILIKE  shift 73
-	LIKE  shift 74
-	IN  shift 59
-	IS  shift 88
-	'|'  shift 60
-	'^'  shift 61
-	'&'  shift 62
-	SHIFT_LEFT_LOGICAL  shift 63
-	SHIFT_RIGHT_ARITHMETIC  shift 65
-	SHIFT_RIGHT_LOGICAL  shift 64
-	'+'  shift 66
-	'-'  shift 67
-	'*'  shift 68
-	'/'  shift 69
-	'%'  shift 70
-	CONCAT  shift 71
-	APPEND  shift 72
-	.  error
-
-
-state 302
-	expr:  TRIM '(' expr FROM expr.')'
+	expr:  DATE_TRUNC '(' ID ',' expr.')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -7478,7 +7259,244 @@ state 302
 	.  error
 
 
+state 302
+	expr:  EXTRACT '(' ID FROM expr.')'
+	expr:  expr.IN '(' select_stmt ')'
+	expr:  expr.IN '(' value_list ')'
+	expr:  expr.'|' expr
+	expr:  expr.'^' expr
+	expr:  expr.'&' expr
+	expr:  expr.SHIFT_LEFT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.CONCAT expr 
+	expr:  expr.APPEND expr
+	expr:  expr.ILIKE STRING
+	expr:  expr.LIKE STRING
+	expr:  expr.SIMILAR TO STRING
+	expr:  expr.'~' STRING
+	expr:  expr.REGEXP_MATCH_CI STRING
+	expr:  expr.EQ expr
+	expr:  expr.NE expr
+	expr:  expr.LT expr
+	expr:  expr.LE expr 
+	expr:  expr.GT expr 
+	expr:  expr.GE expr 
+	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens 
+	expr:  expr.NOT LIKE STRING 
+	expr:  expr.NOT ILIKE STRING
+	expr:  expr.NOT SIMILAR TO STRING
+	expr:  expr.NOT '~' STRING
+	expr:  expr.NOT REGEXP_MATCH_CI STRING
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.IS NULL 
+	expr:  expr.IS NOT NULL 
+	expr:  expr.IS MISSING 
+	expr:  expr.IS NOT MISSING 
+	expr:  expr.IS TRUE 
+	expr:  expr.IS NOT TRUE 
+	expr:  expr.IS FALSE
+	expr:  expr.IS NOT FALSE
+
+	')'  shift 331
+	OR  shift 87
+	AND  shift 86
+	'~'  shift 76
+	NOT  shift 85
+	BETWEEN  shift 84
+	EQ  shift 78
+	NE  shift 79
+	LT  shift 80
+	LE  shift 81
+	GT  shift 82
+	GE  shift 83
+	SIMILAR  shift 75
+	REGEXP_MATCH_CI  shift 77
+	ILIKE  shift 73
+	LIKE  shift 74
+	IN  shift 59
+	IS  shift 88
+	'|'  shift 60
+	'^'  shift 61
+	'&'  shift 62
+	SHIFT_LEFT_LOGICAL  shift 63
+	SHIFT_RIGHT_ARITHMETIC  shift 65
+	SHIFT_RIGHT_LOGICAL  shift 64
+	'+'  shift 66
+	'-'  shift 67
+	'*'  shift 68
+	'/'  shift 69
+	'%'  shift 70
+	CONCAT  shift 71
+	APPEND  shift 72
+	.  error
+
+
 state 303
+	expr:  TRIM '(' expr ',' expr.')'
+	expr:  expr.IN '(' select_stmt ')'
+	expr:  expr.IN '(' value_list ')'
+	expr:  expr.'|' expr
+	expr:  expr.'^' expr
+	expr:  expr.'&' expr
+	expr:  expr.SHIFT_LEFT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.CONCAT expr 
+	expr:  expr.APPEND expr
+	expr:  expr.ILIKE STRING
+	expr:  expr.LIKE STRING
+	expr:  expr.SIMILAR TO STRING
+	expr:  expr.'~' STRING
+	expr:  expr.REGEXP_MATCH_CI STRING
+	expr:  expr.EQ expr
+	expr:  expr.NE expr
+	expr:  expr.LT expr
+	expr:  expr.LE expr 
+	expr:  expr.GT expr 
+	expr:  expr.GE expr 
+	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens 
+	expr:  expr.NOT LIKE STRING 
+	expr:  expr.NOT ILIKE STRING
+	expr:  expr.NOT SIMILAR TO STRING
+	expr:  expr.NOT '~' STRING
+	expr:  expr.NOT REGEXP_MATCH_CI STRING
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.IS NULL 
+	expr:  expr.IS NOT NULL 
+	expr:  expr.IS MISSING 
+	expr:  expr.IS NOT MISSING 
+	expr:  expr.IS TRUE 
+	expr:  expr.IS NOT TRUE 
+	expr:  expr.IS FALSE
+	expr:  expr.IS NOT FALSE
+
+	')'  shift 332
+	OR  shift 87
+	AND  shift 86
+	'~'  shift 76
+	NOT  shift 85
+	BETWEEN  shift 84
+	EQ  shift 78
+	NE  shift 79
+	LT  shift 80
+	LE  shift 81
+	GT  shift 82
+	GE  shift 83
+	SIMILAR  shift 75
+	REGEXP_MATCH_CI  shift 77
+	ILIKE  shift 73
+	LIKE  shift 74
+	IN  shift 59
+	IS  shift 88
+	'|'  shift 60
+	'^'  shift 61
+	'&'  shift 62
+	SHIFT_LEFT_LOGICAL  shift 63
+	SHIFT_RIGHT_ARITHMETIC  shift 65
+	SHIFT_RIGHT_LOGICAL  shift 64
+	'+'  shift 66
+	'-'  shift 67
+	'*'  shift 68
+	'/'  shift 69
+	'%'  shift 70
+	CONCAT  shift 71
+	APPEND  shift 72
+	.  error
+
+
+state 304
+	expr:  TRIM '(' expr FROM expr.')'
+	expr:  expr.IN '(' select_stmt ')'
+	expr:  expr.IN '(' value_list ')'
+	expr:  expr.'|' expr
+	expr:  expr.'^' expr
+	expr:  expr.'&' expr
+	expr:  expr.SHIFT_LEFT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
+	expr:  expr.'+' expr 
+	expr:  expr.'-' expr 
+	expr:  expr.'*' expr 
+	expr:  expr.'/' expr 
+	expr:  expr.'%' expr 
+	expr:  expr.CONCAT expr 
+	expr:  expr.APPEND expr
+	expr:  expr.ILIKE STRING
+	expr:  expr.LIKE STRING
+	expr:  expr.SIMILAR TO STRING
+	expr:  expr.'~' STRING
+	expr:  expr.REGEXP_MATCH_CI STRING
+	expr:  expr.EQ expr
+	expr:  expr.NE expr
+	expr:  expr.LT expr
+	expr:  expr.LE expr 
+	expr:  expr.GT expr 
+	expr:  expr.GE expr 
+	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens 
+	expr:  expr.NOT LIKE STRING 
+	expr:  expr.NOT ILIKE STRING
+	expr:  expr.NOT SIMILAR TO STRING
+	expr:  expr.NOT '~' STRING
+	expr:  expr.NOT REGEXP_MATCH_CI STRING
+	expr:  expr.AND expr 
+	expr:  expr.OR expr 
+	expr:  expr.IS NULL 
+	expr:  expr.IS NOT NULL 
+	expr:  expr.IS MISSING 
+	expr:  expr.IS NOT MISSING 
+	expr:  expr.IS TRUE 
+	expr:  expr.IS NOT TRUE 
+	expr:  expr.IS FALSE
+	expr:  expr.IS NOT FALSE
+
+	')'  shift 333
+	OR  shift 87
+	AND  shift 86
+	'~'  shift 76
+	NOT  shift 85
+	BETWEEN  shift 84
+	EQ  shift 78
+	NE  shift 79
+	LT  shift 80
+	LE  shift 81
+	GT  shift 82
+	GE  shift 83
+	SIMILAR  shift 75
+	REGEXP_MATCH_CI  shift 77
+	ILIKE  shift 73
+	LIKE  shift 74
+	IN  shift 59
+	IS  shift 88
+	'|'  shift 60
+	'^'  shift 61
+	'&'  shift 62
+	SHIFT_LEFT_LOGICAL  shift 63
+	SHIFT_RIGHT_ARITHMETIC  shift 65
+	SHIFT_RIGHT_LOGICAL  shift 64
+	'+'  shift 66
+	'-'  shift 67
+	'*'  shift 68
+	'/'  shift 69
+	'%'  shift 70
+	CONCAT  shift 71
+	APPEND  shift 72
+	.  error
+
+
+state 305
 	expr:  TRIM '(' trim_type expr FROM.expr ')'
 
 	EXISTS  shift 32
@@ -7510,7 +7528,7 @@ state 303
 	STRING  shift 48
 	.  error
 
-	expr  goto 331
+	expr  goto 334
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -7518,44 +7536,44 @@ state 303
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 304
-	path_component:  '[' literal_int ']' path_component.    (133)
-
-	.  reduce 133 (src line 604)
-
-
-state 305
-	path_component:  '[' ID ']' path_component.    (134)
-
-	.  reduce 134 (src line 605)
-
-
 state 306
+	path_component:  '[' literal_int ']' path_component.    (134)
+
+	.  reduce 134 (src line 614)
+
+
+state 307
+	path_component:  '[' ID ']' path_component.    (135)
+
+	.  reduce 135 (src line 615)
+
+
+state 308
 	unpivot:  UNPIVOT unpivot_source AS identifier AT.identifier
 
 	ID  shift 8
 	.  error
 
-	identifier  goto 332
+	identifier  goto 335
 
-state 307
+state 309
 	unpivot:  UNPIVOT unpivot_source AT identifier AS.identifier
 
 	ID  shift 8
 	.  error
 
-	identifier  goto 333
+	identifier  goto 336
 
-state 308
+state 310
 	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr.where_expr group_expr having_expr order_expr limit_expr offset_expr
-	where_expr: .    (142)
+	where_expr: .    (143)
 
 	WHERE  shift 213
-	.  reduce 142 (src line 628)
+	.  reduce 143 (src line 638)
 
-	where_expr  goto 334
+	where_expr  goto 337
 
-state 309
+state 311
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -7598,7 +7616,7 @@ state 309
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	node_list:  node_list ',' expr.    (103)
+	node_list:  node_list ',' expr.    (104)
 
 	OR  shift 87
 	AND  shift 86
@@ -7630,19 +7648,19 @@ state 309
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 103 (src line 541)
+	.  reduce 104 (src line 551)
 
 
-state 310
+state 312
 	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr.order_expr limit_expr offset_expr
-	order_expr: .    (157)
+	order_expr: .    (158)
 
-	ORDER  shift 336
-	.  reduce 157 (src line 660)
+	ORDER  shift 339
+	.  reduce 158 (src line 670)
 
-	order_expr  goto 335
+	order_expr  goto 338
 
-state 311
+state 313
 	having_expr:  HAVING.expr
 
 	EXISTS  shift 32
@@ -7674,7 +7692,7 @@ state 311
 	STRING  shift 48
 	.  error
 
-	expr  goto 337
+	expr  goto 340
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -7682,7 +7700,7 @@ state 311
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 312
+state 314
 	group_expr:  GROUP BY.binding_list
 
 	EXISTS  shift 32
@@ -7724,10 +7742,10 @@ state 312
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	binding_list  goto 338
+	binding_list  goto 341
 	value_binding  goto 14
 
-state 313
+state 315
 	lhs_from_expr:  lhs_from_expr join_kind value_binding ON.expr EQ expr
 
 	EXISTS  shift 32
@@ -7759,7 +7777,7 @@ state 313
 	STRING  shift 48
 	.  error
 
-	expr  goto 339
+	expr  goto 342
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -7767,63 +7785,63 @@ state 313
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 314
-	join_kind:  LEFT OUTER JOIN.    (119)
-
-	.  reduce 119 (src line 576)
-
-
-state 315
-	join_kind:  RIGHT OUTER JOIN.    (121)
-
-	.  reduce 121 (src line 578)
-
-
 state 316
-	expr:  AGGREGATE '(' maybe_distinct expr ')' optional_filter.maybe_window
-	maybe_window: .    (115)
+	join_kind:  LEFT OUTER JOIN.    (120)
 
-	OVER  shift 318
-	.  reduce 115 (src line 571)
+	.  reduce 120 (src line 586)
 
-	maybe_window  goto 340
 
 state 317
-	expr:  AGGREGATE '(' '*' ')' optional_filter maybe_window.    (34)
+	join_kind:  RIGHT OUTER JOIN.    (122)
 
-	.  reduce 34 (src line 210)
+	.  reduce 122 (src line 588)
 
 
 state 318
-	maybe_window:  OVER.'(' PARTITION BY value_list order_expr ')'
+	expr:  AGGREGATE '(' maybe_distinct expr ')' optional_filter.maybe_window
+	maybe_window: .    (116)
 
-	'('  shift 341
-	.  error
+	OVER  shift 320
+	.  reduce 116 (src line 581)
 
+	maybe_window  goto 343
 
 state 319
-	optional_filter:  FILTER '('.WHERE expr ')'
+	expr:  AGGREGATE '(' '*' ')' optional_filter maybe_window.    (34)
 
-	WHERE  shift 342
-	.  error
+	.  reduce 34 (src line 212)
 
 
 state 320
-	expr:  APPROX_COUNT_DISTINCT '(' expr ')' optional_filter maybe_window.    (35)
+	maybe_window:  OVER.'(' PARTITION BY value_list order_expr ')'
 
-	.  reduce 35 (src line 219)
+	'('  shift 344
+	.  error
 
 
 state 321
-	expr:  APPROX_COUNT_DISTINCT '(' expr ',' literal_int ')'.optional_filter maybe_window
-	optional_filter: .    (140)
+	optional_filter:  FILTER '('.WHERE expr ')'
 
-	FILTER  shift 289
-	.  reduce 140 (src line 624)
+	WHERE  shift 345
+	.  error
 
-	optional_filter  goto 343
 
 state 322
+	expr:  APPROX_COUNT_DISTINCT '(' expr ')' optional_filter maybe_window.    (35)
+
+	.  reduce 35 (src line 221)
+
+
+state 323
+	expr:  APPROX_COUNT_DISTINCT '(' expr ',' literal_int ')'.optional_filter maybe_window
+	optional_filter: .    (141)
+
+	FILTER  shift 290
+	.  reduce 141 (src line 634)
+
+	optional_filter  goto 346
+
+state 324
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -7866,7 +7884,7 @@ state 322
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	case_limbs:  case_limbs WHEN expr THEN expr.    (139)
+	case_limbs:  case_limbs WHEN expr THEN expr.    (140)
 
 	OR  shift 87
 	AND  shift 86
@@ -7898,22 +7916,22 @@ state 322
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 139 (src line 622)
-
-
-state 323
-	expr:  NULLIF '(' expr ',' expr ')'.    (39)
-
-	.  reduce 39 (src line 243)
-
-
-state 324
-	expr:  CAST '(' expr AS ID ')'.    (40)
-
-	.  reduce 40 (src line 247)
+	.  reduce 140 (src line 632)
 
 
 state 325
+	expr:  NULLIF '(' expr ',' expr ')'.    (39)
+
+	.  reduce 39 (src line 245)
+
+
+state 326
+	expr:  CAST '(' expr AS ID ')'.    (40)
+
+	.  reduce 40 (src line 249)
+
+
+state 327
 	expr:  DATE_ADD '(' ID ',' expr ','.expr ')'
 
 	EXISTS  shift 32
@@ -7945,7 +7963,7 @@ state 325
 	STRING  shift 48
 	.  error
 
-	expr  goto 344
+	expr  goto 347
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -7953,7 +7971,7 @@ state 325
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 326
+state 328
 	expr:  DATE_DIFF '(' ID ',' expr ','.expr ')'
 
 	EXISTS  shift 32
@@ -7985,7 +8003,7 @@ state 326
 	STRING  shift 48
 	.  error
 
-	expr  goto 345
+	expr  goto 348
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -7993,31 +8011,38 @@ state 326
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 327
-	expr:  DATE_TRUNC '(' ID ',' expr ')'.    (43)
-
-	.  reduce 43 (src line 271)
-
-
-state 328
-	expr:  EXTRACT '(' ID FROM expr ')'.    (44)
-
-	.  reduce 44 (src line 279)
-
-
 state 329
-	expr:  TRIM '(' expr ',' expr ')'.    (47)
+	expr:  DATE_TRUNC '(' ID '(' ID ')'.',' expr ')'
 
-	.  reduce 47 (src line 299)
+	','  shift 349
+	.  error
 
 
 state 330
-	expr:  TRIM '(' expr FROM expr ')'.    (48)
+	expr:  DATE_TRUNC '(' ID ',' expr ')'.    (44)
 
-	.  reduce 48 (src line 307)
+	.  reduce 44 (src line 281)
 
 
 state 331
+	expr:  EXTRACT '(' ID FROM expr ')'.    (45)
+
+	.  reduce 45 (src line 289)
+
+
+state 332
+	expr:  TRIM '(' expr ',' expr ')'.    (48)
+
+	.  reduce 48 (src line 309)
+
+
+state 333
+	expr:  TRIM '(' expr FROM expr ')'.    (49)
+
+	.  reduce 49 (src line 317)
+
+
+state 334
 	expr:  TRIM '(' trim_type expr FROM expr.')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
@@ -8062,7 +8087,7 @@ state 331
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	')'  shift 346
+	')'  shift 350
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -8096,44 +8121,44 @@ state 331
 	.  error
 
 
-state 332
-	unpivot:  UNPIVOT unpivot_source AS identifier AT identifier.    (163)
-
-	.  reduce 163 (src line 672)
-
-
-state 333
-	unpivot:  UNPIVOT unpivot_source AT identifier AS identifier.    (164)
-
-	.  reduce 164 (src line 673)
-
-
-state 334
-	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr.group_expr having_expr order_expr limit_expr offset_expr
-	group_expr: .    (146)
-
-	GROUP  shift 272
-	.  reduce 146 (src line 636)
-
-	group_expr  goto 347
-
 state 335
-	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr.limit_expr offset_expr
-	limit_expr: .    (159)
+	unpivot:  UNPIVOT unpivot_source AS identifier AT identifier.    (164)
 
-	LIMIT  shift 349
-	.  reduce 159 (src line 664)
+	.  reduce 164 (src line 682)
 
-	limit_expr  goto 348
 
 state 336
-	order_expr:  ORDER.BY order_cols
+	unpivot:  UNPIVOT unpivot_source AT identifier AS identifier.    (165)
 
-	BY  shift 350
-	.  error
+	.  reduce 165 (src line 683)
 
 
 state 337
+	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr.group_expr having_expr order_expr limit_expr offset_expr
+	group_expr: .    (147)
+
+	GROUP  shift 273
+	.  reduce 147 (src line 646)
+
+	group_expr  goto 351
+
+state 338
+	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr.limit_expr offset_expr
+	limit_expr: .    (160)
+
+	LIMIT  shift 353
+	.  reduce 160 (src line 674)
+
+	limit_expr  goto 352
+
+state 339
+	order_expr:  ORDER.BY order_cols
+
+	BY  shift 354
+	.  error
+
+
+state 340
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -8176,7 +8201,7 @@ state 337
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	having_expr:  HAVING expr.    (145)
+	having_expr:  HAVING expr.    (146)
 
 	OR  shift 87
 	AND  shift 86
@@ -8208,18 +8233,18 @@ state 337
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 145 (src line 633)
+	.  reduce 146 (src line 643)
 
 
-state 338
+state 341
 	binding_list:  binding_list.',' value_binding
-	group_expr:  GROUP BY binding_list.    (147)
+	group_expr:  GROUP BY binding_list.    (148)
 
 	','  shift 55
-	.  reduce 147 (src line 637)
+	.  reduce 148 (src line 647)
 
 
-state 339
+state 342
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -8269,7 +8294,7 @@ state 339
 	'~'  shift 76
 	NOT  shift 85
 	BETWEEN  shift 84
-	EQ  shift 351
+	EQ  shift 355
 	NE  shift 79
 	LT  shift 80
 	LE  shift 81
@@ -8297,20 +8322,20 @@ state 339
 	.  error
 
 
-state 340
+state 343
 	expr:  AGGREGATE '(' maybe_distinct expr ')' optional_filter maybe_window.    (33)
 
-	.  reduce 33 (src line 202)
+	.  reduce 33 (src line 204)
 
 
-state 341
+state 344
 	maybe_window:  OVER '('.PARTITION BY value_list order_expr ')'
 
-	PARTITION  shift 352
+	PARTITION  shift 356
 	.  error
 
 
-state 342
+state 345
 	optional_filter:  FILTER '(' WHERE.expr ')'
 
 	EXISTS  shift 32
@@ -8342,7 +8367,7 @@ state 342
 	STRING  shift 48
 	.  error
 
-	expr  goto 353
+	expr  goto 357
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -8350,16 +8375,16 @@ state 342
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 343
+state 346
 	expr:  APPROX_COUNT_DISTINCT '(' expr ',' literal_int ')' optional_filter.maybe_window
-	maybe_window: .    (115)
+	maybe_window: .    (116)
 
-	OVER  shift 318
-	.  reduce 115 (src line 571)
+	OVER  shift 320
+	.  reduce 116 (src line 581)
 
-	maybe_window  goto 354
+	maybe_window  goto 358
 
-state 344
+state 347
 	expr:  DATE_ADD '(' ID ',' expr ',' expr.')'
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
@@ -8404,7 +8429,7 @@ state 344
 	expr:  expr.IS FALSE 
 	expr:  expr.IS NOT FALSE 
 
-	')'  shift 355
+	')'  shift 359
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -8438,7 +8463,7 @@ state 344
 	.  error
 
 
-state 345
+state 348
 	expr:  DATE_DIFF '(' ID ',' expr ',' expr.')' 
 	expr:  expr.IN '(' select_stmt ')' 
 	expr:  expr.IN '(' value_list ')' 
@@ -8483,7 +8508,7 @@ state 345
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 
-	')'  shift 356
+	')'  shift 360
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -8517,39 +8542,79 @@ state 345
 	.  error
 
 
-state 346
-	expr:  TRIM '(' trim_type expr FROM expr ')'.    (49)
-
-	.  reduce 49 (src line 315)
-
-
-state 347
-	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr.having_expr order_expr limit_expr offset_expr
-	having_expr: .    (144)
-
-	HAVING  shift 311
-	.  reduce 144 (src line 632)
-
-	having_expr  goto 357
-
-state 348
-	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr.offset_expr
-	offset_expr: .    (161)
-
-	OFFSET  shift 359
-	.  reduce 161 (src line 668)
-
-	offset_expr  goto 358
-
 state 349
+	expr:  DATE_TRUNC '(' ID '(' ID ')' ','.expr ')'
+
+	EXISTS  shift 32
+	COALESCE  shift 22
+	NULLIF  shift 23
+	EXTRACT  shift 28
+	DATE_TRUNC  shift 27
+	CAST  shift 24
+	UTCNOW  shift 29
+	DATE_ADD  shift 25
+	DATE_DIFF  shift 26
+	APPROX_COUNT_DISTINCT  shift 20
+	AGGREGATE  shift 19
+	ID  shift 8
+	'('  shift 40
+	'['  shift 41
+	'{'  shift 42
+	NULL  shift 46
+	TRUE  shift 44
+	FALSE  shift 45
+	MISSING  shift 47
+	'~'  shift 35
+	NOT  shift 34
+	CASE  shift 21
+	TRIM  shift 30
+	'-'  shift 33
+	NUMBER  shift 43
+	ION  shift 49
+	STRING  shift 48
+	.  error
+
+	expr  goto 361
+	datum  goto 39
+	datum_or_parens  goto 18
+	path_expression  goto 50
+	explicit_struct_definition  goto 37
+	explicit_list_definition  goto 36
+	identifier  goto 31
+
+state 350
+	expr:  TRIM '(' trim_type expr FROM expr ')'.    (50)
+
+	.  reduce 50 (src line 325)
+
+
+state 351
+	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr.having_expr order_expr limit_expr offset_expr
+	having_expr: .    (145)
+
+	HAVING  shift 313
+	.  reduce 145 (src line 642)
+
+	having_expr  goto 362
+
+state 352
+	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr.offset_expr
+	offset_expr: .    (162)
+
+	OFFSET  shift 364
+	.  reduce 162 (src line 678)
+
+	offset_expr  goto 363
+
+state 353
 	limit_expr:  LIMIT.literal_int
 
 	NUMBER  shift 197
 	.  error
 
-	literal_int  goto 360
+	literal_int  goto 365
 
-state 350
+state 354
 	order_expr:  ORDER BY.order_cols
 
 	EXISTS  shift 32
@@ -8581,17 +8646,17 @@ state 350
 	STRING  shift 48
 	.  error
 
-	expr  goto 363
+	expr  goto 368
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	order_one_col  goto 362
-	order_cols  goto 361
+	order_one_col  goto 367
+	order_cols  goto 366
 
-state 351
+state 355
 	expr:  expr EQ.expr
 	lhs_from_expr:  lhs_from_expr join_kind value_binding ON expr EQ.expr
 
@@ -8624,7 +8689,7 @@ state 351
 	STRING  shift 48
 	.  error
 
-	expr  goto 364
+	expr  goto 369
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
@@ -8632,14 +8697,14 @@ state 351
 	explicit_list_definition  goto 36
 	identifier  goto 31
 
-state 352
+state 356
 	maybe_window:  OVER '(' PARTITION.BY value_list order_expr ')'
 
-	BY  shift 365
+	BY  shift 370
 	.  error
 
 
-state 353
+state 357
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -8684,7 +8749,7 @@ state 353
 	expr:  expr.IS NOT FALSE
 	optional_filter:  FILTER '(' WHERE expr.')'
 
-	')'  shift 366
+	')'  shift 371
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -8718,68 +8783,147 @@ state 353
 	.  error
 
 
-state 354
+state 358
 	expr:  APPROX_COUNT_DISTINCT '(' expr ',' literal_int ')' optional_filter maybe_window.    (36)
 
-	.  reduce 36 (src line 227)
-
-
-state 355
-	expr:  DATE_ADD '(' ID ',' expr ',' expr ')'.    (41)
-
-	.  reduce 41 (src line 255)
-
-
-state 356
-	expr:  DATE_DIFF '(' ID ',' expr ',' expr ')'.    (42)
-
-	.  reduce 42 (src line 263)
-
-
-state 357
-	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr.order_expr limit_expr offset_expr
-	order_expr: .    (157)
-
-	ORDER  shift 336
-	.  reduce 157 (src line 660)
-
-	order_expr  goto 367
-
-state 358
-	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr.    (1)
-
-	.  reduce 1 (src line 120)
+	.  reduce 36 (src line 229)
 
 
 state 359
+	expr:  DATE_ADD '(' ID ',' expr ',' expr ')'.    (41)
+
+	.  reduce 41 (src line 257)
+
+
+state 360
+	expr:  DATE_DIFF '(' ID ',' expr ',' expr ')'.    (42)
+
+	.  reduce 42 (src line 265)
+
+
+state 361
+	expr:  DATE_TRUNC '(' ID '(' ID ')' ',' expr.')'
+	expr:  expr.IN '(' select_stmt ')'
+	expr:  expr.IN '(' value_list ')'
+	expr:  expr.'|' expr
+	expr:  expr.'^' expr
+	expr:  expr.'&' expr
+	expr:  expr.SHIFT_LEFT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_LOGICAL expr
+	expr:  expr.SHIFT_RIGHT_ARITHMETIC expr
+	expr:  expr.'+' expr
+	expr:  expr.'-' expr
+	expr:  expr.'*' expr
+	expr:  expr.'/' expr
+	expr:  expr.'%' expr
+	expr:  expr.CONCAT expr
+	expr:  expr.APPEND expr
+	expr:  expr.ILIKE STRING
+	expr:  expr.LIKE STRING
+	expr:  expr.SIMILAR TO STRING
+	expr:  expr.'~' STRING
+	expr:  expr.REGEXP_MATCH_CI STRING
+	expr:  expr.EQ expr
+	expr:  expr.NE expr
+	expr:  expr.LT expr
+	expr:  expr.LE expr
+	expr:  expr.GT expr
+	expr:  expr.GE expr
+	expr:  expr.BETWEEN datum_or_parens AND datum_or_parens
+	expr:  expr.NOT LIKE STRING
+	expr:  expr.NOT ILIKE STRING
+	expr:  expr.NOT SIMILAR TO STRING
+	expr:  expr.NOT '~' STRING
+	expr:  expr.NOT REGEXP_MATCH_CI STRING
+	expr:  expr.AND expr
+	expr:  expr.OR expr
+	expr:  expr.IS NULL
+	expr:  expr.IS NOT NULL
+	expr:  expr.IS MISSING
+	expr:  expr.IS NOT MISSING
+	expr:  expr.IS TRUE
+	expr:  expr.IS NOT TRUE
+	expr:  expr.IS FALSE
+	expr:  expr.IS NOT FALSE
+
+	')'  shift 372
+	OR  shift 87
+	AND  shift 86
+	'~'  shift 76
+	NOT  shift 85
+	BETWEEN  shift 84
+	EQ  shift 78
+	NE  shift 79
+	LT  shift 80
+	LE  shift 81
+	GT  shift 82
+	GE  shift 83
+	SIMILAR  shift 75
+	REGEXP_MATCH_CI  shift 77
+	ILIKE  shift 73
+	LIKE  shift 74
+	IN  shift 59
+	IS  shift 88
+	'|'  shift 60
+	'^'  shift 61
+	'&'  shift 62
+	SHIFT_LEFT_LOGICAL  shift 63
+	SHIFT_RIGHT_ARITHMETIC  shift 65
+	SHIFT_RIGHT_LOGICAL  shift 64
+	'+'  shift 66
+	'-'  shift 67
+	'*'  shift 68
+	'/'  shift 69
+	'%'  shift 70
+	CONCAT  shift 71
+	APPEND  shift 72
+	.  error
+
+
+state 362
+	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr.order_expr limit_expr offset_expr
+	order_expr: .    (158)
+
+	ORDER  shift 339
+	.  reduce 158 (src line 670)
+
+	order_expr  goto 373
+
+state 363
+	query:  maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr.    (1)
+
+	.  reduce 1 (src line 122)
+
+
+state 364
 	offset_expr:  OFFSET.literal_int
 
 	NUMBER  shift 197
 	.  error
 
-	literal_int  goto 368
+	literal_int  goto 374
 
-state 360
-	limit_expr:  LIMIT literal_int.    (160)
+state 365
+	limit_expr:  LIMIT literal_int.    (161)
 
-	.  reduce 160 (src line 665)
+	.  reduce 161 (src line 675)
 
 
-state 361
+state 366
 	order_cols:  order_cols.',' order_one_col
-	order_expr:  ORDER BY order_cols.    (158)
+	order_expr:  ORDER BY order_cols.    (159)
 
-	','  shift 369
-	.  reduce 158 (src line 661)
-
-
-state 362
-	order_cols:  order_one_col.    (156)
-
-	.  reduce 156 (src line 657)
+	','  shift 375
+	.  reduce 159 (src line 671)
 
 
-state 363
+state 367
+	order_cols:  order_one_col.    (157)
+
+	.  reduce 157 (src line 667)
+
+
+state 368
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -8823,10 +8967,10 @@ state 363
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
 	order_one_col:  expr.ascdesc nullslast
-	ascdesc: .    (151)
+	ascdesc: .    (152)
 
-	ASC  shift 371
-	DESC  shift 372
+	ASC  shift 377
+	DESC  shift 378
 	OR  shift 87
 	AND  shift 86
 	'~'  shift 76
@@ -8857,11 +9001,11 @@ state 363
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 151 (src line 647)
+	.  reduce 152 (src line 657)
 
-	ascdesc  goto 370
+	ascdesc  goto 376
 
-state 364
+state 369
 	expr:  expr.IN '(' select_stmt ')'
 	expr:  expr.IN '(' value_list ')'
 	expr:  expr.'|' expr
@@ -8883,7 +9027,7 @@ state 364
 	expr:  expr.'~' STRING
 	expr:  expr.REGEXP_MATCH_CI STRING
 	expr:  expr.EQ expr
-	expr:  expr EQ expr.    (74)
+	expr:  expr EQ expr.    (75)
 	expr:  expr.NE expr
 	expr:  expr.LT expr
 	expr:  expr.LE expr
@@ -8905,19 +9049,19 @@ state 364
 	expr:  expr.IS NOT TRUE
 	expr:  expr.IS FALSE
 	expr:  expr.IS NOT FALSE
-	lhs_from_expr:  lhs_from_expr join_kind value_binding ON expr EQ expr.    (129)
+	lhs_from_expr:  lhs_from_expr join_kind value_binding ON expr EQ expr.    (130)
 
-	OR  reduce 74 (src line 427)
-	AND  reduce 74 (src line 427)
-	'~'  reduce 74 (src line 427)
-	NOT  reduce 74 (src line 427)
-	BETWEEN  reduce 74 (src line 427)
-	EQ  reduce 74 (src line 427)
-	NE  reduce 74 (src line 427)
-	LT  reduce 74 (src line 427)
-	LE  reduce 74 (src line 427)
-	GT  reduce 74 (src line 427)
-	GE  reduce 74 (src line 427)
+	OR  reduce 75 (src line 437)
+	AND  reduce 75 (src line 437)
+	'~'  reduce 75 (src line 437)
+	NOT  reduce 75 (src line 437)
+	BETWEEN  reduce 75 (src line 437)
+	EQ  reduce 75 (src line 437)
+	NE  reduce 75 (src line 437)
+	LT  reduce 75 (src line 437)
+	LE  reduce 75 (src line 437)
+	GT  reduce 75 (src line 437)
+	GE  reduce 75 (src line 437)
 	SIMILAR  shift 75
 	REGEXP_MATCH_CI  shift 77
 	ILIKE  shift 73
@@ -8937,10 +9081,10 @@ state 364
 	'%'  shift 70
 	CONCAT  shift 71
 	APPEND  shift 72
-	.  reduce 129 (src line 594)
+	.  reduce 130 (src line 604)
 
 
-state 365
+state 370
 	maybe_window:  OVER '(' PARTITION BY.value_list order_expr ')'
 
 	EXISTS  shift 32
@@ -8980,30 +9124,36 @@ state 365
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	value_list  goto 373
+	value_list  goto 379
 
-state 366
-	optional_filter:  FILTER '(' WHERE expr ')'.    (141)
+state 371
+	optional_filter:  FILTER '(' WHERE expr ')'.    (142)
 
-	.  reduce 141 (src line 625)
+	.  reduce 142 (src line 635)
 
 
-state 367
+state 372
+	expr:  DATE_TRUNC '(' ID '(' ID ')' ',' expr ')'.    (43)
+
+	.  reduce 43 (src line 273)
+
+
+state 373
 	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr.limit_expr offset_expr
-	limit_expr: .    (159)
+	limit_expr: .    (160)
 
-	LIMIT  shift 349
-	.  reduce 159 (src line 664)
+	LIMIT  shift 353
+	.  reduce 160 (src line 674)
 
-	limit_expr  goto 374
+	limit_expr  goto 380
 
-state 368
-	offset_expr:  OFFSET literal_int.    (162)
+state 374
+	offset_expr:  OFFSET literal_int.    (163)
 
-	.  reduce 162 (src line 669)
+	.  reduce 163 (src line 679)
 
 
-state 369
+state 375
 	order_cols:  order_cols ','.order_one_col
 
 	EXISTS  shift 32
@@ -9035,117 +9185,117 @@ state 369
 	STRING  shift 48
 	.  error
 
-	expr  goto 363
+	expr  goto 368
 	datum  goto 39
 	datum_or_parens  goto 18
 	path_expression  goto 50
 	explicit_struct_definition  goto 37
 	explicit_list_definition  goto 36
 	identifier  goto 31
-	order_one_col  goto 375
-
-state 370
-	order_one_col:  expr ascdesc.nullslast
-	nullslast: .    (148)
-
-	NULLS  shift 377
-	.  reduce 148 (src line 641)
-
-	nullslast  goto 376
-
-state 371
-	ascdesc:  ASC.    (152)
-
-	.  reduce 152 (src line 648)
-
-
-state 372
-	ascdesc:  DESC.    (153)
-
-	.  reduce 153 (src line 649)
-
-
-state 373
-	value_list:  value_list.',' expr
-	maybe_window:  OVER '(' PARTITION BY value_list.order_expr ')'
-	order_expr: .    (157)
-
-	ORDER  shift 336
-	','  shift 246
-	.  reduce 157 (src line 660)
-
-	order_expr  goto 378
-
-state 374
-	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr.offset_expr
-	offset_expr: .    (161)
-
-	OFFSET  shift 359
-	.  reduce 161 (src line 668)
-
-	offset_expr  goto 379
-
-state 375
-	order_cols:  order_cols ',' order_one_col.    (155)
-
-	.  reduce 155 (src line 656)
-
+	order_one_col  goto 381
 
 state 376
-	order_one_col:  expr ascdesc nullslast.    (154)
+	order_one_col:  expr ascdesc.nullslast
+	nullslast: .    (149)
 
-	.  reduce 154 (src line 653)
+	NULLS  shift 383
+	.  reduce 149 (src line 651)
 
+	nullslast  goto 382
 
 state 377
-	nullslast:  NULLS.FIRST
-	nullslast:  NULLS.LAST
+	ascdesc:  ASC.    (153)
 
-	FIRST  shift 380
-	LAST  shift 381
-	.  error
+	.  reduce 153 (src line 658)
 
 
 state 378
-	maybe_window:  OVER '(' PARTITION BY value_list order_expr.')'
+	ascdesc:  DESC.    (154)
 
-	')'  shift 382
-	.  error
+	.  reduce 154 (src line 659)
 
 
 state 379
-	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr.    (2)
+	value_list:  value_list.',' expr
+	maybe_window:  OVER '(' PARTITION BY value_list.order_expr ')'
+	order_expr: .    (158)
 
-	.  reduce 2 (src line 129)
+	ORDER  shift 339
+	','  shift 246
+	.  reduce 158 (src line 670)
 
+	order_expr  goto 384
 
 state 380
-	nullslast:  NULLS FIRST.    (149)
+	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr.offset_expr
+	offset_expr: .    (162)
 
-	.  reduce 149 (src line 642)
+	OFFSET  shift 364
+	.  reduce 162 (src line 678)
 
+	offset_expr  goto 385
 
 state 381
-	nullslast:  NULLS LAST.    (150)
+	order_cols:  order_cols ',' order_one_col.    (156)
 
-	.  reduce 150 (src line 643)
+	.  reduce 156 (src line 666)
 
 
 state 382
-	maybe_window:  OVER '(' PARTITION BY value_list order_expr ')'.    (114)
+	order_one_col:  expr ascdesc nullslast.    (155)
 
-	.  reduce 114 (src line 566)
+	.  reduce 155 (src line 663)
+
+
+state 383
+	nullslast:  NULLS.FIRST
+	nullslast:  NULLS.LAST
+
+	FIRST  shift 386
+	LAST  shift 387
+	.  error
+
+
+state 384
+	maybe_window:  OVER '(' PARTITION BY value_list order_expr.')'
+
+	')'  shift 388
+	.  error
+
+
+state 385
+	select_stmt:  SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr.    (2)
+
+	.  reduce 2 (src line 131)
+
+
+state 386
+	nullslast:  NULLS FIRST.    (150)
+
+	.  reduce 150 (src line 652)
+
+
+state 387
+	nullslast:  NULLS LAST.    (151)
+
+	.  reduce 151 (src line 653)
+
+
+state 388
+	maybe_window:  OVER '(' PARTITION BY value_list order_expr ')'.    (115)
+
+	.  reduce 115 (src line 576)
 
 
 111 terminals, 46 nonterminals
-173 grammar rules, 383/16000 states
+174 grammar rules, 389/16000 states
 0 shift/reduce, 0 reduce/reduce conflicts reported
 95 working sets used
 memory: parser 884/240000
-295 extra closures
-3562 shift entries, 12 exceptions
-160 goto entries
-440 entries saved by goto default
-Optimizer space used: output 2009/240000
-2009 table entries, 652 zero
-maximum spread: 111, maximum offset: 374
+301 extra closures
+3624 shift entries, 12 exceptions
+161 goto entries
+446 entries saved by goto default
+Optimizer space used: output 2137/240000
+2137 table entries, 744 zero
+maximum spread: 111, maximum offset: 380

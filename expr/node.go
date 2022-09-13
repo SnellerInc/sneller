@@ -3013,6 +3013,36 @@ func (t *Timestamp) check(h Hint) error {
 	return nil
 }
 
+// Weekday identifies a day of week starting from Sunday (0) to Saturday (6)
+type Weekday int
+
+const (
+	Sunday Weekday = iota
+	Monday
+	Tuesday
+	Wednesday
+	Thursday
+	Friday
+	Saturday
+)
+
+var weekdayString = []string{
+	Sunday:    "SUNDAY",
+	Monday:    "MONDAY",
+	Tuesday:   "TUESDAY",
+	Wednesday: "WEDNESDAY",
+	Thursday:  "THURSDAY",
+	Friday:    "FRIDAY",
+	Saturday:  "SATURDAY",
+}
+
+func (w Weekday) String() string {
+	if w >= 0 && int(w) < len(weekdayString) {
+		return weekdayString[w]
+	}
+	return "UNKNOWN"
+}
+
 // Timepart is an identifier
 // that references part of a timestamp
 type Timepart int
@@ -3068,7 +3098,15 @@ func DateExtract(part Timepart, from Node) Node {
 }
 
 func DateTrunc(part Timepart, from Node) Node {
+	// A WEEK without a weekday is WEEK(SUNDAY)
+	if part == Week {
+		return Call("DATE_TRUNC_DOW", from, Integer(Sunday))
+	}
 	return Call("DATE_TRUNC_"+part.String(), from)
+}
+
+func DateTruncWeekday(from Node, dow Weekday) Node {
+	return Call("DATE_TRUNC_DOW", from, Integer(dow))
 }
 
 // Field is a field in a Struct literal,

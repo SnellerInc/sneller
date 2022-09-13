@@ -383,6 +383,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opdatetruncminute:        {text: "datetruncminute", flags: bcReadK | bcReadWriteS},
 	opdatetrunchour:          {text: "datetrunchour", flags: bcReadK | bcReadWriteS},
 	opdatetruncday:           {text: "datetruncday", flags: bcReadK | bcReadWriteS},
+	opdatetruncdow:           {text: "datetruncdow", imms: bcImmsU16, flags: bcReadK | bcReadWriteS},
 	opdatetruncmonth:         {text: "datetruncmonth", flags: bcReadK | bcReadWriteS},
 	opdatetruncquarter:       {text: "datetruncquarter", flags: bcReadK | bcReadWriteS},
 	opdatetruncyear:          {text: "datetruncyear", flags: bcReadK | bcReadWriteS},

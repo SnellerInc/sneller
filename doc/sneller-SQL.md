@@ -1171,8 +1171,8 @@ to the timestamp `time`.
 
 `part` can be one of the following keywords:
 
- - `MICROSECOND`
- - `MILLISECOND`
+ - `MICROSECOND` or `MICROSECONDS`
+ - `MILLISECOND` or `MILLISECONDS`
  - `SECOND`
  - `MINUTE`
  - `HOUR`
@@ -1191,8 +1191,8 @@ between `from` and `to` in terms of the date interval `part`.
 
 `part` can be one of the following keywords:
 
- - `MICROSECOND`
- - `MILLISECOND`
+ - `MICROSECOND` or `MICROSECONDS`
+ - `MILLISECOND` or `MILLISECONDS`
  - `SECOND`
  - `MINUTE`
  - `HOUR`
@@ -1210,12 +1210,13 @@ See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/dateti
 
 `part` can be one of the following keywords:
 
- - `MICROSECOND`
- - `MILLISECOND`
+ - `MICROSECOND` or `MICROSECONDS`
+ - `MILLISECOND` or `MILLISECONDS`
  - `SECOND`
  - `MINUTE`
  - `HOUR`
  - `DAY`
+ - `WEEK(SUNDAY|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY)`
  - `MONTH`
  - `QUARTER`
  - `YEAR`
@@ -1224,6 +1225,10 @@ See [Presto Timestamp functions](https://prestodb.io/docs/0.217/functions/dateti
 the components of the timestamp `expr` that are less precise
 than the precision given by `part`. In other words, `DATE_TRUNC(SECOND, x)`
 truncates the timestamp `x` down to the nearest second.
+
+`DATE_TRUNC()` also allows to truncate a date to a particular day of week.
+Use `DATE_TRUNC(WEEK(WEEKDAY))` to truncate a date to `SUNDAY`, `MONDAY`,
+`TUESDAY`, `WEDNESDAY`, `THURSDAY`, `FRIDAY`, or `SATURDAY`.
 
 (It can be useful to use the result of a `DATE_TRUNC()` expression
 as a group value in `GROUP BY` in order to build a histogram
@@ -1235,8 +1240,8 @@ with buckets corresponding to calendar dates.)
 
 `part` can be one of the following keywords:
 
- - `MICROSECOND` (the result includes seconds)
- - `MILLISECOND` (the result includes seconds)
+ - `MICROSECOND` or `MICROSECONDS` (the result includes seconds)
+ - `MILLISECOND` or `MILLISECONDS` (the result includes seconds)
  - `SECOND`
  - `MINUTE`
  - `HOUR`
