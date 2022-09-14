@@ -45,7 +45,7 @@ func (s *server) tablesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad tenant ID", http.StatusForbidden)
 		return
 	}
-	tables, err := db.Tables(e.(*sneller.FSEnv).Root, databaseName)
+	tables, err := db.Tables(e.Root, databaseName)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			http.Error(w, "no such database", http.StatusNotFound)

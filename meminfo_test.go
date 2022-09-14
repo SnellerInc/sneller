@@ -12,37 +12,18 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package sneller
 
 import (
-	"fmt"
-	"os"
 	"runtime"
+	"testing"
 )
 
-// memTotal is the total usable DRAM. On Linux, this
-// value is read from /proc/meminfo. On other systems,
-// this value remains zero and should be ignored.
-var memTotal int64
-
-func init() {
-	// Only Linux is supported for now.
+func TestMemTotal(t *testing.T) {
 	if runtime.GOOS != "linux" {
-		return
+		t.Skip()
 	}
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		panic(err)
+	if memTotal == 0 {
+		t.Fatal("memTotal should have been non-zero")
 	}
-	for {
-		n, err := fmt.Fscanf(f, "MemTotal: %d kB\n", &memTotal)
-		if err != nil {
-			panic("/proc/meminfo: " + err.Error())
-		}
-		if n > 0 {
-			memTotal *= 1024
-			break
-		}
-	}
-	f.Close()
 }

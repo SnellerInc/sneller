@@ -37,7 +37,7 @@ func (s *server) databasesHandler(w http.ResponseWriter, r *http.Request) {
 		writeInternalServerResponse(w, err)
 		return
 	}
-	res, err := db.List(e.(*sneller.FSEnv).Root)
+	res, err := db.List(e.Root)
 	if err != nil {
 		s.logger.Printf("unable to load databases for tenant '%v' %s\n", tenant, err)
 		writeInternalServerResponse(w, err)

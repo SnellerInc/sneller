@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package sneller
 
 import (
 	"crypto/md5"
@@ -139,7 +139,7 @@ func mksubs0(blobs, splits int) plan.Subtables {
 		b[i] = mkblob("https://example.com/blobs/" + words[i%len(words)])
 	}
 	f := expr.Is(expr.Identifier("foo"), expr.IsNull)
-	return &subtables{
+	return &Subtables{
 		splits: s,
 		table:  t,
 		blobs:  b,
@@ -164,7 +164,7 @@ func TestSubtables(t *testing.T) {
 	if err != nil {
 		t.Fatal("encoding:", err)
 	}
-	var tenv tenantEnv
+	var tenv TenantEnv
 	got, err := tenv.DecodeSubtables(&st, buf.Bytes())
 	if err != nil {
 		t.Fatal("decoding:", err)
@@ -222,18 +222,18 @@ func naivesize(subs plan.Subtables) int {
 }
 
 func subsequal(want, got plan.Subtables) error {
-	s1, ok := want.(*subtables)
+	s1, ok := want.(*Subtables)
 	if !ok {
 		return fmt.Errorf("want is not type *subtables")
 	}
-	s2, ok := got.(*subtables)
+	s2, ok := got.(*Subtables)
 	if !ok {
 		return fmt.Errorf("got is not type *subtables")
 	}
 	return subsequaln(0, s1, s2)
 }
 
-func subsequaln(n int, s1, s2 *subtables) error {
+func subsequaln(n int, s1, s2 *Subtables) error {
 	if !reflect.DeepEqual(s1.splits, s2.splits) {
 		return fmt.Errorf("sub %d: splits are not equal", n)
 	}

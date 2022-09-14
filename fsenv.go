@@ -60,7 +60,7 @@ type FSEnv struct {
 	modtime date.Time
 }
 
-func Environ(t db.Tenant, dbname string) (CachedEnv, error) {
+func Environ(t db.Tenant, dbname string) (*FSEnv, error) {
 	root, err := t.Root()
 	if err != nil {
 		return nil, err

@@ -27,6 +27,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SnellerInc/sneller"
+	"github.com/SnellerInc/sneller/auth"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
@@ -36,6 +38,8 @@ import (
 )
 
 var (
+	dashauth   string
+	dashd      string
 	dashf      bool
 	dashj      bool
 	dashN      bool
@@ -43,6 +47,7 @@ var (
 	dashg2     bool
 	dashg3     bool
 	dasho      string
+	dashtoken  string
 	dashnommap bool
 	printStats bool
 
@@ -50,6 +55,8 @@ var (
 )
 
 func init() {
+	flag.StringVar(&dashauth, "auth", "", "authorization provider for database object storage")
+	flag.StringVar(&dashd, "d", "", "default database name (requires -auth)")
 	flag.BoolVar(&dashf, "f", false, "read arguments as files containing queries")
 	flag.BoolVar(&dashg, "g", false, "just dump the query plan graphviz; do not execute")
 	flag.BoolVar(&dashg2, "g2", false, "just dump DFA of first regex graphviz; do not execute")
@@ -57,7 +64,8 @@ func init() {
 	flag.BoolVar(&dashj, "j", false, "write output as JSON instead of ion")
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
-	flag.BoolVar(&printStats, "S", false, "print exection statistics on stderr")
+	flag.BoolVar(&printStats, "S", false, "print execution statistics on stderr")
+	flag.StringVar(&dashtoken, "token", "", "token for auth provider (default SNELLER_TOKEN from env)")
 	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files (Linux only)")
 }
 
@@ -153,9 +161,37 @@ func parse(arg string) *expr.Query {
 	return q
 }
 
-func do(arg string) {
-	query := parse(arg)
-	tree, err := plan.New(query, eenv(func(e expr.Node, h *plan.Hints) (vm.Table, error) {
+func mkenv() plan.Env {
+	// database object storage via auth provider
+	if dashauth != "" {
+		token := dashtoken
+		if token == "" {
+			token = os.Getenv("SNELLER_TOKEN")
+		}
+		if token == "" {
+			exit(errors.New("no token provided via -token or SNELLER_TOKEN"))
+		}
+		prov, err := auth.Parse(dashauth)
+		if err != nil {
+			exit(err)
+		}
+		t, err := prov.Authorize(context.Background(), token)
+		if err != nil {
+			exit(err)
+		}
+		env, err := sneller.Environ(t, dashd)
+		if err != nil {
+			exit(err)
+		}
+		return &sneller.TenantEnv{FSEnv: env}
+	}
+	if dashd != "" {
+		exit(errors.New("-d can only be used with -auth"))
+	}
+	if dashtoken != "" {
+		exit(errors.New("-token can only be used with -auth"))
+	}
+	return eenv(func(e expr.Node, h *plan.Hints) (vm.Table, error) {
 		str, ok := e.(expr.String)
 		if !ok {
 			return nil, fmt.Errorf("unexpected table expression %s", expr.ToString(e))
@@ -186,7 +222,12 @@ func do(arg string) {
 			fields = []string{}
 		}
 		return srcTable(f, i.Size(), fields)
-	}))
+	})
+}
+
+func do(arg string) {
+	query := parse(arg)
+	tree, err := plan.New(query, mkenv())
 	if err != nil {
 		exit(err)
 	}

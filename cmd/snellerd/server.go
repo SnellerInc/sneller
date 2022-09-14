@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/SnellerInc/sneller"
 	"github.com/SnellerInc/sneller/auth"
 	"github.com/SnellerInc/sneller/cgroup"
 	"github.com/SnellerInc/sneller/tenant"
@@ -127,4 +128,16 @@ func (s *server) Serve(httpsock, tenantsock net.Listener) error {
 		s.aboutToServe()
 	}
 	return s.srv.Serve(httpsock)
+}
+
+func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *sneller.Splitter {
+	split := &sneller.Splitter{
+		SplitSize: s.splitSize,
+		WorkerID:  workerID,
+		Peers:     peers,
+	}
+	if s.remote != nil {
+		split.SelfAddr = s.remote.String()
+	}
+	return split
 }
