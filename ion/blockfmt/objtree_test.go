@@ -26,7 +26,6 @@ import (
 
 func TestIndirectTree(t *testing.T) {
 	var all []Descriptor
-	idx := Index{Algo: "zstd"}
 
 	dir := NewDirFS(t.TempDir())
 
@@ -110,14 +109,30 @@ func TestIndirectTree(t *testing.T) {
 
 	var key Key
 	rand.Read(key[:])
-	indexmem, err := Sign(&key, &idx)
+	empty := Index{Algo: "zstd"}
+	indexmem, err := Sign(&key, &empty)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var idx *Index
 	for i := 0; i < 100; i++ {
-		idx, err := DecodeIndex(&key, indexmem, 0)
+		// periodically re-load (must re-load @ 0)
+		idx2, err := DecodeIndex(&key, indexmem, 0)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if idx == nil {
+			idx = idx2
+		} else {
+			if !idx.Inputs.oldroot.Equal(idx2.Inputs.oldroot) {
+				t.Fatal("input trees not equivalent")
+			}
+			idx2.Inputs.oldroot = idx.Inputs.oldroot
+			if !reflect.DeepEqual(idx, idx2) {
+				t.Errorf("have: %+v", idx)
+				t.Errorf("data: %+v", idx2)
+				t.Fatal("index not equal")
+			}
 		}
 		// remove garbage early so that allRefs will fail
 		// if something was added to ToDelete that shouldn't have been...
@@ -203,7 +218,6 @@ func TestIndirectTree(t *testing.T) {
 				t.Fatalf("iter %d latestBelow didn't match", i)
 			}
 		}
-
 		indexmem, err = Sign(&key, idx)
 		if err != nil {
 			t.Fatal(err)

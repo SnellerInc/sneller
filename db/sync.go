@@ -255,14 +255,18 @@ func (b *Builder) popPrepend(idx *blockfmt.Index) *blockfmt.Descriptor {
 	return nil
 }
 
-func nextID(idx *blockfmt.Index) int {
-	return len(idx.Inline) + idx.Indirect.Objects()
+func (b *Builder) nextID(idx *blockfmt.Index) int {
+	n := len(idx.Inline) + idx.Indirect.Objects()
+	l := len(idx.Inline)
+	// keep in sync with popPrepend() logic
+	if l > 0 && idx.Inline[l-1].Size < b.minMergeSize() {
+		n--
+	}
+	return n
 }
 
 func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, error) {
-	prepend := st.conf.popPrepend(idx)
-	descID := nextID(idx)
-
+	descID := st.conf.nextID(idx)
 	// try to ensure the Append operations don't block;
 	// fetch all the tree leaves in parallel
 	idx.Inputs.Prefetch(lst)
@@ -290,6 +294,7 @@ func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfm
 		// nothing new to do; just bail
 		return nil, nil, nil
 	}
+	prepend := st.conf.popPrepend(idx)
 	if prepend != nil {
 		st.conf.logf("re-ingesting %s due to small size", prepend.Path)
 	}
@@ -344,6 +349,7 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 			}
 			_, err = st.scan(def, idx, true)
 			if err != nil {
+				invalidate(cache)
 				return err
 			}
 			// currently rebuilding; please try again
@@ -390,11 +396,14 @@ func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, 
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
 	if len(lst) == 0 {
-		err = st.emptyIndex()
+		if idx == nil {
+			err = st.emptyIndex()
+		}
 	} else {
 		err = st.force(idx, prepend, lst, cache)
 	}
 	if err != nil {
+		invalidate(cache)
 		return fmt.Errorf("force: %w", err)
 	}
 	st.conf.logf("update of table %s complete", st.table)
@@ -740,6 +749,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	})
 	err = st.flush(idx)
 	if err == nil {
+		overwrite(cache, idx)
 		err = st.runGC(idx)
 	}
 	return err

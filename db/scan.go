@@ -86,8 +86,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 
 	size := int64(0)
 	complete := true
-	prepend := st.conf.popPrepend(idx)
-	id := nextID(idx)
+	id := st.conf.nextID(idx)
 	for i := range def.Inputs {
 		if len(collect) >= maxInputs || size >= maxSize {
 			complete = false
@@ -176,6 +175,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 		}
 		return 0, nil
 	}
+	prepend := st.conf.popPrepend(idx)
 	err := st.force(idx, prepend, collect, nil)
 	if err != nil {
 		return 0, err

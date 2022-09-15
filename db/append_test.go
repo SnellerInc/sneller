@@ -131,6 +131,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	before := len(cache.value.Inline)
 
 	// confirm that it doesn't do anything
 	// a second time around
@@ -138,12 +139,17 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	owner.ro = true
 	err = b.Append(owner, "default", "parking", lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
 	owner.ro = false
+	after := len(cache.value.Inline)
+	if before != after {
+		t.Fatal("dropped entries from Inline in no-op")
+	}
 
 	lst, err = blockfmt.CollectGlob(dfs, raw, "b-prefix/*.block")
 	if err != nil {

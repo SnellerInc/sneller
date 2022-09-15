@@ -344,11 +344,11 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	if storedEtag != etag {
 		return fmt.Errorf("stored etag is %s instead of %s?", storedEtag, etag)
 	}
-	r.LastModified = date.FromTime(info.ModTime())
+	r.LastModified = date.FromTime(info.ModTime()).Truncate(time.Microsecond)
 	if prev != "" {
 		idx.ToDelete = append(idx.ToDelete, Quarantined{
 			Path:   prev,
-			Expiry: date.Now().Add(expiry),
+			Expiry: date.Now().Add(expiry).Truncate(time.Microsecond),
 		})
 	}
 	return nil
