@@ -102,16 +102,7 @@ func (s *S3BearerIdentity) Tenant() (db.Tenant, error) {
 	root.Bucket = u.Host
 	root.Key = aws.DeriveKey(c.BaseURI, c.AccessKeyID, c.SecretAccessKey, s.Region, "s3")
 	root.Key.Token = c.SessionToken
-	ret := &s3Tenant{
-		id:   s.ID,
-		root: root,
-		ikey: k,
-	}
-	ret.Client = root.Client
-	ret.DeriveKey = func(_ string) (*aws.SigningKey, error) {
-		return ret.root.Key, nil
-	}
-	return ret, nil
+	return S3Tenant(s.ID, root, k), nil
 }
 
 func (s *S3Bearer) client() *http.Client {
@@ -158,6 +149,19 @@ type s3Tenant struct {
 	id   string
 	root *db.S3FS
 	ikey *blockfmt.Key
+}
+
+func S3Tenant(id string, root *db.S3FS, key *blockfmt.Key) db.Tenant {
+	t := &s3Tenant{
+		id:   id,
+		root: root,
+		ikey: key,
+	}
+	t.Client = root.Client
+	t.DeriveKey = func(string) (*aws.SigningKey, error) {
+		return t.root.Key, nil
+	}
+	return t
 }
 
 func (s *s3Tenant) ID() string                { return s.id }

@@ -386,6 +386,9 @@ func BucketRegion(k *aws.SigningKey, bucket string) (string, error) {
 		return "", err
 	}
 	defer res.Body.Close()
+	if res.StatusCode == 403 {
+		return k.Region, nil
+	}
 	if res.StatusCode != 200 {
 		return "", fmt.Errorf("s3.BucketRegion: %s %q", res.Status, extractMessage(res.Body))
 	}
@@ -410,7 +413,7 @@ func DeriveForBucket(bucket string) aws.DeriveFn {
 			return nil, badBucket(bucket)
 		}
 		if service != "s3" {
-			return nil, fmt.Errorf("s3.DeriveForBucket: expected servie \"s3\"; got %q", service)
+			return nil, fmt.Errorf("s3.DeriveForBucket: expected service \"s3\"; got %q", service)
 		}
 		k := aws.DeriveKey(baseURI, id, secret, region, service)
 		k.Token = token

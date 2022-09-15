@@ -15,30 +15,34 @@
 package main
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/aws/s3"
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/vm"
 )
 
-func getKey(service, bucket string) *aws.SigningKey {
-	sk, err := aws.AmbientKey(service, s3.DeriveForBucket(bucket))
+func s3split(name string) (bucket, object string) {
+	name = strings.TrimPrefix(name, "s3://")
+	splitidx := strings.IndexByte(name, '/')
+	if splitidx == -1 {
+		return name, ""
+	}
+	return name[:splitidx], name[splitidx+1:]
+}
+
+func s3key(bucket string) *aws.SigningKey {
+	sk, err := aws.AmbientKey("s3", s3.DeriveForBucket(bucket))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		exit(err)
 	}
 	return sk
 }
 
 func s3object(name string) (vm.Table, error) {
-	name = strings.TrimPrefix(name, "s3://")
-	splitidx := strings.IndexByte(name, '/')
-	bucket := name[:splitidx]
-	object := name[splitidx+1:]
-	key := getKey("s3", bucket)
+	bucket, object := s3split(name)
+	key := s3key(bucket)
 	obj, err := s3.Stat(key, bucket, object)
 	if err != nil {
 		return nil, err
@@ -48,14 +52,24 @@ func s3object(name string) (vm.Table, error) {
 
 // s3-backed NDJSON table
 func s3nd(name string) (vm.Table, error) {
-	name = strings.TrimPrefix(name, "s3://")
-	splitidx := strings.IndexByte(name, '/')
-	bucket := name[:splitidx]
-	object := name[splitidx+1:]
-	key := getKey("s3", bucket)
+	bucket, object := s3split(name)
+	key := s3key(bucket)
 	obj, err := s3.Stat(key, bucket, object)
 	if err != nil {
 		return nil, err
 	}
 	return &jstable{in: obj, size: obj.Size()}, nil
+}
+
+func s3fs(name string) *db.S3FS {
+	bucket, object := s3split(name)
+	if object != "" {
+		exitf("S3 object key prefixes are not supported")
+	}
+	key := s3key(bucket)
+	root := &db.S3FS{}
+	root.Client = &s3.DefaultClient
+	root.Bucket = bucket
+	root.Key = key
+	return root
 }

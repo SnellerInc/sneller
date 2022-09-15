@@ -47,6 +47,7 @@ var (
 	dashg2     bool
 	dashg3     bool
 	dasho      string
+	dashr      string
 	dashtoken  string
 	dashnommap bool
 	printStats bool
@@ -56,7 +57,7 @@ var (
 
 func init() {
 	flag.StringVar(&dashauth, "auth", "", "authorization provider for database object storage")
-	flag.StringVar(&dashd, "d", "", "default database name (requires -auth)")
+	flag.StringVar(&dashd, "d", "", "default database name (requires -auth or -r)")
 	flag.BoolVar(&dashf, "f", false, "read arguments as files containing queries")
 	flag.BoolVar(&dashg, "g", false, "just dump the query plan graphviz; do not execute")
 	flag.BoolVar(&dashg2, "g2", false, "just dump DFA of first regex graphviz; do not execute")
@@ -64,6 +65,7 @@ func init() {
 	flag.BoolVar(&dashj, "j", false, "write output as JSON instead of ion")
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
+	flag.StringVar(&dashr, "r", "", "root of database object storage (S3 only)")
 	flag.BoolVar(&printStats, "S", false, "print execution statistics on stderr")
 	flag.StringVar(&dashtoken, "token", "", "token for auth provider (default SNELLER_TOKEN from env)")
 	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files (Linux only)")
@@ -164,12 +166,15 @@ func parse(arg string) *expr.Query {
 func mkenv() plan.Env {
 	// database object storage via auth provider
 	if dashauth != "" {
+		if dashr != "" {
+			exitf("-r cannot be used with -auth")
+		}
 		token := dashtoken
 		if token == "" {
 			token = os.Getenv("SNELLER_TOKEN")
 		}
 		if token == "" {
-			exit(errors.New("no token provided via -token or SNELLER_TOKEN"))
+			exitf("no token provided via -token or SNELLER_TOKEN")
 		}
 		prov, err := auth.Parse(dashauth)
 		if err != nil {
@@ -185,12 +190,26 @@ func mkenv() plan.Env {
 		}
 		return &sneller.TenantEnv{FSEnv: env}
 	}
-	if dashd != "" {
-		exit(errors.New("-d can only be used with -auth"))
-	}
 	if dashtoken != "" {
-		exit(errors.New("-token can only be used with -auth"))
+		exitf("-token can only be used with -auth")
 	}
+	// direct object storage access
+	if dashr != "" {
+		if strings.HasPrefix(dashr, "s3://") {
+			root := s3fs(dashr)
+			t := auth.S3Tenant("", root, nil)
+			env, err := sneller.Environ(t, dashd)
+			if err != nil {
+				exit(err)
+			}
+			return &sneller.TenantEnv{FSEnv: env}
+		}
+		exitf("-r can only be used with S3")
+	}
+	if dashd != "" {
+		exitf("-d can only be used with -auth or -r")
+	}
+	// direct table access
 	return eenv(func(e expr.Node, h *plan.Hints) (vm.Table, error) {
 		str, ok := e.(expr.String)
 		if !ok {
@@ -258,6 +277,10 @@ func do(arg string) {
 	if err != nil {
 		exit(err)
 	}
+}
+
+func exitf(f string, args ...any) {
+	exit(fmt.Errorf(f, args...))
 }
 
 func exit(err error) {
