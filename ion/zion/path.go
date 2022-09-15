@@ -34,6 +34,10 @@ func (p *pathset) set(x ion.Symbol) {
 	p.buckets |= 1 << sym2bucket(0, p.selector, x)
 }
 
+func (p *pathset) bucket(x ion.Symbol) int {
+	return sym2bucket(0, p.selector, x)
+}
+
 func (p *pathset) useBucket(i int) bool {
 	return p.buckets&(1<<i) != 0
 }

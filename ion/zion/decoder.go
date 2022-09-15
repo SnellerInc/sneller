@@ -274,29 +274,26 @@ func (d *Decoder) Count(src []byte) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("zion.Decoder.Count: parsing symbol table: %w", err)
 	}
-	count := 0
-	for len(shape) > 0 {
-		fc := shape[0] & 0x1f
-		if fc > 16 {
-			return count, fmt.Errorf("illegal struct descriptor byte %#x", shape[0])
-		}
-		if fc < 16 {
-			count++
-		}
-		skip := 1 + (int(fc)+1)/2
-		if len(shape) < skip {
-			return count, fmt.Errorf("descriptor %#x but %d bytes remaining in shape", shape[0], len(shape))
-		}
-		shape = shape[skip:]
+	ret, ok := shapecount(shape)
+	if !ok {
+		return 0, errCorrupt
 	}
-	return count, nil
+	return ret, nil
 }
+
+// count the number of records in shape
+//
+//go:noescape
+func shapecount(shape []byte) (int, bool)
 
 //go:noescape
 func zipfast(src, dst []byte, d *Decoder) (int, int)
 
 //go:noescape
 func zipall(src, dst []byte, d *Decoder) (int, int)
+
+//go:noescape
+func zipfast1(src, dst []byte, d *Decoder, sym ion.Symbol, count int) (int, int)
 
 var (
 	errCorrupt    = errors.New("corrupt input")
@@ -307,7 +304,40 @@ func (d *Decoder) zip(shape, dst []byte) (int, int) {
 	if !d.precise {
 		return zipall(shape, dst, d)
 	}
-	return zipfast(shape, dst, d)
+	if len(d.st.components) != 1 {
+		return zipfast(shape, dst, d)
+	}
+	// fast-path for single-symbol scan is basically
+	// to perform a memcpy of the source bucket
+	c, ok := shapecount(shape)
+	if !ok {
+		d.fault = faultBadData
+		return 0, 0
+	}
+	// extract the decompressed bucket memory
+	sym := d.st.components[0].symbol
+	bucket := d.set.bucket(sym)
+	pos := d.pos[bucket]
+	mem := d.mem[pos:]
+	if bucket < buckets-1 && d.pos[bucket+1] >= 0 {
+		mem = d.mem[:d.pos[bucket+1]]
+	}
+	// pre-compute the bounds check:
+	// the destination must fit N descriptors
+	// of a particular size class, plus the bucket size,
+	// plus 7 so that we can copy 8-byte chunks of data:
+	if len(dst) < (class(len(mem))+1)*c+len(mem)+7 {
+		d.fault = faultTooLarge
+		return 0, 0
+	}
+	consumed, wrote := zipfast1(mem, dst, d, sym, c)
+	if consumed > len(mem) {
+		panic("read out-of-bounds")
+	}
+	if wrote > len(dst) {
+		panic("zipfast1 wrote out-of-bounds")
+	}
+	return len(shape), wrote
 }
 
 // walk walks objects in shape and appends them to d.out

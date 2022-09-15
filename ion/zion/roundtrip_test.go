@@ -411,6 +411,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 			file: "cloudtrail.json",
 			fields: [][]string{
 				{},
+				{"eventType"},
 				{"eventTime"},
 				{"eventTime", "eventType"},
 				{"eventTime", "eventID", "hostname"},

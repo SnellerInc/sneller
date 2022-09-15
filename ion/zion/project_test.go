@@ -24,6 +24,8 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/slices"
 )
 
 // for a block of ion data, compute the projection
@@ -101,6 +103,23 @@ type projectionTester struct {
 	dec     Decoder
 }
 
+func onePartSortedEqual(d *Decoder, got, want []byte) bool {
+	if len(d.components) != 1 {
+		return false
+	}
+	sep := []byte{'\n'}
+
+	gotlines := bytes.Split(got, sep)
+	wantlines := bytes.Split(want, sep)
+
+	compare := func(x, y []byte) bool {
+		return bytes.Compare(x, y) < 0
+	}
+	slices.SortFunc(gotlines, compare)
+	slices.SortFunc(wantlines, compare)
+	return slices.EqualFunc(gotlines, wantlines, bytes.Equal)
+}
+
 func (p *projectionTester) Write(block []byte) (int, error) {
 	want := projectToJSON(p.t, block, p.fields)
 	compressed, err := p.enc.Encode(block, nil)
@@ -118,7 +137,7 @@ func (p *projectionTester) Write(block []byte) (int, error) {
 		p.t.Fatal(err)
 	}
 	got := toNDJSON(p.t, decompressed)
-	if !bytes.Equal(got, want) {
+	if !bytes.Equal(got, want) && !onePartSortedEqual(&p.dec, got, want) {
 		p.t.Logf("buckets: %#x", p.dec.set.buckets)
 		p.t.Logf("bits: %#x", p.dec.set.bits)
 		for i := range p.dec.st.components {
