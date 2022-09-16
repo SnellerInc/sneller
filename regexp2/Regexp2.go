@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"regexp"
 	"regexp/syntax"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -36,28 +37,6 @@ func IsSupported(expr string) error {
 	nRunesExpr := utf8.RuneCountInString(expr)
 	if nRunesExpr > MaxCharInRegex {
 		return fmt.Errorf("provided regex expression contains %v code-points which is more than the max %v", nRunesExpr, MaxCharInRegex)
-	}
-
-	// issues with regex "^(a^)" which gives a machine s1 -a> s2, but that machine is not correct
-	regexRunes := []rune(expr)
-	startOfLineCount := 0
-
-	for index, r := range regexRunes {
-		if r == '^' {
-			startOfLineCount++
-			if index > 0 {
-				previousRune := regexRunes[index-1]
-				if (previousRune == escapeChar) || (previousRune == '[') {
-					// found an escaped '^' or a caret inside a character
-					// class [^ ] which is an **inverted character class**
-					// do nothing
-				} else {
-					if startOfLineCount > 1 {
-						return fmt.Errorf("multiple start-of-line assertion '^' not supported")
-					}
-				}
-			}
-		}
 	}
 	return nil
 }
@@ -82,7 +61,7 @@ func Compile(expr string, regexType RegexType) (regex *regexp.Regexp, err error)
 		for index, r := range exprRunes {
 			escaped := (index > 0) && (exprRunes[index-1] == escapeChar)
 			switch r {
-			case '.', '^', '$': // characters '.', '^' and '$' are not meta-characters in "SIMILAR TO",
+			case '.', '^', '$': // characters '.', '^' and '$' are NOT meta-characters in "SIMILAR TO",
 				if escaped {
 					// found an escaped char, do not escape it again
 					newRegexRunes = append(newRegexRunes, r)
@@ -143,10 +122,12 @@ func extractProg(regex *regexp.Regexp) *syntax.Prog {
 
 // extractNFA extracts the NFA from regexp.Regexp instance using Go
 func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
+	// extract the NFA data-structure that has been created by Go to handle the provided regex
 	p := extractProg(regex)
+	// create an empty store of nodes
 	store := newNFAStore(maxNodes)
 
-	// create translation map for nodeIds from golangNFA -> NFA
+	// create translation map for nodeIDs from golangNFA to our NFA
 	translation := newMap[int, nodeIDT]()
 	{
 		idSet := newSet[int]()
@@ -173,6 +154,7 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 		}
 	}
 
+	// initialize the start node
 	store.startIDi = translation.at(p.Start)
 	if startNode, err := store.get(store.startIDi); err != nil {
 		return nil, err
@@ -180,6 +162,7 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 		startNode.start = true
 	}
 
+	// iterate over all instruction in the golangNFA and add nodes and edges to our NFA
 	for from := range p.Inst {
 		node, err := store.get(translation.at(from))
 		if err != nil {
@@ -201,20 +184,14 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 			nodeTo := translation.at(int(i.Out))
 			switch syntax.EmptyOp(i.Arg) {
 			//NOTE EmptyEndLine is issued for POSIX regex; EmptyEndText is issued for NON-POSIX regex
-			case syntax.EmptyEndLine:
-				//NOTE posix $: $ matches the end-of-line
-				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeTo})
 			case syntax.EmptyEndText:
 				//NOTE non-posix $: $ matches then end-of-line AND end-of-text
-				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, true), nodeTo})
-			case syntax.EmptyBeginLine:
-				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeTo})
-			case syntax.EmptyBeginText:
-				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeTo})
-			case syntax.EmptyNoWordBoundary:
-				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeTo})
-			case syntax.EmptyWordBoundary:
-				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeTo})
+				node.addEdgeInternal(edgeT{edgeRLZARange, nodeTo})
+			case syntax.EmptyEndLine:
+				//NOTE posix $: $ matches the end-of-line
+				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune), nodeTo})
+			case syntax.EmptyBeginLine, syntax.EmptyBeginText, syntax.EmptyNoWordBoundary, syntax.EmptyWordBoundary:
+				node.addEdgeInternal(edgeT{newSymbolRange(edgeEpsilonRune, edgeEpsilonRune), nodeTo})
 			default:
 				node.addEdgeRune(edgeEpsilonRune, nodeTo, false)
 			}
@@ -234,7 +211,7 @@ func extractNFA(regex *regexp.Regexp, maxNodes int) (*NFAStore, error) {
 				}
 				seq := i.Rune
 				for nRunes > 0 {
-					node.addEdge(newSymbolRange(seq[0], seq[1], false), translation.at(int(i.Out)))
+					node.addEdge(newSymbolRange(seq[0], seq[1]), translation.at(int(i.Out)))
 					nRunes -= 2
 					seq = seq[2:]
 				}
@@ -293,16 +270,19 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 	if err != nil {
 		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
-	dfaStore.removeEdgesFromAcceptNodes() // needed eg for regex "a|"
-	dfaStore.mergeAcceptNodes()
 
-	if err = dfaStore.renumberNodes(); err != nil {
-		return nil, fmt.Errorf("%v::CompileDFA", err)
-	}
+	dfaStore.removeEdgesFromAcceptNodes() // remove all outgoing edges from accepting nodes
+	dfaStore.mergeAcceptNodes()           // we can merge accept nodes since they do not have outgoing edges (anymore)
 
 	if writeDot {
 		name += "_min"
 		dfaStore.Dot().WriteToFile(tmpPath+name+".dot", name, regex.String())
 	}
 	return dfaStore, nil
+}
+
+// PrettyStrForDot makes the string pretty and usable for printing in dot files
+func PrettyStrForDot(str string) string {
+	str = strconv.Quote(strings.ReplaceAll(str, "\n", "0xA"))
+	return str[1 : len(str)-1] // trim leading and trailing '"'
 }

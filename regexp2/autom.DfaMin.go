@@ -111,7 +111,7 @@ func hopcroft(symbolSet setT[symbolRangeT], revEdges revEdgesT, dfaStore *DFASto
 	visited := newMap[string, uint32]()
 	vec := make([]*string, 0)
 
-	ids, _ := dfaStore.getIDs()
+	ids := dfaStore.getIDs()
 
 	for _, nodeID := range ids {
 		node, _ := dfaStore.get(nodeID)
@@ -220,7 +220,6 @@ func buildMinDfa(
 	maxNodes int) (*DFAStore, error) {
 
 	dfaStoreNew := newDFAStore(maxNodes)
-	dfaStoreNew.StartRLZA = dfaStoreOld.StartRLZA
 
 	nodes := newVector[nodeIDT]()
 	group := newMap[nodeIDT, nodeIDT]()

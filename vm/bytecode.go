@@ -554,7 +554,6 @@ var opinfo = [_maxbcop]bcopinfo{
 	opDfaT6Z: {text: "dfa_tiny6Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opDfaT7Z: {text: "dfa_tiny7Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opDfaT8Z: {text: "dfa_tiny8Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaL:   {text: "dfa_large", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opDfaLZ:  {text: "dfa_largeZ", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 
 	opslower:      {text: "slower", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},

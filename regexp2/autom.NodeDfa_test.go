@@ -47,12 +47,12 @@ func edgesToString(edges []edgeT) string {
 func TestMergeEdgeRanges(t *testing.T) {
 	{
 		node := new(DFA)
-		node.addEdge(edgeT{newSymbolRange('a', 'a', false), 0})
-		node.addEdge(edgeT{newSymbolRange('b', 'b', false), 0})
-		newEdges := node.mergeEdgeRanges()
+		node.addEdge(edgeT{newSymbolRange('a', 'a'), 0})
+		node.addEdge(edgeT{newSymbolRange('b', 'b'), 0})
+		newEdges := mergeEdgeRanges(node.edges, false)
 
 		expected := newVector[edgeT]()
-		expected.pushBack(edgeT{newSymbolRange('a', 'b', false), 0})
+		expected.pushBack(edgeT{newSymbolRange('a', 'b'), 0})
 
 		if !equalEdges(newEdges, expected) {
 			t.Errorf("A: Observed %v expected %v\n", edgesToString(newEdges), edgesToString(expected))
@@ -60,13 +60,13 @@ func TestMergeEdgeRanges(t *testing.T) {
 	}
 	{
 		node := new(DFA)
-		node.addEdge(edgeT{newSymbolRange('a', 'c', false), 0})
-		node.addEdge(edgeT{newSymbolRange('d', 'e', false), 1})
-		newEdges := node.mergeEdgeRanges()
+		node.addEdge(edgeT{newSymbolRange('a', 'c'), 0})
+		node.addEdge(edgeT{newSymbolRange('d', 'e'), 1})
+		newEdges := mergeEdgeRanges(node.edges, false)
 
 		expected := newVector[edgeT]()
-		expected.pushBack(edgeT{newSymbolRange('a', 'c', false), 0})
-		expected.pushBack(edgeT{newSymbolRange('d', 'e', false), 1})
+		expected.pushBack(edgeT{newSymbolRange('a', 'c'), 0})
+		expected.pushBack(edgeT{newSymbolRange('d', 'e'), 1})
 
 		if !equalEdges(newEdges, expected) {
 			t.Errorf("B: Observed %v expected %v\n", edgesToString(newEdges), edgesToString(expected))
@@ -74,12 +74,12 @@ func TestMergeEdgeRanges(t *testing.T) {
 	}
 	{
 		node := new(DFA)
-		node.addEdge(edgeT{newSymbolRange('a', 'c', false), 0})
-		node.addEdge(edgeT{newSymbolRange('d', 'e', false), 0})
-		newEdges := node.mergeEdgeRanges()
+		node.addEdge(edgeT{newSymbolRange('a', 'c'), 0})
+		node.addEdge(edgeT{newSymbolRange('d', 'e'), 0})
+		newEdges := mergeEdgeRanges(node.edges, false)
 
 		expected := newVector[edgeT]()
-		expected.pushBack(edgeT{newSymbolRange('a', 'e', false), 0})
+		expected.pushBack(edgeT{newSymbolRange('a', 'e'), 0})
 
 		if !equalEdges(newEdges, expected) {
 			t.Errorf("C: Observed %v expected %v\n", edgesToString(newEdges), edgesToString(expected))
@@ -87,13 +87,13 @@ func TestMergeEdgeRanges(t *testing.T) {
 	}
 	{
 		node := new(DFA)
-		node.addEdge(edgeT{newSymbolRange('H', 'H', false), 1})
-		node.addEdge(edgeT{newSymbolRange('I', utf8.MaxRune, false), 1})
-		node.addEdge(edgeT{newSymbolRange('D', 'G', false), 1})
-		newEdges := node.mergeEdgeRanges()
+		node.addEdge(edgeT{newSymbolRange('H', 'H'), 1})
+		node.addEdge(edgeT{newSymbolRange('I', utf8.MaxRune), 1})
+		node.addEdge(edgeT{newSymbolRange('D', 'G'), 1})
+		newEdges := mergeEdgeRanges(node.edges, false)
 
 		expected := newVector[edgeT]()
-		expected.pushBack(edgeT{newSymbolRange('D', utf8.MaxRune, false), 1})
+		expected.pushBack(edgeT{newSymbolRange('D', utf8.MaxRune), 1})
 
 		if !equalEdges(newEdges, expected) {
 			t.Errorf("D: Observed %v expected %v\n", edgesToString(newEdges), edgesToString(expected))

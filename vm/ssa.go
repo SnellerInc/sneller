@@ -810,8 +810,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sDfaT6Z: {text: "dfa_tiny6Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6Z},
 	sDfaT7Z: {text: "dfa_tiny7Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7Z},
 	sDfaT8Z: {text: "dfa_tiny8Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8Z},
-	sDfaL:   {text: "dfa_large", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaL},
-	sDfaLZ:  {text: "dfa_large_flags", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaLZ},
+	sDfaLZ:  {text: "dfa_largeZ", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaLZ},
 
 	// compare against a constant exactly
 	sequalconst: {text: "equalconst", argtypes: scalar1Args, rettype: stBool, immfmt: fmtother, emit: emitconstcmp},
@@ -2753,41 +2752,33 @@ func (p *prog) pattern(str *value, startStr string, middle []string, endStr stri
 
 // RegexMatch matches 'str' as a string against regex
 func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
-	hasRlza := store.HasRLZA()
-	if cpu.X86.HasAVX512VBMI && store.HasOnlyASCII() { // AVX512_VBMI -> Icelake
+	if cpu.X86.HasAVX512VBMI && !store.HasUnicodeEdge() { // AVX512_VBMI -> Icelake
+		hasRLZA := store.HasRLZA()
+		hasWildcard, wildcardRange := store.HasUnicodeWildcard()
 		if dsTiny, err := regexp2.NewDsTiny(store); err == nil {
-			if ds, valid := dsTiny.Data(6, hasRlza); valid {
-				if hasRlza {
+			if ds, valid := dsTiny.Data(6, hasWildcard, wildcardRange); valid {
+				if hasRLZA {
 					return p.ssa2imm(sDfaT6Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
 				}
 				return p.ssa2imm(sDfaT6, str, p.mask(str), p.Constant(string(ds)).imm), nil
 			}
-			if ds, valid := dsTiny.Data(7, hasRlza); valid {
-				if hasRlza {
+			if ds, valid := dsTiny.Data(7, hasWildcard, wildcardRange); valid {
+				if hasRLZA {
 					return p.ssa2imm(sDfaT7Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
 				}
 				return p.ssa2imm(sDfaT7, str, p.mask(str), p.Constant(string(ds)).imm), nil
 			}
-			if ds, valid := dsTiny.Data(8, hasRlza); valid {
-				if hasRlza {
+			if ds, valid := dsTiny.Data(8, hasWildcard, wildcardRange); valid {
+				if hasRLZA {
 					return p.ssa2imm(sDfaT8Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
 				}
 				return p.ssa2imm(sDfaT8, str, p.mask(str), p.Constant(string(ds)).imm), nil
 			}
 		}
-
-		// NOTE: when you end up here there is an internal error: generation of data-structure
-		// for TinyDFA failed. Continue to try Large.
 	}
-	if hasRlza {
-		if dsLargeZ, err := regexp2.NewDsLarge(store, true); err != nil {
-			return nil, fmt.Errorf("internal error: generation of data-structure for LargeZ failed")
-		} else {
-			return p.ssa2imm(sDfaLZ, str, p.mask(str), p.Constant(string(dsLargeZ.Data())).imm), nil
-		}
-	}
-	if dsLarge, err := regexp2.NewDsLarge(store, false); err == nil {
-		return p.ssa2imm(sDfaL, str, p.mask(str), p.Constant(string(dsLarge.Data())).imm), nil
+	// NOTE: when you end up here, the DFA could not be handled with Tiny implementation. Continue to try Large.
+	if dsLarge, err := regexp2.NewDsLarge(store); err == nil {
+		return p.ssa2imm(sDfaLZ, str, p.mask(str), p.Constant(string(dsLarge.Data())).imm), nil
 	}
 	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
 }

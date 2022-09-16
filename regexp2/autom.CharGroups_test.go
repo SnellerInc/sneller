@@ -21,12 +21,12 @@ import (
 func TestFindCharGroupsRange(t *testing.T) {
 	{
 		observed := newCharGroupsRange()
-		observed.add(newSymbolRange('0', '2', false))
-		observed.add(newSymbolRange('0', '9', false))
+		observed.add(newSymbolRange('0', '2'))
+		observed.add(newSymbolRange('0', '9'))
 
 		expected := newSet[symbolRangeT]()
-		expected.insert(newSymbolRange('0', '2', false))
-		expected.insert(newSymbolRange('3', '9', false))
+		expected.insert(newSymbolRange('0', '2'))
+		expected.insert(newSymbolRange('3', '9'))
 
 		if !observed.data.equal(&expected) {
 			t.Errorf("A: Observed %v; expected %v\n", symbolRangesToString(observed.data.toVector()), symbolRangesToString(expected.toVector()))
@@ -34,13 +34,13 @@ func TestFindCharGroupsRange(t *testing.T) {
 	}
 	{
 		observed := newCharGroupsRange()
-		observed.add(newSymbolRange('0', '2', false))
-		observed.add(newSymbolRange('2', '9', false))
+		observed.add(newSymbolRange('0', '2'))
+		observed.add(newSymbolRange('2', '9'))
 
 		expected := newSet[symbolRangeT]()
-		expected.insert(newSymbolRange('0', '1', false))
-		expected.insert(newSymbolRange('2', '2', false))
-		expected.insert(newSymbolRange('3', '9', false))
+		expected.insert(newSymbolRange('0', '1'))
+		expected.insert(newSymbolRange('2', '2'))
+		expected.insert(newSymbolRange('3', '9'))
 
 		if !observed.data.equal(&expected) {
 			t.Errorf("B: Observed %v; expected %v\n", symbolRangesToString(observed.data.toVector()), symbolRangesToString(expected.toVector()))
@@ -48,12 +48,12 @@ func TestFindCharGroupsRange(t *testing.T) {
 	}
 	{
 		observed := newCharGroupsRange()
-		observed.add(newSymbolRange('0', '0', false))
-		observed.add(newSymbolRange('0', '9', false))
+		observed.add(newSymbolRange('0', '0'))
+		observed.add(newSymbolRange('0', '9'))
 
 		expected := newSet[symbolRangeT]()
-		expected.insert(newSymbolRange('0', '0', false))
-		expected.insert(newSymbolRange('1', '9', false))
+		expected.insert(newSymbolRange('0', '0'))
+		expected.insert(newSymbolRange('1', '9'))
 
 		if !observed.data.equal(&expected) {
 			t.Errorf("C: Observed %v; expected %v\n", symbolRangesToString(observed.data.toVector()), symbolRangesToString(expected.toVector()))
@@ -61,23 +61,23 @@ func TestFindCharGroupsRange(t *testing.T) {
 	}
 	{ // groups for regex := "(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)"
 		observed := newCharGroupsRange()
-		observed.add(newSymbolRange('2', '2', false))
-		observed.add(newSymbolRange('.', '.', false))
-		observed.add(newSymbolRange('0', '9', false))
-		observed.add(newSymbolRange('0', '4', false))
-		observed.add(newSymbolRange('0', '5', false))
-		observed.add(newSymbolRange('0', '1', false))
-		observed.add(newSymbolRange('3', '9', false))
-		observed.add(newSymbolRange('5', '5', false))
-		observed.add(newSymbolRange('6', '9', false))
+		observed.add(newSymbolRange('2', '2'))
+		observed.add(newSymbolRange('.', '.'))
+		observed.add(newSymbolRange('0', '9'))
+		observed.add(newSymbolRange('0', '4'))
+		observed.add(newSymbolRange('0', '5'))
+		observed.add(newSymbolRange('0', '1'))
+		observed.add(newSymbolRange('3', '9'))
+		observed.add(newSymbolRange('5', '5'))
+		observed.add(newSymbolRange('6', '9'))
 
 		expected := newSet[symbolRangeT]()
-		expected.insert(newSymbolRange('.', '.', false))
-		expected.insert(newSymbolRange('0', '1', false))
-		expected.insert(newSymbolRange('2', '2', false))
-		expected.insert(newSymbolRange('3', '4', false))
-		expected.insert(newSymbolRange('5', '5', false))
-		expected.insert(newSymbolRange('6', '9', false))
+		expected.insert(newSymbolRange('.', '.'))
+		expected.insert(newSymbolRange('0', '1'))
+		expected.insert(newSymbolRange('2', '2'))
+		expected.insert(newSymbolRange('3', '4'))
+		expected.insert(newSymbolRange('5', '5'))
+		expected.insert(newSymbolRange('6', '9'))
 
 		if !observed.data.equal(&expected) {
 			t.Errorf("D: Observed %v; expected %v\n", symbolRangesToString(observed.data.toVector()), symbolRangesToString(expected.toVector()))
@@ -85,17 +85,17 @@ func TestFindCharGroupsRange(t *testing.T) {
 	}
 	{
 		observed := newCharGroupsRange()
-		observed.add(newSymbolRange('a', 'a', false))
-		observed.add(newSymbolRange('t', 't', false))
-		observed.add(newSymbolRange('a', 'b', false))
-		observed.add(newSymbolRange('s', 'u', false))
+		observed.add(newSymbolRange('a', 'a'))
+		observed.add(newSymbolRange('t', 't'))
+		observed.add(newSymbolRange('a', 'b'))
+		observed.add(newSymbolRange('s', 'u'))
 
 		expected := newSet[symbolRangeT]()
-		expected.insert(newSymbolRange('a', 'a', false))
-		expected.insert(newSymbolRange('t', 't', false))
-		expected.insert(newSymbolRange('b', 'b', false))
-		expected.insert(newSymbolRange('s', 's', false))
-		expected.insert(newSymbolRange('u', 'u', false))
+		expected.insert(newSymbolRange('a', 'a'))
+		expected.insert(newSymbolRange('t', 't'))
+		expected.insert(newSymbolRange('b', 'b'))
+		expected.insert(newSymbolRange('s', 's'))
+		expected.insert(newSymbolRange('u', 'u'))
 
 		if !observed.data.equal(&expected) {
 			t.Errorf("E: Observed %v; expected %v\n", symbolRangesToString(observed.data.toVector()), symbolRangesToString(expected.toVector()))

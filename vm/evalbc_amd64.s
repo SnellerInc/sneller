@@ -15168,156 +15168,188 @@ next:
 //; #endregion bcIsSubnetOfIP4
 
 //; #region bcDfaT6
-//; DfaT6 Deterministic Finite Automaton (DFA) with 6-bits lookup-key
+//; DfaT6 Deterministic Finite Automaton (DFA) with 6-bits lookup-key and unicode wildcard
 TEXT bcDfaT6(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
   VMOVDQU32     64(R14),Z22               //;E0639585 char_table2 := [needle_ptr+64]  ;Z22=char_table2; R14=needle_ptr;
   VMOVDQU32     128(R14),Z23              //;15D38369 trans_table1 := [needle_ptr+128];Z23=trans_table1; R14=needle_ptr;
-  KMOVQ         192(R14),K3               //;B91BA5FE load data for accept_table      ;K3=scratch; R14=needle_ptr;
-  VPMOVM2B      K7,  Z18                  //;81D5D35D store K7 in zmm18               ;Z18=storage1; K7=char4_valid;
-  VPMOVM2B      K3,  Z25                  //;6891DA5E load accept_table               ;Z25=accept_table; K3=scratch;
+  KMOVW         192(R14),K6               //;2C9E73B8 load wildcard enabled flag      ;K6=enabled_flag; R14=needle_ptr;
+  VPBROADCASTD  194(R14),Z5               //;803E3CDF load wildcard char-group        ;Z5=wildcard; R14=needle_ptr;
+  VPBROADCASTD  198(R14),Z13              //;6891DA5E load accept state               ;Z13=accept_state; R14=needle_ptr;
+//; load constants
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPADDD        Z10, Z10, Z26             //;92620230 constd_2 := 1 + 1               ;Z26=2; Z10=1;
-  VPADDD        Z10, Z26, Z27             //;45FD27E2 constd_3 := 2 + 1               ;Z27=3; Z26=2; Z10=1;
-  VPADDD        Z26, Z26, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z26=2;
-  VPBROADCASTD  CONSTD_0xFF(),Z19         //;77669B79 load constant 0xFF              ;Z19=0xFF;
-
+  VPADDD        Z10, Z10, Z15             //;92620230 constd_2 := 1 + 1               ;Z15=2; Z10=1;
+  VPADDD        Z10, Z15, Z16             //;45FD27E2 constd_3 := 2 + 1               ;Z16=3; Z15=2; Z10=1;
+  VPADDD        Z15, Z15, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z15=2;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z18  //;B323211A load table_n_bytes_utf8         ;Z18=table_n_bytes_utf8;
+//; init variables
   KMOVW         K1,  K2                   //;AE3AAD43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
   KXORW         K1,  K1,  K1              //;FA91A63F lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A start_state is state 1          ;Z7=curr_state; Z10=1;
-
-  VPERMB        Z25, Z7,  Z6              //;2A3FADE9 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z25=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;4C00DD82 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  KANDNW        K2,  K3,  K2              //;6FFB5DD9 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
-  KORW          K1,  K3,  K1              //;EDFCC3AE lane_active |= scratch          ;K1=lane_active; K3=scratch;
-  KTESTW        K2,  K2                   //;8F637100 any lane still todo?            ;K2=lane_todo;
-  JZ            next                      //;868E84CF jump if zero (ZF = 1)           ;
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPCMPD        $5,  Z10, Z3,  K4         //;850DE385 K4 := (str_len>=1)              ;K4=char1_valid; Z3=str_len; Z10=1; 5=GreaterEq;
-  VPCMPD        $5,  Z26, Z3,  K5         //;6C217CFD K5 := (str_len>=2)              ;K5=char2_valid; Z3=str_len; Z26=2; 5=GreaterEq;
-  VPCMPD        $5,  Z27, Z3,  K6         //;BBDE408E K6 := (str_len>=3)              ;K6=char3_valid; Z3=str_len; Z27=3; 5=GreaterEq;
-  VPCMPD        $5,  Z20, Z3,  K7         //;9B0EF476 K7 := (str_len>=4)              ;K7=char4_valid; Z3=str_len; Z20=4; 5=GreaterEq;
-  VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
-  VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
-
-  VPMOVB2M      Z8,  K3                   //;23A1705D extract non-ASCII mask          ;K3=scratch; Z8=data_msg;
+  VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
+//; determine whether a lane has a non-ASCII code-point
+  VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
+  VPCMPD        $4,  Z12, Z11, K2,  K3    //;92DE265B K3 := K2 & (0!=scratch_Z12); extract lanes with non-ASCII code-points;K3=scratch; K2=lane_todo; Z11=0; Z12=scratch_Z12; 4=NotEqual;
+  KTESTW        K6,  K3                   //;BCE8C4F2 feature enabled and non-ASCII present?;K3=scratch; K6=enabled_flag;
+  JNZ           skip_wildcard             //;10BF1BFB jump if not zero (ZF = 0)       ;
+//; get char-groups
   VPERMI2B      Z22, Z21, Z8              //;872E1226 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
-  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero           ;Z8=data_msg; K3=scratch; Z11=0;
-  VPSRLDQ       $1,  Z8,  Z13             //;838875D4 data_byte1 := data_msg>>1       ;Z13=data_byte1; Z8=data_msg;
-  VPSRLDQ       $2,  Z8,  Z14             //;A3694526 data_byte2 := data_msg>>2       ;Z14=data_byte2; Z8=data_msg;
-  VPSRLDQ       $3,  Z8,  Z15             //;876257E0 data_byte3 := data_msg>>3       ;Z15=data_byte3; Z8=data_msg;
-
+  VMOVDQU8      Z11, K5,  Z8              //;2BDE3FA8 set non-ASCII to zero group     ;Z8=data_msg; K5=lane_non-ASCII; Z11=0;
+//; handle 1st ASCII in data
+  VPCMPD        $5,  Z10, Z3,  K4         //;850DE385 K4 := (str_len>=1)              ;K4=char_valid; Z3=str_len; Z10=1; 5=GreaterEq;
   VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPORD         Z13, Z7,  Z9              //;6FD26853 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z13=data_byte1;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; handle 2nd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z15, Z3,  K4         //;6C217CFD K4 := (str_len>=2)              ;K4=char_valid; Z3=str_len; Z15=2; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;6FD26853 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K5,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K5=char2_valid; Z9=next_state;
-
-  VPORD         Z14, Z7,  Z9              //;BCCB1762 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z14=data_byte2;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; handle 3rd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z16, Z3,  K4         //;BBDE408E K4 := (str_len>=3)              ;K4=char_valid; Z3=str_len; Z16=3; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;BCCB1762 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K6,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K6=char3_valid; Z9=next_state;
-
-  VPORD         Z15, Z7,  Z9              //;42917E87 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z15=data_byte3;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; handle 4th ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z20, Z3,  K4         //;9B0EF476 K4 := (str_len>=4)              ;K4=char_valid; Z3=str_len; Z20=4; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;42917E87 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K7,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K7=char4_valid; Z9=next_state;
-
-  VPERMB        Z25, Z7,  Z6              //;7994D220 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z25=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;9A003B95 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  VPCMPUD       $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; advance 4 bytes (= 4 code-points)
+  VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
+  VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
+tail:
+  VPCMPD        $0,  Z7,  Z13, K2,  K3    //;9A003B95 K3 := K2 & (accept_state==curr_state);K3=scratch; K2=lane_todo; Z13=accept_state; Z7=curr_state; 0=Eq;
+  VPCMPD        $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;250BE13C K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
   KANDNW        K2,  K3,  K2              //;C9EB9B00 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
 next:
-  VPMOVB2M      Z18, K7                   //;32DD5999 Restore K7 from zmm18           ;K7=char4_valid; Z18=storage1;
   NEXT()
+
+skip_wildcard:
+//; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
+  VPSRLD        $4,  Z8,  Z12             //;FE5F1413 scratch_Z12 := data_msg>>4      ;Z12=scratch_Z12; Z8=data_msg;
+  VPERMD        Z18, Z12, Z12             //;68FECBA0 get scratch_Z12                 ;Z12=scratch_Z12; Z18=table_n_bytes_utf8;
+//; get char-groups
+  VPCMPD        $4,  Z12, Z10, K2,  K3    //;411A6A38 K3 := K2 & (1!=scratch_Z12)     ;K3=scratch; K2=lane_todo; Z10=1; Z12=scratch_Z12; 4=NotEqual;
+  VPERMI2B      Z22, Z21, Z8              //;285E91E6 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
+  VMOVDQU32     Z5,  K3,  Z8              //;D9B3425A set non-ASCII to wildcard group ;Z8=data_msg; K3=scratch; Z5=wildcard;
+//; advance 1 code-point
+  VPSUBD        Z12, Z3,  Z3              //;8575652C str_len -= scratch_Z12          ;Z3=str_len; Z12=scratch_Z12;
+  VPADDD        Z12, Z2,  Z2              //;A7D2A209 str_start += scratch_Z12        ;Z2=str_start; Z12=scratch_Z12;
+//; handle 1st code-point in data
+  VPCMPD        $5,  Z11, Z3,  K4         //;8DFA55D5 K4 := (str_len>=0)              ;K4=char_valid; Z3=str_len; Z11=0; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;A73B0AC3 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPERMB        Z23, Z9,  Z9              //;21B4F359 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
+  VMOVDQU32     Z9,  K4,  Z7              //;1A66952A curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT6
 
 //; #region bcDfaT7
-//; DfaT7 Deterministic Finite Automaton (DFA) with 7-bits lookup-key
+//; DfaT7 Deterministic Finite Automaton (DFA) with 7-bits lookup-key and unicode wildcard
 TEXT bcDfaT7(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
   VMOVDQU32     64(R14),Z22               //;E0639585 char_table2 := [needle_ptr+64]  ;Z22=char_table2; R14=needle_ptr;
   VMOVDQU32     128(R14),Z23              //;15D38369 trans_table1 := [needle_ptr+128];Z23=trans_table1; R14=needle_ptr;
   VMOVDQU32     192(R14),Z24              //;5DE9259D trans_table2 := [needle_ptr+192];Z24=trans_table2; R14=needle_ptr;
-  KMOVQ         256(R14),K3               //;B91BA5FE load data for accept_table      ;K3=scratch; R14=needle_ptr;
-  VPMOVM2B      K7,  Z18                  //;81D5D35D store K7 in zmm18               ;Z18=storage1; K7=char4_valid;
-  VPMOVM2B      K3,  Z25                  //;6891DA5E load accept_table               ;Z25=accept_table; K3=scratch;
+  KMOVW         256(R14),K6               //;2C9E73B8 load wildcard enabled flag      ;K6=enabled_flag; R14=needle_ptr;
+  VPBROADCASTD  258(R14),Z5               //;803E3CDF load wildcard char-group        ;Z5=wildcard; R14=needle_ptr;
+  VPBROADCASTD  262(R14),Z13              //;6891DA5E load accept nodeID              ;Z13=accept_node; R14=needle_ptr;
+//; load constants
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPADDD        Z10, Z10, Z26             //;92620230 constd_2 := 1 + 1               ;Z26=2; Z10=1;
-  VPADDD        Z10, Z26, Z27             //;45FD27E2 constd_3 := 2 + 1               ;Z27=3; Z26=2; Z10=1;
-  VPADDD        Z26, Z26, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z26=2;
-  VPBROADCASTD  CONSTD_0xFF(),Z19         //;77669B79 load constant 0xFF              ;Z19=0xFF;
-
+  VPADDD        Z10, Z10, Z15             //;92620230 constd_2 := 1 + 1               ;Z15=2; Z10=1;
+  VPADDD        Z10, Z15, Z16             //;45FD27E2 constd_3 := 2 + 1               ;Z16=3; Z15=2; Z10=1;
+  VPADDD        Z15, Z15, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z15=2;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z18  //;B323211A load table_n_bytes_utf8         ;Z18=table_n_bytes_utf8;
+//; init variables
   KMOVW         K1,  K2                   //;AE3AAD43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
   KXORW         K1,  K1,  K1              //;FA91A63F lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A start_state is state 1          ;Z7=curr_state; Z10=1;
-
-  VPERMB        Z25, Z7,  Z6              //;2A3FADE9 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z25=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;4C00DD82 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  KANDNW        K2,  K3,  K2              //;6FFB5DD9 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
-  KORW          K1,  K3,  K1              //;EDFCC3AE lane_active |= scratch          ;K1=lane_active; K3=scratch;
-  KTESTW        K2,  K2                   //;8F637100 any lane still todo?            ;K2=lane_todo;
-  JZ            next                      //;868E84CF jump if zero (ZF = 1)           ;
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPCMPD        $5,  Z10, Z3,  K4         //;850DE385 K4 := (str_len>=1)              ;K4=char1_valid; Z3=str_len; Z10=1; 5=GreaterEq;
-  VPCMPD        $5,  Z26, Z3,  K5         //;6C217CFD K5 := (str_len>=2)              ;K5=char2_valid; Z3=str_len; Z26=2; 5=GreaterEq;
-  VPCMPD        $5,  Z27, Z3,  K6         //;BBDE408E K6 := (str_len>=3)              ;K6=char3_valid; Z3=str_len; Z27=3; 5=GreaterEq;
-  VPCMPD        $5,  Z20, Z3,  K7         //;9B0EF476 K7 := (str_len>=4)              ;K7=char4_valid; Z3=str_len; Z20=4; 5=GreaterEq;
-  VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
-  VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
-
-  VPMOVB2M      Z8,  K3                   //;23A1705D extract non-ASCII mask          ;K3=scratch; Z8=data_msg;
+  VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
+//; determine whether a lane has a non-ASCII code-point
+  VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
+  VPCMPD        $4,  Z12, Z11, K2,  K3    //;92DE265B K3 := K2 & (0!=scratch_Z12); extract lanes with non-ASCII code-points;K3=scratch; K2=lane_todo; Z11=0; Z12=scratch_Z12; 4=NotEqual;
+  KTESTW        K6,  K3                   //;BCE8C4F2 feature enabled and non-ASCII present?;K3=scratch; K6=enabled_flag;
+  JNZ           skip_wildcard             //;10BF1BFB jump if not zero (ZF = 0)       ;
+//; get char-groups
   VPERMI2B      Z22, Z21, Z8              //;872E1226 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
-  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero           ;Z8=data_msg; K3=scratch; Z11=0;
-  VPSRLDQ       $1,  Z8,  Z13             //;838875D4 data_byte1 := data_msg>>1       ;Z13=data_byte1; Z8=data_msg;
-  VPSRLDQ       $2,  Z8,  Z14             //;A3694526 data_byte2 := data_msg>>2       ;Z14=data_byte2; Z8=data_msg;
-  VPSRLDQ       $3,  Z8,  Z15             //;876257E0 data_byte3 := data_msg>>3       ;Z15=data_byte3; Z8=data_msg;
-
+  VMOVDQU8      Z11, K5,  Z8              //;2BDE3FA8 set non-ASCII to zero group     ;Z8=data_msg; K5=lane_non-ASCII; Z11=0;
+//; handle 1st ASCII in data
+  VPCMPD        $5,  Z10, Z3,  K4         //;850DE385 K4 := (str_len>=1)              ;K4=char_valid; Z3=str_len; Z10=1; 5=GreaterEq;
   VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPORD         Z13, Z7,  Z9              //;6FD26853 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z13=data_byte1;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; handle 2nd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z15, Z3,  K4         //;6C217CFD K4 := (str_len>=2)              ;K4=char_valid; Z3=str_len; Z15=2; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;6FD26853 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K5,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K5=char2_valid; Z9=next_state;
-
-  VPORD         Z14, Z7,  Z9              //;BCCB1762 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z14=data_byte2;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; handle 3rd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z16, Z3,  K4         //;BBDE408E K4 := (str_len>=3)              ;K4=char_valid; Z3=str_len; Z16=3; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;BCCB1762 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K6,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K6=char3_valid; Z9=next_state;
-
-  VPORD         Z15, Z7,  Z9              //;42917E87 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z15=data_byte3;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; handle 4th ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z20, Z3,  K4         //;9B0EF476 K4 := (str_len>=4)              ;K4=char_valid; Z3=str_len; Z20=4; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;42917E87 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K7,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K7=char4_valid; Z9=next_state;
-
-  VPERMB        Z25, Z7,  Z6              //;7994D220 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z25=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;9A003B95 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  VPCMPUD       $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+//; advance 4 bytes (= 4 code-points)
+  VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
+  VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
+tail:
+  VPCMPD        $0,  Z7,  Z13, K2,  K3    //;9A003B95 K3 := K2 & (accept_node==curr_state);K3=scratch; K2=lane_todo; Z13=accept_node; Z7=curr_state; 0=Eq;
+  VPCMPD        $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;250BE13C K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
   KANDNW        K2,  K3,  K2              //;C9EB9B00 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
 next:
-  VPMOVB2M      Z18, K7                   //;32DD5999 Restore K7 from zmm18           ;K7=char4_valid; Z18=storage1;
   NEXT()
+
+skip_wildcard:
+//; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
+  VPSRLD        $4,  Z8,  Z12             //;FE5F1413 scratch_Z12 := data_msg>>4      ;Z12=scratch_Z12; Z8=data_msg;
+  VPERMD        Z18, Z12, Z12             //;68FECBA0 get scratch_Z12                 ;Z12=scratch_Z12; Z18=table_n_bytes_utf8;
+//; get char-groups
+  VPCMPD        $4,  Z12, Z10, K2,  K3    //;411A6A38 K3 := K2 & (1!=scratch_Z12)     ;K3=scratch; K2=lane_todo; Z10=1; Z12=scratch_Z12; 4=NotEqual;
+  VPERMI2B      Z22, Z21, Z8              //;285E91E6 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
+  VMOVDQU32     Z5,  K3,  Z8              //;D9B3425A set non-ASCII to wildcard group ;Z8=data_msg; K3=scratch; Z5=wildcard;
+//; advance 1 code-point
+  VPSUBD        Z12, Z3,  Z3              //;8575652C str_len -= scratch_Z12          ;Z3=str_len; Z12=scratch_Z12;
+  VPADDD        Z12, Z2,  Z2              //;A7D2A209 str_start += scratch_Z12        ;Z2=str_start; Z12=scratch_Z12;
+//; handle 1st code-point in data
+  VPCMPD        $5,  Z11, Z3,  K4         //;850DE385 K4 := (str_len>=0)              ;K4=char_valid; Z3=str_len; Z11=0; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT7
 
 //; #region bcDfaT8
@@ -15325,95 +15357,115 @@ next:
 TEXT bcDfaT8(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
   VMOVDQU32     64(R14),Z22               //;E0639585 char_table2 := [needle_ptr+64]  ;Z22=char_table2; R14=needle_ptr;
   VMOVDQU32     128(R14),Z23              //;15D38369 trans_table1 := [needle_ptr+128];Z23=trans_table1; R14=needle_ptr;
   VMOVDQU32     192(R14),Z24              //;5DE9259D trans_table2 := [needle_ptr+192];Z24=trans_table2; R14=needle_ptr;
   VMOVDQU32     256(R14),Z25              //;BE3AEA52 trans_table3 := [needle_ptr+256];Z25=trans_table3; R14=needle_ptr;
   VMOVDQU32     320(R14),Z26              //;C346A0C9 trans_table4 := [needle_ptr+320];Z26=trans_table4; R14=needle_ptr;
-  KMOVQ         384(R14),K3               //;B91BA5FE load data for accept_table      ;K3=scratch; R14=needle_ptr;
-  VPMOVM2B      K7,  Z18                  //;81D5D35D store K7 in zmm18               ;Z18=storage1; K7=char4_valid;
-  VPMOVM2B      K3,  Z27                  //;6891DA5E load accept_table               ;Z27=accept_table; K3=scratch;
+  KMOVW         384(R14),K6               //;2C9E73B8 load wildcard enabled flag      ;K6=enabled_flag; R14=needle_ptr;
+  VPBROADCASTD  386(R14),Z5               //;803E3CDF load wildcard char-group        ;Z5=wildcard; R14=needle_ptr;
+  VPBROADCASTD  390(R14),Z13              //;E6CE5A10 load accept nodeID              ;Z13=accept_node; R14=needle_ptr;
+//; load constants
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPADDD        Z10, Z10, Z28             //;92620230 constd_2 := 1 + 1               ;Z28=2; Z10=1;
-  VPADDD        Z10, Z28, Z29             //;45FD27E2 constd_3 := 2 + 1               ;Z29=3; Z28=2; Z10=1;
-  VPADDD        Z28, Z28, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z28=2;
-  VPBROADCASTD  CONSTD_0xFF(),Z19         //;77669B79 load constant 0xFF              ;Z19=0xFF;
-
+  VPADDD        Z10, Z10, Z15             //;92620230 constd_2 := 1 + 1               ;Z15=2; Z10=1;
+  VPADDD        Z10, Z15, Z16             //;45FD27E2 constd_3 := 2 + 1               ;Z16=3; Z15=2; Z10=1;
+  VPADDD        Z15, Z15, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z15=2;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z18  //;B323211A load table_n_bytes_utf8         ;Z18=table_n_bytes_utf8;
+//; init variables
   KMOVW         K1,  K2                   //;AE3AAD43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
   KXORW         K1,  K1,  K1              //;FA91A63F lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A start_state is state 1          ;Z7=curr_state; Z10=1;
-
-  VPERMB        Z27, Z7,  Z6              //;2A3FADE9 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z27=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;4C00DD82 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  KANDNW        K2,  K3,  K2              //;6FFB5DD9 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
-  KORW          K1,  K3,  K1              //;EDFCC3AE lane_active |= scratch          ;K1=lane_active; K3=scratch;
-  KTESTW        K2,  K2                   //;8F637100 any lane still todo?            ;K2=lane_todo;
-  JZ            next                      //;868E84CF jump if zero (ZF = 1)           ;
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPCMPD        $5,  Z10, Z3,  K4         //;850DE385 K4 := (str_len>=1)              ;K4=char1_valid; Z3=str_len; Z10=1; 5=GreaterEq;
-  VPCMPD        $5,  Z28, Z3,  K5         //;6C217CFD K5 := (str_len>=2)              ;K5=char2_valid; Z3=str_len; Z28=2; 5=GreaterEq;
-  VPCMPD        $5,  Z29, Z3,  K6         //;BBDE408E K6 := (str_len>=3)              ;K6=char3_valid; Z3=str_len; Z29=3; 5=GreaterEq;
-  VPCMPD        $5,  Z20, Z3,  K7         //;9B0EF476 K7 := (str_len>=4)              ;K7=char4_valid; Z3=str_len; Z20=4; 5=GreaterEq;
-  VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
-  VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
+  VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
+//; determine whether a lane has a non-ASCII code-point
+  VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
+  VPCMPD        $4,  Z12, Z11, K2,  K3    //;92DE265B K3 := K2 & (0!=scratch_Z12); extract lanes with non-ASCII code-points;K3=scratch; K2=lane_todo; Z11=0; Z12=scratch_Z12; 4=NotEqual;
+  KTESTW        K6,  K3                   //;BCE8C4F2 feature enabled and non-ASCII present?;K3=scratch; K6=enabled_flag;
+  JNZ           skip_wildcard             //;10BF1BFB jump if not zero (ZF = 0)       ;
+//; get char-groups
   VPMOVB2M      Z8,  K3                   //;23A1705D extract non-ASCII mask          ;K3=scratch; Z8=data_msg;
   VPERMI2B      Z22, Z21, Z8              //;872E1226 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
-  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero           ;Z8=data_msg; K3=scratch; Z11=0;
-
-  VPSRLDQ       $1,  Z8,  Z13             //;838875D4 data_byte1 := data_msg>>1       ;Z13=data_byte1; Z8=data_msg;
-  VPSRLDQ       $2,  Z8,  Z14             //;A3694526 data_byte2 := data_msg>>2       ;Z14=data_byte2; Z8=data_msg;
-  VPSRLDQ       $3,  Z8,  Z15             //;876257E0 data_byte3 := data_msg>>3       ;Z15=data_byte3; Z8=data_msg;
-//; char0: handle first char in data
+  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero group     ;Z8=data_msg; K3=scratch; Z11=0;
+//; handle 1st ASCII in data
+  VPCMPD        $5,  Z10, Z3,  K4         //;850DE385 K4 := (str_len>=1)              ;K4=char_valid; Z3=str_len; Z10=1; 5=GreaterEq;
   VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
   VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
   VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
   VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
   VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
-  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char1_valid; Z17=alt2_lut8;
-//; char1: handle second char in data
-  VPORD         Z13, Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z13=data_byte1;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+//; handle 2nd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z15, Z3,  K4         //;6C217CFD K4 := (str_len>=2)              ;K4=char_valid; Z3=str_len; Z15=2; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPMOVB2M      Z9,  K3                   //;565C3FAD extract sign for merging        ;K3=scratch; Z9=next_state;
   VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
   VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
   VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
   VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
-  VMOVDQU32     Z17, K5,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K5=char2_valid; Z17=alt2_lut8;
-//; char2: handle third char in data
-  VPORD         Z14, Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z14=data_byte2;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+//; handle 3rd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z16, Z3,  K4         //;BBDE408E K4 := (str_len>=3)              ;K4=char_valid; Z3=str_len; Z16=3; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPMOVB2M      Z9,  K3                   //;44C2F748 extract sign for merging        ;K3=scratch; Z9=next_state;
   VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
   VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
   VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
   VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
-  VMOVDQU32     Z17, K6,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K6=char3_valid; Z17=alt2_lut8;
-//; char3: handle fourth char in data
-  VPORD         Z15, Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z15=data_byte3;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+//; handle 4th ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z20, Z3,  K4         //;9B0EF476 K4 := (str_len>=4)              ;K4=char_valid; Z3=str_len; Z20=4; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPMOVB2M      Z9,  K3                   //;BC53D421 extract sign for merging        ;K3=scratch; Z9=next_state;
   VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
   VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
   VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
   VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
-  VMOVDQU32     Z17, K7,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K7=char4_valid; Z17=alt2_lut8;
-
-  VPERMB        Z27, Z7,  Z6              //;7994D220 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z27=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;9A003B95 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  VPCMPUD       $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+//; advance 4 bytes (= 4 code-points)
+  VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
+  VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
+tail:
+  VPCMPD        $0,  Z7,  Z13, K2,  K3    //;9A003B95 K3 := K2 & (accept_node==curr_state);K3=scratch; K2=lane_todo; Z13=accept_node; Z7=curr_state; 0=Eq;
+  VPCMPD        $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;250BE13C K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
-
   KANDNW        K2,  K3,  K2              //;C9EB9B00 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
 next:
-  VPMOVB2M      Z18, K7                   //;32DD5999 Restore K7 from zmm18           ;K7=char4_valid; Z18=storage1;
   NEXT()
+
+skip_wildcard:
+//; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
+  VPSRLD        $4,  Z8,  Z12             //;FE5F1413 scratch_Z12 := data_msg>>4      ;Z12=scratch_Z12; Z8=data_msg;
+  VPERMD        Z18, Z12, Z12             //;68FECBA0 get scratch_Z12                 ;Z12=scratch_Z12; Z18=table_n_bytes_utf8;
+//; get char-groups
+  VPCMPD        $4,  Z12, Z10, K2,  K3    //;411A6A38 K3 := K2 & (1!=scratch_Z12)     ;K3=scratch; K2=lane_todo; Z10=1; Z12=scratch_Z12; 4=NotEqual;
+  VPERMI2B      Z22, Z21, Z8              //;285E91E6 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
+  VMOVDQU32     Z5,  K3,  Z8              //;D9B3425A set non-ASCII to wildcard group ;Z8=data_msg; K3=scratch; Z5=wildcard;
+//; advance 1 code-point
+  VPSUBD        Z12, Z3,  Z3              //;8575652C str_len -= scratch_Z12          ;Z3=str_len; Z12=scratch_Z12;
+  VPADDD        Z12, Z2,  Z2              //;A7D2A209 str_start += scratch_Z12        ;Z2=str_start; Z12=scratch_Z12;
+//; handle 1st code-point in data
+  VPCMPD        $5,  Z11, Z3,  K4         //;BFA0A870 K4 := (str_len>=0)              ;K4=char_valid; Z3=str_len; Z11=0; 5=GreaterEq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
+  VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
+  VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
+  VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
+  VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+  JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT8
 
 //; #region bcDfaT6Z
@@ -15421,87 +15473,108 @@ next:
 TEXT bcDfaT6Z(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
   VMOVDQU32     64(R14),Z22               //;E0639585 char_table2 := [needle_ptr+64]  ;Z22=char_table2; R14=needle_ptr;
   VMOVDQU32     128(R14),Z23              //;15D38369 trans_table1 := [needle_ptr+128];Z23=trans_table1; R14=needle_ptr;
-  MOVQ          192(R14),R8               //;B91BA5FE                                 ;R8=scratch; R14=needle_ptr;
+  KMOVW         192(R14),K6               //;2C9E73B8 load wildcard enabled flag      ;K6=enabled_flag; R14=needle_ptr;
+  VPBROADCASTD  194(R14),Z5               //;803E3CDF load wildcard char-group        ;Z5=wildcard; R14=needle_ptr;
+  VPBROADCASTD  198(R14),Z13              //;E6CE5A10 load accept state               ;Z13=accept_state; R14=needle_ptr;
+  KMOVQ         202(R14),K3               //;B925FEF8 load RLZ states                 ;K3=scratch; R14=needle_ptr;
+  VPMOVM2B      K3,  Z14                  //;40FAB4CE promote 64x bit to 64x byte     ;Z14=rlz_states; K3=scratch;
+//; load constants
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-
-  KMOVW         R8,  K3                   //;B91BA5FE load data for accept_table      ;K3=scratch; R8=scratch;
-//; the dfa has the feature that the initial state is accepting
-  TESTB         $1,  R8                   //;A674BA75                                 ;R8=scratch;
-  JZ            dfa_no_rlza               //;C6050EE9 jump if zero (ZF = 1)           ;
-  VPCMPD        $0,  Z11, Z3,  K1,  K1    //;CF66EE0E K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len; Z11=0; 0=Eq;
-
-dfa_no_rlza:
-  KTESTW        K1,  K1                   //;1E3A2690 ZF := (K1==0); CF := 1          ;K1=lane_active;
-  JZ            next                      //;984777F8 jump if zero (ZF = 1)           ;
-
-  VPMOVM2B      K3,  Z25                  //;6891DA5E load accept_table               ;Z25=accept_table; K3=scratch;
-
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPBROADCASTD  CONSTD_0xFF(),Z19         //;77669B79 load constant 0xFF              ;Z19=0xFF;
-  VPBROADCASTD  CONSTD_0x20(),Z17         //;A2122C1C load constant 0x20              ;Z17=0x20;
-  VPADDD        Z10, Z10, Z26             //;92620230 constd_2 := 1 + 1               ;Z26=2; Z10=1;
-  VPADDD        Z10, Z26, Z27             //;45FD27E2 constd_3 := 2 + 1               ;Z27=3; Z26=2; Z10=1;
-  VPADDD        Z26, Z26, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z26=2;
-
+  VPADDD        Z10, Z10, Z15             //;92620230 constd_2 := 1 + 1               ;Z15=2; Z10=1;
+  VPADDD        Z10, Z15, Z16             //;45FD27E2 constd_3 := 2 + 1               ;Z16=3; Z15=2; Z10=1;
+  VPADDD        Z15, Z15, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z15=2;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z18  //;B323211A load table_n_bytes_utf8         ;Z18=table_n_bytes_utf8;
+//; init variables
   KMOVW         K1,  K2                   //;AE3AAD43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
   KXORW         K1,  K1,  K1              //;FA91A63F lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A start_state is state 1          ;Z7=curr_state; Z10=1;
 main_loop:
+  VPXORD        Z6,  Z6,  Z6              //;7B026700 rlz_state := 0                  ;Z6=rlz_state;
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPMOVB2M      Z8,  K3                   //;23A1705D extract non-ASCII mask          ;K3=scratch; Z8=data_msg;
+  VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
+//; determine whether a lane has a non-ASCII code-point
+  VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
+  VPCMPD        $4,  Z12, Z11, K2,  K3    //;92DE265B K3 := K2 & (0!=scratch_Z12); extract lanes with non-ASCII code-points;K3=scratch; K2=lane_todo; Z11=0; Z12=scratch_Z12; 4=NotEqual;
+  KTESTW        K6,  K3                   //;BCE8C4F2 feature enabled and non-ASCII present?;K3=scratch; K6=enabled_flag;
+  JNZ           skip_wildcard             //;10BF1BFB jump if not zero (ZF = 0)       ;
+//; get char-groups
   VPERMI2B      Z22, Z21, Z8              //;872E1226 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
-  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero           ;Z8=data_msg; K3=scratch; Z11=0;
-  VPSRLDQ       $1,  Z8,  Z13             //;838875D4 data_byte1 := data_msg>>1       ;Z13=data_byte1; Z8=data_msg;
-  VPSRLDQ       $2,  Z8,  Z14             //;A3694526 data_byte2 := data_msg>>2       ;Z14=data_byte2; Z8=data_msg;
-  VPSRLDQ       $3,  Z8,  Z15             //;876257E0 data_byte3 := data_msg>>3       ;Z15=data_byte3; Z8=data_msg;
-
-  VPCMPD        $0,  Z10, Z3,  K5         //;A23A5A84 K5 := (str_len==1)              ;K5=char2_valid; Z3=str_len; Z10=1; 0=Eq;
-  VPCMPD        $5,  Z10, Z3,  K4         //;89485A8A K4 := (str_len>=1)              ;K4=char1_valid; Z3=str_len; Z10=1; 5=GreaterEq;
+  VMOVDQU8      Z11, K5,  Z8              //;2BDE3FA8 set non-ASCII to zero group     ;Z8=data_msg; K5=lane_non-ASCII; Z11=0;
+//; handle 1st ASCII in data
+  VPCMPD        $5,  Z10, Z3,  K4         //;89485A8A K4 := (str_len>=1)              ;K4=char_valid; Z3=str_len; Z10=1; 5=GreaterEq;
+  VPCMPD        $0,  Z10, Z3,  K5         //;A23A5A84 K5 := (str_len==1)              ;K5=lane_non-ASCII; Z3=str_len; Z10=1; 0=Eq;
   VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add rlza bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x20;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPCMPD        $0,  Z26, Z3,  K5         //;47BF9EE9 K5 := (str_len==2)              ;K5=char2_valid; Z3=str_len; Z26=2; 0=Eq;
-  VPCMPD        $5,  Z26, Z3,  K4         //;12B1EB36 K4 := (str_len>=2)              ;K4=char1_valid; Z3=str_len; Z26=2; 5=GreaterEq;
-  VPORD         Z13, Z7,  Z9              //;6FD26853 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z13=data_byte1;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add rlza bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x20;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; handle 2nd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z15, Z3,  K4         //;12B1EB36 K4 := (str_len>=2)              ;K4=char_valid; Z3=str_len; Z15=2; 5=GreaterEq;
+  VPCMPD        $0,  Z15, Z3,  K5         //;47BF9EE9 K5 := (str_len==2)              ;K5=lane_non-ASCII; Z3=str_len; Z15=2; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPCMPD        $0,  Z27, Z3,  K5         //;91BAEA96 K5 := (str_len==3)              ;K5=char2_valid; Z3=str_len; Z27=3; 0=Eq;
-  VPCMPD        $5,  Z27, Z3,  K4         //;6E26712A K4 := (str_len>=3)              ;K4=char1_valid; Z3=str_len; Z27=3; 5=GreaterEq;
-  VPORD         Z14, Z7,  Z9              //;BCCB1762 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z14=data_byte2;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add rlza bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x20;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; handle 3rd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z16, Z3,  K4         //;6E26712A K4 := (str_len>=3)              ;K4=char_valid; Z3=str_len; Z16=3; 5=GreaterEq;
+  VPCMPD        $0,  Z16, Z3,  K5         //;91BAEA96 K5 := (str_len==3)              ;K5=lane_non-ASCII; Z3=str_len; Z16=3; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPCMPD        $0,  Z20, Z3,  K5         //;2154FFD7 K5 := (str_len==4)              ;K5=char2_valid; Z3=str_len; Z20=4; 0=Eq;
-  VPCMPD        $5,  Z20, Z3,  K4         //;CFBDCA00 K4 := (str_len>=4)              ;K4=char1_valid; Z3=str_len; Z20=4; 5=GreaterEq;
-  VPORD         Z15, Z7,  Z9              //;42917E87 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z15=data_byte3;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add rlza bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x20;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; handle 4th ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z20, Z3,  K4         //;CFBDCA00 K4 := (str_len>=4)              ;K4=char_valid; Z3=str_len; Z20=4; 5=GreaterEq;
+  VPCMPD        $0,  Z20, Z3,  K5         //;2154FFD7 K5 := (str_len==4)              ;K5=lane_non-ASCII; Z3=str_len; Z20=4; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; advance 4 bytes (= 4 code-points)
   VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
   VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
-
-  VPERMB        Z25, Z7,  Z6              //;7994D220 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z25=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;9A003B95 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  VPCMPUD       $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
+tail:
+  VPCMPD        $0,  Z7,  Z13, K2,  K3    //;9A003B95 K3 := K2 & (accept_state==curr_state);K3=scratch; K2=lane_todo; Z13=accept_state; Z7=curr_state; 0=Eq;
+  VPERMB        Z14, Z6,  Z12             //;F1661DA9 map RLZ states to 0xFF          ;Z12=scratch_Z12; Z6=rlz_state; Z14=rlz_states;
+  VPSLLD.Z      $24, Z12, K2,  Z12        //;7352EFC4 scratch_Z12 <<= 24              ;Z12=scratch_Z12; K2=lane_todo;
+  VPMOVD2M      Z12, K4                   //;6832FF1A extract RLZ mask                ;K4=char_valid; Z12=scratch_Z12;
+  VPCMPD        $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;250BE13C K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
+  KORW          K3,  K4,  K3              //;24142563 scratch |= char_valid           ;K3=scratch; K4=char_valid;
   KANDNW        K2,  K3,  K2              //;C9EB9B00 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
 next:
   NEXT()
+
+skip_wildcard:
+//; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
+  VPSRLD        $4,  Z8,  Z12             //;FE5F1413 scratch_Z12 := data_msg>>4      ;Z12=scratch_Z12; Z8=data_msg;
+  VPERMD        Z18, Z12, Z12             //;68FECBA0 get scratch_Z12                 ;Z12=scratch_Z12; Z18=table_n_bytes_utf8;
+//; get char-groups
+  VPCMPD        $4,  Z12, Z10, K2,  K3    //;411A6A38 K3 := K2 & (1!=scratch_Z12)     ;K3=scratch; K2=lane_todo; Z10=1; Z12=scratch_Z12; 4=NotEqual;
+  VPERMI2B      Z22, Z21, Z8              //;285E91E6 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
+  VMOVDQU32     Z5,  K3,  Z8              //;D9B3425A set non-ASCII to wildcard group ;Z8=data_msg; K3=scratch; Z5=wildcard;
+//; advance 1 code-point
+  VPSUBD        Z12, Z3,  Z3              //;8575652C str_len -= scratch_Z12          ;Z3=str_len; Z12=scratch_Z12;
+  VPADDD        Z12, Z2,  Z2              //;A7D2A209 str_start += scratch_Z12        ;Z2=str_start; Z12=scratch_Z12;
+//; handle 1st code-point in data
+  VPCMPD        $5,  Z11, Z3,  K4         //;89485A8A K4 := (str_len>=0)              ;K4=char_valid; Z3=str_len; Z11=0; 5=GreaterEq;
+  VPCMPD        $0,  Z11, Z3,  K5         //;A23A5A84 K5 := (str_len==0)              ;K5=lane_non-ASCII; Z3=str_len; Z11=0; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPERMB        Z23, Z9,  Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+  JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT6Z
 
 //; #region bcDfaT7Z
@@ -15509,77 +15582,109 @@ next:
 TEXT bcDfaT7Z(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
   VMOVDQU32     64(R14),Z22               //;E0639585 char_table2 := [needle_ptr+64]  ;Z22=char_table2; R14=needle_ptr;
   VMOVDQU32     128(R14),Z23              //;15D38369 trans_table1 := [needle_ptr+128];Z23=trans_table1; R14=needle_ptr;
   VMOVDQU32     192(R14),Z24              //;5DE9259D trans_table2 := [needle_ptr+192];Z24=trans_table2; R14=needle_ptr;
-  KMOVQ         256(R14),K3               //;B91BA5FE                                 ;K3=scratch; R14=needle_ptr;
-  VPMOVM2B      K3,  Z25                  //;6891DA5E load accept_table               ;Z25=accept_table; K3=scratch;
+  KMOVW         256(R14),K6               //;2C9E73B8 load wildcard enabled flag      ;K6=enabled_flag; R14=needle_ptr;
+  VPBROADCASTD  258(R14),Z5               //;803E3CDF load wildcard char-group        ;Z5=wildcard; R14=needle_ptr;
+  VPBROADCASTD  262(R14),Z13              //;E6CE5A10 load accept state               ;Z13=accept_state; R14=needle_ptr;
+  KMOVQ         266(R14),K3               //;B925FEF8 load RLZ states                 ;K3=scratch; R14=needle_ptr;
+  VPMOVM2B      K3,  Z14                  //;40FAB4CE promote 64x bit to 64x byte     ;Z14=rlz_states; K3=scratch;
+//; load constants
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPBROADCASTD  CONSTD_0xFF(),Z19         //;77669B79 load constant 0xFF              ;Z19=0xFF;
-  VPBROADCASTD  CONSTD_0x40(),Z17         //;A2122C1C load constant 0x40              ;Z17=0x40;
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  VPADDD        Z10, Z10, Z26             //;92620230 constd_2 := 1 + 1               ;Z26=2; Z10=1;
-  VPADDD        Z10, Z26, Z27             //;45FD27E2 constd_3 := 2 + 1               ;Z27=3; Z26=2; Z10=1;
-  VPADDD        Z26, Z26, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z26=2;
-
+  VPADDD        Z10, Z10, Z15             //;92620230 constd_2 := 1 + 1               ;Z15=2; Z10=1;
+  VPADDD        Z10, Z15, Z16             //;45FD27E2 constd_3 := 2 + 1               ;Z16=3; Z15=2; Z10=1;
+  VPADDD        Z15, Z15, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z15=2;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z18  //;B323211A load table_n_bytes_utf8         ;Z18=table_n_bytes_utf8;
+//; init variables
   KMOVW         K1,  K2                   //;AE3AAD43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
   KXORW         K1,  K1,  K1              //;FA91A63F lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A start_state is state 1          ;Z7=curr_state; Z10=1;
-
 main_loop:
+  VPXORD        Z6,  Z6,  Z6              //;7B026700 rlz_state := 0                  ;Z6=rlz_state;
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPMOVB2M      Z8,  K3                   //;23A1705D extract non-ASCII mask          ;K3=scratch; Z8=data_msg;
+  VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
+//; determine whether a lane has a non-ASCII code-point
+  VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
+  VPCMPD        $4,  Z12, Z11, K2,  K3    //;92DE265B K3 := K2 & (0!=scratch_Z12); extract lanes with non-ASCII code-points;K3=scratch; K2=lane_todo; Z11=0; Z12=scratch_Z12; 4=NotEqual;
+  KTESTW        K6,  K3                   //;BCE8C4F2 feature enabled and non-ASCII present?;K3=scratch; K6=enabled_flag;
+  JNZ           skip_wildcard             //;10BF1BFB jump if not zero (ZF = 0)       ;
+//; get char-groups
   VPERMI2B      Z22, Z21, Z8              //;872E1226 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
-  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero           ;Z8=data_msg; K3=scratch; Z11=0;
-  VPSRLDQ       $1,  Z8,  Z13             //;838875D4 data_byte1 := data_msg>>1       ;Z13=data_byte1; Z8=data_msg;
-  VPSRLDQ       $2,  Z8,  Z14             //;A3694526 data_byte2 := data_msg>>2       ;Z14=data_byte2; Z8=data_msg;
-  VPSRLDQ       $3,  Z8,  Z15             //;876257E0 data_byte3 := data_msg>>3       ;Z15=data_byte3; Z8=data_msg;
-
-  VPCMPD        $0,  Z10, Z3,  K5         //;A23A5A84 K5 := (str_len==1)              ;K5=char2_valid; Z3=str_len; Z10=1; 0=Eq;
-  VPCMPD        $5,  Z10, Z3,  K4         //;89485A8A K4 := (str_len>=1)              ;K4=char1_valid; Z3=str_len; Z10=1; 5=GreaterEq;
+  VMOVDQU8      Z11, K5,  Z8              //;2BDE3FA8 set non-ASCII to zero group     ;Z8=data_msg; K5=lane_non-ASCII; Z11=0;
+//; handle 1st ASCII in data
+  VPCMPD        $5,  Z10, Z3,  K4         //;89485A8A K4 := (str_len>=1)              ;K4=char_valid; Z3=str_len; Z10=1; 5=GreaterEq;
+  VPCMPD        $0,  Z10, Z3,  K5         //;A23A5A84 K5 := (str_len==1)              ;K5=lane_non-ASCII; Z3=str_len; Z10=1; 0=Eq;
   VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add RLZA bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x40;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPCMPD        $0,  Z26, Z3,  K5         //;47BF9EE9 K5 := (str_len==2)              ;K5=char2_valid; Z3=str_len; Z26=2; 0=Eq;
-  VPCMPD        $5,  Z26, Z3,  K4         //;12B1EB36 K4 := (str_len>=2)              ;K4=char1_valid; Z3=str_len; Z26=2; 5=GreaterEq;
-  VPORD         Z13, Z7,  Z9              //;6FD26853 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z13=data_byte1;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add RLZA bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x40;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; handle 2nd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z15, Z3,  K4         //;12B1EB36 K4 := (str_len>=2)              ;K4=char_valid; Z3=str_len; Z15=2; 5=GreaterEq;
+  VPCMPD        $0,  Z15, Z3,  K5         //;47BF9EE9 K5 := (str_len==2)              ;K5=lane_non-ASCII; Z3=str_len; Z15=2; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPCMPD        $0,  Z27, Z3,  K5         //;91BAEA96 K5 := (str_len==3)              ;K5=char2_valid; Z3=str_len; Z27=3; 0=Eq;
-  VPCMPD        $5,  Z27, Z3,  K4         //;6E26712A K4 := (str_len>=3)              ;K4=char1_valid; Z3=str_len; Z27=3; 5=GreaterEq;
-  VPORD         Z14, Z7,  Z9              //;BCCB1762 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z14=data_byte2;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add RLZA bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x40;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; handle 3rd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z16, Z3,  K4         //;6E26712A K4 := (str_len>=3)              ;K4=char_valid; Z3=str_len; Z16=3; 5=GreaterEq;
+  VPCMPD        $0,  Z16, Z3,  K5         //;91BAEA96 K5 := (str_len==3)              ;K5=lane_non-ASCII; Z3=str_len; Z16=3; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
-  VPCMPD        $0,  Z20, Z3,  K5         //;2154FFD7 K5 := (str_len==4)              ;K5=char2_valid; Z3=str_len; Z20=4; 0=Eq;
-  VPCMPD        $5,  Z20, Z3,  K4         //;CFBDCA00 K4 := (str_len>=4)              ;K4=char1_valid; Z3=str_len; Z20=4; 5=GreaterEq;
-  VPORD         Z15, Z7,  Z9              //;42917E87 merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z15=data_byte3;
-  VPORD         Z9,  Z17, K5,  Z9         //;72DD90AE add RLZA bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z17=0x40;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; handle 4th ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z20, Z3,  K4         //;CFBDCA00 K4 := (str_len>=4)              ;K4=char_valid; Z3=str_len; Z20=4; 5=GreaterEq;
+  VPCMPD        $0,  Z20, Z3,  K5         //;2154FFD7 K5 := (str_len==4)              ;K5=lane_non-ASCII; Z3=str_len; Z20=4; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
   VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char1_valid; Z9=next_state;
-
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+//; advance 4 bytes (= 4 code-points)
   VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
   VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
-
-  VPERMB        Z25, Z7,  Z6              //;7994D220 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z25=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;9A003B95 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  VPCMPUD       $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
+tail:
+  VPCMPD        $0,  Z7,  Z13, K2,  K3    //;9A003B95 K3 := K2 & (accept_state==curr_state);K3=scratch; K2=lane_todo; Z13=accept_state; Z7=curr_state; 0=Eq;
+  VPERMB        Z14, Z6,  Z12             //;F1661DA9 map RLZ states to 0xFF          ;Z12=scratch_Z12; Z6=rlz_state; Z14=rlz_states;
+  VPSLLD.Z      $24, Z12, K2,  Z12        //;7352EFC4 scratch_Z12 <<= 24              ;Z12=scratch_Z12; K2=lane_todo;
+  VPMOVD2M      Z12, K4                   //;6832FF1A extract RLZ mask                ;K4=char_valid; Z12=scratch_Z12;
+  VPCMPD        $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;250BE13C K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
+  KORW          K3,  K4,  K3              //;24142563 scratch |= char_valid           ;K3=scratch; K4=char_valid;
   KANDNW        K2,  K3,  K2              //;C9EB9B00 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
 next:
   NEXT()
+
+skip_wildcard:
+//; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
+  VPSRLD        $4,  Z8,  Z12             //;FE5F1413 scratch_Z12 := data_msg>>4      ;Z12=scratch_Z12; Z8=data_msg;
+  VPERMD        Z18, Z12, Z12             //;68FECBA0 get scratch_Z12                 ;Z12=scratch_Z12; Z18=table_n_bytes_utf8;
+//; get char-groups
+  VPCMPD        $4,  Z12, Z10, K2,  K3    //;411A6A38 K3 := K2 & (1!=scratch_Z12)     ;K3=scratch; K2=lane_todo; Z10=1; Z12=scratch_Z12; 4=NotEqual;
+  VPERMI2B      Z22, Z21, Z8              //;285E91E6 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
+  VMOVDQU32     Z5,  K3,  Z8              //;D9B3425A set non-ASCII to wildcard group ;Z8=data_msg; K3=scratch; Z5=wildcard;
+//; advance 1 code-point
+  VPSUBD        Z12, Z3,  Z3              //;8575652C str_len -= scratch_Z12          ;Z3=str_len; Z12=scratch_Z12;
+  VPADDD        Z12, Z2,  Z2              //;A7D2A209 str_start += scratch_Z12        ;Z2=str_start; Z12=scratch_Z12;
+//; handle 1st code-point in data
+  VPCMPD        $5,  Z11, Z3,  K4         //;7C3C9240 K4 := (str_len>=0)              ;K4=char_valid; Z3=str_len; Z11=0; 5=GreaterEq;
+  VPCMPD        $0,  Z11, Z3,  K5         //;6843E9F0 K5 := (str_len==0)              ;K5=lane_non-ASCII; Z3=str_len; Z11=0; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPERMI2B      Z24, Z23, Z9              //;F0A7B6B3 map lookup_key to next_state    ;Z9=next_state; Z23=trans_table1; Z24=trans_table2;
+  VMOVDQU32     Z9,  K4,  Z7              //;F3DF61B6 curr_state := next_state        ;Z7=curr_state; K4=char_valid; Z9=next_state;
+  VMOVDQU32     Z9,  K5,  Z6              //;8EFED6E5 rlz_state := next_state         ;Z6=rlz_state; K5=lane_non-ASCII; Z9=next_state;
+  JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT7Z
 
 //; #region bcDfaT8Z
@@ -15587,106 +15692,144 @@ next:
 TEXT bcDfaT8Z(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
   VMOVDQU32     64(R14),Z22               //;E0639585 char_table2 := [needle_ptr+64]  ;Z22=char_table2; R14=needle_ptr;
   VMOVDQU32     128(R14),Z23              //;15D38369 trans_table1 := [needle_ptr+128];Z23=trans_table1; R14=needle_ptr;
   VMOVDQU32     192(R14),Z24              //;5DE9259D trans_table2 := [needle_ptr+192];Z24=trans_table2; R14=needle_ptr;
   VMOVDQU32     256(R14),Z25              //;BE3AEA52 trans_table3 := [needle_ptr+256];Z25=trans_table3; R14=needle_ptr;
   VMOVDQU32     320(R14),Z26              //;C346A0C9 trans_table4 := [needle_ptr+320];Z26=trans_table4; R14=needle_ptr;
-  KMOVQ         384(R14),K3               //;B91BA5FE load data for accept_table      ;K3=scratch; R14=needle_ptr;
-  VPMOVM2B      K3,  Z27                  //;6891DA5E load accept_table               ;Z27=accept_table; K3=scratch;
+  KMOVW         384(R14),K6               //;2C9E73B8 load wildcard enabled flag      ;K6=enabled_flag; R14=needle_ptr;
+  VPBROADCASTD  386(R14),Z5               //;803E3CDF load wildcard char-group        ;Z5=wildcard; R14=needle_ptr;
+  VPBROADCASTD  390(R14),Z13              //;E6CE5A10 load accept state               ;Z13=accept_state; R14=needle_ptr;
+  KMOVQ         394(R14),K3               //;B925FEF8 load RLZ states                 ;K3=scratch; R14=needle_ptr;
+  VPMOVM2B      K3,  Z14                  //;40FAB4CE promote 64x bit to 64x byte     ;Z14=rlz_states; K3=scratch;
+//; load constants
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPADDD        Z10, Z10, Z28             //;92620230 constd_2 := 1 + 1               ;Z28=2; Z10=1;
-  VPADDD        Z10, Z28, Z29             //;45FD27E2 constd_3 := 2 + 1               ;Z29=3; Z28=2; Z10=1;
-  VPADDD        Z28, Z28, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z28=2;
-  VPBROADCASTD  CONSTD_0xFF(),Z19         //;77669B79 load constant 0xFF              ;Z19=0xFF;
-  VPBROADCASTD  CONSTD_0x80(),Z12         //;63D0E8E9 load constant 0x80              ;Z12=0x80;
-
+  VPADDD        Z10, Z10, Z15             //;92620230 constd_2 := 1 + 1               ;Z15=2; Z10=1;
+  VPADDD        Z10, Z15, Z16             //;45FD27E2 constd_3 := 2 + 1               ;Z16=3; Z15=2; Z10=1;
+  VPADDD        Z15, Z15, Z20             //;D9A45253 constd_4 := 2 + 2               ;Z20=4; Z15=2;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z18  //;B323211A load table_n_bytes_utf8         ;Z18=table_n_bytes_utf8;
+//; init variables
   KMOVW         K1,  K2                   //;AE3AAD43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
   KXORW         K1,  K1,  K1              //;FA91A63F lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A start_state is state 1          ;Z7=curr_state; Z10=1;
 main_loop:
+  VPXORD        Z6,  Z6,  Z6              //;7B026700 rlz_state := 0                  ;Z6=rlz_state;
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPMOVB2M      Z8,  K3                   //;23A1705D extract non-ASCII mask          ;K3=scratch; Z8=data_msg;
+  VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
+//; determine whether a lane has a non-ASCII code-point
+  VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
+  VPCMPD        $4,  Z12, Z11, K2,  K3    //;92DE265B K3 := K2 & (0!=scratch_Z12); extract lanes with non-ASCII code-points;K3=scratch; K2=lane_todo; Z11=0; Z12=scratch_Z12; 4=NotEqual;
+  KTESTW        K6,  K3                   //;BCE8C4F2 feature enabled and non-ASCII present?;K3=scratch; K6=enabled_flag;
+  JNZ           skip_wildcard             //;10BF1BFB jump if not zero (ZF = 0)       ;
+//; get char-groups
   VPERMI2B      Z22, Z21, Z8              //;872E1226 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
-  VMOVDQU8      Z11, K3,  Z8              //;2BDE3FA8 set non-ASCII to zero           ;Z8=data_msg; K3=scratch; Z11=0;
-
-  VPCMPD        $5,  Z10, Z3,  K4         //;E6D305BF K4 := (str_len>=1)              ;K4=char1_valid; Z3=str_len; Z10=1; 5=GreaterEq;
-  VPCMPD        $0,  Z10, Z3,  K5         //;95E6ECB7 K5 := (str_len==1)              ;K5=char2_valid; Z3=str_len; Z10=1; 0=Eq;
-  VPCMPD        $5,  Z28, Z3,  K6         //;5D177251 K6 := (str_len>=2)              ;K6=char3_valid; Z3=str_len; Z28=2; 5=GreaterEq;
-  VPCMPD        $0,  Z28, Z3,  K3         //;A5BA15D3 K3 := (str_len==2)              ;K3=scratch; Z3=str_len; Z28=2; 0=Eq;
-
-  VPSRLDQ       $1,  Z8,  Z13             //;838875D4 data_byte1 := data_msg>>1       ;Z13=data_byte1; Z8=data_msg;
-  VPSRLDQ       $2,  Z8,  Z14             //;A3694526 data_byte2 := data_msg>>2       ;Z14=data_byte2; Z8=data_msg;
-  VPSRLDQ       $3,  Z8,  Z15             //;876257E0 data_byte3 := data_msg>>3       ;Z15=data_byte3; Z8=data_msg;
-
-//; char0: handle first char in data
+  VMOVDQU8      Z11, K5,  Z8              //;2BDE3FA8 set non-ASCII to zero group     ;Z8=data_msg; K5=lane_non-ASCII; Z11=0;
+//; handle 1st ASCII in data
+  VPCMPD        $5,  Z10, Z3,  K4         //;89485A8A K4 := (str_len>=1)              ;K4=char_valid; Z3=str_len; Z10=1; 5=GreaterEq;
+  VPCMPD        $0,  Z10, Z3,  K5         //;A23A5A84 K5 := (str_len==1)              ;K5=lane_non-ASCII; Z3=str_len; Z10=1; 0=Eq;
   VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
-  VPORD         Z9,  Z12, K5,  Z9         //;DCCFB4D0 add rlza bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z12=0x80;
+  VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
   VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
   VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
   VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K5,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K5=char2_valid; Z9=next_state;
-  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char1_valid; Z17=alt2_lut8;
-
-  VPCMPD        $5,  Z29, Z3,  K4         //;C989D606 K4 := (str_len>=3)              ;K4=char1_valid; Z3=str_len; Z29=3; 5=GreaterEq;
-  VPCMPD        $0,  Z29, Z3,  K5         //;E2EA9BA5 K5 := (str_len==3)              ;K5=char2_valid; Z3=str_len; Z29=3; 0=Eq;
-
-//; char1: handle second char in data
-  VPORD         Z13, Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z13=data_byte1;
-  VPORD         Z9,  Z12, K3,  Z9         //;CEFF4CEB add rlza bit to lookup_key      ;Z9=next_state; K3=scratch; Z12=0x80;
+  VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+  VMOVDQU32     Z17, K5,  Z6              //;948A0E75 rlz_state := alt2_lut8          ;Z6=rlz_state; K5=lane_non-ASCII; Z17=alt2_lut8;
+//; handle 2nd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z15, Z3,  K4         //;12B1EB36 K4 := (str_len>=2)              ;K4=char_valid; Z3=str_len; Z15=2; 5=GreaterEq;
+  VPCMPD        $0,  Z15, Z3,  K5         //;47BF9EE9 K5 := (str_len==2)              ;K5=lane_non-ASCII; Z3=str_len; Z15=2; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
   VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
   VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
   VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
-  VMOVDQU32     Z17, K6,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K6=char3_valid; Z17=alt2_lut8;
-
-  VPCMPD        $5,  Z20, Z3,  K6         //;5C764DA7 K6 := (str_len>=4)              ;K6=char3_valid; Z3=str_len; Z20=4; 5=GreaterEq;
-  VPCMPD        $0,  Z20, Z3,  K3         //;17260E49 K3 := (str_len==4)              ;K3=scratch; Z3=str_len; Z20=4; 0=Eq;
+  VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+  VMOVDQU32     Z17, K5,  Z6              //;948A0E75 rlz_state := alt2_lut8          ;Z6=rlz_state; K5=lane_non-ASCII; Z17=alt2_lut8;
+//; handle 3rd ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z16, Z3,  K4         //;6E26712A K4 := (str_len>=3)              ;K4=char_valid; Z3=str_len; Z16=3; 5=GreaterEq;
+  VPCMPD        $0,  Z16, Z3,  K5         //;2154FFD7 K5 := (str_len==3)              ;K5=lane_non-ASCII; Z3=str_len; Z16=3; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
+  VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
+  VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
+  VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
+  VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+  VMOVDQU32     Z17, K5,  Z6              //;948A0E75 rlz_state := alt2_lut8          ;Z6=rlz_state; K5=lane_non-ASCII; Z17=alt2_lut8;
+//; handle 4th ASCII in data
+  VPSRLD        $8,  Z8,  Z8              //;838875D4 data_msg >>= 8                  ;Z8=data_msg;
+  VPCMPD        $5,  Z20, Z3,  K4         //;CFBDCA00 K4 := (str_len>=4)              ;K4=char_valid; Z3=str_len; Z20=4; 5=GreaterEq;
+  VPCMPD        $0,  Z20, Z3,  K5         //;95E6ECB7 K5 := (str_len==4)              ;K5=lane_non-ASCII; Z3=str_len; Z20=4; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
+  VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
+  VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
+  VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
+  VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+  VMOVDQU32     Z17, K5,  Z6              //;948A0E75 rlz_state := alt2_lut8          ;Z6=rlz_state; K5=lane_non-ASCII; Z17=alt2_lut8;
+//; advance 4 bytes (= 4 code-points)
   VPADDD        Z20, Z2,  Z2              //;F381FC8B str_start += 4                  ;Z2=str_start; Z20=4;
   VPSUBD        Z20, Z3,  Z3              //;D71AFBB0 str_len -= 4                    ;Z3=str_len; Z20=4;
-
-//; char2: handle third char in data
-  VPORD         Z14, Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z14=data_byte2;
-  VPORD         Z9,  Z12, K5,  Z9         //;34E98E84 add rlza bit to lookup_key      ;Z9=next_state; K5=char2_valid; Z12=0x80;
-  VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
-  VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
-  VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K5,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K5=char2_valid; Z9=next_state;
-  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char1_valid; Z17=alt2_lut8;
-
-//; char3: handle fourth char in data
-  VPORD         Z15, Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z15=data_byte3;
-  VPORD         Z9,  Z12, K3,  Z9         //;ABC472DA add rlza bit to lookup_key      ;Z9=next_state; K3=scratch; Z12=0x80;
-  VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
-  VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
-  VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
-  VMOVDQU32     Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
-  VMOVDQU32     Z17, K6,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K6=char3_valid; Z17=alt2_lut8;
-
-  VPERMB        Z27, Z7,  Z6              //;7994D220 map state to accept_id          ;Z6=accept_state; Z7=curr_state; Z27=accept_table;
-  VPCMPUD       $0,  Z6,  Z19, K2,  K3    //;9A003B95 K3 := K2 & (0xFF==accept_state) ;K3=scratch; K2=lane_todo; Z19=0xFF; Z6=accept_state; 0=Eq;
-  VPCMPUD       $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
+tail:
+  VPCMPD        $0,  Z7,  Z13, K2,  K3    //;9A003B95 K3 := K2 & (accept_state==curr_state);K3=scratch; K2=lane_todo; Z13=accept_state; Z7=curr_state; 0=Eq;
+  VPERMB        Z14, Z6,  Z12             //;F1661DA9 map RLZ states to 0xFF          ;Z12=scratch_Z12; Z6=rlz_state; Z14=rlz_states;
+  VPSLLD.Z      $24, Z12, K2,  Z12        //;7352EFC4 scratch_Z12 <<= 24              ;Z12=scratch_Z12; K2=lane_todo;
+  VPMOVD2M      Z12, K4                   //;6832FF1A extract RLZ mask                ;K4=char_valid; Z12=scratch_Z12;
+  VPCMPD        $4,  Z7,  Z11, K2,  K2    //;C4336141 K2 &= (0!=curr_state)           ;K2=lane_todo; Z11=0; Z7=curr_state; 4=NotEqual;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;250BE13C K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
-
+  KORW          K3,  K4,  K3              //;24142563 scratch |= char_valid           ;K3=scratch; K4=char_valid;
   KANDNW        K2,  K3,  K2              //;C9EB9B00 lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
 next:
   NEXT()
+
+skip_wildcard:
+//; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
+  VPSRLD        $4,  Z8,  Z12             //;FE5F1413 scratch_Z12 := data_msg>>4      ;Z12=scratch_Z12; Z8=data_msg;
+  VPERMD        Z18, Z12, Z12             //;68FECBA0 get scratch_Z12                 ;Z12=scratch_Z12; Z18=table_n_bytes_utf8;
+//; get char-groups
+  VPCMPD        $4,  Z12, Z10, K2,  K3    //;411A6A38 K3 := K2 & (1!=scratch_Z12)     ;K3=scratch; K2=lane_todo; Z10=1; Z12=scratch_Z12; 4=NotEqual;
+  VPERMI2B      Z22, Z21, Z8              //;285E91E6 map data to char_group          ;Z8=data_msg; Z21=char_table1; Z22=char_table2;
+  VMOVDQU32     Z5,  K3,  Z8              //;D9B3425A set non-ASCII to wildcard group ;Z8=data_msg; K3=scratch; Z5=wildcard;
+//; advance 1 code-point
+  VPSUBD        Z12, Z3,  Z3              //;8575652C str_len -= scratch_Z12          ;Z3=str_len; Z12=scratch_Z12;
+  VPADDD        Z12, Z2,  Z2              //;A7D2A209 str_start += scratch_Z12        ;Z2=str_start; Z12=scratch_Z12;
+//; handle 1st code-point in data
+  VPCMPD        $5,  Z11, Z3,  K4         //;A17DDD33 K4 := (str_len>=0)              ;K4=char_valid; Z3=str_len; Z11=0; 5=GreaterEq;
+  VPCMPD        $0,  Z11, Z3,  K5         //;9AA6077F K5 := (str_len==0)              ;K5=lane_non-ASCII; Z3=str_len; Z11=0; 0=Eq;
+  VPORD         Z8,  Z7,  Z9              //;C09CA74A merge char_group with curr_state into lookup_key;Z9=next_state; Z7=curr_state; Z8=data_msg;
+  VPMOVB2M      Z9,  K3                   //;5ABFD6B8 extract sign for merging        ;K3=scratch; Z9=next_state;
+  VMOVDQU32     Z9,  Z17                  //;9B3CF590 alt2_lut8 := next_state         ;Z17=alt2_lut8; Z9=next_state;
+  VPERMI2B      Z26, Z25, Z9              //;53BE6E94 map lookup_key to next_state    ;Z9=next_state; Z25=trans_table3; Z26=trans_table4;
+  VPERMI2B      Z24, Z23, Z17             //;C82BB72B map lookup_key to next_state    ;Z17=alt2_lut8; Z23=trans_table1; Z24=trans_table2;
+  VMOVDQU8      Z9,  K3,  Z17             //;86B7DFF1 alt2_lut8 := next_state         ;Z17=alt2_lut8; K3=scratch; Z9=next_state;
+  VMOVDQU32     Z17, K4,  Z7              //;F9049BA0 curr_state := alt2_lut8         ;Z7=curr_state; K4=char_valid; Z17=alt2_lut8;
+  VMOVDQU32     Z17, K5,  Z6              //;948A0E75 rlz_state := alt2_lut8          ;Z6=rlz_state; K5=lane_non-ASCII; Z17=alt2_lut8;
+  JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT8Z
 
-//; #region bcDfaL
-//; DfaL Deterministic Finite Automaton(DFA) large with unlimited capacity
-TEXT bcDfaL(SB), NOSPLIT|NOFRAME, $0
+//; #region bcDfaLZ
+//; DfaL Deterministic Finite Automaton(DFA) large with unlimited capacity with Zero length remaining assertion
+TEXT bcDfaLZ(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
+//; load parameters
+  MOVL          (R14),R8                  //;6AD2EA95 load n_states                   ;R8=n_states; R14=needle_ptr;
+  ADDQ          $4,  R14                  //;3259F7B2 init state_offset               ;R14=needle_ptr;
+  CMPL          R8,  $0                   //;637F12FC are there more than 0 states?   ;R8=n_states;
+  JLE           next                      //;AEE3942A no, then there is only an accept state; jump if less or equal ((ZF = 1) or (SF neq OF));
+//; load constants
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
@@ -15694,48 +15837,39 @@ TEXT bcDfaL(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   VPBROADCASTD  CONSTD_0x3FFFFFFF(),Z17   //;EF9E72D4 load flags_mask                 ;Z17=flags_mask;
   VMOVDQU32     bswap32<>(SB),Z12         //;A0BC360A load constant bswap32           ;Z12=bswap32;
-
-  MOVL          (R14),R8                  //;6AD2EA95 load n_states                   ;R8=n_states; R14=needle_ptr;
-  ADDQ          $4,  R14                  //;3259F7B2 init state_offset               ;R14=needle_ptr;
-
-  CMPL          R8,  $1                   //;637F12FC more than 1 state?              ;R8=n_states;
-  JLE           next                      //;AEE3942A no, then there is only an accept state; jump if less or equal ((ZF = 1) or (SF neq OF));
-
-  VPCMPD        $1,  Z3,  Z11, K1,  K2    //;AE3AAD43 K2 := K1 & (0<str_len)          ;K2=lane_todo; K1=lane_active; Z11=0; Z3=str_len; 1=LessThen;
+//; init variables before main loop
+  VPCMPD        $1,  Z3,  Z11, K1,  K2    //;95727519 K2 := K1 & (0<str_len)          ;K2=lane_todo; K1=lane_active; Z11=0; Z3=str_len; 1=LessThen;
   KXORW         K1,  K1,  K1              //;C1A15D64 lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z10, Z7                   //;77B17C9A curr_state := 1                 ;Z7=curr_state; Z10=1;
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
+//; init variables before states loop
   VPXORD        Z6,  Z6,  Z6              //;E4D2E400 next_state := 0                 ;Z6=next_state;
   VMOVDQU32     Z10, Z5                   //;A30F50D2 state_id := 1                   ;Z5=state_id; Z10=1;
   MOVL          R8,  CX                   //;B08178D1 init state_counter              ;CX=state_counter; R8=n_states;
   MOVQ          R14, R13                  //;F0D423D2 init state_offset               ;R13=state_offset; R14=needle_ptr;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z22             //;68FECBA0 get n_bytes_data                ;Z22=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+//; remove tail from data
   VPERMD        Z18, Z22, Z19             //;E5886CFE get tail_mask (data)            ;Z19=tail_mask; Z22=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;BF3EB085 mask data                       ;Z8=data_msg; Z19=tail_mask;
-
-//; based on the n_bytes_data load a shuffle mask, and shuffle with this, that saves 2 instructions
+  VPANDD.Z      Z8,  Z19, K2,  Z8         //;BF3EB085 mask data                       ;Z8=data_msg; K2=lane_todo; Z19=tail_mask;
+//; transform data such that we can compare
   VPSHUFB       Z12, Z8,  Z8              //;964815FF toggle endiannes                ;Z8=data_msg; Z12=bswap32;
   VPSUBD        Z22, Z20, Z26             //;43F001E9 scratch_Z26 := 4 - n_bytes_data ;Z26=scratch_Z26; Z20=4; Z22=n_bytes_data;
   VPSLLD        $3,  Z26, Z26             //;22D27D9F scratch_Z26 <<= 3               ;Z26=scratch_Z26;
   VPSRLVD       Z26, Z8,  Z8              //;C0B21528 data_msg >>= scratch_Z26        ;Z8=data_msg; Z26=scratch_Z26;
-
+//; advance one code-point
   VPSUBD        Z22, Z3,  Z3              //;CB5D370F str_len -= n_bytes_data         ;Z3=str_len; Z22=n_bytes_data;
   VPADDD        Z22, Z2,  Z2              //;DEE2A990 str_start += n_bytes_data       ;Z2=str_start; Z22=n_bytes_data;
 loop_states:
-  VPCMPUD       $0,  Z7,  Z5,  K2,  K4    //;F998800A K4 := K2 & (state_id==curr_state);K4=state_matched; K2=lane_todo; Z5=state_id; Z7=curr_state; 0=Eq;
+  VPCMPD        $0,  Z7,  Z5,  K2,  K4    //;F998800A K4 := K2 & (state_id==curr_state);K4=state_matched; K2=lane_todo; Z5=state_id; Z7=curr_state; 0=Eq;
   VPADDD        Z5,  Z10, Z5              //;ED016003 state_id++                      ;Z5=state_id; Z10=1;
-  MOVL          (R13),DX                  //;CA7C9CE3 load number of edges            ;DX=edge_counter; R13=state_offset;
-  ADDQ          $4,  R13                  //;729CC51F state_offset += 4               ;R13=state_offset;
-
-  TESTL         DX,  DX                   //;7BF3F4AE are there any edges?            ;DX=edge_counter;
-  JZ            loop_edges_done           //;5D0DC137 no, then dont loop; jump if zero (ZF = 1);
   KTESTW        K4,  K4                   //;43122CE8 did any states match?           ;K4=state_matched;
   JZ            skip_edges                //;6DE8E146 no, skip the loop with edges; jump if zero (ZF = 1);
+  MOVL          4(R13),DX                 //;CA7C9CE3 load number of edges            ;DX=edge_counter; R13=state_offset;
+  ADDQ          $8,  R13                  //;729CC51F state_offset += 8               ;R13=state_offset;
 loop_edges:
   VPCMPUD.BCST  $5,  (R13),Z8,  K4,  K3   //;510F046E K3 := K4 & (data_msg>=[state_offset]);K3=trans_matched; K4=state_matched; Z8=data_msg; R13=state_offset; 5=GreaterEq;
   VPCMPUD.BCST  $2,  4(R13),Z8,  K3,  K3  //;59D7E2CF K3 &= (data_msg<=[state_offset+4]);K3=scratch; Z8=data_msg; R13=state_offset; 2=LessEq;
@@ -15745,118 +15879,23 @@ loop_edges:
   JNZ           loop_edges                //;314C4D30 jump if not zero (ZF = 0)       ;
   JMP           loop_edges_done           //;D662BEEB                                 ;
 skip_edges:
-  LEAQ          (R13)(DX*8),R13           //;9619D48D state_offset += 8*edge_counter  ;R13=state_offset; DX=edge_counter;
-  LEAQ          (R13)(DX*4),R13           //;9619D48E state_offset += 4*edge_counter  ;R13=state_offset; DX=edge_counter;
+  MOVL          (R13),DX                  //;33839A60 load total bytes of edges       ;DX=edge_counter; R13=state_offset;
+  ADDQ          DX,  R13                  //;2E22DACA state_offset += edge_counter    ;R13=state_offset; DX=edge_counter;
 loop_edges_done:
   DECL          CX                        //;D33A44D5 state_counter--                 ;CX=state_counter;
   JNZ           loop_states               //;CFB42829 jump if not zero (ZF = 0)       ;
 
+//; test the RLZ condition
+  VPMOVD2M      Z6,  K3                   //;E2246D80 retrieve RLZ bit                ;K3=scratch; Z6=next_state;
+  VPCMPD        $0,  Z3,  Z11, K3,  K5    //;CF75D163 K5 := K3 & (0==str_len)         ;K5=rlz_condition; K3=scratch; Z11=0; Z3=str_len; 0=Eq;
+//; test accept contition
   VPSLLD        $1,  Z6,  Z26             //;185F151B shift accept-bit into most sig pos;Z26=scratch_Z26; Z6=next_state;
-  VPMOVD2M      Z26, K3                   //;38627E18 retrieve lane_accept            ;K3=scratch; Z26=scratch_Z26;
+  VPMOVD2M      Z26, K3                   //;38627E18 retrieve accept bit             ;K3=scratch; Z26=scratch_Z26;
+//; update lane_todo and lane_active
+  KORW          K5,  K3,  K3              //;D1E8D8B6 scratch |= rlz_condition        ;K3=scratch; K5=rlz_condition;
   KANDNW        K2,  K3,  K2              //;1C70ECDA lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
   KORW          K1,  K3,  K1              //;E320A3B2 lane_active |= scratch          ;K1=lane_active; K3=scratch;
-
-  VPCMPUD       $4,  Z6,  Z11, K2,  K2    //;7D6781E6 K2 &= (0!=next_state)           ;K2=lane_todo; Z11=0; Z6=next_state; 4=NotEqual;
-  VPANDD        Z6,  Z17, Z7              //;17DDB755 curr_state := flags_mask & next_state;Z7=curr_state; Z17=flags_mask; Z6=next_state;
-  VPCMPD        $1,  Z3,  Z11, K2,  K2    //;7668811F K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
-  KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
-  JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
-next:
-  NEXT()
-//; #endregion bcDfaL
-
-//; #region bcDfaLZ
-//; DfaL Deterministic Finite Automaton(DFA) large with unlimited capacity with Zero length remaining assertion
-TEXT bcDfaLZ(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
-  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-  VPBROADCASTD  CONSTD_0x3FFFFFFF(),Z17   //;EF9E72D4 load flags_mask                 ;Z17=flags_mask;
-  VMOVDQU32     bswap32<>(SB),Z12         //;A0BC360A load constant bswap32           ;Z12=bswap32;
-
-  MOVL          (R14),R8                  //;6AD2EA95 load n_states                   ;R8=n_states; R14=needle_ptr;
-//; if the node has RLZA (Remaining Length Zero Assertion)
-  VPCMPD        $0,  Z3,  Z11, K1,  K3    //;4D7309BE K3 := K1 & (0==str_len)         ;K3=scratch; K1=lane_active; Z11=0; Z3=str_len; 0=Eq;
-  VPCMPD        $1,  Z3,  Z11, K1,  K2    //;95727519 K2 := K1 & (0<str_len)          ;K2=lane_todo; K1=lane_active; Z11=0; Z3=str_len; 1=LessThen;
-  KXORW         K1,  K1,  K1              //;C1A15D64 lane_active := 0                ;K1=lane_active;
-
-  VPBROADCASTD  R8,  Z26                  //;8033DE0F bcst RZLA                       ;Z26=scratch_Z26; R8=scratch;
-  ANDL          $0x7FFFFFFF,R8            //;92A7AB98 mask away RLZA flag             ;R8=scratch;
-  VPMOVD2M      Z26, K6                   //;33EAE975 RLZA to mask                    ;K6=RLZA; Z26=scratch_Z26;
-  KANDW         K6,  K3,  K6              //;9982D1AA RLZA &= scratch                 ;K6=RLZA; K3=scratch;
-  KANDNW        K2,  K6,  K2              //;F4D77987 lane_todo &= ~RLZA              ;K2=lane_todo; K6=RLZA;
-  KORW          K1,  K6,  K1              //;A58B9650 lane_active |= RLZA             ;K1=lane_active; K6=RLZA;
-
-  CMPL          R8,  $1                   //;637F12FC more than 1 state?              ;R8=n_states;
-  JLE           next                      //;AEE3942A no, then there is only an accept state; jump if less or equal ((ZF = 1) or (SF neq OF));
-
-  ADDQ          $4,  R14                  //;3259F7B2 init state_offset               ;R14=needle_ptr;
-  VMOVDQU32     Z10, Z7                   //;77B17C9A curr_state := 1                 ;Z7=curr_state; Z10=1;
-main_loop:
-  KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
-
-  VPXORD        Z6,  Z6,  Z6              //;E4D2E400 next_state := 0                 ;Z6=next_state;
-  VMOVDQU32     Z10, Z5                   //;A30F50D2 state_id := 1                   ;Z5=state_id; Z10=1;
-  MOVL          R8,  CX                   //;B08178D1 init state_counter              ;CX=state_counter; R8=n_states;
-  MOVQ          R14, R13                  //;F0D423D2 init state_offset               ;R13=state_offset; R14=needle_ptr;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z22             //;68FECBA0 get n_bytes_data                ;Z22=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPERMD        Z18, Z22, Z19             //;E5886CFE get tail_mask (data)            ;Z19=tail_mask; Z22=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;BF3EB085 mask data                       ;Z8=data_msg; Z19=tail_mask;
-
-//; based on the n_bytes_data load a shuffle mask, and shuffle with this, that saves 2 instructions
-  VPSHUFB       Z12, Z8,  Z8              //;964815FF toggle endiannes                ;Z8=data_msg; Z12=bswap32;
-  VPSUBD        Z22, Z20, Z26             //;43F001E9 scratch_Z26 := 4 - n_bytes_data ;Z26=scratch_Z26; Z20=4; Z22=n_bytes_data;
-  VPSLLD        $3,  Z26, Z26             //;22D27D9F scratch_Z26 <<= 3               ;Z26=scratch_Z26;
-  VPSRLVD       Z26, Z8,  Z8              //;C0B21528 data_msg >>= scratch_Z26        ;Z8=data_msg; Z26=scratch_Z26;
-
-  VPSUBD        Z22, Z3,  Z3              //;CB5D370F str_len -= n_bytes_data         ;Z3=str_len; Z22=n_bytes_data;
-  VPADDD        Z22, Z2,  Z2              //;DEE2A990 str_start += n_bytes_data       ;Z2=str_start; Z22=n_bytes_data;
-  VPCMPD        $1,  Z3,  Z11, K2,  K5    //;CF75D163 K5 := K2 & (0<str_len)          ;K5=0<str_len; K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
-loop_states:
-  VPCMPUD       $0,  Z7,  Z5,  K2,  K4    //;F998800A K4 := K2 & (state_id==curr_state);K4=state_matched; K2=lane_todo; Z5=state_id; Z7=curr_state; 0=Eq;
-  VPADDD        Z5,  Z10, Z5              //;ED016003 state_id++                      ;Z5=state_id; Z10=1;
-  MOVL          (R13),DX                  //;CA7C9CE3 load number of edges            ;DX=edge_counter; R13=state_offset;
-  ADDQ          $4,  R13                  //;729CC51F state_offset += 4               ;R13=state_offset;
-
-  TESTL         DX,  DX                   //;7BF3F4AE are there any edges?            ;DX=edge_counter;
-  JZ            loop_edges_done           //;5D0DC137 no, then dont loop; jump if zero (ZF = 1);
-  KTESTW        K4,  K4                   //;43122CE8 did any states match?           ;K4=state_matched;
-  JZ            skip_edges                //;6DE8E146 no, skip the loop with edges; jump if zero (ZF = 1);
-loop_edges:
-  VPCMPUD.BCST  $5,  (R13),Z8,  K4,  K3   //;510F046E K3 := K4 & (data_msg>=[state_offset]);K3=trans_matched; K4=state_matched; Z8=data_msg; R13=state_offset; 5=GreaterEq;
-  VPCMPUD.BCST  $2,  4(R13),Z8,  K3,  K3  //;59D7E2CF K3 &= (data_msg<=[state_offset+4]);K3=scratch; Z8=data_msg; R13=state_offset; 2=LessEq;
-  VPBROADCASTD  8(R13),Z26                //;421FCDC8 update next_state               ;Z26=scratch_Z26; R13=state_offset;
-  ADDQ          $12, R13                  //;9997E3C9 state_offset += 12              ;R13=state_offset;
-
-  VPMOVD2M      Z26, K6                   //;E2246D80 load RLZA                       ;K6=RLZA; Z26=scratch_Z26;
-//; if K6=0 then we do not require that Z3=0; if K6=1 then require that Z3=3
-  KANDW         K6,  K5,  K6              //;D2B089E5 RLZA &= 0<str_len               ;K6=RLZA; K5=0<str_len;
-  KANDNW        K3,  K6,  K3              //;69132657 scratch &= ~RLZA                ;K3=scratch; K6=RLZA;
-  VMOVDQU32     Z26, K3,  Z6              //;27254C29 update next_state               ;Z6=next_state; K3=scratch; Z26=scratch_Z26;
-
-  DECL          DX                        //;F5ED8DBE edge_counter--                  ;DX=edge_counter;
-  JNZ           loop_edges                //;314C4D30 jump if not zero (ZF = 0)       ;
-  JMP           loop_edges_done           //;D662BEEB                                 ;
-skip_edges:
-  LEAQ          (R13)(DX*8),R13           //;9619D48D state_offset += 8*edge_counter  ;R13=state_offset; DX=edge_counter;
-  LEAQ          (R13)(DX*4),R13           //;9619D48E state_offset += 4*edge_counter  ;R13=state_offset; DX=edge_counter;
-loop_edges_done:
-  DECL          CX                        //;D33A44D5 state_counter--                 ;CX=state_counter;
-  JNZ           loop_states               //;CFB42829 jump if not zero (ZF = 0)       ;
-
-  VPSLLD        $1,  Z6,  Z26             //;185F151B shift accept-bit into most sig pos;Z26=scratch_Z26; Z6=next_state;
-  VPMOVD2M      Z26, K3                   //;38627E18 retrieve lane_accept            ;K3=scratch; Z26=scratch_Z26;
-  KANDNW        K2,  K3,  K2              //;1C70ECDA lane_todo &= ~scratch           ;K2=lane_todo; K3=scratch;
-  KORW          K1,  K3,  K1              //;E320A3B2 lane_active |= scratch          ;K1=lane_active; K3=scratch;
-
+//; determine if there is more data to process
   VPCMPUD       $4,  Z6,  Z11, K2,  K2    //;7D6781E6 K2 &= (0!=next_state)           ;K2=lane_todo; Z11=0; Z6=next_state; 4=NotEqual;
   VPANDD        Z6,  Z17, Z7              //;17DDB755 curr_state := flags_mask & next_state;Z7=curr_state; Z17=flags_mask; Z6=next_state;
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;7668811F K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;

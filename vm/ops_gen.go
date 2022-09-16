@@ -332,12 +332,11 @@ const (
 	opDfaT6Z                 bcop = 326
 	opDfaT7Z                 bcop = 327
 	opDfaT8Z                 bcop = 328
-	opDfaL                   bcop = 329
-	opDfaLZ                  bcop = 330
-	opslower                 bcop = 331
-	opsupper                 bcop = 332
-	opsadjustsize            bcop = 333
-	opaggapproxcount         bcop = 334
-	optrap                   bcop = 335
-	_maxbcop                      = 336
+	opDfaLZ                  bcop = 329
+	opslower                 bcop = 330
+	opsupper                 bcop = 331
+	opsadjustsize            bcop = 332
+	opaggapproxcount         bcop = 333
+	optrap                   bcop = 334
+	_maxbcop                      = 335
 )

@@ -1,12 +1,11 @@
 # go test -bench BenchmarkTestQueries/0036-similar-to
-#WHERE (name LIKE '%ø_e')
-#WHERE (name_eng LIKE '%r_n')
-#WHERE (name_eng ILIKE '%r_n')
-#WHERE (name_eng SIMILAR TO '%r_n')
-#WHERE (name_eng SIMILAR TO '(?i)%r_n')
+#WHERE (name_eng ILIKE '%k_n')
+#WHERE (name_eng SIMILAR TO '(?i)%k_n')
+#WHERE (name_eng ~ '(?i)%k_n')
+#NOTE: the character 'k', has three case-equivalent character, two ASCII 'k', and 'K' and an unicode code-point
 SELECT name
 FROM input
-WHERE (name_eng SIMILAR TO '(?i)%r_n')
+WHERE (name_eng SIMILAR TO '(?i)%k_n')
 ---
 {"country_eng": "Armenia", "name_eng": "Aram Khachatryan", "country": "Հայաստան", "name": "Արամ Խաչատրյան"}
 {"country_eng": "Australia", "name_eng": "Nicole Kidman", "country": "Australia", "name": "Nicole Kidman"}

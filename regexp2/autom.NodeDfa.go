@@ -17,15 +17,14 @@ package regexp2
 import (
 	"fmt"
 	"math"
-	"math/bits"
+	"strconv"
 	"unicode"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
-func nBitsNeeded(i int) int {
-	return bits.Len(uint(i))
-}
+const notInitialized = -1
 
 type DFA struct {
 	id     nodeIDT
@@ -45,74 +44,87 @@ func (d *DFA) addEdge(e edgeT) {
 	d.edges = slices.Insert(d.edges, 0, e)
 }
 
-func addWithMerge(edge1 edgeT, edges *[]edgeT) {
-	min1, max1, rlza1 := edge1.symbolRange.split()
-	for index2, edge2 := range *edges {
-		if edge1.to == edge2.to {
-			min2, max2, rlza2 := edge2.symbolRange.split()
-			if ((min1 != min2) || (max1 != max2)) && (rlza1 == rlza2) {
-				if (max1 + 1) == min2 {
-					*edges = slices.Delete(*edges, index2, index2+1) // remove existing edge
-					addWithMerge(edgeT{newSymbolRange(min1, max2, rlza1), edge1.to}, edges)
-					return
-				}
-				if (max2 + 1) == min1 {
-					*edges = slices.Delete(*edges, index2, index2+1) // remove existing edge
-					addWithMerge(edgeT{newSymbolRange(min2, max1, rlza1), edge1.to}, edges)
-					return
+// rlza return true when this DFA node contains a RLZ edge
+func (d *DFA) rlza() bool {
+	for _, edge := range d.edges {
+		if edge.rlza() {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeEdgeRanges merges all regular edges into a new smallest edge range; optionally, the RLZA edge is discarded
+func mergeEdgeRanges(edges []edgeT, discardRLZ bool) []edgeT {
+	var addWithMerge func(edge1 edgeT, edges *[]edgeT)
+	addWithMerge = func(edge1 edgeT, edges *[]edgeT) {
+		min1, max1 := edge1.symbolRange.split()
+		for index2, edge2 := range *edges {
+			if edge1.to == edge2.to {
+				min2, max2 := edge2.symbolRange.split()
+				if (min1 != min2) || (max1 != max2) {
+					if (max1 + 1) == min2 {
+						*edges = slices.Delete(*edges, index2, index2+1) // remove existing edge
+						addWithMerge(edgeT{newSymbolRange(min1, max2), edge1.to}, edges)
+						return
+					}
+					if (max2 + 1) == min1 {
+						*edges = slices.Delete(*edges, index2, index2+1) // remove existing edge
+						addWithMerge(edgeT{newSymbolRange(min2, max1), edge1.to}, edges)
+						return
+					}
 				}
 			}
 		}
+		*edges = slices.Insert(*edges, len(*edges), edge1)
 	}
-	*edges = slices.Insert(*edges, len(*edges), edge1)
-}
 
-func (d *DFA) mergeEdgeRanges() []edgeT {
-	if len(d.edges) <= 1 {
-		return d.edges // nothing to merge
-	}
 	newEdges := make([]edgeT, 0)
-	for _, edge := range d.edges {
-		addWithMerge(edge, &newEdges)
+	for _, edge := range edges {
+		if !(discardRLZ && edge.rlza()) {
+			addWithMerge(edge, &newEdges)
+		}
 	}
 	return newEdges
 }
 
 type DFAStore struct {
-	nextID    nodeIDT
-	startIDi  nodeIDT
-	StartRLZA bool // indicate that the start node has Remaining Length Zero Assertion (RLZA)
-	data      map[nodeIDT]*DFA
-	maxNodes  int
+	nextID   nodeIDT
+	startIDi nodeIDT
+	data     map[nodeIDT]*DFA
+	maxNodes int
 }
 
 func newDFAStore(maxNodes int) DFAStore {
 	return DFAStore{
-		nextID:    0,
-		startIDi:  -1,
-		StartRLZA: false,
-		data:      map[nodeIDT]*DFA{},
-		maxNodes:  maxNodes,
+		nextID:   0,
+		startIDi: notInitialized,
+		data:     map[nodeIDT]*DFA{},
+		maxNodes: maxNodes,
 	}
 }
 
 func (store *DFAStore) Dot() *Graphviz {
 	result := newGraphiz()
-	ids, _ := store.getIDs()
-	for _, nodeID := range ids {
+	for _, nodeID := range store.getIDs() {
 		node, _ := store.get(nodeID)
-		fromStr := fmt.Sprintf("%v", nodeID)
-		result.addNode(fromStr, node.start, node.accept, store.StartRLZA)
+		fromStr := strconv.Itoa(int(nodeID))
+		result.addNode(fromStr, node.start, node.accept, node.rlza())
 		for _, edge := range node.edges {
-			result.addEdge(fromStr, fmt.Sprintf("%v", edge.to), edge.symbolRange.String())
+			result.addEdge(fromStr, strconv.Itoa(int(edge.to)), edge.symbolRange.String())
 		}
 	}
 	return result
 }
 
 func (store *DFAStore) newNode() (nodeIDT, error) {
-	if int(store.nextID) >= store.maxNodes {
-		return -1, fmt.Errorf("DFA exceeds max number of nodes %v::newNode", store.maxNodes)
+	nNodesBefore := store.NumberOfNodes()
+	if nNodesBefore >= store.maxNodes {
+		store.removeNonReachableNodes()
+		nNodesAfter := store.NumberOfNodes()
+		if nNodesAfter > (nNodesBefore - 10) {
+			return -1, fmt.Errorf("DFA exceeds max number of nodes %v::newNode", store.maxNodes)
+		}
 	}
 	nodeID := store.nextID
 	store.nextID++
@@ -132,35 +144,35 @@ func (store *DFAStore) get(nodeID nodeIDT) (*DFA, error) {
 	return nil, fmt.Errorf("DFAStore.get(nodeIDT) c7de4d3a: nodeIDT %v not present in map %v", nodeID, store.data)
 }
 
+// acceptNodeID returns the (sole) accepting nodeID
+func (store *DFAStore) acceptNodeID() (bool, nodeIDT) {
+	for nodeID, node := range store.data {
+		if node.accept {
+			return true, nodeID
+		}
+	}
+	return false, notInitialized
+}
+
+// startID returns the (sole) start nodeID
 func (store *DFAStore) startID() (nodeIDT, error) {
-	if store.startIDi == -1 {
+	if store.startIDi == notInitialized {
 		for nodeID, dfa := range store.data {
 			if dfa.start {
 				store.startIDi = nodeID
 				return nodeID, nil
 			}
 		}
-		return -1, fmt.Errorf("DFAStore does not have a start node")
+		return notInitialized, fmt.Errorf("DFAStore does not have a start node")
 	}
 	return store.startIDi, nil
 }
 
-// getIDs returns vector of unique ids; first element is the start node
-func (store *DFAStore) getIDs() (vectorT[nodeIDT], error) {
-	ids := make([]nodeIDT, len(store.data))
-	if startID, err := store.startID(); err != nil {
-		return nil, fmt.Errorf("%v::getIDs", err)
-	} else {
-		ids[0] = startID
-		index := 1
-		for nodeID := range store.data {
-			if nodeID != startID {
-				ids[index] = nodeID
-				index++
-			}
-		}
-		return ids, nil
-	}
+// getIDs returns sorted slice of unique ids
+func (store *DFAStore) getIDs() []nodeIDT {
+	ids := maps.Keys(store.data)
+	slices.Sort(ids)
+	return ids
 }
 
 // NumberOfNodes return the number of nodes in this automaton
@@ -168,30 +180,33 @@ func (store *DFAStore) NumberOfNodes() int {
 	return len(store.data)
 }
 
-func (store *DFAStore) reachableNodesTraverse(nodeID nodeIDT, reachable *setT[nodeIDT]) {
-	if !reachable.contains(nodeID) {
-		reachable.insert(nodeID)
-		node, _ := store.get(nodeID)
-		for _, edge := range node.edges {
-			store.reachableNodesTraverse(edge.to, reachable)
-		}
-	}
-}
-
-// reachableNodes return set of all nodes that are reachable from the start-state
-func (store *DFAStore) reachableNodes() (*setT[nodeIDT], error) {
-	startID, err := store.startID()
-	if err != nil {
-		return nil, fmt.Errorf("%v::reachableNodes", err)
-	}
-	reachable := newSet[nodeIDT]()
-	store.reachableNodesTraverse(startID, &reachable)
-	return &reachable, nil
-}
-
 // removeNonReachableNodes removes states that are not reachable from the start-state
 func (store *DFAStore) removeNonReachableNodes() error {
-	if reachableNodes, err := store.reachableNodes(); err != nil {
+
+	// reachableNodes return set of all nodes that are reachable from the start-state
+	reachableNodes := func() (*setT[nodeIDT], error) {
+
+		var reachableNodesTraverse func(nodeID nodeIDT, reachable *setT[nodeIDT])
+		reachableNodesTraverse = func(nodeID nodeIDT, reachable *setT[nodeIDT]) {
+			if !reachable.contains(nodeID) {
+				reachable.insert(nodeID)
+				node, _ := store.get(nodeID)
+				for _, edge := range node.edges {
+					reachableNodesTraverse(edge.to, reachable)
+				}
+			}
+		}
+
+		startID, err := store.startID()
+		if err != nil {
+			return nil, fmt.Errorf("%v::reachableNodes", err)
+		}
+		reachable := newSet[nodeIDT]()
+		reachableNodesTraverse(startID, &reachable)
+		return &reachable, nil
+	}
+
+	if reachableNodes, err := reachableNodes(); err != nil {
 		return fmt.Errorf("%v::removeNonReachableNodes", err)
 	} else {
 		for nodeID := range store.data {
@@ -203,82 +218,117 @@ func (store *DFAStore) removeNonReachableNodes() error {
 	}
 }
 
+// removeEdgesFromAcceptNodes removes edges from accepting nodes
 func (store *DFAStore) removeEdgesFromAcceptNodes() {
-	if store.StartRLZA {
-		//NOTE: if the start-node has the remaining length zero assertion, then do not remove edges.
-		return
-	}
 	for _, node := range store.data {
-		if node.accept && len(node.edges) > 0 {
-			node.edges = node.edges[:0] // remove all edges
-		}
-	}
-}
-
-// mergeAcceptNodes merges all accept states into one single state (and thus reduces the number of states)
-func (store *DFAStore) mergeAcceptNodes() {
-	// find all accept nodes
-	acceptNodeIDs := newVector[nodeIDT]()
-	for id, node := range store.data {
 		if node.accept {
-			acceptNodeIDs.pushBack(id)
-		}
-	}
-	// if there are more than 1 accept nodes, then merge them
-	if acceptNodeIDs.size() > 1 {
-		// get the smallest accept node id
-		newAcceptID := nodeIDT(math.MaxInt32)
-		for _, id := range acceptNodeIDs {
-			if id < newAcceptID {
-				newAcceptID = id
-			}
-		}
-		// update the edges
-		for _, node := range store.data {
-			for index, edge := range node.edges {
-				if acceptNodeIDs.contains(edge.to) {
-					node.edges[index].to = newAcceptID
+			rlzaEdge := edgeT{}
+			rlzaEdgePresent := false
+			for _, edge := range node.edges {
+				if edge.rlza() {
+					rlzaEdge = edge
+					rlzaEdgePresent = true
+					break
 				}
 			}
-			for symbol, to := range node.trans {
-				if acceptNodeIDs.contains(to) {
-					node.trans.insert(symbol, newAcceptID)
-				}
-			}
-		}
-		// remove accept nodes that are not used anymore
-		for _, id := range acceptNodeIDs {
-			if id != newAcceptID {
-				delete(store.data, id)
+			node.edges = node.edges[:0] // remove all edges; NOTE unreachable nodes may be created here
+			if rlzaEdgePresent {
+				node.addEdge(rlzaEdge) // restore RLZA edge
 			}
 		}
 	}
 }
 
-// HasOnlyASCII return true if the dfa matches only ascii characters
-func (store *DFAStore) HasOnlyASCII() bool {
+// mergeAcceptNodes merges all acceptNodeID states into one single state (and thus reduces the number of states)
+func (store *DFAStore) mergeAcceptNodes() {
+
+	merge := func(vec vectorT[nodeIDT]) {
+		nNodes := vec.size()
+		if nNodes == 0 {
+			return
+		}
+		if nNodes > 1 {
+			// get the smallest acceptNodeID node id
+			singleNodeID := nodeIDT(math.MaxInt32)
+			for _, id := range vec {
+				if id < singleNodeID {
+					singleNodeID = id
+				}
+			}
+			// update the edges
+			for _, node := range store.data {
+				for index, edge := range node.edges {
+					if vec.contains(edge.to) {
+						node.edges[index].to = singleNodeID
+					}
+				}
+			}
+			// remove nodes that are not used anymore
+			for _, id := range vec {
+				if id != singleNodeID {
+					delete(store.data, id)
+				}
+			}
+		}
+	}
+
+	// find all acceptNodeIDs
+	acceptNodeIDs := newVector[nodeIDT]()
+	for nodeID, node := range store.data {
+		if node.accept {
+			acceptNodeIDs.pushBack(nodeID)
+		}
+	}
+
+	merge(acceptNodeIDs)
+
+	store.removeNonReachableNodes()
+	store.rebuildInternals()
+}
+
+// HasUnicodeEdge returns true if the store has an edge with a non-ASCII unicode
+// symbol excluding a unicode wildcard edge.
+func (store *DFAStore) HasUnicodeEdge() bool {
 	for _, node := range store.data {
 		for _, edge := range node.edges {
-			min, max, _ := edge.symbolRange.split()
-			if (min > unicode.MaxASCII) || (max > unicode.MaxASCII) {
-				return false
+			if !edge.rlza() {
+				min, max := edge.symbolRange.split()
+				isWildcardEdge := (min <= unicode.MaxASCII) && (max == unicode.MaxRune)
+				if (max > unicode.MaxASCII) && !isWildcardEdge {
+					return true
+				}
 			}
 		}
 	}
-	return true
+	return false
 }
 
-// HasRLZA returns whether this automaton contains at least one edge with
+// HasUnicodeWildcard returns true if the DFA has at least one wildcard edge for ALL non-ASCII values,
+// and all other edges are ASCII observations (thus no regular non-ASCII edges)
+func (store *DFAStore) HasUnicodeWildcard() (present bool, wildcardRange symbolRangeT) {
+	hasAnyEdge := false
+	for _, node := range store.data {
+		for _, edge := range node.edges {
+			if !edge.rlza() {
+				min, max := edge.symbolRange.split()
+				if (min <= unicode.MaxASCII) && (max == unicode.MaxRune) {
+					hasAnyEdge = true
+					wildcardRange = edge.symbolRange
+				} else if (min > unicode.MaxASCII) || (max > unicode.MaxASCII) {
+					return false, 0xFF
+				}
+			}
+		}
+	}
+	return hasAnyEdge, wildcardRange
+}
+
+// HasRLZA returns whether this automaton contains at least one node with
 // a Remaining Length Zero Assertion (RLZA) '$'
 func (store *DFAStore) HasRLZA() bool {
-	if store.StartRLZA {
-		return true
-	}
 	for _, node := range store.data {
-		for _, edge := range node.edges {
-			if _, _, rlza := edge.symbolRange.split(); rlza {
-				return true
-			}
+		if node.rlza() {
+			return true
 		}
 	}
 	return false
@@ -297,40 +347,8 @@ func (store *DFAStore) rebuildInternals() {
 	}
 }
 
-func (store *DFAStore) renumberNodes() error {
-	names := newMap[nodeIDT, nodeIDT]()
-	newID := nodeIDT(0)
-	maxID := nodeIDT(0)
-	if ids, err := store.getIDs(); err != nil {
-		return fmt.Errorf("%v::renumberNodes", err)
-	} else {
-		for _, oldID := range ids { //NOTE: first element of getIDs() is the start state
-			if oldID > maxID {
-				maxID = oldID
-			}
-			names.insert(oldID, newID)
-			newID++
-		}
-		if maxID >= newID {
-			newData := newMap[nodeIDT, *DFA]()
-			for oldID, node := range store.data {
-				newID := names.at(oldID)
-				node.id = newID
-				newEdges := newVector[edgeT]()
-				for _, edge := range node.edges {
-					newEdges.pushBack(edgeT{edge.symbolRange, names.at(edge.to)})
-				}
-				node.edges = newEdges
-				newData.insert(newID, node)
-			}
-			store.data = newData
-		}
-		return nil
-	}
-}
-
-func (store *DFAStore) MergeEdgeRanges() {
+func (store *DFAStore) MergeEdgeRanges(discardRLZ bool) {
 	for _, node := range store.data {
-		node.edges = node.mergeEdgeRanges()
+		node.edges = mergeEdgeRanges(node.edges, discardRLZ)
 	}
 }

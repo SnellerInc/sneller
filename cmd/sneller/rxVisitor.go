@@ -17,7 +17,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/regexp2"
@@ -61,19 +60,19 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 		if store, err := regexp2.CompileDFA(regex, regexp2.MaxNodesAutomaton); err != nil {
 			r.err = err
 		} else {
-			exprEscaped := strconv.Quote(regex.String())
-			exprEscaped = exprEscaped[1 : len(exprEscaped)-1] // trim leading and trailing '"'
+			exprEscaped := regexp2.PrettyStrForDot(regex.String())
 			infoStr := fmt.Sprintf("\nregex=%v  (original)\nregex=%v  (effective)\n", regexStrOrg, exprEscaped)
-			hasRLZA := store.HasRLZA()
+			hasUnicodeEdge := store.HasUnicodeEdge()
 
-			if cpu.X86.HasAVX512VBMI && store.HasOnlyASCII() { // AVX512_VBMI -> Icelake
+			if cpu.X86.HasAVX512VBMI && !hasUnicodeEdge {
+				hasWildcard, wildcardRange := store.HasUnicodeWildcard()
 				if dsTiny, err := regexp2.NewDsTiny(store); err == nil {
 					nNodes := store.NumberOfNodes()
 					nGroups := dsTiny.NumberOfGroups()
-					if ds6, valid, dot := dsTiny.DataWithGraphviz(true, 6, hasRLZA); valid {
+					if ds, valid, dot := dsTiny.DataWithGraphviz(true, 6, hasWildcard, wildcardRange); valid {
 						if r.ds {
 							_, r.err = fmt.Fprintf(r.dst, "Tiny6: %v\n", infoStr)
-							regexp2.DumpDebug(r.dst, ds6, 6, nNodes, nGroups, hasRLZA, store.StartRLZA, exprEscaped)
+							regexp2.DumpDebug(r.dst, ds, 6, nNodes, nGroups, exprEscaped)
 						}
 						if r.dot {
 							r.err = dot.DotContent(r.dst, "Tiny6", exprEscaped)
@@ -81,10 +80,10 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 						r.done = true
 						return nil
 					}
-					if ds7, valid, dot := dsTiny.DataWithGraphviz(true, 7, hasRLZA); valid {
+					if ds, valid, dot := dsTiny.DataWithGraphviz(true, 7, hasWildcard, wildcardRange); valid {
 						if r.ds {
 							_, r.err = fmt.Fprintf(r.dst, "Tiny7: %v\n", infoStr)
-							regexp2.DumpDebug(r.dst, ds7, 7, nNodes, nGroups, hasRLZA, store.StartRLZA, exprEscaped)
+							regexp2.DumpDebug(r.dst, ds, 7, nNodes, nGroups, exprEscaped)
 						}
 						if r.dot {
 							r.err = dot.DotContent(r.dst, "Tiny7", exprEscaped)
@@ -92,10 +91,10 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 						r.done = true
 						return nil
 					}
-					if ds8, valid, dot := dsTiny.DataWithGraphviz(true, 8, hasRLZA); valid {
+					if ds, valid, dot := dsTiny.DataWithGraphviz(true, 8, hasWildcard, wildcardRange); valid {
 						if r.ds {
 							_, r.err = fmt.Fprintf(r.dst, "Tiny8: %v\n", infoStr)
-							regexp2.DumpDebug(r.dst, ds8, 8, nNodes, nGroups, hasRLZA, store.StartRLZA, exprEscaped)
+							regexp2.DumpDebug(r.dst, ds, 8, nNodes, nGroups, exprEscaped)
 						}
 						if r.dot {
 							r.err = dot.DotContent(r.dst, "Tiny8", exprEscaped)
@@ -105,24 +104,7 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 					}
 				}
 			}
-			if hasRLZA {
-				if dsLargeZ, err := regexp2.NewDsLarge(store, true); err == nil {
-					if r.ds {
-						if _, err = fmt.Fprintf(r.dst, "%v\n", infoStr); err != nil {
-							r.err = err
-						} else {
-							r.err = dsLargeZ.DumpDebug(r.dst)
-						}
-					}
-					if r.dot {
-						store.MergeEdgeRanges()
-						r.err = store.Dot().DotContent(r.dst, "LargeZ", exprEscaped)
-					}
-					r.done = true
-					return nil
-				}
-			}
-			if dsLarge, err := regexp2.NewDsLarge(store, false); err == nil {
+			if dsLarge, err := regexp2.NewDsLarge(store); err == nil {
 				if r.ds {
 					if _, err = fmt.Fprintf(r.dst, "%v\n", infoStr); err != nil {
 						r.err = err
@@ -131,7 +113,7 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 					}
 				}
 				if r.dot {
-					store.MergeEdgeRanges()
+					store.MergeEdgeRanges(false)
 					r.err = store.Dot().DotContent(r.dst, "Large", exprEscaped)
 				}
 				r.done = true

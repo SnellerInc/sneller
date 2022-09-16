@@ -27,13 +27,17 @@ func (e *edgeT) epsilon() bool {
 	return (0x7FFFFFFFFFFFFFFF & e.symbolRange) == edgeEpsilonRange
 }
 
+func (e *edgeT) rlza() bool {
+	return e.symbolRange == edgeRLZARange
+}
+
 func (e *edgeT) symbolRanges() []symbolRangeT {
 	if e.epsilon() {
 		return []symbolRangeT{}
-	} else if e.symbolRange == newSymbolRange(edgeAnyRune, edgeAnyRune, false) {
-		return []symbolRangeT{newSymbolRange(0, utf8.MaxRune, false)}
-	} else if e.symbolRange == newSymbolRange(edgeAnyNotLfRune, edgeAnyNotLfRune, false) {
-		return []symbolRangeT{newSymbolRange(0, edgeLfRune-1, false), newSymbolRange(edgeLfRune+1, utf8.MaxRune, false)}
+	} else if e.symbolRange == newSymbolRange(edgeAnyRune, edgeAnyRune) {
+		return []symbolRangeT{newSymbolRange(0, utf8.MaxRune)}
+	} else if e.symbolRange == newSymbolRange(edgeAnyNotLfRune, edgeAnyNotLfRune) {
+		return []symbolRangeT{newSymbolRange(0, edgeLfRune-1), newSymbolRange(edgeLfRune+1, utf8.MaxRune)}
 	} else {
 		return []symbolRangeT{e.symbolRange}
 	}

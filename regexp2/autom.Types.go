@@ -21,9 +21,17 @@ import (
 // escapeChar is the rune used as the escape character.
 const escapeChar = rune(0x5C) // backslash
 
+// nodeIDT type of nodes in NFA/DFA
 type nodeIDT int32
+
+// stateIDT type of states in DFA data-structures
+type stateIDT int32
+
+// groupIDT type of observation groups
+type groupIDT int
 
 const edgeEpsilonRune = rune(utf8.MaxRune)
 const edgeAnyRune = rune(utf8.MaxRune + 1)
 const edgeAnyNotLfRune = rune(utf8.MaxRune + 2)
+const edgeRLZARune = rune(utf8.MaxRune + 3)
 const edgeLfRune = rune('\n')

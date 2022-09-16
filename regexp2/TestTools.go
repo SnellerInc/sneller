@@ -19,18 +19,18 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"strconv"
 
 	"golang.org/x/sys/cpu"
 )
 
 type DataStructures struct {
-	Expr                        string
-	RegexGolang                 *regexp.Regexp
-	RegexSneller                *regexp.Regexp
-	RegexSupported              bool
-	DsT6, DsT7, DsT8, DsL, DsLZ *[]byte
-	DsT6Z, DsT7Z, DsT8Z         *[]byte
+	Expr                string
+	RegexGolang         *regexp.Regexp
+	RegexSneller        *regexp.Regexp
+	RegexSupported      bool
+	DsT6, DsT7, DsT8    []byte
+	DsT6Z, DsT7Z, DsT8Z []byte
+	DsLZ                []byte
 }
 
 func createFileWriter(filename string) (io.Writer, error) {
@@ -70,110 +70,97 @@ func CreateDs(expr string, regexType RegexType, writeDot bool, maxNodes int) (Da
 
 	nNodes := 0
 	nGroups := 0
-
-	exprEscaped := strconv.Quote(result.RegexGolang.String())
-	exprEscaped = exprEscaped[1 : len(exprEscaped)-1] // trim leading and trailing '"'
+	exprEscaped := PrettyStrForDot(result.RegexGolang.String())
 	hasRLZA := store.HasRLZA()
+	hasUnicodeEdge := store.HasUnicodeEdge()
 
-	if cpu.X86.HasAVX512VBMI && store.HasOnlyASCII() { // AVX512_VBMI -> Icelake
-		if dsTiny, err := NewDsTiny(store); err != nil {
+	if cpu.X86.HasAVX512VBMI && !hasUnicodeEdge {
+		hasWildcard, wildcardGroup := store.HasUnicodeWildcard()
+		dsTiny, err := NewDsTiny(store)
+		if err != nil {
 			return result, err
-		} else {
-			nNodes = dsTiny.Store.NumberOfNodes()
-			nGroups = dsTiny.NumberOfGroups()
-			if ds6, valid, dot := dsTiny.DataWithGraphviz(writeDot, 6, hasRLZA); valid {
+		}
+		nNodes = dsTiny.Store.NumberOfNodes()
+		nGroups = dsTiny.NumberOfGroups()
+		if ds6, valid, dot := dsTiny.DataWithGraphviz(writeDot, 6, hasWildcard, wildcardGroup); valid {
+			if hasRLZA {
+				result.DsT6Z = ds6
+			} else {
+				result.DsT6 = ds6
+			}
+			if writeDot {
 				if hasRLZA {
-					result.DsT6Z = &ds6
+					dot.WriteToFile(tmpPath+"Tiny6Z.dot", "Tiny6Z", exprEscaped)
 				} else {
-					result.DsT6 = &ds6
-				}
-				if writeDot {
-					if hasRLZA {
-						dot.WriteToFile(tmpPath+"Tiny6Z.dot", "Tiny6Z", exprEscaped)
-					} else {
-						dot.WriteToFile(tmpPath+"Tiny6.dot", "Tiny6", exprEscaped)
-					}
+					dot.WriteToFile(tmpPath+"Tiny6.dot", "Tiny6", exprEscaped)
 				}
 			}
-			if ds7, valid, dot := dsTiny.DataWithGraphviz(writeDot, 7, hasRLZA); valid {
+		}
+		if ds7, valid, dot := dsTiny.DataWithGraphviz(writeDot, 7, hasWildcard, wildcardGroup); valid {
+			if hasRLZA {
+				result.DsT7Z = ds7
+			} else {
+				result.DsT7 = ds7
+			}
+			if writeDot {
 				if hasRLZA {
-					result.DsT7Z = &ds7
+					dot.WriteToFile(tmpPath+"Tiny7Z.dot", "Tiny7Z", exprEscaped)
 				} else {
-					result.DsT7 = &ds7
-				}
-				if writeDot {
-					if hasRLZA {
-						dot.WriteToFile(tmpPath+"Tiny7Z.dot", "Tiny7Z", exprEscaped)
-					} else {
-						dot.WriteToFile(tmpPath+"Tiny7.dot", "Tiny7", exprEscaped)
-					}
+					dot.WriteToFile(tmpPath+"Tiny7.dot", "Tiny7", exprEscaped)
 				}
 			}
-			if ds8, valid, dot := dsTiny.DataWithGraphviz(writeDot, 8, hasRLZA); valid {
+		}
+		if ds8, valid, dot := dsTiny.DataWithGraphviz(writeDot, 8, hasWildcard, wildcardGroup); valid {
+			if hasRLZA {
+				result.DsT8Z = ds8
+			} else {
+				result.DsT8 = ds8
+			}
+			if writeDot {
 				if hasRLZA {
-					result.DsT8Z = &ds8
+					dot.WriteToFile(tmpPath+"Tiny8Z.dot", "Tiny8Z", exprEscaped)
 				} else {
-					result.DsT8 = &ds8
-				}
-				if writeDot {
-					if hasRLZA {
-						dot.WriteToFile(tmpPath+"Tiny8Z.dot", "Tiny8Z", exprEscaped)
-					} else {
-						dot.WriteToFile(tmpPath+"Tiny8.dot", "TinyT8", exprEscaped)
-					}
+					dot.WriteToFile(tmpPath+"Tiny8.dot", "Tiny8", exprEscaped)
 				}
 			}
 		}
 	}
 
-	var dsL, dsLZ *DsLarge
-	if hasRLZA {
-		if dsLZ, err = NewDsLarge(store, true); err == nil {
-			tmp := dsLZ.Data()
-			result.DsLZ = &tmp
-		}
-	} else {
-		if dsL, err = NewDsLarge(store, false); err == nil {
-			tmp := dsL.Data()
-			result.DsL = &tmp
-		}
+	var dsLZ *DsLarge
+	if dsLZ, err = NewDsLarge(store); err == nil {
+		result.DsLZ = dsLZ.Data()
 	}
 
 	if writeDot { // Dump data-structures to disk
 		tmpPath := os.TempDir() + "\\sneller\\"
 		if result.DsT6 != nil {
 			if writer, err := createFileWriter(tmpPath + "DsT6.txt"); err == nil {
-				DumpDebug(writer, *result.DsT6, 6, nNodes, nGroups, false, store.StartRLZA, result.Expr)
+				DumpDebug(writer, result.DsT6, 6, nNodes, nGroups, result.Expr)
 			}
 		}
 		if result.DsT7 != nil {
 			if writer, err := createFileWriter(tmpPath + "DsT7.txt"); err == nil {
-				DumpDebug(writer, *result.DsT7, 7, nNodes, nGroups, false, store.StartRLZA, result.Expr)
+				DumpDebug(writer, result.DsT7, 7, nNodes, nGroups, result.Expr)
 			}
 		}
 		if result.DsT8 != nil {
 			if writer, err := createFileWriter(tmpPath + "DsT8.txt"); err == nil {
-				DumpDebug(writer, *result.DsT8, 8, nNodes, nGroups, false, store.StartRLZA, result.Expr)
+				DumpDebug(writer, result.DsT8, 8, nNodes, nGroups, result.Expr)
 			}
 		}
 		if result.DsT6Z != nil {
 			if writer, err := createFileWriter(tmpPath + "DsT6Z.txt"); err == nil {
-				DumpDebug(writer, *result.DsT6Z, 6, nNodes, nGroups, true, store.StartRLZA, result.Expr)
+				DumpDebug(writer, result.DsT6Z, 6, nNodes, nGroups, result.Expr)
 			}
 		}
 		if result.DsT7Z != nil {
 			if writer, err := createFileWriter(tmpPath + "DsT7Z.txt"); err == nil {
-				DumpDebug(writer, *result.DsT7Z, 7, nNodes, nGroups, true, store.StartRLZA, result.Expr)
+				DumpDebug(writer, result.DsT7Z, 7, nNodes, nGroups, result.Expr)
 			}
 		}
 		if result.DsT8Z != nil {
 			if writer, err := createFileWriter(tmpPath + "DsT8Z.txt"); err == nil {
-				DumpDebug(writer, *result.DsT8Z, 8, nNodes, nGroups, true, store.StartRLZA, result.Expr)
-			}
-		}
-		if result.DsL != nil {
-			if writer, err := createFileWriter(tmpPath + "DsL.txt"); err == nil {
-				dsL.DumpDebug(writer)
+				DumpDebug(writer, result.DsT8Z, 8, nNodes, nGroups, result.Expr)
 			}
 		}
 		if result.DsLZ != nil {

@@ -22,49 +22,37 @@ type symbolRangeT uint64
 const edgeEpsilonRange = symbolRangeT(edgeEpsilonRune) | (symbolRangeT(edgeEpsilonRune) << 32)
 const edgeAnyRange = symbolRangeT(edgeAnyRune) | (symbolRangeT(edgeAnyRune) << 32)
 const edgeAnyNotLfRange = symbolRangeT(edgeAnyNotLfRune) | (symbolRangeT(edgeAnyNotLfRune) << 32)
+const edgeRLZARange = symbolRangeT(edgeRLZARune) | (symbolRangeT(edgeAnyNotLfRune) << 32)
 
-func newSymbolRange(min, max rune, rlza bool) symbolRangeT {
-	result := symbolRangeT(min) | (symbolRangeT(max) << 32)
-	if rlza {
-		return result.setRLZA()
-	}
-	return result
+func newSymbolRange(min, max rune) symbolRangeT {
+	return symbolRangeT(min) | (symbolRangeT(max) << 32)
 }
 
 // split returns the min and maximum rune (of the range), and the remaining length
 // zero assertion (RLZA) bool
-func (symbolRange symbolRangeT) split() (min, max rune, rlza bool) {
+func (symbolRange symbolRangeT) split() (min, max rune) {
 	min = rune(symbolRange & 0xFFFFFFFF)
 	max = rune((symbolRange >> 32) & 0x7FFFFFFF) // clear the rlza flag
-	rlza = (symbolRange & 0x8000000000000000) != 0
 	return
 }
 
-func (symbolRange symbolRangeT) setRLZA() symbolRangeT {
-	return 0x8000000000000000 | symbolRange
-}
-
-func (symbolRange symbolRangeT) clearRLZA() symbolRangeT {
-	return 0x7FFFFFFFFFFFFFFF & symbolRange
-}
-
 func (symbolRange symbolRangeT) String() string {
-	min, max, rlza := symbolRange.split()
-	rlzaStr := rlzaToString(rlza)
-
-	if (min == edgeEpsilonRune) && (max == edgeEpsilonRune) {
-		return "<ε>" + rlzaStr
+	min, max := symbolRange.split()
+	if min == edgeEpsilonRune {
+		return "<ε>"
 	}
-	if (min == edgeAnyNotLfRune) && (max == edgeAnyNotLfRune) {
-		return "<anyNotLf>" + rlzaStr
+	if min == edgeAnyNotLfRune {
+		return "<anyNotLf>"
 	}
-	if (min == edgeAnyRune) && (max == edgeAnyRune) {
-		return "<any>" + rlzaStr
+	if min == edgeAnyRune {
+		return "<any>"
 	}
-	if (min == edgeLfRune) && (max == edgeLfRune) {
-		return "<lf>" + rlzaStr
+	if min == edgeLfRune {
+		return "<lf>"
 	}
-
+	if min == edgeRLZARune {
+		return "<$>"
+	}
 	var minStr string
 	if ((min >= '0') && (min <= '9')) ||
 		((min >= 'A') && (min <= 'Z')) ||
@@ -85,22 +73,22 @@ func (symbolRange symbolRangeT) String() string {
 		maxStr = "∞"
 	}
 	if minStr == maxStr {
-		return minStr + rlzaStr
+		return minStr
 	}
-	return fmt.Sprintf("%v%v..%v%v", minStr, rlzaStr, maxStr, rlzaStr)
+	return fmt.Sprintf("%v..%v", minStr, maxStr)
 }
 
 func makeValidSymbolRange(min, max rune) []symbolRangeT {
 	if min > max {
 		return []symbolRangeT{}
 	}
-	return []symbolRangeT{newSymbolRange(min, max, false)}
+	return []symbolRangeT{newSymbolRange(min, max)}
 }
 
 // symbolRangeSubtract2 subtract b from a
 func symbolRangeSubtract2(a, b symbolRangeT) []symbolRangeT {
-	min1, max1, _ := a.split()
-	min2, max2, _ := b.split()
+	min1, max1 := a.split()
+	min2, max2 := b.split()
 
 	// 5 different situation to consider
 
@@ -175,11 +163,4 @@ func symbolRangesToString(symbolRanges []symbolRangeT) string {
 		result += symbolRange.String() + ","
 	}
 	return result
-}
-
-func rlzaToString(rlza bool) string {
-	if rlza {
-		return "$"
-	}
-	return ""
 }

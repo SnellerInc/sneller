@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"unicode"
 
+	"golang.org/x/exp/maps"
+
 	"golang.org/x/exp/slices"
 )
 
@@ -33,10 +35,10 @@ func (n *nfa) addEdgeInternal(e edgeT) {
 }
 
 func (n *nfa) addEdgeRune(symbol rune, to nodeIDT, caseSensitive bool) {
-	n.addEdgeInternal(edgeT{newSymbolRange(symbol, symbol, false), to})
+	n.addEdgeInternal(edgeT{newSymbolRange(symbol, symbol), to})
 	if !caseSensitive {
 		for c := unicode.SimpleFold(symbol); c != symbol; c = unicode.SimpleFold(c) {
-			n.addEdgeInternal(edgeT{newSymbolRange(c, c, false), to})
+			n.addEdgeInternal(edgeT{newSymbolRange(c, c), to})
 		}
 	}
 }
@@ -65,7 +67,7 @@ type NFAStore struct {
 func newNFAStore(maxNodes int) NFAStore {
 	return NFAStore{
 		nextID:    0,
-		startIDi:  -1,
+		startIDi:  notInitialized,
 		startRLZA: false,
 		data:      map[nodeIDT]*nfa{},
 		maxNodes:  maxNodes,
@@ -74,11 +76,10 @@ func newNFAStore(maxNodes int) NFAStore {
 
 func (store *NFAStore) dot() *Graphviz {
 	result := newGraphiz()
-	ids, _ := store.getIDs()
-	for _, nodeID := range ids {
+	for _, nodeID := range store.getIDs() {
 		node, _ := store.get(nodeID)
 		fromStr := fmt.Sprintf("%v", nodeID)
-		result.addNode(fromStr, node.start, node.accept, store.startRLZA)
+		result.addNode(fromStr, node.start, node.accept, false)
 		for _, edge := range node.edges {
 			result.addEdge(fromStr, fmt.Sprintf("%v", edge.to), edge.symbolRange.String())
 		}
@@ -87,7 +88,7 @@ func (store *NFAStore) dot() *Graphviz {
 }
 
 func (store *NFAStore) newNode() (nodeIDT, error) {
-	if int(store.nextID) >= store.maxNodes {
+	if len(store.data) >= store.maxNodes {
 		return -1, fmt.Errorf("NFA exceeds max number of nodes %v::newNode", store.maxNodes)
 	}
 	nodeID := store.nextID
@@ -107,126 +108,29 @@ func (store *NFAStore) get(nodeID nodeIDT) (*nfa, error) {
 }
 
 func (store *NFAStore) startID() (nodeIDT, error) {
-	if store.startIDi == -1 {
+	if store.startIDi == notInitialized {
 		for nodeID, node := range store.data {
 			if node.start {
 				store.startIDi = nodeID
 				return nodeID, nil
 			}
 		}
-		return -1, fmt.Errorf("NFAStore does not have a start node")
+		return notInitialized, fmt.Errorf("NFAStore does not have a start node")
 	}
 	return store.startIDi, nil
 }
 
-// getIDs returns vector of the ids; first element is the start node
-func (store *NFAStore) getIDs() (vectorT[nodeIDT], error) {
-	ids := make([]nodeIDT, len(store.data))
-	if startID, err := store.startID(); err != nil {
-		return nil, err
-	} else {
-		ids[0] = startID
-		index := 1
-		for nodeID := range store.data {
-			if nodeID != startID {
-				ids[index] = nodeID
-				index++
-			}
-		}
-		return ids, nil
-	}
-}
-
-func (store *NFAStore) moveRLZAUpstream(nodeID, nodeIDDest nodeIDT, rlza bool, done *setT[nodeIDT]) (err error) {
-	// TODO consider using a backref to prevent iterating over all nodes just to find a backref
-	if !done.contains(nodeID) {
-		done.insert(nodeID)
-
-		if node, _ := store.get(nodeID); node.start {
-			// Give the start node the Remaining Length Zero Assertion. If there is a
-			// non-empty edge reachable from the start state, then this automaton is not
-			// supported. Eg for regex "a|$"
-			for _, edge3 := range node.edges {
-				if !edge3.epsilon() {
-					return fmt.Errorf("remaining Length Zero Assertion $ for non empty regex is not supported")
-				}
-			}
-			store.startRLZA = true
-			node.addEdge(newSymbolRange(edgeEpsilonRune, edgeEpsilonRune, false), nodeIDDest)
-		} else {
-			for nodeID2, node2 := range store.data {
-				for _, edge2 := range node2.edges {
-					if edge2.to == nodeID {
-						if edge2.epsilon() {
-							if err = store.moveRLZAUpstream(nodeID2, nodeIDDest, rlza, done); err != nil {
-								return err
-							}
-						} else {
-							min, max, _ := edge2.symbolRange.split()
-							node2.addEdge(newSymbolRange(min, max, rlza), nodeIDDest)
-						}
-					}
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (store *NFAStore) removeNode(nodeID nodeIDT) {
-	if startNode, _ := store.startID(); startNode != nodeID {
-		//NOTE start node cannot be removed
-		for _, node := range store.data {
-			toRemove := newVector[edgeT]()
-			for _, edge := range node.edges {
-				if edge.to == nodeID {
-					toRemove.pushBack(edge)
-				}
-			}
-			for _, edge := range toRemove {
-				node.removeEdge(edge.symbolRange, nodeID)
-			}
-		}
-		delete(store.data, nodeID)
-	}
-}
-
-func (store *NFAStore) reachableAcceptTraverse(nodeID nodeIDT, reachable *mapT[nodeIDT, bool]) bool {
-	if reachable.containsKey(nodeID) {
-		return reachable.at(nodeID)
-	} else {
-		reachable.insert(nodeID, true) // assume that it is reachable, this is to prevent eternal recursion
-		if node, _ := store.get(nodeID); node.accept {
-			reachable.insert(nodeID, true)
-			return true
-		} else {
-			isReachable := false
-			for _, edge := range node.edges {
-				if store.reachableAcceptTraverse(edge.to, reachable) {
-					reachable.insert(nodeID, true)
-					isReachable = true
-					//NOTE cannot break this loop since reachable needs to be filled for other edges
-				}
-			}
-			if !isReachable {
-				reachable.insert(nodeID, false)
-			}
-			return isReachable
-		}
-	}
-}
-
-func (store *NFAStore) reachableAccept() mapT[nodeIDT, bool] {
-	reachable := newMap[nodeIDT, bool]()
-	startID, _ := store.startID()
-	store.reachableAcceptTraverse(startID, &reachable)
-	return reachable
+// getIDs returns sorted slice of unique ids
+func (store *NFAStore) getIDs() vectorT[nodeIDT] {
+	ids := maps.Keys(store.data)
+	slices.Sort(ids)
+	return ids
 }
 
 // refactorEdges changes and adds edges such that nodes become choice free
 func (store *NFAStore) refactorEdges() (err error) {
 
-	//refactor any edges: replaces any-edges (meta edges) with regular edges with ranges
+	// refactor any edges: replaces any-edges (meta edges) with regular edges with ranges
 	for _, node := range store.data {
 		for index1, anyEdge := range node.edges {
 			sr := anyEdge.symbolRange
@@ -246,39 +150,10 @@ func (store *NFAStore) refactorEdges() (err error) {
 		}
 	}
 
-	// move all rlza flags on epsilon edges to non-epsilon edges
-	{
-		done := newSet[nodeIDT]()
-
-		changed := false
-		for nodeID, node := range store.data {
-			for _, edge := range node.edges {
-				if edge.epsilon() {
-					if _, _, rlza := edge.symbolRange.split(); rlza {
-						if err := store.moveRLZAUpstream(nodeID, edge.to, rlza, &done); err != nil {
-							return fmt.Errorf("%v::refactorEdges", err)
-						}
-						node.removeEdge(edge.symbolRange, edge.to) // remove the edge with the flag
-						changed = true
-					}
-				}
-			}
-		}
-		// optional: remove dead nodes, ie remove nodes that cannot reach an accept state
-		if changed {
-			reachable := store.reachableAccept()
-			for nodeID := range store.data {
-				if !reachable.containsKey(nodeID) || !reachable.at(nodeID) {
-					store.removeNode(nodeID)
-				}
-			}
-		}
-	}
-
 	cg := newCharGroupsRange() // only place where symbol ranges are refactored
 	for _, node := range store.data {
 		for _, edge := range node.edges {
-			if !edge.epsilon() {
+			if !edge.epsilon() && !edge.rlza() {
 				cg.add(edge.symbolRange)
 			}
 		}
@@ -286,11 +161,11 @@ func (store *NFAStore) refactorEdges() (err error) {
 	toRemove := newVector[edgeT]()
 	for _, node := range store.data {
 		for _, edge := range node.edges {
-			if !edge.epsilon() {
+			if !edge.epsilon() && !edge.rlza() {
 				if newSymbolRanges, present := cg.refactor(edge.symbolRange); present {
 					toRemove.pushBack(edge)
-					for _, newSymbolRange := range *newSymbolRanges {
-						node.addEdge(newSymbolRange, edge.to)
+					for _, newSymbolRange2 := range *newSymbolRanges {
+						node.addEdge(newSymbolRange2, edge.to)
 					}
 				}
 			}

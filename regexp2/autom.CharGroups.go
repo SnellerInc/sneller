@@ -35,10 +35,10 @@ func max(r1, r2 rune) rune {
 // overlapRange returns the overlap between the two provided ranges, returns true
 // if there exists overlap; false otherwise
 func overlapRange(range1, range2 symbolRangeT) ([]symbolRangeT, bool) {
-	min1, max1, rlza1 := range1.split()
-	min2, max2, rlza2 := range2.split()
+	min1, max1 := range1.split()
+	min2, max2 := range2.split()
 
-	if (min1 <= max2) && (max1 >= min2) && (rlza1 == rlza2) { // overlap
+	if (min1 <= max2) && (max1 >= min2) { // overlap
 		result := make([]symbolRangeT, 0)
 
 		r1 := min(min1, min2)
@@ -47,13 +47,13 @@ func overlapRange(range1, range2 symbolRangeT) ([]symbolRangeT, bool) {
 		r4 := max(max1, max2)
 
 		if r1 <= (r2 - 1) {
-			result = slices.Insert(result, 0, newSymbolRange(r1, r2-1, false))
+			result = slices.Insert(result, 0, newSymbolRange(r1, r2-1))
 		}
 		if r2 <= r3 {
-			result = slices.Insert(result, 0, newSymbolRange(r2, r3, false))
+			result = slices.Insert(result, 0, newSymbolRange(r2, r3))
 		}
 		if (r3 + 1) <= r4 {
-			result = slices.Insert(result, 0, newSymbolRange(r3+1, r4, false))
+			result = slices.Insert(result, 0, newSymbolRange(r3+1, r4))
 		}
 		return result, true
 	}
@@ -69,7 +69,6 @@ func newCharGroupsRange() charGroupsRange {
 }
 
 func (cg *charGroupsRange) add(newRange symbolRangeT) {
-	newRange = newRange.clearRLZA()
 	if cg.data.empty() {
 		cg.data.insert(newRange)
 	} else if !cg.data.contains(newRange) {
@@ -101,19 +100,15 @@ func (cg *charGroupsRange) refactor(symbolRange symbolRangeT) (*[]symbolRangeT, 
 	if cg.data.contains(symbolRange) {
 		return nil, false
 	}
-	min1, max1, rlza := symbolRange.split()
+	min1, max1 := symbolRange.split()
 
 	result := make([]symbolRangeT, 0)
 
 	for existingRange := range cg.data {
-		min2, max2, _ := existingRange.split()
+		min2, max2 := existingRange.split()
 		if (min1 > max2) || (max1 < min2) { //no overlap
 		} else {
-			if rlza {
-				result = slices.Insert(result, 0, existingRange.setRLZA())
-			} else {
-				result = slices.Insert(result, 0, existingRange)
-			}
+			result = slices.Insert(result, 0, existingRange)
 		}
 	}
 	if len(result) > 0 {

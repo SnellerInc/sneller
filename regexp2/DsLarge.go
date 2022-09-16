@@ -25,8 +25,7 @@ import (
 
 // DsLarge is a data structure for the large DFA implementation
 type DsLarge struct {
-	data        []uint32
-	rlzaCapable bool
+	data []uint32
 }
 
 func edgeSort(srn []edgeT) {
@@ -35,41 +34,106 @@ func edgeSort(srn []edgeT) {
 	})
 }
 
-// NewDsLarge creates a data structure that is accepted by the large DFA
-func NewDsLarge(store *DFAStore, rlzaCapable bool) (*DsLarge, error) {
-	result := new(DsLarge)
-	result.rlzaCapable = rlzaCapable
-	result.data = make([]uint32, 0)
-	result.addInt(store.NumberOfNodes())
+func selectStates(store *DFAStore) ([]nodeIDT, mapT[nodeIDT, *DFA]) {
+	result := newMap[nodeIDT, *DFA]()
+	ids := store.getIDs()
+	selected := newVector[nodeIDT]()
+	notSelected := newVector[nodeIDT]()
 
-	ids, _ := store.getIDs()
-	slices.Sort(ids) // NOTE sorting necessary to get node0 (start node) first
+	startID, _ := store.startID()
+	startNode, _ := store.get(startID)
+	if startNode.accept {
+		// special situation: the start node is also accepting -> empty DFA
+		return selected, result
+	}
+	if startNode.accept && startNode.rlza() && (len(startNode.edges) == 1) {
+		return selected, result
+	}
+
+	selected.pushBack(startID)
 
 	for _, nodeID := range ids {
-		node, err := store.get(nodeID)
-		if err != nil {
-			return nil, err
+		if nodeID != startID {
+			node, _ := store.get(nodeID)
+			if node.accept {
+				notSelected.pushBack(nodeID)
+			} else if node.rlza() && (len(node.edges) == 1) {
+				notSelected.pushBack(nodeID)
+			} else {
+				selected.pushBack(nodeID)
+			}
 		}
-		// get the edge ranges, and merge if possible
-		newEdges := node.mergeEdgeRanges()
-		// write symbol ranges to the data-structure
-		nTransitions := len(newEdges)
-		result.addInt(nTransitions)
+	}
 
-		edgeSort(newEdges) //NOTE: sort is NOT necessary but makes debugging the data-structure easier
-		for _, edge := range newEdges {
-			min, max, rlza := edge.symbolRange.split()
-			if !rlzaCapable && rlza {
-				return nil, fmt.Errorf("rlza not supported (with rlzaCapable set false)")
-			}
-			result.addUint32(runeToUtf8int(min)) // first int32 is UTF8 with min of range
-			result.addUint32(runeToUtf8int(max)) // second int32 is UTF8 with max of range
+	translation := newMap[nodeIDT, nodeIDT]()
+	{
+		newID := nodeIDT(0)
+		for _, nodeID := range selected {
+			translation.insert(nodeID, newID)
+			newID++
+		}
+		for _, nodeID := range notSelected {
+			translation.insert(nodeID, newID)
+			newID++
+		}
+	}
 
-			node, err := nodeIDForDs(edge.to, store, rlza)
-			if err != nil {
-				return nil, err
+	for oldID, newID := range translation {
+		newEdges := make([]edgeT, 0)
+		oldNode, _ := store.get(oldID)
+		for _, edge := range oldNode.edges {
+			newEdges = append(newEdges, edgeT{edge.symbolRange, translation.at(edge.to)})
+		}
+		result.insert(newID, &DFA{
+			id:        newID,
+			edges:     newEdges,
+			start:     oldNode.start,
+			accept:    oldNode.accept,
+			key:       "",
+			symbolSet: nil,
+			items:     nil,
+			trans:     nil,
+		})
+	}
+
+	selected2 := make([]nodeIDT, 0)
+	for _, nodeID := range selected {
+		selected2 = append(selected2, translation.at(nodeID))
+	}
+	slices.Sort(selected2)
+	return selected2, result
+}
+
+// NewDsLarge creates a data structure that is accepted by the large DFA
+func NewDsLarge(store *DFAStore) (*DsLarge, error) {
+
+	result := new(DsLarge)
+	result.data = make([]uint32, 0)
+
+	selectedStates, data := selectStates(store)
+	nStates := len(selectedStates)
+	result.addInt(nStates)
+
+	for _, stateID := range selectedStates {
+		if data.containsKey(stateID) {
+			newNode := data.at(stateID)
+			mergedEdges := mergeEdgeRanges(newNode.edges, true)
+
+			// write symbol ranges to the data-structure
+			nEdges := len(mergedEdges)
+			if nEdges == 0 {
+				return nil, fmt.Errorf("internal error: NewDsLarge retrieved an empty node which is invalid ")
 			}
-			result.addUint32(node)
+			result.addInt((nEdges * 12) + 8) // add the total bytes of edges; used in 33839A60
+			result.addInt(nEdges)            // add number of edges
+
+			edgeSort(mergedEdges) //NOTE: sort is NOT necessary but makes debugging the data-structure easier
+			for _, edge := range mergedEdges {
+				min, max := edge.symbolRange.split()
+				result.addUint32(runeToUtf8int(min)) // first int32 is UTF8 with min of range
+				result.addUint32(runeToUtf8int(max)) // second int32 is UTF8 with max of range
+				result.addUint32(nodeIDForDs(edge.to, data.at(edge.to)))
+			}
 		}
 	}
 	return result, nil
@@ -83,19 +147,15 @@ func (d *DsLarge) addInt(i int) {
 	d.addUint32(uint32(i))
 }
 
-func nodeIDForDs(id nodeIDT, store *DFAStore, rlza bool) (uint32, error) {
-	node, err := store.get(id)
-	if err != nil {
-		return 0, err
-	}
+func nodeIDForDs(id nodeIDT, node *DFA) uint32 {
 	result := uint32(id + 1) //NOTE plus 1 because node0 is reserved for fail node
 	if node.accept {
-		result |= 0x40000000 //0b0100 set bit to indicate this node is an accepting node
+		result |= 0x40000000 // set second-highest significant bit to indicate this state has the 'accept' property
 	}
-	if rlza {
-		result |= 0x80000000
+	if node.rlza() {
+		result |= 0x80000000 // set the highest significant bit to indicate this state has the 'RLZ' property
 	}
-	return result, nil
+	return result
 }
 
 // runeToUtf8int transforms a rune to a UTF8 byte sequence; eg: for ſ (unicode 0x17F) yield 0000C5BF (UTF8)
@@ -123,13 +183,14 @@ func utf8intToRune(v uint32) rune {
 // DumpDebug dumps this data structure with annotations to dst
 func (d *DsLarge) DumpDebug(dst io.Writer) (err error) {
 	nNodes := d.data[0]
-	_, err = fmt.Fprintf(dst, "%08X\t(#nodes; RLZA-CAPABLE=%v; LARGE DFA DATA-STRUCTURE)\n", nNodes, d.rlzaCapable)
+	_, err = fmt.Fprintf(dst, "%08X\t(#nodes; LARGE DFA DATA-STRUCTURE)\n", nNodes)
 	if err != nil {
 		return err
 	}
 	nEdgesTotal := 0
 	index := 1
 	for i := 0; i < int(nNodes); i++ {
+		index++ // read away the number of bytes in edges
 		nEdges := int(d.data[index])
 		nEdgesTotal += nEdges
 		_, err := fmt.Fprintf(dst, "  %08X\t(nodeIDT=%08X)\n", nEdges, i+1)
@@ -142,7 +203,6 @@ func (d *DsLarge) DumpDebug(dst io.Writer) (err error) {
 			max := d.data[index+1]
 
 			rlzaStr := ""
-
 			if ((d.data[index+2] >> 31) & 1) == 1 {
 				rlzaStr = ", rlza "
 			}

@@ -35,43 +35,39 @@ func newGraphiz() *Graphviz {
 	}
 }
 
-func nodeString(id nodeIDT) string {
+func nodeString(id stateIDT) string {
 	return fmt.Sprintf("%v", id)
 }
 
 func (dot *Graphviz) addNode(id string, start, accept, rlza bool) {
+	colour := ""
+	if rlza {
+		colour = "; color=\"red\""
+	}
 	if accept {
 		if start {
-			if rlza {
-				dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=doubleoctagon]; #start; accept; RLZA\n", id))
-			} else {
-				dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=doubleoctagon]; #start; accept\n", id))
-			}
+			dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=doubleoctagon%v]; #start; acceptNodeID\n", id, colour))
 		} else {
-			dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=doublecircle]; #accept\n", id))
+			dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=doublecircle%v]; #acceptNodeID\n", id, colour))
 		}
 	} else {
 		if start {
-			if rlza {
-				dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=octagon]; #start; RLZA\n", id))
-			} else {
-				dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=octagon]; #start\n", id))
-			}
+			dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=octagon%v]; #start\n", id, colour))
 		} else {
-			dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=ellipse];\n", id))
+			dot.nodes.pushBack(fmt.Sprintf("\ts%v [shape=ellipse%v];\n", id, colour))
 		}
 	}
 }
 
-func (dot *Graphviz) addNodeInt(id nodeIDT, start, accept, rlza bool) {
-	dot.addNode(nodeString(id), start, accept, rlza)
+func (dot *Graphviz) addNodeInt(stateID stateIDT, start, accept, rlza bool) {
+	dot.addNode(nodeString(stateID), start, accept, rlza)
 }
 
 func (dot *Graphviz) addEdge(from, to, label string) {
 	dot.edges.pushBack(fmt.Sprintf("\ts%v -> s%v [label=\"%v\"];\n", from, to, label))
 }
 
-func (dot *Graphviz) addEdgeInt(from, to nodeIDT, label string) {
+func (dot *Graphviz) addEdgeInt(from, to stateIDT, label string) {
 	dot.addEdge(nodeString(from), nodeString(to), label)
 }
 
