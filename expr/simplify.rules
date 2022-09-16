@@ -99,7 +99,7 @@
 (to_unix_micro (ts x)) -> (int `x.Value.UnixMicro()`)
 (to_unix_epoch (ts x)) -> (int `x.Value.Unix()`)
 
-// conatins constprop
+// contains constprop
 (contains (string x) (string y)) -> `Bool(strings.Contains(string(x), string(y)))`
 (contains (upper x) (string y)), `isUpper(string(y))` -> (contains_ci x y)
 (contains (upper _) (string y)), `!isUpper(string(y))` -> (bool `false`)

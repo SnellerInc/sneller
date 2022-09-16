@@ -161,8 +161,6 @@ const (
 	sStrContainsSuffixCs     // String contains suffix case-sensitive
 	sStrContainsSuffixCi     // String contains suffix case-insensitive
 	sStrContainsSuffixUTF8Ci // String contains suffix case-insensitive
-	sStrContainsSubstrCs     // String contains substring case-sensitive
-	sStrContainsSubstrCi     // String contains substring case-insensitive
 
 	sIsSubnetOfIP4 // IP subnet matching
 
@@ -782,11 +780,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sStrContainsSuffixCs:     {text: "contains_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
 	sStrContainsSuffixCi:     {text: "contains_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
 	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
-
-	// s, k = contains_substr_cs s, k, $const
-	sStrContainsSubstrCs: {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
-	// s, k = contains_substr_ci s, k, $const
-	sStrContainsSubstrCi: {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
 
 	// ip matching
 	sIsSubnetOfIP4: {text: "is_subnet_of_ip4", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opIsSubnetOfIP4},
@@ -2498,9 +2491,7 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 		patternExt := p.Constant(string(stringext.GenPatternExt(segments)))
 		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
 	}
-	//return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), enc)
-	//TODO HJ alternative code in sStrContainsSubstrCi but this seems to be slower then sStrMatchPatternCi for regular payloads
-	return p.ssa2imm(sStrContainsSubstrCi, str, p.mask(str), p.Constant(enc).imm)
+	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), enc)
 }
 
 // toBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.

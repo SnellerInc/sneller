@@ -521,8 +521,6 @@ var opinfo = [_maxbcop]bcopinfo{
 	opTrim4charRight: {text: "trim_char_right", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 
 	// string prefix/suffix/contains matching operations
-	opContainsSubstrCs:     {text: "contains_substr_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsSubstrCi:     {text: "contains_substr_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsPrefixCs:     {text: "contains_prefix_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsPrefixCi:     {text: "contains_prefix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
