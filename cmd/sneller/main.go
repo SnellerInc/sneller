@@ -21,7 +21,9 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -29,10 +31,12 @@ import (
 
 	"github.com/SnellerInc/sneller"
 	"github.com/SnellerInc/sneller/auth"
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
+	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/vm"
 	"golang.org/x/sys/cpu"
 )
@@ -49,6 +53,7 @@ var (
 	dasho      string
 	dashr      string
 	dashtoken  string
+	cachedir   string
 	dashnommap bool
 	printStats bool
 
@@ -56,6 +61,8 @@ var (
 )
 
 func init() {
+	sneller.CanVMOpen = true
+
 	flag.StringVar(&dashauth, "auth", "", "authorization provider for database object storage")
 	flag.StringVar(&dashd, "d", "", "default database name (requires -auth or -r)")
 	flag.BoolVar(&dashf, "f", false, "read arguments as files containing queries")
@@ -69,6 +76,7 @@ func init() {
 	flag.BoolVar(&printStats, "S", false, "print execution statistics on stderr")
 	flag.StringVar(&dashtoken, "token", "", "token for auth provider (default SNELLER_TOKEN from env)")
 	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files (Linux only)")
+	flag.StringVar(&cachedir, "cachedir", "/tmp", "cache directory")
 }
 
 type execStatistics struct {
@@ -163,6 +171,24 @@ func parse(arg string) *expr.Query {
 	return q
 }
 
+func tenantEnv(tenant db.Tenant, db string) *sneller.TenantEnv {
+	env, err := sneller.Environ(tenant, db)
+	if err != nil {
+		exit(err)
+	}
+	cache := filepath.Join(cachedir, tenant.ID())
+	err = os.MkdirAll(cache, 0750)
+	if err != nil {
+		exit(err)
+	}
+	ret := &sneller.TenantEnv{
+		FSEnv: env,
+		Cache: dcache.New(cache, func() {}),
+	}
+	ret.Cache.Logger = log.New(os.Stderr, "", log.Lshortfile)
+	return ret
+}
+
 func mkenv() plan.Env {
 	// database object storage via auth provider
 	if dashauth != "" {
@@ -184,11 +210,7 @@ func mkenv() plan.Env {
 		if err != nil {
 			exit(err)
 		}
-		env, err := sneller.Environ(t, dashd)
-		if err != nil {
-			exit(err)
-		}
-		return &sneller.TenantEnv{FSEnv: env}
+		return tenantEnv(t, dashd)
 	}
 	if dashtoken != "" {
 		exitf("-token can only be used with -auth")
@@ -197,12 +219,8 @@ func mkenv() plan.Env {
 	if dashr != "" {
 		if strings.HasPrefix(dashr, "s3://") {
 			root := s3fs(dashr)
-			t := auth.S3Tenant("", root, nil)
-			env, err := sneller.Environ(t, dashd)
-			if err != nil {
-				exit(err)
-			}
-			return &sneller.TenantEnv{FSEnv: env}
+			t := auth.S3Tenant("localtenant", root, nil)
+			return tenantEnv(t, dashd)
 		}
 		exitf("-r can only be used with S3")
 	}

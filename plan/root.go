@@ -51,6 +51,7 @@ func Exec(t *Tree, dst io.Writer, stats *ExecStats) error {
 	ep := ExecParams{
 		Output:   dst,
 		Parallel: runtime.GOMAXPROCS(0),
+		Context:  context.Background(),
 	}
 	err := (&LocalTransport{}).Exec(t, &ep)
 	stats.atomicAdd(&ep.Stats)
