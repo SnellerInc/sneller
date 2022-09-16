@@ -356,6 +356,9 @@ func TestAppendBadScan(t *testing.T) {
 	if !blockfmt.IsFatal(err) {
 		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T", err)
 	}
+	if cache.value != nil {
+		t.Error("cache is populated after an error")
+	}
 	// there should still be one output object
 	idx, err := OpenIndex(dfs, "default", "foo", owner.Key())
 	if err != nil {
@@ -381,6 +384,10 @@ func TestAppendBadScan(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	if cache.value != nil {
+		t.Error("cache value is populated after ErrBuildAgain")
+	}
+
 	idx, err = OpenIndex(dfs, "default", "foo", owner.Key())
 	if err != nil {
 		t.Fatal(err)

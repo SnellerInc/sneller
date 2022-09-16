@@ -343,20 +343,23 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 
 		idx.Inputs.Backing = st.ofs
 		if idx.Scanning {
+			// force a reload unconditionally
+			// after a scan; the scan code does
+			// not update the cached index
+			invalidate(cache)
 			def, err := st.def()
 			if err != nil {
 				return err
 			}
 			_, err = st.scan(def, idx, true)
 			if err != nil {
-				invalidate(cache)
 				return err
 			}
 			// currently rebuilding; please try again
 			return ErrBuildAgain
 		}
 
-		// trim pre-existing elements from
+		// trim pre-existing elements from lst
 		prepend, lst, err = st.dedup(idx, lst)
 		if err != nil {
 			return err
