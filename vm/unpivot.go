@@ -21,6 +21,7 @@ import (
 	"math/bits"
 	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/internal/atomicext"
 	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
 	"golang.org/x/exp/slices"
@@ -382,6 +383,7 @@ func (u *randomTreeUnifier) unify(data []byte) bool {
 			}
 			// insertion failed: either ip is no longer nil or a spurious CAS failure.
 			// Retry, as the current insertion path prefix remains valid due to the grow-only nature of the tree.
+			atomicext.Pause()
 		}
 	}
 }
