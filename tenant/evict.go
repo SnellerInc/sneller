@@ -69,94 +69,130 @@ var (
 )
 
 type fprio struct {
-	path  string
-	atime int64
-	size  int64
+	path  string // file path
+	atime int64  // file atime
+	size  int64  // file size
+	score int64  // file "score" for eviction priority
 }
 
-type evictHeap struct {
-	lst    []fprio
-	sorted []fprio
-	// we limit the number of files considered
-	// for eviction so that the number of files
-	// present in the cache directory does not
-	// affect the amount of memory we need to
-	// consume in order to select good candidates
-	maxbuffer int
-
-	// summary stats:
-	runs, files, bytes, maxatime int64
+type fileHeap struct {
+	items []fprio // unordered items
 }
 
-// sort the final heap results by
-// *least recently accessed time*
-func (e *evictHeap) sort() {
-	if cap(e.sorted) >= len(e.lst) {
-		e.sorted = e.sorted[:len(e.lst)]
-	} else {
-		e.sorted = make([]fprio, len(e.lst))
+func (f *fileHeap) reset() {
+	f.items = f.items[:0]
+}
+
+func (f *fileHeap) size() int64 {
+	sz := int64(0)
+	for i := range f.items {
+		sz += f.items[i].size
 	}
-	for i := len(e.sorted) - 1; i >= 0; i-- {
-		e.sorted[i] = heap.PopSlice(&e.lst, atimeLRU)
+	return sz
+}
+
+func (f fprio) orderMRU(other fprio) bool {
+	return f.atime > other.atime
+}
+
+func (f fprio) orderScore(other fprio) bool {
+	if f.score == other.score {
+		return f.atime < other.atime
+	}
+	return f.score > other.score
+}
+
+func (f *fileHeap) trimMRU(max int) {
+	for len(f.items) > max {
+		heap.PopSlice(&f.items, (fprio).orderMRU)
 	}
 }
 
-func atimeLRU(x, y fprio) bool {
-	return y.atime < x.atime
+func (f *fileHeap) shouldAddMRU(atime int64, maxbuffered int) bool {
+	return len(f.items) < maxbuffered || atime < f.items[0].atime
 }
 
-func (e *evictHeap) max() int64 {
-	return e.lst[0].atime
-}
-
-func (e *evictHeap) push(path string, atime int64, size int64) {
-	heap.PushSlice(&e.lst, fprio{
+func (f *fileHeap) addMRU(path string, atime, size int64) {
+	heap.PushSlice(&f.items, fprio{
 		path:  path,
 		atime: atime,
 		size:  size,
-	}, atimeLRU)
+	}, (fprio).orderMRU)
 }
 
-func (m *Manager) evict(e *evictHeap, size int64) {
+func (f *fileHeap) popMRU() fprio {
+	return heap.PopSlice(&f.items, (fprio).orderMRU)
+}
+
+func (f *fileHeap) count() int {
+	return len(f.items)
+}
+
+func (f *fileHeap) addScore(item fprio) {
+	heap.PushSlice(&f.items, item, (fprio).orderScore)
+}
+
+func (f *fileHeap) popScore() fprio {
+	return heap.PopSlice(&f.items, (fprio).orderScore)
+}
+
+type totalHeap struct {
+	buffered  fileHeap
+	sorted    []fprio // sorted from buffered
+	maxbuffer int     // maximum # of items to buffer
+	minatime  int64   // minimum atime; delete everything older than this
+
+	// summary stats:
+	runs     int64 // number of evict runs
+	files    int64 // number of files evicted
+	bytes    int64 // number of bytes evicted
+	maxatime int64 // most-recently-used file removed
+}
+
+func (m *Manager) evict(t *totalHeap, size int64) {
 	for size > 0 {
-		if len(e.sorted) == 0 {
-			m.fill(e)
-			e.sort()
-			if len(e.sorted) == 0 {
-				// nothing to evict...?
-				return
+		if len(t.sorted) == 0 {
+			m.fill(t, size)
+			if len(t.sorted) == 0 {
+				return // nothing to evict
 			}
 		}
-		for i := range e.sorted {
-			f := &e.sorted[i]
-			fi, err := os.Stat(f.path)
-			if err != nil || fi.Size() != f.size || atime(fi) != f.atime {
-				continue
+	inner:
+		for i := range t.sorted {
+			f := &t.sorted[i]
+			info, err := os.Stat(f.path)
+			if err != nil || info.Size() != f.size || atime(info) != f.atime {
+				// disregard stale objects
+				continue inner
 			}
 			if os.Remove(f.path) == nil {
-				e.files++
-				e.bytes += f.size
+				t.files++         // track files evicted
+				t.bytes += f.size // track bytes evicted
 				size -= f.size
-				if f.atime > e.maxatime {
-					e.maxatime = f.atime
+				if f.atime > t.maxatime {
+					t.maxatime = f.atime
 				}
 				if size <= 0 {
-					// copy remaining entries to the front of the cache
-					// so that we begin where we left off on the
-					// next call to evict()
-					e.sorted = e.sorted[:copy(e.sorted, e.sorted[i+1:])]
+					t.sorted = t.sorted[:copy(t.sorted, t.sorted[i+1:])]
 					return
 				}
 			}
 		}
-		// if we iterated the whole list,
-		// anything that is left here must
-		// be stale, so we should re-fill
-		e.sorted = e.sorted[:0]
+		t.sorted = t.sorted[:0]
 	}
 }
 
-func (m *Manager) fill(e *evictHeap) {
+// walk the tree and put eviction candidates
+// in t.sorted in decreasing order of eviction quality
+func (m *Manager) fill(t *totalHeap, wantsize int64) {
+	t.buffered.reset()
+	toplvl, err := os.ReadDir(m.CacheDir)
+	if err != nil {
+		m.errorf("cache eviction walk: %s", err)
+		return
+	}
+	var local fileHeap
+	var cursize int64
 	walk := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -176,25 +212,63 @@ func (m *Manager) fill(e *evictHeap) {
 			return err
 		}
 		at := atime(info)
-		if len(e.lst) < e.maxbuffer || at < e.max() {
-			// push this item *only if* it is a better candidate
-			// than the worst so far *or* if we have less than
-			// the buffered min
-			e.push(path, at, info.Size())
+		// don't even bother trying to preserve
+		// files that are extremely old
+		if at < t.minatime {
+			os.Remove(path)
+			return nil
+		}
+		size := info.Size()
+		cursize += size
+		if local.shouldAddMRU(at, t.maxbuffer) {
+			local.addMRU(path, at, size)
+			local.trimMRU(t.maxbuffer)
 		}
 		return nil
 	}
-	err := filepath.WalkDir(m.CacheDir, walk)
-	if err != nil {
-		m.errorf("cache eviction walk: %s", err)
-		return
+	for i := range toplvl {
+		if !toplvl[i].IsDir() {
+			continue
+		}
+		local.reset()
+		cursize = 0
+		err := filepath.WalkDir(filepath.Join(m.CacheDir, toplvl[i].Name()), walk)
+		if err != nil {
+			m.errorf("cache eviction walk: %s", err)
+			return
+		}
+		// score the items as we insert
+		// them into the global heap by computing
+		// the number of bytes remaining in this
+		// tenant's directory at the point that
+		// it would be deleted (in atime-sorted order)
+		bufsize := local.size()
+		for local.count() > 0 {
+			f := local.popMRU()
+			bufsize -= f.size           // # bytes deleted up to this point
+			f.score = cursize - bufsize // score is tenant's total - deleted
+			t.buffered.addScore(f)
+		}
 	}
+	// heap-sort the results into t.sorted,
+	// taking care to produce either the desired
+	// buffer size and also the desired number of
+	// candidate bytes to be evicted (whichever is greater)
+	t.sorted = t.sorted[:0]
+	sortsize := int64(0)
+	for t.buffered.count() > 0 &&
+		(len(t.sorted) < t.maxbuffer || sortsize < wantsize) {
+		next := t.buffered.popScore()
+		sortsize += next.size
+		t.sorted = append(t.sorted, next)
+	}
+	t.buffered.reset()
 }
 
 func (m *Manager) cacheEvict() {
 	if m.eheap.maxbuffer == 0 {
 		// pick a sane default for the cached list
-		m.eheap.maxbuffer = 25
+		m.eheap.maxbuffer = 50
 	}
 	// target usage of 90% of the disk blocks;
 	// this gives us a little headroom for polling delay
@@ -203,6 +277,8 @@ func (m *Manager) cacheEvict() {
 	if used < target {
 		return
 	}
+	// set the minimum atime to within the last hour
+	m.eheap.minatime = time.Now().Add(-time.Hour).UnixNano()
 	m.eheap.runs++
 	m.evict(&m.eheap, used-target)
 	if m.logger != nil && m.eheap.files > 0 &&

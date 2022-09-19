@@ -22,9 +22,11 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/exp/slices"
 )
+
+func (t *totalHeap) count() int {
+	return t.buffered.count()
+}
 
 func TestEvict(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -48,17 +50,17 @@ func TestEvict(t *testing.T) {
 	begin := []fsent{
 		// total size is 2000/2000 in the starting state;
 		// target will be 1800/2000 which means removing
-		// the two oldest files (000 and 005)
+		// the two oldest files in the heaviest tenant (0/00 and 0/01)
 		{"0/00", 100, base + 100},
 		{"0/01", 100, base + 200},
 		{"0/02", 100, base + 300},
 		{"0/03", 100, base + 300},
-		{"1/04", 1500, base + 500},
+		{"0/04", 1500, base + 500},
 		{"1/05", 100, base - 200},
 	}
 	// the end state should just be the start state
 	// minus the oldest file (which is listed first)
-	end := begin[1:5]
+	end := begin[2:]
 
 	myUsage := func(dir string) (int64, int64) {
 		sum := int64(0)
@@ -144,12 +146,6 @@ func TestEvict(t *testing.T) {
 		}
 	}
 
-	if !slices.IsSortedFunc(m.eheap.sorted, func(x, y fprio) bool {
-		return x.atime < y.atime
-	}) {
-		t.Error("heap.sorted not sorted")
-	}
-
 	// since we've satisfied the usage criteria,
 	// a second call to cacheEvict() shouldn't try
 	// to remove anything
@@ -182,12 +178,14 @@ func TestIssue645(t *testing.T) {
 
 	base := time.Now().UnixNano()
 	begin := []fsent{
-		// total size is 940/1000 in the starting state
-		{"000", 500, base + 100},
-		{"001", 100, base + 200},
-		{"002", 100, base + 300},
-		{"003", 120, base + 300},
-		{"004", 120, base + 500},
+		// total size is 940/1000 in the starting state;
+		// the heaviest tenant is 00, so its oldest file (00/000)
+		// will be removed first
+		{"00/000", 500, base + 100},
+		{"00/001", 100, base + 200},
+		{"01/002", 100, base + 300},
+		{"01/003", 120, base + 300},
+		{"02/004", 120, base + 000},
 	}
 	// the end state should just be the start state
 	// minus the oldest file (which is listed first)
@@ -197,24 +195,29 @@ func TestIssue645(t *testing.T) {
 		if dir != tmp {
 			t.Fatal("bad tmpdir", dir)
 		}
-		contents, err := os.ReadDir(dir)
+		total := int64(0)
+		err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.Type().IsRegular() {
+				fi, err := d.Info()
+				if err != nil {
+					t.Fatal(err)
+				}
+				total += fi.Size()
+			}
+			return nil
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		sum := int64(0)
-		for i := range contents {
-			fi, err := contents[i].Info()
-			if err != nil {
-				t.Fatal(err)
-			}
-			sum += fi.Size()
-		}
-		return sum, 1000
+		return total, 1000
 	}
 	myAtime := func(i fs.FileInfo) int64 {
 		name := i.Name()
 		for i := range begin {
-			if begin[i].name == name {
+			if filepath.Base(begin[i].name) == name {
 				return begin[i].atime
 			}
 		}
@@ -228,6 +231,7 @@ func TestIssue645(t *testing.T) {
 	// populate the tmpdir
 	for i := range begin {
 		fullpath := filepath.Join(tmp, begin[i].name)
+		os.MkdirAll(filepath.Dir(fullpath), 0755)
 		contents := []byte(strings.Repeat("a", int(begin[i].size)))
 		err := os.WriteFile(fullpath, contents, 0644)
 		if err != nil {
@@ -239,32 +243,24 @@ func TestIssue645(t *testing.T) {
 	m.CacheDir = tmp
 	m.cacheEvict()
 
-	final, err := os.ReadDir(tmp)
+	final, err := filepath.Glob(filepath.Join(tmp, "*/???"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(final) != len(end) {
-		t.Fatalf("%d files remaining?", len(final))
+		t.Fatalf("%d files remaining? (expected %d)", len(final), len(end))
 	}
 	// both 'final' and 'end' are sorted
+	pre := tmp + "/"
 	for i := range final {
 		e := &end[i]
-		if e.name != final[i].Name() {
-			t.Errorf("expected %s found %s", e.name, final[i].Name())
+		want := strings.TrimPrefix(final[i], pre)
+		if e.name != want {
+			t.Errorf("expected %s found %s", e.name, want)
 		}
 	}
 	if len(m.eheap.sorted) != len(final) {
-		t.Errorf("%d entries in sorted heap but %d final dirents?", len(m.eheap.sorted), len(final))
-
-	}
-
-	// check that sorted really means sorted;
-	// each element's atime should be less than the next
-	for i := range m.eheap.sorted[:len(m.eheap.sorted)-1] {
-		j := i + 1
-		if m.eheap.sorted[i].atime > m.eheap.sorted[j].atime {
-			t.Errorf("heap.sorted[%d] > heap.sorted[%d]", i, j)
-		}
+		t.Errorf("%d entries in sorted heap but %d final dirents?", m.eheap.count(), len(final))
 	}
 
 	// invalidate the atimes in the heap
@@ -286,7 +282,7 @@ func TestIssue645(t *testing.T) {
 	// though some of the atimes are stale
 	m.cacheEvict()
 	if len(m.eheap.sorted) != len(final) {
-		t.Errorf("second call to cacheEvict removed %d entries?", len(final)-len(m.eheap.sorted))
+		t.Errorf("second call to cacheEvict removed %d entries?", len(final)-m.eheap.count())
 	}
 
 }

@@ -171,7 +171,7 @@ type Manager struct {
 	// be evicted when a child process
 	// indicates that it is filling a
 	// cache entry
-	eheap evictHeap
+	eheap totalHeap
 
 	// when the manager is started,
 	// clean 100% of the cache and
