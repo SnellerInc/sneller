@@ -32,9 +32,13 @@ func init() {
 // that asks a remote tenant to execute a query
 // using a ProxyExec request.
 type Remote struct {
-	// Tenant is the ID of the tenant
+	// ID is the ID of the tenant
 	// that we should connect to.
-	Tenant ID
+	ID ID
+
+	// Key is the preshared key to authorize
+	// requests to the tenant.
+	Key Key
 
 	// Net and Addr are the network
 	// type and address of the remote
@@ -76,8 +80,13 @@ func decodeRemote(st *ion.Symtab, fields []byte) (plan.Transport, error) {
 			out.Timeout = time.Duration(i)
 		case "id":
 			buf, fields, err = ion.ReadBytesShared(fields)
-			if err == nil && copy(out.Tenant[:], buf) != len(out.Tenant[:]) {
+			if err == nil && copy(out.ID[:], buf) != len(out.ID[:]) {
 				err = fmt.Errorf("decoding tnproto.Remote: tenant ID should not be %d bytes", len(buf))
+			}
+		case "key":
+			buf, fields, err = ion.ReadBytesShared(fields)
+			if err == nil && copy(out.Key[:], buf) != len(out.Key[:]) {
+				err = fmt.Errorf("decoding tnproto.Remote: tenant key should not be %d bytes", len(buf))
 			}
 		default:
 			fields = fields[ion.SizeOf(fields):]
@@ -98,7 +107,9 @@ func (r *Remote) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginField(st.Intern("addr"))
 	dst.WriteString(r.Addr)
 	dst.BeginField(st.Intern("id"))
-	dst.WriteBlob(r.Tenant[:])
+	dst.WriteBlob(r.ID[:])
+	dst.BeginField(st.Intern("key"))
+	dst.WriteBlob(r.Key[:])
 	dst.EndStruct()
 }
 
@@ -123,7 +134,7 @@ func (r *Remote) Exec(t *plan.Tree, ep *plan.ExecParams) error {
 	}
 	// tell the tenant manager to attach us
 	// to the right tenant instance
-	err = Attach(conn, r.Tenant)
+	err = Attach(conn, r.ID, r.Key)
 	if err != nil {
 		conn.Close()
 		return err

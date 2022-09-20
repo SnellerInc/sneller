@@ -32,6 +32,7 @@ const DefaultSplitSize = int64(100 * 1024 * 1024)
 type Splitter struct {
 	SplitSize int64
 	WorkerID  tnproto.ID
+	WorkerKey tnproto.Key
 	Peers     []*net.TCPAddr
 	SelfAddr  string
 
@@ -158,7 +159,8 @@ func (s *Splitter) transport(i int) plan.Transport {
 		return &plan.LocalTransport{}
 	}
 	return &tnproto.Remote{
-		Tenant:  s.WorkerID,
+		ID:      s.WorkerID,
+		Key:     s.WorkerKey,
 		Net:     "tcp",
 		Addr:    nodeID,
 		Timeout: 3 * time.Second,

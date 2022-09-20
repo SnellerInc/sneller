@@ -130,10 +130,11 @@ func (s *server) Serve(httpsock, tenantsock net.Listener) error {
 	return s.srv.Serve(httpsock)
 }
 
-func (s *server) newSplitter(workerID tnproto.ID, peers []*net.TCPAddr) *sneller.Splitter {
+func (s *server) newSplitter(id tnproto.ID, key tnproto.Key, peers []*net.TCPAddr) *sneller.Splitter {
 	split := &sneller.Splitter{
 		SplitSize: s.splitSize,
-		WorkerID:  workerID,
+		WorkerID:  id,
+		WorkerKey: key,
 		Peers:     peers,
 	}
 	if s.remote != nil {

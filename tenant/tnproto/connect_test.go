@@ -32,29 +32,33 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
-func randomID() (id ID) {
+func randpair() (id ID, key Key) {
 	rand.Read(id[:])
+	rand.Read(key[:])
 	return
 }
 
 func TestAttach(t *testing.T) {
 	r, w := net.Pipe()
 
-	id := randomID()
+	id, key := randpair()
 	go func() {
-		err := Attach(w, id)
+		err := Attach(w, id, key)
 		if err != nil {
 			panic(err)
 		}
 		w.Close()
 	}()
 	defer r.Close()
-	outid, err := ReadID(r)
+	outid, outkey, err := ReadHeader(r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if id != outid {
 		t.Fatalf("got id %x; wanted %x", outid, id)
+	}
+	if key != outkey {
+		t.Fatalf("got key %x; wanted %x", outkey, key)
 	}
 }
 

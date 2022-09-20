@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	HeaderSize = 64
+	HeaderSize = 96
 	IDSize     = 24
+	KeySize    = 32
 
 	// MaxPayloadSize is the maximum
 	// size of a tenant protocol message payload
@@ -41,6 +42,7 @@ const (
 	magicOffset = 0
 	magicSize   = 8
 	idOffset    = magicOffset + magicSize
+	keyOffset   = idOffset + IDSize
 )
 
 // mostly random, but choosing 0xf0 as the first byte
@@ -61,6 +63,16 @@ func (id ID) IsZero() bool {
 	return bytes.Equal(id[:], zeroID[:])
 }
 
+// Key is the opaque tenant key.
+// Key is used to authorize tenant requests.
+type Key [KeySize]byte
+
+func (k Key) String() string {
+	return base64.URLEncoding.EncodeToString(k[:])
+}
+
+func (k Key) IsZero() bool { return k == Key{} }
+
 type header struct {
 	body [HeaderSize]byte
 }
@@ -78,21 +90,30 @@ func (h *header) ID() (id ID) {
 	return
 }
 
-func (h *header) populate(id ID) {
-	binary.LittleEndian.PutUint64(h.body[magicOffset:], headerMagic)
-	copy(h.body[idOffset:], id[:])
+func (h *header) Key() (key Key) {
+	copy(key[:], h.body[keyOffset:])
+	return
 }
 
-// ReadID reads an Attach message from the
+func (h *header) populate(id ID, key Key) {
+	binary.LittleEndian.PutUint64(h.body[magicOffset:], headerMagic)
+	copy(h.body[idOffset:], id[:])
+	copy(h.body[keyOffset:], key[:])
+}
+
+// ReadHeader reads an Attach message from the
 // provided connection and returns the requested ID,
 // or an error if the message could not be read.
 //
 // See also: Attach
-func ReadID(src net.Conn) (ID, error) {
+func ReadHeader(src net.Conn) (ID, Key, error) {
 	var hdr header
 	_, err := io.ReadFull(src, hdr.body[:])
 	if err != nil {
-		return ID{}, err
+		return ID{}, Key{}, err
 	}
-	return hdr.ID(), hdr.validate()
+	if hdr.Key().IsZero() && !hdr.ID().IsZero() {
+		return ID{}, Key{}, fmt.Errorf("zero key")
+	}
+	return hdr.ID(), hdr.Key(), hdr.validate()
 }

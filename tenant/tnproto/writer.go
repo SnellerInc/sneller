@@ -24,9 +24,9 @@ import (
 // tenant proxy and asks the remote proxy to
 // attach this connection to the tenant
 // given by id.
-func Attach(dst net.Conn, id ID) error {
+func Attach(dst net.Conn, id ID, key Key) error {
 	var hdr header
-	hdr.populate(id)
+	hdr.populate(id, key)
 	_, err := dst.Write(hdr.body[:])
 	return err
 }
@@ -36,7 +36,7 @@ func Attach(dst net.Conn, id ID) error {
 // close the connection.
 func Ping(dst net.Conn) error {
 	var zeroid ID
-	err := Attach(dst, zeroid)
+	err := Attach(dst, zeroid, Key{})
 	if err != nil {
 		return err
 	}

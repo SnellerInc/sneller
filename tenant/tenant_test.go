@@ -48,8 +48,9 @@ import (
 	"github.com/SnellerInc/sneller/vm"
 )
 
-func randomID() (id tnproto.ID) {
+func randpair() (id tnproto.ID, key tnproto.Key) {
 	rand.Read(id[:])
+	rand.Read(key[:])
 	return
 }
 
@@ -203,7 +204,7 @@ func TestExec(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("listener: %d", usock.Fd(l))
-	id := randomID()
+	id, key := randpair()
 	var logbuf bytes.Buffer
 
 	opts := []Option{
@@ -257,7 +258,7 @@ func TestExec(t *testing.T) {
 		t.Errorf("fd leak: have %d file descriptors open; expected %d", step2, start+2)
 	}
 
-	rc, err := m.Do(id, mkplan(t, query), tnproto.OutputRaw, here)
+	rc, err := m.Do(id, key, mkplan(t, query), tnproto.OutputRaw, here)
 	here.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -289,7 +290,7 @@ func TestExec(t *testing.T) {
 
 	here, there = socketPair(t)
 	query = `SELECT * FROM 3 LIMIT 1`
-	rc, err = m.Do(id, mkplan(t, query), tnproto.OutputRaw, here)
+	rc, err = m.Do(id, key, mkplan(t, query), tnproto.OutputRaw, here)
 	if err == nil {
 		t.Fatal("expected immediate error for query...?")
 	}
@@ -432,7 +433,7 @@ func TestExec(t *testing.T) {
 			if count < len(subqueries[i].want) {
 				count = len(subqueries[i].want)
 			}
-			testEqual(t, subqueries[i].query, m, id, subqueries[i].want, count, subqueries[i].scan)
+			testEqual(t, subqueries[i].query, m, id, key, subqueries[i].want, count, subqueries[i].scan)
 		})
 		now := nfds()
 		if curfds != now {
@@ -450,6 +451,19 @@ func TestExec(t *testing.T) {
 	// test cancelation via closing of the returned status socket
 	t.Run("cancel", func(t *testing.T) {
 		testCancel(t, m)
+	})
+
+	// test that using the wrong key causes an
+	// error to be returned
+	t.Run("authorize", func(t *testing.T) {
+		tree := mkplan(t, query)
+		_, badkey := randpair()
+		_, err := m.Do(id, badkey, tree, tnproto.OutputRaw, there)
+		if err == nil {
+			t.Error("expected error, got none")
+		} else if !strings.Contains(err.Error(), "key mismatch") {
+			t.Errorf("expected error to contains %q, got %q", "key mismatch", err.Error())
+		}
 	})
 
 	t.Logf("before stop: %d fds", nfds())
@@ -471,6 +485,7 @@ func TestExec(t *testing.T) {
 
 type split4 struct {
 	id   tnproto.ID
+	key  tnproto.Key
 	port int // local port on which the tenant is bound
 }
 
@@ -491,9 +506,10 @@ func (s *split4) Split(tbl expr.Node, h plan.TableHandle) (plan.Subtables, error
 			Binding: expr.Bind(tbl, fmt.Sprintf("copy-%d", i)),
 		}
 		out[i].Transport = &tnproto.Remote{
-			Tenant: s.id,
-			Net:    "tcp",
-			Addr:   net.JoinHostPort("localhost", strconv.Itoa(s.port)),
+			ID:   s.id,
+			Key:  s.key,
+			Net:  "tcp",
+			Addr: net.JoinHostPort("localhost", strconv.Itoa(s.port)),
 		}
 	}
 	return out, nil
@@ -536,13 +552,13 @@ func socketPair(t testing.TB) (net.Conn, net.Conn) {
 
 // begin execution of a split query and yield the
 // returned data.
-func splitquery(t *testing.T, query string, m *Manager, id tnproto.ID) (io.ReadCloser, io.ReadCloser) {
-	tree := mksplit(t, query, stubenv{}, &split4{id: id, port: getport(t, m)})
+func splitquery(t *testing.T, query string, m *Manager, id tnproto.ID, key tnproto.Key) (io.ReadCloser, io.ReadCloser) {
+	tree := mksplit(t, query, stubenv{}, &split4{id: id, key: key, port: getport(t, m)})
 	me, there := socketPair(t)
 
 	t.Logf("split plan: %s", tree.String())
 
-	rc, err := m.Do(id, tree, tnproto.OutputRaw, there)
+	rc, err := m.Do(id, key, tree, tnproto.OutputRaw, there)
 	there.Close()
 	if err != nil {
 		me.Close()
@@ -571,8 +587,8 @@ func openfds(t *testing.T) []string {
 	return out
 }
 
-func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, want []string, count int, scan int64) {
-	rc, qr := splitquery(t, query, m, id)
+func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, key tnproto.Key, want []string, count int, scan int64) {
+	rc, qr := splitquery(t, query, m, id, key)
 	var row, wantrow ion.Datum
 	var st ion.Symtab
 
@@ -629,10 +645,10 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, want []str
 func testCancel(t *testing.T, m *Manager) {
 	here, there := socketPair(t)
 	defer there.Close()
-	id := randomID()
+	id, key := randpair()
 	// this plan should loop indefinitely until
 	// it is canceled by the
-	rc, err := m.Do(id, mkplan(t, `SELECT * FROM HANG('../testdata/parking.10n')`), tnproto.OutputRaw, here)
+	rc, err := m.Do(id, key, mkplan(t, `SELECT * FROM HANG('../testdata/parking.10n')`), tnproto.OutputRaw, here)
 	here.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -680,7 +696,7 @@ func BenchmarkSendPlan(b *testing.B) {
 			}
 			env := &benchenv{blocks: count, ranges: ranges}
 			b.Run(name, func(b *testing.B) {
-				id := randomID()
+				id, key := randpair()
 				s, err := partiql.Parse([]byte("SELECT * FROM input LIMIT 1"))
 				if err != nil {
 					b.Fatal(err)
@@ -696,7 +712,7 @@ func BenchmarkSendPlan(b *testing.B) {
 					if err != nil {
 						b.Fatal(err)
 					}
-					rc, err := m.Do(id, tree, tnproto.OutputRaw, there)
+					rc, err := m.Do(id, key, tree, tnproto.OutputRaw, there)
 					there.Close()
 					if err != nil {
 						b.Fatal(err)

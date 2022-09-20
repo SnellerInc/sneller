@@ -324,6 +324,7 @@ func (m *Manager) init() {
 }
 
 type child struct {
+	key     tnproto.Key
 	avail   chan struct{}
 	proc    *os.Process
 	ctl     *net.UnixConn
@@ -528,7 +529,7 @@ func tenantLog(id tnproto.ID, l *log.Logger) (*os.File, error) {
 	return w, nil
 }
 
-func (m *Manager) launch(id tnproto.ID) (*child, error) {
+func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 	// make sure the tenant's cache directory
 	// is created and empty
 	// (we are doing this under m.lock, so
@@ -602,6 +603,7 @@ func (m *Manager) launch(id tnproto.ID) (*child, error) {
 	avail := make(chan struct{}, 1)
 	avail <- struct{}{}
 	return &child{
+		key:     key,
 		avail:   avail,
 		proc:    cmd.Process,
 		ctl:     local,
@@ -613,7 +615,7 @@ func (m *Manager) launch(id tnproto.ID) (*child, error) {
 // get acquires the handle to a child process,
 // exec-ing the tenant associated with 'id'
 // if it has not been started yet
-func (m *Manager) get(id tnproto.ID) (*child, error) {
+func (m *Manager) get(id tnproto.ID, key tnproto.Key) (*child, error) {
 	// make sure background processes are initialized
 	m.init()
 	m.lock.Lock()
@@ -621,11 +623,14 @@ func (m *Manager) get(id tnproto.ID) (*child, error) {
 	if m.live != nil {
 		c, ok := m.live[id]
 		if ok {
+			if c.key != key {
+				return nil, fmt.Errorf("key mismatch, possible compromised tenant: %s", id)
+			}
 			c.touched = time.Now()
 			return c, nil
 		}
 	}
-	c, err := m.launch(id)
+	c, err := m.launch(id, key)
 	if err != nil {
 		return nil, err
 	}
@@ -665,8 +670,8 @@ func (m *Manager) get(id tnproto.ID) (*child, error) {
 // so closing 'into' immediately after a call
 // to Do will not close the connection from
 // the perspective of the tenant process.)
-func (m *Manager) Do(id tnproto.ID, t *plan.Tree, ofmt tnproto.OutputFormat, into net.Conn) (io.ReadCloser, error) {
-	c, err := m.get(id)
+func (m *Manager) Do(id tnproto.ID, key tnproto.Key, t *plan.Tree, ofmt tnproto.OutputFormat, into net.Conn) (io.ReadCloser, error) {
+	c, err := m.get(id, key)
 	if err != nil {
 		return nil, err
 	}
@@ -727,7 +732,7 @@ func (m *Manager) errorf(msg string, args ...interface{}) {
 // tenant on *this* machine
 func (m *Manager) handleRemote(conn net.Conn) {
 	defer conn.Close()
-	id, err := tnproto.ReadID(conn)
+	id, key, err := tnproto.ReadHeader(conn)
 	if err != nil {
 		m.errorf("connection: %s", err)
 		return
@@ -735,7 +740,7 @@ func (m *Manager) handleRemote(conn net.Conn) {
 	if id.IsZero() {
 		return // ping message; just expecting a Close()
 	}
-	c, err := m.get(id)
+	c, err := m.get(id, key)
 	if err != nil {
 		m.errorf("couldn't spawn %x: %s", id, err)
 		return

@@ -76,7 +76,7 @@ const queryKillTimeout = 15 * time.Minute
 func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	start := time.Now()
-	tenantCreds, err := s.getTenant(ctx, w, r)
+	creds, err := s.getTenant(ctx, w, r)
 	if err != nil {
 		return
 	}
@@ -140,11 +140,14 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	normalized := parsedQuery.Text()
 	redacted := parsedQuery.Text()
 
-	var workerID tnproto.ID
-	hash := sha256.Sum256([]byte(tenantCreds.ID()))
-	copy(workerID[:], hash[:])
+	var id tnproto.ID
+	var key tnproto.Key
+	hash := sha256.Sum256([]byte(creds.ID()))
+	copy(id[:], hash[:])
+	hash = sha256.Sum256([]byte(creds.ID() + string(creds.Key()[:])))
+	copy(key[:], hash[:])
 
-	planEnv, err := sneller.Environ(tenantCreds, defaultDatabase)
+	planEnv, err := sneller.Environ(creds, defaultDatabase)
 	if err != nil {
 		http.Error(w, "tenant ID disallowed", http.StatusForbidden)
 		s.logger.Printf("refusing query: %s", err)
@@ -160,7 +163,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	if len(endPoints) == 0 {
 		tree, err = plan.New(parsedQuery, planEnv)
 	} else {
-		planSplitter := s.newSplitter(workerID, endPoints)
+		planSplitter := s.newSplitter(id, key, endPoints)
 		tree, err = plan.NewSplit(parsedQuery, planEnv, planSplitter)
 		if err == nil {
 			w.Header().Set("X-Sneller-Max-Scanned-Bytes", itoa(planSplitter.MaxScan))
@@ -177,7 +180,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// hash the tenant/query/plan/format to an eTag
 	hasher := sha256.New()
-	hasher.Write([]byte(tenantCreds.ID()))
+	hasher.Write([]byte(creds.ID()))
 	io.WriteString(hasher, normalized)
 	hasher.Write(planHash)
 	hasher.Write([]byte{byte(encodingFormat)})
@@ -234,7 +237,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		res:   w,
 	}
 	startrun := time.Now()
-	rc, err := s.manager.Do(workerID, tree, encodingFormat, conn)
+	rc, err := s.manager.Do(id, key, tree, encodingFormat, conn)
 	if err != nil {
 		if !conn.hijacked {
 			// didn't call w.WriteHeader() yet;
@@ -281,8 +284,8 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		s.logger.Printf("query ID %s %q execution failed (check): %v", queryID, redacted, err)
 		if deadlined && isTimeout(err) {
-			s.logger.Printf("query ID %s killing tenant ID %s due to timeout", queryID, workerID)
-			s.manager.Quit(workerID)
+			s.logger.Printf("query ID %s killing tenant ID %s due to timeout", queryID, id)
+			s.manager.Quit(id)
 		}
 		return
 	}
