@@ -70,6 +70,10 @@ type Info struct {
 	// LastModified is the last modified time
 	// of the blob.
 	LastModified date.Time
+	// Ephemeral, if set, indicates that this
+	// blob should be prioritized as a candidate
+	// for eviction from a cache.
+	Ephemeral bool
 }
 
 // Use sets the http client used to
@@ -134,6 +138,10 @@ func (u *URL) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
 		dst.BeginField(st.Intern("last-modified"))
 		dst.WriteTime(u.Info.LastModified)
 	}
+	if u.Info.Ephemeral {
+		dst.BeginField(st.Intern("ephemeral"))
+		dst.WriteBool(u.Info.Ephemeral)
+	}
 	if u.UnsafeNoIfMatch {
 		dst.BeginField(st.Intern("no-if-match"))
 		dst.WriteBool(true)
@@ -167,6 +175,8 @@ func (d *blobDecoder) decodeURL(fields []byte) (*URL, error) {
 			u.Info.Align = int(align)
 		case "last-modified":
 			u.Info.LastModified, fields, err = ion.ReadTime(fields)
+		case "ephemeral":
+			u.Info.Ephemeral, fields, err = ion.ReadBool(fields)
 		case "no-if-match":
 			u.UnsafeNoIfMatch, fields, err = ion.ReadBool(fields)
 		default:

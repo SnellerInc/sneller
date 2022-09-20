@@ -136,6 +136,10 @@ func (ts *testSegment) populate() {
 	}
 }
 
+func (ts *testSegment) Ephemeral() bool {
+	return true
+}
+
 func (ts *testSegment) Merge(other Segment) {
 	ts2 := other.(*testSegment)
 	if ts2.ETag() != ts.ETag() {

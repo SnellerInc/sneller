@@ -98,7 +98,8 @@ func Blobs(src FS, idx *blockfmt.Index, keep func(*blockfmt.SparseIndex, int) bo
 		if keep != nil && !keepAny(idx.Inline[i].Trailer, keep) {
 			continue
 		}
-		b, err := descToBlob(src, &idx.Inline[i])
+		canExpire := idx.Inline[i].Size < DefaultMinMerge && i == len(idx.Inline)-1
+		b, err := descToBlob(src, &idx.Inline[i], canExpire)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +110,7 @@ func Blobs(src FS, idx *blockfmt.Index, keep func(*blockfmt.SparseIndex, int) bo
 		return out, err
 	}
 	for i := range descs {
-		b, err := descToBlob(src, &descs[i])
+		b, err := descToBlob(src, &descs[i], false)
 		if err != nil {
 			return out, err
 		}
@@ -118,7 +119,7 @@ func Blobs(src FS, idx *blockfmt.Index, keep func(*blockfmt.SparseIndex, int) bo
 	return out, nil
 }
 
-func descToBlob(src FS, b *blockfmt.Descriptor) (blob.Interface, error) {
+func descToBlob(src FS, b *blockfmt.Descriptor, canExpire bool) (*blob.Compressed, error) {
 	info := (*descInfo)(b)
 	uri, err := src.URL(b.Path, info, b.ETag)
 	if err != nil {
@@ -144,6 +145,7 @@ func descToBlob(src FS, b *blockfmt.Descriptor) (blob.Interface, error) {
 				Align: 1,
 				// LastModified should match info.ModTime exactly
 				LastModified: date.FromTime(info.ModTime()),
+				Ephemeral:    canExpire,
 			},
 		},
 		Trailer: b.Trailer,

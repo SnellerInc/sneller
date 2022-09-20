@@ -51,16 +51,18 @@ func TestEvict(t *testing.T) {
 		// total size is 2000/2000 in the starting state;
 		// target will be 1800/2000 which means removing
 		// the two oldest files in the heaviest tenant (0/00 and 0/01)
+		// and also the ephemeral file from tenant 1
 		{"0/00", 100, base + 100},
 		{"0/01", 100, base + 200},
 		{"0/02", 100, base + 300},
 		{"0/03", 100, base + 300},
-		{"0/04", 1500, base + 500},
+		{"0/04", 1400, base + 500},
 		{"1/05", 100, base - 200},
+		{"1/eph:06", 100, base - int64(7*time.Second)},
 	}
 	// the end state should just be the start state
 	// minus the oldest file (which is listed first)
-	end := begin[2:]
+	end := begin[2 : len(begin)-1]
 
 	myUsage := func(dir string) (int64, int64) {
 		sum := int64(0)
@@ -136,7 +138,7 @@ func TestEvict(t *testing.T) {
 
 	final := readall(tmp)
 	if len(final) != len(end) {
-		t.Fatalf("%v remaining?", final)
+		t.Fatalf("%v remaining", final)
 	}
 	// both 'final' and 'end' are sorted
 	for i := range final {

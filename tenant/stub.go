@@ -87,6 +87,8 @@ func (h *Handle) ETag() string {
 	return base64.URLEncoding.EncodeToString(w.Sum(nil))
 }
 
+func (h *Handle) Ephemeral() bool { return false }
+
 type repeatReader struct {
 	ctx   context.Context
 	file  *os.File

@@ -64,6 +64,7 @@ func (c *Compressed) Stat() (*Info, error) {
 		Size:         c.Trailer.Offset - c.Trailer.Blocks[0].Offset,
 		Align:        1 << c.Trailer.BlockShift,
 		LastModified: inner.LastModified,
+		Ephemeral:    inner.Ephemeral,
 	}, nil
 }
 

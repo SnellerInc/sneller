@@ -19,6 +19,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/SnellerInc/sneller/heap"
@@ -138,9 +139,11 @@ func (f *fileHeap) popScore() fprio {
 
 type totalHeap struct {
 	buffered  fileHeap
-	sorted    []fprio // sorted from buffered
-	maxbuffer int     // maximum # of items to buffer
-	minatime  int64   // minimum atime; delete everything older than this
+	sorted    []fprio          // sorted from buffered
+	maxbuffer int              // maximum # of items to buffer
+	minatime  int64            // minimum atime; delete everything older than this
+	keepeph   time.Duration    // maximum duration for keeping "ephemeral" files
+	now       func() time.Time // virtual clock (usually time.Now)
 
 	// summary stats:
 	runs     int64 // number of evict runs
@@ -212,9 +215,13 @@ func (m *Manager) fill(t *totalHeap, wantsize int64) {
 			return err
 		}
 		at := atime(info)
-		// don't even bother trying to preserve
-		// files that are extremely old
+		// too old? remove
 		if at < t.minatime {
+			os.Remove(path)
+			return nil
+		}
+		// ephemeral and too old? remove
+		if strings.HasPrefix(d.Name(), "eph:") && time.Duration(m.eheap.now().UnixNano()-at) > t.keepeph {
 			os.Remove(path)
 			return nil
 		}
@@ -266,9 +273,17 @@ func (m *Manager) fill(t *totalHeap, wantsize int64) {
 }
 
 func (m *Manager) cacheEvict() {
+	// by default, cache up to 50 items to evict
 	if m.eheap.maxbuffer == 0 {
-		// pick a sane default for the cached list
 		m.eheap.maxbuffer = 50
+	}
+	// by default, use time.Now for time
+	if m.eheap.now == nil {
+		m.eheap.now = time.Now
+	}
+	// by default, keep ephemeral files for 6 seconds
+	if m.eheap.keepeph == 0 {
+		m.eheap.keepeph = 6 * time.Second
 	}
 	// target usage of 90% of the disk blocks;
 	// this gives us a little headroom for polling delay
@@ -278,7 +293,7 @@ func (m *Manager) cacheEvict() {
 		return
 	}
 	// set the minimum atime to within the last hour
-	m.eheap.minatime = time.Now().Add(-time.Hour).UnixNano()
+	m.eheap.minatime = m.eheap.now().Add(-time.Hour).UnixNano()
 	m.eheap.runs++
 	m.evict(&m.eheap, used-target)
 	if m.logger != nil && m.eheap.files > 0 &&
@@ -288,7 +303,7 @@ func (m *Manager) cacheEvict() {
 		nsec := m.eheap.maxatime % 1e9
 		m.logger.Printf("evict stats: %d runs, %d files, %d bytes, min age %s",
 			m.eheap.runs, m.eheap.files, m.eheap.bytes, time.Since(time.Unix(sec, nsec)))
-		m.lastSummary = time.Now()
+		m.lastSummary = m.eheap.now()
 		m.eheap.runs = 0
 		m.eheap.files = 0
 		m.eheap.bytes = 0

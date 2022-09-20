@@ -267,6 +267,8 @@ func (b *blobSegment) Open() (io.ReadCloser, error) {
 	return b.blob.Reader(0, b.info.Size)
 }
 
+func (b *blobSegment) Ephemeral() bool { return b.info.Ephemeral }
+
 // Decode implements dcache.Segment.Decode
 func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 	if c, ok := b.blob.(*blob.CompressedPart); ok {

@@ -236,6 +236,9 @@ func mkdir(name string, mode os.FileMode) bool {
 // or otherwise aborted the query)
 func (c *Cache) mmap(s Segment, flags Flag) *mapping {
 	id := s.ETag()
+	if s.Ephemeral() {
+		id = "eph:" + id
+	}
 	var target string
 	var predir string
 	if len(id) >= 2 {
@@ -416,6 +419,10 @@ type Segment interface {
 	ETag() string
 	// Size should return the size of the segment.
 	Size() int64
+	// Ephemeral should return true if the
+	// segment should be marked as a preferred
+	// candidate for eviction
+	Ephemeral() bool
 	// Open should open an io.ReadCloser
 	// that reads the contents of the segment.
 	// The return reader will be expected to
