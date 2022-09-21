@@ -36,7 +36,6 @@ func edgeSort(srn []edgeT) {
 
 func selectStates(store *DFAStore) ([]nodeIDT, mapT[nodeIDT, *DFA]) {
 	result := newMap[nodeIDT, *DFA]()
-	ids := store.getIDs()
 	selected := newVector[nodeIDT]()
 	notSelected := newVector[nodeIDT]()
 
@@ -52,7 +51,7 @@ func selectStates(store *DFAStore) ([]nodeIDT, mapT[nodeIDT, *DFA]) {
 
 	selected.pushBack(startID)
 
-	for _, nodeID := range ids {
+	for _, nodeID := range store.getIDs() {
 		if nodeID != startID {
 			node, _ := store.get(nodeID)
 			if node.accept {
@@ -110,6 +109,17 @@ func NewDsLarge(store *DFAStore) (*DsLarge, error) {
 	result := new(DsLarge)
 	result.data = make([]uint32, 0)
 
+	// special situation where there are no regular edges,
+	// corresponding to regex "$", (|)$, etc; his gives DFA "-> s0 -$> s1"
+	if store.NumberOfNodes() == 2 {
+		startID, _ := store.startID()
+		startNode, _ := store.get(startID)
+		if (len(startNode.edges) == 1) && startNode.rlza() {
+			result.addInt(0xFFFFFFFF) // add -1 to indicate that there is only 1 state and this state has RLZA
+			return result, nil
+		}
+	}
+
 	selectedStates, data := selectStates(store)
 	nStates := len(selectedStates)
 	result.addInt(nStates)
@@ -122,7 +132,7 @@ func NewDsLarge(store *DFAStore) (*DsLarge, error) {
 			// write symbol ranges to the data-structure
 			nEdges := len(mergedEdges)
 			if nEdges == 0 {
-				return nil, fmt.Errorf("internal error: NewDsLarge retrieved an empty node which is invalid ")
+				return nil, fmt.Errorf("internal error: NewDsLarge retrieved an empty node which is invalid")
 			}
 			result.addInt((nEdges * 12) + 8) // add the total bytes of edges; used in 33839A60
 			result.addInt(nEdges)            // add number of edges
@@ -183,7 +193,13 @@ func utf8intToRune(v uint32) rune {
 // DumpDebug dumps this data structure with annotations to dst
 func (d *DsLarge) DumpDebug(dst io.Writer) (err error) {
 	nNodes := d.data[0]
-	_, err = fmt.Fprintf(dst, "%08X\t(#nodes; LARGE DFA DATA-STRUCTURE)\n", nNodes)
+
+	if nNodes == 0xFFFFFFFF { // special situation when there are no regular edges: DFA -> s0 -$> s1
+		fmt.Fprintf(dst, "0xFFFFFFFF\t(special situation start node has RLZA; LARGE DFA DATA-STRUCTURE)\n")
+		fmt.Fprintf(dst, "  (nNodes=1; nEdgesTotal=0)\n")
+	}
+
+	_, err = fmt.Fprintf(dst, "%08X\t(#nodes; LARGE DFA DATA-STRUCTURE)\n", d.data[0])
 	if err != nil {
 		return err
 	}

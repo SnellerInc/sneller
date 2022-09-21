@@ -15340,14 +15340,22 @@ skip_wildcard:
 //; #endregion bcDfaT8Z
 
 //; #region bcDfaLZ
-//; DfaL Deterministic Finite Automaton(DFA) large with unlimited capacity with Zero length remaining assertion
+//; DfaLZ Deterministic Finite Automaton(DFA) with unlimited capacity (Large) and Remaining Length Zero Assertion (RLZA)
 TEXT bcDfaLZ(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   MOVL          (R14),R8                  //;6AD2EA95 load n_states                   ;R8=n_states; R14=needle_ptr;
   ADDQ          $4,  R14                  //;3259F7B2 init state_offset               ;R14=needle_ptr;
-  CMPL          R8,  $0                   //;637F12FC are there more than 0 states?   ;R8=n_states;
+//; test for special situation with DFA ->s0 -$> s1
+  MOVL          R8,  R15                  //;97339D56 scratch := n_states             ;R15=scratch; R8=n_states;
+  INCL          R15                       //;91D62E05 scratch++                       ;R15=scratch;
+  JNZ           normal_operation          //;19338985 if result==0, then special situation; jump if not zero (ZF = 0);
+  VPTESTNMD     Z3,  Z3,  K1,  K1         //;29B38DE0 K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len;
+  JMP           next                      //;E5E69BC1                                 ;
+normal_operation:
+//; test if start state is accepting
+  TESTL         R8,  R8                   //;637F12FC are there more than 0 states?   ;R8=n_states;
   JLE           next                      //;AEE3942A no, then there is only an accept state; jump if less or equal ((ZF = 1) or (SF neq OF));
 //; load constants
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
