@@ -98,27 +98,37 @@ func Convert(r io.Reader, dst *ion.Chunker, ch RowChopper, hint *Hint) error {
 		recordNr++
 
 		for fieldNr := range fields {
-			if fieldNr < len(hint.Fields) {
-				field := hint.Fields[fieldNr]
-				if field.Type != TypeIgnore {
-					text := fields[fieldNr]
-					if text == "" {
-						text = field.Default
-					}
+			if fieldNr >= len(hint.Fields) {
+				continue
+			}
+			field := hint.Fields[fieldNr]
+			missing := hint.MissingValues
+			if field.MissingValues != nil {
+				missing = field.MissingValues
+			}
+			if field.Type == TypeIgnore {
+				continue
+			}
+			text := fields[fieldNr]
+			if slices.Contains(missing, text) {
+				continue
+			}
+			if text == "" {
+				text = field.Default
+			}
 
-					if text != "" || field.AllowEmpty {
-						if field.isRootField() {
-							// root-fields can be written immediately
-							err := writeField(field.fieldParts[0].sym, field.convertAndWrite, dst, text, field.NoIndex, symbufs[fieldNr])
-							if err != nil {
-								return err
-							}
-						} else {
-							// nested items are add to the map and written out later
-							fm.addToMap(&field, text)
-						}
-					}
+			if text == "" && !field.AllowEmpty {
+				continue
+			}
+			if field.isRootField() {
+				// root-fields can be written immediately
+				err := writeField(field.fieldParts[0].sym, &field, dst, text, symbufs[fieldNr])
+				if err != nil {
+					return err
 				}
+			} else {
+				// nested items are add to the map and written out later
+				fm.addToMap(&field, text)
 			}
 		}
 	}
@@ -215,7 +225,7 @@ func (fm *subfieldNode) writeMap(dst *ion.Chunker) error {
 
 		case *subfieldLeaf:
 			if vv.inUse {
-				err := writeField(k, vv.field.convertAndWrite, dst, vv.text, vv.field.NoIndex, vv.symbuf)
+				err := writeField(k, vv.field, dst, vv.text, vv.symbuf)
 				if err != nil {
 					return err
 				}
@@ -226,9 +236,13 @@ func (fm *subfieldNode) writeMap(dst *ion.Chunker) error {
 	return nil
 }
 
-func writeField(sym ion.Symbol, convertAndWrite func(string, *ion.Chunker, bool, ion.Symbuf) error, dst *ion.Chunker, text string, noIndex bool, symbufs ion.Symbuf) error {
+func writeField(sym ion.Symbol, field *FieldHint, dst *ion.Chunker, text string, symbufs ion.Symbuf) error {
 	dst.BeginField(sym)
-	return convertAndWrite(text, dst, noIndex, symbufs)
+	err := field.convertAndWrite(text, dst, field.NoIndex, symbufs)
+	if err != nil {
+		return fmt.Errorf("xsv: field %q: converting value %q: %w", field.Name, text, err)
+	}
+	return nil
 }
 
 func stringToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) error {

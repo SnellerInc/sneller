@@ -55,12 +55,37 @@ var (
 type Hint struct {
 	// SkipRecords allows skipping the first
 	// N records (useful when headers are used)
-	SkipRecords int `json:"skipRecords"`
+	SkipRecords int `json:"skipRecords,omitempty"`
 	// Separator allows specifying a custom
 	// separator (only applicable for CSV)
-	Separator rune `json:"separator"`
+	Separator Delim `json:"separator,omitempty"`
+	// MissingValues is an optional list of
+	// strings which represent missing values.
+	// Entries in Fields may override this on a
+	// per-field basis.
+	MissingValues []string `json:"missingValues,omitempty"`
 	// Fields specifies the hint for each field
 	Fields []FieldHint `json:"fields"`
+}
+
+// Delim is a rune that unmarshals from a
+// string.
+type Delim rune
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (d *Delim) UnmarshalJSON(b []byte) error {
+	if string(b) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil || s == "" {
+		return err
+	}
+	if len(s) > 1 {
+		return fmt.Errorf("xsv: delimiter must be at most one byte long")
+	}
+	*d = Delim(s[0])
+	return nil
 }
 
 // FieldHint defines if and how a
@@ -87,6 +112,9 @@ type FieldHint struct {
 	// Optional list of values that represent FALSE
 	// (only valid for bool type)
 	FalseValues []string `json:"falseValues,omitempty"`
+	// Optional list of values that represent a
+	// missing value
+	MissingValues []string `json:"missingValues,omitempty"`
 
 	// internals
 	fieldParts      []fieldPart
@@ -179,6 +207,8 @@ func (fh *FieldHint) UnmarshalJSON(data []byte) error {
 		default:
 			return fmt.Errorf("invalid date format %q", f)
 		}
+	default:
+		return fmt.Errorf("xsv: no converter for type %q", t)
 	}
 
 	return nil

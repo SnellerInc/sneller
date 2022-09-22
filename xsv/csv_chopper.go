@@ -28,7 +28,7 @@ type CsvChopper struct {
 	SkipRecords int
 	// Separator allows specifying a custom
 	// separator (defaults to comma)
-	Separator rune
+	Separator Delim
 
 	r      io.Reader
 	cr     *csv.Reader
@@ -60,8 +60,8 @@ func (c *CsvChopper) init(r io.Reader) {
 		c.cr.FieldsPerRecord = -1
 		c.cr.ReuseRecord = true
 		c.cr.LazyQuotes = true
-		if c.Separator != rune(0) {
-			c.cr.Comma = c.Separator
+		if c.Separator != 0 {
+			c.cr.Comma = rune(c.Separator)
 		}
 	}
 }
