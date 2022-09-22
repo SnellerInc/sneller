@@ -21,8 +21,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"syscall"
 
 	"github.com/SnellerInc/sneller"
+	"github.com/SnellerInc/sneller/debug"
 	"github.com/SnellerInc/sneller/tenant/dcache"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/SnellerInc/sneller/vm"
@@ -91,6 +94,12 @@ func runWorker(args []string) {
 		} else {
 			env.Cache = dcache.New(cachedir, env.Post)
 			env.Cache.Logger = logger
+
+			// for now, only allow root to debug us
+			ok := func(ucred *syscall.Ucred) bool {
+				return ucred.Uid == 0
+			}
+			debug.Path(filepath.Join(cachedir, "debug.sock"), ok, logger)
 		}
 	}
 	err = tnproto.Serve(uc, &env)

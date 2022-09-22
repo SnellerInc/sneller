@@ -16,11 +16,13 @@ package debug
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -71,10 +73,53 @@ func TestDebug(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if res.StatusCode != 200 {
+		t.Errorf("got status code %d", res.StatusCode)
+	}
 	defer res.Body.Close()
 	buf, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Fatal(err)
+	}
+	t.Logf("got cmdline %s", buf)
+}
+
+func TestPathDebug(t *testing.T) {
+	tmpdir := t.TempDir()
+	sock := filepath.Join(tmpdir, "sock")
+	var outbuf bytes.Buffer
+	lg := log.New(&outbuf, "", log.Lshortfile)
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Log(outbuf.String())
+		}
+	})
+
+	// bind to a local socket path
+	ok := func(ucred *syscall.Ucred) bool {
+		t.Logf("got ucred %+v", ucred)
+		return int(ucred.Pid) == syscall.Getpid()
+	}
+	Path(sock, ok, lg)
+
+	c := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return net.Dial("unix", sock)
+			},
+		},
+	}
+	res, err := c.Get("http://localprofile/debug/pprof/cmdline")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	buf, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != 200 {
+		t.Fatalf("got status code %d %s", res.StatusCode, buf)
 	}
 	t.Logf("got cmdline %s", buf)
 }
