@@ -14443,34 +14443,34 @@ reset_and_skip:
 //;  each string segment length is incoded directly in dict[imm], and the segments directly in dict[imm], and the segments operation
 TEXT bcMatchpatUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   IMM_FROM_DICT(R8)                      //;05667C35 load *[]byte with the provided str into R8
+//; init variables
   MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=needle_begin_ptr; R8=tmp;
   KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
   KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
   VMOVDQU32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
-  VPADDD        Z2,  Z3,  Z5              //;E5429114 compute string end position     ;Z5=o_data_end; Z3=str_length; Z2=str_start;
+  VPADDD        Z2,  Z3,  Z5              //;E5429114 compute string end position     ;Z5=o_data_end; Z3=str_len; Z2=str_start;
+//; load constants
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+//; load parameters
   MOVQ          8(R8),R8                  //;272B5640 load pattern_length             ;R8=tmp;
   LEAQ          (DX)(R8*1),BX             //;74E897E8 needle_end_ptr := needle_begin_ptr + tmp;BX=needle_end_ptr; DX=needle_begin_ptr; R8=tmp;
-
   JMP           outer_tail                //;ECD5FF70                                 ;
-
-outer_loop:
 //; keep looping in outer_loop till we find a matching start code-point
-
+outer_loop:
+//; load next unicode code-point
   KMOVW         K2,  K3                   //;6979316F copy eligible lanes             ;K3=tmp_mask; K2=lane_matched;
   VPGATHERDD    (SI)(Z25*1),K3,  Z8       //;D040E340 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z25=o_data_outer_loop;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+//; mask tail data
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
   VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask (data)            ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;BF3EB085 mask data                       ;Z8=data_msg; Z19=tail_mask;
-
+  VPANDD.Z      Z8,  Z19, K2,  Z8         //;BF3EB085 mask data                       ;Z8=data_msg; K2=lane_matched; Z19=tail_mask;
+//; compare with 4 code-points
   VPCMPD.BCST   $0,  4(DX),Z8,  K3        //;345D0BF3 K3 := (data_msg==[needle_begin_ptr+4]);K3=tmp_mask; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
   VPCMPD.BCST   $0,  8(DX),Z8,  K5        //;EFD0A9A3 K5 := (data_msg==[needle_begin_ptr+8]);K5=scratch_mask1; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
   VPCMPD.BCST   $0,  12(DX),Z8,  K6       //;CAC0FAC6 K6 := (data_msg==[needle_begin_ptr+12]);K6=scratch_mask2; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
@@ -14478,18 +14478,19 @@ outer_loop:
   KORW          K3,  K5,  K3              //;58E49245 tmp_mask |= scratch_mask1       ;K3=tmp_mask; K5=scratch_mask1;
   KORW          K3,  K6,  K3              //;BDCB8940 tmp_mask |= scratch_mask2       ;K3=tmp_mask; K6=scratch_mask2;
   KORW          K0,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K0=scratch_mask3;
+//; advance data offset
   KNOTW         K4,  K3                   //;2C3A5B12                                 ;K3=tmp_mask; K4=active_lanes;
-
   VPADDD        Z7,  Z25, K3,  Z25        //;5034DEA0 o_data_outer_loop += n_bytes_data;Z25=o_data_outer_loop; K3=tmp_mask; Z7=n_bytes_data;
+//; restrict lane_matched to non-empty data
   VPCMPD        $1,  Z5,  Z25, K2,  K2    //;DBB2E31C K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end; 1=LessThen;
   KTESTW        K2,  K2                   //;EB60CC5C any lanes still alive?          ;K2=lane_matched;
   JZ            next                      //;FF07EB20 no, then exit; jump if zero (ZF = 1);
-
+//; determine if we need to continue searching for a matching start code-point
   KNOTW         K3,  K4                   //;EA2AB365 negate                          ;K4=active_lanes; K3=tmp_mask;
   KTESTW        K4,  K4                   //;BC448E1A ZF := (K4==0); CF := 1          ;K4=active_lanes;
   JZ            outer_loop                //;B6E89A28 keep looping if we skipped everywhere; jump if zero (ZF = 1);
+//; we have found a matching start code-point; setup variables for the inner loop
   KMOVW         K2,  K4                   //;C1B09128 may as well search everything active;K4=active_lanes; K2=lane_matched;
-
   MOVL          (DX),CX                   //;B285DE84 load seg_length                 ;CX=seg_index; DX=needle_begin_ptr;
   VPBROADCASTD  CX,  Z23                  //;40103F07 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
   XORL          R14, R14                  //;5B762374 reset bytes_consumed            ;R14=bytes_consumed;
@@ -14499,14 +14500,15 @@ outer_loop:
 //; #region inner_loop
   JMP           inner_tail                //;E826EBC7                                 ;
 inner_loop:
+//; load next unicode code-point
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
   VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z6=o_data_inner_loop;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+//; mask tail data
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
   VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask (data)            ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;BF3EB085 mask data                       ;Z8=data_msg; Z19=tail_mask;
-
+  VPANDD.Z      Z8,  Z19, K4,  Z8         //;BF3EB085 mask data                       ;Z8=data_msg; K4=active_lanes; Z19=tail_mask;
+//; compare with 4 code-points
   VPCMPD.BCST   $0,  (R13)(R14*1),Z8,  K4,  K3  //;345D0BF3 K3 := K4 & (data_msg==[seg_start_ptr+bytes_consumed]);K3=tmp_mask; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
   VPCMPD.BCST   $0,  4(R13)(R14*1),Z8,  K4,  K5  //;EFD0A9A3 K5 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+4]);K5=scratch_mask1; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
   VPCMPD.BCST   $0,  8(R13)(R14*1),Z8,  K4,  K6  //;CAC0FAC6 K6 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+8]);K6=scratch_mask2; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
@@ -14515,30 +14517,33 @@ inner_loop:
   KORW          K3,  K6,  K3              //;BDCB8940 tmp_mask |= scratch_mask2       ;K3=tmp_mask; K6=scratch_mask2;
   KORW          K0,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K0=scratch_mask3;
   ADDL          $16, R14                  //;4D85A22A bytes_consumed += 16            ;R14=bytes_consumed;
-
+//; tests if any lanes are still active
   KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
   JZ            no_update                 //;815AFE30 no, then break out of inner_loop; jump if zero (ZF = 1);
-
+//; advance data offset
   VPADDD        Z6,  Z7,  Z6              //;BC3C6510 o_data_inner_loop += n_bytes_data;Z6=o_data_inner_loop; Z7=n_bytes_data;
   DECL          CX                        //;466E8A52 seg_index--                     ;CX=seg_index;
 inner_tail:
+//; restrict active_lanes to non-empty data
+  VPBROADCASTD  CX,  Z26                  //;220F8650                                 ;Z26=scratch_Z26; CX=seg_index;
+  VPCMPD        $0,  Z6,  Z5,  K4,  K3    //;DE8ED054 K3 := K4 & (o_data_end==o_data_inner_loop);K3=tmp_mask; K4=active_lanes; Z5=o_data_end; Z6=o_data_inner_loop; 0=Eq;
+  VPCMPD        $6,  Z11, Z26, K3,  K3    //;6BF36236 K3 &= (scratch_Z26>0)           ;K3=tmp_mask; Z26=scratch_Z26; Z11=0; 6=Greater;
+  KANDNW        K4,  K3,  K4              //;136A3E19 active_lanes &= ~tmp_mask       ;K4=active_lanes; K3=tmp_mask;
+//; determine if the end of needle is reached
   TESTL         CX,  CX                   //;55C7CFAD any chars left in needle?       ;CX=seg_index;
   JNZ           inner_loop                //;B0CE3FB0 no, then the inner-code is done; jump if not zero (ZF = 0);
-
 //; see if we've reached the end of the pattern, or if there's another segment to match
   VMOVD         X23, CX                   //;59065A37 restore seg_length              ;CX=seg_end_ptr; Z23=seg_length;
   SHLQ          $4,  CX                   //;8790EEE2 seg_end_ptr <<= 4               ;CX=seg_end_ptr;
   ADDQ          R13, CX                   //;291DBAF6 seg_end_ptr += seg_start_ptr    ;CX=seg_end_ptr; R13=seg_start_ptr;
-
   LEAQ          (R13)(R14*1),R8           //;736B9EFF tmp := seg_start_ptr + bytes_consumed;R8=tmp; R13=seg_start_ptr; R14=bytes_consumed;
   CMPQ          R8,  BX                   //;6DF8AA3C at end of needle?               ;BX=needle_end_ptr; R8=tmp;
   JNE           skipchar                  //;69250FD4 no, then skip a char; jump if not equal (ZF = 0);
-
 //; #endregion inner_loop
 
 update:
   VPSUBD        Z2,  Z6,  Z26             //;C6E4E202 scratch_Z26 := o_data_inner_loop - str_start;Z26=scratch_Z26; Z6=o_data_inner_loop; Z2=str_start;
-  VPSUBD        Z26, Z3,  K4,  Z3         //;92C20EC9 str_length -= scratch_Z26       ;Z3=str_length; K4=active_lanes; Z26=scratch_Z26;
+  VPSUBD        Z26, Z3,  K4,  Z3         //;92C20EC9 str_len -= scratch_Z26          ;Z3=str_len; K4=active_lanes; Z26=scratch_Z26;
   VMOVDQU32     Z6,  K4,  Z2              //;BBD0D6BD str_start := end-of-match       ;Z2=str_start; K4=active_lanes; Z6=o_data_inner_loop;
   KORW          K4,  K1,  K1              //;13B24E89 add to lane_active              ;K1=lane_active; K4=active_lanes;
   KANDNW        K2,  K4,  K2              //;6577B2E7 remove from lane_matched        ;K2=lane_matched; K4=active_lanes;
@@ -14559,15 +14564,14 @@ skipchar:
   VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D98831F7 K4 &= (o_data_inner_loop<o_data_end);K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end; 1=LessThen;
   KTESTW        K4,  K4                   //;DC4B6D58 ZF := (K4==0); CF := 1          ;K4=active_lanes;
   JZ            no_update                 //;B6BD72EA all inner matches failed; jump if zero (ZF = 1);
-
+//; load next unicode code-point
   KMOVW         K4,  K3                   //;86D47D0E copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
   VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;F8AFC558 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z6=o_data_inner_loop;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+//; mask tail data
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
   VPADDD        Z7,  Z6,  K4,  Z6         //;8E6EFFC6 o_data_inner_loop += n_bytes_data;Z6=o_data_inner_loop; K4=active_lanes; Z7=n_bytes_data;
   VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D69EC427 K4 &= (o_data_inner_loop<o_data_end); unset lanes we have used up;K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end; 1=LessThen;
-
 //; set up registers as if we were entering 'inner_tail' from the header of 'inner_loop'
   LEAQ          4(CX),R13                 //;F5CF92D4 init seg_ptr (skip seg_length char);R13=seg_start_ptr; CX=seg_end_ptr;
   MOVL          (CX),CX                   //;72E449D6 load seg_length                 ;CX=seg_index; CX=seg_end_ptr;
@@ -14577,10 +14581,8 @@ skipchar:
   VPBROADCASTD  CX,  Z23                  //;E14BC512 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
   JMP           inner_tail                //;D3658066                                 ;
 reset_and_skip:
-//;MOVQ         CX,  CX                   //;979A1F89                                 ;CX=seg_end_ptr; CX=seg_index;
   SHLQ          $4,  CX                   //;39BAB93A seg_end_ptr <<= 4               ;CX=seg_end_ptr;
   ADDQ          R13, CX                   //;E03E8BC7 seg_end_ptr += seg_start_ptr    ;CX=seg_end_ptr; R13=seg_start_ptr;
-
   JMP           skipchar                  //;43A5A433                                 ;
 //; #endregion skipchar
 //; #endregion bcMatchpatUTF8Ci
