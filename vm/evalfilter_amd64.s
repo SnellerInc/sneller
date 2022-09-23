@@ -88,10 +88,12 @@ doit:
   MOVQ          bytecode_auxvals+0(DI), AX
   MOVQ          0(SP), R11             // R11 = old rows consumed
 compress_auxvals:
+  KMOVB         K7, K3                 // K7 = original input mask
+  KSHIFTRW      $8, K7, K4
   MOVQ          0(AX), R8
-  VMOVDQA32     0(R8)(R11*8), Z2       // load from rows consumed
+  VMOVDQU64.Z   0(R8)(R11*8), K3, Z2   // load from rows consumed
   VPCOMPRESSQ   Z2, K1, 0(R8)(R14*8)
-  VMOVDQA32     64(R8)(R11*8), Z2      // load more rows consumed
+  VMOVDQU64.Z   64(R8)(R11*8), K4, Z2  // load more rows consumed
   VPCOMPRESSQ   Z2, K2, 0(R8)(R15*8)
   ADDQ          $24, AX
   DECQ          CX

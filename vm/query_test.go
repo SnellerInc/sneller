@@ -347,7 +347,6 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 			} else {
 				second = flatten(in[half:], st)
 			}
-
 			if parallel {
 				input[i] = parallelchunks{first, second}
 			} else {
@@ -357,6 +356,11 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 			input[i] = bufhandle(flatten(in, st))
 		}
 	}
+	vm.Errorf = t.Logf
+	defer func() {
+		vm.Errorf = nil
+	}()
+
 	env := &queryenv{in: input}
 	tree, err := plan.New(q, env)
 	if err != nil {
@@ -559,7 +563,7 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 			}
 			// if the outputs are input-order-independent,
 			// then we can test the query with parallel inputs:
-			parallel := len(out) <= 1 || !shuffleOutput(q)
+			parallel := i > 0 && len(out) <= 1 || !shuffleOutput(q)
 			gotout := run(t, q, in, st, i > 0, shuffleSymtab(q), parallel)
 			st.Reset()
 			fixup(gotout, st)
@@ -570,7 +574,8 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 			errors := 0
 			for i := range out {
 				if i >= len(gotout) {
-					break
+					t.Errorf("missing %s", toJSON(st, out[i]))
+					continue
 				}
 				if !ion.Equal(out[i], gotout[i]) {
 					errors++
@@ -764,7 +769,6 @@ func TestQueries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	for i := range test {
 		path := test[i].path
 		t.Run(test[i].name, func(t *testing.T) {
