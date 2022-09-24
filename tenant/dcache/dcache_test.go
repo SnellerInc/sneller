@@ -317,12 +317,21 @@ func testCache(t *testing.T, seg *testSegment, parallel int) {
 	if c.LiveHits() != 0 {
 		t.Errorf("%d mappings live?", c.LiveHits())
 	}
-	match, err := filepath.Glob(dir + "/*.tmp")
+	match, err := filepath.Glob(dir + "/*/*.tmp")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(match) != 0 {
 		t.Errorf("tempfiles left in directory: %v", match)
+	}
+	// testSegment.Ephemeral() is true,
+	// so all the files should have ephemeral naming
+	eph, err := filepath.Glob(dir + "/*/eph:*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(eph) == 0 {
+		t.Fatal("no ephemeral entries?")
 	}
 }
 

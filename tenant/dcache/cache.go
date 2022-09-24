@@ -236,18 +236,23 @@ func mkdir(name string, mode os.FileMode) bool {
 // or otherwise aborted the query)
 func (c *Cache) mmap(s Segment, flags Flag) *mapping {
 	id := s.ETag()
-	if s.Ephemeral() {
-		id = "eph:" + id
-	}
 	var target string
 	var predir string
 	if len(id) >= 2 {
 		// add 1 level of indirection so that a subsequent
 		// readdir opertion need not lock the entire directory
 		predir = filepath.Join(c.dir, id[:1])
-		target = filepath.Join(predir, id[1:])
+		rest := id[1:]
+		if s.Ephemeral() {
+			rest = "eph:" + rest
+		}
+		target = filepath.Join(predir, rest)
 	} else {
-		target = filepath.Join(c.dir, id)
+		rest := id
+		if s.Ephemeral() {
+			rest = "eph:" + rest
+		}
+		target = filepath.Join(c.dir, rest)
 	}
 	if m := c.lockID(id); m != nil {
 		atomic.AddInt64(&c.hits, 1)
