@@ -21,6 +21,7 @@ import (
 	"math/bits"
 	"sync/atomic"
 
+	"github.com/SnellerInc/sneller/internal/aes"
 	"github.com/SnellerInc/sneller/internal/atomicext"
 	"github.com/SnellerInc/sneller/ints"
 	"github.com/SnellerInc/sneller/ion"
@@ -327,7 +328,6 @@ type randomTreeUnifierNode struct {
 //     unnecessary. In practice it is even better than that: the height rarely exceeds ~2log(N),
 //     putting random trees on par with red-black trees without the added complexity and inherently
 //     serial nature of the latter. It suffices to provide a hash function that is good enough.
-//     FNV64a is used at the moment.
 
 type randomTreeUnifier struct {
 	root atomic.Pointer[randomTreeUnifierNode]
@@ -337,21 +337,8 @@ func newRandomTreeUnifier() randomTreeUnifier {
 	return randomTreeUnifier{}
 }
 
-func (u *randomTreeUnifier) hash(data []byte) uint64 {
-	// Simply calculate a FNV64a hash value without the go/hash package overhead.
-	// TODO: might be worth SIMD acceleration, good enough for now.
-	const offset64 = uint64(14695981039346656037)
-	const prime64 = uint64(1099511628211)
-	h := offset64
-	for _, v := range data {
-		h ^= uint64(v)
-		h *= prime64
-	}
-	return h
-}
-
 func (u *randomTreeUnifier) unify(data []byte) bool {
-	h := u.hash(data)
+	h := aes.HashSlice(&aes.Volatile, data)
 	var p *randomTreeUnifierNode
 	ip := &u.root // insertion point
 	for {
