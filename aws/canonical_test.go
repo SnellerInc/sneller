@@ -33,6 +33,13 @@ func init() {
 	fakenow = fn.Local() // set non-UTC time, just to check that we fix it
 }
 
+// setnow sets fakenow and resets it at cleanup
+func setnow(t *testing.T, tm time.Time) {
+	old := fakenow
+	t.Cleanup(func() { fakenow = old })
+	fakenow = tm
+}
+
 // test against the example in the documentation
 func TestCanonical(t *testing.T) {
 	// use these headers
@@ -125,7 +132,7 @@ func TestSignURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fakenow = fn
+	setnow(t, fn)
 	input := "https://examplebucket.s3.amazonaws.com/test.txt"
 	k := DeriveKey("", "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "us-east-1", "s3")
 
@@ -135,7 +142,7 @@ func TestSignURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fakenow = fn
+	setnow(t, fn)
 	ret, err := k.SignURL(input, 86400*time.Second)
 	if err != nil {
 		t.Fatal(err)
