@@ -23,6 +23,7 @@ import (
 	"hash/fnv"
 	"math"
 	"reflect"
+	"strings"
 
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -178,7 +179,7 @@ func (c *bctestContext) setData(value string) {
 	c.data = append(c.data, value...)
 }
 
-func (c *bctestContext) addScalarStrings(values []string, padding []byte) {
+func (c *bctestContext) addScalarStrings(values []string) {
 	if len(values) > 16 {
 		panic("Can set up to 16 input values for VM opcode")
 	}
@@ -199,16 +200,15 @@ func (c *bctestContext) addScalarStrings(values []string, padding []byte) {
 			c.scalar[1][i/2] |= uint64(len(str)) << 32
 		}
 		c.data = append(c.data, str...)
-		c.data = append(c.data, padding...)
 	}
 }
 
-func (c *bctestContext) setScalarStrings(values []string, padding []byte) {
+func (c *bctestContext) setScalarStrings(values []string) {
 	if c.data == nil {
 		c.data = Malloc()
 	}
 	c.data = c.data[:0] // clear data and then add new values
-	c.addScalarStrings(values, padding)
+	c.addScalarStrings(values)
 }
 
 func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) {
@@ -271,6 +271,16 @@ func (c *bctestContext) addStackUint64(values []uint64) {
 		binary.LittleEndian.PutUint64(buf, values[i])
 		c.addStack(buf)
 	}
+}
+
+func padNBytes(s string, nBytes int) string {
+	buf := []byte(s + strings.Repeat(string([]byte{0}), nBytes))
+	return string(buf)[:len(s)]
+}
+
+// setDict sets the first dictionary value
+func (c *bctestContext) setDict(value string) {
+	c.dict = append(c.dict[:0], padNBytes(value, 4))
 }
 
 // Taint initializes all input values with some random bits.

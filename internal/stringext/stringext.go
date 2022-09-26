@@ -307,7 +307,7 @@ func GenNeedleExt(needle string, reversed bool) string {
 }
 
 // GenPatternExt generates an extended pattern representation needed for UTF8 ci comparisons
-func GenPatternExt(segments []string) []byte {
+func GenPatternExt(segments []string) string {
 	const nAlternatives = 4
 	nBytes := 0
 	for _, segment := range segments {
@@ -321,7 +321,7 @@ func GenPatternExt(segments []string) []byte {
 		_, alt := stringAlternatives(segment, nAlternatives, false)
 		result = append(result, alt...)
 	}
-	return result[0:nBytes]
+	return string(result[0:nBytes])
 }
 
 // NormalizeRune normalizes the provided rune into the smallest and equal rune wrt case-folding.
@@ -384,38 +384,38 @@ func EqualRuneFold(a, b rune) bool {
 	return NormalizeRune(a) == NormalizeRune(b)
 }
 
-func ExtractFromMsg(msg []byte, offset, length int) []byte {
-	return msg[offset : offset+length]
-}
-
-func PatternToSegments(pattern []byte) []string {
+func PatternToSegments(pattern string) []string {
 	var result []string
 	for len(pattern) > 0 {
 		segmentLength := pattern[0] //NOTE: 1byte segment length
 		if int(segmentLength) >= len(pattern) {
 			panic(fmt.Sprintf("invalid segment length %v (char %v)", segmentLength, string(rune(segmentLength))))
 		}
-		result = append(result, string(pattern[1:segmentLength+1]))
+		result = append(result, pattern[1:segmentLength+1])
 		pattern = pattern[segmentLength+1:]
 	}
 	return result
 }
 
-func SegmentToPattern(segment string) (pattern []byte) {
-	nBytesInSegment := len(segment)
-	pattern = append(pattern, byte(nBytesInSegment)) //NOTE: 1byte segment length
-	pattern = append(pattern, []byte(segment)...)
-	return
-}
-
-func SegmentsToPattern(segments []string) (pattern []byte) {
-	for _, segment := range segments {
-		pattern = append(pattern, SegmentToPattern(segment)...)
+func SegmentToPattern(segment string, normalize bool) (pattern string) {
+	if normalize {
+		segment = NormalizeString(segment)
 	}
-	return
+	return string(byte(len(segment))) + segment
 }
 
-func PatternToPrettyString(pattern []byte, method int) (result string) {
+func SegmentsToPattern(segments []string, normalize bool) (pattern string) {
+	var p []byte
+	for _, segment := range segments {
+		p = append(p, SegmentToPattern(segment, normalize)...)
+	}
+	return string(p)
+}
+
+func PatternToPrettyString(pattern string, method int) (result string) {
+	if !utf8.ValidString(pattern) {
+		return "<invalid UTF8>"
+	}
 	switch method {
 	case 0:
 		segments := PatternToSegments(pattern)
@@ -428,7 +428,7 @@ func PatternToPrettyString(pattern []byte, method int) (result string) {
 			if segmentLength == 0 {
 				result += "_"
 			} else {
-				result += "%" + string(pattern[pos:pos+segmentLength])
+				result += "%" + pattern[pos:pos+segmentLength]
 			}
 			pos += segmentLength
 		}
@@ -444,16 +444,22 @@ func PatternToPrettyString(pattern []byte, method int) (result string) {
 			first = false
 			segmentLength := int(pattern[pos])
 			pos++
-			result += "\"" + string(pattern[pos:pos+segmentLength]) + "\""
+			result += "\"" + pattern[pos:pos+segmentLength] + "\""
 			pos += segmentLength
 		}
 		result += "}"
 	case 3:
 		pos := 0
-		for pos < len(pattern) {
-			segmentLength := int(pattern[pos])
+		patternRunes := []rune(pattern)
+		nRunes := len(patternRunes)
+		for pos < nRunes {
+			segmentLength := int(patternRunes[pos])
 			pos++
-			result += fmt.Sprint(segmentLength) + "[" + string(pattern[pos:pos+segmentLength]) + "]"
+			if pos+segmentLength < nRunes {
+				result += fmt.Sprintf("%v[%v]", segmentLength, patternRunes[pos:pos+segmentLength])
+			} else {
+				result += fmt.Sprintf("%v[<invalid segment length %v>]", segmentLength, segmentLength)
+			}
 			pos += segmentLength
 		}
 	default:

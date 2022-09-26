@@ -2478,20 +2478,19 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 	if needle == "" {
 		return str
 	}
-	enc := string(byte(len(needle))) + needle
 	if caseSensitive {
+		enc := stringext.SegmentToPattern(needle, false)
 		return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), p.Constant(enc).imm)
 	}
-	enc = stringext.NormalizeString(enc)
 	if stringext.HasNtnString(needle) {
 		if !utf8.ValidString(needle) {
 			return p.Constant(false)
 		}
-		segments := []string{needle} // only one single segment
-		patternExt := p.Constant(string(stringext.GenPatternExt(segments)))
-		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
+		enc := stringext.GenPatternExt([]string{needle}) // only one single segment
+		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), p.Constant(enc).imm)
 	}
-	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), enc)
+	enc := stringext.SegmentToPattern(needle, true)
+	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), p.Constant(enc).imm)
 }
 
 // toBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.
@@ -2605,7 +2604,7 @@ func (p *prog) patmatch(str *value, pat string, wc byte, caseSensitive bool) *va
 		return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), p.Constant(enc).imm)
 	}
 	if hasNtn { // segment has non-trivial normalization
-		patternExt := p.Constant(string(stringext.GenPatternExt(segments)))
+		patternExt := p.Constant(stringext.GenPatternExt(segments))
 		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
 	}
 	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), p.Constant(enc).imm)
@@ -2743,7 +2742,7 @@ func (p *prog) pattern(str *value, startStr string, middle []string, endStr stri
 
 // RegexMatch matches 'str' as a string against regex
 func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
-	if cpu.X86.HasAVX512VBMI && !store.HasUnicodeEdge() { // AVX512_VBMI -> Icelake
+	if cpu.X86.HasAVX512VBMI && !store.HasUnicodeEdge() {
 		hasRLZA := store.HasRLZA()
 		hasWildcard, wildcardRange := store.HasUnicodeWildcard()
 		if dsTiny, err := regexp2.NewDsTiny(store); err == nil {
