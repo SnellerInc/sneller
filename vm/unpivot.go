@@ -16,7 +16,6 @@ package vm
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"math/bits"
 	"sync/atomic"
@@ -112,11 +111,13 @@ func (u *Unpivot) Close() error {
 }
 
 type kernelUnpivotBase struct {
-	parent *Unpivot
-	out    rowConsumer // The downstream kernel
-	params rowParams
-	dummy  []vmref // dummy rows
-	syms   *symtab
+	parent   *Unpivot
+	out      rowConsumer // The downstream kernel
+	params   rowParams
+	dummy    []vmref // dummy rows
+	syms     *symtab
+	aux      *auxbindings
+	resolver precedenceResolver
 }
 
 func (u *kernelUnpivotBase) Close() error {
@@ -133,22 +134,48 @@ type kernelUnpivotAsAt struct {
 }
 
 func (u *kernelUnpivotAsAt) symbolize(st *symtab, aux *auxbindings) error {
-	if len(aux.bound) > 0 {
-		return fmt.Errorf("UNPIVOT does not handle auxilliary bindings yet")
-	}
-
 	selfaux := auxbindings{}
-	selfaux.push(*u.parent.at) // aux 1 = at
-	selfaux.push(*u.parent.as) // aux 0 = as
+	selfaux.push(*u.parent.at) // aux 0 = as
+	selfaux.push(*u.parent.as) // aux 1 = at
 	u.syms = st
+	u.aux = aux
 	u.params.auxbound = shrink(u.params.auxbound, 2)
 	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
 	u.params.auxbound[1] = slices.Grow(u.params.auxbound[1][:0], outRowsCapacity)
 	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+	u.resolver = NewPrecedenceResolver(st, aux)
 	return u.out.symbolize(st, &selfaux)
 }
 
 func (u *kernelUnpivotAsAt) writeRows(rows []vmref, params *rowParams) error {
+	// Process the auxilliary bindings first, if provided
+	if params != nil {
+		for i, v := range params.auxbound {
+			name := u.aux.bound[i]
+			sym, ok := u.syms.Symbolize(name)
+			if !ok {
+				panic("symbol not found")
+			}
+			symref := u.syms.symrefs[sym]
+			for _, w := range v {
+				u.dummy = append(u.dummy, dummyVMRef)
+				u.params.auxbound[0] = append(u.params.auxbound[0], symref)
+				u.params.auxbound[1] = append(u.params.auxbound[1], w)
+
+				if len(u.dummy) == cap(u.dummy) {
+					// flush; note that the actual row content
+					// will be ignored
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
+					u.params.auxbound[1] = u.params.auxbound[1][:0]
+				}
+			}
+		}
+	}
+	// Process the ION input
 	for _, x := range rows {
 		data := x.mem()
 		// Iterate over all the struct fields
@@ -157,25 +184,28 @@ func (u *kernelUnpivotAsAt) writeRows(rows []vmref, params *rowParams) error {
 			if err != nil {
 				return err
 			}
-			// add a dummy record with 0 bytes of contents
-			// for the "main" row; the rowParams contain
-			// the only live bindings after this step
-			u.dummy = append(u.dummy, dummyVMRef)
 			restsize := ion.SizeOf(rest)
-			u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
-			restpos, _ := vmdispl(rest)
-			u.params.auxbound[1] = append(u.params.auxbound[1], vmref{restpos, uint32(restsize)})
 			data = rest[restsize:]
 
-			if len(u.dummy) == cap(u.dummy) {
-				// flush; note that the actual row content
-				// will be ignored
-				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
-					return err
+			if u.resolver.useION(sym) {
+				// add a dummy record with 0 bytes of contents
+				// for the "main" row; the rowParams contain
+				// the only live bindings after this step
+				u.dummy = append(u.dummy, dummyVMRef)
+				u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
+				restpos, _ := vmdispl(rest)
+				u.params.auxbound[1] = append(u.params.auxbound[1], vmref{restpos, uint32(restsize)})
+
+				if len(u.dummy) == cap(u.dummy) {
+					// flush; note that the actual row content
+					// will be ignored
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
+					u.params.auxbound[1] = u.params.auxbound[1][:0]
 				}
-				u.dummy = u.dummy[:0]
-				u.params.auxbound[0] = u.params.auxbound[0][:0]
-				u.params.auxbound[1] = u.params.auxbound[1][:0]
 			}
 		}
 	}
@@ -198,44 +228,61 @@ type kernelUnpivotAs struct {
 }
 
 func (u *kernelUnpivotAs) symbolize(st *symtab, aux *auxbindings) error {
-	if len(aux.bound) > 0 {
-		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
-	}
 	selfaux := auxbindings{}
 	selfaux.push(*u.parent.as) // aux[0] = as
 	u.syms = st
+	u.aux = aux
 	u.params.auxbound = shrink(u.params.auxbound, 1)
 	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
 	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+	u.resolver = NewPrecedenceResolver(st, aux)
 	return u.out.symbolize(st, &selfaux)
 }
 
-func skipVarUInt(buf []byte) []byte {
-	for len(buf) > 0 && buf[0]&0x80 == 0 {
-		buf = buf[1:]
-	}
-	return buf[1:]
-}
-
 func (u *kernelUnpivotAs) writeRows(rows []vmref, params *rowParams) error {
+	// Process the auxilliary bindings first, if provided
+	if params != nil {
+		for _, v := range params.auxbound {
+			for _, w := range v {
+				u.dummy = append(u.dummy, dummyVMRef)
+				u.params.auxbound[0] = append(u.params.auxbound[0], w)
+
+				if len(u.dummy) == cap(u.dummy) {
+					// flush; note that the actual row content
+					// will be ignored
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
+				}
+			}
+		}
+	}
+
+	// Process the ION input
 	for _, x := range rows {
 		data := x.mem()
 		// Iterate over all the struct fields
 		for len(data) != 0 {
-			// Skip the field ID
-			rest := skipVarUInt(data)
-			size := ion.SizeOf(rest)
-			data = rest[size:] // Seek to the next field of the input ION structure
+			sym, rest, err := ion.ReadLabel(data)
+			if err != nil {
+				return err
+			}
+			restsize := ion.SizeOf(rest)
+			data = rest[restsize:] // Seek to the next field of the input ION structure
 
-			u.dummy = append(u.dummy, dummyVMRef)
-			vmoff, _ := vmdispl(rest)
-			u.params.auxbound[0] = append(u.params.auxbound[0], vmref{vmoff, uint32(size)})
-			if len(u.params.auxbound) == cap(u.params.auxbound) {
-				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
-					return err
+			if u.resolver.useION(sym) {
+				u.dummy = append(u.dummy, dummyVMRef)
+				vmoff, _ := vmdispl(rest)
+				u.params.auxbound[0] = append(u.params.auxbound[0], vmref{vmoff, uint32(restsize)})
+				if len(u.params.auxbound) == cap(u.params.auxbound) {
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
 				}
-				u.dummy = u.dummy[:0]
-				u.params.auxbound[0] = u.params.auxbound[0][:0]
 			}
 		}
 	}
@@ -255,19 +302,45 @@ type kernelUnpivotAt struct {
 }
 
 func (u *kernelUnpivotAt) symbolize(st *symtab, aux *auxbindings) error {
-	if len(aux.bound) > 0 {
-		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
-	}
 	selfaux := auxbindings{}
 	selfaux.push(*u.parent.at) // aux[0] = at
 	u.syms = st
+	u.aux = aux
 	u.params.auxbound = shrink(u.params.auxbound, 1)
 	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
 	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
+	u.resolver = NewPrecedenceResolver(st, aux)
 	return u.out.symbolize(st, &selfaux)
 }
 
 func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
+	// Process the auxilliary bindings first, if provided
+	if params != nil {
+		for i, v := range params.auxbound {
+			name := u.aux.bound[i]
+			sym, ok := u.syms.Symbolize(name)
+			if !ok {
+				panic("symbol not found")
+			}
+			symref := u.syms.symrefs[sym]
+			for range v {
+				u.dummy = append(u.dummy, dummyVMRef)
+				u.params.auxbound[0] = append(u.params.auxbound[0], symref)
+
+				if len(u.dummy) == cap(u.dummy) {
+					// flush; note that the actual row content
+					// will be ignored
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
+				}
+			}
+		}
+	}
+
+	// Process the ION input
 	for _, x := range rows {
 		data := x.mem()
 		// Iterate over all the struct fields
@@ -276,16 +349,20 @@ func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
 			if err != nil {
 				return err
 			}
-			data = rest[ion.SizeOf(rest):] // Seek to the next field of the input ION structure
-			u.dummy = append(u.dummy, dummyVMRef)
-			u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
+			restsize := ion.SizeOf(rest)
+			data = rest[restsize:] // Seek to the next field of the input ION structure
 
-			if len(u.dummy) == cap(u.dummy) {
-				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
-					return err
+			if u.resolver.useION(sym) {
+				u.dummy = append(u.dummy, dummyVMRef)
+				u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
+
+				if len(u.dummy) == cap(u.dummy) {
+					if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+						return err
+					}
+					u.dummy = u.dummy[:0]
+					u.params.auxbound[0] = u.params.auxbound[0][:0]
 				}
-				u.dummy = u.dummy[:0]
-				u.params.auxbound[0] = u.params.auxbound[0][:0]
 			}
 		}
 	}
@@ -409,26 +486,25 @@ func (u *UnpivotAtDistinct) Close() error {
 
 // kernelUnpivotAtDistinct handles the "UNPIVOT AT key GROUP BY key" case
 type kernelUnpivotAtDistinct struct {
-	parent *UnpivotAtDistinct
-	buf    []uint
-	out    rowConsumer // The downstream kernel
-	params rowParams
-	dummy  []vmref // dummy rows
-	syms   *symtab
+	parent   *UnpivotAtDistinct
+	buf      []uint
+	out      rowConsumer // The downstream kernel
+	params   rowParams
+	dummy    []vmref // dummy rows
+	syms     *symtab
+	aux      *auxbindings
+	resolver precedenceResolver
 }
 
 func (u *kernelUnpivotAtDistinct) symbolize(st *symtab, aux *auxbindings) error {
-	if len(aux.bound) > 0 {
-		return fmt.Errorf("UNPIVOT doesn't handle auxilliary bindings yet")
-	}
-
 	selfaux := auxbindings{}
 	selfaux.push(u.parent.at) // aux[0] = at
+	u.aux = aux
 	u.syms = st
 	u.params.auxbound = shrink(u.params.auxbound, 1)
 	u.params.auxbound[0] = slices.Grow(u.params.auxbound[0][:0], outRowsCapacity)
 	u.dummy = slices.Grow(u.dummy[:0], outRowsCapacity)
-
+	u.resolver = NewPrecedenceResolver(st, aux)
 	maxID := uint(st.MaxID())
 	chunkCount := ints.ChunkCount(maxID, simdChunkBits) // The number of full SIMD registers, not the scalar ones!
 	u.buf = make([]uint, chunkCount*(simdChunkBits/bits.UintSize))
@@ -448,6 +524,21 @@ func (u *kernelUnpivotAtDistinct) next() rowConsumer {
 func unpivotAtDistinctDeduplicate(rows []vmref, vmbase uintptr, bitvector *uint)
 
 func (u *kernelUnpivotAtDistinct) writeRows(rows []vmref, params *rowParams) error {
+	// Mark the auxilliary binding fields first. Duplication with regards
+	// to the content of rows is fine, as the next step is deduplication.
+	if params != nil {
+		for i, v := range params.auxbound {
+			if len(v) > 0 {
+				name := u.aux.bound[i]
+				sym, ok := u.syms.Symbolize(name)
+				if !ok {
+					panic("symbol not found")
+				}
+				ints.SetBit(u.buf, sym)
+			}
+		}
+	}
+
 	// Deduplicate the symbol IDs using a bitvector
 	unpivotAtDistinctDeduplicate(rows, vmbase(), &u.buf[0])
 
@@ -489,4 +580,37 @@ func (u *kernelUnpivotAtDistinct) writeRows(rows []vmref, params *rowParams) err
 		u.params.auxbound[0] = u.params.auxbound[0][:0]
 	}
 	return nil
+}
+
+type precedenceResolver struct {
+	bitmap []uint
+}
+
+func NewPrecedenceResolver(st *symtab, aux *auxbindings) precedenceResolver {
+	// Make sure the names from aux all have their associated vmrefs
+	var auxsyms []ion.Symbol
+
+	if aux != nil && len(aux.bound) != 0 {
+		auxsyms = make([]ion.Symbol, len(aux.bound))
+		for i, name := range aux.bound {
+			auxsyms[i] = st.Intern(name)
+		}
+	}
+
+	maxID := uint(st.MaxID())
+	chunkCount := ints.ChunkCount(maxID, simdChunkBits) // The number of full SIMD registers, not the scalar ones!
+	r := precedenceResolver{bitmap: make([]uint, chunkCount*(simdChunkBits/bits.UintSize))}
+
+	for _, s := range auxsyms {
+		ints.SetBit(r.bitmap, s)
+	}
+	return r
+}
+
+func (p *precedenceResolver) useAuxilliary(s ion.Symbol) bool {
+	return ints.TestBit(p.bitmap, s)
+}
+
+func (p *precedenceResolver) useION(s ion.Symbol) bool {
+	return !p.useAuxilliary(s)
 }

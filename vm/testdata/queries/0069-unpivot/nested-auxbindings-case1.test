@@ -1,0 +1,13 @@
+SELECT
+    cols, vals
+FROM UNPIVOT (SELECT * FROM UNPIVOT input AS a AT b) AT cols AS vals GROUP BY cols
+---
+{"this": "a"}
+{"is": "ab"}
+{"a": "abc"}
+{"test": "abcd"}
+{"is": "abcde"}
+{"this": "abcdef"}
+---
+{"cols": "b", "vals": "this"}
+{"cols": "a", "vals": "a"}
