@@ -36,6 +36,11 @@ func Bind(e Node, as string) Binding {
 	return Binding{Expr: e, as: as, explicit: as != ""}
 }
 
+// Identity creates an identity binding from a simple identifier into itself.
+func Identity(s string) Binding {
+	return Bind(Identifier(s), s)
+}
+
 // As sets the binding result of b
 // to x. If x is the empty string,
 // then the binding is reset to

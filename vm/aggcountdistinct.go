@@ -23,7 +23,7 @@ import (
 	"math"
 )
 
-// aggApproxCountDistinctInit initializes aggregation buffer
+// aggApproxCountDistinctInit initializes an aggregation buffer
 func aggApproxCountDistinctInit(b []byte) {
 	for i := range b {
 		b[i] = 0

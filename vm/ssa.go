@@ -418,9 +418,12 @@ const (
 	smakestructkey
 	sboxlist
 
-	stypebits       // get encoded tag bits
-	schecktag       // check encoded tag bits
-	saggapproxcount // APPROX_COUNT_DISTINCT
+	stypebits              // get encoded tag bits
+	schecktag              // check encoded tag bits
+	saggapproxcount        // APPROX_COUNT_DISTINCT
+	saggapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries)
+	saggapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries)
+	sstrictunboxblob
 	_ssamax
 )
 
@@ -1064,7 +1067,14 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
 
-	saggapproxcount: {text: "aggapproxcount", argtypes: []ssatype{stHash, stBool}, rettype: stIntMasked, bc: opaggapproxcount, emit: emitaggapproxcount},
+	saggapproxcount:        {text: "aggapproxcount", argtypes: []ssatype{stHash, stBool}, rettype: stIntMasked, bc: opaggapproxcount, emit: emitaggapproxcount, immfmt: fmtother},
+	saggapproxcountpartial: {text: "aggapproxcount.partial", argtypes: []ssatype{stHash, stBool}, rettype: stValueMasked, bc: opaggapproxcount, emit: emitaggapproxcount, immfmt: fmtother},
+	saggapproxcountmerge:   {text: "aggapproxcount.merge", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opaggapproxcountmerge, emit: emitaggapproxcountmerge, immfmt: fmtaggslot},
+	sstrictunboxblob: {
+		text:     "strictunboxblob",
+		argtypes: []ssatype{stValue, stBool},
+		bc:       opstrictunboxblob,
+	},
 }
 
 type value struct {
@@ -3879,6 +3889,14 @@ func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot aggregate
 	return p.ssa2imm(saggapproxcount, h, mask, (uint64(slot)<<8)|uint64(precision))
 }
 
+func (p *prog) AggregateApproxCountDistinctPartial(child, filter *value, slot aggregateslot, precision uint8) *value {
+	return p.AggregateApproxCountDistinct(child, filter, slot, precision)
+}
+
+func (p *prog) AggregateApproxCountDistinctMerge(child *value, slot aggregateslot, precision uint8) *value {
+	return p.ssa2imm(saggapproxcountmerge, child, p.mask(child), (uint64(slot)<<8)|uint64(precision))
+}
+
 // Slot aggregate operations
 func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, slot int) *value {
 	boolVal, m := p.coerceBool(v)
@@ -6558,6 +6576,26 @@ func emitaggapproxcount(v *value, c *compilestate) {
 	c.asm.emitOpcode(op)
 	c.asm.emitImmU64(aggSlot)
 	c.asm.emitImmU16(uint16(hashSlot))
+	c.asm.emitImmU16(uint16(precision))
+}
+
+func emitaggapproxcountmerge(v *value, c *compilestate) {
+	arg := v.args[0]
+	mask := v.args[1]
+
+	imm := v.imm.(uint64)
+	aggSlot := imm >> 8
+	precision := uint8(imm)
+
+	c.loadk(v, mask)
+	c.loadv(v, arg)
+
+	c.op(v, opstrictunboxblob)
+
+	op := ssainfo[v.op].bc
+	checkImmediateBeforeEmit2(op, 8, 2)
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU64(aggSlot)
 	c.asm.emitImmU16(uint16(precision))
 }
 

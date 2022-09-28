@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+//go:generate stringer -type=AggregateOpFn
+
 package vm
 
 import (
@@ -58,12 +60,17 @@ const (
 	AggregateOpMaxTS
 	AggregateOpCount
 	AggregateOpApproxCountDistinct
+	AggregateOpApproxCountDistinctPartial
+	AggregateOpApproxCountDistinctMerge
 )
 
 // AggregateOp describes aggregate operation
 type AggregateOp struct {
-	fn        AggregateOpFn
-	precision uint8 // precision for AggregateOpApproxCountDistinct
+	fn AggregateOpFn
+
+	// precision for AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial
+	// and AggregateOpApproxCountDistinctMerge
+	precision uint8
 }
 
 func (a *AggregateOp) dataSize() int {
@@ -110,7 +117,7 @@ func (a *AggregateOp) dataSize() int {
 	case AggregateOpCount:
 		return 8
 
-	case AggregateOpApproxCountDistinct:
+	case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial, AggregateOpApproxCountDistinctMerge:
 		return 1 << a.precision
 	}
 
@@ -148,7 +155,9 @@ var aggregateOpInfoTable = [...]aggregateOpInfo{
 
 	AggregateOpCount: {isFloat: false, firstValue: 0},
 
-	AggregateOpApproxCountDistinct: {fnFirstValue: aggApproxCountDistinctInit},
+	AggregateOpApproxCountDistinct:        {fnFirstValue: aggApproxCountDistinctInit},
+	AggregateOpApproxCountDistinctPartial: {fnFirstValue: aggApproxCountDistinctInit},
+	AggregateOpApproxCountDistinctMerge:   {fnFirstValue: aggApproxCountDistinctInit},
 }
 
 func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
@@ -278,6 +287,9 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 			aggApproxCountDistinctUpdateBuckets(n, dst, src)
 			dst = dst[n:]
 			src = src[n:]
+
+		default:
+			panic(fmt.Sprintf("unuspported operation %s", aggregateOps[i].fn))
 		}
 	}
 }
@@ -362,12 +374,18 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateOpApproxCountDistinct:
+		case AggregateOpApproxCountDistinct,
+			AggregateOpApproxCountDistinctPartial,
+			AggregateOpApproxCountDistinctMerge:
+
 			// Note: realies on the implicit lock, not a real atomic op
 			n := aggregateOps[i].dataSize()
 			aggApproxCountDistinctUpdateBuckets(n, dst, src)
 			dst = dst[n:]
 			src = src[n:]
+
+		default:
+			panic(fmt.Sprintf("unuspported operation %s", aggregateOps[i].fn))
 		}
 	}
 }
@@ -435,11 +453,17 @@ func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 		b.WriteUint(count)
 		return 8
 
-	case AggregateOpApproxCountDistinct:
+	case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctMerge:
 		n := op.dataSize()
 		count := aggApproxCountDistinctHLL(data[:n])
 		b.WriteUint(count)
 		return n
+
+	case AggregateOpApproxCountDistinctPartial:
+		n := op.dataSize()
+		b.WriteBlob(data[:n])
+		return n
+
 	default:
 		panic(fmt.Sprintf("Invalid aggregate op: %v", op.fn))
 	}
@@ -598,6 +622,7 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 	}
 
 	p.bc.prepare(rp)
+
 	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
 	if p.bc.err != 0 {
 		return bytecodeerror("aggregate", &p.bc)
@@ -666,11 +691,10 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			}
 		}
 
-		op := agg[i].Expr.Op
-
-		// COUNT(...) is the only aggregate op that doesn't accept numbers;
-		// additionally, it accepts '*', which has a special meaning in this context.
-		if op == expr.OpCount {
+		switch op := agg[i].Expr.Op; op {
+		case expr.OpCount:
+			// COUNT(...) is the only aggregate op that doesn't accept numbers;
+			// additionally, it accepts '*', which has a special meaning in this context.
 			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
 				mem[i] = p.AggregateCount(p.ValidLanes(), filter, offset)
 			} else {
@@ -681,15 +705,33 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 				mem[i] = p.AggregateCount(v, filter, offset)
 			}
 			ops[i].fn = AggregateOpCount
-		} else if op == expr.OpApproxCountDistinct {
+
+		case expr.OpApproxCountDistinct,
+			expr.OpApproxCountDistinctPartial,
+			expr.OpApproxCountDistinctMerge:
+
 			v, err := compile(p, agg[i].Expr.Inner)
 			if err != nil {
+				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
 				return err
 			}
-			mem[i] = p.AggregateApproxCountDistinct(v, filter, offset, agg[i].Expr.Precision)
-			ops[i].fn = AggregateOpApproxCountDistinct
+
 			ops[i].precision = agg[i].Expr.Precision
-		} else if op.IsBoolOp() {
+			switch op {
+			case expr.OpApproxCountDistinct:
+				mem[i] = p.AggregateApproxCountDistinct(v, filter, offset, agg[i].Expr.Precision)
+				ops[i].fn = AggregateOpApproxCountDistinct
+
+			case expr.OpApproxCountDistinctPartial:
+				mem[i] = p.AggregateApproxCountDistinctPartial(v, filter, offset, agg[i].Expr.Precision)
+				ops[i].fn = AggregateOpApproxCountDistinctPartial
+
+			case expr.OpApproxCountDistinctMerge:
+				mem[i] = p.AggregateApproxCountDistinctMerge(v, offset, agg[i].Expr.Precision)
+				ops[i].fn = AggregateOpApproxCountDistinctMerge
+			}
+
+		case expr.OpBoolAnd, expr.OpBoolOr:
 			argv, err := p.compileAsBool(agg[i].Expr.Inner)
 			if err != nil {
 				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
@@ -701,10 +743,9 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			case expr.OpBoolOr:
 				mem[i] = p.AggregateBoolOr(argv, filter, offset)
 				ops[i].fn = AggregateOpOrK
-			default:
-				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}
-		} else {
+
+		default:
 			argv, err := p.compileAsNumber(agg[i].Expr.Inner)
 			if err != nil {
 				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)

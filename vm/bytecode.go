@@ -558,8 +558,10 @@ var opinfo = [_maxbcop]bcopinfo{
 	opsupper:      {text: "supper", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},
 	opsadjustsize: {text: "saddjustsize", flags: bcReadWriteS},
 
-	optypebits:       {text: "typebits", flags: bcReadK | bcReadV | bcWriteS},
-	opaggapproxcount: {text: "aggapproxcount", flags: bcReadK, imms: []bcImmType{bcImmU64, bcImmU16, bcImmU16}},
+	optypebits:            {text: "typebits", flags: bcReadK | bcReadV | bcWriteS},
+	opaggapproxcount:      {text: "aggapproxcount", flags: bcReadK, imms: []bcImmType{bcImmU64, bcImmU16, bcImmU16}},
+	opaggapproxcountmerge: {text: "aggapproxcountmerge", flags: bcReadK | bcReadV, imms: []bcImmType{bcImmU64, bcImmU16}},
+	opstrictunboxblob:     {text: "strictunboxblob", flags: bcReadK | bcReadV},
 
 	optrap: {text: "trap"},
 }

@@ -1267,6 +1267,12 @@ where Make in (
 				`PROJECT a AS a, SCALAR_REPLACEMENT\(0\) AS _2, SCALAR_REPLACEMENT\(1\) AS _3`,
 			},
 		},
+		{
+			query: `SELECT APPROX_COUNT_DISTINCT(Make) FROM 'parking3.ion'`,
+			expectedRows: []string{
+				`{"count": 61}`,
+			},
+		},
 	}
 
 	for i := range tcs {
@@ -1323,6 +1329,10 @@ where Make in (
 
 			dst.Reset()
 			var stat ExecStats
+			vm.Errorf = t.Logf
+			defer func() {
+				vm.Errorf = nil
+			}()
 			err = Exec(tree, &dst, &stat)
 			if err != nil {
 				t.Errorf("case %d: Exec: %s", i, err)
@@ -1340,6 +1350,11 @@ where Make in (
 				testRemoteEquivalent(t, tree, env, dst.Bytes(), &stat)
 			})
 			t.Run("split", func(t *testing.T) {
+				vm.Errorf = t.Logf
+				defer func() {
+					vm.Errorf = nil
+				}()
+
 				testSplitEquivalent(t, text, env, tcs[i].expectedRows, &stat)
 			})
 
@@ -1368,6 +1383,10 @@ where Make in (
 					t.Errorf("row #%d", i)
 					t.Errorf("got : %#v", row)
 					t.Errorf("want: %#v", want)
+
+					t.Errorf("got JSON: %s", toJSON(&st, row))
+					t.Errorf("want JSON: %s", toJSON(&st, want))
+					return
 				}
 			}
 			t.Log("output OK")

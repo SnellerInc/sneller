@@ -156,8 +156,17 @@ const (
 	// between arithmetic vs timestamp aggregation
 	OpLatest
 
-	// Describes APPROX_COUNT_DISTINCT
+	// Describes APPROX_COUNT_DISTINCT aggregate, that produces
+	// an integer output
 	OpApproxCountDistinct
+
+	// Describes APPROX_COUNT_DISTINCT aggregate run on a single node,
+	// that produces some intermediate data.
+	OpApproxCountDistinctPartial
+
+	// Describes APPROX_COUNT_DISTINCT aggregate that merges
+	// intermediate data and yields the final integer value
+	OpApproxCountDistinctMerge
 
 	maxAggregateOp
 )
@@ -223,6 +232,10 @@ func (a AggregateOp) String() string {
 		return "BOOL_OR"
 	case OpApproxCountDistinct:
 		return "APPROX_COUNT_DISTINCT"
+	case OpApproxCountDistinctPartial:
+		return "APPROX_COUNT_DISTINCT_PARTIAL"
+	case OpApproxCountDistinctMerge:
+		return "APPROX_COUNT_DISTINCT_MERGE"
 	default:
 		return "none"
 	}
@@ -308,7 +321,7 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	settype(dst, st, "aggregate")
 	dst.BeginField(st.Intern("op"))
 	dst.WriteUint(uint64(a.Op))
-	if a.Op == OpApproxCountDistinct {
+	if a.Op == OpApproxCountDistinct || a.Op == OpApproxCountDistinctPartial || a.Op == OpApproxCountDistinctMerge {
 		dst.BeginField(st.Intern("precision"))
 		dst.WriteUint(uint64(a.Precision))
 	}
@@ -391,7 +404,7 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 		a.Inner.text(dst, redact)
 		dst.WriteByte(')')
 
-	case OpApproxCountDistinct:
+	case OpApproxCountDistinct, OpApproxCountDistinctPartial, OpApproxCountDistinctMerge:
 		dst.WriteString(a.Op.String())
 		dst.WriteByte('(')
 		a.Inner.text(dst, redact)

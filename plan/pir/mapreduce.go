@@ -195,34 +195,53 @@ func numberOrMissing(e expr.Node) expr.Node {
 //	    -> map:    COUNT(x) AS c
 //	    -> reduce: SUM_INT(c) AS count
 func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
-	// transform AVG into two aggregations
-	orig := len(a.Agg)
-	var bind *Bind
-	for i := range a.Agg[:orig] {
-		if a.Agg[i].Expr.Op != expr.OpAvg {
-			// if we need a final projection,
-			// everything that isn't AVG just
-			// gets an identity output binding
-			if bind != nil {
-				bind.bind = append(bind.bind, expr.Bind(expr.Identifier(a.Agg[i].Result), a.Agg[i].Result))
-			}
-			continue
+
+	needsFinalProjection := false
+	for i := range a.Agg {
+		switch a.Agg[i].Expr.Op {
+		case expr.OpApproxCountDistinct:
+			// All APPROX_COUNT_DISTINCT becomes its partial version.
+			//
+			// Note: Technically, the partial version does exactly what
+			//       the sole version does. However, the sole version returns
+			//       an int, while partial one, the auxiliary buffer
+			//       which is meant to be merged in the final step.
+			a.Agg[i].Expr.Op = expr.OpApproxCountDistinctPartial
+
+		case expr.OpAvg:
+			// If there is AVG aggregate, we need to introduce
+			// extra binding and projection to properly gather
+			// the partial results.
+			needsFinalProjection = true
 		}
-		a.Agg[i].Expr.Op = expr.OpSum
-		count := gensym(1, i)
-		a.Agg = append(a.Agg, vm.AggBinding{Expr: expr.Count(numberOrMissing(a.Agg[i].Expr.Inner)), Result: count})
-		if bind == nil {
-			bind = &Bind{}
-			for j := range a.Agg[:i] {
-				bind.bind = append(bind.bind, expr.Bind(expr.Identifier(a.Agg[j].Result), a.Agg[j].Result))
-			}
-		}
-		// insert 'sumvar / countvar AS sumvar' into output projection
-		sumid := expr.Identifier(a.Agg[i].Result)
-		countid := expr.Identifier(count)
-		bind.bind = append(bind.bind, expr.Bind(expr.Div(sumid, countid), a.Agg[i].Result))
 	}
-	if bind != nil {
+
+	var bind *Bind
+	if needsFinalProjection {
+		orig := len(a.Agg)
+		bind = &Bind{}
+		bind.bind = make([]expr.Binding, 0, len(a.Agg)+len(a.GroupBy))
+		for i := range a.Agg[:orig] {
+			switch a.Agg[i].Expr.Op {
+			default:
+				// if we need a final projection,
+				// everything that isn't AVG just
+				// gets an identity output binding
+				bind.bind = append(bind.bind, expr.Identity(a.Agg[i].Result))
+
+				// transform AVG into two aggregations
+			case expr.OpAvg:
+				a.Agg[i].Expr.Op = expr.OpSum
+				count := gensym(1, i)
+				a.Agg = append(a.Agg, vm.AggBinding{Expr: expr.Count(numberOrMissing(a.Agg[i].Expr.Inner)), Result: count})
+
+				// insert 'sumvar / countvar AS sumvar' into output projection
+				sumid := expr.Identifier(a.Agg[i].Result)
+				countid := expr.Identifier(count)
+				bind.bind = append(bind.bind, expr.Bind(expr.Div(sumid, countid), a.Agg[i].Result))
+			}
+		}
+
 		for i := range a.GroupBy {
 			name := a.GroupBy[i].Result()
 			id := expr.Identifier(name)
@@ -240,17 +259,29 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		gen := gensym(2, i)
 		a.Agg[i].Result = gen
 		innerref := expr.Identifier(gen)
+		var newagg *expr.Aggregate
 		switch age.Op {
-		default:
-			// should have already been compiled away
-			return errorf(age, "cannot split %s", expr.ToString(age))
 		case expr.OpCount:
 			// convert to SUM_COUNT(COUNT(x))
-			out = append(out, vm.AggBinding{Expr: expr.SumCount(innerref), Result: result})
-		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount, expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpBoolAnd, expr.OpBoolOr, expr.OpEarliest, expr.OpLatest:
+			newagg = expr.SumCount(innerref)
+		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount,
+			expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpBoolAnd, expr.OpBoolOr,
+			expr.OpEarliest, expr.OpLatest:
 			// these are all distributive
-			out = append(out, vm.AggBinding{Expr: &expr.Aggregate{Op: age.Op, Inner: innerref}, Result: result})
+			newagg = &expr.Aggregate{Op: age.Op, Inner: innerref}
+		case expr.OpApproxCountDistinctPartial:
+			newagg = &expr.Aggregate{
+				Op:        expr.OpApproxCountDistinctMerge,
+				Precision: age.Precision,
+				Inner:     innerref}
 		}
+
+		if newagg == nil {
+			// should have already been compiled away
+			return errorf(age, "cannot split %s", expr.ToString(age))
+		}
+
+		out = append(out, vm.AggBinding{Expr: newagg, Result: result})
 	}
 	// the mapping step terminates here
 	// FIXME: update final outputs for mapping
@@ -268,7 +299,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		group := make([]expr.Binding, len(a.GroupBy))
 		for i := range a.GroupBy {
 			name := a.GroupBy[i].Result()
-			group[i] = expr.Bind(expr.Identifier(name), name)
+			group[i] = expr.Identity(name)
 		}
 		red.GroupBy = group
 	}

@@ -335,6 +335,8 @@ const (
 	opsupper                 bcop = 329
 	opsadjustsize            bcop = 330
 	opaggapproxcount         bcop = 331
-	optrap                   bcop = 332
-	_maxbcop                      = 333
+	opaggapproxcountmerge    bcop = 332
+	opstrictunboxblob        bcop = 333
+	optrap                   bcop = 334
+	_maxbcop                      = 335
 )

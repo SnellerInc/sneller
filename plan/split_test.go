@@ -23,6 +23,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/tests"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -73,6 +74,44 @@ func TestSplit(t *testing.T) {
 				"AGGREGATE SUM_COUNT($_2_0) AS \"count\"",
 			},
 		},
+		{
+			query: `SELECT MAX(n) FROM table`,
+			lines: []string{
+				`table`,
+				`AGGREGATE MAX(n) AS $_2_0`,
+				`UNION MAP table ["table-part1" "table-part2"]`,
+				`AGGREGATE MAX($_2_0) AS "max"`,
+			},
+		},
+		{
+			query: `SELECT AVG(n) FROM table`,
+			lines: []string{
+				`table`,
+				`AGGREGATE SUM(n) AS $_2_0, COUNT(n + 0) AS $_2_1`,
+				`UNION MAP table ["table-part1" "table-part2"]`,
+				`AGGREGATE SUM($_2_0) AS "avg", SUM_COUNT($_2_1) AS $_1_0`,
+				`PROJECT "avg" / $_1_0 AS "avg"`,
+			},
+		},
+		{
+			query: `SELECT APPROX_COUNT_DISTINCT(field) FROM table`,
+			lines: []string{
+				`table`,
+				`AGGREGATE APPROX_COUNT_DISTINCT_PARTIAL(field) AS $_2_0`,
+				`UNION MAP table ["table-part1" "table-part2"]`,
+				`AGGREGATE APPROX_COUNT_DISTINCT_MERGE($_2_0) AS "count"`,
+			},
+		},
+		{
+			query: `SELECT AVG(x), MAX(y), APPROX_COUNT_DISTINCT(z) FROM table`,
+			lines: []string{
+				`table`,
+				`AGGREGATE SUM(x) AS $_2_0, MAX(y) AS $_2_1, APPROX_COUNT_DISTINCT_PARTIAL(z) AS $_2_2, COUNT(x + 0) AS $_2_3`,
+				`UNION MAP table ["table-part1" "table-part2"]`,
+				`AGGREGATE SUM($_2_0) AS "avg", MAX($_2_1) AS "max", APPROX_COUNT_DISTINCT_MERGE($_2_2) AS "count", SUM_COUNT($_2_3) AS $_1_0`,
+				`PROJECT "avg" / $_1_0 AS "avg", "max" AS "max", "count" AS "count"`,
+			},
+		},
 	}
 
 	for i := range tcs {
@@ -91,6 +130,10 @@ func TestSplit(t *testing.T) {
 			if got := split.String(); got != want {
 				t.Errorf("got plan\n%s", got)
 				t.Errorf("wanted plan\n%s", want)
+				diff, ok := tests.Diff(want, got)
+				if ok {
+					t.Error("\n" + diff)
+				}
 			}
 		})
 	}
