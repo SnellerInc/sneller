@@ -14,6 +14,10 @@
 
 package vm
 
+import (
+	"fmt"
+)
+
 // Errorf is a global diagnostic function
 // that can be set during init() to capture
 // additional diagnostic information from
@@ -24,4 +28,15 @@ func errorf(f string, args ...any) {
 	if Errorf != nil {
 		Errorf(f, args...)
 	}
+}
+
+// bytecodeerror reports bytecode errors in a consistent way
+func bytecodeerror(ctx string, bc *bytecode) error {
+	if bc.err == 0 {
+		return nil
+	}
+
+	errorf("error pc %d", bc.errpc)
+	errorf("bytecode:\n%s\n", bc.String())
+	return fmt.Errorf("%s: bytecode error: errpc %d: %w", ctx, bc.errpc, bc.err)
 }

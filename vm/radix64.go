@@ -553,9 +553,7 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 	for len(delims) > 0 {
 		n := a.fasteval(delims, &abort)
 		if a.bc.err != 0 && a.bc.err != bcerrNeedRadix {
-			errorf("error pc %d", a.bc.errpc)
-			errorf("bytecode:\n%s\n", a.bc.String())
-			return fmt.Errorf("hash aggregate: bytecode error: errpc %d: %w", a.bc.errpc, a.bc.err)
+			return bytecodeerror("hash aggregate", &a.bc)
 		}
 		delims = delims[n:]
 		if len(delims) != 0 && abort == 0 {

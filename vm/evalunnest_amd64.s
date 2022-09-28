@@ -48,6 +48,7 @@ vmenter:
   MOVQ   bc+0(FP), DI
   MOVQ   ·vmm+0(SB), SI  // real static base
   VMENTER()
+  JC bytecode_error  // break the loop on error
 
   // now we need to scan (z2:z3).k1 as arrays
   // for distinct ion elements
@@ -128,4 +129,6 @@ genmask:
 out_of_space:
   MOVQ    AX, ret+80(FP) // AX = # lanes processed
   MOVQ    R10, ret1+88(FP)
+  RET
+bytecode_error:
   RET

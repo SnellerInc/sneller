@@ -599,6 +599,9 @@ func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 
 	p.bc.prepare(rp)
 	rowsCount := evalaggregatebc(&p.bc, delims, p.partialData)
+	if p.bc.err != 0 {
+		return bytecodeerror("aggregate", &p.bc)
+	}
 	p.rowCount += uint64(rowsCount)
 	return nil
 }

@@ -51,6 +51,7 @@ doit:
   VPXORD       Z31, Z31, Z31
   MOVQ         ·vmm+0(SB), SI  // real static base
   VMENTER()
+  JC bytecode_error // break the loop on error
 
   // compress output into delims
   MOVQ          delims+8(FP), DX
@@ -111,6 +112,7 @@ genmask:
   SUBL        $1, R8
   KMOVW       R8, K1
   JMP         doit
+bytecode_error:
+  RET
 trap:
   BYTE $0xCC
-

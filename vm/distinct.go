@@ -189,7 +189,7 @@ func (d *deduper) writeRows(delims []vmref, rp *rowParams) error {
 	d.bc.prepare(rp)
 	count := evaldedup(&d.bc, delims, d.hashes, d.local, d.hashslot)
 	if d.bc.err != 0 {
-		return fmt.Errorf("distinct: bytecode error: %w", d.bc.err)
+		return bytecodeerror("distinct", &d.bc)
 	}
 	if count == 0 {
 		return nil

@@ -64,6 +64,7 @@ loop:
   VPXORD Z31, Z31, Z31
   MOVQ   ·vmm+0(SB), VIRT_BASE
   VMENTER()
+  JC bytecode_error // break the loop on error
 
   JMP loop
 
@@ -74,4 +75,7 @@ end:
   // The function returns an integer, but at the moment we just return zero as each aggregate value has a separate counter.
   XORL R10, R10
   MOVQ R10, ret+56(FP)
+  RET
+
+bytecode_error:
   RET

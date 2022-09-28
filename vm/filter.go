@@ -15,7 +15,6 @@
 package vm
 
 import (
-	"fmt"
 	"io"
 	"sync/atomic"
 
@@ -124,7 +123,7 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	w.bc.prepare(rp)
 	valid := evalfilterbc(&w.bc, delims)
 	if w.bc.err != 0 {
-		return fmt.Errorf("filter: bytecode error: %w", w.bc.err)
+		return bytecodeerror("filter", &w.bc)
 	}
 	if valid > 0 {
 		// the assembly already did the compression for us:

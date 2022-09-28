@@ -49,6 +49,7 @@ doit:
   MOVQ bc+0(FP), DI
   MOVQ ·vmm+0(SB), SI       // real static base
   VMENTER()
+  JC bytecode_error  // break the loop on error
 
   // load the low 64 bits of the sixteen hashes;
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64
@@ -246,6 +247,7 @@ genmask:
   SUBL        $1, R8
   KMOVW       R8, K1
   JMP         doit
+bytecode_error:
+  RET
 trap:
   BYTE $0xCC
-

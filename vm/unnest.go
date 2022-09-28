@@ -147,7 +147,7 @@ func (u *unnesting) writeRows(delims []vmref, rp *rowParams) error {
 		u.perms = u.perms[:cap(u.perms)]
 		in, out := evalsplat(&u.splat, delims[consumed:], u.outer, u.perms)
 		if u.splat.err != 0 {
-			return fmt.Errorf("unnest: splatting arrays: %w", u.splat.err)
+			return bytecodeerror("unnest", &u.splat)
 		}
 		// adjust this to take into account the fact
 		// that we may not have actually handled all the lanes
