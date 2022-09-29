@@ -4367,8 +4367,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			unitTests: []unitTest{
 				{"ab", "b", true, 0, 1},
 				{"a", "a", true, 0, 0},
-				//FIXME{"a", "", false, 0, 1}, // Empty needle should yield failing match
-				//FIXME{"", "", false, 0, 0},  // Empty needle should yield failing match
+				{"", "a", false, 0, 0},
+				{"a", "", false, 0, 1}, // Empty needle gives failing match
+				{"", "", false, 0, 0},  // Empty needle gives failing match
 				{"aaaa", "aaaa", true, 0, 0},
 				{"aaaaa", "aaaaa", true, 0, 0},
 				{"aa", "b", false, 0, 2},
@@ -4383,9 +4384,10 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"aB", "b", true, 0, 1},
 				{"ab", "B", true, 0, 1},
 				{"A", "a", true, 0, 0},
+				{"", "a", false, 0, 0},
 				{"a", "A", true, 0, 0},
-				//FIXME{"a", "", false, 0, 1}, // Empty needle should yield failing match
-				//FIXME{"", "", false, 0, 0},  // Empty needle should yield failing match
+				{"a", "", false, 0, 1}, // Empty needle should yield failing match
+				{"", "", false, 0, 0},  // Empty needle should yield failing match
 				{"aAaA", "aaaa", true, 0, 0},
 				{"aAaAa", "aaaaa", true, 0, 0},
 				{"aa", "b", false, 0, 2},
@@ -4478,7 +4480,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		// alphabet from which to generate needles and patterns
 		dataAlphabet, needleAlphabet []rune
 		// space of lengths of the words made of alphabet
-		dataLenSpace, needleLenSapce []int
+		dataLenSpace, needleLenSpace []int
 		// maximum number of elements in dataSpace
 		dataMaxSize, needleMaxSize int
 		// bytecode to run
@@ -4492,10 +4494,10 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		{
 			name:           "contains prefix case-sensitive (opContainsPrefixCs)",
 			dataAlphabet:   []rune{'a', 'b', '\n'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
-			needleLenSapce: []int{1, 2, 3, 4, 5},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
@@ -4504,10 +4506,10 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		{
 			name:           "contains prefix case-insensitive (opContainsPrefixCi)",
 			dataAlphabet:   []rune{'a', 's', 'S'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 's', 'S'},
-			needleLenSapce: []int{1, 2, 3, 4, 5},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCi,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
@@ -4516,10 +4518,10 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		{
 			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
-			needleLenSapce: []int{1, 2, 3, 4, 5},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
@@ -4528,10 +4530,10 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		{
 			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			dataMaxSize:    1000,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
-			needleLenSapce: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			needleMaxSize:  500,
 			op:             opContainsPrefixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
@@ -4539,11 +4541,11 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		},
 		{
 			name:           "contains suffix case-sensitive (opContainsSuffixCs)",
-			dataAlphabet:   []rune{'a', 'b', '\n'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5},
+			dataAlphabet:   []rune{'a', 'b', '\n', 'ſ'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
-			needleLenSapce: []int{1, 2, 3, 4, 5},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
@@ -4551,11 +4553,11 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		},
 		{
 			name:           "contains suffix case-insensitive (opContainsSuffixCi)",
-			dataAlphabet:   []rune{'a', 's', 'S'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5},
+			dataAlphabet:   []rune{'s', 'S', 'ſ'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6},
 			dataMaxSize:    exhaustive,
-			needleAlphabet: []rune{'a', 's', 'S'},
-			needleLenSapce: []int{1, 2, 3, 4, 5},
+			needleAlphabet: []rune{'s', 'S'},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixCi,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
@@ -4564,10 +4566,10 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		{
 			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
-			needleLenSapce: []int{1, 2, 3, 4, 5},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
@@ -4576,10 +4578,10 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		{
 			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
-			dataLenSpace:   []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			dataMaxSize:    500,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
-			needleLenSapce: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
+			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			needleMaxSize:  1000,
 			op:             opContainsSuffixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
@@ -4631,7 +4633,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
-			needleSpace := flatten(createSpace(ts.needleLenSapce, ts.needleAlphabet, ts.needleMaxSize))
+			needleSpace := flatten(createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize))
 			run(&ts, dataSpace, needleSpace)
 		})
 	}

@@ -13499,122 +13499,114 @@ next:
 
 //; #region bcContainsSuffixCs
 TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
-  VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_length              ;Z25=needle_length; R14=needle_slice;
-  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_length>=needle_length);K1=lane_active; Z3=str_length; Z25=needle_length; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;6E50BE85 any lanes eligible?             ;K1=lane_active;
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; restrict lanes based on the length of needle
+  VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_len                 ;Z25=needle_len; R14=needle_slice;
+  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_len>=needle_len)     ;K1=lane_active; Z3=str_len; Z25=needle_len; 5=GreaterEq;
+  VPTESTMD      Z25, Z25, K1,  K1         //;6C36C5E7 K1 &= (needle_len != 0)         ;K1=lane_active; Z25=needle_len;
+  KTESTW        K1,  K1                   //;6E50BE85 any lanes still alive??         ;K1=lane_active;
   JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
-
+//; load constants
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+//; init variables
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-//; TODO HJ 28-10-21 double check whether this code is correct: R8 seems not displaced with the length of needle
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VMOVDQU32     Z25, Z6                   //;6F6F1342 counter := needle_length        ;Z6=counter; Z25=needle_length;
-
-  VPSUBD        Z25, Z3,  K1,  Z24        //;4ADB5015 search_base := str_length - needle_length;Z24=search_base; K1=lane_active; Z3=str_length; Z25=needle_length;
+  VMOVDQU32     Z25, Z6                   //;6F6F1342 counter := needle_len           ;Z6=counter; Z25=needle_len;
+  VPSUBD        Z25, Z3,  K1,  Z24        //;4ADB5015 search_base := str_len - needle_len;Z24=search_base; K1=lane_active; Z3=str_len; Z25=needle_len;
   VPADDD        Z2,  Z24, Z24             //;3E1762B7 search_base += str_start        ;Z24=search_base; Z2=str_start;
-
   JMP           tail                      //;F2A3982D                                 ;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==Address())     ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=constd_4;
+//; advance 4 ASCIIs
+  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=4;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=constd_4;
+  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=4;
 tail:
-  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=constd_4; 5=GreaterEq;
-  KTESTW        K3,  K3                   //;77067C8D                                 ;K3=tmp_mask;
+  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=4; 5=GreaterEq;
+  KTESTW        K1,  K3                   //;77067C8D ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;E0E548E4 any chars left in needle?       ;K3=tmp_mask; K1=lane_active; Z6=counter;
-  KTESTW        K3,  K3                   //;C28D3832                                 ;K3=tmp_mask;
+//; still any needle left to compare
+  VPTESTMD      Z6,  Z6,  K3              //;E0E548E4 K3 := (counter!=0); any chars left in needle?;K3=tmp_mask; Z6=counter;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JZ            update                    //;4DA2206F no, update results; jump if zero (ZF = 1);
-
+//; load the last 1-4 ASCIIs
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPERMD        Z18, Z6,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z6=counter; Z18=tail_mask_data;
+  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-
+//; compare data with needle
   VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
 update:
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_length -= needle_length     ;Z3=str_length; K1=lane_active; Z25=needle_length;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
 next:
   NEXT()
 //; #endregion bcContainsSuffixCs
 
 //; #region bcContainsSuffixCi
 TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 Load *[]byte with the provided str into R14
-  VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_length              ;Z25=needle_length; R14=needle_slice;
-  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_length>=needle_length);K1=lane_active; Z3=str_length; Z25=needle_length; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;6E50BE85 any lanes eligible?             ;K1=lane_active;
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; restrict lanes based on the length of needle
+  VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_len                 ;Z25=needle_len; R14=needle_slice;
+  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_len>=needle_len)     ;K1=lane_active; Z3=str_len; Z25=needle_len; 5=GreaterEq;
+  VPTESTMD      Z25, Z25, K1,  K1         //;6C36C5E7 K1 &= (needle_len != 0)         ;K1=lane_active; Z25=needle_len;
+  KTESTW        K1,  K1                   //;6E50BE85 any lanes still alive??         ;K1=lane_active;
   JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
-
+//; load constants
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+//; init variables
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-//; TODO HJ 28-10-21 double check whether this code is correct: R8 seems not displaced with the length of needle
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VMOVDQU32     Z25, Z6                   //;6F6F1342 counter := needle_length        ;Z6=counter; Z25=needle_length;
-
-  VPSUBD        Z25, Z3,  K1,  Z24        //;4ADB5015 search_base := str_length - needle_length;Z24=search_base; K1=lane_active; Z3=str_length; Z25=needle_length;
+  VMOVDQU32     Z25, Z6                   //;6F6F1342 counter := needle_len           ;Z6=counter; Z25=needle_len;
+  VPSUBD        Z25, Z3,  K1,  Z24        //;4ADB5015 search_base := str_len - needle_len;Z24=search_base; K1=lane_active; Z3=str_len; Z25=needle_len;
   VPADDD        Z2,  Z24, Z24             //;3E1762B7 search_base += str_start        ;Z24=search_base; Z2=str_start;
-
-//; #region loading to_upper constants
-  MOVL          $0x7A6120,R15             //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z15                  //;00000000                                 ;Z15=c_0b00100000; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z16                  //;00000000                                 ;Z16=c_char_a; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z17                  //;00000000                                 ;Z17=c_char_z; R15=tmp_constant;
-//; #endregion
   JMP           tail                      //;F2A3982D                                 ;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=c_char_a)      ;K3=tmp_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=c_char_z)      ;K3=tmp_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
-  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==Address());K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=constd_4;
+//; advance 4 ASCIIs
+  VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=4;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=constd_4;
+  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=4;
 tail:
-  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=constd_4; 5=GreaterEq;
-  KTESTW        K3,  K3                   //;77067C8D                                 ;K3=tmp_mask;
+  VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=4; 5=GreaterEq;
+  KTESTW        K1,  K3                   //;77067C8D ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-
-  VPTESTMD      Z6,  Z6,  K1,  K3         //;E0E548E4 any chars left in needle?       ;K3=tmp_mask; K1=lane_active; Z6=counter;
-  KTESTW        K3,  K3                   //;C28D3832                                 ;K3=tmp_mask;
+//; still any needle left to compare
+  VPTESTMD      Z6,  Z6,  K3              //;E0E548E4 K3 := (counter!=0); any chars left in needle?;K3=tmp_mask; Z6=counter;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
   JZ            update                    //;4DA2206F no, update results; jump if zero (ZF = 1);
-
+//; load the last 1-4 ASCIIs
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPERMD        Z18, Z6,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z6=counter; Z18=tail_mask_data;
+  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=c_char_a)      ;K3=tmp_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=c_char_z)      ;K3=tmp_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
+//; compare data with needle
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
 
   VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
 update:
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_length -= needle_length     ;Z3=str_length; K1=lane_active; Z25=needle_length;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
 next:
   NEXT()
 //; #endregion bcContainsSuffixCi
