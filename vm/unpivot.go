@@ -151,23 +151,27 @@ func (u *kernelUnpivotAsAt) writeRows(rows []vmref, params *rowParams) error {
 	// Process the auxilliary bindings first, if provided
 	for i, v := range params.auxbound {
 		symref := u.resolver.auxrefs[i]
-		for _, w := range v {
-			u.dummy = append(u.dummy, dummyVMRef)
-			u.params.auxbound[0] = append(u.params.auxbound[0], symref)
-			u.params.auxbound[1] = append(u.params.auxbound[1], w)
-
-			if len(u.dummy) == cap(u.dummy) {
-				// flush; note that the actual row content
-				// will be ignored
+		for len(v) > 0 {
+			k := cap(u.dummy) - len(u.dummy)
+			if k == 0 {
+				// flush; note that the actual row content will be ignored
 				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 					return err
 				}
 				u.dummy = u.dummy[:0]
 				u.params.auxbound[0] = u.params.auxbound[0][:0]
 				u.params.auxbound[1] = u.params.auxbound[1][:0]
+				k = cap(u.dummy)
 			}
+			// both len(v) > 0 and k > 0 here, then so must be m
+			m := ints.Min(k, len(v))
+			fillVMrefs(&u.dummy, vmref{0, 0}, m)
+			fillVMrefs(&u.params.auxbound[0], symref, m)
+			copyVMrefs(&u.params.auxbound[1], &v[0], m)
+			v = v[m:]
 		}
 	}
+
 	// Process the ION input
 	for _, x := range rows {
 		data := x.mem()
@@ -237,19 +241,22 @@ func (u *kernelUnpivotAs) symbolize(st *symtab, aux *auxbindings) error {
 func (u *kernelUnpivotAs) writeRows(rows []vmref, params *rowParams) error {
 	// Process the auxilliary bindings first, if provided
 	for _, v := range params.auxbound {
-		for _, w := range v {
-			u.dummy = append(u.dummy, dummyVMRef)
-			u.params.auxbound[0] = append(u.params.auxbound[0], w)
-
-			if len(u.dummy) == cap(u.dummy) {
-				// flush; note that the actual row content
-				// will be ignored
+		for len(v) > 0 {
+			k := cap(u.dummy) - len(u.dummy)
+			if k == 0 {
+				// flush; note that the actual row content will be ignored
 				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 					return err
 				}
 				u.dummy = u.dummy[:0]
 				u.params.auxbound[0] = u.params.auxbound[0][:0]
+				k = cap(u.dummy)
 			}
+			// both len(v) > 0 and k > 0 here, then so must be m
+			m := ints.Min(k, len(v))
+			fillVMrefs(&u.dummy, vmref{0, 0}, m)
+			copyVMrefs(&u.params.auxbound[0], &v[0], m)
+			v = v[m:]
 		}
 	}
 
@@ -312,19 +319,22 @@ func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
 	// Process the auxilliary bindings first, if provided
 	for i, v := range params.auxbound {
 		symref := u.resolver.auxrefs[i]
-		for range v {
-			u.dummy = append(u.dummy, dummyVMRef)
-			u.params.auxbound[0] = append(u.params.auxbound[0], symref)
-
-			if len(u.dummy) == cap(u.dummy) {
-				// flush; note that the actual row content
-				// will be ignored
+		for len(v) > 0 {
+			k := cap(u.dummy) - len(u.dummy)
+			if k == 0 {
+				// flush; note that the actual row content will be ignored
 				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 					return err
 				}
 				u.dummy = u.dummy[:0]
 				u.params.auxbound[0] = u.params.auxbound[0][:0]
+				k = cap(u.dummy)
 			}
+			// both len(v) > 0 and k > 0 here, then so must be m
+			m := ints.Min(k, len(v))
+			fillVMrefs(&u.dummy, vmref{0, 0}, m)
+			fillVMrefs(&u.params.auxbound[0], symref, m)
+			v = v[m:]
 		}
 	}
 
@@ -606,3 +616,11 @@ func (p *precedenceResolver) useAuxilliary(s ion.Symbol) bool {
 func (p *precedenceResolver) useION(s ion.Symbol) bool {
 	return !p.useAuxilliary(s)
 }
+
+//go:noescape
+//go:nosplit
+func fillVMrefs(p *[]vmref, v vmref, n int)
+
+//go:noescape
+//go:nosplit
+func copyVMrefs(p *[]vmref, q *vmref, n int)

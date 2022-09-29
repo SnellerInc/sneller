@@ -198,3 +198,31 @@ select_final_lanes:
     KMOVW   AX, K1
     JNZ     process_rows
     RET
+
+
+// func fillVMrefs(p *[]vmref, v vmref, n int)
+TEXT ·fillVMrefs(SB), NOSPLIT | NOFRAME, $0-0
+    MOVQ    p+0(FP), BX
+    MOVQ    n+16(FP), CX
+    MOVQ    8(BX), DX       // p.len
+    MOVQ    0(BX), DI       // p.data
+    MOVQ    v+16(SP), AX    // Mute the "invalid MOVQ of v+8(FP); github.com/SnellerInc/sneller/vm.vmref is 8-byte value" go vet false positive.
+    LEAQ    (DI)(DX*8), DI
+    ADDQ    CX, DX
+    REP;    STOSQ           // EFLAGS.DF=0 is assumed per the ABI
+    MOVQ    DX, 8(BX)
+    RET
+
+
+// func copyVMrefs(p *[]vmref, q *vmref, n int)
+TEXT ·copyVMrefs(SB), NOSPLIT | NOFRAME, $0-0
+    MOVQ    p+0(FP), BX
+    MOVQ    n+16(FP), CX
+    MOVQ    8(BX), DX       // p.len
+    MOVQ    0(BX), DI       // p.data
+    MOVQ    q+8(FP), SI
+    LEAQ    (DI)(DX*8), DI
+    ADDQ    CX, DX
+    REP;    MOVSQ           // EFLAGS.DF=0 is assumed per the ABI
+    MOVQ    DX, 8(BX)
+    RET
