@@ -670,11 +670,11 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// two-operand comparison ops
 	scmpv:       {text: "cmpv", argtypes: value2Args, rettype: stInt | stBool, bc: opcmpv, emit: emitauto2},
 	scmpvk:      {text: "cmpv.k", argtypes: []ssatype{stValue, stBool, stBool}, rettype: stInt | stBool, bc: opcmpvk, emit: emitauto2},
-	scmpvimmk:   {text: "cmpv.imm.k", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmk, emit: emitauto2},
+	scmpvimmk:   {text: "cmpv.imm.k", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmk, immfmt: fmtother, emit: emitauto2},
 	scmpvi64:    {text: "cmpv.i64", argtypes: []ssatype{stValue, stInt, stBool}, rettype: stInt | stBool, bc: opcmpvi64, emit: emitauto2},
-	scmpvimmi64: {text: "cmpv.imm.i64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmi64, emit: emitauto2},
+	scmpvimmi64: {text: "cmpv.imm.i64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmi64, immfmt: fmti64, emit: emitauto2},
 	scmpvf64:    {text: "cmpv.f64", argtypes: []ssatype{stValue, stFloat, stBool}, rettype: stInt | stBool, bc: opcmpvf64, emit: emitauto2},
-	scmpvimmf64: {text: "cmpv.imm.f64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmf64, emit: emitauto2},
+	scmpvimmf64: {text: "cmpv.imm.f64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmf64, immfmt: fmtf64, emit: emitauto2},
 	scmpltstr:   {text: "cmplt.str", argtypes: str2Args, rettype: stBool, bc: opcmpltstr, emit: emitauto2},
 	scmplestr:   {text: "cmple.str", argtypes: str2Args, rettype: stBool, bc: opcmplestr, emit: emitauto2},
 	scmpgtstr:   {text: "cmpgt.str", argtypes: str2Args, rettype: stBool, bc: opcmpgtstr, emit: emitauto2},
@@ -1217,6 +1217,15 @@ func (v *value) errf(f string, args ...interface{}) {
 	v.imm = fmt.Sprintf(f, args...)
 }
 
+func (v *value) setimm(imm interface{}) {
+	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
+		v.errf("cannot assign immediate %v to op %s", imm, v.op)
+		return
+	}
+
+	v.imm = imm
+}
+
 func (p *prog) errorf(f string, args ...interface{}) *value {
 	v := p.val()
 	v.errf(f, args...)
@@ -1310,12 +1319,8 @@ func (p *prog) ssa0imm(op ssaop, imm interface{}) *value {
 
 	v := p.val()
 	v.op = op
-	v.imm = imm
+	v.setimm(imm)
 	v.args = []*value{}
-
-	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
-		v.errf("cannot assign immediate %v to op %s", imm, v.op)
-	}
 
 	if v.op != sinvalid {
 		p.exprs[hc] = v
@@ -1334,12 +1339,9 @@ func (p *prog) ssa1imm(op ssaop, arg *value, imm interface{}) *value {
 	}
 	v := p.val()
 	v.op = op
-	v.imm = imm
+	v.setimm(imm)
 	v.args = []*value{arg}
 	v.checkarg(arg, 0)
-	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
-		v.errf("cannot assign immediate %v to op %s", imm, v.op)
-	}
 	if v.op != sinvalid {
 		p.exprs[hc] = v
 	}
@@ -1357,7 +1359,7 @@ func (p *prog) ssa2imm(op ssaop, arg0, arg1 *value, imm interface{}) *value {
 	}
 	v := p.val()
 	v.op = op
-	v.imm = imm
+	v.setimm(imm)
 	v.args = []*value{arg0, arg1}
 	v.checkarg(arg0, 0)
 	v.checkarg(arg1, 1)
@@ -1421,14 +1423,11 @@ func (p *prog) ssa3imm(op ssaop, arg0, arg1, arg2 *value, imm interface{}) *valu
 
 	v := p.val()
 	v.op = op
-	v.imm = imm
+	v.setimm(imm)
 	v.args = []*value{arg0, arg1, arg2}
 	v.checkarg(arg0, 0)
 	v.checkarg(arg1, 1)
 	v.checkarg(arg2, 2)
-	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
-		v.errf("cannot assign immediate %v to op %s", imm, op)
-	}
 	return v
 }
 
@@ -1470,15 +1469,12 @@ func (p *prog) ssa4imm(op ssaop, arg0, arg1, arg2, arg3 *value, imm interface{})
 
 	v := p.val()
 	v.op = op
-	v.imm = imm
+	v.setimm(imm)
 	v.args = []*value{arg0, arg1, arg2, arg3}
 	v.checkarg(arg0, 0)
 	v.checkarg(arg1, 1)
 	v.checkarg(arg2, 2)
 	v.checkarg(arg3, 3)
-	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
-		v.errf("cannot assign immediate %v to op %s", imm, op)
-	}
 	return v
 }
 
@@ -1512,12 +1508,9 @@ func (p *prog) ssaimm(op ssaop, imm interface{}, args ...*value) *value {
 	v := p.val()
 	v.op = op
 	v.args = args
-	v.imm = imm
+	v.setimm(imm)
 	for i := range args {
 		v.checkarg(args[i], i)
-	}
-	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
-		v.errf("cannot assing immediate %v to op %s", imm, op)
 	}
 	if v.op == sinvalid {
 		panic("invalid op " + v.String())
