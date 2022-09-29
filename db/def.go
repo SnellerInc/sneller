@@ -56,6 +56,10 @@ type Definition struct {
 	// Features is a list of feature flags that
 	// can be used to turn on features for beta-testing.
 	Features []string `json:"beta_features"`
+	// Generated is true if this table definition
+	// was generated from a root-level database
+	// definition. Do not set this manually.
+	Generated bool `json:"generated"`
 }
 
 // just pick an upper limit to prevent DoS
@@ -72,12 +76,8 @@ func checkDef(f fs.File) error {
 	return nil
 }
 
-// DecodeDefinition decodes a definition from src
-// using suffix as the hint for the format
-// of the data in src.
-// (You may pass the result of {file}path.Ext
-// directly as suffix if you are reading from
-// an os.File or fs.File.)
+// DecodeDefinition decodes a table definition
+// from src.
 //
 // See also: OpenDefinition
 func DecodeDefinition(src io.Reader) (*Definition, error) {
@@ -90,7 +90,7 @@ func DecodeDefinition(src io.Reader) (*Definition, error) {
 // the given database and table.
 //
 // OpenDefinition calls DecodeDefinition on
-// definition.json in the appropriate  path
+// definition.json in the appropriate path
 // for the given db and table.
 func OpenDefinition(s fs.FS, db, table string) (*Definition, error) {
 	f, err := s.Open(DefinitionPath(db, table))
@@ -122,6 +122,66 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 		return err
 	}
 	_, err = dst.WriteFile(DefinitionPath(db, s.Name), buf)
+	return err
+}
+
+// RootDefinition describes a database and the
+// tables therein.
+type RootDefinition struct {
+	// Name is the name of the database.
+	Name string `json:"name"`
+	// Tables is the list of table definitions
+	// stored in the root-level definition.
+	Tables []*Definition `json:"tables"`
+}
+
+// DecodeRootDefinition decodes a root-level
+// definition from src.
+//
+// See also: OpenRootDefinition
+func DecodeRootDefinition(src io.Reader) (*RootDefinition, error) {
+	s := new(RootDefinition)
+	err := json.NewDecoder(src).Decode(s)
+	return s, err
+}
+
+// OpenRootDefinition opens a root-level
+// definition for the given database.
+//
+// OpenRootDefinition calls DecodeRootDefinition
+// on definition.json at the appropriate path
+// for the given db.
+func OpenRootDefinition(s fs.FS, db string) (*RootDefinition, error) {
+	f, err := s.Open(RootDefinitionPath(db))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	if err := checkDef(f); err != nil {
+		return nil, err
+	}
+	d, err := DecodeRootDefinition(f)
+	if err != nil {
+		return nil, err
+	}
+	if d.Name != db {
+		return nil, fmt.Errorf("definition name %q doesn't match %q", d.Name, db)
+	}
+	return d, nil
+}
+
+// WriteRootDefinition writes a root-level
+// definition.
+func WriteRootDefinition(dst OutputFS, s *RootDefinition) error {
+	if s.Name == "" {
+		return fmt.Errorf("cannot write definition with no Name")
+	}
+	buf, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	_, err = dst.WriteFile(RootDefinitionPath(s.Name), buf)
 	return err
 }
 

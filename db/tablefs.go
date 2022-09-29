@@ -47,6 +47,13 @@ func DefinitionPath(db, table string) string {
 	return path.Join("db", db, table, "definition.json")
 }
 
+// RootDefinitionPath returns the path at which
+// the root-level definition file for the given
+// db would live relative to the root of the FS.
+func RootDefinitionPath(db string) string {
+	return path.Join("db", db, "definition.json")
+}
+
 func strpart(p string, num int) (string, bool) {
 	for num > 0 {
 		s := strings.IndexByte(p, '/')
