@@ -88,6 +88,8 @@
 // concat constprop
 (concat (string x) (string y)) -> (string "x + y")
 (concat (string x) (concat (string y) z)) -> (concat (string "x + y") z)
+// x || 'a' || 'b' is compiled into `CONCAT(CONCAT(x, 'a'), 'b')`
+(concat (concat x (string a)) (string b)) -> (concat x (string "a + b"))
 
 // timestamp comparison constprop
 (lt (ts x) (ts y)) -> (bool `x.Value.Before(y.Value)`)

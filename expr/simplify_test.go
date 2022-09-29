@@ -813,6 +813,10 @@ func TestSimplify(t *testing.T) {
 				CallOp(CharLength, path("z"))),
 		},
 		{
+			CallOp(Concat, CallOp(Concat, path("x"), String("a")), String("b")),
+			CallOp(Concat, path("x"), String("ab")),
+		},
+		{
 			CallOp(TypeBit, Integer(1)),
 			Integer(JSONTypeBits(ion.IntType)),
 		},

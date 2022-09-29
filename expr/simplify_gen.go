@@ -188,6 +188,16 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 					}
 				}
 			}
+			// (concat (concat x (string a)) (string b)) -> (concat x (string "a + b"))
+			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Concat && len(_tmp001000.Args) == 2 {
+				if b, ok := (src.Args[1]).(String); ok {
+					if x := _tmp001000.Args[0]; true {
+						if a, ok := (_tmp001000.Args[1]).(String); ok {
+							return CallOp(Concat, x, String(a+b))
+						}
+					}
+				}
+			}
 			// (concat (upper x) (string y)), "isUpper(string(y))" -> (upper (concat x y))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if y, ok := (src.Args[1]).(String); ok {
