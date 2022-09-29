@@ -520,11 +520,7 @@ func (a *aggtable) EndSegment() {
 }
 
 func (a *aggtable) symbolize(st *symtab, aux *auxbindings) error {
-	err := recompile(st, &a.parent.prog, &a.prog, &a.bc, aux)
-	if err != nil {
-		return err
-	}
-	return nil
+	return recompile(st, &a.parent.prog, &a.prog, &a.bc, aux)
 }
 
 func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {
@@ -567,20 +563,13 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 		// TODO: when the number of restarts is high,
 		// consider allocating table space more aggressively?
 		step := 16 - bits.LeadingZeros16(abort)
-		hashmem := a.bc.hashmem[a.bc.errinfo>>3:]
+		hashslot := a.bc.errinfo >> 3 // `bcaggbucket` sets the current byte-offset to hashslot
+		hashmem := a.bc.hashmem[hashslot:]
 		for i := 0; i < step; i++ {
 			if abort&(1<<i) == 0 {
 				continue
 			}
 
-			// FIXME: we're assuming the result is
-			// allocated in hash slot 0 because the
-			// only other hash slot usage would be
-			// an IN(...) expression that shouldn't
-			// be part of the aggregation...
-			if len(a.bc.hashmem) != 32 {
-				panic("more than 1 hash slot?")
-			}
 			h := hashmem[i*2]
 			off, ok := a.tree.insertSlow(h)
 			if ok {
