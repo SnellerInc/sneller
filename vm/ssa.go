@@ -424,6 +424,7 @@ const (
 	saggapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries)
 	saggapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries)
 	sstrictunboxblob
+	saggslotapproxcount // APPROX_COUNT_DISTINCT aggregate in GROUP BY
 	_ssamax
 )
 
@@ -1075,6 +1076,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 		argtypes: []ssatype{stValue, stBool},
 		bc:       opstrictunboxblob,
 	},
+	saggslotapproxcount: {text: "aggslotapproxcount", argtypes: []ssatype{stMem, stBucket, stHash, stBool}, rettype: stIntMasked, bc: opaggslotapproxcount, emit: emitaggslotapproxcount, immfmt: fmti64, priority: prioMem},
 }
 
 type value struct {
@@ -3982,6 +3984,11 @@ func (p *prog) AggregateSlotCount(mem, bucket, mask *value, offset int) *value {
 	return p.ssa3imm(saggslotcount, mem, bucket, mask, offset)
 }
 
+func (p *prog) AggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset int, precision uint8) *value {
+	h := p.hash(argv)
+	return p.ssa4imm(saggslotapproxcount, mem, bucket, h, mask, (uint64(offset)<<8)|uint64(precision))
+}
+
 // note: the 'mem' argument to aggbucket
 // is for ordering the store(s) that write
 // out the names of the fields being aggregated against
@@ -6589,6 +6596,25 @@ func emitaggapproxcountmerge(v *value, c *compilestate) {
 	checkImmediateBeforeEmit2(op, 8, 2)
 	c.asm.emitOpcode(op)
 	c.asm.emitImmU64(aggSlot)
+	c.asm.emitImmU16(uint16(precision))
+}
+
+func emitaggslotapproxcount(v *value, c *compilestate) {
+	hash := v.args[2]
+	mask := v.args[3]
+	hashSlot := c.existingStackRef(hash, regH)
+
+	imm := v.imm.(uint64)
+	aggSlot := imm >> 8
+	precision := uint8(imm)
+
+	c.loadk(v, mask)
+
+	op := ssainfo[v.op].bc
+	checkImmediateBeforeEmit3(op, 8, 2, 2)
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU64(aggSlot)
+	c.asm.emitImmU16(uint16(hashSlot))
 	c.asm.emitImmU16(uint16(precision))
 }
 

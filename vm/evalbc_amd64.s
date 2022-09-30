@@ -15374,6 +15374,8 @@ TEXT bcsadjustsize(SB), NOSPLIT|NOFRAME, $0
 TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
 TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 TEXT bcstrictunboxblob(SB), NOSPLIT|NOFRAME, $0
+
+TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
 */
 #include "evalbc_approxcount.h"
 

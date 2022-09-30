@@ -132,7 +132,6 @@ wrong_input:
 #undef ACTIVE_MASK
 #undef COUNTER
 
-#undef AggregateDataBuffer
 
 
 #include "evalbc_ionheader.h"
@@ -198,3 +197,92 @@ skip:
 
 trap:
     FAIL()
+
+
+// bcaggslotapproxcount implements update of HLL state for
+// aggregates executed in GROUP BY
+//
+// The main algorithm is exactly the same as in bcaggapproxcount.
+TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
+    MOVQ    R9, X9
+    MOVQ    R12, X12
+
+#define CURRENT_MASK        R9
+#define HASHMEM_PTR         R8
+#define BYTEBUCKET_PTR      R12
+#define BITS_PER_HLL_BUCKET R14
+#define BITS_PER_HLL_HASH   R13
+
+    KTESTW  K1, K1
+    JZ      next
+
+    // Get the current mask
+    KMOVW   K1, CURRENT_MASK
+
+    // Get the offset in hashmem
+    MOVWQZX 8(VIRT_PCREG), HASHMEM_PTR
+    ADDQ    bytecode_hashmem(VIRT_BCPTR), HASHMEM_PTR
+
+    // Get parameters for the HLL algorithm
+    MOVBQZX 10(VIRT_PCREG), BITS_PER_HLL_BUCKET
+    MOVQ    $64, BITS_PER_HLL_HASH
+    SUBQ    BITS_PER_HLL_BUCKET, BITS_PER_HLL_HASH    // BITS_PER_HLL_HASH = 64 - BITS_PER_HLL_BUCKET
+
+    // Get bucket base pointer
+    LEAQ    bytecode_bucket(VIRT_BCPTR), BYTEBUCKET_PTR
+
+iter_rows:
+    TESTQ   $1, CURRENT_MASK
+    JZ      skip
+
+    // update i-th radix tree bucket
+#define     AGG_BUFFER_PTR    R15
+
+    // AGG_BUFFER_PTR_ORIG = radixtree[k].values[8 + bucket[i]]
+    MOVL    (BYTEBUCKET_PTR), AGG_BUFFER_PTR
+    ADDQ    0(VIRT_PCREG), AGG_BUFFER_PTR
+    ADDQ    $const_aggregateTagSize, AGG_BUFFER_PTR
+    ADDQ    radixTree64_values(R10), AGG_BUFFER_PTR
+
+    // Calculate HLL hash and its bucket ID
+    // HLL_HASH is lower BITS_PER_HLL_HASH of 64 higher bits of the 128-bit hash
+
+#define HASH_HI64   DX
+#define HLL_HASH    CX
+#define HLL_BUCKET  DX  // alised with HASH_HI64
+#define HLL_VAL     CX  // alised with HLL_HASH
+#define HLL_OLD_VAL BX
+
+    MOVQ    (HASHMEM_PTR), HASH_HI64
+    SHLXQ   BITS_PER_HLL_BUCKET, HASH_HI64, HLL_HASH
+    LZCNTQ  HLL_HASH, HLL_VAL
+    INCQ    HLL_VAL           // HLL_VAL = lzcnt(HLL_HASH) + 1
+    SHRXQ   BITS_PER_HLL_HASH, HASH_HI64, HLL_BUCKET
+
+    // update HLL register
+    MOVBQZX (AGG_BUFFER_PTR)(HLL_BUCKET*1), HLL_OLD_VAL
+    CMPQ    HLL_OLD_VAL, HLL_VAL
+    CMOVQLT HLL_VAL, HLL_OLD_VAL      // max(HLL_OLD_VAL, HLL_VAL)
+    MOVB    HLL_OLD_VAL, (AGG_BUFFER_PTR)(HLL_BUCKET*1)
+
+#undef HASH_HI64
+#undef HLL_HASH
+#undef HLL_BUCKET
+#undef HLL_VAL
+#undef HLL_OLD_VAL
+#undef AGG_BUFFER_PTR
+
+skip:
+    ADDQ    $16, HASHMEM_PTR // next 128-bit hash
+    ADDQ    $4, BYTEBUCKET_PTR // next bucket
+    SHRQ    $1, CURRENT_MASK
+    JNZ     iter_rows
+
+next:
+    MOVQ    X9, R9
+    MOVQ    X12, R12
+
+    NEXT_ADVANCE(12)
+
+
+#undef AggregateDataBuffer

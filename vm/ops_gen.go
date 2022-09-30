@@ -337,6 +337,7 @@ const (
 	opaggapproxcount         bcop = 331
 	opaggapproxcountmerge    bcop = 332
 	opstrictunboxblob        bcop = 333
-	optrap                   bcop = 334
-	_maxbcop                      = 335
+	opaggslotapproxcount     bcop = 334
+	optrap                   bcop = 335
+	_maxbcop                      = 336
 )

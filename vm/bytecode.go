@@ -562,6 +562,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opaggapproxcount:      {text: "aggapproxcount", flags: bcReadK, imms: []bcImmType{bcImmU64, bcImmU16, bcImmU16}},
 	opaggapproxcountmerge: {text: "aggapproxcountmerge", flags: bcReadK | bcReadV, imms: []bcImmType{bcImmU64, bcImmU16}},
 	opstrictunboxblob:     {text: "strictunboxblob", flags: bcReadK | bcReadV},
+	opaggslotapproxcount:  {text: "aggslotapproxcount", flags: bcReadK, imms: []bcImmType{bcImmU64, bcImmU16, bcImmU16}},
 
 	optrap: {text: "trap"},
 }

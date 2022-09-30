@@ -207,6 +207,15 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 
 			out[i] = prog.AggregateSlotCount(mem, bucket, mask, offset)
 			ops[i].fn = AggregateOpCount
+		} else if op == expr.OpApproxCountDistinct {
+			argv, err := compile(prog, agg[i].Expr.Inner)
+			if err != nil {
+				return nil, fmt.Errorf("cannot compile %q: %w", agg[i].Expr.Inner, err)
+			}
+			precision := agg[i].Expr.Precision
+			out[i] = prog.AggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
+			ops[i].fn = AggregateOpApproxCountDistinct
+			ops[i].precision = precision
 		} else if op.IsBoolOp() {
 			argv, err := prog.compileAsBool(agg[i].Expr.Inner)
 			if err != nil {

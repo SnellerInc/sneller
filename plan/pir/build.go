@@ -784,10 +784,6 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		return err
 	}
 
-	if s.GroupBy != nil && hasApproxCountDistinctAggregate(s.Columns, s.OrderBy) {
-		return errorf(s, "cannot use APPROX_COUNT_DISTINCT aggregate with GROUP BY")
-	}
-
 	// walk SELECT + GROUP BY + HAVING
 	if s.HasDistinct() && s.GroupBy != nil && s.Having == nil {
 		if s.Distinct {

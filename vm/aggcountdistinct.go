@@ -32,12 +32,14 @@ func aggApproxCountDistinctInit(b []byte) {
 
 // aggApproxCountDistinctUpdateBuckets merges src with dst buffer
 func aggApproxCountDistinctUpdateBuckets(n int, dst, src []byte) {
-	if len(src) != len(dst) {
-		panic(fmt.Sprintf("attempt to update incompatible buckets (src len is %d, dst len is %d)",
-			len(src), len(dst)))
-	}
+	// Note: callers may pass src & dst bigger than actual n bytes.
+	//       We must only assure that the buffers are large enough,
+	//       and update exactly n bytes
 	if len(src) < n {
-		panic(fmt.Sprintf("requires at least %d bytes, got buffer %d", n, len(src)))
+		panic(fmt.Sprintf("requires at least %d src bytes, got buffer %d", n, len(src)))
+	}
+	if len(dst) < n {
+		panic(fmt.Sprintf("requires at least %d dst bytes, got buffer %d", n, len(dst)))
 	}
 
 	for i := 0; i < n; i++ {

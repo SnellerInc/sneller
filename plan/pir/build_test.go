@@ -171,10 +171,6 @@ func TestBuildError(t *testing.T) {
 			input: "SELECT a FROM UNPIVOT table AS a AT a",
 			rx:    "the AS and AT UNPIVOT labels must not be the same 'a'",
 		},
-		{
-			input: "SELECT x, APPROX_COUNT_DISTINCT(y) FROM table GROUP BY x",
-			rx:    "cannot use APPROX_COUNT_DISTINCT aggregate with GROUP BY",
-		},
 	}
 	for i := range tests {
 		in := tests[i].input
