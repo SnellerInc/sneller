@@ -211,6 +211,22 @@ func (d Datum) Struct() (Struct, bool) {
 	return Struct{}, false
 }
 
+// Field returns the value associated with the
+// field with the given name if d is a struct.
+// If d is not a struct or the field is not
+// present, this returns Empty.
+func (d Datum) Field(name string) Datum {
+	s, ok := d.Struct()
+	if !ok {
+		return Empty
+	}
+	f, ok := s.FieldByName(name)
+	if !ok {
+		return Empty
+	}
+	return f.Value
+}
+
 func (d Datum) List() (List, bool) {
 	if d.Type() == ListType {
 		return List{st: d.st, buf: d.buf}, true

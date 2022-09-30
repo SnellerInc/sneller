@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -183,6 +184,7 @@ func (b *Builder) logf(f string, args ...interface{}) {
 }
 
 type tableState struct {
+	def       *Definition
 	conf      Builder
 	owner     Tenant
 	ofs       OutputFS
@@ -198,13 +200,22 @@ func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
 	if !ok {
 		return nil, fmt.Errorf("root %T is read-only", ifs)
 	}
-	return &tableState{
+	def, err := OpenDefinition(ifs, db, table)
+	if errors.Is(err, fs.ErrNotExist) {
+		def = &Definition{Name: table}
+	} else if err != nil {
+		return nil, err
+	}
+	ts := &tableState{
+		def:   def,
 		conf:  *b, // copy config so we can update it w/ features
 		owner: owner,
 		ofs:   ofs,
 		db:    db,
 		table: table,
-	}, nil
+	}
+	ts.conf.SetFeatures(def.Features)
+	return ts, nil
 }
 
 func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
@@ -217,15 +228,6 @@ func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
 	}
 	overwrite(cache, idx)
 	return idx, nil
-}
-
-func (st *tableState) def() (*Definition, error) {
-	def, err := OpenDefinition(st.ofs, st.db, st.table)
-	if err != nil {
-		return nil, err
-	}
-	st.conf.SetFeatures(def.Features)
-	return def, nil
 }
 
 var (
@@ -347,11 +349,7 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 			// after a scan; the scan code does
 			// not update the cached index
 			invalidate(cache)
-			def, err := st.def()
-			if err != nil {
-				return err
-			}
-			_, err = st.scan(def, idx, true)
+			_, err = st.scan(idx, true)
 			if err != nil {
 				return err
 			}
@@ -371,15 +369,11 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 		return st.append(idx, prepend, lst, cache)
 	}
 	if b.NewIndexScan && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
-		def, err := OpenDefinition(st.ofs, db, table)
-		if err != nil {
-			return err
-		}
 		idx := &blockfmt.Index{
 			Name: table,
 			Algo: "zstd",
 		}
-		_, err = st.scan(def, idx, true)
+		_, err = st.scan(idx, true)
 		if err != nil {
 			return err
 		}
@@ -440,10 +434,6 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 		if err != nil {
 			return err
 		}
-		def, err := st.def()
-		if err != nil {
-			return err
-		}
 		fresh := false
 		idx, err := st.index(nil)
 		if err != nil {
@@ -469,7 +459,7 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 		// we flush the new index on termination
 		// if it is a) a new index file, or
 		// b) it was already in the scanning state
-		_, err = st.scan(def, idx, fresh || !restart)
+		_, err = st.scan(idx, fresh || !restart)
 		if err != nil {
 			return err
 		}
@@ -649,8 +639,21 @@ func (b *Builder) inputMinAge() time.Duration {
 	return b.InputMinimumAge
 }
 
+// userdata makes a datum to place into the
+// userdata field of the index.
+func (st *tableState) userdata() ion.Datum {
+	return ion.NewStruct(nil, []ion.Field{{
+		Label: "definition",
+		Value: ion.NewStruct(nil, []ion.Field{{
+			Label: "hash",
+			Value: ion.Blob(st.def.Hash()),
+		}}).Datum(),
+	}}).Datum()
+}
+
 func (st *tableState) flush(idx *blockfmt.Index) error {
 	idx.Name = st.table
+	idx.UserData = st.userdata()
 	idx.Inputs.Backing = st.ofs
 	dir := path.Join("db", st.db, st.table)
 	err := idx.SyncInputs(dir, st.conf.inputMinAge())
@@ -751,11 +754,12 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 		Trailer: c.Trailer(),
 	})
 	err = st.flush(idx)
-	if err == nil {
-		overwrite(cache, idx)
-		err = st.runGC(idx)
+	if err != nil {
+		invalidate(cache)
+		return err
 	}
-	return err
+	overwrite(cache, idx)
+	return st.runGC(idx)
 }
 
 func (st *tableState) runGC(idx *blockfmt.Index) error {

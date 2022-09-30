@@ -120,6 +120,9 @@ type Index struct {
 	// Created is the time the index
 	// was populated.
 	Created date.Time
+	// UserData is an arbitrary datum that can be
+	// stored with the index and used externally.
+	UserData ion.Datum
 	// Algo is the compression algorithm used to
 	// compress the index contents.
 	Algo string
@@ -221,6 +224,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		expiry   = st.Intern("expiry")
 		todelete = st.Intern("to-delete")
 		indirect = st.Intern("indirect")
+		userdata = st.Intern("user-data")
 	)
 	var ibuf ion.Buffer
 	buf.BeginStruct(-1)
@@ -233,6 +237,12 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 	buf.WriteString(idx.Name)
 	buf.BeginField(created)
 	buf.WriteTime(idx.Created)
+
+	// encode user data
+	if !idx.UserData.Empty() {
+		buf.BeginField(userdata)
+		idx.UserData.Encode(&buf, &st)
+	}
 
 	if len(idx.ToDelete) > 0 {
 		buf.BeginField(todelete)
@@ -520,6 +530,8 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 			idx.Created, _, err = ion.ReadTime(field)
 		case "name":
 			idx.Name, _, err = ion.ReadString(field)
+		case "user-data":
+			idx.UserData, _, err = ion.ReadDatum(&st, field)
 		case "contents":
 			contents = field
 		case "algo":

@@ -15,6 +15,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -42,10 +43,6 @@ func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	def, err := st.def()
-	if err != nil {
-		return 0, err
-	}
 	idx, err := st.index(nil)
 	if err != nil {
 		// if the index isn't present
@@ -59,14 +56,25 @@ func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 			return 0, err
 		}
 	}
-	return st.scan(def, idx, true)
+	return st.scan(idx, true)
 }
 
-func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete bool) (int, error) {
-	// TODO: better detection of change in definition
-	if len(idx.Cursors) != len(def.Inputs) {
+// defChanged returns whether st.def has changed
+// since the index was built by comparing the
+// hash of st.def against the hash in idx.
+func (st *tableState) defChanged(idx *blockfmt.Index) bool {
+	hash, ok := idx.UserData.Field("definition").Field("hash").Blob()
+	return !ok || !bytes.Equal(st.def.Hash(), hash)
+}
+
+func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, error) {
+	changed := st.defChanged(idx)
+	if changed {
+		flushOnComplete = true
+	}
+	if changed || len(idx.Cursors) != len(st.def.Inputs) {
 		idx.LastScan = date.Now()
-		idx.Cursors = make([]string, len(def.Inputs))
+		idx.Cursors = make([]string, len(st.def.Inputs))
 		idx.Scanning = true
 	}
 	if !idx.Scanning {
@@ -87,17 +95,17 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 	size := int64(0)
 	complete := true
 	id := st.conf.nextID(idx)
-	for i := range def.Inputs {
+	for i := range st.def.Inputs {
 		if len(collect) >= maxInputs || size >= maxSize {
 			complete = false
 			break
 		}
-		infs, pat, err := st.owner.Split(def.Inputs[i].Pattern)
+		infs, pat, err := st.owner.Split(st.def.Inputs[i].Pattern)
 		if err != nil {
 			// invalid definition?
 			return 0, err
 		}
-		format := def.Inputs[i].Format
+		format := st.def.Inputs[i].Format
 		seek := idx.Cursors[i]
 		prefix := infs.Prefix()
 		walk := func(p string, f fs.File, err error) error {
@@ -132,7 +140,7 @@ func (st *tableState) scan(def *Definition, idx *blockfmt.Index, flushOnComplete
 				seek = p
 				return nil
 			}
-			fm, err := st.conf.Format(format, p, def.Inputs[i].Hints)
+			fm, err := st.conf.Format(format, p, st.def.Inputs[i].Hints)
 			if err != nil {
 				return err
 			}

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/ion"
 	"golang.org/x/exp/slices"
 )
 
@@ -187,9 +188,10 @@ func TestIndexEncoding(t *testing.T) {
 
 	idxs := []Index{
 		{
-			Name:    "my-view",
-			Created: date.Now().Truncate(time.Duration(1000)),
-			Algo:    "zstd",
+			Name:     "my-view",
+			Created:  date.Now().Truncate(time.Duration(1000)),
+			UserData: ion.String("foobar"),
+			Algo:     "zstd",
 			ToDelete: []Quarantined{
 				{Path: "/foo/bar/deleteme.ion.zst", Expiry: date.Now().Truncate(time.Microsecond).Add(time.Minute)},
 				{Path: "/foo/bar/deleteme2.ion.zst", Expiry: date.Now().Truncate(time.Microsecond).Add(2 * time.Minute)},

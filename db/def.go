@@ -15,6 +15,7 @@
 package db
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -123,6 +124,18 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 	}
 	_, err = dst.WriteFile(DefinitionPath(db, s.Name), buf)
 	return err
+}
+
+// Hash returns a hash of the table definition
+// that can be used to detect changes.
+func (d *Definition) Hash() []byte {
+	hash := sha256.New()
+	err := json.NewEncoder(hash).Encode(d)
+	if err != nil {
+		panic("db: failed to hash definition: " + err.Error())
+	}
+	sum := hash.Sum(nil)
+	return sum[:]
 }
 
 // RootDefinition describes a database and the

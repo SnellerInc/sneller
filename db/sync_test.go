@@ -15,6 +15,7 @@
 package db
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -348,6 +349,46 @@ func TestSync(t *testing.T) {
 	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)
+
+	// check that changing the definition for a
+	// table causes the index to be rewritten
+	idx2, err := OpenIndex(dfs, "default", "taxi", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash2, ok := idx2.UserData.Field("definition").Field("hash").Blob()
+	if !ok {
+		t.Fatal("idx2 had no definition hash present")
+	}
+	def3 := &Definition{
+		Name: "taxi",
+		Inputs: []Input{
+			{Pattern: "file://b-prefix/*.block"},
+		},
+		Features: []string{"zion"},
+	}
+	err = WriteDefinition(dfs, "default", def3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Sync(owner, "default", "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx3, err := OpenIndex(dfs, "default", "taxi", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash3, ok := idx3.UserData.Field("definition").Field("hash").Blob()
+	if !ok {
+		t.Fatal("idx3 had no definition hash present")
+	}
+	if bytes.Equal(hash2, hash3) {
+		t.Errorf("expected different hashes, both were: %x", hash2)
+	}
+	if !bytes.Equal(hash3, def3.Hash()) {
+		t.Errorf("hashes don't match: %x != %x", hash3, def3.Hash())
+	}
 
 	// appending should do nothing:
 	info, err := fs.Stat(dfs, "a-prefix/parking2.json")
