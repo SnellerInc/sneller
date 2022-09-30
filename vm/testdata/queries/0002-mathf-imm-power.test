@@ -2,8 +2,7 @@ SELECT
   CBRT(-8) as cbrt_m8,
   CBRT(8) as cbrt_8,
   CBRT(1000) as cbrt_1000,
-  HYPOT(12, 0.5) as hypot_12_0_5,
-  POW(4.5, 4) as pow_4_5_4
+  HYPOT(12, 0.5) as hypot_12_0_5
 ---
 ---
-{"cbrt_m8": -2, "cbrt_8": 2, "cbrt_1000": 10, "hypot_12_0_5": 12.010412149464313, "pow_4_5_4": 410.0625}
+{"cbrt_m8": -2, "cbrt_8": 2, "cbrt_1000": 10, "hypot_12_0_5": 12.010412149464313}

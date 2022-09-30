@@ -928,6 +928,69 @@ func mathfunc(fn func(float64) float64) func(Hint, []Node) Node {
 	}
 }
 
+func mathfunc2(fn func(float64, float64) float64) func(Hint, []Node) Node {
+	return func(h Hint, args []Node) Node {
+		if len(args) != 2 {
+			return nil
+		}
+
+		var f1 float64
+		switch v := args[0].(type) {
+		case Float:
+			f1 = float64(v)
+		case Integer:
+			f1 = float64(int64(v))
+		default:
+			return nil
+		}
+
+		var f2 float64
+		switch v := args[1].(type) {
+		case Float:
+			f2 = float64(v)
+		case Integer:
+			f2 = float64(int64(v))
+		default:
+			return nil
+		}
+
+		return Float(fn(f1, f2))
+	}
+}
+
+func mathfuncreduce(fn func(float64, float64) float64) func(Hint, []Node) Node {
+	return func(h Hint, args []Node) Node {
+		if len(args) == 0 {
+			return nil
+		}
+
+		var val float64
+		for i := range args {
+			var f float64
+			switch v := args[i].(type) {
+			case Float:
+				f = float64(v)
+			case Integer:
+				f = float64(int64(v))
+			default:
+				return nil
+			}
+
+			if i == 0 {
+				val = f
+			} else {
+				val = fn(val, f)
+			}
+		}
+
+		return Float(val)
+	}
+}
+
+func exp10(x float64) float64 {
+	return math.Pow(10, x)
+}
+
 var builtinInfo = [maxBuiltin]binfo{
 	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType},
 	Trim:       {check: checkTrim(Trim), ret: StringType | MissingType},
@@ -955,27 +1018,27 @@ var builtinInfo = [maxBuiltin]binfo{
 	Cbrt:      {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Exp:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Exp)},
 	Exp2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Exp2)},
-	Exp10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Exp10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(exp10)},
 	ExpM1:     {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Hypot:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
 	Ln:        {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log)},
 	Log:       {check: variadicArgs(NumericType), ret: FloatType | MissingType},
 	Log2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log2)},
 	Log10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log10)},
-	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
+	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType, simplify: mathfunc2(math.Pow)},
 	Pi:        {check: fixedArgs(), ret: FloatType | MissingType},
 	Degrees:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Radians:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Sin:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Sin)},
 	Cos:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Cos)},
-	Tan:       {check: fixedArgs(NumericType), ret: FloatType | MissingType},
+	Tan:       {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Tan)},
 	Asin:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Asin)},
 	Acos:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Acos)},
 	Atan:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Atan)},
-	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType},
+	Atan2:     {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType, simplify: mathfunc2(math.Atan2)},
 
-	Least:       {check: variadicNumeric, ret: NumericType | MissingType},
-	Greatest:    {check: variadicNumeric, ret: NumericType | MissingType},
+	Least:       {check: variadicNumeric, ret: NumericType | MissingType, simplify: mathfuncreduce(math.Min)},
+	Greatest:    {check: variadicNumeric, ret: NumericType | MissingType, simplify: mathfuncreduce(math.Max)},
 	WidthBucket: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: NumericType | MissingType},
 
 	DateAddMicrosecond:     {check: fixedArgs(IntegerType, TimeType), private: true, ret: TimeType | MissingType, simplify: dateAddMicrosecond},

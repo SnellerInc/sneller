@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -843,6 +844,30 @@ func TestSimplify(t *testing.T) {
 		{
 			CallOp(Cos, Integer(0)),
 			Float(1.0),
+		},
+		{
+			CallOp(Pow, Integer(2), Float(3.0)),
+			Float(8.0),
+		},
+		{
+			CallOp(Tan, Float(math.Pi/4)),
+			Float(1.0),
+		},
+		{
+			CallOp(Exp10, Integer(4)),
+			Float(10000.0),
+		},
+		{
+			CallOp(Atan2, Float(-42), Integer(42)),
+			Float(-math.Pi / 4),
+		},
+		{
+			CallOp(Least, Float(2), Integer(-8), Float(10)),
+			Float(-8),
+		},
+		{
+			CallOp(Greatest, Float(200), Integer(-8), Float(10)),
+			Float(200),
 		},
 	}
 
