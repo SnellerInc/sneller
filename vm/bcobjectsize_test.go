@@ -149,6 +149,7 @@ func TestSizeEmptyContainers(t *testing.T) {
 	values = append(values, emptyList2)
 
 	var ctx bctestContext
+	defer ctx.Free()
 	ctx.current = 0xffff
 	ctx.setInputIonFields(values, nil)
 

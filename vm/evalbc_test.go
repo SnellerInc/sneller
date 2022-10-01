@@ -2765,8 +2765,8 @@ func TestSkip1CharBF(t *testing.T) {
 
 	dataLoop:
 		for _, data16 := range dataSpace {
-			ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-			ctx.setScalarStrings(data16)
+			ctx.setData(dataPrefix) // prepend four bytes to data such that we can read backwards 4bytes at a time
+			ctx.addScalarStrings(data16)
 			ctx.current = 0xFFFF
 			scalarBefore := ctx.getScalarUint32()
 
