@@ -74,6 +74,9 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 }
 
 func reserve(t *testing.T, b *bytecode, n int) {
+	if b.scratch != nil {
+		Free(b.scratch)
+	}
 	b.scratch = Malloc()
 	// we test that parts of this memory
 	// remain untouched, so we need to
