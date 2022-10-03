@@ -12,6 +12,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+//go:generate go run _generate/builtin_names.go
+//go:generate go fmt builtin_names.go
+
 package expr
 
 import (
@@ -104,6 +107,12 @@ type binfo struct {
 type BuiltinOp int
 
 const (
+	// Note: names of builin functions that appear in SQL
+	// are derived from the constant name. If a function
+	// has non-trival const-to-name mapping or there
+	// are aliases, the names are provied in the comment,
+	// after "sql:" prefix.
+	// See _generate/builtin_names.go
 	Concat BuiltinOp = iota
 	Trim
 	Ltrim
@@ -111,9 +120,9 @@ const (
 	Upper
 	Lower
 	Contains
-	ContainsCI
-	EqualsCI
-	CharLength
+	ContainsCI // sql:CONTAINS_CI
+	EqualsCI   // sql:EQUALS_CI
+	CharLength // sql:CHAR_LENGTH sql:CHARACTER_LENGTH
 	IsSubnetOf
 	Substring
 	SplitPart
@@ -127,21 +136,21 @@ const (
 	RoundEven
 	Trunc
 	Floor
-	Ceil
+	Ceil // sql:CEIL sql:CEILING
 
 	Sqrt
 	Cbrt
 	Exp
-	ExpM1
+	ExpM1 // sql:EXPM1
 	Exp2
 	Exp10
 	Hypot
 	Ln
-	Ln1p
+	Ln1p // sql:LN1P
 	Log
 	Log2
 	Log10
-	Pow
+	Pow // sql:POW sql:POWER
 
 	Pi
 	Degrees
@@ -186,8 +195,8 @@ const (
 	DateExtractMinute
 	DateExtractHour
 	DateExtractDay
-	DateExtractDOW
-	DateExtractDOY
+	DateExtractDOW // sql:DATE_EXTRACT_DOW
+	DateExtractDOY // sql:DATE_EXTRACT_DOY
 	DateExtractMonth
 	DateExtractQuarter
 	DateExtractYear
@@ -198,7 +207,7 @@ const (
 	DateTruncMinute
 	DateTruncHour
 	DateTruncDay
-	DateTruncDOW
+	DateTruncDOW // sql:DATE_TRUNC_DOW
 	DateTruncMonth
 	DateTruncQuarter
 	DateTruncYear
@@ -209,10 +218,10 @@ const (
 	GeoHash
 	GeoTileX
 	GeoTileY
-	GeoTileES
+	GeoTileES // sql:GEO_TILE_ES
 	GeoDistance
 
-	ObjectSize // SIZE(x)
+	ObjectSize // sql:SIZE
 
 	TableGlob
 	TablePattern
@@ -233,7 +242,7 @@ const (
 
 	TypeBit // TYPE_BIT(arg) produces the bits associated with the type of arg
 
-	Unspecified // catch-all for opaque built-ins
+	Unspecified // catch-all for opaque built-ins; sql:UNKNOWN
 	maxBuiltin
 )
 
@@ -347,131 +356,10 @@ func (b BuiltinOp) TimePart() (Timepart, bool) {
 	return 0, false
 }
 
-var name2Builtin = map[string]BuiltinOp{
-	"CONCAT":                   Concat,
-	"TRIM":                     Trim,
-	"LTRIM":                    Ltrim,
-	"RTRIM":                    Rtrim,
-	"UPPER":                    Upper,
-	"LOWER":                    Lower,
-	"CONTAINS":                 Contains,
-	"CONTAINS_CI":              ContainsCI,
-	"EQUALS_CI":                EqualsCI,
-	"CHAR_LENGTH":              CharLength,
-	"CHARACTER_LENGTH":         CharLength,
-	"IS_SUBNET_OF":             IsSubnetOf,
-	"SUBSTRING":                Substring,
-	"SPLIT_PART":               SplitPart,
-	"BIT_COUNT":                BitCount,
-	"ABS":                      Abs,
-	"SIGN":                     Sign,
-	"ROUND":                    Round,
-	"ROUND_EVEN":               RoundEven,
-	"TRUNC":                    Trunc,
-	"FLOOR":                    Floor,
-	"CEIL":                     Ceil,
-	"CEILING":                  Ceil,
-	"SQRT":                     Sqrt,
-	"CBRT":                     Cbrt,
-	"EXP":                      Exp,
-	"EXPM1":                    ExpM1,
-	"EXP2":                     Exp2,
-	"EXP10":                    Exp10,
-	"HYPOT":                    Hypot,
-	"LN":                       Ln,
-	"LN1P":                     Ln1p,
-	"LOG":                      Log,
-	"LOG2":                     Log2,
-	"LOG10":                    Log10,
-	"POW":                      Pow,
-	"POWER":                    Pow,
-	"PI":                       Pi,
-	"DEGREES":                  Degrees,
-	"RADIANS":                  Radians,
-	"SIN":                      Sin,
-	"COS":                      Cos,
-	"TAN":                      Tan,
-	"ASIN":                     Asin,
-	"ACOS":                     Acos,
-	"ATAN":                     Atan,
-	"ATAN2":                    Atan2,
-	"LEAST":                    Least,
-	"GREATEST":                 Greatest,
-	"WIDTH_BUCKET":             WidthBucket,
-	"DATE_ADD_MICROSECOND":     DateAddMicrosecond,
-	"DATE_ADD_MILLISECOND":     DateAddMillisecond,
-	"DATE_ADD_SECOND":          DateAddSecond,
-	"DATE_ADD_MINUTE":          DateAddMinute,
-	"DATE_ADD_HOUR":            DateAddHour,
-	"DATE_ADD_DAY":             DateAddDay,
-	"DATE_ADD_WEEK":            DateAddWeek,
-	"DATE_ADD_MONTH":           DateAddMonth,
-	"DATE_ADD_QUARTER":         DateAddQuarter,
-	"DATE_ADD_YEAR":            DateAddYear,
-	"DATE_DIFF_MICROSECOND":    DateDiffMicrosecond,
-	"DATE_DIFF_MILLISECOND":    DateDiffMillisecond,
-	"DATE_DIFF_SECOND":         DateDiffSecond,
-	"DATE_DIFF_MINUTE":         DateDiffMinute,
-	"DATE_DIFF_HOUR":           DateDiffHour,
-	"DATE_DIFF_DAY":            DateDiffDay,
-	"DATE_DIFF_WEEK":           DateDiffWeek,
-	"DATE_DIFF_MONTH":          DateDiffMonth,
-	"DATE_DIFF_QUARTER":        DateDiffQuarter,
-	"DATE_DIFF_YEAR":           DateDiffYear,
-	"DATE_EXTRACT_MICROSECOND": DateExtractMicrosecond,
-	"DATE_EXTRACT_MILLISECOND": DateExtractMillisecond,
-	"DATE_EXTRACT_SECOND":      DateExtractSecond,
-	"DATE_EXTRACT_MINUTE":      DateExtractMinute,
-	"DATE_EXTRACT_HOUR":        DateExtractHour,
-	"DATE_EXTRACT_DAY":         DateExtractDay,
-	"DATE_EXTRACT_DOW":         DateExtractDOW,
-	"DATE_EXTRACT_DOY":         DateExtractDOY,
-	"DATE_EXTRACT_MONTH":       DateExtractMonth,
-	"DATE_EXTRACT_QUARTER":     DateExtractQuarter,
-	"DATE_EXTRACT_YEAR":        DateExtractYear,
-	"DATE_TRUNC_MICROSECOND":   DateTruncMicrosecond,
-	"DATE_TRUNC_MILLISECOND":   DateTruncMillisecond,
-	"DATE_TRUNC_SECOND":        DateTruncSecond,
-	"DATE_TRUNC_MINUTE":        DateTruncMinute,
-	"DATE_TRUNC_HOUR":          DateTruncHour,
-	"DATE_TRUNC_DAY":           DateTruncDay,
-	"DATE_TRUNC_DOW":           DateTruncDOW,
-	"DATE_TRUNC_MONTH":         DateTruncMonth,
-	"DATE_TRUNC_QUARTER":       DateTruncQuarter,
-	"DATE_TRUNC_YEAR":          DateTruncYear,
-	"GEO_HASH":                 GeoHash,
-	"GEO_TILE_X":               GeoTileX,
-	"GEO_TILE_Y":               GeoTileY,
-	"GEO_TILE_ES":              GeoTileES,
-	"GEO_DISTANCE":             GeoDistance,
-	"IN_SUBQUERY":              InSubquery,
-	"HASH_LOOKUP":              HashLookup,
-	"IN_REPLACEMENT":           InReplacement,
-	"HASH_REPLACEMENT":         HashReplacement,
-	"SCALAR_REPLACEMENT":       ScalarReplacement,
-	"STRUCT_REPLACEMENT":       StructReplacement,
-	"LIST_REPLACEMENT":         ListReplacement,
-	"TIME_BUCKET":              TimeBucket,
-	"TO_UNIX_EPOCH":            ToUnixEpoch,
-	"TO_UNIX_MICRO":            ToUnixMicro,
-	"SIZE":                     ObjectSize,
-	"TABLE_GLOB":               TableGlob,
-	"TABLE_PATTERN":            TablePattern,
-	"MAKE_LIST":                MakeList,
-	"MAKE_STRUCT":              MakeStruct,
-	"TYPE_BIT":                 TypeBit,
-}
-
-var builtin2Name [maxBuiltin]string
-
 func init() {
-	// take the shortest name in name2Builtin
-	// and create the reverse-mapping
-	for k, v := range name2Builtin {
-		cur := builtin2Name[v]
-		if cur == "" || len(cur) > len(k) {
-			builtin2Name[v] = k
-		}
+	if len(builtin2Name) != int(Unspecified) {
+		// In the case of error please check _generate/builtin_names.go
+		panic("builtin2Name was incorrectly constructed")
 	}
 }
 

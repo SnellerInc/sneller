@@ -36,8 +36,9 @@ func TestBuiltinDocs(t *testing.T) {
 	s := bufio.NewScanner(f)
 
 	unseen := make(map[string]struct{})
-	for name, op := range name2Builtin {
+	for op := BuiltinOp(0); op < Unspecified; op++ {
 		if !builtinInfo[op].private {
+			name := op.String()
 			unseen[name] = struct{}{}
 		}
 	}

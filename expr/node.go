@@ -1878,13 +1878,13 @@ func Xnor(left, right Node) *Logical {
 // the BuiltinOp associated with fn.
 func Call(fn string, args ...Node) *Builtin {
 	var text string
-	op, ok := name2Builtin[strings.ToUpper(fn)]
-	if ok {
+	op := name2Builtin(strings.ToUpper(fn))
+	if op != Unspecified {
 		text = op.String()
 	} else {
 		text = fn
-		op = Unspecified
 	}
+
 	return &Builtin{Func: op, Text: text, Args: args}
 }
 
@@ -1940,10 +1940,8 @@ func (b *Builtin) setfield(name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "func":
 		str, _, err := ion.ReadString(body)
-		if op, ok := name2Builtin[str]; ok {
-			b.Func = op
-		} else {
-			b.Func = Unspecified
+		b.Func = name2Builtin(str)
+		if b.Func == Unspecified {
 			b.Text = str
 		}
 		return err
