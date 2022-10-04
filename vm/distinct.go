@@ -168,17 +168,8 @@ func (d *deduper) writeRows(delims []vmref, rp *rowParams) error {
 	if d.hashslot == -1 {
 		return nil
 	}
-	// for the very first set of rows we
-	// know that we are likely to encounter
-	// distinct rows, so only try to process
-	// a few of them, as we are unlikely to
-	// compress away many of them...
 	if d.local == nil {
 		d.local = newRadixTree(0)
-		if len(delims) > 16 {
-			d.writeRows(delims[:16], rp)
-			delims = delims[16:]
-		}
 	}
 
 	if cap(d.hashes) >= len(delims) {

@@ -6767,7 +6767,7 @@ func (p *prog) Symbolize(st syms, dst *prog, aux *auxbindings) error {
 // and ensures that the result is never a symbol
 func (p *prog) unsymbolized(v *value) *value {
 	switch v.op {
-	case sdot, sdot2, ssplit:
+	case sdot, sdot2, ssplit, sauxval:
 		return p.ssa2(sunsymbolize, v, p.mask(v))
 	case schecktag:
 		// checktag that includes symbol bits

@@ -190,11 +190,10 @@ radix_loop_tail:
   MOVQ          hashes+32(FP), R11
   MOVQ          ret+72(FP), R10
   KSHIFTRW      $8, K1, K2
-  KMOVB         K1, K1
 
   MOVQ          R10, R15
   VPCOMPRESSQ   Z15, K1, 0(R11)(R10*8) // compress hashes
-  KMOVD         K1, R8
+  KMOVB         K1, R8
   POPCNTL       R8, R8
   VPMOVZXDQ     Y1, Z2               // Z2 = first 8 lengths
   VPMOVZXDQ     Y0, Z3               // Z3 = first 8 offsets
@@ -207,7 +206,7 @@ radix_loop_tail:
   MOVQ          R10, R14
   // repeat above for next 8 lanes
   VPCOMPRESSQ   Z16, K2, 0(R11)(R10*8)
-  KMOVW         K2, R8
+  KMOVB         K2, R8
   POPCNTL       R8, R8
   VPMOVZXDQ     Y1, Z2
   VPMOVZXDQ     Y0, Z3
