@@ -125,6 +125,7 @@ const (
 	stostr
 	stolist
 	stotime
+	stoblob
 	sunsymbolize
 
 	scvtktoi // bool to 0 or 1
@@ -415,13 +416,14 @@ const (
 	smakestructkey
 	sboxlist
 
-	stypebits              // get encoded tag bits
-	schecktag              // check encoded tag bits
-	saggapproxcount        // APPROX_COUNT_DISTINCT
-	saggapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries)
-	saggapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries)
-	sstrictunboxblob
-	saggslotapproxcount // APPROX_COUNT_DISTINCT aggregate in GROUP BY
+	stypebits                  // get encoded tag bits
+	schecktag                  // check encoded tag bits
+	saggapproxcount            // APPROX_COUNT_DISTINCT
+	saggapproxcountpartial     // the partial step of APPROX_COUNT_DISTINCT (for split queries)
+	saggapproxcountmerge       // the merge step of APPROX_COUNT_DISTINCT (for split queries)
+	saggslotapproxcount        // APPROX_COUNT_DISTINCT aggregate in GROUP BY
+	saggslotapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
+	saggslotapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
 	_ssamax
 )
 
@@ -457,6 +459,10 @@ const (
 
 	// list-splitting ops return this
 	stListAndValueMasked = stList | stValue | stBool
+
+	// just aliases
+	stBlob       = stString
+	stBlobMasked = stStringMasked
 )
 
 func (s ssatype) char() byte {
@@ -736,6 +742,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	stostr:  {text: "tostr", argtypes: scalar1Args, rettype: stStringMasked, bc: opunpack, emit: emitslice},
 	stolist: {text: "tolist", argtypes: scalar1Args, rettype: stListMasked, bc: opunpack, emit: emitslice},
 	stotime: {text: "totime", argtypes: scalar1Args, rettype: stTimeMasked, bc: opunpack, emit: emitslice},
+	stoblob: {text: "toblob", argtypes: scalar1Args, rettype: stBlobMasked, bc: opunpack, emit: emitslice},
 
 	sunsymbolize: {text: "unsymbolize", argtypes: scalar1Args, rettype: stValue, bc: opunsymbolize},
 
@@ -1063,15 +1070,57 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
 
-	saggapproxcount:        {text: "aggapproxcount", argtypes: []ssatype{stHash, stBool}, rettype: stIntMasked, bc: opaggapproxcount, emit: emitaggapproxcount, immfmt: fmtother},
-	saggapproxcountpartial: {text: "aggapproxcount.partial", argtypes: []ssatype{stHash, stBool}, rettype: stValueMasked, bc: opaggapproxcount, emit: emitaggapproxcount, immfmt: fmtother},
-	saggapproxcountmerge:   {text: "aggapproxcount.merge", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opaggapproxcountmerge, emit: emitaggapproxcountmerge, immfmt: fmtaggslot},
-	sstrictunboxblob: {
-		text:     "strictunboxblob",
-		argtypes: []ssatype{stValue, stBool},
-		bc:       opstrictunboxblob,
+	saggapproxcount: {
+		text:     "aggapproxcount",
+		argtypes: []ssatype{stHash, stBool},
+		rettype:  stMem,
+		bc:       opaggapproxcount,
+		emit:     emitaggapproxcount,
+		immfmt:   fmtother,
 	},
-	saggslotapproxcount: {text: "aggslotapproxcount", argtypes: []ssatype{stMem, stBucket, stHash, stBool}, rettype: stIntMasked, bc: opaggslotapproxcount, emit: emitaggslotapproxcount, immfmt: fmti64, priority: prioMem},
+	saggapproxcountpartial: {
+		text:     "aggapproxcount.partial",
+		argtypes: []ssatype{stHash, stBool},
+		rettype:  stMem,
+		bc:       opaggapproxcount,
+		emit:     emitaggapproxcount,
+		immfmt:   fmtother,
+	},
+	saggapproxcountmerge: {
+		text:     "aggapproxcount.merge",
+		argtypes: []ssatype{stBlob, stBool},
+		rettype:  stMem,
+		bc:       opaggapproxcountmerge,
+		emit:     emitaggapproxcountmerge,
+		immfmt:   fmtaggslot,
+	},
+	saggslotapproxcount: {
+		text:     "aggslotapproxcount",
+		argtypes: []ssatype{stMem, stBucket, stHash, stBool},
+		rettype:  stMem,
+		bc:       opaggslotapproxcount,
+		emit:     emitaggslotapproxcount,
+		immfmt:   fmti64,
+		priority: prioMem,
+	},
+	saggslotapproxcountpartial: {
+		text:     "aggslotapproxcount.partial",
+		argtypes: []ssatype{stMem, stBucket, stHash, stBool},
+		rettype:  stMem,
+		bc:       opaggslotapproxcount,
+		emit:     emitaggslotapproxcount,
+		immfmt:   fmtother,
+		priority: prioMem,
+	},
+	saggslotapproxcountmerge: {
+		text:     "aggslotapproxcount.merge",
+		argtypes: []ssatype{stMem, stBucket, stBlob, stBool},
+		rettype:  stMem,
+		bc:       opaggslotapproxcountmerge,
+		emit:     emitaggslotapproxcountmerge,
+		immfmt:   fmtaggslot,
+		priority: prioMem,
+	},
 }
 
 type value struct {
@@ -3875,7 +3924,7 @@ func (p *prog) AggregateCount(child, filter *value, slot aggregateslot) *value {
 	return p.ssa2imm(saggcount, p.InitMem(), mask, slot)
 }
 
-func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
+func (p *prog) aggregateApproxCountDistinct(op ssaop, child, filter *value, slot aggregateslot, precision uint8) *value {
 	mask := p.mask(child)
 	if filter != nil {
 		mask = p.And(mask, filter)
@@ -3886,12 +3935,17 @@ func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot aggregate
 	return p.ssa2imm(saggapproxcount, h, mask, (uint64(slot)<<8)|uint64(precision))
 }
 
+func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
+	return p.aggregateApproxCountDistinct(saggapproxcount, child, filter, slot, precision)
+}
+
 func (p *prog) AggregateApproxCountDistinctPartial(child, filter *value, slot aggregateslot, precision uint8) *value {
-	return p.AggregateApproxCountDistinct(child, filter, slot, precision)
+	return p.aggregateApproxCountDistinct(saggapproxcountpartial, child, filter, slot, precision)
 }
 
 func (p *prog) AggregateApproxCountDistinctMerge(child *value, slot aggregateslot, precision uint8) *value {
-	return p.ssa2imm(saggapproxcountmerge, child, p.mask(child), (uint64(slot)<<8)|uint64(precision))
+	blob := p.ssa2(stoblob, child, p.mask(child))
+	return p.ssa2imm(saggapproxcountmerge, blob, p.mask(blob), (uint64(slot)<<8)|uint64(precision))
 }
 
 // Slot aggregate operations
@@ -3986,9 +4040,22 @@ func (p *prog) AggregateSlotCount(mem, bucket, mask *value, offset int) *value {
 	return p.ssa3imm(saggslotcount, mem, bucket, mask, offset)
 }
 
-func (p *prog) AggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset int, precision uint8) *value {
+func (p *prog) aggregateSlotApproxCountDistinct(op ssaop, mem, bucket, argv, mask *value, offset int, precision uint8) *value {
 	h := p.hash(argv)
-	return p.ssa4imm(saggslotapproxcount, mem, bucket, h, mask, (uint64(offset)<<8)|uint64(precision))
+	return p.ssa4imm(op, mem, bucket, h, mask, (uint64(offset)<<8)|uint64(precision))
+}
+
+func (p *prog) AggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset int, precision uint8) *value {
+	return p.aggregateSlotApproxCountDistinct(saggslotapproxcount, mem, bucket, argv, mask, offset, precision)
+}
+
+func (p *prog) AggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask *value, offset int, precision uint8) *value {
+	return p.aggregateSlotApproxCountDistinct(saggslotapproxcountpartial, mem, bucket, argv, mask, offset, precision)
+}
+
+func (p *prog) AggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask *value, offset int, precision uint8) *value {
+	blob := p.ssa2(stoblob, argv, mask)
+	return p.ssa4imm(saggslotapproxcountmerge, mem, bucket, blob, p.mask(blob), (uint64(offset)<<8)|uint64(precision))
 }
 
 // note: the 'mem' argument to aggbucket
@@ -5686,10 +5753,6 @@ func emitlogical(v *value, c *compilestate) {
 
 // emit NAND operation
 func emitnand(v *value, c *compilestate) {
-	if v.op != snand {
-		panic("?")
-	}
-
 	// x nand true -> !x
 	if v.args[1].op == sinit {
 		// just emit 'not'
@@ -5836,14 +5899,16 @@ func emitboolconv(v *value, c *compilestate) {
 }
 
 func emitslice(v *value, c *compilestate) {
-	var bits uint8 // bits = ION descriptor tag (https://amzn.github.io/ion-docs/docs/binary.html)
+	var t ion.Type
 	switch v.op {
 	case stostr:
-		bits = 0x08 //ION typed value format for string is 8
+		t = ion.StringType
 	case stolist:
-		bits = 0x0b
+		t = ion.ListType
 	case stotime:
-		bits = 0x06
+		t = ion.TimestampType
+	case stoblob:
+		t = ion.BlobType
 	default:
 		panic("unrecognized op for emitslice")
 	}
@@ -5852,7 +5917,7 @@ func emitslice(v *value, c *compilestate) {
 	c.loadk(v, mask)
 	c.loadv(v, val)
 	c.clobbers(v)
-	c.opu8(v, opunpack, bits)
+	c.opu8(v, opunpack, uint8(t))
 }
 
 // compare arg0 and arg1
@@ -6557,6 +6622,7 @@ func emitaggapproxcount(v *value, c *compilestate) {
 	precision := uint8(imm)
 
 	c.loadk(v, mask)
+
 	op := ssainfo[v.op].bc
 	checkImmediateBeforeEmit3(op, 8, 2, 2)
 	c.asm.emitOpcode(op)
@@ -6566,7 +6632,7 @@ func emitaggapproxcount(v *value, c *compilestate) {
 }
 
 func emitaggapproxcountmerge(v *value, c *compilestate) {
-	arg := v.args[0]
+	blob := v.args[0]
 	mask := v.args[1]
 
 	imm := v.imm.(uint64)
@@ -6574,9 +6640,7 @@ func emitaggapproxcountmerge(v *value, c *compilestate) {
 	precision := uint8(imm)
 
 	c.loadk(v, mask)
-	c.loadv(v, arg)
-
-	c.op(v, opstrictunboxblob)
+	c.loads(v, blob)
 
 	op := ssainfo[v.op].bc
 	checkImmediateBeforeEmit2(op, 8, 2)
@@ -6601,6 +6665,24 @@ func emitaggslotapproxcount(v *value, c *compilestate) {
 	c.asm.emitOpcode(op)
 	c.asm.emitImmU64(aggSlot)
 	c.asm.emitImmU16(uint16(hashSlot))
+	c.asm.emitImmU16(uint16(precision))
+}
+
+func emitaggslotapproxcountmerge(v *value, c *compilestate) {
+	blob := v.args[2]
+	mask := v.args[3]
+
+	imm := v.imm.(uint64)
+	aggSlot := imm >> 8
+	precision := uint8(imm)
+
+	c.loadk(v, mask)
+	c.loads(v, blob)
+
+	op := ssainfo[v.op].bc
+	checkImmediateBeforeEmit2(op, 8, 2)
+	c.asm.emitOpcode(op)
+	c.asm.emitImmU64(aggSlot)
 	c.asm.emitImmU16(uint16(precision))
 }
 

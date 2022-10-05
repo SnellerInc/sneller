@@ -190,11 +190,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			mask = prog.And(mask, filter)
 		}
 
-		op := agg[i].Expr.Op
-
-		// COUNT(...) is the only aggregate op that doesn't accept numbers;
-		// additionally, it accepts '*', which has a special meaning in this context.
-		if op == expr.OpCount {
+		switch op := agg[i].Expr.Op; op {
+		case expr.OpCount:
+			// COUNT(...) is the only aggregate op that doesn't accept numbers;
+			// additionally, it accepts '*', which has a special meaning in this context.
 			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
 				// `COUNT(*) GROUP BY X` is equivalent to `COUNT(X) GROUP BY X`
 			} else {
@@ -207,16 +206,32 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 
 			out[i] = prog.AggregateSlotCount(mem, bucket, mask, offset)
 			ops[i].fn = AggregateOpCount
-		} else if op == expr.OpApproxCountDistinct {
+
+		case expr.OpApproxCountDistinct,
+			expr.OpApproxCountDistinctPartial,
+			expr.OpApproxCountDistinctMerge:
+
 			argv, err := compile(prog, agg[i].Expr.Inner)
 			if err != nil {
 				return nil, fmt.Errorf("cannot compile %q: %w", agg[i].Expr.Inner, err)
 			}
 			precision := agg[i].Expr.Precision
-			out[i] = prog.AggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
-			ops[i].fn = AggregateOpApproxCountDistinct
+
 			ops[i].precision = precision
-		} else if op.IsBoolOp() {
+			switch op {
+			case expr.OpApproxCountDistinct:
+				out[i] = prog.AggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
+				ops[i].fn = AggregateOpApproxCountDistinct
+
+			case expr.OpApproxCountDistinctPartial:
+				out[i] = prog.AggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask, offset, precision)
+				ops[i].fn = AggregateOpApproxCountDistinctPartial
+			case expr.OpApproxCountDistinctMerge:
+				out[i] = prog.AggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask, offset, precision)
+				ops[i].fn = AggregateOpApproxCountDistinctMerge
+			}
+
+		case expr.OpBoolAnd, expr.OpBoolOr:
 			argv, err := prog.compileAsBool(agg[i].Expr.Inner)
 			if err != nil {
 				return nil, fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
@@ -231,7 +246,8 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
 			}
-		} else {
+
+		default:
 			argv, err := prog.compileAsNumber(agg[i].Expr.Inner)
 			if err != nil {
 				return nil, fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)

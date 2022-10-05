@@ -33,7 +33,6 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
-	_ "github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
@@ -1273,6 +1272,16 @@ where Make in (
 				`{"count": 61}`,
 			},
 		},
+		{
+			query: `SELECT Color, APPROX_COUNT_DISTINCT(Make) FROM 'parking.10n' GROUP BY Color ORDER BY Color LIMIT 5`,
+			expectedRows: []string{
+				`{"Color": "BG", "count": 2}`,
+				`{"Color": "BK", "count": 37}`,
+				`{"Color": "BL", "count": 24}`,
+				`{"Color": "BN", "count": 4}`,
+				`{"Color": "BR", "count": 3}`,
+			},
+		},
 	}
 
 	for i := range tcs {
@@ -1386,10 +1395,8 @@ where Make in (
 
 					t.Errorf("got JSON: %s", toJSON(&st, row))
 					t.Errorf("want JSON: %s", toJSON(&st, want))
-					return
 				}
 			}
-			t.Log("output OK")
 		})
 	}
 }

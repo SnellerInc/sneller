@@ -74,7 +74,7 @@ TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 
     /* Check if all lengths equal to 1 << precision */
     VPBROADCASTQ    BUFFER_SIZE, Z29
-    VPCMPQ          $VPCMP_IMM_NE, Z29, Z31, K1, K2
+    VPCMPQ          $VPCMP_IMM_NE, Z29, Z3, K1, K2
     KTESTQ          K2, K2
     JNZ wrong_input
 
@@ -84,13 +84,13 @@ TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 
     /* Input buffers offsets (we already validated all have the correct size) */
     LEAQ        bytecode_spillArea(VIRT_BCPTR), VAL_OFFSETS
-    VMOVDQU32   Z30, (VAL_OFFSETS)
+    VMOVDQU32   Z2, (VAL_OFFSETS)
 
     /* Aggregate buffer pointer */
     MOVQ    0(VIRT_PCREG), AGG_BUFFER_PTR_ORIG
     ADDQ    AggregateDataBuffer, AGG_BUFFER_PTR_ORIG
 
-    KMOVW       K1, ACTIVE_MASK
+    KMOVW   K1, ACTIVE_MASK
 
 main_loop:
     TESTQ   $1, ACTIVE_MASK
@@ -133,88 +133,21 @@ wrong_input:
 #undef COUNTER
 
 
-
-#include "evalbc_ionheader.h"
-
-// bcunboxblob adjusts Z30 and Z31 to match the contents of blob.
-//
-// If the input contains any non-blob Ion value, it fails the
-// execution of the current program.
-TEXT bcstrictunboxblob(SB), NOSPLIT|NOFRAME, $0
-
-    KTESTW K1, K1
-    JZ skip
-
-#define HEAD_BYTES      Z10
-#define T_FIELD         Z11
-#define L_FIELD         Z12
-#define HEADER_LENGTH   Z13
-#define OBJECT_SIZE     Z14
-#define CONST_0x01      Z15
-#define CONST_0x0e      Z16
-#define CONST_0x0f      Z17
-#define CONST_0x7f      Z18
-#define CONST_0x80      Z19
-
-#define TMP             Z20
-#define TMP2            Z21
-#define TMP3            Z22
-
-    VPBROADCASTD        CONSTD_1(),     CONST_0x01
-    VPBROADCASTD        CONSTD_0x0E(),  CONST_0x0e
-    VPBROADCASTD        CONSTD_0x0F(),  CONST_0x0f
-    VPBROADCASTD        CONSTD_0x7F(),  CONST_0x7f
-    VPBROADCASTD        CONSTD_0x80(),  CONST_0x80
-
-    LOAD_OBJECT_HEADER(K1)
-    VPCMPD.BCST $VPCMP_IMM_NE, CONSTD_0x0A(), T_FIELD, K1, K2 /* blob */
-    KTESTW K2, K2
-    JNZ trap // wrong input
-
-    CALCULATE_OBJECT_SIZE(K1, no_uvint, uvint_done)
-
-    // update the slices
-    VPADDD      HEADER_LENGTH, Z30, Z30
-    VMOVDQA32   OBJECT_SIZE, Z31
-
-#undef HEAD_BYTES
-#undef T_FIELD
-#undef L_FIELD
-#undef HEADER_LENGTH
-#undef OBJECT_SIZE
-#undef CONST_0x01
-#undef CONST_0x0e
-#undef CONST_0x0f
-#undef CONST_0x7f
-#undef CONST_0x80
-
-#undef TMP
-#undef TMP2
-#undef TMP3
-
-skip:
-    NEXT()
-
-trap:
-    FAIL()
-
-
 // bcaggslotapproxcount implements update of HLL state for
 // aggregates executed in GROUP BY
 //
 // The main algorithm is exactly the same as in bcaggapproxcount.
 TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
-    MOVQ    R9, X9
-    MOVQ    R12, X12
+    KTESTW  K1, K1
+    JZ      next
 
 #define CURRENT_MASK        R9
 #define HASHMEM_PTR         R8
 #define BYTEBUCKET_PTR      R12
 #define BITS_PER_HLL_BUCKET R14
 #define BITS_PER_HLL_HASH   R13
-
-    KTESTW  K1, K1
-    JZ      next
+    MOVQ    R9, X9
+    MOVQ    R12, X12
 
     // Get the current mask
     KMOVW   K1, CURRENT_MASK
@@ -278,11 +211,96 @@ skip:
     SHRQ    $1, CURRENT_MASK
     JNZ     iter_rows
 
-next:
     MOVQ    X9, R9
     MOVQ    X12, R12
 
+#undef CURRENT_MASK
+#undef HASHMEM_PTR
+#undef BYTEBUCKET_PTR
+#undef BITS_PER_HLL_BUCKET
+#undef BITS_PER_HLL_HASH
+#undef AGG_BUFFER_PTR_ORIG
+
+next:
     NEXT_ADVANCE(12)
+
+// bcaggslotapproxcountmerge implements update of HLL state for
+// aggregates executed in GROUP BY
+//
+// The main algorithm is exactly the same as in bcaggapproxcountmerge.
+TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
+    KTESTW  K1, K1
+    JZ      next
+
+#define CURRENT_MASK        R8
+#define BUFFER_SIZE         R13
+#define BYTEBUCKET_PTR      R14
+#define AGG_BUFFER_PTR      R15
+#define COUNTER             CX
+#define VAL_OFFSETS         BX
+#define VAL_BUFFER_PTR      DX
+
+    // Get the current mask
+    KMOVW   K1, CURRENT_MASK
+
+    // Get parameters for the HLL algorithm
+    BC_LOAD_IMM_U8(8, CX)           // CX = precision
+    XORQ    BUFFER_SIZE, BUFFER_SIZE
+    BTSQ    CX, BUFFER_SIZE         // SIZE = 1 << precision
+    SHRQ    $4, BUFFER_SIZE         // SIZE in 16-byte chunks (precision is never less than 4)
+
+    // Get bucket base pointer
+    LEAQ        bytecode_bucket(VIRT_BCPTR), BYTEBUCKET_PTR
+
+    /* Input buffers offsets (we already validated all have the correct size) */
+    LEAQ        bytecode_spillArea(VIRT_BCPTR), VAL_OFFSETS
+    VMOVDQU32   Z2, (VAL_OFFSETS)
+
+iter_rows:
+    TESTQ   $1, CURRENT_MASK
+    JZ      skip
+
+    // update i-th radix tree bucket
+    MOVQ    BUFFER_SIZE, COUNTER
+
+    // AGG_BUFFER_PTR_ORIG = radixtree[k].values[8 + bucket[i]]
+    MOVL    (BYTEBUCKET_PTR), AGG_BUFFER_PTR
+    ADDQ    BC_IMM_PTR(0), AGG_BUFFER_PTR   // imm at 0 is aggslot (uint64)
+    ADDQ    $const_aggregateTagSize, AGG_BUFFER_PTR
+    ADDQ    radixTree64_values(R10), AGG_BUFFER_PTR
+
+    MOVL    (VAL_OFFSETS), VAL_BUFFER_PTR
+    ADDQ    VIRT_BASE, VAL_BUFFER_PTR
+
+    update:
+        // agg_buffer[j] := max(agg_buffer[j], val_buffer[k])
+        VMOVDQU (AGG_BUFFER_PTR), X5
+        VMOVDQU (VAL_BUFFER_PTR), X6
+        VPMAXUB X6, X5, X5
+        VMOVDQU X5, (AGG_BUFFER_PTR)
+
+        // j++; k++
+        ADDQ    $16, AGG_BUFFER_PTR
+        ADDQ    $16, VAL_BUFFER_PTR
+        DECQ    COUNTER
+        JNZ     update
+
+skip:
+    ADDQ    $4, BYTEBUCKET_PTR  // next bucket
+    ADDQ    $4, VAL_OFFSETS     // next value
+    SHRQ    $1, CURRENT_MASK
+    JNZ     iter_rows
+
+#undef CURRENT_MASK
+#undef BUFFER_SIZE
+#undef BYTEBUCKET_PTR
+#undef AGG_BUFFER_PTR
+#undef COUNTER
+#undef VAL_OFFSETS
+#undef VAL_BUFFER_PTR
+
+next:
+    NEXT_ADVANCE(10)
 
 
 #undef AggregateDataBuffer

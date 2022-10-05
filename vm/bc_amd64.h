@@ -79,3 +79,15 @@
   SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg \
   CMPQ sizereg, size \
   JLT  abrt
+
+// BC_IMM_PTR build a pointer to immediate argument at the given offset
+#define BC_IMM_PTR(offset) offset(VIRT_PCREG)
+
+// BC_LOAD_IMM_U8 loads bytecode immediate from the given offset into dest
+#define BC_LOAD_IMM_U8(offset, dest) MOVBQZX BC_IMM_PTR(offset), dest
+
+// BC_LOAD_IMM_U16 loads bytecode immediate from the given offset into dest
+#define BC_LOAD_IMM_U16(offset, dest) MOVWQZX BC_IMM_PTR(offset), dest
+
+// BC_LOAD_IMM_U32 loads bytecode immediate from the given offset into dest
+#define BC_LOAD_IMM_U32(offset, dest) MOVL BC_IMM_PTR(offset), dest
