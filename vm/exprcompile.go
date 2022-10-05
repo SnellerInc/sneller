@@ -1046,6 +1046,8 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			n = expr.JSONTypeBits(ion.FloatType)
 		case stTime, stTimeInt:
 			n = expr.JSONTypeBits(ion.TimestampType)
+		case stString:
+			n = expr.JSONTypeBits(ion.StringType)
 		}
 		v := p.Constant(uint64(n))
 		if k.op != sinit {
