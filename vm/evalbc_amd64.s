@@ -10548,30 +10548,21 @@ TEXT bctoint(SB), NOSPLIT|NOFRAME, $0
   KMOVB         K4, K5
   VPGATHERDQ    1(SI)(Y29*1), K5, Z28
 
-  // now compute value &= (mask >> (8-size)*8)
-  VONES(Z21)                           // Z21 = -1
-  VPSRLVQ       Z25, Z21, Z29
-  VPSRLVQ       Z26, Z21, Z22          // Z29|Z22 = -1 >> ((8-size) * 8) = masks
-  VPANDQ        Z27, Z29, Z29
-  VPANDQ        Z28, Z22, Z22          // Z22|Z29 = 8-byte value & mask
+  // convert big-endian to little-endian 8-byte values
+  VBROADCASTI64X2  bswap64<>(SB), Z21   // swap lookup
+  VPSHUFB          Z21, Z27, Z27        // Z27 - little-endian
+  VPSHUFB          Z21, Z28, Z28        // Z28 - little-endian
 
-  // convert be64 in (Z29|Z22)  to le64
-  VPSLLVQ          Z25, Z29, Z29
-  VPSLLVQ          Z26, Z22, Z22          // (Z22|Z29) = (value & mask) <<= (8-size)*8
-  VBROADCASTI64X2  bswap64<>(SB), Z27
-  VPSHUFB          Z27, Z29, Z29
-  VPSHUFB          Z27, Z22, Z22
-  VMOVDQA64        Z29, K1, Z2
-  VMOVDQA64        Z22, K4, Z3
+  // shift out bytes outside length of integer (value >> (8-size)*8)
+  VPSRLVQ          Z25, Z27, K1, Z2
+  VPSRLVQ          Z26, Z28, K4, Z3
 
   // there's no negate operation (or even a complement),
-  // so we have to negate the register with (reg ^ -1)+1
+  // use 0 - x operation
   KSHIFTRW     $8, K3, K5
-  VPBROADCASTQ CONSTQ_1(), Z22
-  VPXORQ       Z2, Z21, K3, Z2
-  VPXORQ       Z3, Z21, K5, Z3
-  VPADDQ       Z22, Z2, K3, Z2
-  VPADDQ       Z22, Z3, K5, Z3
+  VPXORQ       Z21, Z21, Z21
+  VPSUBQ       Z2, Z21, K3, Z2
+  VPSUBQ       Z3, Z21, K5, Z3
 next:
   NEXT()
 trap:
