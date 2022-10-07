@@ -21,6 +21,9 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/tests"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestSizeUnsupportedIonValues(t *testing.T) {
@@ -360,6 +363,13 @@ func TestSizeUVIntLengthForValidValues(t *testing.T) {
 		0, 1, 2, 1, 3, 1, 2, 1,
 	}
 
+	gm, err := tests.GuardMemory(data)
+	if err != nil {
+		t.Error(err)
+	}
+	defer gm.Free()
+	data = gm.Data
+
 	// when
 	bcobjectsize_test_uvint_length(valid, data, &offsets, &mask, &lengths)
 
@@ -490,6 +500,15 @@ func testSizeParseIonHeaderAuxiliary(t *testing.T, objects []testSizeObjects) {
 	var mask uint16
 	var headerLength [16]uint32
 	var objectLength [16]uint32
+
+	data = slices.Grow(data, 4)
+
+	gm, err := tests.GuardMemory(data)
+	if err != nil {
+		t.Error(err)
+	}
+	defer gm.Free()
+	data = gm.Data
 
 	bcobjectsize_test_object_header_size(valid, data, &offsets, &mask, &headerLength, &objectLength)
 
