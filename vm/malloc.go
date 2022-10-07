@@ -15,7 +15,11 @@
 package vm
 
 import (
+	"fmt"
 	"math/bits"
+	"os"
+	"runtime/debug"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 )
@@ -65,6 +69,11 @@ var (
 	// slightly from the bitmap count
 	// when we are freeing pages
 	vminuse int64
+
+	// filed when vmdebugleaksEnabled is set via -tags=vmmemleaks
+	vmdebugleaksActive bool
+	vmdebugleaksLock   sync.Mutex
+	vmdebugleaksTraces map[int]string
 )
 
 // vmref is a (type, length) tuple
@@ -117,6 +126,10 @@ func (v vmref) size() int { return int(v[1]) }
 func init() {
 	vmm = mapVM()
 	guard(vmm[:vmUse])
+
+	if vmdebugleaksEnabled {
+		vmdebugleaksTraces = make(map[int]string)
+	}
 }
 
 func vmbase() uintptr {
@@ -177,6 +190,13 @@ func Malloc() []byte {
 			buf := vmm[((i*64)+bit)<<pageBits:]
 			buf = buf[:pageSize:pageSize]
 			unguard(buf) // if -tags=vmfence, unprotect this memory
+			if vmdebugleaksEnabled {
+				vmdebugleaksLock.Lock()
+				if vmdebugleaksActive {
+					vmdebugleaksTraces[i*64+bit] = string(debug.Stack())
+				}
+				vmdebugleaksLock.Unlock()
+			}
 			return buf
 		}
 	}
@@ -213,6 +233,13 @@ func Free(buf []byte) {
 	}
 	guard(buf) // if -tags=vmfence, protect this memory
 	pfn := (p - vmbase()) >> pageBits
+	if vmdebugleaksEnabled {
+		vmdebugleaksLock.Lock()
+		if vmdebugleaksActive {
+			delete(vmdebugleaksTraces, int(pfn))
+		}
+		vmdebugleaksLock.Unlock()
+	}
 	bit := uint64(1) << (pfn % 64)
 	addr := &vmbits[pfn/64]
 	for {
@@ -238,4 +265,54 @@ func Free(buf []byte) {
 			return
 		}
 	}
+}
+
+// VMDebugLeaksStart makes the page allocator
+// collect the stack traces of places where Malloc
+// was used.
+//
+// Enabled with -tags=vmmemleaks
+func VMDebugLeaksStart() {
+	if !vmdebugleaksEnabled {
+		return
+	}
+
+	vmdebugleaksLock.Lock()
+	vmdebugleaksTraces = make(map[int]string)
+	vmdebugleaksActive = true
+	vmdebugleaksLock.Unlock()
+}
+
+// VMDebugLeaksFinish turns off the stack trace collecting
+//
+// Enabled with -tags=vmmemleaks
+func VMDebugLeaksFinish() int {
+	if !vmdebugleaksEnabled {
+		return 0
+	}
+
+	vmdebugleaksLock.Lock()
+	leaks := len(vmdebugleaksTraces)
+	vmdebugleaksActive = false
+	vmdebugleaksLock.Unlock()
+
+	return leaks
+}
+
+// VMDebugLeaksPrint outputs the not freed pages collected
+// between VMDebugLeaksStart & VMDebugLeaksFinish calls.
+//
+// Enabled with -tags=vmmemleaks
+func VMDebugLeaksPrint(f *os.File) {
+	if !vmdebugleaksEnabled {
+		return
+	}
+
+	vmdebugleaksLock.Lock()
+	i := 1
+	for page, stacktrace := range vmdebugleaksTraces {
+		fmt.Fprintf(f, "\n#%d. page %x allocated at\n%s\n", i, page, stacktrace)
+		i += 1
+	}
+	vmdebugleaksLock.Unlock()
 }

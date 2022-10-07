@@ -19,12 +19,10 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -35,11 +33,6 @@ import (
 	"github.com/SnellerInc/sneller/regexp2"
 	"golang.org/x/exp/maps"
 )
-
-func TestMain(m *testing.M) {
-	rand.Seed(time.Now().UnixNano())
-	os.Exit(m.Run())
-}
 
 // exhaustive search space: all combinations are explored
 const exhaustive = -1
