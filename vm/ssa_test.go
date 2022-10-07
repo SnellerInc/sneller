@@ -921,6 +921,7 @@ func TestSSATicketsQueries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			defer bc.reset()
 			t.Logf("bytecode:\n%s", bc.String())
 
 			var out QueryBuffer
