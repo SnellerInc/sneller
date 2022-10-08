@@ -14,7 +14,7 @@
 
 //go:build !(linux && amd64)
 
-package vm
+package tests
 
 func GuardMemory(data []byte) (*GuardedMemory, error) {
 	return &GuardedMemory{Data: data}, nil
