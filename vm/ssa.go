@@ -1262,6 +1262,12 @@ func (p *prog) val() *value {
 	return v
 }
 
+func (p *prog) errf(s string, args ...any) *value {
+	v := p.val()
+	v.errf(s, args...)
+	return v
+}
+
 func (s ssaop) String() string {
 	return ssainfo[s].text
 }
@@ -2107,6 +2113,10 @@ func isFloatImmediate(imm interface{}) bool {
 	}
 }
 
+func isNumericImmediate(imm interface{}) bool {
+	return isFloatImmediate(imm) || isIntImmediate(imm)
+}
+
 func isStringImmediate(imm interface{}) bool {
 	switch imm.(type) {
 	case string:
@@ -2254,8 +2264,7 @@ func (p *prog) coerceInt(v *value) (*value, *value) {
 		ret := p.ssa3(stoint, p.undef(), v, p.mask(v))
 		return ret, ret
 	default:
-		err := p.val()
-		err.errf("cannot convert %s to an integer", v)
+		err := p.errf("cannot convert %s to an integer", v)
 		return err, err
 	}
 }
@@ -2291,9 +2300,7 @@ func (p *prog) toint(v *value) *value {
 		// didn't lose too much precision...)
 		return p.ssa2(scvtftoi, v, p.mask(v))
 	default:
-		v := p.val()
-		v.errf("cannot convert %s to int", v.String())
-		return v
+		return p.errf("cannot convert %s to int", v.String())
 	}
 }
 

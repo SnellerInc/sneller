@@ -1394,20 +1394,16 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 			return nil, err
 		}
 		if els.op == sliteral {
-			outnum = p.ssa0imm(sbroadcastf, els.imm)
-			outk = p.ValidLanes()
+			if !isNumericImmediate(els.imm) {
+				return nil, fmt.Errorf("%v of type %T is not float nor integer number", els.imm, els.imm)
+			}
+			outnum, outk = p.coercefp(els)
 			merged = p.ssa0(skfalse)
 		} else if els.op != skfalse {
 			merged = p.ssa0(skfalse)
 			switch els.primary() {
-			case stValue:
+			case stValue, stFloat, stInt:
 				outnum, outk = p.coercefp(els)
-			case stFloat:
-				outnum = els
-				outk = p.mask(els)
-			case stInt:
-				outnum = p.toint(els)
-				outk = p.mask(els)
 			default:
 				return nil, fmt.Errorf("unexpected ELSE in numeric CASE: %s", c.Else)
 			}
@@ -1431,18 +1427,22 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 			continue
 		}
 		if then.op == sliteral {
-			then = p.ssa0imm(sbroadcastf, then.imm)
+			if !isNumericImmediate(then.imm) {
+				return nil, fmt.Errorf("%v of type %T is not float nor integer number", then.imm, then.imm)
+			}
+			then, _ = p.coercefp(then)
 		}
 		if outnum == nil {
 			// first limb; easy case
 			merged = when
-			if then.primary() == stValue {
+			switch then.primary() {
+			case stValue, stInt, stFloat:
 				t, k := p.coercefp(then)
 				outnum = t
 				outk = p.And(k, when)
-			} else {
-				outnum = then
-				outk = p.And(when, p.mask(then))
+
+			default:
+				return nil, fmt.Errorf("cannot convert %s in CASE to float", c.Limbs[i].Then)
 			}
 			continue
 		}
@@ -1457,10 +1457,8 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 		merged = p.Or(merged, when)
 		switch then.primary() {
 		case stInt:
-			outk = p.Or(outk, p.And(then, shouldmerge))
-			then = p.ssa2(stoint, then, p.mask(then))
-			outnum = p.ssa3(sblendfloat, outnum, then, shouldmerge)
-			outnum = p.ssa3(sblendfloat, outnum, then, shouldmerge)
+			then, _ = p.coercefp(then)
+			fallthrough
 		case stFloat:
 			outk = p.Or(outk, p.And(p.mask(then), shouldmerge))
 			outnum = p.ssa3(sblendfloat, outnum, then, shouldmerge)

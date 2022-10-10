@@ -1,0 +1,13 @@
+SELECT (0 + CASE
+    WHEN x = 1 THEN CAST(100 + y AS integer)
+    WHEN x = 2 THEN CAST(200 + y AS integer)
+    ELSE CAST(42 + y AS integer)
+END) AS y FROM input
+---
+{"x": 1, "y": 0}
+{"x": 2, "y": 0}
+{"x": 7, "y": 0}
+---
+{"y": 100}
+{"y": 200}
+{"y": 42}
