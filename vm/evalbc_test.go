@@ -66,7 +66,7 @@ func TestStringCompareUT(t *testing.T) {
 				}
 				return x == y
 			},
-			encode: func(x string) string { return x },
+			encode: passThrough,
 			unitTests: []unitTest{
 				{"aaaa", "aaaa", true},
 				{"aaa", "aaaa", false},
@@ -155,48 +155,46 @@ func TestStringCompareUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest) {
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
 		if !utf8.ValidString(ut.needle) {
 			t.Logf("needle is not valid UTF8; skipping this test")
 			return
 		}
 
 		// first: check reference implementation
-		{
-			obsLane := ts.refImpl(ut.data, ut.needle)
-			if obsLane != ut.expLane {
-				t.Errorf("%v\nrefImpl: comparing needle %q to data %q\nobserved %v; expected %v (data16 %v; needle %v)",
-					ts.name, ut.needle, ut.data, obsLane, ut.expLane, []byte(ut.data), []byte(ut.needle))
+		expLanes := [16]bool{}
+		for i := 0; i < 16; i++ {
+			if getBit(lanes, i) {
+				expLanes[i] = ts.refImpl(ut.data, ut.needle)
+				if expLanes[i] != ut.expLane {
+					t.Errorf("%v\nrefImpl: comparing needle %q to data %q\nobserved %v; expected %v (data16 %v; needle %v)",
+						ts.name, ut.needle, ut.data, expLanes[i], ut.expLane, []byte(ut.data), []byte(ut.needle))
+				}
 			}
 		}
 		// second: check the bytecode implementation
-		enc := ts.encode(ut.needle)
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		ctx.setDict(enc)
+		ctx.setDict(ts.encode(ut.needle))
 		ctx.setScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
 
 		// when
 		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
 			t.Fatal(err)
 		}
 		// then
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(ctx.current, i)
-			if obsLane != ut.expLane {
-				t.Errorf("%v\nlane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
-					ts.name, i, ut.needle, ut.data, obsLane, ut.expLane, []byte(ut.data), []byte(ut.needle), []byte(enc))
-				break
-			}
+		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+			t.Errorf("%v\ncomparing needle %q\nto data %q\n%v", ts.name, ut.needle, ut.data, msg)
 		}
 	}
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut)
+				run(ts, ut, 0xFFFF)
 			}
 		})
 	}
@@ -231,7 +229,7 @@ func TestStringCompareBF(t *testing.T) {
 			dataMaxSize:  exhaustive,
 			refImpl:      func(x, y string) bool { return x == y },
 			op:           opCmpStrEqCs,
-			encode:       func(x string) string { return x },
+			encode:       passThrough,
 		},
 		{
 			name:         "compare string case-insensitive (opCmpStrEqCi)",
@@ -264,38 +262,46 @@ func TestStringCompareBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string, needleSpace []string) {
-
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, needleSpace []string) {
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
 		for i, needle := range needleSpace {
 			encNeedles[i] = padNBytes(ts.encode(needle), 4)
 		}
 
+		expLanes := [16]bool{}
+
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
 
+	mainLoop:
+
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
+
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expLanes[i] = ts.refImpl(needle, data16[i])
+					}
+				}
+
 				enc := encNeedles[needleIdx]
 				ctx.setDict(enc)
 				ctx.setScalarStrings(data16)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
+				scalarBefore := ctx.getScalarUint32()
 
 				// when
 				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
 					t.Fatal(err)
 				}
 				// then
-				for i := 0; i < 16; i++ {
-					expLane := ts.refImpl(needle, data16[i])
-					obsLane := getBit(ctx.current, i)
-					if obsLane != expLane {
-						t.Errorf("%v\nlane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
-							ts.name, i, needle, data16[i], obsLane, expLane, []byte(data16[i]), []byte(needle), []byte(enc))
-						break
-					}
+				if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+					t.Errorf("%v\ncomparing needle %q\nto data %q\n%v",
+						ts.name, needle, data16, msg)
+					break mainLoop
 				}
 			}
 		}
@@ -305,7 +311,7 @@ func TestStringCompareBF(t *testing.T) {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			needleSpace := flatten(dataSpace)
-			run(&ts, dataSpace, needleSpace)
+			run(&ts, 0xFFFF, dataSpace, needleSpace)
 		})
 	}
 }
@@ -330,7 +336,7 @@ func FuzzStringCompareFT(f *testing.F) {
 			name:    "compare string case-sensitive (opCmpStrEqCs)",
 			refImpl: func(x, y string) bool { return x == y },
 			op:      opCmpStrEqCs,
-			encode:  func(x string) string { return x },
+			encode:  passThrough,
 		},
 		{
 			name: "compare string case-insensitive (opCmpStrEqCi)",
@@ -421,7 +427,7 @@ func TestMatchpatRefBF(t *testing.T) {
 mainLoop:
 	for _, pattern := range patternSpace {
 		segments := stringext.PatternToSegments(pattern)
-		for _, cmpType := range []strCmpType{cs, ciUTF8} { // NOTE csASCII is not supported wit the regex implementation
+		for _, cmpType := range []strCmpType{cs, ciUTF8} { // NOTE csASCII is not supported with the regex implementation
 			for _, data := range dataSpace {
 				expMatch := matchPatternRegex(data, segments, cmpType)
 				obsMatch, obsOffset, obsLength := matchPatternReference(data, segments, cmpType)
@@ -638,24 +644,32 @@ func TestMatchpatUT1(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest) {
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
 		// first: check reference implementation
 		{
 			obsLane, obsOffset, obsLength := ts.refImpl(string(ut.data), ut.segments)
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
+				}
+			}
 			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
 				t.Errorf("refImpl: %v\ndata %q; segments=%v\n%v", ts.name, ut.data, ut.segments, msg)
 			}
 		}
 		// second: check the bytecode implementation
-		data16 := fill16(string(ut.data))
 		enc := ts.encode(ut.segments)
 
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
 		ctx.setDict(enc)
-		ctx.setScalarStrings(data16)
-		ctx.current = 0xFFFF
+		ctx.setScalarStrings(fill16(string(ut.data)))
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -663,22 +677,16 @@ func TestMatchpatUT1(t *testing.T) {
 			t.Fatal(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(obsLanes, i)
-
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
-				t.Errorf("%v\nlane %v: matching pattern %q (%v)\non data %q\n%v",
-					ts.name, i, stringext.PatternToPrettyString(enc, 3), []byte(enc), ut.data, msg)
-				break
-			}
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\nmatching pattern %q (%v)\non data %q\n%v",
+				ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), ut.data, msg)
 		}
 	}
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut)
+				run(ts, ut, 0xFFFF)
 			}
 		})
 	}
@@ -719,6 +727,61 @@ func TestMatchpatUT2(t *testing.T) {
 				return stringext.SegmentsToPattern(segments, false)
 			},
 			unitTests: []unitTest{
+				{
+					data16: [16]string{
+						"AAxBBxxx", "xxxAAxBB", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					segments:   []string{"AA", "BB"},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]int{5, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]int{3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					data16: [16]string{
+						"AAxBBxxx", "AAſBBxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					segments:   []string{"AA", "BB"},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]int{5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]int{3, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					data16: [16]string{
+						"AxBxxxxx", "AxCxAxBx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					segments:   []string{"A", "B"},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]int{3, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]int{5, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					data16: [16]string{
+						"AAxBBxxx", "xxxAAxBB", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					segments:   []string{"AA", "BB"},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]int{5, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]int{3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					data16: [16]string{
+						"AAxxxxxx", "xxxxAAxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					segments:   []string{"AA"},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]int{2, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]int{6, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
 				{
 					// Test whether NO matching beyond data length
 					data16:     [16]string{"xx", "S", "S", "xx", "SS", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx"},
@@ -793,7 +856,7 @@ func TestMatchpatUT2(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest) {
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
 		// first: check reference implementation
 		{
 			for i := 0; i < 16; i++ {
@@ -815,7 +878,7 @@ func TestMatchpatUT2(t *testing.T) {
 		ctx.Taint()
 		ctx.setDict(enc)
 		ctx.setScalarStrings(ut.data16[:])
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -823,17 +886,16 @@ func TestMatchpatUT2(t *testing.T) {
 			t.Fatal(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if fault, msg := fault16x16(obsLanes, ut.expLanes, obsOffsets, ut.expOffsets, obsLengths, ut.expLengths); fault {
-			t.Errorf("%v\nmatching pattern %q (enc %v)\non data %q\n%v",
-				ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), ut.data16, msg)
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, toBoolArray(ut.expLanes), ut.expOffsets, ut.expLengths); fault {
+			t.Errorf("%v\nmatching pattern %q (enc %v)\non data %v\n%v",
+				ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), join16Str(ut.data16), msg)
 		}
 	}
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut)
+				run(ts, ut, 0xFFFF)
 			}
 		})
 	}
@@ -901,7 +963,11 @@ func TestMatchpatBF1(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string, patternSpace []string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, patternSpace []string) {
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
@@ -912,9 +978,15 @@ func TestMatchpatBF1(t *testing.T) {
 			enc := ts.encode(segments)
 
 			for _, data16 := range dataSpace {
+
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], segments)
+				}
+
 				ctx.setDict(enc)
 				ctx.setScalarStrings(data16)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
 				scalarBefore := ctx.getScalarUint32()
 
 				// when
@@ -922,16 +994,10 @@ func TestMatchpatBF1(t *testing.T) {
 					t.Fatal(err)
 				}
 				// then
-				obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-				for i := 0; i < 16; i++ {
-					expLane, expOffset, expLength := ts.refImpl(data16[i], segments)
-					obsLane := getBit(obsLanes, i)
-
-					if fault, msg := fault1x1(obsLane, expLane, obsOffsets[i], expOffset, obsLengths[i], expLength); fault {
-						t.Errorf("%v\nlane %v: matching pattern %q (%v)\non data %q\n%v",
-							ts.name, i, stringext.PatternToPrettyString(enc, 3), []byte(enc), data16[i], msg)
-						break mainLoop
-					}
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+					t.Errorf("%v\nmatching pattern %q (%v)\non data %q\n%v",
+						ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), data16, msg)
+					break mainLoop
 				}
 			}
 		}
@@ -941,7 +1007,7 @@ func TestMatchpatBF1(t *testing.T) {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpaceExhaustive(ts.dataLenSpace, ts.dataAlphabet)
 			patternSpace := createSpacePatternRandom(ts.patternLenSpace, ts.patternAlphabet, 1000)
-			run(&ts, dataSpace, patternSpace)
+			run(&ts, 0xFFFF, dataSpace, patternSpace)
 		})
 	}
 }
@@ -1049,34 +1115,35 @@ func TestMatchpatBF2(t *testing.T) {
 	}
 
 	// run tests all combinations of elements in dataSpace and all elements of dictionarySpace
-	run := func(ts testSuite, dataSpace [][]string) {
+	run := func(ts testSuite, lanes uint16, dataSpace [][]string) {
 		// pre-compute encoded segments for speed
 		encSegments := make([]string, len(ts.unitTests))
 		for i, ut := range ts.unitTests {
 			encSegments[i] = ts.encode(ut.segments)
 		}
 
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
 
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
 	mainLoop:
 		for _, data16 := range dataSpace {
 			for utIdx, ut := range ts.unitTests {
-				expLanes := uint16(0)
+				// first collect expected values
 				for i := 0; i < 16; i++ {
-					var expLane bool
-					expLane, expOffsets[i], expLengths[i] = ts.refImpl(data16[i], ut.segments)
-					expLanes = setBit(expLanes, i, expLane)
+					if getBit(lanes, i) {
+						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], ut.segments)
+					}
 				}
 
 				enc := encSegments[utIdx]
 				ctx.setDict(enc)
 				ctx.setScalarStrings(data16)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
 				scalarBefore := ctx.getScalarUint32()
 
 				// when
@@ -1084,10 +1151,9 @@ func TestMatchpatBF2(t *testing.T) {
 					t.Fatal(err)
 				}
 				// then
-				obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-				if fault, msg := fault16x16(obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths); fault {
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
 					t.Errorf("%v\nmatching pattern %v (enc %v)\non data %q\n%v",
-						ts.name, stringext.PatternToPrettyString(encSegments[utIdx], 3), []byte(enc), data16, msg)
+						ts.name, ut.segments, []byte(enc), data16, msg)
 					break mainLoop
 				}
 			}
@@ -1097,7 +1163,7 @@ func TestMatchpatBF2(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpaceExhaustive(ts.dataLenSpace, ts.dataAlphabet)
-			run(ts, dataSpace)
+			run(ts, 0xFFFF, dataSpace)
 		})
 	}
 }
@@ -1582,7 +1648,7 @@ func TestRegexMatchUT1(t *testing.T) {
 		{`0.0.0.0`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, true, regexp2.SimilarTo},
 	}
 
-	run := func(ut unitTest) {
+	run := func(ut unitTest, lanes uint16) {
 		data16 := fill16(ut.data)
 
 		ds, err := regexp2.CreateDs(ut.expr, ut.regexType, false, regexp2.MaxNodesAutomaton)
@@ -1596,7 +1662,7 @@ func TestRegexMatchUT1(t *testing.T) {
 			}
 			ctx.setDict(string(dsByte))
 			ctx.setScalarStrings(data16)
-			ctx.current = 0xFFFF
+			ctx.current = lanes
 
 			// when
 			if err := ctx.ExecuteImm2(op, 0); err != nil {
@@ -1644,7 +1710,7 @@ func TestRegexMatchUT1(t *testing.T) {
 
 	for i, ut := range unitTests {
 		t.Run(fmt.Sprintf(`case %d:`, i), func(t *testing.T) {
-			run(ut)
+			run(ut, 0xFFFF)
 		})
 	}
 }
@@ -1700,7 +1766,7 @@ func TestRegexMatchUT2(t *testing.T) {
 		},
 	}
 
-	run := func(ut unitTest) {
+	run := func(ut unitTest, lanes uint16) {
 		ds, err := regexp2.CreateDs(ut.expr, ut.regexType, false, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			t.Error(err)
@@ -1714,7 +1780,7 @@ func TestRegexMatchUT2(t *testing.T) {
 
 			ctx.setDict(string(dsByte))
 			ctx.setScalarStrings(ut.data16[:])
-			ctx.current = 0xFFFF
+			ctx.current = lanes
 
 			// when
 			if err := ctx.ExecuteImm2(op, 0); err != nil {
@@ -1763,7 +1829,7 @@ func TestRegexMatchUT2(t *testing.T) {
 
 	for i, ut := range unitTests {
 		t.Run(fmt.Sprintf(`case %d:`, i), func(t *testing.T) {
-			run(ut)
+			run(ut, 0xFFFF)
 		})
 	}
 }
@@ -1977,7 +2043,7 @@ func TestSubstrUT(t *testing.T) {
 		},
 	}
 
-	run := func(ut [16]unitTest) {
+	run := func(ut [16]unitTest, lanes uint16) {
 		expResults := [16]string{}
 		stackContent1 := make([]uint64, 16)
 		stackContent2 := make([]uint64, 16)
@@ -2002,7 +2068,7 @@ func TestSubstrUT(t *testing.T) {
 		ctx.setScalarStrings(data16)
 		ctx.setStackUint64(stackContent1)
 		ctx.addStackUint64(stackContent2)
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -2033,7 +2099,7 @@ func TestSubstrUT(t *testing.T) {
 
 	t.Run(name, func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut)
+			run(ut, 0xFFFF)
 		}
 	})
 }
@@ -2081,7 +2147,7 @@ func TestSubstrBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
 		stackContent2 := make([]uint64, 16)
 		stackContent1 := make([]uint64, 16)
 		offsetStackSlot1 := uint16(0)
@@ -2107,7 +2173,7 @@ func TestSubstrBF(t *testing.T) {
 					ctx.setScalarStrings(data16)
 					ctx.setStackUint64(stackContent1)
 					ctx.addStackUint64(stackContent2)
-					ctx.current = 0xFFFF
+					ctx.current = lanes
 					scalarBefore := ctx.getScalarUint32()
 
 					// when
@@ -2139,7 +2205,7 @@ func TestSubstrBF(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -2347,7 +2413,7 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 		{"8.8.8.2", "8.8.8.1", "8.8.8.1", false}, // min_3 < ip_3 > max_3
 	}
 
-	run := func(ut unitTest) {
+	run := func(ut unitTest, lanes uint16) {
 		min := binary.BigEndian.Uint32(net.ParseIP(ut.min).To4())
 		max := binary.BigEndian.Uint32(net.ParseIP(ut.max).To4())
 		// first: check reference implementation
@@ -2367,7 +2433,7 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 		ctx.Taint()
 		ctx.setDict(toBCD(&minA, &maxA))
 		ctx.setScalarStrings(fill16(ut.ip))
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 
 		// when
 		if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
@@ -2386,7 +2452,7 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 
 	t.Run(name, func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut)
+			run(ut, 0xFFFF)
 		}
 	})
 }
@@ -2440,7 +2506,9 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 		return
 	}
 
-	run := func(ts testSuite, dataSpace [][]string) {
+	run := func(ts testSuite, lanes uint16, dataSpace [][]string) {
+		expLanes := [16]bool{}
+
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
@@ -2451,23 +2519,26 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 			minA := toArrayIP4(min)
 			maxA := toArrayIP4(max)
 
+			// first collect expected values
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i] = referenceIsSubnetOfIP4(data16[i], min, max) // calculate the expected lane value
+				}
+			}
+
 			ctx.setDict(toBCD(&minA, &maxA))
 			ctx.setScalarStrings(data16)
-			ctx.current = 0xFFFF
+			ctx.current = lanes
+			scalarBefore := ctx.getScalarUint32()
 
 			// when
 			if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
 				t.Fatal(err)
 			}
 			// then
-			for i := 0; i < 16; i++ {
-				expLane := referenceIsSubnetOfIP4(data16[i], min, max) // calculate the expected lane value
-				obsLane := getBit(ctx.current, i)
-				if obsLane != expLane {
-					t.Errorf("%v\nlane %v: ip %q; min %q; max %q; observed %v; expected %v",
-						ts.name, i, data16, toStrIP4(min), toStrIP4(max), obsLane, expLane)
-					break mainLoop
-				}
+			if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+				t.Errorf("%v\nip %q; min %q; max %q\n%v", ts.name, data16, toStrIP4(min), toStrIP4(max), msg)
+				break mainLoop
 			}
 		}
 	}
@@ -2488,7 +2559,7 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 					dataSpace[i] = randomIP4Addr().String()
 				}
 			}
-			run(ts, split16(dataSpace))
+			run(ts, 0xFFFF, split16(dataSpace))
 		})
 	}
 }
@@ -2572,6 +2643,7 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		ctx.setDict(toBCD(&minA, &maxA))
 		ctx.setScalarStrings(data16[:])
 		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
 
 		// when
 		if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
@@ -2579,14 +2651,8 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		}
 		// then
 		if ctx.current != expLanes {
-			for i := 0; i < 16; i++ {
-				obsLane := getBit(ctx.current, 1)
-				expLane := getBit(expLanes, i)
-				if obsLane != expLane {
-					t.Errorf("%v\nlane %v: ip %q; min %q; max %q; observed %v; expected %v",
-						name, i, data16[i], toStrIP4(min), toStrIP4(max), obsLane, expLane)
-					break
-				}
+			if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, toBoolArray(expLanes)); fault {
+				t.Errorf("%v\nip %q; min %q; max %q\n%v", name, data16, toStrIP4(min), toStrIP4(max), msg)
 			}
 		}
 	}
@@ -2671,10 +2737,20 @@ func TestSkip1CharUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest) {
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		dataPrefix := string([]byte{0, 0, 0, 0})
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
 		// first: check reference implementation
 		{
 			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, 1)
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
+				}
+			}
 			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
 				t.Errorf("refImpl: data %q\n%v", ut.data, msg)
 			}
@@ -2683,10 +2759,9 @@ func TestSkip1CharUT(t *testing.T) {
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0})
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -2694,21 +2769,15 @@ func TestSkip1CharUT(t *testing.T) {
 			t.Error(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(obsLanes, i)
-
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
-				t.Errorf("%v\nlane %v: skipping 1 char from data %q\n%v", ts.name, i, ut.data, msg)
-				break
-			}
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\nskipping 1 char from data %q\n%v", ts.name, ut.data, msg)
 		}
 	}
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut)
+				run(ts, ut, 0xFFFF)
 			}
 		})
 	}
@@ -2749,18 +2818,28 @@ func TestSkip1CharBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
 		dataPrefix := string([]byte{0, 0, 0, 0})
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
 
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
 
-	dataLoop:
+	mainLoop:
 		for _, data16 := range dataSpace {
-			ctx.setData(dataPrefix) // prepend four bytes to data such that we can read backwards 4bytes at a time
+			// first collect expected values
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], 1)
+				}
+			}
+
+			ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 			ctx.addScalarStrings(data16)
-			ctx.current = 0xFFFF
+			ctx.current = lanes
 			scalarBefore := ctx.getScalarUint32()
 
 			// when
@@ -2768,22 +2847,16 @@ func TestSkip1CharBF(t *testing.T) {
 				t.Error(err)
 			}
 			// then
-			obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-			for i := 0; i < 16; i++ {
-				expLane, expOffset, expLength := ts.refImpl(data16[i], 1)
-				obsLane := getBit(obsLanes, i)
-
-				if fault, msg := fault1x1(obsLane, expLane, obsOffsets[i], expOffset, obsLengths[i], expLength); fault {
-					t.Errorf("lane %v: skipping 1 char from data %q\n%v", i, data16[i], msg)
-					break dataLoop
-				}
+			if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+				t.Errorf("%v\nskipping 1 char from data %q\n%v", ts.name, data16, msg)
+				break mainLoop
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -2813,25 +2886,24 @@ func FuzzSkip1CharFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
-		expLanes := uint16(0)
+		dataPrefix := string([]byte{0, 0, 0, 0})
+		expLanes := [16]bool{}
 		expOffsets := [16]int{}
 		expLengths := [16]int{}
 
+		// first collect expected values
 		for i := 0; i < 16; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				var expLane bool
-				expLane, expOffsets[i], expLengths[i] = ts.refImpl(data16[i], 1)
-				expLanes = setBit(expLanes, i, expLane)
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], 1)
 			}
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0})
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(data16[:])
 		ctx.current = lanes
@@ -2842,9 +2914,8 @@ func FuzzSkip1CharFT(f *testing.F) {
 			t.Error(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if fault, msg := fault16x16(obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths); fault {
-			t.Errorf("%v\ndata=%q;\n%v", ts.name, data16, msg)
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata=%v;\n%v", ts.name, join16Str(data16), msg)
 		}
 	}
 
@@ -2954,27 +3025,34 @@ func TestSkipNCharUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, ut *unitTest) {
+	run := func(ts *testSuite, ut *unitTest, lanes uint16) {
+		dataPrefix := string([]byte{0, 0, 0, 0})
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+		stackContent := make([]uint64, 16)
+
 		// first: check reference implementation
 		{
 			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.skipCount)
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
+				}
+				stackContent[i] = uint64(ut.skipCount)
+			}
 			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
 				t.Errorf("refImpl: %v\ndata %q; skipCount=%v\n%v", ts.name, ut.data, ut.skipCount, msg)
 			}
 		}
 		// second: check bytecode implementation
-		stackContent := make([]uint64, 16)
-		for i := 0; i < 16; i++ {
-			stackContent[i] = uint64(ut.skipCount)
-		}
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0})
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data))
 		ctx.setStackUint64(stackContent)
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -2982,8 +3060,7 @@ func TestSkipNCharUT(t *testing.T) {
 			t.Fatal(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if fault, msg := fault16x1(obsLanes, ut.expLane, obsOffsets, ut.expOffset, obsLengths, ut.expLength); fault {
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
 			t.Errorf("%v\ndata=%q; skipCount=%v\n%v", ts.name, ut.data, ut.skipCount, msg)
 		}
 	}
@@ -2991,7 +3068,7 @@ func TestSkipNCharUT(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(&ts, &ut)
+				run(&ts, &ut, 0xFFFF)
 			}
 		})
 	}
@@ -3037,9 +3114,12 @@ func TestSkipNCharBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
 		stackContent := make([]uint64, 16)
 		dataPrefix := string([]byte{0, 0, 0, 0})
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
 
 		var ctx bctestContext
 		defer ctx.Free()
@@ -3051,10 +3131,17 @@ func TestSkipNCharBF(t *testing.T) {
 				stackContent[i] = uint64(skipCount)
 			}
 			for _, data16 := range dataSpace {
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], skipCount)
+					}
+				}
+
 				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 				ctx.addScalarStrings(data16)
 				ctx.setStackUint64(stackContent)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
 				scalarBefore := ctx.getScalarUint32()
 
 				// when
@@ -3062,18 +3149,10 @@ func TestSkipNCharBF(t *testing.T) {
 					t.Fatal(err)
 				}
 				// then
-				scalarAfter := ctx.getScalarUint32()
-				for i := 0; i < 16; i++ {
-					expLane, expOffset, expLength := ts.refImpl(data16[i], skipCount)
-					obsLane := getBit(ctx.current, i)
-					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
-					obsLength := int(scalarAfter[1][i])
-
-					if fault, msg := fault1x1(obsLane, expLane, obsOffset, expOffset, obsLength, expLength); fault {
-						t.Errorf("%v\nlane %v: skipping %v char(s) from data %q\n%v",
-							ts.name, i, skipCount, data16[i], msg)
-						break mainLoop
-					}
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+					t.Errorf("%v\nskipping %v char from data %q\n%v",
+						ts.name, skipCount, data16, msg)
+					break mainLoop
 				}
 			}
 		}
@@ -3081,7 +3160,7 @@ func TestSkipNCharBF(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -3113,7 +3192,9 @@ func FuzzSkipNCharFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, skipCount [16]int) {
-		expLanes := uint16(0)
+
+		// first collect expected values
+		expLanes := [16]bool{}
 		expOffsets := [16]int{}
 		expLengths := [16]int{}
 		stackContent := make([]uint64, 16)
@@ -3123,9 +3204,7 @@ func FuzzSkipNCharFT(f *testing.F) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				var expLane bool
-				expLane, expOffsets[i], expLengths[i] = ts.refImpl(data16[i], skipCount[i])
-				expLanes = setBit(expLanes, i, expLane)
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], skipCount[i])
 			}
 			if skipCount[i] > 0 {
 				stackContent[i] = uint64(skipCount[i])
@@ -3147,9 +3226,8 @@ func FuzzSkipNCharFT(f *testing.F) {
 			t.Fatal(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if fault, msg := fault16x16(obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths); fault {
-			t.Errorf("%v\ndata16=%q;\n%v", ts.name, data16, msg)
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata=%v;\n%v", ts.name, join16Str(data16), msg)
 		}
 	}
 
@@ -3257,28 +3335,34 @@ func TestSplitPartUT(t *testing.T) {
 		{"aa;𐍈", 2, ';', true, 3, 4}, // select "𐍈"
 	}
 
-	run := func(ut unitTest) {
+	run := func(ut unitTest, lanes uint16) {
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+		stackContent := make([]uint64, 16)
+
 		// first: check reference implementation
 		{
 			obsLane, obsOffset, obsLength := referenceSplitPart(ut.data, ut.idx, ut.delimiter)
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
+				}
+				stackContent[i] = uint64(ut.idx)
+			}
 			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
 				t.Errorf("refImpl: splitting %q; idx=%v; delim=%q\n%v", ut.data, ut.idx, ut.delimiter, msg)
 			}
 		}
 
 		// second: check bytecode implementation
-		stackContent := make([]uint64, 16)
-		for i := 0; i < 16; i++ {
-			stackContent[i] = uint64(ut.idx)
-		}
-
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
 		ctx.setDict(string(ut.delimiter))
 		ctx.setScalarStrings(fill16(ut.data))
 		ctx.setStackUint64(stackContent)
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -3287,24 +3371,15 @@ func TestSplitPartUT(t *testing.T) {
 		if err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot); err != nil {
 			t.Error(err)
 		}
-
-		scalarAfter := ctx.getScalarUint32()
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(ctx.current, i)
-			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
-			obsLength := int(scalarAfter[1][i])
-
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("%v\nlane %v: splitting %q; idx=%v; delim=%q\n%v",
-					name, i, ut.data, ut.idx, ut.delimiter, msg)
-				break
-			}
+		// then
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\nsplitting %q; idx=%v; delim=%q\n%v", name, ut.data, ut.idx, ut.delimiter, msg)
 		}
 	}
 
 	t.Run(name, func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut)
+			run(ut, 0xFFFF)
 		}
 	})
 }
@@ -3352,8 +3427,11 @@ func TestSplitPartBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
 		stackContent := make([]uint64, 16)
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
 
 		var ctx bctestContext
 		defer ctx.Free()
@@ -3364,11 +3442,19 @@ func TestSplitPartBF(t *testing.T) {
 			for i := 0; i < 16; i++ {
 				stackContent[i] = uint64(idx)
 			}
+
 			for _, data16 := range dataSpace {
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], idx, ts.delimiter)
+					}
+				}
+
 				ctx.setDict(string(ts.delimiter))
 				ctx.setScalarStrings(data16)
 				ctx.setStackUint64(stackContent)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
 				scalarBefore := ctx.getScalarUint32()
 
 				// when
@@ -3377,20 +3463,10 @@ func TestSplitPartBF(t *testing.T) {
 				if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
 					t.Error(err)
 				}
-
 				// then
-				scalarAfter := ctx.getScalarUint32()
-				for i := 0; i < 16; i++ {
-					expLane, expOffset, expLength := ts.refImpl(data16[i], idx, ts.delimiter)
-					obsLane := getBit(ctx.current, i)
-					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
-					obsLength := int(scalarAfter[1][i])
-
-					if fault, msg := fault1x1(obsLane, expLane, obsOffset, expOffset, obsLength, expLength); fault {
-						t.Errorf("%v\nlane %v: splitting %q; idx=%v; delim=%q\n%v",
-							ts.name, i, data16[i], idx, ts.delimiter, msg)
-						break mainLoop
-					}
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+					t.Errorf("%v\nsplitting %q; idx=%v; delim=%q\n%v", ts.name, data16, idx, ts.delimiter, msg)
+					break mainLoop
 				}
 			}
 		}
@@ -3398,7 +3474,7 @@ func TestSplitPartBF(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -3429,7 +3505,8 @@ func FuzzSplitPartFT(f *testing.F) {
 		}
 		delimiter := rune(delimiterByte)
 
-		expLanes := uint16(0)
+		// first collect expected values
+		expLanes := [16]bool{}
 		expOffsets := [16]int{}
 		expLengths := [16]int{}
 		stackContent := make([]uint64, 16)
@@ -3439,9 +3516,7 @@ func FuzzSplitPartFT(f *testing.F) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				var expLane bool
-				expLane, expOffsets[i], expLengths[i] = ts.refImpl(data16[i], idx[i], delimiter)
-				expLanes = setBit(expLanes, i, expLane)
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], idx[i], delimiter)
 			}
 			if idx[i] > 0 {
 				stackContent[i] = uint64(idx[i])
@@ -3464,10 +3539,9 @@ func FuzzSplitPartFT(f *testing.F) {
 			t.Error(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if fault, msg := fault16x16(obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths); fault {
-			t.Errorf("%v\nlanes=%016b\ndata16=%q\nidx=%v\ndelim=%q (0x%x)\n%v",
-				ts.name, lanes, data16, idx, delimiter, byte(delimiter), msg)
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata=%v\nidx=%v\ndelim=%q (0x%x)\n%v",
+				ts.name, join16Str(data16), idx, delimiter, byte(delimiter), msg)
 		}
 	}
 
@@ -3509,7 +3583,7 @@ func TestLengthStrUT(t *testing.T) {
 		{string([]byte{0xC2, 0xA2, 0xC2, 0xA2, 0x24}), 3},
 	}
 
-	run := func(ut unitTest) {
+	run := func(ut unitTest, lanes uint16) {
 		// first: check reference implementation
 		{
 			obsChars := utf8.RuneCountInString(ut.data)
@@ -3522,7 +3596,7 @@ func TestLengthStrUT(t *testing.T) {
 		defer ctx.Free()
 		ctx.Taint()
 		ctx.setScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 
 		// when
 		if err := ctx.Execute(opLengthStr); err != nil {
@@ -3541,7 +3615,7 @@ func TestLengthStrUT(t *testing.T) {
 
 	t.Run(name, func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut)
+			run(ut, 0xFFFF)
 		}
 	})
 }
@@ -3581,15 +3655,24 @@ func TestLengthStrBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+		expChars := [16]int{}
+
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
 
 	mainLoop:
 		for _, data16 := range dataSpace {
+			// first collect expected values
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expChars[i] = ts.refImpl(data16[i])
+				}
+			}
+
 			ctx.setScalarStrings(data16)
-			ctx.current = 0xFFFF
+			ctx.current = lanes
 
 			// when
 			if err := ctx.Execute(ts.op); err != nil {
@@ -3598,9 +3681,8 @@ func TestLengthStrBF(t *testing.T) {
 			// then
 			scalarAfter := ctx.getScalarInt64()
 			for i := 0; i < 16; i++ {
-				expChars := ts.refImpl(data16[i])
 				obsChars := int(scalarAfter[i])
-				if obsChars != expChars {
+				if obsChars != expChars[i] {
 					t.Errorf("%v\nlane %v: length of %q; observed %v; expected: %v",
 						ts.name, i, data16[i], obsChars, expChars)
 					break mainLoop
@@ -3611,7 +3693,7 @@ func TestLengthStrBF(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -3727,7 +3809,7 @@ func TestTrimCharUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest) {
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
 		// first: check reference implementation
 		for i := 0; i < 16; i++ {
 			obsResult := ts.refImpl(ut.data[i], ut.cutset)
@@ -3744,7 +3826,7 @@ func TestTrimCharUT(t *testing.T) {
 		ctx.setDict(fill4(ut.cutset))
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(ut.data[:])
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -3769,7 +3851,7 @@ func TestTrimCharUT(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut)
+				run(ts, ut, 0xFFFF)
 			}
 		})
 	}
@@ -3838,8 +3920,9 @@ func TestTrimCharBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string, cutsetSpace []string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, cutsetSpace []string) {
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
+		expResults := [16]string{}
 
 		var ctx bctestContext
 		defer ctx.Free()
@@ -3848,10 +3931,18 @@ func TestTrimCharBF(t *testing.T) {
 	mainLoop:
 		for _, data16 := range dataSpace {
 			for _, cutset := range cutsetSpace {
+
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expResults[i] = ts.refImpl(data16[i], cutset) // expected result
+					}
+				}
+
 				ctx.setDict(fill4(cutset))
 				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 				ctx.addScalarStrings(data16)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
 				scalarBefore := ctx.getScalarUint32()
 
 				// when
@@ -3861,14 +3952,13 @@ func TestTrimCharBF(t *testing.T) {
 				// then
 				scalarAfter := ctx.getScalarUint32()
 				for i := 0; i < 16; i++ {
-					expResult := ts.refImpl(data16[i], cutset)               // expected result
 					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
 					obsLength := int(scalarAfter[1][i])
 					obsResult := data16[i][obsOffset : obsOffset+obsLength] // observed result
 
-					if expResult != obsResult {
+					if expResults[i] != obsResult {
 						t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
-							ts.name, i, data16[i], cutset, obsResult, expResult)
+							ts.name, i, data16[i], cutset, obsResult, expResults[i])
 						break mainLoop
 					}
 				}
@@ -3880,7 +3970,7 @@ func TestTrimCharBF(t *testing.T) {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			cutsetSpace := flatten(createSpace(ts.cutsetLenSpace, ts.cutsetAlphabet, ts.cutsetMaxSize))
-			run(&ts, dataSpace, cutsetSpace)
+			run(&ts, 0xFFFF, dataSpace, cutsetSpace)
 		})
 	}
 }
@@ -4026,7 +4116,7 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest) {
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
 		// first: check reference implementation
 		{
 			obsResult := ts.refImpl(ut.data)
@@ -4041,7 +4131,7 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
 		ctx.setData(dataPrefix)                  // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -4062,7 +4152,7 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut)
+				run(ts, ut, 0xFFFF)
 			}
 		})
 	}
@@ -4109,8 +4199,9 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
+		expResults := [16]string{}
 
 		var ctx bctestContext
 		defer ctx.Free()
@@ -4118,9 +4209,17 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 
 	mainLoop:
 		for _, data16 := range dataSpace {
+
+			// first collect expected values
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expResults[i] = ts.refImpl(data16[i])
+				}
+			}
+
 			ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 			ctx.addScalarStrings(data16)
-			ctx.current = 0xFFFF
+			ctx.current = lanes
 			scalarBefore := ctx.getScalarUint32()
 
 			// when
@@ -4130,12 +4229,11 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 			// then
 			_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
 			for i := 0; i < 16; i++ {
-				expResult := ts.refImpl(data16[i])
 				resultObs := data16[i][obsOffsets[i] : obsOffsets[i]+obsLengths[i]]
 
-				if expResult != resultObs {
+				if expResults[i] != resultObs {
 					t.Errorf("%v\nlane %v: trim %q: observed %q; expected: %q",
-						ts.name, i, data16[i], resultObs, expResult)
+						ts.name, i, data16[i], resultObs, expResults[i])
 					break mainLoop
 				}
 			}
@@ -4144,7 +4242,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -4312,7 +4410,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsPrefixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-			encode:  func(needle string) string { return needle },
+			encode:  passThrough,
 		},
 		{
 			name: "contains prefix case-insensitive (opContainsPrefixCi)",
@@ -4369,7 +4467,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsSuffixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-			encode:  func(needle string) string { return needle },
+			encode:  passThrough,
 		},
 		{
 			name: "contains suffix case-insensitive (opContainsSuffixCi)",
@@ -4421,23 +4519,33 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, ut *unitTest) {
+	run := func(ts *testSuite, ut *unitTest, lanes uint16) {
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
 		// first: check reference implementation
 		{
 			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.needle)
+			for i := 0; i < 16; i++ {
+				if getBit(lanes, i) {
+					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
+				}
+			}
 			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
 				t.Errorf("%v\nrefImpl: data %q contains needle %q\n%v", ts.name, ut.data, ut.needle, msg)
 			}
 		}
+
 		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
 		ctx.setDict(ts.encode(ut.needle))
 		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
+		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()
 
 		// when
@@ -4445,20 +4553,15 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			t.Fatal(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(obsLanes, i)
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
-				t.Errorf("%v\nlane %v: data %q contains needle %q\n%v", ts.name, i, ut.data, ut.needle, msg)
-				break
-			}
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata %q\ncontains needle %q\n%v", ts.name, ut.data, ut.needle, msg)
 		}
 	}
 
 	for _, ts := range testSuites {
 		t.Run(ts.name, func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(&ts, &ut)
+				run(&ts, &ut, 0xFFFF)
 			}
 		})
 	}
@@ -4494,7 +4597,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-			encode:         func(needle string) string { return needle },
+			encode:         passThrough,
 		},
 		{
 			name:           "contains prefix case-insensitive (opContainsPrefixCi)",
@@ -4542,7 +4645,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-			encode:         func(needle string) string { return needle },
+			encode:         passThrough,
 		},
 		{
 			name:           "contains suffix case-insensitive (opContainsSuffixCi)",
@@ -4582,8 +4685,11 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]string, needleSpace []string) {
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, needleSpace []string) {
 		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
 
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
@@ -4598,10 +4704,17 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 	mainLoop:
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
+					}
+				}
+
 				ctx.setDict(encNeedles[needleIdx])
 				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
 				ctx.addScalarStrings(data16)
-				ctx.current = 0xFFFF
+				ctx.current = lanes
 				scalarBefore := ctx.getScalarUint32()
 
 				// when
@@ -4609,15 +4722,9 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 					t.Fatal(err)
 				}
 				// then
-				obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-				for i := 0; i < 16; i++ {
-					expLane, expOffset, expLength := ts.refImpl(data16[i], needle)
-					obsLane := getBit(obsLanes, i)
-					if fault, msg := fault1x1(obsLane, expLane, obsOffsets[i], expOffset, obsLengths[i], expLength); fault {
-						t.Errorf("%v\nlane %v: data %q contains needle %q\n%v",
-							ts.name, i, data16[i], needle, msg)
-						break mainLoop
-					}
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+					t.Errorf("%v\ndata %q\ncontains needle %q\n%v", ts.name, data16, needle, msg)
+					break mainLoop
 				}
 			}
 		}
@@ -4627,7 +4734,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			needleSpace := flatten(createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize))
-			run(&ts, dataSpace, needleSpace)
+			run(&ts, 0xFFFF, dataSpace, needleSpace)
 		})
 	}
 }
@@ -4653,7 +4760,7 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 			name:    "contains prefix case-sensitive (opContainsPrefixCs)",
 			op:      opContainsPrefixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-			encode:  func(needle string) string { return needle },
+			encode:  passThrough,
 		},
 		{
 			name:    "contains prefix case-insensitive (opContainsPrefixCi)",
@@ -4671,7 +4778,7 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 			name:    "contains suffix case-sensitive (opContainsSuffixCs)",
 			op:      opContainsSuffixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-			encode:  func(needle string) string { return needle },
+			encode:  passThrough,
 		},
 		{
 			name:    "contains suffix case-insensitive (opContainsSuffixCi)",
@@ -4700,7 +4807,8 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 			}
 		}
 
-		expLanes := uint16(0)
+		// first collect expected values
+		expLanes := [16]bool{}
 		expOffsets := [16]int{}
 		expLengths := [16]int{}
 
@@ -4709,9 +4817,7 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				var expLane bool
-				expLane, expOffsets[i], expLengths[i] = ts.refImpl(data16[i], cutset)
-				expLanes = setBit(expLanes, i, expLane)
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], cutset)
 			}
 		}
 
@@ -4730,10 +4836,9 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 			t.Fatal(err)
 		}
 		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if fault, msg := fault16x16(obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths); fault {
-			t.Errorf("%v\nlanes=%016b\ndata16=%q\ncutset=%q\n%v",
-				ts.name, lanes, data16, cutset, msg)
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata=%v\ncutset=%q\n%v",
+				ts.name, join16Str(data16), cutset, msg)
 		}
 	}
 
@@ -4917,6 +5022,28 @@ func TestBytecodeIsNull(t *testing.T) {
 /////////////////////////////////////////////////////////////
 // Helper functions
 
+func toBoolArray(v uint16) (result [16]bool) {
+	for i := 0; i < 16; i++ {
+		result[i] = getBit(v, i)
+	}
+	return
+}
+
+func join16Str(values [16]string) (result string) {
+	result += "["
+	for i := 0; i < len(values); i++ {
+		result += fmt.Sprintf("%q", values[i]) // NOTE strings.Join(values, ",") does not escape
+		if i < len(values)-1 {
+			result += ","
+		}
+	}
+	return result + "]"
+}
+
+func passThrough(v string) string {
+	return v
+}
+
 type strCmpType int
 
 const (
@@ -5022,27 +5149,89 @@ func fill4(cutset string) string {
 	}
 }
 
-func fault16x16(obsLanes, expLanes uint16, obsOffsets, expOffsets, obsLengths, expLengths [16]int) (bool, string) {
+// hasFault determines if there are faults and returns a description of the fault
+func hasFault(ctx *bctestContext, scalarBefore [2][16]uint32, initLanes uint16, expLanes [16]bool, expOffsets, expLengths [16]int) (bool, string) {
+
+	btou := func(b bool) uint8 {
+		if b {
+			return 1
+		}
+		return 0
+	}
+
+	toStringWithColor := func(initLanes, obsLanes uint16, expLanes [16]bool, obsOffsets, expOffsets, obsLengths, expLengths [16]int) (result [6]string) {
+		colorRed := "\033[31m"
+		colorReset := "\033[0m"
+
+		result[0] = ""
+		result[1] = ""
+		result[2] = "["
+		result[3] = "["
+		result[4] = "["
+		result[5] = "["
+		for j := 0; j < 16; j++ {
+			color1 := colorReset
+			color2 := colorReset
+			color3 := colorReset
+
+			initLane := getBit(initLanes, j)
+			obsLane := getBit(obsLanes, j)
+			expLane := expLanes[j]
+
+			if initLane && (obsLane || expLane) {
+				if obsLane != expLane {
+					color1 = colorRed
+				}
+				if obsOffsets[j] != expOffsets[j] {
+					color2 = colorRed
+				}
+				if obsLengths[j] != expLengths[j] {
+					color3 = colorRed
+				}
+			}
+			result[0] = fmt.Sprintf("%v%v%v", color1, btou(obsLane), colorReset) + result[0]
+			result[1] = fmt.Sprintf("%v%v%v", color1, btou(expLane), colorReset) + result[1]
+			result[2] += fmt.Sprintf("%v%v%v", color2, obsOffsets[j], colorReset)
+			result[3] += fmt.Sprintf("%v%v%v", color2, expOffsets[j], colorReset)
+			result[4] += fmt.Sprintf("%v%v%v", color3, obsLengths[j], colorReset)
+			result[5] += fmt.Sprintf("%v%v%v", color3, expLengths[j], colorReset)
+
+			if j == 15 {
+				result[0] = "0b" + result[0]
+				result[1] = "0b" + result[1]
+				result[2] += "]"
+				result[3] += "]"
+				result[4] += "]"
+				result[5] += "]"
+			} else {
+				result[2] += ","
+				result[3] += ","
+				result[4] += ","
+				result[5] += ","
+			}
+		}
+		return
+	}
+
+	obsLanes, obsOffsets, obsLengths := getObsValues(*ctx, scalarBefore)
+
 	for i := 0; i < 16; i++ {
-		obsLane := getBit(obsLanes, i)
-		expLane := getBit(expLanes, i)
-		if fault, _ := fault1x1(obsLane, expLane, obsOffsets[i], expOffsets[i], obsLengths[i], expLengths[i]); fault {
-			return true, fmt.Sprintf("issue with lane %v:\nobserved: lanes=0b%016b, offset=%v, length=%v\nexpected: lanes=0b%016b, offset=%v, length=%v\n-----------------------------------",
-				i, obsLanes, obsOffsets, obsLengths, expLanes, expOffsets, expLengths)
+		if getBit(initLanes, i) {
+			obsLane := getBit(obsLanes, i)
+			if fault, _ := fault1x1(obsLane, expLanes[i], obsOffsets[i], expOffsets[i], obsLengths[i], expLengths[i]); fault {
+				str := toStringWithColor(initLanes, obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths)
+				return true, fmt.Sprintf("issue with lane %v:\ninitial:  lanes=0b%08b\nobserved: lanes=%v, offset=%v, length=%v\nexpected: lanes=%v, offset=%v, length=%v\n-----------------------------------",
+					i, initLanes, str[0], str[2], str[4], str[1], str[3], str[5])
+			}
 		}
 	}
 	return false, ""
 }
 
-func fault16x1(obsLanes uint16, expLane bool, obsOffsets [16]int, expOffset int, obsLengths [16]int, expLength int) (bool, string) {
-	for i := 0; i < 16; i++ {
-		obsLane := getBit(obsLanes, i)
-		if fault, _ := fault1x1(obsLane, expLane, obsOffsets[i], expOffset, obsLengths[i], expLength); fault {
-			return true, fmt.Sprintf("issue with lane %v:\nobserved: lanes=0b%016b, offset=%v, length=%v\nexpected: lane=%v, offset=%v, length=%v\n-----------------------------------",
-				i, obsLanes, obsOffsets, obsLengths, expLane, expOffset, expLength)
-		}
-	}
-	return false, ""
+// hasFaultLanesOnly determines if there are faults (for the lanes only) and returns a description of the fault
+func hasFaultLanesOnly(ctx *bctestContext, scalarBefore [2][16]uint32, initLanes uint16, expLanes [16]bool) (bool, string) {
+	_, obsOffsets, obsLengths := getObsValues(*ctx, scalarBefore)
+	return hasFault(ctx, scalarBefore, initLanes, expLanes, obsOffsets, obsLengths)
 }
 
 func fault1x1(obsLane, expLane bool, obsOffset, expOffset, obsLength, expLength int) (bool, string) {

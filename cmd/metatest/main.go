@@ -173,7 +173,6 @@ func callGoTest(testDir, crashDir string, testNames []string, count, timeoutSec 
 			// thumbs up; everything ok
 		} else if strings.HasPrefix(resultLines[0], "panic: test timed out after") {
 			// no issues, just a timeout
-			log.Printf("%v: Timeout after %v seconds", info, timeoutSec)
 		} else {
 			if _, err := os.Stat(crashDir); errors.Is(err, os.ErrNotExist) {
 				if err = os.MkdirAll(crashDir, os.ModePerm); err != nil {
