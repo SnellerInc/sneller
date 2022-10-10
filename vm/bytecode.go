@@ -178,7 +178,6 @@ var opinfo = [_maxbcop]bcopinfo{
 	oploadzerov:     {text: "loadzero.v", imms: bcImmsS16, flags: bcWriteK | bcWriteV},
 	opsavezerov:     {text: "savezero.v", imms: bcImmsS16, flags: bcReadK | bcReadV},
 	oploadpermzerov: {text: "loadpermzero.v", imms: bcImmsS16, flags: bcWriteK | bcWriteV},
-	opsaveblendv:    {text: "saveblend.v", imms: bcImmsS16, flags: bcReadK | bcReadV},
 	oploads:         {text: "load.s", imms: bcImmsS16, flags: bcWriteS},
 	opsaves:         {text: "save.s", imms: bcImmsS16, flags: bcReadS},
 	oploadzeros:     {text: "loadzero.s", imms: bcImmsS16, flags: bcWriteK | bcWriteS},

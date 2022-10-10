@@ -198,20 +198,17 @@ const (
 	shashlookup // look up a hash in a tree for a value; returns boxed
 
 	sstorev // store value in a stack slot
-	sstorevblend
-	sloadv // load value from a stack slot
+	sloadv  // load value from a stack slot
 	sloadvperm
 
 	sstorelist
 	sloadlist
-	smhk // mem+hash+predicate
 	smsk // mem+scalar+predicate
 	sbhk // base+hash+predicate
 	sbk  // base+predicate tuple
 	smk  // mem+predicate tuple
 	svk
 	sfloatk
-	sstrk
 
 	// blend ops (just conditional moves)
 	sblendv
@@ -838,10 +835,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
 
 	// store value m, v, k, $slot
-	sstorev:      {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
-	sstorevblend: {text: "store.blend", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorevblend, priority: prioMem},
-	sloadv:       {text: "load.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadzerov, priority: prioParse},
-	sloadvperm:   {text: "load.perm.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadpermzerov, priority: prioParse},
+	sstorev:    {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
+	sloadv:     {text: "load.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadzerov, priority: prioParse},
+	sloadvperm: {text: "load.perm.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadpermzerov, priority: prioParse},
 
 	sloadlist:  {text: "loadlist.z", rettype: stListMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, priority: prioParse},
 	sstorelist: {text: "storelist.z", rettype: stMem, argtypes: []ssatype{stMem, stList, stBool}, immfmt: fmtother, emit: emitstores, priority: prioMem},
@@ -861,7 +857,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// associated with a different not-missing mask
 	// (generally they do not lead to any code being emitted)
 	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, emit: emittuple2regs},
-	sstrk:   {text: "strk", rettype: stString, argtypes: []ssatype{stString, stBool}, emit: emittuple2regs},
 	svk:     {text: "vk", rettype: stValue, argtypes: []ssatype{stValue, stBool}, emit: emittuple2regs},
 
 	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv, blend: true},
@@ -6058,22 +6053,6 @@ func emitboxmask(v *value, c *compilestate) {
 	// true/false mask is on the stack
 	c.loadk(v, output)
 	c.ops16(v, opboxmask, c.existingStackRef(truefalse, regK))
-}
-
-func emitstorevblend(v *value, c *compilestate) {
-	_ = v.args[0] // mem
-	arg := v.args[1]
-	mask := v.args[2]
-	slot := v.imm.(int)
-	if mask.op == skfalse {
-		// the only observable side-effect
-		// is updating lanes, so no lanes set
-		// means this instruction is entirely dead
-		return
-	}
-	c.loadk(v, mask)
-	c.loadv(v, arg)
-	c.ops16(v, opsaveblendv, stackslot(slot))
 }
 
 func emitstorev(v *value, c *compilestate) {

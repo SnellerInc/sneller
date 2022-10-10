@@ -242,13 +242,6 @@ TEXT bcloadpermzerov(SB), NOSPLIT|NOFRAME, $0
   VPTESTMD    Z31, Z31, K1
   NEXT_ADVANCE(2)
 
-// save a subset of lanes to a particular slot, leaving existing entries intact
-TEXT bcsaveblendv(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  VMOVDQU32   Z30, K1, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU32   Z31, K1, 64(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
 // load scalar
 TEXT bcloads(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX 0(VIRT_PCREG), R8
