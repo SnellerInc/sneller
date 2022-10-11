@@ -516,3 +516,17 @@ func createApproxCountDistinct(body expr.Node, precision int, filter expr.Node, 
 		Over:      over,
 		Filter:    filter}, nil
 }
+
+func createCase(optionalExpr expr.Node, limbs []expr.CaseLimb, elseExpr expr.Node) expr.Node {
+	if optionalExpr != nil {
+		// "simplified" CASE
+		for i := range limbs {
+			limbs[i].When = expr.Compare(expr.Equals, optionalExpr, limbs[i].When)
+		}
+	}
+
+	return &expr.Case{
+		Limbs: limbs,
+		Else:  elseExpr,
+	}
+}

@@ -257,6 +257,14 @@ func TestParseNormalization(t *testing.T) {
 			"SELECT TRIM(BOTH x FROM y) FROM table",
 			"SELECT TRIM(y, x) FROM table",
 		},
+		{
+			`SELECT CASE WHEN y = 1 THEN 'one' WHEN y = 2 THEN 'two' ELSE 'other' END`,
+			`SELECT CASE WHEN y = 1 THEN 'one' WHEN y = 2 THEN 'two' ELSE 'other' END`,
+		},
+		{
+			`SELECT CASE x WHEN 1 THEN 'one' WHEN 2 THEN 'two' ELSE 'other' END`,
+			`SELECT CASE WHEN x = 1 THEN 'one' WHEN x = 2 THEN 'two' ELSE 'other' END`,
+		},
 	}
 
 	tm, ok := date.Parse([]byte("2006-01-02T15:04:05.999Z"))

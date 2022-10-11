@@ -230,7 +230,7 @@ arith_expr = expr ('+' | '-' | '/' | '*' | '%') expr;
 function_name = ... ; // see list of built-in functions
 function_expr = function_name '(' arg { ',' args } ')' ;
 
-case_expr = 'CASE' { 'WHEN' expr 'THEN' expr } [ 'ELSE' expr ] 'END' ;
+case_expr = 'CASE' [ expr ] { 'WHEN' expr 'THEN' expr } [ 'ELSE' expr ] 'END' ;
 ```
 
 ### General Limitations
@@ -843,6 +843,35 @@ the value to produce when none of the `condition` expressions evaluate to `TRUE`
 
 When no explicit `ELSE` clause is present in a `CASE`,
 an implicit `ELSE MISSING` is inserted.
+
+#### Simplified `CASE`
+
+`CASE` variant given in the following format:
+
+```sql
+CASE expr
+    WHEN val1 THEN result1
+    WHEN val2 THEN result2
+    ...
+    WHEN valN THEN resultN
+    ELSE default    -- optional
+END
+```
+
+A case expression evaluates to the k-th result when `expr` equals
+to k-th value. It is equivalent to a generic case:
+
+```sql
+CASE
+    WHEN expr = val1 THEN result1
+    WHEN expr = val2 THEN result2
+    ...
+    WHEN expr = valN THEN resultN
+    ELSE default    -- optional
+END
+```
+
+See [Postgres Conditional Expressions](https://www.postgresql.org/docs/current/functions-conditional.html#FUNCTIONS-CASE)
 
 #### `NULLIF`
 

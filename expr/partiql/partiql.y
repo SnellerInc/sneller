@@ -94,7 +94,7 @@ import (
 %token <str> STRING
 
 %type <expr> query expr datum datum_or_parens path_expression maybe_into
-%type <expr> where_expr having_expr case_optional_else parenthesized_expr
+%type <expr> where_expr having_expr case_optional_expr case_optional_else parenthesized_expr
 %type <expr> optional_filter
 %type <expr> unpivot unpivot_source explicit_struct_definition explicit_list_definition
 %type <with> maybe_cte_bindings cte_bindings
@@ -234,9 +234,9 @@ datum_or_parens
   }
   $$ = agg
 }
-| CASE case_limbs case_optional_else END
+| CASE case_optional_expr case_limbs case_optional_else END
 {
-  $$ = &expr.Case{Limbs: $2, Else: $3}
+  $$ = createCase($2, $3, $4)
 }
 | COALESCE '(' value_list ')'
 {
@@ -630,6 +630,10 @@ ELSE expr { $$ = $2 }
 case_limbs:
 WHEN expr THEN expr { $$ = []expr.CaseLimb{{When: $2, Then: $4}} }
 | case_limbs WHEN expr THEN expr { $$ = append($1, expr.CaseLimb{When: $3, Then: $5}) }
+
+case_optional_expr:
+{ $$ = nil } |
+expr { $$ = $1 }
 
 optional_filter:
 { $$ = nil } |
