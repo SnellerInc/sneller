@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -157,18 +158,34 @@ func parse(arg string) *expr.Query {
 	if err != nil {
 		var lexError *partiql.LexerError
 		if errors.As(err, &lexError) {
-			fmt.Printf("%s\n", buf)
-			fmt.Printf("%s", strings.Repeat(" ", lexError.Position-1))
-			n := lexError.Length
-			if n == 0 {
-				n = 2
+			position := lexError.Position
+			length := lexError.Length
+			if length == 0 {
+				length = 2
 			}
 
-			fmt.Printf("%s\n", strings.Repeat("^", n))
+			underlineError(buf, position, length)
 		}
 		exit(err)
 	}
 	return q
+}
+
+var newline = []byte{'\n'}
+
+func underlineError(query []byte, position, length int) {
+	lines := bytes.Split(query, newline)
+
+	for i := range lines {
+		line := lines[i]
+		fmt.Printf("%s\n", line)
+		if length > 0 && position <= len(line) {
+			fmt.Printf("%s%s\n", strings.Repeat(" ", position), strings.Repeat("^", length))
+			length = 0
+		}
+
+		position -= len(line) + 1
+	}
 }
 
 func tenantEnv(tenant db.Tenant, db string) *sneller.TenantEnv {
