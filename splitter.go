@@ -39,7 +39,7 @@ type Splitter struct {
 	// MaxScan is the computed maximum bytes
 	// scanned after sparse indexing has been
 	// applied.
-	MaxScan int64
+	MaxScan uint64
 }
 
 func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtables, error) {
@@ -78,7 +78,7 @@ func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 			if err := insert(b); err != nil {
 				return nil, err
 			}
-			s.MaxScan += stat.Size
+			s.MaxScan += uint64(stat.Size)
 			continue
 		}
 		sub, err := c.Split(int(size))
@@ -92,7 +92,7 @@ func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 			if scan == 0 {
 				continue
 			}
-			s.MaxScan += scan
+			s.MaxScan += uint64(scan)
 			if err := insert(&sub[i]); err != nil {
 				return nil, err
 			}

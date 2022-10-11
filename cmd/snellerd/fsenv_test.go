@@ -83,6 +83,7 @@ func (d *dirResolver) Split(pattern string) (db.InputFS, string, error) {
 func (t *testTenant) ID() string                { return "test-tenant" }
 func (t *testTenant) Root() (db.InputFS, error) { return t.root, nil }
 func (t *testTenant) Key() *blockfmt.Key        { return t.key }
+func (t *testTenant) Config() *db.TenantConfig  { return nil }
 
 func (t *testTenant) Split(pat string) (db.InputFS, string, error) {
 	dr := dirResolver{t.root}

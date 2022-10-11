@@ -42,6 +42,8 @@ func (t *testTenant) Root() (InputFS, error) {
 }
 func (t *testTenant) Key() *blockfmt.Key { return t.key }
 
+func (t *testTenant) Config() *TenantConfig { return nil }
+
 func (t *testTenant) Split(pat string) (InputFS, string, error) {
 	dr := dirResolver{t.root}
 	return dr.Split(pat)

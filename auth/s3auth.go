@@ -53,6 +53,9 @@ type S3BearerIdentity struct {
 	// Credentials is a JSON-compatible
 	// representation of the AWS SDK "Credentials" structure
 	Credentials S3BearerCredentials `json:"Credentials"`
+	// MaxScanBytes is the maximum number of bytes
+	// allowed to be scanned on any query.
+	MaxScanBytes uint64 `json:"MaxScanBytes"`
 }
 
 type S3BearerCredentials struct {
@@ -102,7 +105,10 @@ func (s *S3BearerIdentity) Tenant() (db.Tenant, error) {
 	root.Bucket = u.Host
 	root.Key = aws.DeriveKey(c.BaseURI, c.AccessKeyID, c.SecretAccessKey, s.Region, "s3")
 	root.Key.Token = c.SessionToken
-	return S3Tenant(s.ID, root, k), nil
+	cfg := &db.TenantConfig{
+		MaxScanBytes: s.MaxScanBytes,
+	}
+	return S3Tenant(s.ID, root, k, cfg), nil
 }
 
 func (s *S3Bearer) client() *http.Client {
@@ -149,13 +155,15 @@ type s3Tenant struct {
 	id   string
 	root *db.S3FS
 	ikey *blockfmt.Key
+	cfg  *db.TenantConfig
 }
 
-func S3Tenant(id string, root *db.S3FS, key *blockfmt.Key) db.Tenant {
+func S3Tenant(id string, root *db.S3FS, key *blockfmt.Key, cfg *db.TenantConfig) db.Tenant {
 	t := &s3Tenant{
 		id:   id,
 		root: root,
 		ikey: key,
+		cfg:  cfg,
 	}
 	t.Client = root.Client
 	t.DeriveKey = func(string) (*aws.SigningKey, error) {
@@ -167,6 +175,7 @@ func S3Tenant(id string, root *db.S3FS, key *blockfmt.Key) db.Tenant {
 func (s *s3Tenant) ID() string                { return s.id }
 func (s *s3Tenant) Key() *blockfmt.Key        { return s.ikey }
 func (s *s3Tenant) Root() (db.InputFS, error) { return s.root, nil }
+func (s *s3Tenant) Config() *db.TenantConfig  { return s.cfg }
 
 // S3Static is a Provider that is backed
 // by a single static S3 identity.

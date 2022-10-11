@@ -38,8 +38,22 @@ import (
 	"github.com/google/uuid"
 )
 
-func itoa(i int64) string {
-	return strconv.FormatInt(i, 10)
+// DefaultMaxScan is the default number of bytes
+// allowed to be scanned in a query. If a query
+// might exceed this limit, it will be rejected
+// without doing any scanning.
+const DefaultMaxScan = 0
+
+type errPlanLimit struct {
+	scan, max uint64
+}
+
+func (e *errPlanLimit) Error() string {
+	return fmt.Sprintf("scan limit exceeded (%d > %d)", e.scan, e.max)
+}
+
+func utoa(i uint64) string {
+	return strconv.FormatUint(i, 10)
 }
 
 func flush(w http.ResponseWriter) {
@@ -147,6 +161,14 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	hash = sha256.Sum256([]byte(creds.ID() + string(creds.Key()[:])))
 	copy(key[:], hash[:])
 
+	cfg := creds.Config()
+
+	// determine scan limit
+	maxScan := uint64(DefaultMaxScan)
+	if cfg != nil && cfg.MaxScanBytes > 0 {
+		maxScan = cfg.MaxScanBytes
+	}
+
 	planEnv, err := sneller.Environ(creds, defaultDatabase)
 	if err != nil {
 		http.Error(w, "tenant ID disallowed", http.StatusForbidden)
@@ -161,12 +183,17 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	var tree *plan.Tree
 	start = time.Now()
 	if len(endPoints) == 0 {
+		// TODO: apply scan limits to unsplit
+		// queries
 		tree, err = plan.New(parsedQuery, planEnv)
 	} else {
-		planSplitter := s.newSplitter(id, key, endPoints)
-		tree, err = plan.NewSplit(parsedQuery, planEnv, planSplitter)
+		split := s.newSplitter(id, key, endPoints)
+		tree, err = plan.NewSplit(parsedQuery, planEnv, split)
 		if err == nil {
-			w.Header().Set("X-Sneller-Max-Scanned-Bytes", itoa(planSplitter.MaxScan))
+			w.Header().Set("X-Sneller-Max-Scanned-Bytes", utoa(split.MaxScan))
+			if maxScan > 0 && split.MaxScan > maxScan {
+				err = &errPlanLimit{scan: split.MaxScan, max: maxScan}
+			}
 		}
 	}
 	if err != nil {
@@ -326,6 +353,7 @@ func isBadQuery(err error, w http.ResponseWriter) bool {
 	var emptySyntax *expr.SyntaxError
 	var emptyType *expr.TypeError
 	var emptyCompile *pir.CompileError
+	var emptyLimit *errPlanLimit
 	if errors.As(err, &emptySyntax) {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, emptySyntax.Error())
@@ -341,6 +369,9 @@ func isBadQuery(err error, w http.ResponseWriter) bool {
 	if errors.As(err, &emptyCompile) {
 		w.WriteHeader(http.StatusBadRequest)
 		emptyCompile.WriteTo(w)
+		return true
+	}
+	if errors.As(err, &emptyLimit) {
 		return true
 	}
 	return false

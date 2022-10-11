@@ -236,7 +236,7 @@ func mkenv() plan.Env {
 	if dashr != "" {
 		if strings.HasPrefix(dashr, "s3://") {
 			root := s3fs(dashr)
-			t := auth.S3Tenant("localtenant", root, nil)
+			t := auth.S3Tenant("localtenant", root, nil, nil)
 			return tenantEnv(t, dashd)
 		}
 		exitf("-r can only be used with S3")
