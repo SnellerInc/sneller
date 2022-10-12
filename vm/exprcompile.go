@@ -394,47 +394,95 @@ func (p *prog) compileAsString(e expr.Node) (*value, error) {
 
 // handle FN(args...) expressions
 func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
+	v, err := compilefuncaux(p, b, args)
+	if err != nil {
+		return nil, fmt.Errorf("compiling %s: %w", b.Func, err)
+	}
+
+	return v, nil
+}
+
+type compileType int
+
+const (
+	compileExpression compileType = iota
+	compileNumber
+	compileString
+	compileTime
+	compileBool
+	literalString
+	omit
+)
+
+func compileargs(p *prog, args []expr.Node, types ...compileType) ([]*value, error) {
+	if len(types) != len(args) {
+		return nil, fmt.Errorf("expects %d arguments, got %d", len(types), len(args))
+	}
+
+	compiled := make([]*value, len(types))
+	for i, t := range types {
+		var err error
+		var val *value
+		switch t {
+		case compileNumber:
+			val, err = p.compileAsNumber(args[i])
+		case compileString:
+			val, err = p.compileAsString(args[i])
+		case compileTime:
+			val, err = p.compileAsTime(args[i])
+		case compileBool:
+			val, err = p.compileAsBool(args[i])
+		case compileExpression:
+			val, err = compile(p, args[i])
+		case literalString:
+			_, ok := args[i].(expr.String)
+			if !ok {
+				err = fmt.Errorf("expected literal string, got %T", args[i])
+			}
+		case omit:
+			// do nothing
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("argument %d: %w", i+1, err)
+		}
+
+		compiled[i] = val
+	}
+
+	return compiled, nil
+}
+
+func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 	fn := b.Func
 
 	if fn.IsDateAdd() {
 		part, _ := fn.TimePart()
-		val0, err0 := p.compileAsNumber(args[0])
-		if err0 != nil {
-			return nil, err0
+		val, err := compileargs(p, args, compileNumber, compileTime)
+		if err != nil {
+			return nil, err
 		}
 
-		val1, err1 := p.compileAsTime(args[1])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		val := p.DateAdd(part, val0, val1)
-		return val, nil
+		return p.DateAdd(part, val[0], val[1]), nil
 	}
 
 	if fn.IsDateDiff() {
 		part, _ := fn.TimePart()
-		val0, err0 := p.compileAsTime(args[0])
-		if err0 != nil {
-			return nil, err0
+		val, err := compileargs(p, args, compileTime, compileTime)
+		if err != nil {
+			return nil, err
 		}
 
-		val1, err1 := p.compileAsTime(args[1])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		val := p.DateDiff(part, val0, val1)
-		return val, nil
+		return p.DateDiff(part, val[0], val[1]), nil
 	}
 
 	if fn.IsDateExtract() {
 		part, _ := fn.TimePart()
-		val0, err := p.compileAsTime(args[0])
+		val, err := compileargs(p, args, compileTime)
 		if err != nil {
 			return nil, err
 		}
-		return p.DateExtract(part, val0), nil
+		return p.DateExtract(part, val[0]), nil
 	}
 
 	if fn.IsDateTrunc() {
@@ -447,7 +495,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		if part == expr.DOW {
 			dow, ok := args[1].(expr.Integer)
 			if !ok {
-				panic("DATE_TRUNC() requires day of week to be a constant")
+				return nil, fmt.Errorf("day of week has to be a constant")
 			}
 			return p.DateTruncWeekday(val, expr.Weekday(dow)), nil
 		}
@@ -456,16 +504,9 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 	}
 
 	switch fn {
-	case expr.BitCount:
-		arg, err := p.compileAsNumber(args[0])
-		if err != nil {
-			return nil, err
-		}
-		return p.BitCount(arg), nil
-
 	case expr.Pi:
 		if len(args) != 0 {
-			return nil, fmt.Errorf("%s cannot have arguments", fn)
+			return nil, fmt.Errorf("accepts no arguments")
 		}
 
 		return p.Constant(pi), nil
@@ -474,7 +515,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		count := len(args)
 
 		if count < 1 || count > 2 {
-			return nil, fmt.Errorf("%s must have either 1 or 2 arguments", fn)
+			return nil, fmt.Errorf("expects either 1 or 2 arguments")
 		}
 
 		n, err := p.compileAsNumber(args[0])
@@ -501,11 +542,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		return val, nil
 
 	case expr.Degrees, expr.Radians:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
-		}
-
-		arg, err := p.compileAsNumber(args[0])
+		val, err := compileargs(p, args, compileNumber)
 		if err != nil {
 			return nil, err
 		}
@@ -517,47 +554,21 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			c = degreesToRadians
 		}
 
-		return p.Mul(arg, p.Constant(c)), nil
-
-	case expr.Abs:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
-		}
-
-		arg, err := p.compileAsNumber(args[0])
-		if err != nil {
-			return nil, err
-		}
-
-		return p.Abs(arg), nil
-
-	case expr.Sign:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
-		}
-
-		arg, err := p.compileAsNumber(args[0])
-		if err != nil {
-			return nil, err
-		}
-
-		return p.Sign(arg), nil
+		return p.Mul(val[0], p.Constant(c)), nil
 
 	case expr.Round, expr.RoundEven, expr.Trunc, expr.Floor, expr.Ceil,
 		expr.Sqrt, expr.Cbrt,
 		expr.Exp, expr.Exp2, expr.Exp10, expr.ExpM1,
 		expr.Ln, expr.Ln1p, expr.Log2, expr.Log10,
 		expr.Sin, expr.Cos, expr.Tan,
-		expr.Asin, expr.Acos, expr.Atan:
+		expr.Asin, expr.Acos, expr.Atan, expr.Abs, expr.Sign, expr.BitCount:
 
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s must have at exactly 1 argument", fn)
-		}
-
-		arg, err := p.compileAsNumber(args[0])
+		v, err := compileargs(p, args, compileNumber)
 		if err != nil {
 			return nil, err
 		}
+
+		arg := v[0]
 
 		var val *value
 		switch fn {
@@ -603,24 +614,23 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			val = p.Acos(arg)
 		case expr.Atan:
 			val = p.Atan(arg)
+		case expr.Sign:
+			val = p.Sign(arg)
+		case expr.Abs:
+			val = p.Abs(arg)
+		case expr.BitCount:
+			val = p.BitCount(arg)
 		}
 		return val, nil
 
 	case expr.Hypot, expr.Pow, expr.Atan2:
-		count := len(args)
-
-		if count != 2 {
-			return nil, fmt.Errorf("%s must have at exactly 2 arguments", fn)
+		v, err := compileargs(p, args, compileNumber, compileNumber)
+		if err != nil {
+			return nil, err
 		}
 
-		arg1, err1 := p.compileAsNumber(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
-		arg2, err2 := p.compileAsNumber(args[1])
-		if err2 != nil {
-			return nil, err2
-		}
+		arg1 := v[0]
+		arg2 := v[1]
 
 		var val *value
 		switch fn {
@@ -649,7 +659,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		count := len(args)
 
 		if count < 1 {
-			return nil, fmt.Errorf("%s must have at least one argument", fn)
+			return nil, fmt.Errorf("expects at least one argument")
 		}
 
 		val, err := p.compileAsNumber(args[0])
@@ -673,46 +683,26 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		return val, nil
 
 	case expr.WidthBucket:
-		if len(args) != 4 {
-			return nil, fmt.Errorf("%s must have exactly 4 arguments", fn)
-		}
-
-		val, err := p.compileAsNumber(args[0])
+		v, err := compileargs(p, args, compileNumber, compileNumber, compileNumber, compileNumber)
 		if err != nil {
 			return nil, err
 		}
 
-		min, err := p.compileAsNumber(args[1])
-		if err != nil {
-			return nil, err
-		}
-
-		max, err := p.compileAsNumber(args[2])
-		if err != nil {
-			return nil, err
-		}
-
-		bucketCount, err := p.compileAsNumber(args[3])
-		if err != nil {
-			return nil, err
-		}
+		val := v[0]
+		min := v[1]
+		max := v[2]
+		bucketCount := v[3]
 
 		return p.WidthBucket(val, min, max, bucketCount), nil
 
 	case expr.TimeBucket:
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s must have exactly 2 arguments", fn)
-		}
-
-		arg, err := p.compileAsTime(args[0])
+		v, err := compileargs(p, args, compileTime, compileNumber)
 		if err != nil {
 			return nil, err
 		}
 
-		interval, err2 := p.compileAsNumber(args[1])
-		if err2 != nil {
-			return nil, err2
-		}
+		arg := v[0]
+		interval := v[1]
 
 		return p.TimeBucket(arg, interval), nil
 
@@ -726,117 +716,93 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 
 			return p.TrimSpace(s, tt), nil
 		} else if len(args) == 2 { //TRIM("$$arg", "$") is a char trim
-			s, err := p.compileAsString(args[0])
+			v, err := compileargs(p, args, compileString, literalString)
 			if err != nil {
 				return nil, err
 			}
-			chars, ok := args[1].(expr.String)
-			if !ok {
-				return nil, fmt.Errorf("the second argument of %s has to be a literal string; found %s with type %T", fn, args[1], args[1])
-			}
+
+			s := v[0]
+			chars, _ := args[1].(expr.String)
 
 			return p.TrimChar(s, string(chars), tt), nil
 		} else {
-			return nil, fmt.Errorf("%s should have one or two argument, got %v", fn, len(args))
+			return nil, fmt.Errorf("expects one or two arguments")
 		}
 
 	case expr.Contains, expr.ContainsCI:
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s should have 2 arguments, got %v", fn, len(args))
-		}
-		s, ok := args[1].(expr.String)
-		if !ok {
-			return nil, fmt.Errorf("the second argument %s should be a literal string; found %s with type %T", fn, args[1], args[1])
-		}
-		lhs, err := p.compileAsString(args[0])
+		v, err := compileargs(p, args, compileString, literalString)
 		if err != nil {
 			return nil, err
 		}
+
+		lhs := v[0]
+		s := args[1].(expr.String)
+
 		return p.Contains(lhs, string(s), fn == expr.Contains), nil
 
 	case expr.EqualsCI:
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s should have 2 arguments, got %v", fn, len(args))
-		}
-		_, ok := args[1].(expr.String)
-		if !ok {
-			return nil, fmt.Errorf("the second argument %s should be a literal string; found %s with type %T", fn, args[1], args[1])
-		}
-		lhs, err1 := p.compileAsString(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
-		rhs, err2 := p.compileAsString(args[1])
-		if err2 != nil {
-			return nil, err2
-		}
-		return p.EqualStr(lhs, rhs, false), nil
-
-	case expr.IsSubnetOf:
-		if len(args) != 3 {
-			return nil, fmt.Errorf("preprocessing %s went wrong, got %d args expected 3", fn, len(args))
-		}
-		minStr, ok0 := args[0].(expr.String)
-		if !ok0 {
-			return nil, fmt.Errorf("preprocessing %s went wrong, first argument should be a literal string; found %s with type %T", fn, args[0], args[0])
-		}
-		maxStr, ok1 := args[1].(expr.String)
-		if !ok1 {
-			return nil, fmt.Errorf("preprocessing %s went wrong, second argument should be a literal string; found %s with type %T", fn, args[1], args[1])
-		}
-		lhs, err := p.compileAsString(args[2])
+		v, err := compileargs(p, args, compileString, compileString)
 		if err != nil {
 			return nil, err
 		}
+
+		_, ok := args[1].(expr.String)
+		if !ok {
+			return nil, fmt.Errorf("second argument should be a literal string; found %s with type %T", args[1], args[1])
+		}
+
+		lhs := v[0]
+		rhs := v[1]
+
+		return p.EqualStr(lhs, rhs, false), nil
+
+	case expr.IsSubnetOf:
+		v, err := compileargs(p, args, literalString, literalString, compileString)
+		if err != nil {
+			return nil, err
+		}
+
+		minStr, _ := args[0].(expr.String)
+		maxStr, _ := args[1].(expr.String)
+		lhs := v[2]
+
 		// the min/max are byte wise min/max values encoded as a string with dot as a separator.
 		min := (*[4]byte)(net.ParseIP(string(minStr)).To4())
 		max := (*[4]byte)(net.ParseIP(string(maxStr)).To4())
+
 		return p.IsSubnetOfIP4(lhs, *min, *max), nil
 
 	case expr.CharLength:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s should have 1 argument, got %v", fn, len(args))
+		v, err := compileargs(p, args, compileString)
+		if err != nil {
+			return nil, err
 		}
-		lhs, err1 := p.compileAsString(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
+
+		lhs := v[0]
+
 		return p.CharLength(lhs), nil
 
 	case expr.Substring:
-		if len(args) != 3 {
-			return nil, fmt.Errorf("preprocessing %s went wrong, got %d args expected 3", fn, len(args))
+		val, err := compileargs(p, args, compileString, compileNumber, compileNumber)
+		if err != nil {
+			return nil, err
 		}
-		lhs, err1 := p.compileAsString(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
-		substrOffset, err2 := p.compileAsNumber(args[1])
-		if err2 != nil {
-			return nil, err2
-		}
-		substrLength, err3 := p.compileAsNumber(args[2])
-		if err3 != nil {
-			return nil, err3
-		}
+
+		lhs := val[0]
+		substrOffset := val[1]
+		substrLength := val[2]
 		return p.Substring(lhs, substrOffset, substrLength), nil
 
 	case expr.SplitPart:
-		if len(args) != 3 {
-			return nil, fmt.Errorf("preprocessing %s went wrong, got %d args expected 3", fn, len(args))
+		v, err := compileargs(p, args, compileString, literalString, compileNumber)
+		if err != nil {
+			return nil, err
 		}
-		lhs, err1 := p.compileAsString(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
-		delimiterStr, ok := args[1].(expr.String)
-		if !ok {
-			return nil, fmt.Errorf("the second argument %s should be a literal string; found %s with type %T", fn, args[1], args[1])
-		}
-		splitPartIndex, err2 := p.compileAsNumber(args[2])
-		if err2 != nil {
-			return nil, err2
-		}
+
+		lhs := v[0]
+		delimiterStr := args[1].(expr.String)
+		splitPartIndex := v[2]
+
 		return p.SplitPart(lhs, delimiterStr[0], splitPartIndex), nil
 
 	case expr.Unspecified:
@@ -853,125 +819,76 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 		default:
 			return nil, fmt.Errorf("unhandled builtin %q", b.Name())
 		}
+
 	case expr.ToUnixEpoch:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("TO_UNIX_EPOCH has %d arguments?", len(args))
-		}
-		arg, err := p.compileAsTime(args[0])
+		v, err := compileargs(p, args, compileTime)
 		if err != nil {
 			return nil, err
 		}
-		return p.DateToUnixEpoch(arg), nil
+
+		return p.DateToUnixEpoch(v[0]), nil
+
 	case expr.ToUnixMicro:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("TO_UNIX_MICRO has %d arguments?", len(args))
-		}
-		arg, err := p.compileAsTime(args[0])
+		v, err := compileargs(p, args, compileTime)
 		if err != nil {
 			return nil, err
 		}
-		return p.DateToUnixMicro(arg), nil
+
+		return p.DateToUnixMicro(v[0]), nil
 
 	case expr.GeoHash, expr.GeoTileES:
-		if len(args) != 3 {
-			return nil, fmt.Errorf("%s requires 3 arguments, %d given", fn, len(args))
-		}
-
-		arg0, err1 := p.compileAsNumber(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		arg1, err2 := p.compileAsNumber(args[1])
-		if err2 != nil {
-			return nil, err2
-		}
-
-		arg2, err3 := p.compileAsNumber(args[2])
-		if err3 != nil {
-			return nil, err3
+		v, err := compileargs(p, args, compileNumber, compileNumber, compileNumber)
+		if err != nil {
+			return nil, err
 		}
 
 		var val *value
 		if fn == expr.GeoHash {
-			val = p.GeoHash(arg0, arg1, arg2)
+			val = p.GeoHash(v[0], v[1], v[2])
 		} else {
-			val = p.GeoTileES(arg0, arg1, arg2)
+			val = p.GeoTileES(v[0], v[1], v[2])
 		}
 		return val, nil
 
 	case expr.GeoDistance:
-		if len(args) != 4 {
-			return nil, fmt.Errorf("%s requires 4 arguments, %d given", fn, len(args))
+		v, err := compileargs(p, args, compileNumber, compileNumber, compileNumber, compileNumber)
+		if err != nil {
+			return nil, err
 		}
 
-		arg0, err0 := p.compileAsNumber(args[0])
-		if err0 != nil {
-			return nil, err0
-		}
-
-		arg1, err1 := p.compileAsNumber(args[1])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		arg2, err2 := p.compileAsNumber(args[2])
-		if err2 != nil {
-			return nil, err2
-		}
-
-		arg3, err3 := p.compileAsNumber(args[3])
-		if err3 != nil {
-			return nil, err3
-		}
-
-		return p.GeoDistance(arg0, arg1, arg2, arg3), nil
+		return p.GeoDistance(v[0], v[1], v[2], v[3]), nil
 
 	case expr.GeoTileX, expr.GeoTileY:
-		if len(args) != 2 {
-			return nil, fmt.Errorf("%s must have exactly 2 arguments", fn)
-		}
-
-		arg0, err1 := p.compileAsNumber(args[0])
-		if err1 != nil {
-			return nil, err1
-		}
-
-		arg1, err2 := p.compileAsNumber(args[1])
-		if err2 != nil {
-			return nil, err2
+		v, err := compileargs(p, args, compileNumber, compileNumber)
+		if err != nil {
+			return nil, err
 		}
 
 		var val *value
 		if fn == expr.GeoTileX {
-			val = p.GeoTileX(arg0, arg1)
+			val = p.GeoTileX(v[0], v[1])
 		} else {
-			val = p.GeoTileY(arg0, arg1)
+			val = p.GeoTileY(v[0], v[1])
 		}
 
 		return val, nil
 
 	case expr.ObjectSize:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("SIZE does not accept %d arguments", len(args))
-		}
-
-		arg, err := compile(p, args[0])
+		v, err := compileargs(p, args, compileExpression)
 		if err != nil {
 			return nil, err
 		}
 
-		return p.ssa2(sobjectsize, arg, p.mask(arg)), nil
+		return p.ssa2(sobjectsize, v[0], p.mask(v[0])), nil
 	case expr.HashLookup:
 		return p.compileHashLookup(b.Args)
 	case expr.Lower, expr.Upper:
-		if len(args) != 1 {
-			return nil, fmt.Errorf("%s does not accept %d arguments", fn, len(args))
-		}
-		s, err := p.compileAsString(args[0])
+		vals, err := compileargs(p, args, compileString)
 		if err != nil {
 			return nil, err
 		}
+
+		s := vals[0]
 
 		var v *value
 		if fn == expr.Lower {
@@ -1020,6 +937,7 @@ func compilefunc(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) {
 			structArgs = append(structArgs, p.ssa0imm(smakestructkey, string(key)), val, p.mask(val))
 		}
 		return p.MakeStruct(structArgs), nil
+
 	case expr.TypeBit:
 		arg, err := compile(p, args[0])
 		if err != nil {

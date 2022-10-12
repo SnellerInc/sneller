@@ -713,7 +713,6 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			v, err := compile(p, agg[i].Expr.Inner)
 			if err != nil {
 				return fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
-				return err
 			}
 
 			ops[i].precision = agg[i].Expr.Precision
