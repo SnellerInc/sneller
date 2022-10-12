@@ -22,7 +22,7 @@ import (
 	"testing"
 )
 
-func TestCheck(t *testing.T) {
+func TestCheckExpressions(t *testing.T) {
 	testcases := []struct {
 		expr Node
 		kind error

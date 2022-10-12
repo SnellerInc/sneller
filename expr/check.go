@@ -97,7 +97,11 @@ type checkwalk struct {
 }
 
 func (c *checkwalk) errorf(f string, args ...interface{}) {
-	c.errors = append(c.errors, errsyntaxf(f, args...))
+	c.adderror(errsyntaxf(f, args...))
+}
+
+func (c *checkwalk) adderror(err error) {
+	c.errors = append(c.errors, err)
 }
 
 type checktable struct {
@@ -129,9 +133,11 @@ func (c *checktable) Visit(n Node) Visitor {
 		// FIXME: allowed for now, but really shouldn't be...
 		return nil
 	case *Appended:
+		return &checktable{parent: c.parent}
+	case *Unpivot:
 		return c.parent
 	default:
-		c.errorf("cannot use %s in table position", ToString(n))
+		c.errorf("cannot use %s of type %T in table position", ToString(n), n)
 		return nil
 	}
 }
@@ -144,21 +150,22 @@ func (c *checkwalk) Visit(n Node) Visitor {
 	if ok {
 		err := ce.check(c.hint)
 		if err != nil {
-			c.errors = append(c.errors, err)
+			c.adderror(err)
 			return nil
 		}
 	}
-	if _, ok := n.(*Appended); ok {
+	switch t := n.(type) {
+	case *Appended:
 		c.errorf("cannot use %s in non-table position", ToString(n))
 		return nil
-	}
-	if b, ok := n.(*Builtin); ok {
-		if b.isTable() {
-			c.errors = append(c.errors, errsyntaxf("cannot use %s in non-table position", ToString(n)))
+
+	case *Builtin:
+		if t.isTable() {
+			c.errorf("cannot use %s in non-table position", ToString(n))
 			return nil
 		}
-	}
-	if _, ok := n.(*Table); ok {
+
+	case *Table:
 		return &checktable{parent: c}
 	}
 	return c

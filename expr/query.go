@@ -108,3 +108,21 @@ func (q *Query) Equals(other *Query) bool {
 	}
 	return q.Body.Equals(other.Body)
 }
+
+// CheckHint checks consistency of the whole query using a hint
+func (q *Query) CheckHint(h Hint) error {
+	for i := range q.With {
+		err := CheckHint(q.With[i].As, h)
+		if err != nil {
+			return err
+		}
+	}
+
+	// TODO: check references between CTEs and the main query
+	return CheckHint(q.Body, h)
+}
+
+// Check checks consistency of the whole query
+func (q *Query) Check() error {
+	return q.CheckHint(HintFn(NoHint))
+}

@@ -151,6 +151,12 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	err = parsedQuery.Check()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	normalized := parsedQuery.Text()
 	redacted := parsedQuery.Text()
 

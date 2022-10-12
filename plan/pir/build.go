@@ -203,7 +203,11 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 func build(parent *Trace, s *expr.Select, e Env) (*Trace, error) {
 	b := &Trace{Parent: parent}
 	s = expr.Simplify(s, b).(*expr.Select)
-	err := b.walkSelect(s, e)
+	err := expr.Check(s)
+	if err != nil {
+		return nil, err
+	}
+	err = b.walkSelect(s, e)
 	if err != nil {
 		return nil, err
 	}

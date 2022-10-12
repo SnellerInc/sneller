@@ -168,6 +168,12 @@ func parse(arg string) *expr.Query {
 		}
 		exit(err)
 	}
+
+	err = q.Check()
+	if err != nil {
+		exit(err)
+	}
+
 	return q
 }
 

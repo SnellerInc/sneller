@@ -28,7 +28,7 @@ type testcaseError struct {
 	errrx string
 }
 
-func TestCheck2(t *testing.T) {
+func TestCheckInvalidQuery(t *testing.T) {
 	testcases := []testcaseError{
 		{
 			// don't allow table functions
@@ -135,10 +135,23 @@ func TestCheck2(t *testing.T) {
 			"cutset must contain only ASCII chars",
 		},
 	}
-	for j := range testcases {
-		i := j
+	for i := range testcases {
+		i := i
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			checkError(t, &testcases[j])
+			checkError(t, &testcases[i])
+		})
+	}
+}
+
+func TestCheckValidQuery(t *testing.T) {
+	testcases := []testcaseError{
+		{query: `SELECT * FROM TABLE_GLOB(a) ++ TABLE_GLOB(b)`},
+	}
+
+	for i := range testcases {
+		i := i
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			checkError(t, &testcases[i])
 		})
 	}
 }

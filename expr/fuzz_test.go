@@ -80,10 +80,7 @@ func FuzzCheck(f *testing.F) {
 		if err != nil {
 			return
 		}
-		for i := range q.With {
-			expr.Check(q.With[i].As)
-		}
-		if err := expr.Check(q.Body); err != nil {
+		if err := q.Check(); err != nil {
 			return
 		}
 		q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))

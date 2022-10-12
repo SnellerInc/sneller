@@ -191,6 +191,9 @@ func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 			if err != nil {
 				return err
 			}
+			if str == "/dev/null" {
+				return fmt.Errorf("%q cannot be source of data", str)
+			}
 			fi, err := os.Stat(str)
 			if err != nil {
 				return err

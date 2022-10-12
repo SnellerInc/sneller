@@ -289,7 +289,7 @@ func TestExec(t *testing.T) {
 	// an immediate error
 
 	here, there = socketPair(t)
-	query = `SELECT * FROM 3 LIMIT 1`
+	query = `SELECT * FROM '/dev/null' LIMIT 1` // 'dev/null' forces the stub process to return an error
 	rc, err = m.Do(id, key, mkplan(t, query), tnproto.OutputRaw, here)
 	if err == nil {
 		t.Fatal("expected immediate error for query...?")
