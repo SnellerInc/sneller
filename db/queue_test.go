@@ -15,6 +15,7 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -286,6 +287,13 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 			{Pattern: "file://aabb/file*.json"},
 		},
 	}))
+	// used to test root definition generation
+	check(WriteDefinition(dfs, "db0", &Definition{
+		Name: "empty",
+		Inputs: []Input{
+			{Pattern: "file://aabb/fake-prefix-*.json"},
+		},
+	}))
 	// should get a superset of narrow
 	check(WriteDefinition(dfs, "db1", &Definition{
 		Name: "wide",
@@ -346,5 +354,47 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 		"file://aabb/file1.json":          false,
 		"file://aacc/file0.json":          true,
 		"file://aabb/does-not-exist.json": false,
+	})
+
+	tojson := func(v any) string {
+		b, _ := json.Marshal(v)
+		return string(b)
+	}
+
+	checkRoot := func(db string, def *RootDefinition) {
+		t.Helper()
+		got, err := OpenRootDefinition(dfs, db)
+		if err != nil {
+			t.Errorf("opening root definition (%s): %v", db, err)
+			return
+		}
+		if !got.Equal(def) {
+			t.Error("root definition mismatch:")
+			t.Error("  want:", tojson(def))
+			t.Error("  got: ", tojson(got))
+		}
+	}
+	checkRoot("db0", &RootDefinition{
+		Name: "db0",
+		Tables: []*Definition{{
+			Name: "empty",
+			Inputs: []Input{
+				{Pattern: "file://aabb/fake-prefix-*.json"},
+			},
+		}, {
+			Name: "narrow",
+			Inputs: []Input{
+				{Pattern: "file://aabb/file*.json"},
+			},
+		}},
+	})
+	checkRoot("db1", &RootDefinition{
+		Name: "db1",
+		Tables: []*Definition{{
+			Name: "wide",
+			Inputs: []Input{
+				{Pattern: "file://aa*/*.json"},
+			},
+		}},
 	})
 }

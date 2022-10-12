@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -461,22 +462,48 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 		if err != nil {
 			return err
 		}
+		old, _ := OpenRootDefinition(dir, dbname)
+		root := &RootDefinition{
+			Name: dbname,
+		}
 		for j := range tables {
-			want := path.Join(curp, tables[j].Name(), "definition.json")
-			f, err := dir.Open(want)
-			if err != nil {
-				// ignore non-existent path
-				continue
-			}
-			def, err := DecodeDefinition(f)
-			f.Close()
+			table := tables[j].Name()
+			def, err := OpenDefinition(dir, dbname, table)
 			if err != nil {
 				// don't get hung up on invalid definitions
 				continue
 			}
-			m[dbtable{db: dbname, table: tables[j].Name()}] = &tableInfo{
+			m[dbtable{db: dbname, table: table}] = &tableInfo{
 				def: def,
 			}
+			// don't include generated tables in the
+			// root definition
+			if def.Generated {
+				continue
+			}
+			// root definitions will eventually
+			// support expanding table name templates
+			// so escape '$' in table names
+			if name := strings.Replace(table, "$", "$$", -1); name != table {
+				def = &Definition{
+					Name:     name,
+					Inputs:   def.Inputs,
+					Features: def.Features,
+				}
+			}
+			root.Tables = append(root.Tables, def)
+		}
+		// attempt to write out the root definition
+		// if it has changed
+		ofs, ok := dir.(OutputFS)
+		if !ok {
+			continue
+		}
+		slices.SortFunc(root.Tables, func(a, b *Definition) bool {
+			return a.Name < b.Name
+		})
+		if old == nil || !root.Equal(old) {
+			WriteRootDefinition(ofs, root)
 		}
 	}
 	return nil

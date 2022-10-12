@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+
+	"golang.org/x/exp/slices"
 )
 
 // Input is one input pattern
@@ -44,6 +46,14 @@ type Input struct {
 	Hints json.RawMessage `json:"hints,omitempty"`
 }
 
+// Equal returns whether i and other are
+// equivalent.
+func (i Input) Equal(other Input) bool {
+	return i.Pattern == other.Pattern &&
+		i.Format == other.Format &&
+		string(i.Hints) == string(other.Hints)
+}
+
 // Definition describes the set of input files
 // that belong to a table.
 type Definition struct {
@@ -53,14 +63,14 @@ type Definition struct {
 	// within the db filesystem hierarchy.
 	Name string `json:"name"`
 	// Inputs is the list of inputs that comprise the table.
-	Inputs []Input `json:"input"`
+	Inputs []Input `json:"input,omitempty"`
 	// Features is a list of feature flags that
 	// can be used to turn on features for beta-testing.
-	Features []string `json:"beta_features"`
+	Features []string `json:"beta_features,omitempty"`
 	// Generated is true if this table definition
 	// was generated from a root-level database
 	// definition. Do not set this manually.
-	Generated bool `json:"generated"`
+	Generated bool `json:"generated,omitempty"`
 }
 
 // just pick an upper limit to prevent DoS
@@ -126,6 +136,19 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 	return err
 }
 
+// Equal returns whether d and other are
+// equivalent. Equalivalent definitions marshal
+// to equivalent JSON and have the same hash.
+func (d *Definition) Equal(other *Definition) bool {
+	if d == nil || other == nil {
+		return d == nil && other == nil
+	}
+	return d.Name == other.Name &&
+		slices.EqualFunc(d.Inputs, other.Inputs, (Input).Equal) &&
+		slices.Equal(d.Features, other.Features) &&
+		d.Generated == other.Generated
+}
+
 // Hash returns a hash of the table definition
 // that can be used to detect changes.
 func (d *Definition) Hash() []byte {
@@ -145,7 +168,7 @@ type RootDefinition struct {
 	Name string `json:"name"`
 	// Tables is the list of table definitions
 	// stored in the root-level definition.
-	Tables []*Definition `json:"tables"`
+	Tables []*Definition `json:"tables,omitempty"`
 }
 
 // DecodeRootDefinition decodes a root-level
@@ -190,12 +213,23 @@ func WriteRootDefinition(dst OutputFS, s *RootDefinition) error {
 	if s.Name == "" {
 		return fmt.Errorf("cannot write definition with no Name")
 	}
-	buf, err := json.Marshal(s)
+	buf, err := json.MarshalIndent(s, "", "\t")
 	if err != nil {
 		return err
 	}
 	_, err = dst.WriteFile(RootDefinitionPath(s.Name), buf)
 	return err
+}
+
+// Equal returns whether d and other are
+// equivalent. Equalivalent root definitions
+// marshal to equivalent JSON.
+func (d *RootDefinition) Equal(other *RootDefinition) bool {
+	if d == nil || other == nil {
+		return d == nil && other == nil
+	}
+	return d.Name == other.Name &&
+		slices.EqualFunc(d.Tables, other.Tables, (*Definition).Equal)
 }
 
 // A Resolver determines how input specifications
