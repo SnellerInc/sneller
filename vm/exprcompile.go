@@ -23,7 +23,6 @@ import (
 
 	"github.com/SnellerInc/sneller/regexp2"
 
-	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -1083,57 +1082,6 @@ func (p *prog) toTime(v *value) *value {
 	return p.errorf("cannot convert result of %s to time", v)
 }
 
-func (p *prog) toTimeInt(v *value) *value {
-	if v.op == sliteral {
-		ts, ok := v.imm.(date.Time)
-		if ok {
-			return p.ssa0imm(sbroadcastts, ts.UnixMicro())
-		}
-	}
-	switch v.primary() {
-	case stValue:
-		v = p.ssa2(stotime, v, p.mask(v))
-		fallthrough
-	case stTime:
-		v = p.ssa2(sunboxtime, v, p.mask(v))
-		fallthrough
-	case stTimeInt:
-		return v
-	}
-	return p.errorf("cannot convert result of %s to timeInt", v)
-}
-
-// produce left < right by forcing everything to unixmicro integers
-func (p *prog) timeIntLess(left, right *value) *value {
-	left = p.toTimeInt(left)
-	right = p.toTimeInt(right)
-	return p.ssa3(scmpltts, left, right, p.And(p.mask(left), p.mask(right)))
-}
-
-func (p *prog) compileTimeOrdered(left, right *value) *value {
-	if left.primary() == stTimeInt ||
-		right.primary() == stTimeInt ||
-		(left.op != sliteral && right.op != sliteral) {
-		return p.timeIntLess(left, right)
-	}
-	// we only use this fast-path when
-	// comparing a raw boxed value against
-	// a constant timestamp
-	op := sltconsttm
-	// move constant to rhs
-	if left.op == sliteral {
-		if right.op == sliteral {
-			// we shouldn't hit this; the simplifier
-			// should have handled the constprop
-			panic("missed timestamp constprop!")
-		}
-		op = sgtconsttm
-		left, right = right, left
-	}
-	v := p.toTime(left)
-	return p.ssa2imm(op, v, p.mask(v), right.imm)
-}
-
 // compile a path expression from its top-level value
 func compilepath(p *prog, top *value, rest expr.PathComponent) (*value, error) {
 	for r := rest; r != nil; r = r.Next() {
@@ -1630,30 +1578,6 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		return p.ssa0(skfalse), nil
 	default:
 		return nil, fmt.Errorf("unsupported cast %q", c)
-	}
-}
-
-func (p *prog) notNumber(v *value) *value {
-	switch v.primary() {
-	case stValue:
-		// must have type bits corresponding to
-		// something other than numeric
-		return p.checkTag(v, ^expr.NumericType)
-	case stInt, stFloat:
-		return p.ssa0(skfalse) // false, definitely a number
-	default:
-		return p.ValidLanes() // true, never a number
-	}
-}
-
-func (p *prog) notTime(v *value) *value {
-	switch v.primary() {
-	case stValue:
-		return p.checkTag(v, ^expr.TimeType)
-	case stTime, stTimeInt:
-		return p.ssa0(skfalse) // false; definitely a timestamp
-	default:
-		return p.ValidLanes() // true; never a timestamp
 	}
 }
 

@@ -596,14 +596,14 @@ type sortstateKtop struct {
 	// then filtbc is a program that
 	// prefilters input rows
 	prefilter bool
-	recent    []byte
+	recent    [][]byte
 	filtbc    bytecode
 	filtprog  prog
 }
 
 func (s *sortstateKtop) invalidatePrefilter() {
 	s.prefilter = false
-	s.recent = nil
+	s.recent = make([][]byte, len(s.parent.columns))
 	s.filtbc.reset()
 	s.filtprog = prog{}
 }
@@ -659,86 +659,122 @@ func (s *sortstateKtop) maybePrefilter() error {
 		// already enabled
 		return nil
 	}
-	if len(s.parent.columns) > 1 {
-		// TODO: implement for multiple columns
-		return nil
-	}
 	rec := s.ktop.Greatest()
 	if rec == nil {
 		return nil
 	}
-	f := rec.UnsafeField(0)
-	if bytes.Equal(f, s.recent) {
+
+	anychanged := func() bool {
+		for i := range s.parent.columns {
+			f := rec.UnsafeField(i)
+			if !bytes.Equal(f, s.recent[i]) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !anychanged() {
 		return nil // up-to-date
 	}
-	t := ion.TypeOf(f)
+
 	p := &s.filtprog
 	p.Begin()
-	var (
-		imm       *value
-		unmatched func(*value) *value
-		cmp       func(*value, *value) *value
-	)
-	switch t {
-	case ion.FloatType:
-		fp, _, err := ion.ReadFloat64(f)
+
+	prevequal := p.ValidLanes() // all the previous columns are equal
+	result := p.ssa0(skfalse)
+
+	for i := range s.parent.columns {
+		f := rec.UnsafeField(i)
+		t := ion.TypeOf(f)
+		var (
+			imm     *value
+			cmplt   func(*value, *value) *value
+			cmpeq   func(*value, *value) *value
+			typeset expr.TypeSet
+		)
+
+		cmplt = p.Less
+		cmpeq = p.Equals
+
+		switch t {
+		case ion.FloatType:
+			fp, _, err := ion.ReadFloat64(f)
+			if err != nil {
+				return err
+			}
+			imm = p.Constant(fp)
+			typeset = expr.NumericType
+		case ion.UintType:
+			u, _, err := ion.ReadUint(f)
+			if err != nil {
+				return err
+			}
+			imm = p.Constant(u)
+			typeset = expr.NumericType
+		case ion.IntType:
+			i, _, err := ion.ReadInt(f)
+			if err != nil {
+				return err
+			}
+			imm = p.Constant(i)
+			typeset = expr.NumericType
+		case ion.TimestampType:
+			d, _, err := ion.ReadTime(f)
+			if err != nil {
+				return err
+			}
+			imm = p.Constant(d)
+			typeset = expr.TimeType
+		case ion.StringType:
+			s, _, err := ion.ReadString(f)
+			if err != nil {
+				return err
+			}
+			imm = p.Constant(s)
+			typeset = expr.StringType | expr.SymbolType
+		default:
+			return nil
+		}
+
+		v, err := compile(p, s.parent.columns[i].Node)
 		if err != nil {
 			return err
 		}
-		imm = p.Constant(fp)
-		unmatched = p.notNumber
-		cmp = p.Less
-	case ion.UintType:
-		u, _, err := ion.ReadUint(f)
-		if err != nil {
-			return err
+
+		validtype := p.checkTag(v, typeset)
+
+		// v[i] < recent[i]
+		var less *value
+		switch s.parent.columns[0].Direction {
+		case sorting.Ascending:
+			less = p.And(validtype, cmplt(v, imm))
+		case sorting.Descending:
+			less = p.And(validtype, cmplt(imm, v))
+		default:
+			return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Direction)
 		}
-		imm = p.Constant(u)
-		unmatched = p.notNumber
-		cmp = p.Less
-	case ion.IntType:
-		i, _, err := ion.ReadInt(f)
-		if err != nil {
-			return err
-		}
-		imm = p.Constant(i)
-		unmatched = p.notNumber
-		cmp = p.Less
-	case ion.TimestampType:
-		d, _, err := ion.ReadTime(f)
-		if err != nil {
-			return err
-		}
-		imm = p.Constant(d)
-		unmatched = p.notTime
-		cmp = p.compileTimeOrdered
-	default:
-		// TODO: support string comparison
-		return nil
-	}
-	v, err := compile(p, s.parent.columns[0].Node)
-	if err != nil {
-		return err
-	}
-	var keep *value
-	switch s.parent.columns[0].Direction {
-	case sorting.Ascending:
-		keep = cmp(v, imm)
-	case sorting.Descending:
-		keep = cmp(imm, v)
-	default:
-		return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Direction)
-	}
-	keep = p.Or(keep, unmatched(v))
-	p.Return(keep)
+
+		// v[i] == recent[i]
+		equal := p.And(validtype, cmpeq(v, imm))
+
+		result = p.Or(result, p.And(prevequal, less)) // column is strictly less
+		prevequal = p.And(prevequal, equal)           // prevequal &= (col[i] == imm[i])
+	} // for
+
+	p.Return(result)
+
 	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
-	err = p.compile(&s.filtbc)
+	err := p.compile(&s.filtbc)
 	if err != nil {
 		return err
 	}
+
 	// record the current prefilter state
 	s.prefilter = true
-	s.recent = f
+	for i := range s.parent.columns {
+		s.recent[i] = rec.UnsafeField(i)
+	}
 	return nil
 }
 
