@@ -16,4 +16,17 @@
 
 package vm
 
-const vmdebugleaksEnabled = false
+import "io"
+
+func leakstart(i int) {}
+func leakend(i int)   {}
+
+// LeakCheck runs fn and writes the stack traces
+// of all the page allocation sites to w for each
+// page that was allocated within fn and was not freed.
+// LeakCheck is not reentrancy-safe.
+//
+// Note that LeakCheck *just* runs fn() unless -tags=vmemleaks is set.
+func LeakCheck(w io.Writer, fn func()) {
+	fn()
+}

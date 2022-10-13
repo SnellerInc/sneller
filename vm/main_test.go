@@ -15,6 +15,7 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"os"
@@ -25,16 +26,15 @@ import (
 func TestMain(m *testing.M) {
 	rand.Seed(time.Now().UnixNano()) // needed by evalbc_test.go
 
-	VMDebugLeaksStart()
-	v := m.Run()
-	leaks := VMDebugLeaksFinish()
-	if v == 0 && leaks > 0 {
-		f := os.Stdout
-
-		fmt.Fprintf(f, "\n")
-		fmt.Fprintf(f, "Memory leaks: %d\n", leaks)
-		VMDebugLeaksPrint(f)
-		os.Exit(2)
+	var leakbuf bytes.Buffer
+	ret := 0
+	LeakCheck(&leakbuf, func() {
+		ret = m.Run()
+	})
+	if ret == 0 && leakbuf.Len() > 0 {
+		ret = 2
+		fmt.Println("memory leaks:")
+		os.Stdout.Write(leakbuf.Bytes())
 	}
-	os.Exit(v)
+	os.Exit(ret)
 }

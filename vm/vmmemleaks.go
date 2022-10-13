@@ -16,4 +16,57 @@
 
 package vm
 
-const vmdebugleaksEnabled = true
+import (
+	"fmt"
+	"io"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+
+	"golang.org/x/exp/maps"
+)
+
+var (
+	// filed when vmdebugleaksEnabled is set via -tags=vmmemleaks
+	vmdebugleaksActive atomic.Bool
+	vmdebugleaksLock   sync.Mutex
+	vmdebugleaksTraces = map[int]string{}
+)
+
+func leakstart(i int) {
+	if vmdebugleaksActive.Load() {
+		stack := string(debug.Stack())
+		vmdebugleaksLock.Lock()
+		vmdebugleaksTraces[i] = stack
+		vmdebugleaksLock.Unlock()
+	}
+}
+
+func leakend(i int) {
+	if vmdebugleaksActive.Load() {
+		vmdebugleaksLock.Lock()
+		delete(vmdebugleaksTraces, i)
+		vmdebugleaksLock.Unlock()
+	}
+}
+
+// LeakCheck runs fn and writes the stack traces
+// of all the page allocation sites to w for each
+// page that was allocated within fn and was not freed.
+//
+// Note that LeakCheck *just* runs fn() unless -tags=vmemleaks is set.
+func LeakCheck(w io.Writer, fn func()) {
+	if vmdebugleaksActive.Swap(true) {
+		panic("concurrent vm.LeakCheck calls")
+	}
+	fn()
+	vmdebugleaksLock.Lock()
+	defer vmdebugleaksLock.Unlock()
+	i := 1
+	for page, stacktrace := range vmdebugleaksTraces {
+		fmt.Fprintf(w, "\n#%d. page %x allocated at\n%s\n", i, page, stacktrace)
+		i += 1
+	}
+	maps.Clear(vmdebugleaksTraces)
+	vmdebugleaksActive.Store(false)
+}
