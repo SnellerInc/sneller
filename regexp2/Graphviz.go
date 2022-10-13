@@ -90,7 +90,7 @@ func (dot *Graphviz) DotContent(dst io.Writer, graphName, graphTitle string) err
 			return err
 		}
 	}
-	graphTitle = strings.Replace(graphTitle, `\`, `\\`, -1)
+	graphTitle = strings.ReplaceAll(graphTitle, `\`, `\\`)
 	_, err = fmt.Fprintf(dst, "\tlabelloc=\"t\";\n\tlabel=\"%v: %v\";\n}\n", graphName, graphTitle)
 	return err
 }

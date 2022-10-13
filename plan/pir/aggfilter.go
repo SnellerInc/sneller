@@ -224,10 +224,8 @@ func aggregatesCommonFilter(agg *Aggregate) expr.Node {
 
 		if common == nil {
 			common = a.Filter
-		} else {
-			if !common.Equals(a.Filter) {
-				return nil
-			}
+		} else if !common.Equals(a.Filter) {
+			return nil
 		}
 	}
 

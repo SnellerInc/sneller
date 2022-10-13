@@ -331,6 +331,13 @@ func exit(err error) {
 
 func main() {
 	flag.Parse()
+
+	args := flag.Args()
+	if len(args) == 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	if (dashg || dashg2 || dashg3) && dashj {
 		// can't write graphviz output
 		// as json, obviously...
@@ -365,11 +372,6 @@ func main() {
 		}()
 	}
 
-	args := flag.Args()
-	if len(args) == 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
 	var stats execStatistics
 	stats.Start()
 

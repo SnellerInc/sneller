@@ -327,7 +327,7 @@ func (u *UnionMap) describe(dst io.Writer) {
 	if inner[len(inner)-1] == '\n' {
 		inner = inner[:len(inner)-1]
 	}
-	inner = bytes.Replace(inner, []byte{'\n'}, []byte{'\n', '\t'}, -1)
+	inner = bytes.ReplaceAll(inner, []byte{'\n'}, []byte{'\n', '\t'})
 	io.WriteString(dst, "UNION MAP ")
 	io.WriteString(dst, expr.ToString(u.Inner.Table))
 	io.WriteString(dst, " (\n\t")
@@ -993,7 +993,7 @@ func (b *Trace) Describe(dst io.Writer) {
 		io.WriteString(dst, "WITH (\n\t")
 		tmp.Reset()
 		b.Replacements[i].Describe(&tmp)
-		inner := bytes.Replace(tmp.Bytes(), []byte{'\n'}, []byte{'\n', '\t'}, -1)
+		inner := bytes.ReplaceAll(tmp.Bytes(), []byte{'\n'}, []byte{'\n', '\t'})
 		inner = inner[:len(inner)-1] // chomp \t on last entry
 		dst.Write(inner)
 		fmt.Fprintf(dst, ") AS REPLACEMENT(%d)\n", i)

@@ -157,8 +157,7 @@ func (d *Definition) Hash() []byte {
 	if err != nil {
 		panic("db: failed to hash definition: " + err.Error())
 	}
-	sum := hash.Sum(nil)
-	return sum[:]
+	return hash.Sum(nil)
 }
 
 // RootDefinition describes a database and the

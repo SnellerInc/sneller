@@ -487,7 +487,7 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 			// root definitions will eventually
 			// support expanding table name templates
 			// so escape '$' in table names
-			if name := strings.Replace(table, "$", "$$", -1); name != table {
+			if name := strings.ReplaceAll(table, "$", "$$"); name != table {
 				def = &Definition{
 					Name:     name,
 					Inputs:   def.Inputs,

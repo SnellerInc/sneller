@@ -81,7 +81,7 @@ func (v *validator) Write(p []byte) (int, error) {
 }
 
 func TestChunker(t *testing.T) {
-	f, err := os.Open(filepath.Join("../testdata/parking2.json"))
+	f, err := os.Open("../testdata/parking2.json")
 	if err != nil {
 		t.Fatal(err)
 	}

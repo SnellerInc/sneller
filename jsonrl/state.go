@@ -248,7 +248,7 @@ func hintsFromJSON(value interface{}) (hints, error) {
 			if err != nil {
 				return hintDefault, err
 			}
-			result = result | h
+			result |= h
 		}
 		return result, nil
 	}

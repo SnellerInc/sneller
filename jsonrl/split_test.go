@@ -244,7 +244,7 @@ func BenchmarkSplit(b *testing.B) {
 	for i := range files {
 		b.Run(files[i], func(b *testing.B) {
 			const size = 1024 * 1024 * 16
-			fp := filepath.Join("../testdata/" + files[i])
+			fp := filepath.Join("../testdata", files[i])
 			tc := synthesize(b, fp, size)
 			insize := int64(len(tc.js))
 			rd := bytes.NewReader(tc.js)

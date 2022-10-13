@@ -615,11 +615,9 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 						t.Errorf("got result %s", got)
 						t.Errorf("wanted %s", m.String())
 					}
-				} else {
-					if got != q.output {
-						t.Errorf("got result %s", got)
-						t.Errorf("wanted %s", q.output)
-					}
+				} else if got != q.output {
+					t.Errorf("got result %s", got)
+					t.Errorf("wanted %s", q.output)
 				}
 				scannedsize, err := strconv.ParseInt(res.Header.Get("X-Sneller-Max-Scanned-Bytes"), 0, 64)
 				if err != nil {

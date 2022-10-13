@@ -228,9 +228,7 @@ func buildMinDfa(
 	for i := 0; i < len(partitions); i++ {
 		if partitions[i].contains(startID) {
 			if i > 0 {
-				tmp := partitions[i]
-				partitions[i] = partitions[0]
-				partitions[0] = tmp
+				partitions[i], partitions[0] = partitions[0], partitions[i]
 			}
 			break
 		}

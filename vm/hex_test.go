@@ -86,7 +86,7 @@ c41d94d227ad5492de00d395dc9822904999864e656f74656c96deb59a8a
 	}
 
 	decode := func(str string) []byte {
-		str = strings.Replace(str, "\n", "", -1)
+		str = strings.ReplaceAll(str, "\n", "")
 		buf, err := hex.DecodeString(str)
 		if err != nil {
 			t.Fatal(err)

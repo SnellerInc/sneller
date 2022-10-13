@@ -932,10 +932,8 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		if err != nil {
 			return err
 		}
-	} else {
-		if s.Offset != nil {
-			return errorf(s, "OFFSET without LIMIT is not supported")
-		}
+	} else if s.Offset != nil {
+		return errorf(s, "OFFSET without LIMIT is not supported")
 	}
 
 	return b.hoist(e)
