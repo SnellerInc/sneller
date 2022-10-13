@@ -456,6 +456,9 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 		return err
 	}
 	for i := range dbs {
+		if !dbs[i].IsDir() {
+			continue
+		}
 		dbname := dbs[i].Name()
 		curp := path.Join("db", dbname)
 		tables, err := fs.ReadDir(dir, curp)

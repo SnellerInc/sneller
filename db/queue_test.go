@@ -263,6 +263,11 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 	}
 
 	dfs := &s3DirFS{NewDirFS(tmpdir)}
+
+	// make sure everything works with random
+	// non-directory entries within db/
+	dfs.WriteFile("db/a-random-file", []byte("some text contents"))
+
 	defer dfs.Close()
 	dfs.Log = t.Logf
 
