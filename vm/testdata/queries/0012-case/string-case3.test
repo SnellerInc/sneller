@@ -1,0 +1,16 @@
+SELECT 'text: ' || CASE x
+    WHEN 1 THEN CAST(a AS string)
+    WHEN 2 THEN CAST(b AS string)
+    WHEN 3 THEN CAST(c AS string)
+    ELSE CAST(d AS string)
+END AS t FROM input
+---
+{"x": 1, "a": "one", "b": "ONE", "c": "One", "d": "O-N-E"}
+{"x": 2, "a": "two", "b": "TWO", "c": "Two", "d": "T-W-O"}
+{"x": 3, "a": "three", "b": "THREE", "c": "Three", "d": "T-H-R-E-E"}
+{"x": 42, "a": "other", "b": "OTHER", "c": "Other", "d": "O-T-H-E-R"}
+---
+{"t": "text: one"}
+{"t": "text: TWO"}
+{"t": "text: Three"}
+{"t": "text: O-T-H-E-R"}

@@ -1,0 +1,13 @@
+SELECT 'text: ' || CASE x
+    WHEN 1 THEN y
+    WHEN 2 THEN y
+    ELSE y
+END AS t FROM input
+---
+{"x": 1, "y": "one"}
+{"x": 2, "y": "two"}
+{"x": 42, "y": "other"}
+---
+{"t": "text: one"}
+{"t": "text: two"}
+{"t": "text: other"}

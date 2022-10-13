@@ -375,9 +375,6 @@ func (p *prog) compileAsTime(e expr.Node) (*value, error) {
 }
 
 func (p *prog) compileAsString(e expr.Node) (*value, error) {
-	if c, ok := e.(*expr.Case); ok {
-		return p.compileStringCase(c)
-	}
 	v, err := compile(p, e)
 	if err != nil {
 		return nil, err
@@ -1488,6 +1485,7 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 		if err != nil {
 			return nil, err
 		}
+		v = p.unsymbolized(v)
 		k = p.mask(v)
 		merged = p.ssa0(skfalse)
 	}
@@ -1500,6 +1498,7 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 			continue
 		}
 		then, err := p.serialized(c.Limbs[i].Then)
+		then = p.unsymbolized(then)
 		if err != nil {
 			return nil, err
 		}
@@ -1519,6 +1518,7 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 		k = p.Or(k, p.And(shouldmerge, p.mask(then)))
 		merged = p.Or(merged, when)
 	}
+
 	if v == nil {
 		return p.ssa0(skfalse), nil
 	}
@@ -1526,10 +1526,6 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 		return v, nil
 	}
 	return p.vk(v, k), nil
-}
-
-func (p *prog) compileStringCase(c *expr.Case) (*value, error) {
-	return nil, fmt.Errorf("string-case unimplemented")
 }
 
 func (p *prog) compileCast(c *expr.Cast) (*value, error) {
