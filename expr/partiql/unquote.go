@@ -19,13 +19,6 @@ import (
 	"unicode/utf8"
 )
 
-func appendRune(dst []byte, r rune) []byte {
-	// FIXME: this is slow and gross
-	tmp := append(dst, 0, 0, 0, 0)
-	l := utf8.EncodeRune(tmp[len(dst):], r)
-	return tmp[:len(dst)+l]
-}
-
 // unescaped
 func unescape(buf []byte) (string, error) {
 	var tmp []byte
@@ -88,6 +81,8 @@ func unescape(buf []byte) (string, error) {
 				} else if add >= 'a' && add <= 'f' {
 					add -= 'a'
 					add += 10
+				} else {
+					return "", fmt.Errorf("invalid %s hex digit", string(rune(buf[j])))
 				}
 				r = (r * 16) + add
 			}
@@ -95,7 +90,7 @@ func unescape(buf []byte) (string, error) {
 			if !utf8.ValidRune(r) {
 				return "", fmt.Errorf("rune U%x is invalid", r)
 			}
-			tmp = appendRune(tmp, r)
+			tmp = utf8.AppendRune(tmp, r)
 		default:
 			return "", fmt.Errorf("unexpected backslash escape of %c", c)
 		}
