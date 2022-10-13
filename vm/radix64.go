@@ -43,9 +43,6 @@ type radixTree64 struct {
 	index  [][tabsize]int32
 	values []byte
 
-	// pre-computed [vsize*i] for use by SIMD
-	helptable [17]uint32
-
 	vsize int
 }
 
@@ -54,9 +51,6 @@ func newRadixTree(datasize int) *radixTree64 {
 		index:  make([][tabsize]int32, 1),
 		vsize:  aggregateTagSize + datasize,
 		values: make([]byte, 0, (aggregateTagSize+datasize)*16),
-	}
-	for i := 0; i <= 16; i++ {
-		rt.helptable[i] = uint32(rt.vsize) * uint32(i)
 	}
 	return rt
 }
@@ -572,50 +566,51 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 
 			h := hashmem[i*2]
 			off, ok := a.tree.insertSlow(h)
-			if ok {
-				// new distinct value
-				// enforce max # of pairs
-				if len(a.pairs) > MaxAggregateBuckets {
-					return fmt.Errorf("cannot create more than %d aggregate pairs", len(a.pairs))
-				}
-				// enforce max aggregate value memory
-				if off > MaxAggregateMemory {
-					return fmt.Errorf("aggregate value memory (%d bytes) exceeds limit (%d bytes)", off, MaxAggregateMemory)
-				}
-
-				// start of the index in `a.repr` where all GROUP BY fields will be appended.
-				reprloc := int32(len(a.repr))
-
-				for n := 0; n < projectedGroupByCount; n++ {
-					lo, hi := a.bc.getVRegOffsetAndSize(n*vRegSizeInUInt64Units, i)
-					if hi == 0 {
-						errorf("abort bit set on a MISSING value")
-						return bcerrCorrupt
-					}
-					ref := vmref{lo, hi}
-					if !ref.valid() {
-						errorf("bad ref {%#x, %d} from bytecode:\n%s\n", lo, hi, a.bc.String())
-						return bcerrCorrupt
-					}
-					mem := ref.mem()
-					// must be a single valid ion object
-					if ion.SizeOf(mem) != len(mem) {
-						errorf("column %d vmref 0x%x has invalid size %d", i, mem, ion.SizeOf(mem))
-						errorf("bad ref from bytecode:\n%s\n", a.bc.String())
-						return bcerrCorrupt
-					}
-					// enforce max aggregate group memory
-					if len(a.repr)+len(mem) > MaxAggregateMemory {
-						return fmt.Errorf("total aggregated groups size (%d bytes) exceeds max (%d bytes)", len(a.repr)+len(mem), MaxAggregateMemory)
-					}
-					a.repr = append(a.repr, mem...)
-				}
-				a.pairs = append(a.pairs, hpair{
-					reprloc: reprloc,
-					hloc:    off,
-				})
-				a.initentry(a.tree.values[off+8:])
+			if !ok {
+				continue
 			}
+			// new distinct value
+			// enforce max # of pairs
+			if len(a.pairs) > MaxAggregateBuckets {
+				return fmt.Errorf("cannot create more than %d aggregate pairs", len(a.pairs))
+			}
+			// enforce max aggregate value memory
+			if off > MaxAggregateMemory {
+				return fmt.Errorf("aggregate value memory (%d bytes) exceeds limit (%d bytes)", off, MaxAggregateMemory)
+			}
+
+			// start of the index in `a.repr` where all GROUP BY fields will be appended.
+			reprloc := int32(len(a.repr))
+
+			for n := 0; n < projectedGroupByCount; n++ {
+				lo, hi := a.bc.getVRegOffsetAndSize(n*vRegSizeInUInt64Units, i)
+				if hi == 0 {
+					errorf("abort bit set on a MISSING value")
+					return bcerrCorrupt
+				}
+				ref := vmref{lo, hi}
+				if !ref.valid() {
+					errorf("bad ref {%#x, %d} from bytecode:\n%s\n", lo, hi, a.bc.String())
+					return bcerrCorrupt
+				}
+				mem := ref.mem()
+				// must be a single valid ion object
+				if ion.SizeOf(mem) != len(mem) {
+					errorf("column %d vmref 0x%x has invalid size %d", i, mem, ion.SizeOf(mem))
+					errorf("bad ref from bytecode:\n%s\n", a.bc.String())
+					return bcerrCorrupt
+				}
+				// enforce max aggregate group memory
+				if len(a.repr)+len(mem) > MaxAggregateMemory {
+					return fmt.Errorf("total aggregated groups size (%d bytes) exceeds max (%d bytes)", len(a.repr)+len(mem), MaxAggregateMemory)
+				}
+				a.repr = append(a.repr, mem...)
+			}
+			a.pairs = append(a.pairs, hpair{
+				reprloc: reprloc,
+				hloc:    off,
+			})
+			a.initentry(a.tree.values[off+8:])
 		}
 	}
 	return nil
