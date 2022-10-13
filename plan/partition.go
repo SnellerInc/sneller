@@ -526,8 +526,11 @@ func (c *Client) next() (frame, error) {
 	if c.valid < framesize {
 		n, err := io.ReadAtLeast(c.Pipe, c.tmp[c.valid:], framesize-c.valid)
 		c.valid += n
+		if errors.Is(err, io.EOF) {
+			err = io.ErrUnexpectedEOF
+		}
 		if err != nil {
-			return 0, fmt.Errorf("plan.Client: reading frame: %w", err)
+			return 0, err
 		}
 	}
 	return getframe(c.tmp), nil
@@ -641,7 +644,7 @@ func (c *Client) copyout(ep *ExecParams) error {
 			if ctxerr := ep.Context.Err(); ctxerr != nil {
 				err = ctxerr
 			}
-			return fmt.Errorf("plan.Client: reading from connection: %w", err)
+			return fmt.Errorf("plan.Client: reading frame: %w", err)
 		}
 		switch f.kind() {
 		case framefin:
