@@ -418,7 +418,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("s3 list objects: %s", res.Status)
+		return nil, fmt.Errorf("s3 list objects s3://%s/%s: %s", p.Bucket, p.Path, res.Status)
 	}
 	ret := struct {
 		IsTruncated bool `xml:"IsTruncated"`
@@ -474,7 +474,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 	// then this list operation was performed on a directory
 	// that simply doesn't exist
 	if !exists && len(out) == 0 {
-		return nil, &fs.PathError{Op: "readdir", Path: p.Path, Err: fs.ErrNotExist}
+		return nil, &fs.PathError{Op: "readdir", Path: fmt.Sprintf("s3://%s/%s", p.Bucket, p.Path), Err: fs.ErrNotExist}
 	}
 	if len(out) == 0 && n > 0 {
 		p.token = ""
