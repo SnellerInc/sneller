@@ -679,15 +679,6 @@ func (s *state) parseInt(i int64) {
 	s.after()
 }
 
-var ErrBadUTF8 = errors.New("bad utf8 sequence")
-
-func appendRune(dst []byte, r rune) []byte {
-	// FIXME: this is slow and gross
-	tmp := append(dst, 0, 0, 0, 0)
-	l := utf8.EncodeRune(tmp[len(dst):], r)
-	return tmp[:len(dst)+l]
-}
-
 // unescaped processes strings that include
 // backslash escape sequences
 func (s *state) unescaped(buf []byte) []byte {
@@ -698,7 +689,7 @@ func (s *state) unescaped(buf []byte) []byte {
 		if c >= utf8.RuneSelf {
 			r, size := utf8.DecodeRune(buf[i:])
 			if r == utf8.RuneError {
-				tmp = appendRune(tmp, r)
+				tmp = utf8.AppendRune(tmp, r)
 				if size == 1 {
 					size = bits.LeadingZeros32(uint32(^buf[i])) - 24
 				}
@@ -756,7 +747,7 @@ func (s *state) unescaped(buf []byte) []byte {
 			if !utf8.ValidRune(r) {
 				r = utf8.RuneError
 			}
-			tmp = appendRune(tmp, r)
+			tmp = utf8.AppendRune(tmp, r)
 		default:
 			fmt.Printf("char: %c\n", c)
 			fmt.Printf("escape sequence %s\n", buf[i-1:i+1])
