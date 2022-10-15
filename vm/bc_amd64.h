@@ -37,9 +37,10 @@
 
 #define VREG_SIZE 128
 
-// BCCLEARSCRATCH resets the output scratch buffer
+// BCCLEARSCRATCH resets the output scratch buffer:
+// len(bytecode.scratch) = len(bytecode.savedlit)
 #define BCCLEARSCRATCH(tmp) \
-  MOVQ    bytecode_scratchreserve(VIRT_BCPTR), tmp   \
+  MOVQ    bytecode_savedlit+8(VIRT_BCPTR), tmp   \
   MOVQ    tmp, bytecode_scratch+8(VIRT_BCPTR)
 
 // BCCLEARERROR resets error code of bytecode program

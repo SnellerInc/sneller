@@ -154,7 +154,7 @@ func (p *projector) update(st *symtab, aux *auxbindings) error {
 }
 
 func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
-	p.bc.restoreScratch() // see EndSegment
+	p.bc.restoreScratch(st) // see EndSegment
 	sel := p.parent.sel
 	// output symbol table is the union of the
 	// input symbol table plus the output bindings
@@ -206,7 +206,7 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	// so that we can use it for projection
 	prg.Return(prg.mk(prg.MergeMem(mem...), prg.ValidLanes()))
 	prg.symbolize(st, aux)
-	err = prg.compile(&p.bc)
+	err = prg.compile(&p.bc, st)
 	if err != nil {
 		return fmt.Errorf("projector.symbolize(): %w", err)
 	}

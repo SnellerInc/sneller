@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 )
 
 func path(t testing.TB, s string) *expr.Path {
@@ -65,7 +64,8 @@ func readVM(t testing.TB, name string) []byte {
 func TestSplat(t *testing.T) {
 	var bc bytecode
 	var p prog
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 
 	buf := readVM(t, "../testdata/parking3.ion")
 	rest, err := st.Unmarshal(buf)
@@ -84,7 +84,7 @@ func TestSplat(t *testing.T) {
 	list := p.ssa2(stolist, field, field)
 	p.Return(list)
 	p.symbolize(&st, &auxbindings{})
-	err = p.compile(&bc)
+	err = p.compile(&bc, &st)
 	if err != nil {
 		t.Fatal(err)
 	}

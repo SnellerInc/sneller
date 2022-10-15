@@ -290,7 +290,7 @@ func symbolize(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings, glob
 }
 
 func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings) error {
-	findbc.restoreScratch()
+	findbc.restoreScratch(st)
 	var program prog
 
 	program.Begin()
@@ -305,7 +305,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 	}
 	program.Return(program.MergeMem(mem...))
 	program.symbolize(st, aux)
-	err := program.compile(findbc)
+	err := program.compile(findbc, st)
 	findbc.symtab = st.symrefs
 	if err != nil {
 		return fmt.Errorf("sortstate.symbolize(): %w", err)
@@ -325,10 +325,6 @@ func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out [
 
 	findbc.ensureVStackSize(minimumVStackSize)
 	findbc.allocStacks()
-
-	if findbc.scratch != nil {
-		findbc.scratch = findbc.scratch[:findbc.scratchreserve]
-	}
 
 	findbc.prepare(rp)
 	err = evalfind(findbc, delims, len(sort.columns))
@@ -584,6 +580,8 @@ type sortstateKtop struct {
 	// a buffer to keep the scratch + record data of the current record in `writeRows`
 	buffer []byte
 
+	// most recent symbolize() symtab
+	st *symtab
 	// list of all captured symbol tables
 	symtabs []ion.Symtab
 	// # of captures of symtabs[len(symtabs)-1]
@@ -616,6 +614,7 @@ func (s *sortstateKtop) EndSegment() {
 }
 
 func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
+	s.st = st
 	if s.captures > 0 || len(s.symtabs) == 0 {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
 	}
@@ -623,7 +622,7 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 	if s.prefilter && s.filtprog.IsStale(st) {
 		s.invalidatePrefilter()
 	} else {
-		s.filtbc.restoreScratch()
+		s.filtbc.restoreScratch(st)
 	}
 	if len(aux.bound) > 0 {
 		// FIXME: we'd need to permute the auxilliary binding variables
@@ -765,7 +764,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 	p.Return(result)
 
 	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
-	err := p.compile(&s.filtbc)
+	err := p.compile(&s.filtbc, s.st)
 	if err != nil {
 		return err
 	}

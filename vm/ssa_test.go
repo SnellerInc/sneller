@@ -346,8 +346,11 @@ func TestCompileSSA(t *testing.T) {
 				}
 			}()
 
-			st := progsyms(&p)
-			p.Symbolize(st, &ps, &auxbindings{})
+			var st symtab
+			defer st.free()
+			progsyms(&p).CloneInto(&st.Symtab)
+			st.build()
+			p.Symbolize(&st, &ps, &auxbindings{})
 			testDomtree(&ps, t)
 
 			// if GRAPHVIZ=1, dump test case SSA
@@ -358,7 +361,7 @@ func TestCompileSSA(t *testing.T) {
 				os.WriteFile(name+".dot", buf.Bytes(), 0666)
 			}
 
-			err := ps.compile(&bc)
+			err := ps.compile(&bc, &st)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -897,7 +900,8 @@ func testDomtree(p *prog, t *testing.T) {
 }
 
 func TestSSATicketsQueries(t *testing.T) {
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	buf := unhex(parkingCitations1KLines)
 	_, err := st.Unmarshal(buf)
 	if err != nil {
@@ -917,7 +921,7 @@ func TestSSATicketsQueries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc)
+			err = sample.compile(&bc, &st)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -946,7 +950,8 @@ func TestSSATicketsQueries(t *testing.T) {
 }
 
 func TestSSATickets2Queries(t *testing.T) {
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	buf, err := os.ReadFile("../testdata/parking2.ion")
 	if err != nil {
 		t.Fatal(err)
@@ -973,7 +978,7 @@ func TestSSATickets2Queries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc)
+			err = sample.compile(&bc, &st)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1001,7 +1006,8 @@ func TestSSATickets2Queries(t *testing.T) {
 }
 
 func TestSSANYCQueries(t *testing.T) {
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	buf, err := os.ReadFile("../testdata/nyc-taxi.block")
 	if err != nil {
 		t.Fatal(err)
@@ -1059,7 +1065,7 @@ func TestSSANYCQueries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc)
+			err = sample.compile(&bc, &st)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1089,7 +1095,7 @@ func TestSSANYCQueries(t *testing.T) {
 				out.Reset()
 				CopyRows(NewProjection(progsel(p), &out), table(), 1)
 
-				st = ion.Symtab{}
+				st.Reset()
 				sample = prog{}
 				rest, err := st.Unmarshal(out.Bytes())
 				if err != nil {
@@ -1099,7 +1105,7 @@ func TestSSANYCQueries(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
-				err = sample.compile(&bc)
+				err = sample.compile(&bc, &st)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1123,7 +1129,8 @@ func TestNestedTicketsQueries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	_, err = st.Unmarshal(buf)
 	if err != nil {
 		t.Fatal(err)
@@ -1161,7 +1168,7 @@ func TestNestedTicketsQueries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc)
+			err = sample.compile(&bc, &st)
 			if err != nil {
 				t.Fatal(err)
 			}

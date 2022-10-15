@@ -31,17 +31,29 @@ func ionsyms(x syms) *ion.Symtab {
 	return &x.(*symtab).Symtab
 }
 
-// symtab is a wrapper around ion.Symtab
-// that keeps the symbol table in vmrefs
+// symtab serves two purposes:
+//
+//  1. Wrap ion.Symtab; this is our source-of-truth
+//     for the current symbol table
+//  2. Store vm allocations for symbols and scratch buffers
+//     so that they can be free'd from one place (and deterministically)
+//     via the Reset method
 type symtab struct {
 	ion.Symtab
 
+	// all allocated pages:
 	curpage pageref
 	opages  []pageref
 
 	// symrefs[id] produces a boxed string
 	// representing the symbol id
 	symrefs []vmref
+
+	// epoch keeps track of how many times
+	// this symtab has been reset;
+	// allocations are only valid across
+	// an individual epoch
+	epoch int
 }
 
 type pageref struct {
@@ -100,6 +112,7 @@ func (s *symtab) free() {
 	}
 	s.opages = s.opages[:0]
 	s.symrefs = s.symrefs[:0]
+	s.epoch++
 }
 
 func (s *symtab) resident() bool {
@@ -117,6 +130,37 @@ func (s *symtab) resetNoFree() {
 	}
 	s.opages = s.opages[:0]
 	s.symrefs = s.symrefs[:0]
+	s.epoch++
+}
+
+// tinymalloc allocates a small amount of memory
+// directly from the symbol table page(s)
+func (s *symtab) tinymalloc(n int) []byte {
+	if s.curpage.mem == nil {
+		s.curpage.mem = Malloc()
+	}
+	if n > len(s.curpage.mem) {
+		panic("tinymalloc > page size")
+	}
+	// don't try to allocate from the current page;
+	// just allocate a fresh one and return it:
+	if n == PageSize {
+		out := Malloc()
+		s.opages = append(s.opages, pageref{
+			mem: out,
+			off: len(out), // entirely used
+		})
+		return out
+	}
+	if len(s.curpage.mem)-s.curpage.off < (n + 4) {
+		s.opages = append(s.opages, s.curpage)
+		s.curpage = pageref{}
+		s.curpage.mem = Malloc()
+	}
+	out := s.curpage.mem[s.curpage.off:]
+	out = out[:n:n]
+	s.curpage.off += n
+	return out
 }
 
 func (s *symtab) push(x string) {

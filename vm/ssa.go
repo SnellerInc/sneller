@@ -563,7 +563,9 @@ type ssaopinfo struct {
 	// when emitted as code
 	immfmt immfmt
 
-	scratch bool // op uses scratch
+	// scratch is a small positive value if scratch space is required,
+	// or -maxint if the required scratch space is unknown
+	scratch int
 	blend   bool // equivalent to args[0] when mask arg is false
 }
 
@@ -756,14 +758,14 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	scvtitof: {text: "cvt.i@f", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
 	scvtftoi: {text: "cvt.f@i", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
 
-	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr},
-	sconcatstr2:  {text: "concat2.str", argtypes: str2Args, rettype: stStringMasked, emit: emitConcatStr},
-	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr},
-	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
+	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr, scratch: 20 * 16},
+	sconcatstr2:  {text: "concat2.str", argtypes: str2Args, rettype: stStringMasked, emit: emitConcatStr, scratch: PageSize},
+	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr, scratch: PageSize},
+	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr, scratch: PageSize},
 
 	//#region string operations
-	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opslower)},
-	supperstr: {text: "upper.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opsupper)},
+	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opslower), scratch: PageSize},
+	supperstr: {text: "upper.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opsupper), scratch: PageSize},
 
 	sStrCmpEqCs:     {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
 	sStrCmpEqCi:     {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
@@ -1006,10 +1008,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// boxing ops
 	//
 	// turn two masks into TRUE/FALSE/MISSING according to 3VL
-	sboxmask:   {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stValue, emit: emitboxmask, scratch: true},
-	sboxint:    {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxint, scratch: true},
-	sboxfloat:  {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxfloat, scratch: true},
-	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstring, scratch: true},
+	sboxmask:   {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stValue, emit: emitboxmask, scratch: 16},
+	sboxint:    {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxint, scratch: 2 * 9 * 16},
+	sboxfloat:  {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxfloat, scratch: 2 * 9 * 16},
+	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstring, scratch: PageSize},
 
 	// timestamp operations
 	sbroadcastts:            {text: "broadcast.ts", rettype: stTimeInt, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcastimmi},
@@ -1049,20 +1051,20 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sdatetruncquarter:       {text: "datetruncquarter", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncquarter},
 	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
 	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitauto2},
-	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: true},
+	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts, scratch: 16 * 16},
 
-	sboxlist:       {text: "boxlist", rettype: stValue, argtypes: []ssatype{stList, stBool}, scratch: true},
-	smakelist:      {text: "makelist", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stValue, stBool}, bc: opmakelist, scratch: true, emit: emitMakeList},
-	smakestruct:    {text: "makestruct", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stString, stValue, stBool}, bc: opmakestruct, scratch: true, emit: emitMakeStruct},
+	sboxlist:       {text: "boxlist", rettype: stValue, argtypes: []ssatype{stList, stBool}, scratch: PageSize},
+	smakelist:      {text: "makelist", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stValue, stBool}, bc: opmakelist, scratch: PageSize, emit: emitMakeList},
+	smakestruct:    {text: "makestruct", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stString, stValue, stBool}, bc: opmakestruct, scratch: PageSize, emit: emitMakeStruct},
 	smakestructkey: {text: "makestructkey", rettype: stString, immfmt: fmtother, emit: emitNone},
 
 	// GEO functions
-	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2},
-	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2},
+	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2, scratch: 20 * 16},
+	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2, scratch: 20 * 16},
 	sgeotilex:     {text: "geotilex", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitauto2},
 	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitauto2},
-	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitauto2},
-	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2},
+	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitauto2, scratch: 32 * 16},
+	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2, scratch: 32 * 16},
 	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
 
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
@@ -5154,11 +5156,18 @@ type compilestate struct {
 	lr   lranges  // variable live ranges
 	regs regstate // register state
 
-	trees       []*radixTree64
-	asm         assembler
-	dict        []string
-	litbuf      []byte // output datum literals
-	needscratch bool   // need the scratch buffer to be allocated
+	trees        []*radixTree64
+	asm          assembler
+	dict         []string
+	litbuf       []byte // output datum literals
+	knownscratch int    // statically known scratch size, clamped to PageSize
+}
+
+func (c *compilestate) addspace(n int) {
+	c.knownscratch += n
+	if c.knownscratch > PageSize {
+		c.knownscratch = PageSize
+	}
 }
 
 func checkImmediateBeforeEmit1(op bcop, imm0Size int) {
@@ -5695,7 +5704,6 @@ func emitinit(v *value, c *compilestate) {}
 type rawDatum []byte
 
 func emitconst(v *value, c *compilestate) {
-	c.needscratch = true
 	var b ion.Buffer
 	switch t := v.imm.(type) {
 	case nil:
@@ -5991,6 +5999,7 @@ func emitConcatStr(v *value, c *compilestate) {
 		slots[i] = c.forceStackRef(v.args[i], regS)
 	}
 
+	c.addspace(PageSize)
 	c.loadk(v, mask)
 	c.loads(v, v.args[0])
 	c.clobbers(v)
@@ -6094,7 +6103,7 @@ func emitboxmask(v *value, c *compilestate) {
 
 	// we must have scratch space available
 	// during program execution
-	c.needscratch = true
+	c.knownscratch += 16
 	c.clobberv(v)
 
 	// if the truefalse and output masks
@@ -6279,7 +6288,7 @@ func emitauto(v *value, c *compilestate) {
 	if len(v.args) != len(info.argtypes) {
 		panic("argument count mismatch")
 	}
-	c.needscratch = c.needscratch || info.scratch
+	c.addspace(info.scratch)
 	clobbers := v.ret().vregs()
 	var allregs regset
 	for i := range v.args {
@@ -6410,9 +6419,7 @@ func emitauto2(v *value, c *compilestate) {
 		panic("argument count mismatch")
 	}
 
-	if info.scratch {
-		c.needscratch = true
-	}
+	c.addspace(info.scratch)
 
 	var slots []stackslot
 	var kRegArg *value
@@ -6534,7 +6541,7 @@ func emitMakeList(v *value, c *compilestate) {
 	info := &ssainfo[v.op]
 	op := info.bc
 
-	c.needscratch = true
+	c.addspace(info.scratch)
 	c.loadk(v, v.args[0])
 	c.clobberk(v)
 	c.clobberv(v)
@@ -6586,7 +6593,7 @@ func emitMakeStruct(v *value, c *compilestate) {
 	info := &ssainfo[v.op]
 	op := info.bc
 
-	c.needscratch = true
+	c.addspace(info.scratch)
 	c.loadk(v, v.args[0])
 	c.clobberk(v)
 	c.clobberv(v)
@@ -6599,11 +6606,12 @@ func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
 		mask := v.args[1] // predicate
 
 		originalInput := c.forceStackRef(arg, regS) // copy input refrence
+		info := &ssainfo[v.op]
 
 		c.loadk(v, mask)
 		c.loads(v, arg)
 		c.clobbers(v)
-		c.needscratch = true
+		c.addspace(info.scratch)
 
 		c.op(v, opconcatlenget1)
 		c.op(v, opsadjustsize)
@@ -6711,7 +6719,7 @@ func (p *prog) reserveslots(c *compilestate) {
 	}
 }
 
-func (p *prog) compile(dst *bytecode) error {
+func (p *prog) compile(dst *bytecode, st *symtab) error {
 	var c compilestate
 
 	if err := p.compileinto(&c); err != nil {
@@ -6725,22 +6733,14 @@ func (p *prog) compile(dst *bytecode) error {
 	dst.trees = c.trees
 	dst.dict = c.dict
 	dst.compiled = c.asm.grabCode()
-	dst.scratchreserve = 0
 
-	// try to reserve scratch space destructively:
-	// if we already have a buffer, just copy the right
-	// amount of data into it and reserve it; otherwise
-	// just force the buffer to be allocated with a reasonable
-	// amount of space
-	if c.litbuf != nil {
-		if !dst.setlit(c.litbuf) {
-			return fmt.Errorf("literal buffer (len=%d) too large", len(c.litbuf))
-		}
-	} else if c.needscratch && dst.scratch == nil {
-		// zero-length, large-capacity buffer
-		dst.scratch = Malloc()[:0]
-		dst.scratchoff, _ = vmdispl(dst.scratch[:1])
+	reserve := c.knownscratch + len(c.litbuf)
+	if reserve > PageSize {
+		reserve = PageSize
 	}
+	dst.savedlit = c.litbuf
+	dst.scratchtotal = reserve
+	dst.restoreScratch(st) // populate everything
 	return dst.finalize()
 }
 
@@ -6857,18 +6857,16 @@ func (p *prog) unsymbolized(v *value) *value {
 func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings) error {
 	final.symtab = st.symrefs
 	if !dst.IsStale(st) {
-		final.restoreScratch()
+		// the scratch buffer may be invalid,
+		// so ensure that it is populated correctly:
+		final.restoreScratch(st)
 		return nil
 	}
-	// if we have dropped the scratch buffer,
-	// that's fine; we no longer care about
-	// the saved scratch buffer either
-	final.dropSaved()
 	err := src.Symbolize(st, dst, aux)
 	if err != nil {
 		return err
 	}
-	return dst.compile(final)
+	return dst.compile(final, st)
 }
 
 // IsStale returns whether the symbolized program

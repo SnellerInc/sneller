@@ -61,7 +61,8 @@ func checktable(tr *radixTree64, t testing.TB) {
 }
 
 func TestRadixBytecodeFind(t *testing.T) {
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	orig := unhex(parkingCitations1KLines)
 	buf := Malloc()
 	defer Free(buf)
@@ -88,7 +89,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.compile(&agt.bc)
+	err = p.compile(&agt.bc, &st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +168,8 @@ func TestRadixBytecodeFind(t *testing.T) {
 }
 
 func TestRadixBytecodeInsert(t *testing.T) {
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	orig := unhex(parkingCitations1KLines)
 	buf := Malloc()
 	defer Free(buf)
@@ -194,7 +196,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.compile(&agt.bc)
+	err = p.compile(&agt.bc, &st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +342,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	agt2.tree = newRadixTree(8)
 	agt2.parent = agt.parent
 	agt2.aggregateOps = agt.parent.aggregateOps
-	err = agt.prog.compile(&agt2.bc)
+	err = agt.prog.compile(&agt2.bc, &st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +391,8 @@ func TestRadixBytecodeInsert(t *testing.T) {
 }
 
 func BenchmarkAggregate(b *testing.B) {
-	var st ion.Symtab
+	var st symtab
+	defer st.free()
 	orig := unhex(parkingCitations1KLines)
 	buf := Malloc()
 	buf = buf[:copy(buf, orig)]
@@ -420,7 +423,7 @@ func BenchmarkAggregate(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = p.compile(&agt.bc)
+	err = p.compile(&agt.bc, &st)
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -74,7 +74,6 @@ func (u *unnesting) EndSegment() {
 }
 
 func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
-	u.splat.restoreScratch()
 	var p prog
 	var err error
 	p.Begin()
@@ -87,7 +86,7 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 	list := p.ssa2(stolist, v, p.mask(v))
 	p.Return(p.msk(p.InitMem(), list, p.mask(list)))
 	p.symbolize(st, aux)
-	err = p.compile(&u.splat)
+	err = p.compile(&u.splat, st)
 	if err != nil {
 		return err
 	}

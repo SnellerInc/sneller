@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-
-	"golang.org/x/exp/slices"
 )
 
 //go:generate go run _generate/genops.go
@@ -661,15 +659,16 @@ type bytecode struct {
 
 	// scratch buffer used for projection
 	scratch []byte
-	// number of bytes to reserve for literals
-	scratchreserve int
+	// number of bytes to reserve for scratch, total
+	scratchtotal int
+	// allocation epoch; see symtab.epoch
+	epoch int
 	// relative displacment of scratch relative to vmm
 	scratchoff uint32
 
-	// this is a back-up copy if scratch[:scratchreserve]
-	// that we use if we have decided to temporarily
-	// de-allocate scratch[]
-	scratchsave []byte
+	// savedlit is the saved literal contents
+	// that are copied into scratch[:] before execution
+	savedlit []byte
 
 	//lint:ignore U1000 not unused; used in assembly
 	outer *bytecode // outer variable bindings
@@ -860,64 +859,27 @@ func (b *bytecode) allocStacks() {
 	}
 }
 
-// dropScratch saves a copy of the current
-// reserved memory in b.scratch (if any)
-// and frees b.scratch (if it exists);
-// this operation can be un-done with b.restoreScratch()
 func (b *bytecode) dropScratch() {
-	if b.scratch != nil {
-		// note: this will often be a 0-byte slice,
-		// but that's fine; we just need it to be
-		// non-nil so that restoreScratch() will
-		// see it and allocate b.scratch again
-		b.scratchsave = slices.Clone(b.scratch[:b.scratchreserve])
-		Free(b.scratch)
-		b.scratch = nil
-		// this will trigger a fault if it is used:
-		b.scratchoff = 0x80000000
-	}
+	b.epoch = -1
+	b.scratch = nil
+	// this will trigger a fault if it is used:
+	b.scratchoff = 0x80000000
 }
 
-// dropSaved drops a previously-saved scratch
-// buffer saved in b.dropScratch()
-func (b *bytecode) dropSaved() {
-	b.scratchsave = nil
-	b.scratchreserve = 0
-}
-
-func (b *bytecode) restoreScratch() {
-	if b.scratch != nil || b.scratchsave == nil {
+// restoreScratch updates the scratch state in b
+// so that it has the correct number of bytes allocated
+// from the symbol table's spare pages
+func (b *bytecode) restoreScratch(st *symtab) {
+	if b.scratchtotal == 0 {
 		return
 	}
-	b.scratch = Malloc()
-	b.scratch = b.scratch[:copy(b.scratch, b.scratchsave)]
+	if b.epoch != st.epoch || cap(b.scratch) < b.scratchtotal {
+		b.scratch = st.tinymalloc(b.scratchtotal)
+	}
+	b.scratch = b.scratch[:copy(b.scratch, b.savedlit)]
 	b.scratchoff, _ = vmdispl(b.scratch[:1])
-	b.scratchsave = nil
-}
-
-// called from ssa compilation;
-// this sets up the initial space
-// for literals that need to be projected
-func (b *bytecode) setlit(buf []byte) bool {
-	if len(buf) > defaultAlign {
-		return false
-	}
-	if b.scratch == nil {
-		b.scratch = Malloc()
-	}
-	b.scratchreserve = copy(b.scratch, buf)
-	b.scratch = b.scratch[:b.scratchreserve]
-	var ok bool
-	b.scratchoff, ok = vmdispl(b.scratch[:1])
-	if !ok {
-		panic("buffer from malloc has bad displacement?")
-	}
-	return true
 }
 
 func (b *bytecode) reset() {
-	if b.scratch != nil {
-		Free(b.scratch)
-	}
 	*b = bytecode{}
 }
