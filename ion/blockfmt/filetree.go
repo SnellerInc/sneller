@@ -532,7 +532,7 @@ func (f *FileTree) Prefetch(input []Input) {
 		}
 	}
 	slices.Sort(lst)
-	slices.Compact(lst)
+	lst = slices.Compact(lst)
 	f.root.prefetchInner(f.Backing, lst)
 }
 
@@ -545,6 +545,7 @@ func (f *level) prefetchInner(src UploadFS, lst []string) {
 		pos    int // level position
 		lstpos int // input name list position
 	}
+
 	var groups []group
 	for j, name := range lst {
 		pos := sort.Search(len(f.levels), func(i int) bool {

@@ -51,6 +51,7 @@ func checkTree(t *testing.T, f *FileTree, load bool) {
 
 func checkInner(t *testing.T, fs UploadFS, f *level, load, dirtyok bool) {
 	last := f.last
+
 	var prev []byte
 	for i := range f.levels {
 		if i < len(f.levels)-1 && bytes.Compare(f.levels[i].last, last) >= 0 {
@@ -382,6 +383,13 @@ func testFiletreeShrink(t *testing.T, reloadLikelihood float64) {
 		Backing: dir,
 	}
 
+	any := func(sofar map[string]inserted) string {
+		for key := range sofar {
+			return key
+		}
+		return ""
+	}
+
 	nextpath := 0
 	var synclock sync.Mutex
 	livefiles := 0
@@ -431,7 +439,16 @@ func testFiletreeShrink(t *testing.T, reloadLikelihood float64) {
 			t.Logf("%d files live; %d max; %d total written (%d items)", livefiles, maxsize, totalout, appended)
 			checkTree(t, &f, false)
 		}
+
 		path, etag, desc := triple()
+
+		f.Prefetch([]Input{
+			{Path: path},
+			{Path: any(sofar)},
+			{Path: any(sofar)},
+			{Path: any(sofar)},
+		})
+
 		ret, err := f.Append(path, etag, desc)
 		if err != nil {
 			overwritten++
