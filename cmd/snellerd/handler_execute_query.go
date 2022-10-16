@@ -95,6 +95,7 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authElapsed := time.Since(start)
+	tenantID := creds.ID()
 
 	var query []byte
 	switch r.Method {
@@ -162,9 +163,9 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	var id tnproto.ID
 	var key tnproto.Key
-	hash := sha256.Sum256([]byte(creds.ID()))
+	hash := sha256.Sum256([]byte(tenantID))
 	copy(id[:], hash[:])
-	hash = sha256.Sum256([]byte(creds.ID() + string(creds.Key()[:])))
+	hash = sha256.Sum256([]byte(tenantID + string(creds.Key()[:])))
 	copy(key[:], hash[:])
 
 	cfg := creds.Config()
@@ -203,17 +204,17 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		s.logger.Printf("query id %s planning failed: %s", queryID, err)
+		s.logger.Printf("tenant %s query ID %s planning failed: %s", tenantID, queryID, err)
 		planError(w, err)
 		return
 	}
-	s.logger.Printf("query id %s auth %s planning %s", queryID, authElapsed, time.Since(start))
+	s.logger.Printf("tenant %s query ID %s auth %s planning %s", tenantID, queryID, authElapsed, time.Since(start))
 
 	planHash, newestBlobTime := planEnv.CacheValues()
 
 	// hash the tenant/query/plan/format to an eTag
 	hasher := sha256.New()
-	hasher.Write([]byte(creds.ID()))
+	hasher.Write([]byte(tenantID))
 	io.WriteString(hasher, normalized)
 	hasher.Write(planHash)
 	hasher.Write([]byte{byte(encodingFormat)})
@@ -290,14 +291,14 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 				writeError(w, "error dispatching query")
 			}
 		}
-		s.logger.Printf("query ID %s %q execution failed (do): %v", queryID, redacted, err)
+		s.logger.Printf("tenant %s query ID %s %q execution failed (do): %v", tenantID, queryID, redacted, err)
 		return
 	}
 	go func() {
 		<-r.Context().Done()
 		rc.Close()
 	}()
-	s.logger.Printf("query ID %s plan transfer took %s", queryID, time.Since(startrun))
+	s.logger.Printf("tenant %s query ID %s plan transfer took %s", tenantID, queryID, time.Since(startrun))
 	var stats plan.ExecStats
 	deadlined := setDeadline(rc, queryKillTimeout)
 	err = tenant.Check(rc, &stats)
@@ -312,12 +313,12 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 			setError(w)
 		}
 		if canceled {
-			s.logger.Printf("query ID %s canceled after %s", queryID, time.Since(startrun))
+			s.logger.Printf("tenant %s query ID %s canceled after %s", tenantID, queryID, time.Since(startrun))
 			return
 		}
-		s.logger.Printf("query ID %s %q execution failed (check): %v", queryID, redacted, err)
+		s.logger.Printf("tenant %s query ID %s %q execution failed (check): %v", tenantID, queryID, redacted, err)
 		if deadlined && isTimeout(err) {
-			s.logger.Printf("query ID %s killing tenant ID %s due to timeout", queryID, id)
+			s.logger.Printf("tenant %s query ID %s killing tenant worker %s due to timeout", tenantID, queryID, id)
 			s.manager.Quit(id)
 		}
 		return
@@ -329,8 +330,8 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	if encodingFormat == tnproto.OutputChunkedIon {
 		writeStatus(w, &stats)
 	}
-	s.logger.Printf("query id %s duration %s bytes %d hits %d misses %d",
-		queryID, elapsed, stats.BytesScanned, stats.CacheHits, stats.CacheMisses)
+	s.logger.Printf("tenant %s query ID %s duration %s bytes %d hits %d misses %d",
+		tenantID, queryID, elapsed, stats.BytesScanned, stats.CacheHits, stats.CacheMisses)
 }
 
 // satisfied by net.Conn and friends
