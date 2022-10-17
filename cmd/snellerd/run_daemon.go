@@ -31,6 +31,9 @@ import (
 )
 
 func runDaemon(args []string) {
+	// make sure only runtime panics go to stderr
+	log.Default().SetOutput(os.Stdout)
+
 	daemonCmd := flag.NewFlagSet("daemon", flag.ExitOnError)
 	authEndpoint := daemonCmd.String("a", "", "authorization specification (file://, http://, https://, empty uses environment)")
 	daemonEndpoint := daemonCmd.String("e", "127.0.0.1:8000", "endpoint to listen on (REST API)")

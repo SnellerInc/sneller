@@ -529,6 +529,19 @@ func tenantLog(id tnproto.ID, l *log.Logger) (*os.File, error) {
 	return w, nil
 }
 
+func panicLog(id tnproto.ID, l *log.Logger) (*os.File, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		defer r.Close()
+		buf, _ := io.ReadAll(r)
+		l.Printf("%s: panic: %q", id, buf)
+	}()
+	return w, nil
+}
+
 func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 	// make sure the tenant's cache directory
 	// is created and empty
@@ -569,13 +582,18 @@ func (m *Manager) launch(id tnproto.ID, key tnproto.Key) (*child, error) {
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
 	} else {
-		w, err := tenantLog(id, m.logger)
+		stdout, err := tenantLog(id, m.logger)
 		if err != nil {
 			return nil, err
 		}
-		cmd.Stdout = w
-		cmd.Stderr = w
-		defer w.Close() // we don't need the write end
+		defer stdout.Close()
+		stderr, err := panicLog(id, m.logger)
+		if err != nil {
+			return nil, err
+		}
+		defer stderr.Close()
+		cmd.Stdout = stdout
+		cmd.Stderr = stderr
 	}
 	cmd.ExtraFiles = []*os.File{fd, m.eventfd}
 

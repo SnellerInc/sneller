@@ -37,6 +37,7 @@ func nfds() int {
 }
 
 func runWorker(args []string) {
+	log.Default().SetOutput(os.Stdout)
 	sneller.CanVMOpen = true
 
 	workerCmd := flag.NewFlagSet("worker", flag.ExitOnError)
