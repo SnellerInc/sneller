@@ -309,10 +309,21 @@ func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
 	conf := q.Conf
 	conf.SetFeatures(def.Features)
 
+	sizeof := func(lst []blockfmt.Input) int64 {
+		out := int64(0)
+		for i := range lst {
+			out += lst[i].Size
+		}
+		return out
+	}
+
 	var dst batch
 	err := q.filter(&conf, def, &dst)
 	if err == nil && len(dst.filtered) > 0 {
 		err = conf.Append(q.Owner, db, def.Name, dst.filtered, cache)
+		if err == nil {
+			q.logf("table %s/%s inserted %d objects %d source bytes", db, def.Name, len(dst.filtered), sizeof(dst.filtered))
+		}
 	}
 	if err != nil {
 		// for safety, invalidate the cache whenever
