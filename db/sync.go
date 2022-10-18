@@ -62,7 +62,7 @@ const DefaultMaxInlineBytes = 100 * giga
 
 // DefaultAlgo is the default compression algorithm
 // for compressing data blocks.
-const DefaultAlgo = "zstd"
+const DefaultAlgo = "zion"
 
 // ErrBuildAgain is returned by db.Builder.Sync
 // when only some of the input objects were successfully

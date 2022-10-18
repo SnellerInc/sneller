@@ -22,8 +22,8 @@ package db
 func (b *Builder) SetFeatures(lst []string) {
 	for _, x := range lst {
 		switch x {
-		case "zion":
-			b.Algo = "zion"
+		case "legacy-zstd":
+			b.Algo = "zstd"
 		}
 	}
 }

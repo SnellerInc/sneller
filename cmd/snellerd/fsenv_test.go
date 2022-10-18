@@ -175,7 +175,6 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	}
 
 	b := db.Builder{
-		Algo:          "zion",
 		Align:         testBlocksize,
 		RangeMultiple: 10,
 		Fallback: func(_ string) blockfmt.RowFormat {

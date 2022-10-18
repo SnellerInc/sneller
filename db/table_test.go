@@ -204,7 +204,7 @@ func TestBuildBlobs(t *testing.T) {
 	if idx.Objects() != 1 {
 		t.Fatalf("index contents: %d", idx.Objects())
 	}
-	match, err := path.Match("db/db0/table0/packed*.ion.zst", idx.Inline[0].Path)
+	match, err := path.Match("db/db0/table0/packed*.zion", idx.Inline[0].Path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestBuildBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("invalid url %q: %s", urlb.Value, err)
 	}
-	match, err = path.Match("/db/db0/table0/packed*.ion.zst", uri.Path)
+	match, err = path.Match("/db/db0/table0/packed*.zion", uri.Path)
 	if err != nil {
 		t.Fatal(err)
 	}

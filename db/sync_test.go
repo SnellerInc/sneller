@@ -225,7 +225,6 @@ func TestSync(t *testing.T) {
 			{Pattern: "file://a-prefix/*.10n"},
 			{Pattern: "file://a-prefix/*.json"},
 		},
-		Features: []string{"zion"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -365,7 +364,7 @@ func TestSync(t *testing.T) {
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
-		Features: []string{"zion"},
+		Features: []string{"legacy-zstd"},
 	}
 	err = WriteDefinition(dfs, "default", def3)
 	if err != nil {
