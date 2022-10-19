@@ -20,7 +20,6 @@ import (
 	"io"
 	"io/fs"
 	"path"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -224,7 +223,7 @@ func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, 
 // the patterns in def and the config in bld
 //
 // this is supposed to be safe to call from multiple goroutines
-func (q *QueueRunner) filter(bld *Builder, def *Definition, dst *batch) error {
+func (q *QueueRunner) filter(bld *Builder, def *TableDefinition, dst *batch) error {
 	dst.filtered = dst.filtered[:0]
 	dst.indirect = dst.indirect[:0]
 outer:
@@ -312,7 +311,7 @@ func overwrite(cache *IndexCache, value *blockfmt.Index) {
 	}
 }
 
-func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
+func (q *QueueRunner) runTable(db string, def *TableDefinition, cache *IndexCache) {
 	// clone the config and add features;
 	// note that runTable is invoked in separate
 	// goroutines for each table, so we need to
@@ -331,7 +330,7 @@ func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
 	var dst batch
 	err := q.filter(&conf, def, &dst)
 	if err == nil && len(dst.filtered) > 0 {
-		err = conf.Append(q.Owner, db, def.Name, dst.filtered, cache)
+		err = conf.Append(q.Owner, db, def, dst.filtered, cache)
 		if err == nil {
 			q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
 				db, def.Name, len(dst.filtered), sizeof(dst.filtered), time.Since(dst.latest), time.Since(dst.earliest))
@@ -413,7 +412,7 @@ func (q *QueueRunner) gather(in Queue) error {
 }
 
 type tableInfo struct {
-	def   *Definition
+	def   *TableDefinition
 	cache IndexCache
 }
 
@@ -454,7 +453,7 @@ func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*tableInfo) {
 	}
 	for dbt, def := range dst {
 		wg.Add(1)
-		go func(db string, def *Definition, cache *IndexCache) {
+		go func(db string, def *TableDefinition, cache *IndexCache) {
 			defer wg.Done()
 			q.runTable(db, def, cache)
 		}(dbt.db, def.def, &def.cache)
@@ -482,54 +481,17 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 		if !dbs[i].IsDir() {
 			continue
 		}
-		dbname := dbs[i].Name()
-		curp := path.Join("db", dbname)
-		tables, err := fs.ReadDir(dir, curp)
-		if err != nil {
+		db := dbs[i].Name()
+		root, err := OpenDefinition(dir, db)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		} else if err != nil {
 			return err
 		}
-		old, _ := OpenRootDefinition(dir, dbname)
-		root := &RootDefinition{
-			Name: dbname,
-		}
-		for j := range tables {
-			table := tables[j].Name()
-			def, err := OpenDefinition(dir, dbname, table)
-			if err != nil {
-				// don't get hung up on invalid definitions
-				continue
-			}
-			m[dbtable{db: dbname, table: table}] = &tableInfo{
-				def: def,
-			}
-			// don't include generated tables in the
-			// root definition
-			if def.Generated {
-				continue
-			}
-			// root definitions will eventually
-			// support expanding table name templates
-			// so escape '$' in table names
-			if name := strings.ReplaceAll(table, "$", "$$"); name != table {
-				def = &Definition{
-					Name:     name,
-					Inputs:   def.Inputs,
-					Features: def.Features,
-				}
-			}
-			root.Tables = append(root.Tables, def)
-		}
-		// attempt to write out the root definition
-		// if it has changed
-		ofs, ok := dir.(OutputFS)
-		if !ok {
-			continue
-		}
-		slices.SortFunc(root.Tables, func(a, b *Definition) bool {
-			return a.Name < b.Name
-		})
-		if old == nil || !root.Equal(old) {
-			WriteRootDefinition(ofs, root)
+		for j := range root.Tables {
+			def := root.Tables[j]
+			table := def.Name
+			m[dbtable{db, table}] = &tableInfo{def: def}
 		}
 	}
 	return nil

@@ -146,29 +146,24 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	t.Cleanup(func() { dfs.Close() })
 	dfs.Log = t.Logf
 
-	err := db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "parking",
-		Inputs: []db.Input{
-			{Pattern: "file://a-prefix/*.10n"},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "parking2",
-		Inputs: []db.Input{
-			{Pattern: "file://a-prefix/*.json", Format: "json"},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = db.WriteDefinition(dfs, "default", &db.Definition{
-		Name: "taxi",
-		Inputs: []db.Input{
-			{Pattern: "file://b-prefix/*.block"},
-		},
+	err := db.WriteDefinition(dfs, &db.Definition{
+		Name: "default",
+		Tables: []*db.TableDefinition{{
+			Name: "parking",
+			Inputs: []db.Input{
+				{Pattern: "file://a-prefix/*.10n"},
+			},
+		}, {
+			Name: "parking2",
+			Inputs: []db.Input{
+				{Pattern: "file://a-prefix/*.json", Format: "json"},
+			},
+		}, {
+			Name: "taxi",
+			Inputs: []db.Input{
+				{Pattern: "file://b-prefix/*.block"},
+			},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)

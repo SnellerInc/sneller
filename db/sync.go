@@ -184,14 +184,14 @@ func (b *Builder) logf(f string, args ...interface{}) {
 }
 
 type tableState struct {
-	def       *Definition
+	def       *TableDefinition
 	conf      Builder
 	owner     Tenant
 	ofs       OutputFS
 	db, table string
 }
 
-func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
+func (b *Builder) open(db string, def *TableDefinition, owner Tenant) (*tableState, error) {
 	ifs, err := owner.Root()
 	if err != nil {
 		return nil, err
@@ -200,19 +200,13 @@ func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
 	if !ok {
 		return nil, fmt.Errorf("root %T is read-only", ifs)
 	}
-	def, err := OpenDefinition(ifs, db, table)
-	if errors.Is(err, fs.ErrNotExist) {
-		def = &Definition{Name: table}
-	} else if err != nil {
-		return nil, err
-	}
 	ts := &tableState{
 		def:   def,
 		conf:  *b, // copy config so we can update it w/ features
 		owner: owner,
 		ofs:   ofs,
 		db:    db,
-		table: table,
+		table: def.Name,
 	}
 	ts.conf.SetFeatures(def.Features)
 	return ts, nil
@@ -330,8 +324,8 @@ func shouldRebuild(err error) bool {
 // Append will continue to return ErrBuildAgain until scanning is complete,
 // at which point Append operations will be accepted. (The caller must continuously
 // call Append for scanning to occur.)
-func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cache *IndexCache) error {
-	st, err := b.open(db, table, who)
+func (b *Builder) Append(who Tenant, db string, def *TableDefinition, lst []blockfmt.Input, cache *IndexCache) error {
+	st, err := b.open(db, def, who)
 	if err != nil {
 		return err
 	}
@@ -363,14 +357,14 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 			return err
 		}
 		if len(lst) == 0 {
-			b.logf("index for %s already up-to-date", table)
+			b.logf("index for %s already up-to-date", def.Name)
 			return nil
 		}
 		return st.append(idx, prepend, lst, cache)
 	}
 	if b.NewIndexScan && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
-			Name: table,
+			Name: def.Name,
 			Algo: "zstd",
 		}
 		_, err = st.scan(idx, true)
@@ -419,18 +413,25 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	if err != nil {
 		return err
 	}
-	possible, err := fs.Glob(dst, DefinitionPath(db, tblpat))
+	root, err := OpenDefinition(dst, db)
 	if err != nil {
 		return err
 	}
-	var tables []string
-	for i := range possible {
-		tab, _ := path.Split(possible[i])
-		b.logf("detected table at path %q", tab)
-		tables = append(tables, path.Base(tab))
+	tables := root.Tables
+	if tblpat != "*" {
+		tables = tables[:0]
+		for i := range root.Tables {
+			matched, err := path.Match(tblpat, root.Tables[i].Name)
+			if err != nil {
+				return err
+			}
+			if matched {
+				tables = append(tables, root.Tables[i])
+			}
+		}
 	}
-	syncTable := func(table string) error {
-		st, err := b.open(db, table, who)
+	syncTable := func(def *TableDefinition) error {
+		st, err := b.open(db, def, who)
 		if err != nil {
 			return err
 		}
@@ -442,7 +443,7 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 			if shouldRebuild(err) {
 				fresh = true
 				idx = &blockfmt.Index{
-					Name: table,
+					Name: def.Name,
 					Algo: "zstd",
 				}
 			} else {
@@ -472,10 +473,10 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	var wg sync.WaitGroup
 	wg.Add(len(tables))
 	for i := range tables {
-		tab := tables[i]
+		def := tables[i]
 		go func(i int) {
 			defer wg.Done()
-			errlist[i] = syncTable(tab)
+			errlist[i] = syncTable(def)
 		}(i)
 	}
 	wg.Wait()

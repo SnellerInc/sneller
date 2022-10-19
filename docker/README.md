@@ -78,27 +78,32 @@ $ docker run \
    amazon/aws-cli --endpoint 'http://minio:9100' \
    s3 sync '/data' 's3://test/gharchive/'
 ```
-### Create the table definition
+### Create the database definition
 Sneller is a schemaless database engine, but it does need to know which databases and tables exist. All Sneller data is stored in the `s3://test` bucket (defined in `.env`) and is always stored in the `db` folder. This folder holds the database, which holds the tables. So if we want to name the database `gha` and the table `gharchive`, then the full path is `s3://test/db/gha/gharchive`.
 
-Now we need to create a definition for this customer table. Create a file named `definition.json` with the following content:
+Now we need to create a definition for this customer database. Create a file named `definition.json` with the following content:
 ```json
 {
-    "name": "gharchive",
-    "input": [
-        {
-            "pattern": "s3://test/gharchive/*.json.gz",
-            "format": "json.gz"
-        }
-    ]
+   "name": "gha",
+   "tables": [
+      {
+          "name": "gharchive",
+          "input": [
+              {
+                  "pattern": "s3://test/gharchive/*.json.gz",
+                  "format": "json.gz"
+              }
+          ]
+      }
+   ]
 }
 ```
-It specifies that the table is named `gharchive` and it will scan the `s3://test/gharchive` folder for all files with the `.json.gz` extension. Now upload this file to `s3://test/db/gha/gharchive/definition.json`:
+It specifies that the table is named `gharchive` and it will scan the `s3://test/gharchive` folder for all files with the `.json.gz` extension. Now upload this file to `s3://test/db/gha/definition.json`:
 ```sh
 $ docker run \
    --rm --net 'sneller-network' --env-file .env -v "`pwd`:/data" \
    amazon/aws-cli --endpoint 'http://minio:9100' \
-   s3 cp '/data/definition.json' 's3://test/db/gha/gharchive/definition.json'
+   s3 cp '/data/definition.json' 's3://test/db/gha/definition.json'
 ```
 ### Ingest the data
 Now it's time to ingest the data. This is done using the `sdb` tool that has its own image. You can ingest the data for the table using:

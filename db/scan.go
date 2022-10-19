@@ -38,8 +38,23 @@ var errStop = errors.New("stop walking")
 // Semantically, Scan performs a list operation and a call
 // to b.Append on the listed items, taking care to list
 // incrementally from the last call to Append.
+//
+// This method is only used in tests and may
+// eventually be removed.
 func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
-	st, err := b.open(db, table, who)
+	ifs, err := who.Root()
+	if err != nil {
+		return 0, err
+	}
+	root, err := OpenDefinition(ifs, db)
+	if err != nil {
+		return 0, err
+	}
+	def := root.Get(table)
+	if def == nil {
+		return 0, fmt.Errorf("no such table: %s", table)
+	}
+	st, err := b.open(db, def, who)
 	if err != nil {
 		return 0, err
 	}

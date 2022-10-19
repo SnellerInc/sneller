@@ -31,35 +31,41 @@ func TestDecodeDefinition(t *testing.T) {
 	}
 	data := `
 {
-    "name": "bar",
-    "input": [
-        {
-            "pattern": "s3://my-bucket/my-folder/*.json",
-            "format": "json",
-            "hints": "xyz-data-is-ignored-for-now"
-        }
-    ]
+	"name": "foo",
+	"tables": [
+		{
+			"name": "bar",
+			"input": [
+				{
+					"pattern": "s3://my-bucket/my-folder/*.json",
+					"format": "json",
+					"hints": "xyz-data-is-ignored-for-now"
+				}
+			]
+		}
+	]
 }
 `
 
 	ref := &Definition{
-		Name: "bar",
-		Inputs: []Input{
-			{
+		Name: "foo",
+		Tables: []*TableDefinition{{
+			Name: "bar",
+			Inputs: []Input{{
 				Pattern: "s3://my-bucket/my-folder/*.json",
 				Format:  "json",
 				Hints:   json.RawMessage(`"xyz-data-is-ignored-for-now"`),
-			},
-		},
+			}},
+		}},
 	}
 	dfs := NewDirFS(dir)
 	defer dfs.Close()
-	err = WriteDefinition(dfs, "foo", ref)
+	err = WriteDefinition(dfs, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	s, err := OpenDefinition(os.DirFS(dir), "foo", "bar")
+	s, err := OpenDefinition(os.DirFS(dir), "foo")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,16 +73,16 @@ func TestDecodeDefinition(t *testing.T) {
 		t.Fatal("results not equivalent")
 	}
 
-	err = os.Remove(filepath.Join(dir, "db/foo/bar/definition.json"))
+	err = os.Remove(filepath.Join(dir, "db/foo/definition.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = os.WriteFile(filepath.Join(dir, "db/foo/bar/definition.json"), []byte(data), 0640)
+	err = os.WriteFile(filepath.Join(dir, "db/foo/definition.json"), []byte(data), 0640)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err = OpenDefinition(os.DirFS(dir), "foo", "bar")
+	s, err = OpenDefinition(os.DirFS(dir), "foo")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -219,21 +219,22 @@ func TestSync(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	err := WriteDefinition(dfs, "default", &Definition{
+	parking := &TableDefinition{
 		Name: "parking",
 		Inputs: []Input{
 			{Pattern: "file://a-prefix/*.10n"},
 			{Pattern: "file://a-prefix/*.json"},
 		},
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	err = WriteDefinition(dfs, "default", &Definition{
+	taxi := &TableDefinition{
 		Name: "taxi",
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
+	}
+	err := WriteDefinition(dfs, &Definition{
+		Name:   "default",
+		Tables: []*TableDefinition{parking, taxi},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -359,14 +360,17 @@ func TestSync(t *testing.T) {
 	if !ok {
 		t.Fatal("idx2 had no definition hash present")
 	}
-	def3 := &Definition{
+	def3 := &TableDefinition{
 		Name: "taxi",
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
 		Features: []string{"legacy-zstd"},
 	}
-	err = WriteDefinition(dfs, "default", def3)
+	err = WriteDefinition(dfs, &Definition{
+		Name:   "default",
+		Tables: []*TableDefinition{def3},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +412,7 @@ func TestSync(t *testing.T) {
 	}}
 
 	owner.ro = true
-	err = b.Append(owner, "default", "parking", lst, nil)
+	err = b.Append(owner, "default", parking, lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,11 +449,14 @@ func TestMaxBytesSync(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	err = WriteDefinition(dfs, "default", &Definition{
-		Name: "parking",
-		Inputs: []Input{
-			{Pattern: "file://a-prefix/*.10n"},
-		},
+	err = WriteDefinition(dfs, &Definition{
+		Name: "default",
+		Tables: []*TableDefinition{{
+			Name: "parking",
+			Inputs: []Input{
+				{Pattern: "file://a-prefix/*.10n"},
+			},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
