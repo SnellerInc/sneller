@@ -267,6 +267,7 @@ outer:
 			if err != nil {
 				return err
 			}
+			dst.note(info.ModTime())
 			dst.indirect = append(dst.indirect, i)
 			dst.filtered = append(dst.filtered, blockfmt.Input{
 				Path: p,
@@ -281,9 +282,19 @@ outer:
 	return nil
 }
 
+func (b *batch) note(modtime time.Time) {
+	if b.earliest.IsZero() || modtime.Before(b.earliest) {
+		b.earliest = modtime
+	}
+	if b.latest.IsZero() || modtime.After(b.latest) {
+		b.latest = modtime
+	}
+}
+
 type batch struct {
-	filtered []blockfmt.Input
-	indirect []int // indices into Queue.items[] for each of filtered
+	filtered         []blockfmt.Input
+	indirect         []int     // indices into Queue.items[] for each of filtered
+	earliest, latest time.Time // modtimes for batch
 }
 
 // IndexCache is an opaque cache for index objects.
@@ -322,7 +333,8 @@ func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
 	if err == nil && len(dst.filtered) > 0 {
 		err = conf.Append(q.Owner, db, def.Name, dst.filtered, cache)
 		if err == nil {
-			q.logf("table %s/%s inserted %d objects %d source bytes", db, def.Name, len(dst.filtered), sizeof(dst.filtered))
+			q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
+				db, def.Name, len(dst.filtered), sizeof(dst.filtered), time.Since(dst.latest), time.Since(dst.earliest))
 		}
 	}
 	if err != nil {
