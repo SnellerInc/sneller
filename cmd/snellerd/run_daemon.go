@@ -45,7 +45,7 @@ func runDaemon(args []string) {
 	if daemonCmd.Parse(args) != nil {
 		os.Exit(1)
 	}
-	logger := log.New(os.Stderr, "", log.Lshortfile)
+	logger := log.New(os.Stdout, "", log.Lshortfile)
 
 	// if -debug=fd is provided, make /debug/pprof/* available
 	if fd := *debugSock; fd >= 0 {
