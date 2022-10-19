@@ -33,12 +33,14 @@ import (
 type memItem struct {
 	path, etag string
 	size       int64
+	qtime      time.Time
 	complete   func()
 }
 
-func (m *memItem) Path() string { return m.path }
-func (m *memItem) ETag() string { return m.etag }
-func (m *memItem) Size() int64  { return m.size }
+func (m *memItem) Path() string         { return m.path }
+func (m *memItem) ETag() string         { return m.etag }
+func (m *memItem) Size() int64          { return m.size }
+func (m *memItem) EventTime() time.Time { return m.qtime }
 
 type memqueue struct {
 	in          chan *memItem
@@ -53,7 +55,13 @@ func newQueue() *memqueue {
 }
 
 func (m *memqueue) push(path, etag string, size int64, complete func()) {
-	m.in <- &memItem{path, etag, size, complete}
+	m.in <- &memItem{
+		path:     path,
+		etag:     etag,
+		size:     size,
+		qtime:    time.Now(),
+		complete: complete,
+	}
 }
 
 func (m *memqueue) Close() error {

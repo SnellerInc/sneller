@@ -67,6 +67,11 @@ type QueueItem interface {
 	// Size should return the size of
 	// the file at Path in bytes.
 	Size() int64
+	// EventTime should return the time
+	// at which the queue item was inserted
+	// into the queue. EventTime is used to
+	// compute statistics about total queue delays.
+	EventTime() time.Time
 }
 
 type Queue interface {
@@ -266,7 +271,7 @@ outer:
 			if err != nil {
 				return err
 			}
-			dst.note(info.ModTime())
+			dst.note(q.inputs[i].EventTime())
 			dst.indirect = append(dst.indirect, i)
 			dst.filtered = append(dst.filtered, blockfmt.Input{
 				Path: p,
@@ -281,12 +286,15 @@ outer:
 	return nil
 }
 
-func (b *batch) note(modtime time.Time) {
-	if b.earliest.IsZero() || modtime.Before(b.earliest) {
-		b.earliest = modtime
+func (b *batch) note(qtime time.Time) {
+	if qtime.IsZero() {
+		return
 	}
-	if b.latest.IsZero() || modtime.After(b.latest) {
-		b.latest = modtime
+	if b.earliest.IsZero() || qtime.Before(b.earliest) {
+		b.earliest = qtime
+	}
+	if b.latest.IsZero() || qtime.After(b.latest) {
+		b.latest = qtime
 	}
 }
 
