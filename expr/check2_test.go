@@ -19,7 +19,6 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 )
 
@@ -134,6 +133,10 @@ func TestCheckInvalidQuery(t *testing.T) {
 			"SELECT RTRIM(x, 'aąbc')",
 			"cutset must contain only ASCII chars",
 		},
+		{
+			`WITH a AS (SELECT * FROM t1), a AS (SELECT * FROM t2) SELECT * FROM table`,
+			`WITH query name "a" specified more than once`,
+		},
 	}
 	for i := range testcases {
 		i := i
@@ -235,7 +238,7 @@ func checkError(t *testing.T, tc *testcaseError) {
 
 	expectedError := (tc.errrx != "")
 
-	err = expr.Check(q.Body)
+	err = q.Check()
 	if expectedError {
 		if err == nil {
 			t.Errorf("query %s didn't yield an error", text)

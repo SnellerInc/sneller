@@ -15,6 +15,7 @@
 package expr
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -111,11 +112,20 @@ func (q *Query) Equals(other *Query) bool {
 
 // CheckHint checks consistency of the whole query using a hint
 func (q *Query) CheckHint(h Hint) error {
+	with := map[string]Node{}
 	for i := range q.With {
+		name := q.With[i].Table
 		err := CheckHint(q.With[i].As, h)
 		if err != nil {
 			return err
 		}
+
+		_, exists := with[name]
+		if exists {
+			return fmt.Errorf("WITH query name %q specified more than once", name)
+		}
+
+		with[name] = q.With[i].As
 	}
 
 	// TODO: check references between CTEs and the main query
