@@ -21,5 +21,3 @@ WHERE (str ILIKE '%KSK%') = (match IS FALSE)
 {"str": "sKጵያ", "match": false}
 {"str": "ኢትዮsK", "match": false}
 {"str": 100, "match": false}
----
-{"count": 0}

@@ -6,4 +6,3 @@ FROM input
 {"list": "2"}
 {"list": 3.5}
 {"list": null}
----

@@ -24,7 +24,7 @@ import (
 
 var sepdash = []byte("---")
 
-// ParseTestcase reads parts of a textfile spearated by `---`.
+// ParseTestcase reads parts of a textfile separated by `---`.
 //
 // Each part is a list of lines.
 // The procedure skips empty lines and lines staring with the `#`.

@@ -15,4 +15,3 @@ WHERE SPLIT_PART(input, ';', index) = 'AAA_key_of_length_26_bytes'
 {"input":"aaaaaa;key_of_length_26_bytes_BBB;cccj", "index":1}
 {"input":"aaaaaa;key_of_length_26_bytes_BBB;ccck", "index":1}
 {"input":"aaaaaa;key_of_length_26_bytes_BBB;cccl", "index":1}
----

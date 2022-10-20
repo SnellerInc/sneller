@@ -9,4 +9,3 @@ FROM input
 {"struct": {"int": 99, "float": 3.14, "str": "text", "bool": true}}
 {"struct": {"int": 99, "float": 3.14, "str": "text", "bool": true, "bool": false}}
 {"struct": {"int": 99, "float": 3.14, "str": "text", "bool": true, "bool": false, "list": [1, 2]}}
----

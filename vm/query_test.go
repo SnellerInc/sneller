@@ -24,6 +24,7 @@ import (
 	"io"
 	"io/fs"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -613,7 +614,13 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 	}
 }
 
-func readPath(t testing.TB, fname string) (query []byte, inputs [][]byte, output []byte) {
+// readTestcase reads a testcase file, that contains three or more
+// part sepearated with '---'.
+
+// The first part is an SQL query (text), the last part is the
+// expected rows (JSONRL) and the middle parts are inputs (also
+// in the JSONRL format).
+func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, output []byte) {
 	parts, err := tests.ParseTestcase(fname)
 	if err != nil {
 		t.Fatal(err)
@@ -654,8 +661,73 @@ func readPath(t testing.TB, fname string) (query []byte, inputs [][]byte, output
 	return query, inputs, output
 }
 
+// readBenchmark reads a benchmark specification.
+//
+// Benchmark may contain either SQL query (text) and sample
+// input (JSONRL) separarted with '---'.
+//
+// Alternatively, it may contain only an SQL query. But
+// then the FROM part has to be a string which is treated
+// as a filename and this file is read into the input (JSONRL).
+func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
+	parts, err := tests.ParseTestcase(fname)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	part2bytes := func(part []string) []byte {
+		var res []byte
+		for i := range part {
+			res = append(res, []byte(part[i])...)
+			res = append(res, '\n')
+		}
+
+		return res
+	}
+
+	text := part2bytes(parts[0])
+	query, err := partiql.Parse(text)
+	if err != nil {
+		t.Fatalf("cannot parse %q: %s", text, err)
+	}
+
+	var input []byte
+	switch n := len(parts); n {
+	case 1: // only query
+		sel := query.Body.(*expr.Select)
+		table := sel.From.(*expr.Table)
+		file, ok := table.Expr.(expr.String)
+		if !ok {
+			t.Fatal("benchark without input part has to refer an external JSONRL file")
+		}
+
+		path := filepath.Join(filepath.Dir(fname), string(file))
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		input, err = io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// The testing framework expects path 'input'
+		table.Expr = &expr.Path{First: "input"}
+
+	case 2: // query and inline input
+		input = part2bytes(parts[1])
+
+	default:
+		t.Fatalf("expected at most two parts of benchmark, got %d", n)
+	}
+
+	return query, input
+}
+
 func testPath(t *testing.T, fname string) {
-	query, inputs, output := readPath(t, fname)
+	query, inputs, output := readTestcase(t, fname)
 	var inst ion.Symtab
 	inrows := make([][]ion.Datum, len(inputs))
 	for i := range inrows {
@@ -672,14 +744,10 @@ func testPath(t *testing.T, fname string) {
 	testInput(t, query, &inst, inrows, outrows)
 }
 
-func benchInput(b *testing.B, query, inbuf []byte, rows int) {
+func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 	bt := &benchTable{
 		count: int64(b.N),
 		buf:   inbuf,
-	}
-	sel, err := partiql.Parse(query)
-	if err != nil {
-		b.Fatal(err)
 	}
 	env := &queryenv{in: []plan.TableHandle{bt}}
 	tree, err := plan.New(sel, env)
@@ -701,19 +769,17 @@ func benchInput(b *testing.B, query, inbuf []byte, rows int) {
 }
 
 func benchPath(b *testing.B, fname string) {
-	query, inputs, _ := readPath(b, fname)
+	query, input := readBenchmark(b, fname)
 	var inst ion.Symtab
-	if len(inputs) > 1 {
-		// skip multi-table tests, for now
-		b.Skip()
-	}
-	inrows, err := rows(inputs[0], &inst, false)
+
+	inrows, err := rows(input, &inst, false)
 	if err != nil {
 		b.Fatalf("parsing input rows: %s", err)
 	}
 	if len(inrows) == 0 {
 		b.Skip()
 	}
+
 	var u versify.Union
 	for i := range inrows {
 		if u == nil {

@@ -133,7 +133,6 @@ func generate(p *Parameters) {
 
 		writeJSON(f, raw)
 	}
-	writeLn(f, "---")
 }
 
 // utf8runes return a list of runes that have a lower or upper version
