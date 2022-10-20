@@ -112,7 +112,7 @@ func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) (ex
 	if elseval != nil {
 		args = append(args, elseval)
 	}
-	return expr.Call("HASH_LOOKUP", args...), true
+	return expr.Call(expr.HashLookup, args...), true
 }
 
 type rowConverter interface {

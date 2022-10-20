@@ -73,8 +73,8 @@
 (eq (upper x) (string lit)), `isUpper(string(lit))` -> (equals_ci x lit)
 (eq (lower x) (string lit)), `isLower(string(lit))` -> (equals_ci x lit)
 
-(neq (upper x) (string lit)), `isUpper(string(lit))` -> `&Not{Call("EQUALS_CI", x, lit)}`
-(neq (lower x) (string lit)), `isLower(string(lit))` -> `&Not{Call("EQUALS_CI", x, lit)}`
+(neq (upper x) (string lit)), `isUpper(string(lit))` -> `&Not{Call(EqualsCI, x, lit)}`
+(neq (lower x) (string lit)), `isLower(string(lit))` -> `&Not{Call(EqualsCI, x, lit)}`
 
 // SUBSTRING(s, 1) is the identity function
 // as long as s is a string or missing

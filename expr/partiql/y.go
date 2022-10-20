@@ -1403,7 +1403,7 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:334
 		{
-			op := expr.Call(yyDollar[1].str)
+			op := expr.CallByName(yyDollar[1].str)
 			if op.Private() {
 				yylex.Error(__yyfmt__.Sprintf("cannot use reserved builtin %q", yyDollar[1].str))
 			}
@@ -1413,7 +1413,7 @@ yydefault:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line partiql.y:342
 		{
-			op := expr.Call(yyDollar[1].str, yyDollar[3].values...)
+			op := expr.CallByName(yyDollar[1].str, yyDollar[3].values...)
 			if op.Private() {
 				yylex.Error(__yyfmt__.Sprintf("cannot use reserved builtin %q", yyDollar[1].str))
 			}
@@ -1423,7 +1423,7 @@ yydefault:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line partiql.y:350
 		{
-			yyVAL.expr = expr.CallOp(expr.InSubquery, yyDollar[1].expr, yyDollar[4].sel)
+			yyVAL.expr = expr.Call(expr.InSubquery, yyDollar[1].expr, yyDollar[4].sel)
 		}
 	case 54:
 		yyDollar = yyS[yypt-5 : yypt+1]
@@ -1507,7 +1507,7 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:406
 		{
-			yyVAL.expr = expr.CallOp(expr.Concat, yyDollar[1].expr, yyDollar[3].expr)
+			yyVAL.expr = expr.Call(expr.Concat, yyDollar[1].expr, yyDollar[3].expr)
 		}
 	case 68:
 		yyDollar = yyS[yypt-3 : yypt+1]
@@ -2131,13 +2131,13 @@ yydefault:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:696
 		{
-			yyVAL.expr = expr.Call("MAKE_STRUCT", yyDollar[2].values...)
+			yyVAL.expr = expr.Call(expr.MakeStruct, yyDollar[2].values...)
 		}
 	case 172:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:699
 		{
-			yyVAL.expr = expr.Call("MAKE_LIST", yyDollar[2].values...)
+			yyVAL.expr = expr.Call(expr.MakeList, yyDollar[2].values...)
 		}
 	case 173:
 		yyDollar = yyS[yypt-1 : yypt+1]

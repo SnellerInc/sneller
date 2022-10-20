@@ -46,9 +46,9 @@ func casen(args ...Node) *Case {
 // i.e. apply2 op x y z produces (op (op x y) z)
 func apply2(op BuiltinOp, left, right Node, rest ...Node) *Builtin {
 	if len(rest) == 0 {
-		return CallOp(op, left, right)
+		return Call(op, left, right)
 	}
-	return apply2(op, CallOp(op, left, right), rest[0], rest[1:]...)
+	return apply2(op, Call(op, left, right), rest[0], rest[1:]...)
 }
 
 func ts(str string) Node {
@@ -145,99 +145,99 @@ func TestSimplify(t *testing.T) {
 			Float(1.0),
 		},
 		{
-			Call("ROUND", Float(3.1)),
+			Call(Round, Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Call("ROUND", Float(3.5)),
+			Call(Round, Float(3.5)),
 			Float(4.0),
 		},
 		{
-			Call("ROUND", Float(3.9)),
+			Call(Round, Float(3.9)),
 			Float(4.0),
 		},
 		{
-			Call("ROUND", Float(-3.1)),
+			Call(Round, Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Call("ROUND", Float(-3.5)),
+			Call(Round, Float(-3.5)),
 			Float(-3.0),
 		},
 		{
-			Call("ROUND", Float(-3.9)),
+			Call(Round, Float(-3.9)),
 			Float(-4.0),
 		},
 		{
-			Call("ROUND_EVEN", Float(3.1)),
+			Call(RoundEven, Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Call("ROUND_EVEN", Float(3.5)),
+			Call(RoundEven, Float(3.5)),
 			Float(4.0),
 		},
 		{
-			Call("ROUND_EVEN", Float(3.9)),
+			Call(RoundEven, Float(3.9)),
 			Float(4.0),
 		},
 		{
-			Call("ROUND_EVEN", Float(-3.1)),
+			Call(RoundEven, Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Call("ROUND_EVEN", Float(-3.5)),
+			Call(RoundEven, Float(-3.5)),
 			Float(-4.0),
 		},
 		{
-			Call("ROUND_EVEN", Float(-3.9)),
+			Call(RoundEven, Float(-3.9)),
 			Float(-4.0),
 		},
 		{
-			Call("TRUNC", Float(3.1)),
+			Call(Trunc, Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Call("TRUNC", Float(3.9)),
+			Call(Trunc, Float(3.9)),
 			Float(3.0),
 		},
 		{
-			Call("TRUNC", Float(-3.1)),
+			Call(Trunc, Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Call("TRUNC", Float(-3.9)),
+			Call(Trunc, Float(-3.9)),
 			Float(-3.0),
 		},
 		{
-			Call("FLOOR", Float(3.1)),
+			Call(Floor, Float(3.1)),
 			Float(3.0),
 		},
 		{
-			Call("FLOOR", Float(3.9)),
+			Call(Floor, Float(3.9)),
 			Float(3.0),
 		},
 		{
-			Call("FLOOR", Float(-3.1)),
+			Call(Floor, Float(-3.1)),
 			Float(-4.0),
 		},
 		{
-			Call("FLOOR", Float(-3.9)),
+			Call(Floor, Float(-3.9)),
 			Float(-4.0),
 		},
 		{
-			Call("CEIL", Float(3.1)),
+			Call(Ceil, Float(3.1)),
 			Float(4.0),
 		},
 		{
-			Call("CEIL", Float(3.9)),
+			Call(Ceil, Float(3.9)),
 			Float(4.0),
 		},
 		{
-			Call("CEIL", Float(-3.1)),
+			Call(Ceil, Float(-3.1)),
 			Float(-3.0),
 		},
 		{
-			Call("CEIL", Float(-3.9)),
+			Call(Ceil, Float(-3.9)),
 			Float(-3.0),
 		},
 		{
@@ -255,80 +255,80 @@ func TestSimplify(t *testing.T) {
 		//#region Case-insensitive contains
 		{
 			// CONTAINS(UPPER(z.name), "FRED") -> CONTAINS_CI(z.name, "FRED")
-			Call("CONTAINS", Call("UPPER", path("z.name")), String("FRED")),
-			Call("CONTAINS_CI", path("z.name"), String("FRED")),
+			Call(Contains, Call(Upper, path("z.name")), String("FRED")),
+			Call(ContainsCI, path("z.name"), String("FRED")),
 		},
 		{
 			// CONTAINS(UPPER(z.name), "fred") -> FALSE
-			Call("CONTAINS", Call("UPPER", path("z.name")), String("fred")),
+			Call(Contains, Call(Upper, path("z.name")), String("fred")),
 			Bool(false),
 		},
 		{
 			// CONTAINS(LOWER(z.name), "fred") -> CONTAINS_CI(z.name, "fred")
-			Call("CONTAINS", Call("LOWER", path("z.name")), String("fred")),
-			Call("CONTAINS_CI", path("z.name"), String("fred")),
+			Call(Contains, Call(Lower, path("z.name")), String("fred")),
+			Call(ContainsCI, path("z.name"), String("fred")),
 		},
 		{
 			// CONTAINS(LOWER(z.name), "FRED") -> FALSE
-			Call("CONTAINS", Call("LOWER", path("z.name")), String("FRED")),
+			Call(Contains, Call(Lower, path("z.name")), String("FRED")),
 			Bool(false),
 		},
 		{
 			// UPPER(z.name) LIKE "%FRED%" -> CONTAINS_CI(z.name, "FRED")
-			Compare(Like, Call("UPPER", path("z.name")), String("%FRED%")),
-			Call("CONTAINS_CI", path("z.name"), String("FRED")),
+			Compare(Like, Call(Upper, path("z.name")), String("%FRED%")),
+			Call(ContainsCI, path("z.name"), String("FRED")),
 		},
 		{
 			// UPPER(z.name) LIKE "%fred%" -> FALSE
-			Compare(Like, Call("UPPER", path("z.name")), String("%fred%")),
+			Compare(Like, Call(Upper, path("z.name")), String("%fred%")),
 			Bool(false),
 		},
 		{
 			// LOWER(z.name) LIKE "%fred%" -> CONTAINS_CI(z.name, "fred")
-			Compare(Like, Call("LOWER", path("z.name")), String("%fred%")),
-			Call("CONTAINS_CI", path("z.name"), String("fred")),
+			Compare(Like, Call(Lower, path("z.name")), String("%fred%")),
+			Call(ContainsCI, path("z.name"), String("fred")),
 		},
 		{
 			// LOWER(z.name) LIKE "%FRED%" -> FALSE
-			Compare(Like, Call("LOWER", path("z.name")), String("%FRED%")),
+			Compare(Like, Call(Lower, path("z.name")), String("%FRED%")),
 			Bool(false),
 		},
 		//#endregion Case-insensitive contains
 		{ // LTRIM(LTRIM(x)) -> LTRIM(x)
-			Call("LTRIM", Call("LTRIM", path("z.name"))),
-			Call("LTRIM", path("z.name")),
+			Call(Ltrim, Call(Ltrim, path("z.name"))),
+			Call(Ltrim, path("z.name")),
 		},
 		{ // LTRIM(RTRIM(x)) -> TRIM(x)
-			Call("LTRIM", Call("RTRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Ltrim, Call(Rtrim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{ // LTRIM(TRIM(x)) -> TRIM(x)
-			Call("LTRIM", Call("TRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Ltrim, Call(Trim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{ // RTRIM(LTRIM(x)) -> TRIM(x)
-			Call("RTRIM", Call("LTRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Rtrim, Call(Ltrim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{ // RTRIM(RTRIM(x)) -> RTRIM(x)
-			Call("RTRIM", Call("RTRIM", path("z.name"))),
-			Call("RTRIM", path("z.name")),
+			Call(Rtrim, Call(Rtrim, path("z.name"))),
+			Call(Rtrim, path("z.name")),
 		},
 		{ // RTRIM(RTRIM(x)) -> TRIM(x)
-			Call("RTRIM", Call("TRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Rtrim, Call(Trim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{ // TRIM(LTRIM(x)) -> TRIM(x)
-			Call("RTRIM", Call("LTRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Rtrim, Call(Ltrim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{ // TRIM(RTRIM(x)) -> TRIM(x)
-			Call("RTRIM", Call("LTRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Rtrim, Call(Ltrim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{ // TRIM(TRIM(x)) -> TRIM(x)
-			Call("TRIM", Call("TRIM", path("z.name"))),
-			Call("TRIM", path("z.name")),
+			Call(Trim, Call(Trim, path("z.name"))),
+			Call(Trim, path("z.name")),
 		},
 		{
 			// canonicalization:
@@ -536,33 +536,33 @@ func TestSimplify(t *testing.T) {
 		{
 			// x||"suffix" IN (...)
 			// could only possibly match string-typed constants
-			In(CallOp(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), String("second-suffix"), Bool(false)),
-			In(CallOp(Concat, path("x"), String("suffix")), String("start-suffix"), String("second-suffix")),
+			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), String("second-suffix"), Bool(false)),
+			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), String("second-suffix")),
 		},
 		{
 			// when the list of possible comparisons shrinks to 1,
 			// this should revert to a regular equals
-			In(CallOp(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), Bool(false)),
-			Compare(Equals, CallOp(Concat, path("x"), String("suffix")), String("start-suffix")),
+			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), Bool(false)),
+			Compare(Equals, Call(Concat, path("x"), String("suffix")), String("start-suffix")),
 		},
 		{
 			// SIZE(path) is unchanged
-			CallOp(ObjectSize, path("x")),
-			CallOp(ObjectSize, path("x")),
+			Call(ObjectSize, path("x")),
+			Call(ObjectSize, path("x")),
 		},
 		{
 			// SIZE(missing) => missing
-			CallOp(ObjectSize, Missing{}),
+			Call(ObjectSize, Missing{}),
 			Missing{},
 		},
 		{
 			// SIZE(null) => null
-			CallOp(ObjectSize, Null{}),
+			Call(ObjectSize, Null{}),
 			Null{},
 		},
 		{
 			// SIZE({foo:1, bar:42, baz:123}) => 3
-			CallOp(ObjectSize, &Struct{Fields: []Field{
+			Call(ObjectSize, &Struct{Fields: []Field{
 				Field{"foo", Integer(1)},
 				Field{"bar", Integer(42)},
 				Field{"baz", Integer(123)},
@@ -571,7 +571,7 @@ func TestSimplify(t *testing.T) {
 		},
 		{
 			// SIZE(["a", "b", "c", "d") => 4
-			CallOp(ObjectSize, &List{Values: []Constant{
+			Call(ObjectSize, &List{Values: []Constant{
 				String("a"), String("b"), String("c"), String("d"),
 			}}),
 			Integer(4),
@@ -599,7 +599,7 @@ func TestSimplify(t *testing.T) {
 			Bool(false),
 		},
 		{
-			CallOp(Concat, String("xyz"), String("abc")),
+			Call(Concat, String("xyz"), String("abc")),
 			String("xyzabc"),
 		},
 		{
@@ -607,7 +607,7 @@ func TestSimplify(t *testing.T) {
 			// -> HASH_LOOKUP(x, 0, 'is_zero', 'foo', 0)
 			casen(Compare(Equals, path("x"), Integer(0)), String("is_zero"),
 				Compare(Equals, String("foo"), path("x")), Integer(0)),
-			Call("HASH_LOOKUP", path("x"), Integer(0), String("is_zero"), String("foo"), Integer(0)),
+			Call(HashLookup, path("x"), Integer(0), String("is_zero"), String("foo"), Integer(0)),
 		},
 		{
 			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
@@ -703,134 +703,134 @@ func TestSimplify(t *testing.T) {
 			ts("2017-01-02T03:05:05.006Z"),
 		},
 		{
-			CallOp(Upper, String("sneller")),
+			Call(Upper, String("sneller")),
 			String("SNELLER"),
 		},
 		{
-			CallOp(Lower, String("SNELLER")),
+			Call(Lower, String("SNELLER")),
 			String("sneller"),
 		},
 		{
 			// LOWER(s) == "fred"
-			Compare(Equals, CallOp(Lower, path("s")), String("fred")),
-			CallOp(EqualsCI, path("s"), String("fred")),
+			Compare(Equals, Call(Lower, path("s")), String("fred")),
+			Call(EqualsCI, path("s"), String("fred")),
 		},
 		{
 			// "fred" == LOWER(s)
-			Compare(Equals, String("fred"), CallOp(Lower, path("s"))),
-			CallOp(EqualsCI, path("s"), String("fred")),
+			Compare(Equals, String("fred"), Call(Lower, path("s"))),
+			Call(EqualsCI, path("s"), String("fred")),
 		},
 		{
 			// UPPER(s) == "FRED"
-			Compare(Equals, CallOp(Upper, path("s")), String("FRED")),
-			CallOp(EqualsCI, path("s"), String("FRED")),
+			Compare(Equals, Call(Upper, path("s")), String("FRED")),
+			Call(EqualsCI, path("s"), String("FRED")),
 		},
 		{
 			// "FRED" == UPPER(s)
-			Compare(Equals, String("FRED"), CallOp(Upper, path("s"))),
-			CallOp(EqualsCI, path("s"), String("FRED")),
+			Compare(Equals, String("FRED"), Call(Upper, path("s"))),
+			Call(EqualsCI, path("s"), String("FRED")),
 		},
 		{
 			// UPPER(s) != "FRED"
-			Compare(NotEquals, CallOp(Upper, path("s")), String("FRED")),
-			&Not{Expr: CallOp(EqualsCI, path("s"), String("FRED"))},
+			Compare(NotEquals, Call(Upper, path("s")), String("FRED")),
+			&Not{Expr: Call(EqualsCI, path("s"), String("FRED"))},
 		},
 		{
 			// "FRED" != UPPER(s)
-			Compare(NotEquals, String("FRED"), CallOp(Upper, path("s"))),
-			&Not{Expr: CallOp(EqualsCI, path("s"), String("FRED"))},
+			Compare(NotEquals, String("FRED"), Call(Upper, path("s"))),
+			&Not{Expr: Call(EqualsCI, path("s"), String("FRED"))},
 		},
 		{
 			// LOWER(x) || ' and ' || LOWER(y) => LOWER(x || ' and ' || y)
-			apply2(Concat, CallOp(Lower, path("x")), String(" and "), CallOp(Lower, path("y"))),
-			CallOp(Lower, apply2(Concat, path("x"), String(" and "), path("y"))),
+			apply2(Concat, Call(Lower, path("x")), String(" and "), Call(Lower, path("y"))),
+			Call(Lower, apply2(Concat, path("x"), String(" and "), path("y"))),
 		},
 		{
 			// LOWER(x) || ' AND ' || LOWER(y) => no change
-			apply2(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
-			apply2(Concat, CallOp(Lower, path("x")), String(" AND "), CallOp(Lower, path("y"))),
+			apply2(Concat, Call(Lower, path("x")), String(" AND "), Call(Lower, path("y"))),
+			apply2(Concat, Call(Lower, path("x")), String(" AND "), Call(Lower, path("y"))),
 		},
 		{
 			// 'x=' || LOWER(x) || ', y=' || LOWER(y) => LOWER('x=' || x || ', y=' || y)
-			apply2(Concat, String("x="), CallOp(Lower, path("x")), String(", y="), CallOp(Lower, path("y"))),
-			CallOp(Lower, apply2(Concat, String("x="), path("x"), String(", y="), path("y"))),
+			apply2(Concat, String("x="), Call(Lower, path("x")), String(", y="), Call(Lower, path("y"))),
+			Call(Lower, apply2(Concat, String("x="), path("x"), String(", y="), path("y"))),
 		},
 		{
 			// 'X=' || LOWER(x) || ', Y=' || LOWER(y) => no change
-			apply2(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
-			apply2(Concat, String("X="), CallOp(Lower, path("x")), String(", Y="), CallOp(Lower, path("y"))),
+			apply2(Concat, String("X="), Call(Lower, path("x")), String(", Y="), Call(Lower, path("y"))),
+			apply2(Concat, String("X="), Call(Lower, path("x")), String(", Y="), Call(Lower, path("y"))),
 		},
 		{
 			// UPPER(x) || ' AND ' || UPPER(y) => UPPER(x || ' AND ' || y)
-			apply2(Concat, CallOp(Upper, path("x")), String(" AND "), CallOp(Upper, path("y"))),
-			CallOp(Upper, apply2(Concat, path("x"), String(" AND "), path("y"))),
+			apply2(Concat, Call(Upper, path("x")), String(" AND "), Call(Upper, path("y"))),
+			Call(Upper, apply2(Concat, path("x"), String(" AND "), path("y"))),
 		},
 		{
 			// UPPER(x) || ' and ' || UPPER(y) => no change
-			apply2(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
-			apply2(Concat, CallOp(Upper, path("x")), String(" and "), CallOp(Upper, path("y"))),
+			apply2(Concat, Call(Upper, path("x")), String(" and "), Call(Upper, path("y"))),
+			apply2(Concat, Call(Upper, path("x")), String(" and "), Call(Upper, path("y"))),
 		},
 		{
 			// 'X=' || UPPER(x) || ', Y=' || UPPER(y) => UPPER('X=' || x || ', Y=' || y)
-			apply2(Concat, String("X="), CallOp(Upper, path("x")), String(", Y="), CallOp(Upper, path("y"))),
-			CallOp(Upper, apply2(Concat, String("X="), path("x"), String(", Y="), path("y"))),
+			apply2(Concat, String("X="), Call(Upper, path("x")), String(", Y="), Call(Upper, path("y"))),
+			Call(Upper, apply2(Concat, String("X="), path("x"), String(", Y="), path("y"))),
 		},
 		{
 			// 'X=' || UPPER(x) || ', Y=' || UPPER(y) => no change
-			apply2(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
-			apply2(Concat, String("x="), CallOp(Upper, path("x")), String(", y="), CallOp(Upper, path("y"))),
+			apply2(Concat, String("x="), Call(Upper, path("x")), String(", y="), Call(Upper, path("y"))),
+			apply2(Concat, String("x="), Call(Upper, path("x")), String(", y="), Call(Upper, path("y"))),
 		},
 		{
 			// LOWER(x) || UPPER(x) => no change
-			CallOp(Concat, CallOp(Lower, path("x")), CallOp(Upper, path("x"))),
-			CallOp(Concat, CallOp(Lower, path("x")), CallOp(Upper, path("x"))),
+			Call(Concat, Call(Lower, path("x")), Call(Upper, path("x"))),
+			Call(Concat, Call(Lower, path("x")), Call(Upper, path("x"))),
 		},
 		{
 			// CHAR_LENGTH(LOWER(s)) => CHAR_LENGTH(s)
-			CallOp(CharLength, CallOp(Lower, path("x"))),
-			CallOp(CharLength, path("x")),
+			Call(CharLength, Call(Lower, path("x"))),
+			Call(CharLength, path("x")),
 		},
 		{
 			// CHAR_LENGTH(UPPER(s)) => CHAR_LENGTH(s)
-			CallOp(CharLength, CallOp(Upper, path("x"))),
-			CallOp(CharLength, path("x")),
+			Call(CharLength, Call(Upper, path("x"))),
+			Call(CharLength, path("x")),
 		},
 		{
 			// SUBSTRING(LOWER(s), p, l) => LOWER(SUBSTRING(s, p, l))
-			CallOp(Substring, CallOp(Lower, path("s")), Integer(1), Integer(5)),
-			CallOp(Lower, CallOp(Substring, path("s"), Integer(1), Integer(5))),
+			Call(Substring, Call(Lower, path("s")), Integer(1), Integer(5)),
+			Call(Lower, Call(Substring, path("s"), Integer(1), Integer(5))),
 		},
 		{
 			// SUBSTRING(UPPER(s), p, l) => UPPER(SUBSTRING(s, p, l))
-			CallOp(Substring, CallOp(Upper, path("s")), Integer(1), Integer(5)),
-			CallOp(Upper, CallOp(Substring, path("s"), Integer(1), Integer(5))),
+			Call(Substring, Call(Upper, path("s")), Integer(1), Integer(5)),
+			Call(Upper, Call(Substring, path("s"), Integer(1), Integer(5))),
 		},
 		{
 			// CHAR_LENGTH(x || "test" || y || "xyz" || "foo" || z) =>
 			//   CHAR_LENGTH(x) + CHAR_LENGTH(y) + CHAR_LENGTH(z) + Integer(10)
-			CallOp(CharLength, apply2(Concat, path("x"), String("test"), path("y"), String("xyz"), String("foo"), path("z"))),
-			Add(Add(CallOp(CharLength, path("x")),
-				Add(CallOp(CharLength, path("y")), Integer(10))),
-				CallOp(CharLength, path("z"))),
+			Call(CharLength, apply2(Concat, path("x"), String("test"), path("y"), String("xyz"), String("foo"), path("z"))),
+			Add(Add(Call(CharLength, path("x")),
+				Add(Call(CharLength, path("y")), Integer(10))),
+				Call(CharLength, path("z"))),
 		},
 		{
-			CallOp(Concat, CallOp(Concat, path("x"), String("a")), String("b")),
-			CallOp(Concat, path("x"), String("ab")),
+			Call(Concat, Call(Concat, path("x"), String("a")), String("b")),
+			Call(Concat, path("x"), String("ab")),
 		},
 		{
-			CallOp(TypeBit, Integer(1)),
+			Call(TypeBit, Integer(1)),
 			Integer(JSONTypeBits(ion.IntType)),
 		},
 		{
-			CallOp(TypeBit, Null{}),
+			Call(TypeBit, Null{}),
 			Integer(JSONTypeBits(ion.NullType)),
 		},
 		{
-			CallOp(TypeBit, Missing{}),
+			Call(TypeBit, Missing{}),
 			Integer(0),
 		},
 		{
-			CallOp(TypeBit, Float(3.5)),
+			Call(TypeBit, Float(3.5)),
 			Integer(JSONTypeBits(ion.FloatType)),
 		},
 		{
@@ -838,35 +838,35 @@ func TestSimplify(t *testing.T) {
 			Bool(true),
 		},
 		{
-			CallOp(Sqrt, Integer(4)),
+			Call(Sqrt, Integer(4)),
 			Float(2.0),
 		},
 		{
-			CallOp(Cos, Integer(0)),
+			Call(Cos, Integer(0)),
 			Float(1.0),
 		},
 		{
-			CallOp(Pow, Integer(2), Float(3.0)),
+			Call(Pow, Integer(2), Float(3.0)),
 			Float(8.0),
 		},
 		{
-			CallOp(Tan, Float(math.Pi/4)),
+			Call(Tan, Float(math.Pi/4)),
 			Float(1.0),
 		},
 		{
-			CallOp(Exp10, Integer(4)),
+			Call(Exp10, Integer(4)),
 			Float(10000.0),
 		},
 		{
-			CallOp(Atan2, Float(-42), Integer(42)),
+			Call(Atan2, Float(-42), Integer(42)),
 			Float(-math.Pi / 4),
 		},
 		{
-			CallOp(Least, Float(2), Integer(-8), Float(10)),
+			Call(Least, Float(2), Integer(-8), Float(10)),
 			Float(-8),
 		},
 		{
-			CallOp(Greatest, Float(200), Integer(-8), Float(10)),
+			Call(Greatest, Float(200), Integer(-8), Float(10)),
 			Float(200),
 		},
 	}

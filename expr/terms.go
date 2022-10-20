@@ -564,7 +564,7 @@ func builtinCons(c *opclass, op string, args []rules.Term) {
 	if !ok {
 		panic(fmt.Sprintf("function %q is not know; upgrade op2builtin lookup", op))
 	}
-	fmt.Fprintf(stdout, "CallOp(%s", enum)
+	fmt.Fprintf(stdout, "Call(%s", enum)
 	for i := range args {
 		fmt.Fprintf(stdout, ", ")
 		emitCons(&args[i])

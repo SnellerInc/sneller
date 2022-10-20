@@ -434,7 +434,7 @@ func simplifyIsSubnetOf(h Hint, args []Node) Node {
 		binary.BigEndian.PutUint32(maxIP, finish)
 
 		arg1 := missingUnless(args[1], h, StringType)
-		return CallOp(IsSubnetOf, Node(String(minIP.String())), Node(String(maxIP.String())), arg1)
+		return Call(IsSubnetOf, Node(String(minIP.String())), Node(String(maxIP.String())), arg1)
 	} else if len(args) == 3 { // first and second argument are an IP address
 		arg0, ok := args[0].(String)
 		if !ok {

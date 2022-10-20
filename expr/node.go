@@ -1873,10 +1873,14 @@ func Xnor(left, right Node) *Logical {
 	return &Logical{Op: OpXnor, Left: left, Right: right}
 }
 
-// Call yields 'fn(args...)'
-// Use CallOp instead of Call when you know
-// the BuiltinOp associated with fn.
-func Call(fn string, args ...Node) *Builtin {
+// Call yields op(args...).
+func Call(op BuiltinOp, args ...Node) *Builtin {
+	return &Builtin{Func: op, Text: op.String(), Args: args}
+}
+
+// CallByName yields 'fn(args...)'
+// Use Call when you know the BuiltinOp associated with fn.
+func CallByName(fn string, args ...Node) *Builtin {
 	var text string
 	op := name2Builtin(strings.ToUpper(fn))
 	if op != Unspecified {
@@ -1886,13 +1890,6 @@ func Call(fn string, args ...Node) *Builtin {
 	}
 
 	return &Builtin{Func: op, Text: text, Args: args}
-}
-
-// CallOp yields op(args...).
-// Use CallOp instead of call when you have a BuiltinOp
-// available.
-func CallOp(op BuiltinOp, args ...Node) *Builtin {
-	return &Builtin{Func: op, Text: op.String(), Args: args}
 }
 
 // Builtin is a Node that represents
@@ -3097,27 +3094,27 @@ func (t Timepart) String() string {
 }
 
 func DateAdd(part Timepart, value, date Node) Node {
-	return Call("DATE_ADD_"+part.String(), value, date)
+	return CallByName("DATE_ADD_"+part.String(), value, date)
 }
 
 func DateDiff(part Timepart, timestamp1, timestamp2 Node) Node {
-	return Call("DATE_DIFF_"+part.String(), timestamp1, timestamp2)
+	return CallByName("DATE_DIFF_"+part.String(), timestamp1, timestamp2)
 }
 
 func DateExtract(part Timepart, from Node) Node {
-	return Call("DATE_EXTRACT_"+part.String(), from)
+	return CallByName("DATE_EXTRACT_"+part.String(), from)
 }
 
 func DateTrunc(part Timepart, from Node) Node {
 	// A WEEK without a weekday is WEEK(SUNDAY)
 	if part == Week {
-		return Call("DATE_TRUNC_DOW", from, Integer(Sunday))
+		return DateTruncWeekday(from, Sunday)
 	}
-	return Call("DATE_TRUNC_"+part.String(), from)
+	return CallByName("DATE_TRUNC_"+part.String(), from)
 }
 
 func DateTruncWeekday(from Node, dow Weekday) Node {
-	return Call("DATE_TRUNC_DOW", from, Integer(dow))
+	return Call(DateTruncDOW, from, Integer(dow))
 }
 
 // Field is a field in a Struct literal,

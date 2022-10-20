@@ -149,7 +149,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Concat && len(_tmp001000.Args) == 2 {
 				if x := _tmp001000.Args[0]; true {
 					if y := _tmp001000.Args[1]; true {
-						return &Arithmetic{Op: AddOp, Left: CallOp(CharLength, x), Right: CallOp(CharLength, y)}
+						return &Arithmetic{Op: AddOp, Left: Call(CharLength, x), Right: Call(CharLength, y)}
 					}
 				}
 			}
@@ -160,13 +160,13 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (char_length (lower x)) -> (char_length x)
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(CharLength, x)
+					return Call(CharLength, x)
 				}
 			}
 			// (char_length (upper x)) -> (char_length x)
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(CharLength, x)
+					return Call(CharLength, x)
 				}
 			}
 		}
@@ -183,7 +183,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if _tmp001001, ok := (src.Args[1]).(*Builtin); ok && _tmp001001.Func == Concat && len(_tmp001001.Args) == 2 {
 					if y, ok := (_tmp001001.Args[0]).(String); ok {
 						if z := _tmp001001.Args[1]; true {
-							return CallOp(Concat, String(x+y), z)
+							return Call(Concat, String(x+y), z)
 						}
 					}
 				}
@@ -193,7 +193,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if b, ok := (src.Args[1]).(String); ok {
 					if x := _tmp001000.Args[0]; true {
 						if a, ok := (_tmp001000.Args[1]).(String); ok {
-							return CallOp(Concat, x, String(a+b))
+							return Call(Concat, x, String(a+b))
 						}
 					}
 				}
@@ -203,7 +203,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if y, ok := (src.Args[1]).(String); ok {
 					if x := _tmp001000.Args[0]; true {
 						if isUpper(string(y)) {
-							return CallOp(Upper, CallOp(Concat, x, y))
+							return Call(Upper, Call(Concat, x, y))
 						}
 					}
 				}
@@ -213,7 +213,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if _tmp001001, ok := (src.Args[1]).(*Builtin); ok && _tmp001001.Func == Upper && len(_tmp001001.Args) == 1 {
 					if x := _tmp001000.Args[0]; true {
 						if y := _tmp001001.Args[0]; true {
-							return CallOp(Upper, CallOp(Concat, x, y))
+							return Call(Upper, Call(Concat, x, y))
 						}
 					}
 				}
@@ -223,7 +223,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if y, ok := (src.Args[1]).(String); ok {
 					if x := _tmp001000.Args[0]; true {
 						if isLower(string(y)) {
-							return CallOp(Lower, CallOp(Concat, x, y))
+							return Call(Lower, Call(Concat, x, y))
 						}
 					}
 				}
@@ -233,7 +233,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if _tmp001001, ok := (src.Args[1]).(*Builtin); ok && _tmp001001.Func == Lower && len(_tmp001001.Args) == 1 {
 					if x := _tmp001000.Args[0]; true {
 						if y := _tmp001001.Args[0]; true {
-							return CallOp(Lower, CallOp(Concat, x, y))
+							return Call(Lower, Call(Concat, x, y))
 						}
 					}
 				}
@@ -243,7 +243,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if _tmp001001, ok := (src.Args[1]).(*Builtin); ok && _tmp001001.Func == Upper && len(_tmp001001.Args) == 1 {
 					if y := _tmp001001.Args[0]; true {
 						if isUpper(string(x)) {
-							return CallOp(Upper, CallOp(Concat, x, y))
+							return Call(Upper, Call(Concat, x, y))
 						}
 					}
 				}
@@ -253,7 +253,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if _tmp001001, ok := (src.Args[1]).(*Builtin); ok && _tmp001001.Func == Lower && len(_tmp001001.Args) == 1 {
 					if y := _tmp001001.Args[0]; true {
 						if isLower(string(x)) {
-							return CallOp(Lower, CallOp(Concat, x, y))
+							return Call(Lower, Call(Concat, x, y))
 						}
 					}
 				}
@@ -272,7 +272,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if y, ok := (src.Args[1]).(String); ok {
 					if x := _tmp001000.Args[0]; true {
 						if isUpper(string(y)) {
-							return CallOp(ContainsCI, x, y)
+							return Call(ContainsCI, x, y)
 						}
 					}
 				}
@@ -290,7 +290,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if y, ok := (src.Args[1]).(String); ok {
 					if x := _tmp001000.Args[0]; true {
 						if isLower(string(y)) {
-							return CallOp(ContainsCI, x, y)
+							return Call(ContainsCI, x, y)
 						}
 					}
 				}
@@ -379,7 +379,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (ltrim (rtrim x)) -> (trim x)
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Rtrim && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Trim, x)
+					return Call(Trim, x)
 				}
 			}
 			// (ltrim inner:(trim _)) -> inner
@@ -393,13 +393,13 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (ltrim (upper x)) -> (upper (ltrim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Upper, CallOp(Ltrim, x))
+					return Call(Upper, Call(Ltrim, x))
 				}
 			}
 			// (ltrim (upper x)) -> (upper (ltrim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Upper, CallOp(Ltrim, x))
+					return Call(Upper, Call(Ltrim, x))
 				}
 			}
 		}
@@ -427,7 +427,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (rtrim (ltrim x)) -> (trim x)
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Ltrim && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Trim, x)
+					return Call(Trim, x)
 				}
 			}
 			// (rtrim inner:(rtrim _)) -> inner
@@ -441,13 +441,13 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (rtrim (lower x)) -> (lower (rtrim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Lower, CallOp(Rtrim, x))
+					return Call(Lower, Call(Rtrim, x))
 				}
 			}
 			// (rtrim (lower x)) -> (lower (rtrim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Lower, CallOp(Rtrim, x))
+					return Call(Lower, Call(Rtrim, x))
 				}
 			}
 		}
@@ -479,14 +479,14 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (substring s x) -> (substring s x (int "1<<21"))
 			if s := src.Args[0]; true {
 				if x := src.Args[1]; true {
-					return CallOp(Substring, s, x, Integer(1<<21))
+					return Call(Substring, s, x, Integer(1<<21))
 				}
 			}
 			// (substring (lower x) off) -> (lower (substring x off))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if off := src.Args[1]; true {
 					if x := _tmp001000.Args[0]; true {
-						return CallOp(Lower, CallOp(Substring, x, off))
+						return Call(Lower, Call(Substring, x, off))
 					}
 				}
 			}
@@ -494,7 +494,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if off := src.Args[1]; true {
 					if x := _tmp001000.Args[0]; true {
-						return CallOp(Upper, CallOp(Substring, x, off))
+						return Call(Upper, Call(Substring, x, off))
 					}
 				}
 			}
@@ -513,7 +513,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if off := src.Args[1]; true {
 					if len := src.Args[2]; true {
 						if x := _tmp001000.Args[0]; true {
-							return CallOp(Lower, CallOp(Substring, x, off, len))
+							return Call(Lower, Call(Substring, x, off, len))
 						}
 					}
 				}
@@ -523,7 +523,7 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				if off := src.Args[1]; true {
 					if len := src.Args[2]; true {
 						if x := _tmp001000.Args[0]; true {
-							return CallOp(Upper, CallOp(Substring, x, off, len))
+							return Call(Upper, Call(Substring, x, off, len))
 						}
 					}
 				}
@@ -552,13 +552,13 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (trim (lower x)) -> (lower (trim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Lower, CallOp(Trim, x))
+					return Call(Lower, Call(Trim, x))
 				}
 			}
 			// (trim (upper x)) -> (upper (trim x))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if x := _tmp001000.Args[0]; true {
-					return CallOp(Upper, CallOp(Trim, x))
+					return Call(Upper, Call(Trim, x))
 				}
 			}
 		}
@@ -605,7 +605,7 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 			if lit, ok := (src.Right).(String); ok {
 				if x := _tmp001000.Args[0]; true {
 					if isUpper(string(lit)) {
-						return CallOp(EqualsCI, x, lit)
+						return Call(EqualsCI, x, lit)
 					}
 				}
 			}
@@ -615,7 +615,7 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 			if lit, ok := (src.Right).(String); ok {
 				if x := _tmp001000.Args[0]; true {
 					if isLower(string(lit)) {
-						return CallOp(EqualsCI, x, lit)
+						return Call(EqualsCI, x, lit)
 					}
 				}
 			}
@@ -647,7 +647,7 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 		if x := src.Left; true {
 			if pat, ok := (src.Right).(String); ok {
 				if !strings.ContainsAny(string(pat), "%_") {
-					return CallOp(EqualsCI, x, pat)
+					return Call(EqualsCI, x, pat)
 				}
 			}
 		}
@@ -655,7 +655,7 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 		if x := src.Left; true {
 			if pat, ok := (src.Right).(String); ok {
 				if term, ok := isSubstringSearchPattern(string(pat)); ok {
-					return CallOp(ContainsCI, x, String(term))
+					return Call(ContainsCI, x, String(term))
 				}
 			}
 		}
@@ -672,7 +672,7 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 		if x := src.Left; true {
 			if pat, ok := (src.Right).(String); ok {
 				if term, ok := isSubstringSearchPattern(string(pat)); ok {
-					return CallOp(Contains, x, String(term))
+					return Call(Contains, x, String(term))
 				}
 			}
 		}
@@ -743,22 +743,22 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 				}
 			}
 		}
-		// (neq (upper x) (string lit)), "isUpper(string(lit))" -> "&Not{Call(\"EQUALS_CI\", x, lit)}"
+		// (neq (upper x) (string lit)), "isUpper(string(lit))" -> "&Not{Call(EqualsCI, x, lit)}"
 		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 			if lit, ok := (src.Right).(String); ok {
 				if x := _tmp001000.Args[0]; true {
 					if isUpper(string(lit)) {
-						return &Not{Call("EQUALS_CI", x, lit)}
+						return &Not{Call(EqualsCI, x, lit)}
 					}
 				}
 			}
 		}
-		// (neq (lower x) (string lit)), "isLower(string(lit))" -> "&Not{Call(\"EQUALS_CI\", x, lit)}"
+		// (neq (lower x) (string lit)), "isLower(string(lit))" -> "&Not{Call(EqualsCI, x, lit)}"
 		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 			if lit, ok := (src.Right).(String); ok {
 				if x := _tmp001000.Args[0]; true {
 					if isLower(string(lit)) {
-						return &Not{Call("EQUALS_CI", x, lit)}
+						return &Not{Call(EqualsCI, x, lit)}
 					}
 				}
 			}

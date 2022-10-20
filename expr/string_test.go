@@ -125,11 +125,11 @@ func TestString(t *testing.T) {
 			"{'foo': 3, 'bar': [3, 'hello'], 'baz': 'quux'}",
 		},
 		{
-			Call("MAKE_STRUCT", String("foo"), Identifier("x")),
+			Call(MakeStruct, String("foo"), Identifier("x")),
 			`{'foo': x}`,
 		},
 		{
-			Call("MAKE_STRUCT", String("foo"), Identifier("x"), String("bar"), Integer(3)),
+			Call(MakeStruct, String("foo"), Identifier("x"), String("bar"), Integer(3)),
 			`{'foo': x, 'bar': 3}`,
 		},
 	}
@@ -152,8 +152,8 @@ func TestSFWString(t *testing.T) {
 		{
 			sfw: &Select{
 				Columns: []Binding{
-					Bind(Call("UPPER", path("outer", "x")), ""),
-					Bind(Call("LOWER", path("inner", "y")), ""),
+					Bind(Call(Upper, path("outer", "x")), ""),
+					Bind(Call(Lower, path("inner", "y")), ""),
 				},
 				From: &Join{
 					Kind: CrossJoin,

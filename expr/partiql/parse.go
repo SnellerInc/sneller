@@ -244,8 +244,8 @@ func createTrimInvocation(trimType int, str, charset expr.Node) (expr.Node, erro
 	}
 
 	if charset != nil {
-		return expr.CallOp(op, str, charset), nil
+		return expr.Call(op, str, charset), nil
 	}
 
-	return expr.CallOp(op, str), nil
+	return expr.Call(op, str), nil
 }

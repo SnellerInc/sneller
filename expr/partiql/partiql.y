@@ -332,7 +332,7 @@ datum_or_parens
 }
 | identifier '(' ')'
 {
-  op := expr.Call($1)
+  op := expr.CallByName($1)
   if op.Private() {
     yylex.Error(__yyfmt__.Sprintf("cannot use reserved builtin %q", $1))
   }
@@ -340,7 +340,7 @@ datum_or_parens
 }
 | identifier '(' value_list ')'
 {
-  op := expr.Call($1, $3...)
+  op := expr.CallByName($1, $3...)
   if op.Private() {
     yylex.Error(__yyfmt__.Sprintf("cannot use reserved builtin %q", $1))
   }
@@ -348,7 +348,7 @@ datum_or_parens
 }
 | expr IN '(' select_stmt ')'
 {
-  $$ = expr.CallOp(expr.InSubquery, $1, $4)
+  $$ = expr.Call(expr.InSubquery, $1, $4)
 }
 | expr IN '(' value_list ')'
 {
@@ -404,7 +404,7 @@ datum_or_parens
 }
 | expr CONCAT expr
 {
-  $$ = expr.CallOp(expr.Concat, $1, $3)
+  $$ = expr.Call(expr.Concat, $1, $3)
 }
 | expr APPEND expr
 {
@@ -693,10 +693,10 @@ unpivot_source:
 expr { $$ = &expr.Table{Binding: expr.Bind($1, "")} }
 
 explicit_struct_definition:
-'{' field_value_list '}' { $$ = expr.Call("MAKE_STRUCT", $2...) }
+'{' field_value_list '}' { $$ = expr.Call(expr.MakeStruct, $2...) }
 
 explicit_list_definition:
-'[' any_value_list ']' { $$ = expr.Call("MAKE_LIST", $2...) }
+'[' any_value_list ']' { $$ = expr.Call(expr.MakeList, $2...) }
 
 trim_type:
 LEADING { $$ = trimLeading } |

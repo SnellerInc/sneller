@@ -480,18 +480,18 @@ func (h *hoistwalk) Rewrite(e expr.Node) expr.Node {
 			if scalar {
 				kind = scalarkind
 			}
-			return expr.Call("HASH_REPLACEMENT", index, kind, label, corrv)
+			return expr.Call(expr.HashReplacement, index, kind, label, corrv)
 		}
 		if scalar {
-			return expr.Call("SCALAR_REPLACEMENT", index)
+			return expr.Call(expr.ScalarReplacement, index)
 		}
-		return expr.Call("STRUCT_REPLACEMENT", index)
+		return expr.Call(expr.StructReplacement, index)
 	case SizeExactSmall, SizeColumnCardinality:
 		h.in = append(h.in, t)
 		if corrv != nil {
-			return expr.Call("HASH_REPLACEMENT", index, listkind, label, corrv)
+			return expr.Call(expr.HashReplacement, index, listkind, label, corrv)
 		}
-		return expr.Call("LIST_REPLACEMENT", index)
+		return expr.Call(expr.ListReplacement, index)
 	default:
 		h.err = errorf(s, "cardinality of sub-query is too large; use LIMIT")
 		return s
@@ -519,11 +519,11 @@ func (h *hoistwalk) rewriteInSubquery(b *expr.Builtin) expr.Node {
 		return expr.Bool(false)
 	case SizeOne:
 		h.in = append(h.in, t)
-		repl := expr.Call("SCALAR_REPLACEMENT", expr.Integer(index))
+		repl := expr.Call(expr.ScalarReplacement, expr.Integer(index))
 		return expr.Compare(expr.Equals, b.Args[0], repl)
 	case SizeExactSmall, SizeColumnCardinality:
 		h.in = append(h.in, t)
-		return expr.Call("IN_REPLACEMENT", b.Args[0], expr.Integer(index))
+		return expr.Call(expr.InReplacement, b.Args[0], expr.Integer(index))
 	default:
 		h.err = errorf(b.Args[1].(*expr.Select), "sub-query cardinality too large: %s", b.Args[1])
 		return b
@@ -555,7 +555,7 @@ func (h *hoistwalk) rewriteScalarArg(e expr.Node) expr.Node {
 		return expr.Null{}
 	case SizeOne:
 		h.in = append(h.in, t)
-		return expr.Call("SCALAR_REPLACEMENT", expr.Integer(index))
+		return expr.Call(expr.ScalarReplacement, expr.Integer(index))
 	default:
 		// For now, require that scalar sub-queries
 		// have a known output size of 0 or 1,
@@ -701,7 +701,7 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	if agg.Op == expr.OpCount {
 		def = expr.Integer(0)
 	}
-	ret := expr.Call("HASH_REPLACEMENT",
+	ret := expr.Call(expr.HashReplacement,
 		expr.Integer(len(w.trace.Replacements)),
 		scalarkind,
 		expr.String("$__key"),
