@@ -1,0 +1,14 @@
+SELECT
+    APPROX_COUNT_DISTINCT(x) AS x_count,
+    APPROX_COUNT_DISTINCT(y) AS y_count     # `y` does not exist
+FROM input
+---
+{"x": 1}
+{"x": 42}
+{"x": 1}
+{"x": 1}
+{"x": 42}
+{"x": 1}
+{"x": 1}
+---
+{"x_count": 3, "y_count": 0}

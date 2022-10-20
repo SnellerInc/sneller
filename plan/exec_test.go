@@ -1267,9 +1267,9 @@ where Make in (
 			},
 		},
 		{
-			query: `SELECT APPROX_COUNT_DISTINCT(Make) FROM 'parking3.ion'`,
+			query: `SELECT APPROX_COUNT_DISTINCT(Make) AS "count", APPROX_COUNT_DISTINCT(foo) AS "count2" FROM 'parking3.ion'`,
 			expectedRows: []string{
-				`{"count": 61}`,
+				`{"count": 61, "count2": 0}`,
 			},
 		},
 		{

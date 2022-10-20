@@ -4201,6 +4201,12 @@ func (v *value) maskarg() *value {
 	return m
 }
 
+func (v *value) setfalse() {
+	v.op = skfalse
+	v.args = nil
+	v.imm = nil
+}
+
 // determine the output predicate associated with v
 //
 // if v returns a mask, then mask(v) is v
@@ -6622,6 +6628,10 @@ func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
 
 func emitaggapproxcount(v *value, c *compilestate) {
 	hash := v.args[0]
+	if hash.op == skfalse {
+		v.setfalse()
+		return
+	}
 	mask := v.args[1]
 	hashSlot := c.existingStackRef(hash, regH)
 
@@ -6659,6 +6669,10 @@ func emitaggapproxcountmerge(v *value, c *compilestate) {
 
 func emitaggslotapproxcount(v *value, c *compilestate) {
 	hash := v.args[2]
+	if hash.op == skfalse {
+		v.setfalse()
+		return
+	}
 	mask := v.args[3]
 	hashSlot := c.existingStackRef(hash, regH)
 

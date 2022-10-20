@@ -1,5 +1,5 @@
 SELECT
-    x, APPROX_COUNT_DISTINCT(y) AS a
+    x, APPROX_COUNT_DISTINCT(y) AS a, APPROX_COUNT_DISTINCT(z) AS b
 FROM input
 GROUP BY x
 ORDER BY x
@@ -24,7 +24,7 @@ ORDER BY x
 {"x": 3, "y": 6}
 {"x": 3, "y": 7}
 ---
-{"x": 0, "a": 4}
-{"x": 1, "a": 5}
-{"x": 2, "a": 3}
-{"x": 3, "a": 7}
+{"x": 0, "a": 4, "b": 0}
+{"x": 1, "a": 5, "b": 0}
+{"x": 2, "a": 3, "b": 0}
+{"x": 3, "a": 7, "b": 0}
