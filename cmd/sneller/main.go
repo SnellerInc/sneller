@@ -43,20 +43,22 @@ import (
 )
 
 var (
-	dashauth   string
-	dashd      string
-	dashf      bool
-	dashj      bool
-	dashN      bool
-	dashg      bool
-	dashg2     bool
-	dashg3     bool
-	dasho      string
-	dashr      string
-	dashtoken  string
-	cachedir   string
-	dashnommap bool
-	printStats bool
+	dashauth     string
+	dashd        string
+	dashf        bool
+	dashj        bool
+	dashN        bool
+	dashg        bool
+	dashg2       bool
+	dashg3       bool
+	dasho        string
+	dashr        string
+	dashtoken    string
+	cachedir     string
+	dashnommap   bool
+	printStats   bool
+	printBuild   bool
+	printVersion bool
 
 	dst io.WriteCloser
 )
@@ -78,6 +80,8 @@ func init() {
 	flag.StringVar(&dashtoken, "token", "", "token for auth provider (default SNELLER_TOKEN from env)")
 	flag.BoolVar(&dashnommap, "no-mmap", false, "do not mmap files (Linux only)")
 	flag.StringVar(&cachedir, "cachedir", "/tmp", "cache directory")
+	flag.BoolVar(&printBuild, "build", false, "print the build info of executable")
+	flag.BoolVar(&printVersion, "version", false, "print the version of executable")
 }
 
 type execStatistics struct {
@@ -331,6 +335,24 @@ func exit(err error) {
 
 func main() {
 	flag.Parse()
+
+	if printVersion {
+		v, ok := sneller.Version()
+		if ok {
+			fmt.Println(v)
+		} else {
+			fmt.Println("version not available, please check -build")
+		}
+		return
+	} else if printBuild {
+		bi, ok := sneller.BuildInfo()
+		if ok {
+			fmt.Print(bi)
+		} else {
+			fmt.Println("build info not available")
+		}
+		return
+	}
 
 	args := flag.Args()
 	if len(args) == 0 {

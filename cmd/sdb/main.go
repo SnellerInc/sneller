@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SnellerInc/sneller"
 	"github.com/SnellerInc/sneller/auth"
 	"github.com/SnellerInc/sneller/aws"
 	"github.com/SnellerInc/sneller/aws/s3"
@@ -42,6 +43,8 @@ var (
 	dasho        string
 	token        string
 	authEndPoint string
+	printVersion bool
+	printBuild   bool
 )
 
 const (
@@ -58,6 +61,8 @@ func init() {
 	flag.StringVar(&dasho, "o", "-", "output file (or - for stdin) for unpack")
 	flag.StringVar(&token, "token", "", "JWT token or custom bearer token (default: fetch from SNELLER_TOKEN environment variable)")
 	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, http://, https://, empty uses environment)")
+	flag.BoolVar(&printBuild, "build", false, "print the build info of executable")
+	flag.BoolVar(&printVersion, "version", false, "print the version of executable")
 }
 
 func exitf(f string, args ...interface{}) {
@@ -683,10 +688,12 @@ func main() {
 	originalUsage := flag.Usage
 
 	showHelp := func() {
-		fmt.Fprintf(os.Stderr, "Usage:\n  sdb [-a auth-spec] [-token token] command args...\n")
-		fmt.Fprintf(os.Stderr, "  -a     auth-spec: an http:// or file:// URI\n")
-		fmt.Fprintf(os.Stderr, "         pointing to the token validation server or local credentials\n")
-		fmt.Fprintf(os.Stderr, "  -token token: the token to pass to the auth server\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n  sdb [-version] [-build] [-a auth-spec] [-token token] command args...\n")
+		fmt.Fprintf(os.Stderr, "  -a       auth-spec: an http:// or file:// URI\n")
+		fmt.Fprintf(os.Stderr, "           pointing to the token validation server or local credentials\n")
+		fmt.Fprintf(os.Stderr, "  -token   token: the token to pass to the auth server\n")
+		fmt.Fprintf(os.Stderr, "  -version show program version\n")
+		fmt.Fprintf(os.Stderr, "  -build   show program build info\n")
 		fmt.Fprintf(os.Stderr, "Available commands:\n")
 		for i := range applets {
 			showAppletHelp(&applets[i], "  ", true)
@@ -700,6 +707,24 @@ func main() {
 
 	flag.Parse()
 	args := flag.Args()
+
+	if printVersion {
+		v, ok := sneller.Version()
+		if ok {
+			fmt.Println(v)
+		} else {
+			fmt.Println("version not available, please check -build")
+		}
+		return
+	} else if printBuild {
+		bi, ok := sneller.BuildInfo()
+		if ok {
+			fmt.Print(bi)
+		} else {
+			fmt.Println("build info not available")
+		}
+		return
+	}
 
 	if len(args) == 0 {
 		showHelp()

@@ -19,6 +19,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/SnellerInc/sneller"
+
 	"golang.org/x/sys/cpu"
 )
 
@@ -35,6 +37,32 @@ func main() {
 	}
 
 	args := os.Args[1:]
+	if len(args) > 0 {
+		switch args[0] {
+		case "-version":
+			v, ok := sneller.Version()
+			if ok {
+				fmt.Println(v)
+			} else {
+				fmt.Println("version not available, please check -build")
+			}
+			return
+		case "-build":
+			bi, ok := sneller.BuildInfo()
+			if ok {
+				fmt.Print(bi)
+			} else {
+				fmt.Println("build info not available")
+			}
+			return
+		}
+	}
+
+	ver, ok := sneller.Version()
+	if ok {
+		version = ver
+	}
+
 	useSubCommand := len(args) > 0 && !strings.HasPrefix(args[0], "-")
 	if useSubCommand {
 		subCommand := args[0]
