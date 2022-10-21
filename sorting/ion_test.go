@@ -15,7 +15,6 @@
 package sorting
 
 import (
-	"math"
 	"testing"
 
 	"github.com/SnellerInc/sneller/date"
@@ -133,27 +132,5 @@ func TestSimplfiedTimestampComparison(t *testing.T) {
 		if ts1.Before(ts2) != (val1 < val2) {
 			t.Errorf("wrong comparison result: %v != %v", ts1.Before(ts2), val1 < val2)
 		}
-	}
-}
-
-// PartiQL requires ordering NaN < -infinity < finite number < +infinity
-func TestFloatOrdering(t *testing.T) {
-	t.Skip("NaN < -Inf is not true in Go")
-
-	nan := math.NaN()
-	neginf := math.Inf(-1)
-	posinf := math.Inf(1)
-	norm := 42.0
-
-	if !(nan < neginf) {
-		t.Errorf("NaN < -Inf not hold")
-	}
-
-	if !(neginf < norm) {
-		t.Errorf("-Inf < number not hold")
-	}
-
-	if !(norm < posinf) {
-		t.Errorf("number < +Inf not hold")
 	}
 }
