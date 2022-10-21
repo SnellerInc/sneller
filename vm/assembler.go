@@ -19,7 +19,8 @@ import (
 )
 
 type assembler struct {
-	code []byte
+	code       []byte
+	scratchuse int
 }
 
 func (a *assembler) grabCode() []byte {
@@ -64,6 +65,10 @@ func (a *assembler) emitImmUPtr(imm uintptr) {
 }
 
 func (a *assembler) emitOpcode(op bcop) {
+	a.scratchuse += op.scratch()
+	if a.scratchuse > PageSize {
+		a.scratchuse = PageSize
+	}
 	a.emitImmUPtr(op.address())
 }
 

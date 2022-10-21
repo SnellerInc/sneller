@@ -122,6 +122,7 @@ type bcopinfo struct {
 	imms     []bcImmType
 	vaImms   []bcImmType
 	flags    bcflags
+	scratch  int   // desired scratch space (up to PageSize)
 	immwidth uint8 // immediate size
 	inverse  bcop  // for comparisons, etc., the inverse operation
 }
@@ -295,7 +296,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcvtf64toi64: {text: "cvtf64toi64", flags: bcReadWriteK | bcReadWriteS},
 	opfproundd:    {text: "fproundd", flags: bcReadWriteK | bcReadWriteS},
 	opfproundu:    {text: "fproundu", flags: bcReadWriteK | bcReadWriteS},
-	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS},
+	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
 
 	// Comparison instructions
 	opsortcmpvnf: {text: "sortcmpv@nf", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
@@ -385,7 +386,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opdatetruncquarter:       {text: "datetruncquarter", flags: bcReadK | bcReadWriteS},
 	opdatetruncyear:          {text: "datetruncyear", flags: bcReadK | bcReadWriteS},
 	opunboxts:                {text: "unboxts", flags: bcReadK | bcWriteS},
-	opboxts:                  {text: "boxts", flags: bcReadK | bcReadS},
+	opboxts:                  {text: "boxts", flags: bcReadK | bcReadS, scratch: 16 * 16},
 	opconsttm:                {text: "consttm", imms: bcImmsDict, flags: bcReadWriteS},
 	optimelt:                 {text: "timelt", flags: bcReadWriteK | bcReadS},
 	optimegt:                 {text: "timegt", flags: bcReadWriteK | bcReadS},
@@ -397,12 +398,12 @@ var opinfo = [_maxbcop]bcopinfo{
 	optimebucketts: {text: "timebucket.ts", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 
 	// Geo instructions
-	opgeohash:      {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opgeohashimm:   {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
+	opgeohash:      {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
+	opgeohashimm:   {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
 	opgeotilex:     {text: "geotilex", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 	opgeotiley:     {text: "geotiley", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opgeotilees:    {text: "geotilees", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opgeotileesimm: {text: "geotilees.imm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
+	opgeotilees:    {text: "geotilees", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
+	opgeotileesimm: {text: "geotilees.imm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
 	opgeodistance:  {text: "geodistance", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
 
 	opconcatlenget1: {text: "concatlenget1", flags: bcReadK | bcReadWriteS},
@@ -415,7 +416,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opconcatlenacc3: {text: "concatlenacc3", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
 	opconcatlenacc4: {text: "concatlenacc4", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
 
-	opallocstr:  {text: "alloc.str", flags: bcReadWriteK | bcReadWriteS},
+	opallocstr:  {text: "alloc.str", flags: bcReadWriteK | bcReadWriteS, scratch: PageSize},
 	opappendstr: {text: "append.str", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
 
 	// Find Symbol instructions
@@ -447,17 +448,17 @@ var opinfo = [_maxbcop]bcopinfo{
 	opunsymbolize: {text: "unsymbolize", flags: bcReadWriteV},
 
 	// Boxing instructions
-	opboxmask:   {text: "boxmask", imms: bcImmsS16, flags: bcReadK},
-	opboxmask2:  {text: "boxmask2", imms: bcImmsS16, flags: bcReadK},
-	opboxmask3:  {text: "boxmask3", flags: bcReadK},
-	opboxint:    {text: "boxint", flags: bcReadK | bcReadS},
-	opboxfloat:  {text: "boxfloat", flags: bcReadK | bcReadS},
-	opboxstring: {text: "boxstring", flags: bcReadK | bcReadS},
-	opboxlist:   {text: "boxlist", flags: bcReadK | bcReadS},
+	opboxmask:   {text: "boxmask", imms: bcImmsS16, flags: bcReadK, scratch: 16},
+	opboxmask2:  {text: "boxmask2", imms: bcImmsS16, flags: bcReadK, scratch: 16},
+	opboxmask3:  {text: "boxmask3", flags: bcReadK, scratch: 16},
+	opboxint:    {text: "boxint", flags: bcReadK | bcReadS, scratch: 2 * 9 * 16},
+	opboxfloat:  {text: "boxfloat", flags: bcReadK | bcReadS, scratch: 2 * 9 * 16},
+	opboxstring: {text: "boxstring", flags: bcReadK | bcReadS, scratch: PageSize},
+	opboxlist:   {text: "boxlist", flags: bcReadK | bcReadS, scratch: PageSize},
 
 	// Make instructions
-	opmakelist:   {text: "makelist", vaImms: bcImmsS16S16, flags: bcReadWriteK | bcWriteV},
-	opmakestruct: {text: "makestruct", vaImms: bcImmsH32S16S16, flags: bcReadWriteK | bcWriteV},
+	opmakelist:   {text: "makelist", vaImms: bcImmsS16S16, flags: bcReadWriteK | bcWriteV, scratch: PageSize},
+	opmakestruct: {text: "makestruct", vaImms: bcImmsH32S16S16, flags: bcReadWriteK | bcWriteV, scratch: PageSize},
 
 	// Hash instructions
 	ophashvalue:     {text: "hashvalue", imms: bcImmsS16, flags: bcReadK | bcReadV | bcWriteH},
@@ -591,6 +592,8 @@ func init() {
 		info.immwidth = uint8(immw)
 	}
 }
+
+func (op bcop) scratch() int { return opinfo[op].scratch }
 
 // bcerr is an error code returned
 // from the bytecode execution engine
