@@ -49,7 +49,7 @@ func TestCheckInvalidQuery(t *testing.T) {
 			// also ensure garbage operators aren't
 			// allowed in the table position
 			`SELECT COUNT(*) FROM CHAR_LENGTH()%0`,
-			".*",
+			"in table position",
 		},
 		{
 			`SELECT (a ++ b ++ c)`,
@@ -136,6 +136,10 @@ func TestCheckInvalidQuery(t *testing.T) {
 		{
 			`WITH a AS (SELECT * FROM t1), a AS (SELECT * FROM t2) SELECT * FROM table`,
 			`WITH query name "a" specified more than once`,
+		},
+		{
+			`SELECT UNPIVOT table AT val FROM table2`,
+			`cannot use "UNPIVOT table AT val" in non-table position`,
 		},
 	}
 	for i := range testcases {

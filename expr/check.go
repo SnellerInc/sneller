@@ -155,13 +155,13 @@ func (c *checkwalk) Visit(n Node) Visitor {
 		}
 	}
 	switch t := n.(type) {
-	case *Appended:
-		c.errorf("cannot use %s in non-table position", ToString(n))
+	case *Appended, *Unpivot:
+		c.errorf("cannot use %q in non-table position", ToString(n))
 		return nil
 
 	case *Builtin:
 		if t.isTable() {
-			c.errorf("cannot use %s in non-table position", ToString(n))
+			c.errorf("cannot use %q in non-table position", ToString(n))
 			return nil
 		}
 
