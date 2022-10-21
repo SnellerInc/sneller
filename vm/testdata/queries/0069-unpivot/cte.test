@@ -1,0 +1,17 @@
+WITH aux AS (SELECT * FROM input WHERE CHAR_LENGTH(x) < 3)
+SELECT val FROM UNPIVOT aux AS val
+ORDER BY val LIMIT 10
+---
+{"x": "a"}
+{"x": "ab"}
+{"x": "abc"}
+{"x": "abcd"}
+{"x": "b"}
+{"x": "bc"}
+{"x": "bcd"}
+{"x": "bcde"}
+---
+{"val": "a"}
+{"val": "ab"}
+{"val": "b"}
+{"val": "bc"}
