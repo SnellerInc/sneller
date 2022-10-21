@@ -20,9 +20,14 @@ import (
 	"fmt"
 	"io/fs"
 	"math/rand"
+	"os"
+	"path"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/SnellerInc/sneller/aws"
+	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/exp/maps"
@@ -502,6 +507,88 @@ func testFiletreeShrink(t *testing.T, reloadLikelihood float64) {
 	t.Logf("resyncs: %d", resyncs)
 	t.Logf("%d appended, %d overwritten", appended, overwritten)
 	t.Logf("%d files live; %d max; %d total written", livefiles, maxsize, totalout)
+}
+
+// if BENCH_S3_BUCKET is set, try to get ambient credentials
+// and perform some benchmarks against a real backing store
+func BenchmarkFiletreeS3(b *testing.B) {
+	bucket, ok := os.LookupEnv("BENCH_S3_BUCKET")
+	if !ok {
+		b.Skip()
+	}
+	key, err := aws.AmbientKey("s3", s3.DeriveForBucket(bucket))
+	if err != nil {
+		b.Fatal(err)
+	}
+	fs := &S3FS{
+		s3.BucketFS{
+			Key:    key,
+			Bucket: bucket,
+		},
+	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	prefix := fmt.Sprintf("bench/%d/", rng.Int())
+	b.Logf("using prefix %s", prefix)
+	b.Cleanup(func() {
+		entries, err := fs.ReadDir(path.Clean(prefix))
+		if err != nil {
+			b.Logf("readdir: %s", err)
+		}
+		for i := range entries {
+			if entries[i].IsDir() {
+				continue
+			}
+			err := fs.Remove(path.Join(prefix, entries[i].Name()))
+			if err != nil {
+				b.Logf("error removing file: %s", err)
+			}
+		}
+	})
+
+	// number of objects to insert
+	sizes := []int{10000}
+	// number of objects to insert
+	// per call to sync()
+	batches := []int{10, 100, 1000}
+	for _, size := range sizes {
+		lst := make([]string, size)
+		for i := range lst {
+			lst[i] = fmt.Sprintf("s3://%s/%s/file-%d", bucket, prefix, rand.Int())
+		}
+		slices.Sort(lst)
+		for _, batch := range batches {
+			b.Run(fmt.Sprintf("batch=%d/size=%d", batch, size), func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					ft := FileTree{
+						Backing: fs,
+					}
+					tbd := lst
+					for len(tbd) > 0 {
+						ins := tbd
+						if len(ins) > batch {
+							ins = ins[:batch]
+						}
+						tbd = tbd[len(ins):]
+						for _, p := range ins {
+							_, err := ft.Append(p, p, 1)
+							if err != nil {
+								b.Fatal(err)
+							}
+						}
+						err := ft.sync(func(_ string, buf []byte) (string, string, error) {
+							p := path.Join(prefix, "inputs-"+uuid())
+							etag, err := ft.Backing.WriteFile(p, buf)
+							return p, etag, err
+						})
+						if err != nil {
+							b.Fatal(err)
+						}
+					}
+				}
+			})
+		}
+	}
 }
 
 func BenchmarkFiletree(b *testing.B) {
