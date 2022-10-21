@@ -365,6 +365,9 @@ func (c *Comparison) canonical() *Comparison {
 	if !immediate(c.Left) || immediate(c.Right) {
 		return c
 	}
+	if c.Op.StringRelation() {
+		return c
+	}
 	c.Op = c.Op.Flip()
 	c.Left, c.Right = c.Right, c.Left
 	return c

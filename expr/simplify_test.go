@@ -247,10 +247,11 @@ func TestSimplify(t *testing.T) {
 			Compare(Greater, path("x"), Integer(3)),
 		},
 		{
-			// "foo%bar" LIKE z.name -> z.name LIKE "foo%bar"
-			// XXX: is the above even valid SQL?
+			// "foo%bar" LIKE z.name cannot be canonicalize
+			//
+			// The semantic of `z.name LIKE "foo%bar"` would be different
 			Compare(Like, String("foo%bar"), path("z.name")),
-			Compare(Like, path("z.name"), String("foo%bar")),
+			Compare(Like, String("foo%bar"), path("z.name")),
 		},
 		//#region Case-insensitive contains
 		{

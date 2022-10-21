@@ -1364,6 +1364,11 @@ func (c CmpOp) Ordinal() bool {
 	return c >= Less && c <= GreaterEquals
 }
 
+// StringRelation returns if the operator is for strings only.
+func (c CmpOp) StringRelation() bool {
+	return c >= Like && c <= RegexpMatchCi
+}
+
 // Flip returns the operator that is equivalent to c if
 // used with the operand order reversed.
 func (c CmpOp) Flip() CmpOp {
