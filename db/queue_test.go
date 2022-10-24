@@ -317,6 +317,16 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 			},
 		}},
 	}))
+	// test with template table names
+	check(WriteDefinition(dfs, &Definition{
+		Name: "tmpl",
+		Tables: []*TableDefinition{{
+			Name: "tmpl-$x",
+			Inputs: []Input{
+				{Pattern: "file://tmpl/file-{x}-*.json"},
+			},
+		}},
+	}))
 
 	owner := newTenant(dfs)
 	r.Owner = owner
@@ -330,6 +340,9 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 
 	create("aabb/file0.json", `{"name": "aabb/file0.json", "value": 0}`)
 	create("aacc/file0.json", `{"name": "aacc/file0.json", "value": 1}`)
+	create("tmpl/file-foo-1.json", `{"name": "file-foo-1", "value": "foo"}`)
+	create("tmpl/file-foo-2.json", `{"name": "file-foo-2", "value": "foo"}`)
+	create("tmpl/file-bar-1.json", `{"name": "file-bar-1", "value": "bar"}`)
 	// bad file; shouldn't permanently stop ingest:
 	create("aabb/file1.json", `{"name": "aabb/file1.json"`)
 	// push a file that doesn't exist; this should be ignored
@@ -370,5 +383,12 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 		"file://aabb/file1.json":          false,
 		"file://aacc/file0.json":          true,
 		"file://aabb/does-not-exist.json": false,
+	})
+	checkIndex("tmpl", "tmpl-foo", map[string]bool{
+		"file://tmpl/file-foo-1.json": true,
+		"file://tmpl/file-foo-2.json": true,
+	})
+	checkIndex("tmpl", "tmpl-bar", map[string]bool{
+		"file://tmpl/file-bar-1.json": true,
 	})
 }

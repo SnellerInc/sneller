@@ -230,7 +230,7 @@ func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, 
 func (q *QueueRunner) filter(bld []Builder, def *Definition, dst *[]batch) {
 	*dst = (*dst)[:0]
 	ind := make(map[string]int) // index into dst
-	get := func(tbl []byte, def *TableDefinition) *batch {
+	get := func(tbl []byte) *batch {
 		i, ok := ind[string(tbl)]
 		if ok {
 			return &(*dst)[i]
@@ -240,7 +240,7 @@ func (q *QueueRunner) filter(bld []Builder, def *Definition, dst *[]batch) {
 			tblname = string(tbl)
 		}
 		ind[tblname] = len(*dst)
-		*dst = append(*dst, batch{table: tblname, def: def})
+		*dst = append(*dst, batch{table: tblname})
 		return &(*dst)[len(*dst)-1]
 	}
 	var mr matcher
@@ -267,7 +267,15 @@ outer:
 					}
 					continue
 				}
-				dst = get(mr.result, def)
+				dst = get(mr.result)
+				if dst.def == nil {
+					dst.def = def
+					dst.conf = &bld[j]
+				} else if dst.def != def {
+					q.Logf("duplicate table definition for %q", dst.table)
+					dst.err = fmt.Errorf("duplicate table definition")
+					continue outer
+				}
 				infs, name, err := q.Owner.Split(p)
 				if err != nil {
 					dst.err = err
@@ -333,6 +341,7 @@ func (b *batch) note(qtime time.Time) {
 type batch struct {
 	table            string
 	def              *TableDefinition
+	conf             *Builder
 	filtered         []blockfmt.Input
 	indirect         []int     // indices into Queue.items[] for each of filtered
 	earliest, latest time.Time // modtimes for batch
@@ -406,15 +415,15 @@ func (q *QueueRunner) runDatabase(def *Definition, cache *IndexCache) {
 	var wg sync.WaitGroup
 	wg.Add(len(dst))
 	for i := range dst {
-		go func(conf *Builder, dst *batch) {
+		go func(dst *batch) {
 			defer wg.Done()
-			q.runTable(def.Name, conf, dst, cache)
-		}(&conf[i], &dst[i])
+			q.runTable(def.Name, dst, cache)
+		}(&dst[i])
 	}
 	wg.Wait()
 }
 
-func (q *QueueRunner) runTable(db string, conf *Builder, dst *batch, cache *IndexCache) {
+func (q *QueueRunner) runTable(db string, dst *batch, cache *IndexCache) {
 	sizeof := func(lst []blockfmt.Input) int64 {
 		out := int64(0)
 		for i := range lst {
@@ -424,6 +433,7 @@ func (q *QueueRunner) runTable(db string, conf *Builder, dst *batch, cache *Inde
 	}
 
 	table := dst.table
+	conf := dst.conf
 	err := dst.err
 	if err == nil && len(dst.filtered) > 0 {
 		err = conf.Append(q.Owner, db, table, dst.def, dst.filtered, cache)
