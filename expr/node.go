@@ -1520,7 +1520,7 @@ func allConst(lst []Node) bool {
 //
 //	<val> IN (cmp ...)
 func In(val Node, cmp ...Node) Node {
-	if len(cmp) > 1 && allConst(cmp) {
+	if len(cmp) >= 1 && allConst(cmp) {
 		mem := &Member{Arg: val}
 		for i := range cmp {
 			mem.Values = append(mem.Values, cmp[i].(Constant))

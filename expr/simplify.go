@@ -1117,6 +1117,13 @@ func (c *Cast) simplify(h Hint) Node {
 	return c
 }
 
+// minMemberArguments sets the threshold when the member
+// function can be used for constants arguments present
+// in an 'IN' query. If the number of arguments is less
+// than the value, 'IN' is exploded into separate
+// comparisons.
+const minMemberArguments = 10
+
 func (m *Member) simplify(h Hint) Node {
 	// when the first argument and
 	// the values do not share overlapping
@@ -1138,8 +1145,17 @@ func (m *Member) simplify(h Hint) Node {
 		// x IN () -> FALSE
 		return Bool(false)
 	}
-	if len(m.Values) == 1 {
-		return Simplify(Compare(Equals, m.Arg, m.Values[0]), h)
+	if len(m.Values) < minMemberArguments {
+		var expr Node
+		for i := range m.Values {
+			eq := Compare(Equals, m.Arg, m.Values[i])
+			if expr == nil {
+				expr = eq
+			} else {
+				expr = Or(expr, eq)
+			}
+		}
+		return Simplify(expr, h)
 	}
 
 	carg, ok := m.Arg.(Constant)

@@ -531,6 +531,11 @@ func TestSimplify(t *testing.T) {
 			ts("2009-01-14T23:59:00Z"),
 		},
 		{
+			// IN with long list of constant is not converted into equality
+			In(path("x"), Integer(1), Integer(2), Integer(3), Integer(4), Integer(5), Integer(6), Integer(7), Integer(8), Integer(9), Integer(10)),
+			In(path("x"), Integer(1), Integer(2), Integer(3), Integer(4), Integer(5), Integer(6), Integer(7), Integer(8), Integer(9), Integer(10)),
+		},
+		{
 			In(String("foo"), Float(3.5), String("bar"), String("foo"), Bool(false)),
 			Bool(true),
 		},
@@ -538,7 +543,7 @@ func TestSimplify(t *testing.T) {
 			// x||"suffix" IN (...)
 			// could only possibly match string-typed constants
 			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), String("second-suffix"), Bool(false)),
-			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), String("second-suffix")),
+			Or(Compare(Equals, Call(Concat, path("x"), String("suffix")), String("start-suffix")), Compare(Equals, Call(Concat, path("x"), String("suffix")), String("second-suffix"))),
 		},
 		{
 			// when the list of possible comparisons shrinks to 1,
