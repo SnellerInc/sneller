@@ -1,0 +1,7 @@
+SELECT * FROM 'data.jsonrl'
+ WHERE state IN (
+    'Texas',
+    'Michigan',
+    'Nebraska',
+    'Colorado'
+)
