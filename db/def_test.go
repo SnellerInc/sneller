@@ -16,6 +16,8 @@ package db
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -77,4 +79,91 @@ func TestSynthDefinition(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
+}
+
+func TestExpand(t *testing.T) {
+	tmp := t.TempDir()
+	for _, name := range []string{
+		"foo.json",
+		"foo-foo.json",
+		"foo-bar.json",
+		"prefix/foo/input-a.json",
+		"prefix/foo/input-b.json",
+		"prefix/bar/input-a.json",
+	} {
+		path := filepath.Join(tmp, name)
+		if dir, _ := filepath.Split(path); dir != "" {
+			err := os.MkdirAll(dir, 0750)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		err := os.WriteFile(path, nil, 0640)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	tn := newTenant(NewDirFS(tmp))
+	def := &Definition{
+		Name: "test-db",
+		Tables: []*TableDefinition{{
+			Name: "foo",
+			Inputs: []Input{{
+				Pattern: "file://foo.json",
+			}},
+		}, {
+			Name: "foo-$bar",
+			Inputs: []Input{{
+				Pattern: "file://foo-{bar}.json",
+			}},
+		}, {
+			Name: "prefix-$foo",
+			Inputs: []Input{{
+				Pattern: "file://prefix/{foo}/input-*.json",
+			}},
+		}},
+	}
+	got, err := def.Expand(tn, "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []*TableDefinition{{
+		Name: "foo",
+		Inputs: []Input{{
+			Pattern: "file://foo.json",
+		}},
+	}, {
+		Name: "foo-bar",
+		Inputs: []Input{{
+			Pattern: "file://foo-bar.json",
+		}},
+	}, {
+		Name: "foo-foo",
+		Inputs: []Input{{
+			Pattern: "file://foo-foo.json",
+		}},
+	}, {
+		Name: "prefix-bar",
+		Inputs: []Input{{
+			Pattern: "file://prefix/bar/input-*.json",
+		}},
+	}, {
+		Name: "prefix-foo",
+		Inputs: []Input{{
+			Pattern: "file://prefix/foo/input-*.json",
+		}},
+	}}
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("expanded definitions did not match:")
+		t.Errorf("  want: %s", tojson(want))
+		t.Errorf("  got:  %s", tojson(got))
+	}
+}
+
+func tojson(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

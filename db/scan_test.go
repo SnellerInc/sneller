@@ -222,7 +222,7 @@ func TestNewIndexScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = b.Append(owner, "default", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -240,7 +240,7 @@ func TestNewIndexScan(t *testing.T) {
 
 	// second attempt should fail again,
 	// but Scanning should be false
-	err = b.Append(owner, "default", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -272,7 +272,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	// final append should be a no-op
-	err = b.Append(owner, "default", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -39,8 +39,12 @@ var errStop = errors.New("stop walking")
 // to b.Append on the listed items, taking care to list
 // incrementally from the last call to Append.
 //
-// This method is only used in tests and may
-// eventually be removed.
+// Scan does not support templated table names.
+// The table name in the table definition is
+// assumed to be the literal table name.
+//
+// This method is deprecated and only used in
+// tests. It may be removed in the future.
 func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 	ifs, err := who.Root()
 	if err != nil {
@@ -54,7 +58,7 @@ func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
 	if def == nil {
 		return 0, fmt.Errorf("no such table: %s", table)
 	}
-	st, err := b.open(db, def, who)
+	st, err := b.open(db, table, def, who)
 	if err != nil {
 		return 0, err
 	}
@@ -110,22 +114,32 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 	size := int64(0)
 	complete := true
 	id := st.conf.nextID(idx)
+	var mr matcher
 	for i := range st.def.Inputs {
+		in := &st.def.Inputs[i]
 		if len(collect) >= maxInputs || size >= maxSize {
 			complete = false
 			break
 		}
-		infs, pat, err := st.owner.Split(st.def.Inputs[i].Pattern)
+		infs, pat, err := st.owner.Split(in.Pattern)
 		if err != nil {
 			// invalid definition?
 			return 0, err
 		}
-		format := st.def.Inputs[i].Format
+		format := in.Format
 		seek := idx.Cursors[i]
 		prefix := infs.Prefix()
+		template := st.def.Name
 		walk := func(p string, f fs.File, err error) error {
 			if err != nil {
 				return err
+			}
+			err = mr.match(pat, p, template)
+			if err != nil {
+				return err
+			}
+			if !mr.found || string(mr.result) != st.table {
+				return nil
 			}
 			info, err := f.Stat()
 			if err != nil {
@@ -179,7 +193,11 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			}
 			return nil
 		}
-		err = fsutil.WalkGlob(infs, seek, pat, walk)
+		glob, err := toglob(pat)
+		if err != nil {
+			return 0, fmt.Errorf("%w: %q", err, pat)
+		}
+		err = fsutil.WalkGlob(infs, seek, glob, walk)
 		idx.Cursors[i] = seek
 		if err == errStop {
 			complete = false

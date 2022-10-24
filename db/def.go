@@ -25,6 +25,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/SnellerInc/sneller/fsutil"
 	"golang.org/x/exp/slices"
 )
 
@@ -252,6 +253,147 @@ func (d *Definition) Equal(other *Definition) bool {
 	}
 	return d.Name == other.Name &&
 		slices.EqualFunc(d.Tables, other.Tables, (*TableDefinition).Equal)
+}
+
+// Expand produces expanded table definitions
+// for each table in this definition.
+//
+// If tblpat != "", only tables matching the
+// pattern will be included in the output.
+//
+// If any two table definitions produce a table
+// with the same name, this returns an error.
+func (d *Definition) Expand(who Tenant, tblpat string) ([]*TableDefinition, error) {
+	if tblpat == "" {
+		tblpat = "*"
+	} else if _, err := path.Match(tblpat, ""); err != nil {
+		// syntax check
+		return nil, err
+	}
+	ignore := func(s string) bool {
+		match, _ := path.Match(tblpat, s)
+		return !match
+	}
+	// skipdir returns fs.SkipDir if the pattern
+	// indicates that the directory can be skipped
+	// after matching the first file (which is
+	// only true if the last segment of the
+	// pattern does not contain a capture group)
+	// or nil otherwise.
+	skipdir := func(pattern string) error {
+		_, seg := path.Split(pattern)
+		if seg == "" {
+			return nil
+		}
+		has, ok := hascapture(seg)
+		if !ok || has {
+			return nil
+		}
+		return fs.SkipDir
+	}
+	var out []*TableDefinition
+	type bookkeeping struct {
+		out int // index into out (-1 => ignored)
+		tbl int // index into d.Tables
+		in  int // index into d.Tables[tbl].Input
+	}
+	seen := make(map[string]bookkeeping)
+	var mr matcher
+	for i := range d.Tables {
+		// if the table name is not a template,
+		// avoid walking its inputs entirely
+		name, ok, err := detemplate(d.Tables[i].Name)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			// name is not a template
+			if _, seen := seen[name]; seen {
+				return nil, fmt.Errorf("duplicate table %q", name)
+			}
+			if ignore(name) {
+				seen[name] = bookkeeping{out: -1, tbl: i}
+				continue
+			}
+			def := d.Tables[i]
+			if name != def.Name {
+				// table name had "$$", make copy
+				def = &TableDefinition{
+					Name:     name,
+					Inputs:   def.Inputs,
+					Features: def.Features,
+				}
+			}
+			seen[name] = bookkeeping{out: len(out), tbl: i}
+			out = append(out, def)
+			continue
+		}
+		// the table name is a template, so we have
+		// to walk the inputs
+		for j := range d.Tables[i].Inputs {
+			in := &d.Tables[i].Inputs[j]
+			ifs, pat, err := who.Split(in.Pattern)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %q", err, in.Pattern)
+			}
+			prefix := ifs.Prefix()
+			template := d.Tables[i].Name
+			walk := func(name string, f fs.File, err error) error {
+				if err != nil {
+					return err
+				}
+				err = mr.match(pat, name, template)
+				if err != nil || !mr.found {
+					return err
+				}
+				// check if we have seen this table
+				if bk, ok := seen[string(mr.result)]; ok {
+					if bk.tbl != i {
+						return fmt.Errorf("duplicate table %q", mr.result)
+					}
+					if bk.out == -1 || bk.in == j {
+						// ignored or already added input
+						return nil
+					}
+					def := out[bk.out]
+					def.Inputs = append(def.Inputs, Input{
+						Pattern: prefix + string(mr.glob),
+						Format:  in.Format,
+						Hints:   in.Hints,
+					})
+					bk.in = j
+					seen[def.Name] = bk
+					return skipdir(pat)
+				}
+				// first time seeing this table
+				table := string(mr.result)
+				if ignore(table) {
+					seen[table] = bookkeeping{out: -1, tbl: i}
+					return skipdir(pat)
+				}
+				seen[table] = bookkeeping{out: len(out), tbl: i, in: j}
+				out = append(out, &TableDefinition{
+					Name: table,
+					Inputs: []Input{{
+						Pattern: prefix + string(mr.glob),
+						Format:  in.Format,
+						Hints:   in.Hints,
+					}},
+					Features: d.Tables[i].Features,
+				})
+				return skipdir(pat)
+			}
+			glob, err := toglob(pat)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %q", err, pat)
+			}
+			err = fsutil.WalkGlob(ifs, "", glob, walk)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	return out, nil
 }
 
 // A Resolver determines how input specifications

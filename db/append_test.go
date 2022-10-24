@@ -88,8 +88,9 @@ func TestAppend(t *testing.T) {
 		GCLikelihood: 1,
 	}
 	var cache IndexCache
+	cache.init("parking")
 	parking := &TableDefinition{Name: "parking"}
-	err := b.Append(owner, "default", parking, nil, &cache)
+	err := b.Append(owner, "default", "parking", parking, nil, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,11 +131,11 @@ func TestAppend(t *testing.T) {
 	}
 
 	// now we should ingest some data
-	err = b.Append(owner, "default", parking, lst, &cache)
+	err = b.Append(owner, "default", "parking", parking, lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := len(cache.value.Inline)
+	before := len(cache.get("parking").Inline)
 
 	// confirm that it doesn't do anything
 	// a second time around
@@ -144,12 +145,12 @@ func TestAppend(t *testing.T) {
 	}
 
 	owner.ro = true
-	err = b.Append(owner, "default", parking, lst, &cache)
+	err = b.Append(owner, "default", "parking", parking, lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
 	owner.ro = false
-	after := len(cache.value.Inline)
+	after := len(cache.get("parking").Inline)
 	if before != after {
 		t.Fatal("dropped entries from Inline in no-op")
 	}
@@ -159,7 +160,7 @@ func TestAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	taxi := &TableDefinition{Name: "taxi"}
-	err = b.Append(owner, "default", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +194,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = b.Append(owner, "default", parking, lst, &cache)
+	err = b.Append(owner, "default", "parking", parking, lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func TestAppend(t *testing.T) {
 		F:    blockfmt.MustSuffixToFormat(".json"),
 	}}
 
-	err = b.Append(owner, "default", parking, bad, &cache)
+	err = b.Append(owner, "default", "parking", parking, bad, &cache)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -265,7 +266,7 @@ func TestAppend(t *testing.T) {
 
 	// try again; this should be a no-op
 	owner.ro = true
-	err = b.Append(owner, "default", parking, bad, nil)
+	err = b.Append(owner, "default", "parking", parking, bad, nil)
 	if err != nil {
 		t.Fatal("got an error re-inserting a bad item:", err)
 	}
@@ -277,7 +278,7 @@ func TestAppend(t *testing.T) {
 	bad[0].ETag = "good-ETag"
 	bad[0].Size = int64(len(goodtext))
 	bad[0].R = io.NopCloser(strings.NewReader(goodtext))
-	err = b.Append(owner, "default", parking, bad, nil)
+	err = b.Append(owner, "default", "parking", parking, bad, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,15 +350,16 @@ func TestAppendBadScan(t *testing.T) {
 		MaxScanObjects: 1,
 	}
 	var cache IndexCache
+	cache.init("foo")
 
-	err := b.Append(owner, "default", foo, nil, &cache)
+	err := b.Append(owner, "default", "foo", foo, nil, &cache)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
 	if !blockfmt.IsFatal(err) {
 		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T", err)
 	}
-	if cache.value != nil {
+	if cache.get("foo") != nil {
 		t.Error("cache is populated after an error")
 	}
 	// there should still be one output object
@@ -378,14 +380,14 @@ func TestAppendBadScan(t *testing.T) {
 	}
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
-	err = b.Append(owner, "default", foo, nil, &cache)
+	err = b.Append(owner, "default", "foo", foo, nil, &cache)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
 		}
 		t.Fatal(err)
 	}
-	if cache.value != nil {
+	if cache.get("foo") != nil {
 		t.Error("cache value is populated after ErrBuildAgain")
 	}
 
@@ -399,7 +401,7 @@ func TestAppendBadScan(t *testing.T) {
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
 	// now get the last object:
-	err = b.Append(owner, "default", foo, nil, &cache)
+	err = b.Append(owner, "default", "foo", foo, nil, &cache)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -423,7 +425,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 
 	// this one should turn off scanning:
-	err = b.Append(owner, "default", foo, nil, &cache)
+	err = b.Append(owner, "default", "foo", foo, nil, &cache)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -437,7 +439,7 @@ func TestAppendBadScan(t *testing.T) {
 	if idx.Scanning {
 		t.Error("still scanning?")
 	}
-	err = b.Append(owner, "default", foo, nil, &cache)
+	err = b.Append(owner, "default", "foo", foo, nil, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}

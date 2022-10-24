@@ -191,7 +191,7 @@ type tableState struct {
 	db, table string
 }
 
-func (b *Builder) open(db string, def *TableDefinition, owner Tenant) (*tableState, error) {
+func (b *Builder) open(db, table string, def *TableDefinition, owner Tenant) (*tableState, error) {
 	ifs, err := owner.Root()
 	if err != nil {
 		return nil, err
@@ -206,21 +206,22 @@ func (b *Builder) open(db string, def *TableDefinition, owner Tenant) (*tableSta
 		owner: owner,
 		ofs:   ofs,
 		db:    db,
-		table: def.Name,
+		table: table,
 	}
 	ts.conf.SetFeatures(def.Features)
 	return ts, nil
 }
 
 func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
-	if cache != nil && cache.value != nil {
-		return cache.value, nil
+	idx := cache.get(st.table)
+	if idx != nil {
+		return idx, nil
 	}
 	idx, err := OpenIndex(st.ofs, st.db, st.table, st.owner.Key())
 	if err != nil {
 		return nil, err
 	}
-	overwrite(cache, idx)
+	cache.overwrite(st.table, idx)
 	return idx, nil
 }
 
@@ -324,8 +325,8 @@ func shouldRebuild(err error) bool {
 // Append will continue to return ErrBuildAgain until scanning is complete,
 // at which point Append operations will be accepted. (The caller must continuously
 // call Append for scanning to occur.)
-func (b *Builder) Append(who Tenant, db string, def *TableDefinition, lst []blockfmt.Input, cache *IndexCache) error {
-	st, err := b.open(db, def, who)
+func (b *Builder) Append(who Tenant, db, table string, def *TableDefinition, lst []blockfmt.Input, cache *IndexCache) error {
+	st, err := b.open(db, table, def, who)
 	if err != nil {
 		return err
 	}
@@ -342,7 +343,7 @@ func (b *Builder) Append(who Tenant, db string, def *TableDefinition, lst []bloc
 			// force a reload unconditionally
 			// after a scan; the scan code does
 			// not update the cached index
-			invalidate(cache)
+			cache.invalidate(table)
 			_, err = st.scan(idx, true)
 			if err != nil {
 				return err
@@ -394,7 +395,7 @@ func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, 
 		err = st.force(idx, prepend, lst, cache)
 	}
 	if err != nil {
-		invalidate(cache)
+		cache.invalidate(st.table)
 		return fmt.Errorf("force: %w", err)
 	}
 	st.conf.logf("update of table %s complete", st.table)
@@ -417,21 +418,12 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	if err != nil {
 		return err
 	}
-	tables := root.Tables
-	if tblpat != "*" {
-		tables = tables[:0]
-		for i := range root.Tables {
-			matched, err := path.Match(tblpat, root.Tables[i].Name)
-			if err != nil {
-				return err
-			}
-			if matched {
-				tables = append(tables, root.Tables[i])
-			}
-		}
+	tables, err := root.Expand(who, tblpat)
+	if err != nil {
+		return err
 	}
 	syncTable := func(def *TableDefinition) error {
-		st, err := b.open(db, def, who)
+		st, err := b.open(db, def.Name, def, who)
 		if err != nil {
 			return err
 		}
@@ -473,10 +465,9 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	var wg sync.WaitGroup
 	wg.Add(len(tables))
 	for i := range tables {
-		def := tables[i]
 		go func(i int) {
 			defer wg.Done()
-			errlist[i] = syncTable(def)
+			errlist[i] = syncTable(tables[i])
 		}(i)
 	}
 	wg.Wait()
@@ -552,7 +543,7 @@ func (b *Builder) flushMeta() int {
 // update the index state to reflect the fatal errors we encountered
 func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *IndexCache) {
 	// invalidate cache so that a reload pulls the previous one
-	invalidate(cache)
+	cache.invalidate(st.table)
 
 	any := false
 	for i := range lst {
@@ -587,7 +578,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *Inde
 					Name:     st.table,
 					Scanning: st.conf.NewIndexScan,
 				}
-				overwrite(cache, idx)
+				cache.overwrite(st.table, idx)
 			} else {
 				st.conf.logf("re-opening index to record failure: %s", err)
 				return
@@ -610,7 +601,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *Inde
 	err = st.flush(idx)
 	if err != nil {
 		st.conf.logf("flushing index in updateFailed: %s", err)
-		invalidate(cache)
+		cache.invalidate(st.table)
 	}
 }
 
@@ -756,10 +747,10 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	})
 	err = st.flush(idx)
 	if err != nil {
-		invalidate(cache)
+		cache.invalidate(st.table)
 		return err
 	}
-	overwrite(cache, idx)
+	cache.overwrite(st.table, idx)
 	return st.runGC(idx)
 }
 

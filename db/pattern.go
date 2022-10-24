@@ -24,6 +24,16 @@ import (
 // name template.
 const MaxCaptureGroups = 8
 
+// matcher holds the results of a call to match.
+// The caller should copy out the results as
+// needed, as glob and result will be reused
+// across calls to match.
+type matcher struct {
+	found  bool
+	glob   []byte // expanded pattern
+	result []byte // expanded template
+}
+
 // match matches a pattern against the name. If
 // template != "", this also attempts to expand
 // the template with parts taken from name.
@@ -75,11 +85,12 @@ const MaxCaptureGroups = 8
 //
 // This returns ErrBadPattern if pattern is
 // malformed or has more than MaxCaptureGroups
-// capture groups. If template != "", and the
-// template references capture groups that are
-// not present in pattern, this returns
-// ErrBadPattern.
-func match(pattern, name, template string) (matched bool, expanded string, err error) {
+// capture groups, or if template references
+// capture groups not present in pattern.
+func (m *matcher) match(pattern, name, template string) error {
+	m.found = false
+	m.glob = m.glob[:0]
+	m.result = m.result[:0]
 	// bookkeeping for capture groups
 	var caps [MaxCaptureGroups][2]string
 	put := func(name, value string) bool {
@@ -117,7 +128,7 @@ outer:
 	for pattern != "" {
 		wc, ident, part, rest, ok := splitmatch(pattern)
 		if !ok {
-			return false, "", ErrBadPattern
+			return ErrBadPattern
 		}
 		pattern = rest
 		if wc && part == "" {
@@ -127,11 +138,14 @@ outer:
 			if ident != "" {
 				if got == "" {
 					// disallow empty capture
-					return false, "", nil
+					return nil
 				}
 				if !put(ident, got) {
-					return false, "", ErrBadPattern
+					return ErrBadPattern
 				}
+				m.glob = append(m.glob, got...)
+			} else {
+				m.glob = append(m.glob, '*')
 			}
 			break
 		}
@@ -148,7 +162,7 @@ outer:
 			}
 			rem, found, ok := matchpart(part, name[i:])
 			if !ok {
-				return false, "", ErrBadPattern
+				return ErrBadPattern
 			}
 			if !found {
 				if !wc {
@@ -157,9 +171,15 @@ outer:
 				continue
 			}
 			if pattern != "" || rem == "" {
-				if ident != "" && !put(ident, name[:i]) {
-					return false, "", ErrBadPattern
+				if ident != "" {
+					if !put(ident, name[:i]) {
+						return ErrBadPattern
+					}
+					m.glob = append(m.glob, name[:i]...)
+				} else if wc {
+					m.glob = append(m.glob, '*')
 				}
+				m.glob = append(m.glob, part...)
 				name = rem
 				continue outer
 			}
@@ -168,35 +188,96 @@ outer:
 		for pattern != "" {
 			_, _, _, rest, ok := splitmatch(pattern)
 			if !ok {
-				return false, "", ErrBadPattern
+				return ErrBadPattern
 			}
 			pattern = rest
 		}
-		return false, "", nil
+		return nil
 	}
 	if name != "" {
 		// no match
-		return false, "", nil
+		return nil
 	}
+	m.found = true
 	// expand the template if provided
-	var sb strings.Builder
 	for template != "" {
 		ident, part, rest, ok := splittemplate(template)
 		if !ok {
-			return true, "", ErrBadPattern
+			return ErrBadPattern
 		}
 		if ident != "" {
 			got := get(ident)
 			if got == "" {
 				// no match for ident
-				return true, "", ErrBadPattern
+				return ErrBadPattern
 			}
-			sb.WriteString(got)
+			m.result = append(m.result, got...)
 		}
-		sb.WriteString(part)
+		m.result = append(m.result, part...)
 		template = rest
 	}
-	return true, sb.String(), nil
+	return nil
+}
+
+// detemplate unescapes a template and ensures
+// that it has no template variables. This only
+// returns an error if template is malformed.
+func detemplate(template string) (name string, ok bool, err error) {
+	out := make([]byte, 0, len(template))
+	name = template
+	for template != "" {
+		// usually this will return after the first
+		// iteration, but will loop if template
+		// contains "$$"...
+		ident, part, rest, ok := splittemplate(template)
+		if !ok {
+			return "", false, ErrBadPattern
+		}
+		if ident != "" {
+			// found a template variable
+			return "", false, nil
+		}
+		out = append(out, part...)
+		template = rest
+	}
+	if out != nil {
+		name = string(out)
+	}
+	return name, true, nil
+}
+
+// hascapture returns whether the given pattern
+// contains a capture group.
+func hascapture(pattern string) (has, ok bool) {
+	for pattern != "" {
+		_, ident, _, rest, ok := splitmatch(pattern)
+		if !ok {
+			return false, false
+		}
+		if ident != "" {
+			return true, true
+		}
+		pattern = rest
+	}
+	return false, true
+}
+
+// toglob converts a pattern like
+// "foo-{bar}.json" into "foo-*.json".
+func toglob(pattern string) (string, error) {
+	var sb strings.Builder
+	for pattern != "" {
+		wc, _, part, rest, ok := splitmatch(pattern)
+		if !ok {
+			return "", ErrBadPattern
+		}
+		if wc {
+			sb.WriteByte('*')
+		}
+		sb.WriteString(part)
+		pattern = rest
+	}
+	return sb.String(), nil
 }
 
 func splitmatch(pattern string) (wc bool, ident, part, rest string, ok bool) {

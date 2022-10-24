@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +26,6 @@ import (
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
-	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -225,65 +223,99 @@ func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, 
 }
 
 // populate dst from q.inputs based on
-// the patterns in def and the config in bld
+// the patterns in def and the configs in bld
+// (bld[i] corresponds to def.Tables[i])
 //
 // this is supposed to be safe to call from multiple goroutines
-func (q *QueueRunner) filter(bld *Builder, def *TableDefinition, dst *batch) error {
-	dst.filtered = dst.filtered[:0]
-	dst.indirect = dst.indirect[:0]
+func (q *QueueRunner) filter(bld []Builder, def *Definition, dst *[]batch) {
+	*dst = (*dst)[:0]
+	ind := make(map[string]int) // index into dst
+	get := func(tbl []byte, def *TableDefinition) *batch {
+		i, ok := ind[string(tbl)]
+		if ok {
+			return &(*dst)[i]
+		}
+		tblname := def.Name
+		if tblname != string(tbl) {
+			tblname = string(tbl)
+		}
+		ind[tblname] = len(*dst)
+		*dst = append(*dst, batch{table: tblname, def: def})
+		return &(*dst)[len(*dst)-1]
+	}
+	var mr matcher
 outer:
 	for i := range q.inputs {
 		p := q.inputs[i].Path()
 		etag := q.inputs[i].ETag()
-		for j := range def.Inputs {
-			match, err := path.Match(def.Inputs[j].Pattern, p)
-			if err != nil || !match {
-				continue
-			}
-			infs, name, err := q.Owner.Split(p)
-			if err != nil {
-				return err
-			}
-			f, err := q.open(infs, name, q.inputs[i])
-			if err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					q.Logf("ignoring %q (doesn't exist)", name)
+		for j := range def.Tables {
+			var dst *batch
+			def := def.Tables[j]
+			for k := range def.Inputs {
+				err := mr.match(def.Inputs[k].Pattern, p, def.Name)
+				if err != nil || !mr.found {
+					continue
+				}
+				if dst != nil {
+					// we already matched the input, but
+					// make sure we are not producing
+					// multiple tables from one input
+					if dst.table != string(mr.result) {
+						q.Logf("conflicting table name: %q or %q?", dst.table, mr.result)
+						dst.err = fmt.Errorf("conflicting table name")
+						continue outer
+					}
+					continue
+				}
+				dst = get(mr.result, def)
+				infs, name, err := q.Owner.Split(p)
+				if err != nil {
+					dst.err = err
 					continue outer
 				}
-				return err
+				f, err := q.open(infs, name, q.inputs[i])
+				if err != nil {
+					if errors.Is(err, fs.ErrNotExist) {
+						q.Logf("ignoring %q (doesn't exist)", name)
+						continue outer
+					}
+					dst.err = err
+					continue outer
+				}
+				info, err := f.Stat()
+				if err != nil {
+					f.Close()
+					dst.err = err
+					continue outer
+				}
+				gotEtag, err := infs.ETag(name, info)
+				if err != nil {
+					f.Close()
+					dst.err = err
+					continue outer
+				}
+				if etag != gotEtag {
+					f.Close()
+					q.Logf("ignoring %q due to etag mismatch (want %q got %q)", name, etag, gotEtag)
+					continue outer
+				}
+				fm, err := bld[j].Format(def.Inputs[k].Format, p, def.Inputs[k].Hints)
+				if err != nil {
+					dst.err = err
+					continue outer
+				}
+				dst.note(q.inputs[i].EventTime())
+				dst.indirect = append(dst.indirect, i)
+				dst.filtered = append(dst.filtered, blockfmt.Input{
+					Path: p,
+					ETag: etag,
+					Size: info.Size(),
+					R:    f,
+					F:    fm,
+				})
 			}
-			info, err := f.Stat()
-			if err != nil {
-				f.Close()
-				return err
-			}
-			gotEtag, err := infs.ETag(name, info)
-			if err != nil {
-				f.Close()
-				return err
-			}
-			if etag != gotEtag {
-				f.Close()
-				q.Logf("ignoring %q due to etag mismatch (want %q got %q)", name, etag, gotEtag)
-				continue outer
-			}
-			fm, err := bld.Format(def.Inputs[j].Format, p, def.Inputs[j].Hints)
-			if err != nil {
-				return err
-			}
-			dst.note(q.inputs[i].EventTime())
-			dst.indirect = append(dst.indirect, i)
-			dst.filtered = append(dst.filtered, blockfmt.Input{
-				Path: p,
-				ETag: etag,
-				Size: info.Size(),
-				R:    f,
-				F:    fm,
-			})
-			break
 		}
 	}
-	return nil
 }
 
 func (b *batch) note(qtime time.Time) {
@@ -299,34 +331,90 @@ func (b *batch) note(qtime time.Time) {
 }
 
 type batch struct {
+	table            string
+	def              *TableDefinition
 	filtered         []blockfmt.Input
 	indirect         []int     // indices into Queue.items[] for each of filtered
 	earliest, latest time.Time // modtimes for batch
+	err              error     // error found during filter
 }
 
 // IndexCache is an opaque cache for index objects.
 type IndexCache struct {
-	value *blockfmt.Index
+	m     map[string]int
+	items []*blockfmt.Index
 }
 
-func invalidate(cache *IndexCache) {
-	overwrite(cache, nil)
-}
-
-func overwrite(cache *IndexCache, value *blockfmt.Index) {
-	if cache != nil {
-		cache.value = value
+// init allows an index for a table to be stored
+// in the cache. invalidate or overwrite will do
+// nothing if init has not been called for that
+// table. This method is not thread-safe.
+func (c *IndexCache) init(table string) {
+	if c != nil {
+		_, ok := c.m[table]
+		if ok {
+			// already inited
+			return
+		}
+		if c.m == nil {
+			c.m = make(map[string]int)
+		}
+		c.m[table] = len(c.items)
+		c.items = append(c.items, nil)
 	}
 }
 
-func (q *QueueRunner) runTable(db string, def *TableDefinition, cache *IndexCache) {
-	// clone the config and add features;
-	// note that runTable is invoked in separate
-	// goroutines for each table, so we need to
-	// deep-copy these structures to keep things race-free
-	conf := q.Conf
-	conf.SetFeatures(def.Features)
+func (c *IndexCache) get(table string) *blockfmt.Index {
+	if c == nil {
+		return nil
+	}
+	i, ok := c.m[table]
+	if !ok {
+		return nil
+	}
+	return c.items[i]
+}
 
+func (c *IndexCache) invalidate(table string) {
+	c.overwrite(table, nil)
+}
+
+func (c *IndexCache) overwrite(table string, value *blockfmt.Index) {
+	if c != nil {
+		i, ok := c.m[table]
+		if ok {
+			c.items[i] = value
+		}
+	}
+}
+
+func (q *QueueRunner) runDatabase(def *Definition, cache *IndexCache) {
+	conf := make([]Builder, len(def.Tables))
+	for i := range def.Tables {
+		// clone the config and add features;
+		// note that runDatabase is invoked in separate
+		// goroutines for each table, so we need to
+		// deep-copy these structures to keep things race-free
+		conf[i] = q.Conf
+		conf[i].SetFeatures(def.Tables[i].Features)
+	}
+	var dst []batch
+	q.filter(conf, def, &dst)
+	for i := range dst {
+		cache.init(dst[i].table)
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(dst))
+	for i := range dst {
+		go func(conf *Builder, dst *batch) {
+			defer wg.Done()
+			q.runTable(def.Name, conf, dst, cache)
+		}(&conf[i], &dst[i])
+	}
+	wg.Wait()
+}
+
+func (q *QueueRunner) runTable(db string, conf *Builder, dst *batch, cache *IndexCache) {
 	sizeof := func(lst []blockfmt.Input) int64 {
 		out := int64(0)
 		for i := range lst {
@@ -335,13 +423,13 @@ func (q *QueueRunner) runTable(db string, def *TableDefinition, cache *IndexCach
 		return out
 	}
 
-	var dst batch
-	err := q.filter(&conf, def, &dst)
+	table := dst.table
+	err := dst.err
 	if err == nil && len(dst.filtered) > 0 {
-		err = conf.Append(q.Owner, db, def, dst.filtered, cache)
+		err = conf.Append(q.Owner, db, table, dst.def, dst.filtered, cache)
 		if err == nil {
 			q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
-				db, def.Name, len(dst.filtered), sizeof(dst.filtered), time.Since(dst.latest), time.Since(dst.earliest))
+				db, table, len(dst.filtered), sizeof(dst.filtered), time.Since(dst.latest), time.Since(dst.earliest))
 		}
 	}
 	if err != nil {
@@ -349,9 +437,9 @@ func (q *QueueRunner) runTable(db string, def *TableDefinition, cache *IndexCach
 		// we encounter an error; the index file is
 		// likely not in a consistent state
 		if err != ErrBuildAgain {
-			invalidate(cache)
+			cache.invalidate(table)
 		}
-		q.logf("updating %s/%s: %s", db, def.Name, err)
+		q.logf("updating %s/%s: %s", db, table, err)
 	}
 
 	// atomically merge status codes back into parent
@@ -378,10 +466,6 @@ func bounce(q Queue, lst []QueueItem, st QueueStatus) {
 	for i := range lst {
 		q.Finalize(lst[i], st)
 	}
-}
-
-type dbtable struct {
-	db, table string
 }
 
 // set q.inputs to a list of items
@@ -419,8 +503,8 @@ func (q *QueueRunner) gather(in Queue) error {
 	return nil
 }
 
-type tableInfo struct {
-	def   *TableDefinition
+type dbinfo struct {
+	def   *Definition
 	cache IndexCache
 }
 
@@ -428,7 +512,7 @@ type tableInfo struct {
 // at which point it will call in.Close.
 func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
-	subdefs := make(map[dbtable]*tableInfo)
+	var subdefs []dbinfo
 readloop:
 	for {
 		err := q.gather(in)
@@ -440,7 +524,7 @@ readloop:
 			return err
 		}
 		if time.Since(lastRefresh) > q.tableRefresh() {
-			err := q.updateDefs(subdefs)
+			err := q.updateDefs(&subdefs)
 			if err != nil {
 				q.logf("updating table definitions: %s", err)
 				bounce(in, q.inputs, StatusWriteError)
@@ -453,34 +537,33 @@ readloop:
 	}
 }
 
-func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*tableInfo) {
+func (q *QueueRunner) runBatches(in Queue, defs []dbinfo) {
 	var wg sync.WaitGroup
 	q.status = slices.Grow(q.status[:0], len(q.inputs))[:len(q.inputs)]
 	for i := range q.status {
 		q.status[i] = StatusOK
 	}
-	for dbt, def := range dst {
+	for i := range defs {
 		wg.Add(1)
-		go func(db string, def *TableDefinition, cache *IndexCache) {
+		go func(def *Definition, cache *IndexCache) {
 			defer wg.Done()
-			q.runTable(db, def, cache)
-		}(dbt.db, def.def, &def.cache)
+			q.runDatabase(def, cache)
+		}(defs[i].def, &defs[i].cache)
 	}
 	// wait for q.status[*] to be updated (atomically!)
-	// by runTable()
+	// by runDatabase()
 	wg.Wait()
 	for i := range q.status {
-		parent.Finalize(q.inputs[i], q.status[i])
+		in.Finalize(q.inputs[i], q.status[i])
 	}
 }
 
-func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
+func (q *QueueRunner) updateDefs(defs *[]dbinfo) error {
 	dir, err := q.Owner.Root()
 	if err != nil {
 		return err
 	}
-	// flush known tables, including the table cache
-	maps.Clear(m)
+	*defs = (*defs)[:0]
 	dbs, err := fs.ReadDir(dir, "db")
 	if err != nil {
 		return err
@@ -490,17 +573,13 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 			continue
 		}
 		db := dbs[i].Name()
-		root, err := OpenDefinition(dir, db)
+		def, err := OpenDefinition(dir, db)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		} else if err != nil {
 			return err
 		}
-		for j := range root.Tables {
-			def := root.Tables[j]
-			table := def.Name
-			m[dbtable{db, table}] = &tableInfo{def: def}
-		}
+		*defs = append(*defs, dbinfo{def: def})
 	}
 	return nil
 }

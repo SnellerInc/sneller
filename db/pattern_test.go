@@ -21,15 +21,19 @@ import (
 func TestMatch(t *testing.T) {
 	t.Run("pattern", testPattern)
 	t.Run("expand", testExpand)
+	t.Run("detemplate", testDetemplate)
+	t.Run("hascapture", testHasCapture)
+	t.Run("toglob", testToGlob)
 }
 
 func testPattern(t *testing.T) {
+	var mr matcher
 	n := 0
 	run := func(pattern, name string, want bool, wanterr error) {
 		t.Helper()
-		matched, _, err := match(pattern, name, "")
-		if matched != want {
-			t.Errorf("case %d: expected matched = %v, got %v", n, want, matched)
+		err := mr.match(pattern, name, "")
+		if mr.found != want {
+			t.Errorf("case %d: expected found = %v, got %v", n, want, mr.found)
 		}
 		if err != wanterr {
 			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
@@ -147,53 +151,158 @@ func testPattern(t *testing.T) {
 }
 
 func testExpand(t *testing.T) {
+	var mr matcher
 	n := 0
-	run := func(pattern, name, template, want string, wanterr error) {
+	run := func(pattern, name, template, glob, result string, wanterr error) {
 		t.Helper()
-		matched, expanded, err := match(pattern, name, template)
-		if !matched {
+		err := mr.match(pattern, name, template)
+		if !mr.found {
 			t.Errorf("case %d: expected match", n)
 			return
 		}
-		if expanded != want {
-			t.Errorf("case %d: expected expanded = %q, got %q", n, want, expanded)
+		if err != wanterr {
+			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
+		}
+		if wanterr != nil {
+			// ignore results
+			return
+		}
+		if string(mr.glob) != glob {
+			t.Errorf("case %d: expected glob = %q, got %q", n, glob, mr.glob)
+		}
+		if string(mr.result) != result {
+			t.Errorf("case %d: expected result = %q, got %q", n, result, mr.result)
+		}
+		n++
+	}
+	// template expansion
+	run("{x}", "bar", "$x", "bar", "bar", nil)
+	run("{_}", "bar", "$_", "bar", "bar", nil)
+	run("{x}", "bar", "$y", "", "", ErrBadPattern)
+	run("{x}", "bar", "${}", "", "", ErrBadPattern)
+	run("{x}", "bar", "$x$y", "", "", ErrBadPattern)
+	run("{x}", "bar", "$$x", "bar", "$x", nil)
+	run("{x}", "bar", "$$$x", "bar", "$bar", nil)
+	run("{x}", "bar", "$", "", "", ErrBadPattern)
+	run("{x}", "bar", "$$", "bar", "$", nil)
+	run("{x}", "bar", "foo-$x-baz", "bar", "foo-bar-baz", nil)
+	run("{x}", "bar", "$x-$x", "bar", "bar-bar", nil)
+	run("{x}", "bar", "${x}", "bar", "bar", nil)
+	run("{_}", "bar", "${_}", "bar", "bar", nil)
+	run("{x_x}", "bar", "${x_x}", "bar", "bar", nil)
+	run("{x}", "bar", "foo${x}baz", "bar", "foobarbaz", nil)
+	run("{x}", "bar", "${x}${x}", "bar", "barbar", nil)
+	run("{x}-{y}", "foo-bar", "$x$y", "foo-bar", "foobar", nil)
+	run("{x}-{y}", "foo-bar", "$y$x", "foo-bar", "barfoo", nil)
+	run("{x}/{y}", "foo/bar", "$y$x", "foo/bar", "barfoo", nil)
+	run("f{x}o-b{y}r", "foo-bar", "$x$y", "foo-bar", "oa", nil)
+	run("f{x}o/b{y}r", "foo/bar", "$x$y", "foo/bar", "oa", nil)
+	run("fo{x}/{y}ar", "foo/bar", "$x$y", "foo/bar", "ob", nil)
+	// glob expansion
+	run("{x}-*-{y}", "a-b-c-d", "$x-$y", "a-*-c-d", "a-c-d", nil)
+	run("*-{x}/*", "foo-bar/baz", "", "*-bar/*", "", nil)
+	run("[abc]-{x}-?oo", "b-bar-foo", "", "[abc]-bar-?oo", "", nil)
+	run(`{x}-\{bar}-\*`, "foo-{bar}-*", "", `foo-\{bar}-\*`, "", nil)
+	// something vaguely realistic
+	run(
+		"s3://bucket/f[aeiou]?/*/baz-{yyyy}-{mm}-{dd}.tar.gz",
+		"s3://bucket/foo/bar/baz-2022-10-20.tar.gz",
+		"table-$yyyy-$mm-$dd",
+		"s3://bucket/f[aeiou]?/*/baz-2022-10-20.tar.gz",
+		"table-2022-10-20",
+		nil,
+	)
+}
+
+func testDetemplate(t *testing.T) {
+	n := 0
+	run := func(template, want string, wantok bool, wanterr error) {
+		t.Helper()
+		name, ok, err := detemplate(template)
+		if ok != wantok {
+			t.Errorf("case %d: expected ok = %v, got %v", n, wantok, ok)
+		}
+		if name != want {
+			t.Errorf("case %d: expected name = %q, got %q", n, want, name)
 		}
 		if err != wanterr {
 			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
 		}
 		n++
 	}
-	run("{x}", "bar", "$x", "bar", nil)
-	run("{_}", "bar", "$_", "bar", nil)
-	run("{x}", "bar", "$y", "", ErrBadPattern)
-	run("{x}", "bar", "${}", "", ErrBadPattern)
-	run("{x}", "bar", "$x$y", "", ErrBadPattern)
-	run("{x}", "bar", "$$x", "$x", nil)
-	run("{x}", "bar", "$$$x", "$bar", nil)
-	run("{x}", "bar", "$", "", ErrBadPattern)
-	run("{x}", "bar", "$$", "$", nil)
-	run("{x}", "bar", "foo-$x-baz", "foo-bar-baz", nil)
-	run("{x}", "bar", "$x-$x", "bar-bar", nil)
-	run("{x}", "bar", "${x}", "bar", nil)
-	run("{_}", "bar", "${_}", "bar", nil)
-	run("{x_x}", "bar", "${x_x}", "bar", nil)
-	run("{x}", "bar", "foo${x}baz", "foobarbaz", nil)
-	run("{x}", "bar", "${x}${x}", "barbar", nil)
-	run("{x}-{y}", "foo-bar", "$x$y", "foobar", nil)
-	run("{x}-{y}", "foo-bar", "$y$x", "barfoo", nil)
-	run("{x}/{y}", "foo/bar", "$y$x", "barfoo", nil)
-	run("f{x}o-b{y}r", "foo-bar", "$x$y", "oa", nil)
-	run("f{x}o/b{y}r", "foo/bar", "$x$y", "oa", nil)
-	run("fo{x}/{y}ar", "foo/bar", "$x$y", "ob", nil)
-	run("{x}-*-{y}", "a-b-c-d", "$x-$y", "a-c-d", nil)
+	run("foo", "foo", true, nil)
+	run("$$foo", "$foo", true, nil)
+	run("foo$$", "foo$", true, nil)
+	run("$foo", "", false, nil)
+	run("foo-$bar", "", false, nil)
+	run("foo-$bar", "", false, nil)
+	run("foo-$$bar", "foo-$bar", true, nil)
+	run("foo$", "", false, ErrBadPattern)
+	run("foo${bar", "", false, ErrBadPattern)
+}
+
+func testHasCapture(t *testing.T) {
+	n := 0
+	run := func(pattern string, want, wantok bool) {
+		t.Helper()
+		got, ok := hascapture(pattern)
+		if got != want {
+			t.Errorf("case %d: expected %v, got %v", n, want, got)
+		}
+		if ok != wantok {
+			t.Errorf("case %d: expected ok = %v, got %v", n, wantok, ok)
+		}
+		n++
+	}
+	run("", false, true)
+	run("foo", false, true)
+	run(`foo-\{bar}`, false, true)
+	run("{x}", true, true)
+	run("{x}.json", true, true)
+	run("foo-{x}", true, true)
+	run("foo-{x}.json", true, true)
+}
+
+func testToGlob(t *testing.T) {
+	n := 0
+	run := func(pattern, want string, wanterr error) {
+		t.Helper()
+		got, err := toglob(pattern)
+		if err != wanterr {
+			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
+		}
+		if wanterr != nil {
+			// ignore results
+			return
+		}
+		if got != want {
+			t.Errorf("case %d: expected %q, got %q", n, want, got)
+		}
+		n++
+	}
+	run("{x}", "*", nil)
+	run("{x}-{y}", "*-*", nil)
+	run("{x}-bar", "*-bar", nil)
+	run("foo-{y}", "foo-*", nil)
+	run("foo-bar", "foo-bar", nil)
+	run("*-bar", "*-bar", nil)
+	run("foo-*", "foo-*", nil)
+	run("foo/{x}", "foo/*", nil)
+	run("foo/{x}-{y}", "foo/*-*", nil)
+	run("foo/{x}-bar", "foo/*-bar", nil)
+	run("foo/foo-{y}", "foo/foo-*", nil)
+	run("foo/foo-bar", "foo/foo-bar", nil)
+	run("foo/*-bar", "foo/*-bar", nil)
+	run("foo/foo-*", "foo/foo-*", nil)
 }
 
 func BenchmarkMatch(b *testing.B) {
 	name := "s3://bucket/foo/bar/baz-2022-10-06.tar.gz"
 	pat := "s3://bucket/foo/bar/baz-{yyyy}-{mm}-{dd}.tar.gz"
 	tmpl := "table-$yyyy-$mm-$dd"
-	b.ReportAllocs()
+	b.ReportAllocs() // should be zero
+	var mr matcher
 	for i := 0; i < b.N; i++ {
-		match(pat, name, tmpl)
+		mr.match(pat, name, tmpl)
 	}
 }
