@@ -21,6 +21,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -122,7 +123,7 @@ type FilterHandle struct {
 	Blobs *blob.List
 
 	// cached result of compileFilter(Expr)
-	compiled Filter
+	compiled blockfmt.Filter
 }
 
 // CompileFilter compiles the filter expression
@@ -131,17 +132,13 @@ type FilterHandle struct {
 // this returns (nil, true). This will only
 // return false if there is a filter expression
 // present and it fails to compile.
-func (f *FilterHandle) CompileFilter() (Filter, bool) {
-	if f.compiled != nil {
-		return f.compiled, true
-	}
+func (f *FilterHandle) CompileFilter() (*blockfmt.Filter, bool) {
 	if f.Expr == nil {
 		return nil, true
 	}
-	flt, ok := compileFilter(f.Expr)
-	if !ok {
+	f.compiled.Compile(f.Expr)
+	if f.compiled.Trivial() {
 		return nil, false
 	}
-	f.compiled = flt
-	return flt, true
+	return &f.compiled, true
 }

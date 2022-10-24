@@ -71,13 +71,11 @@ func noIfMatch(fs FS) bool {
 	return false
 }
 
-func keepAny(t *blockfmt.Trailer, keep func(*blockfmt.SparseIndex, int) bool) bool {
-	for i := range t.Blocks {
-		if keep(&t.Sparse, i) {
-			return true
-		}
+func keepAny(t *blockfmt.Trailer, filt *blockfmt.Filter) bool {
+	if filt == nil || filt.Trivial() {
+		return true
 	}
-	return false
+	return filt.MatchesAny(&t.Sparse)
 }
 
 // Blobs collects the list of objects
@@ -89,13 +87,13 @@ func keepAny(t *blockfmt.Trailer, keep func(*blockfmt.SparseIndex, int) bool) bo
 //
 // Note that the returned blob.List may consist
 // of zero blobs if the index has no contents.
-func Blobs(src FS, idx *blockfmt.Index, keep func(*blockfmt.SparseIndex, int) bool) (*blob.List, error) {
+func Blobs(src FS, idx *blockfmt.Index, keep *blockfmt.Filter) (*blob.List, error) {
 	out := &blob.List{}
 	for i := range idx.Inline {
 		if idx.Inline[i].Format != blockfmt.Version {
 			return nil, fmt.Errorf("don't know how to convert format %q into a blob", idx.Inline[i].Format)
 		}
-		if keep != nil && !keepAny(idx.Inline[i].Trailer, keep) {
+		if !keepAny(idx.Inline[i].Trailer, keep) {
 			continue
 		}
 		canExpire := idx.Inline[i].Size < DefaultMinMerge && i == len(idx.Inline)-1

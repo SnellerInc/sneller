@@ -21,8 +21,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/klauspost/compress/zstd"
-
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
@@ -160,19 +158,14 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 	return err
 }
 
-func keepAny(t *Trailer, overlap func(*SparseIndex, int) bool) bool {
-	if overlap == nil {
+func keepAny(t *Trailer, filt *Filter) bool {
+	if filt == nil {
 		return true
 	}
-	for i := range t.Blocks {
-		if overlap(&t.Sparse, i) {
-			return true
-		}
-	}
-	return false
+	return filt.MatchesAny(&t.Sparse)
 }
 
-func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, keep func(*SparseIndex, int) bool) ([]Descriptor, error) {
+func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, filt *Filter) ([]Descriptor, error) {
 	f, err := ifs.Open(src.Path)
 	if err != nil {
 		return in, err
@@ -222,7 +215,7 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, ke
 				if err != nil {
 					return err
 				}
-				if keep == nil || keepAny(d.Trailer, keep) {
+				if keepAny(d.Trailer, filt) {
 					in = append(in, d)
 				}
 				return nil
@@ -238,19 +231,25 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, ke
 // Search traverses the IndirectTree through
 // the backing store (ifs) to produce the
 // list of blobs that match the given predicate.
-func (i *IndirectTree) Search(ifs InputFS, overlap func(*SparseIndex, int) bool) ([]Descriptor, error) {
+func (i *IndirectTree) Search(ifs InputFS, filt *Filter) ([]Descriptor, error) {
 	var descs []Descriptor
 	var err error
-	for j := range i.Refs {
-		if overlap != nil && !overlap(&i.Sparse, j) {
-			continue
-		}
-		descs, err = i.decode(ifs, &i.Refs[j], descs, overlap)
-		if err != nil {
-			return descs, err
+	walk := func(refs []IndirectRef) {
+		for j := range refs {
+			if err != nil {
+				return
+			}
+			descs, err = i.decode(ifs, &refs[j], descs, filt)
 		}
 	}
-	return descs, nil
+	if filt == nil || filt.Trivial() {
+		walk(i.Refs)
+		return descs, err
+	}
+	filt.Visit(&i.Sparse, func(start, end int) {
+		walk(i.Refs[start:end])
+	})
+	return descs, err
 }
 
 // targetRefSize is the target size of stored refs;
@@ -320,8 +319,7 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	st.Marshal(&buf, true)
 	contents := buf.Bytes()
 	symtab, body := contents[split:], contents[:split]
-	e, _ := zstd.NewWriter(nil)
-	compressed := e.EncodeAll(append(symtab, body...), nil)
+	compressed := compr.Compression("zstd").Compress(append(symtab, body...), nil)
 
 	p := path.Join(basedir, "indirect-"+uuid())
 	etag, err := ofs.WriteFile(p, compressed)

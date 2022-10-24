@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/expr"
 )
 
 func TestIndirectTree(t *testing.T) {
@@ -86,10 +87,11 @@ func TestIndirectTree(t *testing.T) {
 	}
 
 	latestAbove := func(idx *Index, iter int) []Descriptor {
+		var f Filter
 		min := start.Add(time.Duration(iter) * time.Hour)
-		tail, err := idx.Indirect.Search(dir, func(s *SparseIndex, n int) bool {
-			return n >= s.Get([]string{"timestamp"}).Start(min)
-		})
+		exp := expr.Compare(expr.GreaterEquals, expr.Identifier("timestamp"), &expr.Timestamp{min})
+		f.Compile(exp)
+		tail, err := idx.Indirect.Search(dir, &f)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,10 +99,11 @@ func TestIndirectTree(t *testing.T) {
 	}
 
 	latestBelow := func(idx *Index, iter int) []Descriptor {
+		var f Filter
 		min := start.Add(time.Duration(iter)*time.Hour - 1)
-		tail, err := idx.Indirect.Search(dir, func(s *SparseIndex, n int) bool {
-			return n < s.Get([]string{"timestamp"}).End(min)
-		})
+		exp := expr.Compare(expr.Less, expr.Identifier("timestamp"), &expr.Timestamp{min})
+		f.Compile(exp)
+		tail, err := idx.Indirect.Search(dir, &f)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -164,27 +164,18 @@ func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	if err != nil {
 		return nil, err
 	}
-	var keep func(*blockfmt.SparseIndex, int) bool
-	var match Filter
-	if h.Filter != nil {
-		if m, ok := compileFilter(h.Filter); ok {
-			match = m
-			keep = func(s *blockfmt.SparseIndex, n int) bool {
-				return match(s, n) != Never
-			}
-		}
+	fh := &FilterHandle{
+		Expr:      h.Filter,
+		Fields:    h.Fields,
+		AllFields: h.AllFields,
 	}
-	blobs, err := db.Blobs(f.Root, index, keep)
+	fh.compiled.Compile(fh.Expr)
+	blobs, err := db.Blobs(f.Root, index, &fh.compiled)
 	if err != nil {
 		return nil, err
 	}
-	return &FilterHandle{
-		Expr:      h.Filter,
-		compiled:  match,
-		Fields:    h.Fields,
-		AllFields: h.AllFields,
-		Blobs:     blobs,
-	}, nil
+	fh.Blobs = blobs
+	return fh, nil
 }
 
 var _ plan.TableLister = (*FSEnv)(nil)

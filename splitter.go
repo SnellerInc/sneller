@@ -22,6 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/dchest/siphash"
@@ -85,14 +86,9 @@ func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 		if err != nil {
 			return nil, err
 		}
+		sub = stripsub(c.Trailer, sub, flt)
 		for i := range sub {
-			// only insert blobs that satisfy
-			// the predicate pushdown conditions
-			scan := maxscan(&sub[i], flt)
-			if scan == 0 {
-				continue
-			}
-			s.MaxScan += uint64(scan)
+			s.MaxScan += uint64(sub[i].Decompressed())
 			if err := insert(&sub[i]); err != nil {
 				return nil, err
 			}
@@ -121,18 +117,17 @@ func compact(splits []split) []split {
 	return out
 }
 
-// maxscan calculates the max scan size of a blob,
-// optionally with filter f applied. If this returns 0,
-// the entire blob is excluded by the filter.
-func maxscan(pc *blob.CompressedPart, f Filter) (scan int64) {
-	t := pc.Parent.Trailer
-	blocks := t.Blocks[pc.StartBlock:pc.EndBlock]
-	for i := range blocks {
-		if f == nil || f(&t.Sparse, pc.StartBlock+i) != Never {
-			scan += int64(blocks[i].Chunks) << t.BlockShift
+func stripsub(t *blockfmt.Trailer, lst []blob.CompressedPart, f *blockfmt.Filter) []blob.CompressedPart {
+	if f == nil || f.Trivial() {
+		return lst
+	}
+	out := lst[:0]
+	for i := range lst {
+		if f.Overlaps(&t.Sparse, lst[i].StartBlock, lst[i].EndBlock) {
+			out = append(out, lst[i])
 		}
 	}
-	return scan
+	return out
 }
 
 // partition returns the index of the peer which should

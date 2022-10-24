@@ -214,6 +214,17 @@ type CompressedPart struct {
 	StartBlock, EndBlock int
 }
 
+// Decompressed returns the decompressed
+// size of this compressed part.
+func (c *CompressedPart) Decompressed() (bytes int64) {
+	shift := c.Parent.Trailer.BlockShift
+	blocks := c.Parent.Trailer.Blocks[c.StartBlock:c.EndBlock]
+	for i := range blocks {
+		bytes += int64(blocks[i].Chunks) << shift
+	}
+	return
+}
+
 // Reader implements Interface.Reader
 func (c *CompressedPart) Reader(start, size int64) (io.ReadCloser, error) {
 	start += c.Parent.Trailer.Blocks[c.StartBlock].Offset

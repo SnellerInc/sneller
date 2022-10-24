@@ -130,17 +130,16 @@ func (h *TenantHandle) Open(ctx context.Context) (vm.Table, error) {
 		panic("shouldn't have called tenantHandle.Open()")
 	}
 	segs := make([]dcache.Segment, 0, len(lst.Contents))
-	flt, _ := fh.CompileFilter()
 	var size int64
 	for i := range lst.Contents {
 		if h.parent.HTTPClient != nil {
 			blob.Use(lst.Contents[i], h.parent.HTTPClient)
 		}
 		b := lst.Contents[i]
-		if pc, ok := b.(*blob.CompressedPart); ok && flt != nil {
-			if scan := maxscan(pc, flt); scan == 0 {
-				continue
-			}
+		if pc, ok := b.(*blob.CompressedPart); ok &&
+			!fh.compiled.Trivial() &&
+			!fh.compiled.Overlaps(&pc.Parent.Trailer.Sparse, pc.StartBlock, pc.EndBlock) {
+			continue
 		}
 		seg := &blobSegment{
 			fields:    fh.Fields,
