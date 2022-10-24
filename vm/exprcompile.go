@@ -968,6 +968,49 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			v = p.vk(v, k)
 		}
 		return v, nil
+
+	case expr.AssertIonType:
+		arg, err := compile(p, args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		var typeset expr.TypeSet
+		for i := 1; i < len(args); i++ {
+			typeset |= expr.TypeSet(1 << int(args[i].(expr.Integer)))
+		}
+
+		switch arg.primary() {
+		case stValue:
+			return p.checkTag(arg, typeset), nil
+
+		case stString:
+			if typeset.AnyOf(expr.StringType) {
+				return arg, nil
+			}
+			return p.ssa0(skfalse), nil
+
+		case stFloat:
+			if typeset.AnyOf(expr.FloatType) {
+				return arg, nil
+			}
+			return p.ssa0(skfalse), nil
+
+		case stInt:
+			if typeset.AnyOf(expr.IntegerType) {
+				return arg, nil
+			}
+			return p.ssa0(skfalse), nil
+
+		case stTime, stTimeInt:
+			if typeset.AnyOf(expr.TimeType) {
+				return arg, nil
+			}
+			return p.ssa0(skfalse), nil
+		}
+
+		return nil, fmt.Errorf("cannot handle value of type %q", arg.primary())
+
 	default:
 		return nil, fmt.Errorf("unhandled builtin function name %q", fn)
 	}

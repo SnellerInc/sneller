@@ -143,6 +143,24 @@ func TestCheckExpressions(t *testing.T) {
 			&TypeError{},
 			"illegal index",
 		},
+		{
+			// SELECT ASSERT_ION_TYPE()
+			Call(AssertIonType),
+			&SyntaxError{},
+			"requires at least 2 arguments",
+		},
+		{
+			// SELECT ASSERT_ION_TYPE(x, 'test')
+			Call(AssertIonType, path("x"), String("test")),
+			&SyntaxError{},
+			"argument 1 has to be an integer",
+		},
+		{
+			// SELECT ASSERT_ION_TYPE(x, 0x0a, 512),
+			Call(AssertIonType, path("x"), Integer(0x0a), Integer(512)),
+			nil,
+			"value 512 is not a supported Ion type",
+		},
 	}
 	for i := range testcases {
 		err := Check(testcases[i].expr)
@@ -155,11 +173,13 @@ func TestCheckExpressions(t *testing.T) {
 			t.Errorf("testcase %d (%s): error %T not a type error", i, testcases[i].expr, err)
 			continue
 		}
-		err1 := innermostError(err)
-		err2 := innermostError(testcases[i].kind)
-		if reflect.TypeOf(err1) != reflect.TypeOf(err2) {
-			t.Errorf("testcase %d (%s): error %T is not %T", i, testcases[i].expr, err1, err2)
-			continue
+		if testcases[i].kind != nil {
+			err1 := innermostError(err)
+			err2 := innermostError(testcases[i].kind)
+			if reflect.TypeOf(err1) != reflect.TypeOf(err2) {
+				t.Errorf("testcase %d (%s): error %T is not %T", i, testcases[i].expr, err1, err2)
+				continue
+			}
 		}
 		if len(testcases[i].msg) > 0 {
 			msg := fmt.Sprintf("%s", err)

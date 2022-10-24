@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [109]string{
+var builtin2Name = [110]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -112,6 +112,7 @@ var builtin2Name = [109]string{
 	"MAKE_LIST",                // MakeList
 	"MAKE_STRUCT",              // MakeStruct
 	"TYPE_BIT",                 // TypeBit
+	"ASSERT_ION_TYPE",          // AssertIonType
 }
 
 func name2Builtin(s string) BuiltinOp {
@@ -340,6 +341,8 @@ func name2Builtin(s string) BuiltinOp {
 		return MakeStruct
 	case "TYPE_BIT":
 		return TypeBit
+	case "ASSERT_ION_TYPE":
+		return AssertIonType
 	}
 	return Unspecified
 }

@@ -241,6 +241,7 @@ const (
 	MakeStruct // MAKE_STRUCT(field, value, ...) constructs a structure
 
 	TypeBit // TYPE_BIT(arg) produces the bits associated with the type of arg
+	AssertIonType
 
 	Unspecified // catch-all for opaque built-ins; sql:UNKNOWN
 	maxBuiltin
@@ -673,6 +674,125 @@ func checkTablePattern(h Hint, args []Node) error {
 	return nil
 }
 
+func checkAssertIonType(h Hint, args []Node) error {
+	if len(args) < 2 {
+		return errsyntaxf("requires at least 2 arguments")
+	}
+
+	validType := func(t int) bool {
+		switch ion.Type(t) {
+		case ion.BoolType,
+			ion.UintType,
+			ion.IntType,
+			ion.FloatType,
+			ion.DecimalType,
+			ion.TimestampType,
+			ion.SymbolType,
+			ion.StringType,
+			ion.BlobType,
+			ion.ListType,
+			ion.StructType:
+			return true
+		}
+
+		return false
+	}
+
+	for i := 1; i < len(args); i++ {
+		t, ok := args[i].(Integer)
+		if !ok {
+			return errsyntaxf("argument %d has to be an integer", i)
+		}
+
+		if !validType(int(t)) {
+			return fmt.Errorf("value %d is not a supported Ion type", t)
+		}
+	}
+
+	return nil
+}
+
+func simplifyAssertIonType(h Hint, args []Node) Node {
+
+	hasType := func(t ion.Type) bool {
+		for i := 1; i < len(args); i++ {
+			v := args[i].(Integer)
+			if ion.Type(v) == t {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	t := TypeOf(args[0], h) &^ MissingType
+	if t == 0 {
+		return Missing{}
+	}
+	if t == NumericType {
+		// Since NumericType is an union of ints and floats
+		// try to figure out a single type from bare argument.
+		switch args[0].(type) {
+		case Float:
+			t = FloatType
+		case Integer:
+			t = IntegerType
+		}
+	}
+
+	switch t {
+	case StringType:
+		if hasType(ion.StringType) {
+			return args[0]
+		}
+
+		return Missing{}
+
+	case IntegerType:
+		if v, ok := args[0].(Integer); ok {
+			if v >= 0 && hasType(ion.UintType) {
+				return args[0]
+			}
+
+			if v < 0 && hasType(ion.IntType) {
+				return args[0]
+			}
+		}
+
+		if hasType(ion.UintType) && hasType(ion.IntType) {
+			return args[0]
+		}
+
+		return Missing{}
+
+	case FloatType:
+		if hasType(ion.FloatType) {
+			return args[0]
+		}
+
+		return Missing{}
+
+	case BoolType:
+		if hasType(ion.BoolType) {
+			return args[0]
+		}
+
+		return Missing{}
+
+	case TimeType:
+		if hasType(ion.TimestampType) {
+			return args[0]
+		}
+
+		return Missing{}
+
+	case NullType, MissingType:
+		return Missing{}
+	}
+
+	return nil
+}
+
 // convert MAKE_LIST(...) into a constant list
 // when all the arguments are constant:
 func simplifyMakeList(h Hint, args []Node) Node {
@@ -994,9 +1114,10 @@ var builtinInfo = [maxBuiltin]binfo{
 	MakeList:   {ret: ListType, private: true, text: makeListText, simplify: simplifyMakeList},
 	MakeStruct: {ret: StructType, private: true, text: makeStructText, simplify: simplifyMakeStruct},
 
-	TypeBit:      {check: fixedArgs(AnyType), ret: UnsignedType, simplify: simplifyTypeBit},
-	TableGlob:    {check: checkTableGlob, ret: AnyType, isTable: true},
-	TablePattern: {check: checkTablePattern, ret: AnyType, isTable: true},
+	TypeBit:       {check: fixedArgs(AnyType), ret: UnsignedType, simplify: simplifyTypeBit},
+	AssertIonType: {check: checkAssertIonType, ret: AnyType, simplify: simplifyAssertIonType, private: true},
+	TableGlob:     {check: checkTableGlob, ret: AnyType, isTable: true},
+	TablePattern:  {check: checkTablePattern, ret: AnyType, isTable: true},
 }
 
 // JSONTypeBits returns a unique bit pattern

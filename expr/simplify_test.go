@@ -885,6 +885,82 @@ func TestSimplify(t *testing.T) {
 			Call(Greatest, Float(200), Integer(-8), Float(10)),
 			Float(200),
 		},
+		{
+			Call(AssertIonType, path("x"), Integer(9)),
+			Call(AssertIonType, path("x"), Integer(9)),
+		},
+		{
+			Call(AssertIonType, String("test"), Integer(int(ion.StringType))),
+			String("test"),
+		},
+		{
+			Call(AssertIonType, String("test"), Integer(int(ion.FloatType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Integer(0), Integer(int(ion.UintType))),
+			Integer(0),
+		},
+		{
+			Call(AssertIonType, Integer(42), Integer(int(ion.UintType))),
+			Integer(42),
+		},
+		{
+			Call(AssertIonType, Integer(42), Integer(int(ion.StringType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Integer(42), Integer(int(ion.IntType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Integer(-1), Integer(int(ion.IntType))),
+			Integer(-1),
+		},
+		{
+			Call(AssertIonType, Integer(-1), Integer(int(ion.UintType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Integer(-1), Integer(int(ion.FloatType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Float(12.75), Integer(int(ion.FloatType))),
+			Float(12.75),
+		},
+		{
+			Call(AssertIonType, Float(12.75), Integer(int(ion.StringType)), Integer(int(ion.FloatType))),
+			Float(12.75),
+		},
+		{
+			Call(AssertIonType, Float(12.75), Integer(int(ion.StringType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Bool(true), Integer(int(ion.BoolType))),
+			Bool(true),
+		},
+		{
+			Call(AssertIonType, Bool(true), Integer(int(ion.FloatType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, ts("2009-01-14T23:59:59Z"), Integer(int(ion.TimestampType))),
+			ts("2009-01-14T23:59:59Z"),
+		},
+		{
+			Call(AssertIonType, ts("2009-01-14T23:59:59Z"), Integer(int(ion.StringType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Null{}, Integer(int(ion.StringType))),
+			Missing{},
+		},
+		{
+			Call(AssertIonType, Missing{}, Integer(int(ion.StringType))),
+			Missing{},
+		},
 	}
 
 	for i := range testcases {

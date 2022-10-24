@@ -527,9 +527,9 @@ func (s ssatype) String() string {
 		}
 
 		if !first {
-			b.WriteString(" | ")
-			first = false
+			b.WriteString("|")
 		}
+		first = false
 
 		b.WriteString(lookup[i].name)
 	}
@@ -1064,9 +1064,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2},
 	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
 
-	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
-	stypebits: {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
-
+	schecktag:   {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
+	stypebits:   {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
 	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
 
 	saggapproxcount: {
