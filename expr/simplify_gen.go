@@ -198,6 +198,14 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 					}
 				}
 			}
+			// (concat x (string "\"\"")) -> (assert_str x)
+			if x := src.Args[0]; true {
+				if _tmp001001, ok := (src.Args[1]).(String); ok {
+					if String("").Equals(_tmp001001) {
+						return Call(AssertIonType, x, Integer(0x8))
+					}
+				}
+			}
 			// (concat (upper x) (string y)), "isUpper(string(y))" -> (upper (concat x y))
 			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 				if y, ok := (src.Args[1]).(String); ok {

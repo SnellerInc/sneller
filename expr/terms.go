@@ -244,8 +244,9 @@ var (
 	classConst            *opclass
 	classNull             *opclass
 
-	op2class   map[string]*opclass
-	op2builtin map[string]string
+	op2class    map[string]*opclass
+	op2builtin  map[string]string
+	builtinargs map[string][]string
 )
 
 func init() {
@@ -380,17 +381,28 @@ func init() {
 
 	// name => BuiltinOp
 	op2builtin = map[string]string{
-		"char_length": "CharLength",
-		"concat":      "Concat",
-		"lower":       "Lower",
-		"upper":       "Upper",
-		"trim":        "Trim",
-		"rtrim":       "Rtrim",
-		"ltrim":       "Ltrim",
-		"substring":   "Substring",
-		"contains":    "Contains",
-		"contains_ci": "ContainsCI",
-		"equals_ci":   "EqualsCI",
+		"char_length":  "CharLength",
+		"concat":       "Concat",
+		"lower":        "Lower",
+		"upper":        "Upper",
+		"trim":         "Trim",
+		"rtrim":        "Rtrim",
+		"ltrim":        "Ltrim",
+		"substring":    "Substring",
+		"contains":     "Contains",
+		"contains_ci":  "ContainsCI",
+		"equals_ci":    "EqualsCI",
+		"assert_str":   "AssertIonType",
+		"assert_int":   "AssertIonType",
+		"assert_float": "AssertIonType",
+		"assert_num":   "AssertIonType",
+	}
+
+	builtinargs = map[string][]string{
+		"assert_str":   []string{"Integer(0x8)"},
+		"assert_int":   []string{"Integer(0x2)", "Integer(0x3)"},
+		"assert_float": []string{"Integer(0x4)"},
+		"assert_num":   []string{"Integer(0x2)", "Integer(0x3)", "Integer(0x4)"},
 	}
 }
 
@@ -568,6 +580,14 @@ func builtinCons(c *opclass, op string, args []rules.Term) {
 	for i := range args {
 		fmt.Fprintf(stdout, ", ")
 		emitCons(&args[i])
+	}
+	{
+		args, ok := builtinargs[op]
+		if ok {
+			for _, s := range args {
+				fmt.Fprintf(stdout, ", %s", s)
+			}
+		}
 	}
 	fmt.Fprintf(stdout, ")")
 }
