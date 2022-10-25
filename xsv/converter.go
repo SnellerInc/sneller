@@ -46,10 +46,20 @@ type RowChopper interface {
 // reader using the specified chopper/hints
 // to determine the individual fields and
 // writes it to the ION chunker
-func Convert(r io.Reader, dst *ion.Chunker, ch RowChopper, hint *Hint) error {
+func Convert(r io.Reader, dst *ion.Chunker, ch RowChopper, hint *Hint, cons []ion.Field) error {
 	// cannot convert without hints
 	if hint == nil || len(hint.Fields) == 0 {
 		return ErrNoHints
+	}
+
+	// make sure constant field IDs are interned
+	prev := ion.Symbol(0)
+	for i := range cons {
+		cons[i].Sym = dst.Symbols.Intern(cons[i].Label)
+		if cons[i].Sym < prev {
+			return fmt.Errorf("xsv: internal error: constant interned symbols out-of-order")
+		}
+		prev = cons[i].Sym
 	}
 
 	// Add all symbols to the symbol table
@@ -91,10 +101,14 @@ func Convert(r io.Reader, dst *ion.Chunker, ch RowChopper, hint *Hint) error {
 			}
 		}
 		if eof {
-			return dst.Flush()
+			return nil
 		}
 
 		dst.BeginStruct(-1)
+		for i := range cons {
+			dst.BeginField(cons[i].Sym)
+			cons[i].Value.Encode(&dst.Buffer, &dst.Symbols)
+		}
 		recordNr++
 
 		for fieldNr := range fields {

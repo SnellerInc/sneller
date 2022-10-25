@@ -86,7 +86,7 @@ func FuzzConvert(f *testing.F) {
 		var out bytes.Buffer
 		cn := ion.Chunker{W: &out, Align: 2048}
 		in := bytes.NewReader(input)
-		err := Convert(in, &cn, nil)
+		err := Convert(in, &cn, nil, nil)
 		if err != nil {
 			return
 		}
@@ -240,6 +240,6 @@ func FuzzConvertWithHints(f *testing.F) {
 		if err != nil {
 			return
 		}
-		Convert(in, &cn, h)
+		Convert(in, &cn, h, nil)
 	})
 }

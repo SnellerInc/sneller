@@ -473,7 +473,7 @@ func TestHuge(t *testing.T) {
 		t.Fatal(err)
 	}
 	cn := &ion.Chunker{W: io.Discard, Align: 10000000}
-	err = Convert(bytes.NewReader(buf), cn, nil)
+	err = Convert(bytes.NewReader(buf), cn, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +487,7 @@ func TestHuge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = Convert(bytes.NewReader(buf), cn, nil)
+	err = Convert(bytes.NewReader(buf), cn, nil, nil)
 	if !errors.Is(err, ion.ErrTooLarge) {
 		t.Errorf("didn't get ion.ErrTooLarge? got %v", err)
 	}
@@ -500,7 +500,7 @@ func TestHuge(t *testing.T) {
 		repeat("xy", MaxDatumSize),
 		strings.NewReader(`"}`),
 	)
-	err = Convert(text, cn, nil)
+	err = Convert(text, cn, nil, nil)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("didn't get ion.ErrTooLarge? got %v", err)
 	}
@@ -514,14 +514,14 @@ func TestMaxDepth(t *testing.T) {
 	t.Parallel()
 	text := strings.Repeat("{\"x\":", MaxObjectDepth+1) + strings.Repeat("}", MaxObjectDepth+1)
 	cn := &ion.Chunker{W: io.Discard, Align: 1000}
-	err := Convert(strings.NewReader(text), cn, nil)
+	err := Convert(strings.NewReader(text), cn, nil, nil)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("expected ErrTooLarge, got %v", err)
 	}
 
 	// for arrays as well:
 	text = "{\"x\":" + strings.Repeat("[", MaxObjectDepth+1) + strings.Repeat("]", MaxObjectDepth+1)
-	err = Convert(strings.NewReader(text), cn, nil)
+	err = Convert(strings.NewReader(text), cn, nil, nil)
 	if !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("expected ErrTooLarge, got %v", err)
 	}
@@ -584,7 +584,7 @@ func BenchmarkTranslate(b *testing.B) {
 				RangeAlign: 100 * 1024 * 1024,
 			}
 			b.ResetTimer()
-			err = Convert(lp, cn, nil)
+			err = Convert(lp, cn, nil, nil)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -659,7 +659,7 @@ func BenchmarkTranslateWithHints(b *testing.B) {
 				for pb.Next() {
 					cn.Reset()
 					rd.Reset(buf)
-					err := Convert(rd, cn, hints)
+					err := Convert(rd, cn, hints, nil)
 					if err != nil {
 						b.Fatalf("Convert: %s", err)
 					}
@@ -753,7 +753,7 @@ func TestConvert(t *testing.T) {
 					W:     &buf,
 					Align: 1024,
 				}
-				err := Convert(r, &cn, nil)
+				err := Convert(r, &cn, nil, nil)
 				if err != nil {
 					t.Fatal(err)
 				}

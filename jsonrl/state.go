@@ -30,6 +30,8 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 //go:generate gofmt -w .
@@ -552,6 +554,8 @@ type state struct {
 	pathbuf ion.Symbuf // scratch buffer for path
 
 	hints hintState
+
+	constResolved bool
 }
 
 func newState(dst *ion.Chunker) *state {
@@ -844,6 +848,27 @@ func dumb(buf []byte) (int, bool) {
 		return (int(buf[0]-'A') << 4) | len(buf), true
 	}
 	return 0, false
+}
+
+func (s *state) emitConst(lst []ion.Field) {
+	if !s.constResolved {
+		for i := range lst {
+			lst[i].Sym = s.out.Symbols.Intern(lst[i].Label)
+		}
+		// most of the time we should produce sorted results;
+		// just in case we don't:
+		slices.SortFunc(lst, func(x, y ion.Field) bool {
+			return x.Sym < y.Sym
+		})
+		s.constResolved = true
+	}
+	for i := range lst {
+		sym := lst[i].Sym
+		s.stack[len(s.stack)-1].start(sym, int32(s.out.Size()))
+		s.out.BeginField(sym)
+		lst[i].Value.Encode(&s.out.Buffer, &s.out.Symbols)
+		s.after()
+	}
 }
 
 func (s *state) beginField(label []byte, esc bool) {

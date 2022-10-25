@@ -34,9 +34,9 @@ import (
 //
 //	{"a": "b"}
 //	{"c": "d"}
-func ConvertCloudtrail(src io.Reader, dst *ion.Chunker) error {
+func ConvertCloudtrail(src io.Reader, dst *ion.Chunker, cons []ion.Field) error {
 	st := newState(dst)
-	tb := &parser{output: st}
+	tb := &parser{output: st, constants: cons}
 	in := &reader{
 		buf:   make([]byte, 0, startObjectSize),
 		input: src,

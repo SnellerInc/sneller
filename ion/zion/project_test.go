@@ -197,7 +197,7 @@ func testProjectEquivalent(t *testing.T, fields []string, src *os.File) {
 		W:     pt,
 		Align: 128 * 1024,
 	}
-	err := jsonrl.Convert(src, &cn, nil)
+	err := jsonrl.Convert(src, &cn, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

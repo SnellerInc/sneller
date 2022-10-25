@@ -15,52 +15,56 @@
 package jsonrl
 
 import (
-	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
 )
 
-func TestCloudtrail(t *testing.T) {
-	testFile := func(t *testing.T, p string) {
-		f, err := os.Open(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-		cn := &ion.Chunker{
-			Align: 8192,
-			W:     io.Discard,
-		}
-		err = ConvertCloudtrail(f, cn, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = cn.Flush()
-		if err != nil {
-			t.Fatal(err)
-		}
+func TestConstant(t *testing.T) {
+	testcases := []struct {
+		in, out string
+	}{
+		{
+			in:  `{"field": "foo"}`,
+			out: `{"const0": 1, "const1": "two", "field": "foo"}`,
+		},
+		{
+			// 'name' is pre-interned, so field order should be shifted:
+			in:  `{"name": "symbol id 4"}`,
+			out: `{"name": "symbol id 4", "const0": 1, "const1": "two"}`,
+		},
 	}
-	walk := func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(p, ".json") {
-			t.Run(p, func(t *testing.T) {
-				testFile(t, p)
-			})
-		}
-		return nil
+
+	cons := []ion.Field{
+		{Label: "const0", Value: ion.Uint(1)},
+		{Label: "const1", Value: ion.String("two")},
 	}
-	err := filepath.WalkDir("./testdata/cloudtrail", walk)
-	if err != nil {
-		t.Fatal(err)
+
+	var buf bytes.Buffer
+	for _, tc := range testcases {
+		buf.Reset()
+		cn := ion.Chunker{
+			Align: 4096,
+			W:     &buf,
+		}
+		in := strings.NewReader(tc.in)
+		err := Convert(in, &cn, nil, cons)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dat, _, err := ion.ReadDatum(&cn.Symbols, buf.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := toJSONString(dat, &cn.Symbols)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = strings.TrimSpace(got)
+		if got != tc.out {
+			t.Fatalf("got %q want %q", got, tc.out)
+		}
 	}
 }

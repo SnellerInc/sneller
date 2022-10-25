@@ -77,6 +77,8 @@ type parser struct {
 	auxtok token
 	depth  int
 	output *state
+
+	constants []ion.Field
 }
 
 // reader performs buffering for parsing
@@ -193,6 +195,9 @@ func (t *parser) parseRecord(b *reader) error {
 		return fmt.Errorf("%w (max object depth exceeded)", ErrTooLarge)
 	}
 	t.output.beginRecord()
+	if t.depth == 1 && len(t.constants) > 0 {
+		t.output.emitConst(t.constants)
+	}
 	first := true
 outer:
 	for {
@@ -394,10 +399,10 @@ func parseObject(st *state, in []byte) (int, error) {
 // if it violates some internal limit (see MaxObjectSize, MaxObjectDepth),
 // or if the object does not fit in dst.Align after being
 // serialized as ion data.
-func Convert(src io.Reader, dst *ion.Chunker, hints *Hint) error {
+func Convert(src io.Reader, dst *ion.Chunker, hints *Hint, cons []ion.Field) error {
 	st := newState(dst)
 	st.UseHints(hints)
-	tb := &parser{output: st}
+	tb := &parser{output: st, constants: cons}
 	in := &reader{
 		buf:   make([]byte, 0, startObjectSize),
 		input: src,

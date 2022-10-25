@@ -71,7 +71,8 @@ type Chunker struct {
 	W io.Writer
 	// Ranges stores field ranges for the current
 	// chunk.
-	Ranges   Ranges
+	Ranges Ranges
+
 	rowcount int // row count associated with Ranges
 
 	// WalkTimeRanges is the list of time ranges

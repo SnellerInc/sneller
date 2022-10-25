@@ -31,7 +31,7 @@ func exit(err error) {
 
 func main() {
 	cn := ion.Chunker{W: os.Stdout, Align: alignment}
-	err := jsonrl.Convert(os.Stdin, &cn, nil)
+	err := jsonrl.Convert(os.Stdin, &cn, nil, nil)
 	if err != nil {
 		exit(err)
 	}

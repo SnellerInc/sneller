@@ -906,7 +906,7 @@ func BenchmarkChunkerWrite(b *testing.B) {
 				W:     &tmp,
 				Align: align,
 			}
-			err = jsonrl.Convert(f, &cn, nil)
+			err = jsonrl.Convert(f, &cn, nil, nil)
 			if err != nil {
 				b.Fatal(err)
 			}

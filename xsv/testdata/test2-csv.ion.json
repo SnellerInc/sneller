@@ -1,2 +1,2 @@
-{"timestamp": "2022-08-11T16:54:18Z", "blocked": false, "from": {"ip": "192.168.1.12", "port": 14242}, "to": {"ip": "192.168.1.1", "port": 443}}
-{"timestamp": "2022-08-11T16:54:19Z", "blocked": false, "from": {"port": 0}, "to": {"port": 443}}
+{"input_file": "test2.csv", "timestamp": "2022-08-11T16:54:18Z", "blocked": false, "from": {"ip": "192.168.1.12", "port": 14242}, "to": {"ip": "192.168.1.1", "port": 443}}
+{"input_file": "test2.csv", "timestamp": "2022-08-11T16:54:19Z", "blocked": false, "from": {"port": 0}, "to": {"port": 443}}

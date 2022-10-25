@@ -67,7 +67,7 @@ func TestConvertTestdata(t *testing.T) {
 				Align: 1024 * 1024,
 				W:     io.Discard,
 			}
-			err = jsonrl.Convert(r, &cn, nil)
+			err = jsonrl.Convert(r, &cn, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

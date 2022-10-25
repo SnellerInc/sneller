@@ -37,7 +37,7 @@ func TestFlatten(t *testing.T) {
 		W:     &buf,
 		Align: 1024,
 	}
-	err := Convert(src, &out, nil)
+	err := Convert(src, &out, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestFlatten(t *testing.T) {
 	src = strings.NewReader(strings.TrimSpace(text))
 	buf.Reset()
 	out = ion.Chunker{W: &buf, Align: 1024}
-	err = Convert(src, &out, nil)
+	err = Convert(src, &out, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestBadLists(t *testing.T) {
 			W:     &buf,
 			Align: 1024,
 		}
-		err := Convert(src, &out, nil)
+		err := Convert(src, &out, nil, nil)
 		if err == nil {
 			t.Fatalf("no error on %q", str)
 		}

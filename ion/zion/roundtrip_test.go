@@ -112,7 +112,7 @@ func TestSimple(t *testing.T) {
 		W:     tw,
 		Align: 1024,
 	}
-	err := jsonrl.Convert(strings.NewReader(str), &cn, nil)
+	err := jsonrl.Convert(strings.NewReader(str), &cn, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestDecodePart(t *testing.T) {
 				W:     tb,
 				Align: 1024,
 			}
-			err := jsonrl.Convert(strings.NewReader(in), &cn, nil)
+			err := jsonrl.Convert(strings.NewReader(in), &cn, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -295,7 +295,7 @@ func TestRoundtrip(t *testing.T) {
 			W:     cw,
 			Align: 256 * 1024,
 		}
-		err := jsonrl.Convert(f, &cn, nil)
+		err := jsonrl.Convert(f, &cn, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -318,7 +318,7 @@ func TestRoundtrip(t *testing.T) {
 			W:     &tw,
 			Align: 256 * 1024,
 		}
-		err := jsonrl.Convert(f, &cn, nil)
+		err := jsonrl.Convert(f, &cn, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -439,7 +439,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 				W:     tb,
 				Align: 1024 * 1024,
 			}
-			err = jsonrl.Convert(f, &cn, nil)
+			err = jsonrl.Convert(f, &cn, nil, nil)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -561,7 +561,7 @@ func BenchmarkEncode(b *testing.B) {
 				W:     &buf,
 				Align: 1024 * 1024,
 			}
-			err = jsonrl.Convert(f, &cn, nil)
+			err = jsonrl.Convert(f, &cn, nil, nil)
 			if err != nil {
 				b.Fatal(err)
 			}

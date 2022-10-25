@@ -27,7 +27,9 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/SnellerInc/sneller/xsv"
+
 	"github.com/klauspost/compress/zstd"
+	"golang.org/x/exp/slices"
 )
 
 // we try to keep this many bytes in-flight
@@ -39,7 +41,10 @@ const wantInflight = 80 * 1024 * 1024
 // input streams are converted into aligned
 // output blocks.
 type RowFormat interface {
-	Convert(r io.Reader, dst *ion.Chunker) error
+	// Convert should read data from r and write
+	// rows into dst. For each row written to dst,
+	// the provided list of constants should also be inserted.
+	Convert(r io.Reader, dst *ion.Chunker, constants []ion.Field) error
 	// Name is the name of the format
 	// that will be included in an index description.
 	Name() string
@@ -76,7 +81,7 @@ func (j *jsonConverter) Name() string {
 	return j.name
 }
 
-func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
+func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker, cons []ion.Field) error {
 	rc := r
 	var err, err2 error
 	if j.decomp != nil {
@@ -86,9 +91,9 @@ func (j *jsonConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 		}
 	}
 	if j.isCloudtrail {
-		err = jsonrl.ConvertCloudtrail(rc, dst)
+		err = jsonrl.ConvertCloudtrail(rc, dst, cons)
 	} else {
-		err = jsonrl.Convert(rc, dst, j.hints)
+		err = jsonrl.Convert(rc, dst, j.hints, cons)
 	}
 	if j.decomp != nil {
 		// if the decompressor (i.e. gzip.Reader)
@@ -112,7 +117,7 @@ type xsvConverter struct {
 	hints  *xsv.Hint
 }
 
-func (t *xsvConverter) Convert(r io.Reader, dst *ion.Chunker) error {
+func (t *xsvConverter) Convert(r io.Reader, dst *ion.Chunker, cons []ion.Field) error {
 	rc := r
 	var err, err2 error
 	if t.decomp != nil {
@@ -122,7 +127,7 @@ func (t *xsvConverter) Convert(r io.Reader, dst *ion.Chunker) error {
 		}
 	}
 
-	err = xsv.Convert(rc, dst, t.ch, t.hints)
+	err = xsv.Convert(rc, dst, t.ch, t.hints, cons)
 	if t.decomp != nil {
 		// if the decompressor (i.e. gzip.Reader)
 		// has a Close() method, then use that;
@@ -146,7 +151,10 @@ type ionConverter struct{}
 
 func (i ionConverter) Name() string { return "ion" }
 
-func (i ionConverter) Convert(r io.Reader, dst *ion.Chunker) error {
+func (i ionConverter) Convert(r io.Reader, dst *ion.Chunker, cons []ion.Field) error {
+	if len(cons) != 0 {
+		return fmt.Errorf("converting UnsafeION: row constants disallowed")
+	}
 	_, err := dst.ReadFrom(r)
 	if err != nil {
 		return fmt.Errorf("converting UnsafeION: %w", err)
@@ -285,6 +293,14 @@ func init() {
 	}
 }
 
+// Template is a templated constant field.
+type Template struct {
+	Field string // Field is the name of the field to be generated.
+	// Eval should generate an ion datum
+	// from the input object.
+	Eval func(in *Input) ion.Datum
+}
+
 // Converter performs single- or
 // multi-stream conversion of a list of inputs
 // in parallel.
@@ -296,6 +312,10 @@ type Converter struct {
 		R       io.ReadCloser
 		Trailer *Trailer
 	}
+	// Constants is the list of templated constants
+	// to be inserted into the ingested data.
+	Constants []Template
+
 	// Inputs is the list of input
 	// streams that need to be converted
 	// into the output format.
@@ -392,6 +412,10 @@ func (c *Converter) MultiStream() bool {
 // then subsequent items in Inputs may not
 // have been processed at all.
 func (c *Converter) Run() error {
+	// keep this deterministic:
+	slices.SortFunc(c.Constants, func(x, y Template) bool {
+		return x.Field < y.Field
+	})
 	if len(c.Inputs) == 0 && c.Prepend.R == nil {
 		return errors.New("no inputs or merge sources")
 	}
@@ -399,6 +423,16 @@ func (c *Converter) Run() error {
 		return c.runMulti()
 	}
 	return c.runSingle()
+}
+
+func expand(src []Template, in *Input, dst []ion.Field) []ion.Field {
+	for i := range src {
+		dst = append(dst, ion.Field{
+			Label: src[i].Field,
+			Value: src[i].Eval(in),
+		})
+	}
+	return dst
 }
 
 func (c *Converter) runSingle() error {
@@ -428,6 +462,7 @@ func (c *Converter) runSingle() error {
 	if err != nil {
 		return err
 	}
+	var cons []ion.Field
 	ready := make([]chan struct{}, len(c.Inputs))
 	next := 1
 	inflight := int64(0) // # bytes being prefetched
@@ -461,7 +496,8 @@ func (c *Converter) runSingle() error {
 			next++
 		}
 
-		err := c.Inputs[i].F.Convert(c.Inputs[i].R, &cn)
+		cons = expand(c.Constants, &c.Inputs[i], cons[:0])
+		err := c.Inputs[i].F.Convert(c.Inputs[i].R, &cn, cons)
 		err2 := c.Inputs[i].R.Close()
 		if err == nil {
 			err = err2
@@ -568,8 +604,10 @@ func (c *Converter) runMulti() error {
 					return
 				}
 			}
+			var cons []ion.Field
 			for in := range startc {
-				err := in.F.Convert(in.R, &cn)
+				cons = expand(c.Constants, in, cons[:0])
+				err := in.F.Convert(in.R, &cn, cons)
 				err2 := in.R.Close()
 				if err == nil {
 					err = err2

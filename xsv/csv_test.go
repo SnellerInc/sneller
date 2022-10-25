@@ -66,7 +66,7 @@ func benchmarkConvertCSV(b *testing.B, tsvFile, hintsFile string) {
 
 	for n := 0; n < b.N; n++ {
 		r := bytes.NewReader(f)
-		err := Convert(r, &dst, &ch, h)
+		err := Convert(r, &dst, &ch, h, nil)
 		if err != nil {
 			b.Fatalf("cannot convert: %s", err)
 		}
