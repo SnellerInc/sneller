@@ -670,6 +670,16 @@ func TestSimplify(t *testing.T) {
 			Null{},
 		},
 		{
+			// COUNT(*) FILTER (field IS NOT MISSING) => COUNT(field)
+			&Aggregate{Op: OpCount, Inner: Star{}, Filter: Is(path("field"), IsNotMissing)},
+			&Aggregate{Op: OpCount, Inner: path("field")},
+		},
+		{
+			// COUNT(field) FILTER (field IS NOT MISSING) => COUNT(field)
+			&Aggregate{Op: OpCount, Inner: path("field"), Filter: Is(path("field"), IsNotMissing)},
+			&Aggregate{Op: OpCount, Inner: path("field")},
+		},
+		{
 			DateAdd(Microsecond, Integer(-1), ts("2017-01-02T03:04:05.000001Z")),
 			ts("2017-01-02T03:04:05Z"),
 		},

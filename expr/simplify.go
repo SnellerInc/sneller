@@ -859,6 +859,34 @@ func (a *Aggregate) simplify(h Hint) Node {
 		}
 	}
 
+	if a.Filter != nil && a.Op == OpCount {
+		// recognize patterns:
+		// 1) COUNT(*) FILTER (field IS NOT MISSING) => COUNT(field)
+		// 2) COUNT(field) FILTER (field IS NOT MISSING) => COUNT(field)
+		func() {
+			iskey, ok := a.Filter.(*IsKey)
+			if !ok {
+				return
+			}
+
+			if iskey.Key != IsNotMissing {
+				return
+			}
+
+			if Equivalent(a.Inner, iskey.Expr) {
+				// COUNT(field) FILTER (field IS NOT MISSING) => COUNT(field)
+				a.Filter = nil
+				return
+			}
+
+			if a.Inner == (Star{}) {
+				// COUNT(*) FILTER (field IS NOT MISSING) => COUNT(field)
+				a.Inner = iskey.Expr
+				a.Filter = nil
+			}
+		}()
+	}
+
 	return a
 }
 
