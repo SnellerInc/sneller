@@ -29,40 +29,46 @@ import (
 func TestFilter(t *testing.T) {
 	var f Filter
 	var si SparseIndex
+
+	testno := 0
 	run := func(filt string, ranges [][2]int) {
 		t.Helper()
-		qbytes := []byte(fmt.Sprintf("SELECT * WHERE %s", filt))
-		q, err := partiql.Parse(qbytes)
-		if err != nil {
-			t.Fatal(err)
-		}
-		q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
-		f.Compile(q.Body.(*expr.Select).Where)
-		var out [][2]int
-		f.Visit(&si, func(start, end int) {
-			out = append(out, [2]int{start, end})
+		t.Run(fmt.Sprintf("case-%d", testno), func(t *testing.T) {
+			t.Helper()
+			qbytes := []byte(fmt.Sprintf("SELECT * WHERE %s", filt))
+			q, err := partiql.Parse(qbytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
+			f.Compile(q.Body.(*expr.Select).Where)
+			var out [][2]int
+			f.Visit(&si, func(start, end int) {
+				out = append(out, [2]int{start, end})
+			})
+			if !slices.Equal(out, ranges) {
+				t.Errorf("got %v; wanted %v", out, ranges)
+			}
+			empty := true
+			for i := range ranges {
+				start := ranges[i][0]
+				end := ranges[i][1]
+				if start == end {
+					continue // empty range
+				}
+				empty = false
+				if !f.Overlaps(&si, 0, start+1) {
+					t.Errorf("doesn't overlap [%d %d]", 0, start+1)
+				}
+				if end > 0 && !f.Overlaps(&si, end-1, si.Blocks()) {
+					t.Errorf("doesn't overlap [%d %d]", end-1, si.Blocks())
+				}
+			}
+			if f.MatchesAny(&si) == empty {
+				t.Error("MatchesAny and empty do not match")
+			}
 		})
-		if !slices.Equal(out, ranges) {
-			t.Errorf("got %v; wanted %v", out, ranges)
-		}
-		empty := true
-		for i := range ranges {
-			start := ranges[i][0]
-			end := ranges[i][1]
-			if start == end {
-				continue // empty range
-			}
-			empty = false
-			if !f.Overlaps(&si, 0, start+1) {
-				t.Errorf("doesn't overlap [%d %d]", 0, start+1)
-			}
-			if end > 0 && !f.Overlaps(&si, end-1, si.Blocks()) {
-				t.Errorf("doesn't overlap [%d %d]", end-1, si.Blocks())
-			}
-		}
-		if f.MatchesAny(&si) == empty {
-			t.Error("MatchesAny and empty do not match")
-		}
+		testno++
 	}
 	testFilter(t, &f, &si, run)
 }
@@ -140,9 +146,12 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	}
 	sprintf := fmt.Sprintf
 	run(sprintf("x = 'foo'"), [][2]int{{0, 60}})
+	run(sprintf("!(x = 'foo')"), [][2]int{{0, 60}})
 	run(sprintf("timestamp < %s", minute(0)), [][2]int{{0, 0}})
 	run(sprintf("timestamp >= %s", minute(60)), [][2]int{{0, 0}})
+	run(sprintf("!(timestamp >= %s)", minute(60)), [][2]int{{0, 60}})
 	run(sprintf("timestamp < %s", minute(1)), [][2]int{{0, 1}})
+	run(sprintf("!(timestamp < %s)", minute(1)), [][2]int{{1, 60}})
 	run(sprintf("to_unix_epoch(timestamp) < %d", unixminute(1)), [][2]int{{0, 1}})
 	run(sprintf("to_unix_micro(timestamp) < %d", unixmicro(1)), [][2]int{{0, 1}})
 	run(sprintf("%s > timestamp", minute(1)), [][2]int{{0, 1}})
@@ -151,12 +160,18 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	run(sprintf("timestamp > %s", minute(1)), [][2]int{{1, 60}})
 	// overlapping ranges should be coalesced:
 	run(sprintf("timestamp > %s and timestamp > %s", minute(1), minute(2)), [][2]int{{2, 60}})
+	run(sprintf("!(timestamp > %s and timestamp > %s)", minute(1), minute(2)), [][2]int{{0, 2}})
+	run(sprintf("(timestamp >= %s and timestamp < %s) or (timestamp >= %s and timestamp < %s)",
+		minute(1), minute(2), minute(48), minute(49)),
+		[][2]int{{1, 2}, {48, 49}})
 	run(sprintf("timestamp >= %s", minute(1)), [][2]int{{1, 60}})
 	run(sprintf("timestamp > %s and unknown", minute(1)), [][2]int{{1, 60}})
 	run(sprintf("timestamp < %s and timestamp > %s", minute(1), minute(1)), [][2]int{{0, 0}})
 	run(sprintf("timestamp < %s or timestamp > %s", minute(1), minute(1)), [][2]int{{0, 60}})
 	run(sprintf("timestamp < %s or timestamp > %s", minute(30), minute(30)), [][2]int{{0, 60}})
 	run(sprintf("timestamp < %s or timestamp >= %s", minute(1), minute(59)), [][2]int{{0, 1}, {59, 60}})
+	run(sprintf("!(timestamp < %s) or !(timestamp >= %s)", minute(1), minute(59)), [][2]int{{0, 60}})
+	run(sprintf("!(timestamp < %s or timestamp >= %s)", minute(1), minute(59)), [][2]int{{1, 59}})
 	run(sprintf("timestamp = %s", minute(1)), [][2]int{{1, 2}})
 	run(sprintf("to_unix_epoch(timestamp) = %d", unixminute(1)), [][2]int{{1, 2}})
 }

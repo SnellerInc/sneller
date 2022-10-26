@@ -30,10 +30,11 @@ type Filter struct {
 	// functions that produce time ranges;
 	// executing these in a loop should produce
 	// the intervals
-	exprs []func(f *Filter, si *SparseIndex)
+	exprs []func(f *Filter, si *SparseIndex, pc int)
 	paths []string
 
-	// union of intervals to traverse
+	// union of intervals to traverse;
+	// by convention these are always non-empty
 	intervals [][2]int
 }
 
@@ -68,7 +69,7 @@ func (f *Filter) popRange() [2]int {
 	return ret
 }
 
-func (f *Filter) pushIntersect() {
+func (f *Filter) pushIntersect() bool {
 	last := f.popRange()
 	prev := f.popRange()
 	lo, hi := last[0], last[1]
@@ -79,22 +80,21 @@ func (f *Filter) pushIntersect() {
 		hi = prev[1]
 	}
 	if lo < hi {
-		// there is a valid intersection:
 		f.push(lo, hi)
-	} else {
-		// no intersection; push the empty range:
-		f.push(0, 0)
+		return true
 	}
+	return false
 }
 
-func (f *Filter) popExpr() func(f *Filter, si *SparseIndex) {
-	ret := f.exprs[len(f.exprs)-1]
-	f.exprs = f.exprs[:len(f.exprs)-1]
-	return ret
-}
-
-func (f *Filter) pushExpr(fn func(f *Filter, si *SparseIndex)) {
+func (f *Filter) pushExpr(fn func(f *Filter, si *SparseIndex, pc int)) {
 	f.exprs = append(f.exprs, fn)
+}
+
+func (f *Filter) cont(si *SparseIndex, pc int) {
+	if pc >= len(f.exprs) {
+		return
+	}
+	f.exprs[pc](f, si, pc+1)
 }
 
 // compile left and right, then replace the compiled
@@ -109,12 +109,10 @@ func (f *Filter) intersect(left, right expr.Node) bool {
 	if !f.compile(right) {
 		return true // left AND any -> left
 	}
-	rightexpr := f.popExpr()
-	leftexpr := f.popExpr()
-	f.pushExpr(func(f *Filter, si *SparseIndex) {
-		leftexpr(f, si)
-		rightexpr(f, si)
-		f.pushIntersect()
+	f.pushExpr(func(f *Filter, si *SparseIndex, pc int) {
+		if f.pushIntersect() {
+			f.cont(si, pc)
+		}
 	})
 	return true
 }
@@ -124,12 +122,8 @@ func (f *Filter) evalAny(blocks int) {
 }
 
 func (f *Filter) push(start, end int) {
-	if end < start {
+	if end <= start {
 		panic("blockfmt.Filter: push() of invalid range")
-	}
-	// unify empty intervals to (0, 0)
-	if start == end {
-		start, end = 0, 0
 	}
 	f.intervals = append(f.intervals, [2]int{start, end})
 }
@@ -140,13 +134,18 @@ func (f *Filter) beforeeq(p *expr.Path, when date.Time) bool {
 	if path == nil {
 		return false
 	}
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex) {
+	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
 		ti := si.Get(path)
 		if ti == nil {
 			f.evalAny(si.Blocks())
-			return
+		} else {
+			end := ti.End(when)
+			if end == 0 {
+				return
+			}
+			f.push(0, end)
 		}
-		f.push(0, ti.End(when))
+		f.cont(si, pc)
 	})
 	return true
 }
@@ -157,13 +156,18 @@ func (f *Filter) aftereq(p *expr.Path, when date.Time) bool {
 	if path == nil {
 		return false
 	}
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex) {
+	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
 		ti := si.Get(path)
 		if ti == nil {
 			f.evalAny(si.Blocks())
-			return
+		} else {
+			start := ti.Start(when)
+			if start == ti.Blocks() {
+				return
+			}
+			f.push(start, ti.Blocks())
 		}
-		f.push(ti.Start(when), ti.Blocks())
+		f.cont(si, pc)
 	})
 	return true
 }
@@ -173,33 +177,46 @@ func (f *Filter) within(p *expr.Path, when date.Time) bool {
 	if path == nil {
 		return false
 	}
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex) {
+	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
 		ti := si.Get(path)
 		if ti == nil {
 			f.evalAny(si.Blocks())
-			return
+		} else {
+			start, end := ti.Start(when), ti.End(when.Add(time.Microsecond))
+			if start == end {
+				return
+			}
+			f.push(start, end)
 		}
-		f.push(ti.Start(when), ti.End(when.Add(time.Microsecond)))
+		f.cont(si, pc)
 	})
 	return true
 }
 
 // filter where !e
 func (f *Filter) negate(e expr.Node) bool {
+	// we expect DNF ("disjunctive normal form"),
+	// so if we have a negation of a disjunction we
+	// need to turn it into a conjunction instead
+	if or, ok := e.(*expr.Logical); ok && or.Op == expr.OpOr {
+		// !(A OR B) -> !A AND !B
+		// which in turn becomes
+		//   (A-left OR A-right) AND (B-left OR B-right)
+		return f.intersect(&expr.Not{or.Left}, &expr.Not{or.Right})
+	}
 	if !f.compile(e) {
 		return false
 	}
-	inner := f.popExpr()
-	f.pushExpr(func(f *Filter, si *SparseIndex) {
-		inner(f, si)
+	// !range = left-of-min OR right-of-max
+	f.pushExpr(func(f *Filter, si *SparseIndex, pc int) {
 		iv := f.popRange()
-		// push non-empty ranges strictly
-		// before and after this sub-range
 		if iv[0] > 0 {
 			f.push(0, iv[0])
+			f.cont(si, pc)
 		}
 		if iv[1] < si.Blocks() {
 			f.push(iv[1], si.Blocks())
+			f.cont(si, pc)
 		}
 	})
 	return true
@@ -219,6 +236,24 @@ func toUnixMicro(e expr.Node) *expr.Timestamp {
 	return nil
 }
 
+func (f *Filter) union(a, b expr.Node) bool {
+	if !f.compile(a) {
+		return f.compile(b)
+	}
+	if !f.compile(b) {
+		return true
+	}
+	// execute the rest of the program twice
+	// (each invocation should pop 1 value)
+	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
+		save := f.popRange()
+		f.cont(si, pc)
+		f.push(save[0], save[1])
+		f.cont(si, pc)
+	})
+	return true
+}
+
 func (f *Filter) compile(e expr.Node) bool {
 	switch e := e.(type) {
 	case *expr.Not:
@@ -228,9 +263,7 @@ func (f *Filter) compile(e expr.Node) bool {
 		case expr.OpAnd:
 			return f.intersect(e.Left, e.Right)
 		case expr.OpOr:
-			ret := f.compile(e.Left)
-			ret2 := f.compile(e.Right)
-			return ret || ret2
+			return f.union(e.Left, e.Right)
 		}
 	case *expr.Comparison:
 		conv := func(e expr.Node) *expr.Timestamp {
@@ -317,9 +350,7 @@ func (f *Filter) compress() {
 
 func (f *Filter) eval(si *SparseIndex) {
 	f.intervals = f.intervals[:0]
-	for _, fn := range f.exprs {
-		fn(f, si)
-	}
+	f.cont(si, 0)
 	f.compress()
 }
 
@@ -332,6 +363,9 @@ func (f *Filter) Overlaps(si *SparseIndex, start, end int) bool {
 	// no known bounds:
 	if len(f.exprs) == 0 {
 		return true
+	}
+	if si.Blocks() == 0 { // hmm...
+		return start == 0
 	}
 	f.eval(si)
 	for i := range f.intervals {
@@ -353,17 +387,11 @@ func (f *Filter) Overlaps(si *SparseIndex, start, end int) bool {
 // MatchesAny returns true if f matches any non-empty
 // intervals in si, or false otherwise.
 func (f *Filter) MatchesAny(si *SparseIndex) bool {
-	if f.Trivial() {
+	if f.Trivial() || si.Blocks() == 0 {
 		return true
 	}
 	f.eval(si)
-	for i := range f.intervals {
-		// non-empty interval:
-		if f.intervals[i][0] < f.intervals[i][1] {
-			return true
-		}
-	}
-	return false
+	return len(f.intervals) > 0
 }
 
 // Visit visits distinct (non-overlapping) intervals
@@ -373,11 +401,16 @@ func (f *Filter) MatchesAny(si *SparseIndex) bool {
 // interval will be called once with (0, 0).
 func (f *Filter) Visit(si *SparseIndex, interval func(start, end int)) {
 	// no known bounds:
-	if len(f.exprs) == 0 {
+	if len(f.exprs) == 0 || si.Blocks() == 0 {
 		interval(0, si.Blocks())
 		return
 	}
 	f.eval(si)
+	if len(f.intervals) == 0 {
+		// no non-empty intervals
+		interval(0, 0)
+		return
+	}
 	for i := range f.intervals {
 		start := f.intervals[i][0]
 		end := f.intervals[i][1]
