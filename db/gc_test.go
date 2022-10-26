@@ -48,15 +48,12 @@ func TestGC(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	err = WriteDefinition(dfs, &Definition{
-		Name: "default",
-		Tables: []*TableDefinition{{
-			Name: "parking",
-			Inputs: []Input{
-				{Pattern: "file://a-prefix/*.10n"},
-				{Pattern: "file://a-prefix/*.json"},
-			},
-		}},
+	err = WriteDefinition(dfs, "default", &Definition{
+		Name: "parking",
+		Inputs: []Input{
+			{Pattern: "file://a-prefix/*.10n"},
+			{Pattern: "file://a-prefix/*.json"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

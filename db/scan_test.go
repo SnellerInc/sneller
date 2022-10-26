@@ -79,14 +79,11 @@ func TestScan(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	err := WriteDefinition(dfs, &Definition{
-		Name: "default",
-		Tables: []*TableDefinition{{
-			Name: "taxi",
-			Inputs: []Input{
-				{Pattern: "file://b-prefix/*.block"},
-			},
-		}},
+	err := WriteDefinition(dfs, "default", &Definition{
+		Name: "taxi",
+		Inputs: []Input{
+			{Pattern: "file://b-prefix/*.block"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -174,15 +171,11 @@ func TestNewIndexScan(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	taxi := &TableDefinition{
+	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "taxi",
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
-	}
-	err := WriteDefinition(dfs, &Definition{
-		Name:   "default",
-		Tables: []*TableDefinition{taxi},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -222,7 +215,7 @@ func TestNewIndexScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -240,7 +233,7 @@ func TestNewIndexScan(t *testing.T) {
 
 	// second attempt should fail again,
 	// but Scanning should be false
-	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -272,7 +265,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	// final append should be a no-op
-	err = b.Append(owner, "default", "taxi", taxi, lst, nil)
+	err = b.Append(owner, "default", "taxi", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,14 +287,11 @@ func TestScanFail(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	err := WriteDefinition(dfs, &Definition{
-		Name: "default",
-		Tables: []*TableDefinition{{
-			Name: "files",
-			Inputs: []Input{
-				{Pattern: "file://b-prefix/*.json"},
-			},
-		}},
+	err := WriteDefinition(dfs, "default", &Definition{
+		Name: "files",
+		Inputs: []Input{
+			{Pattern: "file://b-prefix/*.json"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -39,22 +39,12 @@ func IndexPath(db, table string) string {
 	return path.Join("db", db, table, "index")
 }
 
-// TableDefinitionPath returns the path at which
-// the legacy table definition file for the
-// given db and table would live relative to the
-// root of the FS.
-//
-// This function is deprecated and will be
-// removed in the future.
-func TableDefinitionPath(db, table string) string {
+// DefinitionPath returns the path
+// at which the definition file for the given
+// db and table would live relative
+// to the root of the FS.
+func DefinitionPath(db, table string) string {
 	return path.Join("db", db, table, "definition.json")
-}
-
-// DefinitionPath returns the path at which the
-// root-level definition file for the given db
-// would live relative to the root of the FS.
-func DefinitionPath(db string) string {
-	return path.Join("db", db, "definition.json")
 }
 
 func strpart(p string, num int) (string, bool) {

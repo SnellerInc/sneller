@@ -184,14 +184,14 @@ func (b *Builder) logf(f string, args ...interface{}) {
 }
 
 type tableState struct {
-	def       *TableDefinition
+	def       *Definition
 	conf      Builder
 	owner     Tenant
 	ofs       OutputFS
 	db, table string
 }
 
-func (b *Builder) open(db, table string, def *TableDefinition, owner Tenant) (*tableState, error) {
+func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
 	ifs, err := owner.Root()
 	if err != nil {
 		return nil, err
@@ -199,6 +199,12 @@ func (b *Builder) open(db, table string, def *TableDefinition, owner Tenant) (*t
 	ofs, ok := ifs.(OutputFS)
 	if !ok {
 		return nil, fmt.Errorf("root %T is read-only", ifs)
+	}
+	def, err := OpenDefinition(ifs, db, table)
+	if errors.Is(err, fs.ErrNotExist) {
+		def = &Definition{Name: table}
+	} else if err != nil {
+		return nil, err
 	}
 	ts := &tableState{
 		def:   def,
@@ -213,15 +219,14 @@ func (b *Builder) open(db, table string, def *TableDefinition, owner Tenant) (*t
 }
 
 func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
-	idx := cache.get(st.table)
-	if idx != nil {
-		return idx, nil
+	if cache != nil && cache.value != nil {
+		return cache.value, nil
 	}
 	idx, err := OpenIndex(st.ofs, st.db, st.table, st.owner.Key())
 	if err != nil {
 		return nil, err
 	}
-	cache.overwrite(st.table, idx)
+	overwrite(cache, idx)
 	return idx, nil
 }
 
@@ -325,8 +330,8 @@ func shouldRebuild(err error) bool {
 // Append will continue to return ErrBuildAgain until scanning is complete,
 // at which point Append operations will be accepted. (The caller must continuously
 // call Append for scanning to occur.)
-func (b *Builder) Append(who Tenant, db, table string, def *TableDefinition, lst []blockfmt.Input, cache *IndexCache) error {
-	st, err := b.open(db, table, def, who)
+func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cache *IndexCache) error {
+	st, err := b.open(db, table, who)
 	if err != nil {
 		return err
 	}
@@ -343,7 +348,7 @@ func (b *Builder) Append(who Tenant, db, table string, def *TableDefinition, lst
 			// force a reload unconditionally
 			// after a scan; the scan code does
 			// not update the cached index
-			cache.invalidate(table)
+			invalidate(cache)
 			_, err = st.scan(idx, true)
 			if err != nil {
 				return err
@@ -358,14 +363,14 @@ func (b *Builder) Append(who Tenant, db, table string, def *TableDefinition, lst
 			return err
 		}
 		if len(lst) == 0 {
-			b.logf("index for %s already up-to-date", def.Name)
+			b.logf("index for %s already up-to-date", table)
 			return nil
 		}
 		return st.append(idx, prepend, lst, cache)
 	}
 	if b.NewIndexScan && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
-			Name: def.Name,
+			Name: table,
 			Algo: "zstd",
 		}
 		_, err = st.scan(idx, true)
@@ -395,7 +400,7 @@ func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, 
 		err = st.force(idx, prepend, lst, cache)
 	}
 	if err != nil {
-		cache.invalidate(st.table)
+		invalidate(cache)
 		return fmt.Errorf("force: %w", err)
 	}
 	st.conf.logf("update of table %s complete", st.table)
@@ -414,16 +419,18 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	if err != nil {
 		return err
 	}
-	root, err := OpenDefinition(dst, db)
+	possible, err := fs.Glob(dst, DefinitionPath(db, tblpat))
 	if err != nil {
 		return err
 	}
-	tables, err := root.Expand(who, tblpat)
-	if err != nil {
-		return err
+	var tables []string
+	for i := range possible {
+		tab, _ := path.Split(possible[i])
+		b.logf("detected table at path %q", tab)
+		tables = append(tables, path.Base(tab))
 	}
-	syncTable := func(def *TableDefinition) error {
-		st, err := b.open(db, def.Name, def, who)
+	syncTable := func(table string) error {
+		st, err := b.open(db, table, who)
 		if err != nil {
 			return err
 		}
@@ -435,7 +442,7 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 			if shouldRebuild(err) {
 				fresh = true
 				idx = &blockfmt.Index{
-					Name: def.Name,
+					Name: table,
 					Algo: "zstd",
 				}
 			} else {
@@ -465,9 +472,10 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	var wg sync.WaitGroup
 	wg.Add(len(tables))
 	for i := range tables {
+		tab := tables[i]
 		go func(i int) {
 			defer wg.Done()
-			errlist[i] = syncTable(tables[i])
+			errlist[i] = syncTable(tab)
 		}(i)
 	}
 	wg.Wait()
@@ -543,7 +551,7 @@ func (b *Builder) flushMeta() int {
 // update the index state to reflect the fatal errors we encountered
 func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *IndexCache) {
 	// invalidate cache so that a reload pulls the previous one
-	cache.invalidate(st.table)
+	invalidate(cache)
 
 	any := false
 	for i := range lst {
@@ -578,7 +586,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *Inde
 					Name:     st.table,
 					Scanning: st.conf.NewIndexScan,
 				}
-				cache.overwrite(st.table, idx)
+				overwrite(cache, idx)
 			} else {
 				st.conf.logf("re-opening index to record failure: %s", err)
 				return
@@ -601,7 +609,7 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *Inde
 	err = st.flush(idx)
 	if err != nil {
 		st.conf.logf("flushing index in updateFailed: %s", err)
-		cache.invalidate(st.table)
+		invalidate(cache)
 	}
 }
 
@@ -747,10 +755,10 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	})
 	err = st.flush(idx)
 	if err != nil {
-		cache.invalidate(st.table)
+		invalidate(cache)
 		return err
 	}
-	cache.overwrite(st.table, idx)
+	overwrite(cache, idx)
 	return st.runGC(idx)
 }
 

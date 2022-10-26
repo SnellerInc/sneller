@@ -64,8 +64,8 @@ AWS_ACCESS_KEY_ID=$ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY aws --
 TEMPFILE=$(mktemp)
 curl --output $TEMPFILE 'https://sneller-example-data.s3.amazonaws.com/docker/sf1/customer.json'
 AWS_ACCESS_KEY_ID=$ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY aws --endpoint http://localhost:$MINIO_PORT s3 cp $TEMPFILE s3://test/sf1/customer.json
-echo '{"name": "sf1", "tables": [{"name": "customer", "input": [{"pattern": "s3://test/sf1/*.json","format": "json"}]}]}' > $TEMPFILE
-AWS_ACCESS_KEY_ID=$ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY aws --endpoint http://localhost:$MINIO_PORT s3 cp $TEMPFILE s3://test/db/sf1/definition.json
+echo '{"name": "customer", "input": [{"pattern": "s3://test/sf1/*.json","format": "json"}]}' > $TEMPFILE
+AWS_ACCESS_KEY_ID=$ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY=$SECRET_ACCESS_KEY aws --endpoint http://localhost:$MINIO_PORT s3 cp $TEMPFILE s3://test/db/sf1/customer/definition.json
 rm $TEMPFILE
 
 # Wait until SDB has ran at least once

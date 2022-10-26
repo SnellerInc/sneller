@@ -177,15 +177,8 @@ func TestBuildBlobs(t *testing.T) {
 	dfs := NewDirFS(dir)
 	defer dfs.Close()
 
-	err = WriteDefinition(dfs, &Definition{
-		Name: "db0",
-		Tables: []*TableDefinition{{
-			Name: "table0",
-			Inputs: []Input{{
-				Pattern: "file://*.10n",
-			}},
-		}},
-	})
+	def := `{"name": "table0", "input": [{"pattern":"file://*.10n"}]}`
+	err = os.WriteFile(filepath.Join(dir, "db/db0/table0/definition.json"), []byte(def), 0640)
 	if err != nil {
 		t.Fatal(err)
 	}

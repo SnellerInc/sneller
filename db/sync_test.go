@@ -219,22 +219,21 @@ func TestSync(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	parking := &TableDefinition{
+	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "parking",
 		Inputs: []Input{
 			{Pattern: "file://a-prefix/*.10n"},
 			{Pattern: "file://a-prefix/*.json"},
 		},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	taxi := &TableDefinition{
+	err = WriteDefinition(dfs, "default", &Definition{
 		Name: "taxi",
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
-	}
-	err := WriteDefinition(dfs, &Definition{
-		Name:   "default",
-		Tables: []*TableDefinition{parking, taxi},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -360,17 +359,14 @@ func TestSync(t *testing.T) {
 	if !ok {
 		t.Fatal("idx2 had no definition hash present")
 	}
-	def3 := &TableDefinition{
+	def3 := &Definition{
 		Name: "taxi",
 		Inputs: []Input{
 			{Pattern: "file://b-prefix/*.block"},
 		},
 		Features: []string{"legacy-zstd"},
 	}
-	err = WriteDefinition(dfs, &Definition{
-		Name:   "default",
-		Tables: []*TableDefinition{def3},
-	})
+	err = WriteDefinition(dfs, "default", def3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +408,7 @@ func TestSync(t *testing.T) {
 	}}
 
 	owner.ro = true
-	err = b.Append(owner, "default", "parking", parking, lst, nil)
+	err = b.Append(owner, "default", "parking", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,81 +434,6 @@ func TestSync(t *testing.T) {
 	}
 }
 
-func TestSyncTemplated(t *testing.T) {
-	checkFiles(t)
-	tmpdir := t.TempDir()
-	err := os.MkdirAll(filepath.Join(tmpdir, "prefix"), 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
-	dfs.Log = t.Logf
-	err = WriteDefinition(dfs, &Definition{
-		Name: "default",
-		Tables: []*TableDefinition{{
-			Name: "$name",
-			Inputs: []Input{
-				{Pattern: "file://prefix/{name}.10n"},
-				{Pattern: "file://prefix/{name}.block"},
-			},
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner := newTenant(dfs)
-	b := Builder{
-		Align: 1024,
-		Fallback: func(_ string) blockfmt.RowFormat {
-			return blockfmt.UnsafeION()
-		},
-		Logf:           t.Logf,
-		MaxInlineBytes: 150 * 1024,
-		GCLikelihood:   1,
-		GCMinimumAge:   1 * time.Millisecond,
-	}
-
-	// link in parking and create the index
-	newname := filepath.Join(tmpdir, "prefix/parking.10n")
-	oldname, err := filepath.Abs("../testdata/parking.10n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.Symlink(oldname, newname)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = b.Sync(owner, "default", "*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = OpenIndex(dfs, "default", "parking", owner.Key())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// link in taxi and see that we create a
-	// second index
-	newname = filepath.Join(tmpdir, "prefix/taxi.block")
-	oldname, err = filepath.Abs("../testdata/nyc-taxi.block")
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = os.Symlink(oldname, newname)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = b.Sync(owner, "default", "*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = OpenIndex(dfs, "default", "taxi", owner.Key())
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestMaxBytesSync(t *testing.T) {
 	checkFiles(t)
 	tmpdir := t.TempDir()
@@ -524,14 +445,11 @@ func TestMaxBytesSync(t *testing.T) {
 	dfs := NewDirFS(tmpdir)
 	defer dfs.Close()
 	dfs.Log = t.Logf
-	err = WriteDefinition(dfs, &Definition{
-		Name: "default",
-		Tables: []*TableDefinition{{
-			Name: "parking",
-			Inputs: []Input{
-				{Pattern: "file://a-prefix/*.10n"},
-			},
-		}},
+	err = WriteDefinition(dfs, "default", &Definition{
+		Name: "parking",
+		Inputs: []Input{
+			{Pattern: "file://a-prefix/*.10n"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

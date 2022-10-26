@@ -101,23 +101,23 @@ func load(defpath string) *db.Definition {
 }
 
 // entry point for 'sdb create ...'
-func create(creds db.Tenant, defpath string) {
+func create(creds db.Tenant, dbname, defpath string) {
 	ofs := outfs(creds)
 	s := load(defpath)
 	if dashv {
-		logf("creating db %q", s.Name)
+		logf("creating table %q in db %q", s.Name, dbname)
 	}
-	err := db.WriteDefinition(ofs, s)
+	err := db.WriteDefinition(ofs, dbname, s)
 	if err != nil {
 		exitf("writing new definition: %s\n", err)
 	}
 }
 
 // entry point for 'sdb def ...'
-func def(creds db.Tenant, dbname string) {
+func def(creds db.Tenant, dbname, tablename string) {
 	ofs := outfs(creds)
 
-	def, err := db.OpenDefinition(ofs, dbname)
+	def, err := db.OpenDefinition(ofs, dbname, tablename)
 	if err != nil {
 		exitf("error reading definition: %s\n", err)
 	}
@@ -457,50 +457,44 @@ type appletList []applet
 var applets = appletList{
 	{
 		name: "create",
-		help: "<definition.json>",
-		desc: `create a new database from a def
+		help: "<db> <definition.json>",
+		desc: `create a new table from a def
 The command
-  $ sdb create definition.json
+  $ sdb create <db> definition.json
 uploads a copy of definition.json to
 the tenant root file system at
-  /db/<db>/definition.json
-using the database name given in the definition.json file
+  /db/<db>/<name>/definition.json
+using the table name given in the definition.json file
 
 The definition.json is expected to be a JSON
 document with the following structure:
 
   {
-    "name": "<db-name>",
-    "tables": [
-      {
-        "name": "<table-name>",
-        "inputs": [
-          {"pattern": "s3://bucket/path/to/*.json", "format": "json"},
-          {"pattern": "s3://another/path/*.json.gz", "format": "json.gz"}
-        ]
-      },
-      ...
+    "name": "<table-name>",
+    "inputs": [
+      {"pattern": "s3://bucket/path/to/*.json", "format": "json"},
+      {"pattern": "s3://another/path/*.json.gz", "format": "json.gz"}
     ]
   }
 
 `,
 		run: func(args []string) bool {
-			if len(args) != 2 {
+			if len(args) != 3 {
 				return false
 			}
-			create(creds(), args[1])
+			create(creds(), args[1], args[2])
 			return true
 		},
 	},
 	{
 		name: "def",
-		help: "<db>",
-		desc: `show the db definition`,
+		help: "<db> <table>",
+		desc: `show the table definition`,
 		run: func(args []string) bool {
-			if len(args) != 2 {
+			if len(args) != 3 {
 				return false
 			}
-			def(creds(), args[1])
+			def(creds(), args[1], args[2])
 			return true
 		},
 	},
