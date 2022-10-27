@@ -594,6 +594,10 @@ func BenchmarkTranslate(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
+			err = cn.Flush()
+			if err != nil {
+				b.Fatal(err)
+			}
 			b.Logf("%d symbols; %d bytes in; %d bytes out", cn.Symbols.MaxID(), info.Size()*int64(b.N), int64(w))
 		})
 	}

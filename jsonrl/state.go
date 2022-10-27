@@ -36,69 +36,79 @@ import (
 
 //go:generate gofmt -w .
 
-type fieldoff struct {
-	sym ion.Symbol
-	off int32
-}
-
 type fieldlist struct {
-	fields []fieldoff
-	rotidx int
+	base   int        // beginning of structure fields
+	tail   int        // offset of latest field
+	prev   ion.Symbol // largest symbol inserted so far
+	insert ion.Symbol // saved symbol to insertion-sort, or -1
 }
 
 func (f *fieldlist) init() {
-	f.fields = f.fields[:0]
-	f.rotidx = -1
+	f.base = -1
+	f.insert = ^ion.Symbol(0)
+}
+
+// latest is the current symbol being inserted
+func (f *fieldlist) latest() ion.Symbol {
+	if f.insert != ^ion.Symbol(0) {
+		return f.insert
+	}
+	return f.prev
 }
 
 func (f *fieldlist) start(sym ion.Symbol, off int32) {
-	f.rotidx = -1
-	f.fields = append(f.fields, fieldoff{
-		sym: sym,
-		off: off,
-	})
-	if len(f.fields) == 1 || sym > f.fields[len(f.fields)-2].sym {
+	f.tail = int(off)
+	f.insert = ^ion.Symbol(0)
+	if f.base < 0 {
+		// first field
+		f.base = int(off)
+		f.prev = sym
 		return
 	}
-	// walk the fields in reverse
-	// to find the offset at which we
-	// would like to insert this field
-	// once we have its bits
-	j := len(f.fields) - 2
-	for ; j > 0 && sym <= f.fields[j-1].sym; j-- {
+	if sym > f.prev {
+		f.prev = sym
+	} else {
+		f.insert = sym
 	}
-	f.rotidx = j
 }
 
 func (s *state) shift(f *fieldlist) {
-	// need to rotate the last field
-	// to the position occupied by f.fields[f.rotidx]
 	buf := s.out.Bytes()
-	field := f.fields[len(f.fields)-1]
-	if field.sym == f.fields[f.rotidx].sym {
-		// duplicate? just rewind the data
-		s.out.UnsafeRewind(int(field.off))
-		f.fields = f.fields[:len(f.fields)-1]
+	if f.insert == f.prev {
+		s.out.UnsafeRewind(f.tail)
 		return
 	}
-	start := field.off
-	s.tmp = append(s.tmp[:0], buf[start:]...)
+
+	// search for insert position
+	mem := buf[f.base:f.tail]
+	start := len(mem)
+	target := -1
+	for len(mem) > 0 {
+		cur, rest, _ := ion.ReadLabel(mem)
+		if cur > f.insert {
+			target = f.base + start - len(mem)
+			break
+		}
+		if cur == f.insert {
+			// duplicate; ignore
+			s.out.UnsafeRewind(f.tail)
+			return
+		}
+		// cur < f.insert; continue
+		mem = rest[ion.SizeOf(rest):]
+	}
+	if target < 0 {
+		panic("jsonrl: state.shift: couldn't find correct offset")
+	}
+	// save the tail; it's about to be clobbered
+	s.tmp = append(s.tmp[:0], buf[f.tail:]...)
 
 	// copy the existing fields forward,
 	// leaving space for the field
-	width := int32(len(buf)) - start
-	mov := f.fields[f.rotidx].off
-	copy(buf[mov+width:], buf[mov:])
+	width := len(s.tmp)
+	copy(buf[target+width:], buf[target:])
 	// copy the saved field into the old space
-	copy(buf[mov:], s.tmp)
-
-	// adjust f.fields so that they are sorted
-	sym := f.fields[len(f.fields)-1].sym
-	copy(f.fields[f.rotidx+1:], f.fields[f.rotidx:])
-	f.fields[f.rotidx].sym = sym
-	for i := f.rotidx + 1; i < len(f.fields); i++ {
-		f.fields[i].off += width
-	}
+	copy(buf[target:], s.tmp)
 }
 
 const (
@@ -629,7 +639,7 @@ func (s *state) after() {
 		return
 	}
 	s.flags &^= flagField
-	if s.stack[len(s.stack)-1].rotidx >= 0 {
+	if s.stack[len(s.stack)-1].insert != ^ion.Symbol(0) {
 		// slow-path: shift object bytes around
 		// so that symbols remain sorted
 		s.shift(&s.stack[len(s.stack)-1])
@@ -652,9 +662,7 @@ func (s *state) addTimeRange(t date.Time) {
 	}
 	s.pathbuf.Prepare(len(s.stack))
 	for i := range s.stack {
-		fl := &s.stack[i]
-		sym := fl.fields[len(fl.fields)-1].sym
-		s.pathbuf.Push(sym)
+		s.pathbuf.Push(s.stack[i].latest())
 	}
 	s.out.Ranges.AddTime(s.pathbuf, t)
 }
