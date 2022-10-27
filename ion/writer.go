@@ -229,12 +229,22 @@ func (b *Buffer) grow(n int) []byte {
 
 // write an integer as a uvarint
 func (b *Buffer) putuv(s uint) {
-	dst := b.grow(Uvsize(s))
-	for i := len(dst) - 1; i >= 0; i-- {
-		dst[i] = byte(s & 0x7f)
-		s >>= 7
+	n := Uvsize(s)
+	switch n {
+	case 1:
+		b.buf = append(b.buf, byte(s|0x80))
+	case 2:
+		b.buf = append(b.buf, byte(s>>7), byte(s|0x80))
+	case 3:
+		b.buf = append(b.buf, byte(s>>14), byte((s>>7)&0x7f), byte(s|0x80))
+	default:
+		dst := b.grow(n)
+		for i := len(dst) - 1; i >= 0; i-- {
+			dst[i] = byte(s & 0x7f)
+			s >>= 7
+		}
+		dst[len(dst)-1] |= 0x80
 	}
-	dst[len(dst)-1] |= 0x80
 }
 
 // BeginField begins a field of a structure

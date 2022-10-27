@@ -283,6 +283,21 @@ func BenchmarkSizeOf(b *testing.B) {
 	}
 }
 
+func BenchmarkPutUvarint(b *testing.B) {
+	run := func(name string, sym Symbol) {
+		b.Run(name, func(b *testing.B) {
+			var ib Buffer
+			for i := 0; i < b.N; i++ {
+				ib.putuv(uint(sym))
+				ib.Reset()
+			}
+		})
+	}
+	run("1byte", 14)
+	run("2byte", 200)
+	run("3byte", (1<<14)+7)
+}
+
 func BenchmarkUvarint(b *testing.B) {
 	dst := make([]byte, 0, 10)
 	var ib Buffer
