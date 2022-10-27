@@ -269,7 +269,8 @@ func (c *Chunker) compressOrFlush() error {
 	if !c.noResymbolize && !c.compressed {
 		c.compress()
 		c.compressed = true
-		if c.Buffer.Size() < c.Align {
+		// if we are fully serialized, no need to flush
+		if c.Buffer.Size() < c.Align && c.tmpID == c.Symbols.MaxID() {
 			return nil
 		}
 	}

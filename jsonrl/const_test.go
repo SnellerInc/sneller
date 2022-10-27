@@ -58,6 +58,10 @@ func TestConstant(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		err = cn.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
 		dat, _, err := ion.ReadDatum(&cn.Symbols, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)

@@ -418,5 +418,5 @@ func Convert(src io.Reader, dst *ion.Chunker, hints *Hint, cons []ion.Field) err
 		}
 		rec++
 	}
-	return dst.Flush()
+	return nil
 }

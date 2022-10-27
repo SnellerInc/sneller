@@ -90,6 +90,10 @@ func FuzzConvert(f *testing.F) {
 		if err != nil {
 			return
 		}
+		err = cn.Flush()
+		if err != nil {
+			t.Fatal(err)
+		}
 		// check that the output is a bunch
 		// of valid ion structures
 		var st ion.Symtab
