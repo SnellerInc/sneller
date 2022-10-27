@@ -57,7 +57,7 @@ func (f *fieldlist) start(sym ion.Symbol, off int32) {
 		sym: sym,
 		off: off,
 	})
-	if len(f.fields) == 1 || sym >= f.fields[len(f.fields)-2].sym {
+	if len(f.fields) == 1 || sym > f.fields[len(f.fields)-2].sym {
 		return
 	}
 	// walk the fields in reverse
@@ -65,7 +65,7 @@ func (f *fieldlist) start(sym ion.Symbol, off int32) {
 	// would like to insert this field
 	// once we have its bits
 	j := len(f.fields) - 2
-	for ; j > 0 && f.fields[j-1].sym > sym; j-- {
+	for ; j > 0 && sym <= f.fields[j-1].sym; j-- {
 	}
 	f.rotidx = j
 }
@@ -74,7 +74,14 @@ func (s *state) shift(f *fieldlist) {
 	// need to rotate the last field
 	// to the position occupied by f.fields[f.rotidx]
 	buf := s.out.Bytes()
-	start := f.fields[len(f.fields)-1].off
+	field := f.fields[len(f.fields)-1]
+	if field.sym == f.fields[f.rotidx].sym {
+		// duplicate? just rewind the data
+		s.out.UnsafeRewind(int(field.off))
+		f.fields = f.fields[:len(f.fields)-1]
+		return
+	}
+	start := field.off
 	s.tmp = append(s.tmp[:0], buf[start:]...)
 
 	// copy the existing fields forward,

@@ -517,6 +517,17 @@ func (b *Buffer) UnsafeAppend(buf []byte) {
 	copy(b.grow(len(buf)), buf)
 }
 
+// UnsafeRewind rewinds the buffer to a previous offset.
+// No validation is performed to ensure that removing n bytes
+// of data preserves the validity of the ion stream, but UnsafeRewind
+// will panic if it rewinds across an incomplete list or structure boundary.
+func (b *Buffer) UnsafeRewind(off int) {
+	b.buf = b.buf[:off]
+	if len(b.segs) > 0 && len(b.buf) < b.segs[len(b.segs)-1].off {
+		panic("ion.Buffer.UnsafeRewind past segment boundary")
+	}
+}
+
 // Size returns the number of bytes in the buffer.
 func (b *Buffer) Size() int {
 	return len(b.buf)

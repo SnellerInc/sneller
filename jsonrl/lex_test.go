@@ -68,7 +68,7 @@ func TestParseOK(t *testing.T) {
 		"{\"x\":\"\x7f \u200b\"}",
 
 		// leading sub-list, followed by un-ordered fields
-		`{"x": ["x", "y", "z"], "bar": {"x": 0, "name": 3, "y": 100, "baz": {"x": 0, "name": 3, "y": 100}, "baz": {"x": 0, "name": 3, "y": 100}}}`,
+		`{"x": ["x", "y", "z"], "bar": {"x": 0, "name": 3, "y": 100, "baz": {"x": 0, "name": 3, "y": 100}, "quux": {"x": 0, "name": 3, "y": 100}}}`,
 
 		// test various combinations of empty structural components
 		`{"empty": {}, "empty2": [], "empty3": {"x": [], "y": {}}}`,
@@ -156,6 +156,12 @@ func TestParseWithHints(t *testing.T) {
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,
 			hints:    `{}`,
 			expected: `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3, "exp": 3.18e-09, "exp2": 31}`,
+		},
+		{
+			// first field wins
+			input:    `{"dup": 100, "dup": 200, "dup": 300}`,
+			hints:    `{}`,
+			expected: `{"dup": 100}`,
 		},
 		{
 			input:    `{"foo": -300, "bar": 1000, "baz": 3.141, "quux": 3.0, "exp": 3.18e-9, "exp2": 3.1e+1}`,

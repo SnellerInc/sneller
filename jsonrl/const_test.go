@@ -35,6 +35,10 @@ func TestConstant(t *testing.T) {
 			in:  `{"name": "symbol id 4"}`,
 			out: `{"name": "symbol id 4", "const0": 1, "const1": "two"}`,
 		},
+		{
+			in:  `{"const0": "overwrite me"}`,
+			out: `{"const0": 1, "const1": "two"}`,
+		},
 	}
 
 	cons := []ion.Field{
