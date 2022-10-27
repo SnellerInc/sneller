@@ -173,6 +173,20 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = db.WriteDefinition(dfs, "default", &db.Definition{
+		Name: "combined",
+		Inputs: []db.Input{
+			{Pattern: "file://a-prefix/{dataset}.10n"},
+			{Pattern: "file://a-prefix/{dataset}.json", Format: "json"},
+			{Pattern: "file://b-prefix/{dataset}.block"},
+		},
+		Partitions: []db.Partition{{
+			Field: "dataset",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	b := db.Builder{
 		Align:         testBlocksize,
@@ -420,7 +434,7 @@ func TestSimpleFS(t *testing.T) {
 			t.Fatal(err)
 		}
 		sort.Strings(tables)
-		want := []string{"parking", "parking2", "taxi"}
+		want := []string{"combined", "parking", "parking2", "taxi"}
 		if !slices.Equal(tables, want) {
 			t.Fatalf("got tables: %v", tables)
 		}
@@ -580,6 +594,10 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 		{input: `SELECT COUNT(*) FROM TABLE_GLOB("[pt]a*")`, db: "default", output: `{"count": 10666}`},
 		{input: `SELECT COUNT(*) FROM TABLE_GLOB("ta*") ++ TABLE_GLOB("pa*")`, db: "default", output: `{"count": 10666}`},
 		{input: `SELECT * INTO foo.bar FROM default.taxi`, output: `{"table": "foo\..*`, rx: true},
+		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking'", output: `{"count": 1023}`},
+		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking2'", output: `{"count": 1023}`},
+		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking3'", output: `{"count": 60}`},
+		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'nyc-taxi'", output: `{"count": 8560}`},
 	}
 	var subwg sync.WaitGroup
 	subwg.Add(len(queries))

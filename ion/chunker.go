@@ -442,10 +442,12 @@ func (c *Chunker) Flush() error {
 
 // ReadFrom reads ion from r and re-encodes it
 // into the chunker by reading objects one-at-a-time.
+// If cons is provided, these fields will be
+// added to each structure.
 //
 // BUGS: ReadFrom only indexes data from the top-level
 // of each structure.
-func (c *Chunker) ReadFrom(r io.Reader) (int64, error) {
+func (c *Chunker) ReadFrom(r io.Reader, cons []Field) (int64, error) {
 	b := bufio.NewReader(r)
 
 	var typ Type
@@ -496,6 +498,11 @@ func (c *Chunker) ReadFrom(r io.Reader) (int64, error) {
 			return n, err
 		}
 		if !dat.Empty() {
+			if s, ok := dat.Struct(); ok {
+				dat = s.mergeFields(&st, cons).Datum()
+			} else if len(cons) > 0 {
+				return n, fmt.Errorf("row constants disallowed; not a struct (%s)", dat.Type())
+			}
 			dat.Encode(&c.Buffer, &c.Symbols)
 			noteTimeFields(dat, c)
 			err = c.Commit()

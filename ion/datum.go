@@ -579,6 +579,34 @@ func (s Struct) FieldByName(name string) (Field, bool) {
 	return field, ok
 }
 
+// mergeFields merges the given fields with the
+// fields of this structinto a new struct,
+// overwriting any previous fields with
+// conflicting names.
+//
+// This should only be used for testing in this
+// package.
+func (s Struct) mergeFields(st *Symtab, fields []Field) Struct {
+	into := make([]Field, 0, s.Len()+len(fields))
+	add := func(f Field) {
+		for i := range into {
+			if into[i].Label == f.Label {
+				into[i] = f
+				return
+			}
+		}
+		into = append(into, f)
+	}
+	s.Each(func(f Field) bool {
+		add(f)
+		return true
+	})
+	for i := range fields {
+		add(fields[i])
+	}
+	return NewStruct(st, into)
+}
+
 func (s *Struct) symtab() Symtab {
 	return Symtab{interned: s.st}
 }

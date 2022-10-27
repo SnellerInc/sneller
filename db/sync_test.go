@@ -448,8 +448,11 @@ func TestMaxBytesSync(t *testing.T) {
 	err = WriteDefinition(dfs, "default", &Definition{
 		Name: "parking",
 		Inputs: []Input{
-			{Pattern: "file://a-prefix/*.10n"},
+			{Pattern: "file://a-prefix/{filename}.10n"},
 		},
+		Partitions: []Partition{{
+			Field: "filename",
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)

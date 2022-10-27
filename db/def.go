@@ -44,6 +44,28 @@ type Input struct {
 	Hints json.RawMessage `json:"hints,omitempty"`
 }
 
+// A Partition defines a synthetic field that is
+// generated from parts of an input URI and used
+// to partition table data.
+type Partition struct {
+	// Field is the name of the partition field. If
+	// this field conflicts with a field in the
+	// input data, the partition field will
+	// override it.
+	Field string `json:"field"`
+	// Type is the type of the partition field.
+	// If this is "", this defaults to "string".
+	Type string `json:"type,omitempty"`
+	// Value is a template string that is used to
+	// produce the value for the partition field.
+	// The template may reference parts of the
+	// input URI specified in the input pattern.
+	// If this is "", the field name is used to
+	// determine the input URI part that will be
+	// used to determine the value.
+	Value string `json:"value,omitempty"`
+}
+
 // Definition describes the set of input files
 // that belong to a table.
 type Definition struct {
@@ -54,6 +76,10 @@ type Definition struct {
 	Name string `json:"name"`
 	// Inputs is the list of inputs that comprise the table.
 	Inputs []Input `json:"input,omitempty"`
+	// Partitions specifies synthetic fields that
+	// are generated from components of the input
+	// URI and used to partition table data.
+	Partitions []Partition `json:"partitions,omitempty"`
 	// Features is a list of feature flags that
 	// can be used to turn on features for beta-testing.
 	Features []string `json:"beta_features,omitempty"`

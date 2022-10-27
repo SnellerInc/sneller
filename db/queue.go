@@ -229,6 +229,7 @@ func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, 
 //
 // this is supposed to be safe to call from multiple goroutines
 func (q *QueueRunner) filter(bld *Builder, def *Definition, dst *batch) error {
+	var mr matcher
 	dst.filtered = dst.filtered[:0]
 	dst.indirect = dst.indirect[:0]
 outer:
@@ -236,8 +237,9 @@ outer:
 		p := q.inputs[i].Path()
 		etag := q.inputs[i].ETag()
 		for j := range def.Inputs {
-			match, err := path.Match(def.Inputs[j].Pattern, p)
-			if err != nil || !match {
+			glob := def.Inputs[j].Pattern
+			err := mr.match(glob, p, "")
+			if err != nil || !mr.found {
 				continue
 			}
 			infs, name, err := q.Owner.Split(p)
@@ -276,6 +278,7 @@ outer:
 			dst.filtered = append(dst.filtered, blockfmt.Input{
 				Path: p,
 				ETag: etag,
+				Glob: glob,
 				Size: info.Size(),
 				R:    f,
 				F:    fm,

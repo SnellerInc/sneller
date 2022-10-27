@@ -82,8 +82,11 @@ func TestScan(t *testing.T) {
 	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "taxi",
 		Inputs: []Input{
-			{Pattern: "file://b-prefix/*.block"},
+			{Pattern: "file://b-prefix/{filename}.block"},
 		},
+		Partitions: []Partition{{
+			Field: "filename",
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)

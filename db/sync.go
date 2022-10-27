@@ -695,6 +695,14 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 		Comp:      st.conf.comp(),
 	}
 
+	if len(st.def.Partitions) > 0 {
+		cons, err := makePartitions(st.def.Partitions)
+		if err != nil {
+			return err
+		}
+		c.Constants = cons
+	}
+
 	if prepend != nil {
 		f, err := st.ofs.Open(prepend.Path)
 		if err != nil {

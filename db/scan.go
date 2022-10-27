@@ -100,7 +100,8 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			complete = false
 			break
 		}
-		infs, pat, err := st.owner.Split(st.def.Inputs[i].Pattern)
+		fullpat := st.def.Inputs[i].Pattern
+		infs, pat, err := st.owner.Split(fullpat)
 		if err != nil {
 			// invalid definition?
 			return 0, err
@@ -154,6 +155,7 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			collect = append(collect, blockfmt.Input{
 				Path: full,
 				Size: info.Size(),
+				Glob: fullpat,
 				ETag: etag,
 				R:    f,
 				F:    fm,
@@ -163,6 +165,10 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 				return errStop
 			}
 			return nil
+		}
+		pat, err = toglob(pat)
+		if err != nil {
+			return 0, err
 		}
 		err = fsutil.WalkGlob(infs, seek, pat, walk)
 		idx.Cursors[i] = seek

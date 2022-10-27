@@ -60,6 +60,10 @@ type Input struct {
 	Path, ETag string
 	// Size is the size of the input, in bytes
 	Size int64
+	// Glob is the glob pattern used to match the
+	// input path. This is intended to be used by
+	// Template.Eval to expand template strings.
+	Glob string
 	// R is the source of unformatted data
 	R io.ReadCloser
 	// F is the formatter that produces output blocks
@@ -152,10 +156,7 @@ type ionConverter struct{}
 func (i ionConverter) Name() string { return "ion" }
 
 func (i ionConverter) Convert(r io.Reader, dst *ion.Chunker, cons []ion.Field) error {
-	if len(cons) != 0 {
-		return fmt.Errorf("converting UnsafeION: row constants disallowed")
-	}
-	_, err := dst.ReadFrom(r)
+	_, err := dst.ReadFrom(r, cons)
 	if err != nil {
 		return fmt.Errorf("converting UnsafeION: %w", err)
 	}
@@ -298,7 +299,7 @@ type Template struct {
 	Field string // Field is the name of the field to be generated.
 	// Eval should generate an ion datum
 	// from the input object.
-	Eval func(in *Input) ion.Datum
+	Eval func(in *Input) (ion.Datum, error)
 }
 
 // Converter performs single- or
@@ -425,14 +426,18 @@ func (c *Converter) Run() error {
 	return c.runSingle()
 }
 
-func expand(src []Template, in *Input, dst []ion.Field) []ion.Field {
+func expand(src []Template, in *Input, dst []ion.Field) ([]ion.Field, error) {
 	for i := range src {
+		value, err := src[i].Eval(in)
+		if err != nil {
+			return dst, err
+		}
 		dst = append(dst, ion.Field{
 			Label: src[i].Field,
-			Value: src[i].Eval(in),
+			Value: value,
 		})
 	}
-	return dst
+	return dst, nil
 }
 
 func (c *Converter) runSingle() error {
@@ -496,11 +501,14 @@ func (c *Converter) runSingle() error {
 			next++
 		}
 
-		cons = expand(c.Constants, &c.Inputs[i], cons[:0])
-		err := c.Inputs[i].F.Convert(c.Inputs[i].R, &cn, cons)
-		err2 := c.Inputs[i].R.Close()
+		var err error
+		cons, err = expand(c.Constants, &c.Inputs[i], cons[:0])
 		if err == nil {
-			err = err2
+			err = c.Inputs[i].F.Convert(c.Inputs[i].R, &cn, cons)
+			err2 := c.Inputs[i].R.Close()
+			if err == nil {
+				err = err2
+			}
 		}
 		if err != nil {
 			// wait for prefetching to stop
@@ -606,11 +614,13 @@ func (c *Converter) runMulti() error {
 			}
 			var cons []ion.Field
 			for in := range startc {
-				cons = expand(c.Constants, in, cons[:0])
-				err := in.F.Convert(in.R, &cn, cons)
-				err2 := in.R.Close()
+				cons, err = expand(c.Constants, in, cons[:0])
 				if err == nil {
-					err = err2
+					err = in.F.Convert(in.R, &cn, cons)
+					err2 := in.R.Close()
+					if err == nil {
+						err = err2
+					}
 				}
 				if err != nil {
 					consume(startc)

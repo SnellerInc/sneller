@@ -328,7 +328,7 @@ func TestChunkReadFrom(t *testing.T) {
 						W:          &buf,
 					}
 
-					n, err := cn.ReadFrom(fh)
+					n, err := cn.ReadFrom(fh, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
