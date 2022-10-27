@@ -325,10 +325,10 @@ TEXT ·aesHashWide(SB), NOSPLIT | NOFRAME, $0-24
     RET
 
 
-// func aesInitHashEngine(hasVAES bool)
-TEXT ·aesInitHashEngine(SB), NOSPLIT | NOFRAME, $0-1
-    TESTB   $-1, hasVAES+0(FP)
-    JZ      resolved_vaes
+// func aesInitHashEngine()
+TEXT ·aesInitHashEngine(SB), NOSPLIT | NOFRAME, $0-0
+    CMPB    golang·org∕x∕sys∕cpu·X86+const_offsX86HasAVX512VAES(SB), $0
+    JE      resolved_vaes
     LEAQ    hashCoreVAES<>(SB), AX
     MOVQ    AX, hashCoreDispatcher<>(SB)
 

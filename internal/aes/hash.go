@@ -101,16 +101,18 @@ func (e *HashEngine) InitializeRandom() error {
 }
 
 func init() {
-	aesInitHashEngine(cpu.X86.HasAVX512VAES)
+	aesInitHashEngine()
 
 	if err := Volatile.InitializeRandom(); err != nil {
 		panic(err) // The crypto/rand RNG can fail in theory and this is the best I can do with err at the init() level.
 	}
 }
 
+const offsX86HasAVX512VAES = unsafe.Offsetof(cpu.X86.HasAVX512VAES) //lint:ignore U1000, used in asm
+
 //go:noescape
 //go:nosplit
-func aesInitHashEngine(hasVAES bool)
+func aesInitHashEngine()
 
 //go:noescape
 //go:nosplit

@@ -20,7 +20,8 @@
 // will be stored at the block pointed to by DI. For the single-lane case, the stride
 // of $0x10 in DX will put the subkeys in consecutive memory locations. Larger strides
 // are allowed if subkey interleaving is required, e.g. in the AVX512 four-lane AES
-// processing blocks.
+// processing blocks. Note: the expansion functions are not performance-critical and
+// should be executable on a plain SSE-capable CPU. DO NOT use AVX512 encodings.
 //
 // Inputs:
 //  X0 := the 128-bit key to be expanded
@@ -31,39 +32,42 @@
 //  DI, X1, X2
 
 TEXT aesExpandKeyCore128<>(SB), NOSPLIT | NOFRAME, $0-0
-    VMOVDQU32           X0, (DI)
+    MOVOU               X0, (DI)
     ADDQ                DX, DI
-    VAESKEYGENASSIST    $0x01, X0, X1   // round 1
+    AESKEYGENASSIST     $0x01, X0, X1   // round 1
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x02, X0, X1   // round 2
+    AESKEYGENASSIST     $0x02, X0, X1   // round 2
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x04, X0, X1   // round 3
+    AESKEYGENASSIST     $0x04, X0, X1   // round 3
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x08, X0, X1   // round 4
+    AESKEYGENASSIST     $0x08, X0, X1   // round 4
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x10, X0, X1   // round 5
+    AESKEYGENASSIST     $0x10, X0, X1   // round 5
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x20, X0, X1   // round 6
+    AESKEYGENASSIST     $0x20, X0, X1   // round 6
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x40, X0, X1   // round 7
+    AESKEYGENASSIST     $0x40, X0, X1   // round 7
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x80, X0, X1   // round 8
+    AESKEYGENASSIST     $0x80, X0, X1   // round 8
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x1b, X0, X1   // round 9
+    AESKEYGENASSIST     $0x1b, X0, X1   // round 9
     CALL                aesExpandKeyMixCore128<>(SB)
-    VAESKEYGENASSIST    $0x36, X0, X1   // round 10
+    AESKEYGENASSIST     $0x36, X0, X1   // round 10
     JMP                 aesExpandKeyMixCore128<>(SB)
 
 TEXT aesExpandKeyMixCore128<>(SB), NOSPLIT | NOFRAME, $0-0
-    VPSHUFD     $0xff, X1, X1
-    VPSLLDQ     $4, X0, X2
-    VPXORD      X2, X0, X0
-    VPSLLDQ     $4, X0, X2
-    VPXORD      X2, X0, X0
-    VPSLLDQ     $4, X0, X2
-    VPXORD      X2, X0, X0
-    VPXORD      X1, X0, X0
-    VMOVDQU32   X0, (DI)
+    PSHUFD      $0xff, X1, X1
+    MOVOA       X0, X2
+    PSLLDQ      $4, X2
+    PXOR        X2, X0
+    MOVOA       X0, X2
+    PSLLDQ      $4, X2
+    PXOR        X2, X0
+    MOVOA       X0, X2
+    PSLLDQ      $4, X2
+    PXOR        X2, X0
+    PXOR        X1, X0
+    MOVOU       X0, (DI)
     ADDQ        DX, DI
     RET
 
@@ -73,7 +77,7 @@ TEXT aesExpandKeyMixCore128<>(SB), NOSPLIT | NOFRAME, $0-0
 //
 TEXT ·auxExpandFromKey128(SB), NOSPLIT | NOFRAME, $0-0
     MOVQ        p+0(FP), DI
-    VMOVDQU64   key+8(FP), X0
+    MOVOU       key+8(FP), X0
     MOVL        $0x10, DX
     JMP         aesExpandKeyCore128<>(SB)
 
@@ -87,17 +91,17 @@ TEXT ·auxExpandFromKey128(SB), NOSPLIT | NOFRAME, $0-0
 // so it needs to be done separately for every lane.
 //
 TEXT ·auxExpandFromKey128Quad(SB), NOSPLIT | NOFRAME, $0-0
-    VMOVDQU64   quad_0_0+8(FP), X0
+    MOVOU       quad_0_0+8(FP), X0
     MOVQ        p+0(FP), SI
     MOVL        $0x40, DX
     MOVQ        SI, DI
     CALL        aesExpandKeyCore128<>(SB)
-    VMOVDQU64   quad_1_0+24(FP), X0
+    MOVOU       quad_1_0+24(FP), X0
     LEAQ        0x10(SI), DI
     CALL        aesExpandKeyCore128<>(SB)
-    VMOVDQU64   quad_2_0+40(FP), X0
+    MOVOU       quad_2_0+40(FP), X0
     LEAQ        0x20(SI), DI
     CALL        aesExpandKeyCore128<>(SB)
-    VMOVDQU64   quad_3_0+56(FP), X0
+    MOVOU       quad_3_0+56(FP), X0
     LEAQ        0x30(SI), DI
     JMP         aesExpandKeyCore128<>(SB)
