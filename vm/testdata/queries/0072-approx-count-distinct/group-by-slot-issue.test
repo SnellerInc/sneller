@@ -1,0 +1,39 @@
+# See `slot-issue.test`
+SELECT
+    y,
+    GREATEST(APPROX_COUNT_DISTINCT(x, 16), 100) AS approx,
+    COUNT(*),
+    MIN(CAST(x AS integer)) AS mini,
+    MAX(CAST(x AS integer)) AS maxi,
+    SUM(CAST(x AS integer)) AS sumi,
+    MIN(CAST(x AS float)) AS minf,
+    MAX(CAST(x AS float)) AS maxf,
+    SUM(CAST(x AS float)) AS sumf,
+    BIT_AND(CAST(x AS integer)) AS bitand,
+    BIT_OR(CAST(x AS integer)) AS bitor,
+    BIT_XOR(CAST(x AS integer)) AS bitxor,
+    BOOL_AND(x > 0) AS booland,
+    BOOL_OR(x > 0) AS boolor
+FROM input
+GROUP BY y
+ORDER BY y
+---
+{"y": 0, "x": 10}
+{"y": 0, "x": 20}
+{"y": 0, "x": 30}
+{"y": 0, "x": 40}
+{"y": 0, "x": 50}
+{"y": 0, "x": 60}
+{"y": 1, "x": 10}
+{"y": 1, "x": 20}
+{"y": 1, "x": 30}
+{"y": 1, "x": 40}
+{"y": 1, "x": 50}
+{"y": 2, "x": 10}
+{"y": 2, "x": 20}
+{"y": 2, "x": 30}
+{"y": 2, "x": 40}
+---
+{"y": 0, "approx": 100, "count": 6, "mini": 10, "maxi": 60, "sumi": 210, "minf": 10, "maxf": 60, "sumf": 210, "bitand": 0, "bitor": 62, "bitxor": 38, "booland": true, "boolor": true}
+{"y": 1, "approx": 100, "count": 5, "mini": 10, "maxi": 50, "sumi": 150, "minf": 10, "maxf": 50, "sumf": 150, "bitand": 0, "bitor": 62, "bitxor": 26, "booland": true, "boolor": true}
+{"y": 2, "approx": 100, "count": 4, "mini": 10, "maxi": 40, "sumi": 100, "minf": 10, "maxf": 40, "sumf": 100, "bitand": 0, "bitor": 62, "bitxor": 40, "booland": true, "boolor": true}

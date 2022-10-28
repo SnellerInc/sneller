@@ -12125,7 +12125,7 @@ bad_radix_bucket:
   VEXTRACTI32X8 $1, Z6, Y7                                                    \
                                                                               \
   /* Load the aggregation data pointer. */                                    \
-  MOVWQZX SlotOffset(VIRT_PCREG), R15                                         \
+  MOVL SlotOffset(VIRT_PCREG), R15                                            \
   ADDQ $8, R15                                                                \
   ADDQ radixTree64_values(R10), R15                                           \
                                                                               \
@@ -12208,7 +12208,7 @@ next:
   VEXTRACTI32X8 $1, Z6, Y7                                                    \
                                                                               \
   /* Load the aggregation data pointer. */                                    \
-  MOVWQZX SlotOffset(VIRT_PCREG), R15                                         \
+  MOVL  SlotOffset(VIRT_PCREG), R15                                           \
   ADDQ $8, R15                                                                \
   ADDQ radixTree64_values(R10), R15                                           \
                                                                               \
@@ -12299,92 +12299,92 @@ resolved:                                                                     \
 next:
 
 TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  MOVWQZX 4(VIRT_PCREG), R8
   KMOVW 0(VIRT_VALUES)(R8*1), K4
   KSHIFTRW $8, K4, K5
 
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
 
-  BC_AGGREGATE_SLOT_MARK_OP(2, VPANDQ)
-  NEXT_ADVANCE(4)
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
+  NEXT_ADVANCE(6)
 
 TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  MOVWQZX 4(VIRT_PCREG), R8
   KMOVW 0(VIRT_VALUES)(R8*1), K4
   KSHIFTRW $8, K4, K5
 
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
 
-  BC_AGGREGATE_SLOT_MARK_OP(2, VPORQ)
-  NEXT_ADVANCE(4)
+  BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
+  NEXT_ADVANCE(6)
 
 TEXT bcaggslotaddf(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VADDPD)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotaddi(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPADDQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotavgf(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_COUNT_OP(0, VADDPD)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_COUNT_OP(0, VPADDQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VMINPD)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMINSQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VMAXPD)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMAXSQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64 Z2, Z4
   VMOVDQA64 Z3, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPXORQ)
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 // COUNT is a special aggregation function that just counts active lanes stored
 // in K1. This is the simplest aggregation, which only requres a basic conflict
@@ -12397,7 +12397,7 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   VPCONFLICTD.Z Z6, K1, Z8
 
   // Load the aggregation data pointer and prepare high 8 element offsets.
-  MOVWQZX 0(VIRT_PCREG), R15
+  MOVL 0(VIRT_PCREG), R15
   ADDQ radixTree64_values(R10), R15
   VEXTRACTI32X8 $1, Z6, Y7
 
@@ -12442,7 +12442,7 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
   VPSCATTERDQ Z5, K3, 8(R15)(Y7*1)
 
-  NEXT_ADVANCE(2)
+  NEXT_ADVANCE(4)
 
 // Uncategorized Instructions
 // --------------------------

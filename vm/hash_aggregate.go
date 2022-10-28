@@ -172,7 +172,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 	out := make([]*value, len(agg))
 	ops := make([]AggregateOp, len(agg))
 	bucket := prog.aggbucket(mem, allColumnsHash, allColumnsMask)
-	offset := 0
+	offset := aggregateslot(0)
 
 	for i := range agg {
 		var filter *value
@@ -312,7 +312,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 		// they can potentially be computed in the order in which the fields
 		// are present in the input row rather than the order in which the
 		// query presents them.
-		offset += ops[i].dataSize()
+		offset += aggregateslot(ops[i].dataSize())
 	}
 
 	initialData := make([]byte, offset)

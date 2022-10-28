@@ -140,6 +140,7 @@ var bcImmsS16S16S16 = []bcImmType{bcImmS16, bcImmS16, bcImmS16}
 var bcImmsU8 = []bcImmType{bcImmU8}
 var bcImmsU16 = []bcImmType{bcImmU16}
 var bcImmsU32 = []bcImmType{bcImmU32}
+var bcImmsU32S16 = []bcImmType{bcImmU32, bcImmS16}
 var bcImmsU32H32 = []bcImmType{bcImmU32, bcImmU32Hex}
 var bcImmsH32S16S16 = []bcImmType{bcImmU32Hex, bcImmS16, bcImmS16}
 var bcImmsH32 = []bcImmType{bcImmU32Hex}
@@ -482,20 +483,20 @@ var opinfo = [_maxbcop]bcopinfo{
 
 	// Slot aggregate operations
 	opaggbucket:    {text: "aggbucket", imms: bcImmsS16, flags: bcReadK | bcWriteS | bcReadH},
-	opaggslotandk:  {text: "aggslotand.k", imms: bcImmsS16S16, flags: bcReadK},
-	opaggslotork:   {text: "aggslotor.k", imms: bcImmsS16S16, flags: bcReadK},
-	opaggslotaddf:  {text: "aggslotadd.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotaddi:  {text: "aggslotadd.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotavgf:  {text: "aggslotavg.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotavgi:  {text: "aggslotavg.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotmaxf:  {text: "aggslotmax.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotmaxi:  {text: "aggslotmax.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotminf:  {text: "aggslotmin.f", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotmini:  {text: "aggslotmin.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotandi:  {text: "aggslotand.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotori:   {text: "aggslotor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotxori:  {text: "aggslotxor.i", imms: bcImmsS16, flags: bcReadK | bcReadS},
-	opaggslotcount: {text: "aggslotcount", imms: bcImmsS16, flags: bcReadK},
+	opaggslotandk:  {text: "aggslotand.k", imms: bcImmsU32S16, flags: bcReadK},
+	opaggslotork:   {text: "aggslotor.k", imms: bcImmsU32S16, flags: bcReadK},
+	opaggslotaddf:  {text: "aggslotadd.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotaddi:  {text: "aggslotadd.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotavgf:  {text: "aggslotavg.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotavgi:  {text: "aggslotavg.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotmaxf:  {text: "aggslotmax.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotmaxi:  {text: "aggslotmax.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotminf:  {text: "aggslotmin.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotmini:  {text: "aggslotmin.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotandi:  {text: "aggslotand.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotori:   {text: "aggslotor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotxori:  {text: "aggslotxor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
+	opaggslotcount: {text: "aggslotcount", imms: bcImmsU32, flags: bcReadK},
 
 	// Uncategorized instructions
 	oplitref:     {text: "litref", imms: bcImmsH32H32, flags: bcWriteV},
