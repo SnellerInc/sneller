@@ -45,9 +45,7 @@ func TestGC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
-	dfs.Log = t.Logf
+	dfs := newDirFS(t, tmpdir)
 	err = WriteDefinition(dfs, "default", &Definition{
 		Name: "parking",
 		Inputs: []Input{

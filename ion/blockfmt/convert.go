@@ -463,7 +463,11 @@ func (c *Converter) runSingle() error {
 		Align:      w.InputAlign,
 		RangeAlign: c.FlushMeta,
 	}
-	err := c.runPrepend(&cn)
+	err := c.fastPrepend(w)
+	if err != nil {
+		return err
+	}
+	err = c.runPrepend(&cn)
 	if err != nil {
 		return err
 	}
@@ -535,6 +539,17 @@ func (c *Converter) runSingle() error {
 	return err
 }
 
+type trailerWriter interface {
+	writeStart(r io.Reader, t *Trailer) error
+}
+
+func (c *Converter) fastPrepend(tw trailerWriter) error {
+	if c.Prepend.R == nil {
+		return nil
+	}
+	return tw.writeStart(c.Prepend.R, c.Prepend.Trailer)
+}
+
 func (c *Converter) runPrepend(cn *ion.Chunker) error {
 	if c.Prepend.R == nil {
 		return nil
@@ -565,6 +580,10 @@ func (c *Converter) runMulti() error {
 		// try to make the blocks at least
 		// half the target size
 		MinChunksPerBlock: c.FlushMeta / (c.Align * 2),
+	}
+	err := c.fastPrepend(w)
+	if err != nil {
+		return err
 	}
 	p := c.Parallel
 	if p <= 0 {

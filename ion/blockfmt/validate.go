@@ -29,6 +29,9 @@ import (
 // no errors.
 func Validate(src io.Reader, t *Trailer, diag io.Writer) int {
 	d := Decoder{}
+	if t.Sparse.Blocks() != len(t.Blocks) {
+		fmt.Fprintf(diag, "sparse has %d blocks; trailer has %d", t.Sparse.Blocks(), len(t.Blocks))
+	}
 	d.Set(t, len(t.Blocks))
 	w := checkWriter{dst: diag, blocks: t.Blocks, sparse: &t.Sparse}
 	d.Copy(&w, src)
@@ -58,6 +61,10 @@ func (c *checkWriter) errorf(f string, args ...interface{}) {
 func (c *checkWriter) checkRange(tm date.Time, path []string) {
 	ts := c.sparse.Get(path)
 	if ts == nil {
+		return
+	}
+	if ts.Blocks() <= c.block {
+		c.errorf("path %v has %d blocks of metadata; currently in block %d", path, ts.Blocks(), c.block)
 		return
 	}
 	// we want ts.Start(tm) <= c.block < ts.End(tm)

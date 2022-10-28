@@ -704,21 +704,11 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	}
 
 	if prepend != nil {
-		f, err := st.ofs.Open(prepend.Path)
+		f, err := open(st.ofs, prepend.Path, prepend.ETag, prepend.Size)
 		if err != nil {
 			return fmt.Errorf("opening %s for re-ingest: %w", prepend.Path, err)
 		}
-		info, err := f.Stat()
-		if err != nil {
-			return fmt.Errorf("stat-ing re-ingest descriptor: %w", err)
-		}
-		etag, err := st.ofs.ETag(prepend.Path, info)
-		if err != nil {
-			return fmt.Errorf("getting ETag: %w", err)
-		}
-		if etag != prepend.ETag {
-			return fmt.Errorf("ETag has changed: %s -> %s", prepend.ETag, etag)
-		}
+		defer f.Close()
 		tr := prepend.Trailer
 		c.Prepend.R = &readCloser{Reader: io.LimitReader(f, tr.Offset), Closer: f}
 		c.Prepend.Trailer = tr

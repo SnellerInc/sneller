@@ -15,14 +15,54 @@
 package db
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
+
+func newDirFS(t *testing.T, dir string) *DirFS {
+	dfs := NewDirFS(dir)
+	var tmp bytes.Buffer
+	// at the end of the test, validate every packfile
+	t.Cleanup(func() {
+		defer dfs.Close()
+		walk := func(name string, file fs.File, err error) error {
+			if err != nil {
+				return err
+			}
+			defer file.Close()
+			info, err := file.Stat()
+			if err != nil {
+				return err
+			}
+			trailer, err := blockfmt.ReadTrailer(file.(io.ReaderAt), info.Size())
+			if err != nil {
+				return err
+			}
+			tmp.Reset()
+			blockfmt.Validate(file, trailer, &tmp)
+			if tmp.Len() > 0 {
+				t.Errorf("%s", tmp.Bytes())
+			}
+			return nil
+		}
+		err := fsutil.WalkGlob(dfs, "", "db/*/*/packed-*", walk)
+		if err != nil {
+			t.Error(err)
+		}
+	})
+	dfs.Log = t.Logf
+	dfs.MinPartSize = 32 * 1024 // pick a non-zero default
+	return dfs
+}
 
 func fullScan(t *testing.T, b *Builder, who Tenant, db, table string, expect int) {
 	total := 0
@@ -76,9 +116,7 @@ func TestScan(t *testing.T) {
 		}
 	}
 
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
-	dfs.Log = t.Logf
+	dfs := newDirFS(t, tmpdir)
 	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "taxi",
 		Inputs: []Input{
@@ -116,7 +154,8 @@ func TestScan(t *testing.T) {
 		Logf: t.Logf,
 		// force re-scanning; we will only be
 		// able to ingest two objects at once
-		MaxScanBytes: 2 * 1024 * 1024,
+		MaxScanBytes:  2 * 1024 * 1024,
+		RangeMultiple: 4,
 
 		GCLikelihood: 50,
 		GCMinimumAge: 1 * time.Millisecond,
@@ -171,9 +210,7 @@ func TestNewIndexScan(t *testing.T) {
 		}
 	}
 
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
-	dfs.Log = t.Logf
+	dfs := newDirFS(t, tmpdir)
 	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "taxi",
 		Inputs: []Input{
@@ -287,9 +324,7 @@ func TestScanFail(t *testing.T) {
 		}
 	}
 
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
-	dfs.Log = t.Logf
+	dfs := newDirFS(t, tmpdir)
 	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "files",
 		Inputs: []Input{

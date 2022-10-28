@@ -161,11 +161,14 @@ func TestPrependSingle(t *testing.T) {
 				}}
 				var out2 BufferUploader
 				c = Converter{
-					Output:    &out2,
-					Comp:      "zstd",
-					Inputs:    inputs,
-					Align:     4096, // changing alignment
-					FlushMeta: m * 4096,
+					Output: &out2,
+					Comp:   "zstd",
+					Inputs: inputs,
+					// Align:     4096, // changing alignment
+					// FlushMeta: m * 4096,
+					Align:      align,
+					FlushMeta:  m * align,
+					TargetSize: 2 * align,
 				}
 				c.Prepend.R = io.NopCloser(io.LimitReader(br, tr.Offset))
 				c.Prepend.Trailer = tr
@@ -241,6 +244,7 @@ func TestPrependMulti(t *testing.T) {
 					t.Fatal(err)
 				}
 				var out2 BufferUploader
+				out2.PartSize = m * align
 				c = Converter{
 					Output:    &out2,
 					Comp:      algo,

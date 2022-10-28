@@ -35,6 +35,30 @@ type SparseIndex struct {
 	blocks  int
 }
 
+func (t *timeIndex) trim(j int) timeIndex {
+	return timeIndex{
+		path:   t.path,
+		ranges: t.ranges.trim(j),
+	}
+}
+
+// Trim produces a copy of s that only includes
+// information up to block j. Trim will panic
+// if j is greater than s.Blocks().
+func (s *SparseIndex) Trim(j int) SparseIndex {
+	if j > s.Blocks() {
+		panic("SparseIndex.Trim beyond blocks")
+	}
+	indices := make([]timeIndex, len(s.indices))
+	for i := range indices {
+		indices[i] = s.indices[i].trim(j)
+	}
+	return SparseIndex{
+		indices: indices,
+		blocks:  j,
+	}
+}
+
 // Fields returns the number of individually
 // indexed fields.
 func (s *SparseIndex) Fields() int { return len(s.indices) }

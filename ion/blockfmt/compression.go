@@ -40,13 +40,14 @@ type blockpart struct {
 	ranges []TimeRange
 }
 
-func toDescs(lst []blockpart) []Blockdesc {
-	out := make([]Blockdesc, len(lst))
-	for i := range lst {
-		out[i].Offset = lst[i].offset
-		out[i].Chunks = lst[i].chunks
+func toDescs(dst []Blockdesc, src []blockpart) []Blockdesc {
+	for i := range src {
+		dst = append(dst, Blockdesc{
+			src[i].offset,
+			src[i].chunks,
+		})
 	}
-	return out
+	return dst
 }
 
 type Compressor interface {
@@ -223,6 +224,78 @@ func (w *CompressionWriter) SkipChecks() {
 	w.skipChecks = true
 }
 
+// consume maybe *some* of an existing object
+// without doing any heavy lifting w.r.t compression
+func (w *CompressionWriter) writeStart(r io.Reader, t *Trailer) error {
+	if t.Algo != w.Comp.Name() || 1<<t.BlockShift != w.InputAlign {
+		return nil // not directly compatible
+	}
+	j := 0
+	for j < len(t.Blocks)-1 && t.Blocks[j].Chunks >= w.MinChunksPerBlock {
+		j++
+	}
+	if j == 0 || t.Blocks[j].Offset < int64(w.Output.MinPartSize()) {
+		return nil
+	}
+	n := int64(0)
+	for n < t.Blocks[j].Offset {
+		// perform uploads that are at
+		// least w.target()-sized, and up to
+		// 2*w.target()-sized
+		remaining := t.Blocks[j].Offset - n
+		amt := w.target()
+		if remaining < int64(2*amt) {
+			amt = int(remaining)
+		}
+		if cap(w.buffer) >= amt {
+			w.buffer = w.buffer[:amt]
+		} else {
+			w.buffer = make([]byte, amt)
+		}
+		_, err := io.ReadFull(r, w.buffer)
+		if err != nil {
+			return err
+		}
+		err = w.upload()
+		if err != nil {
+			return err
+		}
+		n += int64(amt)
+	}
+	w.lastblock = t.Blocks[j].Offset
+	w.offset = w.lastblock
+	w.Trailer.Blocks = t.Blocks[:j]
+	w.Trailer.Sparse = t.Sparse.Trim(j)
+	t.Blocks = t.Blocks[j:]
+	return nil
+}
+
+// upload w.buffer; swap w.alt and w.buffer
+func (w *CompressionWriter) upload() error {
+	pn := w.partnum + 1
+	w.partnum++
+	if w.bg == nil {
+		// no background uploads yet
+		w.bg = make(chan error, 1)
+		w.alt = make([]byte, 0, w.target())
+	} else {
+		// wait for previous background
+		// upload to finish
+		err := <-w.bg
+		if err != nil {
+			return err
+		}
+	}
+	buf := w.buffer
+	go func() {
+		w.bg <- w.Output.Upload(pn, buf)
+	}()
+	// swap buffers while the upload
+	// is using the current buffer
+	w.buffer, w.alt = w.alt[:0], w.buffer[:0]
+	return nil
+}
+
 // Write implements io.Writer.
 // Each call to Write must be of w.InputAlign bytes.
 func (w *CompressionWriter) Write(p []byte) (n int, err error) {
@@ -243,27 +316,10 @@ func (w *CompressionWriter) Write(p []byte) (n int, err error) {
 	}
 	w.offset += int64(len(w.buffer) - before)
 	if len(w.buffer) >= w.target() {
-		pn := w.partnum + 1
-		w.partnum++
-		if w.bg == nil {
-			// no background uploads yet
-			w.bg = make(chan error, 1)
-			w.alt = make([]byte, 0, w.target())
-		} else {
-			// wait for previous background
-			// upload to finish
-			err := <-w.bg
-			if err != nil {
-				return 0, err
-			}
+		err = w.upload()
+		if err != nil {
+			return 0, err
 		}
-		buf := w.buffer
-		go func() {
-			w.bg <- w.Output.Upload(pn, buf)
-		}()
-		// swap buffers while the upload
-		// is using the current buffer
-		w.buffer, w.alt = w.alt[:0], w.buffer[:0]
 	}
 	return len(p), nil
 }
@@ -280,7 +336,7 @@ func finalize(dst *Trailer, src []blockpart, min int) {
 		}
 		dst.Sparse.bump()
 	}
-	dst.Blocks = toDescs(src)
+	dst.Blocks = toDescs(dst.Blocks, src)
 }
 
 // Close closes the compression writer

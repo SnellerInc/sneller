@@ -19,6 +19,8 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 type timespan struct {
@@ -320,4 +322,45 @@ func (t *TimeIndex) Max() (date.Time, bool) {
 		return date.Time{}, false
 	}
 	return t.max[len(t.max)-1].when, true
+}
+
+func (t *TimeIndex) trim(max int) TimeIndex {
+	if max == 0 {
+		panic("empty trim")
+	}
+	if len(t.max) == 0 {
+		return TimeIndex{}
+	}
+
+	// copy mins where min.offset < max
+	j := len(t.min) - 1
+	for j > 0 && t.min[j].offset >= max {
+		j--
+	}
+	var newmin []timespan
+	if j == 0 {
+		newmin = []timespan{{offset: 0, when: t.min[0].when}}
+	} else {
+		newmin = slices.Clone(t.min[:j])
+	}
+
+	// copy maxes where max.offset < max
+	j = len(t.max) - 1
+	for j > 0 && t.max[j].offset > max {
+		j--
+	}
+	newmax := slices.Clone(t.max[:j])
+
+	// ... and additionally include a final
+	// right-hand-side boundary at max
+	if j == 0 || newmax[j-1].offset < max {
+		newmax = append(newmax, timespan{
+			offset: max,
+			when:   t.max[j].when,
+		})
+	}
+	return TimeIndex{
+		min: newmin,
+		max: newmax,
+	}
 }

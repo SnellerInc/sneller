@@ -75,10 +75,8 @@ func TestAppend(t *testing.T) {
 		}
 	}
 
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
+	dfs := newDirFS(t, tmpdir)
 	owner := newTenant(dfs)
-	dfs.Log = t.Logf
 	b := Builder{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
@@ -316,10 +314,8 @@ func TestAppendBadScan(t *testing.T) {
 		}
 	}
 
-	dfs := NewDirFS(tmpdir)
-	defer dfs.Close()
+	dfs := newDirFS(t, tmpdir)
 	owner := newTenant(dfs)
-	dfs.Log = t.Logf
 
 	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "foo",

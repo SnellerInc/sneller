@@ -52,8 +52,7 @@ func TestDecodeDefinition(t *testing.T) {
 			},
 		},
 	}
-	dfs := NewDirFS(dir)
-	defer dfs.Close()
+	dfs := newDirFS(t, dir)
 	err = WriteDefinition(dfs, "foo", ref)
 	if err != nil {
 		t.Fatal(err)

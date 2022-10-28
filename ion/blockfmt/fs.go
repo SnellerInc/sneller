@@ -122,8 +122,9 @@ func NewDirFS(dir string) *DirFS {
 // that is rooted in a particular directory.
 type DirFS struct {
 	fs.FS
-	Root string
-	Log  func(f string, args ...interface{})
+	Root        string
+	Log         func(f string, args ...interface{})
+	MinPartSize int
 }
 
 func hashFile(r io.Reader) (string, error) {
@@ -240,6 +241,9 @@ func (d *DirFS) Create(fullpath string) (Uploader, error) {
 	return &fileUploader{
 		fp:  fullpath,
 		dir: d,
+		BufferUploader: BufferUploader{
+			PartSize: d.MinPartSize,
+		},
 	}, nil
 }
 

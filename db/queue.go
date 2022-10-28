@@ -209,19 +209,41 @@ func (q *QueueRunner) delay() {
 	}
 }
 
+var errETagChanged = errors.New("etag changed")
+
 // perform the equivalent of infs.Open(name),
 // but take care to skip the I/O of the FS implementation
-// can just produce a handle directly
-func (q *QueueRunner) open(infs InputFS, name string, item QueueItem) (fs.File, error) {
+// can just produce a handle directly; also ensure that
+// when we *do* do a complete Open that we validate
+// the ETag, etc.
+func open(infs InputFS, name, etag string, size int64) (fs.File, error) {
 	// an s3-specific optimization: don't do any
 	// I/O if we have enough information to produce
 	// an s3.File handle already
 	if b, ok := infs.(*S3FS); ok {
-		f := s3.NewFile(b.Key, b.Bucket, name, item.ETag(), item.Size())
+		f := s3.NewFile(b.Key, b.Bucket, name, etag, size)
 		f.Client = b.Client
 		return f, nil
 	}
-	return infs.Open(name)
+	f, err := infs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	gotEtag, err := infs.ETag(name, info)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("getting ETag: %w", err)
+	}
+	if etag != gotEtag {
+		f.Close()
+		return nil, fmt.Errorf("%w: %s -> %s", errETagChanged, etag, gotEtag)
+	}
+	return f, nil
 }
 
 // populate dst from q.inputs based on
@@ -246,28 +268,17 @@ outer:
 			if err != nil {
 				return err
 			}
-			f, err := q.open(infs, name, q.inputs[i])
+			f, err := open(infs, name, etag, q.inputs[i].Size())
 			if err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					q.Logf("ignoring %q (doesn't exist)", name)
 					continue outer
 				}
+				if errors.Is(err, errETagChanged) {
+					q.Logf("ignoring %q (%s)", name, err)
+					continue outer
+				}
 				return err
-			}
-			info, err := f.Stat()
-			if err != nil {
-				f.Close()
-				return err
-			}
-			gotEtag, err := infs.ETag(name, info)
-			if err != nil {
-				f.Close()
-				return err
-			}
-			if etag != gotEtag {
-				f.Close()
-				q.Logf("ignoring %q due to etag mismatch (want %q got %q)", name, etag, gotEtag)
-				continue outer
 			}
 			fm, err := bld.Format(def.Inputs[j].Format, p, def.Inputs[j].Hints)
 			if err != nil {
@@ -279,7 +290,7 @@ outer:
 				Path: p,
 				ETag: etag,
 				Glob: glob,
-				Size: info.Size(),
+				Size: q.inputs[i].Size(),
 				R:    f,
 				F:    fm,
 			})

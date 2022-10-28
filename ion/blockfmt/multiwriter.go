@@ -77,6 +77,11 @@ type MultiWriter struct {
 	spans    []span
 	nextpart int64
 
+	// base is the start offset of blockparts;
+	// this is non-zero when we consume an existing
+	// trailer + blocks before ingesting objects
+	base int64
+
 	// unallocated is the list of descriptors
 	// in the tail(s) of each input stream that
 	// could not be flushed on their own due to
@@ -136,6 +141,13 @@ func (m *MultiWriter) init() {
 	}
 }
 
+func (m *MultiWriter) target() int {
+	if m.TargetSize != 0 {
+		return m.TargetSize
+	}
+	return 5 * 1024 * 1024
+}
+
 // SkipChecks disable some runtime checks
 // of the input data, which is ordinarily
 // expected to be ion data. Do not use this
@@ -168,6 +180,52 @@ func (m *MultiWriter) Open() (io.WriteCloser, error) {
 	s.curspan.partnum = m.nextpart
 	m.nextpart++
 	return s, nil
+}
+
+func (m *MultiWriter) writeStart(r io.Reader, t *Trailer) error {
+	m.init()
+	if t.Algo != m.Algo || 1<<t.BlockShift != m.InputAlign {
+		return nil // not directly compatible
+	}
+	j := 0
+	for j < len(t.Blocks)-1 && t.Blocks[j].Chunks >= m.MinChunksPerBlock {
+		j++
+	}
+	if j == 0 || t.Blocks[j].Offset < int64(m.Output.MinPartSize()) {
+		return nil
+	}
+	n := int64(0)
+	var buffer []byte
+	for n < t.Blocks[j].Offset {
+		// perform uploads that are at
+		// least w.target()-sized, and up to
+		// 2*w.target()-sized
+		remaining := t.Blocks[j].Offset - n
+		amt := m.target()
+		if remaining < int64(2*amt) {
+			amt = int(remaining)
+		}
+		if cap(buffer) >= amt {
+			buffer = buffer[:amt]
+		} else {
+			buffer = make([]byte, amt)
+		}
+		_, err := io.ReadFull(r, buffer)
+		if err != nil {
+			return err
+		}
+		err = m.Output.Upload(m.nextpart, buffer)
+		if err != nil {
+			return err
+		}
+		m.nextpart++
+		n += int64(amt)
+	}
+	m.base = t.Blocks[j].Offset
+	m.Trailer.Blocks = t.Blocks[:j]
+	m.Trailer.Sparse = t.Sparse.Trim(j)
+	t.Blocks = t.Blocks[j:]
+	return nil
 }
 
 // upload begins the upload of s.buf
@@ -385,7 +443,7 @@ func (m *MultiWriter) finalize() {
 	// by the previous span offsets so that
 	// they actually reflect the final output offsets;
 	// also take the opportunity to do some sanity checking
-	offset := int64(0)
+	offset := m.base
 	part := int64(0)
 	var all []blockpart
 	for i := range m.spans {
