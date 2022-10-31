@@ -15,7 +15,6 @@
 package vm
 
 import (
-	"fmt"
 	"io"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -135,7 +134,7 @@ func (u *unnesting) writeRows(delims []vmref, rp *rowParams) error {
 		u.perms = make([]int32, 1024)
 	}
 	if u.splat.compiled == nil {
-		return fmt.Errorf("unnesting.writeRows() before symbolize()")
+		panic("WriteRows() called before Symbolize()")
 	}
 
 	u.splat.prepare(rp)

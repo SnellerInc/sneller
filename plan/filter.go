@@ -38,8 +38,13 @@ func (f *Filter) rewrite(rw expr.Rewriter) {
 }
 
 func (f *Filter) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+	filter, err := vm.NewFilter(f.Expr, dst)
+	if err != nil {
+		return 0, nil, err
+	}
+
 	push(f.Expr, f.From)
-	return f.From.wrap(vm.NewFilter(f.Expr, dst), ep)
+	return f.From.wrap(filter, ep)
 }
 
 func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab) error {

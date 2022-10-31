@@ -618,7 +618,7 @@ func (p *aggregateLocal) symbolize(st *symtab, aux *auxbindings) error {
 
 func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {
 	if p.bc.compiled == nil {
-		panic("bytecode WriteRows() before Symbolize()")
+		panic("WriteRows() called before Symbolize()")
 	}
 
 	p.bc.prepare(rp)

@@ -315,7 +315,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 
 func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out []vRegLayout, err error) {
 	if findbc.compiled == nil {
-		return out, fmt.Errorf("sortstate.bcfind() before symbolize()")
+		panic("bcfind() called before symbolize()")
 	}
 
 	// FIXME: don't encode knowledge about vectorization width here...

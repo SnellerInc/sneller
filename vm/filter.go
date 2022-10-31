@@ -32,13 +32,13 @@ type Filter struct {
 // NewFilter constructs a Filter from a boolean expression.
 // The returned Filter will write rows for which e evaluates
 // to TRUE to rest.
-func NewFilter(e expr.Node, rest QuerySink) *Filter {
+func NewFilter(e expr.Node, rest QuerySink) (*Filter, error) {
 	prog, err := compileLogical(e)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	prog.Renumber()
-	return where(prog, rest)
+	return where(prog, rest), nil
 }
 
 func where(p *prog, rest QuerySink) *Filter {
@@ -118,7 +118,7 @@ func (w *wherebc) EndSegment() {
 
 func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	if w.bc.compiled == nil {
-		panic("bytecode writeRows() before Symbolize()")
+		panic("WriteRows() called before symbolize()")
 	}
 	w.bc.prepare(rp)
 	valid := evalfilterbc(&w.bc, delims)

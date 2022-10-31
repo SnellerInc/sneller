@@ -505,7 +505,7 @@ func (m *Rematerializer) symbolize(st *symtab, aux *auxbindings) error {
 
 func (m *Rematerializer) writeRows(delims []vmref, rp *rowParams) error {
 	if m.stsize == 0 {
-		return fmt.Errorf("Rematerializer.WriteRows() before symbolize()")
+		panic("WriteRows() called before Symbolize()")
 	}
 	if len(m.aux) == 0 {
 		return m.writeRowsFast(delims)

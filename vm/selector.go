@@ -251,7 +251,7 @@ func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 		return nil
 	}
 	if p.aw.buf == nil {
-		panic("projector.WriteRows() before symbolize()")
+		panic("WriteRows() called before Symbolize()")
 	}
 	// if the first iteration of the projection
 	// loop would fail due to not enough space,
