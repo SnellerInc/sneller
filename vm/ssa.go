@@ -1141,9 +1141,8 @@ type sympair struct {
 }
 
 type prog struct {
-	curpath []string
-	values  []*value // all values in program
-	ret     *value   // value actually yielded by program
+	values []*value // all values in program
+	ret    *value   // value actually yielded by program
 
 	// used to find common expressions
 	dict  []string            // common strings
@@ -1178,14 +1177,6 @@ func (p *prog) ReserveSlot(slot stackslot) {
 		}
 	}
 	p.reserved = append(p.reserved, slot)
-}
-
-func (p *prog) PushPath(x string) {
-	p.curpath = append(p.curpath, x)
-}
-
-func (p *prog) PopPath() {
-	p.curpath = p.curpath[:len(p.curpath)-1]
 }
 
 // dictionary strings must be padded to
@@ -1800,56 +1791,12 @@ func (p *prog) mk(mem *value, pred *value) *value {
 
 // Dot computes <base>.col
 func (p *prog) Dot(col string, base *value) *value {
-	for i := range p.curpath {
-		base = p.dot(p.curpath[i], base)
-	}
-	return p.dot(col, base)
-}
-
-func (p *prog) dot(col string, base *value) *value {
 	if base != p.values[0] {
 		// need to perform a conversion from
 		// a value pointer to an interior-of-structure pointer
 		base = p.ssa2(stuples, base, base)
 	}
 	return p.ssa2imm(sdot, base, base, col)
-}
-
-// Path returns the value corresponding to
-// navigating the given path expression
-// by splitting it on the '.' character.
-// Additional path components specified
-// by a call to PushPath are added to the
-// full path.
-//
-//	prog.Path("a.b.c")
-//
-// is sugar for
-//
-//	prog.Dot("c", prog.Dot("b", prog.Dot("a", prog.ValidLanes()))),
-//
-// which is also equivalent to
-//
-//	prog.PushPath("a"); prog.Path("b.c")
-func (p *prog) Path(str string) *value {
-	return p.RelPath(p.ValidLanes(), str)
-}
-
-// RelPath computes the field expression 'str'
-// relative to the base object 'base'
-func (p *prog) RelPath(base *value, str string) *value {
-	for i := range p.curpath {
-		base = p.dot(p.curpath[i], base)
-	}
-	for len(str) > 0 {
-		i := strings.IndexByte(str, '.')
-		if i == -1 {
-			return p.dot(str, base)
-		}
-		base = p.dot(str[:i], base)
-		str = str[i+1:]
-	}
-	return base
 }
 
 func (p *prog) tolist(v *value) *value {

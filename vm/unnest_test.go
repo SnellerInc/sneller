@@ -80,7 +80,7 @@ func TestSplat(t *testing.T) {
 	}
 
 	p.Begin()
-	field := p.Path("Entries")
+	field := p.Dot("Entries", p.ValidLanes())
 	list := p.ssa2(stolist, field, field)
 	p.Return(list)
 	p.symbolize(&st, &auxbindings{})

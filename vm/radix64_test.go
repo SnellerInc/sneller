@@ -78,7 +78,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	// compute GROUP BY Make
 	p := &agt.prog
 	p.Begin()
-	makeval := p.dot("Make", p.ValidLanes())
+	makeval := p.Dot("Make", p.ValidLanes())
 	mem, err := p.Store(p.InitMem(), makeval, 0)
 	if err != nil {
 		panic(err)
@@ -185,7 +185,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	// compute GROUP BY Make
 	p := &agt.prog
 	p.Begin()
-	makeval := p.dot("Make", p.ValidLanes())
+	makeval := p.Dot("Make", p.ValidLanes())
 	mem, err := p.Store(p.InitMem(), makeval, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -412,7 +412,7 @@ func BenchmarkAggregate(b *testing.B) {
 	// compute GROUP BY Make
 	p := &agt.prog
 	p.Begin()
-	makeval := p.dot("Make", p.ValidLanes())
+	makeval := p.Dot("Make", p.ValidLanes())
 	mem, err := p.Store(p.InitMem(), makeval, 0)
 	if err != nil {
 		b.Fatal(err)

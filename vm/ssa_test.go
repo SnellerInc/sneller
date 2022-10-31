@@ -97,7 +97,7 @@ func TestCompileSSA(t *testing.T) {
 		},
 		{
 			expr: func(p *prog) *value {
-				return p.Equals(p.Path("foo.bar"), p.Constant(1))
+				return p.Equals(bcpath(p, "foo.bar"), p.Constant(1))
 			},
 			text: []string{
 				"findsym u32(0xA)",
@@ -131,8 +131,8 @@ func TestCompileSSA(t *testing.T) {
 		},
 		{
 			expr: func(p *prog) *value {
-				return p.And(p.Equals(p.Path("foo.bar"), p.Constant(1)),
-					p.Equals(p.Path("foo.baz"), p.Constant(1)))
+				return p.And(p.Equals(bcpath(p, "foo.bar"), p.Constant(1)),
+					p.Equals(bcpath(p, "foo.baz"), p.Constant(1)))
 			},
 			text: []string{
 				"findsym u32(0xA)",
@@ -542,7 +542,7 @@ var tickets2TestQueries = []struct {
 		name: ".Issue.Time<1200",
 		rows: 520,
 		expr: func(p *prog) *value {
-			return p.Less(p.Path("Issue.Time"), p.Constant(1200))
+			return p.Less(bcpath(p, "Issue.Time"), p.Constant(1200))
 		},
 	},
 	{
@@ -550,29 +550,29 @@ var tickets2TestQueries = []struct {
 		rows: 1023,
 		expr: func(p *prog) *value {
 			return p.And(
-				p.Less(p.Path("Coordinates.Lat"), p.Constant(100000)),
-				p.Less(p.Path("Coordinates.Long"), p.Constant(100000)))
+				p.Less(bcpath(p, "Coordinates.Lat"), p.Constant(100000)),
+				p.Less(bcpath(p, "Coordinates.Long"), p.Constant(100000)))
 		},
 	},
 	{
 		name: ".Fields[0] IS TRUE",
 		rows: 882,
 		expr: func(p *prog) *value {
-			return p.IsTrue(p.Index(p.Path("Fields"), 0))
+			return p.IsTrue(p.Index(bcpath(p, "Fields"), 0))
 		},
 	},
 	{
 		name: ".Fields[1] == 1",
 		rows: 112,
 		expr: func(p *prog) *value {
-			return p.Equals(p.Index(p.Path("Fields"), 1), p.Constant(1))
+			return p.Equals(p.Index(bcpath(p, "Fields"), 1), p.Constant(1))
 		},
 	},
 	{
 		name: ".Fields[2] == \"01535\"",
 		rows: 1,
 		expr: func(p *prog) *value {
-			return p.Equals(p.Index(p.Path("Fields"), 2), p.Constant("01535"))
+			return p.Equals(p.Index(bcpath(p, "Fields"), 2), p.Constant("01535"))
 		},
 	},
 }
@@ -586,7 +586,7 @@ var nestedTicketsQueries = []struct {
 		name: ".Entries[0].BodyStyle == \"PA\"",
 		rows: 45,
 		expr: func(p *prog) *value {
-			entries := p.Path("Entries")
+			entries := bcpath(p, "Entries")
 			entry0 := p.Index(entries, 0)
 			bodystyle := p.Dot("BodyStyle", entry0)
 			return p.Equals(bodystyle, p.Constant("PA"))
@@ -596,7 +596,7 @@ var nestedTicketsQueries = []struct {
 		name: ".Entries[3].BodyStyle == \"PA\"",
 		rows: 31,
 		expr: func(p *prog) *value {
-			entries := p.Path("Entries")
+			entries := bcpath(p, "Entries")
 			entry3 := p.Index(entries, 3)
 			bodystyle := p.Dot("BodyStyle", entry3)
 			return p.Equals(bodystyle, p.Constant("PA"))
@@ -663,8 +663,8 @@ var nycTestQueries = []struct {
 		rows: 5897,
 		expr: func(p *prog) *value {
 			return p.Or(
-				p.Less(p.Path("does_not_exist"), p.Constant(2)),
-				p.Less(p.Path("trip_distance"), p.Constant(2.5)))
+				p.Less(bcpath(p, "does_not_exist"), p.Constant(2)),
+				p.Less(bcpath(p, "trip_distance"), p.Constant(2.5)))
 		},
 	},
 	{
@@ -672,8 +672,8 @@ var nycTestQueries = []struct {
 		rows: 0,
 		expr: func(p *prog) *value {
 			return p.And(
-				p.Less(p.Path("does_not_exist"), p.Constant(2)),
-				p.Less(p.Path("trip_distance"), p.Constant(2.5)))
+				p.Less(bcpath(p, "does_not_exist"), p.Constant(2)),
+				p.Less(bcpath(p, "trip_distance"), p.Constant(2.5)))
 		},
 	},
 	{
@@ -1241,4 +1241,16 @@ func BenchmarkNYCQueries(b *testing.B) {
 			b.ReportMetric(rps, "rows/s")
 		})
 	}
+}
+
+func bcpath(p *prog, str string) *value {
+	fields := strings.Split(str, ".")
+	base := p.Dot(fields[0], p.ValidLanes())
+
+	fields = fields[1:]
+	for i := range fields {
+		base = p.Dot(fields[i], base)
+	}
+
+	return base
 }
