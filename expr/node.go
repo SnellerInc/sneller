@@ -177,10 +177,6 @@ const (
 	ApproxCountDistinctDefaultPrecision = 11
 )
 
-func (a AggregateOp) IsBoolOp() bool {
-	return a == OpBoolAnd || a == OpBoolOr
-}
-
 func (a AggregateOp) defaultResult() string {
 	switch a {
 	case OpCount, OpCountDistinct, OpSumCount, OpApproxCountDistinct:
@@ -859,11 +855,6 @@ func (i Integer) Equals(e Node) bool {
 
 type Rational big.Rat
 
-// NewRational creates a new Rational with numerator a and denominator b.
-func NewRational(a, b int64) *Rational {
-	return (*Rational)(big.NewRat(a, b))
-}
-
 func (r *Rational) text(dst *strings.Builder, redact bool) {
 	br := (*big.Rat)(r)
 	if redact {
@@ -1234,7 +1225,7 @@ func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "items":
 		if ion.TypeOf(body) != ion.ListType {
-			return fmt.Errorf("decoding expr.Path: \"text\" field has type %v", ion.TypeOf(body))
+			return fmt.Errorf("decoding expr.Path: \"items\" field has type %v", ion.TypeOf(body))
 		}
 		mem, _ := ion.Contents(body)
 		top := true
@@ -1291,47 +1282,6 @@ func (p *Path) Clone() *Path {
 // path expression from an identifier string
 func Identifier(x string) *Path {
 	return &Path{First: x}
-}
-
-// Less compares two paths and returns
-// whether 'p' is less than 'other' for
-// some symmetric ordering rule
-// (This can be used to sort paths so
-// that a set of paths can be output
-// deterministically.)
-func (p *Path) Less(other *Path) bool {
-	if p.First == other.First {
-		if p.Rest == nil {
-			// less or equal
-			return false
-		}
-		var tmp strings.Builder
-		p.text(&tmp, false)
-		left := tmp.String()
-		tmp.Reset()
-		other.text(&tmp, false)
-		// FIXME: this performs a bunch of allocs;
-		// perform the comparison recursively instead
-		return left < tmp.String()
-	}
-	return p.First < other.First
-}
-
-// Strip strips the first element
-// from the path and returns the
-// remaining path. Strip returns
-// nil if there is no remaining
-// path or the remaining path would
-// not begin with a field selector.
-func (p *Path) Strip() *Path {
-	if p.Rest == nil {
-		return nil
-	}
-	d, ok := p.Rest.(*Dot)
-	if !ok {
-		return nil
-	}
-	return &Path{First: d.Field, Rest: d.Rest}
 }
 
 func (p *Path) walk(v Visitor) {}
