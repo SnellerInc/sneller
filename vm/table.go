@@ -48,40 +48,6 @@ type Table interface {
 	WriteChunks(dst QuerySink, parallel int) error
 }
 
-// NewStreamTable turns a stream of unknown length into a Table.
-// The alignment boundaries of the chunks must be
-// known in advance.
-func NewStreamTable(src io.Reader, align int) *StreamTable {
-	return &StreamTable{
-		src:   src,
-		align: align,
-	}
-}
-
-// StreamTable is a Table implementation
-// that wraps an arbitrary-length stream of bytes.
-type StreamTable struct {
-	lock  sync.Mutex
-	src   io.Reader
-	ateof bool
-	align int
-}
-
-// Chunks implements Table.Chunks
-func (s *StreamTable) Chunks() int { return -1 }
-
-func readToEOF(r io.Reader, dst []byte) (int, error) {
-	n := 0
-	for n < len(dst) {
-		nn, err := r.Read(dst[n:])
-		n += nn
-		if err != nil {
-			return n, err
-		}
-	}
-	return n, nil
-}
-
 // SplitInput is a helper function for
 // writing the implementation of Table.WriteChunks.
 // SplitInput calls dst.Open() up to parallel times,
@@ -143,35 +109,6 @@ func SplitInput(dst QuerySink, parallel int, into func(io.Writer) error) error {
 		}
 	}
 	return nil
-}
-
-// WriteChunks implements Table.WriteChunks
-func (s *StreamTable) WriteChunks(dst QuerySink, parallel int) error {
-	into := func(w io.Writer) error {
-		chunk := Malloc()
-		defer Free(chunk)
-		for {
-			s.lock.Lock()
-			if s.ateof {
-				s.lock.Unlock()
-				return nil
-			}
-			n, err := readToEOF(s.src, chunk)
-			s.ateof = errors.Is(err, io.EOF)
-			s.lock.Unlock()
-			if n == 0 {
-				if errors.Is(err, io.EOF) {
-					return nil
-				}
-				return err
-			}
-			_, err = w.Write(chunk[:n])
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return SplitInput(dst, parallel, into)
 }
 
 // NewReaderAtTable table constructs a ReaderAtTable
