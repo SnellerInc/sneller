@@ -22,6 +22,8 @@ import (
 	"strconv"
 
 	"github.com/SnellerInc/sneller/date"
+
+	"golang.org/x/exp/slices"
 )
 
 // Peek peeks at the type and size of
@@ -144,19 +146,8 @@ func toJSON(st *Symtab, w jswriter, buf []byte, s *scratch, annotate bool) (int,
 		if body == nil {
 			return 0, buf, fmt.Errorf("ToJSON: bad blob")
 		}
-		// FIXME: don't allocate a new buffer here
-		dst := make([]byte, base64.StdEncoding.EncodedLen(len(body)))
-		base64.StdEncoding.Encode(dst, body)
-		err := w.WriteByte('"')
-		if err != nil {
-			return 0, rest, err
-		}
-		n, err := w.Write(dst)
-		if err != nil {
-			return n + 1, rest, err
-		}
-		err = w.WriteByte('"')
-		return n + 2, rest, err
+		n, err := w.Write(s.blob(body))
+		return n, rest, err
 	case ListType, SexpType:
 		body, rest := Contents(buf)
 		if body == nil {
@@ -312,6 +303,17 @@ func (s *scratch) uint(u uint64) []byte {
 func (s *scratch) time(t date.Time) []byte {
 	s.buf = append(s.buf[:0], '"')
 	s.buf = t.AppendRFC3339Nano(s.buf)
+	s.buf = append(s.buf, '"')
+	return s.buf
+}
+
+func (s *scratch) blob(b []byte) []byte {
+	size := base64.StdEncoding.EncodedLen(len(b))
+
+	s.buf = slices.Grow(s.buf[:0], size+2) // plus 2 * '"'
+	s.buf = append(s.buf, '"')
+	s.buf = s.buf[:1+size]
+	base64.StdEncoding.Encode(s.buf[1:], b)
 	s.buf = append(s.buf, '"')
 	return s.buf
 }
