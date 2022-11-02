@@ -12,4 +12,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "../internal/asmutils/avx512.h"
+// complements a register and writes result to another one
+// For example: VNOT(Z10, Z12) is Z12 = ~Z10
+#define VNOT(src, dst)      VPTERNLOGD $0x55, src, src, dst
+
+// complement with masked move
+#define VNOTK(src, k, dst)  VPTERNLOGD $0x55, src, src, k, dst
+
+// complements a register
+#define VNOTINPLACE(reg)    VNOT(reg, reg)
+
+// Fills the destination register with ones
+#define VONES(dst)          VPTERNLOGD $0xff, dst, dst, dst
