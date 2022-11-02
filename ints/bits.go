@@ -20,39 +20,85 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
+// TestBit check if the k-th bit is set in range "in"
 func TestBit[T, K constraints.Integer](in []T, k K) bool {
 	return (in[uintptr(k)/(unsafe.Sizeof(in[0])*8)] & (T(1) << (uintptr(k) % (unsafe.Sizeof(in[0]) * 8)))) != 0
 }
 
+// SetBit sets the k-th bit in range "in"
 func SetBit[T, K constraints.Integer](in []T, k K) {
 	in[uintptr(k)/(unsafe.Sizeof(in[0])*8)] |= (T(1) << (uintptr(k) % (unsafe.Sizeof(in[0]) * 8)))
 }
 
+// ClearBit clears the k-th bit in range "in"
 func ClearBit[T, K constraints.Integer](in []T, k K) {
 	in[uintptr(k)/(unsafe.Sizeof(in[0])*8)] &= ^(T(1) << (uintptr(k) % (unsafe.Sizeof(in[0]) * 8)))
 }
 
+// FlipBit inverts the k-th bit in range "in"
 func FlipBit[T, K constraints.Integer](in []T, k K) {
 	in[uintptr(k)/(unsafe.Sizeof(in[0])*8)] ^= (T(1) << (uintptr(k) % (unsafe.Sizeof(in[0]) * 8)))
 }
 
+// SetBits sets the bits [first, last) in range "in"
 func SetBits[T, K constraints.Integer](in []T, first, last K) {
-	// TODO: optimize me
-	for i := first; i < last; i++ {
-		SetBit(in, i)
+	bitsPerT := unsafe.Sizeof(in[0]) * 8
+	mskT := bitsPerT - 1
+	ones := (uint64(1) << bitsPerT) - 1
+	firstIdx := uintptr(first) / bitsPerT
+	firstMask := T(ones << (uintptr(first) & mskT))
+	lastIdx := uintptr(last-1) / bitsPerT
+	lastMask := T(ones >> ((uintptr(last-1) & mskT) ^ mskT))
+
+	if firstIdx == lastIdx {
+		in[firstIdx] |= (firstMask & lastMask)
+	} else {
+		in[firstIdx] |= firstMask
+		for i := firstIdx + 1; i != lastIdx; i++ {
+			in[i] = ^T(0)
+		}
+		in[lastIdx] |= lastMask
 	}
 }
 
+// ClearBits clears the bits [first, last) in range "in"
 func ClearBits[T, K constraints.Integer](in []T, first, last K) {
-	// TODO: optimize me
-	for i := first; i < last; i++ {
-		ClearBit(in, i)
+	bitsPerT := unsafe.Sizeof(in[0]) * 8
+	mskT := bitsPerT - 1
+	ones := (uint64(1) << bitsPerT) - 1
+	firstIdx := uintptr(first) / bitsPerT
+	firstMask := T(ones << (uintptr(first) & mskT))
+	lastIdx := uintptr(last-1) / bitsPerT
+	lastMask := T(ones >> ((uintptr(last-1) & mskT) ^ mskT))
+
+	if firstIdx == lastIdx {
+		in[firstIdx] &= ^(firstMask & lastMask)
+	} else {
+		in[firstIdx] &= ^firstMask
+		for i := firstIdx + 1; i != lastIdx; i++ {
+			in[i] = T(0)
+		}
+		in[lastIdx] &= ^lastMask
 	}
 }
 
+// FlipBits inverts the bits [first, last) in range "in"
 func FlipBits[T, K constraints.Integer](in []T, first, last K) {
-	// TODO: optimize me
-	for i := first; i < last; i++ {
-		FlipBit(in, i)
+	bitsPerT := unsafe.Sizeof(in[0]) * 8
+	mskT := bitsPerT - 1
+	ones := (uint64(1) << bitsPerT) - 1
+	firstIdx := uintptr(first) / bitsPerT
+	firstMask := T(ones << (uintptr(first) & mskT))
+	lastIdx := uintptr(last-1) / bitsPerT
+	lastMask := T(ones >> ((uintptr(last-1) & mskT) ^ mskT))
+
+	if firstIdx == lastIdx {
+		in[firstIdx] ^= (firstMask & lastMask)
+	} else {
+		in[firstIdx] ^= firstMask
+		for i := firstIdx + 1; i != lastIdx; i++ {
+			in[i] ^= ^T(0)
+		}
+		in[lastIdx] ^= lastMask
 	}
 }
