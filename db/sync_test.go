@@ -396,17 +396,17 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lst := []blockfmt.Input{{
+	lst := mkparts([]blockfmt.Input{{
 		Path: "file://a-prefix/parking2.json",
 		ETag: etag,
 		// deliberately omit LastModified
 		Size: info.Size(),
 		R:    noReadCloser{t},
 		F:    blockfmt.MustSuffixToFormat(".json"),
-	}}
+	}})
 
 	owner.ro = true
-	err = b.Append(owner, "default", "parking", lst, nil)
+	err = b.append(owner, "default", "parking", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

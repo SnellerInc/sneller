@@ -15,36 +15,38 @@
 package db
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
-func TestMakePartitions(t *testing.T) {
-	good := func(part Partition, in blockfmt.Input, want ion.Datum) {
+func TestCollector(t *testing.T) {
+	good := func(conf []Partition, input, glob, name string, cons []ion.Field) {
 		t.Helper()
-		tmpls, err := makePartitions([]Partition{part})
+		var c collector
+		err := c.init(conf)
 		if err != nil {
-			t.Error("make:", err)
+			t.Error("init:", err)
 			return
 		}
-		if part.Field != tmpls[0].Field {
-			t.Errorf("field name mismatch: %q != %q", part.Field, tmpls[0].Field)
-		}
-		got, err := tmpls[0].Eval(&in)
+		part, err := c.part(glob, input)
 		if err != nil {
-			t.Error("eval:", err)
+			t.Error("part:", err)
 			return
 		}
-		if !ion.Equal(want, got) {
-			t.Errorf("result mismatch: %v != %v", want, got)
+		if part.name != name {
+			t.Errorf("wanted name %q, got %q", name, part.name)
+		}
+		if !reflect.DeepEqual(cons, part.cons) {
+			t.Errorf("result mismatch: %v != %v", cons, part.cons)
 		}
 	}
 	bad := func(parts []Partition, errstr string) {
 		t.Helper()
-		_, err := makePartitions(parts)
+		var c collector
+		err := c.init(parts)
 		if err == nil {
 			t.Errorf("expected error")
 		} else if err.Error() != errstr {
@@ -54,21 +56,60 @@ func TestMakePartitions(t *testing.T) {
 		}
 	}
 	// test some good partitions
-	good(Partition{Field: "x"},
-		blockfmt.Input{Path: "/foo/bar", Glob: "/{x}/{y}"},
-		ion.String("foo"))
-	good(Partition{Field: "bar", Value: "foo-$x-baz"},
-		blockfmt.Input{Path: "/foo/bar/baz", Glob: "/foo/{x}/baz"},
-		ion.String("foo-bar-baz"))
-	good(Partition{Field: "n", Type: "int"},
-		blockfmt.Input{Path: "/foo/123/bar", Glob: "/foo/{n}/bar"},
-		ion.Int(123))
-	good(Partition{Field: "date", Type: "date", Value: "$yyyy-$mm-$dd"},
-		blockfmt.Input{Path: "/foo/2022/10/26/file.json", Glob: "/foo/{yyyy}/{mm}/{dd}/*.json"},
-		ion.Timestamp(date.Date(2022, 10, 26, 0, 0, 0, 0)))
-	good(Partition{Field: "time", Type: "timestamp", Value: "$yyyy-$mm-$dd $hh:00:00"},
-		blockfmt.Input{Path: "/foo/2022/10/26/03/file.json", Glob: "/foo/{yyyy}/{mm}/{dd}/{hh}/*.json"},
-		ion.Timestamp(date.Date(2022, 10, 26, 3, 0, 0, 0)))
+	good([]Partition{
+		{Field: "x"},
+		{Field: "y"},
+	},
+		"/foo/bar", "/{x}/{y}", "foo/bar",
+		[]ion.Field{
+			{Label: "x", Value: ion.String("foo")},
+			{Label: "y", Value: ion.String("bar")},
+		},
+	)
+	good([]Partition{
+		{Field: "path", Value: "$x/$y"},
+	},
+		"/foo/bar", "/{x}/{y}", "foo/bar",
+		[]ion.Field{
+			{Label: "path", Value: ion.String("foo/bar")},
+		},
+	)
+	good([]Partition{
+		{Field: "bar", Value: "foo-$x-baz"},
+	},
+		"/foo/bar/baz", "/foo/{x}/baz", "foo-bar-baz",
+		[]ion.Field{
+			{Label: "bar", Value: ion.String("foo-bar-baz")},
+		},
+	)
+	good([]Partition{
+		{Field: "n", Type: "int"},
+	},
+		"/foo/123/bar", "/foo/{n}/bar", "123",
+		[]ion.Field{
+			{Label: "n", Value: ion.Int(123)},
+		},
+	)
+	good([]Partition{
+		{Field: "date", Type: "date", Value: "$yyyy-$mm-$dd"},
+	},
+		"/foo/2022/10/26/file.json",
+		"/foo/{yyyy}/{mm}/{dd}/*.json",
+		"2022-10-26",
+		[]ion.Field{
+			{Label: "date", Value: ion.Timestamp(date.Date(2022, 10, 26, 0, 0, 0, 0))},
+		},
+	)
+	good([]Partition{{
+		Field: "time", Type: "timestamp", Value: "$yyyy-$mm-$dd $hh:00:00"},
+	},
+		"/foo/2022/10/26/03/file.json",
+		"/foo/{yyyy}/{mm}/{dd}/{hh}/*.json",
+		"2022-10-26 03:00:00",
+		[]ion.Field{
+			{Label: "time", Value: ion.Timestamp(date.Date(2022, 10, 26, 3, 0, 0, 0))},
+		},
+	)
 	// test some bad partitions
 	bad([]Partition{
 		{Field: ""},
@@ -82,7 +123,35 @@ func TestMakePartitions(t *testing.T) {
 	bad([]Partition{
 		{Field: "!@#$"},
 	}, `cannot use field name "!@#$" as value template`)
-	bad([]Partition{
-		{Field: "foo", Type: "badtype"},
-	}, `invalid type "badtype"`)
+}
+
+func TestCheckSegment(t *testing.T) {
+	run := func(s string, want bool) {
+		t.Helper()
+		got := checkSegment([]byte(s))
+		if want != got {
+			t.Errorf("want %v, got %v", want, got)
+		}
+	}
+	run("a", true)
+	run("a/b", true)
+	run("foo", true)
+	run("foo/bar", true)
+	run("foo/bar/baz", true)
+	run("f.oo/bar", true)
+	run("foo/b..ar", true)
+
+	run("", false)
+	run("/", false)
+	run(".", false)
+	run("..", false)
+	run("foo/bar/", false)
+	run("foo//bar", false)
+	run("/foo/bar", false)
+	run("foo/.", false)
+	run("foo/..", false)
+	run("foo/./bar", false)
+	run("foo/../bar", false)
+	run("./foo", false)
+	run("../foo", false)
 }

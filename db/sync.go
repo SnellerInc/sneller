@@ -239,68 +239,113 @@ var (
 	ErrDuplicateObject = errors.New("duplicate input object")
 )
 
-// determine if the most-recently-produced packed*.ion.zst
-// is below the minimum merge size; if it is, then pop
-// it off the end of idx.Inline and add the old (to-be-unreferenced)
-// path to the list of items to be deleted when we sync the index
-func (b *Builder) popPrepend(idx *blockfmt.Index) *blockfmt.Descriptor {
-	l := len(idx.Inline)
-	if l > 0 && idx.Inline[l-1].Size < b.minMergeSize() {
-		ret := &idx.Inline[l-1]
-		idx.Inline = idx.Inline[:l-1]
-		idx.ToDelete = append(idx.ToDelete, blockfmt.Quarantined{
-			Path:   ret.Path,
-			Expiry: date.Now().Add(b.GCMinimumAge),
-		})
-		return ret
+// partitionFor returns the partition prefix for
+// a packfile object path p, or ("", false) if
+// the partition could not be determined from
+// the object path.
+func (st *tableState) partitionFor(p string) (string, bool) {
+	p, _ = path.Split(p)
+	if !strings.HasSuffix(p, "/") {
+		return "", false
 	}
-	return nil
-}
-
-func (b *Builder) nextID(idx *blockfmt.Index) int {
-	n := len(idx.Inline) + idx.Indirect.Objects()
-	l := len(idx.Inline)
-	// keep in sync with popPrepend() logic
-	if l > 0 && idx.Inline[l-1].Size < b.minMergeSize() {
-		n--
-	}
-	return n
-}
-
-func (st *tableState) dedup(idx *blockfmt.Index, lst []blockfmt.Input) (*blockfmt.Descriptor, []blockfmt.Input, error) {
-	descID := st.conf.nextID(idx)
-	// try to ensure the Append operations don't block;
-	// fetch all the tree leaves in parallel
-	idx.Inputs.Prefetch(lst)
-
-	var kept []blockfmt.Input
-	for i := range lst {
-		ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)
-		if err != nil {
-			if errors.Is(err, blockfmt.ErrETagChanged) {
-				// the file at this path has been overwritten
-				// with new content; we can't "replace" the old
-				// data so there's not much we can do here...
-				lst[i].R.Close()
-				continue
-			}
-			return nil, nil, err
+	p = p[:len(p)-1]
+	trim := []string{"db/", st.db, "/", st.table}
+	for _, pre := range trim {
+		if !strings.HasPrefix(p, pre) {
+			return "", false
 		}
-		if ret {
-			kept = append(kept, lst[i])
+		p = p[len(pre):]
+	}
+	p = strings.TrimPrefix(p, "/")
+	return p, true
+}
+
+func inlineToID(idx *blockfmt.Index, inline int) int {
+	if inline >= len(idx.Inline) {
+		return -1
+	}
+	return idx.Indirect.Objects() + inline
+}
+
+// findPrepend finds the first mergeable inline
+// object in the inline list belonging to the
+// given partition name, returning its index or
+// -1 if not found.
+func (st *tableState) findPrepend(idx *blockfmt.Index, part string) int {
+	for i := len(idx.Inline) - 1; i >= 0; i-- {
+		p, ok := st.partitionFor(idx.Inline[i].Path)
+		if !ok || p != part {
+			continue
+		}
+		if idx.Inline[i].Size >= st.conf.minMergeSize() {
+			// anything prior is also too big
+			break
+		}
+		return i
+	}
+	return -1
+}
+
+// deleteInline marks the ith inline object for
+// deletion. This panics if i is out of range.
+func (st *tableState) deleteInline(idx *blockfmt.Index, i int) {
+	st.conf.logf("re-ingesting %s due to small size", idx.Inline[i].Path)
+	idx.ToDelete = append(idx.ToDelete, blockfmt.Quarantined{
+		Path:   idx.Inline[i].Path,
+		Expiry: date.Now().Add(st.conf.GCMinimumAge),
+	})
+}
+
+func (st *tableState) dedup(idx *blockfmt.Index, parts []partition) ([]partition, error) {
+	out := parts[:0]
+	nextID := idx.Objects()
+	for i := range parts {
+		var descID int
+		prepend := st.findPrepend(idx, parts[i].name)
+		if prepend >= 0 {
+			descID = inlineToID(idx, prepend)
 		} else {
-			lst[i].R.Close()
+			descID = nextID
 		}
+		lst := parts[i].lst
+		// try to ensure the Append operations don't block;
+		// fetch all the tree leaves in parallel
+		idx.Inputs.Prefetch(lst)
+
+		kept := parts[i].lst[:0]
+		for i := range lst {
+			ret, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, descID)
+			if err != nil {
+				if errors.Is(err, blockfmt.ErrETagChanged) {
+					// the file at this path has been overwritten
+					// with new content; we can't "replace" the old
+					// data so there's not much we can do here...
+					lst[i].R.Close()
+					continue
+				}
+				return nil, err
+			}
+			if ret {
+				kept = append(kept, lst[i])
+			} else {
+				lst[i].R.Close()
+			}
+		}
+		if len(kept) == 0 {
+			// nothing new to do; keep going
+			continue
+		}
+		if prepend < 0 {
+			nextID++
+		}
+		parts[i].lst = kept
+		if prepend >= 0 {
+			st.deleteInline(idx, prepend)
+		}
+		parts[i].prepend = prepend
+		out = append(out, parts[i])
 	}
-	if len(kept) == 0 {
-		// nothing new to do; just bail
-		return nil, nil, nil
-	}
-	prepend := st.conf.popPrepend(idx)
-	if prepend != nil {
-		st.conf.logf("re-ingesting %s due to small size", prepend.Path)
-	}
-	return prepend, kept, nil
+	return out, nil
 }
 
 // shouldRebuild indicates whether an error
@@ -320,23 +365,22 @@ func shouldRebuild(err error) bool {
 		errors.Is(err, blockfmt.ErrIndexObsolete)
 }
 
-// Append works similarly to Sync,
+// append works similarly to Sync,
 // but it only works on one database and table at a time,
 // and it assumes the list of new elements to be inserted
 // has already been computed.
 //
 // If the index to be updated is currently scanning (see Builder.Scan),
-// then Append will perform some scanning inserts and return ErrBuildAgain.
-// Append will continue to return ErrBuildAgain until scanning is complete,
-// at which point Append operations will be accepted. (The caller must continuously
-// call Append for scanning to occur.)
-func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cache *IndexCache) error {
+// then append will perform some scanning inserts and return ErrBuildAgain.
+// append will continue to return ErrBuildAgain until scanning is complete,
+// at which point append operations will be accepted. (The caller must continuously
+// call append for scanning to occur.)
+func (b *Builder) append(who Tenant, db, table string, parts []partition, cache *IndexCache) error {
 	st, err := b.open(db, table, who)
 	if err != nil {
 		return err
 	}
 
-	var prepend *blockfmt.Descriptor
 	idx, err := st.index(cache)
 	if err == nil {
 		// begin by removing any unreferenced files,
@@ -358,15 +402,15 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 		}
 
 		// trim pre-existing elements from lst
-		prepend, lst, err = st.dedup(idx, lst)
+		parts, err = st.dedup(idx, parts)
 		if err != nil {
 			return err
 		}
-		if len(lst) == 0 {
+		if len(parts) == 0 {
 			b.logf("index for %s already up-to-date", table)
 			return nil
 		}
-		return st.append(idx, prepend, lst, cache)
+		return st.append(idx, parts, cache)
 	}
 	if b.NewIndexScan && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
@@ -386,18 +430,18 @@ func (b *Builder) Append(who Tenant, db, table string, lst []blockfmt.Input, cac
 		// caller should probably Sync instead
 		return err
 	}
-	return st.append(nil, prepend, lst, cache)
+	return st.append(nil, parts, cache)
 }
 
-func (st *tableState) append(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input, cache *IndexCache) error {
+func (st *tableState) append(idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
-	if len(lst) == 0 {
+	if len(parts) == 0 {
 		if idx == nil {
 			err = st.emptyIndex()
 		}
 	} else {
-		err = st.force(idx, prepend, lst, cache)
+		err = st.force(idx, parts, cache)
 	}
 	if err != nil {
 		invalidate(cache)
@@ -549,15 +593,17 @@ func (b *Builder) flushMeta() int {
 
 // after failing to read an object,
 // update the index state to reflect the fatal errors we encountered
-func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *IndexCache) {
+func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCache) {
 	// invalidate cache so that a reload pulls the previous one
 	invalidate(cache)
 
 	any := false
-	for i := range lst {
-		if lst[i].Err != nil && blockfmt.IsFatal(lst[i].Err) {
-			any = true
-			break
+	for i := range parts {
+		for j := range parts[i].lst {
+			if parts[i].lst[j].Err != nil && blockfmt.IsFatal(parts[i].lst[j].Err) {
+				any = true
+				break
+			}
 		}
 	}
 	if !any {
@@ -594,14 +640,16 @@ func (st *tableState) updateFailed(empty bool, lst []blockfmt.Input, cache *Inde
 		}
 	}
 	idx.Inputs.Backing = st.ofs
-	for i := range lst {
-		if lst[i].Err == nil || !blockfmt.IsFatal(lst[i].Err) {
-			continue
-		}
-		_, err := idx.Inputs.Append(lst[i].Path, lst[i].ETag, -1)
-		if err != nil {
-			st.conf.logf("updateFailed: %s", err)
-			return
+	for i := range parts {
+		for j := range parts[i].lst {
+			if parts[i].lst[j].Err == nil || !blockfmt.IsFatal(parts[i].lst[j].Err) {
+				continue
+			}
+			_, err := idx.Inputs.Append(parts[i].lst[j].Path, parts[i].lst[j].ETag, -1)
+			if err != nil {
+				st.conf.logf("updateFailed: %s", err)
+				return
+			}
 		}
 	}
 	idx.Created = date.Now()
@@ -687,20 +735,79 @@ func suffixForComp(c string) string {
 	}
 }
 
-func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, lst []blockfmt.Input, cache *IndexCache) error {
+// errUpdateFailed is used to signal that a call
+// to forcePart failed during the call to
+// (*blockfmt.Converter).Run and the index needs
+// to be updated accordingly to reflect that.
+type errUpdateFailed struct {
+	err error
+}
+
+func (e *errUpdateFailed) Error() string {
+	return fmt.Sprintf("db.Builder: running blockfmt.Converter: %v", e.err)
+}
+
+func (e *errUpdateFailed) Unwrap() error {
+	return e.err
+}
+
+func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
+	extra := make([]blockfmt.Descriptor, 0, len(parts))
+	errs := make([]error, len(parts))
+	var wg sync.WaitGroup
+	wg.Add(len(parts))
+	for i := range parts {
+		var prepend, dst *blockfmt.Descriptor
+		if p := parts[i].prepend; p >= 0 {
+			prepend = &idx.Inline[p]
+			dst = &idx.Inline[p]
+		} else {
+			extra = extra[:len(extra)+1]
+			dst = &extra[len(extra)-1]
+		}
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = st.forcePart(prepend, dst, &parts[i])
+		}(i)
+	}
+	wg.Wait()
+	var ferr *errUpdateFailed
+	for i := range errs {
+		if errs[i] != nil && !errors.As(errs[i], &ferr) {
+			return errs[i]
+		}
+	}
+	if ferr != nil {
+		st.updateFailed(idx == nil, parts, cache)
+		return ferr
+	}
+	if idx == nil {
+		idx = new(blockfmt.Index)
+		for i := range parts {
+			for j := range parts[i].lst {
+				idx.Inputs.Append(parts[i].lst[j].Path, parts[i].lst[j].ETag, 1)
+			}
+		}
+	}
+	idx.Algo = "zstd"
+	idx.Created = date.Now().Truncate(time.Microsecond)
+	idx.Inline = append(idx.Inline, extra...)
+	err := st.flush(idx)
+	if err != nil {
+		invalidate(cache)
+		return err
+	}
+	overwrite(cache, idx)
+	return st.runGC(idx)
+}
+
+func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partition) error {
 	c := blockfmt.Converter{
-		Inputs:    lst,
+		Inputs:    part.lst,
 		Align:     st.conf.align(),
 		FlushMeta: st.conf.flushMeta(),
 		Comp:      st.conf.comp(),
-	}
-
-	if len(st.def.Partitions) > 0 {
-		cons, err := makePartitions(st.def.Partitions)
-		if err != nil {
-			return err
-		}
-		c.Constants = cons
+		Constants: part.cons,
 	}
 
 	if prepend != nil {
@@ -715,7 +822,7 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	}
 
 	name := "packed-" + uuid() + suffixForComp(c.Comp)
-	fp := path.Join("db", st.db, st.table, name)
+	fp := path.Join("db", st.db, st.table, part.name, name)
 	out, err := st.ofs.Create(fp)
 	if err != nil {
 		return err
@@ -724,24 +831,13 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 	err = c.Run()
 	if err != nil {
 		abort(out)
-		st.updateFailed(idx == nil, c.Inputs, cache)
-		return fmt.Errorf("db.Builder: running blockfmt.Converter: %w", err)
+		return &errUpdateFailed{err: err}
 	}
 	etag, lastmod, err := getInfo(st.ofs, fp, out)
 	if err != nil {
 		return err
 	}
-	st.conf.logf("table %s: wrote object %s ETag %s", st.table, fp, etag)
-	buildtime := date.Now().Truncate(time.Microsecond)
-	if idx == nil {
-		idx = new(blockfmt.Index)
-		for i := range lst {
-			idx.Inputs.Append(lst[i].Path, lst[i].ETag, 0)
-		}
-	}
-	idx.Algo = "zstd"
-	idx.Created = buildtime
-	idx.Inline = append(idx.Inline, blockfmt.Descriptor{
+	*dst = blockfmt.Descriptor{
 		ObjectInfo: blockfmt.ObjectInfo{
 			Path:         fp,
 			LastModified: date.FromTime(lastmod),
@@ -750,14 +846,9 @@ func (st *tableState) force(idx *blockfmt.Index, prepend *blockfmt.Descriptor, l
 			Size:         out.Size(),
 		},
 		Trailer: c.Trailer(),
-	})
-	err = st.flush(idx)
-	if err != nil {
-		invalidate(cache)
-		return err
 	}
-	overwrite(cache, idx)
-	return st.runGC(idx)
+	st.conf.logf("table %s: wrote object %s ETag %s", st.table, fp, etag)
+	return nil
 }
 
 func (st *tableState) runGC(idx *blockfmt.Index) error {

@@ -252,7 +252,7 @@ func open(infs InputFS, name, etag string, size int64) (fs.File, error) {
 // this is supposed to be safe to call from multiple goroutines
 func (q *QueueRunner) filter(bld *Builder, def *Definition, dst *batch) error {
 	var mr matcher
-	dst.filtered = dst.filtered[:0]
+	dst.filtered.init(def.Partitions)
 	dst.indirect = dst.indirect[:0]
 outer:
 	for i := range q.inputs {
@@ -260,8 +260,8 @@ outer:
 		etag := q.inputs[i].ETag()
 		for j := range def.Inputs {
 			glob := def.Inputs[j].Pattern
-			err := mr.match(glob, p, "")
-			if err != nil || !mr.found {
+			found, err := mr.match(glob, p)
+			if err != nil || !found {
 				continue
 			}
 			infs, name, err := q.Owner.Split(p)
@@ -286,14 +286,16 @@ outer:
 			}
 			dst.note(q.inputs[i].EventTime())
 			dst.indirect = append(dst.indirect, i)
-			dst.filtered = append(dst.filtered, blockfmt.Input{
+			_, err = dst.filtered.add(glob, blockfmt.Input{
 				Path: p,
 				ETag: etag,
-				Glob: glob,
 				Size: q.inputs[i].Size(),
 				R:    f,
 				F:    fm,
 			})
+			if err != nil {
+				return err
+			}
 			break
 		}
 	}
@@ -313,7 +315,7 @@ func (b *batch) note(qtime time.Time) {
 }
 
 type batch struct {
-	filtered         []blockfmt.Input
+	filtered         collector
 	indirect         []int     // indices into Queue.items[] for each of filtered
 	earliest, latest time.Time // modtimes for batch
 }
@@ -341,21 +343,14 @@ func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
 	conf := q.Conf
 	conf.SetFeatures(def.Features)
 
-	sizeof := func(lst []blockfmt.Input) int64 {
-		out := int64(0)
-		for i := range lst {
-			out += lst[i].Size
-		}
-		return out
-	}
-
 	var dst batch
 	err := q.filter(&conf, def, &dst)
-	if err == nil && len(dst.filtered) > 0 {
-		err = conf.Append(q.Owner, db, def.Name, dst.filtered, cache)
+	if err == nil && !dst.filtered.empty() {
+		total, size := dst.filtered.total()
+		err = conf.append(q.Owner, db, def.Name, dst.filtered.parts, cache)
 		if err == nil {
 			q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
-				db, def.Name, len(dst.filtered), sizeof(dst.filtered), time.Since(dst.latest), time.Since(dst.earliest))
+				db, def.Name, total, size, time.Since(dst.latest), time.Since(dst.earliest))
 		}
 	}
 	if err != nil {

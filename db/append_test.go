@@ -62,6 +62,21 @@ func newTenant(root OutputFS) *testTenant {
 	}
 }
 
+func collectGlob(ifs blockfmt.InputFS, fn func(string) blockfmt.RowFormat, pat string) ([]partition, error) {
+	lst, err := blockfmt.CollectGlob(ifs, fn, pat)
+	if err != nil {
+		return nil, err
+	}
+	return mkparts(lst), nil
+}
+
+func mkparts(lst []blockfmt.Input) []partition {
+	return []partition{{
+		prepend: -1,
+		lst:     lst,
+	}}
+}
+
 func TestAppend(t *testing.T) {
 	checkFiles(t)
 	tmpdir := t.TempDir()
@@ -86,7 +101,7 @@ func TestAppend(t *testing.T) {
 		GCLikelihood: 1,
 	}
 	var cache IndexCache
-	err := b.Append(owner, "default", "parking", nil, &cache)
+	err := b.append(owner, "default", "parking", nil, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,13 +136,13 @@ func TestAppend(t *testing.T) {
 	}
 
 	raw := func(string) blockfmt.RowFormat { return blockfmt.UnsafeION() }
-	lst, err := blockfmt.CollectGlob(dfs, raw, "a-prefix/*.10n")
+	lst, err := collectGlob(dfs, raw, "a-prefix/*.10n")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// now we should ingest some data
-	err = b.Append(owner, "default", "parking", lst, &cache)
+	err = b.append(owner, "default", "parking", lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,13 +150,13 @@ func TestAppend(t *testing.T) {
 
 	// confirm that it doesn't do anything
 	// a second time around
-	lst, err = blockfmt.CollectGlob(dfs, raw, "a-prefix/*.10n")
+	lst, err = collectGlob(dfs, raw, "a-prefix/*.10n")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	owner.ro = true
-	err = b.Append(owner, "default", "parking", lst, &cache)
+	err = b.append(owner, "default", "parking", lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,11 +166,11 @@ func TestAppend(t *testing.T) {
 		t.Fatal("dropped entries from Inline in no-op")
 	}
 
-	lst, err = blockfmt.CollectGlob(dfs, raw, "b-prefix/*.block")
+	lst, err = collectGlob(dfs, raw, "b-prefix/*.block")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = b.Append(owner, "default", "taxi", lst, nil)
+	err = b.append(owner, "default", "taxi", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,11 +200,11 @@ func TestAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lst, err = blockfmt.CollectGlob(dfs, nil, "a-prefix/*.json")
+	lst, err = collectGlob(dfs, nil, "a-prefix/*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = b.Append(owner, "default", "parking", lst, &cache)
+	err = b.append(owner, "default", "parking", lst, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,15 +248,18 @@ func TestAppend(t *testing.T) {
 	// on its second appearance, we simply ignore it
 
 	badtext := `{"foo": barbazquux }`
-	bad := []blockfmt.Input{{
+	bad := blockfmt.Input{
 		Path: "path/to/bad.json",
 		ETag: "bad-ETag",
 		Size: int64(len(badtext)),
 		R:    io.NopCloser(strings.NewReader(badtext)),
 		F:    blockfmt.MustSuffixToFormat(".json"),
-	}}
+	}
+	mk := func(v blockfmt.Input) []partition {
+		return mkparts([]blockfmt.Input{v})
+	}
 
-	err = b.Append(owner, "default", "parking", bad, &cache)
+	err = b.append(owner, "default", "parking", mk(bad), &cache)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -261,7 +279,7 @@ func TestAppend(t *testing.T) {
 
 	// try again; this should be a no-op
 	owner.ro = true
-	err = b.Append(owner, "default", "parking", bad, nil)
+	err = b.append(owner, "default", "parking", mk(bad), nil)
 	if err != nil {
 		t.Fatal("got an error re-inserting a bad item:", err)
 	}
@@ -270,10 +288,10 @@ func TestAppend(t *testing.T) {
 	// try again with a new ETag;
 	// this should succeed in inserting an item
 	goodtext := `{"foo": "barbazquux"}`
-	bad[0].ETag = "good-ETag"
-	bad[0].Size = int64(len(goodtext))
-	bad[0].R = io.NopCloser(strings.NewReader(goodtext))
-	err = b.Append(owner, "default", "parking", bad, nil)
+	bad.ETag = "good-ETag"
+	bad.Size = int64(len(goodtext))
+	bad.R = io.NopCloser(strings.NewReader(goodtext))
+	err = b.append(owner, "default", "parking", mk(bad), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +304,7 @@ func TestAppend(t *testing.T) {
 	idx.Inputs.Backing = dfs
 	saw := false
 	err = idx.Inputs.Walk("path/to/bad.json", func(name, etag string, id int) bool {
-		if name == bad[0].Path && etag == bad[0].ETag && id >= 0 {
+		if name == bad.Path && etag == bad.ETag && id >= 0 {
 			saw = true
 			return false
 		}
@@ -347,7 +365,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 	var cache IndexCache
 
-	err = b.Append(owner, "default", "foo", nil, &cache)
+	err = b.append(owner, "default", "foo", nil, &cache)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -375,7 +393,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
-	err = b.Append(owner, "default", "foo", nil, &cache)
+	err = b.append(owner, "default", "foo", nil, &cache)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -396,7 +414,7 @@ func TestAppendBadScan(t *testing.T) {
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
 	// now get the last object:
-	err = b.Append(owner, "default", "foo", nil, &cache)
+	err = b.append(owner, "default", "foo", nil, &cache)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -420,7 +438,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 
 	// this one should turn off scanning:
-	err = b.Append(owner, "default", "foo", nil, &cache)
+	err = b.append(owner, "default", "foo", nil, &cache)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -434,7 +452,7 @@ func TestAppendBadScan(t *testing.T) {
 	if idx.Scanning {
 		t.Error("still scanning?")
 	}
-	err = b.Append(owner, "default", "foo", nil, &cache)
+	err = b.append(owner, "default", "foo", nil, &cache)
 	if err != nil {
 		t.Fatal(err)
 	}

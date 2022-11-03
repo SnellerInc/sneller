@@ -60,10 +60,6 @@ type Input struct {
 	Path, ETag string
 	// Size is the size of the input, in bytes
 	Size int64
-	// Glob is the glob pattern used to match the
-	// input path. This is intended to be used by
-	// Template.Eval to expand template strings.
-	Glob string
 	// R is the source of unformatted data
 	R io.ReadCloser
 	// F is the formatter that produces output blocks
@@ -315,7 +311,7 @@ type Converter struct {
 	}
 	// Constants is the list of templated constants
 	// to be inserted into the ingested data.
-	Constants []Template
+	Constants []ion.Field
 
 	// Inputs is the list of input
 	// streams that need to be converted
@@ -414,8 +410,8 @@ func (c *Converter) MultiStream() bool {
 // have been processed at all.
 func (c *Converter) Run() error {
 	// keep this deterministic:
-	slices.SortFunc(c.Constants, func(x, y Template) bool {
-		return x.Field < y.Field
+	slices.SortFunc(c.Constants, func(x, y ion.Field) bool {
+		return x.Label < y.Label
 	})
 	if len(c.Inputs) == 0 && c.Prepend.R == nil {
 		return errors.New("no inputs or merge sources")
@@ -424,20 +420,6 @@ func (c *Converter) Run() error {
 		return c.runMulti()
 	}
 	return c.runSingle()
-}
-
-func expand(src []Template, in *Input, dst []ion.Field) ([]ion.Field, error) {
-	for i := range src {
-		value, err := src[i].Eval(in)
-		if err != nil {
-			return dst, err
-		}
-		dst = append(dst, ion.Field{
-			Label: src[i].Field,
-			Value: value,
-		})
-	}
-	return dst, nil
 }
 
 func (c *Converter) runSingle() error {
@@ -471,7 +453,6 @@ func (c *Converter) runSingle() error {
 	if err != nil {
 		return err
 	}
-	var cons []ion.Field
 	ready := make([]chan struct{}, len(c.Inputs))
 	next := 1
 	inflight := int64(0) // # bytes being prefetched
@@ -505,14 +486,10 @@ func (c *Converter) runSingle() error {
 			next++
 		}
 
-		var err error
-		cons, err = expand(c.Constants, &c.Inputs[i], cons[:0])
+		err := c.Inputs[i].F.Convert(c.Inputs[i].R, &cn, c.Constants)
+		err2 := c.Inputs[i].R.Close()
 		if err == nil {
-			err = c.Inputs[i].F.Convert(c.Inputs[i].R, &cn, cons)
-			err2 := c.Inputs[i].R.Close()
-			if err == nil {
-				err = err2
-			}
+			err = err2
 		}
 		if err != nil {
 			// wait for prefetching to stop
@@ -631,15 +608,11 @@ func (c *Converter) runMulti() error {
 					return
 				}
 			}
-			var cons []ion.Field
 			for in := range startc {
-				cons, err = expand(c.Constants, in, cons[:0])
+				err := in.F.Convert(in.R, &cn, c.Constants)
+				err2 := in.R.Close()
 				if err == nil {
-					err = in.F.Convert(in.R, &cn, cons)
-					err2 := in.R.Close()
-					if err == nil {
-						err = err2
-					}
+					err = err2
 				}
 				if err != nil {
 					consume(startc)

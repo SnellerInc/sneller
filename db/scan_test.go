@@ -120,11 +120,8 @@ func TestScan(t *testing.T) {
 	err := WriteDefinition(dfs, "default", &Definition{
 		Name: "taxi",
 		Inputs: []Input{
-			{Pattern: "file://b-prefix/{filename}.block"},
+			{Pattern: "file://b-prefix/*.block"},
 		},
-		Partitions: []Partition{{
-			Field: "filename",
-		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -198,6 +195,129 @@ func TestScan(t *testing.T) {
 	noScan(t, &b, owner, "default", "taxi")
 }
 
+func TestScanPartitioned(t *testing.T) {
+	checkFiles(t)
+	tmpdir := t.TempDir()
+	for _, dir := range []string{
+		filepath.Join(tmpdir, "b-prefix"),
+	} {
+		err := os.MkdirAll(dir, 0750)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	dfs := newDirFS(t, tmpdir)
+	err := WriteDefinition(dfs, "default", &Definition{
+		Name: "taxi",
+		Inputs: []Input{
+			{Pattern: "file://b-prefix/{part}/*.block"},
+		},
+		Partitions: []Partition{{
+			Field: "part",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	partdir := func(p int) string {
+		part := fmt.Sprintf("part-%d", p)
+		return filepath.Join(tmpdir, "b-prefix", part)
+	}
+	newname := func(p, n int) string {
+		part := fmt.Sprintf("part-%d", p)
+		file := fmt.Sprintf("nyc-taxi%d.block", n)
+		return filepath.Join(tmpdir, "b-prefix", part, file)
+	}
+	oldname, err := filepath.Abs("../testdata/nyc-taxi.block")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const parts = 3
+	const objects = 5
+	for i := 0; i < parts; i++ {
+		err := os.MkdirAll(partdir(i), 0750)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j < objects; j++ {
+			err = os.Symlink(oldname, newname(i, j))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	owner := newTenant(dfs)
+	b := Builder{
+		Align: 1024,
+		Fallback: func(_ string) blockfmt.RowFormat {
+			return blockfmt.UnsafeION()
+		},
+		Logf: t.Logf,
+		// force re-scanning; we will only be
+		// able to ingest two objects at once
+		MaxScanBytes:  2 * 1024 * 1024,
+		RangeMultiple: 4,
+
+		GCLikelihood: 50,
+		GCMinimumAge: 1 * time.Millisecond,
+	}
+	fullScan(t, &b, owner, "default", "taxi", parts*objects)
+
+	idx, err := OpenIndex(dfs, "default", "taxi", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := GCConfig{Logf: t.Logf}
+	err = conf.Run(dfs, "default", idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Scanning {
+		t.Error("index is still scanning?")
+	}
+	if idx.Objects() != parts {
+		t.Errorf("idx.Objects() = %d", idx.Objects())
+	}
+	idx.Inputs.Backing = dfs
+	counts := make(map[int]int) // map[part]count
+	err = idx.Inputs.Walk("", func(name, etag string, id int) bool {
+		var part int
+		_, err := fmt.Sscanf(name, "file://b-prefix/part-%d/", &part)
+		if err != nil {
+			t.Error(err)
+			return true
+		}
+		count := counts[part]
+		if name != fmt.Sprintf("file://b-prefix/part-%d/nyc-taxi%d.block", part, count) {
+			t.Errorf("name = %s?", name)
+		}
+		counts[part] = count + 1
+		if id != part {
+			// this is a bit fragile in that it relies
+			// on objects to be ingested in sorted
+			// order, which is not guaranteed...
+			t.Errorf("id(%s) = %d?", name, id)
+		}
+		count++
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != parts {
+		t.Fatalf("expected %d partitions, got %d", parts, len(counts))
+	}
+	for part, count := range counts {
+		if count != objects {
+			t.Fatalf("part %d: expected %d objects in input; got %d", part, objects, count)
+		}
+	}
+	noScan(t, &b, owner, "default", "taxi")
+}
+
 func TestNewIndexScan(t *testing.T) {
 	checkFiles(t)
 	tmpdir := t.TempDir()
@@ -250,12 +370,12 @@ func TestNewIndexScan(t *testing.T) {
 		NewIndexScan: true,
 	}
 
-	lst, err := blockfmt.CollectGlob(dfs, b.Fallback, "b-prefix/*.block")
+	lst, err := collectGlob(dfs, b.Fallback, "b-prefix/*.block")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.Append(owner, "default", "taxi", lst, nil)
+	err = b.append(owner, "default", "taxi", lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -273,7 +393,7 @@ func TestNewIndexScan(t *testing.T) {
 
 	// second attempt should fail again,
 	// but Scanning should be false
-	err = b.Append(owner, "default", "taxi", lst, nil)
+	err = b.append(owner, "default", "taxi", lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -305,7 +425,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	// final append should be a no-op
-	err = b.Append(owner, "default", "taxi", lst, nil)
+	err = b.append(owner, "default", "taxi", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

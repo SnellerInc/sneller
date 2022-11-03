@@ -31,14 +31,14 @@ func testPattern(t *testing.T) {
 	n := 0
 	run := func(pattern, name string, want bool, wanterr error) {
 		t.Helper()
-		err := mr.match(pattern, name, "")
-		if mr.found != want {
-			t.Errorf("case %d: expected found = %v, got %v", n, want, mr.found)
+		n++
+		found, err := mr.match(pattern, name)
+		if found != want {
+			t.Errorf("case %d: expected found = %v, got %v", n, want, found)
 		}
 		if err != wanterr {
 			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
 		}
-		n++
 	}
 	// test cases from stdlib
 	run("abc", "abc", true, nil)
@@ -153,64 +153,57 @@ func testPattern(t *testing.T) {
 func testExpand(t *testing.T) {
 	var mr matcher
 	n := 0
-	run := func(pattern, name, template, glob, result string, wanterr error) {
+	run := func(pattern, name, template, result string, merr, eerr error) {
 		t.Helper()
-		err := mr.match(pattern, name, template)
-		if !mr.found {
+		n++
+		found, err := mr.match(pattern, name)
+		if !found {
 			t.Errorf("case %d: expected match", n)
 			return
 		}
-		if err != wanterr {
-			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
+		if err != merr {
+			t.Errorf("case %d: expected match err = %v, got %v", n, merr, err)
 		}
-		if wanterr != nil {
+		if merr != nil {
 			// ignore results
 			return
 		}
-		if string(mr.glob) != glob {
-			t.Errorf("case %d: expected glob = %q, got %q", n, glob, mr.glob)
+		got, err := mr.expand(template)
+		if err != eerr {
+			t.Errorf("case %d: expected expand err = %v, got %v", n, eerr, err)
 		}
-		if string(mr.result) != result {
-			t.Errorf("case %d: expected result = %q, got %q", n, result, mr.result)
+		if string(got) != result {
+			t.Errorf("case %d: expected result = %q, got %q", n, result, got)
 		}
-		n++
 	}
-	// template expansion
-	run("{x}", "bar", "$x", "bar", "bar", nil)
-	run("{_}", "bar", "$_", "bar", "bar", nil)
-	run("{x}", "bar", "$y", "", "", ErrBadPattern)
-	run("{x}", "bar", "${}", "", "", ErrBadPattern)
-	run("{x}", "bar", "$x$y", "", "", ErrBadPattern)
-	run("{x}", "bar", "$$x", "bar", "$x", nil)
-	run("{x}", "bar", "$$$x", "bar", "$bar", nil)
-	run("{x}", "bar", "$", "", "", ErrBadPattern)
-	run("{x}", "bar", "$$", "bar", "$", nil)
-	run("{x}", "bar", "foo-$x-baz", "bar", "foo-bar-baz", nil)
-	run("{x}", "bar", "$x-$x", "bar", "bar-bar", nil)
-	run("{x}", "bar", "${x}", "bar", "bar", nil)
-	run("{_}", "bar", "${_}", "bar", "bar", nil)
-	run("{x_x}", "bar", "${x_x}", "bar", "bar", nil)
-	run("{x}", "bar", "foo${x}baz", "bar", "foobarbaz", nil)
-	run("{x}", "bar", "${x}${x}", "bar", "barbar", nil)
-	run("{x}-{y}", "foo-bar", "$x$y", "foo-bar", "foobar", nil)
-	run("{x}-{y}", "foo-bar", "$y$x", "foo-bar", "barfoo", nil)
-	run("{x}/{y}", "foo/bar", "$y$x", "foo/bar", "barfoo", nil)
-	run("f{x}o-b{y}r", "foo-bar", "$x$y", "foo-bar", "oa", nil)
-	run("f{x}o/b{y}r", "foo/bar", "$x$y", "foo/bar", "oa", nil)
-	run("fo{x}/{y}ar", "foo/bar", "$x$y", "foo/bar", "ob", nil)
-	// glob expansion
-	run("{x}-*-{y}", "a-b-c-d", "$x-$y", "a-*-c-d", "a-c-d", nil)
-	run("*-{x}/*", "foo-bar/baz", "", "*-bar/*", "", nil)
-	run("[abc]-{x}-?oo", "b-bar-foo", "", "[abc]-bar-?oo", "", nil)
-	run(`{x}-\{bar}-\*`, "foo-{bar}-*", "", `foo-\{bar}-\*`, "", nil)
-	// something vaguely realistic
+	run("{x}", "bar", "$x", "bar", nil, nil)
+	run("{_}", "bar", "$_", "bar", nil, nil)
+	run("{x}", "bar", "$y", "", nil, ErrBadPattern)
+	run("{x}", "bar", "${}", "", nil, ErrBadPattern)
+	run("{x}", "bar", "$x$y", "", nil, ErrBadPattern)
+	run("{x}", "bar", "$$x", "$x", nil, nil)
+	run("{x}", "bar", "$$$x", "$bar", nil, nil)
+	run("{x}", "bar", "$", "", nil, ErrBadPattern)
+	run("{x}", "bar", "$$", "$", nil, nil)
+	run("{x}", "bar", "foo-$x-baz", "foo-bar-baz", nil, nil)
+	run("{x}", "bar", "$x-$x", "bar-bar", nil, nil)
+	run("{x}", "bar", "${x}", "bar", nil, nil)
+	run("{_}", "bar", "${_}", "bar", nil, nil)
+	run("{x_x}", "bar", "${x_x}", "bar", nil, nil)
+	run("{x}", "bar", "foo${x}baz", "foobarbaz", nil, nil)
+	run("{x}", "bar", "${x}${x}", "barbar", nil, nil)
+	run("{x}-{y}", "foo-bar", "$x$y", "foobar", nil, nil)
+	run("{x}-{y}", "foo-bar", "$y$x", "barfoo", nil, nil)
+	run("{x}/{y}", "foo/bar", "$y$x", "barfoo", nil, nil)
+	run("f{x}o-b{y}r", "foo-bar", "$x$y", "oa", nil, nil)
+	run("f{x}o/b{y}r", "foo/bar", "$x$y", "oa", nil, nil)
+	run("fo{x}/{y}ar", "foo/bar", "$x$y", "ob", nil, nil)
 	run(
 		"s3://bucket/f[aeiou]?/*/baz-{yyyy}-{mm}-{dd}.tar.gz",
 		"s3://bucket/foo/bar/baz-2022-10-20.tar.gz",
 		"table-$yyyy-$mm-$dd",
-		"s3://bucket/f[aeiou]?/*/baz-2022-10-20.tar.gz",
 		"table-2022-10-20",
-		nil,
+		nil, nil,
 	)
 }
 
@@ -267,6 +260,7 @@ func testToGlob(t *testing.T) {
 	n := 0
 	run := func(pattern, want string, wanterr error) {
 		t.Helper()
+		n++
 		got, err := toglob(pattern)
 		if err != wanterr {
 			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
@@ -278,7 +272,6 @@ func testToGlob(t *testing.T) {
 		if got != want {
 			t.Errorf("case %d: expected %q, got %q", n, want, got)
 		}
-		n++
 	}
 	run("{x}", "*", nil)
 	run("{x}-{y}", "*-*", nil)
@@ -296,13 +289,14 @@ func testToGlob(t *testing.T) {
 	run("foo/foo-*", "foo/foo-*", nil)
 }
 
-func BenchmarkMatch(b *testing.B) {
+func BenchmarkMatchExpand(b *testing.B) {
 	name := "s3://bucket/foo/bar/baz-2022-10-06.tar.gz"
 	pat := "s3://bucket/foo/bar/baz-{yyyy}-{mm}-{dd}.tar.gz"
 	tmpl := "table-$yyyy-$mm-$dd"
 	b.ReportAllocs() // should be zero
 	var mr matcher
 	for i := 0; i < b.N; i++ {
-		mr.match(pat, name, tmpl)
+		mr.match(pat, name)
+		mr.expand(tmpl)
 	}
 }

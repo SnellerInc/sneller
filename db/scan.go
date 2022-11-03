@@ -82,7 +82,11 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 	}
 	idx.Inputs.Backing = st.ofs
 
-	var collect []blockfmt.Input
+	var c collector
+	err := c.init(st.def.Partitions)
+	if err != nil {
+		return 0, err
+	}
 	maxSize := st.conf.MaxScanBytes
 	if maxSize <= 0 {
 		maxSize = math.MaxInt64
@@ -92,11 +96,13 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		maxInputs = math.MaxInt
 	}
 
+	total := 0
 	size := int64(0)
 	complete := true
-	id := st.conf.nextID(idx)
+	ids := make(map[string]int)
+	nextID := idx.Objects()
 	for i := range st.def.Inputs {
-		if len(collect) >= maxInputs || size >= maxSize {
+		if total >= maxInputs || size >= maxSize {
 			complete = false
 			break
 		}
@@ -127,6 +133,21 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			}
 
 			full := prefix + p
+			pname, err := c.match(fullpat, full)
+			if err != nil {
+				return err
+			}
+			prepend := -1
+			id, ok := ids[string(pname)]
+			if !ok {
+				prepend = st.findPrepend(idx, string(pname))
+				if prepend >= 0 {
+					id = inlineToID(idx, prepend)
+				} else {
+					id = nextID
+					nextID++
+				}
+			}
 			ret, err := idx.Inputs.Append(full, etag, id)
 			if err != nil {
 				// FIXME: on ErrETagChanged, force a rebuild?
@@ -151,17 +172,24 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 				// matching file unambiguous
 				return fmt.Errorf("couldn't determine format of file %s", p)
 			}
+			ids[string(pname)] = id
+			total++
 			size += info.Size()
-			collect = append(collect, blockfmt.Input{
+			part, err := c.add(fullpat, blockfmt.Input{
 				Path: full,
 				Size: info.Size(),
-				Glob: fullpat,
 				ETag: etag,
 				R:    f,
 				F:    fm,
 			})
+			if err != nil {
+				return err
+			}
+			if prepend >= 0 {
+				part.prepend = prepend
+			}
 			seek = p
-			if len(collect) >= maxInputs || size >= maxSize {
+			if total >= maxInputs || size >= maxSize {
 				return errStop
 			}
 			return nil
@@ -180,21 +208,25 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		}
 	}
 	idx.Scanning = !complete
-	if len(collect) == 0 {
+	if total == 0 {
 		if idx.Scanning {
-			panic("should not be possible: idx.Scanning && len(collect) == 0")
+			panic("should not be possible: idx.Scanning && total == 0")
 		}
 		if flushOnComplete {
 			return 0, st.flushScanDone(idx.Cursors)
 		}
 		return 0, nil
 	}
-	prepend := st.conf.popPrepend(idx)
-	err := st.force(idx, prepend, collect, nil)
+	for i := range c.parts {
+		if c.parts[i].prepend >= 0 {
+			st.deleteInline(idx, c.parts[i].prepend)
+		}
+	}
+	err = st.force(idx, c.parts, nil)
 	if err != nil {
 		return 0, err
 	}
-	return len(collect), nil
+	return total, nil
 }
 
 // mark scanning=false and set the cursors

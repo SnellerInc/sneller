@@ -29,7 +29,8 @@ const MaxCaptureGroups = 8
 // needed, as glob and result will be reused
 // across calls to match.
 type matcher struct {
-	found  bool
+	// bookkeeping for capture groups
+	caps   [MaxCaptureGroups][2]string
 	glob   []byte // expanded pattern
 	result []byte // expanded template
 }
@@ -85,50 +86,31 @@ type matcher struct {
 //
 // This returns ErrBadPattern if pattern is
 // malformed or has more than MaxCaptureGroups
-// capture groups, or if template references
-// capture groups not present in pattern.
-func (m *matcher) match(pattern, name, template string) error {
-	m.found = false
-	m.glob = m.glob[:0]
-	m.result = m.result[:0]
-	// bookkeeping for capture groups
-	var caps [MaxCaptureGroups][2]string
+// capture groups.
+func (m *matcher) match(pattern, name string) (bool, error) {
+	m.caps = [MaxCaptureGroups][2]string{}
 	put := func(name, value string) bool {
 		if name == "" || value == "" {
 			return false
 		}
-		for i := range caps {
-			if caps[i][0] == "" {
-				caps[i][0] = name
-				caps[i][1] = value
+		for i := range m.caps {
+			if m.caps[i][0] == "" {
+				m.caps[i][0] = name
+				m.caps[i][1] = value
 				return true
 			}
-			if caps[i][0] == name {
+			if m.caps[i][0] == name {
 				return false
 			}
 		}
 		return false
-	}
-	get := func(name string) string {
-		if name == "" {
-			return ""
-		}
-		for i := range caps {
-			if caps[i][0] == "" {
-				break
-			}
-			if caps[i][0] == name {
-				return caps[i][1]
-			}
-		}
-		return ""
 	}
 	// match the pattern first
 outer:
 	for pattern != "" {
 		wc, ident, part, rest, ok := splitmatch(pattern)
 		if !ok {
-			return ErrBadPattern
+			return false, ErrBadPattern
 		}
 		pattern = rest
 		if wc && part == "" {
@@ -138,10 +120,10 @@ outer:
 			if ident != "" {
 				if got == "" {
 					// disallow empty capture
-					return nil
+					return false, nil
 				}
 				if !put(ident, got) {
-					return ErrBadPattern
+					return false, ErrBadPattern
 				}
 				m.glob = append(m.glob, got...)
 			} else {
@@ -162,7 +144,7 @@ outer:
 			}
 			rem, found, ok := matchpart(part, name[i:])
 			if !ok {
-				return ErrBadPattern
+				return false, ErrBadPattern
 			}
 			if !found {
 				if !wc {
@@ -173,7 +155,7 @@ outer:
 			if pattern != "" || rem == "" {
 				if ident != "" {
 					if !put(ident, name[:i]) {
-						return ErrBadPattern
+						return false, ErrBadPattern
 					}
 					m.glob = append(m.glob, name[:i]...)
 				} else if wc {
@@ -188,35 +170,60 @@ outer:
 		for pattern != "" {
 			_, _, _, rest, ok := splitmatch(pattern)
 			if !ok {
-				return ErrBadPattern
+				return false, ErrBadPattern
 			}
 			pattern = rest
 		}
-		return nil
+		return false, nil
 	}
-	if name != "" {
-		// no match
-		return nil
+	return name == "", nil
+}
+
+// get gets a capture result from the last call
+// to match. If a capture group with the given
+// name was not found in the last call to match,
+// this returns "".
+func (m *matcher) get(name string) string {
+	if name == "" {
+		return ""
 	}
-	m.found = true
-	// expand the template if provided
+	for i := range m.caps {
+		if m.caps[i][0] == "" {
+			break
+		}
+		if m.caps[i][0] == name {
+			return m.caps[i][1]
+		}
+	}
+	return ""
+}
+
+// expand attempts to expand a template from
+// capture groups from the last call to match.
+//
+// The resulting slice is reused by the matcher
+// and may be invalidated by subsequent calls.
+// The caller should arrange to copy the result
+// if needed between calls.
+func (m *matcher) expand(template string) ([]byte, error) {
+	m.result = m.result[:0]
 	for template != "" {
 		ident, part, rest, ok := splittemplate(template)
 		if !ok {
-			return ErrBadPattern
+			return nil, ErrBadPattern
 		}
 		if ident != "" {
-			got := get(ident)
+			got := m.get(ident)
 			if got == "" {
 				// no match for ident
-				return ErrBadPattern
+				return nil, ErrBadPattern
 			}
 			m.result = append(m.result, got...)
 		}
 		m.result = append(m.result, part...)
 		template = rest
 	}
-	return nil
+	return m.result, nil
 }
 
 // detemplate unescapes a template and ensures
