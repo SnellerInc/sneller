@@ -337,6 +337,7 @@ func shuffled(st *ion.Symtab) *ion.Symtab {
 // run a query on the given input table and yield the output list
 func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool, shuffleSymtab bool, parallel bool) []ion.Datum {
 	input := make([]plan.TableHandle, len(in))
+	maxp := 0
 	for i, in := range in {
 		if resymbolize && len(in) > 1 {
 			half := len(in) / 2
@@ -349,6 +350,7 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 				second = flatten(in[half:], st)
 			}
 			if parallel {
+				maxp = 2
 				input[i] = parallelchunks{first, second}
 			} else {
 				input[i] = chunkshandle{first, second}
@@ -369,8 +371,13 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 	}
 	t.Logf("plan:\n%s", tree.String())
 	var out bytes.Buffer
-	var stats plan.ExecStats
-	err = plan.Exec(tree, &out, &stats)
+	lp := plan.LocalTransport{Threads: maxp}
+	params := plan.ExecParams{
+		Output:   &out,
+		Parallel: maxp,
+		Context:  context.Background(),
+	}
+	err = lp.Exec(tree, &params)
 	if err != nil {
 		t.Fatal(err)
 	}
