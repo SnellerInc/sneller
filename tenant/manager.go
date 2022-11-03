@@ -537,7 +537,9 @@ func panicLog(id tnproto.ID, l *log.Logger) (*os.File, error) {
 	go func() {
 		defer r.Close()
 		buf, _ := io.ReadAll(r)
-		l.Printf("%s: panic: %q", id, buf)
+		if len(buf) > 0 {
+			l.Printf("%s: panic: %q", id, buf)
+		}
 	}()
 	return w, nil
 }
