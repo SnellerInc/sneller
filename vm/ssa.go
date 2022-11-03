@@ -763,7 +763,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	scvtitof: {text: "cvt.i@f", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
 	scvtftoi: {text: "cvt.f@i", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
 
-	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stStringMasked, bc: opcvti64tostr},
+	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stString, bc: opcvti64tostr},
 	sconcatstr2:  {text: "concat2.str", argtypes: str2Args, rettype: stStringMasked, emit: emitConcatStr},
 	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr},
 	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
@@ -808,8 +808,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// s, k = skip_nchar_right s, k -- skip n unicode character off the end (right) of a string slice
 	sStrSkipNCharRight: {text: "skip_nchar_right", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSkipNcharRight, emit: emitStrEditStack1},
 
-	sCharLength: {text: "char_length", argtypes: str1Args, rettype: stIntMasked, bc: opLengthStr},
-	sSubStr:     {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSubstr, emit: emitStrEditStack2},
+	sCharLength: {text: "char_length", argtypes: str1Args, rettype: stInt, bc: opLengthStr},
+	sSubStr:     {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stString, immfmt: fmtother, bc: opSubstr, emit: emitStrEditStack2},
 	sSplitPart:  {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSplitPart, emit: emitStrEditStack1x1},
 
 	sDfaT6:  {text: "dfa_tiny6", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6},
@@ -969,8 +969,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	shypotf: {text: "hypot.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf, bcrev: ophypotf, emit: emitBinaryALUOp},
 	spowf:   {text: "pow.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf, emit: emitBinaryALUOp},
 
-	swidthbucketf: {text: "widthbucket.f", rettype: stFloat | stBool, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitauto2},
-	swidthbucketi: {text: "widthbucket.i", rettype: stInt | stBool, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitauto2},
+	swidthbucketf: {text: "widthbucket.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitauto2},
+	swidthbucketi: {text: "widthbucket.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitauto2},
 
 	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggandk, priority: prioMem, emit: emitAggK},
 	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggork, priority: prioMem, emit: emitAggK},
@@ -1064,13 +1064,13 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	smakestructkey: {text: "makestructkey", rettype: stString, immfmt: fmtother, emit: emitNone},
 
 	// GEO functions
-	sgeohash:      {text: "geohash", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2},
-	sgeohashimm:   {text: "geohash.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2},
-	sgeotilex:     {text: "geotilex", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitauto2},
-	sgeotiley:     {text: "geotiley", rettype: stIntMasked, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitauto2},
-	sgeotilees:    {text: "geotilees", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitauto2},
-	sgeotileesimm: {text: "geotilees.imm", rettype: stStringMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2},
-	sgeodistance:  {text: "geodistance", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
+	sgeohash:      {text: "geohash", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2},
+	sgeohashimm:   {text: "geohash.imm", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2},
+	sgeotilex:     {text: "geotilex", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitauto2},
+	sgeotiley:     {text: "geotiley", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitauto2},
+	sgeotilees:    {text: "geotilees", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitauto2},
+	sgeotileesimm: {text: "geotilees.imm", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2},
+	sgeodistance:  {text: "geodistance", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
 
 	schecktag:   {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
 	stypebits:   {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
