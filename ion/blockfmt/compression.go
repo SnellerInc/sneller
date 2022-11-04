@@ -237,31 +237,11 @@ func (w *CompressionWriter) writeStart(r io.Reader, t *Trailer) error {
 	if j == 0 || t.Blocks[j].Offset < int64(w.Output.MinPartSize()) {
 		return nil
 	}
-	n := int64(0)
-	for n < t.Blocks[j].Offset {
-		// perform uploads that are at
-		// least w.target()-sized, and up to
-		// 2*w.target()-sized
-		remaining := t.Blocks[j].Offset - n
-		amt := w.target()
-		if remaining < int64(2*amt) {
-			amt = int(remaining)
-		}
-		if cap(w.buffer) >= amt {
-			w.buffer = w.buffer[:amt]
-		} else {
-			w.buffer = make([]byte, amt)
-		}
-		_, err := io.ReadFull(r, w.buffer)
-		if err != nil {
-			return err
-		}
-		err = w.upload()
-		if err != nil {
-			return err
-		}
-		n += int64(amt)
+	pn, err := uploadReader(w.Output, w.partnum+1, r, t.Blocks[j].Offset)
+	if err != nil {
+		return err
 	}
+	w.partnum = pn - 1
 	w.lastblock = t.Blocks[j].Offset
 	w.offset = w.lastblock
 	w.Trailer.Blocks = t.Blocks[:j]

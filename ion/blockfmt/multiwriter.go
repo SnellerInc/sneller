@@ -141,13 +141,6 @@ func (m *MultiWriter) init() {
 	}
 }
 
-func (m *MultiWriter) target() int {
-	if m.TargetSize != 0 {
-		return m.TargetSize
-	}
-	return 5 * 1024 * 1024
-}
-
 // SkipChecks disable some runtime checks
 // of the input data, which is ordinarily
 // expected to be ion data. Do not use this
@@ -194,33 +187,11 @@ func (m *MultiWriter) writeStart(r io.Reader, t *Trailer) error {
 	if j == 0 || t.Blocks[j].Offset < int64(m.Output.MinPartSize()) {
 		return nil
 	}
-	n := int64(0)
-	var buffer []byte
-	for n < t.Blocks[j].Offset {
-		// perform uploads that are at
-		// least w.target()-sized, and up to
-		// 2*w.target()-sized
-		remaining := t.Blocks[j].Offset - n
-		amt := m.target()
-		if remaining < int64(2*amt) {
-			amt = int(remaining)
-		}
-		if cap(buffer) >= amt {
-			buffer = buffer[:amt]
-		} else {
-			buffer = make([]byte, amt)
-		}
-		_, err := io.ReadFull(r, buffer)
-		if err != nil {
-			return err
-		}
-		err = m.Output.Upload(m.nextpart, buffer)
-		if err != nil {
-			return err
-		}
-		m.nextpart++
-		n += int64(amt)
+	pn, err := uploadReader(m.Output, m.nextpart, r, t.Blocks[j].Offset)
+	if err != nil {
+		return err
 	}
+	m.nextpart = pn
 	m.base = t.Blocks[j].Offset
 	m.Trailer.Blocks = t.Blocks[:j]
 	m.Trailer.Sparse = t.Sparse.Trim(j)

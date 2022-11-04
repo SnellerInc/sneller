@@ -306,6 +306,9 @@ type Converter struct {
 	// is a blockfmt-formatted stream
 	// of data to prepend to the output stream.
 	Prepend struct {
+		// R should read data from Trailer
+		// starting at offset Trailer.Blocks[0].Offset.
+		// Converter will read bytes up to Trailer.Offset.
 		R       io.ReadCloser
 		Trailer *Trailer
 	}
@@ -531,10 +534,15 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 	if c.Prepend.R == nil {
 		return nil
 	}
-	cn.WalkTimeRanges = collectRanges(c.Prepend.Trailer)
+	t := c.Prepend.Trailer
+	cn.WalkTimeRanges = collectRanges(t)
 	d := Decoder{}
-	d.Set(c.Prepend.Trailer, 0)
-	_, err := d.Copy(cn, c.Prepend.R)
+	size := int64(0)
+	if len(t.Blocks) > 0 {
+		size = t.Offset - t.Blocks[0].Offset
+	}
+	d.Set(c.Prepend.Trailer, len(t.Blocks))
+	_, err := d.Copy(cn, io.LimitReader(c.Prepend.R, size))
 	c.Prepend.R.Close()
 	cn.WalkTimeRanges = nil
 	return err

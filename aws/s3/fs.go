@@ -303,7 +303,9 @@ type File struct {
 	// Reader is a reader that points to
 	// the associated s3 object.
 	*Reader
-	body io.ReadCloser // populated lazily
+
+	body io.ReadCloser // actual body; populated lazily
+	pos  int64         // current read offset
 }
 
 // Name implements fs.FileInfo.Name
@@ -326,15 +328,25 @@ func (f *File) Mode() fs.FileMode { return 0644 }
 // Note: Read is not safe to call from
 // multiple goroutines simultaneously.
 // Use ReadAt for parallel reads.
+//
+// Also note: the first call to Read performs
+// an HTTP request to S3 to read the entire
+// contents of the object starting at the
+// current read offset (zero by default, or
+// another offset set via Seek).
+// If you need to read a sub-range of the
+// object, consider using f.Reader.RangeReader
 func (f *File) Read(p []byte) (int, error) {
 	if f.body == nil {
 		var err error
-		f.body, err = f.Reader.RangeReader(0, f.Reader.Size())
+		f.body, err = f.Reader.RangeReader(f.pos, f.Reader.Size()-f.pos)
 		if err != nil {
 			return 0, err
 		}
 	}
-	return f.body.Read(p)
+	n, err := f.body.Read(p)
+	f.pos += int64(n)
+	return n, err
 }
 
 // Info implements fs.DirEntry.Info
@@ -356,7 +368,36 @@ func (f *File) Close() error {
 	}
 	err := f.body.Close()
 	f.body = nil
+	f.pos = 0
 	return err
+}
+
+// Seek implements io.Seeker
+//
+// Seek rejects offsets that are beyond
+// the size of the underlying object.
+func (f *File) Seek(offset int64, whence int) (int64, error) {
+	var newpos int64
+	switch whence {
+	case io.SeekStart:
+		newpos = offset
+	case io.SeekCurrent:
+		newpos = f.pos + offset
+	case io.SeekEnd:
+		newpos = f.size + offset
+	default:
+		panic("invalid seek whence")
+	}
+	if newpos < 0 || newpos > f.size {
+		return f.pos, fmt.Errorf("invalid seek offset %d", newpos)
+	}
+	// current data is invalid
+	// if the position has changed
+	if newpos != f.pos && f.body != nil {
+		f.body.Close()
+	}
+	f.pos = newpos
+	return f.pos, nil
 }
 
 // IsDir implements fs.DirEntry.IsDir.

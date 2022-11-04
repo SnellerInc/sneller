@@ -19,7 +19,6 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	prand "math/rand"
 	"path"
@@ -661,11 +660,6 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 	}
 }
 
-type readCloser struct {
-	io.Reader
-	io.Closer
-}
-
 func (st *tableState) preciseGC(idx *blockfmt.Index) {
 	if rmfs, ok := st.ofs.(RemoveFS); ok && st.conf.GCLikelihood > 0 {
 		gcconf := GCConfig{Precise: true, Logf: st.conf.Logf}
@@ -817,7 +811,9 @@ func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partiti
 		}
 		defer f.Close()
 		tr := prepend.Trailer
-		c.Prepend.R = &readCloser{Reader: io.LimitReader(f, tr.Offset), Closer: f}
+		// NOTE: make sure R is an *s3.File here when we're on AWS;
+		// that way we can use server-side copy for some prepends
+		c.Prepend.R = f
 		c.Prepend.Trailer = tr
 	}
 

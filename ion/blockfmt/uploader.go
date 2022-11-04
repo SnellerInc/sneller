@@ -16,8 +16,11 @@ package blockfmt
 
 import (
 	"fmt"
+	"io"
 	"sort"
 	"sync"
+
+	"github.com/SnellerInc/sneller/aws/s3"
 )
 
 // Uploader describes what we expect
@@ -45,6 +48,55 @@ type Uploader interface {
 	// required to return a valid value
 	// after Close has been called.
 	Size() int64
+}
+
+func uploadReader(dst Uploader, startpart int64, src io.Reader, size int64) (int64, error) {
+	if size < int64(dst.MinPartSize()) {
+		return startpart, fmt.Errorf("cannot upload %d bytes from reader (less than min part size %d)", size, dst.MinPartSize())
+	}
+	// fast-path for the real world: just use S3 server-side copy
+	if f, ok := src.(*s3.File); ok {
+		if up, ok := dst.(*s3.Uploader); ok {
+			start, _ := f.Seek(0, io.SeekCurrent)
+			err := up.CopyFrom(startpart, f.Reader, start, size)
+			if err != nil {
+				return startpart, err
+			}
+			// adjust the reader so that any subequent
+			// bytes are read from the right place
+			_, err = f.Seek(size, io.SeekCurrent)
+			if err != nil {
+				return startpart, err
+			}
+			return startpart + 1, nil
+		}
+	}
+	var buffer []byte
+	target := dst.MinPartSize()
+	n := int64(0)
+	for n < size {
+		remaining := size - n
+		amt := target
+		if remaining < int64(2*amt) {
+			amt = int(remaining)
+		}
+		if cap(buffer) >= amt {
+			buffer = buffer[:amt]
+		} else {
+			buffer = make([]byte, amt)
+		}
+		_, err := io.ReadFull(src, buffer)
+		if err != nil {
+			return startpart, err
+		}
+		err = dst.Upload(startpart, buffer)
+		if err != nil {
+			return startpart, err
+		}
+		startpart++
+		n += int64(amt)
+	}
+	return startpart, nil
 }
 
 // BufferUploader is a simple in-memory
