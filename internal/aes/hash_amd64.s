@@ -301,6 +301,23 @@ empty_input:
     RET
 
 
+TEXT hashCoreInit<>(SB), NOSPLIT | NOFRAME, $0-0
+    // BX := the base address of the expanded 128-bit key quad
+    // CX := the number of bytes to process
+    // SI := the base address of the input data block
+    //
+    // The registers listed above must not be altered!
+
+    LEAQ    hashCoreAES<>(SB), AX   // the default handler
+    CMPB    golang·org∕x∕sys∕cpu·X86+const_offsX86HasAVX512VAES(SB), $0
+    JE      done
+    LEAQ    hashCoreVAES<>(SB), AX  // use VAES acceleration
+
+done:
+    MOVQ    AX, hashCoreDispatcher<>(SB)
+    JMP     AX  // dispatch control to the selected handler
+
+
 // Trampolines
 
 // func aesHash64(quad *ExpandedKey128Quad, p *byte, n int) uint64
@@ -325,16 +342,6 @@ TEXT ·aesHashWide(SB), NOSPLIT | NOFRAME, $0-24
     RET
 
 
-// func aesInitHashEngine()
-TEXT ·aesInitHashEngine(SB), NOSPLIT | NOFRAME, $0-0
-    CMPB    golang·org∕x∕sys∕cpu·X86+const_offsX86HasAVX512VAES(SB), $0
-    JE      resolved_vaes
-    LEAQ    hashCoreVAES<>(SB), AX
-    MOVQ    AX, hashCoreDispatcher<>(SB)
-
-resolved_vaes:
-    RET
-
 // Dynamic dispatch based on the features supported in hardware
-DATA hashCoreDispatcher<>+0(SB)/8, $hashCoreAES<>(SB)
+DATA hashCoreDispatcher<>+0(SB)/8, $hashCoreInit<>(SB)
 GLOBL hashCoreDispatcher<>(SB), NOPTR, $8
