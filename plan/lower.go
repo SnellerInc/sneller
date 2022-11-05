@@ -678,7 +678,26 @@ func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
 	} else {
 		b = pir.NoSplit(b)
 	}
-	return toTree(b, env, split)
+
+	tree, err := toTree(b, env, split)
+	if err != nil {
+		return nil, err
+	}
+
+	if q.Explain == expr.ExplainNone {
+		return tree, nil
+	}
+
+	// explain the query
+	op := &Explain{
+		Format: q.Explain,
+		Query:  q,
+		Tree:   tree,
+	}
+
+	res := &Tree{Root: Node{Op: op}}
+	return res, nil
+
 }
 
 func lowerUnpivot(in *pir.Unpivot, from Op) (Op, error) {

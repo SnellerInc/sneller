@@ -399,16 +399,11 @@ func (n NoOutput) setinput(o Op) {
 	panic("NoOutput: cannot setinput()")
 }
 
-func (n NoOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+func writeIon(b *ion.Buffer, dst vm.QuerySink) (int, vm.QuerySink, error) {
 	w, err := dst.Open()
 	if err != nil {
 		return -1, nil, err
 	}
-	// just output an empty symbol table
-	// and no data following it
-	var b ion.Buffer
-	var st ion.Symtab
-	st.Marshal(&b, true)
 	_, err = w.Write(b.Bytes())
 	if err != nil {
 		w.Close()
@@ -420,6 +415,16 @@ func (n NoOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, err
 		err = err2
 	}
 	return -1, nil, err
+}
+
+func (n NoOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+	// just output an empty symbol table
+	// and no data following it
+	var b ion.Buffer
+	var st ion.Symtab
+	st.Marshal(&b, true)
+
+	return writeIon(&b, dst)
 }
 
 func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -443,10 +448,6 @@ func (n DummyOutput) setinput(o Op) {
 }
 
 func (n DummyOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
-	w, err := dst.Open()
-	if err != nil {
-		return -1, nil, err
-	}
 	// just output an empty symbol table
 	// plus an empty structure
 	//
@@ -457,17 +458,8 @@ func (n DummyOutput) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, 
 	st.Marshal(&b, true)
 	empty := ion.Struct{}
 	empty.Encode(&b, &st)
-	_, err = w.Write(b.Bytes())
-	if err != nil {
-		w.Close()
-		return -1, nil, err
-	}
-	err = w.Close()
-	err2 := dst.Close()
-	if err == nil {
-		err = err2
-	}
-	return -1, nil, err
+
+	return writeIon(&b, dst)
 }
 
 func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -1196,4 +1188,78 @@ func (u *UnpivotAtDistinct) setfield(_ Decoder, name string, st *ion.Symtab, buf
 		err = fmt.Errorf("plan.UnpivotAtDistinct: setfield: unexpected field %q", name)
 	}
 	return err
+}
+
+// Explain is leaf executor for explaing queries
+type Explain struct {
+	Format expr.ExplainFormat
+	Query  *expr.Query
+	Tree   *Tree
+}
+
+func (e *Explain) String() string                                      { return "EXPLAIN QUERY" }
+func (e *Explain) encode(*ion.Buffer, *ion.Symtab) error               { return nil }
+func (e *Explain) setfield(Decoder, string, *ion.Symtab, []byte) error { return nil }
+func (e *Explain) rewrite(expr.Rewriter)                               {}
+func (e *Explain) input() Op                                           { return nil }
+func (e *Explain) setinput(Op)                                         { panic("Explain: cannot setinput()") }
+
+func (e *Explain) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+	var b ion.Buffer
+	var st ion.Symtab
+
+	// Build the following structure:
+	// "query": textual form of query being explained
+	// "plan": text or
+	// "plan-lines": list of plan lines or
+	// "graphviz": graphviz
+	fieldName := func() string {
+		switch e.Format {
+		case expr.ExplainDefault, expr.ExplainText:
+			return "plan"
+
+		case expr.ExplainList:
+			return "plan-lines"
+
+		case expr.ExplainGraphviz:
+			return "graphviz"
+		}
+
+		return ""
+	}
+
+	st.Intern("query")
+	st.Intern(fieldName())
+	st.Marshal(&b, true)
+
+	b.BeginStruct(-1)
+	b.BeginField(st.Intern("query"))
+	b.WriteString(expr.ToString(e.Query))
+
+	b.BeginField(st.Intern(fieldName()))
+
+	switch e.Format {
+	case expr.ExplainDefault, expr.ExplainText:
+		b.WriteString(e.Tree.String())
+
+	case expr.ExplainList:
+		b.BeginList(-1)
+		for _, line := range strings.Split(e.Tree.String(), "\n") {
+			if len(line) > 0 {
+				b.WriteString(line)
+			}
+		}
+		b.EndList()
+
+	case expr.ExplainGraphviz:
+		var sb strings.Builder
+		err := Graphviz(e.Tree, &sb)
+		if err != nil {
+			return -1, nil, err
+		}
+		b.WriteString(sb.String())
+	}
+	b.EndStruct()
+
+	return writeIon(&b, dst)
 }
