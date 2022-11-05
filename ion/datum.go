@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 
 	"golang.org/x/exp/slices"
 
@@ -64,7 +65,7 @@ func (d Datum) Equal(x Datum) bool {
 		switch x.Type() {
 		case FloatType:
 			f2, _ := x.Float()
-			return f2 == f
+			return f2 == f || (math.IsNaN(f) && math.IsNaN(f2))
 		case IntType:
 			i, _ := x.Int()
 			return float64(int64(f)) == float64(f) && int64(f) == int64(i)

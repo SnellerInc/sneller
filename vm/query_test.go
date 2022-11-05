@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -251,6 +252,59 @@ func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
 	return d
 }
 
+func parseSpecialFPValues(s string) ion.Datum {
+	const prefix = "float64:"
+	if strings.HasPrefix(s, prefix) {
+		s = s[len(prefix):]
+		switch s {
+		case "inf", "+inf":
+			return ion.Float(math.Inf(+1))
+		case "-inf":
+			return ion.Float(math.Inf(-1))
+		case "nan", "NaN":
+			return ion.Float(math.NaN())
+		case "-0":
+			return ion.Float(math.Float64frombits(0x8000_0000_0000_0000))
+		default:
+			panic(fmt.Sprintf("unknown test function %q", s))
+		}
+	}
+
+	return ion.Empty
+}
+
+func insertSpecialFPValues(d ion.Datum, st *ion.Symtab) ion.Datum {
+	switch d.Type() {
+	case ion.StructType:
+		d, _ := d.Struct()
+		fields := d.Fields(nil)
+		for i := range fields {
+			if str, ok := fields[i].Value.String(); ok {
+				if v := parseSpecialFPValues(str); !v.Empty() {
+					fields[i].Value = v
+				}
+			} else {
+				fields[i].Value = insertSpecialFPValues(fields[i].Value, st)
+			}
+		}
+		return ion.NewStruct(st, fields).Datum()
+	case ion.ListType:
+		d, _ := d.List()
+		items := d.Items(nil)
+		for i := range items {
+			if str, ok := items[i].String(); ok {
+				if v := parseSpecialFPValues(str); !v.Empty() {
+					items[i] = v
+				}
+			} else {
+				items[i] = insertSpecialFPValues(items[i], st)
+			}
+		}
+		return ion.NewList(st, items).Datum()
+	}
+	return d
+}
+
 func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
 	if len(b) == 0 {
 		return nil, nil
@@ -266,6 +320,7 @@ func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
 			}
 			return nil, err
 		}
+		d = insertSpecialFPValues(d, outst)
 		if symbolize {
 			d = symbolizeRandomly(d, outst, r)
 		}

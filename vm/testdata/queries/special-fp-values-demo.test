@@ -1,0 +1,13 @@
+SELECT name, val FROM input
+---
+{"name": "+infinity", "val": "float64:+inf"}
+{"name": "-infinity", "val": "float64:-inf"}
+{"name": "NaN", "val": "float64:NaN"}
+# The "-0" case does not work yet; it's for sure passed
+# from our input data, but somewhere deeper becomes +0
+# (likly during some conversions).
+# {"name": "-0", "val": "float64:-0"}
+---
+{"name": "+infinity", "val": "float64:+inf"}
+{"name": "-infinity", "val": "float64:-inf"}
+{"name": "NaN", "val": "float64:NaN"}
