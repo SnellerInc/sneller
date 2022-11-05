@@ -38,10 +38,11 @@ type scanner struct {
 	from []byte
 	pos  int
 
-	err    error
-	result expr.Node
-	with   []expr.CTE
-	into   expr.Node
+	err     error
+	result  expr.Node
+	with    []expr.CTE
+	into    expr.Node
+	explain expr.ExplainFormat
 	// notkw is set when
 	// we are not in keyword context
 	notkw bool
@@ -529,4 +530,21 @@ func createCase(optionalExpr expr.Node, limbs []expr.CaseLimb, elseExpr expr.Nod
 		Limbs: limbs,
 		Else:  elseExpr,
 	}
+}
+
+func parseExplain(s string) (expr.ExplainFormat, error) {
+	switch s {
+	case "":
+		return expr.ExplainNone, nil
+	case "default":
+		return expr.ExplainDefault, nil
+	case "text":
+		return expr.ExplainText, nil
+	case "list":
+		return expr.ExplainList, nil
+	case "gv", "graphviz":
+		return expr.ExplainGraphviz, nil
+	}
+
+	return expr.ExplainNone, fmt.Errorf("%q is a wrong explain type", s)
 }

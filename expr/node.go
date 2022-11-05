@@ -3382,3 +3382,23 @@ func equalPointed[T comparable](lhs, rhs *T) bool {
 	}
 	return rhs == nil
 }
+
+// ExplainFormat describes the format of
+type ExplainFormat uint8
+
+const (
+	// No explain
+	ExplainNone ExplainFormat = iota
+
+	// Return singe blob of text
+	ExplainDefault
+
+	// Return a singe blob of text
+	ExplainText
+
+	// Return each line of plan separately
+	ExplainList
+
+	// Return plan in graphviz format
+	ExplainGraphviz
+)

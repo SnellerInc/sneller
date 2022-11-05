@@ -99,6 +99,7 @@ func init() {
 		{"LEADING", LEADING},
 		{"TRAILING", TRAILING},
 		{"BOTH", BOTH},
+		{"EXPLAIN", EXPLAIN},
 	} {
 		code, ok := wordcode([]byte(pair.name))
 		if !ok {

@@ -41,6 +41,8 @@ func (c *CTE) Equals(other *CTE) bool {
 
 // Query contains a complete query.
 type Query struct {
+	Explain ExplainFormat
+
 	With []CTE
 	// Into, if non-nil, is the INTO
 	// portion of Body when Body is
@@ -69,6 +71,17 @@ func (q *Query) Text() string {
 }
 
 func (q *Query) text(dst *strings.Builder, redact bool) {
+	switch q.Explain {
+	case ExplainDefault:
+		dst.WriteString("EXPLAIN ")
+	case ExplainText:
+		dst.WriteString("EXPLAIN AS text ")
+	case ExplainList:
+		dst.WriteString("EXPLAIN AS list ")
+	case ExplainGraphviz:
+		dst.WriteString("EXPLAIN AS graphviz ")
+	}
+
 	if len(q.With) > 0 {
 		dst.WriteString("WITH ")
 		for i := range q.With {

@@ -87,6 +87,10 @@ var sameq = []string{
 	"SELECT TRIM(x, y) FROM table",
 	`SELECT APPROX_COUNT_DISTINCT(x) FROM table`,
 	`SELECT APPROX_COUNT_DISTINCT(x, 5) FROM table`,
+	`EXPLAIN SELECT * FROM table`,
+	`EXPLAIN AS text SELECT * FROM table`,
+	`EXPLAIN AS list SELECT * FROM table`,
+	`EXPLAIN AS graphviz SELECT * FROM table`,
 }
 
 func TestParseSFW(t *testing.T) {

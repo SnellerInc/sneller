@@ -58,7 +58,7 @@ import (
 
 %token ERROR EOF
 %left UNION
-%token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH INTO
+%token SELECT FROM WHERE GROUP ORDER BY HAVING LIMIT OFFSET WITH INTO EXPLAIN
 %token DISTINCT ALL AS EXISTS NULLS FIRST LAST ASC DESC UNPIVOT AT
 %token PARTITION
 %token VALUE
@@ -115,17 +115,24 @@ import (
 %type <limbs> case_limbs
 %type <wind> maybe_window
 %type <integer> trim_type
+%type <str> maybe_explain
 %start query
 
 %%
 
 query:
-maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
+maybe_explain maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
 {
-  yylex.(*scanner).with = $1
-  yylex.(*scanner).into = $5
-  distinct, distinctExpr := decodeDistinct($3)
-  yylex.(*scanner).result = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $4, From: $6, Where: $7, GroupBy: $8, Having: $9, OrderBy: $10, Limit: $11, Offset: $12};
+  exp, err := parseExplain($1)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  yylex.(*scanner).explain = exp
+
+  yylex.(*scanner).with = $2
+  yylex.(*scanner).into = $6
+  distinct, distinctExpr := decodeDistinct($4)
+  yylex.(*scanner).result = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $5, From: $7, Where: $8, GroupBy: $9, Having: $10, OrderBy: $11, Limit: $12, Offset: $13};
 }
 
 select_stmt:
@@ -134,6 +141,11 @@ SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr havi
     distinct, distinctExpr := decodeDistinct($2)
     $$ = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $3, From: $4, Where: $5, GroupBy: $6, Having: $7, OrderBy: $8, Limit: $9, Offset: $10};
 }
+
+maybe_explain:
+  EXPLAIN               { $$ = "default" }
+| EXPLAIN AS identifier { $$ = $3 }
+|                       { $$ = "" }
 
 maybe_into:
 INTO path_expression { $$ = $2 } | { $$ = nil }
