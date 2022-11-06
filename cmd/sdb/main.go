@@ -60,7 +60,7 @@ func init() {
 	flag.StringVar(&dashk, "k", "", "key file to use for signing+authenticating indexes")
 	flag.StringVar(&dasho, "o", "-", "output file (or - for stdin) for unpack")
 	flag.StringVar(&token, "token", "", "JWT token or custom bearer token (default: fetch from SNELLER_TOKEN environment variable)")
-	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, http://, https://, empty uses environment)")
+	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, empty uses environment)")
 	flag.BoolVar(&printBuild, "build", false, "print the build info of executable")
 	flag.BoolVar(&printVersion, "version", false, "print the version of executable")
 }
@@ -683,9 +683,9 @@ func main() {
 
 	showHelp := func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n  sdb [-version] [-build] [-a auth-spec] [-token token] command args...\n")
-		fmt.Fprintf(os.Stderr, "  -a       auth-spec: an http:// or file:// URI\n")
-		fmt.Fprintf(os.Stderr, "           pointing to the token validation server or local credentials\n")
-		fmt.Fprintf(os.Stderr, "  -token   token: the token to pass to the auth server\n")
+		fmt.Fprintf(os.Stderr, "  -a       auth-spec: file://\n")
+		fmt.Fprintf(os.Stderr, "           pointing local credentials (empty uses environment)\n")
+		fmt.Fprintf(os.Stderr, "  -token   token: the token to pass to the auth server (empty uses $SNELLER_TOKEN)\n")
 		fmt.Fprintf(os.Stderr, "  -version show program version\n")
 		fmt.Fprintf(os.Stderr, "  -build   show program build info\n")
 		fmt.Fprintf(os.Stderr, "Available commands:\n")
