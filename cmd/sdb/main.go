@@ -39,7 +39,6 @@ var (
 	dashh        bool
 	dashf        bool
 	dashm        int64
-	dashk        string
 	dasho        string
 	token        string
 	authEndPoint string
@@ -57,7 +56,6 @@ func init() {
 	flag.BoolVar(&dashh, "h", false, "show usage help")
 	flag.BoolVar(&dashf, "f", false, "force rebuild")
 	flag.Int64Var(&dashm, "m", 100*giga, "maximum input bytes read per index update")
-	flag.StringVar(&dashk, "k", "", "key file to use for signing+authenticating indexes")
 	flag.StringVar(&dasho, "o", "-", "output file (or - for stdin) for unpack")
 	flag.StringVar(&token, "token", "", "JWT token or custom bearer token (default: fetch from SNELLER_TOKEN environment variable)")
 	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, empty uses environment)")
