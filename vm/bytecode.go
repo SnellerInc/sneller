@@ -658,8 +658,6 @@ type bytecode struct {
 
 	//lint:ignore U1000 not unused; used in assembly
 	bucket [16]int32 // the L register (32 bits per lane)
-	//lint:ignore U1000 not unused; used in assembly
-	lbuf [16]int64 // location buffer
 
 	// scratch buffer used for projection
 	scratch []byte
