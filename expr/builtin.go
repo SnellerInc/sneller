@@ -924,6 +924,14 @@ var (
 	dateAddYear    = adjtime(adjpart(Year))
 )
 
+func missingIfNaN(x float64) Node {
+	if math.IsNaN(x) {
+		return Missing{}
+	}
+
+	return Float(x)
+}
+
 func mathfunc(fn func(float64) float64) func(Hint, []Node) Node {
 	return func(h Hint, args []Node) Node {
 		if len(args) != 1 {
@@ -937,7 +945,7 @@ func mathfunc(fn func(float64) float64) func(Hint, []Node) Node {
 			}
 			f = Float(int64(i))
 		}
-		return Float(fn(float64(f)))
+		return missingIfNaN(fn(float64(f)))
 	}
 }
 
@@ -967,7 +975,7 @@ func mathfunc2(fn func(float64, float64) float64) func(Hint, []Node) Node {
 			return nil
 		}
 
-		return Float(fn(f1, f2))
+		return missingIfNaN(fn(f1, f2))
 	}
 }
 
@@ -996,7 +1004,7 @@ func mathfuncreduce(fn func(float64, float64) float64) func(Hint, []Node) Node {
 			}
 		}
 
-		return Float(val)
+		return missingIfNaN(val)
 	}
 }
 

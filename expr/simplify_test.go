@@ -1097,6 +1097,11 @@ func TestSimplify(t *testing.T) {
 			&Lookup{Expr: String("not-present"), Else: Null{}, Keys: mkbag(ion.String("foo"), ion.String("x")), Values: mkbag(ion.Int(0), ion.Int(1))},
 			Null{},
 		},
+		{
+			// when a floating point operation yields NaN, the result is MISSING
+			Call(Sqrt, Float(-5)),
+			Missing{},
+		},
 	}
 
 	for i := range testcases {
@@ -1107,7 +1112,10 @@ func TestSimplify(t *testing.T) {
 			after := tc.after
 			opt := Simplify(before, NoHint)
 			if !opt.Equals(after) {
-				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(tc.before), ToString(opt), ToString(after))
+				t.Logf("original:   %q (%T)", ToString(before), before)
+				t.Logf("simplified: %q (%T)", ToString(opt), opt)
+				t.Logf("wanted:     %q (%T)", ToString(after), after)
+				t.Errorf("wrong simplification result")
 			}
 			testEquivalence(before, t)
 			testEquivalence(after, t)
