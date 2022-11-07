@@ -29,7 +29,7 @@ import (
 // Builder is the same as the argument.
 //
 // The mapping step of the query plan can
-// be performed in parallel (on different:w
+// be performed in parallel (on different
 // machines, etc.), and the rows output
 // by the mapping step can be unioned
 // and then passed to the reduction step,
@@ -168,6 +168,13 @@ func splitOne(s Step, mapping, reduce *Trace) (bool, error) {
 		n.setparent(reduce.top)
 		reduce.top = n
 		// no longer in mapping step
+		return false, nil
+	case *UnpivotAtDistinct:
+		mapping.top = n
+		cols := []expr.Node{&expr.Path{First: *n.Ast.At}}
+		dis := Distinct{Columns: cols}
+		dis.setparent(reduce.top)
+		reduce.top = &dis
 		return false, nil
 	default:
 		// we are trivially still in the mapping step

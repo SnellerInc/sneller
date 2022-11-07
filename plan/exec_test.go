@@ -1282,6 +1282,30 @@ where Make in (
 				`{"Color": "BR", "count": 3}`,
 			},
 		},
+
+		{
+			query: `SELECT cols FROM UNPIVOT 'parking.10n' AT cols GROUP BY cols ORDER BY cols LIMIT 100`,
+			expectedRows: []string{
+				`{"cols": "Agency"}`,
+				`{"cols": "BodyStyle"}`,
+				`{"cols": "Color"}`,
+				`{"cols": "Fine"}`,
+				`{"cols": "IssueData"}`,
+				`{"cols": "IssueTime"}`,
+				`{"cols": "Latitude"}`,
+				`{"cols": "Location"}`,
+				`{"cols": "Longitude"}`,
+				`{"cols": "Make"}`,
+				`{"cols": "MarkedTime"}`,
+				`{"cols": "MeterId"}`,
+				`{"cols": "PlateExpiry"}`,
+				`{"cols": "RPState"}`,
+				`{"cols": "Route"}`,
+				`{"cols": "Ticket"}`,
+				`{"cols": "ViolationCode"}`,
+				`{"cols": "ViolationDescr"}`,
+			},
+		},
 	}
 
 	for i := range tcs {

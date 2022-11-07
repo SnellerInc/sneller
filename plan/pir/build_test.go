@@ -271,6 +271,14 @@ func TestBuild(t *testing.T) {
 				"UNPIVOT_AT_DISTINCT cols",
 				"PROJECT cols AS cols",
 			},
+			split: []string{
+				"UNION MAP input (",
+				"	ITERATE PART input FIELDS [key]",
+				"	PROJECT key AS key",
+				"	UNPIVOT_AT_DISTINCT cols)",
+				"FILTER DISTINCT [cols]",
+				"PROJECT cols AS cols",
+			},
 		},
 		{
 			input: "SELECT COUNT(*), key FROM UNPIVOT input AS val AT key GROUP BY key",
