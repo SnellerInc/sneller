@@ -379,9 +379,9 @@ func pushReduceOrder(t *Trace, upto Step) {
 			ord.setparent(newparent.parent())
 			newparent.setparent(ord)
 			if parent == nil {
-				t.top = newparent
+				t.top = next
 			} else {
-				parent.setparent(newparent)
+				parent.setparent(next)
 			}
 			// let's assume only 1 ORDER BY;
 			// let's also check to see if moving

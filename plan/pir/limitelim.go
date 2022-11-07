@@ -14,28 +14,39 @@
 
 package pir
 
+// if we have par -> self,
+// replace par -> x -> ... -> self
+// as deep as we can
+func pushlimit(par Step, self *Limit, b *Trace) {
+	var skip Step
+search:
+	for next := self.parent(); next != nil; next = next.parent() {
+		switch n := next.(type) {
+		case *Bind: // Bind is the only op that preserves the number of rows
+			skip = n
+		default:
+			break search
+		}
+	}
+	if skip == nil {
+		return
+	}
+	next := self.parent()
+	self.setparent(skip.parent())
+	skip.setparent(self)
+	if b.top == self {
+		b.top = next
+	} else {
+		par.setparent(next)
+	}
+}
+
 func limitpushdown(b *Trace) {
 	var parent Step
 	for s := b.top; s != nil; s = s.parent() {
 		lim, ok := s.(*Limit)
-		if !ok {
-			parent = s
-			continue
-		}
-		next := s.parent()
-		switch n := next.(type) {
-		case *Bind:
-			// bindings don't change the #
-			// of output rows, so we can push down
-			// past them
-			lim.setparent(n.parent())
-			n.setparent(lim)
-			if parent == nil {
-				b.top = n
-			} else {
-				parent.setparent(n)
-			}
-		default:
+		if ok {
+			pushlimit(parent, lim, b)
 		}
 		parent = s
 	}

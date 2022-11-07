@@ -1198,6 +1198,25 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"PROJECT x AS x, z AS z",
 			},
 		},
+		{
+			input: "SELECT grp, SUM(x) AS sumx, AVG(x) AS avgx, 1 + SUM(x) AS sum2 FROM foo GROUP BY grp ORDER BY grp LIMIT 1",
+			expect: []string{
+				"ITERATE foo FIELDS [grp, x]",
+				"AGGREGATE SUM(x) AS $_0_1, AVG(x) AS $_0_2 BY grp AS $_0_0",
+				"ORDER BY $_0_0 ASC NULLS FIRST",
+				"LIMIT 1",
+				"PROJECT $_0_0 AS grp, $_0_1 AS sumx, $_0_2 AS avgx, $_0_1 + 1 AS sum2",
+			},
+			split: []string{
+				"UNION MAP foo (",
+				"	ITERATE PART foo FIELDS [grp, x]",
+				"	AGGREGATE SUM(x) AS $_2_0, SUM(x) AS $_2_1, COUNT(x + 0) AS $_2_2 BY grp AS $_0_0)",
+				"AGGREGATE SUM($_2_0) AS $_0_1, SUM($_2_1) AS $_0_2, SUM_COUNT($_2_2) AS $_1_1 BY $_0_0 AS $_0_0",
+				"ORDER BY $_0_0 ASC NULLS FIRST",
+				"LIMIT 1",
+				"PROJECT $_0_0 AS grp, $_0_1 AS sumx, $_0_2 / $_1_1 AS avgx, $_0_1 + 1 AS sum2",
+			},
+		},
 	}
 
 	for i := range tests {
