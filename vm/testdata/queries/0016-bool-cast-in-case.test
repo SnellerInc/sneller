@@ -1,0 +1,19 @@
+SELECT
+  x,
+  CASE
+    WHEN CAST(x AS BOOLEAN) THEN 'true'
+  END AS v
+FROM
+  input
+---
+{"x": true}
+{"x": false}
+{"x": 1}
+{"x": "y value"}
+{"x": 0}
+---
+{"x": true,         "v": "true"}
+{"x": false}
+{"x": 1,            "v": "true"}
+{"x": "y value"}
+{"x": 0}

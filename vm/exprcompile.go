@@ -316,8 +316,13 @@ func (p *prog) compileAsBool(e expr.Node) (*value, error) {
 	case *expr.Member:
 	case *expr.Path:
 		coerce = true
+	case *expr.Cast:
+		if e.To != expr.BoolType {
+			return nil, fmt.Errorf("%q cannot be interpreted as a logical expression; the target type is %s",
+				expr.ToString(e), e.TargetTypeName())
+		}
 	default:
-		return nil, fmt.Errorf("%q is not a logical expression, but has type %T", e, e)
+		return nil, fmt.Errorf("%q is not a logical expression, but has type %T", expr.ToString(e), e)
 	}
 	v, err := compile(p, e)
 	if err != nil {

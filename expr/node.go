@@ -2793,38 +2793,41 @@ type Cast struct {
 	To TypeSet
 }
 
-func (c *Cast) text(dst *strings.Builder, redact bool) {
-	var kw string
+// TargetTypeName returns the name of the target type.
+func (c *Cast) TargetTypeName() string {
 	switch c.To {
 	case MissingType:
-		kw = "MISSING"
+		return "MISSING"
 	case NullType:
-		kw = "NULL"
+		return "NULL"
 	case StringType:
-		kw = "STRING"
+		return "STRING"
 	case IntegerType:
-		kw = "INTEGER"
+		return "INTEGER"
 	case FloatType:
-		kw = "FLOAT"
+		return "FLOAT"
 	case BoolType:
-		kw = "BOOLEAN"
+		return "BOOLEAN"
 	case TimeType:
-		kw = "TIMESTAMP"
+		return "TIMESTAMP"
 	case StructType:
-		kw = "STRUCT"
+		return "STRUCT"
 	case ListType:
-		kw = "LIST"
+		return "LIST"
 	case DecimalType:
-		kw = "DECIMAL"
+		return "DECIMAL"
 	case SymbolType:
-		kw = "SYMBOL"
+		return "SYMBOL"
 	default:
-		kw = "UNKNOWN"
+		return "UNKNOWN"
 	}
+}
+
+func (c *Cast) text(dst *strings.Builder, redact bool) {
 	dst.WriteString("CAST(")
 	c.From.text(dst, redact)
 	dst.WriteString(" AS ")
-	dst.WriteString(kw)
+	dst.WriteString(c.TargetTypeName())
 	dst.WriteByte(')')
 }
 
