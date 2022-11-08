@@ -131,6 +131,7 @@ const (
 	scvtktoi // bool to 0 or 1
 	scvtktof // bool to 0.0 or 1.0
 	scvtitok // int64 to bool
+	scvtftok // fp to bool
 	scvtftoi // fp to int, round nearest
 	scvtitof // int to fp
 
@@ -761,6 +762,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// fp <-> int conversion ops
 	scvtitok: {text: "cvt.i@k", argtypes: int1Args, rettype: stBool, bc: opcvti64tok},
 	scvtitof: {text: "cvt.i@f", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
+	scvtftok: {text: "cvt.f@k", argtypes: fp1Args, rettype: stBool, bc: opcvtf64tok},
 	scvtftoi: {text: "cvt.f@i", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
 
 	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stString, bc: opcvti64tostr},

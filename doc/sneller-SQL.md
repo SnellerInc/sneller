@@ -1521,11 +1521,13 @@ Known types are:
 
 The only implemented conversions are:
 
+* `INTEGER` -> `BOOLEAN`;
 * `INTEGER` -> `FLOAT`;
 * `INTEGER` -> `STRING`;
 * `FLOAT` -> `INTEGER`;
+* `FLOAT` -> `BOOLEAN`;
 * `BOOLEAN` -> `INTEGER`;
-* `BOOLEAN` -> `FLOAT`;
+* `BOOLEAN` -> `FLOAT`.
 
 Any other conversions yield `MISSING`.
 

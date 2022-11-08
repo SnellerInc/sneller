@@ -1,0 +1,13 @@
+SELECT
+  CAST(CAST(x AS INTEGER) AS BOOLEAN) AS from_int,
+  CAST(CAST(x AS FLOAT) AS BOOLEAN) AS from_float
+FROM
+  input
+---
+{"x": -5}
+{"x": 42}
+{"x": 0}
+---
+{"from_int": true, "from_float": true}
+{"from_int": true, "from_float": true}
+{"from_int": false, "from_float": false}

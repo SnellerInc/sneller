@@ -1455,11 +1455,9 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		case stBool:
 			return from, nil
 		case stInt:
-			// bool(i != 0)
-			return p.nand(p.ssa2imm(scmpeqimmi, from, p.mask(from), 0), p.ValidLanes()), nil
+			return p.ssa2(scvtitok, from, p.mask(from)), nil
 		case stFloat:
-			// bool(f != 0)
-			return p.nand(p.ssa2imm(scmpeqimmf, from, p.mask(from), 0.0), p.ValidLanes()), nil
+			return p.ssa2(scvtftok, from, p.mask(from)), nil
 		case stValue:
 			// we can convert booleans and numbers to bools
 			iszero := p.ssa2imm(sequalconst, from, p.mask(from), 0)
@@ -1467,7 +1465,6 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			eqfalse := p.Or(iszero, isfalse)
 			oktype := p.checkTag(from, expr.BoolType|expr.NumericType)
 			// return (!(b == 0 || b == false) && (b is numeric))
-			// TODO: should NaN become false as well?
 			ret := p.nand(eqfalse, oktype)
 			ret.notMissing = oktype
 			return ret, nil

@@ -1053,8 +1053,8 @@ func converts(to TypeSet) TypeSet {
 		// we support any->null and any->missing
 		return AnyType
 	case BoolType:
-		// we support int->bool and bool->bool
-		return IntegerType | BoolType
+		// we support int->bool, float->bool and bool->bool
+		return IntegerType | FloatType | BoolType
 	case FloatType, IntegerType:
 		// we support conversion to/from
 		// floats, ints, and bools (zero = false, otherwise true)

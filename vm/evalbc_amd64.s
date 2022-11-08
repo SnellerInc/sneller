@@ -5917,6 +5917,22 @@ TEXT bccvtktof64(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64.Z   Z2, K1, Z2
   NEXT()
 
+// convert float64 to mask
+TEXT bccvtf64tok(SB), NOSPLIT|NOFRAME, $0
+  KSHIFTRW $8, K1, K2
+
+  VPXORQ    Z11, Z11, Z11
+
+  // shift out the sign bit, so we correctly handle the "-0.0" case
+  VPSLLQ    $1, Z2, Z4
+  VPSLLQ    $1, Z3, Z5
+
+  // binary image of +0.0 is full of zeros, so it's safe to use int arithmetic
+  VPCMPQ    $VPCMP_IMM_NE, Z11, Z4, K1, K1
+  VPCMPQ    $VPCMP_IMM_NE, Z11, Z5, K2, K2
+  KUNPCKBW  K1, K2, K1
+  NEXT()
+
 // convert the input mask to 0 or 1 based on whether or not it is set
 TEXT bccvtktoi64(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTQ CONSTQ_1(), Z2

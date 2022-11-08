@@ -295,6 +295,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opcvti64tok:   {text: "cvti64tok", flags: bcReadWriteK | bcReadS},
 	opcvti64tof64: {text: "cvti64tof64", flags: bcReadWriteK | bcReadWriteS},
 	opcvtf64toi64: {text: "cvtf64toi64", flags: bcReadWriteK | bcReadWriteS},
+	opcvtf64tok:   {text: "cvti64tok", flags: bcReadWriteK | bcReadS},
 	opfproundd:    {text: "fproundd", flags: bcReadWriteK | bcReadWriteS},
 	opfproundu:    {text: "fproundu", flags: bcReadWriteK | bcReadWriteS},
 	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
