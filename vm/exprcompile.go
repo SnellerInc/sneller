@@ -1490,9 +1490,6 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			return p.ssa0(skfalse), nil
 		}
 	case expr.FloatType:
-		if from.op == sliteral {
-			return from, nil // FIXME: check that from.imm is actually numeric
-		}
 		switch from.primary() {
 		case stBool:
 			return p.ssa2(scvtktof, from, p.notMissing(from)), nil
