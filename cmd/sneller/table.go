@@ -50,8 +50,17 @@ type rangeReader interface {
 	RangeReader(off, width int64) (io.ReadCloser, error)
 }
 
+func vmMalloc(size int) []byte {
+	if size > vm.PageSize {
+		panic("size > vm.PageSize")
+	}
+	return vm.Malloc()[:size]
+}
+
 func (f *readerTable) write(dst io.Writer) error {
 	var d blockfmt.Decoder
+	d.Malloc = vmMalloc
+	d.Free = vm.Free
 	d.BlockShift = f.t.BlockShift
 	d.Algo = f.t.Algo
 	d.Fields = f.fields

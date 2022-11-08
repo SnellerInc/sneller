@@ -268,11 +268,20 @@ func (b *blobSegment) Open() (io.ReadCloser, error) {
 
 func (b *blobSegment) Ephemeral() bool { return b.info.Ephemeral }
 
+func vmMalloc(size int) []byte {
+	if size > vm.PageSize {
+		panic("cannot allocate page with size > vm.PageSize")
+	}
+	return vm.Malloc()[:size]
+}
+
 // Decode implements dcache.Segment.Decode
 func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 	if c, ok := b.blob.(*blob.CompressedPart); ok {
 		// compressed: do decoding
 		var dec blockfmt.Decoder
+		dec.Malloc = vmMalloc
+		dec.Free = vm.Free
 		dec.Fields = b.fieldList()
 		dec.Set(c.Parent.Trailer, c.EndBlock)
 		_, err := dec.CopyBytes(dst, src)
@@ -280,6 +289,8 @@ func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 	}
 	if c, ok := b.blob.(*blob.Compressed); ok {
 		var dec blockfmt.Decoder
+		dec.Malloc = vmMalloc
+		dec.Free = vm.Free
 		dec.Set(c.Trailer, len(c.Trailer.Blocks))
 		dec.Fields = b.fieldList()
 		_, err := dec.CopyBytes(dst, src)

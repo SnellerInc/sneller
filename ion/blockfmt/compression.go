@@ -26,7 +26,6 @@ import (
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion"
-	"github.com/SnellerInc/sneller/vm"
 )
 
 var debugFree = false
@@ -563,6 +562,15 @@ type Decoder struct {
 	// means zero fields (i.e. decode empty structures).
 	Fields []string
 
+	// Malloc should return a slice with the given size.
+	// If Malloc is nil, then make([]byte, size) is used.
+	// If Malloc is non-nil, then Free should be set.
+	Malloc func(size int) []byte
+	// If Malloc is set, then Free should be
+	// set to a corresponding function to release
+	// data allocated via Malloc.
+	Free func([]byte)
+
 	decomp decompressor
 	frame  [5]byte
 	tmp    []byte
@@ -590,6 +598,21 @@ func (d *Decoder) realloc(size int) []byte {
 	}
 	d.tmp = realloc(d.tmp, size)
 	return d.tmp
+}
+
+func (d *Decoder) malloc(size int) []byte {
+	if d.Malloc != nil {
+		return d.Malloc(size)
+	}
+	return malloc(size)
+}
+
+func (d *Decoder) drop(buf []byte) {
+	if d.Free != nil {
+		d.Free(buf)
+	} else {
+		free(buf)
+	}
 }
 
 func (d *Decoder) free() {
@@ -681,11 +704,8 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 // if any.
 func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 	size := 1 << d.BlockShift
-	if size > vm.PageSize {
-		return 0, fmt.Errorf("block size %d exceeds vm.PageSize (%d)", size, vm.PageSize)
-	}
-	tmp := vm.Malloc()[:size]
-	defer vm.Free(tmp)
+	vmm := d.malloc(size)
+	defer d.drop(vmm)
 	algo := d.Algo
 	// this path is performance-sensitive,
 	// so disable xxhash checking in zstd
@@ -706,12 +726,12 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 		if size < 5 || size > len(src) {
 			return nn, fmt.Errorf("unexpected frame size %d", size)
 		}
-		err := d.decomp.Decompress(src[5:size], tmp)
+		err := d.decomp.Decompress(src[5:size], vmm)
 		if err != nil {
 			return nn, err
 		}
 		src = src[size:]
-		n, err := dst.Write(tmp)
+		n, err := dst.Write(vmm)
 		nn += int64(n)
 		if err != nil {
 			return nn, err
@@ -726,8 +746,9 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 // if any.
 //
 // Copy always calls dst.Write with memory allocated
-// via sneller/vm.Malloc, so dst may be an io.Writer
-// returned via a vm.QuerySink.
+// via d.Malloc, so dst may be an io.Writer
+// returned via a vm.QuerySink provided that d.Malloc
+// is set to vm.Malloc.
 func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 	if d.tmp != nil {
 		panic("concurrent blockfmt.Decoder calls")
@@ -739,11 +760,8 @@ func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 	}
 	nn := int64(0)
 	size := 1 << d.BlockShift
-	if size > vm.PageSize {
-		return 0, fmt.Errorf("size %d above vm.PageSize (%d)", size, vm.PageSize)
-	}
-	vmm := vm.Malloc()[:size]
-	defer vm.Free(vmm)
+	vmm := d.malloc(size)
+	defer d.drop(vmm)
 	for {
 		_, err := io.ReadFull(src, d.frame[:])
 		if err == io.EOF {
