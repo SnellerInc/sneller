@@ -99,8 +99,6 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			}
 			eq := p.Equals(left, right)
 			if n.Op == expr.NotEquals {
-				// FIXME: this isn't exactly right;
-				// we don't want to return TRUE on MISSING...
 				eq = p.Not(eq)
 			}
 			return eq, nil
