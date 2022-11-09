@@ -443,7 +443,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opunboxcvtf64:    {text: "unboxcvt.f64", flags: bcReadWriteK | bcWriteS | bcReadV},
 	opunboxcvti64:    {text: "unboxcvt.i64", flags: bcReadWriteK | bcWriteS | bcReadV},
 	optoint:          {text: "toint", flags: bcReadWriteK | bcWriteS | bcReadV},
-	optof64:          {text: "tof64", flags: bcWriteS | bcReadV},
+	optof64:          {text: "tof64", flags: bcReadWriteK | bcWriteS | bcReadV},
 	// unpack a slice type (string/array/timestamp/etc.)
 	opunpack: {text: "unpack", imms: []bcImmType{bcImmU8Hex}, flags: bcReadWriteK | bcWriteS | bcReadV},
 
