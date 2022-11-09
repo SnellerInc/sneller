@@ -410,7 +410,7 @@ func (s Struct) Datum() Datum {
 
 func (s Struct) Encode(dst *Buffer, st *Symtab) {
 	// fast path: we can avoid resym
-	if s.empty() || st.contains(s.st) {
+	if s.Empty() || st.contains(s.st) {
 		dst.UnsafeAppend(s.bytes())
 		return
 	}
@@ -434,8 +434,8 @@ func (s Struct) Encode(dst *Buffer, st *Symtab) {
 }
 
 func (s Struct) Equal(s2 Struct) bool {
-	if s.empty() {
-		return s2.empty()
+	if s.Empty() {
+		return s2.Empty()
 	}
 	if bytes.Equal(s.buf, s2.buf) && stoverlap(s.st, s2.st) {
 		return true
@@ -468,7 +468,7 @@ func (s Struct) Equal(s2 Struct) bool {
 }
 
 func (s Struct) Len() int {
-	if s.empty() {
+	if s.Empty() {
 		return 0
 	}
 	n := 0
@@ -479,7 +479,7 @@ func (s Struct) Len() int {
 	return n
 }
 
-func (s *Struct) empty() bool {
+func (s *Struct) Empty() bool {
 	if len(s.buf) == 0 {
 		return true
 	}
@@ -499,7 +499,7 @@ func (s *Struct) bytes() []byte {
 // a non-nil error if the original struct encoding
 // was malformed.
 func (s Struct) Each(fn func(Field) bool) error {
-	if s.empty() {
+	if s.Empty() {
 		return nil
 	}
 	if TypeOf(s.buf) != StructType {

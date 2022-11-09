@@ -47,6 +47,10 @@ func TestTrailerEncode(t *testing.T) {
 				{[]string{"foo"}, time0, time0.Add(time.Second)},
 				{[]string{"foo"}, time0.Add(time.Second), time0.Add(time.Minute)},
 			}),
+			Constants: ion.NewStruct(nil, []ion.Field{
+				{Label: "foo", Value: ion.String("foo")},
+				{Label: "bar", Value: ion.Int(100)},
+			}),
 		},
 	}
 
@@ -60,6 +64,14 @@ func TestTrailerEncode(t *testing.T) {
 		if err != nil {
 			t.Fatalf("case %d: %s", i, err)
 		}
+		// FIXME: reflect.DeepEqual doesn't play
+		// well with ion.Struct because the symbol
+		// tables won't match, so just check the
+		// constants separately then copy them in
+		if !ion.Equal(out.Constants.Datum(), samples[i].Constants.Datum()) {
+			t.Error("constants are not equal")
+		}
+		samples[i].Constants = out.Constants
 		if !reflect.DeepEqual(samples[i], out) {
 			t.Error("results not equivalent")
 		}
