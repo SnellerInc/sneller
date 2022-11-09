@@ -1,0 +1,19 @@
+# Bug: the following query causes compiler to emit
+#      `boxmask2` opcode. Its implementation altered
+#      K1 but the SSA didn't have knowledge about that.
+#      As a result `not_cast` value was a copy of `cast`
+#      in this particular query.
+SELECT
+    x,
+    CAST(x AS BOOLEAN) AS cast,
+    !CAST(x AS BOOLEAN) AS not_cast
+FROM
+    input
+---
+{"x": true}
+{"x": false}
+{}
+---
+{"x": true,  "cast": true,  "not_cast": false}
+{"x": false, "cast": false, "not_cast": true}
+{}

@@ -10801,6 +10801,7 @@ TEXT bcboxmask(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX      0(VIRT_PCREG), R8
   ADDQ         $2, VIRT_PCREG
   KMOVW        0(VIRT_VALUES)(R8*1), K2             // K2 = true/false
+  KMOVW        K1, K3                               // K3 = non-missing
   JMP          boxmask_tail(SB)
 
 // same as boxmask, but with the arguments reversed
@@ -10808,18 +10809,19 @@ TEXT bcboxmask2(SB), NOSPLIT|NOFRAME, $0
   MOVWQZX      0(VIRT_PCREG), R8
   ADDQ         $2, VIRT_PCREG
   KMOVW        K1, K2                               // K2 = true/false
-  KMOVW        0(VIRT_VALUES)(R8*1), K1             // K1 = non-missing
+  KMOVW        0(VIRT_VALUES)(R8*1), K3             // K3 = non-missing
   JMP          boxmask_tail(SB)
 
 // same as boxmask, but with K1 = K2
 TEXT bcboxmask3(SB), NOSPLIT|NOFRAME, $0
   KMOVW K1, K2
+  KMOVW K1, K3
   JMP   boxmask_tail(SB)
 
 // store (up to) 16 booleans
 //
 // currently stores the values unconditionally,
-// but only updates Z30:Z31 using K1
+// but only updates Z30:Z31 using K3
 //
 // see boxmask_tail_vbmi2 for a version that
 // only writes out the lanes that are valid
@@ -10836,11 +10838,11 @@ TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
   // offsets are [0, 1, 2, 3...] plus base offset;
   // then complemented for Z30
   VPXORD         Z30, Z30, Z30
-  VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
+  VM_GET_SCRATCH_BASE_ZMM(Z30, K3)
   VMOVDQU        byteidx<>+0(SB), X10
   VPMOVZXBD      X10, Z10
-  VPADDD         Z10, Z30, K1, Z30
-  VPBROADCASTD.Z CONSTD_1(), K1, Z31
+  VPADDD         Z10, Z30, K3, Z30
+  VPBROADCASTD.Z CONSTD_1(), K3, Z31
   // update used scratch space
   ADDQ           $16, bytecode_scratch+8(VIRT_BCPTR)
   NEXT()

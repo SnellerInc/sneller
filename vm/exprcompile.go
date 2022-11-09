@@ -1410,10 +1410,11 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 			continue
 		}
 		then, err := p.serialized(c.Limbs[i].Then)
-		then = p.unsymbolized(then)
 		if err != nil {
 			return nil, err
 		}
+		then = p.unsymbolized(then)
+
 		// return type can be that of 'dot'
 		// or that of 'split'
 		if then.primary() != stValue {
