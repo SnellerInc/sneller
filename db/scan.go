@@ -248,5 +248,5 @@ func (st *tableState) flushScanDone(cursors []string) error {
 	}
 	old.Scanning = false
 	old.Cursors = cursors
-	return st.flush(old)
+	return st.flush(old, nil)
 }

@@ -221,22 +221,18 @@ func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
 	if cache != nil && cache.value != nil {
 		return cache.value, nil
 	}
-	idx, err := OpenIndex(st.ofs, st.db, st.table, st.owner.Key())
+	ipath := IndexPath(st.db, st.table)
+	idx, info, err := openIndex(st.ofs, ipath, st.owner.Key(), 0)
 	if err != nil {
 		return nil, err
 	}
-	overwrite(cache, idx)
+	etag, err := st.ofs.ETag(ipath, info)
+	if err != nil {
+		return nil, err
+	}
+	overwrite(cache, idx, etag)
 	return idx, nil
 }
-
-var (
-	// ErrDuplicateObject occurs when an object
-	// collected as part of a Definition shares an ETag
-	// with another object in that Definition.
-	// (We insist that the set of objects written
-	// into an Index be unique.)
-	ErrDuplicateObject = errors.New("duplicate input object")
-)
 
 // partitionFor returns the partition prefix for
 // a packfile object path p, or ("", false) if
@@ -437,7 +433,7 @@ func (st *tableState) append(idx *blockfmt.Index, parts []partition, cache *Inde
 	var err error
 	if len(parts) == 0 {
 		if idx == nil {
-			err = st.emptyIndex()
+			err = st.emptyIndex(cache)
 		}
 	} else {
 		err = st.force(idx, parts, cache)
@@ -567,7 +563,7 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (st *tableState) emptyIndex() error {
+func (st *tableState) emptyIndex(cache *IndexCache) error {
 	idx := blockfmt.Index{
 		Created: date.Now().Truncate(time.Microsecond),
 		Name:    st.table,
@@ -578,7 +574,12 @@ func (st *tableState) emptyIndex() error {
 		return err
 	}
 	p := IndexPath(st.db, st.table)
-	_, err = st.ofs.WriteFile(p, buf)
+	etag, err := st.ofs.WriteFile(p, buf)
+	if err == nil {
+		overwrite(cache, &idx, etag)
+	} else {
+		invalidate(cache)
+	}
 	return err
 }
 
@@ -619,6 +620,7 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 			// to respect NewIndexScan configuration
 			Scanning: st.conf.NewIndexScan,
 		}
+		overwrite(cache, idx, "")
 	} else {
 		// we re-load the index so that we don't have to
 		// worry about reverting any changes we made
@@ -631,7 +633,7 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 					Name:     st.table,
 					Scanning: st.conf.NewIndexScan,
 				}
-				overwrite(cache, idx)
+				overwrite(cache, idx, "")
 			} else {
 				st.conf.logf("re-opening index to record failure: %s", err)
 				return
@@ -653,10 +655,9 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 	}
 	idx.Created = date.Now()
 	idx.Algo = "zstd"
-	err = st.flush(idx)
+	err = st.flush(idx, cache)
 	if err != nil {
 		st.conf.logf("flushing index in updateFailed: %s", err)
-		invalidate(cache)
 	}
 }
 
@@ -693,18 +694,27 @@ func (st *tableState) userdata() ion.Datum {
 	}}).Datum()
 }
 
-func (st *tableState) flush(idx *blockfmt.Index) error {
-	idx.Name = st.table
-	idx.UserData = st.userdata()
-	idx.Inputs.Backing = st.ofs
-	dir := path.Join("db", st.db, st.table)
-	err := idx.SyncInputs(dir, st.conf.inputMinAge())
-	if err != nil {
-		return err
-	}
-	err = idx.SyncOutputs(st.ofs, dir, st.conf.maxInlineBytes(), st.conf.GCMinimumAge)
-	if err != nil {
-		return err
+func (st *tableState) writeIndex(idx *blockfmt.Index, cache *IndexCache) error {
+	idp := IndexPath(st.db, st.table)
+	if cache != nil {
+		info, err := fs.Stat(st.ofs, idp)
+		if cache.etag == "" {
+			// expect no file to exist
+			if err == nil || !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("synchronization violation detected: fs.Stat for %s produced %v", idp, err)
+			}
+		} else {
+			if err != nil {
+				return fmt.Errorf("writeIndex: %w", err)
+			}
+			etag, err := st.ofs.ETag(idp, info)
+			if err != nil {
+				return fmt.Errorf("writeIndex: determining etag: %w", err)
+			}
+			if cache.etag != etag {
+				return fmt.Errorf("synchronization violation detected: found etag %s -> %s", cache.etag, etag)
+			}
+		}
 	}
 	buf, err := blockfmt.Sign(st.owner.Key(), idx)
 	if err != nil {
@@ -713,9 +723,37 @@ func (st *tableState) flush(idx *blockfmt.Index) error {
 	if len(buf) > MaxIndexSize {
 		return fmt.Errorf("index would be %d bytes; greater than max %d", len(buf), MaxIndexSize)
 	}
-	idp := IndexPath(st.db, st.table)
-	_, err = st.ofs.WriteFile(idp, buf)
+	etag, err := st.ofs.WriteFile(idp, buf)
+	if err == nil {
+		overwrite(cache, idx, etag)
+	}
 	return err
+}
+
+// flush writes out the provided index
+// and updates or invalidates cache to point
+// to the new index value + etag
+func (st *tableState) flush(idx *blockfmt.Index, cache *IndexCache) (err error) {
+	idx.Name = st.table
+	idx.UserData = st.userdata()
+	idx.Inputs.Backing = st.ofs
+	dir := path.Join("db", st.db, st.table)
+	err = idx.SyncInputs(dir, st.conf.inputMinAge())
+	if err != nil {
+		invalidate(cache)
+		return err
+	}
+	err = idx.SyncOutputs(st.ofs, dir, st.conf.maxInlineBytes(), st.conf.GCMinimumAge)
+	if err != nil {
+		invalidate(cache)
+		return err
+	}
+	err = st.writeIndex(idx, cache)
+	if err != nil {
+		invalidate(cache)
+		return err
+	}
+	return nil
 }
 
 func suffixForComp(c string) string {
@@ -786,12 +824,10 @@ func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *Index
 	idx.Algo = "zstd"
 	idx.Created = date.Now().Truncate(time.Microsecond)
 	idx.Inline = append(idx.Inline, extra...)
-	err := st.flush(idx)
+	err := st.flush(idx, cache)
 	if err != nil {
-		invalidate(cache)
 		return err
 	}
-	overwrite(cache, idx)
 	return st.runGC(idx)
 }
 

@@ -322,16 +322,18 @@ type batch struct {
 
 // IndexCache is an opaque cache for index objects.
 type IndexCache struct {
-	value *blockfmt.Index
+	value *blockfmt.Index // current in-memory index value
+	etag  string          // if not "", the most-recently-loaded etag
 }
 
 func invalidate(cache *IndexCache) {
-	overwrite(cache, nil)
+	overwrite(cache, nil, "")
 }
 
-func overwrite(cache *IndexCache, value *blockfmt.Index) {
+func overwrite(cache *IndexCache, value *blockfmt.Index, etag string) {
 	if cache != nil {
 		cache.value = value
+		cache.etag = etag
 	}
 }
 

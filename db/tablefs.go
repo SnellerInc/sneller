@@ -109,7 +109,8 @@ const MaxIndexSize = 15 * 1024 * 1024
 // The key must correspond to the key used to sign the index
 // when it was first inserted into the index.
 func OpenIndex(s fs.FS, db, table string, key *blockfmt.Key) (*blockfmt.Index, error) {
-	return openIndex(s, db, table, key, 0)
+	i, _, err := openIndex(s, IndexPath(db, table), key, 0)
+	return i, err
 }
 
 // OpenPartialIndex is equivalent to OpenIndex, but
@@ -117,31 +118,32 @@ func OpenIndex(s fs.FS, db, table string, key *blockfmt.Key) (*blockfmt.Index, e
 // index is suitable for queries, but not for
 // synchronizing tables.
 func OpenPartialIndex(s fs.FS, db, table string, key *blockfmt.Key) (*blockfmt.Index, error) {
-	return openIndex(s, db, table, key, blockfmt.FlagSkipInputs)
+	i, _, err := openIndex(s, IndexPath(db, table), key, blockfmt.FlagSkipInputs)
+	return i, err
 }
 
-func openIndex(s fs.FS, db, table string, key *blockfmt.Key, opts blockfmt.Flag) (*blockfmt.Index, error) {
+func openIndex(s fs.FS, ipath string, key *blockfmt.Key, opts blockfmt.Flag) (*blockfmt.Index, fs.FileInfo, error) {
 	// prevent DoS: make sure index
 	// is reasonably sized
-	fp := IndexPath(db, table)
-	f, err := s.Open(fp)
+	f, err := s.Open(ipath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if info.Size() >= MaxIndexSize {
-		return nil, fmt.Errorf("index %q is %d bytes; too big", fp, info.Size())
+		return nil, info, fmt.Errorf("index %q is %d bytes; too big", ipath, info.Size())
 	}
 	buf := make([]byte, info.Size())
 	n, err := io.ReadFull(f, buf)
 	if err != nil {
-		return nil, err
+		return nil, info, err
 	}
-	return blockfmt.DecodeIndex(key, buf[:n], opts)
+	idx, err := blockfmt.DecodeIndex(key, buf[:n], opts)
+	return idx, info, err
 }
 
 // ListTables list the names of all tables in the given
