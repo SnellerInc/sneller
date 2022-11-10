@@ -133,7 +133,7 @@ func (b *BucketFS) globAt(start, pre, pattern string, walk fsutil.WalkGlobFn) er
 		}
 		sort.Strings(parts)
 		query := "?" + strings.Join(parts, "&")
-		req, err := http.NewRequest(http.MethodGet, rawURI(b.Key, b.Bucket, query), nil)
+		req, err := http.NewRequestWithContext(b.Ctx, http.MethodGet, rawURI(b.Key, b.Bucket, query), nil)
 		if err != nil {
 			return fmt.Errorf("creating http request: %w", err)
 		}

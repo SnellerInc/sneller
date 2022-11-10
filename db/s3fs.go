@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -81,6 +82,7 @@ type S3Resolver struct {
 	// Client, if non-nil, sets the default
 	// client used by returned s3.BucketFS objects.
 	Client *http.Client
+	Ctx    context.Context
 }
 
 // Split implements Resolver.Split
@@ -113,6 +115,7 @@ func (s *S3Resolver) Split(pattern string) (InputFS, string, error) {
 				// without performing thousands of
 				// simultaneous GET requests
 				DelayGet: true,
+				Ctx:      s.Ctx,
 			},
 		},
 	}, rest, nil

@@ -15,6 +15,7 @@
 package s3
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -35,6 +36,7 @@ type BucketFS struct {
 	Key    *aws.SigningKey
 	Bucket string
 	Client *http.Client
+	Ctx    context.Context
 
 	// DelayGet, if true, causes the
 	// Open call to use a HEAD operation
@@ -50,6 +52,7 @@ func (b *BucketFS) sub(name string) *Prefix {
 		Client: b.Client,
 		Bucket: b.Bucket,
 		Path:   name,
+		Ctx:    b.Ctx,
 	}
 }
 
@@ -74,7 +77,7 @@ func (b *BucketFS) Put(where string, contents []byte) (string, error) {
 		// nominally a directory
 		return "", badpath("s3 PUT", where)
 	}
-	req, err := http.NewRequest(http.MethodPut, uri(b.Key, b.Bucket, where), nil)
+	req, err := http.NewRequestWithContext(b.Ctx, http.MethodPut, uri(b.Key, b.Bucket, where), nil)
 	if err != nil {
 		return "", err
 	}
@@ -134,7 +137,7 @@ func (b *BucketFS) Open(name string) (fs.File, error) {
 		if b.DelayGet {
 			rd, err := Stat(b.Key, b.Bucket, name)
 			if err == nil {
-				return &File{Reader: rd}, nil
+				return &File{Reader: rd, ctx: b.Ctx}, nil
 			}
 		} else {
 			f, err := Open(b.Key, b.Bucket, name)
@@ -188,6 +191,7 @@ type Prefix struct {
 	// that this is a pseudo-directory prefix.
 	Path   string
 	Client *http.Client
+	Ctx    context.Context
 
 	// listing token;
 	// "" means start from the beginning
@@ -225,6 +229,7 @@ func (p *Prefix) Open(file string) (fs.File, error) {
 		Bucket: p.Bucket,
 		Path:   p.join(file),
 		Client: p.Client,
+		Ctx:    p.Ctx,
 	}
 	ret, err := fullp.readDirAt(1)
 	if err != nil && err != io.EOF {
@@ -304,8 +309,9 @@ type File struct {
 	// the associated s3 object.
 	*Reader
 
-	body io.ReadCloser // actual body; populated lazily
-	pos  int64         // current read offset
+	ctx  context.Context // from parent bucket
+	body io.ReadCloser   // actual body; populated lazily
+	pos  int64           // current read offset
 }
 
 // Name implements fs.FileInfo.Name
@@ -338,7 +344,10 @@ func (f *File) Mode() fs.FileMode { return 0644 }
 // object, consider using f.Reader.RangeReader
 func (f *File) Read(p []byte) (int, error) {
 	if f.body == nil {
-		var err error
+		err := f.ctx.Err()
+		if err != nil {
+			return 0, err
+		}
 		f.body, err = f.Reader.RangeReader(f.pos, f.Reader.Size()-f.pos)
 		if err != nil {
 			return 0, err
@@ -448,7 +457,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 	}
 	sort.Strings(parts)
 	query := "?" + strings.Join(parts, "&")
-	req, err := http.NewRequest(http.MethodGet, rawURI(p.Key, p.Bucket, query), nil)
+	req, err := http.NewRequestWithContext(p.Ctx, http.MethodGet, rawURI(p.Key, p.Bucket, query), nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating http request: %w", err)
 	}
@@ -499,6 +508,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 				bucket:       p.Bucket,
 				object:       ret.Contents[i].Name,
 			},
+			ctx: p.Ctx,
 		})
 	}
 	for i := range ret.CommonPrefixes {
@@ -507,6 +517,7 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 			Bucket: p.Bucket,
 			Client: p.Client,
 			Path:   ret.CommonPrefixes[i].Prefix,
+			Ctx:    p.Ctx,
 		})
 	}
 	// if we didn't find anything that indicates

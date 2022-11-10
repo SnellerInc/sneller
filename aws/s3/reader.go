@@ -20,6 +20,7 @@
 package s3
 
 import (
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -216,6 +217,7 @@ func NewFile(k *aws.SigningKey, bucket, object, etag string, size int64) *File {
 			ETag:   etag,
 			size:   size,
 		},
+		ctx: context.Background(),
 	}
 }
 
@@ -232,6 +234,7 @@ func Open(k *aws.SigningKey, bucket, object string) (*File, error) {
 	return &File{
 		Reader: r,
 		body:   body,
+		ctx:    context.Background(),
 	}, nil
 }
 

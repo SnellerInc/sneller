@@ -27,7 +27,7 @@ func (b *BucketFS) Remove(fullpath string) error {
 	if !fs.ValidPath(fullpath) {
 		return fmt.Errorf("%s: %s", fullpath, fs.ErrInvalid)
 	}
-	req, err := http.NewRequest(http.MethodDelete, uri(b.Key, b.Bucket, fullpath), nil)
+	req, err := http.NewRequestWithContext(b.Ctx, http.MethodDelete, uri(b.Key, b.Bucket, fullpath), nil)
 	if err != nil {
 		return err
 	}

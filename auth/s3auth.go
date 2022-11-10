@@ -78,7 +78,7 @@ func (s *S3BearerIdentity) Expired() bool {
 // into a db.Tenant. Tenant will perform some
 // validation of the fields in s to confirm
 // that it describes a valid configuration.
-func (s *S3BearerIdentity) Tenant() (db.Tenant, error) {
+func (s *S3BearerIdentity) Tenant(ctx context.Context) (db.Tenant, error) {
 	u, err := url.Parse(s.Bucket)
 	if err != nil {
 		return nil, err
@@ -101,6 +101,7 @@ func (s *S3BearerIdentity) Tenant() (db.Tenant, error) {
 		return nil, fmt.Errorf("S3BearerIdentity missing proper credentials")
 	}
 	root := &db.S3FS{}
+	root.Ctx = ctx
 	root.Client = &s3.DefaultClient
 	root.Bucket = u.Host
 	root.Key = aws.DeriveKey(c.BaseURI, c.AccessKeyID, c.SecretAccessKey, s.Region, "s3")
@@ -146,7 +147,7 @@ func (s *S3Bearer) Authorize(ctx context.Context, token string) (db.Tenant, erro
 	if err != nil {
 		return nil, err
 	}
-	return identity.Tenant()
+	return identity.Tenant(ctx)
 }
 
 // s3Tenant implements db.Tenant
@@ -200,5 +201,5 @@ func (f *S3Static) Authorize(ctx context.Context, token string) (db.Tenant, erro
 			return nil, err
 		}
 	}
-	return f.Tenant()
+	return f.Tenant(ctx)
 }
