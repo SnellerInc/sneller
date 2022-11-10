@@ -94,5 +94,10 @@
 ("^blend.*" _ y (init)) -> y
 ("^blend.*" x _ (false)) -> x
 
+// boxing simplifications
+(boxfloat (broadcast.f lit) _) -> (literal lit)
+(boxint (broadcast.i lit) _) -> (literal lit)
+(boxts (broadcast.ts lit) _), "ts := date.UnixMicro(int64(lit)); true" -> (literal ts)
+
 // make a store with k=false not depend on the input value
 (store.z mem ov k:(false) slot), "ov != k" -> (store.z mem k k slot)
