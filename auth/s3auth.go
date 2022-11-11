@@ -48,7 +48,7 @@ type S3Bearer struct {
 type S3BearerIdentity struct {
 	ID       string `json:"TenantID"`
 	Region   string `json:"Region"`
-	IndexKey []byte `json:"IndexKey"`
+	IndexKey []byte `json:"IndexKey,omitempty"`
 	Bucket   string `json:"SnellerBucket"`
 	// Credentials is a JSON-compatible
 	// representation of the AWS SDK "Credentials" structure
