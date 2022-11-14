@@ -1,0 +1,22 @@
+SELECT
+  CAST(CAST(b AS BOOLEAN) AS STRING) AS s
+FROM
+  input
+---
+{"b": true}
+{"b": false}
+{"b": true}
+{"b": true}
+{"b": false}
+{"b": false}
+{"b": "true"}
+{}
+---
+{"s": "true"}
+{"s": "false"}
+{"s": "true"}
+{"s": "true"}
+{"s": "false"}
+{"s": "false"}
+{}
+{}

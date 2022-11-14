@@ -1528,6 +1528,7 @@ The only implemented conversions are:
 * `FLOAT` -> `BOOLEAN`;
 * `BOOLEAN` -> `INTEGER`;
 * `BOOLEAN` -> `FLOAT`.
+* `BOOLEAN` -> `STRING`.
 
 Any other conversions yield `MISSING`.
 

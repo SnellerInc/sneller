@@ -515,7 +515,7 @@ func TestSimplify(t *testing.T) {
 			// expressions inside CAST should discard
 			// any portions of the calculation that
 			// are not convertible
-			&Cast{From: coalesce(path("x"), String("foo")), To: IntegerType},
+			&Cast{From: coalesce(path("x"), String("bar")), To: IntegerType},
 			&Cast{From: path("x"), To: IntegerType},
 		},
 		{

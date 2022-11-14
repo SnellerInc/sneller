@@ -1061,7 +1061,7 @@ func converts(to TypeSet) TypeSet {
 		return FloatType | IntegerType | BoolType
 	case StringType:
 		// we support int->string
-		return IntegerType | StringType
+		return IntegerType | StringType | BoolType
 	default:
 		// to = to; we support converting
 		// any other type to itself
@@ -1138,6 +1138,23 @@ func (c *Cast) simplify(h Hint) Node {
 			rat := fn.rat()
 			if rat.IsInt() {
 				return String(rat.RatString())
+			}
+		}
+
+		typ := ft & ^MissingType
+		if typ.Only(BoolType) {
+			return &Case{
+				Limbs: []CaseLimb{
+					{
+						When: Is(c.From, IsTrue),
+						Then: String("true"),
+					},
+					{
+						When: Is(c.From, IsFalse),
+						Then: String("false"),
+					},
+				},
+				Else: Missing{},
 			}
 		}
 	}
