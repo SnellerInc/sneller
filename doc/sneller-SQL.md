@@ -396,14 +396,6 @@ can be any of the supported data-types, there are some
 limitations on the amount of overloading that certain
 operators can support.
 
-In particular, the ordering operators `<`, `>`, etc.
-only operate on numbers, not on timestamps as they do
-in many SQL systems. We don't overload these operators
-in order to avoid having to resolve the situation where
-two supported values (a number and a timestamp) are present
-on either side of the comparison, but the result is still
-`MISSING` because there isn't a good way to compare those two values.
-
 For aggregating timestamp values, we have the built-in
 aggregation operations `EARLIEST` and `LATEST`, which
 perform the equivalent of `MIN` and `MAX` operations
