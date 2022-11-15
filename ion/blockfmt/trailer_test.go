@@ -43,13 +43,12 @@ func TestTrailerEncode(t *testing.T) {
 					Chunks: 1,
 				},
 			},
-			Sparse: mksparse([]TimeRange{
-				{[]string{"foo"}, time0, time0.Add(time.Second)},
-				{[]string{"foo"}, time0.Add(time.Second), time0.Add(time.Minute)},
-			}),
-			Constants: ion.NewStruct(nil, []ion.Field{
+			Sparse: mksparse([]ion.Field{
 				{Label: "foo", Value: ion.String("foo")},
 				{Label: "bar", Value: ion.Int(100)},
+			}, []TimeRange{
+				{[]string{"foo"}, time0, time0.Add(time.Second)},
+				{[]string{"foo"}, time0.Add(time.Second), time0.Add(time.Minute)},
 			}),
 		},
 	}
@@ -68,10 +67,10 @@ func TestTrailerEncode(t *testing.T) {
 		// well with ion.Struct because the symbol
 		// tables won't match, so just check the
 		// constants separately then copy them in
-		if !ion.Equal(out.Constants.Datum(), samples[i].Constants.Datum()) {
+		if !ion.Equal(out.Sparse.consts.Datum(), samples[i].Sparse.consts.Datum()) {
 			t.Error("constants are not equal")
 		}
-		samples[i].Constants = out.Constants
+		samples[i].Sparse.consts = out.Sparse.consts
 		if !reflect.DeepEqual(samples[i], out) {
 			t.Error("results not equivalent")
 		}

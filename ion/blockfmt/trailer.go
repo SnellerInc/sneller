@@ -70,12 +70,9 @@ type Trailer struct {
 	// for each block.
 	Blocks []Blockdesc
 	// Sparse contains a lossy secondary index
-	// of timestamp ranges within Blocks.
+	// of timestamp ranges and constant fields
+	// within Blocks.
 	Sparse SparseIndex
-	// Constants are fields that are known to be
-	// present and have the same value in every
-	// top-level struct.
-	Constants ion.Struct
 }
 
 // Encode encodes a trailer to the provided buffer
@@ -106,11 +103,6 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	// build Sparse as we decode blocks
 	dst.BeginField(st.Intern("sparse"))
 	t.Sparse.Encode(dst, st)
-
-	if !t.Constants.Empty() {
-		dst.BeginField(st.Intern("constants"))
-		t.Constants.Encode(dst, st)
-	}
 
 	// block offsets are double-differential-encoded
 	// (because they tend to be evenly spaced),
@@ -361,16 +353,6 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 		case "sparse":
 			seenSparse = true
 			return d.decodeSparse(&t.Sparse, body)
-		case "constants":
-			d, _, err := ion.ReadDatum(d.Symbols, body)
-			if err != nil {
-				return err
-			}
-			s, ok := d.Struct()
-			if !ok {
-				return fmt.Errorf("expected struct for constants")
-			}
-			t.Constants = s
 		case "blocks-delta":
 			// smaller delta-encoded block list format
 			n, err := countList(body)

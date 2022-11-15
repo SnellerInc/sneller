@@ -22,6 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
+	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/exp/slices"
 )
@@ -136,6 +137,14 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 			t.Fatalf("minute %d: start/end = %d/%d", i, ti.Start(m), ti.End(m))
 		}
 	}
+	// add some constants
+	si.consts = ion.NewStruct(nil, []ion.Field{{
+		Label: "foo",
+		Value: ion.String("foo"),
+	}, {
+		Label: "bar",
+		Value: ion.Int(100),
+	}})
 	minute := func(i int) string {
 		return "`" + base.Add(time.Minute*time.Duration(i)).Time().Format(time.RFC3339Nano) + "`"
 	}
@@ -178,4 +187,19 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	run(sprintf("timestamp < %s and (timestamp >= %s or timestamp > %s)", minute(10), minute(0), minute(60)), [][2]int{{0, 10}})
 	run(sprintf("!(timestamp = %s or timestamp = %s)", minute(10), minute(20)), [][2]int{{0, 10}, {11, 20}, {21, 60}})
 	run(sprintf("timestamp < %s and (timestamp >= %s or timestamp > %s)", minute(10), minute(0), minute(60)), [][2]int{{0, 10}})
+	// test with constant fields
+	run(sprintf("foo = 'foo'"), [][2]int{{0, 60}})
+	run(sprintf("foo = 'bar'"), [][2]int{{0, 0}})
+	run(sprintf("foo != 'bar'"), [][2]int{{0, 60}})
+	run(sprintf("foo.x = 'bar'"), [][2]int{{0, 60}})
+	run(sprintf("foo = 100"), [][2]int{{0, 0}})
+	run(sprintf("bar = 100"), [][2]int{{0, 60}})
+	run(sprintf("bar = 999"), [][2]int{{0, 0}})
+	run(sprintf("bar = 'foo'"), [][2]int{{0, 0}})
+	run(sprintf("foo = 'foo' or bar = 'bar'"), [][2]int{{0, 60}})
+	run(sprintf("timestamp < %s and foo = 'foo'", minute(10)), [][2]int{{0, 10}})
+	run(sprintf("timestamp < %s and foo = 'bar'", minute(10)), [][2]int{{0, 0}})
+	run(sprintf("foo = 'foo' and timestamp < %s", minute(10)), [][2]int{{0, 10}})
+	run(sprintf("foo = 'bar' and timestamp < %s", minute(10)), [][2]int{{0, 0}})
+	run(sprintf("timestamp < %s and (foo = 'foo' or foo = 'bar')", minute(10)), [][2]int{{0, 10}})
 }

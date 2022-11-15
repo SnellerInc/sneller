@@ -169,8 +169,11 @@ func TestLargeIndexEncoding(t *testing.T) {
 	}
 }
 
-func mksparse(ranges []TimeRange) SparseIndex {
+func mksparse(cons []ion.Field, ranges []TimeRange) SparseIndex {
 	var s SparseIndex
+	if len(cons) > 0 {
+		s.consts = ion.NewStruct(nil, cons)
+	}
 	for i := range ranges {
 		s.Push([]Range{&ranges[i]})
 	}
@@ -215,7 +218,7 @@ func TestIndexEncoding(t *testing.T) {
 						Offset:     100,
 						Algo:       "lz4",
 						BlockShift: 20,
-						Sparse: mksparse([]TimeRange{
+						Sparse: mksparse(nil, []TimeRange{
 							{[]string{"a", "b"}, time0, time0.Add(time.Minute)},
 							{[]string{"a", "b"}, time0.Add(time.Minute), time0.Add(2 * time.Minute)},
 						}),

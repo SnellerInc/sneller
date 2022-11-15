@@ -444,7 +444,7 @@ func (c *Converter) runSingle() error {
 		MinChunksPerBlock: c.FlushMeta / (c.Align * 2),
 	}
 	if len(c.Constants) > 0 {
-		w.Trailer.Constants = ion.NewStruct(nil, c.Constants)
+		w.Trailer.Sparse.consts = ion.NewStruct(nil, c.Constants)
 	}
 	cn := ion.Chunker{
 		W:          w,
@@ -570,7 +570,7 @@ func (c *Converter) runMulti() error {
 		MinChunksPerBlock: c.FlushMeta / (c.Align * 2),
 	}
 	if len(c.Constants) > 0 {
-		w.Trailer.Constants = ion.NewStruct(nil, c.Constants)
+		w.Trailer.Sparse.consts = ion.NewStruct(nil, c.Constants)
 	}
 	err := c.fastPrepend(w)
 	if err != nil {

@@ -15,6 +15,7 @@
 package blockfmt
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -31,6 +32,7 @@ type timeIndex struct {
 }
 
 type SparseIndex struct {
+	consts  ion.Struct
 	indices []timeIndex
 	blocks  int
 }
@@ -80,6 +82,10 @@ func (s *SparseIndex) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("blocks"))
 	dst.WriteInt(int64(s.blocks))
+	if !s.consts.Empty() {
+		dst.BeginField(st.Intern("consts"))
+		s.consts.Encode(dst, st)
+	}
 	dst.BeginField(st.Intern("indices"))
 	dst.BeginList(-1)
 	for i := range s.indices {
@@ -108,6 +114,16 @@ func (d *TrailerDecoder) decodeSparse(s *SparseIndex, body []byte) error {
 				return err
 			}
 			s.blocks = int(n)
+		case "consts":
+			d, _, err := ion.ReadDatum(d.Symbols, field)
+			if err != nil {
+				return err
+			}
+			consts, ok := d.Struct()
+			if !ok {
+				return fmt.Errorf("expected consts to be a struct")
+			}
+			s.consts = consts
 		case "indices":
 			_, err := ion.UnpackList(field, func(field []byte) error {
 				var val timeIndex

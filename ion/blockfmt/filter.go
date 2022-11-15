@@ -19,6 +19,7 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/exp/slices"
 )
@@ -153,6 +154,44 @@ func (f *Filter) within(p *expr.Path, when date.Time) evalfn {
 	}
 }
 
+func (f *Filter) eqstring(p *expr.Path, str expr.String) evalfn {
+	name := p.First
+	if p.Rest != nil {
+		return nil
+	}
+	eq := func(s expr.String, d ion.Datum) bool {
+		s2, ok := d.String()
+		return ok && string(s) == s2
+	}
+	return func(f *Filter, si *SparseIndex, rest cont) {
+		field, ok := si.consts.FieldByName(name)
+		if !ok || eq(str, field.Value) {
+			rest(0, si.Blocks())
+		}
+	}
+}
+
+func (f *Filter) eqint(p *expr.Path, n expr.Integer) evalfn {
+	name := p.First
+	if p.Rest != nil {
+		return nil
+	}
+	eq := func(n expr.Integer, d ion.Datum) bool {
+		n2, ok := d.Int()
+		if ok {
+			return int64(n) == n2
+		}
+		u2, ok := d.Uint()
+		return ok && n >= 0 && uint64(n) == u2
+	}
+	return func(f *Filter, si *SparseIndex, rest cont) {
+		field, ok := si.consts.FieldByName(name)
+		if !ok || eq(n, field.Value) {
+			rest(0, si.Blocks())
+		}
+	}
+}
+
 // filter where !e
 func (f *Filter) negate(e expr.Node) evalfn {
 	// we expect DNF ("disjunctive normal form"),
@@ -249,6 +288,20 @@ func (f *Filter) compile(e expr.Node) evalfn {
 					return nil
 				}
 			} else {
+				return nil
+			}
+		} else if e.Op == expr.Equals {
+			// special handling for row constants
+			switch rhs := e.Right.(type) {
+			case *expr.Timestamp:
+				// continue on to timestamp handling
+			case expr.String:
+				return f.eqstring(p, rhs)
+			case expr.Integer:
+				// TODO: support more than just
+				// equality comparisons
+				return f.eqint(p, rhs)
+			default:
 				return nil
 			}
 		}
