@@ -47,7 +47,7 @@ func TestFilter(t *testing.T) {
 				out = append(out, [2]int{start, end})
 			})
 			if !slices.Equal(out, ranges) {
-				t.Errorf("got %v; wanted %v", out, ranges)
+				t.Fatalf("got %v; wanted %v", out, ranges)
 			}
 			empty := true
 			for i := range ranges {
@@ -87,6 +87,7 @@ func BenchmarkFilter(b *testing.B) {
 			q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
 			where := q.Body.(*expr.Select).Where
 			b.Logf("query: %s", expr.ToString(where))
+			f.Compile(where)
 			b.Run("compile", func(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
@@ -174,4 +175,7 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	run(sprintf("!(timestamp < %s or timestamp >= %s)", minute(1), minute(59)), [][2]int{{1, 59}})
 	run(sprintf("timestamp = %s", minute(1)), [][2]int{{1, 2}})
 	run(sprintf("to_unix_epoch(timestamp) = %d", unixminute(1)), [][2]int{{1, 2}})
+	run(sprintf("timestamp < %s and (timestamp >= %s or timestamp > %s)", minute(10), minute(0), minute(60)), [][2]int{{0, 10}})
+	run(sprintf("!(timestamp = %s or timestamp = %s)", minute(10), minute(20)), [][2]int{{0, 10}, {11, 20}, {21, 60}})
+	run(sprintf("timestamp < %s and (timestamp >= %s or timestamp > %s)", minute(10), minute(0), minute(60)), [][2]int{{0, 10}})
 }

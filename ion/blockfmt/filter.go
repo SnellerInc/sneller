@@ -27,16 +27,17 @@ import (
 // can be evaluated against a SparseIndex to
 // produce intervals that match the compiled condition.
 type Filter struct {
-	// functions that produce time ranges;
-	// executing these in a loop should produce
-	// the intervals
-	exprs []func(f *Filter, si *SparseIndex, pc int)
+	eval  evalfn // entry point
+	grow  cont   // return point
 	paths []string
 
 	// union of intervals to traverse;
 	// by convention these are always non-empty
 	intervals [][2]int
 }
+
+type evalfn func(f *Filter, si *SparseIndex, rest cont)
+type cont func(start, end int)
 
 func (f *Filter) path(p *expr.Path) []string {
 	l := len(f.paths)
@@ -51,9 +52,8 @@ func (f *Filter) path(p *expr.Path) []string {
 // Compile sets the expression that the filter should evaluate.
 // A call to Compile erases any previously-compiled expression.
 func (f *Filter) Compile(e expr.Node) {
-	f.exprs = f.exprs[:0]
 	f.paths = f.paths[:0]
-	f.compile(e)
+	f.eval = f.compile(e)
 }
 
 // Trivial returns true if the compiled filter
@@ -61,140 +61,100 @@ func (f *Filter) Compile(e expr.Node) {
 // subranges of the input slice in Visit.
 // (In other words, a trivial filter will
 // always visit all the blocks in a sparse index.)
-func (f *Filter) Trivial() bool { return len(f.exprs) == 0 }
-
-func (f *Filter) popRange() [2]int {
-	ret := f.intervals[len(f.intervals)-1]
-	f.intervals = f.intervals[:len(f.intervals)-1]
-	return ret
-}
-
-func (f *Filter) pushIntersect() bool {
-	last := f.popRange()
-	prev := f.popRange()
-	lo, hi := last[0], last[1]
-	if prev[0] > lo {
-		lo = prev[0]
-	}
-	if prev[1] < hi {
-		hi = prev[1]
-	}
-	if lo < hi {
-		f.push(lo, hi)
-		return true
-	}
-	return false
-}
-
-func (f *Filter) pushExpr(fn func(f *Filter, si *SparseIndex, pc int)) {
-	f.exprs = append(f.exprs, fn)
-}
-
-func (f *Filter) cont(si *SparseIndex, pc int) {
-	if pc >= len(f.exprs) {
-		return
-	}
-	f.exprs[pc](f, si, pc+1)
-}
+func (f *Filter) Trivial() bool { return f.eval == nil }
 
 // compile left and right, then replace the compiled
 // expressions with a single expression that computes
 // the intersection of the two ranges computed by
 // left and right
-func (f *Filter) intersect(left, right expr.Node) bool {
-	if !f.compile(left) {
-		// any AND right -> right
-		return f.compile(right)
+func (f *Filter) intersect(left, right expr.Node) evalfn {
+	lhs := f.compile(left)
+	rhs := f.compile(right)
+	if lhs == nil {
+		return rhs
+	} else if rhs == nil {
+		return lhs
 	}
-	if !f.compile(right) {
-		return true // left AND any -> left
+	return func(f *Filter, si *SparseIndex, rest cont) {
+		lhs(f, si, func(lo, hi int) {
+			rhs(f, si, func(rlo, rhi int) {
+				nlo := lo
+				if rlo > lo {
+					nlo = rlo
+				}
+				nhi := hi
+				if rhi < hi {
+					nhi = rhi
+				}
+				if nlo < nhi {
+					rest(nlo, nhi)
+				}
+			})
+		})
 	}
-	f.pushExpr(func(f *Filter, si *SparseIndex, pc int) {
-		if f.pushIntersect() {
-			f.cont(si, pc)
-		}
-	})
-	return true
-}
-
-func (f *Filter) evalAny(blocks int) {
-	f.push(0, blocks)
-}
-
-func (f *Filter) push(start, end int) {
-	if end <= start {
-		panic("blockfmt.Filter: push() of invalid range")
-	}
-	f.intervals = append(f.intervals, [2]int{start, end})
 }
 
 // filter where p <= when
-func (f *Filter) beforeeq(p *expr.Path, when date.Time) bool {
+func (f *Filter) beforeeq(p *expr.Path, when date.Time) evalfn {
 	path := f.path(p)
 	if path == nil {
-		return false
+		return nil
 	}
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
+	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
-			f.evalAny(si.Blocks())
-		} else {
-			end := ti.End(when)
-			if end == 0 {
-				return
-			}
-			f.push(0, end)
+			rest(0, si.Blocks())
+			return
 		}
-		f.cont(si, pc)
-	})
-	return true
+		end := ti.End(when)
+		if end == 0 {
+			return
+		}
+		rest(0, end)
+	}
 }
 
 // filter where p >= when
-func (f *Filter) aftereq(p *expr.Path, when date.Time) bool {
+func (f *Filter) aftereq(p *expr.Path, when date.Time) evalfn {
 	path := f.path(p)
 	if path == nil {
-		return false
+		return nil
 	}
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
+	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
-			f.evalAny(si.Blocks())
-		} else {
-			start := ti.Start(when)
-			if start == ti.Blocks() {
-				return
-			}
-			f.push(start, ti.Blocks())
+			rest(0, si.Blocks())
+			return
 		}
-		f.cont(si, pc)
-	})
-	return true
+		start := ti.Start(when)
+		if start == ti.Blocks() {
+			return
+		}
+		rest(start, ti.Blocks())
+	}
 }
 
-func (f *Filter) within(p *expr.Path, when date.Time) bool {
+func (f *Filter) within(p *expr.Path, when date.Time) evalfn {
 	path := f.path(p)
 	if path == nil {
-		return false
+		return nil
 	}
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
+	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
-			f.evalAny(si.Blocks())
-		} else {
-			start, end := ti.Start(when), ti.End(when.Add(time.Microsecond))
-			if start == end {
-				return
-			}
-			f.push(start, end)
+			rest(0, si.Blocks())
+			return
 		}
-		f.cont(si, pc)
-	})
-	return true
+		start, end := ti.Start(when), ti.End(when.Add(time.Microsecond))
+		if start == end {
+			return
+		}
+		rest(start, end)
+	}
 }
 
 // filter where !e
-func (f *Filter) negate(e expr.Node) bool {
+func (f *Filter) negate(e expr.Node) evalfn {
 	// we expect DNF ("disjunctive normal form"),
 	// so if we have a negation of a disjunction we
 	// need to turn it into a conjunction instead
@@ -202,24 +162,25 @@ func (f *Filter) negate(e expr.Node) bool {
 		// !(A OR B) -> !A AND !B
 		// which in turn becomes
 		//   (A-left OR A-right) AND (B-left OR B-right)
+		// which is then
+		//   (A-left AND B-left) OR (A-left AND B-right) OR
+		//   (A-right AND B-left) OR (A-right AND B-right)
 		return f.intersect(&expr.Not{or.Left}, &expr.Not{or.Right})
 	}
-	if !f.compile(e) {
-		return false
+	inner := f.compile(e)
+	if inner == nil {
+		return nil
 	}
-	// !range = left-of-min OR right-of-max
-	f.pushExpr(func(f *Filter, si *SparseIndex, pc int) {
-		iv := f.popRange()
-		if iv[0] > 0 {
-			f.push(0, iv[0])
-			f.cont(si, pc)
-		}
-		if iv[1] < si.Blocks() {
-			f.push(iv[1], si.Blocks())
-			f.cont(si, pc)
-		}
-	})
-	return true
+	return func(f *Filter, si *SparseIndex, rest cont) {
+		inner(f, si, func(x, y int) {
+			if x > 0 {
+				rest(0, x)
+			}
+			if y < si.Blocks() {
+				rest(y, si.Blocks())
+			}
+		})
+	}
 }
 
 func toUnixEpoch(e expr.Node) *expr.Timestamp {
@@ -236,25 +197,21 @@ func toUnixMicro(e expr.Node) *expr.Timestamp {
 	return nil
 }
 
-func (f *Filter) union(a, b expr.Node) bool {
-	if !f.compile(a) {
-		return f.compile(b)
+func (f *Filter) union(a, b expr.Node) evalfn {
+	part0 := f.compile(a)
+	part1 := f.compile(b)
+	if part0 == nil {
+		return part1
+	} else if part1 == nil {
+		return part0
 	}
-	if !f.compile(b) {
-		return true
+	return func(f *Filter, si *SparseIndex, rest cont) {
+		part0(f, si, rest)
+		part1(f, si, rest)
 	}
-	// execute the rest of the program twice
-	// (each invocation should pop 1 value)
-	f.exprs = append(f.exprs, func(f *Filter, si *SparseIndex, pc int) {
-		save := f.popRange()
-		f.cont(si, pc)
-		f.push(save[0], save[1])
-		f.cont(si, pc)
-	})
-	return true
 }
 
-func (f *Filter) compile(e expr.Node) bool {
+func (f *Filter) compile(e expr.Node) evalfn {
 	switch e := e.(type) {
 	case *expr.Not:
 		return f.negate(e.Expr)
@@ -279,25 +236,25 @@ func (f *Filter) compile(e expr.Node) bool {
 				case expr.ToUnixEpoch:
 					p, ok = b.Args[0].(*expr.Path)
 					if !ok {
-						return false
+						return nil
 					}
 					conv = toUnixEpoch
 				case expr.ToUnixMicro:
 					p, ok = b.Args[0].(*expr.Path)
 					if !ok {
-						return false
+						return nil
 					}
 					conv = toUnixMicro
 				default:
-					return false
+					return nil
 				}
 			} else {
-				return false
+				return nil
 			}
 		}
 		ts := conv(e.Right)
 		if ts == nil {
-			return false
+			return nil
 		}
 		const epsilon = time.Microsecond
 		switch e.Op {
@@ -313,7 +270,7 @@ func (f *Filter) compile(e expr.Node) bool {
 			return f.aftereq(p, ts.Value)
 		}
 	}
-	return false
+	return nil
 }
 
 func (f *Filter) compress() {
@@ -348,9 +305,17 @@ func (f *Filter) compress() {
 	f.intervals = oranges
 }
 
-func (f *Filter) eval(si *SparseIndex) {
+func (f *Filter) run(si *SparseIndex) {
 	f.intervals = f.intervals[:0]
-	f.cont(si, 0)
+	if f.eval == nil {
+		return
+	}
+	if f.grow == nil {
+		f.grow = func(x, y int) {
+			f.intervals = append(f.intervals, [2]int{x, y})
+		}
+	}
+	f.eval(f, si, f.grow)
 	f.compress()
 }
 
@@ -361,13 +326,13 @@ func (f *Filter) eval(si *SparseIndex) {
 // The behavior of Overlaps when start >= end is unspecified.
 func (f *Filter) Overlaps(si *SparseIndex, start, end int) bool {
 	// no known bounds:
-	if len(f.exprs) == 0 {
+	if f.eval == nil {
 		return true
 	}
 	if si.Blocks() == 0 { // hmm...
 		return start == 0
 	}
-	f.eval(si)
+	f.run(si)
 	for i := range f.intervals {
 		// ends before start: doesn't overlap
 		if f.intervals[i][1] <= start {
@@ -390,7 +355,7 @@ func (f *Filter) MatchesAny(si *SparseIndex) bool {
 	if f.Trivial() || si.Blocks() == 0 {
 		return true
 	}
-	f.eval(si)
+	f.run(si)
 	return len(f.intervals) > 0
 }
 
@@ -401,11 +366,11 @@ func (f *Filter) MatchesAny(si *SparseIndex) bool {
 // interval will be called once with (0, 0).
 func (f *Filter) Visit(si *SparseIndex, interval func(start, end int)) {
 	// no known bounds:
-	if len(f.exprs) == 0 || si.Blocks() == 0 {
+	if f.eval == nil || si.Blocks() == 0 {
 		interval(0, si.Blocks())
 		return
 	}
-	f.eval(si)
+	f.run(si)
 	if len(f.intervals) == 0 {
 		// no non-empty intervals
 		interval(0, 0)
