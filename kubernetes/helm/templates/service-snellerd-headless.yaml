@@ -17,7 +17,7 @@ spec:
     - name: internode
       port: {{ .Values.snellerd.ports.internode }}
       targetPort: {{ .Values.snellerd.ports.internode }}
-      protocol: TCP      
+      protocol: TCP
   selector:
     app: snellerd
     release: {{ .Release.Name }}

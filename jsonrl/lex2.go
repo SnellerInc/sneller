@@ -3748,6 +3748,7 @@ func (t *parser) lexToplevel(b *reader) error {
 			return fmt.Errorf("%w (couldn't find '[' or '{'", ErrNoMatch)
 		}
 		if b.atEOF {
+			// everything was whitespace and we are at EOF
 			return nil
 		}
 		if len(data) >= MaxDatumSize {

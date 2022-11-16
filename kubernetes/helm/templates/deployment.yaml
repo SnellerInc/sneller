@@ -20,7 +20,7 @@ spec:
         release: {{ .Release.Name }}
         {{- if .Values.snellerd.podLabels }}
         {{ toYaml .Values.snellerd.podLabels | indent 8 }}
-        {{- end }}        
+        {{- end }}
       {{- if .Values.snellerd.podAnnotations }}
       annotations:
         {{ toYaml .Values.snellerd.podAnnotations | indent 8 }}
@@ -34,7 +34,7 @@ spec:
         - name: {{ template "helpers.snellerdName" . }}
           image: "{{ .Values.snellerd.repository }}:{{ .Values.snellerd.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.snellerd.pullPolicy }}
-          args: 
+          args:
             - "daemon"
             - "-e"
             - "0.0.0.0:{{ .Values.snellerd.ports.snellerd }}"

@@ -47,7 +47,7 @@ ingress:
   tls: []
   #  - secretName: sneller-tls
   #    hosts:
-  #      - sneller-example.local  
+  #      - sneller-example.local
   annotations: {}
 
 secrets:
@@ -69,7 +69,7 @@ secrets:
       snellerIndexKey: 4AiJmIzLvMAP8A/1XdmbuzdwDduxHdu4hVRO7//7vd8=
 
 configuration:
-  #name: 
+  #name:
   values:
     s3EndPoint: http://minio:9000
     s3Bucket: s3://test/
