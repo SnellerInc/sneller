@@ -182,6 +182,7 @@ func (b *BucketFS) globAt(start, pre, pattern string, walk fsutil.WalkGlobFn) er
 					bucket:       b.Bucket,
 					object:       ret.Contents[i].Name,
 				},
+				ctx: b.Ctx,
 			}
 			err = walk(ret.Contents[i].Name, f, nil)
 			if err != nil {
