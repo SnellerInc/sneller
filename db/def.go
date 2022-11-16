@@ -163,17 +163,6 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 	return err
 }
 
-// A Resolver determines how input specifications
-// are turned into input filesystems.
-type Resolver interface {
-	// Split should trim the prefix off of pattern
-	// that specifies the source filesystem and return
-	// the result as an InputFS and the trailing glob
-	// pattern that can be applied to the input to yield
-	// the results.
-	Split(pattern string) (InputFS, string, error)
-}
-
 var (
 	// ErrBadPattern should be returned by Resolver.Split
 	// when it encounters an invalid pattern.

@@ -109,7 +109,7 @@ func (s *S3BearerIdentity) Tenant(ctx context.Context) (db.Tenant, error) {
 	cfg := &db.TenantConfig{
 		MaxScanBytes: s.MaxScanBytes,
 	}
-	return S3Tenant(s.ID, root, k, cfg), nil
+	return S3Tenant(ctx, s.ID, root, k, cfg), nil
 }
 
 func (s *S3Bearer) client() *http.Client {
@@ -159,8 +159,11 @@ type s3Tenant struct {
 	cfg  *db.TenantConfig
 }
 
-func S3Tenant(id string, root *db.S3FS, key *blockfmt.Key, cfg *db.TenantConfig) db.Tenant {
+func S3Tenant(ctx context.Context, id string, root *db.S3FS, key *blockfmt.Key, cfg *db.TenantConfig) db.Tenant {
 	t := &s3Tenant{
+		S3Resolver: db.S3Resolver{
+			Ctx: ctx,
+		},
 		id:   id,
 		root: root,
 		ikey: key,
