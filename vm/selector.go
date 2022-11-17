@@ -71,6 +71,26 @@ func evalfind(w *bytecode, delims []vmref, stride int) error {
 type Projection struct {
 	dst QuerySink
 	sel Selection // selection w/ renaming
+
+	// constexpr, if non-nil, indicates
+	// that this projection is actually
+	// a constant structure
+	constexpr *ion.Struct
+}
+
+func (s Selection) toConst() (ion.Struct, bool) {
+	var fields []ion.Field
+	for i := range s {
+		c, ok := s[i].Expr.(expr.Constant)
+		if !ok {
+			return ion.Struct{}, false
+		}
+		fields = append(fields, ion.Field{
+			Label: s[i].Result(),
+			Value: c.Datum(),
+		})
+	}
+	return ion.NewStruct(nil, fields), true
 }
 
 // NewProjection implements simple column projection from
@@ -80,6 +100,10 @@ func NewProjection(sel Selection, dst QuerySink) *Projection {
 	p := &Projection{
 		dst: dst,
 		sel: sel,
+	}
+	constexpr, ok := sel.toConst()
+	if ok {
+		p.constexpr = &constexpr
 	}
 	return p
 }
@@ -124,7 +148,10 @@ func (p *Projection) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	rc, _ := dst.(rowConsumer)
+	rc, ok := dst.(rowConsumer)
+	if !ok && p.constexpr != nil {
+		return splitter(&constproject{datum: p.constexpr, dst: dst}), nil
+	}
 	pj := &projector{parent: p, dst: dst, dstrc: rc}
 
 	// set alignedWriter.out so that even if the
@@ -310,3 +337,44 @@ func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 
 //go:noescape
 func evalproject(bc *bytecode, delims []vmref, dst []byte, symbols []syminfo) (int, int)
+
+// constproject is a specialization that we use
+// when the output is known to be a constant structure;
+// we pre-encode the output and just emit it on each input row
+type constproject struct {
+	datum    *ion.Struct // constant row
+	data     ion.Buffer  // scratch buffer for parent.constexpr
+	datasize int         // data.Bytes()[:datasize] is the row contents
+	dst      io.WriteCloser
+}
+
+func (p *constproject) next() rowConsumer { return nil }
+
+func (p *constproject) symbolize(st *symtab, aux *auxbindings) error {
+	p.data.Reset()
+	// capture all symbols via first encode:
+	p.datum.Encode(&p.data, &st.Symtab)
+	p.datasize = p.data.Size()
+
+	// write out symbol table immediately
+	st.Marshal(&p.data, true)
+	_, err := p.dst.Write(p.data.Bytes()[p.datasize:])
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *constproject) writeRows(delims []vmref, rp *rowParams) error {
+	// it is almost always the case that len(delims) == 1
+	row := p.data.Bytes()[:p.datasize]
+	for range delims {
+		_, err := p.dst.Write(row)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *constproject) Close() error { return p.dst.Close() }
