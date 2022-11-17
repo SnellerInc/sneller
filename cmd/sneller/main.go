@@ -151,7 +151,7 @@ func parse(arg string) *expr.Query {
 	var err error
 	if dashf {
 		// arg is a file
-		buf, err = os.ReadFile(arg)
+		buf, err = os.ReadFile(expandUser(arg))
 		if err != nil {
 			exit(err)
 		}
@@ -267,6 +267,8 @@ func mkenv() plan.Env {
 			}
 			return s3object(fname)
 		}
+		fname = expandUser(fname)
+
 		f, err := os.Open(fname)
 		if err != nil {
 			return nil, fmt.Errorf("inside query: %w", err)
@@ -287,6 +289,20 @@ func mkenv() plan.Env {
 		}
 		return srcTable(f, i.Size(), fields)
 	})
+}
+
+func expandUser(path string) string {
+	p := strings.TrimPrefix(path, "~/")
+	if len(p) == len(path) {
+		return path
+	}
+
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+
+	return filepath.Join(dir, p)
 }
 
 func do(arg string) {
