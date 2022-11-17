@@ -93,3 +93,29 @@ func TestSparseIndex(t *testing.T) {
 	}
 	testSparseRoundtrip(t, &si)
 }
+
+// test that changing the input bytes out after
+// decoding doesn't cause data corruption
+func TestSparseCorruption(t *testing.T) {
+	var buf ion.Buffer
+	var st ion.Symtab
+	var got SparseIndex
+	consts := ion.NewStruct(&st, []ion.Field{
+		{Label: "foo", Value: ion.String("bar")},
+	})
+	si := SparseIndex{consts: consts}
+	si.Encode(&buf, &st)
+	bytes := buf.Bytes()
+	err := got.Decode(&st, bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// zero out bytes and make sure it didn't
+	// corrupt consts
+	for i := range bytes {
+		bytes[i] = 0
+	}
+	if !ion.Equal(got.consts.Datum(), consts.Datum()) {
+		t.Fatal("consts was corrupted")
+	}
+}

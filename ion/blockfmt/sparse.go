@@ -115,6 +115,11 @@ func (d *TrailerDecoder) decodeSparse(s *SparseIndex, body []byte) error {
 			}
 			s.blocks = int(n)
 		case "consts":
+			// XXX: we have to copy the bytes because
+			// the resulting ion.Struct will alias the
+			// slice and so we need to make a copy to
+			// avoid data corruption
+			field = slices.Clone(field)
 			d, _, err := ion.ReadDatum(d.Symbols, field)
 			if err != nil {
 				return err
