@@ -105,7 +105,7 @@ func TestBuildError(t *testing.T) {
 		},
 		{
 			input: `select x, y, z from foo order by x`,
-			rx:    "unlimited cardinality",
+			rx:    "requires a LIMIT",
 		},
 		{
 			input: `select * from tbl limit -1`,

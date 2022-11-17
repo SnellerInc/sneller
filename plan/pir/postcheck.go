@@ -67,7 +67,9 @@ func checkSortSize(t *Trace) error {
 	f, ok := t.Final().(*Order)
 	if ok {
 		if c := t.Class(); !c.Small() {
-			return errorf(f.Columns[0].Column, "cannot perform ORDER BY with very large or unlimited cardinality")
+			return errorf(f.Columns[0].Column,
+				"this ORDER BY requires a LIMIT statement (up to %d)",
+				LargeSize)
 		}
 		return nil
 	}
@@ -82,7 +84,7 @@ func checkSortSize(t *Trace) error {
 	pos := l.Count + l.Offset
 	if pos > LargeSize {
 		return errorf(p.Columns[0].Column,
-			"cannot perform ORDER BY with LIMIT+OFFSET %d > %d", pos, LargeSize)
+			"this ORDER BY has a LIMIT+OFFSET %d greater than the maximum allowed value %d", pos, LargeSize)
 	}
 	return nil
 }
