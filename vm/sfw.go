@@ -512,38 +512,26 @@ func (m *Rematerializer) writeRows(delims []vmref, rp *rowParams) error {
 	}
 	for i := range delims {
 		mem := delims[i].mem()
-		auxp := 0
 		var sym ion.Symbol
 		var err error
 		m.buf.BeginStruct(-1)
+
+		// let BeginField handle the sorting
+		for _, pos := range m.auxpos {
+			m.buf.BeginField(m.aux[pos])
+			m.buf.UnsafeAppend(rp.auxbound[pos][i].mem())
+		}
+
 		for len(mem) > 0 {
 			before := mem
 			sym, mem, err = ion.ReadLabel(mem)
 			if err != nil {
 				return fmt.Errorf("vm.Rematerializer: writeRows: %x %w", before, err)
 			}
-			// write out all auxilliary fields with symbol ID < current
-			for auxp < len(m.auxpos) && sym > m.aux[m.auxpos[auxp]] {
-				m.buf.BeginField(m.aux[m.auxpos[auxp]])
-				m.buf.UnsafeAppend(rp.auxbound[m.auxpos[auxp]][i].mem())
-				auxp++
-			}
 			size := ion.SizeOf(mem)
-			// check to see if this field has been overwritten
-			if auxp < len(m.auxpos) && sym == m.aux[m.auxpos[auxp]] {
-				m.buf.BeginField(m.aux[m.auxpos[auxp]])
-				m.buf.UnsafeAppend(rp.auxbound[m.auxpos[auxp]][i].mem())
-				auxp++
-			} else {
-				m.buf.BeginField(sym)
-				m.buf.UnsafeAppend(mem[:size])
-			}
+			m.buf.BeginField(sym)
+			m.buf.UnsafeAppend(mem[:size])
 			mem = mem[size:]
-		}
-		for auxp < len(m.auxpos) {
-			m.buf.BeginField(m.aux[m.auxpos[auxp]])
-			m.buf.UnsafeAppend(rp.auxbound[m.auxpos[auxp]][i].mem())
-			auxp++
 		}
 		m.buf.EndStruct()
 		m.empty = false
@@ -564,9 +552,7 @@ func (m *Rematerializer) writeRowsFast(delims []vmref) error {
 				return err
 			}
 		}
-		m.buf.BeginStruct(-1)
-		m.buf.UnsafeAppend(delims[i].mem())
-		m.buf.EndStruct()
+		m.buf.UnsafeAppendFields(delims[i].mem())
 		m.empty = false
 	}
 	return nil

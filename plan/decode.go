@@ -156,6 +156,27 @@ func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
 	return nil
 }
 
+func findsym(sym ion.Symbol, buf []byte) (ion.Symbol, error) {
+	for len(buf) > 0 {
+		lbl, inner, err := ion.ReadLabel(buf)
+		if err != nil {
+			return 0, err
+		}
+		if lbl > sym {
+			break
+		}
+		if lbl == sym {
+			typ, _, err := ion.ReadSymbol(inner)
+			if err != nil {
+				return 0, err
+			}
+			return typ, nil
+		}
+		buf = inner[ion.SizeOf(inner):]
+	}
+	return 0, nil
+}
+
 // Decode decodes a query plan from 'buf'
 // using the ion symbol table 'st' and the
 // environment 'env.'
@@ -172,7 +193,7 @@ func decodeOps(d Decoder, st *ion.Symtab, buf []byte) (Op, error) {
 	var inner []byte
 	var err error
 	var top Op
-	var lbl, typ ion.Symbol
+	var typ ion.Symbol
 	count := 0
 	for len(buf) > 0 {
 		if ion.TypeOf(buf) != ion.StructType {
@@ -182,15 +203,7 @@ func decodeOps(d Decoder, st *ion.Symtab, buf []byte) (Op, error) {
 		if inner == nil {
 			return nil, fmt.Errorf("plan.Decode: invalid TLV bytes in field %d", count)
 		}
-		// "type" should be the first symbol
-		lbl, inner, err = ion.ReadLabel(inner)
-		if err != nil {
-			return nil, err
-		}
-		if lbl != typesym {
-			return nil, fmt.Errorf("plan.Decode: first field of plan op is %q; expected \"type\"", st.Get(lbl))
-		}
-		typ, inner, err = ion.ReadSymbol(inner)
+		typ, err = findsym(typesym, inner)
 		if err != nil {
 			return nil, fmt.Errorf("plan.Decode: reading \"type\" symbol: %w", err)
 		}
@@ -261,9 +274,12 @@ func decodetyp(d Decoder, name string, st *ion.Symtab, body []byte) (Op, error) 
 		if err != nil {
 			return nil, err
 		}
-		err = op.setfield(d, st.Get(lbl), st, body)
-		if err != nil {
-			return nil, fmt.Errorf("decoding %T: %w", op, err)
+		name := st.Get(lbl)
+		if name != "type" {
+			err = op.setfield(d, name, st, body)
+			if err != nil {
+				return nil, fmt.Errorf("decoding %T: %w", op, err)
+			}
 		}
 		body = body[ion.SizeOf(body):]
 	}

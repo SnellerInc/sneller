@@ -241,8 +241,7 @@ func compress(st *Symtab, out *Buffer, body []byte) []byte {
 		if sym, ok := st.getBytes(str); ok {
 			out.WriteSymbol(sym)
 		} else {
-			out.BeginString(len(str))
-			out.UnsafeAppend(str)
+			out.WriteStringBytes(str)
 		}
 		return rest
 	default:

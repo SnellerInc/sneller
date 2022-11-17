@@ -36,81 +36,6 @@ import (
 
 //go:generate gofmt -w .
 
-type fieldlist struct {
-	base   int        // beginning of structure fields
-	tail   int        // offset of latest field
-	prev   ion.Symbol // largest symbol inserted so far
-	insert ion.Symbol // saved symbol to insertion-sort, or -1
-}
-
-func (f *fieldlist) init() {
-	f.base = -1
-	f.insert = ^ion.Symbol(0)
-}
-
-// latest is the current symbol being inserted
-func (f *fieldlist) latest() ion.Symbol {
-	if f.insert != ^ion.Symbol(0) {
-		return f.insert
-	}
-	return f.prev
-}
-
-func (f *fieldlist) start(sym ion.Symbol, off int32) {
-	f.tail = int(off)
-	f.insert = ^ion.Symbol(0)
-	if f.base < 0 {
-		// first field
-		f.base = int(off)
-		f.prev = sym
-		return
-	}
-	if sym > f.prev {
-		f.prev = sym
-	} else {
-		f.insert = sym
-	}
-}
-
-func (s *state) shift(f *fieldlist) {
-	buf := s.out.Bytes()
-	if f.insert == f.prev {
-		s.out.UnsafeRewind(f.tail)
-		return
-	}
-
-	// search for insert position
-	mem := buf[f.base:f.tail]
-	start := len(mem)
-	target := -1
-	for len(mem) > 0 {
-		cur, rest, _ := ion.ReadLabel(mem)
-		if cur > f.insert {
-			target = f.base + start - len(mem)
-			break
-		}
-		if cur == f.insert {
-			// duplicate; ignore
-			s.out.UnsafeRewind(f.tail)
-			return
-		}
-		// cur < f.insert; continue
-		mem = rest[ion.SizeOf(rest):]
-	}
-	if target < 0 {
-		panic("jsonrl: state.shift: couldn't find correct offset")
-	}
-	// save the tail; it's about to be clobbered
-	s.tmp = append(s.tmp[:0], buf[f.tail:]...)
-
-	// copy the existing fields forward,
-	// leaving space for the field
-	width := len(s.tmp)
-	copy(buf[target+width:], buf[target:])
-	// copy the saved field into the old space
-	copy(buf[target:], s.tmp)
-}
-
 const (
 	flagInRecord = 1 << iota
 	flagInList
@@ -547,7 +472,7 @@ type state struct {
 	// stack of structure state;
 	// gets pushed on beginRecord()
 	// and popped on endRecord()
-	stack []fieldlist
+	stack []ion.Symbol
 
 	// various state bits;
 	// pushed and popped when compound
@@ -639,11 +564,6 @@ func (s *state) after() {
 		return
 	}
 	s.flags &^= flagField
-	if s.stack[len(s.stack)-1].insert != ^ion.Symbol(0) {
-		// slow-path: shift object bytes around
-		// so that symbols remain sorted
-		s.shift(&s.stack[len(s.stack)-1])
-	}
 }
 
 // addTimeRange adds a time to the range for the path
@@ -662,7 +582,7 @@ func (s *state) addTimeRange(t date.Time) {
 	}
 	s.pathbuf.Prepare(len(s.stack))
 	for i := range s.stack {
-		s.pathbuf.Push(s.stack[i].latest())
+		s.pathbuf.Push(s.stack[i])
 	}
 	s.out.Ranges.AddTime(s.pathbuf, t)
 }
@@ -774,6 +694,7 @@ func (s *state) unescaped(buf []byte) []byte {
 			panic("unexpected escape sequence")
 		}
 	}
+	s.tmp = tmp[:0] // avoid realloc
 	return tmp
 }
 
@@ -798,13 +719,7 @@ func (s *state) parseFloat(f float64) {
 }
 
 func (s *state) pushRecord() {
-	// push a new stack state
-	if len(s.stack) == cap(s.stack) {
-		s.stack = append(s.stack, fieldlist{})
-	} else {
-		s.stack = s.stack[:len(s.stack)+1]
-	}
-	s.stack[len(s.stack)-1].init()
+	s.stack = append(s.stack, ^ion.Symbol(0))
 }
 
 func (s *state) popRecord() {
@@ -879,10 +794,8 @@ func (s *state) emitConst(lst []ion.Field) {
 	}
 	for i := range lst {
 		sym := lst[i].Sym
-		s.stack[len(s.stack)-1].start(sym, int32(s.out.Size()))
 		s.out.BeginField(sym)
 		lst[i].Value.Encode(&s.out.Buffer, &s.out.Symbols)
-		s.after()
 	}
 }
 
@@ -914,7 +827,7 @@ func (s *state) beginField(label []byte, esc bool) {
 	} else {
 		sym = s.out.Symbols.InternBytes(label)
 	}
-	s.stack[len(s.stack)-1].start(sym, int32(s.out.Size()))
+	s.stack[len(s.stack)-1] = sym
 	s.flags |= flagField
 	s.out.BeginField(sym)
 }
@@ -1017,8 +930,7 @@ func (s *state) parseString(seg []byte, esc bool) {
 		} else if sym, ok := s.out.Symbols.SymbolizeBytes(seg); ok {
 			s.out.WriteSymbol(sym)
 		} else {
-			s.out.BeginString(len(seg))
-			s.out.UnsafeAppend(seg)
+			s.out.WriteStringBytes(seg)
 		}
 	}
 

@@ -34,6 +34,10 @@ const (
 type segment struct {
 	off, width int
 	kind       segkind
+
+	tail   int
+	prev   Symbol
+	insert Symbol
 }
 
 // Buffer buffers ion objects.
@@ -43,8 +47,8 @@ type segment struct {
 // or written to an io.Writer with
 // Buffer.WriteTo.
 type Buffer struct {
-	buf  []byte
-	segs []segment
+	buf, tmp []byte
+	segs     []segment
 	//
 	// TODO: cache the most recent size
 	// of segments at each depth and use
@@ -94,6 +98,48 @@ func (b *Buffer) BeginStruct(hint int) {
 		kind:  segstruct,
 	})
 	b.buf = append(b.buf, 0xde, 0)
+}
+
+func (b *Buffer) shift() {
+	if len(b.segs) == 0 {
+		return
+	}
+	s := &b.segs[len(b.segs)-1]
+	if s.kind != segstruct || s.insert == ^Symbol(0) {
+		return
+	}
+	if s.insert == s.prev {
+		// rewind duplicated field
+		b.buf = b.buf[:s.tail]
+		return
+	}
+	mem := b.buf[s.off+s.width : s.tail]
+	start := len(mem)
+	target := -1
+	for len(mem) > 0 {
+		cur, rest, err := ReadLabel(mem)
+		if err != nil {
+			panic(err)
+		}
+		if cur > s.insert {
+			target = (s.off + s.width) + start - len(mem)
+			break
+		}
+		if cur == s.insert {
+			// duplicate; ignore
+			b.buf = b.buf[:s.tail]
+			return
+		}
+		// cur < f.insert; continue
+		mem = rest[SizeOf(rest):]
+	}
+	if target < 0 {
+		panic("Buffer.shift: couldn't find correct offset")
+	}
+	b.tmp = append(b.tmp[:0], b.buf[s.tail:]...)
+	width := len(b.tmp)
+	copy(b.buf[target+width:], b.buf[target:])
+	copy(b.buf[target:], b.tmp)
 }
 
 // Uvsize returns the encoded size
@@ -156,6 +202,7 @@ func (b *Buffer) EndStruct() {
 	}
 	b.segs = b.segs[:len(b.segs)-1]
 	b.term(s)
+	b.shift()
 }
 
 // BeginList begins a list object.
@@ -184,6 +231,7 @@ func (b *Buffer) EndList() {
 	}
 	b.segs = b.segs[:len(b.segs)-1]
 	b.term(s)
+	b.shift() // end field in structure
 }
 
 // BeginAnnotation begins an annotation object.
@@ -192,9 +240,10 @@ func (b *Buffer) EndList() {
 // be greater than zero.
 func (b *Buffer) BeginAnnotation(labels int) {
 	b.segs = append(b.segs, segment{
-		off:   len(b.buf),
-		width: 2,
-		kind:  segannotation,
+		off:    len(b.buf),
+		width:  2,
+		kind:   segannotation,
+		insert: ^Symbol(0),
 	})
 	b.buf = append(b.buf, 0xe0, 0)
 	// put the number of annotations
@@ -212,6 +261,7 @@ func (b *Buffer) EndAnnotation() {
 	}
 	b.segs = b.segs[:len(b.segs)-1]
 	b.term(s)
+	b.shift()
 }
 
 // get the next 'n' bytes at the end of the buffer
@@ -252,6 +302,17 @@ func (b *Buffer) putuv(s uint) {
 // BeginField will panic if the buffer is not
 // in an appropriate structure field context
 func (b *Buffer) BeginField(sym Symbol) {
+	s := &b.segs[len(b.segs)-1]
+	if s.kind != segstruct && s.kind != segannotation {
+		panic("BeginField in non-structure context")
+	}
+	if s.tail == 0 || sym > s.prev {
+		s.prev = sym
+		s.insert = ^Symbol(0)
+	} else {
+		s.insert = sym
+	}
+	s.tail = len(b.buf)
 	b.putuv(uint(sym))
 }
 
@@ -262,32 +323,38 @@ func (b *Buffer) WriteBool(n bool) {
 		bt++
 	}
 	b.buf = append(b.buf, bt)
+	b.shift()
 }
 
 // WriteNull writes an ion NULL value into the buffer
 func (b *Buffer) WriteNull() {
 	b.buf = append(b.buf, 0x0f)
+	b.shift()
 }
 
-// BeginString begins a string object with
-// the given size.
-// Typically this call is followed by
-// calls to UnsafeAppend() to add
-// the rest of the string contents.
-func (b *Buffer) BeginString(size int) {
+// begin writes a tag + size bits to the buffer
+func (b *Buffer) begin(tag Type, size int) {
 	if size < 14 {
-		b.buf = append(b.buf, 0x80|byte(size))
+		b.buf = append(b.buf, byte(tag<<4)|byte(size))
 	} else {
-		b.buf = append(b.buf, 0x8e)
+		b.buf = append(b.buf, byte(tag<<4)|0xe)
 		b.putuv(uint(size))
 	}
 }
 
-// WriteString writes a string as an ion string
-// into a Buffer
-func (b *Buffer) WriteString(s string) {
-	b.BeginString(len(s))
+// WriteStringBytes works identically to WriteString,
+// but it uses a []byte as the string contents rather than a string.
+func (b *Buffer) WriteStringBytes(s []byte) {
+	b.begin(StringType, len(s))
 	copy(b.grow(len(s)), s)
+	b.shift()
+}
+
+// WriteString writes a string as an ion string into a Buffer
+func (b *Buffer) WriteString(s string) {
+	b.begin(StringType, len(s))
+	copy(b.grow(len(s)), s)
+	b.shift()
 }
 
 // WriteInt writes an integer to the buffer.
@@ -299,6 +366,7 @@ func (b *Buffer) WriteInt(i int64) {
 		pre = 0x30
 	}
 	b.writeint(mag, pre)
+	b.shift()
 }
 
 func (b *Buffer) writeint(mag uint64, pre byte) {
@@ -314,13 +382,16 @@ func (b *Buffer) writeint(mag uint64, pre byte) {
 	}
 }
 
+// WriteSymbol writes an ion symbol value to the buffer.
 func (b *Buffer) WriteSymbol(s Symbol) {
 	b.writeint(uint64(s), 0x70)
+	b.shift()
 }
 
 // WriteUint writes an unsigned integer to the buffer.
 func (b *Buffer) WriteUint(u uint64) {
 	b.writeint(u, 0x20)
+	b.shift()
 }
 
 // WriteFloat64 writes an ion float64 to the buffer
@@ -332,6 +403,7 @@ func (b *Buffer) WriteFloat64(f float64) {
 	dst := b.grow(9)
 	dst[0] = 0x48
 	binary.BigEndian.PutUint64(dst[1:], math.Float64bits(f))
+	b.shift()
 }
 
 // WriteFloat32 writes an ion float32 to the buffer
@@ -343,6 +415,7 @@ func (b *Buffer) WriteFloat32(f float32) {
 	dst := b.grow(5)
 	dst[0] = 0x44
 	binary.BigEndian.PutUint32(dst[1:], math.Float32bits(f))
+	b.shift()
 }
 
 func (b *Buffer) WriteCanonicalFloat(f float64) {
@@ -357,6 +430,7 @@ func (b *Buffer) WriteCanonicalFloat(f float64) {
 		return
 	}
 	b.WriteFloat64(f)
+	b.shift()
 }
 
 // WriteBlob writes a []byte as an ion 'blob' to the buffer.
@@ -368,6 +442,7 @@ func (b *Buffer) WriteBlob(p []byte) {
 		b.putuv(uint(len(p)))
 	}
 	copy(b.grow(len(p)), p)
+	b.shift()
 }
 
 // WriteTo implements io.WriterTo
@@ -410,6 +485,7 @@ func (b *Buffer) WriteTime(t date.Time) {
 			byte(micro),
 		)
 	}
+	b.shift()
 }
 
 type TimeTrunc int
@@ -465,6 +541,7 @@ func (b *Buffer) WriteTruncatedTime(t date.Time, trunc TimeTrunc) {
 	}
 
 	buf := b.grow(int(size) + 1)
+	defer b.shift()
 
 	buf[0] = byte(TimestampType<<4) | size
 	buf[1] = 0x80 // offset = 0
@@ -522,20 +599,23 @@ func (b *Buffer) StartChunk(symtab *Symtab) {
 }
 
 // UnsafeAppend appends arbitrary data
-// to the buffer.
+// to the buffer. If the buffer is currently
+// in List, Struct, or Annotation context, then
+// the contents of buf should be exactly one
+// ion datum.
 func (b *Buffer) UnsafeAppend(buf []byte) {
 	copy(b.grow(len(buf)), buf)
+	b.shift()
 }
 
-// UnsafeRewind rewinds the buffer to a previous offset.
-// No validation is performed to ensure that removing n bytes
-// of data preserves the validity of the ion stream, but UnsafeRewind
-// will panic if it rewinds across an incomplete list or structure boundary.
-func (b *Buffer) UnsafeRewind(off int) {
-	b.buf = b.buf[:off]
-	if len(b.segs) > 0 && len(b.buf) < b.segs[len(b.segs)-1].off {
-		panic("ion.Buffer.UnsafeRewind past segment boundary")
-	}
+// UnsafeAppendFields appends an encoded field list
+// as an ion structure. The data must be zero or more
+// encoded (uvarint, field) pairs with the fields sorted
+// in ascending symbol ID order.
+func (b *Buffer) UnsafeAppendFields(buf []byte) {
+	b.begin(StructType, len(buf))
+	copy(b.grow(len(buf)), buf)
+	b.shift()
 }
 
 // Size returns the number of bytes in the buffer.

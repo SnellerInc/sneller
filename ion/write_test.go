@@ -125,6 +125,20 @@ func TestShortStruct(t *testing.T) {
 			},
 			out: []byte{0xd2, 0x90, 0x20},
 		},
+		{
+			expr: func(b *Buffer) {
+				b.BeginField(0x12)
+				b.WriteInt(0)
+				b.BeginField(0x12)
+				b.WriteInt(3) // ignored; duplicate
+				b.BeginField(0x11)
+				b.WriteInt(1)
+				b.BeginField(0x12)
+				b.WriteInt(5) // ignored; duplicate again
+			},
+			// fields have been re-ordered
+			out: []byte{0xd5, 0x91, 0x21, 0x01, 0x92, 0x20},
+		},
 	}
 
 	var b Buffer
@@ -270,8 +284,7 @@ func BenchmarkSizeOf(b *testing.B) {
 	}
 	var ib Buffer
 	for i := range sizes {
-		ib.BeginString(sizes[i])
-		ib.UnsafeAppend(make([]byte, sizes[i]))
+		ib.WriteStringBytes(make([]byte, sizes[i]))
 	}
 	mem := ib.Bytes()
 	b.ResetTimer()

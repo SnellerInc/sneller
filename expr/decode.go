@@ -15,6 +15,7 @@
 package expr
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -64,16 +65,15 @@ func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 	}
 }
 
+var errStop = errors.New("stop decoding")
+
 func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 	var node composite
 	rest, err := ion.UnpackStruct(st, msg, func(name string, field []byte) error {
-		if node != nil {
-			return node.setfield(name, st, field)
-		}
 		// expect the type field to be the
 		// first field in the struct
 		if name != "type" {
-			return fmt.Errorf("missing type field, found %q", name)
+			return nil
 		}
 		sym, _, err := ion.ReadSymbol(field)
 		if err != nil {
@@ -87,11 +87,20 @@ func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 		if node == nil {
 			return fmt.Errorf("unknown structure %q", str)
 		}
-		return nil
+		return errStop // stop traversing fields
 	})
-	if node == nil {
-		err = fmt.Errorf("missing type field")
+	if err != nil && err != errStop {
+		return nil, nil, err
 	}
+	if node == nil {
+		return nil, rest, fmt.Errorf("missing type field")
+	}
+	_, err = ion.UnpackStruct(st, msg, func(name string, field []byte) error {
+		if name == "type" {
+			return nil
+		}
+		return node.setfield(name, st, field)
+	})
 	return node, rest, err
 }
 

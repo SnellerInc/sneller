@@ -211,20 +211,26 @@ func appendSig(key *Key, data []byte) ([]byte, error) {
 func Sign(key *Key, idx *Index) ([]byte, error) {
 	var buf ion.Buffer
 	var st ion.Symtab
+
+	// NOTE: ion.Buffer will order fields by symbol ID,
+	// so the order here will be the encoded order:
 	var (
-		version  = st.Intern("version")
 		name     = st.Intern("name")
+		version  = st.Intern("version")
 		created  = st.Intern("created")
-		inputs   = st.Intern("inputs")
+		userdata = st.Intern("user-data")
+		todelete = st.Intern("to-delete")
 		isize    = st.Intern("input-size")
+		lastscan = st.Intern("last-scan")
 		scanning = st.Intern("scanning")
 		cursors  = st.Intern("cursors")
-		lastscan = st.Intern("last-scan")
+		algo     = st.Intern("algo")
+		size     = st.Intern("size")
+		contents = st.Intern("contents")
 		path     = st.Intern("path")
 		expiry   = st.Intern("expiry")
-		todelete = st.Intern("to-delete")
 		indirect = st.Intern("indirect")
-		userdata = st.Intern("user-data")
+		inputs   = st.Intern("inputs")
 	)
 	var ibuf ion.Buffer
 	buf.BeginStruct(-1)
@@ -280,15 +286,15 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 		writeContents(&ibuf, &st, idx.Inline)
 		comp := compr.Compression(idx.Algo)
 		cbuf := comp.Compress(ibuf.Bytes(), malloc(ibuf.Size())[:0])
-		buf.BeginField(st.Intern("algo"))
+		buf.BeginField(algo)
 		buf.WriteString(idx.Algo)
-		buf.BeginField(st.Intern("size"))
+		buf.BeginField(size)
 		buf.WriteInt(int64(ibuf.Size()))
-		buf.BeginField(st.Intern("contents"))
+		buf.BeginField(contents)
 		buf.WriteBlob(cbuf)
 		free(cbuf)
 	} else {
-		buf.BeginField(st.Intern("contents"))
+		buf.BeginField(contents)
 		writeContents(&buf, &st, idx.Inline)
 	}
 
