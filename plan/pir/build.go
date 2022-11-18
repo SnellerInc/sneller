@@ -808,12 +808,8 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	pickOutputs(s)
 	normalizeOrderBy(s)
 	s.Columns = flattenBind(s.Columns)
-	err := checkColumns(s.Columns)
-	if err != nil {
-		return err
-	}
 
-	err = b.hoistWindows(s, e)
+	err := b.hoistWindows(s, e)
 	if err != nil {
 		return err
 	}
@@ -928,10 +924,6 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		} else {
 			bindcolumns := true
 			if s.Distinct {
-				if selectall {
-					return errorf(s, "DISTINCT * is not supported")
-				}
-
 				err = b.DistinctFromBindings(s.Columns)
 				if err != nil {
 					return err
@@ -971,20 +963,12 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		offset := int64(0)
 		if s.Offset != nil {
 			offset = int64(*s.Offset)
-			if offset < 0 {
-				return errorf(s, "negative offset %d not supported", offset)
-			}
 		}
 		limit := int64(*s.Limit)
-		if limit < 0 {
-			return errorf(s, "negative limit %d not supported", limit)
-		}
 		err = b.LimitOffset(limit, offset)
 		if err != nil {
 			return err
 		}
-	} else if s.Offset != nil {
-		return errorf(s, "OFFSET without LIMIT is not supported")
 	}
 
 	return b.hoist(e)
@@ -1084,19 +1068,6 @@ func distinctOnPullGroupByBindings(s *expr.Select) {
 	flattenIntoFunc(s.GroupBy, len(s.DistinctExpr), func(i int) *expr.Node {
 		return &s.DistinctExpr[i]
 	})
-}
-
-// checkColumns check if '*' is present and is so,
-// is the only column
-func checkColumns(cols []expr.Binding) error {
-	for i := range cols {
-		if _, ok := cols[i].Expr.(expr.Star); ok {
-			if len(cols) > 1 {
-				return fmt.Errorf("'*' cannot be mixed with other values")
-			}
-		}
-	}
-	return nil
 }
 
 func (b *Trace) buildUnpivot(u *expr.Unpivot, e Env) error {

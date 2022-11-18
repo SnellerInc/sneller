@@ -141,6 +141,38 @@ func TestCheckInvalidQuery(t *testing.T) {
 			`SELECT UNPIVOT table AT val FROM table2`,
 			`cannot use "UNPIVOT table AT val" in non-table position`,
 		},
+		{
+			`SELECT *, test FROM table`,
+			`'*' cannot be mixed with other values`,
+		},
+		{
+			`SELECT *, *, * FROM table`,
+			`'*' cannot be mixed with other values`,
+		},
+		{
+			`SELECT * FROM table GROUP BY field`,
+			`'*' with GROUP BY is not allowed`,
+		},
+		{
+			`SELECT DISTINCT * FROM table`,
+			`'*' with DISTINCT is not allowed`,
+		},
+		{
+			`SELECT *`,
+			`'*' without FROM is not allowed`,
+		},
+		{
+			`SELECT * FROM table OFFSET 5`,
+			`OFFSET without LIMIT is not supported`,
+		},
+		{
+			`SELECT * FROM table LIMIT -5`,
+			`negative LIMIT -5 is not supported`,
+		},
+		{
+			`SELECT * FROM table LIMIT 10 OFFSET -2`,
+			`negative OFFSET -2 is not supported`,
+		},
 	}
 	for i := range testcases {
 		i := i

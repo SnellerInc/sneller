@@ -311,3 +311,47 @@ func (c *Cast) check(h Hint) error {
 	}
 	return nil
 }
+
+func (s *Select) check(h Hint) error {
+	star := false
+
+	// 1. '*' can be the only column in SELECT
+	for i := range s.Columns {
+		if _, ok := s.Columns[i].Expr.(Star); ok {
+			star = true
+			if len(s.Columns) > 1 {
+				return fmt.Errorf("'*' cannot be mixed with other values")
+			}
+		}
+	}
+
+	// 2. there is sole '*'
+	if star {
+		if s.From == nil {
+			return fmt.Errorf("'*' without FROM is not allowed")
+		}
+
+		if s.GroupBy != nil {
+			return fmt.Errorf("'*' with GROUP BY is not allowed")
+		}
+
+		if s.Distinct {
+			return fmt.Errorf("'*' with DISTINCT is not allowed")
+		}
+	}
+
+	// 3. OFFSET and LIMIT checks
+	if s.Limit == nil && s.Offset != nil {
+		return fmt.Errorf("OFFSET without LIMIT is not supported")
+	}
+
+	if s.Limit != nil && *s.Limit < 0 {
+		return fmt.Errorf("negative LIMIT %d is not supported", *s.Limit)
+	}
+
+	if s.Offset != nil && *s.Offset < 0 {
+		return fmt.Errorf("negative OFFSET %d is not supported", *s.Offset)
+	}
+
+	return nil
+}

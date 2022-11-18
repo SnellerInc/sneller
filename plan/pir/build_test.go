@@ -108,18 +108,6 @@ func TestBuildError(t *testing.T) {
 			rx:    "requires a LIMIT",
 		},
 		{
-			input: `select * from tbl limit -1`,
-			rx:    "negative limit -1 not supported",
-		},
-		{
-			input: `select * from tbl limit 10 offset -5`,
-			rx:    "negative offset -5 not supported",
-		},
-		{
-			input: `select * from tbl offset 15`,
-			rx:    "OFFSET without LIMIT is not supported",
-		},
-		{
 			input: `select * from tbl order by timestamp desc limit 100000000000`,
 			rx:    "LIMIT\\+OFFSET",
 		},
@@ -140,10 +128,6 @@ func TestBuildError(t *testing.T) {
 			rx:    "cannot handle nested aggregate",
 		},
 		{
-			input: `SELECT DISTINCT * FROM table`,
-			rx:    "DISTINCT \\* is not supported",
-		},
-		{
 			input: `SELECT DISTINCT x, y, z FROM table GROUP BY x, y`,
 			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
 		},
@@ -154,14 +138,6 @@ func TestBuildError(t *testing.T) {
 		{
 			input: `SELECT DISTINCT x, y, sum(z) AS s, avg(w) AS a FROM table GROUP BY y, x`,
 			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
-		},
-		{
-			input: `SELECT x, * FROM table`,
-			rx:    "'*' cannot be mixed with other values",
-		},
-		{
-			input: `SELECT *, *, * FROM table`,
-			rx:    "'*' cannot be mixed with other values",
 		},
 		{
 			input: "SELECT x FROM UNPIVOT table AS v AT a",
