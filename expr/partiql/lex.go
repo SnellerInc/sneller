@@ -415,7 +415,7 @@ func (s *scanner) lexString(l *yySymType) int {
 	}
 
 	// otherwise, do the slow thing
-	out, err := unescape(s.from[startpos : s.pos-1])
+	out, err := expr.Unescape(s.from[startpos : s.pos-1])
 	if err != nil {
 		s.err = err
 		return ERROR

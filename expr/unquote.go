@@ -12,22 +12,23 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package partiql
+package expr
 
 import (
 	"fmt"
 	"unicode/utf8"
 )
 
-// unescaped
-func unescape(buf []byte) (string, error) {
+// Unescape converts special sequences \t, \n and also unicode
+// chars \uhhhh into plain string.
+func Unescape(buf []byte) (string, error) {
 	var tmp []byte
 	for i := 0; i < len(buf); i++ {
 		c := buf[i]
 		if c >= utf8.RuneSelf {
 			r, size := utf8.DecodeRune(buf[i:])
 			if r == utf8.RuneError {
-				return "", fmt.Errorf("invalid rune %x", buf[i:i+size])
+				return "", fmt.Errorf("expr.Unescape: invalid rune 0x%x", buf[i:i+size])
 			} else {
 				tmp = append(tmp, buf[i:i+size]...)
 			}
@@ -39,7 +40,7 @@ func unescape(buf []byte) (string, error) {
 		}
 		i++
 		if i >= len(buf) {
-			return "", fmt.Errorf("cannot unescape trailing \\")
+			return "", fmt.Errorf("expr.Unescape: cannot unescape trailing \\")
 		}
 		c = buf[i]
 		// from lex.rl:
@@ -70,7 +71,7 @@ func unescape(buf []byte) (string, error) {
 			i++
 			for j := i; j < i+4; j++ {
 				if j >= len(buf) {
-					return "", fmt.Errorf("invalid \\u escape sequence")
+					return "", fmt.Errorf("expr.Unescape: invalid \\u escape sequence")
 				}
 				add := rune(buf[j])
 				if add >= '0' && add <= '9' {
@@ -82,18 +83,38 @@ func unescape(buf []byte) (string, error) {
 					add -= 'a'
 					add += 10
 				} else {
-					return "", fmt.Errorf("invalid %s hex digit", string(rune(buf[j])))
+					return "", fmt.Errorf("expr.Unescape: invalid hex digit %q", string(rune(buf[j])))
 				}
 				r = (r * 16) + add
 			}
 			i += 3
 			if !utf8.ValidRune(r) {
-				return "", fmt.Errorf("rune U%x is invalid", r)
+				return "", fmt.Errorf("expr.Unescape: rune U%x is invalid", r)
 			}
 			tmp = utf8.AppendRune(tmp, r)
 		default:
-			return "", fmt.Errorf("unexpected backslash escape of %c", c)
+			return "", fmt.Errorf("expr.Unescape: unexpected backslash escape of %q (0x%[1]x)", c)
 		}
 	}
 	return string(tmp), nil
+}
+
+// Unquote extracts the quoted and escaped SQL string
+//
+// See: Quote
+func Unquote(s string) (string, error) {
+	n := len(s)
+	if n < 2 {
+		return "", fmt.Errorf("expr.Unquote: string %q too short", s)
+	}
+
+	if s[0] != '\'' {
+		return "", fmt.Errorf(`expr.Unquote: string does not start with "'"`)
+	}
+
+	if s[n-1] != '\'' {
+		return "", fmt.Errorf(`expr.Unquote: string does not end with "'"`)
+	}
+
+	return Unescape([]byte(s[1 : n-1]))
 }

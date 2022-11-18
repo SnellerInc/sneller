@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
@@ -711,31 +710,11 @@ func (s String) text(dst *strings.Builder, redact bool) {
 	if redact {
 		v = redactString(v)
 	}
-	sqlQuote(dst, v)
+	quote(dst, v)
 }
 
 func (s String) Datum() ion.Datum {
 	return ion.String(string(s))
-}
-
-// sqlQuote produces SQL single-quoted strings;
-// escape sequences are encoded using either the
-// traditional ascii escapes (\n, \t, etc.)
-// or extended unicode escapes (\u0100, etc.) where appropriate
-func sqlQuote(out *strings.Builder, s string) {
-	var tmp []byte
-	out.WriteByte('\'')
-	for _, r := range s {
-		if r == '\'' {
-			out.WriteString("\\'")
-		} else if (r < utf8.RuneSelf && strconv.IsPrint(r)) || r == '"' {
-			out.WriteRune(r)
-		} else {
-			tmp = strconv.AppendQuoteRuneToASCII(tmp[:0], r)
-			out.Write(tmp[1 : len(tmp)-1])
-		}
-	}
-	out.WriteByte('\'')
 }
 
 func (s String) walk(v Visitor) {}
@@ -3128,7 +3107,7 @@ func (s *Struct) text(dst *strings.Builder, redact bool) {
 		if i != 0 {
 			dst.WriteString(", ")
 		}
-		sqlQuote(dst, s.Fields[i].Label)
+		quote(dst, s.Fields[i].Label)
 		dst.WriteString(": ")
 		s.Fields[i].Value.text(dst, redact)
 	}
