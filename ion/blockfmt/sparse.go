@@ -56,6 +56,7 @@ func (s *SparseIndex) Trim(j int) SparseIndex {
 		indices[i] = s.indices[i].trim(j)
 	}
 	return SparseIndex{
+		consts:  s.consts,
 		indices: indices,
 		blocks:  j,
 	}
