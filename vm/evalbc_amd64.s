@@ -8232,8 +8232,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
 
   // Z4/Z5 <- First 8 bytes of the timestamp cleared so only bytes that
   //          are within the length are non-zero, other bytes cleared.
-  VPMINUD Z23, Z3, Z16
-  VPSUBD Z16, Z23, Z16
+  VPMINUD.Z Z23, Z3, K1, Z16
+  VPSUBD.Z Z16, Z23, K1, Z16
   VPSLLD $3, Z16, Z16
   VEXTRACTI32X8 $1, Z16, Y17
   VPMOVZXDQ Y16, Z16
@@ -8301,7 +8301,7 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPMADDWD Z19, Z5, Z5
 
   // Z18 <- Load last 4 bytes of the timestamp if it contains microseconds.
-  VPCMPD.BCST $VPCMP_IMM_GT, CONSTD_10(), Z3, K3
+  VPCMPD.BCST $VPCMP_IMM_GT, CONSTD_10(), Z3, K1, K3
   VPADDD Z2, Z3, Z19
   VPXORD X18, X18, X18
   VPGATHERDD -4(SI)(Z19*1), K3, Z18
