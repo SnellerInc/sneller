@@ -15,7 +15,9 @@
 package ion
 
 import (
+	"fmt"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/SnellerInc/sneller/date"
@@ -176,6 +178,234 @@ func TestReadIntMagnitudeDetectsInvalidIon(t *testing.T) {
 			t.Errorf("input % 02x: expected error message %s, got %s",
 				input.encoded, input.errmsg, err.Error())
 		}
+	}
+}
+
+func TestUnmarshal(t *testing.T) {
+
+	type recur struct {
+		Self int    `ion:"self"`
+		Rest *recur `ion:"recur"`
+	}
+
+	tcs := []struct {
+		in  func(st *Symtab, dst *Buffer)
+		out any
+	}{
+		{
+			in: func(st *Symtab, dst *Buffer) {
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("foo"))
+				dst.WriteString("foo")
+				dst.BeginField(st.Intern("bar"))
+				dst.WriteFloat64(100.0) // will convert to int successfully
+				dst.BeginField(st.Intern("AlsoIgnored"))
+				dst.WriteString("ignore me")
+				dst.EndStruct()
+			},
+			out: struct {
+				Foo         string `ion:"foo"`
+				Bar         int    `ion:"bar,omitempty"`
+				ignored     int
+				AlsoIgnored string `ion:"-"`
+			}{
+				Foo: "foo",
+				Bar: 100,
+			},
+		},
+		{
+			in: func(st *Symtab, dst *Buffer) {
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("foo"))
+				dst.WriteString("foo")
+				dst.BeginField(st.Intern("bar"))
+				dst.WriteInt(100)
+				dst.BeginField(st.Intern("list"))
+				dst.BeginList(-1)
+				for i := 0; i < 3; i++ {
+					dst.WriteInt(int64(i))
+				}
+				dst.EndList()
+				dst.BeginField(st.Intern("map"))
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("first"))
+				dst.WriteInt(1)
+				dst.BeginField(st.Intern("second"))
+				dst.WriteInt(2)
+				dst.BeginField(st.Intern("third"))
+				dst.WriteBool(false)
+				dst.EndStruct()
+				dst.EndStruct()
+			},
+			out: map[string]any{
+				"foo":  "foo",
+				"bar":  uint64(100),
+				"list": []any{uint64(0), uint64(1), uint64(2)},
+				"map": map[string]any{
+					"first":  uint64(1),
+					"second": uint64(2),
+					"third":  false,
+				},
+			},
+		},
+		{
+			// recursive compilation + population of pointers:
+			in: func(st *Symtab, dst *Buffer) {
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("self"))
+				dst.WriteInt(0)
+				dst.BeginField(st.Intern("recur"))
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("self"))
+				dst.WriteInt(1)
+				dst.BeginField(st.Intern("recur"))
+				dst.WriteNull()
+				dst.EndStruct()
+				dst.EndStruct()
+			},
+			out: &recur{
+				Self: 0,
+				Rest: &recur{Self: 1, Rest: nil},
+			},
+		},
+	}
+	var st Symtab
+	var dst Buffer
+	for i := range tcs {
+		dst.Reset()
+		st.Reset()
+		fn := tcs[i].in
+		want := tcs[i].out
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			fn(&st, &dst)
+			alt := reflect.New(reflect.TypeOf(want)).Interface()
+			rest, err := Unmarshal(&st, dst.Bytes(), alt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rest) > 0 {
+				t.Errorf("%d bytes remaining", len(rest))
+			}
+			if !reflect.DeepEqual(reflect.ValueOf(alt).Elem().Interface(), want) {
+				t.Errorf("%#v != %#v", alt, want)
+			}
+
+			// test Marshal of the desired return value
+			// produces and equivalent Unmarshal result
+			dst.Reset()
+			st.Reset()
+			err = Marshal(&st, &dst, alt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			alt2 := reflect.New(reflect.TypeOf(want)).Interface()
+			_, err = Unmarshal(&st, dst.Bytes(), alt2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(reflect.ValueOf(alt).Elem().Interface(), want) {
+				t.Errorf("%#v != %#v", alt2, want)
+			}
+		})
+	}
+}
+
+func BenchmarkMarshalUnmarshal(b *testing.B) {
+	tcs := []struct {
+		in  func(st *Symtab, dst *Buffer)
+		out any
+	}{
+		{
+			in: func(st *Symtab, dst *Buffer) {
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("foo"))
+				dst.WriteString("foo")
+				dst.BeginField(st.Intern("bar"))
+				dst.WriteFloat64(100.0) // will convert to int successfully
+				dst.BeginField(st.Intern("AlsoIgnored"))
+				dst.WriteString("ignore me")
+				dst.EndStruct()
+			},
+			out: struct {
+				Foo         string `ion:"foo"`
+				Bar         int    `ion:"bar"`
+				ignored     int
+				AlsoIgnored string `ion:"-"`
+			}{
+				Foo: "foo",
+				Bar: 100,
+			},
+		},
+		{
+			// a bit of a worst-case scenario here:
+			in: func(st *Symtab, dst *Buffer) {
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("foo"))
+				dst.WriteString("foo")
+				dst.BeginField(st.Intern("bar"))
+				dst.WriteInt(100)
+				dst.BeginField(st.Intern("list"))
+				dst.BeginList(-1)
+				for i := 0; i < 3; i++ {
+					dst.WriteInt(int64(i))
+				}
+				dst.EndList()
+				dst.BeginField(st.Intern("map"))
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("first"))
+				dst.WriteInt(1)
+				dst.BeginField(st.Intern("second"))
+				dst.WriteInt(2)
+				dst.BeginField(st.Intern("third"))
+				dst.WriteBool(false)
+				dst.EndStruct()
+				dst.EndStruct()
+			},
+			out: map[string]any{
+				"foo":  "foo",
+				"bar":  uint64(100),
+				"list": []any{uint64(0), uint64(1), uint64(2)},
+				"map": map[string]any{
+					"first":  uint64(1),
+					"second": uint64(2),
+					"third":  false,
+				},
+			},
+		},
+	}
+	var st Symtab
+	var dst Buffer
+	for i := range tcs {
+		dst.Reset()
+		st.Reset()
+		fn := tcs[i].in
+		want := tcs[i].out
+		b.Run(fmt.Sprintf("unmarshal/case-%d", i), func(b *testing.B) {
+			fn(&st, &dst)
+			alt := reflect.New(reflect.TypeOf(want)).Interface()
+			b.ReportAllocs()
+			b.SetBytes(int64(dst.Size()))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err := Unmarshal(&st, dst.Bytes(), alt)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(fmt.Sprintf("marshal/case-%d", i), func(b *testing.B) {
+			fn(&st, &dst)
+			b.ReportAllocs()
+			b.SetBytes(int64(dst.Size()))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				dst.Reset()
+				err := Marshal(&st, &dst, want)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

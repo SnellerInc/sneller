@@ -18,6 +18,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"reflect"
+	"strings"
+	"sync"
 
 	"github.com/SnellerInc/sneller/date"
 )
@@ -738,4 +741,444 @@ func UnpackStruct(st *Symtab, body []byte, fn func(string, []byte) error) (rest 
 		body = body[next:]
 	}
 	return rest, nil
+}
+
+// Unmarshal unmarshals data from a raw slice
+// into the value v using the provided symbol table.
+func Unmarshal(st *Symtab, data []byte, v any) ([]byte, error) {
+	rv := reflect.ValueOf(v)
+	typ := rv.Type()
+	if typ.Kind() != reflect.Pointer {
+		return nil, fmt.Errorf("cannot ion.Unmarshal into non-pointer type %s", typ)
+	}
+	dst := rv.Elem()
+	if !dst.CanSet() {
+		return nil, fmt.Errorf("ion.Unmarshal: cannot set into type %s", dst)
+	}
+	dec, ok := decodeFunc(dst.Type())
+	if !ok {
+		return nil, fmt.Errorf("ion.Unmarshal: type %s not supported", dst.Type())
+	}
+	return dec(st, data, dst)
+}
+
+type decodefn func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error)
+
+func badType(t reflect.Type) error {
+	return fmt.Errorf("ion.Unmarshal: cannot handle Go type %s", t)
+}
+
+type fieldDecoder struct {
+	index int // for reflect.Value.Field
+	dec   decodefn
+}
+
+type structDecoder struct {
+	fields map[string]fieldDecoder
+}
+
+var compiledStructs sync.Map
+
+func compileStruct(dst reflect.Type) (decodefn, bool) {
+	v, ok := compiledStructs.LoadOrStore(dst, decodefn(nil))
+	if ok {
+		fn := v.(decodefn)
+		if fn != nil {
+			return fn, true
+		}
+		// fn == nil -> concurrent / recursive lookup;
+		// break the cycle by delaying the type lookup until eval-time
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			t := dst.Type()
+			v, ok := compiledStructs.Load(t)
+			if ok {
+				fn := v.(decodefn)
+				if fn != nil {
+					fn(st, data, dst)
+				}
+			}
+			fn = compileStructSlow(t)
+			return fn(st, data, dst)
+		}, true
+	}
+	return compileStructSlow(dst), true
+}
+
+func compileStructSlow(dst reflect.Type) decodefn {
+	var dec structDecoder
+	dec.fields = make(map[string]fieldDecoder)
+	fields := reflect.VisibleFields(dst)
+fieldloop:
+	for i := range fields {
+		if fields[i].PkgPath != "" {
+			continue // unexported
+		}
+		name := fields[i].Name
+		index := fields[i].Index
+		if len(index) != 1 {
+			continue // promoted anonymous field
+		}
+		fn, ok := decodeFunc(fields[i].Type)
+		if !ok {
+			continue fieldloop
+		}
+		if altname, ok := fields[i].Tag.Lookup("ion"); ok {
+			altname, _, _ = strings.Cut(altname, ",") // ignore options
+			if altname == "-" {
+				continue fieldloop
+			} else if altname != "" {
+				name = altname
+			}
+		}
+		dec.fields[name] = fieldDecoder{
+			index: index[0],
+			dec:   fn,
+		}
+	}
+	self := func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+		if TypeOf(data) != StructType {
+			return nil, fmt.Errorf("cannot unmarshal %s into %s", TypeOf(data), dst.Type())
+		}
+		body, rest := Contents(data)
+		for len(body) > 0 {
+			lbl, val, err := ReadLabel(body)
+			if err != nil {
+				return nil, err
+			}
+			name := st.Get(lbl)
+			dec, ok := dec.fields[name]
+			if !ok {
+				body = val[SizeOf(val):]
+				continue
+			}
+			f := dst.Field(dec.index)
+			body, err = dec.dec(st, val, f)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return rest, nil
+	}
+	compiledStructs.Store(dst, (decodefn)(self))
+	return self
+}
+
+func decodeAny(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+	// interface{}
+	var retval reflect.Value
+	var rest []byte
+	switch TypeOf(data) {
+	case StructType: // -> map[string]any
+		var ret map[string]any
+		r, err := Unmarshal(st, data, &ret)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(ret)
+	case ListType: // -> []any
+		var ret []any
+		v := reflect.ValueOf(&ret).Elem()
+		r, err := decodeList(st, data, decodeAny, v)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = v
+	case IntType:
+		i, r, err := ReadInt(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(i)
+	case UintType:
+		u, r, err := ReadUint(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(u)
+	case FloatType:
+		f, r, err := ReadFloat64(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(f)
+	case NullType:
+		rest = data[SizeOf(data):]
+		retval = reflect.Zero(dst.Type())
+	case StringType:
+		str, r, err := ReadString(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(str)
+	case BlobType:
+		buf, r, err := ReadBytes(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(buf)
+	case BoolType:
+		val, r, err := ReadBool(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(val)
+	default:
+		return nil, fmt.Errorf("cannot unmarshal type %s into interface{}", TypeOf(data))
+	}
+	dst.Set(retval)
+	return rest, nil
+}
+
+func decodeList(st *Symtab, data []byte, inner decodefn, dst reflect.Value) ([]byte, error) {
+	if TypeOf(data) != ListType {
+		return nil, fmt.Errorf("cannot unmarshal %s into a slice", TypeOf(data))
+	}
+	slicetype := dst.Type()
+	elem := slicetype.Elem()
+	body, rest := Contents(data)
+	slice := reflect.MakeSlice(slicetype, 0, 0)
+	var err error
+	idx := 0
+	for len(body) > 0 {
+		slice = reflect.Append(slice, reflect.Zero(elem))
+		body, err = inner(st, body, slice.Index(idx))
+		if err != nil {
+			return rest, err
+		}
+		idx++
+	}
+	dst.Set(slice)
+	return rest, nil
+}
+
+func decodeFunc(dst reflect.Type) (decodefn, bool) {
+	switch dst.Kind() {
+	case reflect.Bool:
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			val, rest, err := ReadBool(data)
+			if err != nil {
+				return data, err
+			}
+			dst.SetBool(val)
+			return rest, nil
+		}, true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			var i int64
+			var rest []byte
+			switch TypeOf(data) {
+			case UintType:
+				u, r, err := ReadUint(data)
+				if err != nil {
+					return nil, err
+				}
+				if u > math.MaxInt64 {
+					return nil, fmt.Errorf("uint %d overflows int64", u)
+				}
+				rest = r
+				i = int64(u)
+			case IntType:
+				v, r, err := ReadInt(data)
+				if err != nil {
+					return nil, err
+				}
+				rest = r
+				i = int64(v)
+			case FloatType:
+				f, r, err := ReadFloat64(data)
+				if err != nil {
+					return nil, err
+				}
+				if float64(int64(f)) != f {
+					return nil, fmt.Errorf("cannot convert number %g to int64", f)
+				}
+				rest = r
+				i = int64(f)
+			default:
+				return nil, fmt.Errorf("bad ion type %s for unmarshaling into an integer", TypeOf(data))
+			}
+			if dst.OverflowInt(i) {
+				return nil, fmt.Errorf("ion value %d overflows type %s", i, dst.Type().String())
+			}
+			dst.SetInt(i)
+			return rest, nil
+		}, true
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			var u uint64
+			var rest []byte
+			switch TypeOf(data) {
+			case UintType:
+				uv, r, err := ReadUint(data)
+				if err != nil {
+					return nil, err
+				}
+				rest = r
+				u = uv
+			case IntType:
+				v, r, err := ReadInt(data)
+				if err != nil {
+					return nil, err
+				}
+				rest = r
+				if v < 0 {
+					return nil, fmt.Errorf("ion value %d cannot be unmarshaled as a uint", v)
+				}
+				u = uint64(v)
+			case FloatType:
+				f, r, err := ReadFloat64(data)
+				if err != nil {
+					return nil, err
+				}
+				if float64(uint64(f)) != f {
+					return nil, fmt.Errorf("cannot convert number %g to uint64", f)
+				}
+				rest = r
+				u = uint64(f)
+			default:
+				return nil, fmt.Errorf("bad ion type %s for unmarshaling into an integer", TypeOf(data))
+			}
+			if dst.OverflowUint(u) {
+				return nil, fmt.Errorf("ion value %d overflows type %s", u, dst.Type().String())
+			}
+			dst.SetUint(u)
+			return rest, nil
+		}, true
+	case reflect.Float64, reflect.Float32:
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			var f float64
+			var rest []byte
+			switch TypeOf(data) {
+			case UintType:
+				uv, r, err := ReadUint(data)
+				if err != nil {
+					return nil, err
+				}
+				rest = r
+				f = float64(uv)
+			case IntType:
+				v, r, err := ReadInt(data)
+				if err != nil {
+					return nil, err
+				}
+				rest = r
+				f = float64(v)
+			case FloatType:
+				fv, r, err := ReadFloat64(data)
+				if err != nil {
+					return nil, err
+				}
+				rest = r
+				f = fv
+			default:
+				return nil, fmt.Errorf("bad ion type %s for unmarshaling into an float", TypeOf(data))
+			}
+			dst.SetFloat(f)
+			return rest, nil
+		}, true
+	case reflect.Map:
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			t := dst.Type()
+			kt := t.Key()
+			if kt.Kind() != reflect.String {
+				return nil, fmt.Errorf("cannot ion.Unmarshal into map with key type of %s", kt.Kind())
+			}
+			dt := TypeOf(data)
+			if dt == NullType {
+				// nil map
+				dst.Set(reflect.Zero(t))
+				return data[SizeOf(data):], nil
+			} else if dt != StructType {
+				return nil, fmt.Errorf("cannot ion.Unmarshal ion type %s into a map", dt)
+			}
+			vt := t.Elem()
+			decoder, ok := decodeFunc(vt)
+			if !ok {
+				return nil, badType(vt)
+			}
+			vmap := reflect.MakeMap(t)
+			fields, rest := Contents(data)
+			for len(fields) > 0 {
+				sym, r, err := ReadLabel(fields)
+				if err != nil {
+					return nil, err
+				}
+				key := reflect.ValueOf(st.Get(sym))
+				value := reflect.New(vt)
+				fields, err = decoder(st, r, value.Elem())
+				if err != nil {
+					return nil, err
+				}
+				vmap.SetMapIndex(key, value.Elem())
+			}
+			dst.Set(vmap)
+			return rest, nil
+		}, true
+	case reflect.Pointer:
+		elem := dst.Elem()
+		inner, ok := decodeFunc(elem)
+		if !ok {
+			return nil, false
+		}
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			// set to nil for null values
+			if TypeOf(data) == NullType {
+				dst.Set(reflect.Zero(dst.Type()))
+				return data[SizeOf(data):], nil
+			}
+			val := reflect.New(elem)
+			dst.Set(val)
+			return inner(st, data, val.Elem())
+		}, true
+	case reflect.Slice:
+		elem := dst.Elem()
+		if elem.Kind() == reflect.Uint8 {
+			return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+				if TypeOf(data) == NullType {
+					dst.Set(reflect.Zero(dst.Type())) // slice = nil
+					return data[SizeOf(data):], nil
+				}
+				// unmarshal []byte
+				buf, rest, err := ReadBytes(data)
+				if err != nil {
+					return nil, err
+				}
+				dst.SetBytes(buf)
+				return rest, nil
+			}, true
+		}
+		decoder, ok := decodeFunc(elem)
+		if !ok {
+			return nil, false
+		}
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			return decodeList(st, data, decoder, dst)
+		}, true
+	case reflect.String:
+		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+			str, rest, err := ReadString(data)
+			if err != nil {
+				return nil, err
+			}
+			dst.SetString(str)
+			return rest, nil
+		}, true
+	case reflect.Struct:
+		return compileStruct(dst)
+	case reflect.Interface:
+		if dst.NumMethod() != 0 {
+			return nil, false
+		}
+		return decodeAny, true
+	default:
+		return nil, false
+	}
 }
