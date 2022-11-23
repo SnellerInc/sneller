@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 )
@@ -930,6 +931,13 @@ func decodeAny(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
 		}
 		rest = r
 		retval = reflect.ValueOf(val)
+	case TimestampType:
+		t, r, err := ReadTime(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(t.Time())
 	default:
 		return nil, fmt.Errorf("cannot unmarshal type %s into interface{}", TypeOf(data))
 	}
@@ -1172,6 +1180,17 @@ func decodeFunc(dst reflect.Type) (decodefn, bool) {
 			return rest, nil
 		}, true
 	case reflect.Struct:
+		if dst == reflect.TypeOf(time.Time{}) {
+			return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+				t, rest, err := ReadTime(data)
+				if err != nil {
+					return nil, err
+				}
+				val := reflect.ValueOf(t.Time())
+				dst.Set(val)
+				return rest, nil
+			}, true
+		}
 		return compileStruct(dst)
 	case reflect.Interface:
 		if dst.NumMethod() != 0 {
