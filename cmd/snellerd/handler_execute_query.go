@@ -379,6 +379,9 @@ func isBadQuery(err error, w http.ResponseWriter) bool {
 		return true
 	}
 	if errors.As(err, &emptyLimit) {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, emptyLimit.Error())
+		io.WriteString(w, "\n")
 		return true
 	}
 	return false
