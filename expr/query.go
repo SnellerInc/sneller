@@ -17,6 +17,8 @@ package expr
 import (
 	"fmt"
 	"strings"
+
+	"github.com/SnellerInc/sneller/ion"
 )
 
 // CTE is one arm of a "common table expression"
@@ -121,6 +123,131 @@ func (q *Query) Equals(other *Query) bool {
 		}
 	}
 	return q.Body.Equals(other.Body)
+}
+
+// Encode encodes a query as an Ion structure
+func (q *Query) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	field := func(name string) {
+		dst.BeginField(st.Intern(name))
+	}
+
+	dst.BeginStruct(-1)
+	field("type")
+	dst.WriteString("query")
+
+	field("explain")
+	dst.WriteInt(int64(q.Explain))
+
+	if len(q.With) > 0 {
+		field("with")
+		dst.BeginList(-1)
+		for i := range q.With {
+			dst.WriteString(q.With[i].Table)
+			q.With[i].As.Encode(dst, st)
+		}
+		dst.EndList()
+	}
+	if q.Into != nil {
+		field("into")
+		q.Into.Encode(dst, st)
+	}
+	field("body")
+	q.Body.Encode(dst, st)
+	dst.EndStruct()
+}
+
+// DecodeQuery decodes an Ion structure representing a query.
+//
+// Returns query, tail of unprocessed Ion and error.
+func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
+	q := &Query{}
+	seentype := false
+	rest, err := ion.UnpackStruct(st, msg, func(name string, msg []byte) error {
+		var err error
+		if name == "type" {
+			var typ string
+			typ, _, err = ion.ReadString(msg)
+			if err != nil {
+				return err
+			}
+
+			if typ != "query" {
+				return fmt.Errorf(`DecodeQuery: unsupported "type" value %q`, typ)
+			}
+
+			seentype = true
+			return nil
+		}
+
+		if !seentype {
+			return fmt.Errorf(`DecodeQuery: missing "type" field`)
+		}
+
+		switch name {
+		case "explain":
+			var v int64
+			v, _, err = ion.ReadInt(msg)
+			if err != nil {
+				return err
+			}
+
+			q.Explain = ExplainFormat(v)
+
+		case "with":
+			hastable := false
+			var table string
+			_, err = ion.UnpackList(msg, func(val []byte) error {
+				if !hastable {
+					var err error
+					table, _, err = ion.ReadString(val)
+					if err != nil {
+						return nil
+					}
+					hastable = true
+					return nil
+				}
+
+				// hastable == true
+				node, _, err := Decode(st, val)
+				if err != nil {
+					return err
+				}
+
+				sel, ok := node.(*Select)
+				if !ok {
+					return fmt.Errorf("expected Select node, got %T", node)
+				}
+
+				q.With = append(q.With, CTE{Table: table, As: sel})
+				hastable = false
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+
+		case "into":
+			q.Into, _, err = Decode(st, msg)
+
+		case "body":
+			q.Body, _, err = Decode(st, msg)
+
+		default:
+			err = fmt.Errorf("DecodeQuery: unknown field %q", name)
+		}
+
+		return err
+	})
+
+	if err != nil {
+		return nil, rest, err
+	}
+
+	if q.Body == nil {
+		return nil, rest, fmt.Errorf(`DecodeQuery: missing "body" field`)
+	}
+
+	return q, rest, nil
 }
 
 // CheckHint checks consistency of the whole query using a hint

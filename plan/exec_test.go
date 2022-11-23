@@ -1306,6 +1306,13 @@ where Make in (
 				`{"cols": "ViolationDescr"}`,
 			},
 		},
+		{
+			query: `EXPLAIN WITH main AS (SELECT * FROM 'table') SELECT COUNT(*) FROM main`,
+			rows:  1,
+			matchPlan: []string{
+				"EXPLAIN QUERY",
+			},
+		},
 	}
 
 	for i := range tcs {

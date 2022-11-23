@@ -1075,17 +1075,15 @@ func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 		}
 		return p.encode(dst, st)
 	}
-	// nodes without parents:
-	// should just be Leaf or NoOutput
-	if l, ok := p.(*Leaf); ok {
-		return l.encode(dst, st)
+	// nodes without parents
+	type encodable interface {
+		encode(dst *ion.Buffer, st *ion.Symtab) error
 	}
-	if no, ok := p.(NoOutput); ok {
-		return no.encode(dst, st)
+
+	if n, ok := p.(encodable); ok {
+		return n.encode(dst, st)
 	}
-	if one, ok := p.(DummyOutput); ok {
-		return one.encode(dst, st)
-	}
+
 	return fmt.Errorf("cannot encode %T", p)
 }
 
@@ -1197,12 +1195,56 @@ type Explain struct {
 	Tree   *Tree
 }
 
-func (e *Explain) String() string                                      { return "EXPLAIN QUERY" }
-func (e *Explain) encode(*ion.Buffer, *ion.Symtab) error               { return nil }
-func (e *Explain) setfield(Decoder, string, *ion.Symtab, []byte) error { return nil }
-func (e *Explain) rewrite(expr.Rewriter)                               {}
-func (e *Explain) input() Op                                           { return nil }
-func (e *Explain) setinput(Op)                                         { panic("Explain: cannot setinput()") }
+func (e *Explain) String() string        { return "EXPLAIN QUERY" }
+func (e *Explain) rewrite(expr.Rewriter) {}
+func (e *Explain) input() Op             { return nil }
+func (e *Explain) setinput(Op)           { panic("Explain: cannot setinput()") }
+
+func (e *Explain) encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.BeginStruct(-1)
+	settype("explain", dst, st)
+	dst.BeginField(st.Intern("format"))
+	dst.WriteInt(int64(e.Format))
+	dst.BeginField(st.Intern("query"))
+	e.Query.Encode(dst, st)
+	dst.BeginField(st.Intern("tree"))
+	e.Tree.Encode(dst, st)
+	dst.EndStruct()
+	return nil
+}
+
+func (e *Explain) setfield(d Decoder, field string, st *ion.Symtab, obj []byte) error {
+	switch field {
+	case "format":
+		k, _, err := ion.ReadInt(obj)
+		if err != nil {
+			return err
+		}
+
+		e.Format = expr.ExplainFormat(k)
+
+	case "query":
+		q, _, err := expr.DecodeQuery(st, obj)
+		if err != nil {
+			return err
+		}
+
+		e.Query = q
+
+	case "tree":
+		tree, err := Decode(d, st, obj)
+		if err != nil {
+			return err
+		}
+
+		e.Tree = tree
+
+	default:
+		return fmt.Errorf("unknown field '%q'", field)
+	}
+
+	return nil
+}
 
 func (e *Explain) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
 	var b ion.Buffer

@@ -258,6 +258,8 @@ func empty(name string) Op {
 		return &Unpivot{}
 	case "unpivotatdistinct":
 		return &UnpivotAtDistinct{}
+	case "explain":
+		return &Explain{}
 	}
 	return nil
 }
@@ -283,5 +285,6 @@ func decodetyp(d Decoder, name string, st *ion.Symtab, body []byte) (Op, error) 
 		}
 		body = body[ion.SizeOf(body):]
 	}
+
 	return op, nil
 }
