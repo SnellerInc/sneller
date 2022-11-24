@@ -316,6 +316,20 @@ func (d *Decoder) zip(shape, dst []byte) (int, int) {
 	}
 	// extract the decompressed bucket memory
 	sym := d.st.components[0].symbol
+	if sym == ^ion.Symbol(0) {
+		// we're searching for a path that
+		// doesn't have an associated symbol,
+		// so we just need to produce the empty struct
+		// for each of the input shapes
+		if len(dst) < c {
+			d.fault = faultTooLarge
+			return 0, 0
+		}
+		for i := 0; i < c; i++ {
+			dst[i] = 0xd0
+		}
+		return len(shape), c
+	}
 	bucket := d.set.bucket(sym)
 	pos := d.pos[bucket]
 	mem := d.mem[pos:]

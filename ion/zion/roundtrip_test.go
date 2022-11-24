@@ -152,6 +152,12 @@ func TestDecodePart(t *testing.T) {
 			decomps:   0,
 		},
 		{
+			input:     `{"foo": "bar"} {"baz": "quux"}`,
+			output:    `[{},{}]`,
+			selection: []string{"does-not-exist"},
+			decomps:   0,
+		},
+		{
 			input:     `{"x": 3, "y": 5} {"x": 4, "y": 6}`,
 			output:    `[{"x": 3, "y": 5},{"x": 4, "y": 6}]`,
 			selection: []string{"x", "y"},
