@@ -15,8 +15,10 @@
 package ion
 
 import (
+	"bufio"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"math"
 	"reflect"
 	"strings"
@@ -763,6 +765,106 @@ func Unmarshal(st *Symtab, data []byte, v any) ([]byte, error) {
 	return dec(st, data, dst)
 }
 
+// Decoder is a stateful decoder of streams of
+// ion objects. A Decoder wraps an io.Reader so
+// that a sequence of ion records can be read
+// via Decoder.Decode.
+//
+// See also: Unmarshal.
+type Decoder struct {
+	// Symtab is the current symbol table.
+	// Calls to Decoder.Decode will update
+	// the symbol table as symbol table annotations
+	// are encountered in the source data stream.
+	Symbols Symtab
+	// ExtraAnnotations holds additional values
+	// that will be Unmarshal()'ed into when the
+	// associated annotation label occurs at the top
+	// level in the stream. In other words, if the stream
+	// contains
+	//   label::{foo: "bar"}
+	// then the Decoder will look up "label" in ExtraAnnotations
+	// and Unmarshal the {foo: "bar"} value into the associated
+	// Go value.
+	ExtraAnnotations map[string]any
+
+	src *bufio.Reader
+}
+
+// NewDecoder constructs a decoder that reads
+// objects from r up to the given maximum size.
+func NewDecoder(r io.Reader, max int) *Decoder {
+	b, ok := r.(*bufio.Reader)
+	if ok && b.Size() >= max {
+		return &Decoder{src: b}
+	}
+	return &Decoder{src: bufio.NewReaderSize(r, max)}
+}
+
+// MaxSize reports the maximum object size
+// that the Decoder supports unmarshaling
+// via d.Decode.
+func (d *Decoder) MaxSize() int { return d.src.Size() }
+
+func isSymtab(buf []byte) bool {
+	if IsBVM(buf) {
+		return true
+	}
+	lbl, _, _, _ := ReadAnnotation(buf)
+	return lbl == dollarIonSymbolTable
+}
+
+// Decode buffers the next object in the source stream
+// and calls Unmarshal(&d.Symtab, buffer, dst).
+// Decode will return bufio.ErrBufferFull if the
+// source object is larger than the maximum permitted
+// object size for the decoder.
+func (d *Decoder) Decode(dst any) error {
+	t, s, err := Peek(d.src)
+	if err != nil {
+		return err
+	}
+	for t == AnnotationType {
+		buf, err := d.src.Peek(s)
+		if err != nil {
+			return err
+		}
+		if isSymtab(buf) {
+			_, err = d.Symbols.Unmarshal(buf)
+			if err != nil {
+				return err
+			}
+		} else if d.ExtraAnnotations != nil {
+			sym, body, _, err := ReadAnnotation(buf)
+			if err != nil {
+				return err
+			}
+			lbl := d.Symbols.Get(sym)
+			if v, ok := d.ExtraAnnotations[lbl]; ok {
+				_, err = Unmarshal(&d.Symbols, body, v)
+				if err != nil {
+					return fmt.Errorf("ion.Decoder: handling annotation %q: %w", lbl, err)
+				}
+			}
+		}
+		d.src.Discard(s)
+		t, s, err = Peek(d.src)
+		if err != nil {
+			return err
+		}
+	}
+	buf, err := d.src.Peek(s)
+	if err != nil {
+		return err
+	}
+	_, err = Unmarshal(&d.Symbols, buf, dst)
+	if err != nil {
+		return err
+	}
+	d.src.Discard(s)
+	return nil
+}
+
 type decodefn func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error)
 
 func badType(t reflect.Type) error {
@@ -779,6 +881,35 @@ type structDecoder struct {
 }
 
 var compiledStructs sync.Map
+
+func init() {
+	// we know time.Time and date.Time encodings in advance:
+	compiledStructs.Store(reflect.TypeOf(time.Time{}), decodefn(func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+		t, rest, err := ReadTime(data)
+		if err != nil {
+			return nil, err
+		}
+		val := reflect.ValueOf(t.Time())
+		dst.Set(val)
+		return rest, nil
+	}))
+	compiledStructs.Store(reflect.TypeOf(date.Time{}), decodefn(func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+		t, rest, err := ReadTime(data)
+		if err != nil {
+			return nil, err
+		}
+		dst.Set(reflect.ValueOf(t))
+		return rest, nil
+	}))
+	compiledStructs.Store(reflect.TypeOf(Datum{}), decodefn(func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
+		dat, rest, err := ReadDatum(st, data)
+		if err != nil {
+			return nil, err
+		}
+		dst.Set(reflect.ValueOf(dat.Clone()))
+		return rest, nil
+	}))
+}
 
 func compileStruct(dst reflect.Type) (decodefn, bool) {
 	v, ok := compiledStructs.LoadOrStore(dst, decodefn(nil))
@@ -1180,17 +1311,6 @@ func decodeFunc(dst reflect.Type) (decodefn, bool) {
 			return rest, nil
 		}, true
 	case reflect.Struct:
-		if dst == reflect.TypeOf(time.Time{}) {
-			return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
-				t, rest, err := ReadTime(data)
-				if err != nil {
-					return nil, err
-				}
-				val := reflect.ValueOf(t.Time())
-				dst.Set(val)
-				return rest, nil
-			}, true
-		}
 		return compileStruct(dst)
 	case reflect.Interface:
 		if dst.NumMethod() != 0 {

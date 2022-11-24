@@ -25,12 +25,16 @@ import (
 	"github.com/SnellerInc/sneller/date"
 )
 
-// Datum represents an Ion datum
+// Datum represents any Ion datum.
 //
-// A Datum should be one of
+// The Marshal and Unmarshal functions natively
+// understand that Datum can be constructed and
+// re-encoded from any ion value.
+//
+// A Datum should be a value returned by
 //
 //	Float, Int, Uint, Struct, List, Bool,
-//	BigInt, Timestamp, Annotation, ...
+//	BigInt, Timestamp, Annotation, ..., or ReadDatum.
 type Datum struct {
 	st  []string
 	buf []byte

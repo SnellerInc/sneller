@@ -15,10 +15,14 @@
 package ion
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 )
@@ -182,10 +186,16 @@ func TestReadIntMagnitudeDetectsInvalidIon(t *testing.T) {
 }
 
 func TestUnmarshal(t *testing.T) {
-
+	now := time.Now().Truncate(time.Microsecond).UTC()
 	type recur struct {
 		Self int    `ion:"self"`
 		Rest *recur `ion:"recur"`
+	}
+
+	type anon struct {
+		Value struct {
+			Field int `ion:"field"`
+		} `ion:"value"`
 	}
 
 	tcs := []struct {
@@ -201,16 +211,24 @@ func TestUnmarshal(t *testing.T) {
 				dst.WriteFloat64(100.0) // will convert to int successfully
 				dst.BeginField(st.Intern("AlsoIgnored"))
 				dst.WriteString("ignore me")
+				dst.BeginField(st.Intern("ts"))
+				dst.WriteTime(date.FromTime(now))
+				dst.BeginField(st.Intern("datum"))
+				dst.WriteInt(-1)
 				dst.EndStruct()
 			},
 			out: struct {
 				Foo         string `ion:"foo"`
 				Bar         int    `ion:"bar,omitempty"`
 				ignored     int
-				AlsoIgnored string `ion:"-"`
+				AlsoIgnored string    `ion:"-"`
+				Time        time.Time `ion:"ts"`
+				Datum       Datum     `ion:"datum"`
 			}{
-				Foo: "foo",
-				Bar: 100,
+				Foo:   "foo",
+				Bar:   100,
+				Time:  now,
+				Datum: Int(-1), // pick any value w/o symbols to satisfy reflect.DeepEqual
 			},
 		},
 		{
@@ -268,6 +286,20 @@ func TestUnmarshal(t *testing.T) {
 				Rest: &recur{Self: 1, Rest: nil},
 			},
 		},
+		{
+			in: func(st *Symtab, dst *Buffer) {
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("value"))
+				dst.BeginStruct(-1)
+				dst.BeginField(st.Intern("field"))
+				dst.WriteInt(1)
+				dst.EndStruct()
+				dst.EndStruct()
+			},
+			out: &anon{Value: struct {
+				Field int `ion:"field"`
+			}{1}},
+		},
 	}
 	var st Symtab
 	var dst Buffer
@@ -303,14 +335,50 @@ func TestUnmarshal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(reflect.ValueOf(alt).Elem().Interface(), want) {
-				t.Errorf("%#v != %#v", alt2, want)
+			if !reflect.DeepEqual(reflect.ValueOf(alt2).Elem().Interface(), want) {
+				t.Logf("mem %x", dst.Bytes())
+				t.Errorf("got  %#v", reflect.ValueOf(alt2).Elem().Interface())
+				t.Errorf("want %#v", want)
+			}
+			body := dst.Bytes()
+			dst.Set(nil)
+			annot := st.Intern("handle_me")
+			st.Marshal(&dst, true)
+			dst.UnsafeAppend(body)
+
+			// add an annotation to be handled at the end
+			dst.BeginAnnotation(1)
+			dst.BeginField(annot)
+			dst.WriteString("hello!")
+			dst.EndAnnotation()
+
+			var annotOut string
+			d := NewDecoder(bytes.NewReader(dst.Bytes()), 2048)
+			d.ExtraAnnotations = map[string]any{
+				"handle_me": &annotOut,
+			}
+			alt3 := reflect.New(reflect.TypeOf(want)).Interface()
+			err = d.Decode(alt3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(reflect.ValueOf(alt3).Elem().Interface(), want) {
+				t.Errorf("got  %#v", reflect.ValueOf(alt3).Elem().Interface())
+				t.Errorf("want %#v", want)
+			}
+			err = d.Decode(alt3)
+			if !errors.Is(err, io.EOF) {
+				t.Errorf("didn't get EOF? error is %#v", err)
+			}
+			if annotOut != "hello!" {
+				t.Errorf("annotOut is %q", annotOut)
 			}
 		})
 	}
 }
 
 func BenchmarkMarshalUnmarshal(b *testing.B) {
+	now := time.Now().UTC()
 	tcs := []struct {
 		in  func(st *Symtab, dst *Buffer)
 		out any
@@ -324,16 +392,20 @@ func BenchmarkMarshalUnmarshal(b *testing.B) {
 				dst.WriteFloat64(100.0) // will convert to int successfully
 				dst.BeginField(st.Intern("AlsoIgnored"))
 				dst.WriteString("ignore me")
+				dst.BeginField(st.Intern("ts"))
+				dst.WriteTime(date.FromTime(now))
 				dst.EndStruct()
 			},
 			out: struct {
 				Foo         string `ion:"foo"`
 				Bar         int    `ion:"bar"`
 				ignored     int
-				AlsoIgnored string `ion:"-"`
+				AlsoIgnored string    `ion:"-"`
+				Time        time.Time `ion:"ts"`
 			}{
-				Foo: "foo",
-				Bar: 100,
+				Foo:  "foo",
+				Bar:  100,
+				Time: now,
 			},
 		},
 		{

@@ -19,9 +19,29 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 var structEncoders sync.Map
+
+func init() {
+	structEncoders.Store(reflect.TypeOf(time.Time{}), encodefn(func(st *Symtab, dst *Buffer, v reflect.Value) {
+		dst.WriteTime(date.FromTime(v.Interface().(time.Time)))
+	}))
+	structEncoders.Store(reflect.TypeOf(date.Time{}), encodefn(func(st *Symtab, dst *Buffer, v reflect.Value) {
+		dst.WriteTime(v.Interface().(date.Time))
+	}))
+	structEncoders.Store(reflect.TypeOf(Datum{}), encodefn(func(st *Symtab, dst *Buffer, v reflect.Value) {
+		d := v.Interface().(Datum)
+		if d.Empty() {
+			dst.WriteNull()
+		} else {
+			d.Encode(dst, st)
+		}
+	}))
+}
 
 type encodefn func(*Symtab, *Buffer, reflect.Value)
 
@@ -176,12 +196,17 @@ func encoderFunc(t reflect.Type) (encodefn, bool) {
 		}, true
 	case reflect.Interface:
 		return func(st *Symtab, dst *Buffer, src reflect.Value) {
-			fn, ok := encoderFunc(src.Type())
-			if ok {
+			if src.IsNil() {
 				dst.WriteNull()
 				return
 			}
-			fn(st, dst, src)
+			val := src.Elem()
+			fn, ok := encoderFunc(val.Type())
+			if !ok {
+				dst.WriteNull()
+				return
+			}
+			fn(st, dst, val)
 		}, true
 	default:
 		return nil, false

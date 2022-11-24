@@ -490,46 +490,34 @@ func TestSimpleFS(t *testing.T) {
 	}
 
 	checkAnnotation := func(t *testing.T, body []byte, maxscan int64) {
-		var st ion.Symtab
-		var d ion.Datum
-		var err error
-		seen := false
-		for len(body) > 0 {
-			d, body, err = ion.ReadDatum(&st, body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			label, kv, ok := d.Annotation()
-			if !ok || label != "final_status" {
+		var d, final ion.Datum
+		dec := ion.NewDecoder(bytes.NewReader(body), 64*1024)
+		dec.ExtraAnnotations = map[string]any{
+			"final_status": &final,
+		}
+		for {
+			err := dec.Decode(&d)
+			if err == nil {
 				continue
 			}
-			seen = true
-			stats, ok := kv.Struct()
-			if !ok {
-				t.Fatal("final_status not a structure")
+			if !errors.Is(err, io.EOF) {
+				t.Fatal(err)
 			}
-			f, ok := stats.FieldByName("scanned")
-			if maxscan == 0 && !ok {
-				// scanned can be missing iff it is zero
-				return
+			if final.Empty() {
+				t.Fatal("missing final_status trailer")
 			}
-			if !ok {
-				t.Fatal("final_status missing scanned field")
+			if !final.Field("error").Empty() {
+				str, _ := final.Field("error").String()
+				t.Fatalf("query error: %s", str)
 			}
-			i, ok := f.Value.Uint()
-			if !ok {
-				t.Fatalf("final_status.scanned not an int: %s", f.Value.Type())
-			}
-			if maxscan > 0 && i == 0 {
+			scanned, _ := final.Field("scanned").Uint()
+			if maxscan > 0 && scanned == 0 {
 				t.Fatalf("scanned = 0; maxscan = %d", maxscan)
-			} else if int64(i) > maxscan {
-				t.Fatalf("maxscan = %d, scanned = %d", maxscan, i)
+			} else if int64(scanned) > maxscan {
+				t.Fatalf("maxscan = %d, scanned = %d", maxscan, scanned)
 			}
-			t.Logf("scanned = %d", i)
+			t.Logf("scanned = %d", scanned)
 			break
-		}
-		if !seen {
-			t.Fatal("missing trailing label annotation")
 		}
 	}
 
