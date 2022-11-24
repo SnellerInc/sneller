@@ -40,6 +40,9 @@ func checkLevel(t *testing.T, fs UploadFS, f *level, load, dirtyok bool) {
 	if f.isDirty && !dirtyok {
 		t.Error("dirty level with !dirty parent")
 	}
+	if f.compressed != nil && (f.levels != nil || f.contents != nil || f.raw != nil) {
+		t.Error("have both compressed contents and levels/contents")
+	}
 	if f.isInner {
 		checkInner(t, fs, f, load, dirtyok)
 	} else {

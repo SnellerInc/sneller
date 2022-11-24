@@ -67,6 +67,10 @@ type level struct {
 	// if this is a leaf node then it is contents[len(contents)-1].path
 	last []byte
 
+	// cached compressed contents; used to reduce memory footprint
+	// compressed will never be non-nil when contents or levels is non-nil
+	compressed []byte
+
 	// contents is loaded lazily;
 	// these are present if this is a leaf level
 	contents []fentry
@@ -310,6 +314,15 @@ func (f *level) load(fs UploadFS) error {
 	if f.isDirty || f.contents != nil || f.levels != nil {
 		// already loaded
 		return nil
+	}
+	if f.compressed != nil {
+		if f.raw != nil {
+			panic("level.compressed set but level.raw != nil ???")
+		}
+		// already loaded, but stored compressed
+		raw := f.compressed
+		f.compressed = nil
+		return f.decode(raw)
 	}
 	p := string(f.path)
 	file, err := fs.Open(p)
@@ -845,7 +858,10 @@ func (f *FileTree) sync(fn syncfn) error {
 		return nil
 	}
 	// launch all of the uploads asynchronously
-	// and then wait for all of them to complete
+	// and then wait for all of them to complete;
+	// the sync process also evicts all non-dirty leaf nodes
+	// and re-compresses active leaf nodes in order to keep
+	// our memory use under control
 	err := f.root.syncInner(fn)
 	if err != nil {
 		return err
@@ -864,14 +880,6 @@ func (f *FileTree) sync(fn syncfn) error {
 		if err != nil {
 			panic(err) // should not be possible
 		}
-	}
-	// if we wrote out entries because we had
-	// too much resident memory, reclaim it from
-	// all of the resident leaf nodes
-	// (we don't bother with inner nodes because
-	// by definition they consume exponentially less memory)
-	if resident >= maxLeafResident {
-		f.root.dropLeaves()
 	}
 	return nil
 }
@@ -900,15 +908,23 @@ func (f *level) syncInner(fn syncfn) error {
 			errc <- err
 			return
 		}
+		t.compressed = contents
 		// we can set path and ditch oldpath
 		t.path = []byte(path)
 		t.etag = []byte(etag)
+		// keep the compressed representation in memory,
+		// not the decompressed raw data (saves ~10x)
+		t.levels = nil
+		t.contents = nil
+		t.raw = nil
 		t.isDirty = false
 		errc <- nil
 	}
 	for i := range f.levels {
 		t := &f.levels[i]
 		if !t.isDirty {
+			// evict clean entries across syncs
+			t.dropLeaves()
 			continue
 		}
 		wg.Add(1)
@@ -1074,6 +1090,7 @@ func (f *level) drop() {
 	if !f.isDirty && !f.isInner {
 		f.contents = nil
 		f.raw = nil
+		f.compressed = nil
 	}
 }
 
@@ -1097,6 +1114,9 @@ func (f *level) leafSizes() int {
 			sz += f.levels[i].leafSizes()
 		}
 		return sz
+	}
+	if f.compressed != nil {
+		return len(f.compressed)
 	}
 	return len(f.raw)
 }
