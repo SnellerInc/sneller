@@ -414,11 +414,6 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 			input[i] = bufhandle(flatten(in, st))
 		}
 	}
-	vm.Errorf = t.Logf
-	defer func() {
-		vm.Errorf = nil
-	}()
-
 	env := &queryenv{in: input}
 	tree, err := plan.New(q, env)
 	if err != nil {
@@ -897,6 +892,10 @@ func TestQueries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	vm.Errorf = t.Logf
+	defer func() {
+		vm.Errorf = nil
+	}()
 	for i := range test {
 		path := test[i].path
 		t.Run(test[i].name, func(t *testing.T) {
