@@ -235,7 +235,7 @@ func TestUnmarshal(t *testing.T) {
 			in: func(st *Symtab, dst *Buffer) {
 				dst.BeginStruct(-1)
 				dst.BeginField(st.Intern("foo"))
-				dst.WriteString("foo")
+				dst.WriteSymbol(st.Intern("foo"))
 				dst.BeginField(st.Intern("bar"))
 				dst.WriteInt(100)
 				dst.BeginField(st.Intern("list"))

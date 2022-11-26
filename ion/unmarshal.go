@@ -1041,6 +1041,13 @@ func decodeAny(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
 	case NullType:
 		rest = data[SizeOf(data):]
 		retval = reflect.Zero(dst.Type())
+	case SymbolType:
+		sym, r, err := ReadSymbol(data)
+		if err != nil {
+			return nil, err
+		}
+		rest = r
+		retval = reflect.ValueOf(st.Get(sym))
 	case StringType:
 		str, r, err := ReadString(data)
 		if err != nil {
@@ -1302,8 +1309,18 @@ func decodeFunc(dst reflect.Type) (decodefn, bool) {
 			return decodeList(st, data, decoder, dst)
 		}, true
 	case reflect.String:
-		return func(st *Symtab, data []byte, dst reflect.Value) ([]byte, error) {
-			str, rest, err := ReadString(data)
+		return func(st *Symtab, data []byte, dst reflect.Value) (rest []byte, err error) {
+			var str string
+			switch TypeOf(data) {
+			case StringType:
+				str, rest, err = ReadString(data)
+			case SymbolType:
+				var sym Symbol
+				sym, rest, err = ReadSymbol(data)
+				str = st.Get(sym)
+			default:
+				err = fmt.Errorf("unexpected ion type %s for go string", TypeOf(data))
+			}
 			if err != nil {
 				return nil, err
 			}
