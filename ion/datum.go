@@ -355,11 +355,6 @@ func (f *Field) Equal(f2 *Field) bool {
 	return f.Label == f2.Label && f.Sym == f2.Sym && f.Value.Equal(f2.Value)
 }
 
-type field struct {
-	sym Symbol
-	val Datum
-}
-
 type composite struct {
 	st  []string
 	buf []byte
@@ -388,20 +383,10 @@ func (b *Buffer) WriteStruct(st *Symtab, f []Field) {
 		b.UnsafeAppend(emptyStruct)
 		return
 	}
-	var fields []field
-	for i := range f {
-		fields = append(fields, field{
-			sym: st.Intern(f[i].Label),
-			val: f[i].Value,
-		})
-	}
-	slices.SortFunc(fields, func(x, y field) bool {
-		return x.sym < y.sym
-	})
 	b.BeginStruct(-1)
-	for i := range fields {
-		b.BeginField(fields[i].sym)
-		fields[i].val.Encode(b, st)
+	for i := range f {
+		b.BeginField(st.Intern(f[i].Label))
+		f[i].Value.Encode(b, st)
 	}
 	b.EndStruct()
 }
@@ -419,22 +404,12 @@ func (s Struct) Encode(dst *Buffer, st *Symtab) {
 		dst.UnsafeAppend(s.bytes())
 		return
 	}
-	var fields []field
+	dst.BeginStruct(-1)
 	s.Each(func(f Field) bool {
-		fields = append(fields, field{
-			sym: st.Intern(f.Label),
-			val: f.Value,
-		})
+		dst.BeginField(st.Intern(f.Label))
+		f.Value.Encode(dst, st)
 		return true
 	})
-	slices.SortFunc(fields, func(x, y field) bool {
-		return x.sym < y.sym
-	})
-	dst.BeginStruct(-1)
-	for i := range fields {
-		dst.BeginField(fields[i].sym)
-		fields[i].val.Encode(dst, st)
-	}
 	dst.EndStruct()
 }
 

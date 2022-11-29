@@ -524,17 +524,24 @@ func noteTimeFields(d Datum, c *Chunker) {
 	if !ok {
 		return
 	}
-	var buf Symbuf
-	s.Each(func(f Field) bool {
+	err := s.Each(func(f Field) bool {
 		ts, ok := f.Value.Timestamp()
 		if !ok {
 			return true
 		}
+		sym, ok := c.Symbols.Symbolize(f.Label)
+		if !ok {
+			return true
+		}
+		var buf Symbuf
 		buf.Prepare(1)
-		buf.Push(f.Sym)
+		buf.Push(sym)
 		c.Ranges.AddTime(buf, date.Time(ts))
 		return true
 	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Write writes a block of ion data from a stream.
