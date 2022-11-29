@@ -941,7 +941,7 @@ func (f *level) syncInner(fn syncfn) error {
 			err = e
 		}
 	}
-	f.isDirty = err == nil
+	f.isDirty = err != nil
 	return err
 }
 

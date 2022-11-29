@@ -16,6 +16,7 @@ package blockfmt
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io/fs"
@@ -172,6 +173,9 @@ func TestFiletreeInsert(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.encode(&buf, &st)
+		if f.root.isDirty {
+			panic("root should not be dirty")
+		}
 		f.Reset()
 		f.decode(&st, buf.Bytes())
 	}
@@ -525,6 +529,7 @@ func BenchmarkFiletreeS3(b *testing.B) {
 	}
 	fs := &S3FS{
 		s3.BucketFS{
+			Ctx:    context.Background(),
 			Key:    key,
 			Bucket: bucket,
 		},
@@ -549,47 +554,58 @@ func BenchmarkFiletreeS3(b *testing.B) {
 	})
 
 	// number of objects to insert
-	sizes := []int{10000}
+	sizes := []int{100000}
 	// number of objects to insert
 	// per call to sync()
-	batches := []int{10, 100, 1000}
+	batches := []int{1000, 5000}
+	// number of sorted insertion points
+	// (mimics partitioned input paths)
+	clusters := []int{
+		1, 10,
+	}
 	for _, size := range sizes {
-		lst := make([]string, size)
-		for i := range lst {
-			lst[i] = fmt.Sprintf("s3://%s/%s/file-%d", bucket, prefix, rand.Int())
-		}
-		slices.Sort(lst)
-		for _, batch := range batches {
-			b.Run(fmt.Sprintf("batch=%d/size=%d", batch, size), func(b *testing.B) {
-				b.ReportAllocs()
-				for i := 0; i < b.N; i++ {
-					ft := FileTree{
-						Backing: fs,
-					}
-					tbd := lst
-					for len(tbd) > 0 {
-						ins := tbd
-						if len(ins) > batch {
-							ins = ins[:batch]
+		for _, cluster := range clusters {
+			lst := make([]string, 0, size)
+			groupsize := size / cluster
+			for i := 0; i < groupsize; i++ {
+				for j := 0; j < cluster; j++ {
+					// each group contains separate sorted runs
+					lst = append(lst,
+						fmt.Sprintf("s3://%s/%s/cluster-%d/file-%07x", bucket, prefix, j, i))
+				}
+			}
+			for _, batch := range batches {
+				b.Run(fmt.Sprintf("batch=%d/size=%d/cluster=%d", batch, size, cluster), func(b *testing.B) {
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						ft := FileTree{
+							Backing: fs,
 						}
-						tbd = tbd[len(ins):]
-						for _, p := range ins {
-							_, err := ft.Append(p, p, 1)
+						tbd := lst
+						for len(tbd) > 0 {
+							ins := tbd
+							if len(ins) > batch {
+								ins = ins[:batch]
+							}
+							tbd = tbd[len(ins):]
+							for _, p := range ins {
+								_, err := ft.Append(p, p, 1)
+								if err != nil {
+									b.Fatal(err)
+								}
+							}
+							err := ft.sync(func(_ string, buf []byte) (string, string, error) {
+								p := path.Join(prefix, "inputs-"+uuid())
+								etag, err := ft.Backing.WriteFile(p, buf)
+								return p, etag, err
+							})
 							if err != nil {
 								b.Fatal(err)
 							}
 						}
-						err := ft.sync(func(_ string, buf []byte) (string, string, error) {
-							p := path.Join(prefix, "inputs-"+uuid())
-							etag, err := ft.Backing.WriteFile(p, buf)
-							return p, etag, err
-						})
-						if err != nil {
-							b.Fatal(err)
-						}
 					}
-				}
-			})
+				})
+			}
 		}
 	}
 }
