@@ -201,7 +201,7 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 					var err error
 					table, _, err = ion.ReadString(val)
 					if err != nil {
-						return nil
+						return err
 					}
 					hastable = true
 					return nil
