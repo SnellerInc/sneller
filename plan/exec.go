@@ -67,10 +67,10 @@ func (n *Node) subexec(p pool, ep *ExecParams) error {
 	wg.Add(len(n.Children))
 	errors := make([]error, len(n.Children))
 	for i := range n.Children {
-		e.pool.do(i, func(i int) {
+		go func(i int) {
 			defer wg.Done()
 			errors[i] = e.add(&rp[i], n.Children[i])
-		})
+		}(i)
 	}
 	wg.Wait()
 	if err := appenderrs(nil, errors); err != nil {
