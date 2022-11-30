@@ -18,8 +18,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -39,20 +39,27 @@ func init() {
 
 func main() {
 	flag.Parse()
+	if ofile == "-" {
+		ofile = ""
+	}
 
 	opnames := readopnames("ssa.go")
 
 	stdout = os.Stdout
-	if ofile != "" && ofile != "-" {
-		f, err := os.Create(ofile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "-o %s: %s\n", ofile, err)
-			os.Exit(1)
-		}
-		stdout = f
-		defer f.Close()
+	var buf bytes.Buffer
+	if ofile != "" {
+		stdout = &buf
 	}
+
 	vm.GenrewriteMain(stdout, opnames, flag.Args())
+
+	if ofile != "" {
+		const rdonly = 0444
+		err := os.WriteFile(ofile, buf.Bytes(), rdonly)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 func readopnames(fname string) []string {
