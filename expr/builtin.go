@@ -120,9 +120,13 @@ const (
 	Upper
 	Lower
 	Contains
-	ContainsCI // sql:CONTAINS_CI
-	EqualsCI   // sql:EQUALS_CI
-	CharLength // sql:CHAR_LENGTH sql:CHARACTER_LENGTH
+	ContainsCI           // sql:CONTAINS_CI
+	EqualsCI             // sql:EQUALS_CI
+	EqualsFuzzy          // sql:EQUALS_FUZZY
+	EqualsFuzzyUnicode   // sql:EQUALS_FUZZY_UNICODE
+	ContainsFuzzy        // sql:CONTAINS_FUZZY
+	ContainsFuzzyUnicode // sql:CONTAINS_FUZZY_UNICODE
+	CharLength           // sql:CHAR_LENGTH sql:CHARACTER_LENGTH
 	IsSubnetOf
 	Substring
 	SplitPart
@@ -373,13 +377,29 @@ func (b BuiltinOp) String() string {
 
 func checkContains(h Hint, args []Node) error {
 	if len(args) != 2 {
-		return mismatch(len(args), 2)
+		return mismatch(2, len(args))
 	}
 	if _, ok := args[1].(String); !ok {
-		return errsyntax("CONTAINS requires a literal string argument")
+		return errsyntaxf("second argument requires a literal string, not %v (%T)", args[1], args[1])
 	}
 	if !TypeOf(args[0], h).AnyOf(StringType) {
 		return errtype(args[0], "not a string")
+	}
+	return nil
+}
+
+func checkEqualsContainsFuzzy(h Hint, args []Node) error {
+	if len(args) != 3 {
+		return mismatch(3, len(args))
+	}
+	if _, ok := args[1].(String); !ok {
+		return errsyntaxf("second argument requires a literal string, not %v (%T)", args[1], args[1])
+	}
+	if !TypeOf(args[0], h).AnyOf(StringType) {
+		return errtype(args[0], "not a string")
+	}
+	if !TypeOf(args[2], h).AnyOf(IntegerType) {
+		return errsyntaxf("third argument requires a integer, not %q (%T)", args[2], args[2])
 	}
 	return nil
 }
@@ -1000,19 +1020,23 @@ func exp10(x float64) float64 {
 }
 
 var builtinInfo = [maxBuiltin]binfo{
-	Concat:     {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType},
-	Trim:       {check: checkTrim(Trim), ret: StringType | MissingType},
-	Ltrim:      {check: checkTrim(Ltrim), ret: StringType | MissingType},
-	Rtrim:      {check: checkTrim(Rtrim), ret: StringType | MissingType},
-	Upper:      {check: unaryStringArgs, ret: StringType | MissingType},
-	Lower:      {check: unaryStringArgs, ret: StringType | MissingType},
-	Contains:   {check: checkContains, private: true, ret: LogicalType},
-	ContainsCI: {check: checkContains, private: true, ret: LogicalType},
-	CharLength: {check: unaryStringArgs, ret: UnsignedType | MissingType},
-	IsSubnetOf: {check: checkIsSubnetOf, ret: LogicalType, simplify: simplifyIsSubnetOf},
-	Substring:  {check: checkSubstring, ret: StringType | MissingType},
-	SplitPart:  {check: checkSplitPart, ret: StringType | MissingType},
-	EqualsCI:   {ret: LogicalType},
+	Concat:               {check: fixedArgs(StringType, StringType), private: true, ret: StringType | MissingType},
+	Trim:                 {check: checkTrim(Trim), ret: StringType | MissingType},
+	Ltrim:                {check: checkTrim(Ltrim), ret: StringType | MissingType},
+	Rtrim:                {check: checkTrim(Rtrim), ret: StringType | MissingType},
+	Upper:                {check: unaryStringArgs, ret: StringType | MissingType},
+	Lower:                {check: unaryStringArgs, ret: StringType | MissingType},
+	Contains:             {check: checkContains, private: true, ret: LogicalType},
+	ContainsCI:           {check: checkContains, private: true, ret: LogicalType},
+	CharLength:           {check: unaryStringArgs, ret: UnsignedType | MissingType},
+	IsSubnetOf:           {check: checkIsSubnetOf, ret: LogicalType, simplify: simplifyIsSubnetOf},
+	Substring:            {check: checkSubstring, ret: StringType | MissingType},
+	SplitPart:            {check: checkSplitPart, ret: StringType | MissingType},
+	EqualsCI:             {ret: LogicalType},
+	EqualsFuzzy:          {check: checkEqualsContainsFuzzy, ret: LogicalType},
+	EqualsFuzzyUnicode:   {check: checkEqualsContainsFuzzy, ret: LogicalType},
+	ContainsFuzzy:        {check: checkEqualsContainsFuzzy, ret: LogicalType},
+	ContainsFuzzyUnicode: {check: checkEqualsContainsFuzzy, ret: LogicalType},
 
 	BitCount:  {check: fixedArgs(NumericType), ret: IntegerType | MissingType},
 	Abs:       {check: fixedArgs(NumericType), ret: NumericType},

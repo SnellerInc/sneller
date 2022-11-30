@@ -26,6 +26,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/SnellerInc/sneller/fuzzy"
+
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/internal/stringext"
@@ -36,6 +38,9 @@ import (
 
 // exhaustive search space: all combinations are explored
 const exhaustive = -1
+
+type Data = stringext.Data
+type Needle = stringext.Needle
 
 // TestStringCompareUT unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareUT(t *testing.T) {
@@ -86,9 +91,9 @@ func TestStringCompareUT(t *testing.T) {
 				if len(y) == 0 { //NOTE: empty needles match with nothing (by design)
 					return false
 				}
-				return stringext.NormalizeStringASCIIOnly(x) == stringext.NormalizeStringASCIIOnly(y)
+				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
 			},
-			encode: stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+			encode: stringext.NormalizeStringASCIIOnlyString, // only normalize ASCII values, leave other values (UTF8) unchanged
 			unitTests: []unitTest{
 				{"aaaa", "aaaa", true},
 				{"aaa", "aaaa", false},
@@ -237,10 +242,10 @@ func TestStringCompareBF(t *testing.T) {
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 			dataMaxSize:  1000,
 			refImpl: func(x, y string) bool {
-				return stringext.NormalizeStringASCIIOnly(x) == stringext.NormalizeStringASCIIOnly(y)
+				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
 			},
 			op:     opCmpStrEqCi,
-			encode: stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+			encode: stringext.NormalizeStringASCIIOnlyString, // only normalize ASCII values, leave other values (UTF8) unchanged
 		},
 		{
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
@@ -299,8 +304,7 @@ func TestStringCompareBF(t *testing.T) {
 				}
 				// then
 				if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-					t.Errorf("%v\ncomparing needle %q\nto data %q\n%v",
-						ts.name, needle, data16, msg)
+					t.Errorf("%v\nneedle=%q\ndata=%v\n%v", ts.name, needle, join16StrSlice(data16), msg)
 					break mainLoop
 				}
 			}
@@ -341,10 +345,10 @@ func FuzzStringCompareFT(f *testing.F) {
 		{
 			name: "compare string case-insensitive (opCmpStrEqCi)",
 			refImpl: func(x, y string) bool {
-				return stringext.NormalizeStringASCIIOnly(x) == stringext.NormalizeStringASCIIOnly(y)
+				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
 			},
 			op:     opCmpStrEqCi,
-			encode: stringext.NormalizeStringASCIIOnly, // only normalize ASCII values, leave other values (UTF8) unchanged
+			encode: stringext.NormalizeStringASCIIOnlyString, // only normalize ASCII values, leave other values (UTF8) unchanged
 		},
 		{
 			name:    "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
@@ -358,13 +362,13 @@ func FuzzStringCompareFT(f *testing.F) {
 		if !utf8.ValidString(needle) || (needle == "") {
 			return // invalid needles are ignored
 		}
-		expLanes := uint16(0)
+		expLanes := [16]bool{}
 		for i := 0; i < 16; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				expLanes = setBit(expLanes, i, ts.refImpl(data16[i], needle))
+				expLanes[i] = ts.refImpl(data16[i], needle)
 			}
 		}
 		enc := ts.encode(needle)
@@ -375,22 +379,15 @@ func FuzzStringCompareFT(f *testing.F) {
 		ctx.setDict(enc)
 		ctx.setScalarStrings(data16[:])
 		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
 
 		// when
 		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
 			t.Fatal(err)
 		}
 		// then
-		if ctx.current != expLanes {
-			for i := 0; i < 16; i++ {
-				obsLane := getBit(ctx.current, i)
-				expLane := getBit(expLanes, i)
-
-				if obsLane != expLane {
-					t.Fatalf("%v\nlane %v: comparing needle %q to data %q: observed %v expected %v (data %v; needle %v (enc %v))",
-						ts.name, i, needle, data16, obsLane, expLane, []byte(data16[i]), []byte(needle), []byte(enc))
-				}
-			}
+		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", ts.name, needle, join16Str(data16), msg)
 		}
 	}
 
@@ -398,6 +395,556 @@ func FuzzStringCompareFT(f *testing.F) {
 		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
 		for _, ts := range testSuites {
 			run(t, &ts, lanes, data, needle)
+		}
+	})
+}
+
+// TestStrFuzzyUT1 unit-tests for: opCmpStrFuzzy, opCmpStrFuzzyUnicode, opHasSubstrFuzzy, opHasSubstrFuzzyUnicode
+func TestStrFuzzyUT1(t *testing.T) {
+	t.Parallel()
+	type unitTest struct {
+		needle    Needle
+		data      Data
+		threshold int
+		expLane   bool
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// portable reference implementation: f(data, needle) -> lane
+		refImpl func(Data, Needle, int) bool
+		// bytecode to run
+		op bcop
+		// encoder for string literals -> dictionary value
+		encode func(Needle) string
+	}
+	testSuites := []testSuite{
+		{
+			name:    "compare string fuzzy (opCmpStrFuzzyA3)",
+			op:      opCmpStrFuzzyA3,
+			refImpl: fuzzy.RefCmpStrFuzzyASCIIApprox3,
+			encode:  stringext.EncodeFuzzyNeedleASCII,
+			unitTests: []unitTest{
+
+				{"abc", "aXc", 1, true}, // substitution at pos 1: b -> X
+				{"abcde", "ade", 4, true},
+
+				{"Nicole Kidman", "nicol kidman", 1, true},
+				{"Nicole Kidman", "nico kidman", 2, true},
+
+				{"AAB", "\uffdeB", 1, false}, // test with invalid UTF8 data
+
+				{"\x00", "", 0, false},
+				{"A", "\x00", 0, false},
+
+				{"aaaa", "abcdefgh", 1, false},
+				{"abcdefgh", "aXcdefgh", 1, true}, // substitution at pos 1: b -> X
+				{"abcdefgh", "abXdefgh", 1, true}, // substitution at pos 2: c -> X
+
+				{"abcdefgh", "bcdefgh", 1, true}, // deletion at pos 0
+				{"abcdefgh", "acdefgh", 1, true}, // deletion at pos 1
+				{"abcdefgh", "abdefgh", 1, true}, // deletion at pos 2
+
+				{"abcdefgh", "Xabcdefgh", 1, true}, // insertion X at pos 0
+				{"abcdefgh", "aXbcdefgh", 1, true}, // insertion X at pos 1
+				{"abcdefgh", "abXcdefgh", 1, true}, // insertion X at pos 2
+
+				{"abcdefgh", "bacdefgh", 1, true}, // transposition pos0: ab->ba
+				{"abcdefgh", "acbdefgh", 1, true}, // transposition pos1: bc->cb
+				{"abcdefgh", "abdcefgh", 1, true}, // transposition pos1: cd->dc
+
+				{"aaaa", "abcdefgh", 2, false},
+				{"abcdefgh", "aXcdXfgh", 2, true}, // substitution at pos 1: b -> X
+				{"abcdefgh", "abXdeXgh", 2, true}, // substitution at pos 2: c -> X
+
+				{"abcdefgh", "bcdfgh", 2, true}, // deletion at pos 0
+				{"abcdefgh", "acdegh", 2, true}, // deletion at pos 1
+				{"abcdefgh", "abdefh", 2, true}, // deletion at pos 2
+
+				{"abcdefgh", "XabcdXefgh", 2, true}, // insertion X at pos 0
+				{"abcdefgh", "aXbcdeXfgh", 2, true}, // insertion X at pos 1
+				{"abcdefgh", "abXcdefXgh", 2, true}, // insertion X at pos 2
+
+				{"abcdefgh", "bacedfgh", 2, true}, // transposition pos0: ab->ba
+				{"abcdefgh", "acbdfegh", 2, true}, // transposition pos1: bc->cb
+				{"abcdefgh", "abdcegfh", 2, true}, // transposition pos1: cd->dc
+			},
+		},
+	}
+
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		if !utf8.ValidString(ut.needle) {
+			t.Logf("needle is not valid UTF8; skipping this test")
+			return
+		}
+
+		stackContent := make([]uint64, 16)
+		expLanes := [16]bool{}
+		data16 := fill16(ut.data)
+		// first: check reference implementation
+		{
+			obsLane := ts.refImpl(ut.data, ut.needle, ut.threshold)
+			for i := 0; i < 16; i++ {
+				expLanes[i] = obsLane
+				stackContent[i] = uint64(ut.threshold)
+			}
+			if fault, msg := fault1x1(obsLane, ut.expLane, 0, 0, 0, 0); fault {
+				t.Errorf("refImpl: %v\nrefImpl: needle=%q; threshold=%v\ndata=%v\n%v",
+					ts.name, ut.needle, ut.threshold, join16StrSlice(data16), msg)
+			}
+		}
+
+		// second: check the bytecode implementation
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		ctx.setDict(ts.encode(ut.needle))
+		ctx.setScalarStrings(data16)
+		ctx.setStackUint64(stackContent)
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		offsetDict := uint16(0)
+		offsetStackSlot := uint16(0)
+		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+			t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
+				ts.name, ut.needle, ut.threshold, join16StrSlice(data16), msg)
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(ts, ut, 0xFFFF)
+			}
+		})
+	}
+}
+
+// TestStrFuzzyUT2 unit-tests for: opCmpStrFuzzy, opCmpStrFuzzyUnicode, opHasSubstrFuzzy, opHasSubstrFuzzyUnicode
+func TestStrFuzzyUT2(t *testing.T) {
+	t.Parallel()
+
+	type unitTest struct {
+		data16    [16]Data // data pointed to by SI
+		needle    Needle   // segments of the pattern: needs to be encoded and passed as string constant via the immediate dictionary
+		expLanes  uint16   // expected lanes K1
+		threshold [16]int
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// portable reference implementation: f(data, needle) -> lane
+		refImpl func(Data, Needle, int) bool
+		// bytecode implementation of comparison
+		op bcop
+		// encoder for needle -> dictionary value
+		encode func(needle Needle) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name:    "compare string fuzzy (opCmpStrFuzzyA3)",
+			op:      opCmpStrFuzzyA3,
+			refImpl: fuzzy.RefCmpStrFuzzyASCIIApprox3,
+			encode:  stringext.EncodeFuzzyNeedleASCII,
+			unitTests: []unitTest{
+				{
+					needle:    "0",
+					threshold: [16]int{25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25},
+					data16:    [16]Data{"0", "0", "0", "0", "", "", "0", "0", "0", "0", "0", "0", "0", "00000000\x00000000000000000忧", "0", "0"},
+					expLanes:  uint16(0b1101111111111111),
+				},
+				{
+					needle:    "BAC",
+					threshold: [16]int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
+					data16:    [16]Data{"A", "B", "C", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω"},
+					expLanes:  uint16(0b0000000000000110),
+				},
+				{
+					needle:    "BBA",
+					threshold: [16]int{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"A", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000001),
+				},
+				{
+					needle:    "A",
+					threshold: [16]int{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"BA", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000001),
+				},
+				{
+					needle:    "C",
+					threshold: [16]int{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+					data16:    [16]Data{"A", "B", "C", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω", "Ω"},
+					expLanes:  uint16(0b0000000000000111),
+				},
+			},
+		},
+		{
+			name:    "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)",
+			op:      opCmpStrFuzzyUnicodeA3,
+			refImpl: fuzzy.RefCmpStrFuzzyUnicodeApprox3,
+			encode:  stringext.EncodeFuzzyNeedleUnicode,
+			unitTests: []unitTest{
+				{
+					needle:    "020",
+					threshold: [16]int{16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16},
+					data16:    [16]Data{"1", "0", "0", "0", "", "ſſ", "0", "0", "0", "000", "00", "0000000000000000000", "0ſ", "0", "0", "0"},
+					expLanes:  uint16(0b1111011111111111),
+				},
+				{
+					needle:    "0",
+					threshold: [16]int{46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46, 46},
+					data16:    [16]Data{"0", "0", "0", "0", "", "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "0", "0", "0", "\x1d", "0", "0", "0", "0", "0", "0"},
+					expLanes:  uint16(0b1111111111011111),
+				},
+				{
+					needle:    "A",
+					threshold: [16]int{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"BA", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000001),
+				},
+				{
+					needle:    "AA",
+					threshold: [16]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"A", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000000),
+				},
+				{
+					needle:    "A",
+					threshold: [16]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"A", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000001),
+				},
+				{
+					needle:    "BBA",
+					threshold: [16]int{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"A", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000001),
+				},
+			},
+		},
+		{
+			name:    "has substring fuzzy (opHasSubstrFuzzyA3)",
+			op:      opHasSubstrFuzzyA3,
+			refImpl: fuzzy.RefHasSubstrFuzzyASCIIApprox3,
+			encode:  stringext.EncodeFuzzyNeedleASCII,
+			unitTests: []unitTest{
+				{
+					needle:    "A",
+					threshold: [16]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"B", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000000),
+				},
+			},
+		},
+		{
+			name:    "has substring fuzzy (opHasSubstrFuzzyUnicodeA3)",
+			op:      opHasSubstrFuzzyUnicodeA3,
+			refImpl: fuzzy.RefHasSubstrFuzzyUnicodeApprox3,
+			encode:  stringext.EncodeFuzzyNeedleUnicode,
+			unitTests: []unitTest{
+				{
+					needle:    "AA",
+					threshold: [16]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					data16:    [16]Data{"A", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:  uint16(0b0000000000000000),
+				},
+			},
+		},
+	}
+
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		stackContent := make([]uint64, 16)
+		// first: check reference implementation
+		{
+			for i := 0; i < 16; i++ {
+				obsLane := ts.refImpl(ut.data16[i], ut.needle, ut.threshold[i])
+				expLane := getBit(ut.expLanes, i)
+				if fault, msg := fault1x1(obsLane, expLane, 0, 0, 0, 0); fault {
+					t.Errorf("refImpl: %v\nlane %v:needle=%q; data=%q; threshold=%v\ndata=%v\n%v",
+						ts.name, i, ut.needle, ut.data16[i], ut.threshold, join16Str(ut.data16), msg)
+					break
+				}
+			}
+		}
+		// second: check the bytecode implementation
+		for i := 0; i < 16; i++ {
+			stackContent[i] = uint64(ut.threshold[i])
+		}
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		ctx.setDict(ts.encode(ut.needle))
+		ctx.setScalarStrings(ut.data16[:])
+		ctx.setStackUint64(stackContent)
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		offsetDict := uint16(0)
+		offsetStackSlot := uint16(0)
+		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, toBoolArray(ut.expLanes)); fault {
+			t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
+				ts.name, ut.needle, ut.threshold, join16Str(ut.data16), msg)
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(ts, ut, 0xFFFF)
+			}
+		})
+	}
+}
+
+// TestStrFuzzyBF brute-force tests for: opCmpStrFuzzy, opCmpStrFuzzyUnicode, opHasSubstrFuzzy, opHasSubstrFuzzyUnicode
+func TestStrFuzzyBF(t *testing.T) {
+	t.Parallel()
+	type testSuite struct {
+		name string
+		// alphabet from which to generate words
+		dataAlphabet, needleAlphabet []rune
+		// space of lengths of the words made of alphabet
+		dataLenSpace, needleLenSpace, thresholdSpace []int
+		// maximum number of elements in dataSpace
+		dataMaxSize, needleMaxSize int
+		// portable reference implementation: f(data, needle) -> lane
+		refImpl func(Data, Needle, int) bool
+		// bytecode implementation of comparison
+		op bcop
+		// encoder for string literals -> dictionary value
+		encode func(Needle) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name:           "compare string fuzzy (opCmpStrFuzzyA3)",
+			op:             opCmpStrFuzzyA3,
+			refImpl:        fuzzy.RefCmpStrFuzzyASCIIApprox3,
+			encode:         stringext.EncodeFuzzyNeedleASCII,
+			dataAlphabet:   []rune{'A', 'B', 'C', 'Ω'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'A', 'B', 'C'},
+			needleLenSpace: []int{1, 2, 3, 4},
+			needleMaxSize:  exhaustive,
+			thresholdSpace: []int{1, 2, 3},
+		},
+		{
+			name:           "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)",
+			op:             opCmpStrFuzzyUnicodeA3,
+			refImpl:        fuzzy.RefCmpStrFuzzyUnicodeApprox3,
+			encode:         stringext.EncodeFuzzyNeedleUnicode,
+			dataAlphabet:   []rune{'A', 'B', 'C', 'Ω'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'A', 'B', 'C', 'Ω'},
+			needleLenSpace: []int{1, 2, 3, 4},
+			needleMaxSize:  exhaustive,
+			thresholdSpace: []int{0, 1, 2, 3},
+		},
+		{
+			name:           "has substring fuzzy (opHasSubstrFuzzyA3)",
+			op:             opHasSubstrFuzzyA3,
+			refImpl:        fuzzy.RefHasSubstrFuzzyASCIIApprox3,
+			encode:         stringext.EncodeFuzzyNeedleASCII,
+			dataAlphabet:   []rune{'A', 'B', 'C', 'Ω'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'A', 'B', 'C'},
+			needleLenSpace: []int{1, 2, 3, 4},
+			needleMaxSize:  exhaustive,
+			thresholdSpace: []int{0, 1, 2, 3},
+		},
+		{
+			name:           "has substring fuzzy unicode (opHasSubstrFuzzyUnicodeA3)",
+			op:             opHasSubstrFuzzyUnicodeA3,
+			refImpl:        fuzzy.RefHasSubstrFuzzyUnicodeApprox3,
+			encode:         stringext.EncodeFuzzyNeedleUnicode,
+			dataAlphabet:   []rune{'A', '$', '¢', '€', '𐍈'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'$', '¢', '€', '𐍈'},
+			needleLenSpace: []int{1, 2, 3},
+			needleMaxSize:  exhaustive,
+			thresholdSpace: []int{1, 2, 3},
+		},
+	}
+
+	run := func(ts *testSuite, lanes uint16, dataSpace [][]Data, needleSpace []Needle) {
+		// pre-compute encoded needles for speed
+		encNeedles := make([]string, len(needleSpace))
+		for i, needle := range needleSpace {
+			encNeedles[i] = ts.encode(needle)
+		}
+
+		stackContent := make([]uint64, 16)
+		expLanes := [16]bool{}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+	mainLoop:
+
+		for _, threshold := range ts.thresholdSpace {
+			for i := 0; i < 16; i++ {
+				stackContent[i] = uint64(threshold)
+			}
+			ctx.setStackUint64(stackContent)
+			for _, data16 := range dataSpace {
+				for needleIdx, needle := range needleSpace {
+					// first collect expected values
+					for i := 0; i < 16; i++ {
+						if getBit(lanes, i) {
+							expLanes[i] = ts.refImpl(data16[i], needle, threshold)
+						}
+					}
+
+					ctx.setDict(encNeedles[needleIdx])
+					ctx.setScalarStrings(data16)
+					ctx.current = lanes
+					scalarBefore := ctx.getScalarUint32()
+
+					// when
+					offsetDict := uint16(0)
+					offsetStackSlot := uint16(0)
+					if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+						t.Fatal(err)
+					}
+					// then
+					if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+						t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
+							ts.name, needle, stackContent, join16StrSlice(data16), msg)
+						break mainLoop
+					}
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
+			needleSpace := createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize)
+			run(&ts, 0xFFFF, dataSpace, flatten(needleSpace))
+		})
+	}
+}
+
+// FuzzStrFuzzyFT fuzz tests for: opCmpStrFuzzy, opCmpStrFuzzyUnicode, opHasSubstrFuzzy, opHasSubstrFuzzyUnicode
+func FuzzStrFuzzyFT(f *testing.F) {
+	f.Add(uint16(0xFFFF), "s", "ss", "S", "SS", "ſ", "ſſ", "a", "aa", "as", "bss", "cS", "dSS", "eſ", "fſſ", "ga", "haa", "s", 1)
+
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// portable comparison function
+		refImpl func(Data, Needle, int) bool
+		// bytecode to run
+		op bcop
+		// encoder for string literals -> dictionary value
+		encode func(Needle) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name:    "compare string fuzzy (opCmpStrFuzzyA3)",
+			op:      opCmpStrFuzzyA3,
+			refImpl: fuzzy.RefCmpStrFuzzyASCIIApprox3,
+			encode:  stringext.EncodeFuzzyNeedleASCII,
+		},
+		{
+			name:    "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)",
+			op:      opCmpStrFuzzyUnicodeA3,
+			refImpl: fuzzy.RefCmpStrFuzzyUnicodeApprox3,
+			encode:  stringext.EncodeFuzzyNeedleUnicode,
+		},
+		{
+			name:    "compare string fuzzy (opHasSubstrFuzzyA3)",
+			op:      opHasSubstrFuzzyA3,
+			refImpl: fuzzy.RefHasSubstrFuzzyASCIIApprox3,
+			encode:  stringext.EncodeFuzzyNeedleASCII,
+		},
+		{
+			name:    "compare string fuzzy (opHasSubstrFuzzyUnicodeA3)",
+			op:      opHasSubstrFuzzyUnicodeA3,
+			refImpl: fuzzy.RefHasSubstrFuzzyUnicodeApprox3,
+			encode:  stringext.EncodeFuzzyNeedleUnicode,
+		},
+	}
+
+	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle, threshold int) {
+		if (ts.op == opCmpStrFuzzyA3) || (ts.op == opHasSubstrFuzzyA3) {
+			for _, c := range needle {
+				if c >= utf8.RuneSelf {
+					return // ascii code do not accept unicode code-points
+				}
+			}
+		}
+
+		if !utf8.ValidString(needle) || (needle == "") {
+			return // invalid needles are ignored
+		}
+		expLanes := [16]bool{}
+		for i := 0; i < 16; i++ {
+			if !utf8.ValidString(data16[i]) {
+				return // assume all input data will be valid codepoints
+			}
+			if getBit(lanes, i) {
+				expLanes[i] = ts.refImpl(data16[i], needle, threshold)
+			}
+		}
+
+		stackContent := make([]uint64, 16)
+		for i := 0; i < 16; i++ {
+			stackContent[i] = uint64(threshold)
+		}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		ctx.setDict(ts.encode(needle))
+		ctx.setStackUint64(stackContent)
+		ctx.setScalarStrings(data16[:])
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		offsetDict := uint16(0)
+		offsetStackSlot := uint16(0)
+		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
+			t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
+				ts.name, needle, stackContent, join16Str(data16), msg)
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle, threshold int) {
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		for _, ts := range testSuites {
+			run(t, &ts, lanes, data, needle, threshold)
 		}
 	})
 }
@@ -862,10 +1409,9 @@ func TestMatchpatUT2(t *testing.T) {
 			for i := 0; i < 16; i++ {
 				obsLane, obsOffset, obsLength := ts.refImpl(ut.data16[i], ut.segments)
 				expLane := getBit(ut.expLanes, i)
-
 				if fault, msg := fault1x1(obsLane, expLane, obsOffset, ut.expOffsets[i], obsLength, ut.expLengths[i]); fault {
-					t.Errorf("refImpl: %v\nlane %v: matching pattern=%q\non data %q\n%v",
-						ts.name, i, ut.segments, ut.data16, msg)
+					t.Errorf("refImpl: %v\nlane %v:pattern=%q\ndata=%v\n%v",
+						ts.name, i, ut.segments, join16Str(ut.data16), msg)
 					break
 				}
 			}
@@ -2075,7 +2621,7 @@ func TestSubstrUT(t *testing.T) {
 		offsetStackSlot1 := uint16(0)
 		offsetStackSlot2 := uint16(len(stackContent1) * 8)
 		if err := ctx.Execute2Imm2(opSubstr, offsetStackSlot1, offsetStackSlot2); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		//then
 		_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
@@ -2178,7 +2724,7 @@ func TestSubstrBF(t *testing.T) {
 
 					// when
 					if err := ctx.Execute2Imm2(ts.op, offsetStackSlot1, offsetStackSlot2); err != nil {
-						t.Error(err)
+						t.Fatal(err)
 					}
 					// then
 					obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
@@ -2263,7 +2809,7 @@ func FuzzSubstrFT(f *testing.F) {
 		offsetStackSlot1 := uint16(0)
 		offsetStackSlot2 := uint16(16 * 8)
 		if err := ctx.Execute2Imm2(ts.op, offsetStackSlot1, offsetStackSlot2); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
@@ -2766,7 +3312,7 @@ func TestSkip1CharUT(t *testing.T) {
 
 		// when
 		if err := ctx.Execute(ts.op); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
@@ -2844,7 +3390,7 @@ func TestSkip1CharBF(t *testing.T) {
 
 			// when
 			if err := ctx.Execute(ts.op); err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			// then
 			if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
@@ -2911,7 +3457,7 @@ func FuzzSkip1CharFT(f *testing.F) {
 
 		// when
 		if err := ctx.Execute(ts.op); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
@@ -3369,7 +3915,7 @@ func TestSplitPartUT(t *testing.T) {
 		offsetDict := uint16(0)
 		offsetStackSlot := uint16(0)
 		if err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
@@ -3461,7 +4007,7 @@ func TestSplitPartBF(t *testing.T) {
 				offsetDict := uint16(0)
 				offsetStackSlot := uint16(0)
 				if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
-					t.Error(err)
+					t.Fatal(err)
 				}
 				// then
 				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
@@ -3536,7 +4082,7 @@ func FuzzSplitPartFT(f *testing.F) {
 		offsetDict := uint16(0)
 		offsetStackSlot := uint16(0)
 		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
@@ -3600,7 +4146,7 @@ func TestLengthStrUT(t *testing.T) {
 
 		// when
 		if err := ctx.Execute(opLengthStr); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		scalarAfter := ctx.getScalarInt64()
@@ -3676,7 +4222,7 @@ func TestLengthStrBF(t *testing.T) {
 
 			// when
 			if err := ctx.Execute(ts.op); err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			// then
 			scalarAfter := ctx.getScalarInt64()
@@ -3735,7 +4281,7 @@ func FuzzLengthStrFT(f *testing.F) {
 
 		// when
 		if err := ctx.Execute(ts.op); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		scalarAfter := ctx.getScalarInt64()
@@ -4136,7 +4682,7 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 
 		// when
 		if err := ctx.Execute(ts.op); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
@@ -4224,7 +4770,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 
 			// when
 			if err := ctx.Execute(ts.op); err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			// then
 			_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
@@ -4301,7 +4847,7 @@ func FuzzTrimWhiteSpaceFT(f *testing.F) {
 
 		// when
 		if err := ctx.Execute(ts.op); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// then
 		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
@@ -4339,7 +4885,7 @@ func refContainsPrefix(s, prefix string, caseSensitive, ASCIIOnly bool) (lane bo
 	if caseSensitive {
 		hasPrefix = strings.HasPrefix(s, prefix)
 	} else if ASCIIOnly {
-		hasPrefix = strings.HasPrefix(stringext.NormalizeStringASCIIOnly(s), stringext.NormalizeStringASCIIOnly(prefix))
+		hasPrefix = strings.HasPrefix(stringext.NormalizeStringASCIIOnlyString(s), stringext.NormalizeStringASCIIOnlyString(prefix))
 	} else {
 		hasPrefix = strings.HasPrefix(stringext.NormalizeString(s), stringext.NormalizeString(prefix))
 	}
@@ -4359,7 +4905,7 @@ func refContainsSuffix(s, suffix string, caseSensitive, ASCIIOnly bool) (lane bo
 	if caseSensitive {
 		hasSuffix = strings.HasSuffix(s, suffix)
 	} else if ASCIIOnly {
-		hasSuffix = strings.HasSuffix(stringext.NormalizeStringASCIIOnly(s), stringext.NormalizeStringASCIIOnly(suffix))
+		hasSuffix = strings.HasSuffix(stringext.NormalizeStringASCIIOnlyString(s), stringext.NormalizeStringASCIIOnlyString(suffix))
 	} else {
 		hasSuffix = strings.HasSuffix(stringext.NormalizeString(s), stringext.NormalizeString(suffix))
 	}
@@ -5029,15 +5575,22 @@ func toBoolArray(v uint16) (result [16]bool) {
 	return
 }
 
-func join16Str(values [16]string) (result string) {
-	result += "["
+// join16StrSlice joins values with comma's such that you can copy it a go array
+func join16StrSlice(values []string) (result string) {
+	sb := strings.Builder{}
+	sb.WriteByte('[')
 	for i := 0; i < len(values); i++ {
-		result += fmt.Sprintf("%q", values[i]) // NOTE strings.Join(values, ",") does not escape
+		sb.WriteString(fmt.Sprintf("%q", values[i])) // NOTE strings.Join(values, ",") does not escape
 		if i < len(values)-1 {
-			result += ","
+			sb.WriteByte(',')
 		}
 	}
-	return result + "]"
+	sb.WriteByte(']')
+	return sb.String()
+}
+
+func join16Str(values [16]string) (result string) {
+	return join16StrSlice(values[:])
 }
 
 func passThrough(v string) string {
@@ -5088,8 +5641,8 @@ func setBit(data uint16, idx int, value bool) uint16 {
 }
 
 // flatten flattens the provided slice of slices into one single slice; dual of split16
-func flatten(dataSpace [][]string) []string {
-	result := make([]string, len(dataSpace)*16)
+func flatten(dataSpace [][]Data) []Data {
+	result := make([]Data, len(dataSpace)*16)
 	for j, data16 := range dataSpace {
 		for i := 0; i < 16; i++ {
 			result[j*16+i] = data16[i]
@@ -5099,9 +5652,9 @@ func flatten(dataSpace [][]string) []string {
 }
 
 // split16 splits the provided slice into slices of slice with size 16
-func split16(data []string) [][]string {
+func split16(data []Data) [][]Data {
 	numberOfSlices := (len(data) + 15) / 16
-	results := make([][]string, numberOfSlices)
+	results := make([][]Data, numberOfSlices)
 	for i := range data {
 		group := i / 16
 		results[group] = append(results[group], data[i])
@@ -5347,9 +5900,9 @@ func matchPatternReference(data string, segments []string, cmpType strCmpType) (
 	msgStr := data
 
 	if cmpType == ciASCII {
-		msgStr = stringext.NormalizeStringASCIIOnly(msgStrOrg)
+		msgStr = stringext.NormalizeStringASCIIOnlyString(msgStrOrg)
 		for i, segment := range segments {
-			segments[i] = stringext.NormalizeStringASCIIOnly(segment)
+			segments[i] = stringext.NormalizeStringASCIIOnlyString(segment)
 		}
 	} else if cmpType == ciUTF8 {
 		msgStr = stringext.NormalizeString(msgStrOrg)

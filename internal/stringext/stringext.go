@@ -23,6 +23,12 @@ import (
 	"unicode/utf8"
 )
 
+// Needle string type to distinguish from the Data string type
+type Needle = string
+
+// Data string type to distinguish from the Needle string type
+type Data = string
+
 // AddTail concats the tail to the capacity of the string
 func AddTail(str, tail string) []byte {
 	return append([]byte(str), tail...)[:len(str)]
@@ -324,6 +330,30 @@ func GenPatternExt(segments []string) string {
 	return string(result[0:nBytes])
 }
 
+// EncodeFuzzyNeedleUnicode encode a needle (string) for fuzzy unicode comparisons
+func EncodeFuzzyNeedleUnicode(needle Needle) string {
+	runes := []rune(needle)
+	nRunes := len(runes)
+	result := to4ByteArray(nRunes)
+	for _, r := range runes {
+		r2 := r
+		if r < utf8.RuneSelf { // r is an ASCII value
+			r2 = unicode.ToUpper(r)
+		}
+		result = append(result, runeToUtf8Array(r2)...)
+	}
+	return string(result)
+}
+
+// EncodeFuzzyNeedleASCII encode a needle (string) for fuzzy ASCII comparisons
+func EncodeFuzzyNeedleASCII(needle Needle) string {
+	nBytes := len(needle)
+	result := to4ByteArray(nBytes)
+	result = append(result, NormalizeStringASCIIOnly([]byte(needle))...)
+	result = append(result, byte(0xFF), byte(0xFF), byte(0xFF)) // pad with 3 invalid ascii bytes 0xFF
+	return string(result)
+}
+
 // NormalizeRune normalizes the provided rune into the smallest and equal rune wrt case-folding.
 // For ascii this normalization is equal to UPPER
 func NormalizeRune(r rune) rune {
@@ -350,16 +380,24 @@ func NormalizeString(str string) string {
 	return string(runes)
 }
 
+// NormalizeStringASCIIOnlyString normalizes the provided string into a string with runes that are smallest
+// and equal wrt case-folding, and leaves non-ASCII values unchanged.
+func NormalizeStringASCIIOnlyString(str string) string {
+	return string(NormalizeStringASCIIOnly([]byte(str)))
+}
+
 // NormalizeStringASCIIOnly normalizes the provided string into a string with runes that are smallest
 // and equal wrt case-folding, and leaves non-ASCII values unchanged.
-func NormalizeStringASCIIOnly(str string) string {
-	runes := []rune(str)
-	for i, r := range runes {
-		if r < utf8.RuneSelf {
-			runes[i] = NormalizeRune(r)
+func NormalizeStringASCIIOnly(bytes []byte) []byte {
+	result := make([]byte, len(bytes))
+	for i, r := range bytes {
+		if r < utf8.RuneSelf { // r is an ASCII value
+			result[i] = byte(unicode.ToUpper(rune(r)))
+		} else {
+			result[i] = r
 		}
 	}
-	return string(runes)
+	return result
 }
 
 // HasNtnRune return true when the provided rune contains a non-trivial normalization; false otherwise

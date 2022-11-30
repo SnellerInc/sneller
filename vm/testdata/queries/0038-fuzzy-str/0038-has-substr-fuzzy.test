@@ -1,0 +1,14 @@
+# go test -run=TestQueries/0038-has-substr-fuzzy
+SELECT COUNT(*) FROM input
+WHERE CONTAINS_FUZZY(str, 'Nicole Kidman', 2) = (match IS FALSE)
+---
+{"str": "nicole kidman", "match": true} # ascii case differences are free
+{"str": "nicol kidman", "match": true}  # one deletion
+{"str": "nico kidman", "match": true}  # two consecutive deletions
+{"str": "nic kidman", "match": false} # tree conssequtive deletions is beyond 3 character horizon
+{"str": "nicoel kidman", "match": true}  # one transposition
+{"str": "nicleo kidman", "match": true}  # two consecutive transpositions
+{"str": "nicoel kidman", "match": true}  # one deletion followed by one transposition
+{"str": "niclXoe kidman", "match": true}  # one transposition followedd by one insertion
+---
+{"count": 0}

@@ -1,0 +1,10 @@
+# go test -run=TestQueries/0038-cmp-str-fuzzy-unicode
+SELECT COUNT(*) FROM input
+WHERE EQUALS_FUZZY_UNICODE(str, 'Nicole Kidman', 2) = (match IS FALSE)
+---
+{"str": "nicole kidman", "match": true}
+{"str": "nicol kidman", "match": true}
+#{"str": "nico kidman", "match": true}
+{"str": "nic kidman", "match": false}
+---
+{"count": 0}

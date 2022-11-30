@@ -1,0 +1,3 @@
+# go test -bench BenchmarkTestQueries/0038-has-substr-fuzzy
+SELECT name FROM 'data.jsonrl'
+WHERE CONTAINS_FUZZY(name, 'Kidman', 2)

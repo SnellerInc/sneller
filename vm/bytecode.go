@@ -509,9 +509,13 @@ var opinfo = [_maxbcop]bcopinfo{
 	opobjectsize: {text: "objectsize", flags: bcReadWriteK | bcWriteS | bcReadV},
 
 	// string comparing operations
-	opCmpStrEqCs:     {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
-	opCmpStrEqCi:     {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
-	opCmpStrEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqCs:              {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqCi:              {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrFuzzyA3:           {text: "cmp_str_fuzzy_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
+	opCmpStrFuzzyUnicodeA3:    {text: "cmp_str_fuzzy_unicode_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
+	opHasSubstrFuzzyA3:        {text: "contains_fuzzy_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
+	opHasSubstrFuzzyUnicodeA3: {text: "contains_fuzzy_unicode_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
 	// TODO: op_cmp_less_str, op_cmp_neq_str, op_cmp_between_str
 
 	// string trim operations
@@ -520,7 +524,7 @@ var opinfo = [_maxbcop]bcopinfo{
 	opTrim4charLeft:  {text: "trim_char_left", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 	opTrim4charRight: {text: "trim_char_right", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 
-	// string prefix/suffix/contains matching operations
+	// string prefix/suffix matching operations
 	opContainsPrefixCs:     {text: "contains_prefix_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsPrefixCi:     {text: "contains_prefix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},

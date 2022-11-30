@@ -1,0 +1,3 @@
+# go test -bench BenchmarkTestQueries/0038-has-substr-vanilla
+SELECT name FROM 'data.jsonrl'
+WHERE name ILIKE '%Kidman%'

@@ -13058,6 +13058,814 @@ next:
 
 //; #endregion bcCmpStrEqUTF8Ci
 
+//; #region bcCmpStrFuzzyA3
+TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameters
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_slice;
+  ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
+//; load from stack-slot: load 16x uint32 into Z14
+  LOADARG1Z(Z27, Z26)
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
+  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
+  VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
+//; restrict lanes to allow fast bail-out
+  VPSUBD        Z14, Z13, Z26             //;10B77777 scratch1 := needle_len - threshold;Z26=scratch1; Z13=needle_len; Z14=threshold;
+  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;F08352A0 K1 &= (scratch1<=data_len)      ;K1=lane_active; Z26=scratch1; Z3=data_len; 2=LessEq;
+  KTESTW        K1,  K1                   //;8BEF97CD ZF := (K1==0); CF := 1          ;K1=lane_active;
+  JZ            next                      //;5FEF8EC0 jump if zero (ZF = 1)           ;
+//; load constants
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_0xFF(),Z19         //;2B665A72 load constant 0xFF              ;Z19=const_0xFF;
+  VMOVDQU32     FUZZY_ROR_APPROX3(),Z23   //;2CEF25D2 load ror approx3                ;Z23=ror_a3;
+  VMOVDQU32     CONST_TAIL_INV_MASK(),Z18 //;9653E713 load tail_inv_mask_data         ;Z18=tail_mask_data;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPADDD        Z10, Z10, Z12             //;77D6F115 constd_2 := 1 + 1               ;Z12=2; Z10=1;
+  VPADDD        Z10, Z12, Z24             //;C848C1D8 constd_3 := 2 + 1               ;Z24=3; Z12=2; Z10=1;
+//; init variables loop2
+  VPXORD        Z4,  Z4,  Z4              //;6D778B5D edit_dist := 0                  ;Z4=edit_dist;
+  VPXORD        Z5,  Z5,  Z5              //;B150336A needle_off := 0                 ;Z5=needle_off;
+  KMOVW         K1,  K2                   //;FBC36D43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;1607AB46 lane_active := 0                ;K1=lane_active;
+loop2:
+//; load data ascii approx3
+//; clear data
+  VPTERNLOGD    $0b11111111,Z8,  Z8,  Z8  //;F81949DF set 0xFFFFFFFF                  ;Z8=data;
+  VPTERNLOGD    $0b11111111,Z9,  Z9,  Z9  //;9E9BD820 set 0xFFFFFFFF                  ;Z9=needle;
+//; load data and needle
+  VPCMPD        $6,  Z11, Z3,  K2,  K4    //;FCFCB494 K4 := K2 & (data_len>0)         ;K4=scratch1; K2=lane_todo; Z3=data_len; Z11=0; 6=Greater;
+  VPCMPD        $6,  Z11, Z13, K2,  K5    //;7C687BDA K5 := K2 & (needle_len>0)       ;K5=scratch2; K2=lane_todo; Z13=needle_len; Z11=0; 6=Greater;
+  KMOVW         K4,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K4=scratch1;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off;
+  VPGATHERDD    (R14)(Z5*1),K5,  Z9       //;4EAE4300 gather needle                   ;Z9=needle; K5=scratch2; R14=needle_ptr; Z5=needle_off;
+//; remove tail from data
+  VPMINSD       Z3,  Z24, Z26             //;D337D11D scratch1 := min(3, data_len)    ;Z26=scratch1; Z24=3; Z3=data_len;
+  VPERMD        Z18, Z26, Z26             //;E882D550                                 ;Z26=scratch1; Z18=tail_mask_data;
+  VPORD         Z8,  Z26, K4,  Z8         //;985B667B data |= scratch1                ;Z8=data; K4=scratch1; Z26=scratch1;
+//; str_to_upper: IN zmm8; OUT zmm26
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z26                  //;ADC21F45 mask with selected chars        ;Z26=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z26 //;1BB96D97                                 ;Z26=scratch1; Z8=data; Z15=c_0b00100000;
+  VMOVDQA32     Z26, Z8                   //;13182651 data := scratch1                ;Z8=data; Z26=scratch1;
+//; prepare data
+  VPSHUFB       Z23, Z9,  Z21             //;9E2DA720                                 ;Z21=cmp_data_n1; Z9=needle; Z23=ror_a3;
+  VPSHUFB       Z23, Z21, Z22             //;EF2A718F                                 ;Z22=cmp_data_n2; Z21=cmp_data_n1; Z23=ror_a3;
+//; compare data
+  VPCMPB        $0,  Z8,  Z9,  K3         //;B72E9264 K3 := (needle==data)            ;K3=tmp_mask; Z9=needle; Z8=data; 0=Eq;
+  VPCMPB        $0,  Z8,  Z21, K4         //;4D744078 K4 := (cmp_data_n1==data)       ;K4=scratch1; Z21=cmp_data_n1; Z8=data; 0=Eq;
+  VPCMPB        $0,  Z8,  Z22, K5         //;7D453022 K5 := (cmp_data_n2==data)       ;K5=scratch2; Z22=cmp_data_n2; Z8=data; 0=Eq;
+  VPMOVM2B      K3,  Z20                  //;C2D7F8C2                                 ;Z20=cmp_data_n0; K3=tmp_mask;
+  VPMOVM2B      K4,  Z21                  //;5DD7FFD3                                 ;Z21=cmp_data_n1; K4=scratch1;
+  VPMOVM2B      K5,  Z22                  //;F2DFE32E                                 ;Z22=cmp_data_n2; K5=scratch2;
+  VPBROADCASTD  CONSTD_0xFFFFFF(),Z26     //;2B665A72 load constant 0xFFFFFF          ;Z26=scratch1;
+  VPANDD        Z26, Z20, Z20             //;B49E038A cmp_data_n0 &= scratch1         ;Z20=cmp_data_n0; Z26=scratch1;
+  VPANDD        Z26, Z21, Z21             //;AE118220 cmp_data_n1 &= scratch1         ;Z21=cmp_data_n1; Z26=scratch1;
+  VPANDD        Z26, Z22, Z22             //;F05F7247 cmp_data_n2 &= scratch1         ;Z22=cmp_data_n2; Z26=scratch1;
+//; fuzzy kernel approx3
+//; Input: Z20 contains bytes n0==d0; n1==d1; n2==d2
+//; Input: Z21 contains bytes n2==d0; n0==d1; n1==d2
+//; Input: Z22 contains bytes n1==d0; n2==d1; n0==d2
+//; Output: advance data Z8; advance needle Z27; edit distance delta Z28
+  VMOVDQA32     Z10, Z8                   //;E7DCCB07 adv_data := 1                   ;Z8=adv_data; Z10=1;
+  VMOVDQA32     Z10, Z27                  //;7768BB01 adv_needle := 1                 ;Z27=adv_needle; Z10=1;
+  VMOVDQA32     Z10, Z28                  //;40606BEF ed_delta := 1                   ;Z28=ed_delta; Z10=1;
+//; eq: 1XXX XXXX XXXX XXXX  (ED 0; advData 1; advNeedle 1)
+  VPANDD        Z19, Z20, Z26             //;8C306B97 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z19=const_0xFF;
+  VPCMPD        $0,  Z19, Z26, K2,  K3    //;FD1DFC40 K3 := K2 & (scratch1==0xFF)     ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z19=const_0xFF; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z28             //;F0260A2E ed_delta := 0                   ;Z28=ed_delta; K3=tmp_mask; Z11=0;
+//; tra: 01XX 1XXX XXXX XXXX  (ED 1; advData 2; advNeedle 2)
+  VPANDD        Z19, Z20, Z26             //;FC8F0E3A scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z19=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K2,  K3    //;BA3128F8 K3 := K2 & (scratch1==0)        ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z21, Z26  //;7D9ADC0D scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z21=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00(),Z26, K3,  K3  //;6DD2E6AD K3 &= (scratch1==0xFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z19, Z22, Z26             //;78852CB5 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z22=cmp_data_n2; Z19=const_0xFF;
+  VPCMPD        $0,  Z19, Z26, K3,  K3    //;60E9D580 K3 &= (scratch1==0xFF)          ;K3=tmp_mask; Z26=scratch1; Z19=const_0xFF; 0=Eq;
+  VMOVDQA32     Z12, K3,  Z8              //;C98BAF9D adv_data := 2                   ;Z8=adv_data; K3=tmp_mask; Z12=2;
+  VMOVDQA32     Z12, K3,  Z27             //;45D96F66 adv_needle := 2                 ;Z27=adv_needle; K3=tmp_mask; Z12=2;
+//; del1: 00XX 1XXX X1XX XXXX  (ED 1; advData 0; advNeedle 1)
+  VPANDD        Z19, Z20, Z26             //;CBA541F4 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z19=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K2,  K3    //;1DEBB41F K3 := K2 & (scratch1==0)        ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z21, Z26  //;87F93917 scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z21=cmp_data_n1;
+  VPCMPD        $0,  Z11, Z26, K3,  K3    //;243F3541 K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF(),Z22, Z26  //;824ACC03 scratch1 := cmp_data_n2 & 0xFFFF;Z26=scratch1; Z22=cmp_data_n2;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF(),Z26, K3,  K3  //;2D3F859B K3 &= (scratch1==0xFFFF);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z8              //;E6058826 adv_data := 0                   ;Z8=adv_data; K3=tmp_mask; Z11=0;
+//; del2: 000X 000X 100X XXXX  (ED 1; advData 0; advNeedle 1)
+  VPCMPD        $0,  Z11, Z20, K2,  K3    //;567B926A K3 := K2 & (cmp_data_n0==0)     ;K3=tmp_mask; K2=lane_todo; Z20=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z19, Z21, K3,  K3    //;5CB727CF K3 &= (cmp_data_n1==0xFF)       ;K3=tmp_mask; Z21=cmp_data_n1; Z19=const_0xFF; 0=Eq;
+  VPCMPD        $0,  Z11, Z22, K3,  K3    //;5BD4C280 K3 &= (cmp_data_n2==0)          ;K3=tmp_mask; Z22=cmp_data_n2; Z11=0; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z8              //;92883CBE adv_data := 0                   ;Z8=adv_data; K3=tmp_mask; Z11=0;
+//; ins1: 01XX 0X1X XXXX XXXX  (ED 1; advData 1; advNeedle 0)
+  VPANDD        Z19, Z20, Z26             //;BB6C7BCB scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z19=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K2,  K3    //;27180A3F K3 := K2 & (scratch1==0)        ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF00(),Z21, Z26 //;84C016C5 scratch1 := cmp_data_n1 & 0xFFFF00;Z26=scratch1; Z21=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF00(),Z26, K3,  K3  //;2C49342C K3 &= (scratch1==0xFFFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z19, Z22, Z26             //;4BDE68D1 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z22=cmp_data_n2; Z19=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K3,  K3    //;87D1798E K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z11=0; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z27             //;8E47AE22 adv_needle := 0                 ;Z27=adv_needle; K3=tmp_mask; Z11=0;
+//; ins2: 001X 000X 000X XXXX  (ED 1; advData 1; advNeedle 0)
+  VPCMPD        $0,  Z11, Z20, K2,  K3    //;60D5DDDB K3 := K2 & (cmp_data_n0==0)     ;K3=tmp_mask; K2=lane_todo; Z20=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z11, Z21, K3,  K3    //;E241E75D K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z21=cmp_data_n1; Z11=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF0000(),Z22, K3,  K3  //;BE4EACF3 K3 &= (cmp_data_n2==0xFF0000);K3=tmp_mask; Z22=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z27             //;8E47AE22 adv_needle := 0                 ;Z27=adv_needle; K3=tmp_mask; Z11=0;
+//; tra+ins: 001X 100X 000X XXXX  (ED 2; advData 3; advNeedle 2)
+  VPCMPD        $0,  Z11, Z20, K2,  K3    //;8435AB4E K3 := K2 & (cmp_data_n0==0)     ;K3=tmp_mask; K2=lane_todo; Z20=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z11, Z21, K3,  K3    //;8435AB4E K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z21=cmp_data_n1; Z11=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00FF(),Z22, K3,  K3  //;2EFB83C8 K3 &= (cmp_data_n2==0xFF00FF);K3=tmp_mask; Z22=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z12, K3,  Z28             //;C2F02B22 ed_delta := 2                   ;Z28=ed_delta; K3=tmp_mask; Z12=2;
+  VPBROADCASTD  CONSTD_3(),K3,  Z8        //;C2F02B22                                 ;Z8=adv_data; K3=tmp_mask;
+  VMOVDQA32     Z12, K3,  Z27             //;424275DF adv_needle := 2                 ;Z27=adv_needle; K3=tmp_mask; Z12=2;
+//; sub1: everything that remains
+//; nothing needs updating
+//; update ascii
+//; update edit distance
+  VPADDD        Z28, Z4,  K2,  Z4         //;F07EA991 edit_dist += ed_delta           ;Z4=edit_dist; K2=lane_todo; Z28=ed_delta;
+//; advance data
+  VPSUBD        Z8,  Z3,  K2,  Z3         //;DF7FB44E data_len -= adv_data            ;Z3=data_len; K2=lane_todo; Z8=adv_data;
+  VPADDD        Z8,  Z2,  K2,  Z2         //;F81C97B0 data_off += adv_data            ;Z2=data_off; K2=lane_todo; Z8=adv_data;
+//; advance needle
+  VPSUBD        Z27, Z13, K2,  Z13        //;41970AC0 needle_len -= adv_needle        ;Z13=needle_len; K2=lane_todo; Z27=adv_needle;
+  VPADDD        Z27, Z5,  K2,  Z5         //;254FD5C6 needle_off += adv_needle        ;Z5=needle_off; K2=lane_todo; Z27=adv_needle;
+//; cmp-tail
+//; restrict lanes based on edit distance and threshold
+  VPCMPD        $2,  Z14, Z4,  K2,  K2    //;86F95312 K2 &= (edit_dist<=threshold)    ;K2=lane_todo; Z4=edit_dist; Z14=threshold; 2=LessEq;
+//; test if we have a match
+  VPCMPD        $5,  Z13, Z11, K2,  K3    //;EEF4BAA0 K3 := K2 & (0>=needle_len)      ;K3=tmp_mask; K2=lane_todo; Z11=0; Z13=needle_len; 5=GreaterEq;
+  VPCMPD        $5,  Z3,  Z11, K3,  K3    //;4CCAC6C8 K3 &= (0>=data_len)             ;K3=tmp_mask; Z11=0; Z3=data_len; 5=GreaterEq;
+  KORW          K1,  K3,  K1              //;8FAB61CD lane_active |= tmp_mask         ;K1=lane_active; K3=tmp_mask;
+  KANDNW        K2,  K3,  K2              //;482703BD lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
+  JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcCmpStrFuzzyA3
+
+//; #region bcCmpStrFuzzyUnicodeA3
+TEXT bcCmpStrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameters
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_slice;
+  ADDQ          $4,  R14                  //;EE011000 needle_ptr += 4                 ;R14=needle_ptr;
+//; load from stack-slot: load 16x uint32 into Z14
+  LOADARG1Z(Z27, Z26)
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
+  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
+  VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
+//; load constants
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z7   //;B323211A load table_n_bytes_utf8         ;Z7=table_n_bytes_utf8;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPADDD        Z10, Z10, Z29             //;77D6F115 constd_2 := 1 + 1               ;Z29=2; Z10=1;
+//; init variables loop2
+  VPXORD        Z4,  Z4,  Z4              //;6D778B5D edit_dist := 0                  ;Z4=edit_dist;
+  VPXORD        Z5,  Z5,  Z5              //;B150336A needle_off := 0                 ;Z5=needle_off;
+  KMOVW         K1,  K2                   //;FBC36D43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;1607AB46 lane_active := 0                ;K1=lane_active;
+loop2:
+//; load data unicode approx3
+//; clear data0 and needle0
+  VPTERNLOGD    $0b11111111,Z8,  Z8,  Z8  //;B8E7EDD5 set 0xFFFFFFFF                  ;Z8=d0;
+  VPTERNLOGD    $0b11111111,Z9,  Z9,  Z9  //;A8E35E7F set 0xFFFFFFFF                  ;Z9=d1;
+  VPTERNLOGD    $0b11111111,Z28, Z28, Z28 //;3CB765D7 set 0xFFFFFFFF                  ;Z28=d2;
+//; load data0
+  VPCMPD        $5,  Z10, Z3,  K2,  K3    //;FCFCB494 K3 := K2 & (data_len>=1)        ;K3=tmp_mask; K2=lane_todo; Z3=data_len; Z10=1; 5=GreaterEq;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data0                    ;Z8=d0; K3=tmp_mask; SI=data_ptr; Z2=data_off;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z8,  Z23             //;FE5F1413 scratch1 := d0>>4               ;Z23=scratch1; Z8=d0;
+  VPERMD        Z7,  Z23, Z12             //;68FECBA0 get n_bytes_d0                  ;Z12=n_bytes_d0; Z23=scratch1; Z7=table_n_bytes_utf8;
+//; load data1
+  VPSUBD        Z12, Z3,  Z20             //;8BA4E60E data_len_alt := data_len - n_bytes_d0;Z20=data_len_alt; Z3=data_len; Z12=n_bytes_d0;
+  VPCMPD        $5,  Z10, Z20, K2,  K3    //;FCFCB494 K3 := K2 & (data_len_alt>=1)    ;K3=tmp_mask; K2=lane_todo; Z20=data_len_alt; Z10=1; 5=GreaterEq;
+  VPADDD        Z12, Z2,  K2,  Z19        //;88A5638D data_off_alt := data_off + n_bytes_d0;Z19=data_off_alt; K2=lane_todo; Z2=data_off; Z12=n_bytes_d0;
+  VPGATHERDD    (SI)(Z19*1),K3,  Z9       //;81256F6A gather data1                    ;Z9=d1; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z9,  Z23             //;FE5F1413 scratch1 := d1>>4               ;Z23=scratch1; Z9=d1;
+  VPERMD        Z7,  Z23, Z22             //;68FECBA0 get n_bytes_d1                  ;Z22=n_bytes_d1; Z23=scratch1; Z7=table_n_bytes_utf8;
+//; load data2
+  VPSUBD        Z22, Z20, Z20             //;743C9E50 data_len_alt -= n_bytes_d1      ;Z20=data_len_alt; Z22=n_bytes_d1;
+  VPCMPD        $5,  Z10, Z20, K2,  K3    //;C500A274 K3 := K2 & (data_len_alt>=1)    ;K3=tmp_mask; K2=lane_todo; Z20=data_len_alt; Z10=1; 5=GreaterEq;
+  VPADDD        Z22, Z19, K2,  Z19        //;3656366C data_off_alt += n_bytes_d1      ;Z19=data_off_alt; K2=lane_todo; Z22=n_bytes_d1;
+  VPGATHERDD    (SI)(Z19*1),K3,  Z28      //;3640A661 gather data2                    ;Z28=d2; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z28, Z23             //;FE5F1413 scratch1 := d2>>4               ;Z23=scratch1; Z28=d2;
+  VPERMD        Z7,  Z23, Z25             //;68FECBA0 get n_bytes_d2                  ;Z25=n_bytes_d2; Z23=scratch1; Z7=table_n_bytes_utf8;
+//; load needles
+  VPTERNLOGD    $0b11111111,Z19, Z19, Z19 //;9E9BD820 set 0xFFFFFFFF                  ;Z19=n0;
+  VPTERNLOGD    $0b11111111,Z20, Z20, Z20 //;4408EAE3 set 0xFFFFFFFF                  ;Z20=n1;
+  VPTERNLOGD    $0b11111111,Z21, Z21, Z21 //;61F40C30 set 0xFFFFFFFF                  ;Z21=n2;
+  VPCMPD        $5,  Z10, Z13, K2,  K3    //;7C687BDA K3 := K2 & (needle_len>=1)      ;K3=tmp_mask; K2=lane_todo; Z13=needle_len; Z10=1; 5=GreaterEq;
+  VPCMPD        $6,  Z10, Z13, K2,  K4    //;E2B17160 K4 := K2 & (needle_len>1)       ;K4=scratch1; K2=lane_todo; Z13=needle_len; Z10=1; 6=Greater;
+  VPCMPD.BCST   $6,  CONSTD_2(),Z13, K2,  K5  //;62D5A597 K5 := K2 & (needle_len>2)   ;K5=scratch2; K2=lane_todo; Z13=needle_len; 6=Greater;
+  VPGATHERDD    (R14)(Z5*1),K3,  Z19      //;4EAE4300 gather needle0                  ;Z19=n0; K3=tmp_mask; R14=needle_ptr; Z5=needle_off;
+  VPGATHERDD    4(R14)(Z5*1),K4,  Z20     //;7F0BC8AC gather needle1                  ;Z20=n1; K4=scratch1; R14=needle_ptr; Z5=needle_off;
+  VPGATHERDD    8(R14)(Z5*1),K5,  Z21     //;2FC91E09 gather needle2                  ;Z21=n2; K5=scratch2; R14=needle_ptr; Z5=needle_off;
+//; remove tail from data
+  VPERMD        Z18, Z12, Z23             //;83C76A20 get tail_mask (data)            ;Z23=scratch1; Z12=n_bytes_d0; Z18=tail_mask_data;
+  VPERMD        Z18, Z22, Z24             //;46B49FFC get tail_mask (data)            ;Z24=scratch2; Z22=n_bytes_d1; Z18=tail_mask_data;
+  VPERMD        Z18, Z25, Z27             //;38DC4AAA get tail_mask (data)            ;Z27=scratch3; Z25=n_bytes_d2; Z18=tail_mask_data;
+  VPANDD        Z8,  Z23, Z8              //;D1E2261E mask data                       ;Z8=d0; Z23=scratch1;
+  VPANDD        Z9,  Z24, Z9              //;A5CA4DE9 mask data                       ;Z9=d1; Z24=scratch2;
+  VPANDD        Z28, Z27, Z28             //;C05E8C87 mask data                       ;Z28=d2; Z27=scratch3;
+//; str_to_upper: IN zmm8; OUT zmm23
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (d0>=char_a)              ;K3=tmp_mask; Z8=d0; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (d0<=char_z)              ;K3=tmp_mask; Z8=d0; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z23                  //;ADC21F45 mask with selected chars        ;Z23=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z23 //;1BB96D97                                 ;Z23=scratch1; Z8=d0; Z15=c_0b00100000;
+  VMOVDQA32     Z23, Z8                   //;41954CFC d0 := scratch1                  ;Z8=d0; Z23=scratch1;
+//; str_to_upper: IN zmm9; OUT zmm23
+  VPCMPB        $5,  Z16, Z9,  K3         //;30E9B9FD K3 := (d1>=char_a)              ;K3=tmp_mask; Z9=d1; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z9,  K3,  K3    //;8CE85BA0 K3 &= (d1<=char_z)              ;K3=tmp_mask; Z9=d1; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z23                  //;ADC21F45 mask with selected chars        ;Z23=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z9,  Z23 //;1BB96D97                                 ;Z23=scratch1; Z9=d1; Z15=c_0b00100000;
+  VMOVDQA32     Z23, Z9                   //;60AA018C d1 := scratch1                  ;Z9=d1; Z23=scratch1;
+//; str_to_upper: IN zmm28; OUT zmm23
+  VPCMPB        $5,  Z16, Z28, K3         //;30E9B9FD K3 := (d2>=char_a)              ;K3=tmp_mask; Z28=d2; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z28, K3,  K3    //;8CE85BA0 K3 &= (d2<=char_z)              ;K3=tmp_mask; Z28=d2; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z23                  //;ADC21F45 mask with selected chars        ;Z23=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z28, Z23 //;1BB96D97                                 ;Z23=scratch1; Z28=d2; Z15=c_0b00100000;
+  VMOVDQA32     Z23, Z28                  //;250F442B d2 := scratch1                  ;Z28=d2; Z23=scratch1;
+//; compare n0==d0; n1==d1; n2==d2
+  VPCMPD        $0,  Z8,  Z19, K3         //;F59D634A K3 := (n0==d0)                  ;K3=tmp_mask; Z19=n0; Z8=d0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z20, K4         //;5BC84FD5 K4 := (n1==d1)                  ;K4=scratch1; Z20=n1; Z9=d1; 0=Eq;
+  VPCMPD        $0,  Z28, Z21, K5         //;BA805F48 K5 := (n2==d2)                  ;K5=scratch2; Z21=n2; Z28=d2; 0=Eq;
+  VPBROADCASTD.Z CONSTD_0xFF(),K3,  Z23   //;B7236704                                 ;Z23=cmp_data_n0; K3=tmp_mask;
+  VPORD.BCST    CONSTD_0xFF00(),Z23, K4,  Z23 //;3AA228F8 cmp_data_n0 |= 0xFF00       ;Z23=cmp_data_n0; K4=scratch1;
+  VPORD.BCST    CONSTD_0xFF0000(),Z23, K5,  Z23 //;EDC25033 cmp_data_n0 |= 0xFF0000   ;Z23=cmp_data_n0; K5=scratch2;
+//; compare n2==d0; n0==d1; n1==d2
+  VPCMPD        $0,  Z8,  Z21, K3         //;EC259C0E K3 := (n2==d0)                  ;K3=tmp_mask; Z21=n2; Z8=d0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z19, K4         //;6EA0FF71 K4 := (n0==d1)                  ;K4=scratch1; Z19=n0; Z9=d1; 0=Eq;
+  VPCMPD        $0,  Z28, Z20, K5         //;ED3278D7 K5 := (n1==d2)                  ;K5=scratch2; Z20=n1; Z28=d2; 0=Eq;
+  VPBROADCASTD.Z CONSTD_0xFF(),K3,  Z24   //;3E64095B                                 ;Z24=cmp_data_n1; K3=tmp_mask;
+  VPORD.BCST    CONSTD_0xFF00(),Z24, K4,  Z24 //;426A5388 cmp_data_n1 |= 0xFF00       ;Z24=cmp_data_n1; K4=scratch1;
+  VPORD.BCST    CONSTD_0xFF0000(),Z24, K5,  Z24 //;1D3EFF58 cmp_data_n1 |= 0xFF0000   ;Z24=cmp_data_n1; K5=scratch2;
+//; compare n1==d0; n2==d1; n0==d2
+  VPCMPD        $0,  Z8,  Z20, K3         //;CA1CBCE4 K3 := (n1==d0)                  ;K3=tmp_mask; Z20=n1; Z8=d0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z21, K4         //;708A4A4D K4 := (n2==d1)                  ;K4=scratch1; Z21=n2; Z9=d1; 0=Eq;
+  VPCMPD        $0,  Z28, Z19, K5         //;DD04A561 K5 := (n0==d2)                  ;K5=scratch2; Z19=n0; Z28=d2; 0=Eq;
+  VPBROADCASTD.Z CONSTD_0xFF(),K3,  Z27   //;D23FACC5                                 ;Z27=cmp_data_n2; K3=tmp_mask;
+  VPORD.BCST    CONSTD_0xFF00(),Z27, K4,  Z27 //;32ED237D cmp_data_n2 |= 0xFF00       ;Z27=cmp_data_n2; K4=scratch1;
+  VPORD.BCST    CONSTD_0xFF0000(),Z27, K5,  Z27 //;546209E6 cmp_data_n2 |= 0xFF0000   ;Z27=cmp_data_n2; K5=scratch2;
+  VPBROADCASTD  CONSTD_0xFF(),Z8          //;7C29479C                                 ;Z8=const_0xFF;
+  VPBROADCASTD  CONSTD_3(),Z9             //;DEA52B5E                                 ;Z9=const_3;
+//; fuzzy kernel approx3
+//; Input: Z23 contains bytes n0==d0; n1==d1; n2==d2
+//; Input: Z24 contains bytes n2==d0; n0==d1; n1==d2
+//; Input: Z27 contains bytes n1==d0; n2==d1; n0==d2
+//; Output: advance data Z20; advance needle Z21; edit distance delta Z19
+  VMOVDQA32     Z10, Z20                  //;E7DCCB07 adv_data := 1                   ;Z20=adv_data; Z10=1;
+  VMOVDQA32     Z10, Z21                  //;7768BB01 adv_needle := 1                 ;Z21=adv_needle; Z10=1;
+  VMOVDQA32     Z10, Z19                  //;40606BEF ed_delta := 1                   ;Z19=ed_delta; Z10=1;
+//; eq: 1XXX XXXX XXXX XXXX  (ED 0; advData 1; advNeedle 1)
+  VPANDD        Z8,  Z23, Z26             //;8C306B97 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=const_0xFF;
+  VPCMPD        $0,  Z8,  Z26, K2,  K3    //;FD1DFC40 K3 := K2 & (scratch1==0xFF)     ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z8=const_0xFF; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z19             //;F0260A2E ed_delta := 0                   ;Z19=ed_delta; K3=tmp_mask; Z11=0;
+//; tra: 01XX 1XXX XXXX XXXX  (ED 1; advData 2; advNeedle 2)
+  VPANDD        Z8,  Z23, Z26             //;FC8F0E3A scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K2,  K3    //;BA3128F8 K3 := K2 & (scratch1==0)        ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z24, Z26  //;7D9ADC0D scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z24=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00(),Z26, K3,  K3  //;6DD2E6AD K3 &= (scratch1==0xFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z8,  Z27, Z26             //;78852CB5 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z27=cmp_data_n2; Z8=const_0xFF;
+  VPCMPD        $0,  Z8,  Z26, K3,  K3    //;60E9D580 K3 &= (scratch1==0xFF)          ;K3=tmp_mask; Z26=scratch1; Z8=const_0xFF; 0=Eq;
+  VMOVDQA32     Z29, K3,  Z20             //;C98BAF9D adv_data := 2                   ;Z20=adv_data; K3=tmp_mask; Z29=2;
+  VMOVDQA32     Z29, K3,  Z21             //;45D96F66 adv_needle := 2                 ;Z21=adv_needle; K3=tmp_mask; Z29=2;
+//; del1: 00XX 1XXX X1XX XXXX  (ED 1; advData 0; advNeedle 1)
+  VPANDD        Z8,  Z23, Z26             //;CBA541F4 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K2,  K3    //;1DEBB41F K3 := K2 & (scratch1==0)        ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z24, Z26  //;87F93917 scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z24=cmp_data_n1;
+  VPCMPD        $0,  Z11, Z26, K3,  K3    //;243F3541 K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF(),Z27, Z26  //;824ACC03 scratch1 := cmp_data_n2 & 0xFFFF;Z26=scratch1; Z27=cmp_data_n2;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF(),Z26, K3,  K3  //;2D3F859B K3 &= (scratch1==0xFFFF);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z20             //;E6058826 adv_data := 0                   ;Z20=adv_data; K3=tmp_mask; Z11=0;
+//; del2: 000X 000X 100X XXXX  (ED 1; advData 0; advNeedle 1)
+  VPCMPD        $0,  Z11, Z23, K2,  K3    //;567B926A K3 := K2 & (cmp_data_n0==0)     ;K3=tmp_mask; K2=lane_todo; Z23=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z8,  Z24, K3,  K3    //;5CB727CF K3 &= (cmp_data_n1==0xFF)       ;K3=tmp_mask; Z24=cmp_data_n1; Z8=const_0xFF; 0=Eq;
+  VPCMPD        $0,  Z11, Z27, K3,  K3    //;5BD4C280 K3 &= (cmp_data_n2==0)          ;K3=tmp_mask; Z27=cmp_data_n2; Z11=0; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z20             //;92883CBE adv_data := 0                   ;Z20=adv_data; K3=tmp_mask; Z11=0;
+//; ins1: 01XX 0X1X XXXX XXXX  (ED 1; advData 1; advNeedle 0)
+  VPANDD        Z8,  Z23, Z26             //;BB6C7BCB scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K2,  K3    //;27180A3F K3 := K2 & (scratch1==0)        ;K3=tmp_mask; K2=lane_todo; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF00(),Z24, Z26 //;84C016C5 scratch1 := cmp_data_n1 & 0xFFFF00;Z26=scratch1; Z24=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF00(),Z26, K3,  K3  //;2C49342C K3 &= (scratch1==0xFFFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z8,  Z27, Z26             //;4BDE68D1 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z27=cmp_data_n2; Z8=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K3,  K3    //;87D1798E K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z11=0; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z21             //;8E47AE22 adv_needle := 0                 ;Z21=adv_needle; K3=tmp_mask; Z11=0;
+//; ins2: 001X 000X 000X XXXX  (ED 1; advData 1; advNeedle 0)
+  VPCMPD        $0,  Z11, Z23, K2,  K3    //;60D5DDDB K3 := K2 & (cmp_data_n0==0)     ;K3=tmp_mask; K2=lane_todo; Z23=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z11, Z24, K3,  K3    //;E241E75D K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z24=cmp_data_n1; Z11=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF0000(),Z27, K3,  K3  //;BE4EACF3 K3 &= (cmp_data_n2==0xFF0000);K3=tmp_mask; Z27=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z21             //;8E47AE22 adv_needle := 0                 ;Z21=adv_needle; K3=tmp_mask; Z11=0;
+//; tra+ins: 001X 100X 000X XXXX  (ED 2; advData 3; advNeedle 2)
+  VPCMPD        $0,  Z11, Z23, K2,  K3    //;8435AB4E K3 := K2 & (cmp_data_n0==0)     ;K3=tmp_mask; K2=lane_todo; Z23=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z11, Z24, K3,  K3    //;8435AB4E K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z24=cmp_data_n1; Z11=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00FF(),Z27, K3,  K3  //;2EFB83C8 K3 &= (cmp_data_n2==0xFF00FF);K3=tmp_mask; Z27=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z29, K3,  Z19             //;C2F02B22 ed_delta := 2                   ;Z19=ed_delta; K3=tmp_mask; Z29=2;
+  VPBROADCASTD  CONSTD_3(),K3,  Z20       //;C2F02B22                                 ;Z20=adv_data; K3=tmp_mask;
+  VMOVDQA32     Z29, K3,  Z21             //;424275DF adv_needle := 2                 ;Z21=adv_needle; K3=tmp_mask; Z29=2;
+//; sub1: everything that remains
+//; nothing needs updating
+//; update unicode approx3
+//; update edit distance
+  VPADDD        Z4,  Z19, Z4              //;15747D59 edit_dist += ed_delta           ;Z4=edit_dist; Z19=ed_delta;
+//; advance data
+  VPCMPD        $5,  Z10, Z20, K2,  K3    //;7FC1A433 K3 := K2 & (adv_data>=1)        ;K3=tmp_mask; K2=lane_todo; Z20=adv_data; Z10=1; 5=GreaterEq;
+  VMOVDQA32.Z   Z12, K3,  Z26             //;6428B608 scratch1 := n_bytes_d0          ;Z26=scratch1; K3=tmp_mask; Z12=n_bytes_d0;
+  VPCMPD        $5,  Z29, Z20, K2,  K3    //;4FC83ED2 K3 := K2 & (adv_data>=2)        ;K3=tmp_mask; K2=lane_todo; Z20=adv_data; Z29=2; 5=GreaterEq;
+  VPADDD        Z22, Z26, K3,  Z26        //;BAE14871 scratch1 += n_bytes_d1          ;Z26=scratch1; K3=tmp_mask; Z22=n_bytes_d1;
+  VPCMPD.BCST   $5,  CONSTD_3(),Z20, K2,  K3  //;120E0569 K3 := K2 & (adv_data>=3)    ;K3=tmp_mask; K2=lane_todo; Z20=adv_data; 5=GreaterEq;
+  VPADDD        Z25, Z26, K3,  Z26        //;9BAA69A9 scratch1 += n_bytes_d2          ;Z26=scratch1; K3=tmp_mask; Z25=n_bytes_d2;
+  VPSUBD        Z26, Z3,  K2,  Z3         //;DF7FB44E data_len -= scratch1            ;Z3=data_len; K2=lane_todo; Z26=scratch1;
+  VPADDD        Z26, Z2,  K2,  Z2         //;F81C97B0 data_off += scratch1            ;Z2=data_off; K2=lane_todo; Z26=scratch1;
+//; advance needle
+  VPCMPD        $5,  Z10, Z21, K2,  K3    //;5578190E K3 := K2 & (adv_needle>=1)      ;K3=tmp_mask; K2=lane_todo; Z21=adv_needle; Z10=1; 5=GreaterEq;
+  VPBROADCASTD.Z CONSTD_4(),K3,  Z26      //;EADE5DBA                                 ;Z26=scratch1; K3=tmp_mask;
+  VPCMPD        $5,  Z29, Z21, K2,  K3    //;A814294A K3 := K2 & (adv_needle>=2)      ;K3=tmp_mask; K2=lane_todo; Z21=adv_needle; Z29=2; 5=GreaterEq;
+  VPADDD.BCST   CONSTD_4(),Z26, K3,  Z26  //;B2BE82E2 scratch1 += 4                   ;Z26=scratch1; K3=tmp_mask;
+  VPSUBD        Z21, Z13, K2,  Z13        //;41970AC0 needle_len -= adv_needle        ;Z13=needle_len; K2=lane_todo; Z21=adv_needle;
+  VPADDD        Z26, Z5,  K2,  Z5         //;89331149 needle_off += scratch1          ;Z5=needle_off; K2=lane_todo; Z26=scratch1;
+//; cmp-tail
+//; restrict lanes based on edit distance and threshold
+  VPCMPD        $2,  Z14, Z4,  K2,  K2    //;86F95312 K2 &= (edit_dist<=threshold)    ;K2=lane_todo; Z4=edit_dist; Z14=threshold; 2=LessEq;
+//; test if we have a match
+  VPCMPD        $5,  Z13, Z11, K2,  K3    //;EEF4BAA0 K3 := K2 & (0>=needle_len)      ;K3=tmp_mask; K2=lane_todo; Z11=0; Z13=needle_len; 5=GreaterEq;
+  VPCMPD        $5,  Z3,  Z11, K3,  K3    //;4CCAC6C8 K3 &= (0>=data_len)             ;K3=tmp_mask; Z11=0; Z3=data_len; 5=GreaterEq;
+  KORW          K1,  K3,  K1              //;8FAB61CD lane_active |= tmp_mask         ;K1=lane_active; K3=tmp_mask;
+  KANDNW        K2,  K3,  K2              //;482703BD lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
+  JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcCmpStrFuzzyUnicodeA3
+
+//; #region bcHasSubstrFuzzyA3
+TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameters
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_slice;
+  ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
+//; load from stack-slot: load 16x uint32 into Z14
+  LOADARG1Z(Z27, Z26)
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
+  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
+  VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
+//; restrict lanes to allow fast bail-out
+  VPSUBD        Z14, Z13, Z26             //;10B77777 scratch1 := needle_len - threshold;Z26=scratch1; Z13=needle_len; Z14=threshold;
+  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;F08352A0 K1 &= (scratch1<=data_len)      ;K1=lane_active; Z26=scratch1; Z3=data_len; 2=LessEq;
+  KTESTW        K1,  K1                   //;8BEF97CD ZF := (K1==0); CF := 1          ;K1=lane_active;
+  JZ            next                      //;5FEF8EC0 jump if zero (ZF = 1)           ;
+//; load constants
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VMOVDQU32     CONST_TAIL_INV_MASK(),Z18 //;9653E713 load tail_inv_mask_data         ;Z18=tail_mask_data;
+  VMOVDQU32     FUZZY_ROR_APPROX3(),Z6    //;2CEF25D2 load ror approx3                ;Z6=ror_a3;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VMOVDQU32     FUZZY_ADV_MAP(),Z23       //;19E43B5A load advance data/needle map    ;Z23=adv_map;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPADDD        Z10, Z10, Z12             //;77D6F115 constd_2 := 1 + 1               ;Z12=2; Z10=1;
+  VPADDD        Z10, Z12, Z24             //;C848C1D8 constd_3 := 2 + 1               ;Z24=3; Z12=2; Z10=1;
+//; init variables loop2
+  KMOVW         K1,  K2                   //;FBC36D43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;1607AB46 lane_active := 0                ;K1=lane_active;
+  VMOVDQA32     Z2,  Z19                  //;467EBBBC data_off2 := data_off           ;Z19=data_off2; Z2=data_off;
+  VMOVDQA32     Z3,  Z22                  //;DD42E20B data_len2 := data_len           ;Z22=data_len2; Z3=data_len;
+  VMOVDQA32     Z13, Z7                   //;29B33C21 needle_len2 := needle_len       ;Z7=needle_len2; Z13=needle_len;
+loop2:
+//; init variables loop1
+  VPXORD        Z4,  Z4,  Z4              //;6D778B5D edit_dist := 0                  ;Z4=edit_dist;
+  VPXORD        Z5,  Z5,  Z5              //;B150336A needle_off := 0                 ;Z5=needle_off;
+  KMOVW         K2,  K6                   //;FDBD9EFA lane_todo2 := lane_todo         ;K6=lane_todo2; K2=lane_todo;
+loop1:
+//; load data ascii approx3
+//; clear data
+  VPTERNLOGD    $0b11111111,Z8,  Z8,  Z8  //;F81949DF set 0xFFFFFFFF                  ;Z8=data;
+  VPTERNLOGD    $0b11111111,Z9,  Z9,  Z9  //;9E9BD820 set 0xFFFFFFFF                  ;Z9=needle;
+//; load data and needle
+  VPCMPD        $6,  Z11, Z22, K6,  K4    //;FCFCB494 K4 := K6 & (data_len2>0)        ;K4=scratch1; K6=lane_todo2; Z22=data_len2; Z11=0; 6=Greater;
+  VPCMPD        $6,  Z11, Z13, K6,  K5    //;7C687BDA K5 := K6 & (needle_len>0)       ;K5=scratch2; K6=lane_todo2; Z13=needle_len; Z11=0; 6=Greater;
+  KMOVW         K4,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K4=scratch1;
+  VPGATHERDD    (SI)(Z19*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z19=data_off2;
+  VPGATHERDD    (R14)(Z5*1),K5,  Z9       //;4EAE4300 gather needle                   ;Z9=needle; K5=scratch2; R14=needle_ptr; Z5=needle_off;
+//; remove tail from data
+  VPMINSD       Z22, Z24, Z26             //;D337D11D scratch1 := min(3, data_len2)   ;Z26=scratch1; Z24=3; Z22=data_len2;
+  VPERMD        Z18, Z26, Z26             //;E882D550                                 ;Z26=scratch1; Z18=tail_mask_data;
+  VPORD         Z8,  Z26, K4,  Z8         //;985B667B data |= scratch1                ;Z8=data; K4=scratch1; Z26=scratch1;
+//; str_to_upper: IN zmm8; OUT zmm26
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z26                  //;ADC21F45 mask with selected chars        ;Z26=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z26 //;1BB96D97                                 ;Z26=scratch1; Z8=data; Z15=c_0b00100000;
+  VMOVDQA32     Z26, Z8                   //;13182651 data := scratch1                ;Z8=data; Z26=scratch1;
+//; prepare data
+  VPSHUFB       Z6,  Z9,  Z21             //;9E2DA720                                 ;Z21=cmp_data_n1; Z9=needle; Z6=ror_a3;
+  VPSHUFB       Z6,  Z21, Z29             //;EF2A718F                                 ;Z29=cmp_data_n2; Z21=cmp_data_n1; Z6=ror_a3;
+//; compare data
+  VPCMPB        $0,  Z8,  Z9,  K3         //;B72E9264 K3 := (needle==data)            ;K3=tmp_mask; Z9=needle; Z8=data; 0=Eq;
+  VPCMPB        $0,  Z8,  Z21, K4         //;4D744078 K4 := (cmp_data_n1==data)       ;K4=scratch1; Z21=cmp_data_n1; Z8=data; 0=Eq;
+  VPCMPB        $0,  Z8,  Z29, K5         //;7D453022 K5 := (cmp_data_n2==data)       ;K5=scratch2; Z29=cmp_data_n2; Z8=data; 0=Eq;
+  VPMOVM2B      K3,  Z20                  //;C2D7F8C2                                 ;Z20=cmp_data_n0; K3=tmp_mask;
+  VPMOVM2B      K4,  Z21                  //;5DD7FFD3                                 ;Z21=cmp_data_n1; K4=scratch1;
+  VPMOVM2B      K5,  Z29                  //;F2DFE32E                                 ;Z29=cmp_data_n2; K5=scratch2;
+  VPBROADCASTD  CONSTD_0xFFFFFF(),Z26     //;2B665A72 load constant 0xFFFFFF          ;Z26=scratch1;
+  VPANDD        Z26, Z20, Z20             //;B49E038A cmp_data_n0 &= scratch1         ;Z20=cmp_data_n0; Z26=scratch1;
+  VPANDD        Z26, Z21, Z21             //;AE118220 cmp_data_n1 &= scratch1         ;Z21=cmp_data_n1; Z26=scratch1;
+  VPANDD        Z26, Z29, Z29             //;F05F7247 cmp_data_n2 &= scratch1         ;Z29=cmp_data_n2; Z26=scratch1;
+  VPBROADCASTD  CONSTD_0xFF(),Z27         //;00000000 load constant 0xFF              ;Z27=const_0xFF;
+//; fuzzy kernel approx3
+//; Input: Z20 contains bytes n0==d0; n1==d1; n2==d2
+//; Input: Z21 contains bytes n2==d0; n0==d1; n1==d2
+//; Input: Z29 contains bytes n1==d0; n2==d1; n0==d2
+//; Output: advance data Z8; advance needle Z9; edit distance delta Z28
+  VMOVDQA32     Z10, Z8                   //;E7DCCB07 adv_data := 1                   ;Z8=adv_data; Z10=1;
+  VMOVDQA32     Z10, Z9                   //;7768BB01 adv_needle := 1                 ;Z9=adv_needle; Z10=1;
+  VMOVDQA32     Z10, Z28                  //;40606BEF ed_delta := 1                   ;Z28=ed_delta; Z10=1;
+//; eq: 1XXX XXXX XXXX XXXX  (ED 0; advData 1; advNeedle 1)
+  VPANDD        Z27, Z20, Z26             //;8C306B97 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z27=const_0xFF;
+  VPCMPD        $0,  Z27, Z26, K6,  K3    //;FD1DFC40 K3 := K6 & (scratch1==0xFF)     ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z27=const_0xFF; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z28             //;F0260A2E ed_delta := 0                   ;Z28=ed_delta; K3=tmp_mask; Z11=0;
+//; tra: 01XX 1XXX XXXX XXXX  (ED 1; advData 2; advNeedle 2)
+  VPANDD        Z27, Z20, Z26             //;FC8F0E3A scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z27=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K6,  K3    //;BA3128F8 K3 := K6 & (scratch1==0)        ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z21, Z26  //;7D9ADC0D scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z21=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00(),Z26, K3,  K3  //;6DD2E6AD K3 &= (scratch1==0xFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z27, Z29, Z26             //;78852CB5 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z29=cmp_data_n2; Z27=const_0xFF;
+  VPCMPD        $0,  Z27, Z26, K3,  K3    //;60E9D580 K3 &= (scratch1==0xFF)          ;K3=tmp_mask; Z26=scratch1; Z27=const_0xFF; 0=Eq;
+  VMOVDQA32     Z12, K3,  Z8              //;C98BAF9D adv_data := 2                   ;Z8=adv_data; K3=tmp_mask; Z12=2;
+  VMOVDQA32     Z12, K3,  Z9              //;45D96F66 adv_needle := 2                 ;Z9=adv_needle; K3=tmp_mask; Z12=2;
+//; del1: 00XX 1XXX X1XX XXXX  (ED 1; advData 0; advNeedle 1)
+  VPANDD        Z27, Z20, Z26             //;CBA541F4 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z27=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K6,  K3    //;1DEBB41F K3 := K6 & (scratch1==0)        ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z21, Z26  //;87F93917 scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z21=cmp_data_n1;
+  VPCMPD        $0,  Z11, Z26, K3,  K3    //;243F3541 K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF(),Z29, Z26  //;824ACC03 scratch1 := cmp_data_n2 & 0xFFFF;Z26=scratch1; Z29=cmp_data_n2;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF(),Z26, K3,  K3  //;2D3F859B K3 &= (scratch1==0xFFFF);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z8              //;E6058826 adv_data := 0                   ;Z8=adv_data; K3=tmp_mask; Z11=0;
+//; del2: 000X 000X 100X XXXX  (ED 1; advData 0; advNeedle 1)
+  VPCMPD        $0,  Z11, Z20, K6,  K3    //;567B926A K3 := K6 & (cmp_data_n0==0)     ;K3=tmp_mask; K6=lane_todo2; Z20=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z27, Z21, K3,  K3    //;5CB727CF K3 &= (cmp_data_n1==0xFF)       ;K3=tmp_mask; Z21=cmp_data_n1; Z27=const_0xFF; 0=Eq;
+  VPCMPD        $0,  Z11, Z29, K3,  K3    //;5BD4C280 K3 &= (cmp_data_n2==0)          ;K3=tmp_mask; Z29=cmp_data_n2; Z11=0; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z8              //;92883CBE adv_data := 0                   ;Z8=adv_data; K3=tmp_mask; Z11=0;
+//; ins1: 01XX 0X1X XXXX XXXX  (ED 1; advData 1; advNeedle 0)
+  VPANDD        Z27, Z20, Z26             //;BB6C7BCB scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z20=cmp_data_n0; Z27=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K6,  K3    //;27180A3F K3 := K6 & (scratch1==0)        ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z11=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF00(),Z21, Z26 //;84C016C5 scratch1 := cmp_data_n1 & 0xFFFF00;Z26=scratch1; Z21=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF00(),Z26, K3,  K3  //;2C49342C K3 &= (scratch1==0xFFFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z27, Z29, Z26             //;4BDE68D1 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z29=cmp_data_n2; Z27=const_0xFF;
+  VPCMPD        $0,  Z11, Z26, K3,  K3    //;87D1798E K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z11=0; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z9              //;8E47AE22 adv_needle := 0                 ;Z9=adv_needle; K3=tmp_mask; Z11=0;
+//; ins2: 001X 000X 000X XXXX  (ED 1; advData 1; advNeedle 0)
+  VPCMPD        $0,  Z11, Z20, K6,  K3    //;60D5DDDB K3 := K6 & (cmp_data_n0==0)     ;K3=tmp_mask; K6=lane_todo2; Z20=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z11, Z21, K3,  K3    //;E241E75D K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z21=cmp_data_n1; Z11=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF0000(),Z29, K3,  K3  //;BE4EACF3 K3 &= (cmp_data_n2==0xFF0000);K3=tmp_mask; Z29=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z11, K3,  Z9              //;8E47AE22 adv_needle := 0                 ;Z9=adv_needle; K3=tmp_mask; Z11=0;
+//; tra+ins: 001X 100X 000X XXXX  (ED 2; advData 3; advNeedle 2)
+  VPCMPD        $0,  Z11, Z20, K6,  K3    //;8435AB4E K3 := K6 & (cmp_data_n0==0)     ;K3=tmp_mask; K6=lane_todo2; Z20=cmp_data_n0; Z11=0; 0=Eq;
+  VPCMPD        $0,  Z11, Z21, K3,  K3    //;8435AB4E K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z21=cmp_data_n1; Z11=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00FF(),Z29, K3,  K3  //;2EFB83C8 K3 &= (cmp_data_n2==0xFF00FF);K3=tmp_mask; Z29=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z12, K3,  Z28             //;C2F02B22 ed_delta := 2                   ;Z28=ed_delta; K3=tmp_mask; Z12=2;
+  VPBROADCASTD  CONSTD_3(),K3,  Z8        //;C2F02B22                                 ;Z8=adv_data; K3=tmp_mask;
+  VMOVDQA32     Z12, K3,  Z9              //;424275DF adv_needle := 2                 ;Z9=adv_needle; K3=tmp_mask; Z12=2;
+//; sub1: everything that remains
+//; nothing needs updating
+//; update ascii
+//; update edit distance
+  VPADDD        Z28, Z4,  K6,  Z4         //;F07EA991 edit_dist += ed_delta           ;Z4=edit_dist; K6=lane_todo2; Z28=ed_delta;
+//; advance data
+  VPSUBD        Z8,  Z22, K6,  Z22        //;DF7FB44E data_len2 -= adv_data           ;Z22=data_len2; K6=lane_todo2; Z8=adv_data;
+  VPADDD        Z8,  Z19, K6,  Z19        //;F81C97B0 data_off2 += adv_data           ;Z19=data_off2; K6=lane_todo2; Z8=adv_data;
+//; advance needle
+  VPSUBD        Z9,  Z7,  K6,  Z7         //;41970AC0 needle_len2 -= adv_needle       ;Z7=needle_len2; K6=lane_todo2; Z9=adv_needle;
+  VPADDD        Z9,  Z5,  K6,  Z5         //;254FD5C6 needle_off += adv_needle        ;Z5=needle_off; K6=lane_todo2; Z9=adv_needle;
+//; has-tail
+//; restrict lanes based on edit distance and threshold
+  VPCMPD        $2,  Z14, Z4,  K6,  K6    //;86F95312 K6 &= (edit_dist<=threshold)    ;K6=lane_todo2; Z4=edit_dist; Z14=threshold; 2=LessEq;
+//; test if we have a match
+  VPCMPD        $5,  Z7,  Z11, K6,  K3    //;EEF4BAA0 K3 := K6 & (0>=needle_len2)     ;K3=tmp_mask; K6=lane_todo2; Z11=0; Z7=needle_len2; 5=GreaterEq;
+  KANDNW        K6,  K3,  K6              //;482703BD lane_todo2 &= ~tmp_mask         ;K6=lane_todo2; K3=tmp_mask;
+  KORW          K1,  K3,  K1              //;8FAB61CD lane_active |= tmp_mask         ;K1=lane_active; K3=tmp_mask;
+  KTESTW        K6,  K6                   //;9D3A860D any lanes still todo?           ;K6=lane_todo2;
+  JNZ           loop1                     //;EA12C247 yes, then loop; jump if not zero (ZF = 0);
+
+  KANDNW        K2,  K6,  K2              //;E3BAA7D5 lane_todo &= ~lane_todo2        ;K2=lane_todo; K6=lane_todo2;
+  VPSUBD        Z10, Z3,  K2,  Z3         //;7C100DFB data_len--                      ;Z3=data_len; K2=lane_todo; Z10=1;
+  VPADDD        Z10, Z2,  K2,  Z2         //;397684ED data_off++                      ;Z2=data_off; K2=lane_todo; Z10=1;
+  VPCMPD        $6,  Z11, Z3,  K2,  K2    //;591E80A4 K2 &= (data_len>0)              ;K2=lane_todo; Z3=data_len; Z11=0; 6=Greater;
+//; reset variables for loop2
+  VMOVDQA32     Z3,  Z22                  //;1C31BFD8 data_len2 := data_len           ;Z22=data_len2; Z3=data_len;
+  VMOVDQA32     Z2,  Z19                  //;3B8A334A data_off2 := data_off           ;Z19=data_off2; Z2=data_off;
+  VMOVDQA32     Z13, Z7                   //;8EFD9390 needle_len2 := needle_len       ;Z7=needle_len2; Z13=needle_len;
+  KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
+  JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcHasSubstrFuzzyA3
+
+//; #region bcHasSubstrFuzzyUnicodeA3
+TEXT bcHasSubstrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameters
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_slice;
+  ADDQ          $4,  R14                  //;EE011000 needle_ptr += 4                 ;R14=needle_ptr;
+//; load from stack-slot: load 16x uint32 into Z14
+  LOADARG1Z(Z11, Z26)
+  VPMOVQD       Z11, Y11                  //;17FCB103 truncate uint64 to uint32       ;Z11=scratch2;
+  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
+  VINSERTI64X4  $1,  Y26, Z11, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z11=scratch2; Z26=scratch1;
+//; load constants
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z10  //;B323211A load table_n_bytes_utf8         ;Z10=table_n_bytes_utf8;
+//; init variables loop2
+  KMOVW         K1,  K2                   //;FBC36D43 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;1607AB46 lane_active := 0                ;K1=lane_active;
+  VMOVDQA32     Z2,  Z6                   //;467EBBBC data_off2 := data_off           ;Z6=data_off2; Z2=data_off;
+  VMOVDQA32     Z3,  Z29                  //;DD42E20B data_len2 := data_len           ;Z29=data_len2; Z3=data_len;
+  VMOVDQA32     Z13, Z7                   //;29B33C21 needle_len2 := needle_len       ;Z7=needle_len2; Z13=needle_len;
+loop2:
+//; init variables loop1
+  VPXORD        Z4,  Z4,  Z4              //;6D778B5D edit_dist := 0                  ;Z4=edit_dist;
+  VPXORD        Z5,  Z5,  Z5              //;B150336A needle_off := 0                 ;Z5=needle_off;
+  KMOVW         K2,  K6                   //;FDBD9EFA lane_todo2 := lane_todo         ;K6=lane_todo2; K2=lane_todo;
+loop1:
+  VPBROADCASTD  CONSTD_1(),Z11            //;6F57EE92 load constant 1                 ;Z11=1;
+//; load data unicode approx3
+//; clear data0 and needle0
+  VPTERNLOGD    $0b11111111,Z8,  Z8,  Z8  //;B8E7EDD5 set 0xFFFFFFFF                  ;Z8=d0;
+  VPTERNLOGD    $0b11111111,Z9,  Z9,  Z9  //;A8E35E7F set 0xFFFFFFFF                  ;Z9=d1;
+  VPTERNLOGD    $0b11111111,Z28, Z28, Z28 //;3CB765D7 set 0xFFFFFFFF                  ;Z28=d2;
+//; load data0
+  VPCMPD        $5,  Z11, Z29, K6,  K3    //;FCFCB494 K3 := K6 & (data_len2>=1)       ;K3=tmp_mask; K6=lane_todo2; Z29=data_len2; Z11=1; 5=GreaterEq;
+  VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;E4967C89 gather data0                    ;Z8=d0; K3=tmp_mask; SI=data_ptr; Z6=data_off2;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z8,  Z23             //;FE5F1413 scratch1 := d0>>4               ;Z23=scratch1; Z8=d0;
+  VPERMD        Z10, Z23, Z12             //;68FECBA0 get n_bytes_d0                  ;Z12=n_bytes_d0; Z23=scratch1; Z10=table_n_bytes_utf8;
+//; load data1
+  VPSUBD        Z12, Z29, Z20             //;8BA4E60E data_len_alt := data_len2 - n_bytes_d0;Z20=data_len_alt; Z29=data_len2; Z12=n_bytes_d0;
+  VPCMPD        $5,  Z11, Z20, K6,  K3    //;FCFCB494 K3 := K6 & (data_len_alt>=1)    ;K3=tmp_mask; K6=lane_todo2; Z20=data_len_alt; Z11=1; 5=GreaterEq;
+  VPADDD        Z12, Z6,  K6,  Z19        //;88A5638D data_off_alt := data_off2 + n_bytes_d0;Z19=data_off_alt; K6=lane_todo2; Z6=data_off2; Z12=n_bytes_d0;
+  VPGATHERDD    (SI)(Z19*1),K3,  Z9       //;81256F6A gather data1                    ;Z9=d1; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z9,  Z23             //;FE5F1413 scratch1 := d1>>4               ;Z23=scratch1; Z9=d1;
+  VPERMD        Z10, Z23, Z22             //;68FECBA0 get n_bytes_d1                  ;Z22=n_bytes_d1; Z23=scratch1; Z10=table_n_bytes_utf8;
+//; load data2
+  VPSUBD        Z22, Z20, Z20             //;743C9E50 data_len_alt -= n_bytes_d1      ;Z20=data_len_alt; Z22=n_bytes_d1;
+  VPCMPD        $5,  Z11, Z20, K6,  K3    //;C500A274 K3 := K6 & (data_len_alt>=1)    ;K3=tmp_mask; K6=lane_todo2; Z20=data_len_alt; Z11=1; 5=GreaterEq;
+  VPADDD        Z22, Z19, K6,  Z19        //;3656366C data_off_alt += n_bytes_d1      ;Z19=data_off_alt; K6=lane_todo2; Z22=n_bytes_d1;
+  VPGATHERDD    (SI)(Z19*1),K3,  Z28      //;3640A661 gather data2                    ;Z28=d2; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+//; get number of bytes in code-point
+  VPSRLD        $4,  Z28, Z23             //;FE5F1413 scratch1 := d2>>4               ;Z23=scratch1; Z28=d2;
+  VPERMD        Z10, Z23, Z25             //;68FECBA0 get n_bytes_d2                  ;Z25=n_bytes_d2; Z23=scratch1; Z10=table_n_bytes_utf8;
+//; load needles
+  VPTERNLOGD    $0b11111111,Z19, Z19, Z19 //;9E9BD820 set 0xFFFFFFFF                  ;Z19=n0;
+  VPTERNLOGD    $0b11111111,Z20, Z20, Z20 //;4408EAE3 set 0xFFFFFFFF                  ;Z20=n1;
+  VPTERNLOGD    $0b11111111,Z21, Z21, Z21 //;61F40C30 set 0xFFFFFFFF                  ;Z21=n2;
+  VPCMPD        $5,  Z11, Z7,  K6,  K3    //;7C687BDA K3 := K6 & (needle_len2>=1)     ;K3=tmp_mask; K6=lane_todo2; Z7=needle_len2; Z11=1; 5=GreaterEq;
+  VPCMPD        $6,  Z11, Z7,  K6,  K4    //;E2B17160 K4 := K6 & (needle_len2>1)      ;K4=scratch1; K6=lane_todo2; Z7=needle_len2; Z11=1; 6=Greater;
+  VPCMPD.BCST   $6,  CONSTD_2(),Z7,  K6,  K5  //;62D5A597 K5 := K6 & (needle_len2>2)  ;K5=scratch2; K6=lane_todo2; Z7=needle_len2; 6=Greater;
+  VPGATHERDD    (R14)(Z5*1),K3,  Z19      //;4EAE4300 gather needle0                  ;Z19=n0; K3=tmp_mask; R14=needle_ptr; Z5=needle_off;
+  VPGATHERDD    4(R14)(Z5*1),K4,  Z20     //;7F0BC8AC gather needle1                  ;Z20=n1; K4=scratch1; R14=needle_ptr; Z5=needle_off;
+  VPGATHERDD    8(R14)(Z5*1),K5,  Z21     //;2FC91E09 gather needle2                  ;Z21=n2; K5=scratch2; R14=needle_ptr; Z5=needle_off;
+//; remove tail from data
+  VPERMD        Z18, Z12, Z23             //;83C76A20 get tail_mask (data)            ;Z23=scratch1; Z12=n_bytes_d0; Z18=tail_mask_data;
+  VPERMD        Z18, Z22, Z24             //;46B49FFC get tail_mask (data)            ;Z24=scratch2; Z22=n_bytes_d1; Z18=tail_mask_data;
+  VPERMD        Z18, Z25, Z27             //;38DC4AAA get tail_mask (data)            ;Z27=scratch3; Z25=n_bytes_d2; Z18=tail_mask_data;
+  VPANDD        Z8,  Z23, Z8              //;D1E2261E mask data                       ;Z8=d0; Z23=scratch1;
+  VPANDD        Z9,  Z24, Z9              //;A5CA4DE9 mask data                       ;Z9=d1; Z24=scratch2;
+  VPANDD        Z28, Z27, Z28             //;C05E8C87 mask data                       ;Z28=d2; Z27=scratch3;
+//; str_to_upper: IN zmm8; OUT zmm23
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (d0>=char_a)              ;K3=tmp_mask; Z8=d0; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (d0<=char_z)              ;K3=tmp_mask; Z8=d0; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z23                  //;ADC21F45 mask with selected chars        ;Z23=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z23 //;1BB96D97                                 ;Z23=scratch1; Z8=d0; Z15=c_0b00100000;
+  VMOVDQA32     Z23, Z8                   //;41954CFC d0 := scratch1                  ;Z8=d0; Z23=scratch1;
+//; str_to_upper: IN zmm9; OUT zmm23
+  VPCMPB        $5,  Z16, Z9,  K3         //;30E9B9FD K3 := (d1>=char_a)              ;K3=tmp_mask; Z9=d1; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z9,  K3,  K3    //;8CE85BA0 K3 &= (d1<=char_z)              ;K3=tmp_mask; Z9=d1; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z23                  //;ADC21F45 mask with selected chars        ;Z23=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z9,  Z23 //;1BB96D97                                 ;Z23=scratch1; Z9=d1; Z15=c_0b00100000;
+  VMOVDQA32     Z23, Z9                   //;60AA018C d1 := scratch1                  ;Z9=d1; Z23=scratch1;
+//; str_to_upper: IN zmm28; OUT zmm23
+  VPCMPB        $5,  Z16, Z28, K3         //;30E9B9FD K3 := (d2>=char_a)              ;K3=tmp_mask; Z28=d2; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z28, K3,  K3    //;8CE85BA0 K3 &= (d2<=char_z)              ;K3=tmp_mask; Z28=d2; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z23                  //;ADC21F45 mask with selected chars        ;Z23=scratch1; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z28, Z23 //;1BB96D97                                 ;Z23=scratch1; Z28=d2; Z15=c_0b00100000;
+  VMOVDQA32     Z23, Z28                  //;250F442B d2 := scratch1                  ;Z28=d2; Z23=scratch1;
+//; compare n0==d0; n1==d1; n2==d2
+  VPCMPD        $0,  Z8,  Z19, K3         //;F59D634A K3 := (n0==d0)                  ;K3=tmp_mask; Z19=n0; Z8=d0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z20, K4         //;5BC84FD5 K4 := (n1==d1)                  ;K4=scratch1; Z20=n1; Z9=d1; 0=Eq;
+  VPCMPD        $0,  Z28, Z21, K5         //;BA805F48 K5 := (n2==d2)                  ;K5=scratch2; Z21=n2; Z28=d2; 0=Eq;
+  VPBROADCASTD.Z CONSTD_0xFF(),K3,  Z23   //;B7236704                                 ;Z23=cmp_data_n0; K3=tmp_mask;
+  VPORD.BCST    CONSTD_0xFF00(),Z23, K4,  Z23 //;3AA228F8 cmp_data_n0 |= 0xFF00       ;Z23=cmp_data_n0; K4=scratch1;
+  VPORD.BCST    CONSTD_0xFF0000(),Z23, K5,  Z23 //;EDC25033 cmp_data_n0 |= 0xFF0000   ;Z23=cmp_data_n0; K5=scratch2;
+//; compare n2==d0; n0==d1; n1==d2
+  VPCMPD        $0,  Z8,  Z21, K3         //;EC259C0E K3 := (n2==d0)                  ;K3=tmp_mask; Z21=n2; Z8=d0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z19, K4         //;6EA0FF71 K4 := (n0==d1)                  ;K4=scratch1; Z19=n0; Z9=d1; 0=Eq;
+  VPCMPD        $0,  Z28, Z20, K5         //;ED3278D7 K5 := (n1==d2)                  ;K5=scratch2; Z20=n1; Z28=d2; 0=Eq;
+  VPBROADCASTD.Z CONSTD_0xFF(),K3,  Z24   //;3E64095B                                 ;Z24=cmp_data_n1; K3=tmp_mask;
+  VPORD.BCST    CONSTD_0xFF00(),Z24, K4,  Z24 //;426A5388 cmp_data_n1 |= 0xFF00       ;Z24=cmp_data_n1; K4=scratch1;
+  VPORD.BCST    CONSTD_0xFF0000(),Z24, K5,  Z24 //;1D3EFF58 cmp_data_n1 |= 0xFF0000   ;Z24=cmp_data_n1; K5=scratch2;
+//; compare n1==d0; n2==d1; n0==d2
+  VPCMPD        $0,  Z8,  Z20, K3         //;CA1CBCE4 K3 := (n1==d0)                  ;K3=tmp_mask; Z20=n1; Z8=d0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z21, K4         //;708A4A4D K4 := (n2==d1)                  ;K4=scratch1; Z21=n2; Z9=d1; 0=Eq;
+  VPCMPD        $0,  Z28, Z19, K5         //;DD04A561 K5 := (n0==d2)                  ;K5=scratch2; Z19=n0; Z28=d2; 0=Eq;
+  VPBROADCASTD.Z CONSTD_0xFF(),K3,  Z27   //;D23FACC5                                 ;Z27=cmp_data_n2; K3=tmp_mask;
+  VPORD.BCST    CONSTD_0xFF00(),Z27, K4,  Z27 //;32ED237D cmp_data_n2 |= 0xFF00       ;Z27=cmp_data_n2; K4=scratch1;
+  VPORD.BCST    CONSTD_0xFF0000(),Z27, K5,  Z27 //;546209E6 cmp_data_n2 |= 0xFF0000   ;Z27=cmp_data_n2; K5=scratch2;
+  VPBROADCASTD  CONSTD_0xFF(),Z8          //;7C29479C                                 ;Z8=0xFF;
+  VPXORD        Z9,  Z9,  Z9              //;81C90120 load constant 0                 ;Z9=0;
+  VPADDD        Z11, Z11, Z28             //;77D6F115 constd_2 := 1 + 1               ;Z28=2; Z11=1;
+//; fuzzy kernel approx3
+//; Input: Z23 contains bytes n0==d0; n1==d1; n2==d2
+//; Input: Z24 contains bytes n2==d0; n0==d1; n1==d2
+//; Input: Z27 contains bytes n1==d0; n2==d1; n0==d2
+//; Output: advance data Z20; advance needle Z21; edit distance delta Z19
+  VMOVDQA32     Z11, Z20                  //;E7DCCB07 adv_data := 1                   ;Z20=adv_data; Z11=1;
+  VMOVDQA32     Z11, Z21                  //;7768BB01 adv_needle := 1                 ;Z21=adv_needle; Z11=1;
+  VMOVDQA32     Z11, Z19                  //;40606BEF ed_delta := 1                   ;Z19=ed_delta; Z11=1;
+//; eq: 1XXX XXXX XXXX XXXX  (ED 0; advData 1; advNeedle 1)
+  VPANDD        Z8,  Z23, Z26             //;8C306B97 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=0xFF;
+  VPCMPD        $0,  Z8,  Z26, K6,  K3    //;FD1DFC40 K3 := K6 & (scratch1==0xFF)     ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z8=0xFF; 0=Eq;
+  VMOVDQA32     Z9,  K3,  Z19             //;F0260A2E ed_delta := 0                   ;Z19=ed_delta; K3=tmp_mask; Z9=0;
+//; tra: 01XX 1XXX XXXX XXXX  (ED 1; advData 2; advNeedle 2)
+  VPANDD        Z8,  Z23, Z26             //;FC8F0E3A scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=0xFF;
+  VPCMPD        $0,  Z9,  Z26, K6,  K3    //;BA3128F8 K3 := K6 & (scratch1==0)        ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z9=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z24, Z26  //;7D9ADC0D scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z24=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00(),Z26, K3,  K3  //;6DD2E6AD K3 &= (scratch1==0xFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z8,  Z27, Z26             //;78852CB5 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z27=cmp_data_n2; Z8=0xFF;
+  VPCMPD        $0,  Z8,  Z26, K3,  K3    //;60E9D580 K3 &= (scratch1==0xFF)          ;K3=tmp_mask; Z26=scratch1; Z8=0xFF; 0=Eq;
+  VMOVDQA32     Z28, K3,  Z20             //;C98BAF9D adv_data := 2                   ;Z20=adv_data; K3=tmp_mask; Z28=2;
+  VMOVDQA32     Z28, K3,  Z21             //;45D96F66 adv_needle := 2                 ;Z21=adv_needle; K3=tmp_mask; Z28=2;
+//; del1: 00XX 1XXX X1XX XXXX  (ED 1; advData 0; advNeedle 1)
+  VPANDD        Z8,  Z23, Z26             //;CBA541F4 scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=0xFF;
+  VPCMPD        $0,  Z9,  Z26, K6,  K3    //;1DEBB41F K3 := K6 & (scratch1==0)        ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z9=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFF00(),Z24, Z26  //;87F93917 scratch1 := cmp_data_n1 & 0xFF00;Z26=scratch1; Z24=cmp_data_n1;
+  VPCMPD        $0,  Z9,  Z26, K3,  K3    //;243F3541 K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z9=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF(),Z27, Z26  //;824ACC03 scratch1 := cmp_data_n2 & 0xFFFF;Z26=scratch1; Z27=cmp_data_n2;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF(),Z26, K3,  K3  //;2D3F859B K3 &= (scratch1==0xFFFF);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VMOVDQA32     Z9,  K3,  Z20             //;E6058826 adv_data := 0                   ;Z20=adv_data; K3=tmp_mask; Z9=0;
+//; del2: 000X 000X 100X XXXX  (ED 1; advData 0; advNeedle 1)
+  VPCMPD        $0,  Z9,  Z23, K6,  K3    //;567B926A K3 := K6 & (cmp_data_n0==0)     ;K3=tmp_mask; K6=lane_todo2; Z23=cmp_data_n0; Z9=0; 0=Eq;
+  VPCMPD        $0,  Z8,  Z24, K3,  K3    //;5CB727CF K3 &= (cmp_data_n1==0xFF)       ;K3=tmp_mask; Z24=cmp_data_n1; Z8=0xFF; 0=Eq;
+  VPCMPD        $0,  Z9,  Z27, K3,  K3    //;5BD4C280 K3 &= (cmp_data_n2==0)          ;K3=tmp_mask; Z27=cmp_data_n2; Z9=0; 0=Eq;
+  VMOVDQA32     Z9,  K3,  Z20             //;92883CBE adv_data := 0                   ;Z20=adv_data; K3=tmp_mask; Z9=0;
+//; ins1: 01XX 0X1X XXXX XXXX  (ED 1; advData 1; advNeedle 0)
+  VPANDD        Z8,  Z23, Z26             //;BB6C7BCB scratch1 := cmp_data_n0 & 0xFF  ;Z26=scratch1; Z23=cmp_data_n0; Z8=0xFF;
+  VPCMPD        $0,  Z9,  Z26, K6,  K3    //;27180A3F K3 := K6 & (scratch1==0)        ;K3=tmp_mask; K6=lane_todo2; Z26=scratch1; Z9=0; 0=Eq;
+  VPANDD.BCST   CONSTD_0xFFFF00(),Z24, Z26 //;84C016C5 scratch1 := cmp_data_n1 & 0xFFFF00;Z26=scratch1; Z24=cmp_data_n1;
+  VPCMPD.BCST   $0,  CONSTD_0xFFFF00(),Z26, K3,  K3  //;2C49342C K3 &= (scratch1==0xFFFF00);K3=tmp_mask; Z26=scratch1; 0=Eq;
+  VPANDD        Z8,  Z27, Z26             //;4BDE68D1 scratch1 := cmp_data_n2 & 0xFF  ;Z26=scratch1; Z27=cmp_data_n2; Z8=0xFF;
+  VPCMPD        $0,  Z9,  Z26, K3,  K3    //;87D1798E K3 &= (scratch1==0)             ;K3=tmp_mask; Z26=scratch1; Z9=0; 0=Eq;
+  VMOVDQA32     Z9,  K3,  Z21             //;8E47AE22 adv_needle := 0                 ;Z21=adv_needle; K3=tmp_mask; Z9=0;
+//; ins2: 001X 000X 000X XXXX  (ED 1; advData 1; advNeedle 0)
+  VPCMPD        $0,  Z9,  Z23, K6,  K3    //;60D5DDDB K3 := K6 & (cmp_data_n0==0)     ;K3=tmp_mask; K6=lane_todo2; Z23=cmp_data_n0; Z9=0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z24, K3,  K3    //;E241E75D K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z24=cmp_data_n1; Z9=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF0000(),Z27, K3,  K3  //;BE4EACF3 K3 &= (cmp_data_n2==0xFF0000);K3=tmp_mask; Z27=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z9,  K3,  Z21             //;8E47AE22 adv_needle := 0                 ;Z21=adv_needle; K3=tmp_mask; Z9=0;
+//; tra+ins: 001X 100X 000X XXXX  (ED 2; advData 3; advNeedle 2)
+  VPCMPD        $0,  Z9,  Z23, K6,  K3    //;8435AB4E K3 := K6 & (cmp_data_n0==0)     ;K3=tmp_mask; K6=lane_todo2; Z23=cmp_data_n0; Z9=0; 0=Eq;
+  VPCMPD        $0,  Z9,  Z24, K3,  K3    //;8435AB4E K3 &= (cmp_data_n1==0)          ;K3=tmp_mask; Z24=cmp_data_n1; Z9=0; 0=Eq;
+  VPCMPD.BCST   $0,  CONSTD_0xFF00FF(),Z27, K3,  K3  //;2EFB83C8 K3 &= (cmp_data_n2==0xFF00FF);K3=tmp_mask; Z27=cmp_data_n2; 0=Eq;
+  VMOVDQA32     Z28, K3,  Z19             //;C2F02B22 ed_delta := 2                   ;Z19=ed_delta; K3=tmp_mask; Z28=2;
+  VPBROADCASTD  CONSTD_3(),K3,  Z20       //;C2F02B22                                 ;Z20=adv_data; K3=tmp_mask;
+  VMOVDQA32     Z28, K3,  Z21             //;424275DF adv_needle := 2                 ;Z21=adv_needle; K3=tmp_mask; Z28=2;
+//; sub1: everything that remains
+//; nothing needs updating
+//; update unicode approx3
+//; update edit distance
+  VPADDD        Z4,  Z19, Z4              //;15747D59 edit_dist += ed_delta           ;Z4=edit_dist; Z19=ed_delta;
+//; advance data
+  VPCMPD        $5,  Z11, Z20, K6,  K3    //;7FC1A433 K3 := K6 & (adv_data>=1)        ;K3=tmp_mask; K6=lane_todo2; Z20=adv_data; Z11=1; 5=GreaterEq;
+  VMOVDQA32.Z   Z12, K3,  Z26             //;6428B608 scratch1 := n_bytes_d0          ;Z26=scratch1; K3=tmp_mask; Z12=n_bytes_d0;
+  VPCMPD        $5,  Z28, Z20, K6,  K3    //;4FC83ED2 K3 := K6 & (adv_data>=2)        ;K3=tmp_mask; K6=lane_todo2; Z20=adv_data; Z28=2; 5=GreaterEq;
+  VPADDD        Z22, Z26, K3,  Z26        //;BAE14871 scratch1 += n_bytes_d1          ;Z26=scratch1; K3=tmp_mask; Z22=n_bytes_d1;
+  VPCMPD.BCST   $5,  CONSTD_3(),Z20, K6,  K3  //;120E0569 K3 := K6 & (adv_data>=3)    ;K3=tmp_mask; K6=lane_todo2; Z20=adv_data; 5=GreaterEq;
+  VPADDD        Z25, Z26, K3,  Z26        //;9BAA69A9 scratch1 += n_bytes_d2          ;Z26=scratch1; K3=tmp_mask; Z25=n_bytes_d2;
+  VPSUBD        Z26, Z29, K6,  Z29        //;DF7FB44E data_len2 -= scratch1           ;Z29=data_len2; K6=lane_todo2; Z26=scratch1;
+  VPADDD        Z26, Z6,  K6,  Z6         //;F81C97B0 data_off2 += scratch1           ;Z6=data_off2; K6=lane_todo2; Z26=scratch1;
+//; advance needle
+  VPCMPD        $5,  Z11, Z21, K6,  K3    //;5578190E K3 := K6 & (adv_needle>=1)      ;K3=tmp_mask; K6=lane_todo2; Z21=adv_needle; Z11=1; 5=GreaterEq;
+  VPBROADCASTD.Z CONSTD_4(),K3,  Z26      //;EADE5DBA                                 ;Z26=scratch1; K3=tmp_mask;
+  VPCMPD        $5,  Z28, Z21, K6,  K3    //;A814294A K3 := K6 & (adv_needle>=2)      ;K3=tmp_mask; K6=lane_todo2; Z21=adv_needle; Z28=2; 5=GreaterEq;
+  VPADDD.BCST   CONSTD_4(),Z26, K3,  Z26  //;B2BE82E2 scratch1 += 4                   ;Z26=scratch1; K3=tmp_mask;
+  VPSUBD        Z21, Z7,  K6,  Z7         //;41970AC0 needle_len2 -= adv_needle       ;Z7=needle_len2; K6=lane_todo2; Z21=adv_needle;
+  VPADDD        Z26, Z5,  K6,  Z5         //;89331149 needle_off += scratch1          ;Z5=needle_off; K6=lane_todo2; Z26=scratch1;
+//; has-tail
+//; restrict lanes based on edit distance and threshold
+  VPCMPD        $2,  Z14, Z4,  K6,  K6    //;86F95312 K6 &= (edit_dist<=threshold)    ;K6=lane_todo2; Z4=edit_dist; Z14=threshold; 2=LessEq;
+//; test if we have a match
+  VPCMPD        $5,  Z7,  Z9,  K6,  K3    //;EEF4BAA0 K3 := K6 & (0>=needle_len2)     ;K3=tmp_mask; K6=lane_todo2; Z9=0; Z7=needle_len2; 5=GreaterEq;
+  KANDNW        K6,  K3,  K6              //;482703BD lane_todo2 &= ~tmp_mask         ;K6=lane_todo2; K3=tmp_mask;
+  KORW          K1,  K3,  K1              //;8FAB61CD lane_active |= tmp_mask         ;K1=lane_active; K3=tmp_mask;
+  KTESTW        K6,  K6                   //;9D3A860D any lanes still todo?           ;K6=lane_todo2;
+  JNZ           loop1                     //;EA12C247 yes, then loop; jump if not zero (ZF = 0);
+
+  KANDNW        K2,  K6,  K2              //;E3BAA7D5 lane_todo &= ~lane_todo2        ;K2=lane_todo; K6=lane_todo2;
+  VPSUBD        Z11, Z3,  K2,  Z3         //;7C100DFB data_len--                      ;Z3=data_len; K2=lane_todo; Z11=1;
+  VPADDD        Z11, Z2,  K2,  Z2         //;397684ED data_off++                      ;Z2=data_off; K2=lane_todo; Z11=1;
+  VPCMPD        $6,  Z9,  Z3,  K2,  K2    //;591E80A4 K2 &= (data_len>0)              ;K2=lane_todo; Z3=data_len; Z9=0; 6=Greater;
+//; reset variables for loop2
+  VMOVDQA32     Z3,  Z29                  //;1C31BFD8 data_len2 := data_len           ;Z29=data_len2; Z3=data_len;
+  VMOVDQA32     Z2,  Z6                   //;3B8A334A data_off2 := data_off           ;Z6=data_off2; Z2=data_off;
+  VMOVDQA32     Z13, Z7                   //;8EFD9390 needle_len2 := needle_len       ;Z7=needle_len2; Z13=needle_len;
+  KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
+  JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcHasSubstrFuzzyUnicodeA3
+
 //; #region bcSkip1charLeft
 //; skip the first UTF-8 codepoint in Z2:Z3
 TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0

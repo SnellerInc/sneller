@@ -436,10 +436,25 @@ CONST_DATA_U64(constpool, 704, $0x8080808080808080)
 #define CONSTQ_0xC0C0C0C0C0C0C0C0() CONST_GET_PTR(constpool, 712)
 CONST_DATA_U64(constpool, 712, $0xC0C0C0C0C0C0C0C0)
 
+#define CONSTD_0xFFFFFF00() CONST_GET_PTR(constpool, 720)
+CONST_DATA_U32(constpool, 720, $0xFFFFFF00)
+
+#define CONSTD_0xFF0000() CONST_GET_PTR(constpool, 724)
+CONST_DATA_U32(constpool, 724, $0xFF0000)
+
+#define CONSTD_0xFF00() CONST_GET_PTR(constpool, 728)
+CONST_DATA_U32(constpool, 728, $0xFF00)
+
+#define CONSTD_0xFFFF00() CONST_GET_PTR(constpool, 732)
+CONST_DATA_U32(constpool, 732, $0xFFFF00)
+
+#define CONSTD_0xFF00FF() CONST_GET_PTR(constpool, 736)
+CONST_DATA_U32(constpool, 736, $0xFF00FF)
+
 // Integer Division Reciprocals
 // ----------------------------
 
-#define CONSTPOOL_RECIPROCALS_INDEX 720
+#define CONSTPOOL_RECIPROCALS_INDEX 740
 
 // Unsigned 32-bit division by 25: (Value * 1374389535) >> 35.
 // Unsigned 32-bit division by 50: (Value * 1374389535) >> 36.
@@ -658,6 +673,36 @@ CONST_DATA_U64(c_2lane_shift, 48, $8)
 CONST_DATA_U64(c_2lane_shift, 56, $9)
 CONST_GLOBAL(c_2lane_shift, $64)
 
+#define FUZZY_ADV_MAP() CONST_GET_PTR(fuzzy_adv_map, 0)
+CONST_DATA_U32(fuzzy_adv_map, 0*4, $0x0101) // substitution: adv_data=1; adv_needle=1
+CONST_DATA_U32(fuzzy_adv_map, 1*4, $0x0102) // deletion: adv_data=1; adv_needle=2
+CONST_DATA_U32(fuzzy_adv_map, 2*4, $0x0201) // insertion: adv_data=2; adv_needle=1
+CONST_DATA_U32(fuzzy_adv_map, 3*4, $0x0202) // transposition: adv_data=2; adv_needle=2
+CONST_DATA_U32(fuzzy_adv_map, 4*4, $0x0101) // equality: adv_data=1; adv_needle=1
+CONST_DATA_U32(fuzzy_adv_map, 5*4, $0x0101) // equality: adv_data=1; adv_needle=1
+CONST_DATA_U32(fuzzy_adv_map, 6*4, $0x0101) // equality: adv_data=1; adv_needle=1
+CONST_DATA_U32(fuzzy_adv_map, 7*4, $0x0101) // equality: adv_data=1; adv_needle=1
+CONST_GLOBAL(fuzzy_adv_map, $32)
+
+#define FUZZY_ROR_APPROX3() CONST_GET_PTR(fuzzy_ror_approx3, 0)
+CONST_DATA_U32(fuzzy_ror_approx3,  0, $0x03010002)
+CONST_DATA_U32(fuzzy_ror_approx3,  4, $0x07050406)
+CONST_DATA_U32(fuzzy_ror_approx3,  8, $0x0B09080A)
+CONST_DATA_U32(fuzzy_ror_approx3, 12, $0x0F0D0C0E)
+CONST_DATA_U32(fuzzy_ror_approx3, 16, $0x03010002)
+CONST_DATA_U32(fuzzy_ror_approx3, 20, $0x07050406)
+CONST_DATA_U32(fuzzy_ror_approx3, 24, $0x0B09080A)
+CONST_DATA_U32(fuzzy_ror_approx3, 28, $0x0F0D0C0E)
+CONST_DATA_U32(fuzzy_ror_approx3, 32, $0x03010002)
+CONST_DATA_U32(fuzzy_ror_approx3, 36, $0x07050406)
+CONST_DATA_U32(fuzzy_ror_approx3, 40, $0x0B09080A)
+CONST_DATA_U32(fuzzy_ror_approx3, 44, $0x0F0D0C0E)
+CONST_DATA_U32(fuzzy_ror_approx3, 48, $0x03010002)
+CONST_DATA_U32(fuzzy_ror_approx3, 52, $0x07050406)
+CONST_DATA_U32(fuzzy_ror_approx3, 56, $0x0B09080A)
+CONST_DATA_U32(fuzzy_ror_approx3, 60, $0x0F0D0C0E)
+CONST_GLOBAL(fuzzy_ror_approx3, $64)
+
 // const for VPERMD to select the tail mask for the remaining bytes with the following code:
 // VBROADCASTI64X2 CONST_TAIL_MASK(), Z9
 // VPERMD        Z9, Z6, Z9   ; Z6 contains remaining number of bytes [0-3]; after: Z9 contains the tail mask
@@ -679,6 +724,25 @@ CONST_DATA_U32(tail_mask_map, 52, $0xFFFFFFFF)
 CONST_DATA_U32(tail_mask_map, 56, $0xFFFFFFFF)
 CONST_DATA_U32(tail_mask_map, 60, $0xFFFFFFFF)
 CONST_GLOBAL(tail_mask_map, $64)
+
+#define CONST_TAIL_INV_MASK() CONST_GET_PTR(tail_mask_inv_map, 0)
+CONST_DATA_U32(tail_mask_inv_map, 0, $0xFFFFFFFF)
+CONST_DATA_U32(tail_mask_inv_map, 4, $0xFFFFFF00)
+CONST_DATA_U32(tail_mask_inv_map, 8, $0xFFFF0000)
+CONST_DATA_U32(tail_mask_inv_map, 12, $0xFF000000)
+CONST_DATA_U32(tail_mask_inv_map, 16, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 20, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 24, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 28, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 32, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 36, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 40, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 44, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 48, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 52, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 56, $0x00000000)
+CONST_DATA_U32(tail_mask_inv_map, 60, $0x00000000)
+CONST_GLOBAL(tail_mask_inv_map, $64)
 
 #define CONST_N_BYTES_UTF8() CONST_GET_PTR(n_bytes_utf8, 0)
 CONST_DATA_U32(n_bytes_utf8, 0, $1)

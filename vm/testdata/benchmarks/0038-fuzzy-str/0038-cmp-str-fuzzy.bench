@@ -1,0 +1,3 @@
+# go test -bench BenchmarkTestQueries/0038-cmp-str-fuzzy
+SELECT name FROM 'data.jsonrl'
+WHERE EQUALS_FUZZY(name, 'Nicole Kidman', 2)

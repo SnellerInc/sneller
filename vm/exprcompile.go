@@ -759,6 +759,22 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		return p.EqualStr(lhs, rhs, false), nil
 
+	case expr.EqualsFuzzy, expr.EqualsFuzzyUnicode:
+		val, err := compileargs(p, args, compileString, literalString, compileNumber)
+		if err != nil {
+			return nil, err
+		}
+		ascii := fn == expr.EqualsFuzzy
+		return p.EqualsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
+
+	case expr.ContainsFuzzy, expr.ContainsFuzzyUnicode:
+		val, err := compileargs(p, args, compileString, literalString, compileNumber)
+		if err != nil {
+			return nil, err
+		}
+		ascii := fn == expr.ContainsFuzzy
+		return p.ContainsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
+
 	case expr.IsSubnetOf:
 		v, err := compileargs(p, args, literalString, literalString, compileString)
 		if err != nil {

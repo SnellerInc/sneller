@@ -1488,6 +1488,114 @@ IS_SUBNET_OF('128.1.2.3/24', '128.1.3.0') -> FALSE
 *Known limitation: the `start` and `end` strings in the three-argument form
 and the `cidr` string in the two-argument form must be constant strings.*
 
+#### `EQUALS_FUZZY`, `EQUALS_FUZZY_UNICODE`
+Fuzzy String Matching using
+[Damerau-Levenshtein distance](https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance)
+calculation. The `EQUALS_FUZZY`
+function determines whether a data string equals a provided string literal
+if the data string can be transformed into the string literal with less or equal number
+of edits. Stated differently, the distance between the data and the string literal
+is the minimal number of edits, and if the number of edits does not exceed a
+threshold, the two strings have a *fuzzy match*.
+The Damerau–Levenshtein distance consideres insertions, deletions, substitutions of
+single characters, or transpositions of two adjacent characters.
+The unicode variant `EQUALS_FUZZY_UNICODE` treats strings as UTF8 strings, the
+regular variant `EQUALS_FUZZY` treats strings as byte sequences. Substitutions of
+equal characters but with different casing have an edit distance of zero.
+
+Examples:
+```sql
+-- string literal 'cache' is treated a byte sequence
+EQUALS_FUZZY('Cash', 'cache', 1) -> FALSE
+EQUALS_FUZZY('Cash', 'cache', 2) -> TRUE
+EQUALS_FUZZY('Cash', 'cache', 3) -> TRUE
+
+-- string literal 'Straße' is treated a unicode sequence
+EQUALS_FUZZY_UNICODE('strasse', 'Straße', 1) -> FALSE
+EQUALS_FUZZY_UNICODE('strasse', 'Straße', 2) -> TRUE
+
+-- string literal 'Straße' is treated a byte sequence
+EQUALS_FUZZY('strasse', 'Straße', 1) -> FALSE
+EQUALS_FUZZY('strasse', 'Straße', 2) -> TRUE
+```
+
+The calculated *edit distance* between the two strings is an *estimation* of the
+Damerau–Levenshtein distance. This estimation gives the `EQUALS_FUZZY` a complexity comparable
+to a case-insensitive string compare. The following pseudocode illustrates how the
+estimation is obtained. Two strings (`DATA`, `NEEDLE`) are compared from left to right
+two bytes (or unicodes) at the time.
+While comparing, the number of edits is accumulated, and once this number exceed a
+provided threshold, the function yields false. The first two characters `D0`, and `D1` from `DATA`,
+and the first two characters `N0` and `N0` from `NEEDLE` are compared in the following fashion.
+If either data or needle does not have 1 or 2 characters, take surrogate values `0xFF`, or
+`0xFFFFFFFF` for the unicode variant.
+
+```
+-- estimate Damerau–Levenshtein distance
+WHILE (DATA not empty) OR (NEEDLE not empty) DO
+    D0 := DATA[0]
+    N0 := NEEDLE[0]
+
+    // the first characters match
+    IF (D0 == N0) THEN
+        "do not increment edit distance"
+        "advance DATA 1 character"
+    ELSE
+        "increment edit distance with one"
+        D1 := DATA[1]
+        N1 := NEEDLE[1]
+
+        // character is substituted in data
+        IF (D1 != N0) && (D0 != N1) THEN
+            "advance DATA 1 character"
+        ENDIF
+
+        // character is deleted in data
+        IF (D1 != N0) && (D0 == N1) THEN
+            "advance DATA 0 characters"
+        ENDIF
+
+        // character is inserted in data
+        IF (D1 == N0) && (D0 != N1) THEN ""
+            "advance DATA 2 characters"
+        ENDIF
+
+        // characters are transposed in data
+        IF (D1 == N0) && (D0 == N1) THEN
+            "advance DATA 2 characters"
+            "place D0 back into DATA"
+        ENDIF
+    ENDIF
+    "advance NEEDLE 1 character"
+ENDDO
+```
+
+This method calculates either the true Damerau–Levenshtein distance or the method overestimates.
+The estimation is the result of the two character horizon: the method
+cannot look beyond these two characters, and cannot foresee which edit to choose such that the
+*smallest* edit distance is found. In the following example the above method chooses a transposition
+and this would give an edit distance of 2, while a deletion at position 0 gives a smaller edit distance
+of 1. A seven character horizon would have been needed to foresee that, in this specific situation,
+a deletion should be preferred over a transposition.
+```go
+-- example of an overestimation of distance 2 while true Damerau–Levenshtein is 1
+data:   "baaaaaa"
+needle: "abaaaaaa"
+```
+
+#### `CONTAINS_FUZZY`, `CONTAINS_FUZZY_UNICODE`
+
+The `CONTAINS_FUZZY` function is similar to the `EQUALS_FUZZY` function.
+Instead of determining whether a string *equals* a provided string literal
+with less (or equal) number of edits, `CONTAINS_FUZZY` determines whether
+a string *contains* a provided string literal with less (or equal) number of
+edits. The complexity is comparable to a case-insensitive string contains function.
+
+```sql
+CONTAINS_FUZZY('The quick brown foks jums over the lazy dog', 'Fox Jumps', 3) -> TRUE
+```
+
+
 #### `CAST`
 
 `CAST` allows to convert an arbitrary expression into

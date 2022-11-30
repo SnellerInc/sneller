@@ -23,7 +23,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
@@ -144,10 +143,14 @@ const (
 	slowerstr
 	supperstr
 
-	// #region raw string comparison
-	sStrCmpEqCs     // Ascii string compare equality case-sensitive
-	sStrCmpEqCi     // Ascii string compare equality case-insensitive
-	sStrCmpEqUTF8Ci // UTF-8 string compare equality case-insensitive
+	// raw string comparison
+	sStrCmpEqCs              // Ascii string compare equality case-sensitive
+	sStrCmpEqCi              // Ascii string compare equality case-insensitive
+	sStrCmpEqUTF8Ci          // UTF-8 string compare equality case-insensitive
+	sCmpFuzzyA3              // Ascii string fuzzy equality: Damerau–Levenshtein up to provided number of operations
+	sCmpFuzzyUnicodeA3       // unicode string fuzzy equality: Damerau–Levenshtein up to provided number of operations
+	sHasSubstrFuzzyA3        // Ascii string contains with fuzzy string compare
+	sHasSubstrFuzzyUnicodeA3 // unicode string contains with fuzzy string compare
 
 	sStrTrimCharLeft  // String trim specific chars left
 	sStrTrimCharRight // String trim specific chars right
@@ -770,13 +773,16 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr},
 	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
 
-	//#region string operations
 	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opslower)},
 	supperstr: {text: "upper.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opsupper)},
 
-	sStrCmpEqCs:     {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
-	sStrCmpEqCi:     {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
-	sStrCmpEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
+	sStrCmpEqCs:              {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
+	sStrCmpEqCi:              {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
+	sStrCmpEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
+	sCmpFuzzyA3:              {text: "cmp_str_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyA3, emit: emitStrEditStack1x1},
+	sCmpFuzzyUnicodeA3:       {text: "cmp_str_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
+	sHasSubstrFuzzyA3:        {text: "has_substr_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyA3, emit: emitStrEditStack1x1},
+	sHasSubstrFuzzyUnicodeA3: {text: "has_substr_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
 
 	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsLeft},
 	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsRight},
@@ -2057,13 +2063,10 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 		}
 		rightStr, _ := right.imm.(string)
 		if stringext.HasNtnString(rightStr) {
-			if !utf8.ValidString(rightStr) {
-				return p.Constant(false)
-			}
 			rightExt := p.Constant(stringext.GenNeedleExt(rightStr, false))
 			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, rightExt.imm)
 		}
-		right = p.Constant(stringext.NormalizeStringASCIIOnly(rightStr))
+		right = p.Constant(stringext.NormalizeStringASCIIOnlyString(rightStr))
 		return p.ssa2imm(sStrCmpEqCi, left, left, right.imm)
 	}
 	v := p.val()
@@ -2475,9 +2478,6 @@ func (p *prog) HasPrefix(str *value, prefix string, caseSensitive bool) *value {
 	}
 	prefix = stringext.NormalizeString(prefix)
 	if stringext.HasNtnString(prefix) {
-		if !utf8.ValidString(prefix) {
-			return p.Constant(false)
-		}
 		prefixExt := p.Constant(stringext.GenNeedleExt(prefix, false))
 		return p.ssa2imm(sStrContainsPrefixUTF8Ci, str, p.mask(str), prefixExt.imm)
 	}
@@ -2495,9 +2495,6 @@ func (p *prog) HasSuffix(str *value, suffix string, caseSensitive bool) *value {
 	}
 	suffix = stringext.NormalizeString(suffix)
 	if stringext.HasNtnString(suffix) {
-		if !utf8.ValidString(suffix) {
-			return p.Constant(false)
-		}
 		suffixExt := p.Constant(stringext.GenNeedleExt(suffix, true))
 		return p.ssa2imm(sStrContainsSuffixUTF8Ci, str, p.mask(str), suffixExt.imm)
 	}
@@ -2521,9 +2518,6 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 		return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), p.Constant(enc).imm)
 	}
 	if stringext.HasNtnString(needle) {
-		if !utf8.ValidString(needle) {
-			return p.Constant(false)
-		}
 		enc := stringext.GenPatternExt([]string{needle}) // only one single segment
 		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), p.Constant(enc).imm)
 	}
@@ -2809,6 +2803,36 @@ func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 		return p.ssa2imm(sDfaLZ, str, p.mask(str), p.Constant(string(dsLarge.Data())).imm), nil
 	}
 	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
+}
+
+// EqualsFuzzy does a fuzzy string equality of 'str' as a string against needle.
+// Equality is computed with Damerau–Levenshtein distance estimation based on three
+// character horizon. If the disance exceeds the provided threshold, the match is
+// rejected; that is, str and needle are considered unequal.
+func (p *prog) EqualsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+	thresholdInt, thresholdMask := p.coerceInt(threshold)
+	mask := p.And(str, thresholdMask)
+	if ascii {
+		needleEnc := p.Constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
+		return p.ssa3imm(sCmpFuzzyA3, str, thresholdInt, mask, needleEnc)
+	}
+	needleEnc := p.Constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
+	return p.ssa3imm(sCmpFuzzyUnicodeA3, str, thresholdInt, mask, needleEnc)
+}
+
+// ContainsFuzzy does a fuzzy string contains of needle in 'str'.
+// Equality is computed with Damerau–Levenshtein distance estimation based on three
+// character horizon. If the disance exceeds the provided threshold, the match is
+// rejected; that is, str and needle are considered unequal.
+func (p *prog) ContainsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+	thresholdInt, thresholdMask := p.coerceInt(threshold)
+	mask := p.And(str, thresholdMask)
+	if ascii {
+		needleEnc := p.Constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
+		return p.ssa3imm(sHasSubstrFuzzyA3, str, thresholdInt, mask, needleEnc)
+	}
+	needleEnc := p.Constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
+	return p.ssa3imm(sHasSubstrFuzzyUnicodeA3, str, thresholdInt, mask, needleEnc)
 }
 
 type compareOp uint8
