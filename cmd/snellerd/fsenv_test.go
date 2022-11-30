@@ -301,7 +301,7 @@ func TestQueryError(t *testing.T) {
 	defer res.Body.Close()
 	buf, _ := io.ReadAll(res.Body)
 	// query should begin successfully:
-	if res.StatusCode != 200 {
+	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status code %d %s", res.StatusCode, buf)
 	}
 	var st ion.Symtab
@@ -400,7 +400,7 @@ func TestSimpleFS(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.StatusCode != 200 {
+		if res.StatusCode != http.StatusOK {
 			t.Fatalf("get /databases: %s", res.Status)
 		}
 		var dbs []database
@@ -423,7 +423,7 @@ func TestSimpleFS(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.StatusCode != 200 {
+		if res.StatusCode != http.StatusOK {
 			t.Fatalf("get tables: %s", res.Status)
 		}
 		var tables []string
@@ -445,7 +445,7 @@ func TestSimpleFS(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.StatusCode != 200 {
+		if res.StatusCode != http.StatusOK {
 			t.Fatalf("get index contents: %s", res.Status)
 		}
 		var ret struct {
@@ -526,6 +526,7 @@ func TestSimpleFS(t *testing.T) {
 		output    string // exact output, or regular expression
 		partial   bool   // expect only a partial scan
 		rx        bool   // use regular expression
+		status    int    // if non-zero, expected HTTP status code
 	}{
 		// get coverage of both empty db and default db
 		{input: "SELECT COUNT(*) FROM default.parking", output: `{"count": 1023}`},
@@ -584,6 +585,9 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking2'", output: `{"count": 1023}`},
 		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'parking3'", output: `{"count": 60}`},
 		{input: "SELECT COUNT(*) from default.combined WHERE dataset = 'nyc-taxi'", output: `{"count": 8560}`},
+		// Note: 'default1' is not a valid path, an indexer returns error during
+		//       parsing the FROM part.
+		{input: "SELECT * FROM default1.taxi", status: http.StatusNotFound},
 	}
 	var subwg sync.WaitGroup
 	subwg.Add(len(queries))
@@ -602,9 +606,18 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 				if err != nil {
 					t.Fatal(err)
 				}
-				if res.StatusCode != http.StatusOK {
-					t.Fatalf("status %s", res.Status)
+				want := http.StatusOK
+				if q.status != 0 {
+					want = q.status
 				}
+				if res.StatusCode != want {
+					t.Fatalf("got status code %d; wanted %d", res.StatusCode, want)
+				}
+				if res.StatusCode != http.StatusOK {
+					// don't perform any more checks, query failed
+					return
+				}
+
 				var buf, body bytes.Buffer
 				_, err = ion.ToJSON(&buf, bufio.NewReader(io.TeeReader(res.Body, &body)))
 				res.Body.Close()

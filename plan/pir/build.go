@@ -73,13 +73,12 @@ func (b *Trace) walkFrom(f expr.From, e Env) error {
 func (b *Trace) walkFromTable(f *expr.Table, e Env) error {
 	switch s := f.Expr.(type) {
 	case *expr.Select:
-		b.walkSelect(s, e)
 		// TODO: if any subsequent expressions
 		// refer to a binding created by
 		//   FROM (SELECT ...) AS x,
 		// we should strip 'x.' from those
 		// bindings...
-		return nil
+		return b.walkSelect(s, e)
 	case *expr.Unpivot:
 		return b.buildUnpivot(s, e)
 	default:
