@@ -74,8 +74,9 @@ func repeat(prefix string, suffixes ...string) []string {
 type rule struct {
 	rules.Rule
 
-	op   ssaop
-	args []rules.Term
+	op     ssaop
+	opname string
+	args   []rules.Term
 }
 
 var tempvar int
@@ -471,7 +472,7 @@ func casematch(lst []rule, vname string) {
 			}
 			narg = -1
 			cur = lst[i].op
-			fmt.Fprintf(stdout, "case %d: /* %[1]s */\n", lst[i].op)
+			fmt.Fprintf(stdout, "case %s: /* %s */\n", lst[i].opname, lst[i].op)
 		}
 		argc := len(lst[i].args)
 		if ssainfo[cur].immfmt != 0 {
@@ -520,7 +521,7 @@ func writeRules(lst []rule) {
 	fmt.Fprintf(stdout, "}\n") // close function
 }
 
-func GenrewriteMain(dst io.Writer, infiles []string) {
+func GenrewriteMain(dst io.Writer, opnames []string, infiles []string) {
 	stdout = dst
 	var all []rule
 	for i := range infiles {
@@ -535,10 +536,19 @@ func GenrewriteMain(dst io.Writer, infiles []string) {
 		lst = expandRules(lst)
 		for i := range lst {
 			op, args := splitFirst(&lst[i])
+
+			k := int(op)
+			var opname string
+			if k >= 0 && k < len(opnames) {
+				opname = opnames[k]
+			} else {
+				opname = fmt.Sprintf("%d", k)
+			}
 			all = append(all, rule{
-				Rule: lst[i],
-				op:   op,
-				args: args,
+				Rule:   lst[i],
+				op:     op,
+				opname: opname,
+				args:   args,
 			})
 		}
 		f.Close()

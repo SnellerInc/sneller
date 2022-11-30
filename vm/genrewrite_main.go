@@ -17,10 +17,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"strings"
 
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -36,6 +39,9 @@ func init() {
 
 func main() {
 	flag.Parse()
+
+	opnames := readopnames("ssa.go")
+
 	stdout = os.Stdout
 	if ofile != "" && ofile != "-" {
 		f, err := os.Create(ofile)
@@ -46,5 +52,50 @@ func main() {
 		stdout = f
 		defer f.Close()
 	}
-	vm.GenrewriteMain(stdout, flag.Args())
+	vm.GenrewriteMain(stdout, opnames, flag.Args())
+}
+
+func readopnames(fname string) []string {
+	var result []string
+
+	f, err := os.Open(fname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	const (
+		firstName = "sinvalid"
+		lastName  = "_ssamax"
+	)
+
+	s := bufio.NewScanner(f)
+	collecting := false
+	for s.Scan() {
+		fields := strings.SplitN(strings.TrimSpace(s.Text()), " ", 2)
+		name := fields[0]
+		if len(name) == 0 || name[0] != 's' {
+			continue
+		}
+
+		if collecting {
+			if name == lastName {
+				break
+			}
+		} else {
+			if name == firstName {
+				collecting = true
+			} else {
+				continue
+			}
+		}
+
+		result = append(result, name)
+	}
+
+	if err := s.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	return result
 }
