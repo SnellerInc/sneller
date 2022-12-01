@@ -282,12 +282,11 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateOpApproxCountDistinct:
+		case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial:
 			n := aggregateOps[i].dataSize()
 			aggApproxCountDistinctUpdateBuckets(n, dst, src)
 			dst = dst[n:]
 			src = src[n:]
-
 		default:
 			panic(fmt.Sprintf("unuspported operation %s", aggregateOps[i].fn))
 		}

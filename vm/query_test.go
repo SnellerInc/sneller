@@ -188,19 +188,61 @@ type queryenv struct {
 	in []plan.TableHandle
 }
 
-func (e *queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
+func (e *queryenv) handle(t expr.Node) (plan.TableHandle, bool) {
 	p, ok := t.(*expr.Path)
 	if !ok || p.Rest != nil {
-		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
+		return nil, false
 	}
 	if p.First == "input" && len(e.in) == 1 {
-		return e.in[0], nil
+		return e.in[0], true
 	}
 	var i int
 	if n, _ := fmt.Sscanf(p.First, "input%d", &i); n > 0 && i >= 0 && i < len(e.in) {
-		return e.in[i], nil
+		return e.in[i], true
 	}
-	return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(p))
+	return nil, false
+}
+
+// Stat implements plan.Env.Stat
+func (e *queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
+	handle, ok := e.handle(t)
+	if !ok {
+		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
+	}
+	return handle, nil
+}
+
+// Split implements plan.Splitter.Split
+func (e *queryenv) Split(t expr.Node, th plan.TableHandle) (plan.Subtables, error) {
+	// if the input has been split into multiple pieces,
+	// use those as the split components
+	var multi [][]byte
+	switch t := th.(type) {
+	case parallelchunks:
+		multi = [][]byte(t)
+	case chunkshandle:
+		multi = [][]byte(t)
+	default:
+	}
+	if multi != nil {
+		sl := make(plan.SubtableList, len(multi))
+		for i := range multi {
+			sl[i] = plan.Subtable{
+				Transport: &plan.LocalTransport{},
+				Table: &expr.Table{
+					Binding: expr.Bind(t, fmt.Sprintf("part-%d", i)),
+				},
+				Handle: bufhandle(multi[i]),
+			}
+		}
+	}
+	return plan.SubtableList{{
+		Transport: &plan.LocalTransport{},
+		Table: &expr.Table{
+			Binding: expr.Bind(t, "local-copy"),
+		},
+		Handle: th,
+	}}, nil
 }
 
 var _ plan.TableLister = (*queryenv)(nil)
@@ -389,22 +431,31 @@ func shuffled(st *ion.Symtab) *ion.Symtab {
 	return ret
 }
 
+type runflags int
+
+const (
+	flagParallel    = 1 << iota // run in parallel
+	flagResymbolize             // resymbolize
+	flagShuffle                 // shuffle symbol table
+	flagSplit                   // use a split plan
+)
+
 // run a query on the given input table and yield the output list
-func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbolize bool, shuffleSymtab bool, parallel bool) []ion.Datum {
+func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags runflags) []ion.Datum {
 	input := make([]plan.TableHandle, len(in))
 	maxp := 0
 	for i, in := range in {
-		if resymbolize && len(in) > 1 {
+		if (flags&flagResymbolize) != 0 && len(in) > 1 {
 			half := len(in) / 2
 			first := flatten(in[:half], st)
 
 			var second []byte
-			if shuffleSymtab {
+			if flags&flagShuffle != 0 {
 				second = flatten(in[half:], shuffled(st))
 			} else {
 				second = flatten(in[half:], st)
 			}
-			if parallel {
+			if flags&flagParallel != 0 {
 				maxp = 2
 				input[i] = parallelchunks{first, second}
 			} else {
@@ -415,7 +466,13 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, resymbol
 		}
 	}
 	env := &queryenv{in: input}
-	tree, err := plan.New(q, env)
+	var tree *plan.Tree
+	var err error
+	if flags&flagSplit != 0 {
+		tree, err = plan.NewSplit(q, env, env)
+	} else {
+		tree, err = plan.New(q, env)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -610,19 +667,57 @@ func toJSON(st *ion.Symtab, d ion.Datum) string {
 	return sb.String()
 }
 
+// BUG(phil): some queries get different results
+// when split versus unsplit when AVG is present;
+// this needs to be investigated futher
+func canSplit(t *testing.T, query []byte) bool {
+	q, err := partiql.Parse(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range q.Body.(*expr.Select).Columns {
+		if a, ok := b.Expr.(*expr.Aggregate); ok && a.Op == expr.OpAvg {
+			return false
+		}
+	}
+	return true
+}
+
 func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out []ion.Datum) {
 	var done bool
-	for i := 0; i < shufflecount; i++ {
-		t.Run(fmt.Sprintf("shuffle-%d", i), func(t *testing.T) {
+	splitok := canSplit(t, query)
+	for i := 0; i < shufflecount*2; i++ {
+		name := fmt.Sprintf("shuffle-%d", i)
+		split := false
+		if i >= shufflecount {
+			if !splitok {
+				break
+			}
+			split = true
+			name = fmt.Sprintf("shuffle-split-%d", i)
+		}
+		t.Run(name, func(t *testing.T) {
 			st.Reset()
 			q, err := partiql.Parse(query)
 			if err != nil {
 				t.Fatal(err)
 			}
+			flags := runflags(0)
 			// if the outputs are input-order-independent,
 			// then we can test the query with parallel inputs:
-			parallel := i > 0 && len(out) <= 1 || !shuffleOutput(q)
-			gotout := run(t, q, in, st, i > 0, shuffleSymtab(q), parallel)
+			if i > 0 && len(out) <= 1 || !shuffleOutput(q) {
+				flags |= flagParallel
+			}
+			if shuffleSymtab(q) {
+				flags |= flagShuffle
+			}
+			if i > 0 {
+				flags |= flagResymbolize
+			}
+			if split {
+				flags |= flagSplit
+			}
+			gotout := run(t, q, in, st, flags)
 			st.Reset()
 			fixup(gotout, st)
 			fixup(out, st)
