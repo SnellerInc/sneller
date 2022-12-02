@@ -240,12 +240,24 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			case expr.OpAvg:
 				a.Agg[i].Expr.Op = expr.OpSum
 				count := gensym(1, i)
-				a.Agg = append(a.Agg, vm.AggBinding{Expr: expr.Count(numberOrMissing(a.Agg[i].Expr.Inner)), Result: count})
+				countagg := expr.Count(numberOrMissing(a.Agg[i].Expr.Inner))
+				if filter := a.Agg[i].Expr.Filter; filter != nil {
+					countagg.Filter = expr.Copy(filter)
+				}
+				a.Agg = append(a.Agg, vm.AggBinding{Expr: countagg, Result: count})
 
-				// insert 'sumvar / countvar AS sumvar' into output projection
+				// insert
+				// CASE count IS NOT NULL THEN sum / count ELSE NULL
 				sumid := expr.Identifier(a.Agg[i].Result)
 				countid := expr.Identifier(count)
-				bind.bind = append(bind.bind, expr.Bind(expr.Div(sumid, countid), a.Agg[i].Result))
+				result := &expr.Case{
+					Limbs: []expr.CaseLimb{{
+						When: expr.Compare(expr.Equals, countid, expr.Integer(0)),
+						Then: expr.Null{},
+					}},
+					Else: expr.Div(sumid, countid),
+				}
+				bind.bind = append(bind.bind, expr.Bind(result, a.Agg[i].Result))
 			}
 		}
 

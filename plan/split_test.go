@@ -90,7 +90,7 @@ func TestSplit(t *testing.T) {
 				`AGGREGATE SUM(n) AS $_2_0, COUNT(n + 0) AS $_2_1`,
 				`UNION MAP table ["table-part1" "table-part2"]`,
 				`AGGREGATE SUM($_2_0) AS "avg", SUM_COUNT($_2_1) AS $_1_0`,
-				`PROJECT "avg" / $_1_0 AS "avg"`,
+				`PROJECT CASE WHEN $_1_0 = 0 THEN NULL ELSE "avg" / $_1_0 END AS "avg"`,
 			},
 		},
 		{
@@ -109,7 +109,7 @@ func TestSplit(t *testing.T) {
 				`AGGREGATE SUM(x) AS $_2_0, MAX(y) AS $_2_1, APPROX_COUNT_DISTINCT_PARTIAL(z) AS $_2_2, COUNT(x + 0) AS $_2_3`,
 				`UNION MAP table ["table-part1" "table-part2"]`,
 				`AGGREGATE SUM($_2_0) AS "avg", MAX($_2_1) AS "max", APPROX_COUNT_DISTINCT_MERGE($_2_2) AS "count", SUM_COUNT($_2_3) AS $_1_0`,
-				`PROJECT "avg" / $_1_0 AS "avg", "max" AS "max", "count" AS "count"`,
+				`PROJECT CASE WHEN $_1_0 = 0 THEN NULL ELSE "avg" / $_1_0 END AS "avg", "max" AS "max", "count" AS "count"`,
 			},
 		},
 	}
