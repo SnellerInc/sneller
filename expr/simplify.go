@@ -383,7 +383,7 @@ func isSubstringSearchPattern(str string) (term string, ok bool) {
 	const wildcard = "%"
 	if strings.HasPrefix(str, wildcard) && strings.HasSuffix(str, wildcard) {
 		keyword := strings.TrimPrefix(strings.TrimSuffix(str, wildcard), wildcard)
-		if !strings.ContainsAny(keyword, "_") {
+		if !strings.ContainsAny(keyword, "_"+wildcard) {
 			return keyword, true
 		}
 	}
