@@ -1201,6 +1201,19 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"PROJECT $_0_0 AS grp, $_0_1 AS sumx, CASE WHEN $_1_1 = 0 THEN NULL ELSE $_0_2 / $_1_1 END AS avgx, $_0_1 + 1 AS sum2",
 			},
 		},
+		{
+			input: "SELECT sneller_datashape(*) FROM table",
+			expect: []string{
+				"ITERATE table FIELDS *",
+				"AGGREGATE SNELLER_DATASHAPE(*) AS datashape",
+			},
+			split: []string{
+				"UNION MAP table (",
+				"	ITERATE PART table FIELDS *",
+				"	AGGREGATE SNELLER_DATASHAPE(*) AS $_2_0)",
+				"AGGREGATE SNELLER_DATASHAPE_MERGE($_2_0) AS datashape",
+			},
+		},
 	}
 
 	for i := range tests {

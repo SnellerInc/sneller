@@ -1,0 +1,5 @@
+SELECT sneller_datashape(*) FROM input
+---
+{"list": ["string", 1.0, false, {"x": 1, "y": 2}]}
+---
+{"total": 1, "fields": {"list": {"list": 1}, "list.$items": {"bool": 1, "int": 1, "int-min-value": 1, "int-max-value": 1, "string": 1, "string-min-length": 6, "string-max-length": 6, "struct": 1}, "list.$items.x": {"int": 1, "int-min-value": 1, "int-max-value": 1}, "list.$items.y": {"int": 1, "int-min-value": 2, "int-max-value": 2}}}

@@ -19,7 +19,7 @@ import (
 	"io"
 )
 
-// Graphviz dumps the plan 'p'
+// Graphviz dumps the plan 't'
 // to 'dst' as dot(1)-compatible text.
 func Graphviz(t *Tree, dst io.Writer) error {
 	_, err := io.WriteString(dst, "digraph plan {\n")

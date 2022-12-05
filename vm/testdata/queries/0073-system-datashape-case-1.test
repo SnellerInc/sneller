@@ -1,0 +1,7 @@
+SELECT sneller_datashape(*) FROM input
+---
+{"x": "foo",    "y": {"bar": 1.0, "baz": true}}
+{"x": "xy",     "y": {"bar": 5.0, "baz": false}}
+{"x": "foobar", "y": {"bar": 3.5}}
+---
+{"total": 3, "fields": {"y": {"struct": 3}, "y.baz": {"bool": 2}, "y.bar": {"int": 2, "int-min-value": 1, "int-max-value": 5, "float": 1, "float-min-value": 3.5, "float-max-value": 3.5}, "x": {"string": 3, "string-min-length": 2, "string-max-length": 6}}}

@@ -293,11 +293,15 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 				Op:        expr.OpApproxCountDistinctMerge,
 				Precision: age.Precision,
 				Inner:     innerref}
+		case expr.OpSystemDatashape:
+			newagg = &expr.Aggregate{
+				Op:    expr.OpSystemDatashapeMerge,
+				Inner: innerref}
 		}
 
 		if newagg == nil {
 			// should have already been compiled away
-			return errorf(age, "cannot split %s", expr.ToString(age))
+			return errorf(age, "cannot split aggregate %s", expr.ToString(age))
 		}
 
 		out = append(out, vm.AggBinding{Expr: newagg, Result: result})

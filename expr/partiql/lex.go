@@ -269,7 +269,7 @@ func (s *scanner) lexIdent(l *yySymType) int {
 			}
 			return term
 		}
-		aggop := aggterms.get(s.from[startpos:s.pos])
+		aggop := lookupAggregate(s.from[startpos:s.pos])
 		if aggop != -1 {
 			l.integer = aggop
 			return AGGREGATE
@@ -497,8 +497,14 @@ func toAggregate(op expr.AggregateOp, body expr.Node, distinct bool, filter expr
 		}
 	}
 
-	if !op.AcceptStar() && expr.Equal(body, exprstar) {
-		return nil, fmt.Errorf("cannot use * with %v", op)
+	if expr.Equal(body, exprstar) {
+		if !op.AcceptStar() {
+			return nil, fmt.Errorf("cannot use * with %v", op)
+		}
+	} else {
+		if !op.AcceptExpression() {
+			return nil, fmt.Errorf("%v accepts only *", op)
+		}
 	}
 
 	return &expr.Aggregate{Op: op, Inner: body, Over: over, Filter: filter}, nil

@@ -299,6 +299,37 @@ func (s *SimpleAggregate) String() string {
 }
 
 func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+	var sysagg expr.AggregateOp
+	system := 0
+	regular := 0
+	for i := range s.Outputs {
+		switch op := s.Outputs[i].Expr.Op; op {
+		case expr.OpSystemDatashape, expr.OpSystemDatashapeMerge:
+			sysagg = op
+			system += 1
+		default:
+			regular += 1
+		}
+	}
+
+	if system > 0 {
+		if regular > 0 {
+			return -1, nil, fmt.Errorf("mixing system and regular aggregates is not supported")
+		}
+
+		if system > 1 {
+			return -1, nil, fmt.Errorf("using more than one system aggregate is not supported")
+		}
+
+		switch sysagg {
+		case expr.OpSystemDatashape:
+			return s.From.wrap(vm.NewSystemDatashape(dst), ep)
+
+		case expr.OpSystemDatashapeMerge:
+			return s.From.wrap(vm.NewSystemDatashapeMerge(dst), ep)
+		}
+	}
+
 	a, err := vm.NewAggregate(s.Outputs, dst)
 	if err != nil {
 		return 0, nil, err

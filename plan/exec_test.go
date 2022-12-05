@@ -1313,6 +1313,12 @@ where Make in (
 				"EXPLAIN QUERY",
 			},
 		},
+		{
+			query: `SELECT sneller_datashape(*) FROM 'parking.10n'`,
+			expectedRows: []string{
+				`{"total": 1023, "fields": {"ViolationCode": {"string": 1023, "string-min-length": 3, "string-max-length": 8}, "Longitude": {"int": 1023, "int-min-value": 99999, "int-max-value": 99999}, "Fine": {"int": 1012, "int-min-value": 25, "int-max-value": 363}, "ViolationDescr": {"string": 1023, "string-min-length": 4, "string-max-length": 20}, "Agency": {"int": 1023, "int-min-value": 1, "int-max-value": 57}, "PlateExpiry": {"int": 956, "int-min-value": 1, "int-max-value": 201905}, "BodyStyle": {"string": 1015, "string-min-length": 2, "string-max-length": 2}, "Ticket": {"int": 1023, "int-min-value": 1103341116, "int-max-value": 4272473892}, "Location": {"string": 1022, "string-min-length": 7, "string-max-length": 31}, "Color": {"string": 1016, "string-min-length": 2, "string-max-length": 2}, "MeterId": {"string": 125, "string-min-length": 2, "string-max-length": 7}, "Route": {"string": 1001, "string-min-length": 2, "string-max-length": 5}, "IssueData": {"timestamp": 1023}, "MarkedTime": {"string": 7, "string-min-length": 4, "string-max-length": 4}, "Latitude": {"int": 1023, "int-min-value": 99999, "int-max-value": 99999}, "Make": {"string": 1019, "string-min-length": 2, "string-max-length": 4}, "RPState": {"string": 1023, "string-min-length": 2, "string-max-length": 2}, "IssueTime": {"int": 1022, "int-min-value": 18, "int-max-value": 2355}}}`,
+			},
+		},
 	}
 
 	for i := range tcs {

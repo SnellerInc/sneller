@@ -99,6 +99,10 @@ func iscountstar(a vm.Aggregation) bool {
 	}
 
 	agg := a[0]
+	if agg.Expr.Op != expr.OpCount {
+		return false
+	}
+
 	if agg.Expr.Filter != nil {
 		return false
 	}

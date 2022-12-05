@@ -264,3 +264,16 @@ func lookupKeyword(buf []byte) int {
 
 	return term
 }
+
+var datashapeagg = []byte("SNELLER_DATASHAPE")
+
+func lookupAggregate(buf []byte) int {
+	term := aggterms.get(buf)
+	if term == -1 {
+		if equalsci(buf, datashapeagg) {
+			return int(expr.OpSystemDatashape)
+		}
+	}
+
+	return term
+}

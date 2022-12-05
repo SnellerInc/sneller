@@ -723,6 +723,14 @@ func UnpackStruct(st *Symtab, body []byte, fn func(string, []byte) error) (rest 
 	if body == nil {
 		return rest, fmt.Errorf("invalid struct encoding")
 	}
+	_, err = UnpackStructBody(st, body, fn)
+	return rest, err
+}
+
+// UnpackStructBody calls fn for each field in a struct, assuming
+// that `body` is an already extracted record content, without
+// an Ion header (the TLV byte and object size).
+func UnpackStructBody(st *Symtab, body []byte, fn func(string, []byte) error) (rest []byte, err error) {
 	var sym Symbol
 	for len(body) > 0 {
 		sym, body, err = ReadLabel(body)

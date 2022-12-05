@@ -665,6 +665,100 @@ The result for sample data:
 
 ```
 
+#### `SNELLER_DATASHAPE`
+
+`SNELLER_DATASHAPE(*)` is an aggregate that collects unique
+fields present in a query and gathers their data types
+(see also the `TYPE_BIT` function).
+
+The function returns a structure having the following fields:
+
+* `total` - the total number of rows fetched from the table;
+* `fields` - dictionary of fully qualified paths associated with
+  type names; each type has the number of fields having given type;
+* `error` (optional) - error message when the number of fields
+  is greater than the limit (10,000).
+
+Example:
+
+```sql
+SELECT sneller_datashape(*) FROM employees
+```
+
+The result might be like this:
+
+```json
+{
+    "total": 1000
+    "fields": {
+        "name": {
+            "string": 1000,
+            "string-min-length": 3,
+            "string-max-length": 15
+        },
+        "surname": {
+            "string": 1000,
+            "string-min-length": 5,
+            "string-max-length": 41
+        },
+        "contract": {
+            "bool": 1000
+        },
+        "age": {
+            "int": 900,
+            "int-min-value": 21,
+            "int-max-value": 69,
+            "null": 100,
+        }
+        "address": {
+            "string": 51,
+            "string-min-length": 24,
+            "string-max-length": 119,
+            "struct":  624
+        }
+        "address.street" {
+            "string": 624
+        }
+        "address.number" {
+            "int": 473,
+            "null": 96,
+            "string": 55
+        }
+        "address.postcode" {
+            "string": 591,
+            "null": 89
+        }
+    }
+}
+```
+
+There are following type names:
+
+* `null`,
+* `bool`,
+* `int`,
+* `float`,
+* `decimal`,
+* `timestamp`,
+* `string`,
+* `list`,
+* `struct`,
+* `sexp`,
+* `clob`,
+* `blob`,
+* `annotation`.
+
+For `string` types there are also available min and max string lengths (keys
+"string-min-length" and "string-max-length"). For `int` and `float` there are
+available min and max values (keys "int-min-value", "int-max-value",
+"float-min-value" and "float-max-value").
+
+For `list` field, there's an artifical child "$items" that presents
+a union of all values found in the given list.
+
+**Current limitations**: the `SNELLER_DATASHAPE` aggregate can be the
+only one present in a query. Mixing it with other aggregates is not supported.
+
 
 ### Filtered aggregates
 

@@ -167,6 +167,14 @@ const (
 	// intermediate data and yields the final integer value
 	OpApproxCountDistinctMerge
 
+	// Describes SNELLER_DATASHAPE aggregate
+	OpSystemDatashape
+
+	// Describes SNELLER_DATASHAPE_MERGE aggregate, that
+	// merges the results from multiple SNELLER_DATASHAPE
+	// aggregates.
+	OpSystemDatashapeMerge
+
 	maxAggregateOp
 )
 
@@ -188,6 +196,8 @@ func (a AggregateOp) defaultResult() string {
 		return "min"
 	case OpMax, OpLatest:
 		return "max"
+	case OpSystemDatashape:
+		return "datashape"
 	default:
 		return ""
 	}
@@ -231,6 +241,10 @@ func (a AggregateOp) String() string {
 		return "APPROX_COUNT_DISTINCT_PARTIAL"
 	case OpApproxCountDistinctMerge:
 		return "APPROX_COUNT_DISTINCT_MERGE"
+	case OpSystemDatashape:
+		return "SNELLER_DATASHAPE"
+	case OpSystemDatashapeMerge:
+		return "SNELLER_DATASHAPE_MERGE"
 	default:
 		return "none"
 	}
@@ -240,7 +254,7 @@ func (a AggregateOp) private() bool {
 	switch a {
 	case OpCount, OpSum, OpAvg, OpMin, OpMax, OpEarliest, OpLatest,
 		OpBitAnd, OpBitOr, OpBitXor, OpBoolAnd, OpBoolOr,
-		OpApproxCountDistinct:
+		OpApproxCountDistinct, OpSystemDatashape:
 		return false
 	}
 
@@ -259,7 +273,17 @@ func (a AggregateOp) AcceptDistinct() bool {
 
 // AcceptStar returns true if the aggregate can be used with '*'.
 func (a AggregateOp) AcceptStar() bool {
-	return a == OpCount
+	switch a {
+	case OpCount, OpSystemDatashape:
+		return true
+	}
+
+	return false
+}
+
+// AcceptExpression returns true if the aggregate can be used with an arbitrary expression.
+func (a AggregateOp) AcceptExpression() bool {
+	return a != OpSystemDatashape
 }
 
 // Aggregate is an aggregation expression
@@ -484,6 +508,8 @@ func (a *Aggregate) typeof(h Hint) TypeSet {
 		return TypeOf(a.Inner, h)
 	case OpLatest, OpEarliest:
 		return TimeType | NullType
+	case OpSystemDatashape:
+		return StructType
 	default:
 		return NumericType | NullType
 	}
@@ -1289,6 +1315,35 @@ const (
 	RegexpMatchCi // ~* <literal> case-insensitive regex match
 )
 
+func (c CmpOp) String() string {
+	switch c {
+	case Equals:
+		return "="
+	case NotEquals:
+		return "<>"
+	case Less:
+		return "<"
+	case LessEquals:
+		return "<="
+	case Greater:
+		return ">"
+	case GreaterEquals:
+		return ">="
+	case Like:
+		return "LIKE"
+	case Ilike:
+		return "ILIKE"
+	case SimilarTo:
+		return "SIMILAR TO"
+	case RegexpMatch:
+		return "~"
+	case RegexpMatchCi:
+		return "~*"
+	default:
+		return "<unknown cmp op>"
+	}
+}
+
 func (c CmpOp) Ordinal() bool {
 	return c >= Less && c <= GreaterEquals
 }
@@ -1617,34 +1672,7 @@ func (c *Comparison) text(dst *strings.Builder, redact bool) {
 	} else {
 		c.Left.text(dst, redact)
 	}
-	var middle string
-	switch c.Op {
-	case Equals:
-		middle = " = "
-	case NotEquals:
-		middle = " <> "
-	case Less:
-		middle = " < "
-	case LessEquals:
-		middle = " <= "
-	case Greater:
-		middle = " > "
-	case GreaterEquals:
-		middle = " >= "
-	case Like:
-		middle = " LIKE "
-	case Ilike:
-		middle = " ILIKE "
-	case SimilarTo:
-		middle = " SIMILAR_TO "
-	case RegexpMatch:
-		middle = " REGEXP_MATCH "
-	case RegexpMatchCi:
-		middle = " REGEXP_MATCH_CI "
-	default:
-		middle = " Comparison(???)"
-	}
-	dst.WriteString(middle)
+	dst.WriteString(fmt.Sprintf(" %s ", c.Op))
 	if parens {
 		dst.WriteByte('(')
 	}

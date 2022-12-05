@@ -91,6 +91,7 @@ var sameq = []string{
 	`EXPLAIN AS text SELECT * FROM table`,
 	`EXPLAIN AS list SELECT * FROM table`,
 	`EXPLAIN AS graphviz SELECT * FROM table`,
+	`SELECT SNELLER_DATASHAPE(*) FROM table`,
 }
 
 func TestParseSFW(t *testing.T) {
@@ -425,6 +426,10 @@ func TestParseErrors(t *testing.T) {
 		{
 			query: `SELECT BIT_XOR(*)`,
 			msg:   `cannot use * with BIT_XOR`,
+		},
+		{
+			query: `SELECT sneller_datashape(x) FROM table`,
+			msg:   `accepts only *`,
 		},
 	}
 

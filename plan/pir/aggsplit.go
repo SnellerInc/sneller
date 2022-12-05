@@ -61,7 +61,7 @@ func matchAny[T any](lst []T, proc func(*T) bool) bool {
 // but in practice they cannot be nested, so
 // let's search for those cases in advance
 // so that we can provide a more helpful error
-func rejectNestedAggregates(columns []expr.Binding, order []expr.Order) (int, error) {
+func rejectNestedAggregates(columns []expr.Binding, order []expr.Order, fn func(*expr.Aggregate)) error {
 	var err error
 
 	// we have two AST visitors, and we switch
@@ -69,12 +69,11 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order) (int, er
 	// encountering an aggregate expression
 	// (and the inner visitor errors when it finds
 	// inner aggregates)
-	count := 0
 	var walkouter, walkinner visitor
 	walkouter = func(e expr.Node) expr.Visitor {
-		_, ok := e.(*expr.Aggregate)
+		agg, ok := e.(*expr.Aggregate)
 		if ok {
-			count++
+			fn(agg)
 			return walkinner
 		}
 		return walkouter
@@ -100,16 +99,16 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order) (int, er
 	for i := range columns {
 		expr.Walk(walkouter, columns[i].Expr)
 		if err != nil {
-			return count, err
+			return err
 		}
 	}
 	for i := range order {
 		expr.Walk(walkouter, order[i].Column)
 		if err != nil {
-			return count, err
+			return err
 		}
 	}
-	return count, nil
+	return nil
 }
 
 type flattenerItem struct {
@@ -264,11 +263,18 @@ func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Bindin
 //	in the remaining cases, `auxiliary` is nil and the returned `columns `
 //	are ignored.
 func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, groups []expr.Binding, having expr.Node) ([]expr.Binding, error) {
-	aggc, err := rejectNestedAggregates(columns, order)
+	hasaggregate := false
+	iterall := false // an aggregate needs all columns
+	err := rejectNestedAggregates(columns, order, func(agg *expr.Aggregate) {
+		hasaggregate = true
+		if agg.Op == expr.OpSystemDatashape {
+			iterall = true
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
-	if aggc == 0 {
+	if !hasaggregate {
 		// this is actually a DISTINCT
 		// written in a funny way:
 		err = b.DistinctFromBindings(groups)
@@ -287,6 +293,10 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 			return columns, nil
 		}
 		return columns, b.Order(order)
+	}
+
+	if iterall {
+		b.top.get("*")
 	}
 
 	var aggcols vm.Aggregation
