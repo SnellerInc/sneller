@@ -49,11 +49,6 @@ func TestCheckExpressions(t *testing.T) {
 			kind: &TypeError{},
 		},
 		{
-			// x LIKE TRUE
-			expr: Compare(Like, path("x"), Bool(true)),
-			kind: &SyntaxError{},
-		},
-		{
 			// case with non-boolean arms
 			expr: casen(Integer(3), path("x"), path("y")),
 			kind: &TypeError{},

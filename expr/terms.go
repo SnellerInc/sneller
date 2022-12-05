@@ -243,6 +243,7 @@ var (
 	classIsKey            *opclass
 	classConst            *opclass
 	classNull             *opclass
+	classPatmatch         *opclass
 
 	op2class    map[string]*opclass
 	op2builtin  map[string]string
@@ -288,14 +289,25 @@ func init() {
 		match:     binaryMatch,
 		cons:      binaryCons,
 		auxtab: map[string]string{
-			"eq":    "Equals",
-			"neq":   "NotEquals",
-			"lt":    "Less",
-			"lte":   "LessEquals",
-			"gt":    "Greater",
-			"gte":   "GreaterEquals",
+			"eq":  "Equals",
+			"neq": "NotEquals",
+			"lt":  "Less",
+			"lte": "LessEquals",
+			"gt":  "Greater",
+			"gte": "GreaterEquals",
+		},
+	}
+	classPatmatch = &opclass{
+		typename:  "*StringMatch",
+		argnum:    patternArgnum,
+		casematch: binaryCasematch,
+		match:     binaryMatch,
+		cons:      patternCons,
+		auxtab: map[string]string{
 			"like":  "Like",
 			"ilike": "Ilike",
+			"rx":    "RegexpMatch",
+			"rxci":  "RegexpMatchCi",
 		},
 	}
 	classLogical = &opclass{
@@ -346,8 +358,10 @@ func init() {
 		"lte":            classComparison,
 		"gt":             classComparison,
 		"gte":            classComparison,
-		"like":           classComparison,
-		"ilike":          classComparison,
+		"like":           classPatmatch,
+		"ilike":          classPatmatch,
+		"rx":             classPatmatch,
+		"rxci":           classPatmatch,
 		"add":            classBinaryArithmetic,
 		"sub":            classBinaryArithmetic,
 		"mul":            classBinaryArithmetic,
@@ -444,6 +458,39 @@ func binaryMatch(c *opclass, op string, args []rules.Term, bind, expvar string) 
 	}
 	return fmt.Sprintf("%s, ok := (%s).(%s); ok && %s.Op == %s",
 		bind, expvar, c.typename, bind, opname)
+}
+
+func patternArgnum(c *opclass, i int, bind string) string {
+	switch i {
+	case 0:
+		return bind + ".Expr"
+	case 1:
+		return bind + ".Pattern"
+	case 2:
+		return bind + ".Escape"
+	default:
+		fatalf("invalid argument %d for pattern-match type", i)
+		return ""
+	}
+}
+
+func patternCons(c *opclass, op string, args []rules.Term) {
+	if len(args) != 2 && len(args) != 3 {
+		fatalposf(&args[0].Location, "op %s needs two or three arguments\n", op)
+	}
+	op, ok := c.auxtab[op]
+	if !ok {
+		fatalf("op %s unknown", op)
+	}
+	fmt.Fprintf(stdout, "&%s{Op: %s, Expr: ", c.typename[1:], op)
+	emitCons(&args[0])
+	fmt.Fprintf(stdout, ", Pattern: ")
+	emitCons(&args[1])
+	if len(args) == 3 {
+		fmt.Fprintf(stdout, ", Escape: ")
+		emitCons(&args[2])
+	}
+	fmt.Fprintf(stdout, "}")
 }
 
 func unaryArgnum(c *opclass, i int, bind string) string {

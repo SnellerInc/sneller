@@ -105,61 +105,6 @@ func compile(p *prog, e expr.Node) (*value, error) {
 				eq = p.Not(eq)
 			}
 			return eq, nil
-		case expr.Like, expr.Ilike:
-			left, err := p.compileAsString(n.Left)
-			if err != nil {
-				return nil, err
-			}
-			s, ok := n.Right.(expr.String)
-			if !ok {
-				return nil, fmt.Errorf("missed bad LIKE in type-checking")
-			}
-			escRune := stringext.NoEscape
-			if n.Escape != nil {
-				escString, ok2 := n.Escape.(expr.String)
-				if !ok2 {
-					return nil, fmt.Errorf("expected ESCAPE as string expression")
-				}
-				escRune, _ = utf8.DecodeRuneInString(string(escString))
-				if !utf8.ValidRune(escRune) {
-					return nil, fmt.Errorf("expected ESCAPE as valid UTF8 encoded string")
-				}
-				nRunes := utf8.RuneCountInString(string(escString))
-				if nRunes != 1 {
-					return nil, fmt.Errorf("expected ESCAPE as string with exactly 1 character")
-				}
-			}
-			caseSensitive := n.Op == expr.Like
-			return p.Like(left, string(s), escRune, caseSensitive), nil
-		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:
-			left, err := p.compileAsString(n.Left)
-			if err != nil {
-				return nil, err
-			}
-			s, ok := n.Right.(expr.String)
-			if !ok {
-				return nil, fmt.Errorf("expected string expression")
-			}
-			//NOTE: We do not implement the escape char from the SQL SIMILAR TO syntax, backslash is the only used escape-char
-			regexStr := string(s)
-			if err := regexp2.IsSupported(regexStr); err != nil {
-				return nil, fmt.Errorf("regex %v is not supported: %v", regexStr, err)
-			}
-			regexType := regexp2.SimilarTo
-			if n.Op == expr.RegexpMatch {
-				regexType = regexp2.Regexp
-			} else if n.Op == expr.RegexpMatchCi {
-				regexType = regexp2.RegexpCi
-			}
-			regex, err := regexp2.Compile(regexStr, regexType)
-			if err != nil {
-				return nil, err
-			}
-			dfaStore, err := regexp2.CompileDFA(regex, regexp2.MaxNodesAutomaton)
-			if err != nil {
-				return nil, fmt.Errorf("Error: %v; construction of DFA from regex %v failed", err, regex)
-			}
-			return p.RegexMatch(left, dfaStore)
 		}
 
 		left, err := compile(p, n.Left)
@@ -181,7 +126,46 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			return p.GreaterEqual(left, right), nil
 		}
 		return nil, fmt.Errorf("unhandled comparison expression %q", n)
-
+	case *expr.StringMatch:
+		switch n.Op {
+		case expr.Like, expr.Ilike:
+			left, err := p.compileAsString(n.Expr)
+			if err != nil {
+				return nil, err
+			}
+			escRune := stringext.NoEscape
+			if n.Escape != "" {
+				escRune, _ = utf8.DecodeRuneInString(n.Escape)
+			}
+			caseSensitive := n.Op == expr.Like
+			return p.Like(left, n.Pattern, escRune, caseSensitive), nil
+		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:
+			left, err := p.compileAsString(n.Expr)
+			if err != nil {
+				return nil, err
+			}
+			// NOTE: We do not implement the escape char from the SQL SIMILAR TO syntax, backslash is the only used escape-char
+			regexStr := n.Pattern
+			if err := regexp2.IsSupported(regexStr); err != nil {
+				return nil, fmt.Errorf("regex %v is not supported: %v", regexStr, err)
+			}
+			regexType := regexp2.SimilarTo
+			if n.Op == expr.RegexpMatch {
+				regexType = regexp2.Regexp
+			} else if n.Op == expr.RegexpMatchCi {
+				regexType = regexp2.RegexpCi
+			}
+			regex, err := regexp2.Compile(regexStr, regexType)
+			if err != nil {
+				return nil, err
+			}
+			dfaStore, err := regexp2.CompileDFA(regex, regexp2.MaxNodesAutomaton)
+			if err != nil {
+				return nil, fmt.Errorf("Error: %v; construction of DFA from regex %v failed", err, regex)
+			}
+			return p.RegexMatch(left, dfaStore)
+		}
+		return nil, fmt.Errorf("unimplemented StringMatch operation")
 	case *expr.UnaryArith:
 		child, err := p.compileAsNumber(n.Child)
 		if err != nil {
@@ -321,6 +305,7 @@ func (p *prog) compileAsBool(e expr.Node) (*value, error) {
 		return p.compileLogicalCase(e)
 	case *expr.Logical:
 	case *expr.Comparison:
+	case *expr.StringMatch:
 	case *expr.IsKey:
 	case expr.Bool:
 		if e {

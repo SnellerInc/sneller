@@ -16,8 +16,10 @@ package expr
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/regexp2"
 )
 
 // TypeError is the error type returned
@@ -60,8 +62,8 @@ func errtype(e Node, msg string) *TypeError {
 	return &TypeError{At: e, Msg: msg}
 }
 
-func errsyntax(msg string) *SyntaxError {
-	return &SyntaxError{Msg: msg}
+func errsyntax(e Node, msg string) *SyntaxError {
+	return &SyntaxError{At: e, Msg: msg}
 }
 
 // Hint is an argument that can be
@@ -219,17 +221,6 @@ func (l *Logical) check(h Hint) error {
 }
 
 func (c *Comparison) check(h Hint) error {
-	if c.Op == Like || c.Op == Ilike {
-		_, ok := c.Right.(String)
-		if !ok {
-			return errsyntax("LIKE requires a literal string on the right-hand-side")
-		}
-		if t := TypeOf(c.Left, h); t&StringType == 0 {
-			return errtype(c, "lhs of LIKE/ILIKE is never a string")
-		}
-		return nil
-	}
-
 	lt := TypeOf(c.Left, h)
 	rt := TypeOf(c.Right, h)
 
@@ -250,6 +241,18 @@ func (c *Comparison) check(h Hint) error {
 		return errtype(c, "lhs and rhs of comparison are never comparable")
 	}
 
+	return nil
+}
+
+func (s *StringMatch) check(h Hint) error {
+	if s.Escape != "" && utf8.RuneCountInString(s.Escape) != 1 {
+		return errsyntax(s, "ESCAPE must be a single unicode point")
+	}
+	if s.Op == RegexpMatch || s.Op == RegexpMatchCi {
+		if err := regexp2.IsSupported(s.Pattern); err != nil {
+			return errsyntax(s, err.Error())
+		}
+	}
 	return nil
 }
 

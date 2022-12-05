@@ -650,60 +650,6 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 				return Bool(y.Value.Before(x.Value) || x.Value == y.Value)
 			}
 		}
-	case Ilike:
-		// (ilike x (string pat)), "!strings.ContainsAny(string(pat), \"%_\")" -> (equals_ci x pat)
-		if x := src.Left; true {
-			if pat, ok := (src.Right).(String); ok {
-				if !strings.ContainsAny(string(pat), "%_") {
-					return Call(EqualsCI, x, pat)
-				}
-			}
-		}
-	case Like:
-		// (like x (string pat)), "!strings.ContainsAny(string(pat), \"%_\")" -> (eq x pat)
-		if x := src.Left; true {
-			if pat, ok := (src.Right).(String); ok {
-				if !strings.ContainsAny(string(pat), "%_") {
-					return &Comparison{Op: Equals, Left: x, Right: pat}
-				}
-			}
-		}
-		// (like (upper x) (string pat)), "isUpper(string(pat))" -> (ilike x pat)
-		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
-			if pat, ok := (src.Right).(String); ok {
-				if x := _tmp001000.Args[0]; true {
-					if isUpper(string(pat)) {
-						return &Comparison{Op: Ilike, Left: x, Right: pat}
-					}
-				}
-			}
-		}
-		// (like (lower x) (string pat)), "isLower(string(pat))" -> (ilike x pat)
-		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
-			if pat, ok := (src.Right).(String); ok {
-				if x := _tmp001000.Args[0]; true {
-					if isLower(string(pat)) {
-						return &Comparison{Op: Ilike, Left: x, Right: pat}
-					}
-				}
-			}
-		}
-		// (like (upper _) (string pat)), "!isUpper(string(pat))" -> (bool "false")
-		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
-			if pat, ok := (src.Right).(String); ok {
-				if !isUpper(string(pat)) {
-					return Bool(false)
-				}
-			}
-		}
-		// (like (lower _) (string pat)), "!isLower(string(pat))" -> (bool "false")
-		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
-			if pat, ok := (src.Right).(String); ok {
-				if !isLower(string(pat)) {
-					return Bool(false)
-				}
-			}
-		}
 	case Less:
 		// (lt (ts x) (ts y)) -> (bool "x.Value.Before(y.Value)")
 		if x, ok := (src.Left).(*Timestamp); ok {
@@ -970,6 +916,70 @@ func simplifyClass4(src *Logical, h Hint) Node {
 	}
 	return nil
 }
+
+func simplifyClass5(src *StringMatch, h Hint) Node {
+	switch src.Op {
+	case Ilike:
+		// (ilike x pat), "!strings.ContainsAny(pat, \"%_\")" -> (equals_ci x (string pat))
+		if x := src.Expr; true {
+			if pat := src.Pattern; true {
+				if !strings.ContainsAny(pat, "%_") {
+					return Call(EqualsCI, x, String(pat))
+				}
+			}
+		}
+	case Like:
+		// (like x pat), "!strings.ContainsAny(pat, \"%_\")" -> (eq x (string pat))
+		if x := src.Expr; true {
+			if pat := src.Pattern; true {
+				if !strings.ContainsAny(pat, "%_") {
+					return &Comparison{Op: Equals, Left: x, Right: String(pat)}
+				}
+			}
+		}
+		// (like (upper _) pat), "!isUpper(pat)" -> (bool "false")
+		if _tmp001000, ok := (src.Expr).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
+			if pat := src.Pattern; true {
+				if !isUpper(pat) {
+					return Bool(false)
+				}
+			}
+		}
+		// (like (lower _) pat), "!isLower(pat)" -> (bool "false")
+		if _tmp001000, ok := (src.Expr).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
+			if pat := src.Pattern; true {
+				if !isLower(pat) {
+					return Bool(false)
+				}
+			}
+		}
+		// (like (upper x) pat esc), "isUpper(pat)" -> (ilike x pat esc)
+		if _tmp001000, ok := (src.Expr).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
+			if pat := src.Pattern; true {
+				if esc := src.Escape; true {
+					if x := _tmp001000.Args[0]; true {
+						if isUpper(pat) {
+							return &StringMatch{Op: Ilike, Expr: x, Pattern: pat, Escape: esc}
+						}
+					}
+				}
+			}
+		}
+		// (like (lower x) pat esc), "isLower(pat)" -> (ilike x pat esc)
+		if _tmp001000, ok := (src.Expr).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
+			if pat := src.Pattern; true {
+				if esc := src.Escape; true {
+					if x := _tmp001000.Args[0]; true {
+						if isLower(pat) {
+							return &StringMatch{Op: Ilike, Expr: x, Pattern: pat, Escape: esc}
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
 func simplify1(src Node, h Hint) Node {
 	switch src := src.(type) {
 	case *Arithmetic:
@@ -982,6 +992,8 @@ func simplify1(src Node, h Hint) Node {
 		return simplifyClass3(src, h)
 	case *Logical:
 		return simplifyClass4(src, h)
+	case *StringMatch:
+		return simplifyClass5(src, h)
 	}
 	return nil
 }

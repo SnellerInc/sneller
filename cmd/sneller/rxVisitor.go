@@ -35,7 +35,7 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 	if r.done {
 		return nil
 	}
-	n, ok := node.(*expr.Comparison)
+	n, ok := node.(*expr.StringMatch)
 	if !ok {
 		return r
 	}
@@ -43,7 +43,7 @@ func (r *rxVisitor) Visit(node expr.Node) expr.Visitor {
 		return r
 	}
 
-	regexStrOrg := string(n.Right.(expr.String))
+	regexStrOrg := n.Pattern
 	regexType := regexp2.SimilarTo
 	if n.Op == expr.RegexpMatch {
 		regexType = regexp2.Regexp

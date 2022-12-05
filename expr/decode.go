@@ -121,6 +121,8 @@ func getEmpty(name string) composite {
 		return &Path{}
 	case "cmp":
 		return &Comparison{}
+	case "stringmatch":
+		return &StringMatch{}
 	case "not":
 		return &Not{}
 	case "logical":

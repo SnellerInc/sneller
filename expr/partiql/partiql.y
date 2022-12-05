@@ -428,31 +428,31 @@ datum_or_parens
 }
 | expr ILIKE STRING ESCAPE STRING
 {
-  $$ = expr.CompareEscape(expr.Ilike, $1, expr.String($3), expr.String($5))
+  $$ = &expr.StringMatch{Op: expr.Ilike, Expr: $1, Pattern: $3, Escape: $5}
 }
 | expr ILIKE STRING
 {
-  $$ = expr.Compare(expr.Ilike, $1, expr.String($3))
+  $$ = &expr.StringMatch{Op: expr.Ilike, Expr: $1, Pattern: $3}
 }
 | expr LIKE STRING ESCAPE STRING
 {
-  $$ = expr.CompareEscape(expr.Like, $1, expr.String($3), expr.String($5))
+  $$ = &expr.StringMatch{Op: expr.Like, Expr: $1, Pattern: $3, Escape: $5}
 }
 | expr LIKE STRING
 {
-  $$ = expr.Compare(expr.Like, $1, expr.String($3))
+  $$ = &expr.StringMatch{Op: expr.Like, Expr: $1, Pattern: $3}
 }
 | expr SIMILAR TO STRING
 {
-  $$ = expr.Compare(expr.SimilarTo, $1, expr.String($4))
+  $$ = &expr.StringMatch{Op: expr.SimilarTo, Expr: $1, Pattern: $4}
 }
 | expr '~' STRING
 {
-  $$ = expr.Compare(expr.RegexpMatch, $1, expr.String($3))
+  $$ = &expr.StringMatch{Op: expr.RegexpMatch, Expr: $1, Pattern: $3}
 }
 | expr REGEXP_MATCH_CI STRING
 {
-  $$ = expr.Compare(expr.RegexpMatchCi, $1, expr.String($3))
+  $$ = &expr.StringMatch{Op: expr.RegexpMatchCi, Expr: $1, Pattern: $3}
 }
 | expr EQ expr
 {
@@ -484,31 +484,31 @@ datum_or_parens
 }
 | expr NOT LIKE STRING
 {
-  $$ = &expr.Not{Expr: expr.Compare(expr.Like, $1, expr.String($4))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.Like, Expr: $1, Pattern: $4}}
 }
 | expr NOT LIKE STRING ESCAPE STRING
 {
-  $$ = &expr.Not{Expr: expr.CompareEscape(expr.Like, $1, expr.String($4), expr.String($6))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.Like, Expr: $1, Pattern: $4, Escape: $6}}
 }
 | expr NOT ILIKE STRING
 {
-  $$ = &expr.Not{Expr: expr.Compare(expr.Ilike, $1, expr.String($4))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.Like, Expr: $1, Pattern: $4}}
 }
 | expr NOT ILIKE STRING ESCAPE STRING
 {
-  $$ = &expr.Not{Expr: expr.CompareEscape(expr.Ilike, $1, expr.String($4), expr.String($6))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.Ilike, Expr: $1, Pattern: $4, Escape: $6}}
 }
 | expr NOT SIMILAR TO STRING
 {
-  $$ = &expr.Not{Expr: expr.Compare(expr.SimilarTo, $1, expr.String($5))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.SimilarTo, Expr: $1, Pattern: $5}}
 }
 | expr NOT '~' STRING
 {
-  $$ = &expr.Not{Expr: expr.Compare(expr.RegexpMatch, $1, expr.String($4))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.RegexpMatch, Expr: $1, Pattern: $4}}
 }
 | expr NOT REGEXP_MATCH_CI STRING
 {
-  $$ = &expr.Not{Expr: expr.Compare(expr.RegexpMatchCi, $1, expr.String($4))}
+  $$ = &expr.Not{Expr: &expr.StringMatch{Op: expr.RegexpMatchCi, Expr: $1, Pattern: $4}}
 }
 | NOT expr
 {

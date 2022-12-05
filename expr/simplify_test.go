@@ -246,13 +246,6 @@ func TestSimplify(t *testing.T) {
 			Compare(Less, Integer(3), path("x")),
 			Compare(Greater, path("x"), Integer(3)),
 		},
-		{
-			// "foo%bar" LIKE z.name cannot be canonicalize
-			//
-			// The semantic of `z.name LIKE "foo%bar"` would be different
-			Compare(Like, String("foo%bar"), path("z.name")),
-			Compare(Like, String("foo%bar"), path("z.name")),
-		},
 		//#region Case-insensitive contains
 		{
 			// CONTAINS(UPPER(z.name), "FRED") -> CONTAINS_CI(z.name, "FRED")
@@ -276,12 +269,12 @@ func TestSimplify(t *testing.T) {
 		},
 		{
 			// UPPER(z.name) LIKE "%fred%" -> FALSE
-			Compare(Like, Call(Upper, path("z.name")), String("%fred%")),
+			&StringMatch{Op: Like, Expr: Call(Upper, path("z.name")), Pattern: "%fred%"},
 			Bool(false),
 		},
 		{
 			// LOWER(z.name) LIKE "%FRED%" -> FALSE
-			Compare(Like, Call(Lower, path("z.name")), String("%FRED%")),
+			&StringMatch{Op: Like, Expr: Call(Lower, path("z.name")), Pattern: "%FRED%"},
 			Bool(false),
 		},
 		//#endregion Case-insensitive contains

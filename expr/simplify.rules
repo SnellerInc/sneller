@@ -53,14 +53,14 @@
 (mul (mul a (constant b)) (mul c (constant d))) -> (mul (mul a c) (mul b d))
 
 // a 'like' w/o any meta-characters is just a string equality check:
-(like x (string pat)), `!strings.ContainsAny(string(pat), "%_")` -> (eq x pat)
-(ilike x (string pat)), `!strings.ContainsAny(string(pat), "%_")` -> (equals_ci x pat)
+(like x pat), `!strings.ContainsAny(pat, "%_")` -> (eq x (string pat))
+(ilike x pat), `!strings.ContainsAny(pat, "%_")` -> (equals_ci x (string pat))
 
 // convert upper/lower + like -> ilike or false
-(like (upper x) (string pat)), `isUpper(string(pat))` -> (ilike x pat)
-(like (lower x) (string pat)), `isLower(string(pat))` -> (ilike x pat)
-(like (upper _) (string pat)), `!isUpper(string(pat))` -> (bool `false`)
-(like (lower _) (string pat)), `!isLower(string(pat))` -> (bool `false`)
+(like (upper x) pat esc), `isUpper(pat)` -> (ilike x pat esc)
+(like (lower x) pat esc), `isLower(pat)` -> (ilike x pat esc)
+(like (upper _) pat), `!isUpper(pat)` -> (bool `false`)
+(like (lower _) pat), `!isLower(pat)` -> (bool `false`)
 
 // produced via the rewrite above:
 (eq (upper _) (string lit)), `!isUpper(string(lit))` -> (bool `false`)

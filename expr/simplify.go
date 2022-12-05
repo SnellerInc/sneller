@@ -365,9 +365,6 @@ func (c *Comparison) canonical() *Comparison {
 	if !immediate(c.Left) || immediate(c.Right) {
 		return c
 	}
-	if c.Op.StringRelation() {
-		return c
-	}
 	c.Op = c.Op.Flip()
 	c.Left, c.Right = c.Right, c.Left
 	return c
@@ -417,9 +414,6 @@ func (c *Comparison) simplify(h Hint) Node {
 	ln, okl := left.(number)
 	rn, okr := right.(number)
 	if okr && okl {
-		if c.Op == Like || c.Op == Ilike {
-			return Missing{}
-		}
 		return constcmp(c.Op, ln.rat(), rn.rat())
 	}
 

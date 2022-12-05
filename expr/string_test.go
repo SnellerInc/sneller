@@ -70,7 +70,7 @@ func TestString(t *testing.T) {
 			"3 < 4 OR 4 < 5",
 		},
 		{
-			Compare(Like, path("t", "foo", "name"), String("F%Z%Y")),
+			&StringMatch{Op: Like, Expr: path("t", "foo", "name"), Pattern: "F%Z%Y"},
 			"t.foo.name LIKE 'F%Z%Y'",
 		},
 		{
@@ -107,8 +107,12 @@ func TestString(t *testing.T) {
 			"c = (a AND b)",
 		},
 		{
-			Compare(Ilike, path("x", "y"), String("%xyz%")),
+			&StringMatch{Op: Ilike, Expr: path("x", "y"), Pattern: "%xyz%"},
 			"x.y ILIKE '%xyz%'",
+		},
+		{
+			&StringMatch{Op: Like, Expr: path("x"), Pattern: "%x%", Escape: "\\"},
+			"x LIKE '%x%' ESCAPE '\\\\'",
 		},
 		{
 			// test for valid PartiQL list literal syntax

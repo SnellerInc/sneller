@@ -1562,43 +1562,43 @@ yydefault:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line partiql.y:430
 		{
-			yyVAL.expr = expr.CompareEscape(expr.Ilike, yyDollar[1].expr, expr.String(yyDollar[3].str), expr.String(yyDollar[5].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.Ilike, Expr: yyDollar[1].expr, Pattern: yyDollar[3].str, Escape: yyDollar[5].str}
 		}
 	case 74:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:434
 		{
-			yyVAL.expr = expr.Compare(expr.Ilike, yyDollar[1].expr, expr.String(yyDollar[3].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.Ilike, Expr: yyDollar[1].expr, Pattern: yyDollar[3].str}
 		}
 	case 75:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line partiql.y:438
 		{
-			yyVAL.expr = expr.CompareEscape(expr.Like, yyDollar[1].expr, expr.String(yyDollar[3].str), expr.String(yyDollar[5].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.Like, Expr: yyDollar[1].expr, Pattern: yyDollar[3].str, Escape: yyDollar[5].str}
 		}
 	case 76:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:442
 		{
-			yyVAL.expr = expr.Compare(expr.Like, yyDollar[1].expr, expr.String(yyDollar[3].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.Like, Expr: yyDollar[1].expr, Pattern: yyDollar[3].str}
 		}
 	case 77:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line partiql.y:446
 		{
-			yyVAL.expr = expr.Compare(expr.SimilarTo, yyDollar[1].expr, expr.String(yyDollar[4].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.SimilarTo, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str}
 		}
 	case 78:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:450
 		{
-			yyVAL.expr = expr.Compare(expr.RegexpMatch, yyDollar[1].expr, expr.String(yyDollar[3].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.RegexpMatch, Expr: yyDollar[1].expr, Pattern: yyDollar[3].str}
 		}
 	case 79:
 		yyDollar = yyS[yypt-3 : yypt+1]
 //line partiql.y:454
 		{
-			yyVAL.expr = expr.Compare(expr.RegexpMatchCi, yyDollar[1].expr, expr.String(yyDollar[3].str))
+			yyVAL.expr = &expr.StringMatch{Op: expr.RegexpMatchCi, Expr: yyDollar[1].expr, Pattern: yyDollar[3].str}
 		}
 	case 80:
 		yyDollar = yyS[yypt-3 : yypt+1]
@@ -1646,43 +1646,43 @@ yydefault:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line partiql.y:486
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.Like, yyDollar[1].expr, expr.String(yyDollar[4].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.Like, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str}}
 		}
 	case 88:
 		yyDollar = yyS[yypt-6 : yypt+1]
 //line partiql.y:490
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.CompareEscape(expr.Like, yyDollar[1].expr, expr.String(yyDollar[4].str), expr.String(yyDollar[6].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.Like, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str, Escape: yyDollar[6].str}}
 		}
 	case 89:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line partiql.y:494
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.Ilike, yyDollar[1].expr, expr.String(yyDollar[4].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.Like, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str}}
 		}
 	case 90:
 		yyDollar = yyS[yypt-6 : yypt+1]
 //line partiql.y:498
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.CompareEscape(expr.Ilike, yyDollar[1].expr, expr.String(yyDollar[4].str), expr.String(yyDollar[6].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.Ilike, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str, Escape: yyDollar[6].str}}
 		}
 	case 91:
 		yyDollar = yyS[yypt-5 : yypt+1]
 //line partiql.y:502
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.SimilarTo, yyDollar[1].expr, expr.String(yyDollar[5].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.SimilarTo, Expr: yyDollar[1].expr, Pattern: yyDollar[5].str}}
 		}
 	case 92:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line partiql.y:506
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.RegexpMatch, yyDollar[1].expr, expr.String(yyDollar[4].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.RegexpMatch, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str}}
 		}
 	case 93:
 		yyDollar = yyS[yypt-4 : yypt+1]
 //line partiql.y:510
 		{
-			yyVAL.expr = &expr.Not{Expr: expr.Compare(expr.RegexpMatchCi, yyDollar[1].expr, expr.String(yyDollar[4].str))}
+			yyVAL.expr = &expr.Not{Expr: &expr.StringMatch{Op: expr.RegexpMatchCi, Expr: yyDollar[1].expr, Pattern: yyDollar[4].str}}
 		}
 	case 94:
 		yyDollar = yyS[yypt-2 : yypt+1]

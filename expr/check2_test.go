@@ -173,6 +173,10 @@ func TestCheckInvalidQuery(t *testing.T) {
 			`SELECT * FROM table LIMIT 10 OFFSET -2`,
 			`negative OFFSET -2 is not supported`,
 		},
+		{
+			`SELECT * FROM table WHERE x LIKE '%foo%' ESCAPE 'bar'`,
+			`ESCAPE`,
+		},
 	}
 	for i := range testcases {
 		i := i

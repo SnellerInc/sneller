@@ -1307,12 +1307,6 @@ const (
 	LessEquals
 	Greater
 	GreaterEquals
-
-	Like          // LIKE <literal> (also ~~)
-	Ilike         // ILIKE <literal> (also ~~*)
-	SimilarTo     // SIMILAR TO <literal>
-	RegexpMatch   // ~ <literal>
-	RegexpMatchCi // ~* <literal> case-insensitive regex match
 )
 
 func (c CmpOp) String() string {
@@ -1329,16 +1323,6 @@ func (c CmpOp) String() string {
 		return ">"
 	case GreaterEquals:
 		return ">="
-	case Like:
-		return "LIKE"
-	case Ilike:
-		return "ILIKE"
-	case SimilarTo:
-		return "SIMILAR TO"
-	case RegexpMatch:
-		return "~"
-	case RegexpMatchCi:
-		return "~*"
 	default:
 		return "<unknown cmp op>"
 	}
@@ -1346,11 +1330,6 @@ func (c CmpOp) String() string {
 
 func (c CmpOp) Ordinal() bool {
 	return c >= Less && c <= GreaterEquals
-}
-
-// StringRelation returns if the operator is for strings only.
-func (c CmpOp) StringRelation() bool {
-	return c >= Like && c <= RegexpMatchCi
 }
 
 // Flip returns the operator that is equivalent to c if
@@ -1563,6 +1542,97 @@ func (c *Comparison) setfield(name string, st *ion.Symtab, buf []byte) error {
 	return nil
 }
 
+// StringMatchOp is one of the string-matching operations
+// (LIKE, ILIKE, SIMILAR TO, ...)
+type StringMatchOp int
+
+const (
+	Like          StringMatchOp = iota // LIKE <literal> (also ~~)
+	Ilike                              // ILIKE <literal> (also ~~*)
+	SimilarTo                          // SIMILAR TO <literal>
+	RegexpMatch                        // ~ <literal>
+	RegexpMatchCi                      // ~* <literal> case-insensitive regex match
+)
+
+// StringMatch is an expression that matches an
+// arbitrary value against a literal string pattern.
+type StringMatch struct {
+	Op      StringMatchOp
+	Expr    Node
+	Pattern string
+	Escape  string
+}
+
+func (s *StringMatch) Equals(x Node) bool {
+	o, ok := x.(*StringMatch)
+	return ok &&
+		o.Expr.Equals(s.Expr) &&
+		o.Pattern == s.Pattern &&
+		o.Escape == s.Escape
+}
+
+func (s *StringMatch) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "stringmatch")
+	dst.BeginField(st.Intern("op"))
+	dst.WriteInt(int64(s.Op))
+	dst.BeginField(st.Intern("expr"))
+	s.Expr.Encode(dst, st)
+	dst.BeginField(st.Intern("pattern"))
+	dst.WriteString(s.Pattern)
+	if s.Escape != "" {
+		dst.BeginField(st.Intern("escape"))
+		dst.WriteString(s.Escape)
+	}
+	dst.EndStruct()
+}
+
+func (s *StringMatch) setfield(name string, st *ion.Symtab, val []byte) error {
+	var err error
+	switch name {
+	case "op":
+		v := int64(0)
+		v, _, err = ion.ReadInt(val)
+		s.Op = StringMatchOp(v)
+	case "expr":
+		s.Expr, _, err = Decode(st, val)
+	case "pattern":
+		s.Pattern, _, err = ion.ReadString(val)
+	case "escape":
+		s.Escape, _, err = ion.ReadString(val)
+	default:
+		return fmt.Errorf("unknown field %s in StringMatch", name)
+	}
+	return err
+}
+
+func (s *StringMatch) walk(v Visitor) { Walk(v, s.Expr) }
+
+func (s *StringMatch) text(dst *strings.Builder, redact bool) {
+	var middle string
+	switch s.Op {
+	case Like:
+		middle = " LIKE "
+	case Ilike:
+		middle = " ILIKE "
+	case SimilarTo:
+		middle = " SIMILAR TO "
+	case RegexpMatch:
+		middle = " ~ "
+	case RegexpMatchCi:
+		middle = " ~* "
+	default:
+		middle = " <unknown> "
+	}
+	s.Expr.text(dst, redact)
+	dst.WriteString(middle)
+	quote(dst, s.Pattern)
+	if s.Escape != "" {
+		dst.WriteString(" ESCAPE ")
+		quote(dst, s.Escape)
+	}
+}
+
 // Not yields
 //
 //	! (Expr)
@@ -1687,9 +1757,6 @@ func (c *Comparison) Type() TypeSet {
 }
 
 func (c *Comparison) invert() Node {
-	if c.Op == Like || c.Op == Ilike || c.Op == SimilarTo || c.Op == RegexpMatch || c.Op == RegexpMatchCi {
-		return nil // no NOT LIKE, etc
-	}
 	return &Comparison{
 		Op:    c.Op.invert(),
 		Left:  c.Left,
