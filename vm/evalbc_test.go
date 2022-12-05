@@ -2977,7 +2977,7 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		ctx.setDict(toBCD(&minA, &maxA))
+		ctx.setDict(stringext.ToBCD(&minA, &maxA))
 		ctx.setScalarStrings(fill16(ut.ip))
 		ctx.current = lanes
 
@@ -3072,7 +3072,7 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 				}
 			}
 
-			ctx.setDict(toBCD(&minA, &maxA))
+			ctx.setDict(stringext.ToBCD(&minA, &maxA))
 			ctx.setScalarStrings(data16)
 			ctx.current = lanes
 			scalarBefore := ctx.getScalarUint32()
@@ -3186,7 +3186,7 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		var ctx bctestContext
 		defer ctx.Free()
 		ctx.Taint()
-		ctx.setDict(toBCD(&minA, &maxA))
+		ctx.setDict(stringext.ToBCD(&minA, &maxA))
 		ctx.setScalarStrings(data16[:])
 		ctx.current = lanes
 		scalarBefore := ctx.getScalarUint32()

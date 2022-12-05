@@ -20,6 +20,9 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"unicode/utf8"
+
+	"github.com/SnellerInc/sneller/internal/stringext"
 
 	"github.com/SnellerInc/sneller/regexp2"
 
@@ -109,10 +112,25 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			}
 			s, ok := n.Right.(expr.String)
 			if !ok {
-				panic("missed bad LIKE in type-checking...")
+				return nil, fmt.Errorf("missed bad LIKE in type-checking")
+			}
+			escRune := stringext.NoEscape
+			if n.Escape != nil {
+				escString, ok2 := n.Escape.(expr.String)
+				if !ok2 {
+					return nil, fmt.Errorf("expected ESCAPE as string expression")
+				}
+				escRune, _ = utf8.DecodeRuneInString(string(escString))
+				if !utf8.ValidRune(escRune) {
+					return nil, fmt.Errorf("expected ESCAPE as valid UTF8 encoded string")
+				}
+				nRunes := utf8.RuneCountInString(string(escString))
+				if nRunes != 1 {
+					return nil, fmt.Errorf("expected ESCAPE as string with exactly 1 character")
+				}
 			}
 			caseSensitive := n.Op == expr.Like
-			return p.Like(left, string(s), caseSensitive), nil
+			return p.Like(left, string(s), escRune, caseSensitive), nil
 		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:
 			left, err := p.compileAsString(n.Left)
 			if err != nil {

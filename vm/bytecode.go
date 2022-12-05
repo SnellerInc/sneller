@@ -524,10 +524,11 @@ var opinfo = [_maxbcop]bcopinfo{
 	opTrim4charLeft:  {text: "trim_char_left", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 	opTrim4charRight: {text: "trim_char_right", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
 
-	// string prefix/suffix matching operations
+	// string contains prefix/suffix/substr matching operations
 	opContainsPrefixCs:     {text: "contains_prefix_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsPrefixCi:     {text: "contains_prefix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+
 	opContainsSuffixCs:     {text: "contains_suffix_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsSuffixCi:     {text: "contains_suffix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},

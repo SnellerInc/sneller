@@ -1,0 +1,3 @@
+# go test -bench BenchmarkTestQueries/0021-like-ContainsPatternCI
+SELECT name FROM 'data.jsonrl'
+WHERE (name ILIKE '%Ni_ole%')

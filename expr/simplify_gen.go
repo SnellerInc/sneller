@@ -659,28 +659,12 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 				}
 			}
 		}
-		// (ilike x (string pat)), "term, ok := isSubstringSearchPattern(string(pat)); ok" -> (contains_ci x "String(term)")
-		if x := src.Left; true {
-			if pat, ok := (src.Right).(String); ok {
-				if term, ok := isSubstringSearchPattern(string(pat)); ok {
-					return Call(ContainsCI, x, String(term))
-				}
-			}
-		}
 	case Like:
 		// (like x (string pat)), "!strings.ContainsAny(string(pat), \"%_\")" -> (eq x pat)
 		if x := src.Left; true {
 			if pat, ok := (src.Right).(String); ok {
 				if !strings.ContainsAny(string(pat), "%_") {
 					return &Comparison{Op: Equals, Left: x, Right: pat}
-				}
-			}
-		}
-		// (like x (string pat)), "term, ok := isSubstringSearchPattern(string(pat)); ok" -> (contains x "String(term)")
-		if x := src.Left; true {
-			if pat, ok := (src.Right).(String); ok {
-				if term, ok := isSubstringSearchPattern(string(pat)); ok {
-					return Call(Contains, x, String(term))
 				}
 			}
 		}

@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/internal/stringext"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -406,28 +408,28 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
-			return p.HasPrefix(p.Dot("ViolationDescr", p.ValidLanes()), "NO", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "NO", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: "LTRIM(.ViolationDescr) LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
-			return p.HasPrefix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimLeading), "NO", true)
+			return p.Like(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimLeading), "NO%", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: "RTRIM(.ViolationDescr) LIKE \"%NO\"",
 		rows: 3,
 		expr: func(p *prog) *value {
-			return p.HasSuffix(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimTrailing), "NO", true)
+			return p.Like(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimTrailing), "%NO", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: ".ViolationDescr LIKE \"%REG\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.HasSuffix(p.Dot("ViolationDescr", p.ValidLanes()), "REG", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%REG", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -435,7 +437,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%REG%\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "REG", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%REG%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -443,14 +445,14 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%EVIDENCE%\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "EVIDENCE", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%EVIDENCE%", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: ".ViolationDescr LIKE \"%GRID LOCK%\"",
 		rows: 19,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "GRID LOCK", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%GRID LOCK%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -458,7 +460,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%NO%\"",
 		rows: 532,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "NO", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%NO%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -466,7 +468,7 @@ var ticketsTestQueries = []struct {
 		name: "UPPER(.ViolationDescr) LIKE \"%NO%\"",
 		rows: 532,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "no", false)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%no%", stringext.NoEscape, false)
 		},
 	},
 	{
@@ -474,7 +476,7 @@ var ticketsTestQueries = []struct {
 		name: "LOWER(.ViolationDescr) LIKE \"%no%\"",
 		rows: 532,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "NO", false)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%NO%", stringext.NoEscape, false)
 		},
 	},
 	{
@@ -482,7 +484,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%EXPIRED%\"",
 		rows: 32,
 		expr: func(p *prog) *value {
-			return p.Contains(p.Dot("ViolationDescr", p.ValidLanes()), "EXPIRED", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%EXPIRED%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -490,8 +492,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"_O%_DENCE%R_G\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			vd := p.Dot("ViolationDescr", p.ValidLanes())
-			return p.Like(vd, "_O%_DENCE%R_G", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "_O%_DENCE%R_G", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -499,8 +500,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"NO_STO%STA%_AM\"",
 		rows: 4,
 		expr: func(p *prog) *value {
-			vd := p.Dot("ViolationDescr", p.ValidLanes())
-			return p.Like(vd, "NO_STO%STA%_AM", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "NO_STO%STA%_AM", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -513,8 +513,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%E_E%\"",
 		rows: 92,
 		expr: func(p *prog) *value {
-			vd := p.Dot("ViolationDescr", p.ValidLanes())
-			return p.Like(vd, "%E_E%", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%E_E%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -527,8 +526,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%E__E%\"",
 		rows: 200,
 		expr: func(p *prog) *value {
-			vd := p.Dot("ViolationDescr", p.ValidLanes())
-			return p.Like(vd, "%E__E%", true)
+			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%E__E%", stringext.NoEscape, true)
 		},
 	},
 }

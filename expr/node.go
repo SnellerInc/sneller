@@ -1468,6 +1468,7 @@ func In(val Node, cmp ...Node) Node {
 type Comparison struct {
 	Op          CmpOp
 	Left, Right Node
+	Escape      Node
 }
 
 func (c *Comparison) Equals(x Node) bool {
@@ -1564,6 +1565,10 @@ func (n *Not) setfield(name string, st *ion.Symtab, buf []byte) error {
 // of the given type and with the given arguments
 func Compare(op CmpOp, left, right Node) Node {
 	return &Comparison{Op: op, Left: left, Right: right}
+}
+
+func CompareEscape(op CmpOp, left, right, escape Node) Node {
+	return &Comparison{Op: op, Left: left, Right: right, Escape: escape}
 }
 
 func (c *Comparison) walk(v Visitor) {

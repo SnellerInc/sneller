@@ -520,3 +520,54 @@ func PatternToRegex(segments []string, caseSensitive bool) string {
 	}
 	return regex
 }
+
+// ToBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.
+// Create an encoding of an IP4 as 16 bytes that is convenient. eg., byte sequence [192,1,2,3] becomes byte
+// sequence 2,9,1,0, 1,0,0,0, 2,0,0,0, 3,0,0,0
+func ToBCD(min, max *[4]byte) string {
+	ipBCD := make([]byte, 32)
+	minStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", min[0], min[1], min[2], min[3]))
+	maxStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", max[0], max[1], max[2], max[3]))
+	for i := 0; i < 16; i += 4 {
+		ipBCD[0+i] = (minStr[3+i] & 0b1111) | ((maxStr[3+i] & 0b1111) << 4) // keep only the lower nibble from ascii '0'-'9' gives byte 0-9
+		ipBCD[1+i] = (minStr[2+i] & 0b1111) | ((maxStr[2+i] & 0b1111) << 4)
+		ipBCD[2+i] = (minStr[1+i] & 0b1111) | ((maxStr[1+i] & 0b1111) << 4)
+		ipBCD[3+i] = (minStr[0+i] & 0b1111) | ((maxStr[0+i] & 0b1111) << 4)
+	}
+	return string(ipBCD)
+}
+
+// NoEscape is the default escape for LIKE parameters; it signals no escape
+const NoEscape = utf8.RuneError
+
+// IndexRuneEscape returns the index of the first instance of the Unicode code point
+// r, or -1 if rune is not present in runes; an escaped r is not matched.
+func IndexRuneEscape(runes []rune, r, escape rune) int {
+	for idx := 0; idx < len(runes); idx++ {
+		if runes[idx] == r {
+			if idx == 0 {
+				return 0
+			}
+			if runes[idx-1] != escape {
+				return idx
+			}
+		}
+	}
+	return -1
+}
+
+// LastIndexRuneEscape returns the index of the last instance of r in runes, or -1 if c is
+// not present in runes; an escaped r is not matched.
+func LastIndexRuneEscape(runes []rune, r, escape rune) int {
+	for idx := len(runes) - 1; idx >= 0; idx-- {
+		if runes[idx] == r {
+			if idx == 0 {
+				return 0
+			}
+			if runes[idx-1] != escape {
+				return idx
+			}
+		}
+	}
+	return -1
+}

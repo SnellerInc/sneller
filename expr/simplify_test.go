@@ -275,19 +275,9 @@ func TestSimplify(t *testing.T) {
 			Bool(false),
 		},
 		{
-			// UPPER(z.name) LIKE "%FRED%" -> CONTAINS_CI(z.name, "FRED")
-			Compare(Like, Call(Upper, path("z.name")), String("%FRED%")),
-			Call(ContainsCI, path("z.name"), String("FRED")),
-		},
-		{
 			// UPPER(z.name) LIKE "%fred%" -> FALSE
 			Compare(Like, Call(Upper, path("z.name")), String("%fred%")),
 			Bool(false),
-		},
-		{
-			// LOWER(z.name) LIKE "%fred%" -> CONTAINS_CI(z.name, "fred")
-			Compare(Like, Call(Lower, path("z.name")), String("%fred%")),
-			Call(ContainsCI, path("z.name"), String("fred")),
 		},
 		{
 			// LOWER(z.name) LIKE "%FRED%" -> FALSE

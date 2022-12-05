@@ -378,18 +378,6 @@ func miss(e Node, h Hint) bool {
 	return ok || TypeOf(e, h) == MissingType
 }
 
-// isSubstringSearchPattern determines whether the provided str contains a valid substring search pattern %pattern% used by LIKE
-func isSubstringSearchPattern(str string) (term string, ok bool) {
-	const wildcard = "%"
-	if strings.HasPrefix(str, wildcard) && strings.HasSuffix(str, wildcard) {
-		keyword := strings.TrimPrefix(strings.TrimSuffix(str, wildcard), wildcard)
-		if !strings.ContainsAny(keyword, "_"+wildcard) {
-			return keyword, true
-		}
-	}
-	return "", false
-}
-
 // cmpCase pushes a comparison into CASE limbs
 // so that the result-set of the case can be determined
 // statically to be a boolean result (these are cheaper

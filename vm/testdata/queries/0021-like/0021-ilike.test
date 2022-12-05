@@ -1,0 +1,39 @@
+SELECT COUNT(*)
+FROM input
+WHERE (str ILIKE '%x%z%') = (match IS FALSE)
+---
+
+# both pattern and data are ascii only
+{"str": "xz", "match": true}
+{"match": false}
+{"str": "xyz", "match": true}
+{"str": "xyZ", "match": true}
+{"str": "XZ", "match": true}
+{"str": "zxy", "match": false}
+{"str": "XYz", "match": true}
+{"str": "x", "match": false}
+{"str": "y", "match": false}
+{"str": "", "match": false}
+{"str": 100, "match": false}
+{"str": "abcdefghxyz", "match": true}
+{"str": "ABcdEFghXYZ", "match": true}
+{"str": "abcdxxyzzabcd", "match": true}
+{"str": "abcdxxyyzzabcd", "match": true}
+{"str": "abcdxxyyzzabcd", "match": true}
+
+# unicode code-points examples:
+# ¢ = 2bytes
+# € = 3bytes
+# 𐍈 = 4bytes
+# ĳ = 2bytes; Ĳ = 2bytes (upper of ĳ)
+
+# pattern is ascii only, data is non-ascii
+{"str": "x¢z", "match": true}
+{"str": "x€z", "match": true}
+{"str": "x𐍈z", "match": true}
+{"str": "x¢Z", "match": true}
+{"str": "x€Z", "match": true}
+{"str": "x𐍈Z", "match": true}
+
+---
+{"count": 0}

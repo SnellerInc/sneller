@@ -1,8 +1,3 @@
-# go test -bench BenchmarkTestQueries/0039
-SELECT name
-FROM input
-WHERE (name ILIKE 'ß%') # NOTE: ascii 'S' and ascii 'K' have a non-ascii non-normalized code-point
----
 {"country_eng": "Armenia", "name_eng": "Aram Khachatryan", "country": "Հայաստան", "name": "Արամ Խաչատրյան"}
 {"country_eng": "Australia", "name_eng": "Nicole Kidman", "country": "Australia", "name": "Nicole Kidman"}
 {"country_eng": "Austria", "name_eng": "Johann Strauss", "country": "Österreich", "name": "Johann Strauß"}

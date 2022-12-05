@@ -184,7 +184,6 @@ const (
 	sDfaT6Z // DFA tiny 6-bit Zero remaining length assertion
 	sDfaT7Z // DFA tiny 7-bit Zero remaining length assertion
 	sDfaT8Z // DFA tiny 8-bit Zero remaining length assertion
-	sDfaL   // DFA large
 	sDfaLZ  // DFA large Zero remaining length assertion
 
 	// raw literal comparison
@@ -2525,26 +2524,10 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), p.Constant(enc).imm)
 }
 
-// toBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.
-// Create an encoding of an IP4 as 16 bytes that is convenient. eg., byte sequence [192,1,2,3] becomes byte
-// sequence 2,9,1,0, 1,0,0,0, 2,0,0,0, 3,0,0,0
-func toBCD(min, max *[4]byte) string {
-	ipBCD := make([]byte, 32)
-	minStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", min[0], min[1], min[2], min[3]))
-	maxStr := []byte(fmt.Sprintf("%04d%04d%04d%04d", max[0], max[1], max[2], max[3]))
-	for i := 0; i < 16; i += 4 {
-		ipBCD[0+i] = (minStr[3+i] & 0b1111) | ((maxStr[3+i] & 0b1111) << 4) // keep only the lower nibble from ascii '0'-'9' gives byte 0-9
-		ipBCD[1+i] = (minStr[2+i] & 0b1111) | ((maxStr[2+i] & 0b1111) << 4)
-		ipBCD[2+i] = (minStr[1+i] & 0b1111) | ((maxStr[1+i] & 0b1111) << 4)
-		ipBCD[3+i] = (minStr[0+i] & 0b1111) | ((maxStr[0+i] & 0b1111) << 4)
-	}
-	return string(ipBCD)
-}
-
 // IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
 func (p *prog) IsSubnetOfIP4(str *value, min, max [4]byte) *value {
 	str = p.toStr(str)
-	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), toBCD(&min, &max))
+	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), stringext.ToBCD(&min, &max))
 }
 
 // SkipCharLeft skips a variable number of UTF-8 code-points from the left side of a string
@@ -2587,69 +2570,14 @@ func (p *prog) SkipCharRightConst(str *value, nChars int) *value {
 	}
 }
 
-// encode the appropriate immediate for a
-// pattern-matching operation
-//
-// each segment of the pattern is encoded
-// as a 1-byte length, and implicitly each
-// segment is delimited with a '?' operation
-func (p *prog) patmatch(str *value, pat string, wc byte, caseSensitive bool) *value {
-	str = p.toStr(str)
-	if len(pat) == 0 {
-		return str
-	}
-	// we can't pass a wildcard as the first
-	// or last segment to the assembly code;
-	// that needs to be handled at a higher level
-	if pat[0] == wc || pat[len(pat)-1] == wc {
-		panic("internal error: bad pattern-matching string")
-	}
-
-	enc := ""
-	hasNtn := false // segment has non-trivial normalization
-	segments := make([]string, 0)
-
-	for len(pat) > 0 {
-		i := strings.IndexByte(pat, wc)
-		if i == -1 {
-			i = len(pat)
-		}
-		if i > 255 {
-			// NOTE: will be fixed in separate MR
-			panic("pattern too long")
-		}
-		segment := pat[:i]
-		if !caseSensitive {
-			segment = stringext.NormalizeString(segment)
-			hasNtn = hasNtn || stringext.HasNtnString(segment)
-		}
-		enc += string(byte(i)) + segment
-		segments = append(segments, segment)
-
-		if i == len(pat) {
-			break
-		}
-		pat = pat[i+1:] // plus 1 to skip the '?'; it is implied
-	}
-
-	if caseSensitive {
-		return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), p.Constant(enc).imm)
-	}
-	if hasNtn { // segment has non-trivial normalization
-		patternExt := p.Constant(stringext.GenPatternExt(segments))
-		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), patternExt.imm)
-	}
-	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), p.Constant(enc).imm)
-}
-
 // Like matches 'str' as a string against
 // a SQL 'LIKE' pattern
 //
 // The '%' character will match zero or more
 // unicode points, and the '_' character will
 // match exactly one unicode point.
-func (p *prog) Like(str *value, expr string, caseSensitive bool) *value {
-	return p.glob(str, expr, '_', '%', caseSensitive)
+func (p *prog) Like(str *value, expr string, escape rune, caseSensitive bool) *value {
+	return p.likeInternal(str, expr, '_', '%', escape, caseSensitive)
 }
 
 // Glob matches 'str' as a string against
@@ -2659,26 +2587,177 @@ func (p *prog) Like(str *value, expr string, caseSensitive bool) *value {
 // unicode points, and the '?' character will
 // match exactly one unicode point.
 func (p *prog) Glob(str *value, expr string, caseSensitive bool) *value {
-	return p.glob(str, expr, '?', '*', caseSensitive)
+	return p.likeInternal(str, expr, '?', '*', stringext.NoEscape, caseSensitive)
 }
 
-// match a pattern using
-func (p *prog) glob(str *value, expr string, wc, ks byte, caseSensitive bool) *value {
+// likeInternal matches a 'LIKE' pattern using any single character 'wc' and
+// any string of zero or more characters 'ks', and given the provided escape rune
+func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSensitive bool) *value {
+
+	// encodes the appropriate immediate for a pattern-matching operation
+	patMatch := func(pattern string) *value {
+		if len(pattern) == 0 {
+			return str
+		}
+		pat := []rune(pattern)
+
+		// we can't pass a wildcard as the first
+		// or last segment to the assembly code;
+		// that needs to be handled at a higher level
+		if (stringext.IndexRuneEscape(pat, wc, escape) == 0) ||
+			(stringext.LastIndexRuneEscape(pat, wc, escape) == len(pat)-1) {
+			panic("internal error: bad pattern-matching string")
+		}
+
+		// each segment of the pattern is encoded
+		// as a 1-byte length, and implicitly each
+		// segment is delimited with a '?' operation
+
+		patternEnc := ""
+		hasNtn := false // segment has non-trivial normalization
+		segments := make([]string, 0)
+
+		for len(pat) > 0 {
+			i := stringext.IndexRuneEscape(pat, wc, escape)
+			if i == -1 {
+				i = len(pat)
+			}
+			if i > 255 {
+				// NOTE: will be fixed in separate MR
+				panic("pattern too long")
+			}
+			// remove escape character
+			segment := strings.ReplaceAll(string(pat[:i]), string(escape), "")
+
+			if !caseSensitive {
+				segment = stringext.NormalizeString(segment)
+				hasNtn = hasNtn || stringext.HasNtnString(segment)
+			}
+			patternEnc += string(byte(i)) + segment
+			segments = append(segments, segment)
+
+			if i == len(pat) {
+				break
+			}
+			pat = pat[i+1:] // plus 1 to skip the '?'; it is implied
+		}
+		if caseSensitive {
+			enc := p.Constant(patternEnc).imm
+			return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), enc)
+		}
+		if hasNtn { // segment has non-trivial normalization
+			enc := p.Constant(stringext.GenPatternExt(segments)).imm
+			return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), enc)
+		}
+		enc := p.Constant(patternEnc).imm
+		return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), enc)
+	}
+
+	// matches '<start>*<middle0>...*<middleN>*<end>'
+	pattern := func(startStr string, middle []string, endStr string) *value {
+
+		start := []rune(startStr)
+		end := []rune(endStr)
+
+		// match pattern anchored at start;
+		// match forwards by repeatedly trimming literal prefixes or single characters with wildcard
+		for len(start) > 0 {
+			// skip all leading code-points with wildcard
+			nRunesToSkip := 0
+			for (len(start) > 0) && (start[0] == wc) {
+				start = start[1:] // skip the first code-point
+				nRunesToSkip++
+			}
+			str = p.SkipCharLeftConst(str, nRunesToSkip)
+
+			// if anything remaining, match with prefix
+			if len(start) > 0 {
+				qi := stringext.IndexRuneEscape(start, wc, escape)
+				if qi == -1 {
+					qi = len(start)
+				}
+				prefix := string(start[:qi])
+				if escape != stringext.NoEscape {
+					prefix = strings.ReplaceAll(prefix, string(escape), "")
+				}
+				str = p.HasPrefix(str, prefix, caseSensitive)
+				start = start[qi:]
+			}
+		}
+		// match pattern anchored at end;
+		// we match this pattern backwards by trimming matching suffixes off of the string or single characters with '?'
+		for len(end) > 0 {
+			// skip all trailing code-points with '?'
+			nCharsToSkip := 0
+			for (len(end) > 0) && (stringext.LastIndexRuneEscape(end, wc, escape) == len(end)-1) {
+				end = end[:len(end)-1] // skip the last code-point
+				nCharsToSkip++
+			}
+			str = p.SkipCharRightConst(str, nCharsToSkip)
+
+			// if anything remaining, match with suffix
+			if len(end) > 0 {
+				var seg []rune
+				si := stringext.LastIndexRuneEscape(end, wc, escape)
+				if si == -1 {
+					seg = end
+					end = make([]rune, 0)
+				} else {
+					seg = end[si+1:]
+					end = end[:si+1]
+				}
+				suffix := string(seg)
+				if escape != stringext.NoEscape {
+					suffix = strings.ReplaceAll(suffix, string(escape), "")
+				}
+				str = p.HasSuffix(str, suffix, caseSensitive)
+				end = end[:si+1]
+			}
+		}
+
+		for i := range middle {
+			// any '?' at the beginning of an un-anchored match simply becomes a 'skipchar'
+			mid := []rune(middle[i])
+
+			nCharsToSkip := 0
+			for len(mid) > 0 && mid[0] == wc {
+				mid = mid[1:]
+				nCharsToSkip++
+			}
+			str = p.SkipCharLeftConst(str, nCharsToSkip)
+
+			// similarly, and '?' at the end of an unanchored match becomes a 'skipchar' after the inner match
+			nCharsToChomp := 0
+			for stringext.LastIndexRuneEscape(mid, wc, escape) == len(mid)-1 {
+				mid = mid[:len(mid)-1]
+				nCharsToChomp++
+			}
+
+			// do the difficult matching
+			if len(mid) > 0 {
+				str = patMatch(string(mid))
+			}
+			str = p.SkipCharLeftConst(str, nCharsToChomp)
+		}
+		return str
+	}
+
+	str = p.toStr(str)
 	if !caseSensitive { // Bytecode for case-insensitive comparing expects that needles and patterns are in normalized (UPPER) case
 		expr = stringext.NormalizeString(expr)
 	}
-	lefti := strings.IndexByte(expr, ks)
+	lefti := stringext.IndexRuneEscape([]rune(expr), ks, escape)
 	if lefti == -1 {
-		return p.pattern(str, expr, nil, "", wc, caseSensitive)
+		return pattern(expr, nil, "")
 	}
 	left := expr[:lefti]
 	expr = expr[lefti+1:]
 
 	var middle []string
 	for len(expr) > 0 {
-		segi := strings.IndexByte(expr, ks)
+		segi := stringext.IndexRuneEscape([]rune(expr), ks, escape)
 		if segi == -1 {
-			return p.pattern(str, left, middle, expr, wc, caseSensitive)
+			return pattern(left, middle, expr)
 		}
 		seg := expr[:segi]
 		expr = expr[segi+1:]
@@ -2687,89 +2766,7 @@ func (p *prog) glob(str *value, expr string, wc, ks byte, caseSensitive bool) *v
 		}
 		middle = append(middle, seg)
 	}
-	return p.pattern(str, left, middle, "", wc, caseSensitive)
-}
-
-// matches '<start>*<middle0>...*<middleN>*<end>'
-func (p *prog) pattern(str *value, startStr string, middle []string, endStr string, wc byte, caseSensitive bool) *value {
-
-	start := []rune(startStr)
-	end := []rune(endStr)
-
-	str = p.toStr(str)
-	// match pattern anchored at start;
-	// match forwards by repeatedly trimming literal prefixes or single characters with '?'
-	for len(start) > 0 {
-		// skip all leading code-points with '?'
-		nCharsToSkip := 0
-		for (len(start) > 0) && (start[0] == rune(wc)) {
-			start = start[1:] // skip the first code-point
-			nCharsToSkip++
-		}
-		str = p.SkipCharLeftConst(str, nCharsToSkip)
-
-		// if anything remaining, match with prefix
-		if len(start) > 0 {
-			qi := strings.IndexByte(string(start), wc)
-			if qi == -1 {
-				qi = len(start)
-			}
-			str = p.HasPrefix(str, string(start[:qi]), caseSensitive)
-			start = start[qi:]
-		}
-	}
-	// match pattern anchored at end;
-	// we match this pattern backwards by trimming matching suffixes off of the string or single characters with '?'
-	for len(end) > 0 {
-		// skip all trailing code-points with '?'
-		nCharsToSkip := 0
-		for (len(end) > 0) && (end[len(end)-1] == rune(wc)) {
-			end = end[:len(end)-1] // skip the last code-point
-			nCharsToSkip++
-		}
-		str = p.SkipCharRightConst(str, nCharsToSkip)
-
-		// if anything remaining, match with suffix
-		if len(end) > 0 {
-			var seg []rune
-			si := strings.LastIndexByte(string(end), wc)
-			if si == -1 {
-				seg = end
-				end = make([]rune, 0)
-			} else {
-				seg = end[si+1:]
-				end = end[:si+1]
-			}
-			str = p.HasSuffix(str, string(seg), caseSensitive)
-			end = end[:si+1]
-		}
-	}
-
-	for i := range middle {
-		// any '?' at the beginning of an unanchored match simply becomes a 'skipchar'
-		mid := []rune(middle[i])
-
-		nCharsToSkip := 0
-		for len(mid) > 0 && mid[0] == rune(wc) {
-			mid = mid[1:]
-			nCharsToSkip++
-		}
-		str = p.SkipCharLeftConst(str, nCharsToSkip)
-
-		// similarly, and '?' at the end of an unanchored match becomes a 'skipchar' after the inner match
-		nCharsToChomp := 0
-		for len(mid) > 0 && mid[len(mid)-1] == rune(wc) {
-			mid = mid[:len(mid)-1]
-			nCharsToChomp++
-		}
-
-		// do the difficult matching
-		if len(mid) > 0 {
-			str = p.patmatch(str, string(mid), wc, caseSensitive)
-		}
-		str = p.SkipCharLeftConst(str, nCharsToChomp)
-	}
-	return str
+	return pattern(left, middle, "")
 }
 
 // RegexMatch matches 'str' as a string against regex
@@ -2807,7 +2804,7 @@ func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 
 // EqualsFuzzy does a fuzzy string equality of 'str' as a string against needle.
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
-// character horizon. If the disance exceeds the provided threshold, the match is
+// character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
 func (p *prog) EqualsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceInt(threshold)
@@ -2822,7 +2819,7 @@ func (p *prog) EqualsFuzzy(str *value, needle string, threshold *value, ascii bo
 
 // ContainsFuzzy does a fuzzy string contains of needle in 'str'.
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
-// character horizon. If the disance exceeds the provided threshold, the match is
+// character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
 func (p *prog) ContainsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceInt(threshold)

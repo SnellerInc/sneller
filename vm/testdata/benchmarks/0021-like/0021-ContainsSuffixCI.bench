@@ -1,0 +1,3 @@
+# go test -bench BenchmarkTestQueries/0021-like-ContainsSuffixCI
+SELECT name FROM 'data.jsonrl'
+WHERE (name ILIKE '%idman') # NOTE: ascii 'S' and ascii 'K' have a non-ascii non-normalized code-point

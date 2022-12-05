@@ -56,11 +56,6 @@
 (like x (string pat)), `!strings.ContainsAny(string(pat), "%_")` -> (eq x pat)
 (ilike x (string pat)), `!strings.ContainsAny(string(pat), "%_")` -> (equals_ci x pat)
 
-// a 'like' w/ a trivial pattern can be converted
-// into a slightly faster substring search:
-(like x (string pat)), `term, ok := isSubstringSearchPattern(string(pat)); ok` -> (contains x "String(term)")
-(ilike x (string pat)), `term, ok := isSubstringSearchPattern(string(pat)); ok` -> (contains_ci x "String(term)")
-
 // convert upper/lower + like -> ilike or false
 (like (upper x) (string pat)), `isUpper(string(pat))` -> (ilike x pat)
 (like (lower x) (string pat)), `isLower(string(pat))` -> (ilike x pat)

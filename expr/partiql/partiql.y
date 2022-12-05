@@ -79,7 +79,7 @@ import (
 %right '!' '~' NOT
 %left BETWEEN CASE WHEN THEN ELSE END TO TRIM
 %left <empty> EQ NE LT LE GT GE
-%left <empty> SIMILAR REGEXP_MATCH_CI ILIKE LIKE IN IS OVER FILTER
+%left <empty> SIMILAR REGEXP_MATCH_CI ILIKE LIKE IN IS OVER FILTER ESCAPE
 %left <empty> '|'
 %left <empty> '^'
 %left <empty> '&'
@@ -426,9 +426,17 @@ datum_or_parens
 {
   $$ = expr.Neg($2)
 }
+| expr ILIKE STRING ESCAPE STRING
+{
+  $$ = expr.CompareEscape(expr.Ilike, $1, expr.String($3), expr.String($5))
+}
 | expr ILIKE STRING
 {
   $$ = expr.Compare(expr.Ilike, $1, expr.String($3))
+}
+| expr LIKE STRING ESCAPE STRING
+{
+  $$ = expr.CompareEscape(expr.Like, $1, expr.String($3), expr.String($5))
 }
 | expr LIKE STRING
 {
@@ -478,9 +486,17 @@ datum_or_parens
 {
   $$ = &expr.Not{Expr: expr.Compare(expr.Like, $1, expr.String($4))}
 }
+| expr NOT LIKE STRING ESCAPE STRING
+{
+  $$ = &expr.Not{Expr: expr.CompareEscape(expr.Like, $1, expr.String($4), expr.String($6))}
+}
 | expr NOT ILIKE STRING
 {
   $$ = &expr.Not{Expr: expr.Compare(expr.Ilike, $1, expr.String($4))}
+}
+| expr NOT ILIKE STRING ESCAPE STRING
+{
+  $$ = &expr.Not{Expr: expr.CompareEscape(expr.Ilike, $1, expr.String($4), expr.String($6))}
 }
 | expr NOT SIMILAR TO STRING
 {

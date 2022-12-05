@@ -1,0 +1,26 @@
+#go test -run=TestQueries/0039-ilike-utf8
+
+SELECT COUNT(*)
+FROM input
+WHERE (str ILIKE '%¢%Ĳ%') = (match IS FALSE)
+---
+# unicode code-points examples:
+# ¢ = 2bytes
+# € = 3bytes
+# 𐍈 = 4bytes
+# ĳ = 2bytes; Ĳ = 2bytes (upper of ĳ)
+
+# both pattern and data are non-ascii
+{"str": "¢Ĳ", "match": true}
+{"str": "¢𐍈Ĳ", "match": true}
+{"str": "¢ĳ", "match": true}
+{"str": "¢𐍈ĳ", "match": true}
+
+{"str": "𐍈¢Ĳ", "match": true}
+{"str": "𐍈¢𐍈Ĳ", "match": true}
+{"str": "𐍈¢ĳ", "match": true}
+{"str": "𐍈¢𐍈ĳ", "match": true}
+
+{"str": "𐍈¢𐍈", "match": false}
+---
+{"count": 0}
