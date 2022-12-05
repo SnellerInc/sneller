@@ -20,9 +20,9 @@ import (
 	"math"
 	"sort"
 	"sync"
-	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/utf8"
 
 	"golang.org/x/exp/slices"
 )
@@ -193,7 +193,8 @@ func (s *systemDatashapeTable) symbolLength(id ion.Symbol) int64 {
 	if !ok {
 		k = 0
 	} else {
-		k = int64(utf8.RuneCountInString(str))
+		b := []byte(str)
+		k = int64(utf8.ValidStringLength(b))
 	}
 
 	s.symlength[n] = k
@@ -252,7 +253,7 @@ func (s *systemDatashapeTable) processValue(node *datashapeNode, val []byte) err
 		}
 
 		if changed {
-			l := int64(utf8.RuneCount(str))
+			l := int64(utf8.ValidStringLength(str))
 			node.stats.rangeStringLen.update(l)
 		}
 	}
