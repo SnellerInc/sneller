@@ -20,9 +20,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/plan/pir"
 	"github.com/SnellerInc/sneller/sorting"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -206,12 +206,7 @@ type Indexer interface {
 // An Index may be returned by Indexer.Index to provide
 // additional table metadata that may be used during
 // optimization.
-type Index interface {
-	// TimeRange returns the inclusive time range
-	// for the given path expression across the
-	// given table.
-	TimeRange(path *expr.Path) (min, max date.Time, ok bool)
-}
+type Index = pir.Index
 
 // index calls idx.Index(tbl), with special handling
 // for certain table expressions.
