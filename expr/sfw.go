@@ -483,10 +483,13 @@ func (s *Select) Equals(x Node) bool {
 	if s.From != nil && !s.From.Equals(xs.From) {
 		return false
 	}
-	if !slices.EqualFunc(s.Columns, xs.Columns, func(x, y Binding) bool { return x.Equals(y) }) {
+	if !slices.EqualFunc(s.Columns, xs.Columns, Binding.Equals) {
 		return false
 	}
 	if s.Where != nil && !s.Where.Equals(xs.Where) {
+		return false
+	}
+	if !slices.EqualFunc(s.GroupBy, xs.GroupBy, Binding.Equals) {
 		return false
 	}
 	if s.Having != nil && !s.Having.Equals(xs.Having) {
