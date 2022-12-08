@@ -40,9 +40,6 @@ import (
 // cache that view rather than the whole table if it
 // ends up getting touched multiple times)
 type table struct {
-	refs []*expr.Path
-	// free variable references
-	outer      []string
 	Filter     expr.Node
 	Bind       string
 	star       bool // this table is referenced via '*'
@@ -50,13 +47,11 @@ type table struct {
 }
 
 func (t *table) equals(x *table) bool {
-	peq := (*expr.Path).EqualsPath
-	return t == x || slices.EqualFunc(t.refs, x.refs, peq) &&
-		slices.Equal(t.outer, x.outer) &&
+	return t == x ||
 		expr.Equal(t.Filter, x.Filter) &&
-		t.Bind == x.Bind &&
-		t.star == x.star &&
-		t.haveParent == x.haveParent
+			t.Bind == x.Bind &&
+			t.star == x.star &&
+			t.haveParent == x.haveParent
 }
 
 func (t *table) walk(v expr.Visitor) {
@@ -75,7 +70,6 @@ func (t *table) strip(p *expr.Path) error {
 			return errorf(p, "reference to undefined variable %q", p)
 		}
 		// this is *definitely* a free variable
-		t.outer = append(t.outer, p.First)
 		return nil
 	}
 	d, ok := p.Rest.(*expr.Dot)
@@ -84,7 +78,6 @@ func (t *table) strip(p *expr.Path) error {
 	}
 	p.First = d.Field
 	p.Rest = d.Rest
-	t.refs = append(t.refs, p)
 	return nil
 }
 
