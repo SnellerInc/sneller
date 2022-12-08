@@ -242,8 +242,20 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			return nil, err
 		}
 		return p.not(inner), nil
-	case *expr.Path:
-		return compilepath(p, p.dot(n.First, p.validLanes()), n.Rest)
+	case *expr.Dot:
+		inner, err := compile(p, n.Inner)
+		if err != nil {
+			return nil, err
+		}
+		return p.dot(n.Field, inner), nil
+	case expr.Ident:
+		return p.dot(string(n), p.validLanes()), nil
+	case *expr.Index:
+		inner, err := compile(p, n.Inner)
+		if err != nil {
+			return nil, err
+		}
+		return p.index(inner, n.Offset), nil
 	case *expr.IsKey:
 		inner, err := compile(p, n.Expr)
 		if err != nil {
@@ -311,7 +323,11 @@ func (p *prog) compileAsBool(e expr.Node) (*value, error) {
 	case *expr.Builtin:
 	case *expr.Not:
 	case *expr.Member:
-	case *expr.Path:
+	case *expr.Index:
+		coerce = true
+	case *expr.Dot:
+		coerce = true
+	case expr.Ident:
 		coerce = true
 	case *expr.Cast:
 		if e.To != expr.BoolType {
@@ -1054,21 +1070,6 @@ func (p *prog) toTime(v *value) *value {
 		return v
 	}
 	return p.errorf("cannot convert result of %s to time", v)
-}
-
-// compile a path expression from its top-level value
-func compilepath(p *prog, top *value, rest expr.PathComponent) (*value, error) {
-	for r := rest; r != nil; r = r.Next() {
-		switch n := r.(type) {
-		case *expr.Dot:
-			top = p.dot(n.Field, top)
-		case *expr.LiteralIndex:
-			top = p.index(top, n.Field)
-		default:
-			return nil, fmt.Errorf("unhandled path component %q", r)
-		}
-	}
-	return top, nil
 }
 
 func (p *prog) hashLookup(e expr.Node, lookup []ion.Datum) (*value, error) {

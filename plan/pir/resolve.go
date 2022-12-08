@@ -18,11 +18,10 @@ import (
 	"fmt"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 )
 
 type reftracker interface {
-	strip(p *expr.Path) error
+	strip(path []string) ([]string, error)
 }
 
 func check(parent Step, e expr.Node) error {
@@ -42,45 +41,65 @@ func (b *Trace) checkExpressions(n []expr.Node) error {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func (b *Trace) errorf(e expr.Node, f string, args ...interface{}) {
-	b.err = append(b.err, errorf(e, f, args...))
+func (r *pathRewriter) errorf(e expr.Node, f string, args ...interface{}) {
+	r.err = append(r.err, errorf(e, f, args...))
 }
 
-func (b *Trace) combine() error {
-	if len(b.err) == 1 {
-		return b.err[0]
+func (r *pathRewriter) combine() error {
+	switch len(r.err) {
+	case 0:
+		return nil
+	case 1:
+		return r.err[0]
+	default:
+		return fmt.Errorf("%w (and %d other errors)", r.err[0], len(r.err)-1)
 	}
-	return fmt.Errorf("%w (and %d other errors)", b.err[0], len(b.err)-1)
 }
 
-func (b *Trace) Visit(e expr.Node) expr.Visitor {
+type pathRewriter struct {
+	cur Step
+	err []error
+
+	rewrote expr.Node
+}
+
+func (r *pathRewriter) Rewrite(e expr.Node) expr.Node {
+	if id, ok := e.(expr.Ident); ok {
+		return r.rewritePath(e, []string{string(id)})
+	}
+	// called immediately after Walk
+	if r.rewrote != nil {
+		e = r.rewrote
+	}
+	r.rewrote = nil
+	return e
+}
+
+func (r *pathRewriter) Walk(e expr.Node) expr.Rewriter {
 	switch n := e.(type) {
 	case *expr.Select:
-		return b.visitSelect(n)
-	case *expr.Path:
-		return b.visitPath(n)
+		return nil
 	case *expr.Unpivot:
-		return b.visitUnpivot(n)
+		r.visitUnpivot(n)
+		return nil
 	default:
-		return b
+		flat, ok := expr.FlatPath(e)
+		if ok {
+			r.rewrote = r.rewritePath(e, flat)
+			return nil // don't traverse flat paths any further
+		}
+		return r
 	}
 }
 
-func (b *Trace) visitSelect(e *expr.Select) expr.Visitor {
-	// don't visit subqueries, we'll hoist those
-	// into inputs in a later step
-	return nil
-}
-
-func (b *Trace) visitPath(p *expr.Path) expr.Visitor {
-	src, node := b.cur.get(p.First)
+func (r *pathRewriter) rewritePath(e expr.Node, path []string) expr.Node {
+	src, _ := r.cur.get(path[0])
 	if src == nil {
-		b.errorf(p, "path %s references an unbound variable", expr.ToString(p))
-		return nil
+		r.errorf(e, "path %s references an unbound variable", expr.ToString(e))
+		return e
 	}
 	// if the source of a binding is an iterator,
 	// add this path expression to the set of variable
@@ -88,36 +107,17 @@ func (b *Trace) visitPath(p *expr.Path) expr.Visitor {
 	// this lets us compute the set of bindings produced
 	// from a table
 	if rt, ok := src.(reftracker); ok {
-		if err := rt.strip(p); err != nil {
-			b.err = append(b.err, err)
+		newpath, err := rt.strip(path)
+		if err != nil {
+			r.err = append(r.err, err)
+			return e
 		}
-		// references to tables, etc.
-		// do not need to be additionally
-		// type-checked
-		return nil
+		return expr.MakePath(newpath)
 	}
-
-	t := expr.TypeOf(node, &stepHint{src.parent()})
-	if t == expr.AnyType || p.Rest == nil {
-		return nil
-	}
-	// type-check the path expression against
-	// the node that produces the value when
-	// the path has multiple components
-	switch p.Rest.(type) {
-	case *expr.LiteralIndex:
-		if !t.Contains(ion.ListType) {
-			b.errorf(p, "path expression %q indexes a non-list object", p)
-		}
-	case *expr.Dot:
-		if !t.Contains(ion.StructType) {
-			b.errorf(p, "path expression %q dots a non-structure object", p)
-		}
-	}
-	return nil
+	return e
 }
 
-func (b *Trace) visitUnpivot(u *expr.Unpivot) expr.Visitor {
-	b.errorf(u, "the UNPIVOT cross join case is not supported yet")
+func (r *pathRewriter) visitUnpivot(u *expr.Unpivot) expr.Visitor {
+	r.errorf(u, "the UNPIVOT cross join case is not supported yet")
 	return nil
 }

@@ -171,7 +171,7 @@ func splitOne(s Step, mapping, reduce *Trace) (bool, error) {
 		return false, nil
 	case *UnpivotAtDistinct:
 		mapping.top = n
-		cols := []expr.Node{&expr.Path{First: *n.Ast.At}}
+		cols := []expr.Node{expr.Ident(*n.Ast.At)}
 		dis := Distinct{Columns: cols}
 		dis.setparent(reduce.top)
 		reduce.top = &dis

@@ -200,16 +200,12 @@ type nameType struct {
 type flatSchema []nameType
 
 func (f flatSchema) TypeOf(e expr.Node) expr.TypeSet {
-	p, ok := e.(*expr.Path)
+	p, ok := e.(expr.Ident)
 	if !ok {
 		return expr.AnyType
 	}
-	if p.Rest != nil {
-		// schema is flat; type must be missing
-		return expr.MissingType
-	}
 	for i := range f {
-		if f[i].field == p.First {
+		if f[i].field == string(p) {
 			return f[i].typ
 		}
 	}
@@ -321,6 +317,22 @@ func TestBuild(t *testing.T) {
 			// so the result of 'x+1' is analyzed as possibly float
 			// even though in practice it is always integral...
 			results: []expr.TypeSet{intType, expr.NumericType, expr.BoolType},
+		},
+		{
+			// constprop with structure references
+			input: "select val.y as final from (select {'y': x + 3} as val from foo)",
+			expect: []string{
+				"ITERATE foo FIELDS [x]",
+				"PROJECT x + 3 AS final",
+			},
+		},
+		{
+			// constprop with list references
+			input: "select val[2] as final from (select [x, y, z] as val from foo)",
+			expect: []string{
+				"ITERATE foo FIELDS [z]",
+				"PROJECT z AS final",
+			},
 		},
 		{
 			// test that we do not duplicate the "count" field

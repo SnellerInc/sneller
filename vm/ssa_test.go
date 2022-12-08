@@ -615,7 +615,7 @@ func TestSSANYCQueries(t *testing.T) {
 			if v.op != sdot {
 				continue
 			}
-			names = append(names, expr.Bind(&expr.Path{First: v.imm.(string)}, ""))
+			names = append(names, expr.Bind(expr.Ident(v.imm.(string)), ""))
 		}
 		return Selection(names)
 	}

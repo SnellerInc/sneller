@@ -86,57 +86,67 @@ func TestCheckExpressions(t *testing.T) {
 		{
 			Call(ObjectSize, Null{}),
 			&TypeError{},
-			"SIZE is undefined for values of type null",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, String("foo")),
 			&TypeError{},
-			"SIZE is undefined for values of type string",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, Integer(1)),
 			&TypeError{},
-			"SIZE is undefined for values of type integer",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, Float(1.5)),
 			&TypeError{},
-			"SIZE is undefined for values of type float",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, &Rational{}),
 			&TypeError{},
-			"SIZE is undefined for values of type rational",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, Bool(true)),
 			&TypeError{},
-			"SIZE is undefined for values of type bool",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, &Timestamp{}),
 			&TypeError{},
-			"SIZE is undefined for values of type timestamp",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, Star{}),
 			&TypeError{},
-			"SIZE is undefined for values of type expr.Star",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, Call(Substring, String("test"), Integer(2))),
 			&TypeError{},
-			"SIZE is undefined for values of type *expr.Builtin",
+			"SIZE expects",
 		},
 		{
 			Call(ObjectSize, And(path("enabled"), path("active"))),
 			&TypeError{},
-			"SIZE is undefined for values of type *expr.Logical",
+			"SIZE expects",
 		},
 		{
-			&Path{First: "z", Rest: &LiteralIndex{Field: -1}},
+			&Index{Inner: Ident("z"), Offset: -1},
 			&TypeError{},
-			"illegal index",
+			"negative",
+		},
+		{
+			&Index{Inner: &List{Values: []Constant{Null{}, Null{}}}, Offset: 3},
+			&TypeError{},
+			"index",
+		},
+		{
+			&Index{Inner: Call(MakeList, Null{}, Null{}), Offset: 3},
+			&TypeError{},
+			"index",
 		},
 		{
 			// SELECT ASSERT_ION_TYPE()

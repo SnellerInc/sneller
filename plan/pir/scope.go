@@ -26,11 +26,11 @@ func (s *stepHint) TypeOf(e expr.Node) expr.TypeSet {
 	if s.parent == nil {
 		return expr.NoHint(e)
 	}
-	p, ok := e.(*expr.Path)
-	if !ok || p.Rest != nil {
+	p, ok := e.(expr.Ident)
+	if !ok {
 		return expr.NoHint(e)
 	}
-	origin, node := s.parent.get(p.First)
+	origin, node := s.parent.get(string(p))
 	if origin == nil {
 		return expr.NoHint(e)
 	}

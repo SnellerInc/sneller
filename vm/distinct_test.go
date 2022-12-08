@@ -27,8 +27,8 @@ import (
 func TestDistinct(t *testing.T) {
 	// select distinct VendorID, RatecodeID
 	on := []expr.Node{
-		&expr.Path{First: "VendorID"},
-		&expr.Path{First: "RatecodeID"},
+		expr.Ident("VendorID"),
+		expr.Ident("RatecodeID"),
 	}
 	var dst QueryBuffer
 	src, err := os.ReadFile("../testdata/nyc-taxi.block")

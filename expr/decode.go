@@ -54,6 +54,9 @@ func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 		return String(s), rest, err
 	case ion.StructType:
 		return decodeStruct(st, msg)
+	case ion.SymbolType:
+		sym, rest, err := ion.ReadSymbol(msg)
+		return Ident(st.Get(sym)), rest, err
 	case ion.TimestampType:
 		d, rest, err := ion.ReadTime(msg)
 		return &Timestamp{Value: d}, rest, err
@@ -124,8 +127,10 @@ func getEmpty(name string) composite {
 		return (*Rational)(new(big.Rat))
 	case "star":
 		return Star{}
-	case "path":
-		return &Path{}
+	case "dot":
+		return &Dot{}
+	case "index":
+		return &Index{}
 	case "cmp":
 		return &Comparison{}
 	case "stringmatch":

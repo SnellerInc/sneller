@@ -61,7 +61,7 @@ type multiIndex []Index
 
 // TimeRange returns the union of time ranges for p in
 // all the contained indexes.
-func (m multiIndex) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
+func (m multiIndex) TimeRange(p []string) (min, max date.Time, ok bool) {
 	for i := range m {
 		min0, max0, ok := m[i].TimeRange(p)
 		if !ok {
@@ -352,11 +352,11 @@ func indexGlob(tl TableLister, idx Indexer, e *expr.Builtin) (Index, error) {
 	}
 }
 
-func mkpath(db, tbl string) *expr.Path {
+func mkpath(db, tbl string) expr.Node {
 	if db == "" {
-		return &expr.Path{First: tbl}
+		return expr.Ident(tbl)
 	}
-	return &expr.Path{First: db, Rest: &expr.Dot{Field: tbl}}
+	return &expr.Dot{Inner: expr.Ident(db), Field: tbl}
 }
 
 type matcher interface {
@@ -419,19 +419,17 @@ func splitGlobArg(args []expr.Node) (db, str string, ok bool) {
 	if len(args) != 1 {
 		return "", "", false
 	}
-	p, ok := args[0].(*expr.Path)
+	path, ok := expr.FlatPath(args[0])
 	if !ok {
 		return "", "", false
 	}
-	if p.Rest == nil {
-		return "", p.First, true
+	if len(path) == 1 {
+		return "", path[0], true
 	}
-	db = p.First
-	dot, ok := p.Rest.(*expr.Dot)
-	if !ok || dot.Rest != nil {
+	if len(path) != 2 {
 		return "", "", false
 	}
-	return db, dot.Field, true
+	return path[0], path[1], true
 }
 
 func appenderr(outerr, err error) error {

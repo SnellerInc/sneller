@@ -42,7 +42,6 @@ import (
     integer  int
     exprint  *expr.Integer
     expr     expr.Node
-    pc       expr.PathComponent
     order    expr.Order
     sel      *expr.Select
     selinto  selectWithInto
@@ -96,12 +95,11 @@ import (
 %token <str> STRING
 
 %type <query> query
-%type <expr> expr datum datum_or_parens path_expression maybe_into
+%type <expr> expr datum datum_or_parens maybe_into
 %type <expr> where_expr having_expr case_optional_expr case_optional_else parenthesized_expr
 %type <expr> optional_filter
-%type <expr> unpivot unpivot_source explicit_struct_definition explicit_list_definition
+%type <expr> unpivot unpivot_source
 %type <with> maybe_cte_bindings cte_bindings
-%type <pc> path_component
 %type <yesno> ascdesc nullslast maybe_distinct
 %type <str> identifier
 %type <integer> literal_int
@@ -157,7 +155,7 @@ maybe_explain:
 |                       { $$ = "" }
 
 maybe_into:
-INTO path_expression { $$ = $2 } | { $$ = nil }
+INTO datum { $$ = $2 } | { $$ = nil }
 
 maybe_cte_bindings:
 cte_bindings { $$ = $1 } | { $$ = nil }
@@ -187,11 +185,9 @@ expr { $$ = expr.Bind($1, "") } |
 '*' { $$ = expr.Bind(expr.Star{}, "") } |
 unpivot { $$ = expr.Bind($1, "") }
 
-path_expression:
-identifier path_component { $$ = &expr.Path{First: $1, Rest: $2} }
-
 // match exactly a single datum
 datum:
+identifier { $$ = expr.Ident($1) } |
 NUMBER { $$ = $1 } |
 TRUE { $$ = expr.Bool(true) } |
 FALSE { $$ = expr.Bool(false) } |
@@ -199,7 +195,11 @@ NULL { $$ = expr.Null{} } |
 MISSING { $$ = expr.Missing{} } |
 STRING { $$ = expr.String($1) } |
 ION { $$ = $1 } |
-path_expression { $$ = $1 }
+'{' field_value_list '}' { $$ = expr.Call(expr.MakeStruct, $2...) } |
+'[' any_value_list ']' { $$ = expr.Call(expr.MakeList, $2...) } |
+datum '.' identifier { $$ = &expr.Dot{Inner: $1, Field: $3} } |
+datum '[' literal_int ']' { $$ = &expr.Index{Inner: $1, Offset: $3} } |
+datum '[' STRING ']' { $$ = &expr.Dot{Inner: $1, Field: $3} }
 
 // datum_or_parens is guaranteed to
 // avoid shift-reduce conflicts with BETWEEN,
@@ -578,16 +578,6 @@ datum_or_parens
 {
   $$ = &expr.IsKey{Key: expr.IsNotFalse, Expr: $1}
 }
-|
-explicit_list_definition
-{
-    $$ = $1
-}
-|
-explicit_struct_definition
-{
-    $$ = $1
-}
 
 // match (binding)+
 binding_list:
@@ -655,12 +645,6 @@ lhs_from_expr join_kind value_binding ON expr EQ expr
 
 literal_int:
 NUMBER { var idxerr error; $$, idxerr = toint($1); if idxerr != nil { yylex.Error(idxerr.Error()) } }
-
-path_component:
-{ $$ = nil }
-| '.' identifier path_component { $$ = &expr.Dot{Field: $2, Rest: $3}}
-| '[' literal_int ']' path_component { $$ = &expr.LiteralIndex{Field: $2, Rest: $4} }
-| '[' ID ']' path_component { $$ = &expr.Dot{Field: $2, Rest: $4} }
 
 // note: arithmetic_expression
 // and primary_expr are declared
@@ -740,11 +724,6 @@ UNPIVOT unpivot_source AT identifier { /*Cloning, as the buffer gets overwritten
 unpivot_source:
 expr { $$ = &expr.Table{Binding: expr.Bind($1, "")} }
 
-explicit_struct_definition:
-'{' field_value_list '}' { $$ = expr.Call(expr.MakeStruct, $2...) }
-
-explicit_list_definition:
-'[' any_value_list ']' { $$ = expr.Call(expr.MakeList, $2...) }
 
 trim_type:
 LEADING { $$ = trimLeading } |

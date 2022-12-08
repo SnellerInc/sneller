@@ -62,26 +62,23 @@ func (t *table) walk(v expr.Visitor) {
 
 // strip a path that has been determined
 // to resolve to a reference to this table
-func (i *IterTable) strip(p *expr.Path) error {
+func (i *IterTable) strip(path []string) ([]string, error) {
 	if i.Bind == "" {
-		i.free[p.First] = struct{}{}
-		return nil
-	} else if p.First != i.Bind {
-		if !i.haveParent || p.Rest != nil {
-			return errorf(p, "reference to undefined variable %q", p)
+		i.free[path[0]] = struct{}{}
+		return path, nil
+	} else if path[0] != i.Bind {
+		if !i.haveParent {
+			return nil, errorf(expr.MakePath(path), "reference to undefined variable %q", path[0])
 		}
-		i.free[p.First] = struct{}{}
+		i.free[path[0]] = struct{}{}
 		// this is *definitely* a free variable
-		return nil
+		return path, nil
 	}
-	d, ok := p.Rest.(*expr.Dot)
-	if !ok {
-		return errorf(p, "cannot compute %s on table %s", p.Rest, i.Bind)
+	if len(path) == 1 {
+		return nil, errorf(expr.MakePath(path), "cannot reference raw table")
 	}
-	p.First = d.Field
-	p.Rest = d.Rest
-	i.definite[d.Field] = struct{}{}
-	return nil
+	i.definite[path[1]] = struct{}{}
+	return path[1:], nil
 }
 
 type IterTable struct {
@@ -116,11 +113,11 @@ func (i *IterTable) rewrite(rw func(expr.Node, bool) expr.Node) {
 	}
 }
 
-func (i *IterTable) timeRange(p *expr.Path) (min, max date.Time, ok bool) {
+func (i *IterTable) timeRange(path []string) (min, max date.Time, ok bool) {
 	if i.Index == nil {
 		return date.Time{}, date.Time{}, false
 	}
-	return i.Index.TimeRange(p)
+	return i.Index.TimeRange(path)
 }
 
 // Wildcard returns true if the table
@@ -161,23 +158,20 @@ func (i *IterTable) get(x string) (Step, expr.Node) {
 
 // trim keeps only the fields listed on `used` list
 func (i *IterTable) trim(used map[string]struct{}) {
-	// 1. copy is needed because we modify the map
-	tmp := maps.Clone(used)
-
-	// 2. extend the used fields with ones from the Filter node
+	// 1. extend the used fields with ones from the Filter node
 	if i.Filter != nil {
 		collect := func(e expr.Node) {
-			p, ok := e.(*expr.Path)
+			p, ok := e.(expr.Ident)
 			if ok {
-				tmp[p.First] = struct{}{}
+				used[string(p)] = struct{}{}
 			}
 		}
 		expr.Walk(walkfn(collect), i.Filter)
 	}
 
-	// 3. filter out unused fields
+	// 2. filter out unused fields
 	pred := func(s string, _ struct{}) bool {
-		_, ok := tmp[s]
+		_, ok := used[s]
 		return !ok
 	}
 	maps.DeleteFunc(i.definite, pred)
@@ -611,7 +605,7 @@ func (o *OutputPart) get(x string) (Step, expr.Node) {
 //
 //	{"table": "db.table-XXXXXX"}
 type OutputIndex struct {
-	Table    *expr.Path
+	Table    expr.Node
 	Basename string
 	parented
 	noexprs
@@ -702,9 +696,10 @@ type Trace struct {
 	// in any order.
 	Replacements []*Trace
 
+	prcache *pathRewriter
+
 	top Step
 	cur Step
-	err []error
 
 	// final is the most recent
 	// complete set of bindings
@@ -768,12 +763,27 @@ func (b *Trace) beginUnionMap(src *Trace, table *IterTable) {
 }
 
 func (b *Trace) push() error {
-	if b.err != nil {
-		return b.combine()
-	}
 	b.cur.setparent(b.top)
 	b.top, b.cur = b.cur, nil
 	return nil
+}
+
+func (b *Trace) rewriter() *pathRewriter {
+	r := b.prcache
+	b.prcache = nil
+	if r == nil {
+		r = &pathRewriter{}
+	}
+	r.err = r.err[:0]
+	r.cur = b.cur
+	return r
+}
+
+func (b *Trace) pathwalk(e expr.Node) (expr.Node, error) {
+	pr := b.rewriter()
+	ret := expr.Rewrite(pr, e)
+	b.prcache = pr
+	return ret, pr.combine()
 }
 
 // Where pushes a filter to the expression stack
@@ -781,7 +791,11 @@ func (b *Trace) Where(e expr.Node) error {
 	f := &Filter{Where: e}
 	f.setparent(b.top)
 	b.cur = f
-	expr.Walk(b, e)
+	e, err := b.pathwalk(e)
+	if err != nil {
+		return err
+	}
+	f.Where = e
 	if err := check(b.top, e); err != nil {
 		return err
 	}
@@ -800,9 +814,12 @@ func (b *Trace) Iterate(bind *expr.Binding) error {
 	// introduce any bindings here that
 	// are visible within this node itself
 	b.cur = b.top
-	expr.Walk(b, iv.Value)
+	val, err := b.pathwalk(iv.Value)
+	if err != nil {
+		return err
+	}
+	iv.Value = val
 	b.cur = iv
-
 	b.final = append(b.final, *bind)
 	return b.push()
 }
@@ -814,11 +831,11 @@ func (b *Trace) Distinct(exprs []expr.Node) error {
 	b.cur = b.top
 	di := &Distinct{}
 	for i := range exprs {
-		expr.Walk(b, exprs[i])
-		if b.err != nil {
-			return b.combine()
+		if exp, err := b.pathwalk(exprs[i]); err != nil {
+			return err
+		} else {
+			di.Columns = append(di.Columns, exp)
 		}
-		di.Columns = append(di.Columns, exprs[i])
 	}
 
 	if err := b.checkExpressions(exprs); err != nil {
@@ -853,11 +870,12 @@ func (b *Trace) Bind(bindings ...[]expr.Binding) error {
 	// then add it to the current binding set
 	for _, bind := range bindings {
 		for i := range bind {
-			expr.Walk(b, bind[i].Expr)
-			if b.err != nil {
-				return b.combine()
+			if exp, err := b.pathwalk(bind[i].Expr); err != nil {
+				return err
+			} else {
+				bind[i].Expr = exp
+				bi.bind = append(bi.bind, bind[i])
 			}
-			bi.bind = append(bi.bind, bind[i])
 		}
 	}
 	for i := range bi.bind {
@@ -879,15 +897,20 @@ func (b *Trace) Aggregate(agg vm.Aggregation, groups []expr.Binding) error {
 	b.cur = ag
 	var bind []expr.Binding
 	for i := range groups {
-		expr.Walk(b, groups[i].Expr)
-		if b.err != nil {
-			return b.combine()
+		exp, err := b.pathwalk(groups[i].Expr)
+		if err != nil {
+			return err
 		}
+		groups[i].Expr = exp
 		ag.GroupBy = append(ag.GroupBy, groups[i])
 		bind = append(bind, groups[i])
 	}
 	for i := range agg {
-		expr.Walk(b, agg[i].Expr)
+		exp, err := b.pathwalk(agg[i].Expr)
+		if err != nil {
+			return err
+		}
+		agg[i].Expr = exp.(*expr.Aggregate)
 		ag.Agg = append(ag.Agg, agg[i])
 		bind = append(bind, expr.Bind(agg[i].Expr, agg[i].Result))
 	}
@@ -906,7 +929,11 @@ func (b *Trace) Order(cols []expr.Order) error {
 	// ... now the variable references should be correct
 	b.cur = b.top
 	for i := range cols {
-		expr.Walk(b, cols[i].Column)
+		if col, err := b.pathwalk(cols[i].Column); err != nil {
+			return err
+		} else {
+			cols[i].Column = col
+		}
 	}
 	b.cur = &Order{Columns: cols}
 	return b.push()
@@ -924,7 +951,7 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 
 // Into handles the INTO clause by pushing
 // the appropriate OutputIndex and OutputPart nodes.
-func (b *Trace) Into(table *expr.Path, basepath string) {
+func (b *Trace) Into(table expr.Node, basepath string) {
 	op := &OutputPart{Basename: basepath}
 	op.setparent(b.top)
 	oi := &OutputIndex{

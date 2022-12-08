@@ -22,7 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 )
 
-func path(t testing.TB, s string) *expr.Path {
+func path(t testing.TB, s string) expr.Node {
 	p, err := expr.ParsePath(s)
 	if err != nil {
 		if t == nil {

@@ -952,6 +952,16 @@ func TestSimplify(t *testing.T) {
 			And(path("x"), And(path("y"), path("z"))),
 			And(And(path("x"), path("y")), path("z")),
 		},
+		{
+			// {'foo': x}.foo -> x
+			&Dot{Inner: Call(MakeStruct, String("foo"), path("x")), Field: "foo"},
+			path("x"),
+		},
+		{
+			// {'foo': 'bar'}.foo -> bar
+			&Dot{Inner: &Struct{Fields: []Field{{Label: "foo", Value: String("bar")}}}, Field: "foo"},
+			String("bar"),
+		},
 	}
 
 	for i := range testcases {

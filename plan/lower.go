@@ -308,8 +308,13 @@ func lowerOutputPart(n *pir.OutputPart, env Env, input Op) (Op, error) {
 func lowerOutputIndex(n *pir.OutputIndex, env Env, input Op) (Op, error) {
 	if e, ok := env.(UploadEnv); ok {
 		if up := e.Uploader(); up != nil {
+			parts, ok := expr.FlatPath(n.Table)
+			if !ok || len(parts) != 2 {
+				return nil, fmt.Errorf("invalid table expression %s", expr.ToString(n.Table))
+			}
 			op := &OutputIndex{
-				Table:    n.Table,
+				DB:       parts[0],
+				Table:    parts[1],
 				Basename: n.Basename,
 				Store:    up,
 				Key:      e.Key(),

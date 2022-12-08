@@ -78,14 +78,17 @@ func TestOutput(t *testing.T) {
 			} else if tbl == "" {
 				t.Fatal("could not find table in output")
 			}
-			p, err := expr.ParsePath(tbl)
+			ep, err := expr.ParsePath(tbl)
 			if err != nil {
 				t.Fatal(err)
 			}
+			p, ok := expr.FlatPath(ep)
+			if !ok {
+				t.Fatalf("%s is not a flat path", expr.ToString(ep))
+			}
 			// make sure we can open the
 			// index file
-			tbl = p.Rest.(*expr.Dot).Field
-			idx, err := db.OpenIndex(env.fs, p.First, tbl, env.Key())
+			idx, err := db.OpenIndex(env.fs, p[0], p[1], env.Key())
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -117,7 +117,7 @@ func (c *checktable) errorf(f string, args ...interface{}) {
 }
 
 func (c *checktable) Visit(n Node) Visitor {
-	if n == nil {
+	if n == nil || IsPath(n) {
 		return nil
 	}
 	// TODO: allow list literals in table position
@@ -127,9 +127,6 @@ func (c *checktable) Visit(n Node) Visitor {
 			c.errorf("cannot use %s in table position", ToString(n))
 		}
 		return c.parent
-	case *Path:
-		// ok
-		return nil
 	case *Select:
 		// ok
 		return c.parent
@@ -368,5 +365,29 @@ func (s *Select) check(h Hint) error {
 		return fmt.Errorf("negative OFFSET %d is not supported", *s.Offset)
 	}
 
+	return nil
+}
+
+func (i *Index) check(h Hint) error {
+	listLen := func(e Node) (int, bool) {
+		switch t := e.(type) {
+		case *List:
+			return len(t.Values), true
+		case *Builtin:
+			return len(t.Args), t.Func == MakeList
+		default:
+			return 0, false
+		}
+	}
+	if i.Offset < 0 {
+		return errtype(i, "cannot perform negative index operation")
+	}
+	t := TypeOf(i.Inner, h)
+	if t&ListType == 0 {
+		return errtype(i.Inner, "cannot index non-list value")
+	}
+	if llen, ok := listLen(i.Inner); ok && i.Offset >= llen {
+		return errtypef(i, "cannot index a list of length %d at offset %d", llen, i.Offset)
+	}
 	return nil
 }

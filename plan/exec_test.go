@@ -252,9 +252,9 @@ func rowcount(t *testing.T, buf []byte) int {
 // MissingType as they would be for a complete schema
 func partial(args ...interface{}) expr.Hint {
 	return expr.HintFn(func(e expr.Node) expr.TypeSet {
-		if p, ok := e.(*expr.Path); ok && p.Rest == nil {
+		if p, ok := e.(expr.Ident); ok {
 			for i := 0; i < len(args); i += 2 {
-				if args[i].(string) == p.First {
+				if args[i].(string) == string(p) {
 					return args[i+1].(expr.TypeSet)
 				}
 			}
@@ -1848,16 +1848,16 @@ func (t testindexer) Index(e expr.Node) (Index, error) {
 	switch e := e.(type) {
 	case expr.String:
 		return t[string(e)], nil
-	case *expr.Path:
-		return t[e.First], nil
+	case expr.Ident:
+		return t[string(e)], nil
 	}
 	return nil, fmt.Errorf("unsupported table expr: %s", expr.ToString(e))
 }
 
 type testindex map[string][2]date.Time
 
-func (t testindex) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
-	r, ok := t[p.First]
+func (t testindex) TimeRange(p []string) (min, max date.Time, ok bool) {
+	r, ok := t[p[0]]
 	return r[0], r[1], ok
 }
 

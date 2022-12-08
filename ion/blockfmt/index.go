@@ -27,7 +27,6 @@ import (
 
 	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/crypto/blake2b"
@@ -705,9 +704,9 @@ func (idx *Index) SyncOutputs(ofs UploadFS, dir string, maxInlined int64, expiry
 
 // TimeRange returns the inclusive time range for the
 // given path expression.
-func (idx *Index) TimeRange(p *expr.Path) (min, max date.Time, ok bool) {
+func (idx *Index) TimeRange(path []string) (min, max date.Time, ok bool) {
 	add := func(s *SparseIndex) {
-		trmin, trmax, trok := s.MinMax(p)
+		trmin, trmax, trok := s.MinMax(path)
 		if !trok {
 			return
 		}

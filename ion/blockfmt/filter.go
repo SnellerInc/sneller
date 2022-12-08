@@ -40,16 +40,6 @@ type Filter struct {
 type evalfn func(f *Filter, si *SparseIndex, rest cont)
 type cont func(start, end int)
 
-func (f *Filter) path(p *expr.Path) []string {
-	l := len(f.paths)
-	more := flatpath(p, f.paths)
-	if more != nil {
-		f.paths = more
-		return f.paths[l:]
-	}
-	return nil
-}
-
 // Compile sets the expression that the filter should evaluate.
 // A call to Compile erases any previously-compiled expression.
 func (f *Filter) Compile(e expr.Node) {
@@ -96,11 +86,7 @@ func (f *Filter) intersect(left, right expr.Node) evalfn {
 }
 
 // filter where p <= when
-func (f *Filter) beforeeq(p *expr.Path, when date.Time) evalfn {
-	path := f.path(p)
-	if path == nil {
-		return nil
-	}
+func (f *Filter) beforeeq(path []string, when date.Time) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
@@ -116,11 +102,7 @@ func (f *Filter) beforeeq(p *expr.Path, when date.Time) evalfn {
 }
 
 // filter where p >= when
-func (f *Filter) aftereq(p *expr.Path, when date.Time) evalfn {
-	path := f.path(p)
-	if path == nil {
-		return nil
-	}
+func (f *Filter) aftereq(path []string, when date.Time) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
@@ -135,11 +117,7 @@ func (f *Filter) aftereq(p *expr.Path, when date.Time) evalfn {
 	}
 }
 
-func (f *Filter) within(p *expr.Path, when date.Time) evalfn {
-	path := f.path(p)
-	if path == nil {
-		return nil
-	}
+func (f *Filter) within(path []string, when date.Time) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
@@ -154,15 +132,15 @@ func (f *Filter) within(p *expr.Path, when date.Time) evalfn {
 	}
 }
 
-func (f *Filter) eqstring(p *expr.Path, str expr.String) evalfn {
-	name := p.First
-	if p.Rest != nil {
+func (f *Filter) eqstring(p []string, str expr.String) evalfn {
+	if len(p) != 1 {
 		return nil
 	}
 	eq := func(s expr.String, d ion.Datum) bool {
 		s2, ok := d.String()
 		return ok && string(s) == s2
 	}
+	name := p[0]
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)
 		if !ok || eq(str, field.Value) {
@@ -171,11 +149,11 @@ func (f *Filter) eqstring(p *expr.Path, str expr.String) evalfn {
 	}
 }
 
-func (f *Filter) eqint(p *expr.Path, n expr.Integer) evalfn {
-	name := p.First
-	if p.Rest != nil {
+func (f *Filter) eqint(p []string, n expr.Integer) evalfn {
+	if len(p) != 1 {
 		return nil
 	}
+	name := p[0]
 	eq := func(n expr.Integer, d ion.Datum) bool {
 		n2, ok := d.Int()
 		if ok {
@@ -268,18 +246,18 @@ func (f *Filter) compile(e expr.Node) evalfn {
 		}
 		// note: expr normalizes constant comparisons
 		// such that the constant appears on the rhs
-		p, ok := e.Left.(*expr.Path)
+		p, ok := expr.FlatPath(e.Left)
 		if !ok {
 			if b, ok := e.Left.(*expr.Builtin); ok {
 				switch b.Func {
 				case expr.ToUnixEpoch:
-					p, ok = b.Args[0].(*expr.Path)
+					p, ok = expr.FlatPath(b.Args[0])
 					if !ok {
 						return nil
 					}
 					conv = toUnixEpoch
 				case expr.ToUnixMicro:
-					p, ok = b.Args[0].(*expr.Path)
+					p, ok = expr.FlatPath(b.Args[0])
 					if !ok {
 						return nil
 					}

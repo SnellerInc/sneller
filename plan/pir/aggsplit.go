@@ -121,8 +121,8 @@ type flattener struct {
 	id       int
 }
 
-func newFlattener() *flattener {
-	return &flattener{bindings: make(map[string]flattenerItem)}
+func newFlattener(size int) *flattener {
+	return &flattener{bindings: make(map[string]flattenerItem, size)}
 }
 
 // add adds a new binding to the current set
@@ -131,7 +131,6 @@ func (f *flattener) add(b expr.Binding) {
 		node: b,
 		id:   f.id,
 	}
-
 	f.id += 1
 }
 
@@ -167,21 +166,15 @@ func (f *flattener) final() []expr.Binding {
 }
 
 func (f *flattener) Rewrite(e expr.Node) expr.Node {
-	p, ok := e.(*expr.Path)
+	id, ok := e.(expr.Ident)
 	if !ok {
 		return e
 	}
-
-	result, ok2 := f.bindings[p.First]
+	result, ok2 := f.bindings[string(id)]
 	if !ok2 {
 		return e
 	}
-
-	cp := expr.Copy(result.node.Expr)
-	if p.Rest == nil {
-		return cp
-	}
-	return joinpath(cp, p.Rest)
+	return expr.Copy(result.node.Expr)
 }
 
 func (f *flattener) Walk(e expr.Node) expr.Rewriter {
@@ -216,7 +209,7 @@ func flattenBind(columns []expr.Binding) []expr.Binding {
 	if len(columns) <= 1 {
 		return columns
 	}
-	f := newFlattener()
+	f := newFlattener(len(columns))
 	f.add(columns[0])
 	// walk the expressions in order and replace
 	// any references to previous columns with
@@ -240,7 +233,7 @@ func flattenInto(x, y []expr.Binding) {
 }
 
 func flattenIntoFunc(x []expr.Binding, n int, item func(int) *expr.Node) {
-	f := newFlattener()
+	f := newFlattener(len(x))
 	for i := range x {
 		f.add(x[i])
 	}
@@ -312,15 +305,14 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 		// if it is, simply return another path pointing to it
 		for i := range aggcols {
 			if expr.Equivalent(aggcols[i].Expr, age) {
-				p := &expr.Path{First: aggcols[i].Result}
-				return p
+				return expr.Ident(aggcols[i].Result)
 			}
 		}
 		// introduce a new intermediate binding
 		// that produces the aggregate result
 		gen := gensym(0, symno)
 		symno++
-		p := &expr.Path{First: gen}
+		p := expr.Ident(gen)
 		aggcols = append(aggcols, vm.AggBinding{Expr: age, Result: gen})
 
 		if addAggBinding {
@@ -349,7 +341,7 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 					symno++
 					groups[i].As(gen)
 				}
-				return &expr.Path{First: groups[i].Result()}
+				return expr.Ident(groups[i].Result())
 			}
 		}
 		return e
@@ -519,7 +511,7 @@ func aggelim(b *Trace) {
 }
 
 func agg2const(tbl *IterTable, agg *expr.Aggregate) expr.Constant {
-	p, ok := agg.Inner.(*expr.Path)
+	p, ok := expr.FlatPath(agg.Inner)
 	if !ok {
 		return nil
 	}

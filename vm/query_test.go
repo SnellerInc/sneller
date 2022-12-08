@@ -230,15 +230,18 @@ type queryenv struct {
 }
 
 func (e *queryenv) handle(t expr.Node) (plan.TableHandle, bool) {
-	p, ok := t.(*expr.Path)
-	if !ok || p.Rest != nil {
+	p, ok := expr.FlatPath(t)
+	if !ok {
 		return nil, false
 	}
-	if p.First == "input" && len(e.in) == 1 {
+	if len(p) != 1 {
+		return nil, false
+	}
+	if p[0] == "input" && len(e.in) == 1 {
 		return e.in[0], true
 	}
 	var i int
-	if n, _ := fmt.Sscanf(p.First, "input%d", &i); n > 0 && i >= 0 && i < len(e.in) {
+	if n, _ := fmt.Sscanf(p[0], "input%d", &i); n > 0 && i >= 0 && i < len(e.in) {
 		return e.in[i], true
 	}
 	return nil, false
@@ -897,7 +900,7 @@ func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
 		}
 
 		// The testing framework expects path 'input'
-		table.Expr = &expr.Path{First: "input"}
+		table.Expr = expr.Ident("input")
 
 	case 2: // query and inline input
 		input = part2bytes(parts[1])

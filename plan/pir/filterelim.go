@@ -70,14 +70,11 @@ func doesNotReference(e expr.Node, bind string) bool {
 		if ref {
 			return false
 		}
-		p, ok := e.(*expr.Path)
-		if !ok {
-			return true
-		}
-		if p.First == bind {
+		id, ok := e.(expr.Ident)
+		if ok && string(id) == bind {
 			ref = true
 		}
-		return false
+		return !ok
 	}
 	expr.Walk(visitfn(visit), e)
 	return !ref

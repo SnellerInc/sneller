@@ -150,10 +150,11 @@ func decorrerr(e expr.Node, x string) error {
 // in it.Filter for an expression matching "x = y" and,
 // if no other expression in the filter reference x,
 // removes "x = y" from the filter and returns y.
-func (b *Trace) decorrelateWhere(x string, it *IterTable) (y *expr.Path) {
+func (b *Trace) decorrelateWhere(x string, it *IterTable) (y expr.Node) {
 	where := conjunctions(it.Filter, nil)
 	for i := range where {
-		if v := decorrelateCmp(x, where[i]); v != nil {
+		if path, ok := decorrelateCmp(x, where[i]); ok {
+			v := expr.MakePath(path)
 			// reject "x = y AND x = z"
 			if y != nil && !y.Equals(v) {
 				return nil
@@ -183,18 +184,16 @@ func hasReference(x string, n expr.Node) bool {
 	return found
 }
 
-func decorrelateCmp(x string, n expr.Node) *expr.Path {
+func decorrelateCmp(x string, n expr.Node) ([]string, bool) {
 	cmp, ok := n.(*expr.Comparison)
 	if !ok || cmp.Op != expr.Equals {
-		return nil
+		return nil, false
 	}
 	if expr.IsIdentifier(cmp.Left, x) {
-		p, _ := cmp.Right.(*expr.Path)
-		return p
+		return expr.FlatPath(cmp.Right)
 	}
 	if expr.IsIdentifier(cmp.Right, x) {
-		p, _ := cmp.Left.(*expr.Path)
-		return p
+		return expr.FlatPath(cmp.Left)
 	}
-	return nil
+	return nil, false
 }

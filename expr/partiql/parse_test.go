@@ -190,8 +190,12 @@ func TestParseNormalization(t *testing.T) {
 	}{
 		// test that the ["string"] syntax works
 		{
-			"select x[\"y\"] from foo",
+			"select x['y'] from foo",
 			"SELECT x.y FROM foo",
+		},
+		{
+			"select {'x': 2}.x",
+			"SELECT 2",
 		},
 		{
 			// test parens
@@ -489,6 +493,16 @@ func TestParseErrors(t *testing.T) {
 		{
 			query: `SELECT 1e---5`,
 			msg:   `strconv.ParseFloat: parsing "1e-": invalid syntax`,
+		},
+		{
+			// for now, this syntax isn't supported
+			//
+			// in principle we could parse this as
+			//   NUMBER '.' IDENTIFIER(x)
+			// but the lexer isn't clever enough to
+			// handle the second dot; that's probably okay
+			query: "SELECT 3.4.x",
+			msg:   "",
 		},
 	}
 

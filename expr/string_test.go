@@ -20,18 +20,13 @@ import (
 )
 
 // construct a path expression from components
-func path(args ...string) *Path {
-	p := &Path{First: args[0]}
+func path(args ...string) Node {
+	cur := Node(Ident(args[0]))
 	args = args[1:]
-	parent := &p.Rest
 	for i := range args {
-		d := &Dot{
-			Field: args[i],
-		}
-		*parent = d
-		parent = &d.Rest
+		cur = &Dot{Inner: cur, Field: args[i]}
 	}
-	return p
+	return cur
 }
 
 func TestString(t *testing.T) {
@@ -199,31 +194,31 @@ func TestSFWString(t *testing.T) {
 func TestParsePath(t *testing.T) {
 	tcs := []struct {
 		str  string
-		want *Path
+		want Node
 	}{
 		{
 			str:  "x",
-			want: &Path{First: "x"},
+			want: Ident("x"),
 		},
 		{
 			str:  "x.y",
-			want: &Path{First: "x", Rest: &Dot{Field: "y"}},
+			want: &Dot{Ident("x"), "y"},
 		},
 		{
 			str:  "x[0]",
-			want: &Path{First: "x", Rest: &LiteralIndex{Field: 0}},
+			want: &Index{Ident("x"), 0},
 		},
 		{
 			str:  "first.second[100]",
-			want: &Path{First: "first", Rest: &Dot{Field: "second", Rest: &LiteralIndex{Field: 100}}},
+			want: &Index{&Dot{Ident("first"), "second"}, 100},
 		},
 		{
 			str:  "first[1][2]",
-			want: &Path{First: "first", Rest: &LiteralIndex{Field: 1, Rest: &LiteralIndex{Field: 2}}},
+			want: &Index{&Index{Ident("first"), 1}, 2},
 		},
 		{
 			str:  "first.foo[2].bar",
-			want: &Path{First: "first", Rest: &Dot{Field: "foo", Rest: &LiteralIndex{Field: 2, Rest: &Dot{Field: "bar"}}}},
+			want: &Dot{&Index{&Dot{Ident("first"), "foo"}, 2}, "bar"},
 		},
 	}
 	for i := range tcs {
@@ -277,15 +272,15 @@ func TestParseBindings(t *testing.T) {
 		{
 			str: "x as foo, y",
 			want: []Binding{
-				Bind(&Path{First: "x"}, "foo"),
-				Bind(&Path{First: "y"}, ""),
+				Bind(Ident("x"), "foo"),
+				Bind(Ident("y"), ""),
 			},
 		},
 		{
 			str: "x.y as x, x.z as z",
 			want: []Binding{
-				Bind(&Path{First: "x", Rest: &Dot{Field: "y"}}, "x"),
-				Bind(&Path{First: "x", Rest: &Dot{Field: "z"}}, "z"),
+				Bind(&Dot{Ident("x"), "y"}, "x"),
+				Bind(&Dot{Ident("x"), "z"}, "z"),
 			},
 		},
 	}
@@ -327,7 +322,7 @@ func TestAutoBindings(t *testing.T) {
 			t.Errorf("case %d: %s", i, err)
 			continue
 		}
-		got := e.Binding()
+		got := DefaultBinding(e)
 		if got != tcs[i].out {
 			t.Errorf("case %d: got  %q", i, got)
 			t.Errorf("case %d: want %q", i, tcs[i].out)

@@ -39,7 +39,7 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 		t.Fatal("Wrong symbol id")
 	}
 
-	node := expr.Mul(expr.Float(1), &expr.Path{First: "num"})
+	node := expr.Mul(expr.Float(1), expr.Ident("num"))
 
 	var findbc bytecode
 	err := symbolizeTest(&findbc, &st, node)
@@ -87,7 +87,7 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 		t.Fatal("Wrong symbol id")
 	}
 
-	node := expr.Add(expr.Integer(0), &expr.Path{First: "num"})
+	node := expr.Add(expr.Integer(0), expr.Ident("num"))
 
 	var findbc bytecode
 	err := symbolizeTest(&findbc, &st, node)
@@ -135,7 +135,7 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 		t.Fatal("Wrong symbol id")
 	}
 
-	node := expr.Add(expr.Integer(0), &expr.Path{First: "num"})
+	node := expr.Add(expr.Integer(0), expr.Ident("num"))
 
 	var findbc bytecode
 	err := symbolizeTest(&findbc, &st, node)

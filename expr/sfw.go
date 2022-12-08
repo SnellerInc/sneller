@@ -16,6 +16,7 @@ package expr
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -72,15 +73,30 @@ func (b *Binding) Result() string {
 	return b.as
 }
 
-func (b *Binding) result() string {
-	switch e := b.Expr.(type) {
-	case *Path:
-		return e.Binding()
-	case *Aggregate:
-		return e.Op.defaultResult()
-	default:
-		return ""
+// DefaultBinding returns the default binding
+// for the node e, or the empty string if the
+// expression has no default binding.
+func DefaultBinding(e Node) string {
+	var suffix string
+	for {
+		switch v := e.(type) {
+		case Ident:
+			return string(v) + suffix
+		case *Dot:
+			return v.Field + suffix
+		case *Index:
+			suffix = "_" + strconv.Itoa(v.Offset)
+			e = v.Inner
+		case *Aggregate:
+			return v.Op.defaultResult()
+		default:
+			return ""
+		}
 	}
+}
+
+func (b *Binding) result() string {
+	return DefaultBinding(b.Expr)
 }
 
 func (b *Binding) text(dst *strings.Builder, redact bool) {

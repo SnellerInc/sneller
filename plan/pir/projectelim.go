@@ -53,9 +53,9 @@ func projectelim(b *Trace) {
 
 	// make each path expression we see "used"
 	walk := func(e expr.Node) {
-		p, ok := e.(*expr.Path)
+		p, ok := e.(expr.Ident)
 		if ok {
-			used[p.First] = struct{}{}
+			used[string(p)] = struct{}{}
 		}
 	}
 
@@ -126,63 +126,25 @@ loop:
 	}
 }
 
-// concatenate orig with rest, i.e.
-//
-//	joinpath("x.y", ".z") -> "x.y.z"
-//	joinpath("x[0]", ".y") -> "x[0].y"
-//
-// and so forth
-// (does not currently handle "x.*", etc.)
-func joinpath(from expr.Node, rest expr.PathComponent) expr.Node {
-	orig, ok := from.(*expr.Path)
-	if !ok {
-		return expr.Missing{}
-	}
-	n := &expr.Path{First: orig.First}
-	bp := &n.Rest
-	r := orig.Rest
-	for r != nil {
-		switch n := r.(type) {
-		case *expr.Dot:
-			nv := &expr.Dot{Field: n.Field}
-			*bp = nv
-			bp = &nv.Rest
-			r = n.Rest
-		case *expr.LiteralIndex:
-			nv := &expr.LiteralIndex{Field: n.Field}
-			*bp = nv
-			bp = &nv.Rest
-			r = n.Rest
-		default:
-			// *, etc.
-			return expr.Missing{}
-		}
-	}
-	*bp = rest
-	return n
-}
-
 type bindflattener struct {
 	from []expr.Binding
 }
 
+// turn expr.Ident -> associated bound value
 func (b *bindflattener) Rewrite(e expr.Node) expr.Node {
-	p, ok := e.(*expr.Path)
+	id, ok := e.(expr.Ident)
 	if !ok {
 		return e
 	}
 	var into expr.Node
 	for i := range b.from {
-		if p.First == b.from[i].Result() {
+		if b.from[i].Result() == string(id) {
 			into = b.from[i].Expr
 			break
 		}
 	}
 	if into == nil {
 		return e // probably shouldn't happen
-	}
-	if p.Rest != nil {
-		return joinpath(into, p.Rest)
 	}
 	return into
 }
@@ -283,8 +245,8 @@ outer:
 		// try to match each binding
 		// to one of the outputs of the aggregate
 		for i := range bi.bind {
-			p, ok := bi.bind[i].Expr.(*expr.Path)
-			if !ok || p.Rest != nil {
+			id, ok := bi.bind[i].Expr.(expr.Ident)
+			if !ok {
 				child = s
 				continue outer
 			}
@@ -293,7 +255,7 @@ outer:
 				if agg2bind[j] != -1 {
 					continue
 				}
-				if ag.Agg[j].Result == p.First {
+				if ag.Agg[j].Result == string(id) {
 					agg2bind[j] = i
 					matched = true
 					break
@@ -306,7 +268,7 @@ outer:
 				if agg2bind[len(ag.Agg)+j] != -1 {
 					continue
 				}
-				if ag.GroupBy[j].Result() == p.First {
+				if ag.GroupBy[j].Result() == string(id) {
 					agg2bind[len(ag.Agg)+j] = i
 					matched = true
 					break

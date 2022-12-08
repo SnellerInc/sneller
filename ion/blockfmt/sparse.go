@@ -22,7 +22,6 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/date"
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 )
 
@@ -178,31 +177,8 @@ func (s *SparseIndex) Push(rng []Range) {
 	s.bump()
 }
 
-func flatpath(p *expr.Path, dst []string) []string {
-	flat := append(dst, p.First)
-	for d := p.Rest; d != nil; d = d.Next() {
-		dot, ok := d.(*expr.Dot)
-		if !ok {
-			return nil
-		}
-		flat = append(flat, dot.Field)
-	}
-	return flat
-}
-
-// GetPath works identically to Get, except for that
-// it accepts an AST path expression instead of a list
-// of path components.
-func (s *SparseIndex) GetPath(p *expr.Path) *TimeIndex {
-	flat := flatpath(p, nil)
-	if flat == nil {
-		return nil
-	}
-	return s.Get(flat)
-}
-
-func (s *SparseIndex) MinMax(p *expr.Path) (min, max date.Time, ok bool) {
-	tr := s.GetPath(p)
+func (s *SparseIndex) MinMax(path []string) (min, max date.Time, ok bool) {
+	tr := s.Get(path)
 	if tr == nil {
 		return
 	}

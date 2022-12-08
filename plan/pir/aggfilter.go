@@ -161,18 +161,13 @@ func aggremoveduplicates(b *Trace, agg *Aggregate, bind *Bind) {
 
 	// replace source paths in projection
 	for i := range bind.bind {
-		path, ok := bind.bind[i].Expr.(*expr.Path)
+		path, ok := bind.bind[i].Expr.(expr.Ident)
 		if !ok {
 			continue
 		}
-
-		if path.Rest != nil {
-			continue
-		}
-
-		source, exists := duplicates[path.First]
+		source, exists := duplicates[string(path)]
 		if exists {
-			path.First = source
+			bind.bind[i].Expr = expr.Ident(source)
 		}
 	}
 

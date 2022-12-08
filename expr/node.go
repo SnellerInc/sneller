@@ -579,8 +579,56 @@ func Equivalent(a, b Node) bool {
 // with a single component that is equivalent
 // to the given string
 func IsIdentifier(e Node, s string) bool {
-	p, ok := e.(*Path)
-	return ok && p.First == s && p.Rest == nil
+	return e == Ident(s)
+}
+
+// IsPath returns whether or not e is a path expression.
+// A path expression is composed entirely of Ident, Dot, and Index operations.
+func IsPath(e Node) bool {
+	switch t := e.(type) {
+	case Ident:
+		return true
+	case *Dot:
+		return IsPath(t.Inner)
+	case *Index:
+		return IsPath(t.Inner)
+	default:
+		return false
+	}
+}
+
+// MakePath constructs a path expression
+// from a list of identifier path components.
+// This is the reverse operation of FlatPath.
+func MakePath(path []string) Node {
+	p := Node(Ident(path[0]))
+	for _, field := range path[1:] {
+		p = &Dot{Inner: p, Field: field}
+	}
+	return p
+}
+
+// FlatPath attempts to flatten e into
+// a list of path components. For example,
+// the expression a.b.c would expand to
+//
+//	[]string{"a", "b", "c"}
+//
+// FlatPath returns (nil, false) if e is
+// not a path or the path cannot be flattened.
+func FlatPath(e Node) ([]string, bool) {
+	switch e := e.(type) {
+	case Ident:
+		return []string{string(e)}, true
+	case *Dot:
+		fields, ok := FlatPath(e.Inner)
+		if ok {
+			return append(fields, e.Field), true
+		}
+		return nil, false
+	default:
+		return nil, false
+	}
 }
 
 // Window is a window function call
@@ -681,6 +729,10 @@ type weaklyTyped interface {
 func TypeOf(n Node, h Hint) TypeSet {
 	if h == nil {
 		h = HintFn(NoHint)
+	}
+	// identifiers can only be typed via hints by definition
+	if _, ok := n.(Ident); ok {
+		return h.TypeOf(n)
 	}
 	if st, ok := n.(stronglyTyped); ok {
 		return st.Type()
@@ -965,110 +1017,189 @@ func (r *Rational) Datum() ion.Datum {
 	return ion.Float(f)
 }
 
-// PathComponent is a component of a path expression
-type PathComponent interface {
-	Next() PathComponent
-	equalp(PathComponent) bool
-	encode(dst *ion.Buffer)
-	text(dst *strings.Builder, redact bool)
-	clone() PathComponent
+// Ident is a top-level identifier
+type Ident string
+
+func (i Ident) text(dst *strings.Builder, redact bool) {
+	dst.WriteString(QuoteID(string(i)))
 }
 
-// Dot is a PathComponent
-// that accesses a sub-field of a structure
+func (i Ident) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.WriteSymbol(st.Intern(string(i)))
+}
+
+func (i Ident) walk(v Visitor) {}
+
+func (i Ident) Equals(x Node) bool {
+	i2, ok := x.(Ident)
+	return ok && i == i2
+}
+
+// Dot represents the '.' infix operator, i.e.
+//
+//	Inner '.' Field
+//
+// The Inner value within Dot should be structure-typed.
 type Dot struct {
+	Inner Node
 	Field string
-	Rest  PathComponent
-}
-
-func (d *Dot) clone() PathComponent {
-	out := &Dot{Field: d.Field}
-	if d.Rest != nil {
-		out.Rest = d.Rest.clone()
-	}
-	return out
 }
 
 func (d *Dot) text(dst *strings.Builder, redact bool) {
+	d.Inner.text(dst, redact)
 	dst.WriteByte('.')
 	dst.WriteString(QuoteID(d.Field))
-	if d.Rest != nil {
-		d.Rest.text(dst, redact)
-	}
 }
 
-func (d *Dot) encode(dst *ion.Buffer) {
-	dst.WriteString(d.Field)
+func (d *Dot) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "dot")
+	dst.BeginField(st.Intern("inner"))
+	d.Inner.Encode(dst, st)
+	dst.BeginField(st.Intern("field"))
+	dst.WriteSymbol(st.Intern(d.Field))
+	dst.EndStruct()
 }
 
-func (d *Dot) equalp(pc PathComponent) bool {
-	xd, ok := pc.(*Dot)
-	if ok && xd.Field == d.Field {
-		if d.Rest == nil {
-			return xd.Rest == nil
+func (d *Dot) setfield(name string, st *ion.Symtab, val []byte) (err error) {
+	switch name {
+	case "inner":
+		d.Inner, _, err = Decode(st, val)
+	case "field":
+		var sym ion.Symbol
+		sym, _, err = ion.ReadSymbol(val)
+		if err == nil {
+			var ok bool
+			d.Field, ok = st.Lookup(sym)
+			if !ok {
+				err = fmt.Errorf("in Dot.setfield: symbol %d isn't part ofthe symbol table", sym)
+			}
 		}
-		return d.Rest.equalp(xd.Rest)
 	}
-	return false
+	return err
 }
 
-// LiteralIndex is a PathComponent
-// that computes the value of an array member
-type LiteralIndex struct {
-	Field int
-	Rest  PathComponent
+func (d *Dot) Equals(x Node) bool {
+	d2, ok := x.(*Dot)
+	return ok && d2.Field == d.Field &&
+		d.Inner.Equals(d2.Inner)
 }
 
-func (l *LiteralIndex) text(dst *strings.Builder, redact bool) {
-	fmt.Fprintf(dst, "[%d]", l.Field)
-	if l.Rest != nil {
-		l.Rest.text(dst, redact)
+func (d *Dot) walk(v Visitor) {
+	Walk(v, d.Inner)
+}
+
+func (d *Dot) rewrite(r Rewriter) Node {
+	d.Inner = Rewrite(r, d.Inner)
+	return d
+}
+
+func (d *Dot) check(h Hint) error {
+	it := TypeOf(d.Inner, h)
+	if !it.Contains(ion.StructType) {
+		return errtype(d.Inner, "cannot use '.' operator on non-struct type")
 	}
+	return nil
 }
 
-func (l *LiteralIndex) clone() PathComponent {
-	out := &LiteralIndex{Field: l.Field}
-	if l.Rest != nil {
-		out.Rest = l.Rest.clone()
-	}
-	return out
-}
-
-func (l *LiteralIndex) equalp(pc PathComponent) bool {
-	el, ok := pc.(*LiteralIndex)
-	if ok && l.Field == el.Field {
-		if l.Rest == nil {
-			return el.Rest == nil
+// {'x': v}.x -> v
+func (d *Dot) simplify(h Hint) Node {
+	if b, ok := d.Inner.(*Builtin); ok && b.Func == MakeStruct {
+		for i := 0; i < len(b.Args); i += 2 {
+			str := b.Args[i].(String)
+			if string(str) == d.Field {
+				return b.Args[i+1]
+			}
 		}
-		return l.Rest.equalp(el.Rest)
+		return Missing{}
 	}
-	return false
+	if s, ok := d.Inner.(*Struct); ok {
+		for i := range s.Fields {
+			if s.Fields[i].Label == d.Field {
+				return s.Fields[i].Value
+			}
+		}
+		return Missing{}
+	}
+	return d
 }
 
-func (l *LiteralIndex) encode(dst *ion.Buffer) {
-	dst.WriteInt(int64(l.Field))
+// Index represents the '[]' infix operator, i.e.
+//
+//	Inner '[' Offset ']'
+//
+// The Inner value within Index should be list-typed.
+type Index struct {
+	Inner  Node
+	Offset int // offset is constant for now
 }
 
-func (d *Dot) Next() PathComponent {
-	return d.Rest
+func (i *Index) text(dst *strings.Builder, redact bool) {
+	i.Inner.text(dst, redact)
+	fmt.Fprintf(dst, "[%d]", i.Offset)
+}
+
+func (i *Index) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "index")
+	dst.BeginField(st.Intern("inner"))
+	i.Inner.Encode(dst, st)
+	dst.BeginField(st.Intern("offset"))
+	dst.WriteInt(int64(i.Offset))
+	dst.EndStruct()
+}
+
+func (i *Index) setfield(name string, st *ion.Symtab, val []byte) (err error) {
+	switch name {
+	case "inner":
+		i.Inner, _, err = Decode(st, val)
+	case "offset":
+		var v int64
+		v, _, err = ion.ReadInt(val)
+		if err == nil {
+			i.Offset = int(v)
+		}
+	}
+	return err
+}
+
+// [ v ][0] -> v
+func (i *Index) simplify(h Hint) Node {
+	if b, ok := i.Inner.(*Builtin); ok && b.Func == MakeList {
+		if i.Offset < len(b.Args) {
+			return b.Args[i.Offset]
+		}
+		return Missing{}
+	}
+	if l, ok := i.Inner.(*List); ok {
+		if i.Offset < len(l.Values) {
+			return l.Values[i.Offset]
+		}
+		return Missing{}
+	}
+	return i
+}
+
+func (i *Index) Equals(x Node) bool {
+	i2, ok := x.(*Index)
+	return ok && i.Offset == i2.Offset &&
+		i.Inner.Equals(i2.Inner)
+}
+
+func (i *Index) walk(v Visitor) {
+	Walk(v, i.Inner)
+}
+
+func (i *Index) rewrite(r Rewriter) Node {
+	i.Inner = Rewrite(r, i.Inner)
+	return i
 }
 
 // Star represents the '*' path component
 type Star struct{}
 
-func (s Star) Next() PathComponent { return nil }
 func (s Star) text(dst *strings.Builder, redact bool) {
 	dst.WriteString("*")
-}
-func (s Star) clone() PathComponent { return s }
-
-func (s Star) equalp(pc PathComponent) bool {
-	_, ok := pc.(Star)
-	return ok
-}
-
-func (s Star) encode(dst *ion.Buffer) {
-	dst.WriteNull()
 }
 
 func (s Star) Equals(e Node) bool {
@@ -1086,10 +1217,6 @@ func (s Star) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 func (s Star) setfield(name string, st *ion.Symtab, body []byte) error {
 	return errUnexpectedField
-}
-
-func (l *LiteralIndex) Next() PathComponent {
-	return l.Rest
 }
 
 // Missing represents the MISSING keyword
@@ -1143,45 +1270,6 @@ func (n Null) Datum() ion.Datum {
 	return ion.Null
 }
 
-// Path is a Node that represents
-// a path expression (i.e. t.foo.bar[0].baz)
-type Path struct {
-	First string
-	Rest  PathComponent
-}
-
-func (p *Path) Equals(e Node) bool {
-	ep, ok := e.(*Path)
-	return ok && p.EqualsPath(ep)
-}
-
-func (p *Path) EqualsPath(ep *Path) bool {
-	if p.First == ep.First {
-		if p.Rest == nil {
-			return ep.Rest == nil
-		}
-		return p.Rest.equalp(ep.Rest)
-	}
-	return false
-}
-
-func (p *Path) typeof(hint Hint) TypeSet {
-	// we have no a-priori knowledge of
-	// the type of path expressions (typically),
-	// so just fall back to the hint
-	return hint.TypeOf(p)
-}
-
-func (p *Path) check(hint Hint) error {
-	for c := p.Rest; c != nil; c = c.Next() {
-		li, ok := c.(*LiteralIndex)
-		if ok && li.Field < 0 {
-			return errtypef(p, "illegal index %d (cannot be signed)", li.Field)
-		}
-	}
-	return nil
-}
-
 // IsKeyword is the function that the expr library
 // uses to determine if a string would match as
 // a PartiQL keyword.
@@ -1206,92 +1294,9 @@ func QuoteID(s string) string {
 	return s
 }
 
-func (p *Path) text(dst *strings.Builder, redact bool) {
-	dst.WriteString(QuoteID(p.First))
-	if p.Rest != nil {
-		p.Rest.text(dst, redact)
-	}
-}
-
-func (p *Path) Encode(dst *ion.Buffer, st *ion.Symtab) {
-	dst.BeginStruct(-1)
-	settype(dst, st, "path")
-	dst.BeginField(st.Intern("items"))
-	dst.BeginList(-1)
-	// paths are encoded as a list,
-	// so a.b[3] is encoded as ["a", "b", 3]
-	dst.WriteString(p.First)
-	for pc := p.Rest; pc != nil; pc = pc.Next() {
-		pc.encode(dst)
-	}
-	dst.EndList()
-	dst.EndStruct()
-}
-
-func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
-	case "items":
-		var prev *PathComponent
-		top := true
-		return unpackList(body, func(arg []byte) error {
-			switch t := ion.TypeOf(arg); t {
-			case ion.StringType:
-				str, _, err := ion.ReadString(arg)
-				if err != nil {
-					return err
-				}
-				if top {
-					p.First = str
-					prev = &p.Rest
-					top = false
-				} else {
-					d := &Dot{Field: str}
-					*prev = d
-					prev = &d.Rest
-				}
-			case ion.IntType, ion.UintType:
-				i, _, err := ion.ReadInt(arg)
-				if err != nil {
-					return err
-				}
-				if top {
-					return fmt.Errorf("path cannot begin with index %d", i)
-				}
-				l := &LiteralIndex{Field: int(i)}
-				*prev = l
-				prev = &l.Rest
-			case ion.NullType:
-				*prev = Star{}
-			default:
-				return fmt.Errorf("unrecognized path component %q", t)
-			}
-
-			return nil
-		})
-	default:
-		return errUnexpectedField
-	}
-
-	return nil
-}
-
-func (p *Path) Clone() *Path {
-	out := &Path{
-		First: p.First,
-	}
-	if p.Rest != nil {
-		out.Rest = p.Rest.clone()
-	}
-	return out
-}
-
 // Identifier produces a single-element
 // path expression from an identifier string
-func Identifier(x string) *Path {
-	return &Path{First: x}
-}
-
-func (p *Path) walk(v Visitor) {}
+func Identifier(x string) Ident { return Ident(x) }
 
 // CmpOp is a comparison operation type
 type CmpOp int
@@ -2539,34 +2544,21 @@ func (i *IsKey) invert() Node {
 // like 'a.b.z' or 'a[0].y', etc.
 //
 // Please only use this for testing.
-func ParsePath(x string) (*Path, error) {
-	p := new(Path)
-	err := p.parse(x)
-	if err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-func (p *Path) parse(x string) error {
-	var top *Path
-	var set *PathComponent
+func ParsePath(x string) (Node, error) {
+	var cur Node
 	pushfield := func(s string) {
 		s = strings.Trim(s, `"`) // unquote
-		if top == nil {
-			top = p
-			top.First = s
-			set = &top.Rest
+		if cur == nil {
+			cur = Ident(s)
 		} else {
-			d := &Dot{Field: s}
-			*set = d
-			set = &d.Rest
+			cur = &Dot{
+				Inner: cur,
+				Field: s,
+			}
 		}
 	}
 	pushindex := func(i int) {
-		li := &LiteralIndex{Field: i}
-		*set = li
-		set = &li.Rest
+		cur = &Index{Inner: cur, Offset: i}
 	}
 	const (
 		parsingField  = 0
@@ -2586,7 +2578,7 @@ func (p *Path) parse(x string) error {
 		case parsingField:
 			if x[0] == '.' || x[0] == '[' {
 				if len(field) == 0 {
-					return fmt.Errorf("zero-length field in %q not supported", x)
+					return nil, fmt.Errorf("zero-length field in %q not supported", x)
 				}
 				pushfield(string(field))
 				field = field[:0]
@@ -2601,7 +2593,7 @@ func (p *Path) parse(x string) error {
 				str := string(field)
 				i, err := strconv.Atoi(str)
 				if err != nil {
-					return fmt.Errorf("bad index: %w", err)
+					return nil, fmt.Errorf("bad index: %w", err)
 				}
 				pushindex(i)
 				// after an indexing expression,
@@ -2624,14 +2616,14 @@ func (p *Path) parse(x string) error {
 	// (which must be terminated by ']')
 	if state == parsingField {
 		if len(field) == 0 {
-			return fmt.Errorf("ParsePath: unterminated field expression")
+			return nil, fmt.Errorf("ParsePath: unterminated field expression")
 		}
 		pushfield(string(field))
 	}
 	if state == parsingIndex && len(field) != 0 {
-		return fmt.Errorf("ParsePath: unterminated index expression")
+		return nil, fmt.Errorf("ParsePath: unterminated index expression")
 	}
-	return nil
+	return cur, nil
 }
 
 // ParseBindings parses a comma-separated
@@ -2713,9 +2705,10 @@ func (c *Case) text(dst *strings.Builder, redact bool) {
 // Path expression, Null, or Missing.
 func (c *Case) IsPathLimbs() bool {
 	ok := func(e Node) bool {
-		switch e.(type) {
-		case *Path:
+		if IsPath(e) {
 			return true
+		}
+		switch e.(type) {
 		case Null:
 			return true
 		case Missing:

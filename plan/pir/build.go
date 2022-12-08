@@ -152,7 +152,7 @@ type Index interface {
 	// TimeRange returns the inclusive time range
 	// for the given path expression across the
 	// given table.
-	TimeRange(path *expr.Path) (min, max date.Time, ok bool)
+	TimeRange(path []string) (min, max date.Time, ok bool)
 }
 
 // Build walks the provided Query
@@ -177,17 +177,11 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 		}
 		if q.Into != nil {
 			// expect db.table
-			p, ok := q.Into.(*expr.Path)
-			if !ok {
+			p, ok := expr.FlatPath(q.Into)
+			if !ok || len(p) != 2 {
 				return nil, fmt.Errorf("unsupported INTO: %q", expr.ToString(q.Into))
 			}
-			tbl, ok := p.Rest.(*expr.Dot)
-			if !ok {
-				return nil, fmt.Errorf("INTO missing database: %q", expr.ToString(q.Into))
-			} else if tbl.Rest != nil {
-				return nil, fmt.Errorf("unsupported INTO: %q", expr.ToString(q.Into))
-			}
-			t.Into(p, path.Join("db", p.First, tbl.Field))
+			t.Into(q.Into, path.Join("db", p[0], p[1]))
 		}
 		err = postcheck(t)
 		if err != nil {
@@ -234,54 +228,38 @@ func (t *tableReplacer) Rewrite(e expr.Node) expr.Node {
 	}
 
 	switch v := tbl.Expr.(type) {
-	case *expr.Path:
+	case expr.Ident:
 		if cte := t.cloneCTE(v, tbl); cte != nil {
 			tbl.Expr = cte
 		}
-
 	case *expr.Unpivot:
-		if cte := t.cloneCTE(v.TupleRef, tbl); cte != nil {
-			v.TupleRef = cte
-		} else {
-			v.TupleRef = t.Rewrite(v.TupleRef)
-		}
-
-	case *expr.Appended:
-		for i := range v.Values {
-			if cte := t.cloneCTE(v.Values[i], tbl); cte != nil {
-				v.Values[i] = cte
-			} else {
-				v.Values[i] = t.Rewrite(v.Values[i])
+		if id, ok := v.TupleRef.(expr.Ident); ok {
+			if cte := t.cloneCTE(id, tbl); cte != nil {
+				v.TupleRef = cte
 			}
 		}
+		v.TupleRef = t.Rewrite(v.TupleRef)
+	case *expr.Appended:
+		for i := range v.Values {
+			id, ok := v.Values[i].(expr.Ident)
+			if ok {
+				if cte := t.cloneCTE(id, tbl); cte != nil {
+					v.Values[i] = cte
+				}
+			}
+			v.Values[i] = t.Rewrite(v.Values[i])
+		}
 	}
-
 	return e
 }
 
 // cloneCTE finds CTE by name and returns its copy
-func (t *tableReplacer) cloneCTE(arg any, table *expr.Table) expr.Node {
-	var name string
-	switch v := arg.(type) {
-	case string:
-		name = v
-
-	case *expr.Path:
-		if v.Rest != nil {
-			return nil
-		}
-
-		name = v.First
-
-	default:
-		return nil
-	}
-
+func (t *tableReplacer) cloneCTE(id expr.Ident, table *expr.Table) expr.Node {
 	with := t.with
 	// search for a matching binding in
 	// binding order:
 	for i := len(with) - 1; i >= 0; i-- {
-		if name == with[i].Table {
+		if with[i].Table == string(id) {
 			cop, err := exprcopy(with[i].As)
 			if err != nil {
 				if t.err == nil {
@@ -375,7 +353,7 @@ func normalizeOrderBy(s *expr.Select) {
 	for i := range s.OrderBy {
 		for j := range s.Columns {
 			if expr.Equivalent(s.OrderBy[i].Column, s.Columns[j].Expr) {
-				s.OrderBy[i].Column = &expr.Path{First: s.Columns[j].Result()}
+				s.OrderBy[i].Column = expr.Ident(s.Columns[j].Result())
 				break
 			}
 		}

@@ -661,7 +661,7 @@ func compareIonWithExpectations(t *testing.T, output []byte, expected []string) 
 	}
 }
 
-func parsePath(s string) *expr.Path {
+func parsePath(s string) expr.Node {
 	p, err := expr.ParsePath(s)
 	if err != nil {
 		panic(err)

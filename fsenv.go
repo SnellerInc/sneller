@@ -84,17 +84,6 @@ func syntax(f string, args ...interface{}) error {
 	}
 }
 
-func tsplit(p *expr.Path) (string, string, error) {
-	d, ok := p.Rest.(*expr.Dot)
-	if !ok {
-		return "", "", syntax("no database+table reference in %q", expr.ToString(p))
-	}
-	if d.Rest != nil {
-		return "", "", syntax("trailing path expression %q in table not supported", expr.ToString(d.Rest))
-	}
-	return p.First, d.Field, nil
-}
-
 // CacheValues implements cachedEnv.CacheValues
 func (f *FSEnv) CacheValues() ([]byte, time.Time) {
 	return f.hash.Sum(nil), f.modtime.Time()
@@ -109,26 +98,21 @@ func (f *FSEnv) Index(p expr.Node) (plan.Index, error) {
 func (f *FSEnv) index(e expr.Node) (*blockfmt.Index, error) {
 	var dbname, table string
 	var err error
-	p, ok := e.(*expr.Path)
-	if !ok {
+
+	switch e := e.(type) {
+	case expr.Ident:
+		dbname = f.db
+		table = string(e)
+	case *expr.Dot:
+		id, ok := e.Inner.(expr.Ident)
+		if !ok {
+			return nil, syntax("trailing path expression %q in table not supported", expr.ToString(e.Inner))
+		}
+		dbname = string(id)
+		table = e.Field
+	default:
 		return nil, syntax("unexpected table expression %q", expr.ToString(e))
 	}
-	// if a database was already provided,
-	// then we expect just the table identifier;
-	// otherwise, we expect db.table
-	if f.db == "" {
-		dbname, table, err = tsplit(p)
-	} else {
-		dbname = f.db
-		table = p.First
-		if p.Rest != nil {
-			err = syntax("trailing path expression %q in table not supported", expr.ToString(p.Rest))
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-
 	// if a query references the same table
 	// more than once (common with CTEs, nested SELECTs, etc.),
 	// then don't load the index more than once; it is expensive

@@ -640,45 +640,22 @@ func checkScalarReplacement(h Hint, args []Node) error {
 	return nil
 }
 
-func nodeTypeName(node Node) string {
-	switch node.(type) {
-	case String:
-		return "string"
-	case Integer:
-		return "integer"
-	case Float:
-		return "float"
-	case Bool:
-		return "bool"
-	case *Rational:
-		return "rational"
-	case *Timestamp:
-		return "timestamp"
-	case Null:
-		return "null"
-	}
-
-	return fmt.Sprintf("%T", node)
-}
-
 func checkObjectSize(h Hint, args []Node) error {
 	if len(args) != 1 {
 		return errsyntaxf("SIZE expects one argument, but found %d", len(args))
 	}
-
-	switch args[0].(type) {
-	case *Path, *List, *Struct:
-		return nil
+	expect := StructType | ListType
+	if t := TypeOf(args[0], h); t&expect == 0 || args[0] == (Star{}) {
+		return errtype(args[0], "SIZE expects a structure or list argument")
 	}
-
-	return errtypef(args[0], "SIZE is undefined for values of type %s", nodeTypeName(args[0]))
+	return nil
 }
 
 func checkTableGlob(h Hint, args []Node) error {
 	if len(args) != 1 {
 		return mismatch(1, len(args))
 	}
-	if _, ok := args[0].(*Path); !ok {
+	if !IsPath(args[0]) {
 		return errsyntaxf("argument to TABLE_GLOB is %q", ToString(args[0]))
 	}
 	return nil
@@ -688,7 +665,7 @@ func checkTablePattern(h Hint, args []Node) error {
 	if len(args) != 1 {
 		return mismatch(1, len(args))
 	}
-	if _, ok := args[0].(*Path); !ok {
+	if !IsPath(args[0]) {
 		return errsyntaxf("argument to TABLE_PATTERN is %q", ToString(args[0]))
 	}
 	return nil

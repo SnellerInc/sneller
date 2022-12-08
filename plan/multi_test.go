@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
-	"github.com/SnellerInc/sneller/expr"
 )
 
 func TestMultiIndex(t *testing.T) {
@@ -54,7 +53,7 @@ func TestMultiIndex(t *testing.T) {
 		max: now(2),
 		ok:  true,
 	}}
-	p := &expr.Path{First: "foo"}
+	p := []string{"foo"}
 	for i, c := range cases {
 		min, max, ok := cases[i].in.TimeRange(p)
 		if min != c.min || max != c.max || ok != c.ok {
@@ -69,6 +68,6 @@ type timeIndex struct {
 	min, max date.Time
 }
 
-func (h timeIndex) TimeRange(*expr.Path) (min, max date.Time, ok bool) {
+func (h timeIndex) TimeRange(p []string) (min, max date.Time, ok bool) {
 	return h.min, h.max, true
 }
