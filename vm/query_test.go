@@ -667,32 +667,12 @@ func toJSON(st *ion.Symtab, d ion.Datum) string {
 	return sb.String()
 }
 
-// BUG(phil): some queries get different results
-// when split versus unsplit when AVG is present;
-// this needs to be investigated futher
-func canSplit(t *testing.T, query []byte) bool {
-	q, err := partiql.Parse(query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, b := range q.Body.(*expr.Select).Columns {
-		if a, ok := b.Expr.(*expr.Aggregate); ok && a.Op == expr.OpAvg {
-			return false
-		}
-	}
-	return true
-}
-
 func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out []ion.Datum) {
 	var done bool
-	splitok := canSplit(t, query)
 	for i := 0; i < shufflecount*2; i++ {
 		name := fmt.Sprintf("shuffle-%d", i)
 		split := false
 		if i >= shufflecount {
-			if !splitok {
-				break
-			}
 			split = true
 			name = fmt.Sprintf("shuffle-split-%d", i)
 		}

@@ -223,6 +223,11 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		}
 	}
 
+	isIntCast := func(e expr.Node) bool {
+		c, ok := e.(*expr.Cast)
+		return ok && c.To == expr.IntegerType
+	}
+
 	var bind *Bind
 	if needsFinalProjection {
 		orig := len(a.Agg)
@@ -235,10 +240,20 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 				// everything that isn't AVG just
 				// gets an identity output binding
 				bind.bind = append(bind.bind, expr.Identity(a.Agg[i].Result))
-
-				// transform AVG into two aggregations
 			case expr.OpAvg:
+				// transform AVG into two aggregations
 				a.Agg[i].Expr.Op = expr.OpSum
+
+				inner := a.Agg[i].Expr.Inner
+				cast := func(e expr.Node) expr.Node { return e }
+				// if we have AVG(CAST(x AS INTEGER)),
+				// then we need all the operations to be integer ops
+				if isIntCast(inner) {
+					a.Agg[i].Expr.Op = expr.OpSumInt
+					cast = func(e expr.Node) expr.Node {
+						return &expr.Cast{From: e, To: expr.IntegerType}
+					}
+				}
 				count := gensym(1, i)
 				countagg := expr.Count(numberOrMissing(a.Agg[i].Expr.Inner))
 				if filter := a.Agg[i].Expr.Filter; filter != nil {
@@ -255,7 +270,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 						When: expr.Compare(expr.Equals, countid, expr.Integer(0)),
 						Then: expr.Null{},
 					}},
-					Else: expr.Div(sumid, countid),
+					Else: expr.Div(cast(sumid), cast(countid)),
 				}
 				bind.bind = append(bind.bind, expr.Bind(result, a.Agg[i].Result))
 			}
@@ -283,7 +298,13 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 		case expr.OpCount:
 			// convert to SUM_COUNT(COUNT(x))
 			newagg = expr.SumCount(innerref)
-		case expr.OpSum, expr.OpMin, expr.OpMax, expr.OpSumInt, expr.OpSumCount,
+		case expr.OpMin, expr.OpMax:
+			// mostly trivial, but be sure to force integer calculations here:
+			newagg = &expr.Aggregate{Op: age.Op, Inner: innerref}
+			if isIntCast(age.Inner) {
+				newagg.Inner = &expr.Cast{From: newagg.Inner, To: expr.IntegerType}
+			}
+		case expr.OpSum, expr.OpSumInt, expr.OpSumCount,
 			expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpBoolAnd, expr.OpBoolOr,
 			expr.OpEarliest, expr.OpLatest:
 			// these are all distributive

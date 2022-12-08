@@ -944,6 +944,10 @@ func TestSimplify(t *testing.T) {
 			Call(AssertIonType, Missing{}, Integer(int(ion.StringType))),
 			Missing{},
 		},
+		{
+			Add(&Cast{From: path("x"), To: IntegerType}, Integer(0)),
+			&Cast{From: path("x"), To: IntegerType},
+		},
 	}
 
 	for i := range testcases {

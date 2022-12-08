@@ -35,10 +35,10 @@
 
 // arithmetic simplifications
 // (note that we have to preserve the missing-ness of the result)
-(add x (int `0`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
-(sub x (int `0`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
-(mul x (int `1`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
-(div x (int `1`)), `TypeOf(x, h) == (NumericType|MissingType)` -> x
+(add x (int `0`)), `TypeOf(x, h).Only(NumericType|MissingType)` -> x
+(sub x (int `0`)), `TypeOf(x, h).Only(NumericType|MissingType)` -> x
+(mul x (int `1`)), `TypeOf(x, h).Only(NumericType|MissingType)` -> x
+(div x (int `1`)), `TypeOf(x, h).Only(NumericType|MissingType)` -> x
 (div _ (int `0`)) -> (missing)
 (mod _ (int `0`)) -> (missing)
 

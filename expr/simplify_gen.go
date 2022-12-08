@@ -10,11 +10,11 @@ import (
 func simplifyClass0(src *Arithmetic, h Hint) Node {
 	switch src.Op {
 	case AddOp:
-		// (add x (int "0")), "TypeOf(x, h) == (NumericType|MissingType)" -> x
+		// (add x (int "0")), "TypeOf(x, h).Only(NumericType|MissingType)" -> x
 		if x := src.Left; true {
 			if _tmp001001, ok := (src.Right).(Integer); ok {
 				if Integer(0).Equals(_tmp001001) {
-					if TypeOf(x, h) == (NumericType | MissingType) {
+					if TypeOf(x, h).Only(NumericType | MissingType) {
 						return x
 					}
 				}
@@ -53,11 +53,11 @@ func simplifyClass0(src *Arithmetic, h Hint) Node {
 			}
 		}
 	case DivOp:
-		// (div x (int "1")), "TypeOf(x, h) == (NumericType|MissingType)" -> x
+		// (div x (int "1")), "TypeOf(x, h).Only(NumericType|MissingType)" -> x
 		if x := src.Left; true {
 			if _tmp001001, ok := (src.Right).(Integer); ok {
 				if Integer(1).Equals(_tmp001001) {
-					if TypeOf(x, h) == (NumericType | MissingType) {
+					if TypeOf(x, h).Only(NumericType | MissingType) {
 						return x
 					}
 				}
@@ -77,11 +77,11 @@ func simplifyClass0(src *Arithmetic, h Hint) Node {
 			}
 		}
 	case MulOp:
-		// (mul x (int "1")), "TypeOf(x, h) == (NumericType|MissingType)" -> x
+		// (mul x (int "1")), "TypeOf(x, h).Only(NumericType|MissingType)" -> x
 		if x := src.Left; true {
 			if _tmp001001, ok := (src.Right).(Integer); ok {
 				if Integer(1).Equals(_tmp001001) {
-					if TypeOf(x, h) == (NumericType | MissingType) {
+					if TypeOf(x, h).Only(NumericType | MissingType) {
 						return x
 					}
 				}
@@ -120,11 +120,11 @@ func simplifyClass0(src *Arithmetic, h Hint) Node {
 			}
 		}
 	case SubOp:
-		// (sub x (int "0")), "TypeOf(x, h) == (NumericType|MissingType)" -> x
+		// (sub x (int "0")), "TypeOf(x, h).Only(NumericType|MissingType)" -> x
 		if x := src.Left; true {
 			if _tmp001001, ok := (src.Right).(Integer); ok {
 				if Integer(0).Equals(_tmp001001) {
-					if TypeOf(x, h) == (NumericType | MissingType) {
+					if TypeOf(x, h).Only(NumericType | MissingType) {
 						return x
 					}
 				}
