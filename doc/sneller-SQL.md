@@ -1585,17 +1585,18 @@ and the `cidr` string in the two-argument form must be constant strings.*
 #### `EQUALS_FUZZY`, `EQUALS_FUZZY_UNICODE`
 Fuzzy String Matching using
 [Damerau-Levenshtein distance](https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance)
-calculation. The `EQUALS_FUZZY`
-function determines whether a data string equals a provided string literal
+calculation. The `EQUALS_FUZZY` function determines whether a data string equals a provided string literal
 if the data string can be transformed into the string literal with less or equal number
 of edits. Stated differently, the distance between the data and the string literal
-is the minimal number of edits, and if the number of edits does not exceed a
-threshold, the two strings have a *fuzzy match*.
-The Damerau–Levenshtein distance consideres insertions, deletions, substitutions of
-single characters, or transpositions of two adjacent characters.
-The unicode variant `EQUALS_FUZZY_UNICODE` treats strings as UTF8 strings, the
-regular variant `EQUALS_FUZZY` treats strings as byte sequences. Substitutions of
-equal characters but with different casing have an edit distance of zero.
+is the minimal number of edits, and if the number of edits does not exceed some
+threshold, the two strings are considered to have a *fuzzy match*.
+The Damerau–Levenshtein distance considers *insertions*, *deletions*, *substitutions* of
+single characters, and *transpositions* of two adjacent characters.
+
+The unicode variant `EQUALS_FUZZY_UNICODE` treats strings as UTF8 strings, while the
+`EQUALS_FUZZY` treats strings as byte sequences. Substitutions of
+equal *ASCII* characters but with different casing have an edit distance of zero, but
+substitutions of unicode code-points with different casing have an edit distance of one.
 
 Examples:
 ```sql
@@ -1609,72 +1610,146 @@ EQUALS_FUZZY_UNICODE('strasse', 'Straße', 1) -> FALSE
 EQUALS_FUZZY_UNICODE('strasse', 'Straße', 2) -> TRUE
 
 -- string literal 'Straße' is treated a byte sequence
+-- (note that `ß` is a 2-byte sequence)
 EQUALS_FUZZY('strasse', 'Straße', 1) -> FALSE
 EQUALS_FUZZY('strasse', 'Straße', 2) -> TRUE
 ```
 
-The calculated *edit distance* between the two strings is an *estimation* of the
-Damerau–Levenshtein distance. This estimation gives the `EQUALS_FUZZY` a complexity comparable
-to a case-insensitive string compare. The following pseudocode illustrates how the
-estimation is obtained. Two strings (`DATA`, `NEEDLE`) are compared from left to right
-two bytes (or unicodes) at the time.
+The calculated *edit distance* between two strings is an *estimation* of the true
+Damerau–Levenshtein distance. A benefit of this estimation is that the `EQUALS_FUZZY` has a
+runtime complexity comparable to a case-insensitive string compare; a downside is that some
+distances are overestimated.
+
+The following pseudocode illustrates how estimations are obtained. Two strings (`DATA`, `NEEDLE`)
+are compared from left to right three bytes (or unicodes) at the time.
 While comparing, the number of edits is accumulated, and once this number exceed a
-provided threshold, the function yields false. The first two characters `D0`, and `D1` from `DATA`,
-and the first two characters `N0` and `N0` from `NEEDLE` are compared in the following fashion.
-If either data or needle does not have 1 or 2 characters, take surrogate values `0xFF`, or
+provided threshold, the function yields false. The first three characters `D0`, `D1`, and `D2` from `DATA`,
+and the first three characters `N0`, `N1`, and `N2` from `NEEDLE` are compared in the following fashion.
+If either data or needle does not have 1, 2 or 3 characters, take surrogate values `0xFF`, or
 `0xFFFFFFFF` for the unicode variant.
 
-```
--- estimate Damerau–Levenshtein distance
+With increasing complexity, first the 1 character approximation, 2 character and finally 3 character
+approximation. Note that if the estimation function considers only one character, that is,
+`D0` and `N0` the estimation would implement a Manhattan distance function:
+
+Estimate Damerau–Levenshtein distance with *one* characters lookahead
+``` text
 WHILE (DATA not empty) OR (NEEDLE not empty) DO
     D0 := DATA[0]
     N0 := NEEDLE[0]
 
-    // the first characters match
-    IF (D0 == N0) THEN
-        "do not increment edit distance"
-        "advance DATA 1 character"
+    IF (D0==N0) // the first characters match
+    THEN editDistance += 0; advanceData += 1; advanceNeedle += 1
+    ELSE // substitution in all remaining situations:
+        editDistance += 1; advanceData += 1; advanceNeedle += 1
+    ENDIF
+ENDDO
+```
+
+If the estimation function considers two characters, that is `D0`, `D1`, `N0`
+and `N1`, the estimation allows single insertions, deletions, and transpositions
+but would still estimate some edit distances wrongly. For example, two consecutive
+deletions would not be recognized but would be considered two
+substitutions which may result in a full mismatch of the remaining string.
+
+Estimate Damerau–Levenshtein distance with *two* characters lookahead
+```
+WHILE (DATA not empty) OR (NEEDLE not empty) DO
+    D0 := DATA[0]
+    N0 := NEEDLE[0]
+
+    IF (D0==N0) // the first characters match
+    THEN editDistance += 0; advanceData += 1; advanceNeedle += 1
     ELSE
-        "increment edit distance with one"
         D1 := DATA[1]
         N1 := NEEDLE[1]
 
-        // character is substituted in data
-        IF (D1 != N0) && (D0 != N1) THEN
-            "advance DATA 1 character"
-        ENDIF
-
         // character is deleted in data
-        IF (D1 != N0) && (D0 == N1) THEN
-            "advance DATA 0 characters"
+        IF (D1!=N0) && (D0==N1)
+        THEN editDistance += 1; advanceData += 1; advanceNeedle += 2
         ENDIF
 
         // character is inserted in data
-        IF (D1 == N0) && (D0 != N1) THEN ""
-            "advance DATA 2 characters"
+        IF (D1==N0) && (D0!=N1)
+        THEN editDistance += 1; advanceData += 2; advanceNeedle += 1
         ENDIF
 
         // characters are transposed in data
-        IF (D1 == N0) && (D0 == N1) THEN
-            "advance DATA 2 characters"
-            "place D0 back into DATA"
+        IF (D1==N0) && (D0==N1)
+        THEN editDistance += 1; advanceData += 2; advanceNeedle += 2
+        ENDIF
+
+        // all remaining situations: character is substituted in data
+        IF (D1!=N0) && (D0!=N1)
+        THEN editDistance += 1; advanceData += 1; advanceNeedle += 1
         ENDIF
     ENDIF
-    "advance NEEDLE 1 character"
+ENDDO
+```
+Finally, estimation of Damerau–Levenshtein distance in the fuzzy matcher
+uses *three* character lookahead.
+
+```
+WHILE (DATA not empty) OR (NEEDLE not empty) DO
+    D0 := DATA[0]
+    N0 := NEEDLE[0]
+
+    IF (D0==N0) // the first characters match
+    THEN editDistance += 0; advanceData += 1; advanceNeedle += 1
+    ELSE
+        D1 := DATA[1]
+        D2 := DATA[2]
+        N1 := NEEDLE[1]
+        N2 := NEEDLE[2]
+
+        // two characters are transposed in data
+        IF (N0!=D0) && (N0==D1) && (N1==D0)
+        THEN editDistance += 1; advanceData += 2; advanceNeedle += 2
+        ENDIF
+
+        // one character is deleted in data
+        IF (N0!=D0) && (N0!=D1) && (N1==D0) && (N2==D1)
+        THEN editDistance += 1; advanceData += 1; advanceNeedle += 2
+        ENDIF
+
+        // two characters are deleted in data:
+        IF (N0!=D0) && (N1!=D1) && (N2!=D2) && (N2==D0) && (N0!=D1) && (N1!=D2) && (N1!=D0) && (N2!=D1) && (N0!=D2)
+        THEN editDistance += 2; advanceData += 1; advanceNeedle += 3
+        ENDIF
+
+        // one character is inserted in data
+        IF (N0!=D0) && (N0==D1) && (N1==D2) && (N1!=D0)
+        THEN editDistance += 1; advanceData += 2; advanceNeedle += 1
+        ENDIF
+
+        // two characters are insearted in data
+        IF (N0!=D0) && (N1!=D1) && (N2!=D2) && (N2!=D0) && (N0!=D1) && (N1!=D2) && (N1!=D0) && (N2!=D1) && (N0==D2)
+        THEN editDistance += 2; advanceData += 3; advanceNeedle += 1
+        ENDIF
+
+        // transposition and insertion ab -> bca:
+        IF (N0!=D0) && (N1!=D1) && (N2!=D2) && (N2!=D0) && (N0!=D1) && (N1!=D2) && (N1==D0) && (N2!=D1) && (N0==D2)
+        THEN editDistance += 2;; advanceData += 3; advanceNeedle += 2
+        ENDIF
+
+        // substitution in all remaining situations:
+        ELSE editDistance += 1; advanceData += 1; advanceNeedle += 1
+    ENDIF
 ENDDO
 ```
 
 This method calculates either the true Damerau–Levenshtein distance or the method overestimates.
-The estimation is the result of the two character horizon: the method
-cannot look beyond these two characters, and cannot foresee which edit to choose such that the
-*smallest* edit distance is found. In the following example the above method chooses a transposition
-and this would give an edit distance of 2, while a deletion at position 0 gives a smaller edit distance
-of 1. A seven character horizon would have been needed to foresee that, in this specific situation,
-a deletion should be preferred over a transposition.
-```go
--- example of an overestimation of distance 2 while true Damerau–Levenshtein is 1
-data:   "baaaaaa"
-needle: "abaaaaaa"
+The estimation is the result of a three character horizon: the method
+cannot look beyond these three characters, and cannot foresee which edit to choose such that the
+*smallest* edit distance is found. In the following example the above method chooses a substitution
+and this would give an edit distance of 6, while a deletion at position 0, 1, and 2 gives a smaller
+edit distance of 3. A seven character horizon would have been needed to foresee that, in this
+specific situation, deletions should be preferred over substitutions.
+
+ Example of an overestimation of distance 6 while true Damerau–Levenshtein is 3
+```
+data:   "aaaaaa"
+needle: "bbbaaaaaa"
 ```
 
 #### `CONTAINS_FUZZY`, `CONTAINS_FUZZY_UNICODE`
@@ -1688,7 +1763,6 @@ edits. The complexity is comparable to a case-insensitive string contains functi
 ```sql
 CONTAINS_FUZZY('The quick brown foks jums over the lazy dog', 'Fox Jumps', 3) -> TRUE
 ```
-
 
 #### `CAST`
 

@@ -12,5 +12,5 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Package fuzzy implements fuzzy match/contains reference implementations.
+// Package fuzzy implements fuzzy equal/contains reference implementations.
 package fuzzy

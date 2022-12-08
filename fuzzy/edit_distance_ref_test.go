@@ -220,15 +220,15 @@ func TestEditDistanceApprox3(t *testing.T) {
 
 		//deletion 2x
 		{"abcd", "ad", 2, 2},
-		{"abcd", "bd", 3, 2}, //FIXME
+		{"abcd", "bd", 3, 2},
 
 		//insertion 2x
 		{"abcd", "a__bcd", 2, 2},
-		{"abcd", "a_b_cd", 3, 2}, //FIXME
+		{"abcd", "a_b_cd", 3, 2},
 
 		//issues
-		{"BA", "AA", 1, 1},    // known issue due to 2char horizon
-		{"CAB", "CBAB", 2, 1}, //FIXME
+		{"BA", "AA", 1, 1},
+		{"CAB", "CBAB", 2, 1},
 	}
 
 	run := func(ut unitTest) {
@@ -258,16 +258,18 @@ func TestGenerateTable(t *testing.T) {
 		for i := 0; i < 4; i++ {
 			result[i] = [4]byte{'X', 'X', 'X', 'X'}
 			n := d1[i]
-			if n != '.' {
-				for j := 0; j < 4; j++ {
-					d := d2[j]
-					if d != '.' {
-						if n == d {
-							result[i][j] = '1'
-						} else {
-							result[i][j] = '0'
-						}
-					}
+			if n == '.' {
+				continue
+			}
+			for j := 0; j < 4; j++ {
+				d := d2[j]
+				if d == '.' {
+					continue
+				}
+				if n == d {
+					result[i][j] = '1'
+				} else {
+					result[i][j] = '0'
 				}
 			}
 		}
@@ -320,49 +322,6 @@ func TestGenerateTable(t *testing.T) {
 	}
 
 	toAsmA3 := func(info string, c configType, editDistance, advData, advNeedle int) string {
-
-		_ = func(i, j int) (int, int) {
-			if i == 0 {
-				return j, j
-			}
-			if i == 1 {
-				switch j {
-				case 0:
-					return 3, j
-				case 1:
-					return 0, j
-				case 2:
-					return 1, j
-				case 3:
-					return 2, j
-				}
-			}
-			if i == 2 {
-				switch j {
-				case 0:
-					return 2, j
-				case 1:
-					return 3, j
-				case 2:
-					return 0, j
-				case 3:
-					return 1, j
-				}
-			}
-			if i == 3 {
-				switch j {
-				case 0:
-					return 1, j
-				case 1:
-					return 2, j
-				case 2:
-					return 3, j
-				case 3:
-					return 0, j
-				}
-			}
-			return -1, -1
-		}
 
 		remapA3 := func(i, j int) (int, int) {
 
@@ -436,11 +395,11 @@ func TestGenerateTable(t *testing.T) {
 			return fmt.Sprintf("CONSTD_0x%v()", m)
 		}
 
-		_ = func() string {
+		writeComparisons := func() string {
 			first := true
 			result := ""
-			for i := 0; i < 4; i++ {
-				for j := 0; j < 4; j++ {
+			for i := 0; i < 3; i++ {
+				for j := 0; j < 3; j++ {
 					i2, j2 := remapA3(i, j)
 					mode := c[i2][j2]
 					if mode != 'X' {
@@ -458,7 +417,6 @@ func TestGenerateTable(t *testing.T) {
 				}
 			}
 			return result + "\n"
-
 		}
 
 		regs := [4]string{"Z9", "Z21", "Z22"}
@@ -486,6 +444,8 @@ func TestGenerateTable(t *testing.T) {
 
 		sb := strings.Builder{}
 		sb.WriteString(fmt.Sprintf("\n\n//; %v: %v (ED %v; advData %v; advNeedle %v)\n", info, toStringConfig(c), editDistance, advData, advNeedle))
+		sb.WriteString(fmt.Sprintf("%v", writeComparisons()))
+
 		first := true
 
 		for i := 0; i < 3; i++ {
@@ -537,10 +497,6 @@ func TestGenerateTable(t *testing.T) {
 		for _, del := range data {
 			config := createConfig(del.n, del.d)
 			mergedConfig = mergeConfig(mergedConfig, config)
-			if false {
-				t.Logf("needle=%q; data=%v; config=%v",
-					del.n, del.d, toStringConfig(config))
-			}
 		}
 		t.Logf("%v: %v", info, toStringConfig(mergedConfig))
 	}
@@ -550,10 +506,6 @@ func TestGenerateTable(t *testing.T) {
 			"ab..",
 			"xb..",
 		},
-		//{
-		//	"aa..",
-		//	"xa..", 1, 1, 1,
-		//},
 		{
 			"ab..",
 			"xc..",
@@ -599,14 +551,6 @@ func TestGenerateTable(t *testing.T) {
 			"abb.",
 			"bbb.",
 		},
-		//{
-		//	"aab.",
-		//	"xab.",
-		//},
-		//{
-		//	"aaa.",
-		//	"xaa.",
-		//},
 		{
 			"abc.",
 			"bbc.",
@@ -643,16 +587,6 @@ func TestGenerateTable(t *testing.T) {
 			"abc.",
 			"cde.",
 		},
-		//	{ // this introduces more issues than that is solves...
-		//		"abc.",
-		//		"ccc.",
-		//	},
-
-		//	{  // this introduces more issues than that is solves...
-		//		"abc.",
-		//		"cdb.",
-		//	},
-
 		//{ this is ins1
 		//	"abc.",
 		//	"cad.",
@@ -843,5 +777,4 @@ func TestGenerateTable(t *testing.T) {
 	t.Logf(toAsmA3("ins1", toConfig("01XX:0X1X:XXXX:XXXX"), 1, 1, 0))
 	t.Logf(toAsmA3("ins2", toConfig("001X:000X:000X:XXXX"), 1, 1, 0))
 	t.Logf(toAsmA3("tra+ins", toConfig("001X:100X:000X:XXXX"), 2, 3, 2))
-
 }
