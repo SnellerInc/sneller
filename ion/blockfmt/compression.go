@@ -667,17 +667,21 @@ func (d *Decoder) decompressBlocks(src io.Reader, upto int, dst []byte) (int, er
 	return off, nil
 }
 
+func (d *Decoder) setupZion(dec *zion.Decoder) {
+	if d.Fields == nil {
+		dec.SetWildcard()
+	} else {
+		dec.SetComponents(d.Fields)
+	}
+}
+
 func (d *Decoder) getDecomp(algo string) error {
 	d.decomp = getAlgo(algo)
 	if d.decomp == nil {
 		return fmt.Errorf("decompression %q not supported", d.Algo)
 	}
 	if z, ok := d.decomp.(*zionDecompressor); ok {
-		if d.Fields == nil {
-			z.dec.SetWildcard()
-		} else {
-			z.dec.SetComponents(d.Fields)
-		}
+		d.setupZion(z.dec)
 	}
 	return nil
 }
@@ -698,12 +702,94 @@ func (d *Decoder) Decompress(src io.Reader, dst []byte) (int, error) {
 	return d.decompressBlocks(src, int(d.Offset), dst)
 }
 
+func (d *Decoder) copyZion(w io.Writer, src []byte) (int64, error) {
+	nn := int64(0)
+	for len(src) > 0 {
+		if ion.TypeOf(src) != ion.BlobType {
+			return nn, fmt.Errorf("decoding data: expected a blob; got %s", ion.TypeOf(src))
+		}
+		size := ion.SizeOf(src)
+		if size < 5 || size > len(src) {
+			return nn, fmt.Errorf("unexpected frame size %d", size)
+		}
+		_, err := w.Write(src[5:size])
+		if err != nil {
+			return nn, err
+		}
+		src = src[size:]
+		nn += int64(1 << d.BlockShift) // we know the decompressed size already
+	}
+	return nn, nil
+}
+
+// same as d.copyZion(), but for an io.Reader
+func (d *Decoder) copyZionFrom(w io.Writer, src io.Reader) (int64, error) {
+	nn := int64(0)
+	defer d.free()
+	for {
+		_, err := io.ReadFull(src, d.frame[:])
+		if err == io.EOF {
+			// we are done
+			return nn, nil
+		}
+		if err != nil {
+			return nn, err
+		}
+		if ion.TypeOf(d.frame[:]) != ion.BlobType {
+			return 0, fmt.Errorf("decoding data: expected a blob; got %s", ion.TypeOf(d.frame[:]))
+		}
+		size := ion.SizeOf(d.frame[:]) - 5
+		if size < 0 {
+			return nn, fmt.Errorf("unexpected frame size %d", size)
+		}
+		buf := d.realloc(size)
+		n, err := io.ReadFull(src, buf)
+		if n != len(buf) && err == nil {
+			err = io.ErrUnexpectedEOF
+		}
+		if err != nil {
+			return nn, err
+		}
+		_, err = w.Write(buf)
+		if err != nil {
+			return nn, err
+		}
+		nn += 1 << d.BlockShift
+	}
+}
+
+// ZionWriter is an optional interface implemented by
+// an io.Writer passed to Decoder.CopyBytes or Decoder.Copy.
+// An io.Writer that implements ZionWriter may receive raw
+// zion-encoded data rather than decompressed ion data.
+type ZionWriter interface {
+	// ConfigureZion is called with the set of
+	// top-level path components that the caller
+	// expects the callee to handle. ConfigureZion
+	// should return true if the callee can handle
+	// extracting the provided field list directly
+	// from encoded zion data, or false if it cannot.
+	ConfigureZion(fields []string) bool
+}
+
+func (d *Decoder) acceptsZion(w io.Writer) bool {
+	zw, ok := w.(ZionWriter)
+	return ok && zw.ConfigureZion(d.Fields)
+}
+
 // CopyBytes incrementally decompresses data from src
 // and writes it to dst. It returns the number of
 // bytes written to dst and the first error encountered,
-// if any.
+// if any. If dst implements ZionWriter and d.Algo is "zion"
+// then compressed data may be passed directly to dst
+// (see ZionWriter for more details).
 func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 	size := 1 << d.BlockShift
+	if d.Algo == "zion" {
+		if d.acceptsZion(dst) {
+			return d.copyZion(dst, src)
+		}
+	}
 	vmm := d.malloc(size)
 	defer d.drop(vmm)
 	algo := d.Algo
@@ -752,6 +838,9 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 func (d *Decoder) Copy(dst io.Writer, src io.Reader) (int64, error) {
 	if d.tmp != nil {
 		panic("concurrent blockfmt.Decoder calls")
+	}
+	if d.Algo == "zion" && d.acceptsZion(dst) {
+		return d.copyZionFrom(dst, src)
 	}
 	defer d.free()
 	err := d.getDecomp(d.Algo)

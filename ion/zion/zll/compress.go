@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package zion
+package zll
 
 import (
 	"bytes"
@@ -39,11 +39,12 @@ func IsMagic(x []byte) bool {
 		bytes.Equal(x[:4], magic)
 }
 
-// NOTE: we append a 4-byte value to every magic marker,
-// but right now we only use the lowest 4 bits for the
-// descriptor selector in sym2bucket(). The other bits
-// are free for future feature flags, etc.
-func appendMagic(dst []byte, seed uint32) []byte {
+// AppendMagic appends the zion magic bytes plus the
+// seed bits to dst.
+//
+// NOTE: currently only the lowest 4 bits of seed should be set.
+// The rest are reserved for future use.
+func AppendMagic(dst []byte, seed uint32) []byte {
 	return append(append(dst, magic...),
 		byte(seed), byte(seed>>8), byte(seed>>16), byte(seed>>24))
 }
@@ -56,7 +57,8 @@ func init() {
 		zstd.WithEncoderLevel(zstd.SpeedBetterCompression))
 }
 
-const maxSize = 1 << 21
+// MaxBucketSize is the maximum size of a compressed bucket.
+const MaxBucketSize = 1 << 21
 
 func le24(x []byte) int {
 	return int(x[0]) + (int(x[1]) << 8) + (int(x[2]) << 16)
@@ -68,20 +70,25 @@ func put24(i int, dst []byte) {
 	dst[2] = byte(i >> 16)
 }
 
-// compress compressed data, appending to dst
-func compress(src, dst []byte) ([]byte, error) {
+// Compress compresses data from src and appends it to dst,
+// returning the new dst slice or an error.
+func Compress(src, dst []byte) ([]byte, error) {
 	off := len(dst)
 	dst = append(dst, 0, 0, 0)
 	dst = enc.EncodeAll(src, dst)
 	size := len(dst) - off - 3
-	if size >= maxSize {
-		return nil, fmt.Errorf("compressed segment length %d exceeds max size %d", size, maxSize)
+	if size >= MaxBucketSize {
+		return nil, fmt.Errorf("compressed segment length %d exceeds max size %d", size, MaxBucketSize)
 	}
 	put24(size, dst[off:])
 	return dst, nil
 }
 
-func frameSize(src []byte) (int, error) {
+// FrameSize returns the number compressed bytes
+// within the next frame. This is the same number
+// that Decompress would return as the number of bytes
+// consumed if called on src.
+func FrameSize(src []byte) (int, error) {
 	if len(src) < 3 {
 		return 0, fmt.Errorf("zion.frameSize: illegal frame size")
 	}
@@ -92,8 +99,10 @@ func frameSize(src []byte) (int, error) {
 	return size, nil
 }
 
-// decompress decompresses data, appending to dst
-func decompress(src, dst []byte) ([]byte, int, error) {
+// Decompress decompressed data from src, appending it to dst.
+// Decompress returns the new dst, the number of compressed bytes consumed,
+// and the first error encountered, if any.
+func Decompress(src, dst []byte) ([]byte, int, error) {
 	if len(src) < 3 {
 		return nil, 0, fmt.Errorf("zion.decompress: illegal frame size")
 	}

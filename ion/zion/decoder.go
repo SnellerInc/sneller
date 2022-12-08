@@ -15,13 +15,13 @@
 package zion
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/zion/zll"
 
 	"golang.org/x/exp/slices"
 )
@@ -37,6 +37,8 @@ const (
 
 const (
 	DefaultTargetWrite = 128 * 1024
+
+	buckets = zll.NumBuckets
 )
 
 // Decoder is a stateful decoder of compressed
@@ -144,8 +146,8 @@ func (d *Decoder) checkMagic(src []byte) ([]byte, error) {
 	if len(src) < 8 {
 		return nil, fmt.Errorf("zion.Decoder: len(input)=%d; missing magic", len(src))
 	}
-	if !bytes.Equal(src[:4], magic) {
-		return nil, fmt.Errorf("zion.Decoder: bad magic bytes %x", src[:len(magic)])
+	if !zll.IsMagic(src) {
+		return nil, fmt.Errorf("zion.Decoder: bad magic bytes %x", src[:4])
 	}
 	d.seed = binary.LittleEndian.Uint32(src[4:])
 	d.set.selector = uint8(d.seed & 0xf)
@@ -158,7 +160,7 @@ func (d *Decoder) prepare(src, dst []byte) ([]byte, error) {
 		return nil, err
 	}
 	var skip int
-	d.mem, skip, err = decompress(src, d.mem[:0])
+	d.mem, skip, err = zll.Decompress(src, d.mem[:0])
 	if err != nil {
 		return nil, fmt.Errorf("zion.Decoder: getting shape: %w", err)
 	}
@@ -190,14 +192,14 @@ func (d *Decoder) prepare(src, dst []byte) ([]byte, error) {
 	for i := 0; i < buckets; i++ {
 		d.base[i] = 0
 		if d.precise && !d.set.useBucket(i) {
-			skip, err = frameSize(src)
+			skip, err = zll.FrameSize(src)
 			if err != nil {
 				return nil, err
 			}
 			d.pos[i] = -1
 		} else {
 			d.pos[i] = int32(len(d.mem))
-			d.mem, skip, err = decompress(src, d.mem)
+			d.mem, skip, err = zll.Decompress(src, d.mem)
 			if err != nil {
 				return nil, err
 			}
@@ -265,14 +267,18 @@ func (d *Decoder) Count(src []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	d.mem, _, err = decompress(src, d.mem[:0])
+	d.mem, _, err = zll.Decompress(src, d.mem[:0])
 	if err != nil {
 		return 0, fmt.Errorf("zion.Decoder.Count: getting shape: %w", err)
 	}
 	var shape []byte
-	shape, err = d.st.Unmarshal(d.mem)
-	if err != nil {
-		return 0, fmt.Errorf("zion.Decoder.Count: parsing symbol table: %w", err)
+	if ion.IsBVM(d.mem) || ion.TypeOf(d.mem) == ion.AnnotationType {
+		shape, err = d.st.Unmarshal(d.mem)
+		if err != nil {
+			return 0, fmt.Errorf("zion.Decoder.Count: parsing symbol table: %w", err)
+		}
+	} else {
+		shape = d.mem
 	}
 	ret, ok := shapecount(shape)
 	if !ok {
@@ -401,7 +407,7 @@ func (d *Decoder) walk(shape []byte) error {
 				// grow the buffer if we couldn't
 				// make progress otherwise
 				avail := cap(d.out) - len(d.out)
-				if avail >= maxSize {
+				if avail >= zll.MaxBucketSize {
 					return errNoProgress
 				}
 				if avail == 0 {

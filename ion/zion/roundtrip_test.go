@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/zion/zll"
 	"github.com/SnellerInc/sneller/jsonrl"
 
 	"golang.org/x/exp/slices"
@@ -371,27 +372,6 @@ func TestRoundtrip(t *testing.T) {
 	}
 }
 
-func TestCompressDecompress(t *testing.T) {
-	text, err := os.ReadFile("roundtrip_test.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cmp, err := compress(text, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, skip, err := decompress(cmp, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skip != len(cmp) {
-		t.Errorf("skip=%d, should be %d", skip, len(cmp))
-	}
-	if !bytes.Equal(out, text) {
-		t.Fatal("compress->decompress doesn't work")
-	}
-}
-
 func trimnop(buf []byte) []byte {
 	off := 0
 	for off < len(buf) {
@@ -466,7 +446,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 				in = append(in, trimnop(tb.input[i])...)
 			}
 			insize := len(in)
-			in = enc.EncodeAll(in, nil)
+			in, _ = zll.Compress(in, nil)
 			// benchmark simply (de)compressing the input data directly
 			b.Run("baseline", func(b *testing.B) {
 				b.Logf("%d -> %d bytes", insize, len(in))
@@ -477,7 +457,7 @@ func BenchmarkDecompressFields(b *testing.B) {
 					var out []byte
 					var err error
 					for pb.Next() {
-						out, err = dec.DecodeAll(in, out[:0])
+						out, _, err = zll.Decompress(in, out[:0])
 						if err != nil {
 							b.Fatal(err)
 						}

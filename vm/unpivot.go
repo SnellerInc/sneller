@@ -19,6 +19,7 @@ import (
 	"io"
 	"math/bits"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/SnellerInc/sneller/internal/aes"
 	"github.com/SnellerInc/sneller/internal/atomicext"
@@ -377,7 +378,7 @@ func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
 }
 
 type randomTreeUnifierNode struct {
-	link [2]atomic.Pointer[randomTreeUnifierNode]
+	link [2]unsafe.Pointer
 	hash uint64
 	data []byte
 }
@@ -407,11 +408,15 @@ type randomTreeUnifierNode struct {
 //     serial nature of the latter. It suffices to provide a hash function that is good enough.
 
 type randomTreeUnifier struct {
-	root atomic.Pointer[randomTreeUnifierNode]
+	root unsafe.Pointer
 }
 
 func newRandomTreeUnifier() randomTreeUnifier {
 	return randomTreeUnifier{}
+}
+
+func load(p *unsafe.Pointer) *randomTreeUnifierNode {
+	return (*randomTreeUnifierNode)(atomic.LoadPointer(p))
 }
 
 func (u *randomTreeUnifier) unify(data []byte) bool {
@@ -419,7 +424,7 @@ func (u *randomTreeUnifier) unify(data []byte) bool {
 	var p *randomTreeUnifierNode
 	ip := &u.root // insertion point
 	for {
-		if q := ip.Load(); q != nil {
+		if q := load(ip); q != nil {
 			if q.hash == h {
 				c := bytes.Compare(data, q.data)
 				if c == 0 {
@@ -441,7 +446,7 @@ func (u *randomTreeUnifier) unify(data []byte) bool {
 				copy(buf, data)
 				p = &randomTreeUnifierNode{hash: h, data: buf}
 			}
-			if ip.CompareAndSwap(nil, p) {
+			if atomic.CompareAndSwapPointer(ip, nil, unsafe.Pointer(p)) {
 				// insertion succeeded
 				return true
 			}

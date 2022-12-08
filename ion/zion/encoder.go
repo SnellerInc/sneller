@@ -19,6 +19,7 @@ import (
 	"math"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/zion/zll"
 )
 
 type bucket struct {
@@ -103,13 +104,13 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 	// TODO: try multiple seed values and pick
 	// the one that produces the most even distribution
 	// of compressed bucket sizes?
-	dst = appendMagic(dst, e.seed)
-	dst, err = compress(e.shape, dst)
+	dst = zll.AppendMagic(dst, e.seed)
+	dst, err = zll.Compress(e.shape, dst)
 	if err != nil {
 		return nil, err
 	}
 	for i := 0; i < buckets; i++ {
-		dst, err = compress(e.buck[i].mem, dst)
+		dst, err = zll.Compress(e.buck[i].mem, dst)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +123,7 @@ func (e *Encoder) precompute() {
 	syms := e.st.MaxID()
 	for len(e.sym2bucket) < syms {
 		n := len(e.sym2bucket)
-		e.sym2bucket = append(e.sym2bucket, uint8(sym2bucket(0, uint8(e.seed), ion.Symbol(n))))
+		e.sym2bucket = append(e.sym2bucket, uint8(zll.SymbolBucket(0, uint8(e.seed), ion.Symbol(n))))
 	}
 }
 
@@ -177,8 +178,8 @@ func (e *Encoder) walkOne(mem []byte) ([]byte, error) {
 	if self == nil {
 		return nil, fmt.Errorf("invalid ion body")
 	}
-	if len(mem)-len(rest) >= maxSize {
-		return nil, fmt.Errorf("structure size %d exceeds max size %d", len(mem)-len(rest), maxSize)
+	if len(mem)-len(rest) >= zll.MaxBucketSize {
+		return nil, fmt.Errorf("structure size %d exceeds max size %d", len(mem)-len(rest), zll.MaxBucketSize)
 	}
 	var err error
 	e.enc.output = e.shape
@@ -215,10 +216,10 @@ func (e *Encoder) encodeField(mem []byte) ([]byte, error) {
 	return mem[s:], nil
 }
 
-const trials = (64 / bucketBits)
+const trials = (64 / zll.BucketBits)
 
 type histogram struct {
-	buckets [trials][buckets]int
+	buckets [trials][zll.NumBuckets]int
 	total   int
 }
 
@@ -226,10 +227,10 @@ func (h *histogram) record(sym ion.Symbol, size int) {
 	// we use one 64-bit hash and produce
 	// sixteen trial bucket layouts by picking
 	// different nibble positions from the hash function:
-	u := hash64(0, sym)
+	u := zll.Hash64(0, sym)
 	for i := 0; i < trials; i++ {
-		h.buckets[i][u&bucketMask] += size
-		u >>= bucketBits
+		h.buckets[i][u&zll.BucketMask] += size
+		u >>= zll.BucketBits
 	}
 	h.total += size
 }
@@ -291,8 +292,8 @@ func (e *Encoder) pickSeed1(h *histogram, body []byte) ([]byte, error) {
 	if self == nil {
 		return nil, fmt.Errorf("invalid ion body")
 	}
-	if len(body)-len(rest) >= maxSize {
-		return nil, fmt.Errorf("structure size %d exceeds max size %d", len(body)-len(rest), maxSize)
+	if len(body)-len(rest) >= zll.MaxBucketSize {
+		return nil, fmt.Errorf("structure size %d exceeds max size %d", len(body)-len(rest), zll.MaxBucketSize)
 	}
 	var sym ion.Symbol
 	var err error

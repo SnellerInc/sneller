@@ -12,44 +12,19 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package zion
+package vm
 
 import (
-	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
 )
 
-type pathset struct {
-	bits     []uint64
-	buckets  uint32
-	selector uint8
+type zionState struct {
+	shape      zll.Shape
+	buckets    zll.Buckets
+	components []string
 }
 
-func (p *pathset) set(x ion.Symbol) {
-	v := uint(x)
-	word := int(v >> 6)
-	for len(p.bits) <= word {
-		p.bits = append(p.bits, 0)
-	}
-	p.bits[word] |= 1 << (v & 63)
-	p.buckets |= 1 << p.bucket(x)
-}
-
-func (p *pathset) bucket(x ion.Symbol) int {
-	return zll.SymbolBucket(0, p.selector, x)
-}
-
-func (p *pathset) useBucket(i int) bool {
-	return p.buckets&(1<<i) != 0
-}
-
-func (p *pathset) contains(x ion.Symbol) bool {
-	v := uint(x)
-	word := int(v >> 6)
-	return word < len(p.bits) && p.bits[word]&(1<<(v&63)) != 0
-}
-
-func (p *pathset) clear() {
-	p.bits = p.bits[:0]
-	p.buckets = 0
+type zionConsumer interface {
+	zionOk() bool
+	writeZion(state *zionState) error
 }

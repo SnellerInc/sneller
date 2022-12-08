@@ -27,8 +27,19 @@ var _ EndSegmentWriter = (*TeeWriter)(nil)
 type TeeWriter struct {
 	pos      int64
 	splitter int // either -1, or writters[splitter] is a rowSplitter
-	writers  []io.Writer
-	final    []func(int64, error)
+	state    []teeState
+}
+
+type teeState struct {
+	w     io.Writer
+	final func(int64, error)
+}
+
+func (t *TeeWriter) ConfigureZion(fields []string) bool {
+	if len(t.state) > 1 || t.splitter == -1 {
+		return false
+	}
+	return t.state[t.splitter].w.(*rowSplitter).ConfigureZion(fields)
 }
 
 // NewTeeWriter constructs a new TeeWriter with
@@ -47,22 +58,21 @@ func NewTeeWriter(out io.Writer, final func(int64, error)) *TeeWriter {
 // all the remaining writers with the provided
 // error value, then resets the content of t.
 func (t *TeeWriter) CloseError(err error) {
-	for i := range t.final {
-		if t.final[i] != nil {
-			t.final[i](t.pos, err)
+	for i := range t.state {
+		if t.state[i].final != nil {
+			t.state[i].final(t.pos, err)
 		}
 	}
 	t.splitter = -1
-	t.final = t.final[:0]
-	t.writers = t.writers[:0]
+	t.state = t.state[:0]
 }
 
 // Close calls final(nil) for each of
 // the remaining writers added via Add
 // and then resets the content of t.
 func (t *TeeWriter) Close() error {
-	for i := range t.writers {
-		HintEndSegment(t.writers[i])
+	for i := range t.state {
+		HintEndSegment(t.state[i].w)
 	}
 	t.CloseError(nil)
 	return nil
@@ -72,8 +82,8 @@ func (t *TeeWriter) Close() error {
 // This calls HintEndSegment on all the
 // remaining writers.
 func (t *TeeWriter) EndSegment() {
-	for i := range t.writers {
-		HintEndSegment(t.writers[i])
+	for i := range t.state {
+		HintEndSegment(t.state[i].w)
 	}
 }
 
@@ -91,12 +101,14 @@ func (t *TeeWriter) EndSegment() {
 func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 	if rs, ok := w.(*rowSplitter); ok {
 		if t.splitter < 0 {
-			t.splitter = len(t.writers)
+			t.splitter = len(t.state)
 			// create a new teeSplitter that shares
 			// a symbol table with one top-level rowSplitter
 			ts := &teeSplitter{
-				dst:   []rowConsumer{rs.rowConsumer},
-				final: []func(int64, error){final},
+				state: []splitState{{
+					dst:   rs.rowConsumer,
+					final: final,
+				}},
 			}
 			// produce a new splitter so that a caller
 			// calling rs.Close() does not close the
@@ -107,21 +119,24 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 			// on each call to Write:
 			sp.pos = &ts.pos
 			sp.rowConsumer = ts
-			t.writers = append(t.writers, sp)
-			t.final = append(t.final, func(i int64, e error) {
-				ts.close(i, e)
-				sp.Close()
+			t.state = append(t.state, teeState{
+				w: sp,
+				final: func(i int64, e error) {
+					ts.close(i, e)
+					sp.Close()
+				},
 			})
 			return
 		}
-		split := t.writers[t.splitter].(*rowSplitter)
+		split := t.state[t.splitter].w.(*rowSplitter)
 		ts := split.rowConsumer.(*teeSplitter)
 		if tee2, ok := rs.rowConsumer.(*teeSplitter); ok {
-			ts.dst = append(ts.dst, tee2.dst...)
-			ts.final = append(ts.final, tee2.final...)
+			ts.state = append(ts.state, tee2.state...)
 		} else {
-			ts.dst = append(ts.dst, rs.rowConsumer)
-			ts.final = append(ts.final, final)
+			ts.state = append(ts.state, splitState{
+				dst:   rs.rowConsumer,
+				final: final,
+			})
 		}
 		return
 	}
@@ -129,40 +144,37 @@ func (t *TeeWriter) Add(w io.Writer, final func(int64, error)) {
 		if tw.splitter >= 0 {
 			// don't "leak" this splitter; we are going
 			// to eat its contents in Add
-			rs := tw.writers[tw.splitter].(*rowSplitter)
+			rs := tw.state[tw.splitter].w.(*rowSplitter)
 			rs.drop()
 		}
 		// flatten multiple TeeWriters into one
-		for i := range tw.writers {
-			t.Add(tw.writers[i], tw.final[i])
+		for i := range tw.state {
+			t.Add(tw.state[i].w, tw.state[i].final)
 		}
 		// add a nil writer to call finalizer
 		if final != nil {
-			t.writers = append(t.writers, nil)
-			t.final = append(t.final, final)
+			t.state = append(t.state, teeState{final: final})
 		}
 		return
 	}
-	t.writers = append(t.writers, w)
-	t.final = append(t.final, final)
+	t.state = append(t.state, teeState{w: w, final: final})
 }
 
 // Write implements io.Writer
 func (t *TeeWriter) Write(p []byte) (int, error) {
 	any := false
-	for i := 0; i < len(t.writers); i++ {
-		if t.writers[i] == nil {
+	for i := 0; i < len(t.state); i++ {
+		if t.state[i].w == nil {
 			continue
 		}
-		n, err := t.writers[i].Write(p)
+		n, err := t.state[i].w.Write(p)
 		if err != nil {
-			t.final[i](int64(n)+t.pos, err)
-			t.final = deleteOne(t.final, i)
-			t.writers = deleteOne(t.writers, i)
+			t.state[i].final(int64(n)+t.pos, err)
+			t.state = deleteOne(t.state, i)
 			switch t.splitter {
 			case i:
 				t.splitter = -1
-			case len(t.writers):
+			case len(t.state):
 				t.splitter = i
 			}
 			i--
@@ -182,9 +194,15 @@ func (t *TeeWriter) Write(p []byte) (int, error) {
 // multiple query operators at once
 type teeSplitter struct {
 	pos   int64 // updated by rowSplitter.Write
-	dst   []rowConsumer
+	state []splitState
 	cache []vmref
-	final []func(int64, error)
+	zion  int // +1 = yes, -1 = no, 0 = not yet known
+}
+
+type splitState struct {
+	dst   rowConsumer
+	final func(int64, error)
+	zout  zionConsumer
 }
 
 func (t *teeSplitter) clone(refs []vmref) []vmref {
@@ -202,19 +220,58 @@ func deleteOne[T any](src []T, i int) []T {
 	return src
 }
 
+func (t *teeSplitter) zionOk() bool {
+	switch t.zion {
+	case 1:
+		return true
+	case -1:
+		return false
+	}
+	var ok bool
+	for i := range t.state {
+		t.state[i].zout, ok = t.state[i].dst.(zionConsumer)
+		if !ok || !t.state[i].zout.zionOk() {
+			t.zion = -1
+			return false
+		}
+	}
+	t.zion = 1
+	return true
+}
+
 func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 	any := false
-	for i := 0; i < len(t.dst); i++ {
+	for i := 0; i < len(t.state); i++ {
 		// XXX: we are really relying here on the
 		// fact that rowConsumers don't destructively
 		// modify the symbol table; they can add to it
 		// (which is fine; they are allowed to see each
 		// other's symbols) but they cannot remove anything
-		err := t.dst[i].symbolize(st, aux)
+		err := t.state[i].dst.symbolize(st, aux)
 		if err != nil {
-			t.final[i](t.pos, err)
-			t.dst = deleteOne(t.dst, i)
-			t.final = deleteOne(t.final, i)
+			t.state[i].final(t.pos, err)
+			t.state = deleteOne(t.state, i)
+			i--
+			continue
+		}
+		any = true
+	}
+	if !any {
+		return io.EOF
+	}
+	return nil
+}
+
+func (t *teeSplitter) writeZion(state *zionState) error {
+	if t.zion != 1 {
+		panic("teeSplitter.writeZion: unexpected call (nozion flag is set)")
+	}
+	any := false
+	for i := 0; i < len(t.state); i++ {
+		err := t.state[i].zout.writeZion(state)
+		if err != nil {
+			t.state[i].final(t.pos, err)
+			t.state = deleteOne(t.state, i)
 			i--
 			continue
 		}
@@ -228,15 +285,14 @@ func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 
 func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 	any := false
-	for i := 0; i < len(t.dst); i++ {
+	for i := 0; i < len(t.state); i++ {
 		// we have to clone the delimiter slice,
 		// since callees are allowed to use it
 		// as scratch space during execution
-		err := t.dst[i].writeRows(t.clone(delims), params)
+		err := t.state[i].dst.writeRows(t.clone(delims), params)
 		if err != nil {
-			t.final[i](t.pos, err)
-			t.dst = deleteOne(t.dst, i)
-			t.final = deleteOne(t.final, i)
+			t.state[i].final(t.pos, err)
+			t.state = deleteOne(t.state, i)
 			i--
 			continue
 		}
@@ -251,11 +307,10 @@ func (t *teeSplitter) writeRows(delims []vmref, params *rowParams) error {
 func (t *teeSplitter) next() rowConsumer { return nil }
 
 func (t *teeSplitter) close(pos int64, err error) {
-	for i := range t.final {
-		t.final[i](pos, err)
+	for i := range t.state {
+		t.state[i].final(pos, err)
 	}
-	t.dst = t.dst[:0]
-	t.final = t.final[:0]
+	t.state = t.state[:0]
 }
 
 func (t *teeSplitter) Close() error {
@@ -263,8 +318,8 @@ func (t *teeSplitter) Close() error {
 }
 
 func (t *teeSplitter) EndSegment() {
-	for i := range t.dst {
-		for rc := t.dst[i]; rc != nil; rc = rc.next() {
+	for i := range t.state {
+		for rc := t.state[i].dst; rc != nil; rc = rc.next() {
 			if esw, ok := rc.(EndSegmentWriter); ok {
 				esw.EndSegment()
 			}

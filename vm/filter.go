@@ -76,6 +76,20 @@ func (c *Count) Close() error {
 	return nil
 }
 
+var _ zionConsumer = &Count{}
+
+// zion is allowed unconditionally
+func (c *Count) zionOk() bool { return true }
+
+func (c *Count) writeZion(state *zionState) error {
+	n, err := state.shape.Count()
+	if err != nil {
+		return err
+	}
+	atomic.AddInt64(&c.val, int64(n))
+	return nil
+}
+
 func (c *Count) writeRows(delims []vmref, _ *rowParams) error {
 	atomic.AddInt64(&c.val, int64(len(delims)))
 	return nil

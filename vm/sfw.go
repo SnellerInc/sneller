@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/zion/zll"
 	"golang.org/x/exp/slices"
 )
 
@@ -159,6 +160,10 @@ type rowSplitter struct {
 	vmcache []byte
 
 	pos *int64
+
+	// zstate is non-nil and configured if ConfigureZion has been called
+	zstate *zionState
+	zout   zionConsumer // cast from rowConsumer
 }
 
 // default number of rows to process per batch
@@ -313,6 +318,68 @@ func (q *rowSplitter) Close() error {
 	return err
 }
 
+func (q *rowSplitter) ConfigureZion(fields []string) bool {
+	// populate q.zdec and q.zout
+	// conditional on configuring zion input
+	if q.zstate == nil {
+		out, ok := q.rowConsumer.(zionConsumer)
+		if !ok || !out.zionOk() {
+			return false
+		}
+		q.zout = out
+		q.zstate = new(zionState)
+		q.zstate.shape.Symtab = &zionSymtab{parent: q}
+	}
+	q.zstate.components = fields
+	return true
+}
+
+// zionSymtab implements zll.Symtab
+type zionSymtab struct {
+	parent *rowSplitter
+}
+
+func (z *zionSymtab) Symbolize(x string) (ion.Symbol, bool) {
+	return z.parent.st.Symbolize(x)
+}
+
+// this is straight out of z.parent.Write
+func (z *zionSymtab) Unmarshal(src []byte) ([]byte, error) {
+	q := z.parent
+	rest, err := q.st.Unmarshal(src)
+	if err != nil {
+		return rest, err
+	}
+	if !q.shared.resident() {
+		leakCheck(q)
+	}
+	// TODO: optmize this; we are re-serializing the
+	// symbol list each time here...
+	q.shared.resetNoFree()
+	q.st.CloneInto(&q.shared.Symtab)
+	q.shared.build()
+
+	q.aux.reset()
+	err = q.symbolize(&q.shared, &q.aux)
+	if err != nil {
+		return rest, err
+	}
+	return rest, nil
+}
+
+func (q *rowSplitter) writeZion(src []byte) (int, error) {
+	rest, err := q.zstate.shape.Decode(src)
+	if err != nil {
+		return 0, err
+	}
+	q.zstate.buckets.Reset(&q.zstate.shape, rest)
+	err = q.zout.writeZion(q.zstate)
+	if err != nil {
+		return 0, err
+	}
+	return len(src), nil
+}
+
 // Write implements io.Writer
 //
 // NOTE: each call to Write must contain
@@ -320,6 +387,9 @@ func (q *rowSplitter) Close() error {
 // The data passed to Write may contain a symbol table,
 // but if it does, it must come first.
 func (q *rowSplitter) Write(buf []byte) (int, error) {
+	if q.zstate != nil && zll.IsMagic(buf) {
+		return q.writeZion(buf)
+	}
 	if !q.symbolized && (len(buf) < 4 || !ion.IsBVM(buf)) {
 		return 0, fmt.Errorf("first rowSplitter.Write does not have a new symbol table")
 	}

@@ -94,6 +94,11 @@ func (q *queue) send(seg Segment, dst io.Writer, flags Flag, stats *Stats, ret c
 	q.out <- res
 }
 
+// implements blockfmt.ZionWriter
+func (r *reservation) ConfigureZion(fields []string) bool {
+	return r.out.ConfigureZion(fields)
+}
+
 func (r *reservation) Write(p []byte) (int, error) {
 	return r.out.Write(p)
 }

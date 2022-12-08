@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package zion
+package zll
 
 import (
 	"encoding/binary"
@@ -23,17 +23,20 @@ import (
 )
 
 const (
-	bucketBits = 4
-	buckets    = 1 << bucketBits
-	bucketMask = buckets - 1
+	BucketBits = 4
+	NumBuckets = 1 << BucketBits
+	BucketMask = NumBuckets - 1
 )
 
-func hash64(seed uint32, sym ion.Symbol) uint64 {
+// Hash64 hashes a symbol using a 32-bit seed.
+func Hash64(seed uint32, sym ion.Symbol) uint64 {
 	var buf [9]byte
 	size := binary.PutUvarint(buf[:], uint64(sym))
 	return siphash.Hash(0, uint64(seed), buf[:size])
 }
 
-func sym2bucket(seed uint32, selector uint8, sym ion.Symbol) int {
-	return int((hash64(seed, sym) >> (selector * bucketBits)) & bucketMask)
+// SymbolBucket maps an ion symbol to a bucket
+// using a specific hash seed and bit-selector.
+func SymbolBucket(seed uint32, selector uint8, sym ion.Symbol) int {
+	return int((Hash64(seed, sym) >> (selector * BucketBits)) & BucketMask)
 }
