@@ -60,6 +60,7 @@ func TestGC(t *testing.T) {
 	bogus := []string{
 		"db/default/parking/packed-deleteme0.ion.zst",
 		"db/default/parking/packed-deleteme1.ion.zst",
+		"db/default/parking/foo/bar/packed-deleteme2.ion.zst",
 	}
 	for _, x := range bogus {
 		_, err := dfs.WriteFile(x, []byte{})

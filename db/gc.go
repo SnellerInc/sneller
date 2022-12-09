@@ -74,6 +74,10 @@ type GCConfig struct {
 }
 
 func (c *GCConfig) logf(f string, args ...interface{}) {
+	// let `go vet` know this is printf-like
+	if false {
+		_ = fmt.Sprintf(f, args...)
+	}
 	if c.Logf != nil {
 		c.Logf(f, args...)
 	}
@@ -133,7 +137,7 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 	if inputmin <= 0 {
 		inputmin = DefaultInputMinimumAge
 	}
-	for _, spc := range []spec{
+	specs := []spec{
 		// queries can use packed files during execution,
 		// so don't delete them until they are fairly old
 		{packedPattern, packedmin},
@@ -141,52 +145,58 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 		// the index, more-or-less as soon as an index
 		// becomes visible, the old inputs can be deleted
 		{inputsPattern, inputmin},
-	} {
-		walk := func(p string, f fs.File, err error) error {
-			if err != nil {
-				return err
+	}
+	match := func(name string) *spec {
+		for i := range specs {
+			ok, _ := path.Match(specs[i].pattern, name)
+			if ok {
+				return &specs[i]
 			}
-			if _, ok := used[p]; ok {
-				f.Close()
-				c.logf("%s is referenced", p)
-				return nil
-			}
-			info, staterr := f.Stat()
-			f.Close()
-			if staterr != nil {
-				c.logf("s: %s", p, staterr)
-				if err == nil {
-					err = staterr
-				}
-				return err
-			}
-			if info.ModTime().After(idx.Created.Time()) {
-				// if, due to some kind of synchronization failure,
-				// we are running an ingest at the same time that
-				// we are runing GC, then new files will be introduced
-				// that are not yet pointed to by an index; we shouldn't
-				// remove them since they could still be used by a future
-				// index
-				c.logf("%s: ignoring; newer than index", p)
-				return nil
-			}
-			if spc.minAge != 0 && start.Sub(info.ModTime()) < spc.minAge {
-				c.logf("%s: ignoring; does not meet minimum age", p)
-				return nil
-			}
-			if rmerr := rfs.Remove(p); rmerr != nil {
-				c.logf("%s/%s: %s", dbname, idx.Name, err)
-			} else {
-				c.logf("removed %s", p)
-			}
-			return nil
 		}
-		err := fsutil.WalkGlob(rfs, "", path.Join("db", dbname, idx.Name, spc.pattern), walk)
-		if err != nil {
+		return nil
+	}
+	walk := func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
 			return err
 		}
+		spc := match(d.Name())
+		if spc == nil {
+			return nil
+		}
+		if _, ok := used[p]; ok {
+			c.logf("%s is referenced", p)
+			return nil
+		}
+		info, err := d.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			c.logf("%s: ignoring; already removed", p)
+			return nil
+		} else if err != nil {
+			c.logf("%s: %v", p, err)
+			return err
+		}
+		if info.ModTime().After(idx.Created.Time()) {
+			// if, due to some kind of synchronization failure,
+			// we are running an ingest at the same time that
+			// we are runing GC, then new files will be introduced
+			// that are not yet pointed to by an index; we shouldn't
+			// remove them since they could still be used by a future
+			// index
+			c.logf("%s: ignoring; newer than index", p)
+			return nil
+		}
+		if spc.minAge != 0 && start.Sub(info.ModTime()) < spc.minAge {
+			c.logf("%s: ignoring; does not meet minimum age", p)
+			return nil
+		}
+		if rmerr := rfs.Remove(p); rmerr != nil {
+			c.logf("%s/%s: %s", dbname, idx.Name, err)
+		} else {
+			c.logf("removed %s", p)
+		}
+		return nil
 	}
-	return nil
+	return fsutil.WalkDir(rfs, path.Join("db", dbname, idx.Name), "", "", walk)
 }
 
 // preciseGC removes expired elements from idx.ToDelete
