@@ -92,6 +92,9 @@ var sameq = []string{
 	`EXPLAIN AS list SELECT * FROM table`,
 	`EXPLAIN AS graphviz SELECT * FROM table`,
 	`SELECT SNELLER_DATASHAPE(*) FROM table`,
+	`SELECT * FROM table1 UNION SELECT * FROM table2`,
+	`SELECT * FROM table1 UNION ALL SELECT * FROM table2`,
+	`SELECT * FROM table1 UNION SELECT * FROM table2 UNION ALL SELECT * FROM table3 UNION SELECT * FROM table4`,
 }
 
 func TestParseSFW(t *testing.T) {

@@ -55,12 +55,7 @@ func Parse(in []byte) (*expr.Query, error) {
 	if ret != 0 {
 		return nil, fmt.Errorf("parse error %d", ret)
 	}
-	return &expr.Query{
-		Explain: s.explain,
-		With:    s.with,
-		Into:    s.into,
-		Body:    s.result,
-	}, nil
+	return s.result, nil
 }
 
 // we parse CAST() using identifiers
@@ -249,4 +244,47 @@ func createTrimInvocation(trimType int, str, charset expr.Node) (expr.Node, erro
 	}
 
 	return expr.Call(op, str), nil
+}
+
+type selectWithInto struct {
+	sel  *expr.Select
+	into expr.Node
+}
+
+type unionItem struct {
+	typ expr.UnionType
+	sel expr.Node
+}
+
+func buildUnion(n expr.Node, unions []unionItem) expr.Node {
+	switch len(unions) {
+	case 0:
+		return n
+	case 1:
+		return &expr.Union{
+			Type:  unions[0].typ,
+			Left:  n,
+			Right: unions[0].sel,
+		}
+	default:
+		return &expr.Union{
+			Type:  unions[0].typ,
+			Left:  n,
+			Right: buildUnion(unions[0].sel, unions[1:]),
+		}
+	}
+}
+
+func buildQuery(explain string, with []expr.CTE, selinto selectWithInto, unions []unionItem) (*expr.Query, error) {
+	exp, err := parseExplain(explain)
+	if err != nil {
+		return nil, err
+	}
+
+	return &expr.Query{
+		Explain: exp,
+		With:    with,
+		Into:    selinto.into,
+		Body:    buildUnion(selinto.sel, unions),
+	}, nil
 }

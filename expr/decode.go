@@ -159,6 +159,8 @@ func getEmpty(name string) composite {
 		return &List{}
 	case "unpivot":
 		return &Unpivot{}
+	case "union":
+		return &Union{}
 	default:
 		return nil
 	}

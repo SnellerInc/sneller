@@ -54,7 +54,6 @@ type Query struct {
 	// Body is the body of the query.
 	// Body can be:
 	//   - A SELECT expression
-	// TODO:
 	//   - A UNION expression
 	//   - A UNION ALL expression
 	Body Node

@@ -38,11 +38,8 @@ type scanner struct {
 	from []byte
 	pos  int
 
-	err     error
-	result  expr.Node
-	with    []expr.CTE
-	into    expr.Node
-	explain expr.ExplainFormat
+	err    error
+	result *expr.Query
 	// notkw is set when
 	// we are not in keyword context
 	notkw bool

@@ -3465,7 +3465,7 @@ func equalPointed[T comparable](lhs, rhs *T) bool {
 	return rhs == nil
 }
 
-// ExplainFormat describes the format of
+// ExplainFormat describes the format of explain output
 type ExplainFormat uint8
 
 const (
@@ -3484,3 +3484,110 @@ const (
 	// Return plan in graphviz format
 	ExplainGraphviz
 )
+
+// UnionType describes type of union expression
+type UnionType uint8
+
+const (
+	// UNION without duplicates
+	UnionDistinct UnionType = iota
+
+	// UNION with duplicates
+	UnionAll
+)
+
+func (t UnionType) String() string {
+	switch t {
+	case UnionDistinct:
+		return "UNION"
+	case UnionAll:
+		return "UNION ALL"
+	}
+
+	return "<unknown UnionType>"
+}
+
+// Union describes a single pair of expressions connected by UNION keyword
+type Union struct {
+	Type  UnionType
+	Left  Node
+	Right Node
+}
+
+func (u *Union) Equals(n Node) bool {
+	u2, ok := n.(*Union)
+	if !ok {
+		return false
+	}
+
+	return u.Type == u2.Type &&
+		u.Left.Equals(u2.Left) &&
+		u.Right.Equals(u2.Right)
+}
+
+func (u *Union) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "union")
+	dst.BeginField(st.Intern("uniontype"))
+	dst.WriteUint(uint64(u.Type))
+	dst.BeginField(st.Intern("left"))
+	u.Left.Encode(dst, st)
+	dst.BeginField(st.Intern("right"))
+	u.Right.Encode(dst, st)
+	dst.EndStruct()
+}
+
+func (u *Union) setfield(name string, st *ion.Symtab, body []byte) error {
+	switch name {
+	case "uniontype":
+		v, _, err := ion.ReadUint(body)
+		if err != nil {
+			return err
+		}
+
+		u.Type = UnionType(v)
+	case "left":
+		v, _, err := Decode(st, body)
+		if err != nil {
+			return err
+		}
+
+		u.Left = v
+	case "right":
+		v, _, err := Decode(st, body)
+		if err != nil {
+			return err
+		}
+
+		u.Right = v
+	default:
+		return fmt.Errorf("unexpected field %q", name)
+	}
+	return nil
+}
+
+func (u *Union) walk(v Visitor) {
+	Walk(v, u.Left)
+	Walk(v, u.Right)
+}
+
+func (u *Union) text(dst *strings.Builder, redact bool) {
+	write := func(n Node) {
+		if n == nil {
+			dst.WriteString("<nil>")
+			return
+		}
+
+		if sel, ok := n.(*Select); ok {
+			sel.write(dst, redact, nil)
+		} else {
+			n.text(dst, redact)
+		}
+	}
+
+	write(u.Left)
+	dst.WriteString(fmt.Sprintf(" %s ", u.Type))
+	write(u.Right)
+}
+
+var _ Node = &Union{}

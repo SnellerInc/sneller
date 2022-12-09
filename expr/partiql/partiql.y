@@ -45,6 +45,7 @@ import (
     pc       expr.PathComponent
     order    expr.Order
     sel      *expr.Select
+    selinto  selectWithInto
     wind     *expr.Window
     bind     expr.Binding
     jk       expr.JoinKind
@@ -54,6 +55,7 @@ import (
     limbs    []expr.CaseLimb
     values   []expr.Node
     orders   []expr.Order
+    unions   []unionItem
 }
 
 %token ERROR EOF
@@ -93,7 +95,8 @@ import (
 %token <expr> NUMBER ION
 %token <str> STRING
 
-%type <expr> query expr datum datum_or_parens path_expression maybe_into
+%type <query> query
+%type <expr> expr datum datum_or_parens path_expression maybe_into
 %type <expr> where_expr having_expr case_optional_expr case_optional_else parenthesized_expr
 %type <expr> optional_filter
 %type <expr> unpivot unpivot_source explicit_struct_definition explicit_list_definition
@@ -103,6 +106,7 @@ import (
 %type <str> identifier
 %type <integer> literal_int
 %type <sel> select_stmt
+%type <selinto> select_with_into_stmt
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
@@ -116,30 +120,35 @@ import (
 %type <wind> maybe_window
 %type <integer> trim_type
 %type <str> maybe_explain
+%type <unions> maybe_union
 %start query
 
 %%
 
 query:
-maybe_explain maybe_cte_bindings SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
+maybe_explain maybe_cte_bindings select_with_into_stmt maybe_union
 {
-  exp, err := parseExplain($1)
+  query, err := buildQuery($1, $2, $3, $4)
   if err != nil {
     yylex.Error(err.Error())
   }
-  yylex.(*scanner).explain = exp
 
-  yylex.(*scanner).with = $2
-  yylex.(*scanner).into = $6
-  distinct, distinctExpr := decodeDistinct($4)
-  yylex.(*scanner).result = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $5, From: $7, Where: $8, GroupBy: $9, Having: $10, OrderBy: $11, Limit: $12, Offset: $13};
+  yylex.(*scanner).result = query
+}
+
+select_with_into_stmt:
+SELECT maybe_toplevel_distinct binding_list maybe_into from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
+{
+    distinct, distinctExpr := decodeDistinct($2)
+    $$.sel = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $3, From: $5, Where: $6, GroupBy: $7, Having: $8, OrderBy: $9, Limit: $10, Offset: $11}
+    $$.into = $4
 }
 
 select_stmt:
 SELECT maybe_toplevel_distinct binding_list from_expr where_expr group_expr having_expr order_expr limit_expr offset_expr
 {
     distinct, distinctExpr := decodeDistinct($2)
-    $$ = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $3, From: $4, Where: $5, GroupBy: $6, Having: $7, OrderBy: $8, Limit: $9, Offset: $10};
+    $$ = &expr.Select{Distinct: distinct, DistinctExpr: distinctExpr, Columns: $3, From: $4, Where: $5, GroupBy: $6, Having: $7, OrderBy: $8, Limit: $9, Offset: $10}
 }
 
 maybe_explain:
@@ -152,6 +161,17 @@ INTO path_expression { $$ = $2 } | { $$ = nil }
 
 maybe_cte_bindings:
 cte_bindings { $$ = $1 } | { $$ = nil }
+
+maybe_union:
+  { $$ = []unionItem{} }
+| UNION select_stmt maybe_union {
+    $$ = append($$, unionItem{typ: expr.UnionDistinct, sel: $2})
+    $$ = append($$, $3...)
+  }
+| UNION ALL select_stmt maybe_union {
+    $$ = append($$, unionItem{typ: expr.UnionAll, sel: $3})
+    $$ = append($$, $4...)
+  }
 
 cte_bindings:
 WITH identifier AS '(' select_stmt ')' { $$ = []expr.CTE{{Table: $2, As: $5}} } |
