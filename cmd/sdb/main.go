@@ -64,6 +64,9 @@ func init() {
 }
 
 func exitf(f string, args ...interface{}) {
+	if len(f) == 0 || f[len(f)-1] != '\n' {
+		f += "\n"
+	}
 	fmt.Fprintf(os.Stderr, f, args...)
 	os.Exit(1)
 }
@@ -88,12 +91,12 @@ func outfs(creds db.Tenant) db.OutputFS {
 func load(defpath string) *db.Definition {
 	f, err := os.Open(defpath)
 	if err != nil {
-		exitf("%s\n", err)
+		exitf("%s", err)
 	}
 	defer f.Close()
 	s, err := db.DecodeDefinition(f)
 	if err != nil {
-		exitf("%s\n", err)
+		exitf("%s", err)
 	}
 	return s
 }
@@ -107,7 +110,7 @@ func create(creds db.Tenant, dbname, defpath string) {
 	}
 	err := db.WriteDefinition(ofs, dbname, s)
 	if err != nil {
-		exitf("writing new definition: %s\n", err)
+		exitf("writing new definition: %s", err)
 	}
 }
 
@@ -117,11 +120,11 @@ func def(creds db.Tenant, dbname, tablename string) {
 
 	def, err := db.OpenDefinition(ofs, dbname, tablename)
 	if err != nil {
-		exitf("error reading definition: %s\n", err)
+		exitf("error reading definition: %s", err)
 	}
 	jsonDef, err := json.MarshalIndent(def, "", "  ")
 	if err != nil {
-		exitf("error creating JSON from definition: %s\n", err)
+		exitf("error creating JSON from definition: %s", err)
 	}
 	fmt.Println(string(jsonDef))
 }
@@ -130,11 +133,11 @@ func gc(creds db.Tenant, dbname, tblpat string) {
 	ofs := root(creds)
 	rmfs, ok := ofs.(db.RemoveFS)
 	if !ok {
-		exitf("GC unimplemented\n")
+		exitf("GC unimplemented")
 	}
 	tables, err := db.Tables(ofs, dbname)
 	if err != nil {
-		exitf("listing db %s: %s\n", dbname, err)
+		exitf("listing db %s: %s", dbname, err)
 	}
 	conf := db.GCConfig{
 		MinimumAge: 15 * time.Minute,
@@ -146,18 +149,18 @@ func gc(creds db.Tenant, dbname, tblpat string) {
 	for _, tab := range tables {
 		match, err := path.Match(tblpat, tab)
 		if err != nil {
-			exitf("bad pattern %q: %s\n", tblpat, err)
+			exitf("bad pattern %q: %s", tblpat, err)
 		}
 		if !match {
 			continue
 		}
 		idx, err := db.OpenIndex(ofs, dbname, tab, key)
 		if err != nil {
-			exitf("opening index for %s/%s: %s\n", dbname, tab, err)
+			exitf("opening index for %s/%s: %s", dbname, tab, err)
 		}
 		err = conf.Run(rmfs, dbname, idx)
 		if err != nil {
-			exitf("running gc on %s/%s: %s\n", dbname, tab, err)
+			exitf("running gc on %s/%s: %s", dbname, tab, err)
 		}
 	}
 }
@@ -239,11 +242,11 @@ func describe(creds db.Tenant, dbname, table string) {
 	ofs := root(creds)
 	idx, err := db.OpenIndex(ofs, dbname, table, creds.Key())
 	if err != nil {
-		exitf("opening index: %s\n", err)
+		exitf("opening index: %s", err)
 	}
 	descs, err := idx.Indirect.Search(ofs, nil)
 	if err != nil {
-		exitf("getting indirect blobs: %s\n", err)
+		exitf("getting indirect blobs: %s", err)
 	}
 	totalComp := int64(0)
 	totalDecomp := int64(0)
@@ -273,18 +276,18 @@ func fetch(creds db.Tenant, files ...string) {
 		}
 		f, err := ofs.Open(files[i])
 		if err != nil {
-			exitf("%s\n", err)
+			exitf("%s", err)
 		}
 		dstf, err := os.Create(path.Base(files[i]))
 		if err != nil {
-			exitf("creating %s: %s\n", path.Base(files[i]), err)
+			exitf("creating %s: %s", path.Base(files[i]), err)
 		}
 		_, err = io.Copy(dstf, f)
 		f.Close()
 		dstf.Close()
 		if err != nil {
 			os.Remove(dstf.Name())
-			exitf("copying bytes: %s\n", err)
+			exitf("copying bytes: %s", err)
 		}
 	}
 }
@@ -293,7 +296,7 @@ func inputs(creds db.Tenant, dbname, table string) {
 	ofs := outfs(creds)
 	idx, err := db.OpenIndex(ofs, dbname, table, creds.Key())
 	if err != nil {
-		exitf("opening index: %s\n", err)
+		exitf("opening index: %s", err)
 	}
 	idx.Inputs.Backing = ofs
 	err = idx.Inputs.Walk("", func(name, etag string, id int) bool {
@@ -340,13 +343,13 @@ func validate(creds db.Tenant, dbname, table string) {
 	ofs := root(creds)
 	idx, err := db.OpenIndex(ofs, dbname, table, creds.Key())
 	if err != nil {
-		exitf("opening index: %s\n", err)
+		exitf("opening index: %s", err)
 	}
 	e := errorWriter{}
 
 	descs, err := idx.Indirect.Search(ofs, nil)
 	if err != nil {
-		exitf("populating indirect descriptors: %s\n", err)
+		exitf("populating indirect descriptors: %s", err)
 	}
 	descs = append(descs, idx.Inline...)
 	for i := range descs {
@@ -751,6 +754,6 @@ func main() {
 
 	validArgs := applet.run(args)
 	if !validArgs {
-		exitf("usage: %s %s\n", cmd, applet.help)
+		exitf("usage: %s %s", cmd, applet.help)
 	}
 }
