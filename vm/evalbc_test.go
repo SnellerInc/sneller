@@ -26,9 +26,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/SnellerInc/sneller/fuzzy"
+	"github.com/SnellerInc/sneller/ints"
 
-	"golang.org/x/exp/slices"
+	"github.com/SnellerInc/sneller/fuzzy"
 
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
@@ -41,6 +41,8 @@ const exhaustive = -1
 
 type Data = stringext.Data
 type Needle = stringext.Needle
+type OffsetZ2 = int
+type LengthZ3 = int
 
 // TestStringCompareUT unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareUT(t *testing.T) {
@@ -93,7 +95,7 @@ func TestStringCompareUT(t *testing.T) {
 				}
 				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
 			},
-			encode: stringext.NormalizeStringASCIIOnlyString, // only normalize ASCII values, leave other values (UTF8) unchanged
+			encode: stringext.EncodeEqualStringCI,
 			unitTests: []unitTest{
 				{"aaaa", "aaaa", true},
 				{"aaa", "aaaa", false},
@@ -116,7 +118,7 @@ func TestStringCompareUT(t *testing.T) {
 				}
 				return strings.EqualFold(x, y)
 			},
-			encode: func(x string) string { return stringext.GenNeedleExt(x, false) },
+			encode: stringext.EncodeEqualStringUTF8CI,
 			unitTests: []unitTest{
 				//NOTE all UTF8 byte code assumes valid UTF8 input
 				{"aΩa\nb", "aΩa\nB", true},
@@ -234,7 +236,7 @@ func TestStringCompareBF(t *testing.T) {
 			dataMaxSize:  exhaustive,
 			refImpl:      func(x, y string) bool { return x == y },
 			op:           opCmpStrEqCs,
-			encode:       passThrough,
+			encode:       stringext.EncodeEqualStringCS,
 		},
 		{
 			name:         "compare string case-insensitive (opCmpStrEqCi)",
@@ -245,7 +247,7 @@ func TestStringCompareBF(t *testing.T) {
 				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
 			},
 			op:     opCmpStrEqCi,
-			encode: stringext.NormalizeStringASCIIOnlyString, // only normalize ASCII values, leave other values (UTF8) unchanged
+			encode: stringext.EncodeEqualStringCI,
 		},
 		{
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
@@ -254,7 +256,7 @@ func TestStringCompareBF(t *testing.T) {
 			dataMaxSize:  exhaustive,
 			refImpl:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
-			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
+			encode:       stringext.EncodeEqualStringUTF8CI,
 		},
 		{ // test to explicitly check that byte length changing normalizations work
 			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci) 2",
@@ -263,7 +265,7 @@ func TestStringCompareBF(t *testing.T) {
 			dataMaxSize:  exhaustive,
 			refImpl:      strings.EqualFold,
 			op:           opCmpStrEqUTF8Ci,
-			encode:       func(x string) string { return stringext.GenNeedleExt(x, false) },
+			encode:       stringext.EncodeEqualStringUTF8CI,
 		},
 	}
 
@@ -340,7 +342,7 @@ func FuzzStringCompareFT(f *testing.F) {
 			name:    "compare string case-sensitive (opCmpStrEqCs)",
 			refImpl: func(x, y string) bool { return x == y },
 			op:      opCmpStrEqCs,
-			encode:  passThrough,
+			encode:  stringext.EncodeEqualStringCS,
 		},
 		{
 			name: "compare string case-insensitive (opCmpStrEqCi)",
@@ -348,13 +350,13 @@ func FuzzStringCompareFT(f *testing.F) {
 				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
 			},
 			op:     opCmpStrEqCi,
-			encode: stringext.NormalizeStringASCIIOnlyString, // only normalize ASCII values, leave other values (UTF8) unchanged
+			encode: stringext.EncodeEqualStringCI,
 		},
 		{
 			name:    "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
 			refImpl: strings.EqualFold,
 			op:      opCmpStrEqUTF8Ci,
-			encode:  func(x string) string { return stringext.GenNeedleExt(x, false) },
+			encode:  stringext.EncodeEqualStringUTF8CI,
 		},
 	}
 
@@ -947,771 +949,6 @@ func FuzzStrFuzzyFT(f *testing.F) {
 			run(t, &ts, lanes, data, needle, threshold)
 		}
 	})
-}
-
-// TestMatchpatRefBF brute-force tests for: the reference implementation of matchpat (matchPatternReference) with a much slower regex impl
-func TestMatchpatRefBF(t *testing.T) {
-	t.Parallel()
-	dataLenSpace := []int{1, 2, 3, 4}
-	dataSpace := flatten(createSpaceExhaustive(dataLenSpace, []rune{'a', 'b', 's', 'ſ'}))
-	patternLenSpace := []int{1, 2, 3, 4, 5, 6}
-	patternSpace := createSpacePatternRandom(patternLenSpace, []rune{'s', 'S', 'k', 'K'}, 500)
-
-	// matchPatternRegex matches the first occurrence of the provided pattern similar to matchPatternReference
-	// matchPatternRegex implementation is the refImpl for the matchPatternReference implementation.
-	// the regex impl is about 10x slower and does not return expected value registers (offset and length)
-	matchPatternRegex := func(data string, segments []string, cmpType strCmpType) (laneOut bool) {
-		if cmpType == ciASCII {
-			panic("compare type ciASCII is not supported")
-		}
-		regex := stringext.PatternToRegex(segments, caseSensitive(cmpType))
-		r, err := regexp.Compile(regex)
-		if err != nil {
-			t.Errorf("Could not compile regex %v", regex)
-		}
-		return r.FindStringIndex(data) != nil
-	}
-mainLoop:
-	for _, pattern := range patternSpace {
-		segments := stringext.PatternToSegments(pattern)
-		for _, cmpType := range []strCmpType{cs, ciUTF8} { // NOTE csASCII is not supported with the regex implementation
-			for _, data := range dataSpace {
-				expMatch := matchPatternRegex(data, segments, cmpType)
-				obsMatch, obsOffset, obsLength := matchPatternReference(data, segments, cmpType)
-				if expMatch != obsMatch {
-					t.Errorf("matching data %q to pattern %q = %v (cmpType %v)\nobserved: %v (offset %v; length %v)\nexpected: %v",
-						data, segments, []byte(pattern), cmpType, obsMatch, obsOffset, obsLength, expMatch)
-					break mainLoop
-				}
-			}
-		}
-	}
-}
-
-// TestMatchpatUT1 unit-tests for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
-func TestMatchpatUT1(t *testing.T) {
-	t.Parallel()
-
-	type unitTest struct {
-		data      []byte   // data pointed to by SI
-		segments  []string // segments of the pattern: needs to be encoded and passed as string constant via the immediate dictionary
-		expLane   bool     // expected lanes K1
-		expOffset int      // expected offset Z2
-		expLength int      // expected length Z3
-	}
-	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
-		unitTests []unitTest
-		// portable reference implementation: f(data, segments) -> match, offset, length
-		refImpl func(data string, segments []string) (bool, int, int)
-		// bytecode implementation of comparison
-		op bcop
-		// encoder for segments -> dictionary value
-		encode func(segments []string) string
-	}
-
-	testSuites := []testSuite{
-		{
-			name: "match-pattern case-sensitive (opMatchpatCs)",
-			op:   opMatchpatCs,
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, cs)
-			},
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, false)
-			},
-			unitTests: []unitTest{
-				{[]byte("aa"), []string{"s", ""}, false, 0, 2},
-				{[]byte("a"), []string{"ab"}, false, 0, 0},
-				{[]byte("a"), []string{"a"}, true, 1, 0},
-
-				{stringext.AddTail("ab", "-----"), []string{"a"}, true, 1, 1},
-				{stringext.AddTail("ab", "-----"), []string{"ab"}, true, 2, 0},
-				{stringext.AddTail("a-b", "-----"), []string{"a"}, true, 1, 2},
-				{stringext.AddTail("a-b", "-----"), []string{"a", "b"}, true, 3, 0},
-				{stringext.AddTail("a-b-", "-----"), []string{"a", "b"}, true, 3, 1},
-				{stringext.AddTail("a-b", "-----"), []string{"ab"}, false, 3, 0},
-				{stringext.AddTail("-ab", "-----"), []string{"a"}, true, 2, 1},
-
-				// reading beyond the buffer issues:
-				{stringext.AddTail("a", "b---"), []string{"a", "b"}, false, 1, 0},
-				{stringext.AddTail("aa", "b---"), []string{"aa", "b"}, false, 2, 0},
-				{stringext.AddTail("aaa", "b---"), []string{"aaa", "b"}, false, 3, 0},
-				{stringext.AddTail("aaaa", "b---"), []string{"aaaa", "b"}, false, 4, 0},
-				{stringext.AddTail("aaaaa", "b---"), []string{"aaaaa", "b"}, false, 5, 0},
-
-				{stringext.AddTail("a", "b---"), []string{"ab"}, false, 1, 0},
-				{stringext.AddTail("aa", "b---"), []string{"ab"}, false, 2, 0},
-				{stringext.AddTail("aaa", "b---"), []string{"ab"}, false, 3, 0},
-				{stringext.AddTail("aaaa", "b---"), []string{"ab"}, false, 4, 0},
-				{stringext.AddTail("aaaaa", "b---"), []string{"ab"}, false, 5, 0},
-
-				{stringext.AddTail("a", "-b---"), []string{"a", "b"}, false, 1, 0},
-				{stringext.AddTail("aa", "-b---"), []string{"aa", "b"}, false, 2, 0},
-				{stringext.AddTail("aaa", "-b---"), []string{"aaa", "b"}, false, 3, 0},
-				{stringext.AddTail("aaaa", "-b---"), []string{"aaaa", "b"}, false, 4, 0},
-				{stringext.AddTail("aaaaa", "-b---"), []string{"aaaaa", "b"}, false, 5, 0},
-
-				{stringext.AddTail("a-b", "c----"), []string{"a", "bc"}, false, 3, 0},
-				{stringext.AddTail("aa-b", "c----"), []string{"aa", "bc"}, false, 4, 0},
-				{stringext.AddTail("aaa-b", "c----"), []string{"aaa", "bc"}, false, 5, 0},
-				{stringext.AddTail("aaaa-b", "c----"), []string{"aaaa", "bc"}, false, 6, 0},
-
-				{stringext.AddTail("a-", "bc----"), []string{"a", "bc"}, false, 2, 0},
-				{stringext.AddTail("aa-", "bc----"), []string{"aa", "bc"}, false, 3, 0},
-				{stringext.AddTail("aaa-", "bc----"), []string{"aaa", "bc"}, false, 4, 0},
-				{stringext.AddTail("aaaa-", "bc----"), []string{"aaaa", "bc"}, false, 5, 0},
-
-				{stringext.AddTail("a--b", "----"), []string{"a", "", "b"}, true, 4, 0},
-
-				{stringext.AddTail("a--", "b---"), []string{"a", "", "", "b"}, false, 3, 0},
-				{stringext.AddTail("-a--", "b---"), []string{"a", "", "", "b"}, false, 4, 0},
-				{stringext.AddTail("--a--", "b---"), []string{"a", "", "", "b"}, false, 5, 0},
-				{stringext.AddTail("---a--", "b---"), []string{"a", "", "", "b"}, false, 6, 0},
-
-				{stringext.AddTail("a-", "-b---"), []string{"a", "", "", "b"}, false, 2, 0},
-				{stringext.AddTail("-a-", "-b---"), []string{"a", "", "", "b"}, false, 3, 0},
-				{stringext.AddTail("--a-", "-b---"), []string{"a", "", "", "b"}, false, 4, 0},
-				{stringext.AddTail("---a-", "-b---"), []string{"a", "", "", "b"}, false, 5, 0},
-
-				{stringext.AddTail("a", "--b---"), []string{"a", "", "", "b"}, false, 1, 0},
-				{stringext.AddTail("-a", "--b---"), []string{"a", "", "", "b"}, false, 2, 0},
-				{stringext.AddTail("--a", "--b---"), []string{"a", "", "", "b"}, false, 3, 0},
-				{stringext.AddTail("---a", "--b---"), []string{"a", "", "", "b"}, false, 4, 0},
-
-				{[]byte("__ab_c_d__"), []string{"ab", "c", "d"}, true, 8, 2},
-				{[]byte("__ab_z_d__"), []string{"ab", "c", "d"}, false, 10, 0},
-				{[]byte("__ab__c_d__"), []string{"ab", "c", "d"}, false, 11, 0},
-				{[]byte("a---b"), []string{"a", "b"}, false, 5, 0},
-				{[]byte("__ab_ab_c_d__"), []string{"ab", "c", "d"}, true, 11, 2},
-				{[]byte("__ab_ab_z_d__"), []string{"ab", "c", "d"}, false, 13, 0}, // incorrect char z
-				{[]byte("a_c"), []string{"a", "", "c"}, false, 3, 0},              // one char too few between b and c
-				{[]byte("__ab_c_d__"), []string{"ab", "z", "d"}, false, 10, 0},
-
-				//NOTE skipchar is not allowed at the beginning or ending, thus these tests fail. Keeping them for reminder.
-				//{[]byte("aabb"), []string{"", "a"}, true},// initial skipchar is not allowed
-				//{[]byte("aaaa"), []string{"a", ""}, true},// final skipchar is not allowed
-
-				{ // bugfix: 21A93561 JGE -> JG
-					data:      stringext.AddTail("aaaa", "-b"),
-					segments:  []string{"aaaa", "b"},
-					expLane:   false,
-					expOffset: 4,
-					expLength: 0,
-				},
-				{[]byte("33--1"), []string{"3", "", "1"}, true, 5, 0},
-				{[]byte("€𐍈€¢"), []string{"h"}, false, 12, 0},
-				{[]byte("111-3"), []string{"11", "3"}, true, 5, 0},
-				{[]byte("$𐍈"), []string{"𐍈€¢"}, false, 5, 0},
-				{[]byte("ac¢A"), []string{"a"}, true, 1, 4},
-				{[]byte("a-b"), []string{"a", "b"}, true, 3, 0},
-				{[]byte("a¢b"), []string{"a", "b"}, true, 4, 0},
-				{[]byte("1a-b"), []string{"a", "b"}, true, 4, 0},
-				{[]byte("¢a-b"), []string{"a", "b"}, true, 5, 0},
-				{[]byte("ĳsh"), []string{"ĳ"}, true, 2, 2},
-			},
-		},
-		{
-			name: "match-pattern case-insensitive (opMatchpatCi)",
-			op:   opMatchpatCi,
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, ciASCII)
-			},
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, true)
-			},
-			unitTests: []unitTest{
-				{[]byte("a"), []string{"a"}, true, 1, 0},
-				{[]byte("a"), []string{"A"}, true, 1, 0},
-				{[]byte("11-2"), []string{"1", "2"}, true, 4, 0},
-				{[]byte("€€-𐍈"), []string{"€", "𐍈"}, true, 11, 0},
-				{[]byte("ksss"), []string{"kssS"}, true, 4, 0},
-			},
-		},
-		{
-			name: "match-pattern case-insensitive UTF8 (opMatchpatUTF8Ci)",
-			op:   opMatchpatUTF8Ci,
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, ciUTF8)
-			},
-			encode: stringext.GenPatternExt,
-			unitTests: []unitTest{
-				{[]byte("s"), []string{"Ss"}, false, 1, 0},
-				{[]byte("s"), []string{"sxs"}, false, 1, 0},
-
-				{[]byte("c-d"), []string{"c"}, true, 1, 2},
-				{[]byte("cc-d"), []string{"cc"}, true, 2, 2},
-
-				{[]byte("bb-cc-d"), []string{"bb", "cc"}, true, 5, 2},
-				{[]byte("aa-bb-cc-d"), []string{"aa", "bb", "cc"}, true, 8, 2},
-				{[]byte("aa-bb-ce-d"), []string{"aa", "bb", "cc"}, false, 0, 0},
-
-				{[]byte("aaaaa"), []string{"ab"}, false, 0, 0},
-				{[]byte("aa"), []string{"ab"}, false, 0, 0},
-				{[]byte("a"), []string{"ab"}, false, 0, 0},
-
-				{[]byte("a"), []string{"a"}, true, 1, 0},
-				{[]byte("€"), []string{"€"}, true, 3, 0},
-				{[]byte("ba"), []string{"a"}, true, 2, 0},
-				{[]byte("b€"), []string{"€"}, true, 4, 0},
-
-				{[]byte("a"), []string{"A"}, true, 1, 0},
-				{[]byte("1-2"), []string{"1", "2"}, true, 3, 0},
-				{[]byte("11-2"), []string{"1", "2"}, true, 4, 0},
-
-				{[]byte("€-𐍈"), []string{"€", "𐍈"}, true, 8, 0},
-				{[]byte("€€-𐍈"), []string{"€", "𐍈"}, true, 11, 0},
-				{[]byte("€1€2"), []string{"1", "2"}, true, 8, 0},
-				{[]byte("€1€2€"), []string{"1", "2"}, true, 8, 3},
-
-				// regular non-trivial normalization ĳ -> Ĳ
-				{[]byte("ĳsh"), []string{"ĳ"}, true, 2, 2},
-				{[]byte("ĳsh"), []string{"Ĳ"}, true, 2, 2},
-				{[]byte("1ĳ1ĳ1"), []string{"Ĳ", "Ĳ"}, true, 6, 1},
-
-				// hard code-points with non-trivial normalization with different byte length encodings
-				// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
-				// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
-				// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-
-				{[]byte("ſ"), []string{"S"}, true, 2, 0},
-				{[]byte("Ω"), []string{"Ω"}, true, 3, 0},
-				{[]byte("K"), []string{"K"}, true, 3, 0},
-
-				{[]byte("S"), []string{"ſ"}, true, 1, 0},
-				{[]byte("Ω"), []string{"Ω"}, true, 2, 0},
-				{[]byte("K"), []string{"K"}, true, 1, 0},
-
-				{[]byte("1ſ1ĳ1"), []string{"S", "Ĳ"}, true, 6, 1},
-				{[]byte("1Ω1ĳ1"), []string{"Ω", "Ĳ"}, true, 7, 1},
-				{[]byte("1K1ĳ1"), []string{"K", "Ĳ"}, true, 7, 1},
-			},
-		},
-	}
-
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := ts.refImpl(string(ut.data), ut.segments)
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
-				}
-			}
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("refImpl: %v\ndata %q; segments=%v\n%v", ts.name, ut.data, ut.segments, msg)
-			}
-		}
-		// second: check the bytecode implementation
-		enc := ts.encode(ut.segments)
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(enc)
-		ctx.setScalarStrings(fill16(string(ut.data)))
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\nmatching pattern %q (%v)\non data %q\n%v",
-				ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), ut.data, msg)
-		}
-	}
-
-	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
-			}
-		})
-	}
-}
-
-// TestMatchpatUT2 unit-tests for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
-func TestMatchpatUT2(t *testing.T) {
-	t.Parallel()
-
-	type unitTest struct {
-		data16     [16]string // data pointed to by SI
-		segments   []string   // segments of the pattern: needs to be encoded and passed as string constant via the immediate dictionary
-		expLanes   uint16     // expected lanes K1
-		expOffsets [16]int    // expected offset Z2
-		expLengths [16]int    // expected length Z3
-	}
-	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
-		unitTests []unitTest
-		// portable reference implementation: f(data, segments) -> match, offset, length
-		refImpl func(data string, segments []string) (bool, int, int)
-		// bytecode implementation of comparison
-		op bcop
-		// encoder for segments -> dictionary value
-		encode func(segments []string) string
-	}
-
-	testSuites := []testSuite{
-		{
-			name: "match-pattern case-sensitive (opMatchpatUTF8Cs)",
-			op:   opMatchpatCs,
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, cs)
-			},
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, false)
-			},
-			unitTests: []unitTest{
-				{
-					data16: [16]string{
-						"AAxBBxxx", "xxxAAxBB", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
-					segments:   []string{"AA", "BB"},
-					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]int{5, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
-				},
-				{
-					data16: [16]string{
-						"AAxBBxxx", "AAſBBxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
-					segments:   []string{"AA", "BB"},
-					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]int{5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{3, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
-				},
-				{
-					data16: [16]string{
-						"AxBxxxxx", "AxCxAxBx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
-					segments:   []string{"A", "B"},
-					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]int{3, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{5, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
-				},
-				{
-					data16: [16]string{
-						"AAxBBxxx", "xxxAAxBB", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
-					segments:   []string{"AA", "BB"},
-					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]int{5, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
-				},
-				{
-					data16: [16]string{
-						"AAxxxxxx", "xxxxAAxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
-						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
-					segments:   []string{"AA"},
-					expLanes:   uint16(0b0000000000000011),
-					expOffsets: [16]int{2, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{6, 2, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
-				},
-				{
-					// Test whether NO matching beyond data length
-					data16:     [16]string{"xx", "S", "S", "xx", "SS", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx"},
-					segments:   []string{"SS"},
-					expLanes:   uint16(0b0000000000010000),
-					expOffsets: [16]int{0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{2, 1, 1, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-				},
-			},
-		},
-		{
-			name: "match-pattern case-insensitive (opMatchpatCi)",
-			op:   opMatchpatCi,
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, ciASCII)
-			},
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, true)
-			},
-			unitTests: []unitTest{
-				{
-					// Test whether UTF8 is NOT matched
-					data16:     [16]string{"xx", "ss", "xx", "ſs", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx"},
-					segments:   []string{"SS"},
-					expLanes:   uint16(0b0000000000000010),
-					expOffsets: [16]int{0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-				},
-				{
-					// Test whether NO matching beyond data length
-					data16:     [16]string{"xx", "S", "S", "xx", "SS", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx"},
-					segments:   []string{"SS"},
-					expLanes:   uint16(0b0000000000010000),
-					expOffsets: [16]int{0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{2, 1, 1, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-				},
-				{
-					// Test bug
-					data16:     [16]string{"bc", "cc", "sc", "ſc", "as", "bs", "cs", "ss", "ſs", "aſ", "bſ", "cſ", "sſ", "ſſ", "aaa", "baa"},
-					segments:   []string{"SS"},
-					expLanes:   uint16(0b0000000010000000),
-					expOffsets: [16]int{0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{2, 2, 2, 3, 2, 2, 2, 0, 3, 3, 3, 3, 3, 4, 3, 3},
-				},
-				{
-					// Test bug
-					data16:     [16]string{"SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS", "SS"},
-					segments:   []string{"Ss"},
-					expLanes:   uint16(0b1111111111111111),
-					expOffsets: [16]int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-					expLengths: [16]int{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-				},
-			},
-		},
-		{
-			name: "match-pattern case-insensitive UTF8 (opMatchpatUTF8Ci)",
-			op:   opMatchpatUTF8Ci,
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, ciUTF8)
-			},
-			encode: stringext.GenPatternExt,
-			unitTests: []unitTest{
-				{
-					// Test whether NO matching beyond data length
-					data16:     [16]string{"xx", "S", "S", "xx", "SS", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx", "xx"},
-					segments:   []string{"SS"},
-					expLanes:   uint16(0b0000000000010000),
-					expOffsets: [16]int{0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-					expLengths: [16]int{2, 1, 1, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
-				},
-			},
-		},
-	}
-
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		// first: check reference implementation
-		{
-			for i := 0; i < 16; i++ {
-				obsLane, obsOffset, obsLength := ts.refImpl(ut.data16[i], ut.segments)
-				expLane := getBit(ut.expLanes, i)
-				if fault, msg := fault1x1(obsLane, expLane, obsOffset, ut.expOffsets[i], obsLength, ut.expLengths[i]); fault {
-					t.Errorf("refImpl: %v\nlane %v:pattern=%q\ndata=%v\n%v",
-						ts.name, i, ut.segments, join16Str(ut.data16), msg)
-					break
-				}
-			}
-		}
-		// second: check the bytecode implementation
-		enc := ts.encode(ut.segments)
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(enc)
-		ctx.setScalarStrings(ut.data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, toBoolArray(ut.expLanes), ut.expOffsets, ut.expLengths); fault {
-			t.Errorf("%v\nmatching pattern %q (enc %v)\non data %v\n%v",
-				ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), join16Str(ut.data16), msg)
-		}
-	}
-
-	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
-			}
-		})
-	}
-}
-
-// TestMatchpatBF1 brute-force tests 1 for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
-func TestMatchpatBF1(t *testing.T) {
-	t.Parallel()
-
-	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// alphabet from which to generate needles and patterns
-		dataAlphabet, patternAlphabet []rune
-		// space of lengths of the words made of alphabet
-		dataLenSpace, patternLenSpace []int
-		// portable reference implementation: f(data, segments) -> match, offset, length
-		refImpl func(data string, segments []string) (bool, int, int)
-		// bytecode implementation of comparison
-		op bcop
-		// encoder for segments -> dictionary value
-		encode func(segments []string) string
-	}
-
-	testSuites := []testSuite{
-		{
-			name:            "opMatchpatCs",
-			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
-			dataLenSpace:    []int{1, 2, 3, 4},
-			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
-			patternLenSpace: []int{1, 2, 3, 4, 5},
-			refImpl: func(data string, segments []string) (match bool, offset, length int) {
-				return matchPatternReference(data, segments, cs)
-			},
-			op: opMatchpatCs,
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, false)
-			},
-		},
-		{
-			name:            "opMatchpatCi",
-			dataAlphabet:    []rune{'s', 'S', 'ſ', 'k'},
-			dataLenSpace:    []int{1, 2, 3, 4},
-			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
-			patternLenSpace: []int{1, 2, 3, 4, 5},
-			refImpl: func(data string, segments []string) (match bool, offset, length int) {
-				return matchPatternReference(data, segments, ciASCII)
-			},
-			op: opMatchpatCi,
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, true)
-			},
-		},
-		{
-			name:            "opMatchpatUTF8Ci",
-			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
-			dataLenSpace:    []int{1, 2, 3, 4},
-			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
-			patternLenSpace: []int{1, 2, 3, 4, 5},
-			refImpl: func(data string, segments []string) (match bool, offset, length int) {
-				return matchPatternReference(data, segments, ciUTF8)
-			},
-			op:     opMatchpatUTF8Ci,
-			encode: stringext.GenPatternExt,
-		},
-	}
-
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, patternSpace []string) {
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-	mainLoop:
-		for _, pattern := range patternSpace {
-			segments := stringext.PatternToSegments(pattern)
-			enc := ts.encode(segments)
-
-			for _, data16 := range dataSpace {
-
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], segments)
-				}
-
-				ctx.setDict(enc)
-				ctx.setScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\nmatching pattern %q (%v)\non data %q\n%v",
-						ts.name, stringext.PatternToPrettyString(enc, 3), []byte(enc), data16, msg)
-					break mainLoop
-				}
-			}
-		}
-	}
-
-	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			dataSpace := createSpaceExhaustive(ts.dataLenSpace, ts.dataAlphabet)
-			patternSpace := createSpacePatternRandom(ts.patternLenSpace, ts.patternAlphabet, 1000)
-			run(&ts, 0xFFFF, dataSpace, patternSpace)
-		})
-	}
-}
-
-// TestMatchpatBF2 brute-force tests 2 for: opMatchpatCs, opMatchpatCi, opMatchpatUTF8Ci
-func TestMatchpatBF2(t *testing.T) {
-	t.Parallel()
-
-	type unitTest2 struct {
-		segments []string
-	}
-
-	type testSuite struct {
-		name string
-		// the actual unit-test to run
-		unitTests []unitTest2
-		// alphabet from which to generate needles and patterns
-		dataAlphabet []rune
-		// space of lengths of the words made of alphabet
-		dataLenSpace []int
-		// portable reference implementation: f(data, segments) -> match, offset, length
-		refImpl func(data string, segments []string) (bool, int, int)
-		// bytecode to run
-		op bcop
-		// encoder for segments -> dictionary value
-		encode func(segments []string) string
-	}
-
-	testSuites := []testSuite{
-		{
-			name:         "match-pattern case-sensitive (opMatchpatCs) BF2",
-			op:           opMatchpatCs,
-			dataAlphabet: []rune{'a', 'b', 'c', 's', 'ſ'},
-			dataLenSpace: []int{1, 2, 3, 4, 5, 6},
-			refImpl: func(data string, segments []string) (match bool, offset, length int) {
-				return matchPatternReference(data, segments, cs)
-			},
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, false)
-			},
-			unitTests: []unitTest2{
-				{[]string{"a"}},
-				{[]string{"ab"}},
-				{[]string{"a", "b"}},
-
-				{[]string{"aa", "b"}},
-				{[]string{"aaa", "b"}},
-				{[]string{"aaaa", "b"}},
-				{[]string{"aaaaa", "b"}},
-
-				{[]string{"aa", "b"}},
-				{[]string{"aaa", "b"}},
-				{[]string{"aaaa", "b"}},
-				{[]string{"aaaaa", "b"}},
-
-				{[]string{"a", "bc"}},
-				{[]string{"aa", "bc"}},
-				{[]string{"aaa", "bc"}},
-				{[]string{"aaaa", "bc"}},
-
-				{[]string{"aa", "bc"}},
-				{[]string{"aaa", "bc"}},
-				{[]string{"aaaa", "bc"}},
-
-				{[]string{"a", "", "b"}},
-				{[]string{"a", "", "", "b"}},
-
-				{[]string{"3", "", "1"}},
-				{[]string{"h"}},
-				{[]string{"11", "3"}},
-				{[]string{"ſ"}},
-				{[]string{"ſΩ"}},
-			},
-		},
-		{
-			name: "match-pattern case-insensitive (opMatchpatCi) BF2",
-			op:   opMatchpatCi,
-			//dataAlphabet: []rune{'a', 'b', 'c', 's', 'ſ'},
-			//dataLenSpace: []int{1, 2, 3, 4, 5, 6},
-			dataAlphabet: []rune{'S'},
-			dataLenSpace: []int{2},
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, ciASCII)
-			},
-			encode: func(segments []string) string {
-				return stringext.SegmentsToPattern(segments, true)
-			},
-			unitTests: []unitTest2{
-				{[]string{"ss"}},
-			},
-		},
-		{
-			name:         "match-pattern case-insensitive (opMatchpatUTF8Ci) BF2",
-			op:           opMatchpatUTF8Ci,
-			dataAlphabet: []rune{'a', 'b', 'c', 's', 'ſ'},
-			dataLenSpace: []int{1, 2, 3, 4, 5, 6},
-			refImpl: func(data string, segments []string) (bool, int, int) {
-				return matchPatternReference(data, segments, ciUTF8)
-			},
-			encode: stringext.GenPatternExt,
-			unitTests: []unitTest2{
-				{[]string{"ss"}},
-			},
-		},
-	}
-
-	// run tests all combinations of elements in dataSpace and all elements of dictionarySpace
-	run := func(ts testSuite, lanes uint16, dataSpace [][]string) {
-		// pre-compute encoded segments for speed
-		encSegments := make([]string, len(ts.unitTests))
-		for i, ut := range ts.unitTests {
-			encSegments[i] = ts.encode(ut.segments)
-		}
-
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-	mainLoop:
-		for _, data16 := range dataSpace {
-			for utIdx, ut := range ts.unitTests {
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], ut.segments)
-					}
-				}
-
-				enc := encSegments[utIdx]
-				ctx.setDict(enc)
-				ctx.setScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\nmatching pattern %v (enc %v)\non data %q\n%v",
-						ts.name, ut.segments, []byte(enc), data16, msg)
-					break mainLoop
-				}
-			}
-		}
-	}
-
-	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			dataSpace := createSpaceExhaustive(ts.dataLenSpace, ts.dataAlphabet)
-			run(ts, 0xFFFF, dataSpace)
-		})
-	}
 }
 
 // TestRegexMatchBF1 brute-force tests 1 for: opDfaT6, opDfaT6Z, opDfaT7, opDfaT7Z, opDfaT8, opDfaT8Z, opDfaLZ
@@ -4956,7 +4193,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsPrefixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-			encode:  passThrough,
+			encode:  stringext.EncodeContainsPrefixCS,
 		},
 		{
 			name: "contains prefix case-insensitive (opContainsPrefixCi)",
@@ -4973,7 +4210,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsPrefixCi,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
-			encode:  stringext.NormalizeString,
+			encode:  stringext.EncodeContainsPrefixCI,
 		},
 		{
 			name: "contains prefix case-insensitive (opContainsPrefixUTF8Ci)",
@@ -4997,7 +4234,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsPrefixUTF8Ci,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
-			encode:  func(needle string) string { return stringext.GenNeedleExt(needle, false) },
+			encode:  stringext.EncodeContainsPrefixUTF8CI,
 		},
 		{
 			name: "contains suffix case-sensitive (opContainsSuffixCs)",
@@ -5013,7 +4250,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsSuffixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-			encode:  passThrough,
+			encode:  stringext.EncodeContainsSuffixCS,
 		},
 		{
 			name: "contains suffix case-insensitive (opContainsSuffixCi)",
@@ -5031,7 +4268,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsSuffixCi,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
-			encode:  stringext.NormalizeString,
+			encode:  stringext.EncodeContainsSuffixCI,
 		},
 		{
 			name: "contains suffix case-insensitive (opContainsSuffixUTF8Ci)",
@@ -5061,7 +4298,7 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 			},
 			op:      opContainsSuffixUTF8Ci,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
-			encode:  func(needle string) string { return stringext.GenNeedleExt(needle, true) },
+			encode:  stringext.EncodeContainsSuffixUTF8CI,
 		},
 	}
 
@@ -5143,7 +4380,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-			encode:         passThrough,
+			encode:         stringext.EncodeContainsPrefixCS,
 		},
 		{
 			name:           "contains prefix case-insensitive (opContainsPrefixCi)",
@@ -5155,7 +4392,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixCi,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
-			encode:         stringext.NormalizeString,
+			encode:         stringext.EncodeContainsPrefixCI,
 		},
 		{
 			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
@@ -5167,7 +4404,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsPrefixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
-			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, false) },
+			encode:         stringext.EncodeContainsPrefixUTF8CI,
 		},
 		{
 			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
@@ -5179,7 +4416,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  500,
 			op:             opContainsPrefixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
-			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, false) },
+			encode:         stringext.EncodeContainsPrefixUTF8CI,
 		},
 		{
 			name:           "contains suffix case-sensitive (opContainsSuffixCs)",
@@ -5191,7 +4428,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixCs,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-			encode:         passThrough,
+			encode:         stringext.EncodeContainsSuffixCS,
 		},
 		{
 			name:           "contains suffix case-insensitive (opContainsSuffixCi)",
@@ -5203,7 +4440,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixCi,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
-			encode:         stringext.NormalizeString,
+			encode:         stringext.EncodeContainsSuffixCI,
 		},
 		{
 			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
@@ -5215,7 +4452,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  exhaustive,
 			op:             opContainsSuffixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
-			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, true) },
+			encode:         stringext.EncodeContainsSuffixUTF8CI,
 		},
 		{
 			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
@@ -5227,7 +4464,7 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			needleMaxSize:  1000,
 			op:             opContainsSuffixUTF8Ci,
 			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
-			encode:         func(needle string) string { return stringext.GenNeedleExt(needle, true) },
+			encode:         stringext.EncodeContainsSuffixUTF8CI,
 		},
 	}
 
@@ -5306,37 +4543,37 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 			name:    "contains prefix case-sensitive (opContainsPrefixCs)",
 			op:      opContainsPrefixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-			encode:  passThrough,
+			encode:  stringext.EncodeContainsPrefixCS,
 		},
 		{
 			name:    "contains prefix case-insensitive (opContainsPrefixCi)",
 			op:      opContainsPrefixCi,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
-			encode:  stringext.NormalizeString,
+			encode:  stringext.EncodeContainsPrefixCI,
 		},
 		{
 			name:    "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
 			op:      opContainsPrefixUTF8Ci,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
-			encode:  func(needle string) string { return stringext.GenNeedleExt(needle, false) },
+			encode:  stringext.EncodeContainsPrefixUTF8CI,
 		},
 		{
 			name:    "contains suffix case-sensitive (opContainsSuffixCs)",
 			op:      opContainsSuffixCs,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-			encode:  passThrough,
+			encode:  stringext.EncodeContainsSuffixCS,
 		},
 		{
 			name:    "contains suffix case-insensitive (opContainsSuffixCi)",
 			op:      opContainsSuffixCi,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
-			encode:  stringext.NormalizeString,
+			encode:  stringext.EncodeContainsSuffixCI,
 		},
 		{
 			name:    "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
 			op:      opContainsSuffixUTF8Ci,
 			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
-			encode:  func(needle string) string { return stringext.GenNeedleExt(needle, true) },
+			encode:  stringext.EncodeContainsSuffixUTF8CI,
 		},
 	}
 
@@ -5392,6 +4629,1193 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 		for _, ts := range testSuites {
 			data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
 			run(t, &ts, lanes, data, cutset)
+		}
+	})
+}
+
+// TestContainsSubstrUT1 unit-tests for: opContainsSubstrCs, opContainsSubstrCi, opContainsSubstrUTF8Ci
+func TestContainsSubstrUT1(t *testing.T) {
+	t.Parallel()
+	type unitTest struct {
+		data      Data   // data at SI
+		needle    Needle // substr to test
+		expLane   bool   // expected K1
+		expOffset int    // expected Z2
+		expLength int    // expected Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, needle, caseSensitive) -> (lane, offset, length)
+		refImpl func(Data, Needle) (bool, int, int)
+		// encoder for needle -> dictionary value
+		encode func(needle Needle) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name: "contains substr case-sensitive (opContainsSubstrCs)",
+			op:   opContainsSubstrCs,
+			unitTests: []unitTest{
+				{"Ω", "Ω", true, 3, 0},
+				{"因", "因", true, 3, 0}, // chinese with no equal-fold alternative
+				{"s", "s", true, 1, 0},
+				{"sb", "s", true, 1, 1},
+				{"ssss", "ssss", true, 4, 0},
+				{"sssss", "sssss", true, 5, 0},
+				{"ss", "b", false, 0, 2},
+			},
+			refImpl: containsSubstrRefCS,
+			encode:  stringext.EncodeContainsSubstrCS,
+		},
+		{
+			name: "contains substr case-insensitive (opContainsSubstrCi)",
+			op:   opContainsSubstrCi,
+			unitTests: []unitTest{
+				{"s", "s", true, 1, 0},
+				{"sb", "s", true, 1, 1},
+				{"sSsS", "ssss", true, 4, 0},
+				{"ssSss", "sssss", true, 5, 0},
+				{"sS", "b", false, 0, 2},
+			},
+			refImpl: containsSubstrRefCI,
+			encode:  stringext.EncodeContainsSubstrCI,
+		},
+		{
+			name: "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)",
+			op:   opContainsSubstrUTF8Ci,
+			unitTests: []unitTest{
+				{"s", "s", true, 1, 0},
+				{"sb", "s", true, 1, 1},
+				{"sSsS", "ssss", true, 4, 0},
+				{"ssSss", "sssss", true, 5, 0},
+				{"sS", "b", false, 0, 2},
+			},
+			refImpl: containsSubstrRefUTF8CI,
+			encode:  stringext.EncodeContainsSubstrUTF8CI,
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		// first: check reference implementation
+		{
+			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.needle)
+			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
+				t.Errorf("%v\nrefImpl: data %q contains needle %q\n%v", ts.name, ut.data, ut.needle, msg)
+			}
+		}
+		// second: check the bytecode implementation
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
+		ctx.setDict(ts.encode(ut.needle))
+		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(ut.data))
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
+		for i := 0; i < 16; i++ {
+			obsLane := getBit(obsLanes, i)
+			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
+				t.Errorf("%v\nlane %v: data %q contains needle %q\n%v", ts.name, i, ut.data, ut.needle, msg)
+				break
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestContainsSubstrUT2 unit-tests for: opContainsSubstrCs, opContainsSubstrCi, opContainsSubstrUTF8Ci
+func TestContainsSubstrUT2(t *testing.T) {
+	t.Parallel()
+
+	type unitTest struct {
+		data16     [16]Data     // data pointed to by SI
+		needle     Needle       // needle needs to be encoded and passed as string constant via the immediate dictionary
+		expLanes   uint16       // expected lanes K1
+		expOffsets [16]OffsetZ2 // expected offset Z2
+		expLengths [16]LengthZ3 // expected length Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// portable reference implementation: f(data, needle) -> match, offset, length
+		refImpl func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3)
+		// bytecode implementation of comparison
+		op bcop
+		// encoder for segments -> dictionary value
+		encode func(needle Needle) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name:    "contains substr case-sensitive (opContainsSubstrCs)",
+			op:      opContainsSubstrCs,
+			refImpl: containsSubstrRefCS,
+			encode:  stringext.EncodeContainsSubstrCS,
+			unitTests: []unitTest{
+				{
+					data16:     [16]Data{"0100", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "00",
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{4, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"Ax", "xxxxAx", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "A",
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]OffsetZ2{1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"Axxxxxxx", "xxxxAxxx", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "A",
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]OffsetZ2{1, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{7, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"aaaa", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aa",
+					expLanes:   uint16(0b000000000000001),
+					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"aaaab", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aaaaa",
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"aa", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aa",
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"0100000", "100000", "00000", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "00000",
+					expLanes:   uint16(0b0000000000000111),
+					expOffsets: [16]OffsetZ2{7, 6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16: [16]Data{
+						"Axxxxxxx", "xxxxAxxx", "A", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					needle:     "A",
+					expLanes:   uint16(0b0000000000000111),
+					expOffsets: [16]OffsetZ2{1, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{7, 3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					data16: [16]Data{
+						"AAxxxxxx", "xxxAAxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					needle:     "AA",
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]OffsetZ2{2, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{6, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+			},
+		},
+		{
+			name:    "contains substr case-insensitive (opContainsSubstrCi)",
+			op:      opContainsSubstrCi,
+			refImpl: containsSubstrRefCI,
+			encode:  stringext.EncodeContainsSubstrCI,
+			unitTests: []unitTest{
+				{
+					data16:     [16]Data{"aAaA", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aa",
+					expLanes:   uint16(0b000000000000001),
+					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+			},
+		},
+		{
+			name:    "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)",
+			op:      opContainsSubstrUTF8Ci,
+			refImpl: containsSubstrRefUTF8CI,
+			encode:  stringext.EncodeContainsSubstrUTF8CI,
+			unitTests: []unitTest{
+				{
+					data16:     [16]Data{"asa", "aaa", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "asa",
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{3, 3, 3, 4, 3, 3, 3, 4, 3, 3, 3, 4, 4, 4, 4, 5},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"ſſa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "sa",
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{5, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"saa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aa",
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"aa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aa",
+					expLanes:   uint16(0b000000000000001),
+					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"aaa", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "aa",
+					expLanes:   uint16(0b000000000000001),
+					expOffsets: [16]OffsetZ2{2, 3, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"aſ", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "ass",
+					expLanes:   uint16(0b000000000000000),
+					expOffsets: [16]OffsetZ2{2, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"a", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					needle:     "A",
+					expLanes:   uint16(0b000000000000001),
+					expOffsets: [16]OffsetZ2{1, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"a", "s", "S", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ"},
+					needle:     "aa",
+					expLanes:   uint16(0b000000000000000),
+					expOffsets: [16]OffsetZ2{3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					data16:     [16]Data{"a", "s", "S", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ", "ſ"},
+					needle:     "ss",
+					expLanes:   uint16(0b000000000000000),
+					expOffsets: [16]OffsetZ2{3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+			},
+		},
+	}
+
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
+		// first: check reference implementation
+		{
+			for i := 0; i < 16; i++ {
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(ut.data16[i], ut.needle)
+			} //NOTE cannot not merge both loops due to the break
+			for i := 0; i < 16; i++ {
+				if fault, msg := fault1x1(expLanes[i], expLanes[i], expOffsets[i], ut.expOffsets[i], expLengths[i], ut.expLengths[i]); fault {
+					t.Errorf("refImpl: issue with %v\nlane %v (data16[%v]=%q): searching needle=%q\nin data %q\n%v",
+						ts.name, i, i, ut.data16[i], ut.needle, ut.data16, msg)
+					break
+				}
+			}
+		}
+		// second: check the bytecode implementation
+		enc := ts.encode(ut.needle)
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		ctx.setDict(enc)
+		ctx.setScalarStrings(ut.data16[:])
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, ut.expOffsets, ut.expLengths); fault {
+			t.Errorf("%v\nmatching needle=%q (enc=%v)\non data=%v\n%v",
+				ts.name, ut.needle, []byte(enc), join16Str(ut.data16), msg)
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(ts, ut, 0xFFFF)
+			}
+		})
+	}
+}
+
+// TestContainsSubstrBF brute-force tests for: opContainsSubstrCs, opContainsSubstrCi, opContainsSubstrUTF8Ci
+func TestContainsSubstrBF(t *testing.T) {
+	t.Parallel()
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet, needleAlphabet []rune
+		// space of lengths of the words made of alphabet
+		dataLenSpace, needleLenSpace []int
+		// maximum number of elements in dataSpace
+		dataMaxSize, needleMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, needle) -> lane, offset, length
+		refImpl func(Data, Needle) (bool, int, int)
+		// encoder for needle -> dictionary value
+		encode func(needle Needle) string
+	}
+	testSuites := []testSuite{
+		{
+			name:           "contains substr case-sensitive (opContainsSubstrCs)",
+			dataAlphabet:   []rune{'a', 'b', 0x0, 'ſ'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 'b'},
+			needleLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty needle is handled in go
+			needleMaxSize:  exhaustive,
+			op:             opContainsSubstrCs,
+			refImpl:        containsSubstrRefCS,
+			encode:         stringext.EncodeContainsSubstrCS,
+		},
+		{
+			name:           "contains substr case-sensitive (opContainsSubstrCs)",
+			dataAlphabet:   []rune{'a', 'b'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a'},
+			needleLenSpace: []int{1, 4, 5}, // NOTE empty needle is handled in go
+			needleMaxSize:  exhaustive,
+			op:             opContainsSubstrCs,
+			refImpl:        containsSubstrRefCS,
+			encode:         stringext.EncodeContainsSubstrCS,
+		},
+		{
+			name:           "contains substr case-insensitive (opContainsSubstrCi)",
+			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 's'},
+			needleLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty needle is handled in go
+			needleMaxSize:  exhaustive,
+			op:             opContainsSubstrCi,
+			refImpl:        containsSubstrRefCI,
+			encode:         stringext.EncodeContainsSubstrCI,
+		},
+		{
+			name:           "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)",
+			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
+			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
+			dataMaxSize:    exhaustive,
+			needleAlphabet: []rune{'a', 's', 'S', 'ſ'},
+			needleLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty needle is handled in go
+			needleMaxSize:  exhaustive,
+			op:             opContainsSubstrUTF8Ci,
+			refImpl:        containsSubstrRefUTF8CI,
+			encode:         stringext.EncodeContainsSubstrUTF8CI,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace [][]Data, needleSpace []Needle) {
+		lanes := uint16(0xFFFF)
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
+
+		// pre-compute encoded needles for speed
+		encNeedles := make([]string, len(needleSpace))
+		for i, needle := range needleSpace { // precompute encoded needles for speed
+			encNeedles[i] = ts.encode(needle)
+		}
+
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+	mainLoop:
+		for _, data16 := range dataSpace {
+			for needleIdx, needle := range needleSpace {
+
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
+					}
+				}
+
+				//t.Logf("data=%v", join16Str2(data16))
+				//t.Logf("needle=%v", needle)
+
+				ctx.setDict(encNeedles[needleIdx])
+				ctx.setData(dataPrefix) // prepend four bytes to data such that we can read backwards 4bytes at a time
+				ctx.addScalarStrings(data16)
+				ctx.current = lanes
+				scalarBefore := ctx.getScalarUint32()
+
+				// when
+				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+					t.Fatal(err)
+				}
+				// then
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+					t.Errorf("%v\ndata=%v\nneedle=%q\n%v", ts.name, join16Str2(data16), needle, msg)
+					break mainLoop
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
+			needleSpace := flatten(createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize))
+			run(&ts, dataSpace, needleSpace)
+		})
+	}
+}
+
+// FuzzContainsSubstrFT fuzz-tests for: opContainsSubstrCs, opContainsSubstrCi, opContainsSubstrUTF8Ci
+func FuzzContainsSubstrFT(f *testing.F) {
+	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "a")
+	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м")
+
+	type testSuite struct {
+		name string
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, needle) -> lane, offset, length
+		refImpl func(Data, Needle) (bool, OffsetZ2, LengthZ3)
+		// encoder for needle -> dictionary value
+		encode func(needle Needle) string
+	}
+	testSuites := []testSuite{
+		{
+			name:    "contains substr case-sensitive (opContainsSubstrCs)",
+			op:      opContainsSubstrCs,
+			refImpl: containsSubstrRefCS,
+			encode:  stringext.EncodeContainsSubstrCS,
+		},
+		{
+			name:    "contains substr case-sensitive (opContainsSubstrCi)",
+			op:      opContainsSubstrCi,
+			refImpl: containsSubstrRefCI,
+			encode:  stringext.EncodeContainsSubstrCI,
+		},
+		{
+			name:    "contains substr case-sensitive unicode (opContainsSubstrUTF8Ci)",
+			op:      opContainsSubstrUTF8Ci,
+			refImpl: containsSubstrRefUTF8CI,
+			encode:  stringext.EncodeContainsSubstrUTF8CI,
+		},
+	}
+
+	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle) {
+		if needle == "" {
+			return // empty needle is invalid
+		}
+		// only UTF8 code is supposed to handle UTF8 needle
+		if ts.op != opContainsSubstrUTF8Ci {
+			for _, c := range needle {
+				if c >= utf8.RuneSelf {
+					return
+				}
+			}
+		}
+
+		expLanes := [16]bool{}
+		expOffsets := [16]OffsetZ2{}
+		expLengths := [16]LengthZ3{}
+
+		// first collect expected values
+		for i := 0; i < 16; i++ {
+			if !utf8.ValidString(data16[i]) {
+				return // assume all input data will be valid codepoints
+			}
+			if getBit(lanes, i) {
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
+			}
+		}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		ctx.setDict(ts.encode(needle))
+		ctx.setScalarStrings(data16[:])
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata=%v\nneedle=%q\n%v", ts.name, join16Str(data16), needle, msg)
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle) {
+		data16 := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		for _, ts := range testSuites {
+			run(t, &ts, lanes, data16, needle)
+		}
+	})
+}
+
+// TestContainsPatternUT1 unit-tests for: opContainsPatternCs, opContainsPatternCi, opContainsPatternUTF8Ci
+func TestContainsPatternUT1(t *testing.T) {
+	t.Skip()
+	t.Parallel()
+	type unitTest struct {
+		data      Data // data at SI
+		needle    Needle
+		wildcard  []bool
+		expLane   bool // expected K1
+		expOffset int  // expected Z2
+		expLength int  // expected Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, pattern, caseSensitive) -> (lane, offset, length)
+		refImpl func(data Data, needle Needle, wildcard []bool) (bool, int, int)
+		// encoder for pattern+wildcard -> dictionary value
+		encode func(needle Needle, wildcard []bool) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name: "contains pattern case-sensitive (opContainsPatternCs)",
+			op:   opContainsPatternCs,
+			unitTests: []unitTest{
+				{"s", "s", []bool{false}, true, 1, 0},
+				{"sb", "s", []bool{false}, true, 1, 1},
+				{"ssss", "ssss", []bool{false, false, false, false}, true, 4, 0},
+				{"sssss", "sssss", []bool{false, false, false, false, false}, true, 5, 0},
+				{"ss", "b", []bool{false}, false, 0, 2},
+			},
+			refImpl: containsPatternRefCS,
+			encode:  stringext.EncodeContainsPatternCS,
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest) {
+		// first: check reference implementation
+		{
+			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.needle, ut.wildcard)
+			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
+				t.Errorf("%v\nrefImpl: data %q contains pattern %v\n%v", ts.name, ut.data, prettyPrintPattern(ut.needle, ut.wildcard), msg)
+			}
+		}
+		// second: check the bytecode implementation
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
+		ctx.setDict(ts.encode(ut.needle, ut.wildcard))
+		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
+		ctx.addScalarStrings(fill16(ut.data))
+		ctx.current = 0xFFFF
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
+		for i := 0; i < 16; i++ {
+			obsLane := getBit(obsLanes, i)
+			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
+				t.Errorf("%v\nlane %v: data=%q; pattern=%v\n%v", ts.name, i, ut.data, prettyPrintPattern(ut.needle, ut.wildcard), msg)
+				break
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut)
+			}
+		})
+	}
+}
+
+// TestContainsPatternUT2 unit-tests for: opContainsPatternCs, opContainsPatternCi, opContainsPatternUTF8Ci
+func TestContainsPatternUT2(t *testing.T) {
+	t.Parallel()
+
+	type unitTest struct {
+		pattern    Needle // pattern needs to be encoded and passed as string constant via the immediate dictionary
+		wildcard   []bool
+		data16     [16]Data     // data pointed to by SI
+		expLanes   uint16       // expected lanes K1
+		expOffsets [16]OffsetZ2 // expected offset Z2
+		expLengths [16]LengthZ3 // expected length Z3
+	}
+	type testSuite struct {
+		// name to describe this test-suite
+		name string
+		// the actual tests to run
+		unitTests []unitTest
+		// portable reference implementation: f(data, pattern) -> match, offset, length
+		refImpl func(data Data, needle Needle, wildcard []bool) (bool, int, int)
+		// bytecode implementation of comparison
+		op bcop
+		// encoder for pattern+wildcard -> dictionary value
+		encode func(needle Needle, wildcard []bool) string
+	}
+
+	testSuites := []testSuite{
+		{
+			name:    "contains pattern case-sensitive (opContainsPatternCs)",
+			op:      opContainsPatternCs,
+			refImpl: containsPatternRefCS,
+			encode:  stringext.EncodeContainsPatternCS,
+			unitTests: []unitTest{
+				{
+					pattern:    "a",
+					wildcard:   []bool{false},
+					data16:     [16]Data{"a¢", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{1, 1, 3, 3, 4, 5, 6, 1, 4, 4, 5, 6, 7, 1, 5, 5},
+					expLengths: [16]LengthZ3{2, 2, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 4, 0, 0},
+				},
+				{
+					pattern:    "b",
+					wildcard:   []bool{false},
+					data16:     [16]Data{"ba", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "a_b",
+					wildcard:   []bool{false, true, false},
+					data16:     [16]Data{"", "a€x", "b", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "a_a",
+					wildcard:   []bool{false, true, false},
+					data16:     [16]Data{"𐍈$a", "a¢a", "b¢a", "$¢a", "¢¢a", "€¢a", "𐍈¢a", "a€a", "b€a", "$€a", "¢€a", "€€a", "𐍈€a", "a𐍈a", "b𐍈a", "$𐍈a"},
+					expLanes:   uint16(0b0010000010000010),
+					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "a_a",
+					wildcard:   []bool{false, true, false},
+					data16:     [16]Data{"aba", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{3, 4, 4, 3, 4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4},
+					expLengths: [16]LengthZ3{0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{ // read beyond end of data situation
+					pattern:    "a_a",
+					wildcard:   []bool{false, true, false},
+					data16:     [16]Data{"a¢", "a", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "00",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"0100", "100", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]OffsetZ2{4, 3, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "ba",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"cb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "aaaaa",
+					wildcard:   []bool{false, false, false, false, false},
+					data16:     [16]Data{"aaaabb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "ba",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb", "bb"},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "aa",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"ab", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "aa",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"baabb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{3, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
+					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "aa",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"baabb", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{3, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
+					expLengths: [16]LengthZ3{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "aa",
+					wildcard:   []bool{false, false},
+					data16:     [16]Data{"aa", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{2, 2, 2, 3, 2, 2, 2, 3, 2, 2, 2, 3, 3, 3, 3, 4},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "00000",
+					wildcard:   []bool{false, false, false, false, false},
+					data16:     [16]Data{"0100000", "100000", "00000", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000111),
+					expOffsets: [16]OffsetZ2{7, 6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:  "A",
+					wildcard: []bool{false},
+					data16: [16]Data{
+						"Axxxxxxx", "xxxxAxxx", "A", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					expLanes:   uint16(0b0000000000000111),
+					expOffsets: [16]OffsetZ2{1, 5, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{7, 3, 0, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					pattern:  "AA",
+					wildcard: []bool{false, false},
+					data16: [16]Data{
+						"AAxxxxxx", "xxxAAxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					expLanes:   uint16(0b0000000000000011),
+					expOffsets: [16]OffsetZ2{2, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{6, 3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+				{
+					pattern:  "AA_BB",
+					wildcard: []bool{false, false, true, false, false},
+					data16: [16]Data{
+						"AAxBBxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx",
+						"xxxxxxxx", "xxxxxxxx", "xxxxxxxx", "xxxxxxxx"},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{3, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8},
+				},
+			},
+		},
+		{
+			name:    "contains pattern case-insensitive (opContainsPatternCi)",
+			op:      opContainsPatternCi,
+			refImpl: containsPatternRefCI,
+			encode:  stringext.EncodeContainsPatternCI,
+			unitTests: []unitTest{
+				{
+					pattern:    "ss_s",
+					wildcard:   []bool{false, false, true, false},
+					data16:     [16]Data{"sscs", "ſass", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "b",
+					wildcard:   []bool{false},
+					data16:     [16]Data{"Ba", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "a_b",
+					wildcard:   []bool{false, true, false},
+					data16:     [16]Data{"", "A€x", "b", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+			},
+		},
+		{
+			name:    "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)",
+			op:      opContainsPatternUTF8Ci,
+			refImpl: containsPatternRefUTF8CI,
+			encode:  stringext.EncodeContainsPatternUTF8CI,
+			unitTests: []unitTest{
+				{
+					pattern:    "ss_s",
+					wildcard:   []bool{false, false, true, false},
+					data16:     [16]Data{"sscs", "ſass", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "a_b",
+					wildcard:   []bool{false, true, false},
+					data16:     [16]Data{"", "A€x", "b", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000000),
+					expOffsets: [16]OffsetZ2{6, 4, 4, 4, 5, 6, 7, 5, 5, 5, 6, 7, 8, 6, 6, 6},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+				{
+					pattern:    "b",
+					wildcard:   []bool{false},
+					data16:     [16]Data{"Ba", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					expLengths: [16]LengthZ3{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
+			},
+		},
+	}
+
+	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		expLanes := [16]bool{}
+		expOffsets := [16]OffsetZ2{}
+		expLengths := [16]LengthZ3{}
+
+		// first: check reference implementation
+		{
+			for i := 0; i < 16; i++ {
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(ut.data16[i], ut.pattern, ut.wildcard)
+			}
+			for i := 0; i < 16; i++ {
+				if fault, msg := fault1x1(expLanes[i], getBit(ut.expLanes, i), expOffsets[i], ut.expOffsets[i], expLengths[i], ut.expLengths[i]); fault {
+					t.Errorf("refImpl: issue with %v\nlane %v (data[%v]=%q): searching pattern=%v\nin data=%v\n%v",
+						ts.name, i, i, ut.data16[i], prettyPrintPattern(ut.pattern, ut.wildcard), join16Str(ut.data16), msg)
+					break
+				}
+			}
+		}
+		// second: check the bytecode implementation
+		enc := ts.encode(ut.pattern, ut.wildcard)
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+		ctx.setDict(enc)
+		ctx.setScalarStrings(ut.data16[:])
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\nmatching pattern=%v; (enc=%v)\nin data=%v\n%v",
+				ts.name, prettyPrintPattern(ut.pattern, ut.wildcard), []byte(enc), join16Str(ut.data16), msg)
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(ts, ut, 0xFFFF)
+			}
+		})
+	}
+}
+
+// TestContainsPatternBF brute-force tests for: opContainsPatternCs, opContainsPatternCi, opContainsPatternUTF8Ci
+func TestContainsPatternBF(t *testing.T) {
+	t.Parallel()
+	type testSuite struct {
+		name string
+		// alphabet from which to generate needles and patterns
+		dataAlphabet, patternAlphabet []rune
+		// space of lengths of the words made of alphabet
+		dataLenSpace, patternLenSpace []int
+		// maximum number of elements in dataSpace
+		dataMaxSize, patternMaxSize int
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, pattern) -> lane, offset, length
+		refImpl func(data Data, needle Needle, wildcard []bool) (bool, OffsetZ2, LengthZ3)
+		// encoder for pattern -> dictionary value
+		encode func(needle Needle, wildcard []bool) string
+	}
+	testSuites := []testSuite{
+		{
+			name:            "contains pattern case-sensitive (opContainsPatternCs)",
+			dataAlphabet:    []rune{'a', 'b', '$', '¢', '€', '𐍈'},
+			dataLenSpace:    []int{2, 3, 4, 5, 6},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'a', 'b'},
+			patternLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty pattern is handled in go
+			patternMaxSize:  exhaustive,
+			op:              opContainsPatternCs,
+			refImpl:         containsPatternRefCS,
+			encode:          stringext.EncodeContainsPatternCS,
+		},
+		{
+			name:            "contains pattern case-sensitive 2 (opContainsPatternCs)",
+			dataAlphabet:    []rune{'a', 'b'},
+			dataLenSpace:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'a', 'b'},
+			patternLenSpace: []int{4, 5}, // NOTE empty pattern is handled in go
+			patternMaxSize:  exhaustive,
+			op:              opContainsPatternCs,
+			refImpl:         containsPatternRefCS,
+			encode:          stringext.EncodeContainsPatternCS,
+		},
+		{
+			name:            "contains pattern case-insensitive (opContainsPatternCi)",
+			dataAlphabet:    []rune{'a', 'b'},
+			dataLenSpace:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'a', 'b'},
+			patternLenSpace: []int{4, 5}, // NOTE empty pattern is handled in go
+			patternMaxSize:  exhaustive,
+			op:              opContainsPatternCi,
+			refImpl:         containsPatternRefCI,
+			encode:          stringext.EncodeContainsPatternCI,
+		},
+		{
+			name:            "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)",
+			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
+			dataLenSpace:    []int{1, 2, 3, 4},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
+			patternLenSpace: []int{1, 2, 3, 4, 5},
+			patternMaxSize:  exhaustive,
+			op:              opContainsPatternUTF8Ci,
+			refImpl:         containsPatternRefUTF8CI,
+			encode:          stringext.EncodeContainsPatternUTF8CI,
+		},
+	}
+
+	run := func(ts *testSuite, dataSpace [][]Data, patternSpace []Needle, wildcards [][]bool, lanes uint16) {
+		// pre-compute encoded patterns for speed
+		encPattern := make([]string, len(patternSpace))
+		for patternIdx, pattern := range patternSpace { // precompute encoded needles for speed
+			encPattern[patternIdx] = ts.encode(pattern, wildcards[patternIdx])
+		}
+
+		expLanes := [16]bool{}
+		expOffsets := [16]OffsetZ2{}
+		expLengths := [16]LengthZ3{}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+
+	mainLoop:
+		for _, data16 := range dataSpace {
+			for patternIdx, pattern := range patternSpace {
+				wildcard := wildcards[patternIdx]
+				// first collect expected values
+				for i := 0; i < 16; i++ {
+					if getBit(lanes, i) {
+						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], pattern, wildcard)
+					}
+				}
+
+				enc := encPattern[patternIdx]
+				ctx.setDict(enc)
+				ctx.setScalarStrings(data16)
+				ctx.current = lanes
+				scalarBefore := ctx.getScalarUint32()
+
+				// when
+				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+					t.Fatal(err)
+				}
+				// then
+				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+					t.Errorf("%v\ndata=%v\npattern=%v (enc=%v)\n%v",
+						ts.name, join16Str2(data16), prettyPrintPattern(pattern, wildcard), enc, msg)
+					break mainLoop
+				}
+			}
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(ts.name, func(t *testing.T) {
+			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
+			patternSpace, wildcards := createSpaceWildcard(ts.patternLenSpace, ts.patternAlphabet, ts.patternMaxSize)
+			run(&ts, dataSpace, patternSpace, wildcards, 0xFFFF)
+		})
+	}
+}
+
+// FuzzContainsPatternFT fuzz-tests for: opContainsPatternCs, opContainsPatternCi, opContainsPatternUTF8Ci
+func FuzzContainsPatternFT(f *testing.F) {
+	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "a", uint64(0))
+	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м", uint64(0))
+
+	type testSuite struct {
+		name string
+		// bytecode to run
+		op bcop
+		// portable reference implementation: f(data, pattern) -> lane, offset, length
+		refImpl func(Data, Needle, []bool) (bool, int, int)
+		// encoder for pattern -> dictionary value
+		encode func(needle Needle, wildcard []bool) string
+	}
+	testSuites := []testSuite{
+		{
+			name:    "contains pattern case-sensitive (opContainsPatternCs)",
+			op:      opContainsPatternCs,
+			refImpl: containsPatternRefCS,
+			encode:  stringext.EncodeContainsPatternCS,
+		},
+		{
+			name:    "contains pattern case-insensitive (opContainsPatternCi)",
+			op:      opContainsPatternCi,
+			refImpl: containsPatternRefCI,
+			encode:  stringext.EncodeContainsPatternCI,
+		},
+		{
+			name:    "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)",
+			op:      opContainsPatternUTF8Ci,
+			refImpl: containsPatternRefUTF8CI,
+			encode:  stringext.EncodeContainsPatternUTF8CI,
+		},
+	}
+
+	convertWildcard := func(wc uint64, length int) []bool {
+		getBit := func(data uint64, idx int) bool {
+			return (data>>idx)&1 == 1
+		}
+		result := make([]bool, length)
+		for i := 0; i < ints.Min(length, 64); i++ {
+			if getBit(wc, length) {
+				result[i] = true
+			}
+		}
+		return result
+	}
+
+	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, pattern Needle, wildcard []bool) {
+		if pattern == "" {
+			return // empty pattern is invalid
+		}
+		if wildcard[0] || wildcard[len(wildcard)-1] {
+			return // first and last character of pattern may not be a wildcard
+		}
+		// only UTF8 code is supposed to handle UTF8 pattern
+		if ts.op != opContainsPatternUTF8Ci {
+			for _, c := range pattern {
+				if c >= utf8.RuneSelf {
+					return
+				}
+			}
+		}
+
+		// first collect expected values
+		expLanes := [16]bool{}
+		expOffsets := [16]int{}
+		expLengths := [16]int{}
+
+		for i := 0; i < 16; i++ {
+			if !utf8.ValidString(data16[i]) {
+				return // assume all input data will be valid codepoints
+			}
+			if getBit(lanes, i) {
+				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], pattern, wildcard)
+			}
+		}
+
+		var ctx bctestContext
+		defer ctx.Free()
+		ctx.Taint()
+		ctx.setDict(ts.encode(pattern, wildcard))
+		ctx.setScalarStrings(data16[:])
+		ctx.current = lanes
+		scalarBefore := ctx.getScalarUint32()
+
+		// when
+		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			t.Fatal(err)
+		}
+		// then
+		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
+			t.Errorf("%v\ndata=%v\npattern=%v\n%v", ts.name, join16Str(data16), prettyPrintPattern(pattern, wildcard), msg)
+		}
+	}
+
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle, wildcardX uint64) {
+		data16 := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		wildcard := convertWildcard(wildcardX, utf8.RuneCountInString(needle))
+		for _, ts := range testSuites {
+			run(t, &ts, lanes, data16, needle, wildcard)
 		}
 	})
 }
@@ -5593,6 +6017,10 @@ func join16Str(values [16]string) (result string) {
 	return join16StrSlice(values[:])
 }
 
+func join16Str2(values []string) string {
+	return join16Str(*(*[16]string)(values))
+}
+
 func passThrough(v string) string {
 	return v
 }
@@ -5604,10 +6032,6 @@ const (
 	ciASCII            // case-insensitive on ASCII only
 	ciUTF8             // case-insensitive all unicode code-points
 )
-
-func caseSensitive(t strCmpType) bool {
-	return t == cs
-}
 
 func (t strCmpType) String() string {
 	switch t {
@@ -5866,105 +6290,100 @@ func referenceSkipCharRight(msg string, skipCount int) (laneOut bool, offsetOut,
 	return
 }
 
-// matchPatternReference matches the first occurrence of the provided pattern.
-// The matchPatternReference implementation is used for fuzzing since it is 10x faster than matchPatternRegex
-func matchPatternReference(data string, segments []string, cmpType strCmpType) (laneOut bool, offsetOut, lengthOut int) {
+func containsPatternRef(data Data, needle Needle, wildcard []bool, cmpType stringext.StrCmpType) (bool, OffsetZ2, LengthZ3) {
 
-	length := len(data)
-
-	// indexRune is similar to strings.Index; this function accepts rune arrays
-	indexRune := func(s, substr []rune) int {
-		idx := strings.Index(string(s), string(substr))
-		if idx == -1 {
-			return -1
+	eq := func(r1, r2 rune, cmpType stringext.StrCmpType) bool {
+		if r1 == r2 {
+			return true
 		}
-		off := 0
-		for i := range string(s) {
-			if i == idx {
-				return off
+		if cmpType == stringext.CiASCII {
+			if r1 < utf8.RuneSelf {
+				r1 = stringext.NormalizeRune(r1)
 			}
-			off++
-		}
-		return off
-	}
-
-	// hasPrefixRune is similar to strings.HasPrefix; this function accepts rune arrays
-	hasPrefixRune := func(s, prefix []rune) bool {
-		return len(prefix) <= len(s) && slices.Equal(s[:len(prefix)], prefix)
-	}
-
-	if len(segments) == 0 { // not sure how to handle an empty pattern, currently it always matches
-		return true, 0, length
-	}
-	msgStrOrg := data
-	msgStr := data
-
-	if cmpType == ciASCII {
-		msgStr = stringext.NormalizeStringASCIIOnlyString(msgStrOrg)
-		for i, segment := range segments {
-			segments[i] = stringext.NormalizeStringASCIIOnlyString(segment)
-		}
-	} else if cmpType == ciUTF8 {
-		msgStr = stringext.NormalizeString(msgStrOrg)
-		for i, segment := range segments {
-			segments[i] = stringext.NormalizeString(segment)
-		}
-	}
-
-	msgRunesOrg := []rune(msgStrOrg)
-	msgRunes := []rune(msgStr)
-	nRunesMsg := len(msgRunes)
-
-	for runePos := 0; runePos < nRunesMsg; runePos++ {
-		nRunesInWildcards := 0 // only add the number of wildcards to the position once the segment has been found
-		runePos1 := runePos
-		for i, segment := range segments {
-			if runePos1 >= nRunesMsg {
-				break // exit the for loop; we have not found the pattern
+			if r2 < utf8.RuneSelf {
+				r2 = stringext.NormalizeRune(r2)
 			}
-			isFirstSegment := i == 0
-			isLastSegment := i == (len(segments) - 1)
-
-			if len(segment) == 0 {
-				nRunesInWildcards++ // we found an empty segment, that counts as one wildcard
-			} else {
-				remainingStartPos := runePos1 + nRunesInWildcards
-				if remainingStartPos >= nRunesMsg {
-					return false, length, 0
-				}
-				remainingMsg := string(msgRunes[remainingStartPos:])
-				remainingRunes := []rune(remainingMsg)
-				segmentRunes := []rune(segment)
-
-				if isFirstSegment {
-					positionOfSegment := indexRune(remainingRunes, segmentRunes)
-					if positionOfSegment == -1 { // segment not found
-						runePos1++
-						break
-					} else { // found segment
-						runePos1 += nRunesInWildcards + positionOfSegment + len(segmentRunes)
-						nRunesInWildcards = 1
-					}
-				} else {
-					if !hasPrefixRune(remainingRunes, segmentRunes) {
-						break // segment not found
-					} else { // found segment
-						runePos1 += nRunesInWildcards + len(segmentRunes)
-						nRunesInWildcards = 1
-					}
-				}
-			}
-			if isLastSegment {
-				if runePos1 <= nRunesMsg {
-					nBytesTillLastRune := len(string(msgRunesOrg[0:runePos1]))
-					offsetOut := nBytesTillLastRune
-					lengthOut := length - nBytesTillLastRune
-					return true, offsetOut, lengthOut
-				}
-			}
+			return r1 == r2
 		}
+		if cmpType == stringext.CiUTF8 {
+			r1 = stringext.NormalizeRune(r1)
+			r2 = stringext.NormalizeRune(r2)
+			return r1 == r2
+		}
+		return false
 	}
-	return false, length, 0
+
+	nBytesData := len(data)
+
+	if len(needle) == 0 { // not sure how to handle an empty pattern, currently it always matches
+		return true, 0, nBytesData
+	}
+
+	dataRune := []rune(data)
+	needleRune := []rune(needle)
+
+	nRunesData := len(dataRune)
+	nRunesNeedle := len(needleRune)
+
+	if len(wildcard) != nRunesNeedle {
+		panic("incorrect wildcard length")
+	}
+
+	bytePosData := 0
+	for runeDataIdx := 0; runeDataIdx < nRunesData; runeDataIdx++ {
+		match := true
+		nBytesNeedle := 0 // number of bytes of the needle when matched in the data
+		for runeNeedleIdx := 0; runeNeedleIdx < nRunesNeedle; runeNeedleIdx++ {
+			dataPos := runeDataIdx + runeNeedleIdx
+			if dataPos >= nRunesData {
+				match = false
+				break
+			}
+			dr := dataRune[dataPos]
+			if !wildcard[runeNeedleIdx] && !eq(dr, needleRune[runeNeedleIdx], cmpType) {
+				match = false
+				break
+			}
+			nBytesNeedle += utf8.RuneLen(dr)
+		}
+		if match {
+			x := bytePosData + nBytesNeedle
+			return true, x, nBytesData - x
+		}
+		bytePosData += utf8.RuneLen(dataRune[runeDataIdx])
+	}
+
+	if bytePosData != nBytesData {
+		panic("Should not happen")
+	}
+	return false, nBytesData, 0
+}
+
+func containsPatternRefCS(data Data, needle Needle, wildcard []bool) (bool, OffsetZ2, LengthZ3) {
+	return containsPatternRef(data, needle, wildcard, stringext.CS)
+}
+
+func containsPatternRefCI(data Data, needle Needle, wildcard []bool) (bool, OffsetZ2, LengthZ3) {
+	return containsPatternRef(data, needle, wildcard, stringext.CiASCII)
+}
+
+func containsPatternRefUTF8CI(data Data, needle Needle, wildcard []bool) (bool, OffsetZ2, LengthZ3) {
+	return containsPatternRef(data, needle, wildcard, stringext.CiUTF8)
+}
+
+func containsSubstrRefCS(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+	wildcard := make([]bool, utf8.RuneCountInString(needle))
+	return containsPatternRef(data, needle, wildcard, stringext.CS)
+}
+
+func containsSubstrRefCI(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+	wildcard := make([]bool, utf8.RuneCountInString(needle))
+	return containsPatternRef(data, needle, wildcard, stringext.CiASCII)
+}
+
+func containsSubstrRefUTF8CI(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+	wildcard := make([]bool, utf8.RuneCountInString(needle))
+	return containsPatternRef(data, needle, wildcard, stringext.CiUTF8)
 }
 
 // runRegexTests iterates over all regexes with the provided regex space,and determines equality over all
@@ -6120,35 +6539,6 @@ func createSpace(dataLenSpace []int, alphabet []rune, maxSize int) [][]string {
 	return split16(createSpaceRandom(max(dataLenSpace), alphabet, maxSize))
 }
 
-func createSpacePatternRandom(lengthSpace []int, alphabet []rune, maxSize int) []string {
-	set := make(map[string]struct{})          // new empty set
-	alphabet = append(alphabet, utf8.MaxRune) // use maxRune as a segment boundary
-	alphabetSize := len(alphabet)
-	maxLength := max(lengthSpace)
-
-	for len(set) < maxSize {
-		strLength := rand.Intn(maxLength) + 1
-		strRunes := make([]rune, strLength)
-		for i := 0; i < strLength; i++ {
-			strRunes[i] = alphabet[rand.Intn(alphabetSize)]
-		}
-		s := string(strRunes)
-		segments := strings.Split(s, string(utf8.MaxRune))
-		if (len(segments[0]) > 0) && (len(segments[len(segments)-1]) > 0) {
-			set[s] = struct{}{}
-		}
-	}
-
-	result := make([]string, len(set))
-	pos := 0
-	for s := range set {
-		segments := strings.Split(s, string(utf8.MaxRune))
-		result[pos] = stringext.SegmentsToPattern(segments, false)
-		pos++
-	}
-	return result
-}
-
 // createSpaceExhaustive creates strings of length 1 upto maxLength over the provided alphabet
 func createSpaceRegex(maxLength int, alphabet []rune, regexType regexp2.RegexType) []string {
 	result := make([]string, 0)
@@ -6174,4 +6564,44 @@ func createSpaceRegex(maxLength int, alphabet []rune, regexType regexp2.RegexTyp
 		}
 	}
 	return result
+}
+
+// createSpaceWildcard creates a space with wildcards
+func createSpaceWildcard(dataLenSpace []int, alphabet []rune, maxSize int) ([]string, [][]bool) {
+	alphabetExt := append(alphabet, utf8.MaxRune) // use maxRune as a wildcard identifier
+	result := make([]string, 0)
+	wildcards := make([][]bool, 0)
+	for _, data16 := range createSpace(dataLenSpace, alphabetExt, maxSize) {
+		for i := 0; i < 16; i++ {
+			dataRune := []rune(data16[i])
+			nRunes := len(dataRune)
+			if (dataRune[0] != utf8.MaxRune) && (dataRune[nRunes-1] != utf8.MaxRune) {
+				wildcard := make([]bool, nRunes)
+				for j := 1; j < nRunes-1; j++ {
+					if dataRune[j] == utf8.MaxRune {
+						wildcard[j] = true
+						dataRune[j] = '_' // any ASCII would do
+					}
+				}
+				result = append(result, string(dataRune))
+				wildcards = append(wildcards, wildcard)
+			}
+		}
+	}
+	return result, wildcards
+}
+
+func prettyPrintPattern(pattern Needle, wildcard []bool) string {
+	colorGreen := "\033[32m"
+	colorReset := "\033[0m"
+
+	sb := strings.Builder{}
+	for i, r := range []rune(pattern) {
+		if wildcard[i] {
+			sb.WriteString(fmt.Sprintf("%v%v%v", colorGreen, "█", colorReset))
+		} else {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
 }

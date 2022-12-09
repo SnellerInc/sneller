@@ -533,10 +533,13 @@ var opinfo = [_maxbcop]bcopinfo{
 	opContainsSuffixCi:     {text: "contains_suffix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 	opContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 
-	// string pattern matcher
-	opMatchpatCs:     {text: "matchpat_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadWriteS},
-	opMatchpatCi:     {text: "matchpat_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadWriteS},
-	opMatchpatUTF8Ci: {text: "matchpat_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadWriteS},
+	opContainsSubstrCs:     {text: "contains_substr_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opContainsSubstrCi:     {text: "contains_substr_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+
+	opContainsPatternCs:     {text: "contains_pattern_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opContainsPatternCi:     {text: "contains_pattern_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
 
 	// ip matching operations
 	opIsSubnetOfIP4: {text: "is_subnet_of_ip4", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},

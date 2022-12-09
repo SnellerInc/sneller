@@ -14823,477 +14823,791 @@ next:
   NEXT()
 //; #endregion bcSplitPart
 
-//; #region bcMatchpatCs
-//; string @ (SI)(Z2:Z3) matches dict[imm] ?
-//;  each string segment length is incoded directly in dict[imm], and the segments directly in dict[imm], and the segments operation
-TEXT bcMatchpatCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R8)                      //;05667C35 Load *[]byte with the provided str into R8
-  MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=seg_begin_ptr; R8=pattern_begin_ptr;
-  KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
-  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
-  VMOVDQA32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
-  VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_length + str_start;Z5=o_data_end; Z3=str_length; Z2=str_start;
-  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-
-  VPBROADCASTB  1(DX),Z24                 //;3DD84A29 load first code-point needle    ;Z24=data_needle2; DX=seg_begin_ptr;
-  JMP           outer_tail                //;ECD5FF70                                 ;
-
-outer_loop:
-//; try to match against the first byte of the needle and advance up to 4 bytes at a time while that byte isn't present in the input
-  KMOVW         K2,  K3                   //;6979316F copy eligible lanes             ;K3=tmp_mask; K2=lane_matched;
-  VPGATHERDD    (SI)(Z25*1),K3,  Z8       //;D040E340 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z25=o_data_outer_loop;
-  VPCMPB        $0,  Z24, Z8,  K3         //;FB45C48A K3 := (data_msg==data_needle2); select matching bytes;K3=tmp_mask; Z8=data_msg; Z24=data_needle2; 0=Eq;
-  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count_data; K3=tmp_mask;
-  VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count_data; Z22=constant_bswap32;
-  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count_data;
-  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count_data;
-
-  VPADDD        Z14, Z25, K2,  Z25        //;5034DEA0 o_data_outer_loop += skip_count_data;Z25=o_data_outer_loop; K2=lane_matched; Z14=skip_count_data;
-  VPCMPD        $1,  Z5,  Z25, K2,  K2    //;DBB2E31C K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end; 1=LessThen;
-  KTESTW        K2,  K2                   //;EB60CC5C any lanes still alive?          ;K2=lane_matched;
-  JZ            next                      //;FF07EB20 no, then exit; jump if zero (ZF = 1);
-
-  VPCMPD        $4,  Z20, Z14, K2,  K4    //;80B9AEA2 K4 := K2 & (skip_count_data!=4); active lanes where skip != 4;K4=active_lanes; K2=lane_matched; Z14=skip_count_data; Z20=constd_4; 4=NotEqual;
-  KTESTW        K4,  K4                   //;BC448E1A                                 ;K4=active_lanes;
-  JZ            outer_loop                //;B6E89A28 keep looping if we skipped 4 bytes everywhere; jump if zero (ZF = 1);
-  KMOVW         K2,  K4                   //;C1B09128 may as well search everything active;K4=active_lanes; K2=lane_matched;
-
-  MOVBLZX       (DX),CX                   //;B285DE84 load seg_length                 ;CX=seg_index; DX=seg_begin_ptr;
-  VPBROADCASTD  CX,  Z23                  //;40103F07 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
-  XORL          R14, R14                  //;5B762374 reset bytes_consumed            ;R14=bytes_consumed;
-  LEAQ          1(DX),R13                 //;3724357C init seg_ptr (skip seg_length char);R13=seg_ptr; DX=seg_begin_ptr;
-  VMOVDQA32     Z25, Z6                   //;C5082E4B o_data_inner_loop := o_data_outer_loop;Z6=o_data_inner_loop; Z25=o_data_outer_loop;
-
-//; #region inner_loop
-  JMP           inner_tail                //;E826EBC7                                 ;
-inner_loop:
-  VPSUBD        Z6,  Z5,  Z26             //;A584C7CC compute n_remaining_bytes_data  ;Z26=scratch_Z26; Z5=o_data_end; Z6=o_data_inner_loop;
-  VPCMPD        $2,  Z26, Z23, K4,  K4    //;6F2BA80B K4 &= (seg_length<=scratch_Z26) ;K4=active_lanes; Z23=seg_length; Z26=scratch_Z26; 2=LessEq;
-  KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
-  JZ            no_update                 //;815AFE30 no, then break out of inner_loop; jump if zero (ZF = 1);
-
-  LEAQ          (SI)(R14*4),R15           //;D11AE9A2 R15 = haystack base             ;R15=scratch; SI=msg_ptr; R14=bytes_consumed;
-  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  VPGATHERDD    (R15)(Z6*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data_msg; K3=tmp_mask; R15=scratch; Z6=o_data_inner_loop;
-
-  VPCMPD.BCST   $0,  (R13)(R14*4),Z8,  K4,  K4  //;7EA5C5FB K4 &= (data_msg==Address());K4=active_lanes; Z8=data_msg; R13=seg_ptr; R14=bytes_consumed;
-  KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
-  JZ            no_update                 //;815AFE30 no, break out of inner_loop; jump if zero (ZF = 1);
-  SUBL          $4,  CX                   //;BDFA8BC7 seg_index -= 4                  ;CX=seg_index;
-  INCL          R14                       //;1FA30197 bytes_consumed++                ;R14=bytes_consumed;
-inner_tail:
-//; NOTE: entered from inner_skipchar, as well as the code above ^^^
-  CMPL          CX,  $4                   //;A91F11D1 more than 4chars in segment?    ;CX=seg_index;
-  JG            inner_loop                //;21A93561 yes, do the inner_loop; jump if greater ((ZF = 0) and (SF = OF));
-  TESTL         CX,  CX                   //;55C7CFAD any chars left in needle?       ;CX=seg_index;
-  JZ            update                    //;B0CE3FB0 no, then the inner-code is done; jump if zero (ZF = 1);
-//; #endregion inner_loop
-
-//; #region load msg_data and seg_data
-  KMOVW         K4,  K3                   //;14DDEED3 copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  LEAQ          (SI)(R14*4),R15           //;6C167139                                 ;R15=scratch; SI=msg_ptr; R14=bytes_consumed;
-  VPGATHERDD    (R15)(Z6*1),K3,  Z8       //;53C5314C gather data                     ;Z8=data_msg; K3=tmp_mask; R15=scratch; Z6=o_data_inner_loop;
-
-  VPBROADCASTD  CX,  Z26                  //;63080F73 This is a bugfix. Somehow, using Z23 does not work;Z26=scratch_Z26; CX=seg_index;
-  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask (needle)          ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD.BCST.Z (R13)(R14*4),Z19, K4,  Z9  //;950C4AB8 load segment with mask         ;Z9=data_needle; K4=active_lanes; Z19=tail_mask; R13=seg_ptr; R14=bytes_consumed;
-
-  VPSUBD        Z6,  Z5,  Z26             //;9D333DC0 compute n_remaining_bytes_data  ;Z26=scratch_Z26; Z5=o_data_end; Z6=o_data_inner_loop;
-  VPMINSD       Z26, Z20, Z26             //;B13B2440 scratch_Z26 := min(4, scratch_Z26);Z26=scratch_Z26; Z20=constd_4;
-  VPERMD        Z18, Z26, Z26             //;B7D1A978 get tail_mask (data)            ;Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z26, Z19, Z19             //;70311526 combine data and segment mask   ;Z19=tail_mask; Z26=scratch_Z26;
-
-  VPANDD        Z8,  Z19, Z8              //;AF7967AF final haystack &= mask          ;Z8=data_msg; Z19=tail_mask;
-//; #endregion load msg_data and seg_data
-
-  VPCMPD        $0,  Z9,  Z8,  K4,  K4    //;A8770CE8 K4 &= (data_msg==data_needle)   ;K4=active_lanes; Z8=data_msg; Z9=data_needle; 0=Eq;
-  KTESTW        K4,  K4                   //;B58B42F2 any matches?                    ;K4=active_lanes;
-  JZ            no_update                 //;A1F36466 no, then postinc; jump if zero (ZF = 1);
-  VPADDD        Z23, Z6,  Z6              //;30ECF5E0 o_data_inner_loop += seg_length ;Z6=o_data_inner_loop; Z23=seg_length;
-
-//; see if we've reached the end of the pattern, or if there's another segment to match
-  VMOVD         X23, CX                   //;59065A37 restore seg_length              ;CX=seg_index; Z23=seg_length;
-  ADDQ          R13, CX                   //;291DBAF6 seg_index += seg_ptr            ;CX=seg_index; R13=seg_ptr;
-  MOVQ          8(R8),R13                 //;9A4A2B75 load pattern_length             ;R13=seg_ptr; R8=pattern_begin_ptr;
-  LEAQ          (DX)(R13*1),R13           //;953CDD7D load end-of-pattern pointer     ;R13=seg_ptr; DX=seg_begin_ptr;
-  CMPQ          CX,  R13                  //;B85D3F03                                 ;R13=seg_ptr; CX=seg_index;
-  JNE           skipchar                  //;69250FD4 test if we are *actually done*; jump if not equal (ZF = 0);
-
-update:
-  VPSUBD        Z2,  Z6,  Z26             //;C6E4E202 scratch_Z26 := o_data_inner_loop - str_start;Z26=scratch_Z26; Z6=o_data_inner_loop; Z2=str_start;
-  VPSUBD        Z26, Z3,  K4,  Z3         //;92C20EC9 str_length -= scratch_Z26       ;Z3=str_length; K4=active_lanes; Z26=scratch_Z26;
-  VMOVDQA32     Z6,  K4,  Z2              //;BBD0D6BD str_start := o_data_inner_loop  ;Z2=str_start; K4=active_lanes; Z6=o_data_inner_loop;
-  KORW          K4,  K1,  K1              //;13B24E89 add to lane_active              ;K1=lane_active; K4=active_lanes;
-  KANDNW        K2,  K4,  K2              //;6577B2E7 remove from lane_matched        ;K2=lane_matched; K4=active_lanes;
-no_update:
-  VPADDD        Z10, Z25, K2,  Z25        //;1361241C o_data_outer_loop++             ;Z25=o_data_outer_loop; K2=lane_matched; Z10=constd_1;
-outer_tail:
-  VPCMPD        $1,  Z5,  Z25, K2,  K2    //;A511EAB5 K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end;
-  KTESTW        K2,  K2                   //;2427BAAC any lanes still alive?          ;K2=lane_matched;
-  JNZ           outer_loop                //;2385D85E yes, then jump; jump if not zero (ZF = 0);
-next:
-  NEXT()
-
-//; #region skipchar
-skipchar:
-//; at this point Z6 = end-of-last-match,
-//; DX = string pointer, R13 = end-of-string pointer,
-//; CX = end-of-segment (so, start of next segment)
-  VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D98831F7 K4 &= (o_data_inner_loop<o_data_end);K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end;
-  KTESTW        K4,  K4                   //;DC4B6D58                                 ;K4=active_lanes;
-  JZ            no_update                 //;B6BD72EA all inner matches failed; jump if zero (ZF = 1);
-
-  KMOVW         K4,  K3                   //;86D47D0E copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 clear data_msg                  ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;F8AFC558 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z6=o_data_inner_loop;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPADDD        Z7,  Z6,  K4,  Z6         //;8E6EFFC6 o_data_inner_loop += n_bytes_data;Z6=o_data_inner_loop; K4=active_lanes; Z7=n_bytes_data;
-  VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D69EC427 K4 &= (o_data_inner_loop<o_data_end); unset lanes we have used up;K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end;
-
-//; set up registers as if we were entering 'inner_tail' from the header of 'inner_loop'
-  LEAQ          1(CX),R13                 //;F5CF92D4 init seg_ptr (skip seg_length char);R13=seg_ptr; CX=seg_index;
-  MOVBLZX       (CX),CX                   //;72E449D6 load seg_length                 ;CX=seg_index;
-  XORL          R14, R14                  //;51BB9559 reset bytes_consumed            ;R14=bytes_consumed;
-  TESTL         CX,  CX                   //;113BD3AB any bytes left in segment?      ;CX=seg_index;
-  JZ            reset_and_skip            //;8DE787B9 yes, keep skipping; jump if zero (ZF = 1);
-  VPBROADCASTD  CX,  Z23                  //;E14BC512 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
-  JMP           inner_tail                //;D3658066                                 ;
-reset_and_skip:
-  ADDQ          R13, CX                   //;357B2138 seg_index += seg_ptr            ;CX=seg_index; R13=seg_ptr;
-  JMP           skipchar                  //;43A5A433                                 ;
-//; #endregion skipchar
-//; #endregion bcMatchpatCs
-
-//; #region bcMatchpatCi
-//; string @ (SI)(Z2:Z3) matches dict[imm] ?
-//;  each string segment length is incoded directly in dict[imm], and the segments directly in dict[imm], and the segments operation
-TEXT bcMatchpatCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R8)                      //;05667C35 Load *[]byte with the provided str into R8
-  MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=seg_begin_ptr; R8=pattern_begin_ptr;
-  KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
-  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
-  VMOVDQA32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
-  VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_len + str_start;Z5=o_data_end; Z3=str_len; Z2=str_start;
-  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-
-//; #region loading to_upper constants
-  MOVL          $0x7A6120,R15             //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z15                  //;00000000                                 ;Z15=c_0b00100000; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z16                  //;00000000                                 ;Z16=c_char_a; R15=tmp_constant;
-  SHRL          $8,  R15                  //;00000000                                 ;R15=tmp_constant;
-  VPBROADCASTB  R15, Z17                  //;00000000                                 ;Z17=c_char_z; R15=tmp_constant;
-//; #endregion
-  VPBROADCASTB  1(DX),Z24                 //;3DD84A29 load first code-point needle    ;Z24=data_needle2; DX=seg_begin_ptr;
-  JMP           outer_tail                //;ECD5FF70                                 ;
-
-outer_loop:
-//; try to match against the first byte of the needle and advance up to 4 bytes at a time while that byte isn't present in the input
-  KMOVW         K2,  K3                   //;6979316F copy eligible lanes             ;K3=tmp_mask; K2=lane_matched;
-  VPGATHERDD    (SI)(Z25*1),K3,  Z8       //;D040E340 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z25=o_data_outer_loop;
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K5         //;30E9B9FD K5 := (data_msg>=c_char_a)      ;K5=scratch_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K5,  K5    //;8CE85BA0 K5 &= (data_msg<=c_char_z)      ;K5=scratch_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
-  VPMOVM2B      K5,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K5=scratch_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
-  VPCMPB        $0,  Z24, Z13, K3         //;7CA38894 K3 := (data_msg_upper==data_needle2); select matching bytes;K3=tmp_mask; Z13=data_msg_upper; Z24=data_needle2; 0=Eq;
-  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count_data; K3=tmp_mask;
-  VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count_data; Z22=constant_bswap32;
-  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count_data;
-  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count_data;
-
-  VPADDD        Z14, Z25, K2,  Z25        //;5034DEA0 o_data_outer_loop += skip_count_data;Z25=o_data_outer_loop; K2=lane_matched; Z14=skip_count_data;
-  VPCMPD        $1,  Z5,  Z25, K2,  K2    //;DBB2E31C K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end; 1=LessThen;
-  KTESTW        K2,  K2                   //;EB60CC5C any lanes still alive?          ;K2=lane_matched;
-  JZ            next                      //;FF07EB20 no, then exit; jump if zero (ZF = 1);
-
-  VPCMPD        $4,  Z20, Z14, K2,  K4    //;80B9AEA2 K4 := K2 & (skip_count_data!=4); active lanes where skip != 4;K4=active_lanes; K2=lane_matched; Z14=skip_count_data; Z20=constd_4; 4=NotEqual;
-  KTESTW        K4,  K4                   //;BC448E1A                                 ;K4=active_lanes;
-  JZ            outer_loop                //;B6E89A28 keep looping if we skipped 4 bytes everywhere; jump if zero (ZF = 1);
-  KMOVW         K2,  K4                   //;C1B09128 may as well search everything active;K4=active_lanes; K2=lane_matched;
-
-  MOVBLZX       (DX),CX                   //;B285DE84 load seg_length                 ;CX=seg_index; DX=seg_begin_ptr;
-  VPBROADCASTD  CX,  Z23                  //;40103F07 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
-  XORL          R14, R14                  //;5B762374 reset bytes_consumed            ;R14=bytes_consumed;
-  LEAQ          1(DX),R13                 //;3724357C init seg_ptr (skip seg_length char);R13=seg_ptr; DX=seg_begin_ptr;
-  VMOVDQA32     Z25, Z6                   //;C5082E4B o_data_inner_loop := o_data_outer_loop;Z6=o_data_inner_loop; Z25=o_data_outer_loop;
-
-//; #region inner_loop
-  JMP           inner_tail                //;E826EBC7                                 ;
-inner_loop:
-  VPSUBD        Z6,  Z5,  Z26             //;A584C7CC compute n_remaining_bytes_data  ;Z26=scratch_Z26; Z5=o_data_end; Z6=o_data_inner_loop;
-  VPCMPD        $2,  Z26, Z23, K4,  K4    //;6F2BA80B K4 &= (seg_length<=scratch_Z26) ;K4=active_lanes; Z23=seg_length; Z26=scratch_Z26; 2=LessEq;
-  KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
-  JZ            no_update                 //;815AFE30 no, then break out of inner_loop; jump if zero (ZF = 1);
-
-  LEAQ          (SI)(R14*4),R15           //;D11AE9A2 R15 = haystack base             ;R15=scratch; SI=msg_ptr; R14=bytes_consumed;
-  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  VPGATHERDD    (R15)(Z6*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data_msg; K3=tmp_mask; R15=scratch; Z6=o_data_inner_loop;
-
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K5         //;30E9B9FD K5 := (data_msg>=c_char_a)      ;K5=scratch_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K5,  K5    //;8CE85BA0 K5 &= (data_msg<=c_char_z)      ;K5=scratch_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
-  VPMOVM2B      K5,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K5=scratch_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
-  VPCMPD.BCST   $0,  (R13)(R14*4),Z13, K4,  K4  //;480D68BD K4 &= (data_msg_upper==Address());K4=active_lanes; Z13=data_msg_upper; R13=seg_ptr; R14=bytes_consumed;
-  KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
-  JZ            no_update                 //;815AFE30 no, break out of inner_loop; jump if zero (ZF = 1);
-  SUBL          $4,  CX                   //;BDFA8BC7 seg_index -= 4                  ;CX=seg_index;
-  INCL          R14                       //;1FA30197 bytes_consumed++                ;R14=bytes_consumed;
-inner_tail:
-//; NOTE: entered from inner_skipchar, as well as the code above ^^^
-  CMPL          CX,  $4                   //;A91F11D1 more than 4chars in segment?    ;CX=seg_index;
-  JG            inner_loop                //;21A93561 yes, do the inner_loop; jump if greater ((ZF = 0) and (SF = OF));
-  TESTL         CX,  CX                   //;55C7CFAD any chars left in needle?       ;CX=seg_index;
-  JZ            update                    //;B0CE3FB0 no, then the inner-code is done; jump if zero (ZF = 1);
-//; #endregion inner_loop
-
-//; #region load msg_data and seg_data
-  KMOVW         K4,  K3                   //;14DDEED3 copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  LEAQ          (SI)(R14*4),R15           //;6C167139                                 ;R15=scratch; SI=msg_ptr; R14=bytes_consumed;
-  VPGATHERDD    (R15)(Z6*1),K3,  Z8       //;53C5314C gather data                     ;Z8=data_msg; K3=tmp_mask; R15=scratch; Z6=o_data_inner_loop;
-
-  VPBROADCASTD  CX,  Z26                  //;63080F73 This is a bugfix. Somehow, using Z23 does not work;Z26=scratch_Z26; CX=seg_index;
-  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask (needle)          ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD.BCST.Z (R13)(R14*4),Z19, K4,  Z9  //;950C4AB8 load segment with mask         ;Z9=data_needle; K4=active_lanes; Z19=tail_mask; R13=seg_ptr; R14=bytes_consumed;
-
-  VPSUBD        Z6,  Z5,  Z26             //;9D333DC0 compute n_remaining_bytes_data  ;Z26=scratch_Z26; Z5=o_data_end; Z6=o_data_inner_loop;
-  VPMINSD       Z26, Z20, Z26             //;B13B2440 scratch_Z26 := min(4, scratch_Z26);Z26=scratch_Z26; Z20=constd_4;
-  VPERMD        Z18, Z26, Z26             //;B7D1A978 get tail_mask (data)            ;Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z26, Z19, Z19             //;70311526 combine data and segment mask   ;Z19=tail_mask; Z26=scratch_Z26;
-
-  VPANDD        Z8,  Z19, Z8              //;AF7967AF final haystack &= mask          ;Z8=data_msg; Z19=tail_mask;
-//; #endregion load msg_data and seg_data
-
-//; #region str_to_upper
-  VPCMPB        $5,  Z16, Z8,  K5         //;30E9B9FD K5 := (data_msg>=c_char_a)      ;K5=scratch_mask; Z8=data_msg; Z16=c_char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K5,  K5    //;8CE85BA0 K5 &= (data_msg<=c_char_z)      ;K5=scratch_mask; Z8=data_msg; Z17=c_char_z; 2=LessEq;
-  VPMOVM2B      K5,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K5=scratch_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; #endregion str_to_upper
-
-  VPCMPD        $0,  Z9,  Z13, K4,  K4    //;3FCC2424 K4 &= (data_msg_upper==data_needle);K4=active_lanes; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
-  KTESTW        K4,  K4                   //;B58B42F2 any matches?                    ;K4=active_lanes;
-  JZ            no_update                 //;A1F36466 no, then postinc; jump if zero (ZF = 1);
-  VPADDD        Z23, Z6,  Z6              //;30ECF5E0 o_data_inner_loop += seg_length ;Z6=o_data_inner_loop; Z23=seg_length;
-
-//; see if we've reached the end of the pattern, or if there's another segment to match
-  VMOVD         X23, CX                   //;59065A37 restore seg_length              ;CX=seg_index; Z23=seg_length;
-  ADDQ          R13, CX                   //;291DBAF6 seg_index += seg_ptr            ;CX=seg_index; R13=seg_ptr;
-  MOVQ          8(R8),R13                 //;9A4A2B75 load pattern_length             ;R13=seg_ptr; R8=pattern_begin_ptr;
-  LEAQ          (DX)(R13*1),R13           //;953CDD7D load end-of-pattern pointer     ;R13=seg_ptr; DX=seg_begin_ptr;
-  CMPQ          CX,  R13                  //;B85D3F03                                 ;R13=seg_ptr; CX=seg_index;
-  JNE           skipchar                  //;69250FD4 test if we are *actually done*; jump if not equal (ZF = 0);
-
-update:
-  VPSUBD        Z2,  Z6,  Z26             //;C6E4E202 scratch_Z26 := o_data_inner_loop - str_start;Z26=scratch_Z26; Z6=o_data_inner_loop; Z2=str_start;
-  VPSUBD        Z26, Z3,  K4,  Z3         //;92C20EC9 str_len -= scratch_Z26          ;Z3=str_len; K4=active_lanes; Z26=scratch_Z26;
-  VMOVDQA32     Z6,  K4,  Z2              //;BBD0D6BD str_start := end-of-match       ;Z2=str_start; K4=active_lanes; Z6=o_data_inner_loop;
-  KORW          K4,  K1,  K1              //;13B24E89 add to lane_active              ;K1=lane_active; K4=active_lanes;
-  KANDNW        K2,  K4,  K2              //;6577B2E7 remove from lane_matched        ;K2=lane_matched; K4=active_lanes;
-no_update:
-  VPADDD        Z10, Z25, K2,  Z25        //;1361241C o_data_outer_loop++             ;Z25=o_data_outer_loop; K2=lane_matched; Z10=constd_1;
-outer_tail:
-  VPCMPD        $1,  Z5,  Z25, K2,  K2    //;A511EAB5 K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end;
-  KTESTW        K2,  K2                   //;2427BAAC any lanes still alive?          ;K2=lane_matched;
-  JNZ           outer_loop                //;2385D85E yes, then jump; jump if not zero (ZF = 0);
-next:
-  NEXT()
-
-//; #region skipchar
-skipchar:
-//; at this point Z6 = end-of-last-match,
-//; DX = string pointer, R13 = end-of-string pointer,
-//; CX = end-of-segment (so, start of next segment)
-  VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D98831F7 K4 &= (o_data_inner_loop<o_data_end);K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end;
-  KTESTW        K4,  K4                   //;DC4B6D58                                 ;K4=active_lanes;
-  JZ            no_update                 //;B6BD72EA all inner matches failed; jump if zero (ZF = 1);
-
-  KMOVW         K4,  K3                   //;86D47D0E copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 clear data_msg                  ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;F8AFC558 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z6=o_data_inner_loop;
-
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPADDD        Z7,  Z6,  K4,  Z6         //;8E6EFFC6 o_data_inner_loop += n_bytes_data;Z6=o_data_inner_loop; K4=active_lanes; Z7=n_bytes_data;
-  VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D69EC427 K4 &= (o_data_inner_loop<o_data_end); unset lanes we have used up;K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end;
-
-//; set up registers as if we were entering 'inner_tail' from the header of 'inner_loop'
-  LEAQ          1(CX),R13                 //;F5CF92D4 init seg_ptr (skip seg_length char);R13=seg_ptr; CX=seg_index;
-  MOVBLZX       (CX),CX                   //;72E449D6 load seg_length                 ;CX=seg_index;
-  XORL          R14, R14                  //;51BB9559 reset bytes_consumed            ;R14=bytes_consumed;
-  TESTL         CX,  CX                   //;113BD3AB any bytes left in segment?      ;CX=seg_index;
-  JZ            reset_and_skip            //;8DE787B9 yes, keep skipping; jump if zero (ZF = 1);
-  VPBROADCASTD  CX,  Z23                  //;E14BC512 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
-  JMP           inner_tail                //;D3658066                                 ;
-reset_and_skip:
-  ADDQ          R13, CX                   //;357B2138 seg_index += seg_ptr            ;CX=seg_index; R13=seg_ptr;
-  JMP           skipchar                  //;43A5A433                                 ;
-//; #endregion skipchar
-//; #endregion bcMatchpatCi
-
-//; #region bcMatchpatUTF8Ci
-//; string @ (SI)(Z2:Z3) matches dict[imm] ?
-//;  each string segment length is incoded directly in dict[imm], and the segments directly in dict[imm], and the segments operation
-TEXT bcMatchpatUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R8)                      //;05667C35 load *[]byte with the provided str into R8
-//; init variables
-  MOVQ          (R8),DX                   //;E6E1D839                                 ;DX=needle_begin_ptr; R8=tmp;
-  KMOVW         K1,  K2                   //;ECF269E6 lane_matched := lane_active     ;K2=lane_matched; K1=lane_active;
-  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
-  VMOVDQA32     Z2,  Z25                  //;3FC39C85 o_data_outer_loop := str_start  ;Z25=o_data_outer_loop; Z2=str_start;
-  VPADDD        Z2,  Z3,  Z5              //;E5429114 compute string end position     ;Z5=o_data_end; Z3=str_len; Z2=str_start;
+//; #region bcContainsSubstrCs
+TEXT bcContainsSubstrCs(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameter
+  VPBROADCASTD  8(R14),Z6                 //;F6AC18B2 bcst needle_len                 ;Z6=needle_len1; R14=needle_ptr1;
+//; restrict lanes to allow fast bail-out
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;EE56D9C0 K1 &= (data_len1>=needle_len1)  ;K1=lane_active; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+//; init needle pointer
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
 //; load constants
-  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
+  VMOVDQU32     bswap32<>(SB),Z22         //;A0BC360A load constant bswap32           ;Z22=bswap32;
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-//; load parameters
-  MOVQ          8(R8),R8                  //;272B5640 load pattern_length             ;R8=tmp;
-  LEAQ          (DX)(R8*1),BX             //;74E897E8 needle_end_ptr := needle_begin_ptr + tmp;BX=needle_end_ptr; DX=needle_begin_ptr; R8=tmp;
-  JMP           outer_tail                //;ECD5FF70                                 ;
-//; keep looping in outer_loop till we find a matching start code-point
-outer_loop:
-//; load next unicode code-point
-  KMOVW         K2,  K3                   //;6979316F copy eligible lanes             ;K3=tmp_mask; K2=lane_matched;
-  VPGATHERDD    (SI)(Z25*1),K3,  Z8       //;D040E340 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z25=o_data_outer_loop;
-//; mask tail data
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask (data)            ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD.Z      Z8,  Z19, K2,  Z8         //;BF3EB085 mask data                       ;Z8=data_msg; K2=lane_matched; Z19=tail_mask;
-//; compare with 4 code-points
-  VPCMPD.BCST   $0,  4(DX),Z8,  K3        //;345D0BF3 K3 := (data_msg==[needle_begin_ptr+4]);K3=tmp_mask; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  8(DX),Z8,  K5        //;EFD0A9A3 K5 := (data_msg==[needle_begin_ptr+8]);K5=scratch_mask1; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  12(DX),Z8,  K6       //;CAC0FAC6 K6 := (data_msg==[needle_begin_ptr+12]);K6=scratch_mask2; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  16(DX),Z8,  K0       //;50C70740 K0 := (data_msg==[needle_begin_ptr+16]);K0=scratch_mask3; Z8=data_msg; DX=needle_begin_ptr; 0=Eq;
-  KORW          K3,  K5,  K3              //;58E49245 tmp_mask |= scratch_mask1       ;K3=tmp_mask; K5=scratch_mask1;
-  KORW          K3,  K6,  K3              //;BDCB8940 tmp_mask |= scratch_mask2       ;K3=tmp_mask; K6=scratch_mask2;
-  KORW          K0,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K0=scratch_mask3;
-//; advance data offset
-  KNOTW         K4,  K3                   //;2C3A5B12                                 ;K3=tmp_mask; K4=active_lanes;
-  VPADDD        Z7,  Z25, K3,  Z25        //;5034DEA0 o_data_outer_loop += n_bytes_data;Z25=o_data_outer_loop; K3=tmp_mask; Z7=n_bytes_data;
-//; restrict lane_matched to non-empty data
-  VPCMPD        $1,  Z5,  Z25, K2,  K2    //;DBB2E31C K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end; 1=LessThen;
-  KTESTW        K2,  K2                   //;EB60CC5C any lanes still alive?          ;K2=lane_matched;
-  JZ            next                      //;FF07EB20 no, then exit; jump if zero (ZF = 1);
-//; determine if we need to continue searching for a matching start code-point
-  KNOTW         K3,  K4                   //;EA2AB365 negate                          ;K4=active_lanes; K3=tmp_mask;
-  KTESTW        K4,  K4                   //;BC448E1A ZF := (K4==0); CF := 1          ;K4=active_lanes;
-  JZ            outer_loop                //;B6E89A28 keep looping if we skipped everywhere; jump if zero (ZF = 1);
-//; we have found a matching start code-point; setup variables for the inner loop
-  KMOVW         K2,  K4                   //;C1B09128 may as well search everything active;K4=active_lanes; K2=lane_matched;
-  MOVL          (DX),CX                   //;B285DE84 load seg_length                 ;CX=seg_index; DX=needle_begin_ptr;
-  VPBROADCASTD  CX,  Z23                  //;40103F07 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
-  XORL          R14, R14                  //;5B762374 reset bytes_consumed            ;R14=bytes_consumed;
-  LEAQ          4(DX),R13                 //;3724357C init seg_ptr (skip seg_length char);R13=seg_start_ptr; DX=needle_begin_ptr;
-  VMOVDQA32     Z25, Z6                   //;C5082E4B o_data_inner_loop := o_data_outer_loop;Z6=o_data_inner_loop; Z25=o_data_outer_loop;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+//; init variables for scan_loop
+  KMOVW         K1,  K2                   //;ECF269E6 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  VPBROADCASTB  (R14),Z9                  //;54CB0C41 bcst first char from needle     ;Z9=char1_needle; R14=needle_ptr1;
 
-//; #region inner_loop
-  JMP           inner_tail                //;E826EBC7                                 ;
-inner_loop:
-//; load next unicode code-point
-  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z6=o_data_inner_loop;
-//; mask tail data
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask (data)            ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD.Z      Z8,  Z19, K4,  Z8         //;BF3EB085 mask data                       ;Z8=data_msg; K4=active_lanes; Z19=tail_mask;
-//; compare with 4 code-points
-  VPCMPD.BCST   $0,  (R13)(R14*1),Z8,  K4,  K3  //;345D0BF3 K3 := K4 & (data_msg==[seg_start_ptr+bytes_consumed]);K3=tmp_mask; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
-  VPCMPD.BCST   $0,  4(R13)(R14*1),Z8,  K4,  K5  //;EFD0A9A3 K5 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+4]);K5=scratch_mask1; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
-  VPCMPD.BCST   $0,  8(R13)(R14*1),Z8,  K4,  K6  //;CAC0FAC6 K6 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+8]);K6=scratch_mask2; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
-  VPCMPD.BCST   $0,  12(R13)(R14*1),Z8,  K4,  K0  //;50C70740 K0 := K4 & (data_msg==[seg_start_ptr+bytes_consumed+12]);K0=scratch_mask3; K4=active_lanes; Z8=data_msg; R13=seg_start_ptr; R14=bytes_consumed;
-  KORW          K3,  K5,  K3              //;58E49245 tmp_mask |= scratch_mask1       ;K3=tmp_mask; K5=scratch_mask1;
-  KORW          K3,  K6,  K3              //;BDCB8940 tmp_mask |= scratch_mask2       ;K3=tmp_mask; K6=scratch_mask2;
-  KORW          K0,  K3,  K4              //;AAF6ED91 active_lanes := tmp_mask | scratch_mask3;K4=active_lanes; K3=tmp_mask; K0=scratch_mask3;
-  ADDL          $16, R14                  //;4D85A22A bytes_consumed += 16            ;R14=bytes_consumed;
-//; tests if any lanes are still active
-  KTESTW        K4,  K4                   //;FB6F192A any lanes still alive?          ;K4=active_lanes;
-  JZ            no_update                 //;815AFE30 no, then break out of inner_loop; jump if zero (ZF = 1);
-//; advance data offset
-  VPADDD        Z6,  Z7,  Z6              //;BC3C6510 o_data_inner_loop += n_bytes_data;Z6=o_data_inner_loop; Z7=n_bytes_data;
-  DECL          CX                        //;466E8A52 seg_index--                     ;CX=seg_index;
-inner_tail:
-//; restrict active_lanes to non-empty data
-  VPBROADCASTD  CX,  Z26                  //;220F8650                                 ;Z26=scratch_Z26; CX=seg_index;
-  VPCMPD        $0,  Z6,  Z5,  K4,  K3    //;DE8ED054 K3 := K4 & (o_data_end==o_data_inner_loop);K3=tmp_mask; K4=active_lanes; Z5=o_data_end; Z6=o_data_inner_loop; 0=Eq;
-  VPCMPD        $6,  Z11, Z26, K3,  K3    //;6BF36236 K3 &= (scratch_Z26>0)           ;K3=tmp_mask; Z26=scratch_Z26; Z11=0; 6=Greater;
-  KANDNW        K4,  K3,  K4              //;136A3E19 active_lanes &= ~tmp_mask       ;K4=active_lanes; K3=tmp_mask;
-//; determine if the end of needle is reached
-  TESTL         CX,  CX                   //;55C7CFAD any chars left in needle?       ;CX=seg_index;
-  JNZ           inner_loop                //;B0CE3FB0 no, then the inner-code is done; jump if not zero (ZF = 0);
-//; see if we've reached the end of the pattern, or if there's another segment to match
-  VMOVD         X23, CX                   //;59065A37 restore seg_length              ;CX=seg_end_ptr; Z23=seg_length;
-  SHLQ          $4,  CX                   //;8790EEE2 seg_end_ptr <<= 4               ;CX=seg_end_ptr;
-  ADDQ          R13, CX                   //;291DBAF6 seg_end_ptr += seg_start_ptr    ;CX=seg_end_ptr; R13=seg_start_ptr;
-  LEAQ          (R13)(R14*1),R8           //;736B9EFF tmp := seg_start_ptr + bytes_consumed;R8=tmp; R13=seg_start_ptr; R14=bytes_consumed;
-  CMPQ          R8,  BX                   //;6DF8AA3C at end of needle?               ;BX=needle_end_ptr; R8=tmp;
-  JNE           skipchar                  //;69250FD4 no, then skip a char; jump if not equal (ZF = 0);
-//; #endregion inner_loop
+//; scan for the char1_needle in all lane_todo (K2) and accumulate in lane_selected (K4)
+scan_start:
+  KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
+scan_loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPCMPB        $0,  Z9,  Z8,  K3         //;170C9C8F K3 := (data==char1_needle)      ;K3=tmp_mask; Z8=data; Z9=char1_needle; 0=Eq;
+  KTESTQ        K3,  K3                   //;AD0284F2 found any char1_needle?         ;K3=tmp_mask;
+  JNZ           scan_found_something      //;4645455C yes, found something!; jump if not zero (ZF = 0);
+  VPSUBD        Z20, Z3,  K2,  Z3         //;BF319EDC data_len1 -= 4                  ;Z3=data_len1; K2=lane_todo; Z20=4;
+  VPADDD        Z20, Z2,  K2,  Z2         //;B5CB47F3 data_off1 += 4                  ;Z2=data_off1; K2=lane_todo; Z20=4;
+scan_found_something_ret:                 //;2CADDCF3 reentry code path with found char1_needle
+  VPCMPD        $1,  Z3,  Z11, K2,  K2    //;358E0E6F K2 &= (0<data_len1)             ;K2=lane_todo; Z11=0; Z3=data_len1; 1=LessThen;
+  KTESTW        K2,  K2                   //;854AE89B any lanes still todo?           ;K2=lane_todo;
+  JNZ           scan_loop                 //;5BB6DC39 yes, then continue scanning; jump if not zero (ZF = 0);
+  JMP           scan_done                 //;58F52ADF                                 ;
 
-update:
-  VPSUBD        Z2,  Z6,  Z26             //;C6E4E202 scratch_Z26 := o_data_inner_loop - str_start;Z26=scratch_Z26; Z6=o_data_inner_loop; Z2=str_start;
-  VPSUBD        Z26, Z3,  K4,  Z3         //;92C20EC9 str_len -= scratch_Z26          ;Z3=str_len; K4=active_lanes; Z26=scratch_Z26;
-  VMOVDQA32     Z6,  K4,  Z2              //;BBD0D6BD str_start := end-of-match       ;Z2=str_start; K4=active_lanes; Z6=o_data_inner_loop;
-  KORW          K4,  K1,  K1              //;13B24E89 add to lane_active              ;K1=lane_active; K4=active_lanes;
-  KANDNW        K2,  K4,  K2              //;6577B2E7 remove from lane_matched        ;K2=lane_matched; K4=active_lanes;
-no_update:
-  VPADDD        Z7,  Z25, K2,  Z25        //;1361241C o_data_outer_loop += n_bytes_data;Z25=o_data_outer_loop; K2=lane_matched; Z7=n_bytes_data;
-outer_tail:
-  VPCMPD        $1,  Z5,  Z25, K2,  K2    //;A511EAB5 K2 &= (o_data_outer_loop<o_data_end); restrict to valid offsets;K2=lane_matched; Z25=o_data_outer_loop; Z5=o_data_end; 1=LessThen;
-  KTESTW        K2,  K2                   //;2427BAAC any lanes still alive?          ;K2=lane_matched;
-  JNZ           outer_loop                //;2385D85E yes, then jump; jump if not zero (ZF = 0);
+scan_found_something:
+//; calculate skip_count in Z14
+  VPMOVM2B      K3,  Z27                  //;E74FDEBD promote 64x bit to 64x byte     ;Z27=skip_count; K3=tmp_mask;
+  VPSHUFB       Z22, Z27, Z27             //;4F265F03 reverse byte order              ;Z27=skip_count; Z22=bswap32;
+  VPLZCNTD      Z27, Z27                  //;72202F9A count leading zeros             ;Z27=skip_count;
+  VPSRLD.Z      $3,  Z27, K2,  Z27        //;6DC91432 divide by 8 yields skip_count   ;Z27=skip_count; K2=lane_todo;
+//; advance
+  VPCMPD        $4,  Z20, Z27, K2,  K3    //;2846C84C K3 := K2 & (skip_count!=4)      ;K3=tmp_mask; K2=lane_todo; Z27=skip_count; Z20=4; 4=NotEqual;
+  VPADDD        Z27, Z2,  K2,  Z2         //;63F1BACC data_off1 += skip_count         ;Z2=data_off1; K2=lane_todo; Z27=skip_count;
+  VPSUBD        Z27, Z3,  K2,  Z3         //;8F7F978F data_len1 -= skip_count         ;Z3=data_len1; K2=lane_todo; Z27=skip_count;
+//; update masks with the found stuff
+  KANDNW        K2,  K3,  K2              //;1EA864B0 lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KORW          K4,  K3,  K4              //;A69E7F6D lane_selected |= tmp_mask       ;K4=lane_selected; K3=tmp_mask;
+  JMP           scan_found_something_ret  //;169A16C1 jump back to where we came from ;
+
+scan_done:                                //;50D019A9 check if the ran out of data
+  VPCMPD        $5,  Z6,  Z3,  K4,  K4    //;FA18B497 K4 &= (data_len1>=needle_len1)  ;K4=lane_selected; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K4,  K4                   //;9AA8B932 any lanes selected?             ;K4=lane_selected;
+  JZ            next                      //;31580AD4 no, then exit; jump if zero (ZF = 1);
+//; init variables for needle_loop
+  VMOVDQA32     Z2,  Z24                  //;835001A1 data_off2 := data_off1          ;Z24=data_off2; Z2=data_off1;
+  VMOVDQA32     Z3,  Z5                   //;31B4F894 data_len2 := data_len1          ;Z5=data_len2; Z3=data_len1;
+  VMOVDQA32     Z6,  Z25                  //;E323C56F needle_len2 := needle_len1      ;Z25=needle_len2; Z6=needle_len1;
+  MOVQ          R14, R13                  //;92B163CC needle_ptr2 := needle_ptr1      ;R13=needle_ptr2; R14=needle_ptr1;
+  KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
+needle_loop:
+  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+//; load needle and apply tail masks
+  VPMINSD       Z20, Z25, Z13             //;7D091557 adv_needle := min(needle_len2, 4);Z13=adv_needle; Z25=needle_len2; Z20=4;
+  VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
+  VPANDD        Z8,  Z27, Z8              //;5669D792 remove tail from data           ;Z8=data; Z27=scratch_Z27;
+  VPANDD.BCST   (R13),Z27, Z28            //;C9F5F9B2 load needle and remove tail     ;Z28=needle; Z27=scratch_Z27; R13=needle_ptr2;
+//; compare data with needle
+  VPCMPD        $0,  Z28, Z8,  K4,  K4    //;18C82D78 K4 &= (data==needle)            ;K4=lane_selected; Z8=data; Z28=needle; 0=Eq;
+//; advance
+  VPADDD        Z13, Z24, K4,  Z24        //;3371623C data_off2 += adv_needle         ;Z24=data_off2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z5,  K4,  Z5         //;9905C7C3 data_len2 -= adv_needle         ;Z5=data_len2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z25, K4,  Z25        //;5A8AB52E needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z13=adv_needle;
+  ADDQ          $4,  R13                  //;5D0D7365 needle_ptr2 += 4                ;R13=needle_ptr2;
+//; check needle_loop conditions
+  VPCMPD        $1,  Z25, Z11, K3         //;D0432359 K3 := (0<needle_len2)           ;K3=tmp_mask; Z11=0; Z25=needle_len2; 1=LessThen;
+  KTESTW        K4,  K3                   //;88EB401D any lanes selected & elegible?  ;K3=tmp_mask; K4=lane_selected;
+  JNZ           needle_loop               //;F1339C58 yes, then retry scanning; jump if not zero (ZF = 0);
+//; update lanes
+  KORW          K1,  K4,  K1              //;123EE41E lane_active |= lane_selected    ;K1=lane_active; K4=lane_selected;
+  KANDNW        K2,  K4,  K2              //;32D9FB5F lane_todo &= ~lane_selected     ;K2=lane_todo; K4=lane_selected;
+  VMOVDQA32     Z24, K4,  Z2              //;5FA56037 data_off1 := data_off2          ;Z2=data_off1; K4=lane_selected; Z24=data_off2;
+  VMOVDQA32     Z5,  K4,  Z3              //;8536472E data_len1 := data_len2          ;Z3=data_len1; K4=lane_selected; Z5=data_len2;
+//; advance the scan-offsets with 1 and if there are any lanes still todo, scan those
+  VPADDD        Z10, Z2,  K2,  Z2         //;65A7A575 data_off1++                     ;Z2=data_off1; K2=lane_todo; Z10=1;
+  VPSUBD        Z10, Z3,  K2,  Z3         //;F7731EA7 data_len1--                     ;Z3=data_len1; K2=lane_todo; Z10=1;
+  KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
+  JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
   NEXT()
+//; #endregion bcContainsSubstrCs
 
-//; #region skipchar
-skipchar:
-//; at this point Z6 = end-of-last-match,
-//; DX = string pointer, R13 = end-of-string pointer,
-//; R11 = end-of-segment (so, start of next segment)
-  VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D98831F7 K4 &= (o_data_inner_loop<o_data_end);K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end; 1=LessThen;
-  KTESTW        K4,  K4                   //;DC4B6D58 ZF := (K4==0); CF := 1          ;K4=active_lanes;
-  JZ            no_update                 //;B6BD72EA all inner matches failed; jump if zero (ZF = 1);
-//; load next unicode code-point
-  KMOVW         K4,  K3                   //;86D47D0E copy eligible lanes             ;K3=tmp_mask; K4=active_lanes;
-  VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;F8AFC558 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z6=o_data_inner_loop;
+//; #region bcContainsSubstrCi
+TEXT bcContainsSubstrCi(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameter
+  VPBROADCASTD  8(R14),Z6                 //;F6AC18B2 bcst needle_len                 ;Z6=needle_len1; R14=needle_ptr1;
+//; restrict lanes to allow fast bail-out
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;EE56D9C0 K1 &= (data_len1>=needle_len1)  ;K1=lane_active; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+//; init needle pointer
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
+//; load constants
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VMOVDQU32     bswap32<>(SB),Z22         //;A0BC360A load constant bswap32           ;Z22=bswap32;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+//; init variables for scan_loop
+  KMOVW         K1,  K2                   //;ECF269E6 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  VPBROADCASTB  (R14),Z9                  //;54CB0C41 bcst first char from needle     ;Z9=char1_needle; R14=needle_ptr1;
+
+//; scan for the char1_needle in all lane_todo (K2) and accumulate in lane_selected (K4)
+scan_start:
+  KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
+scan_loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+//; str_to_upper: IN zmm8; OUT zmm26
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z26                  //;ADC21F45 mask with selected chars        ;Z26=scratch_Z26; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z26 //;1BB96D97                                 ;Z26=scratch_Z26; Z8=data; Z15=c_0b00100000;
+  VPCMPB        $0,  Z9,  Z26, K3         //;170C9C8F K3 := (scratch_Z26==char1_needle);K3=tmp_mask; Z26=scratch_Z26; Z9=char1_needle; 0=Eq;
+  KTESTQ        K3,  K3                   //;AD0284F2 found any char1_needle?         ;K3=tmp_mask;
+  JNZ           scan_found_something      //;4645455C yes, found something!; jump if not zero (ZF = 0);
+  VPSUBD        Z20, Z3,  K2,  Z3         //;BF319EDC data_len1 -= 4                  ;Z3=data_len1; K2=lane_todo; Z20=4;
+  VPADDD        Z20, Z2,  K2,  Z2         //;B5CB47F3 data_off1 += 4                  ;Z2=data_off1; K2=lane_todo; Z20=4;
+scan_found_something_ret:                 //;2CADDCF3 reentry code path with found char1_needle
+  VPCMPD        $1,  Z3,  Z11, K2,  K2    //;358E0E6F K2 &= (0<data_len1)             ;K2=lane_todo; Z11=0; Z3=data_len1; 1=LessThen;
+  KTESTW        K2,  K2                   //;854AE89B any lanes still todo?           ;K2=lane_todo;
+  JNZ           scan_loop                 //;5BB6DC39 yes, then continue scanning; jump if not zero (ZF = 0);
+  JMP           scan_done                 //;58F52ADF                                 ;
+
+scan_found_something:
+//; calculate skip_count in Z14
+  VPMOVM2B      K3,  Z27                  //;E74FDEBD promote 64x bit to 64x byte     ;Z27=skip_count; K3=tmp_mask;
+  VPSHUFB       Z22, Z27, Z27             //;4F265F03 reverse byte order              ;Z27=skip_count; Z22=bswap32;
+  VPLZCNTD      Z27, Z27                  //;72202F9A count leading zeros             ;Z27=skip_count;
+  VPSRLD.Z      $3,  Z27, K2,  Z27        //;6DC91432 divide by 8 yields skip_count   ;Z27=skip_count; K2=lane_todo;
+//; advance
+  VPCMPD        $4,  Z20, Z27, K2,  K3    //;2846C84C K3 := K2 & (skip_count!=4)      ;K3=tmp_mask; K2=lane_todo; Z27=skip_count; Z20=4; 4=NotEqual;
+  VPADDD        Z27, Z2,  K2,  Z2         //;63F1BACC data_off1 += skip_count         ;Z2=data_off1; K2=lane_todo; Z27=skip_count;
+  VPSUBD        Z27, Z3,  K2,  Z3         //;8F7F978F data_len1 -= skip_count         ;Z3=data_len1; K2=lane_todo; Z27=skip_count;
+//; update masks with the found stuff
+  KANDNW        K2,  K3,  K2              //;1EA864B0 lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KORW          K4,  K3,  K4              //;A69E7F6D lane_selected |= tmp_mask       ;K4=lane_selected; K3=tmp_mask;
+  JMP           scan_found_something_ret  //;169A16C1 jump back to where we came from ;
+
+scan_done:                                //;50D019A9 check if the ran out of data
+  VPCMPD        $5,  Z6,  Z3,  K4,  K4    //;FA18B497 K4 &= (data_len1>=needle_len1)  ;K4=lane_selected; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K4,  K4                   //;9AA8B932 any lanes selected?             ;K4=lane_selected;
+  JZ            next                      //;31580AD4 no, then exit; jump if zero (ZF = 1);
+//; init variables for needle_loop
+  VMOVDQA32     Z2,  Z24                  //;835001A1 data_off2 := data_off1          ;Z24=data_off2; Z2=data_off1;
+  VMOVDQA32     Z3,  Z5                   //;31B4F894 data_len2 := data_len1          ;Z5=data_len2; Z3=data_len1;
+  VMOVDQA32     Z6,  Z25                  //;E323C56F needle_len2 := needle_len1      ;Z25=needle_len2; Z6=needle_len1;
+  MOVQ          R14, R13                  //;92B163CC needle_ptr2 := needle_ptr1      ;R13=needle_ptr2; R14=needle_ptr1;
+  KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
+needle_loop:
+  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+//; str_to_upper: IN zmm8; OUT zmm26
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z26                  //;ADC21F45 mask with selected chars        ;Z26=scratch_Z26; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z26 //;1BB96D97                                 ;Z26=scratch_Z26; Z8=data; Z15=c_0b00100000;
+//; load needle and apply tail masks
+  VPMINSD       Z20, Z25, Z13             //;7D091557 adv_needle := min(needle_len2, 4);Z13=adv_needle; Z25=needle_len2; Z20=4;
+  VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
+  VPANDD        Z26, Z27, Z8              //;5669D792 remove tail from data           ;Z8=data; Z27=scratch_Z27; Z26=scratch_Z26;
+  VPANDD.BCST   (R13),Z27, Z28            //;C9F5F9B2 load needle and remove tail     ;Z28=needle; Z27=scratch_Z27; R13=needle_ptr2;
+//; compare data with needle
+  VPCMPD        $0,  Z28, Z8,  K4,  K4    //;18C82D78 K4 &= (data==needle)            ;K4=lane_selected; Z8=data; Z28=needle; 0=Eq;
+//; advance
+  VPADDD        Z13, Z24, K4,  Z24        //;3371623C data_off2 += adv_needle         ;Z24=data_off2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z5,  K4,  Z5         //;9905C7C3 data_len2 -= adv_needle         ;Z5=data_len2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z25, K4,  Z25        //;5A8AB52E needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z13=adv_needle;
+  ADDQ          $4,  R13                  //;5D0D7365 needle_ptr2 += 4                ;R13=needle_ptr2;
+//; check needle_loop conditions
+  VPCMPD        $1,  Z25, Z11, K3         //;D0432359 K3 := (0<needle_len2)           ;K3=tmp_mask; Z11=0; Z25=needle_len2; 1=LessThen;
+  KTESTW        K4,  K3                   //;88EB401D any lanes selected & elegible?  ;K3=tmp_mask; K4=lane_selected;
+  JNZ           needle_loop               //;F1339C58 yes, then retry scanning; jump if not zero (ZF = 0);
+//; update lanes
+  KORW          K1,  K4,  K1              //;123EE41E lane_active |= lane_selected    ;K1=lane_active; K4=lane_selected;
+  KANDNW        K2,  K4,  K2              //;32D9FB5F lane_todo &= ~lane_selected     ;K2=lane_todo; K4=lane_selected;
+  VMOVDQA32     Z24, K4,  Z2              //;5FA56037 data_off1 := data_off2          ;Z2=data_off1; K4=lane_selected; Z24=data_off2;
+  VMOVDQA32     Z5,  K4,  Z3              //;8536472E data_len1 := data_len2          ;Z3=data_len1; K4=lane_selected; Z5=data_len2;
+//; advance the scan-offsets with 1 and if there are any lanes still todo, scan those
+  VPADDD        Z10, Z2,  K2,  Z2         //;65A7A575 data_off1++                     ;Z2=data_off1; K2=lane_todo; Z10=1;
+  VPSUBD        Z10, Z3,  K2,  Z3         //;F7731EA7 data_len1--                     ;Z3=data_len1; K2=lane_todo; Z10=1;
+  KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
+  JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcContainsSubstrCi
+
+//; #region bcContainsSubstrUTF8Ci
+TEXT bcContainsSubstrUTF8Ci(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameter
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
+  MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
+  VPBROADCASTD  CX,  Z6                   //;A2E19B3A bcst needle_len                 ;Z6=needle_len1; CX=needle_len1;
+//; restrict lanes to allow fast bail-out
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;EE56D9C0 K1 &= (data_len1>=needle_len1)  ;K1=lane_active; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+//; load constants
+  VMOVDQU32     bswap32<>(SB),Z22         //;A0BC360A load constant bswap32           ;Z22=bswap32;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+//; init variables for scan_loop
+  KMOVW         K1,  K2                   //;ECF269E6 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  VPBROADCASTD  4(R14),Z12                //;54CB0C41 bcst alt1 from needle           ;Z12=char1_needle; R14=needle_ptr1;
+  VPBROADCASTD  8(R14),Z13                //;EE0650F7 bcst alt2 from needle           ;Z13=char2_needle; R14=needle_ptr1;
+  VPBROADCASTD  12(R14),Z14               //;879514D3 bcst alt3 from needle           ;Z14=char3_needle; R14=needle_ptr1;
+  VPBROADCASTD  16(R14),Z15               //;A0DE73B0 bcst alt4 from needle           ;Z15=char4_needle; R14=needle_ptr1;
+  ADDQ          $20, R14                  //;B6596F07 needle_ptr1 += 20               ;R14=needle_ptr1;
+//; scan for the char1_needle in all lane_todo (K2) and accumulate in lane_selected (K4)
+scan_start:
+  KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
+scan_loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+//; get tail mask
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
+  VPERMD        Z21, Z26, Z27             //;68FECBA0 get n_bytes_data                ;Z27=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPERMD        Z18, Z27, Z26             //;6D661522 get tail_mask (data)            ;Z26=scratch_Z26; Z27=n_bytes_data; Z18=tail_mask_data;
+//; advance data for lanes that are still todo
+  VPADDD        Z27, Z2,  K2,  Z2         //;FBFD5F0A data_off1 += n_bytes_data       ;Z2=data_off1; K2=lane_todo; Z27=n_bytes_data;
+  VPSUBD        Z27, Z3,  K2,  Z3         //;28FE1865 data_len1 -= n_bytes_data       ;Z3=data_len1; K2=lane_todo; Z27=n_bytes_data;
+  VPANDD.Z      Z8,  Z26, K2,  Z8         //;6EEB77B0 mask data                       ;Z8=data; K2=lane_todo; Z26=scratch_Z26;
+//; compare with 4 code-points
+  VPCMPD        $0,  Z12, Z8,  K2,  K3    //;6D1378C0 K3 := K2 & (data==char1_needle) ;K3=tmp_mask; K2=lane_todo; Z8=data; Z12=char1_needle; 0=Eq;
+  VPCMPD        $0,  Z13, Z8,  K2,  K5    //;FC651EE0 K5 := K2 & (data==char2_needle) ;K5=scratch_K5; K2=lane_todo; Z8=data; Z13=char2_needle; 0=Eq;
+  VPCMPD        $0,  Z14, Z8,  K2,  K6    //;D9FE5534 K6 := K2 & (data==char3_needle) ;K6=scratch_K6; K2=lane_todo; Z8=data; Z14=char3_needle; 0=Eq;
+  VPCMPD        $0,  Z15, Z8,  K2,  K0    //;D65545B1 K0 := K2 & (data==char4_needle) ;K0=scratch_K0; K2=lane_todo; Z8=data; Z15=char4_needle; 0=Eq;
+  KORW          K3,  K5,  K3              //;A903EE01 tmp_mask |= scratch_K5          ;K3=tmp_mask; K5=scratch_K5;
+  KORW          K3,  K6,  K3              //;31B58C73 tmp_mask |= scratch_K6          ;K3=tmp_mask; K6=scratch_K6;
+  KORW          K3,  K0,  K3              //;A20F03C1 tmp_mask |= scratch_K0          ;K3=tmp_mask; K0=scratch_K0;
+//; update lanes with the found stuff
+  KANDNW        K2,  K3,  K2              //;1EA864B0 lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KORW          K4,  K3,  K4              //;A69E7F6D lane_selected |= tmp_mask       ;K4=lane_selected; K3=tmp_mask;
+//; determine if we need to continue searching for a matching start code-point
+  VPCMPD        $5,  Z6,  Z3,  K2,  K2    //;30061EEA K2 &= (data_len1>=needle_len1)  ;K2=lane_todo; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K2,  K2                   //;67E2F74E any lanes still todo?           ;K2=lane_todo;
+  JNZ           scan_loop                 //;677C9F60 jump if not zero (ZF = 0)       ;
+
+//; we are done scanning for the first code-point; test if there are more
+  VMOVDQA32     Z2,  Z4                   //;835001A1 data_off2 := data_off1          ;Z4=data_off2; Z2=data_off1;
+  VMOVDQA32     Z3,  Z5                   //;31B4F894 data_len2 := data_len1          ;Z5=data_len2; Z3=data_len1;
+  CMPL          CX,  $1                   //;2BBD50B8 more than 1 char in needle?     ;CX=needle_len1;
+  JZ            needle_loop_done          //;AFDB3970 jump if zero (ZF = 1)           ;
+//; test if there is there is sufficient data
+  VPCMPD        $6,  Z11, Z3,  K4,  K4    //;C0CF3FA2 K4 &= (data_len1>0)             ;K4=lane_selected; Z3=data_len1; Z11=0; 6=Greater;
+  KTESTW        K4,  K4                   //;9AA8B932 any lanes selected?             ;K4=lane_selected;
+  JZ            next                      //;31580AD4 no, then exit; jump if zero (ZF = 1);
+//; init variables for needle_loop
+  VPSUBD        Z10, Z6,  Z7              //;75A315B7 needle_len2 := needle_len1 - 1  ;Z7=needle_len2; Z6=needle_len1; Z10=1;
+  MOVQ          R14, R13                  //;92B163CC needle_ptr2 := needle_ptr1      ;R13=needle_ptr2; R14=needle_ptr1;
+  KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
+needle_loop:
+  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
+  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z4=data_off2;
+//; advance needle
+  VPSUBD        Z10, Z7,  K4,  Z7         //;CAFCD045 needle_len2--                   ;Z7=needle_len2; K4=lane_selected; Z10=1;
 //; mask tail data
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPADDD        Z7,  Z6,  K4,  Z6         //;8E6EFFC6 o_data_inner_loop += n_bytes_data;Z6=o_data_inner_loop; K4=active_lanes; Z7=n_bytes_data;
-  VPCMPD        $1,  Z5,  Z6,  K4,  K4    //;D69EC427 K4 &= (o_data_inner_loop<o_data_end); unset lanes we have used up;K4=active_lanes; Z6=o_data_inner_loop; Z5=o_data_end; 1=LessThen;
-//; set up registers as if we were entering 'inner_tail' from the header of 'inner_loop'
-  LEAQ          4(CX),R13                 //;F5CF92D4 init seg_ptr (skip seg_length char);R13=seg_start_ptr; CX=seg_end_ptr;
-  MOVL          (CX),CX                   //;72E449D6 load seg_length                 ;CX=seg_index; CX=seg_end_ptr;
-  XORL          R14, R14                  //;51BB9559 reset bytes_consumed            ;R14=bytes_consumed;
-  TESTL         CX,  CX                   //;113BD3AB any bytes left in segment?      ;CX=seg_index;
-  JZ            reset_and_skip            //;8DE787B9 yes, keep skipping; jump if zero (ZF = 1);
-  VPBROADCASTD  CX,  Z23                  //;E14BC512 bcst seg_length                 ;Z23=seg_length; CX=seg_index;
-  JMP           inner_tail                //;D3658066                                 ;
-reset_and_skip:
-  SHLQ          $4,  CX                   //;39BAB93A seg_end_ptr <<= 4               ;CX=seg_end_ptr;
-  ADDQ          R13, CX                   //;E03E8BC7 seg_end_ptr += seg_start_ptr    ;CX=seg_end_ptr; R13=seg_start_ptr;
-  JMP           skipchar                  //;43A5A433                                 ;
-//; #endregion skipchar
-//; #endregion bcMatchpatUTF8Ci
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
+  VPERMD        Z21, Z26, Z27             //;68FECBA0 get n_bytes_data                ;Z27=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPERMD        Z18, Z27, Z26             //;488C6CD8 get tail_mask (data)            ;Z26=scratch_Z26; Z27=n_bytes_data; Z18=tail_mask_data;
+  VPANDD.Z      Z8,  Z26, K2,  Z8         //;E750B0E2 mask data                       ;Z8=data; K2=lane_todo; Z26=scratch_Z26;
+  VPADDD        Z27, Z4,  K4,  Z4         //;4879FB55 data_off2 += n_bytes_data       ;Z4=data_off2; K4=lane_selected; Z27=n_bytes_data;
+  VPSUBD        Z27, Z5,  K4,  Z5         //;77CC472F data_len2 -= n_bytes_data       ;Z5=data_len2; K4=lane_selected; Z27=n_bytes_data;
+//; compare with 4 code-points
+  VPCMPD.BCST   $0,  (R13),Z8,  K4,  K3   //;15105C54 K3 := K4 & (data==[needle_ptr2]);K3=tmp_mask; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  VPCMPD.BCST   $0,  4(R13),Z8,  K4,  K5  //;9C52A210 K5 := K4 & (data==[needle_ptr2+4]);K5=scratch_K5; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  VPCMPD.BCST   $0,  8(R13),Z8,  K4,  K6  //;A8B34D3C K6 := K4 & (data==[needle_ptr2+8]);K6=scratch_K6; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  VPCMPD.BCST   $0,  12(R13),Z8,  K4,  K0  //;343DD0F2 K0 := K4 & (data==[needle_ptr2+12]);K0=scratch_K0; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  ADDQ          $16, R13                  //;5D0D7365 needle_ptr2 += 16               ;R13=needle_ptr2;
+  KORW          K3,  K5,  K3              //;1125C81D tmp_mask |= scratch_K5          ;K3=tmp_mask; K5=scratch_K5;
+  KORW          K3,  K6,  K3              //;DCB6AFAD tmp_mask |= scratch_K6          ;K3=tmp_mask; K6=scratch_K6;
+  KORW          K3,  K0,  K4              //;65791592 lane_selected := scratch_K0 | tmp_mask;K4=lane_selected; K0=scratch_K0; K3=tmp_mask;
+//; advance to the next code-point
+  VPCMPD        $6,  Z11, Z7,  K4,  K3    //;1185F8E2 K3 := K4 & (needle_len2>0)      ;K3=tmp_mask; K4=lane_selected; Z7=needle_len2; Z11=0; 6=Greater;
+  VPCMPD        $2,  Z5,  Z7,  K4,  K4    //;7C50EFFB K4 &= (needle_len2<=data_len2)  ;K4=lane_selected; Z7=needle_len2; Z5=data_len2; 2=LessEq;
+  KTESTW        K3,  K3                   //;98CB0D8B ZF := (K3==0); CF := 1          ;K3=tmp_mask;
+  JNZ           needle_loop               //;E6065236 jump if not zero (ZF = 0)       ;
+//; update lanes
+needle_loop_done:
+  KORW          K1,  K4,  K1              //;123EE41E lane_active |= lane_selected    ;K1=lane_active; K4=lane_selected;
+  KANDNW        K2,  K4,  K2              //;32D9FB5F lane_todo &= ~lane_selected     ;K2=lane_todo; K4=lane_selected;
+  VMOVDQA32     Z4,  K4,  Z2              //;5FA56037 data_off1 := data_off2          ;Z2=data_off1; K4=lane_selected; Z4=data_off2;
+  VMOVDQA32     Z5,  K4,  Z3              //;8536472E data_len1 := data_len2          ;Z3=data_len1; K4=lane_selected; Z5=data_len2;
+//; if there are any lanes still todo, scan those
+  KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
+  JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcContainsSubstrUTF8Ci
+
+//; #region bcContainsPatternCs
+TEXT bcContainsPatternCs(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameter
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
+  MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
+//; restrict lanes to allow fast bail-out
+  VPBROADCASTD  CX,  Z6                   //;A2E19B3A bcst needle_len                 ;Z6=needle_len1; CX=needle_len1;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;EE56D9C0 K1 &= (data_len1>=needle_len1)  ;K1=lane_active; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+//; init needle and wildcard pointers
+  ADDQ          $4,  R14                  //;B1A93760 needle_ptr1 += 4                ;R14=needle_ptr1;
+  MOVQ          R14, R15                  //;1B1C0A5D wildcard_ptr1 := needle_ptr1    ;R15=wildcard_ptr1; R14=needle_ptr1;
+  ADDQ          CX,  R15                  //;FC062E0E wildcard_ptr1 += needle_len1    ;R15=wildcard_ptr1; CX=needle_len1;
+//; load constants
+  VMOVDQU32     bswap32<>(SB),Z22         //;A0BC360A load constant bswap32           ;Z22=bswap32;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+//; init variables for scan_loop
+  KMOVW         K1,  K2                   //;ECF269E6 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  VPBROADCASTB  (R14),Z9                  //;54CB0C41 bcst first char from needle     ;Z9=char1_needle; R14=needle_ptr1;
+
+//; scan for the char1_needle in all lane_todo (K2) and accumulate in lane_selected (K4)
+scan_start:
+  KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
+scan_loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPCMPB        $0,  Z9,  Z8,  K3         //;170C9C8F K3 := (data==char1_needle)      ;K3=tmp_mask; Z8=data; Z9=char1_needle; 0=Eq;
+  KTESTQ        K3,  K3                   //;AD0284F2 found any char1_needle?         ;K3=tmp_mask;
+  JNZ           scan_found_something      //;4645455C yes, found something!; jump if not zero (ZF = 0);
+  VPSUBD        Z20, Z3,  K2,  Z3         //;BF319EDC data_len1 -= 4                  ;Z3=data_len1; K2=lane_todo; Z20=4;
+  VPADDD        Z20, Z2,  K2,  Z2         //;B5CB47F3 data_off1 += 4                  ;Z2=data_off1; K2=lane_todo; Z20=4;
+scan_found_something_ret:                 //;2CADDCF3 reentry code path with found char1_needle
+  VPCMPD        $1,  Z3,  Z11, K2,  K2    //;358E0E6F K2 &= (0<data_len1)             ;K2=lane_todo; Z11=0; Z3=data_len1; 1=LessThen;
+  KTESTW        K2,  K2                   //;854AE89B any lanes still todo?           ;K2=lane_todo;
+  JNZ           scan_loop                 //;5BB6DC39 yes, then continue scanning; jump if not zero (ZF = 0);
+  JMP           scan_done                 //;58F52ADF                                 ;
+
+scan_found_something:
+//; calculate skip_count in Z14
+  VPMOVM2B      K3,  Z27                  //;E74FDEBD promote 64x bit to 64x byte     ;Z27=skip_count; K3=tmp_mask;
+  VPSHUFB       Z22, Z27, Z27             //;4F265F03 reverse byte order              ;Z27=skip_count; Z22=bswap32;
+  VPLZCNTD      Z27, Z27                  //;72202F9A count leading zeros             ;Z27=skip_count;
+  VPSRLD.Z      $3,  Z27, K2,  Z27        //;6DC91432 divide by 8 yields skip_count   ;Z27=skip_count; K2=lane_todo;
+//; advance
+  VPCMPD        $4,  Z20, Z27, K2,  K3    //;2846C84C K3 := K2 & (skip_count!=4)      ;K3=tmp_mask; K2=lane_todo; Z27=skip_count; Z20=4; 4=NotEqual;
+  VPADDD        Z27, Z2,  K2,  Z2         //;63F1BACC data_off1 += skip_count         ;Z2=data_off1; K2=lane_todo; Z27=skip_count;
+  VPSUBD        Z27, Z3,  K2,  Z3         //;8F7F978F data_len1 -= skip_count         ;Z3=data_len1; K2=lane_todo; Z27=skip_count;
+//; update masks with the found stuff
+  KANDNW        K2,  K3,  K2              //;1EA864B0 lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KORW          K4,  K3,  K4              //;A69E7F6D lane_selected |= tmp_mask       ;K4=lane_selected; K3=tmp_mask;
+  JMP           scan_found_something_ret  //;169A16C1 jump back to where we came from ;
+
+scan_done:                                //;50D019A9 check if the ran out of data
+  VPCMPD        $5,  Z6,  Z3,  K4,  K4    //;FA18B497 K4 &= (data_len1>=needle_len1)  ;K4=lane_selected; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K4,  K4                   //;9AA8B932 any lanes selected?             ;K4=lane_selected;
+  JZ            next                      //;31580AD4 no, then exit; jump if zero (ZF = 1);
+//; init variables for needle_loop
+  VMOVDQA32     Z2,  Z24                  //;835001A1 data_off2 := data_off1          ;Z24=data_off2; Z2=data_off1;
+  VMOVDQA32     Z3,  Z5                   //;31B4F894 data_len2 := data_len1          ;Z5=data_len2; Z3=data_len1;
+  VMOVDQA32     Z6,  Z25                  //;E323C56F needle_len2 := needle_len1      ;Z25=needle_len2; Z6=needle_len1;
+  MOVQ          R14, R13                  //;92B163CC needle_ptr2 := needle_ptr1      ;R13=needle_ptr2; R14=needle_ptr1;
+  MOVQ          R15, BX                   //;76E7C8F2 wildcard_ptr2 := wildcard_ptr1  ;BX=wildcard_ptr2; R15=wildcard_ptr1;
+  KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
+needle_loop:
+  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+//; load needle and apply tail masks
+  VPMINSD       Z20, Z25, Z13             //;7D091557 adv_needle := min(needle_len2, 4);Z13=adv_needle; Z25=needle_len2; Z20=4;
+  VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
+  VPANDD        Z8,  Z27, Z8              //;5669D792 remove tail from data           ;Z8=data; Z27=scratch_Z27;
+  VPANDD.BCST   (R13),Z27, Z28            //;C9F5F9B2 load needle and remove tail     ;Z28=needle; Z27=scratch_Z27; R13=needle_ptr2;
+  VPBROADCASTD  (BX),Z27                  //;911BC5F9 load wildcard                   ;Z27=wildcard; BX=wildcard_ptr2;
+//; test if a unicode code-points matches a wildcard
+  VPANDD.Z      Z27, Z8,  K4,  Z26        //;7A4C6E61 scratch_Z26 := data & wildcard  ;Z26=scratch_Z26; K4=lane_selected; Z8=data; Z27=wildcard;
+  VPMOVB2M      Z26, K3                   //;4B555080                                 ;K3=tmp_mask; Z26=scratch_Z26;
+  KTESTQ        K3,  K3                   //;14D8E8C5 ZF := (K3==0); CF := 1          ;K3=tmp_mask;
+  JNZ           unicode_match             //;C94028E8 jump if not zero (ZF = 0)       ;
+//; compare data with needle
+//;    Z27|Z8 |Z28  => Z28
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      0
+//;     1 | 0 | 0      1
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      0
+//;     1 | 1 | 1      0
+  VPTERNLOGD    $0b00010100,Z27, Z8,  Z28 //;A64A5655 compute masked equality         ;Z28=needle; Z8=data; Z27=wildcard;
+  VPCMPD        $0,  Z11, Z28, K4,  K4    //;D2F6A32B K4 &= (needle==0)               ;K4=lane_selected; Z28=needle; Z11=0; 0=Eq;
+//; advance
+  VPADDD        Z13, Z24, K4,  Z24        //;3371623C data_off2 += adv_needle         ;Z24=data_off2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z5,  K4,  Z5         //;9905C7C3 data_len2 -= adv_needle         ;Z5=data_len2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z25, K4,  Z25        //;5A8AB52E needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z13=adv_needle;
+  ADDQ          $4,  R13                  //;5D0D7365 needle_ptr2 += 4                ;R13=needle_ptr2;
+  ADDQ          $4,  BX                   //;8A43B166 wildcard_ptr2 += 4              ;BX=wildcard_ptr2;
+unicode_match_ret:
+//; check needle_loop conditions
+  VPCMPD        $1,  Z25, Z11, K3         //;D0432359 K3 := (0<needle_len2)           ;K3=tmp_mask; Z11=0; Z25=needle_len2; 1=LessThen;
+  VPCMPD        $2,  Z5,  Z11, K4,  K4    //;1F3D9F3F K4 &= (0<=data_len2)            ;K4=lane_selected; Z11=0; Z5=data_len2; 2=LessEq;
+  KTESTW        K4,  K3                   //;88EB401D any lanes selected & elegible?  ;K3=tmp_mask; K4=lane_selected;
+  JNZ           needle_loop               //;F1339C58 yes, then retry scanning; jump if not zero (ZF = 0);
+//; update lanes
+  KORW          K1,  K4,  K1              //;123EE41E lane_active |= lane_selected    ;K1=lane_active; K4=lane_selected;
+  KANDNW        K2,  K4,  K2              //;32D9FB5F lane_todo &= ~lane_selected     ;K2=lane_todo; K4=lane_selected;
+  VMOVDQA32     Z24, K4,  Z2              //;5FA56037 data_off1 := data_off2          ;Z2=data_off1; K4=lane_selected; Z24=data_off2;
+  VMOVDQA32     Z5,  K4,  Z3              //;8536472E data_len1 := data_len2          ;Z3=data_len1; K4=lane_selected; Z5=data_len2;
+//; advance the scan-offsets with 1 and if there are any lanes still todo, scan those
+  VPADDD        Z10, Z2,  K2,  Z2         //;65A7A575 data_off1++                     ;Z2=data_off1; K2=lane_todo; Z10=1;
+  VPSUBD        Z10, Z3,  K2,  Z3         //;F7731EA7 data_len1--                     ;Z3=data_len1; K2=lane_todo; Z10=1;
+  KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
+  JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
+next:
+  NEXT()
+unicode_match:                            //;B1B3AECE a wildcard has matched with a unicode code-point
+//; with the wildcard mask, get the number of bytes BEFORE the first wildcard (0, 1, 2, 3)
+//; at that position get the number of bytes of the code-point, add these two numbers
+//; calculate advance in Z26
+  VPSHUFB       Z22, Z27, Z26             //;3F4659FF reverse byte order              ;Z26=scratch_Z26; Z27=wildcard; Z22=bswap32;
+  VPLZCNTD      Z26, Z27                  //;7DB21322 count leading zeros             ;Z27=zero_count; Z26=scratch_Z26;
+  VPSRLD        $3,  Z27, Z19             //;D7D76764 divide by 8 yields advance      ;Z19=advance; Z27=zero_count;
+//; get number of bytes in next code-point
+  VPSRLD        $4,  Z8,  Z26             //;E6FE9C45 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
+  VPSRLVD       Z27, Z26, Z26             //;F99F8396 scratch_Z26 >>= zero_count      ;Z26=scratch_Z26; Z27=zero_count;
+  VPERMD        Z21, Z26, Z26             //;DE232505 get n_bytes_code_point          ;Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPADDD        Z19, Z26, Z13             //;D11A93E8 adv_data := scratch_Z26 + advance;Z13=adv_data; Z26=scratch_Z26; Z19=advance;
+//; we are only going to test the number of bytes BEFORE the first wildcard
+  VPERMD        Z18, Z19, Z26             //;9A394869 get tail_mask data              ;Z26=scratch_Z26; Z19=advance; Z18=tail_mask_data;
+  VPANDD        Z26, Z8,  Z8              //;C5A7FCBA data &= scratch_Z26             ;Z8=data; Z26=scratch_Z26;
+  VPANDD        Z26, Z28, Z28             //;51343840 needle &= scratch_Z26           ;Z28=needle; Z26=scratch_Z26;
+  VPCMPD        $0,  Z8,  Z28, K4,  K4    //;13A45EF9 K4 &= (needle==data)            ;K4=lane_selected; Z28=needle; Z8=data; 0=Eq;
+//; advance
+  VPADDD        Z10, Z19, Z19             //;BFB2C3DE adv_needle := advance + 1       ;Z19=adv_needle; Z19=advance; Z10=1;
+  VPSUBD        Z19, Z25, K4,  Z25        //;B3CDC39C needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z19=adv_needle;
+  VPADDD        Z13, Z24, K4,  Z24        //;AE5AA4CF data_off2 += adv_data           ;Z24=data_off2; K4=lane_selected; Z13=adv_data;
+  VPSUBD        Z13, Z5,  K4,  Z5         //;DBC41158 data_len2 -= adv_data           ;Z5=data_len2; K4=lane_selected; Z13=adv_data;
+  VMOVD         X19, R12                  //;B10A9DE5 extract GPR adv_needle          ;R12=scratch; Z19=adv_needle;
+  ADDQ          R12, R13                  //;34EA6A74 needle_ptr2 += scratch          ;R13=needle_ptr2; R12=scratch;
+  ADDQ          R12, BX                   //;8FD33A77 wildcard_ptr2 += scratch        ;BX=wildcard_ptr2; R12=scratch;
+  JMP           unicode_match_ret         //;D24820C1                                 ;
+//; #endregion bcContainsPatternCs
+
+//; #region bcContainsPatternCi
+TEXT bcContainsPatternCi(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameter
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
+  MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
+//; restrict lanes to allow fast bail-out
+  VPBROADCASTD  CX,  Z6                   //;A2E19B3A bcst needle_len                 ;Z6=needle_len1; CX=needle_len1;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;EE56D9C0 K1 &= (data_len1>=needle_len1)  ;K1=lane_active; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+//; init needle and wildcard pointers
+  ADDQ          $4,  R14                  //;B1A93760 needle_ptr1 += 4                ;R14=needle_ptr1;
+  MOVQ          R14, R15                  //;1B1C0A5D wildcard_ptr1 := needle_ptr1    ;R15=wildcard_ptr1; R14=needle_ptr1;
+  ADDQ          CX,  R15                  //;FC062E0E wildcard_ptr1 += needle_len1    ;R15=wildcard_ptr1; CX=needle_len1;
+//; load constants
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VMOVDQU32     bswap32<>(SB),Z22         //;A0BC360A load constant bswap32           ;Z22=bswap32;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+//; init variables for scan_loop
+  KMOVW         K1,  K2                   //;ECF269E6 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  VPBROADCASTB  (R14),Z9                  //;54CB0C41 bcst first char from needle     ;Z9=char1_needle; R14=needle_ptr1;
+
+//; scan for the char1_needle in all lane_todo (K2) and accumulate in lane_selected (K4)
+scan_start:
+  KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
+scan_loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+//; str_to_upper: IN zmm8; OUT zmm26
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z26                  //;ADC21F45 mask with selected chars        ;Z26=scratch_Z26; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z26 //;1BB96D97                                 ;Z26=scratch_Z26; Z8=data; Z15=c_0b00100000;
+  VPCMPB        $0,  Z9,  Z26, K3         //;170C9C8F K3 := (scratch_Z26==char1_needle);K3=tmp_mask; Z26=scratch_Z26; Z9=char1_needle; 0=Eq;
+  KTESTQ        K3,  K3                   //;AD0284F2 found any char1_needle?         ;K3=tmp_mask;
+  JNZ           scan_found_something      //;4645455C yes, found something!; jump if not zero (ZF = 0);
+  VPSUBD        Z20, Z3,  K2,  Z3         //;BF319EDC data_len1 -= 4                  ;Z3=data_len1; K2=lane_todo; Z20=4;
+  VPADDD        Z20, Z2,  K2,  Z2         //;B5CB47F3 data_off1 += 4                  ;Z2=data_off1; K2=lane_todo; Z20=4;
+scan_found_something_ret:                 //;2CADDCF3 reentry code path with found char1_needle
+  VPCMPD        $1,  Z3,  Z11, K2,  K2    //;358E0E6F K2 &= (0<data_len1)             ;K2=lane_todo; Z11=0; Z3=data_len1; 1=LessThen;
+  KTESTW        K2,  K2                   //;854AE89B any lanes still todo?           ;K2=lane_todo;
+  JNZ           scan_loop                 //;5BB6DC39 yes, then continue scanning; jump if not zero (ZF = 0);
+  JMP           scan_done                 //;58F52ADF                                 ;
+
+scan_found_something:
+//; calculate skip_count in Z14
+  VPMOVM2B      K3,  Z27                  //;E74FDEBD promote 64x bit to 64x byte     ;Z27=skip_count; K3=tmp_mask;
+  VPSHUFB       Z22, Z27, Z27             //;4F265F03 reverse byte order              ;Z27=skip_count; Z22=bswap32;
+  VPLZCNTD      Z27, Z27                  //;72202F9A count leading zeros             ;Z27=skip_count;
+  VPSRLD.Z      $3,  Z27, K2,  Z27        //;6DC91432 divide by 8 yields skip_count   ;Z27=skip_count; K2=lane_todo;
+//; advance
+  VPCMPD        $4,  Z20, Z27, K2,  K3    //;2846C84C K3 := K2 & (skip_count!=4)      ;K3=tmp_mask; K2=lane_todo; Z27=skip_count; Z20=4; 4=NotEqual;
+  VPADDD        Z27, Z2,  K2,  Z2         //;63F1BACC data_off1 += skip_count         ;Z2=data_off1; K2=lane_todo; Z27=skip_count;
+  VPSUBD        Z27, Z3,  K2,  Z3         //;8F7F978F data_len1 -= skip_count         ;Z3=data_len1; K2=lane_todo; Z27=skip_count;
+//; update masks with the found stuff
+  KANDNW        K2,  K3,  K2              //;1EA864B0 lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KORW          K4,  K3,  K4              //;A69E7F6D lane_selected |= tmp_mask       ;K4=lane_selected; K3=tmp_mask;
+  JMP           scan_found_something_ret  //;169A16C1 jump back to where we came from ;
+
+scan_done:                                //;50D019A9 check if the ran out of data
+  VPCMPD        $5,  Z6,  Z3,  K4,  K4    //;FA18B497 K4 &= (data_len1>=needle_len1)  ;K4=lane_selected; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K4,  K4                   //;9AA8B932 any lanes selected?             ;K4=lane_selected;
+  JZ            next                      //;31580AD4 no, then exit; jump if zero (ZF = 1);
+//; init variables for needle_loop
+  VMOVDQA32     Z2,  Z24                  //;835001A1 data_off2 := data_off1          ;Z24=data_off2; Z2=data_off1;
+  VMOVDQA32     Z3,  Z5                   //;31B4F894 data_len2 := data_len1          ;Z5=data_len2; Z3=data_len1;
+  VMOVDQA32     Z6,  Z25                  //;E323C56F needle_len2 := needle_len1      ;Z25=needle_len2; Z6=needle_len1;
+  MOVQ          R14, R13                  //;92B163CC needle_ptr2 := needle_ptr1      ;R13=needle_ptr2; R14=needle_ptr1;
+  MOVQ          R15, BX                   //;76E7C8F2 wildcard_ptr2 := wildcard_ptr1  ;BX=wildcard_ptr2; R15=wildcard_ptr1;
+  KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
+needle_loop:
+  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+//; str_to_upper: IN zmm8; OUT zmm26
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
+//; Z15 is 64 bytes with 0b00100000
+//;    Z15|Z8 |Z26 => Z26
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      1
+//;     1 | 0 | 0      0
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      1
+//;     1 | 1 | 1      0     <= change from lower to upper
+  VPMOVM2B      K3,  Z26                  //;ADC21F45 mask with selected chars        ;Z26=scratch_Z26; K3=tmp_mask;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z26 //;1BB96D97                                 ;Z26=scratch_Z26; Z8=data; Z15=c_0b00100000;
+//; load needle and apply tail masks
+  VPMINSD       Z20, Z25, Z13             //;7D091557 adv_needle := min(needle_len2, 4);Z13=adv_needle; Z25=needle_len2; Z20=4;
+  VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
+  VPANDD        Z26, Z27, Z8              //;5669D792 remove tail from data           ;Z8=data; Z27=scratch_Z27; Z26=scratch_Z26;
+  VPANDD.BCST   (R13),Z27, Z28            //;C9F5F9B2 load needle and remove tail     ;Z28=needle; Z27=scratch_Z27; R13=needle_ptr2;
+  VPBROADCASTD  (BX),Z27                  //;911BC5F9 load wildcard                   ;Z27=wildcard; BX=wildcard_ptr2;
+//; test if a unicode code-points matches a wildcard
+  VPANDD.Z      Z27, Z8,  K4,  Z26        //;7A4C6E61 scratch_Z26 := data & wildcard  ;Z26=scratch_Z26; K4=lane_selected; Z8=data; Z27=wildcard;
+  VPMOVB2M      Z26, K3                   //;4B555080                                 ;K3=tmp_mask; Z26=scratch_Z26;
+  KTESTQ        K3,  K3                   //;14D8E8C5 ZF := (K3==0); CF := 1          ;K3=tmp_mask;
+  JNZ           unicode_match             //;C94028E8 jump if not zero (ZF = 0)       ;
+//; compare data with needle
+//;    Z27|Z8 |Z28  => Z28
+//;     0 | 0 | 0      0
+//;     0 | 0 | 1      0
+//;     0 | 1 | 0      1
+//;     0 | 1 | 1      0
+//;     1 | 0 | 0      1
+//;     1 | 0 | 1      0
+//;     1 | 1 | 0      0
+//;     1 | 1 | 1      0
+  VPTERNLOGD    $0b00010100,Z27, Z8,  Z28 //;A64A5655 compute masked equality         ;Z28=needle; Z8=data; Z27=wildcard;
+  VPCMPD        $0,  Z11, Z28, K4,  K4    //;D2F6A32B K4 &= (needle==0)               ;K4=lane_selected; Z28=needle; Z11=0; 0=Eq;
+//; advance
+  VPADDD        Z13, Z24, K4,  Z24        //;3371623C data_off2 += adv_needle         ;Z24=data_off2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z5,  K4,  Z5         //;9905C7C3 data_len2 -= adv_needle         ;Z5=data_len2; K4=lane_selected; Z13=adv_needle;
+  VPSUBD        Z13, Z25, K4,  Z25        //;5A8AB52E needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z13=adv_needle;
+  ADDQ          $4,  R13                  //;5D0D7365 needle_ptr2 += 4                ;R13=needle_ptr2;
+  ADDQ          $4,  BX                   //;8A43B166 wildcard_ptr2 += 4              ;BX=wildcard_ptr2;
+unicode_match_ret:
+//; check needle_loop conditions
+  VPCMPD        $1,  Z25, Z11, K3         //;D0432359 K3 := (0<needle_len2)           ;K3=tmp_mask; Z11=0; Z25=needle_len2; 1=LessThen;
+  VPCMPD        $2,  Z5,  Z11, K4,  K4    //;1F3D9F3F K4 &= (0<=data_len2)            ;K4=lane_selected; Z11=0; Z5=data_len2; 2=LessEq;
+  KTESTW        K4,  K3                   //;88EB401D any lanes selected & elegible?  ;K3=tmp_mask; K4=lane_selected;
+  JNZ           needle_loop               //;F1339C58 yes, then retry scanning; jump if not zero (ZF = 0);
+//; update lanes
+  KORW          K1,  K4,  K1              //;123EE41E lane_active |= lane_selected    ;K1=lane_active; K4=lane_selected;
+  KANDNW        K2,  K4,  K2              //;32D9FB5F lane_todo &= ~lane_selected     ;K2=lane_todo; K4=lane_selected;
+  VMOVDQA32     Z24, K4,  Z2              //;5FA56037 data_off1 := data_off2          ;Z2=data_off1; K4=lane_selected; Z24=data_off2;
+  VMOVDQA32     Z5,  K4,  Z3              //;8536472E data_len1 := data_len2          ;Z3=data_len1; K4=lane_selected; Z5=data_len2;
+//; advance the scan-offsets with 1 and if there are any lanes still todo, scan those
+  VPADDD        Z10, Z2,  K2,  Z2         //;65A7A575 data_off1++                     ;Z2=data_off1; K2=lane_todo; Z10=1;
+  VPSUBD        Z10, Z3,  K2,  Z3         //;F7731EA7 data_len1--                     ;Z3=data_len1; K2=lane_todo; Z10=1;
+  KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
+  JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
+next:
+  NEXT()
+unicode_match:                            //;B1B3AECE a wildcard has matched with a unicode code-point
+//; with the wildcard mask, get the number of bytes BEFORE the first wildcard (0, 1, 2, 3)
+//; at that position get the number of bytes of the code-point, add these two numbers
+//; calculate advance in Z26
+  VPSHUFB       Z22, Z27, Z26             //;3F4659FF reverse byte order              ;Z26=scratch_Z26; Z27=wildcard; Z22=bswap32;
+  VPLZCNTD      Z26, Z27                  //;7DB21322 count leading zeros             ;Z27=zero_count; Z26=scratch_Z26;
+  VPSRLD        $3,  Z27, Z19             //;D7D76764 divide by 8 yields advance      ;Z19=advance; Z27=zero_count;
+//; get number of bytes in next code-point
+  VPSRLD        $4,  Z8,  Z26             //;E6FE9C45 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
+  VPSRLVD       Z27, Z26, Z26             //;F99F8396 scratch_Z26 >>= zero_count      ;Z26=scratch_Z26; Z27=zero_count;
+  VPERMD        Z21, Z26, Z26             //;DE232505 get n_bytes_code_point          ;Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPADDD        Z19, Z26, Z13             //;D11A93E8 adv_data := scratch_Z26 + advance;Z13=adv_data; Z26=scratch_Z26; Z19=advance;
+//; we are only going to test the number of bytes BEFORE the first wildcard
+  VPERMD        Z18, Z19, Z26             //;9A394869 get tail_mask data              ;Z26=scratch_Z26; Z19=advance; Z18=tail_mask_data;
+  VPANDD        Z26, Z8,  Z8              //;C5A7FCBA data &= scratch_Z26             ;Z8=data; Z26=scratch_Z26;
+  VPANDD        Z26, Z28, Z28             //;51343840 needle &= scratch_Z26           ;Z28=needle; Z26=scratch_Z26;
+  VPCMPD        $0,  Z8,  Z28, K4,  K4    //;13A45EF9 K4 &= (needle==data)            ;K4=lane_selected; Z28=needle; Z8=data; 0=Eq;
+//; advance
+  VPADDD        Z10, Z19, Z19             //;BFB2C3DE adv_needle := advance + 1       ;Z19=adv_needle; Z19=advance; Z10=1;
+  VPSUBD        Z19, Z25, K4,  Z25        //;B3CDC39C needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z19=adv_needle;
+  VPADDD        Z13, Z24, K4,  Z24        //;AE5AA4CF data_off2 += adv_data           ;Z24=data_off2; K4=lane_selected; Z13=adv_data;
+  VPSUBD        Z13, Z5,  K4,  Z5         //;DBC41158 data_len2 -= adv_data           ;Z5=data_len2; K4=lane_selected; Z13=adv_data;
+  VMOVD         X19, R12                  //;B10A9DE5 extract GPR adv_needle          ;R12=scratch; Z19=adv_needle;
+  ADDQ          R12, R13                  //;34EA6A74 needle_ptr2 += scratch          ;R13=needle_ptr2; R12=scratch;
+  ADDQ          R12, BX                   //;8FD33A77 wildcard_ptr2 += scratch        ;BX=wildcard_ptr2; R12=scratch;
+  JMP           unicode_match_ret         //;D24820C1                                 ;
+//; #endregion bcContainsPatternCi
+
+//; #region bcContainsPatternUTF8Ci
+TEXT bcContainsPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
+  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+//; load parameter
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
+  MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
+  VPBROADCASTD  CX,  Z6                   //;A2E19B3A bcst needle_len                 ;Z6=needle_len1; CX=needle_len1;
+//; restrict lanes to allow fast bail-out
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;EE56D9C0 K1 &= (data_len1>=needle_len1)  ;K1=lane_active; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+  MOVQ          CX,  R8                   //;A83664AE scratch := needle_len1          ;R8=scratch; CX=needle_len1;
+  SHLQ          $4,  R8                   //;EDF8DF09 scratch <<= 4                   ;R8=scratch;
+  LEAQ          6(R14)(R8*1),R15          //;1EF280F2 wildcard_ptr1 := needle_ptr1 + scratch + 6;R15=wildcard_ptr1; R14=needle_ptr1; R8=scratch;
+//; load constants
+  VMOVDQU32     bswap32<>(SB),Z22         //;A0BC360A load constant bswap32           ;Z22=bswap32;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+//; init variables for scan_loop
+  KMOVW         K1,  K2                   //;ECF269E6 lane_todo := lane_active        ;K2=lane_todo; K1=lane_active;
+  KXORW         K1,  K1,  K1              //;6F6437B4 lane_active := 0                ;K1=lane_active;
+  VPBROADCASTD  4(R14),Z12                //;54CB0C41 bcst alt1 from needle           ;Z12=char1_needle; R14=needle_ptr1;
+  VPBROADCASTD  8(R14),Z13                //;EE0650F7 bcst alt2 from needle           ;Z13=char2_needle; R14=needle_ptr1;
+  VPBROADCASTD  12(R14),Z14               //;879514D3 bcst alt3 from needle           ;Z14=char3_needle; R14=needle_ptr1;
+  VPBROADCASTD  16(R14),Z15               //;A0DE73B0 bcst alt4 from needle           ;Z15=char4_needle; R14=needle_ptr1;
+  ADDQ          $20, R14                  //;B6596F07 needle_ptr1 += 20               ;R14=needle_ptr1;
+//; scan for the char1_needle in all lane_todo (K2) and accumulate in lane_selected (K4)
+scan_start:
+  KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
+scan_loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+//; get tail mask
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
+  VPERMD        Z21, Z26, Z27             //;68FECBA0 get n_bytes_data                ;Z27=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPERMD        Z18, Z27, Z26             //;6D661522 get tail_mask (data)            ;Z26=scratch_Z26; Z27=n_bytes_data; Z18=tail_mask_data;
+//; advance data for lanes that are still todo
+  VPADDD        Z27, Z2,  K2,  Z2         //;FBFD5F0A data_off1 += n_bytes_data       ;Z2=data_off1; K2=lane_todo; Z27=n_bytes_data;
+  VPSUBD        Z27, Z3,  K2,  Z3         //;28FE1865 data_len1 -= n_bytes_data       ;Z3=data_len1; K2=lane_todo; Z27=n_bytes_data;
+  VPANDD.Z      Z8,  Z26, K2,  Z8         //;6EEB77B0 mask data                       ;Z8=data; K2=lane_todo; Z26=scratch_Z26;
+//; compare with 4 code-points
+  VPCMPD        $0,  Z12, Z8,  K2,  K3    //;6D1378C0 K3 := K2 & (data==char1_needle) ;K3=tmp_mask; K2=lane_todo; Z8=data; Z12=char1_needle; 0=Eq;
+  VPCMPD        $0,  Z13, Z8,  K2,  K5    //;FC651EE0 K5 := K2 & (data==char2_needle) ;K5=scratch_K5; K2=lane_todo; Z8=data; Z13=char2_needle; 0=Eq;
+  VPCMPD        $0,  Z14, Z8,  K2,  K6    //;D9FE5534 K6 := K2 & (data==char3_needle) ;K6=scratch_K6; K2=lane_todo; Z8=data; Z14=char3_needle; 0=Eq;
+  VPCMPD        $0,  Z15, Z8,  K2,  K0    //;D65545B1 K0 := K2 & (data==char4_needle) ;K0=scratch_K0; K2=lane_todo; Z8=data; Z15=char4_needle; 0=Eq;
+  KORW          K3,  K5,  K3              //;A903EE01 tmp_mask |= scratch_K5          ;K3=tmp_mask; K5=scratch_K5;
+  KORW          K3,  K6,  K3              //;31B58C73 tmp_mask |= scratch_K6          ;K3=tmp_mask; K6=scratch_K6;
+  KORW          K3,  K0,  K3              //;A20F03C1 tmp_mask |= scratch_K0          ;K3=tmp_mask; K0=scratch_K0;
+//; update lanes with the found stuff
+  KANDNW        K2,  K3,  K2              //;1EA864B0 lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
+  KORW          K4,  K3,  K4              //;A69E7F6D lane_selected |= tmp_mask       ;K4=lane_selected; K3=tmp_mask;
+//; determine if we need to continue searching for a matching start code-point
+  VPCMPD        $5,  Z6,  Z3,  K2,  K2    //;30061EEA K2 &= (data_len1>=needle_len1)  ;K2=lane_todo; Z3=data_len1; Z6=needle_len1; 5=GreaterEq;
+  KTESTW        K2,  K2                   //;67E2F74E any lanes still todo?           ;K2=lane_todo;
+  JNZ           scan_loop                 //;677C9F60 jump if not zero (ZF = 0)       ;
+
+//; we are done scanning for the first code-point; test if there are more
+  VMOVDQA32     Z2,  Z4                   //;835001A1 data_off2 := data_off1          ;Z4=data_off2; Z2=data_off1;
+  VMOVDQA32     Z3,  Z5                   //;31B4F894 data_len2 := data_len1          ;Z5=data_len2; Z3=data_len1;
+  CMPL          CX,  $1                   //;2BBD50B8 more than 1 char in needle?     ;CX=needle_len1;
+  JZ            needle_loop_done          //;AFDB3970 jump if zero (ZF = 1)           ;
+//; test if there is there is sufficient data
+  VPCMPD        $6,  Z11, Z3,  K4,  K4    //;C0CF3FA2 K4 &= (data_len1>0)             ;K4=lane_selected; Z3=data_len1; Z11=0; 6=Greater;
+  KTESTW        K4,  K4                   //;9AA8B932 any lanes selected?             ;K4=lane_selected;
+  JZ            next                      //;31580AD4 no, then exit; jump if zero (ZF = 1);
+//; init variables for needle_loop
+  VPSUBD        Z10, Z6,  Z7              //;75A315B7 needle_len2 := needle_len1 - 1  ;Z7=needle_len2; Z6=needle_len1; Z10=1;
+  MOVQ          R14, R13                  //;92B163CC needle_ptr2 := needle_ptr1      ;R13=needle_ptr2; R14=needle_ptr1;
+  MOVQ          R15, BX                   //;15EE7900 wildcard_ptr2 := wildcard_ptr1  ;BX=wildcard_ptr2; R15=wildcard_ptr1;
+  KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
+needle_loop:
+  KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
+  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z4=data_off2;
+//; advance needle
+  VPSUBD        Z10, Z7,  K4,  Z7         //;CAFCD045 needle_len2--                   ;Z7=needle_len2; K4=lane_selected; Z10=1;
+//; mask tail data
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
+  VPERMD        Z21, Z26, Z27             //;68FECBA0 get n_bytes_data                ;Z27=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPERMD        Z18, Z27, Z26             //;488C6CD8 get tail_mask (data)            ;Z26=scratch_Z26; Z27=n_bytes_data; Z18=tail_mask_data;
+  VPANDD.Z      Z8,  Z26, K2,  Z8         //;E750B0E2 mask data                       ;Z8=data; K2=lane_todo; Z26=scratch_Z26;
+  VPADDD        Z27, Z4,  K4,  Z4         //;4879FB55 data_off2 += n_bytes_data       ;Z4=data_off2; K4=lane_selected; Z27=n_bytes_data;
+  VPSUBD        Z27, Z5,  K4,  Z5         //;77CC472F data_len2 -= n_bytes_data       ;Z5=data_len2; K4=lane_selected; Z27=n_bytes_data;
+//; compare with 4 code-points
+  VPCMPD.BCST   $0,  (R13),Z8,  K4,  K3   //;15105C54 K3 := K4 & (data==[needle_ptr2]);K3=tmp_mask; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  VPCMPD.BCST   $0,  4(R13),Z8,  K4,  K5  //;9C52A210 K5 := K4 & (data==[needle_ptr2+4]);K5=scratch_K5; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  VPCMPD.BCST   $0,  8(R13),Z8,  K4,  K6  //;A8B34D3C K6 := K4 & (data==[needle_ptr2+8]);K6=scratch_K6; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  VPCMPD.BCST   $0,  12(R13),Z8,  K4,  K0  //;343DD0F2 K0 := K4 & (data==[needle_ptr2+12]);K0=scratch_K0; K4=lane_selected; Z8=data; R13=needle_ptr2; 0=Eq;
+  ADDQ          $16, R13                  //;5D0D7365 needle_ptr2 += 16               ;R13=needle_ptr2;
+  KORW          K3,  K5,  K3              //;1125C81D tmp_mask |= scratch_K5          ;K3=tmp_mask; K5=scratch_K5;
+  KMOVW         (BX),K5                   //;3CD32160 load wildcard                   ;K5=scratch_K5; BX=wildcard_ptr2;
+  ADDQ          $2,  BX                   //;B9CC45F2 wildcard_ptr2 += 2              ;BX=wildcard_ptr2;
+  KANDW         K5,  K4,  K5              //;F6A913D2 scratch_K5 &= lane_selected     ;K5=scratch_K5; K4=lane_selected;
+  KORW          K3,  K6,  K3              //;DCB6AFAD tmp_mask |= scratch_K6          ;K3=tmp_mask; K6=scratch_K6;
+  KORW          K3,  K0,  K4              //;65791592 lane_selected := scratch_K0 | tmp_mask;K4=lane_selected; K0=scratch_K0; K3=tmp_mask;
+  KORW          K4,  K5,  K4              //;4FE420F5 lane_selected |= scratch_K5     ;K4=lane_selected; K5=scratch_K5;
+//; advance to the next code-point
+  VPCMPD        $6,  Z11, Z7,  K4,  K3    //;1185F8E2 K3 := K4 & (needle_len2>0)      ;K3=tmp_mask; K4=lane_selected; Z7=needle_len2; Z11=0; 6=Greater;
+  VPCMPD        $2,  Z5,  Z7,  K4,  K4    //;7C50EFFB K4 &= (needle_len2<=data_len2)  ;K4=lane_selected; Z7=needle_len2; Z5=data_len2; 2=LessEq;
+  KTESTW        K3,  K3                   //;98CB0D8B ZF := (K3==0); CF := 1          ;K3=tmp_mask;
+  JNZ           needle_loop               //;E6065236 jump if not zero (ZF = 0)       ;
+//; update lanes
+needle_loop_done:
+  KORW          K1,  K4,  K1              //;123EE41E lane_active |= lane_selected    ;K1=lane_active; K4=lane_selected;
+  KANDNW        K2,  K4,  K2              //;32D9FB5F lane_todo &= ~lane_selected     ;K2=lane_todo; K4=lane_selected;
+  VMOVDQA32     Z4,  K4,  Z2              //;5FA56037 data_off1 := data_off2          ;Z2=data_off1; K4=lane_selected; Z4=data_off2;
+  VMOVDQA32     Z5,  K4,  Z3              //;8536472E data_len1 := data_len2          ;Z3=data_len1; K4=lane_selected; Z5=data_len2;
+//; if there are any lanes still todo, scan those
+  KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
+  JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
+next:
+  NEXT()
+//; #endregion bcContainsPatternUTF8Ci
 
 //; #region bcIsSubnetOfIP4
 //; Determine whether the string at Z2:Z3 is an IP address between the 4 provided bytewise min/max values

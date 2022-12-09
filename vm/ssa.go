@@ -157,15 +157,21 @@ const (
 	sStrTrimWsLeft    // String trim whitespace left
 	sStrTrimWsRight   // String trim whitespace right
 
-	sStrMatchPatternCs       // String match pattern case-sensitive
-	sStrMatchPatternCi       // String match pattern case-insensitive
-	sStrMatchPatternUTF8Ci   // String match pattern case-insensitive
 	sStrContainsPrefixCs     // String contains prefix case-sensitive
 	sStrContainsPrefixCi     // String contains prefix case-insensitive
 	sStrContainsPrefixUTF8Ci // String contains prefix case-insensitive
+
 	sStrContainsSuffixCs     // String contains suffix case-sensitive
 	sStrContainsSuffixCi     // String contains suffix case-insensitive
 	sStrContainsSuffixUTF8Ci // String contains suffix case-insensitive
+
+	sStrContainsSubstrCs     // String contains substr case-sensitive
+	sStrContainsSubstrCi     // String contains substr case-insensitive
+	sStrContainsSubstrUTF8Ci // String contains substr case-insensitive
+
+	sStrContainsPatternCs     // String contains pattern case-sensitive
+	sStrContainsPatternCi     // String contains pattern case-insensitive
+	sStrContainsPatternUTF8Ci // String contains pattern case-insensitive
 
 	sIsSubnetOfIP4 // IP subnet matching
 
@@ -788,11 +794,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sStrTrimCharLeft:  {text: "trim_char_left", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charLeft},
 	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charRight},
 
-	// s, k = matchpat s, k, $const
-	sStrMatchPatternCs:     {text: "match_pat_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opMatchpatCs},
-	sStrMatchPatternCi:     {text: "match_pat_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opMatchpatCi},
-	sStrMatchPatternUTF8Ci: {text: "match_pat_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opMatchpatUTF8Ci},
-
 	// s, k = contains_prefix_cs s, k, $const
 	sStrContainsPrefixCs:     {text: "contains_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
 	sStrContainsPrefixCi:     {text: "contains_prefix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCi},
@@ -802,6 +803,16 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sStrContainsSuffixCs:     {text: "contains_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
 	sStrContainsSuffixCi:     {text: "contains_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
 	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
+
+	// s, k = contains_substr_cs s, k, $const
+	sStrContainsSubstrCs:     {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
+	sStrContainsSubstrCi:     {text: "contains_substr_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
+	sStrContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrUTF8Ci},
+
+	// s, k = contains_pattern_cs s, k, $const
+	sStrContainsPatternCs:     {text: "contains_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCs},
+	sStrContainsPatternCi:     {text: "contains_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCi},
+	sStrContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternUTF8Ci},
 
 	// ip matching
 	sIsSubnetOfIP4: {text: "is_subnet_of_ip4", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opIsSubnetOfIP4},
@@ -2057,16 +2068,21 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 	}
 
 	if right.op == sliteral { // ideally, we can compare against an immediate
+		needle, _ := right.imm.(string)
+		if !caseSensitive && !stringext.HasCaseSensitiveChar(needle) {
+			// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+			caseSensitive = true
+		}
 		if caseSensitive {
-			return p.ssa2imm(sStrCmpEqCs, left, left, right.imm)
+			enc := p.Constant(stringext.EncodeEqualStringCS(needle)).imm
+			return p.ssa2imm(sStrCmpEqCs, left, left, enc)
 		}
-		rightStr, _ := right.imm.(string)
-		if stringext.HasNtnString(rightStr) {
-			rightExt := p.Constant(stringext.GenNeedleExt(rightStr, false))
-			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, rightExt.imm)
+		if stringext.HasNtnString(needle) { // needle has non-trivial normalization
+			enc := p.Constant(stringext.EncodeEqualStringUTF8CI(needle)).imm
+			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, enc)
 		}
-		right = p.Constant(stringext.NormalizeStringASCIIOnlyString(rightStr))
-		return p.ssa2imm(sStrCmpEqCi, left, left, right.imm)
+		enc := p.Constant(stringext.EncodeEqualStringCI(needle)).imm
+		return p.ssa2imm(sStrCmpEqCi, left, left, enc)
 	}
 	v := p.val()
 	v.errf("not yet supported comparison %v", ssainfo[left.op].rettype)
@@ -2162,6 +2178,7 @@ func isTimestampImmediate(imm interface{}) bool {
 		return false
 	}
 }
+
 func tobool(imm interface{}) bool {
 	switch v := imm.(type) {
 	case bool:
@@ -2472,15 +2489,20 @@ func (p *prog) HasPrefix(str *value, prefix string, caseSensitive bool) *value {
 	if prefix == "" {
 		return str
 	}
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(prefix) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
 	if caseSensitive {
-		return p.ssa2imm(sStrContainsPrefixCs, str, p.mask(str), p.Constant(prefix).imm)
+		enc := p.Constant(stringext.EncodeContainsPrefixCS(prefix)).imm
+		return p.ssa2imm(sStrContainsPrefixCs, str, p.mask(str), enc)
 	}
-	prefix = stringext.NormalizeString(prefix)
-	if stringext.HasNtnString(prefix) {
-		prefixExt := p.Constant(stringext.GenNeedleExt(prefix, false))
-		return p.ssa2imm(sStrContainsPrefixUTF8Ci, str, p.mask(str), prefixExt.imm)
+	if stringext.HasNtnString(prefix) { // prefix has non-trivial normalization
+		enc := p.Constant(stringext.EncodeContainsPrefixUTF8CI(prefix)).imm
+		return p.ssa2imm(sStrContainsPrefixUTF8Ci, str, p.mask(str), enc)
 	}
-	return p.ssa2imm(sStrContainsPrefixCi, str, p.mask(str), p.Constant(prefix).imm)
+	enc := p.Constant(stringext.EncodeContainsPrefixCI(prefix)).imm
+	return p.ssa2imm(sStrContainsPrefixCi, str, p.mask(str), enc)
 }
 
 // HasSuffix returns true when str contains the provided suffix; false otherwise
@@ -2489,15 +2511,20 @@ func (p *prog) HasSuffix(str *value, suffix string, caseSensitive bool) *value {
 	if suffix == "" {
 		return str
 	}
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(suffix) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
 	if caseSensitive {
-		return p.ssa2imm(sStrContainsSuffixCs, str, p.mask(str), p.Constant(suffix).imm)
+		enc := p.Constant(stringext.EncodeContainsSuffixCS(suffix)).imm
+		return p.ssa2imm(sStrContainsSuffixCs, str, p.mask(str), enc)
 	}
-	suffix = stringext.NormalizeString(suffix)
-	if stringext.HasNtnString(suffix) {
-		suffixExt := p.Constant(stringext.GenNeedleExt(suffix, true))
-		return p.ssa2imm(sStrContainsSuffixUTF8Ci, str, p.mask(str), suffixExt.imm)
+	if stringext.HasNtnString(suffix) { // suffix has non-trivial normalization
+		enc := p.Constant(stringext.EncodeContainsSuffixUTF8CI(suffix)).imm
+		return p.ssa2imm(sStrContainsSuffixUTF8Ci, str, p.mask(str), enc)
 	}
-	return p.ssa2imm(sStrContainsSuffixCi, str, p.mask(str), p.Constant(suffix).imm)
+	enc := p.Constant(stringext.EncodeContainsSuffixCI(suffix)).imm
+	return p.ssa2imm(sStrContainsSuffixCi, str, p.mask(str), enc)
 }
 
 // Contains returns whether the given value
@@ -2512,16 +2539,20 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 	if needle == "" {
 		return str
 	}
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(needle) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
 	if caseSensitive {
-		enc := stringext.SegmentToPattern(needle, false)
-		return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), p.Constant(enc).imm)
+		enc := p.Constant(stringext.EncodeContainsSubstrCS(needle)).imm
+		return p.ssa2imm(sStrContainsSubstrCs, str, p.mask(str), enc)
 	}
-	if stringext.HasNtnString(needle) {
-		enc := stringext.GenPatternExt([]string{needle}) // only one single segment
-		return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), p.Constant(enc).imm)
+	if stringext.HasNtnString(needle) { // needle has non-trivial normalization
+		enc := p.Constant(stringext.EncodeContainsSubstrUTF8CI(needle)).imm
+		return p.ssa2imm(sStrContainsSubstrUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := stringext.SegmentToPattern(needle, true)
-	return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), p.Constant(enc).imm)
+	enc := p.Constant(stringext.EncodeContainsSubstrCI(needle)).imm
+	return p.ssa2imm(sStrContainsSubstrCi, str, p.mask(str), enc)
 }
 
 // IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
@@ -2599,63 +2630,48 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 		if len(pattern) == 0 {
 			return str
 		}
-		pat := []rune(pattern)
+		patternRune := []rune(pattern)
 
 		// we can't pass a wildcard as the first
 		// or last segment to the assembly code;
 		// that needs to be handled at a higher level
-		if (stringext.IndexRuneEscape(pat, wc, escape) == 0) ||
-			(stringext.LastIndexRuneEscape(pat, wc, escape) == len(pat)-1) {
+		if (stringext.IndexRuneEscape(patternRune, wc, escape) == 0) ||
+			(stringext.LastIndexRuneEscape(patternRune, wc, escape) == len(patternRune)-1) {
 			panic("internal error: bad pattern-matching string")
 		}
+		// remove the escape character
+		pattern = strings.ReplaceAll(pattern, string(escape), "")
+		patternRune = []rune(pattern)
+		wildcard := make([]bool, len(patternRune))
+		hasWildCard := false
 
-		// each segment of the pattern is encoded
-		// as a 1-byte length, and implicitly each
-		// segment is delimited with a '?' operation
-
-		patternEnc := ""
-		hasNtn := false // segment has non-trivial normalization
-		segments := make([]string, 0)
-
-		for len(pat) > 0 {
-			i := stringext.IndexRuneEscape(pat, wc, escape)
-			if i == -1 {
-				i = len(pat)
+		for i := 0; i < len(patternRune); i++ {
+			if patternRune[i] == wc {
+				wildcard[i] = true
+				hasWildCard = true
 			}
-			if i > 255 {
-				// NOTE: will be fixed in separate MR
-				panic("pattern too long")
-			}
-			// remove escape character
-			segment := strings.ReplaceAll(string(pat[:i]), string(escape), "")
-
-			if !caseSensitive {
-				segment = stringext.NormalizeString(segment)
-				hasNtn = hasNtn || stringext.HasNtnString(segment)
-			}
-			patternEnc += string(byte(i)) + segment
-			segments = append(segments, segment)
-
-			if i == len(pat) {
-				break
-			}
-			pat = pat[i+1:] // plus 1 to skip the '?'; it is implied
+		}
+		if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern) {
+			// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+			caseSensitive = true
+		}
+		if !hasWildCard {
+			return p.Contains(str, pattern, caseSensitive)
 		}
 		if caseSensitive {
-			enc := p.Constant(patternEnc).imm
-			return p.ssa2imm(sStrMatchPatternCs, str, p.mask(str), enc)
+			enc := p.Constant(stringext.EncodeContainsPatternCS(pattern, wildcard)).imm
+			return p.ssa2imm(sStrContainsPatternCs, str, p.mask(str), enc)
 		}
-		if hasNtn { // segment has non-trivial normalization
-			enc := p.Constant(stringext.GenPatternExt(segments)).imm
-			return p.ssa2imm(sStrMatchPatternUTF8Ci, str, p.mask(str), enc)
+		if stringext.HasNtnString(pattern) { // pattern has non-trivial normalization
+			enc := p.Constant(stringext.EncodeContainsPatternUTF8CI(pattern, wildcard)).imm
+			return p.ssa2imm(sStrContainsPatternUTF8Ci, str, p.mask(str), enc)
 		}
-		enc := p.Constant(patternEnc).imm
-		return p.ssa2imm(sStrMatchPatternCi, str, p.mask(str), enc)
+		enc := p.Constant(stringext.EncodeContainsPatternCI(pattern, wildcard)).imm
+		return p.ssa2imm(sStrContainsPatternCi, str, p.mask(str), enc)
 	}
 
 	// matches '<start>*<middle0>...*<middleN>*<end>'
 	pattern := func(startStr string, middle []string, endStr string) *value {
-
 		start := []rune(startStr)
 		end := []rune(endStr)
 
@@ -2746,27 +2762,29 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 	if !caseSensitive { // Bytecode for case-insensitive comparing expects that needles and patterns are in normalized (UPPER) case
 		expr = stringext.NormalizeString(expr)
 	}
-	lefti := stringext.IndexRuneEscape([]rune(expr), ks, escape)
+	exprRune := []rune(expr)
+
+	lefti := stringext.IndexRuneEscape(exprRune, ks, escape)
 	if lefti == -1 {
 		return pattern(expr, nil, "")
 	}
-	left := expr[:lefti]
-	expr = expr[lefti+1:]
+	left := exprRune[:lefti]
+	exprRune = exprRune[lefti+1:]
 
 	var middle []string
-	for len(expr) > 0 {
-		segi := stringext.IndexRuneEscape([]rune(expr), ks, escape)
-		if segi == -1 {
-			return pattern(left, middle, expr)
+
+	for len(exprRune) > 0 {
+		runeIdx := stringext.IndexRuneEscape(exprRune, ks, escape)
+		if runeIdx == -1 {
+			return pattern(string(left), middle, string(exprRune))
 		}
-		seg := expr[:segi]
-		expr = expr[segi+1:]
-		if len(seg) == 0 {
-			continue
+		middlePat := exprRune[:runeIdx]
+		exprRune = exprRune[runeIdx+1:]
+		if len(middlePat) > 0 {
+			middle = append(middle, string(middlePat))
 		}
-		middle = append(middle, seg)
 	}
-	return pattern(left, middle, "")
+	return pattern(string(left), middle, "")
 }
 
 // RegexMatch matches 'str' as a string against regex

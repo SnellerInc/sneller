@@ -18,7 +18,6 @@ package stringext
 import (
 	"encoding/binary"
 	"fmt"
-	"regexp"
 	"unicode"
 	"unicode/utf8"
 )
@@ -38,91 +37,6 @@ func runeToUtf8Array(r rune) []byte {
 	buf := make([]byte, 4)
 	utf8.EncodeRune(buf, r)
 	return buf
-}
-
-func stringAlternatives(str string, nAlternatives int, reversed bool) (upper, alt []byte) {
-	nRunes := utf8.RuneCountInString(str)
-	alt = make([]byte, 0) // alt = alternative list of runes encoded as utf8 code-points stored in 32bits int
-	upperRunes, altArr := alternativeString(str)
-
-	if reversed {
-		upper = []byte(reverseString(string(upperRunes)))
-	} else {
-		upper = []byte(string(upperRunes))
-	}
-
-	var alt1, alt2, alt3, alt4 []rune
-	switch len(altArr) {
-	case 1:
-		alt1 = altArr[0]
-		alt2 = altArr[0]
-		alt3 = altArr[0]
-		alt4 = altArr[0]
-	case 2:
-		alt1 = altArr[0]
-		alt2 = altArr[1]
-		alt3 = altArr[1]
-		alt4 = altArr[1]
-	case 3:
-		alt1 = altArr[0]
-		alt2 = altArr[1]
-		alt3 = altArr[2]
-		alt4 = altArr[2]
-	case 4:
-		alt1 = altArr[0]
-		alt2 = altArr[1]
-		alt3 = altArr[2]
-		alt4 = altArr[3]
-	}
-
-	if nAlternatives == 1 {
-		for i := 0; i < nRunes; i++ {
-			if reversed {
-				alt = append(runeToUtf8Array(alt1[i]), alt...)
-			} else {
-				alt = append(alt, runeToUtf8Array(alt1[i])...)
-			}
-		}
-	} else if nAlternatives == 2 {
-		for i := 0; i < nRunes; i++ {
-			if reversed {
-				alt = append(runeToUtf8Array(alt1[i]), alt...)
-				alt = append(runeToUtf8Array(alt2[i]), alt...)
-			} else {
-				alt = append(alt, runeToUtf8Array(alt1[i])...)
-				alt = append(alt, runeToUtf8Array(alt2[i])...)
-			}
-		}
-	} else if nAlternatives == 3 {
-		for i := 0; i < nRunes; i++ {
-			if reversed {
-				alt = append(runeToUtf8Array(alt1[i]), alt...)
-				alt = append(runeToUtf8Array(alt2[i]), alt...)
-				alt = append(runeToUtf8Array(alt3[i]), alt...)
-			} else {
-				alt = append(alt, runeToUtf8Array(alt1[i])...)
-				alt = append(alt, runeToUtf8Array(alt2[i])...)
-				alt = append(alt, runeToUtf8Array(alt3[i])...)
-			}
-		}
-	} else if nAlternatives == 4 {
-		for i := 0; i < nRunes; i++ {
-			if reversed {
-				alt = append(runeToUtf8Array(alt1[i]), alt...)
-				alt = append(runeToUtf8Array(alt2[i]), alt...)
-				alt = append(runeToUtf8Array(alt3[i]), alt...)
-				alt = append(runeToUtf8Array(alt4[i]), alt...)
-			} else {
-				alt = append(alt, runeToUtf8Array(alt1[i])...)
-				alt = append(alt, runeToUtf8Array(alt2[i])...)
-				alt = append(alt, runeToUtf8Array(alt3[i])...)
-				alt = append(alt, runeToUtf8Array(alt4[i])...)
-			}
-		}
-	} else {
-		panic("not implemented")
-	}
-	return
 }
 
 // alternativeRune gives all case-insensitive alternatives for the provided rune
@@ -224,20 +138,8 @@ func to4ByteArray(value int) []byte {
 	return buf
 }
 
-// reverseString reverses the provided string
-func reverseString(s string) string { // nicked from https://stackoverflow.com/questions/1752414/how-to-reverse-a-string-in-go
-	size := len(s)
-	buf := make([]byte, size)
-	for start := 0; start < size; {
-		r, n := utf8.DecodeRuneInString(s[start:])
-		start += n
-		utf8.EncodeRune(buf[size-start:], r)
-	}
-	return string(buf)
-}
-
-// GenNeedleExt generates an extended string representation needed for UTF8 ci comparisons
-func GenNeedleExt(needle string, reversed bool) string {
+// genNeedleUTF8Ci generates an extended string representation needed for UTF8 ci comparisons
+func genNeedleUTF8Ci(needle string, reversed bool) string {
 
 	stringAlternatives := func(str string, reversed bool) (alt []byte) {
 		nRunes := utf8.RuneCountInString(str)
@@ -310,24 +212,6 @@ func GenNeedleExt(needle string, reversed bool) string {
 	result = append(result, to4ByteArray(utf8.RuneCountInString(needle))...)
 	result = append(result, stringAlternatives(needle, reversed)...)
 	return string(result)
-}
-
-// GenPatternExt generates an extended pattern representation needed for UTF8 ci comparisons
-func GenPatternExt(segments []string) string {
-	const nAlternatives = 4
-	nBytes := 0
-	for _, segment := range segments {
-		nBytes += 4 // for the length of the segment
-		nBytes += nAlternatives * 4 * utf8.RuneCountInString(segment)
-	}
-	result := make([]byte, 0)
-	for _, segment := range segments {
-		nRunes := utf8.RuneCountInString(segment)
-		result = append(result, to4ByteArray(nRunes)...)
-		_, alt := stringAlternatives(segment, nAlternatives, false)
-		result = append(result, alt...)
-	}
-	return string(result[0:nBytes])
 }
 
 // EncodeFuzzyNeedleUnicode encode a needle (string) for fuzzy unicode comparisons
@@ -418,107 +302,179 @@ func HasNtnString(str string) bool {
 	return false
 }
 
+// HasCaseSensitiveChar returns true when the provided string contains a case-sensitive char
+func HasCaseSensitiveChar(str string) bool {
+	for _, r := range str {
+		if r != unicode.SimpleFold(r) {
+			return true
+		}
+	}
+	return false
+}
+
 func EqualRuneFold(a, b rune) bool {
 	return NormalizeRune(a) == NormalizeRune(b)
 }
 
-func PatternToSegments(pattern string) []string {
-	var result []string
-	for len(pattern) > 0 {
-		segmentLength := pattern[0] //NOTE: 1byte segment length
-		if int(segmentLength) >= len(pattern) {
-			panic(fmt.Sprintf("invalid segment length %v (char %v)", segmentLength, string(rune(segmentLength))))
-		}
-		result = append(result, pattern[1:segmentLength+1])
-		pattern = pattern[segmentLength+1:]
+type StrCmpType int
+
+const (
+	CS      StrCmpType = iota
+	CiASCII            // case-insensitive on ASCII only
+	CiUTF8             // case-insensitive all unicode code-points
+)
+
+func (t StrCmpType) String() string {
+	switch t {
+	case CS:
+		return "CS"
+	case CiASCII:
+		return "CI_ASCII"
+	case CiUTF8:
+		return "CI_UTF8"
 	}
-	return result
+	return "??"
 }
 
-func SegmentToPattern(segment string, normalize bool) (pattern string) {
-	if normalize {
-		segment = NormalizeString(segment)
-	}
-	return string(byte(len(segment))) + segment
-}
+func stringAlternatives(str string) (alt []byte) {
+	nRunes := utf8.RuneCountInString(str)
+	alt = make([]byte, 0) // alt = alternative list of runes encoded as utf8 code-points stored in 32bits int
+	_, altArr := alternativeString(str)
 
-func SegmentsToPattern(segments []string, normalize bool) (pattern string) {
-	var p []byte
-	for _, segment := range segments {
-		p = append(p, SegmentToPattern(segment, normalize)...)
-	}
-	return string(p)
-}
-
-func PatternToPrettyString(pattern string, method int) (result string) {
-	if !utf8.ValidString(pattern) {
-		return "<invalid UTF8>"
-	}
-	switch method {
-	case 0:
-		segments := PatternToSegments(pattern)
-		result = PatternToRegex(segments, true)
+	var alt1, alt2, alt3, alt4 []rune
+	switch len(altArr) {
 	case 1:
-		pos := 0
-		for pos < len(pattern) {
-			segmentLength := int(pattern[pos])
-			pos++
-			if segmentLength == 0 {
-				result += "_"
-			} else {
-				result += "%" + pattern[pos:pos+segmentLength]
-			}
-			pos += segmentLength
-		}
-		result += "%"
-	case 2: // print golang code for the pattern
-		result += "[]string{"
-		first := true
-		pos := 0
-		for pos < len(pattern) {
-			if !first {
-				result += ", "
-			}
-			first = false
-			segmentLength := int(pattern[pos])
-			pos++
-			result += "\"" + pattern[pos:pos+segmentLength] + "\""
-			pos += segmentLength
-		}
-		result += "}"
+		alt1 = altArr[0]
+		alt2 = altArr[0]
+		alt3 = altArr[0]
+		alt4 = altArr[0]
+	case 2:
+		alt1 = altArr[0]
+		alt2 = altArr[1]
+		alt3 = altArr[1]
+		alt4 = altArr[1]
 	case 3:
-		pos := 0
-		patternRunes := []rune(pattern)
-		nRunes := len(patternRunes)
-		for pos < nRunes {
-			segmentLength := int(patternRunes[pos])
-			pos++
-			if pos+segmentLength < nRunes {
-				result += fmt.Sprintf("%v[%v]", segmentLength, patternRunes[pos:pos+segmentLength])
-			} else {
-				result += fmt.Sprintf("%v[<invalid segment length %v>]", segmentLength, segmentLength)
-			}
-			pos += segmentLength
-		}
-	default:
-		panic("PatternToString: unsupported method")
+		alt1 = altArr[0]
+		alt2 = altArr[1]
+		alt3 = altArr[2]
+		alt4 = altArr[2]
+	case 4:
+		alt1 = altArr[0]
+		alt2 = altArr[1]
+		alt3 = altArr[2]
+		alt4 = altArr[3]
 	}
-	return result
+	for i := 0; i < nRunes; i++ {
+		alt = append(alt, runeToUtf8Array(alt1[i])...)
+		alt = append(alt, runeToUtf8Array(alt2[i])...)
+		alt = append(alt, runeToUtf8Array(alt3[i])...)
+		alt = append(alt, runeToUtf8Array(alt4[i])...)
+	}
+	return
 }
 
-func PatternToRegex(segments []string, caseSensitive bool) string {
-	regex := ".*"
-	lastSegmentIndex := len(segments) - 1
-	for i, segment := range segments {
-		regex += regexp.QuoteMeta(segment) + "."
-		if i == lastSegmentIndex { // we are at the last segment
-			regex += "*"
+// EncodeEqualStringCS encodes the provided string for usage with bcStrCmpEqCs
+func EncodeEqualStringCS(needle string) string {
+	return needle
+}
+
+// EncodeEqualStringCI encodes the provided string for usage with bcStrCmpEqCi
+func EncodeEqualStringCI(needle string) string {
+	// only normalize ASCII values, leave other values (UTF8) unchanged
+	return NormalizeStringASCIIOnlyString(needle)
+}
+
+// EncodeEqualStringUTF8CI encodes the provided string for usage with bcStrCmpEqUTF8Ci
+func EncodeEqualStringUTF8CI(needle string) string {
+	return genNeedleUTF8Ci(needle, false)
+}
+
+// EncodeContainsPrefixCS encodes the provided string for usage with bcContainsPrefixCs
+func EncodeContainsPrefixCS(needle string) string {
+	return needle
+}
+
+// EncodeContainsPrefixCI encodes the provided string for usage with bcContainsPrefixCi
+func EncodeContainsPrefixCI(needle string) string {
+	return NormalizeString(needle)
+}
+
+// EncodeContainsPrefixUTF8CI encodes the provided string for usage with bcContainsPrefixUTF8Ci
+func EncodeContainsPrefixUTF8CI(needle string) string {
+	return genNeedleUTF8Ci(needle, false)
+}
+
+// EncodeContainsSuffixCS encodes the provided string for usage with bcContainsSuffixCs
+func EncodeContainsSuffixCS(needle string) string {
+	return needle
+}
+
+// EncodeContainsSuffixCI encodes the provided string for usage with bcContainsSuffixCi
+func EncodeContainsSuffixCI(needle string) string {
+	return NormalizeString(needle)
+}
+
+// EncodeContainsSuffixUTF8CI encodes the provided string for usage with bcContainsSuffixUTF8Ci
+func EncodeContainsSuffixUTF8CI(needle string) string {
+	return genNeedleUTF8Ci(needle, true)
+}
+
+// EncodeContainsSubstrCS encodes the provided string for usage with bcContainsSubstrCs
+func EncodeContainsSubstrCS(needle string) string {
+	return needle
+}
+
+// EncodeContainsSubstrCI encodes the provided string for usage with bcContainsSubstrCi
+func EncodeContainsSubstrCI(needle string) string {
+	return NormalizeStringASCIIOnlyString(needle)
+}
+
+// EncodeContainsSubstrUTF8CI encodes the provided string for usage with bcContainsSubstrUTF8Ci
+func EncodeContainsSubstrUTF8CI(needle string) string {
+	result := to4ByteArray(utf8.RuneCountInString(needle))
+	result = append(result, stringAlternatives(needle)...)
+	return string(result)
+}
+
+// EncodeContainsPatternCS encodes the provided string for usage with bcContainsPatternCs
+func EncodeContainsPatternCS(needle string, wildcard []bool) string {
+	result := to4ByteArray(len(needle)) // add number of bytes of the needle
+	result = append(result, []byte(needle)...)
+	needleRune := []rune(needle)
+	for i := 0; i < len(needleRune); i++ {
+		m := byte(0)
+		if wildcard[i] {
+			m = 0xFF
+		}
+		for j := 0; j < utf8.RuneLen(needleRune[i]); j++ {
+			result = append(result, m)
 		}
 	}
-	if !caseSensitive {
-		regex = "(?i)" + regex
+	return string(append(result, 0xFF, 0xFF, 0xFF))
+}
+
+// EncodeContainsPatternCI encodes the provided string for usage with bcContainsPatternCi
+func EncodeContainsPatternCI(needle string, wildcard []bool) string {
+	return EncodeContainsPatternCS(NormalizeStringASCIIOnlyString(needle), wildcard)
+}
+
+// EncodeContainsPatternUTF8CI encodes the provided string for usage with bcContainsPatternUTF8Ci
+func EncodeContainsPatternUTF8CI(needle string, wildcard []bool) string {
+	result := to4ByteArray(utf8.RuneCountInString(needle))
+	result = append(result, stringAlternatives(needle)...)
+	needleRune := []rune(needle)
+
+	for i := 0; i < len(needleRune); i++ {
+		m := byte(0)
+		if wildcard[i] {
+			m = 0xFF
+		}
+		for j := 0; j < utf8.RuneLen(needleRune[i]); j++ {
+			// the UTF8 code does a "KMOVW (ptr), K3", thus we need two bytes
+			result = append(result, m, m)
+		}
 	}
-	return regex
+	return string(result)
 }
 
 // ToBCD converts two byte arrays to byte sequence of binary coded digits, needed by opIsSubnetOfIP4.

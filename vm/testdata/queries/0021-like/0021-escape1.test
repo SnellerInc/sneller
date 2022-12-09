@@ -1,0 +1,13 @@
+# go test -v -run=TestQueries/0021-escape1
+SELECT COUNT(*) FROM input
+WHERE (str LIKE '_@_ab@%cd' ESCAPE '@') = (match IS FALSE)
+---
+{"str": "x_ab%cd", "match": true}
+{"str": "x_abycd", "match": false}
+{"str": "x_abcd", "match": false}
+{"str": "xab%cd", "match": false}
+{"str": "xyab%cd", "match": false}
+{"str": "_yab%cd", "match": false}
+{"str": "__ab%cd", "match": true}
+---
+{"count": 0}
