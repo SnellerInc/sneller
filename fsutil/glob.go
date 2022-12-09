@@ -12,15 +12,10 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Package fsutil defines functions and interfaces for
-// working with file systems.
 package fsutil
 
 import (
-	"fmt"
 	"io/fs"
-	"path"
-	"strings"
 )
 
 // WalkGlobFn is the callback passed
@@ -35,12 +30,11 @@ import (
 // then walking will stop.
 type WalkGlobFn func(name string, file fs.File, err error) error
 
-// WalkGlobFS is an interface implemented
-// by filesystems that have an optimized
-// OpenGlob implementation.
-type WalkGlobFS interface {
-	fs.FS
-	WalkGlob(seek, pattern string, walk WalkGlobFn) error
+// Opener may be implemented by a DirEntry that
+// can more efficiently open a file than calling
+// fs.FS.Open on the file path.
+type Opener interface {
+	Open() (fs.File, error)
 }
 
 // WalkGlob opens all of the non-directory
@@ -50,61 +44,25 @@ type WalkGlobFS interface {
 // the glob pattern against which file paths are matched
 // before being passed to the walk callback.
 //
-// The seek string must match a prefix of pattern;
-// WalkGlob will return an error if this invariant
-// is not preserved. If seek is not the empty string,
-// then seek must also indicate a position that is lexicographically
-// at or above the "smallest" string matched by pattern.
-//
-// If f implements WalkGlobFS, then f.WalkGlob is called directly.
-// Otherwise, WalkGlob calls fs.Glob and opens the files sequentially.
-// (See also fs.Glob, fs.GlobFS.)
+// WalkGlob uses WalkDir to walk the file tree.
+// If it encounters an fs.DirEntry that implements
+// Opener, Opener.Open will be used to open the file
+// to pass to walk. Otherwise, fs.Open will be used.
 func WalkGlob(f fs.FS, seek, pattern string, walk WalkGlobFn) error {
-	// force pattern to be valid once cleaned
-	pattern = path.Clean(pattern)
-	if _, err := path.Match(pattern, ""); err != nil {
-		return err
-	}
-	// the constant prefix in pattern
-	// must match seek
 	pre := MetaPrefix(pattern)
-	seek = path.Clean(seek)
-	if seek == "." {
-		seek = ""
-	}
-	if seek != "" && (!strings.HasPrefix(seek, pre) || seek < pre) {
-		return fmt.Errorf("seek %q doesn't match pattern %q", seek, pattern)
-	}
-	if ogs, ok := f.(WalkGlobFS); ok {
-		return ogs.WalkGlob(seek, pattern, walk)
-	}
 	outer := func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return walk(p, nil, err)
 		}
-		if d.IsDir() {
-			if p < seek && p != "." && !strings.HasPrefix(seek, p) {
-				return fs.SkipDir
-			}
-			return nil
+		var file fs.File
+		if o, ok := d.(Opener); ok {
+			file, err = o.Open()
+		} else {
+			file, err = f.Open(p)
 		}
-		if p <= seek {
-			return nil
-		}
-		match, err := path.Match(pattern, p)
-		if err != nil || !match {
-			return err
-		}
-		f, err := f.Open(p)
-		if err != nil {
-			return walk(p, nil, err)
-		}
-		return walk(p, f, nil)
+		return walk(p, file, err)
 	}
-	if pre == "" {
-		pre = "."
-	}
-	return fs.WalkDir(f, pre, outer)
+	return WalkDir(f, pre, seek, pattern, outer)
 }
 
 // MetaPrefix finds the longest directory path for
@@ -114,6 +72,9 @@ func MetaPrefix(pattern string) string {
 	for i := 0; i < len(pattern); i++ {
 		switch pattern[i] {
 		case '*', '?', '\\', '[':
+			if j == 0 {
+				return "."
+			}
 			return pattern[:j]
 		case '/':
 			j = i

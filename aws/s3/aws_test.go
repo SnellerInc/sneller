@@ -16,6 +16,7 @@ package s3
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -50,6 +51,7 @@ func TestAWS(t *testing.T) {
 		Key:      key,
 		Bucket:   bucket,
 		DelayGet: true,
+		Ctx:      context.Background(),
 	}
 
 	tests := []struct {
@@ -143,25 +145,45 @@ func testBasicCrud(t *testing.T, b *BucketFS, prefix string) {
 }
 
 func testWalkGlob(t *testing.T, b *BucketFS, prefix string) {
+	// dirs to create; create some placeholder
+	// dirs with bad names to test that those are
+	// ignored in listing
 	dirs := []string{
 		"a/b/c",
+		"x/", // ignored
 		"x/b/c",
+		"x/y/",  // ignored
+		"x/y/.", // ignored
 		"x/y/a",
 		"x/y/z",
+		"y/",      // ignored
+		"y/bc/..", // ignored
+		"y/bc/a",
+		"y/bc/b",
+		"z/#.txt", // exercises sorting
+		"z/#/b",
 	}
 	cases := []struct {
 		seek, pattern string
 		results       []string
 	}{
 		{"", "x/?/?", []string{"x/b/c", "x/y/a", "x/y/z"}},
-		{"x/y", "?/?/?", []string{"x/y/a", "x/y/z"}},
+		{"x/y", "?/?/?", []string{"x/y/a", "x/y/z", "z/#/b"}},
 		{"x/y", "x/*y/*", []string{"x/y/a", "x/y/z"}},
 		{"", "x/[by]/c", []string{"x/b/c"}},
-		{"x/y/a", "?/?/?", []string{"x/y/z"}},
+		{"x/y/a", "?/?/?", []string{"x/y/z", "z/#/b"}},
+		{"", "?/b*/?", []string{"a/b/c", "x/b/c", "y/bc/a", "y/bc/b"}},
+		{"", "z/#*", []string{"z/#", "z/#.txt"}},
 	}
 	for _, full := range dirs {
-		full = path.Join(prefix, full)
-		_, err := b.Put(full, []byte(fmt.Sprintf("contents of %q", full)))
+		// NOTE: don't use path.Join, it will remove
+		// the trailing '/'
+		if prefix[len(prefix)-1] != '/' {
+			full = prefix + "/" + full
+		} else {
+			full = prefix + full
+		}
+		_, err := b.put(full, []byte(fmt.Sprintf("contents of %q", full)))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,21 +200,24 @@ func testWalkGlob(t *testing.T, b *BucketFS, prefix string) {
 		seek := cases[i].seek
 		pattern := cases[i].pattern
 		want := cases[i].results
-		var got []string
-		err := fsutil.WalkGlob(pre, seek, pattern, func(p string, f fs.File, err error) error {
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			var got []string
+			err := fsutil.WalkGlob(pre, seek, pattern, func(p string, f fs.File, err error) error {
+				if err != nil {
+					t.Errorf("%s: %v\n", p, err)
+					return nil
+				}
+				f.Close()
+				p = strings.TrimPrefix(p, prefix+"/")
+				got = append(got, p)
+				return nil
+			})
 			if err != nil {
-				t.Fatal(err)
+				t.Fatal("fsutil.WalkGlob:", err)
 			}
-			f.Close()
-			p = strings.TrimPrefix(p, prefix+"/")
-			got = append(got, p)
-			return nil
+			if !reflect.DeepEqual(want, got) {
+				t.Errorf("want %v got %v", want, got)
+			}
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(want, got) {
-			t.Errorf("case %d want %v got %v", i, want, got)
-		}
 	}
 }

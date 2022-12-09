@@ -370,7 +370,7 @@ func TestAppendBadScan(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	if !blockfmt.IsFatal(err) {
-		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T", err)
+		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T: %[1]v", err)
 	}
 	if cache.value != nil {
 		t.Error("cache is populated after an error")

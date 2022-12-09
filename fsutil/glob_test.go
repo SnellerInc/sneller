@@ -15,6 +15,7 @@
 package fsutil
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -37,8 +38,10 @@ func TestWalkGlob(t *testing.T) {
 		{"", "x/?/?", []string{"x/b/c", "x/y/a", "x/y/z"}},
 		{"x/y", "?/?/?", []string{"x/y/a", "x/y/z"}},
 		{"x/y", "x/*y/*", []string{"x/y/a", "x/y/z"}},
-		{"x/", "x/?/?", []string{"x/b/c", "x/y/a", "x/y/z"}},
-		{"x/y/a", "?/?/?", []string{"x/y/z"}},
+		{"x", "x/?/?", []string{"x/b/c", "x/y/a", "x/y/z"}},
+		{"x/y/a", "?/?/?", []string{"x/y/a", "x/y/z"}},
+		{"x/c", "?/?/?", []string{"x/y/a", "x/y/z"}},
+		{"x/b/z", "?/?/?", []string{"x/y/a", "x/y/z"}},
 	}
 	tmp := t.TempDir()
 	for _, full := range dirs {
@@ -59,21 +62,23 @@ func TestWalkGlob(t *testing.T) {
 		pattern := cases[i].pattern
 		want := cases[i].results
 
-		var got []string
-		err := WalkGlob(d, seek, pattern, func(p string, f fs.File, err error) error {
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			var got []string
+			err := WalkGlob(d, seek, pattern, func(p string, f fs.File, err error) error {
+				if err != nil {
+					t.Fatal(err)
+				}
+				f.Close()
+				got = append(got, p)
+				return nil
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			f.Close()
-			got = append(got, p)
-			return nil
+			if !reflect.DeepEqual(want, got) {
+				t.Errorf("want %v got %v", want, got)
+			}
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(want, got) {
-			t.Errorf("case %d want %v got %v", i, want, got)
-		}
 	}
 }
 

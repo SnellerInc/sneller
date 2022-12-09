@@ -12,16 +12,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package s3_test
-
-import (
-	"github.com/SnellerInc/sneller/aws/s3"
-	"github.com/SnellerInc/sneller/fsutil"
-)
-
-// we can't do this inside the s3 package
-// due to circular imports, but we can do it here:
-var _ fsutil.VisitDirFS = &s3.BucketFS{}
-var _ fsutil.VisitDirFS = &s3.Prefix{}
-var _ fsutil.NamedFile = &s3.File{}
-var _ fsutil.Opener = &s3.File{}
+// Package fsutil defines functions and
+// interfaces for working with file systems.
+// This package interoperates with and
+// supplements the fs package in the standard
+// library.
+package fsutil

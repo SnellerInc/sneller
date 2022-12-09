@@ -28,6 +28,8 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/aws"
+	"github.com/SnellerInc/sneller/fsutil"
+	"golang.org/x/exp/slices"
 )
 
 // BucketFS implements fs.FS,
@@ -77,6 +79,10 @@ func (b *BucketFS) Put(where string, contents []byte) (string, error) {
 		// nominally a directory
 		return "", badpath("s3 PUT", where)
 	}
+	return b.put(where, contents)
+}
+
+func (b *BucketFS) put(where string, contents []byte) (string, error) {
 	req, err := http.NewRequestWithContext(b.Ctx, http.MethodPut, uri(b.Key, b.Bucket, where), nil)
 	if err != nil {
 		return "", err
@@ -147,22 +153,19 @@ func (b *BucketFS) Open(name string) (fs.File, error) {
 		}
 	}
 
-	p := b.sub(name)
-	ret, err := p.readDirAt(1)
-	if err != nil && err != io.EOF {
-		return nil, err
+	return b.sub(name).openDir()
+}
+
+// VisitDir implements fs.VisitDirFS
+func (b *BucketFS) VisitDir(name, seek, pattern string, walk fsutil.VisitDirFn) error {
+	name = path.Clean(name)
+	if !fs.ValidPath(name) {
+		return badpath("visitdir", name)
 	}
-	if len(ret) > 0 {
-		// listing produced an object matching the full path:
-		if f, ok := ret[0].(*File); ok && !isDir && f.object == name {
-			return f, nil
-		}
-		// listing produced a prefix matching the full path:
-		if p2, ok := ret[0].(*Prefix); ok && p2.Path == p.Path+"/" {
-			return p2, nil
-		}
+	if name == "." {
+		return b.sub(".").VisitDir(".", seek, pattern, walk)
 	}
-	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	return b.sub(name+"/").VisitDir(".", seek, pattern, walk)
 }
 
 // ReadDir implements fs.ReadDirFS
@@ -196,6 +199,8 @@ type Prefix struct {
 	// listing token;
 	// "" means start from the beginning
 	token string
+	// if true, ReadDir returns io.EOF
+	dirEOF bool
 }
 
 func (p *Prefix) join(extra string) string {
@@ -204,6 +209,16 @@ func (p *Prefix) join(extra string) string {
 		return extra
 	}
 	return path.Join(p.Path, extra)
+}
+
+func (p *Prefix) sub(name string) *Prefix {
+	return &Prefix{
+		Key:    p.Key,
+		Client: p.Client,
+		Bucket: p.Bucket,
+		Path:   p.join(name),
+		Ctx:    p.Ctx,
+	}
 }
 
 // Open opens the object or pseudo-directory
@@ -224,29 +239,33 @@ func (p *Prefix) Open(file string) (fs.File, error) {
 	if !fs.ValidPath(file) {
 		return nil, badpath("open", file)
 	}
-	fullp := &Prefix{
-		Key:    p.Key,
-		Bucket: p.Bucket,
-		Path:   p.join(file),
-		Client: p.Client,
-		Ctx:    p.Ctx,
-	}
-	ret, err := fullp.readDirAt(1)
-	if err != nil && err != io.EOF {
-		return nil, err
-	}
-	if len(ret) == 0 {
-		return nil, fs.ErrNotExist
-	}
-	if f, ok := ret[0].(*File); ok && f.object == fullp.Path {
-		return f, nil
-	}
-	// common prefixes end with a trailing delimiter,
-	// so searching at 'foo/bar' will produce a prefix 'foo/bar/'
-	if p, ok := ret[0].(*Prefix); ok && p.Path == fullp.Path+"/" {
+	return p.sub(file).openDir()
+}
+
+func (p *Prefix) openDir() (fs.File, error) {
+	if p.Path == "" || p.Path == "." {
+		// the root directory trivially exists
 		return p, nil
 	}
-	return nil, fs.ErrNotExist
+	ret, err := p.list(1, "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	// if we got anything at all, it exists
+	if len(ret.Contents) == 0 && len(ret.CommonPrefixes) == 0 {
+		return nil, &fs.PathError{Op: "open", Path: p.Path, Err: fs.ErrNotExist}
+	}
+	if strings.HasSuffix(p.Path, "/") {
+		return p, nil
+	}
+	path := p.Path + "/"
+	return &Prefix{
+		Key:    p.Key,
+		Bucket: p.Bucket,
+		Client: p.Client,
+		Path:   path,
+		Ctx:    p.Ctx,
+	}, nil
 }
 
 // Name implements fs.DirEntry.Name
@@ -328,6 +347,9 @@ func (f *File) Path() string {
 
 // Mode implements fs.FileInfo.Mode
 func (f *File) Mode() fs.FileMode { return 0644 }
+
+// Open implements fsutil.Opener
+func (f *File) Open() (fs.File, error) { return f, nil }
 
 // Read implements fs.File.Read
 //
@@ -425,15 +447,88 @@ func (f *File) Stat() (fs.FileInfo, error) {
 	return f, nil
 }
 
+// split a glob pattern on the first meta-character
+// so that we can list from the most specific prefix
+func splitMeta(pattern string) (string, string) {
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '*', '?', '\\', '[':
+			return pattern[:i], pattern[i:]
+		default:
+		}
+	}
+	return pattern, ""
+}
+
+// VisitDir implements fs.VisitDirFS
+func (p *Prefix) VisitDir(name, seek, pattern string, walk fsutil.VisitDirFn) error {
+	if !ValidBucket(p.Bucket) {
+		return badBucket(p.Bucket)
+	}
+	subp := p.sub(name)
+	if !strings.HasSuffix(subp.Path, "/") {
+		subp.Path += "/"
+	}
+	token := ""
+	for {
+		d, tok, err := subp.readDirAt(-1, token, seek, pattern)
+		if err != nil && err != io.EOF {
+			return err
+		}
+		for i := range d {
+			err := walk(d[i])
+			if err != nil {
+				if err == fs.SkipDir {
+					err = nil
+				}
+				return err
+			}
+		}
+		if err == io.EOF {
+			return nil
+		}
+		token = tok
+	}
+}
+
 // ReadDir implements fs.ReadDirFile
 //
 // Every returned fs.DirEntry will be either
 // a Prefix or a File struct.
 func (p *Prefix) ReadDir(n int) ([]fs.DirEntry, error) {
-	return p.readDirAt(n)
+	if p.dirEOF {
+		return nil, io.EOF
+	}
+	d, next, err := p.readDirAt(n, p.token, "", "")
+	if err == io.EOF {
+		p.dirEOF = true
+		if len(d) > 0 {
+			err = nil
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	p.token = next
+	return d, nil
 }
 
-func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
+type listResponse struct {
+	IsTruncated bool `xml:"IsTruncated"`
+	Contents    []struct {
+		ETag         string    `xml:"ETag"`
+		Name         string    `xml:"Key"`
+		LastModified time.Time `xml:"LastModified"`
+		Size         int64     `sml:"Size"`
+	} `xml:"Contents"`
+	CommonPrefixes []struct {
+		Prefix string `xml:"Prefix"`
+	} `xml:"CommonPrefixes"`
+	EncodingType string `xml:"EncodingType"`
+	NextToken    string `xml:"NextContinuationToken"`
+}
+
+func (p *Prefix) list(n int, token, seek, prefix string) (*listResponse, error) {
 	if !ValidBucket(p.Bucket) {
 		return nil, badBucket(p.Bucket)
 	}
@@ -441,19 +536,40 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 		"delimiter=%2F",
 		"list-type=2",
 	}
-	if p.Path != "" && p.Path != "." {
-		parts = append(parts, "prefix="+queryEscape(p.Path))
+	// make sure there's a '/' at the end and
+	// append the prefix
+	path := p.Path
+	if path != "" && path != "." {
+		if !strings.HasSuffix(path, "/") {
+			path += "/" + prefix
+		} else {
+			path += prefix
+		}
+	} else {
+		// NOTE: if p.Path was "." this will replace
+		// it with prefix which may be ""; this is
+		// the intended behavior
+		path = prefix
+	}
+	if path != "" {
+		parts = append(parts, "prefix="+queryEscape(path))
+	}
+	// the seek parameter is only meaningful
+	// if it is "larger" than the prefix being listed;
+	// otherwise we should reject it
+	// (AWS S3 accepts redundant start-after params,
+	// but Minio rejects them)
+	if seek != "" && (seek < prefix || !strings.HasPrefix(seek, prefix)) {
+		return nil, fmt.Errorf("seek %q not compatible with prefix %q", seek, prefix)
+	}
+	if seek != "" {
+		parts = append(parts, "start-after="+queryEscape(p.join(seek)))
 	}
 	if n > 0 {
-		if p.Path != "." && p.Path[len(p.Path)-1] == '/' && n == 1 {
-			// an extra entry will be returned for *this* path;
-			// we should ignore it
-			n++
-		}
 		parts = append(parts, fmt.Sprintf("max-keys=%d", n))
 	}
-	if p.token != "" {
-		parts = append(parts, "continuation-token="+url.QueryEscape(p.token))
+	if token != "" {
+		parts = append(parts, "continuation-token="+url.QueryEscape(token))
 	}
 	sort.Strings(parts)
 	query := "?" + strings.Join(parts, "&")
@@ -470,32 +586,65 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("s3 list objects s3://%s/%s: %s", p.Bucket, p.Path, res.Status)
 	}
-	ret := struct {
-		IsTruncated bool `xml:"IsTruncated"`
-		Contents    []struct {
-			ETag         string    `xml:"ETag"`
-			Name         string    `xml:"Key"`
-			LastModified time.Time `xml:"LastModified"`
-			Size         int64     `sml:"Size"`
-		} `xml:"Contents"`
-		CommonPrefixes []struct {
-			Prefix string `xml:"Prefix"`
-		} `xml:"CommonPrefixes"`
-		EncodingType string `xml:"EncodingType"`
-		NextToken    string `xml:"NextContinuationToken"`
-	}{}
-	err = xml.NewDecoder(res.Body).Decode(&ret)
+	ret := &listResponse{}
+	err = xml.NewDecoder(res.Body).Decode(ret)
 	if err != nil {
 		return nil, fmt.Errorf("xml decoding response: %w", err)
 	}
+	return ret, nil
+}
+
+func patmatch(pattern, name string) (bool, error) {
+	if pattern == "" {
+		return true, nil
+	}
+	return path.Match(pattern, name)
+}
+
+func ignoreKey(key string, dirOK bool) bool {
+	name := path.Base(key)
+	return key == "" ||
+		!dirOK && key[len(key)-1] == '/' ||
+		name == "." || name == ".."
+}
+
+// readDirAt reads n entries (or all if n < 0)
+// from a directory using the given continuation
+// token, returning the directory entries, the
+// next continuation token, and any error.
+//
+// If seek is provided, this will be appended to
+// the prefix path passed as the start-after
+// parameter to the list call.
+//
+// If pattern is provided, the returned entries
+// will be filtered against this pattern, and
+// the prefix before the first meta-character
+// will be used to determine a prefix that will
+// be appended to the path passed as the prefix
+// parameter to the list call.
+//
+// If the full directory listing was read in one
+// call, this returns the list of directory
+// entries, an empty continuation token, and
+// io.EOF. Note that this behavior differs from
+// fs.ReadDirFile.ReadDir.
+func (p *Prefix) readDirAt(n int, token, seek, pattern string) (d []fs.DirEntry, next string, err error) {
+	prefix, _ := splitMeta(pattern)
+	ret, err := p.list(n, token, seek, prefix)
+	if err != nil {
+		return nil, "", err
+	}
 	out := make([]fs.DirEntry, 0, len(ret.Contents)+len(ret.CommonPrefixes))
-	exists := p.Path == "."
 	for i := range ret.Contents {
-		if ret.Contents[i].Name == p.Path && p.Path[len(p.Path)-1] == '/' {
-			// this "folder" is returned itself;
-			// ignore it because it is not part of
-			// its own directory
-			exists = true
+		if ignoreKey(ret.Contents[i].Name, false) {
+			continue
+		}
+		name := path.Base(ret.Contents[i].Name)
+		match, err := patmatch(pattern, name)
+		if err != nil {
+			return nil, "", err
+		} else if !match {
 			continue
 		}
 		out = append(out, &File{
@@ -512,6 +661,16 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 		})
 	}
 	for i := range ret.CommonPrefixes {
+		if ignoreKey(ret.CommonPrefixes[i].Prefix, true) {
+			continue
+		}
+		name := path.Base(ret.CommonPrefixes[i].Prefix)
+		match, err := patmatch(pattern, name)
+		if err != nil {
+			return nil, "", err
+		} else if !match {
+			continue
+		}
 		out = append(out, &Prefix{
 			Key:    p.Key,
 			Bucket: p.Bucket,
@@ -520,20 +679,13 @@ func (p *Prefix) readDirAt(n int) ([]fs.DirEntry, error) {
 			Ctx:    p.Ctx,
 		})
 	}
-	// if we didn't find anything that indicates
-	// that this prefix is actually a real prefix
-	// (no common object prefixes; no 'self' folder, etc.),
-	// then this list operation was performed on a directory
-	// that simply doesn't exist
-	if !exists && len(out) == 0 {
-		return nil, &fs.PathError{Op: "readdir", Path: fmt.Sprintf("s3://%s/%s", p.Bucket, p.Path), Err: fs.ErrNotExist}
+	slices.SortFunc(out, func(a, b fs.DirEntry) bool {
+		return a.Name() < b.Name()
+	})
+	if !ret.IsTruncated {
+		err = io.EOF
 	}
-	if len(out) == 0 && n > 0 {
-		p.token = ""
-		return out, io.EOF
-	}
-	p.token = ret.NextToken
-	return out, nil
+	return out, ret.NextToken, err
 }
 
 func (p *Prefix) client() *http.Client {
