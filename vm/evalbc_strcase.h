@@ -82,8 +82,8 @@
     KMOVW K1, BX                                                               \
     MOVWQZX (0)(VIRT_PCREG), R8                                                \
     LEAQ 0(VIRT_VALUES)(R8*1), R8                                              \
-    VMOVDQU32.Z 0(R8), K1, Z30                                                 \
-    VMOVDQU32.Z 64(R8), K1, Z31                                                \
+    VMOVDQU32.Z 0(R8), K1, Z23                                                 \
+    VMOVDQU32.Z 64(R8), K1, Z24                                                \
                                                                                \
     /* Calculate offsets of output strings */                                  \
     VPADDD Z2, Z3, Z29                                                         \
@@ -107,16 +107,16 @@ utf8:                                                                          \
                                                                                \
     BC_STR_SET_VPSHUFB(utf8_length, utf8_length_lookup)                        \
                                                                                \
-    VPADDD      Z30, Z31, Z31   /* End pointer */                              \
+    VPADDD      Z23, Z24, Z24   /* End pointer */                              \
 utf8_loop:                                                                     \
-    VPCMPD      $VPCMP_IMM_LT, Z31, Z30, K3, K3                                \
+    VPCMPD      $VPCMP_IMM_LT, Z24, Z23, K3, K3                                \
     KTESTW      K3, K3                                                         \
     JZ          utf8_end                                                       \
                                                                                \
     /* Load 4 bytes from the input */                                          \
     KMOVQ       K3, K5                                                         \
     VPXORD      Z5, Z5, Z5                                                     \
-    VPGATHERDD  0(SI)(Z30*1), K5, Z5                                           \
+    VPGATHERDD  0(SI)(Z23*1), K5, Z5                                           \
                                                                                \
     /* Check if all bytes are ASCII (the fastest path) */                      \
     VPMOVB2M    Z5, K5                                                         \
@@ -156,7 +156,7 @@ utf8_loop:                                                                     \
 utf8_skip:                                                                     \
     KMOVW       K3, K2                                                         \
     VPSCATTERDD Z25, K2, 0(SI)(Z29*1)                                          \
-    VPADDD      Z26, Z30, Z30                                                  \
+    VPADDD      Z26, Z23, Z23                                                  \
     VPADDD      Z27, Z29, Z29                                                  \
     JMP         utf8_loop                                                      \
                                                                                \
@@ -169,9 +169,9 @@ utf8_all_ascii:                                                                \
     VPXORD      Z5, Z6, Z5                                                     \
     KMOVQ       K3, K5                                                         \
     VPSCATTERDD Z5, K5, 0(SI)(Z29*1)                                           \
-    VPSUBD      Z30, Z31, Z8 /* remaining bytes */                             \
+    VPSUBD      Z23, Z24, Z8 /* remaining bytes */                             \
     VPMINUD.Z   CONSTD_0x00000004, Z8, K3, Z8                                  \
-    VPADDD      Z8, Z30, Z30                                                   \
+    VPADDD      Z8, Z23, Z23                                                   \
     VPADDD      Z8, Z29, Z29                                                   \
                                                                                \
     JMP     utf8_loop                                                          \
