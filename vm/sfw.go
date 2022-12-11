@@ -148,10 +148,9 @@ func asRowConsumer(dst io.WriteCloser) rowConsumer {
 // rowSplitter is a QuerySink that implements io.WriteCloser
 // so that materialized data can be fed to a RowConsumer
 type rowSplitter struct {
-	rowConsumer            // automatically adopts writeRows() and Close()
-	st          ion.Symtab // input symbol table
-	shared      symtab     // current symbol table
-	delims      []vmref    // buffer of delimiters; allocated lazily
+	rowConsumer         // automatically adopts writeRows() and Close()
+	shared      symtab  // current symbol table
+	delims      []vmref // buffer of delimiters; allocated lazily
 	delimhint   int
 	symbolized  bool // seen any symbol tables
 	params      rowParams
@@ -340,25 +339,21 @@ type zionSymtab struct {
 }
 
 func (z *zionSymtab) Symbolize(x string) (ion.Symbol, bool) {
-	return z.parent.st.Symbolize(x)
+	return z.parent.shared.Symbolize(x)
 }
 
 // this is straight out of z.parent.Write
 func (z *zionSymtab) Unmarshal(src []byte) ([]byte, error) {
 	q := z.parent
-	rest, err := q.st.Unmarshal(src)
-	if err != nil {
-		return rest, err
-	}
 	if !q.shared.resident() {
 		leakCheck(q)
 	}
-	// TODO: optmize this; we are re-serializing the
-	// symbol list each time here...
-	q.shared.resetNoFree()
-	q.st.CloneInto(&q.shared.Symtab)
-	q.shared.build()
-
+	q.shared.rewind()
+	rest, err := q.shared.Unmarshal(src)
+	if err != nil {
+		return nil, err
+	}
+	q.shared.snapshot() // restore on next Unmarshal
 	q.aux.reset()
 	err = q.symbolize(&q.shared, &q.aux)
 	if err != nil {
@@ -397,21 +392,17 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 	// if we have a symbol table, then parse it
 	// (ion.Symtab.Unmarshal takes care of the BVM resetting the table)
 	if len(buf) >= 4 && ion.IsBVM(buf) || ion.TypeOf(buf) == ion.AnnotationType {
-		rest, err := q.st.Unmarshal(buf)
-		if err != nil {
-			return 0, fmt.Errorf("rowSplitter.Write: %w", err)
-		}
-		q.symbolized = true
-		boff = int32(len(buf) - len(rest))
-
 		if !q.shared.resident() {
 			leakCheck(q)
 		}
-		// TODO: optmize this; we are re-serializing the
-		// symbol list each time here...
-		q.shared.resetNoFree()
-		q.st.CloneInto(&q.shared.Symtab)
-		q.shared.build()
+		q.shared.rewind() // revert to previous Unmarshal state
+		rest, err := q.shared.Unmarshal(buf)
+		if err != nil {
+			return 0, fmt.Errorf("rowSplitter.Write: %w", err)
+		}
+		q.shared.snapshot() // mark this point for the next rewind()
+		q.symbolized = true
+		boff = int32(len(buf) - len(rest))
 
 		q.aux.reset()
 		err = q.symbolize(&q.shared, &q.aux)

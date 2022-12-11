@@ -228,7 +228,7 @@ func toplevelIonObjects(buf []byte) (result []string, err error) {
 }
 
 func ionObject(t ion.Type, size uint) []byte {
-	alloc := size + uint(ion.UVarintSize(size)) + 1
+	alloc := size + uint(ion.Uvsize(size)) + 1
 	buf := make([]byte, alloc)
 	ion.UnsafeWriteTag(buf, t, size)
 

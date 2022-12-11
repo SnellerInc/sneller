@@ -507,7 +507,7 @@ func (w *JSONWriter) invisible(src []byte) bool {
 		return true
 	}
 	sym, _, _, _ := ReadAnnotation(src)
-	return sym != dollarIonSymbolTable
+	return sym != SystemSymSymbolTable
 }
 
 // Write implements io.Writer

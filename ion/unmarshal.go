@@ -819,7 +819,7 @@ func isSymtab(buf []byte) bool {
 		return true
 	}
 	lbl, _, _, _ := ReadAnnotation(buf)
-	return lbl == dollarIonSymbolTable
+	return lbl == SystemSymSymbolTable
 }
 
 // Decode buffers the next object in the source stream

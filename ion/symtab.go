@@ -53,6 +53,27 @@ func (s *Symtab) Reset() {
 	s.clear()
 }
 
+// Truncate truncates the symbol table to the
+// number of symbols indicated by max.
+// Truncate can be used to restore a Symtab to
+// its previous state as indicated by s.MaxID().
+// Truncate panics if max is below the number
+// of pre-interned "system" symbols (10).
+func (s *Symtab) Truncate(max int) {
+	max -= len(systemsyms)
+	if max < 0 {
+		panic("ion.Symtab.Truncate with max < 10")
+	}
+	tail := s.interned[max:]
+	for _, k := range tail {
+		if s.toindex != nil {
+			delete(s.toindex, k)
+		}
+		s.memsize -= len(k)
+	}
+	s.interned = s.interned[:max]
+}
+
 // Get gets the string associated
 // with the given interned symbol,
 // or returns the empty string
@@ -284,10 +305,12 @@ var systemsyms = []string{
 }
 
 const (
-	symbolImports              = 6
-	symbolSymbols              = 7
-	dollarIonSymbolTable       = 3
-	dollarIonSharedSymbolTable = 9
+	// SystemSymImports is the pre-interned symbol for "imports"
+	SystemSymImports Symbol = 6
+	// SystemSymSymbols is the pre-interned symbol for "symbols"
+	SystemSymSymbols Symbol = 7
+	// SystemSymSymbolTable is the pre-interned symbol for "$ion_symbol_table"
+	SystemSymSymbolTable Symbol = 3
 )
 
 var system2id map[string]int
@@ -383,7 +406,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if sym != dollarIonSymbolTable {
+	if sym != SystemSymSymbolTable {
 		// FIXME: add support for shared symbol tables
 		return nil, fmt.Errorf("first annotation field not $ion_symbol_table")
 	}
@@ -409,7 +432,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 			return nil, fmt.Errorf("Symtab.Unmarshal (reading fields): %w", err)
 		}
 		switch sym {
-		case symbolSymbols:
+		case SystemSymSymbols:
 			var lst []byte
 			lst, body = Contents(body)
 			if lst == nil {
@@ -482,13 +505,13 @@ func (s *Symtab) marshal(dst *Buffer, starting Symbol, withBVM bool) {
 	interned := s.interned[count:]
 	dst.BeginAnnotation(1)
 	// $ion_symbol_table: { symbols: [ ... ] }
-	dst.BeginField(dollarIonSymbolTable)
+	dst.BeginField(SystemSymSymbolTable)
 	dst.BeginStruct(-1)
 	if !withBVM {
-		dst.BeginField(symbolImports)
-		dst.WriteSymbol(dollarIonSymbolTable)
+		dst.BeginField(SystemSymImports)
+		dst.WriteSymbol(SystemSymSymbolTable)
 	}
-	dst.BeginField(symbolSymbols)
+	dst.BeginField(SystemSymSymbols)
 	dst.BeginList(-1)
 	for i := range interned {
 		dst.WriteString(interned[i])

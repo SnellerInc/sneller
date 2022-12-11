@@ -882,10 +882,12 @@ func (b *bytecode) dropScratch() {
 // from the symbol table's spare pages
 func (b *bytecode) restoreScratch(st *symtab) {
 	if b.scratchtotal == 0 {
+		// this will trigger a fault if it is used:
+		b.scratchoff = 0x80000000
 		return
 	}
 	if b.epoch != st.epoch || cap(b.scratch) < b.scratchtotal {
-		b.scratch = st.tinymalloc(b.scratchtotal)
+		b.scratch = st.slab.malloc((b.scratchtotal + 15) &^ 15)
 	}
 	b.scratch = b.scratch[:copy(b.scratch, b.savedlit)]
 	b.scratchoff, _ = vmdispl(b.scratch[:1])

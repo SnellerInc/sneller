@@ -41,13 +41,14 @@ func ionsyms(x syms) *ion.Symtab {
 type symtab struct {
 	ion.Symtab
 
-	// all allocated pages:
-	curpage pageref
-	opages  []pageref
-
+	// memory source for symbol table + small allocs
+	slab slab
 	// symrefs[id] produces a boxed string
 	// representing the symbol id
 	symrefs []vmref
+
+	// symrefs[:snapped] were in the previous snapshot call
+	snapped int
 
 	// epoch keeps track of how many times
 	// this symtab has been reset;
@@ -56,19 +57,21 @@ type symtab struct {
 	epoch int
 }
 
-type pageref struct {
-	mem   []byte // result from vm.Malloc
-	off   int    // allocation offset
-	maxid int    // max ID in this page
+func (s *symtab) snapshot() {
+	x := &s.slab
+	x.snapshot()
+	s.snapped = len(s.symrefs)
 }
 
-func (p *pageref) drop() {
-	if p.mem != nil {
-		Free(p.mem)
-		p.mem = nil
+func (s *symtab) rewind() {
+	if s.snapped > 0 {
+		s.Symtab.Truncate(s.snapped)
+	} else if s.Symtab.MaxID() > 10 {
+		s.Symtab.Reset()
 	}
-	p.off = 0
-	p.maxid = 0
+	s.slab.rewind()
+	s.symrefs = s.symrefs[:s.snapped]
+	s.snapped = 0
 }
 
 func (s *symtab) CloneInto(dst *symtab) {
@@ -83,7 +86,10 @@ func (s *symtab) Unmarshal(src []byte) ([]byte, error) {
 	}
 	ret, err := s.Symtab.Unmarshal(src)
 	if err == nil {
-		s.build()
+		s.buildFrom(src)
+		if len(s.symrefs) != s.Symtab.MaxID() {
+			panic("vm.symtab.Unmarshal: bad symbol bookkeeping")
+		}
 	}
 	return ret, err
 }
@@ -106,88 +112,125 @@ func (s *symtab) Reset() {
 }
 
 func (s *symtab) free() {
-	s.curpage.drop()
-	for i := range s.opages {
-		s.opages[i].drop()
-	}
-	s.opages = s.opages[:0]
+	s.slab.reset()
 	s.symrefs = s.symrefs[:0]
+	s.snapped = 0
 	s.epoch++
 }
 
 func (s *symtab) resident() bool {
-	return s.curpage.mem != nil
+	return len(s.slab.pages) > 0
 }
 
 // drop auxilliary pages and reset
 // the write offset into the current page
 func (s *symtab) resetNoFree() {
-	// keep s.curpage.mem if it is set
-	s.curpage.off = 0
-	s.curpage.maxid = 0
-	for i := range s.opages {
-		s.opages[i].drop()
-	}
-	s.opages = s.opages[:0]
+	s.slab.resetNoFree()
 	s.symrefs = s.symrefs[:0]
 	s.epoch++
 }
 
-// tinymalloc allocates a small amount of memory
-// directly from the symbol table page(s)
-func (s *symtab) tinymalloc(n int) []byte {
-	if s.curpage.mem == nil {
-		s.curpage.mem = Malloc()
-	}
-	if n > len(s.curpage.mem) {
-		panic("tinymalloc > page size")
-	}
-	// don't try to allocate from the current page;
-	// just allocate a fresh one and return it:
-	if n == PageSize {
-		out := Malloc()
-		s.opages = append(s.opages, pageref{
-			mem: out,
-			off: len(out), // entirely used
-		})
-		return out
-	}
-	if len(s.curpage.mem)-s.curpage.off < (n + 4) {
-		s.opages = append(s.opages, s.curpage)
-		s.curpage = pageref{}
-		s.curpage.mem = Malloc()
-	}
-	out := s.curpage.mem[s.curpage.off:]
-	out = out[:n:n]
-	s.curpage.off += n
-	return out
-}
-
 func (s *symtab) push(x string) {
-	if s.curpage.mem == nil {
-		s.curpage.mem = Malloc()
+	// compute needed size:
+	need := len(x) + 1
+	if len(x) >= 14 {
+		need += ion.Uvsize(uint(len(x)))
 	}
-	if len(x) > len(s.curpage.mem) {
-		panic("len(str) > page size")
-	}
-	if len(s.curpage.mem)-s.curpage.off < (len(x) + 4) {
-		s.opages = append(s.opages, s.curpage)
-		s.curpage = pageref{}
-		s.curpage.mem = Malloc()
-	}
-	pos, ok := vmdispl(s.curpage.mem[s.curpage.off:])
+
+	mem := s.slab.malloc(need)
+	pos, ok := vmdispl(mem)
 	if !ok {
 		panic("symtab.curpage not in vmm")
 	}
-	n := ion.UnsafeWriteTag(s.curpage.mem[s.curpage.off:], ion.StringType, uint(len(x)))
-	n += copy(s.curpage.mem[s.curpage.off+n:], x)
-	s.curpage.off += n
+	n := ion.UnsafeWriteTag(mem, ion.StringType, uint(len(x)))
+	n += copy(mem[n:], x)
+	if n != need {
+		println("wrote", n, "wanted", need, "string-length", len(x))
+		panic("bad symbol size bookkeeping")
+	}
 	s.symrefs = append(s.symrefs, vmref{pos, uint32(n)})
-	s.curpage.maxid = len(s.symrefs)
 }
 
 func (s *symtab) build() {
 	for len(s.symrefs) < s.Symtab.MaxID() {
 		s.push(s.Symtab.Get(ion.Symbol(len(s.symrefs))))
 	}
+}
+
+// add a sequence of ion-encoded strings as symbols
+// to s.vmrefs by way of copying the data to vm memory
+// and then producing the appropriate descriptors
+func (s *symtab) addsyms(raw []byte) {
+	symbols := s.slab.malloc(len(raw))
+	copy(symbols, raw)
+	for len(symbols) > 0 {
+		pos, ok := vmdispl(symbols)
+		if !ok {
+			panic("symbols not in vmm?")
+		}
+		size := ion.SizeOf(symbols)
+		s.symrefs = append(s.symrefs, vmref{pos, uint32(size)})
+		symbols = symbols[size:]
+	}
+}
+
+// systemsyms is all 10 "system symbols"
+// pre-encoded so that we can copy them
+// into vm memory quickly
+var systemsyms []byte
+
+// encode systemsyms
+func init() {
+	var buf ion.Buffer
+	var empty ion.Symtab
+	for i := 0; i < 10; i++ {
+		buf.WriteString(empty.Get(ion.Symbol(i)))
+	}
+	systemsyms = buf.Bytes()
+}
+
+// see ion.Symtab.Unmarshal
+// this implementation assumes the caller
+// has already successfully decoded src
+// at least once, so it just panics on errors
+func (s *symtab) buildFrom(src []byte) {
+	if ion.IsBVM(src) {
+		src = src[4:]
+		s.addsyms(systemsyms)
+	}
+	var err error
+	var sym ion.Symbol
+	src, _ = ion.Contents(src) // unwrap annotation
+	if len(src) == 0 {
+		panic("vm.symtab.buildFrom: empty annotation")
+	}
+	_, src, err = ion.ReadLabel(src) // skip # fields
+	if err != nil {
+		panic(err)
+	}
+	sym, src, err = ion.ReadLabel(src)
+	if err != nil {
+		panic(err)
+	}
+	if sym != ion.SystemSymSymbolTable {
+		panic("unexpected $ion_symbol_table symbol")
+	}
+	src, _ = ion.Contents(src) // unwrap symbol table structure
+	for len(src) > 0 {
+		sym, src, err = ion.ReadLabel(src)
+		if err != nil {
+			panic(err)
+		}
+		if sym != ion.SystemSymSymbols {
+			src = src[ion.SizeOf(src):]
+			continue
+		}
+		// unwrap symbols: [ ... ]
+		// so that we're pointing to the
+		// list of string values
+		symlist, _ := ion.Contents(src)
+		s.addsyms(symlist)
+		return
+	}
+	panic("didn't find symbols: field")
 }

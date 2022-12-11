@@ -14,26 +14,13 @@
 
 package ion
 
-// This file contains low-level method to create various parts of Ion
-
-// UVarintSize returns the number of bytes required to encode a uvarint.
-func UVarintSize(u uint) int {
-	size := 1
-	u >>= 7
-	for u != 0 {
-		size++
-		u >>= 7
-	}
-	return size
-}
-
 // UnsafeWriteUVarint encodes uv as a uvarint number.
 // Returns the number of stored bytes.
 //
 // It's required that dst has enough room for the encoded
-// number (i.e., len(buf) >= UVarintSize(uv)).
+// number (i.e., len(buf) >= Uvsize(uv)).
 func UnsafeWriteUVarint(dst []byte, uv uint) int {
-	ret := UVarintSize(uv)
+	ret := Uvsize(uv)
 	off := ret - 1
 	dst[off] = byte(uv&0x7f) | 0x80
 	for off > 0 {
@@ -78,8 +65,8 @@ func NopPadding(dst []byte, padsize int) (int, int) {
 
 	dst[0] = byte(NullType<<4) | 0xe
 
-	size1 := UVarintSize(uint(padsize))
-	size2 := UVarintSize(uint(padsize - size1))
+	size1 := Uvsize(uint(padsize))
+	size2 := Uvsize(uint(padsize - size1))
 	if size1 == size2 {
 		padsize -= size1
 	} else {
