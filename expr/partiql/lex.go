@@ -43,6 +43,8 @@ type scanner struct {
 	// notkw is set when
 	// we are not in keyword context
 	notkw bool
+	// the last symbol returned by `Lex`
+	lastsym int
 
 	// value of UTCNOW(); populated lazily
 	// (we need every instance of UTCNOW()
@@ -114,6 +116,11 @@ func isspace(x byte) bool {
 }
 
 func (s *scanner) Lex(l *yySymType) int {
+	s.lastsym = s.lex(l)
+	return s.lastsym
+}
+
+func (s *scanner) lex(l *yySymType) int {
 	if s.err != nil || s.pos >= len(s.from) {
 		return eof
 	}
@@ -122,9 +129,24 @@ func (s *scanner) Lex(l *yySymType) int {
 		return eof
 	}
 	b := s.peek()
-	if isdigit(b) || ((b == '-' || b == '.') && isdigit(s.peekat(1))) {
+	if isdigit(b) {
 		return s.lexNumber(l)
 	}
+	if b == '-' && isdigit(s.peekat(1)) {
+		if s.lastsym == NUMBER {
+			// the case: NUMBER-{digits} --- return the '-' operator
+			//                 ^^
+			//                 we're here
+			s.notkw = false
+			s.pos++
+			return '-'
+		}
+		return s.lexNumber(l)
+	}
+	if b == '.' && isdigit(s.peekat(1)) {
+		return s.lexNumber(l)
+	}
+
 	switch b {
 	case '\'':
 		return s.lexString(l)
@@ -282,42 +304,46 @@ func (s *scanner) lexIdent(l *yySymType) int {
 // checking for valid numbers at parse time)
 func (s *scanner) lexNumber(l *yySymType) int {
 	startpos := s.pos
-	seendot := s.from[s.pos] == '.'
+	floatnum := s.from[s.pos] == '.'
 	s.pos++
-	seenE := false
-	seenX := false
+	var prev byte
+
 	ok := func(x byte) bool {
-		// accept just one '.' character
-		if x == '.' && !seendot {
-			seendot = true
-			return true
+		switch x {
+		// white-space chars
+		case ' ', '\n', '\t', '\r', '\f', '\v':
+			return false
+
+		// operators
+		case '(', ')', '[', ']', '{', '}', '*', '/', '%', '&', '!', '^', '~', '|', ',':
+			return false
+
+		case '-', '+':
+			// it's might be a sign inside the engineering notation
+			esign := prev == 'e' || prev == 'E'
+			floatnum = floatnum || esign
+			return esign
+
+		case '.':
+			floatnum = true
 		}
-		// accept just one 'e' character
-		if !seenE && x == 'e' || x == 'E' {
-			seenE = true
-			return true
-		}
-		// accept just one 'x' character
-		if !seenX && x == 'x' || x == 'X' {
-			seenX = true
-			return true
-		}
-		// if we have processed an 'x'
-		// then hex characters are acceptable
-		if seenX && ((x >= 'a' && x <= 'f') || (x >= 'A' && x <= 'F')) {
-			return true
-		}
-		return x >= '0' && x <= '9'
+
+		return true
 	}
+
 	for s.pos < len(s.from) && ok(s.from[s.pos]) {
+		prev = s.from[s.pos]
 		s.pos++
 	}
+
 	// FIXME: don't allocate a string here
 	str := string(s.from[startpos:s.pos])
-	i, err := strconv.ParseInt(str, 0, 64)
-	if err == nil {
-		l.expr = expr.Integer(i)
-		return NUMBER
+	if !floatnum {
+		i, err := strconv.ParseInt(str, 0, 64)
+		if err == nil {
+			l.expr = expr.Integer(i)
+			return NUMBER
+		}
 	}
 	f, err := strconv.ParseFloat(str, 64)
 	if err == nil {

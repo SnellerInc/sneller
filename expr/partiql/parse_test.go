@@ -273,6 +273,38 @@ func TestParseNormalization(t *testing.T) {
 			`SELECT CASE x WHEN 1 THEN 'one' WHEN 2 THEN 'two' ELSE 'other' END`,
 			`SELECT CASE WHEN x = 1 THEN 'one' WHEN x = 2 THEN 'two' ELSE 'other' END`,
 		},
+		{
+			`SELECT 0xcafe`,
+			`SELECT 51966`,
+		},
+		{
+			`SELECT -5`,
+			`SELECT -5`,
+		},
+		{
+			`SELECT -0xff`,
+			`SELECT -255`,
+		},
+		{
+			`SELECT 5e4`,
+			`SELECT 50000`,
+		},
+		{
+			`SELECT 5e+4`,
+			`SELECT 50000`,
+		},
+		{
+			`SELECT -4e-2`,
+			`SELECT -0.04`,
+		},
+		{
+			`SELECT 5-4`,
+			`SELECT 1`,
+		},
+		{
+			`SELECT 5+4`,
+			`SELECT 9`,
+		},
 	}
 
 	tm, ok := date.Parse([]byte("2006-01-02T15:04:05.999Z"))
@@ -433,6 +465,30 @@ func TestParseErrors(t *testing.T) {
 		{
 			query: `SELECT sneller_datashape(x) FROM table`,
 			msg:   `accepts only *`,
+		},
+		{
+			query: `SELECT 1.test`,
+			msg:   `strconv.ParseFloat: parsing "1.test": invalid syntax`,
+		},
+		{
+			query: `SELECT 0x1x1234`,
+			msg:   `strconv.ParseFloat: parsing "0x1x1234": invalid syntax`,
+		},
+		{
+			query: `SELECT 1234test(5+3)`,
+			msg:   `strconv.ParseFloat: parsing "1234test": invalid syntax`,
+		},
+		{
+			query: `SELECT 2e+5e1e-5`,
+			msg:   `strconv.ParseFloat: parsing "2e+5e1e-5": invalid syntax`,
+		},
+		{
+			query: `SELECT 1e++5`,
+			msg:   `strconv.ParseFloat: parsing "1e+": invalid syntax`,
+		},
+		{
+			query: `SELECT 1e---5`,
+			msg:   `strconv.ParseFloat: parsing "1e-": invalid syntax`,
 		},
 	}
 
