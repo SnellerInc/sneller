@@ -436,25 +436,19 @@ CONST_DATA_U64(constpool, 704, $0x8080808080808080)
 #define CONSTQ_0xC0C0C0C0C0C0C0C0() CONST_GET_PTR(constpool, 712)
 CONST_DATA_U64(constpool, 712, $0xC0C0C0C0C0C0C0C0)
 
-#define CONSTD_0xFFFFFF00() CONST_GET_PTR(constpool, 720)
-CONST_DATA_U32(constpool, 720, $0xFFFFFF00)
+#define CONSTD_0x10101() CONST_GET_PTR(constpool, 720)
+CONST_DATA_U32(constpool, 720, $0x10101)
 
-#define CONSTD_0xFF0000() CONST_GET_PTR(constpool, 724)
-CONST_DATA_U32(constpool, 724, $0xFF0000)
+#define CONSTD_0x10801() CONST_GET_PTR(constpool, 724)
+CONST_DATA_U32(constpool, 724, $0x10801)
 
-#define CONSTD_0xFF00() CONST_GET_PTR(constpool, 728)
-CONST_DATA_U32(constpool, 728, $0xFF00)
-
-#define CONSTD_0xFFFF00() CONST_GET_PTR(constpool, 732)
-CONST_DATA_U32(constpool, 732, $0xFFFF00)
-
-#define CONSTD_0xFF00FF() CONST_GET_PTR(constpool, 736)
-CONST_DATA_U32(constpool, 736, $0xFF00FF)
+#define CONSTD_0x400001() CONST_GET_PTR(constpool, 728)
+CONST_DATA_U32(constpool, 728, $0x400001)
 
 // Integer Division Reciprocals
 // ----------------------------
 
-#define CONSTPOOL_RECIPROCALS_INDEX 740
+#define CONSTPOOL_RECIPROCALS_INDEX 732
 
 // Unsigned 32-bit division by 25: (Value * 1374389535) >> 35.
 // Unsigned 32-bit division by 50: (Value * 1374389535) >> 36.

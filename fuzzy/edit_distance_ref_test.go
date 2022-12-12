@@ -16,7 +16,6 @@ package fuzzy
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 	"unicode/utf8"
 )
@@ -251,7 +250,7 @@ func TestEditDistanceApprox3(t *testing.T) {
 
 // TestGenerateTable code to generate the updated tables needed to config reference impl
 func TestGenerateTable(t *testing.T) {
-	t.Skip("Test code to generate assembly for approx3 kernel")
+	t.Skip("Test code to generate spec needed for  for approx3 kernel")
 	type configType [4][4]byte
 
 	createConfig := func(d1 Needle, d2 Data) (result configType) {
@@ -295,196 +294,6 @@ func TestGenerateTable(t *testing.T) {
 			result += string(c[i][:]) + " "
 		}
 		return result
-	}
-
-	toConfig := func(str string) (result configType) {
-
-		result[0][0] = str[0]
-		result[0][1] = str[1]
-		result[0][2] = str[2]
-		result[0][3] = str[3]
-
-		result[1][0] = str[5]
-		result[1][1] = str[6]
-		result[1][2] = str[7]
-		result[1][3] = str[8]
-
-		result[2][0] = str[10]
-		result[2][1] = str[11]
-		result[2][2] = str[12]
-		result[2][3] = str[13]
-
-		result[3][0] = str[15]
-		result[3][1] = str[16]
-		result[3][2] = str[17]
-		result[3][3] = str[18]
-		return
-	}
-
-	toAsmA3 := func(info string, c configType, editDistance, advData, advNeedle int) string {
-
-		remapA3 := func(i, j int) (int, int) {
-
-			if i == 0 {
-				switch j {
-				case 0:
-					return 0, 0
-				case 1:
-					return 1, 1
-				case 2:
-					return 2, 2
-				}
-			}
-			if i == 1 {
-				switch j {
-				case 0:
-					return 2, 0
-				case 1:
-					return 0, 1
-				case 2:
-					return 1, 2
-				}
-			}
-			if i == 2 {
-				switch j {
-				case 0:
-					return 1, 0
-				case 1:
-					return 2, 1
-				case 2:
-					return 0, 2
-				}
-			}
-			return -1, -1
-		}
-
-		getMask1 := func(i int) string {
-			result := ""
-			for j := 0; j < 3; j++ {
-				i2, j2 := remapA3(i, j)
-				if c[i2][j2] == 'X' {
-					result = "00" + result
-				} else {
-					result = "FF" + result
-				}
-			}
-			return result
-		}
-
-		getMask2 := func(i int) string {
-			result := ""
-			for j := 0; j < 3; j++ {
-				i2, j2 := remapA3(i, j)
-				if c[i2][j2] == '1' {
-					result = "FF" + result
-				} else {
-					result = "00" + result
-				}
-			}
-			return result
-		}
-
-		toMask := func(m string) string {
-			if strings.HasPrefix(m, "00FF") {
-				m = m[2:]
-			} else if strings.HasPrefix(m, "0000FF") {
-				m = m[4:]
-			} else if strings.HasPrefix(m, "000000FF") {
-				m = m[6:]
-			}
-			return fmt.Sprintf("CONSTD_0x%v()", m)
-		}
-
-		writeComparisons := func() string {
-			first := true
-			result := ""
-			for i := 0; i < 3; i++ {
-				for j := 0; j < 3; j++ {
-					i2, j2 := remapA3(i, j)
-					mode := c[i2][j2]
-					if mode != 'X' {
-						if first {
-							first = false
-						} else {
-							result += " && "
-						}
-						if mode == '1' {
-							result += fmt.Sprintf("(N%v==D%v)", i2, j2)
-						} else {
-							result += fmt.Sprintf("(N%v!=D%v)", i2, j2)
-						}
-					}
-				}
-			}
-			return result + "\n"
-		}
-
-		regs := [4]string{"Z9", "Z21", "Z22"}
-		regScratch := "Z26"
-		kScratch := "K3"
-		regEditDistance := "Z28"
-		regAdvData := "Z6"
-		regAdvNeedle := "Z7"
-
-		getConstantReg := func(i int) string {
-			switch i {
-			case 0:
-				return "Z11"
-			case 1:
-				return "Z10"
-			case 2:
-				return "Z12"
-			case 3:
-				return "Z24"
-			case 4:
-				return "Z25"
-			}
-			return fmt.Sprintf("%v", i)
-		}
-
-		sb := strings.Builder{}
-		sb.WriteString(fmt.Sprintf("\n\n//; %v: %v (ED %v; advData %v; advNeedle %v)\n", info, toStringConfig(c), editDistance, advData, advNeedle))
-		sb.WriteString(fmt.Sprintf("%v", writeComparisons()))
-
-		first := true
-
-		for i := 0; i < 3; i++ {
-			m1 := getMask1(i)
-			m2 := getMask2(i)
-
-			if m1 != "000000" {
-				maskReg := "K3"
-				if first {
-					first = false
-					maskReg = "K2"
-				}
-				if m1 == "FFFFFF" {
-					if m2 == "000000" {
-						sb.WriteString(fmt.Sprintf("VPCMPD $0, %v, %v, %v, K3\n", getConstantReg(0), regs[i], maskReg))
-					} else {
-						sb.WriteString(fmt.Sprintf("VPCMPD.BCST $0, %v), %v, %v, K3\n", toMask(m2), regs[i], maskReg))
-					}
-				} else {
-					sb.WriteString(fmt.Sprintf("VPANDD.BCST %v, %v, %v\n", toMask(m1), regs[i], regScratch))
-					if m2 == "000000" {
-						sb.WriteString(fmt.Sprintf("VPCMPD $0, %v, %v, %v, K3\n", getConstantReg(0), regScratch, maskReg))
-					} else {
-						sb.WriteString(fmt.Sprintf("VPCMPD.BCST $0, %v, %v, %v, K3\n", toMask(m2), regScratch, maskReg))
-					}
-				}
-			}
-		}
-
-		if editDistance != 1 {
-			sb.WriteString(fmt.Sprintf("VMOVDQA32 %v, %v, %v //; ed := %v\n", getConstantReg(editDistance), kScratch, regEditDistance, editDistance))
-		}
-		if advData != 1 {
-			sb.WriteString(fmt.Sprintf("VMOVDQA32 %v, %v, %v //; advData := %v\n", getConstantReg(advData), kScratch, regAdvData, advData))
-		}
-		if advNeedle != 1 {
-			sb.WriteString(fmt.Sprintf("VMOVDQA32 %v, %v, %v //; advNeedle := %v\n", getConstantReg(advNeedle), kScratch, regAdvNeedle, advNeedle))
-		}
-		return sb.String()
 	}
 
 	type unitTest struct {
@@ -769,12 +578,4 @@ func TestGenerateTable(t *testing.T) {
 	t.Log("")
 	analyse("Del3 approx4", del3Approx4)
 	analyse("Ins3 approx4", ins3Approx4)
-
-	t.Logf(toAsmA3("eq", toConfig("1XXX:XXXX:XXXX:XXXX"), 0, 1, 1))
-	t.Logf(toAsmA3("tra", toConfig("01XX:1XXX:XXXX:XXXX"), 1, 2, 2))
-	t.Logf(toAsmA3("del1", toConfig("00XX:1XXX:X1XX:XXXX"), 1, 0, 1))
-	t.Logf(toAsmA3("del2", toConfig("000X:000X:100X:XXXX"), 1, 0, 1))
-	t.Logf(toAsmA3("ins1", toConfig("01XX:0X1X:XXXX:XXXX"), 1, 1, 0))
-	t.Logf(toAsmA3("ins2", toConfig("001X:000X:000X:XXXX"), 1, 1, 0))
-	t.Logf(toAsmA3("tra+ins", toConfig("001X:100X:000X:XXXX"), 2, 3, 2))
 }

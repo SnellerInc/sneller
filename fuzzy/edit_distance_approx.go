@@ -15,9 +15,9 @@
 package fuzzy
 
 import (
+	"fmt"
+	"unicode"
 	"unicode/utf8"
-
-	"github.com/SnellerInc/sneller/internal/stringext"
 )
 
 type Data = string
@@ -256,12 +256,26 @@ func calcEditDistanceRunes(data, needle []rune, matchTail bool, kernel KernelFun
 
 func calcEditDistanceString(dataS Data, needleS Needle, ascii, matchTail bool, method MatchMethod) int {
 
+	// NormalizeStringASCIIOnly normalizes the provided string into a string with runes that are smallest
+	// and equal wrt case-folding, and leaves non-ASCII values unchanged.
+	NormalizeStringASCIIOnly := func(bytes []byte) []byte {
+		result := make([]byte, len(bytes))
+		for i, r := range bytes {
+			if r < utf8.RuneSelf { // r is an ASCII value
+				result[i] = byte(unicode.ToUpper(rune(r)))
+			} else {
+				result[i] = r
+			}
+		}
+		return result
+	}
+
 	if method == TrueEditDistance {
 		return editDistanceRef(dataS, needleS)
 	}
 
-	needleBytes := stringext.NormalizeStringASCIIOnly([]byte(needleS))
-	dataBytes := stringext.NormalizeStringASCIIOnly([]byte(dataS))
+	needleBytes := NormalizeStringASCIIOnly([]byte(needleS))
+	dataBytes := NormalizeStringASCIIOnly([]byte(dataS))
 	var needle, data []rune
 
 	if ascii {
@@ -300,19 +314,19 @@ func calcFuzzyMatch(data Data, needle Needle, threshold int, ascii, matchTail bo
 	return calcEditDistanceString(data, needle, ascii, matchTail, method) <= threshold
 }
 
-// RefHasPrefixFuzzy is the reference implementation for the has-prefix-fuzzy functionality
-func RefHasPrefixFuzzy(data Data, prefix Needle, threshold int, ascii bool, method MatchMethod) bool {
+// refHasPrefixFuzzy is the reference implementation for the has-prefix-fuzzy functionality
+func refHasPrefixFuzzy(data Data, prefix Needle, threshold int, ascii bool, method MatchMethod) bool {
 	return calcFuzzyMatch(data, prefix, threshold, ascii, false, method)
 }
 
-// RefHasSubstrFuzzy is the reference implementation for the has-substr-fuzzy functionality
-func RefHasSubstrFuzzy(data Data, needle Needle, threshold int, ascii bool, method MatchMethod) bool {
+// refHasSubstrFuzzy is the reference implementation for the has-substr-fuzzy functionality
+func refHasSubstrFuzzy(data Data, needle Needle, threshold int, ascii bool, method MatchMethod) bool {
 	lenData := len(data)
 	if lenData == 0 {
 		return utf8.RuneCountInString(needle) <= threshold
 	}
 	for i := 0; i < lenData; i++ {
-		if RefHasPrefixFuzzy(data[i:], needle, threshold, ascii, method) {
+		if refHasPrefixFuzzy(data[i:], needle, threshold, ascii, method) {
 			return true
 		}
 	}
@@ -321,30 +335,238 @@ func RefHasSubstrFuzzy(data Data, needle Needle, threshold int, ascii bool, meth
 
 // RefHasSubstrFuzzyASCIIApprox3 is the reference implementation for the has-substr-fuzzy functionality
 func RefHasSubstrFuzzyASCIIApprox3(data Data, needle Needle, threshold int) bool {
-	return RefHasSubstrFuzzy(data, needle, threshold, true, Approx3)
+	return refHasSubstrFuzzy(data, needle, threshold, true, Approx3)
 }
 
 // RefHasSubstrFuzzyUnicodeApprox3 is the reference implementation for the has-substr-fuzzy functionality
 func RefHasSubstrFuzzyUnicodeApprox3(data Data, needle Needle, threshold int) bool {
-	return RefHasSubstrFuzzy(data, needle, threshold, false, Approx3)
+	return refHasSubstrFuzzy(data, needle, threshold, false, Approx3)
 }
 
-// RefCmpStrFuzzy is the reference implementation for the str-match-fuzzy functionality
-func RefCmpStrFuzzy(data Data, needle Needle, threshold int, ascii bool, method MatchMethod) bool {
+// refCmpStrFuzzy is the reference implementation for the str-match-fuzzy functionality
+func refCmpStrFuzzy(data Data, needle Needle, threshold int, ascii bool, method MatchMethod) bool {
 	return calcFuzzyMatch(data, needle, threshold, ascii, true, method)
 }
 
 // RefCmpStrFuzzyASCIIApprox3 is the reference implementation for the str-match-fuzzy functionality
 func RefCmpStrFuzzyASCIIApprox3(data Data, needle Needle, threshold int) bool {
-	return RefCmpStrFuzzy(data, needle, threshold, true, Approx3)
+	return refCmpStrFuzzy(data, needle, threshold, true, Approx3)
 }
 
 // RefCmpStrFuzzyUnicodeApprox3 is the reference implementation for the str-match-fuzzy functionality
 func RefCmpStrFuzzyUnicodeApprox3(data Data, needle Needle, threshold int) bool {
-	return RefCmpStrFuzzy(data, needle, threshold, false, Approx3)
+	return refCmpStrFuzzy(data, needle, threshold, false, Approx3)
 }
 
 // EditDistance calculates the edit distance with the provided method
 func EditDistance(data Data, needle Needle, ascii bool, method MatchMethod) int {
 	return calcEditDistanceString(data, needle, ascii, true, method)
+}
+
+// GenFuzzyApprox3Spec generates the data-structure for the fuzzy approximation (with 3 characters lookahead)
+//
+//lint:ignore U1000 Ignore unused needed to generate content of stringext.fuzzyApprox3Spec
+func GenFuzzyApprox3Spec(genCode bool) (dataStructure []byte, goCode string) {
+	type tableData struct {
+		info, spec     string
+		ed, advD, advN int
+	}
+
+	compileTableData := func(tda []tableData) (dataStructure []byte, goCode string) {
+
+		pack := func(ed, advD, advN int) byte {
+			return byte((ed << 4) | (advN << 2) | advD)
+		}
+
+		getBit := func(value, pos int) bool {
+			return ((value >> pos) & 1) == 1
+		}
+
+		getIdxSpec := func(n, d int) int {
+			if (n == 0) && (d == 0) {
+				return 0
+			}
+			if (n == 0) && (d == 1) {
+				return 1
+			}
+			if (n == 0) && (d == 2) {
+				return 2
+			}
+			if (n == 0) && (d == 3) {
+				return 3
+			}
+
+			if (n == 1) && (d == 0) {
+				return 5
+			}
+			if (n == 1) && (d == 1) {
+				return 6
+			}
+			if (n == 1) && (d == 2) {
+				return 7
+			}
+			if (n == 1) && (d == 3) {
+				return 8
+			}
+
+			if (n == 2) && (d == 0) {
+				return 10
+			}
+			if (n == 2) && (d == 1) {
+				return 11
+			}
+			if (n == 2) && (d == 2) {
+				return 12
+			}
+			if (n == 2) && (d == 3) {
+				return 13
+			}
+
+			if (n == 3) && (d == 0) {
+				return 15
+			}
+			if (n == 3) && (d == 1) {
+				return 16
+			}
+			if (n == 3) && (d == 2) {
+				return 17
+			}
+			if (n == 3) && (d == 3) {
+				return 18
+			}
+			return -1
+		}
+
+		getIdxKey := func(n, d int) int {
+			if (n == 0) && (d == 0) {
+				return 0
+			}
+			if (n == 1) && (d == 1) {
+				return 3
+			}
+			if (n == 2) && (d == 2) {
+				return 6
+			}
+
+			if (n == 1) && (d == 0) {
+				return 2
+			}
+			if (n == 2) && (d == 1) {
+				return 5
+			}
+			if (n == 0) && (d == 2) {
+				return 8
+			}
+
+			if (n == 2) && (d == 0) {
+				return 1
+			}
+			if (n == 0) && (d == 1) {
+				return 4
+			}
+			if (n == 1) && (d == 2) {
+				return 7
+			}
+			return -1
+		}
+
+		getIdxKeyInv := func(idx int) (n, d int) {
+			for n = 0; n < 3; n++ {
+				for d = 0; d < 3; d++ {
+					if getIdxKey(n, d) == idx {
+						return
+					}
+				}
+			}
+			panic("X")
+		}
+
+		dataIdxToString := func(idx int) string {
+			result := ""
+			for b := 0; b < 9; b++ {
+				n, d := getIdxKeyInv(b)
+				if getBit(idx, b) {
+					result += fmt.Sprintf("N%v==D%v", n, d)
+				} else {
+					result += fmt.Sprintf("N%v!=D%v", n, d)
+				}
+				if b < 8 {
+					result += "; "
+				}
+			}
+			return result
+		}
+
+		applies := func(offset int, spec string) bool {
+			test := func(c byte, b bool) bool {
+				if c == '1' {
+					return b
+				} else if c == '0' {
+					return !b
+				}
+				return true
+			}
+			return test(spec[getIdxSpec(0, 0)], getBit(offset, getIdxKey(0, 0))) &&
+				test(spec[getIdxSpec(0, 1)], getBit(offset, getIdxKey(0, 1))) &&
+				test(spec[getIdxSpec(0, 2)], getBit(offset, getIdxKey(0, 2))) &&
+				test(spec[getIdxSpec(1, 0)], getBit(offset, getIdxKey(1, 0))) &&
+				test(spec[getIdxSpec(1, 1)], getBit(offset, getIdxKey(1, 1))) &&
+				test(spec[getIdxSpec(1, 2)], getBit(offset, getIdxKey(1, 2))) &&
+				test(spec[getIdxSpec(2, 0)], getBit(offset, getIdxKey(2, 0))) &&
+				test(spec[getIdxSpec(2, 1)], getBit(offset, getIdxKey(2, 1))) &&
+				test(spec[getIdxSpec(2, 2)], getBit(offset, getIdxKey(2, 2)))
+		}
+
+		data := make([]byte, 0x200)
+		for idx := range data {
+			data[idx] = 0xFF
+		}
+
+		codeData := [0x200]string{}
+
+		for _, td := range tda {
+			for idx := range data {
+				if applies(idx, td.spec) {
+					if data[idx] != 0xFF {
+						panic("overwrite")
+					}
+					data[idx] = pack(td.ed, td.advD, td.advN)
+					if genCode {
+						codeData[idx] = fmt.Sprintf("%v:\tkey %09b (%v) -> ed=%v; advD=%v; advN=%v", td.info, idx, dataIdxToString(idx), td.ed, td.advD, td.advN)
+					}
+				}
+			}
+		}
+		for idx, v := range data {
+			if v == 0xFF {
+				data[idx] = pack(1, 1, 1)
+				if genCode {
+					codeData[idx] = fmt.Sprintf("%v:\tkey %09b (%v) -> ed=%v; advD=%v; advN=%v", "sub", idx, dataIdxToString(idx), 1, 1, 1)
+				}
+			}
+		}
+
+		if genCode {
+			ann := "return []byte{\n"
+			ann += fmt.Sprintf("0x%02x, //// %v\n", data[0], codeData[0])
+			for idx := 1; idx < 0x200; idx++ {
+				ann += fmt.Sprintf("0x%02x, //// %v\n", data[idx], codeData[idx])
+			}
+			ann += "}\n"
+			return data, ann
+		}
+		return data, ""
+	}
+
+	tda := []tableData{
+		{"eq", "1XXX:XXXX:XXXX:XXXX", 0, 1, 1},
+		{"tra", "01XX:1XXX:XXXX:XXXX", 1, 2, 2},
+		{"del1", "00XX:1XXX:X1XX:XXXX", 1, 0, 1},
+		{"del2", "000X:000X:100X:XXXX", 1, 0, 1},
+		{"ins1", "01XX:0X1X:XXXX:XXXX", 1, 1, 0},
+		{"ins2", "001X:000X:000X:XXXX", 1, 1, 0},
+		{"tra+ins", "001X:100X:000X:XXXX", 2, 3, 2},
+		// note: all other configuration are sub: with ed=1, advD=1, advN=1
+	}
+	return compileTableData(tda)
 }
