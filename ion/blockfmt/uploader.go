@@ -58,7 +58,7 @@ func uploadReader(dst Uploader, startpart int64, src io.Reader, size int64) (int
 	if f, ok := src.(*s3.File); ok {
 		if up, ok := dst.(*s3.Uploader); ok {
 			start, _ := f.Seek(0, io.SeekCurrent)
-			err := up.CopyFrom(startpart, f.Reader, start, size)
+			err := up.CopyFrom(startpart, &f.Reader, start, size)
 			if err != nil {
 				return startpart, err
 			}

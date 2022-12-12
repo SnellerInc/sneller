@@ -393,7 +393,7 @@ func openarg(name string) (packed, *blockfmt.Trailer) {
 		if err != nil {
 			exitf("deriving key for %q: %s", name, err)
 		}
-		f, err := s3.Open(k, bucket, key)
+		f, err := s3.Open(k, bucket, key, true)
 		if err != nil {
 			exitf("opening arg: %s", err)
 		}

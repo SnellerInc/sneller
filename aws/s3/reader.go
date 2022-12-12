@@ -112,41 +112,28 @@ type Reader struct {
 	// Reader uses to make HTTP requests.
 	// The key may have to be refreshed
 	// every so often (see aws.SigningKey.Expired)
-	Key *aws.SigningKey
+	Key *aws.SigningKey `xml:"-"`
 
 	// Client is the HTTP client used to
 	// make HTTP requests. By default it is
 	// populated with DefaultClient, but
 	// it may be set to any reasonable http client
 	// implementation.
-	Client *http.Client
+	Client *http.Client `xml:"-"`
 
 	// ETag is the ETag of the object in S3
 	// as returned by listing or a HEAD operation.
-	ETag string
+	ETag string `xml:"ETag"`
 	// LastModified is the object's LastModified time
 	// as returned by listing or a HEAD operation.
-	LastModified time.Time
-
-	// size is populated on Open
-	size int64
-
-	bucket, object string
-}
-
-// Size returns the size of the object in bytes.
-func (r *Reader) Size() int64 {
-	return r.size
-}
-
-// Name returns the name of the object
-func (r *Reader) Name() string {
-	return r.object
-}
-
-// Bucket returns the bucket containing the object
-func (r *Reader) Bucket() string {
-	return r.bucket
+	LastModified time.Time `xml:"LastModified"`
+	// Size is the object size in bytes.
+	// It is populated on Open.
+	Size int64 `xml:"Size"`
+	// Bucket is the S3 bucket holding the object.
+	Bucket string `xml:"-"`
+	// Path is the S3 object key.
+	Path string `xml:"Key"`
 }
 
 // rawURI produces a URI with a pre-escaped path+query string
@@ -195,7 +182,8 @@ func URL(k *aws.SigningKey, bucket, object string) (string, error) {
 // Stat performs a HEAD on an S3 object
 // and returns an associated Reader.
 func Stat(k *aws.SigningKey, bucket, object string) (*Reader, error) {
-	r, body, err := open(k, bucket, object, false)
+	r := new(Reader)
+	body, err := r.open(k, bucket, object, false)
 	if body != nil {
 		body.Close()
 	}
@@ -210,12 +198,12 @@ func Stat(k *aws.SigningKey, bucket, object string) (*Reader, error) {
 // and size.
 func NewFile(k *aws.SigningKey, bucket, object, etag string, size int64) *File {
 	return &File{
-		Reader: &Reader{
+		Reader: Reader{
 			Key:    k,
-			bucket: bucket,
-			object: object,
+			Bucket: bucket,
+			Path:   object,
 			ETag:   etag,
-			size:   size,
+			Size:   size,
 		},
 		ctx: context.Background(),
 	}
@@ -223,19 +211,13 @@ func NewFile(k *aws.SigningKey, bucket, object, etag string, size int64) *File {
 
 // Open performs a GET on an S3 object
 // and returns the associated File.
-func Open(k *aws.SigningKey, bucket, object string) (*File, error) {
-	r, body, err := open(k, bucket, object, true)
+func Open(k *aws.SigningKey, bucket, object string, contents bool) (*File, error) {
+	f := new(File)
+	err := f.open(k, bucket, object, contents)
 	if err != nil {
-		if body != nil {
-			body.Close()
-		}
 		return nil, err
 	}
-	return &File{
-		Reader: r,
-		body:   body,
-		ctx:    context.Background(),
-	}, nil
+	return f, nil
 }
 
 func flakyDo(cl *http.Client, req *http.Request) (*http.Response, error) {
@@ -261,9 +243,26 @@ func flakyDo(cl *http.Client, req *http.Request) (*http.Response, error) {
 	return cl.Do(req)
 }
 
-func open(k *aws.SigningKey, bucket, object string, contents bool) (*Reader, io.ReadCloser, error) {
+func (f *File) open(k *aws.SigningKey, bucket, object string, contents bool) error {
+	body, err := f.Reader.open(k, bucket, object, true)
+	if err != nil {
+		if body != nil {
+			body.Close()
+		}
+		return err
+	}
+	if !contents {
+		body.Close()
+		body = nil
+	}
+	f.body = body
+	f.ctx = context.Background()
+	return nil
+}
+
+func (r *Reader) open(k *aws.SigningKey, bucket, object string, contents bool) (io.ReadCloser, error) {
 	if !ValidBucket(bucket) {
-		return nil, nil, badBucket(bucket)
+		return nil, badBucket(bucket)
 	}
 	method := http.MethodHead
 	if contents {
@@ -271,17 +270,17 @@ func open(k *aws.SigningKey, bucket, object string, contents bool) (*Reader, io.
 	}
 	req, err := http.NewRequest(method, uri(k, bucket, object), nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	k.SignV4(req, nil)
 
 	// FIXME: configurable http.Client here?
 	res, err := flakyDo(&DefaultClient, req)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if res.StatusCode == 404 {
-		return nil, res.Body, &fs.PathError{
+		return res.Body, &fs.PathError{
 			Op:   "open",
 			Path: "s3://" + bucket + "/" + object,
 			Err:  fs.ErrNotExist,
@@ -290,26 +289,27 @@ func open(k *aws.SigningKey, bucket, object string, contents bool) (*Reader, io.
 	if res.StatusCode != 200 {
 		// NOTE: we can't extractMessage() here, because HEAD
 		// errors do not produce a response with an error message
-		return nil, res.Body, fmt.Errorf("s3.Open: HEAD returned %s", res.Status)
+		return res.Body, fmt.Errorf("s3.Open: HEAD returned %s", res.Status)
 	}
 	if res.ContentLength < 0 {
-		return nil, res.Body, fmt.Errorf("s3.Open: content length %d invalid", res.ContentLength)
+		return res.Body, fmt.Errorf("s3.Open: content length %d invalid", res.ContentLength)
 	}
 	lm, _ := time.Parse(time.RFC1123, res.Header.Get("LastModified"))
-	return &Reader{
+	*r = Reader{
 		Key:          k,
 		Client:       &DefaultClient,
 		ETag:         res.Header.Get("ETag"),
 		LastModified: lm,
-		size:         res.ContentLength,
-		bucket:       bucket,
-		object:       object,
-	}, res.Body, nil
+		Size:         res.ContentLength,
+		Bucket:       bucket,
+		Path:         object,
+	}
+	return res.Body, nil
 }
 
 // WriteTo implements io.WriterTo
 func (r *Reader) WriteTo(w io.Writer) (int64, error) {
-	req, err := http.NewRequest("GET", uri(r.Key, r.bucket, r.object), nil)
+	req, err := http.NewRequest("GET", uri(r.Key, r.Bucket, r.Path), nil)
 	if err != nil {
 		return 0, err
 	}
@@ -332,7 +332,7 @@ func (r *Reader) WriteTo(w io.Writer) (int64, error) {
 // It is the caller's responsibility to call Close()
 // on the returned io.ReadCloser.
 func (r *Reader) RangeReader(off, width int64) (io.ReadCloser, error) {
-	req, err := http.NewRequest("GET", uri(r.Key, r.bucket, r.object), nil)
+	req, err := http.NewRequest("GET", uri(r.Key, r.Bucket, r.Path), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -352,7 +352,7 @@ func (r *Reader) RangeReader(off, width int64) (io.ReadCloser, error) {
 		return nil, ErrETagChanged
 	case http.StatusNotFound:
 		res.Body.Close()
-		return nil, &fs.PathError{Op: "read", Path: r.object, Err: fs.ErrNotExist}
+		return nil, &fs.PathError{Op: "read", Path: r.Path, Err: fs.ErrNotExist}
 	case http.StatusPartialContent, http.StatusOK:
 		// okay; fallthrough
 	}

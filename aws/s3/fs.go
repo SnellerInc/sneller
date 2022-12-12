@@ -17,6 +17,7 @@ package s3
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -140,16 +141,9 @@ func (b *BucketFS) Open(name string) (fs.File, error) {
 		// try a HEAD or GET operation; these
 		// are cheaper and faster than
 		// full listing operations
-		if b.DelayGet {
-			rd, err := Stat(b.Key, b.Bucket, name)
-			if err == nil {
-				return &File{Reader: rd, ctx: b.Ctx}, nil
-			}
-		} else {
-			f, err := Open(b.Key, b.Bucket, name)
-			if err == nil {
-				return f, nil
-			}
+		f, err := Open(b.Key, b.Bucket, name, !b.DelayGet)
+		if err == nil || !errors.Is(err, fs.ErrNotExist) {
+			return f, err
 		}
 	}
 
@@ -184,17 +178,17 @@ func (b *BucketFS) ReadDir(name string) ([]fs.DirEntry, error) {
 // and fs.DirEntry, and fs.FS.
 type Prefix struct {
 	// Key is the signing key used to sign requests.
-	Key *aws.SigningKey
+	Key *aws.SigningKey `xml:"-"`
 	// Bucket is the bucket at the root of the "filesystem"
-	Bucket string
+	Bucket string `xml:"-"`
 	// Path is the path of this prefix.
 	// The value of Path should always be
 	// a valid path (see fs.ValidPath) plus
 	// a trailing forward slash to indicate
 	// that this is a pseudo-directory prefix.
-	Path   string
-	Client *http.Client
-	Ctx    context.Context
+	Path   string          `xml:"Prefix"`
+	Client *http.Client    `xml:"-"`
+	Ctx    context.Context `xml:"-"`
 
 	// listing token;
 	// "" means start from the beginning
@@ -326,7 +320,7 @@ func (p *Prefix) Close() error {
 type File struct {
 	// Reader is a reader that points to
 	// the associated s3 object.
-	*Reader
+	Reader
 
 	ctx  context.Context // from parent bucket
 	body io.ReadCloser   // actual body; populated lazily
@@ -335,14 +329,14 @@ type File struct {
 
 // Name implements fs.FileInfo.Name
 func (f *File) Name() string {
-	return path.Base(f.Reader.object)
+	return path.Base(f.Reader.Path)
 }
 
 // Path returns the full path to the
 // S3 object within its bucket.
 // See also blockfmt.NamedFile
 func (f *File) Path() string {
-	return f.Reader.object
+	return f.Reader.Path
 }
 
 // Mode implements fs.FileInfo.Mode
@@ -370,7 +364,7 @@ func (f *File) Read(p []byte) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		f.body, err = f.Reader.RangeReader(f.pos, f.Reader.Size()-f.pos)
+		f.body, err = f.Reader.RangeReader(f.pos, f.Size()-f.pos)
 		if err != nil {
 			return 0, err
 		}
@@ -415,11 +409,11 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		newpos = f.pos + offset
 	case io.SeekEnd:
-		newpos = f.size + offset
+		newpos = f.Reader.Size + offset
 	default:
 		panic("invalid seek whence")
 	}
-	if newpos < 0 || newpos > f.size {
+	if newpos < 0 || newpos > f.Reader.Size {
 		return f.pos, fmt.Errorf("invalid seek offset %d", newpos)
 	}
 	// current data is invalid
@@ -429,6 +423,10 @@ func (f *File) Seek(offset int64, whence int) (int64, error) {
 	}
 	f.pos = newpos
 	return f.pos, nil
+}
+
+func (f *File) Size() int64 {
+	return f.Reader.Size
 }
 
 // IsDir implements fs.DirEntry.IsDir.
@@ -514,18 +512,11 @@ func (p *Prefix) ReadDir(n int) ([]fs.DirEntry, error) {
 }
 
 type listResponse struct {
-	IsTruncated bool `xml:"IsTruncated"`
-	Contents    []struct {
-		ETag         string    `xml:"ETag"`
-		Name         string    `xml:"Key"`
-		LastModified time.Time `xml:"LastModified"`
-		Size         int64     `sml:"Size"`
-	} `xml:"Contents"`
-	CommonPrefixes []struct {
-		Prefix string `xml:"Prefix"`
-	} `xml:"CommonPrefixes"`
-	EncodingType string `xml:"EncodingType"`
-	NextToken    string `xml:"NextContinuationToken"`
+	IsTruncated    bool     `xml:"IsTruncated"`
+	Contents       []File   `xml:"Contents"`
+	CommonPrefixes []Prefix `xml:"CommonPrefixes"`
+	EncodingType   string   `xml:"EncodingType"`
+	NextToken      string   `xml:"NextContinuationToken"`
 }
 
 func (p *Prefix) list(n int, token, seek, prefix string) (*listResponse, error) {
@@ -637,47 +628,38 @@ func (p *Prefix) readDirAt(n int, token, seek, pattern string) (d []fs.DirEntry,
 	}
 	out := make([]fs.DirEntry, 0, len(ret.Contents)+len(ret.CommonPrefixes))
 	for i := range ret.Contents {
-		if ignoreKey(ret.Contents[i].Name, false) {
+		if ignoreKey(ret.Contents[i].Path(), false) {
 			continue
 		}
-		name := path.Base(ret.Contents[i].Name)
+		name := ret.Contents[i].Name()
 		match, err := patmatch(pattern, name)
 		if err != nil {
 			return nil, "", err
 		} else if !match {
 			continue
 		}
-		out = append(out, &File{
-			Reader: &Reader{
-				Key:          p.Key,
-				Client:       p.client(),
-				ETag:         ret.Contents[i].ETag,
-				LastModified: ret.Contents[i].LastModified,
-				size:         ret.Contents[i].Size,
-				bucket:       p.Bucket,
-				object:       ret.Contents[i].Name,
-			},
-			ctx: p.Ctx,
-		})
+		ret.Contents[i].Key = p.Key
+		ret.Contents[i].Client = p.client()
+		ret.Contents[i].Bucket = p.Bucket
+		ret.Contents[i].ctx = p.Ctx
+		out = append(out, &ret.Contents[i])
 	}
 	for i := range ret.CommonPrefixes {
-		if ignoreKey(ret.CommonPrefixes[i].Prefix, true) {
+		if ignoreKey(ret.CommonPrefixes[i].Path, true) {
 			continue
 		}
-		name := path.Base(ret.CommonPrefixes[i].Prefix)
+		name := ret.CommonPrefixes[i].Name()
 		match, err := patmatch(pattern, name)
 		if err != nil {
 			return nil, "", err
 		} else if !match {
 			continue
 		}
-		out = append(out, &Prefix{
-			Key:    p.Key,
-			Bucket: p.Bucket,
-			Client: p.Client,
-			Path:   ret.CommonPrefixes[i].Prefix,
-			Ctx:    p.Ctx,
-		})
+		ret.CommonPrefixes[i].Key = p.Key
+		ret.CommonPrefixes[i].Bucket = p.Bucket
+		ret.CommonPrefixes[i].Client = p.Client
+		ret.CommonPrefixes[i].Ctx = p.Ctx
+		out = append(out, &ret.CommonPrefixes[i])
 	}
 	slices.SortFunc(out, func(a, b fs.DirEntry) bool {
 		return a.Name() < b.Name()

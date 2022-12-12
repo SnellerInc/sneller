@@ -47,7 +47,7 @@ func s3object(name string) (vm.Table, error) {
 	if err != nil {
 		return nil, err
 	}
-	return srcTable(obj, obj.Size(), nil)
+	return srcTable(obj, obj.Size, nil)
 }
 
 // s3-backed NDJSON table
@@ -58,7 +58,7 @@ func s3nd(name string) (vm.Table, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &jstable{in: obj, size: obj.Size()}, nil
+	return &jstable{in: obj, size: obj.Size}, nil
 }
 
 func s3fs(name string) *db.S3FS {

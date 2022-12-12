@@ -266,7 +266,7 @@ func (u *Uploader) CopyFrom(num int64, source *Reader, start int64, end int64) e
 	if !u.started {
 		panic("s3.Uploader.CopyFrom before Start()")
 	}
-	size := source.size
+	size := source.Size
 	if start != 0 || end != 0 {
 		if start < 0 || end < 0 {
 			return errors.New("start and end values must be positive numbers")
@@ -284,9 +284,9 @@ func (u *Uploader) CopyFrom(num int64, source *Reader, start int64, end int64) e
 
 func (u *Uploader) copy(num int64, source *Reader, start int64, end int64) error {
 	req := u.req("PUT", u.Object, fmt.Sprintf("partNumber=%d&uploadId=%s", num, u.id))
-	req.Header.Add("x-amz-copy-source", fmt.Sprintf("/%s/%s", source.bucket, source.object))
+	req.Header.Add("x-amz-copy-source", fmt.Sprintf("/%s/%s", source.Bucket, source.Path))
 	req.Header.Add("x-amz-copy-source-if-match", source.ETag)
-	size := source.Size()
+	size := source.Size
 	if start != 0 || end != 0 {
 		size = end - start
 		req.Header.Add("x-amz-copy-source-range", fmt.Sprintf("bytes=%d-%d", start, end-1))
