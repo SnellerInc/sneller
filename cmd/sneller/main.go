@@ -59,15 +59,21 @@ var (
 	printStats   bool
 	printBuild   bool
 	printVersion bool
+	localTenant  bool
 
 	dst io.WriteCloser
 )
 
+var (
+	tmpdir string
+)
+
 func init() {
 	sneller.CanVMOpen = true
+	tmpdir = os.TempDir()
 
 	flag.StringVar(&dashauth, "auth", "", "authorization provider for database object storage")
-	flag.StringVar(&dashd, "d", "", "default database name (requires -auth or -r)")
+	flag.StringVar(&dashd, "d", "", "default database name (requires -auth, -r or -local)")
 	flag.BoolVar(&dashf, "f", false, "read arguments as files containing queries")
 	flag.BoolVar(&dashg, "g", false, "just dump the query plan graphviz; do not execute")
 	flag.BoolVar(&dashg2, "g2", false, "just dump DFA of first regex graphviz; do not execute")
@@ -82,6 +88,8 @@ func init() {
 	flag.StringVar(&cachedir, "cachedir", "/tmp", "cache directory")
 	flag.BoolVar(&printBuild, "build", false, "print the build info of executable")
 	flag.BoolVar(&printVersion, "version", false, "print the version of executable")
+	flag.BoolVar(&localTenant, "local", false,
+		fmt.Sprintf("read data from local storage (%s)\ndata has to be prepared by sdb invoked with -local option", tmpdir))
 }
 
 type execStatistics struct {
@@ -217,18 +225,31 @@ func tenantEnv(tenant db.Tenant, db string) *sneller.TenantEnv {
 }
 
 func mkenv() plan.Env {
+	token := dashtoken
+	if token == "" {
+		token = os.Getenv("SNELLER_TOKEN")
+	}
+
+	if localTenant {
+		if dashr != "" {
+			exitf("-r cannot be used with -local")
+		}
+		if dashauth != "" {
+			exitf("-auth cannot be used with -local")
+		}
+		t := db.NewLocalTenantFromPath(tmpdir)
+		return tenantEnv(t, dashd)
+	}
+
 	// database object storage via auth provider
 	if dashauth != "" {
 		if dashr != "" {
 			exitf("-r cannot be used with -auth")
 		}
-		token := dashtoken
-		if token == "" {
-			token = os.Getenv("SNELLER_TOKEN")
-		}
 		if token == "" {
 			exitf("no token provided via -token or SNELLER_TOKEN")
 		}
+
 		prov, err := auth.Parse(dashauth)
 		if err != nil {
 			exit(err)

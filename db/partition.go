@@ -123,7 +123,7 @@ func (c *collector) match(glob, path string) ([]byte, error) {
 		// this shouldn't happen in practice because
 		// the caller is expected to ensure the glob
 		// pattern matches the input object path
-		return nil, fmt.Errorf("path does not match pattern")
+		return nil, fmt.Errorf("path %q does not match pattern %q", path, glob)
 	}
 	// build the path prefix
 	c.buf = c.buf[:0]

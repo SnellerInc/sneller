@@ -87,10 +87,10 @@ func syntax(f string, args ...interface{}) error {
 func tsplit(p *expr.Path) (string, string, error) {
 	d, ok := p.Rest.(*expr.Dot)
 	if !ok {
-		return "", "", syntax("no database+table reference in %q", p)
+		return "", "", syntax("no database+table reference in %q", expr.ToString(p))
 	}
 	if d.Rest != nil {
-		return "", "", syntax("trailing path expression %q in table not supported", d.Rest)
+		return "", "", syntax("trailing path expression %q in table not supported", expr.ToString(d.Rest))
 	}
 	return p.First, d.Field, nil
 }
@@ -122,7 +122,7 @@ func (f *FSEnv) index(e expr.Node) (*blockfmt.Index, error) {
 		dbname = f.db
 		table = p.First
 		if p.Rest != nil {
-			err = syntax("trailing path expression %q in table not supported", p.Rest)
+			err = syntax("trailing path expression %q in table not supported", expr.ToString(p.Rest))
 		}
 	}
 	if err != nil {

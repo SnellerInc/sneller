@@ -44,6 +44,11 @@ var (
 	authEndPoint string
 	printVersion bool
 	printBuild   bool
+	localTenant  bool
+)
+
+var (
+	tmpdir string
 )
 
 const (
@@ -61,6 +66,10 @@ func init() {
 	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, empty uses environment)")
 	flag.BoolVar(&printBuild, "build", false, "print the build info of executable")
 	flag.BoolVar(&printVersion, "version", false, "print the version of executable")
+
+	tmpdir = os.TempDir()
+	flag.BoolVar(&localTenant, "local", false,
+		fmt.Sprintf("write & read data from local storage (%s)", tmpdir))
 }
 
 func exitf(f string, args ...interface{}) {
@@ -310,10 +319,15 @@ func inputs(creds db.Tenant, dbname, table string) {
 }
 
 func creds() db.Tenant {
+	if localTenant {
+		return db.NewLocalTenantFromPath(tmpdir)
+	}
+
 	activeToken := token
 	if activeToken == "" {
 		activeToken = os.Getenv("SNELLER_TOKEN")
 	}
+
 	if activeToken == "" {
 		exitf("no token provided via -token or $SNELLER_TOKEN")
 	}
