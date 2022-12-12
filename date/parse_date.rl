@@ -68,7 +68,7 @@ package date
     main := space* date ('T' | ' ') full_time space*;
 }%%
 
-func parse(data []byte) (year, month, day, hour, minute, second, nsec int, ok bool) {
+func parseDate(data []byte) (year, month, day, hour, minute, second, nsec int, ok bool) {
     cs, p, pe, eof := 0, 0, len(data), -1
     // fractional component; divided by ten
     // for each decimal place after '.' that we scan

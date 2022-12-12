@@ -18,6 +18,7 @@
 // Currently, only RFC3339Nano dates are supported.
 package date
 
-//go:generate ragel -Z -G2 date.rl
+//go:generate ragel -Z -G2 parse_date.rl
+//go:generate ragel -Z -G2 parse_duration.rl
 
 //go:generate gofmt -w .

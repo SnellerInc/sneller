@@ -43,7 +43,7 @@ type Time struct {
 // and trailing whitespace as long as the middle characters
 // of data are unambiguously a timestamp.
 func Parse(data []byte) (Time, bool) {
-	year, month, day, hour, min, sec, ns, ok := parse(data)
+	year, month, day, hour, min, sec, ns, ok := parseDate(data)
 	if !ok {
 		return Time{}, false
 	}
