@@ -36,7 +36,9 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/ion/versify"
+	"github.com/SnellerInc/sneller/ion/zion"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tests"
 	"github.com/SnellerInc/sneller/vm"
@@ -52,26 +54,55 @@ func (b bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected bufhandle.Encode")
 }
 
-type chunkshandle [][]byte
+type chunkshandle struct {
+	chunks [][]byte
+	fields []string
+}
 
-func (c chunkshandle) Open(_ context.Context) (vm.Table, error) {
+func (c *chunkshandle) Open(_ context.Context) (vm.Table, error) {
 	return c, nil
 }
 
-func (c chunkshandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (c *chunkshandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected chunkshandle.Encode")
 }
 
-func (c chunkshandle) Chunks() int { return len(c) }
+func (c *chunkshandle) writeZion(dst io.WriteCloser) error {
+	var mem []byte
+	var err error
+	var enc zion.Encoder
+	for i := range c.chunks {
+		mem, err = enc.Encode(c.chunks[i], mem[:0])
+		if err != nil {
+			dst.Close()
+			return err
+		}
+		_, err = dst.Write(mem)
+		if err != nil {
+			dst.Close()
+			return err
+		}
+	}
+	if shw, ok := dst.(vm.EndSegmentWriter); ok {
+		shw.EndSegment()
+	} else {
+		dst.Close()
+		return fmt.Errorf("%T not an EndSegmentWriter?", dst)
+	}
+	return dst.Close()
+}
 
-func (c chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
+func (c *chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	w, err := dst.Open()
 	if err != nil {
 		return err
 	}
+	if zw, ok := dst.(blockfmt.ZionWriter); ok && zw.ConfigureZion(c.fields) {
+		return c.writeZion(w)
+	}
 	tmp := vm.Malloc()
 	defer vm.Free(tmp)
-	for _, buf := range c {
+	for _, buf := range c.chunks {
 		if len(buf) > len(tmp) {
 			return fmt.Errorf("chunk len %d > PageSize", len(buf))
 		}
@@ -97,21 +128,22 @@ func (c chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	return w.Close()
 }
 
-type parallelchunks [][]byte
+type parallelchunks struct {
+	chunks [][]byte
+	fields []string
+}
 
-func (p parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (p *parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected parallelchunks.Encode")
 }
 
-func (p parallelchunks) Chunks() int { return len(p) }
-
-func (p parallelchunks) Open(_ context.Context) (vm.Table, error) {
+func (p *parallelchunks) Open(_ context.Context) (vm.Table, error) {
 	return p, nil
 }
 
-func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
-	outputs := make([]io.WriteCloser, len(p))
-	errlist := make([]error, len(p))
+func (p *parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
+	outputs := make([]io.WriteCloser, len(p.chunks))
+	errlist := make([]error, len(p.chunks))
 	var wg sync.WaitGroup
 	for i := range outputs {
 		w, err := dst.Open()
@@ -129,8 +161,17 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 					*errp = e
 				}
 			}
-
-			_, err := w.Write(mem)
+			var err error
+			if zw, ok := w.(blockfmt.ZionWriter); ok && zw.ConfigureZion(p.fields) {
+				var enc zion.Encoder
+				mem, err = enc.Encode(mem, nil)
+				if err != nil {
+					seterr(err)
+					w.Close()
+					return
+				}
+			}
+			_, err = w.Write(mem)
 			if err != nil {
 				seterr(err)
 				w.Close()
@@ -144,7 +185,7 @@ func (p parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 				return
 			}
 			seterr(w.Close())
-		}(outputs[i], p[i], &errlist[i])
+		}(outputs[i], p.chunks[i], &errlist[i])
 	}
 	wg.Wait()
 	for i := range errlist {
@@ -203,12 +244,22 @@ func (e *queryenv) handle(t expr.Node) (plan.TableHandle, bool) {
 	return nil, false
 }
 
+func setHints(h plan.TableHandle, hints *plan.Hints) {
+	switch t := h.(type) {
+	case *chunkshandle:
+		t.fields = hints.Fields
+	case *parallelchunks:
+		t.fields = hints.Fields
+	}
+}
+
 // Stat implements plan.Env.Stat
 func (e *queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	handle, ok := e.handle(t)
 	if !ok {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
 	}
+	setHints(handle, h)
 	return handle, nil
 }
 
@@ -218,10 +269,10 @@ func (e *queryenv) Split(t expr.Node, th plan.TableHandle) (plan.Subtables, erro
 	// use those as the split components
 	var multi [][]byte
 	switch t := th.(type) {
-	case parallelchunks:
-		multi = [][]byte(t)
-	case chunkshandle:
-		multi = [][]byte(t)
+	case *parallelchunks:
+		multi = [][]byte(t.chunks)
+	case *chunkshandle:
+		multi = [][]byte(t.chunks)
 	default:
 	}
 	if multi != nil {
@@ -457,9 +508,9 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags ru
 			}
 			if flags&flagParallel != 0 {
 				maxp = 2
-				input[i] = parallelchunks{first, second}
+				input[i] = &parallelchunks{chunks: [][]byte{first, second}}
 			} else {
-				input[i] = chunkshandle{first, second}
+				input[i] = &chunkshandle{chunks: [][]byte{first, second}}
 			}
 		} else {
 			input[i] = bufhandle(flatten(in, st))

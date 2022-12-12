@@ -112,18 +112,6 @@ func (t tables) Hits() int64   { return sum(t, CachedTable.Hits) }
 func (t tables) Misses() int64 { return sum(t, CachedTable.Misses) }
 func (t tables) Bytes() int64  { return sum(t, CachedTable.Bytes) }
 
-func (t tables) Chunks() int {
-	total := 0
-	for i := range t {
-		n := t[i].Chunks()
-		if n == -1 {
-			return -1
-		}
-		total += n
-	}
-	return total
-}
-
 func (t tables) WriteChunks(dst vm.QuerySink, parallel int) error {
 	sink, err := newMultiSink(dst, parallel)
 	if err != nil {

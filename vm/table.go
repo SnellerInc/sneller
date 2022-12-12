@@ -24,12 +24,6 @@ import (
 
 // Table represents an ion-encoded collection of rows
 type Table interface {
-	// Chunks should return the
-	// number of chunks of data present
-	// in the table, or -1 if the number
-	// of chunks is not known in advance.
-	Chunks() int
-
 	// WriteChunks should write the table
 	// contents into dst using the provided
 	// parallelism hint.
