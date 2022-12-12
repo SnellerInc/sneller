@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -61,46 +60,6 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	os.Exit(m.Run())
-}
-
-type testTenant struct {
-	root *db.DirFS
-	key  *blockfmt.Key
-}
-
-type dirResolver struct {
-	*db.DirFS
-}
-
-func (d *dirResolver) Split(pattern string) (db.InputFS, string, error) {
-	if !strings.HasPrefix(pattern, "file://") {
-		return nil, "", fmt.Errorf("bad pattern %q", pattern)
-	}
-	pattern = strings.TrimPrefix(pattern, "file://")
-	return d.DirFS, pattern, nil
-}
-
-func (t *testTenant) ID() string                { return "test-tenant" }
-func (t *testTenant) Root() (db.InputFS, error) { return t.root, nil }
-func (t *testTenant) Key() *blockfmt.Key        { return t.key }
-func (t *testTenant) Config() *db.TenantConfig  { return nil }
-
-func (t *testTenant) Split(pat string) (db.InputFS, string, error) {
-	dr := dirResolver{t.root}
-	return dr.Split(pat)
-}
-
-func randomKey() *blockfmt.Key {
-	ret := new(blockfmt.Key)
-	rand.Read(ret[:])
-	return ret
-}
-
-func newTenant(root *db.DirFS) *testTenant {
-	return &testTenant{
-		root: root,
-		key:  randomKey(),
-	}
 }
 
 const testBlocksize = 4096
@@ -194,7 +153,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 			return blockfmt.UnsafeION()
 		},
 	}
-	tt := newTenant(dfs)
+	tt := db.NewLocalTenant(dfs)
 	err = b.Sync(tt, "default", "*")
 	if err != nil {
 		t.Fatal(err)
