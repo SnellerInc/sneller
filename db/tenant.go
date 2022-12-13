@@ -28,11 +28,6 @@ type Tenant interface {
 	// for verifying the integrity of database objects.
 	Key() *blockfmt.Key
 
-	// Config returns the configuration options
-	// for this tenant. This may return nil to
-	// indicate all defaults should be used.
-	Config() *TenantConfig
-
 	// Root should return the root of the
 	// storage for database objects.
 	// The returned FS should implement
@@ -54,4 +49,15 @@ type TenantConfig struct {
 	// allowed to be scanned for each query. If
 	// this is 0, there is no limit.
 	MaxScanBytes uint64
+}
+
+// TenantConfigurable is a tenant that may provide
+// preferred configuration.
+type TenantConfigurable interface {
+	Tenant
+
+	// Config returns the configuration options
+	// for this tenant. This may return nil to
+	// indicate all defaults should be used.
+	Config() *TenantConfig
 }

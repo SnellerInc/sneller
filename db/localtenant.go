@@ -51,10 +51,6 @@ func (t *localTenant) Key() *blockfmt.Key {
 	return &localTenantKey
 }
 
-func (t *localTenant) Config() *TenantConfig {
-	return nil
-}
-
 func (t *localTenant) Root() (InputFS, error) {
 	return t.fs, nil
 }

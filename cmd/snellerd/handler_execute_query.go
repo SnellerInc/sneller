@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller"
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
@@ -168,12 +169,13 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	hash = sha256.Sum256([]byte(tenantID + string(creds.Key()[:])))
 	copy(key[:], hash[:])
 
-	cfg := creds.Config()
-
 	// determine scan limit
 	maxScan := uint64(DefaultMaxScan)
-	if cfg != nil && cfg.MaxScanBytes > 0 {
-		maxScan = cfg.MaxScanBytes
+	if ct, ok := creds.(db.TenantConfigurable); ok {
+		cfg := ct.Config()
+		if cfg != nil && cfg.MaxScanBytes > 0 {
+			maxScan = cfg.MaxScanBytes
+		}
 	}
 
 	planEnv, err := sneller.Environ(creds, defaultDatabase)
