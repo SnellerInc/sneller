@@ -27,6 +27,8 @@ func init() {
 	}
 }
 
+var opname func(op ssaop) string
+
 func fatalposf(pos *scanner.Position, f string, args ...any) {
 	fatalf("%s: %s\n", pos, fmt.Sprintf(f, args...))
 }
@@ -74,9 +76,8 @@ func repeat(prefix string, suffixes ...string) []string {
 type rule struct {
 	rules.Rule
 
-	op     ssaop
-	opname string
-	args   []rules.Term
+	op   ssaop
+	args []rules.Term
 }
 
 var tempvar int
@@ -263,7 +264,7 @@ func matchany(oplst []ssaop, argc int, name, input string) string {
 			}
 			str.WriteString(" || ")
 		}
-		fmt.Fprintf(&str, "%s.op == %d", name, op)
+		fmt.Fprintf(&str, "%s.op == %s", name, opname(op))
 	}
 	// only bother matching argcount for variadic ops:
 	if valen > 0 {
@@ -276,7 +277,7 @@ func matchany(oplst []ssaop, argc int, name, input string) string {
 
 func match(op ssaop, argc int, name, input string) string {
 	valen := len(ssainfo[op].vaArgs)
-	ret := fmt.Sprintf("%s := %s; %s.op == %d /* %s */", name, input, name, op, op)
+	ret := fmt.Sprintf("%s := %s; %s.op == %s", name, input, name, opname(op))
 	if valen > 0 {
 		ret += fmt.Sprintf(" && len(%s.args) == %d", name, argc)
 	}
@@ -434,15 +435,15 @@ func consExpr(t *rules.Term, toplvl bool, imm bool) string {
 		var start string
 		if imm {
 			if toplvl {
-				start = fmt.Sprintf("/* clobber v */ p.setssa(v, %d /* %[1]s */", op, op)
+				start = fmt.Sprintf("/* clobber v */ p.setssa(v, %s", opname(op))
 			} else {
-				start = fmt.Sprintf("p.ssaimm(%d /* %[1]s */", op, op)
+				start = fmt.Sprintf("p.ssaimm(%s", opname(op))
 			}
 		} else {
 			if toplvl {
-				start = fmt.Sprintf("/* clobber v */ p.setssa(v, %d /* %[1]s */, nil", op)
+				start = fmt.Sprintf("/* clobber v */ p.setssa(v, %s, nil", opname(op))
 			} else {
-				start = fmt.Sprintf("p.ssaimm(%d /* %[1]s */, nil", op)
+				start = fmt.Sprintf("p.ssaimm(%s, nil", opname(op))
 			}
 		}
 		for i := range args {
@@ -472,7 +473,7 @@ func casematch(lst []rule, vname string) {
 			}
 			narg = -1
 			cur = lst[i].op
-			fmt.Fprintf(stdout, "case %s: /* %s */\n", lst[i].opname, lst[i].op)
+			fmt.Fprintf(stdout, "case %s: /* %s */\n", opname(cur), cur)
 		}
 		argc := len(lst[i].args)
 		if ssainfo[cur].immfmt != 0 {
@@ -522,6 +523,15 @@ func writeRules(lst []rule) {
 }
 
 func GenrewriteMain(dst io.Writer, opnames []string, infiles []string) {
+	opname = func(op ssaop) string {
+		k := int(op)
+		if k < len(opnames) {
+			return opnames[k]
+		}
+
+		return fmt.Sprintf("%d", op)
+	}
+
 	stdout = dst
 	var all []rule
 	for i := range infiles {
@@ -537,18 +547,10 @@ func GenrewriteMain(dst io.Writer, opnames []string, infiles []string) {
 		for i := range lst {
 			op, args := splitFirst(&lst[i])
 
-			k := int(op)
-			var opname string
-			if k >= 0 && k < len(opnames) {
-				opname = opnames[k]
-			} else {
-				opname = fmt.Sprintf("%d", k)
-			}
 			all = append(all, rule{
-				Rule:   lst[i],
-				op:     op,
-				opname: opname,
-				args:   args,
+				Rule: lst[i],
+				op:   op,
+				args: args,
 			})
 		}
 		f.Close()
