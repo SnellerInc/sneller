@@ -305,15 +305,8 @@ func (q *rowSplitter) drop() {
 }
 
 func (q *rowSplitter) Close() error {
-	noLeakCheck(q)
 	err := q.rowConsumer.Close()
-	// the child may have references to q.shared,
-	// so it needs to be closed before we can drop it:
-	q.shared.Reset()
-	if q.vmcache != nil {
-		Free(q.vmcache)
-		q.vmcache = nil
-	}
+	q.drop()
 	return err
 }
 
@@ -354,6 +347,7 @@ func (z *zionSymtab) Unmarshal(src []byte) ([]byte, error) {
 		return nil, err
 	}
 	q.shared.snapshot() // restore on next Unmarshal
+	q.shared.flags.set(sfZion)
 	q.aux.reset()
 	err = q.symbolize(&q.shared, &q.aux)
 	if err != nil {
@@ -401,6 +395,7 @@ func (q *rowSplitter) Write(buf []byte) (int, error) {
 			return 0, fmt.Errorf("rowSplitter.Write: %w", err)
 		}
 		q.shared.snapshot() // mark this point for the next rewind()
+		q.shared.flags.clear(sfZion)
 		q.symbolized = true
 		boff = int32(len(buf) - len(rest))
 

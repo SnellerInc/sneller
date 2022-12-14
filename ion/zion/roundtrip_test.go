@@ -247,8 +247,8 @@ func TestDecodePart(t *testing.T) {
 				t.Errorf("got  %s", got)
 				t.Errorf("want %s", out)
 			}
-			if dec.decomps != touched {
-				t.Errorf("dec.decomps=%d, but wanted %d buckets touched", dec.decomps, touched)
+			if dec.buckets.Decomps != touched {
+				t.Errorf("dec.decomps=%d, but wanted %d buckets touched", dec.buckets.Decomps, touched)
 			}
 		})
 	}

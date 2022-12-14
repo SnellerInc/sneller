@@ -33,6 +33,7 @@ type component struct {
 // allocate any strings while unmarshaling
 type symtab struct {
 	components []component
+	selected   []ion.Symbol
 	resolved   int
 	nextID     int
 }
@@ -41,8 +42,20 @@ func (s *symtab) reset() {
 	for i := range s.components {
 		s.components[i].symbol = ^ion.Symbol(0)
 	}
+	s.selected = s.selected[:0]
 	s.nextID = 10
 	s.resolved = 0
+}
+
+// implements zll.Symtab; isn't used in practice
+// since we use zll.Buckets.SelectSymbols()
+func (s *symtab) Symbolize(x string) (ion.Symbol, bool) {
+	for i := range s.components {
+		if s.components[i].name == x {
+			return s.components[i].symbol, s.components[i].symbol != ^ion.Symbol(0)
+		}
+	}
+	return 0, false
 }
 
 // this is an optimized version of ion.Symtab.Unmarshal
@@ -87,6 +100,7 @@ func (s *symtab) Unmarshal(x []byte) ([]byte, error) {
 							s.components[i].name != string(str) {
 							continue
 						}
+						s.selected = append(s.selected, ion.Symbol(s.nextID))
 						s.components[i].symbol = ion.Symbol(s.nextID)
 						s.resolved++
 						break

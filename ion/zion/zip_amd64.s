@@ -60,10 +60,10 @@ TEXT ·zipfast(SB), NOSPLIT, $32
     MOVQ  $0, ret+56(FP)      // consumed = 0
     MOVQ  $0, ret1+64(FP)     // wrote = 0
     MOVQ  d+48(FP), R9        // R9 = &Decoder
-    MOVQ  Decoder_set+pathset_bits+0(R9), DX // DX = symbol ID bitmap
+    MOVQ  Decoder_buckets+const_bitsOff+0(R9), DX // DX = symbol ID bitmap
     MOVQ  SI, 0(SP)           // set up initial saved start
     MOVQ  DI, 8(SP)           // set up initial saved dst
-    VMOVDQU32 Decoder_pos(R9), Z0
+    VMOVDQU32 Decoder_buckets+const_posOff(R9), Z0
     VPMOVD2M  Z0, K1
     KNOTW     K1, K1          // K1 = valid bucket bits
     KMOVW     K1, R8
@@ -145,8 +145,8 @@ top:
     POPCNTL       R11, R11        // R11 = actual buckets to process
 unpack_loop:
     MOVBQZX Decoder_nums(R9)(R12*1), R13 // R13 = bucket number
-    MOVQ    Decoder_mem+0(R9), SI        // SI = &Decoder.mem[0]
-    MOVL    Decoder_pos(R9)(R13*4), R14  // R14 = bucket pos
+    MOVQ    Decoder_buckets+const_decompOff+0(R9), SI        // SI = &Decoder.buckets.Decompressed[0]
+    MOVL    Decoder_buckets+const_posOff(R9)(R13*4), R14  // R14 = bucket pos
     ADDL    Decoder_base(R9)(R13*4), R14 // R14 = bucket.pos + bucket.base
     LEAQ    0(SI)(R14*1), SI             // SI = actual ion field+value
 
@@ -178,7 +178,7 @@ label_done:
     // the symbol bitmap:
     MOVL    R8, BX
     SHRL    $6, BX
-    CMPQ    Decoder_set+pathset_bits+8(R9), BX
+    CMPQ    Decoder_buckets+const_bitsOff+8(R9), BX
     JBE     parse_value     // skip if (bit >> 6) > len(set.bits)
     MOVQ    0(DX)(BX*8), BX // BX = words[bit>>6]
     ANDL    $63, R8

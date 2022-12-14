@@ -67,8 +67,8 @@ top:
 unpack_loop:
     MOVQ    R12, R13
     ANDL    $0xf, R13                    // R13 = bucket number
-    MOVQ    Decoder_mem+0(R9), SI        // SI = &Decoder.mem[0]
-    MOVL    Decoder_pos(R9)(R13*4), R14  // R14 = bucket pos
+    MOVQ    Decoder_buckets+const_decompOff+0(R9), SI        // SI = &Decoder.buckets.Decompressed[0]
+    MOVL    Decoder_buckets+const_posOff(R9)(R13*4), R14  // R14 = bucket pos
     TESTL   R14, R14
     JS      trap                         // assert(pos >= 0)
     ADDL    Decoder_base(R9)(R13*4), R14 // R14 = bucket.pos + bucket.base

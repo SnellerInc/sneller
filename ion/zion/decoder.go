@@ -15,10 +15,9 @@
 package zion
 
 import (
-	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
+	"unsafe"
 
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/zion/zll"
@@ -38,7 +37,12 @@ const (
 const (
 	DefaultTargetWrite = 128 * 1024
 
-	buckets = zll.NumBuckets
+	//lint:ignore U1000 used in asm
+	posOff = unsafe.Offsetof(zll.Buckets{}.Pos)
+	//lint:ignore U1000 used in asm
+	decompOff = unsafe.Offsetof(zll.Buckets{}.Decompressed)
+	//lint:ignore U1000 used in asm
+	bitsOff = unsafe.Offsetof(zll.Buckets{}.SymbolBits)
 )
 
 // Decoder is a stateful decoder of compressed
@@ -54,37 +58,27 @@ type Decoder struct {
 	TargetWriteSize int
 
 	//lint:ignore U1000 used in assembly as a scratch buffer
-	nums [buckets]uint8 // unpacked bucket references
+	nums [zll.NumBuckets]uint8 // unpacked bucket references
+	// used in assembly to track the current decoding displacement
+	base [zll.NumBuckets]int32
+
+	shape   zll.Shape
+	buckets zll.Buckets
 
 	out []byte
-	mem []byte
 	tmp []byte
 	dst io.Writer
 	nn  int64
 
-	// these are broken up so that
-	// they can be adjusted with a
-	// single vpaddd instruction
-	pos  [buckets]int32
-	base [buckets]int32
-
 	fault fault
 
-	st         symtab
-	set        pathset
-	components []string // if precise, decode these fields
-	precise    bool     // if !precise, decode everything
+	st symtab
 
-	decomps int
-	// seed is the full 32-bit value
-	// from the input stream; currently
-	// only the lowest nibble is used
-	seed uint32
-}
-
-func pad8(buf []byte) []byte {
-	l := (len(buf) + 8) & 7
-	return slices.Grow(buf, l)
+	// if precise is true, then components is
+	// the list of top-level fields to extract;
+	// if !precise then all fields should be extracted
+	components []string
+	precise    bool
 }
 
 // Reset resets the internal decoder state,
@@ -93,13 +87,10 @@ func (d *Decoder) Reset() {
 	d.TargetWriteSize = 0
 	d.components = nil
 	d.st.reset()
-	d.set.clear()
-	d.mem = d.mem[:0]
 	d.out = d.out[:0]
 	d.tmp = d.tmp[:0]
 	d.dst = nil
 	d.fault = 0
-	d.decomps = 0
 }
 
 // SetWildcard tells the decoder to decode
@@ -142,75 +133,28 @@ func (d *Decoder) SetComponents(x []string) {
 	}
 }
 
-func (d *Decoder) checkMagic(src []byte) ([]byte, error) {
-	if len(src) < 8 {
-		return nil, fmt.Errorf("zion.Decoder: len(input)=%d; missing magic", len(src))
-	}
-	if !zll.IsMagic(src) {
-		return nil, fmt.Errorf("zion.Decoder: bad magic bytes %x", src[:4])
-	}
-	d.seed = binary.LittleEndian.Uint32(src[4:])
-	d.set.selector = uint8(d.seed & 0xf)
-	return src[8:], nil
-}
-
 func (d *Decoder) prepare(src, dst []byte) ([]byte, error) {
-	src, err := d.checkMagic(src)
+	d.shape.Symtab = &d.st
+	body, err := d.shape.Decode(src)
 	if err != nil {
 		return nil, err
 	}
-	var skip int
-	d.mem, skip, err = zll.Decompress(src, d.mem[:0])
-	if err != nil {
-		return nil, fmt.Errorf("zion.Decoder: getting shape: %w", err)
+	// copy symbol table bits into output
+	dst = append(dst[:0], d.shape.Bits[:d.shape.Start]...)
+	d.buckets.Reset(&d.shape, body)
+	for i := range d.base {
+		d.base[i] = 0
 	}
-	src = src[skip:]
-	var shape []byte
-	if ion.IsBVM(d.mem) || ion.TypeOf(d.mem) == ion.AnnotationType {
-		shape, err = d.st.Unmarshal(d.mem)
-		if err != nil {
-			return nil, fmt.Errorf("zion.Decoder: parsing symbol table: %w", err)
-		}
-		// copy symbol table into output
-		dst = append(dst, d.mem[:len(d.mem)-len(shape)]...)
+	if d.precise {
+		err = d.buckets.SelectSymbols(d.st.selected)
 	} else {
-		shape = d.mem
+		err = d.buckets.SelectAll()
 	}
-	d.set.clear()
-	for i := range d.st.components {
-		sym := d.st.components[i].symbol
-		if sym == ^ion.Symbol(0) {
-			continue
-		}
-		d.set.set(sym)
+	if err != nil {
+		return nil, err
 	}
 	d.out = dst
-
-	// we can avoid decompressing any buckets
-	// at all if none of the symbols we care about
-	// are present in any buckets
-	for i := 0; i < buckets; i++ {
-		d.base[i] = 0
-		if d.precise && !d.set.useBucket(i) {
-			skip, err = zll.FrameSize(src)
-			if err != nil {
-				return nil, err
-			}
-			d.pos[i] = -1
-		} else {
-			d.pos[i] = int32(len(d.mem))
-			d.mem, skip, err = zll.Decompress(src, d.mem)
-			if err != nil {
-				return nil, err
-			}
-			d.decomps++
-		}
-		src = src[skip:]
-	}
-	// always ensure any reference to d.mem
-	// can be loaded with a MOVQ:
-	d.mem = pad8(d.mem)
-	return shape, nil
+	return d.shape.Bits[d.shape.Start:], nil
 }
 
 // Decode performs a statefull decoding of src
@@ -263,28 +207,12 @@ func (d *Decoder) CopyBytes(dst io.Writer, src []byte) (int64, error) {
 // to Decode where only the number of stored records
 // is of interest.
 func (d *Decoder) Count(src []byte) (int, error) {
-	src, err := d.checkMagic(src)
+	d.shape.Symtab = &d.st
+	_, err := d.shape.Decode(src)
 	if err != nil {
 		return 0, err
 	}
-	d.mem, _, err = zll.Decompress(src, d.mem[:0])
-	if err != nil {
-		return 0, fmt.Errorf("zion.Decoder.Count: getting shape: %w", err)
-	}
-	var shape []byte
-	if ion.IsBVM(d.mem) || ion.TypeOf(d.mem) == ion.AnnotationType {
-		shape, err = d.st.Unmarshal(d.mem)
-		if err != nil {
-			return 0, fmt.Errorf("zion.Decoder.Count: parsing symbol table: %w", err)
-		}
-	} else {
-		shape = d.mem
-	}
-	ret, ok := shapecount(shape)
-	if !ok {
-		return 0, errCorrupt
-	}
-	return ret, nil
+	return d.shape.Count()
 }
 
 // count the number of records in shape
@@ -336,11 +264,11 @@ func (d *Decoder) zip(shape, dst []byte) (int, int) {
 		}
 		return len(shape), c
 	}
-	bucket := d.set.bucket(sym)
-	pos := d.pos[bucket]
-	mem := d.mem[pos:]
-	if bucket < buckets-1 && d.pos[bucket+1] >= 0 {
-		mem = d.mem[:d.pos[bucket+1]]
+	bucket := d.shape.SymbolBucket(sym)
+	pos := d.buckets.Pos[bucket]
+	mem := d.buckets.Decompressed[pos:]
+	if bucket < zll.NumBuckets-1 && d.buckets.Pos[bucket+1] >= 0 {
+		mem = d.buckets.Decompressed[:d.buckets.Pos[bucket+1]]
 	}
 	// pre-compute the bounds check:
 	// the destination must fit N descriptors

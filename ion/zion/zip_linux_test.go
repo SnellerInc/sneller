@@ -21,7 +21,15 @@ import (
 	"testing"
 
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/zion/zll"
+
+	"golang.org/x/exp/slices"
 )
+
+func pad8(buf []byte) []byte {
+	l := (len(buf) + 8) & 7
+	return slices.Grow(buf, l)
+}
 
 func TestNoOverwrite(t *testing.T) {
 	const pagesize = 4096
@@ -36,18 +44,19 @@ func TestNoOverwrite(t *testing.T) {
 	}
 
 	b0 := []byte{0x8a, 0x21, 0x03, 0, 0, 0, 0, 0}
-	d := &Decoder{
-		mem: b0,
-	}
+	d := Decoder{}
+	d.buckets.Shape = &d.shape
+	d.buckets.Decompressed = b0
 	d.st.components = []component{
 		{"0x8a", ion.Symbol(0xa)},
 	}
-	d.set.set(0xa)
+	d.buckets.SelectSymbols([]ion.Symbol{0xa})
 	d.components = []string{"0x8a"}
-	d.pos[0] = 0
-	for i := 1; i < buckets; i++ {
-		d.pos[i] = -1
+	d.buckets.Pos[0] = 0
+	for i := 1; i < zll.NumBuckets; i++ {
+		d.buckets.Pos[i] = -1
 	}
+	d.buckets.BucketBits = 1
 	shape := pad8([]byte{(0x1 | (0x00 << 6)), 0x0}) // one element; bucket 0
 
 	// first, assert that we get an error (and no SIGSEGV)
@@ -55,7 +64,7 @@ func TestNoOverwrite(t *testing.T) {
 	const outsize = 4
 	for i := 0; i < outsize; i++ {
 		dst := mem[pagesize-i : pagesize]
-		consumed, wrote := zipfast(shape, dst, d)
+		consumed, wrote := zipfast(shape, dst, &d)
 		if consumed != 0 {
 			t.Errorf("with %d bytes available, consumed %d", i, consumed)
 		}
@@ -72,7 +81,7 @@ func TestNoOverwrite(t *testing.T) {
 	// fall back to 1-byte copying and *not*
 	// trigger a fault here
 	dst := mem[pagesize-outsize : pagesize]
-	consumed, wrote := zipfast(shape, dst, d)
+	consumed, wrote := zipfast(shape, dst, &d)
 	if d.fault != 0 {
 		t.Fatalf("fault %d", d.fault)
 	}

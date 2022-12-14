@@ -6744,32 +6744,32 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 	p.resolved = p.resolved[:0]
 	for i := range p.values {
 		v := p.values[i]
-		op := v.op
-
-		if op == shashmember {
+		switch v.op {
+		case shashmember:
 			p.literals = true
 			v.imm = p.mktree(st, v.imm)
-		} else if op == shashlookup {
+		case shashlookup:
 			p.literals = true
 			v.imm = p.mkhash(st, v.imm)
-		} else if op == sliteral {
+		case sliteral:
 			if d, ok := v.imm.(ion.Datum); ok {
 				p.literals = true
 				var tmp ion.Buffer
 				d.Encode(&tmp, ionsyms(st))
 				v.imm = rawDatum(tmp.Bytes())
 			}
-		}
-
-		if op == sdot {
+		case sdot:
 			str := v.imm.(string)
 
-			// first, check auxilliary bindings:
-			if id, ok := aux.id(str); ok {
-				v.op = sauxval
-				v.args = v.args[:0]
-				v.imm = id
-				continue
+			// for top-level "dot" operations,
+			// check the auxilliary values first:
+			if v.args[1].op == sinit {
+				if id, ok := aux.id(str); ok {
+					v.op = sauxval
+					v.args = v.args[:0]
+					v.imm = id
+					continue
+				}
 			}
 
 			sym, ok := st.Symbolize(str)
@@ -6792,20 +6792,14 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 			}
 			v.imm = sym
 			p.record(str, sym)
-			continue
-		}
-
-		if op == smakestructkey {
+		case smakestructkey:
 			str := v.imm.(string)
 			sym := st.Intern(str)
-
 			if sym > MaxSymbolID {
 				return fmt.Errorf("symbol %x (%q) greater than max symbol ID", sym, str)
 			}
-
 			v.imm = sym
 			p.record(str, sym)
-			continue
 		}
 	}
 	p.symbolized = true

@@ -22,7 +22,6 @@ import (
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/ion/zion/zll"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/SnellerInc/sneller/vm"
 
@@ -139,27 +138,22 @@ func (p *projectionTester) Write(block []byte) (int, error) {
 	}
 	got := toNDJSON(p.t, decompressed)
 	if !bytes.Equal(got, want) && !onePartSortedEqual(&p.dec, got, want) {
-		p.t.Logf("buckets: %#x", p.dec.set.buckets)
-		p.t.Logf("bits: %#x", p.dec.set.bits)
+		p.t.Logf("buckets: %#x", p.dec.buckets.BucketBits)
 		for i := range p.dec.st.components {
 			c := &p.dec.st.components[i]
-			if p.dec.components[i] != c.name {
-				panic("???")
-			}
 			if c.symbol == ^ion.Symbol(0) {
 				p.t.Logf("missing symbol %s", c.name)
 				continue
 			}
 			// the encoder's idea of which symbols
 			// correspond to which buckets should map 1:1 to the decoder's:
-			if int(p.enc.sym2bucket[c.symbol]) != zll.SymbolBucket(0, p.dec.set.selector, c.symbol) {
+			if int(p.enc.sym2bucket[c.symbol]) != p.dec.shape.SymbolBucket(c.symbol) {
 				p.t.Fatal("bucket mismatches")
 			}
-			if !p.dec.set.useBucket(int(p.enc.sym2bucket[c.symbol])) {
+			if p.dec.buckets.BucketBits&(1<<int(p.enc.sym2bucket[c.symbol])) == 0 {
 				p.t.Fatal("not using a required bucket?")
 			}
 			p.t.Logf("block %d comp %d %s %d bucket %d", p.blockno, i, c.name, c.symbol, p.enc.sym2bucket[c.symbol])
-			p.t.Logf("present: %v", p.dec.set.contains(c.symbol))
 		}
 
 		printed := 0

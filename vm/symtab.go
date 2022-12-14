@@ -18,6 +18,15 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+type symflags int
+
+const (
+	sfZion symflags = 1 << iota
+)
+
+func (s *symflags) set(f symflags)   { *s |= f }
+func (s *symflags) clear(f symflags) { *s &^= f }
+
 type syms interface {
 	Get(ion.Symbol) string
 	Intern(x string) ion.Symbol
@@ -55,6 +64,10 @@ type symtab struct {
 	// allocations are only valid across
 	// an individual epoch
 	epoch int
+
+	// flags indicates additional information
+	// about the origin of the symbol table
+	flags symflags
 }
 
 func (s *symtab) snapshot() {

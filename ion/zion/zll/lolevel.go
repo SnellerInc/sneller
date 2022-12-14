@@ -132,6 +132,9 @@ type Buckets struct {
 	// bit N == 1 implies that bucket N has been
 	// decompressed.
 	BucketBits uint32
+	// Decomps is the number of individual bucket
+	// decompression operations that have been performed.
+	Decomps int
 }
 
 // Reset resets the state of b to point to the given
@@ -151,6 +154,11 @@ func (b *Buckets) want(bucket int) bool {
 	return b.BucketBits&(1<<bucket) != 0
 }
 
+func (b *Buckets) clearBits() {
+	b.SymbolBits = b.SymbolBits[:0]
+	b.BucketBits = 0
+}
+
 func (b *Buckets) setBit(sym ion.Symbol) {
 	v := uint(sym)
 	word := int(v >> 6)
@@ -165,8 +173,13 @@ func (b *Buckets) setBit(sym ion.Symbol) {
 // to the selected components are already decompressed.
 // Supplying a nil list of components causes all buckets
 // to be decompressed. Select may be called more than once
-// with different sets of components.
+// with different sets of components. Each time Select is
+// called, it resets b.BucketBits and b.SymbolBits to
+// correspond to the most-recently-selected components,
+// but it does not reset the b.Pos displacements into
+// decompressed data.
 func (b *Buckets) Select(components []string) error {
+	b.clearBits()
 	if components == nil {
 		b.SelectAll()
 	}
@@ -180,6 +193,19 @@ func (b *Buckets) Select(components []string) error {
 	return b.decompSelected()
 }
 
+// SelectSymbols works identically to Select, but it picks
+// the top-level path components by their symbol IDs rather
+// than the names of the path components.
+func (b *Buckets) SelectSymbols(syms []ion.Symbol) error {
+	b.clearBits()
+	for _, sym := range syms {
+		b.setBit(sym)
+	}
+	return b.decompSelected()
+}
+
+// ensure the final byte in buf
+// can be loaded with a MOVQ
 func pad8(buf []byte) []byte {
 	l := (len(buf) + 8) & 7
 	return slices.Grow(buf, l)
@@ -196,6 +222,7 @@ func (b *Buckets) decompSelected() error {
 		} else {
 			b.Pos[i] = int32(len(b.Decompressed))
 			b.Decompressed, skip, err = Decompress(parts, b.Decompressed)
+			b.Decomps++
 		}
 		if err != nil {
 			return err
@@ -208,6 +235,6 @@ func (b *Buckets) decompSelected() error {
 
 // SelectAll is equivalent to b.Select(nil)
 func (b *Buckets) SelectAll() error {
-	b.BucketBits = BucketMask
+	b.BucketBits = (1 << NumBuckets) - 1
 	return b.decompSelected()
 }

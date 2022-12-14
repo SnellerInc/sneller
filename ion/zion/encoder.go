@@ -43,7 +43,7 @@ type Encoder struct {
 	// is the symbol table plus the "shape" and the
 	// remaining frames are the buckets, in-order
 	enc  shapeEncoder
-	buck [buckets]bucket
+	buck [zll.NumBuckets]bucket
 	seed uint32
 }
 
@@ -68,7 +68,7 @@ func (e *Encoder) Reset() {
 // to Encode may not be bit-identical to data received
 // from Decode if the input data contains nop pads.
 func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
-	for i := 0; i < buckets; i++ {
+	for i := 0; i < zll.NumBuckets; i++ {
 		e.buck[i].mem = e.buck[i].mem[:0]
 		e.buck[i].base = 0
 	}
@@ -109,7 +109,7 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i := 0; i < buckets; i++ {
+	for i := 0; i < zll.NumBuckets; i++ {
 		dst, err = zll.Compress(e.buck[i].mem, dst)
 		if err != nil {
 			return nil, err
@@ -238,19 +238,19 @@ func (h *histogram) record(sym ion.Symbol, size int) {
 // best picks the best seed of the candidate seeds
 func (h *histogram) best() uint32 {
 	// not even worth evaluating:
-	if h.total < (buckets * buckets) {
+	if h.total < (zll.NumBuckets * zll.NumBuckets) {
 		return uint32(0)
 	}
 	// pick the bucket with the best sum-squared
 	// distance from a perfectly-even distribution;
 	// effectively we are minimizing the variance
 	// of bucket sizes around the mean bucket size
-	want := h.total / buckets
+	want := h.total / zll.NumBuckets
 	entropy := math.MaxInt
 	best := 0
 	for i := 0; i < trials; i++ {
 		total := 0
-		for j := 0; j < buckets; j++ {
+		for j := 0; j < zll.NumBuckets; j++ {
 			residual := h.buckets[i][j] - want
 			total += residual * residual
 		}
