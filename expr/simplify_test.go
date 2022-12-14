@@ -948,6 +948,10 @@ func TestSimplify(t *testing.T) {
 			Add(&Cast{From: path("x"), To: IntegerType}, Integer(0)),
 			&Cast{From: path("x"), To: IntegerType},
 		},
+		{
+			And(path("x"), And(path("y"), path("z"))),
+			And(And(path("x"), path("y")), path("z")),
+		},
 	}
 
 	for i := range testcases {

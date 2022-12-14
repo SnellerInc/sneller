@@ -19,11 +19,15 @@
 (and (bool x) y), `x && TypeOf(y, h) == LogicalType` -> y
 (and x (bool y)), `y && TypeOf(x, h) == LogicalType` -> x
 (and (bool x) (bool y)) -> (bool "x && y")
+// canonicalize to left-associative:
+(and x (and y z)) -> (and (and x y) z)
 
 (or x x), `TypeOf(x, h) == LogicalType` -> x
 (or (bool x) y), `!x`, `TypeOf(y, h) == LogicalType` -> y
 (or x (bool y)), `!y`, `TypeOf(x, h) == LogicalType` -> x
 (or (bool x) (bool y)) -> (bool "x || y")
+// canonicalize to left-associative:
+(or x (or y z)) -> (or (or x y) z)
 
 (xor (bool x) (bool y)) -> (bool "x != y")
 (xnor (bool x) (bool y)) -> (bool "x == y")

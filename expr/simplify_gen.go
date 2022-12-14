@@ -864,6 +864,16 @@ func simplifyClass4(src *Logical, h Hint) Node {
 				return Bool(x && y)
 			}
 		}
+		// (and x (and y z)) -> (and (and x y) z)
+		if x := src.Left; true {
+			if _tmp001001, ok := (src.Right).(*Logical); ok && _tmp001001.Op == OpAnd {
+				if y := _tmp001001.Left; true {
+					if z := _tmp001001.Right; true {
+						return &Logical{Op: OpAnd, Left: &Logical{Op: OpAnd, Left: x, Right: y}, Right: z}
+					}
+				}
+			}
+		}
 	case OpOr:
 		// (or x x), "TypeOf(x, h) == LogicalType" -> x
 		if x := src.Left; true {
@@ -897,6 +907,16 @@ func simplifyClass4(src *Logical, h Hint) Node {
 		if x, ok := (src.Left).(Bool); ok {
 			if y, ok := (src.Right).(Bool); ok {
 				return Bool(x || y)
+			}
+		}
+		// (or x (or y z)) -> (or (or x y) z)
+		if x := src.Left; true {
+			if _tmp001001, ok := (src.Right).(*Logical); ok && _tmp001001.Op == OpOr {
+				if y := _tmp001001.Left; true {
+					if z := _tmp001001.Right; true {
+						return &Logical{Op: OpOr, Left: &Logical{Op: OpOr, Left: x, Right: y}, Right: z}
+					}
+				}
 			}
 		}
 	case OpXnor:
