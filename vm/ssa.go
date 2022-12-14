@@ -4247,30 +4247,6 @@ func (p *prog) mask(v *value) *value {
 	return p.ValidLanes()
 }
 
-type treenode struct {
-	child, sibling, parent *value
-	// lo and hi are pre- and post-order
-	// numbers of this node in the tree
-	lo, hi int
-}
-
-// tree is a tree of values indexed by value IDs
-type tree []treenode
-
-// does value 'v' strictly postdominate 'sub' ?
-//
-// in plain English:
-// there are no users of 'sub' (direct or indirect)
-// that are not also used by 'v'
-func (t tree) postdom(v, sub *value) bool {
-	// v dominates sub if all uses of 'sub'
-	// occur 'inside' the sub-expression range
-	// delimited by 'v'
-	outer := &t[v.id]
-	inner := &t[sub.id]
-	return outer.lo < inner.lo && inner.hi < outer.hi
-}
-
 // compute a post-order numbering of values
 func (p *prog) numbering(pi *proginfo) []int {
 	if len(pi.num) != 0 {
@@ -4291,80 +4267,17 @@ func (p *prog) numbering(pi *proginfo) []int {
 	return pi.num
 }
 
-// unordered returns whether or not the order
-// of two values can be freely interchanged when
-// taking into account their respective dependencies
-// domtree computes the (post)dominator tree
-// and puts the result in 'dom' such that
-// the immediate postdominator of a value
-// 'v' is dom[v.id]
-//
-// ord must be a valid exeuction ordering
-// (all definitions come before uses)
-func domtree(root *value, num []int, ord, dom []*value) []*value {
-	// by walking this DAG in reverse-postorder,
-	// we're guaranteed that we can compute the
-	// relaxation of the predecessors into the
-	// dominator tree in a single pass
-	// (we are guaranteed to see all uses before definition)
-
-	// compute order numbering so we can
-	// quickly compute intersections
-	for i := range ord {
-		num[ord[i].id] = i
-	}
-	for i := len(ord) - 1; i >= 0; i-- {
-		v := ord[i]
-	argloop:
-		for _, arg := range v.args {
-			adom := dom[arg.id]
-			if adom == v {
-				continue argloop
-			}
-			if adom == nil {
-				dom[arg.id] = v
-				continue argloop
-			}
-			// compute intersect(v, adom)
-			// by walking up the dominator tree
-			// to the common ancestor that dominates
-			// both v and its argument
-			common := v
-			count := 0
-			for adom.id != common.id {
-				if num[common.id] < num[adom.id] {
-					common = dom[common.id]
-				}
-				if num[adom.id] < num[common.id] {
-					adom = dom[adom.id]
-				}
-				count++
-				if count > 50 {
-					panic("???")
-				}
-			}
-			dom[arg.id] = common
-		}
-	}
-	dom[root.id] = nil
-	return ord
-}
-
 // proginfo caches data structures computed
 // during optimization passes; we can use
 // it to avoid repeatedly allocating slices
 // for dominator trees, etc.
 type proginfo struct {
-	num  []int    // execution numbering for next bit
-	rpo  []*value // valid execution ordering
-	pdom []*value // valid postdominator tree
-	span tree     // valid postdominator tree, sparse
+	num []int    // execution numbering for next bit
+	rpo []*value // valid execution ordering
 }
 
 func (i *proginfo) invalidate() {
 	i.rpo = i.rpo[:0]
-	i.pdom = i.pdom[:0]
-	i.span = i.span[:0]
 }
 
 // order computes an execution ordering for p,
@@ -4437,297 +4350,6 @@ func (p *prog) finalorder(rpo []*value, numbering []int) []*value {
 	}
 	out = out[nv:]
 	return out
-}
-
-// compute the dominator tree from proginfo
-// (returns a cached value if present)
-func (p *prog) domtree(pi *proginfo) []*value {
-	if len(pi.pdom) != 0 {
-		return pi.pdom
-	}
-	ord := p.order(pi)
-	if cap(pi.pdom) >= len(p.values) {
-		pi.pdom = pi.pdom[:len(p.values)]
-		for i := range pi.pdom {
-			pi.pdom[i] = nil
-		}
-		pi.num = pi.num[:len(p.values)]
-		for i := range pi.num {
-			pi.num[i] = 0
-		}
-	} else {
-		pi.pdom = make([]*value, len(p.values))
-		pi.num = make([]int, len(p.values))
-	}
-	domtree(p.ret, pi.num, ord, pi.pdom)
-	return pi.pdom
-}
-
-// write the spanning tree of the expression graph
-// to 'dst'
-func (p *prog) spantree(pi *proginfo) tree {
-	if len(pi.span) != 0 {
-		return pi.span
-	}
-	pdom := p.domtree(pi)
-	// use old memory if we have it
-	if cap(pi.span) >= len(p.values) {
-		pi.span = pi.span[:len(p.values)]
-		for i := range pi.span {
-			pi.span[i].child = nil
-			pi.span[i].parent = nil
-			pi.span[i].sibling = nil
-			pi.span[i].lo = -1
-			pi.span[i].hi = -1
-		}
-	} else {
-		pi.span = make(tree, len(p.values))
-		for i := range pi.span {
-			pi.span[i].lo = -1
-			pi.span[i].hi = -1
-		}
-	}
-	for i := range p.values {
-		v := p.values[i]
-		dom := pdom[v.id]
-		if dom == nil {
-			continue
-		}
-		if dom == v {
-			panic("dom == v?")
-		}
-		sp := &pi.span[v.id]
-		if sp.parent != nil || sp.sibling != nil {
-			panic("duplicate value id?")
-		}
-		domsp := &pi.span[dom.id]
-		sp.parent = dom
-		sp.sibling, domsp.child = domsp.child, v
-	}
-	pi.span.number(p.ret, 0)
-	return pi.span
-}
-
-// compute pre- and post-order numbers of the tree
-func (t tree) number(v *value, n int) int {
-	node := &t[v.id]
-	if node.lo != -1 {
-		panic("re-numbering???")
-	}
-	node.lo = n
-	n++
-	for child := node.child; child != nil; child = t[child.id].sibling {
-		n = t.number(child, n)
-	}
-	node.hi = n
-	return n + 1
-}
-
-// find the articulation point of this sub-expression
-//
-// returns the edge (v, arg) that is the articulation point
-func (p *prog) articulation(v *value, tr tree) (*value, *value) {
-	parent := v
-	child := v.maskarg()
-	for child != nil && child.op != sinit && tr.postdom(v, child) {
-		// if we find an OR, we have to
-		// postdominate both sides
-		if child.op == sor {
-			if !tr.postdom(v, child.args[0]) || !tr.postdom(v, child.args[1]) {
-				break
-			}
-		}
-		if child.op == sxor || child.op == sxnor {
-			break
-		}
-		parent = child
-		child = parent.maskarg()
-	}
-	return parent, child
-}
-
-func depends(ponum []int, a, b *value) bool {
-	if a == b {
-		return true
-	}
-	// a definitely cannot depend on b
-	// if it has a smaller post-order numbering
-	// TODO: would performing a similar check
-	// with pre-order numbering provide an
-	// improvement in time complexity on average?
-	if ponum[a.id] < ponum[b.id] {
-		return false
-	}
-	for _, arg := range a.args {
-		if depends(ponum, arg, b) {
-			return true
-		}
-	}
-	return false
-}
-
-// depends computes whether 'a' depends on 'b' transitively
-//
-// TODO: the time-complexity here is quadratic;
-// are there better space/time tradeoffs?
-// (AFAIK there are no linear-time + linear-space solutions...)
-func (p *prog) depends(pi *proginfo, a, b *value) bool {
-	num := p.numbering(pi)
-	return depends(num, a, b)
-}
-
-func (p *prog) androtate(v, left, right *value, tr tree, pi *proginfo) *value {
-	conjunctive := func(v *value) bool {
-		return !(v.op == sxor || v.op == sxnor)
-	}
-
-	// if the value is the terminal use of 'left'
-	// and 'right' does not not depend on 'left',
-	// set 'left' to depend on 'right'
-	if conjunctive(left) && tr.postdom(v, left) {
-		lparent, lchild := p.articulation(left, tr)
-		if lchild == right {
-			return left
-		}
-		if lchild != nil && !p.depends(pi, right, lparent) {
-			if lchild.op == sinit || lchild.op == stuples {
-				lparent.setmask(right)
-				return left
-			}
-		}
-	}
-
-	// simply the reverse of the above
-	if conjunctive(right) && tr.postdom(v, right) {
-		rparent, rchild := p.articulation(right, tr)
-		if rchild == left {
-			return right
-		}
-		if rchild != nil && !p.depends(pi, left, rparent) {
-			if rchild.op == sinit || rchild.op == stuples {
-				rparent.setmask(left)
-				return right
-			}
-		}
-	}
-	return nil
-}
-
-func (p *prog) anyDepends(pi *proginfo, any []*value, val *value) bool {
-	for i := range any {
-		if p.depends(pi, any[i], val) {
-			return true
-		}
-	}
-	return false
-}
-
-// rotate AND expressions so that the mask on one side
-// of the expression is passed to the beginning of the
-// second expression
-//
-// concretely: (AND (exprA ops... maskA) (exprB ops... maskB))
-// becomes:    (exprB ops... (AND maskB (exprA ops... maskA)))
-// (typically the inner AND can be elided as well)
-func (p *prog) andprop(pi *proginfo) {
-	var tr tree
-	opt := true
-
-	for opt {
-		opt = false
-
-	inner:
-		for i := range p.values {
-			// find values that have mask arguments
-			// that are computed as 'AND', and where
-			// this use postdominates the calculation
-			// of the AND (and therefore its arguments)
-			v := p.values[i]
-			and := v.maskarg()
-			if and == nil || and.op != sand {
-				continue
-			}
-			// super simple opt:
-			//  (and k0 _) -> k0
-			//  (and _ k0) -> k0
-			if and.args[0].op == sinit {
-				v.setmask(and.args[1])
-				opt = true
-				pi.invalidate()
-				continue
-			}
-			if and.args[1].op == sinit {
-				v.setmask(and.args[0])
-				opt = true
-				pi.invalidate()
-				continue
-			}
-			if v.op == sxor || v.op == sxnor {
-				continue
-			}
-
-			if tr == nil {
-				tr = p.spantree(pi)
-			}
-			if !tr.postdom(v, and) {
-				continue
-			}
-
-			lhs, rhs := and.args[0], and.args[1]
-			rewrite := p.androtate(v, lhs, rhs, tr, pi)
-			if rewrite == nil {
-				// let's perform a non-obvious
-				// rotation and see if we can optimize
-				// using more aggressive hoisting:
-				//  (op ... (and x y)) -> (and (op ... x) y)
-				// puts the 'and' higher in the dominator tree,
-				// which means we can reach back further into
-				// the program to find an articulation
-				//
-				// this is only profitable if v is very dominant,
-				// and it is only possible if v does not depend
-				// on the 'and' result except for its mask input
-				if p.ret.maskarg() != v || p.anyDepends(pi, v.args[:len(v.args)-1], and) {
-					continue inner
-				}
-
-				and.args[0] = v
-				v.setmask(lhs)
-				p.ret.setmask(and)
-				pi.invalidate()
-				tr = p.spantree(pi)
-				rewrite := p.androtate(and, and.args[0], and.args[1], tr, pi)
-				if rewrite == nil {
-					// ... and try right-pivot
-					pi.invalidate()
-					and.args[0] = lhs
-					and.args[1] = v
-					v.setmask(rhs)
-					tr = p.spantree(pi)
-					rewrite = p.androtate(and, and.args[0], and.args[1], tr, pi)
-				}
-				if rewrite == nil {
-					// restore original state
-					// from the right-pivot that failed
-					p.ret.setmask(v)
-					and.args[1] = rhs
-					v.setmask(and)
-				} else {
-					p.ret = rewrite
-					opt = true
-				}
-				pi.invalidate()
-				tr = nil
-				continue inner
-			}
-			v.setmask(rewrite)
-			// must only occur in the subsequent instructions
-			// re-compute spanning tree; we've dirtied it
-			pi.invalidate()
-			tr = nil
-			opt = true
-		}
-	}
 }
 
 // try to order accesses to structure fields
@@ -4807,20 +4429,6 @@ func (p *prog) rpo(out []*value) []*value {
 	return p.sched(p.ret, out, scheduled, parent)
 }
 
-func (p *prog) GraphvizDomtree(pi *proginfo, dst io.Writer) {
-	dt := p.domtree(pi)
-	fmt.Fprintln(dst, "digraph domtree {")
-	for i := range p.values {
-		v := p.values[i]
-		fmt.Fprintf(dst, "\t%q [label=%q];\n", v.Name(), v.String())
-		dom := dt[v.id]
-		if dom != nil {
-			fmt.Fprintf(dst, "\t%q -> %q;\n", dom.Name(), v.Name())
-		}
-	}
-	fmt.Fprintln(dst, "}")
-}
-
 // optimize the program and set
 // p.values to the values in program order
 func (p *prog) optimize() {
@@ -4829,7 +4437,6 @@ func (p *prog) optimize() {
 	p.simplify(&pi)
 	p.exprs = nil // invalidated in ordersyms
 	p.ordersyms(&pi)
-	p.andprop(&pi)
 
 	// final dead code elimination and scheduling
 	order := p.finalorder(p.order(&pi), p.numbering(&pi))

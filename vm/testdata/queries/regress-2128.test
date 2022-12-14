@@ -1,0 +1,38 @@
+SELECT "s0"."abcID" AS "$key:s0.abcID.keyword%0", COUNT(*) AS "$doc_count"
+FROM input
+WHERE "d"."type" = 'STRING0'
+  AND "s0"."region" = 'us-east-1'
+  AND "type" = 'ABC_LOG'
+  AND ("f2" = 'f2name_4' AND "f3" = 'f3name_1')
+GROUP BY "s0"."abcID"
+ORDER BY "$doc_count" DESC
+LIMIT 20
+---
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-0"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-2"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_2", "f3": "f3name_1"}
+{"s0": {"region": "us-east-1", "abcID": "abc-1"}, "d": {"type": "STRING0"}, "type": "ABC_LOG", "f2": "f2name_4", "f3": "f3name_1"}
+---
+{"$key:s0.abcID.keyword%0": "abc-1", "$doc_count": 9}
+{"$key:s0.abcID.keyword%0": "abc-0", "$doc_count": 8}
