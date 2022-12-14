@@ -70,6 +70,8 @@ var (
 
 func init() {
 	sneller.CanVMOpen = true
+	flagDefaultUsage = flag.CommandLine.Usage
+	flag.CommandLine.Usage = printHelp
 	tmpdir = os.TempDir()
 
 	flag.StringVar(&dashauth, "auth", "", "authorization provider for database object storage")
@@ -370,6 +372,36 @@ func exit(err error) {
 	os.Exit(1)
 }
 
+func printHelp() {
+	helporder := []string{
+		usagePlaceholder,
+		"Query options",
+		"N",
+		"f",
+		"Output target",
+		"o",
+		"S",
+		"Output format",
+		"j",
+		"g",
+		"g2",
+		"g3",
+		"Reading external database",
+		"d",
+		"auth",
+		"token",
+		"r",
+		"local",
+		"Other",
+		"cachedir",
+		"no-mmap",
+		"version",
+		"build",
+	}
+
+	PrintOrderedHelp(helporder)
+}
+
 func main() {
 	flag.Parse()
 
@@ -393,7 +425,7 @@ func main() {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		flag.Usage()
+		flag.CommandLine.Usage()
 		os.Exit(1)
 	}
 
