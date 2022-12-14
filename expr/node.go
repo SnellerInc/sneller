@@ -384,7 +384,7 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 		if a.Over == nil {
 			a.Over = new(Window)
 		}
-		_, err := ion.UnpackList(body, func(field []byte) error {
+		return unpackList(body, func(field []byte) error {
 			item, _, err := Decode(st, field)
 			if err != nil {
 				return err
@@ -392,7 +392,6 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 			a.Over.PartitionBy = append(a.Over.PartitionBy, item)
 			return nil
 		})
-		return err
 	case "over_order_by":
 		if a.Over == nil {
 			a.Over = new(Window)
@@ -1232,16 +1231,12 @@ func (p *Path) Encode(dst *ion.Buffer, st *ion.Symtab) {
 func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "items":
-		if t := ion.TypeOf(body); t != ion.ListType {
-			return fmt.Errorf("field has unexpected type %v", t)
-		}
-		mem, _ := ion.Contents(body)
-		top := true
 		var prev *PathComponent
-		for len(mem) > 0 {
-			switch t := ion.TypeOf(mem); t {
+		top := true
+		return unpackList(body, func(arg []byte) error {
+			switch t := ion.TypeOf(arg); t {
 			case ion.StringType:
-				str, _, err := ion.ReadString(mem)
+				str, _, err := ion.ReadString(arg)
 				if err != nil {
 					return err
 				}
@@ -1255,7 +1250,7 @@ func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
 					prev = &d.Rest
 				}
 			case ion.IntType, ion.UintType:
-				i, _, err := ion.ReadInt(mem)
+				i, _, err := ion.ReadInt(arg)
 				if err != nil {
 					return err
 				}
@@ -1270,8 +1265,9 @@ func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
 			default:
 				return fmt.Errorf("unrecognized path component %q", t)
 			}
-			mem = mem[ion.SizeOf(mem):]
-		}
+
+			return nil
+		})
 	default:
 		return errUnexpectedField
 	}
@@ -1440,7 +1436,7 @@ func (m *Member) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "arg":
 		m.Arg, _, err = Decode(st, body)
 	case "values":
-		_, err = ion.UnpackList(body, func(arg []byte) error {
+		return unpackList(body, func(arg []byte) error {
 			v, _, err := Decode(st, arg)
 			if err != nil {
 				return err
@@ -2390,10 +2386,9 @@ func (a *Appended) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func (a *Appended) setfield(name string, st *ion.Symtab, body []byte) error {
-	var err error
 	switch name {
 	case "values":
-		_, err = ion.UnpackList(body, func(body []byte) error {
+		return unpackList(body, func(body []byte) error {
 			v, _, err := Decode(st, body)
 			if err != nil {
 				return err
@@ -2404,7 +2399,6 @@ func (a *Appended) setfield(name string, st *ion.Symtab, body []byte) error {
 	default:
 		return errUnexpectedField
 	}
-	return err
 }
 
 func (a *Appended) walk(v Visitor) {
@@ -2811,7 +2805,7 @@ func (c *Case) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
 	switch name {
 	case "limbs":
-		_, err = ion.UnpackList(body, func(field []byte) error {
+		return unpackList(body, func(field []byte) error {
 			var when, then Node
 			var err error
 			body, _ := ion.Contents(field)
@@ -3622,3 +3616,8 @@ func (u *Union) text(dst *strings.Builder, redact bool) {
 }
 
 var _ Node = &Union{}
+
+func unpackList(body []byte, fn func([]byte) error) error {
+	_, err := ion.UnpackList(body, fn)
+	return err
+}
