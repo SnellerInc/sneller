@@ -57,7 +57,10 @@ func (p *Project) setfield(d Decoder, name string, st *ion.Symtab, body []byte) 
 			return err
 		}
 		p.Using = bind
+	default:
+		return errUnexpectedField
 	}
+
 	return nil
 }
 

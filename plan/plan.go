@@ -72,6 +72,8 @@ type Op interface {
 	// setfield should take the field label name "name"
 	// and use it to set the corresponding struct field
 	// to the decoded value of 'obj'
+	//
+	// Method has to report unrecognized fields.
 	setfield(d Decoder, name string, st *ion.Symtab, obj []byte) error
 }
 
@@ -351,7 +353,7 @@ func (s *SimpleAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf [
 	case "agg":
 		return decodeAggregation(&s.Outputs, st, buf)
 	}
-	return nil
+	return errUnexpectedField
 }
 
 // Leaf is the leaf of a plan tree,
@@ -412,6 +414,8 @@ func (l *Leaf) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) erro
 			return err
 		}
 		l.Filter = f
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -461,7 +465,7 @@ func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 func (n NoOutput) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	return nil
+	return errUnexpectedField
 }
 
 type DummyOutput struct{}
@@ -496,7 +500,7 @@ func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 func (n DummyOutput) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	return nil
+	return errUnexpectedField
 }
 
 type Limit struct {
@@ -529,6 +533,8 @@ func (l *Limit) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) err
 			return err
 		}
 		l.Num = i
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -613,6 +619,8 @@ func (c *CountStar) setfield(d Decoder, name string, st *ion.Symtab, buf []byte)
 			return err
 		}
 		c.As = n
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -715,7 +723,7 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 	case "limit":
 		i, _, err := ion.ReadInt(buf)
 		if err != nil {
-			return fmt.Errorf("reading \"limit\": %w", err)
+			return err
 		}
 		h.Limit = int(i)
 	case "order":
@@ -725,7 +733,7 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 			var i int64
 			ord, err = nonemptyList(ord)
 			if err != nil {
-				return fmt.Errorf("in HashAggregate.Order: %w", err)
+				return err
 			}
 			i, ord, err = ion.ReadInt(ord)
 			if err != nil {
@@ -743,6 +751,8 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 			h.OrderBy = append(h.OrderBy, o)
 			return nil
 		})
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -925,7 +935,7 @@ func (o *OrderBy) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) e
 			var err error
 			inner, err = nonemptyList(inner)
 			if err != nil {
-				return fmt.Errorf("in OrderBy.Columns: %w", err)
+				return err
 			}
 			col.Node, inner, err = expr.Decode(st, inner)
 			if err != nil {
@@ -954,6 +964,8 @@ func (o *OrderBy) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) e
 			return err
 		}
 		o.Offset = int(i)
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -1014,8 +1026,9 @@ func (d *Distinct) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) 
 		var err error
 		d.Limit, _, err = ion.ReadInt(buf)
 		return err
+	default:
+		return errUnexpectedField
 	}
-	return nil
 }
 
 func (d *Distinct) String() string {
@@ -1079,7 +1092,7 @@ func (u *Unpivot) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) e
 		x, _, err = ion.ReadString(buf)
 		u.At = &x
 	default:
-		err = fmt.Errorf("plan.Unpivot: setfield: unexpected field %q", name)
+		return errUnexpectedField
 	}
 	return err
 }
@@ -1209,7 +1222,7 @@ func (u *UnpivotAtDistinct) setfield(_ Decoder, name string, st *ion.Symtab, buf
 	case "At":
 		u.At, _, err = ion.ReadString(buf)
 	default:
-		err = fmt.Errorf("plan.UnpivotAtDistinct: setfield: unexpected field %q", name)
+		return errUnexpectedField
 	}
 	return err
 }
@@ -1266,7 +1279,7 @@ func (e *Explain) setfield(d Decoder, field string, st *ion.Symtab, obj []byte) 
 		e.Tree = tree
 
 	default:
-		return fmt.Errorf("unknown field '%q'", field)
+		return errUnexpectedField
 	}
 
 	return nil

@@ -64,6 +64,8 @@ func (f *Filter) setfield(d Decoder, name string, st *ion.Symtab, body []byte) e
 			return err
 		}
 		f.Expr = e
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }

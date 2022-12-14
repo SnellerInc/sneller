@@ -262,6 +262,8 @@ func (u *UnionMap) setfield(d Decoder, name string, st *ion.Symtab, body []byte)
 			return err
 		}
 		u.Sub = sub
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }

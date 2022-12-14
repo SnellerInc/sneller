@@ -209,6 +209,8 @@ func (o *OutputPart) setfield(d Decoder, name string, st *ion.Symtab, buf []byte
 			return err
 		}
 		o.Store = store
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -376,6 +378,9 @@ func (o *OutputIndex) setfield(d Decoder, name string, st *ion.Symtab, buf []byt
 		}
 		o.Key = new(blockfmt.Key)
 		copy(o.Key[:], inner)
+
+	default:
+		return errUnexpectedField
 	}
 	return err
 }

@@ -70,6 +70,8 @@ func (u *Unnest) setfield(d Decoder, name string, st *ion.Symtab, body []byte) e
 			return err
 		}
 		u.Expr = e
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }

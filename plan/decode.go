@@ -15,6 +15,7 @@
 package plan
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -280,7 +281,7 @@ func decodetyp(d Decoder, name string, st *ion.Symtab, body []byte) (Op, error) 
 		if name != "type" {
 			err = op.setfield(d, name, st, body)
 			if err != nil {
-				return nil, fmt.Errorf("decoding %T: %w", op, err)
+				return nil, fmt.Errorf("decoding %T, field %q: %w", op, name, err)
 			}
 		}
 		body = body[ion.SizeOf(body):]
@@ -288,3 +289,7 @@ func decodetyp(d Decoder, name string, st *ion.Symtab, body []byte) (Op, error) 
 
 	return op, nil
 }
+
+var (
+	errUnexpectedField error = errors.New("unexpected field")
+)
