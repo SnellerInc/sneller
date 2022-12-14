@@ -65,7 +65,10 @@ func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 	}
 }
 
-var errStop = errors.New("stop decoding")
+var (
+	errStop            = errors.New("stop decoding")
+	errUnexpectedField = errors.New("unexpected field")
+)
 
 func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 	var node composite
@@ -99,7 +102,11 @@ func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 		if name == "type" {
 			return nil
 		}
-		return node.setfield(name, st, field)
+		err := node.setfield(name, st, field)
+		if err != nil {
+			return fmt.Errorf("decoding %T, field %q: %w", node, name, err)
+		}
+		return nil
 	})
 	return node, rest, err
 }

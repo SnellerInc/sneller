@@ -227,7 +227,8 @@ func (o *OnEquals) setfield(name string, st *ion.Symtab, body []byte) error {
 		o.Left, _, err = Decode(st, body)
 	case "right":
 		o.Right, _, err = Decode(st, body)
-
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -331,6 +332,8 @@ func (j *Join) setfield(name string, st *ion.Symtab, body []byte) error {
 		}
 		j.Right.As(str)
 		return nil
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -816,6 +819,8 @@ func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 		}
 		off := Integer(i)
 		s.Offset = &off
+	default:
+		return errUnexpectedField
 	}
 	return err
 }

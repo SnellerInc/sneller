@@ -15,7 +15,6 @@
 package expr
 
 import (
-	"fmt"
 	"math/big"
 	"strings"
 
@@ -744,9 +743,11 @@ func (t *Table) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "bind":
 		str, _, err := ion.ReadString(body)
 		if err != nil {
-			return fmt.Errorf("reading expr.Table: %w", err)
+			return err
 		}
 		t.As(str)
+	default:
+		return errUnexpectedField
 	}
 	return err
 }

@@ -411,7 +411,7 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 		}
 		a.Precision = uint8(p)
 	default:
-		return fmt.Errorf("expr.Aggregate: setfield: unexpected field %q", name)
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -915,7 +915,10 @@ func (r *Rational) setfield(name string, st *ion.Symtab, body []byte) error {
 		if err != nil {
 			return fmt.Errorf("invalid rational blob: %w", err)
 		}
+	default:
+		return errUnexpectedField
 	}
+
 	return nil
 }
 
@@ -1083,7 +1086,7 @@ func (s Star) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func (s Star) setfield(name string, st *ion.Symtab, body []byte) error {
-	return nil
+	return errUnexpectedField
 }
 
 func (l *LiteralIndex) Next() PathComponent {
@@ -1114,7 +1117,7 @@ func (m Missing) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func (m Missing) setfield(string, *ion.Symtab, []byte) error {
-	return nil
+	return errUnexpectedField
 }
 
 type Null struct{}
@@ -1229,14 +1232,14 @@ func (p *Path) Encode(dst *ion.Buffer, st *ion.Symtab) {
 func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
 	switch name {
 	case "items":
-		if ion.TypeOf(body) != ion.ListType {
-			return fmt.Errorf("decoding expr.Path: \"items\" field has type %v", ion.TypeOf(body))
+		if t := ion.TypeOf(body); t != ion.ListType {
+			return fmt.Errorf("field has unexpected type %v", t)
 		}
 		mem, _ := ion.Contents(body)
 		top := true
 		var prev *PathComponent
 		for len(mem) > 0 {
-			switch ion.TypeOf(mem) {
+			switch t := ion.TypeOf(mem); t {
 			case ion.StringType:
 				str, _, err := ion.ReadString(mem)
 				if err != nil {
@@ -1265,11 +1268,14 @@ func (p *Path) setfield(name string, st *ion.Symtab, body []byte) error {
 			case ion.NullType:
 				*prev = Star{}
 			default:
-				return fmt.Errorf("decoding expr.Path: unrecognized path componenet")
+				return fmt.Errorf("unrecognized path component %q", t)
 			}
 			mem = mem[ion.SizeOf(mem):]
 		}
+	default:
+		return errUnexpectedField
 	}
+
 	return nil
 }
 
@@ -1446,6 +1452,8 @@ func (m *Member) setfield(name string, st *ion.Symtab, body []byte) error {
 			m.Values = append(m.Values, c)
 			return nil
 		})
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -1538,6 +1546,8 @@ func (c *Comparison) setfield(name string, st *ion.Symtab, buf []byte) error {
 		var err error
 		c.Right, _, err = Decode(st, buf)
 		return err
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -1601,7 +1611,7 @@ func (s *StringMatch) setfield(name string, st *ion.Symtab, val []byte) error {
 	case "escape":
 		s.Escape, _, err = ion.ReadString(val)
 	default:
-		return fmt.Errorf("unknown field %s in StringMatch", name)
+		return errUnexpectedField
 	}
 	return err
 }
@@ -1683,7 +1693,7 @@ func (n *Not) setfield(name string, st *ion.Symtab, buf []byte) error {
 		n.Expr, _, err = Decode(st, buf)
 		return err
 	}
-	return nil
+	return errUnexpectedField
 }
 
 // Compare generates a comparison operation
@@ -1729,7 +1739,7 @@ func (c *Comparison) text(dst *strings.Builder, redact bool) {
 	if _, ok := c.Right.(*Comparison); ok {
 		parens = true
 	}
-	// similary, if we are comparing boolean
+	// similarly, if we are comparing boolean
 	// expressions with =/<>, make sure those are wrapped
 	// as they have lower precedence than comparisons
 	if _, ok := c.Right.(*Logical); ok {
@@ -1870,15 +1880,17 @@ func (l *Logical) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 func (l *Logical) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
-	var u uint64
 	switch name {
 	case "op":
+		var u uint64
 		u, _, err = ion.ReadUint(body)
 		l.Op = LogicalOp(u)
 	case "left":
 		l.Left, _, err = Decode(st, body)
 	case "right":
 		l.Right, _, err = Decode(st, body)
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -1987,7 +1999,10 @@ func (b *Builtin) setfield(name string, st *ion.Symtab, body []byte) error {
 			}
 			b.Args = append(b.Args, nod)
 		}
+	default:
+		return errUnexpectedField
 	}
+
 	return nil
 }
 
@@ -2091,14 +2106,16 @@ func (u *UnaryArith) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 func (u *UnaryArith) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
-	var val uint64
 
 	switch name {
 	case "op":
+		var val uint64
 		val, _, err = ion.ReadUint(body)
 		u.Op = UnaryArithOp(val)
 	case "child":
 		u.Child, _, err = Decode(st, body)
+	default:
+		return errUnexpectedField
 	}
 
 	return err
@@ -2263,15 +2280,17 @@ func (a *Arithmetic) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 func (a *Arithmetic) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
-	var u uint64
 	switch name {
 	case "op":
+		var u uint64
 		u, _, err = ion.ReadUint(body)
 		a.Op = ArithOp(u)
 	case "left":
 		a.Left, _, err = Decode(st, body)
 	case "right":
 		a.Right, _, err = Decode(st, body)
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -2382,6 +2401,8 @@ func (a *Appended) setfield(name string, st *ion.Symtab, body []byte) error {
 			a.append(v)
 			return nil
 		})
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -2471,13 +2492,15 @@ func (i *IsKey) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 func (i *IsKey) setfield(name string, st *ion.Symtab, body []byte) error {
 	var err error
-	var u uint64
 	switch name {
 	case "key":
+		var u uint64
 		u, _, err = ion.ReadUint(body)
 		i.Key = Keyword(u)
 	case "inner":
 		i.Expr, _, err = Decode(st, body)
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -2810,6 +2833,8 @@ func (c *Case) setfield(name string, st *ion.Symtab, body []byte) error {
 		c.Else, _, err = Decode(st, body)
 	case "valence":
 		c.Valence, _, err = ion.ReadString(body)
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -2955,6 +2980,8 @@ func (c *Cast) setfield(name string, st *ion.Symtab, body []byte) error {
 			return err
 		}
 		c.To = TypeSet(to)
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -3232,13 +3259,15 @@ func (s *Struct) setfield(name string, st *ion.Symtab, body []byte) error {
 		}
 		rv, ok := AsConstant(value)
 		if !ok {
-			return fmt.Errorf("decoding expr.Struct: cannot use %T as constant", value)
+			return fmt.Errorf("cannot use %T as constant", value)
 		}
 		sval, ok := rv.(*Struct)
 		if !ok {
-			return fmt.Errorf("decoding expr.Struct: got value of type %T", rv)
+			return fmt.Errorf("got value of type %T", rv)
 		}
 		s.Fields = sval.Fields
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -3300,17 +3329,19 @@ func (l *List) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "value":
 		dat, _, err := ion.ReadDatum(st, body)
 		if err != nil {
-			return fmt.Errorf("decoding expr.List: %w", err)
+			return err
 		}
 		cnst, ok := AsConstant(dat)
 		if !ok {
-			return fmt.Errorf("decoding expr.List: got value of type %T", dat)
+			return fmt.Errorf("got value of type %T", dat)
 		}
 		lst, ok := cnst.(*List)
 		if !ok {
 			return fmt.Errorf("cannot use %T as *expr.List", cnst)
 		}
 		l.Values = lst.Values
+	default:
+		return errUnexpectedField
 	}
 	return nil
 }
@@ -3436,7 +3467,7 @@ func (u *Unpivot) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "TupleRef":
 		u.TupleRef, _, err = Decode(st, body)
 	default:
-		err = fmt.Errorf("expr.Unpivot: setfield: unexpected field %q", name)
+		return errUnexpectedField
 	}
 	return err
 }
@@ -3561,7 +3592,7 @@ func (u *Union) setfield(name string, st *ion.Symtab, body []byte) error {
 
 		u.Right = v
 	default:
-		return fmt.Errorf("unexpected field %q", name)
+		return errUnexpectedField
 	}
 	return nil
 }
