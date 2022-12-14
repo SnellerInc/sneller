@@ -22,6 +22,7 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan/pir"
+
 	"golang.org/x/exp/slices"
 )
 
@@ -54,13 +55,22 @@ func (r *replacement) toScalar() (expr.Constant, bool) {
 }
 
 func (r *replacement) toScalarList() ([]expr.Constant, bool) {
-	out := make([]expr.Constant, 0, len(r.rows))
+	tmp := make([]ion.Datum, 0, len(r.rows))
 	for i := range r.rows {
 		f, ok := first(&r.rows[i])
 		if !ok {
 			continue
 		}
-		v, ok := expr.AsConstant(f.Value)
+		tmp = append(tmp, f.Value)
+	}
+
+	slices.SortFunc(tmp, func(a, b ion.Datum) bool {
+		return a.LessImprecise(b)
+	})
+
+	out := make([]expr.Constant, 0, len(tmp))
+	for i := range tmp {
+		v, ok := expr.AsConstant(tmp[i])
 		if !ok {
 			return nil, false
 		}

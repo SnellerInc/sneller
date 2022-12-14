@@ -1454,6 +1454,12 @@ func (m *Member) setfield(name string, st *ion.Symtab, body []byte) error {
 	return err
 }
 
+func (m *Member) SortValues() {
+	slices.SortFunc(m.Values, func(a, b Constant) bool {
+		return a.Datum().LessImprecise(b.Datum())
+	})
+}
+
 func (m *Member) Equals(e Node) bool {
 	me, ok := e.(*Member)
 	if !ok || len(me.Values) != len(m.Values) {
@@ -1462,9 +1468,7 @@ func (m *Member) Equals(e Node) bool {
 	if !m.Arg.Equals(me.Arg) {
 		return false
 	}
-	// TODO: the precision of this
-	// check is hampered by the fact
-	// that we don't order the arguments...
+	// Note: it's expected that Values are orderd
 	for i := range m.Values {
 		if !m.Values[i].Equals(me.Values[i]) {
 			return false
@@ -1492,6 +1496,7 @@ func In(val Node, cmp ...Node) Node {
 		for i := range cmp {
 			mem.Values = append(mem.Values, cmp[i].(Constant))
 		}
+		mem.SortValues()
 		return mem
 	}
 

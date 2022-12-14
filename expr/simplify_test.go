@@ -526,7 +526,7 @@ func TestSimplify(t *testing.T) {
 			// x||"suffix" IN (...)
 			// could only possibly match string-typed constants
 			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), String("second-suffix"), Bool(false)),
-			Or(Compare(Equals, Call(Concat, path("x"), String("suffix")), String("start-suffix")), Compare(Equals, Call(Concat, path("x"), String("suffix")), String("second-suffix"))),
+			Or(Compare(Equals, Call(Concat, path("x"), String("suffix")), String("second-suffix")), Compare(Equals, Call(Concat, path("x"), String("suffix")), String("start-suffix"))),
 		},
 		{
 			// when the list of possible comparisons shrinks to 1,

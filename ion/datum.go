@@ -134,6 +134,17 @@ func (d Datum) Equal(x Datum) bool {
 	return false
 }
 
+// LessImprecise compares the raw Ion bytes.
+//
+// This method does not order correctly equal
+// values having different binary representation.
+// For instance a string can be saved literally,
+// as a sequence of UTF-8 bytes, or be a symbol,
+// that is a reference to the symbol table.
+func (d Datum) LessImprecise(x Datum) bool {
+	return bytes.Compare(d.buf, x.buf) < 0
+}
+
 func (d Datum) Type() Type {
 	if len(d.buf) == 0 {
 		return InvalidType
