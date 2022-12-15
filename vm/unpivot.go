@@ -134,6 +134,58 @@ type kernelUnpivotAsAt struct {
 	kernelUnpivotBase
 }
 
+var _ zionConsumer = &kernelUnpivotAsAt{}
+
+func (u *kernelUnpivotAsAt) zionOk() bool { return true }
+
+func (u *kernelUnpivotAsAt) flush() error {
+	if len(u.dummy) == 0 {
+		return nil
+	}
+	if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+		return err
+	}
+	u.dummy = u.dummy[:0]
+	u.params.auxbound[0] = u.params.auxbound[0][:0]
+	u.params.auxbound[1] = u.params.auxbound[1][:0]
+	return nil
+}
+
+func (u *kernelUnpivotAsAt) writeZion(state *zionState) error {
+	err := state.buckets.SelectAll()
+	if err != nil {
+		return err
+	}
+	// TODO: since state.buckets.Pos gives us 16 starting positions,
+	// we can vectorize the processing of the buckets!
+	mem := state.buckets.Decompressed
+	for len(mem) > 0 {
+		sym, rest, err := ion.ReadLabel(mem)
+		if err != nil {
+			return err
+		}
+		vsize := ion.SizeOf(rest)
+		// add a dummy record with 0 bytes of contents
+		// for the "main" row; the rowParams contain
+		// the only live bindings after this step
+		u.dummy = append(u.dummy, dummyVMRef)
+		u.params.auxbound[0] = append(u.params.auxbound[0], u.syms.symrefs[sym])
+		restpos, ok := vmdispl(rest)
+		if !ok {
+			panic("zion decompressed buckets data not in vmm")
+		}
+		u.params.auxbound[1] = append(u.params.auxbound[1], vmref{restpos, uint32(vsize)})
+		if len(u.dummy) == cap(u.dummy) {
+			err := u.flush()
+			if err != nil {
+				return err
+			}
+		}
+		mem = rest[vsize:]
+	}
+	return u.flush()
+}
+
 func (u *kernelUnpivotAsAt) symbolize(st *symtab, aux *auxbindings) error {
 	selfaux := auxbindings{}
 	selfaux.push(*u.parent.at) // aux 0 = at
@@ -198,28 +250,14 @@ func (u *kernelUnpivotAsAt) writeRows(rows []vmref, params *rowParams) error {
 			u.params.auxbound[1] = append(u.params.auxbound[1], vmref{restpos, uint32(restsize)})
 
 			if len(u.dummy) == cap(u.dummy) {
-				// flush; note that the actual row content
-				// will be ignored
-				if err := u.out.writeRows(u.dummy, &u.params); err != nil {
+				err := u.flush()
+				if err != nil {
 					return err
 				}
-				u.dummy = u.dummy[:0]
-				u.params.auxbound[0] = u.params.auxbound[0][:0]
-				u.params.auxbound[1] = u.params.auxbound[1][:0]
 			}
 		}
 	}
-	if len(u.dummy) > 0 {
-		// flush; note that the actual row content
-		// will be ignored
-		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
-			return err
-		}
-		u.dummy = u.dummy[:0]
-		u.params.auxbound[0] = u.params.auxbound[0][:0]
-		u.params.auxbound[1] = u.params.auxbound[1][:0]
-	}
-	return nil
+	return u.flush()
 }
 
 // kernelUnpivotAt handles the "UNPIVOT AS val" case

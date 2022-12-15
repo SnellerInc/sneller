@@ -301,6 +301,9 @@ func (q *rowSplitter) drop() {
 	if q.vmcache != nil {
 		Free(q.vmcache)
 		q.vmcache = nil
+		if q.zstate != nil {
+			q.zstate.buckets.Decompressed = nil
+		}
 	}
 }
 
@@ -362,6 +365,14 @@ func (q *rowSplitter) writeZion(src []byte) (int, error) {
 		return 0, err
 	}
 	q.zstate.buckets.Reset(&q.zstate.shape, rest)
+	if q.vmcache == nil {
+		q.vmcache = Malloc()
+	}
+	// make sure decompression writes into vmm
+	q.zstate.buckets.Decompressed = q.vmcache[:0]
+	// we already make sure page+1 can be read safely;
+	// don't risk trying to append to the page from Malloc
+	q.zstate.buckets.SkipPadding = true
 	err = q.zout.writeZion(q.zstate)
 	if err != nil {
 		return 0, err

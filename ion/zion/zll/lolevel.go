@@ -135,6 +135,14 @@ type Buckets struct {
 	// Decomps is the number of individual bucket
 	// decompression operations that have been performed.
 	Decomps int
+
+	// SkipPadding, if set, causes the calls to
+	// Select and SelectSymbols to omit padding
+	// Decompressed. If SkipPadding is not set,
+	// then Decompressed is padded so that its
+	// capacity allows the byte at len(Decompressed)-1
+	// to be read with an 8-byte load.
+	SkipPadding bool
 }
 
 // Reset resets the state of b to point to the given
@@ -229,7 +237,9 @@ func (b *Buckets) decompSelected() error {
 		}
 		parts = parts[skip:]
 	}
-	b.Decompressed = pad8(b.Decompressed)
+	if !b.SkipPadding {
+		b.Decompressed = pad8(b.Decompressed)
+	}
 	return nil
 }
 
