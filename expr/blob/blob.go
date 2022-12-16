@@ -149,44 +149,50 @@ func (u *URL) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (d *blobDecoder) decodeURL(fields []byte) (*URL, error) {
-	u := d.url()
-	st := d.td.Symbols
-	var b []byte
+type decodeURL struct {
+	parent *blobDecoder
+	url    *URL
+}
+
+func (d *decodeURL) getInterface() Interface {
+	return d.url
+}
+
+func (d *decodeURL) Init(*ion.Symtab) {
+	d.url = d.parent.url()
+}
+
+func (d *decodeURL) SetField(name string, body []byte) error {
 	var err error
-	var sym ion.Symbol
-	for len(fields) > 0 {
-		sym, fields, err = ion.ReadLabel(fields)
-		if err != nil {
-			return nil, err
-		}
-		switch st.Get(sym) {
-		case "value":
-			b, fields, err = ion.ReadStringShared(fields)
-			u.Value = d.string(b)
-		case "etag":
-			b, fields, err = ion.ReadStringShared(fields)
-			u.Info.ETag = d.string(b)
-		case "size":
-			u.Info.Size, fields, err = ion.ReadInt(fields)
-		case "align":
-			var align int64
-			align, fields, err = ion.ReadInt(fields)
-			u.Info.Align = int(align)
-		case "last-modified":
-			u.Info.LastModified, fields, err = ion.ReadTime(fields)
-		case "ephemeral":
-			u.Info.Ephemeral, fields, err = ion.ReadBool(fields)
-		case "no-if-match":
-			u.UnsafeNoIfMatch, fields, err = ion.ReadBool(fields)
-		default:
-			err = fmt.Errorf("unrecognized field %q", st.Get(sym))
-		}
-		if err != nil {
-			return nil, fmt.Errorf("blob.URL decode: %w", err)
-		}
+	var b []byte
+	switch name {
+	case "value":
+		b, _, err = ion.ReadStringShared(body)
+		d.url.Value = d.parent.string(b)
+	case "etag":
+		b, _, err = ion.ReadStringShared(body)
+		d.url.Info.ETag = d.parent.string(b)
+	case "size":
+		d.url.Info.Size, _, err = ion.ReadInt(body)
+	case "align":
+		var align int64
+		align, _, err = ion.ReadInt(body)
+		d.url.Info.Align = int(align)
+	case "last-modified":
+		d.url.Info.LastModified, _, err = ion.ReadTime(body)
+	case "ephemeral":
+		d.url.Info.Ephemeral, _, err = ion.ReadBool(body)
+	case "no-if-match":
+		d.url.UnsafeNoIfMatch, _, err = ion.ReadBool(body)
+	default:
+		return fmt.Errorf("unrecognized field")
 	}
-	return u, nil
+
+	return err
+}
+
+func (d *decodeURL) Finalize() error {
+	return nil
 }
 
 // Stat implements blob.Interface.Stat
@@ -369,23 +375,21 @@ func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
 }
 
 func decodeList(st *ion.Symtab, body []byte) (*List, error) {
-	if ion.TypeOf(body) != ion.ListType {
-		return nil, fmt.Errorf("blob.DecodeList: unexpected ion type %v", ion.TypeOf(body))
-	}
 	l := &List{}
-	var inner Interface
-	var err error
 	d := blobDecoder{}
 	d.td.Symbols = st
-	body, _ = ion.Contents(body)
-	for len(body) > 0 {
-		inner, body, err = d.decode(body)
+
+	_, err := ion.UnpackList(body, func(buf []byte) error {
+		inner, _, err := d.decode(buf)
 		if err != nil {
-			return nil, err
+			return err
 		}
+
 		l.Contents = append(l.Contents, inner)
-	}
-	return l, nil
+		return nil
+	})
+
+	return l, err
 }
 
 type blobEncoder struct {
@@ -460,6 +464,11 @@ func (d *blobDecoder) string(b []byte) string {
 	return s
 }
 
+type interfaceDecoder interface {
+	ion.StructParser
+	getInterface() Interface
+}
+
 func (d *blobDecoder) decode(buf []byte) (Interface, []byte, error) {
 	st := d.td.Symbols
 	if ion.TypeOf(buf) != ion.StructType {
@@ -471,36 +480,40 @@ func (d *blobDecoder) decode(buf []byte) (Interface, []byte, error) {
 		}
 		return nil, nil, fmt.Errorf("blob.DecodeList: unexpected blob ion type %v", ion.TypeOf(buf))
 	}
-	typesym, _ := st.Symbolize("type")
-	fields, rest := ion.Contents(buf)
-	var sym ion.Symbol
-	var err error
-	for len(fields) > 0 {
-		sym, fields, err = ion.ReadLabel(fields)
-		if err != nil {
-			return nil, nil, err
+
+	var dec interfaceDecoder
+
+	settype := func(typename string) error {
+		switch typename {
+		case "blob.URL":
+			dec = &decodeURL{parent: d}
+		case "blob.Compressed":
+			dec = &decodeComp{parent: d}
+		case "blob.CompressedPart":
+			dec = &decodeCPart{parent: d}
+		default:
+			return fmt.Errorf("unrecognized blob type %q", typename)
 		}
-		if sym == typesym {
-			sym, fields, err = ion.ReadSymbol(fields)
-			if err != nil {
-				return nil, nil, err
-			}
-			switch st.Get(sym) {
-			case "blob.URL":
-				u, err := d.decodeURL(fields)
-				return u, rest, err
-			case "blob.Compressed":
-				c, err := d.decodeComp(fields)
-				return c, rest, err
-			case "blob.CompressedPart":
-				c, err := d.decodeCPart(fields)
-				return c, rest, err
-			default:
-				return nil, nil, fmt.Errorf("unrecognized blob type %q", st.Get(sym))
-			}
-		}
-		// skip to next field+value
-		fields = fields[ion.SizeOf(fields):]
+
+		dec.Init(st)
+		return nil
 	}
-	return nil, nil, fmt.Errorf("blob.DecodeList: missing 'type' field")
+
+	setitem := func(name string, body []byte) error {
+		return dec.SetField(name, body)
+	}
+
+	rest, err := ion.UnpackTypedStruct(st, buf, settype, setitem)
+	var err2 error
+	if dec != nil {
+		err2 = dec.Finalize()
+	}
+	if err == nil {
+		err = err2
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("blob.DecodeList: %w", err)
+	}
+
+	return dec.getInterface(), rest, nil
 }

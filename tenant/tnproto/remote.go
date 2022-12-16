@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	plan.AddTransportDecoder("remote-tenant", decodeRemote)
+	plan.AddTransportDecoder("remote-tenant", &decodeRemote{})
 }
 
 // Remote is an implementation of plan.Transport
@@ -58,44 +58,51 @@ type Remote struct {
 	Timeout time.Duration
 }
 
-// callback for decoding remote transports
-func decodeRemote(st *ion.Symtab, fields []byte) (plan.Transport, error) {
-	out := new(Remote)
-	var buf []byte
-	var sym ion.Symbol
+// remote transport decoder
+type decodeRemote struct {
+	remote *Remote
+}
+
+func (d *decodeRemote) GetTransport() (plan.Transport, error) {
+	return d.remote, nil
+}
+
+func (d *decodeRemote) Init(*ion.Symtab) {
+	d.remote = new(Remote)
+}
+
+func (d *decodeRemote) SetField(name string, field []byte) error {
 	var err error
-	var i int64
-	for len(fields) > 0 {
-		sym, fields, err = ion.ReadLabel(fields)
-		if err != nil {
-			return nil, err
+	switch name {
+	case "net":
+		d.remote.Net, _, err = ion.ReadString(field)
+	case "addr":
+		d.remote.Addr, _, err = ion.ReadString(field)
+	case "timeout":
+		var i int64
+		i, _, err = ion.ReadInt(field)
+		d.remote.Timeout = time.Duration(i)
+	case "id":
+		var buf []byte
+		buf, _, err = ion.ReadBytesShared(field)
+		if err == nil && copy(d.remote.ID[:], buf) != len(d.remote.ID[:]) {
+			err = fmt.Errorf("decoding tnproto.Remote: tenant ID should not be %d bytes", len(buf))
 		}
-		switch st.Get(sym) {
-		case "net":
-			out.Net, fields, err = ion.ReadString(fields)
-		case "addr":
-			out.Addr, fields, err = ion.ReadString(fields)
-		case "timeout":
-			i, fields, err = ion.ReadInt(fields)
-			out.Timeout = time.Duration(i)
-		case "id":
-			buf, fields, err = ion.ReadBytesShared(fields)
-			if err == nil && copy(out.ID[:], buf) != len(out.ID[:]) {
-				err = fmt.Errorf("decoding tnproto.Remote: tenant ID should not be %d bytes", len(buf))
-			}
-		case "key":
-			buf, fields, err = ion.ReadBytesShared(fields)
-			if err == nil && copy(out.Key[:], buf) != len(out.Key[:]) {
-				err = fmt.Errorf("decoding tnproto.Remote: tenant key should not be %d bytes", len(buf))
-			}
-		default:
-			fields = fields[ion.SizeOf(fields):]
+	case "key":
+		var buf []byte
+		buf, _, err = ion.ReadBytesShared(field)
+		if err == nil && copy(d.remote.Key[:], buf) != len(d.remote.Key[:]) {
+			err = fmt.Errorf("decoding tnproto.Remote: tenant key should not be %d bytes", len(buf))
 		}
-		if err != nil {
-			return nil, err
-		}
+	default:
+		return fmt.Errorf("decoding tnproto.Remote: unknown field %q", name)
 	}
-	return out, nil
+
+	return err
+}
+
+func (d *decodeRemote) Finalize() error {
+	return nil
 }
 
 func (r *Remote) Encode(dst *ion.Buffer, st *ion.Symtab) {

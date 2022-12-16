@@ -698,8 +698,13 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func unpackList(buf []byte, inner func([]byte) error) error {
-	_, err := ion.UnpackList(buf, inner)
+func unpackList(buf []byte, fn func([]byte) error) error {
+	_, err := ion.UnpackList(buf, fn)
+	return err
+}
+
+func unpackStruct(st *ion.Symtab, body []byte, fn func(string, []byte) error) error {
+	_, err := ion.UnpackStruct(st, body, fn)
 	return err
 }
 

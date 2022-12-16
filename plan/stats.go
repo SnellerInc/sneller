@@ -96,37 +96,25 @@ func (e *ExecStats) Encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func (e *ExecStats) Decode(buf []byte, st *ion.Symtab) error {
-	if len(buf) == 0 {
-		return fmt.Errorf("plan.ExecStats cannot be 0 encoded bytes")
-	}
-	if ion.TypeOf(buf) != ion.StructType {
-		return fmt.Errorf("plan.ExecStats.Decode: unexpected ion type %s", ion.TypeOf(buf))
-	}
-	inner, _ := ion.Contents(buf)
-	if inner == nil {
-		return fmt.Errorf("plan.ExecStats.Decode: invalid TLV bytes")
-	}
-	var err error
-	var sym ion.Symbol
-	for len(inner) > 0 {
-		sym, inner, err = ion.ReadLabel(inner)
-		if err != nil {
-			return fmt.Errorf("plan.ExecStats.Decode: %w", err)
-		}
-		switch st.Get(sym) {
+	_, err := ion.UnpackStruct(st, buf, func(name string, body []byte) error {
+		var err error
+		switch name {
 		case "hits":
-			e.CacheHits, inner, err = ion.ReadInt(inner)
+			e.CacheHits, _, err = ion.ReadInt(body)
 		case "misses":
-			e.CacheMisses, inner, err = ion.ReadInt(inner)
+			e.CacheMisses, _, err = ion.ReadInt(body)
 		case "scanned":
-			e.BytesScanned, inner, err = ion.ReadInt(inner)
+			e.BytesScanned, _, err = ion.ReadInt(body)
 		default:
-			inner = inner[ion.SizeOf(inner):]
+			return errUnexpectedField
 		}
-		if err != nil {
-			return fmt.Errorf("plan.ExecStats.Decode: %w", err)
-		}
+		return err
+	})
+
+	if err != nil {
+		return fmt.Errorf("plan.ExecStats.Decode: %w", err)
 	}
+
 	return nil
 }
 

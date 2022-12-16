@@ -41,7 +41,7 @@ var (
 )
 
 func init() {
-	AddTransportDecoder("local", decodeLocal)
+	AddTransportDecoder("local", &decodeLocal{})
 }
 
 // AddTransportDecoder adds a decoding function
@@ -68,7 +68,10 @@ func AddTransportDecoder(name string, decoder TransportDecoder) {
 //
 // A TransportDecoder function must be safe to call
 // from multiple goroutines simultaneously.
-type TransportDecoder func(*ion.Symtab, []byte) (Transport, error)
+type TransportDecoder interface {
+	ion.StructParser
+	GetTransport() (Transport, error)
+}
 
 func getDecoder(name string) TransportDecoder {
 	transLock.Lock()
@@ -93,58 +96,61 @@ func EncodeTransport(t Transport, st *ion.Symtab, buf *ion.Buffer) error {
 	return nil
 }
 
+type decoderResolver struct {
+	decoder TransportDecoder
+}
+
+func (d *decoderResolver) Resolve(typename string) (ion.StructParser, error) {
+	d.decoder = getDecoder(typename)
+	if d.decoder == nil {
+		return nil, fmt.Errorf("no transport decoder for name %q", typename)
+	}
+
+	return d.decoder, nil
+}
+
 // DecodeTransport decodes a transport encoded with
 // EncodeTransport.
 func DecodeTransport(st *ion.Symtab, body []byte) (Transport, error) {
-	if ion.TypeOf(body) != ion.StructType {
-		return nil, fmt.Errorf("ion object of type %s cannot be a transport", ion.TypeOf(body))
-	}
-	body, _ = ion.Contents(body)
-	if body == nil {
-		return nil, fmt.Errorf("transport body: invalid TLV bytes")
-	}
-	typsym, _ := st.Symbolize("type")
-	sym, body, err := ion.ReadLabel(body)
+	resolver := decoderResolver{}
+	_, err := ion.UnpackTypedStructWithClasses(st, body, &resolver)
+
 	if err != nil {
 		return nil, err
 	}
-	if sym != typsym {
-		return nil, fmt.Errorf("first transport field %q not \"type\"", st.Get(sym))
-	}
-	sym, body, err = ion.ReadSymbol(body)
-	if err != nil {
-		return nil, err
-	}
-	name := st.Get(sym)
-	if name == "" {
-		return nil, fmt.Errorf("symbol %d not in symbol table", sym)
-	}
-	dec := getDecoder(name)
-	if dec == nil {
-		return nil, fmt.Errorf("no transport decoder for name %q", name)
-	}
-	return dec(st, body)
+
+	return resolver.decoder.GetTransport()
 }
 
-func decodeLocal(st *ion.Symtab, body []byte) (Transport, error) {
-	var sym ion.Symbol
-	var err error
-	t := &LocalTransport{}
-	for len(body) > 0 {
-		sym, body, err = ion.ReadLabel(body)
+type decodeLocal struct {
+	transport *LocalTransport
+}
+
+func (d *decodeLocal) GetTransport() (Transport, error) {
+	return d.transport, nil
+}
+
+func (d *decodeLocal) Init(*ion.Symtab) {
+	d.transport = &LocalTransport{}
+}
+
+func (d *decodeLocal) SetField(name string, buf []byte) error {
+	switch name {
+	case "threads":
+		i, _, err := ion.ReadInt(buf)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		switch st.Get(sym) {
-		case "threads":
-			i, _, err := ion.ReadInt(body)
-			if err != nil {
-				return nil, err
-			}
-			t.Threads = int(i)
-		}
+		d.transport.Threads = int(i)
+	default:
+		return errUnexpectedField
 	}
-	return t, nil
+
+	return nil
+}
+
+func (d *decodeLocal) Finalize() error {
+	return nil
 }
 
 func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {

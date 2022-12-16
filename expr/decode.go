@@ -69,48 +69,31 @@ func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
 }
 
 var (
-	errStop            = errors.New("stop decoding")
 	errUnexpectedField = errors.New("unexpected field")
 )
 
 func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 	var node composite
-	rest, err := ion.UnpackStruct(st, msg, func(name string, field []byte) error {
-		// expect the type field to be the
-		// first field in the struct
-		if name != "type" {
-			return nil
-		}
-		sym, _, err := ion.ReadSymbol(field)
-		if err != nil {
-			return fmt.Errorf("reading \"type\": %w", err)
-		}
-		str := st.Get(sym)
-		if str == "" {
-			return fmt.Errorf("symbol %d not in symbol table", sym)
-		}
-		node = getEmpty(str)
+
+	settype := func(typename string) error {
+		node = getEmpty(typename)
 		if node == nil {
-			return fmt.Errorf("unknown structure %q", str)
+			return fmt.Errorf("unknown structure %q", typename)
 		}
-		return errStop // stop traversing fields
-	})
-	if err != nil && err != errStop {
-		return nil, nil, err
+
+		return nil
 	}
-	if node == nil {
-		return nil, rest, fmt.Errorf("missing type field")
-	}
-	_, err = ion.UnpackStruct(st, msg, func(name string, field []byte) error {
-		if name == "type" {
-			return nil
-		}
+
+	setfield := func(name string, field []byte) error {
 		err := node.setfield(name, st, field)
 		if err != nil {
 			return fmt.Errorf("decoding %T, field %q: %w", node, name, err)
 		}
 		return nil
-	})
+	}
+
+	rest, err := ion.UnpackTypedStruct(st, msg, settype, setfield)
+
 	return node, rest, err
 }
 

@@ -64,10 +64,7 @@ func decodeHandle(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
 
 // decode decodes an input structure.
 func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
-	if ion.TypeOf(mem) != ion.StructType {
-		return fmt.Errorf("plan.Decode: unexpected ion type %s for Input", ion.TypeOf(mem))
-	}
-	_, err := ion.UnpackStruct(st, mem, func(field string, buf []byte) error {
+	err := unpackStruct(st, mem, func(field string, buf []byte) error {
 		switch field {
 		case "table":
 			e, _, err := expr.Decode(st, buf)
@@ -76,7 +73,7 @@ func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
 			}
 			t, ok := e.(*expr.Table)
 			if !ok {
-				return fmt.Errorf("plan.Decode: input expr %T not a table", e)
+				return fmt.Errorf("input expr %T not a table", e)
 			}
 			i.Table = t
 		case "handle":
@@ -85,9 +82,14 @@ func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
 				return err
 			}
 			i.Handle = th
+		default:
+			return errUnexpectedField
 		}
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("plan.Decode: %w", err)
+	}
 	return err
 }
 
@@ -98,7 +100,7 @@ func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
 // See also: Plan.Encode, Plan.EncodePart.
 func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
 	t := &Tree{}
-	_, err := ion.UnpackStruct(st, buf, func(field string, inner []byte) error {
+	err := unpackStruct(st, buf, func(field string, inner []byte) error {
 		switch field {
 		case "inputs":
 			return unpackList(inner, func(field []byte) error {
@@ -118,16 +120,11 @@ func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
 }
 
 func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
-	_, err := ion.UnpackStruct(st, buf, func(field string, inner []byte) error {
+	err := unpackStruct(st, buf, func(field string, inner []byte) error {
 		switch field {
 		case "op":
-			if ion.TypeOf(inner) != ion.ListType {
-				return fmt.Errorf("plan.Decode: expected op to be a list; found %s", ion.TypeOf(inner))
-			}
-			var body []byte
 			var err error
-			body, _ = ion.Contents(inner)
-			n.Op, err = decodeOps(d, st, body)
+			n.Op, err = decodeOps(d, st, inner)
 			return err
 		case "inputs":
 			return unpackList(inner, func(field []byte) error {
@@ -157,27 +154,6 @@ func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
 	return nil
 }
 
-func findsym(sym ion.Symbol, buf []byte) (ion.Symbol, error) {
-	for len(buf) > 0 {
-		lbl, inner, err := ion.ReadLabel(buf)
-		if err != nil {
-			return 0, err
-		}
-		if lbl > sym {
-			break
-		}
-		if lbl == sym {
-			typ, _, err := ion.ReadSymbol(inner)
-			if err != nil {
-				return 0, err
-			}
-			return typ, nil
-		}
-		buf = inner[ion.SizeOf(inner):]
-	}
-	return 0, nil
-}
-
 // Decode decodes a query plan from 'buf'
 // using the ion symbol table 'st' and the
 // environment 'env.'
@@ -187,39 +163,47 @@ func findsym(sym ion.Symbol, buf []byte) (ion.Symbol, error) {
 // During decoding, each *Leaf plan that references
 // a table has its TableHandle populated with env.Stat.
 func decodeOps(d Decoder, st *ion.Symtab, buf []byte) (Op, error) {
-	typesym, ok := st.Symbolize("type")
-	if !ok {
-		return nil, fmt.Errorf("plan.Decode: symbol table missing \"type\" symbol")
-	}
-	var inner []byte
-	var err error
 	var top Op
-	var typ ion.Symbol
-	count := 0
-	for len(buf) > 0 {
-		if ion.TypeOf(buf) != ion.StructType {
-			return nil, fmt.Errorf("plan.Decode: field %d not a structure; got %s", count, ion.TypeOf(buf))
+	itemid := 0
+	err := unpackList(buf, func(body []byte) error {
+		var op Op
+
+		settype := func(typename string) error {
+			op = empty(typename)
+			if op == nil {
+				return fmt.Errorf("unrecognized type name %q", typename)
+			}
+			return nil
 		}
-		inner, buf = ion.Contents(buf)
-		if inner == nil {
-			return nil, fmt.Errorf("plan.Decode: invalid TLV bytes in field %d", count)
+
+		setitem := func(name string, body []byte) error {
+			err := op.setfield(d, name, st, body)
+			if err != nil {
+				return fmt.Errorf("decoding %T, field %s: %w", op, name, err)
+			}
+			return nil
 		}
-		typ, err = findsym(typesym, inner)
+
+		_, err := ion.UnpackTypedStruct(st, body, settype, setitem)
 		if err != nil {
-			return nil, fmt.Errorf("plan.Decode: reading \"type\" symbol: %w", err)
+			return err
 		}
-		op, err := decodetyp(d, st.Get(typ), st, inner)
-		if err != nil {
-			return nil, fmt.Errorf("plan.Decode: reading op %d: %w", count, err)
-		}
+
 		if top == nil {
 			top = op
 		} else {
 			op.setinput(top)
 			top = op
 		}
-		count++
+
+		itemid += 1
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("plan.Decode: item #%d: %w", itemid, err)
 	}
+
 	return top, nil
 }
 
@@ -263,31 +247,6 @@ func empty(name string) Op {
 		return &Explain{}
 	}
 	return nil
-}
-
-func decodetyp(d Decoder, name string, st *ion.Symtab, body []byte) (Op, error) {
-	op := empty(name)
-	if op == nil {
-		return nil, fmt.Errorf("plan.Decode: unrecognized type name %q", name)
-	}
-	var lbl ion.Symbol
-	var err error
-	for len(body) > 0 {
-		lbl, body, err = ion.ReadLabel(body)
-		if err != nil {
-			return nil, err
-		}
-		name := st.Get(lbl)
-		if name != "type" {
-			err = op.setfield(d, name, st, body)
-			if err != nil {
-				return nil, fmt.Errorf("decoding %T, field %q: %w", op, name, err)
-			}
-		}
-		body = body[ion.SizeOf(body):]
-	}
-
-	return op, nil
 }
 
 var (

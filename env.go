@@ -62,31 +62,16 @@ func (f *FilterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 func (f *FilterHandle) Decode(st *ion.Symtab, mem []byte) error {
-	if len(mem) == 0 {
-		return fmt.Errorf("filterHandle.decode: no data?")
-	}
-	if ion.TypeOf(mem) != ion.StructType {
-		return fmt.Errorf("unexpected filterHandle type: %s", ion.TypeOf(mem))
-	}
-	mem, _ = ion.Contents(mem)
-	var err error
-	var sym ion.Symbol
-	for len(mem) > 0 {
-		sym, mem, err = ion.ReadLabel(mem)
-		if err != nil {
-			return err
-		}
-		switch st.Get(sym) {
+	_, err := ion.UnpackStruct(st, mem, func(name string, body []byte) error {
+		var err error
+		switch name {
 		case "filter":
-			f.Expr, mem, err = expr.Decode(st, mem)
+			f.Expr, _, err = expr.Decode(st, body)
 		case "blobs":
-			skip := ion.SizeOf(mem)
-			f.Blobs, err = blob.DecodeList(st, mem)
-			mem = mem[skip:]
+			f.Blobs, err = blob.DecodeList(st, body)
 		case "fields":
-			mem, err = ion.UnpackList(mem, func(field []byte) error {
-				var str string
-				str, _, err = ion.ReadString(field)
+			_, err = ion.UnpackList(body, func(field []byte) error {
+				str, _, err := ion.ReadString(field)
 				if err != nil {
 					return err
 				}
@@ -94,14 +79,18 @@ func (f *FilterHandle) Decode(st *ion.Symtab, mem []byte) error {
 				return nil
 			})
 		case "all_fields":
-			f.AllFields, mem, err = ion.ReadBool(mem)
+			f.AllFields, _, err = ion.ReadBool(body)
 		default:
-			return fmt.Errorf("unrecognized filterHandle field %q", st.Get(sym))
+			return fmt.Errorf("unrecognized field %q", name)
 		}
-		if err != nil {
-			return err
-		}
+
+		return err
+	})
+
+	if err != nil {
+		return fmt.Errorf("decoding FilterHandle: %w", err)
 	}
+
 	return nil
 }
 

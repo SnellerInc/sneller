@@ -68,47 +68,50 @@ func (c *Compressed) Stat() (*Info, error) {
 	}, nil
 }
 
-func (d *blobDecoder) decodeComp(fields []byte) (*Compressed, error) {
-	c := d.compressed()
+type decodeComp struct {
+	parent *blobDecoder
+	comp   *Compressed
+}
+
+func (d *decodeComp) getInterface() Interface {
+	return d.comp
+}
+
+func (d *decodeComp) Init(*ion.Symtab) {
+	d.comp = d.parent.compressed()
+}
+
+func (d *decodeComp) SetField(name string, body []byte) error {
 	var err error
-	var sym ion.Symbol
-	st := d.td.Symbols
-	for len(fields) > 0 {
-		sym, fields, err = ion.ReadLabel(fields)
+	switch name {
+	case "from":
+		d.comp.From, _, err = d.parent.decode(body)
+	case "trailer":
+		d.comp.Trailer, err = d.parent.td.Decode(body)
+	case "etext":
+		d.comp.etext, _, err = ion.ReadString(body)
+	case "skip":
+		// ignore
+	case "iid":
+		var id int64
+		id, _, err = ion.ReadInt(body)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		switch st.Get(sym) {
-		case "from":
-			c.From, fields, err = d.decode(fields)
-		case "trailer":
-			c.Trailer, err = d.td.Decode(fields)
-			if err == nil {
-				fields = fields[ion.SizeOf(fields):]
-			}
-		case "etext":
-			c.etext, fields, err = ion.ReadString(fields)
-		case "skip":
-			// ignore
-			_, fields, err = ion.ReadBytes(fields)
-		case "iid":
-			var id int64
-			id, fields, err = ion.ReadInt(fields)
-			if err != nil {
-				return nil, err
-			}
-			if id != int64(len(d.interned)+1) {
-				return nil, fmt.Errorf("blob.Compressed decode: unexpected iid %d (expected %d)", id, len(d.interned)+1)
-			}
-			d.interned = append(d.interned, c)
-		default:
-			err = fmt.Errorf("unrecognized field %q (sym %d)", st.Get(sym), sym)
+		expected := len(d.parent.interned) + 1
+		if id != int64(expected) {
+			return fmt.Errorf("unexpected iid %d (expected %d)", id, expected)
 		}
-		if err != nil {
-			return nil, fmt.Errorf("blob.Compressed decode: %w", err)
-		}
+		d.parent.interned = append(d.parent.interned, d.comp)
+	default:
+		return fmt.Errorf("unrecognized field")
 	}
-	return c, nil
+
+	return err
+}
+
+func (d *decodeComp) Finalize() error {
+	return nil
 }
 
 func (c *Compressed) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab) {
@@ -291,69 +294,81 @@ func (c *CompressedPart) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab
 	dst.EndStruct()
 }
 
-func (d *blobDecoder) decodeCPart(fields []byte) (*CompressedPart, error) {
-	out := new(CompressedPart)
-	st := d.td.Symbols
+type decodeCPart struct {
+	st     *ion.Symtab
+	parent *blobDecoder
+	comp   *CompressedPart
+}
+
+func (d *decodeCPart) getInterface() Interface {
+	return d.comp
+}
+
+func (d *decodeCPart) Init(st *ion.Symtab) {
+	d.st = st
+	d.comp = new(CompressedPart)
+}
+
+func (d *decodeCPart) SetField(name string, body []byte) error {
 	var err error
-	var sym ion.Symbol
-	for len(fields) > 0 {
-		sym, fields, err = ion.ReadLabel(fields)
-		if err != nil {
-			return nil, err
-		}
-		var n int64
-		switch st.Get(sym) {
-		case "start":
-			n, fields, err = ion.ReadInt(fields)
-			out.StartBlock = int(n)
-		case "end":
-			n, fields, err = ion.ReadInt(fields)
-			out.EndBlock = int(n)
-		case "parent-id":
-			n, fields, err = ion.ReadInt(fields)
-			if idx := n - 1; idx >= 0 && int(idx) < len(d.interned) {
-				out.Parent = d.interned[idx]
+	var n int64
+	switch name {
+	case "start":
+		n, _, err = ion.ReadInt(body)
+		d.comp.StartBlock = int(n)
+	case "end":
+		n, _, err = ion.ReadInt(body)
+		d.comp.EndBlock = int(n)
+	case "parent-id":
+		n, _, err = ion.ReadInt(body)
+		if err == nil {
+			if idx := n - 1; idx >= 0 && int(idx) < len(d.parent.interned) {
+				d.comp.Parent = d.parent.interned[idx]
 			} else {
-				err = fmt.Errorf("bad parent-id %d (of %d)", n, len(d.interned))
+				err = fmt.Errorf("bad parent-id %d (of %d)", n, len(d.parent.interned))
 			}
-		case "parent":
-			var p *Compressed
-			var body []byte
-			body, fields = ion.Contents(fields)
-			sym, body, err = ion.ReadLabel(body)
-			if err != nil {
-				break
-			}
-			if st.Get(sym) != "type" {
-				err = fmt.Errorf("unexpected field %q", st.Get(sym))
-				break
-			}
-			sym, body, err = ion.ReadSymbol(body)
-			if err != nil {
-				err = fmt.Errorf("reading type symbol: %w", err)
-				break
-			}
-			if st.Get(sym) != "blob.Compressed" {
-				err = fmt.Errorf("unexpected parent blob type %q", st.Get(sym))
-				break
-			}
-			p, err = d.decodeComp(body)
-			out.Parent = p
-		default:
-			err = fmt.Errorf("unrecognized field %q", st.Get(sym))
 		}
+	case "parent":
+		dec := decodeComp{parent: d.parent}
+
+		setitem := func(typename string) error {
+			if typename != "blob.Compressed" {
+				return fmt.Errorf("unexpected parent blob type %q", typename)
+			}
+
+			dec.Init(d.st)
+			return nil
+		}
+
+		_, err := ion.UnpackTypedStruct(d.st, body, setitem, dec.SetField)
 		if err != nil {
-			return nil, fmt.Errorf("blob.CompressedPart decode: %w", err)
+			return err
 		}
+
+		err = dec.Finalize()
+		if err != nil {
+			return err
+		}
+
+		d.comp.Parent = dec.comp
+		return nil
+	default:
+		return fmt.Errorf("unrecognized field")
 	}
-	if out.StartBlock > out.EndBlock {
-		return nil, fmt.Errorf("blob.CompressedPart decode: start %d > end %d", out.StartBlock, out.EndBlock)
+
+	return err
+}
+
+func (d *decodeCPart) Finalize() error {
+	if d.comp.StartBlock > d.comp.EndBlock {
+		return fmt.Errorf("blob.CompressedPart decode: start %d > end %d", d.comp.StartBlock, d.comp.EndBlock)
 	}
-	if out.Parent == nil {
-		return nil, fmt.Errorf("blob.CompressedPart decode: missing parent or parent-id")
+	if d.comp.Parent == nil {
+		return fmt.Errorf("blob.CompressedPart decode: missing parent or parent-id")
 	}
-	if out.EndBlock > len(out.Parent.Trailer.Blocks) {
-		return nil, fmt.Errorf("blob.CompressedPart end block %d > len(parent.Blocks)=%d", out.EndBlock, len(out.Parent.Trailer.Blocks))
+	if d.comp.EndBlock > len(d.comp.Parent.Trailer.Blocks) {
+		return fmt.Errorf("blob.CompressedPart end block %d > len(parent.Blocks)=%d", d.comp.EndBlock, len(d.comp.Parent.Trailer.Blocks))
 	}
-	return out, nil
+
+	return nil
 }

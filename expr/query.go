@@ -132,7 +132,7 @@ func (q *Query) Encode(dst *ion.Buffer, st *ion.Symtab) {
 
 	dst.BeginStruct(-1)
 	field("type")
-	dst.WriteString("query")
+	dst.WriteSymbol(st.Intern("query"))
 
 	field("explain")
 	dst.WriteInt(int64(q.Explain))
@@ -160,28 +160,16 @@ func (q *Query) Encode(dst *ion.Buffer, st *ion.Symtab) {
 // Returns query, tail of unprocessed Ion and error.
 func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 	q := &Query{}
-	seentype := false
-	rest, err := ion.UnpackStruct(st, msg, func(name string, msg []byte) error {
+
+	settype := func(typename string) error {
+		if typename != "query" {
+			return fmt.Errorf(`unsupported "type" value %q`, typename)
+		}
+		return nil
+	}
+
+	setitem := func(name string, msg []byte) error {
 		var err error
-		if name == "type" {
-			var typ string
-			typ, _, err = ion.ReadString(msg)
-			if err != nil {
-				return err
-			}
-
-			if typ != "query" {
-				return fmt.Errorf(`DecodeQuery: unsupported "type" value %q`, typ)
-			}
-
-			seentype = true
-			return nil
-		}
-
-		if !seentype {
-			return fmt.Errorf(`DecodeQuery: missing "type" field`)
-		}
-
 		switch name {
 		case "explain":
 			var v int64
@@ -236,10 +224,11 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 		}
 
 		return err
-	})
+	}
 
+	rest, err := ion.UnpackTypedStruct(st, msg, settype, setitem)
 	if err != nil {
-		return nil, rest, err
+		return nil, rest, fmt.Errorf("DecodeQuery: %w", err)
 	}
 
 	if q.Body == nil {

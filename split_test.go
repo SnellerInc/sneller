@@ -33,28 +33,34 @@ import (
 )
 
 func init() {
-	plan.AddTransportDecoder("fake-transport", decodeFakeTransport)
+	plan.AddTransportDecoder("fake-transport", &fakeTransportDecoder{})
 }
 
 type fakeTransport string
 
-func decodeFakeTransport(st *ion.Symtab, buf []byte) (plan.Transport, error) {
-	var sym ion.Symbol
-	var err error
-	for len(buf) > 0 {
-		sym, buf, err = ion.ReadLabel(buf)
+type fakeTransportDecoder struct {
+	transport fakeTransport
+}
+
+func (d *fakeTransportDecoder) GetTransport() (plan.Transport, error) {
+	return d.transport, nil
+}
+
+func (d *fakeTransportDecoder) Init(*ion.Symtab) {}
+
+func (d *fakeTransportDecoder) Finalize() error { return nil }
+
+func (d *fakeTransportDecoder) SetField(name string, body []byte) error {
+	if name == "transport" {
+		s, _, err := ion.ReadString(body)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if st.Get(sym) == "transport" {
-			s, _, err := ion.ReadString(buf)
-			if err != nil {
-				return nil, err
-			}
-			return fakeTransport(s), nil
-		}
+
+		d.transport = fakeTransport(s)
+		return nil
 	}
-	return nil, errors.New("no transport field")
+	return errors.New("no transport field")
 }
 
 func (t fakeTransport) Exec(*plan.Tree, *plan.ExecParams) error {
