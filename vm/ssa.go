@@ -1757,30 +1757,6 @@ func (p *prog) notMissing(v *value) *value {
 	}
 }
 
-func (p *prog) storeList(mem *value, v *value, slot stackslot) *value {
-	p.reserveSlot(slot)
-	l := p.tolist(v)
-	return p.ssa3imm(sstorelist, mem, l, l, int(slot))
-}
-
-// LoadList loads a list slice from
-// a stack slot and returns the slice and
-// a predicate indicating whether the loaded
-// value has a non-zero length component
-func (p *prog) loadList(mem *value, slot stackslot) *value {
-	p.reserveSlot(slot)
-	return p.ssa1imm(sloadlist, mem, int(slot))
-}
-
-// Loadvalue loads a value from a stack slot
-// and returns the value and a predicate
-// indicating whether the loaded value
-// has a non-zero length component
-func (p *prog) loadvalue(mem *value, slot stackslot) *value {
-	p.reserveSlot(slot)
-	return p.ssa1imm(sloadv, mem, int(slot))
-}
-
 // Upvalue loads an upvalue (a value bound by
 // an enclosing binding context) from a parent's
 // stack slot
@@ -2561,18 +2537,6 @@ func (p *prog) isSubnetOfIP4(str *value, min, max [4]byte) *value {
 	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), stringext.ToBCD(&min, &max))
 }
 
-// SkipCharLeft skips a variable number of UTF-8 code-points from the left side of a string
-func (p *prog) skipCharLeft(str, nChars *value) *value {
-	str = p.toStr(str)
-	return p.ssa3(sStrSkipNCharLeft, str, nChars, p.and(p.mask(str), p.mask(nChars)))
-}
-
-// SkipCharRight skips a variable number of UTF-8 code-points from the right side of a string
-func (p *prog) skipCharRight(str, nChars *value) *value {
-	str = p.toStr(str)
-	return p.ssa3(sStrSkipNCharRight, str, nChars, p.and(p.mask(str), p.mask(nChars)))
-}
-
 // SkipCharLeftConst skips a constant number of UTF-8 code-points from the left side of a string
 func (p *prog) skipCharLeftConst(str *value, nChars int) *value {
 	str = p.toStr(str)
@@ -2609,16 +2573,6 @@ func (p *prog) skipCharRightConst(str *value, nChars int) *value {
 // match exactly one unicode point.
 func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *value {
 	return p.likeInternal(str, expr, '_', '%', escape, caseSensitive)
-}
-
-// Glob matches 'str' as a string against
-// a simple glob pattern.
-//
-// The '*' character will match zero or more
-// unicode points, and the '?' character will
-// match exactly one unicode point.
-func (p *prog) glob(str *value, expr string, caseSensitive bool) *value {
-	return p.likeInternal(str, expr, '?', '*', stringext.NoEscape, caseSensitive)
 }
 
 // likeInternal matches a 'LIKE' pattern using any single character 'wc' and
@@ -4163,24 +4117,6 @@ func (p *prog) writeTo(w io.Writer) (int64, error) {
 	n, err := fmt.Fprintf(w, "ret: %s\n", p.ret.Name())
 	nn += int64(n)
 	return nn, err
-}
-
-// Graphviz writes out the program in a format
-// that the dot(1) tool can turn into a visual graph
-func (p *prog) graphviz(w io.Writer) {
-	fmt.Fprintf(w, "digraph prog {\n")
-	for i := range p.values {
-		v := p.values[i]
-		fmt.Fprintf(w, "\t%q [label=%q];\n", v.Name(), v.Name()+" = "+v.String())
-		for _, arg := range v.args {
-			// write arg -> v
-			fmt.Fprintf(w, "\t%q -> %q;\n", arg.Name(), v.Name())
-		}
-	}
-	if p.ret != nil {
-		fmt.Fprintf(w, "\t%q -> ret;\n", p.ret.Name())
-	}
-	io.WriteString(w, "}\n")
 }
 
 // core post-order instruction scheduling logic
