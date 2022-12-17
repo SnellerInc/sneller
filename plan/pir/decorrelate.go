@@ -56,11 +56,11 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		return nil, nil, nil
 	}
 	var x string
-	for i := range it.free {
-		if it.free[i] == x {
+	for free := range it.free {
+		if free == x {
 			continue
 		}
-		_, node := b.Parent.top.get(it.free[i])
+		_, node := b.Parent.top.get(free)
 		if node == nil {
 			continue
 		}
@@ -70,9 +70,9 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		// multiple correlated references are
 		// unsupported for now
 		if x != "" {
-			return nil, nil, decorrerr(node, it.free[i])
+			return nil, nil, decorrerr(node, free)
 		}
-		x = it.free[i]
+		x = free
 		v = node
 		continue
 	}
@@ -139,13 +139,7 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		return nil, nil, decorrerr(v, x)
 	}
 	// do some bookkeeping
-	free := it.free[:0]
-	for i := range it.free {
-		if it.free[i] != x {
-			free = append(free, it.free[i])
-		}
-	}
-	it.free = free
+	delete(it.free, x)
 	return k, v, nil
 }
 

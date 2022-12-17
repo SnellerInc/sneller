@@ -108,7 +108,7 @@ func (b *Trace) visitPath(p *expr.Path) expr.Visitor {
 		}
 		if it, ok := src.(*IterTable); ok && node != nil {
 			// make sure we record this as a definite reference
-			it.definite = append(it.definite, p.First)
+			it.definite[p.First] = struct{}{}
 		}
 		// references to tables, etc.
 		// do not need to be additionally

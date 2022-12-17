@@ -87,8 +87,8 @@ type IterTable struct {
 	// within this trace that ostensibly
 	// reference this table; they may actually
 	// be correlated with a parent trace!
-	free     []string
-	definite []string
+
+	free, definite map[string]struct{}
 
 	Table       *expr.Table
 	Schema      expr.Hint
@@ -99,7 +99,7 @@ type IterTable struct {
 func (i *IterTable) equals(x Step) bool {
 	i2, ok := x.(*IterTable)
 	return ok && (i == i2 || i.table.equals(&i2.table) &&
-		slices.Equal(i.free, i2.free) &&
+		maps.Equal(i.free, i2.free) &&
 		i.Table.Equals(i2.Table) &&
 		i.Schema == i2.Schema && // necessary?
 		i.Index == i2.Index && // necessary?
@@ -139,7 +139,7 @@ func (i *IterTable) Fields() []string {
 	if i.star {
 		return nil
 	}
-	all := append(i.free[:len(i.free):len(i.free)], i.definite...)
+	all := append(maps.Keys(i.free), maps.Keys(i.definite)...)
 	slices.Sort(all)
 	return slices.Compact(all)
 }
@@ -153,7 +153,7 @@ func (i *IterTable) get(x string) (Step, expr.Node) {
 	if result != "" && result == x {
 		return i, i.Table
 	}
-	i.free = append(i.free, x)
+	i.free[x] = struct{}{}
 	return i, nil
 }
 
@@ -174,13 +174,12 @@ func (i *IterTable) trim(used map[string]struct{}) {
 	}
 
 	// 3. filter out unused fields
-	pred := func(s *string) bool {
-		_, ok := tmp[*s]
-		return ok
+	pred := func(s string, _ struct{}) bool {
+		_, ok := tmp[s]
+		return !ok
 	}
-
-	i.definite = filterSlice(i.definite, pred)
-	i.free = filterSlice(i.free, pred)
+	maps.DeleteFunc(i.definite, pred)
+	maps.DeleteFunc(i.free, pred)
 }
 
 func (i *IterTable) describe(dst io.Writer) {
@@ -733,6 +732,8 @@ func stepsEqual(a, b Step) bool {
 
 func (b *Trace) Begin(f *expr.Table, e Env) error {
 	it := &IterTable{Table: f}
+	it.definite = make(map[string]struct{})
+	it.free = make(map[string]struct{})
 	it.haveParent = b.Parent != nil
 	if f.Explicit() {
 		it.Bind = f.Result()
