@@ -204,7 +204,7 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	// *and* the input symbol table has not changed
 	// in a meaningful way, we don't need to recompile
 	// the bytecode
-	if allsame && !p.prog.IsStale(st) {
+	if allsame && !p.prog.isStale(st) {
 		return p.update(st, aux)
 	}
 
@@ -220,8 +220,8 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 
 	var err error
 	prg := &p.prog
-	prg.Begin()
-	mem0 := prg.InitMem()
+	prg.begin()
+	mem0 := prg.initMem()
 	mem := make([]*value, len(sel))
 	for i := range sel {
 		mem[i], err = prg.compileStore(mem0, sel[p.inslot[i]].Expr, stackSlotFromIndex(regV, i), false)
@@ -231,7 +231,7 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	}
 	// preserve the initial predicate mask
 	// so that we can use it for projection
-	prg.Return(prg.mk(prg.MergeMem(mem...), prg.ValidLanes()))
+	prg.returnValue(prg.mk(prg.mergeMem(mem...), prg.validLanes()))
 	prg.symbolize(st, aux)
 	err = prg.compile(&p.bc, st)
 	if err != nil {

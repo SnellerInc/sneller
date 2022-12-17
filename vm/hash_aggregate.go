@@ -131,7 +131,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 	h := &HashAggregate{agg: agg, by: by, dst: dst, pos2id: pos2id}
 
 	prog := &h.prog
-	prog.Begin()
+	prog.begin()
 
 	colmem := make([]*value, len(by))
 
@@ -157,10 +157,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 		if allColumnsMask == nil {
 			allColumnsMask = prog.mask(col)
 		} else {
-			allColumnsMask = prog.And(allColumnsMask, prog.mask(col))
+			allColumnsMask = prog.and(allColumnsMask, prog.mask(col))
 		}
 
-		mem, err := prog.Store(prog.InitMem(), col, stackSlotFromIndex(regV, i))
+		mem, err := prog.store(prog.initMem(), col, stackSlotFromIndex(regV, i))
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +168,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 		colmem[i] = mem
 	}
 
-	mem := prog.MergeMem(colmem...)
+	mem := prog.mergeMem(colmem...)
 	out := make([]*value, len(agg))
 	ops := make([]AggregateOp, len(agg))
 	bucket := prog.aggbucket(mem, allColumnsHash, allColumnsMask)
@@ -187,7 +187,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 
 		mask := allColumnsMask
 		if filter != nil {
-			mask = prog.And(mask, filter)
+			mask = prog.and(mask, filter)
 		}
 
 		switch op := agg[i].Expr.Op; op {
@@ -201,10 +201,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 				if err != nil {
 					return nil, err
 				}
-				mask = prog.And(prog.mask(k), mask)
+				mask = prog.and(prog.mask(k), mask)
 			}
 
-			out[i] = prog.AggregateSlotCount(mem, bucket, mask, offset)
+			out[i] = prog.aggregateSlotCount(mem, bucket, mask, offset)
 			ops[i].fn = AggregateOpCount
 
 		case expr.OpApproxCountDistinct,
@@ -220,14 +220,14 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			ops[i].precision = precision
 			switch op {
 			case expr.OpApproxCountDistinct:
-				out[i] = prog.AggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
+				out[i] = prog.aggregateSlotApproxCountDistinct(mem, bucket, argv, mask, offset, precision)
 				ops[i].fn = AggregateOpApproxCountDistinct
 
 			case expr.OpApproxCountDistinctPartial:
-				out[i] = prog.AggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask, offset, precision)
+				out[i] = prog.aggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask, offset, precision)
 				ops[i].fn = AggregateOpApproxCountDistinctPartial
 			case expr.OpApproxCountDistinctMerge:
-				out[i] = prog.AggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask, offset, precision)
+				out[i] = prog.aggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask, offset, precision)
 				ops[i].fn = AggregateOpApproxCountDistinctMerge
 			}
 
@@ -238,10 +238,10 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			}
 			switch op {
 			case expr.OpBoolAnd:
-				out[i] = prog.AggregateSlotBoolAnd(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotBoolAnd(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpAndK
 			case expr.OpBoolOr:
-				out[i] = prog.AggregateSlotBoolOr(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotBoolOr(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpOrK
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
@@ -255,53 +255,53 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			var fp bool
 			switch op {
 			case expr.OpAvg:
-				out[i], fp = prog.AggregateSlotAvg(mem, bucket, argv, mask, offset)
+				out[i], fp = prog.aggregateSlotAvg(mem, bucket, argv, mask, offset)
 				if fp {
 					ops[i].fn = AggregateOpAvgF
 				} else {
 					ops[i].fn = AggregateOpAvgI
 				}
 			case expr.OpSum:
-				out[i], fp = prog.AggregateSlotSum(mem, bucket, argv, mask, offset)
+				out[i], fp = prog.aggregateSlotSum(mem, bucket, argv, mask, offset)
 				if fp {
 					ops[i].fn = AggregateOpSumF
 				} else {
 					ops[i].fn = AggregateOpSumI
 				}
 			case expr.OpSumInt:
-				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotSumInt(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpSumI
 			case expr.OpSumCount:
-				out[i] = prog.AggregateSlotSumInt(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotSumInt(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpSumC
 			case expr.OpMin:
-				out[i], fp = prog.AggregateSlotMin(mem, bucket, argv, mask, offset)
+				out[i], fp = prog.aggregateSlotMin(mem, bucket, argv, mask, offset)
 				if fp {
 					ops[i].fn = AggregateOpMinF
 				} else {
 					ops[i].fn = AggregateOpMinI
 				}
 			case expr.OpMax:
-				out[i], fp = prog.AggregateSlotMax(mem, bucket, argv, mask, offset)
+				out[i], fp = prog.aggregateSlotMax(mem, bucket, argv, mask, offset)
 				if fp {
 					ops[i].fn = AggregateOpMaxF
 				} else {
 					ops[i].fn = AggregateOpMaxI
 				}
 			case expr.OpBitAnd:
-				out[i] = prog.AggregateSlotAnd(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotAnd(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpAndI
 			case expr.OpBitOr:
-				out[i] = prog.AggregateSlotOr(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotOr(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpOrI
 			case expr.OpBitXor:
-				out[i] = prog.AggregateSlotXor(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotXor(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpXorI
 			case expr.OpEarliest:
-				out[i] = prog.AggregateSlotEarliest(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotEarliest(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpMinTS
 			case expr.OpLatest:
-				out[i] = prog.AggregateSlotLatest(mem, bucket, argv, mask, offset)
+				out[i] = prog.aggregateSlotLatest(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpMaxTS
 			default:
 				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
@@ -321,7 +321,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 	h.aggregateOps = ops
 	h.initialData = initialData
 
-	prog.Return(prog.MergeMem(out...))
+	prog.returnValue(prog.mergeMem(out...))
 	return h, nil
 }
 

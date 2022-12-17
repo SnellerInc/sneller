@@ -49,44 +49,44 @@ var ticketsTestQueries = []struct {
 		name: "Make = \"HOND\" AND Color = \"BK\"",
 		rows: 24,
 		expr: func(p *prog) *value {
-			return p.And(
-				p.Equals(p.Dot("Make", p.ValidLanes()), p.Constant("HOND")),
-				p.Equals(p.Dot("Color", p.ValidLanes()), p.Constant("BK")))
+			return p.and(
+				p.equals(p.dot("Make", p.validLanes()), p.constant("HOND")),
+				p.equals(p.dot("Color", p.validLanes()), p.constant("BK")))
 		},
 	},
 	{
 		name: "TRIM(Make) = \"HOND\"",
 		rows: 122,
 		expr: func(p *prog) *value {
-			return p.Equals(p.TrimWhitespace(p.Dot("Make", p.ValidLanes()), trimBoth), p.Constant("HOND"))
+			return p.equals(p.trimWhitespace(p.dot("Make", p.validLanes()), trimBoth), p.constant("HOND"))
 		},
 	},
 	{
 		name: ".ViolationDescr LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "NO", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "NO", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: "LTRIM(.ViolationDescr) LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
-			return p.Like(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimLeading), "NO%", stringext.NoEscape, true)
+			return p.like(p.trimWhitespace(p.dot("ViolationDescr", p.validLanes()), trimLeading), "NO%", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: "RTRIM(.ViolationDescr) LIKE \"%NO\"",
 		rows: 3,
 		expr: func(p *prog) *value {
-			return p.Like(p.TrimWhitespace(p.Dot("ViolationDescr", p.ValidLanes()), trimTrailing), "%NO", stringext.NoEscape, true)
+			return p.like(p.trimWhitespace(p.dot("ViolationDescr", p.validLanes()), trimTrailing), "%NO", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: ".ViolationDescr LIKE \"%REG\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%REG", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%REG", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -94,7 +94,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%REG%\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%REG%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%REG%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -102,14 +102,14 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%EVIDENCE%\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%EVIDENCE%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%EVIDENCE%", stringext.NoEscape, true)
 		},
 	},
 	{
 		name: ".ViolationDescr LIKE \"%GRID LOCK%\"",
 		rows: 19,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%GRID LOCK%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%GRID LOCK%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -117,7 +117,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%NO%\"",
 		rows: 532,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%NO%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%NO%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -125,7 +125,7 @@ var ticketsTestQueries = []struct {
 		name: "UPPER(.ViolationDescr) LIKE \"%NO%\"",
 		rows: 532,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%no%", stringext.NoEscape, false)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%no%", stringext.NoEscape, false)
 		},
 	},
 	{
@@ -133,7 +133,7 @@ var ticketsTestQueries = []struct {
 		name: "LOWER(.ViolationDescr) LIKE \"%no%\"",
 		rows: 532,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%NO%", stringext.NoEscape, false)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%NO%", stringext.NoEscape, false)
 		},
 	},
 	{
@@ -141,7 +141,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%EXPIRED%\"",
 		rows: 32,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%EXPIRED%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%EXPIRED%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -149,7 +149,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"_O%_DENCE%R_G\"",
 		rows: 116,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "_O%_DENCE%R_G", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "_O%_DENCE%R_G", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -157,7 +157,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"NO_STO%STA%_AM\"",
 		rows: 4,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "NO_STO%STA%_AM", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "NO_STO%STA%_AM", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -170,7 +170,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%E_E%\"",
 		rows: 92,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%E_E%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%E_E%", stringext.NoEscape, true)
 		},
 	},
 	{
@@ -183,7 +183,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"%E__E%\"",
 		rows: 200,
 		expr: func(p *prog) *value {
-			return p.Like(p.Dot("ViolationDescr", p.ValidLanes()), "%E__E%", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "%E__E%", stringext.NoEscape, true)
 		},
 	},
 }
@@ -197,37 +197,37 @@ var tickets2TestQueries = []struct {
 		name: ".Issue.Time<1200",
 		rows: 520,
 		expr: func(p *prog) *value {
-			return p.Less(bcpath(p, "Issue.Time"), p.Constant(1200))
+			return p.less(bcpath(p, "Issue.Time"), p.constant(1200))
 		},
 	},
 	{
 		name: ".Coordinates.Lat < 100000 AND .Coordinates.Long < 100000",
 		rows: 1023,
 		expr: func(p *prog) *value {
-			return p.And(
-				p.Less(bcpath(p, "Coordinates.Lat"), p.Constant(100000)),
-				p.Less(bcpath(p, "Coordinates.Long"), p.Constant(100000)))
+			return p.and(
+				p.less(bcpath(p, "Coordinates.Lat"), p.constant(100000)),
+				p.less(bcpath(p, "Coordinates.Long"), p.constant(100000)))
 		},
 	},
 	{
 		name: ".Fields[0] IS TRUE",
 		rows: 882,
 		expr: func(p *prog) *value {
-			return p.IsTrue(p.Index(bcpath(p, "Fields"), 0))
+			return p.isTrue(p.index(bcpath(p, "Fields"), 0))
 		},
 	},
 	{
 		name: ".Fields[1] == 1",
 		rows: 112,
 		expr: func(p *prog) *value {
-			return p.Equals(p.Index(bcpath(p, "Fields"), 1), p.Constant(1))
+			return p.equals(p.index(bcpath(p, "Fields"), 1), p.constant(1))
 		},
 	},
 	{
 		name: ".Fields[2] == \"01535\"",
 		rows: 1,
 		expr: func(p *prog) *value {
-			return p.Equals(p.Index(bcpath(p, "Fields"), 2), p.Constant("01535"))
+			return p.equals(p.index(bcpath(p, "Fields"), 2), p.constant("01535"))
 		},
 	},
 }
@@ -242,9 +242,9 @@ var nestedTicketsQueries = []struct {
 		rows: 45,
 		expr: func(p *prog) *value {
 			entries := bcpath(p, "Entries")
-			entry0 := p.Index(entries, 0)
-			bodystyle := p.Dot("BodyStyle", entry0)
-			return p.Equals(bodystyle, p.Constant("PA"))
+			entry0 := p.index(entries, 0)
+			bodystyle := p.dot("BodyStyle", entry0)
+			return p.equals(bodystyle, p.constant("PA"))
 		},
 	},
 	{
@@ -252,9 +252,9 @@ var nestedTicketsQueries = []struct {
 		rows: 31,
 		expr: func(p *prog) *value {
 			entries := bcpath(p, "Entries")
-			entry3 := p.Index(entries, 3)
-			bodystyle := p.Dot("BodyStyle", entry3)
-			return p.Equals(bodystyle, p.Constant("PA"))
+			entry3 := p.index(entries, 3)
+			bodystyle := p.dot("BodyStyle", entry3)
+			return p.equals(bodystyle, p.constant("PA"))
 		},
 	},
 }
@@ -268,16 +268,16 @@ var nycTestQueries = []struct {
 		name: ".passenger_count=2",
 		rows: 1400,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.Equals(p.Dot("passenger_count", all), p.Constant(2))
+			all := p.validLanes()
+			return p.equals(p.dot("passenger_count", all), p.constant(2))
 		},
 	},
 	{
 		name: ".passenger_count<3",
 		rows: 6605,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.Less(p.Dot("passenger_count", all), p.Constant(3))
+			all := p.validLanes()
+			return p.less(p.dot("passenger_count", all), p.constant(3))
 		},
 	},
 	{
@@ -285,97 +285,97 @@ var nycTestQueries = []struct {
 		name: ".passenger_count<2.5",
 		rows: 6605,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.Less(p.Dot("passenger_count", all), p.Constant(2.5))
+			all := p.validLanes()
+			return p.less(p.dot("passenger_count", all), p.constant(2.5))
 		},
 	},
 	{
 		name: ".trip_distance<3",
 		rows: 6443,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.Less(p.Dot("trip_distance", all), p.Constant(3))
+			all := p.validLanes()
+			return p.less(p.dot("trip_distance", all), p.constant(3))
 		},
 	},
 	{
 		name: ".trip_distance<2.5",
 		rows: 5897,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.Less(p.Dot("trip_distance", all), p.Constant(2.5))
+			all := p.validLanes()
+			return p.less(p.dot("trip_distance", all), p.constant(2.5))
 		},
 	},
 	{
 		name: ".trip_distance<=2.5",
 		rows: 5917,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.LessEqual(p.Dot("trip_distance", all), p.Constant(2.5))
+			all := p.validLanes()
+			return p.lessEqual(p.dot("trip_distance", all), p.constant(2.5))
 		},
 	},
 	{
 		name: ".does_not_exist < 2 OR .trip_distance < 2.5",
 		rows: 5897,
 		expr: func(p *prog) *value {
-			return p.Or(
-				p.Less(bcpath(p, "does_not_exist"), p.Constant(2)),
-				p.Less(bcpath(p, "trip_distance"), p.Constant(2.5)))
+			return p.or(
+				p.less(bcpath(p, "does_not_exist"), p.constant(2)),
+				p.less(bcpath(p, "trip_distance"), p.constant(2.5)))
 		},
 	},
 	{
 		name: ".does_not_exist < 2 AND .trip_distance < 2.5",
 		rows: 0,
 		expr: func(p *prog) *value {
-			return p.And(
-				p.Less(bcpath(p, "does_not_exist"), p.Constant(2)),
-				p.Less(bcpath(p, "trip_distance"), p.Constant(2.5)))
+			return p.and(
+				p.less(bcpath(p, "does_not_exist"), p.constant(2)),
+				p.less(bcpath(p, "trip_distance"), p.constant(2.5)))
 		},
 	},
 	{
 		name: ".trip_distance>2.5",
 		rows: 2643,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.Greater(p.Dot("trip_distance", all), p.Constant(2.5))
+			all := p.validLanes()
+			return p.greater(p.dot("trip_distance", all), p.constant(2.5))
 		},
 	},
 	{
 		name: ".trip_distance>=2.5",
 		rows: 2663,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			return p.GreaterEqual(p.Dot("trip_distance", all), p.Constant(2.5))
+			all := p.validLanes()
+			return p.greaterEqual(p.dot("trip_distance", all), p.constant(2.5))
 		},
 	},
 	{
 		name: ".passenger_count<2 and .trip_distance>5",
 		rows: 604,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			psngr := p.Dot("passenger_count", all)
-			dist := p.Dot("trip_distance", all)
-			return p.And(p.Less(psngr, p.Constant(2)), p.Greater(dist, p.Constant(5)))
+			all := p.validLanes()
+			psngr := p.dot("passenger_count", all)
+			dist := p.dot("trip_distance", all)
+			return p.and(p.less(psngr, p.constant(2)), p.greater(dist, p.constant(5)))
 		},
 	},
 	{
 		name: ".passenger_count>1 or .trip_distance<1",
 		rows: 4699,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			pass := p.Dot("passenger_count", all)
-			dist := p.Dot("trip_distance", all)
-			one := p.Constant(1)
-			return p.Or(p.Greater(pass, one), p.Less(dist, one))
+			all := p.validLanes()
+			pass := p.dot("passenger_count", all)
+			dist := p.dot("trip_distance", all)
+			one := p.constant(1)
+			return p.or(p.greater(pass, one), p.less(dist, one))
 		},
 	},
 	{
 		name: ".fare_amount==.total_amount",
 		rows: 3820,
 		expr: func(p *prog) *value {
-			all := p.ValidLanes()
-			lhs := p.Dot("fare_amount", all)
-			rhs := p.Dot("total_amount", all)
-			return p.Equals(lhs, rhs)
+			all := p.validLanes()
+			lhs := p.dot("fare_amount", all)
+			rhs := p.dot("total_amount", all)
+			return p.equals(lhs, rhs)
 		},
 	},
 	{
@@ -383,9 +383,9 @@ var nycTestQueries = []struct {
 		name: ".tip_amount<.surcharge",
 		rows: 2874,
 		expr: func(p *prog) *value {
-			tip := p.Dot("tip_amount", p.ValidLanes())
-			surcharge := p.Dot("surcharge", p.ValidLanes())
-			return p.Less(tip, surcharge)
+			tip := p.dot("tip_amount", p.validLanes())
+			surcharge := p.dot("surcharge", p.validLanes())
+			return p.less(tip, surcharge)
 		},
 	},
 	{
@@ -393,9 +393,9 @@ var nycTestQueries = []struct {
 		name: ".tip_amount>.surcharge",
 		rows: 1709,
 		expr: func(p *prog) *value {
-			tip := p.Dot("tip_amount", p.ValidLanes())
-			surcharge := p.Dot("surcharge", p.ValidLanes())
-			return p.Greater(tip, surcharge)
+			tip := p.dot("tip_amount", p.validLanes())
+			surcharge := p.dot("surcharge", p.validLanes())
+			return p.greater(tip, surcharge)
 		},
 	},
 	{
@@ -403,9 +403,9 @@ var nycTestQueries = []struct {
 		name: ".tip_amount>=.passenger_count",
 		rows: 1297,
 		expr: func(p *prog) *value {
-			tip := p.Dot("tip_amount", p.ValidLanes())
-			pass := p.Dot("passenger_count", p.ValidLanes())
-			return p.GreaterEqual(tip, pass)
+			tip := p.dot("tip_amount", p.validLanes())
+			pass := p.dot("passenger_count", p.validLanes())
+			return p.greaterEqual(tip, pass)
 		},
 	},
 	{
@@ -414,9 +414,9 @@ var nycTestQueries = []struct {
 		name: ".passenger_count<=.tip_amount",
 		rows: 1297,
 		expr: func(p *prog) *value {
-			tip := p.Dot("tip_amount", p.ValidLanes())
-			pass := p.Dot("passenger_count", p.ValidLanes())
-			return p.LessEqual(pass, tip)
+			tip := p.dot("tip_amount", p.validLanes())
+			pass := p.dot("passenger_count", p.validLanes())
+			return p.lessEqual(pass, tip)
 		},
 	},
 	{
@@ -424,7 +424,7 @@ var nycTestQueries = []struct {
 		name: ".VendorID LIKE VT%",
 		rows: 7353,
 		expr: func(p *prog) *value {
-			return p.HasPrefix(p.Dot("VendorID", p.ValidLanes()), "VT", true)
+			return p.hasPrefix(p.dot("VendorID", p.validLanes()), "VT", true)
 		},
 	},
 	{
@@ -432,14 +432,14 @@ var nycTestQueries = []struct {
 		name: ".VendorID LIKE VTS%",
 		rows: 7353,
 		expr: func(p *prog) *value {
-			return p.HasPrefix(p.Dot("VendorID", p.ValidLanes()), "VTS", true)
+			return p.hasPrefix(p.dot("VendorID", p.validLanes()), "VTS", true)
 		},
 	},
 	{
 		name: ".VendorID LIKE %CMT",
 		rows: 1055,
 		expr: func(p *prog) *value {
-			return p.HasSuffix(p.Dot("VendorID", p.ValidLanes()), "CMT", true)
+			return p.hasSuffix(p.dot("VendorID", p.validLanes()), "CMT", true)
 		},
 	},
 	{
@@ -447,7 +447,7 @@ var nycTestQueries = []struct {
 		name: ".VendorID LIKE %MT",
 		rows: 1055,
 		expr: func(p *prog) *value {
-			return p.HasSuffix(p.Dot("VendorID", p.ValidLanes()), "MT", true)
+			return p.hasSuffix(p.dot("VendorID", p.validLanes()), "MT", true)
 		},
 	},
 	{
@@ -455,15 +455,15 @@ var nycTestQueries = []struct {
 		name: ".VendorID LIKE %S",
 		rows: 7505,
 		expr: func(p *prog) *value {
-			return p.HasSuffix(p.Dot("VendorID", p.ValidLanes()), "S", true)
+			return p.hasSuffix(p.dot("VendorID", p.validLanes()), "S", true)
 		},
 	},
 	{
 		name: ".payment_type LIKE CASH%",
 		rows: 5902,
 		expr: func(p *prog) *value {
-			pt := p.Dot("payment_type", p.ValidLanes())
-			return p.HasPrefix(pt, "CASH", true)
+			pt := p.dot("payment_type", p.validLanes())
+			return p.hasPrefix(pt, "CASH", true)
 		},
 	},
 	{
@@ -471,16 +471,16 @@ var nycTestQueries = []struct {
 		name: ".passenger_count>0 AND .passenger_count<3",
 		rows: 6605,
 		expr: func(p *prog) *value {
-			return p.And(p.Greater(p.Dot("passenger_count", p.ValidLanes()), p.Constant(0)),
-				p.Less(p.Dot("passenger_count", p.ValidLanes()), p.Constant(3)))
+			return p.and(p.greater(p.dot("passenger_count", p.validLanes()), p.constant(0)),
+				p.less(p.dot("passenger_count", p.validLanes()), p.constant(3)))
 		},
 	},
 	{
 		name: ".trip_distance>1 AND .trip_distance<3",
 		rows: 4185,
 		expr: func(p *prog) *value {
-			return p.And(p.Greater(p.Dot("trip_distance", p.ValidLanes()), p.Constant(1)),
-				p.Less(p.Dot("trip_distance", p.ValidLanes()), p.Constant(3)))
+			return p.and(p.greater(p.dot("trip_distance", p.validLanes()), p.constant(1)),
+				p.less(p.dot("trip_distance", p.validLanes()), p.constant(3)))
 		},
 	},
 }
@@ -499,11 +499,11 @@ func TestSSATicketsQueries(t *testing.T) {
 		want := tcs[i].rows
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), tcs[i].expr(p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), tcs[i].expr(p)))
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample, &auxbindings{})
+			err = p.cloneSymbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -556,11 +556,11 @@ func TestSSATickets2Queries(t *testing.T) {
 		expr := tcs[i].expr
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), expr(p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample, &auxbindings{})
+			err = p.cloneSymbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -625,8 +625,8 @@ func TestSSANYCQueries(t *testing.T) {
 		expr := tcs[i].expr
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), expr(p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
 			var out QueryBuffer
 			err := CopyRows(where(p, &out), table(), 4)
 			if err != nil {
@@ -647,7 +647,7 @@ func TestSSANYCQueries(t *testing.T) {
 
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample, &auxbindings{})
+			err = p.cloneSymbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -657,7 +657,7 @@ func TestSSANYCQueries(t *testing.T) {
 			}
 			t.Logf("bytecode:\n%s", bc.String())
 			var opt strings.Builder
-			sample.WriteTo(&opt)
+			sample.writeTo(&opt)
 			t.Logf("ssa:\n%s", opt.String())
 
 			// try it again with only the keys actually
@@ -669,8 +669,8 @@ func TestSSANYCQueries(t *testing.T) {
 			// a RowConsumer (Where) as the output of
 			// the Select
 			*p = prog{}
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), expr(p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
 			var c Count
 			dst := NewProjection(progsel(p), where(p, &c))
 			err = CopyRows(dst, table(), 4)
@@ -687,7 +687,7 @@ func TestSSANYCQueries(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
-				err = p.Symbolize(&st, &sample, &auxbindings{})
+				err = p.cloneSymbolize(&st, &sample, &auxbindings{})
 				if err != nil {
 					t.Error(err)
 				}
@@ -697,7 +697,7 @@ func TestSSANYCQueries(t *testing.T) {
 				}
 				t.Logf("bytecode:\n%s", bc.String())
 				var opt strings.Builder
-				sample.WriteTo(&opt)
+				sample.writeTo(&opt)
 				t.Logf("ssa:\n%s", opt.String())
 
 				outbuf := rest
@@ -728,8 +728,8 @@ func TestNestedTicketsQueries(t *testing.T) {
 		expr := tcs[i].expr
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), expr(p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
 			var out QueryBuffer
 			err := CopyRows(where(p, &out), buftbl(buf), 4)
 			if err != nil {
@@ -750,7 +750,7 @@ func TestNestedTicketsQueries(t *testing.T) {
 
 			var sample prog
 			var bc bytecode
-			err = p.Symbolize(&st, &sample, &auxbindings{})
+			err = p.cloneSymbolize(&st, &sample, &auxbindings{})
 			if err != nil {
 				t.Error(err)
 			}
@@ -760,7 +760,7 @@ func TestNestedTicketsQueries(t *testing.T) {
 			}
 			t.Logf("bytecode:\n%s", bc.String())
 			var opt strings.Builder
-			sample.WriteTo(&opt)
+			sample.writeTo(&opt)
 			t.Logf("ssa:\n%s", opt.String())
 		})
 	}
@@ -774,8 +774,8 @@ func BenchmarkParkingTicketsQueries(b *testing.B) {
 		b.Run(tcs[i].name, func(b *testing.B) {
 			var c Count
 			var p prog
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), expr(&p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), expr(&p)))
 			w := where(&p, &c)
 			b.SetBytes(int64(len(buf)))
 			b.SetParallelism(1)
@@ -807,8 +807,8 @@ func BenchmarkNYCQueries(b *testing.B) {
 		b.Run(tcs[i].name, func(b *testing.B) {
 			var c Count
 			var p prog
-			p.Begin()
-			p.Return(p.RowsMasked(p.ValidLanes(), expr(&p)))
+			p.begin()
+			p.returnValue(p.rowsMasked(p.validLanes(), expr(&p)))
 			w := where(&p, &c)
 			b.SetBytes(int64(len(buf)))
 			b.SetParallelism(1)
@@ -831,11 +831,11 @@ func BenchmarkNYCQueries(b *testing.B) {
 
 func bcpath(p *prog, str string) *value {
 	fields := strings.Split(str, ".")
-	base := p.Dot(fields[0], p.ValidLanes())
+	base := p.dot(fields[0], p.validLanes())
 
 	fields = fields[1:]
 	for i := range fields {
-		base = p.Dot(fields[i], base)
+		base = p.dot(fields[i], base)
 	}
 
 	return base

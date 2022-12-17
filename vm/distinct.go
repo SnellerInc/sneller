@@ -65,7 +65,7 @@ func NewDistinct(on []expr.Node, dst QuerySink) (*DistinctFilter, error) {
 	// and then perform a radix lookup
 	// to determine if we have duplicates
 	p := &df.prog
-	p.Begin()
+	p.begin()
 	var hash, pred *value
 	for i := range on {
 		val, err := p.serialized(on[i])
@@ -76,14 +76,14 @@ func NewDistinct(on []expr.Node, dst QuerySink) (*DistinctFilter, error) {
 			pred = p.mask(val)
 			hash = p.hash(val)
 		} else {
-			pred = p.And(pred, p.mask(val))
+			pred = p.and(pred, p.mask(val))
 			hash = p.hashplus(hash, val)
 		}
 	}
 	// the final state of the bytecode will be
 	// the initial base, the hashes, and the final
 	// predicate
-	p.Return(p.bhk(p.ValidLanes(), hash, pred))
+	p.returnValue(p.bhk(p.validLanes(), hash, pred))
 	return df, nil
 }
 

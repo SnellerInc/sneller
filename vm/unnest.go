@@ -75,7 +75,7 @@ func (u *unnesting) EndSegment() {
 func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 	var p prog
 	var err error
-	p.Begin()
+	p.begin()
 	// produce a program that sticks the slice
 	// to be splat-ed into Z2:Z3
 	v, err := compile(&p, u.parent.field)
@@ -83,7 +83,7 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 		return err
 	}
 	list := p.ssa2(stolist, v, p.mask(v))
-	p.Return(p.msk(p.InitMem(), list, p.mask(list)))
+	p.returnValue(p.msk(p.initMem(), list, p.mask(list)))
 	p.symbolize(st, aux)
 	err = p.compile(&u.splat, st)
 	if err != nil {

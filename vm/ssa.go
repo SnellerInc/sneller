@@ -1196,7 +1196,7 @@ type prog struct {
 // for use by the program (independently
 // of any register saving and reloading
 // that has to be performed).
-func (p *prog) ReserveSlot(slot stackslot) {
+func (p *prog) reserveSlot(slot stackslot) {
 	for i := range p.reserved {
 		if p.reserved[i] == slot {
 			return
@@ -1293,7 +1293,7 @@ func (p *prog) errorf(f string, args ...interface{}) *value {
 	return v
 }
 
-func (p *prog) Begin() {
+func (p *prog) begin() {
 	p.exprs = make(map[hashcode]*value)
 	p.values = nil
 	p.ret = nil
@@ -1359,7 +1359,7 @@ func (v *value) checkarg(arg *value, idx int) {
 	}
 }
 
-func (p *prog) ValidLanes() *value {
+func (p *prog) validLanes() *value {
 	return p.values[0]
 }
 
@@ -1637,22 +1637,22 @@ func (p *prog) ssava(op ssaop, args []*value) *value {
 	return v
 }
 
-func (p *prog) Constant(imm interface{}) *value {
+func (p *prog) constant(imm interface{}) *value {
 	v := p.val()
 	v.op = sliteral
 	v.imm = imm
 	return v
 }
 
-// Return sets the return value of the program
+// returnValue sets the return value of the program
 // as a single value (will be returned in a register)
-func (p *prog) Return(v *value) {
+func (p *prog) returnValue(v *value) {
 	p.ret = v
 }
 
 // InitMem returns the memory token associated
 // with the initial memory state.
-func (p *prog) InitMem() *value {
+func (p *prog) initMem() *value {
 	return p.ssa0(sinitmem)
 }
 
@@ -1660,10 +1660,10 @@ func (p *prog) InitMem() *value {
 // returns the associated memory token.
 // The store operation is guaranteed to happen
 // after the 'mem' op.
-func (p *prog) Store(mem *value, v *value, slot stackslot) (*value, error) {
-	p.ReserveSlot(slot)
+func (p *prog) store(mem *value, v *value, slot stackslot) (*value, error) {
+	p.reserveSlot(slot)
 	if v.op == skfalse {
-		return p.ssa3imm(sstorev, mem, v, p.ValidLanes(), int(slot)), nil
+		return p.ssa3imm(sstorev, mem, v, p.validLanes(), int(slot)), nil
 	}
 	switch v.primary() {
 	case stValue:
@@ -1674,7 +1674,7 @@ func (p *prog) Store(mem *value, v *value, slot stackslot) (*value, error) {
 }
 
 func (p *prog) isMissing(v *value) *value {
-	return p.Not(p.notMissing(v))
+	return p.not(p.notMissing(v))
 }
 
 // notMissing walks logical expressions until
@@ -1719,12 +1719,12 @@ func (p *prog) notMissing(v *value) *value {
 	case skfalse, sinit:
 		return v
 	case snand:
-		return p.And(p.notMissing(v.args[0]), v.args[1])
+		return p.and(p.notMissing(v.args[0]), v.args[1])
 	case sxor, sxnor:
 		// for xor and xnor, the result is only
 		// non-missing if both sides of the comparison
 		// are non-MISSING values
-		return p.And(p.notMissing(v.args[0]), p.notMissing(v.args[1]))
+		return p.and(p.notMissing(v.args[0]), p.notMissing(v.args[1]))
 	case sand:
 		// we need
 		//          | TRUE    | FALSE | MISSING
@@ -1733,9 +1733,9 @@ func (p *prog) notMissing(v *value) *value {
 		//  FALSE   | FALSE   | FALSE | FALSE
 		//  MISSING | MISSING | FALSE | MISSING
 		//
-		return p.Or(v, p.Or(
-			p.IsFalse(v.args[0]),
-			p.IsFalse(v.args[1]),
+		return p.or(v, p.or(
+			p.isFalse(v.args[0]),
+			p.isFalse(v.args[1]),
 		))
 	case sor:
 		// we need
@@ -1747,18 +1747,18 @@ func (p *prog) notMissing(v *value) *value {
 		//
 		// so, the NOT MISSING mask is
 		//   (A OR B) OR (A IS NOT MISSING AND B IS NOT MISSING)
-		return p.Or(v, p.And(p.notMissing(v.args[0]), p.notMissing(v.args[1])))
+		return p.or(v, p.and(p.notMissing(v.args[0]), p.notMissing(v.args[1])))
 	default:
 		m := v.maskarg()
 		if m == nil {
-			return p.ValidLanes()
+			return p.validLanes()
 		}
 		return p.notMissing(m)
 	}
 }
 
-func (p *prog) StoreList(mem *value, v *value, slot stackslot) *value {
-	p.ReserveSlot(slot)
+func (p *prog) storeList(mem *value, v *value, slot stackslot) *value {
+	p.reserveSlot(slot)
 	l := p.tolist(v)
 	return p.ssa3imm(sstorelist, mem, l, l, int(slot))
 }
@@ -1767,8 +1767,8 @@ func (p *prog) StoreList(mem *value, v *value, slot stackslot) *value {
 // a stack slot and returns the slice and
 // a predicate indicating whether the loaded
 // value has a non-zero length component
-func (p *prog) LoadList(mem *value, slot stackslot) *value {
-	p.ReserveSlot(slot)
+func (p *prog) loadList(mem *value, slot stackslot) *value {
+	p.reserveSlot(slot)
 	return p.ssa1imm(sloadlist, mem, int(slot))
 }
 
@@ -1776,22 +1776,22 @@ func (p *prog) LoadList(mem *value, slot stackslot) *value {
 // and returns the value and a predicate
 // indicating whether the loaded value
 // has a non-zero length component
-func (p *prog) Loadvalue(mem *value, slot stackslot) *value {
-	p.ReserveSlot(slot)
+func (p *prog) loadvalue(mem *value, slot stackslot) *value {
+	p.reserveSlot(slot)
 	return p.ssa1imm(sloadv, mem, int(slot))
 }
 
 // Upvalue loads an upvalue (a value bound by
 // an enclosing binding context) from a parent's
 // stack slot
-func (p *prog) Upvalue(mem *value, slot stackslot) *value {
+func (p *prog) upvalue(mem *value, slot stackslot) *value {
 	return p.ssa1imm(sloadvperm, mem, int(slot))
 }
 
 // MergeMem merges memory tokens into a memory token.
 // (This can be used to create a partial ordering
 // constraint for memory operations.)
-func (p *prog) MergeMem(args ...*value) *value {
+func (p *prog) mergeMem(args ...*value) *value {
 	if len(args) == 1 {
 		return args[0]
 	}
@@ -1823,7 +1823,7 @@ func (p *prog) floatk(f, k *value) *value {
 }
 
 // RowsMasked constructs a (base value, predicate) tuple
-func (p *prog) RowsMasked(base *value, pred *value) *value {
+func (p *prog) rowsMasked(base *value, pred *value) *value {
 	return p.ssa2(sbk, base, pred)
 }
 
@@ -1843,7 +1843,7 @@ func (p *prog) mk(mem *value, pred *value) *value {
 }
 
 // Dot computes <base>.col
-func (p *prog) Dot(col string, base *value) *value {
+func (p *prog) dot(col string, base *value) *value {
 	if base != p.values[0] {
 		// need to perform a conversion from
 		// a value pointer to an interior-of-structure pointer
@@ -1863,7 +1863,7 @@ func (p *prog) tolist(v *value) *value {
 	}
 }
 
-func (p *prog) IsFalse(v *value) *value {
+func (p *prog) isFalse(v *value) *value {
 	switch v.primary() {
 	case stBool:
 		// need to differentiate between
@@ -1877,7 +1877,7 @@ func (p *prog) IsFalse(v *value) *value {
 	}
 }
 
-func (p *prog) IsTrue(v *value) *value {
+func (p *prog) isTrue(v *value) *value {
 	switch v.primary() {
 	case stBool:
 		return v
@@ -1888,14 +1888,14 @@ func (p *prog) IsTrue(v *value) *value {
 	}
 }
 
-func (p *prog) IsNotTrue(v *value) *value {
+func (p *prog) isNotTrue(v *value) *value {
 	// we compute predicates as IS TRUE,
 	// so IS NOT TRUE is simply the complement
-	return p.Not(v)
+	return p.not(v)
 }
 
-func (p *prog) IsNotFalse(v *value) *value {
-	return p.Or(p.IsTrue(v), p.isMissing(v))
+func (p *prog) isNotFalse(v *value) *value {
+	return p.or(p.isTrue(v), p.isMissing(v))
 }
 
 // Index evaluates v[i] for a constant index.
@@ -1907,7 +1907,7 @@ func (p *prog) IsNotFalse(v *value) *value {
 // NOTE: array access is linear- rather than
 // constant-time, so accessing large offsets
 // can be very slow.
-func (p *prog) Index(v *value, i int) *value {
+func (p *prog) index(v *value, i int) *value {
 	l := p.tolist(v)
 	for i >= 0 {
 		// NOTE: CSE will take care of
@@ -1941,10 +1941,10 @@ func (s ssatype) ordnum() int {
 }
 
 // Equals computes 'left == right'
-func (p *prog) Equals(left, right *value) *value {
+func (p *prog) equals(left, right *value) *value {
 	if (left.op == sliteral) && (right.op == sliteral) {
 		// TODO: int64(1) == float64(1.0) ??
-		return p.Constant(left.imm == right.imm)
+		return p.constant(left.imm == right.imm)
 	}
 	// make ordering deterministic:
 	// if there is a constant, put it on the right-hand-side;
@@ -1976,10 +1976,10 @@ func (p *prog) Equals(left, right *value) *value {
 		}
 		// mask = value -> mask = (istrue value)
 		if right.primary() == stValue {
-			right = p.IsTrue(right)
+			right = p.isTrue(right)
 		}
-		allok := p.And(p.notMissing(left), p.notMissing(right))
-		return p.And(p.xnor(left, right), allok)
+		allok := p.and(p.notMissing(left), p.notMissing(right))
+		return p.and(p.xnor(left, right), allok)
 	case stValue:
 		if right.op == sliteral {
 			if _, ok := right.imm.(string); ok {
@@ -1995,16 +1995,16 @@ func (p *prog) Equals(left, right *value) *value {
 			return p.ssa3(sequalv, left, right, p.ssa2(sand, p.mask(left), p.mask(right)))
 		case stInt:
 			lefti, k := p.coerceInt(left)
-			return p.ssa3(scmpeqi, lefti, right, p.And(k, p.mask(right)))
+			return p.ssa3(scmpeqi, lefti, right, p.and(k, p.mask(right)))
 		case stFloat:
 			leftf, k := p.coercefp(left)
-			return p.ssa3(scmpeqf, leftf, right, p.And(k, p.mask(right)))
+			return p.ssa3(scmpeqf, leftf, right, p.and(k, p.mask(right)))
 		case stString:
 			leftstr := p.toStr(left)
-			return p.ssa3(seqstr, leftstr, right, p.And(p.mask(leftstr), p.mask(right)))
+			return p.ssa3(seqstr, leftstr, right, p.and(p.mask(leftstr), p.mask(right)))
 		case stTime:
 			lefttm := p.toTime(left)
-			return p.ssa3(seqtime, lefttm, right, p.And(p.mask(lefttm), p.mask(right)))
+			return p.ssa3(seqtime, lefttm, right, p.and(p.mask(lefttm), p.mask(right)))
 		default:
 			return p.errorf("cannot compare value %s and other %s", left, right)
 		}
@@ -2013,7 +2013,7 @@ func (p *prog) Equals(left, right *value) *value {
 			return p.ssa2imm(scmpeqimmi, left, p.mask(left), right.imm)
 		}
 		if right.primary() == stInt {
-			return p.ssa3(scmpeqi, left, right, p.And(p.mask(left), p.mask(right)))
+			return p.ssa3(scmpeqi, left, right, p.and(p.mask(left), p.mask(right)))
 		}
 		// falthrough to floating-point comparison
 		left = p.ssa2(scvtitof, left, p.mask(left))
@@ -2027,7 +2027,7 @@ func (p *prog) Equals(left, right *value) *value {
 			right = p.ssa2(scvtitof, right, p.mask(right))
 			fallthrough
 		case stFloat:
-			return p.ssa3(scmpeqf, left, right, p.And(p.mask(left), p.mask(right)))
+			return p.ssa3(scmpeqf, left, right, p.and(p.mask(left), p.mask(right)))
 		default:
 			return p.ssa0(skfalse) // FALSE/MISSING
 		}
@@ -2037,14 +2037,14 @@ func (p *prog) Equals(left, right *value) *value {
 		}
 		switch right.primary() {
 		case stString:
-			return p.ssa3(seqstr, left, right, p.And(p.mask(left), p.mask(right)))
+			return p.ssa3(seqstr, left, right, p.and(p.mask(left), p.mask(right)))
 		default:
 			return p.ssa0(skfalse) // FALSE/MISSING
 		}
 	case stTime:
 		switch right.primary() {
 		case stTime:
-			return p.ssa3(seqtime, left, right, p.And(p.mask(left), p.mask(right)))
+			return p.ssa3(seqtime, left, right, p.and(p.mask(left), p.mask(right)))
 		}
 		fallthrough
 	default:
@@ -2053,14 +2053,14 @@ func (p *prog) Equals(left, right *value) *value {
 }
 
 // EqualStr computes equality between strings
-func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
+func (p *prog) equalStr(left, right *value, caseSensitive bool) *value {
 	if (left.op == sliteral) && (right.op == sliteral) {
 		if caseSensitive {
-			return p.Constant(left.imm == right.imm)
+			return p.constant(left.imm == right.imm)
 		}
 		leftStr, _ := left.imm.(string)
 		rightStr, _ := right.imm.(string)
-		return p.Constant(strings.EqualFold(leftStr, rightStr))
+		return p.constant(strings.EqualFold(leftStr, rightStr))
 	}
 
 	if left.op == sliteral { // swap literal to the right
@@ -2074,14 +2074,14 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 			caseSensitive = true
 		}
 		if caseSensitive {
-			enc := p.Constant(stringext.EncodeEqualStringCS(needle)).imm
+			enc := p.constant(stringext.EncodeEqualStringCS(needle)).imm
 			return p.ssa2imm(sStrCmpEqCs, left, left, enc)
 		}
 		if stringext.HasNtnString(needle) { // needle has non-trivial normalization
-			enc := p.Constant(stringext.EncodeEqualStringUTF8CI(needle)).imm
+			enc := p.constant(stringext.EncodeEqualStringUTF8CI(needle)).imm
 			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, enc)
 		}
-		enc := p.Constant(stringext.EncodeEqualStringCI(needle)).imm
+		enc := p.constant(stringext.EncodeEqualStringCI(needle)).imm
 		return p.ssa2imm(sStrCmpEqCi, left, left, enc)
 	}
 	v := p.val()
@@ -2090,24 +2090,24 @@ func (p *prog) EqualStr(left, right *value, caseSensitive bool) *value {
 }
 
 // CharLength returns the number of unicode code-points in v
-func (p *prog) CharLength(v *value) *value {
+func (p *prog) charLength(v *value) *value {
 	v = p.toStr(v)
 	return p.ssa2(sCharLength, v, v)
 }
 
 // Substring returns a substring at the provided startIndex with length
-func (p *prog) Substring(v, substrOffset, substrLength *value) *value {
+func (p *prog) substring(v, substrOffset, substrLength *value) *value {
 	offsetInt, offsetMask := p.coerceInt(substrOffset)
 	lengthInt, lengthMask := p.coerceInt(substrLength)
-	mask := p.And(v, p.And(offsetMask, lengthMask))
+	mask := p.and(v, p.and(offsetMask, lengthMask))
 	return p.ssa4(sSubStr, v, offsetInt, lengthInt, mask)
 }
 
 // SplitPart splits string on delimiter and returns the field index. Field indexes start with 1.
-func (p *prog) SplitPart(v *value, delimiter byte, index *value) *value {
+func (p *prog) splitPart(v *value, delimiter byte, index *value) *value {
 	delimiterStr := string(delimiter)
 	indexInt, indexMask := p.coerceInt(index)
-	mask := p.And(v, indexMask)
+	mask := p.and(v, indexMask)
 	return p.ssa3imm(sSplitPart, v, indexInt, mask, delimiterStr)
 }
 
@@ -2123,7 +2123,7 @@ func (p *prog) isnull(v *value) *value {
 // (i.e. non-missing and non-null?)
 func (p *prog) isnonnull(v *value) *value {
 	if v.primary() != stValue {
-		return p.ValidLanes() // TRUE
+		return p.validLanes() // TRUE
 	}
 	return p.ssa2(sisnonnull, v, p.mask(v))
 }
@@ -2255,7 +2255,7 @@ func (p *prog) coerceBool(arg *value) (*value, *value) {
 		if imm != 0 {
 			imm = 0xFFFF
 		}
-		return p.ssa0imm(sbroadcastk, imm), p.ValidLanes()
+		return p.ssa0imm(sbroadcastk, imm), p.validLanes()
 	}
 
 	if arg.primary() == stBool {
@@ -2277,7 +2277,7 @@ func (p *prog) coerceBool(arg *value) (*value, *value) {
 // taking care to promote integers appropriately
 func (p *prog) coercefp(v *value) (*value, *value) {
 	if v.op == sliteral {
-		return p.ssa0imm(sbroadcastf, v.imm), p.ValidLanes()
+		return p.ssa0imm(sbroadcastf, v.imm), p.validLanes()
 	}
 	switch v.primary() {
 	case stFloat:
@@ -2298,7 +2298,7 @@ func (p *prog) coercefp(v *value) (*value, *value) {
 // coerceInt coerces a value to integer
 func (p *prog) coerceInt(v *value) (*value, *value) {
 	if v.op == sliteral {
-		return p.ssa0imm(sbroadcasti, v.imm), p.ValidLanes()
+		return p.ssa0imm(sbroadcasti, v.imm), p.validLanes()
 	}
 	switch v.primary() {
 	case stInt:
@@ -2320,12 +2320,12 @@ func (p *prog) coerceInt(v *value) (*value, *value) {
 // into 'into'
 func (p *prog) blendv2fp(into, arg, when *value) (*value, *value) {
 	if arg.op == sliteral {
-		return p.ssa0imm(sbroadcastf, arg.imm), p.ValidLanes()
+		return p.ssa0imm(sbroadcastf, arg.imm), p.validLanes()
 	}
 	easy := p.ssa3(stofloat, into, arg, when)
 	intv := p.ssa3(stoint, easy, arg, when)
 	conv := p.ssa2(scvtitof, intv, intv)
-	return conv, p.Or(easy, conv)
+	return conv, p.or(easy, conv)
 }
 
 func (p *prog) toint(v *value) *value {
@@ -2363,14 +2363,14 @@ func (p *prog) toStr(str *value) *value {
 	}
 }
 
-func (p *prog) Concat(args ...*value) *value {
+func (p *prog) concat(args ...*value) *value {
 	if len(args) == 0 {
 		panic("CONCAT cannot be empty")
 	}
 
 	k := p.mask(args[0])
 	for i := 1; i < len(args); i++ {
-		k = p.And(k, p.mask(args[i]))
+		k = p.and(k, p.mask(args[i]))
 	}
 
 	var v [4]*value
@@ -2398,10 +2398,10 @@ func (p *prog) Concat(args ...*value) *value {
 	}
 }
 
-func (p *prog) MakeList(args ...*value) *value {
+func (p *prog) makeList(args ...*value) *value {
 	var values []*value = make([]*value, 0, len(args)*2+1)
 
-	values = append(values, p.ValidLanes())
+	values = append(values, p.validLanes())
 	for _, arg := range args {
 		if arg.primary() != stValue {
 			panic("MakeList arguments must be values, and values only")
@@ -2411,7 +2411,7 @@ func (p *prog) MakeList(args ...*value) *value {
 	return p.ssava(smakelist, values)
 }
 
-func (p *prog) MakeStruct(args []*value) *value {
+func (p *prog) makeStruct(args []*value) *value {
 	return p.ssava(smakestruct, args)
 }
 
@@ -2437,7 +2437,7 @@ func trimtype(op expr.BuiltinOp) trimType {
 }
 
 // TrimWhitespace trim chars: ' ', '\t', '\n', '\v', '\f', '\r'
-func (p *prog) TrimWhitespace(str *value, trimtype trimType) *value {
+func (p *prog) trimWhitespace(str *value, trimtype trimType) *value {
 	str = p.toStr(str)
 	if trimtype&trimLeading != 0 {
 		str = p.ssa2(sStrTrimWsLeft, str, p.mask(str))
@@ -2449,12 +2449,12 @@ func (p *prog) TrimWhitespace(str *value, trimtype trimType) *value {
 }
 
 // TrimSpace trim char: ' '
-func (p *prog) TrimSpace(str *value, trimtype trimType) *value {
-	return p.TrimChar(str, " ", trimtype)
+func (p *prog) trimSpace(str *value, trimtype trimType) *value {
+	return p.trimChar(str, " ", trimtype)
 }
 
 // TrimChar trim provided chars
-func (p *prog) TrimChar(str *value, chars string, trimtype trimType) *value {
+func (p *prog) trimChar(str *value, chars string, trimtype trimType) *value {
 	str = p.toStr(str)
 	numberOfChars := len(chars)
 	if numberOfChars == 0 {
@@ -2484,7 +2484,7 @@ func (p *prog) TrimChar(str *value, chars string, trimtype trimType) *value {
 }
 
 // HasPrefix returns true when str contains the provided prefix; false otherwise
-func (p *prog) HasPrefix(str *value, prefix string, caseSensitive bool) *value {
+func (p *prog) hasPrefix(str *value, prefix string, caseSensitive bool) *value {
 	str = p.toStr(str)
 	if prefix == "" {
 		return str
@@ -2494,19 +2494,19 @@ func (p *prog) HasPrefix(str *value, prefix string, caseSensitive bool) *value {
 		caseSensitive = true
 	}
 	if caseSensitive {
-		enc := p.Constant(stringext.EncodeContainsPrefixCS(prefix)).imm
+		enc := p.constant(stringext.EncodeContainsPrefixCS(prefix)).imm
 		return p.ssa2imm(sStrContainsPrefixCs, str, p.mask(str), enc)
 	}
 	if stringext.HasNtnString(prefix) { // prefix has non-trivial normalization
-		enc := p.Constant(stringext.EncodeContainsPrefixUTF8CI(prefix)).imm
+		enc := p.constant(stringext.EncodeContainsPrefixUTF8CI(prefix)).imm
 		return p.ssa2imm(sStrContainsPrefixUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := p.Constant(stringext.EncodeContainsPrefixCI(prefix)).imm
+	enc := p.constant(stringext.EncodeContainsPrefixCI(prefix)).imm
 	return p.ssa2imm(sStrContainsPrefixCi, str, p.mask(str), enc)
 }
 
 // HasSuffix returns true when str contains the provided suffix; false otherwise
-func (p *prog) HasSuffix(str *value, suffix string, caseSensitive bool) *value {
+func (p *prog) hasSuffix(str *value, suffix string, caseSensitive bool) *value {
 	str = p.toStr(str)
 	if suffix == "" {
 		return str
@@ -2516,14 +2516,14 @@ func (p *prog) HasSuffix(str *value, suffix string, caseSensitive bool) *value {
 		caseSensitive = true
 	}
 	if caseSensitive {
-		enc := p.Constant(stringext.EncodeContainsSuffixCS(suffix)).imm
+		enc := p.constant(stringext.EncodeContainsSuffixCS(suffix)).imm
 		return p.ssa2imm(sStrContainsSuffixCs, str, p.mask(str), enc)
 	}
 	if stringext.HasNtnString(suffix) { // suffix has non-trivial normalization
-		enc := p.Constant(stringext.EncodeContainsSuffixUTF8CI(suffix)).imm
+		enc := p.constant(stringext.EncodeContainsSuffixUTF8CI(suffix)).imm
 		return p.ssa2imm(sStrContainsSuffixUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := p.Constant(stringext.EncodeContainsSuffixCI(suffix)).imm
+	enc := p.constant(stringext.EncodeContainsSuffixCI(suffix)).imm
 	return p.ssa2imm(sStrContainsSuffixCi, str, p.mask(str), enc)
 }
 
@@ -2531,7 +2531,7 @@ func (p *prog) HasSuffix(str *value, suffix string, caseSensitive bool) *value {
 // is a string containing 'needle' as a substring.
 // (The return value is always 'true' if 'str' is
 // a string and 'needle' is the empty string.)
-func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
+func (p *prog) contains(str *value, needle string, caseSensitive bool) *value {
 	// n.b. the 'contains' code doesn't actually
 	// handle the empty string; just return whether
 	// this value is a string
@@ -2544,37 +2544,37 @@ func (p *prog) Contains(str *value, needle string, caseSensitive bool) *value {
 		caseSensitive = true
 	}
 	if caseSensitive {
-		enc := p.Constant(stringext.EncodeContainsSubstrCS(needle)).imm
+		enc := p.constant(stringext.EncodeContainsSubstrCS(needle)).imm
 		return p.ssa2imm(sStrContainsSubstrCs, str, p.mask(str), enc)
 	}
 	if stringext.HasNtnString(needle) { // needle has non-trivial normalization
-		enc := p.Constant(stringext.EncodeContainsSubstrUTF8CI(needle)).imm
+		enc := p.constant(stringext.EncodeContainsSubstrUTF8CI(needle)).imm
 		return p.ssa2imm(sStrContainsSubstrUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := p.Constant(stringext.EncodeContainsSubstrCI(needle)).imm
+	enc := p.constant(stringext.EncodeContainsSubstrCI(needle)).imm
 	return p.ssa2imm(sStrContainsSubstrCi, str, p.mask(str), enc)
 }
 
 // IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
-func (p *prog) IsSubnetOfIP4(str *value, min, max [4]byte) *value {
+func (p *prog) isSubnetOfIP4(str *value, min, max [4]byte) *value {
 	str = p.toStr(str)
 	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), stringext.ToBCD(&min, &max))
 }
 
 // SkipCharLeft skips a variable number of UTF-8 code-points from the left side of a string
-func (p *prog) SkipCharLeft(str, nChars *value) *value {
+func (p *prog) skipCharLeft(str, nChars *value) *value {
 	str = p.toStr(str)
-	return p.ssa3(sStrSkipNCharLeft, str, nChars, p.And(p.mask(str), p.mask(nChars)))
+	return p.ssa3(sStrSkipNCharLeft, str, nChars, p.and(p.mask(str), p.mask(nChars)))
 }
 
 // SkipCharRight skips a variable number of UTF-8 code-points from the right side of a string
-func (p *prog) SkipCharRight(str, nChars *value) *value {
+func (p *prog) skipCharRight(str, nChars *value) *value {
 	str = p.toStr(str)
-	return p.ssa3(sStrSkipNCharRight, str, nChars, p.And(p.mask(str), p.mask(nChars)))
+	return p.ssa3(sStrSkipNCharRight, str, nChars, p.and(p.mask(str), p.mask(nChars)))
 }
 
 // SkipCharLeftConst skips a constant number of UTF-8 code-points from the left side of a string
-func (p *prog) SkipCharLeftConst(str *value, nChars int) *value {
+func (p *prog) skipCharLeftConst(str *value, nChars int) *value {
 	str = p.toStr(str)
 	switch nChars {
 	case 0:
@@ -2582,13 +2582,13 @@ func (p *prog) SkipCharLeftConst(str *value, nChars int) *value {
 	case 1:
 		return p.ssa2(sStrSkip1CharLeft, str, p.mask(str))
 	default:
-		nCharsInt, nCharsMask := p.coerceInt(p.Constant(int64(nChars)))
-		return p.ssa3(sStrSkipNCharLeft, str, nCharsInt, p.And(p.mask(str), nCharsMask))
+		nCharsInt, nCharsMask := p.coerceInt(p.constant(int64(nChars)))
+		return p.ssa3(sStrSkipNCharLeft, str, nCharsInt, p.and(p.mask(str), nCharsMask))
 	}
 }
 
 // SkipCharRightConst skips a constant number of UTF-8 code-points from the right side of a string
-func (p *prog) SkipCharRightConst(str *value, nChars int) *value {
+func (p *prog) skipCharRightConst(str *value, nChars int) *value {
 	str = p.toStr(str)
 	switch nChars {
 	case 0:
@@ -2596,8 +2596,8 @@ func (p *prog) SkipCharRightConst(str *value, nChars int) *value {
 	case 1:
 		return p.ssa2(sStrSkip1CharRight, str, p.mask(str))
 	default:
-		nCharsInt, nCharsMask := p.coerceInt(p.Constant(int64(nChars)))
-		return p.ssa3(sStrSkipNCharRight, str, nCharsInt, p.And(p.mask(str), nCharsMask))
+		nCharsInt, nCharsMask := p.coerceInt(p.constant(int64(nChars)))
+		return p.ssa3(sStrSkipNCharRight, str, nCharsInt, p.and(p.mask(str), nCharsMask))
 	}
 }
 
@@ -2607,7 +2607,7 @@ func (p *prog) SkipCharRightConst(str *value, nChars int) *value {
 // The '%' character will match zero or more
 // unicode points, and the '_' character will
 // match exactly one unicode point.
-func (p *prog) Like(str *value, expr string, escape rune, caseSensitive bool) *value {
+func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *value {
 	return p.likeInternal(str, expr, '_', '%', escape, caseSensitive)
 }
 
@@ -2617,7 +2617,7 @@ func (p *prog) Like(str *value, expr string, escape rune, caseSensitive bool) *v
 // The '*' character will match zero or more
 // unicode points, and the '?' character will
 // match exactly one unicode point.
-func (p *prog) Glob(str *value, expr string, caseSensitive bool) *value {
+func (p *prog) glob(str *value, expr string, caseSensitive bool) *value {
 	return p.likeInternal(str, expr, '?', '*', stringext.NoEscape, caseSensitive)
 }
 
@@ -2656,17 +2656,17 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 			caseSensitive = true
 		}
 		if !hasWildCard {
-			return p.Contains(str, pattern, caseSensitive)
+			return p.contains(str, pattern, caseSensitive)
 		}
 		if caseSensitive {
-			enc := p.Constant(stringext.EncodeContainsPatternCS(pattern, wildcard)).imm
+			enc := p.constant(stringext.EncodeContainsPatternCS(pattern, wildcard)).imm
 			return p.ssa2imm(sStrContainsPatternCs, str, p.mask(str), enc)
 		}
 		if stringext.HasNtnString(pattern) { // pattern has non-trivial normalization
-			enc := p.Constant(stringext.EncodeContainsPatternUTF8CI(pattern, wildcard)).imm
+			enc := p.constant(stringext.EncodeContainsPatternUTF8CI(pattern, wildcard)).imm
 			return p.ssa2imm(sStrContainsPatternUTF8Ci, str, p.mask(str), enc)
 		}
-		enc := p.Constant(stringext.EncodeContainsPatternCI(pattern, wildcard)).imm
+		enc := p.constant(stringext.EncodeContainsPatternCI(pattern, wildcard)).imm
 		return p.ssa2imm(sStrContainsPatternCi, str, p.mask(str), enc)
 	}
 
@@ -2684,7 +2684,7 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 				start = start[1:] // skip the first code-point
 				nRunesToSkip++
 			}
-			str = p.SkipCharLeftConst(str, nRunesToSkip)
+			str = p.skipCharLeftConst(str, nRunesToSkip)
 
 			// if anything remaining, match with prefix
 			if len(start) > 0 {
@@ -2696,7 +2696,7 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 				if escape != stringext.NoEscape {
 					prefix = strings.ReplaceAll(prefix, string(escape), "")
 				}
-				str = p.HasPrefix(str, prefix, caseSensitive)
+				str = p.hasPrefix(str, prefix, caseSensitive)
 				start = start[qi:]
 			}
 		}
@@ -2709,7 +2709,7 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 				end = end[:len(end)-1] // skip the last code-point
 				nCharsToSkip++
 			}
-			str = p.SkipCharRightConst(str, nCharsToSkip)
+			str = p.skipCharRightConst(str, nCharsToSkip)
 
 			// if anything remaining, match with suffix
 			if len(end) > 0 {
@@ -2726,7 +2726,7 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 				if escape != stringext.NoEscape {
 					suffix = strings.ReplaceAll(suffix, string(escape), "")
 				}
-				str = p.HasSuffix(str, suffix, caseSensitive)
+				str = p.hasSuffix(str, suffix, caseSensitive)
 				end = end[:si+1]
 			}
 		}
@@ -2740,7 +2740,7 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 				mid = mid[1:]
 				nCharsToSkip++
 			}
-			str = p.SkipCharLeftConst(str, nCharsToSkip)
+			str = p.skipCharLeftConst(str, nCharsToSkip)
 
 			// similarly, and '?' at the end of an unanchored match becomes a 'skipchar' after the inner match
 			nCharsToChomp := 0
@@ -2753,7 +2753,7 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 			if len(mid) > 0 {
 				str = patMatch(string(mid))
 			}
-			str = p.SkipCharLeftConst(str, nCharsToChomp)
+			str = p.skipCharLeftConst(str, nCharsToChomp)
 		}
 		return str
 	}
@@ -2788,34 +2788,34 @@ func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSe
 }
 
 // RegexMatch matches 'str' as a string against regex
-func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
+func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 	if cpu.X86.HasAVX512VBMI && !store.HasUnicodeEdge() {
 		hasRLZA := store.HasRLZA()
 		hasWildcard, wildcardRange := store.HasUnicodeWildcard()
 		if dsTiny, err := regexp2.NewDsTiny(store); err == nil {
 			if ds, valid := dsTiny.Data(6, hasWildcard, wildcardRange); valid {
 				if hasRLZA {
-					return p.ssa2imm(sDfaT6Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
+					return p.ssa2imm(sDfaT6Z, str, p.mask(str), p.constant(string(ds)).imm), nil
 				}
-				return p.ssa2imm(sDfaT6, str, p.mask(str), p.Constant(string(ds)).imm), nil
+				return p.ssa2imm(sDfaT6, str, p.mask(str), p.constant(string(ds)).imm), nil
 			}
 			if ds, valid := dsTiny.Data(7, hasWildcard, wildcardRange); valid {
 				if hasRLZA {
-					return p.ssa2imm(sDfaT7Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
+					return p.ssa2imm(sDfaT7Z, str, p.mask(str), p.constant(string(ds)).imm), nil
 				}
-				return p.ssa2imm(sDfaT7, str, p.mask(str), p.Constant(string(ds)).imm), nil
+				return p.ssa2imm(sDfaT7, str, p.mask(str), p.constant(string(ds)).imm), nil
 			}
 			if ds, valid := dsTiny.Data(8, hasWildcard, wildcardRange); valid {
 				if hasRLZA {
-					return p.ssa2imm(sDfaT8Z, str, p.mask(str), p.Constant(string(ds)).imm), nil
+					return p.ssa2imm(sDfaT8Z, str, p.mask(str), p.constant(string(ds)).imm), nil
 				}
-				return p.ssa2imm(sDfaT8, str, p.mask(str), p.Constant(string(ds)).imm), nil
+				return p.ssa2imm(sDfaT8, str, p.mask(str), p.constant(string(ds)).imm), nil
 			}
 		}
 	}
 	// NOTE: when you end up here, the DFA could not be handled with Tiny implementation. Continue to try Large.
 	if dsLarge, err := regexp2.NewDsLarge(store); err == nil {
-		return p.ssa2imm(sDfaLZ, str, p.mask(str), p.Constant(string(dsLarge.Data())).imm), nil
+		return p.ssa2imm(sDfaLZ, str, p.mask(str), p.constant(string(dsLarge.Data())).imm), nil
 	}
 	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
 }
@@ -2824,14 +2824,14 @@ func (p *prog) RegexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) EqualsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+func (p *prog) equalsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceInt(threshold)
-	mask := p.And(str, thresholdMask)
+	mask := p.and(str, thresholdMask)
 	if ascii {
-		needleEnc := p.Constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
+		needleEnc := p.constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
 		return p.ssa3imm(sCmpFuzzyA3, str, thresholdInt, mask, needleEnc)
 	}
-	needleEnc := p.Constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
+	needleEnc := p.constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
 	return p.ssa3imm(sCmpFuzzyUnicodeA3, str, thresholdInt, mask, needleEnc)
 }
 
@@ -2839,14 +2839,14 @@ func (p *prog) EqualsFuzzy(str *value, needle string, threshold *value, ascii bo
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) ContainsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+func (p *prog) containsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceInt(threshold)
-	mask := p.And(str, thresholdMask)
+	mask := p.and(str, thresholdMask)
 	if ascii {
-		needleEnc := p.Constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
+		needleEnc := p.constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
 		return p.ssa3imm(sHasSubstrFuzzyA3, str, thresholdInt, mask, needleEnc)
 	}
-	needleEnc := p.Constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
+	needleEnc := p.constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
 	return p.ssa3imm(sHasSubstrFuzzyUnicodeA3, str, thresholdInt, mask, needleEnc)
 }
 
@@ -2908,36 +2908,36 @@ func (p *prog) compareValueWith(left, right *value, op compareOp) *value {
 		if isStringImmediate(imm) {
 			left = p.toStr(left)
 			right = p.toStr(right)
-			return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
+			return p.ssa3(info.cmps, left, right, p.and(p.mask(left), p.mask(right)))
 		}
 		if isTimestampImmediate(imm) {
 			lhs, lhk := p.coerceTimestamp(left)
 			rhs, rhk := p.coerceTimestamp(right)
-			return p.ssa3(info.cmpts, lhs, rhs, p.And(lhk, rhk))
+			return p.ssa3(info.cmpts, lhs, rhs, p.and(lhk, rhk))
 		}
 	}
 
 	rType := right.primary()
 	if rType == stBool {
-		cmpv := p.ssa3(scmpvk, left, right, p.And(p.mask(left), p.mask(right)))
+		cmpv := p.ssa3(scmpvk, left, right, p.and(p.mask(left), p.mask(right)))
 		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
 	}
 	if rType == stInt {
-		cmpv := p.ssa3(scmpvi64, left, right, p.And(p.mask(left), p.mask(right)))
+		cmpv := p.ssa3(scmpvi64, left, right, p.and(p.mask(left), p.mask(right)))
 		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
 	}
 	if rType == stFloat {
-		cmpv := p.ssa3(scmpvf64, left, right, p.And(p.mask(left), p.mask(right)))
+		cmpv := p.ssa3(scmpvf64, left, right, p.and(p.mask(left), p.mask(right)))
 		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
 	}
 	if rType == stString {
 		left = p.toStr(left)
-		return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa3(info.cmps, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 	if rType == stTimeInt || rType == stTime {
 		lhs, lhk := p.coerceTimestamp(left)
 		rhs, rhk := p.coerceTimestamp(right)
-		return p.ssa3(info.cmpts, lhs, rhs, p.And(lhk, p.mask(rhk)))
+		return p.ssa3(info.cmpts, lhs, rhs, p.and(lhk, p.mask(rhk)))
 	}
 
 	return nil
@@ -2988,7 +2988,7 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 
 	// compare bool vs bool
 	if lType == stBool && rType == stBool {
-		return p.ssa3(info.cmpk, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa3(info.cmpk, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
 	// compare int/float vs immediate
@@ -3021,21 +3021,21 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 
 	// compare int/float vs int/float (if the types are mixed, int is coerced to float)
 	if lType == stInt && rType == stInt {
-		return p.ssa3(info.cmpi, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa3(info.cmpi, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
 	if lType == stInt && rType == stFloat {
 		lhs, lhk := p.coercefp(left)
-		return p.ssa3(info.cmpi, lhs, right, p.And(lhk, p.mask(right)))
+		return p.ssa3(info.cmpi, lhs, right, p.and(lhk, p.mask(right)))
 	}
 
 	if lType == stFloat && rType == stInt {
 		rhs, rhk := p.coercefp(right)
-		return p.ssa3(info.cmpi, left, rhs, p.And(p.mask(left), rhk))
+		return p.ssa3(info.cmpi, left, rhs, p.and(p.mask(left), rhk))
 	}
 
 	if lType == stFloat && rType == stFloat {
-		return p.ssa3(info.cmpf, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa3(info.cmpf, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
 	// compare timestamp vs timestamp
@@ -3045,7 +3045,7 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	if lTimeCompat && rTimeCompat {
 		lhs, lhk := p.coerceTimestamp(left)
 		rhs, rhk := p.coerceTimestamp(right)
-		return p.ssa3(info.cmpts, lhs, rhs, p.And(p.mask(lhk), p.mask(rhk)))
+		return p.ssa3(info.cmpts, lhs, rhs, p.and(p.mask(lhk), p.mask(rhk)))
 	}
 
 	// Compare string vs string
@@ -3055,12 +3055,12 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	if lStringCompat && rStringCompat {
 		left = p.toStr(left)
 		right = p.toStr(right)
-		return p.ssa3(info.cmps, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa3(info.cmps, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
 	// Compare value vs value
 	if lType == stValue && rType == stValue {
-		mask := p.And(p.mask(left), p.mask(right))
+		mask := p.and(p.mask(left), p.mask(right))
 		cmpv := p.ssa3(scmpv, left, right, mask)
 		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
 	}
@@ -3070,27 +3070,27 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 }
 
 // Less computes 'left < right'
-func (p *prog) Less(left, right *value) *value {
+func (p *prog) less(left, right *value) *value {
 	return p.compare(left, right, comparelt)
 }
 
 // LessEqual computes 'left <= right'
-func (p *prog) LessEqual(left, right *value) *value {
+func (p *prog) lessEqual(left, right *value) *value {
 	return p.compare(left, right, comparele)
 }
 
 // Greater computes 'left > right'
-func (p *prog) Greater(left, right *value) *value {
+func (p *prog) greater(left, right *value) *value {
 	return p.compare(left, right, comparegt)
 }
 
 // GreaterEqual computes 'left >= right'
-func (p *prog) GreaterEqual(left, right *value) *value {
+func (p *prog) greaterEqual(left, right *value) *value {
 	return p.compare(left, right, comparege)
 }
 
 // And computes 'left AND right'
-func (p *prog) And(left, right *value) *value {
+func (p *prog) and(left, right *value) *value {
 	if left == right {
 		return left
 	}
@@ -3126,7 +3126,7 @@ func (p *prog) nand(left, right *value) *value {
 	// usually we hit this with Not(Not(x)),
 	// as it would show up as (nand (nand x true) true)
 	if left.op == snand && left.args[1] == right {
-		return p.And(left, right)
+		return p.and(left, right)
 	}
 	return p.ssa2(snand, left, right)
 }
@@ -3156,13 +3156,13 @@ func (p *prog) xor(left, right *value) *value {
 // xnor computes 'left = right' for boolean values
 func (p *prog) xnor(left, right *value) *value {
 	if left == right {
-		return p.ValidLanes()
+		return p.validLanes()
 	}
 	return p.ssa2(sxnor, left, right)
 }
 
 // Or computes 'left OR right'
-func (p *prog) Or(left, right *value) *value {
+func (p *prog) or(left, right *value) *value {
 	// true || x => true
 	if left.op == sinit {
 		return left
@@ -3175,7 +3175,7 @@ func (p *prog) Or(left, right *value) *value {
 }
 
 // Not computes 'NOT v'
-func (p *prog) Not(v *value) *value {
+func (p *prog) not(v *value) *value {
 	// we model this as (^v AND TRUE)
 	// so that we can narrow the mask further
 	// if we determine that we don't care
@@ -3187,7 +3187,7 @@ func (p *prog) Not(v *value) *value {
 	} else if v.op == sisfalse {
 		return p.ssa2(sistrue, v.args[0], v.args[1])
 	}
-	return p.nand(v, p.ValidLanes())
+	return p.nand(v, p.validLanes())
 }
 
 func (p *prog) makeBroadcastOp(child *value) *value {
@@ -3238,107 +3238,107 @@ func (p *prog) makeUnaryArithmeticOpFp(op ssaop, child *value) *value {
 	return p.ssa2(op, s, k)
 }
 
-func (p *prog) Neg(child *value) *value {
+func (p *prog) neg(child *value) *value {
 	return p.makeUnaryArithmeticOp(snegf, snegi, child)
 }
 
-func (p *prog) Abs(child *value) *value {
+func (p *prog) abs(child *value) *value {
 	return p.makeUnaryArithmeticOp(sabsf, sabsi, child)
 }
 
-func (p *prog) Sign(child *value) *value {
+func (p *prog) sign(child *value) *value {
 	return p.makeUnaryArithmeticOp(ssignf, ssigni, child)
 }
 
-func (p *prog) BitNot(child *value) *value {
+func (p *prog) bitNot(child *value) *value {
 	return p.makeUnaryArithmeticOpInt(sbitnoti, child)
 }
 
-func (p *prog) BitCount(child *value) *value {
+func (p *prog) bitCount(child *value) *value {
 	return p.makeUnaryArithmeticOpInt(sbitcounti, child)
 }
 
-func (p *prog) Round(child *value) *value {
+func (p *prog) round(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sroundf, child)
 }
 
-func (p *prog) RoundEven(child *value) *value {
+func (p *prog) roundEven(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sroundevenf, child)
 }
 
-func (p *prog) Trunc(child *value) *value {
+func (p *prog) trunc(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(struncf, child)
 }
 
-func (p *prog) Floor(child *value) *value {
+func (p *prog) floor(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sfloorf, child)
 }
 
-func (p *prog) Ceil(child *value) *value {
+func (p *prog) ceil(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sceilf, child)
 }
 
-func (p *prog) Sqrt(child *value) *value {
+func (p *prog) sqrt(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(ssqrtf, child)
 }
 
-func (p *prog) Cbrt(child *value) *value {
+func (p *prog) cbrt(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(scbrtf, child)
 }
 
-func (p *prog) Exp(child *value) *value {
+func (p *prog) exp(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sexpf, child)
 }
 
-func (p *prog) ExpM1(child *value) *value {
+func (p *prog) expM1(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sexpm1f, child)
 }
 
-func (p *prog) Exp2(child *value) *value {
+func (p *prog) exp2(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sexp2f, child)
 }
 
-func (p *prog) Exp10(child *value) *value {
+func (p *prog) exp10(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sexp10f, child)
 }
 
-func (p *prog) Ln(child *value) *value {
+func (p *prog) ln(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(slnf, child)
 }
 
-func (p *prog) Ln1p(child *value) *value {
+func (p *prog) ln1p(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sln1pf, child)
 }
 
-func (p *prog) Log2(child *value) *value {
+func (p *prog) log2(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(slog2f, child)
 }
 
-func (p *prog) Log10(child *value) *value {
+func (p *prog) log10(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(slog10f, child)
 }
 
-func (p *prog) Sin(child *value) *value {
+func (p *prog) sin(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(ssinf, child)
 }
 
-func (p *prog) Cos(child *value) *value {
+func (p *prog) cos(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(scosf, child)
 }
 
-func (p *prog) Tan(child *value) *value {
+func (p *prog) tan(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(stanf, child)
 }
 
-func (p *prog) Asin(child *value) *value {
+func (p *prog) asin(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sasinf, child)
 }
 
-func (p *prog) Acos(child *value) *value {
+func (p *prog) acos(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(sacosf, child)
 }
 
-func (p *prog) Atan(child *value) *value {
+func (p *prog) atan(child *value) *value {
 	return p.makeUnaryArithmeticOpFp(satanf, child)
 }
 
@@ -3369,12 +3369,12 @@ func (p *prog) makeBinaryArithmeticOp(regOpF, regOpI, immOpF, immOpI, reverseImm
 	}
 
 	if isIntValue(left) && isIntValue(right) {
-		return p.ssa3(regOpI, left, right, p.And(p.mask(left), p.mask(right)))
+		return p.ssa3(regOpI, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
 	lhs, lhk := p.coercefp(left)
 	rhs, rhk := p.coercefp(right)
-	return p.ssa3(regOpF, lhs, rhs, p.And(lhk, rhk))
+	return p.ssa3(regOpF, lhs, rhs, p.and(lhk, rhk))
 }
 
 func (p *prog) makeBinaryArithmeticOpFp(op ssaop, left *value, right *value) *value {
@@ -3388,35 +3388,35 @@ func (p *prog) makeBinaryArithmeticOpFp(op ssaop, left *value, right *value) *va
 
 	lhs, lhk := p.coercefp(left)
 	rhs, rhk := p.coercefp(right)
-	return p.ssa3(op, lhs, rhs, p.And(lhk, rhk))
+	return p.ssa3(op, lhs, rhs, p.and(lhk, rhk))
 }
 
-func (p *prog) Add(left, right *value) *value {
+func (p *prog) add(left, right *value) *value {
 	if left == right {
 		return p.makeBinaryArithmeticOpImm(smulimmf, smulimmi, left, 2)
 	}
 	return p.makeBinaryArithmeticOp(saddf, saddi, saddimmf, saddimmi, saddimmf, saddimmi, left, right)
 }
 
-func (p *prog) Sub(left, right *value) *value {
+func (p *prog) sub(left, right *value) *value {
 	if left == right {
 		return p.makeBinaryArithmeticOpImm(smulimmf, smulimmi, left, 0)
 	}
 	return p.makeBinaryArithmeticOp(ssubf, ssubi, ssubimmf, ssubimmi, srsubimmf, srsubimmi, left, right)
 }
 
-func (p *prog) Mul(left, right *value) *value {
+func (p *prog) mul(left, right *value) *value {
 	if left == right {
 		return p.makeUnaryArithmeticOp(ssquaref, ssquarei, left)
 	}
 	return p.makeBinaryArithmeticOp(smulf, smuli, smulimmf, smulimmi, smulimmf, smulimmi, left, right)
 }
 
-func (p *prog) Div(left, right *value) *value {
+func (p *prog) div(left, right *value) *value {
 	return p.makeBinaryArithmeticOp(sdivf, sdivi, sdivimmf, sdivimmi, srdivimmf, srdivimmi, left, right)
 }
 
-func (p *prog) Mod(left, right *value) *value {
+func (p *prog) mod(left, right *value) *value {
 	return p.makeBinaryArithmeticOp(smodf, smodi, smodimmf, smodimmi, srmodimmf, srmodimmi, left, right)
 }
 
@@ -3436,67 +3436,67 @@ func (p *prog) makeBitwiseOp(regOp, immOp ssaop, canSwap bool, left *value, righ
 	}
 
 	rhs, rhk := p.coerceInt(right)
-	return p.ssa3(regOp, lhs, rhs, p.And(lhk, rhk))
+	return p.ssa3(regOp, lhs, rhs, p.and(lhk, rhk))
 }
 
-func (p *prog) BitAnd(left, right *value) *value {
+func (p *prog) bitAnd(left, right *value) *value {
 	return p.makeBitwiseOp(sandi, sandimmi, true, left, right)
 }
 
-func (p *prog) BitOr(left, right *value) *value {
+func (p *prog) bitOr(left, right *value) *value {
 	return p.makeBitwiseOp(sori, sorimmi, true, left, right)
 }
 
-func (p *prog) BitXor(left, right *value) *value {
+func (p *prog) bitXor(left, right *value) *value {
 	return p.makeBitwiseOp(sxori, sxorimmi, true, left, right)
 }
 
-func (p *prog) ShiftLeftLogical(left, right *value) *value {
+func (p *prog) shiftLeftLogical(left, right *value) *value {
 	return p.makeBitwiseOp(sslli, ssllimmi, false, left, right)
 }
 
-func (p *prog) ShiftRightArithmetic(left, right *value) *value {
+func (p *prog) shiftRightArithmetic(left, right *value) *value {
 	return p.makeBitwiseOp(ssrai, ssraimmi, false, left, right)
 }
 
-func (p *prog) ShiftRightLogical(left, right *value) *value {
+func (p *prog) shiftRightLogical(left, right *value) *value {
 	return p.makeBitwiseOp(ssrli, ssrlimmi, false, left, right)
 }
 
-func (p *prog) MinValue(left, right *value) *value {
+func (p *prog) minValue(left, right *value) *value {
 	if left == right {
 		return left
 	}
 	return p.makeBinaryArithmeticOp(sminvaluef, sminvaluei, sminvalueimmf, sminvalueimmi, sminvalueimmf, sminvalueimmi, left, right)
 }
 
-func (p *prog) MaxValue(left, right *value) *value {
+func (p *prog) maxValue(left, right *value) *value {
 	if left == right {
 		return left
 	}
 	return p.makeBinaryArithmeticOp(smaxvaluef, smaxvaluei, smaxvalueimmf, smaxvalueimmi, smaxvalueimmf, smaxvalueimmi, left, right)
 }
 
-func (p *prog) Hypot(left, right *value) *value {
+func (p *prog) hypot(left, right *value) *value {
 	return p.makeBinaryArithmeticOpFp(shypotf, left, right)
 }
 
-func (p *prog) Pow(left, right *value) *value {
+func (p *prog) pow(left, right *value) *value {
 	return p.makeBinaryArithmeticOpFp(spowf, left, right)
 }
 
-func (p *prog) Atan2(left, right *value) *value {
+func (p *prog) atan2(left, right *value) *value {
 	return p.makeBinaryArithmeticOpFp(satan2f, left, right)
 }
 
-func (p *prog) WidthBucket(val, min, max, bucketCount *value) *value {
+func (p *prog) widthBucket(val, min, max, bucketCount *value) *value {
 	if isIntValue(val) && isIntValue(min) && isIntValue(max) {
 		vali, valk := p.coerceInt(val)
 		mini, mink := p.coerceInt(min)
 		maxi, maxk := p.coerceInt(max)
 		cnti, cntk := p.coerceInt(bucketCount)
 
-		mask := p.And(valk, p.And(cntk, p.And(mink, maxk)))
+		mask := p.and(valk, p.and(cntk, p.and(mink, maxk)))
 		return p.ssa5(swidthbucketi, vali, mini, maxi, cnti, mask)
 	}
 
@@ -3505,7 +3505,7 @@ func (p *prog) WidthBucket(val, min, max, bucketCount *value) *value {
 	maxf, maxk := p.coercefp(max)
 	cntf, cntk := p.coercefp(bucketCount)
 
-	mask := p.And(valk, p.And(cntk, p.And(mink, maxk)))
+	mask := p.and(valk, p.and(cntk, p.and(mink, maxk)))
 	return p.ssa5(swidthbucketf, valf, minf, maxf, cntf, mask)
 }
 
@@ -3513,9 +3513,9 @@ func (p *prog) coerceTimestamp(v *value) (*value, *value) {
 	if v.op == sliteral {
 		ts, ok := v.imm.(date.Time)
 		if !ok {
-			return p.errorf("cannot use result of %T as TIMESTAMP", v.imm), p.ValidLanes()
+			return p.errorf("cannot use result of %T as TIMESTAMP", v.imm), p.validLanes()
 		}
-		return p.ssa0imm(sbroadcastts, ts.UnixMicro()), p.ValidLanes()
+		return p.ssa0imm(sbroadcastts, ts.UnixMicro()), p.validLanes()
 	}
 
 	switch v.primary() {
@@ -3528,7 +3528,7 @@ func (p *prog) coerceTimestamp(v *value) (*value, *value) {
 	case stTimeInt:
 		return v, p.mask(v)
 	default:
-		return p.errorf("cannot use result of %s as TIMESTAMP", v), p.ValidLanes()
+		return p.errorf("cannot use result of %s as TIMESTAMP", v), p.validLanes()
 	}
 }
 
@@ -3548,7 +3548,7 @@ var timePartMultiplier = [...]uint64{
 	expr.Year:        0,
 }
 
-func (p *prog) DateAdd(part expr.Timepart, arg0, arg1 *value) *value {
+func (p *prog) dateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 	arg1Time, arg1Mask := p.coerceTimestamp(arg1)
 	if arg0.op == sliteral && isIntImmediate(arg0.imm) {
 		i64Imm := toi64(arg0.imm)
@@ -3573,53 +3573,53 @@ func (p *prog) DateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 
 		// Microseconds need no multiplication of the input, thus use the simplest operation available.
 		if part == expr.Microsecond {
-			return p.ssa3(sdateadd, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
+			return p.ssa3(sdateadd, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask))
 		}
 
 		// If the part is lesser than Month, we can just use addmulimm operation with the required scale.
 		if timePartMultiplier[part] != 0 {
-			return p.ssa3imm(sdateaddmulimm, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask), timePartMultiplier[part])
+			return p.ssa3imm(sdateaddmulimm, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask), timePartMultiplier[part])
 		}
 
 		if part == expr.Month {
-			return p.ssa3(sdateaddmonth, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
+			return p.ssa3(sdateaddmonth, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask))
 		}
 
 		if part == expr.Quarter {
-			return p.ssa3(sdateaddquarter, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
+			return p.ssa3(sdateaddquarter, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask))
 		}
 
 		if part == expr.Year {
-			return p.ssa3(sdateaddyear, arg1Time, arg0Int, p.And(arg1Mask, arg0Mask))
+			return p.ssa3(sdateaddyear, arg1Time, arg0Int, p.and(arg1Mask, arg0Mask))
 		}
 	}
 
 	return p.errorf("unhandled date part %v in DateAdd()", part)
 }
 
-func (p *prog) DateDiff(part expr.Timepart, arg0, arg1 *value) *value {
+func (p *prog) dateDiff(part expr.Timepart, arg0, arg1 *value) *value {
 	t0, m0 := p.coerceTimestamp(arg0)
 	t1, m1 := p.coerceTimestamp(arg1)
 
 	if part == expr.Microsecond {
-		return p.ssa3(sdatediffmicro, t0, t1, p.And(m0, m1))
+		return p.ssa3(sdatediffmicro, t0, t1, p.and(m0, m1))
 	}
 
 	if timePartMultiplier[part] != 0 {
 		imm := timePartMultiplier[part]
-		return p.ssa3imm(sdatediffparam, t0, t1, p.And(m0, m1), imm)
+		return p.ssa3imm(sdatediffparam, t0, t1, p.and(m0, m1), imm)
 	}
 
 	if part == expr.Month {
-		return p.ssa3(sdatediffmonth, t0, t1, p.And(m0, m1))
+		return p.ssa3(sdatediffmonth, t0, t1, p.and(m0, m1))
 	}
 
 	if part == expr.Quarter {
-		return p.ssa3(sdatediffquarter, t0, t1, p.And(m0, m1))
+		return p.ssa3(sdatediffquarter, t0, t1, p.and(m0, m1))
 	}
 
 	if part == expr.Year {
-		return p.ssa3(sdatediffyear, t0, t1, p.And(m0, m1))
+		return p.ssa3(sdatediffyear, t0, t1, p.and(m0, m1))
 	}
 
 	return p.errorf("unhandled date part in DateDiff()")
@@ -3644,7 +3644,7 @@ func immediateForBoxedDateInstruction(part expr.Timepart) int {
 	}
 }
 
-func (p *prog) DateExtract(part expr.Timepart, val *value) *value {
+func (p *prog) dateExtract(part expr.Timepart, val *value) *value {
 	if val.primary() == stTimeInt || part < expr.Second || part == expr.Quarter || part == expr.DOW || part == expr.DOY {
 		v, m := p.coerceTimestamp(val)
 		switch part {
@@ -3679,17 +3679,17 @@ func (p *prog) DateExtract(part expr.Timepart, val *value) *value {
 	return p.ssa2imm(stmextract, v, p.mask(v), immediateForBoxedDateInstruction(part))
 }
 
-func (p *prog) DateToUnixEpoch(val *value) *value {
+func (p *prog) dateToUnixEpoch(val *value) *value {
 	v, m := p.coerceTimestamp(val)
 	return p.ssa2(sdatetounixepoch, v, m)
 }
 
-func (p *prog) DateToUnixMicro(val *value) *value {
+func (p *prog) dateToUnixMicro(val *value) *value {
 	v, m := p.coerceTimestamp(val)
 	return p.ssa2(sdatetounixmicro, v, m)
 }
 
-func (p *prog) DateTrunc(part expr.Timepart, val *value) *value {
+func (p *prog) dateTrunc(part expr.Timepart, val *value) *value {
 	if part == expr.Microsecond {
 		return val
 	}
@@ -3717,72 +3717,72 @@ func (p *prog) DateTrunc(part expr.Timepart, val *value) *value {
 	}
 }
 
-func (p *prog) DateTruncWeekday(val *value, dow expr.Weekday) *value {
+func (p *prog) dateTruncWeekday(val *value, dow expr.Weekday) *value {
 	v, m := p.coerceTimestamp(val)
 	return p.ssa2imm(sdatetruncdow, v, m, int64(dow))
 }
 
-func (p *prog) TimeBucket(timestamp, interval *value) *value {
-	tv := p.DateToUnixEpoch(timestamp)
+func (p *prog) timeBucket(timestamp, interval *value) *value {
+	tv := p.dateToUnixEpoch(timestamp)
 	iv, im := p.coerceInt(interval)
-	return p.ssa3(stimebucketts, tv, iv, p.And(p.mask(tv), im))
+	return p.ssa3(stimebucketts, tv, iv, p.and(p.mask(tv), im))
 }
 
-func (p *prog) GeoHash(latitude, longitude, numChars *value) *value {
+func (p *prog) geoHash(latitude, longitude, numChars *value) *value {
 	latV, latM := p.coercefp(latitude)
 	lonV, lonM := p.coercefp(longitude)
 
 	if numChars.op == sliteral && isIntImmediate(numChars.imm) {
-		return p.ssa3imm(sgeohashimm, latV, lonV, p.And(latM, lonM), numChars.imm)
+		return p.ssa3imm(sgeohashimm, latV, lonV, p.and(latM, lonM), numChars.imm)
 	}
 
 	charsV, charsM := p.coerceInt(numChars)
-	mask := p.And(p.And(latM, lonM), charsM)
+	mask := p.and(p.and(latM, lonM), charsM)
 	return p.ssa4(sgeohash, latV, lonV, charsV, mask)
 }
 
-func (p *prog) GeoTileX(longitude, precision *value) *value {
+func (p *prog) geoTileX(longitude, precision *value) *value {
 	lonV, lonM := p.coercefp(longitude)
 	precV, precM := p.coerceInt(precision)
-	mask := p.And(lonM, precM)
+	mask := p.and(lonM, precM)
 	return p.ssa3(sgeotilex, lonV, precV, mask)
 }
 
-func (p *prog) GeoTileY(latitude, precision *value) *value {
+func (p *prog) geoTileY(latitude, precision *value) *value {
 	latV, latM := p.coercefp(latitude)
 	precV, precM := p.coerceInt(precision)
-	mask := p.And(latM, precM)
+	mask := p.and(latM, precM)
 	return p.ssa3(sgeotiley, latV, precV, mask)
 }
 
-func (p *prog) GeoTileES(latitude, longitude, precision *value) *value {
+func (p *prog) geoTileES(latitude, longitude, precision *value) *value {
 	latV, latM := p.coercefp(latitude)
 	lonV, lonM := p.coercefp(longitude)
 
 	if precision.op == sliteral && isIntImmediate(precision.imm) {
-		return p.ssa3imm(sgeotileesimm, latV, lonV, p.And(latM, lonM), precision.imm)
+		return p.ssa3imm(sgeotileesimm, latV, lonV, p.and(latM, lonM), precision.imm)
 	}
 
 	charsV, charsM := p.coerceInt(precision)
-	mask := p.And(p.And(latM, lonM), charsM)
+	mask := p.and(p.and(latM, lonM), charsM)
 	return p.ssa4(sgeotilees, latV, lonV, charsV, mask)
 }
 
-func (p *prog) GeoDistance(latitude1, longitude1, latitude2, longitude2 *value) *value {
+func (p *prog) geoDistance(latitude1, longitude1, latitude2, longitude2 *value) *value {
 	lat1V, lat1M := p.coercefp(latitude1)
 	lon1V, lon1M := p.coercefp(longitude1)
 	lat2V, lat2M := p.coercefp(latitude2)
 	lon2V, lon2M := p.coercefp(longitude2)
 
-	mask := p.And(p.And(lat1M, lon1M), p.And(lat2M, lon2M))
+	mask := p.and(p.and(lat1M, lon1M), p.and(lat2M, lon2M))
 	return p.ssa5(sgeodistance, lat1V, lon1V, lat2V, lon2V, mask)
 }
 
-func (p *prog) Lower(s *value) *value {
+func (p *prog) lower(s *value) *value {
 	return p.ssa2(slowerstr, s, p.mask(s))
 }
 
-func (p *prog) Upper(s *value) *value {
+func (p *prog) upper(s *value) *value {
 	return p.ssa2(supperstr, s, p.mask(s))
 }
 
@@ -3831,7 +3831,7 @@ func emitdatecasttoint(v *value, c *compilestate) {
 
 // Simple aggregate operations
 func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, slot aggregateslot) *value {
-	mem := p.InitMem()
+	mem := p.initMem()
 
 	// In general we have to coerce to BOOL, however, if the input is a boxed value we
 	// will just unbox BOOL to INT64 and use INT64 aggregation instead of converting such
@@ -3841,14 +3841,14 @@ func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, 
 		intVal := p.ssa2(sunboxktoi, v, k)
 		mask := p.mask(intVal)
 		if filter != nil {
-			mask = p.And(mask, filter)
+			mask = p.and(mask, filter)
 		}
 		return p.ssa3imm(aggIntOp, mem, intVal, mask, slot)
 	}
 
 	boolVal, mask := p.coerceBool(v)
 	if filter != nil {
-		mask = p.And(mask, filter)
+		mask = p.and(mask, filter)
 	}
 	return p.ssa3imm(aggBoolOp, mem, boolVal, mask, slot)
 }
@@ -3857,98 +3857,98 @@ func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot aggreg
 	if isIntValue(child) || opF == sinvalid {
 		scalar, mask := p.coerceInt(child)
 		if filter != nil {
-			mask = p.And(mask, filter)
+			mask = p.and(mask, filter)
 		}
-		mem := p.InitMem()
+		mem := p.initMem()
 		return p.ssa3imm(opI, mem, scalar, mask, slot), false
 	}
 
 	scalar, mask := p.coercefp(child)
 	if filter != nil {
-		mask = p.And(mask, filter)
+		mask = p.and(mask, filter)
 	}
 
-	mem := p.InitMem()
+	mem := p.initMem()
 	return p.ssa3imm(opF, mem, scalar, mask, slot), true
 }
 
 func (p *prog) makeTimeAggregateOp(op ssaop, child, filter *value, slot aggregateslot) *value {
 	scalar, mask := p.coerceTimestamp(child)
 	if filter != nil {
-		mask = p.And(mask, filter)
+		mask = p.and(mask, filter)
 	}
-	mem := p.InitMem()
+	mem := p.initMem()
 	return p.ssa3imm(op, mem, scalar, mask, slot)
 }
 
-func (p *prog) AggregateBoolAnd(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateBoolAnd(child, filter *value, slot aggregateslot) *value {
 	return p.makeAggregateBoolOp(saggandk, saggandi, child, filter, slot)
 }
 
-func (p *prog) AggregateBoolOr(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateBoolOr(child, filter *value, slot aggregateslot) *value {
 	return p.makeAggregateBoolOp(saggork, saggori, child, filter, slot)
 }
 
-func (p *prog) AggregateSumInt(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateSumInt(child, filter *value, slot aggregateslot) *value {
 	child = p.toint(child)
 	mask := p.mask(child)
 	if filter != nil {
-		mask = p.And(mask, filter)
+		mask = p.and(mask, filter)
 	}
-	return p.ssa3imm(saggsumi, p.InitMem(), child, mask, slot)
+	return p.ssa3imm(saggsumi, p.initMem(), child, mask, slot)
 }
 
-func (p *prog) AggregateSum(child, filter *value, slot aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateSum(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggsumf, saggsumi, child, filter, slot)
 }
 
-func (p *prog) AggregateAvg(child, filter *value, slot aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateAvg(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggavgf, saggavgi, child, filter, slot)
 }
 
-func (p *prog) AggregateMin(child, filter *value, slot aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateMin(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggminf, saggmini, child, filter, slot)
 }
 
-func (p *prog) AggregateMax(child, filter *value, slot aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateMax(child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateOp(saggmaxf, saggmaxi, child, filter, slot)
 }
 
-func (p *prog) AggregateAnd(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateAnd(child, filter *value, slot aggregateslot) *value {
 	val, _ := p.makeAggregateOp(sinvalid, saggandi, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateOr(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateOr(child, filter *value, slot aggregateslot) *value {
 	val, _ := p.makeAggregateOp(sinvalid, saggori, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateXor(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateXor(child, filter *value, slot aggregateslot) *value {
 	val, _ := p.makeAggregateOp(sinvalid, saggxori, child, filter, slot)
 	return val
 }
 
-func (p *prog) AggregateEarliest(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateEarliest(child, filter *value, slot aggregateslot) *value {
 	return p.makeTimeAggregateOp(saggmints, child, filter, slot)
 }
 
-func (p *prog) AggregateLatest(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateLatest(child, filter *value, slot aggregateslot) *value {
 	return p.makeTimeAggregateOp(saggmaxts, child, filter, slot)
 }
 
-func (p *prog) AggregateCount(child, filter *value, slot aggregateslot) *value {
+func (p *prog) aggregateCount(child, filter *value, slot aggregateslot) *value {
 	mask := p.notMissing(child)
 	if filter != nil {
-		mask = p.And(mask, filter)
+		mask = p.and(mask, filter)
 	}
-	return p.ssa2imm(saggcount, p.InitMem(), mask, slot)
+	return p.ssa2imm(saggcount, p.initMem(), mask, slot)
 }
 
-func (p *prog) aggregateApproxCountDistinct(op ssaop, child, filter *value, slot aggregateslot, precision uint8) *value {
+func (p *prog) aacd(op ssaop, child, filter *value, slot aggregateslot, precision uint8) *value {
 	mask := p.mask(child)
 	if filter != nil {
-		mask = p.And(mask, filter)
+		mask = p.and(mask, filter)
 	}
 
 	h := p.hash(child)
@@ -3956,15 +3956,15 @@ func (p *prog) aggregateApproxCountDistinct(op ssaop, child, filter *value, slot
 	return p.ssa2imm(saggapproxcount, h, mask, (uint64(slot)<<8)|uint64(precision))
 }
 
-func (p *prog) AggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
-	return p.aggregateApproxCountDistinct(saggapproxcount, child, filter, slot, precision)
+func (p *prog) aggregateApproxCountDistinct(child, filter *value, slot aggregateslot, precision uint8) *value {
+	return p.aacd(saggapproxcount, child, filter, slot, precision)
 }
 
-func (p *prog) AggregateApproxCountDistinctPartial(child, filter *value, slot aggregateslot, precision uint8) *value {
-	return p.aggregateApproxCountDistinct(saggapproxcountpartial, child, filter, slot, precision)
+func (p *prog) aggregateApproxCountDistinctPartial(child, filter *value, slot aggregateslot, precision uint8) *value {
+	return p.aacd(saggapproxcountpartial, child, filter, slot, precision)
 }
 
-func (p *prog) AggregateApproxCountDistinctMerge(child *value, slot aggregateslot, precision uint8) *value {
+func (p *prog) aggregateApproxCountDistinctMerge(child *value, slot aggregateslot, precision uint8) *value {
 	blob := p.ssa2(stoblob, child, p.mask(child))
 	return p.ssa2imm(saggapproxcountmerge, blob, p.mask(blob), (uint64(slot)<<8)|uint64(precision))
 }
@@ -3973,7 +3973,7 @@ func (p *prog) AggregateApproxCountDistinctMerge(child *value, slot aggregateslo
 func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, slot aggregateslot) *value {
 	boolVal, m := p.coerceBool(v)
 	if mask != nil {
-		m = p.And(m, mask)
+		m = p.and(m, mask)
 	}
 	return p.ssa4imm(op, mem, bucket, boolVal, m, slot)
 }
@@ -3982,14 +3982,14 @@ func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, 
 	if isIntValue(v) || opF == sinvalid {
 		scalar, m := p.coerceInt(v)
 		if mask != nil {
-			m = p.And(m, mask)
+			m = p.and(m, mask)
 		}
 		return p.ssa4imm(opI, mem, bucket, scalar, m, offset), false
 	}
 
 	scalar, m := p.coercefp(v)
 	if mask != nil {
-		m = p.And(m, mask)
+		m = p.and(m, mask)
 	}
 	return p.ssa4imm(opF, mem, bucket, scalar, m, offset), true
 }
@@ -3997,88 +3997,88 @@ func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, 
 func (p *prog) makeTimeAggregateSlotOp(op ssaop, mem, bucket, v, mask *value, offset aggregateslot) *value {
 	scalar, m := p.coerceTimestamp(v)
 	if mask != nil {
-		m = p.And(m, mask)
+		m = p.and(m, mask)
 	}
 	return p.ssa4imm(op, mem, bucket, scalar, m, offset)
 }
 
-func (p *prog) AggregateSlotSum(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateSlotSum(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateSlotOp(saggslotsumf, saggslotsumi, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotSumInt(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotSumInt(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	scalar, m := p.coerceInt(value)
 	if mask != nil {
-		m = p.And(m, mask)
+		m = p.and(m, mask)
 	}
 	return p.ssa4imm(saggslotsumi, mem, bucket, scalar, m, offset)
 }
 
-func (p *prog) AggregateSlotAvg(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateSlotAvg(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateSlotOp(saggslotavgf, saggslotavgi, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotMin(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateSlotMin(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateSlotOp(saggslotminf, saggslotmini, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotMax(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
+func (p *prog) aggregateSlotMax(mem, bucket, value, mask *value, offset aggregateslot) (v *value, fp bool) {
 	return p.makeAggregateSlotOp(saggslotmaxf, saggslotmaxi, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotAnd(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotAnd(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotandi, mem, bucket, value, mask, offset)
 	return val
 }
 
-func (p *prog) AggregateSlotOr(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotOr(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotori, mem, bucket, value, mask, offset)
 	return val
 }
 
-func (p *prog) AggregateSlotXor(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotXor(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	val, _ := p.makeAggregateSlotOp(sinvalid, saggslotxori, mem, bucket, value, mask, offset)
 	return val
 }
 
-func (p *prog) AggregateSlotBoolAnd(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotBoolAnd(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	return p.makeAggregateSlotBoolOp(saggslotandk, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotBoolOr(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotBoolOr(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	return p.makeAggregateSlotBoolOp(saggslotork, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotEarliest(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotEarliest(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	return p.makeTimeAggregateSlotOp(saggslotmints, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotLatest(mem, bucket, value, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotLatest(mem, bucket, value, mask *value, offset aggregateslot) *value {
 	return p.makeTimeAggregateSlotOp(saggslotmaxts, mem, bucket, value, mask, offset)
 }
 
-func (p *prog) AggregateSlotCount(mem, bucket, mask *value, offset aggregateslot) *value {
+func (p *prog) aggregateSlotCount(mem, bucket, mask *value, offset aggregateslot) *value {
 	return p.ssa3imm(saggslotcount, mem, bucket, mask, offset)
 }
 
-func (p *prog) aggregateSlotApproxCountDistinct(op ssaop, mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+func (p *prog) asacd(op ssaop, mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
 	k := p.mask(argv)
 	if mask != nil {
-		k = p.And(k, mask)
+		k = p.and(k, mask)
 	}
 	h := p.hash(argv)
 	return p.ssa4imm(op, mem, bucket, h, k, (uint64(offset)<<8)|uint64(precision))
 }
 
-func (p *prog) AggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
-	return p.aggregateSlotApproxCountDistinct(saggslotapproxcount, mem, bucket, argv, mask, offset, precision)
+func (p *prog) aggregateSlotApproxCountDistinct(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+	return p.asacd(saggslotapproxcount, mem, bucket, argv, mask, offset, precision)
 }
 
-func (p *prog) AggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
-	return p.aggregateSlotApproxCountDistinct(saggslotapproxcountpartial, mem, bucket, argv, mask, offset, precision)
+func (p *prog) aggregateSlotApproxCountDistinctPartial(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+	return p.asacd(saggslotapproxcountpartial, mem, bucket, argv, mask, offset, precision)
 }
 
-func (p *prog) AggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
+func (p *prog) aggregateSlotApproxCountDistinctMerge(mem, bucket, argv, mask *value, offset aggregateslot, precision uint8) *value {
 	blob := p.ssa2(stoblob, argv, mask)
 	return p.ssa4imm(saggslotapproxcountmerge, mem, bucket, blob, p.mask(blob), (uint64(offset)<<8)|uint64(precision))
 }
@@ -4147,7 +4147,7 @@ func (v *value) String() string {
 	return str
 }
 
-func (p *prog) WriteTo(w io.Writer) (int64, error) {
+func (p *prog) writeTo(w io.Writer) (int64, error) {
 	var nn int64
 	values := p.values
 	for i := range values {
@@ -4167,7 +4167,7 @@ func (p *prog) WriteTo(w io.Writer) (int64, error) {
 
 // Graphviz writes out the program in a format
 // that the dot(1) tool can turn into a visual graph
-func (p *prog) Graphviz(w io.Writer) {
+func (p *prog) graphviz(w io.Writer) {
 	fmt.Fprintf(w, "digraph prog {\n")
 	for i := range p.values {
 		v := p.values[i]
@@ -4244,7 +4244,7 @@ func (p *prog) mask(v *value) *value {
 	}
 	// broadcast, etc. instructions
 	// are valid in every lane
-	return p.ValidLanes()
+	return p.validLanes()
 }
 
 // compute a post-order numbering of values
@@ -6143,7 +6143,7 @@ func (p *prog) emit1(v *value, c *compilestate) {
 	defer func() {
 		if err := recover(); err != nil {
 			println(fmt.Sprintf("Error emitting %v: %v", v.String(), err))
-			p.WriteTo(os.Stderr)
+			p.writeTo(os.Stderr)
 			panic(err)
 		}
 	}()
@@ -6258,7 +6258,7 @@ const MaxSymbolID = (1 << 21) - 1
 // Symbolize applies the symbol table from 'st'
 // to the program by copying the old program
 // to 'dst' and applying rewrites to findsym operations.
-func (p *prog) Symbolize(st syms, dst *prog, aux *auxbindings) error {
+func (p *prog) cloneSymbolize(st syms, dst *prog, aux *auxbindings) error {
 	p.clone(dst)
 	return dst.symbolize(st, aux)
 }
@@ -6288,13 +6288,13 @@ func (p *prog) unsymbolized(v *value) *value {
 // buffer for final if it has been temporarily dropped
 func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings) error {
 	final.symtab = st.symrefs
-	if !dst.IsStale(st) {
+	if !dst.isStale(st) {
 		// the scratch buffer may be invalid,
 		// so ensure that it is populated correctly:
 		final.restoreScratch(st)
 		return nil
 	}
-	err := src.Symbolize(st, dst, aux)
+	err := src.cloneSymbolize(st, dst, aux)
 	if err != nil {
 		return err
 	}
@@ -6304,7 +6304,7 @@ func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings) er
 // IsStale returns whether the symbolized program
 // (see prog.Symbolize) is stale with respect to
 // the provided symbol table.
-func (p *prog) IsStale(st *symtab) bool {
+func (p *prog) isStale(st *symtab) bool {
 	if !p.symbolized || p.literals {
 		return true
 	}

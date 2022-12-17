@@ -79,10 +79,10 @@ func TestSplat(t *testing.T) {
 		t.Fatalf("got %d rows at top level?", n)
 	}
 
-	p.Begin()
-	field := p.Dot("Entries", p.ValidLanes())
+	p.begin()
+	field := p.dot("Entries", p.validLanes())
 	list := p.ssa2(stolist, field, field)
-	p.Return(list)
+	p.returnValue(list)
 	p.symbolize(&st, &auxbindings{})
 	err = p.compile(&bc, &st)
 	if err != nil {

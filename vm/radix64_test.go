@@ -77,14 +77,14 @@ func TestRadixBytecodeFind(t *testing.T) {
 
 	// compute GROUP BY Make
 	p := &agt.prog
-	p.Begin()
-	makeval := p.Dot("Make", p.ValidLanes())
-	mem, err := p.Store(p.InitMem(), makeval, 0)
+	p.begin()
+	makeval := p.dot("Make", p.validLanes())
+	mem, err := p.store(p.initMem(), makeval, 0)
 	if err != nil {
 		panic(err)
 	}
 	b := p.aggbucket(mem, p.hash(makeval), makeval)
-	p.Return(p.AggregateSlotCount(mem, b, makeval, 0))
+	p.returnValue(p.aggregateSlotCount(mem, b, makeval, 0))
 	err = p.symbolize(&st, &auxbindings{})
 	if err != nil {
 		t.Fatal(err)
@@ -184,14 +184,14 @@ func TestRadixBytecodeInsert(t *testing.T) {
 
 	// compute GROUP BY Make
 	p := &agt.prog
-	p.Begin()
-	makeval := p.Dot("Make", p.ValidLanes())
-	mem, err := p.Store(p.InitMem(), makeval, 0)
+	p.begin()
+	makeval := p.dot("Make", p.validLanes())
+	mem, err := p.store(p.initMem(), makeval, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	b := p.aggbucket(mem, p.hash(makeval), makeval)
-	p.Return(p.AggregateSlotCount(mem, b, makeval, 0))
+	p.returnValue(p.aggregateSlotCount(mem, b, makeval, 0))
 	err = p.symbolize(&st, &auxbindings{})
 	if err != nil {
 		t.Fatal(err)
@@ -411,14 +411,14 @@ func BenchmarkAggregate(b *testing.B) {
 
 	// compute GROUP BY Make
 	p := &agt.prog
-	p.Begin()
-	makeval := p.Dot("Make", p.ValidLanes())
-	mem, err := p.Store(p.InitMem(), makeval, 0)
+	p.begin()
+	makeval := p.dot("Make", p.validLanes())
+	mem, err := p.store(p.initMem(), makeval, 0)
 	if err != nil {
 		b.Fatal(err)
 	}
 	bucket := p.aggbucket(mem, p.hash(makeval), makeval)
-	p.Return(p.AggregateSlotCount(mem, bucket, makeval, 0))
+	p.returnValue(p.aggregateSlotCount(mem, bucket, makeval, 0))
 	err = p.symbolize(&st, &auxbindings{})
 	if err != nil {
 		b.Fatal(err)

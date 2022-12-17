@@ -34,12 +34,12 @@ import (
 // into an ssa program
 func compileLogical(e expr.Node) (*prog, error) {
 	p := new(prog)
-	p.Begin()
+	p.begin()
 	v, err := p.compileAsBool(e)
 	if err != nil {
 		return nil, err
 	}
-	p.Return(p.RowsMasked(p.ValidLanes(), v))
+	p.returnValue(p.rowsMasked(p.validLanes(), v))
 	return p, nil
 }
 
@@ -64,19 +64,19 @@ func (v *value) primary() ssatype {
 func compile(p *prog, e expr.Node) (*value, error) {
 	switch n := e.(type) {
 	case expr.Bool:
-		return p.Constant(bool(n)), nil
+		return p.constant(bool(n)), nil
 	case expr.String:
-		return p.Constant(string(n)), nil
+		return p.constant(string(n)), nil
 	case expr.Integer:
-		return p.Constant(int64(n)), nil
+		return p.constant(int64(n)), nil
 	case expr.Float:
-		return p.Constant(float64(n)), nil
+		return p.constant(float64(n)), nil
 	case expr.Null:
-		return p.Constant(nil), nil
+		return p.constant(nil), nil
 	case *expr.Struct:
-		return p.Constant(n.Datum()), nil
+		return p.constant(n.Datum()), nil
 	case *expr.List:
-		return p.Constant(n.Datum()), nil
+		return p.constant(n.Datum()), nil
 	case *expr.Rational:
 		r := (*big.Rat)(n)
 		if r.IsInt() {
@@ -84,11 +84,11 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			if !num.IsInt64() {
 				return nil, fmt.Errorf("%s overflows int64", num)
 			}
-			return p.Constant(num.Int64()), nil
+			return p.constant(num.Int64()), nil
 		}
 		// ok if we lose some precision here, I guess...
 		f, _ := r.Float64()
-		return p.Constant(f), nil
+		return p.constant(f), nil
 	case *expr.Comparison:
 		switch n.Op {
 		case expr.Equals, expr.NotEquals:
@@ -100,9 +100,9 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			if err != nil {
 				return nil, err
 			}
-			eq := p.Equals(left, right)
+			eq := p.equals(left, right)
 			if n.Op == expr.NotEquals {
-				eq = p.Not(eq)
+				eq = p.not(eq)
 			}
 			return eq, nil
 		}
@@ -117,13 +117,13 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		}
 		switch n.Op {
 		case expr.Less:
-			return p.Less(left, right), nil
+			return p.less(left, right), nil
 		case expr.LessEquals:
-			return p.LessEqual(left, right), nil
+			return p.lessEqual(left, right), nil
 		case expr.Greater:
-			return p.Greater(left, right), nil
+			return p.greater(left, right), nil
 		case expr.GreaterEquals:
-			return p.GreaterEqual(left, right), nil
+			return p.greaterEqual(left, right), nil
 		}
 		return nil, fmt.Errorf("unhandled comparison expression %q", n)
 	case *expr.StringMatch:
@@ -138,7 +138,7 @@ func compile(p *prog, e expr.Node) (*value, error) {
 				escRune, _ = utf8.DecodeRuneInString(n.Escape)
 			}
 			caseSensitive := n.Op == expr.Like
-			return p.Like(left, n.Pattern, escRune, caseSensitive), nil
+			return p.like(left, n.Pattern, escRune, caseSensitive), nil
 		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:
 			left, err := p.compileAsString(n.Expr)
 			if err != nil {
@@ -163,7 +163,7 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			if err != nil {
 				return nil, fmt.Errorf("Error: %v; construction of DFA from regex %v failed", err, regex)
 			}
-			return p.RegexMatch(left, dfaStore)
+			return p.regexMatch(left, dfaStore)
 		}
 		return nil, fmt.Errorf("unimplemented StringMatch operation")
 	case *expr.UnaryArith:
@@ -174,9 +174,9 @@ func compile(p *prog, e expr.Node) (*value, error) {
 
 		switch n.Op {
 		case expr.NegOp:
-			return p.Neg(child), nil
+			return p.neg(child), nil
 		case expr.BitNotOp:
-			return p.BitNot(child), nil
+			return p.bitNot(child), nil
 		}
 
 		return nil, fmt.Errorf("unknown arithmetic expression %q", n)
@@ -192,27 +192,27 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		}
 		switch n.Op {
 		case expr.AddOp:
-			return p.Add(left, right), nil
+			return p.add(left, right), nil
 		case expr.SubOp:
-			return p.Sub(left, right), nil
+			return p.sub(left, right), nil
 		case expr.MulOp:
-			return p.Mul(left, right), nil
+			return p.mul(left, right), nil
 		case expr.DivOp:
-			return p.Div(left, right), nil
+			return p.div(left, right), nil
 		case expr.ModOp:
-			return p.Mod(left, right), nil
+			return p.mod(left, right), nil
 		case expr.BitAndOp:
-			return p.BitAnd(left, right), nil
+			return p.bitAnd(left, right), nil
 		case expr.BitOrOp:
-			return p.BitOr(left, right), nil
+			return p.bitOr(left, right), nil
 		case expr.BitXorOp:
-			return p.BitXor(left, right), nil
+			return p.bitXor(left, right), nil
 		case expr.ShiftLeftLogicalOp:
-			return p.ShiftLeftLogical(left, right), nil
+			return p.shiftLeftLogical(left, right), nil
 		case expr.ShiftRightArithmeticOp:
-			return p.ShiftRightArithmetic(left, right), nil
+			return p.shiftRightArithmetic(left, right), nil
 		case expr.ShiftRightLogicalOp:
-			return p.ShiftRightLogical(left, right), nil
+			return p.shiftRightLogical(left, right), nil
 		}
 		return nil, fmt.Errorf("unrecognized expression %q", n)
 
@@ -227,17 +227,17 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		}
 		switch n.Op {
 		case expr.OpOr:
-			return p.Or(left, right), nil
+			return p.or(left, right), nil
 		case expr.OpAnd:
-			return p.And(left, right), nil
+			return p.and(left, right), nil
 		case expr.OpXor:
 			// boolean =
-			notmiss := p.And(p.notMissing(left), p.notMissing(right))
-			return p.And(p.xor(left, right), notmiss), nil
+			notmiss := p.and(p.notMissing(left), p.notMissing(right))
+			return p.and(p.xor(left, right), notmiss), nil
 		case expr.OpXnor:
 			// boolean <>
-			notmiss := p.And(p.notMissing(left), p.notMissing(right))
-			return p.And(p.xnor(left, right), notmiss), nil
+			notmiss := p.and(p.notMissing(left), p.notMissing(right))
+			return p.and(p.xnor(left, right), notmiss), nil
 		}
 		return nil, fmt.Errorf("unrecognized expression %q", n)
 	case *expr.Not:
@@ -245,9 +245,9 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		if err != nil {
 			return nil, err
 		}
-		return p.Not(inner), nil
+		return p.not(inner), nil
 	case *expr.Path:
-		return compilepath(p, p.Dot(n.First, p.ValidLanes()), n.Rest)
+		return compilepath(p, p.dot(n.First, p.validLanes()), n.Rest)
 	case *expr.IsKey:
 		inner, err := compile(p, n.Expr)
 		if err != nil {
@@ -259,20 +259,20 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		case expr.IsNotNull:
 			return p.isnonnull(inner), nil
 		case expr.IsMissing:
-			return p.Not(p.notMissing(inner)), nil
+			return p.not(p.notMissing(inner)), nil
 		case expr.IsNotMissing:
 			return p.notMissing(inner), nil
 		case expr.IsTrue:
-			return p.IsTrue(inner), nil
+			return p.isTrue(inner), nil
 		case expr.IsFalse:
-			return p.IsFalse(inner), nil
+			return p.isFalse(inner), nil
 		case expr.IsNotTrue:
 			// we always compute IS TRUE,
 			// so IS NOT TRUE is the negation of that
-			return p.IsNotTrue(inner), nil
+			return p.isNotTrue(inner), nil
 		case expr.IsNotFalse:
 			// either MISSING or TRUE
-			return p.IsNotFalse(inner), nil
+			return p.isNotFalse(inner), nil
 		}
 		return nil, fmt.Errorf("unhandled IS: %q", n)
 	case *expr.Builtin:
@@ -282,7 +282,7 @@ func compile(p *prog, e expr.Node) (*value, error) {
 	case *expr.Cast:
 		return p.compileCast(n)
 	case *expr.Timestamp:
-		return p.Constant(n.Value), nil
+		return p.constant(n.Value), nil
 	case *expr.Member:
 		return p.member(n.Arg, n.Values)
 	case expr.Missing:
@@ -309,7 +309,7 @@ func (p *prog) compileAsBool(e expr.Node) (*value, error) {
 	case *expr.IsKey:
 	case expr.Bool:
 		if e {
-			return p.ValidLanes(), nil
+			return p.validLanes(), nil
 		}
 		return p.ssa0(skfalse), nil
 	case *expr.Builtin:
@@ -469,7 +469,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 
-		return p.DateAdd(part, val[0], val[1]), nil
+		return p.dateAdd(part, val[0], val[1]), nil
 	}
 
 	if fn.IsDateDiff() {
@@ -479,7 +479,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 
-		return p.DateDiff(part, val[0], val[1]), nil
+		return p.dateDiff(part, val[0], val[1]), nil
 	}
 
 	if fn.IsDateExtract() {
@@ -488,7 +488,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		if err != nil {
 			return nil, err
 		}
-		return p.DateExtract(part, val[0]), nil
+		return p.dateExtract(part, val[0]), nil
 	}
 
 	if fn.IsDateTrunc() {
@@ -503,10 +503,10 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			if !ok {
 				return nil, fmt.Errorf("day of week has to be a constant")
 			}
-			return p.DateTruncWeekday(val, expr.Weekday(dow)), nil
+			return p.dateTruncWeekday(val, expr.Weekday(dow)), nil
 		}
 
-		return p.DateTrunc(part, val), nil
+		return p.dateTrunc(part, val), nil
 	}
 
 	switch fn {
@@ -515,7 +515,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, fmt.Errorf("accepts no arguments")
 		}
 
-		return p.Constant(pi), nil
+		return p.constant(pi), nil
 
 	case expr.Log:
 		count := len(args)
@@ -532,7 +532,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		var val *value
 		if count == 1 {
 			// use LOG base 10 if no base was specified
-			val = p.Log10(n)
+			val = p.log10(n)
 		} else {
 			base := n
 
@@ -542,7 +542,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			}
 
 			// logarithm of any base can be calculated as `log2(n) / log2(base)`
-			val = p.Div(p.Log2(n), p.Log2(base))
+			val = p.div(p.log2(n), p.log2(base))
 		}
 
 		return val, nil
@@ -560,7 +560,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			c = degreesToRadians
 		}
 
-		return p.Mul(val[0], p.Constant(c)), nil
+		return p.mul(val[0], p.constant(c)), nil
 
 	case expr.Round, expr.RoundEven, expr.Trunc, expr.Floor, expr.Ceil,
 		expr.Sqrt, expr.Cbrt,
@@ -579,53 +579,53 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		var val *value
 		switch fn {
 		case expr.Round:
-			val = p.Round(arg)
+			val = p.round(arg)
 		case expr.RoundEven:
-			val = p.RoundEven(arg)
+			val = p.roundEven(arg)
 		case expr.Trunc:
-			val = p.Trunc(arg)
+			val = p.trunc(arg)
 		case expr.Floor:
-			val = p.Floor(arg)
+			val = p.floor(arg)
 		case expr.Ceil:
-			val = p.Ceil(arg)
+			val = p.ceil(arg)
 		case expr.Sqrt:
-			val = p.Sqrt(arg)
+			val = p.sqrt(arg)
 		case expr.Cbrt:
-			val = p.Cbrt(arg)
+			val = p.cbrt(arg)
 		case expr.Exp:
-			val = p.Exp(arg)
+			val = p.exp(arg)
 		case expr.Exp2:
-			val = p.Exp2(arg)
+			val = p.exp2(arg)
 		case expr.Exp10:
-			val = p.Exp10(arg)
+			val = p.exp10(arg)
 		case expr.ExpM1:
-			val = p.ExpM1(arg)
+			val = p.expM1(arg)
 		case expr.Ln:
-			val = p.Ln(arg)
+			val = p.ln(arg)
 		case expr.Ln1p:
-			val = p.Ln1p(arg)
+			val = p.ln1p(arg)
 		case expr.Log2:
-			val = p.Log2(arg)
+			val = p.log2(arg)
 		case expr.Log10:
-			val = p.Log10(arg)
+			val = p.log10(arg)
 		case expr.Sin:
-			val = p.Sin(arg)
+			val = p.sin(arg)
 		case expr.Cos:
-			val = p.Cos(arg)
+			val = p.cos(arg)
 		case expr.Tan:
-			val = p.Tan(arg)
+			val = p.tan(arg)
 		case expr.Asin:
-			val = p.Asin(arg)
+			val = p.asin(arg)
 		case expr.Acos:
-			val = p.Acos(arg)
+			val = p.acos(arg)
 		case expr.Atan:
-			val = p.Atan(arg)
+			val = p.atan(arg)
 		case expr.Sign:
-			val = p.Sign(arg)
+			val = p.sign(arg)
 		case expr.Abs:
-			val = p.Abs(arg)
+			val = p.abs(arg)
 		case expr.BitCount:
-			val = p.BitCount(arg)
+			val = p.bitCount(arg)
 		}
 		return val, nil
 
@@ -641,11 +641,11 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		var val *value
 		switch fn {
 		case expr.Hypot:
-			val = p.Hypot(arg1, arg2)
+			val = p.hypot(arg1, arg2)
 		case expr.Pow:
-			val = p.Pow(arg1, arg2)
+			val = p.pow(arg1, arg2)
 		case expr.Atan2:
-			val = p.Atan2(arg1, arg2)
+			val = p.atan2(arg1, arg2)
 		}
 		return val, nil
 
@@ -658,7 +658,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			}
 			sargs[i] = sarg
 		}
-		return p.Concat(sargs...), nil
+		return p.concat(sargs...), nil
 
 	case expr.Least, expr.Greatest:
 		least := fn == expr.Least
@@ -680,9 +680,9 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			}
 
 			if least {
-				val = p.MinValue(val, rhs)
+				val = p.minValue(val, rhs)
 			} else {
-				val = p.MaxValue(val, rhs)
+				val = p.maxValue(val, rhs)
 			}
 		}
 
@@ -699,7 +699,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		max := v[2]
 		bucketCount := v[3]
 
-		return p.WidthBucket(val, min, max, bucketCount), nil
+		return p.widthBucket(val, min, max, bucketCount), nil
 
 	case expr.TimeBucket:
 		v, err := compileargs(p, args, compileTime, compileNumber)
@@ -710,7 +710,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		arg := v[0]
 		interval := v[1]
 
-		return p.TimeBucket(arg, interval), nil
+		return p.timeBucket(arg, interval), nil
 
 	case expr.Trim, expr.Ltrim, expr.Rtrim:
 		tt := trimtype(fn)
@@ -720,7 +720,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 				return nil, err
 			}
 
-			return p.TrimSpace(s, tt), nil
+			return p.trimSpace(s, tt), nil
 		} else if len(args) == 2 { //TRIM("$$arg", "$") is a char trim
 			v, err := compileargs(p, args, compileString, literalString)
 			if err != nil {
@@ -730,7 +730,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			s := v[0]
 			chars, _ := args[1].(expr.String)
 
-			return p.TrimChar(s, string(chars), tt), nil
+			return p.trimChar(s, string(chars), tt), nil
 		} else {
 			return nil, fmt.Errorf("expects one or two arguments")
 		}
@@ -744,7 +744,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		lhs := v[0]
 		s := args[1].(expr.String)
 
-		return p.Contains(lhs, string(s), fn == expr.Contains), nil
+		return p.contains(lhs, string(s), fn == expr.Contains), nil
 
 	case expr.EqualsCI:
 		v, err := compileargs(p, args, compileString, compileString)
@@ -760,7 +760,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		lhs := v[0]
 		rhs := v[1]
 
-		return p.EqualStr(lhs, rhs, false), nil
+		return p.equalStr(lhs, rhs, false), nil
 
 	case expr.EqualsFuzzy, expr.EqualsFuzzyUnicode:
 		val, err := compileargs(p, args, compileString, literalString, compileNumber)
@@ -768,7 +768,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 		ascii := fn == expr.EqualsFuzzy
-		return p.EqualsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
+		return p.equalsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
 
 	case expr.ContainsFuzzy, expr.ContainsFuzzyUnicode:
 		val, err := compileargs(p, args, compileString, literalString, compileNumber)
@@ -776,7 +776,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 		ascii := fn == expr.ContainsFuzzy
-		return p.ContainsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
+		return p.containsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
 
 	case expr.IsSubnetOf:
 		v, err := compileargs(p, args, literalString, literalString, compileString)
@@ -792,7 +792,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		min := (*[4]byte)(net.ParseIP(string(minStr)).To4())
 		max := (*[4]byte)(net.ParseIP(string(maxStr)).To4())
 
-		return p.IsSubnetOfIP4(lhs, *min, *max), nil
+		return p.isSubnetOfIP4(lhs, *min, *max), nil
 
 	case expr.CharLength:
 		v, err := compileargs(p, args, compileString)
@@ -802,7 +802,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		lhs := v[0]
 
-		return p.CharLength(lhs), nil
+		return p.charLength(lhs), nil
 
 	case expr.Substring:
 		val, err := compileargs(p, args, compileString, compileNumber, compileNumber)
@@ -813,7 +813,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		lhs := val[0]
 		substrOffset := val[1]
 		substrLength := val[2]
-		return p.Substring(lhs, substrOffset, substrLength), nil
+		return p.substring(lhs, substrOffset, substrLength), nil
 
 	case expr.SplitPart:
 		v, err := compileargs(p, args, compileString, literalString, compileNumber)
@@ -825,7 +825,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		delimiterStr := args[1].(expr.String)
 		splitPartIndex := v[2]
 
-		return p.SplitPart(lhs, delimiterStr[0], splitPartIndex), nil
+		return p.splitPart(lhs, delimiterStr[0], splitPartIndex), nil
 
 	case expr.Unspecified:
 		switch b.Name() {
@@ -837,7 +837,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			if !ok {
 				return nil, fmt.Errorf("first arg to UPVALUE should be an integer; found %s", args[0])
 			}
-			return p.Upvalue(p.InitMem(), stackSlotFromIndex(regV, int(n))), nil
+			return p.upvalue(p.initMem(), stackSlotFromIndex(regV, int(n))), nil
 		default:
 			return nil, fmt.Errorf("unhandled builtin %q", b.Name())
 		}
@@ -848,7 +848,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 
-		return p.DateToUnixEpoch(v[0]), nil
+		return p.dateToUnixEpoch(v[0]), nil
 
 	case expr.ToUnixMicro:
 		v, err := compileargs(p, args, compileTime)
@@ -856,7 +856,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 
-		return p.DateToUnixMicro(v[0]), nil
+		return p.dateToUnixMicro(v[0]), nil
 
 	case expr.GeoHash, expr.GeoTileES:
 		v, err := compileargs(p, args, compileNumber, compileNumber, compileNumber)
@@ -866,9 +866,9 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		var val *value
 		if fn == expr.GeoHash {
-			val = p.GeoHash(v[0], v[1], v[2])
+			val = p.geoHash(v[0], v[1], v[2])
 		} else {
-			val = p.GeoTileES(v[0], v[1], v[2])
+			val = p.geoTileES(v[0], v[1], v[2])
 		}
 		return val, nil
 
@@ -878,7 +878,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 
-		return p.GeoDistance(v[0], v[1], v[2], v[3]), nil
+		return p.geoDistance(v[0], v[1], v[2], v[3]), nil
 
 	case expr.GeoTileX, expr.GeoTileY:
 		v, err := compileargs(p, args, compileNumber, compileNumber)
@@ -888,9 +888,9 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		var val *value
 		if fn == expr.GeoTileX {
-			val = p.GeoTileX(v[0], v[1])
+			val = p.geoTileX(v[0], v[1])
 		} else {
-			val = p.GeoTileY(v[0], v[1])
+			val = p.geoTileY(v[0], v[1])
 		}
 
 		return val, nil
@@ -914,9 +914,9 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		var v *value
 		if fn == expr.Lower {
-			v = p.Lower(s)
+			v = p.lower(s)
 		} else {
-			v = p.Upper(s)
+			v = p.upper(s)
 		}
 		return v, nil
 
@@ -933,7 +933,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			}
 			items[i] = item
 		}
-		return p.MakeList(items...), nil
+		return p.makeList(items...), nil
 
 	case expr.MakeStruct:
 		if len(args) == 0 {
@@ -945,7 +945,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		}
 
 		structArgs := make([]*value, 0, len(args)*3+1)
-		structArgs = append(structArgs, p.ValidLanes())
+		structArgs = append(structArgs, p.validLanes())
 		for i := 0; i < len(args); i += 2 {
 			key, ok := args[i].(expr.String)
 			if !ok {
@@ -958,7 +958,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			}
 			structArgs = append(structArgs, p.ssa0imm(smakestructkey, string(key)), val, p.mask(val))
 		}
-		return p.MakeStruct(structArgs), nil
+		return p.makeStruct(structArgs), nil
 
 	case expr.TypeBit:
 		arg, err := compile(p, args[0])
@@ -966,10 +966,10 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 		if arg.op == skfalse {
-			return p.Constant(0), nil
+			return p.constant(0), nil
 		}
 		if arg.op == sliteral {
-			return p.Constant(expr.JSONTypeBits(ionType(arg.imm))), nil
+			return p.constant(expr.JSONTypeBits(ionType(arg.imm))), nil
 		}
 		k := p.mask(arg)
 		var n uint
@@ -985,7 +985,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		case stString:
 			n = expr.JSONTypeBits(ion.StringType)
 		}
-		v := p.Constant(uint64(n))
+		v := p.constant(uint64(n))
 		if k.op != sinit {
 			v = p.vk(v, k)
 		}
@@ -1070,9 +1070,9 @@ func compilepath(p *prog, top *value, rest expr.PathComponent) (*value, error) {
 	for r := rest; r != nil; r = r.Next() {
 		switch n := r.(type) {
 		case *expr.Dot:
-			top = p.Dot(n.Field, top)
+			top = p.dot(n.Field, top)
 		case *expr.LiteralIndex:
-			top = p.Index(top, n.Field)
+			top = p.index(top, n.Field)
 		default:
 			return nil, fmt.Errorf("unhandled path component %q", r)
 		}
@@ -1089,9 +1089,9 @@ func (p *prog) hashLookup(e expr.Node, lookup []ion.Datum) (*value, error) {
 	if len(lookup)&1 != 0 {
 		// there is an ELSE value, so we need
 		//   ret = hash_lookup(x)?:else
-		elseval := p.Constant(lookup[len(lookup)-1])
+		elseval := p.constant(lookup[len(lookup)-1])
 		fetched := p.ssaimm(shashlookup, lookup[:len(lookup)-1], h, p.mask(h))
-		blended := p.ssa3(sblendv, fetched, elseval, p.Not(fetched))
+		blended := p.ssa3(sblendv, fetched, elseval, p.not(fetched))
 		return p.vk(blended, p.mask(v)), nil
 	}
 	return p.ssaimm(shashlookup, lookup, h, p.mask(h)), nil
@@ -1197,14 +1197,14 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 	switch v.primary() {
 	case stValue:
 		if _, ok := e.(*expr.IsKey); ok {
-			return p.ssa2(sboxmask, v, p.ValidLanes()), nil
+			return p.ssa2(sboxmask, v, p.validLanes()), nil
 		}
 		// already got one
 		return v, nil
 	case stBool:
 		var nonmissing *value
 		if _, ok := e.(*expr.IsKey); ok {
-			nonmissing = p.ValidLanes() // all lanes are valid
+			nonmissing = p.validLanes() // all lanes are valid
 		} else {
 			nonmissing = p.notMissing(v)
 		}
@@ -1236,7 +1236,7 @@ func (p *prog) compileStore(mem *value, e expr.Node, slot stackslot, unsymbolize
 	if unsymbolize {
 		v = p.unsymbolized(v)
 	}
-	return p.Store(mem, v, slot)
+	return p.store(mem, v, slot)
 }
 
 // determine if the CASE expression c
@@ -1288,13 +1288,13 @@ func (p *prog) compileLogicalCase(c *expr.Case) (*value, error) {
 		// only merge to result if <WHEN> AND NOT <merged>,
 		// then update the set of already-merged lanes
 		live := p.nand(merged, when)
-		outk = p.Or(outk, p.And(live, then))
-		merged = p.Or(merged, when)
+		outk = p.or(outk, p.and(live, then))
+		merged = p.or(merged, when)
 	}
 	if final.op == skfalse {
 		return outk, nil
 	}
-	outk = p.Or(outk, p.And(final, p.nand(merged, final)))
+	outk = p.or(outk, p.and(final, p.nand(merged, final)))
 	return outk, nil
 }
 
@@ -1351,7 +1351,7 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 			return nil, err
 		}
 		if then.op == skfalse {
-			merged = p.Or(merged, when)
+			merged = p.or(merged, when)
 			continue
 		}
 		if then.op == sliteral {
@@ -1367,7 +1367,7 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 			case stValue, stInt, stFloat:
 				t, k := p.coercefp(then)
 				outnum = t
-				outk = p.And(k, when)
+				outk = p.and(k, when)
 
 			default:
 				return nil, fmt.Errorf("cannot convert %s in CASE to float", c.Limbs[i].Then)
@@ -1382,19 +1382,19 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 		}
 		// the set of lanes merged is now
 		// merged OR WHEN is true
-		merged = p.Or(merged, when)
+		merged = p.or(merged, when)
 		switch then.primary() {
 		case stInt:
 			then, _ = p.coercefp(then)
 			fallthrough
 		case stFloat:
-			outk = p.Or(outk, p.And(p.mask(then), shouldmerge))
+			outk = p.or(outk, p.and(p.mask(then), shouldmerge))
 			outnum = p.ssa3(sblendfloat, outnum, then, shouldmerge)
 		case stValue:
 			// we can perform blending by
 			// performing in-line conversion
 			f, k := p.blendv2fp(outnum, then, shouldmerge)
-			outk = p.Or(outk, k)
+			outk = p.or(outk, k)
 			outnum = f
 		default:
 			return nil, fmt.Errorf("cannot convert %s in CASE to float", c.Limbs[i].Then)
@@ -1440,15 +1440,15 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 			panic("inside compilePathCase: unexpected return type")
 		}
 		if v == nil {
-			k = p.And(when, p.mask(then))
+			k = p.and(when, p.mask(then))
 			v = then
 			merged = when
 			continue
 		}
 		shouldmerge := p.nand(merged, when)
 		v = p.ssa3(sblendv, v, then, shouldmerge)
-		k = p.Or(k, p.And(shouldmerge, p.mask(then)))
-		merged = p.Or(merged, when)
+		k = p.or(k, p.and(shouldmerge, p.mask(then)))
+		merged = p.or(merged, when)
 	}
 
 	if v == nil {
@@ -1469,7 +1469,7 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 	case expr.MissingType:
 		return p.ssa0(skfalse), nil
 	case expr.NullType:
-		return p.Constant(nil), nil
+		return p.constant(nil), nil
 	case expr.BoolType:
 		switch from.primary() {
 		case stBool:
@@ -1482,7 +1482,7 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			// we can convert booleans and numbers to bools
 			iszero := p.ssa2imm(sequalconst, from, p.mask(from), 0)
 			isfalse := p.ssa2(sisfalse, from, p.mask(from))
-			eqfalse := p.Or(iszero, isfalse)
+			eqfalse := p.or(iszero, isfalse)
 			oktype := p.checkTag(from, expr.BoolType|expr.NumericType)
 			// return (!(b == 0 || b == false) && (b is numeric))
 			ret := p.nand(eqfalse, oktype)

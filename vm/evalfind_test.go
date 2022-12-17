@@ -193,15 +193,15 @@ func checkScratch(t *testing.T, scratch []byte, expected []byte) {
 func symbolizeTest(findbc *bytecode, st *symtab, node expr.Node) error {
 	var program prog
 
-	program.Begin()
-	mem0 := program.InitMem()
+	program.begin()
+	mem0 := program.initMem()
 	var mem []*value
 	val, err := program.compileStore(mem0, node, 0, true)
 	if err != nil {
 		return err
 	}
 	mem = append(mem, val)
-	program.Return(program.MergeMem(mem...))
+	program.returnValue(program.mergeMem(mem...))
 	program.symbolize(st, &auxbindings{})
 	err = program.compile(findbc, st)
 	if err != nil {

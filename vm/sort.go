@@ -293,8 +293,8 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 	findbc.restoreScratch(st)
 	var program prog
 
-	program.Begin()
-	mem0 := program.InitMem()
+	program.begin()
+	mem0 := program.initMem()
 	var mem []*value
 	for i := range sort.columns {
 		val, err := program.compileStore(mem0, sort.columns[i].Node, stackSlotFromIndex(regV, i), true)
@@ -303,7 +303,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 		}
 		mem = append(mem, val)
 	}
-	program.Return(program.MergeMem(mem...))
+	program.returnValue(program.mergeMem(mem...))
 	program.symbolize(st, aux)
 	err := program.compile(findbc, st)
 	findbc.symtab = st.symrefs
@@ -619,7 +619,7 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 		s.symtabs = append(s.symtabs, ion.Symtab{})
 	}
 
-	if s.prefilter && s.filtprog.IsStale(st) {
+	if s.prefilter && s.filtprog.isStale(st) {
 		s.invalidatePrefilter()
 	} else {
 		s.filtbc.restoreScratch(st)
@@ -678,9 +678,9 @@ func (s *sortstateKtop) maybePrefilter() error {
 	}
 
 	p := &s.filtprog
-	p.Begin()
+	p.begin()
 
-	prevequal := p.ValidLanes() // all the previous columns are equal
+	prevequal := p.validLanes() // all the previous columns are equal
 	result := p.ssa0(skfalse)
 
 	for i := range s.parent.columns {
@@ -693,8 +693,8 @@ func (s *sortstateKtop) maybePrefilter() error {
 			typeset expr.TypeSet
 		)
 
-		cmplt = p.Less
-		cmpeq = p.Equals
+		cmplt = p.less
+		cmpeq = p.equals
 
 		switch t {
 		case ion.FloatType:
@@ -702,35 +702,35 @@ func (s *sortstateKtop) maybePrefilter() error {
 			if err != nil {
 				return err
 			}
-			imm = p.Constant(fp)
+			imm = p.constant(fp)
 			typeset = expr.NumericType
 		case ion.UintType:
 			u, _, err := ion.ReadUint(f)
 			if err != nil {
 				return err
 			}
-			imm = p.Constant(u)
+			imm = p.constant(u)
 			typeset = expr.NumericType
 		case ion.IntType:
 			i, _, err := ion.ReadInt(f)
 			if err != nil {
 				return err
 			}
-			imm = p.Constant(i)
+			imm = p.constant(i)
 			typeset = expr.NumericType
 		case ion.TimestampType:
 			d, _, err := ion.ReadTime(f)
 			if err != nil {
 				return err
 			}
-			imm = p.Constant(d)
+			imm = p.constant(d)
 			typeset = expr.TimeType
 		case ion.StringType:
 			s, _, err := ion.ReadString(f)
 			if err != nil {
 				return err
 			}
-			imm = p.Constant(s)
+			imm = p.constant(s)
 			typeset = expr.StringType | expr.SymbolType
 		default:
 			return nil
@@ -747,21 +747,21 @@ func (s *sortstateKtop) maybePrefilter() error {
 		var less *value
 		switch s.parent.columns[0].Direction {
 		case sorting.Ascending:
-			less = p.And(validtype, cmplt(v, imm))
+			less = p.and(validtype, cmplt(v, imm))
 		case sorting.Descending:
-			less = p.And(validtype, cmplt(imm, v))
+			less = p.and(validtype, cmplt(imm, v))
 		default:
 			return fmt.Errorf("unrecognized sort direction %d", s.parent.columns[0].Direction)
 		}
 
 		// v[i] == recent[i]
-		equal := p.And(validtype, cmpeq(v, imm))
+		equal := p.and(validtype, cmpeq(v, imm))
 
-		result = p.Or(result, p.And(prevequal, less)) // column is strictly less
-		prevequal = p.And(prevequal, equal)           // prevequal &= (col[i] == imm[i])
+		result = p.or(result, p.and(prevequal, less)) // column is strictly less
+		prevequal = p.and(prevequal, equal)           // prevequal &= (col[i] == imm[i])
 	} // for
 
-	p.Return(result)
+	p.returnValue(result)
 
 	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
 	err := p.compile(&s.filtbc, s.st)

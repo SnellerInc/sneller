@@ -673,7 +673,7 @@ func NewAggregate(bind Aggregation, rest QuerySink) (*Aggregate, error) {
 func (q *Aggregate) compileAggregate(agg Aggregation) error {
 	q.prog = new(prog)
 	p := q.prog
-	p.Begin()
+	p.begin()
 
 	mem := make([]*value, len(agg))
 	ops := make([]AggregateOp, len(agg))
@@ -695,13 +695,13 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			// COUNT(...) is the only aggregate op that doesn't accept numbers;
 			// additionally, it accepts '*', which has a special meaning in this context.
 			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
-				mem[i] = p.AggregateCount(p.ValidLanes(), filter, offset)
+				mem[i] = p.aggregateCount(p.validLanes(), filter, offset)
 			} else {
 				v, err := compile(p, agg[i].Expr.Inner)
 				if err != nil {
 					return err
 				}
-				mem[i] = p.AggregateCount(v, filter, offset)
+				mem[i] = p.aggregateCount(v, filter, offset)
 			}
 			ops[i].fn = AggregateOpCount
 
@@ -717,15 +717,15 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			ops[i].precision = agg[i].Expr.Precision
 			switch op {
 			case expr.OpApproxCountDistinct:
-				mem[i] = p.AggregateApproxCountDistinct(v, filter, offset, agg[i].Expr.Precision)
+				mem[i] = p.aggregateApproxCountDistinct(v, filter, offset, agg[i].Expr.Precision)
 				ops[i].fn = AggregateOpApproxCountDistinct
 
 			case expr.OpApproxCountDistinctPartial:
-				mem[i] = p.AggregateApproxCountDistinctPartial(v, filter, offset, agg[i].Expr.Precision)
+				mem[i] = p.aggregateApproxCountDistinctPartial(v, filter, offset, agg[i].Expr.Precision)
 				ops[i].fn = AggregateOpApproxCountDistinctPartial
 
 			case expr.OpApproxCountDistinctMerge:
-				mem[i] = p.AggregateApproxCountDistinctMerge(v, offset, agg[i].Expr.Precision)
+				mem[i] = p.aggregateApproxCountDistinctMerge(v, offset, agg[i].Expr.Precision)
 				ops[i].fn = AggregateOpApproxCountDistinctMerge
 			}
 
@@ -736,10 +736,10 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			}
 			switch op {
 			case expr.OpBoolAnd:
-				mem[i] = p.AggregateBoolAnd(argv, filter, offset)
+				mem[i] = p.aggregateBoolAnd(argv, filter, offset)
 				ops[i].fn = AggregateOpAndK
 			case expr.OpBoolOr:
-				mem[i] = p.AggregateBoolOr(argv, filter, offset)
+				mem[i] = p.aggregateBoolOr(argv, filter, offset)
 				ops[i].fn = AggregateOpOrK
 			}
 
@@ -751,53 +751,53 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 			var fp bool
 			switch op {
 			case expr.OpSum:
-				mem[i], fp = p.AggregateSum(argv, filter, offset)
+				mem[i], fp = p.aggregateSum(argv, filter, offset)
 				if fp {
 					ops[i].fn = AggregateOpSumF
 				} else {
 					ops[i].fn = AggregateOpSumI
 				}
 			case expr.OpSumInt:
-				mem[i] = p.AggregateSumInt(argv, filter, offset)
+				mem[i] = p.aggregateSumInt(argv, filter, offset)
 				ops[i].fn = AggregateOpSumI
 			case expr.OpSumCount:
-				mem[i] = p.AggregateSumInt(argv, filter, offset)
+				mem[i] = p.aggregateSumInt(argv, filter, offset)
 				ops[i].fn = AggregateOpSumC
 			case expr.OpAvg:
-				mem[i], fp = p.AggregateAvg(argv, filter, offset)
+				mem[i], fp = p.aggregateAvg(argv, filter, offset)
 				if fp {
 					ops[i].fn = AggregateOpAvgF
 				} else {
 					ops[i].fn = AggregateOpAvgI
 				}
 			case expr.OpMin:
-				mem[i], fp = p.AggregateMin(argv, filter, offset)
+				mem[i], fp = p.aggregateMin(argv, filter, offset)
 				if fp {
 					ops[i].fn = AggregateOpMinF
 				} else {
 					ops[i].fn = AggregateOpMinI
 				}
 			case expr.OpMax:
-				mem[i], fp = p.AggregateMax(argv, filter, offset)
+				mem[i], fp = p.aggregateMax(argv, filter, offset)
 				if fp {
 					ops[i].fn = AggregateOpMaxF
 				} else {
 					ops[i].fn = AggregateOpMaxI
 				}
 			case expr.OpBitAnd:
-				mem[i] = p.AggregateAnd(argv, filter, offset)
+				mem[i] = p.aggregateAnd(argv, filter, offset)
 				ops[i].fn = AggregateOpAndI
 			case expr.OpBitOr:
-				mem[i] = p.AggregateOr(argv, filter, offset)
+				mem[i] = p.aggregateOr(argv, filter, offset)
 				ops[i].fn = AggregateOpOrI
 			case expr.OpBitXor:
-				mem[i] = p.AggregateXor(argv, filter, offset)
+				mem[i] = p.aggregateXor(argv, filter, offset)
 				ops[i].fn = AggregateOpXorI
 			case expr.OpEarliest:
-				mem[i] = p.AggregateEarliest(argv, filter, offset)
+				mem[i] = p.aggregateEarliest(argv, filter, offset)
 				ops[i].fn = AggregateOpMinTS
 			case expr.OpLatest:
-				mem[i] = p.AggregateLatest(argv, filter, offset)
+				mem[i] = p.aggregateLatest(argv, filter, offset)
 				ops[i].fn = AggregateOpMaxTS
 			default:
 				return fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
@@ -818,6 +818,6 @@ func (q *Aggregate) compileAggregate(agg Aggregation) error {
 	q.aggregateOps = ops
 	q.initialData = initialData
 
-	p.Return(p.MergeMem(mem...))
+	p.returnValue(p.mergeMem(mem...))
 	return nil
 }
