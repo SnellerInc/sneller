@@ -288,17 +288,12 @@ outer:
 				child = s
 				continue outer
 			}
-			agr := b.get(p)
-			if agr == nil {
-				child = s
-				continue outer
-			}
 			matched := false
 			for j := range ag.Agg {
 				if agg2bind[j] != -1 {
 					continue
 				}
-				if agr.Equals(ag.Agg[j].Expr) {
+				if ag.Agg[j].Result == p.First {
 					agg2bind[j] = i
 					matched = true
 					break
@@ -311,7 +306,7 @@ outer:
 				if agg2bind[len(ag.Agg)+j] != -1 {
 					continue
 				}
-				if agr.Equals(ag.GroupBy[j].Expr) {
+				if ag.GroupBy[j].Result() == p.First {
 					agg2bind[len(ag.Agg)+j] = i
 					matched = true
 					break

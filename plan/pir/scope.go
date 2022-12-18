@@ -62,15 +62,6 @@ func (b *Trace) resolve(p *expr.Path) (Step, expr.Node) {
 	return info.origin, info.node
 }
 
-// get returns the expression that produces
-// the binding references by p, or nil if the
-// path expression does not reference an explicit
-// binding.
-func (b *Trace) get(p *expr.Path) expr.Node {
-	_, node := b.resolve(p)
-	return node
-}
-
 // origin returns the Step that produces
 // the binding referenced by p, or nil if
 // the path expression has an uknown origin.
