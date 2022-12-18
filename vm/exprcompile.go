@@ -747,20 +747,15 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		return p.contains(lhs, string(s), fn == expr.Contains), nil
 
 	case expr.EqualsCI:
-		v, err := compileargs(p, args, compileString, compileString)
+		v, err := compileargs(p, args, compileString, literalString)
 		if err != nil {
 			return nil, err
 		}
 
-		_, ok := args[1].(expr.String)
-		if !ok {
-			return nil, fmt.Errorf("second argument should be a literal string; found %s with type %T", args[1], args[1])
-		}
-
 		lhs := v[0]
-		rhs := v[1]
+		s := args[1].(expr.String)
 
-		return p.equalStr(lhs, rhs, false), nil
+		return p.equalsStr(lhs, string(s), false), nil
 
 	case expr.EqualsFuzzy, expr.EqualsFuzzyUnicode:
 		val, err := compileargs(p, args, compileString, literalString, compileNumber)

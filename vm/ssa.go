@@ -144,9 +144,14 @@ const (
 	supperstr
 
 	// raw string comparison
-	sStrCmpEqCs              // Ascii string compare equality case-sensitive
-	sStrCmpEqCi              // Ascii string compare equality case-insensitive
-	sStrCmpEqUTF8Ci          // UTF-8 string compare equality case-insensitive
+	sStrCmpEqCs     // Ascii string compare equality case-sensitive
+	sStrCmpEqCi     // Ascii string compare equality case-insensitive
+	sStrCmpEqUTF8Ci // UTF-8 string compare equality case-insensitive
+
+	sEqPatternCs     // String equals pattern case-sensitive
+	sEqPatternCi     // String equals pattern case-insensitive
+	sEqPatternUTF8Ci // String equals pattern case-insensitive
+
 	sCmpFuzzyA3              // Ascii string fuzzy equality: Damerau–Levenshtein up to provided number of operations
 	sCmpFuzzyUnicodeA3       // unicode string fuzzy equality: Damerau–Levenshtein up to provided number of operations
 	sHasSubstrFuzzyA3        // Ascii string contains with fuzzy string compare
@@ -781,38 +786,48 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opslower)},
 	supperstr: {text: "upper.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opsupper)},
 
-	sStrCmpEqCs:              {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
-	sStrCmpEqCi:              {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
-	sStrCmpEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
-	sCmpFuzzyA3:              {text: "cmp_str_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyA3, emit: emitStrEditStack1x1},
-	sCmpFuzzyUnicodeA3:       {text: "cmp_str_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
+	// equalStr
+	sStrCmpEqCs:     {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
+	sStrCmpEqCi:     {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
+	sStrCmpEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
+
+	// equalPattern
+	sEqPatternCs:     {text: "eq_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternCs},
+	sEqPatternCi:     {text: "eq_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternCi},
+	sEqPatternUTF8Ci: {text: "eq_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternUTF8Ci},
+
+	// equalStrFuzzy
+	sCmpFuzzyA3:        {text: "cmp_str_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyA3, emit: emitStrEditStack1x1},
+	sCmpFuzzyUnicodeA3: {text: "cmp_str_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
+
+	// hasSubstrFuzzy
 	sHasSubstrFuzzyA3:        {text: "has_substr_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyA3, emit: emitStrEditStack1x1},
 	sHasSubstrFuzzyUnicodeA3: {text: "has_substr_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
+
+	// hasPrefix
+	sStrContainsPrefixCs:     {text: "contains_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
+	sStrContainsPrefixCi:     {text: "contains_prefix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCi},
+	sStrContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixUTF8Ci},
+
+	// hasSuffix
+	sStrContainsSuffixCs:     {text: "contains_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
+	sStrContainsSuffixCi:     {text: "contains_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
+	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
+
+	// hasSubstr
+	sStrContainsSubstrCs:     {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
+	sStrContainsSubstrCi:     {text: "contains_substr_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
+	sStrContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrUTF8Ci},
+
+	// hasPattern
+	sStrContainsPatternCs:     {text: "contains_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCs},
+	sStrContainsPatternCi:     {text: "contains_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCi},
+	sStrContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternUTF8Ci},
 
 	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsLeft},
 	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsRight},
 	sStrTrimCharLeft:  {text: "trim_char_left", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charLeft},
 	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charRight},
-
-	// s, k = contains_prefix_cs s, k, $const
-	sStrContainsPrefixCs:     {text: "contains_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
-	sStrContainsPrefixCi:     {text: "contains_prefix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCi},
-	sStrContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixUTF8Ci},
-
-	// s, k = contains_suffix_cs s, k, $const
-	sStrContainsSuffixCs:     {text: "contains_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
-	sStrContainsSuffixCi:     {text: "contains_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
-	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
-
-	// s, k = contains_substr_cs s, k, $const
-	sStrContainsSubstrCs:     {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
-	sStrContainsSubstrCi:     {text: "contains_substr_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
-	sStrContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrUTF8Ci},
-
-	// s, k = contains_pattern_cs s, k, $const
-	sStrContainsPatternCs:     {text: "contains_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCs},
-	sStrContainsPatternCi:     {text: "contains_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCi},
-	sStrContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternUTF8Ci},
 
 	// ip matching
 	sIsSubnetOfIP4: {text: "is_subnet_of_ip4", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opIsSubnetOfIP4},
@@ -2028,43 +2043,6 @@ func (p *prog) equals(left, right *value) *value {
 	}
 }
 
-// EqualStr computes equality between strings
-func (p *prog) equalStr(left, right *value, caseSensitive bool) *value {
-	if (left.op == sliteral) && (right.op == sliteral) {
-		if caseSensitive {
-			return p.constant(left.imm == right.imm)
-		}
-		leftStr, _ := left.imm.(string)
-		rightStr, _ := right.imm.(string)
-		return p.constant(strings.EqualFold(leftStr, rightStr))
-	}
-
-	if left.op == sliteral { // swap literal to the right
-		left, right = right, left
-	}
-
-	if right.op == sliteral { // ideally, we can compare against an immediate
-		needle, _ := right.imm.(string)
-		if !caseSensitive && !stringext.HasCaseSensitiveChar(needle) {
-			// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
-			caseSensitive = true
-		}
-		if caseSensitive {
-			enc := p.constant(stringext.EncodeEqualStringCS(needle)).imm
-			return p.ssa2imm(sStrCmpEqCs, left, left, enc)
-		}
-		if stringext.HasNtnString(needle) { // needle has non-trivial normalization
-			enc := p.constant(stringext.EncodeEqualStringUTF8CI(needle)).imm
-			return p.ssa2imm(sStrCmpEqUTF8Ci, left, left, enc)
-		}
-		enc := p.constant(stringext.EncodeEqualStringCI(needle)).imm
-		return p.ssa2imm(sStrCmpEqCi, left, left, enc)
-	}
-	v := p.val()
-	v.errf("not yet supported comparison %v", ssainfo[left.op].rettype)
-	return v
-}
-
 // CharLength returns the number of unicode code-points in v
 func (p *prog) charLength(v *value) *value {
 	v = p.toStr(v)
@@ -2459,8 +2437,48 @@ func (p *prog) trimChar(str *value, chars string, trimtype trimType) *value {
 	return str
 }
 
-// HasPrefix returns true when str contains the provided prefix; false otherwise
-func (p *prog) hasPrefix(str *value, prefix string, caseSensitive bool) *value {
+// EqualsStr returns true when needle equals the provided string; false otherwise
+func (p *prog) equalsStr(str *value, needle stringext.Needle, caseSensitive bool) *value {
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(needle) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
+	if caseSensitive {
+		enc := encodeNeedle(needle, sStrCmpEqCs)
+		return p.ssa2imm(sStrCmpEqCs, str, str, enc)
+	}
+	if stringext.HasNtnString(needle) { // needle has non-trivial normalization
+		enc := encodeNeedle(needle, sStrCmpEqUTF8Ci)
+		return p.ssa2imm(sStrCmpEqUTF8Ci, str, str, enc)
+	}
+	enc := encodeNeedle(needle, sStrCmpEqCi)
+	return p.ssa2imm(sStrCmpEqCi, str, str, enc)
+}
+
+// EqualsPattern returns true when pattern equals the provided string; false otherwise
+func (p *prog) equalsPattern(str *value, pattern *stringext.Pattern, caseSensitive bool) *value {
+	if !pattern.HasWildcard {
+		return p.equalsStr(str, pattern.Needle, caseSensitive)
+	}
+	str = p.toStr(str)
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern.Needle) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
+	if caseSensitive {
+		enc := encodePattern(pattern, sEqPatternCs)
+		return p.ssa2imm(sEqPatternCs, str, str, enc)
+	}
+	if stringext.HasNtnString(pattern.Needle) { // needle has non-trivial normalization
+		enc := encodePattern(pattern, sEqPatternUTF8Ci)
+		return p.ssa2imm(sEqPatternUTF8Ci, str, str, enc)
+	}
+	enc := encodePattern(pattern, sEqPatternCi)
+	return p.ssa2imm(sEqPatternCi, str, str, enc)
+}
+
+// HasPrefix returns true when str has the provided prefix; false otherwise
+func (p *prog) hasPrefix(str *value, prefix stringext.Needle, caseSensitive bool) *value {
 	str = p.toStr(str)
 	if prefix == "" {
 		return str
@@ -2470,19 +2488,38 @@ func (p *prog) hasPrefix(str *value, prefix string, caseSensitive bool) *value {
 		caseSensitive = true
 	}
 	if caseSensitive {
-		enc := p.constant(stringext.EncodeContainsPrefixCS(prefix)).imm
+		enc := encodeNeedle(prefix, sStrContainsPrefixCs)
 		return p.ssa2imm(sStrContainsPrefixCs, str, p.mask(str), enc)
 	}
 	if stringext.HasNtnString(prefix) { // prefix has non-trivial normalization
-		enc := p.constant(stringext.EncodeContainsPrefixUTF8CI(prefix)).imm
+		enc := encodeNeedle(prefix, sStrContainsPrefixUTF8Ci)
 		return p.ssa2imm(sStrContainsPrefixUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := p.constant(stringext.EncodeContainsPrefixCI(prefix)).imm
+	enc := encodeNeedle(prefix, sStrContainsPrefixCi)
 	return p.ssa2imm(sStrContainsPrefixCi, str, p.mask(str), enc)
 }
 
-// HasSuffix returns true when str contains the provided suffix; false otherwise
-func (p *prog) hasSuffix(str *value, suffix string, caseSensitive bool) *value {
+// HasPrefixPattern returns true when str has the provided pattern as prefix; false otherwise
+func (p *prog) hasPrefixPattern(str *value, pattern *stringext.Pattern, caseSensitive bool) *value {
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern.Needle) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
+	// split the pattern based on the wildcard and issue skip and prefix calls.
+	needles, wildcards := pattern.SplitWC()
+	for i, needle := range needles {
+		wildcard := wildcards[i]
+		if wildcard[0] { // NOTE: elements of slice wildcard are always either only true or false
+			str = p.skipCharLeftConst(str, len(wildcard))
+		} else {
+			str = p.hasPrefix(str, needle, caseSensitive)
+		}
+	}
+	return str
+}
+
+// HasSuffix returns true when str has the provided suffix; false otherwise
+func (p *prog) hasSuffix(str *value, suffix stringext.Needle, caseSensitive bool) *value {
 	str = p.toStr(str)
 	if suffix == "" {
 		return str
@@ -2492,22 +2529,41 @@ func (p *prog) hasSuffix(str *value, suffix string, caseSensitive bool) *value {
 		caseSensitive = true
 	}
 	if caseSensitive {
-		enc := p.constant(stringext.EncodeContainsSuffixCS(suffix)).imm
+		enc := encodeNeedle(suffix, sStrContainsSuffixCs)
 		return p.ssa2imm(sStrContainsSuffixCs, str, p.mask(str), enc)
 	}
 	if stringext.HasNtnString(suffix) { // suffix has non-trivial normalization
-		enc := p.constant(stringext.EncodeContainsSuffixUTF8CI(suffix)).imm
+		enc := encodeNeedle(suffix, sStrContainsSuffixUTF8Ci)
 		return p.ssa2imm(sStrContainsSuffixUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := p.constant(stringext.EncodeContainsSuffixCI(suffix)).imm
+	enc := encodeNeedle(suffix, sStrContainsSuffixCi)
 	return p.ssa2imm(sStrContainsSuffixCi, str, p.mask(str), enc)
+}
+
+// hasSuffixPattern returns true when str has the provided pattern as suffix; false otherwise
+func (p *prog) hasSuffixPattern(str *value, pattern *stringext.Pattern, caseSensitive bool) *value {
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern.Needle) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
+	// split the pattern based on the wildcard and issue skip and suffix calls.
+	needles, wildcards := pattern.SplitWC()
+	for i := len(needles) - 1; i >= 0; i-- {
+		wildcard := wildcards[i]
+		if wildcard[0] { // NOTE: elements of slice wildcard are always either only true or false
+			str = p.skipCharRightConst(str, len(wildcard))
+		} else {
+			str = p.hasSuffix(str, needles[i], caseSensitive)
+		}
+	}
+	return str
 }
 
 // Contains returns whether the given value
 // is a string containing 'needle' as a substring.
 // (The return value is always 'true' if 'str' is
 // a string and 'needle' is the empty string.)
-func (p *prog) contains(str *value, needle string, caseSensitive bool) *value {
+func (p *prog) contains(str *value, needle stringext.Needle, caseSensitive bool) *value {
 	// n.b. the 'contains' code doesn't actually
 	// handle the empty string; just return whether
 	// this value is a string
@@ -2520,15 +2576,39 @@ func (p *prog) contains(str *value, needle string, caseSensitive bool) *value {
 		caseSensitive = true
 	}
 	if caseSensitive {
-		enc := p.constant(stringext.EncodeContainsSubstrCS(needle)).imm
+		enc := encodeNeedle(needle, sStrContainsSubstrCs)
 		return p.ssa2imm(sStrContainsSubstrCs, str, p.mask(str), enc)
 	}
 	if stringext.HasNtnString(needle) { // needle has non-trivial normalization
-		enc := p.constant(stringext.EncodeContainsSubstrUTF8CI(needle)).imm
+		enc := encodeNeedle(needle, sStrContainsSubstrUTF8Ci)
 		return p.ssa2imm(sStrContainsSubstrUTF8Ci, str, p.mask(str), enc)
 	}
-	enc := p.constant(stringext.EncodeContainsSubstrCI(needle)).imm
+	enc := encodeNeedle(needle, sStrContainsSubstrCi)
 	return p.ssa2imm(sStrContainsSubstrCi, str, p.mask(str), enc)
+}
+
+// containsPattern returns whether the given value
+// is a string containing a matching substring
+// that matches 'pattern'.
+func (p *prog) containsPattern(str *value, pattern *stringext.Pattern, caseSensitive bool) *value {
+	if !pattern.HasWildcard {
+		return p.contains(str, pattern.Needle, caseSensitive)
+	}
+	str = p.toStr(str)
+	if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern.Needle) {
+		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
+		caseSensitive = true
+	}
+	if caseSensitive {
+		enc := encodePattern(pattern, sStrContainsPatternCs)
+		return p.ssa2imm(sStrContainsPatternCs, str, p.mask(str), enc)
+	}
+	if stringext.HasNtnString(pattern.Needle) { // needle has non-trivial normalization
+		enc := encodePattern(pattern, sStrContainsPatternUTF8Ci)
+		return p.ssa2imm(sStrContainsPatternUTF8Ci, str, p.mask(str), enc)
+	}
+	enc := encodePattern(pattern, sStrContainsPatternCi)
+	return p.ssa2imm(sStrContainsPatternCi, str, p.mask(str), enc)
 }
 
 // IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
@@ -2572,173 +2652,50 @@ func (p *prog) skipCharRightConst(str *value, nChars int) *value {
 // unicode points, and the '_' character will
 // match exactly one unicode point.
 func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *value {
-	return p.likeInternal(str, expr, '_', '%', escape, caseSensitive)
-}
-
-// likeInternal matches a 'LIKE' pattern using any single character 'wc' and
-// any string of zero or more characters 'ks', and given the provided escape rune
-func (p *prog) likeInternal(str *value, expr string, wc, ks, escape rune, caseSensitive bool) *value {
-
-	// encodes the appropriate immediate for a pattern-matching operation
-	patMatch := func(pattern string) *value {
-		if len(pattern) == 0 {
-			return str
-		}
-		patternRune := []rune(pattern)
-
-		// we can't pass a wildcard as the first
-		// or last segment to the assembly code;
-		// that needs to be handled at a higher level
-		if (stringext.IndexRuneEscape(patternRune, wc, escape) == 0) ||
-			(stringext.LastIndexRuneEscape(patternRune, wc, escape) == len(patternRune)-1) {
-			panic("internal error: bad pattern-matching string")
-		}
-		// remove the escape character
-		pattern = strings.ReplaceAll(pattern, string(escape), "")
-		patternRune = []rune(pattern)
-		wildcard := make([]bool, len(patternRune))
-		hasWildCard := false
-
-		for i := 0; i < len(patternRune); i++ {
-			if patternRune[i] == wc {
-				wildcard[i] = true
-				hasWildCard = true
-			}
-		}
-		if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern) {
-			// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
-			caseSensitive = true
-		}
-		if !hasWildCard {
-			return p.contains(str, pattern, caseSensitive)
-		}
-		if caseSensitive {
-			enc := p.constant(stringext.EncodeContainsPatternCS(pattern, wildcard)).imm
-			return p.ssa2imm(sStrContainsPatternCs, str, p.mask(str), enc)
-		}
-		if stringext.HasNtnString(pattern) { // pattern has non-trivial normalization
-			enc := p.constant(stringext.EncodeContainsPatternUTF8CI(pattern, wildcard)).imm
-			return p.ssa2imm(sStrContainsPatternUTF8Ci, str, p.mask(str), enc)
-		}
-		enc := p.constant(stringext.EncodeContainsPatternCI(pattern, wildcard)).imm
-		return p.ssa2imm(sStrContainsPatternCi, str, p.mask(str), enc)
-	}
-
-	// matches '<start>*<middle0>...*<middleN>*<end>'
-	pattern := func(startStr string, middle []string, endStr string) *value {
-		start := []rune(startStr)
-		end := []rune(endStr)
-
-		// match pattern anchored at start;
-		// match forwards by repeatedly trimming literal prefixes or single characters with wildcard
-		for len(start) > 0 {
-			// skip all leading code-points with wildcard
-			nRunesToSkip := 0
-			for (len(start) > 0) && (start[0] == wc) {
-				start = start[1:] // skip the first code-point
-				nRunesToSkip++
-			}
-			str = p.skipCharLeftConst(str, nRunesToSkip)
-
-			// if anything remaining, match with prefix
-			if len(start) > 0 {
-				qi := stringext.IndexRuneEscape(start, wc, escape)
-				if qi == -1 {
-					qi = len(start)
-				}
-				prefix := string(start[:qi])
-				if escape != stringext.NoEscape {
-					prefix = strings.ReplaceAll(prefix, string(escape), "")
-				}
-				str = p.hasPrefix(str, prefix, caseSensitive)
-				start = start[qi:]
-			}
-		}
-		// match pattern anchored at end;
-		// we match this pattern backwards by trimming matching suffixes off of the string or single characters with '?'
-		for len(end) > 0 {
-			// skip all trailing code-points with '?'
-			nCharsToSkip := 0
-			for (len(end) > 0) && (stringext.LastIndexRuneEscape(end, wc, escape) == len(end)-1) {
-				end = end[:len(end)-1] // skip the last code-point
-				nCharsToSkip++
-			}
-			str = p.skipCharRightConst(str, nCharsToSkip)
-
-			// if anything remaining, match with suffix
-			if len(end) > 0 {
-				var seg []rune
-				si := stringext.LastIndexRuneEscape(end, wc, escape)
-				if si == -1 {
-					seg = end
-					end = make([]rune, 0)
-				} else {
-					seg = end[si+1:]
-					end = end[:si+1]
-				}
-				suffix := string(seg)
-				if escape != stringext.NoEscape {
-					suffix = strings.ReplaceAll(suffix, string(escape), "")
-				}
-				str = p.hasSuffix(str, suffix, caseSensitive)
-				end = end[:si+1]
-			}
-		}
-
-		for i := range middle {
-			// any '?' at the beginning of an un-anchored match simply becomes a 'skipchar'
-			mid := []rune(middle[i])
-
-			nCharsToSkip := 0
-			for len(mid) > 0 && mid[0] == wc {
-				mid = mid[1:]
-				nCharsToSkip++
-			}
-			str = p.skipCharLeftConst(str, nCharsToSkip)
-
-			// similarly, and '?' at the end of an unanchored match becomes a 'skipchar' after the inner match
-			nCharsToChomp := 0
-			for stringext.LastIndexRuneEscape(mid, wc, escape) == len(mid)-1 {
-				mid = mid[:len(mid)-1]
-				nCharsToChomp++
-			}
-
-			// do the difficult matching
-			if len(mid) > 0 {
-				str = patMatch(string(mid))
-			}
-			str = p.skipCharLeftConst(str, nCharsToChomp)
-		}
-		return str
-	}
+	const wc = '_' // wildcard character
+	const ks = '%'
 
 	str = p.toStr(str)
 	if !caseSensitive { // Bytecode for case-insensitive comparing expects that needles and patterns are in normalized (UPPER) case
 		expr = stringext.NormalizeString(expr)
 	}
-	exprRune := []rune(expr)
+	likeSegments := stringext.SimplifyLikeExpr(expr, wc, ks, escape)
 
-	lefti := stringext.IndexRuneEscape(exprRune, ks, escape)
-	if lefti == -1 {
-		return pattern(expr, nil, "")
-	}
-	left := exprRune[:lefti]
-	exprRune = exprRune[lefti+1:]
-
-	var middle []string
-
-	for len(exprRune) > 0 {
-		runeIdx := stringext.IndexRuneEscape(exprRune, ks, escape)
-		if runeIdx == -1 {
-			return pattern(string(left), middle, string(exprRune))
-		}
-		middlePat := exprRune[:runeIdx]
-		exprRune = exprRune[runeIdx+1:]
-		if len(middlePat) > 0 {
-			middle = append(middle, string(middlePat))
+	// special situation when expr does not contain ks '%', the equals pattern applies
+	if len(likeSegments) == 2 {
+		first := likeSegments[0]
+		second := likeSegments[1]
+		if (first.SkipMax == first.SkipMin) && (second.SkipMax == second.SkipMin) {
+			str = p.skipCharLeftConst(str, first.SkipMax)
+			str = p.skipCharRightConst(str, second.SkipMax)
+			return p.equalsPattern(str, &first.Pattern, caseSensitive)
 		}
 	}
-	return pattern(string(left), middle, "")
+
+	// if the first likeSegment is a prefix
+	first := likeSegments[0]
+	if first.SkipMax == first.SkipMin {
+		str = p.skipCharLeftConst(str, first.SkipMax)
+		str = p.hasPrefixPattern(str, &first.Pattern, caseSensitive)
+		likeSegments = likeSegments[1:] // remove the first segment
+	}
+
+	// if the last likeElement is a suffix
+	nSegments := len(likeSegments)
+	last := likeSegments[nSegments-1]
+	if (last.SkipMax != -1) && (last.Pattern.Needle == "") && (nSegments > 1) {
+		pattern := likeSegments[nSegments-2].Pattern
+		str = p.skipCharRightConst(str, last.SkipMax)
+		str = p.hasSuffixPattern(str, &pattern, caseSensitive)
+		likeSegments = likeSegments[:nSegments-2] // remove the last two segments
+	}
+
+	// the remaining likeElements are `contains patterns'
+	for _, seg := range likeSegments {
+		str = p.skipCharLeftConst(str, seg.SkipMin)
+		str = p.containsPattern(str, &seg.Pattern, caseSensitive)
+	}
+	return str
 }
 
 // RegexMatch matches 'str' as a string against regex
@@ -2778,30 +2735,30 @@ func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) equalsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+func (p *prog) equalsFuzzy(str *value, needle stringext.Needle, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceInt(threshold)
 	mask := p.and(str, thresholdMask)
 	if ascii {
-		needleEnc := p.constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
-		return p.ssa3imm(sCmpFuzzyA3, str, thresholdInt, mask, needleEnc)
+		enc := encodeNeedle(needle, sCmpFuzzyA3)
+		return p.ssa3imm(sCmpFuzzyA3, str, thresholdInt, mask, enc)
 	}
-	needleEnc := p.constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
-	return p.ssa3imm(sCmpFuzzyUnicodeA3, str, thresholdInt, mask, needleEnc)
+	enc := encodeNeedle(needle, sCmpFuzzyUnicodeA3)
+	return p.ssa3imm(sCmpFuzzyUnicodeA3, str, thresholdInt, mask, enc)
 }
 
 // ContainsFuzzy does a fuzzy string contains of needle in 'str'.
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) containsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+func (p *prog) containsFuzzy(str *value, needle stringext.Needle, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceInt(threshold)
 	mask := p.and(str, thresholdMask)
 	if ascii {
-		needleEnc := p.constant(stringext.EncodeFuzzyNeedleASCII(needle)).imm
-		return p.ssa3imm(sHasSubstrFuzzyA3, str, thresholdInt, mask, needleEnc)
+		enc := encodeNeedle(needle, sHasSubstrFuzzyA3)
+		return p.ssa3imm(sHasSubstrFuzzyA3, str, thresholdInt, mask, enc)
 	}
-	needleEnc := p.constant(stringext.EncodeFuzzyNeedleUnicode(needle)).imm
-	return p.ssa3imm(sHasSubstrFuzzyUnicodeA3, str, thresholdInt, mask, needleEnc)
+	enc := encodeNeedle(needle, sHasSubstrFuzzyUnicodeA3)
+	return p.ssa3imm(sHasSubstrFuzzyUnicodeA3, str, thresholdInt, mask, enc)
 }
 
 type compareOp uint8
@@ -6347,4 +6304,60 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 	}
 	p.symbolized = true
 	return nil
+}
+
+func encodeNeedle(needle stringext.Needle, op ssaop) string {
+	return encodeNeedleOp(needle, ssainfo[op].bc)
+}
+
+func encodeNeedleOp(needle stringext.Needle, op bcop) string {
+	switch op {
+	case opCmpStrEqCs:
+		return stringext.EncodeEqualStringCS(needle)
+	case opCmpStrEqCi:
+		return stringext.EncodeEqualStringCI(needle)
+	case opCmpStrEqUTF8Ci:
+		return stringext.EncodeEqualStringUTF8CI(needle)
+	case opContainsPrefixCs:
+		return stringext.EncodeContainsPrefixCS(needle)
+	case opContainsPrefixCi:
+		return stringext.EncodeContainsPrefixCI(needle)
+	case opContainsPrefixUTF8Ci:
+		return stringext.EncodeContainsPrefixUTF8CI(needle)
+	case opContainsSuffixCs:
+		return stringext.EncodeContainsSuffixCS(needle)
+	case opContainsSuffixCi:
+		return stringext.EncodeContainsSuffixCI(needle)
+	case opContainsSuffixUTF8Ci:
+		return stringext.EncodeContainsSuffixUTF8CI(needle)
+	case opContainsSubstrCs:
+		return stringext.EncodeContainsSubstrCS(needle)
+	case opContainsSubstrCi:
+		return stringext.EncodeContainsSubstrCI(needle)
+	case opContainsSubstrUTF8Ci:
+		return stringext.EncodeContainsSubstrUTF8CI(needle)
+	case opCmpStrFuzzyA3, opHasSubstrFuzzyA3:
+		return stringext.EncodeFuzzyNeedleASCII(needle)
+	case opCmpStrFuzzyUnicodeA3, opHasSubstrFuzzyUnicodeA3:
+		return stringext.EncodeFuzzyNeedleUnicode(needle)
+	default:
+		panic("unsupported op")
+	}
+}
+
+func encodePattern(pattern *stringext.Pattern, op ssaop) string {
+	return encodePatternOp(pattern, ssainfo[op].bc)
+}
+
+func encodePatternOp(pattern *stringext.Pattern, op bcop) string {
+	switch op {
+	case opEqPatternCs, opContainsPatternCs:
+		return stringext.EncodeContainsPatternCS(pattern)
+	case opEqPatternCi, opContainsPatternCi:
+		return stringext.EncodeContainsPatternCI(pattern)
+	case opEqPatternUTF8Ci, opContainsPatternUTF8Ci:
+		return stringext.EncodeContainsPatternUTF8CI(pattern)
+	default:
+		panic("unsupported op")
+	}
 }

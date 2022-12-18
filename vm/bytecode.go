@@ -509,9 +509,14 @@ var opinfo = [_maxbcop]bcopinfo{
 	opobjectsize: {text: "objectsize", flags: bcReadWriteK | bcWriteS | bcReadV},
 
 	// string comparing operations
-	opCmpStrEqCs:              {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
-	opCmpStrEqCi:              {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
-	opCmpStrEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqCs:     {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqCi:     {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+	opCmpStrEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+
+	opEqPatternCs:     {text: "eq_pattern_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opEqPatternCi:     {text: "eq_pattern_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+	opEqPatternUTF8Ci: {text: "eq_pattern_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+
 	opCmpStrFuzzyA3:           {text: "cmp_str_fuzzy_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
 	opCmpStrFuzzyUnicodeA3:    {text: "cmp_str_fuzzy_unicode_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
 	opHasSubstrFuzzyA3:        {text: "contains_fuzzy_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},

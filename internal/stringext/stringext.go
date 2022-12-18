@@ -18,8 +18,11 @@ package stringext
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/exp/slices"
 )
 
 // Needle string type to distinguish from the Data string type
@@ -814,7 +817,7 @@ func HasNtnRune(r rune) bool {
 }
 
 // HasNtnString return true when the provided string contains a non-trivial normalization; false otherwise
-func HasNtnString(str string) bool {
+func HasNtnString(str Needle) bool {
 	for _, r := range str {
 		if HasNtnRune(r) {
 			return true
@@ -824,7 +827,7 @@ func HasNtnString(str string) bool {
 }
 
 // HasCaseSensitiveChar returns true when the provided string contains a case-sensitive char
-func HasCaseSensitiveChar(str string) bool {
+func HasCaseSensitiveChar(str Needle) bool {
 	for _, r := range str {
 		if r != unicode.SimpleFold(r) {
 			return true
@@ -958,13 +961,13 @@ func EncodeContainsSubstrUTF8CI(needle string) string {
 }
 
 // EncodeContainsPatternCS encodes the provided string for usage with bcContainsPatternCs
-func EncodeContainsPatternCS(needle string, wildcard []bool) string {
-	result := to4ByteArray(len(needle)) // add number of bytes of the needle
-	result = append(result, []byte(needle)...)
-	needleRune := []rune(needle)
+func EncodeContainsPatternCS(pattern *Pattern) string {
+	result := to4ByteArray(len(pattern.Needle)) // add number of bytes of the needle
+	result = append(result, []byte(pattern.Needle)...)
+	needleRune := []rune(pattern.Needle)
 	for i := 0; i < len(needleRune); i++ {
 		m := byte(0)
-		if wildcard[i] {
+		if pattern.Wildcard[i] {
 			m = 0xFF
 		}
 		for j := 0; j < utf8.RuneLen(needleRune[i]); j++ {
@@ -975,19 +978,20 @@ func EncodeContainsPatternCS(needle string, wildcard []bool) string {
 }
 
 // EncodeContainsPatternCI encodes the provided string for usage with bcContainsPatternCi
-func EncodeContainsPatternCI(needle string, wildcard []bool) string {
-	return EncodeContainsPatternCS(NormalizeStringASCIIOnlyString(needle), wildcard)
+func EncodeContainsPatternCI(pattern *Pattern) string {
+	pattern.Needle = NormalizeStringASCIIOnlyString(pattern.Needle)
+	return EncodeContainsPatternCS(pattern)
 }
 
 // EncodeContainsPatternUTF8CI encodes the provided string for usage with bcContainsPatternUTF8Ci
-func EncodeContainsPatternUTF8CI(needle string, wildcard []bool) string {
-	result := to4ByteArray(utf8.RuneCountInString(needle))
-	result = append(result, stringAlternatives(needle)...)
-	needleRune := []rune(needle)
+func EncodeContainsPatternUTF8CI(pattern *Pattern) string {
+	result := to4ByteArray(utf8.RuneCountInString(pattern.Needle))
+	result = append(result, stringAlternatives(pattern.Needle)...)
+	needleRune := []rune(pattern.Needle)
 
 	for i := 0; i < len(needleRune); i++ {
 		m := byte(0)
-		if wildcard[i] {
+		if pattern.Wildcard[i] {
 			m = 0xFF
 		}
 		for j := 0; j < utf8.RuneLen(needleRune[i]); j++ {
@@ -1033,8 +1037,8 @@ func IndexRuneEscape(runes []rune, r, escape rune) int {
 	return -1
 }
 
-// LastIndexRuneEscape returns the index of the last instance of r in runes, or -1 if c is
-// not present in runes; an escaped r is not matched.
+// LastIndexRuneEscape returns the index of the last instance of r in runes,
+// or -1 if c is not present in runes; an escaped r is not matched.
 func LastIndexRuneEscape(runes []rune, r, escape rune) int {
 	for idx := len(runes) - 1; idx >= 0; idx-- {
 		if runes[idx] == r {
@@ -1047,4 +1051,241 @@ func LastIndexRuneEscape(runes []rune, r, escape rune) int {
 		}
 	}
 	return -1
+}
+
+// Pattern is string literal (of type Needle) with wildcards which
+// can be escaped by Escape, use NoEscape to signal the absence of an
+// escape character.
+type Pattern struct {
+	WC          rune   // wildcard character of this pattern
+	Escape      rune   // escape character of this pattern; if available
+	Needle      Needle // NOTE: needle does not contain the Escape character
+	Wildcard    []bool // for every rune in Needle exists a wildcard bool
+	HasWildcard bool   // whether the Needle has at least one wildcard
+}
+
+// NewPattern creates a new Pattern for the provided string, wildcard and
+// escape character. Eg. for "a@b_c@_d" with wildcard '_' and escape '@'
+// a pattern is created with Pattern.Needle = "ab_c_d", and Pattern.Wildcard =
+// [false, false, true, false, false, false]. Appreciate that the second wildcard
+// is escaped and thus corresponds to the value true in the wildcard slice.
+// NOTE: Pattern.WC and Pattern.Escape cannot be the same character.
+func NewPattern(str string, wc, escape rune) Pattern {
+	p := Pattern{}
+	p.WC = wc
+	p.Escape = escape
+
+	if escape == NoEscape {
+		for _, r := range str {
+			if r == wc {
+				p.Needle += "_"
+				p.Wildcard = append(p.Wildcard, true)
+				p.HasWildcard = true
+			} else {
+				p.Needle += string(r)
+				p.Wildcard = append(p.Wildcard, false)
+			}
+		}
+	} else {
+		runes := []rune(str)
+		for i, r := range runes {
+			if r == escape {
+				continue // do not keep escapes
+			}
+			if (i > 0) && (r == wc) && (runes[i-1] != escape) {
+				p.Needle += "_"
+				p.Wildcard = append(p.Wildcard, true)
+				p.HasWildcard = true
+			} else {
+				p.Needle += string(r)
+				p.Wildcard = append(p.Wildcard, false)
+			}
+		}
+	}
+	return p
+}
+
+// SplitWC splits the needle on wc and concatenates consecutive wildcards,
+// eg. "a__b", (with WC = '_') becomes ["a", "__", "b"], [[false], [true, true], [false]]
+func (p Pattern) SplitWC() ([]Needle, [][]bool) {
+	needles := make([]Needle, 0)
+	wildcards := make([][]bool, 0)
+	runes := []rune(p.Needle)
+	var runes2 []rune
+	var wildcard2 []bool
+
+	if len(p.Wildcard) > 0 {
+		b := p.Wildcard[0]
+		runes2 = []rune{runes[0]}
+		wildcard2 = []bool{b}
+
+		for i := 1; i < len(p.Wildcard); i++ {
+			if p.Wildcard[i] == b {
+				runes2 = append(runes2, runes[i])
+				wildcard2 = append(wildcard2, b)
+			} else {
+				needles = append(needles, string(runes2))
+				wildcards = append(wildcards, wildcard2)
+
+				b = p.Wildcard[i]
+				runes2 = []rune{runes[i]}
+				wildcard2 = []bool{b}
+			}
+		}
+	}
+	if len(runes2) > 0 {
+		needles = append(needles, string(runes2))
+		wildcards = append(wildcards, wildcard2)
+	}
+	return needles, wildcards
+}
+
+func (p Pattern) String() string {
+	colorGreen := "\033[32m"
+	colorReset := "\033[0m"
+
+	sb := strings.Builder{}
+	for i, r := range []rune(p.Needle) {
+		if p.Wildcard[i] {
+			sb.WriteString(fmt.Sprintf("%v%v%v", colorGreen, "█", colorReset))
+		} else {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+// LikeSegment is a number of character skips followed by a Pattern.
+// The number of skips is defined by a minimum and maximum count.
+// Eg, {SkipMin:1, SkipMax:1, Pattern:"abc"} states that the segment
+// matches when one (and only one) character is skipped and
+// pattern "abc" matches. SkipMax can be -1 which indicates any number
+// of slips. E.g {SKipMin:1, SkipMax:-1, "a"} corresponds to '_%a' in
+// A LIKE expression.
+type LikeSegment struct {
+	SkipMin int
+	SkipMax int
+	Pattern Pattern
+}
+
+func (ls LikeSegment) String() string {
+	return fmt.Sprintf("%v~%v:%v", ls.SkipMin, ls.SkipMax, ls.Pattern)
+}
+
+// SplitEscape splits the provided slice runes on rune r, but only if not escaped
+func splitEscape(runes []rune, r, escape rune) [][]rune {
+	result := make([][]rune, 0)
+	for len(runes) > 0 {
+		idx := IndexRuneEscape(runes, r, escape)
+		if idx == -1 {
+			return append(result, runes)
+		}
+		result = append(result, runes[:idx])
+		runes = runes[idx+1:]
+		if len(runes) == 0 {
+			result = append(result, []rune{})
+		}
+	}
+	return result
+}
+
+// SimplifyLikeExpr simplifies a LIKE expression into a minimal sequence of LikeSegment
+func SimplifyLikeExpr(expr string, wc, ks, escape rune) []LikeSegment {
+
+	// tmpStruct is similar to the LikeSegment except that the pattern is a string instead of
+	// a Pattern struct. This is because the Pattern struct does not store the literal string
+	// that is needed when calling NewPattern, and recalculating the pattern when characters are
+	// skipped is thus not always possible.
+	type tmpStruct struct {
+		SkipMin int
+		SkipMax int
+		Pattern string
+	}
+	var tmp []tmpStruct
+	{
+		elements := splitEscape([]rune(expr), ks, escape)
+		nElements := len(elements)
+		for i := range elements {
+			if i == 0 {
+				tmp = append(tmp, tmpStruct{SkipMin: 0, SkipMax: 0, Pattern: string(elements[i])})
+			} else {
+				tmp = append(tmp, tmpStruct{SkipMin: 0, SkipMax: -1, Pattern: string(elements[i])})
+			}
+			if i == nElements-1 {
+				tmp = append(tmp, tmpStruct{SkipMin: 0, SkipMax: 0, Pattern: ""})
+			}
+		}
+	}
+
+	add := func(a, b int) int {
+		if a == -1 || b == -1 {
+			return -1
+		}
+		return a + b
+	}
+
+	{ // merge wc '_' with '%'
+		countLeading := func(s string) int {
+			for i, c := range s {
+				if c != wc {
+					return i
+				}
+			}
+			return utf8.RuneCountInString(s)
+		}
+		countTrailing := func(s string) int {
+			runes := []rune(s)
+			count := 0
+			for i := len(runes) - 1; i >= 0; i-- {
+				if (runes[i] != wc) || (i == 0) || (runes[i-1] == escape) {
+					return count
+				}
+				count++
+			}
+			return count
+		}
+
+		nResults := len(tmp)
+		for i := 0; i < nResults; i++ {
+			curr := tmp[i]
+			// (a,b,'__x') -> (a+2,b+2,'x')
+			if skipLeft := countLeading(curr.Pattern); skipLeft > 0 {
+				tmp[i].SkipMin = add(curr.SkipMin, skipLeft)
+				tmp[i].SkipMax = add(curr.SkipMax, skipLeft)
+				tmp[i].Pattern = curr.Pattern[skipLeft:]
+			}
+			// (a,b,'x__')(c,d,'y') -> (a,b,'x')(c+2,d+2,'y')
+			if i < nResults-1 {
+				next := tmp[i+1]
+				if skipRight := countTrailing(curr.Pattern); skipRight > 0 {
+					tmp[i+1].SkipMin = add(next.SkipMin, skipRight)
+					tmp[i+1].SkipMax = add(next.SkipMax, skipRight)
+					newLen := len(tmp[i].Pattern) - skipRight
+					tmp[i].Pattern = tmp[i].Pattern[:newLen]
+				}
+			}
+		}
+	}
+	// simplify
+	for i := 0; i < len(tmp); i++ {
+		if i > 0 {
+			curr := tmp[i]
+			prev := tmp[i-1]
+
+			// simplify (a,b,"")(c,d,"x") -> (a+c,b+d,"x")
+			if prev.Pattern == "" {
+				tmp[i-1].SkipMin = add(prev.SkipMin, curr.SkipMin)
+				tmp[i-1].SkipMax = add(prev.SkipMax, curr.SkipMax)
+				tmp[i-1].Pattern = curr.Pattern
+				tmp = slices.Delete(tmp, i, i+1)
+				i--
+			}
+		}
+	}
+	result := make([]LikeSegment, len(tmp))
+	for i, t := range tmp {
+		pattern := NewPattern(t.Pattern, wc, escape)
+		result[i] = LikeSegment{SkipMin: t.SkipMin, SkipMax: t.SkipMax, Pattern: pattern}
+	}
+	return result
 }

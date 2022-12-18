@@ -65,7 +65,7 @@ var ticketsTestQueries = []struct {
 		name: ".ViolationDescr LIKE \"NO%\"",
 		rows: 524,
 		expr: func(p *prog) *value {
-			return p.like(p.dot("ViolationDescr", p.validLanes()), "NO", stringext.NoEscape, true)
+			return p.like(p.dot("ViolationDescr", p.validLanes()), "NO%", stringext.NoEscape, true)
 		},
 	},
 	{

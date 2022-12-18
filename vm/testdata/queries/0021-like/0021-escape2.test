@@ -3,9 +3,9 @@ SELECT COUNT(*) FROM input
 WHERE (str LIKE 'ab@cd@__' ESCAPE '@') = (match IS FALSE)
 ---
 {"str": "abcd_x", "match": true}
-{"str": "abcdyx", "match": true}
+{"str": "abcdyx", "match": false}
 {"str": "ab@cd_x", "match": false}
 {"str": "abcd__", "match": true}
-{"str": "abcd_xy", "match": true}
+{"str": "abcd_xy", "match": false}
 ---
 {"count": 0}

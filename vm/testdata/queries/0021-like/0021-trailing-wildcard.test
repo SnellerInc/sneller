@@ -1,0 +1,9 @@
+# go test -v -run=TestQueries/0021-trailing-wildcard
+SELECT COUNT(*) FROM input
+WHERE (str LIKE 'abc_') = (match IS FALSE)
+---
+{"str": "abcd", "match": true}
+{"str": "abc", "match": false}
+{"str": "abcde", "match": false}
+---
+{"count": 0}

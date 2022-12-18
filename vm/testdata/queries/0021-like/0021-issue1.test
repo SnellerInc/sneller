@@ -1,0 +1,8 @@
+# go test -v -run=TestQueries/0021-issue1
+SELECT COUNT(*) FROM input
+WHERE (str LIKE 'a%_b%c') = (match IS FALSE)
+---
+{"str": "axbc", "match": true}
+{"str": "abc", "match": false}
+---
+{"count": 0}
