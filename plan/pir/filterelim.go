@@ -41,14 +41,14 @@ func filterelim(b *Trace) {
 	}
 }
 
-func conjoin(x, y expr.Node, scope *Trace) expr.Node {
+func conjoin(x, y expr.Node, scope *Trace, at Step) expr.Node {
 	if x == nil {
 		return y
 	}
 	if y == nil {
 		return x
 	}
-	return expr.SimplifyLogic(expr.And(x, y), scope)
+	return expr.SimplifyLogic(expr.And(x, y), &stepHint{parent: at.parent()})
 }
 
 type visitfn func(expr.Node) bool
@@ -85,12 +85,12 @@ func doesNotReference(e expr.Node, bind string) bool {
 
 // tables accept filters directly
 func (i *IterTable) filter(e expr.Node, scope *Trace) {
-	i.Filter = conjoin(i.Filter, e, scope)
+	i.Filter = conjoin(i.Filter, e, scope, i)
 }
 
 // filters accept filters directly (duh)
 func (f *Filter) filter(e expr.Node, scope *Trace) {
-	f.Where = conjoin(f.Where, e, scope)
+	f.Where = conjoin(f.Where, e, scope, f)
 }
 
 // bindings can be filtered by replacing
@@ -108,7 +108,7 @@ func (f *Filter) filter(e expr.Node, scope *Trace) {
 func (b *Bind) filter(e expr.Node, scope *Trace) {
 	e = expr.Rewrite(&bindflattener{from: b.bind}, e)
 	f := new(Filter)
-	f.Where = expr.SimplifyLogic(e, scope)
+	f.Where = expr.SimplifyLogic(e, &stepHint{parent: b.parent()})
 	f.setparent(b.parent())
 	b.setparent(f)
 }
@@ -156,7 +156,7 @@ func push(f *Filter, dst Step, s *Trace) bool {
 				if remaining == nil {
 					remaining = conj[j]
 				} else {
-					remaining = conjoin(remaining, conj[j], s)
+					remaining = conjoin(remaining, conj[j], s, iv)
 				}
 			}
 		}

@@ -496,11 +496,6 @@ func aggelim(b *Trace) {
 			bi.bind[i] = expr.Bind(id, a.Agg[i].Result)
 			continue
 		}
-		for p, info := range b.scope {
-			if info.node == a.Agg[i].Expr {
-				b.add(p, bi, subs[i])
-			}
-		}
 		for j := range b.final {
 			if b.final[j].Expr == a.Agg[i].Expr {
 				b.final[j].Expr = subs[i]

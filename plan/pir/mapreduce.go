@@ -46,7 +46,7 @@ func Split(b *Trace) (*Trace, error) {
 	if _, ok := b.top.(NoOutput); ok {
 		return b, nil
 	}
-	reduce := &Trace{}
+	reduce := &Trace{finalTypes: b.FinalTypes()}
 	reduce.Replacements, b.Replacements = b.Replacements, nil
 	_, err := splitOne(b.top, b, reduce)
 	if err != nil {

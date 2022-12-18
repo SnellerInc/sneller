@@ -596,9 +596,10 @@ func results(b *pir.Trace) ResultSet {
 	if len(final) == 0 {
 		return nil
 	}
+	types := b.FinalTypes()
 	out := make(ResultSet, len(final))
 	for i := range final {
-		out[i] = Result{Name: final[i].Result(), Type: b.TypeOf(final[i].Expr)}
+		out[i] = Result{Name: final[i].Result(), Type: types[i]}
 	}
 	return out
 }

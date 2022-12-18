@@ -201,7 +201,7 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 
 func build(parent *Trace, s *expr.Select, e Env) (*Trace, error) {
 	b := &Trace{Parent: parent}
-	s = expr.Simplify(s, b).(*expr.Select)
+	s = expr.Simplify(s, expr.HintFn(expr.NoHint)).(*expr.Select)
 	err := expr.Check(s)
 	if err != nil {
 		return nil, err
@@ -424,7 +424,7 @@ func replacementNeverMissing(t *Trace, lst []expr.Binding, except string) bool {
 	if b.Result() == except {
 		b = &lst[1]
 	}
-	return t.TypeOf(b.Expr)&expr.MissingType == 0
+	return expr.TypeOf(b.Expr, &stepHint{t.top.parent()})&expr.MissingType == 0
 }
 
 // strip all the final bindings except for one

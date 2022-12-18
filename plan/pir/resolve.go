@@ -25,36 +25,25 @@ type reftracker interface {
 	strip(p *expr.Path) error
 }
 
-// Check performs sanity-checking of an expression
-// based on the additional information available
-// through the scope's references.
-func (b *Trace) Check(e expr.Node) error {
+func check(parent Step, e expr.Node) error {
 	if err := checkAggregateWorkInProgress(e); err != nil {
 		return err
 	}
-
-	return expr.CheckHint(e, b)
+	if parent == nil {
+		return expr.Check(e)
+	}
+	return expr.CheckHint(e, &stepHint{parent: parent})
 }
 
 func (b *Trace) checkExpressions(n []expr.Node) error {
 	for i := range n {
-		err := b.Check(n[i])
+		err := check(b.top, n[i])
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
-}
-
-func (b *Trace) add(p *expr.Path, step Step, n expr.Node) {
-	if b.scope == nil {
-		b.scope = make(map[*expr.Path]scopeinfo)
-	}
-	b.scope[p] = scopeinfo{
-		origin: step,
-		node:   n,
-	}
 }
 
 func (b *Trace) errorf(e expr.Node, f string, args ...interface{}) {
@@ -88,15 +77,11 @@ func (b *Trace) visitSelect(e *expr.Select) expr.Visitor {
 }
 
 func (b *Trace) visitPath(p *expr.Path) expr.Visitor {
-	if b.origin(p) != nil {
-		return nil
-	}
 	src, node := b.cur.get(p.First)
 	if src == nil {
 		b.errorf(p, "path %s references an unbound variable", expr.ToString(p))
 		return nil
 	}
-	b.add(p, src, node)
 	// if the source of a binding is an iterator,
 	// add this path expression to the set of variable
 	// references that originate from that table;
@@ -106,17 +91,13 @@ func (b *Trace) visitPath(p *expr.Path) expr.Visitor {
 		if err := rt.strip(p); err != nil {
 			b.err = append(b.err, err)
 		}
-		if it, ok := src.(*IterTable); ok && node != nil {
-			// make sure we record this as a definite reference
-			it.definite[p.First] = struct{}{}
-		}
 		// references to tables, etc.
 		// do not need to be additionally
 		// type-checked
 		return nil
 	}
 
-	t := expr.TypeOf(node, b)
+	t := expr.TypeOf(node, &stepHint{src.parent()})
 	if t == expr.AnyType || p.Rest == nil {
 		return nil
 	}

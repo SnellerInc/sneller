@@ -218,7 +218,7 @@ outer:
 			// expressions
 			rw := bindflattener{from: pb.bind}
 			for i := range b.bind {
-				b.bind[i].Expr = expr.Simplify(expr.Rewrite(&rw, b.bind[i].Expr), scope)
+				b.bind[i].Expr = expr.Simplify(expr.Rewrite(&rw, b.bind[i].Expr), &stepHint{b.parent()})
 			}
 			// ... and splice out the inner Bind
 			b.setparent(pb.parent())

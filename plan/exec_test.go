@@ -1444,7 +1444,7 @@ func BenchmarkPlan(b *testing.B) {
 		`select Make, (Ticket <> 1103341116 OR does_not_exist < 3) IS TRUE as e from 'parking.10n' limit 1`,
 		`select Ticket, IssueTime, Make from 'parking.10n'
          where ViolationCode like '80.69A+'
-         order by Make desc, IssueTime`,
+         order by Make desc, IssueTime limit 15`,
 	}
 
 	for i := range queries {

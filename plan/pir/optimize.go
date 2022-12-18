@@ -27,9 +27,9 @@ func freezefinal(b *Trace) {
 }
 
 func simplify(b *Trace) {
-	reg := expr.Simplifier(b)
-	log := expr.LogicSimplifier(b)
-
+	hint := &stepHint{}
+	reg := expr.Simplifier(hint)
+	log := expr.LogicSimplifier(hint)
 	fn := func(e expr.Node, logic bool) expr.Node {
 		e = expr.Rewrite(reg, e)
 		if logic {
@@ -38,6 +38,7 @@ func simplify(b *Trace) {
 		return e
 	}
 	for s := b.top; s != nil; s = s.parent() {
+		hint.parent = s.parent()
 		s.rewrite(fn)
 	}
 }

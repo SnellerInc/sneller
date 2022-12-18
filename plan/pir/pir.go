@@ -62,22 +62,25 @@ func (t *table) walk(v expr.Visitor) {
 
 // strip a path that has been determined
 // to resolve to a reference to this table
-func (t *table) strip(p *expr.Path) error {
-	if t.Bind == "" {
+func (i *IterTable) strip(p *expr.Path) error {
+	if i.Bind == "" {
+		i.free[p.First] = struct{}{}
 		return nil
-	} else if p.First != t.Bind {
-		if !t.haveParent || p.Rest != nil {
+	} else if p.First != i.Bind {
+		if !i.haveParent || p.Rest != nil {
 			return errorf(p, "reference to undefined variable %q", p)
 		}
+		i.free[p.First] = struct{}{}
 		// this is *definitely* a free variable
 		return nil
 	}
 	d, ok := p.Rest.(*expr.Dot)
 	if !ok {
-		return errorf(p, "cannot compute %s on table %s", p.Rest, t.Bind)
+		return errorf(p, "cannot compute %s on table %s", p.Rest, i.Bind)
 	}
 	p.First = d.Field
 	p.Rest = d.Rest
+	i.definite[d.Field] = struct{}{}
 	return nil
 }
 
@@ -153,7 +156,6 @@ func (i *IterTable) get(x string) (Step, expr.Node) {
 	if result != "" && result == x {
 		return i, i.Table
 	}
-	i.free[x] = struct{}{}
 	return i, nil
 }
 
@@ -627,7 +629,8 @@ func (o *OutputIndex) describe(dst io.Writer) {
 
 func (o *OutputIndex) get(x string) (Step, expr.Node) {
 	if x == "table_name" {
-		return o, nil
+		// the String("") here is just to provide a type hint
+		return o, expr.String("")
 	}
 	// see comment in OutputPart.get
 	return nil, nil
@@ -699,15 +702,15 @@ type Trace struct {
 	// in any order.
 	Replacements []*Trace
 
-	top   Step
-	cur   Step
-	scope map[*expr.Path]scopeinfo
-	err   []error
+	top Step
+	cur Step
+	err []error
 
 	// final is the most recent
 	// complete set of bindings
 	// produced by an expression
-	final []expr.Binding
+	final      []expr.Binding
+	finalTypes []expr.TypeSet
 }
 
 // Equals returns true if b and x would produce the same
@@ -759,7 +762,6 @@ func (b *Trace) beginUnionMap(src *Trace, table *IterTable) {
 	infinal := src.FinalBindings()
 	final := make([]expr.Binding, len(infinal))
 	copy(final, infinal)
-	b.scope = src.scope
 	table.Partitioned = true
 	b.top = &UnionMap{Child: src, Inner: table}
 	b.final = final
@@ -780,7 +782,7 @@ func (b *Trace) Where(e expr.Node) error {
 	f.setparent(b.top)
 	b.cur = f
 	expr.Walk(b, e)
-	if err := b.Check(e); err != nil {
+	if err := check(b.top, e); err != nil {
 		return err
 	}
 	if err := checkNoAggregateInCondition(e, "WHERE"); err != nil {
@@ -859,7 +861,7 @@ func (b *Trace) Bind(bindings ...[]expr.Binding) error {
 		}
 	}
 	for i := range bi.bind {
-		if err := b.Check(bi.bind[i].Expr); err != nil {
+		if err := check(b.top, bi.bind[i].Expr); err != nil {
 			return err
 		}
 	}
@@ -890,7 +892,7 @@ func (b *Trace) Aggregate(agg vm.Aggregation, groups []expr.Binding) error {
 		bind = append(bind, expr.Bind(agg[i].Expr, agg[i].Result))
 	}
 	for i := range agg {
-		if err := b.Check(ag.Agg[i].Expr); err != nil {
+		if err := check(b.top, ag.Agg[i].Expr); err != nil {
 			return err
 		}
 	}
@@ -925,16 +927,13 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 func (b *Trace) Into(table *expr.Path, basepath string) {
 	op := &OutputPart{Basename: basepath}
 	op.setparent(b.top)
-	b.add(expr.Identifier("part"), op, nil)
 	oi := &OutputIndex{
 		Table:    table,
 		Basename: basepath,
 	}
 	oi.setparent(op)
 	b.top = oi
-	tblname := expr.Identifier("table_name")
 	result := expr.String(path.Base(basepath))
-	b.add(tblname, oi, result)
 	final := expr.Bind(result, "table_name")
 	b.final = []expr.Binding{final}
 }
@@ -953,10 +952,15 @@ func (b *Trace) FinalBindings() []expr.Binding {
 // Note that the return value may be nil if the
 // query does not produce a know (finite) result-set
 func (b *Trace) FinalTypes() []expr.TypeSet {
+	if b.finalTypes != nil {
+		return b.finalTypes
+	}
+	hint := &stepHint{b.top}
 	out := make([]expr.TypeSet, len(b.final))
 	for i := range b.final {
-		out[i] = b.TypeOf(b.final[i].Expr)
+		out[i] = expr.TypeOf(expr.Identifier(b.final[i].Result()), hint)
 	}
+	b.finalTypes = out
 	return out
 }
 
@@ -1025,13 +1029,13 @@ func conjunctions(e expr.Node, lst []expr.Node) []expr.Node {
 //
 // NOTE: conjunctions(x AND y AND z) returns [z, x, y],
 // so conjoinAll(x, y, z) returns "z AND y AND x".
-func conjoinAll(x []expr.Node, scope *Trace) expr.Node {
+func conjoinAll(x []expr.Node, scope *Trace, whence Step) expr.Node {
 	var node expr.Node
 	for i := range x {
-		node = conjoin(x[i], node, scope)
+		node = conjoin(x[i], node, scope, whence)
 	}
 	if node != nil {
-		node = expr.SimplifyLogic(node, scope)
+		node = expr.SimplifyLogic(node, &stepHint{whence.parent()})
 	}
 	return node
 }

@@ -119,7 +119,6 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		}
 		key := expr.Bind(y, gensym(0, 0))
 		s.bind = append(s.bind, key)
-		b.add(y, b.top, y)
 		// insert "FILTER DISTINCT y" before
 		// the bind step
 		di := &Distinct{
@@ -166,7 +165,7 @@ func (b *Trace) decorrelateWhere(x string, it *IterTable) (y *expr.Path) {
 		}
 	}
 	if y != nil {
-		it.Filter = conjoinAll(where, b)
+		it.Filter = conjoinAll(where, b, it)
 	}
 	return y
 }
