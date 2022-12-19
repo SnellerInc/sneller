@@ -22,8 +22,6 @@ import (
 	"net"
 	"unicode/utf8"
 
-	"github.com/SnellerInc/sneller/internal/stringext"
-
 	"github.com/SnellerInc/sneller/regexp2"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -133,10 +131,8 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			if err != nil {
 				return nil, err
 			}
-			escRune := stringext.NoEscape
-			if n.Escape != "" {
-				escRune, _ = utf8.DecodeRuneInString(n.Escape)
-			}
+			// NOTE: StringMatch.check checks if n.Escape has valid content
+			escRune, _ := utf8.DecodeRuneInString(n.Escape)
 			caseSensitive := n.Op == expr.Like
 			return p.like(left, n.Pattern, escRune, caseSensitive), nil
 		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:

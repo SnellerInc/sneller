@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"unicode/utf8"
 
+	"github.com/SnellerInc/sneller/internal/stringext"
+
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/regexp2"
 )
@@ -247,6 +249,16 @@ func (c *Comparison) check(h Hint) error {
 func (s *StringMatch) check(h Hint) error {
 	if s.Escape != "" && utf8.RuneCountInString(s.Escape) != 1 {
 		return errsyntax(s, "ESCAPE must be a single unicode point")
+	}
+	if s.Op == Like || s.Op == Ilike {
+		if s.Escape == "" {
+			s.Escape = string(stringext.NoEscape)
+			return nil
+		}
+		escRune, _ := utf8.DecodeRuneInString(s.Escape)
+		if escRune == '%' || escRune == '_' {
+			return errsyntax(s, fmt.Sprintf("invalid ESCAPE %q; LIKE meta-values '%%' and '_' are not accepted as ESCAPE", escRune))
+		}
 	}
 	if s.Op == RegexpMatch || s.Op == RegexpMatchCi {
 		if err := regexp2.IsSupported(s.Pattern); err != nil {
