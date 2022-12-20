@@ -1728,8 +1728,9 @@ func TestServerError(t *testing.T) {
 		t.Fatal(err)
 	}
 	wg.Wait()
-	if serverr != nil {
-		t.Fatal(err)
+	if serverr == nil {
+		// server should produce the same error
+		t.Fatal("no server error")
 	}
 }
 
@@ -1820,8 +1821,8 @@ func TestClientCancel(t *testing.T) {
 	// the server context should be canceled as well,
 	// and so this shouldn't block indefinitely:
 	wg.Wait()
-	if serverr != nil {
-		t.Fatal(serverr)
+	if !errors.Is(serverr, context.Canceled) {
+		t.Fatalf("got error %T %[1]s", serverr)
 	}
 }
 

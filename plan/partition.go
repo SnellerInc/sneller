@@ -346,13 +346,7 @@ func (s *server) serve() error {
 		return fmt.Errorf("reading start frame: %w", err)
 	}
 	ctx, cancel := s.context()
-	err = s.runQuery(buf, ctx, cancel)
-	if err != nil {
-		// try to respond with an error
-		// if the pipe isn't already closed:
-		s.senderr(err.Error())
-	}
-	return nil
+	return s.runQuery(buf, ctx, cancel)
 }
 
 // Write implements io.Writer (passed to Exec);
@@ -415,6 +409,13 @@ func (s *server) fin(stat *ExecStats) error {
 	return err
 }
 
+func (s *server) ctxerr(ctx context.Context, err error) error {
+	if ctxerr := ctx.Err(); ctxerr != nil {
+		return ctxerr
+	}
+	return err
+}
+
 func (s *server) runQuery(buf []byte, ctx context.Context, cancel func()) error {
 	defer cancel()
 	s.st.Reset()
@@ -423,11 +424,13 @@ func (s *server) runQuery(buf []byte, ctx context.Context, cancel func()) error 
 
 	buf, err = s.st.Unmarshal(buf)
 	if err != nil {
-		return err
+		s.senderr(err.Error())
+		return s.ctxerr(ctx, err)
 	}
 	t, err = Decode(s.dec, &s.st, buf)
 	if err != nil {
-		return err
+		s.senderr(err.Error())
+		return s.ctxerr(ctx, err)
 	}
 	lp := LocalTransport{}
 	ep := ExecParams{
@@ -436,7 +439,8 @@ func (s *server) runQuery(buf []byte, ctx context.Context, cancel func()) error 
 	}
 	err = lp.Exec(t, &ep)
 	if err != nil {
-		return err
+		s.senderr(err.Error())
+		return s.ctxerr(ctx, err)
 	}
 	return s.fin(&ep.Stats)
 }
@@ -597,6 +601,7 @@ func (c *Client) output(dst io.Writer, size int) error {
 
 func (c *Client) queryerr(size int) error {
 	var bld strings.Builder
+	bld.WriteString("remote error: ")
 	err := c.output(&bld, size)
 	if err != nil {
 		return err
