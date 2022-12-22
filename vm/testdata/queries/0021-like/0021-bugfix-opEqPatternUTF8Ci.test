@@ -1,0 +1,7 @@
+# go test -v -run=TestQueries/0021-bugfix-opEqPatternUTF8Ci
+SELECT str, (str ILIKE '0000_s') AS match
+FROM input
+---
+{"str": "0000xs", "match": true}
+---
+{"str": "0000xs", "match": true}

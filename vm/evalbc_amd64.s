@@ -15218,59 +15218,14 @@ TEXT bcEqPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 
   ADDQ          $4,  R14                  //;7B0665F3 needle_ptr += 4                 ;R14=needle_ptr;
+//; load constants
   VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-//; load constants
-  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
-  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
-  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
 
 loop:
   VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
-//; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
-  CMPL          CX,  $4                   //;E273EEEA are we in the needle tail?      ;CX=needle_len;
-  JL            mixed_ascii               //;A8685FD7 yes, then jump; jump if less (SF neq OF);
-  VPBROADCASTD.Z 16(R14),K1,  Z9          //;2694A02F load needle data                ;Z9=data_needle; K1=lane_active; R14=needle_ptr;
-//; clear tail from data: IN zmm8; OUT zmm8
-  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
-  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-//; determine if either data or needle has non-ASCII content
-  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := data_needle | data_msg;Z26=scratch_Z26; K1=lane_active; Z9=data_needle; Z8=data_msg;
-  VPMOVB2M      Z26, K3                   //;5303B427 get 64 sign-bits                ;K3=tmp_mask; Z26=scratch_Z26;
-  KTESTQ        K3,  K3                   //;A2B0951C all sign-bits zero?             ;K3=tmp_mask;
-  JNZ           mixed_ascii               //;303EFD4D no, found a non-ascii char; jump if not zero (ZF = 0);
-//; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
-//; Z15 is 64 bytes with 0b00100000
-//;    Z15|Z8 |Z26 => Z26
-//;     0 | 0 | 0      0
-//;     0 | 0 | 1      0
-//;     0 | 1 | 0      1
-//;     0 | 1 | 1      1
-//;     1 | 0 | 0      0
-//;     1 | 0 | 1      0
-//;     1 | 1 | 0      1
-//;     1 | 1 | 1      0     <= change from lower to upper
-  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; compare data with needle for 4 ASCIIs
-  VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (data_needle==data_msg_upper);K1=lane_active; Z9=data_needle; Z13=data_msg_upper; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-//; advance to the next 4 ASCIIs
-  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
-  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
-  ADDQ          $80, R14                  //;F0BC3163 needle_ptr += 80                ;R14=needle_ptr;
-  SUBL          $4,  CX                   //;646B86C9 needle_len -= 4                 ;CX=needle_len;
-  JG            loop                      //;1EBC2C20 jump if greater ((ZF = 0) and (SF = OF));
-  JMP           next                      //;2230EE05                                 ;
-
-mixed_ascii:
 //; select next UTF8 byte sequence
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
