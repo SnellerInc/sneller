@@ -15084,9 +15084,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
   VPSUBD        Z19, Z6,  K1,  Z6         //;B3CDC39C needle_len1 -= adv_needle       ;Z6=needle_len1; K1=lane_active; Z19=adv_needle;
   VPADDD        Z13, Z2,  K1,  Z2         //;AE5AA4CF data_off1 += adv_data           ;Z2=data_off1; K1=lane_active; Z13=adv_data;
   VPSUBD        Z13, Z3,  K1,  Z3         //;DBC41158 data_len1 -= adv_data           ;Z3=data_len1; K1=lane_active; Z13=adv_data;
-  VMOVD         X19, R12                  //;B10A9DE5 extract GPR adv_needle          ;R12=scratch; Z19=adv_needle;
-  ADDQ          R12, R14                  //;34EA6A74 needle_ptr1 += scratch          ;R14=needle_ptr1; R12=scratch;
-  ADDQ          R12, R15                  //;8FD33A77 wildcard_ptr1 += scratch        ;R15=wildcard_ptr1; R12=scratch;
+  VMOVD         X19, R8                   //;B10A9DE5 extract GPR adv_needle          ;R8=scratch; Z19=adv_needle;
+  ADDQ          R8,  R14                  //;34EA6A74 needle_ptr1 += scratch          ;R14=needle_ptr1; R8=scratch;
+  ADDQ          R8,  R15                  //;8FD33A77 wildcard_ptr1 += scratch        ;R15=wildcard_ptr1; R8=scratch;
   JMP           unicode_match_ret         //;D24820C1                                 ;
 //; #endregion bcEqPatternCs
 
@@ -15195,9 +15195,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
   VPSUBD        Z19, Z6,  K1,  Z6         //;B3CDC39C needle_len1 -= adv_needle       ;Z6=needle_len1; K1=lane_active; Z19=adv_needle;
   VPADDD        Z13, Z2,  K1,  Z2         //;AE5AA4CF data_off1 += adv_data           ;Z2=data_off1; K1=lane_active; Z13=adv_data;
   VPSUBD        Z13, Z3,  K1,  Z3         //;DBC41158 data_len1 -= adv_data           ;Z3=data_len1; K1=lane_active; Z13=adv_data;
-  VMOVD         X19, R12                  //;B10A9DE5 extract GPR adv_needle          ;R12=scratch; Z19=adv_needle;
-  ADDQ          R12, R14                  //;34EA6A74 needle_ptr1 += scratch          ;R14=needle_ptr1; R12=scratch;
-  ADDQ          R12, R15                  //;8FD33A77 wildcard_ptr1 += scratch        ;R15=wildcard_ptr1; R12=scratch;
+  VMOVD         X19, R8                   //;B10A9DE5 extract GPR adv_needle          ;R8=scratch; Z19=adv_needle;
+  ADDQ          R8,  R14                  //;34EA6A74 needle_ptr1 += scratch          ;R14=needle_ptr1; R8=scratch;
+  ADDQ          R8,  R15                  //;8FD33A77 wildcard_ptr1 += scratch        ;R15=wildcard_ptr1; R8=scratch;
   JMP           unicode_match_ret         //;D24820C1                                 ;
 //; #endregion bcEqPatternCi
 
@@ -15445,9 +15445,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
   VPSUBD        Z19, Z25, K4,  Z25        //;B3CDC39C needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z19=adv_needle;
   VPADDD        Z13, Z24, K4,  Z24        //;AE5AA4CF data_off2 += adv_data           ;Z24=data_off2; K4=lane_selected; Z13=adv_data;
   VPSUBD        Z13, Z5,  K4,  Z5         //;DBC41158 data_len2 -= adv_data           ;Z5=data_len2; K4=lane_selected; Z13=adv_data;
-  VMOVD         X19, R12                  //;B10A9DE5 extract GPR adv_needle          ;R12=scratch; Z19=adv_needle;
-  ADDQ          R12, R13                  //;34EA6A74 needle_ptr2 += scratch          ;R13=needle_ptr2; R12=scratch;
-  ADDQ          R12, BX                   //;8FD33A77 wildcard_ptr2 += scratch        ;BX=wildcard_ptr2; R12=scratch;
+  VMOVD         X19, R8                   //;B10A9DE5 extract GPR adv_needle          ;R8=scratch; Z19=adv_needle;
+  ADDQ          R8,  R13                  //;34EA6A74 needle_ptr2 += scratch          ;R13=needle_ptr2; R8=scratch;
+  ADDQ          R8,  BX                   //;8FD33A77 wildcard_ptr2 += scratch        ;BX=wildcard_ptr2; R8=scratch;
   JMP           unicode_match_ret         //;D24820C1                                 ;
 //; #endregion bcContainsPatternCs
 
@@ -15628,9 +15628,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
   VPSUBD        Z19, Z25, K4,  Z25        //;B3CDC39C needle_len2 -= adv_needle       ;Z25=needle_len2; K4=lane_selected; Z19=adv_needle;
   VPADDD        Z13, Z24, K4,  Z24        //;AE5AA4CF data_off2 += adv_data           ;Z24=data_off2; K4=lane_selected; Z13=adv_data;
   VPSUBD        Z13, Z5,  K4,  Z5         //;DBC41158 data_len2 -= adv_data           ;Z5=data_len2; K4=lane_selected; Z13=adv_data;
-  VMOVD         X19, R12                  //;B10A9DE5 extract GPR adv_needle          ;R12=scratch; Z19=adv_needle;
-  ADDQ          R12, R13                  //;34EA6A74 needle_ptr2 += scratch          ;R13=needle_ptr2; R12=scratch;
-  ADDQ          R12, BX                   //;8FD33A77 wildcard_ptr2 += scratch        ;BX=wildcard_ptr2; R12=scratch;
+  VMOVD         X19, R8                   //;B10A9DE5 extract GPR adv_needle          ;R8=scratch; Z19=adv_needle;
+  ADDQ          R8,  R13                  //;34EA6A74 needle_ptr2 += scratch          ;R13=needle_ptr2; R8=scratch;
+  ADDQ          R8,  BX                   //;8FD33A77 wildcard_ptr2 += scratch        ;BX=wildcard_ptr2; R8=scratch;
   JMP           unicode_match_ret         //;D24820C1                                 ;
 //; #endregion bcContainsPatternCi
 
