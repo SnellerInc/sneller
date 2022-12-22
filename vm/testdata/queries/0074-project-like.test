@@ -1,0 +1,14 @@
+SELECT str, (str LIKE '%foo%') AS match
+FROM input
+---
+{"str": "foo"}
+{"str": "bar"}
+{"str": 3}
+{"str": "foobar"}
+{"str": "quux"}
+---
+{"str": "foo", "match": true}
+{"str": "bar", "match": false}
+{"str": 3}
+{"str": "foobar", "match": true}
+{"str": "quux", "match": false}

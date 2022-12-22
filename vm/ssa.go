@@ -225,6 +225,8 @@ const (
 	svk
 	sfloatk
 
+	snotmissing // not missing (extract mask)
+
 	// blend ops (just conditional moves)
 	sblendv
 	sblendint
@@ -906,6 +908,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, emit: emittuple2regs},
 	svk:     {text: "vk", rettype: stValue, argtypes: []ssatype{stValue, stBool}, emit: emittuple2regs},
 
+	// notmissing exists to coerce st*Masked into stBool
+	snotmissing: {text: "notmissing", rettype: stBool, argtypes: []ssatype{stBool}, emit: emittuple2regs},
+
 	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv, disjunctive: true},
 	sblendint:   {text: "blendint", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opblendnum, emit: emitblends, disjunctive: true},
 	sblendstr:   {text: "blendstr", rettype: stString, argtypes: []ssatype{stString, stString, stBool}, bc: opblendslice, emit: emitblends, disjunctive: true},
@@ -1419,6 +1424,23 @@ func (p *prog) ssa0imm(op ssaop, imm interface{}) *value {
 	return v
 }
 
+func (p *prog) ssa1(op ssaop, arg *value) *value {
+	var hc hashcode
+	hc[0] = uint64(op)
+	hc[1] = uint64(arg.id)
+	if v := p.exprs[hc]; v != nil {
+		return v
+	}
+	v := p.val()
+	v.op = op
+	v.args = []*value{arg}
+	v.checkarg(arg, 0)
+	if v.op != sinvalid {
+		p.exprs[hc] = v
+	}
+	return v
+}
+
 func (p *prog) ssa1imm(op ssaop, arg *value, imm interface{}) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
@@ -1723,7 +1745,7 @@ func (p *prog) notMissing(v *value) *value {
 			return v.maskarg()
 		case rt&stBool != 0:
 			// the result is equivalent to NOT MISSING
-			return v
+			return p.ssa1(snotmissing, v)
 		default:
 			// arithmetic or other op with no return mask;
 			// the mask argument is implicitly the NOT MISSING value

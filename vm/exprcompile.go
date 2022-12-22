@@ -134,7 +134,12 @@ func compile(p *prog, e expr.Node) (*value, error) {
 			// NOTE: StringMatch.check checks if n.Escape has valid content
 			escRune, _ := utf8.DecodeRuneInString(n.Escape)
 			caseSensitive := n.Op == expr.Like
-			return p.like(left, n.Pattern, escRune, caseSensitive), nil
+			inner := p.like(left, n.Pattern, escRune, caseSensitive)
+			// the bool-typed result is just the opcode mask
+			ret := p.ssa1(snotmissing, inner)
+			// the missing-ness of the result is the string-ness of the argument
+			ret.notMissing = p.mask(left)
+			return ret, nil
 		case expr.SimilarTo, expr.RegexpMatch, expr.RegexpMatchCi:
 			left, err := p.compileAsString(n.Expr)
 			if err != nil {
