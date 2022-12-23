@@ -31,6 +31,13 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+// TablePrefix returns the prefix
+// at which the table files live
+// relative to the root of the FS.
+func TablePrefix(db, table string) string {
+	return path.Join("db", db, table) + "/"
+}
+
 // IndexPath returns the path
 // at which the index for the given
 // db and table would live relative
