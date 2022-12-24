@@ -954,6 +954,38 @@ func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 	b.ReportMetric(x, "rows/s")
 }
 
+func versifyGetter(inst *ion.Symtab, inrows []ion.Datum) func() ([]byte, int) {
+	return func() ([]byte, int) {
+		var u versify.Union
+		for i := range inrows {
+			if u == nil {
+				u = versify.Single(inrows[i])
+			} else {
+				u = u.Add(inrows[i])
+			}
+		}
+		src := rand.New(rand.NewSource(0))
+
+		// generate a corpus that is larger than L3 cache
+		// so that we actually measure the performance of
+		// streaming the data in from DRAM
+		const targetSize = 64 * 1024 * 1024
+		var outbuf ion.Buffer
+		inst.Marshal(&outbuf, true)
+		rows := 0
+		for {
+			d := u.Generate(src)
+			d.Encode(&outbuf, inst)
+			rows++
+			size := outbuf.Size()
+			if size > targetSize {
+				break
+			}
+		}
+		return outbuf.Bytes(), rows
+	}
+}
+
 func benchPath(b *testing.B, fname string) {
 	query, input := readBenchmark(b, fname)
 	var inst ion.Symtab
@@ -965,34 +997,17 @@ func benchPath(b *testing.B, fname string) {
 	if len(inrows) == 0 {
 		b.Skip()
 	}
-
-	var u versify.Union
-	for i := range inrows {
-		if u == nil {
-			u = versify.Single(inrows[i])
-		} else {
-			u = u.Add(inrows[i])
+	// don't actually versify unless b.Run runs
+	// the inner benchmark; versification is expensive
+	getter := versifyGetter(&inst, inrows)
+	var rowmem []byte
+	var rows int
+	b.Run(fname, func(b *testing.B) {
+		if rowmem == nil {
+			rowmem, rows = getter()
 		}
-	}
-	src := rand.New(rand.NewSource(0))
-
-	// generate a corpus that is larger than L3 cache
-	// so that we actually measure the performance of
-	// streaming the data in from DRAM
-	const targetSize = 64 * 1024 * 1024
-	var outbuf ion.Buffer
-	inst.Marshal(&outbuf, true)
-	rows := 0
-	for {
-		d := u.Generate(src)
-		d.Encode(&outbuf, &inst)
-		rows++
-		size := outbuf.Size()
-		if size > targetSize {
-			break
-		}
-	}
-	benchInput(b, query, outbuf.Bytes(), rows)
+		benchInput(b, query, rowmem, rows)
+	})
 }
 
 func BenchmarkTestQueries(b *testing.B) {
@@ -1003,9 +1018,7 @@ func BenchmarkTestQueries(b *testing.B) {
 		}
 
 		for i := range bench {
-			b.Run(bench[i].name, func(b *testing.B) {
-				benchPath(b, bench[i].path)
-			})
+			benchPath(b, bench[i].path)
 		}
 	}
 }
