@@ -335,7 +335,7 @@ func (w *CompressionWriter) Close() error {
 	}
 	finalize(&w.Trailer, w.blocks, w.MinChunksPerBlock)
 	w.Trailer.Offset = w.offset
-	trailer := w.Trailer.trailer(w.Comp, w.InputAlign)
+	trailer := w.Trailer.trailer(w.Comp.Name(), w.InputAlign)
 	w.offset += int64(len(trailer))
 	w.buffer = append(w.buffer, trailer...)
 	w.Comp.Close()
@@ -343,12 +343,12 @@ func (w *CompressionWriter) Close() error {
 	return w.Output.Close(w.buffer)
 }
 
-func (t *Trailer) trailer(comp Compressor, align int) []byte {
+func (t *Trailer) trailer(compname string, align int) []byte {
 	var st ion.Symtab
 	var buf ion.Buffer
 
 	t.Version = 1
-	t.Algo = comp.Name()
+	t.Algo = compname
 	t.BlockShift = bits.TrailingZeros(uint(align))
 
 	t.Encode(&buf, &st)

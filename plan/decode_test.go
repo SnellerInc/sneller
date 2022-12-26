@@ -108,7 +108,7 @@ func (b *benchenv) Stat(_ expr.Node, _ *Hints) (TableHandle, error) {
 					LastModified: date.Now(),
 				},
 			},
-			Trailer: &blockfmt.Trailer{
+			Trailer: blockfmt.Trailer{
 				Version:    1,
 				Offset:     1234500,
 				Algo:       "zstd",

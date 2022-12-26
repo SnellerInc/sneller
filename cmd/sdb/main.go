@@ -270,7 +270,7 @@ func describe(creds db.Tenant, dbname, table string) {
 		if i < nindirect {
 			fmt.Printf("\t (indirect)\n")
 		}
-		describeTrailer(descs[i].Trailer, descs[i].Size)
+		describeTrailer(&descs[i].Trailer, descs[i].Size)
 	}
 	fmt.Printf("total blocks:       %d\n", blocks)
 	fmt.Printf("total compressed:   %s\n", human(totalComp))
@@ -374,7 +374,7 @@ func validate(creds db.Tenant, dbname, table string) {
 		if err != nil {
 			exitf("opening %s: %s", descs[i].Path, err)
 		}
-		blockfmt.Validate(f, descs[i].Trailer, &e)
+		blockfmt.Validate(f, &descs[i].Trailer, &e)
 		f.Close()
 	}
 	// TODO: validate idx.Indirect

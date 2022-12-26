@@ -54,7 +54,6 @@ func TestCompressedRange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := &cw.Trailer
 
 	srv := server(dst.Bytes())
 	defer srv.Close()
@@ -80,7 +79,7 @@ func TestCompressedRange(t *testing.T) {
 				Align: cw.InputAlign,
 			},
 		},
-		Trailer: tr,
+		Trailer: cw.Trailer,
 	}
 	testRead(t, all, buf)
 

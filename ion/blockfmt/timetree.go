@@ -60,6 +60,14 @@ func (t *TimeIndex) Reset() {
 	t.min = t.min[:0]
 }
 
+// Clone produces a deep copy of t.
+func (t *TimeIndex) Clone() TimeIndex {
+	return TimeIndex{
+		min: slices.Clone(t.min),
+		max: slices.Clone(t.max),
+	}
+}
+
 func packList(dst *ion.Buffer, lst []timespan) {
 	dst.BeginList(-1)
 	st, dt := int64(0), int64(0)
@@ -180,6 +188,19 @@ func (t *TimeIndex) End(when date.Time) int {
 	return t.min[j].offset
 }
 
+// Append concatenates t and next so that the
+// ranges indexed by next occur immediately after
+// the ranges indexed by t.
+func (t *TimeIndex) Append(next *TimeIndex) {
+	n := t.Blocks()
+	for i := range next.min {
+		t.pushMin(next.min[i].when, next.min[i].offset+n)
+	}
+	for i := range next.max {
+		t.pushMax(next.max[i].when, next.max[i].offset+n)
+	}
+}
+
 // Blocks returns the number of blocks in the index.
 func (t *TimeIndex) Blocks() int {
 	if len(t.max) == 0 {
@@ -200,11 +221,7 @@ func (t *TimeIndex) EndIntervals() int {
 	return len(t.max)
 }
 
-func (t *TimeIndex) pushMin(when date.Time) {
-	pos := 0
-	if len(t.max) > 0 {
-		pos = t.max[len(t.max)-1].offset
-	}
+func (t *TimeIndex) pushMin(when date.Time, pos int) {
 	j := len(t.min)
 	// walk backwards and overwrite the first entry
 	// where the minimum is larger than the new min
@@ -218,12 +235,12 @@ func (t *TimeIndex) pushMin(when date.Time) {
 	})
 }
 
-func (t *TimeIndex) pushMax(when date.Time) {
+func (t *TimeIndex) pushMax(when date.Time, blocks int) {
 	// push right-boundary
 	if len(t.max) == 0 {
 		t.max = append(t.max, timespan{
 			when:   when,
-			offset: 1,
+			offset: blocks,
 		})
 		return
 	}
@@ -237,7 +254,6 @@ func (t *TimeIndex) pushMax(when date.Time) {
 	}
 
 	// trim all trailing blocks that have an overlap:
-	blocks := last.offset + 1
 	endpos := len(t.max)
 	for endpos > 0 && !when.After(t.max[endpos-1].when) {
 		endpos--
@@ -268,8 +284,9 @@ func (t *TimeIndex) Push(start, end date.Time) {
 		println(end.String(), "<", start.String())
 		panic("TimeIndex.Push: end < start")
 	}
-	t.pushMin(start)
-	t.pushMax(end)
+	b := t.Blocks()
+	t.pushMin(start, b)
+	t.pushMax(end, b+1)
 }
 
 // PushEmpty pushes num empty blocks to the index.

@@ -93,7 +93,7 @@ func Blobs(src FS, idx *blockfmt.Index, keep *blockfmt.Filter) (*blob.List, erro
 		if idx.Inline[i].Format != blockfmt.Version {
 			return nil, fmt.Errorf("don't know how to convert format %q into a blob", idx.Inline[i].Format)
 		}
-		if !keepAny(idx.Inline[i].Trailer, keep) {
+		if !keepAny(&idx.Inline[i].Trailer, keep) {
 			continue
 		}
 		canExpire := idx.Inline[i].Size < DefaultMinMerge && i == len(idx.Inline)-1

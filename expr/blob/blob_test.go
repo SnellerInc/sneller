@@ -172,7 +172,7 @@ func TestSerialization(t *testing.T) {
 						LastModified: now,
 					},
 				},
-				Trailer: &blockfmt.Trailer{Version: 1, Algo: "zstd"},
+				Trailer: blockfmt.Trailer{Version: 1, Algo: "zstd"},
 			},
 			&URL{
 				Value: "http://foo.bar/baz",
@@ -210,7 +210,7 @@ func TestSerializationCompressed(t *testing.T) {
 					LastModified: now,
 				},
 			},
-			Trailer: &blockfmt.Trailer{
+			Trailer: blockfmt.Trailer{
 				Version:    1,
 				Algo:       "zstd",
 				BlockShift: 20,
@@ -295,7 +295,7 @@ func BenchmarkSerializationCompressed(b *testing.B) {
 	}
 	// 2000 items * 5 blocks each ~= 10000 * 100MiB ~= 1TiB worth of blocks
 	for i := range lst.Contents {
-		t := &blockfmt.Trailer{
+		t := blockfmt.Trailer{
 			Version:    1,
 			Offset:     50*1024*1024 - rand.Int63n(1024*1024),
 			Algo:       "zstd",

@@ -114,7 +114,7 @@ func mkblob(url string) blob.Interface {
 			Chunks: 100,
 		}
 	}
-	trailer := &blockfmt.Trailer{
+	trailer := blockfmt.Trailer{
 		Version:    1,
 		Offset:     12000,
 		Algo:       "zstd",

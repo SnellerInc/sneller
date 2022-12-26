@@ -21,7 +21,14 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
+
+func (t *TimeIndex) Equal(o *TimeIndex) bool {
+	return slices.Equal(t.min, o.min) &&
+		slices.Equal(t.max, o.max)
+}
 
 func (t *TimeIndex) Decode(st *ion.Symtab, buf []byte) error {
 	*t = TimeIndex{}
@@ -64,17 +71,14 @@ func testTimeIndexRoundtrip(t *testing.T, ti *TimeIndex) {
 
 func TestTimeTree(t *testing.T) {
 	start := date.Now().Truncate(time.Microsecond)
-	sub1 := func(when date.Time) date.Time {
-		return date.UnixMicro(when.UnixMicro() - 1)
-	}
-	add1 := func(when date.Time) date.Time {
-		return date.UnixMicro(when.UnixMicro() + 1)
-	}
-	_ = sub1
-	_ = add1
 
 	ti := &TimeIndex{}
 	testTimeIndexRoundtrip(t, ti)
+
+	// we are going to Append these to
+	// see if they are equal to ti after
+	// the append operation
+	var lo, hi TimeIndex
 
 	// first, do only monotonic insertions
 	// and tests that things are recorded correctly:
@@ -85,6 +89,12 @@ func TestTimeTree(t *testing.T) {
 
 		next := start.Add((time.Second * 3) / 4)
 		ti.Push(start, next)
+
+		cur := &lo
+		if i >= 500 {
+			cur = &hi
+		}
+		cur.Push(start, next)
 
 		// since we use non-overlapping ranges,
 		// these should yield equivalent results
@@ -119,7 +129,15 @@ func TestTimeTree(t *testing.T) {
 
 		start = next.Add(time.Microsecond)
 	}
+	lo.Append(&hi)
+	if !ti.Equal(&lo) {
+		// lo.Append(&hi) should produce a sparse index
+		// that is exactly equivalent to the one we built
+		t.Error("lo not equal to ti after Append")
+	}
+
 	testTimeIndexRoundtrip(t, ti)
+	testTimeIndexRoundtrip(t, &hi)
 
 	ti.Reset()
 

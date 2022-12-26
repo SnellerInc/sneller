@@ -32,7 +32,7 @@ type Compressed struct {
 	// Trailer is the trailer that
 	// describes how to unpack the
 	// compressed contents of From.
-	Trailer *blockfmt.Trailer
+	Trailer blockfmt.Trailer
 	// etext is additional text used
 	// to compute the ETag of the object
 	// if the trailer has been manipulated
@@ -87,7 +87,7 @@ func (d *decodeComp) SetField(name string, body []byte) error {
 	case "from":
 		d.comp.From, _, err = d.parent.decode(body)
 	case "trailer":
-		d.comp.Trailer, err = d.parent.td.Decode(body)
+		err = d.parent.td.Decode(body, &d.comp.Trailer)
 	case "etext":
 		d.comp.etext, _, err = ion.ReadString(body)
 	case "skip":
@@ -194,7 +194,7 @@ func (c *Compressed) Decompressor() (io.ReadCloser, error) {
 	}
 	dd := &decompressor{}
 	dd.src = rd
-	dd.dec.Set(c.Trailer, len(c.Trailer.Blocks))
+	dd.dec.Set(&c.Trailer, len(c.Trailer.Blocks))
 	return dd, nil
 }
 
@@ -206,7 +206,7 @@ func (c *Compressed) Reader(start, size int64) (io.ReadCloser, error) {
 	}
 	cr := &compressedReader{}
 	cr.ReadCloser = rd
-	cr.dec.Set(c.Trailer, len(c.Trailer.Blocks))
+	cr.dec.Set(&c.Trailer, len(c.Trailer.Blocks))
 	return cr, nil
 }
 
@@ -237,7 +237,7 @@ func (c *CompressedPart) Reader(start, size int64) (io.ReadCloser, error) {
 	}
 	cr := &compressedReader{}
 	cr.ReadCloser = rd
-	cr.dec.Set(c.Parent.Trailer, c.EndBlock)
+	cr.dec.Set(&c.Parent.Trailer, c.EndBlock)
 	return cr, nil
 }
 
@@ -253,7 +253,7 @@ func (c *CompressedPart) Decompressor() (io.ReadCloser, error) {
 	}
 	dd := &decompressor{}
 	dd.src = rd
-	dd.dec.Set(c.Parent.Trailer, c.EndBlock)
+	dd.dec.Set(&c.Parent.Trailer, c.EndBlock)
 	return dd, nil
 }
 

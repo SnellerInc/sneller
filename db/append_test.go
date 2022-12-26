@@ -179,11 +179,6 @@ func TestAppend(t *testing.T) {
 	if idx0.Objects() != 1 {
 		t.Errorf("expected idx0.Objects()==1; got %#v", idx0.Objects())
 	}
-	for i := range idx0.Inline {
-		if idx0.Inline[i].Trailer == nil {
-			t.Errorf("no trailer in contents[%d]", i)
-		}
-	}
 	checkContents(t, idx0, dfs)
 
 	// link a new file into the parking
@@ -215,9 +210,6 @@ func TestAppend(t *testing.T) {
 	}
 	if idx1.Objects() != 1 {
 		t.Errorf("got idx1.Objects() = %d", idx1.Objects())
-	}
-	if idx1.Inline[0].Trailer == nil {
-		t.Errorf("no trailer in contents[%d]", 0)
 	}
 	idx1.Inputs.Backing = dfs
 	if !contains(t, idx1, "file://a-prefix/parking.10n") {
@@ -268,9 +260,6 @@ func TestAppend(t *testing.T) {
 	}
 	if idx1.Objects() != 1 {
 		t.Errorf("got idx1.Objects() = %d", idx1.Objects())
-	}
-	if idx1.Inline[0].Trailer == nil {
-		t.Errorf("no trailer in contents[%d]", 0)
 	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)

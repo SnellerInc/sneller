@@ -86,7 +86,7 @@ func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 		if err != nil {
 			return nil, err
 		}
-		sub = stripsub(c.Trailer, sub, flt)
+		sub = stripsub(&c.Trailer, sub, flt)
 		for i := range sub {
 			s.MaxScan += uint64(sub[i].Decompressed())
 			if err := insert(&sub[i]); err != nil {

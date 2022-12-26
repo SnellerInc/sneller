@@ -495,7 +495,7 @@ func (m *MultiWriter) Close() error {
 	}
 
 	// compute the final sparse index:
-	m.unallocated.buf = append(m.unallocated.buf, m.Trailer.trailer(finalcomp, m.InputAlign)...)
+	m.unallocated.buf = append(m.unallocated.buf, m.Trailer.trailer(finalcomp.Name(), m.InputAlign)...)
 	finalcomp.Close()
 	return m.Output.Close(m.unallocated.buf)
 }

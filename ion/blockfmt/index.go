@@ -88,10 +88,9 @@ type Descriptor struct {
 	// ObjectInfo describes *this*
 	// object's full path, ETag, and format.
 	ObjectInfo
-	// Trailer for the object. This may not always
-	// be present in the index, in which case the
-	// trailer must be read from the object.
-	Trailer *Trailer
+	// Trailer is the trailer that is part
+	// of the object.
+	Trailer Trailer
 }
 
 // Quarantined is an item that
@@ -357,10 +356,8 @@ func WriteDescriptor(buf *ion.Buffer, st *ion.Symtab, desc *Descriptor) {
 	buf.WriteString(desc.Format)
 	buf.BeginField(size)
 	buf.WriteInt(desc.Size)
-	if t := desc.Trailer; t != nil {
-		buf.BeginField(trailer)
-		t.Encode(buf, st)
-	}
+	buf.BeginField(trailer)
+	desc.Trailer.Encode(buf, st)
 	buf.EndStruct()
 }
 
@@ -402,10 +399,8 @@ func writeContents(buf *ion.Buffer, st *ion.Symtab, contents []Descriptor) {
 		buf.WriteString(contents[i].Format)
 		buf.BeginField(size)
 		buf.WriteInt(contents[i].Size)
-		if t := contents[i].Trailer; t != nil {
-			buf.BeginField(trailer)
-			t.Encode(buf, st)
-		}
+		buf.BeginField(trailer)
+		contents[i].Trailer.Encode(buf, st)
 		buf.EndStruct()
 	}
 	buf.EndList()
@@ -444,12 +439,7 @@ func (d *Descriptor) decode(td *TrailerDecoder, field []byte, opts Flag) error {
 			return nil // ignore for backwards-compat
 		}
 		if name == "trailer" {
-			t, err := td.Decode(field)
-			if err != nil {
-				return fmt.Errorf("unpacking Trailer: %w", err)
-			}
-			d.Trailer = t
-			return nil
+			return td.Decode(field, &d.Trailer)
 		}
 		_, ok, err := d.set(name, field)
 		if !ok {

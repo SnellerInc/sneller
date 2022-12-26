@@ -1343,7 +1343,7 @@ func mkindex(rs [][]blockfmt.Range) *blockfmt.Index {
 	}
 	return &blockfmt.Index{
 		Inline: []blockfmt.Descriptor{{
-			Trailer: t,
+			Trailer: *t,
 		}},
 	}
 }

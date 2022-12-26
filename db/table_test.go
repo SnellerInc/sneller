@@ -28,6 +28,7 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr/blob"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -122,6 +123,10 @@ func TestOpenIndex(t *testing.T) {
 		"db/db0/table/index",
 	})
 
+	var sparse blockfmt.SparseIndex
+	start := date.Now().Truncate(time.Microsecond)
+	end := start.Add(5 * time.Second)
+	sparse.Push([]blockfmt.Range{blockfmt.NewRange([]string{"foo"}, ion.Timestamp(start), ion.Timestamp(end))})
 	idx := blockfmt.Index{
 		Name:    "test-index",
 		Created: date.Now().Truncate(time.Microsecond),
@@ -130,6 +135,13 @@ func TestOpenIndex(t *testing.T) {
 			ObjectInfo: blockfmt.ObjectInfo{
 				Path: "path/to/object",
 				ETag: "object-etag-1",
+			},
+			Trailer: blockfmt.Trailer{
+				Version: 1,
+				Blocks: []blockfmt.Blockdesc{
+					{Offset: 0, Chunks: 50},
+				},
+				Sparse: sparse,
 			},
 		}},
 	}

@@ -154,7 +154,6 @@ type TrailerDecoder struct {
 	// decoding symbols.
 	Symbols *ion.Symtab
 
-	trailers []Trailer
 	blockcap int
 	blocks   []Blockdesc
 	spans    []timespan
@@ -164,14 +163,6 @@ type TrailerDecoder struct {
 	rangecap   int
 	timeRanges []TimeRange
 	algo       string
-}
-
-func (d *TrailerDecoder) trailer() *Trailer {
-	if len(d.trailers) == cap(d.trailers) {
-		d.trailers = make([]Trailer, 0, 8+2*cap(d.trailers))
-	}
-	d.trailers = d.trailers[:len(d.trailers)+1]
-	return &d.trailers[len(d.trailers)-1]
 }
 
 // makeBlocks returns a []Blockdesc of len n, using the
@@ -304,16 +295,7 @@ func (d *TrailerDecoder) unpackRanges(st *ion.Symtab, field []byte) ([]Range, er
 }
 
 // Decode decodes a trailer.
-func (d *TrailerDecoder) Decode(body []byte) (*Trailer, error) {
-	t := d.trailer()
-	err := d.decode(t, body)
-	if err != nil {
-		return nil, err
-	}
-	return t, nil
-}
-
-func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
+func (d *TrailerDecoder) Decode(body []byte, dst *Trailer) error {
 	seenSparse := false
 	err := unpackStruct(d.Symbols, body, func(fieldname string, body []byte) error {
 		switch fieldname {
@@ -322,13 +304,13 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 			if err != nil {
 				return err
 			}
-			t.Version = int(v)
+			dst.Version = int(v)
 		case "offset":
 			off, _, err := ion.ReadInt(body)
 			if err != nil {
 				return err
 			}
-			t.Offset = off
+			dst.Offset = off
 		case "algo":
 			alg, _, err := ion.ReadStringShared(body)
 			if err != nil {
@@ -343,34 +325,34 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 			if string(alg) != d.algo {
 				d.algo = string(alg)
 			}
-			t.Algo = d.algo
+			dst.Algo = d.algo
 		case "blockshift":
 			shift, _, err := ion.ReadInt(body)
 			if err != nil {
 				return err
 			}
-			t.BlockShift = int(shift)
+			dst.BlockShift = int(shift)
 		case "sparse":
 			seenSparse = true
-			return d.decodeSparse(&t.Sparse, body)
+			return d.decodeSparse(&dst.Sparse, body)
 		case "blocks-delta":
 			// smaller delta-encoded block list format
 			n, err := countList(body)
 			if err != nil || n == 0 {
 				return err
 			}
-			t.Blocks = d.makeBlocks(n / 2)[:0]
-			t.unpackBlocks(body)
+			dst.Blocks = d.makeBlocks(n / 2)[:0]
+			dst.unpackBlocks(body)
 		case "blocks":
 			// old-format block lists
 			n, err := countList(body)
 			if err != nil || n == 0 {
 				return err
 			}
-			t.Blocks = d.makeBlocks(n)[:0]
+			dst.Blocks = d.makeBlocks(n)[:0]
 			err = unpackList(body, func(field []byte) error {
-				t.Blocks = t.Blocks[:len(t.Blocks)+1]
-				blk := &t.Blocks[len(t.Blocks)-1]
+				dst.Blocks = dst.Blocks[:len(dst.Blocks)+1]
+				blk := &dst.Blocks[len(dst.Blocks)-1]
 				// if the 'chunks' field isn't present,
 				// then the number of chunks must be 1
 				blk.Chunks = 1
@@ -399,7 +381,7 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 						if err != nil {
 							return fmt.Errorf("error unpacking range %d: %w", len(ranges), err)
 						}
-						t.Sparse.Push(ranges)
+						dst.Sparse.Push(ranges)
 					}
 					return nil
 				})
@@ -407,18 +389,18 @@ func (d *TrailerDecoder) decode(t *Trailer, body []byte) error {
 					return err
 				}
 				if !seenSparse && !seenRanges {
-					t.Sparse.Push(nil)
+					dst.Sparse.Push(nil)
 				}
 				return nil
 			})
 			if err != nil {
-				return fmt.Errorf("unpacking Block %d: %w", len(t.Blocks), err)
+				return fmt.Errorf("unpacking Block %d: %w", len(dst.Blocks), err)
 			}
 			return nil
 		default:
 			// try to be forwards-compatible:
 			// if Version != 1, then ignore future fields
-			if t.Version != 1 {
+			if dst.Version != 1 {
 				return nil
 			}
 			return fmt.Errorf("unexpected field %q", fieldname)
@@ -464,7 +446,7 @@ func (t *Trailer) unpackBlocks(body []byte) error {
 // Decode decodes a trailer encoded using Encode.
 func (t *Trailer) Decode(st *ion.Symtab, body []byte) error {
 	d := TrailerDecoder{Symbols: st}
-	return d.decode(t, body)
+	return d.Decode(body, t)
 }
 
 // Decompressed returns the decompressed size

@@ -61,6 +61,42 @@ func (s *SparseIndex) Trim(j int) SparseIndex {
 	}
 }
 
+// Clone produces a deep copy of s.
+func (s *SparseIndex) Clone() SparseIndex {
+	indices := slices.Clone(s.indices)
+	for i := range indices {
+		indices[i].ranges = indices[i].ranges.Clone()
+	}
+	return SparseIndex{
+		consts:  s.consts,
+		indices: indices,
+		blocks:  s.blocks,
+	}
+}
+
+// Append tries to append next to s and returns
+// true if the append operation was successful,
+// or false otherwise. (Append will fail if the
+// set of indices tracked in each SparseIndex is not the same.)
+// The block positions in next are assumed to start
+// at s.Blocks().
+func (s *SparseIndex) Append(next *SparseIndex) bool {
+	if !s.consts.Equal(next.consts) {
+		return false
+	}
+	eq := func(a, b timeIndex) bool {
+		return slices.Equal(a.path, b.path)
+	}
+	if !slices.EqualFunc(s.indices, next.indices, eq) {
+		return false
+	}
+	for i := range s.indices {
+		s.indices[i].ranges.Append(&next.indices[i].ranges)
+	}
+	s.blocks += next.blocks
+	return true
+}
+
 // Fields returns the number of individually
 // indexed fields.
 func (s *SparseIndex) Fields() int { return len(s.indices) }

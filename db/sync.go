@@ -846,11 +846,10 @@ func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partiti
 			return fmt.Errorf("opening %s for re-ingest: %w", prepend.Path, err)
 		}
 		defer f.Close()
-		tr := prepend.Trailer
 		// NOTE: make sure R is an *s3.File here when we're on AWS;
 		// that way we can use server-side copy for some prepends
 		c.Prepend.R = f
-		c.Prepend.Trailer = tr
+		c.Prepend.Trailer = &prepend.Trailer
 	}
 
 	name := "packed-" + uuid() + suffixForComp(c.Comp)
@@ -877,7 +876,7 @@ func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partiti
 			Format:       blockfmt.Version,
 			Size:         out.Size(),
 		},
-		Trailer: c.Trailer(),
+		Trailer: *c.Trailer(),
 	}
 	st.conf.logf("table %s: wrote object %s ETag %s", st.table, fp, etag)
 	return nil

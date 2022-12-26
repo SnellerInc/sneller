@@ -93,7 +93,7 @@ func TestIndexCompat(t *testing.T) {
 
 func TestLargeIndexEncoding(t *testing.T) {
 	time0 := date.Now().Truncate(time.Microsecond)
-	tr := &Trailer{
+	tr := Trailer{
 		Version:    1,
 		Offset:     100,
 		Algo:       "lz4",
@@ -213,7 +213,7 @@ func TestIndexEncoding(t *testing.T) {
 						Format:       Version,
 						Size:         12000,
 					},
-					Trailer: &Trailer{
+					Trailer: Trailer{
 						Version:    1,
 						Offset:     100,
 						Algo:       "lz4",
@@ -345,7 +345,7 @@ func BenchmarkIndexDecodingAllocs(b *testing.B) {
 				LastModified: now,
 				Format:       Version,
 			},
-			Trailer: &Trailer{
+			Trailer: Trailer{
 				Version:    1,
 				Offset:     100,
 				Algo:       "lz4",

@@ -283,7 +283,7 @@ func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 		dec.Malloc = vmMalloc
 		dec.Free = vm.Free
 		dec.Fields = b.fieldList()
-		dec.Set(c.Parent.Trailer, c.EndBlock)
+		dec.Set(&c.Parent.Trailer, c.EndBlock)
 		_, err := dec.CopyBytes(dst, src)
 		return err
 	}
@@ -291,7 +291,7 @@ func (b *blobSegment) Decode(dst io.Writer, src []byte) error {
 		var dec blockfmt.Decoder
 		dec.Malloc = vmMalloc
 		dec.Free = vm.Free
-		dec.Set(c.Trailer, len(c.Trailer.Blocks))
+		dec.Set(&c.Trailer, len(c.Trailer.Blocks))
 		dec.Fields = b.fieldList()
 		_, err := dec.CopyBytes(dst, src)
 		return err

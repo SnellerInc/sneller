@@ -215,7 +215,7 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, fi
 				if err != nil {
 					return err
 				}
-				if keepAny(d.Trailer, filt) {
+				if keepAny(&d.Trailer, filt) {
 					in = append(in, d)
 				}
 				return nil

@@ -303,11 +303,6 @@ func TestSync(t *testing.T) {
 	if idx0.Objects() != 1 {
 		t.Errorf("expected idx.Objects()==1; got %d", idx0.Objects())
 	}
-	for i := range idx0.Inline {
-		if idx0.Inline[i].Trailer == nil {
-			t.Errorf("no trailer in contents[%d]", i)
-		}
-	}
 	idx0.Inputs.Backing = dfs
 	if !contains(t, idx0, "file://a-prefix/parking.10n") {
 		t.Error("missing file?")

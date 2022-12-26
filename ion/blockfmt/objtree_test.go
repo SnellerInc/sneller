@@ -53,7 +53,7 @@ func TestIndirectTree(t *testing.T) {
 				Format:       Version,
 				Size:         123456,
 			},
-			Trailer: &Trailer{
+			Trailer: Trailer{
 				Version:    1,
 				Offset:     345123,
 				BlockShift: 20,
