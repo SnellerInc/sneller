@@ -15,6 +15,7 @@
 package blockfmt
 
 import (
+	"bytes"
 	"crypto/rand"
 	"path"
 	"reflect"
@@ -23,6 +24,8 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestIndirectTree(t *testing.T) {
@@ -42,20 +45,61 @@ func TestIndirectTree(t *testing.T) {
 		return date.Now().Truncate(time.Microsecond)
 	}
 
+	assertEquivalent := func(a, b []Descriptor) {
+		for i := range a {
+			blocks := a[i].Trailer.Blocks
+			var srcblocks []Blockdesc
+			var sparse *SparseIndex
+
+			offset := int64(0)
+			for len(srcblocks) < len(blocks) && len(b) > 0 {
+				if sparse == nil {
+					s := b[0].Trailer.Sparse.Clone()
+					sparse = &s
+				} else {
+					sparse.Append(&b[0].Trailer.Sparse)
+				}
+				lst := b[0].Trailer.Blocks
+				for j := range lst {
+					blk := lst[j]
+					blk.Offset += offset
+					srcblocks = append(srcblocks, blk)
+				}
+				offset += b[0].Trailer.Offset
+				b = b[1:]
+			}
+			if !slices.Equal(blocks, srcblocks) {
+				t.Helper()
+				if len(srcblocks) != len(blocks) {
+					t.Errorf("len(srcblocks)=%d, len(blocks)=%d", len(srcblocks), len(blocks))
+				}
+				for i := range blocks {
+					if srcblocks[i] != blocks[i] {
+						t.Errorf("%d: %#v != %#v", i, srcblocks[i], blocks[i])
+					}
+				}
+				t.Fatal("block lists not equivalent")
+			}
+			if !reflect.DeepEqual(&a[i].Trailer.Sparse, sparse) {
+				t.Helper()
+				t.Fatal("sparse not equal")
+			}
+		}
+	}
+
 	start := now()
 	newdesc := func(iter, blocks int) Descriptor {
 		name := "packed-" + uuid()
 		d := Descriptor{
 			ObjectInfo: ObjectInfo{
 				Path:         path.Join("db", "foo", "bar", name),
-				ETag:         "etag-for-" + name,
 				LastModified: now(),
 				Format:       Version,
-				Size:         123456,
+				Size:         16,
 			},
 			Trailer: Trailer{
 				Version:    1,
-				Offset:     345123,
+				Offset:     11,
 				BlockShift: 20,
 				Algo:       "zstd",
 			},
@@ -74,6 +118,15 @@ func TestIndirectTree(t *testing.T) {
 			d.Trailer.Sparse.push([]string{"timestamp"}, lo, hi)
 			d.Trailer.Sparse.bump()
 		}
+
+		// we don't ever inspect the contents of these files,
+		// so just write out some garbage to be concatenated
+		body := bytes.Repeat([]byte{0xff}, int(d.Size))
+		etag, err := dir.WriteFile(d.Path, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.ETag = etag
 		return d
 	}
 
@@ -149,50 +202,19 @@ func TestIndirectTree(t *testing.T) {
 		all = append(all, d)
 		idx.Inline = append(idx.Inline, d)
 
-		prev := len(idx.Indirect.Refs)
-		// force all but the latest object
-		// to be flushed to the indirect list
-		err = idx.SyncOutputs(dir, path.Join("db", "foo", "bar"), ds, 0)
+		// flush once we've seen 3 input objects
+		err = idx.SyncOutputs(dir, path.Join("db", "foo", "bar"), ds*10, ds*10, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(idx.Inline) != 1 {
-			t.Fatalf("iter %d: expected 1 inline object; found %d", i, len(idx.Inline))
-		}
-		after := len(idx.Indirect.Refs)
-		if prev == after && prev != 0 {
-			// we should have generated garbage
-			if len(idx.ToDelete) != 1 {
-				t.Error("didn't generate any garbage?")
-			}
-		} else if prev != 0 && after != prev+1 {
-			// otherwise, we should have added 1 new ref
-			t.Errorf("%d -> %d indirect refs?", prev, after)
-		}
-		if idx.Indirect.Objects()+len(idx.Inline) != len(all) {
+		if idx.Indirect.OrigObjects()+len(idx.Inline) != len(all) {
 			t.Errorf("Indirect.Objects() = %d, len(idx.Inline) = %d, len(all) = %d",
-				idx.Indirect.Objects(), len(idx.Inline), len(all))
+				idx.Indirect.OrigObjects(), len(idx.Inline), len(all))
 		}
 
 		gotAll := allRefs(idx)
-		if len(all) != len(gotAll) {
-			t.Fatalf("got %d instead of %d refs", len(gotAll), len(all))
-		}
-		if !reflect.DeepEqual(all, gotAll) {
-			for j := len(all) - 1; j >= 0; j-- {
-				if all[j].Path != gotAll[j].Path {
-					t.Errorf("index %d: %s != %s", j, all[j].Path, gotAll[j].Path)
-					continue
-				}
-				if !reflect.DeepEqual(all[j].Trailer.Sparse, gotAll[j].Trailer.Sparse) {
-					t.Errorf("%#v", all[j].Trailer.Sparse)
-					t.Fatalf("%#v", gotAll[j].Trailer.Sparse)
-				}
-			}
-			t.Fatalf("iter %d: results not equal", i)
-		}
-		if i > 0 {
-			// Indirect should contain iters [0, i-1]
+		assertEquivalent(gotAll, all)
+		if idx.Indirect.OrigObjects() > 0 {
 			field := []string{"timestamp"}
 			tr := idx.Indirect.Sparse.Get(field)
 			if tr == nil {
@@ -201,7 +223,7 @@ func TestIndirectTree(t *testing.T) {
 			if min, ok := tr.Min(); !ok || !min.Equal(start) {
 				t.Errorf("iter %d min [timestamp] = %s not %s?", i, min, start)
 			}
-			wantmax := start.Add((time.Duration(i-1) * time.Hour) + 30*time.Minute - time.Microsecond)
+			wantmax := start.Add((time.Duration(idx.Indirect.OrigObjects()-1) * time.Hour) + 30*time.Minute - time.Microsecond)
 			if max, ok := tr.Max(); !ok || !max.Equal(wantmax) {
 				t.Errorf("iter %d max [timestamp] = %s not %s?", i, max, wantmax)
 			}
@@ -209,22 +231,14 @@ func TestIndirectTree(t *testing.T) {
 			// check that sparse indexing information
 			// is updated appropriately on each insert
 			last := latestAbove(idx, i-1)
-			if !reflect.DeepEqual(last, all[len(all)-2:len(all)-1]) {
-				t.Logf("len(last)=%d", len(last))
-				t.Fatalf("iter %d latestAbove didn't match", i)
-			}
+			assertEquivalent(last, all[len(all)-2:len(all)-1])
 			below := latestBelow(idx, i)
-			if !reflect.DeepEqual(below, all[:len(all)-1]) {
-				t.Logf("len(below)=%d", len(below))
-				t.Logf("got %v", below)
-				t.Logf("want %v", all[:len(all)-1])
-				t.Fatalf("iter %d latestBelow didn't match", i)
-			}
+			assertEquivalent(below, all[:len(all)-1])
 		}
 		indexmem, err = Sign(&key, idx)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	t.Logf("final refs: %d, objects: %d", len(idx.Indirect.Refs), idx.Indirect.Objects())
+	t.Logf("final refs: %d, orig objects %d, objects: %d", len(idx.Indirect.Refs), idx.Indirect.OrigObjects(), idx.Objects())
 }

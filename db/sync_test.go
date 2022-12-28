@@ -335,10 +335,6 @@ func TestSync(t *testing.T) {
 	if idx1.Objects() != 1 {
 		t.Fatalf("got idx1.Objects() = %d", idx1.Objects())
 	}
-	if idx1.Indirect.Objects() != 1 {
-		t.Logf("inline size: %d", idx1.Inline[0].Trailer.Decompressed())
-		t.Fatal("expected flush to indirect...?")
-	}
 	checkContents(t, idx1, dfs)
 	checkNoGarbage(t, dfs, "db/default/parking", idx1)
 

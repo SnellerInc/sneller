@@ -47,17 +47,22 @@ type IndirectRef struct {
 	// object references inside
 	// the packed file pointed to by Path.
 	Objects int
+	// OrigObjects is the number of objects
+	// that were compacted to produce the
+	// packfiles pointed to by Path.
+	OrigObjects int
 
 	// for decoding compatibility only!
 	ranges []Range
 }
 
-// Objects returns the total number
-// of objects referenced by the indirect tree.
-func (i *IndirectTree) Objects() int {
+// OrigObjects returns the total number
+// of objects that have been flushed to
+// the indirect tree.
+func (i *IndirectTree) OrigObjects() int {
 	n := 0
 	for j := range i.Refs {
-		n += i.Refs[j].Objects
+		n += i.Refs[j].OrigObjects
 	}
 	return n
 }
@@ -68,6 +73,7 @@ func (i *IndirectTree) encode(st *ion.Symtab, buf *ion.Buffer) {
 	lastModified := st.Intern("last-modified")
 	size := st.Intern("size")
 	objects := st.Intern("objects")
+	origObjects := st.Intern("orig-objects")
 
 	buf.BeginStruct(-1)
 	buf.BeginField(st.Intern("refs"))
@@ -84,6 +90,8 @@ func (i *IndirectTree) encode(st *ion.Symtab, buf *ion.Buffer) {
 		buf.WriteInt(i.Refs[j].Size)
 		buf.BeginField(objects)
 		buf.WriteInt(int64(i.Refs[j].Objects))
+		buf.BeginField(origObjects)
+		buf.WriteInt(int64(i.Refs[j].OrigObjects))
 		buf.EndStruct()
 	}
 	buf.EndList()
@@ -118,6 +126,13 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 						}
 						ir.Objects = int(n)
 						return nil
+					case "orig-objects":
+						n, _, err := ion.ReadInt(field)
+						if err != nil {
+							return err
+						}
+						ir.OrigObjects = int(n)
+						return nil
 					default:
 						_, _, err := ir.ObjectInfo.set(name, field)
 						return err
@@ -125,6 +140,10 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 				})
 				if err != nil {
 					return err
+				}
+				if ir.OrigObjects == 0 {
+					// compatibility shim:
+					ir.OrigObjects = ir.Objects
 				}
 				i.Refs = append(i.Refs, ir)
 				return nil
@@ -283,7 +302,7 @@ func updateSummary(dst *SparseIndex, lst []Descriptor) {
 // append appends a list of descriptors to the tree
 // and writes any new decriptor lists to files in basedir
 // relative to the root of ofs.
-func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []Descriptor, expiry time.Duration) error {
+func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []Descriptor, expiry time.Duration, delta int) error {
 	if len(lst) == 0 {
 		return nil
 	}
@@ -330,6 +349,7 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	r.ETag = etag
 	r.Size = int64(len(compressed))
 	r.Objects = len(all)
+	r.OrigObjects += delta
 
 	info, err := fs.Stat(ofs, p)
 	if err != nil {

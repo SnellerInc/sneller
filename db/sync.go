@@ -42,6 +42,9 @@ import (
 // a few hundred MB decompressed.)
 const DefaultMinMerge = 50 * 1024 * 1024
 
+// DefaultTargetMergeSize is the default target size for compacted packfiles.
+const DefaultTargetMergeSize = 1 * giga
+
 // DefaultRangeMultiple is the default
 // multiple of the chunk alignment at which
 // we write out metadata.
@@ -90,6 +93,11 @@ type Builder struct {
 	// size of objects. If MinMergeSize is zero,
 	// then DefaultMinMerge is used.
 	MinMergeSize int
+	// TargetMergeSize is the target size of
+	// files that are compacted into larger packfiles.
+	// If TargetMergeSize is zero, then DefaultTargetMergeSize is used.
+	TargetMergeSize int
+
 	// Force forces a full index rebuild
 	// even when the input appears to be up-to-date.
 	Force bool
@@ -147,6 +155,20 @@ type Builder struct {
 	// safe to call from multiple goroutines
 	// simultaneously.
 	Logf func(f string, args ...interface{})
+}
+
+func (b *Builder) minMergeSize() int64 {
+	if b.MinMergeSize > 0 {
+		return int64(b.MinMergeSize)
+	}
+	return DefaultMinMerge
+}
+
+func (b *Builder) targetMerge() int {
+	if b.TargetMergeSize <= 0 {
+		return DefaultTargetMergeSize
+	}
+	return b.TargetMergeSize
 }
 
 // Format picks the row format for an object
@@ -259,7 +281,7 @@ func inlineToID(idx *blockfmt.Index, inline int) int {
 	if inline >= len(idx.Inline) {
 		return -1
 	}
-	return idx.Indirect.Objects() + inline
+	return idx.Indirect.OrigObjects() + inline
 }
 
 // findPrepend finds the first mergeable inline
@@ -743,7 +765,7 @@ func (st *tableState) flush(idx *blockfmt.Index, cache *IndexCache) (err error) 
 		invalidate(cache)
 		return err
 	}
-	err = idx.SyncOutputs(st.ofs, dir, st.conf.maxInlineBytes(), st.conf.GCMinimumAge)
+	err = idx.SyncOutputs(st.ofs, dir, st.conf.maxInlineBytes(), int64(st.conf.targetMerge()), st.conf.GCMinimumAge)
 	if err != nil {
 		invalidate(cache)
 		return err

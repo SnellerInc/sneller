@@ -92,7 +92,7 @@ func (s *server) inputsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
-	indirect := idx.Indirect.Objects()
+	indirect := idx.Indirect.OrigObjects()
 	err = idx.Inputs.Walk(start, func(path, etag string, id int) bool {
 		it.Path = path
 		it.ETag = etag

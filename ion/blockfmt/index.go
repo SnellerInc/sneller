@@ -670,7 +670,11 @@ func (idx *Index) SyncInputs(dir string, expiry time.Duration) error {
 // by trimming leading entries until the decompressed size
 // of the data referenced by idx.Inline is less than or
 // equal to maxInlined.
-func (idx *Index) SyncOutputs(ofs UploadFS, dir string, maxInlined int64, expiry time.Duration) error {
+func (idx *Index) SyncOutputs(ofs UploadFS, dir string,
+	maxInlined int64, targetSize int64, expiry time.Duration) error {
+	if len(idx.Inline) < 2 {
+		return nil
+	}
 	inline := int64(0)
 	for i := range idx.Inline {
 		inline += idx.Inline[i].Trailer.Decompressed()
@@ -678,17 +682,20 @@ func (idx *Index) SyncOutputs(ofs UploadFS, dir string, maxInlined int64, expiry
 	if inline < maxInlined {
 		return nil
 	}
-	j := 0
-	for inline > maxInlined && j < len(idx.Inline) {
-		inline -= idx.Inline[j].Trailer.Decompressed()
-		j++
-	}
-	before, after := idx.Inline[:j], idx.Inline[j:]
-	err := idx.append(&idx.Indirect, ofs, dir, before, expiry)
+	// take the bottom half of the inline list and
+	// compact the results into larger packfiles
+	half := len(idx.Inline) / 2
+	lo, hi := idx.Inline[:half], idx.Inline[half:]
+	compacted, toRemove, err := Compact(ofs, lo, targetSize, date.Now().Truncate(time.Microsecond).Add(expiry))
 	if err != nil {
 		return err
 	}
-	idx.Inline = after
+	err = idx.append(&idx.Indirect, ofs, dir, compacted, expiry, len(lo))
+	if err != nil {
+		return err
+	}
+	idx.ToDelete = append(idx.ToDelete, toRemove...)
+	idx.Inline = hi
 	return nil
 }
 
@@ -717,5 +724,5 @@ func (idx *Index) TimeRange(path []string) (min, max date.Time, ok bool) {
 // Objects returns the number of packed objects
 // that are pointed to by this Index.
 func (idx *Index) Objects() int {
-	return idx.Indirect.Objects() + len(idx.Inline)
+	return idx.Indirect.OrigObjects() + len(idx.Inline)
 }

@@ -66,13 +66,13 @@ func TestConcat(t *testing.T) {
 		})
 	}
 
-	var conc Concat
+	var conc concat
 	for i := range descs {
-		if !conc.Add(&descs[i]) {
+		if !conc.add(&descs[i]) {
 			t.Fatalf("couldn't add descriptor %d?", i)
 		}
 	}
-	err := conc.Run(dfs, "all")
+	err := conc.run(dfs, "all")
 	if err != nil {
 		t.Fatal(err)
 	}

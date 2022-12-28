@@ -16,22 +16,26 @@ package blockfmt
 
 import (
 	"fmt"
+	"path"
+	"sync"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
-// Concat wraps a list of Descriptors
+// concat wraps a list of Descriptors
 // for objects that should be concatenated.
 //
-// The zero value of Concat is a valid empty
+// The zero value of concat is a valid empty
 // list of object to be concatenated.
-// Objects can be added to the list with Add,
+// Objects can be added to the list with add,
 // and then the result can be written out
-// with a call to Run.
-type Concat struct {
+// with a call to run.
+type concat struct {
 	inputs []Descriptor
 	output Descriptor
 }
 
-// Add returns true if src was added to the
+// add returns true if src was added to the
 // list of objects to concatenate, or false
 // if the descriptor is not compatible with
 // the descriptors that have already been
@@ -41,7 +45,7 @@ type Concat struct {
 // data in precisely the same way *and* their
 // sparse indexing metadata covers the same
 // constants and time ranges (see SparseIndex.Append)
-func (c *Concat) Add(src *Descriptor) bool {
+func (c *concat) add(src *Descriptor) bool {
 	t := &src.Trailer
 	dt := &c.output.Trailer
 	if len(c.inputs) == 0 {
@@ -73,22 +77,17 @@ func (c *Concat) Add(src *Descriptor) bool {
 	return true
 }
 
-// Len returns the number of objects to be concatenated
-func (c *Concat) Len() int { return len(c.inputs) }
+func (c *concat) inputSize() int64 { return c.output.Trailer.Offset }
 
-// Result returns the final descriptor for
-// the concatenated objects. Result is only
-// valid if Run has been called and returned
-// without an error.
-func (c *Concat) Result() Descriptor {
+func (c *concat) result() Descriptor {
 	return c.output
 }
 
 // Run concatenates all the descriptors added via Add
 // into the file given by name in the provided filesystem.
-func (c *Concat) Run(fs UploadFS, name string) error {
+func (c *concat) run(fs UploadFS, name string) error {
 	if len(c.inputs) == 0 {
-		return fmt.Errorf("blockfmt.Concat.Run with zero input objects")
+		return fmt.Errorf("blockfmt.concat.Run with zero input objects")
 	}
 	up, err := fs.Create(name)
 	if err != nil {
@@ -114,7 +113,7 @@ func (c *Concat) Run(fs UploadFS, name string) error {
 		}
 		if etag != c.inputs[i].ETag {
 			f.Close()
-			return fmt.Errorf("blockfmt.Concat.Run: etag mismatch for %s (%s -> %s)", c.inputs[i].Path, c.inputs[i].ETag, etag)
+			return fmt.Errorf("blockfmt.concat.Run: etag mismatch for %s (%s -> %s)", c.inputs[i].Path, c.inputs[i].ETag, etag)
 		}
 		part, err = uploadReader(up, part, f, c.inputs[i].Trailer.Offset)
 		if err != nil {
@@ -134,4 +133,111 @@ func (c *Concat) Run(fs UploadFS, name string) error {
 	c.output.ETag, err = ETag(fs, up, c.output.Path)
 	c.output.Size = up.Size()
 	return err
+}
+
+// FIXME: repeated verbatim from db/
+func suffixForComp(c string) string {
+	switch c {
+	case "zstd":
+		return ".ion.zst"
+	case "zion":
+		return ".zion"
+	default:
+		panic("bad suffixForComp value")
+	}
+}
+
+// Compact compacts a list of descriptors and returns a new
+// (hopefully shorter) list of descriptors containing the same data
+// along with the list of quarantined descriptor paths that should
+// be deleted.
+func Compact(fs UploadFS, lst []Descriptor, target int64, expiry date.Time) ([]Descriptor, []Quarantined, error) {
+	if len(lst) == 1 {
+		return lst, nil, nil
+	}
+	paths := make(map[string]*concat)
+
+	var result []Descriptor
+	var todelete []Quarantined
+	var lock sync.Mutex
+	var wg sync.WaitGroup
+	errc := make(chan error, 1)
+
+	// add d to result and add old to todelete (if any),
+	// taking care to synchronize against other replace() calls
+	replace := func(d Descriptor, old []Descriptor) {
+		lock.Lock()
+		defer lock.Unlock()
+		result = append(result, d)
+		for i := range old {
+			todelete = append(todelete, Quarantined{
+				Path:   old[i].Path,
+				Expiry: expiry,
+			})
+		}
+	}
+
+	// wait for async operations to complete
+	// and produce the first error encountered (if any)
+	wait := func() error {
+		go func() {
+			wg.Wait()
+			close(errc)
+		}()
+		var err error
+		for e := range errc {
+			if err == nil {
+				err = e
+			}
+		}
+		return err
+	}
+
+	// begin an async concatenation operation
+	flush := func(c *concat, dir string) {
+		if len(c.inputs) == 0 {
+			return
+		}
+		if len(c.inputs) == 1 {
+			replace(c.inputs[0], nil)
+			return
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			orig := c.inputs
+			err := c.run(fs, path.Join(dir, "packed-"+uuid()+suffixForComp(orig[0].Trailer.Algo)))
+			if err != nil {
+				errc <- err
+				return
+			}
+			replace(c.result(), orig)
+		}()
+	}
+
+	for i := range lst {
+		if lst[i].Size >= target {
+			replace(lst[i], nil)
+			continue
+		}
+		dir, _ := path.Split(lst[i].Path)
+		c := paths[dir]
+		if c == nil {
+			c = new(concat)
+			paths[dir] = c
+		}
+		if !c.add(&lst[i]) {
+			replace(lst[i], nil)
+			continue
+		}
+		if c.inputSize() >= target {
+			flush(c, dir)
+			delete(paths, dir)
+		}
+	}
+	for dir, c := range paths {
+		flush(c, dir)
+	}
+	err := wait()
+	return result, todelete, err
 }
