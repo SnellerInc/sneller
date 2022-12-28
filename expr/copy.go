@@ -15,23 +15,86 @@
 package expr
 
 import (
+	"reflect"
+
 	"github.com/SnellerInc/sneller/ion"
 )
 
-// Copy returns a deep copy of e
+// Copy returns a deep copy of e.
 func Copy(e Node) Node {
-	out, _ := CopyChecked(e)
-	return out
+	v := reflect.New(reflect.TypeOf(e)).Elem()
+	copyValue(v, reflect.ValueOf(e))
+	return v.Interface().(Node)
 }
 
-// CopyChecked returns a deep copy of e and also a possible
-// error in the case of decoding error
-func CopyChecked(e Node) (Node, error) {
-	var buf ion.Buffer
-	var st ion.Symtab
+func isValueType(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Func, reflect.Interface, reflect.Chan, reflect.Slice, reflect.Map:
+		return false
+	case reflect.Struct:
+		n := v.NumField()
+		for i := 0; i < n; i++ {
+			if !isValueType(v.Field(i)) {
+				return false
+			}
+		}
+		return true
+	default:
+		return true
+	}
+}
 
-	e.Encode(&buf, &st)
-	d, _, err := Decode(&st, buf.Bytes())
-
-	return d, err
+// call into.Set(v) with v cloned if it is not a value type
+func copyValue(into, v reflect.Value) {
+	// ion.Datum knows how to clone itself
+	if d, ok := v.Interface().(ion.Datum); ok {
+		into.Set(reflect.ValueOf(d.Clone()))
+		return
+	}
+	// Binding has unexported fields, so we
+	// need special handling for copying
+	if b, ok := v.Interface().(Binding); ok {
+		into.Set(reflect.ValueOf(Binding{Expr: Copy(b.Expr), as: b.as, explicit: b.explicit}))
+		return
+	}
+	if isValueType(v) {
+		into.Set(v)
+		return
+	}
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			return
+		}
+		elem := v.Elem()
+		ret := reflect.New(elem.Type())
+		copyValue(ret.Elem(), elem)
+		into.Set(ret)
+	case reflect.Interface:
+		if v.IsNil() {
+			return
+		}
+		elem := v.Elem()
+		ret := reflect.New(elem.Type())
+		copyValue(ret.Elem(), elem)
+		into.Set(ret.Elem())
+	case reflect.Struct:
+		n := v.NumField()
+		for i := 0; i < n; i++ {
+			copyValue(into.Field(i), v.Field(i))
+		}
+	case reflect.Slice:
+		if v.IsNil() {
+			return
+		}
+		l := v.Len()
+		ret := reflect.MakeSlice(v.Type(), l, l)
+		for i := 0; i < l; i++ {
+			copyValue(ret.Index(i), v.Index(i))
+		}
+		into.Set(ret)
+	default:
+		// should have been handled by isValueType
+		panic("unexpected Node field")
+	}
 }

@@ -251,15 +251,7 @@ func (t *tableReplacer) cloneCTE(id expr.Ident, table *expr.Table) expr.Node {
 	// binding order:
 	for i := len(with) - 1; i >= 0; i-- {
 		if with[i].Table == string(id) {
-			cop, err := expr.CopyChecked(with[i].As)
-			if err != nil {
-				if t.err == nil {
-					t.err = err
-				}
-				return nil
-			}
-
-			return cop
+			return expr.Copy(with[i].As)
 		}
 
 		// see FIXME in Walk;

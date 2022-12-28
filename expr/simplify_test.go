@@ -1069,10 +1069,7 @@ func TestSimplify(t *testing.T) {
 		tc := testcases[i]
 
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			before, err := CopyChecked(tc.before)
-			if err != nil {
-				t.Fatal(err)
-			}
+			before := Copy(tc.before)
 			after := tc.after
 			opt := Simplify(before, HintFn(NoHint))
 			if !opt.Equals(after) {
