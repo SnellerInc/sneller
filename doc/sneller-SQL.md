@@ -209,12 +209,13 @@ list = '[' expr { ', ' expr } ']' ;
 structure = '{' string ':' expr { ',' string ':' expr } '}' ;
 
 expr = compare_expr | arith_expr | in_expr | case_expr | like_expr |
-       is_expr | not_expr | function_expr | subquery_expr |
+       regex_expr | is_expr | not_expr | function_expr | subquery_expr |
        between_expr | path_expr |
        integer | string | float | timestamp;
 
 subquery_expr = '(' sfw_query ')' ;
-like_expr = expr ('LIKE' | 'ILIKE') string ;
+like_expr = expr ('LIKE' | '~~' | 'ILIKE' | '~~*') string ['ESCAPE' string] ;
+regex_expr = expr ('SIMILAR TO' | '~' | '~*') string ;
 compare_expr = expr ('<' | '<=' | '=' | '<>' | '>=' | '>') expr ;
 is_expr = expr 'IS' [ 'NOT' ] ( 'NULL' | 'MISSING' | 'TRUE' | 'FALSE' ) ;
 not_expr = ('!' | 'NOT') expr ;
@@ -421,7 +422,7 @@ rather than just some of the time.
 
 ### Path Expressions
 
-Path expressions are used to dereferenced sub-values
+Path expressions are used to dereference sub-values
 of composite data-types like structures and lists.
 The `.` operator dereferences fields within structures,
 and the `[index]` operator indexes into lists.
@@ -753,7 +754,7 @@ For `string` types there are also available min and max string lengths (keys
 available min and max values (keys "int-min-value", "int-max-value",
 "float-min-value" and "float-max-value").
 
-For `list` field, there's an artifical child "$items" that presents
+For `list` field, there's an artificial child "$items" that presents
 a union of all values found in the given list.
 
 **Current limitations**: the `SNELLER_DATASHAPE` aggregate can be the
@@ -811,21 +812,22 @@ integer.
     shifting in zeros
 
 
-#### `LIKE` and `ILIKE`
+#### `LIKE` (`~~`) and `ILIKE` (`~~*`)
 
 The `LIKE` operator matches a string value
 against a pattern. The pattern on the right-hand-side
-of `LIKE` must be a literal string.
-The `%` character within the pattern matches
-zero or more characters, and the `_` character
-matches exactly one Unicode point. All other characters
-in the pattern string match only themselves.
+of `LIKE` must be a literal string. A `LIKE` expression pattern
+can include a set of pattern-patching metacharacters.
+
+* `%` denotes zero or more Unicode points.
+* `_` denotes exactly one Unicode point.
+
+Note that all other characters in the like expression match only themselves.
 
 For example:
 
 ```sql
-SELECT *
-FROM table
+SELECT * FROM table
 WHERE message_body LIKE '%foo%'
 ```
 
@@ -833,10 +835,111 @@ The query above will return all the records
 from `table` that have a string-typed `message_body`
 field that contains the sub-string `'foo'`.
 
+The metacharacters `%` and `_` can be escaped by any Unicode character
+provided with the `ESCAPE` keyword. Any character preceded with the escape
+characters will only match itself. No default escape character is
+assumed, and the escape character cannot equal either metacharacter
+`%` and `_`. Note that the escape character will not be part of the
+matching string and only serves as a metacharacter in the like expression.
+
+For example:
+
+```sql
+SELECT * FROM table
+WHERE message_body LIKE '%100#%%' ESCAPE '#'
+```
+
+The query above will return all the records
+from `table` that have a string-typed `message_body`
+field that contains the sub-string `100%`.
+
 The `ILIKE` operator works identically to `LIKE`,
 except that individual character matches are case-insensitive.
 (Since Sneller SQL is Unicode-aware, characters are compared
 using Unicode "Simple Case Folding" rules.)
+
+#### `SIMILAR TO`
+
+The `SIMILAR TO` operator matches a string value against
+a regular expression pattern. The pattern on the right-hand-side
+of `SIMILAR TO` must be a literal string. The expression pattern
+can include a set of pattern-matching metacharacters, including
+the two supported by the `LIKE` operator.
+
+* `%` denotes zero or more Unicode point.
+* `_` denotes exactly one Unicode point.
+* `|` denotes alternation (either of two alternatives).
+* `*` denotes repetition of the previous item zero or more times.
+* `+` denotes repetition of the previous item one or more times.
+* `?` denotes repetition of the previous item zero or one time.
+* `{m}` denotes repetition of the previous item exactly m times.
+* `{m,}` denotes repetition of the previous item m or more times.
+* `{m,n}` denotes repetition of the previous item at least m and not more than n times.
+* Parentheses `()` can be used to group items into a single logical item.
+* A bracket expression `[`...`]` specifies a character class, just as in POSIX regular expressions.
+
+Note that the period `.` is *not* a metacharacter for `SIMILAR TO`.
+
+The pattern will match from the beginning of the string value until the end of the pattern.
+
+For example:
+
+```sql
+SELECT * FROM table
+WHERE message_body SIMILAR TO 'a{2,5}b|c'
+```
+
+The query above will match with sequence of 2 upto 5 'a' characters
+followed by either an `b` or `c`. Any other characters before or after will
+that do not match the pattern will prevent a match. For example, the string
+value 'xaaab' does not match.
+
+#### POSIX-Regex `~` and case-insensitive POSIX-Regex `~*`
+
+The POSIX-Regex `~` operator matches a string value against a
+POSIX-regex pattern. A non-exhaustive list of metacharacters:
+
+* `.` denotes exactly one Unicode point.
+* `|` denotes alternation (either of two alternatives).
+* `*` denotes repetition of the previous item zero or more times.
+* `+` denotes repetition of the previous item one or more times.
+* `?` denotes repetition of the previous item zero or one time.
+* `{m}` denotes repetition of the previous item exactly m times.
+* `{m,}` denotes repetition of the previous item m or more times.
+* `{m,n}` denotes repetition of the previous item at least m and not more than n times.
+* `^` start-of-line anchor
+* `$` end-of-line anchor
+
+Note that the `LIKE` metacharacters `%` and `_` are not metacharacters for `~`
+and `~*`, but that the period `.` is.
+
+The parsing of the regex pattern is handled by `Go`, and thus all features
+supported by the Go regex compiler are also supported by Sneller. A description
+of the Go regex syntax can be found in https://github.com/google/re2/wiki/Syntax.
+
+Contrary to `SIMILAR TO` that matches from the beginning of a string, the
+POSIX regex will match starting from any position in the string. Stated
+differently, a POSIX regex has an implicit `.*` at the beginning of a pattern,
+while the `SIMILAR TO` has an implicit start-of-line anchor `^`. Similar situation
+hold on how matching the end of the string is handled: the POSIX regex does
+not need to match the end of the string value while `SIMILAR TO` does. The
+POSIX regex has an implicit `.%` at the end of the pattern while `SIMILAR TO` an
+implicit end-of-line anchor `$`. The wildcards `.*` are thus redundant in regex
+pattern `'.*Biden.*'`
+
+For example:
+
+```sql
+SELECT * FROM table
+WHERE message_body ~ '(?i)biden[[:digit:]]'
+```
+
+The query above will match with any string that contains the case-insensitive string
+`biden` followed by one digit (0-9).
+
+The case-insensitive POSIX-Regex `~*` operator works identically
+to the POSIX-Regex `~`, except that individual characters matches
+are case-insensitive.
 
 #### `IN`
 
@@ -850,7 +953,7 @@ The query above returns all the rows in `table`
 for which the field `val` is the number 3, the string `'foo'`,
 or the value `NULL`.
 
-The `IN` operator can also accept a subquery
+The `IN` operator can also accept a sub-query
 that can be coerced to a list of scalars on the right-hand-side:
 
 ```sql
@@ -1027,12 +1130,12 @@ NOTE: this functions is more precise than `SQRT(xExpr * xExpr + yExpr * yExpr)`.
 `LOG()` function has two variants:
 
   - `LOG(expr)` computes the base-10 logarithm of `expr`
-  - `LOG(baseExpr, numExpr)` combutes `baseExpr` logarithm of `numExpr`
+  - `LOG(baseExpr, numExpr)` computes `baseExpr` logarithm of `numExpr`
 
 Compatibility notice: `LOG(expr)` (without a base) is a synonym of `LOG10(expr)`.
 This is compatible with Postgres and SQLite, but incompatible with MySQL and others,
 which compute natural logarithm instead. We recommend the explicit use of either
-`LN(expr)` to compute the natural logaritm of `expr` or `LOG10(expr)` to compute the
+`LN(expr)` to compute the natural logarithm of `expr` or `LOG10(expr)` to compute the
 base-10 logarithm of `expr`.
 
 In addition, some SQL dialects have the order of `LOG(base, n)` arguments reversed.
@@ -1097,15 +1200,15 @@ NOTE: at the moment the computation is equivalent to `(expr) * (PI() / 180.0)`.
 
 #### `ASIN`
 
-`ASIN(expr)` computes arcsine of `expr`.
+`ASIN(expr)` computes arc-sine of `expr`.
 
 #### `ACOS`
 
-`ACOS(expr)` computes arccosine of `expr`.
+`ACOS(expr)` computes arc-cosine of `expr`.
 
 #### `ATAN`
 
-`ATAN(expr)` computes arctangent of `expr`.
+`ATAN(expr)` computes arc-tangent of `expr`.
 
 #### `ATAN2`
 
@@ -1117,7 +1220,7 @@ x-axis and the ray from `(0, 0)` to the point `(xExpr, yExpr)`.
 #### `ROUND`
 
 The `ROUND(num)` function rounds a number to the nearest integer.
-When `num` is exactly half way between two integers, `ROUND` rounds
+When `num` is exactly halfway between two integers, `ROUND` rounds
 to the largest-magnitude integer.
 
 Examples:
@@ -1432,6 +1535,11 @@ The `TRIM` function has two forms.
 The single-argument form `TRIM(str)` yields a substring
 of `str` with leading and trailing spaces removed.
 
+*Known limitations: only ASCII white-space characters
+are considered: ' ', '\t', '\r', '\n', '\v', and '\f'. Other
+non-ASCII white-spaces such as U+0085 (next line) are not
+considered.*
+
 The two-argument form `TRIM(str, cutset)` yields
 a substring of `str` with characters in the string `cutset`
 removed from the leading and trailing characters in `str`.
@@ -1450,7 +1558,7 @@ in other SQL engines:
 - `TRIM(TRAILING cutset FROM str) is equivalent to `RTRIM(str, cutset).
 
 *Known limitations: the `cutset` string must be a constant
-string of one to four ASCII characters.*
+string of four or fewer ASCII characters.*
 
 Examples:
 ```sql
@@ -1551,7 +1659,8 @@ If `n` evaluates to an integer less than or equal to zero,
 then `MISSING` is returned.
 
 *Known limitation: the separator string `sep`
-must be a single-character string constant.*
+must be a single-character ASCII string constant excluding
+the NUL ASCII character*
 
 See [Postgres string functions](https://www.postgresql.org/docs/current/functions-string.html).
 

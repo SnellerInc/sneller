@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Package ints proviedes int-related common functions.
+// Package ints provides int-related common functions.
 package ints
 
 import (
