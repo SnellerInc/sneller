@@ -715,6 +715,12 @@ var (
 	_ Constant = (*Rational)(nil)
 )
 
+// IsConstant returns true if node is a constant value
+func IsConstant(e Node) bool {
+	_, ok := e.(Constant)
+	return ok
+}
+
 type stronglyTyped interface {
 	Type() TypeSet
 }

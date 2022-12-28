@@ -20,9 +20,18 @@ import (
 
 // Copy returns a deep copy of e
 func Copy(e Node) Node {
+	out, _ := CopyChecked(e)
+	return out
+}
+
+// CopyChecked returns a deep copy of e and also a possible
+// error in the case of decoding error
+func CopyChecked(e Node) (Node, error) {
 	var buf ion.Buffer
 	var st ion.Symtab
+
 	e.Encode(&buf, &st)
-	out, _, _ := Decode(&st, buf.Bytes())
-	return out
+	d, _, err := Decode(&st, buf.Bytes())
+
+	return d, err
 }

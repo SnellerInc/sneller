@@ -21,7 +21,6 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/ion"
 )
 
 // CompileError is an error associated
@@ -213,14 +212,6 @@ type tableReplacer struct {
 	err  error
 }
 
-func exprcopy(e expr.Node) (expr.Node, error) {
-	var dst ion.Buffer
-	var st ion.Symtab
-	e.Encode(&dst, &st)
-	ret, _, err := expr.Decode(&st, dst.Bytes())
-	return ret, err
-}
-
 func (t *tableReplacer) Rewrite(e expr.Node) expr.Node {
 	tbl, ok := e.(*expr.Table)
 	if !ok {
@@ -260,7 +251,7 @@ func (t *tableReplacer) cloneCTE(id expr.Ident, table *expr.Table) expr.Node {
 	// binding order:
 	for i := len(with) - 1; i >= 0; i-- {
 		if with[i].Table == string(id) {
-			cop, err := exprcopy(with[i].As)
+			cop, err := expr.CopyChecked(with[i].As)
 			if err != nil {
 				if t.err == nil {
 					t.err = err

@@ -352,16 +352,11 @@ type logical interface {
 	invert() Node
 }
 
-func immediate(x Node) bool {
-	_, ok := x.(Constant)
-	return ok
-}
-
 // canonicalize the comparison expression
 // by rotating the immediate argument to
 // the right-hand-side, if it is present
 func (c *Comparison) canonical() *Comparison {
-	if !immediate(c.Left) || immediate(c.Right) {
+	if !IsConstant(c.Left) || IsConstant(c.Right) {
 		return c
 	}
 	c.Op = c.Op.Flip()
@@ -460,7 +455,7 @@ func (c *Comparison) simplify(h Hint) Node {
 		// equal numbers or equivalent expressions,
 		// so if they are both immediates they
 		// must not be equal
-		if immediate(left) && immediate(right) {
+		if IsConstant(left) && IsConstant(right) {
 			return Bool(c.Op == NotEquals)
 		}
 		// if this is a boolean comparison,
@@ -650,8 +645,8 @@ func (a *Arithmetic) canonical(h Hint) *Arithmetic {
 	if a.Right == nil {
 		return a
 	}
-	li := immediate(a.Left)
-	ri := immediate(a.Right)
+	li := IsConstant(a.Left)
+	ri := IsConstant(a.Right)
 	if ri == li {
 		// we're only interested in the case
 		// where one side is an immediate and
@@ -711,45 +706,6 @@ func (a *Arithmetic) simplify(h Hint) Node {
 	}
 
 	return a
-}
-
-func (t *Table) rewrite(r Rewriter) Node {
-	t.Expr = Rewrite(r, t.Expr)
-	return t
-}
-
-func (t *Table) Equals(x Node) bool {
-	xt, ok := x.(*Table)
-	return ok && t.explicit == xt.explicit && t.as == xt.as && t.Expr.Equals(xt.Expr)
-}
-
-func (t *Table) Encode(dst *ion.Buffer, st *ion.Symtab) {
-	dst.BeginStruct(-1)
-	settype(dst, st, "table")
-	dst.BeginField(st.Intern("expr"))
-	t.Expr.Encode(dst, st)
-	if t.Explicit() {
-		dst.BeginField(st.Intern("bind"))
-		dst.WriteString(t.Result())
-	}
-	dst.EndStruct()
-}
-
-func (t *Table) setfield(name string, st *ion.Symtab, body []byte) error {
-	var err error
-	switch name {
-	case "expr":
-		t.Expr, _, err = Decode(st, body)
-	case "bind":
-		str, _, err := ion.ReadString(body)
-		if err != nil {
-			return err
-		}
-		t.As(str)
-	default:
-		return errUnexpectedField
-	}
-	return err
 }
 
 func (j *Join) simplify(h Hint) Node {
@@ -1199,4 +1155,138 @@ func (m *Member) simplify(h Hint) Node {
 	// none of the arguments match,
 	// this must be a false match
 	return Bool(false)
+}
+
+var integerOne = Integer(1)
+
+func (s *Select) simplify(h Hint) Node {
+	s.simplifyOrderBy()
+	s.simplifyDistinct()
+	s.simplifyDistinctOn()
+	s.simplifyGroupBy()
+
+	return s
+}
+
+func (s *Select) simplifyOrderBy() {
+	if s.OrderBy == nil {
+		return
+	}
+
+	// drop ORDER BY by const values
+	anyconst := false
+	for i := range s.OrderBy {
+		if IsConstant(s.OrderBy[i].Column) {
+			anyconst = true
+			break
+		}
+	}
+
+	if !anyconst {
+		return
+	}
+
+	var tmp []Order
+	for i := range s.OrderBy {
+		if !IsConstant(s.OrderBy[i].Column) {
+			tmp = append(tmp, s.OrderBy[i])
+		}
+	}
+
+	switch {
+	case len(tmp) == 0:
+		s.OrderBy = nil
+
+	default:
+		s.OrderBy = tmp
+	}
+}
+
+func (s *Select) simplifyDistinct() {
+	if !s.Distinct {
+		return
+	}
+
+	for i := range s.Columns {
+		if !IsConstant(s.Columns[i].Expr) {
+			return
+		}
+	}
+
+	// drop DISTINCT if all output columns are constants
+	s.Distinct = false
+	s.Limit = &integerOne
+}
+
+func (s *Select) simplifyDistinctOn() {
+	if len(s.DistinctExpr) == 0 {
+		return
+	}
+
+	// drop DISTINCT ON by const values
+	anyconst := false
+	for i := range s.DistinctExpr {
+		if IsConstant(s.DistinctExpr[i]) {
+			anyconst = true
+			break
+		}
+	}
+
+	if !anyconst {
+		return
+	}
+
+	var tmp []Node
+	for i := range s.DistinctExpr {
+		if !IsConstant(s.DistinctExpr[i]) {
+			tmp = append(tmp, s.DistinctExpr[i])
+		}
+	}
+
+	switch {
+	case len(tmp) == 0:
+		// SELECT DISTINCT ON (const1, ..., constN) ... FROM ...
+		// => SELECT ... FROM ... LIMIT 1
+		s.DistinctExpr = nil
+		s.Limit = &integerOne
+
+	default:
+		// remove const exprs frm DISTINCT ON
+		s.DistinctExpr = tmp
+	}
+}
+
+func (s *Select) simplifyGroupBy() {
+	if s.GroupBy == nil {
+		return
+	}
+
+	anyconst := false
+	for i := range s.GroupBy {
+		if IsConstant(s.GroupBy[i].Expr) {
+			anyconst = true
+			break
+		}
+	}
+
+	if !anyconst {
+		return
+	}
+
+	var tmp []Binding
+	for i := range s.GroupBy {
+		if !IsConstant(s.GroupBy[i].Expr) {
+			tmp = append(tmp, s.GroupBy[i])
+		}
+	}
+
+	switch {
+	case len(tmp) == 0:
+		// drop GROUP BY if all output columns are constants
+		s.GroupBy = nil
+
+	default:
+		// remove const exprs from GROUP BY (at least one was removed)
+		s.GroupBy = tmp
+	}
 }

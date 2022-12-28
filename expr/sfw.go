@@ -195,6 +195,45 @@ func (t *Table) walk(v Visitor) {
 	walkbind(v, &t.Binding)
 }
 
+func (t *Table) rewrite(r Rewriter) Node {
+	t.Expr = Rewrite(r, t.Expr)
+	return t
+}
+
+func (t *Table) Equals(x Node) bool {
+	xt, ok := x.(*Table)
+	return ok && t.explicit == xt.explicit && t.as == xt.as && t.Expr.Equals(xt.Expr)
+}
+
+func (t *Table) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "table")
+	dst.BeginField(st.Intern("expr"))
+	t.Expr.Encode(dst, st)
+	if t.Explicit() {
+		dst.BeginField(st.Intern("bind"))
+		dst.WriteString(t.Result())
+	}
+	dst.EndStruct()
+}
+
+func (t *Table) setfield(name string, st *ion.Symtab, body []byte) error {
+	var err error
+	switch name {
+	case "expr":
+		t.Expr, _, err = Decode(st, body)
+	case "bind":
+		str, _, err := ion.ReadString(body)
+		if err != nil {
+			return err
+		}
+		t.As(str)
+	default:
+		return errUnexpectedField
+	}
+	return err
+}
+
 // OnEquals represents a single
 //
 //	<left> = <right>

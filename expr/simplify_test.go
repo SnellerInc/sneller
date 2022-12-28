@@ -962,17 +962,121 @@ func TestSimplify(t *testing.T) {
 			&Dot{Inner: &Struct{Fields: []Field{{Label: "foo", Value: String("bar")}}}, Field: "foo"},
 			String("bar"),
 		},
+		{
+			// SELECT * FROM ... ORDER BY const1, ..., constN => drop ORDER BY
+			&Select{OrderBy: []Order{
+				{Column: Integer(5)},
+				{Column: String("foo")},
+			}},
+			&Select{},
+		},
+		{
+			// SELECT * FROM ... ORDER BY const, path => SELECT * FROM ... ORDER BY path
+			&Select{OrderBy: []Order{
+				{Column: path("x")},
+				{Column: String("foo")},
+			}},
+			&Select{OrderBy: []Order{
+				{Column: path("x")},
+			}},
+		},
+		{
+			// SELECT DISTINCT ON (const1, ..., constN) ... => SELECT ... LIMIT 1
+			&Select{DistinctExpr: []Node{
+				String("test"),
+				Bool(false),
+				Integer(42),
+			}},
+			&Select{Limit: mkintptr(1)},
+		},
+		{
+			// SELECT DISTINCT ON (const1, expr, constN) ... => SELECT DISTINCT ON (expr) ...
+			&Select{DistinctExpr: []Node{
+				String("test"),
+				path("foo.bar"),
+				Integer(42),
+			}},
+			&Select{DistinctExpr: []Node{
+				path("foo.bar"),
+			}},
+		},
+		{
+			// SELECT DISTINCT const1, ..., constN FROM ... => SELECT const1, ..., constN FROM ... LIMIT 1
+			&Select{
+				Distinct: true,
+				Columns: []Binding{
+					Bind(Integer(42), ""),
+					Bind(String("test"), ""),
+					Bind(Bool(false), ""),
+				},
+			},
+			&Select{
+				Distinct: false,
+				Columns: []Binding{
+					Bind(Integer(42), ""),
+					Bind(String("test"), ""),
+					Bind(Bool(false), ""),
+				},
+				Limit: mkintptr(1),
+			},
+		},
+		{
+			// SELECT DISTINCT const1, expr, ..., constN FROM ... => no change
+			&Select{
+				Distinct: true,
+				Columns: []Binding{
+					Bind(Integer(42), ""),
+					Bind(path("user.login"), ""),
+				},
+			},
+			&Select{
+				Distinct: true,
+				Columns: []Binding{
+					Bind(Integer(42), ""),
+					Bind(path("user.login"), ""),
+				},
+			},
+		},
+		{
+			// SELECT ... FROM ... GROUP BY const1, ...,constN => SELECT ... FROM ...
+			&Select{
+				GroupBy: []Binding{
+					Bind(Integer(2), ""),
+					Bind(Float(-5), ""),
+					Bind(String("test"), ""),
+				},
+			},
+			&Select{},
+		},
+		{
+			// SELECT ... FROM ... GROUP BY const1, ...,constN => SELECT ... FROM ...
+			&Select{
+				GroupBy: []Binding{
+					Bind(Float(-5), ""),
+					Bind(path("category"), ""),
+					Bind(String("test"), ""),
+				},
+			},
+			&Select{
+				GroupBy: []Binding{
+					Bind(path("category"), ""),
+				},
+			},
+		},
 	}
 
 	for i := range testcases {
 		tc := testcases[i]
 
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			before := tc.before
+			before, err := CopyChecked(tc.before)
+			if err != nil {
+				t.Fatal(err)
+			}
 			after := tc.after
 			opt := Simplify(before, HintFn(NoHint))
 			if !opt.Equals(after) {
-				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(before), ToString(opt), ToString(after))
+				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(tc.before), ToString(opt), ToString(after))
 			}
 			testEquivalence(before, t)
 			testEquivalence(after, t)
@@ -1007,4 +1111,9 @@ func jsontxt(st *ion.Symtab, buf *ion.Buffer) string {
 	var out strings.Builder
 	ion.ToJSON(&out, bufio.NewReader(bytes.NewReader(both.Bytes())))
 	return out.String()
+}
+
+func mkintptr(x int64) *Integer {
+	i := Integer(x)
+	return &i
 }
