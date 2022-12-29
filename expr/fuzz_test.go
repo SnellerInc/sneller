@@ -83,7 +83,7 @@ func FuzzCheck(f *testing.F) {
 		if err := q.Check(); err != nil {
 			return
 		}
-		q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
+		q.Body = expr.Simplify(q.Body, expr.NoHint)
 
 		// sometimes the next Check succeeds; sometimes it doesn't.
 		// simplification may often expose type errors that we couldn't

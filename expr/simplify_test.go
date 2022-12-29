@@ -1071,7 +1071,7 @@ func TestSimplify(t *testing.T) {
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			before := Copy(tc.before)
 			after := tc.after
-			opt := Simplify(before, HintFn(NoHint))
+			opt := Simplify(before, NoHint)
 			if !opt.Equals(after) {
 				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(tc.before), ToString(opt), ToString(after))
 			}
@@ -1098,6 +1098,114 @@ func testEquivalence(e Node, t *testing.T) {
 		t.Logf("json: %s", jsontxt(&st, &buf))
 		t.Errorf("input : %s", e)
 		t.Errorf("output: %s", res)
+	}
+}
+
+type testHintWithValues struct {
+	path   string
+	values *FiniteSet
+}
+
+func (h *testHintWithValues) TypeOf(Node) TypeSet {
+	return AnyType
+}
+
+func (h *testHintWithValues) Values(e Node) *FiniteSet {
+	id, ok := e.(Ident)
+	if ok && string(id) == h.path {
+		return h.values
+	}
+
+	return nil
+}
+
+func TestSimplifyWithValueHints(t *testing.T) {
+	values := []Constant{
+		Integer(4),
+		Integer(5),
+		Integer(6),
+	}
+	h := &testHintWithValues{
+		path: "x",
+		values: &FiniteSet{
+			values: values,
+		},
+	}
+	x := path("x")
+	testcases := []struct {
+		before, after Node
+		hint          Hint
+	}{
+		{
+			// x{4, 5, 6} IN (4, 5, 6, 7, 8) => true (all lhs values match rhs)
+			before: In(x, Integer(4), Integer(5), Integer(6), Integer(7), Integer(8)),
+			after:  Bool(true),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} IN (1, 2, 3) => false (none of lhs values match rhs)
+			before: In(x, Integer(1), Integer(2), Integer(3)),
+			after:  Bool(false),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} IN (1, 5) => x = 1 OR x = 5 (IN cannot be evaluated in compile time ...)
+			//                      => x = 5          (... but x = 1 is always false)
+			before: In(x, Integer(1), Integer(5)),
+			after:  Compare(Equals, x, Integer(5)),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} BETWEEN 1 AND 10 => true
+			before: Between(x, Integer(1), Integer(10)),
+			after:  Bool(true),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} = 5 => unchanged
+			before: Compare(Equals, x, Integer(5)),
+			after:  Compare(Equals, x, Integer(5)),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} < 5 => unchanged (4 < 5 = true, 5 < 5 = false, 5 < 6 = false)
+			before: Compare(Less, x, Integer(5)),
+			after:  Compare(Less, x, Integer(5)),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} < 1 => false (4 < 5 = false, 5 < 5 = false, 5 < 6 = false)
+			before: Compare(Less, x, Integer(1)),
+			after:  Bool(false),
+			hint:   h,
+		},
+		{
+			// x{4, 5, 6} < 100 => false (4 < 5 = true, 5 < 5 = true, 5 < 6 = true)
+			before: Compare(Less, x, Integer(100)),
+			after:  Bool(true),
+			hint:   h,
+		},
+		{
+			// 100 > x{4, 5, 6} => false
+			before: Compare(Greater, Integer(100), x),
+			after:  Bool(true),
+			hint:   h,
+		},
+	}
+
+	for i := range testcases {
+		tc := testcases[i]
+
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			before := tc.before
+			after := tc.after
+			opt := Simplify(before, tc.hint)
+			if !opt.Equals(after) {
+				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(before), ToString(opt), ToString(after))
+			}
+			testEquivalence(before, t)
+			testEquivalence(after, t)
+		})
 	}
 }
 

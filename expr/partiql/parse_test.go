@@ -333,7 +333,7 @@ func TestParseNormalization(t *testing.T) {
 			t.Errorf("case %q: didn't match?", tests[i].from)
 			continue
 		}
-		e.Body = expr.Simplify(e.Body, expr.HintFn(expr.NoHint))
+		e.Body = expr.Simplify(e.Body, expr.NoHint)
 		want := tests[i].to
 		if got := e.Text(); got != want {
 			t.Errorf("case %q: normalized to %q", tests[i].from, got)

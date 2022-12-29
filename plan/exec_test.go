@@ -250,17 +250,30 @@ func rowcount(t *testing.T, buf []byte) int {
 // any references that are not part of the
 // schema are returned as AnyType rather than
 // MissingType as they would be for a complete schema
-func partial(args ...interface{}) expr.Hint {
-	return expr.HintFn(func(e expr.Node) expr.TypeSet {
-		if p, ok := e.(expr.Ident); ok {
-			for i := 0; i < len(args); i += 2 {
-				if args[i].(string) == string(p) {
-					return args[i+1].(expr.TypeSet)
-				}
-			}
+type partialHint struct {
+	field string
+	ts    expr.TypeSet
+}
+
+func (h *partialHint) TypeOf(e expr.Node) expr.TypeSet {
+	if p, ok := e.(expr.Ident); ok {
+		if string(p) == h.field {
+			return h.ts
 		}
-		return expr.AnyType
-	})
+	}
+
+	return expr.AnyType
+}
+
+func (h *partialHint) Values(expr.Node) *expr.FiniteSet {
+	return nil
+}
+
+func partial(field string, ts expr.TypeSet) expr.Hint {
+	return &partialHint{
+		field: field,
+		ts:    ts,
+	}
 }
 
 const (

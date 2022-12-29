@@ -41,7 +41,7 @@ func TestFilter(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
+			q.Body = expr.Simplify(q.Body, expr.NoHint)
 			f.Compile(q.Body.(*expr.Select).Where)
 			var out [][2]int
 			f.Visit(&si, func(start, end int) {
@@ -85,7 +85,7 @@ func BenchmarkFilter(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
-			q.Body = expr.Simplify(q.Body, expr.HintFn(expr.NoHint))
+			q.Body = expr.Simplify(q.Body, expr.NoHint)
 			where := q.Body.(*expr.Select).Where
 			b.Logf("query: %s", expr.ToString(where))
 			f.Compile(where)

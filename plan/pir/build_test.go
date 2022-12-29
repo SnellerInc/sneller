@@ -212,6 +212,10 @@ func (f flatSchema) TypeOf(e expr.Node) expr.TypeSet {
 	return expr.MissingType
 }
 
+func (f flatSchema) Values(expr.Node) *expr.FiniteSet {
+	return nil
+}
+
 func mkschema(args ...interface{}) expr.Hint {
 	var out flatSchema
 	for i := 0; i < len(args); i += 2 {

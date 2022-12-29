@@ -24,27 +24,31 @@ type stepHint struct {
 
 func (s *stepHint) TypeOf(e expr.Node) expr.TypeSet {
 	if s.parent == nil {
-		return expr.NoHint(e)
+		return expr.NoHint.TypeOf(e)
 	}
 	p, ok := e.(expr.Ident)
 	if !ok {
-		return expr.NoHint(e)
+		return expr.NoHint.TypeOf(e)
 	}
 	origin, node := s.parent.get(string(p))
 	if origin == nil {
-		return expr.NoHint(e)
+		return expr.NoHint.TypeOf(e)
 	}
 	if orig, ok := origin.(*IterTable); ok {
 		schema := orig.Schema
 		if schema == nil {
-			schema = expr.HintFn(expr.NoHint)
+			schema = expr.NoHint
 		}
 		return expr.TypeOf(e, schema)
 	}
 	next := origin.parent()
 	if node == nil || next == nil {
-		return expr.NoHint(e)
+		return expr.NoHint.TypeOf(e)
 	}
 	hint := &stepHint{parent: next}
 	return expr.TypeOf(node, hint)
+}
+
+func (s *stepHint) Values(expr.Node) *expr.FiniteSet {
+	return nil
 }

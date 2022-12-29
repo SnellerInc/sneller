@@ -69,7 +69,7 @@ func TestCardinality(t *testing.T) {
 		},
 	}
 
-	noschema := mkenv(expr.HintFn(expr.NoHint), nil)
+	noschema := mkenv(expr.NoHint, nil)
 	for i := range cases {
 		s, err := partiql.Parse([]byte(cases[i].query))
 		if err != nil {

@@ -75,19 +75,16 @@ func errsyntax(e Node, msg string) *SyntaxError {
 // to the query planner.
 type Hint interface {
 	TypeOf(e Node) TypeSet
+	Values(e Node) *FiniteSet
 }
 
-// HintFn is a function that implements Hint
-type HintFn func(Node) TypeSet
+// noHint is the empty Hint
+type noHint struct{}
 
-func (h HintFn) TypeOf(e Node) TypeSet {
-	return h(e)
-}
+func (noHint) TypeOf(Node) TypeSet    { return AnyType }
+func (noHint) Values(Node) *FiniteSet { return nil }
 
-// NoHint is the empty Hint
-func NoHint(Node) TypeSet {
-	return AnyType
-}
+var NoHint noHint
 
 type checker interface {
 	check(Hint) error
@@ -183,7 +180,7 @@ func combine(err []error) error {
 // and performs rudimentary sanity-checking
 // on all of the values in the tree.
 func Check(n Node) error {
-	return CheckHint(n, HintFn(NoHint))
+	return CheckHint(n, NoHint)
 }
 
 // CheckHint performs the same sanity-checking

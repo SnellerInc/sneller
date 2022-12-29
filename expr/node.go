@@ -734,7 +734,7 @@ type weaklyTyped interface {
 // to at runtime.
 func TypeOf(n Node, h Hint) TypeSet {
 	if h == nil {
-		h = HintFn(NoHint)
+		h = NoHint
 	}
 	// identifiers can only be typed via hints by definition
 	if _, ok := n.(Ident); ok {

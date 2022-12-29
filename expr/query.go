@@ -262,5 +262,5 @@ func (q *Query) CheckHint(h Hint) error {
 
 // Check checks consistency of the whole query
 func (q *Query) Check() error {
-	return q.CheckHint(HintFn(NoHint))
+	return q.CheckHint(NoHint)
 }

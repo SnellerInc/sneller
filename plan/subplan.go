@@ -323,7 +323,7 @@ func (r *replacer) simplify(e expr.Node) expr.Node {
 		return e
 	}
 	if r.simpl == nil {
-		r.simpl = expr.Simplifier(expr.HintFn(expr.NoHint))
+		r.simpl = expr.Simplifier(expr.NoHint)
 	}
 	return r.simpl.Rewrite(e)
 }

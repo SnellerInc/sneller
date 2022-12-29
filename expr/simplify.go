@@ -467,7 +467,22 @@ func (c *Comparison) simplify(h Hint) Node {
 			return Xor(left, right)
 		}
 	}
-	return c.canonical()
+
+	c.canonical()
+
+	// try to evaluate in compile time expr `{known-values} op constant`
+	if rc, ok := c.Right.(Constant); ok {
+		if lv := h.Values(c.Left); lv != nil {
+			switch lv.Compare(c.Op, rc) {
+			case AlwaysTrue:
+				return Bool(true)
+			case AlwaysFalse:
+				return Bool(false)
+			}
+		}
+	}
+
+	return c
 }
 
 // isLower returns true all characters are in lower-case
@@ -1129,6 +1144,16 @@ func (m *Member) simplify(h Hint) Node {
 		// x IN () -> FALSE
 		return Bool(false)
 	}
+
+	if v := h.Values(m.Arg); v != nil {
+		switch v.In(m.Values) {
+		case AlwaysTrue:
+			return Bool(true)
+		case AlwaysFalse:
+			return Bool(false)
+		}
+	}
+
 	if len(m.Values) < minMemberArguments {
 		var expr Node
 		for i := range m.Values {
