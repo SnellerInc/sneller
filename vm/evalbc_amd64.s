@@ -9968,12 +9968,23 @@ TEXT findsym_tail(SB), NOSPLIT|NOFRAME, $0
   VPXORD       Z31, Z31, Z31         // Z31 = length
   KMOVW        K1, K5                // K5 = active
   KXORW        K0, K0, K1            // K1 = found
-  VPBROADCASTD CONSTD_1(), Z21       // Z21 = 1
-  VPBROADCASTD CONSTD_0x7F(), Z24    // Z24 = 0x7f
-  VPBROADCASTD CONSTD_0x80(), Z25    // Z25 = 0x80
+  // synthesize constants:
+  // we're doing a little arithmetic to avoid
+  // doing lots of broadcasts, which are apparently expensive
+  VPBROADCASTD CONSTD_0x00808080(), Z20 // Z20 = 0x00808080 (uvarint stop bits)
+  VONES(Z19)                         // Z19 = 0xffffffff
+  VPABSD       Z19, Z21              // Z21 = ABS(-1) = 1
+  VPSRLD       $24, Z19, Z19         // Z19 = 0x000000ff
+  VPANDD       Z19, Z20, Z25         // Z25 = (0x0080808080 & 0xff) = 0x80
+  VPSUBD       Z21, Z25, Z24         // Z24 = 0x80 - 1 = 0x7f
+  VPSRLD       $4, Z19, Z18          // Z18 = 0xff >> 4 = 0x0f
+  VPSUBD       Z21, Z18, Z17         // Z17 = 0x0f - 1 = 0x0e
+  VPADDD       Z21, Z18, Z16         //
+  VPADDD       Z21, Z16, Z16         // Z16 = 0x0f + 2 = TRUE (0x11)
   JMP          looptail
 loop:
   // load 4 bytes and process the leading uvarint
+  VPXORD       X29, X29, X29
   XORL         DX, DX                // indicates jump to uvarintdone
   KMOVW        K5, K2
   VPGATHERDD   (SI)(Z30*1), K2, Z29  // Z29 = first 4 bytes
@@ -9990,14 +10001,14 @@ uvarintdone:
   VPCMPEQD      Z28, Z22, K5, K2           // K2 = active & symbol matches
   KORW          K2, K1, K1                 // set result in K1
   VPADDD        Z23, Z30, K5, Z30          // update offset *when search >= symbol!*
-  VPANDD.BCST   CONSTD_0xFF(), Z29, Z29    // make sure Z29 is just the lsb
-  VPANDD.BCST   CONSTD_0x0F(), Z29, Z28    // Z28 = data&0xf
-  VPCMPEQD.BCST CONSTD_0x0E(), Z28, K5, K6 // K6 = Z28==0xe (varint-encoded item)
+  VPANDD        Z19, Z29, Z11              // Z11 is just the lsb (Z29 &= 0xff)
+  VPANDD        Z18, Z29, Z28              // Z28 = data&0xf
+  VPCMPEQD      Z17, Z28, K5, K6           // K6 = Z28==0xe (varint-encoded item)
   KANDNW        K5, K6, K4                 // K4 = active non-varint items
-  VPCMPEQD.BCST CONSTD_0x0F(), Z28, K4, K3 // K3 = Z28==0xf (null item)
+  VPCMPEQD      Z18, Z28, K4, K3           // K3 = Z28==0xf (null item)
   VMOVDQA32     Z21, K3, Z31               // length = 1 if null
   KANDNW        K4, K3, K4                 // K4 = immediate but not null
-  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z29, K4, K3 // K3 = value is 'true'
+  VPCMPEQD      Z16, Z11, K4, K3           // K3 = lsb value is 'true'
   VPXORD        Z28, Z28, K3, Z28          // length = 0 for 0x11 ('true')
   VPADDD        Z21, Z28, K4, Z31          // ... in which case length = 1 + immediate
   KTESTW        K6, K6
@@ -10005,8 +10016,11 @@ uvarintdone:
 
   // parse object size when uvarint-encoded
   INCL         DX                    // DX != 0 indicates jump to fieldlendone
-  KMOVW        K6, K4
-  VPGATHERDD   1(SI)(Z30*1), K4, Z29 // load next 4 bytes into Z29
+  VPSRLD       $8, Z29, K6, Z29      // bits >>= 8
+  VPTESTNMD    Z20, Z29, K6, K4      // test for varint stop bit
+  KTESTW       K4, K4                // only gather if no stop bit is present in the loaded bits
+  JNZ          more_bits
+didgather:
   VPADDD       Z21, Z21, Z23         // Z23 = varint size + descriptor = 2 (currently)
   VPANDD.Z     Z24, Z29, K6, Z28     // Z28 = bytes&0x7f or 0 when not varint
   VPTESTNMD    Z25, Z29, K6, K4      // test bytes&0x80
@@ -10023,6 +10037,9 @@ looptail:
   JNZ          loop
 done:
   NEXT()
+more_bits:
+  VPGATHERDD 1(SI)(Z30*1), K4, Z29 // load next 4 bytes into Z29 when we need a stop bit
+  JMP        didgather
 // un-rolled uvarint parsing
 #define CHOMP()                  \
   VPADDD       Z21, Z23, K4, Z23 \

@@ -1,0 +1,15 @@
+SELECT COUNT(*)
+FROM input
+WHERE x IS NOT MISSING AND
+      y IS NOT MISSING AND
+      z IS NOT MISSING AND
+      foo IS NOT MISSING
+---
+{"x": 3, "y": "short", "z": 14.83529, "foo": {"record": true, "subfields": "also true"}}
+{"x": 3, "y": " a medium length string ", "z": null, "foo": {"record": true}}
+{"x": "foo", "y": "a longer string to skip over", "foo": {}}
+{"x": "this is the only value in this record and that is why the text string is longer than usual"}
+{"x": null, "y": null, "z": null, "foo": null}
+{"y": null, "z": null, "foo": null}
+{"z": null, "foo": null}
+{"foo": null}
