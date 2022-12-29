@@ -279,15 +279,22 @@ func (u *UnaryArith) check(h Hint) error {
 }
 
 func (a *Arithmetic) check(h Hint) error {
-	if a.Op == DivOp {
+	iszero := func() bool {
 		n, ok := a.Right.(number)
-		if ok {
-			r := n.rat()
-			if r.IsInt() && r.Num().IsInt64() && r.Num().Int64() == 0 {
-				return errtype(a, "division by zero")
-			}
+		return ok && n.rat().Sign() == 0
+	}
+
+	switch a.Op {
+	case DivOp:
+		if iszero() {
+			return errtype(a, "division by zero")
+		}
+	case ModOp:
+		if iszero() {
+			return errtype(a, "modulo by zero")
 		}
 	}
+
 	if !numeric(a.Left, h) || (a.Right != nil && !numeric(a.Right, h)) {
 		return errtype(a, "arguments are not numeric")
 	}

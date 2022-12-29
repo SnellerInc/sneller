@@ -177,6 +177,14 @@ func TestCheckInvalidQuery(t *testing.T) {
 			`SELECT * FROM table WHERE x LIKE '%foo%' ESCAPE 'bar'`,
 			`ESCAPE`,
 		},
+		{
+			`SELECT x / 0 FROM table`,
+			`division by zero`,
+		},
+		{
+			`SELECT y % 0 FROM table`,
+			`modulo by zero`,
+		},
 	}
 	for i := range testcases {
 		i := i
