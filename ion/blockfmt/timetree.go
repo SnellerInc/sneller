@@ -15,7 +15,10 @@
 package blockfmt
 
 import (
+	"fmt"
 	"sort"
+	"strings"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/ion"
@@ -52,6 +55,26 @@ type TimeIndex struct {
 	// each value in max is a max offset
 	// plus the maximum value in that span
 	max []timespan
+}
+
+// String implements fmt.Stringer
+func (t *TimeIndex) String() string {
+	print := func(out *strings.Builder, span []timespan) {
+		for i := range span {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			fmt.Fprintf(out, "%s @ %d", span[i].when.Time().Format(time.RFC3339Nano), span[i].offset)
+		}
+	}
+
+	var out strings.Builder
+	out.WriteString("max: [")
+	print(&out, t.max)
+	out.WriteString("] min: [")
+	print(&out, t.min)
+	out.WriteString("]")
+	return out.String()
 }
 
 // Reset removes all the values from t.
@@ -348,10 +371,17 @@ func (t *TimeIndex) trim(max int) TimeIndex {
 	if len(t.max) == 0 {
 		return TimeIndex{}
 	}
+	blocks := t.max[len(t.max)-1].offset
+	if max > blocks {
+		panic("TimeIndex.trim beyond max offset")
+	}
+	if max == blocks {
+		return t.Clone()
+	}
 
 	// copy mins where min.offset < max
-	j := len(t.min) - 1
-	for j > 0 && t.min[j].offset >= max {
+	j := len(t.min)
+	for j > 0 && t.min[j-1].offset >= max {
 		j--
 	}
 	var newmin []timespan
@@ -361,9 +391,9 @@ func (t *TimeIndex) trim(max int) TimeIndex {
 		newmin = slices.Clone(t.min[:j])
 	}
 
-	// copy maxes where max.offset < max
-	j = len(t.max) - 1
-	for j > 0 && t.max[j].offset > max {
+	// copy maxes where max.offset <= max
+	j = len(t.max)
+	for j > 0 && t.max[j-1].offset > max {
 		j--
 	}
 	newmax := slices.Clone(t.max[:j])

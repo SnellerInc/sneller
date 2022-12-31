@@ -16,6 +16,7 @@ package blockfmt
 
 import (
 	"math/rand"
+	"reflect"
 	"testing"
 	"time"
 
@@ -207,4 +208,47 @@ func TestTimeTree(t *testing.T) {
 	if !gotmax.Equal(max) {
 		t.Errorf("max %s != %s", max, gotmax)
 	}
+}
+
+func TestTimetreeTrim(t *testing.T) {
+	base, err := time.Parse(time.RFC3339, "2023-01-01T00:00:00Z")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hour := func(i int) date.Time {
+		return date.FromTime(base).Add(time.Duration(i) * time.Hour)
+	}
+	hp := func(hr, offset int) timespan {
+		return timespan{when: hour(hr), offset: offset}
+	}
+	grp := func(args ...timespan) []timespan {
+		return args
+	}
+
+	run := func(trim int, min, max []timespan, wantmin, wantmax []timespan) {
+		t.Helper()
+		ts := TimeIndex{min, max}
+		got := ts.trim(trim)
+		want := TimeIndex{wantmin, wantmax}
+		if !reflect.DeepEqual(want, got) {
+			t.Errorf("want %#v", want)
+			t.Errorf("got  %#v", got)
+		}
+	}
+
+	run(1,
+		grp(hp(0, 0), hp(1, 1)),
+		grp(hp(2, 2)),
+		grp(hp(0, 0)),
+		grp(hp(2, 1)))
+	run(2,
+		grp(hp(0, 0), hp(1, 1), hp(2, 2)),
+		grp(hp(3, 2), hp(4, 3)),
+		grp(hp(0, 0), hp(1, 1)),
+		grp(hp(3, 2)))
+	run(50,
+		grp(hp(0, 3), hp(1, 49), hp(2, 50)),
+		grp(hp(44, 48), hp(47, 49), hp(48, 51)),
+		grp(hp(0, 3), hp(1, 49)),
+		grp(hp(44, 48), hp(47, 49), hp(48, 50)))
 }
