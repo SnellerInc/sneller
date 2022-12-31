@@ -429,7 +429,7 @@ func (b *Builder) append(who Tenant, db, table string, parts []partition, cache 
 		}
 		return st.append(idx, parts, cache)
 	}
-	if b.NewIndexScan && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
+	if b.NewIndexScan && !st.def.SkipBackfill && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
 			Name: table,
 			Algo: "zstd",

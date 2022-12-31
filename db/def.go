@@ -83,6 +83,10 @@ type Definition struct {
 	// Features is a list of feature flags that
 	// can be used to turn on features for beta-testing.
 	Features []string `json:"beta_features,omitempty"`
+	// SkipBackfill, if true, will cause this table
+	// to skip scanning the source bucket(s) for matching
+	// objects when the first objects are inserted into the table.
+	SkipBackfill bool `json:"skip_backfill,omitempty"`
 }
 
 // just pick an upper limit to prevent DoS
