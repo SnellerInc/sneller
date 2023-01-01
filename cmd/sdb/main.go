@@ -40,15 +40,9 @@ var (
 	dashf        bool
 	dashm        int64
 	dasho        string
-	token        string
-	authEndPoint string
+	rootpath     string
 	printVersion bool
 	printBuild   bool
-	localTenant  bool
-)
-
-var (
-	tmpdir string
 )
 
 const (
@@ -56,20 +50,22 @@ const (
 	giga = 1024 * mega
 )
 
+func defaultRoot() string {
+	if bucket := os.Getenv("SNELLER_BUCKET"); bucket != "" {
+		return bucket
+	}
+	return ""
+}
+
 func init() {
 	flag.BoolVar(&dashv, "v", false, "verbose")
 	flag.BoolVar(&dashh, "h", false, "show usage help")
 	flag.BoolVar(&dashf, "f", false, "force rebuild")
 	flag.Int64Var(&dashm, "m", 100*giga, "maximum input bytes read per index update")
 	flag.StringVar(&dasho, "o", "-", "output file (or - for stdin) for unpack")
-	flag.StringVar(&token, "token", "", "JWT token or custom bearer token (default: fetch from SNELLER_TOKEN environment variable)")
-	flag.StringVar(&authEndPoint, "a", "", "authorization specification (file://, empty uses environment)")
 	flag.BoolVar(&printBuild, "build", false, "print the build info of executable")
 	flag.BoolVar(&printVersion, "version", false, "print the version of executable")
-
-	tmpdir = os.TempDir()
-	flag.BoolVar(&localTenant, "local", false,
-		fmt.Sprintf("write & read data from local storage (%s)", tmpdir))
+	flag.StringVar(&rootpath, "root", defaultRoot(), "file system root (either directory path or s3 bucket)")
 }
 
 func exitf(f string, args ...interface{}) {
@@ -319,29 +315,18 @@ func inputs(creds db.Tenant, dbname, table string) {
 }
 
 func creds() db.Tenant {
-	if localTenant {
-		return db.NewLocalTenantFromPath(tmpdir)
+	if rootpath == "" {
+		exitf("-root not specified")
 	}
-
-	activeToken := token
-	if activeToken == "" {
-		activeToken = os.Getenv("SNELLER_TOKEN")
+	if strings.HasPrefix(rootpath, "s3://") {
+		bucket := strings.TrimPrefix(rootpath, "s3://")
+		t, err := auth.S3TenantFromEnv(context.Background(), bucket)
+		if err != nil {
+			exitf("deriving tenant creds: %s", err)
+		}
+		return t
 	}
-
-	if activeToken == "" {
-		exitf("no token provided via -token or $SNELLER_TOKEN")
-	}
-
-	provider, err := auth.Parse(authEndPoint)
-	if err != nil {
-		exitf("can't initialize authorization: %s", err)
-	}
-
-	awsCreds, err := provider.Authorize(context.Background(), activeToken)
-	if err != nil {
-		exitf("authorization: %s", err)
-	}
-	return awsCreds
+	return db.NewLocalTenantFromPath(rootpath)
 }
 
 type errorWriter struct {

@@ -16,11 +16,13 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/SnellerInc/sneller/aws"
@@ -157,6 +159,31 @@ type s3Tenant struct {
 	root *db.S3FS
 	ikey *blockfmt.Key
 	cfg  *db.TenantConfig
+}
+
+// S3TenantFromEnv constructs an s3 tenant from the environment.
+func S3TenantFromEnv(ctx context.Context, bucket string) (db.Tenant, error) {
+	key, err := aws.AmbientKey("s3", s3.DeriveForBucket(bucket))
+	if err != nil {
+		return nil, err
+	}
+	root := &db.S3FS{}
+	root.Key = key
+	root.Bucket = bucket
+	root.Ctx = ctx
+	var indexkey *blockfmt.Key
+	if key := os.Getenv("SNELLER_INDEX_KEY"); key != "" {
+		keybytes, err := base64.StdEncoding.DecodeString(key)
+		if err != nil {
+			return nil, err
+		}
+		if len(keybytes) != blockfmt.KeyLength {
+			return nil, fmt.Errorf("unexpected SNELLER_INDEX_KEY length %d", len(keybytes))
+		}
+		indexkey = new(blockfmt.Key)
+		copy(indexkey[:], keybytes)
+	}
+	return S3Tenant(ctx, "", root, indexkey, nil), nil
 }
 
 func S3Tenant(ctx context.Context, id string, root *db.S3FS, key *blockfmt.Key, cfg *db.TenantConfig) db.Tenant {

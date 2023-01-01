@@ -55,7 +55,9 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 // Keys are searched for in the following order:
 //
 //  1. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
-//     and AWS_DEFAULT_REGION environment variables
+//     and AWS_REGION/AWS_DEFAULT_REGION environment
+//     variables (AWS_REGION takes precedence over
+//     AWS_DEFAULT_REGION).
 //  2. The config files in $HOME/.aws/config and
 //     $HOME/.aws/credentials, with the credentials
 //     file taking precedence over the config file.
@@ -101,7 +103,9 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 	if x := os.Getenv("AWS_SECRET_ACCESS_KEY"); x != "" {
 		secret = x
 	}
-	if x := os.Getenv("AWS_DEFAULT_REGION"); x != "" {
+	if x := os.Getenv("AWS_REGION"); x != "" {
+		region = x
+	} else if x := os.Getenv("AWS_DEFAULT_REGION"); x != "" {
 		region = x
 	}
 	if x := os.Getenv("AWS_SESSION_TOKEN"); x != "" {

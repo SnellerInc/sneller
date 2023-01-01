@@ -19,15 +19,12 @@ package auth
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/SnellerInc/sneller/db"
-	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
 // Provider is the interface through which
@@ -47,89 +44,12 @@ type Provider interface {
 //
 // It uses an authorization endpoint when a
 // http(s):// prefix is detected and otherwise
-// the specification is considered to be a
-// file-name. If no specification is used,
-// then it will use environment variables.
+// the specification is interpreted as a file name.
 func Parse(spec string) (Provider, error) {
 	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
 		return FromEndPoint(spec)
 	}
-
-	if spec != "" {
-		return FromFile(spec)
-	} else {
-		return FromEnvironment()
-	}
-}
-
-// FromEnvironment creates an authorization provider based
-// on environment variables.
-func FromEnvironment() (Provider, error) {
-	mustGetenv := func(env string) (string, error) {
-		val := os.Getenv(env)
-		if val == "" {
-			return "", fmt.Errorf("missing %q", env)
-		}
-		return val, nil
-
-	}
-
-	token, err := mustGetenv("SNELLER_TOKEN")
-	if err != nil {
-		return nil, err
-	}
-
-	region := os.Getenv("SNELLER_REGION")
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	indexKeyText, err := mustGetenv("SNELLER_INDEX_KEY")
-	if err != nil {
-		return nil, err
-	}
-	indexKey, err := base64.StdEncoding.DecodeString(indexKeyText)
-	if err != nil {
-		return nil, fmt.Errorf("invalid 'SNELLER_INDEX_KEY': %s", err)
-	}
-	if len(indexKey) != blockfmt.KeyLength {
-		return nil, fmt.Errorf("length of 'SNELLER_INDEX_KEY' is %d, has to be %d", len(indexKey), blockfmt.KeyLength)
-	}
-
-	creds := S3Static{
-		CheckToken: func(t string) error {
-			if t != token {
-				return errors.New("invalid token")
-			}
-			return nil
-		},
-		S3BearerIdentity: S3BearerIdentity{
-			ID:          "default",
-			Region:      region,
-			IndexKey:    indexKey,
-			Credentials: S3BearerCredentials{},
-		},
-	}
-
-	specs := []struct {
-		env    string
-		target *string
-	}{
-		{"SNELLER_BUCKET", &creds.Bucket},
-		{"AWS_ACCESS_KEY_ID", &creds.Credentials.AccessKeyID},
-		{"AWS_SECRET_ACCESS_KEY", &creds.Credentials.SecretAccessKey},
-		{"S3_ENDPOINT", &creds.Credentials.BaseURI},
-	}
-
-	for _, spec := range specs {
-		val, err := mustGetenv(spec.env)
-		if err != nil {
-			return nil, err
-		}
-		*spec.target = val
-	}
-
-	return &creds, nil
+	return FromFile(spec)
 }
 
 // FromEndPoint creates an authorization provider that uses
