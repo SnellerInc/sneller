@@ -19,9 +19,34 @@ import (
 	"unsafe"
 )
 
-type vRegLayout struct {
+type kRegData struct {
+	mask uint16
+}
+
+type vRegData struct {
 	offsets [16]uint32
 	sizes   [16]uint32
+}
+
+type sRegData struct {
+	offsets [16]uint32
+	sizes   [16]uint32
+}
+
+type i64RegData struct {
+	values [bcLaneCount]int64
+}
+
+type f64RegData struct {
+	values [bcLaneCount]float64
+}
+
+func i64RegDataFromScalar(v int64) i64RegData {
+	out := i64RegData{}
+	for i := 0; i < bcLaneCount; i++ {
+		out.values[i] = v
+	}
+	return out
 }
 
 const kRegSize = 2
@@ -31,7 +56,7 @@ const bRegSize = 128
 const hRegSize = 256
 const lRegSize = 128
 
-func vRegLayoutFromVStackCast(vstack *[]uint64, count int) (out []vRegLayout) {
+func vRegDataFromVStackCast(vstack *[]uint64, count int) (out []vRegData) {
 	hdr := (*reflect.SliceHeader)(unsafe.Pointer(vstack))
 	outhdr := (*reflect.SliceHeader)(unsafe.Pointer(&out))
 	outhdr.Data = hdr.Data
@@ -41,7 +66,7 @@ func vRegLayoutFromVStackCast(vstack *[]uint64, count int) (out []vRegLayout) {
 }
 
 // item returns the i'th item in the vReg
-func (v *vRegLayout) item(i int) vmref {
+func (v *vRegData) item(i int) vmref {
 	return vmref{v.offsets[i], v.sizes[i]}
 }
 
@@ -50,7 +75,7 @@ func (v *vRegLayout) item(i int) vmref {
 // record returned by bcfind() based on the
 // record and field indices and the number
 // of fields produced by bcfind
-func getdelim(out []vRegLayout, record, field, nfields int) vmref {
+func getdelim(out []vRegData, record, field, nfields int) vmref {
 	// each group of nfields registers corresponds to 16 records
 	blk := (nfields * (record / 16)) + field
 	// with in each register, lanes are 1:1

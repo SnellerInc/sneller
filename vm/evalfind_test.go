@@ -48,8 +48,8 @@ func TestBoxFloatWritesAtValidOffsetsInScratch(t *testing.T) {
 	}
 
 	img := findbc.String() // FIXME: it's a silly way of checking if we have opcode in program
-	if !strings.Contains(img, "boxfloat") {
-		t.Fatal("Expected 'boxfloat' to be present in bytecode")
+	if !strings.Contains(img, "box.f64") {
+		t.Fatal("Expected 'box.f64' to be present in bytecode")
 	}
 
 	// {"num": 3.123456789} -- not an integer to force fp boxing
@@ -96,8 +96,8 @@ func TestBoxIntegerWritesLargeIntegersAtValidOffsetsInScratch(t *testing.T) {
 	}
 
 	img := findbc.String()
-	if !strings.Contains(img, "boxfloat") {
-		t.Fatal("Expected 'boxfloat' to be present in bytecode")
+	if !strings.Contains(img, "box.f64") {
+		t.Fatal("Expected 'box.f64' to be present in bytecode")
 	}
 
 	// {"num": 8-byte-integer}
@@ -144,8 +144,8 @@ func TestBoxIntegerWritesIntegersAtValidOffsetsInScratch(t *testing.T) {
 	}
 
 	img := findbc.String()
-	if !strings.Contains(img, "boxfloat") {
-		t.Fatal("Expected 'boxfloat' to be present in bytecode")
+	if !strings.Contains(img, "box.f64") {
+		t.Fatal("Expected 'box.f64' to be present in bytecode")
 	}
 
 	// {"num": less-then-8-bytes-integer}

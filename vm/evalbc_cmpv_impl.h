@@ -26,7 +26,7 @@
 // does the following comparisons, in the respective order:
 //
 //   - NULL/BOOL values
-//   - NUMBER values (both INT64 and DOUBLE)
+//   - NUMBER values (both I64 and F64)
 //   - STRING and TIMESTAMP values (comparison treat these the same as only bytes need to be compared)
 //
 // To perform the comparison, an ION data type is translated to an Internal type ID, where 0xFF means
@@ -53,8 +53,7 @@
 //
 // In general, both fast-path and slow-path use the following register layout:
 //
-//   Z30|Z31 <- left  - boxed ION value [start|len] (not unsymbolized)
-//   Z26|Z27 <- left  - boxed ION value [start|len] (unsymbolized)
+//   Z30|Z31 <- left  - boxed ION value [start|len] (not unsymbolized, later unsymbolized)
 //   Z4|Z5   <- right - boxed ION value [start|len] (not unsymbolized, later unsymbolized)
 //   Z6      <- left  - first 4 bytes of each ION value
 //   Z7      <- right - first 4 bytes of each ION value
@@ -71,15 +70,18 @@
 //   K2      <- keeps lanes that still need to be compared, used during the dispatch
 
 TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
   KMOVW K1, K2
-  KMOVW K1, K3
-  VMOVDQU32 0(VIRT_VALUES)(R8*1), Z4                  // Z4 <- right boxed value offsets
   VPXORQ X6, X6, X6
-  VPXORQ X7, X7, X7
   VPGATHERDD 0(SI)(Z30*1), K2, Z6                     // Z6 <- first 4 bytes of the left value
+
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
+  KMOVW K1, K3
+  VPXORQ X7, X7, X7
   VPGATHERDD 0(SI)(Z4*1), K3, Z7                      // Z7 <- first 4 bytes of the right value
-  VMOVDQU32 64(VIRT_VALUES)(R8*1), Z5                 // Z5 <- right boxed value lengths
 
   // NOTE 1: The default predicate for value comparison without sorting semantics is
   //         ion_value_cmp_predicate. Sorting supports two options (NULLS FIRST and
@@ -260,16 +262,18 @@ dispatch_compare_number:
   VEXTRACTI32X8 $1, Z2, Y3
   VPMOVSXDQ Y2, Z2                                    // Z2 <- merged comparison results of all types (low)
   VPMOVSXDQ Y3, Z3                                    // Z3 <- merged comparison results of all types (high)
-  NEXT_ADVANCE(2)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
   // Unsymbolize / Unbox
   // -------------------
 
 compare_string_or_timestamp:
   // To continue comparing string and timestamp values, we have to first "unsymbolize".
-
-  VMOVDQA32 Z30, Z26                                  // Z26 <- left value offsets (either original or unsymbolized)
-  VMOVDQA32 Z31, Z27                                  // Z27 <- left value lengths (either original or unsymbolized)
 
   VPBROADCASTD CONSTD_7(), Z16
   VPBROADCASTD CONSTD_4(), Z15
@@ -330,11 +334,11 @@ compare_string_or_timestamp:
   VPMOVQD Z21, Y21
   VINSERTI32X8 $1, Y21, Z20, Z21
   VINSERTI32X8 $1, Y25, Z24, Z20
-  VMOVDQA32 Z20, K3, Z26
-  VMOVDQA32 Z21, K3, Z27
+  VMOVDQA32 Z20, K3, Z30
+  VMOVDQA32 Z21, K3, Z31
 
   KMOVW K3, K5
-  VPGATHERDD 0(SI)(Z26*1), K5, Z6
+  VPGATHERDD 0(SI)(Z30*1), K5, Z6
 
   // Merge gathered right values with original values
   VPMOVQD Z22, Y24
@@ -393,7 +397,7 @@ skip_unsymbolize:
   VPTERNLOGD $0xF8, Z20, Z15, K4, Z13                 // Z13 <- accumulate third 7-bit sequence {Z13 = Z13 | (Z15 & Z20)}
 
   LEAQ bytecode_spillArea+0(VIRT_BCPTR), R8
-  VPADDD Z26, Z27, Z14                                // Z14 <- left `start + boxedLength`
+  VPADDD Z30, Z31, Z14                                // Z14 <- left `start + boxedLength`
   VPADDD Z4, Z5, Z15                                  // Z15 <- right `start + boxedLength`
   VPSUBD Z12, Z14, Z14                                // Z14 <- left slice offset
   VPSUBD Z13, Z15, Z15                                // Z15 <- right slice offset
@@ -563,4 +567,9 @@ next:
   VEXTRACTI32X8 $1, Z2, Y3
   VPMOVSXDQ Y2, Z2                                    // Z2 <- merged comparison results of all types (low)
   VPMOVSXDQ Y3, Z3                                    // Z3 <- merged comparison results of all types (high)
-  NEXT_ADVANCE(2)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)

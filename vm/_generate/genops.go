@@ -29,16 +29,15 @@ type opcode struct {
 	offset int64
 }
 
-func parseAsmFile(path string) ([]opcode, error) {
+func parseAsmFile(ops []opcode, path string) ([]opcode, error) {
 	f, err := os.Open(path)
 	checkErr(err)
 	defer f.Close()
+
 	rd := bufio.NewReader(f)
-
-	var ops []opcode
 	re := regexp.MustCompile(`^TEXT bc(?P<op>.*)\(SB\)`)
+	ofs := int64(len(ops) * 8)
 
-	ofs := int64(0)
 	for {
 		raw, pre, err := rd.ReadLine()
 		if err != nil {
@@ -62,6 +61,18 @@ func parseAsmFile(path string) ([]opcode, error) {
 		}
 	}
 
+	return ops, nil
+}
+
+func parseAsmFiles(paths []string) ([]opcode, error) {
+	var ops []opcode
+	var err error
+	for _, path := range paths {
+		ops, err = parseAsmFile(ops, path)
+		if err != nil {
+			return ops, err
+		}
+	}
 	return ops, nil
 }
 
@@ -126,7 +137,7 @@ func generateAsmHeader(name string, ops []opcode) {
 }
 
 func main() {
-	ops, err := parseAsmFile("evalbc_amd64.s")
+	ops, err := parseAsmFiles([]string{"evalbc_amd64.s", "bc_eval_math_i64_amd64.h", "bc_eval_math_f64_amd64.h"})
 	checkErr(err)
 
 	generateGoFile("ops_gen.go", ops)

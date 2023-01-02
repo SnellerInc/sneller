@@ -447,10 +447,29 @@ CONST_DATA_U32(constpool, 724, $0x10801)
 #define CONSTD_0x400001() CONST_GET_PTR(constpool, 728)
 CONST_DATA_U32(constpool, 728, $0x400001)
 
+#define CONSTD_3037000499() CONST_GET_PTR(constpool, 732)
+#define CONSTQ_3037000499() CONST_GET_PTR(constpool, 732)
+CONST_DATA_U64(constpool, 732, $0x3037000499)
+
+#define CONSTD_0xFFFFFF00() CONST_GET_PTR(constpool, 740)
+CONST_DATA_U32(constpool, 740, $0xFFFFFF00)
+
+#define CONSTD_0xFF0000() CONST_GET_PTR(constpool, 744)
+CONST_DATA_U32(constpool, 744, $0xFF0000)
+
+#define CONSTD_0xFF00() CONST_GET_PTR(constpool, 748)
+CONST_DATA_U32(constpool, 748, $0xFF00)
+
+#define CONSTD_0xFFFF00() CONST_GET_PTR(constpool, 752)
+CONST_DATA_U32(constpool, 752, $0xFFFF00)
+
+#define CONSTD_0xFF00FF() CONST_GET_PTR(constpool, 760)
+CONST_DATA_U32(constpool, 760, $0xFF00FF)
+
 // Integer Division Reciprocals
 // ----------------------------
 
-#define CONSTPOOL_RECIPROCALS_INDEX 732
+#define CONSTPOOL_RECIPROCALS_INDEX 768
 
 // Unsigned 32-bit division by 25: (Value * 1374389535) >> 35.
 // Unsigned 32-bit division by 50: (Value * 1374389535) >> 36.
@@ -862,6 +881,44 @@ CONST_DATA_U32(aggregate_conflictdq_norm, 52, $55)
 CONST_DATA_U32(aggregate_conflictdq_norm, 56, $55)
 CONST_DATA_U32(aggregate_conflictdq_norm, 60, $55)
 CONST_GLOBAL(aggregate_conflictdq_norm, $64)
+
+// Consecutive DWORD offsets for 1 ZMM register incremented by 8, for each lane.
+CONST_DATA_U32(consts_offsets_d_8,  0, $(0  * 8))
+CONST_DATA_U32(consts_offsets_d_8,  4, $(1  * 8))
+CONST_DATA_U32(consts_offsets_d_8,  8, $(2  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 12, $(3  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 16, $(4  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 20, $(5  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 24, $(6  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 28, $(7  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 32, $(8  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 36, $(9  * 8))
+CONST_DATA_U32(consts_offsets_d_8, 40, $(10 * 8))
+CONST_DATA_U32(consts_offsets_d_8, 44, $(11 * 8))
+CONST_DATA_U32(consts_offsets_d_8, 48, $(12 * 8))
+CONST_DATA_U32(consts_offsets_d_8, 52, $(13 * 8))
+CONST_DATA_U32(consts_offsets_d_8, 56, $(14 * 8))
+CONST_DATA_U32(consts_offsets_d_8, 60, $(15 * 8))
+CONST_GLOBAL(consts_offsets_d_8, $64)
+
+// Consecutive DWORD offsets for 1 ZMM register incremented by 9, for each lane.
+CONST_DATA_U32(consts_offsets_d_9,  0, $0)
+CONST_DATA_U32(consts_offsets_d_9,  4, $9)
+CONST_DATA_U32(consts_offsets_d_9,  8, $18)
+CONST_DATA_U32(consts_offsets_d_9, 12, $27)
+CONST_DATA_U32(consts_offsets_d_9, 16, $36)
+CONST_DATA_U32(consts_offsets_d_9, 20, $45)
+CONST_DATA_U32(consts_offsets_d_9, 24, $54)
+CONST_DATA_U32(consts_offsets_d_9, 28, $63)
+CONST_DATA_U32(consts_offsets_d_9, 32, $72)
+CONST_DATA_U32(consts_offsets_d_9, 36, $81)
+CONST_DATA_U32(consts_offsets_d_9, 40, $90)
+CONST_DATA_U32(consts_offsets_d_9, 44, $99)
+CONST_DATA_U32(consts_offsets_d_9, 48, $108)
+CONST_DATA_U32(consts_offsets_d_9, 52, $117)
+CONST_DATA_U32(consts_offsets_d_9, 56, $126)
+CONST_DATA_U32(consts_offsets_d_9, 60, $135)
+CONST_GLOBAL(consts_offsets_d_9, $64)
 
 // Consecutive DWORD offsets for 1 ZMM register incremented by 16, for each lane.
 CONST_DATA_U32(consts_offsets_d_16,  0, $(0  * 16))

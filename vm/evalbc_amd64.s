@@ -12,35 +12,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// The following bytecode instructions:
-//
-//   - bccbrtf  (CBRT)
-//   - bcexpf   (EXP)
-//   - bcexp2f  (EXP2)
-//   - bcexp10f (EXP10)
-//   - bcexpm1f (EXPM1)
-//   - bclnf    (LN)
-//   - bcln1pf  (LN1P)
-//   - bclog2f  (LOG2)
-//   - bclog10f (LOG10)
-//   - bcsinf   (SIN)
-//   - bccosf   (COS)
-//   - bctanf   (TAN)
-//   - bcasinf  (ASIN)
-//   - bcacosf  (ACOS)
-//   - bcatanf  (ATAN)
-//   - bcatan2f (ATAN2)
-//   - bchypotf (HYPOT)
-//   - bcpowf   (POW)
-//
-// were ported from SLEEF library <https://github.com/shibatch/sleef>,
-// which is distributed under the following conditions:
-//
-//   Copyright Naoki Shibata and contributors 2010 - 2021.
-//   Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE.txt or copy at
-//   http://www.boost.org/LICENSE_1_0.txt)
-
 // the opaddrs global is produced
 // by parsing this file and emitting
 // a table entry for every function
@@ -71,6 +42,13 @@
 
 #define NEXT_ADVANCE(advance) _NEXT(VIRT_PCREG, advance)
 
+#define BC_ADVANCE_REG(SrcReg)        \
+  ADDQ SrcReg, VIRT_PCREG             \
+  JMP -8(VIRT_PCREG)
+
+#define BC_CALC_ADVANCE(ArgSize, Dst) \
+  MOVL $(8 + ArgSize), Dst
+
 // RET_ABORT returns early
 // with the carry flag set to
 // indicate an aborted bytecode program
@@ -94,284 +72,14 @@
 // of the scalar operand stack
 #define POP(dst) _POP(VIRT_PCREG, dst)
 
-// POP + broadcast quadword
-#define POP_BCSTQ(zreg)            \
-  VPBROADCASTQ 0(VIRT_PCREG), zreg \
-  ADDQ $8, VIRT_PCREG
-
-// POP + broadcast double
-#define POP_BCSTPD(zreg)           \
-  VBROADCASTSD 0(VIRT_PCREG), zreg \
-  ADDQ $8, VIRT_PCREG
-
-// POP + broadcast dword
-#define POP_BCSTD(zreg)            \
-  VPBROADCASTD 0(VIRT_PCREG), zreg \
-  ADDQ $8, VIRT_PCREG
-
-// decode an offset immediate
-// and load that respective mask word
-// into 'dst'
-#define LOADMSK(dst)            \
-  MOVWQZX 0(VIRT_PCREG), R8     \
-  ADDQ $2, VIRT_PCREG           \
-  LEAQ 0(VIRT_VALUES)(R8*1), R8 \
-  KMOVW 0(R8), dst
-
-#define LOADARG1Z(dst0, dst1)           \
-  MOVWQZX 0(VIRT_PCREG), R8             \
-  ADDQ $2, VIRT_PCREG                   \
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), dst0  \
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), dst1
-
-#define SAVEARG1Z(src0, src1)           \
-  MOVWQZX 0(VIRT_PCREG), R8             \
-  ADDQ $2, VIRT_PCREG                   \
-  VMOVDQU64 src0, 0(VIRT_VALUES)(R8*1)  \
-  VMOVDQU64 src1, 64(VIRT_VALUES)(R8*1)
-
-#define IMM_FROM_DICT(REG)      \
-    MOVWQZX 0(VIRT_PCREG), DX   \
-    ADDQ $2, VIRT_PCREG         \
-    SHLQ $4, DX                 \ // imm *= sizeof(string)
-    MOVQ bytecode_dict(DI), REG \ // REG = dict
-    LEAQ 0(REG)(DX*1), REG        // REG = &dict[imm]
-
-// Control Flow Instructions
-// -------------------------
-
-// the 'return' instruction
-TEXT bcret(SB), NOSPLIT|NOFRAME, $0
-  // bytecode.auxpos += popcnt(lanes)
-  KMOVW   K7, R8
-  POPCNTL R8, R8
-  ADDQ    R8, bytecode_auxpos(VIRT_BCPTR)
-  CLC
-  RET
-
-// jump forward 'n' bytes if the current mask is zero
-TEXT bcjz(SB), NOSPLIT|NOFRAME, $0
-  POP(DX)
-  KTESTW K1, K1
-  JNZ    next
-  LEAQ   0(VIRT_PCREG)(DX*1), VIRT_PCREG   // virtual pc += uint32(DX)
-next:
-  NEXT()
-
-// Load & Save Instructions
-// ------------------------
-
-// k1 = vstack[imm]
-TEXT bcloadk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K1
-  NEXT_ADVANCE(2)
-
-// vstack[imm] = k1
-TEXT bcsavek(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW K1, 0(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
-// swap(k1, vstack[imm])
-TEXT bcxchgk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KMOVW K1, 0(VIRT_VALUES)(R8*1)
-  KMOVW K2, K1
-  NEXT_ADVANCE(2)
-
-// load row pointer
-TEXT bcloadb(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z0
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z1
-  NEXT_ADVANCE(2)
-
-// save row pointer
-TEXT bcsaveb(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 Z0, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU64 Z1, 64(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
-// load value pointer
-TEXT bcloadv(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z30
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z31
-  NEXT_ADVANCE(2)
-
-// save value pointer
-TEXT bcsavev(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 Z30, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU64 Z31, 64(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
-// load a sub-structure pointer,
-// but only set K1 for non-zero-length
-// sub-structure components
-TEXT bcloadzerov(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z30
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z31
-  VPTESTMD Z31, Z31, K1
-  NEXT_ADVANCE(2)
-
-// save a sub-structure pointer,
-// but zero results when K1 is unset
-TEXT bcsavezerov(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  VMOVDQA32.Z Z30, K1, Z28
-  VMOVDQA32.Z Z31, K1, Z29
-  VMOVDQU32   Z28, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU32   Z29, 64(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
-// load a value pointer from bytecode.outer
-// using the permutation specified in
-// bytecode.perm
-TEXT bcloadpermzerov(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  MOVQ        bytecode_outer(VIRT_BCPTR), R15
-  VMOVDQU32   bytecode_perm(VIRT_BCPTR), Z28
-  MOVQ        bytecode_vstack(R15), R15
-  VPERMD      0(R15)(R8*1), Z28, Z30
-  VPERMD      64(R15)(R8*1), Z28, Z31
-  VPTESTMD    Z31, Z31, K1
-  NEXT_ADVANCE(2)
-
-// load scalar
-TEXT bcloads(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z2
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z3
-  NEXT_ADVANCE(2)
-
-// save scalar
-TEXT bcsaves(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64 Z2, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU64 Z3, 64(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
-TEXT bcloadzeros(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU32 0(VIRT_VALUES)(R8*1), Z2
-  VMOVDQU32 64(VIRT_VALUES)(R8*1), Z3
-  VPTESTMD Z3, Z3, K1
-  NEXT_ADVANCE(2)
-
-TEXT bcsavezeros(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
-  VMOVDQA32.Z Z2, K1, Z4
-  VMOVDQA32.Z Z3, K2, Z5
-  VMOVDQU32 Z4, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU32 Z5, 64(VIRT_VALUES)(R8*1)
-  NEXT_ADVANCE(2)
-
-// Mask Instructions
-// -----------------
-
-TEXT bcbroadcastimmk(SB), NOSPLIT|NOFRAME, $0
-  KMOVW 0(VIRT_PCREG), K1
-  NEXT_ADVANCE(2)
-
-TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
-  VPXORD  Z30, Z30, Z30
-  VPXORD  Z31, Z31, Z31
-  KXORW   K0, K0, K1
-  NEXT()
-
-// K1 &= vstack[imm]
-TEXT bcandk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KANDW K1, K2, K1
-  NEXT_ADVANCE(2)
-
-// K1 |= vstack[imm]
-TEXT bcork(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KORW  K1, K2, K1
-  NEXT_ADVANCE(2)
-
-// K1 = vstack[imm] &^ K1
-TEXT bcandnotk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KANDNW K2, K1, K1
-  NEXT_ADVANCE(2)
-
-// K1 = K1 &^ vstack[imm]
-TEXT bcnandk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KANDNW K1, K2, K1
-  NEXT_ADVANCE(2)
-
-// K1 = (K1 ^ vstack[imm]) & (valid lanes)
-TEXT bcxork(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KXORW K1, K2, K1
-  NEXT_ADVANCE(2)
-
-// K1 = K1 ^ true
-// (this is roughly NOT, but keeps invalid lanes unset)
-TEXT bcnotk(SB), NOSPLIT|NOFRAME, $0
-  KXORW K1, K7, K1
-  NEXT()
-
-// K1 = (K1 xnor vstack[imm]) & (valid lanes)
-TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  KXNORW K1, K2, K1
-  KANDW  K1, K7, K1
-  NEXT_ADVANCE(2)
-
-// Arithmetic & Logical Instructions
-// ---------------------------------
-
-// Arithmetic operation macros
-#define BC_ARITH_OP_VAR(instruction)                \
-  MOVWQZX       0(VIRT_PCREG), R8                   \
-  KSHIFTRW      $8, K1, K2                          \
-  instruction   0(VIRT_VALUES)(R8*1), Z2, K1, Z2    \
-  instruction   64(VIRT_VALUES)(R8*1), Z3, K2, Z3
-
-#define BC_ARITH_OP_IMM(instruction, broadcast)     \
-  broadcast     0(VIRT_PCREG), Z4                   \
-  KSHIFTRW      $8, K1, K2                          \
-  instruction   Z4, Z2, K1, Z2                      \
-  instruction   Z4, Z3, K2, Z3
-
-#define BC_ARITH_REV_OP_VAR(instruction)            \
-  MOVWQZX       0(VIRT_PCREG), R8                   \
-  KSHIFTRW      $8, K1, K2                          \
-  VMOVDQU64     0(VIRT_VALUES)(R8*1), Z4            \
-  VMOVDQU64     64(VIRT_VALUES)(R8*1), Z5           \
-  instruction   Z2, Z4, K1, Z2                      \
-  instruction   Z3, Z5, K2, Z3
-
-#define BC_ARITH_REV_OP_IMM(instruction, broadcast) \
-  broadcast     0(VIRT_PCREG), Z4                   \
-  KSHIFTRW      $8, K1, K2                          \
-  instruction   Z2, Z4, K1, Z2                      \
-  instruction   Z3, Z4, K2, Z3
-
 // Left = Left - Trunc(Left / Right) * Right
-#define BC_MODF64_OP(LEFT1, LEFT2, RIGHT1, RIGHT2, TMP1, TMP2) \
-  VDIVPD.RZ_SAE.Z RIGHT1, LEFT1, K1, TMP1                      \
-  VDIVPD.RZ_SAE.Z RIGHT2, LEFT2, K2, TMP2                      \
-  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, TMP1, K1, TMP1        \
-  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, TMP2, K2, TMP2        \
-  VFNMADD231PD    RIGHT1, TMP1, K1, LEFT1                      \
-  VFNMADD231PD    RIGHT2, TMP2, K2, LEFT2
+#define BC_MODF64_IMPL(DstA, DstB, Src1A, Src1B, Src2A, Src2B, MaskA, MaskB, Tmp1, Tmp2) \
+  VDIVPD.RZ_SAE.Z Src2A, Src1A, MaskA, Tmp1                \
+  VDIVPD.RZ_SAE.Z Src2B, Src1B, MaskB, Tmp2                \
+  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, Tmp1, MaskA, Tmp1 \
+  VRNDSCALEPD.Z   $VROUND_IMM_TRUNC_SAE, Tmp2, MaskB, Tmp2 \
+  VFNMADD231PD    Src2A, Tmp1, MaskA, DstA                 \
+  VFNMADD231PD    Src2B, Tmp2, MaskB, DstB
 
 // This macro implements INT64 division that can be used in bytecode instructions.
 //
@@ -632,5354 +340,333 @@ TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ DST_A, TMP_A4, TMP_MASK_A, DST_A                     \
   VPSUBQ DST_B, TMP_A4, TMP_MASK_B, DST_B
 
-// Broadcast a constant (float)
-TEXT bcbroadcastimmf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD 0(VIRT_PCREG), Z2
-  VMOVDQA64 Z2, Z3
-  NEXT_ADVANCE(8)
-
-// Broadcast a constant (int)
-TEXT bcbroadcastimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z2
-  VMOVDQA64 Z2, Z3
-  NEXT_ADVANCE(8)
-
-// Unary operation - abs (float)
-TEXT bcabsf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  CONSTF64_SIGN_BIT(), Z4
-  KSHIFTRW      $8, K1, K2
-  VANDNPD       Z2, Z4, K1, Z2
-  VANDNPD       Z3, Z4, K2, Z3
-  NEXT()
-
-// Unary operation - abs (int)
-TEXT bcabsi(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  VPABSQ Z2, K1, Z2
-  VPABSQ Z3, K2, Z3
-  NEXT()
-
-// Unary operation - neg (float)
-TEXT bcnegf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VXORPD        X4, X4, X4
-  VSUBPD        Z2, Z4, K1, Z2
-  VSUBPD        Z3, Z4, K2, Z3
-  NEXT()
-
-// Unary operation - neg (int)
-TEXT bcnegi(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VPXORQ        X4, X4, X4
-  VPSUBQ        Z2, Z4, K1, Z2
-  VPSUBQ        Z3, Z4, K2, Z3
-  NEXT()
-
-// Unary operation - sign (float)
-TEXT bcsignf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  CONSTF64_SIGN_BIT(), Z4
-  VBROADCASTSD  CONSTF64_1(), Z5
-  VXORPD        X6, X6, X6
-  KSHIFTRW      $8, K1, K2
-
-  VCMPPD        $VCMP_IMM_NEQ_OQ, Z6, Z2, K1, K3
-  VCMPPD        $VCMP_IMM_NEQ_OQ, Z6, Z3, K2, K4
-
-  // Clear everything but signs, and combine with ones. This uses a {K3, K4}
-  // write mask and would only update numbers that are not zeros nor NaNs.
-  VPTERNLOGQ    $0xEA, Z5, Z4, K3, Z2 // Z2{K3} = (Z2 & Z4) | Z5
-  VPTERNLOGQ    $0xEA, Z5, Z4, K4, Z3 // Z3{K4} = (Z3 & Z4) | Z5
-
-  NEXT()
-
-// Unary operation - sign (int)
-TEXT bcsigni(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  VPMINSQ.BCST CONSTQ_1(), Z2, K1, Z2
-  VPMINSQ.BCST CONSTQ_1(), Z3, K2, Z3
-  VPMAXSQ.BCST CONSTQ_NEG_1(), Z2, K1, Z2
-  VPMAXSQ.BCST CONSTQ_NEG_1(), Z3, K2, Z3
-  NEXT()
-
-// Unary operation - square (float)
-TEXT bcsquaref(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VMULPD        Z2, Z2, K1, Z2
-  VMULPD        Z3, Z3, K2, Z3
-  NEXT()
-
-// Unary operation - square (int)
-TEXT bcsquarei(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VPMULLQ       Z2, Z2, K1, Z2
-  VPMULLQ       Z3, Z3, K2, Z3
-  NEXT()
-
-// Unary operation - bit_not (int)
-TEXT bcbitnoti(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  VPTERNLOGQ $0x01, Z2, Z2, K1, Z2
-  VPTERNLOGQ $0x01, Z3, Z3, K2, Z3
-  NEXT()
-
-// Unary operation - bit_count (int)
-TEXT bcbitcounti(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-
-  VPBROADCASTB CONSTD_15(), Z10
-  VPSRLQ $4, Z2, Z4
-  VPSRLQ $4, Z3, Z5
-
-  VBROADCASTI32X4 CONST_GET_PTR(popcnt_nibble_vpsadbw_pos, 0), Z11
-  VPANDQ Z10, Z4, Z4
-  VPANDQ Z10, Z5, Z5
-
-  VBROADCASTI32X4 CONST_GET_PTR(popcnt_nibble_vpsadbw_neg, 0), Z12
-  VPANDQ Z10, Z2, Z6
-  VPANDQ Z10, Z3, Z7
-
-  VPSHUFB Z4, Z11, Z4
-  VPSHUFB Z6, Z12, Z6
-  VPSHUFB Z5, Z11, Z5
-  VPSHUFB Z7, Z12, Z7
-
-  VPSADBW Z6, Z4, Z4
-  VPSADBW Z7, Z5, Z5
-
-  VMOVDQA64 Z4, K1, Z2
-  VMOVDQA64 Z5, K2, Z3
-
-  NEXT()
-
-// Unary operation - rounding (float)
-TEXT bcroundf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD CONSTF64_HALF(), Z4
-  KSHIFTRW $8, K1, K2
-  VMOVAPD Z4, Z5
-
-  // 0xD8 <- (a & (~c)) | (b & c)
-  VPTERNLOGQ.BCST $0xD8, CONSTF64_SIGN_BIT(), Z2, Z4
-  VPTERNLOGQ.BCST $0xD8, CONSTF64_SIGN_BIT(), Z3, Z5
-
-  // Equivalent to trunc(x + 0.5 * sign(x)) having the intermediate calculation truncated.
-  VADDPD.RZ_SAE Z4, Z2, K1, Z2
-  VADDPD.RZ_SAE Z5, Z3, K2, Z3
-
-  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, Z2, K1, Z2
-  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, Z3, K2, Z3
-
-  NEXT()
-
-TEXT bcroundevenf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $VROUND_IMM_NEAREST_SAE, Z2, K1, Z2
-  VRNDSCALEPD   $VROUND_IMM_NEAREST_SAE, Z3, K2, Z3
-  NEXT()
-
-TEXT bctruncf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $VROUND_IMM_TRUNC_SAE, Z2, K1, Z2
-  VRNDSCALEPD   $VROUND_IMM_TRUNC_SAE, Z3, K2, Z3
-  NEXT()
-
-TEXT bcfloorf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z2, K1, Z2
-  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z3, K2, Z3
-  NEXT()
-
-TEXT bcceilf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VRNDSCALEPD   $VROUND_IMM_UP_SAE, Z2, K1, Z2
-  VRNDSCALEPD   $VROUND_IMM_UP_SAE, Z3, K2, Z3
-  NEXT()
-
-// Binary operation - add (float)
-TEXT bcaddf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VADDPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcaddimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VADDPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - add (int)
-TEXT bcaddi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPADDQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcaddimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPADDQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - sub (float)
-TEXT bcsubf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VSUBPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcsubimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VSUBPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - sub (int)
-TEXT bcsubi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPSUBQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcsubimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPSUBQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - rsub (float)
-TEXT bcrsubf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_REV_OP_VAR(VSUBPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcrsubimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_REV_OP_IMM(VSUBPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - rsub (int)
-TEXT bcrsubi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_REV_OP_VAR(VPSUBQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcrsubimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_REV_OP_IMM(VPSUBQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - mul (float)
-TEXT bcmulf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VMULPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcmulimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VMULPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - mul (int)
-TEXT bcmuli(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPMULLQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcmulimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPMULLQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - div (float)
-TEXT bcdivf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VDIVPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcdivimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VDIVPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - rdiv (float)
-TEXT bcrdivf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_REV_OP_VAR(VDIVPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcrdivimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_REV_OP_IMM(VDIVPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - div (int)
-TEXT bcdivi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
-  KSHIFTRW $8, K1, K2
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
-  JMP divi_tail(SB)
-
-TEXT bcdivimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z4
-  KSHIFTRW $8, K1, K2
-  ADDQ $8, VIRT_PCREG
-  VMOVDQA64 Z4, Z5
-  JMP divi_tail(SB)
-
-TEXT divi_tail(SB), NOSPLIT|NOFRAME, $0
-  BC_DIVI64_IMPL(Z2, Z3, Z2, Z3, Z4, Z5, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
-  NEXT()
-
-// Binary operation - rdiv (int)
-TEXT bcrdivi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
-  KSHIFTRW $8, K1, K2
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
-  JMP rdivi_tail(SB)
-
-TEXT bcrdivimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z4
-  KSHIFTRW $8, K1, K2
-  ADDQ $8, VIRT_PCREG
-  VMOVDQA64 Z4, Z5
-  JMP rdivi_tail(SB)
-
-TEXT rdivi_tail(SB), NOSPLIT|NOFRAME, $0
-  BC_DIVI64_IMPL(Z2, Z3, Z4, Z5, Z2, Z3, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
-  NEXT()
-
-// Binary operation - mod (float):
-TEXT bcmodf(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
-  KSHIFTRW      $8, K1, K2
-  VMOVUPD       0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD       64(VIRT_VALUES)(R8*1), Z5
-  BC_MODF64_OP(Z2, Z3, Z4, Z5, Z6, Z7)
-  NEXT_ADVANCE(2)
-
-TEXT bcmodimmf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  0(VIRT_PCREG), Z4
-  KSHIFTRW      $8, K1, K2
-  BC_MODF64_OP(Z2, Z3, Z4, Z4, Z6, Z7)
-  NEXT_ADVANCE(8)
-
-// Binary operation - rmod (float):
-TEXT bcrmodf(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX       0(VIRT_PCREG), R8
-  KSHIFTRW      $8, K1, K2
-  VMOVAPD       Z2, Z4
-  VMOVAPD       Z3, Z5
-  VMOVUPD       0(VIRT_VALUES)(R8*1), Z2
-  VMOVUPD       64(VIRT_VALUES)(R8*1), Z3
-  BC_MODF64_OP(Z2, Z3, Z4, Z5, Z6, Z7)
-  NEXT_ADVANCE(2)
-
-TEXT bcrmodimmf(SB), NOSPLIT|NOFRAME, $0
-  VMOVAPD       Z2, Z4
-  VMOVAPD       Z3, Z5
-  VBROADCASTSD  0(VIRT_PCREG), Z2
-  VBROADCASTSD  0(VIRT_PCREG), Z3
-  KSHIFTRW      $8, K1, K2
-  BC_MODF64_OP(Z2, Z3, Z4, Z5, Z6, Z7)
-  NEXT_ADVANCE(8)
-
-// Binary operation - mod (int):
-TEXT bcmodi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
-  KSHIFTRW $8, K1, K2
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
-  JMP modi_tail(SB)
-
-TEXT bcmodimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z4
-  KSHIFTRW $8, K1, K2
-  ADDQ $8, VIRT_PCREG
-  VMOVDQA64 Z4, Z5
-  JMP modi_tail(SB)
-
-TEXT modi_tail(SB), NOSPLIT|NOFRAME, $0
-  BC_MODI64_IMPL(Z2, Z3, Z2, Z3, Z4, Z5, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
-  NEXT()
-
-// Binary operation - rmod (int):
-TEXT bcrmodi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
-  KSHIFTRW $8, K1, K2
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
-  JMP rmodi_tail(SB)
-
-TEXT bcrmodimmi(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z4
-  KSHIFTRW $8, K1, K2
-  ADDQ $8, VIRT_PCREG
-  VMOVDQA64 Z4, Z5
-  JMP rmodi_tail(SB)
-
-TEXT rmodi_tail(SB), NOSPLIT|NOFRAME, $0
-  BC_MODI64_IMPL(Z2, Z3, Z4, Z5, Z2, Z3, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
-  NEXT()
-
-// Arithmetic muladd (int)
-TEXT bcaddmulimmi(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VPBROADCASTQ 2(VIRT_PCREG), Z5
-  KSHIFTRW $8, K1, K2
-  VPMULLQ 0(VIRT_VALUES)(R8*1), Z5, Z4
-  VPMULLQ 64(VIRT_VALUES)(R8*1), Z5, Z5
-  VPADDQ Z4, Z2, K1, Z2
-  VPADDQ Z5, Z3, K2, Z3
-  NEXT_ADVANCE(10)
-
-// Binary operation - min/max (float)
-TEXT bcminvaluef(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VMINPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcminvalueimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VMINPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-TEXT bcmaxvaluef(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VMAXPD)
-  NEXT_ADVANCE(2)
-
-TEXT bcmaxvalueimmf(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VMAXPD, VBROADCASTSD)
-  NEXT_ADVANCE(8)
-
-// Binary operation - min/max (int)
-TEXT bcminvaluei(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPMINSQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcminvalueimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPMINSQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-TEXT bcmaxvaluei(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPMAXSQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcmaxvalueimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPMAXSQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - bitwise AND (int)
-TEXT bcandi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPANDQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcandimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPANDQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - bitwise OR (int)
-TEXT bcori(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPORQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcorimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPORQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - bitwise XOR (int)
-TEXT bcxori(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPXORQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcxorimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPXORQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - shift left logical (int)
-TEXT bcslli(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPSLLVQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcsllimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPSLLVQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - shift right arithmetic (int)
-TEXT bcsrai(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPSRAVQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcsraimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPSRAVQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Binary operation - shift right logical (int)
-TEXT bcsrli(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_VAR(VPSRLVQ)
-  NEXT_ADVANCE(2)
-
-TEXT bcsrlimmi(SB), NOSPLIT|NOFRAME, $0
-  BC_ARITH_OP_IMM(VPSRLVQ, VPBROADCASTQ)
-  NEXT_ADVANCE(8)
-
-// Math Functions
-// --------------
-
-// Square root: sqrt(x)
-TEXT bcsqrtf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-  VSQRTPD       Z2, K1, Z2
-  VSQRTPD       Z3, K2, Z3
-  NEXT()
-
-// Cube root: cbrt(x)
-CONST_DATA_U64(const_cbrt,   0, $0x40b8000000000000) // f64(6144)
-CONST_DATA_U64(const_cbrt,   8, $0x3fd5555555555555) // f64(0.33333333333333331)
-CONST_DATA_U64(const_cbrt,  16, $0xc008000000000000) // f64(-3)
-CONST_DATA_U64(const_cbrt,  24, $0x3ff428a2f98d728b) // i64(4608352999143469707)
-CONST_DATA_U64(const_cbrt,  32, $0x3ff965fea53d6e3d) // i64(4609827837958778429)
-CONST_DATA_U64(const_cbrt,  40, $0xbc7ddc22548ea41e) // i64(-4864489982484634594)
-CONST_DATA_U64(const_cbrt,  48, $0xbc9f53e999952f09) // i64(-4855069610512929015)
-CONST_DATA_U64(const_cbrt,  56, $0xbfe47ce4f76bed42) // f64(-0.64024589848069291)
-CONST_DATA_U64(const_cbrt,  64, $0x4007b141aaa12a9c) // f64(2.9615510302003951)
-CONST_DATA_U64(const_cbrt,  72, $0xc016ef22a5e505b3) // f64(-5.7335306092294784)
-CONST_DATA_U64(const_cbrt,  80, $0x401828dc834c5911) // f64(6.0399036898945875)
-CONST_DATA_U64(const_cbrt,  88, $0xc00ede0af7836a8b) // f64(-3.8584193551044499)
-CONST_DATA_U64(const_cbrt,  96, $0x4001d887ace5ac54) // f64(2.230727530249661)
-CONST_DATA_U64(const_cbrt, 104, $0xbfe5555555555555) // f64(-0.66666666666666663)
-CONST_DATA_U32(const_cbrt, 112, $0x3ff00000) // i32(1072693248)
-CONST_DATA_U32(const_cbrt, 116, $0x1) // i32(1)
-CONST_DATA_U32(const_cbrt, 120, $0x2) // i32(2)
-CONST_DATA_U32(const_cbrt, 124, $0xfffff800) // i32(4294965248)
-CONST_GLOBAL(const_cbrt, $128)
-
-TEXT bccbrtf(SB), NOSPLIT|NOFRAME, $0
+// Integer Math Instructions
+// -------------------------
+
+#include "bc_eval_math_i64_amd64.h"
+
+// Floating Point Math Instructions
+// --------------------------------
+
+#include "bc_eval_math_f64_amd64.h"
+
+// Control Flow Instructions
+// -------------------------
+
+#define BC_RETURN_SUCCESS()               \
+  /* bytecode.auxpos += popcnt(lanes) */  \
+  KMOVW   K7, R8                          \
+  POPCNTL R8, R8                          \
+  ADDQ    R8, bytecode_auxpos(VIRT_BCPTR) \
+  CLC                                     \
+  RET
+
+// this is the 'unimplemented!' op
+TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
+  BYTE $0xCC
+  RET
+
+// the 'return' instruction
+TEXT bcret(SB), NOSPLIT|NOFRAME, $0
+  BC_RETURN_SUCCESS()
+
+// return k[0] in K1
+TEXT bcretk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(0, OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
+
+  BC_RETURN_SUCCESS()
+
+// return b[0] in Z0:Z1 and k[1] in K1
+TEXT bcretbk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(0, OUT(BX), OUT(CX))
+
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z0), OUT(Z1), OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
+  BC_RETURN_SUCCESS()
+
+// return s[0] in Z2:Z3 and k[1] in K1
+TEXT bcretsk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(0, OUT(BX), OUT(CX))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
+  BC_RETURN_SUCCESS()
+
+// return b[0] in Z0:Z1 and k[2] in K1 (h[1] is ignored atm, it's just for SSA)
+TEXT bcretbhk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(0, OUT(BX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(CX))
+
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z0), OUT(Z1), OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
+  BC_RETURN_SUCCESS()
+
+// jump forward 'n' bytes if the current mask is zero
+TEXT bcjz(SB), NOSPLIT|NOFRAME, $0
+  POP(DX)
   KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R8
-
-  // Process Z2 (initial 8 lanes).
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z10
-  VPANDQ Z10, Z2, Z6
-  VGETEXPPD Z6, Z4
-  VXORPD X5, X5, X5
-  VCVTPD2DQ.RN_SAE Z4, Y7
-  VPCMPEQD Y4, Y4, Y4
-  VPSUBD Y4, Y7, Y8
-  VPTERNLOGQ $15, Z7, Z7, Z7
-  VPSRAD $1, Y7, Y9
-  VPBROADCASTD CONST_GET_PTR(const_cbrt, 112), Y4
-  VPSLLD $20, Y9, Y11
-  VPADDD Y4, Y11, Y11
-  KMOVW R8, K2
-  VPEXPANDD.Z Z11, K2, Z11
-  VMULPD Z2, Z11, Z11
-  VPSUBD Y9, Y7, Y7
-  VPSLLD $20, Y7, Y7
-  VPADDD Y4, Y7, Y7
-  VCVTDQ2PD Y8, Z8
-  VADDPD.BCST CONST_GET_PTR(const_cbrt, 0), Z8, Z8
-  VPEXPANDD.Z Z7, K2, Z9
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 8), Z12
-  VMULPD Z12, Z8, Z7
-  VCVTPD2DQ.RZ_SAE Z7, Y7
-  VCVTDQ2PD Y7, Z13
-  VMULPD Z9, Z11, Z11
-  VMULPD.BCST CONST_GET_PTR(const_cbrt, 16), Z13, Z9
-  VADDPD Z9, Z8, Z8
-  VCVTPD2DQ.RZ_SAE Z8, Y8
-  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 116), Y8, K3
-  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 120), Y8, K4
-  VBROADCASTSD CONSTF64_1(), Z9
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 24), K3, Z9
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 32), K4, Z9
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z8
-  VPANDQ Z8, Z11, Z13
-  VPORQ Z9, Z13, Z9
-  VBROADCASTSD.Z CONST_GET_PTR(const_cbrt, 40), K3, Z14
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 48), K4, Z14
-  VPXORQ Z14, Z13, Z13
-  VPANDQ Z10, Z11, Z10
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 56), Z11
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 64), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 72), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 80), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 88), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 96), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VMULPD Z11, Z11, Z14
-  VMULPD Z14, Z14, Z14
-  VFMSUB213PD Z11, Z10, Z14 // Z14 = (Z10 * Z14) - Z11
-  VMULPD Z12, Z14, Z12
-  VSUBPD Z12, Z11, Z11
-  VMULPD Z11, Z11, Z12
-  VMOVAPD Z11, Z14
-  VFMSUB213PD Z12, Z11, Z14 // Z14 = (Z11 * Z14) - Z12
-  VMULPD Z12, Z12, Z15
-  VMOVAPD Z12, Z16
-  VFMSUB213PD Z15, Z12, Z16 // Z16 = (Z12 * Z16) - Z15
-  VFMADD231PD Z12, Z14, Z16 // Z16 = (Z14 * Z12) + Z16
-  VFMADD231PD Z14, Z12, Z16 // Z16 = (Z12 * Z14) + Z16
-  VMULPD Z10, Z15, Z17
-  VFMSUB213PD Z17, Z10, Z15 // Z15 = (Z10 * Z15) - Z17
-  VFMADD231PD Z16, Z10, Z15 // Z15 = (Z10 * Z16) + Z15
-  VPXORQ.BCST CONSTF64_SIGN_BIT(), Z11, Z16
-  VSUBPD Z11, Z17, Z18
-  VSUBPD Z17, Z18, Z19
-  VSUBPD Z19, Z18, Z20
-  VSUBPD Z20, Z17, Z17
-  VSUBPD Z19, Z16, Z16
-  VADDPD Z17, Z16, Z16
-  VADDPD Z16, Z15, Z15
-  VADDPD Z15, Z18, Z15
-  VMULPD.BCST CONST_GET_PTR(const_cbrt, 104), Z15, Z15
-  VMULPD Z15, Z11, Z11
-  VADDPD Z11, Z12, Z15
-  VSUBPD Z12, Z15, Z16
-  VSUBPD Z16, Z15, Z17
-  VSUBPD Z17, Z12, Z12
-  VSUBPD Z16, Z11, Z11
-  VADDPD Z12, Z11, Z11
-  VADDPD Z11, Z14, Z11
-  VMULPD Z10, Z15, Z12
-  VFMSUB213PD Z12, Z10, Z15 // Z15 = (Z10 * Z15) - Z12
-  VFMADD231PD Z11, Z10, Z15 // Z15 = (Z10 * Z11) + Z15
-  VMULPD Z9, Z12, Z10
-  VMOVAPD Z9, Z11
-  VFMSUB213PD Z10, Z12, Z11 // Z11 = (Z12 * Z11) - Z10
-  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
-  VFMADD231PD Z13, Z12, Z11 // Z11 = (Z12 * Z13) + Z11
-  VADDPD Z11, Z10, Z9
-  VPBROADCASTD CONST_GET_PTR(const_cbrt, 124), Y10
-  VPADDD Y10, Y7, Y7
-  VPSRAD $1, Y7, Y10
-  VPSLLD $20, Y10, Y11
-  VPADDD Y4, Y11, Y11
-  VPEXPANDD.Z Z11, K2, Z11
-  VMULPD Z11, Z9, Z9
-  VPSUBD Y10, Y7, Y7
-  VPSLLD $20, Y7, Y7
-  VPADDD Y4, Y7, Y4
-  VPEXPANDD.Z Z4, K2, Z4
-  VMULPD Z4, Z9, Z4
-  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z6, K2
-  VPANDQ Z8, Z2, Z6
-  VPORQ.BCST CONSTF64_POSITIVE_INF(), Z6, K2, Z4
-  VCMPPD $VCMP_IMM_EQ_OQ, Z5, Z2, K2
-  VPANDQ Z8, Z2, K2, Z4
-  VMOVDQA64 Z4, Z2
-
-  // Process Z3 (remaining 8 lanes).
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z10
-  VPANDQ Z10, Z3, Z6
-  VGETEXPPD Z6, Z4
-  VXORPD X5, X5, X5
-  VCVTPD2DQ.RN_SAE Z4, Y7
-  VPCMPEQD Y4, Y4, Y4
-  VPSUBD Y4, Y7, Y8
-  VPTERNLOGQ $15, Z7, Z7, Z7
-  VPSRAD $1, Y7, Y9
-  VPBROADCASTD CONST_GET_PTR(const_cbrt, 112), Y4
-  VPSLLD $20, Y9, Y11
-  VPADDD Y4, Y11, Y11
-  KMOVW R8, K2
-  VPEXPANDD.Z Z11, K2, Z11
-  VMULPD Z3, Z11, Z11
-  VPSUBD Y9, Y7, Y7
-  VPSLLD $20, Y7, Y7
-  VPADDD Y4, Y7, Y7
-  VCVTDQ2PD Y8, Z8
-  VADDPD.BCST CONST_GET_PTR(const_cbrt, 0), Z8, Z8
-  VPEXPANDD.Z Z7, K2, Z9
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 8), Z12
-  VMULPD Z12, Z8, Z7
-  VCVTPD2DQ.RZ_SAE Z7, Y7
-  VCVTDQ2PD Y7, Z13
-  VMULPD Z9, Z11, Z11
-  VMULPD.BCST CONST_GET_PTR(const_cbrt, 16), Z13, Z9
-  VADDPD Z9, Z8, Z8
-  VCVTPD2DQ.RZ_SAE Z8, Y8
-  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 116), Y8, K3
-  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 120), Y8, K4
-  VBROADCASTSD CONSTF64_1(), Z9
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 24), K3, Z9
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 32), K4, Z9
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z8
-  VPANDQ Z8, Z11, Z13
-  VPORQ Z9, Z13, Z9
-  VBROADCASTSD.Z CONST_GET_PTR(const_cbrt, 40), K3, Z14
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 48), K4, Z14
-  VPXORQ Z14, Z13, Z13
-  VPANDQ Z10, Z11, Z10
-  VBROADCASTSD CONST_GET_PTR(const_cbrt, 56), Z11
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 64), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 72), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 80), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 88), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 96), Z10, Z11 // Z11 = (Z10 * Z11) + mem
-  VMULPD Z11, Z11, Z14
-  VMULPD Z14, Z14, Z14
-  VFMSUB213PD Z11, Z10, Z14 // Z14 = (Z10 * Z14) - Z11
-  VMULPD Z12, Z14, Z12
-  VSUBPD Z12, Z11, Z11
-  VMULPD Z11, Z11, Z12
-  VMOVAPD Z11, Z14
-  VFMSUB213PD Z12, Z11, Z14 // Z14 = (Z11 * Z14) - Z12
-  VMULPD Z12, Z12, Z15
-  VMOVAPD Z12, Z16
-  VFMSUB213PD Z15, Z12, Z16 // Z16 = (Z12 * Z16) - Z15
-  VFMADD231PD Z12, Z14, Z16 // Z16 = (Z14 * Z12) + Z16
-  VFMADD231PD Z14, Z12, Z16 // Z16 = (Z12 * Z14) + Z16
-  VMULPD Z10, Z15, Z17
-  VFMSUB213PD Z17, Z10, Z15 // Z15 = (Z10 * Z15) - Z17
-  VFMADD231PD Z16, Z10, Z15 // Z15 = (Z10 * Z16) + Z15
-  VPXORQ.BCST CONSTF64_SIGN_BIT(), Z11, Z16
-  VSUBPD Z11, Z17, Z18
-  VSUBPD Z17, Z18, Z19
-  VSUBPD Z19, Z18, Z20
-  VSUBPD Z20, Z17, Z17
-  VSUBPD Z19, Z16, Z16
-  VADDPD Z17, Z16, Z16
-  VADDPD Z16, Z15, Z15
-  VADDPD Z15, Z18, Z15
-  VMULPD.BCST CONST_GET_PTR(const_cbrt, 104), Z15, Z15
-  VMULPD Z15, Z11, Z11
-  VADDPD Z11, Z12, Z15
-  VSUBPD Z12, Z15, Z16
-  VSUBPD Z16, Z15, Z17
-  VSUBPD Z17, Z12, Z12
-  VSUBPD Z16, Z11, Z11
-  VADDPD Z12, Z11, Z11
-  VADDPD Z11, Z14, Z11
-  VMULPD Z10, Z15, Z12
-  VFMSUB213PD Z12, Z10, Z15 // Z15 = (Z10 * Z15) - Z12
-  VFMADD231PD Z11, Z10, Z15 // Z15 = (Z10 * Z11) + Z15
-  VMULPD Z9, Z12, Z10
-  VMOVAPD Z9, Z11
-  VFMSUB213PD Z10, Z12, Z11 // Z11 = (Z12 * Z11) - Z10
-  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
-  VFMADD231PD Z13, Z12, Z11 // Z11 = (Z12 * Z13) + Z11
-  VADDPD Z11, Z10, Z9
-  VPBROADCASTD CONST_GET_PTR(const_cbrt, 124), Y10
-  VPADDD Y10, Y7, Y7
-  VPSRAD $1, Y7, Y10
-  VPSLLD $20, Y10, Y11
-  VPADDD Y4, Y11, Y11
-  VPEXPANDD.Z Z11, K2, Z11
-  VMULPD Z11, Z9, Z9
-  VPSUBD Y10, Y7, Y7
-  VPSLLD $20, Y7, Y7
-  VPADDD Y4, Y7, Y4
-  VPEXPANDD.Z Z4, K2, Z4
-  VMULPD Z4, Z9, Z4
-  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z6, K2
-  VPANDQ Z8, Z3, Z6
-  VPORQ.BCST CONSTF64_POSITIVE_INF(), Z6, K2, Z4
-  VCMPPD $VCMP_IMM_EQ_OQ, Z5, Z3, K2
-  VPANDQ Z8, Z3, K2, Z4
-  VMOVDQA64 Z4, Z3
-
+  JNZ    next
+  LEAQ   0(VIRT_PCREG)(DX*1), VIRT_PCREG   // virtual pc += uint32(DX)
 next:
   NEXT()
 
-// Exponential: exp(x)
-CONST_DATA_U64(const_exp,   0, $0x3ff71547652b82fe) // f64(1.4426950408889634)
-CONST_DATA_U64(const_exp,   8, $0xbfe62e42fefa3000) // f64(-0.69314718055966296)
-CONST_DATA_U64(const_exp,  16, $0xbd53de6af278ece6) // f64(-2.8235290563031577E-13)
-CONST_DATA_U64(const_exp,  24, $0x3e21e0c670afff06) // f64(2.0812763782371645E-9)
-CONST_DATA_U64(const_exp,  32, $0x3e5af6c36f75740c) // f64(2.511210703042288E-8)
-CONST_DATA_U64(const_exp,  40, $0x3e927e5d38a23654) // f64(2.7557626281694912E-7)
-CONST_DATA_U64(const_exp,  48, $0x3ec71ddef633fb47) // f64(2.7557234020253882E-6)
-CONST_DATA_U64(const_exp,  56, $0x3efa01a0127f883a) // f64(2.4801586874796863E-5)
-CONST_DATA_U64(const_exp,  64, $0x3f2a01a01b4421fd) // f64(1.9841269898558658E-4)
-CONST_DATA_U64(const_exp,  72, $0x3f56c16c16c3396b) // f64(0.0013888888889144978)
-CONST_DATA_U64(const_exp,  80, $0x3f8111111110e7a5) // f64(0.0083333333333149382)
-CONST_DATA_U64(const_exp,  88, $0x3fa55555555554f9) // f64(0.041666666666666026)
-CONST_DATA_U64(const_exp,  96, $0x3fc555555555555e) // f64(0.16666666666666691)
-CONST_DATA_U64(const_exp, 104, $0x40862e42fe102c83) // f64(709.78271114955749)
-CONST_DATA_U64(const_exp, 112, $0xc08f400000000000) // f64(-1000)
-CONST_DATA_U32(const_exp, 120, $0x3ff00000) // i32(1072693248)
-CONST_GLOBAL(const_exp, $124)
-
-TEXT bcexpf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R8
-  KSHIFTRW $8, K1, K2
-  KMOVW R8, K3
-
-  VBROADCASTSD CONST_GET_PTR(const_exp, 0), Z9
-  VBROADCASTSD CONST_GET_PTR(const_exp, 8), Z8
-  VBROADCASTSD CONST_GET_PTR(const_exp, 24), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp, 16), Z11
-
-  VMULPD Z9, Z2, Z4
-  VMULPD Z9, Z3, Z5
-  VRNDSCALEPD $8, Z4, Z6
-  VRNDSCALEPD $8, Z5, Z7
-  VCVTPD2DQ.RN_SAE Z6, Y4
-  VCVTPD2DQ.RN_SAE Z7, Y5
-  VINSERTI32X8 $1, Y5, Z4, Z4
-
-  VMOVAPD Z8, Z9
-  VFMADD213PD Z2, Z6, Z8 // Z8 = (Z6 * Z8) + Z2
-  VFMADD213PD Z3, Z7, Z9 // Z9 = (Z7 * Z9) + Z3
-  VFMADD231PD Z11, Z6, Z8 // Z8 = (Z6 * Z11) + Z8
-  VFMADD231PD Z11, Z7, Z9 // Z9 = (Z7 * Z11) + Z9
-  VMULPD Z8, Z8, Z6
-  VMULPD Z9, Z9, Z7
-  VBROADCASTSD CONST_GET_PTR(const_exp, 32), Z5
-  VMOVAPD Z10, Z11
-  VFMADD213PD Z5, Z8, Z10 // Z10 = (Z8 * Z10) + Z5
-  VFMADD213PD Z5, Z9, Z11 // Z11 = (Z9 * Z11) + Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp, 48), Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp, 40), Z12
-  VBROADCASTSD CONST_GET_PTR(const_exp, 56), Z14
-  VMOVAPD Z12, Z13
-  VMOVAPD Z14, Z15
-  VFMADD213PD Z5, Z8, Z12 // Z12 = (Z8 * Z12) + Z5
-  VFMADD213PD Z5, Z9, Z13 // Z13 = (Z9 * Z13) + Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp, 64), Z5
-  VMULPD Z6, Z6, Z16
-  VMULPD Z7, Z7, Z17
-  VFMADD213PD Z5, Z8, Z14 // Z14 = (Z8 * Z14) + Z5
-  VFMADD213PD Z5, Z9, Z15 // Z15 = (Z9 * Z15) + Z5
-  VFMADD231PD Z12, Z6, Z14 // Z14 = (Z6 * Z12) + Z14
-  VFMADD231PD Z13, Z7, Z15 // Z15 = (Z7 * Z13) + Z15
-
-  VBROADCASTSD CONST_GET_PTR(const_exp, 80), Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp, 72), Z12
-  VMOVAPD Z12, Z13
-  VFMADD213PD Z5, Z8, Z12 // Z12 = (Z8 * Z12) + Z5
-  VFMADD213PD Z5, Z9, Z13 // Z13 = (Z9 * Z13) + Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp, 96), Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp, 88), Z18
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z5, Z8, Z18 // Z18 = (Z8 * Z18) + Z5
-  VFMADD213PD Z5, Z9, Z19 // Z19 = (Z9 * Z19) + Z5
-  VMULPD Z16, Z16, Z20
-  VMULPD Z17, Z17, Z21
-  VBROADCASTSD CONSTF64_HALF(), Z5
-  VFMADD231PD Z12, Z6, Z18  // Z18 = (Z6 * Z12) + Z18
-  VFMADD231PD Z13, Z7, Z19  // Z19 = (Z7 * Z13) + Z19
-  VFMADD231PD Z14, Z16, Z18 // Z18 = (Z16 * Z14) + Z18
-  VFMADD231PD Z15, Z17, Z19 // Z19 = (Z17 * Z15) + Z19
-  VFMADD231PD Z10, Z20, Z18 // Z18 = (Z20 * Z10) + Z18
-  VFMADD231PD Z11, Z21, Z19 // Z19 = (Z21 * Z11) + Z19
-  VBROADCASTSD CONSTF64_1(), Z6
-  VFMADD213PD Z5, Z8, Z18 // Z18 = (Z8 * Z18) + Z5{0.5}
-  VFMADD213PD Z5, Z9, Z19 // Z19 = (Z9 * Z19) + Z5{0.5}
-  VFMADD213PD Z6, Z8, Z18 // Z18 = (Z8 * Z18) + Z6{1.0}
-  VFMADD213PD Z6, Z9, Z19 // Z19 = (Z9 * Z19) + Z6{1.0}
-  VFMADD213PD Z6, Z8, Z18 // Z18 = (Z8 * Z18) + Z6{1.0}
-  VFMADD213PD Z6, Z9, Z19 // Z19 = (Z9 * Z19) + Z6{1.0}
-
-  VPSRAD $1, Z4, Z6
-  VPSLLD $20, Z6, Z8
-  VPBROADCASTD CONST_GET_PTR(const_exp, 120), Z10
-  VPADDD Z10, Z8, Z8
-  VEXTRACTI32X8 $1, Z8, Y9
-  VPEXPANDD.Z Z8, K3, Z8
-  VPEXPANDD.Z Z9, K3, Z9
-
-  VMULPD Z8, Z18, Z8
-  VMULPD Z9, Z19, Z9
-  VPSUBD Z6, Z4, Z4
-  VPSLLD $20, Z4, Z4
-  VPADDD Z10, Z4, Z4
-  VEXTRACTI32X8 $1, Z4, Y5
-  VPEXPANDD.Z Z4, K3, Z4
-  VPEXPANDD.Z Z5, K3, Z5
-
-  VMULPD Z4, Z8, Z4
-  VMULPD Z5, Z9, Z5
-
-  VBROADCASTSD CONST_GET_PTR(const_exp, 104), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp, 112), Z11
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
-  VCMPPD $VCMP_IMM_GT_OS, Z10, Z2, K1, K3
-  VCMPPD $VCMP_IMM_GT_OS, Z10, Z3, K2, K4
-  VCMPPD $VCMP_IMM_NLT_US, Z11, Z2, K1, K5
-  VCMPPD $VCMP_IMM_NLT_US, Z11, Z3, K2, K6
-
-  VMOVAPD Z12, K3, Z4
-  VMOVAPD Z12, K4, Z5
-  VMOVAPD.Z Z4, K5, Z4
-  VMOVAPD.Z Z5, K6, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K1, Z3
-
-next:
-  NEXT()
-
-// Base-2 exponential: exp2(x)
-CONST_DATA_U64(const_exp2,   0, $0x3dfe7901ca95e150) // f64(4.4343590829265295E-10)
-CONST_DATA_U64(const_exp2,   8, $0x3e3e6106d72c1c17) // f64(7.0731645980857074E-9)
-CONST_DATA_U64(const_exp2,  16, $0x3e7b5266946bf979) // f64(1.0178192609217605E-7)
-CONST_DATA_U64(const_exp2,  24, $0x3eb62bfcdabcbb81) // f64(1.3215438725113276E-6)
-CONST_DATA_U64(const_exp2,  32, $0x3eeffcbfbc12cc80) // f64(1.5252733535175847E-5)
-CONST_DATA_U64(const_exp2,  40, $0x3f24309130cb34ec) // f64(1.5403530451011478E-4)
-CONST_DATA_U64(const_exp2,  48, $0x3f55d87fe78c5960) // f64(0.0013333558146704991)
-CONST_DATA_U64(const_exp2,  56, $0x3f83b2ab6fba08f0) // f64(0.0096181291075976005)
-CONST_DATA_U64(const_exp2,  64, $0x3fac6b08d704a01f) // f64(0.055504108664820466)
-CONST_DATA_U64(const_exp2,  72, $0x3fcebfbdff82c5a1) // f64(0.24022650695910122)
-CONST_DATA_U64(const_exp2,  80, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
-CONST_DATA_U64(const_exp2,  88, $0x4090000000000000) // f64(1024)
-CONST_DATA_U64(const_exp2,  96, $0xc09f400000000000) // f64(-2000)
-CONST_DATA_U32(const_exp2, 104, $0x3ff00000) // i32(1072693248)
-CONST_GLOBAL(const_exp2, $108)
-
-TEXT bcexp2f(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R8
-  KSHIFTRW $8, K1, K2
-  KMOVW R8, K3
-
-  VRNDSCALEPD $8, Z2, Z6
-  VRNDSCALEPD $8, Z3, Z7
-  VCVTPD2DQ.RN_SAE Z6, Y4
-  VCVTPD2DQ.RN_SAE Z7, Y5
-  VINSERTI32X8 $1, Y5, Z4, Z4
-
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 0), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 16), Z12
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 32), Z14
-  VSUBPD Z6, Z2, Z6
-  VSUBPD Z7, Z3, Z7
-  VMULPD Z6, Z6, Z8
-  VMULPD Z7, Z7, Z9
-  VMOVAPD Z10, Z11
-  VMOVAPD Z12, Z13
-  VMOVAPD Z14, Z15
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 8), Z16
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 24), Z17
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 40), Z18
-  VFMADD213PD Z16, Z6, Z10 // Z10 = (Z6 * Z10) + Z16
-  VFMADD213PD Z16, Z7, Z11 // Z11 = (Z7 * Z11) + Z16
-  VFMADD213PD Z17, Z6, Z12 // Z12 = (Z6 * Z12) + Z17
-  VFMADD213PD Z17, Z7, Z13 // Z13 = (Z7 * Z13) + Z17
-  VFMADD213PD Z18, Z6, Z14 // Z14 = (Z6 * Z14) + Z18
-  VFMADD213PD Z18, Z7, Z15 // Z15 = (Z7 * Z15) + Z18
-  VMULPD Z8, Z8, Z16
-  VMULPD Z9, Z9, Z17
-  VFMADD231PD Z12, Z8, Z14 // Z14 = (Z8 * Z12) + Z14
-  VFMADD231PD Z13, Z9, Z15 // Z15 = (Z9 * Z13) + Z15
-
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 56), Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 48), Z12
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 64), Z18
-  VMOVAPD Z12, Z13
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z5, Z6, Z12 // Z12 = (Z6 * Z12) + Z5
-  VFMADD213PD Z5, Z7, Z13 // Z13 = (Z7 * Z13) + Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 72), Z5
-  VMULPD Z16, Z16, Z20
-  VMULPD Z17, Z17, Z21
-  VFMADD213PD Z5, Z6, Z18 // Z18 = (Z6 * Z18) + Z5
-  VFMADD213PD Z5, Z7, Z19 // Z19 = (Z7 * Z19) + Z5
-  VFMADD231PD Z12, Z8, Z18  // Z18 = (Z8 * Z12) + Z18
-  VFMADD231PD Z13, Z9, Z19  // Z19 = (Z9 * Z13) + Z19
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 80), Z5
-  VFMADD231PD Z14, Z16, Z18 // Z18 = (Z16 * Z14) + Z18
-  VFMADD231PD Z15, Z17, Z19 // Z19 = (Z17 * Z15) + Z19
-  VFMADD231PD Z10, Z20, Z18 // Z18 = (Z20 * Z10) + Z18
-  VFMADD231PD Z11, Z21, Z19 // Z19 = (Z21 * Z11) + Z19
-  VBROADCASTSD CONSTF64_1(), Z20
-  VFMADD213PD Z5, Z6, Z18 // Z18 = (Z6 * Z18) + Z5
-  VFMADD213PD Z5, Z7, Z19 // Z19 = (Z7 * Z19) + Z5
-  VFMADD213PD Z20, Z6, Z18 // Z18 = (Z6 * Z18) + Z20{1.0}
-  VFMADD213PD Z20, Z7, Z19 // Z19 = (Z7 * Z19) + Z20{1.0}
-
-  VPSRAD $1, Z4, Z6
-  VPSLLD $20, Z6, Z8
-  VPBROADCASTD CONST_GET_PTR(const_exp2, 104), Z10
-  VPADDD Z10, Z8, Z8
-  VEXTRACTI32X8 $1, Z8, Y9
-  VPEXPANDD.Z Z8, K3, Z8
-  VPEXPANDD.Z Z9, K3, Z9
-
-  VMULPD Z8, Z18, Z8
-  VMULPD Z9, Z19, Z9
-  VPSUBD Z6, Z4, Z4
-  VPSLLD $20, Z4, Z4
-  VPADDD Z10, Z4, Z4
-  VEXTRACTI32X8 $1, Z4, Y5
-  VPEXPANDD.Z Z4, K3, Z4
-  VPEXPANDD.Z Z5, K3, Z5
-  VMULPD Z4, Z8, Z4
-  VMULPD Z5, Z9, Z5
-
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 88), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp2, 96), Z11
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
-  VCMPPD $VCMP_IMM_GE_OS, Z10, Z2, K1, K3
-  VCMPPD $VCMP_IMM_GE_OS, Z10, Z3, K2, K4
-  VCMPPD $VCMP_IMM_NLT_US, Z11, Z2, K1, K5
-  VCMPPD $VCMP_IMM_NLT_US, Z11, Z3, K2, K6
-
-  VMOVAPD Z12, K3, Z4
-  VMOVAPD Z12, K4, Z5
-  VMOVAPD.Z Z4, K5, Z4
-  VMOVAPD.Z Z5, K6, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Base-10 exponential: exp10(x)
-CONST_DATA_U64(const_exp10,   0, $0x400a934f0979a371) // f64(3.3219280948873622)
-CONST_DATA_U64(const_exp10,   8, $0xbfd34413509f7000) // f64(-0.30102999566383914)
-CONST_DATA_U64(const_exp10,  16, $0xbd43fde623e2566b) // f64(-1.4205023227266099E-13)
-CONST_DATA_U64(const_exp10,  24, $0x3f2f9b875f46726f) // f64(2.4114634983342677E-4)
-CONST_DATA_U64(const_exp10,  32, $0x3f52f6dbb8e3072a) // f64(0.0011574884152171874)
-CONST_DATA_U64(const_exp10,  40, $0x3f748988cff14706) // f64(0.0050139755467897337)
-CONST_DATA_U64(const_exp10,  48, $0x3f9411663b046154) // f64(0.019597623207205331)
-CONST_DATA_U64(const_exp10,  56, $0x3fb16e4df78fca37) // f64(0.068089363994467841)
-CONST_DATA_U64(const_exp10,  64, $0x3fca7ed709f2107e) // f64(0.20699584947226762)
-CONST_DATA_U64(const_exp10,  72, $0x3fe1429ffd1eb6e2) // f64(0.53938292920585362)
-CONST_DATA_U64(const_exp10,  80, $0x3ff2bd7609fd573b) // f64(1.1712551489085417)
-CONST_DATA_U64(const_exp10,  88, $0x4000470591de2c43) // f64(2.034678592293433)
-CONST_DATA_U64(const_exp10,  96, $0x40053524c73cea78) // f64(2.6509490552392059)
-CONST_DATA_U64(const_exp10, 104, $0x40026bb1bbb55516) // f64(2.3025850929940459)
-CONST_DATA_U64(const_exp10, 112, $0x40734413509f79fe) // f64(308.25471555991669)
-CONST_DATA_U64(const_exp10, 120, $0xc075e00000000000) // f64(-350)
-CONST_DATA_U32(const_exp10, 128, $0x3ff00000) // i32(1072693248)
-CONST_GLOBAL(const_exp10, $132)
-
-TEXT bcexp10f(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R8
-  KSHIFTRW $8, K1, K2
-  KMOVW R8, K3
-
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 0), Z5
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 8), Z8
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 16), Z10
-
-  VMULPD Z5, Z2, Z4
-  VMULPD Z5, Z3, Z5
-  VRNDSCALEPD $8, Z4, Z6
-  VRNDSCALEPD $8, Z5, Z7
-  VCVTPD2DQ.RN_SAE Z6, Y4
-  VCVTPD2DQ.RN_SAE Z7, Y5
-  VINSERTI32X8 $1, Y5, Z4, Z4
-
-  VMOVAPD Z8, Z9
-  VFMADD213PD Z2, Z6, Z8 // Z8 = (Z6 * Z8) + Z2
-  VFMADD213PD Z3, Z7, Z9 // Z9 = (Z7 * Z9) + Z3
-  VFMADD231PD Z10, Z6, Z8 // Z8 = (Z6 * Z10) + Z8
-  VFMADD231PD Z10, Z7, Z9 // Z9 = (Z7 * Z10) + Z9
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 24), Z6
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 32), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 40), Z11
-  VMOVAPD Z6, Z7
-  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
-  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
-  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
-  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 48), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 56), Z11
-  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
-  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
-  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
-  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 64), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 72), Z11
-  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
-  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
-  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
-  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 80), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 88), Z11
-  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
-  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
-  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
-  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 96), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 104), Z11
-  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
-  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
-  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
-  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
-
-  VBROADCASTSD CONSTF64_1(), Z10
-  VPBROADCASTD CONST_GET_PTR(const_exp10, 128), Z12
-  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + mem
-  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + mem
-  VPSRAD $1, Z4, Z8
-  VPSLLD $20, Z8, Z10
-  VPADDD Z12, Z10, Z10
-  VEXTRACTI32X8 $1, Z10, Y11
-  VPEXPANDD.Z Z10, K3, Z10
-  VPEXPANDD.Z Z11, K3, Z11
-  VMULPD Z10, Z6, Z6
-  VMULPD Z11, Z7, Z7
-  VPSUBD Z8, Z4, Z4
-  VPSLLD $20, Z4, Z4
-  VPADDD Z12, Z4, Z4
-  VEXTRACTI32X8 $1, Z4, Y5
-  VPEXPANDD.Z Z4, K3, Z4
-  VPEXPANDD.Z Z5, K3, Z5
-  VMULPD Z4, Z6, Z4
-  VMULPD Z5, Z7, Z5
-
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 112), Z10
-  VBROADCASTSD CONST_GET_PTR(const_exp10, 120), Z11
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
-  VCMPPD $VCMP_IMM_GT_OS, Z10, Z2, K3
-  VCMPPD $VCMP_IMM_GT_OS, Z10, Z3, K4
-  VCMPPD $VCMP_IMM_NLT_US, Z11, Z2, K5
-  VCMPPD $VCMP_IMM_NLT_US, Z11, Z3, K6
-
-  VMOVAPD Z12, K3, Z4
-  VMOVAPD Z12, K4, Z5
-  VMOVAPD.Z Z4, K5, Z4
-  VMOVAPD.Z Z5, K6, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Exponential minus one: expm1(x) == exp(x) - 1
-CONST_DATA_U64(const_expm1,   0, $0x3ff71547652b82fe) // f64(1.4426950408889634)
-CONST_DATA_U64(const_expm1,   8, $0xbfe62e42fefa3000) // f64(-0.69314718055966296)
-CONST_DATA_U64(const_expm1,  16, $0xbd53de6af278ece6) // f64(-2.8235290563031577E-13)
-CONST_DATA_U64(const_expm1,  24, $0x3de60632a887194c) // f64(1.6024722197099321E-10)
-CONST_DATA_U64(const_expm1,  32, $0x3e21f8eaf54829dc) // f64(2.092255183563157E-9)
-CONST_DATA_U64(const_expm1,  40, $0x3e5ae652e8103ab6) // f64(2.5052300237826445E-8)
-CONST_DATA_U64(const_expm1,  48, $0x3e927e4c95a9765c) // f64(2.7557248009021353E-7)
-CONST_DATA_U64(const_expm1,  56, $0x3ec71de3a11d7656) // f64(2.7557318923860444E-6)
-CONST_DATA_U64(const_expm1,  64, $0x3efa01a01af6f0b7) // f64(2.4801587356058151E-5)
-CONST_DATA_U64(const_expm1,  72, $0x3f2a01a01a02d002) // f64(1.9841269841480719E-4)
-CONST_DATA_U64(const_expm1,  80, $0x3f56c16c16c145cc) // f64(0.0013888888888867633)
-CONST_DATA_U64(const_expm1,  88, $0x3f81111111111119) // f64(0.008333333333333347)
-CONST_DATA_U64(const_expm1,  96, $0x3fa555555555555a) // f64(0.041666666666666699)
-CONST_DATA_U64(const_expm1, 104, $0x3fc5555555555555) // f64(0.16666666666666666)
-CONST_DATA_U64(const_expm1, 112, $0xc08f400000000000) // f64(-1000)
-CONST_DATA_U64(const_expm1, 120, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_expm1, 128, $0x40862e42fefa39ef) // f64(709.78271289338397)
-CONST_DATA_U64(const_expm1, 136, $0xc0425e4f7b2737fa) // f64(-36.736800569677101)
-CONST_DATA_U32(const_expm1, 144, $0x3ff00000) // i32(1072693248)
-CONST_GLOBAL(const_expm1, $148)
-
-TEXT bcexpm1f(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R15
-  KSHIFTRW $8, K1, K2
-  KMOVW R15, K5
-
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 0), Z8
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 8), Z9
-  VXORPD X5, X5, X5
-  VXORPD X5, X5, X5
-  VADDPD Z5, Z2, Z6
-  VADDPD Z5, Z3, Z7
-  VMULPD Z8, Z6, Z6
-  VMULPD Z8, Z7, Z7
-  VRNDSCALEPD $8, Z6, Z6
-  VRNDSCALEPD $8, Z7, Z7
-  VMULPD Z9, Z6, Z8
-  VMULPD Z9, Z7, Z9
-
-  VADDPD Z2, Z8, Z12
-  VADDPD Z3, Z9, Z13
-  VSUBPD Z2, Z12, Z10
-  VSUBPD Z3, Z13, Z11
-  VSUBPD Z10, Z12, Z14
-  VSUBPD Z11, Z13, Z15
-  VSUBPD Z14, Z2, Z14
-  VSUBPD Z15, Z3, Z15
-  VSUBPD Z10, Z8, Z8
-  VSUBPD Z11, Z9, Z9
-  VADDPD Z14, Z8, Z8
-  VADDPD Z15, Z9, Z9
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 16), Z15
-  VADDPD Z5, Z8, Z8
-  VADDPD Z5, Z9, Z9
-  VMULPD Z15, Z6, Z14
-  VMULPD Z15, Z7, Z15
-  VADDPD Z12, Z14, Z10
-  VADDPD Z13, Z15, Z11
-  VSUBPD Z12, Z10, Z16
-  VSUBPD Z13, Z11, Z17
-  VSUBPD Z16, Z10, Z18
-  VSUBPD Z17, Z11, Z19
-  VSUBPD Z18, Z12, Z12
-  VSUBPD Z19, Z13, Z13
-  VSUBPD Z16, Z14, Z14
-  VSUBPD Z17, Z15, Z15
-  VADDPD Z12, Z14, Z12
-  VADDPD Z13, Z15, Z13
-  VADDPD Z8, Z12, Z8
-  VADDPD Z9, Z13, Z9
-  VMULPD Z10, Z10, Z12
-  VMULPD Z11, Z11, Z13
-
-  VCVTPD2DQ.RN_SAE Z6, Y6
-  VCVTPD2DQ.RN_SAE Z7, Y7
-  VINSERTI32X8 $1, Y7, Z6, Z6
-  VMOVDQU32 Z6, bytecode_spillArea(VIRT_BCPTR) // Save Z6
-
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 24), Z14
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 40), Z16
-  VMOVAPD Z14, Z15
-  VMOVAPD Z16, Z17
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 32), Z18
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 48), Z19
-  VFMADD213PD Z18, Z10, Z14 // Z14 = (Z10 * Z14) + Z18
-  VFMADD213PD Z18, Z11, Z15 // Z15 = (Z11 * Z15) + Z18
-  VFMADD213PD Z19, Z10, Z16 // Z16 = (Z10 * Z16) + Z19
-  VFMADD213PD Z19, Z11, Z17 // Z17 = (Z11 * Z17) + Z19
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 56), Z18
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 72), Z20
-  VMOVAPD Z18, Z19
-  VMOVAPD Z20, Z21
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 64), Z22
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 80), Z23
-  VFMADD213PD Z22, Z10, Z18 // Z18 = (Z10 * Z18) + Z22
-  VFMADD213PD Z22, Z11, Z19 // Z19 = (Z11 * Z19) + Z22
-  VFMADD213PD Z23, Z10, Z20 // Z20 = (Z10 * Z20) + Z23
-  VFMADD213PD Z23, Z11, Z21 // Z21 = (Z11 * Z21) + Z23
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 88), Z22
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 104), Z24
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 96), Z26
-  VMOVAPD Z22, Z23
-  VMOVAPD Z24, Z25
-  VFMADD213PD Z26, Z10, Z22 // Z22 = (Z10 * Z22) + Z26
-  VFMADD213PD Z26, Z11, Z23 // Z23 = (Z11 * Z23) + Z26
-  VMULPD Z24, Z10, Z26
-  VMULPD Z25, Z11, Z27
-  VMOVAPD Z24, Z4
-  VMOVAPD Z25, Z5
-  VFMSUB213PD Z26, Z10, Z4 // Z4 = (Z10 * Z4) - Z26
-  VFMSUB213PD Z27, Z11, Z5 // Z5 = (Z11 * Z5) - Z27
-  VFMADD231PD Z24, Z8, Z4  // Z4 = (Z8 * Z24) + Z4
-  VFMADD231PD Z25, Z9, Z5  // Z5 = (Z9 * Z25) + Z5
-  VBROADCASTSD CONSTF64_HALF(), Z25
-  VADDPD Z25, Z26, Z6
-  VADDPD Z25, Z27, Z7
-  VSUBPD Z6, Z25, Z24
-  VSUBPD Z7, Z25, Z25
-  VADDPD Z24, Z26, Z24
-  VADDPD Z25, Z27, Z25
-  VADDPD Z4, Z24, Z24
-  VADDPD Z5, Z25, Z25
-  VMULPD Z6, Z10, Z26
-  VMULPD Z7, Z11, Z27
-  VMOVAPD Z10, Z4
-  VMOVAPD Z11, Z5
-  VFMSUB213PD Z26, Z6, Z4  // Z4 = (Z6 * Z4) - Z26
-  VFMSUB213PD Z27, Z7, Z5  // Z5 = (Z7 * Z5) - Z27
-  VFMADD231PD Z24, Z10, Z4 // Z4 = (Z10 * Z24) + Z4
-  VFMADD231PD Z25, Z11, Z5 // Z5 = (Z11 * Z25) + Z5
-  VFMADD231PD Z6, Z8, Z4   // Z4 = (Z8 * Z6) + Z4
-  VFMADD231PD Z7, Z9, Z5   // Z5 = (Z9 * Z7) + Z5
-  VBROADCASTSD CONSTF64_1(), Z25
-  VADDPD Z25, Z26, Z6
-  VADDPD Z25, Z27, Z7
-  VSUBPD Z6, Z25, Z24
-  VSUBPD Z7, Z25, Z25
-  VADDPD Z24, Z26, Z26
-  VADDPD Z25, Z27, Z27
-  VADDPD Z4, Z26, Z26
-  VADDPD Z5, Z27, Z27
-  VMULPD Z6, Z10, Z4
-  VMULPD Z7, Z11, Z5
-  VMOVAPD Z10, Z24
-  VMOVAPD Z11, Z25
-  VFMSUB213PD Z4, Z6, Z24   // Z24 = (Z6 * Z24) - Z4
-  VFMSUB213PD Z5, Z7, Z25   // Z25 = (Z7 * Z25) - Z5
-  VFMADD231PD Z26, Z10, Z24 // Z24 = (Z10 * Z26) + Z24
-  VFMADD231PD Z27, Z11, Z25 // Z25 = (Z11 * Z27) + Z25
-  VADDPD Z10, Z10, Z26
-  VADDPD Z11, Z11, Z27
-  VFMSUB213PD Z12, Z10, Z10 // Z10 = (Z10 * Z10) - Z12
-  VFMSUB213PD Z13, Z11, Z11 // Z11 = (Z11 * Z11) - Z13
-  VFMADD231PD Z26, Z8, Z10  // Z10 = (Z8 * Z26) + Z10
-  VFMADD231PD Z27, Z9, Z11  // Z11 = (Z9 * Z27) + Z11
-  VFMADD231PD Z16, Z12, Z18 // Z18 = (Z12 * Z16) + Z18
-  VFMADD231PD Z17, Z13, Z19 // Z19 = (Z13 * Z17) + Z19
-  VMULPD Z12, Z12, Z16
-  VMULPD Z13, Z13, Z17
-  VFMADD231PD Z20, Z12, Z22 // Z22 = (Z12 * Z20) + Z22
-  VFMADD231PD Z21, Z13, Z23 // Z23 = (Z13 * Z21) + Z23
-  VADDPD Z12, Z12, Z20
-  VADDPD Z13, Z13, Z21
-  VFMSUB213PD Z16, Z12, Z12 // Z12 = (Z12 * Z12) - Z16
-  VFMSUB213PD Z17, Z13, Z13 // Z13 = (Z13 * Z13) - Z17
-  VFMADD231PD Z20, Z10, Z12 // Z12 = (Z10 * Z20) + Z12
-  VFMADD231PD Z21, Z11, Z13 // Z13 = (Z11 * Z21) + Z13
-  VFMADD231PD Z18, Z16, Z22 // Z22 = (Z16 * Z18) + Z22
-  VFMADD231PD Z19, Z17, Z23 // Z23 = (Z17 * Z19) + Z23
-  VMULPD Z16, Z16, Z10
-  VMULPD Z17, Z17, Z11
-  VFMADD231PD Z14, Z10, Z22 // Z22 = (Z10 * Z14) + Z22
-  VFMADD231PD Z15, Z11, Z23 // Z23 = (Z11 * Z15) + Z23
-  VFMADD231PD Z8, Z6, Z24   // Z24 = (Z6 * Z8) + Z24
-  VFMADD231PD Z9, Z7, Z25   // Z25 = (Z7 * Z9) + Z25
-  VBROADCASTSD CONSTF64_1(), Z15
-  VADDPD Z15, Z4, Z8
-  VADDPD Z15, Z5, Z9
-  VSUBPD Z8, Z15, Z10
-  VSUBPD Z9, Z15, Z11
-  VADDPD Z10, Z4, Z10
-  VADDPD Z11, Z5, Z11
-  VADDPD Z24, Z10, Z10
-  VADDPD Z25, Z11, Z11
-  VMULPD Z22, Z16, Z14
-  VMULPD Z23, Z17, Z15
-  VFMSUB213PD Z14, Z22, Z16 // Z16 = (Z22 * Z16) - Z14
-  VFMSUB213PD Z15, Z23, Z17 // Z17 = (Z23 * Z17) - Z15
-  VFMADD231PD Z22, Z12, Z16 // Z16 = (Z12 * Z22) + Z16
-  VFMADD231PD Z23, Z13, Z17 // Z17 = (Z13 * Z23) + Z17
-  VADDPD Z8, Z14, Z12
-  VADDPD Z9, Z15, Z13
-  VSUBPD Z12, Z8, Z8
-  VSUBPD Z13, Z9, Z9
-  VADDPD Z8, Z14, Z8
-  VADDPD Z9, Z15, Z9
-  VADDPD Z10, Z8, Z8
-  VADDPD Z11, Z9, Z9
-  VADDPD Z8, Z16, Z8
-  VADDPD Z9, Z17, Z9
-  VMOVDQU32 bytecode_spillArea(VIRT_BCPTR), Z6 // Load Z6
-  VPSRAD $1, Z6, Z10
-  VPSLLD $20, Z10, Z14
-  VPBROADCASTD CONST_GET_PTR(const_expm1, 144), Z16
-  VPADDD Z16, Z14, Z14
-  VEXTRACTI32X8 $1, Z14, Y15
-  VPEXPANDD.Z Z14, K5, Z14
-  VPEXPANDD.Z Z15, K5, Z15
-  VMULPD Z14, Z12, Z12
-  VMULPD Z15, Z13, Z13
-  VPSUBD Z10, Z6, Z6
-  VPSLLD $20, Z6, Z6
-  VPADDD Z16, Z6, Z6
-  VEXTRACTI32X8 $1, Z6, Y7
-  VPEXPANDD.Z Z6, K5, Z6
-  VPEXPANDD.Z Z7, K5, Z7
-  VMULPD Z6, Z12, Z10
-  VMULPD Z7, Z13, Z11
-  VMULPD Z14, Z8, Z8
-  VMULPD Z15, Z9, Z9
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 112), Z20
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 120), Z21
-  VMULPD Z6, Z8, Z6
-  VMULPD Z7, Z9, Z7
-  VCMPPD $VCMP_IMM_LT_OS, Z20, Z2, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z20, Z3, K4
-  VXORPD X5, X5, X5
-  VMOVAPD Z5, K3, Z10
-  VMOVAPD Z5, K4, Z11
-  VMOVAPD Z5, K3, Z6
-  VMOVAPD Z5, K4, Z7
-  VADDPD Z21, Z10, Z4
-  VADDPD Z21, Z11, Z5
-  VSUBPD Z10, Z4, Z12
-  VSUBPD Z11, Z5, Z13
-  VSUBPD Z12, Z4, Z14
-  VSUBPD Z13, Z5, Z15
-  VSUBPD Z14, Z10, Z10
-  VSUBPD Z15, Z11, Z11
-  VSUBPD Z12, Z21, Z12
-  VSUBPD Z13, Z21, Z13
-  VADDPD Z10, Z12, Z10
-  VADDPD Z11, Z13, Z11
-  VADDPD Z6, Z10, Z6
-  VADDPD Z7, Z11, Z7
-  VADDPD Z6, Z4, Z4
-  VADDPD Z7, Z5, Z5
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 128), Z20
-  VBROADCASTSD CONST_GET_PTR(const_expm1, 136), Z19
-  VCMPPD $VCMP_IMM_GT_OS, Z20, Z2, K3
-  VCMPPD $VCMP_IMM_GT_OS, Z20, Z3, K4
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z20
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), K3, Z4
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), K4, Z5
-  VCMPPD $VCMP_IMM_LT_OS, Z19, Z2, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z19, Z3, K4
-  VMOVAPD Z21, K3, Z4
-  VMOVAPD Z21, K4, Z5
-  VPCMPEQQ Z20, Z2, K3
-  VPCMPEQQ Z20, Z3, K4
-  VBROADCASTSD CONSTF64_SIGN_BIT(), K3, Z4
-  VBROADCASTSD CONSTF64_SIGN_BIT(), K4, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Natural logarithm: ln(x)
-CONST_DATA_U64(const_ln,  0, $0x3ff5555555555555) // f64(1.3333333333333333)
-CONST_DATA_U64(const_ln,  8, $0x4090000000000000) // f64(1024)
-CONST_DATA_U64(const_ln, 16, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_ln, 24, $0x3fc3872e67fe8e84) // f64(0.15256290510034287)
-CONST_DATA_U64(const_ln, 32, $0x3fc747353a506035) // f64(0.1818605932937786)
-CONST_DATA_U64(const_ln, 40, $0x3fc39c4f5407567e) // f64(0.15320769885027014)
-CONST_DATA_U64(const_ln, 48, $0x3fcc71c0a65ecd8e) // f64(0.222221451983938)
-CONST_DATA_U64(const_ln, 56, $0x3fd249249a68a245) // f64(0.28571429327942993)
-CONST_DATA_U64(const_ln, 64, $0x3fd99999998f92ea) // f64(0.3999999999635252)
-CONST_DATA_U64(const_ln, 72, $0x3fe55555555557ae) // f64(0.66666666666673335)
-CONST_DATA_U64(const_ln, 80, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
-CONST_DATA_U64(const_ln, 88, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
-CONST_DATA_U64(const_ln, 96, $0x0253040002530400) // i64(167482009228346368)
-CONST_GLOBAL(const_ln, $104)
-
-TEXT bclnf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-  VBROADCASTSD CONST_GET_PTR(const_ln, 0), Z5
-  VBROADCASTSD CONST_GET_PTR(const_ln, 8), Z6
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z7
-
-  VMULPD Z5, Z2, Z4
-  VMULPD Z5, Z3, Z5
-  VGETEXPPD Z4, Z4
-  VGETEXPPD Z5, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z4, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z5, K4
-  VMOVAPD Z6, K3, Z4
-  VMOVAPD Z6, K4, Z5
-  VGETMANTPD $11, Z2, Z6
-  VGETMANTPD $11, Z3, Z7
-
-  VBROADCASTSD CONST_GET_PTR(const_ln, 16), Z9
-  VBROADCASTSD CONSTF64_1(), Z12
-  VADDPD Z9, Z6, Z10
-  VADDPD Z9, Z7, Z11
-  VADDPD Z12, Z10, Z14
-  VADDPD Z12, Z11, Z15
-  VSUBPD Z14, Z10, Z16
-  VSUBPD Z15, Z11, Z17
-  VSUBPD Z16, Z9, Z16
-  VSUBPD Z17, Z9, Z17
-  VSUBPD Z14, Z6, Z14
-  VSUBPD Z15, Z7, Z15
-  VADDPD Z16, Z14, Z14
-  VADDPD Z17, Z15, Z15
-  VADDPD Z12, Z6, Z16
-  VADDPD Z12, Z7, Z17
-  VADDPD Z9, Z16, Z8
-  VADDPD Z9, Z17, Z9
-  VSUBPD Z8, Z16, Z18
-  VSUBPD Z9, Z17, Z19
-  VSUBPD Z18, Z12, Z18
-  VSUBPD Z19, Z12, Z19
-  VSUBPD Z8, Z6, Z6
-  VSUBPD Z9, Z7, Z7
-  VDIVPD Z16, Z12, Z8
-  VDIVPD Z17, Z12, Z9
-  VADDPD Z18, Z6, Z6
-  VADDPD Z19, Z7, Z7
-  VMULPD Z8, Z10, Z18
-  VMULPD Z9, Z11, Z19
-  VFMSUB213PD Z18, Z8, Z10  // Z10 = (Z8 * Z10) - Z18
-  VFMSUB213PD Z19, Z9, Z11  // Z11 = (Z9 * Z11) - Z19
-  VFNMADD213PD Z12, Z8, Z16 // Z16 = -(Z8 * Z16) + Z12
-  VFNMADD213PD Z12, Z9, Z17 // Z17 = -(Z9 * Z17) + Z12
-  VFNMADD231PD Z6, Z8, Z16  // Z16 = -(Z8 * Z6) + Z16
-  VFNMADD231PD Z7, Z9, Z17  // Z17 = -(Z9 * Z7) + Z17
-  VFMADD231PD Z14, Z8, Z10  // Z10 = (Z8 * Z14) + Z10
-  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
-  VFMADD231PD Z16, Z18, Z10 // Z10 = (Z18 * Z16) + Z10
-  VFMADD231PD Z17, Z19, Z11 // Z11 = (Z19 * Z17) + Z11
-  VMULPD Z18, Z18, Z6
-  VMULPD Z19, Z19, Z7
-  VMULPD Z6, Z6, Z8
-  VMULPD Z7, Z7, Z9
-  VMULPD Z8, Z8, Z12
-  VMULPD Z9, Z9, Z13
-
-  VBROADCASTSD CONST_GET_PTR(const_ln, 24), Z14
-  VBROADCASTSD CONST_GET_PTR(const_ln, 32), Z20
-  VBROADCASTSD CONST_GET_PTR(const_ln, 40), Z21
-  VMOVAPD Z14, Z15
-  VFMADD213PD Z20, Z6, Z14 // Z14 = (Z6 * Z14) + mem
-  VFMADD213PD Z20, Z7, Z15 // Z15 = (Z7 * Z15) + mem
-  VFMADD231PD Z21, Z8, Z14 // Z14 = (Z8 * mem) + Z14
-  VFMADD231PD Z21, Z9, Z15 // Z15 = (Z9 * mem) + Z15
-
-  VBROADCASTSD CONST_GET_PTR(const_ln, 48), Z16
-  VBROADCASTSD CONST_GET_PTR(const_ln, 64), Z20
-  VMOVAPD Z16, Z17
-  VMOVAPD Z20, Z21
-  VBROADCASTSD CONST_GET_PTR(const_ln, 56), Z22
-  VBROADCASTSD CONST_GET_PTR(const_ln, 72), Z23
-  VFMADD213PD Z22, Z6, Z16 // Z16 = (Z6 * Z16) + mem
-  VFMADD213PD Z22, Z7, Z17 // Z17 = (Z7 * Z17) + mem
-  VFMADD213PD Z23, Z6, Z20 // Z20 = (Z6 * Z20) + mem
-  VFMADD213PD Z23, Z7, Z21 // Z21 = (Z7 * Z21) + mem
-  VFMADD231PD Z16, Z8, Z20  // Z20 = (Z8 * Z16) + Z20
-  VFMADD231PD Z17, Z9, Z21  // Z21 = (Z9 * Z17) + Z21
-  VFMADD231PD Z14, Z12, Z20 // Z20 = (Z12 * Z14) + Z20
-  VFMADD231PD Z15, Z13, Z21 // Z21 = (Z13 * Z15) + Z21
-
-  VBROADCASTSD CONST_GET_PTR(const_ln, 80), Z8
-  VBROADCASTSD CONST_GET_PTR(const_ln, 88), Z14
-  VMOVAPD Z8, Z9
-  VMULPD Z8, Z4, Z12
-  VMULPD Z8, Z5, Z13
-  VFMSUB213PD Z12, Z4, Z8 // Z8 = (Z4 * Z8) - Z12
-  VFMSUB213PD Z13, Z5, Z9 // Z9 = (Z5 * Z9) - Z13
-  VFMADD231PD Z14, Z4, Z8 // Z8 = (Z4 * Z14) + Z8
-  VFMADD231PD Z14, Z5, Z9 // Z9 = (Z5 * Z14) + Z9
-  VADDPD Z18, Z18, Z4
-  VADDPD Z19, Z19, Z5
-  VADDPD Z10, Z10, Z10
-  VADDPD Z11, Z11, Z11
-  VADDPD Z4, Z12, Z14
-  VADDPD Z5, Z13, Z15
-  VSUBPD Z14, Z12, Z12
-  VSUBPD Z15, Z13, Z13
-  VADDPD Z12, Z4, Z4
-  VADDPD Z13, Z5, Z5
-  VADDPD Z4, Z8, Z4
-  VADDPD Z5, Z9, Z5
-  VADDPD Z10, Z4, Z4
-  VADDPD Z11, Z5, Z5
-  VMULPD Z6, Z18, Z6
-  VMULPD Z7, Z19, Z7
-  VMULPD Z20, Z6, Z6
-  VMULPD Z21, Z7, Z7
-  VADDPD Z6, Z14, Z8
-  VADDPD Z7, Z15, Z9
-  VSUBPD Z8, Z14, Z10
-  VSUBPD Z9, Z15, Z11
-  VADDPD Z10, Z6, Z6
-  VADDPD Z11, Z7, Z7
-  VADDPD Z6, Z4, Z4
-  VADDPD Z7, Z5, Z5
-  VPBROADCASTQ CONST_GET_PTR(const_ln, 96), Z6
-  VADDPD Z4, Z8, Z4
-  VADDPD Z5, Z9, Z5
-
-  VFIXUPIMMPD $0, Z6, Z2, Z4
-  VFIXUPIMMPD $0, Z6, Z3, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Logarithm of x + 1: ln1p(x) == ln(x + 1)
-CONST_DATA_U64(const_log1p,   0, $0x3ff5555555555555) // f64(1.3333333333333333)
-CONST_DATA_U64(const_log1p,   8, $0x4090000000000000) // f64(1024)
-CONST_DATA_U64(const_log1p,  16, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_log1p,  24, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
-CONST_DATA_U64(const_log1p,  32, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
-CONST_DATA_U64(const_log1p,  40, $0x4000000000000000) // f64(2)
-CONST_DATA_U64(const_log1p,  48, $0x3fc3872e67fe8e84) // f64(0.15256290510034287)
-CONST_DATA_U64(const_log1p,  56, $0x3fc747353a506035) // f64(0.1818605932937786)
-CONST_DATA_U64(const_log1p,  64, $0x3fc39c4f5407567e) // f64(0.15320769885027014)
-CONST_DATA_U64(const_log1p,  72, $0x3fcc71c0a65ecd8e) // f64(0.222221451983938)
-CONST_DATA_U64(const_log1p,  80, $0x3fd249249a68a245) // f64(0.28571429327942993)
-CONST_DATA_U64(const_log1p,  88, $0x3fd99999998f92ea) // f64(0.3999999999635252)
-CONST_DATA_U64(const_log1p,  96, $0x3fe55555555557ae) // f64(0.66666666666673335)
-CONST_DATA_U64(const_log1p, 104, $0x7fac7b1f3cac7433) // f64(9.9999999999999999E+306)
-CONST_GLOBAL(const_log1p, $112)
-
-TEXT bcln1pf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R15
-  KSHIFTRW $8, K1, K2
-  KMOVW R15, K5
-
-  VBROADCASTSD CONSTF64_1(), Z4
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 0), Z9
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 0), Z12
-  VADDPD Z4, Z2, Z6
-  VADDPD Z4, Z3, Z7
-  VMULPD Z9, Z6, Z8
-  VMULPD Z9, Z7, Z9
-
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
-  VGETEXPPD Z8, Z10
-  VGETEXPPD Z9, Z11
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z10, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z11, K4
-  VMOVAPD Z12, K3, Z10
-  VMOVAPD Z12, K4, Z11
-  VCVTPD2DQ.RN_SAE Z10, Y8
-  VCVTPD2DQ.RN_SAE Z11, Y9
-  VPXOR X12, X12, X12
-  VPSLLD $20, Y8, Y8
-  VPSLLD $20, Y9, Y9
-  VPSUBD Y8, Y12, Y8
-  VPSUBD Y9, Y12, Y9
-  VPEXPANDD.Z Z8, K5, Z8
-  VPEXPANDD.Z Z9, K5, Z9
-  VPADDQ Z4, Z8, Z12
-  VPADDQ Z4, Z9, Z13
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 16), Z8
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 24), Z18
-  VXORPD X14, X14, X14
-  VXORPD X15, X15, X15
-  VADDPD Z8, Z12, Z16
-  VADDPD Z8, Z13, Z17
-  VMULPD Z18, Z10, Z20
-  VMULPD Z18, Z11, Z21
-  VMOVAPD Z18, Z19
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 32), Z9
-  VFMSUB213PD Z20, Z10, Z18 // Z18 = (Z10 * Z18) - Z20
-  VFMSUB213PD Z21, Z11, Z19 // Z19 = (Z11 * Z19) - Z21
-  VFMADD231PD Z9, Z10, Z18 // Z18 = (Z10 * Z9) + Z18
-  VFMADD231PD Z9, Z11, Z19 // Z19 = (Z11 * Z9) + Z19
-  VFMADD231PD Z12, Z2, Z16 // Z16 = (Z2 * Z12) + Z16
-  VFMADD231PD Z13, Z3, Z17 // Z17 = (Z3 * Z13) + Z17
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 40), Z11
-  VADDPD Z11, Z16, Z12
-  VADDPD Z11, Z17, Z13
-  VSUBPD Z12, Z11, Z10
-  VSUBPD Z13, Z11, Z11
-  VDIVPD Z12, Z4, Z22
-  VDIVPD Z13, Z4, Z23
-  VADDPD Z10, Z16, Z10
-  VADDPD Z11, Z17, Z11
-  VMULPD Z22, Z16, Z24
-  VMULPD Z23, Z17, Z25
-  VFMSUB213PD Z24, Z22, Z16  // Z16 = (Z22 * Z16) - Z24
-  VFMSUB213PD Z25, Z23, Z17  // Z17 = (Z23 * Z17) - Z25
-  VFNMADD213PD Z4, Z22, Z12  // Z12 = -(Z22 * Z12) + Z4
-  VFNMADD213PD Z4, Z23, Z13  // Z13 = -(Z23 * Z13) + Z4
-  VFNMADD231PD Z10, Z22, Z12 // Z12 = -(Z22 * Z10) + Z12
-  VFNMADD231PD Z11, Z23, Z13 // Z13 = -(Z23 * Z11) + Z13
-  VFMADD231PD Z22, Z14, Z16  // Z16 = (Z14 * Z22) + Z16
-  VFMADD231PD Z23, Z15, Z17  // Z17 = (Z15 * Z23) + Z17
-  VFMADD231PD Z12, Z24, Z16  // Z16 = (Z24 * Z12) + Z16
-  VFMADD231PD Z13, Z25, Z17  // Z17 = (Z25 * Z13) + Z17
-  VMULPD Z24, Z24, Z4
-  VMULPD Z25, Z25, Z5
-  VMULPD Z4, Z4, Z10
-  VMULPD Z5, Z5, Z11
-  VMULPD Z10, Z10, Z12
-  VMULPD Z11, Z11, Z13
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 48), Z22
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 56), Z9
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 64), Z26
-  VMOVAPD Z22, Z23
-  VFMADD213PD Z9, Z4, Z22 // Z22 = (Z4 * Z22) + Z9
-  VFMADD213PD Z9, Z5, Z23 // Z23 = (Z5 * Z23) + Z9
-  VFMADD231PD Z26, Z10, Z22 // Z22 = (Z10 * Z26) + Z22
-  VFMADD231PD Z26, Z11, Z23 // Z23 = (Z11 * Z26) + Z23
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 72), Z26
-  VBROADCASTSD CONST_GET_PTR(const_log1p, 88), Z6
-  VMOVAPD Z26, Z27
-  VMOVAPD Z6, Z7
-  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 80), Z4, Z26 // Z26 = (Z4 * Z26) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 80), Z5, Z27 // Z27 = (Z5 * Z27) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 96), Z4, Z6 // Z6 = (Z4 * Z6) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 96), Z5, Z7 // Z7 = (Z5 * Z7) + mem
-  VFMADD231PD Z26, Z10, Z6 // Z6 = (Z10 * Z26) + Z6
-  VFMADD231PD Z27, Z11, Z7 // Z7 = (Z11 * Z27) + Z7
-  VFMADD231PD Z22, Z12, Z6 // Z6 = (Z12 * Z22) + Z6
-  VFMADD231PD Z23, Z13, Z7 // Z7 = (Z13 * Z23) + Z7
-  VADDPD Z24, Z24, Z10
-  VADDPD Z25, Z25, Z11
-  VADDPD Z16, Z16, Z12
-  VADDPD Z17, Z17, Z13
-  VADDPD Z10, Z20, Z16
-  VADDPD Z11, Z21, Z17
-  VSUBPD Z16, Z20, Z20
-  VSUBPD Z17, Z21, Z21
-  VADDPD Z20, Z10, Z10
-  VADDPD Z21, Z11, Z11
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-  VADDPD Z10, Z12, Z10
-  VADDPD Z11, Z13, Z11
-  VMULPD Z4, Z24, Z4
-  VMULPD Z5, Z25, Z5
-  VMULPD Z6, Z4, Z4
-  VMULPD Z7, Z5, Z5
-  VADDPD Z4, Z16, Z12
-  VADDPD Z5, Z17, Z13
-  VSUBPD Z12, Z16, Z16
-  VSUBPD Z13, Z17, Z17
-  VADDPD Z16, Z4, Z4
-  VADDPD Z17, Z5, Z5
-  VADDPD Z4, Z10, Z4
-  VADDPD Z5, Z11, Z5
-  VADDPD Z4, Z12, Z4
-  VADDPD Z5, Z13, Z5
-
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
-  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_log1p, 104), Z2, K3
-  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_log1p, 104), Z3, K4
-  VMOVAPD Z6, K3, Z4
-  VMOVAPD Z6, K4, Z5
-  VCMPPD $VCMP_IMM_LT_OS, Z8, Z2, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z8, Z3, K6
-  VCMPPD $VCMP_IMM_UNORD_Q, Z14, Z2, K3
-  VCMPPD $VCMP_IMM_UNORD_Q, Z15, Z3, K4
-  KORW K5, K3, K3
-  KORW K6, K4, K4
-  VBROADCASTSD CONSTF64_NAN(), K3, Z4
-  VBROADCASTSD CONSTF64_NAN(), K4, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z2, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z3, K4
-  VBROADCASTSD CONSTF64_NEGATIVE_INF(), K3, Z4
-  VBROADCASTSD CONSTF64_NEGATIVE_INF(), K4, Z5
-  VPCMPEQQ.BCST CONSTF64_SIGN_BIT(), Z2, K3
-  VPCMPEQQ.BCST CONSTF64_SIGN_BIT(), Z3, K4
-  VBROADCASTSD CONSTF64_SIGN_BIT(), K3, Z4
-  VBROADCASTSD CONSTF64_SIGN_BIT(), K4, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Base-2 logarithm: log2(x)
-CONST_DATA_U64(const_ln2,  0, $0x3ff5555555555555) // f64(1.3333333333333333)
-CONST_DATA_U64(const_ln2,  8, $0x4090000000000000) // f64(1024)
-CONST_DATA_U64(const_ln2, 16, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_ln2, 24, $0x3fcc2b7a962850e9) // f64(0.22007686931522777)
-CONST_DATA_U64(const_ln2, 32, $0x3fd0caaeeb877481) // f64(0.26237080574885147)
-CONST_DATA_U64(const_ln2, 40, $0x3fcc501739f17ba9) // f64(0.22119417504560815)
-CONST_DATA_U64(const_ln2, 48, $0x3fd484ac6a7cb2dd) // f64(0.32059774779444955)
-CONST_DATA_U64(const_ln2, 56, $0x3fda617636c2c254) // f64(0.41219859454853247)
-CONST_DATA_U64(const_ln2, 64, $0x3fe2776c50e7ede9) // f64(0.5770780162997059)
-CONST_DATA_U64(const_ln2, 72, $0x3feec709dc3a07b2) // f64(0.96179669392608091)
-CONST_DATA_U64(const_ln2, 80, $0x40071547652b82fe) // f64(2.8853900817779268)
-CONST_DATA_U64(const_ln2, 88, $0x3c5bedda32ebbcb1) // f64(6.0561604995516738E-18)
-CONST_DATA_U64(const_ln2, 96, $0x0253040002530400) // i64(167482009228346368)
-CONST_GLOBAL(const_ln2, $104)
-
-TEXT bclog2f(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 0), Z5
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 8), Z7
-
-  VMULPD Z5, Z2, Z4
-  VMULPD Z5, Z3, Z5
-  VGETEXPPD Z4, Z4
-  VGETEXPPD Z5, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z5, K4
-  VMOVAPD Z7, K3, Z4
-  VMOVAPD Z7, K4, Z5
-  VGETMANTPD $11, Z2, Z6
-  VGETMANTPD $11, Z3, Z7
-
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 16), Z9
-  VBROADCASTSD CONSTF64_1(), Z12
-  VADDPD Z9, Z6, Z10
-  VADDPD Z9, Z7, Z11
-  VADDPD Z12, Z10, Z14
-  VADDPD Z12, Z11, Z15
-  VSUBPD Z14, Z10, Z16
-  VSUBPD Z15, Z11, Z17
-  VSUBPD Z16, Z9, Z16
-  VSUBPD Z17, Z9, Z17
-  VSUBPD Z14, Z6, Z14
-  VSUBPD Z15, Z7, Z15
-  VADDPD Z16, Z14, Z14
-  VADDPD Z17, Z15, Z15
-  VADDPD Z12, Z6, Z16
-  VADDPD Z12, Z7, Z17
-  VADDPD Z9, Z16, Z8
-  VADDPD Z9, Z17, Z9
-  VSUBPD Z8, Z16, Z18
-  VSUBPD Z9, Z17, Z19
-  VSUBPD Z18, Z12, Z18
-  VSUBPD Z19, Z12, Z19
-  VSUBPD Z8, Z6, Z6
-  VSUBPD Z9, Z7, Z7
-  VDIVPD Z16, Z12, Z8
-  VDIVPD Z17, Z12, Z9
-  VADDPD Z18, Z6, Z6
-  VADDPD Z19, Z7, Z7
-  VMULPD Z8, Z10, Z18
-  VMULPD Z9, Z11, Z19
-  VFMSUB213PD Z18, Z8, Z10  // Z10 = (Z8 * Z10) - Z18
-  VFMSUB213PD Z19, Z9, Z11  // Z11 = (Z9 * Z11) - Z19
-  VFNMADD213PD Z12, Z8, Z16 // Z16 = -(Z8 * Z16) + Z12
-  VFNMADD213PD Z12, Z9, Z17 // Z17 = -(Z9 * Z17) + Z12
-  VFNMADD231PD Z6, Z8, Z16  // Z16 = -(Z8 * Z6) + Z16
-  VFNMADD231PD Z7, Z9, Z17  // Z17 = -(Z9 * Z7) + Z17
-  VFMADD231PD Z14, Z8, Z10  // Z10 = (Z8 * Z14) + Z10
-  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
-  VFMADD231PD Z16, Z18, Z10 // Z10 = (Z18 * Z16) + Z10
-  VFMADD231PD Z17, Z19, Z11 // Z11 = (Z19 * Z17) + Z11
-  VMULPD Z18, Z18, Z6
-  VMULPD Z19, Z19, Z7
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 48), Z8
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 56), Z20
-  VMOVAPD Z8, Z9
-  VFMADD213PD Z20, Z6, Z8 // Z8 = (Z6 * Z8) + Z20
-  VFMADD213PD Z20, Z7, Z9 // Z9 = (Z7 * Z9) + Z20
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 80), Z14
-  VMULPD Z6, Z6, Z12
-  VMULPD Z7, Z7, Z13
-  VMULPD Z14, Z18, Z16
-  VMULPD Z14, Z19, Z17
-  VMOVAPD Z14, Z20
-  VMOVAPD Z14, Z21
-  VFMSUB213PD Z16, Z18, Z20 // Z20 = (Z18 * Z20) - Z16
-  VFMSUB213PD Z17, Z19, Z21 // Z21 = (Z19 * Z21) - Z17
-  VFMADD231PD Z10, Z14, Z20 // Z20 = (Z14 * Z10) + Z20
-  VFMADD231PD Z11, Z14, Z21 // Z21 = (Z14 * Z11) + Z21
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 64), Z10
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 72), Z22
-  VMOVAPD Z10, Z11
-  VMULPD Z12, Z12, Z14
-  VMULPD Z13, Z13, Z15
-  VFMADD213PD Z22, Z6, Z10 // Z10 = (Z6 * Z10) + Z22
-  VFMADD213PD Z22, Z7, Z11 // Z11 = (Z7 * Z11) + Z22
-  VFMADD231PD Z8, Z12, Z10 // Z10 = (Z12 * Z8) + Z10
-  VFMADD231PD Z9, Z13, Z11 // Z11 = (Z13 * Z9) + Z11
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 24), Z8
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 32), Z22
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 40), Z23
-  VMOVAPD Z8, Z9
-  VFMADD213PD Z22, Z6, Z8   // Z8 = (Z6 * Z8) + Z22
-  VFMADD213PD Z22, Z7, Z9   // Z9 = (Z7 * Z9) + Z22
-  VBROADCASTSD CONST_GET_PTR(const_ln2, 88), Z22
-  VFMADD231PD Z23, Z12, Z8  // Z8 = (Z12 * 23) + Z8
-  VFMADD231PD Z23, Z13, Z9  // Z9 = (Z13 * 23) + Z9
-  VFMADD231PD Z22, Z18, Z20 // Z20 = (Z18 * 22) + Z20
-  VFMADD231PD Z22, Z19, Z21 // Z21 = (Z19 * 22) + Z21
-  VFMADD231PD Z8, Z14, Z10  // Z10 = (Z14 * Z8) + Z10
-  VFMADD231PD Z9, Z15, Z11  // Z11 = (Z15 * Z9) + Z11
-  VADDPD Z16, Z4, Z8
-  VADDPD Z17, Z5, Z9
-  VSUBPD Z4, Z8, Z12
-  VSUBPD Z5, Z9, Z13
-  VSUBPD Z12, Z8, Z14
-  VSUBPD Z13, Z9, Z15
-  VSUBPD Z14, Z4, Z4
-  VSUBPD Z15, Z5, Z5
-  VSUBPD Z12, Z16, Z12
-  VSUBPD Z13, Z17, Z13
-  VADDPD Z4, Z12, Z4
-  VADDPD Z5, Z13, Z5
-  VADDPD Z20, Z4, Z4
-  VADDPD Z21, Z5, Z5
-  VMULPD Z6, Z18, Z6
-  VMULPD Z7, Z19, Z7
-  VMULPD Z10, Z6, Z6
-  VMULPD Z11, Z7, Z7
-  VADDPD Z6, Z8, Z10
-  VADDPD Z7, Z9, Z11
-  VSUBPD Z8, Z10, Z12
-  VSUBPD Z9, Z11, Z13
-  VSUBPD Z12, Z10, Z14
-  VSUBPD Z13, Z11, Z15
-  VSUBPD Z14, Z8, Z8
-  VSUBPD Z15, Z9, Z9
-  VSUBPD Z12, Z6, Z6
-  VSUBPD Z13, Z7, Z7
-  VADDPD Z8, Z6, Z6
-  VADDPD Z9, Z7, Z7
-  VADDPD Z6, Z4, Z4
-  VADDPD Z7, Z5, Z5
-  VPBROADCASTQ CONST_GET_PTR(const_ln2, 96), Z6
-  VADDPD Z4, Z10, Z4
-  VADDPD Z5, Z11, Z5
-
-  VFIXUPIMMPD $0, Z6, Z2, Z4
-  VFIXUPIMMPD $0, Z6, Z3, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Base-10 logarithm: log10(x)
-CONST_DATA_U64(const_ln10,   0, $0x3ff5555555555555) // f64(1.3333333333333333)
-CONST_DATA_U64(const_ln10,   8, $0x4090000000000000) // f64(1024)
-CONST_DATA_U64(const_ln10,  16, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_ln10,  24, $0x3fb0f63bd2a55192) // f64(0.066257227828208337)
-CONST_DATA_U64(const_ln10,  32, $0x3fb4381a2bf55d48) // f64(0.078981052143139441)
-CONST_DATA_U64(const_ln10,  40, $0x3fb10895f3ea9496) // f64(0.066537258195767585)
-CONST_DATA_U64(const_ln10,  48, $0x3fb8b4d992891f74) // f64(0.096509550357152751)
-CONST_DATA_U64(const_ln10,  56, $0x3fbfc3fa6f6d7821) // f64(0.1240841409721445)
-CONST_DATA_U64(const_ln10,  64, $0x3fc63c6277499b88) // f64(0.17371779274546051)
-CONST_DATA_U64(const_ln10,  72, $0x3fd287a7636f4570) // f64(0.28952965460219726)
-CONST_DATA_U64(const_ln10,  80, $0x3fd34413509f79ff) // f64(0.3010299956639812)
-CONST_DATA_U64(const_ln10,  88, $0xbc49dc1da994fd21) // f64(-2.8037281277851704E-18)
-CONST_DATA_U64(const_ln10,  96, $0x3febcb7b1526e50e) // f64(0.86858896380650363)
-CONST_DATA_U64(const_ln10, 104, $0x3c6a5b1dc915f38f) // f64(1.1430059694096389E-17)
-CONST_DATA_U64(const_ln10, 112, $0x0253040002530400) // i64(167482009228346368)
-CONST_GLOBAL(const_ln10, $120)
-
-TEXT bclog10f(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 0), Z5
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 8), Z7
-
-  VMULPD Z5, Z2, Z4
-  VMULPD Z5, Z3, Z5
-  VGETEXPPD Z4, Z4
-  VGETEXPPD Z5, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z5, K4
-  VMOVAPD Z7, K3, Z4
-  VMOVAPD Z7, K4, Z5
-  VGETMANTPD $11, Z2, Z6
-  VGETMANTPD $11, Z3, Z7
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 16), Z9
-  VBROADCASTSD CONSTF64_1(), Z12
-  VADDPD Z9, Z6, Z10
-  VADDPD Z9, Z7, Z11
-  VADDPD Z12, Z10, Z14
-  VADDPD Z12, Z11, Z15
-  VSUBPD Z14, Z10, Z16
-  VSUBPD Z15, Z11, Z17
-  VSUBPD Z16, Z9, Z16
-  VSUBPD Z17, Z9, Z17
-  VSUBPD Z14, Z6, Z14
-  VSUBPD Z15, Z7, Z15
-  VADDPD Z16, Z14, Z14
-  VADDPD Z17, Z15, Z15
-  VADDPD Z12, Z6, Z16
-  VADDPD Z12, Z7, Z17
-  VADDPD Z9, Z16, Z8
-  VADDPD Z9, Z17, Z9
-  VSUBPD Z8, Z16, Z18
-  VSUBPD Z9, Z17, Z19
-  VSUBPD Z18, Z12, Z18
-  VSUBPD Z19, Z12, Z19
-  VSUBPD Z8, Z6, Z6
-  VSUBPD Z9, Z7, Z7
-  VADDPD Z18, Z6, Z6
-  VADDPD Z19, Z7, Z7
-  VDIVPD Z16, Z12, Z8
-  VDIVPD Z17, Z12, Z9
-  VMULPD Z8, Z10, Z18
-  VMULPD Z9, Z11, Z19
-  VFMSUB213PD Z18, Z8, Z10  // Z10 = (Z8 * Z10) - Z18
-  VFMSUB213PD Z19, Z9, Z11  // Z11 = (Z9 * Z11) - Z19
-  VFNMADD213PD Z12, Z8, Z16 // Z16 = -(Z8 * Z16) + Z12
-  VFNMADD213PD Z12, Z9, Z17 // Z17 = -(Z9 * Z17) + Z12
-  VFNMADD231PD Z6, Z8, Z16  // Z16 = -(Z8 * Z6) + Z16
-  VFNMADD231PD Z7, Z9, Z17  // Z17 = -(Z9 * Z7) + Z17
-  VFMADD231PD Z14, Z8, Z10  // Z10 = (Z8 * Z14) + Z10
-  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
-  VFMADD231PD Z16, Z18, Z10 // Z10 = (Z18 * Z16) + Z10
-  VFMADD231PD Z17, Z19, Z11 // Z11 = (Z19 * Z17) + Z11
-  VMULPD Z18, Z18, Z6
-  VMULPD Z19, Z19, Z7
-  VMULPD Z6, Z6, Z8
-  VMULPD Z7, Z7, Z9
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 24), Z12
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 32), Z14
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 40), Z15
-  VMOVAPD Z12, Z13
-  VFMADD213PD Z14, Z6, Z12 // Z12 = (Z6 * Z12) + Z14
-  VFMADD213PD Z14, Z7, Z13 // Z13 = (Z7 * Z13) + Z14
-  VFMADD231PD Z15, Z8, Z12 // Z12 = (Z8 * Z15) + Z12
-  VFMADD231PD Z15, Z9, Z13 // Z13 = (Z9 * Z15) + Z13
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 48), Z14
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 64), Z16
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 56), Z20
-  VMOVAPD Z14, Z15
-  VMOVAPD Z16, Z17
-  VFMADD213PD Z20, Z6, Z14 // Z14 = (Z6 * Z14) + Z20
-  VFMADD213PD Z20, Z7, Z15 // Z15 = (Z7 * Z15) + Z20
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 72), Z22
-  VMULPD Z8, Z8, Z20
-  VMULPD Z9, Z9, Z21
-  VFMADD213PD Z22, Z6, Z16 // Z16 = (Z6 * Z16) + Z22
-  VFMADD213PD Z22, Z7, Z17 // Z17 = (Z7 * Z17) + Z22
-  VFMADD231PD Z14, Z8, Z16 // Z16 = (Z8 * Z14) + Z16
-  VFMADD231PD Z15, Z9, Z17 // Z17 = (Z9 * Z15) + Z17
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 80), Z8
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 88), Z22
-  VMOVAPD Z8, Z9
-  VMULPD Z8, Z4, Z14
-  VMULPD Z9, Z5, Z15
-  VFMSUB213PD Z14, Z4, Z8 // Z8 = (Z4 * Z8) - Z14
-  VFMSUB213PD Z15, Z5, Z9 // Z9 = (Z5 * Z9) - Z15
-  VFMADD231PD Z22, Z4, Z8 // Z8 = (Z4 * Z22) + Z8
-  VFMADD231PD Z22, Z5, Z9 // Z9 = (Z5 * Z22) + Z9
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 96), Z4
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 104), Z5
-  VFMADD231PD Z12, Z20, Z16 // Z16 = (Z20 * Z12) + Z16
-  VFMADD231PD Z13, Z21, Z17 // Z17 = (Z21 * Z13) + Z17
-  VMULPD Z4, Z18, Z12
-  VMULPD Z4, Z19, Z13
-  VMOVAPD Z4, Z20
-  VMOVAPD Z4, Z21
-  VFMSUB213PD Z12, Z18, Z20 // Z20 = (Z18 * Z20) - Z12
-  VFMSUB213PD Z13, Z19, Z21 // Z21 = (Z19 * Z21) - Z13
-  VFMADD231PD Z10, Z4, Z20  // Z20 = (Z4 * Z10) + Z20
-  VFMADD231PD Z11, Z4, Z21  // Z21 = (Z4 * Z11) + Z21
-  VFMADD231PD Z5, Z18, Z20 // Z20 = (Z18 * Z5) + Z20
-  VFMADD231PD Z5, Z19, Z21 // Z21 = (Z19 * Z5) + Z21
-  VADDPD Z12, Z14, Z4
-  VADDPD Z13, Z15, Z5
-  VSUBPD Z4, Z14, Z10
-  VSUBPD Z5, Z15, Z11
-  VADDPD Z10, Z12, Z10
-  VADDPD Z11, Z13, Z11
-  VADDPD Z10, Z8, Z8
-  VADDPD Z11, Z9, Z9
-  VADDPD Z20, Z8, Z8
-  VADDPD Z21, Z9, Z9
-  VMULPD Z6, Z18, Z6
-  VMULPD Z7, Z19, Z7
-  VMULPD Z16, Z6, Z6
-  VMULPD Z17, Z7, Z7
-  VADDPD Z6, Z4, Z10
-  VADDPD Z7, Z5, Z11
-  VSUBPD Z10, Z4, Z4
-  VSUBPD Z11, Z5, Z5
-  VADDPD Z4, Z6, Z4
-  VADDPD Z5, Z7, Z5
-  VADDPD Z4, Z8, Z4
-  VADDPD Z5, Z9, Z5
-  VBROADCASTSD CONST_GET_PTR(const_ln10, 112), Z6
-  VADDPD Z4, Z10, Z4
-  VADDPD Z5, Z11, Z5
-  VFIXUPIMMPD $0, Z6, Z2, Z4
-  VFIXUPIMMPD $0, Z6, Z3, Z5
-
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Sin/Cos/Tan calculation has 3 code paths:
-//
-//   - case 'a': values lesser than 15
-//   - case 'b': values lesser than 1e14
-//   - case 'c': other values that require input domain reduction
-//
-// Execution:
-//
-//   - if inputs in all lanes are lesser than 15, only case 'a' is executed
-//   - if there are values equal or greater than 15, case 'b' is executed
-//   - if there are values equal or greater than 1e14, case 'c' is executed
-//   - each case is properly blended to the output so lanes don't influence each other
-//
-// NOTE: Case 'c' requires a very expensive input range reduction to PI. It
-//       uses a lookup table, which is provided by `bc_constant_rempi.h`.
-
-// Sine: sin(x)
-CONST_DATA_U64(const_sin,   0, $0x402e000000000000) // f64(15)
-CONST_DATA_U64(const_sin,   8, $0x3fd45f306dc9c883) // f64(0.31830988618379069)
-CONST_DATA_U64(const_sin,  16, $0xc00921fb54442d18) // f64(-3.1415926535897931)
-CONST_DATA_U64(const_sin,  24, $0xbca1a62633145c07) // f64(-1.2246467991473532E-16)
-CONST_DATA_U64(const_sin,  32, $0x3e545f306dc9c883) // f64(1.8972747694479864E-8)
-CONST_DATA_U64(const_sin,  40, $0x4170000000000000) // f64(16777216)
-CONST_DATA_U64(const_sin,  48, $0xc00921fb50000000) // f64(-3.1415926218032837)
-CONST_DATA_U64(const_sin,  56, $0xbe6110b460000000) // f64(-3.1786509424591713E-8)
-CONST_DATA_U64(const_sin,  64, $0xbca1a62630000000) // f64(-1.2246467864107189E-16)
-CONST_DATA_U64(const_sin,  72, $0xbaf8a2e03707344a) // f64(-1.27366343270219E-24)
-CONST_DATA_U64(const_sin,  80, $0x42d6bcc41e900000) // f64(1.0E+14)
-CONST_DATA_U64(const_sin,  88, $0x4010000000000000) // f64(4)
-CONST_DATA_U64(const_sin,  96, $0x3fd0000000000000) // f64(0.25)
-CONST_DATA_U64(const_sin, 104, $0x401921fb54442d18) // f64(6.2831853071795862)
-CONST_DATA_U64(const_sin, 112, $0x3cb1a62633145c07) // f64(2.4492935982947064E-16)
-CONST_DATA_U64(const_sin, 120, $0x3fe6666666666666) // f64(0.69999999999999996)
-CONST_DATA_U64(const_sin, 128, $0x0000000100000001) // i64(4294967297)
-CONST_DATA_U64(const_sin, 136, $0xbff921fb54442d18) // i64(-4613618979930100456)
-CONST_DATA_U64(const_sin, 144, $0xbc91a62633145c07) // i64(-4858919839960114169)
-CONST_DATA_U64(const_sin, 152, $0x3ce8811a03b2b11d) // f64(2.7205241613852957E-15)
-CONST_DATA_U64(const_sin, 160, $0xbd6ae422bc319350) // f64(-7.6429259411395447E-13)
-CONST_DATA_U64(const_sin, 168, $0x3de6123c74705f67) // f64(1.605893701172779E-10)
-CONST_DATA_U64(const_sin, 176, $0xbe5ae6454baa2959) // f64(-2.5052106814843123E-8)
-CONST_DATA_U64(const_sin, 184, $0x3ec71de3a525fbed) // f64(2.7557319210442822E-6)
-CONST_DATA_U64(const_sin, 192, $0xbf2a01a01a014225) // f64(-1.9841269841204645E-4)
-CONST_DATA_U64(const_sin, 200, $0x3f811111111110b9) // f64(0.0083333333333331805)
-CONST_DATA_U64(const_sin, 208, $0xbfc5555555555555) // f64(-0.16666666666666666)
-CONST_DATA_U32(const_sin, 216, $0x000003ff) // i32(1023)
-CONST_DATA_U32(const_sin, 220, $0xffffffc9) // i32(4294967241)
-CONST_DATA_U32(const_sin, 224, $0x00000285) // i32(645)
-CONST_DATA_U32(const_sin, 228, $0xffffffc0) // i32(4294967232)
-CONST_DATA_U32(const_sin, 232, $0x00000006) // i32(6)
-CONST_DATA_U32(const_sin, 236, $0x00000002) // i32(2)
-CONST_DATA_U32(const_sin, 240, $0x00000001) // i32(1)
-CONST_GLOBAL(const_sin, $244)
-
-TEXT bcsinf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  // case 'a': this case is implicit and is always executed
-  KSHIFTRW $8, K1, K2
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z7
-  VBROADCASTSD CONST_GET_PTR(const_sin, 0), Z4
-  VBROADCASTSD CONST_GET_PTR(const_sin, 8), Z5
-
-  VANDPD Z7, Z2, Z6
-  VANDPD Z7, Z3, Z7
-
-  // K3/K4 contain lanes where x >= 15, which require more work
-  VCMPPD $VCMP_IMM_GE_OQ, Z4, Z6, K1, K3
-  VCMPPD $VCMP_IMM_GE_OQ, Z4, Z7, K2, K4
-  KUNPCKBW K3, K4, K3
-
-  VMULPD Z5, Z2, Z4
-  VMULPD Z5, Z3, Z5
-
-  VRNDSCALEPD $8, Z4, Z8
-  VRNDSCALEPD $8, Z5, Z9
-  VCVTPD2DQ.RN_SAE Z8, Y4
-  VCVTPD2DQ.RN_SAE Z9, Y5
-  VINSERTI32X8 $1, Y5, Z4, Z4
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 16), Z10
-  VBROADCASTSD CONST_GET_PTR(const_sin, 24), Z12
-  VMOVAPD Z10, Z11
-  VFMADD213PD Z2, Z8, Z10 // Z10 = (Z8 * Z10) + Z2
-  VFMADD213PD Z3, Z9, Z11 // Z11 = (Z9 * Z11) + Z3
-  VMULPD Z12, Z8, Z8
-  VMULPD Z12, Z9, Z9
-  VADDPD Z8, Z10, Z14
-  VADDPD Z9, Z11, Z15
-  VSUBPD Z14, Z10, Z10
-  VSUBPD Z15, Z11, Z11
-  VADDPD Z10, Z8, Z16
-  VADDPD Z11, Z9, Z17
-
-  // Jump to 'sin_case_b' if one or more lane has x >= 15
-  KTESTW K3, K3
-  JNE sin_case_b
-
-sin_eval_poly:
-  // Polynomial evaluation; code shared by all cases
-  VMULPD Z14, Z14, Z6
-  VMULPD Z15, Z15, Z7
-  VADDPD Z14, Z14, Z8
-  VADDPD Z15, Z15, Z9
-
-  VMOVAPD Z14, Z10
-  VMOVAPD Z15, Z11
-  VFMSUB213PD Z6, Z14, Z10 // Z10 = (Z14 * Z10) - Z6
-  VFMSUB213PD Z7, Z15, Z11 // Z11 = (Z15 * Z11) - Z7
-  VFMADD231PD Z8, Z16, Z10 // Z10 = (Z16 * Z8) + Z10
-  VFMADD231PD Z9, Z17, Z11 // Z11 = (Z17 * Z9) + Z11
-
-  VMULPD Z6, Z6, Z8
-  VMULPD Z7, Z7, Z9
-  VMULPD Z8, Z8, Z12
-  VMULPD Z9, Z9, Z13
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 152), Z18
-  VBROADCASTSD CONST_GET_PTR(const_sin, 168), Z20
-  VBROADCASTSD CONST_GET_PTR(const_sin, 184), Z22
-  VMOVAPD Z18, Z19
-  VMOVAPD Z20, Z21
-  VMOVAPD Z22, Z23
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 160), Z24
-  VBROADCASTSD CONST_GET_PTR(const_sin, 176), Z25
-  VFMADD213PD Z24, Z6, Z18 // Z18 = (Z6 * Z18) + Z24
-  VFMADD213PD Z24, Z7, Z19 // Z19 = (Z7 * Z19) + Z24
-  VFMADD213PD Z25, Z6, Z20 // Z20 = (Z6 * Z20) + Z25
-  VFMADD213PD Z25, Z7, Z21 // Z21 = (Z7 * Z21) + Z25
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 192), Z24
-  VBROADCASTSD CONST_GET_PTR(const_sin, 200), Z25
-  VFMADD213PD Z24, Z6, Z22  // Z22 = (Z6 * Z22) + Z24
-  VFMADD213PD Z24, Z7, Z23  // Z23 = (Z7 * Z23) + Z24
-  VFMADD231PD Z20, Z8, Z22  // Z22 = (Z8 * Z20) + Z22
-  VFMADD231PD Z21, Z9, Z23  // Z23 = (Z9 * Z21) + Z23
-  VFMADD231PD Z18, Z12, Z22 // Z22 = (Z12 * Z18) + Z22
-  VFMADD231PD Z19, Z13, Z23 // Z23 = (Z13 * Z19) + Z23
-  VFMADD213PD Z25, Z6, Z22  // Z22 = (Z6 * Z22) + Z25
-  VFMADD213PD Z25, Z7, Z23  // Z23 = (Z7 * Z23) + Z25
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 208), Z13
-  VMULPD Z22, Z6, Z8
-  VMULPD Z23, Z7, Z9
-  VADDPD Z13, Z8, Z18
-  VADDPD Z13, Z9, Z19
-  VSUBPD Z18, Z13, Z12
-  VSUBPD Z19, Z13, Z13
-  VADDPD Z12, Z8, Z8
-  VADDPD Z13, Z9, Z9
-  VMULPD Z18, Z6, Z12
-  VMULPD Z19, Z7, Z13
-  VMOVAPD Z6, Z20
-  VMOVAPD Z7, Z21
-  VFMSUB213PD Z12, Z18, Z20 // Z20 = (Z18 * Z20) - Z12
-  VFMSUB213PD Z13, Z19, Z21 // Z21 = (Z19 * Z21) - Z13
-  VFMADD231PD Z8, Z6, Z20   // Z20 = (Z6 * Z8) + Z20
-  VFMADD231PD Z9, Z7, Z21   // Z21 = (Z7 * Z9) + Z21
-  VFMADD231PD Z10, Z18, Z20 // Z20 = (Z18 * Z10) + Z20
-  VFMADD231PD Z11, Z19, Z21 // Z21 = (Z19 * Z11) + Z21
-
-  VBROADCASTSD CONSTF64_1(), Z7
-  VADDPD Z7, Z12, Z8
-  VADDPD Z7, Z13, Z9
-  VSUBPD Z8, Z7, Z6
-  VSUBPD Z9, Z7, Z7
-  VADDPD Z6, Z12, Z6
-  VADDPD Z7, Z13, Z7
-  VADDPD Z20, Z6, Z6
-  VADDPD Z21, Z7, Z7
-  VMULPD Z6, Z14, Z6
-  VMULPD Z7, Z15, Z7
-  VFMADD231PD Z16, Z8, Z6 // Z6 = (Z8 * Z16) + Z6
-  VFMADD231PD Z17, Z9, Z7 // Z7 = (Z9 * Z17) + Z7
-  VFMADD231PD Z8, Z14, Z6 // Z6 = (Z14 * Z8) + Z6
-  VFMADD231PD Z9, Z15, Z7 // Z7 = (Z15 * Z9) + Z7
-
-  VPANDD.BCST CONST_GET_PTR(const_sin, 128), Z4, Z4
-  VPCMPEQD.BCST CONST_GET_PTR(const_sin, 240), Z4, K3
-  KSHIFTRW $8, K3, K4
-  VPBROADCASTQ.Z CONSTF64_SIGN_BIT(), K3, Z4
-  VPBROADCASTQ.Z CONSTF64_SIGN_BIT(), K4, Z5
-  VXORPD Z6, Z4, Z4
-  VXORPD Z7, Z5, Z5
-  VXORPD X6, X6, X6
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z2, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z3, K4
-  VMOVAPD Z2, K3, Z4
-  VMOVAPD Z3, K4, Z5
-  VMOVAPD Z4, K1, Z2
-  VMOVAPD Z5, K2, Z3
-
-next:
-  NEXT()
-
-sin_case_b:
-  // case 'b': one or more lane has x >= 1e14
-  VBROADCASTSD CONST_GET_PTR(const_sin, 32), Z9
-  VMULPD Z9, Z2, Z8
-  VMULPD Z9, Z3, Z9
-  VRNDSCALEPD $11, Z8, Z8
-  VRNDSCALEPD $11, Z9, Z9
-  VBROADCASTSD CONST_GET_PTR(const_sin, 8), Z10
-  VBROADCASTSD CONST_GET_PTR(const_sin, 40), Z11
-  VMULPD Z11, Z8, Z8
-  VMULPD Z11, Z9, Z9
-  VMOVAPD Z10, Z11
-  VFMSUB213PD Z8, Z2, Z10 // Z10 = (Z2 * Z10) - Z8
-  VFMSUB213PD Z9, Z3, Z11 // Z11 = (Z3 * Z11) - Z9
-  VRNDSCALEPD $8, Z10, Z12
-  VRNDSCALEPD $8, Z11, Z13
-  VBROADCASTSD CONST_GET_PTR(const_sin, 48), Z10
-  VBROADCASTSD CONST_GET_PTR(const_sin, 48), Z11
-  VMULPD Z10, Z12, Z18
-  VMULPD Z11, Z13, Z19
-  VFMADD213PD Z2, Z8, Z10 // Z10 = (Z8 * Z10) + Z2
-  VFMADD213PD Z3, Z9, Z11 // Z11 = (Z9 * Z11) + Z3
-  VADDPD Z18, Z10, Z20
-  VADDPD Z19, Z11, Z21
-  VSUBPD Z20, Z10, Z10
-  VSUBPD Z21, Z11, Z11
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 56), Z19
-  VMULPD Z19, Z8, Z22
-  VMULPD Z19, Z9, Z23
-  VADDPD Z20, Z22, Z24
-  VADDPD Z21, Z23, Z25
-  VSUBPD Z20, Z24, Z26
-  VSUBPD Z21, Z25, Z27
-  VSUBPD Z26, Z24, Z5
-  VSUBPD Z27, Z25, Z18
-  VSUBPD Z5, Z20, Z20
-  VSUBPD Z18, Z21, Z21
-  VSUBPD Z26, Z22, Z22
-  VSUBPD Z27, Z23, Z23
-  VADDPD Z20, Z22, Z20
-  VADDPD Z21, Z23, Z21
-  VADDPD Z20, Z10, Z10
-  VADDPD Z21, Z11, Z11
-  VMULPD Z19, Z12, Z18
-  VMULPD Z19, Z13, Z19
-  VADDPD Z24, Z18, Z20
-  VADDPD Z25, Z19, Z21
-  VSUBPD Z24, Z20, Z22
-  VSUBPD Z25, Z21, Z23
-  VSUBPD Z22, Z20, Z26
-  VSUBPD Z23, Z21, Z27
-  VSUBPD Z26, Z24, Z24
-  VSUBPD Z27, Z25, Z25
-  VSUBPD Z22, Z18, Z18
-  VSUBPD Z23, Z19, Z19
-  VADDPD Z24, Z18, Z18
-  VADDPD Z25, Z19, Z19
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 64), Z23
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-  VMULPD Z23, Z8, Z18
-  VMULPD Z23, Z9, Z19
-  VADDPD Z20, Z18, Z24
-  VADDPD Z21, Z19, Z25
-  VSUBPD Z20, Z24, Z26
-  VSUBPD Z21, Z25, Z27
-  VSUBPD Z26, Z24, Z5
-  VSUBPD Z27, Z25, Z22
-  VSUBPD Z5, Z20, Z20
-  VSUBPD Z22, Z21, Z21
-  VSUBPD Z26, Z18, Z18
-  VSUBPD Z27, Z19, Z19
-  VADDPD Z20, Z18, Z18
-  VADDPD Z21, Z19, Z19
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-  VMULPD Z23, Z12, Z18
-  VMULPD Z23, Z13, Z19
-  VADDPD Z24, Z18, Z20
-  VADDPD Z25, Z19, Z21
-  VSUBPD Z24, Z20, Z22
-  VSUBPD Z25, Z21, Z23
-  VSUBPD Z22, Z20, Z26
-  VSUBPD Z23, Z21, Z27
-  VSUBPD Z26, Z24, Z24
-  VSUBPD Z27, Z25, Z25
-  VSUBPD Z22, Z18, Z18
-  VSUBPD Z23, Z19, Z19
-  VADDPD Z24, Z18, Z18
-  VADDPD Z25, Z19, Z19
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-  VBROADCASTSD CONST_GET_PTR(const_sin, 72), Z19
-  VADDPD Z12, Z8, Z8
-  VADDPD Z13, Z9, Z9
-  VMULPD Z19, Z8, Z18
-  VMULPD Z19, Z9, Z19
-  VADDPD Z20, Z18, Z8
-  VADDPD Z21, Z19, Z9
-  VSUBPD Z8, Z20, Z20
-  VSUBPD Z9, Z21, Z21
-  VADDPD Z20, Z18, Z18
-  VADDPD Z21, Z19, Z19
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-
-  VCVTPD2DQ.RN_SAE Z12, Y18
-  VCVTPD2DQ.RN_SAE Z13, Y19
-  VINSERTI32X8 $1, Y19, Z18, K3, Z4
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 80), Z20
-  VMOVAPD Z8, K3, Z14
-  VMOVAPD Z9, K4, Z15
-  VMOVAPD Z10, K3, Z16
-  VMOVAPD Z11, K4, Z17
-
-  VCMPPD $VCMP_IMM_GE_OS, Z20, Z6, K3, K3
-  VCMPPD $VCMP_IMM_GE_OS, Z20, Z7, K4, K4
-  KUNPCKBW K3, K4, K3
-  KTESTW K3, K3
-  JZ sin_eval_poly
-
-  // case 'c': one or more lane has x >= 1e14
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
-  MOVL $0xAAAA, R8
-  LEAQ CONST_GET_PTR(const_rempi, 0), R15
-
-  // K0 contains mask of all inputs that are either +INF or -INF
-  VCMPPD $VCMP_IMM_EQ_OQ, Z12, Z6, K3, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z12, Z7, K4, K5
-  KUNPCKBW K0, K5, K0
-
-  VGETEXPPD Z2, Z12
-  VGETEXPPD Z3, Z13
-  VCVTPD2DQ.RN_SAE Z12, Y8
-  VCVTPD2DQ.RN_SAE Z13, Y9
-  VINSERTI32X8 $1, Y9, Z8, Z8
-
-  VPCMPGTD.BCST CONSTD_NEG_1(), Z8, K5
-  VPANDD.BCST CONST_GET_PTR(const_sin, 216), Z8, Z8
-  VMOVDQA32.Z Z8, K5, Z8
-  VPADDD.BCST CONST_GET_PTR(const_sin, 220), Z8, Z10
-  VPCMPGTD.BCST CONST_GET_PTR(const_sin, 224), Z10, K5
-  VPBROADCASTD.Z CONST_GET_PTR(const_sin, 228), K5, Z8
-  VPSLLD $20, Z8, Z8
-  VEXTRACTI32X8 $1, Z8, Y9
-  KMOVW R8, K5
-  VPEXPANDD.Z Z8, K5, Z8
-  VPEXPANDD.Z Z9, K5, Z9
-  VPADDQ Z2, Z8, Z8
-  VPADDQ Z3, Z9, Z9
-  VPSRAD $31, Z10, Z18
-  VPANDND Z10, Z18, Z10
-  VPSLLD $2, Z10, Z10
-  VEXTRACTI32X8 $1, Z10, Y11
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X18, X18, X18
-  VXORPD X19, X19, X19
-  VGATHERDPD 0(R15)(Y10*8), K5, Z18
-  VGATHERDPD 0(R15)(Y11*8), K6, Z19
-  ADDQ $8, R15
-
-  VMULPD Z8, Z18, Z20
-  VMULPD Z9, Z19, Z21
-  VFMSUB213PD Z20, Z8, Z18 // Z18 = (Z8 * Z18) - Z20
-  VFMSUB213PD Z21, Z9, Z19 // Z19 = (Z9 * Z19) - Z21
-  VBROADCASTSD CONST_GET_PTR(const_sin, 88), Z23
-  VMULPD Z23, Z20, Z24
-  VMULPD Z23, Z21, Z25
-  VRNDSCALEPD $8, Z24, Z24
-  VRNDSCALEPD $8, Z25, Z25
-  VRNDSCALEPD $8, Z20, Z26
-  VRNDSCALEPD $8, Z21, Z27
-  VMULPD Z23, Z26, Z26
-  VMULPD Z23, Z27, Z27
-  VSUBPD Z26, Z24, Z26
-  VSUBPD Z27, Z25, Z27
-  VCVTPD2DQ.RZ_SAE Z26, Y26
-  VCVTPD2DQ.RZ_SAE Z27, Y27
-  VINSERTI32X8 $1, Y27, Z26, Z26
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 96), Z27
-  VMULPD Z27, Z24, Z24
-  VMULPD Z27, Z25, Z25
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z18, Z20, Z24
-  VADDPD Z19, Z21, Z25
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z20, Z18, Z18
-  VADDPD Z21, Z19, Z19
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X20, X20, X20
-  VXORPD X21, X21, X21
-  VGATHERDPD 0(R15)(Y10*8), K5, Z20
-  VGATHERDPD 0(R15)(Y11*8), K6, Z21
-  ADDQ $8, R15
-
-  VMULPD Z8, Z20, Z12
-  VMULPD Z9, Z21, Z13
-  VFMSUB213PD Z12, Z8, Z20 // Z20 = (Z8 * Z20) - Z12
-  VFMSUB213PD Z13, Z9, Z21 // Z21 = (Z9 * Z21) - Z13
-  VADDPD Z18, Z20, Z18
-  VADDPD Z19, Z21, Z19
-  VADDPD Z24, Z12, Z20
-  VADDPD Z25, Z13, Z21
-  VSUBPD Z24, Z20, Z6
-  VSUBPD Z25, Z21, Z7
-  VSUBPD Z6, Z20, Z5
-  VSUBPD Z5, Z24, Z24
-  VSUBPD Z7, Z21, Z5
-  VSUBPD Z5, Z25, Z25
-  VSUBPD Z6, Z12, Z12
-  VSUBPD Z7, Z13, Z13
-  VADDPD Z24, Z12, Z24
-  VADDPD Z25, Z13, Z25
-  VADDPD Z24, Z18, Z24
-  VADDPD Z25, Z19, Z25
-  VMULPD Z23, Z20, Z18
-  VMULPD Z23, Z21, Z19
-  VRNDSCALEPD $8, Z18, Z12
-  VRNDSCALEPD $8, Z19, Z13
-  VRNDSCALEPD $8, Z20, Z18
-  VRNDSCALEPD $8, Z21, Z19
-  VMULPD Z23, Z18, Z18
-  VMULPD Z23, Z19, Z19
-  VSUBPD Z18, Z12, Z18
-  VSUBPD Z19, Z13, Z19
-  VCVTPD2DQ.RZ_SAE Z18, Y18
-  VCVTPD2DQ.RZ_SAE Z19, Y19
-  VBROADCASTSD CONST_GET_PTR(const_sin, 96), Z23
-  VINSERTI32X8 $1, Y19, Z18, Z18
-  VPADDD Z26, Z18, Z18
-  VMULPD Z23, Z12, Z22
-  VMULPD Z23, Z13, Z23
-  VSUBPD Z22, Z20, Z20
-  VSUBPD Z23, Z21, Z21
-  VADDPD Z24, Z20, Z22
-  VADDPD Z25, Z21, Z23
-  VSUBPD Z22, Z20, Z20
-  VSUBPD Z23, Z21, Z21
-  VADDPD Z20, Z24, Z20
-  VADDPD Z21, Z25, Z21
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X24, X24, X24
-  VXORPD X25, X25, X25
-  VGATHERDPD 0(R15)(Y10*8), K5, Z24
-  VGATHERDPD 0(R15)(Y11*8), K6, Z25
-  ADDQ $8, R15
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X26, X26, X26
-  VXORPD X27, X27, X27
-  VGATHERDPD 0(R15)(Y10*8), K5, Z26
-  VGATHERDPD 0(R15)(Y11*8), K6, Z27
-
-  VMULPD Z8, Z24, Z10
-  VMULPD Z9, Z25, Z11
-  VFMSUB213PD Z10, Z8, Z24 // Z24 = (Z8 * Z24) - Z10
-  VFMSUB213PD Z11, Z9, Z25 // Z25 = (Z9 * Z25) - Z11
-  VFMADD231PD Z26, Z8, Z24 // Z24 = (Z8 * Z26) + Z24
-  VFMADD231PD Z27, Z9, Z25 // Z25 = (Z9 * Z27) + Z25
-  VADDPD Z20, Z24, Z20
-  VADDPD Z21, Z25, Z21
-  VADDPD Z22, Z10, Z24
-  VADDPD Z23, Z11, Z25
-  VSUBPD Z22, Z24, Z26
-  VSUBPD Z23, Z25, Z27
-  VSUBPD Z26, Z24, Z12
-  VSUBPD Z27, Z25, Z13
-  VSUBPD Z12, Z22, Z22
-  VSUBPD Z13, Z23, Z23
-  VSUBPD Z26, Z10, Z10
-  VSUBPD Z27, Z11, Z11
-  VADDPD Z22, Z10, Z10
-  VADDPD Z23, Z11, Z11
-  VADDPD Z10, Z20, Z10
-  VADDPD Z11, Z21, Z11
-  VADDPD Z10, Z24, Z20
-  VADDPD Z11, Z25, Z21
-  VSUBPD Z20, Z24, Z22
-  VSUBPD Z21, Z25, Z23
-  VADDPD Z22, Z10, Z10
-  VADDPD Z23, Z11, Z11
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 104), Z23
-  VMULPD Z23, Z20, Z24
-  VMULPD Z23, Z21, Z25
-  VMOVAPD Z23, Z26
-  VMOVAPD Z23, Z27
-  VFMSUB213PD Z24, Z20, Z26 // Z26 = (Z20 * Z26) - Z24
-  VFMSUB213PD Z25, Z21, Z27 // Z27 = (Z21 * Z27) - Z25
-  VFMADD231PD Z10, Z23, Z26 // Z26 = (Z23 * Z10) + Z26
-  VBROADCASTSD CONST_GET_PTR(const_sin, 112), Z10
-  VFMADD231PD Z11, Z23, Z27 // Z27 = (Z23 * Z11) + Z27
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z11
-  VFMADD231PD Z10, Z20, Z26 // Z26 = (Z20 * Z10) + Z26
-  VFMADD231PD Z10, Z21, Z27 // Z27 = (Z21 * Z10) + Z27
-
-  VBROADCASTSD CONST_GET_PTR(const_sin, 120), Z5
-  VANDPD Z11, Z8, Z10
-  VANDPD Z11, Z9, Z11
-  VCMPPD $VCMP_IMM_LT_OS, Z5, Z10, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z5, Z11, K6
-  VMOVAPD Z8, K5, Z24
-  VMOVAPD Z9, K6, Z25
-  VPADDD Z18, Z18, Z8
-  VPANDD.BCST CONST_GET_PTR(const_sin, 232), Z8, Z8
-  VXORPD Z26, Z26, K5, Z26
-  VXORPD Z27, Z27, K6, Z27
-
-  VXORPD X12, X12, X12
-  VCMPPD $VCMP_IMM_LT_OS, Z24, Z12, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z25, Z12, K6
-  KUNPCKBW K5, K6, K5
-  VPBROADCASTD CONST_GET_PTR(const_sin, 236), Z10
-  VPBROADCASTD CONST_GET_PTR(const_sin, 240), Z22
-  VPBLENDMD Z10, Z22, K5, Z10
-  VPADDD Z10, Z8, Z8
-  VPBROADCASTQ CONST_GET_PTR(const_sin, 128), Z10
-  VPSRLD $2, Z8, Z20
-  VPANDD Z10, Z18, Z8
-  VPCMPEQD Z22, Z8, K5
-  KSHIFTRW $8, K5, K6
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z9
-  VBROADCASTSD CONST_GET_PTR(const_sin, 136), Z11
-  VANDPD Z9, Z24, Z8
-  VANDPD Z9, Z25, Z9
-  VBROADCASTSD CONST_GET_PTR(const_sin, 144), Z5
-  VXORPD Z11, Z8, Z10
-  VXORPD Z11, Z9, Z11
-  VXORPD Z5, Z8, Z8
-  VXORPD Z5, Z9, Z9
-  VADDPD Z10, Z24, Z18
-  VADDPD Z11, Z25, Z19
-  VSUBPD Z24, Z18, Z22
-  VSUBPD Z25, Z19, Z23
-  VSUBPD Z22, Z18, Z12
-  VSUBPD Z23, Z19, Z13
-  VSUBPD Z12, Z24, Z12
-  VSUBPD Z13, Z25, Z13
-  VSUBPD Z22, Z10, Z10
-  VSUBPD Z23, Z11, Z11
-  VADDPD Z12, Z10, Z10
-  VADDPD Z13, Z11, Z11
-  VADDPD Z8, Z26, Z8
-  VADDPD Z9, Z27, Z9
-  VMOVAPD Z18, K5, Z24
-  VMOVAPD Z19, K6, Z25
-  VADDPD Z10, Z8, K5, Z26
-  VADDPD Z11, Z9, K6, Z27
-  VADDPD Z26, Z24, Z8
-  VADDPD Z27, Z25, Z9
-  VSUBPD Z8, Z24, Z10
-  VSUBPD Z9, Z25, Z11
-  VADDPD Z10, Z26, Z10
-  VADDPD Z11, Z27, Z11
-
-  VMOVDQA32 Z20, K3, Z4
-  VMOVAPD Z8, K3, Z14
-  VMOVAPD Z9, K4, Z15
-  VMOVAPD Z10, K3, Z16
-  VMOVAPD Z11, K4, Z17
-
-  VXORPD X12, X12, X12
-  VCMPPD $VCMP_IMM_UNORD_Q, Z12, Z2, K3, K3
-  VCMPPD $VCMP_IMM_UNORD_Q, Z12, Z3, K4, K4
-  KSHIFTRW $8, K0, K5
-  KORW K0, K3, K3
-  KORW K5, K4, K4
-  VPTERNLOGQ $0xFF, Z14, Z14, K3, Z14
-  VPTERNLOGQ $0xFF, Z15, Z15, K4, Z15
-  JMP sin_eval_poly
-
-// Cosine: cos(x)
-CONST_DATA_U64(const_cos,   0, $0x402e000000000000) // f64(15)
-CONST_DATA_U64(const_cos,   8, $0x3fd45f306dc9c883) // f64(0.31830988618379069)
-CONST_DATA_U64(const_cos,  16, $0xbfe0000000000000) // f64(-0.5)
-CONST_DATA_U64(const_cos,  24, $0x4000000000000000) // f64(2)
-CONST_DATA_U64(const_cos,  32, $0xbff921fb54442d18) // f64(-1.5707963267948966)
-CONST_DATA_U64(const_cos,  40, $0xbc91a62633145c07) // f64(-6.123233995736766E-17)
-CONST_DATA_U64(const_cos,  48, $0x3e645f306dc9c883) // f64(3.7945495388959729E-8)
-CONST_DATA_U64(const_cos,  56, $0xbe545f306dc9c883) // f64(-1.8972747694479864E-8)
-CONST_DATA_U64(const_cos,  64, $0xc160000000000000) // f64(-8388608)
-CONST_DATA_U64(const_cos,  72, $0x4170000000000000) // f64(16777216)
-CONST_DATA_U64(const_cos,  80, $0xbff921fb50000000) // f64(-1.5707963109016418)
-CONST_DATA_U64(const_cos,  88, $0xbe5110b460000000) // f64(-1.5893254712295857E-8)
-CONST_DATA_U64(const_cos,  96, $0xbc91a62630000000) // f64(-6.1232339320535943E-17)
-CONST_DATA_U64(const_cos, 104, $0xbae8a2e03707344a) // f64(-6.3683171635109499E-25)
-CONST_DATA_U64(const_cos, 112, $0x42d6bcc41e900000) // f64(1.0E+14)
-CONST_DATA_U64(const_cos, 120, $0x4010000000000000) // f64(4)
-CONST_DATA_U64(const_cos, 128, $0x3fd0000000000000) // f64(0.25)
-CONST_DATA_U64(const_cos, 136, $0x401921fb54442d18) // f64(6.2831853071795862)
-CONST_DATA_U64(const_cos, 144, $0x3cb1a62633145c07) // f64(2.4492935982947064E-16)
-CONST_DATA_U64(const_cos, 152, $0x3fe6666666666666) // f64(0.69999999999999996)
-CONST_DATA_U64(const_cos, 160, $0x0000000100000001) // i64(4294967297)
-CONST_DATA_U64(const_cos, 168, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_cos, 176, $0x3ce8811a03b2b11d) // f64(2.7205241613852957E-15)
-CONST_DATA_U64(const_cos, 184, $0xbd6ae422bc319350) // f64(-7.6429259411395447E-13)
-CONST_DATA_U64(const_cos, 192, $0x3de6123c74705f67) // f64(1.605893701172779E-10)
-CONST_DATA_U64(const_cos, 200, $0xbe5ae6454baa2959) // f64(-2.5052106814843123E-8)
-CONST_DATA_U64(const_cos, 208, $0x3ec71de3a525fbed) // f64(2.7557319210442822E-6)
-CONST_DATA_U64(const_cos, 216, $0xbf2a01a01a014225) // f64(-1.9841269841204645E-4)
-CONST_DATA_U64(const_cos, 224, $0x3f811111111110b9) // f64(0.0083333333333331805)
-CONST_DATA_U64(const_cos, 232, $0xbfc5555555555555) // f64(-0.16666666666666666)
-CONST_DATA_U64(const_cos, 240, $0x0000000200000002) // i64(8589934594)
-CONST_DATA_U32(const_cos, 248, $0x00000001) // i32(1)
-CONST_DATA_U32(const_cos, 252, $0x000003ff) // i32(1023)
-CONST_DATA_U32(const_cos, 256, $0xffffffc9) // i32(4294967241)
-CONST_DATA_U32(const_cos, 260, $0x00000285) // i32(645)
-CONST_DATA_U32(const_cos, 264, $0xffffffc0) // i32(4294967232)
-CONST_DATA_U32(const_cos, 268, $0x00000006) // i32(6)
-CONST_DATA_U32(const_cos, 272, $0x00000008) // i32(8)
-CONST_DATA_U32(const_cos, 276, $0x00000007) // i32(7)
-CONST_GLOBAL(const_cos, $280)
-
-TEXT bccosf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-
-  // case 'a': this case is implicit and is always executed
-  VBROADCASTSD CONST_GET_PTR(const_cos, 0), Z5
-  VBROADCASTSD CONST_GET_PTR(const_cos, 8), Z4
-
-  VPANDQ.BCST CONSTF64_ABS_BITS(), Z2, Z6
-  VPANDQ.BCST CONSTF64_ABS_BITS(), Z3, Z7
-
-  VCMPPD $VCMP_IMM_GE_OQ, Z5, Z6, K1, K3
-  VCMPPD $VCMP_IMM_GE_OQ, Z5, Z7, K2, K4
-  KUNPCKBW K3, K4, K3
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 24), Z8
-  VBROADCASTSD CONST_GET_PTR(const_cos, 16), Z9
-  VMOVAPD Z4, Z5
-  VFMADD213PD Z9, Z2, Z4 // Z4 = (Z2 * Z4) + Z9
-  VFMADD213PD Z9, Z3, Z5 // Z5 = (Z3 * Z5) + Z9
-  VRNDSCALEPD $8, Z4, Z4
-  VRNDSCALEPD $8, Z5, Z5
-  VBROADCASTSD CONSTF64_1(), Z10
-  VMOVAPD Z8, Z9
-  VFMADD213PD Z10, Z4, Z8 // Z8 = (Z4 * Z8) + Z10
-  VFMADD213PD Z10, Z5, Z9 // Z9 = (Z5 * Z9) + Z10
-  VCVTPD2DQ.RN_SAE Z8, Y4
-  VCVTPD2DQ.RN_SAE Z9, Y5
-  VBROADCASTSD CONST_GET_PTR(const_cos, 32), Z11
-  VINSERTI32X8 $1, Y5, Z4, Z4
-
-  VMULPD Z11, Z8, Z10
-  VMULPD Z11, Z9, Z11
-  VADDPD Z2, Z10, Z12
-  VADDPD Z3, Z11, Z13
-  VSUBPD Z2, Z12, Z14
-  VSUBPD Z3, Z13, Z15
-  VSUBPD Z14, Z12, Z16
-  VSUBPD Z15, Z13, Z17
-  VSUBPD Z16, Z2, Z16
-  VSUBPD Z17, Z3, Z17
-  VSUBPD Z14, Z10, Z10
-  VSUBPD Z15, Z11, Z11
-  VBROADCASTSD CONST_GET_PTR(const_cos, 40), Z15
-  VADDPD Z16, Z10, Z10
-  VADDPD Z17, Z11, Z11
-  VMULPD Z15, Z8, Z14
-  VMULPD Z15, Z9, Z15
-  VADDPD Z12, Z14, Z8
-  VADDPD Z13, Z15, Z9
-  VSUBPD Z8, Z12, Z12
-  VSUBPD Z9, Z13, Z13
-  VADDPD Z12, Z14, Z12
-  VADDPD Z13, Z15, Z13
-  VADDPD Z10, Z12, Z10
-  VADDPD Z11, Z13, Z11
-
-  // Jump to 'cos_case_b' if one or more lane has x >= 15
-  KTESTW K3, K3
-  JNE cos_case_b
-
-cos_eval_poly:
-  // Polynomial evaluation; code shared by all cases
-  VMULPD Z8, Z8, Z2
-  VMULPD Z9, Z9, Z3
-  VADDPD Z8, Z8, Z6
-  VADDPD Z9, Z9, Z7
-
-  VMOVAPD Z8, Z12
-  VMOVAPD Z9, Z13
-  VFMSUB213PD Z2, Z8, Z12  // Z12 = (Z8 * Z12) - Z2
-  VFMSUB213PD Z3, Z9, Z13  // Z13 = (Z9 * Z13) - Z3
-  VFMADD231PD Z6, Z10, Z12 // Z12 = (Z10 * Z6) + Z12
-  VFMADD231PD Z7, Z11, Z13 // Z13 = (Z11 * Z7) + Z13
-
-  VMULPD Z2, Z2, Z6
-  VMULPD Z3, Z3, Z7
-  VMULPD Z6, Z6, Z14
-  VMULPD Z7, Z7, Z15
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 176), Z16
-  VBROADCASTSD CONST_GET_PTR(const_cos, 192), Z18
-  VBROADCASTSD CONST_GET_PTR(const_cos, 208), Z20
-  VMOVAPD Z16, Z17
-  VMOVAPD Z18, Z19
-  VBROADCASTSD CONST_GET_PTR(const_cos, 184), Z22
-  VBROADCASTSD CONST_GET_PTR(const_cos, 200), Z23
-
-  VFMADD213PD Z22, Z2, Z16 // Z16 = (Z2 * Z16) + Z22
-  VFMADD213PD Z22, Z3, Z17 // Z17 = (Z3 * Z17) + Z22
-  VBROADCASTSD CONST_GET_PTR(const_cos, 216), Z22
-  VFMADD213PD Z23, Z2, Z18 // Z18 = (Z2 * Z18) + Z23
-  VFMADD213PD Z23, Z3, Z19 // Z19 = (Z3 * Z19) + Z23
-  VBROADCASTSD CONST_GET_PTR(const_cos, 224), Z23
-  VMOVAPD Z20, Z21
-  VFMADD213PD Z22, Z2, Z20 // Z20 = (Z2 * Z20) + Z22
-  VFMADD213PD Z22, Z3, Z21 // Z21 = (Z3 * Z21) + Z22
-  VFMADD231PD Z18, Z6, Z20  // Z20 = (Z6 * Z18) + Z20
-  VFMADD231PD Z19, Z7, Z21  // Z21 = (Z7 * Z19) + Z21
-  VFMADD231PD Z16, Z14, Z20 // Z20 = (Z14 * Z16) + Z20
-  VFMADD231PD Z17, Z15, Z21 // Z21 = (Z15 * Z17) + Z21
-  VFMADD213PD Z23, Z2, Z20 // Z20 = (Z2 * Z20) + Z23
-  VFMADD213PD Z23, Z3, Z21 // Z21 = (Z3 * Z21) + Z23
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 232), Z15
-  VMULPD Z20, Z2, Z6
-  VMULPD Z21, Z3, Z7
-  VADDPD Z15, Z6, Z16
-  VADDPD Z15, Z7, Z17
-  VSUBPD Z16, Z15, Z14
-  VSUBPD Z17, Z15, Z15
-  VADDPD Z14, Z6, Z6
-  VADDPD Z15, Z7, Z7
-  VMULPD Z16, Z2, Z14
-  VMULPD Z17, Z3, Z15
-  VMOVAPD Z2, Z18
-  VMOVAPD Z3, Z19
-  VFMSUB213PD Z14, Z16, Z18 // Z18 = (Z16 * Z18) - Z14
-  VFMSUB213PD Z15, Z17, Z19 // Z19 = (Z17 * Z19) - Z15
-  VFMADD231PD Z6, Z2, Z18   // Z18 = (Z2 * Z6) + Z18
-  VFMADD231PD Z7, Z3, Z19   // Z19 = (Z3 * Z7) + Z19
-  VFMADD231PD Z12, Z16, Z18 // Z18 = (Z16 * Z12) + Z18
-  VFMADD231PD Z13, Z17, Z19 // Z19 = (Z17 * Z13) + Z19
-
-  VBROADCASTSD CONSTF64_1(), Z13
-  VADDPD Z13, Z14, Z6
-  VADDPD Z13, Z15, Z7
-  VSUBPD Z6, Z13, K1, Z2
-  VSUBPD Z7, Z13, K2, Z3
-  VADDPD Z2, Z14, K1, Z2
-  VADDPD Z3, Z15, K2, Z3
-  VADDPD Z18, Z2, K1, Z2
-  VADDPD Z19, Z3, K2, Z3
-  VMULPD Z2, Z8, K1, Z2
-  VMULPD Z3, Z9, K2, Z3
-  VFMADD231PD Z10, Z6, K1, Z2 // Z2 = (Z6 * Z10) + Z2
-  VFMADD231PD Z11, Z7, K2, Z3 // Z3 = (Z7 * Z11) + Z3
-  VFMADD231PD Z6, Z8, K1, Z2  // Z2 = (Z8 * Z6) + Z2
-  VFMADD231PD Z7, Z9, K2, Z3  // Z3 = (Z9 * Z7) + Z3
-
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
-  VPANDD.BCST CONST_GET_PTR(const_cos, 240), Z4, Z4
-  VPTESTNMD Z4, Z4, K3
-  KSHIFTRW $8, K3, K4
-  VMOVAPD.Z Z6, K3, Z4
-  VMOVAPD.Z Z6, K4, Z5
-  VXORPD Z4, Z2, K1, Z2
-  VXORPD Z5, Z3, K2, Z3
-
-next:
-  NEXT()
-
-cos_case_b:
-  // case 'b': one or more lane has x >= 1e14
-  VBROADCASTSD CONST_GET_PTR(const_cos, 48), Z12
-  VBROADCASTSD CONST_GET_PTR(const_cos, 64), Z16
-  VBROADCASTSD CONST_GET_PTR(const_cos, 56), Z20
-  VMOVAPD Z12, Z13
-  VMOVAPD Z16, Z17
-  VFMADD213PD Z20, Z2, Z12 // Z12 = (Z2 * Z12) + Z20
-  VFMADD213PD Z20, Z3, Z13 // Z13 = (Z3 * Z13) + Z20
-  VRNDSCALEPD $11, Z12, Z12
-  VRNDSCALEPD $11, Z13, Z13
-  VBROADCASTSD CONST_GET_PTR(const_cos, 8), Z20
-  VBROADCASTSD CONST_GET_PTR(const_cos, 16), Z21
-  VMULPD Z20, Z2, Z14
-  VMULPD Z20, Z3, Z15
-  VFMADD213PD Z21, Z12, Z16 // Z16 = (Z12 * Z16) + Z21
-  VFMADD213PD Z21, Z13, Z17 // Z17 = (Z13 * Z17) + Z21
-  VADDPD Z16, Z14, Z14
-  VADDPD Z17, Z15, Z15
-  VCVTPD2DQ.RN_SAE Z14, Y14
-  VCVTPD2DQ.RN_SAE Z15, Y15
-  VINSERTI32X8 $1, Y15, Z14, Z14
-  VBROADCASTSD CONST_GET_PTR(const_cos, 72), Z15
-  VPADDD Z14, Z14, Z14
-  VMULPD Z15, Z12, Z12
-  VMULPD Z15, Z13, Z13
-  VPORD.BCST CONST_GET_PTR(const_cos, 248), Z14, Z16
-  VMOVDQA32 Z16, K3, Z4
-  VEXTRACTI32X8 $1, Z16, Y17
-  VCVTDQ2PD Y16, Z14
-  VCVTDQ2PD Y17, Z15
-  VBROADCASTSD CONST_GET_PTR(const_cos, 80), Z18
-  VMULPD Z18, Z14, Z20
-  VMULPD Z18, Z15, Z21
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z2, Z12, Z18 // Z18 = (Z12 * Z18) + Z2
-  VFMADD213PD Z3, Z13, Z19 // Z19 = (Z13 * Z19) + Z3
-  VBROADCASTSD CONST_GET_PTR(const_cos, 88), Z16
-  VADDPD Z20, Z18, Z22
-  VADDPD Z21, Z19, Z23
-  VSUBPD Z18, Z22, Z24
-  VSUBPD Z19, Z23, Z25
-  VSUBPD Z24, Z22, Z26
-  VSUBPD Z25, Z23, Z27
-  VSUBPD Z26, Z18, Z18
-  VSUBPD Z27, Z19, Z19
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z18, Z20, Z18
-  VADDPD Z19, Z21, Z19
-  VMULPD Z16, Z12, Z20
-  VMULPD Z16, Z13, Z21
-  VADDPD Z22, Z20, Z26
-  VADDPD Z23, Z21, Z27
-  VSUBPD Z22, Z26, Z24
-  VSUBPD Z23, Z27, Z25
-  VSUBPD Z24, Z26, Z5
-  VSUBPD Z5, Z22, Z22
-  VSUBPD Z25, Z27, Z5
-  VSUBPD Z5, Z23, Z23
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z22, Z20, Z20
-  VADDPD Z23, Z21, Z21
-  VADDPD Z20, Z18, Z18
-  VADDPD Z21, Z19, Z19
-  VMULPD Z16, Z14, Z20
-  VMULPD Z16, Z15, Z21
-  VBROADCASTSD CONST_GET_PTR(const_cos, 96), Z16
-  VADDPD Z26, Z20, Z22
-  VADDPD Z27, Z21, Z23
-  VSUBPD Z26, Z22, Z24
-  VSUBPD Z27, Z23, Z25
-  VSUBPD Z24, Z22, Z5
-  VSUBPD Z5, Z26, Z26
-  VSUBPD Z25, Z23, Z5
-  VSUBPD Z5, Z27, Z27
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z26, Z20, Z20
-  VADDPD Z27, Z21, Z21
-  VADDPD Z18, Z20, Z18
-  VADDPD Z19, Z21, Z19
-  VMULPD Z16, Z12, Z24
-  VMULPD Z16, Z13, Z25
-  VADDPD Z22, Z24, Z26
-  VADDPD Z23, Z25, Z27
-  VSUBPD Z22, Z26, Z20
-  VSUBPD Z23, Z27, Z21
-  VSUBPD Z20, Z26, Z5
-  VSUBPD Z5, Z22, Z22
-  VSUBPD Z21, Z27, Z5
-  VSUBPD Z5, Z23, Z23
-  VSUBPD Z20, Z24, Z24
-  VSUBPD Z21, Z25, Z25
-  VADDPD Z22, Z24, Z22
-  VADDPD Z23, Z25, Z23
-  VADDPD Z18, Z22, Z18
-  VADDPD Z19, Z23, Z19
-  VMULPD Z16, Z14, Z20
-  VMULPD Z16, Z15, Z21
-  VBROADCASTSD CONST_GET_PTR(const_cos, 104), Z16
-  VADDPD Z26, Z20, Z22
-  VADDPD Z27, Z21, Z23
-  VSUBPD Z26, Z22, Z24
-  VSUBPD Z27, Z23, Z25
-  VSUBPD Z24, Z22, Z5
-  VSUBPD Z5, Z26, Z26
-  VSUBPD Z25, Z23, Z5
-  VSUBPD Z5, Z27, Z27
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z26, Z20, Z20
-  VADDPD Z27, Z21, Z21
-  VADDPD Z18, Z20, Z18
-  VADDPD Z19, Z21, Z19
-  VADDPD Z14, Z12, Z12
-  VADDPD Z15, Z13, Z13
-  VMULPD Z16, Z12, Z12
-  VMULPD Z16, Z13, Z13
-  VADDPD Z22, Z12, Z14
-  VADDPD Z23, Z13, Z15
-  VSUBPD Z14, Z22, Z20
-  VSUBPD Z15, Z23, Z21
-  VADDPD Z20, Z12, Z12
-  VADDPD Z21, Z13, Z13
-  VADDPD Z18, Z12, Z12
-  VADDPD Z19, Z13, Z13
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 112), Z16
-  VMOVAPD Z14, K3, Z8
-  VMOVAPD Z15, K4, Z9
-  VMOVAPD Z12, K3, Z10
-  VMOVAPD Z13, K4, Z11
-
-  VCMPPD $VCMP_IMM_GE_OS, Z16, Z6, K3, K3
-  VCMPPD $VCMP_IMM_GE_OS, Z16, Z7, K4, K4
-  KUNPCKBW K3, K4, K3
-  KTESTW K3, K3
-  JZ cos_eval_poly
-
-  // case 'c': one or more lane has x >= 1e14
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z14
-  MOVL $0xAAAA, R8
-  LEAQ CONST_GET_PTR(const_rempi, 0), R15
-
-  // K0 contains mask of all inputs that are either +INF or -INF
-  VCMPPD $VCMP_IMM_EQ_OQ, Z14, Z6, K3, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z14, Z7, K4, K5
-  KUNPCKBW K0, K5, K0
-
-  VGETEXPPD Z2, Z14
-  VGETEXPPD Z3, Z15
-  VCVTPD2DQ.RN_SAE Z14, Y14
-  VCVTPD2DQ.RN_SAE Z15, Y15
-  VINSERTI32X8 $1, Y15, Z14, Z14
-  VPCMPGTD.BCST CONSTD_NEG_1(), Z14, K5
-  VPANDD.BCST.Z CONST_GET_PTR(const_cos, 252), Z14, K5, Z14
-  VPADDD.BCST CONST_GET_PTR(const_cos, 256), Z14, Z12
-  VPCMPGTD.BCST CONST_GET_PTR(const_cos, 260), Z12, K5
-  VPBROADCASTD.Z CONST_GET_PTR(const_cos, 264), K5, Z14
-  VPSLLD $20, Z14, Z14
-  VEXTRACTI32X8 $1, Z14, Y15
-  KMOVW R8, K5
-  VPEXPANDD.Z Z14, K5, Z14
-  VPEXPANDD.Z Z15, K5, Z15
-  VPADDQ Z2, Z14, Z14
-  VPADDQ Z3, Z15, Z15
-  VPSRAD $31, Z12, Z18
-  VPANDND Z12, Z18, Z12
-  VPSLLD $2, Z12, Z18
-  VEXTRACTI32X8 $1, Z18, Y19
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X12, X12, X12
-  VXORPD X13, X13, X13
-  VGATHERDPD 0(R15)(Y18*8), K5, Z12
-  VGATHERDPD 0(R15)(Y19*8), K6, Z13
-  ADDQ $8, R15
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 120), Z5
-  VMULPD Z14, Z12, Z20
-  VMULPD Z15, Z13, Z21
-  VFMSUB213PD Z20, Z14, Z12 // Z12 = (Z14 * Z12) - Z20
-  VFMSUB213PD Z21, Z15, Z13 // Z13 = (Z15 * Z13) - Z21
-  VMULPD Z5, Z20, Z24
-  VMULPD Z5, Z21, Z25
-  VRNDSCALEPD $8, Z24, Z24
-  VRNDSCALEPD $8, Z25, Z25
-  VRNDSCALEPD $8, Z20, Z26
-  VRNDSCALEPD $8, Z21, Z27
-  VMULPD Z5, Z26, Z26
-  VMULPD Z5, Z27, Z27
-  VBROADCASTSD CONST_GET_PTR(const_cos, 128), Z5
-  VSUBPD Z26, Z24, Z26
-  VSUBPD Z27, Z25, Z27
-  VCVTPD2DQ.RZ_SAE Z26, Y26
-  VCVTPD2DQ.RZ_SAE Z27, Y27
-  VINSERTI32X8 $1, Y27, Z26, Z26
-  VMULPD Z5, Z24, Z24
-  VMULPD Z5, Z25, Z25
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z12, Z20, Z24
-  VADDPD Z13, Z21, Z25
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z20, Z12, Z12
-  VADDPD Z21, Z13, Z13
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X20, X20, X20
-  VXORPD X21, X21, X21
-  VGATHERDPD 0(R15)(Y18*8), K5, Z20
-  VGATHERDPD 0(R15)(Y19*8), K6, Z21
-  ADDQ $8, R15
-
-  VMULPD Z14, Z20, Z22
-  VMULPD Z15, Z21, Z23
-  VFMSUB213PD Z22, Z14, Z20 // Z20 = (Z14 * Z20) - Z22
-  VFMSUB213PD Z23, Z15, Z21 // Z21 = (Z15 * Z21) - Z23
-  VADDPD Z12, Z20, Z12
-  VADDPD Z13, Z21, Z13
-  VADDPD Z24, Z22, Z20
-  VADDPD Z25, Z23, Z21
-  VSUBPD Z24, Z20, Z16
-  VSUBPD Z25, Z21, Z17
-  VSUBPD Z16, Z20, Z5
-  VSUBPD Z5, Z24, Z24
-  VSUBPD Z17, Z21, Z5
-  VSUBPD Z5, Z25, Z25
-  VBROADCASTSD CONST_GET_PTR(const_cos, 120), Z5
-  VSUBPD Z16, Z22, Z22
-  VSUBPD Z17, Z23, Z23
-  VADDPD Z24, Z22, Z24
-  VADDPD Z25, Z23, Z25
-  VADDPD Z24, Z12, Z24
-  VADDPD Z25, Z13, Z25
-  VMULPD Z5, Z20, Z12
-  VMULPD Z5, Z21, Z13
-  VRNDSCALEPD $8, Z12, Z22
-  VRNDSCALEPD $8, Z13, Z23
-  VRNDSCALEPD $8, Z20, Z12
-  VRNDSCALEPD $8, Z21, Z13
-  VMULPD Z5, Z12, Z12
-  VMULPD Z5, Z13, Z13
-  VBROADCASTSD CONST_GET_PTR(const_cos, 128), Z5
-  VSUBPD Z12, Z22, Z12
-  VSUBPD Z13, Z23, Z13
-  VCVTPD2DQ.RZ_SAE Z12, Y12
-  VCVTPD2DQ.RZ_SAE Z13, Y13
-  VINSERTI32X8 $1, Y13, Z12, Z12
-  VPADDD Z12, Z26, Z12
-  VMULPD Z5, Z22, Z22
-  VMULPD Z5, Z23, Z23
-  VSUBPD Z22, Z20, Z20
-  VSUBPD Z23, Z21, Z21
-  VADDPD Z24, Z20, Z22
-  VADDPD Z25, Z21, Z23
-  VSUBPD Z22, Z20, Z20
-  VSUBPD Z23, Z21, Z21
-  VADDPD Z20, Z24, Z20
-  VADDPD Z21, Z25, Z21
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X24, X24, X24
-  VXORPD X25, X25, X25
-  VGATHERDPD 0(R15)(Y18*8), K5, Z24
-  VGATHERDPD 0(R15)(Y19*8), K6, Z25
-  ADDQ $8, R15
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X26, X26, X26
-  VXORPD X27, X27, X27
-  VGATHERDPD 0(R15)(Y18*8), K5, Z26
-  VGATHERDPD 0(R15)(Y19*8), K6, Z27
-
-  VMULPD Z14, Z24, Z18
-  VMULPD Z15, Z25, Z19
-  VFMSUB213PD Z18, Z14, Z24 // Z24 = (Z14 * Z24) - Z18
-  VFMSUB213PD Z19, Z15, Z25 // Z25 = (Z15 * Z25) - Z19
-  VFMADD231PD Z26, Z14, Z24 // Z24 = (Z14 * Z26) + Z24
-  VFMADD231PD Z27, Z15, Z25 // Z25 = (Z15 * Z27) + Z25
-  VADDPD Z20, Z24, Z20
-  VADDPD Z21, Z25, Z21
-  VADDPD Z22, Z18, Z24
-  VADDPD Z23, Z19, Z25
-  VSUBPD Z22, Z24, Z26
-  VSUBPD Z23, Z25, Z27
-  VSUBPD Z26, Z24, Z16
-  VSUBPD Z27, Z25, Z17
-  VSUBPD Z16, Z22, Z22
-  VSUBPD Z17, Z23, Z23
-  VSUBPD Z26, Z18, Z18
-  VSUBPD Z27, Z19, Z19
-  VADDPD Z22, Z18, Z18
-  VADDPD Z23, Z19, Z19
-  VADDPD Z18, Z20, Z18
-  VADDPD Z19, Z21, Z19
-  VADDPD Z18, Z24, Z20
-  VADDPD Z19, Z25, Z21
-  VSUBPD Z20, Z24, Z22
-  VSUBPD Z21, Z25, Z23
-  VADDPD Z22, Z18, Z18
-  VADDPD Z23, Z19, Z19
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 144), Z5
-  VBROADCASTSD CONST_GET_PTR(const_cos, 136), Z25
-  VMULPD Z25, Z20, Z22
-  VMULPD Z25, Z21, Z23
-  VMOVAPD Z25, Z26
-  VMOVAPD Z25, Z27
-  VFMSUB213PD Z22, Z20, Z26 // Z26 = (Z20 * Z26) - Z22
-  VFMSUB213PD Z23, Z21, Z27 // Z27 = (Z21 * Z27) - Z23
-  VFMADD231PD Z18, Z25, Z26 // Z26 = (Z25 * Z18) + Z26
-  VFMADD231PD Z19, Z25, Z27 // Z27 = (Z25 * Z19) + Z27
-  VFMADD231PD Z5, Z20, Z26 // Z26 = (Z20 * Z5) + Z26
-  VFMADD231PD Z5, Z21, Z27 // Z27 = (Z21 * Z5) + Z27
-
-  VBROADCASTSD CONST_GET_PTR(const_cos, 152), Z5
-  VPANDQ.BCST CONSTF64_ABS_BITS(), Z14, Z18
-  VPANDQ.BCST CONSTF64_ABS_BITS(), Z15, Z19
-  VCMPPD $VCMP_IMM_LT_OS, Z5, Z18, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z5, Z19, K6
-  VMOVAPD Z14, K5, Z22
-  VMOVAPD Z15, K6, Z23
-  VXORPD Z26, Z26, K5, Z26
-  VXORPD Z27, Z27, K6, Z27
-  VPADDD Z12, Z12, Z14
-  VPANDD.BCST CONST_GET_PTR(const_cos, 268), Z14, Z14
-  VPBROADCASTD CONST_GET_PTR(const_cos, 276), Z20
-  VPXORD X16, X16, X16
-  VCMPPD $VCMP_IMM_LT_OS, Z22, Z16, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z23, Z16, K6
-  KUNPCKBW K5, K6, K5
-  VPBROADCASTD CONST_GET_PTR(const_cos, 272), K5, Z20
-  VPADDD Z14, Z20, Z14
-  VPSRLD $1, Z14, Z18
-  VBROADCASTSD CONST_GET_PTR(const_cos, 168), Z14
-  VPANDD.BCST CONST_GET_PTR(const_cos, 160), Z12, Z12
-  VMOVAPD Z14, Z15
-  VXORPD Z14, Z14, K5, Z14
-  VXORPD Z15, Z15, K6, Z15
-  VPTESTNMD Z12, Z12, K5
-  KSHIFTRW $8, K5, K6
-
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z5
-  VBROADCASTSD CONST_GET_PTR(const_cos, 32), Z13
-  VANDPD Z5, Z14, Z14
-  VANDPD Z5, Z15, Z15
-  VBROADCASTSD CONST_GET_PTR(const_cos, 40), Z5
-  VXORPD Z13, Z14, Z12
-  VXORPD Z13, Z15, Z13
-  VXORPD Z5, Z14, Z14
-  VXORPD Z5, Z15, Z15
-  VADDPD Z12, Z22, Z20
-  VADDPD Z13, Z23, Z21
-  VSUBPD Z22, Z20, Z24
-  VSUBPD Z23, Z21, Z25
-  VSUBPD Z24, Z20, Z5
-  VSUBPD Z25, Z21, Z17
-  VSUBPD Z5, Z22, Z5
-  VSUBPD Z17, Z23, Z17
-  VSUBPD Z24, Z12, Z12
-  VSUBPD Z25, Z13, Z13
-  VADDPD Z5, Z12, Z12
-  VADDPD Z17, Z13, Z13
-  VADDPD Z14, Z26, Z14
-  VADDPD Z15, Z27, Z15
-  VMOVAPD Z20, K5, Z22
-  VMOVAPD Z21, K6, Z23
-  VADDPD Z12, Z14, K5, Z26
-  VADDPD Z13, Z15, K6, Z27
-  VADDPD Z26, Z22, Z14
-  VADDPD Z27, Z23, Z15
-  VSUBPD Z14, Z22, Z12
-  VSUBPD Z15, Z23, Z13
-  VADDPD Z12, Z26, Z12
-  VADDPD Z13, Z27, Z13
-
-  VMOVDQA32 Z18, K3, Z4
-  VMOVAPD Z14, K3, Z8
-  VMOVAPD Z15, K4, Z9
-  VMOVAPD Z12, K3, Z10
-  VMOVAPD Z13, K4, Z11
-
-  VCMPPD $VCMP_IMM_UNORD_Q, Z16, Z2, K3, K3
-  VCMPPD $VCMP_IMM_UNORD_Q, Z16, Z3, K4, K4
-  KSHIFTRW $8, K0, K5
-  KORW K0, K3, K3
-  KORW K5, K4, K4
-  VPTERNLOGQ $0xFF, Z8, Z8, K3, Z8
-  VPTERNLOGQ $0xFF, Z9, Z9, K4, Z9
-  JMP cos_eval_poly
-
-// Tangent: tan(x) == sin(x) / cos(x)
-CONST_DATA_U64(const_tan,   0, $0x3fe45f306dc9c883) // f64(0.63661977236758138)
-CONST_DATA_U64(const_tan,   8, $0xbff921fb54442d18) // f64(-1.5707963267948966)
-CONST_DATA_U64(const_tan,  16, $0xbc91a62633145c07) // f64(-6.123233995736766E-17)
-CONST_DATA_U64(const_tan,  24, $0x402e000000000000) // f64(15)
-CONST_DATA_U64(const_tan,  32, $0x3e645f306dc9c883) // f64(3.7945495388959729E-8)
-CONST_DATA_U64(const_tan,  40, $0x4170000000000000) // f64(16777216)
-CONST_DATA_U64(const_tan,  48, $0xbc86b01ec5417056) // f64(-3.9357353350364972E-17)
-CONST_DATA_U64(const_tan,  56, $0xbfe0000000000000) // f64(-0.5)
-CONST_DATA_U64(const_tan,  64, $0xbff921fb50000000) // f64(-1.5707963109016418)
-CONST_DATA_U64(const_tan,  72, $0xbe5110b460000000) // f64(-1.5893254712295857E-8)
-CONST_DATA_U64(const_tan,  80, $0xbc91a62630000000) // f64(-6.1232339320535943E-17)
-CONST_DATA_U64(const_tan,  88, $0xbae8a2e03707344a) // f64(-6.3683171635109499E-25)
-CONST_DATA_U64(const_tan,  96, $0x42d6bcc41e900000) // f64(1.0E+14)
-CONST_DATA_U64(const_tan, 104, $0x4010000000000000) // f64(4)
-CONST_DATA_U64(const_tan, 112, $0x3fd0000000000000) // f64(0.25)
-CONST_DATA_U64(const_tan, 120, $0x401921fb54442d18) // f64(6.2831853071795862)
-CONST_DATA_U64(const_tan, 128, $0x3cb1a62633145c07) // f64(2.4492935982947064E-16)
-CONST_DATA_U64(const_tan, 136, $0x3fe6666666666666) // f64(0.69999999999999996)
-CONST_DATA_U64(const_tan, 144, $0x3f35445f555134ed) // f64(3.2450988266392763E-4)
-CONST_DATA_U64(const_tan, 152, $0x3f4269be400de3af) // f64(5.6192197381143237E-4)
-CONST_DATA_U64(const_tan, 160, $0x3f57eef631e20b93) // f64(0.0014607815024027845)
-CONST_DATA_U64(const_tan, 168, $0x3f6d6c27c371c959) // f64(0.0035916115407924995)
-CONST_DATA_U64(const_tan, 176, $0x3f8226e7bfa35090) // f64(0.0088632684095631131)
-CONST_DATA_U64(const_tan, 184, $0x3f9664f4729f98e5) // f64(0.021869487281855355)
-CONST_DATA_U64(const_tan, 192, $0x3faba1ba1bdcec06) // f64(0.05396825399517273)
-CONST_DATA_U64(const_tan, 200, $0x3fc111111110e933) // f64(0.13333333333305006)
-CONST_DATA_U64(const_tan, 208, $0x3fd5555555555568) // f64(0.33333333333333437)
-CONST_DATA_U64(const_tan, 216, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_tan, 224, $0xc000000000000000) // f64(-2)
-CONST_DATA_U64(const_tan, 232, $0x0000000100000001) // i64(4294967297)
-CONST_DATA_U32(const_tan, 240, $0x000003ff) // i32(1023)
-CONST_DATA_U32(const_tan, 244, $0xffffffc9) // i32(4294967241)
-CONST_DATA_U32(const_tan, 248, $0x00000285) // i32(645)
-CONST_DATA_U32(const_tan, 252, $0xffffffc0) // i32(4294967232)
-CONST_DATA_U32(const_tan, 256, $0x00000001) // i32(1)
-CONST_GLOBAL(const_tan, $260)
-
-TEXT bctanf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-
-  // case 'a': this case is implicit and is always executed
-  VBROADCASTSD CONST_GET_PTR(const_tan, 0), Z11
-  VBROADCASTSD CONST_GET_PTR(const_tan, 8), Z8
-  VMULPD Z11, Z2, Z10
-  VMULPD Z11, Z3, Z11
-  VRNDSCALEPD $8, Z10, Z6
-  VRNDSCALEPD $8, Z11, Z7
-  VCVTPD2DQ.RN_SAE Z6, Y4
-  VCVTPD2DQ.RN_SAE Z7, Y5
-  VINSERTI32X8 $1, Y5, Z4, Z4
-  VMOVAPD Z8, Z9
-  VBROADCASTSD CONST_GET_PTR(const_tan, 16), Z13
-  VFMADD213PD Z2, Z6, Z8 // Z8 = (Z6 * Z8) + Z2
-  VFMADD213PD Z3, Z7, Z9 // Z9 = (Z7 * Z9) + Z3
-  VMULPD Z13, Z6, Z12
-  VMULPD Z13, Z7, Z13
-  VADDPD Z12, Z8, Z14
-  VADDPD Z13, Z9, Z15
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z7
-  VBROADCASTSD CONST_GET_PTR(const_tan, 24), Z20
-  VSUBPD Z14, Z8, Z8
-  VSUBPD Z15, Z9, Z9
-  VANDPD Z7, Z2, Z6
-  VANDPD Z7, Z3, Z7
-  VADDPD Z8, Z12, Z16
-  VADDPD Z9, Z13, Z17
-  VCMPPD $VCMP_IMM_GE_OQ, Z20, Z6, K1, K3
-  VCMPPD $VCMP_IMM_GE_OQ, Z20, Z7, K2, K4
-  KUNPCKBW K3, K4, K3
-
-  KTESTW K3, K3
-  JNE tan_case_b
-
-tan_eval_poly:
-  // Polynomial evaluation; code shared by all cases
-  VPANDD.BCST CONST_GET_PTR(const_tan, 232), Z4, Z4
-  VPCMPEQD.BCST CONST_GET_PTR(const_tan, 256), Z4, K5
-  KSHIFTRW $8, K5, K6
-
-  VBROADCASTSD CONSTF64_HALF(), Z7
-  VMULPD Z7, Z14, Z8
-  VMULPD Z7, Z15, Z9
-  VMULPD Z7, Z16, Z6
-  VMULPD Z7, Z17, Z7
-  VMULPD Z8, Z8, Z10
-  VMULPD Z9, Z9, Z11
-  VADDPD Z8, Z8, Z12
-  VADDPD Z9, Z9, Z13
-  VMOVAPD Z8, Z14
-  VMOVAPD Z9, Z15
-  VFMSUB213PD Z10, Z8, Z14 // Z14 = (Z8 * Z14) - Z10
-  VFMSUB213PD Z11, Z9, Z15 // Z15 = (Z9 * Z15) - Z11
-  VFMADD231PD Z12, Z6, Z14 // Z14 = (Z6 * Z12) + Z14
-  VFMADD231PD Z13, Z7, Z15 // Z15 = (Z7 * Z13) + Z15
-  VMULPD Z10, Z10, Z12
-  VMULPD Z11, Z11, Z13
-  VBROADCASTSD CONST_GET_PTR(const_tan, 144), Z16
-  VBROADCASTSD CONST_GET_PTR(const_tan, 160), Z18
-  VBROADCASTSD CONST_GET_PTR(const_tan, 152), Z20
-  VBROADCASTSD CONST_GET_PTR(const_tan, 168), Z21
-  VMOVAPD Z16, Z17
-  VFMADD213PD Z20, Z10, Z16 // Z16 = (Z10 * Z16) + Z20
-  VFMADD213PD Z20, Z11, Z17 // Z17 = (Z11 * Z17) + Z20
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z21, Z10, Z18 // Z18 = (Z10 * Z18) + Z21
-  VFMADD213PD Z21, Z11, Z19 // Z19 = (Z11 * Z19) + Z21
-  VMULPD Z12, Z12, Z20
-  VMULPD Z13, Z13, Z21
-  VFMADD231PD Z16, Z12, Z18 // Z18 = (Z12 * Z16) + Z18
-  VFMADD231PD Z17, Z13, Z19 // Z19 = (Z13 * Z17) + Z19
-  VBROADCASTSD CONST_GET_PTR(const_tan, 176), Z16
-  VBROADCASTSD CONST_GET_PTR(const_tan, 192), Z22
-  VBROADCASTSD CONST_GET_PTR(const_tan, 184), Z4
-  VBROADCASTSD CONST_GET_PTR(const_tan, 200), Z5
-  VMOVAPD Z16, Z17
-  VMOVAPD Z22, Z23
-  VFMADD213PD Z4, Z10, Z16  // Z16 = (Z10 * Z16) + Z4
-  VFMADD213PD Z4, Z11, Z17  // Z17 = (Z11 * Z17) + Z4
-  VFMADD213PD Z5, Z10, Z22  // Z22 = (Z10 * Z22) + Z5
-  VFMADD213PD Z5, Z11, Z23  // Z23 = (Z11 * Z23) + Z5
-  VBROADCASTSD CONST_GET_PTR(const_tan, 208), Z4
-  VFMADD231PD Z16, Z12, Z22 // Z22 = (Z12 * Z16) + Z22
-  VFMADD231PD Z17, Z13, Z23 // Z23 = (Z13 * Z17) + Z23
-  VFMADD231PD Z18, Z20, Z22 // Z22 = (Z20 * Z18) + Z22
-  VFMADD231PD Z19, Z21, Z23 // Z23 = (Z21 * Z19) + Z23
-  VFMADD213PD Z4, Z10, Z22  // Z22 = (Z10 * Z22) + Z4
-  VFMADD213PD Z4, Z11, Z23  // Z23 = (Z11 * Z23) + Z4
-  VMULPD Z10, Z8, Z12
-  VMULPD Z11, Z9, Z13
-  VMOVAPD Z8, Z16
-  VMOVAPD Z9, Z17
-  VFMSUB213PD Z12, Z10, Z16 // Z16 = (Z10 * Z16) - Z12
-  VFMSUB213PD Z13, Z11, Z17 // Z17 = (Z11 * Z17) - Z13
-  VFMADD231PD Z14, Z8, Z16  // Z16 = (Z8 * Z14) + Z16
-  VFMADD231PD Z15, Z9, Z17  // Z17 = (Z9 * Z15) + Z17
-  VFMADD231PD Z10, Z6, Z16  // Z16 = (Z6 * Z10) + Z16
-  VFMADD231PD Z11, Z7, Z17  // Z17 = (Z7 * Z11) + Z17
-  VMULPD Z22, Z12, Z10
-  VMULPD Z23, Z13, Z11
-  VFMSUB213PD Z10, Z22, Z12 // Z12 = (Z22 * Z12) - Z10
-  VFMSUB213PD Z11, Z23, Z13 // Z13 = (Z23 * Z13) - Z11
-  VFMADD231PD Z16, Z22, Z12 // Z12 = (Z22 * Z16) + Z12
-  VFMADD231PD Z17, Z23, Z13 // Z13 = (Z23 * Z17) + Z13
-  VADDPD Z10, Z8, Z14
-  VADDPD Z11, Z9, Z15
-  VSUBPD Z14, Z8, Z8
-  VSUBPD Z15, Z9, Z9
-  VADDPD Z8, Z10, Z8
-  VADDPD Z9, Z11, Z9
-  VADDPD Z8, Z6, Z6
-  VADDPD Z9, Z7, Z7
-  VADDPD Z6, Z12, Z6
-  VADDPD Z7, Z13, Z7
-  VMULPD Z14, Z14, Z8
-  VMULPD Z15, Z15, Z9
-  VADDPD Z14, Z14, Z10
-  VADDPD Z15, Z15, Z11
-  VBROADCASTSD CONST_GET_PTR(const_tan, 224), Z13
-  VMULPD Z13, Z14, Z16
-  VMULPD Z13, Z15, Z17
-  VFMSUB213PD Z8, Z14, Z14 // Z14 = (Z14 * Z14) - Z8
-  VFMSUB213PD Z9, Z15, Z15 // Z15 = (Z15 * Z15) - Z9
-  VFMADD231PD Z10, Z6, Z14 // Z14 = (Z6 * Z10) + Z14
-  VFMADD231PD Z11, Z7, Z15 // Z15 = (Z7 * Z11) + Z15
-  VBROADCASTSD CONST_GET_PTR(const_tan, 216), Z11
-  VADDPD Z11, Z8, Z18
-  VADDPD Z11, Z9, Z19
-  VSUBPD Z18, Z11, Z10
-  VSUBPD Z19, Z11, Z11
-  VADDPD Z10, Z8, Z8
-  VADDPD Z11, Z9, Z9
-  VADDPD Z14, Z8, Z8
-  VADDPD Z15, Z9, Z9
-  VMULPD Z13, Z6, Z4
-  VMULPD Z13, Z7, Z5
-  VPBROADCASTQ CONSTF64_SIGN_BIT(), Z6
-  VBROADCASTSD CONSTF64_1(), Z7
-  VMOVAPD Z16, Z10
-  VMOVAPD Z17, Z11
-  VXORPD Z6, Z18, K5, Z10
-  VXORPD Z6, Z19, K6, Z11
-  VMOVAPD Z4, Z12
-  VMOVAPD Z5, Z13
-  VMOVAPD Z16, K5, Z18
-  VMOVAPD Z17, K6, Z19
-  VDIVPD Z18, Z7, Z16
-  VDIVPD Z19, Z7, Z17
-  VXORPD Z6, Z8, K5, Z12
-  VXORPD Z6, Z9, K6, Z13
-  VMOVAPD Z4, K5, Z8
-  VMOVAPD Z5, K6, Z9
-  VMULPD Z10, Z16, Z4
-  VMULPD Z11, Z17, Z5
-  VFMSUB213PD Z4, Z16, Z10   // Z10 = (Z16 * Z10) - Z4
-  VFMSUB213PD Z5, Z17, Z11   // Z11 = (Z17 * Z11) - Z5
-  VFNMADD213PD Z7, Z16, Z18 // Z18 = -(Z16 * Z18) + Z7
-  VFNMADD213PD Z7, Z17, Z19 // Z19 = -(Z17 * Z19) + Z7
-  VFNMADD231PD Z8, Z16, Z18  // Z18 = -(Z16 * Z8) + Z18
-  VFNMADD231PD Z9, Z17, Z19  // Z19 = -(Z17 * Z9) + Z19
-  VFMADD231PD Z12, Z16, Z10  // Z10 = (Z16 * Z12) + Z10
-  VFMADD231PD Z13, Z17, Z11  // Z11 = (Z17 * Z13) + Z11
-  VFMADD231PD Z18, Z4, Z10   // Z10 = (Z4 * Z18) + Z10
-  VFMADD231PD Z19, Z5, Z11   // Z11 = (Z5 * Z19) + Z11
-  VADDPD Z10, Z4, Z4
-  VADDPD Z11, Z5, Z5
-  VPXOR X6, X6, X6
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z2, K5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z3, K6
-  VMOVAPD Z2, K5, Z4
-  VMOVAPD Z3, K6, Z5
-  VMOVAPD Z4, Z2
-  VMOVAPD Z5, Z3
-
-next:
-  NEXT()
-
-tan_case_b:
-  // case 'b': one or more lane has x >= 1e14
-  VMULPD.BCST CONST_GET_PTR(const_tan, 32), Z2, Z8
-  VMULPD.BCST CONST_GET_PTR(const_tan, 32), Z3, Z9
-  VRNDSCALEPD $11, Z8, Z12
-  VRNDSCALEPD $11, Z9, Z13
-  VXORPD X8, X8, X8
-  VMULPD.BCST CONST_GET_PTR(const_tan, 40), Z12, Z12
-  VMULPD.BCST CONST_GET_PTR(const_tan, 40), Z13, Z13
-  VBROADCASTSD CONST_GET_PTR(const_tan, 0), Z18
-  VBROADCASTSD CONST_GET_PTR(const_tan, 0), Z19
-  VFMSUB213PD Z10, Z2, Z18 // Z18 = (Z2 * Z18) - Z10
-  VFMSUB213PD Z11, Z3, Z19 // Z19 = (Z3 * Z19) - Z11
-  VFMADD231PD.BCST CONST_GET_PTR(const_tan, 48), Z2, Z18 // Z18 = (Z2 * mem) + Z18
-  VFMADD231PD.BCST CONST_GET_PTR(const_tan, 48), Z3, Z19 // Z19 = (Z3 * mem) + Z19
-  VCMPPD $VCMP_IMM_LT_OS, Z8, Z2, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z8, Z3, K6
-  VBROADCASTSD CONSTF64_HALF(), Z20
-  VBROADCASTSD CONSTF64_HALF(), Z21
-  VBROADCASTSD CONST_GET_PTR(const_tan, 56), K5, Z20
-  VBROADCASTSD CONST_GET_PTR(const_tan, 56), K6, Z21
-  VSUBPD Z12, Z20, Z20
-  VSUBPD Z13, Z21, Z21
-  VADDPD Z20, Z10, Z22
-  VADDPD Z21, Z11, Z23
-  VSUBPD Z10, Z22, Z24
-  VSUBPD Z11, Z23, Z25
-  VSUBPD Z24, Z22, Z26
-  VSUBPD Z25, Z23, Z27
-  VSUBPD Z26, Z10, Z10
-  VSUBPD Z27, Z11, Z11
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z10, Z20, Z10
-  VADDPD Z11, Z21, Z11
-  VADDPD Z10, Z18, Z10
-  VADDPD Z11, Z19, Z11
-  VADDPD Z10, Z22, Z10
-  VADDPD Z11, Z23, Z11
-  VRNDSCALEPD $11, Z10, Z18
-  VRNDSCALEPD $11, Z11, Z19
-  VBROADCASTSD CONST_GET_PTR(const_tan, 64), Z10
-  VBROADCASTSD CONST_GET_PTR(const_tan, 64), Z11
-  VMULPD Z10, Z18, Z20
-  VMULPD Z11, Z19, Z21
-  VFMADD213PD Z2, Z12, Z10 // Z10 = (Z12 * Z10) + Z2
-  VFMADD213PD Z3, Z13, Z11 // Z11 = (Z13 * Z11) + Z3
-  VADDPD Z20, Z10, Z22
-  VADDPD Z21, Z11, Z23
-  VSUBPD Z22, Z10, Z10
-  VSUBPD Z23, Z11, Z11
-  VADDPD Z10, Z20, Z10
-  VADDPD Z11, Z21, Z11
-
-  VBROADCASTSD CONST_GET_PTR(const_tan, 72), Z21
-  VMULPD Z21, Z12, Z24
-  VMULPD Z21, Z13, Z25
-  VADDPD Z22, Z24, Z26
-  VADDPD Z23, Z25, Z27
-  VSUBPD Z22, Z26, Z8
-  VSUBPD Z23, Z27, Z9
-  VSUBPD Z8, Z24, Z24
-  VSUBPD Z9, Z25, Z25
-  VSUBPD Z8, Z26, Z8
-  VSUBPD Z9, Z27, Z9
-  VSUBPD Z8, Z22, Z22
-  VSUBPD Z9, Z23, Z23
-  VADDPD Z22, Z24, Z22
-  VADDPD Z23, Z25, Z23
-  VADDPD Z22, Z10, Z10
-  VADDPD Z23, Z11, Z11
-  VMULPD Z21, Z18, Z20
-  VMULPD Z21, Z19, Z21
-  VADDPD Z26, Z20, Z22
-  VADDPD Z27, Z21, Z23
-  VSUBPD Z26, Z22, Z24
-  VSUBPD Z27, Z23, Z25
-  VSUBPD Z24, Z22, Z8
-  VSUBPD Z25, Z23, Z9
-  VSUBPD Z8, Z26, Z26
-  VSUBPD Z9, Z27, Z27
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z26, Z20, Z20
-  VADDPD Z27, Z21, Z21
-
-  VBROADCASTSD CONST_GET_PTR(const_tan, 80), Z25
-  VADDPD Z10, Z20, Z10
-  VADDPD Z11, Z21, Z11
-  VMULPD Z25, Z12, Z20
-  VMULPD Z25, Z13, Z21
-  VADDPD Z22, Z20, Z26
-  VADDPD Z23, Z21, Z27
-  VSUBPD Z22, Z26, Z8
-  VSUBPD Z23, Z27, Z9
-  VSUBPD Z8, Z20, Z20
-  VSUBPD Z9, Z21, Z21
-  VSUBPD Z8, Z26, Z8
-  VSUBPD Z9, Z27, Z9
-  VSUBPD Z8, Z22, Z22
-  VSUBPD Z9, Z23, Z23
-  VADDPD Z22, Z20, Z20
-  VADDPD Z23, Z21, Z21
-  VADDPD Z10, Z20, Z10
-  VADDPD Z11, Z21, Z11
-  VMULPD Z25, Z18, Z20
-  VMULPD Z25, Z19, Z21
-  VADDPD Z26, Z20, Z22
-  VADDPD Z27, Z21, Z23
-  VSUBPD Z26, Z22, Z24
-  VSUBPD Z27, Z23, Z25
-  VSUBPD Z24, Z22, Z8
-  VSUBPD Z25, Z23, Z9
-  VSUBPD Z8, Z26, Z26
-  VSUBPD Z9, Z27, Z27
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VBROADCASTSD CONST_GET_PTR(const_tan, 88), Z25
-  VADDPD Z26, Z20, Z20
-  VADDPD Z27, Z21, Z21
-  VADDPD Z10, Z20, Z20
-  VADDPD Z11, Z21, Z21
-  VADDPD Z18, Z12, Z10
-  VADDPD Z19, Z13, Z11
-  VMULPD Z25, Z10, Z12
-  VMULPD Z25, Z11, Z13
-  VADDPD Z22, Z12, Z10
-  VADDPD Z23, Z13, Z11
-  VSUBPD Z10, Z22, Z22
-  VSUBPD Z11, Z23, Z23
-  VADDPD Z22, Z12, Z12
-  VADDPD Z23, Z13, Z13
-  VADDPD Z20, Z12, Z12
-  VADDPD Z21, Z13, Z13
-
-  VCVTPD2DQ.RN_SAE Z18, Y20
-  VCVTPD2DQ.RN_SAE Z19, Y21
-  VBROADCASTSD CONST_GET_PTR(const_tan, 96), Z25
-  VINSERTI32X8 $1, Y21, Z20, Z20
-
-  VMOVDQA32 Z20, K3, Z4
-  VMOVAPD Z10, K3, Z14
-  VMOVAPD Z11, K4, Z15
-  VMOVAPD Z12, K3, Z16
-  VMOVAPD Z13, K4, Z17
-
-  VCMPPD $VCMP_IMM_GE_OQ, Z25, Z6, K3, K3
-  VCMPPD $VCMP_IMM_GE_OQ, Z25, Z7, K4, K4
-  KUNPCKBW K3, K4, K3
-  KTESTW K3, K3
-  JZ tan_eval_poly
-
-  // case 'c': one or more lane has x >= 1e14
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z10
-  MOVL $0xAAAA, R8
-  LEAQ CONST_GET_PTR(const_rempi, 0), R15
-
-  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z6, K3, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z7, K4, K5
-  KUNPCKBW K0, K5, K0
-
-  VGETEXPPD Z2, Z10
-  VGETEXPPD Z3, Z11
-  VCVTPD2DQ.RN_SAE Z10, Y10
-  VCVTPD2DQ.RN_SAE Z11, Y11
-  VINSERTI32X8 $1, Y11, Z10, Z10
-
-  VPCMPGTD.BCST CONSTD_NEG_1(), Z10, K5
-  VPANDD.BCST.Z CONST_GET_PTR(const_tan, 240), Z10, K5, Z10
-  VPADDD.BCST CONST_GET_PTR(const_tan, 244), Z10, Z10
-  VPCMPGTD.BCST CONST_GET_PTR(const_tan, 248), Z10, K5
-  VPBROADCASTD.Z CONST_GET_PTR(const_tan, 252), K5, Z12
-  VPSLLD $20, Z12, Z12
-  VEXTRACTI32X8 $1, Z12, Y13
-  KMOVW R8, K5
-  VPEXPANDD.Z Z12, K5, Z12
-  VPEXPANDD.Z Z13, K5, Z13
-  VPADDQ Z2, Z12, Z18
-  VPADDQ Z3, Z13, Z19
-  VPSRAD $31, Z10, Z12
-  VPANDND Z10, Z12, Z10
-  VPSLLD $2, Z10, Z10
-  VEXTRACTI32X8 $1, Z10, Y11
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X12, X12, X12
-  VXORPD X13, X13, X13
-  VGATHERDPD 0(R15)(Y10*8), K5, Z12
-  VGATHERDPD 0(R15)(Y11*8), K6, Z13
-  ADDQ $8, R15
-
-  VMULPD Z18, Z12, Z20
-  VMULPD Z19, Z13, Z21
-  VFMSUB213PD Z20, Z18, Z12 // Z12 = (Z18 * Z12) - Z20
-  VFMSUB213PD Z21, Z19, Z13 // Z13 = (Z19 * Z13) - Z21
-  VBROADCASTSD CONST_GET_PTR(const_tan, 104), Z22
-  VBROADCASTSD CONST_GET_PTR(const_tan, 112), Z23
-  VMULPD Z22, Z20, Z24
-  VMULPD Z22, Z21, Z25
-  VRNDSCALEPD $8, Z24, Z24
-  VRNDSCALEPD $8, Z25, Z25
-  VRNDSCALEPD $8, Z20, Z26
-  VRNDSCALEPD $8, Z21, Z27
-  VMULPD Z22, Z26, Z26
-  VMULPD Z22, Z27, Z27
-  VSUBPD Z26, Z24, Z26
-  VSUBPD Z27, Z25, Z27
-  VCVTPD2DQ.RZ_SAE Z26, Y26
-  VCVTPD2DQ.RZ_SAE Z27, Y27
-  VINSERTI32X8 $1, Y27, Z26, Z26
-  VMULPD Z23, Z24, Z24
-  VMULPD Z23, Z25, Z25
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z12, Z20, Z24
-  VADDPD Z13, Z21, Z25
-  VSUBPD Z24, Z20, Z20
-  VSUBPD Z25, Z21, Z21
-  VADDPD Z20, Z12, Z12
-  VADDPD Z21, Z13, Z13
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X20, X20, X20
-  VXORPD X21, X21, X21
-  VGATHERDPD 0(R15)(Y10*8), K5, Z20
-  VGATHERDPD 0(R15)(Y11*8), K6, Z21
-  ADDQ $8, R15
-
-  VMULPD Z18, Z20, Z6
-  VMULPD Z19, Z21, Z7
-  VFMSUB213PD Z6, Z18, Z20 // Z20 = (Z18 * Z20) - Z6
-  VFMSUB213PD Z7, Z19, Z21 // Z21 = (Z19 * Z21) - Z7
-  VADDPD Z12, Z20, Z12
-  VADDPD Z13, Z21, Z13
-  VADDPD Z24, Z6, Z8
-  VADDPD Z25, Z7, Z9
-  VSUBPD Z24, Z8, Z20
-  VSUBPD Z25, Z9, Z21
-  VSUBPD Z20, Z8, Z5
-  VSUBPD Z5, Z24, Z24
-  VSUBPD Z21, Z9, Z5
-  VSUBPD Z5, Z25, Z25
-  VSUBPD Z20, Z6, Z20
-  VSUBPD Z21, Z7, Z21
-  VADDPD Z24, Z20, Z20
-  VADDPD Z25, Z21, Z21
-  VADDPD Z20, Z12, Z12
-  VADDPD Z21, Z13, Z13
-  VMULPD Z22, Z8, Z20
-  VMULPD Z22, Z9, Z21
-  VRNDSCALEPD $8, Z20, Z24
-  VRNDSCALEPD $8, Z21, Z25
-  VRNDSCALEPD $8, Z8, Z20
-  VRNDSCALEPD $8, Z9, Z21
-  VMULPD Z22, Z20, Z20
-  VMULPD Z22, Z21, Z21
-  VSUBPD Z20, Z24, Z20
-  VSUBPD Z21, Z25, Z21
-  VCVTPD2DQ.RZ_SAE Z20, Y20
-  VCVTPD2DQ.RZ_SAE Z21, Y21
-  VINSERTI32X8 $1, Y21, Z20, Z20
-  VPADDD Z26, Z20, Z20
-  VMULPD Z23, Z24, Z22
-  VMULPD Z23, Z25, Z23
-  VSUBPD Z22, Z8, Z22
-  VSUBPD Z23, Z9, Z23
-  VADDPD Z12, Z22, Z24
-  VADDPD Z13, Z23, Z25
-  VSUBPD Z24, Z22, Z22
-  VSUBPD Z25, Z23, Z23
-  VADDPD Z22, Z12, Z12
-  VADDPD Z23, Z13, Z13
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X22, X22, X22
-  VXORPD X23, X23, X23
-  VGATHERDPD 0(R15)(Y10*8), K5, Z22
-  VGATHERDPD 0(R15)(Y11*8), K6, Z23
-  ADDQ $8, R15
-
-  KMOVB K3, K5
-  KMOVB K4, K6
-  VXORPD X26, X26, X26
-  VXORPD X27, X27, X27
-  VGATHERDPD 0(R15)(Y10*8), K5, Z26
-  VGATHERDPD 0(R15)(Y11*8), K6, Z27
-
-  VMULPD Z18, Z22, Z10
-  VMULPD Z19, Z23, Z11
-  VFMSUB213PD Z10, Z18, Z22 // Z22 = (Z18 * Z22) - Z10
-  VFMSUB213PD Z11, Z19, Z23 // Z23 = (Z19 * Z23) - Z11
-  VFMADD231PD Z26, Z18, Z22 // Z22 = (Z18 * Z26) + Z22
-  VFMADD231PD Z27, Z19, Z23 // Z23 = (Z19 * Z27) + Z23
-  VADDPD Z12, Z22, Z12
-  VADDPD Z13, Z23, Z13
-  VADDPD Z24, Z10, Z22
-  VADDPD Z25, Z11, Z23
-  VSUBPD Z24, Z22, Z26
-  VSUBPD Z25, Z23, Z27
-  VSUBPD Z26, Z22, Z6
-  VSUBPD Z27, Z23, Z7
-  VSUBPD Z6, Z24, Z24
-  VSUBPD Z7, Z25, Z25
-  VSUBPD Z26, Z10, Z10
-  VSUBPD Z27, Z11, Z11
-  VADDPD Z24, Z10, Z10
-  VADDPD Z25, Z11, Z11
-  VADDPD Z10, Z12, Z10
-  VADDPD Z11, Z13, Z11
-  VADDPD Z10, Z22, Z24
-  VADDPD Z11, Z23, Z25
-  VSUBPD Z24, Z22, Z12
-  VSUBPD Z25, Z23, Z13
-  VADDPD Z12, Z10, Z22
-  VADDPD Z13, Z11, Z23
-  VBROADCASTSD CONST_GET_PTR(const_tan, 120), Z26
-  VBROADCASTSD CONST_GET_PTR(const_tan, 128), Z27
-  VMULPD Z26, Z24, Z10
-  VMULPD Z26, Z25, Z11
-  VMOVAPD Z26, Z12
-  VMOVAPD Z26, Z13
-  VFMSUB213PD Z10, Z24, Z12 // Z12 = (Z24 * Z12) - Z10
-  VFMSUB213PD Z11, Z25, Z13 // Z13 = (Z25 * Z13) - Z11
-  VFMADD231PD Z22, Z26, Z12 // Z12 = (Z26 * Z22) + Z12
-  VFMADD231PD Z23, Z26, Z13 // Z13 = (Z26 * Z23) + Z13
-  VFMADD231PD Z27, Z24, Z12 // Z12 = (Z24 * Z27) + Z12
-  VFMADD231PD Z27, Z25, Z13 // Z13 = (Z25 * Z27) + Z13
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z26
-  VBROADCASTSD CONST_GET_PTR(const_tan, 136), Z27
-  VANDPD Z26, Z18, Z22
-  VANDPD Z26, Z19, Z23
-  VCMPPD $VCMP_IMM_LT_OS, Z27, Z22, K3, K5
-  VCMPPD $VCMP_IMM_LT_OS, Z27, Z23, K4, K6
-  VMOVAPD Z18, K5, Z10
-  VMOVAPD Z19, K6, Z11
-  VXORPD X8, X8, X8
-  VMOVAPD Z8, K5, Z12
-  VMOVAPD Z8, K6, Z13
-  VCMPPD $VCMP_IMM_UNORD_Q, Z8, Z2, K3, K5
-  KORB K0, K5, K5
-  VCMPPD $VCMP_IMM_UNORD_Q, Z8, Z3, K4, K6
-  KSHIFTRW $8, K0, K0
-  KORB K0, K6, K6
-
-  VPTERNLOGD $255, Z6, Z6, Z6
-  VPTERNLOGD $255, Z7, Z7, Z7
-
-  VMOVAPD Z6, K5, Z14
-  VMOVAPD Z7, K6, Z15
-  VMOVAPD Z6, K5, Z16
-  VMOVAPD Z7, K6, Z17
-
-  VMOVDQA32 Z20, K3, Z4
-  VMOVAPD Z10, K3, Z14
-  VMOVAPD Z11, K4, Z15
-  VMOVAPD Z12, K3, Z16
-  VMOVAPD Z13, K4, Z17
-  JMP tan_eval_poly
-
-// Inverse sine: asin(x)
-CONST_DATA_U64(const_asin,   0, $0x3fa02ff4c7428a47) // f64(0.031615876506539346)
-CONST_DATA_U64(const_asin,   8, $0xbf9032e75ccd4ae8) // f64(-0.015819182433299966)
-CONST_DATA_U64(const_asin,  16, $0x3f93c0e0817e9742) // f64(0.019290454772679107)
-CONST_DATA_U64(const_asin,  24, $0x3f7b0ef96b727e7e) // f64(0.0066060774762771706)
-CONST_DATA_U64(const_asin,  32, $0x3f88e3fd48d0fb6f) // f64(0.012153605255773773)
-CONST_DATA_U64(const_asin,  40, $0x3f8c70ddf81249fc) // f64(0.013887151845016092)
-CONST_DATA_U64(const_asin,  48, $0x3f91c6b5042ec6b2) // f64(0.017359569912236146)
-CONST_DATA_U64(const_asin,  56, $0x3f96e89f8578b64e) // f64(0.022371761819320483)
-CONST_DATA_U64(const_asin,  64, $0x3f9f1c72c5fd95ba) // f64(0.030381959280381322)
-CONST_DATA_U64(const_asin,  72, $0x3fa6db6db407c2b3) // f64(0.044642856813771024)
-CONST_DATA_U64(const_asin,  80, $0x3fb3333333375cd0) // f64(0.075000000003785816)
-CONST_DATA_U64(const_asin,  88, $0x3fc55555555552f4) // f64(0.16666666666664975)
-CONST_DATA_U64(const_asin,  96, $0x3fe921fb54442d18) // f64(0.78539816339744828)
-CONST_DATA_U64(const_asin, 104, $0x3c81a62633145c07) // f64(3.061616997868383E-17)
-CONST_GLOBAL(const_asin, $112)
-
-TEXT bcasinf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z7
-  VBROADCASTSD CONSTF64_HALF(), Z8
-  VBROADCASTSD CONSTF64_1(), Z9
-
-  VANDPD.Z Z7, Z2, K1, Z6
-  VANDPD.Z Z7, Z3, K2, Z7
-  VCMPPD $VCMP_IMM_LT_OQ, Z8, Z6, K1, K3
-  VCMPPD $VCMP_IMM_LT_OQ, Z8, Z7, K2, K4
-  VSUBPD Z6, Z9, Z4
-  VSUBPD Z7, Z9, Z5
-  VMULPD Z8, Z4, Z4
-  VMULPD Z8, Z5, Z5
-  VMULPD Z2, Z2, K3, Z4
-  VMULPD Z3, Z3, K4, Z5
-  VSQRTPD Z4, Z12
-  VSQRTPD Z5, Z13
-  VMULPD Z12, Z12, Z14
-  VMULPD Z13, Z13, Z15
-  VMOVAPD Z12, Z16
-  VMOVAPD Z13, Z17
-  VFMSUB213PD Z14, Z12, Z16 // Z16 = (Z12 * Z16) - Z14
-  VFMSUB213PD Z15, Z13, Z17 // Z17 = (Z13 * Z17) - Z15
-  VADDPD Z14, Z4, Z18
-  VADDPD Z15, Z5, Z19
-  VSUBPD Z4, Z18, Z20
-  VSUBPD Z5, Z19, Z21
-  VSUBPD Z20, Z18, Z22
-  VSUBPD Z21, Z19, Z23
-  VSUBPD Z22, Z4, Z22
-  VSUBPD Z23, Z5, Z23
-  VSUBPD Z20, Z14, Z14
-  VSUBPD Z21, Z15, Z15
-  VADDPD Z22, Z14, Z14
-  VADDPD Z23, Z15, Z15
-  VADDPD Z14, Z16, Z14
-  VADDPD Z15, Z17, Z15
-  VDIVPD Z12, Z9, Z16
-  VDIVPD Z13, Z9, Z17
-  VFNMADD213PD Z9, Z16, Z12 // Z12 = -(Z16 * Z12) + Z9
-  VFNMADD213PD Z9, Z17, Z13 // Z13 = -(Z17 * Z13) + Z9
-  VMULPD Z12, Z16, Z12
-  VMULPD Z13, Z17, Z13
-  VMULPD Z18, Z16, Z20
-  VMULPD Z19, Z17, Z21
-  VMOVAPD Z16, Z22
-  VMOVAPD Z17, Z23
-  VFMSUB213PD Z20, Z18, Z22 // Z22 = (Z18 * Z22) - Z20
-  VFMSUB213PD Z21, Z19, Z23 // Z23 = (Z19 * Z23) - Z21
-  VFMADD231PD Z14, Z16, Z22 // Z22 = (Z16 * Z14) + Z22
-  VFMADD231PD Z15, Z17, Z23 // Z23 = (Z17 * Z15) + Z23
-  VFMADD231PD Z12, Z18, Z22 // Z22 = (Z18 * Z12) + Z22
-  VFMADD231PD Z13, Z19, Z23 // Z23 = (Z19 * Z13) + Z23
-  VMULPD Z8, Z20, Z12
-  VMULPD Z8, Z21, Z13
-  VMOVAPD Z6, K3, Z12
-  VMOVAPD Z7, K4, Z13
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z6, K5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z7, K6
-  VXORPD Z12, Z12, K5, Z12
-  VXORPD Z13, Z13, K6, Z13
-  KORW K3, K5, K5
-  KORW K4, K6, K6
-  KNOTW K5, K5
-  KNOTW K6, K6
-  VMULPD.Z Z8, Z22, K5, Z6
-  VMULPD.Z Z8, Z23, K6, Z7
-  VMULPD Z4, Z4, Z8
-  VMULPD Z5, Z5, Z9
-  VMULPD Z8, Z8, Z10
-  VMULPD Z9, Z9, Z11
-  VMULPD Z10, Z10, Z14
-  VMULPD Z11, Z11, Z15
-  VBROADCASTSD CONST_GET_PTR(const_asin, 0), Z16
-  VBROADCASTSD CONST_GET_PTR(const_asin, 16), Z18
-  VBROADCASTSD CONST_GET_PTR(const_asin, 8), Z20
-  VBROADCASTSD CONST_GET_PTR(const_asin, 24), Z21
-  VMOVAPD Z16, Z17
-  VFMADD213PD Z20, Z4, Z16 // Z16 = (Z4 * Z16) + Z20
-  VFMADD213PD Z20, Z5, Z17 // Z17 = (Z5 * Z17) + Z20
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z21, Z4, Z18 // Z18 = (Z4 * Z18) + Z21
-  VFMADD213PD Z21, Z5, Z19 // Z19 = (Z5 * Z19) + Z21
-  VBROADCASTSD CONST_GET_PTR(const_asin, 32), Z20
-  VBROADCASTSD CONST_GET_PTR(const_asin, 48), Z22
-  VMOVAPD Z20, Z21
-  VMOVAPD Z22, Z23
-  VBROADCASTSD CONST_GET_PTR(const_asin, 40), Z24
-  VBROADCASTSD CONST_GET_PTR(const_asin, 56), Z25
-  VFMADD213PD Z24, Z4, Z20 // Z20 = (Z4 * Z20) + Z24
-  VFMADD213PD Z24, Z5, Z21 // Z21 = (Z5 * Z21) + Z24
-  VFMADD213PD Z25, Z4, Z22 // Z22 = (Z4 * Z22) + Z25
-  VFMADD213PD Z25, Z5, Z23 // Z23 = (Z5 * Z23) + Z25
-  VFMADD231PD Z16, Z8, Z18 // Z18 = (Z8 * Z16) + Z18
-  VFMADD231PD Z17, Z9, Z19 // Z19 = (Z9 * Z17) + Z19
-  VFMADD231PD Z20, Z8, Z22 // Z22 = (Z8 * Z20) + Z22
-  VFMADD231PD Z21, Z9, Z23 // Z23 = (Z9 * Z21) + Z23
-  VBROADCASTSD CONST_GET_PTR(const_asin, 64), Z16
-  VBROADCASTSD CONST_GET_PTR(const_asin, 80), Z20
-  VMOVAPD Z16, Z17
-  VMOVAPD Z20, Z21
-  VBROADCASTSD CONST_GET_PTR(const_asin, 72), Z24
-  VBROADCASTSD CONST_GET_PTR(const_asin, 88), Z25
-  VFMADD213PD Z24, Z4, Z16 // Z16 = (Z4 * Z16) + Z24
-  VFMADD213PD Z24, Z5, Z17 // Z17 = (Z5 * Z17) + Z24
-  VFMADD213PD Z25, Z4, Z20 // Z20 = (Z4 * Z20) + Z25
-  VFMADD213PD Z25, Z5, Z21 // Z21 = (Z5 * Z21) + Z25
-  VFMADD231PD Z16, Z8, Z20  // Z20 = (Z8 * Z16) + Z20
-  VFMADD231PD Z17, Z9, Z21  // Z21 = (Z9 * Z17) + Z21
-  VFMADD231PD Z22, Z10, Z20 // Z20 = (Z10 * Z22) + Z20
-  VFMADD231PD Z23, Z11, Z21 // Z21 = (Z11 * Z23) + Z21
-  VFMADD231PD Z18, Z14, Z20 // Z20 = (Z14 * Z18) + Z20
-  VFMADD231PD Z19, Z15, Z21 // Z21 = (Z15 * Z19) + Z21
-  VMULPD Z12, Z4, Z4
-  VMULPD Z13, Z5, Z5
-  VBROADCASTSD CONST_GET_PTR(const_asin, 96), Z9
-  VBROADCASTSD CONST_GET_PTR(const_asin, 104), Z14
-  VMULPD Z4, Z20, Z4
-  VMULPD Z5, Z21, Z5
-  VSUBPD Z12, Z9, Z10
-  VSUBPD Z13, Z9, Z11
-  VSUBPD Z10, Z9, Z8
-  VSUBPD Z11, Z9, Z9
-  VSUBPD Z12, Z8, Z8
-  VSUBPD Z13, Z9, Z9
-  VADDPD Z14, Z8, Z8
-  VADDPD Z14, Z9, Z9
-  VSUBPD Z6, Z8, Z6
-  VSUBPD Z7, Z9, Z7
-  VSUBPD Z4, Z10, Z8
-  VSUBPD Z5, Z11, Z9
-  VSUBPD Z8, Z10, Z10
-  VSUBPD Z9, Z11, Z11
-  VSUBPD Z4, Z10, Z10
-  VSUBPD Z5, Z11, Z11
-  VADDPD Z6, Z10, Z6
-  VADDPD Z7, Z11, Z7
-  VADDPD Z6, Z8, Z6
-  VADDPD Z7, Z9, Z7
-  VADDPD Z6, Z6, Z6
-  VADDPD Z7, Z7, Z7
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z10
-  VADDPD Z4, Z12, K3, Z6
-  VADDPD Z5, Z13, K4, Z7
-  VPTERNLOGQ $108, Z10, Z6, K1, Z2
-  VPTERNLOGQ $108, Z10, Z7, K2, Z3
-
-next:
-  NEXT()
-
-// Inverse cosine: acos(x)
-CONST_DATA_U64(const_acos,   0, $0x3fa02ff4c7428a47) // f64(0.031615876506539346)
-CONST_DATA_U64(const_acos,   8, $0xbf9032e75ccd4ae8) // f64(-0.015819182433299966)
-CONST_DATA_U64(const_acos,  16, $0x3f93c0e0817e9742) // f64(0.019290454772679107)
-CONST_DATA_U64(const_acos,  24, $0x3f7b0ef96b727e7e) // f64(0.0066060774762771706)
-CONST_DATA_U64(const_acos,  32, $0x3f88e3fd48d0fb6f) // f64(0.012153605255773773)
-CONST_DATA_U64(const_acos,  40, $0x3f8c70ddf81249fc) // f64(0.013887151845016092)
-CONST_DATA_U64(const_acos,  48, $0x3f91c6b5042ec6b2) // f64(0.017359569912236146)
-CONST_DATA_U64(const_acos,  56, $0x3f96e89f8578b64e) // f64(0.022371761819320483)
-CONST_DATA_U64(const_acos,  64, $0x3f9f1c72c5fd95ba) // f64(0.030381959280381322)
-CONST_DATA_U64(const_acos,  72, $0x3fa6db6db407c2b3) // f64(0.044642856813771024)
-CONST_DATA_U64(const_acos,  80, $0x3fb3333333375cd0) // f64(0.075000000003785816)
-CONST_DATA_U64(const_acos,  88, $0x3fc55555555552f4) // f64(0.16666666666664975)
-CONST_DATA_U64(const_acos,  96, $0x3ff921fb54442d18) // f64(1.5707963267948966)
-CONST_DATA_U64(const_acos, 104, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
-CONST_DATA_U64(const_acos, 112, $0x400921fb54442d18) // f64(3.1415926535897931)
-CONST_DATA_U64(const_acos, 120, $0x3ca1a62633145c07) // f64(1.2246467991473532E-16)
-CONST_GLOBAL(const_acos, $128)
-
-TEXT bcacosf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z5
-  VBROADCASTSD CONSTF64_HALF(), Z6
-  VBROADCASTSD CONSTF64_1(), Z7
-  VXORPD X10, X10, X10
-
-  VANDPD.Z Z5, Z2, K1, Z4
-  VANDPD.Z Z5, Z3, K2, Z5
-  VCMPPD $VCMP_IMM_LT_OS, Z6, Z4, K1, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z6, Z5, K2, K4
-  VSUBPD Z4, Z7, Z8
-  VSUBPD Z5, Z7, Z9
-  VMULPD Z6, Z8, Z8
-  VMULPD Z6, Z9, Z9
-  VMULPD Z2, Z2, K3, Z8
-  VMULPD Z3, Z3, K4, Z9
-  VSQRTPD Z8, Z12
-  VSQRTPD Z9, Z13
-  VMULPD Z12, Z12, Z14
-  VMULPD Z13, Z13, Z15
-  VMOVAPD Z12, Z16
-  VMOVAPD Z13, Z17
-  VFMSUB213PD Z14, Z12, Z16 // Z16 = (Z12 * Z16) - Z14
-  VFMSUB213PD Z15, Z13, Z17 // Z17 = (Z13 * Z17) - Z15
-  VADDPD Z14, Z8, Z18
-  VADDPD Z15, Z9, Z19
-  VSUBPD Z8, Z18, Z20
-  VSUBPD Z9, Z19, Z21
-  VSUBPD Z20, Z18, Z22
-  VSUBPD Z21, Z19, Z23
-  VSUBPD Z22, Z8, Z22
-  VSUBPD Z23, Z9, Z23
-  VSUBPD Z20, Z14, Z14
-  VSUBPD Z21, Z15, Z15
-  VADDPD Z22, Z14, Z14
-  VADDPD Z23, Z15, Z15
-  VADDPD Z14, Z16, Z14
-  VADDPD Z15, Z17, Z15
-  VDIVPD Z12, Z7, Z16
-  VDIVPD Z13, Z7, Z17
-  VFNMADD213PD Z7, Z16, Z12 // Z12 = -(Z16 * Z12) + Z7
-  VFNMADD213PD Z7, Z17, Z13 // Z13 = -(Z17 * Z13) + Z7
-  VMULPD Z12, Z16, Z12
-  VMULPD Z13, Z17, Z13
-  VMULPD Z18, Z16, Z20
-  VMULPD Z19, Z17, Z21
-  VMOVAPD Z16, Z22
-  VMOVAPD Z17, Z23
-  VFMSUB213PD Z20, Z18, Z22 // Z22 = (Z18 * Z22) - Z20
-  VFMSUB213PD Z21, Z19, Z23 // Z23 = (Z19 * Z23) - Z21
-  VFMADD231PD Z14, Z16, Z22 // Z22 = (Z16 * Z14) + Z22
-  VFMADD231PD Z15, Z17, Z23 // Z23 = (Z17 * Z15) + Z23
-  VFMADD231PD Z12, Z18, Z22 // Z22 = (Z18 * Z12) + Z22
-  VFMADD231PD Z13, Z19, Z23 // Z23 = (Z19 * Z13) + Z23
-  VMULPD Z6, Z20, Z12
-  VMULPD Z6, Z21, Z13
-  VMOVAPD Z4, K3, Z12
-  VMOVAPD Z5, K4, Z13
-  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z4, K5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z5, K6
-  VXORPD Z12, Z12, K5, Z12
-  VXORPD Z13, Z13, K6, Z13
-  KORW K3, K5, K5
-  KORW K4, K6, K6
-  KNOTW K5, K5
-  KNOTW K6, K6
-  VMULPD.Z Z6, Z22, K5, Z14
-  VMULPD.Z Z6, Z23, K6, Z15
-  VMULPD Z8, Z8, Z16
-  VMULPD Z9, Z9, Z17
-  VMULPD Z16, Z16, Z18
-  VMULPD Z17, Z17, Z19
-  VBROADCASTSD CONST_GET_PTR(const_acos, 0), Z20
-  VBROADCASTSD CONST_GET_PTR(const_acos, 16), Z22
-  VMOVAPD Z20, Z21
-  VMOVAPD Z22, Z23
-  VBROADCASTSD CONST_GET_PTR(const_acos, 8), Z24
-  VBROADCASTSD CONST_GET_PTR(const_acos, 24), Z25
-  VFMADD213PD Z24, Z8, Z20 // Z20 = (Z8 * Z20) + Z24
-  VFMADD213PD Z24, Z9, Z21 // Z21 = (Z9 * Z21) + Z24
-  VFMADD213PD Z25, Z8, Z22 // Z22 = (Z8 * Z22) + Z25
-  VFMADD213PD Z25, Z9, Z23 // Z23 = (Z9 * Z23) + Z25
-  VBROADCASTSD CONST_GET_PTR(const_acos, 32), Z24
-  VBROADCASTSD CONST_GET_PTR(const_acos, 48), Z26
-  VMOVAPD Z24, Z25
-  VMOVAPD Z26, Z27
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 40), Z8, Z24 // Z24 = (Z8 * Z24) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 40), Z9, Z25 // Z25 = (Z9 * Z25) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 56), Z8, Z26 // Z26 = (Z8 * Z26) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 56), Z9, Z27 // Z27 = (Z9 * Z27) + mem
-  VFMADD231PD Z20, Z16, Z22 // Z22 = (Z16 * Z20) + Z22
-  VFMADD231PD Z21, Z17, Z23 // Z23 = (Z17 * Z21) + Z23
-  VFMADD231PD Z24, Z16, Z26 // Z26 = (Z16 * Z24) + Z26
-  VFMADD231PD Z25, Z17, Z27 // Z27 = (Z17 * Z25) + Z27
-  VBROADCASTSD CONST_GET_PTR(const_acos, 64), Z20
-  VBROADCASTSD CONST_GET_PTR(const_acos, 80), Z24
-  VMOVAPD Z20, Z21
-  VMOVAPD Z24, Z25
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 72), Z8, Z20 // Z20 = (Z8 * Z20) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 72), Z9, Z21 // Z21 = (Z9 * Z21) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 88), Z8, Z24 // Z24 = (Z8 * Z24) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 88), Z9, Z25 // Z25 = (Z9 * Z25) + mem
-  VFMADD231PD Z20, Z16, Z24 // Z24 = (Z16 * Z20) + Z24
-  VFMADD231PD Z21, Z17, Z25 // Z25 = (Z17 * Z21) + Z25
-  VFMADD231PD Z26, Z18, Z24 // Z24 = (Z18 * Z26) + Z24
-  VMULPD Z18, Z18, Z18
-  VFMADD231PD Z27, Z19, Z25 // Z25 = (Z19 * Z27) + Z25
-  VMULPD Z19, Z19, Z19
-  VFMADD231PD Z22, Z18, Z24 // Z24 = (Z18 * Z22) + Z24
-  VFMADD231PD Z23, Z19, Z25 // Z25 = (Z19 * Z23) + Z25
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z17
-  VMULPD Z12, Z8, Z8
-  VMULPD Z13, Z9, Z9
-  VMULPD Z8, Z24, Z8
-  VMULPD Z9, Z25, Z9
-  VANDPD Z17, Z2, Z16
-  VANDPD Z17, Z3, Z17
-  VXORPD Z12, Z16, Z18
-  VXORPD Z13, Z17, Z19
-  VXORPD Z8, Z16, Z16
-  VXORPD Z9, Z17, Z17
-  VADDPD Z16, Z18, Z20
-  VADDPD Z17, Z19, Z21
-  VSUBPD Z20, Z18, Z18
-  VSUBPD Z21, Z19, Z19
-  VBROADCASTSD CONST_GET_PTR(const_acos, 96), Z23
-  VBROADCASTSD CONST_GET_PTR(const_acos, 104), Z24
-  VADDPD Z16, Z18, Z16
-  VADDPD Z17, Z19, Z17
-  VSUBPD Z20, Z23, Z18
-  VSUBPD Z21, Z23, Z19
-  VSUBPD Z18, Z23, Z22
-  VSUBPD Z19, Z23, Z23
-  VSUBPD Z20, Z22, Z20
-  VSUBPD Z21, Z23, Z21
-  VADDPD Z24, Z20, Z20
-  VADDPD Z24, Z21, Z21
-  VADDPD Z8, Z12, Z22
-  VADDPD Z9, Z13, Z23
-  VSUBPD Z22, Z12, Z12
-  VSUBPD Z23, Z13, Z13
-  VADDPD Z12, Z8, Z8
-  VADDPD Z13, Z9, Z9
-  VADDPD Z14, Z8, Z8
-  VADDPD Z15, Z9, Z9
-  VADDPD Z22, Z22, Z12
-  VADDPD Z23, Z23, Z13
-  VADDPD Z8, Z8, Z8
-  VADDPD Z9, Z9, Z9
-  VMOVAPD Z18, K3, Z12
-  VMOVAPD Z19, K4, Z13
-  VSUBPD Z16, Z20, K3, Z8
-  VSUBPD Z17, Z21, K4, Z9
-  VCMPPD $VCMP_IMM_LT_OS, Z10, Z2, K1, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z10, Z3, K2, K4
-  VCMPPD $VCMP_IMM_NLT_US, Z6, Z4, K3, K3
-  VCMPPD $VCMP_IMM_NLT_US, Z6, Z5, K4, K4
-  VBROADCASTSD CONST_GET_PTR(const_acos, 112), Z11
-  VBROADCASTSD CONST_GET_PTR(const_acos, 120), Z14
-  VSUBPD Z12, Z11, Z4
-  VSUBPD Z13, Z11, Z5
-  VSUBPD Z4, Z11, Z10
-  VSUBPD Z5, Z11, Z11
-  VSUBPD Z12, Z10, Z10
-  VSUBPD Z13, Z11, Z11
-  VADDPD Z14, Z10, Z10
-  VADDPD Z14, Z11, Z11
-  VMOVAPD Z4, K3, Z12
-  VMOVAPD Z5, K4, Z13
-  VSUBPD Z8, Z10, K3, Z8
-  VSUBPD Z9, Z11, K4, Z9
-  VADDPD Z8, Z12, K1, Z2
-  VADDPD Z9, Z13, K2, Z3
-
-next:
-  NEXT()
-
-// Inverse tangent: atan(x)
-CONST_DATA_U64(const_atan,   0, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_atan,   8, $0x3ee64adb3e06ee72) // f64(1.0629848419144875E-5)
-CONST_DATA_U64(const_atan,  16, $0xbf2077212aa7d6ce) // f64(-1.2562064996728687E-4)
-CONST_DATA_U64(const_atan,  24, $0x3f471ece4d9ced98) // f64(7.0557664296393412E-4)
-CONST_DATA_U64(const_atan,  32, $0xbf64a20138b90cee) // f64(-0.0025186561449871336)
-CONST_DATA_U64(const_atan,  40, $0x3f7a788ec28e9fb3) // f64(0.0064626289903699117)
-CONST_DATA_U64(const_atan,  48, $0xbf8a45a2ea379db5) // f64(-0.012828133366339903)
-CONST_DATA_U64(const_atan,  56, $0x3f954d3eccf8f320) // f64(0.02080247999241458)
-CONST_DATA_U64(const_atan,  64, $0xbf9d9805e7ba23e7) // f64(-0.028900234478474032)
-CONST_DATA_U64(const_atan,  72, $0x3fa26bc6260b1bdd) // f64(0.035978500503510459)
-CONST_DATA_U64(const_atan,  80, $0xbfa56d2d526c0577) // f64(-0.041848579703592508)
-CONST_DATA_U64(const_atan,  88, $0x3fa81b6efb51f8a6) // f64(0.047084301165328399)
-CONST_DATA_U64(const_atan,  96, $0xbfaae027d1895f2e) // f64(-0.052491421058844842)
-CONST_DATA_U64(const_atan, 104, $0x3fae1a556400767b) // f64(0.0587946590969581)
-CONST_DATA_U64(const_atan, 112, $0xbfb110c441e542d6) // f64(-0.06666208847787955)
-CONST_DATA_U64(const_atan, 120, $0x3fb3b131f3b00d10) // f64(0.076922533029620376)
-CONST_DATA_U64(const_atan, 128, $0xbfb745d0ac14efec) // f64(-0.090909044277338757)
-CONST_DATA_U64(const_atan, 136, $0x3fbc71c710b37a0b) // f64(0.11111110837689624)
-CONST_DATA_U64(const_atan, 144, $0xbfc249249211afc7) // f64(-0.14285714275626857)
-CONST_DATA_U64(const_atan, 152, $0x3fc9999999987cf0) // f64(0.19999999999797735)
-CONST_DATA_U64(const_atan, 160, $0xbfd555555555543a) // f64(-0.33333333333331761)
-CONST_DATA_U64(const_atan, 168, $0x3ff921fb54442d18) // f64(1.5707963267948966)
-CONST_DATA_U64(const_atan, 176, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
-CONST_GLOBAL(const_atan, $184)
-
-TEXT bcatanf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z5
-  VBROADCASTSD CONST_GET_PTR(const_atan, 0), Z7
-  VBROADCASTSD CONSTF64_1(), Z12
-
-  VANDPD Z5, Z2, Z4
-  VANDPD Z5, Z3, Z5
-  VCMPPD $VCMP_IMM_LT_OS, Z4, Z12, K1, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z5, Z12, K2, K4
-  VBLENDMPD Z7, Z4, K3, Z6
-  VBLENDMPD Z7, Z5, K4, Z7
-  VBROADCASTSD.Z CONSTF64_SIGN_BIT(), K3, Z14
-  VBROADCASTSD.Z CONSTF64_SIGN_BIT(), K4, Z15
-  VMAXPD Z12, Z4, Z16
-  VMAXPD Z12, Z5, Z17
-  VDIVPD Z16, Z12, Z18
-  VDIVPD Z17, Z12, Z19
-  VXORPD X20, X20, X20
-  VXORPD X21, X21, X21
-  VMULPD Z18, Z6, Z10
-  VMULPD Z19, Z7, Z11
-  VFMSUB213PD Z10, Z18, Z6   // Z6 = (Z18 * Z6) - Z10
-  VFMSUB213PD Z11, Z19, Z7   // Z7 = (Z19 * Z7) - Z11
-  VFNMADD213PD Z12, Z18, Z16 // Z16 = -(Z18 * Z16) + Z12
-  VFNMADD213PD Z12, Z19, Z17 // Z17 = -(Z19 * Z17) + Z13
-  VFNMADD231PD Z20, Z18, Z16 // Z16 = -(Z18 * Z20) + Z16
-  VFNMADD231PD Z21, Z19, Z17 // Z17 = -(Z19 * Z21) + Z17
-  VFMADD231PD Z14, Z18, Z6   // Z6 = (Z18 * Z14) + Z6
-  VFMADD231PD Z15, Z19, Z7   // Z7 = (Z19 * Z15) + Z7
-  VFMADD231PD Z16, Z10, Z6   // Z6 = (Z10 * Z16) + Z6
-  VFMADD231PD Z17, Z11, Z7   // Z7 = (Z11 * Z17) + Z7
-  VMULPD Z10, Z10, Z12
-  VMULPD Z11, Z11, Z13
-  VADDPD Z10, Z10, Z14
-  VADDPD Z11, Z11, Z15
-  VMOVAPD Z10, Z16
-  VMOVAPD Z11, Z17
-  VFMSUB213PD Z12, Z10, Z16 // Z16 = (Z10 * Z16) - Z12
-  VFMSUB213PD Z13, Z11, Z17 // Z17 = (Z11 * Z17) - Z13
-  VFMADD231PD Z14, Z6, Z16  // Z16 = (Z6 * Z14) + Z16
-  VFMADD231PD Z15, Z7, Z17  // Z17 = (Z7 * Z15) + Z17
-  VADDPD Z16, Z12, Z14
-  VADDPD Z17, Z13, Z15
-  VSUBPD Z14, Z12, Z12
-  VSUBPD Z15, Z13, Z13
-  VBROADCASTSD CONST_GET_PTR(const_atan, 8), Z18
-  VBROADCASTSD CONST_GET_PTR(const_atan, 16), Z20
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z20, Z14, Z18 // Z18 = (Z14 * Z18) + Z20
-  VFMADD213PD Z20, Z15, Z19 // Z19 = (Z15 * Z19) + Z20
-  VBROADCASTSD CONST_GET_PTR(const_atan, 24), Z20
-  VBROADCASTSD CONST_GET_PTR(const_atan, 32), Z24
-  VMOVAPD Z20, Z21
-  VMULPD Z14, Z14, Z22
-  VMULPD Z15, Z15, Z23
-  VFMADD213PD Z24, Z14, Z20 // Z20 = (Z14 * Z20) + Z24
-  VFMADD213PD Z24, Z15, Z21 // Z21 = (Z15 * Z21) + Z24
-  VFMADD231PD Z18, Z22, Z20 // Z20 = (Z22 * Z18) + Z20
-  VFMADD231PD Z19, Z23, Z21 // Z21 = (Z23 * Z19) + Z21
-  VBROADCASTSD CONST_GET_PTR(const_atan, 40), Z18
-  VBROADCASTSD CONST_GET_PTR(const_atan, 56), Z24
-  VMOVAPD Z18, Z19
-  VMOVAPD Z24, Z25
-  VBROADCASTSD CONST_GET_PTR(const_atan, 48), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan, 64), Z27
-  VFMADD213PD Z26, Z14, Z18 // Z18 = (Z14 * Z18) + Z26
-  VFMADD213PD Z26, Z15, Z19 // Z19 = (Z15 * Z19) + Z26
-  VFMADD213PD Z27, Z14, Z24 // Z24 = (Z14 * Z24) + Z27
-  VFMADD213PD Z27, Z15, Z25 // Z25 = (Z15 * Z25) + Z27
-  VBROADCASTSD CONST_GET_PTR(const_atan, 72), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan, 88), Z8
-  VBROADCASTSD CONST_GET_PTR(const_atan, 80), Z9
-  VMOVAPD Z26, Z27
-  VFMADD213PD Z9, Z14, Z26 // Z26 = (Z14 * Z26) + Z9
-  VFMADD213PD Z9, Z15, Z27 // Z27 = (Z15 * Z27) + Z9
-  VMOVAPD Z8, Z9
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 96), Z14, Z8 // Z8 = (Z14 * Z8) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 96), Z15, Z9 // Z9 = (Z15 * Z9) + mem
-  VFMADD231PD Z18, Z22, Z24 // Z24 = (Z22 * Z18) + Z24
-  VFMADD231PD Z19, Z23, Z25 // Z25 = (Z23 * Z19) + Z25
-  VFMADD231PD Z26, Z22, Z8  // Z8 = (Z22 * Z26) + Z8
-  VFMADD231PD Z27, Z23, Z9  // Z9 = (Z23 * Z27) + Z9
-  VBROADCASTSD CONST_GET_PTR(const_atan, 104), Z18
-  VBROADCASTSD CONST_GET_PTR(const_atan, 120), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan, 112), Z27
-  VMOVAPD Z18, Z19
-  VFMADD213PD Z27, Z14, Z18 // Z18 = (Z14 * Z18) + Z27
-  VFMADD213PD Z27, Z15, Z19 // Z19 = (Z15 * Z19) + Z27
-  VMOVAPD Z26, Z27
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 128), Z14, Z26 // Z26 = (Z14 * Z26) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 128), Z15, Z27 // Z27 = (Z15 * Z27) + mem
-  VFMADD231PD Z18, Z22, Z26 // Z26 = (Z22 * Z18) + Z26
-  VFMADD231PD Z19, Z23, Z27 // Z27 = (Z23 * Z19) + Z27
-  VMULPD Z22, Z22, Z18
-  VMULPD Z23, Z23, Z19
-  VMULPD Z18, Z18, Z22
-  VMULPD Z19, Z19, Z23
-  VFMADD231PD Z20, Z18, Z24 // Z24 = (Z18 * Z20) + Z24
-  VFMADD231PD Z21, Z19, Z25 // Z25 = (Z19 * Z21) + Z25
-  VFMADD231PD Z8, Z18, Z26  // Z26 = (Z18 * Z8) + Z26
-  VFMADD231PD Z9, Z19, Z27  // Z27 = (Z19 * Z9) + Z27
-  VBROADCASTSD CONST_GET_PTR(const_atan, 136), Z8
-  VBROADCASTSD CONST_GET_PTR(const_atan, 144), Z9
-  VFMADD231PD Z24, Z22, Z26 // Z26 = (Z22 * Z24) + Z26
-  VFMADD231PD Z25, Z23, Z27 // Z27 = (Z23 * Z25) + Z27
-  VFMADD213PD Z8, Z14, Z26 // Z26 = (Z14 * Z26) + Z8
-  VFMADD213PD Z8, Z15, Z27 // Z27 = (Z15 * Z27) + Z8
-  VFMADD213PD Z9, Z14, Z26 // Z26 = (Z14 * Z26) + Z9
-  VFMADD213PD Z9, Z15, Z27 // Z27 = (Z15 * Z27) + Z9
-  VBROADCASTSD CONST_GET_PTR(const_atan, 152), Z8
-  VBROADCASTSD CONST_GET_PTR(const_atan, 160), Z9
-  VFMADD213PD Z8, Z14, Z26 // Z26 = (Z14 * Z26) + Z8
-  VFMADD213PD Z8, Z15, Z27 // Z27 = (Z15 * Z27) + Z8
-  VFMADD213PD Z9, Z14, Z26 // Z26 = (Z14 * Z26) + Z9
-  VFMADD213PD Z9, Z15, Z27 // Z27 = (Z15 * Z27) + Z9
-  VADDPD Z12, Z16, Z12
-  VADDPD Z13, Z17, Z13
-  VMULPD Z14, Z10, Z16
-  VMULPD Z15, Z11, Z17
-  VMOVAPD Z14, Z18
-  VMOVAPD Z15, Z19
-  VFMSUB213PD Z16, Z10, Z18 // Z18 = (Z10 * Z18) - Z16
-  VFMSUB213PD Z17, Z11, Z19 // Z19 = (Z11 * Z19) - Z17
-  VFMADD231PD Z14, Z6, Z18  // Z18 = (Z6 * Z14) + Z18
-  VFMADD231PD Z15, Z7, Z19  // Z19 = (Z7 * Z15) + Z19
-  VFMADD231PD Z12, Z10, Z18 // Z18 = (Z10 * Z12) + Z18
-  VFMADD231PD Z13, Z11, Z19 // Z19 = (Z11 * Z13) + Z19
-  VMULPD Z26, Z16, Z12
-  VMULPD Z27, Z17, Z13
-  VFMSUB213PD Z12, Z26, Z16 // Z16 = (Z26 * Z16) - Z12
-  VFMSUB213PD Z13, Z27, Z17 // Z17 = (Z27 * Z17) - Z13
-  VFMADD231PD Z18, Z26, Z16 // Z16 = (Z26 * Z18) + Z16
-  VFMADD231PD Z19, Z27, Z17 // Z17 = (Z27 * Z19) + Z17
-
-  VPTERNLOGD.Z $255, Z8, Z8, K3, Z8
-  VPTERNLOGD.Z $255, Z9, Z9, K4, Z9
-  VPSRLD $31, Y8, Y8
-  VPSRLD $31, Y9, Y9
-
-  VADDPD Z12, Z10, Z14
-  VADDPD Z13, Z11, Z15
-  VSUBPD Z14, Z10, Z10
-  VSUBPD Z15, Z11, Z11
-  VADDPD Z10, Z12, Z10
-  VADDPD Z11, Z13, Z11
-
-  VCVTDQ2PD Y8, Z8
-  VCVTDQ2PD Y9, Z9
-  VADDPD Z10, Z6, Z6
-  VADDPD Z11, Z7, Z7
-
-  VBROADCASTSD CONST_GET_PTR(const_atan, 168), Z10
-  VBROADCASTSD CONST_GET_PTR(const_atan, 176), Z11
-  VMULPD Z10, Z8, Z12
-  VMULPD Z10, Z9, Z13
-  VMOVAPD Z10, Z18
-  VMOVAPD Z10, Z19
-  VFMSUB213PD Z12, Z8, Z18 // Z18 = (Z8 * Z18) - Z12
-  VFMSUB213PD Z13, Z9, Z19 // Z19 = (Z9 * Z19) - Z13
-  VFMADD231PD Z11, Z8, Z18 // Z18 = (Z8 * Z11) + Z18
-  VFMADD231PD Z11, Z9, Z19 // Z19 = (Z9 * Z11) + Z19
-  VADDPD Z6, Z16, Z6
-  VADDPD Z7, Z17, Z7
-  VADDPD Z14, Z12, Z8
-  VADDPD Z15, Z13, Z9
-  VSUBPD Z8, Z12, Z12
-  VSUBPD Z9, Z13, Z13
-  VADDPD Z12, Z14, Z12
-  VADDPD Z13, Z15, Z13
-  VADDPD Z12, Z18, Z12
-  VADDPD Z13, Z19, Z13
-  VADDPD Z12, Z6, Z6
-  VADDPD Z13, Z7, Z7
-  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z4, K3
-  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z5, K4
-  VADDPD Z6, Z8, Z4
-  VADDPD Z7, Z9, Z5
-  VMOVAPD Z10, K3, Z4
-  VMOVAPD Z10, K4, Z5
-  VPTERNLOGQ.BCST $108, CONSTF64_SIGN_BIT(), Z4, K1, Z2
-  VPTERNLOGQ.BCST $108, CONSTF64_SIGN_BIT(), Z5, K2, Z3
-
-next:
-  NEXT()
-
-// Inverse tangent (two arguments): atan2(y, x)
-CONST_DATA_U64(const_atan2,   0, $0x0004000000000001) // f64(5.5626846462680084E-309)
-CONST_DATA_U64(const_atan2,   8, $0x4340000000000000) // f64(9007199254740992)
-CONST_DATA_U64(const_atan2,  16, $0x0000000100000001) // i64(4294967297)
-CONST_DATA_U64(const_atan2,  24, $0x3ee64adb3e06ee72) // f64(1.0629848419144875E-5)
-CONST_DATA_U64(const_atan2,  32, $0xbf2077212aa7d6ce) // f64(-1.2562064996728687E-4)
-CONST_DATA_U64(const_atan2,  40, $0x3f471ece4d9ced98) // f64(7.0557664296393412E-4)
-CONST_DATA_U64(const_atan2,  48, $0xbf64a20138b90cee) // f64(-0.0025186561449871336)
-CONST_DATA_U64(const_atan2,  56, $0x3f7a788ec28e9fb3) // f64(0.0064626289903699117)
-CONST_DATA_U64(const_atan2,  64, $0xbf8a45a2ea379db5) // f64(-0.012828133366339903)
-CONST_DATA_U64(const_atan2,  72, $0x3f954d3eccf8f320) // f64(0.02080247999241458)
-CONST_DATA_U64(const_atan2,  80, $0xbf9d9805e7ba23e7) // f64(-0.028900234478474032)
-CONST_DATA_U64(const_atan2,  88, $0x3fa26bc6260b1bdd) // f64(0.035978500503510459)
-CONST_DATA_U64(const_atan2,  96, $0xbfa56d2d526c0577) // f64(-0.041848579703592508)
-CONST_DATA_U64(const_atan2, 104, $0x3fa81b6efb51f8a6) // f64(0.047084301165328399)
-CONST_DATA_U64(const_atan2, 112, $0xbfaae027d1895f2e) // f64(-0.052491421058844842)
-CONST_DATA_U64(const_atan2, 120, $0x3fae1a556400767b) // f64(0.0587946590969581)
-CONST_DATA_U64(const_atan2, 128, $0xbfb110c441e542d6) // f64(-0.06666208847787955)
-CONST_DATA_U64(const_atan2, 136, $0x3fb3b131f3b00d10) // f64(0.076922533029620376)
-CONST_DATA_U64(const_atan2, 144, $0xbfb745d0ac14efec) // f64(-0.090909044277338757)
-CONST_DATA_U64(const_atan2, 152, $0x3fbc71c710b37a0b) // f64(0.11111110837689624)
-CONST_DATA_U64(const_atan2, 160, $0xbfc249249211afc7) // f64(-0.14285714275626857)
-CONST_DATA_U64(const_atan2, 168, $0x3fc9999999987cf0) // f64(0.19999999999797735)
-CONST_DATA_U64(const_atan2, 176, $0xbfd555555555543a) // f64(-0.33333333333331761)
-CONST_DATA_U64(const_atan2, 184, $0x3ff921fb54442d18) // f64(1.5707963267948966)
-CONST_DATA_U64(const_atan2, 192, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
-CONST_DATA_U64(const_atan2, 200, $0x3fe921fb54442d18) // i64(4605249457297304856)
-CONST_DATA_U64(const_atan2, 208, $0x400921fb54442d18) // i64(4614256656552045848)
-CONST_DATA_U32(const_atan2, 216, $0xfffffffe) // i32(4294967294)
-CONST_GLOBAL(const_atan2, $220)
-
-TEXT bcatan2f(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
-
-  VXORPD X8, X8, X8
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 0), Z11
-  VPBROADCASTQ CONSTF64_ABS_BITS(), Z12
-  VBROADCASTSD CONSTF64_1(), Z24
-
-  VANDPD Z12, Z4, Z6
-  VANDPD Z12, Z5, Z7
-  VCMPPD $VCMP_IMM_LT_OS, Z11, Z6, K1, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z11, Z7, K2, K4
-
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 8), Z7
-  VMULPD Z7, Z4, K3, Z4
-  VMULPD Z7, Z5, K4, Z5
-  VMULPD Z7, Z2, K3, Z2
-  VMULPD Z7, Z3, K4, Z3
-  VANDPD Z12, Z2, Z18
-  VANDPD Z12, Z3, Z19
-  VANDPD Z12, Z2, Z10
-  VANDPD Z12, Z3, Z11
-
-  // K2 also used to save these two, as we need this mask at the end
-  VPCMPGTQ Z4, Z8, K3
-  VPCMPGTQ Z5, Z8, K4
-  KUNPCKBW K3, K4, K2
-  VPBROADCASTD.Z CONST_GET_PTR(const_atan2, 216), K2, Z14
-
-  VCMPPD $VCMP_IMM_LT_OS, Z8, Z4, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z8, Z5, K4
-  KUNPCKBW K3, K4, K3
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
-  VMOVAPD.Z Z6, K3, Z20
-  VMOVAPD.Z Z6, K4, Z21
-  VXORPD Z4, Z20, Z22
-  VXORPD Z5, Z21, Z23
-  VPBROADCASTD CONST_GET_PTR(const_atan2, 16), Z16
-  VPORD Z16, Z14, Z16
-  VCMPPD $VCMP_IMM_LT_OS, Z10, Z22, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z11, Z23, K4
-  KUNPCKBW K3, K4, K3
-  VMOVDQA32 Z16, K3, Z14
-
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z16
-  VCMPPD $VCMP_IMM_EQ_OQ, Z16, Z10, K5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z16, Z11, K6
-  KUNPCKBW K5, K6, K0
-
-  VMOVAPD Z18, Z16
-  VMOVAPD Z19, Z17
-  VXORPD Z6, Z22, K3, Z16
-  VXORPD Z6, Z23, K4, Z17
-  VMOVAPD Z18, K3, Z22
-  VMOVAPD Z19, K4, Z23
-  VDIVPD Z22, Z24, Z26
-  VDIVPD Z23, Z24, Z27
-  VXORPD.Z Z6, Z20, K3, Z8
-  VXORPD.Z Z6, Z21, K4, Z9
-  VXORPD Z20, Z20, K3, Z20
-  VXORPD Z21, Z21, K4, Z21
-  VMULPD Z16, Z26, Z18
-  VMULPD Z17, Z27, Z19
-  VFMSUB213PD Z18, Z26, Z16  // Z16 = (Z26 * Z16) - Z18
-  VFMSUB213PD Z19, Z27, Z17  // Z17 = (Z27 * Z17) - Z19
-  VFNMADD213PD Z24, Z26, Z22 // Z22 = -(Z26 * Z22) + Z24
-  VFNMADD213PD Z24, Z27, Z23 // Z23 = -(Z27 * Z23) + Z24
-  VFNMADD231PD Z20, Z26, Z22 // Z22 = -(Z26 * Z20) + Z22
-  VFNMADD231PD Z21, Z27, Z23 // Z23 = -(Z27 * Z21) + Z23
-  VFMADD231PD Z8, Z26, Z16   // Z16 = (Z26 * Z8) + Z16
-  VFMADD231PD Z9, Z27, Z17   // Z17 = (Z27 * Z9) + Z17
-  VFMADD231PD Z22, Z18, Z16  // Z16 = (Z18 * Z22) + Z16
-  VFMADD231PD Z23, Z19, Z17  // Z17 = (Z19 * Z23) + Z17
-  VMULPD Z18, Z18, Z20
-  VMULPD Z19, Z19, Z21
-  VADDPD Z18, Z18, Z22
-  VADDPD Z19, Z19, Z23
-  VMOVAPD Z18, Z24
-  VMOVAPD Z19, Z25
-  VFMSUB213PD Z20, Z18, Z24 // Z24 = (Z18 * Z24) - Z20
-  VFMSUB213PD Z21, Z19, Z25 // Z25 = (Z19 * Z25) - Z21
-  VFMADD231PD Z22, Z16, Z24 // Z24 = (Z16 * Z22) + Z24
-  VFMADD231PD Z23, Z17, Z25 // Z25 = (Z17 * Z23) + Z25
-  VADDPD Z24, Z20, Z22
-  VADDPD Z25, Z21, Z23
-  VSUBPD Z22, Z20, Z20
-  VSUBPD Z23, Z21, Z21
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 24), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 40), Z8
-  VMOVAPD Z26, Z27
-  VMOVAPD Z8, Z9
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 32), Z22, Z26 // Z26 = (Z22 * Z26) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 32), Z23, Z27 // Z27 = (Z23 * Z27) + mem
-  VMULPD Z22, Z22, Z10
-  VMULPD Z23, Z23, Z11
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 48), Z22, Z8 // Z8 = (Z22 * Z8) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 48), Z23, Z9 // Z9 = (Z23 * Z9) + mem
-  VFMADD231PD Z26, Z10, Z8 // Z8 = (Z10 * Z26) + Z8
-  VFMADD231PD Z27, Z11, Z9 // Z9 = (Z11 * Z27) + Z9
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 56), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 72), Z6
-  VMOVAPD Z26, Z27
-  VMOVAPD Z6, Z7
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 64), Z22, Z26 // Z26 = (Z22 * Z26) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 64), Z23, Z27 // Z27 = (Z23 * Z27) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 80), Z22, Z6 // Z6 = (Z22 * Z6) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 80), Z23, Z7 // Z7 = (Z23 * Z7) + mem
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 88), Z12
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 104), Z4
-  VMOVAPD Z12, Z13
-  VMOVAPD Z4, Z5
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 96), Z22, Z12 // Z12 = (Z22 * Z12) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 96), Z23, Z13 // Z13 = (Z23 * Z13) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 112), Z22, Z4 // Z4 = (Z22 * Z4) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 112), Z23, Z5 // Z5 = (Z23 * Z5) + mem
-  VFMADD231PD Z26, Z10, Z6 // Z6 = (Z10 * Z26) + Z6
-  VFMADD231PD Z27, Z11, Z7 // Z7 = (Z11 * Z27) + Z7
-  VFMADD231PD Z12, Z10, Z4 // Z4 = (Z10 * Z12) + Z4
-  VFMADD231PD Z13, Z11, Z5 // Z5 = (Z11 * Z13) + Z5
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 120), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 136), Z12
-  VMOVAPD Z26, Z27
-  VMOVAPD Z12, Z13
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 128), Z22, Z26 // Z26 = (Z22 * Z26) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 128), Z23, Z27 // Z27 = (Z23 * Z27) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 144), Z22, Z12 // Z12 = (Z22 * Z12) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 144), Z23, Z13 // Z13 = (Z23 * Z13) + mem
-  VFMADD231PD Z26, Z10, Z12 // Z12 = (Z10 * Z26) + Z12
-  VFMADD231PD Z27, Z11, Z13 // Z13 = (Z11 * Z27) + Z13
-  VMULPD Z10, Z10, Z26
-  VMULPD Z11, Z11, Z27
-  VFMADD231PD Z8, Z26, Z6 // Z6 = (Z26 * Z8) + Z6
-  VFMADD231PD Z9, Z27, Z7 // Z7 = (Z27 * Z9) + Z7
-  VMULPD Z26, Z26, Z8
-  VMULPD Z27, Z27, Z9
-  VFMADD231PD Z4, Z26, Z12 // Z12 = (Z26 * Z4) + Z12
-  VFMADD231PD Z5, Z27, Z13 // Z13 = (Z27 * Z5) + Z13
-  VFMADD231PD Z6, Z8, Z12  // Z12 = (Z8 * Z6) + Z12
-  VFMADD231PD Z7, Z9, Z13  // Z13 = (Z9 * Z7) + Z13
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 152), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 160), Z27
-  VFMADD213PD Z26, Z22, Z12 // Z12 = (Z22 * Z12) + Z26
-  VFMADD213PD Z26, Z23, Z13 // Z13 = (Z23 * Z13) + Z26
-  VFMADD213PD Z27, Z22, Z12 // Z12 = (Z22 * Z12) + Z27
-  VFMADD213PD Z27, Z23, Z13 // Z13 = (Z23 * Z13) + Z27
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 168), Z26
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 176), Z27
-  VFMADD213PD Z26, Z22, Z12 // Z12 = (Z22 * Z12) + Z26
-  VFMADD213PD Z26, Z23, Z13 // Z13 = (Z23 * Z13) + Z26
-  VFMADD213PD Z27, Z22, Z12 // Z12 = (Z22 * Z12) + Z27
-  VFMADD213PD Z27, Z23, Z13 // Z13 = (Z23 * Z13) + Z27
-  VADDPD Z20, Z24, Z20
-  VADDPD Z21, Z25, Z21
-  VMULPD Z22, Z18, Z24
-  VMULPD Z23, Z19, Z25
-  VMOVAPD Z22, Z26
-  VMOVAPD Z23, Z27
-  VFMSUB213PD Z24, Z18, Z26 // Z26 = (Z18 * Z26) - Z24
-  VFMSUB213PD Z25, Z19, Z27 // Z27 = (Z19 * Z27) - Z25
-  VFMADD231PD Z22, Z16, Z26 // Z26 = (Z16 * Z22) + Z26
-  VFMADD231PD Z23, Z17, Z27 // Z27 = (Z17 * Z23) + Z27
-  VFMADD231PD Z20, Z18, Z26 // Z26 = (Z18 * Z20) + Z26
-  VFMADD231PD Z21, Z19, Z27 // Z27 = (Z19 * Z21) + Z27
-  VMULPD Z12, Z24, Z20
-  VMULPD Z13, Z25, Z21
-  VFMSUB213PD Z20, Z12, Z24 // Z24 = (Z12 * Z24) - Z20
-  VFMSUB213PD Z21, Z13, Z25 // Z25 = (Z13 * Z25) - Z21
-  VFMADD231PD Z26, Z12, Z24 // Z24 = (Z12 * Z26) + Z24
-  VFMADD231PD Z27, Z13, Z25 // Z25 = (Z13 * Z27) + Z25
-  VADDPD Z20, Z18, Z22
-  VADDPD Z21, Z19, Z23
-  VSUBPD Z22, Z18, Z18
-  VSUBPD Z23, Z19, Z19
-  VADDPD Z18, Z20, Z18
-  VADDPD Z19, Z21, Z19
-  VEXTRACTI32X8 $1, Z14, Y15
-  VCVTDQ2PD Y14, Z14
-  VCVTDQ2PD Y15, Z15
-  VADDPD Z18, Z16, Z16
-  VADDPD Z19, Z17, Z17
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 184), Z18
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 184), Z19
-  VMULPD Z18, Z14, Z20
-  VMULPD Z19, Z15, Z21
-  VMOVAPD Z18, Z26
-  VMOVAPD Z19, Z27
-  VBROADCASTSD CONST_GET_PTR(const_atan2, 192), Z4
-  VFMSUB213PD Z20, Z14, Z26 // Z26 = (Z14 * Z26) - Z20
-  VFMSUB213PD Z21, Z15, Z27 // Z27 = (Z15 * Z27) - Z21
-  VFMADD231PD Z4, Z14, Z26  // Z26 = (Z14 * Z4) + Z26
-  VFMADD231PD Z4, Z15, Z27  // Z27 = (Z15 * Z4) + Z27
-  VADDPD Z16, Z24, Z14
-  VADDPD Z17, Z25, Z15
-  VADDPD Z22, Z20, Z16
-  VADDPD Z23, Z21, Z17
-  VSUBPD Z16, Z20, Z20
-  VSUBPD Z17, Z21, Z21
-  VADDPD Z20, Z22, Z20
-  VADDPD Z21, Z23, Z21
-  VADDPD Z20, Z26, Z20
-  VADDPD Z21, Z27, Z21
-  VADDPD Z20, Z14, Z14
-  VADDPD Z21, Z15, Z15
-  VADDPD Z14, Z16, Z14
-  VADDPD Z15, Z17, Z15
-
-  // NOTE: Z4/Z5 have to be reloaded as they were clobbered
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
-  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
-  VXORPD X8, X8, X8
-
-  VANDPD Z6, Z4, Z16
-  VANDPD Z6, Z5, Z17
-  VXORPD Z14, Z16, Z14
-  VXORPD Z15, Z17, Z15
-
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z13
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z20
-  VANDPD Z13, Z4, Z12
-  VANDPD Z13, Z5, Z13
-  VCMPPD $VCMP_IMM_EQ_OQ, Z20, Z12, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z20, Z13, K4
-  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z4, K5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z5, K6
-  VORPD.BCST CONST_GET_PTR(const_atan2, 184), Z16, Z12
-  VORPD.BCST CONST_GET_PTR(const_atan2, 184), Z17, Z13
-  KORW K3, K5, K5
-  KORW K4, K6, K6
-  VMOVAPD Z18, Z22
-  VMOVAPD Z19, Z23
-  VSUBPD Z12, Z18, K3, Z22
-  VSUBPD Z13, Z19, K4, Z23
-  VMOVAPD Z22, K5, Z14
-  VMOVAPD Z23, K6, Z15
-
-  VORPD.BCST CONST_GET_PTR(const_atan2, 200), Z16, Z10
-  VORPD.BCST CONST_GET_PTR(const_atan2, 200), Z17, Z11
-  VSUBPD Z10, Z18, K3, Z18
-  VSUBPD Z11, Z19, K4, Z19
-
-  KMOVB K0, K3
-  KSHIFTRW $8, K0, K4
-  VMOVAPD Z18, K3, Z14
-  VMOVAPD Z19, K4, Z15
-  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z2, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z3, K4
-  KSHIFTRW $8, K2, K6
-  VPBROADCASTQ.Z CONST_GET_PTR(const_atan2, 208), K2, Z8
-  VPBROADCASTQ.Z CONST_GET_PTR(const_atan2, 208), K6, Z9
-  VCMPPD $VCMP_IMM_UNORD_Q, Z4, Z2, K2
-  VCMPPD $VCMP_IMM_UNORD_Q, Z5, Z3, K6
-  VMOVAPD Z8, K3, Z14
-  VMOVAPD Z9, K4, Z15
-  KSHIFTRW $8, K1, K3
-  VPTERNLOGQ $108, Z6, Z14, K1, Z2
-  VPTERNLOGQ $108, Z6, Z15, K3, Z3
-  VPTERNLOGD $255, Z4, Z4, Z4
-  VMOVAPD Z4, K2, Z2
-  VMOVAPD Z4, K6, Z3
-
-next:
-  NEXT_ADVANCE(2)
-
-// Hypot: hypot(x, y)
-CONST_DATA_U64(const_hypot, 0, $0x0010000000000000) // f64(2.2250738585072014E-308)
-CONST_DATA_U64(const_hypot, 8, $0x4350000000000000) // f64(18014398509481984)
-CONST_GLOBAL(const_hypot, $16)
-
-TEXT bchypotf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
-
-  VBROADCASTSD CONSTF64_ABS_BITS(), Z8
-  VBROADCASTSD CONST_GET_PTR(const_hypot, 0), Z10
-  VBROADCASTSD CONST_GET_PTR(const_hypot, 8), Z11
-  VANDPD Z8, Z2, Z6
-  VANDPD Z8, Z3, Z7
-  VANDPD Z8, Z4, Z4
-  VANDPD Z8, Z5, Z5
-  VMAXPD Z4, Z6, Z8
-  VMAXPD Z5, Z7, Z9
-  VCMPPD $VCMP_IMM_LT_OS, Z10, Z8, K1, K3
-  VCMPPD $VCMP_IMM_LT_OS, Z10, Z9, K2, K4
-  VBROADCASTSD CONSTF64_1(), Z14
-  VMOVAPD Z8, Z12
-  VMOVAPD Z9, Z13
-  VMOVAPD Z14, K1, Z2
-  VMOVAPD Z14, K2, Z3
-  VMULPD Z11, Z8, K3, Z12
-  VMULPD Z11, Z9, K4, Z13
-  VDIVPD Z12, Z2, Z14
-  VDIVPD Z13, Z3, Z15
-  VMINPD Z4, Z6, Z16
-  VMINPD Z5, Z7, Z17
-  VMOVAPD Z16, Z18
-  VMOVAPD Z17, Z19
-  VMULPD Z11, Z16, K3, Z18
-  VMULPD Z11, Z17, K4, Z19
-  VMULPD Z14, Z18, Z20
-  VMULPD Z15, Z19, Z21
-  VFMSUB213PD Z20, Z14, Z18 // Z18 = (Z14 * Z18) - Z20
-  VFMSUB213PD Z21, Z15, Z19 // Z19 = (Z15 * Z19) - Z21
-  VFNMADD213PD Z2, Z14, Z12 // Z12 = -(Z14 * Z12) + Z2
-  VFNMADD213PD Z3, Z15, Z13 // Z13 = -(Z15 * Z13) + Z3
-  VXORPD X10, X10, X10
-  VXORPD X11, X11, X11
-  VFNMADD231PD Z11, Z14, Z12 // Z12 = -(Z14 * Z11) + Z12
-  VFNMADD231PD Z11, Z15, Z13 // Z13 = -(Z15 * Z11) + Z13
-  VFMADD231PD Z14, Z11, Z18  // Z18 = (Z11 * Z14) + Z18
-  VFMADD231PD Z15, Z11, Z19  // Z19 = (Z11 * Z15) + Z19
-  VFMADD231PD Z12, Z20, Z18  // Z18 = (Z20 * Z12) + Z18
-  VFMADD231PD Z13, Z21, Z19  // Z19 = (Z21 * Z13) + Z19
-  VMULPD Z20, Z20, Z12
-  VMULPD Z21, Z21, Z13
-  VADDPD Z20, Z20, Z14
-  VADDPD Z21, Z21, Z15
-  VFMSUB213PD Z12, Z20, Z20 // Z20 = (Z20 * Z20) - Z12
-  VFMSUB213PD Z13, Z21, Z21 // Z21 = (Z21 * Z21) - Z13
-  VFMADD231PD Z14, Z18, Z20 // Z20 = (Z18 * Z14) + Z20
-  VFMADD231PD Z15, Z19, Z21 // Z21 = (Z19 * Z15) + Z21
-  VADDPD Z2, Z12, Z14
-  VADDPD Z3, Z13, Z15
-  VSUBPD Z12, Z14, Z18
-  VSUBPD Z13, Z15, Z19
-  VSUBPD Z18, Z14, Z22
-  VSUBPD Z19, Z15, Z23
-  VSUBPD Z22, Z12, Z12
-  VSUBPD Z23, Z13, Z13
-  VSUBPD Z18, Z2, Z18
-  VSUBPD Z19, Z3, Z19
-  VADDPD Z12, Z18, Z12
-  VADDPD Z13, Z19, Z13
-  VADDPD Z12, Z20, Z12
-  VADDPD Z13, Z21, Z13
-  VADDPD Z12, Z14, Z18
-  VADDPD Z13, Z15, Z19
-  VSQRTPD Z18, Z18
-  VSQRTPD Z19, Z19
-  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z16, K1, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z17, K2, K4
-  VMULPD Z18, Z18, Z16
-  VMULPD Z19, Z19, Z17
-  VMOVAPD Z18, Z20
-  VMOVAPD Z19, Z21
-  VFMSUB213PD Z16, Z18, Z20 // Z20 = (Z18 * Z20) - Z16
-  VFMSUB213PD Z17, Z19, Z21 // Z21 = (Z19 * Z21) - Z17
-  VADDPD Z16, Z14, Z22
-  VADDPD Z17, Z15, Z23
-  VSUBPD Z14, Z22, Z24
-  VSUBPD Z15, Z23, Z25
-  VSUBPD Z24, Z22, Z26
-  VSUBPD Z25, Z23, Z27
-  VSUBPD Z26, Z14, Z14
-  VSUBPD Z27, Z15, Z15
-  VSUBPD Z24, Z16, Z16
-  VSUBPD Z25, Z17, Z17
-  VADDPD Z14, Z16, Z14
-  VADDPD Z15, Z17, Z15
-  VDIVPD Z18, Z2, Z16
-  VDIVPD Z19, Z3, Z17
-  VADDPD Z20, Z12, Z12
-  VADDPD Z21, Z13, Z13
-  VADDPD Z14, Z12, Z12
-  VADDPD Z15, Z13, Z13
-  VFNMADD213PD Z2, Z16, Z18 // Z18 = -(Z16 * Z18) + Z2
-  VFNMADD213PD Z3, Z17, Z19 // Z19 = -(Z17 * Z19) + Z3
-  VMULPD Z18, Z16, Z2
-  VMULPD Z19, Z17, Z3
-  VMULPD Z22, Z16, Z14
-  VMULPD Z23, Z17, Z15
-  VMOVAPD Z16, Z18
-  VMOVAPD Z17, Z19
-  VBROADCASTSD CONSTF64_HALF(), Z20
-  VFMSUB213PD Z14, Z22, Z18 // Z18 = (Z22 * Z18) - Z14
-  VFMSUB213PD Z15, Z23, Z19 // Z19 = (Z23 * Z19) - Z15
-  VFMADD231PD Z12, Z16, Z18 // Z18 = (Z16 * Z12) + Z18
-  VFMADD231PD Z13, Z17, Z19 // Z19 = (Z17 * Z13) + Z19
-  VFMADD231PD Z2, Z22, Z18  // Z18 = (Z22 * Z2) + Z18
-  VFMADD231PD Z3, Z23, Z19  // Z19 = (Z23 * Z3) + Z19
-
-  VMOVAPD Z20, K1, Z2
-  VMOVAPD Z20, K2, Z3
-  VMULPD Z2, Z14, Z12
-  VMULPD Z3, Z15, Z13
-  VMULPD Z2, Z18, K1, Z2
-  VMULPD Z3, Z19, K2, Z3
-  VMULPD Z12, Z8, Z14
-  VMULPD Z13, Z9, Z15
-  VFMSUB213PD Z14, Z8, Z12 // Z12 = (Z8 * Z12) - Z14
-  VFMSUB213PD Z15, Z9, Z13 // Z13 = (Z9 * Z13) - Z15
-  VFMADD231PD Z2, Z8, Z12  // Z12 = (Z8 * Z2) + Z12
-  VFMADD231PD Z3, Z9, Z13  // Z13 = (Z9 * Z3) + Z13
-  VADDPD Z12, Z14, K1, Z2
-  VADDPD Z13, Z15, K2, Z3
-  VCMPPD $VCMP_IMM_UNORD_Q, Z11, Z2, K1, K5
-  VCMPPD $VCMP_IMM_UNORD_Q, Z11, Z3, K2, K6
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z10
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z11
-  VMOVAPD Z10, K5, Z2
-  VMOVAPD Z11, K6, Z3
-  VMOVAPD Z8, K3, Z2
-  VMOVAPD Z9, K4, Z3
-  VCMPPD $VCMP_IMM_UNORD_Q, Z6, Z4, K1, K3
-  VCMPPD $VCMP_IMM_UNORD_Q, Z7, Z5, K2, K4
-  VBROADCASTSD CONSTF64_NAN(), K3, Z2
-  VBROADCASTSD CONSTF64_NAN(), K4, Z3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z6, K1, K3
-  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z7, K2, K4
-  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z4, K1, K5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z5, K2, K6
-  KORW K5, K3, K3
-  KORW K6, K4, K4
-  VMOVAPD Z10, K3, Z2
-  VMOVAPD Z11, K4, Z3
-
-next:
-  NEXT_ADVANCE(2)
-
-// Power: pow(x, y)
-CONST_DATA_U64(const_pow,   0, $0x3ff5555555555555) // f64(1.3333333333333333)
-CONST_DATA_U64(const_pow,   8, $0x4090000000000000) // f64(1024)
-CONST_DATA_U64(const_pow,  16, $0xbff0000000000000) // f64(-1)
-CONST_DATA_U64(const_pow,  24, $0x3fba6dea6d1e9d11) // f64(0.10323968090107295)
-CONST_DATA_U64(const_pow,  32, $0x3fbe252ddf5f8d0a) // f64(0.117754809412464)
-CONST_DATA_U64(const_pow,  40, $0x3fc110f384a1865c) // f64(0.13332981086846274)
-CONST_DATA_U64(const_pow,  48, $0x3fc3b13bb108efd1) // f64(0.15384622711451226)
-CONST_DATA_U64(const_pow,  56, $0x3fc745d17248daf1) // f64(0.18181818085005078)
-CONST_DATA_U64(const_pow,  64, $0x3fcc71c71c76197f) // f64(0.22222222223008356)
-CONST_DATA_U64(const_pow,  72, $0x3fd2492492492200) // f64(0.28571428571424917)
-CONST_DATA_U64(const_pow,  80, $0x3fd999999999999b) // f64(0.40000000000000008)
-CONST_DATA_U64(const_pow,  88, $0x3fbdc2ec09e714d3) // f64(0.11625552407993504)
-CONST_DATA_U64(const_pow,  96, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
-CONST_DATA_U64(const_pow, 104, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
-CONST_DATA_U64(const_pow, 112, $0x3fe5555555555555) // f64(0.66666666666666663)
-CONST_DATA_U64(const_pow, 120, $0x3c85f00000000000) // f64(3.8055496254241206E-17)
-CONST_DATA_U64(const_pow, 128, $0x3ff71547652b82fe) // f64(1.4426950408889634)
-CONST_DATA_U64(const_pow, 136, $0xbfe62e42fefa3000) // f64(-0.69314718055966296)
-CONST_DATA_U64(const_pow, 144, $0xbd53de6af278ece6) // f64(-2.8235290563031577E-13)
-CONST_DATA_U64(const_pow, 152, $0x3e5af559d51456b9) // f64(2.5106968342095042E-8)
-CONST_DATA_U64(const_pow, 160, $0x3e928a8f696db5ad) // f64(2.7628616677027065E-7)
-CONST_DATA_U64(const_pow, 168, $0x3ec71ddfd27d265e) // f64(2.7557249672502357E-6)
-CONST_DATA_U64(const_pow, 176, $0x3efa0199ec6c491b) // f64(2.4801497398981979E-5)
-CONST_DATA_U64(const_pow, 184, $0x3f2a01a01ae0c33d) // f64(1.984126988090698E-4)
-CONST_DATA_U64(const_pow, 192, $0x3f56c16c1828ec7b) // f64(0.0013888888939977129)
-CONST_DATA_U64(const_pow, 200, $0x3f8111111110fb68) // f64(0.0083333333333237141)
-CONST_DATA_U64(const_pow, 208, $0x3fa5555555550e90) // f64(0.041666666666540952)
-CONST_DATA_U64(const_pow, 216, $0x3fc5555555555558) // f64(0.16666666666666674)
-CONST_DATA_U64(const_pow, 224, $0x3fe0000000000009) // f64(0.500000000000001)
-CONST_DATA_U64(const_pow, 232, $0xc08f400000000000) // f64(-1000)
-CONST_DATA_U64(const_pow, 240, $0x40862e42fe102c83) // f64(709.78271114955749)
-CONST_DATA_U32(const_pow, 248, $0x3ff00000) // i32(1072693248)
-CONST_GLOBAL(const_pow, $252)
-
-TEXT bcpowf(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  JZ next
-
-  MOVL $0xAAAA, R8
-  KMOVW R8, K6
-  MOVWQZX 0(VIRT_PCREG), R8
-
-  // Process Z2 (first 8 lanes).
-  VXORPD X6, X6, X6
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VRNDSCALEPD $8, Z4, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z4, Z5, K3
-  VMULPD.BCST CONSTF64_HALF(), Z4, Z5
-  VPBROADCASTQ CONSTF64_ABS_BITS(), Z10
-  VRNDSCALEPD $8, Z5, Z7
-  VPANDQ Z10, Z2, Z8
-  VMULPD.BCST CONST_GET_PTR(const_pow, 0), Z8, Z9
-  VCMPPD $VCMP_IMM_NEQ_UQ, Z5, Z7, K3, K2
-  VGETEXPPD Z9, Z13
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z9
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z13, K4
-  VBROADCASTSD CONST_GET_PTR(const_pow, 8), K4, Z13
-  VGETMANTPD $11, Z8, Z12
-  VBROADCASTSD CONST_GET_PTR(const_pow, 16), Z11
-  VBROADCASTSD CONSTF64_1(), Z7
-  VADDPD Z11, Z12, Z5
-  VADDPD Z7, Z5, Z14
-  VSUBPD Z14, Z5, Z15
-  VSUBPD Z15, Z11, Z15
-  VSUBPD Z14, Z12, Z14
-  VADDPD Z15, Z14, Z14
-  VADDPD Z7, Z12, Z15
-  VADDPD Z11, Z15, Z16
-  VSUBPD Z16, Z15, Z17
-  VSUBPD Z17, Z7, Z17
-  VSUBPD Z16, Z12, Z12
-  VADDPD Z17, Z12, Z12
-  VDIVPD Z15, Z7, Z16
-  VMULPD Z16, Z5, Z17
-  VFMSUB213PD Z17, Z16, Z5   // Z5 = (Z16 * Z5) - Z17
-  VFNMADD213PD Z7, Z16, Z15  // Z15 = -(Z16 * Z15) + Z7
-  VFNMADD231PD Z12, Z16, Z15 // Z15 = -(Z16 * Z12) + Z15
-  VFMADD231PD Z14, Z16, Z5   // Z5 = (Z16 * Z14) + Z5
-  VFMADD231PD Z15, Z17, Z5   // Z5 = (Z17 * Z15) + Z5
-  VMULPD Z17, Z17, Z12
-  VADDPD Z17, Z17, Z14
-  VMOVAPD Z17, Z15
-  VFMSUB213PD Z12, Z17, Z15  // Z15 = (Z17 * Z15) - Z12
-  VMULPD Z12, Z12, Z16
-  VMULPD Z16, Z16, Z18
-  VBROADCASTSD CONST_GET_PTR(const_pow, 24), Z19
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 32), Z12, Z19 // Z19 = (Z12 * Z19) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 40), Z20
-  VMULPD Z18, Z18, Z21
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 48), Z12, Z20 // Z20 = (Z12 * Z20) + mem
-  VFMADD231PD Z19, Z16, Z20  // Z20 = (Z16 * Z19) + Z20
-  VBROADCASTSD CONST_GET_PTR(const_pow, 56), Z19
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 64), Z12, Z19 // Z19 = (Z12 * Z19) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 72), Z22
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 80), Z12, Z22 // Z22 = (Z12 * Z22) + mem
-  VFMADD231PD Z19, Z16, Z22  // Z22 = (Z16 * Z19) + Z22
-  VFMADD231PD Z20, Z18, Z22  // Z22 = (Z18 * Z20) + Z22
-  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 88), Z21, Z22 // Z22 = (Z21 * mem) + Z22
-  VFMADD231PD Z5, Z14, Z15   // Z15 = (Z14 * Z5) + Z15
-  VBROADCASTSD CONST_GET_PTR(const_pow, 96), Z16
-  VMULPD Z16, Z13, Z18
-  VFMSUB213PD Z18, Z13, Z16  // Z16 = (Z13 * Z16) - Z18
-  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 104), Z13, Z16 // Z16 = (Z13 * mem) + Z16
-  VADDPD Z5, Z5, Z13
-  VADDPD Z14, Z18, Z19
-  VSUBPD Z19, Z18, Z18
-  VADDPD Z18, Z14, Z14
-  VADDPD Z14, Z16, Z14
-  VADDPD Z13, Z14, Z13
-  VMULPD Z12, Z17, Z14
-  VMOVAPD Z17, Z16
-  VFMSUB213PD Z14, Z12, Z16  // Z16 = (Z12 * Z16) - Z14
-  VFMADD231PD Z17, Z15, Z16  // Z16 = (Z15 * Z17) + Z16
-  VFMADD231PD Z5, Z12, Z16   // Z16 = (Z12 * Z5) + Z16
-  VBROADCASTSD CONST_GET_PTR(const_pow, 112), Z5
-  VMULPD Z5, Z14, Z17
-  VMOVAPD Z5, Z18
-  VFMSUB213PD Z17, Z14, Z18  // Z18 = (Z14 * Z18) - Z17
-  VFMADD231PD Z5, Z16, Z18   // Z18 = (Z16 * Z5) + Z18
-  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 120), Z14, Z18 // Z18 = (Z14 * mem) + Z18
-  VADDPD Z17, Z19, Z5
-  VSUBPD Z5, Z19, Z19
-  VADDPD Z19, Z17, Z17
-  VADDPD Z17, Z13, Z13
-  VADDPD Z18, Z13, Z13
-  VMULPD Z14, Z12, Z17
-  VMOVAPD Z14, Z18
-  VFMSUB213PD Z17, Z12, Z18  // Z18 = (Z12 * Z18) - Z17
-  VFMADD231PD Z15, Z14, Z18  // Z18 = (Z14 * Z15) + Z18
-  VFMADD231PD Z16, Z12, Z18  // Z18 = (Z12 * Z16) + Z18
-  VMULPD Z22, Z17, Z12
-  VFMSUB213PD Z12, Z22, Z17  // Z17 = (Z22 * Z17) - Z12
-  VFMADD231PD Z18, Z22, Z17  // Z17 = (Z22 * Z18) + Z17
-  VADDPD Z12, Z5, Z14
-  VSUBPD Z14, Z5, Z5
-  VADDPD Z5, Z12, Z5
-  VADDPD Z13, Z5, Z5
-  VADDPD Z5, Z17, Z12
-  VMULPD Z4, Z14, Z5
-  VFMSUB213PD Z5, Z4, Z14    // Z14 = (Z4 * Z14) - Z5
-  VFMADD231PD Z12, Z4, Z14   // Z14 = (Z4 * Z12) + Z14
-  VADDPD Z14, Z5, Z12
-  VMULPD.BCST CONST_GET_PTR(const_pow, 128), Z12, Z12
-  VRNDSCALEPD $8, Z12, Z13
-  VCVTPD2DQ.RN_SAE Z13, Y12
-  VMULPD.BCST CONST_GET_PTR(const_pow, 136), Z13, Z15
-  VADDPD Z5, Z15, Z16
-  VSUBPD Z5, Z16, Z17
-  VSUBPD Z17, Z16, Z18
-  VSUBPD Z18, Z5, Z18
-  VSUBPD Z17, Z15, Z15
-  VADDPD Z18, Z15, Z15
-  VMULPD.BCST CONST_GET_PTR(const_pow, 144), Z13, Z13
-  VADDPD Z14, Z15, Z14
-  VADDPD Z16, Z13, Z15
-  VSUBPD Z16, Z15, Z17
-  VSUBPD Z17, Z15, Z18
-  VSUBPD Z18, Z16, Z16
-  VSUBPD Z17, Z13, Z13
-  VADDPD Z16, Z13, Z13
-  VADDPD Z14, Z13, Z13
-  VADDPD Z13, Z15, Z14
-  VSUBPD Z14, Z15, Z15
-  VADDPD Z15, Z13, Z13
-  VMULPD Z14, Z14, Z15
-  VMULPD Z15, Z15, Z16
-  VMULPD Z16, Z16, Z17
-  VBROADCASTSD CONST_GET_PTR(const_pow, 152), Z18
-  VBROADCASTSD CONST_GET_PTR(const_pow, 168), Z19
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 160), Z14, Z18 // Z18 = (Z14 * Z18) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 176), Z14, Z19 // Z19 = (Z14 * Z19) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 184), Z20
-  VBROADCASTSD CONST_GET_PTR(const_pow, 200), Z21
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 192), Z14, Z20 // Z20 = (Z14 * Z20) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 208), Z14, Z21 // Z21 = (Z14 * Z21) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 216), Z22
-  VFMADD231PD Z19, Z15, Z20  // Z20 = (Z15 * Z19) + Z20
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 224), Z14, Z22 // Z22 = (Z14 * Z22) + mem
-  VFMADD231PD Z21, Z15, Z22  // Z22 = (Z15 * Z21) + Z22
-  VFMADD231PD Z20, Z16, Z22  // Z22 = (Z16 * Z20) + Z22
-  VFMADD231PD Z18, Z17, Z22  // Z22 = (Z17 * Z18) + Z22
-  VADDPD Z7, Z14, Z16
-  VSUBPD Z16, Z7, Z17
-  VADDPD Z17, Z14, Z17
-  VADDPD Z17, Z13, Z17
-  VADDPD Z14, Z14, Z18
-  VFMSUB213PD Z15, Z14, Z14  // Z14 = (Z14 * Z14) - Z15
-  VFMADD231PD Z18, Z13, Z14  // Z14 = (Z13 * Z18) + Z14
-  VMULPD Z22, Z15, Z13
-  VFMSUB213PD Z13, Z22, Z15  // Z15 = (Z22 * Z15) - Z13
-  VFMADD231PD Z14, Z22, Z15  // Z15 = (Z22 * Z14) + Z15
-  VADDPD Z13, Z16, Z14
-  VSUBPD Z14, Z16, Z16
-  VADDPD Z16, Z13, Z13
-  VADDPD Z13, Z17, Z13
-  VADDPD Z13, Z15, Z13
-  VADDPD Z13, Z14, Z13
-  VPSRAD $1, Y12, Y14
-  VPSLLD $20, Y14, Y15
-  VPBROADCASTD CONST_GET_PTR(const_pow, 248), Y16
-  VPADDD Y16, Y15, Y15
-  VPEXPANDD.Z Z15, K6, Z15
-  VMULPD Z15, Z13, Z13
-  VPSUBD Y14, Y12, Y12
-  VPSLLD $20, Y12, Y12
-  VPADDD Y16, Y12, Y12
-  VPEXPANDD.Z Z12, K6, Z12
-  VCMPPD.BCST $VCMP_IMM_NLT_US, CONST_GET_PTR(const_pow, 232), Z5, K4
-  VMULPD.Z Z12, Z13, K4, Z12
-  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_pow, 240), Z5, K4
-  VMOVAPD Z9, K4, Z12
-  VBLENDMPD Z11, Z7, K2, Z5
-  VBROADCASTSD CONSTF64_NAN(), Z13
-  VCMPPD $VCMP_IMM_LT_OS, Z2, Z6, K4
-  VMOVAPD Z5, K3, Z13
-  VMOVAPD Z7, K4, Z13
-  VMULPD Z12, Z13, Z5
-  VADDPD Z11, Z8, Z11
-  VPBROADCASTQ CONSTF64_SIGN_BIT(), Z12
-  VPTERNLOGQ $120, Z12, Z4, Z11
-  VPANDQ Z10, Z4, Z10
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z10, K3
-  VCMPPD $VCMP_IMM_NLT_US, Z6, Z11, K4
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z11, K5
-  VBLENDMPD Z7, Z9, K5, Z10
-  VMOVAPD.Z Z10, K4, Z10
-  VMOVAPD Z10, K3, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z8, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z2, K3
-  KORW K3, K0, K4
-  VPCMPGTQ Z4, Z6, K0
-  KXNORW K3, K0, K3
-  VPBROADCASTQ.Z CONSTF64_POSITIVE_INF(), K3, Z8
-  VPANDQ.Z Z12, Z2, K2, Z9
-  VCMPPD $VCMP_IMM_UNORD_Q, Z2, Z4, K2
-  VPORQ Z8, Z9, K4, Z5
-  VPTERNLOGD $255, Z8, Z8, Z8
-  VMOVAPD Z8, K2, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z2, K2
-  KORW K2, K0, K2
-  VMOVAPD Z7, K2, Z5
-  VMOVAPD Z5, Z2
-
-  // Process Z3 (remaining 8 lanes).
-  VXORPD X6, X6, X6
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z4
-  VRNDSCALEPD $8, Z4, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z4, Z5, K3
-  VMULPD.BCST CONSTF64_HALF(), Z4, Z5
-  VPBROADCASTQ CONSTF64_ABS_BITS(), Z10
-  VRNDSCALEPD $8, Z5, Z7
-  VPANDQ Z10, Z3, Z8
-  VMULPD.BCST CONST_GET_PTR(const_pow, 0), Z8, Z9
-  VCMPPD $VCMP_IMM_NEQ_UQ, Z5, Z7, K3, K2
-  VGETEXPPD Z9, Z13
-  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z9
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z13, K4
-  VBROADCASTSD CONST_GET_PTR(const_pow, 8), K4, Z13
-  VGETMANTPD $11, Z8, Z12
-  VBROADCASTSD CONST_GET_PTR(const_pow, 16), Z11
-  VBROADCASTSD CONSTF64_1(), Z7
-  VADDPD Z11, Z12, Z5
-  VADDPD Z7, Z5, Z14
-  VSUBPD Z14, Z5, Z15
-  VSUBPD Z15, Z11, Z15
-  VSUBPD Z14, Z12, Z14
-  VADDPD Z15, Z14, Z14
-  VADDPD Z7, Z12, Z15
-  VADDPD Z11, Z15, Z16
-  VSUBPD Z16, Z15, Z17
-  VSUBPD Z17, Z7, Z17
-  VSUBPD Z16, Z12, Z12
-  VADDPD Z17, Z12, Z12
-  VDIVPD Z15, Z7, Z16
-  VMULPD Z16, Z5, Z17
-  VFMSUB213PD Z17, Z16, Z5   // Z5 = (Z16 * Z5) - Z17
-  VFNMADD213PD Z7, Z16, Z15  // Z15 = -(Z16 * Z15) + Z7
-  VFNMADD231PD Z12, Z16, Z15 // Z15 = -(Z16 * Z12) + Z15
-  VFMADD231PD Z14, Z16, Z5   // Z5 = (Z16 * Z14) + Z5
-  VFMADD231PD Z15, Z17, Z5   // Z5 = (Z17 * Z15) + Z5
-  VMULPD Z17, Z17, Z12
-  VADDPD Z17, Z17, Z14
-  VMOVAPD Z17, Z15
-  VFMSUB213PD Z12, Z17, Z15  // Z15 = (Z17 * Z15) - Z12
-  VMULPD Z12, Z12, Z16
-  VMULPD Z16, Z16, Z18
-  VBROADCASTSD CONST_GET_PTR(const_pow, 24), Z19
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 32), Z12, Z19 // Z19 = (Z12 * Z19) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 40), Z20
-  VMULPD Z18, Z18, Z21
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 48), Z12, Z20 // Z20 = (Z12 * Z20) + mem
-  VFMADD231PD Z19, Z16, Z20  // Z20 = (Z16 * Z19) + Z20
-  VBROADCASTSD CONST_GET_PTR(const_pow, 56), Z19
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 64), Z12, Z19 // Z19 = (Z12 * Z19) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 72), Z22
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 80), Z12, Z22 // Z22 = (Z12 * Z22) + mem
-  VFMADD231PD Z19, Z16, Z22  // Z22 = (Z16 * Z19) + Z22
-  VFMADD231PD Z20, Z18, Z22  // Z22 = (Z18 * Z20) + Z22
-  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 88), Z21, Z22 // Z22 = (Z21 * mem) + Z22
-  VFMADD231PD Z5, Z14, Z15   // Z15 = (Z14 * Z5) + Z15
-  VBROADCASTSD CONST_GET_PTR(const_pow, 96), Z16
-  VMULPD Z16, Z13, Z18
-  VFMSUB213PD Z18, Z13, Z16  // Z16 = (Z13 * Z16) - Z18
-  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 104), Z13, Z16 // Z16 = (Z13 * mem) + Z16
-  VADDPD Z5, Z5, Z13
-  VADDPD Z14, Z18, Z19
-  VSUBPD Z19, Z18, Z18
-  VADDPD Z18, Z14, Z14
-  VADDPD Z14, Z16, Z14
-  VADDPD Z13, Z14, Z13
-  VMULPD Z12, Z17, Z14
-  VMOVAPD Z17, Z16
-  VFMSUB213PD Z14, Z12, Z16  // Z16 = (Z12 * Z16) - Z14
-  VFMADD231PD Z17, Z15, Z16  // Z16 = (Z15 * Z17) + Z16
-  VFMADD231PD Z5, Z12, Z16   // Z16 = (Z12 * Z5) + Z16
-  VBROADCASTSD CONST_GET_PTR(const_pow, 112), Z5
-  VMULPD Z5, Z14, Z17
-  VMOVAPD Z5, Z18
-  VFMSUB213PD Z17, Z14, Z18  // Z18 = (Z14 * Z18) - Z17
-  VFMADD231PD Z5, Z16, Z18   // Z18 = (Z16 * Z5) + Z18
-  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 120), Z14, Z18 // Z18 = (Z14 * mem) + Z18
-  VADDPD Z17, Z19, Z5
-  VSUBPD Z5, Z19, Z19
-  VADDPD Z19, Z17, Z17
-  VADDPD Z17, Z13, Z13
-  VADDPD Z18, Z13, Z13
-  VMULPD Z14, Z12, Z17
-  VMOVAPD Z14, Z18
-  VFMSUB213PD Z17, Z12, Z18  // Z18 = (Z12 * Z18) - Z17
-  VFMADD231PD Z15, Z14, Z18  // Z18 = (Z14 * Z15) + Z18
-  VFMADD231PD Z16, Z12, Z18  // Z18 = (Z12 * Z16) + Z18
-  VMULPD Z22, Z17, Z12
-  VFMSUB213PD Z12, Z22, Z17  // Z17 = (Z22 * Z17) - Z12
-  VFMADD231PD Z18, Z22, Z17  // Z17 = (Z22 * Z18) + Z17
-  VADDPD Z12, Z5, Z14
-  VSUBPD Z14, Z5, Z5
-  VADDPD Z5, Z12, Z5
-  VADDPD Z13, Z5, Z5
-  VADDPD Z5, Z17, Z12
-  VMULPD Z4, Z14, Z5
-  VFMSUB213PD Z5, Z4, Z14    // Z14 = (Z4 * Z14) - Z5
-  VFMADD231PD Z12, Z4, Z14   // Z14 = (Z4 * Z12) + Z14
-  VADDPD Z14, Z5, Z12
-  VMULPD.BCST CONST_GET_PTR(const_pow, 128), Z12, Z12
-  VRNDSCALEPD $8, Z12, Z13
-  VCVTPD2DQ.RN_SAE Z13, Y12
-  VMULPD.BCST CONST_GET_PTR(const_pow, 136), Z13, Z15
-  VADDPD Z5, Z15, Z16
-  VSUBPD Z5, Z16, Z17
-  VSUBPD Z17, Z16, Z18
-  VSUBPD Z18, Z5, Z18
-  VSUBPD Z17, Z15, Z15
-  VADDPD Z18, Z15, Z15
-  VMULPD.BCST CONST_GET_PTR(const_pow, 144), Z13, Z13
-  VADDPD Z14, Z15, Z14
-  VADDPD Z16, Z13, Z15
-  VSUBPD Z16, Z15, Z17
-  VSUBPD Z17, Z15, Z18
-  VSUBPD Z18, Z16, Z16
-  VSUBPD Z17, Z13, Z13
-  VADDPD Z16, Z13, Z13
-  VADDPD Z14, Z13, Z13
-  VADDPD Z13, Z15, Z14
-  VSUBPD Z14, Z15, Z15
-  VADDPD Z15, Z13, Z13
-  VMULPD Z14, Z14, Z15
-  VMULPD Z15, Z15, Z16
-  VMULPD Z16, Z16, Z17
-  VBROADCASTSD CONST_GET_PTR(const_pow, 152), Z18
-  VBROADCASTSD CONST_GET_PTR(const_pow, 168), Z19
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 160), Z14, Z18 // Z18 = (Z14 * Z18) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 176), Z14, Z19 // Z19 = (Z14 * Z19) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 184), Z20
-  VBROADCASTSD CONST_GET_PTR(const_pow, 200), Z21
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 192), Z14, Z20 // Z20 = (Z14 * Z20) + mem
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 208), Z14, Z21 // Z21 = (Z14 * Z21) + mem
-  VBROADCASTSD CONST_GET_PTR(const_pow, 216), Z22
-  VFMADD231PD Z19, Z15, Z20  // Z20 = (Z15 * Z19) + Z20
-  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 224), Z14, Z22 // Z22 = (Z14 * Z22) + mem
-  VFMADD231PD Z21, Z15, Z22  // Z22 = (Z15 * Z21) + Z22
-  VFMADD231PD Z20, Z16, Z22  // Z22 = (Z16 * Z20) + Z22
-  VFMADD231PD Z18, Z17, Z22  // Z22 = (Z17 * Z18) + Z22
-  VADDPD Z7, Z14, Z16
-  VSUBPD Z16, Z7, Z17
-  VADDPD Z17, Z14, Z17
-  VADDPD Z17, Z13, Z17
-  VADDPD Z14, Z14, Z18
-  VFMSUB213PD Z15, Z14, Z14  // Z14 = (Z14 * Z14) - Z15
-  VFMADD231PD Z18, Z13, Z14  // Z14 = (Z13 * Z18) + Z14
-  VMULPD Z22, Z15, Z13
-  VFMSUB213PD Z13, Z22, Z15  // Z15 = (Z22 * Z15) - Z13
-  VFMADD231PD Z14, Z22, Z15  // Z15 = (Z22 * Z14) + Z15
-  VADDPD Z13, Z16, Z14
-  VSUBPD Z14, Z16, Z16
-  VADDPD Z16, Z13, Z13
-  VADDPD Z13, Z17, Z13
-  VADDPD Z13, Z15, Z13
-  VADDPD Z13, Z14, Z13
-  VPSRAD $1, Y12, Y14
-  VPSLLD $20, Y14, Y15
-  VPBROADCASTD CONST_GET_PTR(const_pow, 248), Y16
-  VPADDD Y16, Y15, Y15
-  VPEXPANDD.Z Z15, K6, Z15
-  VMULPD Z15, Z13, Z13
-  VPSUBD Y14, Y12, Y12
-  VPSLLD $20, Y12, Y12
-  VPADDD Y16, Y12, Y12
-  VPEXPANDD.Z Z12, K6, Z12
-  VCMPPD.BCST $VCMP_IMM_NLT_US, CONST_GET_PTR(const_pow, 232), Z5, K4
-  VMULPD.Z Z12, Z13, K4, Z12
-  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_pow, 240), Z5, K4
-  VMOVAPD Z9, K4, Z12
-  VBLENDMPD Z11, Z7, K2, Z5
-  VBROADCASTSD CONSTF64_NAN(), Z13
-  VCMPPD $VCMP_IMM_LT_OS, Z3, Z6, K4
-  VMOVAPD Z5, K3, Z13
-  VMOVAPD Z7, K4, Z13
-  VMULPD Z12, Z13, Z5
-  VADDPD Z11, Z8, Z11
-  VPBROADCASTQ CONSTF64_SIGN_BIT(), Z12
-  VPTERNLOGQ $120, Z12, Z4, Z11
-  VPANDQ Z10, Z4, Z10
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z10, K3
-  VCMPPD $VCMP_IMM_NLT_US, Z6, Z11, K4
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z11, K5
-  VBLENDMPD Z7, Z9, K5, Z10
-  VMOVAPD.Z Z10, K4, Z10
-  VMOVAPD Z10, K3, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z8, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z3, K3
-  KORW K3, K0, K4
-  VPCMPGTQ Z4, Z6, K0
-  KXNORW K3, K0, K3
-  VPBROADCASTQ.Z CONSTF64_POSITIVE_INF(), K3, Z8
-  VPANDQ.Z Z12, Z3, K2, Z9
-  VCMPPD $VCMP_IMM_UNORD_Q, Z3, Z4, K2
-  VPORQ Z8, Z9, K4, Z5
-  VPTERNLOGD $255, Z8, Z8, Z8
-  VMOVAPD Z8, K2, Z5
-  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K0
-  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z3, K2
-  KORW K2, K0, K2
-  VMOVAPD Z7, K2, Z5
-  VMOVAPD Z5, Z3
-
-next:
-  NEXT_ADVANCE(2)
+// Temporary instruction to save registers alive at entry to stack slots.
+TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(0, DX, R8)
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
+
+// Load & Save Instructions
+// ------------------------
+
+// load a value pointer from bytecode.outer
+// using the permutation specified in
+// bytecode.perm
+TEXT bcloadpermzerov(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(0, R8)
+
+  MOVQ        bytecode_outer(VIRT_BCPTR), R15
+  VMOVDQU32   bytecode_perm(VIRT_BCPTR), Z28
+  MOVQ        bytecode_vstack(R15), R15
+  VPERMD      0(R15)(R8*1), Z28, Z30
+  VPERMD      64(R15)(R8*1), Z28, Z31
+  VPTESTMD    Z31, Z31, K1
+
+  NEXT_ADVANCE(BC_SLOT_SIZE)
+
+// Mask Instructions
+// -----------------
+
+// k[0] = 0
+TEXT bcbroadcast0k(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(0, OUT(DX))
+  MOVW $0, 0(VIRT_VALUES)(DX*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*1)
+
+// k[0] = 1 & ValidLanes
+TEXT bcbroadcast1k(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K7), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*1)
+
+// v[0].k[1] = 0
+TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
+  VPXORD X0, X0, X0
+  XORL BX, BX
+  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z0), IN(DX))
+  BC_STORE_RU16_TO_SLOT(IN(BX), IN(CX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
+
+// k[0] = !k[1] & ValidLanes
+TEXT bcnotk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
+
+  KMOVW K7, CX
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  ANDNL CX, BX, BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
+
+// k[0] = k[1] & k[2] (never sets invalid lanes)
+TEXT bcandk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ANDW 0(VIRT_VALUES)(CX*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = !(k[1] & k[2]) (never sets invalid lanes)
+TEXT bcnandk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
+  KMOVW K7, R8
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+  ANDW 0(VIRT_VALUES)(CX*1), BX
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ANDNL R8, BX, BX
+
+  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = !k[1] & k[2] (never sets invalid lanes)
+TEXT bcandnk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ANDNL CX, BX, BX
+
+  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = k[1] | k[2] (never sets invalid lanes)
+TEXT bcork(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ORW 0(VIRT_VALUES)(CX*1), BX
+
+  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = k[1] ^ k[2] (never sets invalid lanes)
+TEXT bcxork(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  XORW 0(VIRT_VALUES)(CX*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = xnor(k[1], k[2]) & ValidLanes
+TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
+  KMOVW 0(VIRT_VALUES)(BX*1), K1
+  KMOVW 0(VIRT_VALUES)(CX*1), K2
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  KXNORW K1, K2, K1
+  KANDW K1, K7, K1
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // Conversion Instructions
 // -----------------------
 
-// convert the input mask to 0.0 or 1.0 based on whether or not it is set
+// f64[0] = k[1] ? 1.0 : 0.0
 TEXT bccvtktof64(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD  CONSTF64_1(), Z2
-  KSHIFTRW      $8, K1, K2
-  VMOVDQA64.Z   Z2, K2, Z3
-  VMOVDQA64.Z   Z2, K1, Z2
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
 
-// convert float64 to mask
-TEXT bccvtf64tok(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  VBROADCASTSD CONSTF64_1(), Z3
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(BX))
 
-  VPXORQ    Z11, Z11, Z11
+  VMOVAPD.Z Z3, K1, Z2
+  VMOVAPD.Z Z3, K2, Z3
 
-  // shift out the sign bit, so we correctly handle the "-0.0" case
-  VPSLLQ    $1, Z2, Z4
-  VPSLLQ    $1, Z3, Z5
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
-  // binary image of +0.0 is full of zeros, so it's safe to use int arithmetic
-  VPCMPQ    $VPCMP_IMM_NE, Z11, Z4, K1, K1
-  VPCMPQ    $VPCMP_IMM_NE, Z11, Z5, K2, K2
-  KUNPCKBW  K1, K2, K1
-  NEXT()
-
-// convert the input mask to 0 or 1 based on whether or not it is set
+// i64[0] = k[1] ? 1 : 0
 TEXT bccvtktoi64(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ CONSTQ_1(), Z2
-  KSHIFTRW     $8, K1, K2
-  VMOVDQA64.Z  Z2, K2, Z3
-  VMOVDQA64.Z  Z2, K1, Z2
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
 
+  VPBROADCASTQ CONSTQ_1(), Z3
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(BX))
+
+  VMOVDQA64.Z Z3, K1, Z2
+  VMOVDQA64.Z Z3, K2, Z3
+
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
+
+// k[0] = (i64[1] ? 1 : 0).k[2]
 TEXT bccvti64tok(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+
   VPXORQ X4, X4, X4
-  VPCMPQ $VPCMP_IMM_NE, Z4, Z2, K1, K1
-  VPCMPQ $VPCMP_IMM_NE, Z4, Z3, K2, K2
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VPCMPQ $VPCMP_IMM_NE, 0(VIRT_VALUES)(BX*1), Z4, K1, K1
+  VPCMPQ $VPCMP_IMM_NE, 64(VIRT_VALUES)(BX*1), Z4, K2, K2
+
   KUNPCKBW K1, K2, K1
-  NEXT()
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
 
-// integer to fp conversion
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = (f64[1] ? 1 : 0).k[2]
+TEXT bccvtf64tok(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  VPXORQ X4, X4, X4
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VCMPPD $VCMP_IMM_NEQ_OQ, 0(VIRT_VALUES)(BX*1), Z4, K1, K1
+  VCMPPD $VCMP_IMM_NEQ_OQ, 64(VIRT_VALUES)(BX*1), Z4, K2, K2
+  KUNPCKBW K1, K2, K1
+
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// f64[0].k[1] = f64(i64[2]).k[3]
 TEXT bccvti64tof64(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW         $8, K1, K2
-  VCVTQQ2PD.RN_SAE Z2, K1, Z2
-  VCVTQQ2PD.RN_SAE Z3, K2, Z3
-  NEXT()
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-// convert fp to int
+  VCVTQQ2PD.Z 0(VIRT_VALUES)(BX*1), K1, Z2
+  VCVTQQ2PD.Z 64(VIRT_VALUES)(BX*1), K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = trunc_i64(f64[2]).k[3]
+TEXT bccvttruncf64toi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VCVTTPD2QQ.Z 0(VIRT_VALUES)(BX*1), K1, Z2
+  VCVTTPD2QQ.Z 64(VIRT_VALUES)(BX*1), K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = floor_i64(f64[2]).k[3]
+TEXT bccvtfloorf64toi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VCVTPD2QQ.RD_SAE.Z Z2, K1, Z2
+  VCVTPD2QQ.RD_SAE.Z Z3, K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = ceil_i64(f64[2]).k[3]
+TEXT bccvtceilf64toi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VCVTPD2QQ.RU_SAE.Z Z2, K1, Z2
+  VCVTPD2QQ.RU_SAE.Z Z3, K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// s[0].k[1] = i64_to_string(i64[2]).k[3]
 //
-// TODO: validate FPCLASS, etc.;
-// we should convert +inf/-inf correctly
-// in those circumstances...
-
-#define BC_CVT_F64_TO_I64(mode) \
-  KSHIFTRW       $8, K1, K2     \
-  VCVTPD2QQ.mode Z2, K1, Z2     \
-  VCVTPD2QQ.mode Z3, K2, Z3
-
-// TODO: We should truncate by default, and then extend our offered rounding conversions.
-TEXT bccvtf64toi64(SB), NOSPLIT|NOFRAME, $0
-  BC_CVT_F64_TO_I64(RN_SAE)
-  NEXT()
-
-TEXT bcfproundu(SB), NOSPLIT|NOFRAME, $0
-  BC_CVT_F64_TO_I64(RU_SAE)
-  NEXT()
-
-TEXT bcfproundd(SB), NOSPLIT|NOFRAME, $0
-  BC_CVT_F64_TO_I64(RD_SAE)
-  NEXT()
-
 // Converts a signed 64-bit integer to a string slice.
 //
 // Implementation notes:
@@ -5991,6 +678,10 @@ TEXT bcfproundd(SB), NOSPLIT|NOFRAME, $0
 //   - we always insert a '-' sign, the string length is incremented if the integer is negative, so it will only
 //     appear when the input is negative. This simplifies the code a bit.
 TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   // Get the signs so we can prepend '-' sign at the end.
   VPMOVQ2M Z2, K2
   VPMOVQ2M Z3, K3
@@ -6370,7 +1061,10 @@ TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
   VPEXTRD $3, X23, 300(R8)
   VEXTRACTI32X4 $3, Z9, 304(R8)
 
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
@@ -6415,52 +1109,97 @@ TEXT bccmpv(SB), NOSPLIT|NOFRAME, $0
 // Comparison Instructions - Cmp(Value, Bool)
 // ------------------------------------------
 
-// Compares the content of left (unboxed) value and right (bool) scalar
+// i64[0].k[1] = cmp(v[2], k[3]).k[4] (compares the content of a boxed value and bool)
 TEXT bccmpvk(SB), NOSPLIT|NOFRAME, $0
-  MOVWLZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
-  KMOVW 0(VIRT_VALUES)(R8*1), K2
-  VPBROADCASTD.Z CONSTD_1(), K2, Z2
-  JMP cmpvk_tail(SB)
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, BX, CX, R8)
 
-// Compares the content of left (unboxed) value and right (bool) immediate
-TEXT bccmpvimmk(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTB 0(VIRT_PCREG), Z2
-  ADDQ $1, VIRT_PCREG
-  VPSRLD $24, Z2, Z2
-  JMP cmpvk_tail(SB)
+  KMOVW 0(VIRT_VALUES)(R8*1), K1
+  VMOVDQU32 0(VIRT_VALUES)(BX*1), Z2
 
-TEXT cmpvk_tail(SB), NOSPLIT|NOFRAME, $0
-  KMOVW K1, K2
-  VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                      // Z4 <- first 4 bytes of the left value
+  KMOVW K1, K3
+  VPXORD X4, X4, X4
+  VPGATHERDD 0(SI)(Z2*1), K3, Z4                       // Z4 <- first 4 bytes of the left value
 
-  VPBROADCASTD CONSTD_0x0F(), Z6
+  VPBROADCASTD CONSTD_0x0F(), Z6                       // Z6 <- Constant(0xF)
+  KMOVW 0(VIRT_VALUES)(CX*1), K2                       // K2 <- right boolean value
+  VPSRLD.Z $3, Z6, Z7                                  // Z7 <- Constant(1)
+
   VPSRLD $4, Z4, Z5
   VPANDD Z6, Z5, Z5                                    // Z5 <- left ION type
   VPANDD Z6, Z4, Z4                                    // Z4 <- left boolean value (0 or 1)
-  VPCMPEQD.BCST CONSTD_1(), Z5, K1, K1                 // K1 <- bool comparison predicate (the output predicate)
+  VMOVDQA32.Z Z7, K2, Z2                               // Z2 <- right boolean value (0 or 1)
+  VPCMPEQD Z7, Z5, K1, K1                              // K1 <- bool comparison predicate (the output predicate)
 
   VPSUBD.Z Z2, Z4, K1, Z2                              // Z2 <- comparison results {-1, 0, 1} (all)
   VEXTRACTI32X8 $1, Z2, Y3
   VPMOVSXDQ Y2, Z2                                     // Z2 <- comparison results (low)
   VPMOVSXDQ Y3, Z3                                     // Z3 <- comparison results (high)
 
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// i64[0].k[1] = cmp(v[2], k@imm[3]).k[4] (compares the content of a boxed value and bool (imm))
+TEXT bccmpvkimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 2, OUT(R8))
+
+  VMOVDQU32 0(VIRT_VALUES)(BX*1), Z2
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  KMOVW K1, K2
+  VPXORQ X4, X4, X4
+  VPGATHERDD 0(SI)(Z2*1), K2, Z4                       // Z4 <- first 4 bytes of the left value
+
+  VPBROADCASTD CONSTD_0x0F(), Z6                       // Z6 <- Constant(0xF)
+  VPSRLD $3, Z6, Z7                                    // Z7 <- Constant(1)
+  VPANDD.BCST (BC_SLOT_SIZE*3)(VIRT_PCREG), Z7, Z2     // Z2 <- right boolean value (0 or 1)
+
+  VPSRLD $4, Z4, Z5
+  VPANDD Z6, Z5, Z5                                    // Z5 <- left ION type
+  VPANDD Z6, Z4, Z4                                    // Z4 <- left boolean value (0 or 1)
+  VPCMPEQD Z7, Z5, K1, K1                              // K1 <- bool comparison predicate (the output predicate)
+
+  VPSUBD.Z Z2, Z4, K1, Z2                              // Z2 <- comparison results {-1, 0, 1} (all)
+  VEXTRACTI32X8 $1, Z2, Y3
+  VPMOVSXDQ Y2, Z2                                     // Z2 <- comparison results (low)
+  VPMOVSXDQ Y3, Z3                                     // Z3 <- comparison results (high)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
 
 
 // Comparison Instructions - Cmp(Value, Int64)
 // -------------------------------------------
 
-// Compares the content of left (unboxed) value and right (int64) scalar
+// i64[0].k[1] = cmp(v[2], i64[3]).k[4] (compares the content of a boxed value and i64)
 TEXT bccmpvi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_CALC_ADVANCE(BC_SLOT_SIZE*5, OUT(R15))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))
+  JMP cmpvi64_tail(SB)
+
+// i64[0].k[1] = cmp(v[2], i64@imm[3]).k[4] (compares the content of a boxed value and i64)
+TEXT bccmpvi64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z6), OUT(R8))
+  BC_CALC_ADVANCE(BC_SLOT_SIZE*4+8, OUT(R15))
+  VMOVDQA64 Z6, Z7
+  JMP cmpvi64_tail(SB)
+
+TEXT cmpvi64_tail(SB), NOSPLIT|NOFRAME, $0
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
+
   KMOVW K1, K2
   VPXORQ X9, X9, X9
   VPGATHERDD 0(SI)(Z30*1), K2, Z9                     // Z9 <- first 4 bytes of the left value
 
-  VMOVDQA64 Z2, Z6                                    // Z6 <- right int64 value (low)
   VPXORD X2, X2, X2                                   // Z2 <- Comparison results, initially all zeros (low)
-  VMOVDQA64 Z3, Z7                                    // Z7 <- right int64 value (high)
   VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
 
   VPBROADCASTD CONSTD_0x0F(), Z10
@@ -6473,7 +1212,7 @@ TEXT bccmpvi64(SB), NOSPLIT|NOFRAME, $0
   VPCMPEQD.BCST CONSTD_2(), Z11, K1, K1               // K1 <- number comparison predicate (the output predicate)
 
   KTESTW K1, K1
-  JZ next                                             // Skip number comparison if there are no numbers (K1 == 0)
+  JZ skip                                             // Skip number comparison if there are no numbers (K1 == 0)
 
   // Gather 8 bytes of each left value
   VEXTRACTI32X8 $1, Z30, Y11
@@ -6508,7 +1247,7 @@ TEXT bccmpvi64(SB), NOSPLIT|NOFRAME, $0
   VPCMPEQD Z13, Z8, K1, K2
   KSHIFTRW $8, K2, K3
 
-  VPSUBQ Z4, Z3, K2, Z4
+  VPSUBQ Z4, Z2, K2, Z4
   VPSUBQ Z5, Z3, K3, Z5
 
   VPCMPGTD Z13, Z8, K1, K2                             // K2 <- mask of floating point values (low / all)
@@ -6541,29 +1280,47 @@ TEXT bccmpvi64(SB), NOSPLIT|NOFRAME, $0
   VPMOVSXDQ Y2, Z2                                     // Z2 <- comparison results (low)
   VPMOVSXDQ Y3, Z3                                     // Z3 <- comparison results (high)
 
-next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-// Compares the content of left (unboxed) value and right (int64) immediate
-TEXT bccmpvimmi64(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z2
-  ADDQ $8, VIRT_PCREG
-  VMOVDQA64 Z2, Z3
-  JMP bccmpvi64(SB)
+  BC_ADVANCE_REG(R15)
 
+skip:
+  VPXORQ X2, X2, X2
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z2), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  BC_ADVANCE_REG(R15)
 
 // Comparison Instructions - Cmp(Value, Float64)
 // ---------------------------------------------
 
-// Compares the content of left (unboxed) value and right (float64) scalar
+// i64[0].k[1] = cmp(value[2], f64[3]).k[4] (compares the content of a boxed value and f64)
 TEXT bccmpvf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_CALC_ADVANCE(BC_SLOT_SIZE*5, OUT(R15))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))
+  JMP cmpvf64_tail(SB)
+
+// i64[0].k[1] = cmp(value[2], f64@imm[3]).k[4] (compares the content of a boxed value and f64)
+TEXT bccmpvf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z6), OUT(R8))
+  BC_CALC_ADVANCE(BC_SLOT_SIZE*4+8, OUT(R15))
+  VMOVDQA64 Z6, Z7
+  JMP cmpvf64_tail(SB)
+
+TEXT cmpvf64_tail(SB), NOSPLIT|NOFRAME, $0
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
+
   KMOVW K1, K2
   VPXORQ X9, X9, X9
   VPGATHERDD 0(SI)(Z30*1), K2, Z9                     // Z9 <- first 4 bytes of the left value
 
-  VMOVAPD Z2, Z6                                      // Z6 <- right int64 value (low)
   VPXORD X2, X2, X2                                   // Z2 <- Comparison results, initially all zeros (low)
-  VMOVAPD Z3, Z7                                      // Z7 <- right int64 value (high)
   VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
 
   VPBROADCASTD CONSTD_0x0F(), Z10
@@ -6576,7 +1333,7 @@ TEXT bccmpvf64(SB), NOSPLIT|NOFRAME, $0
   VPCMPEQD.BCST CONSTD_2(), Z11, K1, K1               // K1 <- number comparison predicate (the output predicate)
 
   KTESTW K1, K1
-  JZ next                                             // Skip number comparison if there are no numbers (K1 == 0)
+  JZ skip                                             // Skip number comparison if there are no numbers (K1 == 0)
 
   // Gather 8 bytes of each left value
   VEXTRACTI32X8 $1, Z30, Y11
@@ -6611,7 +1368,7 @@ TEXT bccmpvf64(SB), NOSPLIT|NOFRAME, $0
   VPCMPEQD Z13, Z8, K1, K2
   KSHIFTRW $8, K2, K3
 
-  VPSUBQ Z4, Z3, K2, Z4
+  VPSUBQ Z4, Z2, K2, Z4
   VPSUBQ Z5, Z3, K3, Z5
 
   VPCMPD $VPCMP_IMM_LE, Z13, Z8, K1, K2                // K2 <- mask of integer values (all)
@@ -6644,16 +1401,20 @@ TEXT bccmpvf64(SB), NOSPLIT|NOFRAME, $0
   VPMOVSXDQ Y2, Z2                                     // Z2 <- comparison results (low)
   VPMOVSXDQ Y3, Z3                                     // Z3 <- comparison results (high)
 
-next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-// Compares the content of left (unboxed) value and right (float64) immediate
-TEXT bccmpvimmf64(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTSD 0(VIRT_PCREG), Z2
-  ADDQ $8, VIRT_PCREG
-  VMOVDQA64 Z2, Z3
-  JMP bccmpvf64(SB)
+  BC_ADVANCE_REG(R15)
 
+skip:
+  VPXORQ X2, X2, X2
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z2), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  BC_ADVANCE_REG(R15)
 
 // Comparison Instructions - String
 // --------------------------------
@@ -6666,24 +1427,28 @@ TEXT bccmpgtstr(SB), NOSPLIT|NOFRAME, $0
 TEXT bccmpgestr(SB), NOSPLIT|NOFRAME, $0
 */
 
+// k[0] = cmp_lt(str[1], str[2]).k[3]
 #define BC_CMP_NAME bccmpltstr
 #define BC_CMP_I_IMM VPCMP_IMM_LT
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
 #undef BC_CMP_NAME
 
+// k[0] = cmp_le(str[1], str[2]).k[3]
 #define BC_CMP_NAME bccmplestr
 #define BC_CMP_I_IMM VPCMP_IMM_LE
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
 #undef BC_CMP_NAME
 
+// k[0] = cmp_gt(str[1], str[2]).k[3]
 #define BC_CMP_NAME bccmpgtstr
 #define BC_CMP_I_IMM VPCMP_IMM_GT
 #include "evalbc_cmpxxstr_impl.h"
 #undef BC_CMP_I_IMM
 #undef BC_CMP_NAME
 
+// k[0] = cmp_ge(str[1], str[2]).k[3]
 #define BC_CMP_NAME bccmpgestr
 #define BC_CMP_I_IMM VPCMP_IMM_GE
 #include "evalbc_cmpxxstr_impl.h"
@@ -6694,101 +1459,177 @@ TEXT bccmpgestr(SB), NOSPLIT|NOFRAME, $0
 // Comparison Instructions - Bool
 // ------------------------------
 
-#define BC_CMPXX_OP_K(predicate)     \
-  MOVWLZX 0(VIRT_PCREG), BX          \
-  MOVWLZX 0(VIRT_PCREG), DX          \
-  VPBROADCASTB CONSTD_1(), X5        \
-  KMOVW 0(VIRT_VALUES)(BX*1), K2     \
-  KMOVW 0(VIRT_VALUES)(DX*1), K3     \
-  VMOVDQU8.Z X5, K2, X4              \
-  VMOVDQU8.Z X5, K3, X5              \
-  VPCMPUB predicate, X5, X4, K1, K1
+// `A < B` => C (simplify to C = !A & B)
+// ------------
+// `0 < 0` => 0
+// `0 < 1` => 1
+// `1 < 0` => 0
+// `1 < 1` => 0
 
-#define BC_CMPXX_OP_K_IMM(predicate) \
-  MOVWLZX 0(VIRT_PCREG), BX          \
-  VPBROADCASTB CONSTD_1(), X4        \
-  VPBROADCASTB 0(VIRT_PCREG), X5     \
-  KMOVW 0(VIRT_VALUES)(BX*1), K2     \
-  VMOVDQU8.Z X4, K2, X4              \
-  VPCMPUB predicate, X5, X4, K1, K1
-
+// k[0] = cmp_lt(k[1], k[2]).k[3]
 TEXT bccmpltk(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K($VPCMP_IMM_LT)
-  NEXT_ADVANCE(4)
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
-TEXT bccmpltimmk(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K_IMM($VPCMP_IMM_LT)
-  NEXT_ADVANCE(3)
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  MOVWLZX 0(VIRT_VALUES)(CX*1), CX
+  ANDNL CX, BX, BX
+  ANDW 0(VIRT_VALUES)(R8*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// k[0] = cmp_lt(k[1], k@imm[2]).k[3]
+TEXT bccmpltkimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  ANDNL CX, BX, BX
+  ANDW 0(VIRT_VALUES)(R8*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+
+// `A <= B` => C (simplify to C = !A | B)
+// -------------
+// `0 <= 0` => 1
+// `0 <= 1` => 1
+// `1 <= 0` => 0
+// `1 <= 1` => 1
+
+// k[0] = cmp_le(k[1], k[2]).k[3]
 TEXT bccmplek(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K($VPCMP_IMM_LE)
-  NEXT_ADVANCE(4)
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
-TEXT bccmpleimmk(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K_IMM($VPCMP_IMM_LE)
-  NEXT_ADVANCE(3)
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  MOVWLZX 0(VIRT_VALUES)(CX*1), CX
+  ANDNL R8, BX, BX
+  ORL CX, BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// k[0] = cmp_le(k[1], k@imm[2]).k[3]
+TEXT bccmplekimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  NOTL BX
+  ORL CX, BX
+  ANDW 0(VIRT_VALUES)(R8*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+
+// `A > B` => C (simplify to C = A & !B)
+// ------------
+// `0 > 0` => 0
+// `0 > 1` => 0
+// `1 > 0` => 1
+// `1 > 1` => 0
+
+// k[0] = cmp_gt(k[1], k[2]).k[3]
 TEXT bccmpgtk(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K($VPCMP_IMM_GT)
-  NEXT_ADVANCE(4)
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
-TEXT bccmpgtimmk(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K_IMM($VPCMP_IMM_GT)
-  NEXT_ADVANCE(3)
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  MOVWLZX 0(VIRT_VALUES)(CX*1), CX
+  ANDNL BX, CX, BX
+  ANDW 0(VIRT_VALUES)(R8*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// k[0] = cmp_gt(k[1], k@imm[2]).k[3]
+TEXT bccmpgtkimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  ANDNL BX, CX, BX
+  ANDW 0(VIRT_VALUES)(R8*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+
+// `A >= B` => C (simplify to C = A | !B)
+// -------------
+// `0 >= 0` => 1
+// `0 >= 1` => 0
+// `1 >= 0` => 1
+// `1 >= 1` => 1
+
+// k[0] = cmp_ge(k[1], k[2]).k[3]
 TEXT bccmpgek(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K($VPCMP_IMM_GE)
-  NEXT_ADVANCE(4)
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
 
-TEXT bccmpgeimmk(SB), NOSPLIT|NOFRAME, $0
-  BC_CMPXX_OP_K_IMM($VPCMP_IMM_GE)
-  NEXT_ADVANCE(3)
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  MOVWLZX 0(VIRT_VALUES)(CX*1), CX
+  ANDNL R8, CX, CX
+  ORL CX, BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
 
-#undef BC_CMPXX_OP_K_IMM
-#undef BC_CMPXX_OP_K
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// k[0] = cmp_ge(k[1], k@imm[2]).k[3]
+TEXT bccmpgekimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+
+  MOVWLZX 0(VIRT_VALUES)(BX*1), BX
+  NOTL CX
+  ORL CX, BX
+  ANDW 0(VIRT_VALUES)(R8*1), BX
+  MOVW BX, 0(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
 
 
 // Comparison Instructions - Number
 // --------------------------------
 
-// computes cmp(Z2|Z3, f64imm)
-#define BC_CMP_OP_F64_IMM(fPred)                  \
-  VPBROADCASTQ 0(VIRT_PCREG), Z4                  \
-  KSHIFTRW $8, K1, K2                             \
-  VCMPPD fPred, Z4, Z2, K1, K1                    \
-  VCMPPD fPred, Z4, Z3, K2, K2                    \
-  KUNPCKBW K1, K2, K1                             \
-                                                  \
-  NEXT_ADVANCE(8)
+// k[0] = cmp_xx(f64[1], f64@imm[2]).k[3]
+#define BC_CMP_OP_F64_IMM(Predicate)                                   \
+  BC_UNPACK_2xSLOT_ZF64_SLOT(0, OUT(DX), OUT(BX), OUT(Z4), OUT(R8))    \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                    \
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                  \
+                                                                       \
+  VCMPPD Predicate, Z4, Z2, K1, K1                                     \
+  VCMPPD Predicate, Z4, Z3, K2, K2                                     \
+                                                                       \
+  KUNPCKBW K1, K2, K1                                                  \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
 
-// computes cmp(Z2|Z3, stack[slot])
-#define BC_CMP_OP_I64(iPred)                      \
-  MOVWQZX 0(VIRT_PCREG), R8                       \
-  KSHIFTRW $8, K1, K2                             \
-  VPCMPQ iPred, 0(VIRT_VALUES)(R8*1), Z2, K1, K1  \
-  VPCMPQ iPred, 64(VIRT_VALUES)(R8*1), Z3, K2, K2 \
-  KUNPCKBW K1, K2, K1                             \
-                                                  \
-  NEXT_ADVANCE(2)
+// k[0] = cmp_xx(i64[1], i64[2]).k[3]
+#define BC_CMP_OP_I64(Predicate)                                       \
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))              \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                    \
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                  \
+                                                                       \
+  VPCMPQ Predicate, 0(VIRT_VALUES)(CX*1), Z2, K1, K1                   \
+  VPCMPQ Predicate, 64(VIRT_VALUES)(CX*1), Z3, K2, K2                  \
+                                                                       \
+  KUNPCKBW K1, K2, K1                                                  \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
 
-// computes cmp(Z2|Z3, i64imm)
-#define BC_CMP_OP_I64_IMM(iPred)                  \
-  VPBROADCASTQ 0(VIRT_PCREG), Z4                  \
-  KSHIFTRW $8, K1, K2                             \
-  VPCMPQ iPred, Z4, Z2, K1, K1                    \
-  VPCMPQ iPred, Z4, Z3, K2, K2                    \
-  KUNPCKBW K1, K2, K1                             \
-                                                  \
-  NEXT_ADVANCE(8)
+// k[0] = cmp_xx(i64[1], i64@imm[2]).k[3]
+#define BC_CMP_OP_I64_IMM(Predicate)                                   \
+  BC_UNPACK_2xSLOT_ZI64_SLOT(0, OUT(DX), OUT(BX), OUT(Z4), OUT(R8))    \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                    \
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                  \
+                                                                       \
+  VPCMPQ Predicate, Z4, Z2, K1, K1                                     \
+  VPCMPQ Predicate, Z4, Z3, K2, K2                                     \
+                                                                       \
+  KUNPCKBW K1, K2, K1                                                  \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
 
+// k[0] = cmp_eq(f64[1], f64[2]).k[3]
+//
 // Floating point equality in the sense that
 // `-0 == 0`, `NaN == NaN`, and `-NaN != NaN`
-TEXT bccmpeqf(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
-
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
+TEXT bccmpeqf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
 
   // Floating point comparison handles `-0 == 0` properly
   VCMPPD $VCMP_IMM_EQ_OQ, Z4, Z2, K1, K3
@@ -6802,51 +1643,56 @@ TEXT bccmpeqf(SB), NOSPLIT|NOFRAME, $0
   KORW K4, K2, K2
   KUNPCKBW K1, K2, K1
 
-  NEXT_ADVANCE(2)
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 // current scalar float == f64(imm)
-TEXT bccmpeqimmf(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpeqf64imm(SB), NOSPLIT|NOFRAME, $0
   // We expect that the immediate is not NaN or -0 here. If the immediate
   // value is NaN 'bcisnanf' should be used instead. This gives us the
   // opportunity to make this function smaller as we know what the second
   // value isn't.
   BC_CMP_OP_F64_IMM($VCMP_IMM_EQ_OQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmpltf(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpltf64(SB), NOSPLIT|NOFRAME, $0
   // Implements `cmp_unordered_lt(a, b) ^ isnan(a)`:
   //   - `val < val` -> result
   //   - `NaN < val` -> false
   //   - `val < NaN` -> true
   //   - `NaN < NaN` -> false
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   VCMPPD $VCMP_IMM_UNORD_Q, Z2, Z2, K1, K3
   VCMPPD $VCMP_IMM_UNORD_Q, Z3, Z3, K2, K4
-  VCMPPD $VCMP_IMM_NGE_UQ, 0(VIRT_VALUES)(R8*1), Z2, K1, K1
-  VCMPPD $VCMP_IMM_NGE_UQ, 64(VIRT_VALUES)(R8*1), Z3, K2, K2
+  VCMPPD $VCMP_IMM_NGE_UQ, 0(VIRT_VALUES)(CX*1), Z2, K1, K1
+  VCMPPD $VCMP_IMM_NGE_UQ, 64(VIRT_VALUES)(CX*1), Z3, K2, K2
 
   KUNPCKBW K3, K4, K3
   KUNPCKBW K1, K2, K1
   KXORW K3, K1, K1
-  NEXT_ADVANCE(2)
 
-TEXT bccmpltimmf(SB), NOSPLIT|NOFRAME, $0
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+TEXT bccmpltf64imm(SB), NOSPLIT|NOFRAME, $0
   // `val < imm` -> result
   // `NaN < imm` -> false
   BC_CMP_OP_F64_IMM($VCMP_IMM_LT_OQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmplef(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmplef64(SB), NOSPLIT|NOFRAME, $0
   // Implements `cmp_ordered_le(a, b) | isnan(b)`:
   //   - `val <= val` -> result
   //   - `NaN <= val` -> false
   //   - `val <= NaN` -> true
   //   - `NaN <= NaN` -> true
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
-
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
 
   VCMPPD $VCMP_IMM_UNORD_Q, Z4, Z4, K1, K3
   VCMPPD $VCMP_IMM_UNORD_Q, Z5, Z5, K2, K4
@@ -6856,24 +1702,26 @@ TEXT bccmplef(SB), NOSPLIT|NOFRAME, $0
   KUNPCKBW K3, K4, K3
   KUNPCKBW K1, K2, K1
   KORW K3, K1, K1
-  NEXT_ADVANCE(2)
 
-TEXT bccmpleimmf(SB), NOSPLIT|NOFRAME, $0
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+TEXT bccmplef64imm(SB), NOSPLIT|NOFRAME, $0
   // `val <= imm` -> result
   // `NaN <= imm` -> false
   BC_CMP_OP_F64_IMM($VCMP_IMM_LE_OQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmpgtf(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpgtf64(SB), NOSPLIT|NOFRAME, $0
   // Implements `cmp_unordered_gt(a, b) ^ isnan(b)`
   //   - `val > val` -> result
   //   - `NaN > val` -> true
   //   - `val > NaN` -> false
   //   - `NaN > NaN` -> false
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
-
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
 
   VCMPPD $VCMP_IMM_UNORD_Q, Z4, Z4, K1, K3
   VCMPPD $VCMP_IMM_UNORD_Q, Z5, Z5, K2, K4
@@ -6883,66 +1731,83 @@ TEXT bccmpgtf(SB), NOSPLIT|NOFRAME, $0
   KUNPCKBW K3, K4, K3
   KUNPCKBW K1, K2, K1
   KXORW K3, K1, K1
-  NEXT_ADVANCE(2)
 
-TEXT bccmpgtimmf(SB), NOSPLIT|NOFRAME, $0
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+TEXT bccmpgtf64imm(SB), NOSPLIT|NOFRAME, $0
   // `val > imm` -> result
   // `NaN > imm` -> true
   BC_CMP_OP_F64_IMM($VCMP_IMM_NLE_UQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmpgef(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpgef64(SB), NOSPLIT|NOFRAME, $0
   // Implements `cmp_ordered_ge(a, b) | isnan(a)`
   //   - `val >= val` -> result
   //   - `NaN >= val` -> true
   //   - `val >= NaN` -> false
   //   - `NaN >= NaN` -> true
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   VCMPPD $VCMP_IMM_UNORD_Q, Z2, Z2, K1, K3
   VCMPPD $VCMP_IMM_UNORD_Q, Z3, Z3, K2, K4
-  VCMPPD $VCMP_IMM_GE_OQ, 0(VIRT_VALUES)(R8*1), Z2, K1, K1
-  VCMPPD $VCMP_IMM_GE_OQ, 64(VIRT_VALUES)(R8*1), Z3, K2, K2
+  VCMPPD $VCMP_IMM_GE_OQ, 0(VIRT_VALUES)(CX*1), Z2, K1, K1
+  VCMPPD $VCMP_IMM_GE_OQ, 64(VIRT_VALUES)(CX*1), Z3, K2, K2
 
   KUNPCKBW K3, K4, K3
   KUNPCKBW K1, K2, K1
   KXORW K3, K1, K1
-  NEXT_ADVANCE(2)
 
-TEXT bccmpgeimmf(SB), NOSPLIT|NOFRAME, $0
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+TEXT bccmpgef64imm(SB), NOSPLIT|NOFRAME, $0
   // `val >= imm` -> result
   // `NaN >= imm` -> true
   BC_CMP_OP_F64_IMM($VCMP_IMM_NLT_UQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmpeqi(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpeqi64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_EQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-TEXT bccmpeqimmi(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpeqi64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_EQ)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmplti(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmplti64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_LT)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-TEXT bccmpltimmi(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmplti64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_LT)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmplei(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmplei64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_LE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-TEXT bccmpleimmi(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmplei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_LE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmpgti(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpgti64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_GT)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-TEXT bccmpgtimmi(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpgti64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GT)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
-TEXT bccmpgei(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpgei64(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64($VPCMP_IMM_GE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-TEXT bccmpgeimmi(SB), NOSPLIT|NOFRAME, $0
+TEXT bccmpgei64imm(SB), NOSPLIT|NOFRAME, $0
   BC_CMP_OP_I64_IMM($VPCMP_IMM_GE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
 
 #undef BC_CMP_OP_F64_IMM
 #undef BC_CMP_OP_I64_IMM
@@ -6952,28 +1817,49 @@ TEXT bccmpgeimmi(SB), NOSPLIT|NOFRAME, $0
 // Test Instructions
 // -----------------
 
-// isnanf(x) is the same as x != x
+// k[0] = isnan(f64[1]).k[2]
+//
+// isnan(x) is the same as x != x
 TEXT bcisnanf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   VCMPPD $VCMP_IMM_NEQ_UQ, Z2, Z2, K1, K1
   VCMPPD $VCMP_IMM_NEQ_UQ, Z3, Z3, K2, K2
   KUNPCKBW K1, K2, K1
-  NEXT()
 
-// take the tag pointed to in Z30:Z31
-// and determine if it contains _any_ of
-// the immediate bits provided in the instruction
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// v[0].k[1] = checktag(v[2], imm16[3]).k[4]
+//
+// Take the tag pointed to in v[1] and determine if it
+// contains _any_ of the immediate bits passed in imm16.
 TEXT bcchecktag(SB), NOSPLIT|NOFRAME, $0
-  MOVWLZX      0(VIRT_PCREG), R14
-  VPBROADCASTD R14, Z14                // Z14 = tag bits
-  KMOVW        K1, K3
-  VPGATHERDD   0(SI)(Z30*1), K3, Z15   // Z15 = initial object bytes
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3+2, OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
+  KMOVW K1, K2
+  VPXORD X15, X15, X15
+  VPGATHERDD 0(SI)(Z2*1), K2, Z15                  // Z15 = initial object bytes
+  VPBROADCASTW (BC_SLOT_SIZE*3)(VIRT_PCREG), Z14   // Z14 = tag bits (twice per 32-bit lane, but it's ok)
+
   VPBROADCASTD CONSTD_1(), Z21
-  VPSRLD       $4, Z15, Z15            // Z15 >>= 4
-  VPANDD.BCST  CONSTD_0x0F(), Z15, Z15 // Z15 = (bytes >> 4) & 0xf
-  VPSLLVD      Z15, Z21, Z15           // Z15 = 1 << ((bytes >> 4) & 0xf)
-  VPTESTMD     Z14, Z15, K1, K1        // test tag&z15 != 0
-  NEXT_ADVANCE(2)
+  VPSRLD $4, Z15, Z15                              // Z15 >>= 4
+  VPANDD.BCST CONSTD_0x0F(), Z15, Z15              // Z15 = (bytes >> 4) & 0xf
+  VPSLLVD Z15, Z21, Z15                            // Z15 = 1 << ((bytes >> 4) & 0xf)
+  VPTESTMD Z14, Z15, K1, K1                        // test tag&z15 != 0
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VMOVDQA32.Z Z2, K1, Z2
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  VMOVDQA32.Z Z3, K1, Z3
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
 
 // LUT for ion type bits -> json "type" bits
 CONST_DATA_U8(consts_typebits_shuf, 0, $(1 << 0))  // null -> null
@@ -6994,155 +1880,240 @@ CONST_DATA_U8(consts_typebits_shuf, 14, $0)        // annotation is unused
 CONST_DATA_U8(consts_typebits_shuf, 15, $0)        // reserved is unused
 CONST_GLOBAL(consts_typebits_shuf, $16)
 
-// turn the tag bits in z30:z31 into an integer
+// i64[0] = typebits(v[1]).k[2]
+//
+// turn the tag bits in v[1] into an integer
 TEXT bctypebits(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K3
-  VPXORD        Z15, Z15, Z15
-  VPMOVZXBD     CONST_GET_PTR(consts_typebits_shuf, 0), Z14
-  VPGATHERDD    0(SI)(Z30*1), K3, Z15   // Z15 = initial object bytes
-  VPSRLD        $4, Z15, Z15            // Z15 >>= 4
-  VPANDD.BCST   CONSTD_0x0F(), Z15, Z15 // Z15 = (bytes >> 4) & 0xf
-  VPERMD.Z      Z14, Z15, K1, Z15       // Z15 = json type bits
-  VPMOVZXDQ     Y15, Z2
-  VEXTRACTI32X8 $1, Z15, Y15
-  VPMOVZXDQ     Y15, Z3
-  NEXT_ADVANCE(0)
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
 
-// current value == NULL
-TEXT bcisnull(SB), NOSPLIT|NOFRAME, $0
-  // compute data[0]&0xf == 0xf
-  KMOVW          K1, K2
-  VPGATHERDD     0(SI)(Z30*1), K2, Z29
-  VPBROADCASTD   CONSTD_0x0F(), Z28
-  VPANDD         Z29, Z28, Z29
-  VPCMPEQD       Z29, Z28, K1, K1
-  NEXT()
+  KMOVW K1, K2
+  VPXORD X15, X15, X15
+  VPGATHERDD 0(SI)(Z2*1), K2, Z15                  // Z15 = initial object bytes
 
-// current value != NULL
-TEXT bcisnotnull(SB), NOSPLIT|NOFRAME, $0
-  // compute data[0]&0xf != 0xf
-  KMOVW          K1, K2
-  VPGATHERDD     0(SI)(Z30*1), K2, Z29
-  VPBROADCASTD   CONSTD_0x0F(), Z28
-  VPANDD         Z29, Z28, Z29
-  VPCMPUD        $4, Z29, Z28, K1, K1
-  NEXT()
+  VPMOVZXBD CONST_GET_PTR(consts_typebits_shuf, 0), Z14
+  VPSRLD $4, Z15, Z15                              // Z15 >>= 4
+  VPANDD.BCST CONSTD_0x0F(), Z15, Z15              // Z15 = (bytes >> 4) & 0xf
+  VPERMD.Z Z14, Z15, K1, Z15                       // Z15 = json type bits
 
-TEXT bcistrue(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K2
-  VPGATHERDD    0(SI)(Z30*1), K2, Z29
-  VPANDD.BCST   CONSTD_0xFF(), Z29, Z29
-  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z29, K1, K1
-  NEXT()
+  VEXTRACTI32X8 $1, Z15, Y3
+  VPMOVZXDQ Y15, Z2
+  VPMOVZXDQ Y3, Z3
 
-TEXT bcisfalse(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K2
-  VPGATHERDD    0(SI)(Z30*1), K2, Z29
-  VPANDD.BCST   CONSTD_0xFF(), Z29, Z29
-  VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z29, K1, K1
-  NEXT()
+  VMOVDQU32 Z2, 0(VIRT_VALUES)(DX*1)
+  VMOVDQU32 Z3, 64(VIRT_VALUES)(DX*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// compare slices in z2:z3 to saved slices
-// (works identically for strings and timestamps)
-TEXT bceqslice(SB), NOSPLIT|NOFRAME, $0
-  LOADARG1Z(Z4, Z5)
-  VMOVDQA32    Z2, Z6
-  VMOVDQA32    Z3, Z7
-  JMP          eqmem_tail(SB)
+// k[0] = is_null(v[1]).k[2]
+//
+// calculated as `(tag[0] & 0xF == 0xF)`
+TEXT bcisnullv(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
 
-// compare slices z4:z5.k1 and z6:z7.k1 and return K1 equal mask
-TEXT eqmem_tail(SB), NOSPLIT|NOFRAME, $0
-  VPCMPEQD     Z7, Z5, K1, K1   // only bother comparing equal-length slices
+  KMOVW K1, K2
+  VPXORD X3, X3, X3
+  VPGATHERDD 0(SI)(Z2*1), K2, Z3
+
+  VPBROADCASTD CONSTD_0x0F(), Z4
+  VPANDD Z3, Z4, Z3
+  VPCMPEQD Z3, Z4, K1, K1
+
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = !is_null(v[1]).k[2]
+//
+// calculated as `(tag[0] & 0xF != 0xF)`
+TEXT bcisnotnullv(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+
+  KMOVW K1, K2
+  VPXORD X3, X3, X3
+  VPGATHERDD 0(SI)(Z2*1), K2, Z3
+
+  VPBROADCASTD CONSTD_0x0F(), Z4
+  VPANDD Z3, Z4, Z3
+  VPCMPUD $VPCMP_IMM_NE, Z3, Z4, K1, K1
+
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = is_true(v[1]).k[2]
+//
+// calculated as `(tag[0] & 0xFF == 0x11)`
+TEXT bcistruev(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+
+  KMOVW K1, K2
+  VPXORD X4, X4, X4
+  VPGATHERDD 0(SI)(Z2*1), K2, Z4
+
+  VPANDD.BCST CONSTD_0xFF(), Z4, Z4
+  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K1
+
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = is_false(v[1]).k[2]
+//
+// calculated as `(tag[0] & 0xFF == 0x10)`
+TEXT bcisfalsev(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+
+  KMOVW K1, K2
+  VPXORD X4, X4, X4
+  VPGATHERDD 0(SI)(Z2*1), K2, Z4
+
+  VPANDD.BCST CONSTD_0xFF(), Z4, Z4
+  VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1
+
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// k[0] = cmp_eq(s[1], s[2]).k[3]
+TEXT bccmpeqslice(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1))
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z6), OUT(Z7), IN(CX), IN(K1))
+
+  // restrict the comparison to lanes that have equal lengths
+  VPCMPEQD Z7, Z5, K1, K1
+
+  JMP cmpeq_tail(SB)
+
+// k[0] = cmp_eq(v[1], v[2]).k[3]
+TEXT bccmpeqv(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z6), OUT(Z7), IN(CX), IN(K1))
+
+  // restrict the comparison to lanes that have equal lengths
+  VPCMPEQD Z7, Z5, K1, K1
+
+  JMP cmpeq_tail(SB)
+
+// k[0] = cmp_eq(v[1], v@imm[2]).k[3]
+TEXT bccmpeqvimm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2 + 8, OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  MOVL bytecode_scratchoff(VIRT_BCPTR), R15 // R15 <- scratch offset
+  MOVL (BC_SLOT_SIZE*2+0)(VIRT_PCREG), BX
+  MOVL (BC_SLOT_SIZE*2+4)(VIRT_PCREG), CX  // CX <- value length
+  ADDQ R15, BX                             // BX <- value offset
+
+  VPBROADCASTD CX, Z7
+  VMOVDQU32.Z 0(VIRT_VALUES)(DX*1), K1, Z4
+
+  // restrict the comparison to lanes that have equal lengths
+  VPCMPEQD 64(VIRT_VALUES)(DX*1), Z7, K1, K1
+
+  JMP cmpeqimm_tail(SB)
+
+// compares slices [Z4:Z5].K1 with [Z6:Z7].K1 and stores the resulting mask in a DX slot
+TEXT cmpeq_tail(SB), NOSPLIT|NOFRAME, $0
   KTESTW       K1, K1
   JZ           next
+
   VPBROADCASTD CONSTD_4(), Z24
   VPXORD       Z10, Z10, Z10    // default behavior is 0 = 0 (matching)
   VPXORD       Z11, Z11, Z11
   JMP          loop4tail
+
 loop4:
   KMOVW        K2, K3
   KMOVW        K2, K4
-  VPGATHERDD   0(SI)(Z6*1), K2, Z10
   VPGATHERDD   0(SI)(Z4*1), K3, Z11
+  VPGATHERDD   0(SI)(Z6*1), K2, Z10
   VPCMPEQD     Z10, Z11, K1, K1 // matching &= words are equal
   KANDW        K1, K4, K4
   VPADDD       Z24, Z4, K4, Z4  // offsets += 4
   VPADDD       Z24, Z6, K4, Z6
   VPSUBD       Z24, Z7, K4, Z7  // lengths -= 4
   VPSUBD       Z24, Z5, K4, Z5
+
 loop4tail:
   VPCMPD          $VPCMP_IMM_GE, Z24, Z7, K1, K2 // K2 = matching lanes w/ length >= 4
   KTESTW          K2, K2
   JNZ             loop4
+
   // test final 4 bytes w/ mask
   VPTESTMD        Z7, Z7, K1, K2          // only load lanes w/ length > 0
   VBROADCASTI64X2 tail_mask_map<>(SB), Z9
   VPERMD          Z9, Z7, Z9
   KMOVW           K2, K3
-  VPGATHERDD      0(SI)(Z6*1), K2, Z10
   VPGATHERDD      0(SI)(Z4*1), K3, Z11
+  VPGATHERDD      0(SI)(Z6*1), K2, Z10
   VPANDD          Z9, Z10, Z10
   VPANDD          Z9, Z11, Z11
   VPCMPEQD        Z10, Z11, K1, K1
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-// equal(Z30:Z31, stack[imm])
-TEXT bcequalv(SB), NOSPLIT|NOFRAME, $0
-  LOADARG1Z(Z4, Z5)
-  VMOVDQA32.Z  Z30, K1, Z6
-  VMOVDQA32.Z  Z31, K1, Z7
-  JMP          eqmem_tail(SB)
+// compares slices in [Z4] with literal values and stores the result in DX slot
+TEXT cmpeqimm_tail(SB), NOSPLIT|NOFRAME, $0
+  XORL R15, R15
+  KTESTW K1, K1
 
-// given 4-byte immediate and mask,
-// compute K1 = (*value)&mask == imm
-TEXT bceqv4mask(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K2
-  VPGATHERDD    0(SI)(Z30*1), K2, Z26
-  VPANDD.BCST   4(VIRT_PCREG), Z26, Z26
-  VPCMPEQD.BCST 0(VIRT_PCREG), Z26, K1, K1
-  LEAQ          4(SI), R8
-  NEXT_ADVANCE(8)
+  VPBROADCASTD CONSTD_4(), Z24
+  CMOVQEQ R15, CX
 
-// same as above, but use 'R8'
-// as an additional pre-increment
-// displacement for longer literal
-// comparisons
-TEXT bceqv4maskplus(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K2
-  VPGATHERDD    0(R8)(Z30*1), K2, Z26
-  VPANDD.BCST   4(VIRT_PCREG), Z26, Z26
-  VPCMPEQD.BCST 0(VIRT_PCREG), Z26, K1, K1
-  LEAQ          4(R8), R8
-  NEXT_ADVANCE(8)
+  SUBQ $4, CX
+  JCS tail
 
-// begin a comparison with 8 literal bytes,
-// resetting the displacement reg
-TEXT bceqv8(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K2
-  VPGATHERDD    0(SI)(Z30*1), K2, Z26
-  VPCMPEQD.BCST 0(VIRT_PCREG), Z26, K1, K1
-  KMOVW         K1, K2
-  VPGATHERDD    4(SI)(Z30*1), K2, Z26
-  VPCMPEQD.BCST 4(VIRT_PCREG), Z26, K1, K1
-  LEAQ          8(SI), R8
-  NEXT_ADVANCE(8)
+loop:
+  KMOVW K1, K2
+  VPXORD X10, X10, X10
+  VPGATHERDD 0(SI)(Z4*1), K2, Z10         // gather 4 bytes
+  VPADDD Z24, Z4, K1, Z4                  // increment offsets by 4
+  VPCMPEQD.BCST 0(SI)(BX*1), Z10, K1, K1  // matching &= words are equal
 
-// continue a comparison op with 8 more literal bytes
-TEXT bceqv8plus(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, K2
-  VPGATHERDD    0(R8)(Z30*1), K2, Z26
-  VPCMPEQD.BCST 0(VIRT_PCREG), Z26, K1, K1
-  KMOVW         K1, K2
-  VPGATHERDD    4(R8)(Z30*1), K2, Z26
-  VPCMPEQD.BCST 4(VIRT_PCREG), Z26, K1, K1
-  LEAQ          8(R8), R8
-  NEXT_ADVANCE(8)
+  ADDQ $4, BX
+  KTESTW K1, K1
+  CMOVQEQ R15, CX
+  SUBQ $4, CX
+  JCC loop
 
-// select only values where length==imm
-TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
-  VPCMPEQD.BCST 0(VIRT_PCREG), Z31, K1, K1
-  NEXT_ADVANCE(4)
+tail:
+  ADDQ $4, CX
+  JZ next
+
+  VPBROADCASTD CX, Z5
+  VBROADCASTI64X2 tail_mask_map<>(SB), Z9 // byte mask to filter out bytes above the slice
+
+  KTESTW K1, K1
+  JZ next
+
+  // test remaining 1-3 bytes (if we are here it's never 0 or 4 bytes actually)
+  VPERMD Z9, Z5, Z9
+  KMOVW K1, K2
+  VPXORD X10, X10, X10
+  VPGATHERDD 0(SI)(Z4*1), K2, Z10
+  VPANDD.BCST.Z 0(SI)(BX*1), Z9, K1, Z11
+  VPANDD Z9, Z10, Z10
+  VPCMPEQD Z10, Z11, K1, K1
+
+next:
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3+8)
 
 // Timestamp Boxing, Unboxing, and Manipulation
 // ============================================
@@ -7285,11 +2256,10 @@ TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
   VCVTPD2UQQ Z7, Z7                                                                         \
                                                                                             \
   /* Z4/Z5 <- Number of hours, minutes, seconds, and microseconds. */                       \
-  /*          VPTERNLOG(0xD8) = (A & ~C) | (B & C) */                                       \
   VPSLLQ $13, Z6, Z4                                                                        \
   VPSLLQ $13, Z7, Z5                                                                        \
-  VPTERNLOGQ.BCST $0xD8, CONSTQ_0x1FFF(), INPUT1, Z4                                        \
-  VPTERNLOGQ.BCST $0xD8, CONSTQ_0x1FFF(), INPUT2, Z5                                        \
+  VPTERNLOGQ.BCST $TERNLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT1, Z4                            \
+  VPTERNLOGQ.BCST $TERNLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT2, Z5                            \
                                                                                             \
   /* Z8/Z9 <- Number of 400Y cycles. */                                                     \
   BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST(Z8, Z9, Z12, Z13, CONSTQ_963315389(), 47)           \
@@ -7436,59 +2406,65 @@ TEXT bcleneq(SB), NOSPLIT|NOFRAME, $0
 // DATE_ADD(MONTH|YEAR, interval, timestamp)
 //
 // If the datepart is less than month we don't have to decompose. In that case we just
-// reuse the existing `bcaddi` and `bcaddimmi` instructions, which are timestamp agnostic.
+// reuse the existing `bcaddi64` and `bcaddi64imm` instructions, which are timestamp agnostic.
 //
 // We don't really need a specific code for adding years, as `year == month * 12`. This
 // means that we can just convert years to months and add `year * 12` months and be done.
+
+// ts[0].k[1] = date_add_month(ts[2], i64[3]).k[4]
 TEXT bcdateaddmonth(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z20
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z21
+  BC_UNPACK_5xSLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z20), OUT(Z21), IN(CX))
+
+  ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
+// ts[0].k[1] = date_add_month(ts[2], i64@imm[3]).k[4]
 TEXT bcdateaddmonthimm(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTQ 0(VIRT_PCREG), Z20
-  ADDQ $8, VIRT_PCREG
+  BC_UNPACK_3xSLOT_ZI64_SLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(Z20), OUT(R8))
   VMOVDQA64 Z20, Z21
+
+  ADDQ $(BC_SLOT_SIZE*4+8), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
+// ts[0].k[1] = date_add_year(ts[2], i64[3]).k[4]
 TEXT bcdateaddyear(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
+  BC_UNPACK_5xSLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(CX), OUT(R8))
 
   // multiply years by 12
-  VPSLLQ $3, 0(VIRT_VALUES)(R8*1), Z20
-  VPSLLQ $3, 64(VIRT_VALUES)(R8*1), Z21
+  VPSLLQ $3, 0(VIRT_VALUES)(CX*1), Z20
+  VPSLLQ $3, 64(VIRT_VALUES)(CX*1), Z21
   VPSRLQ $1, Z20, Z4
   VPSRLQ $1, Z21, Z5
   VPADDQ Z4, Z20, Z20
   VPADDQ Z5, Z21, Z21
 
+  ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
+// ts[0].k[1] = date_add_quarter(ts[2], i64[3]).k[4]
 TEXT bcdateaddquarter(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ $2, VIRT_PCREG
+  BC_UNPACK_5xSLOT(0, OUT(DX), OUT(R15), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z20), OUT(Z21), IN(CX))
 
   // multiply quarters by 3
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z20
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z21
   VPSLLQ $1, Z20, Z4
   VPSLLQ $1, Z21, Z5
   VPADDQ Z4, Z20, Z20
   VPADDQ Z5, Z21, Z21
 
+  ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
 
 // Tail instruction implementing DATE_ADD(MONTH, interval, timestamp).
 //
 // Inputs:
-//   K1      - 16-bit mask
-//   Z2/Z3   - Timestamp values
-//   Z20/Z21 - Months to add
+//   BX      - timestamp value slot
+//   R8      - predicate slot
+//   Z20/Z21 - number of months to add
 TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // --- Decompose the timestamp ---
 
@@ -7556,20 +2532,37 @@ TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z5, Z7, Z7
 
   // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z6, K1, Z2
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z7, K2, Z3
+  VPSUBQ.BCST.Z CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z6, K1, Z2
+  VPSUBQ.BCST.Z CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z7, K2, Z3
 
-  NEXT()
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R15))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
 
+  NEXT_ADVANCE(0)
+
+TEXT bcdatediffmicrosecond(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(CX))
+
+  VPSUBQ.Z 0(VIRT_VALUES)(BX*1), Z2, K1, Z2
+  VPSUBQ.Z 64(VIRT_VALUES)(BX*1), Z3, K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// i64[0].k[1] = date_diff_param(ts[2], ts[3], i64@imm[4]).k[5]
+//
 // DATE_DIFF(DAY|HOUR|MINUTE|SECOND|MILLISECOND, t1, t2)
 TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  VPBROADCASTQ 2(VIRT_PCREG), Z6
+  BC_UNPACK_2xSLOT_ZI64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(Z6), OUT(R8))
 
-  KSHIFTRW $8, K1, K2
-
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
 
   VPSUBQ Z2, Z4, Z4
   VPSUBQ Z3, Z5, Z5
@@ -7586,20 +2579,25 @@ TEXT bcdatediffparam(SB), NOSPLIT|NOFRAME, $0
   VDIVPD.RZ_SAE Z6, Z4, Z4
   VDIVPD.RZ_SAE Z6, Z5, Z5
 
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   VCVTPD2QQ.RZ_SAE Z4, K1, Z2
   VCVTPD2QQ.RZ_SAE Z5, K2, Z3
 
-  NEXT_ADVANCE(10)
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + 8)
+
+// i64[0].k[1] = date_diff_yqm(ts[2], ts[3], i16@imm[4]).k[5]
+//
 // DATE_DIFF(MONTH|QUARTER|YEAR, interval, timestamp)
-TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  KSHIFTRW $8, K1, K2
+TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT_RU16_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(DX), OUT(R8))
 
-  VMOVDQU64 0(VIRT_VALUES)(R8*1), Z4
-  VMOVDQU64 64(VIRT_VALUES)(R8*1), Z5
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  MOVWQZX 2(VIRT_PCREG), R8
   LEAQ CONST_GET_PTR(consts_datediff_month_year_div_rcp, 0), R15
 
   // First make the first timestamp lesser and the second greater. This would give us always
@@ -7661,7 +2659,7 @@ TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
   // Z10 <- Zeros
   // Z11 <- Multiplier used to implement the same bytecode for MONTH and YEAR difference.
   VPXORQ X10, X10, X10
-  VPBROADCASTQ 0(R15)(R8 * 8), Z11
+  VPBROADCASTQ 0(R15)(DX * 8), Z11
 
   // Increment one month if the lesser timestamp's day of month <= greater timestamp's day of month.
   VPCMPQ $VPCMP_IMM_GE, Z20, Z14, K3
@@ -7681,10 +2679,14 @@ TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
   VPSRLQ $35, Z5, K2, Z3
 
   // Z2/Z3 <- Final months/years difference - positive or negative depending on which timestamp was greater.
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   VPSUBQ Z2, Z10, K5, Z2
   VPSUBQ Z3, Z10, K6, Z3
 
-  NEXT_ADVANCE(4)
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + 2)
 
 #define BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT1, OUT2, IN1, IN2, TMP1, TMP2, TMP3, TMP4, TMP5) \
   /* First cut off some bits and convert to float64 without losing the precision. */      \
@@ -7712,12 +2714,16 @@ TEXT bcdatediffmonthyear(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTQ CONSTQ_0x1FFF(), TMP3                                                      \
   VPSLLQ $13, TMP1, OUT1                                                                  \
   VPSLLQ $13, TMP2, OUT2                                                                  \
-  VPTERNLOGQ $0xD8, TMP3, IN1, OUT1 /* (A & ~C) | (B & C) */                              \
-  VPTERNLOGQ $0xD8, TMP3, IN2, OUT2 /* (A & ~C) | (B & C) */
+  VPTERNLOGQ $TERNLOG_BLEND_BA, TMP3, IN1, OUT1 /* (A & ~C) | (B & C) */                  \
+  VPTERNLOGQ $TERNLOG_BLEND_BA, TMP3, IN2, OUT2 /* (A & ~C) | (B & C) */
 
+// i64[0] = extract_microsecond(ts[1]).k[2]
+//
 // EXTRACT(MICROSECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmicrosecond(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
   BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
@@ -7733,11 +2739,16 @@ TEXT bcdateextractmicrosecond(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z6, Z4, K1, Z2
   VPSUBQ Z7, Z5, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// i64[0] = extract_millisecond(ts[1]).k[2]
+//
 // EXTRACT(MILLISECOND FROM timestamp) - the result includes seconds
 TEXT bcdateextractmillisecond(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
   BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
@@ -7755,11 +2766,16 @@ TEXT bcdateextractmillisecond(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z7, Z5, Z5
   BC_DIV_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z8), 38, IN(K1), IN(K2))
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// i64[0] = extract_second(ts[1]).k[2]
+//
 // EXTRACT(SECOND FROM timestamp)
 TEXT bcdateextractsecond(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
   BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
@@ -7777,11 +2793,16 @@ TEXT bcdateextractsecond(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z7, Z5, Z5
   BC_DIV_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z8), 50, IN(K1), IN(K2))
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// i64[0] = extract_minute(ts[1]).k[2]
+//
 // EXTRACT(MINUTE FROM timestamp)
 TEXT bcdateextractminute(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
   BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
@@ -7798,11 +2819,16 @@ TEXT bcdateextractminute(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTQ CONSTQ_60(), Z7
   BC_MOD_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z7), IN(Z6), 37, IN(K1), IN(K2), Z8, Z9)
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// i64[0] = extract_hour(ts[1]).k[2]
+//
 // EXTRACT(HOUR FROM timestamp)
 TEXT bcdateextracthour(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z4:Z5 <- hours, minutes, seconds, and microseconds combined
   BC_EXTRACT_HMS_FROM_TIMESTAMP(OUT(Z4), OUT(Z5), IN(Z2), IN(Z3), Z6, Z7, Z8, Z9, Z10)
@@ -7813,20 +2839,32 @@ TEXT bcdateextracthour(SB), NOSPLIT|NOFRAME, $0
   VPSRLQ $10, Z5, Z5
   BC_DIV_U32_RCP_2X_MASKED(OUT(Z2), OUT(Z3), IN(Z4), IN(Z5), IN(Z8), 52, IN(K1), IN(K2))
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// i64[0] = extract_day(ts[1]).k[2]
+//
 // EXTRACT(DAY FROM timestamp)
 TEXT bcdateextractday(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
   VPBROADCASTQ CONSTQ_1(), Z4
   VPADDQ Z4, Z14, K1, Z2
   VPADDQ Z4, Z15, K2, Z3
-  NEXT()
 
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = extract_dow(ts[1]).k[2]
+//
 // EXTRACT(DOW FROM timestamp)
 TEXT bcdateextractdow(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // divide Z2:Z3 by (60 * 60 * 24 * 1000000) (microseconds per day)
   // to get days from the start of unix time
@@ -7865,7 +2903,8 @@ TEXT bcdateextractdow(SB), NOSPLIT|NOFRAME, $0
   VCVTPD2QQ Z4, K1, Z2
   VCVTPD2QQ Z5, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // A DWORD table designed for VPERMD that can be used to map month of the year into the number
 // of days preceeding the month + 1, excluding leap day.
@@ -7887,11 +2926,15 @@ CONST_DATA_U32(extract_doy_predicate, 56, $0)
 CONST_DATA_U32(extract_doy_predicate, 60, $0)
 CONST_GLOBAL(extract_doy_predicate, $64)
 
+// i64[0] = extract_doy(ts[1]).k[2]
+//
 // EXTRACT(DOY FROM timestamp)
 //
 // Extacting DOY is implemented as (x - DATE_TRUNC(x)) / MICROSECONDS_PER_DAY + 1
 TEXT bcdateextractdoy(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z8/Z9 <- Year index
   // Z10/Z11 <- Month index - starting from zero, where zero represents March
@@ -7917,11 +2960,17 @@ TEXT bcdateextractdoy(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z14, Z4, K1, Z2
   VPADDQ Z15, Z5, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// i64[0] = extract_month(ts[1]).k[2]
+//
 // EXTRACT(MONTH FROM timestamp)
 TEXT bcdateextractmonth(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
   // Convert our MonthIndex into a month in a range from [1, 12], where 1 is January.
@@ -7936,11 +2985,18 @@ TEXT bcdateextractmonth(SB), NOSPLIT|NOFRAME, $0
 
   VMOVDQA64 Z10, K1, Z2
   VMOVDQA64 Z11, K2, Z3
-  NEXT()
 
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = extract_quarter(ts[1]).k[2]
+//
 // EXTRACT(QUARTER FROM timestamp)
 TEXT bcdateextractquarter(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
   VPBROADCASTQ CONSTQ_1(), Z4
@@ -7956,12 +3012,19 @@ TEXT bcdateextractquarter(SB), NOSPLIT|NOFRAME, $0
 
   VMOVDQA64 Z10, K1, Z2
   VMOVDQA64 Z11, K2, Z3
-  NEXT()
 
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = extract_year(ts[1]).k[2]
+//
 // EXTRACT(YEAR FROM timestamp)
 TEXT bcdateextractyear(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
-  KSHIFTRW $8, K1, K2
 
   // Convert our MonthIndex into a month in a range from [1, 12], where 1 is January.
   VPADDQ.BCST CONSTQ_3(), Z10, Z10
@@ -7979,14 +3042,19 @@ TEXT bcdateextractyear(SB), NOSPLIT|NOFRAME, $0
 
   VMOVDQA64 Z8, K1, Z2
   VMOVDQA64 Z9, K2, Z3
-  NEXT()
 
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = date_to_unix_epoch(ts[1]).k[2]
 TEXT bcdatetounixepoch(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Discard some bits so we can prepare the timestamp value for division.
-  VPSRAQ $6, Z2, K1, Z2
-  VPSRAQ $6, Z3, K2, Z3
+  VPSRAQ $6, Z2, Z2
+  VPSRAQ $6, Z3, Z3
 
   // 15625 == 1000000 >> 6
   VPXORQ X5, X5, X5
@@ -8001,54 +3069,91 @@ TEXT bcdatetounixepoch(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z5, Z3, K4, Z3
 
   BC_DIVI64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
-  NEXT()
 
-// DATE_TRUNC(MILLISECOND, timestamp)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = date_to_unix_micro(ts[1]).k[2]
+TEXT bcdatetounixmicro(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// ts[0] = date_trunc_millisecond(ts[1]).k[2]
 TEXT bcdatetruncmillisecond(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   VPBROADCASTQ CONSTQ_1000(), Z4
   BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
   VPMULLQ Z4, Z2, K1, Z2
   VPMULLQ Z4, Z3, K2, Z3
-  NEXT()
 
-// DATE_TRUNC(SECOND, timestamp)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// ts[0] = date_trunc_second(ts[1]).k[2]
 TEXT bcdatetruncsecond(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   VPBROADCASTQ CONSTQ_1000000(), Z4
   BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
   VPMULLQ Z4, Z2, K1, Z2
   VPMULLQ Z4, Z3, K2, Z3
-  NEXT()
 
-// DATE_TRUNC(MINUTE, timestamp)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// ts[0] = date_trunc_minute(ts[1]).k[2]
 TEXT bcdatetruncminute(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   VPBROADCASTQ CONSTQ_60000000(), Z4
   BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
   VPMULLQ Z4, Z2, K1, Z2
   VPMULLQ Z4, Z3, K2, Z3
+
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
   NEXT()
 
-// DATE_TRUNC(HOUR, timestamp)
+// ts[0] = date_trunc_hour(ts[1]).k[2]
 TEXT bcdatetrunchour(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   VPBROADCASTQ CONSTQ_3600000000(), Z4
   BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
   VPMULLQ Z4, Z2, K1, Z2
   VPMULLQ Z4, Z3, K2, Z3
-  NEXT()
 
-// DATE_TRUNC(DAY, timestamp)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// ts[0] = date_trunc_day(ts[1]).k[2]
 TEXT bcdatetruncday(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+
   VPBROADCASTQ CONSTQ_86400000000(), Z4
   BC_DIVU64_IMPL(Z2, Z3, Z2, Z3, Z4, Z4, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, K3, K4)
   VPMULLQ Z4, Z2, K1, Z2
   VPMULLQ Z4, Z3, K2, Z3
-  NEXT()
 
-// DATE_TRUNC(WEEK(dow), timestamp)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// ts[0] = date_trunc_dow(ts[1], i16@imm[2]).k[3]
 //
 // Truncating a timestamp to a DOW can be implemented the following way:
 //   days = unix_time_in_days(ts)
@@ -8056,8 +3161,12 @@ TEXT bcdatetruncday(SB), NOSPLIT|NOFRAME, $0
 //   adj = floor(off / 7) * 7
 //   truncated_ts = days_to_microseconds(adj - 4 + dow)
 TEXT bcdatetruncdow(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  VPBROADCASTW 0(VIRT_PCREG), Z7
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
+  BC_UNPACK_ZI16(BC_SLOT_SIZE*2, Z7)
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2 + 2, OUT(R8))
+
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // divide Z2:Z3 by (60 * 60 * 24 * 1000000) (microseconds per day)
   // to get days from the start of unix time. Calculate also Z7 to
@@ -8100,11 +3209,14 @@ TEXT bcdatetruncdow(SB), NOSPLIT|NOFRAME, $0
   VPMULLQ Z6, Z4, K1, Z2                   // Z2 <- Truncated timestamp in unix microseconds (low)
   VPMULLQ Z6, Z5, K2, Z3                   // Z3 <- Truncated timestamp in unix microseconds (high)
 
-  NEXT_ADVANCE(2)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
 
-// DATE_TRUNC(MONTH, timestamp)
+// ts[0] = date_trunc_month(ts[1]).k[2]
 TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z8/Z9 <- Year index.
   // Z10/Z11 <- Month index - starting from zero, where zero represents March.
@@ -8126,7 +3238,8 @@ TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // VPSHUFB predicate that aligns a month in [1, 12] range (where 1 is March) to a quarter
 // month in [0, 11] range (our processing range that can be then easily composed). This
@@ -8135,9 +3248,11 @@ CONST_DATA_U64(consts_align_month_to_quarter_1_is_march, 0, $0x0404040101010A00)
 CONST_DATA_U64(consts_align_month_to_quarter_1_is_march, 8, $0x0000000A0A070707)
 CONST_GLOBAL(consts_align_month_to_quarter_1_is_march, $16)
 
-// DATE_TRUNC(QUARTER, timestamp)
+// ts[0] = date_trunc_quarter(ts[1]).k[2]
 TEXT bcdatetruncquarter(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z8/Z9 <- Year index.
   // Z10/Z11 <- Month index - starting from zero, where zero represents March.
@@ -8175,11 +3290,14 @@ TEXT bcdatetruncquarter(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// DATE_TRUNC(YEAR, timestamp)
+// ts[0] = date_trunc_year(ts[1]).k[2]
 TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
   // Z8/Z9 <- Year index.
   // Z10/Z11 <- Month index - starting from zero, where zero represents March.
@@ -8207,28 +3325,46 @@ TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// ts[0].k[1] = unbox_ts(v[2]).k[3]
 TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
-  // TernLog:
-  //   VPTERNLOG(0xD8) == (A & ~C) | (B & C) == Blend(A, B, ~C)
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+
+  KMOVW K1, K2
+  VPXORD X15, X15, X15
+  VPGATHERDD 0(SI)(Z2*1), K2, Z15                  // Z15 = initial 4 bytes of the boxed value
+
+  VEXTRACTI32X8 $1, Z2, Y21
+  VPBROADCASTD CONSTD_6(), Z20
+  VPBROADCASTD CONSTD_15(), Z17
+
+  VPSRLD $4, Z15, Z16                              // Z16 = Z15 >> 4
+  VPANDD Z17, Z16, Z16                             // Z15 = object tag
+
+  VPCMPEQD Z20, Z16, K1, K1                        // K1 <- Lanes that contain timestamp values
   KSHIFTRW $8, K1, K2
 
-  // Z4/Z5 <- First 8 bytes of the timestamp to process, ignoring
-  //          timezone offset, which is assumed to be zero.
-  VEXTRACTI32X8 $1, Z2, Y21
+  // Z4:Z5 <- First 8 bytes of the timestamp to process, ignoring Type|L
+  //          byte and timezone offset byte, which is assumed to be zero.
   KMOVB K1, K3
-  KSHIFTRW $8, K1, K4
+  KMOVB K2, K4
   VPXORQ X4, X4, X4
   VPXORQ X5, X5, X5
-  VPGATHERDQ 1(SI)(Y2*1), K3, Z4
-  VPGATHERDQ 1(SI)(Y21*1), K4, Z5
+  VPGATHERDQ 2(SI)(Y2*1), K3, Z4
+  VPGATHERDQ 2(SI)(Y21*1), K4, Z5
 
   // Z20/Z21 <- Frequently used constants to avoid broadcasts.
   VPBROADCASTQ CONSTQ_0x7F(), Z20
   VPBROADCASTQ CONSTQ_0x80(), Z21
   VPBROADCASTQ CONSTQ_1(), Z22
-  VPBROADCASTQ CONSTD_8(), Z23
+  VPBROADCASTD CONSTD_8(), Z23
+
+  // Make Z3 one byte less (decreases the byte required for Type|L tag).
+  VPSUBD.BCST.Z CONSTD_1(), Z3, K1, Z3
 
   // Z4/Z5 <- First 8 bytes of the timestamp cleared so only bytes that
   //          are within the length are non-zero, other bytes cleared.
@@ -8256,8 +3392,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   // KUNPCKBW K3, K4, K5
   VPSLLQ $7, Z6, K3, Z6
   VPSLLQ $7, Z7, K4, Z7
-  VPTERNLOGQ $0xD8, Z20, Z4, K3, Z6
-  VPTERNLOGQ $0xD8, Z20, Z5, K4, Z7
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z4, K3, Z6
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z5, K4, Z7
   VPSRLQ $8, Z4, K3, Z4
   VPSRLQ $8, Z5, K4, Z5
 
@@ -8265,8 +3401,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPTESTNMQ Z21, Z5, K4, K4
   VPSLLQ $7, Z6, K3, Z6
   VPSLLQ $7, Z7, K4, Z7
-  VPTERNLOGQ $0xD8, Z20, Z4, K3, Z6
-  VPTERNLOGQ $0xD8, Z20, Z5, K4, Z7
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z4, K3, Z6
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z5, K4, Z7
   VPSRLQ $8, Z4, K3, Z4
   VPSRLQ $8, Z5, K4, Z5
 
@@ -8304,7 +3440,7 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPCMPD.BCST $VPCMP_IMM_GT, CONSTD_10(), Z3, K1, K3
   VPADDD Z2, Z3, Z19
   VPXORD X18, X18, X18
-  VPGATHERDD -4(SI)(Z19*1), K3, Z18
+  VPGATHERDD (1-4)(SI)(Z19*1), K3, Z18
 
   // Z8/Z9 <- Month - 3.
   VPSUBQ.BCST CONSTQ_3(), Z8, Z8
@@ -8347,6 +3483,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VEXTRACTI32X8 $1, Z18, Y19
   VPMULLQ.BCST CONSTQ_1000000(), Z4, Z4
   VPMULLQ.BCST CONSTQ_1000000(), Z5, Z5
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+
   VPMOVZXDQ Y18, Z18
   VPMOVZXDQ Y19, Z19
   VPADDQ Z4, Z8, Z8
@@ -8358,9 +3496,17 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z8, K1, Z2
   VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z9, K2, Z3
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// v[0] = box_ts(ts[1]).k[2]
 TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
   // Make sure we have at least 16 bytes for each lane, we always overallocate to make the boxing simpler.
   VM_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
 
@@ -8370,7 +3516,6 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   // Update the length of the output buffer.
   ADDQ $(16 * 16), bytecode_scratch+8(VIRT_BCPTR)
 
-  KSHIFTRW $8, K1, K2
   // Decompose the timestamp value into Year/Month/DayOfMonth and microseconds of the day.
   //
   // Z4/Z5   - Microseconds of the day (combines hours, minutes, seconds, microseconds).
@@ -8403,9 +3548,6 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   //   - Year (1 to 3 bytes).
   //   - Month [1, 12] (one byte)
   //   - DayOfMonth [1, 31] (one byte)
-  //
-  // Notes:
-  //   - VPTERNLOG(0xD8) == (A & ~C) | (B & C) == Blend(A, B, ~C)
 
   // Z10/Z11 <- [DayOfMonth, Month, 0].
   VPSLLQ $16, Z14, Z14
@@ -8424,8 +3566,8 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTQ CONSTQ_7(), Z15
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1 byte)].
-  VPTERNLOGQ $0xD8, Z16, Z8, Z10
-  VPTERNLOGQ $0xD8, Z16, Z9, Z11
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, Z10
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, Z11
   VPORQ.BCST CONSTQ_0x0000000000808080(), Z10, Z10
   VPORQ.BCST CONSTQ_0x0000000000808080(), Z11, Z11
 
@@ -8438,8 +3580,8 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z17, Z15, K6, Z15
   VPSLLQ $8, Z10, K5, Z10
   VPSLLQ $8, Z11, K6, Z11
-  VPTERNLOGQ $0xD8, Z16, Z8, K5, Z10
-  VPTERNLOGQ $0xD8, Z16, Z9, K6, Z11
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, K5, Z10
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, K6, Z11
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1-3 bytes)].
   VPCMPQ $VPCMP_IMM_GT, Z16, Z8, K5
@@ -8450,8 +3592,8 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z17, Z15, K6, Z15
   VPSLLQ $8, Z10, K5, Z10
   VPSLLQ $8, Z11, K6, Z11
-  VPTERNLOGQ $0xD8, Z16, Z8, K5, Z10
-  VPTERNLOGQ $0xD8, Z16, Z9, K6, Z11
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, K5, Z10
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, K6, Z11
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1-3 bytes), Offset (always zero), Type|L (without a possible microsecond encoding length)].
   VPSLLQ $16, Z10, Z10
@@ -8553,216 +3695,19 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDD.BCST CONSTD_1(), Z31, Z31
   VPANDD.BCST.Z CONSTD_0x0F(), Z31, K1, Z31
 
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
   RET_ABORT()
 
-// compare
-//   (Z9/Z10/Z11) timestamp and
-//   (Z6/Z7/Z8) timestamp
-// as
-//   (Z6 < Z9) || (Z6 == Z9 && Z11 < Z8)
-//
-// note that comparisons are *unsigned*
-#define TIME_COMPARE_TAIL(imm)    \
-  KSHIFTRW $8, K1, K2             \
-  VPCMPUQ  imm, Z9, Z6, K1, K3    \
-  VPCMPUQ  imm, Z10, Z7, K2, K4   \
-  VPCMPEQQ Z9, Z6, K1, K1         \
-  VPCMPEQQ Z10, Z7, K2, K2        \
-  KUNPCKBW K1, K2, K2             \
-  KUNPCKBW K3, K4, K1             \
-  VPCMPUD  imm, Z11, Z8, K2, K2   \
-  KORW     K1, K2, K1
-
-// compare two timestamps using '<'
-// with the following register layout:
-//   Z6: lhs first 8 timestamps, first 8 sig. bytes
-//   Z7: lhs second 8 timestamps, first 8 sig. bytes
-//   Z8: lhs all 16 timestamps, last 4 bytes
-//   Z9-Z11: same as above, rhs
-//
-// the bcconsttm() instruction prepares
-// registers according to this ABI
-TEXT bctimelt(SB), NOSPLIT|NOFRAME, $0
-  TIME_COMPARE_TAIL($VPCMP_IMM_LT)
-  NEXT()
-
-// same as above, with direction reversed
-TEXT bctimegt(SB), NOSPLIT|NOFRAME, $0
-  TIME_COMPARE_TAIL($VPCMP_IMM_GT)
-  NEXT()
-
-// load constant timestamp plus
-// variable timestamp in Z2:Z3;
-// this instruction should always be
-// followed by bctimegt() or bctimelt()
-// (see above)
-TEXT bcconsttm(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R8)
-  VPXORD       Z6, Z6, Z6
-  VPXORD       Z7, Z7, Z7
-  VPXORD       Z8, Z8, Z8
-  VPXORD       Z11, Z11, Z11  // microseconds = 0
-  MOVQ         0(R8), R15     // R15 = &constant[0]
-  CMPQ         8(R8), $13     // if len(constant)==13, then microsecond component exists
-  JNE          no_tail
-  MOVL         9(R15), R8
-  BSWAPL       R8
-  ANDL         $0xFFFFFF, R8
-  VPBROADCASTD R8, Z11        // microseconds = bswap32(encoded[8:]) & 0xFFFFFF
-no_tail:
-  MOVQ         1(R15), R15
-  BSWAPQ       R15
-  VPBROADCASTQ R15, Z9        // Z9 = bswap64(first 8 bytes of timestamp)
-  VMOVDQA64    Z9, Z10        // Z10 = same as Z9
-  // now load variable portion:
-  VBROADCASTI64X2  CONST_GET_PTR(bswap64, 0), Z20
-  VBROADCASTI32X4  CONST_GET_PTR(bswap24_zero_last_byte, 0), Z24
-  KMOVB            K1, K2
-  KSHIFTRW         $8, K1, K3
-  VEXTRACTI32X8    $1, Z2, Y4
-  VPGATHERDQ       0(SI)(Y2*1), K2, Z6 // first 8 lanes, 8 sig. bytes
-  VPGATHERDQ       0(SI)(Y4*1), K3, Z7 // second 8 lanes, 8 sig. bytes
-  VPCMPEQD.BCST    CONSTD_12(), Z3, K1, K2
-  VPGATHERDD       8(SI)(Z2*1), K2, Z8 // all 16 lanes, last 4 bytes when length=12
-  VPSHUFB          Z20, Z6, Z6         // bswap first 8 bytes in all 16 lanes
-  VPSHUFB          Z20, Z7, Z7
-  VPSHUFB          Z24, Z8, Z8         // bswap microseconds in all 16 lanes
-  NEXT()
-
-// TODO: This is a remainder from an older timestamp code still in use.
-#define TIME_LO  Z5
-#define TIME_HI  Z6
-#define MASK_LO  Z7
-#define MASK_HI  Z8
-#define MERGE_LO Z9
-#define MERGE_HI Z10
-#define TMPZ     Z11
-#define TMPY     Y11 /* needs to point to same register as TMPZ */
-#define TMP_LO   Z12
-#define TMP_HI   Z13
-
-// Load a timestamp from Z2:Z3 into Z5:Z6
-// while taking the proper length in Z3 into
-// account to 'normalize' unspecified components
-#define TIMESTAMP_LOAD_LE                              \
-    KMOVB         K1, K2                               \
-    KSHIFTRW      $8, K1, K3                           \
-    VEXTRACTI32X8 $1, Z2, Y4                           \
-    VPGATHERDQ    0(SI)(Y2*1), K2, TIME_LO             \
-    VPGATHERDQ    0(SI)(Y4*1), K3, TIME_HI             \
-                                                       \
-    VPCMPUD.BCST $5, CONSTD_8(), Z3, K1, K2            \
-    KTESTW       K1, K2                                \
-    /* skip truncation in case all lengths >= 8 */     \
-    JC           skip_truncation                       \
-                                                       \
-    /* compute shift for mask to */                    \
-    /* blend out the fields      */                    \
-    VPBROADCASTD CONSTD_8(), TMPZ                      \
-    VPSUBD       Z3, TMPZ, TMPZ                        \
-    VPSLLD       $3, TMPZ, TMPZ                        \
-                                                       \
-    /* expand shifts into two Z registers */           \
-    VPMOVZXDQ     TMPY, TMP_LO                         \
-    VEXTRACTI32X8 $1, TMPZ, TMPY                       \
-    VPMOVZXDQ     TMPY, TMP_HI                         \
-                                                       \
-    /* create masks for bytes to keep */               \
-    /* by shifting in 0s from the MSB */               \
-    VPBROADCASTQ CONSTQ_NEG_1(), MASK_LO               \
-    VMOVDQU32    MASK_LO, MASK_HI                      \
-    VPSRLVQ      TMP_LO, MASK_LO, MASK_LO              \
-    VPSRLVQ      TMP_HI, MASK_HI, MASK_HI              \
-                                                       \
-    /* mask to merge in '1' for */                     \
-    /* both day & month in case */                     \
-    /* they are cleared out     */                     \
-    VPBROADCASTQ CONSTQ_0x0000000101000000(), TMP_LO   \
-    VPANDNQ      TMP_LO, MASK_LO, MERGE_LO             \
-    VPANDNQ      TMP_LO, MASK_HI, MERGE_HI             \
-                                                       \
-    /* make sure termination bits are always set */    \
-    VPBROADCASTQ CONSTQ_0x8080808080800080(), TMP_LO   \
-    VPORQ        TMP_LO, MERGE_LO, MERGE_LO            \
-    VPORQ        TMP_LO, MERGE_HI, MERGE_HI            \
-                                                       \
-    /* only modify lanes with lengths < 8 */           \
-    KNOTW        K2, K3                                \
-    /* do TIME_LO = TIME_LO & MASK_LO | MERGE_LO */    \
-    VPTERNLOGQ   $0xEA, MERGE_LO, MASK_LO, K3, TIME_LO \
-    KSHIFTRW     $8, K3, K3                            \
-    VPTERNLOGQ   $0xEA, MERGE_HI, MASK_HI, K3, TIME_HI \
-                                                       \
-skip_truncation:
-
-// bctmextract
-//  input:
-//   K1: lanes
-//   Z2: timestamp offset
-//   Z3: timestamp length
-//   R8: year/month/day/hour/minute/second
-//  output:
-//   Z2: extracted value (lower 8)
-//   Z3: extracted value (upper 8)
-//  clobbers:
-//   Z4-Z11, K2-K3
-TEXT bctmextract(SB), NOSPLIT|NOFRAME, $0
-    TIMESTAMP_LOAD_LE
-    MOVBQZX      0(VIRT_PCREG), R8
-    ADDQ         $1, VIRT_PCREG
-    CMPQ         R8, $0
-    JZ           years
-
-    // extract single byte
-    SHLQ         $3, R8
-    ADDQ         $16, R8
-    VPBROADCASTQ R8, Z4
-    // extract months/days/hours/minutes/seconds
-    VPSRLVQ      Z4, TIME_LO, Z10
-    VPSRLVQ      Z4, TIME_HI, Z11
-    VPBROADCASTQ CONSTQ_0x7F(), Z9
-    VPANDQ       Z9, Z10, Z2  // months (lower)
-    VPANDQ       Z9, Z11, Z3  // months (upper)
-    JMP          done
-
-years:
-    // extract years
-    VPSRLQ       $16, TIME_LO, Z7
-    VPSRLQ       $16, TIME_HI, Z8
-    VPBROADCASTQ CONSTQ_0x7F(), Z9
-    VPANDQ       Z9, Z7, Z7
-    VPANDQ       Z9, Z8, Z8
-    VPSRLQ       $1, TIME_LO, Z10
-    VPSRLQ       $1, TIME_HI, Z11
-    VPBROADCASTQ CONSTQ_0x3F80(), Z4
-    VPANDQ       Z4, Z10, Z10
-    VPANDQ       Z4, Z11, Z11
-    VPORQ        Z7, Z10, Z2
-    VPORQ        Z8, Z11, Z3
-
-done:
-    NEXT()
-
-#undef TIME_LO
-#undef TIME_HI
-#undef MASK_LO
-#undef MASK_HI
-#undef MERGE_LO
-#undef MERGE_HI
-#undef TMPZ
-#undef TMPY
-#undef TMP_LO
-#undef TMP_HI
-#undef TIMESTAMP_LOAD_LE
-
 // Bucket Instructions
 // -------------------
 
-// Widthbucket (float)
+// f64[0] = width_bucket(f64[1], f64[2], f64[3], f64[4]).k[5]
 //
 // WIDTH_BUCKET semantics is as follows:
 //   - When the input is less than MIN, the output is 0
@@ -8772,141 +3717,129 @@ done:
 //   - https://www.oreilly.com/library/view/sql-in-a/9780596155322/re91.html
 //   - https://docs.oracle.com/cd/B19306_01/server.102/b14200/functions214.htm
 //   - https://docs.snowflake.com/en/sql-reference/functions/width_bucket.html
-TEXT bcwidthbucketf(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW      $8, K1, K2
-
-  // MinValue
-  MOVWQZX       0(VIRT_PCREG), R8
-  VMOVUPD.Z     0(VIRT_VALUES)(R8*1), K1, Z4
-  VMOVUPD.Z     64(VIRT_VALUES)(R8*1), K2, Z5
-
-  // MaxValue
-  MOVWQZX       2(VIRT_PCREG), R8
-  VMOVUPD.Z     0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVUPD.Z     64(VIRT_VALUES)(R8*1), K2, Z7
+TEXT bcwidthbucketf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_5xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(DX), OUT(R15), OUT(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX)) // Value
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX)) // MinValue
+  BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(DX)) // MaxValue
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))   // Predicate
 
   // Value = Input - MinValue
-  VSUBPD.RD_SAE Z4, Z2, K1, Z2
-  VSUBPD.RD_SAE Z5, Z3, K2, Z3
+  VSUBPD.RD_SAE Z4, Z2, Z2
+  VSUBPD.RD_SAE Z5, Z3, Z3
 
   // ValueRange = MaxValue - MinValue
   VSUBPD.RD_SAE Z4, Z6, Z6
   VSUBPD.RD_SAE Z5, Z7, Z7
 
   // Value = (Input - MinValue) / (MaxValue - MinValue)
-  VDIVPD.RD_SAE Z6, Z2, K1, Z2
-  VDIVPD.RD_SAE Z7, Z3, K2, Z3
+  VDIVPD.RD_SAE Z6, Z2, Z2
+  VDIVPD.RD_SAE Z7, Z3, Z3
 
   // BucketCount
-  MOVWQZX       4(VIRT_PCREG), R8
-  VMOVUPD.Z     0(VIRT_VALUES)(R8*1), K1, Z4
-  VMOVUPD.Z     64(VIRT_VALUES)(R8*1), K2, Z5
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(R15))
 
   // Value = ((Input - MinValue) / (MaxValue - MinValue)) * BucketCount
-  VMULPD.RD_SAE Z4, Z2, K1, Z2
-  VMULPD.RD_SAE Z5, Z3, K2, Z3
+  VMULPD.RD_SAE Z4, Z2, Z2
+  VMULPD.RD_SAE Z5, Z3, Z3
 
   // Round to integer - this operation would preserve special numbers (Inf/NaN).
-  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z2, K1, Z2
-  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z3, K2, Z3
+  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z2, Z2
+  VRNDSCALEPD   $VROUND_IMM_DOWN_SAE, Z3, Z3
 
   // Restrict output values to [0, BucketCount + 1] range
   VBROADCASTSD  CONSTF64_1(), Z6
-  VMINPD        Z4, Z2, K1, Z2
-  VMINPD        Z5, Z3, K2, Z3
-  VADDPD        Z6, Z2, K1, Z2
-  VADDPD        Z6, Z3, K2, Z3
+  VMINPD        Z4, Z2, Z2
+  VMINPD        Z5, Z3, Z3
+  VADDPD        Z6, Z2, Z2
+  VADDPD        Z6, Z3, Z3
   VXORPD        X6, X6, X6
-  VMAXPD        Z6, Z2, K1, Z2
-  VMAXPD        Z6, Z3, K2, Z3
+  VMAXPD.Z      Z6, Z2, K1, Z2
+  VMAXPD.Z      Z6, Z3, K2, Z3
 
-  NEXT_ADVANCE(6)
+  BC_STORE_F64_TO_SLOT(OUT(Z2), OUT(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
-// widthbucket (int)
+// i64[0] = width_bucket(i64[1], i64[2], i64[3], i64[4]).k[5]
 //
 // NOTE: This function has some precision loss when the arithmetic exceeds 2^53.
-TEXT bcwidthbucketi(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-
-  // MinValue.I64
-  MOVWQZX 0(VIRT_PCREG), R8
-  VMOVDQU64.Z 0(VIRT_VALUES)(R8*1), K1, Z4
-  VMOVDQU64.Z 64(VIRT_VALUES)(R8*1), K2, Z5
-
-  // MaxValue.I64
-  MOVWQZX 2(VIRT_PCREG), R8
-  VMOVDQU64.Z 0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVDQU64.Z 64(VIRT_VALUES)(R8*1), K2, Z7
+TEXT bcwidthbucketi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_5xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(DX), OUT(R15), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX)) // Value
+  BC_LOAD_I64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX)) // MinValue
+  BC_LOAD_I64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(DX)) // MaxValue
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))   // Predicate
 
   // K3/K4 = Value < MinValue
   VPCMPQ $VPCMP_IMM_LT, Z4, Z2, K1, K3
   VPCMPQ $VPCMP_IMM_LT, Z5, Z3, K2, K4
 
   // Value.U64 = Input - MinValue
-  VPSUBQ Z4, Z2, K1, Z2
-  VPSUBQ Z5, Z3, K2, Z3
+  VPSUBQ Z4, Z2, Z2
+  VPSUBQ Z5, Z3, Z3
 
   // ValueRange.U64 = MaxValue - MinValue
   VPSUBQ Z4, Z6, Z6
   VPSUBQ Z5, Z7, Z7
 
   // Value.F64 = (F64)Value.U64
-  VCVTUQQ2PD Z2, K1, Z2
-  VCVTUQQ2PD Z3, K2, Z3
+  VCVTUQQ2PD Z2, Z2
+  VCVTUQQ2PD Z3, Z3
 
   // ValueRange.F64 = (F64)ValueRange.U64
   VCVTUQQ2PD Z6, Z6
   VCVTUQQ2PD Z7, Z7
 
   // Value.F64 = (Input - MinValue) / (MaxValue - MinValue)
-  VDIVPD.RD_SAE Z6, Z2, K1, Z2
-  VDIVPD.RD_SAE Z7, Z3, K2, Z3
+  VDIVPD.RD_SAE Z6, Z2, Z2
+  VDIVPD.RD_SAE Z7, Z3, Z3
 
   // BucketCount.U64
-  MOVWQZX 4(VIRT_PCREG), R8
-  VMOVDQU64.Z 0(VIRT_VALUES)(R8*1), K1, Z4
-  VMOVDQU64.Z 64(VIRT_VALUES)(R8*1), K2, Z5
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(R15))
 
   // BucketCount.F64 = (F64)BucketCount.U64
   VCVTQQ2PD Z4, Z6
   VCVTQQ2PD Z5, Z7
 
   // Value.F64 = ((Input - MinValue) / (MaxValue - MinValue)) * BucketCount
-  VMULPD.RD_SAE Z6, Z2, K1, Z2
-  VMULPD.RD_SAE Z7, Z3, K2, Z3
+  VMULPD.RD_SAE Z6, Z2, Z2
+  VMULPD.RD_SAE Z7, Z3, Z3
 
   // Value.I64 = (I64)Value.F64
-  VCVTTPD2QQ Z2, K1, Z2
-  VCVTTPD2QQ Z3, K2, Z3
+  VCVTTPD2QQ Z2, Z2
+  VCVTTPD2QQ Z3, Z3
 
   // Restrict output values to [0, BucketCount + 1] range
   VPBROADCASTQ CONSTQ_1(), Z10
-  VPMINSQ Z4, Z2, K1, Z2
-  VPMINSQ Z5, Z3, K2, Z3
-  VPADDQ Z10, Z2, K1, Z2
-  VPADDQ Z10, Z3, K2, Z3
+  VPMINSQ Z4, Z2, Z2
+  VPMINSQ Z5, Z3, Z3
+  VPADDQ.Z Z10, Z2, K1, Z2
+  VPADDQ.Z Z10, Z3, K2, Z3
   VPXORQ Z2, Z2, K3, Z2
   VPXORQ Z3, Z3, K4, Z3
 
-  NEXT_ADVANCE(6)
+  BC_STORE_F64_TO_SLOT(OUT(Z2), OUT(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
-// timebucket (timestamp)
+// i64[0] = timebucket(i64[1], i64[2]).k[3]
 TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW     $8, K1, K2
-
-  // Load interval from stack
-  MOVWQZX       0(VIRT_PCREG), R8
-  VMOVDQU64.Z   0(VIRT_VALUES)(R8*1), K1, Z4
-  VMOVDQU64.Z   64(VIRT_VALUES)(R8*1), K2, Z5
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX)) // Timestamp
+  BC_LOAD_I64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX)) // Interval
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))   // Predicate
 
   BC_MODI64_IMPL(Z16, Z17, Z2, Z3, Z4, Z5, K1, K2, Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15, K3, K4)
 
   // subtract modulo value from source in order
   // to get the start value of the bucket
-  VPSUBQ Z16, Z2, K1, Z2
-  VPSUBQ Z17, Z3, K2, Z3
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPSUBQ.Z Z16, Z2, K1, Z2
+  VPSUBQ.Z Z17, Z3, K2, Z3
 
-  NEXT_ADVANCE(2)
+  BC_STORE_F64_TO_SLOT(OUT(Z2), OUT(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 // GEO Functions
 // -------------
@@ -8943,38 +3876,33 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ TMP_0, DST_LON_A, DST_LON_A                           \
   VPADDQ TMP_0, DST_LON_B, DST_LON_B
 
+// s[0] = geo_hash(f64[1], f64[2], i64[3]).k[4]
+//
 // GEO_HASH is a string representing longitude, latitude, and precision as "HASH" where each
 // 5 bits of interleaved latitude and longitude data are encoded by a single ASCII character.
 TEXT bcgeohash(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R15
+  BC_UNPACK_5xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
 
-  // Z8/Z9 <- Precision in bits.
-  VMOVDQU64.Z 0(VIRT_VALUES)(R15*1), K1, Z8
-  VMOVDQU64.Z 64(VIRT_VALUES)(R15*1), K2, Z9
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(BX))  // Latitude
+  BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))  // Longitude
+  BC_LOAD_I64_FROM_SLOT(OUT(Z8), OUT(Z9), IN(R15)) // Precision
 
   JMP geohash_tail(SB)
 
 TEXT bcgeohashimm(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R15
+  BC_UNPACK_3xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  ADDQ $(BC_SLOT_SIZE*4 + 2), VIRT_PCREG
 
-  // Z8/Z9 <- Precision in bits.
-  VPBROADCASTQ R15, Z8
-  VPBROADCASTQ R15, Z9
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(BX))  // Latitude
+  BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))  // Longitude
+  VPBROADCASTQ R15, Z8                                 // Precision (low)
+  VPBROADCASTQ R15, Z9                                 // Precision (high)
 
   JMP geohash_tail(SB)
 
 TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
-  // Z4/Z5 <- Latitude.
-  VMOVAPD.Z Z2, K1, Z4
-  VMOVAPD.Z Z3, K2, Z5
-
-  // Z6/Z7 <- Longitude.
-  VMOVUPD.Z 0(VIRT_VALUES)(R8*1), K1, Z6
-  VMOVUPD.Z 64(VIRT_VALUES)(R8*1), K2, Z7
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   VPMOVSQD Z8, Y8
   VPMOVSQD Z9, Y9
@@ -9012,9 +3940,6 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   //
   // After this it's easy to use VPUNPCKLBW to interleave the bytes to get the final string.
 
-  // VPTERNLOG(0xD8) == (A & ~C) | (B &  C) == Blend(A, B, ~C)
-  // VPTERNLOG(0xE4) == (A &  C) | (B & ~C) == Blend(A, B,  C)
-
   // NOTE: This is basically a dumb approach to shuffle bits via shifting and masking.
   VPBROADCASTD CONSTD_0b11001110_01110011_10011100_11100111(), Z14
 
@@ -9023,10 +3948,10 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPSLLQ $3, Z6, Z6                             // [________|________|________|________|__bbcccd|deeeffgg|ghhiiijj|kkkll___] {lo}
   VPSLLQ $3, Z7, Z7                             // [________|________|________|________|__bbcccd|deeeffgg|ghhiiijj|kkkll___] {hi}
 
-  VPTERNLOGD $0xD8, Z14, Z4, Z6                 // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {lo}
-  VPTERNLOGD $0xD8, Z14, Z5, Z7                 // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {hi}
-  VPTERNLOGD $0xD8, Z14, Z10, Z4                // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {lo}
-  VPTERNLOGD $0xD8, Z14, Z11, Z5                // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {hi}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z4, Z6     // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {lo}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z5, Z7     // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {hi}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z10, Z4    // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {lo}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z11, Z5    // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {hi}
 
   VPBROADCASTQ CONSTQ_0xFFFFFF(), Z14
   VPSLLQ $9, Z4, Z10                            // [________|________|________|_AAaaaCC|cccEEeee|________|________|________] {lo}
@@ -9034,10 +3959,10 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPSLLQ $9, Z6, Z12                            // [________|________|________|_bbBBBdd|DDDffFFF|________|________|________] {lo}
   VPSLLQ $9, Z7, Z13                            // [________|________|________|_bbBBBdd|DDDffFFF|________|________|________] {hi}
 
-  VPTERNLOGQ $0xE4, Z14, Z10, Z4                // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {lo}
-  VPTERNLOGQ $0xE4, Z14, Z11, Z5                // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {hi}
-  VPTERNLOGQ $0xE4, Z14, Z12, Z6                // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {lo}
-  VPTERNLOGQ $0xE4, Z14, Z13, Z7                // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {hi}
+  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z10, Z4    // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {lo}
+  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z11, Z5    // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {hi}
+  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z12, Z6    // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {lo}
+  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z13, Z7    // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {hi}
 
   VPSLLQ $3, Z4, Z10                            // [________|________|________|___CCccc|________|________|___IIiii|________] {lo}
   VPSLLQ $3, Z5, Z11                            // [________|________|________|___CCccc|________|________|___IIiii|________] {hi}
@@ -9057,15 +3982,15 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPANDD Z18, Z7, Z7                            // [00000000|00000000|00000000|00000000|000ffFFF|00000000|00000000|000llLLL] {hi}
 
   VPSLLQ $16, Z18, Z18
-  VPTERNLOGD $0xD8, Z19, Z10, Z4                // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {lo}
-  VPTERNLOGD $0xD8, Z19, Z11, Z5                // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {hi}
-  VPTERNLOGD $0xD8, Z19, Z12, Z6                // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {lo}
-  VPTERNLOGD $0xD8, Z19, Z13, Z7                // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {hi}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z10, Z4    // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {lo}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z11, Z5    // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {hi}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z12, Z6    // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {lo}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z13, Z7    // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {hi}
 
-  VPTERNLOGD $0xD8, Z18, Z14, Z4                // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {lo}
-  VPTERNLOGD $0xD8, Z18, Z15, Z5                // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {hi}
-  VPTERNLOGD $0xD8, Z18, Z16, Z6                // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {lo}
-  VPTERNLOGD $0xD8, Z18, Z17, Z7                // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {hi}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z14, Z4    // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {lo}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z15, Z5    // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {hi}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z16, Z6    // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {lo}
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z17, Z7    // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {hi}
 
   // Encode the bits into characters.
   //
@@ -9124,7 +4049,8 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VMOVDQU32 Z6, 128(R8)
   VMOVDQU32 Z7, 192(R8)
 
-  NEXT_ADVANCE(4)
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(0)
 
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
@@ -9132,11 +4058,14 @@ abort:
 
 // GEO_TILE_X and GEO_TILE_Y functions project latitude and logitude by using Mercator.
 
+// i64[0] = geo_tile_x(f64[1], i64[2]).k[3]
+//
 // X = FLOOR( (longitude + 180.0) / 360.0 * (1 << zoom) )
 //   = FLOOR( [(1 << 48) / 2] + FMA(longitude * [(1 << 48) / 360]) >> (48 - precision)
 TEXT bcgeotilex(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   VBROADCASTSD CONSTF64_281474976710656_DIV_360(), Z6
   VBROADCASTSD CONSTF64_140737488355328(), Z7
@@ -9149,8 +4078,8 @@ TEXT bcgeotilex(SB), NOSPLIT|NOFRAME, $0
 
   VPXORQ X8, X8, X8
   VPBROADCASTQ CONST_GEO_TILE_MAX_PRECISION(), Z9
-  VPMAXSQ 0(VIRT_VALUES)(R8*1), Z8, Z6
-  VPMAXSQ 64(VIRT_VALUES)(R8*1), Z8, Z7
+  VPMAXSQ 0(VIRT_VALUES)(CX*1), Z8, Z6
+  VPMAXSQ 64(VIRT_VALUES)(CX*1), Z8, Z7
 
   VPBROADCASTQ CONSTQ_0x0000FFFFFFFFFFFF(), Z11
   VPMINSQ Z9, Z6, Z6
@@ -9163,16 +4092,20 @@ TEXT bcgeotilex(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z6, Z9, Z6
   VPSUBQ Z7, Z9, Z7
 
-  VPSRLVQ Z6, Z4, K1, Z2
-  VPSRLVQ Z7, Z5, K2, Z3
+  VPSRLVQ.Z Z6, Z4, K1, Z2
+  VPSRLVQ.Z Z7, Z5, K2, Z3
 
-  NEXT_ADVANCE(2)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+// i64[0] = geo_tile_y(f64[1], i64[2]).k[3]
+//
 // Y = FLOOR( {0.5 - [LN((1 + SIN(lat)) / (1 - SIN(lat))] / (4*PI)} * (1 << precision) );
 //   = FLOOR( [1 << 48) / 2] - [LN((1 + SIN(lat)) / (1 - SIN(lat)) * (1 << 48) / (4*PI)] ) >> (48 - precision));
 TEXT bcgeotiley(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   VBROADCASTSD CONSTF64_PI_DIV_180(), Z11
   VBROADCASTSD CONSTF64_1(), Z10
@@ -9211,8 +4144,8 @@ TEXT bcgeotiley(SB), NOSPLIT|NOFRAME, $0
 
   VPXORQ X8, X8, X8
   VPBROADCASTQ CONST_GEO_TILE_MAX_PRECISION(), Z9
-  VPMAXSQ 0(VIRT_VALUES)(R8*1), Z8, Z6
-  VPMAXSQ 64(VIRT_VALUES)(R8*1), Z8, Z7
+  VPMAXSQ 0(VIRT_VALUES)(CX*1), Z8, Z6
+  VPMAXSQ 64(VIRT_VALUES)(CX*1), Z8, Z7
 
   VCVTPD2UQQ.RZ_SAE Z4, Z4
   VCVTPD2UQQ.RZ_SAE Z5, Z5
@@ -9228,10 +4161,11 @@ TEXT bcgeotiley(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z6, Z9, Z6
   VPSUBQ Z7, Z9, Z7
 
-  VPSRLVQ Z6, Z4, K1, Z2
-  VPSRLVQ Z7, Z5, K2, Z3
+  VPSRLVQ.Z Z6, Z4, K1, Z2
+  VPSRLVQ.Z Z7, Z5, K2, Z3
 
-  NEXT_ADVANCE(2)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 // GEO_TILE_ES() projects latitude and longitude coordinates by using Mercator function
 // and encodes them as "Precision/X/Y" string, which is compatible with Elastic Search.
@@ -9252,26 +4186,25 @@ CONST_DATA_U64(const_geotilees_extract_u16_bswap, 32, $0xFFFFFFFFFFFF0405)
 CONST_DATA_U64(const_geotilees_extract_u16_bswap, 40, $0xFFFFFFFFFFFF0C0D)
 CONST_GLOBAL(const_geotilees_extract_u16_bswap, $48)
 
+// str[0] = geo_tile_es(f64[1], f64[2], i64[3]).k[4]
 TEXT bcgeotilees(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R15
+  BC_UNPACK_5xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z8), OUT(Z9), IN(R15), IN(K1), IN(K2))
 
-  // Z8/Z9 <- Precision in bits.
-  VMOVDQU64.Z 0(VIRT_VALUES)(R15*1), K1, Z8
-  VMOVDQU64.Z 64(VIRT_VALUES)(R15*1), K2, Z9
-
+  ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP geotilees_tail(SB)
 
+// str[0] = geo_tile_es(f64[1], f64[2], i16@imm[3]).k[4]
 TEXT bcgeotileesimm(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R15
+  BC_UNPACK_3xSLOT_RU16_SLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   // Z8/Z9 <- Precision in bits.
-  VPBROADCASTQ R15, Z8
-  VPBROADCASTQ R15, Z9
+  VPBROADCASTQ.Z R15, K1, Z8
+  VPBROADCASTQ.Z R15, K2, Z9
 
+  ADDQ $(BC_SLOT_SIZE*4 + 2), VIRT_PCREG
   JMP geotilees_tail(SB)
 
 TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
@@ -9284,11 +4217,11 @@ TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
   ADDQ $(32 * 16), bytecode_scratch+8(VIRT_BCPTR)
 
   // Z4/Z5 <- Projected latitude to Y.
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   VBROADCASTSD CONSTF64_PI_DIV_180(), Z11
   VBROADCASTSD CONSTF64_1(), Z10
-  VMULPD Z11, Z2, K1, Z2
-  VMULPD Z11, Z3, K2, Z3
-
+  VMULPD.Z Z11, Z2, K1, Z2
+  VMULPD.Z Z11, Z3, K2, Z3
   BC_FAST_SIN_4ULP(Z4, Z5, Z2, Z3)
 
   // Truncate to [-0.9999, 0.9999] to avoid infinity in border cases.
@@ -9322,8 +4255,7 @@ TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
   VCVTPD2UQQ.RZ_SAE Z5, Z5
 
   // Z6/Z7 <- Projected longitude to X.
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z6
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z7
+  BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(CX))
   VFMADD132PD.RZ_SAE Z10, Z11, K1, Z6
   VFMADD132PD.RZ_SAE Z10, Z11, K2, Z7
 
@@ -9623,34 +4555,30 @@ TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
 
   VMOVDQA32.Z Z20, K1, Z2
   VPADDD CONST_GET_PTR(consts_offsets_d_32, 4), Z3, K1, Z3
-  VPSUBD Z2, Z3, K1, Z3
+  VPSUBD.Z Z2, Z3, K1, Z3
 
-  NEXT_ADVANCE(4)
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(0)
 
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
   RET_ABORT()
 
-
+// f64[0].k[1] = geo_distance(f64[2], f64[3], f64[4], f64[5]).k[6]
 TEXT bcgeodistance(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
+  BC_UNPACK_5xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(DX), OUT(R15), OUT(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(R15))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   // Z4/Z5 <- Lon2 - Lon1
-  MOVWQZX 4(VIRT_PCREG), R8
-  MOVWQZX 0(VIRT_PCREG), R15
-
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z4
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z5
-  VSUBPD 0(VIRT_VALUES)(R15*1), Z4, Z4
-  VSUBPD 64(VIRT_VALUES)(R15*1), Z5, Z5
+  VSUBPD 0(VIRT_VALUES)(CX*1), Z4, Z4
+  VSUBPD 64(VIRT_VALUES)(CX*1), Z5, Z5
 
   // Z6/Z7 <- Lat2
-  MOVWQZX 2(VIRT_PCREG), R8
   VBROADCASTSD CONSTF64_PI_DIV_180(), Z10
   VBROADCASTSD CONSTF64_HALF(), Z11
-
-  VMOVUPD 0(VIRT_VALUES)(R8*1), Z6
-  VMOVUPD 64(VIRT_VALUES)(R8*1), Z7
+  BC_LOAD_F64_FROM_SLOT(OUT(Z6), OUT(Z7), IN(DX))
 
   // Z4/Z5 <- RADIANS(Lon2 - Lon1)
   VMULPD Z10, Z4, Z4
@@ -9705,184 +4633,152 @@ TEXT bcgeodistance(SB), NOSPLIT|NOFRAME, $0
   BC_FAST_ASIN_4ULP(OUT(Z4), OUT(Z5), IN(Z8), IN(Z9))
 
   VBROADCASTSD CONSTF64_12742000(), Z10
-  VMULPD Z10, Z4, K1, Z2
-  VMULPD Z10, Z5, K2, Z3
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
 
-  NEXT_ADVANCE(6)
+  VMULPD.Z Z10, Z4, K1, Z2
+  VMULPD.Z Z10, Z5, K2, Z3
+
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*7)
 
 
-// String Concatenation
-// --------------------
+// Alloc
+// -----
 
-#define BC_CONCAT_ACC_INIT()          \
-  VEXTRACTI32X8 $1, Z3, Y4            \
-  VPMOVZXDQ Y3, K1, Z2                \
-  VPMOVZXDQ Y4, K2, Z3
+// v[0].k[1] = alloc(i64[2]).k[3]
+//
+// Allocate a data slice, which can be used for any purpose, the length is described by INT64 elements
+TEXT bcalloc(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-#define BC_CONCAT_ACC_STEP(StackRef)  \
-  MOVWQZX (StackRef)(VIRT_PCREG), R8  \
-  VPMOVZXDQ 64(VIRT_VALUES)(R8*1), Z4 \
-  VPMOVZXDQ 96(VIRT_VALUES)(R8*1), Z5 \
-  VPADDQ Z4, Z2, K1, Z2               \
-  VPADDQ Z5, Z3, K2, Z3
-
-// Initializes string length for concatenation in Z2/Z3
-TEXT bcconcatlenget1(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_INIT()
-  NEXT_ADVANCE(0)
-
-TEXT bcconcatlenget2(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_INIT()
-  BC_CONCAT_ACC_STEP(0)
-  NEXT_ADVANCE(2)
-
-TEXT bcconcatlenget3(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_INIT()
-  BC_CONCAT_ACC_STEP(0)
-  BC_CONCAT_ACC_STEP(2)
-  NEXT_ADVANCE(4)
-
-TEXT bcconcatlenget4(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_INIT()
-  BC_CONCAT_ACC_STEP(0)
-  BC_CONCAT_ACC_STEP(2)
-  BC_CONCAT_ACC_STEP(4)
-  NEXT_ADVANCE(6)
-
-// Accumulates string length as INT64 in Z2/Z3
-TEXT bcconcatlenacc1(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_STEP(0)
-  NEXT_ADVANCE(2)
-
-TEXT bcconcatlenacc2(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_STEP(0)
-  BC_CONCAT_ACC_STEP(2)
-  NEXT_ADVANCE(4)
-
-TEXT bcconcatlenacc3(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_STEP(0)
-  BC_CONCAT_ACC_STEP(2)
-  BC_CONCAT_ACC_STEP(4)
-  NEXT_ADVANCE(6)
-
-TEXT bcconcatlenacc4(SB), NOSPLIT|NOFRAME, $0
-  KSHIFTRW $8, K1, K2
-  BC_CONCAT_ACC_STEP(0)
-  BC_CONCAT_ACC_STEP(2)
-  BC_CONCAT_ACC_STEP(4)
-  BC_CONCAT_ACC_STEP(6)
-  NEXT_ADVANCE(8)
-
-#undef BC_CONCAT_ACC_STEP
-#undef BC_CONCAT_ACC_INIT
-
-// Allocate string, which length is described by UINT64 elements in Z2/Z3
-TEXT bcallocstr(SB), NOSPLIT|NOFRAME, $0
   // NOTE: We want unsigned saturation here as too large objects would end up with 0xFFFFFFFF length, which is UINT32_MAX.
-
   VPMOVUSQD Z2, Y4
   VPMOVUSQD Z3, Y5
   VINSERTI32X8 $1, Y5, Z4, Z4
 
-  VPBROADCASTD CONSTD_134217727(), Z10                 // 134217727 == 2^31 / 16 - 1 <- horizonal addition threshold
-  VPCMPD $VPCMP_IMM_LE, Z10, Z4, K1, K3                // Clear all lanes that would cause overflow during horizontal addition
-  VMOVDQA32.Z Z4, K3, Z7                               // Z7 = [15    14    13    12   |11    10    09    08   |07    06    05    04   |03    02    01    00   ]
+  // R15 (DstSum), Z5 (DstOff), Z7 (DstLen), Z4 (DstEnd), K1 (DstMask)
+  BC_HORIZONTAL_LENGTH_SUM(OUT(R15), OUT(Z5), OUT(Z7), OUT(Z4), OUT(K1), IN(Z4), IN(K1), X10, K2)
 
-  // Horizontal addition:
-  MOVL $0xFF00F0F0, R15
-  KMOVD R15, K4
-  VPSLLDQ $4, Z7, Z4                                   // Z4 = [14    13    12    __   |10    09    08    __   |06    05    04    __   |02    01    00    __   ]
-  VPADDD Z7, Z4, Z4                                    // Z4 = [15+14 14+13 13+12 12   |11+10 10+09 09+08 08   |07+06 06+05 05+04 04   |03+02 02+01 01+00 00   ]
-  VPSLLDQ $8, Z4, Z5                                   // Z5 = [13+12 12    __    __   |09+08 08    __    __   |05+04 04    __    __   |01+00 00    __    __   ]
-  VPADDD Z5, Z4, Z4                                    // Z4 = [15:12 14:12 13:12 12   |11:08 10:08 09:08 08   |07:04 06:04 05:04 04   |03:00 02:00 01:00 00   ]
+  BC_ALLOC_SLICE(OUT(Z2), IN(R15), CX, R8)             // Z2 <- Offset of the beginning of the allocated buffer
+  VPADDD.Z Z5, Z2, K1, Z2                              // Z2 <- Offsets of each allocated object
+  VPXORD X3, X3, X3                                    // Z3 <- Length of each allocated object, initially zero
 
-  VPSHUFD $SHUFFLE_IMM_4x2b(3, 3, 3, 3), Z4, Z5        // Z5 = [15:12 15:12 15:12 15:12|11:08 11:08 11:08 11:08|07:04 07:04 07:04 07:04|03:00 03:00 03:00 03:00]
-  VPERMQ $SHUFFLE_IMM_4x2b(1, 1, 1, 1), Z5, Z5         // Z5 = [11:08 11:08 11:08 11:08|<ign> <ign> <ign> <ign>|03:00 03:00 03:00 03:00|<ign> <ign> <ign> <ign>]
-  VPADDD Z5, Z4, K4, Z4                                // Z4 = [15:08 14:08 13:08 12:08|11:08 10:08 09:08 08   |07:00 06:00 05:00 04:00|03:00 02:00 01:00 00   ]
-  KSHIFTRD $16, K4, K4
-  VPSHUFD $SHUFFLE_IMM_4x2b(3, 3, 3, 3), Z4, Z5        // Z5 = [15:08 15:08 15:08 15:08|11:08 11:08 11:08 11:08|07:00 07:00 07:00 07:00|03:00 03:00 03:00 03:00]
-  VSHUFI64X2 $SHUFFLE_IMM_4x2b(1, 1, 1, 1), Z5, Z5, Z5 // Z5 = [07:00 07:00 07:00 07:00|07:00 07:00 07:00 07:00|<ign> <ign> <ign> <ign>|<ign> <ign> <ign> <ign>]
-  VPADDD Z5, Z4, K4, Z4                                // Z4 = [15:00 14:00 13:00 12:00|11:00 10:00 09:00 08:00|07:00 06:00 05:00 04:00|03:00 02:00 01:00 00   ]
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-  VEXTRACTI32X4 $3, Z4, X10
-  VPSUBD Z7, Z4, Z5                                    // Z5 = [14:00 13:00 12:00 11:00|10:00 09:00 08:00 07:00|06:00 05:00 04:00 03:00|02:00 01:00 00    zero ]
-  VPEXTRD $3, X10, R15                                 // R15 = Aggregated length of all objects to be allocated
+  _BC_ERROR_HANDLER_MORE_SCRATCH()
 
-  // What we have:
-  //   Z4 <- Horizontally added lengths - it essentially contains the end of each object
-  //   Z5 <- Start of each object in the output buffer relative to its current end (has to be further adjusted to get an absolute index)
-  //   Z7 <- Length of each object to be allocated (describes input lengths with large objects already masked out)
-  //   R15 <- Sum of all lengths, so we can allocate
+// String - Concat
+// ---------------
 
-  // Allocate the string
-  MOVQ bytecode_scratch+8(VIRT_BCPTR), CX              // CX = Output buffer length
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), R8             // R8 = Output buffer capacity
-  SUBQ CX, R8                                          // R8 = Remaining space in the output buffer
-  CMPQ R8, R15
-  JLT abort                                            // Abort if the output buffer is too small
+// v[0].k[1] = concat_str(str[...])
+TEXT bcconcatstr(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_RU32(BC_SLOT_SIZE*2, OUT(CX))              // CX <- number of variable arguments
+  ADDQ $(BC_SLOT_SIZE*2 + 4), VIRT_PCREG               // VIRT_PCREG <- the current va base
 
-  VPBROADCASTD CX, Z2
-  VPADDD.BCST bytecode_scratchoff(VIRT_BCPTR), Z2, Z2
-  VPADDD.Z Z5, Z2, K3, Z2                              // Beginning of each allocated object, zero index of non-allocated
+  // Calculate Length
+  // ----------------
 
-  ADDQ CX, R15
-  MOVQ R15, bytecode_scratch+8(VIRT_BCPTR)             // Update the length of our scratch buffer
-  VPXORD X3, X3, X3                                    // Length of each allocated object, initially zero
+  VPXORQ X2, X2, X2                                    // Z2 <- Concat length (low)
+  VPXORQ X3, X3, X3                                    // Z3 <- Concat length (high)
+  KXORW K1, K1, K1                                     // K1 <- Disable all lanes if no arguments were given
+  VMOVQ VIRT_PCREG, X11                                // X11 <- spilled VIRT_PCREG, the current va base
+  MOVL $0xFFFF, R15
 
-  KMOVW K3, K1                                         // Update K1 predicate, masking out objects that were too large and thus couldn't be allocated
-  NEXT()
+  TESTL CX, CX                                         // PARANOIA:
+  JZ done                                              // No arguments shouldn't happen, but let's make it safe if it does...
 
-abort:
-  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
-  RET_ABORT()
+  KMOVW R15, K1                                        // K1 <- All lanes by default, result calculated as AND of all masks
 
+va_len_iter:
+  BC_UNPACK_2xSLOT(0, OUT(BX), OUT(R8))                // BX <- slice slot; R8 <- predicate slot
+  ADDQ $(BC_SLOT_SIZE*2), VIRT_PCREG                   // VIRT_PCREG <- advance this slot pair
 
-TEXT bcappendstr(SB), NOSPLIT|NOFRAME, $0
-  KMOVW K1, BX
-  MOVWQZX (0)(VIRT_PCREG), R8
+  VPMOVZXDQ 64(VIRT_VALUES)(BX*1), Z4
+  VPMOVZXDQ 96(VIRT_VALUES)(BX*1), Z5
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(R8))
 
-  TESTL BX, BX                                         // Bail if there are no strings to append
-  JZ next
+  VPADDQ Z4, Z2, Z2
+  VPADDQ Z5, Z3, Z3
+  KANDW K2, K1, K1
 
-  LEAQ 0(VIRT_VALUES)(R8*1), R8                        // Make R8 absolute so we can use it with index later
-  VMOVDQU32.Z 64(R8), K1, Z5                           // Length of each string to be appended
+  SUBL $1, CX
+  JNE va_len_iter
 
-  VPADDD Z2, Z3, Z6                                    // End index of each output string
-  VMOVDQU32 Z6, bytecode_spillArea(VIRT_BCPTR)         // Save the end index of each output string
-  VPADDD Z5, Z3, K1, Z3                                // Update the length of each output string
+  KSHIFTRW $8, K1, K2
+  VMOVQ X11, VIRT_PCREG                                // VIRT_PCREG <- rewind va base as we need to iterate it once more
 
-iter:                                                  // Iterate over the mask and append each string where it's 1
-  TZCNTL BX, DX                                        // DX - Index of the lane to process
-  BLSRL BX, BX                                         // Clear the index of the iterator
+  // Allocate Scratch
+  // ----------------
 
-  MOVL 0(R8)(DX * 4), R14                              // Input index
-  MOVL 64(R8)(DX * 4), CX                              // Input length
-  MOVL bytecode_spillArea(VIRT_BCPTR)(DX * 4), R15     // Output index
+  VPMOVUSQD.Z Z2, K1, Y4
+  VPMOVUSQD.Z Z3, K2, Y5
+  BC_UNPACK_RU32(-4, OUT(CX))                          // CX <- number of variable arguments (we know it's non-zero if we are here)
+  VINSERTI32X8 $1, Y5, Z4, Z3                          // Z3 <- the final length of all active lanes as 32-bit units (saturated)
 
-  ADDQ SI, R14                                         // Make input address from input index
-  ADDQ SI, R15                                         // Make output address from output index
+  // R15 (DstSum), Z5 (DstOff), Z7 (DstLen), Z4 (DstEnd), K1 (DstMask)
+  BC_HORIZONTAL_LENGTH_SUM(OUT(R15), OUT(Z5), OUT(Z7), OUT(Z4), OUT(K1), IN(Z3), IN(K1), X9, K2)
+
+  BC_ALLOC_SLICE(OUT(Z2), IN(R15), BX, R8)             // Z2 <- Offset of the beginning of the allocated buffer
+  VPADDD.Z Z5, Z2, K1, Z2                              // Z2 <- Offsets of each allocated object
+  VMOVDQA32 Z2, Z6
+
+  // Concatenate Strings
+  // -------------------
+
+va_copy_next:
+  TESTL CX, CX
+  JZ done
+
+va_copy_iter:
+  BC_UNPACK_SLOT(0, OUT(BX))
+  ADDQ VIRT_VALUES, BX                                 // BX <- absolute address of the slice stack-slot to be appended
+  ADDQ $(BC_SLOT_SIZE*2), VIRT_PCREG
+
+  VMOVDQU32.Z 64(BX*1), K1, Z5                         // Z5 <- lengths of all slices to be appended (zero for inactive)
+  VPTESTMD Z5, Z5, K1, K2                              // K2 <- mask of all slices to be appended (non-zero length)
+
+  VMOVDQU32 Z6, bytecode_spillArea(VIRT_BCPTR)         // [] <- Save the current end index of each string where content will be copied
+  VPADDD Z5, Z6, Z6                                    // Z6 <- End index of each output string including current slices
+
+  KMOVW K2, R8                                         // R8 <- mask of all lanes to be appended having non-zero length
+  SUBL $1, CX
+
+  TESTL R8, R8                                         // Go to the next vararg if there are no slices to append
+  JZ va_copy_next
+
+  VMOVQ CX, X12                                        // Spill CX (va counter)
+
+lane_copy_iter:                                        // Iterate over the mask and append each string that has a content
+  TZCNTL R8, R14                                       // R14 <- Index of the lane to process
+  BLSRL R8, R8                                         // R8 <- Clear the index of the iterator
+
+  MOVL 64(BX)(R14 * 4), CX                             // CX <- Input length
+  MOVL bytecode_spillArea(VIRT_BCPTR)(R14 * 4), R15    // R15 <- Output index
+  MOVL 0(BX)(R14 * 4), R14                             // R14 <- Input index
+  ADDQ SI, R14                                         // R14 <- Make input address from input index
+  ADDQ SI, R15                                         // R15 <- Make output address from output index
 
   SUBL $64, CX
-  JCS copy_tail
+  JCS lane_64b_tail
 
   // Main copy loop that processes 64 bytes at once
-copy_iter:
+lane_64b_iter:
   VMOVDQU8 0(R14), Z7
   ADDQ $64, R14
   VMOVDQU8 Z7, 0(R15)
   ADDQ $64, R15
 
   SUBL $64, CX
-  JCC copy_iter
+  JCC lane_64b_iter
 
-copy_tail:
+lane_64b_tail:
   // NOTE: The following line makes sense, but it's not needed. In C it would
   // be undefined behavior to shift with anything outside of [0, 63], but we
   // know that X86 only uses 6 bits in our case (64-bit shift), which would
@@ -9897,61 +4793,62 @@ copy_tail:
   VMOVDQU8.Z 0(R14), K2, Z7
   VMOVDQU8 Z7, K2, 0(R15)
 
-  TESTL BX, BX
-  JNE iter
+  TESTL R8, R8
+  JNE lane_copy_iter
 
-next:
-  NEXT_ADVANCE(2)
+  VMOVQ X12, CX                                        // Reload CX (va counter)
+  TESTL CX, CX
+  JNE va_copy_iter
+
+done:
+  VMOVQ X11, BX                                        // BX <- Get the original va base and use it to load output slots
+  BC_MOV_SLOT (-BC_SLOT_SIZE*2 - 4)(BX), DX            // DX <- Load the output slice slot
+  BC_MOV_SLOT (-BC_SLOT_SIZE*1 - 4)(BX), BX            // BX <- Load the output predicate slot
+
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))       // Store the output slice
+  BC_STORE_K_TO_SLOT(IN(K1), IN(BX))                   // Store the output predicate
+  NEXT_ADVANCE(0)
+
+  _BC_ERROR_HANDLER_MORE_SCRATCH()
 
 
 // Find Symbol Instructions
 // ------------------------
 
-// findsym within Z0:Z1 starting at Z0
+// v[0].k[1] = find_symbol(b[2], SymbolID[3]).k[4]
 TEXT bcfindsym(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTD 0(VIRT_PCREG), Z22
-  ADDQ         $4, VIRT_PCREG
-  VMOVDQA32    Z0, Z30             // Z30 = offset
-  VPADDD       Z1, Z0, Z26         // Z26 = end of struct
-  JMP          findsym_tail(SB)
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 4, OUT(R8))
+  BC_UNPACK_ZI32(BC_SLOT_SIZE*3, OUT(Z22))
 
-// findsym within Z0:Z1 starting at Z30
-// or Z30+Z31 depending on the saved mask
-// argument
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(R8), OUT(BX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+
+  VMOVDQA32 Z0, Z30                  // Z30 = offset
+  VPADDD Z1, Z0, Z26                 // Z26 = end of struct
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ADDQ $(BC_SLOT_SIZE*4 + 4), VIRT_PCREG
+  JMP findsym_tail(SB)
+
+// v[0].k[1] = find_symbol(b[2], v[3], k[4], SymbolID[5]).k[6]
 TEXT bcfindsym2(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX      0(VIRT_PCREG), R8
-  MOVL         2(VIRT_PCREG), DX
-  ADDQ         $6, VIRT_PCREG
-  LEAQ         0(VIRT_VALUES)(R8*1), R8
-  KMOVW        0(R8), K2
-  VPBROADCASTD DX, Z22
-  VPADDD       Z30, Z31, K2, Z30
-  VPADDD       Z0, Z1, Z26
-  JMP          findsym_tail(SB)
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*5 + 4, OUT(R8))
+  BC_UNPACK_ZI32(BC_SLOT_SIZE*5, OUT(Z22))
 
-// identical to above with reversed
-// mask argument ordering
-// (addend predicate in K1, active mask in stack slot)
-TEXT bcfindsym2rev(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX      0(VIRT_PCREG), R8
-  MOVL         2(VIRT_PCREG), DX
-  ADDQ         $6, VIRT_PCREG
-  LEAQ         0(VIRT_VALUES)(R8*1), R8
-  VPBROADCASTD DX, Z22
-  VPADDD       Z30, Z31, K1, Z30
-  VPADDD       Z0, Z1, Z26
-  KMOVW        0(R8), K1
-  JMP          findsym_tail(SB)
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_UNPACK_4xSLOT(BC_SLOT_SIZE*1, OUT(R8), OUT(BX), OUT(CX), OUT(R15))
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(R15))
 
-// same as above, but the K1 argument
-// is used for both the lane mask and
-// the addend argument
-TEXT bcfindsym3(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTD 0(VIRT_PCREG), Z22
-  ADDQ         $4, VIRT_PCREG
-  VPADDD       Z30, Z31, K1, Z30
-  VPADDD       Z0, Z1, Z26
-  JMP          findsym_tail(SB)
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(CX))
+
+  VPADDD Z30, Z31, K2, Z30
+  VPADDD Z0, Z1, Z26
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ADDQ $(BC_SLOT_SIZE*6 + 4), VIRT_PCREG
+  JMP findsym_tail(SB)
 
 // inputs:
 //   K1 = active lanes
@@ -9985,8 +4882,9 @@ TEXT findsym_tail(SB), NOSPLIT|NOFRAME, $0
 loop:
   // load 4 bytes and process the leading uvarint
   VPXORD       X29, X29, X29
-  XORL         DX, DX                // indicates jump to uvarintdone
+  XORL         CX, CX                // indicates jump to uvarintdone
   KMOVW        K5, K2
+  VPXORD X29, X29, X29
   VPGATHERDD   (SI)(Z30*1), K2, Z29  // Z29 = first 4 bytes
   VMOVDQA32.Z  Z21, K5, Z23          // Z23 = uvarint size = 1 (for now)
   VPANDD       Z24, Z29, Z28         // Z28 = accumulator = byte & 0x7f
@@ -10015,7 +4913,7 @@ uvarintdone:
   JZ            fieldlendone               // fast-path when everything is short
 
   // parse object size when uvarint-encoded
-  INCL         DX                    // DX != 0 indicates jump to fieldlendone
+  INCL         CX                    // CX != 0 indicates jump to fieldlendone
   VPSRLD       $8, Z29, K6, Z29      // bits >>= 8
   VPTESTNMD    Z20, Z29, K6, K4      // test for varint stop bit
   KTESTW       K4, K4                // only gather if no stop bit is present in the loaded bits
@@ -10035,8 +4933,12 @@ looptail:
   KANDNW       K5, K4, K5            // unset active lanes when at end
   KTESTW       K5, K5                // early exit if we've consumed everything
   JNZ          loop
+
 done:
-  NEXT()
+  BC_STORE_SLICE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(0)
+
 more_bits:
   VPGATHERDD 1(SI)(Z30*1), K4, Z29 // load next 4 bytes into Z29 when we need a stop bit
   JMP        didgather
@@ -10057,8 +4959,8 @@ uvarint_parse2:
   JNZ          trap                 // assert symbol < max symbol ID
   // since the Go assembler won't let you
   // compute the address of a label (AAAAAHHHH WHY)
-  // we use DX to indicate the return branch target
-  TESTL        DX, DX
+  // we use CX to indicate the return branch target
+  TESTL        CX, CX
   JNZ          fieldlendone
   // uvarintdone expects that we have
   // shifted zmm29 so that the first byte
@@ -10073,90 +4975,149 @@ trap:
 // Blend Instructions
 // ------------------
 
-// blend in saved values using K1
-// on 32x 32-bit lanes across two registers
-#define BLEND32(r0, r1)                    \
-  MOVWQZX     0(VIRT_PCREG), R8            \
-  ADDQ        $2, VIRT_PCREG               \
-  VMOVDQU32   0(VIRT_VALUES)(R8*1), K1, r0 \
-  VMOVDQU32   64(VIRT_VALUES)(R8*1), K1, r1
+// NOTE: Blend functions works in a way that the second value's lanes are blended with
+// the first value lanes. So, for example when the signature of the blend function is
+// the following:
+//
+//   x[0].k[1] = blend(x[2].k[3], x[4].k[5])
+//
+// The lanes in x[4] described by k[5] are blended with lanes in x[2].k[3] and the
+// resulting mask k[1] is the combination of `k[3] | k[5]`
 
-// like BLEND32(), but with the
-// register/stack ordering reversed
-#define BLEND32REV(r0, r1)                 \
-  MOVWQZX     0(VIRT_PCREG), R8            \
-  ADDQ        $2, VIRT_PCREG               \
-  KXORW       K1, K7, K2                   \
-  VMOVDQU32   0(VIRT_VALUES)(R8*1), K2, r0 \
-  VMOVDQU32   64(VIRT_VALUES)(R8*1), K2, r1
-
-// blend in saved values using K1
-// on 16x 64-bit lanes across two registers
-#define BLEND64(r0, r1)                    \
-  MOVWQZX     0(VIRT_PCREG), R8            \
-  ADDQ        $2, VIRT_PCREG               \
-  KSHIFTRW    $8, K1, K2                   \
-  VMOVDQU64   0(VIRT_VALUES)(R8*1), K1, r0 \
-  VMOVDQU64   64(VIRT_VALUES)(R8*1), K2, r1
-
-// blend in saved values using K1
-// on 16x 64-bit lanes across two registers
-#define BLEND64REV(r0, r1)                 \
-  MOVWQZX     0(VIRT_PCREG), R8            \
-  ADDQ        $2, VIRT_PCREG               \
-  KXORW       K1, K7, K2                   \
-  KSHIFTRW    $8, K2, K3                   \
-  VMOVDQU64   0(VIRT_VALUES)(R8*1), K2, r0 \
-  VMOVDQU64   64(VIRT_VALUES)(R8*1), K3, r1
-
-// NOTE: PLEASE DO NOT RE-ORDER THE BLEND INSTRUCTIONS;
-// the SSA code relies on the reversed-argument version
-// of each blend instruction being the regular version
-// opcode plus one
-
-// blend stack slot into Z30+Z31 (value pointers)
+// v[0].k[1] = blend(v[2].k[3], v[4].k[5])
 TEXT bcblendv(SB), NOSPLIT|NOFRAME, $0
-  BLEND32(Z30, Z31)
-  NEXT()
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
 
-// blend Z30+Z31 into stack slot value;
-// return union of values
-TEXT bcblendrevv(SB), NOSPLIT|NOFRAME, $0
-  BLEND32REV(Z30, Z31)
-  NEXT()
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
 
-// blend Z2+Z3, assuming packed 64-bit integers or doubles
-TEXT bcblendnum(SB), NOSPLIT|NOFRAME, $0
-  BLEND64(Z2, Z3)
-  NEXT()
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  KORW K1, K2, K1
 
-// blend Z2+Z3, 64-bit layout, reversed
-TEXT bcblendnumrev(SB), NOSPLIT|NOFRAME, $0
-  BLEND64REV(Z2, Z3)
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VMOVDQU32 0(VIRT_VALUES)(CX*1), K2, Z2
+  VMOVDQU32 64(VIRT_VALUES)(CX*1), K2, Z3
 
-// blend Z2+Z3, assuming slices (strings or timestamps)
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
+
+// k[0].k[1] = blend(k[2].k[3], k[4].k[5])
+//
+// Outputs:
+//   k[0] = (k[2] & ~k[5]) | (k[4] & k[5])
+//   k[1] = k[3] | k[5]
+TEXT bcblendk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))   // BX <- k[2]
+  BC_LOAD_RU16_FROM_SLOT(OUT(R8), IN(R8))   // R8 <- k[3]
+
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(R15))
+  BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))   // CX <- k[4]
+  BC_LOAD_RU16_FROM_SLOT(OUT(R15), IN(R15)) // R15 <- k[5]
+
+  ANDNL BX, R15, BX                         // BX <- k[2] & ~k[5]
+  ANDL R15, CX                              // CX <- k[4] &  k[5]
+
+  ORL R8, R15                               // R8 <- k[4] | k[5]
+  ORL CX, BX                                // BX <- (k[2] & ~k[5]) | (k[4] & k[5])
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
+  BC_STORE_RU16_TO_SLOT(IN(R15), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
+
+// i64[0].k[1] = blend(i64[2].k[3], i64[4].k[5])
+TEXT bcblendi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
+
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
+
+  KORW K1, K2, K1
+  KSHIFTRW $8, K2, K3
+  KSHIFTRW $8, K1, K4
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K4))
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VMOVDQU64 0(VIRT_VALUES)(CX*1), K2, Z2
+  VMOVDQU64 64(VIRT_VALUES)(CX*1), K3, Z3
+
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
+
+// f64[0].k[1] = blend(f64[2].k[3], f64[4].k[5])
+TEXT bcblendf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(R15))
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(R15))
+
+  KORW K1, K2, K1
+  KSHIFTRW $8, K2, K3
+  KSHIFTRW $8, K1, K4
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K4))
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VMOVUPD 0(VIRT_VALUES)(CX*1), K2, Z2
+  VMOVUPD 64(VIRT_VALUES)(CX*1), K3, Z3
+
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
+
+// slice[0].k[1] = blend(slice[2].k[3], slice[4].k[5])
 TEXT bcblendslice(SB), NOSPLIT|NOFRAME, $0
-  BLEND32(Z2, Z3)
-  NEXT()
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
 
-// blend Z2+Z3, assuming slices, reversed
-TEXT bcblendslicerev(SB), NOSPLIT|NOFRAME, $0
-  BLEND32REV(Z2, Z3)
-  NEXT()
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(DX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
+
+  KORW K1, K2, K1
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VMOVDQU32 0(VIRT_VALUES)(CX*1), K2, Z2
+  VMOVDQU32 64(VIRT_VALUES)(CX*1), K2, Z3
+
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*6)
 
 // Unboxing Instructions
 // ---------------------
 
+// slice[0].k[1] = unpack(v[2], imm16[3]).k[4]
+//
 // unpack string/array/timestamp to scalar slice
 TEXT bcunpack(SB), NOSPLIT|NOFRAME, $0
-  MOVBLZX       0(VIRT_PCREG), R8
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 2, OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_UNPACK_ZI16(BC_SLOT_SIZE*3, OUT(Z23))
+
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
+
   KTESTW        K1, K1
   JZ            next
-  VPBROADCASTD  R8, Z23                    // Z23 = descriptor tag
+
+  VPXORD X26, X26, X26
   KMOVW         K1, K2
-  VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
   VPGATHERDD    0(SI)(Z30*1), K2, Z26      // Z26 = first 4 bytes
+
+  VPSRLD $16, Z23, Z23                     // Z23 = descriptor tag (32-bit)
+  VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
   VPANDD        Z26, Z27, Z25              // Z25 = first 4 & 0x0f = int size
   VPCMPEQD      Z25, Z27, K1, K2           // K2 = field is null
   KANDNW        K1, K2, K1                 // unset str.null lanes
@@ -10204,26 +5165,41 @@ TEXT bcunpack(SB), NOSPLIT|NOFRAME, $0
   VPTESTNMD     Z29, Z26, K3, K3        // test word&0x80
   KTESTW        K3, K3
   JNZ           trap                    // trap if length(object) > 2^21
+
 done:
   VMOVDQA32     Z28, K2, Z3             // set Z3 = length
+
 next:
-  NEXT_ADVANCE(1)
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
+
 trap:
   FAIL()
 
-// for Z30:Z31 that are symbols, replace with
-// symtab[symbol] instead
+// v[0] = unsymbolize(v[1]).k[2]
+//
+// replaces symbols in v[1] with strings and stores the output to v[0]
 TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
+
   KTESTW K1, K1
-  JZ     next
+  JZ next
+
+  KMOVW K1, K2
+  VPXORD X28, X28, X28
+  VPGATHERDD    0(SI)(Z30*1), K2, Z28           // Z28 = first 4 bytes
+
   VPBROADCASTD  CONSTD_0x0F(), Z10
-  KMOVW         K1, K2
-  VPGATHERDD    0(SI)(Z30*1), K2, Z28      // Z28 = first 4 bytes
   VPSRLD        $4, Z28, Z29
-  VPANDD        Z10, Z29, Z29              // z29 = (bytes >> 4) & 0x0f = tag
-  VPCMPEQD.BCST CONSTD_7(), Z29, K1, K2    // K2 = lanes that are symbols (tag == 7)
+  VPANDD        Z10, Z29, Z29                   // z29 = (bytes >> 4) & 0x0f = tag
+  VPCMPEQD.BCST CONSTD_7(), Z29, K1, K2         // K2 = lanes that are symbols (tag == 7)
   KTESTW        K2, K2
-  JZ            next                       // fast path: no symbols
+  JZ next                                       // fast path: no symbols
 
   VPBROADCASTD  CONSTD_4(), Z24
   VPANDD        Z10, Z28, Z29                   // Z29 = bytes & 0x0f = size
@@ -10232,62 +5208,79 @@ TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
   VPSLLD        $3, Z29, Z29                    // Z29 = (4 - size)<<3 = shift count
   VPSRLD        $8, Z28, Z28                    // Z28 = uint value plus garbage
   VBROADCASTI32X4 bswap32<>+0(SB), Z24
-  VPSHUFB         Z24, Z28, Z28         // Z28 = bswap32(repr)
-  VPSRLVD         Z29, Z28, Z28         // Z28 = bswap32(repr)>>(4-size) = symbol ID
+  VPSHUFB         Z24, Z28, Z28                 // Z28 = bswap32(repr)
+  VPSRLVD         Z29, Z28, Z28                 // Z28 = bswap32(repr)>>(4-size) = symbol ID
   // only keep lanes where id < len(symtab)
   VPCMPD.BCST     $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z28, K2, K2
   KMOVB           K2, K3
   MOVQ            bytecode_symtab+0(VIRT_BCPTR), R8
+
   TESTQ           R8, R8
-  JZ              uhoh
-  VPGATHERDQ      0(R8)(Y28*8), K3, Z22  // gather lo 8 vmrefs
+  JZ              trap
+
+  VPGATHERDQ      0(R8)(Y28*8), K3, Z22         // gather lo 8 vmrefs
   KSHIFTRW        $8, K2, K4
   VEXTRACTI32X8   $1, Z28, Y29
-  VPGATHERDQ      0(R8)(Y29*8), K4, Z23  // gather hi 8 vmrefs
+  VPGATHERDQ      0(R8)(Y29*8), K4, Z23         // gather hi 8 vmrefs
   VPMOVQD         Z22, Y20
   VPMOVQD         Z23, Y21
-  VINSERTI32X8    $1, Y21, Z20, Z20      // Z20 = lo 32 bits of 16 vmrefs = offsets
-  VMOVDQA32       Z20, K2, Z30           // set offsets where successful
-  VPROLQ          $32, Z22, Z22          // flip lo/hi 32 bits of each element
+  VINSERTI32X8    $1, Y21, Z20, Z20             // Z20 = lo 32 bits of 16 vmrefs = offsets
+  VMOVDQA32       Z20, K2, Z30                  // set offsets where successful
+  VPROLQ          $32, Z22, Z22                 // flip lo/hi 32 bits of each element
   VPROLQ          $32, Z23, Z23
   VPMOVQD         Z22, Y20
   VPMOVQD         Z23, Y21
-  VINSERTI32X8    $1, Y21, Z20, Z20      // Z20 = hi 32 bits of 16 vmrefs = lengths
-  VMOVDQA32       Z20, K2, Z31           // set lengths where successful
+  VINSERTI32X8    $1, Y21, Z20, Z20             // Z20 = hi 32 bits of 16 vmrefs = lengths
+  VMOVDQA32       Z20, K2, Z31                  // set lengths where successful
+
 next:
-  NEXT()
-uhoh:
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+trap:
   BYTE $0xCC
   JMP  next
 
-// unbox BOOL values in (Z30:Z31).K1 into Z2/Z3 and K1
+// i64[0].k[1] = unbox_bool(v[2]).k[3]
 //
-// NOTE: This opcode was designed in a way to be followed by cvti64tok,
-// because we don't have a way to describe multiple returns in our SSA.
+// NOTE: This opcode was designed in a way to be followed by cvti64tok, because we
+// don't have a way to describe a bool output combined with a predicate in our SSA.
 TEXT bcunboxktoi64(SB), NOSPLIT|NOFRAME, $0
-  VPXORQ X4, X4, X4
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   KMOVW K1, K2
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- first 4 bytes of each encoded value
-  VPANDD.BCST CONSTD_0xFF(), Z4, Z4                   // Z4 <- first byte of each encoded value
+  VPXORQ X4, X4, X4
+  VPGATHERDD 0(SI)(Z2*1), K2, Z4                      // Z4 <- first 4 bytes (Type|L + ???)
+  VPANDD.BCST CONSTD_0xFF(), Z4, Z4                   // Z4 <- first byte (Type|L)
 
   VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K2        // K2 <- set to ONEs for TRUE values
   VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1       // K1 <- set to ONEs for FALSE values
   VPBROADCASTQ CONSTQ_1(), Z4
 
   KSHIFTRW $8, K2, K3
-  KORW K2, K1, K1                                     // K1 <- active lanes written
+  KORW K2, K1, K1                                     // K1 <- active lanes (values containing BOOLs)
 
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   VMOVDQA64.Z Z4, K2, Z2                              // Z2 <- bools converted to i64 (low)
   VMOVDQA64.Z Z4, K3, Z3                              // Z3 <- bools converted to i64 (high)
 
-  NEXT()
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-// unboxcoerce instructions unbox a numeric value and coerce it to either f64 or i64
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = unbox_coerce_f64(v[2]).k[3]
 TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   KMOVW K1, K2
   VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
+  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L + ???)
 
   VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
   VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
@@ -10338,10 +5331,18 @@ TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
   VCVTQQ2PD Z3, K4, Z3                                // Z3 <- final 64-bit floats (high)
 
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = unbox_coerce_i64(v[2]).k[3]
 TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   KMOVW K1, K2
   VPXORQ X4, X4, X4
   VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
@@ -10395,9 +5396,13 @@ TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
   VCVTTPD2QQ Z3, K4, Z3                               // Z3 <- final 64-bit integers (high)
 
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-// unboxcoerce instructions unbox a value that is castable to either f64 and i64
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = unbox_cast_f64(v[2]).k[3]
 //
 // A little trick is used to cast bool to i64/f64 - if a value type is bool, we assign
 // 0x01 to its binary representation - then if the value is false all bytes are cleared
@@ -10405,7 +5410,10 @@ next:
 // then 0x01 byte would remain, which would be then kept to coerce to i64 or converted to
 // a floating point 1.0 representation.
 TEXT bcunboxcvtf64(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   KMOVW K1, K2
   VPXORQ X4, X4, X4
   VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
@@ -10466,10 +5474,18 @@ TEXT bcunboxcvtf64(SB), NOSPLIT|NOFRAME, $0
   VCVTQQ2PD Z3, K4, Z3                                // Z3 <- final 64-bit floats (high)
 
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0].k[1] = unbox_cast_i64(v[2]).k[3]
 TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   KMOVW K1, K2
   VPXORQ X4, X4, X4
   VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
@@ -10531,123 +5547,12 @@ TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
   VCVTTPD2QQ Z3, K4, Z3                               // Z3 <- final 64-bit integers (high)
 
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-// unpack (Z30:Z31).K1 into Z2|Z3 when integers
-TEXT bctoint(SB), NOSPLIT|NOFRAME, $0
-  KTESTW        K1, K1
-  JZ            next
-  KMOVW         K1, K2
-  VPBROADCASTD  CONSTD_0x0F(), Z27      // Z27 = 0x0F
-  VPGATHERDD    0(SI)(Z30*1), K2, Z28   // Z28 = first 4 bytes
-  VPANDD        Z27, Z28, Z25           // Z25 = first 4 & 0x0f = int size
-  VPCMPEQD      Z25, Z27, K1, K2        // K2 = field is null
-  KANDNW        K1, K2, K1              // unset int.null lanes
-  VPSRLD        $4, Z28, Z28
-  VPANDD        Z27, Z28, Z24           // Z24 = (word >> 4) & 0xf = descriptor tag
-  VPCMPEQD.BCST CONSTD_2(), Z24, K1, K2 // K2 = is uint
-  VPCMPEQD.BCST CONSTD_3(), Z24, K1, K3 // K3 = is (signed) int
-  KORW          K2, K3, K1              // K1 = is (any) integer
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
-  // assert(!(size > 8))
-  VPCMPD.BCST $6, CONSTD_8(), Z25, K1, K4
-  KTESTW      K4, K4
-  JNZ         trap
-
-  // compute shift from size as (8-size)*8,
-  // then zero-extend it to (Z25|Z26) as 16 quadwords
-  VPBROADCASTD  CONSTD_8(), Z24
-  VPSUBD        Z25, Z24, K1, Z25
-  VPSLLD        $3, Z25, Z25
-  VEXTRACTI32X8 $1, Z25, Y26
-  VPMOVZXDQ     Y25, Z25
-  VPMOVZXDQ     Y26, Z26
-
-  // load 8-byte values and mask them appropriately
-  KSHIFTRW      $8, K1, K4                // K4 = upper 8 mask
-  VEXTRACTI32X8 $1, Z30, Y29              // Y29 = upper 8 offsets
-
-  // gather (Y30|Y29) into (Z27|Z28) as 16 quadwords,
-  // taking care to mask away sign bits
-  KMOVB         K1, K5
-  VPGATHERDQ    1(SI)(Y30*1), K5, Z27     // first 8
-  KMOVB         K4, K5
-  VPGATHERDQ    1(SI)(Y29*1), K5, Z28
-
-  // convert big-endian to little-endian 8-byte values
-  VBROADCASTI64X2  bswap64<>(SB), Z21   // swap lookup
-  VPSHUFB          Z21, Z27, Z27        // Z27 - little-endian
-  VPSHUFB          Z21, Z28, Z28        // Z28 - little-endian
-
-  // shift out bytes outside length of integer (value >> (8-size)*8)
-  VPSRLVQ          Z25, Z27, K1, Z2
-  VPSRLVQ          Z26, Z28, K4, Z3
-
-  // there's no negate operation (or even a complement),
-  // use 0 - x operation
-  KSHIFTRW     $8, K3, K5
-  VPXORQ       Z21, Z21, Z21
-  VPSUBQ       Z2, Z21, K3, Z2
-  VPSUBQ       Z3, Z21, K5, Z3
-next:
-  NEXT()
-trap:
-  FAIL()
-
-// current scalar = coerce(current value, f64)
-TEXT bctof64(SB), NOSPLIT|NOFRAME, $0
-  KTESTW        K1, K1
-  JZ            next
-  KMOVW         K1, K2
-  VPBROADCASTD  CONSTD_0x0F(), Z27      // Z27 = 0x0F
-  VPGATHERDD    0(SI)(Z30*1), K2, Z28   // Z28 = first 4 bytes
-  VPANDD        Z27, Z28, Z25           // Z25 = first 4 & 0x0f = fp size
-  VPCMPEQD      Z25, Z27, K1, K2        // K2 = field is null
-  KANDNW        K1, K2, K1              // unset int.null lanes
-  VPSRLD        $4, Z28, Z28
-  VPANDD        Z27, Z28, Z24           // Z24 = (word >> 4) & 0xf = descriptor tag
-  VPCMPEQD.BCST CONSTD_4(), Z24, K1, K1 // K1 = is float
-  KTESTW        K1, K1
-  JZ            next
-
-  // load fp64
-  VPCMPEQD.BCST CONSTD_8(), Z25, K1, K2 // K3 = size == 8 (float64)
-  KTESTW        K2, K2
-  JZ            tryfp32
-  VEXTRACTI32X8 $1, Z30, Y29                // Y29 = upper 8 offsets
-  KSHIFTRW      $8, K2, K3
-  KMOVB         K2, K4
-  KMOVB         K3, K5
-  // perform 8-byte loads and bwap64 the results
-  VBROADCASTI32X4 bswap64<>+0(SB), Z24
-  VPGATHERDQ    1(SI)(Y30*1), K4, Z20
-  VPGATHERDQ    1(SI)(Y29*1), K5, Z21
-  VPSHUFB       Z24, Z20, Z20
-  VPSHUFB       Z24, Z21, Z21
-  VMOVAPD       Z20, K2, Z2
-  VMOVAPD       Z21, K3, Z3
-
-  // load + expand fp32
-tryfp32:
-  KANDNW        K1, K2, K2
-  VPCMPEQD.BCST CONSTD_4(), Z25, K2, K2 // K2 = size == 4 (float32)
-  KTESTW        K2, K2
-  JZ            next
-  KORW          K1, K2, K1
-  KMOVW         K2, K3
-  // perform 4-byte loads, bswap32 the results,
-  // and then extend them to fp64 in Z2:Z3
-  VBROADCASTI32X4 bswap32<>+0(SB), Z24
-  VPGATHERDD    1(SI)(Z30*1), K3, Z28
-  VPSHUFB       Z24, Z28, Z28
-  VCVTPS2PD.SAE Y28, Z27      // lo 8 fp32 -> Z27 x 8 fp64
-  VEXTRACTF32X8 $1, Z28, Y28
-  VCVTPS2PD.SAE Y28, Z28      // hi 8 fp32 -> Z28 x 8 fp64
-  KSHIFTRW      $8, K2, K3
-  VMOVAPD       Z27, K2, Z2
-  VMOVAPD       Z28, K3, Z3
-next:
-  NEXT()
 
 // Boxing Instructions
 // -------------------
@@ -10661,189 +5566,225 @@ next:
 // it is *required* that Z30:Z31 are zeroed
 // in boxing procedures when the predicate (K1) register is unset!
 
-// box 64-bit floats in Z2:Z3
-// (possibly tail-calling into boxint)
-TEXT bcboxfloat(SB), NOSPLIT|NOFRAME, $0
-  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, abort)
+CONST_DATA_U64(box_fast_i64_bswap64_7_bytes, 0, $0x01020304050607FF)
+CONST_DATA_U64(box_fast_i64_bswap64_7_bytes, 8, $0x090A0B0C0D0E0FFF)
+CONST_GLOBAL(box_fast_i64_bswap64_7_bytes, $16)
 
-  VPXORD     Z30, Z30, Z30
-  VPXORD     Z31, Z31, Z31
-  VCVTTPD2QQ Z2, Z4
-  VCVTTPD2QQ Z3, Z5
-  VCVTQQ2PD  Z4, Z6
-  VCVTQQ2PD  Z5, Z7
-  VCMPPD     $VCMP_IMM_EQ_OQ, Z2, Z6, K2 // is float64(int64(input)) == input?
-  VCMPPD     $VCMP_IMM_EQ_OQ, Z3, Z7, K3
-  KUNPCKBW   K2, K3, K2
-  KANDW      K1, K2, K2 // K2 = floats that fit into 64-bit signed integers
-  KANDNW     K1, K2, K3 // K3 = floats that are actually floats
-  KTESTW     K3, K3
-  JZ         check_ints
+// v[0] = box_f64(f64[1]).k[2]
+TEXT bcboxf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
 
-  VPBROADCASTD.Z   CONSTD_9(), K3, Z31           // set len(encoded) = 9
-  VM_GET_SCRATCH_BASE_ZMM(Z30, K3)
-  VMOVDQA32        byteidx<>+0(SB), X28
-  VPMOVZXBD        X28, Z28
-  VPSLLD           $3, Z28, Z29
-  VPADDD           Z28, Z29, Z29
-  VPADDD           Z29, Z30, K3, Z30             // pos += lane index * 9
-  MOVL             $0x48, R8
-  VPBROADCASTD     R8, Z28
-  VBROADCASTI64X2  bswap64<>(SB), Z27
-  VPSHUFB          Z27, Z2, Z6                   // bswap64(input)
-  VPSHUFB          Z27, Z3, Z7
-  KMOVW            K3, K4
-  VPSCATTERDD      Z28, K4, 0(SI)(Z30*1)        // write descriptor byte
-  VEXTRACTI32X8    $1, Z30, Y29
-  KMOVB            K3, K4
-  VSCATTERDPD      Z6, K4, 1(SI)(Y30*1)         // write lo 8 floats
-  KSHIFTRW         $8, K3, K4
-  VSCATTERDPD      Z7, K4, 1(SI)(Y29*1)         // write hi 8 floats
-  ADDQ             $(9*16), bytecode_scratch+8(VIRT_BCPTR)       // update scratch base
-check_ints:
-  KTESTW     K2, K2
-  JZ         next
-  JMP        boxint_tail(SB)
-next:
-  NEXT()
-abort:
-  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
-  RET_ABORT()
+  VCVTPD2QQ.Z Z2, K1, Z8
+  VCVTPD2QQ.Z Z3, K2, Z9
 
-// box 64-bit signed integers in Z2:Z3
-//
-// requires 9*16 bytes of space
-TEXT bcboxint(SB), NOSPLIT|NOFRAME, $0
-  KMOVW     K1, K2
-  VPXORD    Z30, Z30, Z30
-  VPXORD    Z31, Z31, Z31 // default value for output is len=0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
-  JMP       boxint_tail(SB)
+  VCVTQQ2PD.Z Z8, K1, Z6
+  VCVTQQ2PD.Z Z9, K2, Z7
 
-// core integer boxing procedure:
-//   Z4 + Z5 = 16 x 64-bit signed qwords
-//   K2 = lanes to write out
-// updates Z30.K2 and Z31.K2, but leaves the other lanes un-touched
-TEXT boxint_tail(SB), NOSPLIT|NOFRAME, $0
-  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, abort)
+  VCMPPD $VCMP_IMM_EQ_OQ, Z2, Z6, K1, K3 // K3 <- lanes boxed as integers (low)
+  VCMPPD $VCMP_IMM_EQ_OQ, Z3, Z7, K2, K4 // K4 <- lanes boxed as integers (high)
 
-  // compute abs(word) and compute
-  // the predicate mask for negative signed words
-  VPMOVQ2M     Z4, K3
-  VPABSQ       Z4, Z4
-  VPMOVQ2M     Z5, K4
-  VPABSQ       Z5, Z5
+  VPABSQ Z8, K3, Z2                      // Z2 <- mixed i64 and f64 values (low)
+  KUNPCKBW K3, K4, K3                    // K3 <- lanes boxed as integers (both)
+  VPABSQ Z9, K4, Z3                      // Z3 <- mixed i64 and f64 values (high)
 
-  VPLZCNTQ      Z4, Z10
-  VPLZCNTQ      Z5, Z11
-  VPMOVQD       Z10, Y12
-  VPMOVQD       Z11, Y13
-  VPBROADCASTD  CONSTD_64(), Z6
-  VINSERTI32X8  $1, Y13, Z12, Z12     // Z12 = 16 x 32-bit lzcount
-  VPSUBD        Z12, Z6, Z12          // Z12 = 64 - lzcnt(int)
-  VPBROADCASTD  CONSTD_8(), Z8        // Z8 = 8
-  VPSUBD.BCST   CONSTD_1(), Z8, Z7    // Z7 = 7
-  VPADDD        Z7, Z12, Z12          // Z12 = (64-lzcnt(int))+7
-  VPSRLD        $3, Z12, Z12          // Z12 = (64-lzcnt(int)+7)/8 = size of encoded big-endian int
-  VPCMPEQD      Z8, Z12, K2, K6       // K6 = mask of lanes with eight significant bytes
+  VPLZCNTQ.Z Z2, K3, Z6                  // Z6 <- leading zero bits count of i64 values (low)
+  VPLZCNTQ.Z Z3, K4, Z7                  // Z7 <- leading zero bits count of i64 values (high)
 
-  VPADDD.BCST      CONSTD_1(), Z12, K2, Z31 // value length = 1 + intwidth
-  VPSUBD           Z12, Z8, Z14             // Z14 = (8 - size) = leading zero bytes
-  VPSLLD           $3, Z14, Z14             // Z14 = 8 * leading zero bytes = leading zero bits
-  VPMOVZXDQ        Y14, Z26
-  VEXTRACTI32X8    $1, Z14, Y13
-  VPMOVZXDQ        Y13, Z27
-  VPSLLVQ          Z26, Z4, Z4              // shift ints left by leading zero bytes
-  VPSLLVQ          Z27, Z5, Z5              // so the msb is now in the highest byte position
-  VPBROADCASTD     CONSTD_2(), Z13
-  KUNPCKBW         K3, K4, K5               // unpack to 16 lanes of sign bits
-  KANDW            K2, K5, K5               // K5 = valid & sign bit set
-  VPADDD.BCST      CONSTD_1(), Z13, K5, Z13 // Z13 = 2 or 3 (if signed)
-  VBROADCASTI64X2  bswap64<>(SB), Z27
-  VPSLLD           $4, Z13, Z13             // Z13 = 0x20 or 0x30 (if signed)
-  VPADDD           Z12, Z13, Z13            // Z13 = (0x20 or 0x30) + size in bytes
-  VEXTRACTI32X8    $1, Z13, Y14
-  VPMOVZXDQ        Y14, Z14                 // Z14 = hi 8 descriptors, extended to qwords
-  VPMOVZXDQ        Y13, Z13                 // Z13 = lo 8 descriptors, extended to qwords
-  VPSHUFB          Z27, Z4, Z4              // Z4 = bswap64(lo 8 words)
-  VPSHUFB          Z27, Z5, Z5              // Z5 = bswap64(hi 8 words)
-  VPSLLQ           $8, Z4, Z6               // Z6, Z7 = make room for 1-byte descriptor
-  VPSLLQ           $8, Z5, Z7
-  VPORQ            Z13, Z6, Z6              // OR in descriptor byte
-  VPORQ            Z14, Z7, Z7
+  VPSRLQ $3, Z6, Z6                      // Z6 <- leading zero bytes count of i64 values (low)
+  VPSRLQ $3, Z7, Z7                      // Z7 <- leading zero bytes count of i64 values (high)
 
-  VMOVDQU64        byteidx<>(SB), X29
-  VPMOVZXBD        X29, Z29           // Z29 = lane index
-  VPSLLD           $3, Z29, Z28       // Z28 = lane index * 8
-  VM_GET_SCRATCH_BASE_ZMM(Z30, K2)
-  KTESTW           K6, K6
-  JNZ              slow_encode
+  VPXORD X30, X30, X30
+  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, error_handler_more_scratch)
+  VM_GET_SCRATCH_BASE_GP(R8)
 
-  // fast-path for all integers 8 bytes or less when encoded
-  MOVQ             bytecode_scratch(VIRT_BCPTR), R15
-  ADDQ             bytecode_scratch+8(VIRT_BCPTR), R15
-  KSHIFTRW         $8, K2, K3
-  VMOVDQU64        Z6, K2, 0(R15)                       // store the sixteen encoded ion objects
-  VMOVDQU64        Z7, K3, 64(R15)
-  ADDQ             $128, bytecode_scratch+8(VIRT_BCPTR)
-  VPADDD           Z28, Z30, K2, Z30                   // add (lane*8) to offset, or set to zero
-  JMP              next
-slow_encode:
-  // some of the lanes have 8 significant bytes,
-  // so we need to perform two overlapped scatters
-  ADDQ             $(9*16), bytecode_scratch+8(VIRT_BCPTR)
-  VPADDD           Z28, Z30, K2, Z30   // base += (lane index * 8)
-  VPADDD           Z29, Z30, K2, Z30   // base += lane index
-  VEXTRACTI32X8    $1, Z30, Y28
-  KMOVB            K2, K3
-  VPSCATTERDQ      Z6, K3, 0(SI)(Y30*1)         // write lo 8, first 8 bytes
-  KSHIFTRW         $8, K2, K3
-  VPSCATTERDQ      Z7, K3, 0(SI)(Y28*1)         // write hi 8, first 8 bytes
-  KMOVB            K2, K3
-  VPSCATTERDQ      Z4, K3, 1(SI)(Y30*1)         // write overlapping for final byte of lo 8
-  KSHIFTRW         $8, K2, K3
-  VPSCATTERDQ      Z5, K3, 1(SI)(Y28*1)         // write overlapping for final byte of hi 8
-next:
-  NEXT()
-abort:
-  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
-  RET_ABORT()
+  // NOTE: Regardless of the strategy used (mixed float/ints or 7-byte ints) we always allocate
+  // the same amount of scratch to make the function more deterministic in regards of scratch
+  // buffer use (in other words it's input agnostic).
+  ADDQ $(9 * 16), bytecode_scratch+8(VIRT_BCPTR)
 
-// take the current set of non-missing lanes (K1)
-// and a boolean mask (from stack[imm] -> K2)
-// and write out the boolean as encoded ion
-// to the scratch buffer for each non-missing lane
-TEXT bcboxmask(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX      0(VIRT_PCREG), R8
-  ADDQ         $2, VIRT_PCREG
-  KMOVW        0(VIRT_VALUES)(R8*1), K2             // K2 = true/false
-  KMOVW        K1, K3                               // K3 = non-missing
-  JMP          boxmask_tail(SB)
+  VPMOVQ2M Z8, K5                        // K5 <- signs of i64 values (low)
+  VPMOVQ2M Z9, K6                        // K6 <- signs of i64 values (high)
+  KUNPCKBW K5, K6, K5                    // K5 <- signs of i64 values (both)
+  KANDW K3, K5, K5
 
-// same as boxmask, but with the arguments reversed
-TEXT bcboxmask2(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX      0(VIRT_PCREG), R8
-  ADDQ         $2, VIRT_PCREG
-  KMOVW        K1, K2                               // K2 = true/false
-  KMOVW        0(VIRT_VALUES)(R8*1), K3             // K3 = non-missing
-  JMP          boxmask_tail(SB)
+  // Z8 <- count of leading zero bytes of each boxed number
+  VPMOVQD Z6, Y8
+  VPMOVQD Z7, Y9
+  VINSERTI64X4 $1, Y9, Z8, Z8
 
-// same as boxmask, but with K1 = K2
-TEXT bcboxmask3(SB), NOSPLIT|NOFRAME, $0
-  KMOVW K1, K2
+  // Z10/Z11 - the number of bits to shift left, so we can properly apply bswap64
+  VPBROADCASTD CONSTD_8(), Z13
+  VPSLLQ $3, Z6, Z10
+  VPSLLQ $3, Z7, Z11
+
+  VPBROADCASTD.Z R8, K1, Z30             // Z30 <- initial value offsets
+  VPSUBD.Z Z8, Z13, K1, Z31              // Z31 <- count of bytes each boxed number occupies in ION binary, excluding the descriptor byte
+  VPCMPEQD Z13, Z31, K1, K0              // K0 <- contains lanes that are encoded as 1+8 bytes (ints or floats)
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  KTESTW K0, K0
+
+  VPSLLVQ Z10, Z2, Z2                    // Z2 <- correctly shifted, ready for bswap64 (low)
+  VPSLLVQ Z11, Z3, Z3                    // Z3 <- correctly shifted, ready for bswap64 (high)
+
+  JZ box_fast_i64                        // jump to a fast-path if all integers fit into 1+7 bytes boxed
+
+  VPORD.BCST.Z CONSTD_64(), Z31, K1, Z8  // Z8 - ION Type|L that represents floats.
+  VBROADCASTI64X2 CONST_GET_PTR(bswap64, 0), Z12
+
+  VPSUBD.BCST CONSTD_32(), Z8, K3, Z8    // Z8 <- ION Type|L that represents floats and unsigned integers
+  VPADDD.Z CONST_GET_PTR(consts_offsets_d_9, 0), Z30, K1, Z30 // Z30 <- offsets of boxed numbers
+  VPADDD.BCST CONSTD_16(), Z8, K5, Z8    // Z8 <- ION Type|L that represents floats, signed integers, and unsigned integers
+
+  // Scatter descriptor bytes of each active lane.
   KMOVW K1, K3
-  JMP   boxmask_tail(SB)
+  VPSCATTERDD Z8, K3, 0(SI)(Z30*1)
+  VEXTRACTI64X4 $1, Z30, Y13
 
-// store (up to) 16 booleans
+  VPSHUFB Z12, Z2, Z2                    // Z2 <- byteswapped and encoded integers and floating points ready to scatter (low)
+  VPSHUFB Z12, Z3, Z3                    // Z3 <- byteswapped and encoded integers and floating points ready to scatter (high)
+
+  KMOVW K1, K3
+  VPSCATTERDQ Z2, K3, 1(SI)(Y30*1)
+
+  VPADDD.BCST.Z CONSTD_1(), Z31, K1, Z31 // Z31 <- size of the encoded ion value including Type|L byte
+  VPSCATTERDQ Z3, K2, 1(SI)(Y13*1)
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+box_fast_i64:
+  VPORD.BCST.Z CONSTD_32(), Z31, K1, Z8  // Z8 <- ION Type|L that represents unsigned integers.
+  VBROADCASTI64X2 CONST_GET_PTR(box_fast_i64_bswap64_7_bytes, 0), Z12
+  VPADDD.BCST CONSTD_16(), Z8, K5, Z8    // Z8 <- ION Type|L that represents unsigned and/or signed integers
+  VPADDD.Z CONST_GET_PTR(consts_offsets_d_8, 0), Z30, K1, Z30 // Z30 <- offsets of boxed numbers
+
+  VEXTRACTI32X8 $1, Z8, Y9
+  VPMOVZXDQ Y8, Z8
+  VPMOVZXDQ Y9, Z9
+  VPSHUFB Z12, Z2, Z2                    // Z2 <- byteswapped integers having max 7 bytes (low)
+  VPSHUFB Z12, Z3, Z3                    // Z3 <- byteswapped integers having max 7 bytes (high)
+  VPORQ Z8, Z2, Z2                       // Z4 <- encoded ION value having max 8 bytes (low)
+  VPORQ Z9, Z3, Z3                       // Z3 <- encoded ION value having max 8 bytes (high)
+  VPADDD.BCST.Z CONSTD_1(), Z31, K1, Z31 // Z31 <- size of the encoded ion value including Type|L byte
+
+  VMOVDQU64 Z2, 0(SI)(R8*1)
+  VMOVDQU64 Z3, 64(SI)(R8*1)
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+  _BC_ERROR_HANDLER_MORE_SCRATCH()
+
+// v[0] = box_i64(f64[1]).k[2]
+TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VPABSQ.Z Z2, K1, Z4                    // Z4 <- absolute i64 values (low)
+  VPABSQ.Z Z3, K2, Z5                    // Z5 <- absolute i64 values (high)
+
+  VPLZCNTQ.Z Z4, K1, Z6                  // Z6 <- leading zero bits count of i64 values (low)
+  VPLZCNTQ.Z Z5, K2, Z7                  // Z7 <- leading zero bits count of i64 values (high)
+
+  VPSRLQ $3, Z6, Z6                      // Z6 <- leading zero bytes count of i64 values (low)
+  VPSRLQ $3, Z7, Z7                      // Z7 <- leading zero bytes count of i64 values (high)
+
+  VPXORD X30, X30, X30
+  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, error_handler_more_scratch)
+  VM_GET_SCRATCH_BASE_GP(R8)
+
+  // NOTE: Regardless of the strategy used (boxing 7-byte or 8-byte integers) we always allocate
+  // the same amount of scratch to make the function more deterministic in regards of scratch
+  // buffer use (in other words it's input agnostic).
+  ADDQ $(9 * 16), bytecode_scratch+8(VIRT_BCPTR)
+
+  VPMOVQ2M Z2, K5                        // K5 <- signs of i64 values (low)
+  VPMOVQ2M Z3, K6                        // K6 <- signs of i64 values (high)
+  KUNPCKBW K5, K6, K5                    // K5 <- signs of i64 values (both)
+  KANDW K1, K5, K5
+
+  // Z8 <- count of leading zero bytes of each boxed number
+  VPMOVQD Z6, Y8
+  VPMOVQD Z7, Y9
+  VINSERTI64X4 $1, Y9, Z8, Z8
+
+  // Z10/Z11 - the number of bits to shift left, so we can properly apply bswap64
+  VPBROADCASTD CONSTD_8(), Z13
+  VPSLLQ $3, Z6, Z10
+  VPSLLQ $3, Z7, Z11
+
+  VPBROADCASTD.Z R8, K1, Z30             // Z30 <- initial value offsets
+  VPSUBD.Z Z8, Z13, K1, Z31              // Z31 <- size of an ION boxed value, excluding the descriptor byte
+  VPCMPEQD Z13, Z31, K1, K6              // K6 <- contains lanes that are encoded as 1+8 bytes
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  KTESTW K6, K6
+
+  VPORD.BCST.Z CONSTD_32(), Z31, K1, Z8  // Z8 <- ION Type|L that represents unsigned integers
+  VPSLLVQ Z10, Z4, Z4                    // Z4 <- correctly shifted, ready for bswap64 (low)
+  VPSLLVQ Z11, Z5, Z5                    // Z5 <- correctly shifted, ready for bswap64 (high)
+  VPADDD.BCST CONSTD_16(), Z8, K5, Z8    // Z8 <- ION Type|L that represents signed integers and unsigned integers
+  VPADDD.BCST.Z CONSTD_1(), Z31, K1, Z31 // Z31 <- size of the boxed value including Type|L field
+
+  JZ box_fast_i64                        // jump to a fast-path if all integers fit into 1+7 bytes boxed
+
+  VBROADCASTI64X2 CONST_GET_PTR(bswap64, 0), Z12
+  VPADDD.Z CONST_GET_PTR(consts_offsets_d_9, 0), Z30, K1, Z30 // Z30 <- offsets of boxed numbers
+
+  // Scatter descriptor bytes of each active lane.
+  KMOVW K1, K3
+  VPSCATTERDD Z8, K3, 0(SI)(Z30*1)
+  VEXTRACTI64X4 $1, Z30, Y13
+
+  VPSHUFB Z12, Z4, Z4                    // Z4 <- byteswapped and encoded integers ready to scatter (low)
+  VPSHUFB Z12, Z5, Z5                    // Z5 <- byteswapped and encoded integers ready to scatter (high)
+
+  KMOVW K1, K3
+  VPSCATTERDQ Z4, K3, 1(SI)(Y30*1)
+  VPSCATTERDQ Z5, K2, 1(SI)(Y13*1)
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+  // fast path - if all integers fit into 7 bytes (8 bytes in ION) we can avoid scatter
+box_fast_i64:
+  VBROADCASTI64X2 CONST_GET_PTR(box_fast_i64_bswap64_7_bytes, 0), Z12
+  VPADDD.Z CONST_GET_PTR(consts_offsets_d_8, 0), Z30, K1, Z30 // Z30 <- offsets of boxed numbers
+
+  VEXTRACTI32X8 $1, Z8, Y9
+  VPMOVZXDQ Y8, Z8
+  VPMOVZXDQ Y9, Z9
+  VPSHUFB Z12, Z4, Z4                    // Z4 <- byteswapped integers having max 7 bytes (low)
+  VPSHUFB Z12, Z5, Z5                    // Z5 <- byteswapped integers having max 7 bytes (high)
+  VPORQ Z8, Z4, Z4                       // Z4 <- encoded ION value having max 8 bytes (low)
+  VPORQ Z9, Z5, Z5                       // Z5 <- encoded ION value having max 8 bytes (high)
+
+  VMOVDQU64 Z4, 0(SI)(R8*1)
+  VMOVDQU64 Z5, 64(SI)(R8*1)
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+  _BC_ERROR_HANDLER_MORE_SCRATCH()
+
+// v[0] = box_k(k[1]).k[2]
 //
-// currently stores the values unconditionally,
-// but only updates Z30:Z31 using K3
+// store (up to) 16 booleans
 //
 // see boxmask_tail_vbmi2 for a version that
 // only writes out the lanes that are valid
-TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
-  VM_CHECK_SCRATCH_CAPACITY($16, R15, abort)
+TEXT bcboxk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(BX))             // K2 = true/false
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VM_CHECK_SCRATCH_CAPACITY($16, R15, error_handler_more_scratch)
   MOVL         $0x10, R14
   VPBROADCASTB R14, X10                             // X10 = false byte x 16
   MOVL         $1, R14
@@ -10855,72 +5796,30 @@ TEXT boxmask_tail(SB), NOSPLIT|NOFRAME, $0
   // offsets are [0, 1, 2, 3...] plus base offset;
   // then complemented for Z30
   VPXORD         Z30, Z30, Z30
-  VM_GET_SCRATCH_BASE_ZMM(Z30, K3)
-  VMOVDQU        byteidx<>+0(SB), X10
-  VPMOVZXBD      X10, Z10
-  VPADDD         Z10, Z30, K3, Z30
-  VPBROADCASTD.Z CONSTD_1(), K3, Z31
-  // update used scratch space
-  ADDQ           $16, bytecode_scratch+8(VIRT_BCPTR)
-  NEXT()
-abort:
-  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
-  RET_ABORT()
-
-// FIXME: on machines with VBMI-2 (Ice Lake and after),
-// try using this version instead, which writes out fewer
-// bytes when some of the lanes are missing
-// (this may not be worthwhile; it depends on how much
-// scratch space we expect to use)
-TEXT boxmask_tail_vbmi2(SB), NOSPLIT|NOFRAME, $0
-  KMOVW        K1, R15
-  POPCNTL      R15, R15
-  ADDQ         bytecode_scratch+8(VIRT_BCPTR), R15  // R15 = len(scratch)+popcnt(K1)
-  CMPQ         bytecode_scratch+16(VIRT_BCPTR), R15 // compare w/ cap(scratch)
-  JLT          abort
-  MOVL         $0x10, R14
-  VPBROADCASTB R14, X10                             // X10 = false byte x 16
-  MOVL         $1, R14
-  VPBROADCASTB R14, X11
-  VPADDB       X10, X11, K2, X10                    // X10 = true or false bytes (0x10 + 1/0)
-  MOVQ         bytecode_scratch(VIRT_BCPTR), R13
-  MOVQ         bytecode_scratch+8(VIRT_BCPTR), R14  // current offset
-  VPCOMPRESSB  X10, K1, 0(R13)(R14*1)               // write out true/false bytes
-  VMOVDQU      byteidx<>+0(SB), X11                 // X11 = [0, 1, 2, 3...]
-  VPEXPANDB    X11, K1, X11                         // X11 = output offset displ in each lane
-  VPMOVZXBD    X11, Z11                             // expand offset to 32 bits
-  VPBROADCASTD R14, Z14                             // broadcast original offset
-  VPADDD       Z11, Z14, Z14                        // offset = original + displacement
-  VNOTINPLACE(Z14)                                  // Z14 = ^offset
-
-  // set Z30 to ^offset in scratch
-  // set Z31 to width (one or zero, depending on K2)
-  VMOVDQA32.Z    Z14, K1, Z30
+  VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
+  VPMOVZXBD byteidx<>+0(SB), Z10
+  VPADDD.Z Z10, Z30, K1, Z30
   VPBROADCASTD.Z CONSTD_1(), K1, Z31
 
-  // update len(scratch)
-  MOVQ     R15, bytecode_scratch+8(VIRT_BCPTR)
-  NEXT()
-abort:
-  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
-  RET_ABORT()
+  // update used scratch space
+  ADDQ $16, bytecode_scratch+8(VIRT_BCPTR)
 
-// Boxes string slice held in RSI(Z2:Z3)
-TEXT bcboxstring(SB), NOSPLIT|NOFRAME, $0
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+  _BC_ERROR_HANDLER_MORE_SCRATCH()
+
+// v[0] = box_str(slice[1]).k[2]
+TEXT bcboxstr(SB), NOSPLIT|NOFRAME, $0
   VPSLLD.BCST $4, CONSTD_8(), Z20 // ION type of a boxed string is 0x8
   JMP boxslice_tail(SB)
 
-// Boxes list data held in RSI(Z2:Z3)
+// v[0] = box_list(slice[1]).k[2]
 TEXT bcboxlist(SB), NOSPLIT|NOFRAME, $0
   VPSLLD.BCST $4, CONSTD_0x0B(), Z20 // ION type of a boxed list is 0xB
   JMP boxslice_tail(SB)
 
-// Boxes [string, list, object] slice held in RSI(Z2:Z3)
-//
-// Inputs:
-//   - K1 - 16-bit lane mask
-//   - Z2 - 32-bit offsets relative to RSI
-//   - Z3 - 32-bit lengths of each data slice
+// Boxes a string or list slice
 //
 // Implementation notes:
 //   - Two paths - small slices (up to 13 bytes), large slices (more than 13 bytes).
@@ -10930,6 +5829,10 @@ TEXT bcboxlist(SB), NOSPLIT|NOFRAME, $0
 //   - Encoding of the Type|L + Length happens regardless of slice lengths, we
 //     do gathers meanwhile so the CPU should be busy enough to hide the latency.
 TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   // Quickly skip this instruction if there is nothing to box.
   VPXORD Z30, Z30, Z30
   VPXORD Z31, Z31, Z31
@@ -10959,17 +5862,16 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // First encode all lengths to ION RunLength encoding, it's easier to
   // determine the length of the encoded value actually after it's encoded
   // as we can just use LZCNT with shift to get the number of bytes it requires.
-  VMOVDQA32.Z Z3, K1, Z4                               // Z4 = [xxxxxxxx|xxxxxxxx|xxxxxxxx|xAAAAAAA]
-  VPSLLD.Z $1, Z3, K1, Z5                              // Z5 = [xxxxxxxx|xxxxxxxx|xBBBBBBB|xxxxxxxx]
-  VPSLLD.Z $2, Z3, K1, Z6                              // Z6 = [xxxxxxxx|xCCCCCCC|xxxxxxxx|xxxxxxxx]
-  VPSLLD.Z $3, Z3, K1, Z7                              // Z7 = [xDDDDDDD|xxxxxxxx|xxxxxxxx|xxxxxxxx]
+  VMOVDQA32.Z Z3, K1, Z4                                         // Z4 = [xxxxxxxx|xxxxxxxx|xxxxxxxx|xAAAAAAA]
+  VPSLLD.Z $1, Z3, K1, Z5                                        // Z5 = [xxxxxxxx|xxxxxxxx|xBBBBBBB|xxxxxxxx]
+  VPSLLD.Z $2, Z3, K1, Z6                                        // Z6 = [xxxxxxxx|xCCCCCCC|xxxxxxxx|xxxxxxxx]
+  VPSLLD.Z $3, Z3, K1, Z7                                        // Z7 = [xDDDDDDD|xxxxxxxx|xxxxxxxx|xxxxxxxx]
 
   // Use VPTERNLOGD to combine the extracted bits:
-  //   VPTERNLOG(0xD8) == (A & ~C) | (B & C) == Blend(A, B, ~C)
-  VPTERNLOGD.BCST $0xD8, CONSTD_0x007F007F(), Z4, Z5   // Z5 = [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
-  VPTERNLOGD.BCST $0xD8, CONSTD_0x007F007F(), Z6, Z7   // Z7 = [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
-  VPTERNLOGD.BCST $0xD8, CONSTD_0xFFFF0000(), Z7, Z5   // Z5 = [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
-  VPANDD.BCST CONSTD_0x7F7F7F7F(), Z5, Z5              // Z5 = [0DDDDDDD|0CCCCCCC|0BBBBBBB|0AAAAAAA]
+  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0x007F007F(), Z4, Z5 // Z5 = [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0x007F007F(), Z6, Z7 // Z7 = [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
+  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0xFFFF0000(), Z7, Z5 // Z5 = [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
+  VPANDD.BCST CONSTD_0x7F7F7F7F(), Z5, Z5                        // Z5 = [0DDDDDDD|0CCCCCCC|0BBBBBBB|0AAAAAAA]
 
   // Find the last leading bit set, which will be used to determine the number
   // of bytes required for storing each length.
@@ -11246,7 +6148,10 @@ large_skip_3:
   MOVQ R15, SI
 
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 abort:
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)
@@ -11275,34 +6180,41 @@ TEXT bcmakestruct(SB), NOSPLIT|NOFRAME, $0
 // -----------------
 
 TEXT bchashvalue(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX          0(VIRT_PCREG), R8
-  ADDQ             $2, VIRT_PCREG
-  ADDQ             bytecode_hashmem(VIRT_BCPTR), R8
-  MOVQ             R8, R14
-  MOVQ             VIRT_BASE, R15
-  VPXORD           X10, X10, X10
-  VMOVDQU32        Z10, (R8)
-  VMOVDQU32        Z10, 64(R8)
-  VMOVDQU32        Z10, 128(R8)
-  VMOVDQU32        Z10, 192(R8)
-  VMOVDQA32.Z      Z30, K1, Z28
-  VMOVDQA32.Z      Z31, K1, Z29
-  JMP              hashimpl_tail(SB)
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z28), OUT(Z29), IN(BX), IN(K1))
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPXORD X10, X10, X10
+  ADDQ $(BC_SLOT_SIZE*3), VIRT_PCREG
+  ADDQ bytecode_hashmem(VIRT_BCPTR), DX
+
+  VMOVDQU32 Z10, (DX)
+  VMOVDQU32 Z10, 64(DX)
+  VMOVDQU32 Z10, 128(DX)
+  VMOVDQU32 Z10, 192(DX)
+
+  MOVQ DX, R14
+  MOVQ VIRT_BASE, R15
+
+  JMP hashimpl_tail(SB)
 
 TEXT bchashvalueplus(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX          0(VIRT_PCREG), R14
-  MOVWQZX          2(VIRT_PCREG), R8
-  ADDQ             $4, VIRT_PCREG
-  ADDQ             bytecode_hashmem(VIRT_BCPTR), R8
-  ADDQ             bytecode_hashmem(VIRT_BCPTR), R14
-  MOVQ             VIRT_BASE, R15
-  VMOVDQA32.Z      Z30, K1, Z28
-  VMOVDQA32.Z      Z31, K1, Z29
-  JMP              hashimpl_tail(SB)
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z28), OUT(Z29), IN(BX), IN(K1))
+
+  BC_UNPACK_2xSLOT(0, OUT(R14), OUT(DX))
+  ADDQ $(BC_SLOT_SIZE*4), VIRT_PCREG
+  ADDQ bytecode_hashmem(VIRT_BCPTR), R14
+  ADDQ bytecode_hashmem(VIRT_BCPTR), DX
+  MOVQ VIRT_BASE, R15
+
+  JMP hashimpl_tail(SB)
 
 // expected input register arguments:
-//   R8 = destination hash slot
-//   R14 = source hash slot (may alias R8)
+//   DX = destination hash slot
+//   R14 = source hash slot (may alias DX)
 //   R15 = base memory pointer
 //   Z28 = offsets relative to base
 //   Z29 = lengths relative to offsets
@@ -11312,22 +6224,22 @@ TEXT hashimpl_tail(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA32        X29, X11
   VPXORD           0(R14), Z27, Z9
   CALL             hashx4(SB)
-  VMOVDQU32        Z9, 0(R8)
+  VMOVDQU32        Z9, 0(DX)
   VEXTRACTI32X4    $1, Z28, X10
   VEXTRACTI32X4    $1, Z29, X11
   VPXORD           64(R14), Z27, Z9
   CALL             hashx4(SB)
-  VMOVDQU32        Z9, 64(R8)
+  VMOVDQU32        Z9, 64(DX)
   VEXTRACTI32X4    $2, Z28, X10
   VEXTRACTI32X4    $2, Z29, X11
   VPXORD           128(R14), Z27, Z9
   CALL             hashx4(SB)
-  VMOVDQU32        Z9, 128(R8)
+  VMOVDQU32        Z9, 128(DX)
   VEXTRACTI32X4    $3, Z28, X10
   VEXTRACTI32X4    $3, Z29, X11
   VPXORD           192(R14), Z27, Z9
   CALL             hashx4(SB)
-  VMOVDQU32        Z9, 192(R8)
+  VMOVDQU32        Z9, 192(DX)
   NEXT()
 
 #define QROUNDx4(rowa, rowb, rowc, rowd, ztmp) \
@@ -11456,14 +6368,16 @@ rounds:
 done:
   RET
 
-// given input hash[imm0], determine
-// if there are members in tree[imm1]
+// k[0] = hash_member(h[1], imm16[2]).k[3]
+//
+// given input hash[1], determine if there are members in tree[imm16[2]]
 TEXT bchashmember(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R13
-  ADDQ    $4, VIRT_PCREG
+  BC_UNPACK_SLOT_RU16_SLOT(BC_SLOT_SIZE*1, OUT(R8), OUT(R13), OUT(R15))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R15))
+
   KTESTW  K1, K1
   JZ      next
+
   ADDQ    bytecode_hashmem(VIRT_BCPTR), R8       // R8 = pointer to input hash slot
   MOVQ    bytecode_trees(VIRT_BCPTR), R14
   MOVQ    0(R14)(R13*8), R13                     // R13 = tree pointer
@@ -11583,20 +6497,28 @@ loop_tail:
   VPCMPEQQ      Z16, Z27, K6, K6
   KUNPCKBW      K4, K6, K3
   KORW          K2, K3, K1             // K1 = (matched hash0)|(matched hash1)
-next:
-  NEXT()
 
+next:
+  BC_UNPACK_SLOT(0, OUT(R8))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 2)
+
+// v[0].k[1] = hash_lookup(h[2], imm16[3]).k[4]
+//
 // given input hash[imm0], determine
 // if there are members in tree[imm1]
 // and put them in the V register
 TEXT bchashlookup(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  MOVWQZX 2(VIRT_PCREG), R13
-  ADDQ    $4, VIRT_PCREG
-  VPXORD  Z30, Z30, Z30
-  VPXORD  Z31, Z31, Z31
+  BC_UNPACK_SLOT_RU16_SLOT(BC_SLOT_SIZE*2, OUT(R8), OUT(R13), OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
+
+  VPXORD X30, X30, X30
+  VPXORD X31, X31, X31
+
   KTESTW  K1, K1
   JZ      next
+
   ADDQ    bytecode_hashmem(VIRT_BCPTR), R8       // R8 = pointer to input hash slot
   MOVQ    bytecode_trees(VIRT_BCPTR), R14
   MOVQ    0(R14)(R13*8), R13                     // R13 = tree pointer
@@ -11675,6 +6597,7 @@ loop:
   VPGATHERDD    0(R15)(Z11*4), K4, Z8 // Z8 = table[Z8][(hash&mask)]
   KMOVW         K3, K5
   VPGATHERDD    0(R15)(Z12*4), K5, Z9 // Z9 = table[Z9][(hash&mask)]
+
 loop_tail:
   VPRORQ        $4, Z17, Z17        // chomp 4 bits of hash
   VPRORQ        $4, Z18, Z18
@@ -11723,269 +6646,291 @@ loop_tail:
   KMOVW         K1, K3
   VPGATHERDD    12(R15)(Z8*1), K3, Z31  // load boxed lengths
   VPADDD.BCST   bytecode_scratchoff(VIRT_BCPTR), Z30, K1, Z30
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
+
 
 // Simple Aggregation Instructions
 // -------------------------------
 
 TEXT bcaggandk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), DX
-  MOVL    2(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(CX))
+  BC_UNPACK_RU32(0, OUT(DX))
 
-  KMOVW K1, BX                         // BX <- Non-null lanes
-  MOVWLZX 0(VIRT_VALUES)(DX*1), DX     // DX <- Boolean values
-  ORB BX, 8(R10)(R8*1)                 // Mark this aggregation slot if we have non-null lanes
-  ANDL BX, DX                          // DX <- Boolean values in non-null lanes
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
 
-  // If BX != DX it means that at least one lane is active and that not all BOOLs
-  // in active lanes are TRUE - this would result in FALSE if not already FALSE.
-  XORL R15, R15
-  CMPL BX, DX
+  ORB CX, 8(R10)(DX*1)                 // Mark this aggregation slot if we have non-null lanes
+  ANDL CX, BX                          // BX <- Boolean values in non-null lanes
 
-  SETEQ R15
-  ANDB R15, 0(R10)(R8*1)
+  XORL R8, R8                          // If CX != BX it means that at least one lane is active and that not all BOOLs
+  CMPL CX, BX                          // in active lanes are TRUE - this would result in FALSE if not already FALSE.
 
-  NEXT_ADVANCE(6)
+  SETEQ R8
+  ANDB R8, 0(R10)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), DX
-  MOVL    2(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(CX))
+  BC_UNPACK_RU32(0, OUT(DX))
 
-  KMOVW K1, BX                         // BX <- Non-null lanes
-  MOVWLZX 0(VIRT_VALUES)(DX*1), DX     // DX <- Boolean values
-  ORB BX, 8(R10)(R8*1)                 // Mark this aggregation slot if we have non-null lanes
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(CX), IN(CX))
 
-  // If BX & DX != 0 it means that at least one lane is active and that not all BOOLs
-  // in active lanes are FALSE - this would result in TRUE if not already TRUE.
-  XORL R15, R15
-  ANDL BX, DX
+  ORB CX, 8(R10)(DX*1)                 // Mark this aggregation slot if we have non-null lanes
 
-  SETNE R15
-  ORB R15, 0(R10)(R8*1)
+  XORL R8, R8                          // If CX & BX != 0 it means that at least one lane is active and that not all BOOLs
+  ANDL CX, BX                          // in active lanes are FALSE - this would result in TRUE if not already TRUE.
 
-  NEXT_ADVANCE(6)
+  SETNE R8
+  ORB R8, 0(R10)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  KSHIFTRW      $8, K1, K2
-  VMOVDQA64.Z   Z2, K1, Z4
-  VMOVDQA64.Z   Z3, K2, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
 
-  VADDPD        Z4, Z5, Z5
+  KMOVW K1, R15
+  VADDPD Z4, Z5, Z5
   VEXTRACTF64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VADDPD        Y4, Y5, Y5
+  VADDPD Y4, Y5, Y5
   VEXTRACTF64X2 $VEXTRACT_IMM_HI, Y5, X4
-  VADDPD        X4, X5, X5
-  VSHUFPD       $1, X5, X5, X4
-  VADDSD        X4, X5, X5
+  VADDPD X4, X5, X5
 
-  VADDSD        0(R10)(R8*1), X5, X5
-  VMOVSD        X5, 0(R10)(R8*1)
+  BC_UNPACK_RU32(0, OUT(DX))
+  VSHUFPD $1, X5, X5, X4
+  VADDSD X4, X5, X5
 
-  KMOVW         K1, R15
-  POPCNTL       R15, R15
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  POPCNTL R15, R15
+  VADDSD 0(R10)(DX*1), X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVSD X5, 0(R10)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
-  VMOVQ         0(R10)(R8*1), X6
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
 
-  VMOVDQA64.Z   Z2, K1, Z5
-  VPADDQ        Z3, Z5, K2, Z5
+  KMOVW K1, R15
+  VPADDQ Z4, Z5, Z5
   VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VPADDQ        Y4, Y5, Y5
+  VPADDQ Y4, Y5, Y5
   VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VPADDQ X4, X5, X5
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VMOVQ 0(R10)(DX*1), X6
+  VPADDQ X4, X5, X5
 
-  VPADDQ        X4, X5, X5
-  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VPADDQ        X4, X5, X5
-  VPADDQ        X6, X5, X5
+  POPCNTL R15, R15
+  VPADDQ X6, X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVQ X5, 0(R10)(DX*1)
 
-  VMOVQ         X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  VBROADCASTSD  CONSTF64_POSITIVE_INF(), Z5
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z5
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VMINPD        Z5, Z2, K1, Z5
-  VMINPD        Z5, Z3, K2, Z5
+  VMINPD 0(VIRT_VALUES)(BX*1), Z5, K1, Z5
+  VMINPD 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTF64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VMINPD        Y4, Y5, Y5
+  VMINPD Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTF64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VMINPD X4, X5, X5
+  VSHUFPD $1, X5, X5, X4
+  VMINSD X4, X5, X5
 
-  VMINPD        X4, X5, X5
-  VSHUFPD       $1, X5, X5, X4
-  VMINSD        X4, X5, X5
+  VMINSD 0(R10)(DX*1), X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVSD X5, 0(R10)(DX*1)
 
-  VMINSD        0(R10)(R8*1), X5, X5
-  VMOVSD        X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  VPBROADCASTQ  CONSTQ_0x7FFFFFFFFFFFFFFF(), Z5
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
-  VMOVQ         0(R10)(R8*1), X6
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  VPBROADCASTQ CONSTQ_0x7FFFFFFFFFFFFFFF(), Z5
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VPMINSQ       Z5, Z2, K1, Z5
-  VPMINSQ       Z5, Z3, K2, Z5
+  VPMINSQ 0(VIRT_VALUES)(BX*1), Z5, K1, Z5
+  VPMINSQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VPMINSQ       Y4, Y5, Y5
+  VPMINSQ Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VPMINSQ X4, X5, X5
+  VMOVQ 0(R10)(DX*1), X6
+  VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPMINSQ X4, X5, X5
 
-  VPMINSQ       X4, X5, X5
-  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VPMINSQ       X4, X5, X5
-  VPMINSQ       X6, X5, X5
+  VPMINSQ X6, X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVQ X5, 0(R10)(DX*1)
 
-  VMOVQ         X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  VBROADCASTSD  CONSTF64_NEGATIVE_INF(), Z5
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  VBROADCASTSD CONSTF64_NEGATIVE_INF(), Z5
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VMAXPD        Z5, Z2, K1, Z5
-  VMAXPD        Z5, Z3, K2, Z5
+  VMAXPD 0(VIRT_VALUES)(BX*1), Z5, K1, Z5
+  VMAXPD 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTF64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VMAXPD        Y4, Y5, Y5
+  VMAXPD Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTF64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VMAXPD X4, X5, X5
+  VSHUFPD $1, X5, X5, X4
+  VMAXSD X4, X5, X5
 
-  VMAXPD        X4, X5, X5
-  VSHUFPD       $1, X5, X5, X4
-  VMAXSD        X4, X5, X5
+  VMAXSD 0(R10)(DX*1), X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVSD X5, 0(R10)(DX*1)
 
-  VMAXSD        0(R10)(R8*1), X5, X5
-  VMOVSD        X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  VPBROADCASTQ  CONSTQ_0x8000000000000000(), Z5
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  VPBROADCASTQ CONSTQ_0x8000000000000000(), Z5
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VMOVQ         0(R10)(R8*1), X6
-  VPMAXSQ       Z5, Z2, K1, Z5
-  VPMAXSQ       Z5, Z3, K2, Z5
+  VPMAXSQ 0(VIRT_VALUES)(BX*1), Z5, K1, Z5
+  VPMAXSQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VPMAXSQ       Y4, Y5, Y5
+  VPMAXSQ Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VPMAXSQ X4, X5, X5
+  VMOVQ 0(R10)(DX*1), X6
+  VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPMAXSQ X4, X5, X5
 
-  VPMAXSQ       X4, X5, X5
-  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VPMAXSQ       X4, X5, X5
-  VPMAXSQ       X6, X5, X5
+  VPMAXSQ X6, X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVQ X5, 0(R10)(DX*1)
 
-  VMOVQ         X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  VPBROADCASTQ  CONSTQ_0xFFFFFFFFFFFFFFFF(), Z5
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  VPBROADCASTQ CONSTQ_0xFFFFFFFFFFFFFFFF(), Z5
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VMOVQ         0(R10)(R8*1), X6
-  VPANDQ        Z5, Z2, K1, Z5
-  VPANDQ        Z5, Z3, K2, Z5
+  VPANDQ 0(VIRT_VALUES)(BX*1), Z5, K1, Z5
+  VPANDQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VPANDQ        Y4, Y5, Y5
+  VPANDQ Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VPANDQ X4, X5, X5
+  VMOVQ 0(R10)(DX*1), X6
+  VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPANDQ X4, X5, X5
 
-  VPANDQ        X4, X5, X5
-  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VPANDQ        X4, X5, X5
-  VPANDQ        X6, X5, X5
+  VPANDQ X6, X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVQ X5, 0(R10)(DX*1)
 
-  VMOVQ         X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VMOVQ         0(R10)(R8*1), X6
-  VMOVDQA64.Z   Z2, K1, Z5
-  VPORQ         Z5, Z3, K2, Z5
+  VMOVDQU64.Z 0(VIRT_VALUES)(BX*1), K1, Z5
+  VPORQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VPORQ         Y4, Y5, Y5
+  VPORQ Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VPORQ X4, X5, X5
+  VMOVQ 0(R10)(DX*1), X6
+  VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPORQ X4, X5, X5
 
-  VPORQ         X4, X5, X5
-  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VPORQ         X4, X5, X5
-  VPORQ         X6, X5, X5
+  VPORQ X6, X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVQ X5, 0(R10)(DX*1)
 
-  VMOVQ         X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
-  MOVL          0(VIRT_PCREG), R8
-  KSHIFTRW      $8, K1, K2
-  KMOVW         K1, R15
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
-  VMOVQ         0(R10)(R8*1), X6
-  VMOVDQA64.Z   Z2, K1, Z5
-  VPXORQ        Z5, Z3, K2, Z5
+  VMOVDQU64.Z 0(VIRT_VALUES)(BX*1), K1, Z5
+  VPXORQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
+
+  KMOVW K1, R15
   VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
-  VPXORQ        Y4, Y5, Y5
+  VPXORQ Y4, Y5, Y5
+  POPCNTL R15, R15
   VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
 
-  POPCNTL       R15, R15
+  BC_UNPACK_RU32(0, OUT(DX))
+  VPXORQ X4, X5, X5
+  VMOVQ 0(R10)(DX*1), X6
+  VPSHUFD $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
+  VPXORQ X4, X5, X5
 
-  VPXORQ        X4, X5, X5
-  VPSHUFD       $SHUFFLE_IMM_4x2b(1, 0, 3, 2), X5, X4
-  VPXORQ        X4, X5, X5
-  VPXORQ        X6, X5, X5
+  VPXORQ X6, X5, X5
+  ADDQ R15, 8(R10)(DX*1)
+  VMOVQ X5, 0(R10)(DX*1)
 
-  VMOVQ         X5, 0(R10)(R8*1)
-  ADDQ          R15, 8(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
-  KMOVW         K1, R15
-  MOVL          0(VIRT_PCREG), R8
-  POPCNTQ       R15, R15
-  ADDQ          R15, 0(R10)(R8*1)
-  NEXT_ADVANCE(4)
+  BC_UNPACK_SLOT(4, OUT(BX))
+  BC_UNPACK_RU32(0, OUT(DX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+
+  POPCNTQ BX, BX
+  ADDQ BX, 0(R10)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 4)
+
 
 // Slot Aggregation Instructions
 // -----------------------------
-
-// In each bytecode_bucket(), aggregate the value Z2:Z3 (float or int)
 
 // take the value of the H register
 // and locate the entries associated with
@@ -11993,10 +6938,12 @@ TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
 //
 // returns early if it cannot locate all of K1
 TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 0(VIRT_PCREG), R8
-  ADDQ    $2, VIRT_PCREG
+  BC_UNPACK_2xSLOT(0, OUT(R8), OUT(R15))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R15))
+
   KTESTW  K1, K1
   JZ      next
+
   ADDQ    bytecode_hashmem(VIRT_BCPTR), R8 // R8 = pointer to input hash slot
   KMOVW   K1, K2
   KMOVW   K1, K3
@@ -12121,6 +7068,7 @@ loop_tail:
   KXORW         K2, K1, K2         // K1^K2 = found xor wanted
   KTESTW        K2, K2             // (K1^K2)!=0 -> found != wanted
   JNZ           early_ret          // we didn't locate entries!
+
 next:
   // perform a sanity bounds-check on the returned offsets;
   // each offset should be <= len(tree.values)
@@ -12128,19 +7076,20 @@ next:
   KTESTW        K4, K4
   JNZ           bad_radix_bucket
   VMOVDQU32     Z13, bytecode_bucket(VIRT_BCPTR)
-  NEXT()
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
+
 early_ret:
   // set bytecode.err to NeedRadix
   // and bytecode.errinfo to the hash slot
-  MOVL    $const_bcerrNeedRadix, bytecode_err(VIRT_BCPTR)
-  MOVWQZX -2(VIRT_PCREG), R8
-  MOVQ    R8, bytecode_errinfo(VIRT_BCPTR)
+  MOVL $const_bcerrNeedRadix, bytecode_err(VIRT_BCPTR)
+  BC_UNPACK_SLOT(0, OUT(R8))
+  MOVQ R8, bytecode_errinfo(VIRT_BCPTR)
   RET_ABORT()
+
 bad_radix_bucket:
   // set bytecode.err to TreeCorrupt
   // and set bytecode.errpc to this pc
   MOVL    $const_bcerrTreeCorrupt, bytecode_err(VIRT_BCPTR)
-  LEAQ    -2(VIRT_PCREG), VIRT_PCREG
   SUBQ    bytecode_compiled(VIRT_BCPTR), VIRT_PCREG // get relative position
   MOVL    VIRT_PCREG, bytecode_errpc(VIRT_BCPTR)
   RET_ABORT()
@@ -12334,97 +7283,107 @@ resolved:                                                                     \
 next:
 
 TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 4(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K4
-  KSHIFTRW $8, K4, K5
-
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
-
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
-  NEXT_ADVANCE(6)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX 4(VIRT_PCREG), R8
-  KMOVW 0(VIRT_VALUES)(R8*1), K4
-  KSHIFTRW $8, K4, K5
-
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
-
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
-  NEXT_ADVANCE(6)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotaddf(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VADDPD)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotaddi(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPADDQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotavgf(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_COUNT_OP(0, VADDPD)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_COUNT_OP(0, VPADDQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VMINPD)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMINSQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VMAXPD)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMAXSQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
-  VMOVDQA64 Z2, Z4
-  VMOVDQA64 Z3, Z5
+  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPXORQ)
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 // COUNT is a special aggregation function that just counts active lanes stored
 // in K1. This is the simplest aggregation, which only requres a basic conflict
 // resolution that doesn't require to loop over conflicting lanes.
 TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(4, OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
+
   // Load buckets as early as possible so we can resolve conflicts early,
   // because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).
   VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6
@@ -12477,21 +7436,26 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
   VPSCATTERDQ Z5, K3, 8(R15)(Y7*1)
 
-  NEXT_ADVANCE(4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 4)
 
 // Uncategorized Instructions
 // --------------------------
 
 // take two immediate offsets into the scratch buffer and broadcast them into registers
 TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTD  0(VIRT_PCREG), Z30 // offset in scratch
-  VPBROADCASTD  4(VIRT_PCREG), Z31 // length
-  VPADDD.BCST   bytecode_scratchoff(VIRT_BCPTR), Z30, Z30 // offset += displ
-  ADDQ          $8, VIRT_PCREG
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+
+  VPBROADCASTD (BC_SLOT_SIZE+0)(VIRT_PCREG), Z2       // Z2 <- value offset part
+  VPBROADCASTD (BC_SLOT_SIZE+4)(VIRT_PCREG), Z3       // Z3 <- value length part
+  VPADDD.BCST bytecode_scratchoff(VIRT_BCPTR), Z2, Z2 // Z2 <- value offset relative to VM
+
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE + 8)
 
 TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX    0(VIRT_PCREG), R8
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
+  BC_UNPACK_RU16(BC_SLOT_SIZE*2, OUT(R8))
+
   IMULQ      $24, R8
   MOVQ       bytecode_auxvals+0(VIRT_BCPTR), R15
   MOVQ       0(R15)(R8*1), R15
@@ -12509,20 +7473,35 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
   VINSERTI32X8 $1, Y12, Z10, Z30 // concatenate offsets
   VINSERTI32X8 $1, Y13, Z11, Z31 // concatenate lengths
   VPTESTMD     Z31, Z31, K1      // zero-length values -> MISSING
-  NEXT_ADVANCE(2)
 
-// take the list slice in Z2:Z3
-// and put the first object slice in Z30:Z31,
-// then update Z2:Z3 to point to the rest of
-// the list
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), OUT(CX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 2)
+
+// {v[0], s[1]}.k[2] = split(s[3]).k[4]
+//
+// Take the list slice in s[3] and put the first object slice
+// in v[0], then update s[1] to point to the rest of the list.
 TEXT bcsplit(SB), NOSPLIT|NOFRAME, $0
-  VPTESTMD      Z3, Z3, K1, K1           // only keep lanes with len != 0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*3, OUT(BX), OUT(R8))
+
+  VPXORD X30, X30, X30
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPXORD X31, X31, X31
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+
+  VPTESTMD      Z3, Z3, K1, K1             // only keep lanes with len != 0
   KTESTW        K1, K1
   JZ            next
+
   KMOVW         K1, K2
+  VPXORD        X26, X26, X26
+  VPGATHERDD    0(SI)(Z2*1), K2, Z26       // Z26 = first 4 bytes
+
   VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
   VPBROADCASTD  CONSTD_1(), Z21            // Z21 = 1
-  VPGATHERDD    0(SI)(Z2*1), K2, Z26       // Z26 = first 4 bytes
   VPANDD        Z26, Z27, Z25              // Z25 = first 4 & 0x0f = int size
   VPSRLD        $4, Z26, Z26               // first 4 words >>= 4
   VPANDD        Z27, Z26, Z24              // Z24 = (word >> 4) & 0xf = descriptor tag
@@ -12549,6 +7528,7 @@ TEXT bcsplit(SB), NOSPLIT|NOFRAME, $0
   VPTESTNMD     Z29, Z26, K3, K3        // test byte1&0x80
   KTESTW        K3, K3
   JZ            done
+
   VPSRLD        $8, Z26, K3, Z26        // word >>= 8
   VPSLLD        $7, Z28, K3, Z28        // accum <<= 7
   VPANDD        Z27, Z26, K3, Z25
@@ -12563,6 +7543,7 @@ TEXT bcsplit(SB), NOSPLIT|NOFRAME, $0
   VPTESTNMD     Z29, Z26, K3, K3        // test word&0x80
   KTESTW        K3, K3
   JNZ           trap                    // trap if length(object) > 2^21
+
 done:
   VPADDD        Z28, Z22, K2, Z22       // size += varint size
   VPCMPUD       $VPCMP_IMM_GT, Z3, Z22, K1, K3   // bounds check: we are still inside the array
@@ -12572,17 +7553,33 @@ done:
   VMOVDQA32.Z   Z22, K1, Z31            // Z31 = object size = Z22
   VPADDD        Z22, Z2, K1, Z2         // offset += object size
   VPSUBD.Z      Z22, Z3, K1, Z3         // length -= object size
+
 next:
-  NEXT()
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(CX), OUT(R8))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), OUT(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(CX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
 trap:
   FAIL()
 
-// take value regs Z30:Z31 and parse
-// them as structure offset + length
-// into Z0:Z1
+// b[0].k[1] = unbox_struct(v[2]).k[3]
+//
+// take v[0] and parse it as struct, returning offset + length in b[0]
 TEXT bctuple(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  VPXORD X0, X0, X0
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPXORD X1, X1, X1
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
+
   KTESTW        K1, K1
   JZ            next
+
   KMOVW         K1, K2
   VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
   VPBROADCASTD  CONSTD_1(), Z21            // Z21 = 1
@@ -12603,13 +7600,21 @@ TEXT bctuple(SB), NOSPLIT|NOFRAME, $0
   VPTESTNMD     Z26, Z28, K2, K2           // test if we've hit the stop bit
   KTESTW        K2, K2
   JNZ           two_more                   // keep the fast path (length < 127) short
+
 done:
   VPADDD        Z23, Z30, K1, Z0           // Z0 = base = offset + encoding size
   VMOVDQA32     Z25, K1, Z1                // Z1 = length
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
 trap:
   FAIL()
+
 two_more:
   VPADDD        Z21, Z23, K2, Z23
   VPSLLD        $7, Z25, K2, Z25
@@ -12627,26 +7632,63 @@ two_more:
   JNZ           trap
   JMP           done
 
-// duplicate a value stack slot
-// (used when a value is returned multiple times)
-TEXT bcdupv(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX    0(VIRT_PCREG), R8
-  MOVWQZX    2(VIRT_PCREG), R15
-  ADDQ       $4, VIRT_PCREG
-  VMOVDQU32.Z 0(VIRT_VALUES)(R8*1), K1, Z28
-  VMOVDQU32.Z 64(VIRT_VALUES)(R8*1), K1, Z29
-  VMOVDQU32 Z28, 0(VIRT_VALUES)(R15*1)
-  VMOVDQU32 Z29, 64(VIRT_VALUES)(R15*1)
-  NEXT()
+// k[0] = k[1]
+TEXT bcmovk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(BX))
+  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
+  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
+// v[0] = 0
+//
 // zero a slot (this is effectively the constprop'd version of saving MISSING everywhere)
 TEXT bczerov(SB), NOSPLIT|NOFRAME, $0
-  MOVWQZX     0(VIRT_PCREG), R8
-  ADDQ        $2, VIRT_PCREG
-  VPXORD      Z28, Z28, Z28
-  VMOVDQU32   Z28, 0(VIRT_VALUES)(R8*1)
-  VMOVDQU32   Z28, 64(VIRT_VALUES)(R8*1)
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPXORD X2, X2, X2
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z2), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*1)
+
+// v[0] = v[1].k[2]
+TEXT bcmovv(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// v[0].k[1] = v[2].k[3]
+TEXT bcmovvk(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0] = f64[1].k[2]
+TEXT bcmovf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = i64[1].k[2]
+TEXT bcmovi64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // Defines for function SIZE()
 
@@ -12769,10 +7811,15 @@ trap:
     DWORD_CONST(0xffffffff, Z2)
     RET
 
-
+// i64[0].k[1] = object_size(v[2]).k[3]
+//
 // SIZE(x) function --- returns the number of items
 // in a struct or list, missing otherwise.
 TEXT bcobjectsize(SB), NOSPLIT|NOFRAME, $0
+    BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+    BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
+
     VPBROADCASTD CONSTD_1(), CONST_0x01
     VPBROADCASTD CONSTD_0x0F(), CONST_0x0f
 
@@ -12844,21 +7891,32 @@ count_fields:
     LOAD_OBJECT_HEADER(STRUCT)
     CALCULATE_OBJECT_SIZE(STRUCT, no_uvint3, uvint_done3)
 
-    VPADDD  CONST_0x01, Z2, STRUCT, Z2       /* count += 1 */
-    VPADDD  HEADER_LENGTH, Z30, STRUCT, Z30  /* offset += header_size */
-    VPADDD  OBJECT_SIZE, Z30, STRUCT, Z30    /* offset += object_size */
+    VPADDD CONST_0x01, Z2, STRUCT, Z2       /* count += 1 */
+    VPADDD HEADER_LENGTH, Z30, STRUCT, Z30  /* offset += header_size */
+    VPADDD OBJECT_SIZE, Z30, STRUCT, Z30    /* offset += object_size */
 
     JMP count_fields
 count_fields_end:
-    VEXTRACTI32X8   $1, Z2, Y3
-    VPMOVZXDQ       Y2, Z2
-    VPMOVZXDQ       Y3, Z3
-    NEXT()
+    VEXTRACTI32X8 $1, Z2, Y3
+    VPMOVZXDQ Y2, Z2
+    VPMOVZXDQ Y3, Z3
+    BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+
+    BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+    BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+    NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 no_compbound_values_found:
 all_nulls:
-    KXORW           K1, K1, K1
-    NEXT()
+    VPXORD X2, X2, X2
+
+    BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+    BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z2), IN(DX))
+    MOVW $0, 0(VIRT_VALUES)(R8*1)
+
+    NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
 trap:
     FAIL()
 
@@ -12894,10 +7952,14 @@ trap:
 
 //; #region string methods
 
+// k[0] = streq_cs(slice[1], dict_ptr[2]).k[3]
+//
 //; #region bcCmpStrEqCs
-//; equal ascii string in slice in Z2:Z3, with stack[imm]
 TEXT bcCmpStrEqCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter_needle; R14=needle_slice;
   VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter_needle != 0)     ;K1=lane_active; Z6=counter_needle;
   VPCMPD        $0,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len==counter_needle) ;K1=lane_active; Z3=str_len; Z6=counter_needle; 0=Eq;
@@ -12929,14 +7991,22 @@ tests:
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
 //; compare data with needle
   VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;474761AE K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE*1)
 //; #endregion bcCmpStrEqCs
 
+// k[0] = streq_ci(slice[1], dict_ptr[2]).k[3]
+//
 //; #region bcCmpStrEqCi
-//; equal ascii string in slice in Z2:Z3, with stack[imm]
 TEXT bcCmpStrEqCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+
   VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter_needle; R14=needle_slice;
   VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter_needle != 0)     ;K1=lane_active; Z6=counter_needle;
   VPCMPD        $0,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len==counter_needle) ;K1=lane_active; Z3=str_len; Z6=counter_needle; 0=Eq;
@@ -12981,14 +8051,23 @@ tests:
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
 //; compare data with needle
   VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;474761AE K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE*1)
 //; #endregion bcCmpStrEqCi
 
+// k[0] = streq_ci_utf8(slice[1], dict_ptr[2]).k[3]
+//
 //; #region bcCmpStrEqUTF8Ci
 //; empty needles or empty data always result in a dead lane
 TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
   ADDQ          $4,  R14                  //;7B0665F3 needle_ptr += 4                 ;R14=needle_ptr;
@@ -13071,13 +8150,21 @@ mixed_ascii:
 
 next:
   VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len;
-  NEXT()
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE*1)
 
 //; #endregion bcCmpStrEqUTF8Ci
 
+// k[0] = cmp_str_fuzzy_a3(slice[1], i64[2], dict[3]).k[4]
 //; #region bcCmpStrFuzzyA3
 TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R15)                      //;05667C35 load *[]byte with the provided str into R15
+  BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
   MOVQ          R15, R14                  //;EC3C3E7D needle_ptr := update_data_ptr   ;R14=needle_ptr; R15=update_data_ptr;
@@ -13085,7 +8172,7 @@ TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
 //; load from stack-slot: load 16x uint32 into Z14
-  LOADARG1Z(Z27, Z26)
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
@@ -13184,13 +8271,20 @@ loop2:
   KANDNW        K2,  K3,  K2              //;482703BD lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
   KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
   JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
 //; #endregion bcCmpStrFuzzyA3
 
 //; #region bcCmpStrFuzzyUnicodeA3
 TEXT bcCmpStrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R15)                      //;05667C35 load *[]byte with the provided str into R15
+  BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
   MOVQ          R15, R14                  //;EC3C3E7D needle_ptr := update_data_ptr   ;R14=needle_ptr; R15=update_data_ptr;
@@ -13198,7 +8292,7 @@ TEXT bcCmpStrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
 //; load from stack-slot: load 16x uint32 into Z14
-  LOADARG1Z(Z27, Z26)
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
@@ -13376,13 +8470,20 @@ loop2:
   KANDNW        K2,  K3,  K2              //;482703BD lane_todo &= ~tmp_mask          ;K2=lane_todo; K3=tmp_mask;
   KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
   JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
 //; #endregion bcCmpStrFuzzyUnicodeA3
 
 //; #region bcHasSubstrFuzzyA3
 TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R15)                      //;05667C35 load *[]byte with the provided str into R15
+  BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
   MOVQ          R15, R14                  //;EC3C3E7D needle_ptr := update_data_ptr   ;R14=needle_ptr; R15=update_data_ptr;
@@ -13390,7 +8491,7 @@ TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
 //; load from stack-slot: load 16x uint32 into Z14
-  LOADARG1Z(Z27, Z26)
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
@@ -13507,13 +8608,20 @@ loop1:
   VMOVDQA32     Z13, Z7                   //;8EFD9390 needle_len2 := needle_len       ;Z7=needle_len2; Z13=needle_len;
   KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
   JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
 //; #endregion bcHasSubstrFuzzyA3
 
 //; #region bcHasSubstrFuzzyUnicodeA3
 TEXT bcHasSubstrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R15)                      //;05667C35 load *[]byte with the provided str into R15
+  BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
   MOVQ          R15, R14                  //;EC3C3E7D needle_ptr := update_data_ptr   ;R14=needle_ptr; R15=update_data_ptr;
@@ -13521,8 +8629,8 @@ TEXT bcHasSubstrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
 //; load from stack-slot: load 16x uint32 into Z14
-  LOADARG1Z(Z27, Z26)
-  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z11=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
 //; load constants
@@ -13715,13 +8823,23 @@ loop1:
   VMOVDQA32     Z13, Z7                   //;8EFD9390 needle_len2 := needle_len       ;Z7=needle_len2; Z13=needle_len;
   KTESTW        K2,  K2                   //;4661A15A any lanes still todo?           ;K2=lane_todo;
   JNZ           loop2                     //;28307DE7 yes, then loop; jump if not zero (ZF = 0);
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
 //; #endregion bcHasSubstrFuzzyUnicodeA3
 
+// slice[0].k[1] = skip_1_char_left(slice[2]).k[3]
+//
 //; #region bcSkip1charLeft
 //; skip the first UTF-8 codepoint in Z2:Z3
 TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VPTESTMD      Z3,  Z3,  K1,  K1         //;B1146BCF update lane mask with non-empty lanes;K1=lane_active; Z3=str_length;
   KTESTW        K1,  K1                   //;69D1CDA2 all lanes empty?                ;K1=lane_active;
   JZ            next                      //;A5924904 yes, then exit; jump if zero (ZF = 1);
@@ -13733,13 +8851,24 @@ TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0
   VPERMD        CONST_N_BYTES_UTF8(),Z26, Z7  //;CFC7AA76 get n_bytes_data            ;Z7=n_bytes_data; Z26=scratch_Z26;
   VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
   VPADDD        Z7,  Z2,  K1,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 //; #endregion bcSkip1charLeft
 
+// slice[0].k[1] = skip_1_char_right(slice[2]).k[3]
+//
 //; #region bcSkip1charRight
 //; skip the last UTF-8 codepoint in Z2:Z3
 TEXT bcSkip1charRight(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VPTESTMD      Z3,  Z3,  K1,  K1         //;B1146BCF update lane mask with non-empty lanes;K1=lane_active; Z3=str_length;
   KTESTW        K1,  K1                   //;69D1CDA2 all lanes empty?                ;K1=lane_active;
   JZ            next                      //;A5924904 yes, then exit; jump if zero (ZF = 1);
@@ -13748,11 +8877,20 @@ TEXT bcSkip1charRight(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  CONSTD_UTF8_3B_MASK(),Z28 //;B1E12620 load constant UTF8 3byte mask   ;Z28=UTF8_3byte_mask;
   VPBROADCASTD  CONSTD_UTF8_4B_MASK(),Z29 //;D896A9E1 load constant UTF8 4byte mask   ;Z29=UTF8_4byte_mask;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
+  VPBROADCASTD  CONSTD_4(),Z31
+
   VPADDD        Z10, Z10, Z24             //;EDD57CAF load constant 2                 ;Z24=constd_2; Z10=constd_1;
   VPADDD        Z10, Z24, Z25             //;7E7A1CB0 load constant 3                 ;Z25=constd_3; Z24=constd_2; Z10=constd_1;
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPADDD        Z2,  Z3,  Z4              //;5684E300 compute end-of-string ptr       ;Z4=end_of_str; Z3=str_length; Z2=str_start;
-  VPGATHERDD    -4(SI)(Z4*1),K3,  Z8      //;573D089A gather data from end            ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=end_of_str;
+
+  VPMINUD       Z31, Z3, Z0
+  VPSUBD        Z0, Z31, Z0
+  VPADDD        Z0, Z4, Z1
+  VPSLLD        $3, Z0, Z0
+  VPTESTMD      Z3, Z3, K1, K3
+  VPXORD        X8, X8, X8
+  VPGATHERDD    -4(SI)(Z1*1), K3, Z8
+  VPSLLVD       Z0, Z8, Z8
 
 //; #region count_bytes_code_point_right; data in Z8; result out Z7
   VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z27=UTF8_2byte_mask;
@@ -13768,15 +8906,27 @@ TEXT bcSkip1charRight(SB), NOSPLIT|NOFRAME, $0
 //; #endregion count_bytes_code_point_right; data in Z8; result out Z7
 
   VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 //; #endregion bcSkip1charRight
 
+// slice[0].k[1] = skip_n_chars_left(slice[2], i64[3]).k[4]
+//
 //; #region bcSkipNcharLeft
 //; skip the first n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; load from stack-slot: load 16x uint32 into Z6
-  LOADARG1Z(Z27, Z26)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
@@ -13789,6 +8939,7 @@ TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
 
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+
 loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
@@ -13807,14 +8958,25 @@ loop:
   JNZ           loop                      //;203DDAE1 any chars left? NO, loop next; jump if not zero (ZF = 0);
 
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
 //; #endregion bcSkipNcharLeft
 
+// slice[0].k[1] = skip_n_chars_right(slice[2], i64[3]).k[4]
+//
 //; #region bcSkipNcharRight
 //; skip the last n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; load from stack-slot: load 16x uint32 into Z6
-  LOADARG1Z(Z27, Z26)
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
@@ -13829,12 +8991,20 @@ TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD  CONSTD_UTF8_3B_MASK(),Z28 //;B1E12620 load constant UTF8 3byte mask   ;Z28=UTF8_3byte_mask;
   VPBROADCASTD  CONSTD_UTF8_4B_MASK(),Z29 //;D896A9E1 load constant UTF8 4byte mask   ;Z29=UTF8_4byte_mask;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z31
   VPADDD        Z10, Z10, Z22             //;EDD57CAF load constant 2                 ;Z22=2; Z10=1;
   VPADDD        Z10, Z22, Z23             //;7E7A1CB0 load constant 3                 ;Z23=3; Z22=2; Z10=1;
+
 loop:
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPADDD        Z2,  Z3,  Z4              //;5684E300 str_end := str_len + str_start  ;Z4=str_end; Z3=str_len; Z2=str_start;
-  VPGATHERDD    -4(SI)(Z4*1),K3,  Z8      //;573D089A gather data from end            ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=str_end;
+  VPMINUD       Z31, Z3, Z0
+  VPSUBD        Z0, Z31, Z0
+  VPADDD        Z0, Z4, Z1
+  VPSLLD        $3, Z0, Z0
+  VPTESTMD      Z3, Z3, K2, K3
+  VPXORD        X8, X8, X8
+  VPGATHERDD    -4(SI)(Z1*1), K3, Z8
+  VPSLLVD       Z0, Z8, Z8
 
 //; count_bytes_code_point_right; data in Z8; result out Z7
   VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z27=UTF8_2byte_mask;
@@ -13859,13 +9029,24 @@ loop:
   JNZ           loop                      //;203DDAE1 any chars left? NO, loop next; jump if not zero (ZF = 0);
 
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
 //; #endregion bcSkipNcharRight
 
+// slice[0] = trim_left_ws(slice[1]).k[2]
+//
 //; #region bcTrimWsLeft
 //; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
 //; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
 TEXT bcTrimWsLeft(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
   VPXORD        Z11, Z11, Z11             //;F4B92302 constd_0 := 0                   ;Z11=constd_0;
@@ -13908,13 +9089,23 @@ loop:
   JNZ           loop                      //;00000000 jump if not zero (ZF = 0)       ;
 
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 //; #endregion bcTrimWsLeft
 
+// slice[0] = trim_right_ws(slice[1]).k[2]
+//
 //; #region bcTrimWsRight
 //; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
 //; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
 TEXT bcTrimWsRight(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
   VPXORD        Z11, Z11, Z11             //;F4B92302 constd_0 := 0                   ;Z11=constd_0;
@@ -13929,8 +9120,14 @@ TEXT bcTrimWsRight(SB), NOSPLIT|NOFRAME, $0
   VPADDD        Z3,  Z2,  Z14             //;00000000 str_pos_end := str_start + str_length;Z14=str_pos_end; Z2=str_start; Z3=str_length;
   VPSUBD        Z20, Z14, Z14             //;00000000 str_pos_end -= 4                ;Z14=str_pos_end; Z20=constd_4;
 loop:
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z14*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_pos_end;
+  VPMINUD       Z20, Z3, Z21
+  VPSUBD        Z21, Z20, Z21
+  VPADDD        Z21, Z14, Z22
+  VPSLLD        $3, Z21, Z21
+  VPTESTMD      Z3, Z3, K1, K3            //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPXORD        X8, X8, X8
+  VPGATHERDD    (SI)(Z22*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_end;
+  VPSLLVD       Z21, Z8, Z8
 //; #region trim left/right whitespace comparison
   VPCMPB        $0,  Z15, Z8,  K3         //;529F46B9 K3 := (data_msg==c_char_space); test if equal to SPACE char;K3=tmp_mask; Z8=data_msg; Z15=c_char_space; 0=Eq;
   VPCMPB        $2,  Z8,  Z16, K2         //;AD553F19 K2 := (c_char_tab<=data_msg); is TAB (0x09) <= char;K2=scratch2_mask; Z16=c_char_tab; Z8=data_msg; 2=LessEq;
@@ -13958,17 +9155,25 @@ loop:
   JNZ           loop                      //;00000000 jump if not zero (ZF = 0)       ;
 
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 //; #endregion bcTrimWsRight
 
+// slice[0] = trim_left_4_chars(slice[1], dict[2]).k[3]
+//
 //; #region bcTrim4charLeft
 //; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
 //; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
 TEXT bcTrim4charLeft(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;26BB22F5 Load ptr of string              ;R14=chars_ptr; R14=chars_slice;
   MOVL          (R14),R14                 //;B7C25D43 Load first 4 chars              ;R14=chars_ptr;
   VPBROADCASTB  R14, Z9                   //;96085025                                 ;Z9=c_char0; R14=chars_ptr;
@@ -14010,17 +9215,24 @@ loop:
   JNZ           loop                      //;7E49CD56 jump if not zero (ZF = 0)       ;
 
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charLeft
 
+// slice[0] = trim_right_4_chars(slice[1], dict[2]).k[3]
+//
 //; #region bcTrim4charRight
 //; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
 //; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
 TEXT bcTrim4charRight(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
   MOVQ          (R14),R14                 //;26BB22F5 Load ptr of string              ;R14=chars_ptr; R14=chars_slice;
   MOVL          (R14),R14                 //;B7C25D43 Load first 4 chars              ;R14=chars_ptr;
   VPBROADCASTB  R14, Z9                   //;96085025                                 ;Z9=c_char0; R14=chars_ptr;
@@ -14033,8 +9245,14 @@ TEXT bcTrim4charRight(SB), NOSPLIT|NOFRAME, $0
   VPADDD        Z3,  Z2,  Z14             //;813A5F04 str_end := str_start + str_len  ;Z14=str_end; Z2=str_start; Z3=str_len;
   VPSUBD        Z20, Z14, Z14             //;EAF06C41 str_end -= 4                    ;Z14=str_end; Z20=4;
 loop:
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z14*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_end;
+  VPMINUD       Z20, Z3, Z21
+  VPSUBD        Z21, Z20, Z21
+  VPADDD        Z21, Z14, Z22
+  VPSLLD        $3, Z21, Z21
+  VPTESTMD      Z3, Z3, K1, K3            //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPXORD        X8, X8, X8
+  VPGATHERDD    (SI)(Z22*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_end;
+  VPSLLVD       Z21, Z8, Z8
 //; #region trim left/right 4char comparison
   VPCMPB        $0,  Z9,  Z8,  K3         //;D8545E6D K3 := (data_msg==c_char0); is char == char0;K3=tmp_mask; Z8=data_msg; Z9=c_char0; 0=Eq;
   VPCMPB        $0,  Z10, Z8,  K2         //;933CFC19 K2 := (data_msg==c_char1); is char == char1;K2=scratch2_mask; Z8=data_msg; Z10=c_char1; 0=Eq;
@@ -14063,12 +9281,472 @@ loop:
   JNZ           loop                      //;7E49CD56 jump if not zero (ZF = 0)       ;
 
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charRight
 
+// i64[0] = utf8_len(slice[1]).k[2]
+//
+//; #region bcLengthStr
+//; count number of UTF-8 code-points in Z2:Z3 (str interpretation); store the result in Z2:Z3 (int64 interpretation)
+TEXT bcLengthStr(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
+  VPBROADCASTB  CONSTD_0x80(),Z27         //;96E41B4F load constant 80808080          ;Z27=constd_80808080;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
+  VPXORD        Z6,  Z6,  Z6              //;F292B105 counter := 0                    ;Z6=counter;
+  JMP           test                      //;4CAF1B53                                 ;
+
+loop:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
+  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data_msg := 0                   ;Z8=data_msg;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+
+  VPMINSD       Z20, Z3,  Z7              //;DDF0DB53 n_bytes_data := min(str_length, 4);Z7=n_bytes_data; Z3=str_length; Z20=constd_4;
+  VPERMD        Z18, Z7,  Z19             //;8F3EBC09 get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
+  VPANDD        Z8,  Z19, Z8              //;EF91B1F3 remove tail from data           ;Z8=data_msg; Z19=tail_mask;
+  VPMOVB2M      Z8,  K3                   //;F22D958D get 64 sign-bits                ;K3=tmp_mask; Z8=data_msg;
+  KTESTQ        K3,  K3                   //;F2C8F6C8 all sign-bits zero?             ;K3=tmp_mask;
+  JNZ           non_ascii                 //;71B77ACE no: non-ascii present; jump if not zero (ZF = 0);
+  VPADDD        Z7,  Z6,  K2,  Z6         //;978F956A counter += n_bytes_data         ;Z6=counter; K2=lane2_mask; Z7=n_bytes_data;
+
+update:
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K2=lane2_mask; Z7=n_bytes_data;
+  VPADDD        Z7,  Z2,  K2,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K2=lane2_mask; Z7=n_bytes_data;
+
+test:
+//; We could compare Z2 > end_of_str, and remove the above sub Z3, but the min(4, Z3) prevents that
+  VPCMPD        $6,  Z11, Z3,  K1,  K2    //;DA211F9B K2 := K1 & (str_length>0)       ;K2=lane2_mask; K1=lane_active; Z3=str_length; Z11=constd_0; 6=Greater;
+  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
+  JNZ           loop                      //;203DDAE1 if some lanes alive then loop; jump if not zero (ZF = 0);
+
+  VPMOVZXDQ     Y6,  Z2                   //;9CA47A78 cast 8 x int32 to 8 x int64     ;Z2=str_start; Z6=counter;
+  VEXTRACTI32X8 $1,  Z6,  Y6              //;DC597720 256-bits to lower lane          ;Z6=counter;
+  VPMOVZXDQ     Y6,  Z3                   //;C24D656F cast 8 x int32 to 8 x int64     ;Z3=str_length; Z6=counter;
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+non_ascii:  //; NOTE: this is the assumed to be a somewhat unlikely branch
+  VPTESTNMD     Z27, Z8,  K2,  K3         //;85E34261 K3 is all-ascii lanes           ;K3=tmp_mask; K2=lane2_mask; Z8=data_msg; Z27=constd_80808080;
+  VPADDD        Z7,  Z6,  K3,  Z6         //;D765BB59 for all ascii lanes             ;Z6=counter; K3=tmp_mask; Z7=n_bytes_data;
+  KANDNW        K2,  K3,  K3              //;5A982E07 K3 is mixed-ascii lanes         ;K3=tmp_mask; K2=lane2_mask;
+  VPADDD        Z10, Z6,  K3,  Z6         //;8E335D11 for mixed-ascii lanes           ;Z6=counter; K3=tmp_mask; Z10=constd_1;
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
+  VPERMD        Z21, Z26, K3,  Z7         //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; K3=tmp_mask; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  JMP           update                    //;A596F5F6                                 ;
+//; #endregion bcLengthStr
+
+// slice[0] = sub_str(slice[1], i64[2], i64[3]).k[4]
+//
+//; #region bcSubstr
+//; Get a substring of UTF-8 code-points in Z2:Z3 (str interpretation). The substring starts
+//; from the specified start-index and ends at the specified length or at the last character
+//; of the string (which ever is first). The start-index is 1-based! The first index of the
+//; string starts at 1. The substring is stored in Z2:Z3 (str interpretation)
+TEXT bcSubstr(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_4xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(DX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+//; load from stack-slot: load 16x uint32 into Z6
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z28), IN(CX))
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
+  VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
+  VINSERTI64X4  $1,  Y28, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z28=scratch_Z28;
+//; load from stack-slot: load 16x uint32 into Z12
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z28), IN(DX))
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
+  VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
+  VINSERTI64X4  $1,  Y28, Z27, Z12        //;3944001B merge into 16x uint32           ;Z12=substr_length; Z27=scratch_Z27; Z28=scratch_Z28;
+//; load constants
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VMOVDQA32     Z2,  Z4                   //;CFB0D832 curr_offset := str_start        ;Z4=curr_offset; Z2=str_start;
+//; fixup parameters
+  VPSUBD        Z10, Z6,  Z6              //;34951830 1-based to 0-based indices      ;Z6=counter; Z10=1;
+  VPMAXSD       Z6,  Z11, Z6              //;18F03020 counter := max(0, counter)      ;Z6=counter; Z11=0;
+
+//; find start of substring
+  JMP           test1                     //;4CAF1B53                                 ;
+loop1:
+//; load next code-point
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
+  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
+  VPSUBD        Z10, Z6,  Z6              //;19C9DC47 counter--                       ;Z6=counter; Z10=1;
+//; get number of bytes in next code-point
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
+  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+//; advance
+  VPADDD        Z7,  Z4,  K2,  Z4         //;45909060 curr_offset += n_bytes_data     ;Z4=curr_offset; K2=lane2_mask; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane2_mask; Z7=n_bytes_data;
+test1:
+  VPCMPD        $6,  Z11, Z6,  K1,  K2    //;2E4360D2 K2 := K1 & (counter>0); any chars left to skip?;K2=lane2_mask; K1=lane_active; Z6=counter; Z11=0; 6=Greater;
+  VPCMPD        $6,  Z11, Z3,  K2,  K2    //;DA211F9B K2 &= (str_len>0)               ;K2=lane2_mask; Z3=str_len; Z11=0; 6=Greater;
+  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
+  JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
+
+//; At this moment Z4 has the start position of the substring. Next we will calculate the length of the substring in Z3.
+  VMOVDQA32     Z4,  Z2                   //;60EBBEED str_start := curr_offset        ;Z2=str_start; Z4=curr_offset;
+
+//; find end of substring
+  JMP           test2                     //;4CAF1B53                                 ;
+loop2:
+//; load next code-point
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
+  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
+  VPSUBD        Z10, Z12, Z12             //;61D287CD substr_length--                 ;Z12=substr_length; Z10=1;
+//; get number of bytes in next code-point
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
+  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+//; advance
+  VPADDD        Z7,  Z4,  K2,  Z4         //;45909060 curr_offset += n_bytes_data     ;Z4=curr_offset; K2=lane2_mask; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane2_mask; Z7=n_bytes_data;
+test2:
+  VPCMPD        $6,  Z11, Z12, K1,  K2    //;2E4360D2 K2 := K1 & (substr_length>0); any chars left to trim;K2=lane2_mask; K1=lane_active; Z12=substr_length; Z11=0; 6=Greater;
+  VPCMPD        $6,  Z11, Z3,  K2,  K2    //;DA211F9B K2 &= (str_len>0); all lanes done?;K2=lane2_mask; Z3=str_len; Z11=0; 6=Greater;
+  KTESTW        K2,  K2                   //;799F076E 0 means lane is done            ;K2=lane2_mask;
+  JNZ           loop2                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
+//; overwrite str_length with correct values
+  VPSUBD        Z2,  Z4,  Z3              //;E24AE85F str_len := curr_offset - str_start;Z3=str_len; Z4=curr_offset; Z2=str_start;
+
+  // clear the offsets of slices that are empty and store the result
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPTESTMD Z3, Z3, K1
+  VMOVDQA32.Z Z2, K1, Z2
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+//; #endregion bcSubstr
+
+// slice[0].k[1] = split_part(slice[2], dict[3], i64[4]).k[5]
+//; #region bcSplitPart
+//; NOTE: the delimiter cannot be byte 0
+TEXT bcSplitPart(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_DICT(BC_SLOT_SIZE*3, OUT(R14))
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*3+BC_DICT_SIZE, OUT(CX), OUT(R8))
+
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  MOVQ          (R14),R14                 //;FEE415A0                                 ;R14=split_info;
+  VPBROADCASTB  (R14),Z21                 //;B4B43F80 bcst delimiter                  ;Z21=delim; R14=split_info;
+//; #region load from stack-slot: load 16x uint32 into Z7
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
+  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
+  VINSERTI64X4  $1,  Y26, Z27, Z7         //;3944001B merge into 16x uint32           ;Z7=counter_delim; Z27=scratch_Z27; Z26=scratch_Z26;
+//; #endregion load from stack-slot
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+
+  KMOVW         K1,  K2                   //;FE3838B3 lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
+  VMOVDQA32     Z2,  Z4                   //;CFB0D832 search_base := str_start        ;Z4=search_base; Z2=str_start;
+  VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_len + str_start;Z5=o_data_end; Z3=str_len; Z2=str_start;
+  VPSUBD        Z10, Z7,  Z7              //;68858B39 counter_delim--; (1-based indexing);Z7=counter_delim; Z10=1;
+
+//; #region find n-th delimiter
+  JMP           tail1                     //;9DD42F87                                 ;
+loop1:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
+  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
+//; clear tail from data
+  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
+  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
+  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+//; calculate skip_count in zmm14
+  VPCMPB        $0,  Z21, Z8,  K3         //;8E3317B0 K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
+  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
+  VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count; Z22=constant_bswap32;
+  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count;
+  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count;
+//; advance
+  VPADDD        Z14, Z4,  K2,  Z4         //;5034DEA0 search_base += skip_count       ;Z4=search_base; K2=lane2_mask; Z14=skip_count;
+  VPSUBD        Z14, Z3,  K2,  Z3         //;95AAE700 str_len -= skip_count           ;Z3=str_len; K2=lane2_mask; Z14=skip_count;
+//; did we encounter a delimiter?
+  VPCMPD        $4,  Z20, Z14, K2,  K3    //;80B9AEA2 K3 := K2 & (skip_count!=4); active lanes where skip != 4;K3=tmp_mask; K2=lane2_mask; Z14=skip_count; Z20=4; 4=NotEqual;
+  VPSUBD        Z10, Z7,  K3,  Z7         //;35E75E57 counter_delim--                 ;Z7=counter_delim; K3=tmp_mask; Z10=1;
+  VPSUBD        Z10, Z3,  K3,  Z3         //;AF759B00 str_len--                       ;Z3=str_len; K3=tmp_mask; Z10=1;
+  VPADDD        Z10, Z4,  K3,  Z4         //;D5281D43 search_base++                   ;Z4=search_base; K3=tmp_mask; Z10=1;
+
+tail1:
+//; still a lane todo?
+  VPCMPD        $1,  Z7,  Z11, K2,  K2    //;50E6D99D K2 &= (0<counter_delim)         ;K2=lane2_mask; Z11=0; Z7=counter_delim; 1=LessThen;
+  VPCMPD        $1,  Z5,  Z4,  K2,  K2    //;A052FCB6 K2 &= (search_base<o_data_end)  ;K2=lane2_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
+  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
+  JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
+  VPCMPD        $0,  Z7,  Z11, K1,  K1    //;A0ABF51F K1 &= (0==counter_delim)        ;K1=lane_active; Z11=0; Z7=counter_delim; 0=Eq;
+//; #endregion find n-th delimiter
+
+  VMOVDQA32     Z4,  K1,  Z2              //;B69A81FE str_start := search_base        ;Z2=str_start; K1=lane_active; Z4=search_base;
+
+//; #region find next delimiter
+  KMOVW         K1,  K2                   //;A543DE2E lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
+loop2:
+  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
+  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
+//; calculate skip_count in zmm14
+  VPCMPB        $0,  Z21, Z8,  K3         //;E8DC9CCA K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
+  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
+  VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count; Z22=constant_bswap32;
+  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count;
+  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count;
+//; advance
+  VPADDD        Z14, Z4,  K2,  Z4         //;5034DEA0 search_base += skip_count       ;Z4=search_base; K2=lane2_mask; Z14=skip_count;
+//; did we encounter a delimiter?
+  VPCMPD        $0,  Z20, Z14, K2,  K2    //;80B9AEA2 K2 &= (skip_count==4); active lanes where skip != 4;K2=lane2_mask; Z14=skip_count; Z20=4; 0=Eq;
+  VPCMPD        $1,  Z5,  Z4,  K3         //;E2BEF075 K3 := (search_base<o_data_end)  ;K3=tmp_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
+  KTESTW        K3,  K2                   //;799F076E all lanes still todo?           ;K2=lane2_mask; K3=tmp_mask;
+  JNZ           loop2                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
+//; #endregion find next delimiter
+
+  VPMINSD       Z5,  Z4,  Z4              //;C62A5921 search_base := min(search_base, o_data_end);Z4=search_base; Z5=o_data_end;
+  VPSUBD        Z2,  Z4,  K1,  Z3         //;E24AE85F str_len := search_base - str_start;Z3=str_len; K1=lane_active; Z4=search_base; Z2=str_start;
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5 + BC_DICT_SIZE)
+//; #endregion bcSplitPart
+
+//; #region bcContainsPrefixCs
+//; equal ascii string in slice in Z2:Z3, with stack[imm]
+TEXT bcContainsPrefixCs(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter; R14=needle_slice;
+  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter != 0)            ;K1=lane_active; Z6=counter;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;C28D3832 any lane still alive            ;K1=lane_active;
+  JZ            next                      //;4DA2206F no, exit; jump if zero (ZF = 1) ;
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+
+  VMOVDQA32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
+  VMOVDQA32     Z6,  Z25                  //;6F6F1343 needle_len := counter           ;Z25=needle_len; Z6=counter;
+  JMP           tests                     //;F2A3982D                                 ;
+loop:
+//; load data
+  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
+  VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
+tests:
+  VPCMPD        $2,  Z6,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=counter)              ;K1=lane_active; Z11=0; Z6=counter; 2=LessEq;
+  VPCMPD        $6,  Z20, Z6,  K3         //;99392208 K3 := (counter>4)               ;K3=tmp_mask; Z6=counter; Z20=4; 6=Greater;
+  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
+  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
+  JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
+//; load data
+  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
+  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+//; compare data with needle
+  VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
+  VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_length        ;Z3=str_len; K1=lane_active; Z25=needle_length;
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+//; #endregion bcContainsPrefixCs
+
+//; #region bcContainsPrefixCi
+//; equal ascii string in slice in Z2:Z3, with stack[imm]
+TEXT bcContainsPrefixCi(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter; R14=needle_slice;
+  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter != 0)            ;K1=lane_active; Z6=counter;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
+  KTESTW        K1,  K1                   //;C28D3832 any lane still alive            ;K1=lane_active;
+  JZ            next                      //;4DA2206F no, exit; jump if zero (ZF = 1) ;
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+
+  VMOVDQA32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
+  VMOVDQA32     Z6,  Z25                  //;6F6F1343 needle_len := counter           ;Z25=needle_len; Z6=counter;
+  JMP           tests                     //;F2A3982D                                 ;
+loop:
+//; load data
+  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
+  VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
+  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+//; compare data with needle
+  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
+  ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
+tests:
+  VPCMPD        $2,  Z6,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=counter)              ;K1=lane_active; Z11=0; Z6=counter; 2=LessEq;
+  VPCMPD        $6,  Z20, Z6,  K3         //;99392208 K3 := (counter>4)               ;K3=tmp_mask; Z6=counter; Z20=4; 6=Greater;
+  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
+  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
+  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
+  JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
+//; load data
+  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
+  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
+  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+//; compare data with needle
+  VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
+  VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_length        ;Z3=str_len; K1=lane_active; Z25=needle_length;
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+//; #endregion bcContainsPrefixCi
+
+//; #region bcContainsPrefixUTF8Ci
+//; empty needles or empty data always result in a dead lane
+TEXT bcContainsPrefixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
+  MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
+  VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=n_runes;
+  VPTESTMD      Z26, Z26, K1,  K1         //;CD49D8A5 K1 &= (scratch_Z26 != 0); empty needles are dead lanes;K1=lane_active; Z26=scratch_Z26;
+  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;B73A4F83 K1 &= (scratch_Z26<=str_len)    ;K1=lane_active; Z26=scratch_Z26; Z3=str_len; 2=LessEq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+
+  ADDQ          $4,  R14                  //;7B0665F3 needle_ptr += 4                 ;R14=needle_ptr;
+  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
+  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
+  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
+  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
+
+loop:
+  VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
+  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
+  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+
+//; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
+//;  JMP           mixed_ascii               //;6FE3345D                                 ;
+
+  CMPL          CX,  $4                   //;E273EEEA are we in the needle tail?      ;CX=n_runes;
+  JL            mixed_ascii               //;A8685FD7 yes, then jump; jump if less (SF neq OF);
+  VPBROADCASTD.Z 16(R14),K1,  Z9          //;2694A02F load needle data                ;Z9=data_needle; K1=lane_active; R14=needle_ptr;
+
+//; clear tail from data: IN zmm8; OUT zmm8
+  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
+  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
+  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+
+//; determine if either data or needle has non-ASCII content
+  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := data_needle | data_msg;Z26=scratch_Z26; K1=lane_active; Z9=data_needle; Z8=data_msg;
+  VPMOVB2M      Z26, K3                   //;5303B427 get 64 sign-bits                ;K3=tmp_mask; Z26=scratch_Z26;
+  KTESTQ        K3,  K3                   //;A2B0951C all sign-bits zero?             ;K3=tmp_mask;
+  JNZ           mixed_ascii               //;303EFD4D no, found a non-ascii char; jump if not zero (ZF = 0);
+
+//; str_to_upper: IN zmm8; OUT zmm13
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
+  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+//; compare data with needle for 4 ASCIIs
+  VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (data_needle==data_msg_upper);K1=lane_active; Z9=data_needle; Z13=data_msg_upper; 0=Eq;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+
+//; advance to the next 4 ASCIIs
+  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
+  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
+  ADDQ          $80, R14                  //;F0BC3163 needle_ptr += 80                ;R14=needle_ptr;
+  SUBL          $4,  CX                   //;646B86C9 n_runes -= 4                    ;CX=n_runes;
+  JG            loop                      //;1EBC2C20 jump if greater ((ZF = 0) and (SF = OF));
+  JMP           next                      //;2230EE05                                 ;
+
+mixed_ascii:
+//; select next UTF8 byte sequence
+  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
+  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
+  VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
+  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+
+//; compare data with needle for 1 UTF8 byte sequence
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K3   //;345D0BF3 K3 := K1 & (data_msg==[needle_ptr]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
+  KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
+  KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
+  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
+  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
+
+//; advance to the next rune
+  VPADDD        Z7,  Z2,  K1,  Z2         //;DFE8D20B str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
+  ADDQ          $20, R14                  //;1F8D79B1 needle_ptr += 20                ;R14=needle_ptr;
+  DECL          CX                        //;A99E9290 n_runes--                       ;CX=n_runes;
+  JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
+//; #endregion bcContainsPrefixUTF8Ci
+
+// k[0] = str_contains_suffix_cs(slice[1], dict[2]).k[3]
+//
 //; #region bcContainsSuffixCs
 TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; restrict lanes based on the length of needle
   VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_len                 ;Z25=needle_len; R14=needle_slice;
   VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_len>=needle_len)     ;K1=lane_active; Z3=str_len; Z25=needle_len; 5=GreaterEq;
@@ -14112,13 +9790,22 @@ tail:
   VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
 update:
   VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSuffixCs
 
+// k[0] = str_contains_suffix_ci(slice[1], dict[2]).k[3]
+//
 //; #region bcContainsSuffixCi
 TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
 //; restrict lanes based on the length of needle
   VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_len                 ;Z25=needle_len; R14=needle_slice;
   VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_len>=needle_len)     ;K1=lane_active; Z3=str_len; Z25=needle_len; 5=GreaterEq;
@@ -14176,13 +9863,22 @@ tail:
   VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
 update:
   VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSuffixCi
 
+// k[0] = str_contains_suffix_utf8_ci(slice[1], dict[2]).k[3]
+//
 //; #region bcContainsSuffixUTF8Ci
 TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
   VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=n_runes;
@@ -14272,413 +9968,23 @@ mixed_ascii:
   ADDQ          $20, R14                  //;1F8D79B1 needle_ptr += 20                ;R14=needle_ptr;
   DECL          CX                        //;A99E9290 n_runes--                       ;CX=n_runes;
   JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
+
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 
 //; #endregion bcContainsSuffixUTF8Ci
 
-//; #region bcContainsPrefixCs
-//; equal ascii string in slice in Z2:Z3, with stack[imm]
-TEXT bcContainsPrefixCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
-  VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter; R14=needle_slice;
-  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter != 0)            ;K1=lane_active; Z6=counter;
-  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;C28D3832 any lane still alive            ;K1=lane_active;
-  JZ            next                      //;4DA2206F no, exit; jump if zero (ZF = 1) ;
-  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-
-  VMOVDQA32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
-  VMOVDQA32     Z6,  Z25                  //;6F6F1343 needle_len := counter           ;Z25=needle_len; Z6=counter;
-  JMP           tests                     //;F2A3982D                                 ;
-loop:
-//; load data
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
-  VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
-//; compare data with needle
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-tests:
-  VPCMPD        $2,  Z6,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=counter)              ;K1=lane_active; Z11=0; Z6=counter; 2=LessEq;
-  VPCMPD        $6,  Z20, Z6,  K3         //;99392208 K3 := (counter>4)               ;K3=tmp_mask; Z6=counter; Z20=4; 6=Greater;
-  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
-  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
-  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
-  JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-//; load data
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
-  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-//; compare data with needle
-  VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
-  VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_length        ;Z3=str_len; K1=lane_active; Z25=needle_length;
-next:
-  NEXT()
-//; #endregion bcContainsPrefixCs
-
-//; #region bcContainsPrefixCi
-//; equal ascii string in slice in Z2:Z3, with stack[imm]
-TEXT bcContainsPrefixCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
-  VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter; R14=needle_slice;
-  VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter != 0)            ;K1=lane_active; Z6=counter;
-  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
-  KTESTW        K1,  K1                   //;C28D3832 any lane still alive            ;K1=lane_active;
-  JZ            next                      //;4DA2206F no, exit; jump if zero (ZF = 1) ;
-  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
-  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
-  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-
-  VMOVDQA32     Z2,  Z24                  //;6F6F1342 search_base := str_start        ;Z24=search_base; Z2=str_start;
-  VMOVDQA32     Z6,  Z25                  //;6F6F1343 needle_len := counter           ;Z25=needle_len; Z6=counter;
-  JMP           tests                     //;F2A3982D                                 ;
-loop:
-//; load data
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
-  VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
-//; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
-  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; compare data with needle
-  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
-  ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-tests:
-  VPCMPD        $2,  Z6,  Z11, K1,  K1    //;8A1022B4 K1 &= (0<=counter)              ;K1=lane_active; Z11=0; Z6=counter; 2=LessEq;
-  VPCMPD        $6,  Z20, Z6,  K3         //;99392208 K3 := (counter>4)               ;K3=tmp_mask; Z6=counter; Z20=4; 6=Greater;
-  KTESTW        K1,  K1                   //;FE455439 any lanes still alive           ;K1=lane_active;
-  JZ            next                      //;CD5F484F no, exit; jump if zero (ZF = 1) ;
-  KTESTW        K1,  K3                   //;C28D3832 ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
-  JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
-//; load data
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
-  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-//; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
-  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; compare data with needle
-  VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
-  VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_length        ;Z3=str_len; K1=lane_active; Z25=needle_length;
-next:
-  NEXT()
-//; #endregion bcContainsPrefixCi
-
-//; #region bcContainsPrefixUTF8Ci
-//; empty needles or empty data always result in a dead lane
-TEXT bcContainsPrefixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
-  MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
-  MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
-  VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=n_runes;
-  VPTESTMD      Z26, Z26, K1,  K1         //;CD49D8A5 K1 &= (scratch_Z26 != 0); empty needles are dead lanes;K1=lane_active; Z26=scratch_Z26;
-  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;B73A4F83 K1 &= (scratch_Z26<=str_len)    ;K1=lane_active; Z26=scratch_Z26; Z3=str_len; 2=LessEq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-  ADDQ          $4,  R14                  //;7B0665F3 needle_ptr += 4                 ;R14=needle_ptr;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-  VPBROADCASTB  CONSTB_32(),Z15           //;5B8F2908 load constant 0b00100000        ;Z15=c_0b00100000;
-  VPBROADCASTB  CONSTB_97(),Z16           //;5D5B0014 load constant ASCII a           ;Z16=char_a;
-  VPBROADCASTB  CONSTB_122(),Z17          //;8E2ED824 load constant ASCII z           ;Z17=char_z;
-
-loop:
-  VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
-
-//; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
-//;  JMP           mixed_ascii               //;6FE3345D                                 ;
-
-  CMPL          CX,  $4                   //;E273EEEA are we in the needle tail?      ;CX=n_runes;
-  JL            mixed_ascii               //;A8685FD7 yes, then jump; jump if less (SF neq OF);
-  VPBROADCASTD.Z 16(R14),K1,  Z9          //;2694A02F load needle data                ;Z9=data_needle; K1=lane_active; R14=needle_ptr;
-
-//; clear tail from data: IN zmm8; OUT zmm8
-  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
-  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-
-//; determine if either data or needle has non-ASCII content
-  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := data_needle | data_msg;Z26=scratch_Z26; K1=lane_active; Z9=data_needle; Z8=data_msg;
-  VPMOVB2M      Z26, K3                   //;5303B427 get 64 sign-bits                ;K3=tmp_mask; Z26=scratch_Z26;
-  KTESTQ        K3,  K3                   //;A2B0951C all sign-bits zero?             ;K3=tmp_mask;
-  JNZ           mixed_ascii               //;303EFD4D no, found a non-ascii char; jump if not zero (ZF = 0);
-
-//; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
-  VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
-//; compare data with needle for 4 ASCIIs
-  VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (data_needle==data_msg_upper);K1=lane_active; Z9=data_needle; Z13=data_msg_upper; 0=Eq;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-//; advance to the next 4 ASCIIs
-  VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
-  VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
-  ADDQ          $80, R14                  //;F0BC3163 needle_ptr += 80                ;R14=needle_ptr;
-  SUBL          $4,  CX                   //;646B86C9 n_runes -= 4                    ;CX=n_runes;
-  JG            loop                      //;1EBC2C20 jump if greater ((ZF = 0) and (SF = OF));
-  JMP           next                      //;2230EE05                                 ;
-
-mixed_ascii:
-//; select next UTF8 byte sequence
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  VPERMD        Z18, Z7,  Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-
-//; compare data with needle for 1 UTF8 byte sequence
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K3   //;345D0BF3 K3 := K1 & (data_msg==[needle_ptr]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
-  KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
-  KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
-  KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
-  JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
-
-//; advance to the next rune
-  VPADDD        Z7,  Z2,  K1,  Z2         //;DFE8D20B str_start += n_bytes_data       ;Z2=str_start; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
-  ADDQ          $20, R14                  //;1F8D79B1 needle_ptr += 20                ;R14=needle_ptr;
-  DECL          CX                        //;A99E9290 n_runes--                       ;CX=n_runes;
-  JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
-
-next:
-  NEXT()
-
-//; #endregion bcContainsPrefixUTF8Ci
-
-//; #region bcLengthStr
-//; count number of UTF-8 code-points in Z2:Z3 (str interpretation); store the result in Z2:Z3 (int64 interpretation)
-TEXT bcLengthStr(SB), NOSPLIT|NOFRAME, $0
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VPBROADCASTB  CONSTD_0x80(),Z27         //;96E41B4F load constant 80808080          ;Z27=constd_80808080;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
-  VPXORD        Z6,  Z6,  Z6              //;F292B105 counter := 0                    ;Z6=counter;
-  JMP           test                      //;4CAF1B53                                 ;
-loop:
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data_msg := 0                   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
-
-  VPMINSD       Z20, Z3,  Z7              //;DDF0DB53 n_bytes_data := min(str_length, 4);Z7=n_bytes_data; Z3=str_length; Z20=constd_4;
-  VPERMD        Z18, Z7,  Z19             //;8F3EBC09 get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;EF91B1F3 remove tail from data           ;Z8=data_msg; Z19=tail_mask;
-  VPMOVB2M      Z8,  K3                   //;F22D958D get 64 sign-bits                ;K3=tmp_mask; Z8=data_msg;
-  KTESTQ        K3,  K3                   //;F2C8F6C8 all sign-bits zero?             ;K3=tmp_mask;
-  JNZ           non_ascii                 //;71B77ACE no: non-ascii present; jump if not zero (ZF = 0);
-  VPADDD        Z7,  Z6,  K2,  Z6         //;978F956A counter += n_bytes_data         ;Z6=counter; K2=lane2_mask; Z7=n_bytes_data;
-
-update:
-  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K2=lane2_mask; Z7=n_bytes_data;
-  VPADDD        Z7,  Z2,  K2,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K2=lane2_mask; Z7=n_bytes_data;
-
-test:
-//; We could compare Z2 > end_of_str, and remove the above sub Z3, but the min(4, Z3) prevents that
-  VPCMPD        $6,  Z11, Z3,  K1,  K2    //;DA211F9B K2 := K1 & (str_length>0)       ;K2=lane2_mask; K1=lane_active; Z3=str_length; Z11=constd_0; 6=Greater;
-  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
-  JNZ           loop                      //;203DDAE1 if some lanes alive then loop; jump if not zero (ZF = 0);
-
-  VPMOVZXDQ     Y6,  Z2                   //;9CA47A78 cast 8 x int32 to 8 x int64     ;Z2=str_start; Z6=counter;
-  VEXTRACTI32X8 $1,  Z6,  Y6              //;DC597720 256-bits to lower lane          ;Z6=counter;
-  VPMOVZXDQ     Y6,  Z3                   //;C24D656F cast 8 x int32 to 8 x int64     ;Z3=str_length; Z6=counter;
-  NEXT()
-
-non_ascii:  //; NOTE: this is the assumed to be a somewhat unlikely branch
-  VPTESTNMD     Z27, Z8,  K2,  K3         //;85E34261 K3 is all-ascii lanes           ;K3=tmp_mask; K2=lane2_mask; Z8=data_msg; Z27=constd_80808080;
-  VPADDD        Z7,  Z6,  K3,  Z6         //;D765BB59 for all ascii lanes             ;Z6=counter; K3=tmp_mask; Z7=n_bytes_data;
-  KANDNW        K2,  K3,  K3              //;5A982E07 K3 is mixed-ascii lanes         ;K3=tmp_mask; K2=lane2_mask;
-  VPADDD        Z10, Z6,  K3,  Z6         //;8E335D11 for mixed-ascii lanes           ;Z6=counter; K3=tmp_mask; Z10=constd_1;
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, K3,  Z7         //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; K3=tmp_mask; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  JMP           update                    //;A596F5F6                                 ;
-//; #endregion bcLengthStr
-
-//; #region bcSubstr
-//; Get a substring of UTF-8 code-points in Z2:Z3 (str interpretation). The substring starts
-//; from the specified start-index and ends at the specified length or at the last character
-//; of the string (which ever is first). The start-index is 1-based! The first index of the
-//; string starts at 1. The substring is stored in Z2:Z3 (str interpretation)
-TEXT bcSubstr(SB), NOSPLIT|NOFRAME, $0
-//; load from stack-slot: load 16x uint32 into Z6
-  LOADARG1Z(Z27, Z28)
-  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
-  VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
-  VINSERTI64X4  $1,  Y28, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z28=scratch_Z28;
-//; load from stack-slot: load 16x uint32 into Z12
-  LOADARG1Z(Z27, Z28)
-  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
-  VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
-  VINSERTI64X4  $1,  Y28, Z27, Z12        //;3944001B merge into 16x uint32           ;Z12=substr_length; Z27=scratch_Z27; Z28=scratch_Z28;
-//; load constants
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VMOVDQA32     Z2,  Z4                   //;CFB0D832 curr_offset := str_start        ;Z4=curr_offset; Z2=str_start;
-//; fixup parameters
-  VPSUBD        Z10, Z6,  Z6              //;34951830 1-based to 0-based indices      ;Z6=counter; Z10=1;
-  VPMAXSD       Z6,  Z11, Z6              //;18F03020 counter := max(0, counter)      ;Z6=counter; Z11=0;
-
-//; find start of substring
-  JMP           test1                     //;4CAF1B53                                 ;
-loop1:
-//; load next code-point
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
-  VPSUBD        Z10, Z6,  Z6              //;19C9DC47 counter--                       ;Z6=counter; Z10=1;
-//; get number of bytes in next code-point
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-//; advance
-  VPADDD        Z7,  Z4,  K2,  Z4         //;45909060 curr_offset += n_bytes_data     ;Z4=curr_offset; K2=lane2_mask; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane2_mask; Z7=n_bytes_data;
-test1:
-  VPCMPD        $6,  Z11, Z6,  K1,  K2    //;2E4360D2 K2 := K1 & (counter>0); any chars left to skip?;K2=lane2_mask; K1=lane_active; Z6=counter; Z11=0; 6=Greater;
-  VPCMPD        $6,  Z11, Z3,  K2,  K2    //;DA211F9B K2 &= (str_len>0)               ;K2=lane2_mask; Z3=str_len; Z11=0; 6=Greater;
-  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
-  JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-
-//; At this moment Z4 has the start position of the substring. Next we will calculate the length of the substring in Z3.
-  VMOVDQA32     Z4,  Z2                   //;60EBBEED str_start := curr_offset        ;Z2=str_start; Z4=curr_offset;
-
-//; find end of substring
-  JMP           test2                     //;4CAF1B53                                 ;
-loop2:
-//; load next code-point
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
-  VPSUBD        Z10, Z12, Z12             //;61D287CD substr_length--                 ;Z12=substr_length; Z10=1;
-//; get number of bytes in next code-point
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-//; advance
-  VPADDD        Z7,  Z4,  K2,  Z4         //;45909060 curr_offset += n_bytes_data     ;Z4=curr_offset; K2=lane2_mask; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane2_mask; Z7=n_bytes_data;
-test2:
-  VPCMPD        $6,  Z11, Z12, K1,  K2    //;2E4360D2 K2 := K1 & (substr_length>0); any chars left to trim;K2=lane2_mask; K1=lane_active; Z12=substr_length; Z11=0; 6=Greater;
-  VPCMPD        $6,  Z11, Z3,  K2,  K2    //;DA211F9B K2 &= (str_len>0); all lanes done?;K2=lane2_mask; Z3=str_len; Z11=0; 6=Greater;
-  KTESTW        K2,  K2                   //;799F076E 0 means lane is done            ;K2=lane2_mask;
-  JNZ           loop2                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-//; overwrite str_length with correct values
-  VPSUBD        Z2,  Z4,  Z3              //;E24AE85F str_len := curr_offset - str_start;Z3=str_len; Z4=curr_offset; Z2=str_start;
-  NEXT()
-//; #endregion bcSubstr
-
-//; #region bcSplitPart
-//; NOTE: the delimiter cannot be byte 0
-TEXT bcSplitPart(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
-  MOVQ          (R14),R14                 //;FEE415A0                                 ;R14=split_info;
-  VPBROADCASTB  (R14),Z21                 //;B4B43F80 bcst delimiter                  ;Z21=delim; R14=split_info;
-//; #region load from stack-slot: load 16x uint32 into Z7
-  LOADARG1Z(Z27, Z26)
-  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
-  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
-  VINSERTI64X4  $1,  Y26, Z27, Z7         //;3944001B merge into 16x uint32           ;Z7=counter_delim; Z27=scratch_Z27; Z26=scratch_Z26;
-//; #endregion load from stack-slot
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-
-  KMOVW         K1,  K2                   //;FE3838B3 lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
-  VMOVDQA32     Z2,  Z4                   //;CFB0D832 search_base := str_start        ;Z4=search_base; Z2=str_start;
-  VPADDD        Z2,  Z3,  Z5              //;E5429114 o_data_end := str_len + str_start;Z5=o_data_end; Z3=str_len; Z2=str_start;
-  VPSUBD        Z10, Z7,  Z7              //;68858B39 counter_delim--; (1-based indexing);Z7=counter_delim; Z10=1;
-
-//; #region find n-th delimiter
-  JMP           tail1                     //;9DD42F87                                 ;
-loop1:
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-//; clear tail from data
-  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
-  VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-//; calculate skip_count in zmm14
-  VPCMPB        $0,  Z21, Z8,  K3         //;8E3317B0 K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
-  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
-  VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count; Z22=constant_bswap32;
-  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count;
-  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count;
-//; advance
-  VPADDD        Z14, Z4,  K2,  Z4         //;5034DEA0 search_base += skip_count       ;Z4=search_base; K2=lane2_mask; Z14=skip_count;
-  VPSUBD        Z14, Z3,  K2,  Z3         //;95AAE700 str_len -= skip_count           ;Z3=str_len; K2=lane2_mask; Z14=skip_count;
-//; did we encounter a delimiter?
-  VPCMPD        $4,  Z20, Z14, K2,  K3    //;80B9AEA2 K3 := K2 & (skip_count!=4); active lanes where skip != 4;K3=tmp_mask; K2=lane2_mask; Z14=skip_count; Z20=4; 4=NotEqual;
-  VPSUBD        Z10, Z7,  K3,  Z7         //;35E75E57 counter_delim--                 ;Z7=counter_delim; K3=tmp_mask; Z10=1;
-  VPSUBD        Z10, Z3,  K3,  Z3         //;AF759B00 str_len--                       ;Z3=str_len; K3=tmp_mask; Z10=1;
-  VPADDD        Z10, Z4,  K3,  Z4         //;D5281D43 search_base++                   ;Z4=search_base; K3=tmp_mask; Z10=1;
-
-tail1:
-//; still a lane todo?
-  VPCMPD        $1,  Z7,  Z11, K2,  K2    //;50E6D99D K2 &= (0<counter_delim)         ;K2=lane2_mask; Z11=0; Z7=counter_delim; 1=LessThen;
-  VPCMPD        $1,  Z5,  Z4,  K2,  K2    //;A052FCB6 K2 &= (search_base<o_data_end)  ;K2=lane2_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
-  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
-  JNZ           loop1                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-  VPCMPD        $0,  Z7,  Z11, K1,  K1    //;A0ABF51F K1 &= (0==counter_delim)        ;K1=lane_active; Z11=0; Z7=counter_delim; 0=Eq;
-//; #endregion find n-th delimiter
-
-  VMOVDQA32     Z4,  K1,  Z2              //;B69A81FE str_start := search_base        ;Z2=str_start; K1=lane_active; Z4=search_base;
-
-//; #region find next delimiter
-  KMOVW         K1,  K2                   //;A543DE2E lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
-loop2:
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
-//; calculate skip_count in zmm14
-  VPCMPB        $0,  Z21, Z8,  K3         //;E8DC9CCA K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
-  VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
-  VPSHUFB       Z22, Z14, Z14             //;4F265F03 reverse byte order              ;Z14=skip_count; Z22=constant_bswap32;
-  VPLZCNTD      Z14, Z14                  //;72202F9A count leading zeros             ;Z14=skip_count;
-  VPSRLD        $3,  Z14, Z14             //;6DC91432 divide by 8 yields skip_count   ;Z14=skip_count;
-//; advance
-  VPADDD        Z14, Z4,  K2,  Z4         //;5034DEA0 search_base += skip_count       ;Z4=search_base; K2=lane2_mask; Z14=skip_count;
-//; did we encounter a delimiter?
-  VPCMPD        $0,  Z20, Z14, K2,  K2    //;80B9AEA2 K2 &= (skip_count==4); active lanes where skip != 4;K2=lane2_mask; Z14=skip_count; Z20=4; 0=Eq;
-  VPCMPD        $1,  Z5,  Z4,  K3         //;E2BEF075 K3 := (search_base<o_data_end)  ;K3=tmp_mask; Z4=search_base; Z5=o_data_end; 1=LessThen;
-  KTESTW        K3,  K2                   //;799F076E all lanes still todo?           ;K2=lane2_mask; K3=tmp_mask;
-  JNZ           loop2                     //;203DDAE1 any lanes todo? yes, then loop; jump if not zero (ZF = 0);
-//; #endregion find next delimiter
-
-  VPMINSD       Z5,  Z4,  Z4              //;C62A5921 search_base := min(search_base, o_data_end);Z4=search_base; Z5=o_data_end;
-  VPSUBD        Z2,  Z4,  K1,  Z3         //;E24AE85F str_len := search_base - str_start;Z3=str_len; K1=lane_active; Z4=search_base; Z2=str_start;
-next:
-  NEXT()
-//; #endregion bcSplitPart
-
+// k[0] = str_contains_substring_cs(slice[1], dict[2]).k[3]
+//
 //; #region bcContainsSubstrCs
 TEXT bcContainsSubstrCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   VPBROADCASTD  8(R14),Z6                 //;F6AC18B2 bcst needle_len                 ;Z6=needle_len1; R14=needle_ptr1;
 //; restrict lanes to allow fast bail-out
@@ -14772,12 +10078,20 @@ needle_loop:
   KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
   JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSubstrCs
 
+// k[0] = str_contains_substring_ci(slice[1], dict[2]).k[3]
+//
 //; #region bcContainsSubstrCi
 TEXT bcContainsSubstrCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   VPBROADCASTD  8(R14),Z6                 //;F6AC18B2 bcst needle_len                 ;Z6=needle_len1; R14=needle_ptr1;
 //; restrict lanes to allow fast bail-out
@@ -14904,12 +10218,18 @@ needle_loop:
   KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
   JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSubstrCi
 
 //; #region bcContainsSubstrUTF8Ci
 TEXT bcContainsSubstrUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141 load number of runes in needle  ;CX=needle_len1; R14=needle_ptr1;
@@ -15011,12 +10331,18 @@ needle_loop_done:
   KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
   JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSubstrUTF8Ci
 
 //; #region bcEqPatternCs
 TEXT bcEqPatternCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
@@ -15078,7 +10404,11 @@ unicode_match_ret:
 //; update lanes
   VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (data_len1==0)            ;K1=lane_active; Z3=data_len1;
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
 unicode_match:                            //;B1B3AECE a wildcard has matched with a unicode code-point
 //; with the wildcard mask, get the number of bytes BEFORE the first wildcard (0, 1, 2, 3)
 //; at that position get the number of bytes of the code-point, add these two numbers
@@ -15109,7 +10439,10 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 
 //; #region bcEqPatternCi
 TEXT bcEqPatternCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
@@ -15189,7 +10522,11 @@ unicode_match_ret:
 //; update lanes
   VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (data_len1==0)            ;K1=lane_active; Z3=data_len1;
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
 unicode_match:                            //;B1B3AECE a wildcard has matched with a unicode code-point
 //; with the wildcard mask, get the number of bytes BEFORE the first wildcard (0, 1, 2, 3)
 //; at that position get the number of bytes of the code-point, add these two numbers
@@ -15221,7 +10558,10 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #region bcEqPatternUTF8Ci
 //; empty needles or empty data always result in a dead lane
 TEXT bcEqPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameters
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141 load number of code-points      ;CX=needle_len; R14=needle_ptr;
@@ -15270,12 +10610,18 @@ loop:
   JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
 next:
   VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len;
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcEqPatternUTF8Ci
 
 //; #region bcContainsPatternCs
 TEXT bcContainsPatternCs(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
@@ -15394,7 +10740,11 @@ unicode_match_ret:
   KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
   JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
 unicode_match:                            //;B1B3AECE a wildcard has matched with a unicode code-point
 //; with the wildcard mask, get the number of bytes BEFORE the first wildcard (0, 1, 2, 3)
 //; at that position get the number of bytes of the code-point, add these two numbers
@@ -15425,7 +10775,10 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 
 //; #region bcContainsPatternCi
 TEXT bcContainsPatternCi(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141                                 ;CX=needle_len1; R14=needle_ptr1;
@@ -15577,7 +10930,11 @@ unicode_match_ret:
   KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
   JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
+
 unicode_match:                            //;B1B3AECE a wildcard has matched with a unicode code-point
 //; with the wildcard mask, get the number of bytes BEFORE the first wildcard (0, 1, 2, 3)
 //; at that position get the number of bytes of the code-point, add these two numbers
@@ -15608,7 +10965,10 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 
 //; #region bcContainsPatternUTF8Ci
 TEXT bcContainsPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
   MOVL          (R14),CX                  //;7DF7F141 load number of runes in needle  ;CX=needle_len1; R14=needle_ptr1;
@@ -15718,14 +11078,20 @@ needle_loop_done:
   KTESTW        K2,  K2                   //;D8353CAF any lanes todo?                 ;K2=lane_todo;
   JNZ           scan_start                //;68ACA94C yes, then restart scanning; jump if not zero (ZF = 0);
 next:
-  NEXT()
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsPatternUTF8Ci
 
+// k[0] = is_subnet_of_ip4(slice[1], dict[2]).k[3]
 //; #region bcIsSubnetOfIP4
 //; Determine whether the string at Z2:Z3 is an IP address between the 4 provided bytewise min/max values
 //; To prevent parsing of the IP string into an integer, every component is compared with a BCD min/max values
 TEXT bcIsSubnetOfIP4(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
   VPCMPD.BCST   $6,  CONSTD_6(),Z3,  K1,  K1  //;46C90536 K1 &= (str_len>6); only data larger than 6 is considered;K1=lane_active; Z3=str_len; 6=Greater;
   KTESTW        K1,  K1                   //;39066704 any lane still alive?           ;K1=lane_active;
@@ -15819,14 +11185,22 @@ loop:
   VPANDD        Z8,  Z19, Z8              //;C318FD02 data_msg &= 0b00001111          ;Z8=data_msg; Z19=0b00001111;
   VPCMPD        $5,  Z14, Z8,  K1,  K1    //;982B35DE K1 &= (data_msg>=ip_min)        ;K1=lane_active; Z8=data_msg; Z14=ip_min; 5=GreaterEq;
   VPCMPD        $2,  Z15, Z8,  K1,  K1    //;27BFCA91 K1 &= (data_msg<=ip_max)        ;K1=lane_active; Z8=data_msg; Z15=ip_max; 2=LessEq;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcIsSubnetOfIP4
 
+// k[0] = dfa_tiny_6(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaT6
 //; DfaT6 Deterministic Finite Automaton (DFA) with 6-bits lookup-key and unicode wildcard
 TEXT bcDfaT6(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
@@ -15893,8 +11267,11 @@ tail:
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 
 skip_wildcard:
 //; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
@@ -15915,10 +11292,15 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT6
 
+// k[0] = dfa_tiny_7(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaT7
 //; DfaT7 Deterministic Finite Automaton (DFA) with 7-bits lookup-key and unicode wildcard
 TEXT bcDfaT7(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
@@ -15986,8 +11368,11 @@ tail:
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 
 skip_wildcard:
 //; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
@@ -16008,10 +11393,15 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT7
 
+// k[0] = dfa_tiny_8(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaT8
 //; DfaT8 Deterministic Finite Automaton (DFA) with 8-bits lookup-key
 TEXT bcDfaT8(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
@@ -16098,8 +11488,11 @@ tail:
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 
 skip_wildcard:
 //; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
@@ -16124,10 +11517,15 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT8
 
+// k[0] = dfa_tiny_6z(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaT6Z
 //; DfaT6Z Deterministic Finite Automaton (DFA) with 6-bits lookup-key and Zero length remaining assertion
 TEXT bcDfaT6Z(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
@@ -16209,8 +11607,11 @@ tail:
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 
 skip_wildcard:
 //; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
@@ -16233,10 +11634,15 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT6Z
 
+// k[0] = dfa_tiny_7z(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaT7Z
 //; DfaT7Z Deterministic Finite Automaton (DFA) with 7-bits lookup-key and Zero length remaining assertion
 TEXT bcDfaT7Z(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
@@ -16319,8 +11725,11 @@ tail:
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 
 skip_wildcard:
 //; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
@@ -16343,10 +11752,15 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT7Z
 
+// k[0] = dfa_tiny_8z(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaT8Z
 //; DfaT8Z Deterministic Finite Automaton 8-bits with Zero length remaining assertion
 TEXT bcDfaT8Z(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   VMOVDQU32     (R14),Z21                 //;CAEE2FF0 char_table1 := [needle_ptr]     ;Z21=char_table1; R14=needle_ptr;
@@ -16447,8 +11861,11 @@ tail:
   KORW          K1,  K3,  K1              //;63AD07E8 lane_active |= scratch          ;K1=lane_active; K3=scratch;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 
 skip_wildcard:
 //; instead of advancing 4 bytes we advance 1 code-point, and set all non-ascii code-points to the wildcard group
@@ -16475,10 +11892,15 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT8Z
 
+// k[0] = dfa_large_z(slice[1], dict[2]).k[3]
+//
 //; #region bcDfaLZ
 //; DfaLZ Deterministic Finite Automaton(DFA) with unlimited capacity (Large) and Remaining Length Zero Assertion (RLZA)
 TEXT bcDfaLZ(SB), NOSPLIT|NOFRAME, $0
-  IMM_FROM_DICT(R14)                      //;05667C35 load *[]byte with the provided str into R14
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
 //; load parameters
   MOVL          (R14),R8                  //;6AD2EA95 load n_states                   ;R8=n_states; R14=needle_ptr;
@@ -16565,8 +11987,11 @@ loop_edges_done:
   VPCMPD        $1,  Z3,  Z11, K2,  K2    //;7668811F K2 &= (0<str_len)               ;K2=lane_todo; Z11=0; Z3=str_len; 1=LessThen;
   KTESTW        K2,  K2                   //;3D96F6AD any lane still todo?            ;K2=lane_todo;
   JNZ           main_loop                 //;274B80A2 jump if not zero (ZF = 0)       ;
+
 next:
-  NEXT()
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcDfaLZ
 
 //; #endregion string methods
@@ -16580,29 +12005,6 @@ TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
 */
 #include "evalbc_strcase.h"
 
-// bcsadjustsize adjusts buffer sizes before calling `bcallocstr` for LOWER/UPPER purposes.
-//
-// There are two reasons for that:
-// 1. LOWER/UPPER writes data with VPSCATTERDD, thus we need a 4-byte padding.
-// 2. There are exactly 20 cases when LOWER/UPPER would produce more
-//    UTF-8 bytes than input. Fortunately, all the cases are the same:
-//    a 2-byte input char is translated into a 3-byte char.
-//
-// Thus, in the worst case -- if all N input chars are 2-byte ones -- the
-// output has N + N/2 + 4 bytes.
-//
-// Input/output:
-// - Z2/Z3 (uint64)
-TEXT bcsadjustsize(SB), NOSPLIT|NOFRAME, $0
-    VPBROADCASTQ CONSTQ_4(), Z6
-    VPSRLQ  $1, Z2, Z4
-    VPSRLQ  $1, Z3, Z5
-    VPADDQ  Z4, Z2, Z2
-    VPADDQ  Z5, Z3, Z3
-    VPADDQ  Z6, Z2, Z2
-    VPADDQ  Z6, Z3, Z3
-    NEXT()
-
 // APPROX_COUNT_DISTINCT
 // --------------------------------------------------
 
@@ -16614,11 +12016,6 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
 TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 */
 #include "evalbc_approxcount.h"
-
-// this is the 'unimplemented!' op
-TEXT bctrap(SB), NOSPLIT|NOFRAME, $0
-  BYTE $0xCC
-  RET
 
 // chacha8 random initialization vector
 DATA  chachaiv<>+0(SB)/4, $0x9722F977  // XOR'd with length for real IV

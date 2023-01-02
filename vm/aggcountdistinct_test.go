@@ -15,14 +15,13 @@
 package vm
 
 import (
-	"fmt"
 	"math"
 	"testing"
 )
 
 func TestPow2Int(t *testing.T) {
-	for i := -1022; i <= 1023; i++ {
-		t.Run(fmt.Sprintf("pow-%d", i), func(t *testing.T) {
+	t.Run("Pow2Int", func(t *testing.T) {
+		for i := -1022; i <= 1023; i++ {
 			got, err := pow2Int(i)
 			if err != nil {
 				t.Errorf("unexpcted error: %s", err)
@@ -35,8 +34,8 @@ func TestPow2Int(t *testing.T) {
 				t.Logf("want: %f (%016x)", want, math.Float64bits(want))
 				t.Errorf("wrong result")
 			}
-		})
-	}
+		}
+	})
 }
 
 func BenchmarkPowStdlib(b *testing.B) {

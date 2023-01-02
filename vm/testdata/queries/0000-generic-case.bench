@@ -1,0 +1,67 @@
+# test that polymorphic case arms
+# are resolved correctly
+SELECT
+  CASE
+    WHEN str IS NOT NULL THEN SUBSTRING(str, 2, 2)
+    WHEN num IS NOT NULL THEN num+1
+    WHEN tms IS NOT NULL THEN DATE_TRUNC(MINUTE, tms)
+    ELSE NULL
+  END AS result
+FROM input
+---
+{"str": "foo0"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabca"}
+{"str": 3}
+{"num": "xyz1"}
+{"tms": "foo1"}
+{"foo": "xyz1"}
+{"str": "foo1"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabcb"}
+{"str": 3}
+{"num": "xyz2"}
+{"tms": "foo2"}
+{"foo": "xyz2"}
+{"str": "foo2"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabcc"}
+{"str": 3}
+{"num": "xyz3"}
+{"tms": "foo3"}
+{"foo": "xyz3"}
+{"str": "foo3"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabcd"}
+{"str": 3}
+{"num": "xyz4"}
+{"tms": "foo4"}
+{"foo": "xyz4"}
+{"str": "foo4"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabce"}
+{"str": 3}
+{"num": "xyz5"}
+{"tms": "foo5"}
+{"foo": "xyz5"}
+{"str": "foo5"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabcf"}
+{"str": 3}
+{"num": "xyz6"}
+{"tms": "foo6"}
+{"foo": "xyz6"}
+{"str": "foo6"}
+{"num": 5}
+{"tms": "2021-01-07T12:13:14.572Z"}
+{"another": "xyzabcg"}
+{"str": 3}
+{"num": "xyz7"}
+{"tms": "foo7"}
+{"foo": "xyz7"}

@@ -82,7 +82,7 @@ func TestSplat(t *testing.T) {
 	p.begin()
 	field := p.dot("Entries", p.validLanes())
 	list := p.ssa2(stolist, field, field)
-	p.returnValue(list)
+	p.returnScalar(p.initMem(), list, p.mask(list))
 	p.symbolize(&st, &auxbindings{})
 	err = p.compile(&bc, &st)
 	if err != nil {

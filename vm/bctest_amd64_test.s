@@ -17,37 +17,19 @@
 #include "go_asm.h"
 #include "bc_amd64.h"
 
-
-// func bctest_run_aux(bc *bytecode, ctx *bctestContext)
+// func bctest_run_aux(bc *bytecode, ctx *bctestContext, activeLanes uint64)
 TEXT ·bctest_run_aux(SB), NOSPLIT, $0
-    MOVQ    ctx+8(FP), CX
+    // prepare the necessary environment for invoking the VM
+    MOVQ ctx+8(FP), CX
+    KMOVW ctx+16(FP), K7
 
-    // setup regs for bytecode
-    VMOVDQU64   bctestContext_structBase(CX), Z0
-    VMOVDQU64   bctestContext_structLen(CX), Z1
-    VMOVDQU64   bctestContext_scalar+0(CX), Z2
-    VMOVDQU64   bctestContext_scalar+64(CX), Z3
-    VMOVDQU64   bctestContext_valueBase(CX), Z30
-    VMOVDQU64   bctestContext_valueLen(CX), Z31
-    KMOVW       bctestContext_current(CX), K1
-    KMOVW       bctestContext_valid(CX), K7
-    MOVQ        bctestContext_stack(CX), VIRT_VALUES // R12
-
-    // run the VM
-    MOVQ    bc+0(FP), VIRT_BCPTR  // DI
-    MOVQ    ·vmm+0(SB), VIRT_BASE // SI real static base
+    MOVQ bc+0(FP), VIRT_BCPTR  // DI
+    MOVQ ·vmm+0(SB), VIRT_BASE // SI real static base
     BCCLEARSCRATCH(VIRT_PCREG)
     MOVQ bytecode_compiled(VIRT_BCPTR), VIRT_PCREG
+    MOVQ bytecode_vstack(VIRT_BCPTR), VIRT_VALUES // R12
+
+    // execute the bytecode
     VMINVOKE()
 
-    // gather results
-    MOVQ        ctx+8(FP), CX
-    VMOVDQU64   Z0, bctestContext_structBase(CX)
-    VMOVDQU64   Z1, bctestContext_structLen(CX)
-    VMOVDQU64   Z2, bctestContext_scalar+0(CX)
-    VMOVDQU64   Z3, bctestContext_scalar+64(CX)
-    VMOVDQU64   Z30, bctestContext_valueBase(CX)
-    VMOVDQU64   Z31, bctestContext_valueLen(CX)
-    KMOVW       K1, bctestContext_current(CX)
-    KMOVW       K7, bctestContext_valid(CX)
     RET

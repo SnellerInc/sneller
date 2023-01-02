@@ -34,18 +34,18 @@
 (xnor.k (false) f) -> (nand.k f (init))
 
 // identity tuple simplifications
-(vk val k), `p.mask(v) == k` -> val
+(make.vk val k), `p.mask(val) == k` -> val
 (floatk f k), `p.mask(f) == k` -> f
 
 // trivial conversion
 // (the use sites should have picked up
 // the mask argument if they need it)
-(cvt.k@i (init)  _) -> (broadcast.i 1)
-(cvt.k@i (false) _) -> (broadcast.i 0)
-(cvt.k@f (init)  _) -> (broadcast.f 1.0)
-(cvt.k@f (false) _) -> (broadcast.f 0.0)
+(cvt.k@i64 (init)  _) -> (broadcast.i 1)
+(cvt.k@i64 (false) _) -> (broadcast.i 0)
+(cvt.k@f64 (init)  _) -> (broadcast.f 1.0)
+(cvt.k@f64 (false) _) -> (broadcast.f 0.0)
 
-(cvt.i@k (broadcast.i imm) k) -> (and.k "p.choose(imm != 0)" k)
+(cvt.i64@k (broadcast.i imm) k) -> (and.k "p.choose(imm != 0)" k)
 
 // fold in float immediates
 (add.f f (broadcast.f imm) k) -> (add.imm.f f k imm)
@@ -58,7 +58,7 @@
 (div.f (broadcast.f imm) f k) -> (rdiv.imm.f f k imm)
 
 // x == x, x <= x, x >= x -> true
-("^cmp(eq|le|ge)\\.(i|f)$" x x k) -> k
+("^cmp(eq|le|ge)\\.(i64|f64)$" x x k) -> k
 
 // identity fp math (uses should already be aware of mask)
 ("^(add|sub).imm.f$" f _ 0.0) -> f
@@ -78,21 +78,13 @@
 ("^aggslotapprox.*" mem _ _ (false) _) -> mem
 ("^aggapprox.*" mem (false) _) -> mem
 
-// some basic string concat simplification
-(concat2.str x (literal "") k), `p.mask(x) == k` -> x
-(concat3.str x y (literal "") k) -> (concat2.str x y k)
-(concat3.str (literal "") x y k) -> (concat2.str x y k)
-(concat3.str x (literal "") y k) -> (concat2.str x y k)
-(concat4.str x y z (literal "") k) -> (concat3.str x y z k)
-(concat2.str x (concat2.str y z _) k1) -> (concat3.str x y z k1)
-(concat2.str (concat2.str x y _) z k1) -> (concat3.str x y z k1)
-
 // trivial mergemem reduction
 (mergemem x) -> x
 
 // blend simplifications
-("^blend.*" _ y (init)) -> y
-("^blend.*" x _ (false)) -> x
+("blend.v" x k _ (false)) -> (make.vk x k)
+("blend.v" _ _ y (init)) -> (make.vk y (init))
+("blend.v" _ (false) y k) -> (make.vk y k)
 
 // boxing simplifications
 (boxfloat (broadcast.f lit) _) -> (literal lit)
@@ -100,4 +92,4 @@
 (boxts (broadcast.ts lit) _), "ts := date.UnixMicro(int64(lit)); true" -> (literal ts)
 
 // make a store with k=false not depend on the input value
-(store.z mem ov k:(false) slot), "ov != k" -> (store.z mem k k slot)
+(store.v mem ov k:(false) slot), "ov != k" -> (store.v mem k k slot)

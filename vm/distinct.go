@@ -83,7 +83,7 @@ func NewDistinct(on []expr.Node, dst QuerySink) (*DistinctFilter, error) {
 	// the final state of the bytecode will be
 	// the initial base, the hashes, and the final
 	// predicate
-	p.returnValue(p.bhk(p.validLanes(), hash, pred))
+	p.returnBHK(p.validLanes(), hash, pred)
 	return df, nil
 }
 

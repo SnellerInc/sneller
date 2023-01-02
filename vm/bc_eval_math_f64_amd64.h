@@ -1,0 +1,5405 @@
+// Copyright (C) 2022 Sneller, Inc.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+// The following bytecode instructions:
+//
+//   - bccbrtf64  (CBRT)
+//   - bcexpf64   (EXP)
+//   - bcexp2f64  (EXP2)
+//   - bcexp10f64 (EXP10)
+//   - bcexpm1f64 (EXPM1)
+//   - bclnf64    (LN)
+//   - bcln1pf64  (LN1P)
+//   - bclog2f64  (LOG2)
+//   - bclog10f64 (LOG10)
+//   - bcsinf64   (SIN)
+//   - bccosf64   (COS)
+//   - bctanf64   (TAN)
+//   - bcasinf64  (ASIN)
+//   - bcacosf64  (ACOS)
+//   - bcatanf64  (ATAN)
+//   - bcatan2f64 (ATAN2)
+//   - bchypotf64 (HYPOT)
+//   - bcpowf64   (POW)
+//
+// were ported from SLEEF library <https://github.com/shibatch/sleef>,
+// which is distributed under the following conditions:
+//
+//   Copyright Naoki Shibata and contributors 2010 - 2021.
+//   Distributed under the Boost Software License, Version 1.0.
+//   (See accompanying file LICENSE.txt or copy at
+//   http://www.boost.org/LICENSE_1_0.txt)
+
+// Floating Point Math Instructions - Helpers
+// ------------------------------------------
+
+#define BC_ROUND_OP_F64_IMPL(Mode)                                      \
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))                    \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                     \
+                                                                        \
+  BC_UNPACK_SLOT(0, OUT(DX))                                            \
+  VRNDSCALEPD.Z $(Mode), 0(VIRT_VALUES)(BX*1), K1, Z2                   \
+  VRNDSCALEPD.Z $(Mode), 64(VIRT_VALUES)(BX*1), K2, Z3                  \
+                                                                        \
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                          \
+
+#define BC_ARITH_OP_F64_IMPL(Instruction)                               \
+  BC_UNPACK_4xSLOT(0, OUT(DX), OUT(BX), OUT(CX), OUT(R8))               \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                     \
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                       \
+                                                                        \
+  Instruction.Z 0(VIRT_VALUES)(CX*1), Z2, K1, Z2                        \
+  Instruction.Z 64(VIRT_VALUES)(CX*1), Z3, K2, Z3                       \
+                                                                        \
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                          \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+#define BC_ARITH_OP_F64_IMPL_K(Instruction)                             \
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))           \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                     \
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                       \
+                                                                        \
+  Instruction.Z 0(VIRT_VALUES)(CX*1), Z2, K1, Z2                        \
+  Instruction.Z 64(VIRT_VALUES)(CX*1), Z3, K2, Z3                       \
+                                                                        \
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))                                 \
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                          \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+#define BC_ARITH_OP_F64_IMM_IMPL(Instruction)                           \
+  BC_UNPACK_2xSLOT_ZF64_SLOT(0, OUT(DX), OUT(BX), OUT(Z4), OUT(R8))     \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                     \
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                       \
+                                                                        \
+  Instruction.Z Z4, Z2, K1, Z2                                          \
+  Instruction.Z Z4, Z3, K2, Z3                                          \
+                                                                        \
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+#define BC_ARITH_OP_F64_IMM_IMPL_K(Instruction)                         \
+  BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z4), OUT(R8))   \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                     \
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))                       \
+                                                                        \
+  Instruction.Z Z4, Z2, K1, Z2                                          \
+  Instruction.Z Z4, Z3, K2, Z3                                          \
+                                                                        \
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))                                 \
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                          \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+#define BC_ARITH_REVERSE_OP_F64_IMM_IMPL(Instruction)                   \
+  BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z4), OUT(R8))   \
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))                     \
+                                                                        \
+  Instruction.Z 0(VIRT_VALUES)(BX*1), Z4, K1, Z2                        \
+  Instruction.Z 64(VIRT_VALUES)(BX*1), Z4, K2, Z3                       \
+                                                                        \
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))                                 \
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                          \
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+// Floating Point Math Instructions - Broadcast
+// --------------------------------------------
+
+// f64[0] = f64@imm[1]
+TEXT bcbroadcastf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_UNPACK_ZF64(BC_SLOT_SIZE, OUT(Z2))
+
+  VMOVUPD Z2, 0(VIRT_VALUES)(DX*1)
+  VMOVUPD Z2, 64(VIRT_VALUES)(DX*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 8)
+
+// Floating Point Math Instructions - Abs
+// --------------------------------------
+
+// f64[0].k[1] = abs(f64[2]).k[3]
+TEXT bcabsf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z4
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VANDNPD.Z 0(VIRT_VALUES)(BX*1), Z4, K1, Z2
+  VANDNPD.Z 64(VIRT_VALUES)(BX*1), Z4, K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - Neg
+// --------------------------------------
+
+// f64[0].k[1] = -f64[2].k[3]
+TEXT bcnegf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  VXORPD X4, X4, X4
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VSUBPD.Z 0(VIRT_VALUES)(BX*1), Z4, K1, Z2
+  VSUBPD.Z 64(VIRT_VALUES)(BX*1), Z4, K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - Sign
+// ---------------------------------------
+
+// f64[0].k[1] = sign(f64[2]).k[3]
+TEXT bcsignf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  VXORPD X6, X6, X6
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z4
+  VCMPPD $VCMP_IMM_NEQ_OQ, Z6, Z2, K1, K3
+  VBROADCASTSD CONSTF64_1(), Z5
+  VCMPPD $VCMP_IMM_NEQ_OQ, Z6, Z3, K2, K4
+
+  // Clear everything but signs and combine the rest with ones. Masked {K3, K4}
+  // operation is used to only update numbers that aren't zeros nor NaNs.
+  VPTERNLOGQ $0xEA, Z5, Z4, K3, Z2 // Z2{K3} = (Z2 & Z4) | Z5
+  VPTERNLOGQ $0xEA, Z5, Z4, K4, Z3 // Z3{K4} = (Z3 & Z4) | Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - Square
+// -----------------------------------------
+
+// f64[0] = square(f64[1]).k[2]
+TEXT bcsquaref64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VMULPD.Z Z2, Z2, K1, Z2
+  VMULPD.Z Z3, Z3, K2, Z3
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// Floating Point Math Instructions - Rounding
+// -------------------------------------------
+
+// f64[0] = round(f64[1]).k[2]
+TEXT bcroundf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+
+  VBROADCASTSD CONSTF64_HALF(), Z4
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
+  VMOVAPD Z4, Z5
+
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z6, Z2, Z4
+  VPTERNLOGQ $TERNLOG_BLEND_BA, Z6, Z3, Z5
+
+  // Equivalent to trunc(x + 0.5 * sign(x)) having the intermediate calculation truncated.
+  VADDPD.RZ_SAE Z4, Z2, K1, Z2
+  VADDPD.RZ_SAE Z5, Z3, K2, Z3
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, Z2, K1, Z2
+  VRNDSCALEPD $VROUND_IMM_TRUNC_SAE, Z3, K2, Z3
+
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// f64[0] = round_even(f64[1]).k[2]
+TEXT bcroundevenf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ROUND_OP_F64_IMPL(VROUND_IMM_NEAREST_SAE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// f64[0] = trunc(f64[1]).k[2]
+TEXT bctruncf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ROUND_OP_F64_IMPL(VROUND_IMM_TRUNC_SAE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// f64[0] = floor(f64[1]).k[2]
+TEXT bcfloorf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ROUND_OP_F64_IMPL(VROUND_IMM_DOWN_SAE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// f64[0] = ceil(f64[1]).k[2]
+TEXT bcceilf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ROUND_OP_F64_IMPL(VROUND_IMM_UP_SAE)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// Floating Point Math Instructions - Add
+// --------------------------------------
+
+// f64[0].k[1] = add(f64[2], f64[3]).k[4]
+TEXT bcaddf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMPL_K(VADDPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = add(f64[2], f64@imm[3]).k[4]
+TEXT bcaddf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VADDPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// Floating Point Math Instructions - Sub
+// --------------------------------------
+
+// f64[0].k[1] = sub(f64[2], f64[3]).k[4]
+TEXT bcsubf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMPL_K(VSUBPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = sub(f64[2], f64@imm[3]).k[4]
+TEXT bcsubf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMM_IMPL_K(VSUBPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// f64[0].k[1] = sub(f64@imm[3] - f64[2]).k[4]
+TEXT bcrsubf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VSUBPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// Floating Point Math Instructions - Mul
+// --------------------------------------
+
+// f64[0].k[1] = mul(f64[2], f64[3]).k[4]
+TEXT bcmulf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMPL_K(VMULPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = mul(f64[2], f64@imm[3]).k[4]
+TEXT bcmulf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMM_IMPL_K(VMULPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// Floating Point Math Instructions - Div
+// --------------------------------------
+
+// f64[0].k[1] = div(f64[2], f64[3]).k[4]
+TEXT bcdivf64(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMPL_K(VDIVPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = div(f64[2], f64@imm[3]).k[4]
+TEXT bcdivf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMM_IMPL_K(VDIVPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// f64[0].k[1] = div(f64@imm[3], f64[2]).k[4]
+TEXT bcrdivf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_REVERSE_OP_F64_IMM_IMPL(VDIVPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// Floating Point Math Instructions - Mod
+// --------------------------------------
+
+// f64[0].k[1] = mod(f64[2], f64[3]).k[4]
+TEXT bcmodf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*4, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VMOVUPD.Z 0(VIRT_VALUES)(BX*1), K1, Z2
+  VMOVUPD.Z 0(VIRT_VALUES)(CX*1), K1, Z4
+  VMOVUPD.Z 64(VIRT_VALUES)(BX*1), K2, Z3
+  VMOVUPD.Z 64(VIRT_VALUES)(CX*1), K2, Z5
+
+  BC_MODF64_IMPL(OUT(Z2), OUT(Z3), IN(Z2), IN(Z3), IN(Z4), IN(Z5), IN(K1), IN(K2), Z6, Z7)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// f64[0].k[1] = mod(f64[2], f64@imm[3]).k[4]
+TEXT bcmodf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z4), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VMOVDQU64.Z 0(VIRT_VALUES)(BX*1), K1, Z2
+  VMOVDQU64.Z 64(VIRT_VALUES)(BX*1), K2, Z3
+
+  BC_MODF64_IMPL(OUT(Z2), OUT(Z3), IN(Z2), IN(Z3), IN(Z4), IN(Z4), IN(K1), IN(K2), Z6, Z7)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// f64[0].k[1] = mod(f64@imm[3], f64[2]).k[4]
+TEXT bcrmodf64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT_ZF64_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(Z2), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VMOVDQU64.Z 0(VIRT_VALUES)(BX*1), K1, Z4
+  VMOVDQU64.Z 64(VIRT_VALUES)(BX*1), K2, Z5
+
+  BC_MODF64_IMPL(OUT(Z2), OUT(Z3), IN(Z2), IN(Z2), IN(Z4), IN(Z5), IN(K1), IN(K2), Z6, Z7)
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + 8)
+
+// Floating Point Math Instructions - Min
+// --------------------------------------
+
+// f64[0] = min(f64[1], f64[2]).k[3]
+TEXT bcminvaluef64(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMPL(VMINPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0] = min(f64[1], f64@imm[2]).k[3]
+TEXT bcminvaluef64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMM_IMPL(VMINPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+
+// Floating Point Math Instructions - Max
+// --------------------------------------
+
+// f64[0] = max(f64[1], f64[2]).k[3]
+TEXT bcmaxvaluef64(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMPL(VMAXPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// f64[0] = min(f64[1], f64@imm[2]).k[3]
+TEXT bcmaxvaluef64imm(SB), NOSPLIT|NOFRAME, $0
+  BC_ARITH_OP_F64_IMM_IMPL(VMAXPD)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+
+// Floating Point Math Instructions - sqrt(x)
+// ------------------------------------------
+
+// f64[0].k[1] = sqrt(f64[2]).k[3]
+TEXT bcsqrtf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+
+  VSQRTPD.Z 0(VIRT_VALUES)(BX*1), K1, Z2
+  VSQRTPD.Z 64(VIRT_VALUES)(BX*1), K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - cbrt(x)
+// ------------------------------------------
+
+CONST_DATA_U64(const_cbrt,   0, $0x40b8000000000000) // f64(6144)
+CONST_DATA_U64(const_cbrt,   8, $0x3fd5555555555555) // f64(0.33333333333333331)
+CONST_DATA_U64(const_cbrt,  16, $0xc008000000000000) // f64(-3)
+CONST_DATA_U64(const_cbrt,  24, $0x3ff428a2f98d728b) // i64(4608352999143469707)
+CONST_DATA_U64(const_cbrt,  32, $0x3ff965fea53d6e3d) // i64(4609827837958778429)
+CONST_DATA_U64(const_cbrt,  40, $0xbc7ddc22548ea41e) // i64(-4864489982484634594)
+CONST_DATA_U64(const_cbrt,  48, $0xbc9f53e999952f09) // i64(-4855069610512929015)
+CONST_DATA_U64(const_cbrt,  56, $0xbfe47ce4f76bed42) // f64(-0.64024589848069291)
+CONST_DATA_U64(const_cbrt,  64, $0x4007b141aaa12a9c) // f64(2.9615510302003951)
+CONST_DATA_U64(const_cbrt,  72, $0xc016ef22a5e505b3) // f64(-5.7335306092294784)
+CONST_DATA_U64(const_cbrt,  80, $0x401828dc834c5911) // f64(6.0399036898945875)
+CONST_DATA_U64(const_cbrt,  88, $0xc00ede0af7836a8b) // f64(-3.8584193551044499)
+CONST_DATA_U64(const_cbrt,  96, $0x4001d887ace5ac54) // f64(2.230727530249661)
+CONST_DATA_U64(const_cbrt, 104, $0xbfe5555555555555) // f64(-0.66666666666666663)
+CONST_DATA_U32(const_cbrt, 112, $0x3ff00000) // i32(1072693248)
+CONST_DATA_U32(const_cbrt, 116, $0x1) // i32(1)
+CONST_DATA_U32(const_cbrt, 120, $0x2) // i32(2)
+CONST_DATA_U32(const_cbrt, 124, $0xfffff800) // i32(4294965248)
+CONST_GLOBAL(const_cbrt, $128)
+
+// f64[0].k[1] = cbrt(f64[2]).k[3]
+TEXT bccbrtf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R8
+
+  // Process Z2 (initial 8 lanes).
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z10
+  VPANDQ Z10, Z2, Z6
+  VGETEXPPD Z6, Z4
+  VXORPD X5, X5, X5
+  VCVTPD2DQ.RN_SAE Z4, Y7
+  VPCMPEQD Y4, Y4, Y4
+  VPSUBD Y4, Y7, Y8
+  VPTERNLOGQ $15, Z7, Z7, Z7
+  VPSRAD $1, Y7, Y9
+  VPBROADCASTD CONST_GET_PTR(const_cbrt, 112), Y4
+  VPSLLD $20, Y9, Y11
+  VPADDD Y4, Y11, Y11
+  KMOVW R8, K2
+  VPEXPANDD.Z Z11, K2, Z11
+  VMULPD Z2, Z11, Z11
+  VPSUBD Y9, Y7, Y7
+  VPSLLD $20, Y7, Y7
+  VPADDD Y4, Y7, Y7
+  VCVTDQ2PD Y8, Z8
+  VADDPD.BCST CONST_GET_PTR(const_cbrt, 0), Z8, Z8
+  VPEXPANDD.Z Z7, K2, Z9
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 8), Z12
+  VMULPD Z12, Z8, Z7
+  VCVTPD2DQ.RZ_SAE Z7, Y7
+  VCVTDQ2PD Y7, Z13
+  VMULPD Z9, Z11, Z11
+  VMULPD.BCST CONST_GET_PTR(const_cbrt, 16), Z13, Z9
+  VADDPD Z9, Z8, Z8
+  VCVTPD2DQ.RZ_SAE Z8, Y8
+  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 116), Y8, K3
+  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 120), Y8, K4
+  VBROADCASTSD CONSTF64_1(), Z9
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 24), K3, Z9
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 32), K4, Z9
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z8
+  VPANDQ Z8, Z11, Z13
+  VPORQ Z9, Z13, Z9
+  VBROADCASTSD.Z CONST_GET_PTR(const_cbrt, 40), K3, Z14
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 48), K4, Z14
+  VPXORQ Z14, Z13, Z13
+  VPANDQ Z10, Z11, Z10
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 56), Z11
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 64), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 72), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 80), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 88), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 96), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VMULPD Z11, Z11, Z14
+  VMULPD Z14, Z14, Z14
+  VFMSUB213PD Z11, Z10, Z14 // Z14 = (Z10 * Z14) - Z11
+  VMULPD Z12, Z14, Z12
+  VSUBPD Z12, Z11, Z11
+  VMULPD Z11, Z11, Z12
+  VMOVAPD Z11, Z14
+  VFMSUB213PD Z12, Z11, Z14 // Z14 = (Z11 * Z14) - Z12
+  VMULPD Z12, Z12, Z15
+  VMOVAPD Z12, Z16
+  VFMSUB213PD Z15, Z12, Z16 // Z16 = (Z12 * Z16) - Z15
+  VFMADD231PD Z12, Z14, Z16 // Z16 = (Z14 * Z12) + Z16
+  VFMADD231PD Z14, Z12, Z16 // Z16 = (Z12 * Z14) + Z16
+  VMULPD Z10, Z15, Z17
+  VFMSUB213PD Z17, Z10, Z15 // Z15 = (Z10 * Z15) - Z17
+  VFMADD231PD Z16, Z10, Z15 // Z15 = (Z10 * Z16) + Z15
+  VPXORQ.BCST CONSTF64_SIGN_BIT(), Z11, Z16
+  VSUBPD Z11, Z17, Z18
+  VSUBPD Z17, Z18, Z19
+  VSUBPD Z19, Z18, Z20
+  VSUBPD Z20, Z17, Z17
+  VSUBPD Z19, Z16, Z16
+  VADDPD Z17, Z16, Z16
+  VADDPD Z16, Z15, Z15
+  VADDPD Z15, Z18, Z15
+  VMULPD.BCST CONST_GET_PTR(const_cbrt, 104), Z15, Z15
+  VMULPD Z15, Z11, Z11
+  VADDPD Z11, Z12, Z15
+  VSUBPD Z12, Z15, Z16
+  VSUBPD Z16, Z15, Z17
+  VSUBPD Z17, Z12, Z12
+  VSUBPD Z16, Z11, Z11
+  VADDPD Z12, Z11, Z11
+  VADDPD Z11, Z14, Z11
+  VMULPD Z10, Z15, Z12
+  VFMSUB213PD Z12, Z10, Z15 // Z15 = (Z10 * Z15) - Z12
+  VFMADD231PD Z11, Z10, Z15 // Z15 = (Z10 * Z11) + Z15
+  VMULPD Z9, Z12, Z10
+  VMOVAPD Z9, Z11
+  VFMSUB213PD Z10, Z12, Z11 // Z11 = (Z12 * Z11) - Z10
+  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
+  VFMADD231PD Z13, Z12, Z11 // Z11 = (Z12 * Z13) + Z11
+  VADDPD Z11, Z10, Z9
+  VPBROADCASTD CONST_GET_PTR(const_cbrt, 124), Y10
+  VPADDD Y10, Y7, Y7
+  VPSRAD $1, Y7, Y10
+  VPSLLD $20, Y10, Y11
+  VPADDD Y4, Y11, Y11
+  VPEXPANDD.Z Z11, K2, Z11
+  VMULPD Z11, Z9, Z9
+  VPSUBD Y10, Y7, Y7
+  VPSLLD $20, Y7, Y7
+  VPADDD Y4, Y7, Y4
+  VPEXPANDD.Z Z4, K2, Z4
+  VMULPD Z4, Z9, Z4
+  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z6, K2
+  VPANDQ Z8, Z2, Z6
+  VPORQ.BCST CONSTF64_POSITIVE_INF(), Z6, K2, Z4
+  VCMPPD $VCMP_IMM_EQ_OQ, Z5, Z2, K2
+  VPANDQ Z8, Z2, K2, Z4
+  VMOVDQA64 Z4, Z2
+
+  // Process Z3 (remaining 8 lanes).
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z10
+  VPANDQ Z10, Z3, Z6
+  VGETEXPPD Z6, Z4
+  VXORPD X5, X5, X5
+  VCVTPD2DQ.RN_SAE Z4, Y7
+  VPCMPEQD Y4, Y4, Y4
+  VPSUBD Y4, Y7, Y8
+  VPTERNLOGQ $15, Z7, Z7, Z7
+  VPSRAD $1, Y7, Y9
+  VPBROADCASTD CONST_GET_PTR(const_cbrt, 112), Y4
+  VPSLLD $20, Y9, Y11
+  VPADDD Y4, Y11, Y11
+  KMOVW R8, K2
+  VPEXPANDD.Z Z11, K2, Z11
+  VMULPD Z3, Z11, Z11
+  VPSUBD Y9, Y7, Y7
+  VPSLLD $20, Y7, Y7
+  VPADDD Y4, Y7, Y7
+  VCVTDQ2PD Y8, Z8
+  VADDPD.BCST CONST_GET_PTR(const_cbrt, 0), Z8, Z8
+  VPEXPANDD.Z Z7, K2, Z9
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 8), Z12
+  VMULPD Z12, Z8, Z7
+  VCVTPD2DQ.RZ_SAE Z7, Y7
+  VCVTDQ2PD Y7, Z13
+  VMULPD Z9, Z11, Z11
+  VMULPD.BCST CONST_GET_PTR(const_cbrt, 16), Z13, Z9
+  VADDPD Z9, Z8, Z8
+  VCVTPD2DQ.RZ_SAE Z8, Y8
+  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 116), Y8, K3
+  VPCMPEQD.BCST CONST_GET_PTR(const_cbrt, 120), Y8, K4
+  VBROADCASTSD CONSTF64_1(), Z9
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 24), K3, Z9
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 32), K4, Z9
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z8
+  VPANDQ Z8, Z11, Z13
+  VPORQ Z9, Z13, Z9
+  VBROADCASTSD.Z CONST_GET_PTR(const_cbrt, 40), K3, Z14
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 48), K4, Z14
+  VPXORQ Z14, Z13, Z13
+  VPANDQ Z10, Z11, Z10
+  VBROADCASTSD CONST_GET_PTR(const_cbrt, 56), Z11
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 64), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 72), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 80), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 88), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_cbrt, 96), Z10, Z11 // Z11 = (Z10 * Z11) + mem
+  VMULPD Z11, Z11, Z14
+  VMULPD Z14, Z14, Z14
+  VFMSUB213PD Z11, Z10, Z14 // Z14 = (Z10 * Z14) - Z11
+  VMULPD Z12, Z14, Z12
+  VSUBPD Z12, Z11, Z11
+  VMULPD Z11, Z11, Z12
+  VMOVAPD Z11, Z14
+  VFMSUB213PD Z12, Z11, Z14 // Z14 = (Z11 * Z14) - Z12
+  VMULPD Z12, Z12, Z15
+  VMOVAPD Z12, Z16
+  VFMSUB213PD Z15, Z12, Z16 // Z16 = (Z12 * Z16) - Z15
+  VFMADD231PD Z12, Z14, Z16 // Z16 = (Z14 * Z12) + Z16
+  VFMADD231PD Z14, Z12, Z16 // Z16 = (Z12 * Z14) + Z16
+  VMULPD Z10, Z15, Z17
+  VFMSUB213PD Z17, Z10, Z15 // Z15 = (Z10 * Z15) - Z17
+  VFMADD231PD Z16, Z10, Z15 // Z15 = (Z10 * Z16) + Z15
+  VPXORQ.BCST CONSTF64_SIGN_BIT(), Z11, Z16
+  VSUBPD Z11, Z17, Z18
+  VSUBPD Z17, Z18, Z19
+  VSUBPD Z19, Z18, Z20
+  VSUBPD Z20, Z17, Z17
+  VSUBPD Z19, Z16, Z16
+  VADDPD Z17, Z16, Z16
+  VADDPD Z16, Z15, Z15
+  VADDPD Z15, Z18, Z15
+  VMULPD.BCST CONST_GET_PTR(const_cbrt, 104), Z15, Z15
+  VMULPD Z15, Z11, Z11
+  VADDPD Z11, Z12, Z15
+  VSUBPD Z12, Z15, Z16
+  VSUBPD Z16, Z15, Z17
+  VSUBPD Z17, Z12, Z12
+  VSUBPD Z16, Z11, Z11
+  VADDPD Z12, Z11, Z11
+  VADDPD Z11, Z14, Z11
+  VMULPD Z10, Z15, Z12
+  VFMSUB213PD Z12, Z10, Z15 // Z15 = (Z10 * Z15) - Z12
+  VFMADD231PD Z11, Z10, Z15 // Z15 = (Z10 * Z11) + Z15
+  VMULPD Z9, Z12, Z10
+  VMOVAPD Z9, Z11
+  VFMSUB213PD Z10, Z12, Z11 // Z11 = (Z12 * Z11) - Z10
+  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
+  VFMADD231PD Z13, Z12, Z11 // Z11 = (Z12 * Z13) + Z11
+  VADDPD Z11, Z10, Z9
+  VPBROADCASTD CONST_GET_PTR(const_cbrt, 124), Y10
+  VPADDD Y10, Y7, Y7
+  VPSRAD $1, Y7, Y10
+  VPSLLD $20, Y10, Y11
+  VPADDD Y4, Y11, Y11
+  VPEXPANDD.Z Z11, K2, Z11
+  VMULPD Z11, Z9, Z9
+  VPSUBD Y10, Y7, Y7
+  VPSLLD $20, Y7, Y7
+  VPADDD Y4, Y7, Y4
+  VPEXPANDD.Z Z4, K2, Z4
+  VMULPD Z4, Z9, Z4
+  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z6, K2
+  VPANDQ Z8, Z3, Z6
+  VPORQ.BCST CONSTF64_POSITIVE_INF(), Z6, K2, Z4
+  VCMPPD $VCMP_IMM_EQ_OQ, Z5, Z3, K2
+  VPANDQ Z8, Z3, K2, Z4
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z4), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - exp(x)
+// -----------------------------------------
+
+CONST_DATA_U64(const_exp,   0, $0x3ff71547652b82fe) // f64(1.4426950408889634)
+CONST_DATA_U64(const_exp,   8, $0xbfe62e42fefa3000) // f64(-0.69314718055966296)
+CONST_DATA_U64(const_exp,  16, $0xbd53de6af278ece6) // f64(-2.8235290563031577E-13)
+CONST_DATA_U64(const_exp,  24, $0x3e21e0c670afff06) // f64(2.0812763782371645E-9)
+CONST_DATA_U64(const_exp,  32, $0x3e5af6c36f75740c) // f64(2.511210703042288E-8)
+CONST_DATA_U64(const_exp,  40, $0x3e927e5d38a23654) // f64(2.7557626281694912E-7)
+CONST_DATA_U64(const_exp,  48, $0x3ec71ddef633fb47) // f64(2.7557234020253882E-6)
+CONST_DATA_U64(const_exp,  56, $0x3efa01a0127f883a) // f64(2.4801586874796863E-5)
+CONST_DATA_U64(const_exp,  64, $0x3f2a01a01b4421fd) // f64(1.9841269898558658E-4)
+CONST_DATA_U64(const_exp,  72, $0x3f56c16c16c3396b) // f64(0.0013888888889144978)
+CONST_DATA_U64(const_exp,  80, $0x3f8111111110e7a5) // f64(0.0083333333333149382)
+CONST_DATA_U64(const_exp,  88, $0x3fa55555555554f9) // f64(0.041666666666666026)
+CONST_DATA_U64(const_exp,  96, $0x3fc555555555555e) // f64(0.16666666666666691)
+CONST_DATA_U64(const_exp, 104, $0x40862e42fe102c83) // f64(709.78271114955749)
+CONST_DATA_U64(const_exp, 112, $0xc08f400000000000) // f64(-1000)
+CONST_DATA_U32(const_exp, 120, $0x3ff00000) // i32(1072693248)
+CONST_GLOBAL(const_exp, $124)
+
+// f64[0].k[1] = exp(f64[2]).k[3]
+TEXT bcexpf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R8
+  KMOVW R8, K3
+
+  VBROADCASTSD CONST_GET_PTR(const_exp, 0), Z9
+  VBROADCASTSD CONST_GET_PTR(const_exp, 8), Z8
+  VBROADCASTSD CONST_GET_PTR(const_exp, 24), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp, 16), Z11
+
+  VMULPD Z9, Z2, Z4
+  VMULPD Z9, Z3, Z5
+  VRNDSCALEPD $8, Z4, Z6
+  VRNDSCALEPD $8, Z5, Z7
+  VCVTPD2DQ.RN_SAE Z6, Y4
+  VCVTPD2DQ.RN_SAE Z7, Y5
+  VINSERTI32X8 $1, Y5, Z4, Z4
+
+  VMOVAPD Z8, Z9
+  VFMADD213PD Z2, Z6, Z8 // Z8 = (Z6 * Z8) + Z2
+  VFMADD213PD Z3, Z7, Z9 // Z9 = (Z7 * Z9) + Z3
+  VFMADD231PD Z11, Z6, Z8 // Z8 = (Z6 * Z11) + Z8
+  VFMADD231PD Z11, Z7, Z9 // Z9 = (Z7 * Z11) + Z9
+  VMULPD Z8, Z8, Z6
+  VMULPD Z9, Z9, Z7
+  VBROADCASTSD CONST_GET_PTR(const_exp, 32), Z5
+  VMOVAPD Z10, Z11
+  VFMADD213PD Z5, Z8, Z10 // Z10 = (Z8 * Z10) + Z5
+  VFMADD213PD Z5, Z9, Z11 // Z11 = (Z9 * Z11) + Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp, 48), Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp, 40), Z12
+  VBROADCASTSD CONST_GET_PTR(const_exp, 56), Z14
+  VMOVAPD Z12, Z13
+  VMOVAPD Z14, Z15
+  VFMADD213PD Z5, Z8, Z12 // Z12 = (Z8 * Z12) + Z5
+  VFMADD213PD Z5, Z9, Z13 // Z13 = (Z9 * Z13) + Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp, 64), Z5
+  VMULPD Z6, Z6, Z16
+  VMULPD Z7, Z7, Z17
+  VFMADD213PD Z5, Z8, Z14 // Z14 = (Z8 * Z14) + Z5
+  VFMADD213PD Z5, Z9, Z15 // Z15 = (Z9 * Z15) + Z5
+  VFMADD231PD Z12, Z6, Z14 // Z14 = (Z6 * Z12) + Z14
+  VFMADD231PD Z13, Z7, Z15 // Z15 = (Z7 * Z13) + Z15
+
+  VBROADCASTSD CONST_GET_PTR(const_exp, 80), Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp, 72), Z12
+  VMOVAPD Z12, Z13
+  VFMADD213PD Z5, Z8, Z12 // Z12 = (Z8 * Z12) + Z5
+  VFMADD213PD Z5, Z9, Z13 // Z13 = (Z9 * Z13) + Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp, 96), Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp, 88), Z18
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z5, Z8, Z18 // Z18 = (Z8 * Z18) + Z5
+  VFMADD213PD Z5, Z9, Z19 // Z19 = (Z9 * Z19) + Z5
+  VMULPD Z16, Z16, Z20
+  VMULPD Z17, Z17, Z21
+  VBROADCASTSD CONSTF64_HALF(), Z5
+  VFMADD231PD Z12, Z6, Z18  // Z18 = (Z6 * Z12) + Z18
+  VFMADD231PD Z13, Z7, Z19  // Z19 = (Z7 * Z13) + Z19
+  VFMADD231PD Z14, Z16, Z18 // Z18 = (Z16 * Z14) + Z18
+  VFMADD231PD Z15, Z17, Z19 // Z19 = (Z17 * Z15) + Z19
+  VFMADD231PD Z10, Z20, Z18 // Z18 = (Z20 * Z10) + Z18
+  VFMADD231PD Z11, Z21, Z19 // Z19 = (Z21 * Z11) + Z19
+  VBROADCASTSD CONSTF64_1(), Z6
+  VFMADD213PD Z5, Z8, Z18 // Z18 = (Z8 * Z18) + Z5{0.5}
+  VFMADD213PD Z5, Z9, Z19 // Z19 = (Z9 * Z19) + Z5{0.5}
+  VFMADD213PD Z6, Z8, Z18 // Z18 = (Z8 * Z18) + Z6{1.0}
+  VFMADD213PD Z6, Z9, Z19 // Z19 = (Z9 * Z19) + Z6{1.0}
+  VFMADD213PD Z6, Z8, Z18 // Z18 = (Z8 * Z18) + Z6{1.0}
+  VFMADD213PD Z6, Z9, Z19 // Z19 = (Z9 * Z19) + Z6{1.0}
+
+  VPSRAD $1, Z4, Z6
+  VPSLLD $20, Z6, Z8
+  VPBROADCASTD CONST_GET_PTR(const_exp, 120), Z10
+  VPADDD Z10, Z8, Z8
+  VEXTRACTI32X8 $1, Z8, Y9
+  VPEXPANDD.Z Z8, K3, Z8
+  VPEXPANDD.Z Z9, K3, Z9
+
+  VMULPD Z8, Z18, Z8
+  VMULPD Z9, Z19, Z9
+  VPSUBD Z6, Z4, Z4
+  VPSLLD $20, Z4, Z4
+  VPADDD Z10, Z4, Z4
+  VEXTRACTI32X8 $1, Z4, Y5
+  VPEXPANDD.Z Z4, K3, Z4
+  VPEXPANDD.Z Z5, K3, Z5
+
+  VMULPD Z4, Z8, Z4
+  VMULPD Z5, Z9, Z5
+
+  VBROADCASTSD CONST_GET_PTR(const_exp, 104), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp, 112), Z11
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
+  VCMPPD $VCMP_IMM_GT_OS, Z10, Z2, K1, K3
+  VCMPPD $VCMP_IMM_GT_OS, Z10, Z3, K2, K4
+  VCMPPD $VCMP_IMM_NLT_US, Z11, Z2, K1, K5
+  VCMPPD $VCMP_IMM_NLT_US, Z11, Z3, K2, K6
+
+  VMOVAPD Z12, K3, Z4
+  VMOVAPD Z12, K4, Z5
+  VMOVAPD.Z Z4, K5, Z4
+  VMOVAPD.Z Z5, K6, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - exp2(x) (Base-2 Exponential)
+// ---------------------------------------------------------------
+
+CONST_DATA_U64(const_exp2,   0, $0x3dfe7901ca95e150) // f64(4.4343590829265295E-10)
+CONST_DATA_U64(const_exp2,   8, $0x3e3e6106d72c1c17) // f64(7.0731645980857074E-9)
+CONST_DATA_U64(const_exp2,  16, $0x3e7b5266946bf979) // f64(1.0178192609217605E-7)
+CONST_DATA_U64(const_exp2,  24, $0x3eb62bfcdabcbb81) // f64(1.3215438725113276E-6)
+CONST_DATA_U64(const_exp2,  32, $0x3eeffcbfbc12cc80) // f64(1.5252733535175847E-5)
+CONST_DATA_U64(const_exp2,  40, $0x3f24309130cb34ec) // f64(1.5403530451011478E-4)
+CONST_DATA_U64(const_exp2,  48, $0x3f55d87fe78c5960) // f64(0.0013333558146704991)
+CONST_DATA_U64(const_exp2,  56, $0x3f83b2ab6fba08f0) // f64(0.0096181291075976005)
+CONST_DATA_U64(const_exp2,  64, $0x3fac6b08d704a01f) // f64(0.055504108664820466)
+CONST_DATA_U64(const_exp2,  72, $0x3fcebfbdff82c5a1) // f64(0.24022650695910122)
+CONST_DATA_U64(const_exp2,  80, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
+CONST_DATA_U64(const_exp2,  88, $0x4090000000000000) // f64(1024)
+CONST_DATA_U64(const_exp2,  96, $0xc09f400000000000) // f64(-2000)
+CONST_DATA_U32(const_exp2, 104, $0x3ff00000) // i32(1072693248)
+CONST_GLOBAL(const_exp2, $108)
+
+// f64[0].k[1] = exp2(f64[2]).k[3]
+TEXT bcexp2f64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R8
+  KMOVW R8, K3
+
+  VRNDSCALEPD $8, Z2, Z6
+  VRNDSCALEPD $8, Z3, Z7
+  VCVTPD2DQ.RN_SAE Z6, Y4
+  VCVTPD2DQ.RN_SAE Z7, Y5
+  VINSERTI32X8 $1, Y5, Z4, Z4
+
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 0), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 16), Z12
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 32), Z14
+  VSUBPD Z6, Z2, Z6
+  VSUBPD Z7, Z3, Z7
+  VMULPD Z6, Z6, Z8
+  VMULPD Z7, Z7, Z9
+  VMOVAPD Z10, Z11
+  VMOVAPD Z12, Z13
+  VMOVAPD Z14, Z15
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 8), Z16
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 24), Z17
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 40), Z18
+  VFMADD213PD Z16, Z6, Z10 // Z10 = (Z6 * Z10) + Z16
+  VFMADD213PD Z16, Z7, Z11 // Z11 = (Z7 * Z11) + Z16
+  VFMADD213PD Z17, Z6, Z12 // Z12 = (Z6 * Z12) + Z17
+  VFMADD213PD Z17, Z7, Z13 // Z13 = (Z7 * Z13) + Z17
+  VFMADD213PD Z18, Z6, Z14 // Z14 = (Z6 * Z14) + Z18
+  VFMADD213PD Z18, Z7, Z15 // Z15 = (Z7 * Z15) + Z18
+  VMULPD Z8, Z8, Z16
+  VMULPD Z9, Z9, Z17
+  VFMADD231PD Z12, Z8, Z14 // Z14 = (Z8 * Z12) + Z14
+  VFMADD231PD Z13, Z9, Z15 // Z15 = (Z9 * Z13) + Z15
+
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 56), Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 48), Z12
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 64), Z18
+  VMOVAPD Z12, Z13
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z5, Z6, Z12 // Z12 = (Z6 * Z12) + Z5
+  VFMADD213PD Z5, Z7, Z13 // Z13 = (Z7 * Z13) + Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 72), Z5
+  VMULPD Z16, Z16, Z20
+  VMULPD Z17, Z17, Z21
+  VFMADD213PD Z5, Z6, Z18 // Z18 = (Z6 * Z18) + Z5
+  VFMADD213PD Z5, Z7, Z19 // Z19 = (Z7 * Z19) + Z5
+  VFMADD231PD Z12, Z8, Z18  // Z18 = (Z8 * Z12) + Z18
+  VFMADD231PD Z13, Z9, Z19  // Z19 = (Z9 * Z13) + Z19
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 80), Z5
+  VFMADD231PD Z14, Z16, Z18 // Z18 = (Z16 * Z14) + Z18
+  VFMADD231PD Z15, Z17, Z19 // Z19 = (Z17 * Z15) + Z19
+  VFMADD231PD Z10, Z20, Z18 // Z18 = (Z20 * Z10) + Z18
+  VFMADD231PD Z11, Z21, Z19 // Z19 = (Z21 * Z11) + Z19
+  VBROADCASTSD CONSTF64_1(), Z20
+  VFMADD213PD Z5, Z6, Z18 // Z18 = (Z6 * Z18) + Z5
+  VFMADD213PD Z5, Z7, Z19 // Z19 = (Z7 * Z19) + Z5
+  VFMADD213PD Z20, Z6, Z18 // Z18 = (Z6 * Z18) + Z20{1.0}
+  VFMADD213PD Z20, Z7, Z19 // Z19 = (Z7 * Z19) + Z20{1.0}
+
+  VPSRAD $1, Z4, Z6
+  VPSLLD $20, Z6, Z8
+  VPBROADCASTD CONST_GET_PTR(const_exp2, 104), Z10
+  VPADDD Z10, Z8, Z8
+  VEXTRACTI32X8 $1, Z8, Y9
+  VPEXPANDD.Z Z8, K3, Z8
+  VPEXPANDD.Z Z9, K3, Z9
+
+  VMULPD Z8, Z18, Z8
+  VMULPD Z9, Z19, Z9
+  VPSUBD Z6, Z4, Z4
+  VPSLLD $20, Z4, Z4
+  VPADDD Z10, Z4, Z4
+  VEXTRACTI32X8 $1, Z4, Y5
+  VPEXPANDD.Z Z4, K3, Z4
+  VPEXPANDD.Z Z5, K3, Z5
+  VMULPD Z4, Z8, Z4
+  VMULPD Z5, Z9, Z5
+
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 88), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp2, 96), Z11
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
+  VCMPPD $VCMP_IMM_GE_OS, Z10, Z2, K1, K3
+  VCMPPD $VCMP_IMM_GE_OS, Z10, Z3, K2, K4
+  VCMPPD $VCMP_IMM_NLT_US, Z11, Z2, K1, K5
+  VCMPPD $VCMP_IMM_NLT_US, Z11, Z3, K2, K6
+
+  VMOVAPD Z12, K3, Z4
+  VMOVAPD Z12, K4, Z5
+  VMOVAPD.Z Z4, K5, Z4
+  VMOVAPD.Z Z5, K6, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - exp10(x) (Base-10 Exponential)
+// -----------------------------------------------------------------
+
+CONST_DATA_U64(const_exp10,   0, $0x400a934f0979a371) // f64(3.3219280948873622)
+CONST_DATA_U64(const_exp10,   8, $0xbfd34413509f7000) // f64(-0.30102999566383914)
+CONST_DATA_U64(const_exp10,  16, $0xbd43fde623e2566b) // f64(-1.4205023227266099E-13)
+CONST_DATA_U64(const_exp10,  24, $0x3f2f9b875f46726f) // f64(2.4114634983342677E-4)
+CONST_DATA_U64(const_exp10,  32, $0x3f52f6dbb8e3072a) // f64(0.0011574884152171874)
+CONST_DATA_U64(const_exp10,  40, $0x3f748988cff14706) // f64(0.0050139755467897337)
+CONST_DATA_U64(const_exp10,  48, $0x3f9411663b046154) // f64(0.019597623207205331)
+CONST_DATA_U64(const_exp10,  56, $0x3fb16e4df78fca37) // f64(0.068089363994467841)
+CONST_DATA_U64(const_exp10,  64, $0x3fca7ed709f2107e) // f64(0.20699584947226762)
+CONST_DATA_U64(const_exp10,  72, $0x3fe1429ffd1eb6e2) // f64(0.53938292920585362)
+CONST_DATA_U64(const_exp10,  80, $0x3ff2bd7609fd573b) // f64(1.1712551489085417)
+CONST_DATA_U64(const_exp10,  88, $0x4000470591de2c43) // f64(2.034678592293433)
+CONST_DATA_U64(const_exp10,  96, $0x40053524c73cea78) // f64(2.6509490552392059)
+CONST_DATA_U64(const_exp10, 104, $0x40026bb1bbb55516) // f64(2.3025850929940459)
+CONST_DATA_U64(const_exp10, 112, $0x40734413509f79fe) // f64(308.25471555991669)
+CONST_DATA_U64(const_exp10, 120, $0xc075e00000000000) // f64(-350)
+CONST_DATA_U32(const_exp10, 128, $0x3ff00000) // i32(1072693248)
+CONST_GLOBAL(const_exp10, $132)
+
+// f64[0].k[1] = exp10(f64[2]).k[3]
+TEXT bcexp10f64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R8
+  KMOVW R8, K3
+
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 0), Z5
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 8), Z8
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 16), Z10
+
+  VMULPD Z5, Z2, Z4
+  VMULPD Z5, Z3, Z5
+  VRNDSCALEPD $8, Z4, Z6
+  VRNDSCALEPD $8, Z5, Z7
+  VCVTPD2DQ.RN_SAE Z6, Y4
+  VCVTPD2DQ.RN_SAE Z7, Y5
+  VINSERTI32X8 $1, Y5, Z4, Z4
+
+  VMOVAPD Z8, Z9
+  VFMADD213PD Z2, Z6, Z8 // Z8 = (Z6 * Z8) + Z2
+  VFMADD213PD Z3, Z7, Z9 // Z9 = (Z7 * Z9) + Z3
+  VFMADD231PD Z10, Z6, Z8 // Z8 = (Z6 * Z10) + Z8
+  VFMADD231PD Z10, Z7, Z9 // Z9 = (Z7 * Z10) + Z9
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 24), Z6
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 32), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 40), Z11
+  VMOVAPD Z6, Z7
+  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
+  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
+  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
+  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 48), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 56), Z11
+  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
+  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
+  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
+  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 64), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 72), Z11
+  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
+  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
+  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
+  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 80), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 88), Z11
+  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
+  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
+  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
+  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 96), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 104), Z11
+  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + Z10
+  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + Z10
+  VFMADD213PD Z11, Z8, Z6 // Z6 = (Z8 * Z6) + Z11
+  VFMADD213PD Z11, Z9, Z7 // Z7 = (Z9 * Z7) + Z11
+
+  VBROADCASTSD CONSTF64_1(), Z10
+  VPBROADCASTD CONST_GET_PTR(const_exp10, 128), Z12
+  VFMADD213PD Z10, Z8, Z6 // Z6 = (Z8 * Z6) + mem
+  VFMADD213PD Z10, Z9, Z7 // Z7 = (Z9 * Z7) + mem
+  VPSRAD $1, Z4, Z8
+  VPSLLD $20, Z8, Z10
+  VPADDD Z12, Z10, Z10
+  VEXTRACTI32X8 $1, Z10, Y11
+  VPEXPANDD.Z Z10, K3, Z10
+  VPEXPANDD.Z Z11, K3, Z11
+  VMULPD Z10, Z6, Z6
+  VMULPD Z11, Z7, Z7
+  VPSUBD Z8, Z4, Z4
+  VPSLLD $20, Z4, Z4
+  VPADDD Z12, Z4, Z4
+  VEXTRACTI32X8 $1, Z4, Y5
+  VPEXPANDD.Z Z4, K3, Z4
+  VPEXPANDD.Z Z5, K3, Z5
+  VMULPD Z4, Z6, Z4
+  VMULPD Z5, Z7, Z5
+
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 112), Z10
+  VBROADCASTSD CONST_GET_PTR(const_exp10, 120), Z11
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
+  VCMPPD $VCMP_IMM_GT_OS, Z10, Z2, K3
+  VCMPPD $VCMP_IMM_GT_OS, Z10, Z3, K4
+  VCMPPD $VCMP_IMM_NLT_US, Z11, Z2, K5
+  VCMPPD $VCMP_IMM_NLT_US, Z11, Z3, K6
+
+  VMOVAPD Z12, K3, Z4
+  VMOVAPD Z12, K4, Z5
+  VMOVAPD.Z Z4, K5, Z4
+  VMOVAPD.Z Z5, K6, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - expm1(x) (Exponential minus one: expm1(x) == exp(x) - 1)
+// -------------------------------------------------------------------------------------------
+
+CONST_DATA_U64(const_expm1,   0, $0x3ff71547652b82fe) // f64(1.4426950408889634)
+CONST_DATA_U64(const_expm1,   8, $0xbfe62e42fefa3000) // f64(-0.69314718055966296)
+CONST_DATA_U64(const_expm1,  16, $0xbd53de6af278ece6) // f64(-2.8235290563031577E-13)
+CONST_DATA_U64(const_expm1,  24, $0x3de60632a887194c) // f64(1.6024722197099321E-10)
+CONST_DATA_U64(const_expm1,  32, $0x3e21f8eaf54829dc) // f64(2.092255183563157E-9)
+CONST_DATA_U64(const_expm1,  40, $0x3e5ae652e8103ab6) // f64(2.5052300237826445E-8)
+CONST_DATA_U64(const_expm1,  48, $0x3e927e4c95a9765c) // f64(2.7557248009021353E-7)
+CONST_DATA_U64(const_expm1,  56, $0x3ec71de3a11d7656) // f64(2.7557318923860444E-6)
+CONST_DATA_U64(const_expm1,  64, $0x3efa01a01af6f0b7) // f64(2.4801587356058151E-5)
+CONST_DATA_U64(const_expm1,  72, $0x3f2a01a01a02d002) // f64(1.9841269841480719E-4)
+CONST_DATA_U64(const_expm1,  80, $0x3f56c16c16c145cc) // f64(0.0013888888888867633)
+CONST_DATA_U64(const_expm1,  88, $0x3f81111111111119) // f64(0.008333333333333347)
+CONST_DATA_U64(const_expm1,  96, $0x3fa555555555555a) // f64(0.041666666666666699)
+CONST_DATA_U64(const_expm1, 104, $0x3fc5555555555555) // f64(0.16666666666666666)
+CONST_DATA_U64(const_expm1, 112, $0xc08f400000000000) // f64(-1000)
+CONST_DATA_U64(const_expm1, 120, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_expm1, 128, $0x40862e42fefa39ef) // f64(709.78271289338397)
+CONST_DATA_U64(const_expm1, 136, $0xc0425e4f7b2737fa) // f64(-36.736800569677101)
+CONST_DATA_U32(const_expm1, 144, $0x3ff00000) // i32(1072693248)
+CONST_GLOBAL(const_expm1, $148)
+
+// f64[0].k[1] = expm1(f64[2]).k[3]
+TEXT bcexpm1f64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R15
+  KMOVW R15, K5
+
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 0), Z8
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 8), Z9
+  VXORPD X5, X5, X5
+  VXORPD X5, X5, X5
+  VADDPD Z5, Z2, Z6
+  VADDPD Z5, Z3, Z7
+  VMULPD Z8, Z6, Z6
+  VMULPD Z8, Z7, Z7
+  VRNDSCALEPD $8, Z6, Z6
+  VRNDSCALEPD $8, Z7, Z7
+  VMULPD Z9, Z6, Z8
+  VMULPD Z9, Z7, Z9
+
+  VADDPD Z2, Z8, Z12
+  VADDPD Z3, Z9, Z13
+  VSUBPD Z2, Z12, Z10
+  VSUBPD Z3, Z13, Z11
+  VSUBPD Z10, Z12, Z14
+  VSUBPD Z11, Z13, Z15
+  VSUBPD Z14, Z2, Z14
+  VSUBPD Z15, Z3, Z15
+  VSUBPD Z10, Z8, Z8
+  VSUBPD Z11, Z9, Z9
+  VADDPD Z14, Z8, Z8
+  VADDPD Z15, Z9, Z9
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 16), Z15
+  VADDPD Z5, Z8, Z8
+  VADDPD Z5, Z9, Z9
+  VMULPD Z15, Z6, Z14
+  VMULPD Z15, Z7, Z15
+  VADDPD Z12, Z14, Z10
+  VADDPD Z13, Z15, Z11
+  VSUBPD Z12, Z10, Z16
+  VSUBPD Z13, Z11, Z17
+  VSUBPD Z16, Z10, Z18
+  VSUBPD Z17, Z11, Z19
+  VSUBPD Z18, Z12, Z12
+  VSUBPD Z19, Z13, Z13
+  VSUBPD Z16, Z14, Z14
+  VSUBPD Z17, Z15, Z15
+  VADDPD Z12, Z14, Z12
+  VADDPD Z13, Z15, Z13
+  VADDPD Z8, Z12, Z8
+  VADDPD Z9, Z13, Z9
+  VMULPD Z10, Z10, Z12
+  VMULPD Z11, Z11, Z13
+
+  VCVTPD2DQ.RN_SAE Z6, Y6
+  VCVTPD2DQ.RN_SAE Z7, Y7
+  VINSERTI32X8 $1, Y7, Z6, Z6
+  VMOVDQU32 Z6, bytecode_spillArea(VIRT_BCPTR) // Save Z6
+
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 24), Z14
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 40), Z16
+  VMOVAPD Z14, Z15
+  VMOVAPD Z16, Z17
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 32), Z18
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 48), Z19
+  VFMADD213PD Z18, Z10, Z14 // Z14 = (Z10 * Z14) + Z18
+  VFMADD213PD Z18, Z11, Z15 // Z15 = (Z11 * Z15) + Z18
+  VFMADD213PD Z19, Z10, Z16 // Z16 = (Z10 * Z16) + Z19
+  VFMADD213PD Z19, Z11, Z17 // Z17 = (Z11 * Z17) + Z19
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 56), Z18
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 72), Z20
+  VMOVAPD Z18, Z19
+  VMOVAPD Z20, Z21
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 64), Z22
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 80), Z23
+  VFMADD213PD Z22, Z10, Z18 // Z18 = (Z10 * Z18) + Z22
+  VFMADD213PD Z22, Z11, Z19 // Z19 = (Z11 * Z19) + Z22
+  VFMADD213PD Z23, Z10, Z20 // Z20 = (Z10 * Z20) + Z23
+  VFMADD213PD Z23, Z11, Z21 // Z21 = (Z11 * Z21) + Z23
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 88), Z22
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 104), Z24
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 96), Z26
+  VMOVAPD Z22, Z23
+  VMOVAPD Z24, Z25
+  VFMADD213PD Z26, Z10, Z22 // Z22 = (Z10 * Z22) + Z26
+  VFMADD213PD Z26, Z11, Z23 // Z23 = (Z11 * Z23) + Z26
+  VMULPD Z24, Z10, Z26
+  VMULPD Z25, Z11, Z27
+  VMOVAPD Z24, Z4
+  VMOVAPD Z25, Z5
+  VFMSUB213PD Z26, Z10, Z4 // Z4 = (Z10 * Z4) - Z26
+  VFMSUB213PD Z27, Z11, Z5 // Z5 = (Z11 * Z5) - Z27
+  VFMADD231PD Z24, Z8, Z4  // Z4 = (Z8 * Z24) + Z4
+  VFMADD231PD Z25, Z9, Z5  // Z5 = (Z9 * Z25) + Z5
+  VBROADCASTSD CONSTF64_HALF(), Z25
+  VADDPD Z25, Z26, Z6
+  VADDPD Z25, Z27, Z7
+  VSUBPD Z6, Z25, Z24
+  VSUBPD Z7, Z25, Z25
+  VADDPD Z24, Z26, Z24
+  VADDPD Z25, Z27, Z25
+  VADDPD Z4, Z24, Z24
+  VADDPD Z5, Z25, Z25
+  VMULPD Z6, Z10, Z26
+  VMULPD Z7, Z11, Z27
+  VMOVAPD Z10, Z4
+  VMOVAPD Z11, Z5
+  VFMSUB213PD Z26, Z6, Z4  // Z4 = (Z6 * Z4) - Z26
+  VFMSUB213PD Z27, Z7, Z5  // Z5 = (Z7 * Z5) - Z27
+  VFMADD231PD Z24, Z10, Z4 // Z4 = (Z10 * Z24) + Z4
+  VFMADD231PD Z25, Z11, Z5 // Z5 = (Z11 * Z25) + Z5
+  VFMADD231PD Z6, Z8, Z4   // Z4 = (Z8 * Z6) + Z4
+  VFMADD231PD Z7, Z9, Z5   // Z5 = (Z9 * Z7) + Z5
+  VBROADCASTSD CONSTF64_1(), Z25
+  VADDPD Z25, Z26, Z6
+  VADDPD Z25, Z27, Z7
+  VSUBPD Z6, Z25, Z24
+  VSUBPD Z7, Z25, Z25
+  VADDPD Z24, Z26, Z26
+  VADDPD Z25, Z27, Z27
+  VADDPD Z4, Z26, Z26
+  VADDPD Z5, Z27, Z27
+  VMULPD Z6, Z10, Z4
+  VMULPD Z7, Z11, Z5
+  VMOVAPD Z10, Z24
+  VMOVAPD Z11, Z25
+  VFMSUB213PD Z4, Z6, Z24   // Z24 = (Z6 * Z24) - Z4
+  VFMSUB213PD Z5, Z7, Z25   // Z25 = (Z7 * Z25) - Z5
+  VFMADD231PD Z26, Z10, Z24 // Z24 = (Z10 * Z26) + Z24
+  VFMADD231PD Z27, Z11, Z25 // Z25 = (Z11 * Z27) + Z25
+  VADDPD Z10, Z10, Z26
+  VADDPD Z11, Z11, Z27
+  VFMSUB213PD Z12, Z10, Z10 // Z10 = (Z10 * Z10) - Z12
+  VFMSUB213PD Z13, Z11, Z11 // Z11 = (Z11 * Z11) - Z13
+  VFMADD231PD Z26, Z8, Z10  // Z10 = (Z8 * Z26) + Z10
+  VFMADD231PD Z27, Z9, Z11  // Z11 = (Z9 * Z27) + Z11
+  VFMADD231PD Z16, Z12, Z18 // Z18 = (Z12 * Z16) + Z18
+  VFMADD231PD Z17, Z13, Z19 // Z19 = (Z13 * Z17) + Z19
+  VMULPD Z12, Z12, Z16
+  VMULPD Z13, Z13, Z17
+  VFMADD231PD Z20, Z12, Z22 // Z22 = (Z12 * Z20) + Z22
+  VFMADD231PD Z21, Z13, Z23 // Z23 = (Z13 * Z21) + Z23
+  VADDPD Z12, Z12, Z20
+  VADDPD Z13, Z13, Z21
+  VFMSUB213PD Z16, Z12, Z12 // Z12 = (Z12 * Z12) - Z16
+  VFMSUB213PD Z17, Z13, Z13 // Z13 = (Z13 * Z13) - Z17
+  VFMADD231PD Z20, Z10, Z12 // Z12 = (Z10 * Z20) + Z12
+  VFMADD231PD Z21, Z11, Z13 // Z13 = (Z11 * Z21) + Z13
+  VFMADD231PD Z18, Z16, Z22 // Z22 = (Z16 * Z18) + Z22
+  VFMADD231PD Z19, Z17, Z23 // Z23 = (Z17 * Z19) + Z23
+  VMULPD Z16, Z16, Z10
+  VMULPD Z17, Z17, Z11
+  VFMADD231PD Z14, Z10, Z22 // Z22 = (Z10 * Z14) + Z22
+  VFMADD231PD Z15, Z11, Z23 // Z23 = (Z11 * Z15) + Z23
+  VFMADD231PD Z8, Z6, Z24   // Z24 = (Z6 * Z8) + Z24
+  VFMADD231PD Z9, Z7, Z25   // Z25 = (Z7 * Z9) + Z25
+  VBROADCASTSD CONSTF64_1(), Z15
+  VADDPD Z15, Z4, Z8
+  VADDPD Z15, Z5, Z9
+  VSUBPD Z8, Z15, Z10
+  VSUBPD Z9, Z15, Z11
+  VADDPD Z10, Z4, Z10
+  VADDPD Z11, Z5, Z11
+  VADDPD Z24, Z10, Z10
+  VADDPD Z25, Z11, Z11
+  VMULPD Z22, Z16, Z14
+  VMULPD Z23, Z17, Z15
+  VFMSUB213PD Z14, Z22, Z16 // Z16 = (Z22 * Z16) - Z14
+  VFMSUB213PD Z15, Z23, Z17 // Z17 = (Z23 * Z17) - Z15
+  VFMADD231PD Z22, Z12, Z16 // Z16 = (Z12 * Z22) + Z16
+  VFMADD231PD Z23, Z13, Z17 // Z17 = (Z13 * Z23) + Z17
+  VADDPD Z8, Z14, Z12
+  VADDPD Z9, Z15, Z13
+  VSUBPD Z12, Z8, Z8
+  VSUBPD Z13, Z9, Z9
+  VADDPD Z8, Z14, Z8
+  VADDPD Z9, Z15, Z9
+  VADDPD Z10, Z8, Z8
+  VADDPD Z11, Z9, Z9
+  VADDPD Z8, Z16, Z8
+  VADDPD Z9, Z17, Z9
+  VMOVDQU32 bytecode_spillArea(VIRT_BCPTR), Z6 // Load Z6
+  VPSRAD $1, Z6, Z10
+  VPSLLD $20, Z10, Z14
+  VPBROADCASTD CONST_GET_PTR(const_expm1, 144), Z16
+  VPADDD Z16, Z14, Z14
+  VEXTRACTI32X8 $1, Z14, Y15
+  VPEXPANDD.Z Z14, K5, Z14
+  VPEXPANDD.Z Z15, K5, Z15
+  VMULPD Z14, Z12, Z12
+  VMULPD Z15, Z13, Z13
+  VPSUBD Z10, Z6, Z6
+  VPSLLD $20, Z6, Z6
+  VPADDD Z16, Z6, Z6
+  VEXTRACTI32X8 $1, Z6, Y7
+  VPEXPANDD.Z Z6, K5, Z6
+  VPEXPANDD.Z Z7, K5, Z7
+  VMULPD Z6, Z12, Z10
+  VMULPD Z7, Z13, Z11
+  VMULPD Z14, Z8, Z8
+  VMULPD Z15, Z9, Z9
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 112), Z20
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 120), Z21
+  VMULPD Z6, Z8, Z6
+  VMULPD Z7, Z9, Z7
+  VCMPPD $VCMP_IMM_LT_OS, Z20, Z2, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z20, Z3, K4
+  VXORPD X5, X5, X5
+  VMOVAPD Z5, K3, Z10
+  VMOVAPD Z5, K4, Z11
+  VMOVAPD Z5, K3, Z6
+  VMOVAPD Z5, K4, Z7
+  VADDPD Z21, Z10, Z4
+  VADDPD Z21, Z11, Z5
+  VSUBPD Z10, Z4, Z12
+  VSUBPD Z11, Z5, Z13
+  VSUBPD Z12, Z4, Z14
+  VSUBPD Z13, Z5, Z15
+  VSUBPD Z14, Z10, Z10
+  VSUBPD Z15, Z11, Z11
+  VSUBPD Z12, Z21, Z12
+  VSUBPD Z13, Z21, Z13
+  VADDPD Z10, Z12, Z10
+  VADDPD Z11, Z13, Z11
+  VADDPD Z6, Z10, Z6
+  VADDPD Z7, Z11, Z7
+  VADDPD Z6, Z4, Z4
+  VADDPD Z7, Z5, Z5
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 128), Z20
+  VBROADCASTSD CONST_GET_PTR(const_expm1, 136), Z19
+  VCMPPD $VCMP_IMM_GT_OS, Z20, Z2, K3
+  VCMPPD $VCMP_IMM_GT_OS, Z20, Z3, K4
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z20
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), K3, Z4
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), K4, Z5
+  VCMPPD $VCMP_IMM_LT_OS, Z19, Z2, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z19, Z3, K4
+  VMOVAPD Z21, K3, Z4
+  VMOVAPD Z21, K4, Z5
+  VPCMPEQQ Z20, Z2, K3
+  VPCMPEQQ Z20, Z3, K4
+  VBROADCASTSD CONSTF64_SIGN_BIT(), K3, Z4
+  VBROADCASTSD CONSTF64_SIGN_BIT(), K4, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - ln(x) (Natural Logarithm)
+// ------------------------------------------------------------
+
+CONST_DATA_U64(const_ln,  0, $0x3ff5555555555555) // f64(1.3333333333333333)
+CONST_DATA_U64(const_ln,  8, $0x4090000000000000) // f64(1024)
+CONST_DATA_U64(const_ln, 16, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_ln, 24, $0x3fc3872e67fe8e84) // f64(0.15256290510034287)
+CONST_DATA_U64(const_ln, 32, $0x3fc747353a506035) // f64(0.1818605932937786)
+CONST_DATA_U64(const_ln, 40, $0x3fc39c4f5407567e) // f64(0.15320769885027014)
+CONST_DATA_U64(const_ln, 48, $0x3fcc71c0a65ecd8e) // f64(0.222221451983938)
+CONST_DATA_U64(const_ln, 56, $0x3fd249249a68a245) // f64(0.28571429327942993)
+CONST_DATA_U64(const_ln, 64, $0x3fd99999998f92ea) // f64(0.3999999999635252)
+CONST_DATA_U64(const_ln, 72, $0x3fe55555555557ae) // f64(0.66666666666673335)
+CONST_DATA_U64(const_ln, 80, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
+CONST_DATA_U64(const_ln, 88, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
+CONST_DATA_U64(const_ln, 96, $0x0253040002530400) // i64(167482009228346368)
+CONST_GLOBAL(const_ln, $104)
+
+// f64[0].k[1] = ln(f64[2]).k[3]
+TEXT bclnf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  VBROADCASTSD CONST_GET_PTR(const_ln, 0), Z5
+  VBROADCASTSD CONST_GET_PTR(const_ln, 8), Z6
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z7
+
+  VMULPD Z5, Z2, Z4
+  VMULPD Z5, Z3, Z5
+  VGETEXPPD Z4, Z4
+  VGETEXPPD Z5, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z4, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z5, K4
+  VMOVAPD Z6, K3, Z4
+  VMOVAPD Z6, K4, Z5
+  VGETMANTPD $11, Z2, Z6
+  VGETMANTPD $11, Z3, Z7
+
+  VBROADCASTSD CONST_GET_PTR(const_ln, 16), Z9
+  VBROADCASTSD CONSTF64_1(), Z12
+  VADDPD Z9, Z6, Z10
+  VADDPD Z9, Z7, Z11
+  VADDPD Z12, Z10, Z14
+  VADDPD Z12, Z11, Z15
+  VSUBPD Z14, Z10, Z16
+  VSUBPD Z15, Z11, Z17
+  VSUBPD Z16, Z9, Z16
+  VSUBPD Z17, Z9, Z17
+  VSUBPD Z14, Z6, Z14
+  VSUBPD Z15, Z7, Z15
+  VADDPD Z16, Z14, Z14
+  VADDPD Z17, Z15, Z15
+  VADDPD Z12, Z6, Z16
+  VADDPD Z12, Z7, Z17
+  VADDPD Z9, Z16, Z8
+  VADDPD Z9, Z17, Z9
+  VSUBPD Z8, Z16, Z18
+  VSUBPD Z9, Z17, Z19
+  VSUBPD Z18, Z12, Z18
+  VSUBPD Z19, Z12, Z19
+  VSUBPD Z8, Z6, Z6
+  VSUBPD Z9, Z7, Z7
+  VDIVPD Z16, Z12, Z8
+  VDIVPD Z17, Z12, Z9
+  VADDPD Z18, Z6, Z6
+  VADDPD Z19, Z7, Z7
+  VMULPD Z8, Z10, Z18
+  VMULPD Z9, Z11, Z19
+  VFMSUB213PD Z18, Z8, Z10  // Z10 = (Z8 * Z10) - Z18
+  VFMSUB213PD Z19, Z9, Z11  // Z11 = (Z9 * Z11) - Z19
+  VFNMADD213PD Z12, Z8, Z16 // Z16 = -(Z8 * Z16) + Z12
+  VFNMADD213PD Z12, Z9, Z17 // Z17 = -(Z9 * Z17) + Z12
+  VFNMADD231PD Z6, Z8, Z16  // Z16 = -(Z8 * Z6) + Z16
+  VFNMADD231PD Z7, Z9, Z17  // Z17 = -(Z9 * Z7) + Z17
+  VFMADD231PD Z14, Z8, Z10  // Z10 = (Z8 * Z14) + Z10
+  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
+  VFMADD231PD Z16, Z18, Z10 // Z10 = (Z18 * Z16) + Z10
+  VFMADD231PD Z17, Z19, Z11 // Z11 = (Z19 * Z17) + Z11
+  VMULPD Z18, Z18, Z6
+  VMULPD Z19, Z19, Z7
+  VMULPD Z6, Z6, Z8
+  VMULPD Z7, Z7, Z9
+  VMULPD Z8, Z8, Z12
+  VMULPD Z9, Z9, Z13
+
+  VBROADCASTSD CONST_GET_PTR(const_ln, 24), Z14
+  VBROADCASTSD CONST_GET_PTR(const_ln, 32), Z20
+  VBROADCASTSD CONST_GET_PTR(const_ln, 40), Z21
+  VMOVAPD Z14, Z15
+  VFMADD213PD Z20, Z6, Z14 // Z14 = (Z6 * Z14) + mem
+  VFMADD213PD Z20, Z7, Z15 // Z15 = (Z7 * Z15) + mem
+  VFMADD231PD Z21, Z8, Z14 // Z14 = (Z8 * mem) + Z14
+  VFMADD231PD Z21, Z9, Z15 // Z15 = (Z9 * mem) + Z15
+
+  VBROADCASTSD CONST_GET_PTR(const_ln, 48), Z16
+  VBROADCASTSD CONST_GET_PTR(const_ln, 64), Z20
+  VMOVAPD Z16, Z17
+  VMOVAPD Z20, Z21
+  VBROADCASTSD CONST_GET_PTR(const_ln, 56), Z22
+  VBROADCASTSD CONST_GET_PTR(const_ln, 72), Z23
+  VFMADD213PD Z22, Z6, Z16 // Z16 = (Z6 * Z16) + mem
+  VFMADD213PD Z22, Z7, Z17 // Z17 = (Z7 * Z17) + mem
+  VFMADD213PD Z23, Z6, Z20 // Z20 = (Z6 * Z20) + mem
+  VFMADD213PD Z23, Z7, Z21 // Z21 = (Z7 * Z21) + mem
+  VFMADD231PD Z16, Z8, Z20  // Z20 = (Z8 * Z16) + Z20
+  VFMADD231PD Z17, Z9, Z21  // Z21 = (Z9 * Z17) + Z21
+  VFMADD231PD Z14, Z12, Z20 // Z20 = (Z12 * Z14) + Z20
+  VFMADD231PD Z15, Z13, Z21 // Z21 = (Z13 * Z15) + Z21
+
+  VBROADCASTSD CONST_GET_PTR(const_ln, 80), Z8
+  VBROADCASTSD CONST_GET_PTR(const_ln, 88), Z14
+  VMOVAPD Z8, Z9
+  VMULPD Z8, Z4, Z12
+  VMULPD Z8, Z5, Z13
+  VFMSUB213PD Z12, Z4, Z8 // Z8 = (Z4 * Z8) - Z12
+  VFMSUB213PD Z13, Z5, Z9 // Z9 = (Z5 * Z9) - Z13
+  VFMADD231PD Z14, Z4, Z8 // Z8 = (Z4 * Z14) + Z8
+  VFMADD231PD Z14, Z5, Z9 // Z9 = (Z5 * Z14) + Z9
+  VADDPD Z18, Z18, Z4
+  VADDPD Z19, Z19, Z5
+  VADDPD Z10, Z10, Z10
+  VADDPD Z11, Z11, Z11
+  VADDPD Z4, Z12, Z14
+  VADDPD Z5, Z13, Z15
+  VSUBPD Z14, Z12, Z12
+  VSUBPD Z15, Z13, Z13
+  VADDPD Z12, Z4, Z4
+  VADDPD Z13, Z5, Z5
+  VADDPD Z4, Z8, Z4
+  VADDPD Z5, Z9, Z5
+  VADDPD Z10, Z4, Z4
+  VADDPD Z11, Z5, Z5
+  VMULPD Z6, Z18, Z6
+  VMULPD Z7, Z19, Z7
+  VMULPD Z20, Z6, Z6
+  VMULPD Z21, Z7, Z7
+  VADDPD Z6, Z14, Z8
+  VADDPD Z7, Z15, Z9
+  VSUBPD Z8, Z14, Z10
+  VSUBPD Z9, Z15, Z11
+  VADDPD Z10, Z6, Z6
+  VADDPD Z11, Z7, Z7
+  VADDPD Z6, Z4, Z4
+  VADDPD Z7, Z5, Z5
+  VPBROADCASTQ CONST_GET_PTR(const_ln, 96), Z6
+  VADDPD Z4, Z8, Z4
+  VADDPD Z5, Z9, Z5
+
+  VFIXUPIMMPD $0, Z6, Z2, Z4
+  VFIXUPIMMPD $0, Z6, Z3, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - ln(x) (Natural Logarithm of x + 1 -> ln1p(x) == ln(x + 1))
+// ---------------------------------------------------------------------------------------------
+
+CONST_DATA_U64(const_log1p,   0, $0x3ff5555555555555) // f64(1.3333333333333333)
+CONST_DATA_U64(const_log1p,   8, $0x4090000000000000) // f64(1024)
+CONST_DATA_U64(const_log1p,  16, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_log1p,  24, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
+CONST_DATA_U64(const_log1p,  32, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
+CONST_DATA_U64(const_log1p,  40, $0x4000000000000000) // f64(2)
+CONST_DATA_U64(const_log1p,  48, $0x3fc3872e67fe8e84) // f64(0.15256290510034287)
+CONST_DATA_U64(const_log1p,  56, $0x3fc747353a506035) // f64(0.1818605932937786)
+CONST_DATA_U64(const_log1p,  64, $0x3fc39c4f5407567e) // f64(0.15320769885027014)
+CONST_DATA_U64(const_log1p,  72, $0x3fcc71c0a65ecd8e) // f64(0.222221451983938)
+CONST_DATA_U64(const_log1p,  80, $0x3fd249249a68a245) // f64(0.28571429327942993)
+CONST_DATA_U64(const_log1p,  88, $0x3fd99999998f92ea) // f64(0.3999999999635252)
+CONST_DATA_U64(const_log1p,  96, $0x3fe55555555557ae) // f64(0.66666666666673335)
+CONST_DATA_U64(const_log1p, 104, $0x7fac7b1f3cac7433) // f64(9.9999999999999999E+306)
+CONST_GLOBAL(const_log1p, $112)
+
+// f64[0].k[1] = ln1p(f64[2]).k[3]
+TEXT bcln1pf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R15
+  KMOVW R15, K5
+
+  VBROADCASTSD CONSTF64_1(), Z4
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 0), Z9
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 0), Z12
+  VADDPD Z4, Z2, Z6
+  VADDPD Z4, Z3, Z7
+  VMULPD Z9, Z6, Z8
+  VMULPD Z9, Z7, Z9
+
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
+  VGETEXPPD Z8, Z10
+  VGETEXPPD Z9, Z11
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z10, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z11, K4
+  VMOVAPD Z12, K3, Z10
+  VMOVAPD Z12, K4, Z11
+  VCVTPD2DQ.RN_SAE Z10, Y8
+  VCVTPD2DQ.RN_SAE Z11, Y9
+  VPXOR X12, X12, X12
+  VPSLLD $20, Y8, Y8
+  VPSLLD $20, Y9, Y9
+  VPSUBD Y8, Y12, Y8
+  VPSUBD Y9, Y12, Y9
+  VPEXPANDD.Z Z8, K5, Z8
+  VPEXPANDD.Z Z9, K5, Z9
+  VPADDQ Z4, Z8, Z12
+  VPADDQ Z4, Z9, Z13
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 16), Z8
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 24), Z18
+  VXORPD X14, X14, X14
+  VXORPD X15, X15, X15
+  VADDPD Z8, Z12, Z16
+  VADDPD Z8, Z13, Z17
+  VMULPD Z18, Z10, Z20
+  VMULPD Z18, Z11, Z21
+  VMOVAPD Z18, Z19
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 32), Z9
+  VFMSUB213PD Z20, Z10, Z18 // Z18 = (Z10 * Z18) - Z20
+  VFMSUB213PD Z21, Z11, Z19 // Z19 = (Z11 * Z19) - Z21
+  VFMADD231PD Z9, Z10, Z18 // Z18 = (Z10 * Z9) + Z18
+  VFMADD231PD Z9, Z11, Z19 // Z19 = (Z11 * Z9) + Z19
+  VFMADD231PD Z12, Z2, Z16 // Z16 = (Z2 * Z12) + Z16
+  VFMADD231PD Z13, Z3, Z17 // Z17 = (Z3 * Z13) + Z17
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 40), Z11
+  VADDPD Z11, Z16, Z12
+  VADDPD Z11, Z17, Z13
+  VSUBPD Z12, Z11, Z10
+  VSUBPD Z13, Z11, Z11
+  VDIVPD Z12, Z4, Z22
+  VDIVPD Z13, Z4, Z23
+  VADDPD Z10, Z16, Z10
+  VADDPD Z11, Z17, Z11
+  VMULPD Z22, Z16, Z24
+  VMULPD Z23, Z17, Z25
+  VFMSUB213PD Z24, Z22, Z16  // Z16 = (Z22 * Z16) - Z24
+  VFMSUB213PD Z25, Z23, Z17  // Z17 = (Z23 * Z17) - Z25
+  VFNMADD213PD Z4, Z22, Z12  // Z12 = -(Z22 * Z12) + Z4
+  VFNMADD213PD Z4, Z23, Z13  // Z13 = -(Z23 * Z13) + Z4
+  VFNMADD231PD Z10, Z22, Z12 // Z12 = -(Z22 * Z10) + Z12
+  VFNMADD231PD Z11, Z23, Z13 // Z13 = -(Z23 * Z11) + Z13
+  VFMADD231PD Z22, Z14, Z16  // Z16 = (Z14 * Z22) + Z16
+  VFMADD231PD Z23, Z15, Z17  // Z17 = (Z15 * Z23) + Z17
+  VFMADD231PD Z12, Z24, Z16  // Z16 = (Z24 * Z12) + Z16
+  VFMADD231PD Z13, Z25, Z17  // Z17 = (Z25 * Z13) + Z17
+  VMULPD Z24, Z24, Z4
+  VMULPD Z25, Z25, Z5
+  VMULPD Z4, Z4, Z10
+  VMULPD Z5, Z5, Z11
+  VMULPD Z10, Z10, Z12
+  VMULPD Z11, Z11, Z13
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 48), Z22
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 56), Z9
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 64), Z26
+  VMOVAPD Z22, Z23
+  VFMADD213PD Z9, Z4, Z22 // Z22 = (Z4 * Z22) + Z9
+  VFMADD213PD Z9, Z5, Z23 // Z23 = (Z5 * Z23) + Z9
+  VFMADD231PD Z26, Z10, Z22 // Z22 = (Z10 * Z26) + Z22
+  VFMADD231PD Z26, Z11, Z23 // Z23 = (Z11 * Z26) + Z23
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 72), Z26
+  VBROADCASTSD CONST_GET_PTR(const_log1p, 88), Z6
+  VMOVAPD Z26, Z27
+  VMOVAPD Z6, Z7
+  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 80), Z4, Z26 // Z26 = (Z4 * Z26) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 80), Z5, Z27 // Z27 = (Z5 * Z27) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 96), Z4, Z6 // Z6 = (Z4 * Z6) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_log1p, 96), Z5, Z7 // Z7 = (Z5 * Z7) + mem
+  VFMADD231PD Z26, Z10, Z6 // Z6 = (Z10 * Z26) + Z6
+  VFMADD231PD Z27, Z11, Z7 // Z7 = (Z11 * Z27) + Z7
+  VFMADD231PD Z22, Z12, Z6 // Z6 = (Z12 * Z22) + Z6
+  VFMADD231PD Z23, Z13, Z7 // Z7 = (Z13 * Z23) + Z7
+  VADDPD Z24, Z24, Z10
+  VADDPD Z25, Z25, Z11
+  VADDPD Z16, Z16, Z12
+  VADDPD Z17, Z17, Z13
+  VADDPD Z10, Z20, Z16
+  VADDPD Z11, Z21, Z17
+  VSUBPD Z16, Z20, Z20
+  VSUBPD Z17, Z21, Z21
+  VADDPD Z20, Z10, Z10
+  VADDPD Z21, Z11, Z11
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+  VADDPD Z10, Z12, Z10
+  VADDPD Z11, Z13, Z11
+  VMULPD Z4, Z24, Z4
+  VMULPD Z5, Z25, Z5
+  VMULPD Z6, Z4, Z4
+  VMULPD Z7, Z5, Z5
+  VADDPD Z4, Z16, Z12
+  VADDPD Z5, Z17, Z13
+  VSUBPD Z12, Z16, Z16
+  VSUBPD Z13, Z17, Z17
+  VADDPD Z16, Z4, Z4
+  VADDPD Z17, Z5, Z5
+  VADDPD Z4, Z10, Z4
+  VADDPD Z5, Z11, Z5
+  VADDPD Z4, Z12, Z4
+  VADDPD Z5, Z13, Z5
+
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
+  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_log1p, 104), Z2, K3
+  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_log1p, 104), Z3, K4
+  VMOVAPD Z6, K3, Z4
+  VMOVAPD Z6, K4, Z5
+  VCMPPD $VCMP_IMM_LT_OS, Z8, Z2, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z8, Z3, K6
+  VCMPPD $VCMP_IMM_UNORD_Q, Z14, Z2, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z15, Z3, K4
+  KORW K5, K3, K3
+  KORW K6, K4, K4
+  VBROADCASTSD CONSTF64_NAN(), K3, Z4
+  VBROADCASTSD CONSTF64_NAN(), K4, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z2, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z3, K4
+  VBROADCASTSD CONSTF64_NEGATIVE_INF(), K3, Z4
+  VBROADCASTSD CONSTF64_NEGATIVE_INF(), K4, Z5
+  VPCMPEQQ.BCST CONSTF64_SIGN_BIT(), Z2, K3
+  VPCMPEQQ.BCST CONSTF64_SIGN_BIT(), Z3, K4
+  VBROADCASTSD CONSTF64_SIGN_BIT(), K3, Z4
+  VBROADCASTSD CONSTF64_SIGN_BIT(), K4, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - log(x) (Base-2 Logarithm)
+// ------------------------------------------------------------
+
+CONST_DATA_U64(const_ln2,  0, $0x3ff5555555555555) // f64(1.3333333333333333)
+CONST_DATA_U64(const_ln2,  8, $0x4090000000000000) // f64(1024)
+CONST_DATA_U64(const_ln2, 16, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_ln2, 24, $0x3fcc2b7a962850e9) // f64(0.22007686931522777)
+CONST_DATA_U64(const_ln2, 32, $0x3fd0caaeeb877481) // f64(0.26237080574885147)
+CONST_DATA_U64(const_ln2, 40, $0x3fcc501739f17ba9) // f64(0.22119417504560815)
+CONST_DATA_U64(const_ln2, 48, $0x3fd484ac6a7cb2dd) // f64(0.32059774779444955)
+CONST_DATA_U64(const_ln2, 56, $0x3fda617636c2c254) // f64(0.41219859454853247)
+CONST_DATA_U64(const_ln2, 64, $0x3fe2776c50e7ede9) // f64(0.5770780162997059)
+CONST_DATA_U64(const_ln2, 72, $0x3feec709dc3a07b2) // f64(0.96179669392608091)
+CONST_DATA_U64(const_ln2, 80, $0x40071547652b82fe) // f64(2.8853900817779268)
+CONST_DATA_U64(const_ln2, 88, $0x3c5bedda32ebbcb1) // f64(6.0561604995516738E-18)
+CONST_DATA_U64(const_ln2, 96, $0x0253040002530400) // i64(167482009228346368)
+CONST_GLOBAL(const_ln2, $104)
+
+// f64[0].k[1] = log2(f64[2]).k[3]
+TEXT bclog2f64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 0), Z5
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 8), Z7
+
+  VMULPD Z5, Z2, Z4
+  VMULPD Z5, Z3, Z5
+  VGETEXPPD Z4, Z4
+  VGETEXPPD Z5, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z5, K4
+  VMOVAPD Z7, K3, Z4
+  VMOVAPD Z7, K4, Z5
+  VGETMANTPD $11, Z2, Z6
+  VGETMANTPD $11, Z3, Z7
+
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 16), Z9
+  VBROADCASTSD CONSTF64_1(), Z12
+  VADDPD Z9, Z6, Z10
+  VADDPD Z9, Z7, Z11
+  VADDPD Z12, Z10, Z14
+  VADDPD Z12, Z11, Z15
+  VSUBPD Z14, Z10, Z16
+  VSUBPD Z15, Z11, Z17
+  VSUBPD Z16, Z9, Z16
+  VSUBPD Z17, Z9, Z17
+  VSUBPD Z14, Z6, Z14
+  VSUBPD Z15, Z7, Z15
+  VADDPD Z16, Z14, Z14
+  VADDPD Z17, Z15, Z15
+  VADDPD Z12, Z6, Z16
+  VADDPD Z12, Z7, Z17
+  VADDPD Z9, Z16, Z8
+  VADDPD Z9, Z17, Z9
+  VSUBPD Z8, Z16, Z18
+  VSUBPD Z9, Z17, Z19
+  VSUBPD Z18, Z12, Z18
+  VSUBPD Z19, Z12, Z19
+  VSUBPD Z8, Z6, Z6
+  VSUBPD Z9, Z7, Z7
+  VDIVPD Z16, Z12, Z8
+  VDIVPD Z17, Z12, Z9
+  VADDPD Z18, Z6, Z6
+  VADDPD Z19, Z7, Z7
+  VMULPD Z8, Z10, Z18
+  VMULPD Z9, Z11, Z19
+  VFMSUB213PD Z18, Z8, Z10  // Z10 = (Z8 * Z10) - Z18
+  VFMSUB213PD Z19, Z9, Z11  // Z11 = (Z9 * Z11) - Z19
+  VFNMADD213PD Z12, Z8, Z16 // Z16 = -(Z8 * Z16) + Z12
+  VFNMADD213PD Z12, Z9, Z17 // Z17 = -(Z9 * Z17) + Z12
+  VFNMADD231PD Z6, Z8, Z16  // Z16 = -(Z8 * Z6) + Z16
+  VFNMADD231PD Z7, Z9, Z17  // Z17 = -(Z9 * Z7) + Z17
+  VFMADD231PD Z14, Z8, Z10  // Z10 = (Z8 * Z14) + Z10
+  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
+  VFMADD231PD Z16, Z18, Z10 // Z10 = (Z18 * Z16) + Z10
+  VFMADD231PD Z17, Z19, Z11 // Z11 = (Z19 * Z17) + Z11
+  VMULPD Z18, Z18, Z6
+  VMULPD Z19, Z19, Z7
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 48), Z8
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 56), Z20
+  VMOVAPD Z8, Z9
+  VFMADD213PD Z20, Z6, Z8 // Z8 = (Z6 * Z8) + Z20
+  VFMADD213PD Z20, Z7, Z9 // Z9 = (Z7 * Z9) + Z20
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 80), Z14
+  VMULPD Z6, Z6, Z12
+  VMULPD Z7, Z7, Z13
+  VMULPD Z14, Z18, Z16
+  VMULPD Z14, Z19, Z17
+  VMOVAPD Z14, Z20
+  VMOVAPD Z14, Z21
+  VFMSUB213PD Z16, Z18, Z20 // Z20 = (Z18 * Z20) - Z16
+  VFMSUB213PD Z17, Z19, Z21 // Z21 = (Z19 * Z21) - Z17
+  VFMADD231PD Z10, Z14, Z20 // Z20 = (Z14 * Z10) + Z20
+  VFMADD231PD Z11, Z14, Z21 // Z21 = (Z14 * Z11) + Z21
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 64), Z10
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 72), Z22
+  VMOVAPD Z10, Z11
+  VMULPD Z12, Z12, Z14
+  VMULPD Z13, Z13, Z15
+  VFMADD213PD Z22, Z6, Z10 // Z10 = (Z6 * Z10) + Z22
+  VFMADD213PD Z22, Z7, Z11 // Z11 = (Z7 * Z11) + Z22
+  VFMADD231PD Z8, Z12, Z10 // Z10 = (Z12 * Z8) + Z10
+  VFMADD231PD Z9, Z13, Z11 // Z11 = (Z13 * Z9) + Z11
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 24), Z8
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 32), Z22
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 40), Z23
+  VMOVAPD Z8, Z9
+  VFMADD213PD Z22, Z6, Z8   // Z8 = (Z6 * Z8) + Z22
+  VFMADD213PD Z22, Z7, Z9   // Z9 = (Z7 * Z9) + Z22
+  VBROADCASTSD CONST_GET_PTR(const_ln2, 88), Z22
+  VFMADD231PD Z23, Z12, Z8  // Z8 = (Z12 * 23) + Z8
+  VFMADD231PD Z23, Z13, Z9  // Z9 = (Z13 * 23) + Z9
+  VFMADD231PD Z22, Z18, Z20 // Z20 = (Z18 * 22) + Z20
+  VFMADD231PD Z22, Z19, Z21 // Z21 = (Z19 * 22) + Z21
+  VFMADD231PD Z8, Z14, Z10  // Z10 = (Z14 * Z8) + Z10
+  VFMADD231PD Z9, Z15, Z11  // Z11 = (Z15 * Z9) + Z11
+  VADDPD Z16, Z4, Z8
+  VADDPD Z17, Z5, Z9
+  VSUBPD Z4, Z8, Z12
+  VSUBPD Z5, Z9, Z13
+  VSUBPD Z12, Z8, Z14
+  VSUBPD Z13, Z9, Z15
+  VSUBPD Z14, Z4, Z4
+  VSUBPD Z15, Z5, Z5
+  VSUBPD Z12, Z16, Z12
+  VSUBPD Z13, Z17, Z13
+  VADDPD Z4, Z12, Z4
+  VADDPD Z5, Z13, Z5
+  VADDPD Z20, Z4, Z4
+  VADDPD Z21, Z5, Z5
+  VMULPD Z6, Z18, Z6
+  VMULPD Z7, Z19, Z7
+  VMULPD Z10, Z6, Z6
+  VMULPD Z11, Z7, Z7
+  VADDPD Z6, Z8, Z10
+  VADDPD Z7, Z9, Z11
+  VSUBPD Z8, Z10, Z12
+  VSUBPD Z9, Z11, Z13
+  VSUBPD Z12, Z10, Z14
+  VSUBPD Z13, Z11, Z15
+  VSUBPD Z14, Z8, Z8
+  VSUBPD Z15, Z9, Z9
+  VSUBPD Z12, Z6, Z6
+  VSUBPD Z13, Z7, Z7
+  VADDPD Z8, Z6, Z6
+  VADDPD Z9, Z7, Z7
+  VADDPD Z6, Z4, Z4
+  VADDPD Z7, Z5, Z5
+  VPBROADCASTQ CONST_GET_PTR(const_ln2, 96), Z6
+  VADDPD Z4, Z10, Z4
+  VADDPD Z5, Z11, Z5
+
+  VFIXUPIMMPD $0, Z6, Z2, Z4
+  VFIXUPIMMPD $0, Z6, Z3, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - log(x) (Base-10 Logarithm)
+// -------------------------------------------------------------
+
+CONST_DATA_U64(const_ln10,   0, $0x3ff5555555555555) // f64(1.3333333333333333)
+CONST_DATA_U64(const_ln10,   8, $0x4090000000000000) // f64(1024)
+CONST_DATA_U64(const_ln10,  16, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_ln10,  24, $0x3fb0f63bd2a55192) // f64(0.066257227828208337)
+CONST_DATA_U64(const_ln10,  32, $0x3fb4381a2bf55d48) // f64(0.078981052143139441)
+CONST_DATA_U64(const_ln10,  40, $0x3fb10895f3ea9496) // f64(0.066537258195767585)
+CONST_DATA_U64(const_ln10,  48, $0x3fb8b4d992891f74) // f64(0.096509550357152751)
+CONST_DATA_U64(const_ln10,  56, $0x3fbfc3fa6f6d7821) // f64(0.1240841409721445)
+CONST_DATA_U64(const_ln10,  64, $0x3fc63c6277499b88) // f64(0.17371779274546051)
+CONST_DATA_U64(const_ln10,  72, $0x3fd287a7636f4570) // f64(0.28952965460219726)
+CONST_DATA_U64(const_ln10,  80, $0x3fd34413509f79ff) // f64(0.3010299956639812)
+CONST_DATA_U64(const_ln10,  88, $0xbc49dc1da994fd21) // f64(-2.8037281277851704E-18)
+CONST_DATA_U64(const_ln10,  96, $0x3febcb7b1526e50e) // f64(0.86858896380650363)
+CONST_DATA_U64(const_ln10, 104, $0x3c6a5b1dc915f38f) // f64(1.1430059694096389E-17)
+CONST_DATA_U64(const_ln10, 112, $0x0253040002530400) // i64(167482009228346368)
+CONST_GLOBAL(const_ln10, $120)
+
+// f64[0].k[1] = log10(f64[2]).k[3]
+TEXT bclog10f64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z6
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 0), Z5
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 8), Z7
+
+  VMULPD Z5, Z2, Z4
+  VMULPD Z5, Z3, Z5
+  VGETEXPPD Z4, Z4
+  VGETEXPPD Z5, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z5, K4
+  VMOVAPD Z7, K3, Z4
+  VMOVAPD Z7, K4, Z5
+  VGETMANTPD $11, Z2, Z6
+  VGETMANTPD $11, Z3, Z7
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 16), Z9
+  VBROADCASTSD CONSTF64_1(), Z12
+  VADDPD Z9, Z6, Z10
+  VADDPD Z9, Z7, Z11
+  VADDPD Z12, Z10, Z14
+  VADDPD Z12, Z11, Z15
+  VSUBPD Z14, Z10, Z16
+  VSUBPD Z15, Z11, Z17
+  VSUBPD Z16, Z9, Z16
+  VSUBPD Z17, Z9, Z17
+  VSUBPD Z14, Z6, Z14
+  VSUBPD Z15, Z7, Z15
+  VADDPD Z16, Z14, Z14
+  VADDPD Z17, Z15, Z15
+  VADDPD Z12, Z6, Z16
+  VADDPD Z12, Z7, Z17
+  VADDPD Z9, Z16, Z8
+  VADDPD Z9, Z17, Z9
+  VSUBPD Z8, Z16, Z18
+  VSUBPD Z9, Z17, Z19
+  VSUBPD Z18, Z12, Z18
+  VSUBPD Z19, Z12, Z19
+  VSUBPD Z8, Z6, Z6
+  VSUBPD Z9, Z7, Z7
+  VADDPD Z18, Z6, Z6
+  VADDPD Z19, Z7, Z7
+  VDIVPD Z16, Z12, Z8
+  VDIVPD Z17, Z12, Z9
+  VMULPD Z8, Z10, Z18
+  VMULPD Z9, Z11, Z19
+  VFMSUB213PD Z18, Z8, Z10  // Z10 = (Z8 * Z10) - Z18
+  VFMSUB213PD Z19, Z9, Z11  // Z11 = (Z9 * Z11) - Z19
+  VFNMADD213PD Z12, Z8, Z16 // Z16 = -(Z8 * Z16) + Z12
+  VFNMADD213PD Z12, Z9, Z17 // Z17 = -(Z9 * Z17) + Z12
+  VFNMADD231PD Z6, Z8, Z16  // Z16 = -(Z8 * Z6) + Z16
+  VFNMADD231PD Z7, Z9, Z17  // Z17 = -(Z9 * Z7) + Z17
+  VFMADD231PD Z14, Z8, Z10  // Z10 = (Z8 * Z14) + Z10
+  VFMADD231PD Z15, Z9, Z11  // Z11 = (Z9 * Z15) + Z11
+  VFMADD231PD Z16, Z18, Z10 // Z10 = (Z18 * Z16) + Z10
+  VFMADD231PD Z17, Z19, Z11 // Z11 = (Z19 * Z17) + Z11
+  VMULPD Z18, Z18, Z6
+  VMULPD Z19, Z19, Z7
+  VMULPD Z6, Z6, Z8
+  VMULPD Z7, Z7, Z9
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 24), Z12
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 32), Z14
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 40), Z15
+  VMOVAPD Z12, Z13
+  VFMADD213PD Z14, Z6, Z12 // Z12 = (Z6 * Z12) + Z14
+  VFMADD213PD Z14, Z7, Z13 // Z13 = (Z7 * Z13) + Z14
+  VFMADD231PD Z15, Z8, Z12 // Z12 = (Z8 * Z15) + Z12
+  VFMADD231PD Z15, Z9, Z13 // Z13 = (Z9 * Z15) + Z13
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 48), Z14
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 64), Z16
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 56), Z20
+  VMOVAPD Z14, Z15
+  VMOVAPD Z16, Z17
+  VFMADD213PD Z20, Z6, Z14 // Z14 = (Z6 * Z14) + Z20
+  VFMADD213PD Z20, Z7, Z15 // Z15 = (Z7 * Z15) + Z20
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 72), Z22
+  VMULPD Z8, Z8, Z20
+  VMULPD Z9, Z9, Z21
+  VFMADD213PD Z22, Z6, Z16 // Z16 = (Z6 * Z16) + Z22
+  VFMADD213PD Z22, Z7, Z17 // Z17 = (Z7 * Z17) + Z22
+  VFMADD231PD Z14, Z8, Z16 // Z16 = (Z8 * Z14) + Z16
+  VFMADD231PD Z15, Z9, Z17 // Z17 = (Z9 * Z15) + Z17
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 80), Z8
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 88), Z22
+  VMOVAPD Z8, Z9
+  VMULPD Z8, Z4, Z14
+  VMULPD Z9, Z5, Z15
+  VFMSUB213PD Z14, Z4, Z8 // Z8 = (Z4 * Z8) - Z14
+  VFMSUB213PD Z15, Z5, Z9 // Z9 = (Z5 * Z9) - Z15
+  VFMADD231PD Z22, Z4, Z8 // Z8 = (Z4 * Z22) + Z8
+  VFMADD231PD Z22, Z5, Z9 // Z9 = (Z5 * Z22) + Z9
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 96), Z4
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 104), Z5
+  VFMADD231PD Z12, Z20, Z16 // Z16 = (Z20 * Z12) + Z16
+  VFMADD231PD Z13, Z21, Z17 // Z17 = (Z21 * Z13) + Z17
+  VMULPD Z4, Z18, Z12
+  VMULPD Z4, Z19, Z13
+  VMOVAPD Z4, Z20
+  VMOVAPD Z4, Z21
+  VFMSUB213PD Z12, Z18, Z20 // Z20 = (Z18 * Z20) - Z12
+  VFMSUB213PD Z13, Z19, Z21 // Z21 = (Z19 * Z21) - Z13
+  VFMADD231PD Z10, Z4, Z20  // Z20 = (Z4 * Z10) + Z20
+  VFMADD231PD Z11, Z4, Z21  // Z21 = (Z4 * Z11) + Z21
+  VFMADD231PD Z5, Z18, Z20 // Z20 = (Z18 * Z5) + Z20
+  VFMADD231PD Z5, Z19, Z21 // Z21 = (Z19 * Z5) + Z21
+  VADDPD Z12, Z14, Z4
+  VADDPD Z13, Z15, Z5
+  VSUBPD Z4, Z14, Z10
+  VSUBPD Z5, Z15, Z11
+  VADDPD Z10, Z12, Z10
+  VADDPD Z11, Z13, Z11
+  VADDPD Z10, Z8, Z8
+  VADDPD Z11, Z9, Z9
+  VADDPD Z20, Z8, Z8
+  VADDPD Z21, Z9, Z9
+  VMULPD Z6, Z18, Z6
+  VMULPD Z7, Z19, Z7
+  VMULPD Z16, Z6, Z6
+  VMULPD Z17, Z7, Z7
+  VADDPD Z6, Z4, Z10
+  VADDPD Z7, Z5, Z11
+  VSUBPD Z10, Z4, Z4
+  VSUBPD Z11, Z5, Z5
+  VADDPD Z4, Z6, Z4
+  VADDPD Z5, Z7, Z5
+  VADDPD Z4, Z8, Z4
+  VADDPD Z5, Z9, Z5
+  VBROADCASTSD CONST_GET_PTR(const_ln10, 112), Z6
+  VADDPD Z4, Z10, Z4
+  VADDPD Z5, Z11, Z5
+  VFIXUPIMMPD $0, Z6, Z2, Z4
+  VFIXUPIMMPD $0, Z6, Z3, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - sin(x)
+// -----------------------------------------
+
+// Sin/Cos/Tan calculation has 3 code paths:
+//
+//   - case 'a': values lesser than 15
+//   - case 'b': values lesser than 1e14
+//   - case 'c': other values that require input domain reduction
+//
+// Execution:
+//
+//   - if inputs in all lanes are lesser than 15, only case 'a' is executed
+//   - if there are values equal or greater than 15, case 'b' is executed
+//   - if there are values equal or greater than 1e14, case 'c' is executed
+//   - each case is properly blended to the output so lanes don't influence each other
+//
+// NOTE: Case 'c' requires a very expensive input range reduction to PI. It
+//       uses a lookup table, which is provided by `bc_constant_rempi.h`.
+
+// Sine: sin(x)
+CONST_DATA_U64(const_sin,   0, $0x402e000000000000) // f64(15)
+CONST_DATA_U64(const_sin,   8, $0x3fd45f306dc9c883) // f64(0.31830988618379069)
+CONST_DATA_U64(const_sin,  16, $0xc00921fb54442d18) // f64(-3.1415926535897931)
+CONST_DATA_U64(const_sin,  24, $0xbca1a62633145c07) // f64(-1.2246467991473532E-16)
+CONST_DATA_U64(const_sin,  32, $0x3e545f306dc9c883) // f64(1.8972747694479864E-8)
+CONST_DATA_U64(const_sin,  40, $0x4170000000000000) // f64(16777216)
+CONST_DATA_U64(const_sin,  48, $0xc00921fb50000000) // f64(-3.1415926218032837)
+CONST_DATA_U64(const_sin,  56, $0xbe6110b460000000) // f64(-3.1786509424591713E-8)
+CONST_DATA_U64(const_sin,  64, $0xbca1a62630000000) // f64(-1.2246467864107189E-16)
+CONST_DATA_U64(const_sin,  72, $0xbaf8a2e03707344a) // f64(-1.27366343270219E-24)
+CONST_DATA_U64(const_sin,  80, $0x42d6bcc41e900000) // f64(1.0E+14)
+CONST_DATA_U64(const_sin,  88, $0x4010000000000000) // f64(4)
+CONST_DATA_U64(const_sin,  96, $0x3fd0000000000000) // f64(0.25)
+CONST_DATA_U64(const_sin, 104, $0x401921fb54442d18) // f64(6.2831853071795862)
+CONST_DATA_U64(const_sin, 112, $0x3cb1a62633145c07) // f64(2.4492935982947064E-16)
+CONST_DATA_U64(const_sin, 120, $0x3fe6666666666666) // f64(0.69999999999999996)
+CONST_DATA_U64(const_sin, 128, $0x0000000100000001) // i64(4294967297)
+CONST_DATA_U64(const_sin, 136, $0xbff921fb54442d18) // i64(-4613618979930100456)
+CONST_DATA_U64(const_sin, 144, $0xbc91a62633145c07) // i64(-4858919839960114169)
+CONST_DATA_U64(const_sin, 152, $0x3ce8811a03b2b11d) // f64(2.7205241613852957E-15)
+CONST_DATA_U64(const_sin, 160, $0xbd6ae422bc319350) // f64(-7.6429259411395447E-13)
+CONST_DATA_U64(const_sin, 168, $0x3de6123c74705f67) // f64(1.605893701172779E-10)
+CONST_DATA_U64(const_sin, 176, $0xbe5ae6454baa2959) // f64(-2.5052106814843123E-8)
+CONST_DATA_U64(const_sin, 184, $0x3ec71de3a525fbed) // f64(2.7557319210442822E-6)
+CONST_DATA_U64(const_sin, 192, $0xbf2a01a01a014225) // f64(-1.9841269841204645E-4)
+CONST_DATA_U64(const_sin, 200, $0x3f811111111110b9) // f64(0.0083333333333331805)
+CONST_DATA_U64(const_sin, 208, $0xbfc5555555555555) // f64(-0.16666666666666666)
+CONST_DATA_U32(const_sin, 216, $0x000003ff) // i32(1023)
+CONST_DATA_U32(const_sin, 220, $0xffffffc9) // i32(4294967241)
+CONST_DATA_U32(const_sin, 224, $0x00000285) // i32(645)
+CONST_DATA_U32(const_sin, 228, $0xffffffc0) // i32(4294967232)
+CONST_DATA_U32(const_sin, 232, $0x00000006) // i32(6)
+CONST_DATA_U32(const_sin, 236, $0x00000002) // i32(2)
+CONST_DATA_U32(const_sin, 240, $0x00000001) // i32(1)
+CONST_GLOBAL(const_sin, $244)
+
+// f64[0].k[1] = sin(f64[2]).k[3]
+TEXT bcsinf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  // case 'a': this case is implicit and is always executed
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z7
+  VBROADCASTSD CONST_GET_PTR(const_sin, 0), Z4
+  VBROADCASTSD CONST_GET_PTR(const_sin, 8), Z5
+
+  VANDPD Z7, Z2, Z6
+  VANDPD Z7, Z3, Z7
+
+  // K3/K4 contain lanes where x >= 15, which require more work
+  VCMPPD $VCMP_IMM_GE_OQ, Z4, Z6, K1, K3
+  VCMPPD $VCMP_IMM_GE_OQ, Z4, Z7, K2, K4
+  KUNPCKBW K3, K4, K3
+
+  VMULPD Z5, Z2, Z4
+  VMULPD Z5, Z3, Z5
+
+  VRNDSCALEPD $8, Z4, Z8
+  VRNDSCALEPD $8, Z5, Z9
+  VCVTPD2DQ.RN_SAE Z8, Y4
+  VCVTPD2DQ.RN_SAE Z9, Y5
+  VINSERTI32X8 $1, Y5, Z4, Z4
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 16), Z10
+  VBROADCASTSD CONST_GET_PTR(const_sin, 24), Z12
+  VMOVAPD Z10, Z11
+  VFMADD213PD Z2, Z8, Z10 // Z10 = (Z8 * Z10) + Z2
+  VFMADD213PD Z3, Z9, Z11 // Z11 = (Z9 * Z11) + Z3
+  VMULPD Z12, Z8, Z8
+  VMULPD Z12, Z9, Z9
+  VADDPD Z8, Z10, Z14
+  VADDPD Z9, Z11, Z15
+  VSUBPD Z14, Z10, Z10
+  VSUBPD Z15, Z11, Z11
+  VADDPD Z10, Z8, Z16
+  VADDPD Z11, Z9, Z17
+
+  // Jump to 'sin_case_b' if one or more lane has x >= 15
+  KTESTW K3, K3
+  JNE sin_case_b
+
+sin_eval_poly:
+  // Polynomial evaluation; code shared by all cases
+  VMULPD Z14, Z14, Z6
+  VMULPD Z15, Z15, Z7
+  VADDPD Z14, Z14, Z8
+  VADDPD Z15, Z15, Z9
+
+  VMOVAPD Z14, Z10
+  VMOVAPD Z15, Z11
+  VFMSUB213PD Z6, Z14, Z10 // Z10 = (Z14 * Z10) - Z6
+  VFMSUB213PD Z7, Z15, Z11 // Z11 = (Z15 * Z11) - Z7
+  VFMADD231PD Z8, Z16, Z10 // Z10 = (Z16 * Z8) + Z10
+  VFMADD231PD Z9, Z17, Z11 // Z11 = (Z17 * Z9) + Z11
+
+  VMULPD Z6, Z6, Z8
+  VMULPD Z7, Z7, Z9
+  VMULPD Z8, Z8, Z12
+  VMULPD Z9, Z9, Z13
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 152), Z18
+  VBROADCASTSD CONST_GET_PTR(const_sin, 168), Z20
+  VBROADCASTSD CONST_GET_PTR(const_sin, 184), Z22
+  VMOVAPD Z18, Z19
+  VMOVAPD Z20, Z21
+  VMOVAPD Z22, Z23
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 160), Z24
+  VBROADCASTSD CONST_GET_PTR(const_sin, 176), Z25
+  VFMADD213PD Z24, Z6, Z18 // Z18 = (Z6 * Z18) + Z24
+  VFMADD213PD Z24, Z7, Z19 // Z19 = (Z7 * Z19) + Z24
+  VFMADD213PD Z25, Z6, Z20 // Z20 = (Z6 * Z20) + Z25
+  VFMADD213PD Z25, Z7, Z21 // Z21 = (Z7 * Z21) + Z25
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 192), Z24
+  VBROADCASTSD CONST_GET_PTR(const_sin, 200), Z25
+  VFMADD213PD Z24, Z6, Z22  // Z22 = (Z6 * Z22) + Z24
+  VFMADD213PD Z24, Z7, Z23  // Z23 = (Z7 * Z23) + Z24
+  VFMADD231PD Z20, Z8, Z22  // Z22 = (Z8 * Z20) + Z22
+  VFMADD231PD Z21, Z9, Z23  // Z23 = (Z9 * Z21) + Z23
+  VFMADD231PD Z18, Z12, Z22 // Z22 = (Z12 * Z18) + Z22
+  VFMADD231PD Z19, Z13, Z23 // Z23 = (Z13 * Z19) + Z23
+  VFMADD213PD Z25, Z6, Z22  // Z22 = (Z6 * Z22) + Z25
+  VFMADD213PD Z25, Z7, Z23  // Z23 = (Z7 * Z23) + Z25
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 208), Z13
+  VMULPD Z22, Z6, Z8
+  VMULPD Z23, Z7, Z9
+  VADDPD Z13, Z8, Z18
+  VADDPD Z13, Z9, Z19
+  VSUBPD Z18, Z13, Z12
+  VSUBPD Z19, Z13, Z13
+  VADDPD Z12, Z8, Z8
+  VADDPD Z13, Z9, Z9
+  VMULPD Z18, Z6, Z12
+  VMULPD Z19, Z7, Z13
+  VMOVAPD Z6, Z20
+  VMOVAPD Z7, Z21
+  VFMSUB213PD Z12, Z18, Z20 // Z20 = (Z18 * Z20) - Z12
+  VFMSUB213PD Z13, Z19, Z21 // Z21 = (Z19 * Z21) - Z13
+  VFMADD231PD Z8, Z6, Z20   // Z20 = (Z6 * Z8) + Z20
+  VFMADD231PD Z9, Z7, Z21   // Z21 = (Z7 * Z9) + Z21
+  VFMADD231PD Z10, Z18, Z20 // Z20 = (Z18 * Z10) + Z20
+  VFMADD231PD Z11, Z19, Z21 // Z21 = (Z19 * Z11) + Z21
+
+  VBROADCASTSD CONSTF64_1(), Z7
+  VADDPD Z7, Z12, Z8
+  VADDPD Z7, Z13, Z9
+  VSUBPD Z8, Z7, Z6
+  VSUBPD Z9, Z7, Z7
+  VADDPD Z6, Z12, Z6
+  VADDPD Z7, Z13, Z7
+  VADDPD Z20, Z6, Z6
+  VADDPD Z21, Z7, Z7
+  VMULPD Z6, Z14, Z6
+  VMULPD Z7, Z15, Z7
+  VFMADD231PD Z16, Z8, Z6 // Z6 = (Z8 * Z16) + Z6
+  VFMADD231PD Z17, Z9, Z7 // Z7 = (Z9 * Z17) + Z7
+  VFMADD231PD Z8, Z14, Z6 // Z6 = (Z14 * Z8) + Z6
+  VFMADD231PD Z9, Z15, Z7 // Z7 = (Z15 * Z9) + Z7
+
+  VPANDD.BCST CONST_GET_PTR(const_sin, 128), Z4, Z4
+  VPCMPEQD.BCST CONST_GET_PTR(const_sin, 240), Z4, K3
+  KSHIFTRW $8, K3, K4
+  VPBROADCASTQ.Z CONSTF64_SIGN_BIT(), K3, Z4
+  VPBROADCASTQ.Z CONSTF64_SIGN_BIT(), K4, Z5
+  VXORPD Z6, Z4, Z4
+  VXORPD Z7, Z5, Z5
+  VXORPD X6, X6, X6
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z2, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z3, K4
+  VMOVAPD Z2, K3, Z4
+  VMOVAPD Z3, K4, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+sin_case_b:
+  // case 'b': one or more lane has x >= 1e14
+  VBROADCASTSD CONST_GET_PTR(const_sin, 32), Z9
+  VMULPD Z9, Z2, Z8
+  VMULPD Z9, Z3, Z9
+  VRNDSCALEPD $11, Z8, Z8
+  VRNDSCALEPD $11, Z9, Z9
+  VBROADCASTSD CONST_GET_PTR(const_sin, 8), Z10
+  VBROADCASTSD CONST_GET_PTR(const_sin, 40), Z11
+  VMULPD Z11, Z8, Z8
+  VMULPD Z11, Z9, Z9
+  VMOVAPD Z10, Z11
+  VFMSUB213PD Z8, Z2, Z10 // Z10 = (Z2 * Z10) - Z8
+  VFMSUB213PD Z9, Z3, Z11 // Z11 = (Z3 * Z11) - Z9
+  VRNDSCALEPD $8, Z10, Z12
+  VRNDSCALEPD $8, Z11, Z13
+  VBROADCASTSD CONST_GET_PTR(const_sin, 48), Z10
+  VBROADCASTSD CONST_GET_PTR(const_sin, 48), Z11
+  VMULPD Z10, Z12, Z18
+  VMULPD Z11, Z13, Z19
+  VFMADD213PD Z2, Z8, Z10 // Z10 = (Z8 * Z10) + Z2
+  VFMADD213PD Z3, Z9, Z11 // Z11 = (Z9 * Z11) + Z3
+  VADDPD Z18, Z10, Z20
+  VADDPD Z19, Z11, Z21
+  VSUBPD Z20, Z10, Z10
+  VSUBPD Z21, Z11, Z11
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 56), Z19
+  VMULPD Z19, Z8, Z22
+  VMULPD Z19, Z9, Z23
+  VADDPD Z20, Z22, Z24
+  VADDPD Z21, Z23, Z25
+  VSUBPD Z20, Z24, Z26
+  VSUBPD Z21, Z25, Z27
+  VSUBPD Z26, Z24, Z5
+  VSUBPD Z27, Z25, Z18
+  VSUBPD Z5, Z20, Z20
+  VSUBPD Z18, Z21, Z21
+  VSUBPD Z26, Z22, Z22
+  VSUBPD Z27, Z23, Z23
+  VADDPD Z20, Z22, Z20
+  VADDPD Z21, Z23, Z21
+  VADDPD Z20, Z10, Z10
+  VADDPD Z21, Z11, Z11
+  VMULPD Z19, Z12, Z18
+  VMULPD Z19, Z13, Z19
+  VADDPD Z24, Z18, Z20
+  VADDPD Z25, Z19, Z21
+  VSUBPD Z24, Z20, Z22
+  VSUBPD Z25, Z21, Z23
+  VSUBPD Z22, Z20, Z26
+  VSUBPD Z23, Z21, Z27
+  VSUBPD Z26, Z24, Z24
+  VSUBPD Z27, Z25, Z25
+  VSUBPD Z22, Z18, Z18
+  VSUBPD Z23, Z19, Z19
+  VADDPD Z24, Z18, Z18
+  VADDPD Z25, Z19, Z19
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 64), Z23
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+  VMULPD Z23, Z8, Z18
+  VMULPD Z23, Z9, Z19
+  VADDPD Z20, Z18, Z24
+  VADDPD Z21, Z19, Z25
+  VSUBPD Z20, Z24, Z26
+  VSUBPD Z21, Z25, Z27
+  VSUBPD Z26, Z24, Z5
+  VSUBPD Z27, Z25, Z22
+  VSUBPD Z5, Z20, Z20
+  VSUBPD Z22, Z21, Z21
+  VSUBPD Z26, Z18, Z18
+  VSUBPD Z27, Z19, Z19
+  VADDPD Z20, Z18, Z18
+  VADDPD Z21, Z19, Z19
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+  VMULPD Z23, Z12, Z18
+  VMULPD Z23, Z13, Z19
+  VADDPD Z24, Z18, Z20
+  VADDPD Z25, Z19, Z21
+  VSUBPD Z24, Z20, Z22
+  VSUBPD Z25, Z21, Z23
+  VSUBPD Z22, Z20, Z26
+  VSUBPD Z23, Z21, Z27
+  VSUBPD Z26, Z24, Z24
+  VSUBPD Z27, Z25, Z25
+  VSUBPD Z22, Z18, Z18
+  VSUBPD Z23, Z19, Z19
+  VADDPD Z24, Z18, Z18
+  VADDPD Z25, Z19, Z19
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+  VBROADCASTSD CONST_GET_PTR(const_sin, 72), Z19
+  VADDPD Z12, Z8, Z8
+  VADDPD Z13, Z9, Z9
+  VMULPD Z19, Z8, Z18
+  VMULPD Z19, Z9, Z19
+  VADDPD Z20, Z18, Z8
+  VADDPD Z21, Z19, Z9
+  VSUBPD Z8, Z20, Z20
+  VSUBPD Z9, Z21, Z21
+  VADDPD Z20, Z18, Z18
+  VADDPD Z21, Z19, Z19
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+
+  VCVTPD2DQ.RN_SAE Z12, Y18
+  VCVTPD2DQ.RN_SAE Z13, Y19
+  VINSERTI32X8 $1, Y19, Z18, K3, Z4
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 80), Z20
+  VMOVAPD Z8, K3, Z14
+  VMOVAPD Z9, K4, Z15
+  VMOVAPD Z10, K3, Z16
+  VMOVAPD Z11, K4, Z17
+
+  VCMPPD $VCMP_IMM_GE_OS, Z20, Z6, K3, K3
+  VCMPPD $VCMP_IMM_GE_OS, Z20, Z7, K4, K4
+  KUNPCKBW K3, K4, K3
+  KTESTW K3, K3
+  JZ sin_eval_poly
+
+  // case 'c': one or more lane has x >= 1e14
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z12
+  MOVL $0xAAAA, R8
+  LEAQ CONST_GET_PTR(const_rempi, 0), R15
+
+  // K0 contains mask of all inputs that are either +INF or -INF
+  VCMPPD $VCMP_IMM_EQ_OQ, Z12, Z6, K3, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z12, Z7, K4, K5
+  KUNPCKBW K0, K5, K0
+
+  VGETEXPPD Z2, Z12
+  VGETEXPPD Z3, Z13
+  VCVTPD2DQ.RN_SAE Z12, Y8
+  VCVTPD2DQ.RN_SAE Z13, Y9
+  VINSERTI32X8 $1, Y9, Z8, Z8
+
+  VPCMPGTD.BCST CONSTD_NEG_1(), Z8, K5
+  VPANDD.BCST CONST_GET_PTR(const_sin, 216), Z8, Z8
+  VMOVDQA32.Z Z8, K5, Z8
+  VPADDD.BCST CONST_GET_PTR(const_sin, 220), Z8, Z10
+  VPCMPGTD.BCST CONST_GET_PTR(const_sin, 224), Z10, K5
+  VPBROADCASTD.Z CONST_GET_PTR(const_sin, 228), K5, Z8
+  VPSLLD $20, Z8, Z8
+  VEXTRACTI32X8 $1, Z8, Y9
+  KMOVW R8, K5
+  VPEXPANDD.Z Z8, K5, Z8
+  VPEXPANDD.Z Z9, K5, Z9
+  VPADDQ Z2, Z8, Z8
+  VPADDQ Z3, Z9, Z9
+  VPSRAD $31, Z10, Z18
+  VPANDND Z10, Z18, Z10
+  VPSLLD $2, Z10, Z10
+  VEXTRACTI32X8 $1, Z10, Y11
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X18, X18, X18
+  VXORPD X19, X19, X19
+  VGATHERDPD 0(R15)(Y10*8), K5, Z18
+  VGATHERDPD 0(R15)(Y11*8), K6, Z19
+  ADDQ $8, R15
+
+  VMULPD Z8, Z18, Z20
+  VMULPD Z9, Z19, Z21
+  VFMSUB213PD Z20, Z8, Z18 // Z18 = (Z8 * Z18) - Z20
+  VFMSUB213PD Z21, Z9, Z19 // Z19 = (Z9 * Z19) - Z21
+  VBROADCASTSD CONST_GET_PTR(const_sin, 88), Z23
+  VMULPD Z23, Z20, Z24
+  VMULPD Z23, Z21, Z25
+  VRNDSCALEPD $8, Z24, Z24
+  VRNDSCALEPD $8, Z25, Z25
+  VRNDSCALEPD $8, Z20, Z26
+  VRNDSCALEPD $8, Z21, Z27
+  VMULPD Z23, Z26, Z26
+  VMULPD Z23, Z27, Z27
+  VSUBPD Z26, Z24, Z26
+  VSUBPD Z27, Z25, Z27
+  VCVTPD2DQ.RZ_SAE Z26, Y26
+  VCVTPD2DQ.RZ_SAE Z27, Y27
+  VINSERTI32X8 $1, Y27, Z26, Z26
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 96), Z27
+  VMULPD Z27, Z24, Z24
+  VMULPD Z27, Z25, Z25
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z18, Z20, Z24
+  VADDPD Z19, Z21, Z25
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z20, Z18, Z18
+  VADDPD Z21, Z19, Z19
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X20, X20, X20
+  VXORPD X21, X21, X21
+  VGATHERDPD 0(R15)(Y10*8), K5, Z20
+  VGATHERDPD 0(R15)(Y11*8), K6, Z21
+  ADDQ $8, R15
+
+  VMULPD Z8, Z20, Z12
+  VMULPD Z9, Z21, Z13
+  VFMSUB213PD Z12, Z8, Z20 // Z20 = (Z8 * Z20) - Z12
+  VFMSUB213PD Z13, Z9, Z21 // Z21 = (Z9 * Z21) - Z13
+  VADDPD Z18, Z20, Z18
+  VADDPD Z19, Z21, Z19
+  VADDPD Z24, Z12, Z20
+  VADDPD Z25, Z13, Z21
+  VSUBPD Z24, Z20, Z6
+  VSUBPD Z25, Z21, Z7
+  VSUBPD Z6, Z20, Z5
+  VSUBPD Z5, Z24, Z24
+  VSUBPD Z7, Z21, Z5
+  VSUBPD Z5, Z25, Z25
+  VSUBPD Z6, Z12, Z12
+  VSUBPD Z7, Z13, Z13
+  VADDPD Z24, Z12, Z24
+  VADDPD Z25, Z13, Z25
+  VADDPD Z24, Z18, Z24
+  VADDPD Z25, Z19, Z25
+  VMULPD Z23, Z20, Z18
+  VMULPD Z23, Z21, Z19
+  VRNDSCALEPD $8, Z18, Z12
+  VRNDSCALEPD $8, Z19, Z13
+  VRNDSCALEPD $8, Z20, Z18
+  VRNDSCALEPD $8, Z21, Z19
+  VMULPD Z23, Z18, Z18
+  VMULPD Z23, Z19, Z19
+  VSUBPD Z18, Z12, Z18
+  VSUBPD Z19, Z13, Z19
+  VCVTPD2DQ.RZ_SAE Z18, Y18
+  VCVTPD2DQ.RZ_SAE Z19, Y19
+  VBROADCASTSD CONST_GET_PTR(const_sin, 96), Z23
+  VINSERTI32X8 $1, Y19, Z18, Z18
+  VPADDD Z26, Z18, Z18
+  VMULPD Z23, Z12, Z22
+  VMULPD Z23, Z13, Z23
+  VSUBPD Z22, Z20, Z20
+  VSUBPD Z23, Z21, Z21
+  VADDPD Z24, Z20, Z22
+  VADDPD Z25, Z21, Z23
+  VSUBPD Z22, Z20, Z20
+  VSUBPD Z23, Z21, Z21
+  VADDPD Z20, Z24, Z20
+  VADDPD Z21, Z25, Z21
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X24, X24, X24
+  VXORPD X25, X25, X25
+  VGATHERDPD 0(R15)(Y10*8), K5, Z24
+  VGATHERDPD 0(R15)(Y11*8), K6, Z25
+  ADDQ $8, R15
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X26, X26, X26
+  VXORPD X27, X27, X27
+  VGATHERDPD 0(R15)(Y10*8), K5, Z26
+  VGATHERDPD 0(R15)(Y11*8), K6, Z27
+
+  VMULPD Z8, Z24, Z10
+  VMULPD Z9, Z25, Z11
+  VFMSUB213PD Z10, Z8, Z24 // Z24 = (Z8 * Z24) - Z10
+  VFMSUB213PD Z11, Z9, Z25 // Z25 = (Z9 * Z25) - Z11
+  VFMADD231PD Z26, Z8, Z24 // Z24 = (Z8 * Z26) + Z24
+  VFMADD231PD Z27, Z9, Z25 // Z25 = (Z9 * Z27) + Z25
+  VADDPD Z20, Z24, Z20
+  VADDPD Z21, Z25, Z21
+  VADDPD Z22, Z10, Z24
+  VADDPD Z23, Z11, Z25
+  VSUBPD Z22, Z24, Z26
+  VSUBPD Z23, Z25, Z27
+  VSUBPD Z26, Z24, Z12
+  VSUBPD Z27, Z25, Z13
+  VSUBPD Z12, Z22, Z22
+  VSUBPD Z13, Z23, Z23
+  VSUBPD Z26, Z10, Z10
+  VSUBPD Z27, Z11, Z11
+  VADDPD Z22, Z10, Z10
+  VADDPD Z23, Z11, Z11
+  VADDPD Z10, Z20, Z10
+  VADDPD Z11, Z21, Z11
+  VADDPD Z10, Z24, Z20
+  VADDPD Z11, Z25, Z21
+  VSUBPD Z20, Z24, Z22
+  VSUBPD Z21, Z25, Z23
+  VADDPD Z22, Z10, Z10
+  VADDPD Z23, Z11, Z11
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 104), Z23
+  VMULPD Z23, Z20, Z24
+  VMULPD Z23, Z21, Z25
+  VMOVAPD Z23, Z26
+  VMOVAPD Z23, Z27
+  VFMSUB213PD Z24, Z20, Z26 // Z26 = (Z20 * Z26) - Z24
+  VFMSUB213PD Z25, Z21, Z27 // Z27 = (Z21 * Z27) - Z25
+  VFMADD231PD Z10, Z23, Z26 // Z26 = (Z23 * Z10) + Z26
+  VBROADCASTSD CONST_GET_PTR(const_sin, 112), Z10
+  VFMADD231PD Z11, Z23, Z27 // Z27 = (Z23 * Z11) + Z27
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z11
+  VFMADD231PD Z10, Z20, Z26 // Z26 = (Z20 * Z10) + Z26
+  VFMADD231PD Z10, Z21, Z27 // Z27 = (Z21 * Z10) + Z27
+
+  VBROADCASTSD CONST_GET_PTR(const_sin, 120), Z5
+  VANDPD Z11, Z8, Z10
+  VANDPD Z11, Z9, Z11
+  VCMPPD $VCMP_IMM_LT_OS, Z5, Z10, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z5, Z11, K6
+  VMOVAPD Z8, K5, Z24
+  VMOVAPD Z9, K6, Z25
+  VPADDD Z18, Z18, Z8
+  VPANDD.BCST CONST_GET_PTR(const_sin, 232), Z8, Z8
+  VXORPD Z26, Z26, K5, Z26
+  VXORPD Z27, Z27, K6, Z27
+
+  VXORPD X12, X12, X12
+  VCMPPD $VCMP_IMM_LT_OS, Z24, Z12, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z25, Z12, K6
+  KUNPCKBW K5, K6, K5
+  VPBROADCASTD CONST_GET_PTR(const_sin, 236), Z10
+  VPBROADCASTD CONST_GET_PTR(const_sin, 240), Z22
+  VPBLENDMD Z10, Z22, K5, Z10
+  VPADDD Z10, Z8, Z8
+  VPBROADCASTQ CONST_GET_PTR(const_sin, 128), Z10
+  VPSRLD $2, Z8, Z20
+  VPANDD Z10, Z18, Z8
+  VPCMPEQD Z22, Z8, K5
+  KSHIFTRW $8, K5, K6
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z9
+  VBROADCASTSD CONST_GET_PTR(const_sin, 136), Z11
+  VANDPD Z9, Z24, Z8
+  VANDPD Z9, Z25, Z9
+  VBROADCASTSD CONST_GET_PTR(const_sin, 144), Z5
+  VXORPD Z11, Z8, Z10
+  VXORPD Z11, Z9, Z11
+  VXORPD Z5, Z8, Z8
+  VXORPD Z5, Z9, Z9
+  VADDPD Z10, Z24, Z18
+  VADDPD Z11, Z25, Z19
+  VSUBPD Z24, Z18, Z22
+  VSUBPD Z25, Z19, Z23
+  VSUBPD Z22, Z18, Z12
+  VSUBPD Z23, Z19, Z13
+  VSUBPD Z12, Z24, Z12
+  VSUBPD Z13, Z25, Z13
+  VSUBPD Z22, Z10, Z10
+  VSUBPD Z23, Z11, Z11
+  VADDPD Z12, Z10, Z10
+  VADDPD Z13, Z11, Z11
+  VADDPD Z8, Z26, Z8
+  VADDPD Z9, Z27, Z9
+  VMOVAPD Z18, K5, Z24
+  VMOVAPD Z19, K6, Z25
+  VADDPD Z10, Z8, K5, Z26
+  VADDPD Z11, Z9, K6, Z27
+  VADDPD Z26, Z24, Z8
+  VADDPD Z27, Z25, Z9
+  VSUBPD Z8, Z24, Z10
+  VSUBPD Z9, Z25, Z11
+  VADDPD Z10, Z26, Z10
+  VADDPD Z11, Z27, Z11
+
+  VMOVDQA32 Z20, K3, Z4
+  VMOVAPD Z8, K3, Z14
+  VMOVAPD Z9, K4, Z15
+  VMOVAPD Z10, K3, Z16
+  VMOVAPD Z11, K4, Z17
+
+  VXORPD X12, X12, X12
+  VCMPPD $VCMP_IMM_UNORD_Q, Z12, Z2, K3, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z12, Z3, K4, K4
+  KSHIFTRW $8, K0, K5
+  KORW K0, K3, K3
+  KORW K5, K4, K4
+  VPTERNLOGQ $0xFF, Z14, Z14, K3, Z14
+  VPTERNLOGQ $0xFF, Z15, Z15, K4, Z15
+  JMP sin_eval_poly
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - cos(x)
+// -----------------------------------------
+
+CONST_DATA_U64(const_cos,   0, $0x402e000000000000) // f64(15)
+CONST_DATA_U64(const_cos,   8, $0x3fd45f306dc9c883) // f64(0.31830988618379069)
+CONST_DATA_U64(const_cos,  16, $0xbfe0000000000000) // f64(-0.5)
+CONST_DATA_U64(const_cos,  24, $0x4000000000000000) // f64(2)
+CONST_DATA_U64(const_cos,  32, $0xbff921fb54442d18) // f64(-1.5707963267948966)
+CONST_DATA_U64(const_cos,  40, $0xbc91a62633145c07) // f64(-6.123233995736766E-17)
+CONST_DATA_U64(const_cos,  48, $0x3e645f306dc9c883) // f64(3.7945495388959729E-8)
+CONST_DATA_U64(const_cos,  56, $0xbe545f306dc9c883) // f64(-1.8972747694479864E-8)
+CONST_DATA_U64(const_cos,  64, $0xc160000000000000) // f64(-8388608)
+CONST_DATA_U64(const_cos,  72, $0x4170000000000000) // f64(16777216)
+CONST_DATA_U64(const_cos,  80, $0xbff921fb50000000) // f64(-1.5707963109016418)
+CONST_DATA_U64(const_cos,  88, $0xbe5110b460000000) // f64(-1.5893254712295857E-8)
+CONST_DATA_U64(const_cos,  96, $0xbc91a62630000000) // f64(-6.1232339320535943E-17)
+CONST_DATA_U64(const_cos, 104, $0xbae8a2e03707344a) // f64(-6.3683171635109499E-25)
+CONST_DATA_U64(const_cos, 112, $0x42d6bcc41e900000) // f64(1.0E+14)
+CONST_DATA_U64(const_cos, 120, $0x4010000000000000) // f64(4)
+CONST_DATA_U64(const_cos, 128, $0x3fd0000000000000) // f64(0.25)
+CONST_DATA_U64(const_cos, 136, $0x401921fb54442d18) // f64(6.2831853071795862)
+CONST_DATA_U64(const_cos, 144, $0x3cb1a62633145c07) // f64(2.4492935982947064E-16)
+CONST_DATA_U64(const_cos, 152, $0x3fe6666666666666) // f64(0.69999999999999996)
+CONST_DATA_U64(const_cos, 160, $0x0000000100000001) // i64(4294967297)
+CONST_DATA_U64(const_cos, 168, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_cos, 176, $0x3ce8811a03b2b11d) // f64(2.7205241613852957E-15)
+CONST_DATA_U64(const_cos, 184, $0xbd6ae422bc319350) // f64(-7.6429259411395447E-13)
+CONST_DATA_U64(const_cos, 192, $0x3de6123c74705f67) // f64(1.605893701172779E-10)
+CONST_DATA_U64(const_cos, 200, $0xbe5ae6454baa2959) // f64(-2.5052106814843123E-8)
+CONST_DATA_U64(const_cos, 208, $0x3ec71de3a525fbed) // f64(2.7557319210442822E-6)
+CONST_DATA_U64(const_cos, 216, $0xbf2a01a01a014225) // f64(-1.9841269841204645E-4)
+CONST_DATA_U64(const_cos, 224, $0x3f811111111110b9) // f64(0.0083333333333331805)
+CONST_DATA_U64(const_cos, 232, $0xbfc5555555555555) // f64(-0.16666666666666666)
+CONST_DATA_U64(const_cos, 240, $0x0000000200000002) // i64(8589934594)
+CONST_DATA_U32(const_cos, 248, $0x00000001) // i32(1)
+CONST_DATA_U32(const_cos, 252, $0x000003ff) // i32(1023)
+CONST_DATA_U32(const_cos, 256, $0xffffffc9) // i32(4294967241)
+CONST_DATA_U32(const_cos, 260, $0x00000285) // i32(645)
+CONST_DATA_U32(const_cos, 264, $0xffffffc0) // i32(4294967232)
+CONST_DATA_U32(const_cos, 268, $0x00000006) // i32(6)
+CONST_DATA_U32(const_cos, 272, $0x00000008) // i32(8)
+CONST_DATA_U32(const_cos, 276, $0x00000007) // i32(7)
+CONST_GLOBAL(const_cos, $280)
+
+// f64[0].k[1] = cos(f64[2]).k[3]
+TEXT bccosf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  // case 'a': this case is implicit and is always executed
+  VBROADCASTSD CONST_GET_PTR(const_cos, 0), Z5
+  VBROADCASTSD CONST_GET_PTR(const_cos, 8), Z4
+
+  VPANDQ.BCST CONSTF64_ABS_BITS(), Z2, Z6
+  VPANDQ.BCST CONSTF64_ABS_BITS(), Z3, Z7
+
+  VCMPPD $VCMP_IMM_GE_OQ, Z5, Z6, K1, K3
+  VCMPPD $VCMP_IMM_GE_OQ, Z5, Z7, K2, K4
+  KUNPCKBW K3, K4, K3
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 24), Z8
+  VBROADCASTSD CONST_GET_PTR(const_cos, 16), Z9
+  VMOVAPD Z4, Z5
+  VFMADD213PD Z9, Z2, Z4 // Z4 = (Z2 * Z4) + Z9
+  VFMADD213PD Z9, Z3, Z5 // Z5 = (Z3 * Z5) + Z9
+  VRNDSCALEPD $8, Z4, Z4
+  VRNDSCALEPD $8, Z5, Z5
+  VBROADCASTSD CONSTF64_1(), Z10
+  VMOVAPD Z8, Z9
+  VFMADD213PD Z10, Z4, Z8 // Z8 = (Z4 * Z8) + Z10
+  VFMADD213PD Z10, Z5, Z9 // Z9 = (Z5 * Z9) + Z10
+  VCVTPD2DQ.RN_SAE Z8, Y4
+  VCVTPD2DQ.RN_SAE Z9, Y5
+  VBROADCASTSD CONST_GET_PTR(const_cos, 32), Z11
+  VINSERTI32X8 $1, Y5, Z4, Z4
+
+  VMULPD Z11, Z8, Z10
+  VMULPD Z11, Z9, Z11
+  VADDPD Z2, Z10, Z12
+  VADDPD Z3, Z11, Z13
+  VSUBPD Z2, Z12, Z14
+  VSUBPD Z3, Z13, Z15
+  VSUBPD Z14, Z12, Z16
+  VSUBPD Z15, Z13, Z17
+  VSUBPD Z16, Z2, Z16
+  VSUBPD Z17, Z3, Z17
+  VSUBPD Z14, Z10, Z10
+  VSUBPD Z15, Z11, Z11
+  VBROADCASTSD CONST_GET_PTR(const_cos, 40), Z15
+  VADDPD Z16, Z10, Z10
+  VADDPD Z17, Z11, Z11
+  VMULPD Z15, Z8, Z14
+  VMULPD Z15, Z9, Z15
+  VADDPD Z12, Z14, Z8
+  VADDPD Z13, Z15, Z9
+  VSUBPD Z8, Z12, Z12
+  VSUBPD Z9, Z13, Z13
+  VADDPD Z12, Z14, Z12
+  VADDPD Z13, Z15, Z13
+  VADDPD Z10, Z12, Z10
+  VADDPD Z11, Z13, Z11
+
+  // Jump to 'cos_case_b' if one or more lane has x >= 15
+  KTESTW K3, K3
+  JNE cos_case_b
+
+cos_eval_poly:
+  // Polynomial evaluation; code shared by all cases
+  VMULPD Z8, Z8, Z2
+  VMULPD Z9, Z9, Z3
+  VADDPD Z8, Z8, Z6
+  VADDPD Z9, Z9, Z7
+
+  VMOVAPD Z8, Z12
+  VMOVAPD Z9, Z13
+  VFMSUB213PD Z2, Z8, Z12  // Z12 = (Z8 * Z12) - Z2
+  VFMSUB213PD Z3, Z9, Z13  // Z13 = (Z9 * Z13) - Z3
+  VFMADD231PD Z6, Z10, Z12 // Z12 = (Z10 * Z6) + Z12
+  VFMADD231PD Z7, Z11, Z13 // Z13 = (Z11 * Z7) + Z13
+
+  VMULPD Z2, Z2, Z6
+  VMULPD Z3, Z3, Z7
+  VMULPD Z6, Z6, Z14
+  VMULPD Z7, Z7, Z15
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 176), Z16
+  VBROADCASTSD CONST_GET_PTR(const_cos, 192), Z18
+  VBROADCASTSD CONST_GET_PTR(const_cos, 208), Z20
+  VMOVAPD Z16, Z17
+  VMOVAPD Z18, Z19
+  VBROADCASTSD CONST_GET_PTR(const_cos, 184), Z22
+  VBROADCASTSD CONST_GET_PTR(const_cos, 200), Z23
+
+  VFMADD213PD Z22, Z2, Z16 // Z16 = (Z2 * Z16) + Z22
+  VFMADD213PD Z22, Z3, Z17 // Z17 = (Z3 * Z17) + Z22
+  VBROADCASTSD CONST_GET_PTR(const_cos, 216), Z22
+  VFMADD213PD Z23, Z2, Z18 // Z18 = (Z2 * Z18) + Z23
+  VFMADD213PD Z23, Z3, Z19 // Z19 = (Z3 * Z19) + Z23
+  VBROADCASTSD CONST_GET_PTR(const_cos, 224), Z23
+  VMOVAPD Z20, Z21
+  VFMADD213PD Z22, Z2, Z20 // Z20 = (Z2 * Z20) + Z22
+  VFMADD213PD Z22, Z3, Z21 // Z21 = (Z3 * Z21) + Z22
+  VFMADD231PD Z18, Z6, Z20  // Z20 = (Z6 * Z18) + Z20
+  VFMADD231PD Z19, Z7, Z21  // Z21 = (Z7 * Z19) + Z21
+  VFMADD231PD Z16, Z14, Z20 // Z20 = (Z14 * Z16) + Z20
+  VFMADD231PD Z17, Z15, Z21 // Z21 = (Z15 * Z17) + Z21
+  VFMADD213PD Z23, Z2, Z20 // Z20 = (Z2 * Z20) + Z23
+  VFMADD213PD Z23, Z3, Z21 // Z21 = (Z3 * Z21) + Z23
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 232), Z15
+  VMULPD Z20, Z2, Z6
+  VMULPD Z21, Z3, Z7
+  VADDPD Z15, Z6, Z16
+  VADDPD Z15, Z7, Z17
+  VSUBPD Z16, Z15, Z14
+  VSUBPD Z17, Z15, Z15
+  VADDPD Z14, Z6, Z6
+  VADDPD Z15, Z7, Z7
+  VMULPD Z16, Z2, Z14
+  VMULPD Z17, Z3, Z15
+  VMOVAPD Z2, Z18
+  VMOVAPD Z3, Z19
+  VFMSUB213PD Z14, Z16, Z18 // Z18 = (Z16 * Z18) - Z14
+  VFMSUB213PD Z15, Z17, Z19 // Z19 = (Z17 * Z19) - Z15
+  VFMADD231PD Z6, Z2, Z18   // Z18 = (Z2 * Z6) + Z18
+  VFMADD231PD Z7, Z3, Z19   // Z19 = (Z3 * Z7) + Z19
+  VFMADD231PD Z12, Z16, Z18 // Z18 = (Z16 * Z12) + Z18
+  VFMADD231PD Z13, Z17, Z19 // Z19 = (Z17 * Z13) + Z19
+
+  VBROADCASTSD CONSTF64_1(), Z13
+  VADDPD Z13, Z14, Z6
+  VADDPD Z13, Z15, Z7
+  VSUBPD Z6, Z13, K1, Z2
+  VSUBPD Z7, Z13, K2, Z3
+  VADDPD Z2, Z14, K1, Z2
+  VADDPD Z3, Z15, K2, Z3
+  VADDPD Z18, Z2, K1, Z2
+  VADDPD Z19, Z3, K2, Z3
+  VMULPD Z2, Z8, K1, Z2
+  VMULPD Z3, Z9, K2, Z3
+  VFMADD231PD Z10, Z6, K1, Z2 // Z2 = (Z6 * Z10) + Z2
+  VFMADD231PD Z11, Z7, K2, Z3 // Z3 = (Z7 * Z11) + Z3
+  VFMADD231PD Z6, Z8, K1, Z2  // Z2 = (Z8 * Z6) + Z2
+  VFMADD231PD Z7, Z9, K2, Z3  // Z3 = (Z9 * Z7) + Z3
+
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
+  VPANDD.BCST CONST_GET_PTR(const_cos, 240), Z4, Z4
+  VPTESTNMD Z4, Z4, K3
+  KSHIFTRW $8, K3, K4
+  VMOVAPD.Z Z6, K3, Z4
+  VMOVAPD.Z Z6, K4, Z5
+  VXORPD Z4, Z2, K1, Z2
+  VXORPD Z5, Z3, K2, Z3
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+cos_case_b:
+  // case 'b': one or more lane has x >= 1e14
+  VBROADCASTSD CONST_GET_PTR(const_cos, 48), Z12
+  VBROADCASTSD CONST_GET_PTR(const_cos, 64), Z16
+  VBROADCASTSD CONST_GET_PTR(const_cos, 56), Z20
+  VMOVAPD Z12, Z13
+  VMOVAPD Z16, Z17
+  VFMADD213PD Z20, Z2, Z12 // Z12 = (Z2 * Z12) + Z20
+  VFMADD213PD Z20, Z3, Z13 // Z13 = (Z3 * Z13) + Z20
+  VRNDSCALEPD $11, Z12, Z12
+  VRNDSCALEPD $11, Z13, Z13
+  VBROADCASTSD CONST_GET_PTR(const_cos, 8), Z20
+  VBROADCASTSD CONST_GET_PTR(const_cos, 16), Z21
+  VMULPD Z20, Z2, Z14
+  VMULPD Z20, Z3, Z15
+  VFMADD213PD Z21, Z12, Z16 // Z16 = (Z12 * Z16) + Z21
+  VFMADD213PD Z21, Z13, Z17 // Z17 = (Z13 * Z17) + Z21
+  VADDPD Z16, Z14, Z14
+  VADDPD Z17, Z15, Z15
+  VCVTPD2DQ.RN_SAE Z14, Y14
+  VCVTPD2DQ.RN_SAE Z15, Y15
+  VINSERTI32X8 $1, Y15, Z14, Z14
+  VBROADCASTSD CONST_GET_PTR(const_cos, 72), Z15
+  VPADDD Z14, Z14, Z14
+  VMULPD Z15, Z12, Z12
+  VMULPD Z15, Z13, Z13
+  VPORD.BCST CONST_GET_PTR(const_cos, 248), Z14, Z16
+  VMOVDQA32 Z16, K3, Z4
+  VEXTRACTI32X8 $1, Z16, Y17
+  VCVTDQ2PD Y16, Z14
+  VCVTDQ2PD Y17, Z15
+  VBROADCASTSD CONST_GET_PTR(const_cos, 80), Z18
+  VMULPD Z18, Z14, Z20
+  VMULPD Z18, Z15, Z21
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z2, Z12, Z18 // Z18 = (Z12 * Z18) + Z2
+  VFMADD213PD Z3, Z13, Z19 // Z19 = (Z13 * Z19) + Z3
+  VBROADCASTSD CONST_GET_PTR(const_cos, 88), Z16
+  VADDPD Z20, Z18, Z22
+  VADDPD Z21, Z19, Z23
+  VSUBPD Z18, Z22, Z24
+  VSUBPD Z19, Z23, Z25
+  VSUBPD Z24, Z22, Z26
+  VSUBPD Z25, Z23, Z27
+  VSUBPD Z26, Z18, Z18
+  VSUBPD Z27, Z19, Z19
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z18, Z20, Z18
+  VADDPD Z19, Z21, Z19
+  VMULPD Z16, Z12, Z20
+  VMULPD Z16, Z13, Z21
+  VADDPD Z22, Z20, Z26
+  VADDPD Z23, Z21, Z27
+  VSUBPD Z22, Z26, Z24
+  VSUBPD Z23, Z27, Z25
+  VSUBPD Z24, Z26, Z5
+  VSUBPD Z5, Z22, Z22
+  VSUBPD Z25, Z27, Z5
+  VSUBPD Z5, Z23, Z23
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z22, Z20, Z20
+  VADDPD Z23, Z21, Z21
+  VADDPD Z20, Z18, Z18
+  VADDPD Z21, Z19, Z19
+  VMULPD Z16, Z14, Z20
+  VMULPD Z16, Z15, Z21
+  VBROADCASTSD CONST_GET_PTR(const_cos, 96), Z16
+  VADDPD Z26, Z20, Z22
+  VADDPD Z27, Z21, Z23
+  VSUBPD Z26, Z22, Z24
+  VSUBPD Z27, Z23, Z25
+  VSUBPD Z24, Z22, Z5
+  VSUBPD Z5, Z26, Z26
+  VSUBPD Z25, Z23, Z5
+  VSUBPD Z5, Z27, Z27
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z26, Z20, Z20
+  VADDPD Z27, Z21, Z21
+  VADDPD Z18, Z20, Z18
+  VADDPD Z19, Z21, Z19
+  VMULPD Z16, Z12, Z24
+  VMULPD Z16, Z13, Z25
+  VADDPD Z22, Z24, Z26
+  VADDPD Z23, Z25, Z27
+  VSUBPD Z22, Z26, Z20
+  VSUBPD Z23, Z27, Z21
+  VSUBPD Z20, Z26, Z5
+  VSUBPD Z5, Z22, Z22
+  VSUBPD Z21, Z27, Z5
+  VSUBPD Z5, Z23, Z23
+  VSUBPD Z20, Z24, Z24
+  VSUBPD Z21, Z25, Z25
+  VADDPD Z22, Z24, Z22
+  VADDPD Z23, Z25, Z23
+  VADDPD Z18, Z22, Z18
+  VADDPD Z19, Z23, Z19
+  VMULPD Z16, Z14, Z20
+  VMULPD Z16, Z15, Z21
+  VBROADCASTSD CONST_GET_PTR(const_cos, 104), Z16
+  VADDPD Z26, Z20, Z22
+  VADDPD Z27, Z21, Z23
+  VSUBPD Z26, Z22, Z24
+  VSUBPD Z27, Z23, Z25
+  VSUBPD Z24, Z22, Z5
+  VSUBPD Z5, Z26, Z26
+  VSUBPD Z25, Z23, Z5
+  VSUBPD Z5, Z27, Z27
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z26, Z20, Z20
+  VADDPD Z27, Z21, Z21
+  VADDPD Z18, Z20, Z18
+  VADDPD Z19, Z21, Z19
+  VADDPD Z14, Z12, Z12
+  VADDPD Z15, Z13, Z13
+  VMULPD Z16, Z12, Z12
+  VMULPD Z16, Z13, Z13
+  VADDPD Z22, Z12, Z14
+  VADDPD Z23, Z13, Z15
+  VSUBPD Z14, Z22, Z20
+  VSUBPD Z15, Z23, Z21
+  VADDPD Z20, Z12, Z12
+  VADDPD Z21, Z13, Z13
+  VADDPD Z18, Z12, Z12
+  VADDPD Z19, Z13, Z13
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 112), Z16
+  VMOVAPD Z14, K3, Z8
+  VMOVAPD Z15, K4, Z9
+  VMOVAPD Z12, K3, Z10
+  VMOVAPD Z13, K4, Z11
+
+  VCMPPD $VCMP_IMM_GE_OS, Z16, Z6, K3, K3
+  VCMPPD $VCMP_IMM_GE_OS, Z16, Z7, K4, K4
+  KUNPCKBW K3, K4, K3
+  KTESTW K3, K3
+  JZ cos_eval_poly
+
+  // case 'c': one or more lane has x >= 1e14
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z14
+  MOVL $0xAAAA, R8
+  LEAQ CONST_GET_PTR(const_rempi, 0), R15
+
+  // K0 contains mask of all inputs that are either +INF or -INF
+  VCMPPD $VCMP_IMM_EQ_OQ, Z14, Z6, K3, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z14, Z7, K4, K5
+  KUNPCKBW K0, K5, K0
+
+  VGETEXPPD Z2, Z14
+  VGETEXPPD Z3, Z15
+  VCVTPD2DQ.RN_SAE Z14, Y14
+  VCVTPD2DQ.RN_SAE Z15, Y15
+  VINSERTI32X8 $1, Y15, Z14, Z14
+  VPCMPGTD.BCST CONSTD_NEG_1(), Z14, K5
+  VPANDD.BCST.Z CONST_GET_PTR(const_cos, 252), Z14, K5, Z14
+  VPADDD.BCST CONST_GET_PTR(const_cos, 256), Z14, Z12
+  VPCMPGTD.BCST CONST_GET_PTR(const_cos, 260), Z12, K5
+  VPBROADCASTD.Z CONST_GET_PTR(const_cos, 264), K5, Z14
+  VPSLLD $20, Z14, Z14
+  VEXTRACTI32X8 $1, Z14, Y15
+  KMOVW R8, K5
+  VPEXPANDD.Z Z14, K5, Z14
+  VPEXPANDD.Z Z15, K5, Z15
+  VPADDQ Z2, Z14, Z14
+  VPADDQ Z3, Z15, Z15
+  VPSRAD $31, Z12, Z18
+  VPANDND Z12, Z18, Z12
+  VPSLLD $2, Z12, Z18
+  VEXTRACTI32X8 $1, Z18, Y19
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X12, X12, X12
+  VXORPD X13, X13, X13
+  VGATHERDPD 0(R15)(Y18*8), K5, Z12
+  VGATHERDPD 0(R15)(Y19*8), K6, Z13
+  ADDQ $8, R15
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 120), Z5
+  VMULPD Z14, Z12, Z20
+  VMULPD Z15, Z13, Z21
+  VFMSUB213PD Z20, Z14, Z12 // Z12 = (Z14 * Z12) - Z20
+  VFMSUB213PD Z21, Z15, Z13 // Z13 = (Z15 * Z13) - Z21
+  VMULPD Z5, Z20, Z24
+  VMULPD Z5, Z21, Z25
+  VRNDSCALEPD $8, Z24, Z24
+  VRNDSCALEPD $8, Z25, Z25
+  VRNDSCALEPD $8, Z20, Z26
+  VRNDSCALEPD $8, Z21, Z27
+  VMULPD Z5, Z26, Z26
+  VMULPD Z5, Z27, Z27
+  VBROADCASTSD CONST_GET_PTR(const_cos, 128), Z5
+  VSUBPD Z26, Z24, Z26
+  VSUBPD Z27, Z25, Z27
+  VCVTPD2DQ.RZ_SAE Z26, Y26
+  VCVTPD2DQ.RZ_SAE Z27, Y27
+  VINSERTI32X8 $1, Y27, Z26, Z26
+  VMULPD Z5, Z24, Z24
+  VMULPD Z5, Z25, Z25
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z12, Z20, Z24
+  VADDPD Z13, Z21, Z25
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z20, Z12, Z12
+  VADDPD Z21, Z13, Z13
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X20, X20, X20
+  VXORPD X21, X21, X21
+  VGATHERDPD 0(R15)(Y18*8), K5, Z20
+  VGATHERDPD 0(R15)(Y19*8), K6, Z21
+  ADDQ $8, R15
+
+  VMULPD Z14, Z20, Z22
+  VMULPD Z15, Z21, Z23
+  VFMSUB213PD Z22, Z14, Z20 // Z20 = (Z14 * Z20) - Z22
+  VFMSUB213PD Z23, Z15, Z21 // Z21 = (Z15 * Z21) - Z23
+  VADDPD Z12, Z20, Z12
+  VADDPD Z13, Z21, Z13
+  VADDPD Z24, Z22, Z20
+  VADDPD Z25, Z23, Z21
+  VSUBPD Z24, Z20, Z16
+  VSUBPD Z25, Z21, Z17
+  VSUBPD Z16, Z20, Z5
+  VSUBPD Z5, Z24, Z24
+  VSUBPD Z17, Z21, Z5
+  VSUBPD Z5, Z25, Z25
+  VBROADCASTSD CONST_GET_PTR(const_cos, 120), Z5
+  VSUBPD Z16, Z22, Z22
+  VSUBPD Z17, Z23, Z23
+  VADDPD Z24, Z22, Z24
+  VADDPD Z25, Z23, Z25
+  VADDPD Z24, Z12, Z24
+  VADDPD Z25, Z13, Z25
+  VMULPD Z5, Z20, Z12
+  VMULPD Z5, Z21, Z13
+  VRNDSCALEPD $8, Z12, Z22
+  VRNDSCALEPD $8, Z13, Z23
+  VRNDSCALEPD $8, Z20, Z12
+  VRNDSCALEPD $8, Z21, Z13
+  VMULPD Z5, Z12, Z12
+  VMULPD Z5, Z13, Z13
+  VBROADCASTSD CONST_GET_PTR(const_cos, 128), Z5
+  VSUBPD Z12, Z22, Z12
+  VSUBPD Z13, Z23, Z13
+  VCVTPD2DQ.RZ_SAE Z12, Y12
+  VCVTPD2DQ.RZ_SAE Z13, Y13
+  VINSERTI32X8 $1, Y13, Z12, Z12
+  VPADDD Z12, Z26, Z12
+  VMULPD Z5, Z22, Z22
+  VMULPD Z5, Z23, Z23
+  VSUBPD Z22, Z20, Z20
+  VSUBPD Z23, Z21, Z21
+  VADDPD Z24, Z20, Z22
+  VADDPD Z25, Z21, Z23
+  VSUBPD Z22, Z20, Z20
+  VSUBPD Z23, Z21, Z21
+  VADDPD Z20, Z24, Z20
+  VADDPD Z21, Z25, Z21
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X24, X24, X24
+  VXORPD X25, X25, X25
+  VGATHERDPD 0(R15)(Y18*8), K5, Z24
+  VGATHERDPD 0(R15)(Y19*8), K6, Z25
+  ADDQ $8, R15
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X26, X26, X26
+  VXORPD X27, X27, X27
+  VGATHERDPD 0(R15)(Y18*8), K5, Z26
+  VGATHERDPD 0(R15)(Y19*8), K6, Z27
+
+  VMULPD Z14, Z24, Z18
+  VMULPD Z15, Z25, Z19
+  VFMSUB213PD Z18, Z14, Z24 // Z24 = (Z14 * Z24) - Z18
+  VFMSUB213PD Z19, Z15, Z25 // Z25 = (Z15 * Z25) - Z19
+  VFMADD231PD Z26, Z14, Z24 // Z24 = (Z14 * Z26) + Z24
+  VFMADD231PD Z27, Z15, Z25 // Z25 = (Z15 * Z27) + Z25
+  VADDPD Z20, Z24, Z20
+  VADDPD Z21, Z25, Z21
+  VADDPD Z22, Z18, Z24
+  VADDPD Z23, Z19, Z25
+  VSUBPD Z22, Z24, Z26
+  VSUBPD Z23, Z25, Z27
+  VSUBPD Z26, Z24, Z16
+  VSUBPD Z27, Z25, Z17
+  VSUBPD Z16, Z22, Z22
+  VSUBPD Z17, Z23, Z23
+  VSUBPD Z26, Z18, Z18
+  VSUBPD Z27, Z19, Z19
+  VADDPD Z22, Z18, Z18
+  VADDPD Z23, Z19, Z19
+  VADDPD Z18, Z20, Z18
+  VADDPD Z19, Z21, Z19
+  VADDPD Z18, Z24, Z20
+  VADDPD Z19, Z25, Z21
+  VSUBPD Z20, Z24, Z22
+  VSUBPD Z21, Z25, Z23
+  VADDPD Z22, Z18, Z18
+  VADDPD Z23, Z19, Z19
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 144), Z5
+  VBROADCASTSD CONST_GET_PTR(const_cos, 136), Z25
+  VMULPD Z25, Z20, Z22
+  VMULPD Z25, Z21, Z23
+  VMOVAPD Z25, Z26
+  VMOVAPD Z25, Z27
+  VFMSUB213PD Z22, Z20, Z26 // Z26 = (Z20 * Z26) - Z22
+  VFMSUB213PD Z23, Z21, Z27 // Z27 = (Z21 * Z27) - Z23
+  VFMADD231PD Z18, Z25, Z26 // Z26 = (Z25 * Z18) + Z26
+  VFMADD231PD Z19, Z25, Z27 // Z27 = (Z25 * Z19) + Z27
+  VFMADD231PD Z5, Z20, Z26 // Z26 = (Z20 * Z5) + Z26
+  VFMADD231PD Z5, Z21, Z27 // Z27 = (Z21 * Z5) + Z27
+
+  VBROADCASTSD CONST_GET_PTR(const_cos, 152), Z5
+  VPANDQ.BCST CONSTF64_ABS_BITS(), Z14, Z18
+  VPANDQ.BCST CONSTF64_ABS_BITS(), Z15, Z19
+  VCMPPD $VCMP_IMM_LT_OS, Z5, Z18, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z5, Z19, K6
+  VMOVAPD Z14, K5, Z22
+  VMOVAPD Z15, K6, Z23
+  VXORPD Z26, Z26, K5, Z26
+  VXORPD Z27, Z27, K6, Z27
+  VPADDD Z12, Z12, Z14
+  VPANDD.BCST CONST_GET_PTR(const_cos, 268), Z14, Z14
+  VPBROADCASTD CONST_GET_PTR(const_cos, 276), Z20
+  VPXORD X16, X16, X16
+  VCMPPD $VCMP_IMM_LT_OS, Z22, Z16, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z23, Z16, K6
+  KUNPCKBW K5, K6, K5
+  VPBROADCASTD CONST_GET_PTR(const_cos, 272), K5, Z20
+  VPADDD Z14, Z20, Z14
+  VPSRLD $1, Z14, Z18
+  VBROADCASTSD CONST_GET_PTR(const_cos, 168), Z14
+  VPANDD.BCST CONST_GET_PTR(const_cos, 160), Z12, Z12
+  VMOVAPD Z14, Z15
+  VXORPD Z14, Z14, K5, Z14
+  VXORPD Z15, Z15, K6, Z15
+  VPTESTNMD Z12, Z12, K5
+  KSHIFTRW $8, K5, K6
+
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z5
+  VBROADCASTSD CONST_GET_PTR(const_cos, 32), Z13
+  VANDPD Z5, Z14, Z14
+  VANDPD Z5, Z15, Z15
+  VBROADCASTSD CONST_GET_PTR(const_cos, 40), Z5
+  VXORPD Z13, Z14, Z12
+  VXORPD Z13, Z15, Z13
+  VXORPD Z5, Z14, Z14
+  VXORPD Z5, Z15, Z15
+  VADDPD Z12, Z22, Z20
+  VADDPD Z13, Z23, Z21
+  VSUBPD Z22, Z20, Z24
+  VSUBPD Z23, Z21, Z25
+  VSUBPD Z24, Z20, Z5
+  VSUBPD Z25, Z21, Z17
+  VSUBPD Z5, Z22, Z5
+  VSUBPD Z17, Z23, Z17
+  VSUBPD Z24, Z12, Z12
+  VSUBPD Z25, Z13, Z13
+  VADDPD Z5, Z12, Z12
+  VADDPD Z17, Z13, Z13
+  VADDPD Z14, Z26, Z14
+  VADDPD Z15, Z27, Z15
+  VMOVAPD Z20, K5, Z22
+  VMOVAPD Z21, K6, Z23
+  VADDPD Z12, Z14, K5, Z26
+  VADDPD Z13, Z15, K6, Z27
+  VADDPD Z26, Z22, Z14
+  VADDPD Z27, Z23, Z15
+  VSUBPD Z14, Z22, Z12
+  VSUBPD Z15, Z23, Z13
+  VADDPD Z12, Z26, Z12
+  VADDPD Z13, Z27, Z13
+
+  VMOVDQA32 Z18, K3, Z4
+  VMOVAPD Z14, K3, Z8
+  VMOVAPD Z15, K4, Z9
+  VMOVAPD Z12, K3, Z10
+  VMOVAPD Z13, K4, Z11
+
+  VCMPPD $VCMP_IMM_UNORD_Q, Z16, Z2, K3, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z16, Z3, K4, K4
+  KSHIFTRW $8, K0, K5
+  KORW K0, K3, K3
+  KORW K5, K4, K4
+  VPTERNLOGQ $0xFF, Z8, Z8, K3, Z8
+  VPTERNLOGQ $0xFF, Z9, Z9, K4, Z9
+  JMP cos_eval_poly
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - tan(x) (tan(x) == sin(x) / cos(x))
+// ---------------------------------------------------------------------
+
+CONST_DATA_U64(const_tan,   0, $0x3fe45f306dc9c883) // f64(0.63661977236758138)
+CONST_DATA_U64(const_tan,   8, $0xbff921fb54442d18) // f64(-1.5707963267948966)
+CONST_DATA_U64(const_tan,  16, $0xbc91a62633145c07) // f64(-6.123233995736766E-17)
+CONST_DATA_U64(const_tan,  24, $0x402e000000000000) // f64(15)
+CONST_DATA_U64(const_tan,  32, $0x3e645f306dc9c883) // f64(3.7945495388959729E-8)
+CONST_DATA_U64(const_tan,  40, $0x4170000000000000) // f64(16777216)
+CONST_DATA_U64(const_tan,  48, $0xbc86b01ec5417056) // f64(-3.9357353350364972E-17)
+CONST_DATA_U64(const_tan,  56, $0xbfe0000000000000) // f64(-0.5)
+CONST_DATA_U64(const_tan,  64, $0xbff921fb50000000) // f64(-1.5707963109016418)
+CONST_DATA_U64(const_tan,  72, $0xbe5110b460000000) // f64(-1.5893254712295857E-8)
+CONST_DATA_U64(const_tan,  80, $0xbc91a62630000000) // f64(-6.1232339320535943E-17)
+CONST_DATA_U64(const_tan,  88, $0xbae8a2e03707344a) // f64(-6.3683171635109499E-25)
+CONST_DATA_U64(const_tan,  96, $0x42d6bcc41e900000) // f64(1.0E+14)
+CONST_DATA_U64(const_tan, 104, $0x4010000000000000) // f64(4)
+CONST_DATA_U64(const_tan, 112, $0x3fd0000000000000) // f64(0.25)
+CONST_DATA_U64(const_tan, 120, $0x401921fb54442d18) // f64(6.2831853071795862)
+CONST_DATA_U64(const_tan, 128, $0x3cb1a62633145c07) // f64(2.4492935982947064E-16)
+CONST_DATA_U64(const_tan, 136, $0x3fe6666666666666) // f64(0.69999999999999996)
+CONST_DATA_U64(const_tan, 144, $0x3f35445f555134ed) // f64(3.2450988266392763E-4)
+CONST_DATA_U64(const_tan, 152, $0x3f4269be400de3af) // f64(5.6192197381143237E-4)
+CONST_DATA_U64(const_tan, 160, $0x3f57eef631e20b93) // f64(0.0014607815024027845)
+CONST_DATA_U64(const_tan, 168, $0x3f6d6c27c371c959) // f64(0.0035916115407924995)
+CONST_DATA_U64(const_tan, 176, $0x3f8226e7bfa35090) // f64(0.0088632684095631131)
+CONST_DATA_U64(const_tan, 184, $0x3f9664f4729f98e5) // f64(0.021869487281855355)
+CONST_DATA_U64(const_tan, 192, $0x3faba1ba1bdcec06) // f64(0.05396825399517273)
+CONST_DATA_U64(const_tan, 200, $0x3fc111111110e933) // f64(0.13333333333305006)
+CONST_DATA_U64(const_tan, 208, $0x3fd5555555555568) // f64(0.33333333333333437)
+CONST_DATA_U64(const_tan, 216, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_tan, 224, $0xc000000000000000) // f64(-2)
+CONST_DATA_U64(const_tan, 232, $0x0000000100000001) // i64(4294967297)
+CONST_DATA_U32(const_tan, 240, $0x000003ff) // i32(1023)
+CONST_DATA_U32(const_tan, 244, $0xffffffc9) // i32(4294967241)
+CONST_DATA_U32(const_tan, 248, $0x00000285) // i32(645)
+CONST_DATA_U32(const_tan, 252, $0xffffffc0) // i32(4294967232)
+CONST_DATA_U32(const_tan, 256, $0x00000001) // i32(1)
+CONST_GLOBAL(const_tan, $260)
+
+// f64[0].k[1] = tan(f64[2]).k[3]
+TEXT bctanf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  // case 'a': this case is implicit and is always executed
+  VBROADCASTSD CONST_GET_PTR(const_tan, 0), Z11
+  VBROADCASTSD CONST_GET_PTR(const_tan, 8), Z8
+  VMULPD Z11, Z2, Z10
+  VMULPD Z11, Z3, Z11
+  VRNDSCALEPD $8, Z10, Z6
+  VRNDSCALEPD $8, Z11, Z7
+  VCVTPD2DQ.RN_SAE Z6, Y4
+  VCVTPD2DQ.RN_SAE Z7, Y5
+  VINSERTI32X8 $1, Y5, Z4, Z4
+  VMOVAPD Z8, Z9
+  VBROADCASTSD CONST_GET_PTR(const_tan, 16), Z13
+  VFMADD213PD Z2, Z6, Z8 // Z8 = (Z6 * Z8) + Z2
+  VFMADD213PD Z3, Z7, Z9 // Z9 = (Z7 * Z9) + Z3
+  VMULPD Z13, Z6, Z12
+  VMULPD Z13, Z7, Z13
+  VADDPD Z12, Z8, Z14
+  VADDPD Z13, Z9, Z15
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z7
+  VBROADCASTSD CONST_GET_PTR(const_tan, 24), Z20
+  VSUBPD Z14, Z8, Z8
+  VSUBPD Z15, Z9, Z9
+  VANDPD Z7, Z2, Z6
+  VANDPD Z7, Z3, Z7
+  VADDPD Z8, Z12, Z16
+  VADDPD Z9, Z13, Z17
+  VCMPPD $VCMP_IMM_GE_OQ, Z20, Z6, K1, K3
+  VCMPPD $VCMP_IMM_GE_OQ, Z20, Z7, K2, K4
+  KUNPCKBW K3, K4, K3
+
+  KTESTW K3, K3
+  JNE tan_case_b
+
+tan_eval_poly:
+  // Polynomial evaluation; code shared by all cases
+  VPANDD.BCST CONST_GET_PTR(const_tan, 232), Z4, Z4
+  VPCMPEQD.BCST CONST_GET_PTR(const_tan, 256), Z4, K5
+  KSHIFTRW $8, K5, K6
+
+  VBROADCASTSD CONSTF64_HALF(), Z7
+  VMULPD Z7, Z14, Z8
+  VMULPD Z7, Z15, Z9
+  VMULPD Z7, Z16, Z6
+  VMULPD Z7, Z17, Z7
+  VMULPD Z8, Z8, Z10
+  VMULPD Z9, Z9, Z11
+  VADDPD Z8, Z8, Z12
+  VADDPD Z9, Z9, Z13
+  VMOVAPD Z8, Z14
+  VMOVAPD Z9, Z15
+  VFMSUB213PD Z10, Z8, Z14 // Z14 = (Z8 * Z14) - Z10
+  VFMSUB213PD Z11, Z9, Z15 // Z15 = (Z9 * Z15) - Z11
+  VFMADD231PD Z12, Z6, Z14 // Z14 = (Z6 * Z12) + Z14
+  VFMADD231PD Z13, Z7, Z15 // Z15 = (Z7 * Z13) + Z15
+  VMULPD Z10, Z10, Z12
+  VMULPD Z11, Z11, Z13
+  VBROADCASTSD CONST_GET_PTR(const_tan, 144), Z16
+  VBROADCASTSD CONST_GET_PTR(const_tan, 160), Z18
+  VBROADCASTSD CONST_GET_PTR(const_tan, 152), Z20
+  VBROADCASTSD CONST_GET_PTR(const_tan, 168), Z21
+  VMOVAPD Z16, Z17
+  VFMADD213PD Z20, Z10, Z16 // Z16 = (Z10 * Z16) + Z20
+  VFMADD213PD Z20, Z11, Z17 // Z17 = (Z11 * Z17) + Z20
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z21, Z10, Z18 // Z18 = (Z10 * Z18) + Z21
+  VFMADD213PD Z21, Z11, Z19 // Z19 = (Z11 * Z19) + Z21
+  VMULPD Z12, Z12, Z20
+  VMULPD Z13, Z13, Z21
+  VFMADD231PD Z16, Z12, Z18 // Z18 = (Z12 * Z16) + Z18
+  VFMADD231PD Z17, Z13, Z19 // Z19 = (Z13 * Z17) + Z19
+  VBROADCASTSD CONST_GET_PTR(const_tan, 176), Z16
+  VBROADCASTSD CONST_GET_PTR(const_tan, 192), Z22
+  VBROADCASTSD CONST_GET_PTR(const_tan, 184), Z4
+  VBROADCASTSD CONST_GET_PTR(const_tan, 200), Z5
+  VMOVAPD Z16, Z17
+  VMOVAPD Z22, Z23
+  VFMADD213PD Z4, Z10, Z16  // Z16 = (Z10 * Z16) + Z4
+  VFMADD213PD Z4, Z11, Z17  // Z17 = (Z11 * Z17) + Z4
+  VFMADD213PD Z5, Z10, Z22  // Z22 = (Z10 * Z22) + Z5
+  VFMADD213PD Z5, Z11, Z23  // Z23 = (Z11 * Z23) + Z5
+  VBROADCASTSD CONST_GET_PTR(const_tan, 208), Z4
+  VFMADD231PD Z16, Z12, Z22 // Z22 = (Z12 * Z16) + Z22
+  VFMADD231PD Z17, Z13, Z23 // Z23 = (Z13 * Z17) + Z23
+  VFMADD231PD Z18, Z20, Z22 // Z22 = (Z20 * Z18) + Z22
+  VFMADD231PD Z19, Z21, Z23 // Z23 = (Z21 * Z19) + Z23
+  VFMADD213PD Z4, Z10, Z22  // Z22 = (Z10 * Z22) + Z4
+  VFMADD213PD Z4, Z11, Z23  // Z23 = (Z11 * Z23) + Z4
+  VMULPD Z10, Z8, Z12
+  VMULPD Z11, Z9, Z13
+  VMOVAPD Z8, Z16
+  VMOVAPD Z9, Z17
+  VFMSUB213PD Z12, Z10, Z16 // Z16 = (Z10 * Z16) - Z12
+  VFMSUB213PD Z13, Z11, Z17 // Z17 = (Z11 * Z17) - Z13
+  VFMADD231PD Z14, Z8, Z16  // Z16 = (Z8 * Z14) + Z16
+  VFMADD231PD Z15, Z9, Z17  // Z17 = (Z9 * Z15) + Z17
+  VFMADD231PD Z10, Z6, Z16  // Z16 = (Z6 * Z10) + Z16
+  VFMADD231PD Z11, Z7, Z17  // Z17 = (Z7 * Z11) + Z17
+  VMULPD Z22, Z12, Z10
+  VMULPD Z23, Z13, Z11
+  VFMSUB213PD Z10, Z22, Z12 // Z12 = (Z22 * Z12) - Z10
+  VFMSUB213PD Z11, Z23, Z13 // Z13 = (Z23 * Z13) - Z11
+  VFMADD231PD Z16, Z22, Z12 // Z12 = (Z22 * Z16) + Z12
+  VFMADD231PD Z17, Z23, Z13 // Z13 = (Z23 * Z17) + Z13
+  VADDPD Z10, Z8, Z14
+  VADDPD Z11, Z9, Z15
+  VSUBPD Z14, Z8, Z8
+  VSUBPD Z15, Z9, Z9
+  VADDPD Z8, Z10, Z8
+  VADDPD Z9, Z11, Z9
+  VADDPD Z8, Z6, Z6
+  VADDPD Z9, Z7, Z7
+  VADDPD Z6, Z12, Z6
+  VADDPD Z7, Z13, Z7
+  VMULPD Z14, Z14, Z8
+  VMULPD Z15, Z15, Z9
+  VADDPD Z14, Z14, Z10
+  VADDPD Z15, Z15, Z11
+  VBROADCASTSD CONST_GET_PTR(const_tan, 224), Z13
+  VMULPD Z13, Z14, Z16
+  VMULPD Z13, Z15, Z17
+  VFMSUB213PD Z8, Z14, Z14 // Z14 = (Z14 * Z14) - Z8
+  VFMSUB213PD Z9, Z15, Z15 // Z15 = (Z15 * Z15) - Z9
+  VFMADD231PD Z10, Z6, Z14 // Z14 = (Z6 * Z10) + Z14
+  VFMADD231PD Z11, Z7, Z15 // Z15 = (Z7 * Z11) + Z15
+  VBROADCASTSD CONST_GET_PTR(const_tan, 216), Z11
+  VADDPD Z11, Z8, Z18
+  VADDPD Z11, Z9, Z19
+  VSUBPD Z18, Z11, Z10
+  VSUBPD Z19, Z11, Z11
+  VADDPD Z10, Z8, Z8
+  VADDPD Z11, Z9, Z9
+  VADDPD Z14, Z8, Z8
+  VADDPD Z15, Z9, Z9
+  VMULPD Z13, Z6, Z4
+  VMULPD Z13, Z7, Z5
+  VPBROADCASTQ CONSTF64_SIGN_BIT(), Z6
+  VBROADCASTSD CONSTF64_1(), Z7
+  VMOVAPD Z16, Z10
+  VMOVAPD Z17, Z11
+  VXORPD Z6, Z18, K5, Z10
+  VXORPD Z6, Z19, K6, Z11
+  VMOVAPD Z4, Z12
+  VMOVAPD Z5, Z13
+  VMOVAPD Z16, K5, Z18
+  VMOVAPD Z17, K6, Z19
+  VDIVPD Z18, Z7, Z16
+  VDIVPD Z19, Z7, Z17
+  VXORPD Z6, Z8, K5, Z12
+  VXORPD Z6, Z9, K6, Z13
+  VMOVAPD Z4, K5, Z8
+  VMOVAPD Z5, K6, Z9
+  VMULPD Z10, Z16, Z4
+  VMULPD Z11, Z17, Z5
+  VFMSUB213PD Z4, Z16, Z10   // Z10 = (Z16 * Z10) - Z4
+  VFMSUB213PD Z5, Z17, Z11   // Z11 = (Z17 * Z11) - Z5
+  VFNMADD213PD Z7, Z16, Z18 // Z18 = -(Z16 * Z18) + Z7
+  VFNMADD213PD Z7, Z17, Z19 // Z19 = -(Z17 * Z19) + Z7
+  VFNMADD231PD Z8, Z16, Z18  // Z18 = -(Z16 * Z8) + Z18
+  VFNMADD231PD Z9, Z17, Z19  // Z19 = -(Z17 * Z9) + Z19
+  VFMADD231PD Z12, Z16, Z10  // Z10 = (Z16 * Z12) + Z10
+  VFMADD231PD Z13, Z17, Z11  // Z11 = (Z17 * Z13) + Z11
+  VFMADD231PD Z18, Z4, Z10   // Z10 = (Z4 * Z18) + Z10
+  VFMADD231PD Z19, Z5, Z11   // Z11 = (Z5 * Z19) + Z11
+  VADDPD Z10, Z4, Z4
+  VADDPD Z11, Z5, Z5
+  VPXOR X6, X6, X6
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z2, K5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z3, K6
+  VMOVAPD Z2, K5, Z4
+  VMOVAPD Z3, K6, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z4), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+tan_case_b:
+  // case 'b': one or more lane has x >= 1e14
+  VMULPD.BCST CONST_GET_PTR(const_tan, 32), Z2, Z8
+  VMULPD.BCST CONST_GET_PTR(const_tan, 32), Z3, Z9
+  VRNDSCALEPD $11, Z8, Z12
+  VRNDSCALEPD $11, Z9, Z13
+  VXORPD X8, X8, X8
+  VMULPD.BCST CONST_GET_PTR(const_tan, 40), Z12, Z12
+  VMULPD.BCST CONST_GET_PTR(const_tan, 40), Z13, Z13
+  VBROADCASTSD CONST_GET_PTR(const_tan, 0), Z18
+  VBROADCASTSD CONST_GET_PTR(const_tan, 0), Z19
+  VFMSUB213PD Z10, Z2, Z18 // Z18 = (Z2 * Z18) - Z10
+  VFMSUB213PD Z11, Z3, Z19 // Z19 = (Z3 * Z19) - Z11
+  VFMADD231PD.BCST CONST_GET_PTR(const_tan, 48), Z2, Z18 // Z18 = (Z2 * mem) + Z18
+  VFMADD231PD.BCST CONST_GET_PTR(const_tan, 48), Z3, Z19 // Z19 = (Z3 * mem) + Z19
+  VCMPPD $VCMP_IMM_LT_OS, Z8, Z2, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z8, Z3, K6
+  VBROADCASTSD CONSTF64_HALF(), Z20
+  VBROADCASTSD CONSTF64_HALF(), Z21
+  VBROADCASTSD CONST_GET_PTR(const_tan, 56), K5, Z20
+  VBROADCASTSD CONST_GET_PTR(const_tan, 56), K6, Z21
+  VSUBPD Z12, Z20, Z20
+  VSUBPD Z13, Z21, Z21
+  VADDPD Z20, Z10, Z22
+  VADDPD Z21, Z11, Z23
+  VSUBPD Z10, Z22, Z24
+  VSUBPD Z11, Z23, Z25
+  VSUBPD Z24, Z22, Z26
+  VSUBPD Z25, Z23, Z27
+  VSUBPD Z26, Z10, Z10
+  VSUBPD Z27, Z11, Z11
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z10, Z20, Z10
+  VADDPD Z11, Z21, Z11
+  VADDPD Z10, Z18, Z10
+  VADDPD Z11, Z19, Z11
+  VADDPD Z10, Z22, Z10
+  VADDPD Z11, Z23, Z11
+  VRNDSCALEPD $11, Z10, Z18
+  VRNDSCALEPD $11, Z11, Z19
+  VBROADCASTSD CONST_GET_PTR(const_tan, 64), Z10
+  VBROADCASTSD CONST_GET_PTR(const_tan, 64), Z11
+  VMULPD Z10, Z18, Z20
+  VMULPD Z11, Z19, Z21
+  VFMADD213PD Z2, Z12, Z10 // Z10 = (Z12 * Z10) + Z2
+  VFMADD213PD Z3, Z13, Z11 // Z11 = (Z13 * Z11) + Z3
+  VADDPD Z20, Z10, Z22
+  VADDPD Z21, Z11, Z23
+  VSUBPD Z22, Z10, Z10
+  VSUBPD Z23, Z11, Z11
+  VADDPD Z10, Z20, Z10
+  VADDPD Z11, Z21, Z11
+
+  VBROADCASTSD CONST_GET_PTR(const_tan, 72), Z21
+  VMULPD Z21, Z12, Z24
+  VMULPD Z21, Z13, Z25
+  VADDPD Z22, Z24, Z26
+  VADDPD Z23, Z25, Z27
+  VSUBPD Z22, Z26, Z8
+  VSUBPD Z23, Z27, Z9
+  VSUBPD Z8, Z24, Z24
+  VSUBPD Z9, Z25, Z25
+  VSUBPD Z8, Z26, Z8
+  VSUBPD Z9, Z27, Z9
+  VSUBPD Z8, Z22, Z22
+  VSUBPD Z9, Z23, Z23
+  VADDPD Z22, Z24, Z22
+  VADDPD Z23, Z25, Z23
+  VADDPD Z22, Z10, Z10
+  VADDPD Z23, Z11, Z11
+  VMULPD Z21, Z18, Z20
+  VMULPD Z21, Z19, Z21
+  VADDPD Z26, Z20, Z22
+  VADDPD Z27, Z21, Z23
+  VSUBPD Z26, Z22, Z24
+  VSUBPD Z27, Z23, Z25
+  VSUBPD Z24, Z22, Z8
+  VSUBPD Z25, Z23, Z9
+  VSUBPD Z8, Z26, Z26
+  VSUBPD Z9, Z27, Z27
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z26, Z20, Z20
+  VADDPD Z27, Z21, Z21
+
+  VBROADCASTSD CONST_GET_PTR(const_tan, 80), Z25
+  VADDPD Z10, Z20, Z10
+  VADDPD Z11, Z21, Z11
+  VMULPD Z25, Z12, Z20
+  VMULPD Z25, Z13, Z21
+  VADDPD Z22, Z20, Z26
+  VADDPD Z23, Z21, Z27
+  VSUBPD Z22, Z26, Z8
+  VSUBPD Z23, Z27, Z9
+  VSUBPD Z8, Z20, Z20
+  VSUBPD Z9, Z21, Z21
+  VSUBPD Z8, Z26, Z8
+  VSUBPD Z9, Z27, Z9
+  VSUBPD Z8, Z22, Z22
+  VSUBPD Z9, Z23, Z23
+  VADDPD Z22, Z20, Z20
+  VADDPD Z23, Z21, Z21
+  VADDPD Z10, Z20, Z10
+  VADDPD Z11, Z21, Z11
+  VMULPD Z25, Z18, Z20
+  VMULPD Z25, Z19, Z21
+  VADDPD Z26, Z20, Z22
+  VADDPD Z27, Z21, Z23
+  VSUBPD Z26, Z22, Z24
+  VSUBPD Z27, Z23, Z25
+  VSUBPD Z24, Z22, Z8
+  VSUBPD Z25, Z23, Z9
+  VSUBPD Z8, Z26, Z26
+  VSUBPD Z9, Z27, Z27
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VBROADCASTSD CONST_GET_PTR(const_tan, 88), Z25
+  VADDPD Z26, Z20, Z20
+  VADDPD Z27, Z21, Z21
+  VADDPD Z10, Z20, Z20
+  VADDPD Z11, Z21, Z21
+  VADDPD Z18, Z12, Z10
+  VADDPD Z19, Z13, Z11
+  VMULPD Z25, Z10, Z12
+  VMULPD Z25, Z11, Z13
+  VADDPD Z22, Z12, Z10
+  VADDPD Z23, Z13, Z11
+  VSUBPD Z10, Z22, Z22
+  VSUBPD Z11, Z23, Z23
+  VADDPD Z22, Z12, Z12
+  VADDPD Z23, Z13, Z13
+  VADDPD Z20, Z12, Z12
+  VADDPD Z21, Z13, Z13
+
+  VCVTPD2DQ.RN_SAE Z18, Y20
+  VCVTPD2DQ.RN_SAE Z19, Y21
+  VBROADCASTSD CONST_GET_PTR(const_tan, 96), Z25
+  VINSERTI32X8 $1, Y21, Z20, Z20
+
+  VMOVDQA32 Z20, K3, Z4
+  VMOVAPD Z10, K3, Z14
+  VMOVAPD Z11, K4, Z15
+  VMOVAPD Z12, K3, Z16
+  VMOVAPD Z13, K4, Z17
+
+  VCMPPD $VCMP_IMM_GE_OQ, Z25, Z6, K3, K3
+  VCMPPD $VCMP_IMM_GE_OQ, Z25, Z7, K4, K4
+  KUNPCKBW K3, K4, K3
+  KTESTW K3, K3
+  JZ tan_eval_poly
+
+  // case 'c': one or more lane has x >= 1e14
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z10
+  MOVL $0xAAAA, R8
+  LEAQ CONST_GET_PTR(const_rempi, 0), R15
+
+  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z6, K3, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z7, K4, K5
+  KUNPCKBW K0, K5, K0
+
+  VGETEXPPD Z2, Z10
+  VGETEXPPD Z3, Z11
+  VCVTPD2DQ.RN_SAE Z10, Y10
+  VCVTPD2DQ.RN_SAE Z11, Y11
+  VINSERTI32X8 $1, Y11, Z10, Z10
+
+  VPCMPGTD.BCST CONSTD_NEG_1(), Z10, K5
+  VPANDD.BCST.Z CONST_GET_PTR(const_tan, 240), Z10, K5, Z10
+  VPADDD.BCST CONST_GET_PTR(const_tan, 244), Z10, Z10
+  VPCMPGTD.BCST CONST_GET_PTR(const_tan, 248), Z10, K5
+  VPBROADCASTD.Z CONST_GET_PTR(const_tan, 252), K5, Z12
+  VPSLLD $20, Z12, Z12
+  VEXTRACTI32X8 $1, Z12, Y13
+  KMOVW R8, K5
+  VPEXPANDD.Z Z12, K5, Z12
+  VPEXPANDD.Z Z13, K5, Z13
+  VPADDQ Z2, Z12, Z18
+  VPADDQ Z3, Z13, Z19
+  VPSRAD $31, Z10, Z12
+  VPANDND Z10, Z12, Z10
+  VPSLLD $2, Z10, Z10
+  VEXTRACTI32X8 $1, Z10, Y11
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X12, X12, X12
+  VXORPD X13, X13, X13
+  VGATHERDPD 0(R15)(Y10*8), K5, Z12
+  VGATHERDPD 0(R15)(Y11*8), K6, Z13
+  ADDQ $8, R15
+
+  VMULPD Z18, Z12, Z20
+  VMULPD Z19, Z13, Z21
+  VFMSUB213PD Z20, Z18, Z12 // Z12 = (Z18 * Z12) - Z20
+  VFMSUB213PD Z21, Z19, Z13 // Z13 = (Z19 * Z13) - Z21
+  VBROADCASTSD CONST_GET_PTR(const_tan, 104), Z22
+  VBROADCASTSD CONST_GET_PTR(const_tan, 112), Z23
+  VMULPD Z22, Z20, Z24
+  VMULPD Z22, Z21, Z25
+  VRNDSCALEPD $8, Z24, Z24
+  VRNDSCALEPD $8, Z25, Z25
+  VRNDSCALEPD $8, Z20, Z26
+  VRNDSCALEPD $8, Z21, Z27
+  VMULPD Z22, Z26, Z26
+  VMULPD Z22, Z27, Z27
+  VSUBPD Z26, Z24, Z26
+  VSUBPD Z27, Z25, Z27
+  VCVTPD2DQ.RZ_SAE Z26, Y26
+  VCVTPD2DQ.RZ_SAE Z27, Y27
+  VINSERTI32X8 $1, Y27, Z26, Z26
+  VMULPD Z23, Z24, Z24
+  VMULPD Z23, Z25, Z25
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z12, Z20, Z24
+  VADDPD Z13, Z21, Z25
+  VSUBPD Z24, Z20, Z20
+  VSUBPD Z25, Z21, Z21
+  VADDPD Z20, Z12, Z12
+  VADDPD Z21, Z13, Z13
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X20, X20, X20
+  VXORPD X21, X21, X21
+  VGATHERDPD 0(R15)(Y10*8), K5, Z20
+  VGATHERDPD 0(R15)(Y11*8), K6, Z21
+  ADDQ $8, R15
+
+  VMULPD Z18, Z20, Z6
+  VMULPD Z19, Z21, Z7
+  VFMSUB213PD Z6, Z18, Z20 // Z20 = (Z18 * Z20) - Z6
+  VFMSUB213PD Z7, Z19, Z21 // Z21 = (Z19 * Z21) - Z7
+  VADDPD Z12, Z20, Z12
+  VADDPD Z13, Z21, Z13
+  VADDPD Z24, Z6, Z8
+  VADDPD Z25, Z7, Z9
+  VSUBPD Z24, Z8, Z20
+  VSUBPD Z25, Z9, Z21
+  VSUBPD Z20, Z8, Z5
+  VSUBPD Z5, Z24, Z24
+  VSUBPD Z21, Z9, Z5
+  VSUBPD Z5, Z25, Z25
+  VSUBPD Z20, Z6, Z20
+  VSUBPD Z21, Z7, Z21
+  VADDPD Z24, Z20, Z20
+  VADDPD Z25, Z21, Z21
+  VADDPD Z20, Z12, Z12
+  VADDPD Z21, Z13, Z13
+  VMULPD Z22, Z8, Z20
+  VMULPD Z22, Z9, Z21
+  VRNDSCALEPD $8, Z20, Z24
+  VRNDSCALEPD $8, Z21, Z25
+  VRNDSCALEPD $8, Z8, Z20
+  VRNDSCALEPD $8, Z9, Z21
+  VMULPD Z22, Z20, Z20
+  VMULPD Z22, Z21, Z21
+  VSUBPD Z20, Z24, Z20
+  VSUBPD Z21, Z25, Z21
+  VCVTPD2DQ.RZ_SAE Z20, Y20
+  VCVTPD2DQ.RZ_SAE Z21, Y21
+  VINSERTI32X8 $1, Y21, Z20, Z20
+  VPADDD Z26, Z20, Z20
+  VMULPD Z23, Z24, Z22
+  VMULPD Z23, Z25, Z23
+  VSUBPD Z22, Z8, Z22
+  VSUBPD Z23, Z9, Z23
+  VADDPD Z12, Z22, Z24
+  VADDPD Z13, Z23, Z25
+  VSUBPD Z24, Z22, Z22
+  VSUBPD Z25, Z23, Z23
+  VADDPD Z22, Z12, Z12
+  VADDPD Z23, Z13, Z13
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X22, X22, X22
+  VXORPD X23, X23, X23
+  VGATHERDPD 0(R15)(Y10*8), K5, Z22
+  VGATHERDPD 0(R15)(Y11*8), K6, Z23
+  ADDQ $8, R15
+
+  KMOVB K3, K5
+  KMOVB K4, K6
+  VXORPD X26, X26, X26
+  VXORPD X27, X27, X27
+  VGATHERDPD 0(R15)(Y10*8), K5, Z26
+  VGATHERDPD 0(R15)(Y11*8), K6, Z27
+
+  VMULPD Z18, Z22, Z10
+  VMULPD Z19, Z23, Z11
+  VFMSUB213PD Z10, Z18, Z22 // Z22 = (Z18 * Z22) - Z10
+  VFMSUB213PD Z11, Z19, Z23 // Z23 = (Z19 * Z23) - Z11
+  VFMADD231PD Z26, Z18, Z22 // Z22 = (Z18 * Z26) + Z22
+  VFMADD231PD Z27, Z19, Z23 // Z23 = (Z19 * Z27) + Z23
+  VADDPD Z12, Z22, Z12
+  VADDPD Z13, Z23, Z13
+  VADDPD Z24, Z10, Z22
+  VADDPD Z25, Z11, Z23
+  VSUBPD Z24, Z22, Z26
+  VSUBPD Z25, Z23, Z27
+  VSUBPD Z26, Z22, Z6
+  VSUBPD Z27, Z23, Z7
+  VSUBPD Z6, Z24, Z24
+  VSUBPD Z7, Z25, Z25
+  VSUBPD Z26, Z10, Z10
+  VSUBPD Z27, Z11, Z11
+  VADDPD Z24, Z10, Z10
+  VADDPD Z25, Z11, Z11
+  VADDPD Z10, Z12, Z10
+  VADDPD Z11, Z13, Z11
+  VADDPD Z10, Z22, Z24
+  VADDPD Z11, Z23, Z25
+  VSUBPD Z24, Z22, Z12
+  VSUBPD Z25, Z23, Z13
+  VADDPD Z12, Z10, Z22
+  VADDPD Z13, Z11, Z23
+  VBROADCASTSD CONST_GET_PTR(const_tan, 120), Z26
+  VBROADCASTSD CONST_GET_PTR(const_tan, 128), Z27
+  VMULPD Z26, Z24, Z10
+  VMULPD Z26, Z25, Z11
+  VMOVAPD Z26, Z12
+  VMOVAPD Z26, Z13
+  VFMSUB213PD Z10, Z24, Z12 // Z12 = (Z24 * Z12) - Z10
+  VFMSUB213PD Z11, Z25, Z13 // Z13 = (Z25 * Z13) - Z11
+  VFMADD231PD Z22, Z26, Z12 // Z12 = (Z26 * Z22) + Z12
+  VFMADD231PD Z23, Z26, Z13 // Z13 = (Z26 * Z23) + Z13
+  VFMADD231PD Z27, Z24, Z12 // Z12 = (Z24 * Z27) + Z12
+  VFMADD231PD Z27, Z25, Z13 // Z13 = (Z25 * Z27) + Z13
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z26
+  VBROADCASTSD CONST_GET_PTR(const_tan, 136), Z27
+  VANDPD Z26, Z18, Z22
+  VANDPD Z26, Z19, Z23
+  VCMPPD $VCMP_IMM_LT_OS, Z27, Z22, K3, K5
+  VCMPPD $VCMP_IMM_LT_OS, Z27, Z23, K4, K6
+  VMOVAPD Z18, K5, Z10
+  VMOVAPD Z19, K6, Z11
+  VXORPD X8, X8, X8
+  VMOVAPD Z8, K5, Z12
+  VMOVAPD Z8, K6, Z13
+  VCMPPD $VCMP_IMM_UNORD_Q, Z8, Z2, K3, K5
+  KORB K0, K5, K5
+  VCMPPD $VCMP_IMM_UNORD_Q, Z8, Z3, K4, K6
+  KSHIFTRW $8, K0, K0
+  KORB K0, K6, K6
+
+  VPTERNLOGD $255, Z6, Z6, Z6
+  VPTERNLOGD $255, Z7, Z7, Z7
+
+  VMOVAPD Z6, K5, Z14
+  VMOVAPD Z7, K6, Z15
+  VMOVAPD Z6, K5, Z16
+  VMOVAPD Z7, K6, Z17
+
+  VMOVDQA32 Z20, K3, Z4
+  VMOVAPD Z10, K3, Z14
+  VMOVAPD Z11, K4, Z15
+  VMOVAPD Z12, K3, Z16
+  VMOVAPD Z13, K4, Z17
+  JMP tan_eval_poly
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - asin(x)
+// ------------------------------------------
+
+CONST_DATA_U64(const_asin,   0, $0x3fa02ff4c7428a47) // f64(0.031615876506539346)
+CONST_DATA_U64(const_asin,   8, $0xbf9032e75ccd4ae8) // f64(-0.015819182433299966)
+CONST_DATA_U64(const_asin,  16, $0x3f93c0e0817e9742) // f64(0.019290454772679107)
+CONST_DATA_U64(const_asin,  24, $0x3f7b0ef96b727e7e) // f64(0.0066060774762771706)
+CONST_DATA_U64(const_asin,  32, $0x3f88e3fd48d0fb6f) // f64(0.012153605255773773)
+CONST_DATA_U64(const_asin,  40, $0x3f8c70ddf81249fc) // f64(0.013887151845016092)
+CONST_DATA_U64(const_asin,  48, $0x3f91c6b5042ec6b2) // f64(0.017359569912236146)
+CONST_DATA_U64(const_asin,  56, $0x3f96e89f8578b64e) // f64(0.022371761819320483)
+CONST_DATA_U64(const_asin,  64, $0x3f9f1c72c5fd95ba) // f64(0.030381959280381322)
+CONST_DATA_U64(const_asin,  72, $0x3fa6db6db407c2b3) // f64(0.044642856813771024)
+CONST_DATA_U64(const_asin,  80, $0x3fb3333333375cd0) // f64(0.075000000003785816)
+CONST_DATA_U64(const_asin,  88, $0x3fc55555555552f4) // f64(0.16666666666664975)
+CONST_DATA_U64(const_asin,  96, $0x3fe921fb54442d18) // f64(0.78539816339744828)
+CONST_DATA_U64(const_asin, 104, $0x3c81a62633145c07) // f64(3.061616997868383E-17)
+CONST_GLOBAL(const_asin, $112)
+
+// f64[0].k[1] = asin(f64[2]).k[3]
+TEXT bcasinf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ next
+
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z7
+  VBROADCASTSD CONSTF64_HALF(), Z8
+  VBROADCASTSD CONSTF64_1(), Z9
+
+  VANDPD.Z Z7, Z2, K1, Z6
+  VANDPD.Z Z7, Z3, K2, Z7
+  VCMPPD $VCMP_IMM_LT_OQ, Z8, Z6, K1, K3
+  VCMPPD $VCMP_IMM_LT_OQ, Z8, Z7, K2, K4
+  VSUBPD Z6, Z9, Z4
+  VSUBPD Z7, Z9, Z5
+  VMULPD Z8, Z4, Z4
+  VMULPD Z8, Z5, Z5
+  VMULPD Z2, Z2, K3, Z4
+  VMULPD Z3, Z3, K4, Z5
+  VSQRTPD Z4, Z12
+  VSQRTPD Z5, Z13
+  VMULPD Z12, Z12, Z14
+  VMULPD Z13, Z13, Z15
+  VMOVAPD Z12, Z16
+  VMOVAPD Z13, Z17
+  VFMSUB213PD Z14, Z12, Z16 // Z16 = (Z12 * Z16) - Z14
+  VFMSUB213PD Z15, Z13, Z17 // Z17 = (Z13 * Z17) - Z15
+  VADDPD Z14, Z4, Z18
+  VADDPD Z15, Z5, Z19
+  VSUBPD Z4, Z18, Z20
+  VSUBPD Z5, Z19, Z21
+  VSUBPD Z20, Z18, Z22
+  VSUBPD Z21, Z19, Z23
+  VSUBPD Z22, Z4, Z22
+  VSUBPD Z23, Z5, Z23
+  VSUBPD Z20, Z14, Z14
+  VSUBPD Z21, Z15, Z15
+  VADDPD Z22, Z14, Z14
+  VADDPD Z23, Z15, Z15
+  VADDPD Z14, Z16, Z14
+  VADDPD Z15, Z17, Z15
+  VDIVPD Z12, Z9, Z16
+  VDIVPD Z13, Z9, Z17
+  VFNMADD213PD Z9, Z16, Z12 // Z12 = -(Z16 * Z12) + Z9
+  VFNMADD213PD Z9, Z17, Z13 // Z13 = -(Z17 * Z13) + Z9
+  VMULPD Z12, Z16, Z12
+  VMULPD Z13, Z17, Z13
+  VMULPD Z18, Z16, Z20
+  VMULPD Z19, Z17, Z21
+  VMOVAPD Z16, Z22
+  VMOVAPD Z17, Z23
+  VFMSUB213PD Z20, Z18, Z22 // Z22 = (Z18 * Z22) - Z20
+  VFMSUB213PD Z21, Z19, Z23 // Z23 = (Z19 * Z23) - Z21
+  VFMADD231PD Z14, Z16, Z22 // Z22 = (Z16 * Z14) + Z22
+  VFMADD231PD Z15, Z17, Z23 // Z23 = (Z17 * Z15) + Z23
+  VFMADD231PD Z12, Z18, Z22 // Z22 = (Z18 * Z12) + Z22
+  VFMADD231PD Z13, Z19, Z23 // Z23 = (Z19 * Z13) + Z23
+  VMULPD Z8, Z20, Z12
+  VMULPD Z8, Z21, Z13
+  VMOVAPD Z6, K3, Z12
+  VMOVAPD Z7, K4, Z13
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z6, K5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z7, K6
+  VXORPD Z12, Z12, K5, Z12
+  VXORPD Z13, Z13, K6, Z13
+  KORW K3, K5, K5
+  KORW K4, K6, K6
+  KNOTW K5, K5
+  KNOTW K6, K6
+  VMULPD.Z Z8, Z22, K5, Z6
+  VMULPD.Z Z8, Z23, K6, Z7
+  VMULPD Z4, Z4, Z8
+  VMULPD Z5, Z5, Z9
+  VMULPD Z8, Z8, Z10
+  VMULPD Z9, Z9, Z11
+  VMULPD Z10, Z10, Z14
+  VMULPD Z11, Z11, Z15
+  VBROADCASTSD CONST_GET_PTR(const_asin, 0), Z16
+  VBROADCASTSD CONST_GET_PTR(const_asin, 16), Z18
+  VBROADCASTSD CONST_GET_PTR(const_asin, 8), Z20
+  VBROADCASTSD CONST_GET_PTR(const_asin, 24), Z21
+  VMOVAPD Z16, Z17
+  VFMADD213PD Z20, Z4, Z16 // Z16 = (Z4 * Z16) + Z20
+  VFMADD213PD Z20, Z5, Z17 // Z17 = (Z5 * Z17) + Z20
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z21, Z4, Z18 // Z18 = (Z4 * Z18) + Z21
+  VFMADD213PD Z21, Z5, Z19 // Z19 = (Z5 * Z19) + Z21
+  VBROADCASTSD CONST_GET_PTR(const_asin, 32), Z20
+  VBROADCASTSD CONST_GET_PTR(const_asin, 48), Z22
+  VMOVAPD Z20, Z21
+  VMOVAPD Z22, Z23
+  VBROADCASTSD CONST_GET_PTR(const_asin, 40), Z24
+  VBROADCASTSD CONST_GET_PTR(const_asin, 56), Z25
+  VFMADD213PD Z24, Z4, Z20 // Z20 = (Z4 * Z20) + Z24
+  VFMADD213PD Z24, Z5, Z21 // Z21 = (Z5 * Z21) + Z24
+  VFMADD213PD Z25, Z4, Z22 // Z22 = (Z4 * Z22) + Z25
+  VFMADD213PD Z25, Z5, Z23 // Z23 = (Z5 * Z23) + Z25
+  VFMADD231PD Z16, Z8, Z18 // Z18 = (Z8 * Z16) + Z18
+  VFMADD231PD Z17, Z9, Z19 // Z19 = (Z9 * Z17) + Z19
+  VFMADD231PD Z20, Z8, Z22 // Z22 = (Z8 * Z20) + Z22
+  VFMADD231PD Z21, Z9, Z23 // Z23 = (Z9 * Z21) + Z23
+  VBROADCASTSD CONST_GET_PTR(const_asin, 64), Z16
+  VBROADCASTSD CONST_GET_PTR(const_asin, 80), Z20
+  VMOVAPD Z16, Z17
+  VMOVAPD Z20, Z21
+  VBROADCASTSD CONST_GET_PTR(const_asin, 72), Z24
+  VBROADCASTSD CONST_GET_PTR(const_asin, 88), Z25
+  VFMADD213PD Z24, Z4, Z16 // Z16 = (Z4 * Z16) + Z24
+  VFMADD213PD Z24, Z5, Z17 // Z17 = (Z5 * Z17) + Z24
+  VFMADD213PD Z25, Z4, Z20 // Z20 = (Z4 * Z20) + Z25
+  VFMADD213PD Z25, Z5, Z21 // Z21 = (Z5 * Z21) + Z25
+  VFMADD231PD Z16, Z8, Z20  // Z20 = (Z8 * Z16) + Z20
+  VFMADD231PD Z17, Z9, Z21  // Z21 = (Z9 * Z17) + Z21
+  VFMADD231PD Z22, Z10, Z20 // Z20 = (Z10 * Z22) + Z20
+  VFMADD231PD Z23, Z11, Z21 // Z21 = (Z11 * Z23) + Z21
+  VFMADD231PD Z18, Z14, Z20 // Z20 = (Z14 * Z18) + Z20
+  VFMADD231PD Z19, Z15, Z21 // Z21 = (Z15 * Z19) + Z21
+  VMULPD Z12, Z4, Z4
+  VMULPD Z13, Z5, Z5
+  VBROADCASTSD CONST_GET_PTR(const_asin, 96), Z9
+  VBROADCASTSD CONST_GET_PTR(const_asin, 104), Z14
+  VMULPD Z4, Z20, Z4
+  VMULPD Z5, Z21, Z5
+  VSUBPD Z12, Z9, Z10
+  VSUBPD Z13, Z9, Z11
+  VSUBPD Z10, Z9, Z8
+  VSUBPD Z11, Z9, Z9
+  VSUBPD Z12, Z8, Z8
+  VSUBPD Z13, Z9, Z9
+  VADDPD Z14, Z8, Z8
+  VADDPD Z14, Z9, Z9
+  VSUBPD Z6, Z8, Z6
+  VSUBPD Z7, Z9, Z7
+  VSUBPD Z4, Z10, Z8
+  VSUBPD Z5, Z11, Z9
+  VSUBPD Z8, Z10, Z10
+  VSUBPD Z9, Z11, Z11
+  VSUBPD Z4, Z10, Z10
+  VSUBPD Z5, Z11, Z11
+  VADDPD Z6, Z10, Z6
+  VADDPD Z7, Z11, Z7
+  VADDPD Z6, Z8, Z6
+  VADDPD Z7, Z9, Z7
+  VADDPD Z6, Z6, Z6
+  VADDPD Z7, Z7, Z7
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z10
+  VADDPD Z4, Z12, K3, Z6
+  VADDPD Z5, Z13, K4, Z7
+  VPTERNLOGQ $108, Z10, Z6, K1, Z2
+  VPTERNLOGQ $108, Z10, Z7, K2, Z3
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - acos(x)
+// ------------------------------------------
+
+CONST_DATA_U64(const_acos,   0, $0x3fa02ff4c7428a47) // f64(0.031615876506539346)
+CONST_DATA_U64(const_acos,   8, $0xbf9032e75ccd4ae8) // f64(-0.015819182433299966)
+CONST_DATA_U64(const_acos,  16, $0x3f93c0e0817e9742) // f64(0.019290454772679107)
+CONST_DATA_U64(const_acos,  24, $0x3f7b0ef96b727e7e) // f64(0.0066060774762771706)
+CONST_DATA_U64(const_acos,  32, $0x3f88e3fd48d0fb6f) // f64(0.012153605255773773)
+CONST_DATA_U64(const_acos,  40, $0x3f8c70ddf81249fc) // f64(0.013887151845016092)
+CONST_DATA_U64(const_acos,  48, $0x3f91c6b5042ec6b2) // f64(0.017359569912236146)
+CONST_DATA_U64(const_acos,  56, $0x3f96e89f8578b64e) // f64(0.022371761819320483)
+CONST_DATA_U64(const_acos,  64, $0x3f9f1c72c5fd95ba) // f64(0.030381959280381322)
+CONST_DATA_U64(const_acos,  72, $0x3fa6db6db407c2b3) // f64(0.044642856813771024)
+CONST_DATA_U64(const_acos,  80, $0x3fb3333333375cd0) // f64(0.075000000003785816)
+CONST_DATA_U64(const_acos,  88, $0x3fc55555555552f4) // f64(0.16666666666664975)
+CONST_DATA_U64(const_acos,  96, $0x3ff921fb54442d18) // f64(1.5707963267948966)
+CONST_DATA_U64(const_acos, 104, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
+CONST_DATA_U64(const_acos, 112, $0x400921fb54442d18) // f64(3.1415926535897931)
+CONST_DATA_U64(const_acos, 120, $0x3ca1a62633145c07) // f64(1.2246467991473532E-16)
+CONST_GLOBAL(const_acos, $128)
+
+// f64[0].k[1] = acos(f64[2]).k[3]
+TEXT bcacosf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ next
+
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z5
+  VBROADCASTSD CONSTF64_HALF(), Z6
+  VBROADCASTSD CONSTF64_1(), Z7
+  VXORPD X10, X10, X10
+
+  VANDPD.Z Z5, Z2, K1, Z4
+  VANDPD.Z Z5, Z3, K2, Z5
+  VCMPPD $VCMP_IMM_LT_OS, Z6, Z4, K1, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z6, Z5, K2, K4
+  VSUBPD Z4, Z7, Z8
+  VSUBPD Z5, Z7, Z9
+  VMULPD Z6, Z8, Z8
+  VMULPD Z6, Z9, Z9
+  VMULPD Z2, Z2, K3, Z8
+  VMULPD Z3, Z3, K4, Z9
+  VSQRTPD Z8, Z12
+  VSQRTPD Z9, Z13
+  VMULPD Z12, Z12, Z14
+  VMULPD Z13, Z13, Z15
+  VMOVAPD Z12, Z16
+  VMOVAPD Z13, Z17
+  VFMSUB213PD Z14, Z12, Z16 // Z16 = (Z12 * Z16) - Z14
+  VFMSUB213PD Z15, Z13, Z17 // Z17 = (Z13 * Z17) - Z15
+  VADDPD Z14, Z8, Z18
+  VADDPD Z15, Z9, Z19
+  VSUBPD Z8, Z18, Z20
+  VSUBPD Z9, Z19, Z21
+  VSUBPD Z20, Z18, Z22
+  VSUBPD Z21, Z19, Z23
+  VSUBPD Z22, Z8, Z22
+  VSUBPD Z23, Z9, Z23
+  VSUBPD Z20, Z14, Z14
+  VSUBPD Z21, Z15, Z15
+  VADDPD Z22, Z14, Z14
+  VADDPD Z23, Z15, Z15
+  VADDPD Z14, Z16, Z14
+  VADDPD Z15, Z17, Z15
+  VDIVPD Z12, Z7, Z16
+  VDIVPD Z13, Z7, Z17
+  VFNMADD213PD Z7, Z16, Z12 // Z12 = -(Z16 * Z12) + Z7
+  VFNMADD213PD Z7, Z17, Z13 // Z13 = -(Z17 * Z13) + Z7
+  VMULPD Z12, Z16, Z12
+  VMULPD Z13, Z17, Z13
+  VMULPD Z18, Z16, Z20
+  VMULPD Z19, Z17, Z21
+  VMOVAPD Z16, Z22
+  VMOVAPD Z17, Z23
+  VFMSUB213PD Z20, Z18, Z22 // Z22 = (Z18 * Z22) - Z20
+  VFMSUB213PD Z21, Z19, Z23 // Z23 = (Z19 * Z23) - Z21
+  VFMADD231PD Z14, Z16, Z22 // Z22 = (Z16 * Z14) + Z22
+  VFMADD231PD Z15, Z17, Z23 // Z23 = (Z17 * Z15) + Z23
+  VFMADD231PD Z12, Z18, Z22 // Z22 = (Z18 * Z12) + Z22
+  VFMADD231PD Z13, Z19, Z23 // Z23 = (Z19 * Z13) + Z23
+  VMULPD Z6, Z20, Z12
+  VMULPD Z6, Z21, Z13
+  VMOVAPD Z4, K3, Z12
+  VMOVAPD Z5, K4, Z13
+  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z4, K5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z5, K6
+  VXORPD Z12, Z12, K5, Z12
+  VXORPD Z13, Z13, K6, Z13
+  KORW K3, K5, K5
+  KORW K4, K6, K6
+  KNOTW K5, K5
+  KNOTW K6, K6
+  VMULPD.Z Z6, Z22, K5, Z14
+  VMULPD.Z Z6, Z23, K6, Z15
+  VMULPD Z8, Z8, Z16
+  VMULPD Z9, Z9, Z17
+  VMULPD Z16, Z16, Z18
+  VMULPD Z17, Z17, Z19
+  VBROADCASTSD CONST_GET_PTR(const_acos, 0), Z20
+  VBROADCASTSD CONST_GET_PTR(const_acos, 16), Z22
+  VMOVAPD Z20, Z21
+  VMOVAPD Z22, Z23
+  VBROADCASTSD CONST_GET_PTR(const_acos, 8), Z24
+  VBROADCASTSD CONST_GET_PTR(const_acos, 24), Z25
+  VFMADD213PD Z24, Z8, Z20 // Z20 = (Z8 * Z20) + Z24
+  VFMADD213PD Z24, Z9, Z21 // Z21 = (Z9 * Z21) + Z24
+  VFMADD213PD Z25, Z8, Z22 // Z22 = (Z8 * Z22) + Z25
+  VFMADD213PD Z25, Z9, Z23 // Z23 = (Z9 * Z23) + Z25
+  VBROADCASTSD CONST_GET_PTR(const_acos, 32), Z24
+  VBROADCASTSD CONST_GET_PTR(const_acos, 48), Z26
+  VMOVAPD Z24, Z25
+  VMOVAPD Z26, Z27
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 40), Z8, Z24 // Z24 = (Z8 * Z24) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 40), Z9, Z25 // Z25 = (Z9 * Z25) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 56), Z8, Z26 // Z26 = (Z8 * Z26) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 56), Z9, Z27 // Z27 = (Z9 * Z27) + mem
+  VFMADD231PD Z20, Z16, Z22 // Z22 = (Z16 * Z20) + Z22
+  VFMADD231PD Z21, Z17, Z23 // Z23 = (Z17 * Z21) + Z23
+  VFMADD231PD Z24, Z16, Z26 // Z26 = (Z16 * Z24) + Z26
+  VFMADD231PD Z25, Z17, Z27 // Z27 = (Z17 * Z25) + Z27
+  VBROADCASTSD CONST_GET_PTR(const_acos, 64), Z20
+  VBROADCASTSD CONST_GET_PTR(const_acos, 80), Z24
+  VMOVAPD Z20, Z21
+  VMOVAPD Z24, Z25
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 72), Z8, Z20 // Z20 = (Z8 * Z20) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 72), Z9, Z21 // Z21 = (Z9 * Z21) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 88), Z8, Z24 // Z24 = (Z8 * Z24) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_acos, 88), Z9, Z25 // Z25 = (Z9 * Z25) + mem
+  VFMADD231PD Z20, Z16, Z24 // Z24 = (Z16 * Z20) + Z24
+  VFMADD231PD Z21, Z17, Z25 // Z25 = (Z17 * Z21) + Z25
+  VFMADD231PD Z26, Z18, Z24 // Z24 = (Z18 * Z26) + Z24
+  VMULPD Z18, Z18, Z18
+  VFMADD231PD Z27, Z19, Z25 // Z25 = (Z19 * Z27) + Z25
+  VMULPD Z19, Z19, Z19
+  VFMADD231PD Z22, Z18, Z24 // Z24 = (Z18 * Z22) + Z24
+  VFMADD231PD Z23, Z19, Z25 // Z25 = (Z19 * Z23) + Z25
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z17
+  VMULPD Z12, Z8, Z8
+  VMULPD Z13, Z9, Z9
+  VMULPD Z8, Z24, Z8
+  VMULPD Z9, Z25, Z9
+  VANDPD Z17, Z2, Z16
+  VANDPD Z17, Z3, Z17
+  VXORPD Z12, Z16, Z18
+  VXORPD Z13, Z17, Z19
+  VXORPD Z8, Z16, Z16
+  VXORPD Z9, Z17, Z17
+  VADDPD Z16, Z18, Z20
+  VADDPD Z17, Z19, Z21
+  VSUBPD Z20, Z18, Z18
+  VSUBPD Z21, Z19, Z19
+  VBROADCASTSD CONST_GET_PTR(const_acos, 96), Z23
+  VBROADCASTSD CONST_GET_PTR(const_acos, 104), Z24
+  VADDPD Z16, Z18, Z16
+  VADDPD Z17, Z19, Z17
+  VSUBPD Z20, Z23, Z18
+  VSUBPD Z21, Z23, Z19
+  VSUBPD Z18, Z23, Z22
+  VSUBPD Z19, Z23, Z23
+  VSUBPD Z20, Z22, Z20
+  VSUBPD Z21, Z23, Z21
+  VADDPD Z24, Z20, Z20
+  VADDPD Z24, Z21, Z21
+  VADDPD Z8, Z12, Z22
+  VADDPD Z9, Z13, Z23
+  VSUBPD Z22, Z12, Z12
+  VSUBPD Z23, Z13, Z13
+  VADDPD Z12, Z8, Z8
+  VADDPD Z13, Z9, Z9
+  VADDPD Z14, Z8, Z8
+  VADDPD Z15, Z9, Z9
+  VADDPD Z22, Z22, Z12
+  VADDPD Z23, Z23, Z13
+  VADDPD Z8, Z8, Z8
+  VADDPD Z9, Z9, Z9
+  VMOVAPD Z18, K3, Z12
+  VMOVAPD Z19, K4, Z13
+  VSUBPD Z16, Z20, K3, Z8
+  VSUBPD Z17, Z21, K4, Z9
+  VCMPPD $VCMP_IMM_LT_OS, Z10, Z2, K1, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z10, Z3, K2, K4
+  VCMPPD $VCMP_IMM_NLT_US, Z6, Z4, K3, K3
+  VCMPPD $VCMP_IMM_NLT_US, Z6, Z5, K4, K4
+  VBROADCASTSD CONST_GET_PTR(const_acos, 112), Z11
+  VBROADCASTSD CONST_GET_PTR(const_acos, 120), Z14
+  VSUBPD Z12, Z11, Z4
+  VSUBPD Z13, Z11, Z5
+  VSUBPD Z4, Z11, Z10
+  VSUBPD Z5, Z11, Z11
+  VSUBPD Z12, Z10, Z10
+  VSUBPD Z13, Z11, Z11
+  VADDPD Z14, Z10, Z10
+  VADDPD Z14, Z11, Z11
+  VMOVAPD Z4, K3, Z12
+  VMOVAPD Z5, K4, Z13
+  VSUBPD Z8, Z10, K3, Z8
+  VSUBPD Z9, Z11, K4, Z9
+  VADDPD Z8, Z12, K1, Z2
+  VADDPD Z9, Z13, K2, Z3
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - atan(x)
+// ------------------------------------------
+
+CONST_DATA_U64(const_atan,   0, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_atan,   8, $0x3ee64adb3e06ee72) // f64(1.0629848419144875E-5)
+CONST_DATA_U64(const_atan,  16, $0xbf2077212aa7d6ce) // f64(-1.2562064996728687E-4)
+CONST_DATA_U64(const_atan,  24, $0x3f471ece4d9ced98) // f64(7.0557664296393412E-4)
+CONST_DATA_U64(const_atan,  32, $0xbf64a20138b90cee) // f64(-0.0025186561449871336)
+CONST_DATA_U64(const_atan,  40, $0x3f7a788ec28e9fb3) // f64(0.0064626289903699117)
+CONST_DATA_U64(const_atan,  48, $0xbf8a45a2ea379db5) // f64(-0.012828133366339903)
+CONST_DATA_U64(const_atan,  56, $0x3f954d3eccf8f320) // f64(0.02080247999241458)
+CONST_DATA_U64(const_atan,  64, $0xbf9d9805e7ba23e7) // f64(-0.028900234478474032)
+CONST_DATA_U64(const_atan,  72, $0x3fa26bc6260b1bdd) // f64(0.035978500503510459)
+CONST_DATA_U64(const_atan,  80, $0xbfa56d2d526c0577) // f64(-0.041848579703592508)
+CONST_DATA_U64(const_atan,  88, $0x3fa81b6efb51f8a6) // f64(0.047084301165328399)
+CONST_DATA_U64(const_atan,  96, $0xbfaae027d1895f2e) // f64(-0.052491421058844842)
+CONST_DATA_U64(const_atan, 104, $0x3fae1a556400767b) // f64(0.0587946590969581)
+CONST_DATA_U64(const_atan, 112, $0xbfb110c441e542d6) // f64(-0.06666208847787955)
+CONST_DATA_U64(const_atan, 120, $0x3fb3b131f3b00d10) // f64(0.076922533029620376)
+CONST_DATA_U64(const_atan, 128, $0xbfb745d0ac14efec) // f64(-0.090909044277338757)
+CONST_DATA_U64(const_atan, 136, $0x3fbc71c710b37a0b) // f64(0.11111110837689624)
+CONST_DATA_U64(const_atan, 144, $0xbfc249249211afc7) // f64(-0.14285714275626857)
+CONST_DATA_U64(const_atan, 152, $0x3fc9999999987cf0) // f64(0.19999999999797735)
+CONST_DATA_U64(const_atan, 160, $0xbfd555555555543a) // f64(-0.33333333333331761)
+CONST_DATA_U64(const_atan, 168, $0x3ff921fb54442d18) // f64(1.5707963267948966)
+CONST_DATA_U64(const_atan, 176, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
+CONST_GLOBAL(const_atan, $184)
+
+// f64[0].k[1] = atan(f64[2]).k[3]
+TEXT bcatanf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ next
+
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z5
+  VBROADCASTSD CONST_GET_PTR(const_atan, 0), Z7
+  VBROADCASTSD CONSTF64_1(), Z12
+
+  VANDPD Z5, Z2, Z4
+  VANDPD Z5, Z3, Z5
+  VCMPPD $VCMP_IMM_LT_OS, Z4, Z12, K1, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z5, Z12, K2, K4
+  VBLENDMPD Z7, Z4, K3, Z6
+  VBLENDMPD Z7, Z5, K4, Z7
+  VBROADCASTSD.Z CONSTF64_SIGN_BIT(), K3, Z14
+  VBROADCASTSD.Z CONSTF64_SIGN_BIT(), K4, Z15
+  VMAXPD Z12, Z4, Z16
+  VMAXPD Z12, Z5, Z17
+  VDIVPD Z16, Z12, Z18
+  VDIVPD Z17, Z12, Z19
+  VXORPD X20, X20, X20
+  VXORPD X21, X21, X21
+  VMULPD Z18, Z6, Z10
+  VMULPD Z19, Z7, Z11
+  VFMSUB213PD Z10, Z18, Z6   // Z6 = (Z18 * Z6) - Z10
+  VFMSUB213PD Z11, Z19, Z7   // Z7 = (Z19 * Z7) - Z11
+  VFNMADD213PD Z12, Z18, Z16 // Z16 = -(Z18 * Z16) + Z12
+  VFNMADD213PD Z12, Z19, Z17 // Z17 = -(Z19 * Z17) + Z13
+  VFNMADD231PD Z20, Z18, Z16 // Z16 = -(Z18 * Z20) + Z16
+  VFNMADD231PD Z21, Z19, Z17 // Z17 = -(Z19 * Z21) + Z17
+  VFMADD231PD Z14, Z18, Z6   // Z6 = (Z18 * Z14) + Z6
+  VFMADD231PD Z15, Z19, Z7   // Z7 = (Z19 * Z15) + Z7
+  VFMADD231PD Z16, Z10, Z6   // Z6 = (Z10 * Z16) + Z6
+  VFMADD231PD Z17, Z11, Z7   // Z7 = (Z11 * Z17) + Z7
+  VMULPD Z10, Z10, Z12
+  VMULPD Z11, Z11, Z13
+  VADDPD Z10, Z10, Z14
+  VADDPD Z11, Z11, Z15
+  VMOVAPD Z10, Z16
+  VMOVAPD Z11, Z17
+  VFMSUB213PD Z12, Z10, Z16 // Z16 = (Z10 * Z16) - Z12
+  VFMSUB213PD Z13, Z11, Z17 // Z17 = (Z11 * Z17) - Z13
+  VFMADD231PD Z14, Z6, Z16  // Z16 = (Z6 * Z14) + Z16
+  VFMADD231PD Z15, Z7, Z17  // Z17 = (Z7 * Z15) + Z17
+  VADDPD Z16, Z12, Z14
+  VADDPD Z17, Z13, Z15
+  VSUBPD Z14, Z12, Z12
+  VSUBPD Z15, Z13, Z13
+  VBROADCASTSD CONST_GET_PTR(const_atan, 8), Z18
+  VBROADCASTSD CONST_GET_PTR(const_atan, 16), Z20
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z20, Z14, Z18 // Z18 = (Z14 * Z18) + Z20
+  VFMADD213PD Z20, Z15, Z19 // Z19 = (Z15 * Z19) + Z20
+  VBROADCASTSD CONST_GET_PTR(const_atan, 24), Z20
+  VBROADCASTSD CONST_GET_PTR(const_atan, 32), Z24
+  VMOVAPD Z20, Z21
+  VMULPD Z14, Z14, Z22
+  VMULPD Z15, Z15, Z23
+  VFMADD213PD Z24, Z14, Z20 // Z20 = (Z14 * Z20) + Z24
+  VFMADD213PD Z24, Z15, Z21 // Z21 = (Z15 * Z21) + Z24
+  VFMADD231PD Z18, Z22, Z20 // Z20 = (Z22 * Z18) + Z20
+  VFMADD231PD Z19, Z23, Z21 // Z21 = (Z23 * Z19) + Z21
+  VBROADCASTSD CONST_GET_PTR(const_atan, 40), Z18
+  VBROADCASTSD CONST_GET_PTR(const_atan, 56), Z24
+  VMOVAPD Z18, Z19
+  VMOVAPD Z24, Z25
+  VBROADCASTSD CONST_GET_PTR(const_atan, 48), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan, 64), Z27
+  VFMADD213PD Z26, Z14, Z18 // Z18 = (Z14 * Z18) + Z26
+  VFMADD213PD Z26, Z15, Z19 // Z19 = (Z15 * Z19) + Z26
+  VFMADD213PD Z27, Z14, Z24 // Z24 = (Z14 * Z24) + Z27
+  VFMADD213PD Z27, Z15, Z25 // Z25 = (Z15 * Z25) + Z27
+  VBROADCASTSD CONST_GET_PTR(const_atan, 72), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan, 88), Z8
+  VBROADCASTSD CONST_GET_PTR(const_atan, 80), Z9
+  VMOVAPD Z26, Z27
+  VFMADD213PD Z9, Z14, Z26 // Z26 = (Z14 * Z26) + Z9
+  VFMADD213PD Z9, Z15, Z27 // Z27 = (Z15 * Z27) + Z9
+  VMOVAPD Z8, Z9
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 96), Z14, Z8 // Z8 = (Z14 * Z8) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 96), Z15, Z9 // Z9 = (Z15 * Z9) + mem
+  VFMADD231PD Z18, Z22, Z24 // Z24 = (Z22 * Z18) + Z24
+  VFMADD231PD Z19, Z23, Z25 // Z25 = (Z23 * Z19) + Z25
+  VFMADD231PD Z26, Z22, Z8  // Z8 = (Z22 * Z26) + Z8
+  VFMADD231PD Z27, Z23, Z9  // Z9 = (Z23 * Z27) + Z9
+  VBROADCASTSD CONST_GET_PTR(const_atan, 104), Z18
+  VBROADCASTSD CONST_GET_PTR(const_atan, 120), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan, 112), Z27
+  VMOVAPD Z18, Z19
+  VFMADD213PD Z27, Z14, Z18 // Z18 = (Z14 * Z18) + Z27
+  VFMADD213PD Z27, Z15, Z19 // Z19 = (Z15 * Z19) + Z27
+  VMOVAPD Z26, Z27
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 128), Z14, Z26 // Z26 = (Z14 * Z26) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan, 128), Z15, Z27 // Z27 = (Z15 * Z27) + mem
+  VFMADD231PD Z18, Z22, Z26 // Z26 = (Z22 * Z18) + Z26
+  VFMADD231PD Z19, Z23, Z27 // Z27 = (Z23 * Z19) + Z27
+  VMULPD Z22, Z22, Z18
+  VMULPD Z23, Z23, Z19
+  VMULPD Z18, Z18, Z22
+  VMULPD Z19, Z19, Z23
+  VFMADD231PD Z20, Z18, Z24 // Z24 = (Z18 * Z20) + Z24
+  VFMADD231PD Z21, Z19, Z25 // Z25 = (Z19 * Z21) + Z25
+  VFMADD231PD Z8, Z18, Z26  // Z26 = (Z18 * Z8) + Z26
+  VFMADD231PD Z9, Z19, Z27  // Z27 = (Z19 * Z9) + Z27
+  VBROADCASTSD CONST_GET_PTR(const_atan, 136), Z8
+  VBROADCASTSD CONST_GET_PTR(const_atan, 144), Z9
+  VFMADD231PD Z24, Z22, Z26 // Z26 = (Z22 * Z24) + Z26
+  VFMADD231PD Z25, Z23, Z27 // Z27 = (Z23 * Z25) + Z27
+  VFMADD213PD Z8, Z14, Z26 // Z26 = (Z14 * Z26) + Z8
+  VFMADD213PD Z8, Z15, Z27 // Z27 = (Z15 * Z27) + Z8
+  VFMADD213PD Z9, Z14, Z26 // Z26 = (Z14 * Z26) + Z9
+  VFMADD213PD Z9, Z15, Z27 // Z27 = (Z15 * Z27) + Z9
+  VBROADCASTSD CONST_GET_PTR(const_atan, 152), Z8
+  VBROADCASTSD CONST_GET_PTR(const_atan, 160), Z9
+  VFMADD213PD Z8, Z14, Z26 // Z26 = (Z14 * Z26) + Z8
+  VFMADD213PD Z8, Z15, Z27 // Z27 = (Z15 * Z27) + Z8
+  VFMADD213PD Z9, Z14, Z26 // Z26 = (Z14 * Z26) + Z9
+  VFMADD213PD Z9, Z15, Z27 // Z27 = (Z15 * Z27) + Z9
+  VADDPD Z12, Z16, Z12
+  VADDPD Z13, Z17, Z13
+  VMULPD Z14, Z10, Z16
+  VMULPD Z15, Z11, Z17
+  VMOVAPD Z14, Z18
+  VMOVAPD Z15, Z19
+  VFMSUB213PD Z16, Z10, Z18 // Z18 = (Z10 * Z18) - Z16
+  VFMSUB213PD Z17, Z11, Z19 // Z19 = (Z11 * Z19) - Z17
+  VFMADD231PD Z14, Z6, Z18  // Z18 = (Z6 * Z14) + Z18
+  VFMADD231PD Z15, Z7, Z19  // Z19 = (Z7 * Z15) + Z19
+  VFMADD231PD Z12, Z10, Z18 // Z18 = (Z10 * Z12) + Z18
+  VFMADD231PD Z13, Z11, Z19 // Z19 = (Z11 * Z13) + Z19
+  VMULPD Z26, Z16, Z12
+  VMULPD Z27, Z17, Z13
+  VFMSUB213PD Z12, Z26, Z16 // Z16 = (Z26 * Z16) - Z12
+  VFMSUB213PD Z13, Z27, Z17 // Z17 = (Z27 * Z17) - Z13
+  VFMADD231PD Z18, Z26, Z16 // Z16 = (Z26 * Z18) + Z16
+  VFMADD231PD Z19, Z27, Z17 // Z17 = (Z27 * Z19) + Z17
+
+  VPTERNLOGD.Z $255, Z8, Z8, K3, Z8
+  VPTERNLOGD.Z $255, Z9, Z9, K4, Z9
+  VPSRLD $31, Y8, Y8
+  VPSRLD $31, Y9, Y9
+
+  VADDPD Z12, Z10, Z14
+  VADDPD Z13, Z11, Z15
+  VSUBPD Z14, Z10, Z10
+  VSUBPD Z15, Z11, Z11
+  VADDPD Z10, Z12, Z10
+  VADDPD Z11, Z13, Z11
+
+  VCVTDQ2PD Y8, Z8
+  VCVTDQ2PD Y9, Z9
+  VADDPD Z10, Z6, Z6
+  VADDPD Z11, Z7, Z7
+
+  VBROADCASTSD CONST_GET_PTR(const_atan, 168), Z10
+  VBROADCASTSD CONST_GET_PTR(const_atan, 176), Z11
+  VMULPD Z10, Z8, Z12
+  VMULPD Z10, Z9, Z13
+  VMOVAPD Z10, Z18
+  VMOVAPD Z10, Z19
+  VFMSUB213PD Z12, Z8, Z18 // Z18 = (Z8 * Z18) - Z12
+  VFMSUB213PD Z13, Z9, Z19 // Z19 = (Z9 * Z19) - Z13
+  VFMADD231PD Z11, Z8, Z18 // Z18 = (Z8 * Z11) + Z18
+  VFMADD231PD Z11, Z9, Z19 // Z19 = (Z9 * Z11) + Z19
+  VADDPD Z6, Z16, Z6
+  VADDPD Z7, Z17, Z7
+  VADDPD Z14, Z12, Z8
+  VADDPD Z15, Z13, Z9
+  VSUBPD Z8, Z12, Z12
+  VSUBPD Z9, Z13, Z13
+  VADDPD Z12, Z14, Z12
+  VADDPD Z13, Z15, Z13
+  VADDPD Z12, Z18, Z12
+  VADDPD Z13, Z19, Z13
+  VADDPD Z12, Z6, Z6
+  VADDPD Z13, Z7, Z7
+  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z4, K3
+  VCMPPD.BCST $VCMP_IMM_EQ_OQ, CONSTF64_POSITIVE_INF(), Z5, K4
+  VADDPD Z6, Z8, Z4
+  VADDPD Z7, Z9, Z5
+  VMOVAPD Z10, K3, Z4
+  VMOVAPD Z10, K4, Z5
+  VPTERNLOGQ.BCST $108, CONSTF64_SIGN_BIT(), Z4, K1, Z2
+  VPTERNLOGQ.BCST $108, CONSTF64_SIGN_BIT(), Z5, K2, Z3
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+
+// Floating Point Math Instructions - atan2(y, x)
+// ----------------------------------------------
+
+CONST_DATA_U64(const_atan2,   0, $0x0004000000000001) // f64(5.5626846462680084E-309)
+CONST_DATA_U64(const_atan2,   8, $0x4340000000000000) // f64(9007199254740992)
+CONST_DATA_U64(const_atan2,  16, $0x0000000100000001) // i64(4294967297)
+CONST_DATA_U64(const_atan2,  24, $0x3ee64adb3e06ee72) // f64(1.0629848419144875E-5)
+CONST_DATA_U64(const_atan2,  32, $0xbf2077212aa7d6ce) // f64(-1.2562064996728687E-4)
+CONST_DATA_U64(const_atan2,  40, $0x3f471ece4d9ced98) // f64(7.0557664296393412E-4)
+CONST_DATA_U64(const_atan2,  48, $0xbf64a20138b90cee) // f64(-0.0025186561449871336)
+CONST_DATA_U64(const_atan2,  56, $0x3f7a788ec28e9fb3) // f64(0.0064626289903699117)
+CONST_DATA_U64(const_atan2,  64, $0xbf8a45a2ea379db5) // f64(-0.012828133366339903)
+CONST_DATA_U64(const_atan2,  72, $0x3f954d3eccf8f320) // f64(0.02080247999241458)
+CONST_DATA_U64(const_atan2,  80, $0xbf9d9805e7ba23e7) // f64(-0.028900234478474032)
+CONST_DATA_U64(const_atan2,  88, $0x3fa26bc6260b1bdd) // f64(0.035978500503510459)
+CONST_DATA_U64(const_atan2,  96, $0xbfa56d2d526c0577) // f64(-0.041848579703592508)
+CONST_DATA_U64(const_atan2, 104, $0x3fa81b6efb51f8a6) // f64(0.047084301165328399)
+CONST_DATA_U64(const_atan2, 112, $0xbfaae027d1895f2e) // f64(-0.052491421058844842)
+CONST_DATA_U64(const_atan2, 120, $0x3fae1a556400767b) // f64(0.0587946590969581)
+CONST_DATA_U64(const_atan2, 128, $0xbfb110c441e542d6) // f64(-0.06666208847787955)
+CONST_DATA_U64(const_atan2, 136, $0x3fb3b131f3b00d10) // f64(0.076922533029620376)
+CONST_DATA_U64(const_atan2, 144, $0xbfb745d0ac14efec) // f64(-0.090909044277338757)
+CONST_DATA_U64(const_atan2, 152, $0x3fbc71c710b37a0b) // f64(0.11111110837689624)
+CONST_DATA_U64(const_atan2, 160, $0xbfc249249211afc7) // f64(-0.14285714275626857)
+CONST_DATA_U64(const_atan2, 168, $0x3fc9999999987cf0) // f64(0.19999999999797735)
+CONST_DATA_U64(const_atan2, 176, $0xbfd555555555543a) // f64(-0.33333333333331761)
+CONST_DATA_U64(const_atan2, 184, $0x3ff921fb54442d18) // f64(1.5707963267948966)
+CONST_DATA_U64(const_atan2, 192, $0x3c91a62633145c07) // f64(6.123233995736766E-17)
+CONST_DATA_U64(const_atan2, 200, $0x3fe921fb54442d18) // i64(4605249457297304856)
+CONST_DATA_U64(const_atan2, 208, $0x400921fb54442d18) // i64(4614256656552045848)
+CONST_DATA_U32(const_atan2, 216, $0xfffffffe) // i32(4294967294)
+CONST_GLOBAL(const_atan2, $220)
+
+// f64[0].k[1] = atan2(f64[2], f64[3]).k[4]
+TEXT bcatan2f64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ next
+
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(CX), IN(K1), IN(K2))
+
+  VXORPD X8, X8, X8
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 0), Z11
+  VPBROADCASTQ CONSTF64_ABS_BITS(), Z12
+  VBROADCASTSD CONSTF64_1(), Z24
+
+  VANDPD Z12, Z4, Z6
+  VANDPD Z12, Z5, Z7
+  VCMPPD $VCMP_IMM_LT_OS, Z11, Z6, K1, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z11, Z7, K2, K4
+
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 8), Z7
+  VMULPD Z7, Z4, K3, Z4
+  VMULPD Z7, Z5, K4, Z5
+  VMULPD Z7, Z2, K3, Z2
+  VMULPD Z7, Z3, K4, Z3
+  VANDPD Z12, Z2, Z18
+  VANDPD Z12, Z3, Z19
+  VANDPD Z12, Z2, Z10
+  VANDPD Z12, Z3, Z11
+
+  // K2 also used to save these two, as we need this mask at the end
+  VPCMPGTQ Z4, Z8, K3
+  VPCMPGTQ Z5, Z8, K4
+  KUNPCKBW K3, K4, K2
+  VPBROADCASTD.Z CONST_GET_PTR(const_atan2, 216), K2, Z14
+
+  VCMPPD $VCMP_IMM_LT_OS, Z8, Z4, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z8, Z5, K4
+  KUNPCKBW K3, K4, K3
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
+  VMOVAPD.Z Z6, K3, Z20
+  VMOVAPD.Z Z6, K4, Z21
+  VXORPD Z4, Z20, Z22
+  VXORPD Z5, Z21, Z23
+  VPBROADCASTD CONST_GET_PTR(const_atan2, 16), Z16
+  VPORD Z16, Z14, Z16
+  VCMPPD $VCMP_IMM_LT_OS, Z10, Z22, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z11, Z23, K4
+  KUNPCKBW K3, K4, K3
+  VMOVDQA32 Z16, K3, Z14
+
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z16
+  VCMPPD $VCMP_IMM_EQ_OQ, Z16, Z10, K5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z16, Z11, K6
+  KUNPCKBW K5, K6, K0
+
+  VMOVAPD Z18, Z16
+  VMOVAPD Z19, Z17
+  VXORPD Z6, Z22, K3, Z16
+  VXORPD Z6, Z23, K4, Z17
+  VMOVAPD Z18, K3, Z22
+  VMOVAPD Z19, K4, Z23
+  VDIVPD Z22, Z24, Z26
+  VDIVPD Z23, Z24, Z27
+  VXORPD.Z Z6, Z20, K3, Z8
+  VXORPD.Z Z6, Z21, K4, Z9
+  VXORPD Z20, Z20, K3, Z20
+  VXORPD Z21, Z21, K4, Z21
+  VMULPD Z16, Z26, Z18
+  VMULPD Z17, Z27, Z19
+  VFMSUB213PD Z18, Z26, Z16  // Z16 = (Z26 * Z16) - Z18
+  VFMSUB213PD Z19, Z27, Z17  // Z17 = (Z27 * Z17) - Z19
+  VFNMADD213PD Z24, Z26, Z22 // Z22 = -(Z26 * Z22) + Z24
+  VFNMADD213PD Z24, Z27, Z23 // Z23 = -(Z27 * Z23) + Z24
+  VFNMADD231PD Z20, Z26, Z22 // Z22 = -(Z26 * Z20) + Z22
+  VFNMADD231PD Z21, Z27, Z23 // Z23 = -(Z27 * Z21) + Z23
+  VFMADD231PD Z8, Z26, Z16   // Z16 = (Z26 * Z8) + Z16
+  VFMADD231PD Z9, Z27, Z17   // Z17 = (Z27 * Z9) + Z17
+  VFMADD231PD Z22, Z18, Z16  // Z16 = (Z18 * Z22) + Z16
+  VFMADD231PD Z23, Z19, Z17  // Z17 = (Z19 * Z23) + Z17
+  VMULPD Z18, Z18, Z20
+  VMULPD Z19, Z19, Z21
+  VADDPD Z18, Z18, Z22
+  VADDPD Z19, Z19, Z23
+  VMOVAPD Z18, Z24
+  VMOVAPD Z19, Z25
+  VFMSUB213PD Z20, Z18, Z24 // Z24 = (Z18 * Z24) - Z20
+  VFMSUB213PD Z21, Z19, Z25 // Z25 = (Z19 * Z25) - Z21
+  VFMADD231PD Z22, Z16, Z24 // Z24 = (Z16 * Z22) + Z24
+  VFMADD231PD Z23, Z17, Z25 // Z25 = (Z17 * Z23) + Z25
+  VADDPD Z24, Z20, Z22
+  VADDPD Z25, Z21, Z23
+  VSUBPD Z22, Z20, Z20
+  VSUBPD Z23, Z21, Z21
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 24), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 40), Z8
+  VMOVAPD Z26, Z27
+  VMOVAPD Z8, Z9
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 32), Z22, Z26 // Z26 = (Z22 * Z26) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 32), Z23, Z27 // Z27 = (Z23 * Z27) + mem
+  VMULPD Z22, Z22, Z10
+  VMULPD Z23, Z23, Z11
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 48), Z22, Z8 // Z8 = (Z22 * Z8) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 48), Z23, Z9 // Z9 = (Z23 * Z9) + mem
+  VFMADD231PD Z26, Z10, Z8 // Z8 = (Z10 * Z26) + Z8
+  VFMADD231PD Z27, Z11, Z9 // Z9 = (Z11 * Z27) + Z9
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 56), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 72), Z6
+  VMOVAPD Z26, Z27
+  VMOVAPD Z6, Z7
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 64), Z22, Z26 // Z26 = (Z22 * Z26) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 64), Z23, Z27 // Z27 = (Z23 * Z27) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 80), Z22, Z6 // Z6 = (Z22 * Z6) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 80), Z23, Z7 // Z7 = (Z23 * Z7) + mem
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 88), Z12
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 104), Z4
+  VMOVAPD Z12, Z13
+  VMOVAPD Z4, Z5
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 96), Z22, Z12 // Z12 = (Z22 * Z12) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 96), Z23, Z13 // Z13 = (Z23 * Z13) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 112), Z22, Z4 // Z4 = (Z22 * Z4) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 112), Z23, Z5 // Z5 = (Z23 * Z5) + mem
+  VFMADD231PD Z26, Z10, Z6 // Z6 = (Z10 * Z26) + Z6
+  VFMADD231PD Z27, Z11, Z7 // Z7 = (Z11 * Z27) + Z7
+  VFMADD231PD Z12, Z10, Z4 // Z4 = (Z10 * Z12) + Z4
+  VFMADD231PD Z13, Z11, Z5 // Z5 = (Z11 * Z13) + Z5
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 120), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 136), Z12
+  VMOVAPD Z26, Z27
+  VMOVAPD Z12, Z13
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 128), Z22, Z26 // Z26 = (Z22 * Z26) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 128), Z23, Z27 // Z27 = (Z23 * Z27) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 144), Z22, Z12 // Z12 = (Z22 * Z12) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_atan2, 144), Z23, Z13 // Z13 = (Z23 * Z13) + mem
+  VFMADD231PD Z26, Z10, Z12 // Z12 = (Z10 * Z26) + Z12
+  VFMADD231PD Z27, Z11, Z13 // Z13 = (Z11 * Z27) + Z13
+  VMULPD Z10, Z10, Z26
+  VMULPD Z11, Z11, Z27
+  VFMADD231PD Z8, Z26, Z6 // Z6 = (Z26 * Z8) + Z6
+  VFMADD231PD Z9, Z27, Z7 // Z7 = (Z27 * Z9) + Z7
+  VMULPD Z26, Z26, Z8
+  VMULPD Z27, Z27, Z9
+  VFMADD231PD Z4, Z26, Z12 // Z12 = (Z26 * Z4) + Z12
+  VFMADD231PD Z5, Z27, Z13 // Z13 = (Z27 * Z5) + Z13
+  VFMADD231PD Z6, Z8, Z12  // Z12 = (Z8 * Z6) + Z12
+  VFMADD231PD Z7, Z9, Z13  // Z13 = (Z9 * Z7) + Z13
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 152), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 160), Z27
+  VFMADD213PD Z26, Z22, Z12 // Z12 = (Z22 * Z12) + Z26
+  VFMADD213PD Z26, Z23, Z13 // Z13 = (Z23 * Z13) + Z26
+  VFMADD213PD Z27, Z22, Z12 // Z12 = (Z22 * Z12) + Z27
+  VFMADD213PD Z27, Z23, Z13 // Z13 = (Z23 * Z13) + Z27
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 168), Z26
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 176), Z27
+  VFMADD213PD Z26, Z22, Z12 // Z12 = (Z22 * Z12) + Z26
+  VFMADD213PD Z26, Z23, Z13 // Z13 = (Z23 * Z13) + Z26
+  VFMADD213PD Z27, Z22, Z12 // Z12 = (Z22 * Z12) + Z27
+  VFMADD213PD Z27, Z23, Z13 // Z13 = (Z23 * Z13) + Z27
+  VADDPD Z20, Z24, Z20
+  VADDPD Z21, Z25, Z21
+  VMULPD Z22, Z18, Z24
+  VMULPD Z23, Z19, Z25
+  VMOVAPD Z22, Z26
+  VMOVAPD Z23, Z27
+  VFMSUB213PD Z24, Z18, Z26 // Z26 = (Z18 * Z26) - Z24
+  VFMSUB213PD Z25, Z19, Z27 // Z27 = (Z19 * Z27) - Z25
+  VFMADD231PD Z22, Z16, Z26 // Z26 = (Z16 * Z22) + Z26
+  VFMADD231PD Z23, Z17, Z27 // Z27 = (Z17 * Z23) + Z27
+  VFMADD231PD Z20, Z18, Z26 // Z26 = (Z18 * Z20) + Z26
+  VFMADD231PD Z21, Z19, Z27 // Z27 = (Z19 * Z21) + Z27
+  VMULPD Z12, Z24, Z20
+  VMULPD Z13, Z25, Z21
+  VFMSUB213PD Z20, Z12, Z24 // Z24 = (Z12 * Z24) - Z20
+  VFMSUB213PD Z21, Z13, Z25 // Z25 = (Z13 * Z25) - Z21
+  VFMADD231PD Z26, Z12, Z24 // Z24 = (Z12 * Z26) + Z24
+  VFMADD231PD Z27, Z13, Z25 // Z25 = (Z13 * Z27) + Z25
+  VADDPD Z20, Z18, Z22
+  VADDPD Z21, Z19, Z23
+  VSUBPD Z22, Z18, Z18
+  VSUBPD Z23, Z19, Z19
+  VADDPD Z18, Z20, Z18
+  VADDPD Z19, Z21, Z19
+  VEXTRACTI32X8 $1, Z14, Y15
+  VCVTDQ2PD Y14, Z14
+  VCVTDQ2PD Y15, Z15
+  VADDPD Z18, Z16, Z16
+  VADDPD Z19, Z17, Z17
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 184), Z18
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 184), Z19
+  VMULPD Z18, Z14, Z20
+  VMULPD Z19, Z15, Z21
+  VMOVAPD Z18, Z26
+  VMOVAPD Z19, Z27
+  VBROADCASTSD CONST_GET_PTR(const_atan2, 192), Z4
+  VFMSUB213PD Z20, Z14, Z26 // Z26 = (Z14 * Z26) - Z20
+  VFMSUB213PD Z21, Z15, Z27 // Z27 = (Z15 * Z27) - Z21
+  VFMADD231PD Z4, Z14, Z26  // Z26 = (Z14 * Z4) + Z26
+  VFMADD231PD Z4, Z15, Z27  // Z27 = (Z15 * Z4) + Z27
+  VADDPD Z16, Z24, Z14
+  VADDPD Z17, Z25, Z15
+  VADDPD Z22, Z20, Z16
+  VADDPD Z23, Z21, Z17
+  VSUBPD Z16, Z20, Z20
+  VSUBPD Z17, Z21, Z21
+  VADDPD Z20, Z22, Z20
+  VADDPD Z21, Z23, Z21
+  VADDPD Z20, Z26, Z20
+  VADDPD Z21, Z27, Z21
+  VADDPD Z20, Z14, Z14
+  VADDPD Z21, Z15, Z15
+  VADDPD Z14, Z16, Z14
+  VADDPD Z15, Z17, Z15
+
+  // NOTE: Z4/Z5 have to be reloaded as they were clobbered
+  BC_LOAD_F64_FROM_SLOT(OUT(Z4), OUT(Z5), IN(CX))
+  VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
+  VXORPD X8, X8, X8
+
+  VANDPD Z6, Z4, Z16
+  VANDPD Z6, Z5, Z17
+  VXORPD Z14, Z16, Z14
+  VXORPD Z15, Z17, Z15
+
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z13
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z20
+  VANDPD Z13, Z4, Z12
+  VANDPD Z13, Z5, Z13
+  VCMPPD $VCMP_IMM_EQ_OQ, Z20, Z12, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z20, Z13, K4
+  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z4, K5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z5, K6
+  VORPD.BCST CONST_GET_PTR(const_atan2, 184), Z16, Z12
+  VORPD.BCST CONST_GET_PTR(const_atan2, 184), Z17, Z13
+  KORW K3, K5, K5
+  KORW K4, K6, K6
+  VMOVAPD Z18, Z22
+  VMOVAPD Z19, Z23
+  VSUBPD Z12, Z18, K3, Z22
+  VSUBPD Z13, Z19, K4, Z23
+  VMOVAPD Z22, K5, Z14
+  VMOVAPD Z23, K6, Z15
+
+  VORPD.BCST CONST_GET_PTR(const_atan2, 200), Z16, Z10
+  VORPD.BCST CONST_GET_PTR(const_atan2, 200), Z17, Z11
+  VSUBPD Z10, Z18, K3, Z18
+  VSUBPD Z11, Z19, K4, Z19
+
+  KMOVB K0, K3
+  KSHIFTRW $8, K0, K4
+  VMOVAPD Z18, K3, Z14
+  VMOVAPD Z19, K4, Z15
+  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z2, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z8, Z3, K4
+  KSHIFTRW $8, K2, K6
+  VPBROADCASTQ.Z CONST_GET_PTR(const_atan2, 208), K2, Z8
+  VPBROADCASTQ.Z CONST_GET_PTR(const_atan2, 208), K6, Z9
+  VCMPPD $VCMP_IMM_UNORD_Q, Z4, Z2, K2
+  VCMPPD $VCMP_IMM_UNORD_Q, Z5, Z3, K6
+  VMOVAPD Z8, K3, Z14
+  VMOVAPD Z9, K4, Z15
+  KSHIFTRW $8, K1, K3
+  VPTERNLOGQ $108, Z6, Z14, K1, Z2
+  VPTERNLOGQ $108, Z6, Z15, K3, Z3
+  VPTERNLOGD $255, Z4, Z4, Z4
+  VMOVAPD Z4, K2, Z2
+  VMOVAPD Z4, K6, Z3
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// Floating Point Math Instructions - hypot(x, y)
+// ----------------------------------------------
+
+CONST_DATA_U64(const_hypot, 0, $0x0010000000000000) // f64(2.2250738585072014E-308)
+CONST_DATA_U64(const_hypot, 8, $0x4350000000000000) // f64(18014398509481984)
+CONST_GLOBAL(const_hypot, $16)
+
+// f64[0].k[1] = hypot(f64[2], f64[3]).k[4]
+TEXT bchypotf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ next
+
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(CX), IN(K1), IN(K2))
+
+  VBROADCASTSD CONSTF64_ABS_BITS(), Z8
+  VBROADCASTSD CONST_GET_PTR(const_hypot, 0), Z10
+  VBROADCASTSD CONST_GET_PTR(const_hypot, 8), Z11
+  VANDPD Z8, Z2, Z6
+  VANDPD Z8, Z3, Z7
+  VANDPD Z8, Z4, Z4
+  VANDPD Z8, Z5, Z5
+  VMAXPD Z4, Z6, Z8
+  VMAXPD Z5, Z7, Z9
+  VCMPPD $VCMP_IMM_LT_OS, Z10, Z8, K1, K3
+  VCMPPD $VCMP_IMM_LT_OS, Z10, Z9, K2, K4
+  VBROADCASTSD CONSTF64_1(), Z14
+  VMOVAPD Z8, Z12
+  VMOVAPD Z9, Z13
+  VMOVAPD Z14, K1, Z2
+  VMOVAPD Z14, K2, Z3
+  VMULPD Z11, Z8, K3, Z12
+  VMULPD Z11, Z9, K4, Z13
+  VDIVPD Z12, Z2, Z14
+  VDIVPD Z13, Z3, Z15
+  VMINPD Z4, Z6, Z16
+  VMINPD Z5, Z7, Z17
+  VMOVAPD Z16, Z18
+  VMOVAPD Z17, Z19
+  VMULPD Z11, Z16, K3, Z18
+  VMULPD Z11, Z17, K4, Z19
+  VMULPD Z14, Z18, Z20
+  VMULPD Z15, Z19, Z21
+  VFMSUB213PD Z20, Z14, Z18 // Z18 = (Z14 * Z18) - Z20
+  VFMSUB213PD Z21, Z15, Z19 // Z19 = (Z15 * Z19) - Z21
+  VFNMADD213PD Z2, Z14, Z12 // Z12 = -(Z14 * Z12) + Z2
+  VFNMADD213PD Z3, Z15, Z13 // Z13 = -(Z15 * Z13) + Z3
+  VXORPD X10, X10, X10
+  VXORPD X11, X11, X11
+  VFNMADD231PD Z11, Z14, Z12 // Z12 = -(Z14 * Z11) + Z12
+  VFNMADD231PD Z11, Z15, Z13 // Z13 = -(Z15 * Z11) + Z13
+  VFMADD231PD Z14, Z11, Z18  // Z18 = (Z11 * Z14) + Z18
+  VFMADD231PD Z15, Z11, Z19  // Z19 = (Z11 * Z15) + Z19
+  VFMADD231PD Z12, Z20, Z18  // Z18 = (Z20 * Z12) + Z18
+  VFMADD231PD Z13, Z21, Z19  // Z19 = (Z21 * Z13) + Z19
+  VMULPD Z20, Z20, Z12
+  VMULPD Z21, Z21, Z13
+  VADDPD Z20, Z20, Z14
+  VADDPD Z21, Z21, Z15
+  VFMSUB213PD Z12, Z20, Z20 // Z20 = (Z20 * Z20) - Z12
+  VFMSUB213PD Z13, Z21, Z21 // Z21 = (Z21 * Z21) - Z13
+  VFMADD231PD Z14, Z18, Z20 // Z20 = (Z18 * Z14) + Z20
+  VFMADD231PD Z15, Z19, Z21 // Z21 = (Z19 * Z15) + Z21
+  VADDPD Z2, Z12, Z14
+  VADDPD Z3, Z13, Z15
+  VSUBPD Z12, Z14, Z18
+  VSUBPD Z13, Z15, Z19
+  VSUBPD Z18, Z14, Z22
+  VSUBPD Z19, Z15, Z23
+  VSUBPD Z22, Z12, Z12
+  VSUBPD Z23, Z13, Z13
+  VSUBPD Z18, Z2, Z18
+  VSUBPD Z19, Z3, Z19
+  VADDPD Z12, Z18, Z12
+  VADDPD Z13, Z19, Z13
+  VADDPD Z12, Z20, Z12
+  VADDPD Z13, Z21, Z13
+  VADDPD Z12, Z14, Z18
+  VADDPD Z13, Z15, Z19
+  VSQRTPD Z18, Z18
+  VSQRTPD Z19, Z19
+  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z16, K1, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z17, K2, K4
+  VMULPD Z18, Z18, Z16
+  VMULPD Z19, Z19, Z17
+  VMOVAPD Z18, Z20
+  VMOVAPD Z19, Z21
+  VFMSUB213PD Z16, Z18, Z20 // Z20 = (Z18 * Z20) - Z16
+  VFMSUB213PD Z17, Z19, Z21 // Z21 = (Z19 * Z21) - Z17
+  VADDPD Z16, Z14, Z22
+  VADDPD Z17, Z15, Z23
+  VSUBPD Z14, Z22, Z24
+  VSUBPD Z15, Z23, Z25
+  VSUBPD Z24, Z22, Z26
+  VSUBPD Z25, Z23, Z27
+  VSUBPD Z26, Z14, Z14
+  VSUBPD Z27, Z15, Z15
+  VSUBPD Z24, Z16, Z16
+  VSUBPD Z25, Z17, Z17
+  VADDPD Z14, Z16, Z14
+  VADDPD Z15, Z17, Z15
+  VDIVPD Z18, Z2, Z16
+  VDIVPD Z19, Z3, Z17
+  VADDPD Z20, Z12, Z12
+  VADDPD Z21, Z13, Z13
+  VADDPD Z14, Z12, Z12
+  VADDPD Z15, Z13, Z13
+  VFNMADD213PD Z2, Z16, Z18 // Z18 = -(Z16 * Z18) + Z2
+  VFNMADD213PD Z3, Z17, Z19 // Z19 = -(Z17 * Z19) + Z3
+  VMULPD Z18, Z16, Z2
+  VMULPD Z19, Z17, Z3
+  VMULPD Z22, Z16, Z14
+  VMULPD Z23, Z17, Z15
+  VMOVAPD Z16, Z18
+  VMOVAPD Z17, Z19
+  VBROADCASTSD CONSTF64_HALF(), Z20
+  VFMSUB213PD Z14, Z22, Z18 // Z18 = (Z22 * Z18) - Z14
+  VFMSUB213PD Z15, Z23, Z19 // Z19 = (Z23 * Z19) - Z15
+  VFMADD231PD Z12, Z16, Z18 // Z18 = (Z16 * Z12) + Z18
+  VFMADD231PD Z13, Z17, Z19 // Z19 = (Z17 * Z13) + Z19
+  VFMADD231PD Z2, Z22, Z18  // Z18 = (Z22 * Z2) + Z18
+  VFMADD231PD Z3, Z23, Z19  // Z19 = (Z23 * Z3) + Z19
+
+  VMOVAPD Z20, K1, Z2
+  VMOVAPD Z20, K2, Z3
+  VMULPD Z2, Z14, Z12
+  VMULPD Z3, Z15, Z13
+  VMULPD Z2, Z18, K1, Z2
+  VMULPD Z3, Z19, K2, Z3
+  VMULPD Z12, Z8, Z14
+  VMULPD Z13, Z9, Z15
+  VFMSUB213PD Z14, Z8, Z12 // Z12 = (Z8 * Z12) - Z14
+  VFMSUB213PD Z15, Z9, Z13 // Z13 = (Z9 * Z13) - Z15
+  VFMADD231PD Z2, Z8, Z12  // Z12 = (Z8 * Z2) + Z12
+  VFMADD231PD Z3, Z9, Z13  // Z13 = (Z9 * Z3) + Z13
+  VADDPD Z12, Z14, K1, Z2
+  VADDPD Z13, Z15, K2, Z3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z11, Z2, K1, K5
+  VCMPPD $VCMP_IMM_UNORD_Q, Z11, Z3, K2, K6
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z10
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z11
+  VMOVAPD Z10, K5, Z2
+  VMOVAPD Z11, K6, Z3
+  VMOVAPD Z8, K3, Z2
+  VMOVAPD Z9, K4, Z3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z6, Z4, K1, K3
+  VCMPPD $VCMP_IMM_UNORD_Q, Z7, Z5, K2, K4
+  VBROADCASTSD CONSTF64_NAN(), K3, Z2
+  VBROADCASTSD CONSTF64_NAN(), K4, Z3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z6, K1, K3
+  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z7, K2, K4
+  VCMPPD $VCMP_IMM_EQ_OQ, Z10, Z4, K1, K5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z11, Z5, K2, K6
+  KORW K5, K3, K3
+  KORW K6, K4, K4
+  VMOVAPD Z10, K3, Z2
+  VMOVAPD Z11, K4, Z3
+
+next:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// Floating Point Math Instructions - pow(x, y)
+// --------------------------------------------
+
+CONST_DATA_U64(const_pow,   0, $0x3ff5555555555555) // f64(1.3333333333333333)
+CONST_DATA_U64(const_pow,   8, $0x4090000000000000) // f64(1024)
+CONST_DATA_U64(const_pow,  16, $0xbff0000000000000) // f64(-1)
+CONST_DATA_U64(const_pow,  24, $0x3fba6dea6d1e9d11) // f64(0.10323968090107295)
+CONST_DATA_U64(const_pow,  32, $0x3fbe252ddf5f8d0a) // f64(0.117754809412464)
+CONST_DATA_U64(const_pow,  40, $0x3fc110f384a1865c) // f64(0.13332981086846274)
+CONST_DATA_U64(const_pow,  48, $0x3fc3b13bb108efd1) // f64(0.15384622711451226)
+CONST_DATA_U64(const_pow,  56, $0x3fc745d17248daf1) // f64(0.18181818085005078)
+CONST_DATA_U64(const_pow,  64, $0x3fcc71c71c76197f) // f64(0.22222222223008356)
+CONST_DATA_U64(const_pow,  72, $0x3fd2492492492200) // f64(0.28571428571424917)
+CONST_DATA_U64(const_pow,  80, $0x3fd999999999999b) // f64(0.40000000000000008)
+CONST_DATA_U64(const_pow,  88, $0x3fbdc2ec09e714d3) // f64(0.11625552407993504)
+CONST_DATA_U64(const_pow,  96, $0x3fe62e42fefa39ef) // f64(0.69314718055994529)
+CONST_DATA_U64(const_pow, 104, $0x3c7abc9e3b39803f) // f64(2.3190468138462996E-17)
+CONST_DATA_U64(const_pow, 112, $0x3fe5555555555555) // f64(0.66666666666666663)
+CONST_DATA_U64(const_pow, 120, $0x3c85f00000000000) // f64(3.8055496254241206E-17)
+CONST_DATA_U64(const_pow, 128, $0x3ff71547652b82fe) // f64(1.4426950408889634)
+CONST_DATA_U64(const_pow, 136, $0xbfe62e42fefa3000) // f64(-0.69314718055966296)
+CONST_DATA_U64(const_pow, 144, $0xbd53de6af278ece6) // f64(-2.8235290563031577E-13)
+CONST_DATA_U64(const_pow, 152, $0x3e5af559d51456b9) // f64(2.5106968342095042E-8)
+CONST_DATA_U64(const_pow, 160, $0x3e928a8f696db5ad) // f64(2.7628616677027065E-7)
+CONST_DATA_U64(const_pow, 168, $0x3ec71ddfd27d265e) // f64(2.7557249672502357E-6)
+CONST_DATA_U64(const_pow, 176, $0x3efa0199ec6c491b) // f64(2.4801497398981979E-5)
+CONST_DATA_U64(const_pow, 184, $0x3f2a01a01ae0c33d) // f64(1.984126988090698E-4)
+CONST_DATA_U64(const_pow, 192, $0x3f56c16c1828ec7b) // f64(0.0013888888939977129)
+CONST_DATA_U64(const_pow, 200, $0x3f8111111110fb68) // f64(0.0083333333333237141)
+CONST_DATA_U64(const_pow, 208, $0x3fa5555555550e90) // f64(0.041666666666540952)
+CONST_DATA_U64(const_pow, 216, $0x3fc5555555555558) // f64(0.16666666666666674)
+CONST_DATA_U64(const_pow, 224, $0x3fe0000000000009) // f64(0.500000000000001)
+CONST_DATA_U64(const_pow, 232, $0xc08f400000000000) // f64(-1000)
+CONST_DATA_U64(const_pow, 240, $0x40862e42fe102c83) // f64(709.78271114955749)
+CONST_DATA_U32(const_pow, 248, $0x3ff00000) // i32(1072693248)
+CONST_GLOBAL(const_pow, $252)
+
+// f64[0].k[1] = pow(f64[2], f64[3]).k[4]
+TEXT bcpowf64(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1), IN(K2))
+
+  KTESTW K1, K1
+  JZ skip
+
+  MOVL $0xAAAA, R8
+  KMOVW R8, K6
+
+  // Process Z2 (first 8 lanes).
+  VXORPD X6, X6, X6
+  VMOVUPD 0(VIRT_VALUES)(CX*1), Z4
+  VRNDSCALEPD $8, Z4, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z4, Z5, K3
+  VMULPD.BCST CONSTF64_HALF(), Z4, Z5
+  VPBROADCASTQ CONSTF64_ABS_BITS(), Z10
+  VRNDSCALEPD $8, Z5, Z7
+  VPANDQ Z10, Z2, Z8
+  VMULPD.BCST CONST_GET_PTR(const_pow, 0), Z8, Z9
+  VCMPPD $VCMP_IMM_NEQ_UQ, Z5, Z7, K3, K2
+  VGETEXPPD Z9, Z13
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z9
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z13, K4
+  VBROADCASTSD CONST_GET_PTR(const_pow, 8), K4, Z13
+  VGETMANTPD $11, Z8, Z12
+  VBROADCASTSD CONST_GET_PTR(const_pow, 16), Z11
+  VBROADCASTSD CONSTF64_1(), Z7
+  VADDPD Z11, Z12, Z5
+  VADDPD Z7, Z5, Z14
+  VSUBPD Z14, Z5, Z15
+  VSUBPD Z15, Z11, Z15
+  VSUBPD Z14, Z12, Z14
+  VADDPD Z15, Z14, Z14
+  VADDPD Z7, Z12, Z15
+  VADDPD Z11, Z15, Z16
+  VSUBPD Z16, Z15, Z17
+  VSUBPD Z17, Z7, Z17
+  VSUBPD Z16, Z12, Z12
+  VADDPD Z17, Z12, Z12
+  VDIVPD Z15, Z7, Z16
+  VMULPD Z16, Z5, Z17
+  VFMSUB213PD Z17, Z16, Z5   // Z5 = (Z16 * Z5) - Z17
+  VFNMADD213PD Z7, Z16, Z15  // Z15 = -(Z16 * Z15) + Z7
+  VFNMADD231PD Z12, Z16, Z15 // Z15 = -(Z16 * Z12) + Z15
+  VFMADD231PD Z14, Z16, Z5   // Z5 = (Z16 * Z14) + Z5
+  VFMADD231PD Z15, Z17, Z5   // Z5 = (Z17 * Z15) + Z5
+  VMULPD Z17, Z17, Z12
+  VADDPD Z17, Z17, Z14
+  VMOVAPD Z17, Z15
+  VFMSUB213PD Z12, Z17, Z15  // Z15 = (Z17 * Z15) - Z12
+  VMULPD Z12, Z12, Z16
+  VMULPD Z16, Z16, Z18
+  VBROADCASTSD CONST_GET_PTR(const_pow, 24), Z19
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 32), Z12, Z19 // Z19 = (Z12 * Z19) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 40), Z20
+  VMULPD Z18, Z18, Z21
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 48), Z12, Z20 // Z20 = (Z12 * Z20) + mem
+  VFMADD231PD Z19, Z16, Z20  // Z20 = (Z16 * Z19) + Z20
+  VBROADCASTSD CONST_GET_PTR(const_pow, 56), Z19
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 64), Z12, Z19 // Z19 = (Z12 * Z19) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 72), Z22
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 80), Z12, Z22 // Z22 = (Z12 * Z22) + mem
+  VFMADD231PD Z19, Z16, Z22  // Z22 = (Z16 * Z19) + Z22
+  VFMADD231PD Z20, Z18, Z22  // Z22 = (Z18 * Z20) + Z22
+  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 88), Z21, Z22 // Z22 = (Z21 * mem) + Z22
+  VFMADD231PD Z5, Z14, Z15   // Z15 = (Z14 * Z5) + Z15
+  VBROADCASTSD CONST_GET_PTR(const_pow, 96), Z16
+  VMULPD Z16, Z13, Z18
+  VFMSUB213PD Z18, Z13, Z16  // Z16 = (Z13 * Z16) - Z18
+  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 104), Z13, Z16 // Z16 = (Z13 * mem) + Z16
+  VADDPD Z5, Z5, Z13
+  VADDPD Z14, Z18, Z19
+  VSUBPD Z19, Z18, Z18
+  VADDPD Z18, Z14, Z14
+  VADDPD Z14, Z16, Z14
+  VADDPD Z13, Z14, Z13
+  VMULPD Z12, Z17, Z14
+  VMOVAPD Z17, Z16
+  VFMSUB213PD Z14, Z12, Z16  // Z16 = (Z12 * Z16) - Z14
+  VFMADD231PD Z17, Z15, Z16  // Z16 = (Z15 * Z17) + Z16
+  VFMADD231PD Z5, Z12, Z16   // Z16 = (Z12 * Z5) + Z16
+  VBROADCASTSD CONST_GET_PTR(const_pow, 112), Z5
+  VMULPD Z5, Z14, Z17
+  VMOVAPD Z5, Z18
+  VFMSUB213PD Z17, Z14, Z18  // Z18 = (Z14 * Z18) - Z17
+  VFMADD231PD Z5, Z16, Z18   // Z18 = (Z16 * Z5) + Z18
+  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 120), Z14, Z18 // Z18 = (Z14 * mem) + Z18
+  VADDPD Z17, Z19, Z5
+  VSUBPD Z5, Z19, Z19
+  VADDPD Z19, Z17, Z17
+  VADDPD Z17, Z13, Z13
+  VADDPD Z18, Z13, Z13
+  VMULPD Z14, Z12, Z17
+  VMOVAPD Z14, Z18
+  VFMSUB213PD Z17, Z12, Z18  // Z18 = (Z12 * Z18) - Z17
+  VFMADD231PD Z15, Z14, Z18  // Z18 = (Z14 * Z15) + Z18
+  VFMADD231PD Z16, Z12, Z18  // Z18 = (Z12 * Z16) + Z18
+  VMULPD Z22, Z17, Z12
+  VFMSUB213PD Z12, Z22, Z17  // Z17 = (Z22 * Z17) - Z12
+  VFMADD231PD Z18, Z22, Z17  // Z17 = (Z22 * Z18) + Z17
+  VADDPD Z12, Z5, Z14
+  VSUBPD Z14, Z5, Z5
+  VADDPD Z5, Z12, Z5
+  VADDPD Z13, Z5, Z5
+  VADDPD Z5, Z17, Z12
+  VMULPD Z4, Z14, Z5
+  VFMSUB213PD Z5, Z4, Z14    // Z14 = (Z4 * Z14) - Z5
+  VFMADD231PD Z12, Z4, Z14   // Z14 = (Z4 * Z12) + Z14
+  VADDPD Z14, Z5, Z12
+  VMULPD.BCST CONST_GET_PTR(const_pow, 128), Z12, Z12
+  VRNDSCALEPD $8, Z12, Z13
+  VCVTPD2DQ.RN_SAE Z13, Y12
+  VMULPD.BCST CONST_GET_PTR(const_pow, 136), Z13, Z15
+  VADDPD Z5, Z15, Z16
+  VSUBPD Z5, Z16, Z17
+  VSUBPD Z17, Z16, Z18
+  VSUBPD Z18, Z5, Z18
+  VSUBPD Z17, Z15, Z15
+  VADDPD Z18, Z15, Z15
+  VMULPD.BCST CONST_GET_PTR(const_pow, 144), Z13, Z13
+  VADDPD Z14, Z15, Z14
+  VADDPD Z16, Z13, Z15
+  VSUBPD Z16, Z15, Z17
+  VSUBPD Z17, Z15, Z18
+  VSUBPD Z18, Z16, Z16
+  VSUBPD Z17, Z13, Z13
+  VADDPD Z16, Z13, Z13
+  VADDPD Z14, Z13, Z13
+  VADDPD Z13, Z15, Z14
+  VSUBPD Z14, Z15, Z15
+  VADDPD Z15, Z13, Z13
+  VMULPD Z14, Z14, Z15
+  VMULPD Z15, Z15, Z16
+  VMULPD Z16, Z16, Z17
+  VBROADCASTSD CONST_GET_PTR(const_pow, 152), Z18
+  VBROADCASTSD CONST_GET_PTR(const_pow, 168), Z19
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 160), Z14, Z18 // Z18 = (Z14 * Z18) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 176), Z14, Z19 // Z19 = (Z14 * Z19) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 184), Z20
+  VBROADCASTSD CONST_GET_PTR(const_pow, 200), Z21
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 192), Z14, Z20 // Z20 = (Z14 * Z20) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 208), Z14, Z21 // Z21 = (Z14 * Z21) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 216), Z22
+  VFMADD231PD Z19, Z15, Z20  // Z20 = (Z15 * Z19) + Z20
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 224), Z14, Z22 // Z22 = (Z14 * Z22) + mem
+  VFMADD231PD Z21, Z15, Z22  // Z22 = (Z15 * Z21) + Z22
+  VFMADD231PD Z20, Z16, Z22  // Z22 = (Z16 * Z20) + Z22
+  VFMADD231PD Z18, Z17, Z22  // Z22 = (Z17 * Z18) + Z22
+  VADDPD Z7, Z14, Z16
+  VSUBPD Z16, Z7, Z17
+  VADDPD Z17, Z14, Z17
+  VADDPD Z17, Z13, Z17
+  VADDPD Z14, Z14, Z18
+  VFMSUB213PD Z15, Z14, Z14  // Z14 = (Z14 * Z14) - Z15
+  VFMADD231PD Z18, Z13, Z14  // Z14 = (Z13 * Z18) + Z14
+  VMULPD Z22, Z15, Z13
+  VFMSUB213PD Z13, Z22, Z15  // Z15 = (Z22 * Z15) - Z13
+  VFMADD231PD Z14, Z22, Z15  // Z15 = (Z22 * Z14) + Z15
+  VADDPD Z13, Z16, Z14
+  VSUBPD Z14, Z16, Z16
+  VADDPD Z16, Z13, Z13
+  VADDPD Z13, Z17, Z13
+  VADDPD Z13, Z15, Z13
+  VADDPD Z13, Z14, Z13
+  VPSRAD $1, Y12, Y14
+  VPSLLD $20, Y14, Y15
+  VPBROADCASTD CONST_GET_PTR(const_pow, 248), Y16
+  VPADDD Y16, Y15, Y15
+  VPEXPANDD.Z Z15, K6, Z15
+  VMULPD Z15, Z13, Z13
+  VPSUBD Y14, Y12, Y12
+  VPSLLD $20, Y12, Y12
+  VPADDD Y16, Y12, Y12
+  VPEXPANDD.Z Z12, K6, Z12
+  VCMPPD.BCST $VCMP_IMM_NLT_US, CONST_GET_PTR(const_pow, 232), Z5, K4
+  VMULPD.Z Z12, Z13, K4, Z12
+  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_pow, 240), Z5, K4
+  VMOVAPD Z9, K4, Z12
+  VBLENDMPD Z11, Z7, K2, Z5
+  VBROADCASTSD CONSTF64_NAN(), Z13
+  VCMPPD $VCMP_IMM_LT_OS, Z2, Z6, K4
+  VMOVAPD Z5, K3, Z13
+  VMOVAPD Z7, K4, Z13
+  VMULPD Z12, Z13, Z5
+  VADDPD Z11, Z8, Z11
+  VPBROADCASTQ CONSTF64_SIGN_BIT(), Z12
+  VPTERNLOGQ $120, Z12, Z4, Z11
+  VPANDQ Z10, Z4, Z10
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z10, K3
+  VCMPPD $VCMP_IMM_NLT_US, Z6, Z11, K4
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z11, K5
+  VBLENDMPD Z7, Z9, K5, Z10
+  VMOVAPD.Z Z10, K4, Z10
+  VMOVAPD Z10, K3, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z8, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z2, K3
+  KORW K3, K0, K4
+  VPCMPGTQ Z4, Z6, K0
+  KXNORW K3, K0, K3
+  VPBROADCASTQ.Z CONSTF64_POSITIVE_INF(), K3, Z8
+  VPANDQ.Z Z12, Z2, K2, Z9
+  VCMPPD $VCMP_IMM_UNORD_Q, Z2, Z4, K2
+  VPORQ Z8, Z9, K4, Z5
+  VPTERNLOGD $255, Z8, Z8, Z8
+  VMOVAPD Z8, K2, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z2, K2
+  KORW K2, K0, K2
+  VMOVAPD Z7, K2, Z5
+  VMOVAPD Z5, Z2
+
+  // Process Z3 (remaining 8 lanes).
+  VXORPD X6, X6, X6
+  VMOVUPD 64(VIRT_VALUES)(CX*1), Z4
+  VRNDSCALEPD $8, Z4, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z4, Z5, K3
+  VMULPD.BCST CONSTF64_HALF(), Z4, Z5
+  VPBROADCASTQ CONSTF64_ABS_BITS(), Z10
+  VRNDSCALEPD $8, Z5, Z7
+  VPANDQ Z10, Z3, Z8
+  VMULPD.BCST CONST_GET_PTR(const_pow, 0), Z8, Z9
+  VCMPPD $VCMP_IMM_NEQ_UQ, Z5, Z7, K3, K2
+  VGETEXPPD Z9, Z13
+  VBROADCASTSD CONSTF64_POSITIVE_INF(), Z9
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z13, K4
+  VBROADCASTSD CONST_GET_PTR(const_pow, 8), K4, Z13
+  VGETMANTPD $11, Z8, Z12
+  VBROADCASTSD CONST_GET_PTR(const_pow, 16), Z11
+  VBROADCASTSD CONSTF64_1(), Z7
+  VADDPD Z11, Z12, Z5
+  VADDPD Z7, Z5, Z14
+  VSUBPD Z14, Z5, Z15
+  VSUBPD Z15, Z11, Z15
+  VSUBPD Z14, Z12, Z14
+  VADDPD Z15, Z14, Z14
+  VADDPD Z7, Z12, Z15
+  VADDPD Z11, Z15, Z16
+  VSUBPD Z16, Z15, Z17
+  VSUBPD Z17, Z7, Z17
+  VSUBPD Z16, Z12, Z12
+  VADDPD Z17, Z12, Z12
+  VDIVPD Z15, Z7, Z16
+  VMULPD Z16, Z5, Z17
+  VFMSUB213PD Z17, Z16, Z5   // Z5 = (Z16 * Z5) - Z17
+  VFNMADD213PD Z7, Z16, Z15  // Z15 = -(Z16 * Z15) + Z7
+  VFNMADD231PD Z12, Z16, Z15 // Z15 = -(Z16 * Z12) + Z15
+  VFMADD231PD Z14, Z16, Z5   // Z5 = (Z16 * Z14) + Z5
+  VFMADD231PD Z15, Z17, Z5   // Z5 = (Z17 * Z15) + Z5
+  VMULPD Z17, Z17, Z12
+  VADDPD Z17, Z17, Z14
+  VMOVAPD Z17, Z15
+  VFMSUB213PD Z12, Z17, Z15  // Z15 = (Z17 * Z15) - Z12
+  VMULPD Z12, Z12, Z16
+  VMULPD Z16, Z16, Z18
+  VBROADCASTSD CONST_GET_PTR(const_pow, 24), Z19
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 32), Z12, Z19 // Z19 = (Z12 * Z19) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 40), Z20
+  VMULPD Z18, Z18, Z21
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 48), Z12, Z20 // Z20 = (Z12 * Z20) + mem
+  VFMADD231PD Z19, Z16, Z20  // Z20 = (Z16 * Z19) + Z20
+  VBROADCASTSD CONST_GET_PTR(const_pow, 56), Z19
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 64), Z12, Z19 // Z19 = (Z12 * Z19) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 72), Z22
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 80), Z12, Z22 // Z22 = (Z12 * Z22) + mem
+  VFMADD231PD Z19, Z16, Z22  // Z22 = (Z16 * Z19) + Z22
+  VFMADD231PD Z20, Z18, Z22  // Z22 = (Z18 * Z20) + Z22
+  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 88), Z21, Z22 // Z22 = (Z21 * mem) + Z22
+  VFMADD231PD Z5, Z14, Z15   // Z15 = (Z14 * Z5) + Z15
+  VBROADCASTSD CONST_GET_PTR(const_pow, 96), Z16
+  VMULPD Z16, Z13, Z18
+  VFMSUB213PD Z18, Z13, Z16  // Z16 = (Z13 * Z16) - Z18
+  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 104), Z13, Z16 // Z16 = (Z13 * mem) + Z16
+  VADDPD Z5, Z5, Z13
+  VADDPD Z14, Z18, Z19
+  VSUBPD Z19, Z18, Z18
+  VADDPD Z18, Z14, Z14
+  VADDPD Z14, Z16, Z14
+  VADDPD Z13, Z14, Z13
+  VMULPD Z12, Z17, Z14
+  VMOVAPD Z17, Z16
+  VFMSUB213PD Z14, Z12, Z16  // Z16 = (Z12 * Z16) - Z14
+  VFMADD231PD Z17, Z15, Z16  // Z16 = (Z15 * Z17) + Z16
+  VFMADD231PD Z5, Z12, Z16   // Z16 = (Z12 * Z5) + Z16
+  VBROADCASTSD CONST_GET_PTR(const_pow, 112), Z5
+  VMULPD Z5, Z14, Z17
+  VMOVAPD Z5, Z18
+  VFMSUB213PD Z17, Z14, Z18  // Z18 = (Z14 * Z18) - Z17
+  VFMADD231PD Z5, Z16, Z18   // Z18 = (Z16 * Z5) + Z18
+  VFMADD231PD.BCST CONST_GET_PTR(const_pow, 120), Z14, Z18 // Z18 = (Z14 * mem) + Z18
+  VADDPD Z17, Z19, Z5
+  VSUBPD Z5, Z19, Z19
+  VADDPD Z19, Z17, Z17
+  VADDPD Z17, Z13, Z13
+  VADDPD Z18, Z13, Z13
+  VMULPD Z14, Z12, Z17
+  VMOVAPD Z14, Z18
+  VFMSUB213PD Z17, Z12, Z18  // Z18 = (Z12 * Z18) - Z17
+  VFMADD231PD Z15, Z14, Z18  // Z18 = (Z14 * Z15) + Z18
+  VFMADD231PD Z16, Z12, Z18  // Z18 = (Z12 * Z16) + Z18
+  VMULPD Z22, Z17, Z12
+  VFMSUB213PD Z12, Z22, Z17  // Z17 = (Z22 * Z17) - Z12
+  VFMADD231PD Z18, Z22, Z17  // Z17 = (Z22 * Z18) + Z17
+  VADDPD Z12, Z5, Z14
+  VSUBPD Z14, Z5, Z5
+  VADDPD Z5, Z12, Z5
+  VADDPD Z13, Z5, Z5
+  VADDPD Z5, Z17, Z12
+  VMULPD Z4, Z14, Z5
+  VFMSUB213PD Z5, Z4, Z14    // Z14 = (Z4 * Z14) - Z5
+  VFMADD231PD Z12, Z4, Z14   // Z14 = (Z4 * Z12) + Z14
+  VADDPD Z14, Z5, Z12
+  VMULPD.BCST CONST_GET_PTR(const_pow, 128), Z12, Z12
+  VRNDSCALEPD $8, Z12, Z13
+  VCVTPD2DQ.RN_SAE Z13, Y12
+  VMULPD.BCST CONST_GET_PTR(const_pow, 136), Z13, Z15
+  VADDPD Z5, Z15, Z16
+  VSUBPD Z5, Z16, Z17
+  VSUBPD Z17, Z16, Z18
+  VSUBPD Z18, Z5, Z18
+  VSUBPD Z17, Z15, Z15
+  VADDPD Z18, Z15, Z15
+  VMULPD.BCST CONST_GET_PTR(const_pow, 144), Z13, Z13
+  VADDPD Z14, Z15, Z14
+  VADDPD Z16, Z13, Z15
+  VSUBPD Z16, Z15, Z17
+  VSUBPD Z17, Z15, Z18
+  VSUBPD Z18, Z16, Z16
+  VSUBPD Z17, Z13, Z13
+  VADDPD Z16, Z13, Z13
+  VADDPD Z14, Z13, Z13
+  VADDPD Z13, Z15, Z14
+  VSUBPD Z14, Z15, Z15
+  VADDPD Z15, Z13, Z13
+  VMULPD Z14, Z14, Z15
+  VMULPD Z15, Z15, Z16
+  VMULPD Z16, Z16, Z17
+  VBROADCASTSD CONST_GET_PTR(const_pow, 152), Z18
+  VBROADCASTSD CONST_GET_PTR(const_pow, 168), Z19
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 160), Z14, Z18 // Z18 = (Z14 * Z18) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 176), Z14, Z19 // Z19 = (Z14 * Z19) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 184), Z20
+  VBROADCASTSD CONST_GET_PTR(const_pow, 200), Z21
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 192), Z14, Z20 // Z20 = (Z14 * Z20) + mem
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 208), Z14, Z21 // Z21 = (Z14 * Z21) + mem
+  VBROADCASTSD CONST_GET_PTR(const_pow, 216), Z22
+  VFMADD231PD Z19, Z15, Z20  // Z20 = (Z15 * Z19) + Z20
+  VFMADD213PD.BCST CONST_GET_PTR(const_pow, 224), Z14, Z22 // Z22 = (Z14 * Z22) + mem
+  VFMADD231PD Z21, Z15, Z22  // Z22 = (Z15 * Z21) + Z22
+  VFMADD231PD Z20, Z16, Z22  // Z22 = (Z16 * Z20) + Z22
+  VFMADD231PD Z18, Z17, Z22  // Z22 = (Z17 * Z18) + Z22
+  VADDPD Z7, Z14, Z16
+  VSUBPD Z16, Z7, Z17
+  VADDPD Z17, Z14, Z17
+  VADDPD Z17, Z13, Z17
+  VADDPD Z14, Z14, Z18
+  VFMSUB213PD Z15, Z14, Z14  // Z14 = (Z14 * Z14) - Z15
+  VFMADD231PD Z18, Z13, Z14  // Z14 = (Z13 * Z18) + Z14
+  VMULPD Z22, Z15, Z13
+  VFMSUB213PD Z13, Z22, Z15  // Z15 = (Z22 * Z15) - Z13
+  VFMADD231PD Z14, Z22, Z15  // Z15 = (Z22 * Z14) + Z15
+  VADDPD Z13, Z16, Z14
+  VSUBPD Z14, Z16, Z16
+  VADDPD Z16, Z13, Z13
+  VADDPD Z13, Z17, Z13
+  VADDPD Z13, Z15, Z13
+  VADDPD Z13, Z14, Z13
+  VPSRAD $1, Y12, Y14
+  VPSLLD $20, Y14, Y15
+  VPBROADCASTD CONST_GET_PTR(const_pow, 248), Y16
+  VPADDD Y16, Y15, Y15
+  VPEXPANDD.Z Z15, K6, Z15
+  VMULPD Z15, Z13, Z13
+  VPSUBD Y14, Y12, Y12
+  VPSLLD $20, Y12, Y12
+  VPADDD Y16, Y12, Y12
+  VPEXPANDD.Z Z12, K6, Z12
+  VCMPPD.BCST $VCMP_IMM_NLT_US, CONST_GET_PTR(const_pow, 232), Z5, K4
+  VMULPD.Z Z12, Z13, K4, Z12
+  VCMPPD.BCST $VCMP_IMM_GT_OS, CONST_GET_PTR(const_pow, 240), Z5, K4
+  VMOVAPD Z9, K4, Z12
+  VBLENDMPD Z11, Z7, K2, Z5
+  VBROADCASTSD CONSTF64_NAN(), Z13
+  VCMPPD $VCMP_IMM_LT_OS, Z3, Z6, K4
+  VMOVAPD Z5, K3, Z13
+  VMOVAPD Z7, K4, Z13
+  VMULPD Z12, Z13, Z5
+  VADDPD Z11, Z8, Z11
+  VPBROADCASTQ CONSTF64_SIGN_BIT(), Z12
+  VPTERNLOGQ $120, Z12, Z4, Z11
+  VPANDQ Z10, Z4, Z10
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z10, K3
+  VCMPPD $VCMP_IMM_NLT_US, Z6, Z11, K4
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z11, K5
+  VBLENDMPD Z7, Z9, K5, Z10
+  VMOVAPD.Z Z10, K4, Z10
+  VMOVAPD Z10, K3, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z9, Z8, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z3, K3
+  KORW K3, K0, K4
+  VPCMPGTQ Z4, Z6, K0
+  KXNORW K3, K0, K3
+  VPBROADCASTQ.Z CONSTF64_POSITIVE_INF(), K3, Z8
+  VPANDQ.Z Z12, Z3, K2, Z9
+  VCMPPD $VCMP_IMM_UNORD_Q, Z3, Z4, K2
+  VPORQ Z8, Z9, K4, Z5
+  VPTERNLOGD $255, Z8, Z8, Z8
+  VMOVAPD Z8, K2, Z5
+  VCMPPD $VCMP_IMM_EQ_OQ, Z6, Z4, K0
+  VCMPPD $VCMP_IMM_EQ_OQ, Z7, Z3, K2
+  KORW K2, K0, K2
+  VMOVAPD Z7, K2, Z5
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z5), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+skip:
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
+// Floating Point Math Instructions - Cleanup
+// ------------------------------------------
+
+#undef BC_ARITH_REVERSE_OP_F64_IMM_IMPL
+#undef BC_ARITH_OP_F64_IMM_IMPL_K
+#undef BC_ARITH_OP_F64_IMM_IMPL
+#undef BC_ARITH_OP_F64_IMPL_K
+#undef BC_ROUND_OP_F64_IMPL

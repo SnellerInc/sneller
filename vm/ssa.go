@@ -22,7 +22,6 @@ import (
 	"math/bits"
 	"os"
 	"strconv"
-	"strings"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
@@ -35,1137 +34,9 @@ import (
 	"github.com/SnellerInc/sneller/regexp2"
 )
 
-type ssaop int
-
-const (
-	sinvalid    ssaop = iota
-	sinit             // initial lane pointer and mask
-	sinitmem          // initial memory state
-	sundef            // initial scalar value (undefined)
-	smergemem         // merge memory
-	sbroadcastk       // mask = broadcastk(m)
-	skfalse           // logical bottom value; FALSE and also MISSING
-	sand              // mask = (mask0 & mask1)
-	sor               // mask = (mask0 | mask1)
-	snand             // mask = (^mask0 & mask1)
-	sxor              // mask = (mask0 ^ mask1)  (unequal bits)
-	sxnor             // mask = (mask0 ^ ^mask1) (equal bits)
-
-	sunboxktoi // val = unboxktoi(v)
-	sunboxcoercei64
-	sunboxcoercef64
-	sunboxcvti64
-	sunboxcvtf64
-
-	// comparison ops
-	scmpv
-	scmpvk
-	scmpvimmk
-	scmpvi64
-	scmpvimmi64
-	scmpvf64
-	scmpvimmf64
-
-	scmpltstr
-	scmplestr
-	scmpgtstr
-	scmpgestr
-
-	scmpltk
-	scmpltimmk
-	scmpgtk
-	scmpgtimmk
-	scmplek
-	scmpleimmk
-	scmpgek
-	scmpgeimmk
-
-	scmpeqf
-	scmpeqimmf
-	scmpeqi
-	scmpeqimmi
-	scmpltf
-	scmpltimmf
-	scmplti
-	scmpltimmi
-	scmpgtf
-	scmpgtimmf
-	scmpgti
-	scmpgtimmi
-	scmplef
-	scmpleimmf
-	scmplei
-	scmpleimmi
-	scmpgef
-	scmpgeimmf
-	scmpgei
-	scmpgeimmi
-
-	scmpltts
-	scmplets
-	scmpgtts
-	scmpgets
-
-	seqstr  // str = str
-	seqtime // time = time
-
-	// compare scalar against value;
-	// effectively just a memcmp() operation
-	sequalv // mask = arg0.mask == arg1.mask
-
-	// raw value test ops
-	sisnull    // mask = arg0.mask == null
-	sisnonnull // mask = arg0.mask != null
-	sisfalse   // mask = arg0.mask == false
-	sistrue    // mask = arg0.mask == true
-
-	stoint
-	stofloat
-	stostr
-	stolist
-	stotime
-	stoblob
-	sunsymbolize
-
-	scvtktoi // bool to 0 or 1
-	scvtktof // bool to 0.0 or 1.0
-	scvtitok // int64 to bool
-	scvtftok // fp to bool
-	scvtftoi // fp to int, round nearest
-	scvtitof // int to fp
-
-	scvti64tostr // int64 to string
-
-	sconcatstr2 // string concatenation (two strings)
-	sconcatstr3 // string concatenation (three strings)
-	sconcatstr4 // string concatenation (four strings)
-
-	slowerstr
-	supperstr
-
-	// raw string comparison
-	sStrCmpEqCs     // Ascii string compare equality case-sensitive
-	sStrCmpEqCi     // Ascii string compare equality case-insensitive
-	sStrCmpEqUTF8Ci // UTF-8 string compare equality case-insensitive
-
-	sEqPatternCs     // String equals pattern case-sensitive
-	sEqPatternCi     // String equals pattern case-insensitive
-	sEqPatternUTF8Ci // String equals pattern case-insensitive
-
-	sCmpFuzzyA3              // Ascii string fuzzy equality: Damerau–Levenshtein up to provided number of operations
-	sCmpFuzzyUnicodeA3       // unicode string fuzzy equality: Damerau–Levenshtein up to provided number of operations
-	sHasSubstrFuzzyA3        // Ascii string contains with fuzzy string compare
-	sHasSubstrFuzzyUnicodeA3 // unicode string contains with fuzzy string compare
-
-	sStrTrimCharLeft  // String trim specific chars left
-	sStrTrimCharRight // String trim specific chars right
-	sStrTrimWsLeft    // String trim whitespace left
-	sStrTrimWsRight   // String trim whitespace right
-
-	sStrContainsPrefixCs     // String contains prefix case-sensitive
-	sStrContainsPrefixCi     // String contains prefix case-insensitive
-	sStrContainsPrefixUTF8Ci // String contains prefix case-insensitive
-
-	sStrContainsSuffixCs     // String contains suffix case-sensitive
-	sStrContainsSuffixCi     // String contains suffix case-insensitive
-	sStrContainsSuffixUTF8Ci // String contains suffix case-insensitive
-
-	sStrContainsSubstrCs     // String contains substr case-sensitive
-	sStrContainsSubstrCi     // String contains substr case-insensitive
-	sStrContainsSubstrUTF8Ci // String contains substr case-insensitive
-
-	sStrContainsPatternCs     // String contains pattern case-sensitive
-	sStrContainsPatternCi     // String contains pattern case-insensitive
-	sStrContainsPatternUTF8Ci // String contains pattern case-insensitive
-
-	sIsSubnetOfIP4 // IP subnet matching
-
-	sStrSkip1CharLeft  // String skip 1 unicode code-point from left
-	sStrSkip1CharRight // String skip 1 unicode code-point from right
-	sStrSkipNCharLeft  // String skip n unicode code-point from left
-	sStrSkipNCharRight // String skip n unicode code-point from right
-
-	sCharLength // count number of unicode-points
-	sSubStr     // select a substring
-	sSplitPart  // Presto split_part
-
-	sDfaT6  // DFA tiny 6-bit
-	sDfaT7  // DFA tiny 7-bit
-	sDfaT8  // DFA tiny 8-bit
-	sDfaT6Z // DFA tiny 6-bit Zero remaining length assertion
-	sDfaT7Z // DFA tiny 7-bit Zero remaining length assertion
-	sDfaT8Z // DFA tiny 8-bit Zero remaining length assertion
-	sDfaLZ  // DFA large Zero remaining length assertion
-
-	// raw literal comparison
-	sequalconst // arg0.mask == const
-
-	stuples  // compute interior structure pointer from value
-	sdot     // compute 'value . arg0.mask'
-	sdot2    // compute 'value . arg0.mask' from previous offset
-	ssplit   // compute 'value[0] and value[1:]'
-	sliteral // literal operand
-	sauxval  // auxilliary literal
-
-	shashvalue  // hash a value
-	shashvaluep // hash a value and add it to the current hash
-	shashmember // look up a hash in a tree for existence; returns predicate
-	shashlookup // look up a hash in a tree for a value; returns boxed
-
-	sstorev // store value in a stack slot
-	sloadv  // load value from a stack slot
-	sloadvperm
-
-	sstorelist
-	sloadlist
-	smsk // mem+scalar+predicate
-	sbhk // base+hash+predicate
-	sbk  // base+predicate tuple
-	smk  // mem+predicate tuple
-	svk
-	sfloatk
-
-	snotmissing // not missing (extract mask)
-
-	// blend ops (just conditional moves)
-	sblendv
-	sblendint
-	sblendfloat
-	sblendstr
-
-	// timestamp comparison ops
-	sgtconsttm // val > timestamp constant
-	sltconsttm // val < timestamp constant
-	stmextract
-
-	// broadcasts a constant to all lanes
-	sbroadcastf // val = broadcast(float64(imm))
-	sbroadcasti // val = broadcast(int64(imm))
-
-	// unary operators and functions
-	sabsf       // val = abs(val)
-	sabsi       // val = abs(val)
-	snegf       // val = -val
-	snegi       // val = -val
-	ssignf      // val = sign(val)
-	ssigni      // val = sign(val)
-	ssquaref    // val = val * val
-	ssquarei    // val = val * val
-	sbitnoti    // val = ~val
-	sbitcounti  // val = bit_count(val)
-	sroundf     // val = round(val)
-	sroundevenf // val = roundeven(val)
-	struncf     // val = trunc(val)
-	sfloorf     // val = floor(val)
-	sceilf      // val = ceil(val)
-	sroundi     // val = int(round(val))
-	ssqrtf      // val = sqrt(val)
-	scbrtf      // val = cbrt(val)
-	sexpf       // val = exp(val)
-	sexpm1f     // val = exp(val) - 1
-	sexp2f      // val = exp2(val)
-	sexp10f     // val = exp10(val)
-	slnf        // val = ln(val)
-	sln1pf      // val = ln(val + 1)
-	slog2f      // val = log2(val)
-	slog10f     // val = log10(val)
-	ssinf       // val = sin(x)
-	scosf       // val = cos(x)
-	stanf       // val = tan(x)
-	sasinf      // val = asin(x)
-	sacosf      // val = acos(x)
-	satanf      // val = atan(x)
-
-	// binary operators and functions
-	saddf         // val = val + slot[imm]
-	saddi         // val = val + slot[imm]
-	saddimmf      // val = val + imm
-	saddimmi      // val = val + imm
-	ssubf         // val = val - slot[imm]
-	ssubi         // val = val - slot[imm]
-	ssubimmf      // val = val - imm
-	ssubimmi      // val = val - imm
-	srsubf        // val = slot[imm] - val
-	srsubi        // val = slot[imm] - val
-	srsubimmf     // val = imm - val
-	srsubimmi     // val = imm - val
-	smulf         // val = val * slot[imm]
-	smuli         // val = val * slot[imm]
-	smulimmf      // val = val * imm
-	smulimmi      // val = val * imm
-	sdivf         // val = val / slot[imm]
-	sdivi         // val = val / slot[imm]
-	sdivimmf      // val = val / imm
-	sdivimmi      // val = val / imm
-	srdivf        // val = slot[imm] / val
-	srdivi        // val = slot[imm] / val
-	srdivimmf     // val = imm / val
-	srdivimmi     // val = imm / val
-	smodf         // val = val % slot[imm]
-	smodi         // val = val % slot[imm]
-	smodimmf      // val = val % imm
-	smodimmi      // val = val % imm
-	srmodf        // val = slot[imm] % val
-	srmodi        // val = slot[imm] % val
-	srmodimmf     // val = imm % val
-	srmodimmi     // val = imm % val
-	sminvaluef    // val = min(val, slot[imm])
-	sminvaluei    // val = min(val, slot[imm])
-	sminvalueimmf // val = min(val, imm)
-	sminvalueimmi // val = min(val, imm)
-	smaxvaluef    // val = max(val, slot[imm])
-	smaxvaluei    // val = max(val, slot[imm])
-	smaxvalueimmf // val = max(val, imm)
-	smaxvalueimmi // val = max(val, imm)
-	sandi         // val = val & slot[imm]
-	sandimmi      // val = val & imm
-	sori          // val = val | slot[imm]
-	sorimmi       // val = val | imm
-	sxori         // val = val ^ slot[imm]
-	sxorimmi      // val = val ^ imm
-	sslli         // val = val << slot[imm]
-	ssllimmi      // val = val << imm
-	ssrai         // val = val >> slot[imm]
-	ssraimmi      // val = val >> imm
-	ssrli         // val = val >>> slot[imm]
-	ssrlimmi      // val = val >>> imm
-	satan2f       // val = atan2(y, slot[imm])
-	shypotf       // val = hypot(val, slot[imm])
-	spowf         // val = pow(val, slot[imm])
-
-	swidthbucketf // val = width_bucket(val, min, max, bucket_count)
-	swidthbucketi // val = width_bucket(val, min, max, bucket_count)
-	stimebucketts // val = time_bucket(val, interval)
-
-	saggandk
-	saggork
-	saggsumf
-	saggsumi
-	saggavgf
-	saggavgi
-	saggminf
-	saggmini
-	saggmaxf
-	saggmaxi
-	saggmints
-	saggmaxts
-	saggandi
-	saggori
-	saggxori
-	saggcount
-
-	saggbucket
-	saggslotandk
-	saggslotork
-	saggslotsumf
-	saggslotsumi
-	saggslotavgf
-	saggslotavgi
-	saggslotminf
-	saggslotmini
-	saggslotmaxf
-	saggslotmaxi
-	saggslotmints
-	saggslotmaxts
-	saggslotandi
-	saggslotori
-	saggslotxori
-	saggslotcount
-
-	sbroadcastts
-	sunix
-	sunixmicro
-	sunboxtime
-	sdateadd
-	sdateaddimm
-	sdateaddmulimm
-	sdateaddmonth
-	sdateaddmonthimm
-	sdateaddquarter
-	sdateaddyear
-	sdatediffmicro
-	sdatediffparam
-	sdatediffmonth
-	sdatediffquarter
-	sdatediffyear
-	sdateextractmicrosecond
-	sdateextractmillisecond
-	sdateextractsecond
-	sdateextractminute
-	sdateextracthour
-	sdateextractday
-	sdateextractdow
-	sdateextractdoy
-	sdateextractmonth
-	sdateextractquarter
-	sdateextractyear
-	sdatetounixepoch
-	sdatetounixmicro
-	sdatetruncmillisecond
-	sdatetruncsecond
-	sdatetruncminute
-	sdatetrunchour
-	sdatetruncday
-	sdatetruncdow
-	sdatetruncmonth
-	sdatetruncquarter
-	sdatetruncyear
-
-	sgeohash
-	sgeohashimm
-	sgeotilex
-	sgeotiley
-	sgeotilees
-	sgeotileesimm
-	sgeodistance
-
-	sobjectsize // built-in function SIZE()
-
-	sboxmask   // box a mask
-	sboxint    // box an integer
-	sboxfloat  // box a float
-	sboxstring // box a string
-	sboxts     // box a timestamp (unpacked)
-
-	smakelist
-	smakestruct
-	smakestructkey
-	sboxlist
-
-	stypebits                  // get encoded tag bits
-	schecktag                  // check encoded tag bits
-	saggapproxcount            // APPROX_COUNT_DISTINCT
-	saggapproxcountpartial     // the partial step of APPROX_COUNT_DISTINCT (for split queries)
-	saggapproxcountmerge       // the merge step of APPROX_COUNT_DISTINCT (for split queries)
-	saggslotapproxcount        // APPROX_COUNT_DISTINCT aggregate in GROUP BY
-	saggslotapproxcountpartial // the partial step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
-	saggslotapproxcountmerge   // the merge step of APPROX_COUNT_DISTINCT (for split queries with GROUP BY)
-	_ssamax
-)
-
-type ssatype int
-
-const (
-	stBool    = 1 << iota // only a mask
-	stBase                // inner bytes of a structure
-	stValue               // opaque ion value
-	stFloat               // unpacked float
-	stInt                 // unpacked signed integer
-	stString              // unpacked string pointer
-	stList                // unpacked list slice
-	stTime                // unpacked time slice
-	stTimeInt             // datetime representation in microseconds as int64
-	stHash                // hash of a value
-	stBucket              // displacement used for hash aggregates
-	stMem                 // memory is modified
-
-	// generally, functions return
-	// composite types: a real return value,
-	// plus a new mask containing the lanes
-	// in which the operation was successful
-	stScalar        = stFloat | stInt | stString | stList | stTime | stTimeInt
-	stBaseMasked    = stBase | stBool
-	stValueMasked   = stValue | stBool
-	stFloatMasked   = stFloat | stBool
-	stIntMasked     = stInt | stBool
-	stStringMasked  = stString | stBool
-	stListMasked    = stList | stBool
-	stTimeMasked    = stTime | stBool
-	stTimeIntMasked = stTimeInt | stBool
-
-	// list-splitting ops return this
-	stListAndValueMasked = stList | stValue | stBool
-
-	// just aliases
-	stBlob       = stString
-	stBlobMasked = stStringMasked
-)
-
-func (s ssatype) char() byte {
-	switch s {
-	case stBool:
-		return 'k'
-	case stValue:
-		return 'v'
-	case stFloat:
-		return 'f'
-	case stInt:
-		return 'i'
-	case stString:
-		return 's'
-	case stList:
-		return 'l'
-	case stTime:
-		return 'T'
-	case stTimeInt:
-		return 't'
-	case stBase:
-		return 'b'
-	case stScalar:
-		return 'u'
-	case stHash:
-		return 'h'
-	case stBucket:
-		return 'L'
-	case stMem:
-		return 'm'
-	default:
-		return '?'
-	}
-}
-
-func (s ssatype) String() string {
-	var b strings.Builder
-
-	lookup := []struct {
-		bit  ssatype
-		name string
-	}{
-		{bit: stBool, name: "bool"},
-		{bit: stBase, name: "base"},
-		{bit: stValue, name: "value"},
-		{bit: stFloat, name: "float"},
-		{bit: stInt, name: "int"},
-		{bit: stString, name: "string"},
-		{bit: stList, name: "list"},
-		{bit: stTime, name: "time"},
-		{bit: stTimeInt, name: "time-int"},
-		{bit: stHash, name: "hash"},
-		{bit: stBucket, name: "bucket"},
-		{bit: stMem, name: "mem"},
-	}
-
-	first := true
-	b.WriteString("{")
-	for i := range lookup {
-		if s&lookup[i].bit == 0 {
-			continue
-		}
-
-		if !first {
-			b.WriteString("|")
-		}
-		first = false
-
-		b.WriteString(lookup[i].name)
-	}
-	b.WriteString("}")
-
-	return b.String()
-}
-
-type ssaopinfo struct {
-	text     string
-	argtypes []ssatype
-
-	// vaArgs indicates arguments tuple that follow mandatory arguments. If
-	// vaArgs is for example [X, Y] then the function accepts variable arguments
-	// as [X, Y] pairs, so [], [X, Y], [X, Y, X, Y], [X, Y, X, Y, ...] signatures
-	// are valid, but not [X, Y, X]. This makes sure to enfore values with predicates.
-	vaArgs  []ssatype
-	rettype ssatype
-
-	inverse  ssaop // for two-operand ops, flip the arguments
-	priority int   // instruction scheduling priority; high = early, low = late
-
-	// the emit function, if we're not using the default
-	emit func(v *value, c *compilestate)
-	// when non-zero, the corresponding bytecode op
-	bc    bcop
-	bcrev bcop
-
-	// immfmt indicates the format
-	// of the immediate value in value.imm
-	// when emitted as code
-	immfmt immfmt
-
-	// disjunctive must be set if an op
-	// can produce meaningful results when
-	// its canonical mask argument (the last argument) is false;
-	// examples include blends, OR, XOR, etc.
-	//
-	// *most* ops that yield a mask are conjunctive
-	// (i.e. they yield a mask that has no bits set that
-	// weren't already set in the input)
-	disjunctive bool
-}
-
-func (o *ssaopinfo) argType(index int) ssatype {
-	// most instructions don't have variable arguments, so this is a likely path
-	if index < len(o.argtypes) {
-		return o.argtypes[index]
-	}
-
-	if len(o.vaArgs) == 0 {
-		panic(fmt.Sprintf("%s doesn't have argument at %d", o.text, index))
-	}
-
-	vaIndex := len(o.argtypes)
-	vaTupleSize := len(o.vaArgs)
-
-	vaTupleIndex := (index - vaIndex) % vaTupleSize
-	return o.vaArgs[vaTupleIndex]
-}
-
-// aggregateslot is an offset within aggregates buffer
-type aggregateslot uint32
-
-// immfmt is an immediate format indicator
-type immfmt uint8
-
-const (
-	fmtnone       immfmt = iota // no immediate
-	fmtslot                     // immediate should be encoded as a uint16 slot reference from an integer
-	fmtbool                     // immediate should be encoded as an uint8 and represents a BOOL value
-	fmti64                      // immediate should be encoded as an int64
-	fmtf64                      // immediate is a float64; should be encoded as 8 bytes (little-endian)
-	fmtdict                     // immediate is a string; emit a dict reference
-	fmtslotx2hash               // immediate is input hash slot; encode 1-byte input hash slot + 1-byte output
-	fmtaggslot                  // immediate should be encoded as a uint32 slot reference from an integer
-
-	fmtother // immediate is present, but not available for automatic encoding
-)
-
-// canonically, the last argument of any function
-// is the operation's mask
-var memArgs = []ssatype{stMem}
-var value2Args = []ssatype{stValue, stValue, stBool}
-
-var int1Args = []ssatype{stInt, stBool}
-var fp1Args = []ssatype{stFloat, stBool}
-var str1Args = []ssatype{stString, stBool}
-var str2Args = []ssatype{stString, stString, stBool}
-var str3Args = []ssatype{stString, stString, stString, stBool}
-var str4Args = []ssatype{stString, stString, stString, stString, stBool}
-var time1Args = []ssatype{stTime, stBool}
-
-var parseValueArgs = []ssatype{stScalar, stValue, stBool}
-
-var scalar1Args = []ssatype{stValue, stBool}
-var scalar2Args = []ssatype{stValue, stValue, stBool}
-
-var argsIntIntBool = []ssatype{stInt, stInt, stBool}
-var argsFloatFloatBool = []ssatype{stFloat, stFloat, stBool}
-var argsBoolBool = []ssatype{stBool, stBool}
-var argsBoolBoolBool = []ssatype{stBool, stBool, stBool}
-
-// due to an initialization loop, there
-// are two copies of this table
-var ssainfo [_ssamax]ssaopinfo
-
-func init() {
-	copy(ssainfo[:], _ssainfo[:])
-}
-
-const (
-	prioInit  = 100000
-	prioMem   = 10000
-	prioHash  = 9999
-	prioParse = -100000
-)
-
-var _ssainfo = [_ssamax]ssaopinfo{
-	sinvalid: {text: "INVALID"},
-	// initial top-level values:
-	sinit:     {text: "init", rettype: stBase | stBool, emit: emitinit, priority: prioInit},
-	sinitmem:  {text: "initmem", rettype: stMem, emit: emitinit, priority: prioMem},
-	smergemem: {text: "mergemem", vaArgs: memArgs, rettype: stMem, emit: emitinit, priority: prioMem},
-	// initial scalar register value;
-	// not legal to use except to overwrite
-	// with value-parsing ops
-	sundef: {text: "undef", rettype: stFloat | stInt | stString, emit: emitinit, priority: prioInit - 1},
-	// kfalse is the canonical 'bottom' mask value;
-	// it is also the MISSING value
-	// (kfalse is overloaded to mean "no result"
-	// because sometimes we determine that certain
-	// path expressions must yield no result due to
-	// the symbol not being present in the symbol table)
-	sbroadcastk: {text: "broadcast.k", rettype: stBool},
-	skfalse:     {text: "false", rettype: stValue | stBool, emit: emitfalse},
-	sand:        {text: "and.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opandk},
-	snand:       {text: "nand.k", argtypes: argsBoolBool, rettype: stBool, emit: emitnand, bc: opnandk, disjunctive: true},
-	sor:         {text: "or.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opork, disjunctive: true},
-	sxor:        {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxork, disjunctive: true},
-	sxnor:       {text: "xnor.k", argtypes: argsBoolBool, rettype: stBool, emit: emitlogical, bc: opxnork, disjunctive: true},
-
-	sunboxktoi:      {text: "unbox.k@i", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxktoi64},
-	sunboxcoercef64: {text: "unboxcoerce.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcoercef64},
-	sunboxcoercei64: {text: "unboxcoerce.i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcoercei64},
-	sunboxcvtf64:    {text: "unboxcvt.f64", argtypes: scalar1Args, rettype: stFloatMasked, bc: opunboxcvtf64},
-	sunboxcvti64:    {text: "unboxcvt.i64", argtypes: scalar1Args, rettype: stIntMasked, bc: opunboxcvti64},
-
-	// two-operand comparison ops
-	scmpv:       {text: "cmpv", argtypes: value2Args, rettype: stInt | stBool, bc: opcmpv, emit: emitauto2},
-	scmpvk:      {text: "cmpv.k", argtypes: []ssatype{stValue, stBool, stBool}, rettype: stInt | stBool, bc: opcmpvk, emit: emitauto2},
-	scmpvimmk:   {text: "cmpv.imm.k", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmk, immfmt: fmtother, emit: emitauto2},
-	scmpvi64:    {text: "cmpv.i64", argtypes: []ssatype{stValue, stInt, stBool}, rettype: stInt | stBool, bc: opcmpvi64, emit: emitauto2},
-	scmpvimmi64: {text: "cmpv.imm.i64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmi64, immfmt: fmti64, emit: emitauto2},
-	scmpvf64:    {text: "cmpv.f64", argtypes: []ssatype{stValue, stFloat, stBool}, rettype: stInt | stBool, bc: opcmpvf64, emit: emitauto2},
-	scmpvimmf64: {text: "cmpv.imm.f64", argtypes: []ssatype{stValue, stBool}, rettype: stInt | stBool, bc: opcmpvimmf64, immfmt: fmtf64, emit: emitauto2},
-	scmpltstr:   {text: "cmplt.str", argtypes: str2Args, rettype: stBool, bc: opcmpltstr, emit: emitauto2},
-	scmplestr:   {text: "cmple.str", argtypes: str2Args, rettype: stBool, bc: opcmplestr, emit: emitauto2},
-	scmpgtstr:   {text: "cmpgt.str", argtypes: str2Args, rettype: stBool, bc: opcmpgtstr, emit: emitauto2},
-	scmpgestr:   {text: "cmpge.str", argtypes: str2Args, rettype: stBool, bc: opcmpgestr, emit: emitauto2},
-
-	scmpltk:    {text: "cmplt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpltk, inverse: scmpgtk, emit: emitauto2},
-	scmpltimmk: {text: "cmplt.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpltimmk, emit: emitauto2},
-	scmplek:    {text: "cmple.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmplek, inverse: scmpgek, emit: emitauto2},
-	scmpleimmk: {text: "cmple.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpleimmk, emit: emitauto2},
-	scmpgtk:    {text: "cmpgt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgtk, inverse: scmpltk, emit: emitauto2},
-	scmpgtimmk: {text: "cmpgt.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpgtimmk, emit: emitauto2},
-	scmpgek:    {text: "cmpge.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgek, inverse: scmplek, emit: emitauto2},
-	scmpgeimmk: {text: "cmpge.imm.k", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpgeimmk, emit: emitauto2},
-
-	scmpeqf:    {text: "cmpeq.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpeqf, inverse: scmpeqf, emit: emitcmp},
-	scmpeqimmf: {text: "cmpeq.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpeqimmf},
-	scmpeqi:    {text: "cmpeq.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpeqi, inverse: scmpeqi, emit: emitcmp},
-	scmpeqimmi: {text: "cmpeq.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpeqimmi},
-	scmpltf:    {text: "cmplt.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpltf, inverse: scmpgtf, emit: emitcmp},
-	scmpltimmf: {text: "cmplt.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpltimmf},
-	scmplti:    {text: "cmplt.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplti, inverse: scmpgti, emit: emitcmp},
-	scmpltimmi: {text: "cmplt.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpltimmi},
-	scmplef:    {text: "cmple.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmplef, inverse: scmpgef, emit: emitcmp},
-	scmpleimmf: {text: "cmple.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpleimmf},
-	scmplei:    {text: "cmple.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplei, inverse: scmpgei, emit: emitcmp},
-	scmpleimmi: {text: "cmple.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpleimmi},
-	scmpgtf:    {text: "cmpgt.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgtf, inverse: scmpltf, emit: emitcmp},
-	scmpgtimmf: {text: "cmpgt.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgtimmf},
-	scmpgti:    {text: "cmpgt.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgti, inverse: scmplti, emit: emitcmp},
-	scmpgtimmi: {text: "cmpgt.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgtimmi},
-	scmpgef:    {text: "cmpge.f", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgef, inverse: scmplef, emit: emitcmp},
-	scmpgeimmf: {text: "cmpge.imm.f", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgeimmf},
-	scmpgei:    {text: "cmpge.i", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgei, inverse: scmplei, emit: emitcmp},
-	scmpgeimmi: {text: "cmpge.imm.i", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgeimmi},
-
-	scmpltts: {text: "cmplt.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplti, emit: emitcmp, inverse: scmpgtts},
-	scmplets: {text: "cmple.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmplei, emit: emitcmp, inverse: scmpgets},
-	scmpgtts: {text: "cmpgt.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmpgti, emit: emitcmp, inverse: scmpltts},
-	scmpgets: {text: "cmpge.ts", rettype: stBool, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opcmpgei, emit: emitcmp, inverse: scmplets},
-
-	seqstr:  {text: "eqstr", bc: opeqslice, argtypes: []ssatype{stString, stString, stBool}, inverse: seqstr, rettype: stBool, emit: emitcmp},
-	seqtime: {text: "eqtime", bc: opeqslice, argtypes: []ssatype{stTime, stTime, stBool}, inverse: seqstr, rettype: stBool, emit: emitcmp},
-
-	// generic equality comparison
-	sequalv: {text: "equalv", argtypes: scalar2Args, rettype: stBool, emit: emitequalv},
-
-	// single-operand on values
-	sisnull:    {text: "isnull", argtypes: scalar1Args, rettype: stBool, bc: opisnull, inverse: sisnonnull},
-	sisnonnull: {text: "isnonnull", argtypes: scalar1Args, rettype: stBool, bc: opisnotnull, inverse: sisnull},
-	sistrue:    {text: "istrue", argtypes: scalar1Args, rettype: stBool, bc: opistrue},
-	sisfalse:   {text: "isfalse", argtypes: scalar1Args, rettype: stBool, bc: opisfalse},
-
-	// conversion ops
-	// parse value reg -> {float, int} in scalar reg;
-	// we have an optional scalar reg value that
-	// is merged into, in which case we are guaranteed
-	// to preserve the non-updated lanes
-	stoint:   {text: "toint", argtypes: parseValueArgs, rettype: stIntMasked, bc: optoint},
-	stofloat: {text: "tofloat", argtypes: parseValueArgs, rettype: stFloatMasked, bc: optof64},
-
-	stostr:  {text: "tostr", argtypes: scalar1Args, rettype: stStringMasked, bc: opunpack, emit: emitslice},
-	stolist: {text: "tolist", argtypes: scalar1Args, rettype: stListMasked, bc: opunpack, emit: emitslice},
-	stotime: {text: "totime", argtypes: scalar1Args, rettype: stTimeMasked, bc: opunpack, emit: emitslice},
-	stoblob: {text: "toblob", argtypes: scalar1Args, rettype: stBlobMasked, bc: opunpack, emit: emitslice},
-
-	sunsymbolize: {text: "unsymbolize", argtypes: scalar1Args, rettype: stValue, bc: opunsymbolize},
-
-	// boolean -> scalar conversions;
-	// first argument is true/false; second is present/missing
-	scvtktoi: {text: "cvt.k@i", argtypes: []ssatype{stBool, stBool}, rettype: stInt, bc: opcvtktoi64, emit: emitboolconv},
-	scvtktof: {text: "cvt.k@f", argtypes: []ssatype{stBool, stBool}, rettype: stFloat, bc: opcvtktof64, emit: emitboolconv},
-
-	// fp <-> int conversion ops
-	scvtitok: {text: "cvt.i@k", argtypes: int1Args, rettype: stBool, bc: opcvti64tok},
-	scvtitof: {text: "cvt.i@f", argtypes: int1Args, rettype: stFloatMasked, bc: opcvti64tof64},
-	scvtftok: {text: "cvt.f@k", argtypes: fp1Args, rettype: stBool, bc: opcvtf64tok},
-	scvtftoi: {text: "cvt.f@i", argtypes: fp1Args, rettype: stIntMasked, bc: opcvtf64toi64},
-
-	scvti64tostr: {text: "cvti64tostr", argtypes: int1Args, rettype: stString, bc: opcvti64tostr},
-	sconcatstr2:  {text: "concat2.str", argtypes: str2Args, rettype: stStringMasked, emit: emitConcatStr},
-	sconcatstr3:  {text: "concat3.str", argtypes: str3Args, rettype: stStringMasked, emit: emitConcatStr},
-	sconcatstr4:  {text: "concat4.str", argtypes: str4Args, rettype: stStringMasked, emit: emitConcatStr},
-
-	slowerstr: {text: "lower.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opslower)},
-	supperstr: {text: "upper.str", argtypes: str1Args, rettype: stStringMasked, emit: emitStringCaseChange(opsupper)},
-
-	// equalStr
-	sStrCmpEqCs:     {text: "cmp_str_eq_cs", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCs},
-	sStrCmpEqCi:     {text: "cmp_str_eq_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqCi},
-	sStrCmpEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opCmpStrEqUTF8Ci},
-
-	// equalPattern
-	sEqPatternCs:     {text: "eq_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternCs},
-	sEqPatternCi:     {text: "eq_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternCi},
-	sEqPatternUTF8Ci: {text: "eq_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opEqPatternUTF8Ci},
-
-	// equalStrFuzzy
-	sCmpFuzzyA3:        {text: "cmp_str_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyA3, emit: emitStrEditStack1x1},
-	sCmpFuzzyUnicodeA3: {text: "cmp_str_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opCmpStrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
-
-	// hasSubstrFuzzy
-	sHasSubstrFuzzyA3:        {text: "has_substr_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyA3, emit: emitStrEditStack1x1},
-	sHasSubstrFuzzyUnicodeA3: {text: "has_substr_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyUnicodeA3, emit: emitStrEditStack1x1},
-
-	// hasPrefix
-	sStrContainsPrefixCs:     {text: "contains_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
-	sStrContainsPrefixCi:     {text: "contains_prefix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCi},
-	sStrContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixUTF8Ci},
-
-	// hasSuffix
-	sStrContainsSuffixCs:     {text: "contains_suffix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCs},
-	sStrContainsSuffixCi:     {text: "contains_suffix_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixCi},
-	sStrContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSuffixUTF8Ci},
-
-	// hasSubstr
-	sStrContainsSubstrCs:     {text: "contains_substr_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCs},
-	sStrContainsSubstrCi:     {text: "contains_substr_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrCi},
-	sStrContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsSubstrUTF8Ci},
-
-	// hasPattern
-	sStrContainsPatternCs:     {text: "contains_pattern_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCs},
-	sStrContainsPatternCi:     {text: "contains_pattern_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternCi},
-	sStrContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPatternUTF8Ci},
-
-	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsLeft},
-	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsRight},
-	sStrTrimCharLeft:  {text: "trim_char_left", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charLeft},
-	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charRight},
-
-	// ip matching
-	sIsSubnetOfIP4: {text: "is_subnet_of_ip4", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opIsSubnetOfIP4},
-
-	// s, k = skip_1char_left s, k -- skip one unicode character at the beginning (left) of a string slice
-	sStrSkip1CharLeft: {text: "skip_1char_left", argtypes: str1Args, rettype: stStringMasked, bc: opSkip1charLeft},
-	// s, k = skip_1char_right s, k -- skip one unicode character off the end (right) of a string slice
-	sStrSkip1CharRight: {text: "skip_1char_right", argtypes: str1Args, rettype: stStringMasked, bc: opSkip1charRight},
-	// s, k = skip_nchar_left s, k -- skip n unicode character at the beginning (left) of a string slice
-	sStrSkipNCharLeft: {text: "skip_nchar_left", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSkipNcharLeft, emit: emitStrEditStack1},
-	// s, k = skip_nchar_right s, k -- skip n unicode character off the end (right) of a string slice
-	sStrSkipNCharRight: {text: "skip_nchar_right", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSkipNcharRight, emit: emitStrEditStack1},
-
-	sCharLength: {text: "char_length", argtypes: str1Args, rettype: stInt, bc: opLengthStr},
-	sSubStr:     {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stString, immfmt: fmtother, bc: opSubstr, emit: emitStrEditStack2},
-	sSplitPart:  {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtother, bc: opSplitPart, emit: emitStrEditStack1x1},
-
-	sDfaT6:  {text: "dfa_tiny6", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6},
-	sDfaT7:  {text: "dfa_tiny7", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7},
-	sDfaT8:  {text: "dfa_tiny8", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8},
-	sDfaT6Z: {text: "dfa_tiny6Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6Z},
-	sDfaT7Z: {text: "dfa_tiny7Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7Z},
-	sDfaT8Z: {text: "dfa_tiny8Z", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT8Z},
-	sDfaLZ:  {text: "dfa_largeZ", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaLZ},
-
-	// compare against a constant exactly
-	sequalconst: {text: "equalconst", argtypes: scalar1Args, rettype: stBool, immfmt: fmtother, emit: emitconstcmp},
-
-	ssplit: {text: "split", argtypes: []ssatype{stList, stBool}, rettype: stListAndValueMasked, emit: emitsplit, priority: prioParse},
-
-	// convert value to base pointer
-	// when it is structure-typed
-	stuples: {text: "tuples", argtypes: []ssatype{stValue, stBool}, rettype: stBase | stBool, emit: emittuple, bc: optuple, priority: prioParse},
-
-	// find a struct field by name relative to a base pointer
-	sdot: {text: "dot", argtypes: []ssatype{stBase, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitdot, priority: prioParse},
-
-	sauxval: {text: "auxval", argtypes: []ssatype{}, rettype: stValueMasked, immfmt: fmtslot, priority: prioParse, bc: opauxval},
-
-	// find a struct field by name relative
-	// to a previously-computed base pointer;
-	// arguments are: (base, prevV, prevK, wantedK)
-	sdot2: {text: "dot2", argtypes: []ssatype{stBase, stValue, stBool, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitdot2, priority: prioParse},
-
-	// hash and hash-with-seed ops
-	shashvalue:  {text: "hashvalue", argtypes: []ssatype{stValue, stBool}, rettype: stHash, immfmt: fmtslot, bc: ophashvalue, priority: prioHash},
-	shashvaluep: {text: "hashvalue+", argtypes: []ssatype{stHash, stValue, stBool}, rettype: stHash, immfmt: fmtslotx2hash, bc: ophashvalueplus, priority: prioHash},
-
-	shashmember: {text: "hashmember", argtypes: []ssatype{stHash, stBool}, rettype: stBool, immfmt: fmtother, bc: ophashmember, emit: emithashmember},
-	shashlookup: {text: "hashlookup", argtypes: []ssatype{stHash, stBool}, rettype: stValue | stBool, immfmt: fmtother, bc: ophashlookup, emit: emithashlookup},
-
-	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, emit: emitconst}, // yields <value>.kinit
-
-	// store value m, v, k, $slot
-	sstorev:    {text: "store.z", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtslot, emit: emitstorev, priority: prioMem},
-	sloadv:     {text: "load.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadzerov, priority: prioParse},
-	sloadvperm: {text: "load.perm.z", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadpermzerov, priority: prioParse},
-
-	sloadlist:  {text: "loadlist.z", rettype: stListMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, priority: prioParse},
-	sstorelist: {text: "storelist.z", rettype: stMem, argtypes: []ssatype{stMem, stList, stBool}, immfmt: fmtother, emit: emitstores, priority: prioMem},
-
-	// these tuple-construction ops
-	// simply combine a set of separate instructions
-	// into a single arugment value;
-	// note that they are all compiled similarly
-	// (they just load the arguments into the appropriate
-	// input registers)
-	smsk: {text: "msk", rettype: stMem | stScalar | stBool, argtypes: []ssatype{stMem, stScalar, stBool}, emit: emittuple2regs},
-	sbhk: {text: "bhk", rettype: stBase | stHash | stBool, argtypes: []ssatype{stBase, stHash, stBool}, emit: emittuple2regs},
-	sbk:  {text: "bk", rettype: stBaseMasked, argtypes: []ssatype{stBase, stBool}, emit: emittuple2regs},
-	smk:  {text: "mk", rettype: stMem | stBool, argtypes: []ssatype{stMem, stBool}, emit: emittuple2regs},
-
-	// identity ops; these ops just return their input
-	// associated with a different not-missing mask
-	// (generally they do not lead to any code being emitted)
-	sfloatk: {text: "floatk", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, emit: emittuple2regs},
-	svk:     {text: "vk", rettype: stValue, argtypes: []ssatype{stValue, stBool}, emit: emittuple2regs},
-
-	// notmissing exists to coerce st*Masked into stBool
-	snotmissing: {text: "notmissing", rettype: stBool, argtypes: []ssatype{stBool}, emit: emittuple2regs},
-
-	sblendv:     {text: "blendv", rettype: stValue, argtypes: []ssatype{stValue, stValue, stBool}, bc: opblendv, emit: emitblendv, disjunctive: true},
-	sblendint:   {text: "blendint", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opblendnum, emit: emitblends, disjunctive: true},
-	sblendstr:   {text: "blendstr", rettype: stString, argtypes: []ssatype{stString, stString, stBool}, bc: opblendslice, emit: emitblends, disjunctive: true},
-	sblendfloat: {text: "blendfloat", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opblendnum, emit: emitblends, disjunctive: true},
-
-	// compare timestamp against immediate
-	sltconsttm: {text: "ltconsttm", argtypes: time1Args, rettype: stBool, immfmt: fmtother, bc: optimelt, emit: emitcmptm, inverse: sgtconsttm},
-	sgtconsttm: {text: "gtconsttm", argtypes: time1Args, rettype: stBool, immfmt: fmtother, bc: optimegt, emit: emitcmptm, inverse: sltconsttm},
-	stmextract: {text: "tmextract", argtypes: time1Args, rettype: stInt, immfmt: fmtother, bc: optmextract, emit: emittmwithconst},
-
-	sbroadcastf: {text: "broadcast.f", rettype: stFloat, argtypes: []ssatype{}, immfmt: fmtf64, bc: opbroadcastimmf},
-	sbroadcasti: {text: "broadcast.i", rettype: stInt, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcastimmi},
-	sabsf:       {text: "abs.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opabsf},
-	sabsi:       {text: "abs.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opabsi},
-	snegf:       {text: "neg.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opnegf},
-	snegi:       {text: "neg.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opnegi},
-	ssignf:      {text: "sign.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsignf},
-	ssigni:      {text: "sign.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsigni},
-	ssquaref:    {text: "square.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsquaref},
-	ssquarei:    {text: "square.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opsquarei},
-	sbitnoti:    {text: "bitnot.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opbitnoti},
-	sbitcounti:  {text: "bitcount.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, bc: opbitcounti},
-	sroundf:     {text: "round.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oproundf},
-	sroundevenf: {text: "roundeven.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oproundevenf},
-	struncf:     {text: "trunc.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: optruncf},
-	sfloorf:     {text: "floor.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opfloorf},
-	sceilf:      {text: "ceil.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opceilf},
-	sroundi:     {text: "round.i", rettype: stInt, argtypes: []ssatype{stFloat, stBool}, bc: opfproundd},
-	ssqrtf:      {text: "sqrt.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsqrtf},
-	scbrtf:      {text: "cbrt.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opcbrtf},
-	sexpf:       {text: "exp.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexpf},
-	sexpm1f:     {text: "expm1.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexpm1f},
-	sexp2f:      {text: "exp2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexp2f},
-	sexp10f:     {text: "exp10.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opexp10f},
-	slnf:        {text: "ln.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oplnf},
-	sln1pf:      {text: "ln1p.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opln1pf},
-	slog2f:      {text: "log2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oplog2f},
-	slog10f:     {text: "log10.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: oplog10f},
-	ssinf:       {text: "sin.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opsinf},
-	scosf:       {text: "cos.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opcosf},
-	stanf:       {text: "tan.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: optanf},
-	sasinf:      {text: "asin.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opasinf},
-	sacosf:      {text: "acos.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opacosf},
-	satanf:      {text: "atan.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, bc: opatanf},
-	satan2f:     {text: "atan2.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opatan2f, emit: emitBinaryALUOp},
-
-	saddf:         {text: "add.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opaddf, bcrev: opaddf, emit: emitBinaryALUOp},
-	saddi:         {text: "add.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opaddi, bcrev: opaddi, emit: emitBinaryALUOp},
-	saddimmf:      {text: "add.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opaddimmf, bcrev: opaddimmf},
-	saddimmi:      {text: "add.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opaddimmi, bcrev: opaddimmi},
-	ssubf:         {text: "sub.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opsubf, bcrev: oprsubf, emit: emitBinaryALUOp},
-	ssubi:         {text: "sub.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsubi, bcrev: oprsubi, emit: emitBinaryALUOp},
-	ssubimmf:      {text: "sub.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opsubimmf, bcrev: oprsubimmf},
-	ssubimmi:      {text: "sub.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsubimmi, bcrev: oprsubimmi},
-	srsubimmf:     {text: "rsub.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprsubimmf, bcrev: opsubimmf},
-	srsubimmi:     {text: "rsub.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprsubimmi, bcrev: opsubimmi},
-	smulf:         {text: "mul.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmulf, bcrev: opmulf, emit: emitBinaryALUOp},
-	smuli:         {text: "mul.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmuli, bcrev: opmuli, emit: emitBinaryALUOp},
-	smulimmf:      {text: "mul.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmulimmf, bcrev: opmulimmf},
-	smulimmi:      {text: "mul.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmulimmi, bcrev: opmulimmi},
-	sdivf:         {text: "div.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opdivf, bcrev: oprdivf, emit: emitBinaryALUOp},
-	sdivi:         {text: "div.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opdivi, bcrev: oprdivi, emit: emitBinaryALUOp},
-	sdivimmf:      {text: "div.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opdivimmf, bcrev: oprdivimmf},
-	sdivimmi:      {text: "div.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opdivimmi, bcrev: oprdivimmi},
-	srdivimmf:     {text: "rdiv.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprdivimmf, bcrev: opdivimmf},
-	srdivimmi:     {text: "rdiv.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprdivimmi, bcrev: opdivimmi},
-	smodf:         {text: "mod.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmodf, bcrev: oprmodf, emit: emitBinaryALUOp},
-	smodi:         {text: "mod.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmodi, bcrev: oprmodi, emit: emitBinaryALUOp},
-	smodimmf:      {text: "mod.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmodimmf, bcrev: oprmodimmf},
-	smodimmi:      {text: "mod.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmodimmi, bcrev: oprmodimmi},
-	srmodimmf:     {text: "rmod.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprmodimmf, bcrev: opmodimmf},
-	srmodimmi:     {text: "rmod.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprmodimmi, bcrev: opmodimmi},
-	sminvaluef:    {text: "minvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opminvaluef, bcrev: opminvaluef, emit: emitBinaryALUOp},
-	sminvaluei:    {text: "minvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opminvaluei, bcrev: opminvaluei, emit: emitBinaryALUOp},
-	sminvalueimmf: {text: "minvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opminvalueimmf, bcrev: opminvalueimmf},
-	sminvalueimmi: {text: "minvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opminvalueimmi, bcrev: opminvalueimmi},
-	smaxvaluef:    {text: "maxvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmaxvaluef, bcrev: opmaxvaluef, emit: emitBinaryALUOp},
-	smaxvaluei:    {text: "maxvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmaxvaluei, bcrev: opmaxvaluei, emit: emitBinaryALUOp},
-	smaxvalueimmf: {text: "maxvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmaxvalueimmf, bcrev: opmaxvalueimmf},
-	smaxvalueimmi: {text: "maxvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmaxvalueimmi, bcrev: opmaxvalueimmi},
-	sandi:         {text: "and.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opandi, bcrev: opandi, emit: emitBinaryALUOp},
-	sandimmi:      {text: "and.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opandimmi, bcrev: opandimmi},
-	sori:          {text: "or.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opori, bcrev: opori, emit: emitBinaryALUOp},
-	sorimmi:       {text: "or.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oporimmi, bcrev: oporimmi},
-	sxori:         {text: "xor.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opxori, bcrev: opxori, emit: emitBinaryALUOp},
-	sxorimmi:      {text: "xor.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opxorimmi, bcrev: opxorimmi},
-	sslli:         {text: "sll.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opslli, emit: emitBinaryALUOp},
-	ssllimmi:      {text: "sll.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsllimmi},
-	ssrai:         {text: "sra.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsrai, emit: emitBinaryALUOp},
-	ssraimmi:      {text: "sra.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsraimmi},
-	ssrli:         {text: "srl.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsrli, emit: emitBinaryALUOp},
-	ssrlimmi:      {text: "srl.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsrlimmi},
-
-	shypotf: {text: "hypot.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf, bcrev: ophypotf, emit: emitBinaryALUOp},
-	spowf:   {text: "pow.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf, emit: emitBinaryALUOp},
-
-	swidthbucketf: {text: "widthbucket.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf, emit: emitauto2},
-	swidthbucketi: {text: "widthbucket.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi, emit: emitauto2},
-
-	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggandk, priority: prioMem, emit: emitAggK},
-	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggork, priority: prioMem, emit: emitAggK},
-	saggsumf:  {text: "aggsum.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggsumf, priority: prioMem},
-	saggsumi:  {text: "aggsum.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggsumi, priority: prioMem},
-	saggavgf:  {text: "aggavg.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggsumf, priority: prioMem},
-	saggavgi:  {text: "aggavg.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggsumi, priority: prioMem},
-	saggminf:  {text: "aggmin.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggminf, priority: prioMem},
-	saggmini:  {text: "aggmin.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggmini, priority: prioMem},
-	saggmaxf:  {text: "aggmax.f", rettype: stMem, argtypes: []ssatype{stMem, stFloat, stBool}, immfmt: fmtaggslot, bc: opaggmaxf, priority: prioMem},
-	saggmaxi:  {text: "aggmax.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggmaxi, priority: prioMem},
-	saggmints: {text: "aggmin.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtaggslot, bc: opaggmini, priority: prioMem},
-	saggmaxts: {text: "aggmax.ts", rettype: stMem, argtypes: []ssatype{stMem, stTimeInt, stBool}, immfmt: fmtaggslot, bc: opaggmaxi, priority: prioMem},
-	saggandi:  {text: "aggand.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggandi, priority: prioMem},
-	saggori:   {text: "aggor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggori, priority: prioMem},
-	saggxori:  {text: "aggxor.i", rettype: stMem, argtypes: []ssatype{stMem, stInt, stBool}, immfmt: fmtaggslot, bc: opaggxori, priority: prioMem},
-	saggcount: {text: "aggcount", rettype: stMem, argtypes: []ssatype{stMem, stBool}, immfmt: fmtaggslot, bc: opaggcount, priority: prioMem + 1},
-
-	// compute hash aggregate bucket location; encoded immediate will be input hash slot to use
-	saggbucket: {text: "aggbucket", argtypes: []ssatype{stMem, stHash, stBool}, rettype: stBucket, immfmt: fmtslot, bc: opaggbucket},
-
-	// hash aggregate bucket ops (count, min, max, sum, ...)
-	saggslotandk:  {text: "aggslotand.k", argtypes: []ssatype{stMem, stBucket, stBool, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotandk, priority: prioMem, emit: emitSlotAggK},
-	saggslotork:   {text: "aggslotor.k", argtypes: []ssatype{stMem, stBucket, stBool, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotork, priority: prioMem, emit: emitSlotAggK},
-	saggslotsumf:  {text: "aggslotadd.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotaddf, priority: prioMem},
-	saggslotsumi:  {text: "aggslotadd.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotaddi, priority: prioMem},
-	saggslotavgf:  {text: "aggslotavg.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotavgf, priority: prioMem},
-	saggslotavgi:  {text: "aggslotavg.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotavgi, priority: prioMem},
-	saggslotminf:  {text: "aggslotmin.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotminf, priority: prioMem},
-	saggslotmini:  {text: "aggslotmin.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotmini, priority: prioMem},
-	saggslotmaxf:  {text: "aggslotmax.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotmaxf, priority: prioMem},
-	saggslotmaxi:  {text: "aggslotmax.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotmaxi, priority: prioMem},
-	saggslotmints: {text: "aggslotmin.ts", argtypes: []ssatype{stMem, stBucket, stTimeInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotmini, priority: prioMem},
-	saggslotmaxts: {text: "aggslotmax.ts", argtypes: []ssatype{stMem, stBucket, stTimeInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotmaxi, priority: prioMem},
-	saggslotandi:  {text: "aggslotand.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotandi, priority: prioMem},
-	saggslotori:   {text: "aggslotor.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotori, priority: prioMem},
-	saggslotxori:  {text: "aggslotxor.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotxori, priority: prioMem},
-	saggslotcount: {text: "aggslotcount", argtypes: []ssatype{stMem, stBucket, stBool}, rettype: stMem, immfmt: fmtaggslot, bc: opaggslotcount, priority: prioMem},
-
-	// boxing ops
-	//
-	// turn two masks into TRUE/FALSE/MISSING according to 3VL
-	sboxmask:   {text: "boxmask", argtypes: []ssatype{stBool, stBool}, rettype: stValue, emit: emitboxmask},
-	sboxint:    {text: "boxint", argtypes: []ssatype{stInt, stBool}, rettype: stValue, bc: opboxint},
-	sboxfloat:  {text: "boxfloat", argtypes: []ssatype{stFloat, stBool}, rettype: stValue, bc: opboxfloat},
-	sboxstring: {text: "boxstring", argtypes: []ssatype{stString, stBool}, rettype: stValue, bc: opboxstring},
-
-	// timestamp operations
-	sbroadcastts:            {text: "broadcast.ts", rettype: stTimeInt, argtypes: []ssatype{}, immfmt: fmti64, bc: opbroadcastimmi},
-	sunboxtime:              {text: "unboxtime", argtypes: []ssatype{stTime, stBool}, rettype: stTimeInt, bc: opunboxts},
-	sdateadd:                {text: "dateadd", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opaddi, emit: emitauto2},
-	sdateaddimm:             {text: "dateadd.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opaddimmi},
-	sdateaddmulimm:          {text: "dateaddmul.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, immfmt: fmti64, bc: opaddmulimmi, emit: emitauto2},
-	sdateaddmonth:           {text: "dateaddmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddmonth, emit: emitauto2},
-	sdateaddmonthimm:        {text: "dateaddmonth.imm", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opdateaddmonthimm},
-	sdateaddquarter:         {text: "dateaddquarter", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddquarter, emit: emitauto2},
-	sdateaddyear:            {text: "dateaddyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stInt, stBool}, bc: opdateaddyear, emit: emitauto2},
-	sdatediffmicro:          {text: "datediffmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: oprsubi, emit: emitauto2},
-	sdatediffparam:          {text: "datediffparam", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffparam, immfmt: fmti64, emit: emitauto2},
-	sdatediffmonth:          {text: "datediffmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitDateDiffMQY},
-	sdatediffquarter:        {text: "datediffquarter", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitDateDiffMQY},
-	sdatediffyear:           {text: "datediffyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stTimeInt, stBool}, bc: opdatediffmonthyear, emit: emitDateDiffMQY},
-	sdateextractmicrosecond: {text: "dateextractmicrosecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmicrosecond, emit: emitauto2},
-	sdateextractmillisecond: {text: "dateextractmillisecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmillisecond, emit: emitauto2},
-	sdateextractsecond:      {text: "dateextractsecond", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractsecond, emit: emitauto2},
-	sdateextractminute:      {text: "dateextractminute", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractminute, emit: emitauto2},
-	sdateextracthour:        {text: "dateextracthour", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextracthour, emit: emitauto2},
-	sdateextractday:         {text: "dateextractday", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractday, emit: emitauto2},
-	sdateextractdow:         {text: "dateextractdow", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractdow, emit: emitauto2},
-	sdateextractdoy:         {text: "dateextractdoy", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractdoy, emit: emitauto2},
-	sdateextractmonth:       {text: "dateextractmonth", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractmonth, emit: emitauto2},
-	sdateextractquarter:     {text: "dateextractquarter", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractquarter, emit: emitauto2},
-	sdateextractyear:        {text: "dateextractyear", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdateextractyear, emit: emitauto2},
-	sdatetounixepoch:        {text: "datetounixepoch", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitauto2},
-	sdatetounixmicro:        {text: "datetounixmicro", rettype: stInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetounixepoch, emit: emitdatecasttoint},
-	sdatetruncmillisecond:   {text: "datetruncmillisecond", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmillisecond},
-	sdatetruncsecond:        {text: "datetruncsecond", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncsecond},
-	sdatetruncminute:        {text: "datetruncminute", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncminute},
-	sdatetrunchour:          {text: "datetrunchour", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetrunchour},
-	sdatetruncday:           {text: "datetruncday", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncday},
-	sdatetruncdow:           {text: "datetruncdow", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, immfmt: fmti64, bc: opdatetruncdow, emit: emitauto2},
-	sdatetruncmonth:         {text: "datetruncmonth", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncmonth},
-	sdatetruncquarter:       {text: "datetruncquarter", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncquarter},
-	sdatetruncyear:          {text: "datetruncyear", rettype: stTimeInt, argtypes: []ssatype{stTimeInt, stBool}, bc: opdatetruncyear},
-	stimebucketts:           {text: "timebucket.ts", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: optimebucketts, emit: emitauto2},
-	sboxts:                  {text: "boxts", argtypes: []ssatype{stTimeInt, stBool}, rettype: stValue, bc: opboxts},
-
-	sboxlist:       {text: "boxlist", rettype: stValue, argtypes: []ssatype{stList, stBool}},
-	smakelist:      {text: "makelist", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stValue, stBool}, bc: opmakelist, emit: emitMakeList},
-	smakestruct:    {text: "makestruct", rettype: stValueMasked, argtypes: []ssatype{stBool}, vaArgs: []ssatype{stString, stValue, stBool}, bc: opmakestruct, emit: emitMakeStruct},
-	smakestructkey: {text: "makestructkey", rettype: stString, immfmt: fmtother, emit: emitNone},
-
-	// GEO functions
-	sgeohash:      {text: "geohash", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeohash, emit: emitauto2},
-	sgeohashimm:   {text: "geohash.imm", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeohashimm, emit: emitauto2},
-	sgeotilex:     {text: "geotilex", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotilex, emit: emitauto2},
-	sgeotiley:     {text: "geotiley", rettype: stInt, argtypes: []ssatype{stFloat, stInt, stBool}, bc: opgeotiley, emit: emitauto2},
-	sgeotilees:    {text: "geotilees", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stInt, stBool}, bc: opgeotilees, emit: emitauto2},
-	sgeotileesimm: {text: "geotilees.imm", rettype: stString, argtypes: []ssatype{stFloat, stFloat, stBool}, immfmt: fmti64, bc: opgeotileesimm, emit: emitauto2},
-	sgeodistance:  {text: "geodistance", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opgeodistance, emit: emitauto2},
-
-	schecktag:   {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, emit: emitchecktag},
-	stypebits:   {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
-	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
-
-	saggapproxcount: {
-		text:     "aggapproxcount",
-		argtypes: []ssatype{stHash, stBool},
-		rettype:  stMem,
-		bc:       opaggapproxcount,
-		emit:     emitaggapproxcount,
-		immfmt:   fmtother,
-	},
-	saggapproxcountpartial: {
-		text:     "aggapproxcount.partial",
-		argtypes: []ssatype{stHash, stBool},
-		rettype:  stMem,
-		bc:       opaggapproxcount,
-		emit:     emitaggapproxcount,
-		immfmt:   fmtother,
-	},
-	saggapproxcountmerge: {
-		text:     "aggapproxcount.merge",
-		argtypes: []ssatype{stBlob, stBool},
-		rettype:  stMem,
-		bc:       opaggapproxcountmerge,
-		emit:     emitaggapproxcountmerge,
-		immfmt:   fmtaggslot,
-	},
-	saggslotapproxcount: {
-		text:     "aggslotapproxcount",
-		argtypes: []ssatype{stMem, stBucket, stHash, stBool},
-		rettype:  stMem,
-		bc:       opaggslotapproxcount,
-		emit:     emitaggslotapproxcount,
-		immfmt:   fmti64,
-		priority: prioMem,
-	},
-	saggslotapproxcountpartial: {
-		text:     "aggslotapproxcount.partial",
-		argtypes: []ssatype{stMem, stBucket, stHash, stBool},
-		rettype:  stMem,
-		bc:       opaggslotapproxcount,
-		emit:     emitaggslotapproxcount,
-		immfmt:   fmtother,
-		priority: prioMem,
-	},
-	saggslotapproxcountmerge: {
-		text:     "aggslotapproxcount.merge",
-		argtypes: []ssatype{stMem, stBucket, stBlob, stBool},
-		rettype:  stMem,
-		bc:       opaggslotapproxcountmerge,
-		emit:     emitaggslotapproxcountmerge,
-		immfmt:   fmtaggslot,
-		priority: prioMem,
-	},
-}
+// MaxSymbolID is the largest symbol ID
+// supported by the system.
+const MaxSymbolID = (1 << 21) - 1
 
 type value struct {
 	id   int
@@ -1330,6 +201,7 @@ func (p *prog) begin() {
 	p.resolved = p.resolved[:0]
 }
 
+//lint:ignore U1000 (TODO: Should we remove this)
 func (p *prog) undef() *value {
 	return p.values[1]
 }
@@ -1681,13 +553,44 @@ func (p *prog) constant(imm interface{}) *value {
 	return v
 }
 
-// returnValue sets the return value of the program
-// as a single value (will be returned in a register)
+// returnValue terminates the execution of the program and optionally fills
+// output registers with values that are allocated on virtual stack.
 func (p *prog) returnValue(v *value) {
-	p.ret = v
+	info := &ssainfo[v.op]
+
+	// Return only accepts operations that actually return (terminate the execution).
+	if info.returnOp {
+		p.ret = v
+		return
+	}
+
+	// If the input is stMem, we would wrap it in a void return - this
+	// program doesn't return any value, it most likely only aggregates.
+	if (info.rettype & stMem) != 0 {
+		p.ret = p.ssa1(sretm, v)
+		return
+	}
+
+	panic(fmt.Sprintf("invalid return operation %s", v.op.String()))
 }
 
-// InitMem returns the memory token associated
+func (p *prog) returnBool(mem, pred *value) {
+	p.returnValue(p.ssa2(sretmk, mem, pred))
+}
+
+func (p *prog) returnScalar(mem, scalar, pred *value) {
+	p.returnValue(p.ssa3(sretmsk, mem, scalar, pred))
+}
+
+func (p *prog) returnBK(base, pred *value) {
+	p.returnValue(p.ssa2(sretbk, base, pred))
+}
+
+func (p *prog) returnBHK(base, hash, pred *value) {
+	p.returnValue(p.ssa3(sretbhk, base, hash, pred))
+}
+
+// initMem returns the memory token associated
 // with the initial memory state.
 func (p *prog) initMem() *value {
 	return p.ssa0(sinitmem)
@@ -1708,6 +611,10 @@ func (p *prog) store(mem *value, v *value, slot stackslot) (*value, error) {
 	default:
 		return nil, fmt.Errorf("cannot store value %s", v)
 	}
+}
+
+func (p *prog) missing() *value {
+	return p.ssa0(skfalse)
 }
 
 func (p *prog) isMissing(v *value) *value {
@@ -1755,7 +662,7 @@ func (p *prog) notMissing(v *value) *value {
 	switch v.op {
 	case skfalse, sinit:
 		return v
-	case snand:
+	case sandn:
 		return p.and(p.notMissing(v.args[0]), v.args[1])
 	case sxor, sxnor:
 		// for xor and xnor, the result is only
@@ -1818,41 +725,18 @@ func (p *prog) mergeMem(args ...*value) *value {
 // these just combine a non-mask
 // register value (S, V, etc.)
 // with a mask value into a single value;
-// they don't actually emit any code
-// other than the necessary register
-// manipulation
 
-// V+K tuple
-func (p *prog) vk(v, k *value) *value {
-	if v == k {
+// makes a V+K tuple so `p.mask(v)` returns `k`
+func (p *prog) makevk(v, k *value) *value {
+	if v == k || p.mask(v) == k {
 		return v
 	}
-	return p.ssa2(svk, v, k)
+	return p.ssa2(smakevk, v, k)
 }
 
 // float+K tuple
 func (p *prog) floatk(f, k *value) *value {
 	return p.ssa2(sfloatk, f, k)
-}
-
-// RowsMasked constructs a (base value, predicate) tuple
-func (p *prog) rowsMasked(base *value, pred *value) *value {
-	return p.ssa2(sbk, base, pred)
-}
-
-// mem+S+K tuple
-func (p *prog) msk(mem *value, scalar *value, pred *value) *value {
-	return p.ssa3(smsk, mem, scalar, pred)
-}
-
-// base+hash+K tuple
-func (p *prog) bhk(base *value, hash *value, pred *value) *value {
-	return p.ssa3(sbhk, base, hash, pred)
-}
-
-// mem+K tuple
-func (p *prog) mk(mem *value, pred *value) *value {
-	return p.ssa2(smk, mem, pred)
 }
 
 // Dot computes <base>.col
@@ -1882,7 +766,7 @@ func (p *prog) isFalse(v *value) *value {
 		// need to differentiate between
 		// the zero predicate from MISSING
 		// and the zero predicate from FALSE
-		return p.ssa2(snand, v, p.notMissing(v))
+		return p.ssa2(sandn, v, p.notMissing(v))
 	case stValue:
 		return p.ssa2(sisfalse, v, p.mask(v))
 	default:
@@ -1975,7 +859,7 @@ func (p *prog) equals(left, right *value) *value {
 			b, ok := right.imm.(bool)
 			if !ok {
 				// left = <not a bool> -> nope
-				return p.ssa0(skfalse)
+				return p.missing()
 			}
 			if b {
 				// left = TRUE -> left mask
@@ -2005,19 +889,19 @@ func (p *prog) equals(left, right *value) *value {
 		case stValue:
 			left = p.unsymbolized(left)
 			right = p.unsymbolized(right)
-			return p.ssa3(sequalv, left, right, p.ssa2(sand, p.mask(left), p.mask(right)))
+			return p.ssa3(scmpeqv, left, right, p.ssa2(sand, p.mask(left), p.mask(right)))
 		case stInt:
-			lefti, k := p.coerceInt(left)
+			lefti, k := p.coerceI64(left)
 			return p.ssa3(scmpeqi, lefti, right, p.and(k, p.mask(right)))
 		case stFloat:
-			leftf, k := p.coercefp(left)
+			leftf, k := p.coerceF64(left)
 			return p.ssa3(scmpeqf, leftf, right, p.and(k, p.mask(right)))
 		case stString:
-			leftstr := p.toStr(left)
-			return p.ssa3(seqstr, leftstr, right, p.and(p.mask(leftstr), p.mask(right)))
+			leftstr := p.coerceStr(left)
+			return p.ssa3(scmpeqstr, leftstr, right, p.and(p.mask(leftstr), p.mask(right)))
 		case stTime:
-			lefttm := p.toTime(left)
-			return p.ssa3(seqtime, lefttm, right, p.and(p.mask(lefttm), p.mask(right)))
+			leftts, leftk := p.coerceTimestamp(left)
+			return p.ssa3(scmpeqts, leftts, right, p.and(p.mask(leftk), p.mask(right)))
 		default:
 			return p.errorf("cannot compare value %s and other %s", left, right)
 		}
@@ -2029,7 +913,7 @@ func (p *prog) equals(left, right *value) *value {
 			return p.ssa3(scmpeqi, left, right, p.and(p.mask(left), p.mask(right)))
 		}
 		// falthrough to floating-point comparison
-		left = p.ssa2(scvtitof, left, p.mask(left))
+		left = p.ssa2(scvti64tof64, left, p.mask(left))
 		fallthrough
 	case stFloat:
 		if right.op == sliteral {
@@ -2037,12 +921,12 @@ func (p *prog) equals(left, right *value) *value {
 		}
 		switch right.primary() {
 		case stInt:
-			right = p.ssa2(scvtitof, right, p.mask(right))
+			right = p.ssa2(scvti64tof64, right, p.mask(right))
 			fallthrough
 		case stFloat:
 			return p.ssa3(scmpeqf, left, right, p.and(p.mask(left), p.mask(right)))
 		default:
-			return p.ssa0(skfalse) // FALSE/MISSING
+			return p.missing() // FALSE/MISSING
 		}
 	case stString:
 		if right.op == sliteral {
@@ -2050,16 +934,20 @@ func (p *prog) equals(left, right *value) *value {
 		}
 		switch right.primary() {
 		case stString:
-			return p.ssa3(seqstr, left, right, p.and(p.mask(left), p.mask(right)))
+			return p.ssa3(scmpeqstr, left, right, p.and(p.mask(left), p.mask(right)))
 		default:
-			return p.ssa0(skfalse) // FALSE/MISSING
+			return p.missing() // FALSE/MISSING
 		}
 	case stTime:
 		switch right.primary() {
 		case stTime:
-			return p.ssa3(seqtime, left, right, p.and(p.mask(left), p.mask(right)))
+			return p.ssa3(scmpeqts, left, right, p.and(p.mask(left), p.mask(right)))
+		case stValue:
+			rv, rm := p.coerceTimestamp(right)
+			return p.ssa3(scmpeqts, left, rv, p.and(p.mask(left), rm))
+		default:
+			return p.missing() // FALSE/MISSING
 		}
-		fallthrough
 	default:
 		return p.errorf("cannot compare %s and %s", left, right)
 	}
@@ -2067,14 +955,14 @@ func (p *prog) equals(left, right *value) *value {
 
 // CharLength returns the number of unicode code-points in v
 func (p *prog) charLength(v *value) *value {
-	v = p.toStr(v)
+	v = p.coerceStr(v)
 	return p.ssa2(sCharLength, v, v)
 }
 
 // Substring returns a substring at the provided startIndex with length
 func (p *prog) substring(v, substrOffset, substrLength *value) *value {
-	offsetInt, offsetMask := p.coerceInt(substrOffset)
-	lengthInt, lengthMask := p.coerceInt(substrLength)
+	offsetInt, offsetMask := p.coerceI64(substrOffset)
+	lengthInt, lengthMask := p.coerceI64(substrLength)
 	mask := p.and(v, p.and(offsetMask, lengthMask))
 	return p.ssa4(sSubStr, v, offsetInt, lengthInt, mask)
 }
@@ -2082,7 +970,7 @@ func (p *prog) substring(v, substrOffset, substrLength *value) *value {
 // SplitPart splits string on delimiter and returns the field index. Field indexes start with 1.
 func (p *prog) splitPart(v *value, delimiter byte, index *value) *value {
 	delimiterStr := string(delimiter)
-	indexInt, indexMask := p.coerceInt(index)
+	indexInt, indexMask := p.coerceI64(index)
 	mask := p.and(v, indexMask)
 	return p.ssa3imm(sSplitPart, v, indexInt, mask, delimiterStr)
 }
@@ -2090,7 +978,7 @@ func (p *prog) splitPart(v *value, delimiter byte, index *value) *value {
 // is v an ion null value?
 func (p *prog) isnull(v *value) *value {
 	if v.primary() != stValue {
-		return p.ssa0(skfalse)
+		return p.missing()
 	}
 	return p.ssa2(sisnull, v, p.mask(v))
 }
@@ -2213,6 +1101,10 @@ func toi64(imm interface{}) uint64 {
 		return uint64(i)
 	case uint:
 		return uint64(i)
+	case uint16:
+		return uint64(i)
+	case uint32:
+		return uint64(i)
 	case uint64:
 		return i
 	case float64:
@@ -2227,11 +1119,11 @@ func toi64(imm interface{}) uint64 {
 // coerce a value to boolean
 func (p *prog) coerceBool(arg *value) (*value, *value) {
 	if arg.op == sliteral {
-		imm := toi64(arg.imm)
-		if imm != 0 {
-			imm = 0xFFFF
+		op := sbroadcast0k
+		if toi64(arg.imm) != 0 {
+			op = sbroadcast1k
 		}
-		return p.ssa0imm(sbroadcastk, imm), p.validLanes()
+		return p.ssa0(op), p.validLanes()
 	}
 
 	if arg.primary() == stBool {
@@ -2240,8 +1132,8 @@ func (p *prog) coerceBool(arg *value) (*value, *value) {
 
 	if arg.primary() == stValue {
 		k := p.mask(arg)
-		i := p.ssa2(sunboxktoi, arg, k)
-		return p.ssa2(scvtitok, i, p.mask(i)), p.mask(i)
+		i := p.ssa2(sunboxktoi64, arg, k)
+		return p.ssa2(scvti64tok, i, p.mask(i)), p.mask(i)
 	}
 
 	err := p.val()
@@ -2251,7 +1143,7 @@ func (p *prog) coerceBool(arg *value) (*value, *value) {
 
 // coerce a value to floating point,
 // taking care to promote integers appropriately
-func (p *prog) coercefp(v *value) (*value, *value) {
+func (p *prog) coerceF64(v *value) (*value, *value) {
 	if v.op == sliteral {
 		return p.ssa0imm(sbroadcastf, v.imm), p.validLanes()
 	}
@@ -2259,7 +1151,7 @@ func (p *prog) coercefp(v *value) (*value, *value) {
 	case stFloat:
 		return v, p.mask(v)
 	case stInt:
-		ret := p.ssa2(scvtitof, v, p.mask(v))
+		ret := p.ssa2(scvti64tof64, v, p.mask(v))
 		return ret, p.mask(v)
 	case stValue:
 		ret := p.ssa2(sunboxcoercef64, v, p.mask(v))
@@ -2271,8 +1163,8 @@ func (p *prog) coercefp(v *value) (*value, *value) {
 	}
 }
 
-// coerceInt coerces a value to integer
-func (p *prog) coerceInt(v *value) (*value, *value) {
+// coerceI64 coerces a value to integer
+func (p *prog) coerceI64(v *value) (*value, *value) {
 	if v.op == sliteral {
 		return p.ssa0imm(sbroadcasti, v.imm), p.validLanes()
 	}
@@ -2280,9 +1172,9 @@ func (p *prog) coerceInt(v *value) (*value, *value) {
 	case stInt:
 		return v, p.mask(v)
 	case stFloat:
-		return p.ssa2(scvtftoi, v, p.mask(v)), p.mask(v)
+		return p.ssa2(scvtf64toi64, v, p.mask(v)), p.mask(v)
 	case stValue:
-		ret := p.ssa3(stoint, p.undef(), v, p.mask(v))
+		ret := p.ssa2(sunboxcoercei64, v, p.mask(v))
 		return ret, ret
 	default:
 		err := p.errf("cannot convert %s to an integer", v)
@@ -2290,42 +1182,7 @@ func (p *prog) coerceInt(v *value) (*value, *value) {
 	}
 }
 
-// for a current FP value 'into', a value argument 'arg',
-// and a predicate 'when', parse arg and use the predicate
-// when to blend the floating-point-converted results
-// into 'into'
-func (p *prog) blendv2fp(into, arg, when *value) (*value, *value) {
-	if arg.op == sliteral {
-		return p.ssa0imm(sbroadcastf, arg.imm), p.validLanes()
-	}
-	easy := p.ssa3(stofloat, into, arg, when)
-	intv := p.ssa3(stoint, easy, arg, when)
-	conv := p.ssa2(scvtitof, intv, intv)
-	return conv, p.or(easy, conv)
-}
-
-func (p *prog) toint(v *value) *value {
-	if v.op == sliteral {
-		return p.ssa0imm(sbroadcasti, v.imm)
-	}
-	switch v.primary() {
-	case stInt:
-		return v
-	case stValue:
-		return p.ssa3(stoint, p.undef(), v, p.mask(v))
-	case stFloat:
-		// so, ordinarily we shouldn't hit this,
-		// but if we promoted a math expression
-		// to floating-point, then we have to
-		// convert back here (and hope that we
-		// didn't lose too much precision...)
-		return p.ssa2(scvtftoi, v, p.mask(v))
-	default:
-		return p.errf("cannot convert %s to int", v.String())
-	}
-}
-
-func (p *prog) toStr(str *value) *value {
+func (p *prog) coerceStr(str *value) *value {
 	switch str.primary() {
 	case stString:
 		return str // no need to parse
@@ -2339,39 +1196,41 @@ func (p *prog) toStr(str *value) *value {
 	}
 }
 
+func (p *prog) coerceTimestamp(v *value) (*value, *value) {
+	if v.op == sliteral {
+		ts, ok := v.imm.(date.Time)
+		if !ok {
+			return p.errorf("cannot use result of %T as TIMESTAMP", v.imm), p.validLanes()
+		}
+		return p.ssa0imm(sbroadcastts, ts.UnixMicro()), p.validLanes()
+	}
+
+	switch v.primary() {
+	case stValue:
+		v = p.ssa2(sunboxtime, v, p.mask(v))
+		fallthrough
+	case stTime:
+		return v, p.mask(v)
+	default:
+		return p.errorf("cannot use result of %s as TIMESTAMP", v), p.validLanes()
+	}
+}
+
 func (p *prog) concat(args ...*value) *value {
 	if len(args) == 0 {
-		panic("CONCAT cannot be empty")
+		panic("Concat() requires at least 1 argument")
 	}
 
-	k := p.mask(args[0])
-	for i := 1; i < len(args); i++ {
-		k = p.and(k, p.mask(args[i]))
+	if len(args) == 1 {
+		return p.coerceStr(args[0])
 	}
 
-	var v [4]*value
-	vIndex := 0
-
-	for i := 0; i < len(args); i++ {
-		v[vIndex] = p.toStr(args[i])
-		vIndex++
-
-		if vIndex >= 4 {
-			vIndex = 1
-			v[0] = p.ssa5(sconcatstr4, v[0], v[1], v[2], v[3], k)
-		}
+	var values []*value = make([]*value, 0, len(args)*2)
+	for _, arg := range args {
+		s := p.coerceStr(arg)
+		values = append(values, s, p.mask(s))
 	}
-
-	switch vIndex {
-	case 1:
-		return v[0]
-	case 2:
-		return p.ssa3(sconcatstr2, v[0], v[1], k)
-	case 3:
-		return p.ssa4(sconcatstr3, v[0], v[1], v[2], k)
-	default:
-		panic(fmt.Sprintf("invalid number of remaining items (%d) in Concat()", vIndex))
-	}
+	return p.ssava(sstrconcat, values)
 }
 
 func (p *prog) makeList(args ...*value) *value {
@@ -2414,7 +1273,7 @@ func trimtype(op expr.BuiltinOp) trimType {
 
 // TrimWhitespace trim chars: ' ', '\t', '\n', '\v', '\f', '\r'
 func (p *prog) trimWhitespace(str *value, trimtype trimType) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if trimtype&trimLeading != 0 {
 		str = p.ssa2(sStrTrimWsLeft, str, p.mask(str))
 	}
@@ -2431,7 +1290,7 @@ func (p *prog) trimSpace(str *value, trimtype trimType) *value {
 
 // TrimChar trim provided chars
 func (p *prog) trimChar(str *value, chars string, trimtype trimType) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	numberOfChars := len(chars)
 	if numberOfChars == 0 {
 		return str
@@ -2482,7 +1341,7 @@ func (p *prog) equalsPattern(str *value, pattern *stringext.Pattern, caseSensiti
 	if !pattern.HasWildcard {
 		return p.equalsStr(str, pattern.Needle, caseSensitive)
 	}
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern.Needle) {
 		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
 		caseSensitive = true
@@ -2501,7 +1360,7 @@ func (p *prog) equalsPattern(str *value, pattern *stringext.Pattern, caseSensiti
 
 // HasPrefix returns true when str has the provided prefix; false otherwise
 func (p *prog) hasPrefix(str *value, prefix stringext.Needle, caseSensitive bool) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if prefix == "" {
 		return str
 	}
@@ -2542,7 +1401,7 @@ func (p *prog) hasPrefixPattern(str *value, pattern *stringext.Pattern, caseSens
 
 // HasSuffix returns true when str has the provided suffix; false otherwise
 func (p *prog) hasSuffix(str *value, suffix stringext.Needle, caseSensitive bool) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if suffix == "" {
 		return str
 	}
@@ -2589,7 +1448,7 @@ func (p *prog) contains(str *value, needle stringext.Needle, caseSensitive bool)
 	// n.b. the 'contains' code doesn't actually
 	// handle the empty string; just return whether
 	// this value is a string
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if needle == "" {
 		return str
 	}
@@ -2616,7 +1475,7 @@ func (p *prog) containsPattern(str *value, pattern *stringext.Pattern, caseSensi
 	if !pattern.HasWildcard {
 		return p.contains(str, pattern.Needle, caseSensitive)
 	}
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if !caseSensitive && !stringext.HasCaseSensitiveChar(pattern.Needle) {
 		// we are requested to do case-insensitive compare, but there are no case-sensitive characters.
 		caseSensitive = true
@@ -2635,34 +1494,50 @@ func (p *prog) containsPattern(str *value, pattern *stringext.Pattern, caseSensi
 
 // IsSubnetOfIP4 returns whether the give value is an IPv4 address between (and including) min and max
 func (p *prog) isSubnetOfIP4(str *value, min, max [4]byte) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	return p.ssa2imm(sIsSubnetOfIP4, str, p.mask(str), stringext.ToBCD(&min, &max))
+}
+
+// SkipCharLeft skips a variable number of UTF-8 code-points from the left side of a string
+//
+//lint:ignore U1000 (TODO: Should we remove this)
+func (p *prog) skipCharLeft(str, nChars *value) *value {
+	str = p.coerceStr(str)
+	return p.ssa3(sStrSkipNCharLeft, str, nChars, p.and(p.mask(str), p.mask(nChars)))
+}
+
+// SkipCharRight skips a variable number of UTF-8 code-points from the right side of a string
+//
+//lint:ignore U1000 (TODO: Should we remove this)
+func (p *prog) skipCharRight(str, nChars *value) *value {
+	str = p.coerceStr(str)
+	return p.ssa3(sStrSkipNCharRight, str, nChars, p.and(p.mask(str), p.mask(nChars)))
 }
 
 // SkipCharLeftConst skips a constant number of UTF-8 code-points from the left side of a string
 func (p *prog) skipCharLeftConst(str *value, nChars int) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	switch nChars {
 	case 0:
 		return str
 	case 1:
 		return p.ssa2(sStrSkip1CharLeft, str, p.mask(str))
 	default:
-		nCharsInt, nCharsMask := p.coerceInt(p.constant(int64(nChars)))
+		nCharsInt, nCharsMask := p.coerceI64(p.constant(int64(nChars)))
 		return p.ssa3(sStrSkipNCharLeft, str, nCharsInt, p.and(p.mask(str), nCharsMask))
 	}
 }
 
 // SkipCharRightConst skips a constant number of UTF-8 code-points from the right side of a string
 func (p *prog) skipCharRightConst(str *value, nChars int) *value {
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	switch nChars {
 	case 0:
 		return str
 	case 1:
 		return p.ssa2(sStrSkip1CharRight, str, p.mask(str))
 	default:
-		nCharsInt, nCharsMask := p.coerceInt(p.constant(int64(nChars)))
+		nCharsInt, nCharsMask := p.coerceI64(p.constant(int64(nChars)))
 		return p.ssa3(sStrSkipNCharRight, str, nCharsInt, p.and(p.mask(str), nCharsMask))
 	}
 }
@@ -2677,7 +1552,7 @@ func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *v
 	const wc = '_' // wildcard character
 	const ks = '%'
 
-	str = p.toStr(str)
+	str = p.coerceStr(str)
 	if !caseSensitive { // Bytecode for case-insensitive comparing expects that needles and patterns are in normalized (UPPER) case
 		expr = stringext.NormalizeString(expr)
 	}
@@ -2753,12 +1628,12 @@ func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 	return nil, fmt.Errorf("internal error: generation of data-structure for Large failed")
 }
 
-// EqualsFuzzy does a fuzzy string equality of 'str' as a string against needle.
+// equalsFuzzy does a fuzzy string equality of 'str' as a string against needle.
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) equalsFuzzy(str *value, needle stringext.Needle, threshold *value, ascii bool) *value {
-	thresholdInt, thresholdMask := p.coerceInt(threshold)
+func (p *prog) equalsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+	thresholdInt, thresholdMask := p.coerceI64(threshold)
 	mask := p.and(str, thresholdMask)
 	if ascii {
 		enc := encodeNeedle(needle, sCmpFuzzyA3)
@@ -2768,12 +1643,12 @@ func (p *prog) equalsFuzzy(str *value, needle stringext.Needle, threshold *value
 	return p.ssa3imm(sCmpFuzzyUnicodeA3, str, thresholdInt, mask, enc)
 }
 
-// ContainsFuzzy does a fuzzy string contains of needle in 'str'.
+// containsFuzzy does a fuzzy string contains of needle in 'str'.
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) containsFuzzy(str *value, needle stringext.Needle, threshold *value, ascii bool) *value {
-	thresholdInt, thresholdMask := p.coerceInt(threshold)
+func (p *prog) containsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+	thresholdInt, thresholdMask := p.coerceI64(threshold)
 	mask := p.and(str, thresholdMask)
 	if ascii {
 		enc := encodeNeedle(needle, sHasSubstrFuzzyA3)
@@ -2794,11 +1669,11 @@ const (
 
 type compareOpInfo struct {
 	cmpk    ssaop
-	cmpimmk ssaop
+	cmpkimm ssaop
 	cmpi    ssaop
-	cmpimmi ssaop
+	cmpiimm ssaop
 	cmpf    ssaop
-	cmpimmf ssaop
+	cmpfimm ssaop
 	cmps    ssaop
 	cmpts   ssaop
 }
@@ -2811,10 +1686,10 @@ var compareOpReverseTable = [...]compareOp{
 }
 
 var compareOpInfoTable = [...]compareOpInfo{
-	comparelt: {cmpk: scmpltk, cmpimmk: scmpltimmk, cmpi: scmplti, cmpimmi: scmpltimmi, cmpf: scmpltf, cmpimmf: scmpltimmf, cmps: scmpltstr, cmpts: scmpltts},
-	comparele: {cmpk: scmplek, cmpimmk: scmpleimmk, cmpi: scmplei, cmpimmi: scmpleimmi, cmpf: scmplef, cmpimmf: scmpleimmf, cmps: scmplestr, cmpts: scmplets},
-	comparegt: {cmpk: scmpgtk, cmpimmk: scmpgtimmk, cmpi: scmpgti, cmpimmi: scmpgtimmi, cmpf: scmpgtf, cmpimmf: scmpgtimmf, cmps: scmpgtstr, cmpts: scmpgtts},
-	comparege: {cmpk: scmpgek, cmpimmk: scmpgeimmk, cmpi: scmpgei, cmpimmi: scmpgeimmi, cmpf: scmpgef, cmpimmf: scmpgeimmf, cmps: scmpgestr, cmpts: scmpgets},
+	comparelt: {cmpk: scmpltk, cmpkimm: scmpltimmk, cmpi: scmplti, cmpiimm: scmpltimmi, cmpf: scmpltf, cmpfimm: scmpltimmf, cmps: scmpltstr, cmpts: scmpltts},
+	comparele: {cmpk: scmplek, cmpkimm: scmpleimmk, cmpi: scmplei, cmpiimm: scmpleimmi, cmpf: scmplef, cmpfimm: scmpleimmf, cmps: scmplestr, cmpts: scmplets},
+	comparegt: {cmpk: scmpgtk, cmpkimm: scmpgtimmk, cmpi: scmpgti, cmpiimm: scmpgtimmi, cmpf: scmpgtf, cmpfimm: scmpgtimmf, cmps: scmpgtstr, cmpts: scmpgtts},
+	comparege: {cmpk: scmpgek, cmpkimm: scmpgeimmk, cmpi: scmpgei, cmpiimm: scmpgeimmi, cmpf: scmpgef, cmpfimm: scmpgeimmf, cmps: scmpgestr, cmpts: scmpgets},
 }
 
 // compareValueWith computes 'left <op> right' when left is guaranteed to be a value
@@ -2828,19 +1703,19 @@ func (p *prog) compareValueWith(left, right *value, op compareOp) *value {
 		imm := right.imm
 		if isBoolImmediate(imm) {
 			cmpv := p.ssa2imm(scmpvimmk, left, p.mask(left), tobool(imm))
-			return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+			return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 		}
 		if isIntImmediate(imm) {
 			cmpv := p.ssa2imm(scmpvimmi64, left, p.mask(left), toi64(imm))
-			return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+			return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 		}
 		if isFloatImmediate(imm) {
 			cmpv := p.ssa2imm(scmpvimmf64, left, p.mask(left), tof64(imm))
-			return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+			return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 		}
 		if isStringImmediate(imm) {
-			left = p.toStr(left)
-			right = p.toStr(right)
+			left = p.coerceStr(left)
+			right = p.coerceStr(right)
 			return p.ssa3(info.cmps, left, right, p.and(p.mask(left), p.mask(right)))
 		}
 		if isTimestampImmediate(imm) {
@@ -2853,21 +1728,21 @@ func (p *prog) compareValueWith(left, right *value, op compareOp) *value {
 	rType := right.primary()
 	if rType == stBool {
 		cmpv := p.ssa3(scmpvk, left, right, p.and(p.mask(left), p.mask(right)))
-		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 	}
 	if rType == stInt {
 		cmpv := p.ssa3(scmpvi64, left, right, p.and(p.mask(left), p.mask(right)))
-		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 	}
 	if rType == stFloat {
 		cmpv := p.ssa3(scmpvf64, left, right, p.and(p.mask(left), p.mask(right)))
-		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 	}
 	if rType == stString {
-		left = p.toStr(left)
+		left = p.coerceStr(left)
 		return p.ssa3(info.cmps, left, right, p.and(p.mask(left), p.mask(right)))
 	}
-	if rType == stTimeInt || rType == stTime {
+	if rType == stTime {
 		lhs, lhk := p.coerceTimestamp(left)
 		rhs, rhk := p.coerceTimestamp(right)
 		return p.ssa3(info.cmpts, lhs, rhs, p.and(lhk, p.mask(rhk)))
@@ -2906,17 +1781,17 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	// compare bool vs immediate
 	if lType == stBool && rLiteral {
 		if isBoolImmediate(right.imm) {
-			return p.ssa2imm(info.cmpimmk, left, p.mask(left), tobool(right.imm))
+			return p.ssa2imm(info.cmpkimm, left, p.mask(left), tobool(right.imm))
 		}
-		return p.ssa0(skfalse)
+		return p.missing()
 	}
 
 	// compare immediate vs bool
 	if lLiteral && rType == stBool {
 		if isBoolImmediate(left.imm) {
-			return p.ssa2imm(revInfo.cmpimmk, right, p.mask(right), tobool(left.imm))
+			return p.ssa2imm(revInfo.cmpkimm, right, p.mask(right), tobool(left.imm))
 		}
-		return p.ssa0(skfalse)
+		return p.missing()
 	}
 
 	// compare bool vs bool
@@ -2927,29 +1802,29 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	// compare int/float vs immediate
 	if lType == stInt && rLiteral {
 		if isIntImmediate(right.imm) {
-			return p.ssa2imm(info.cmpimmi, left, p.mask(left), toi64(right.imm))
+			return p.ssa2imm(info.cmpiimm, left, p.mask(left), toi64(right.imm))
 		}
 
-		lhs, lhk := p.coercefp(left)
-		return p.ssa2imm(info.cmpimmf, lhs, lhk, tof64(right.imm))
+		lhs, lhk := p.coerceF64(left)
+		return p.ssa2imm(info.cmpfimm, lhs, lhk, tof64(right.imm))
 	}
 
 	if lType == stFloat && rLiteral {
-		return p.ssa2imm(info.cmpimmf, left, p.mask(left), tof64(right.imm))
+		return p.ssa2imm(info.cmpfimm, left, p.mask(left), tof64(right.imm))
 	}
 
 	// compare immediate vs int/float
 	if lLiteral && rType == stInt {
 		if isIntImmediate(left.imm) {
-			return p.ssa2imm(revInfo.cmpimmi, right, p.mask(right), toi64(left.imm))
+			return p.ssa2imm(revInfo.cmpiimm, right, p.mask(right), toi64(left.imm))
 		}
 
-		rhs, rhk := p.coercefp(right)
-		return p.ssa2imm(info.cmpimmf, rhs, rhk, tof64(left.imm))
+		rhs, rhk := p.coerceF64(right)
+		return p.ssa2imm(info.cmpfimm, rhs, rhk, tof64(left.imm))
 	}
 
 	if lLiteral && rType == stFloat {
-		return p.ssa2imm(revInfo.cmpimmf, right, p.mask(right), tof64(left.imm))
+		return p.ssa2imm(revInfo.cmpfimm, right, p.mask(right), tof64(left.imm))
 	}
 
 	// compare int/float vs int/float (if the types are mixed, int is coerced to float)
@@ -2958,12 +1833,12 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	}
 
 	if lType == stInt && rType == stFloat {
-		lhs, lhk := p.coercefp(left)
+		lhs, lhk := p.coerceF64(left)
 		return p.ssa3(info.cmpi, lhs, right, p.and(lhk, p.mask(right)))
 	}
 
 	if lType == stFloat && rType == stInt {
-		rhs, rhk := p.coercefp(right)
+		rhs, rhk := p.coerceF64(right)
 		return p.ssa3(info.cmpi, left, rhs, p.and(p.mask(left), rhk))
 	}
 
@@ -2972,8 +1847,8 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	}
 
 	// compare timestamp vs timestamp
-	lTimeCompat := lType == stTimeInt || lType == stTime || (lLiteral && isTimestampImmediate(left.imm))
-	rTimeCompat := rType == stTimeInt || rType == stTime || (rLiteral && isTimestampImmediate(right.imm))
+	lTimeCompat := lType == stTime || (lLiteral && isTimestampImmediate(left.imm))
+	rTimeCompat := rType == stTime || (rLiteral && isTimestampImmediate(right.imm))
 
 	if lTimeCompat && rTimeCompat {
 		lhs, lhk := p.coerceTimestamp(left)
@@ -2986,8 +1861,8 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	rStringCompat := rType == stString || (rLiteral && isStringImmediate(right.imm))
 
 	if lStringCompat && rStringCompat {
-		left = p.toStr(left)
-		right = p.toStr(right)
+		left = p.coerceStr(left)
+		right = p.coerceStr(right)
 		return p.ssa3(info.cmps, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
@@ -2995,11 +1870,11 @@ func (p *prog) compare(left, right *value, op compareOp) *value {
 	if lType == stValue && rType == stValue {
 		mask := p.and(p.mask(left), p.mask(right))
 		cmpv := p.ssa3(scmpv, left, right, mask)
-		return p.ssa2imm(info.cmpimmi, cmpv, p.mask(cmpv), int64(0))
+		return p.ssa2imm(info.cmpiimm, cmpv, p.mask(cmpv), int64(0))
 	}
 
 	// Uncomparable...
-	return p.ssa0(skfalse)
+	return p.missing()
 }
 
 // Less computes 'left < right'
@@ -3027,12 +1902,23 @@ func (p *prog) and(left, right *value) *value {
 	if left == right {
 		return left
 	}
+
+	if left.op == skfalse {
+		return left
+	}
+
+	if right.op == skfalse {
+		return right
+	}
+
 	if left.op == sinit {
 		return right
 	}
+
 	if right.op == sinit {
 		return left
 	}
+
 	return p.ssa2(sand, left, right)
 }
 
@@ -3061,7 +1947,7 @@ func (p *prog) nand(left, right *value) *value {
 	if left.op == snand && left.args[1] == right {
 		return p.and(left, right)
 	}
-	return p.ssa2(snand, left, right)
+	return p.ssa2(sandn, left, right)
 }
 
 // xor computes 'left != right' for boolean values
@@ -3150,7 +2036,7 @@ func isIntValue(v *value) bool {
 // Unary arithmetic operators and functions
 func (p *prog) makeUnaryArithmeticOp(regOpF, regOpI ssaop, child *value) *value {
 	if (isIntValue(child) && child.op != sliteral) || regOpF == sinvalid {
-		s, k := p.coerceInt(child)
+		s, k := p.coerceI64(child)
 		return p.ssa2(regOpI, s, k)
 	}
 
@@ -3158,7 +2044,7 @@ func (p *prog) makeUnaryArithmeticOp(regOpF, regOpI ssaop, child *value) *value 
 }
 
 func (p *prog) makeUnaryArithmeticOpInt(op ssaop, child *value) *value {
-	s, k := p.coerceInt(child)
+	s, k := p.coerceI64(child)
 	return p.ssa2(op, s, k)
 }
 
@@ -3167,7 +2053,7 @@ func (p *prog) makeUnaryArithmeticOpFp(op ssaop, child *value) *value {
 		child = p.makeBroadcastOp(child)
 	}
 
-	s, k := p.coercefp(child)
+	s, k := p.coerceF64(child)
 	return p.ssa2(op, s, k)
 }
 
@@ -3278,12 +2164,12 @@ func (p *prog) atan(child *value) *value {
 // Binary arithmetic operators and functions
 func (p *prog) makeBinaryArithmeticOpImm(regOpF, regOpI ssaop, v *value, imm interface{}) *value {
 	if isIntValue(v) && isIntImmediate(imm) {
-		s, k := p.coerceInt(v)
+		s, k := p.coerceI64(v)
 		i64Imm := toi64(imm)
 		return p.ssa2imm(regOpI, s, k, i64Imm)
 	}
 
-	s, k := p.coercefp(v)
+	s, k := p.coerceF64(v)
 	f64Imm := tof64(imm)
 	return p.ssa2imm(regOpF, s, k, f64Imm)
 }
@@ -3305,8 +2191,8 @@ func (p *prog) makeBinaryArithmeticOp(regOpF, regOpI, immOpF, immOpI, reverseImm
 		return p.ssa3(regOpI, left, right, p.and(p.mask(left), p.mask(right)))
 	}
 
-	lhs, lhk := p.coercefp(left)
-	rhs, rhk := p.coercefp(right)
+	lhs, lhk := p.coerceF64(left)
+	rhs, rhk := p.coerceF64(right)
 	return p.ssa3(regOpF, lhs, rhs, p.and(lhk, rhk))
 }
 
@@ -3319,8 +2205,8 @@ func (p *prog) makeBinaryArithmeticOpFp(op ssaop, left *value, right *value) *va
 		right = p.makeBroadcastOp(right)
 	}
 
-	lhs, lhk := p.coercefp(left)
-	rhs, rhk := p.coercefp(right)
+	lhs, lhk := p.coerceF64(left)
+	rhs, rhk := p.coerceF64(right)
 	return p.ssa3(op, lhs, rhs, p.and(lhk, rhk))
 }
 
@@ -3362,13 +2248,13 @@ func (p *prog) makeBitwiseOp(regOp, immOp ssaop, canSwap bool, left *value, righ
 		left = p.broadcastI64(left)
 	}
 
-	lhs, lhk := p.coerceInt(left)
+	lhs, lhk := p.coerceI64(left)
 	if right.op == sliteral {
 		i64Imm := toi64(right.imm)
 		return p.ssa2imm(immOp, lhs, lhk, i64Imm)
 	}
 
-	rhs, rhk := p.coerceInt(right)
+	rhs, rhk := p.coerceI64(right)
 	return p.ssa3(regOp, lhs, rhs, p.and(lhk, rhk))
 }
 
@@ -3424,45 +2310,22 @@ func (p *prog) atan2(left, right *value) *value {
 
 func (p *prog) widthBucket(val, min, max, bucketCount *value) *value {
 	if isIntValue(val) && isIntValue(min) && isIntValue(max) {
-		vali, valk := p.coerceInt(val)
-		mini, mink := p.coerceInt(min)
-		maxi, maxk := p.coerceInt(max)
-		cnti, cntk := p.coerceInt(bucketCount)
+		vali, valk := p.coerceI64(val)
+		mini, mink := p.coerceI64(min)
+		maxi, maxk := p.coerceI64(max)
+		cnti, cntk := p.coerceI64(bucketCount)
 
 		mask := p.and(valk, p.and(cntk, p.and(mink, maxk)))
 		return p.ssa5(swidthbucketi, vali, mini, maxi, cnti, mask)
 	}
 
-	valf, valk := p.coercefp(val)
-	minf, mink := p.coercefp(min)
-	maxf, maxk := p.coercefp(max)
-	cntf, cntk := p.coercefp(bucketCount)
+	valf, valk := p.coerceF64(val)
+	minf, mink := p.coerceF64(min)
+	maxf, maxk := p.coerceF64(max)
+	cntf, cntk := p.coerceF64(bucketCount)
 
 	mask := p.and(valk, p.and(cntk, p.and(mink, maxk)))
 	return p.ssa5(swidthbucketf, valf, minf, maxf, cntf, mask)
-}
-
-func (p *prog) coerceTimestamp(v *value) (*value, *value) {
-	if v.op == sliteral {
-		ts, ok := v.imm.(date.Time)
-		if !ok {
-			return p.errorf("cannot use result of %T as TIMESTAMP", v.imm), p.validLanes()
-		}
-		return p.ssa0imm(sbroadcastts, ts.UnixMicro()), p.validLanes()
-	}
-
-	switch v.primary() {
-	case stValue:
-		v = p.ssa2(stotime, v, p.mask(v))
-		fallthrough
-	case stTime:
-		mask := p.mask(v)
-		return p.ssa2(sunboxtime, v, mask), mask
-	case stTimeInt:
-		return v, p.mask(v)
-	default:
-		return p.errorf("cannot use result of %s as TIMESTAMP", v), p.validLanes()
-	}
 }
 
 // These are simple cases that require no decomposition to operate on Timestamp.
@@ -3502,7 +2365,7 @@ func (p *prog) dateAdd(part expr.Timepart, arg0, arg1 *value) *value {
 			return p.ssa2imm(sdateaddmonthimm, arg1Time, arg1Mask, i64Imm*12)
 		}
 	} else {
-		arg0Int, arg0Mask := p.coerceInt(arg0)
+		arg0Int, arg0Mask := p.coerceI64(arg0)
 
 		// Microseconds need no multiplication of the input, thus use the simplest operation available.
 		if part == expr.Microsecond {
@@ -3558,58 +2421,34 @@ func (p *prog) dateDiff(part expr.Timepart, arg0, arg1 *value) *value {
 	return p.errorf("unhandled date part in DateDiff()")
 }
 
-func immediateForBoxedDateInstruction(part expr.Timepart) int {
-	switch part {
-	case expr.Second:
-		return 5
-	case expr.Minute:
-		return 4
-	case expr.Hour:
-		return 3
-	case expr.Day:
-		return 2
-	case expr.Month:
-		return 1
-	case expr.Year:
-		return 0
-	default:
-		panic(fmt.Sprintf("Time part %v is invalid here", part))
-	}
-}
-
 func (p *prog) dateExtract(part expr.Timepart, val *value) *value {
-	if val.primary() == stTimeInt || part < expr.Second || part == expr.Quarter || part == expr.DOW || part == expr.DOY {
-		v, m := p.coerceTimestamp(val)
-		switch part {
-		case expr.Microsecond:
-			return p.ssa2(sdateextractmicrosecond, v, m)
-		case expr.Millisecond:
-			return p.ssa2(sdateextractmillisecond, v, m)
-		case expr.Second:
-			return p.ssa2(sdateextractsecond, v, m)
-		case expr.Minute:
-			return p.ssa2(sdateextractminute, v, m)
-		case expr.Hour:
-			return p.ssa2(sdateextracthour, v, m)
-		case expr.Day:
-			return p.ssa2(sdateextractday, v, m)
-		case expr.DOW:
-			return p.ssa2(sdateextractdow, v, m)
-		case expr.DOY:
-			return p.ssa2(sdateextractdoy, v, m)
-		case expr.Month:
-			return p.ssa2(sdateextractmonth, v, m)
-		case expr.Quarter:
-			return p.ssa2(sdateextractquarter, v, m)
-		case expr.Year:
-			return p.ssa2(sdateextractyear, v, m)
-		default:
-			return p.errorf("unhandled date part in DateExtract()")
-		}
+	v, m := p.coerceTimestamp(val)
+	switch part {
+	case expr.Microsecond:
+		return p.ssa2(sdateextractmicrosecond, v, m)
+	case expr.Millisecond:
+		return p.ssa2(sdateextractmillisecond, v, m)
+	case expr.Second:
+		return p.ssa2(sdateextractsecond, v, m)
+	case expr.Minute:
+		return p.ssa2(sdateextractminute, v, m)
+	case expr.Hour:
+		return p.ssa2(sdateextracthour, v, m)
+	case expr.Day:
+		return p.ssa2(sdateextractday, v, m)
+	case expr.DOW:
+		return p.ssa2(sdateextractdow, v, m)
+	case expr.DOY:
+		return p.ssa2(sdateextractdoy, v, m)
+	case expr.Month:
+		return p.ssa2(sdateextractmonth, v, m)
+	case expr.Quarter:
+		return p.ssa2(sdateextractquarter, v, m)
+	case expr.Year:
+		return p.ssa2(sdateextractyear, v, m)
+	default:
+		return p.errorf("unhandled date part in dateExtract()")
 	}
-
-	v := p.toTime(val)
-	return p.ssa2imm(stmextract, v, p.mask(v), immediateForBoxedDateInstruction(part))
 }
 
 func (p *prog) dateToUnixEpoch(val *value) *value {
@@ -3657,55 +2496,55 @@ func (p *prog) dateTruncWeekday(val *value, dow expr.Weekday) *value {
 
 func (p *prog) timeBucket(timestamp, interval *value) *value {
 	tv := p.dateToUnixEpoch(timestamp)
-	iv, im := p.coerceInt(interval)
+	iv, im := p.coerceI64(interval)
 	return p.ssa3(stimebucketts, tv, iv, p.and(p.mask(tv), im))
 }
 
 func (p *prog) geoHash(latitude, longitude, numChars *value) *value {
-	latV, latM := p.coercefp(latitude)
-	lonV, lonM := p.coercefp(longitude)
+	latV, latM := p.coerceF64(latitude)
+	lonV, lonM := p.coerceF64(longitude)
 
 	if numChars.op == sliteral && isIntImmediate(numChars.imm) {
 		return p.ssa3imm(sgeohashimm, latV, lonV, p.and(latM, lonM), numChars.imm)
 	}
 
-	charsV, charsM := p.coerceInt(numChars)
+	charsV, charsM := p.coerceI64(numChars)
 	mask := p.and(p.and(latM, lonM), charsM)
 	return p.ssa4(sgeohash, latV, lonV, charsV, mask)
 }
 
 func (p *prog) geoTileX(longitude, precision *value) *value {
-	lonV, lonM := p.coercefp(longitude)
-	precV, precM := p.coerceInt(precision)
+	lonV, lonM := p.coerceF64(longitude)
+	precV, precM := p.coerceI64(precision)
 	mask := p.and(lonM, precM)
 	return p.ssa3(sgeotilex, lonV, precV, mask)
 }
 
 func (p *prog) geoTileY(latitude, precision *value) *value {
-	latV, latM := p.coercefp(latitude)
-	precV, precM := p.coerceInt(precision)
+	latV, latM := p.coerceF64(latitude)
+	precV, precM := p.coerceI64(precision)
 	mask := p.and(latM, precM)
 	return p.ssa3(sgeotiley, latV, precV, mask)
 }
 
 func (p *prog) geoTileES(latitude, longitude, precision *value) *value {
-	latV, latM := p.coercefp(latitude)
-	lonV, lonM := p.coercefp(longitude)
+	latV, latM := p.coerceF64(latitude)
+	lonV, lonM := p.coerceF64(longitude)
 
 	if precision.op == sliteral && isIntImmediate(precision.imm) {
 		return p.ssa3imm(sgeotileesimm, latV, lonV, p.and(latM, lonM), precision.imm)
 	}
 
-	charsV, charsM := p.coerceInt(precision)
+	charsV, charsM := p.coerceI64(precision)
 	mask := p.and(p.and(latM, lonM), charsM)
 	return p.ssa4(sgeotilees, latV, lonV, charsV, mask)
 }
 
 func (p *prog) geoDistance(latitude1, longitude1, latitude2, longitude2 *value) *value {
-	lat1V, lat1M := p.coercefp(latitude1)
-	lon1V, lon1M := p.coercefp(longitude1)
-	lat2V, lat2M := p.coercefp(latitude2)
-	lon2V, lon2M := p.coercefp(longitude2)
+	lat1V, lat1M := p.coerceF64(latitude1)
+	lon1V, lon1M := p.coerceF64(longitude1)
+	lat2V, lat2M := p.coerceF64(latitude2)
+	lon2V, lon2M := p.coerceF64(longitude2)
 
 	mask := p.and(p.and(lat1M, lon1M), p.and(lat2M, lon2M))
 	return p.ssa5(sgeodistance, lat1V, lon1V, lat2V, lon2V, mask)
@@ -3723,7 +2562,8 @@ func emitNone(v *value, c *compilestate) {
 	// does nothing...
 }
 
-func dateDiffMQYImm(op ssaop) int {
+// TODO: Maybe bcop would be better contextually here?
+func dateDiffMQYImm(op ssaop) uint16 {
 	switch op {
 	case sdatediffquarter:
 		return 1
@@ -3735,31 +2575,16 @@ func dateDiffMQYImm(op ssaop) int {
 }
 
 func emitDateDiffMQY(v *value, c *compilestate) {
-	arg0 := v.args[0]                            // t0
-	arg1Slot := c.forceStackRef(v.args[1], regS) // t1
-	mask := v.args[2]                            // predicate
-
 	info := &ssainfo[v.op]
 	bc := info.bc
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16u16(v, bc, arg1Slot, uint16(dateDiffMQYImm(v.op)))
-}
-
-func emitdatecasttoint(v *value, c *compilestate) {
-	arg0 := v.args[0] // t0
-	mask := v.args[1] // predicate
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	// FIXME: we need this here in order
-	// to not confuse the stack allocator,
-	// but in principle we wouldn't need to do
-	// a clobber if we could teach the stack allocator
-	// that these registers are actually equivalent
-	c.clobbers(v)
+	c.asm.emitOpcode(bc,
+		c.slotOf(v, regS),
+		c.slotOf(v, regK),
+		c.slotOf(v.args[0], regS),
+		c.slotOf(v.args[1], regS),
+		dateDiffMQYImm(v.op),
+		c.slotOf(v.args[2], regK),
+	)
 }
 
 // Simple aggregate operations
@@ -3771,7 +2596,7 @@ func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, 
 	// INT64 to BOOL. This saves us some instructions.
 	if v.primary() == stValue {
 		k := p.mask(v)
-		intVal := p.ssa2(sunboxktoi, v, k)
+		intVal := p.ssa2(sunboxktoi64, v, k)
 		mask := p.mask(intVal)
 		if filter != nil {
 			mask = p.and(mask, filter)
@@ -3788,7 +2613,7 @@ func (p *prog) makeAggregateBoolOp(aggBoolOp, aggIntOp ssaop, v, filter *value, 
 
 func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot aggregateslot) (v *value, fp bool) {
 	if isIntValue(child) || opF == sinvalid {
-		scalar, mask := p.coerceInt(child)
+		scalar, mask := p.coerceI64(child)
 		if filter != nil {
 			mask = p.and(mask, filter)
 		}
@@ -3796,7 +2621,7 @@ func (p *prog) makeAggregateOp(opF, opI ssaop, child, filter *value, slot aggreg
 		return p.ssa3imm(opI, mem, scalar, mask, slot), false
 	}
 
-	scalar, mask := p.coercefp(child)
+	scalar, mask := p.coerceF64(child)
 	if filter != nil {
 		mask = p.and(mask, filter)
 	}
@@ -3823,12 +2648,11 @@ func (p *prog) aggregateBoolOr(child, filter *value, slot aggregateslot) *value 
 }
 
 func (p *prog) aggregateSumInt(child, filter *value, slot aggregateslot) *value {
-	child = p.toint(child)
-	mask := p.mask(child)
+	v, m := p.coerceI64(child)
 	if filter != nil {
-		mask = p.and(mask, filter)
+		m = p.and(m, filter)
 	}
-	return p.ssa3imm(saggsumi, p.initMem(), child, mask, slot)
+	return p.ssa3imm(saggsumi, p.initMem(), v, m, slot)
 }
 
 func (p *prog) aggregateSum(child, filter *value, slot aggregateslot) (v *value, fp bool) {
@@ -3913,14 +2737,14 @@ func (p *prog) makeAggregateSlotBoolOp(op ssaop, mem, bucket, v, mask *value, sl
 
 func (p *prog) makeAggregateSlotOp(opF, opI ssaop, mem, bucket, v, mask *value, offset aggregateslot) (rv *value, fp bool) {
 	if isIntValue(v) || opF == sinvalid {
-		scalar, m := p.coerceInt(v)
+		scalar, m := p.coerceI64(v)
 		if mask != nil {
 			m = p.and(m, mask)
 		}
 		return p.ssa4imm(opI, mem, bucket, scalar, m, offset), false
 	}
 
-	scalar, m := p.coercefp(v)
+	scalar, m := p.coerceF64(v)
 	if mask != nil {
 		m = p.and(m, mask)
 	}
@@ -3940,7 +2764,7 @@ func (p *prog) aggregateSlotSum(mem, bucket, value, mask *value, offset aggregat
 }
 
 func (p *prog) aggregateSlotSumInt(mem, bucket, value, mask *value, offset aggregateslot) *value {
-	scalar, m := p.coerceInt(value)
+	scalar, m := p.coerceI64(value)
 	if mask != nil {
 		m = p.and(m, mask)
 	}
@@ -4383,20 +3207,12 @@ const (
 
 type regset uint8
 
-func onlyreg(class regclass) regset {
-	return regset(1 << class)
-}
-
 func (r regset) contains(class regclass) bool {
 	return (r & (1 << class)) != 0
 }
 
 func (r *regset) add(class regclass) {
 	*r |= (1 << class)
-}
-
-func (r *regset) del(class regclass) {
-	*r &^= (1 << class)
 }
 
 func (s ssatype) vregs() regset {
@@ -4479,266 +3295,14 @@ func (p *prog) liveranges(dst *lranges) {
 	dst.vrange[p.ret.id] = len(p.values)
 }
 
-// regstate is the register + stack state
-// for a bytecode program
-type regstate struct {
-	stack stackmap          // rest of the values are in their respective stacks
-	cur   [_maxregclass]int // current value IDs in registers
-}
-
-func (r *regstate) init(size int) {
-	r.stack.init()
-
-	for i := regclass(0); i < _maxregclass; i++ {
-		r.cur[i] = -1
-	}
-
-	// These two are default initialized to 0 as sinit yields both the initial mask and initial base
-	r.cur[regK] = 0
-	r.cur[regB] = 0
-}
-
-// TODO:
-// These are tiny wrappers around stackmap. The reason we use these for now is that we have multiple
-// stackmaps that we would like to merge into a single one in the future.
-func (r *regstate) allocValue(rc regclass, valueID int) stackslot {
-	return r.stack.allocValue(rc, valueID)
-}
-
-func (r *regstate) freeValue(rc regclass, valueID int) {
-	r.stack.freeValue(rc, valueID)
-}
-
-func (r *regstate) slotOf(rc regclass, valueID int) stackslot {
-	return r.stack.slotOf(rc, valueID)
-}
-
-func (r *regstate) hasSlot(rc regclass, valueID int) bool {
-	return r.stack.hasSlot(rc, valueID)
-}
-
 type compilestate struct {
-	lr   lranges  // variable live ranges
-	regs regstate // register state
+	lr    lranges  // variable live ranges
+	stack stackmap // stack map
 
 	trees  []*radixTree64
 	asm    assembler
 	dict   []string
 	litbuf []byte // output datum literals
-}
-
-func checkImmediateBeforeEmit1(op bcop, imm0Size int) {
-	info := &opinfo[op]
-	if len(info.imms) != 1 {
-		panic(fmt.Sprintf("bytecode op '%s' requires %d immediate(s), not %d", info.text, len(info.imms), 1))
-	}
-
-	if int(bcImmWidth[info.imms[0]]) != imm0Size {
-		panic(fmt.Sprintf("bytecode op '%s' requires the first immediate to be %d bytes, not %d", info.text, bcImmWidth[info.imms[0]], imm0Size))
-	}
-}
-
-func checkImmediateBeforeEmit2(op bcop, imm0Size, imm1Size int) {
-	info := &opinfo[op]
-	if len(info.imms) != 2 {
-		panic(fmt.Sprintf("bytecode op '%s' requires %d immediate(s), not %d", info.text, len(info.imms), 2))
-	}
-
-	if int(bcImmWidth[info.imms[0]]) != imm0Size {
-		panic(fmt.Sprintf("bytecode op '%s' requires the first immediate to be %d bytes, not %d", info.text, bcImmWidth[info.imms[0]], imm0Size))
-	}
-
-	if int(bcImmWidth[info.imms[1]]) != imm1Size {
-		panic(fmt.Sprintf("bytecode op '%s' requires the second immediate to be %d bytes, not %d", info.text, bcImmWidth[info.imms[1]], imm1Size))
-	}
-}
-
-func checkImmediateBeforeEmit3(op bcop, imm0Size, imm1Size, imm2Size int) {
-	info := &opinfo[op]
-	if len(info.imms) != 3 {
-		panic(fmt.Sprintf("bytecode op '%s' requires %d immediate(s), not %d", info.text, len(info.imms), 3))
-	}
-
-	if int(bcImmWidth[info.imms[0]]) != imm0Size {
-		panic(fmt.Sprintf("bytecode op '%s' requires the first immediate to be %d bytes, not %d", info.text, bcImmWidth[info.imms[0]], imm0Size))
-	}
-
-	if int(bcImmWidth[info.imms[1]]) != imm1Size {
-		panic(fmt.Sprintf("bytecode op '%s' requires the second immediate to be %d bytes, not %d", info.text, bcImmWidth[info.imms[1]], imm1Size))
-	}
-
-	if int(bcImmWidth[info.imms[2]]) != imm2Size {
-		panic(fmt.Sprintf("bytecode op '%s' requires the third immediate to be %d bytes, not %d", info.text, bcImmWidth[info.imms[2]], imm2Size))
-	}
-}
-
-func (c *compilestate) op(v *value, op bcop) {
-	info := &opinfo[op]
-	if len(info.imms) != 0 {
-		panic(fmt.Sprintf("bytecode op '%s' requires %d immediate(s), not %d", info.text, len(info.imms), 0))
-	}
-	c.asm.emitOpcode(op)
-}
-
-func (c *compilestate) opvar(op bcop, slots []stackslot, imm interface{}) {
-	info := &opinfo[op]
-	immCount := len(slots)
-
-	if imm != nil {
-		immCount++
-	}
-
-	if immCount != len(info.imms) {
-		panic(fmt.Sprintf("error when emitting '%s': required %d immediates, not %d", info.text, len(info.imms), immCount))
-	}
-
-	// emit opcode
-	c.asm.emitOpcode(op)
-
-	// emit optional stack slots
-	for i, slot := range slots {
-		if info.imms[i] != bcImmS16 {
-			panic(fmt.Sprintf("error when emitting '%s': argument %d is not 'stackslot'", info.text, i))
-		}
-		c.asm.emitImmU16(uint16(slot))
-	}
-
-	// emit an optional immediate that follows
-	if imm != nil {
-		switch info.imms[len(info.imms)-1] {
-		case bcImmI8, bcImmU8, bcImmU8Hex:
-			c.asm.emitImmU8(uint8(toi64(imm)))
-		case bcImmS16, bcImmI16, bcImmU16, bcImmU16Hex, bcImmDict:
-			c.asm.emitImmU16(uint16(toi64(imm)))
-		case bcImmI32, bcImmU32, bcImmU32Hex:
-			c.asm.emitImmU32(uint32(toi64(imm)))
-		case bcImmI64, bcImmU64, bcImmU64Hex:
-			c.asm.emitImmU64(toi64(imm))
-		case bcImmF64:
-			c.asm.emitImmU64(math.Float64bits(tof64(imm)))
-		}
-	}
-}
-
-func (c *compilestate) opva(op bcop, imms []uint64) {
-	info := &opinfo[op]
-
-	// Verify the number of immediates matches the signature. vaImms contains a signature of each
-	// immediate tuple that is considered a single va argument. For example if the bc instruction
-	// uses [stString, stBool] tuple, it's a group of 2 immediate values for each va argument.
-	baseImmCount := len(info.imms)
-	vaTupleSize := len(info.vaImms)
-
-	if vaTupleSize == 0 {
-		panic(fmt.Sprintf("cannot use opva as the opcode '%v' doesn't provide variable operands", op))
-	}
-
-	if len(imms) < baseImmCount {
-		panic(fmt.Sprintf("invalid immediate count while emitting opcode '%v' (count=%d mandatory=%d tupleSize=%d)",
-			op, len(imms), baseImmCount, vaTupleSize))
-	}
-
-	vaLength := (len(imms) - baseImmCount) / vaTupleSize
-	if baseImmCount+vaLength*vaTupleSize != len(imms) {
-		panic(fmt.Sprintf("invalid immediate count while emitting opcode '%v' (count=%d mandatory=%d tupleSize=%d)",
-			op, len(imms), baseImmCount, vaTupleSize))
-	}
-
-	// emit opcode + va_length
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU32(uint32(vaLength))
-
-	// emit base immediates
-	for i := 0; i < baseImmCount; i++ {
-		c.asm.emitImm(imms[i], int(bcImmWidth[info.imms[i]]))
-	}
-
-	// emit va immediates
-	j := 0
-	for i := baseImmCount; i < len(imms); i++ {
-		c.asm.emitImm(imms[i], int(bcImmWidth[info.vaImms[j]]))
-		j++
-		if j >= len(info.vaImms) {
-			j = 0
-		}
-	}
-}
-
-func (c *compilestate) opu8(v *value, op bcop, imm uint8) {
-	checkImmediateBeforeEmit1(op, 1)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU8(imm)
-}
-
-func (c *compilestate) opu16(v *value, op bcop, imm0 uint16) {
-	checkImmediateBeforeEmit1(op, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU16(imm0)
-}
-
-func (c *compilestate) opu32(v *value, op bcop, imm0 uint32) {
-	checkImmediateBeforeEmit1(op, 4)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU32(imm0)
-}
-
-func (c *compilestate) opu64(v *value, op bcop, imm0 uint64) {
-	checkImmediateBeforeEmit1(op, 8)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU64(imm0)
-}
-
-func (c *compilestate) opu16u16(v *value, op bcop, imm0, imm1 uint16) {
-	checkImmediateBeforeEmit2(op, 2, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU16(imm0)
-	c.asm.emitImmU16(imm1)
-}
-
-func (c *compilestate) opu16u32(v *value, op bcop, imm0 uint16, imm1 uint32) {
-	checkImmediateBeforeEmit2(op, 2, 4)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU16(imm0)
-	c.asm.emitImmU32(imm1)
-}
-
-func (c *compilestate) opu16u16u16(v *value, op bcop, imm0, imm1, imm2 uint16) {
-	checkImmediateBeforeEmit3(op, 2, 2, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU16(imm0)
-	c.asm.emitImmU16(imm1)
-	c.asm.emitImmU16(imm2)
-}
-
-func (c *compilestate) opu32u32(v *value, op bcop, imm0 uint32, imm1 uint32) {
-	checkImmediateBeforeEmit2(op, 4, 4)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU32(imm0)
-	c.asm.emitImmU32(imm1)
-}
-
-func (c *compilestate) ops16(v *value, o bcop, slot stackslot) {
-	c.opu16(v, o, uint16(slot))
-}
-
-func (c *compilestate) ops16u16(v *value, op bcop, imm0 stackslot, imm1 uint16) {
-	c.opu16u16(v, op, uint16(imm0), imm1)
-}
-
-func (c *compilestate) ops16u32(v *value, op bcop, imm0 stackslot, imm1 uint32) {
-	c.opu16u32(v, op, uint16(imm0), imm1)
-}
-
-func (c *compilestate) opu16s16(v *value, op bcop, imm0 uint16, imm1 stackslot) {
-	c.opu16u16(v, op, imm0, uint16(imm1))
-}
-
-func (c *compilestate) ops16s16(v *value, op bcop, imm0, imm1 stackslot) {
-	c.opu16u16(v, op, uint16(imm0), uint16(imm1))
-}
-
-func (c *compilestate) ops16s16s16(v *value, op bcop, imm0, imm1, imm2 stackslot) {
-	c.opu16u16u16(v, op, uint16(imm0), uint16(imm1), uint16(imm2))
 }
 
 func (c regclass) String() string {
@@ -4760,36 +3324,6 @@ func (c regclass) String() string {
 	}
 }
 
-func (c regclass) loadop() bcop {
-	switch c {
-	case regK:
-		return oploadk
-	case regV:
-		return oploadv
-	case regB:
-		return oploadb
-	case regS:
-		return oploads
-	default:
-		panic("invalid register class for load")
-	}
-}
-
-func (c regclass) saveop() bcop {
-	switch c {
-	case regK:
-		return opsavek
-	case regV:
-		return opsavev
-	case regB:
-		return opsaveb
-	case regS:
-		return opsaves
-	default:
-		panic("invalid register class for save")
-	}
-}
-
 func ionType(imm interface{}) ion.Type {
 	switch i := imm.(type) {
 	case ion.Datum:
@@ -4807,85 +3341,6 @@ func ionType(imm interface{}) ion.Type {
 	}
 }
 
-func (c *compilestate) litcmp(v *value, i interface{}) {
-	if b, ok := i.(bool); ok {
-		// we have built-in ops for these!
-		if b {
-			c.op(v, opistrue)
-		} else {
-			c.op(v, opisfalse)
-		}
-		return
-	}
-
-	// if we get a datum object,
-	// then encode it verbatim;
-	// otherwise try to convert
-	// to a datum...
-	d, ok := i.(ion.Datum)
-	if !ok {
-		switch i := i.(type) {
-		case float64:
-			d = ion.Float(i)
-		case float32:
-			d = ion.Float(float64(i)) // TODO: maybe don't convert here...
-		case int64:
-			d = ion.Int(i)
-		case int:
-			d = ion.Int(int64(i))
-		case uint64:
-			d = ion.Uint(i)
-		case string:
-			d = ion.String(i)
-		case []byte:
-			d = ion.Blob(i)
-		case date.Time:
-			d = ion.Timestamp(i)
-		default:
-			panic("type not supported for literal comparison")
-		}
-	}
-	var b ion.Buffer
-	var st ion.Symtab // TODO: pass input symbol table in here!
-	d.Encode(&b, &st)
-	c.valuecmp(v, b.Bytes())
-}
-
-func (c *compilestate) valuecmp(v *value, lit []byte) {
-	c.opu32(v, opleneq, uint32(len(lit)))
-	resetoff := false
-	for len(lit) >= 8 {
-		op := opeqv8plus
-		if !resetoff {
-			op = opeqv8
-			resetoff = true
-		}
-		c.opu64(v, op, binary.LittleEndian.Uint64(lit))
-		lit = lit[8:]
-	}
-	for len(lit) >= 4 {
-		op := opeqv4maskplus
-		if !resetoff {
-			op = opeqv4mask
-			resetoff = true
-		}
-		lo := binary.LittleEndian.Uint32(lit)
-		c.opu32u32(v, op, lo, 0xFFFFFFFF)
-		lit = lit[4:]
-	}
-	if len(lit) > 0 {
-		var buf [4]byte
-		copy(buf[:], lit)
-		op := opeqv4mask
-		if resetoff {
-			op = opeqv4maskplus
-		}
-		word := binary.LittleEndian.Uint32(buf[:])
-		mask := uint32(0xFFFFFFFF) >> (32 - (len(lit) * 8))
-		c.opu32u32(v, op, word, mask)
-	}
-}
-
 // default behavior for finalizing the
 // current compile state given a value:
 // dereference its argument stack slots,
@@ -4896,7 +3351,6 @@ func (c *compilestate) final(v *value) {
 		return
 	}
 	if v.op == sundef {
-		c.regs.cur[regS] = -1
 		return
 	}
 	info := &ssainfo[v.op]
@@ -4917,22 +3371,9 @@ func (c *compilestate) final(v *value) {
 			panic("arg not live up to use?")
 		}
 		// anything live only up to here is now dead
-		if rng[arg.id] == v.id && c.regs.hasSlot(rc, arg.id) {
-			c.regs.freeValue(rc, arg.id)
+		if rng[arg.id] == v.id && c.stack.hasFreeableSlot(rc, arg.id) {
+			c.stack.freeValue(rc, arg.id)
 		}
-	}
-	rettypes := info.rettype.vregs()
-	for i := regclass(0); i < _maxregclass; i++ {
-		if rettypes.contains(i) {
-			c.regs.cur[i] = v.id
-		}
-	}
-}
-
-func (c *compilestate) clobberk(v *value) {
-	cur := c.regs.cur[regK]
-	if cur >= 0 && c.lr.krange[cur] > v.id && !c.regs.hasSlot(regK, cur) {
-		c.ops16(v, opsavek, c.regs.allocValue(regK, cur))
 	}
 }
 
@@ -4941,128 +3382,59 @@ func (c *compilestate) clobberk(v *value) {
 // if arg is only live up to this instruction,
 // then it will be dropped from the register
 func (c *compilestate) href(v, arg *value) stackslot {
-	ret := c.regs.slotOf(regH, arg.id)
+	ret := c.stack.slotOf(regH, arg.id)
 	if c.lr.vrange[arg.id] == v.id {
 		// value is no longer live, so free the slot
-		c.regs.freeValue(regH, arg.id)
+		c.stack.freeValue(regH, arg.id)
 	}
 	return ret
 }
 
 // allocate an H register number for value v
 func (c *compilestate) hput(v *value) stackslot {
-	return c.regs.allocValue(regH, v.id)
+	return c.stack.allocValue(regH, v.id)
 }
 
-// load a value into the k reg
-//
-// if the value 'v' is known to clobber 'k'
-// then the loaded value is also saved automatically
-func (c *compilestate) loadk(v, k *value) {
-	curmask := c.regs.cur[regK]
-	clobber := k.id != curmask || v.ret().vregs().contains(regK)
-	if clobber && c.lr.krange[curmask] > v.id && !c.regs.hasSlot(regK, curmask) {
-		// shortcut: if we need to do a save *and* restore
-		// and we are restoring a value that will be dead
-		// after this instruction, perform an xchg instead
-		if c.lr.krange[k.id] == v.id {
-			slot := c.regs.slotOf(regK, k.id)
-			c.regs.stack.replaceValue(regK, k.id, curmask)
-			c.ops16(v, opxchgk, slot)
-			c.regs.cur[regK] = k.id
-			return
-		}
-		c.ops16(v, opsavek, c.regs.allocValue(regK, curmask))
-	}
-	if k.id != curmask {
-		c.regs.cur[regK] = k.id
-		c.ops16(v, oploadk, c.existingStackRef(k, regK))
-	}
-}
-
-func (c *compilestate) loadclass(v, arg *value, rc regclass) {
-	cur := c.regs.cur[rc]
-	if arg.op == sundef {
-		// for undef, we don't care what's in the register;
-		// just consider it clobbered
-		c.clobberclass(v, rc)
-		c.regs.cur[rc] = -1
-		return
-	}
-	if arg.id != cur {
-		c.clobberclass(v, rc)
-		// we don't bother doing anything if
-		// the argument is 'undef'; we can keep
-		// using whatever happens to be in the
-		// register
-		if arg.op != skfalse {
-			c.ops16(v, rc.loadop(), c.existingStackRef(arg, rc))
-		}
-		c.regs.cur[rc] = arg.id
-	}
-}
-
-func (c *compilestate) clobberclass(v *value, rc regclass) {
-	cur := c.regs.cur[rc]
-	if cur >= 0 && c.lr.vrange[cur] > v.id && !c.regs.hasSlot(rc, cur) {
-		slot := c.regs.allocValue(rc, cur)
-		c.ops16(v, rc.saveop(), slot)
-	}
-}
-
-func (c *compilestate) loadv(v, arg *value) {
-	c.loadclass(v, arg, regV)
-}
-
-func (c *compilestate) clobberv(v *value) {
-	c.clobberclass(v, regV)
-}
-
-func (c *compilestate) loads(v, arg *value) {
-	c.loadclass(v, arg, regS)
-}
-
-func (c *compilestate) clobbers(v *value) {
-	c.clobberclass(v, regS)
-}
-
-func (c *compilestate) loadb(v, arg *value) {
-	c.loadclass(v, arg, regB)
-}
-
-func (c *compilestate) clobberb(v *value) {
-	c.clobberclass(v, regB)
-}
-
-func (c *compilestate) existingStackRef(arg *value, rc regclass) stackslot {
-	slot := c.regs.slotOf(rc, arg.id)
-	if slot == invalidstackslot {
-		panic(fmt.Sprintf("Cannot get a stack slot of %v, which is not allocated", arg))
-	}
-	return slot
-}
-
-// Returns a stack id of the given value. If the value was never
-// saved on stack it would add a bytecode instruction to save it
-// so it always exists.
-func (c *compilestate) forceStackRef(v *value, rc regclass) stackslot {
-	slot := c.regs.slotOf(rc, v.id)
+// Returns a stack slot id of the given value. It would
+// lazily create the slot if it was not created previously.
+func (c *compilestate) slotOf(v *value, rc regclass) stackslot {
+	slot := c.stack.slotOf(rc, v.id)
 	if slot != invalidstackslot {
 		return slot
 	}
+	return c.stack.allocValue(rc, v.id)
+}
 
-	slot = c.regs.allocValue(rc, v.id)
-	c.ops16(v, rc.saveop(), slot)
-	return slot
+func (c *compilestate) dictimm(str string) uint16 {
+	n := -1
+	for i := range c.dict {
+		if c.dict[i] == str {
+			n = i
+			break
+		}
+	}
+	if n == -1 {
+		n = len(c.dict)
+		c.dict = append(c.dict, str)
+	}
+	if n > 65535 {
+		panic(fmt.Sprintf("dictionary reference (offset=%d) exceeds 65535 limit", n))
+	}
+	return uint16(n)
 }
 
 func emitinit(v *value, c *compilestate) {}
 
 type rawDatum []byte
 
-func emitconst(v *value, c *compilestate) {
+func encodeLitRef(off, len uint32) uint64 {
+	return uint64(off) | (uint64(len) << 32)
+}
+
+func (c *compilestate) storeLitRef(imm any) uint64 {
 	var b ion.Buffer
-	switch t := v.imm.(type) {
+
+	switch t := imm.(type) {
 	case nil:
 		b.WriteNull()
 	case float64:
@@ -5088,89 +3460,21 @@ func emitconst(v *value, c *compilestate) {
 	default:
 		panic("unsupported literal datum")
 	}
+
 	off := len(c.litbuf)
 	c.litbuf = append(c.litbuf, b.Bytes()...)
 
-	// clobber V register
-	c.clobberv(v)
-	c.opu32u32(v, oplitref, uint32(off), uint32(len(b.Bytes())))
-}
-
-func emitfalse(v *value, c *compilestate) {
-	c.clobberk(v)
-	c.clobberv(v)
-	c.op(v, opfalse)
-}
-
-// AND / OR / XOR / XNOR
-// reads mask, writes to mask
-func emitlogical(v *value, c *compilestate) {
-	// pick actual argument ordering based
-	// on the register state
-	lhs, rhs := v.args[0], v.args[1]
-	bc := ssainfo[v.op].bc
-	if c.regs.cur[regK] == lhs.id {
-		lhs, rhs = rhs, lhs
-	}
-	c.loadk(v, rhs)
-	c.ops16(v, bc, c.existingStackRef(lhs, regK))
-}
-
-// emit NAND operation
-func emitnand(v *value, c *compilestate) {
-	// x nand true -> !x
-	if v.args[1].op == sinit {
-		// just emit 'not'
-		c.loadk(v, v.args[0])
-		c.op(v, opnotk)
-		return
-	}
-
-	// we want to compute 'mask = ^lhs & rhs'
-	lhs, rhs := v.args[0], v.args[1]
-
-	if lhs == rhs {
-		c.op(v, opfalse)
-		return
-	}
-
-	if c.regs.cur[regK] == rhs.id {
-		c.loadk(v, rhs)
-		c.ops16(v, opnandk, c.existingStackRef(lhs, regK))
-	} else {
-		c.loadk(v, lhs)
-		c.ops16(v, opandnotk, c.existingStackRef(rhs, regK))
-	}
-}
-
-// tuple destructure into base pointer
-func emittuple(v *value, c *compilestate) {
-	value := v.args[0]
-	mask := v.args[1]
-	bc := ssainfo[v.op].bc
-	c.loadk(v, mask)
-	c.loadv(v, value)
-	c.clobberb(v)
-	c.op(v, bc)
-}
-
-func emitsplit(v *value, c *compilestate) {
-	list := v.args[0]
-	mask := v.args[1]
-	c.loadk(v, mask)
-	c.loads(v, list)
-	c.clobberv(v)
-	c.clobbers(v)
-	c.op(v, opsplit)
+	return encodeLitRef(uint32(off), uint32(len(b.Bytes())))
 }
 
 func emithashlookup(v *value, c *compilestate) {
 	h := v.args[0]
 	k := v.args[1]
-	hSlot := c.existingStackRef(h, regH)
-	tslot := uint16(len(c.trees))
+
+	tSlot := len(c.trees)
 	hr := v.imm.(*hashResult)
 	c.trees = append(c.trees, hr.tree)
+
 	if len(c.litbuf) != 0 {
 		// adjust the negated offsets of the literals
 		// to reflect their final positions in c.litbuf
@@ -5182,310 +3486,122 @@ func emithashlookup(v *value, c *compilestate) {
 		}
 	}
 	c.litbuf = append(c.litbuf, hr.literals...)
-	c.loadk(v, k)
-	c.clobberv(v)
-	c.ops16u16(v, ssainfo[v.op].bc, hSlot, tslot)
+
+	c.asm.emitOpcode(ssainfo[v.op].bc,
+		c.slotOf(v, regV),
+		c.slotOf(v, regK),
+		c.slotOf(h, regH),
+		uint64(tSlot),
+		c.slotOf(k, regK),
+	)
 }
 
 func emithashmember(v *value, c *compilestate) {
 	h := v.args[0]
 	k := v.args[1]
-	hSlot := c.existingStackRef(h, regH)
-	tslot := uint16(len(c.trees))
+
+	tSlot := uint16(len(c.trees))
 	c.trees = append(c.trees, v.imm.(*radixTree64))
-	c.loadk(v, k)
-	c.ops16u16(v, ssainfo[v.op].bc, hSlot, tslot)
-}
 
-// seek inside structure
-func emitdot2(v *value, c *compilestate) {
-	base := v.args[0]
-	val := v.args[1]
-	addmask := v.args[2]
-	mask := v.args[3]
-	sym := v.imm.(ion.Symbol)
-
-	c.loadb(v, base)
-	c.loadv(v, val)
-	// FIXME: if the current mask value
-	// is 'addmask' then we should just
-	// use a different header instruction
-	c.clobberv(v)
-
-	// coalesced version: mask arguments are identical
-	// (the mask argument may never have been assigned
-	// a stack slot, so we cannot provide an immediate
-	// mask argument)
-	if mask == addmask {
-		c.loadk(v, mask)
-		c.clobberk(v)
-		c.opu32(v, opfindsym3, uint32(sym))
-		return
-	}
-	if c.regs.cur[regK] == addmask.id {
-		c.loadk(v, addmask)
-		c.clobberk(v)
-		c.ops16u32(v, opfindsym2rev, c.existingStackRef(mask, regK), uint32(sym))
-		return
-	}
-	c.loadk(v, mask)
-	c.clobberk(v)
-	c.ops16u32(v, opfindsym2, c.existingStackRef(addmask, regK), uint32(sym))
-}
-
-// the '.' operator
-// reads base & mask, writes to value & mask
-func emitdot(v *value, c *compilestate) {
-	base := v.args[0]
-	mask := v.args[1]
-	c.clobberv(v)
-	c.loadk(v, mask)
-	c.loadb(v, base)
-	c.opu32(v, opfindsym, uint32(v.imm.(ion.Symbol)))
-}
-
-func emitboolconv(v *value, c *compilestate) {
-	input := v.args[0]
-	notmissing := v.args[1]
-
-	// if the current register value is
-	// 'notmissing' and we clobber it
-	// when loading 'input', it will not be
-	// saved since its live range only extends
-	// to this instruction; force it to be
-	// stack-allocated so that it can be re-loaded
-	// after the instruction has executed
-	_ = c.forceStackRef(notmissing, regK)
-
-	c.loadk(v, input)
-	c.clobbers(v)
-	c.op(v, ssainfo[v.op].bc)
-	c.loadk(v, notmissing)
+	c.asm.emitOpcode(ssainfo[v.op].bc,
+		c.slotOf(v, regK),
+		c.slotOf(h, regH),
+		uint64(tSlot),
+		c.slotOf(k, regK),
+	)
 }
 
 func emitslice(v *value, c *compilestate) {
+	info := &ssainfo[v.op]
+	bc := info.bc
+
 	var t ion.Type
 	switch v.op {
 	case stostr:
 		t = ion.StringType
 	case stolist:
 		t = ion.ListType
-	case stotime:
-		t = ion.TimestampType
 	case stoblob:
 		t = ion.BlobType
 	default:
 		panic("unrecognized op for emitslice")
 	}
-	val := v.args[0]
-	mask := v.args[1]
-	c.loadk(v, mask)
-	c.loadv(v, val)
-	c.clobbers(v)
-	c.opu8(v, opunpack, uint8(t))
-}
 
-// compare arg0 and arg1
-func emitcmp(v *value, c *compilestate) {
-	lhs := v.args[0]
-	rhs := v.args[1]
-	mask := v.args[2]
-	op := v.op
-	// comparison ops implicitly expect
-	// the rhs to live in a stack slot;
-	// reverse the sense of the comparison
-	// if the rhs is in registers
-	if c.regs.cur[regS] == rhs.id {
-		op = ssainfo[op].inverse
-		lhs, rhs = rhs, lhs
-	}
-	c.loadk(v, mask)
-	c.loads(v, lhs)
-	bc := ssainfo[op].bc
-	c.ops16(v, bc, c.existingStackRef(rhs, regS))
+	c.asm.emitOpcode(bc,
+		c.slotOf(v, regS),
+		c.slotOf(v, regK),
+		c.slotOf(v.args[0], regV),
+		uint64(t),
+		c.slotOf(v.args[1], regK),
+	)
 }
 
 // emit constant comparison
 // reads value & immediate & mask, writes to mask
 func emitconstcmp(v *value, c *compilestate) {
-	val := v.args[0]
-	mask := v.args[1]
 	imm := v.imm
-	c.loadk(v, mask)
-	c.loadv(v, val)
-	c.litcmp(v, imm)
-}
+	val := v.args[0]
+	msk := v.args[1]
 
-func emitequalv(v *value, c *compilestate) {
-	arg0 := v.args[0]
-	arg1 := v.args[1]
-	mask := v.args[2]
-	c.loadk(v, mask)
-	if c.regs.cur[regV] == arg1.id {
-		arg0, arg1 = arg1, arg0
+	if b, ok := imm.(bool); ok {
+		// we have built-in ops for these!
+		if b {
+			c.asm.emitOpcode(opistruev,
+				c.slotOf(v, regK),
+				c.slotOf(val, regV),
+				c.slotOf(msk, regK),
+			)
+		} else {
+			c.asm.emitOpcode(opisfalsev,
+				c.slotOf(v, regK),
+				c.slotOf(val, regV),
+				c.slotOf(msk, regK),
+			)
+		}
+		return
 	}
-	c.loadv(v, arg0)
-	c.ops16(v, opequalv, c.existingStackRef(arg1, regV))
-}
 
-func (c *compilestate) dictimm(str string) uint16 {
-	n := -1
-	for i := range c.dict {
-		if c.dict[i] == str {
-			n = i
-			break
+	// if we get a datum object,
+	// then encode it verbatim;
+	// otherwise try to convert
+	// to a datum...
+	d, ok := imm.(ion.Datum)
+	if !ok {
+		switch imm := imm.(type) {
+		case float64:
+			d = ion.Float(imm)
+		case float32:
+			d = ion.Float(float64(imm)) // TODO: maybe don't convert here...
+		case int64:
+			d = ion.Int(imm)
+		case int:
+			d = ion.Int(int64(imm))
+		case uint64:
+			d = ion.Uint(imm)
+		case string:
+			d = ion.String(imm)
+		case []byte:
+			d = ion.Blob(imm)
+		case date.Time:
+			d = ion.Timestamp(imm)
+		default:
+			panic("type not supported for literal comparison")
 		}
 	}
-	if n == -1 {
-		n = len(c.dict)
-		c.dict = append(c.dict, str)
-	}
-	if n > 65535 {
-		panic("immediate for opu16 opcode > 65535!")
-	}
-	return uint16(n)
-}
 
-func emitConcatStr(v *value, c *compilestate) {
-	argCount := len(v.args) - 1
+	var b ion.Buffer
+	var st ion.Symtab // TODO: pass input symbol table in here!
+	d.Encode(&b, &st)
 
-	var slots [4]stackslot
-	mask := v.args[argCount]
+	off := len(c.litbuf)
+	c.litbuf = append(c.litbuf, b.Bytes()...)
 
-	for i := 0; i < argCount; i++ {
-		slots[i] = c.forceStackRef(v.args[i], regS)
-	}
-
-	c.loadk(v, mask)
-	c.loads(v, v.args[0])
-	c.clobbers(v)
-
-	switch argCount {
-	case 2:
-		c.ops16(v, opconcatlenget2, slots[1])
-	case 3:
-		c.ops16s16(v, opconcatlenget3, slots[1], slots[2])
-	case 4:
-		c.ops16s16s16(v, opconcatlenget4, slots[1], slots[2], slots[3])
-	}
-
-	c.op(v, opallocstr)
-
-	for i := 0; i < argCount; i++ {
-		c.ops16(v, opappendstr, slots[i])
-	}
-}
-
-func emitStrEditStack1(v *value, c *compilestate) {
-	str := v.args[0]
-	imm := c.forceStackRef(v.args[1], regS)
-	mask := v.args[2]
-
-	c.loadk(v, mask)
-	c.loads(v, str)
-	c.clobbers(v)
-	c.ops16(v, ssainfo[v.op].bc, imm)
-}
-
-func emitStrEditStack1x1(v *value, c *compilestate) {
-	str := v.args[0]
-	imm1 := c.forceStackRef(v.args[1], regS)
-	imm2 := c.dictimm(v.imm.(string))
-	mask := v.args[2]
-
-	c.loadk(v, mask)
-	c.loads(v, str)
-	c.clobbers(v)
-	c.opu16s16(v, ssainfo[v.op].bc, imm2, imm1)
-}
-
-func emitStrEditStack2(v *value, c *compilestate) {
-	str := v.args[0]
-	substrOffsetSlot := c.forceStackRef(v.args[1], regS)
-	substrLengthSlot := c.forceStackRef(v.args[2], regS)
-	mask := v.args[3]
-
-	c.loadk(v, mask)
-	c.loads(v, str)
-	c.clobbers(v)
-	c.ops16s16(v, ssainfo[v.op].bc, substrOffsetSlot, substrLengthSlot)
-}
-
-func emitBinaryALUOp(v *value, c *compilestate) {
-	arg0 := v.args[0] // left
-	arg1 := v.args[1] // right
-	mask := v.args[2] // predicate
-
-	info := ssainfo[v.op]
-	bc := info.bc
-
-	if info.bcrev != 0 && c.regs.cur[regS] == arg1.id {
-		arg0, arg1 = arg1, arg0
-		bc = info.bcrev
-	}
-
-	slot1 := c.forceStackRef(arg1, regS)
-
-	c.loadk(v, mask)
-	c.loads(v, arg0)
-	c.clobbers(v)
-	c.ops16(v, bc, slot1)
-}
-
-func emitAggK(v *value, c *compilestate) {
-	boolValSlot := c.forceStackRef(v.args[1], regK)
-	mask := v.args[2]
-
-	c.loadk(v, mask)
-
-	op := ssainfo[v.op].bc
-	checkImmediateBeforeEmit2(op, 2, 4)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU16(uint16(boolValSlot))
-	c.asm.emitImmU32(uint32(v.imm.(aggregateslot)))
-}
-
-func emitSlotAggK(v *value, c *compilestate) {
-	boolValSlot := c.forceStackRef(v.args[2], regK)
-	mask := v.args[3]
-
-	c.loadk(v, mask)
-	op := ssainfo[v.op].bc
-	checkImmediateBeforeEmit2(op, 4, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU32(uint32(v.imm.(aggregateslot)))
-	c.asm.emitImmU16(uint16(boolValSlot))
-}
-
-func emitboxmask(v *value, c *compilestate) {
-	truefalse := v.args[0]
-	output := v.args[1]
-
-	// we must have scratch space available
-	// during program execution
-	c.clobberv(v)
-
-	// if the truefalse and output masks
-	// are the same, then use the same-argument version
-	if truefalse == output {
-		c.loadk(v, truefalse)
-		c.op(v, opboxmask3)
-		return
-	}
-
-	// if the current K reg is true/false,
-	// then use the reversed-argument version
-	// (but note that K is clobbered now)
-	if c.regs.cur[regK] == truefalse.id {
-		c.loadk(v, truefalse)
-		c.ops16(v, opboxmask2, c.existingStackRef(output, regK))
-		return
-	}
-
-	// output mask is in K1,
-	// true/false mask is on the stack
-	c.loadk(v, output)
-	c.ops16(v, opboxmask, c.existingStackRef(truefalse, regK))
+	c.asm.emitOpcode(opcmpeqvimm,
+		c.slotOf(v, regK),
+		c.slotOf(val, regV),
+		encodeLitRef(uint32(off), uint32(len(b.Bytes()))),
+		c.slotOf(msk, regK),
+	)
 }
 
 func emitstorev(v *value, c *compilestate) {
@@ -5497,410 +3613,232 @@ func emitstorev(v *value, c *compilestate) {
 	if mask.op == skfalse {
 		// don't care what is in the V register;
 		// we are just zeroing the memory
-		c.ops16(v, opzerov, stackslot(slot))
+		c.asm.emitOpcode(opzerov, stackslot(slot))
 		return
 	}
 
-	c.loadk(v, mask)
-	if c.regs.cur[regV] != arg.id {
-		c.ops16s16(v, opdupv, c.existingStackRef(arg, regV), stackslot(slot))
-		return
-	}
-
-	c.ops16(v, opsavezerov, stackslot(slot))
-}
-
-func emitstores(v *value, c *compilestate) {
-	_ = v.args[0]
-	arg := v.args[1]
-	mask := v.args[2]
-	slot := v.imm.(int)
-
-	c.loadk(v, mask)
-	if mask.op != skfalse && c.regs.cur[regS] != arg.id {
-		c.ops16s16(v, opdupv, c.existingStackRef(arg, regV), stackslot(slot))
-		return
-	}
-	c.ops16(v, opsavezeros, stackslot(slot))
-}
-
-// blend value in V register
-func emitblendv(v *value, c *compilestate) {
-	cur := v.args[0]
-	extra := v.args[1]
-	k := v.args[2]
-
-	bc := ssainfo[v.op].bc
-	stackarg := extra
-	regarg := cur
-	c.loadk(v, k)
-	// if the argument order is reversed,
-	// then pick the reversed opcode and
-	// flip which argument we load from
-	// the stack
-	if c.regs.cur[regV] == extra.id {
-		stackarg, regarg = regarg, stackarg
-		bc++
-	}
-	c.loadv(v, regarg)
-	c.clobberv(v)
-	c.ops16(v, bc, c.existingStackRef(stackarg, regV))
-}
-
-// blend value in S register
-func emitblends(v *value, c *compilestate) {
-	cur := v.args[0]
-	extra := v.args[1]
-	k := v.args[2]
-	c.loadk(v, k)
-	bc := ssainfo[v.op].bc
-	stackarg := extra
-	regarg := cur
-	if c.regs.cur[regS] == extra.id {
-		stackarg, regarg = regarg, stackarg
-		bc++
-	}
-	c.loads(v, regarg)
-	c.clobbers(v)
-	c.ops16(v, bc, c.existingStackRef(stackarg, regS))
-}
-
-// generic emit function for tuple-construction;
-// all we need to do is ensure that the arguments
-// to the op are in registers
-func emittuple2regs(v *value, c *compilestate) {
-	argtypes := ssainfo[v.op].argtypes
-	for i := range v.args {
-		at := argtypes[i]
-		arg := v.args[i]
-		switch at {
-		case stBase:
-			c.clobberb(v)
-			c.loadb(v, arg)
-		case stValue:
-			c.clobberv(v)
-			c.loadv(v, arg)
-		case stBool:
-			c.loadk(v, arg)
-		case stInt, stFloat, stString, stTime, stScalar:
-			c.clobbers(v)
-			c.loads(v, arg)
-		case stMem:
-			// ignore; this is just an ordering dependency
-		case stHash:
-			// H register number of output is
-			// equivalent to input
-			v.imm = arg.imm
-		default:
-			panic("invalid instruction type spec")
-		}
-	}
-}
-
-func emitchecktag(v *value, c *compilestate) {
-	val := v.args[0]
-	k := v.args[1]
-	imm := v.imm.(uint16)
-	c.loadv(v, val)
-	c.loadk(v, k)
-	c.clobberv(v)
-	c.opu16(v, opchecktag, imm)
-}
-
-// emit comparison for timestamps
-func emitcmptm(v *value, c *compilestate) {
-	tm := v.args[0]
-	mask := v.args[1]
-
-	var buf ion.Buffer
-	buf.WriteTime(v.imm.(date.Time))
-	offset := c.dictimm(string(buf.Bytes()))
-
-	c.loadk(v, mask)
-	c.loads(v, tm)
-
-	// emitted as a two-instruction sequence:
-	// first, load the two timestamp sequences
-	// into registers, and then dispatch
-	// the actual comparison op
-	bc := ssainfo[v.op].bc
-	c.opu16(v, opconsttm, offset)
-	c.op(v, bc)
-}
-
-// emit code for either extract or date trunc
-func emittmwithconst(v *value, c *compilestate) {
-	val := v.args[0]
-	msk := v.args[1]
-
-	c.loadk(v, msk)
-	c.loads(v, val)
-	c.clobbers(v)
-	c.opu8(v, ssainfo[v.op].bc, uint8(v.imm.(int)))
+	c.asm.emitOpcode(opmovv, stackslot(slot), c.slotOf(arg, regV), c.slotOf(mask, regK))
 }
 
 func emitauto(v *value, c *compilestate) {
 	info := &ssainfo[v.op]
-	if info.bc == 0 {
-		panic("emitauto doesn't work if ssainfo.bc is not set")
-	}
-	if len(v.args) != len(info.argtypes) {
-		panic("argument count mismatch")
-	}
-	clobbers := v.ret().vregs()
-	var allregs regset
-	for i := range v.args {
-		if v.args[i].op == sundef {
-			continue
-		}
-		// check that this argument has a trivial
-		// input register+type that we haven't already used
-		rt := v.args[i].ret() & info.argtypes[i]
-		if rt == stMem {
-			// memory arguments are just for ordering
-			continue
-		}
-		reg := rt.vregs()
-		if allregs&reg != 0 {
-			panic("cannot emitauto operations with overlapping input/output registers")
-		}
-		allregs |= reg
+	bc := info.bc
+	bcInfo := opinfo[bc]
+	ssaArgCount := len(v.args)
 
-		switch reg {
-		case onlyreg(regK):
-			c.loadk(v, v.args[i])
-			clobbers.del(regK)
-		case onlyreg(regS):
-			c.loads(v, v.args[i])
-			if clobbers.contains(regS) {
-				if v.args[i].op != sundef {
-					c.clobbers(v)
-				}
-			}
-			clobbers.del(regS)
-		case onlyreg(regV):
-			c.loadv(v, v.args[i])
-			if clobbers.contains(regV) {
-				c.clobberv(v)
-			}
-			clobbers.del(regV)
-		case onlyreg(regB):
-			c.loadb(v, v.args[i])
-			if clobbers.contains(regB) {
-				c.clobberb(v)
-			}
-			clobbers.del(regB)
-		case onlyreg(regH):
-			if v.imm != nil {
-				panic("emitauto: cannot handle hash input")
-			}
-			// the immediate is the H register number
-			// of the hash argument
-			v.imm = int(c.href(v, v.args[i]))
-		case onlyreg(regL):
-			if c.regs.cur[regL] != v.args[i].id {
-				panic("L register clobbered?")
-			}
-		default:
-			// do nothing; must already be loaded
+	if bc == 0 {
+		panic("cannot emit instruction that doesn't have associated bcop")
+	}
+
+	if ssaArgCount != len(info.argtypes) {
+		panic(fmt.Sprintf("error emitting %v: the instruction requires %d arguments, not %d", info.bc, len(v.args), len(info.argtypes)))
+	}
+
+	args := make([]any, len(bcInfo.args))
+	clobbers := v.ret().vregs()
+
+	ssaImmDone := false
+	ssaArgBegin := int(0)
+	ssaArgIndex := ssaArgCount
+
+	if ssaArgCount > 0 && (info.argtypes[0]&stMem) != 0 {
+		// skip stMem argument (if first) - it's just for ordering, it has no effect here
+		ssaArgBegin++
+		if ssaArgCount > 1 && (info.argtypes[0]&stBucket) != 0 {
+			// skip stBucket argument (if second)
+			ssaArgBegin++
 		}
 	}
-	if v.op == sundef {
-		clobbers.del(regS)
-	}
-	// before emitting the op,
-	// save the current value of the
-	// result register if we haven't already
-	for i := regclass(0); i < _maxregclass; i++ {
-		if clobbers == 0 {
-			break
-		}
-		if !clobbers.contains(i) {
-			continue
-		}
-		switch i {
-		case regK:
-			c.clobberk(v)
-		case regH:
+
+	for i := len(bcInfo.args) - 1; i >= 0; i-- {
+		switch bcInfo.args[i] {
+		case bcWriteK:
+			if !clobbers.contains(regK) {
+				panic(fmt.Sprintf("error emitting %s: bcWriteK doesn't correspond to a clobbered regK", bcInfo.text))
+			}
+			args[i] = c.slotOf(v, regK)
+
+		case bcWriteS:
+			if !clobbers.contains(regS) {
+				panic(fmt.Sprintf("error emitting %s: bcWriteS doesn't correspond to a clobbered regS", bcInfo.text))
+			}
+			args[i] = c.slotOf(v, regS)
+
+		case bcWriteV, bcReadWriteV:
+			if !clobbers.contains(regV) {
+				panic(fmt.Sprintf("error emitting %s: bcWriteV doesn't correspond to a clobbered regV", bcInfo.text))
+			}
+			args[i] = c.slotOf(v, regV)
+
+		case bcWriteB:
+			if !clobbers.contains(regB) {
+				panic(fmt.Sprintf("error emitting %s: bcWriteB doesn't correspond to a clobbered regB", bcInfo.text))
+			}
+			args[i] = c.slotOf(v, regB)
+
+		case bcWriteH:
+			if !clobbers.contains(regH) {
+				panic(fmt.Sprintf("error emitting %s: bcWriteH doesn't correspond to a clobbered regH", bcInfo.text))
+			}
+
 			// just allocate an output register
 			slot := c.hput(v)
 			if v.imm == nil {
 				v.imm = int(slot)
 			}
-		case regS, regV, regB:
-			c.clobberclass(v, i)
-		default:
-			// nothing
+			args[i] = stackslot(slot)
+
+		case bcReadK:
+			ssaArgIndex--
+			if ssaArgIndex < ssaArgBegin {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadK) doesn't have a corresponding SSA argument", bcInfo.text, i))
+			}
+			argType := info.argtypes[ssaArgIndex]
+			if (argType & stBool) == 0 {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadK) is not compatible with SSA arg type %s", bcInfo.text, i, argType.String()))
+			}
+			args[i] = c.slotOf(v.args[ssaArgIndex], regK)
+
+		case bcReadS:
+			ssaArgIndex--
+			if ssaArgIndex < ssaArgBegin {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadS) doesn't have a corresponding SSA argument", bcInfo.text, i))
+			}
+			argType := info.argtypes[ssaArgIndex]
+			if (argType & (stFloat | stInt | stString | stList | stTime)) == 0 {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadS) is not compatible with SSA arg type %s", bcInfo.text, i, argType.String()))
+			}
+			args[i] = c.slotOf(v.args[ssaArgIndex], regS)
+
+		case bcReadV:
+			ssaArgIndex--
+			if ssaArgIndex < ssaArgBegin {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadV) doesn't have a corresponding SSA argument", bcInfo.text, i))
+			}
+			argType := info.argtypes[ssaArgIndex]
+			if (argType & stValue) == 0 {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadV) is not compatible with SSA arg type %s", bcInfo.text, i, argType.String()))
+			}
+			args[i] = c.slotOf(v.args[ssaArgIndex], regV)
+
+		case bcReadB:
+			ssaArgIndex--
+			if ssaArgIndex < ssaArgBegin {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadB) doesn't have a corresponding SSA argument", bcInfo.text, i))
+			}
+			argType := info.argtypes[ssaArgIndex]
+			if (argType & stBase) == 0 {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadB) is not compatible with SSA arg type %s", bcInfo.text, i, argType.String()))
+			}
+			args[i] = c.slotOf(v.args[ssaArgIndex], regB)
+
+		case bcReadH:
+			ssaArgIndex--
+			if ssaArgIndex < ssaArgBegin {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadH) doesn't have a corresponding SSA argument", bcInfo.text, i))
+			}
+			argType := info.argtypes[ssaArgIndex]
+			if (argType & stHash) == 0 {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadH) is not compatible with SSA arg type %s", bcInfo.text, i, argType.String()))
+			}
+
+			if v.imm != nil {
+				panic(fmt.Sprintf("error emitting %s: cannot handle hash input when value.imm is already non-null", bcInfo.text))
+			}
+
+			// the immediate is the H register number of the hash argument
+			slot := c.href(v, v.args[ssaArgIndex])
+			v.imm = int(slot)
+			args[i] = stackslot(slot)
+
+		case bcDictSlot:
+			if ssaImmDone {
+				panic(fmt.Sprintf("error emitting %v: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
+			}
+			dictSlot := c.dictimm(v.imm.(string))
+			args[i] = uint64(dictSlot)
+			ssaImmDone = true
+
+		case bcAuxSlot:
+			if ssaImmDone {
+				panic(fmt.Sprintf("error emitting %v: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
+			}
+			slot := v.imm.(int)
+			args[i] = uint64(slot)
+			ssaImmDone = true
+
+		case bcAggSlot, bcHashSlot:
+			if ssaImmDone {
+				panic(fmt.Sprintf("error emitting %s: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
+			}
+			aggSlot := v.imm.(aggregateslot)
+			args[i] = aggSlot
+			ssaImmDone = true
+
+		case bcSymbolID:
+			if ssaImmDone {
+				panic(fmt.Sprintf("error emitting %s: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
+			}
+			args[i] = v.imm
+			ssaImmDone = true
+
+		case bcImmI8, bcImmI16, bcImmI32, bcImmI64, bcImmU8, bcImmU16, bcImmU32, bcImmU64, bcImmF64:
+			if ssaImmDone {
+				panic(fmt.Sprintf("error emitting %s: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
+			}
+			args[i] = v.imm
+			ssaImmDone = true
+
+		case bcLitRef:
+			if ssaImmDone {
+				panic(fmt.Sprintf("error emitting %s: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
+			}
+			args[i] = c.storeLitRef(v.imm)
+			ssaImmDone = true
 		}
-		clobbers.del(i)
 	}
 
-	// finally, emit the op
-	switch info.immfmt {
-	case fmtnone:
-		c.op(v, info.bc)
-	case fmtslot:
-		c.ops16(v, info.bc, stackslot(v.imm.(int)))
-	case fmtaggslot:
-		c.opu32(v, info.bc, uint32(v.imm.(aggregateslot)))
-	case fmtbool:
-		c.opu8(v, info.bc, uint8(toi64(v.imm)))
-	case fmti64:
-		c.opu64(v, info.bc, toi64(v.imm))
-	case fmtf64:
-		c.opu64(v, info.bc, math.Float64bits(tof64(v.imm)))
-	case fmtdict:
-		c.opu16(v, info.bc, c.dictimm(v.imm.(string)))
-	case fmtslotx2hash:
-		// encode input offset + output offset; just for functions that output a hash value
-		c.ops16s16(v, info.bc, stackslot(v.imm.(int)), c.existingStackRef(v, regH))
-	default:
-		panic("unsupported immfmt for emitauto")
-	}
+	c.asm.emitOpcode(bc, args...)
 }
 
-// emitauto2 is a generic emitter that emits bytecode based on both SSA and BC info tables
-//
-// If the SSA/BC instruction is predicated, and the predicate is the last argument, it's
-// allocated to a predicate register. The remaining arguments are allocated from left to
-// right - the first argument of a specific register type is allocated in register, the
-// remaining arguments are passed via stack slots.
-func emitauto2(v *value, c *compilestate) {
+func emitBoolConv(v *value, c *compilestate) {
 	info := &ssainfo[v.op]
-	argCount := len(v.args)
+	c.asm.emitOpcode(info.bc,
+		c.slotOf(v, regS),
+		c.slotOf(v.args[0], regK),
+	)
+}
 
-	if info.bc == 0 {
-		panic("emitauto doesn't work if ssainfo.bc is not set")
+func emitConcatStr(v *value, c *compilestate) {
+	if len(v.args)&1 != 0 {
+		panic(fmt.Sprintf("The number of arguments to emitConcatStr() must be even, not %d", len(v.args)))
 	}
 
-	if argCount != len(info.argtypes) {
-		panic("argument count mismatch")
+	args := make([]any, 2+len(v.args))
+	args[0] = c.slotOf(v, regS)
+	args[1] = c.slotOf(v, regK)
+
+	for i := 0; i < len(v.args); i += 2 {
+		args[i+2] = c.slotOf(v.args[i+0], regS)
+		args[i+3] = c.slotOf(v.args[i+1], regK)
 	}
 
-	var slots []stackslot
-	var kRegArg *value
-	var sRegArg *value
-	var vRegArg *value
-	var bRegArg *value
-
-	// process active lanes predicate first, as this is supposed to be in K1
-	if argCount > 0 && info.argtypes[argCount-1] == stBool {
-		arg := v.args[argCount-1]
-
-		if (arg.ret() & stBool) == 0 {
-			panic("Invalid argument found during SSA to BC lowering")
-		}
-
-		// Remove this argument from further processing as it's done
-		kRegArg = arg
-		argCount--
-	}
-
-	for i := 0; i < argCount; i++ {
-		arg := v.args[i]
-		infoArgType := info.argtypes[i]
-
-		if arg.op == sundef {
-			continue
-		}
-
-		ret := arg.ret() & infoArgType
-		if ret == 0 {
-			panic(fmt.Sprintf("argument %d doesn't reflect the required argument", i))
-		}
-
-		// memory arguments are just for ordering
-		if ret == stMem {
-			continue
-		}
-
-		reg := ret.vregs()
-
-		switch reg {
-		case onlyreg(regK):
-			if kRegArg == nil {
-				kRegArg = arg
-			} else {
-				slots = append(slots, c.forceStackRef(arg, regK))
-			}
-		case onlyreg(regS):
-			if sRegArg == nil {
-				sRegArg = arg
-			} else {
-				slots = append(slots, c.forceStackRef(arg, regS))
-			}
-		case onlyreg(regV):
-			if vRegArg == nil {
-				vRegArg = arg
-			} else {
-				slots = append(slots, c.forceStackRef(arg, regV))
-			}
-		case onlyreg(regB):
-			if bRegArg == nil {
-				bRegArg = arg
-			} else {
-				slots = append(slots, c.forceStackRef(arg, regB))
-			}
-		case onlyreg(regL):
-			if c.regs.cur[regL] != arg.id {
-				panic("L register cannot be clobbered")
-			}
-		default:
-			panic("Unhandled register type")
-		}
-	}
-
-	opInfo := &opinfo[info.bc]
-	opFlags := opInfo.flags
-
-	if kRegArg != nil {
-		c.loadk(v, kRegArg)
-	}
-
-	if sRegArg != nil {
-		c.loads(v, sRegArg)
-	}
-
-	if vRegArg != nil {
-		c.loadv(v, vRegArg)
-	}
-
-	if bRegArg != nil {
-		c.loadb(v, bRegArg)
-	}
-
-	if (opFlags & bcWriteK) != 0 {
-		c.clobberk(v)
-	}
-
-	if (opFlags & bcWriteS) != 0 {
-		c.clobbers(v)
-	}
-
-	if (opFlags & bcWriteV) != 0 {
-		c.clobberv(v)
-	}
-
-	if (opFlags & bcWriteB) != 0 {
-		c.clobberb(v)
-	}
-
-	c.opvar(info.bc, slots, v.imm)
+	info := &ssainfo[v.op]
+	c.asm.emitOpcodeVA(info.bc, args)
 }
 
 func emitMakeList(v *value, c *compilestate) {
-	imms := make([]uint64, 0, (len(v.args)-1)*2)
+	args := make([]any, 0, 3+len(v.args)-1)
+	args = append(args,
+		c.slotOf(v, regV),
+		c.slotOf(v, regK),
+		c.slotOf(v.args[0], regK))
 	for i := 1; i < len(v.args); i += 2 {
-		imms = append(imms, uint64(c.forceStackRef(v.args[i], regV)), uint64(c.forceStackRef(v.args[i+1], regK)))
+		args = append(args, c.slotOf(v.args[i], regV), c.slotOf(v.args[i+1], regK))
 	}
 
 	info := &ssainfo[v.op]
-	op := info.bc
-
-	c.loadk(v, v.args[0])
-	c.clobberk(v)
-	c.clobberv(v)
-	c.opva(op, imms)
+	c.asm.emitOpcodeVA(info.bc, args)
 }
 
 func encodeSymbolIDForMakeStruct(id ion.Symbol) uint32 {
@@ -5931,7 +3869,12 @@ func emitMakeStruct(v *value, c *compilestate) {
 	}
 	slices.Sort(orderedSymbols)
 
-	imms := make([]uint64, 0, (len(v.args) - 1))
+	args := make([]any, 0, 3+len(v.args)-1)
+	args = append(args,
+		c.slotOf(v, regV),
+		c.slotOf(v, regK),
+		c.slotOf(v.args[0], regK))
+
 	for _, orderedSymbol := range orderedSymbols {
 		i := int(orderedSymbol & 0xFFFFFFFF)
 		sym := ion.Symbol(orderedSymbol >> 32)
@@ -5939,101 +3882,75 @@ func emitMakeStruct(v *value, c *compilestate) {
 		val := v.args[i+1]
 		mask := v.args[i+2]
 
-		imms = append(imms,
-			uint64(encodeSymbolIDForMakeStruct(sym)),
-			uint64(c.forceStackRef(val, regV)),
-			uint64(c.forceStackRef(mask, regK)))
+		args = append(args,
+			encodeSymbolIDForMakeStruct(sym),
+			c.slotOf(val, regV),
+			c.slotOf(mask, regK))
 	}
 
 	info := &ssainfo[v.op]
 	op := info.bc
-
-	c.loadk(v, v.args[0])
-	c.clobberk(v)
-	c.clobberv(v)
-	c.opva(op, imms)
-}
-
-func emitStringCaseChange(opcode bcop) func(*value, *compilestate) {
-	return func(v *value, c *compilestate) {
-		arg := v.args[0]  // string
-		mask := v.args[1] // predicate
-
-		originalInput := c.forceStackRef(arg, regS) // copy input refrence
-
-		c.loadk(v, mask)
-		c.loads(v, arg)
-		c.clobbers(v)
-
-		c.op(v, opconcatlenget1)
-		c.op(v, opsadjustsize)
-		c.op(v, opallocstr)
-		c.ops16(v, opcode, originalInput)
-	}
+	c.asm.emitOpcodeVA(op, args)
 }
 
 func emitaggapproxcount(v *value, c *compilestate) {
+	op := ssainfo[v.op].bc
 	hash := v.args[0]
+	mask := v.args[1]
+
 	if hash.op == skfalse {
 		v.setfalse()
 		return
 	}
-	mask := v.args[1]
-	hashSlot := c.existingStackRef(hash, regH)
 
 	imm := v.imm.(uint64)
-	aggSlot := imm >> 8
-	precision := uint8(imm)
+	aggSlot := aggregateslot(imm >> 8)
+	precision := imm & 0xFF
 
-	c.loadk(v, mask)
-
-	op := ssainfo[v.op].bc
-	checkImmediateBeforeEmit3(op, 8, 2, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU64(aggSlot)
-	c.asm.emitImmU16(uint16(hashSlot))
-	c.asm.emitImmU16(uint16(precision))
+	c.asm.emitOpcode(op,
+		aggSlot,
+		c.slotOf(hash, regH),
+		precision,
+		c.slotOf(mask, regK),
+	)
 }
 
 func emitaggapproxcountmerge(v *value, c *compilestate) {
+	op := ssainfo[v.op].bc
 	blob := v.args[0]
 	mask := v.args[1]
 
 	imm := v.imm.(uint64)
-	aggSlot := imm >> 8
-	precision := uint8(imm)
+	aggSlot := aggregateslot(imm >> 8)
+	precision := imm & 0xFF
 
-	c.loadk(v, mask)
-	c.loads(v, blob)
-
-	op := ssainfo[v.op].bc
-	checkImmediateBeforeEmit2(op, 8, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU64(aggSlot)
-	c.asm.emitImmU16(uint16(precision))
+	c.asm.emitOpcode(op,
+		aggSlot,
+		c.slotOf(blob, regS),
+		precision,
+		c.slotOf(mask, regK),
+	)
 }
 
 func emitaggslotapproxcount(v *value, c *compilestate) {
 	hash := v.args[2]
+	mask := v.args[3]
+
 	if hash.op == skfalse {
 		v.setfalse()
 		return
 	}
-	mask := v.args[3]
-	hashSlot := c.existingStackRef(hash, regH)
 
 	imm := v.imm.(uint64)
-	aggSlot := imm >> 8
-	precision := uint8(imm)
+	aggSlot := aggregateslot(imm >> 8)
+	precision := imm & 0xFF
 
-	c.loadk(v, mask)
-
-	op := ssainfo[v.op].bc
-	checkImmediateBeforeEmit3(op, 8, 2, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU64(aggSlot)
-	c.asm.emitImmU16(uint16(hashSlot))
-	c.asm.emitImmU16(uint16(precision))
+	c.asm.emitOpcode(ssainfo[v.op].bc,
+		aggSlot,
+		c.slotOf(hash, regH),
+		precision,
+		c.slotOf(mask, regK),
+	)
 }
 
 func emitaggslotapproxcountmerge(v *value, c *compilestate) {
@@ -6041,17 +3958,15 @@ func emitaggslotapproxcountmerge(v *value, c *compilestate) {
 	mask := v.args[3]
 
 	imm := v.imm.(uint64)
-	aggSlot := imm >> 8
-	precision := uint8(imm)
+	aggSlot := aggregateslot(imm >> 8)
+	precision := imm & 0xFF
 
-	c.loadk(v, mask)
-	c.loads(v, blob)
-
-	op := ssainfo[v.op].bc
-	checkImmediateBeforeEmit2(op, 8, 2)
-	c.asm.emitOpcode(op)
-	c.asm.emitImmU64(aggSlot)
-	c.asm.emitImmU16(uint16(precision))
+	c.asm.emitOpcode(ssainfo[v.op].bc,
+		aggSlot,
+		c.slotOf(blob, regS),
+		precision,
+		c.slotOf(mask, regK),
+	)
 }
 
 func (p *prog) emit1(v *value, c *compilestate) {
@@ -6075,8 +3990,30 @@ func (p *prog) emit1(v *value, c *compilestate) {
 // are explicitly performed
 func (p *prog) reserveslots(c *compilestate) {
 	for i := range p.reserved {
-		c.regs.stack.reserveSlot(regV, p.reserved[i])
+		c.stack.reserveSlot(regV, p.reserved[i])
 	}
+}
+
+// eliminateOutputMoves eliminates moves to reserved stack slots in cases in
+// which a value could be stored to such slots directly by the operation that
+// creates the final value. Note that it's not always possible and only SSA
+// ops that have safeValueMask flag enabled can store the result directly to
+// a reserved stack slot.
+func (p *prog) eliminateOutputMoves(c *compilestate) {
+	out := 0
+	for _, v := range p.values {
+		if v.op == sstorev {
+			src := v.args[1]
+			msk := v.args[2]
+			if p.mask(src) == msk && ssainfo[src.op].safeValueMask {
+				c.stack.assignPermanentSlot(regV, src.id, stackslot(v.imm.(int)))
+				continue
+			}
+		}
+		p.values[out] = v
+		out++
+	}
+	p.values = p.values[:out]
 }
 
 func (p *prog) compile(dst *bytecode, st *symtab) error {
@@ -6086,8 +4023,8 @@ func (p *prog) compile(dst *bytecode, st *symtab) error {
 		return err
 	}
 
-	dst.vstacksize = c.regs.stack.stackSize(stackTypeV)
-	dst.hstacksize = c.regs.stack.stackSize(stackTypeH)
+	dst.vstacksize = c.stack.stackSize(stackTypeV)
+	dst.hstacksize = c.stack.stackSize(stackTypeH)
 
 	dst.allocStacks()
 	dst.trees = c.trees
@@ -6119,11 +4056,10 @@ func (p *prog) compileinto(c *compilestate) error {
 	}
 
 	p.liveranges(&c.lr)
-	c.regs.init(len(p.values))
 	p.reserveslots(c)
+	p.eliminateOutputMoves(c)
 
-	for i := range p.values {
-		v := p.values[i]
+	for _, v := range p.values {
 		p.emit1(v, c)
 	}
 
@@ -6166,9 +4102,18 @@ func (p *prog) clone(dst *prog) {
 	dst.ret = dst.values[p.ret.id]
 }
 
-// MaxSymbolID is the largest symbol ID
-// supported by the system.
-const MaxSymbolID = (1 << 21) - 1
+// Renumber performs some simple dead-code elimination
+// and re-orders and re-numbers each value in prog.
+//
+// Renumber must be called before prog.Symbolize.
+func (p *prog) Renumber() {
+	var pi proginfo
+	ord := p.order(&pi)
+	for i := range ord {
+		ord[i].id = i
+	}
+	p.values = ord
+}
 
 // Symbolize applies the symbol table from 'st'
 // to the program by copying the old program
@@ -6300,9 +4245,7 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 				// search will always fail (and this
 				// will cause the optimizer to eliminate
 				// any code that depends on this value)
-				v.op = skfalse
-				v.args = nil
-				v.imm = nil
+				v.setfalse()
 				// the compilation of the program depends
 				// on this symbol not existing, so we need
 				// to record that fact for IsStale to work

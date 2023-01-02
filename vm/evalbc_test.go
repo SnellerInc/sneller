@@ -45,10 +45,12 @@ type LengthZ3 = int
 // TestStringCompareUT unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareUT(t *testing.T) {
 	t.Parallel()
+
 	type unitTest struct {
 		data, needle string
 		expLane      bool
 	}
+
 	type testSuite struct {
 		// name to describe this test-suite
 		name string
@@ -59,6 +61,7 @@ func TestStringCompareUT(t *testing.T) {
 		// bytecode to run
 		op bcop
 	}
+
 	testSuites := []testSuite{
 		{
 			name: "compare string case-sensitive (opCmpStrEqCs)",
@@ -156,39 +159,38 @@ func TestStringCompareUT(t *testing.T) {
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		if !utf8.ValidString(ut.needle) {
 			t.Logf("needle is not valid UTF8; skipping this test")
 			return
 		}
 
-		// first: check reference implementation
-		expLanes := [16]bool{}
-		for i := 0; i < 16; i++ {
+		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: lanes}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, 0, &inputK}, lanes); err != nil {
+			t.Fatal(err)
+		}
+
+		expectedOutputK := kRegData{}
+		for i := 0; i < bcLaneCount; i++ {
 			if getBit(lanes, i) {
-				expLanes[i] = ts.refImpl(ut.data, ut.needle)
-				if expLanes[i] != ut.expLane {
+				active := ts.refImpl(ut.data, ut.needle)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+				}
+				if active != ut.expLane {
 					t.Errorf("%v\nrefImpl: comparing needle %q to data %q\nobserved %v; expected %v (data16 %v; needle %v)",
-						ts.name, ut.needle, ut.data, expLanes[i], ut.expLane, []byte(ut.data), []byte(ut.needle))
+						ts.name, ut.needle, ut.data, active, ut.expLane, []byte(ut.data), []byte(ut.needle))
 				}
 			}
 		}
-		// second: check the bytecode implementation
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
-		ctx.setScalarStrings(fill16(ut.data))
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-			t.Errorf("%v\ncomparing needle %q\nto data %q\n%v", ts.name, ut.needle, ut.data, msg)
-		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	for _, ts := range testSuites {
@@ -203,6 +205,7 @@ func TestStringCompareUT(t *testing.T) {
 // TestStringCompareBF brute-force tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
 func TestStringCompareBF(t *testing.T) {
 	t.Parallel()
+
 	type testSuite struct {
 		name string
 		// alphabet from which to generate words
@@ -216,6 +219,7 @@ func TestStringCompareBF(t *testing.T) {
 		// bytecode implementation of comparison
 		op bcop
 	}
+
 	testSuites := []testSuite{
 		{
 			// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
@@ -263,39 +267,30 @@ func TestStringCompareBF(t *testing.T) {
 			encNeedles[i] = padNBytes(encodeNeedleOp(needle, ts.op), 4)
 		}
 
-		expLanes := [16]bool{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-
-	mainLoop:
 
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
+				ctx.clear()
+				ctx.setDict(encNeedles[needleIdx])
 
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expLanes[i] = ts.refImpl(needle, data16[i])
+				inputS := ctx.sRegFromStrings(data16)
+				inputK := kRegData{mask: lanes}
+				outputK := kRegData{}
+
+				if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, 0, &inputK}, lanes); err != nil {
+					t.Fatal(err)
+				}
+
+				expectedOutputK := kRegData{}
+				for i := 0; i < bcLaneCount; i++ {
+					if getBit(lanes, i) && ts.refImpl(needle, data16[i]) {
+						expectedOutputK.mask |= uint16(1 << i)
 					}
 				}
 
-				enc := encNeedles[needleIdx]
-				ctx.setDict(enc)
-				ctx.setScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-					t.Errorf("%v\nneedle=%q\ndata=%v\n%v", ts.name, needle, join16StrSlice(data16), msg)
-					break mainLoop
-				}
+				verifyKRegOutput(t, &outputK, &expectedOutputK)
 			}
 		}
 	}
@@ -343,36 +338,34 @@ func FuzzStringCompareFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, needle string) {
-		if !utf8.ValidString(needle) || (needle == "") {
+		var ctx bctestContext
+		defer ctx.Free()
+
+		if !utf8.ValidString(needle) || needle == "" {
 			return // invalid needles are ignored
 		}
-		expLanes := [16]bool{}
-		for i := 0; i < 16; i++ {
+
+		ctx.setDict(encodeNeedleOp(needle, ts.op))
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, 0, &inputK}, lanes); err != nil {
+			t.Fatal(err)
+		}
+
+		expectedOutputK := kRegData{}
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) {
-				expLanes[i] = ts.refImpl(data16[i], needle)
+			if getBit(lanes, i) && ts.refImpl(data16[i], needle) {
+				expectedOutputK.mask |= uint16(1 << i)
 			}
 		}
-		enc := encodeNeedleOp(needle, ts.op)
 
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(enc)
-		ctx.setScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", ts.name, needle, join16Str(data16), msg)
-		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, needle string) {
@@ -456,49 +449,36 @@ func TestStrFuzzyUT1(t *testing.T) {
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		if !utf8.ValidString(ut.needle) {
 			t.Logf("needle is not valid UTF8; skipping this test")
 			return
 		}
 
-		stackContent := make([]uint64, 16)
-		expLanes := [16]bool{}
-		data16 := fill16(ut.data)
-		// first: check reference implementation
-		{
-			obsLane := ts.refImpl(ut.data, ut.needle, ut.threshold)
-			for i := 0; i < 16; i++ {
-				expLanes[i] = obsLane
-				stackContent[i] = uint64(ut.threshold)
-			}
-			if fault, msg := fault1x1(obsLane, ut.expLane, 0, 0, 0, 0); fault {
-				t.Errorf("refImpl: %v\nrefImpl: needle=%q; threshold=%v\ndata=%v\n%v",
-					ts.name, ut.needle, ut.threshold, join16StrSlice(data16), msg)
-			}
-		}
-
-		// second: check the bytecode implementation
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
 		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
-		ctx.setScalarStrings(data16)
-		ctx.setStackUint64(stackContent)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
+		dictOffset := uint16(0)
+		data16 := fill16(ut.data)
 
-		// when
-		offsetDict := uint16(0)
-		offsetStackSlot := uint16(0)
-		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+		inputS := ctx.sRegFromStrings(data16)
+		inputThreshold := i64RegDataFromScalar(int64(ut.threshold))
+		inputK := kRegData{mask: lanes}
+
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-			t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
-				ts.name, ut.needle, ut.threshold, join16StrSlice(data16), msg)
+
+		expectedOutputK := kRegData{}
+		expectedResult := ts.refImpl(ut.data, ut.needle, ut.threshold)
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) && expectedResult {
+				expectedOutputK.mask |= uint16(1 << i)
+			}
 		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	for _, ts := range testSuites {
@@ -641,43 +621,33 @@ func TestStrFuzzyUT2(t *testing.T) {
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		stackContent := make([]uint64, 16)
-		// first: check reference implementation
-		{
-			for i := 0; i < 16; i++ {
-				obsLane := ts.refImpl(ut.data16[i], ut.needle, ut.threshold[i])
-				expLane := getBit(ut.expLanes, i)
-				if fault, msg := fault1x1(obsLane, expLane, 0, 0, 0, 0); fault {
-					t.Errorf("refImpl: %v\nlane %v:needle=%q; data=%q; threshold=%v\ndata=%v\n%v",
-						ts.name, i, ut.needle, ut.data16[i], ut.threshold, join16Str(ut.data16), msg)
-					break
+		var ctx bctestContext
+		defer ctx.Free()
+
+		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(ut.data16[:])
+		inputThreshold := i64RegData{}
+		inputK := kRegData{mask: lanes}
+		outputK := kRegData{}
+
+		expectedOutputK := kRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) {
+				active := ts.refImpl(ut.data16[i], ut.needle, ut.threshold[i])
+				if active {
+					inputThreshold.values[i] = int64(ut.threshold[i])
+					expectedOutputK.mask |= uint16(1 << i)
 				}
 			}
 		}
-		// second: check the bytecode implementation
-		for i := 0; i < 16; i++ {
-			stackContent[i] = uint64(ut.threshold[i])
-		}
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
-		ctx.setScalarStrings(ut.data16[:])
-		ctx.setStackUint64(stackContent)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		offsetDict := uint16(0)
-		offsetStackSlot := uint16(0)
-		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, toBoolArray(ut.expLanes)); fault {
-			t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
-				ts.name, ut.needle, ut.threshold, join16Str(ut.data16), msg)
-		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	for _, ts := range testSuites {
@@ -758,52 +728,38 @@ func TestStrFuzzyBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]Data, needleSpace []Needle) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
 		for i, needle := range needleSpace {
 			encNeedles[i] = encodeNeedleOp(needle, ts.op)
 		}
 
-		stackContent := make([]uint64, 16)
-		expLanes := [16]bool{}
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-	mainLoop:
-
 		for _, threshold := range ts.thresholdSpace {
-			for i := 0; i < 16; i++ {
-				stackContent[i] = uint64(threshold)
-			}
-			ctx.setStackUint64(stackContent)
 			for _, data16 := range dataSpace {
 				for needleIdx, needle := range needleSpace {
-					// first collect expected values
-					for i := 0; i < 16; i++ {
-						if getBit(lanes, i) {
-							expLanes[i] = ts.refImpl(data16[i], needle, threshold)
-						}
-					}
-
+					ctx.clear()
 					ctx.setDict(encNeedles[needleIdx])
-					ctx.setScalarStrings(data16)
-					ctx.current = lanes
-					scalarBefore := ctx.getScalarUint32()
+					dictOffset := uint16(0)
 
-					// when
-					offsetDict := uint16(0)
-					offsetStackSlot := uint16(0)
-					if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+					inputS := ctx.sRegFromStrings(data16)
+					inputK := kRegData{mask: lanes}
+					inputThreshold := i64RegDataFromScalar(int64(threshold))
+					outputK := kRegData{}
+
+					if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
 						t.Fatal(err)
 					}
-					// then
-					if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-						t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
-							ts.name, needle, stackContent, join16StrSlice(data16), msg)
-						break mainLoop
+
+					expectedOutputK := kRegData{}
+					for i := 0; i < bcLaneCount; i++ {
+						if getBit(lanes, i) && ts.refImpl(data16[i], needle, threshold) {
+							expectedOutputK.mask |= uint16(1 << i)
+						}
 					}
+					verifyKRegOutput(t, &outputK, &expectedOutputK)
 				}
 			}
 		}
@@ -855,7 +811,10 @@ func FuzzStrFuzzyFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle, threshold int) {
-		if (ts.op == opCmpStrFuzzyA3) || (ts.op == opHasSubstrFuzzyA3) {
+		var ctx bctestContext
+		defer ctx.Free()
+
+		if ts.op == opCmpStrFuzzyA3 || ts.op == opHasSubstrFuzzyA3 {
 			for _, c := range needle {
 				if c >= utf8.RuneSelf {
 					return // ascii code do not accept unicode code-points
@@ -866,42 +825,29 @@ func FuzzStrFuzzyFT(f *testing.F) {
 		if !utf8.ValidString(needle) || (needle == "") {
 			return // invalid needles are ignored
 		}
-		expLanes := [16]bool{}
-		for i := 0; i < 16; i++ {
+
+		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputThreshold := i64RegDataFromScalar(int64(threshold))
+		inputK := kRegData{mask: lanes}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
+			t.Fatal(err)
+		}
+
+		expectedOutputK := kRegData{}
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) {
-				expLanes[i] = ts.refImpl(data16[i], needle, threshold)
+			if getBit(lanes, i) && ts.refImpl(data16[i], needle, threshold) {
+				expectedOutputK.mask |= uint16(1 << i)
 			}
 		}
-
-		stackContent := make([]uint64, 16)
-		for i := 0; i < 16; i++ {
-			stackContent[i] = uint64(threshold)
-		}
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
-		ctx.setStackUint64(stackContent)
-		ctx.setScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		offsetDict := uint16(0)
-		offsetStackSlot := uint16(0)
-		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-			t.Errorf("%v\nneedle=%q; threshold=%v\ndata=%v\n%v",
-				ts.name, needle, stackContent, join16Str(data16), msg)
-		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle, threshold int) {
@@ -1393,39 +1339,39 @@ func TestRegexMatchUT1(t *testing.T) {
 	}
 
 	run := func(ut unitTest, lanes uint16) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		data16 := fill16(ut.data)
 
 		ds, err := regexp2.CreateDs(ut.expr, ut.regexType, false, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			t.Errorf("%v with %v", err, ut.expr)
 		}
+
 		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
 		regexDataTest := func(ctx *bctestContext, dsByte []byte, info string, op bcop, expLane bool) {
 			if dsByte == nil {
 				return
 			}
-			ctx.setDict(string(dsByte))
-			ctx.setScalarStrings(data16)
-			ctx.current = lanes
 
-			// when
-			if err := ctx.ExecuteImm2(op, 0); err != nil {
+			ctx.clear()
+			ctx.setDict(string(dsByte))
+			dictOffset := uint16(0)
+
+			inputS := ctx.sRegFromStrings(data16)
+			inputK := kRegData{mask: lanes}
+			outputK := kRegData{}
+
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
 
-			expLanes := uint16(0)
-			if expLane {
-				expLanes = 0xFFFF
-			}
-			obsLanes := ctx.current
-			if obsLanes != expLanes {
-				for i := 0; i < 16; i++ {
-					obsLane := getBit(obsLanes, i)
-					if obsLane != expLane {
-						t.Errorf("%v: lane %v: issue with data %q\nregexGolang=%q yields expected %v; regexSneller=%q yields observed %v",
-							info, i, data16[i], ds.RegexGolang.String(), expLane, ds.RegexSneller.String(), obsLane)
-						break
-					}
+			for i := 0; i < bcLaneCount; i++ {
+				if getBit(outputK.mask, i) != expLane {
+					t.Errorf("%v: lane %v: issue with data %q\nregexGolang=%q yields expected %v; regexSneller=%q yields observed %v",
+						info, i, data16[i], ds.RegexGolang.String(), expLane, ds.RegexSneller.String(), getBit(outputK.mask, i))
+					break
 				}
 			}
 		}
@@ -1438,11 +1384,8 @@ func TestRegexMatchUT1(t *testing.T) {
 					ut.data, ut.expLane, ds.RegexGolang.String(), obsLane)
 			}
 		}
-		// second: check the bytecode implementation
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
 
+		// second: check the bytecode implementation
 		regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, ut.expLane)
 		regexDataTest(&ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, ut.expLane)
 		regexDataTest(&ctx, ds.DsT7, "DfaT7", opDfaT7, ut.expLane)
@@ -1511,34 +1454,39 @@ func TestRegexMatchUT2(t *testing.T) {
 	}
 
 	run := func(ut unitTest, lanes uint16) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		ds, err := regexp2.CreateDs(ut.expr, ut.regexType, false, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			t.Error(err)
 		}
+
 		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
 		regexDataTest := func(ctx *bctestContext, dsByte []byte, info string, op bcop, needle string, expLanes uint16) {
-
 			if dsByte == nil {
 				return
 			}
 
+			ctx.clear()
 			ctx.setDict(string(dsByte))
-			ctx.setScalarStrings(ut.data16[:])
-			ctx.current = lanes
+			dictOffset := uint16(0)
 
-			// when
-			if err := ctx.ExecuteImm2(op, 0); err != nil {
+			inputS := ctx.sRegFromStrings(ut.data16[:])
+			inputK := kRegData{mask: lanes}
+			outputK := kRegData{}
+
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
 
-			obsLanes := ctx.current
-			if obsLanes != expLanes {
-				for i := 0; i < 16; i++ {
-					obsLane := getBit(obsLanes, i)
+			if outputK.mask != expLanes {
+				for i := 0; i < bcLaneCount; i++ {
+					obsLane := getBit(outputK.mask, i)
 					expLane := getBit(expLanes, i)
 					if obsLane != expLane {
 						t.Errorf("%v-%v: issue with lane %v, \ndata=%q\nexpected=%016b (regexGolang=%q)\nobserved=%016b (regexSneller=%q)",
-							name, info, i, ut.data16, expLanes, ds.RegexGolang.String(), obsLanes, ds.RegexSneller.String())
+							name, info, i, ut.data16, expLanes, ds.RegexGolang.String(), outputK.mask, ds.RegexSneller.String())
 						break
 					}
 				}
@@ -1547,7 +1495,7 @@ func TestRegexMatchUT2(t *testing.T) {
 
 		// first: check reference implementation
 		{
-			for i := 0; i < 16; i++ {
+			for i := 0; i < bcLaneCount; i++ {
 				obsLane := ds.RegexGolang.MatchString(ut.data16[i])
 				expLane := getBit(ut.expLanes, i)
 				if expLane != obsLane {
@@ -1556,12 +1504,8 @@ func TestRegexMatchUT2(t *testing.T) {
 				}
 			}
 		}
+
 		// second: check the bytecode implementation
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
 		regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, ut.expr, ut.expLanes)
 		regexDataTest(&ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, ut.expr, ut.expLanes)
 		regexDataTest(&ctx, ds.DsT7, "DfaT7", opDfaT7, ut.expr, ut.expLanes)
@@ -1580,29 +1524,31 @@ func TestRegexMatchUT2(t *testing.T) {
 
 // FuzzRegexMatchRun runs fuzzer to search both regexes and data and compares the with a reference implementation
 func FuzzRegexMatchRun(f *testing.F) {
-
 	run := func(t *testing.T, ds []byte, expMatch bool, data, regexString, info string, op bcop) {
 		regexMatch := func(ds []byte, needle string, op bcop) (match bool) {
-			values := fill16(needle)
-
 			var ctx bctestContext
 			defer ctx.Free()
-			ctx.Taint()
-			ctx.setDict(string(ds))
-			ctx.setScalarStrings(values)
-			ctx.current = 0xFFFF
 
-			if err := ctx.ExecuteImm2(op, 0); err != nil {
+			ctx.setDict(string(ds))
+			dictOffset := uint16(0)
+
+			inputS := ctx.sRegFromStrings(fill16(needle))
+			inputK := kRegData{mask: 0xFFFF}
+			outputK := kRegData{}
+
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
 
-			if ctx.current == 0 {
+			if outputK.mask == 0 {
 				return false
 			}
-			if ctx.current == 0xFFFF {
+
+			if outputK.mask == 0xFFFF {
 				return true
 			}
-			t.Errorf("inconstent results %x", ctx.current)
+
+			t.Errorf("inconstent results %x", outputK.mask)
 			return false
 		}
 
@@ -1698,25 +1644,36 @@ func FuzzRegexMatchCompile(f *testing.F) {
 }
 
 // referenceSubstr is the reference implementation for: opSubstr
-func referenceSubstr(input string, start, length int) string {
+func referenceSubstr(input string, start, length int) (uint32, uint32) {
 	if !utf8.ValidString(input) {
-		return ""
+		return 0, 0
 	}
-	start-- // this method is called as 1-based indexed, the implementation is 0-based indexed
+
+	// this method is called as 1-based indexed, the implementation is 0-based indexed
+	start--
+
 	if start < 0 {
 		start = 0
 	}
+
 	if length < 0 {
 		length = 0
 	}
+
 	asRunes := []rune(input)
 	if start >= len(asRunes) {
-		return ""
+		return 0, 0
 	}
+
 	if (start + length) > len(asRunes) {
 		length = len(asRunes) - start
 	}
-	return string(asRunes[start : start+length])
+
+	// we need the content of the removed string so we can output the offset+length result
+	removedStr := string(asRunes[0:start])
+	outputStr := string(asRunes[start : start+length])
+
+	return uint32(len(removedStr)), uint32(len(outputStr))
 }
 
 // TestSubstrUT unit-tests for: opSubstr
@@ -1788,57 +1745,44 @@ func TestSubstrUT(t *testing.T) {
 	}
 
 	run := func(ut [16]unitTest, lanes uint16) {
-		expResults := [16]string{}
-		stackContent1 := make([]uint64, 16)
-		stackContent2 := make([]uint64, 16)
-		data16 := make([]string, 16)
-
-		// first: check reference implementation
-		for i := 0; i < 16; i++ {
-			obsResult := referenceSubstr(ut[i].data, ut[i].begin, ut[i].length)
-			if obsResult != ut[i].expResult {
-				t.Errorf("refImpl: substring %q; begin=%v; length=%v; observed %q; expected %q",
-					data16[i], ut[i].begin, ut[i].length, obsResult, expResults[i])
-			}
-			stackContent1[i] = uint64(ut[i].begin)
-			stackContent2[i] = uint64(ut[i].length)
-			data16[i] = ut[i].data
-			expResults[i] = ut[i].expResult
-		}
-		// second: check bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setScalarStrings(data16)
-		ctx.setStackUint64(stackContent1)
-		ctx.addStackUint64(stackContent2)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		offsetStackSlot1 := uint16(0)
-		offsetStackSlot2 := uint16(len(stackContent1) * 8)
-		if err := ctx.Execute2Imm2(opSubstr, offsetStackSlot1, offsetStackSlot2); err != nil {
-			t.Fatal(err)
+		data16 := make([]string, 16)
+		for i := 0; i < bcLaneCount; i++ {
+			data16[i] = ut[i].data
 		}
-		//then
-		_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		obsResults := [16]string{}
-		for i := 0; i < 16; i++ {
-			from := obsOffsets[i]
-			to := obsOffsets[i] + obsLengths[i]
-			data := data16[i]
 
-			if (from > len(data)) || (to > len(data)) {
-				t.Errorf("%v\ninvalid range at lane %v: data=%q; from=%v; to=%v", name, i, data16, from, to)
-			} else {
-				obsResults[i] = data[from:to]
+		inputS := ctx.sRegFromStrings(data16)
+		inputFrom := i64RegData{}
+		inputLength := i64RegData{}
+		inputK := kRegData{mask: 0xFFFF}
+
+		outputS := sRegData{}
+		expectedOutputS := sRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			expectedOffset, expectedLength := referenceSubstr(ut[i].data, ut[i].begin, ut[i].length)
+			expectedString := ut[i].data[expectedOffset : expectedOffset+expectedLength]
+
+			if expectedString != ut[i].expResult {
+				t.Errorf("refImpl: input %q; begin=%v; length=%v; reference %q; expected %q",
+					data16[i], ut[i].begin, ut[i].length, expectedString, ut[i].expResult)
+			}
+
+			inputFrom.values[i] = int64(ut[i].begin)
+			inputLength.values[i] = int64(ut[i].length)
+
+			if expectedLength > 0 {
+				expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
+				expectedOutputS.sizes[i] = expectedLength
 			}
 		}
-		if (ctx.current != 0xFFFF) || (obsResults != expResults) {
-			t.Errorf("%v\ndata=%q\nbegin=%v\nlength=%v\nobserved=%q\nexpected=%q",
-				name, data16, stackContent1, stackContent2, obsResults, expResults)
+
+		if err := ctx.ExecuteOpcode(opSubstr, []any{&outputS, &inputS, &inputFrom, &inputLength, &inputK}, inputK.mask); err != nil {
+			t.Fatal(err)
 		}
+
+		verifySRegOutput(t, &outputS, &expectedOutputS)
 	}
 
 	t.Run(name, func(t *testing.T) {
@@ -1866,7 +1810,7 @@ func TestSubstrBF(t *testing.T) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data, begin, length) -> result
-		refImpl func(string, int, int) string
+		refImpl func(string, int, int) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
@@ -1892,56 +1836,35 @@ func TestSubstrBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
-		stackContent2 := make([]uint64, 16)
-		stackContent1 := make([]uint64, 16)
-		offsetStackSlot1 := uint16(0)
-		offsetStackSlot2 := uint16(len(stackContent1) * 8)
-		expLane := true
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
 			for _, length := range ts.lengthSpace {
-				for i := 0; i < 16; i++ {
-					stackContent2[i] = uint64(length)
-				}
-
 				for _, begin := range ts.beginSpace {
-					for i := 0; i < 16; i++ {
-						stackContent1[i] = uint64(begin)
-					}
+					ctx.clear()
 
-					ctx.setScalarStrings(data16)
-					ctx.setStackUint64(stackContent1)
-					ctx.addStackUint64(stackContent2)
-					ctx.current = lanes
-					scalarBefore := ctx.getScalarUint32()
+					inputS := ctx.sRegFromStrings(data16)
+					inputFrom := i64RegDataFromScalar(int64(begin))
+					inputLength := i64RegDataFromScalar(int64(length))
+					inputK := kRegData{mask: lanes}
+					outputS := sRegData{}
 
-					// when
-					if err := ctx.Execute2Imm2(ts.op, offsetStackSlot1, offsetStackSlot2); err != nil {
+					if err := ctx.ExecuteOpcode(opSubstr, []any{&outputS, &inputS, &inputFrom, &inputLength, &inputK}, inputK.mask); err != nil {
 						t.Fatal(err)
 					}
-					// then
-					obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-					for i := 0; i < 16; i++ {
-						expResult := ts.refImpl(data16[i], begin, length)
-						obsLane := getBit(obsLanes, i)
-						obsResult := data16[i][obsOffsets[i] : obsOffsets[i]+obsLengths[i]]
 
-						if (obsOffsets[i] + obsLengths[i]) > len(data16[i]) {
-							t.Errorf("%v\ninvalid offset or length at lane %v: data=%q; begin=%v; length=%v",
-								ts.name, i, data16[i], begin, length)
-							break mainLoop
-						}
-						if (obsLane != expLane) || (obsResult != expResult) {
-							t.Errorf("%v\nlane %v: data %q; begin=%v; length=%v; observed %q; expected %q",
-								ts.name, i, data16[i], begin, length, obsResult, expResult)
-							break mainLoop
+					expectedOutputS := sRegData{}
+					for i := 0; i < bcLaneCount; i++ {
+						if getBit(lanes, i) {
+							expectedOffset, expectedLength := ts.refImpl(data16[i], begin, length)
+							if expectedLength > 0 {
+								expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
+								expectedOutputS.sizes[i] = expectedLength
+							}
 						}
 					}
+					verifySRegOutput(t, &outputS, &expectedOutputS)
 				}
 			}
 		}
@@ -1966,12 +1889,10 @@ func FuzzSubstrFT(f *testing.F) {
 		1, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 5, 0, 1, 1, 2)
 
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// bytecode to run
-		op bcop
+		name string // name to describe this test-suite
+		op   bcop   // bytecode to run
 		// portable reference implementation: f(data, begin, length) -> result
-		refImpl func(string, int, int) string
+		refImpl func(string, int, int) (uint32, uint32)
 	}
 
 	testSuites := []testSuite{
@@ -1983,50 +1904,39 @@ func FuzzSubstrFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, begin, length [16]int) {
-		stackContent1 := make([]uint64, 16)
-		stackContent2 := make([]uint64, 16)
+		var ctx bctestContext
+		defer ctx.Free()
 
-		for i := 0; i < 16; i++ {
+		inputFrom := i64RegData{}
+		inputLength := i64RegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			stackContent1[i] = uint64(begin[i])
-			stackContent2[i] = uint64(length[i])
+			inputFrom.values[i] = int64(begin[i])
+			inputLength.values[i] = int64(length[i])
 		}
 
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setScalarStrings(data16[:])
-		ctx.setStackUint64(stackContent1)
-		ctx.addStackUint64(stackContent2)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
 
-		// when
-		offsetStackSlot1 := uint16(0)
-		offsetStackSlot2 := uint16(16 * 8)
-		if err := ctx.Execute2Imm2(ts.op, offsetStackSlot1, offsetStackSlot2); err != nil {
+		outputS := sRegData{}
+		if err := ctx.ExecuteOpcode(opSubstr, []any{&outputS, &inputS, &inputFrom, &inputLength, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			if getBit(obsLanes, i) {
-				expResults := ts.refImpl(data16[i], begin[i], length[i])
-				obsResult := data16[i][obsOffsets[i] : obsOffsets[i]+obsLengths[i]]
 
-				if obsResult != expResults {
-					obsResults := [16]string{}
-					for j := 0; j < 16; j++ {
-						obsResults[j] = data16[j][obsOffsets[j] : obsOffsets[j]+obsLengths[j]]
-					}
-					t.Errorf("%v\nissue with lane %v\ndata16=%q\nbegin=%v\nlength=%v\nobserved=%q\nexpected=%q",
-						ts.name, i, data16, begin, length, obsResult, expResults)
-					break
+		expectedOutputS := sRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) {
+				expectedOffset, expectedLength := ts.refImpl(data16[i], begin[i], length[i])
+				if expectedLength > 0 {
+					expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
+					expectedOutputS.sizes[i] = expectedLength
 				}
 			}
 		}
+		verifySRegOutput(t, &outputS, &expectedOutputS)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string,
@@ -2090,12 +2000,14 @@ func referenceIsSubnetOfIP4(msg string, min, max uint32) bool {
 // TestIsSubnetOfIP4UT runs unit-tests for: opIsSubnetOfIP4
 func TestIsSubnetOfIP4UT(t *testing.T) {
 	t.Parallel()
+
 	name := "is-subnet-of IP4 (opIsSubnetOfIP4)"
 
 	type unitTest struct {
 		ip, min, max string
 		expLane      bool
 	}
+
 	unitTests := []unitTest{
 		{"100.20.", "100.20.100.20", "100.20.100.20", false}, // read beyond buffer check
 		{"0.0.0.A", "0.0.0.1", "0.0.0.23", false},
@@ -2158,40 +2070,38 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 	}
 
 	run := func(ut unitTest, lanes uint16) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		min := binary.BigEndian.Uint32(net.ParseIP(ut.min).To4())
 		max := binary.BigEndian.Uint32(net.ParseIP(ut.max).To4())
-		// first: check reference implementation
-		{
-			obsLane := referenceIsSubnetOfIP4(ut.ip, min, max)
-			if obsLane != ut.expLane {
-				t.Errorf("refImpl: data=%q; min=%q; max=%q; observed=%v; expected=%v",
-					ut.ip, ut.min, ut.max, obsLane, ut.expLane)
-			}
-		}
-		// second: check the bytecode implementation
+
 		minA := toArrayIP4(min)
 		maxA := toArrayIP4(max)
 
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
 		ctx.setDict(stringext.ToBCD(&minA, &maxA))
-		ctx.setScalarStrings(fill16(ut.ip))
-		ctx.current = lanes
+		dictOffset := uint16(0)
 
-		// when
-		if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
+		inputS := ctx.sRegFromStrings(fill16(ut.ip))
+		inputK := kRegData{mask: lanes}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(opIsSubnetOfIP4, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(ctx.current, i)
-			if obsLane != ut.expLane {
-				t.Errorf("%v\nlane %v: ip %q; min %q; max %q; observed %v; expected %v",
-					name, i, ut.ip, ut.min, ut.max, obsLane, ut.expLane)
-				return
-			}
+
+		expectedOutputK := kRegData{}
+		active := referenceIsSubnetOfIP4(ut.ip, min, max)
+		if active != ut.expLane {
+			t.Errorf("refImpl: data=%q; min=%q; max=%q; observed=%v; expected=%v",
+				ut.ip, ut.min, ut.max, active, ut.expLane)
 		}
+
+		if active {
+			expectedOutputK.mask = inputK.mask
+		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	t.Run(name, func(t *testing.T) {
@@ -2204,19 +2114,16 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 // TestIsSubnetOfIP4BF runs brute-force tests for: opIsSubnetOfIP4
 func TestIsSubnetOfIP4BF(t *testing.T) {
 	t.Parallel()
+
 	type testSuite struct {
-		name string
-		// alphabet from which to generate data
-		dataAlphabet []rune
-		// space of lengths of the words made of alphabet
-		dataLenSpace []int
-		// maximum number of elements in dataSpace
-		dataMaxSize int
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, min, max) -> lane
-		refImpl func(string, uint32, uint32) bool
+		name         string
+		dataAlphabet []rune                            // alphabet from which to generate data
+		dataLenSpace []int                             // space of lengths of the words made of alphabet
+		dataMaxSize  int                               // maximum number of elements in dataSpace
+		op           bcop                              // bytecode to run
+		refImpl      func(string, uint32, uint32) bool // portable reference implementation: f(data, min, max) -> lane
 	}
+
 	testSuites := []testSuite{
 		{
 			name:         "is-subnet-of IP4 IP (opIsSubnetOfIP4)",
@@ -2251,39 +2158,33 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 	}
 
 	run := func(ts testSuite, lanes uint16, dataSpace [][]string) {
-		expLanes := [16]bool{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
 			min, max := randomMinMaxValues()
 			minA := toArrayIP4(min)
 			maxA := toArrayIP4(max)
 
-			// first collect expected values
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expLanes[i] = referenceIsSubnetOfIP4(data16[i], min, max) // calculate the expected lane value
-				}
-			}
-
+			ctx.clear()
 			ctx.setDict(stringext.ToBCD(&minA, &maxA))
-			ctx.setScalarStrings(data16)
-			ctx.current = lanes
-			scalarBefore := ctx.getScalarUint32()
+			dictOffset := uint16(0)
 
-			// when
-			if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+			inputS := ctx.sRegFromStrings(data16)
+			inputK := kRegData{mask: lanes}
+			outputK := kRegData{}
+
+			if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
-			// then
-			if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, expLanes); fault {
-				t.Errorf("%v\nip %q; min %q; max %q\n%v", ts.name, data16, toStrIP4(min), toStrIP4(max), msg)
-				break mainLoop
+
+			expectedOutputK := kRegData{}
+			for i := 0; i < bcLaneCount; i++ {
+				if getBit(lanes, i) && ts.refImpl(data16[i], min, max) {
+					expectedOutputK.mask |= uint16(1 << i)
+				}
 			}
+			verifyKRegOutput(t, &outputK, &expectedOutputK)
 		}
 	}
 
@@ -2310,8 +2211,6 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 
 // FuzzIsSubnetOfIP4FT runs fuzz tests for: opIsSubnetOfIP4
 func FuzzIsSubnetOfIP4FT(f *testing.F) {
-	name := "is-subnet-of IP4 (opIsSubnetOfIP4)"
-
 	str2Uint32 := func(str string) uint32 {
 		result := uint32(0)
 		for i, segStr := range strings.Split(str, ".") {
@@ -2328,6 +2227,7 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		ip       string
 		min, max uint32
 	}
+
 	unitTests := []unitTest{
 		{"10.1.0.0", str2Uint32("10.1.0.0"), str2Uint32("20.0.0.0")},
 		{"10.2.0.0", str2Uint32("9.0.0.0"), str2Uint32("10.1.0.0")},
@@ -2362,43 +2262,44 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		{"8.8.8.0", str2Uint32("8.8.8.1"), str2Uint32("8.8.8.3")}, // min_3 > ip_3 < max_3
 		{"8.8.8.2", str2Uint32("8.8.8.1"), str2Uint32("8.8.8.1")}, // min_3 < ip_3 > max_3
 	}
+
 	for _, ut := range unitTests {
 		a := ut.ip
 		f.Add(uint16(0xFFFF), a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, ut.min, ut.max)
 	}
 
 	run := func(t *testing.T, lanes uint16, data16 [16]string, min, max uint32) {
-
-		expLanes := uint16(0)
-		for i := 0; i < 16; i++ {
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) {
-				expLanes = setBit(expLanes, i, referenceIsSubnetOfIP4(data16[i], min, max))
-			}
 		}
-		minA := toArrayIP4(min)
-		maxA := toArrayIP4(max)
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(stringext.ToBCD(&minA, &maxA))
-		ctx.setScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(opIsSubnetOfIP4, 0); err != nil {
+		minA := toArrayIP4(min)
+		maxA := toArrayIP4(max)
+
+		ctx.clear()
+		ctx.setDict(stringext.ToBCD(&minA, &maxA))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(opIsSubnetOfIP4, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if ctx.current != expLanes {
-			if fault, msg := hasFaultLanesOnly(&ctx, scalarBefore, lanes, toBoolArray(expLanes)); fault {
-				t.Errorf("%v\nip %q; min %q; max %q\n%v", name, data16, toStrIP4(min), toStrIP4(max), msg)
+
+		expectedOutputK := kRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) && referenceIsSubnetOfIP4(data16[i], min, max) {
+				expectedOutputK.mask |= uint16(1 << i)
 			}
 		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, min, max uint32) {
@@ -2410,12 +2311,14 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 // TestSkip1CharUT unit-tests for opSkip1charLeft, opSkip1charRight
 func TestSkip1CharUT(t *testing.T) {
 	t.Parallel()
+
 	type unitTest struct {
 		data      string // data at SI
 		expLane   bool   // expected lane K1
 		expOffset int    // expected offset Z2
 		expLength int    // expected length Z3
 	}
+
 	type testSuite struct {
 		// name to describe this test-suite
 		name string
@@ -2426,6 +2329,7 @@ func TestSkip1CharUT(t *testing.T) {
 		// portable reference implementation: f(data, skipCount) -> lane, offset, length
 		refImpl func(string, int) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name: "skip 1 char from left (opSkip1charLeft)",
@@ -2482,40 +2386,34 @@ func TestSkip1CharUT(t *testing.T) {
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		dataPrefix := string([]byte{0, 0, 0, 0})
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, 1)
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
-				}
-			}
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("refImpl: data %q\n%v", ut.data, msg)
-			}
-		}
-		// second: check bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.Execute(ts.op); err != nil {
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\nskipping 1 char from data %q\n%v", ts.name, ut.data, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		// first: check reference implementation
+		obsLane, obsOffset, obsLength := ts.refImpl(ut.data, 1)
+		for i := 0; i < bcLaneCount; i++ {
+			if obsLane && getBit(lanes, i) {
+				expectedOutputK.mask |= uint16(1 << i)
+				expectedOutputS.offsets[i] = uint32(obsOffset) + uint32(inputS.offsets[i])
+				expectedOutputS.sizes[i] = uint32(obsLength)
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -2530,6 +2428,7 @@ func TestSkip1CharUT(t *testing.T) {
 // TestSkip1CharBF brute-force tests for: opSkip1charLeft, opSkip1charRight
 func TestSkip1CharBF(t *testing.T) {
 	t.Parallel()
+
 	type testSuite struct {
 		name string
 		// alphabet from which to generate needles and patterns
@@ -2543,6 +2442,7 @@ func TestSkip1CharBF(t *testing.T) {
 		// portable reference implementation: f(data, skipCount) -> lane, offset, length
 		refImpl func(string, int) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name:         "skip 1 char from left (opSkip1charLeft)",
@@ -2563,38 +2463,38 @@ func TestSkip1CharBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
-		dataPrefix := string([]byte{0, 0, 0, 0})
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
-			// first collect expected values
-			for i := 0; i < 16; i++ {
+			ctx.clear()
+
+			inputS := ctx.sRegFromStrings(data16)
+			inputK := kRegData{mask: uint16((1 << len(data16)) - 1)}
+
+			outputS := sRegData{}
+			outputK := kRegData{}
+
+			if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+				t.Fatal(err)
+			}
+
+			expectedOutputS := sRegData{}
+			expectedOutputK := kRegData{}
+
+			for i := 0; i < bcLaneCount; i++ {
 				if getBit(lanes, i) {
-					expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], 1)
+					active, offset, size := ts.refImpl(data16[i], 1)
+					if active {
+						expectedOutputK.mask |= uint16(1 << i)
+						expectedOutputS.offsets[i] = uint32(offset) + inputS.offsets[i]
+						expectedOutputS.sizes[i] = uint32(size)
+					}
 				}
 			}
 
-			ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-			ctx.addScalarStrings(data16)
-			ctx.current = lanes
-			scalarBefore := ctx.getScalarUint32()
-
-			// when
-			if err := ctx.Execute(ts.op); err != nil {
-				t.Fatal(err)
-			}
-			// then
-			if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-				t.Errorf("%v\nskipping 1 char from data %q\n%v", ts.name, data16, msg)
-				break mainLoop
-			}
+			verifyKRegOutput(t, &outputK, &expectedOutputK)
+			verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 		}
 	}
 
@@ -2616,6 +2516,7 @@ func FuzzSkip1CharFT(f *testing.F) {
 		// portable reference implementation: f(data, skipCount) -> lane, offset, length
 		refImpl func(string, int) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name:    "skip 1 char from left (opSkip1charLeft)",
@@ -2630,37 +2531,38 @@ func FuzzSkip1CharFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
-		dataPrefix := string([]byte{0, 0, 0, 0})
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
+		var ctx bctestContext
+		defer ctx.Free()
 
-		// first collect expected values
-		for i := 0; i < 16; i++ {
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+			t.Fatal(err)
+		}
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], 1)
+				active, offset, length := ts.refImpl(data16[i], 1)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(offset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(length)
+				}
 			}
 		}
 
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		if err := ctx.Execute(ts.op); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%v;\n%v", ts.name, join16Str(data16), msg)
-		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
@@ -2674,6 +2576,7 @@ func FuzzSkip1CharFT(f *testing.F) {
 // TestSkipNCharUT unit-tests for opSkipNcharLeft, opSkipNcharRight
 func TestSkipNCharUT(t *testing.T) {
 	t.Parallel()
+
 	type unitTest struct {
 		data      string // data at SI
 		skipCount int    // number of code-points to skip
@@ -2681,6 +2584,7 @@ func TestSkipNCharUT(t *testing.T) {
 		expOffset int    // expected offset Z2
 		expLength int    // expected length Z3
 	}
+
 	type testSuite struct {
 		// name to describe this test-suite
 		name string
@@ -2691,6 +2595,7 @@ func TestSkipNCharUT(t *testing.T) {
 		// portable reference implementation: f(data, skipCount) -> lane, offset, length
 		refImpl func(string, int) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name: "skip N char from left (opSkipNcharLeft)",
@@ -2770,43 +2675,33 @@ func TestSkipNCharUT(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, ut *unitTest, lanes uint16) {
-		dataPrefix := string([]byte{0, 0, 0, 0})
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-		stackContent := make([]uint64, 16)
-
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.skipCount)
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
-				}
-				stackContent[i] = uint64(ut.skipCount)
-			}
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("refImpl: %v\ndata %q; skipCount=%v\n%v", ts.name, ut.data, ut.skipCount, msg)
-			}
-		}
-		// second: check bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(fill16(ut.data))
-		ctx.setStackUint64(stackContent)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputCount := i64RegDataFromScalar(int64(ut.skipCount))
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputCount, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%q; skipCount=%v\n%v", ts.name, ut.data, ut.skipCount, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			active, expectedOffset, expectedLength := ts.refImpl(ut.data, ut.skipCount)
+			if getBit(lanes, i) && active {
+				expectedOutputS.offsets[i] = uint32(expectedOffset) + uint32(inputS.offsets[i])
+				expectedOutputS.sizes[i] = uint32(expectedLength)
+				expectedOutputK.mask |= uint16(1 << i)
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -2821,6 +2716,7 @@ func TestSkipNCharUT(t *testing.T) {
 // TestSkip1CharBF brute-force tests for: opSkipNcharLeft, opSkipNcharRight
 func TestSkipNCharBF(t *testing.T) {
 	t.Parallel()
+
 	type testSuite struct {
 		name string
 		// alphabet from which to generate needles and patterns
@@ -2859,45 +2755,38 @@ func TestSkipNCharBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
-		stackContent := make([]uint64, 16)
-		dataPrefix := string([]byte{0, 0, 0, 0})
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, skipCount := range ts.skipCountSpace {
-			for i := 0; i < 16; i++ {
-				stackContent[i] = uint64(skipCount)
-			}
 			for _, data16 := range dataSpace {
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], skipCount)
+				ctx.clear()
+
+				inputS := ctx.sRegFromStrings(data16)
+				inputK := kRegData{mask: lanes}
+				inputCountS := i64RegDataFromScalar(int64(skipCount))
+
+				outputS := sRegData{}
+				outputK := kRegData{}
+
+				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputCountS, &inputK}, inputK.mask); err != nil {
+					t.Fatal(err)
+				}
+
+				expectedOutputS := sRegData{}
+				expectedOutputK := kRegData{}
+
+				for i := 0; i < bcLaneCount; i++ {
+					active, expectedOffset, expectedLength := ts.refImpl(data16[i], skipCount)
+					if getBit(lanes, i) && active {
+						expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+						expectedOutputS.sizes[i] = uint32(expectedLength)
+						expectedOutputK.mask |= uint16(1 << i)
 					}
 				}
 
-				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-				ctx.addScalarStrings(data16)
-				ctx.setStackUint64(stackContent)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\nskipping %v char from data %q\n%v",
-						ts.name, skipCount, data16, msg)
-					break mainLoop
-				}
+				verifyKRegOutput(t, &outputK, &expectedOutputK)
+				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 			}
 		}
 	}
@@ -2922,6 +2811,7 @@ func FuzzSkipNCharFT(f *testing.F) {
 		// portable reference implementation: f(data, skipCount) -> lane, offset, length
 		refImpl func(string, int) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name:    "skip N char from left (opSkipNcharLeft)",
@@ -2936,43 +2826,46 @@ func FuzzSkipNCharFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, skipCount [16]int) {
-
-		// first collect expected values
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-		stackContent := make([]uint64, 16)
-
-		for i := 0; i < 16; i++ {
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
-			}
-			if getBit(lanes, i) {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], skipCount[i])
-			}
-			if skipCount[i] > 0 {
-				stackContent[i] = uint64(skipCount[i])
 			}
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0})
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(data16[:])
-		ctx.setStackUint64(stackContent)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputCount := i64RegData{}
+		inputK := kRegData{mask: lanes}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if skipCount[i] >= 0 {
+				inputCount.values[i] = int64(skipCount[i])
+			}
+		}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputCount, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%v;\n%v", ts.name, join16Str(data16), msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			active, expectedOffset, expectedLength := ts.refImpl(data16[i], skipCount[i])
+			if getBit(lanes, i) && active {
+				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+				expectedOutputS.sizes[i] = uint32(expectedLength)
+				expectedOutputK.mask |= uint16(1 << i)
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15 int) {
@@ -3080,45 +2973,39 @@ func TestSplitPartUT(t *testing.T) {
 	}
 
 	run := func(ut unitTest, lanes uint16) {
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-		stackContent := make([]uint64, 16)
-
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := referenceSplitPart(ut.data, ut.idx, ut.delimiter)
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
-				}
-				stackContent[i] = uint64(ut.idx)
-			}
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("refImpl: splitting %q; idx=%v; delim=%q\n%v", ut.data, ut.idx, ut.delimiter, msg)
-			}
-		}
-
-		// second: check bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(string(ut.delimiter))
-		ctx.setScalarStrings(fill16(ut.data))
-		ctx.setStackUint64(stackContent)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		offsetDict := uint16(0)
-		offsetStackSlot := uint16(0)
-		if err := ctx.Execute2Imm2(opSplitPart, offsetDict, offsetStackSlot); err != nil {
+		ctx.setDict(string(ut.delimiter))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputIndex := i64RegDataFromScalar(int64(ut.idx))
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(opSplitPart, []any{&outputS, &outputK, &inputS, dictOffset, &inputIndex, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\nsplitting %q; idx=%v; delim=%q\n%v", name, ut.data, ut.idx, ut.delimiter, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		{
+			active, expectedOffset, expectedLength := referenceSplitPart(ut.data, ut.idx, ut.delimiter)
+			for i := 0; i < bcLaneCount; i++ {
+				if getBit(lanes, i) && active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(expectedLength)
+				}
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	t.Run(name, func(t *testing.T) {
@@ -3131,6 +3018,7 @@ func TestSplitPartUT(t *testing.T) {
 // TestSplitPartBF brute-force tests for: opSplitPart
 func TestSplitPartBF(t *testing.T) {
 	t.Parallel()
+
 	type testSuite struct {
 		name string
 		// alphabet from which to generate needles and patterns
@@ -3148,6 +3036,7 @@ func TestSplitPartBF(t *testing.T) {
 		// portable reference implementation: f(data, idx, delimiter) -> lane, offset, length
 		refImpl func(string, int, rune) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name:         "split part (opSplitPart)",
@@ -3172,46 +3061,42 @@ func TestSplitPartBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
-		stackContent := make([]uint64, 16)
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, idx := range ts.idxSpace {
-			for i := 0; i < 16; i++ {
-				stackContent[i] = uint64(idx)
-			}
-
 			for _, data16 := range dataSpace {
-				// first collect expected values
-				for i := 0; i < 16; i++ {
+				ctx.clear()
+				ctx.setDict(string(ts.delimiter))
+				dictOffset := uint16(0)
+
+				inputS := ctx.sRegFromStrings(data16)
+				inputIndex := i64RegDataFromScalar(int64(idx))
+				inputK := kRegData{mask: lanes}
+
+				outputS := sRegData{}
+				outputK := kRegData{}
+
+				if err := ctx.ExecuteOpcode(opSplitPart, []any{&outputS, &outputK, &inputS, dictOffset, &inputIndex, &inputK}, inputK.mask); err != nil {
+					t.Fatal(err)
+				}
+
+				expectedOutputS := sRegData{}
+				expectedOutputK := kRegData{}
+
+				for i := 0; i < bcLaneCount; i++ {
 					if getBit(lanes, i) {
-						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], idx, ts.delimiter)
+						active, expectedOffset, expectedLength := ts.refImpl(data16[i], idx, ts.delimiter)
+						if active {
+							expectedOutputK.mask |= uint16(1 << i)
+							expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+							expectedOutputS.sizes[i] = uint32(expectedLength)
+						}
 					}
 				}
 
-				ctx.setDict(string(ts.delimiter))
-				ctx.setScalarStrings(data16)
-				ctx.setStackUint64(stackContent)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				offsetDict := uint16(0)
-				offsetStackSlot := uint16(0)
-				if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\nsplitting %q; idx=%v; delim=%q\n%v", ts.name, data16, idx, ts.delimiter, msg)
-					break mainLoop
-				}
+				verifyKRegOutput(t, &outputK, &expectedOutputK)
+				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 			}
 		}
 	}
@@ -3235,6 +3120,7 @@ func FuzzSplitPartFT(f *testing.F) {
 		// portable reference implementation: f(data, idx, delimiter) -> lane, offset, length
 		refImpl func(string, int, rune) (bool, int, int)
 	}
+
 	testSuites := []testSuite{
 		{
 			name:    "split part (opSplitPart)",
@@ -3247,46 +3133,53 @@ func FuzzSplitPartFT(f *testing.F) {
 		if (delimiterByte == 0) || (delimiterByte >= 0x80) {
 			return // delimiter can only be ASCII and not 0
 		}
-		delimiter := rune(delimiterByte)
 
-		// first collect expected values
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-		stackContent := make([]uint64, 16)
-
-		for i := 0; i < 16; i++ {
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
-			}
-			if getBit(lanes, i) {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], idx[i], delimiter)
-			}
-			if idx[i] > 0 {
-				stackContent[i] = uint64(idx[i])
 			}
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(string(delimiter))
-		ctx.setScalarStrings(data16[:])
-		ctx.setStackUint64(stackContent)
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		offsetDict := uint16(0)
-		offsetStackSlot := uint16(0)
-		if err := ctx.Execute2Imm2(ts.op, offsetDict, offsetStackSlot); err != nil {
+		delimiter := rune(delimiterByte)
+		ctx.setDict(string(delimiter))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+
+		inputIndex := i64RegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if idx[i] >= 0 {
+				inputIndex.values[i] = int64(idx[i])
+			}
+		}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputIndex, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%v\nidx=%v\ndelim=%q (0x%x)\n%v",
-				ts.name, join16Str(data16), idx, delimiter, byte(delimiter), msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) {
+				active, expectedOffset, expectedLength := ts.refImpl(data16[i], idx[i], delimiter)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(expectedLength)
+				}
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16,
@@ -3328,33 +3221,30 @@ func TestLengthStrUT(t *testing.T) {
 	}
 
 	run := func(ut unitTest, lanes uint16) {
-		// first: check reference implementation
-		{
-			obsChars := utf8.RuneCountInString(ut.data)
-			if obsChars != ut.expChars {
-				t.Errorf("refImpl: length of %q; observed %v; expected: %v", ut.data, obsChars, ut.expChars)
-			}
-		}
-		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setScalarStrings(fill16(ut.data))
-		ctx.current = lanes
 
-		// when
-		if err := ctx.Execute(opLengthStr); err != nil {
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: 0xFFFF}
+
+		outputS := i64RegData{}
+
+		if err := ctx.ExecuteOpcode(opLengthStr, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		scalarAfter := ctx.getScalarInt64()
-		for i := 0; i < 16; i++ {
-			nCharsObs := int(scalarAfter[i])
-			if ut.expChars != nCharsObs {
-				t.Errorf("lane %v: length of %q; observed %v; expected: %v", i, ut.data, nCharsObs, ut.expChars)
-				break
-			}
+
+		// first: check reference implementation
+		expChars := utf8.RuneCountInString(ut.data)
+		if expChars != ut.expChars {
+			t.Errorf("refImpl: length of %q; observed %v; expected: %v", ut.data, expChars, ut.expChars)
 		}
+
+		// second: check the bytecode implementation
+		expectedOutputS := i64RegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			expectedOutputS.values[i] = int64(expChars)
+		}
+		verifyI64RegOutput(t, &outputS, &expectedOutputS)
 	}
 
 	t.Run(name, func(t *testing.T) {
@@ -3400,38 +3290,29 @@ func TestLengthStrBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
-		expChars := [16]int{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
-			// first collect expected values
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expChars[i] = ts.refImpl(data16[i])
-				}
-			}
+			ctx.clear()
 
-			ctx.setScalarStrings(data16)
-			ctx.current = lanes
+			inputS := ctx.sRegFromStrings(data16)
+			inputK := kRegData{mask: uint16((1 << len(data16)) - 1)}
 
-			// when
-			if err := ctx.Execute(ts.op); err != nil {
+			outputS := i64RegData{}
+
+			if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
-			// then
-			scalarAfter := ctx.getScalarInt64()
-			for i := 0; i < 16; i++ {
-				obsChars := int(scalarAfter[i])
-				if obsChars != expChars[i] {
-					t.Errorf("%v\nlane %v: length of %q; observed %v; expected: %v",
-						ts.name, i, data16[i], obsChars, expChars)
-					break mainLoop
+
+			expectedOutputS := i64RegData{}
+			for i := 0; i < bcLaneCount; i++ {
+				if getBit(lanes, i) {
+					expectedOutputS.values[i] = int64(ts.refImpl(data16[i]))
 				}
 			}
+
+			verifyI64RegOutput(t, &outputS, &expectedOutputS)
 		}
 	}
 
@@ -3462,37 +3343,29 @@ func FuzzLengthStrFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
-		expLanes := lanes // counting code-points does not affect lanes death
-		expLengths := [16]int{}
-		for i := 0; i < 16; i++ {
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			expLengths[i] = ts.refImpl(data16[i])
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setScalarStrings(data16[:])
-		ctx.current = lanes
 
-		// when
-		if err := ctx.Execute(ts.op); err != nil {
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: 0xFFFF}
+		outputS := i64RegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		scalarAfter := ctx.getScalarInt64()
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(ctx.current, i)
-			expLane := getBit(expLanes, i)
-			obsLength := int(scalarAfter[i])
 
-			if fault, msg := fault1x1(obsLane, expLane, 0, 0, obsLength, expLengths[i]); fault {
-				t.Errorf("%v\nlane %v: length of %q\n%v", ts.name, i, data16[i], msg)
-				break
-			}
+		expectedOutputS := i64RegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			expectedOutputS.values[i] = int64(ts.refImpl(data16[i]))
 		}
+
+		verifyI64RegOutput(t, &outputS, &expectedOutputS)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
@@ -3501,6 +3374,16 @@ func FuzzLengthStrFT(f *testing.F) {
 			run(t, &ts, lanes, data)
 		}
 	})
+}
+
+func referenceTrimLeft(s, cutset string) (uint32, uint32) {
+	result := strings.TrimLeft(s, cutset)
+	return uint32(len(s) - len(result)), uint32(len(result))
+}
+
+func referenceTrimRight(s, cutset string) (uint32, uint32) {
+	result := strings.TrimRight(s, cutset)
+	return uint32(0), uint32(len(result))
 }
 
 // TestTrimCharUT unit-tests for: opTrim4charLeft, opTrim4charRight
@@ -3519,7 +3402,7 @@ func TestTrimCharUT(t *testing.T) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data, cutset) -> result
-		refImpl func(string, string) string
+		refImpl func(string, string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
@@ -3537,7 +3420,7 @@ func TestTrimCharUT(t *testing.T) {
 				},
 			},
 			op:      opTrim4charLeft,
-			refImpl: strings.TrimLeft,
+			refImpl: referenceTrimLeft,
 		},
 		{
 			name: "trim char from right (opTrim4charRight)",
@@ -3549,47 +3432,35 @@ func TestTrimCharUT(t *testing.T) {
 				},
 			},
 			op:      opTrim4charRight,
-			refImpl: strings.TrimRight,
+			refImpl: referenceTrimRight,
 		},
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		// first: check reference implementation
-		for i := 0; i < 16; i++ {
-			obsResult := ts.refImpl(ut.data[i], ut.cutset)
-			if ut.expResult[i] != obsResult {
-				t.Errorf("refImpl: lane %v: trim %q; cutset %q: observed %q; expected: %q",
-					i, ut.data[i], ut.cutset, obsResult, ut.expResult[i])
-			}
-		}
-		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
-		ctx.setDict(fill4(ut.cutset))
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(ut.data[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		ctx.setDict(fill4(ut.cutset))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(ut.data[:])
+		inputK := kRegData{mask: lanes}
+		outputS := sRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		scalarAfter := ctx.getScalarUint32()
-		for i := 0; i < 16; i++ {
-			obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
-			obsLength := int(scalarAfter[1][i])
-			obsResult := ut.data[i][obsOffset : obsOffset+obsLength]
 
-			if ut.expResult[i] != obsResult {
-				t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
-					ts.name, i, ut.data, ut.cutset, obsResult, ut.expResult)
-				break
+		expectedOutputS := sRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) {
+				expectedOffset, expectedLength := ts.refImpl(ut.data[i], ut.cutset)
+				expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
+				expectedOutputS.sizes[i] = expectedLength
 			}
 		}
+
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &inputK)
 	}
 
 	for _, ts := range testSuites {
@@ -3615,7 +3486,7 @@ func TestTrimCharBF(t *testing.T) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data, cutset) -> string
-		refImpl func(string, string) string
+		refImpl func(string, string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
@@ -3627,7 +3498,7 @@ func TestTrimCharBF(t *testing.T) {
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charLeft,
-			refImpl:        strings.TrimLeft,
+			refImpl:        referenceTrimLeft,
 		},
 		{
 			name:           "trim char from left (opTrim4charLeft) UTF8",
@@ -3638,7 +3509,7 @@ func TestTrimCharBF(t *testing.T) {
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charLeft,
-			refImpl:        strings.TrimLeft,
+			refImpl:        referenceTrimLeft,
 		},
 		{
 			name:           "trim char from right (opTrim4charRight)",
@@ -3649,7 +3520,7 @@ func TestTrimCharBF(t *testing.T) {
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charRight,
-			refImpl:        strings.TrimRight,
+			refImpl:        referenceTrimRight,
 		},
 		{
 			name:           "trim char from right (opTrim4charRight) UTF8",
@@ -3660,52 +3531,39 @@ func TestTrimCharBF(t *testing.T) {
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
 			op:             opTrim4charRight,
-			refImpl:        strings.TrimRight,
+			refImpl:        referenceTrimRight,
 		},
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, cutsetSpace []string) {
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
-		expResults := [16]string{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
 			for _, cutset := range cutsetSpace {
-
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expResults[i] = ts.refImpl(data16[i], cutset) // expected result
-					}
-				}
+				ctx.clear()
 
 				ctx.setDict(fill4(cutset))
-				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-				ctx.addScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
+				dictOffset := uint16(0)
 
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+				inputS := ctx.sRegFromStrings(data16)
+				inputK := kRegData{mask: lanes}
+				outputS := sRegData{}
+
+				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 					t.Fatal(err)
 				}
-				// then
-				scalarAfter := ctx.getScalarUint32()
-				for i := 0; i < 16; i++ {
-					obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
-					obsLength := int(scalarAfter[1][i])
-					obsResult := data16[i][obsOffset : obsOffset+obsLength] // observed result
 
-					if expResults[i] != obsResult {
-						t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
-							ts.name, i, data16[i], cutset, obsResult, expResults[i])
-						break mainLoop
+				expectedOutputS := sRegData{}
+				for i := 0; i < bcLaneCount; i++ {
+					if getBit(lanes, i) {
+						expectedOffset, expectedLength := ts.refImpl(data16[i], cutset)
+						expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
+						expectedOutputS.sizes[i] = expectedLength
 					}
 				}
+
+				verifySRegOutputP(t, &outputS, &expectedOutputS, &inputK)
 			}
 		}
 	}
@@ -3729,18 +3587,18 @@ func FuzzTrimCharFT(f *testing.F) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data, cutset) -> string
-		refImpl func(string, string) string
+		refImpl func(string, string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
 			name:    "trim char from left (opTrim4charLeft)",
 			op:      opTrim4charLeft,
-			refImpl: strings.TrimLeft,
+			refImpl: referenceTrimLeft,
 		},
 		{
 			name:    "trim char from right (opTrim4charRight)",
 			op:      opTrim4charRight,
-			refImpl: strings.TrimRight,
+			refImpl: referenceTrimRight,
 		},
 	}
 
@@ -3750,49 +3608,37 @@ func FuzzTrimCharFT(f *testing.F) {
 				return //TODO cutset does not yet support non-ASCII
 			}
 		}
-		expResults := [16]string{}
-		for i := 0; i < 16; i++ {
+
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
-			}
-			if getBit(lanes, i) {
-				expResults[i] = ts.refImpl(data16[i], cutset) // expected result
 			}
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
-		ctx.setDict(cutset)
-		ctx.setData(dataPrefix) // prepend 4 bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		ctx.setDict(cutset)
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+		outputS := sRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
 
-		// then
-		scalarAfter := ctx.getScalarUint32()
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(ctx.current, i)
-			expLane := getBit(lanes, i)
-
-			if obsLane || expLane {
-				obsOffset := int(scalarAfter[0][i] - scalarBefore[0][i]) // NOTE the reference implementation returns offset starting from zero
-				obsLength := int(scalarAfter[1][i])
-				obsResult := data16[i][obsOffset : obsOffset+obsLength] // observed result
-
-				if expResults[i] != obsResult {
-					t.Errorf("%v\nlane %v: trim %q; cutset %q: observed %q; expected: %q",
-						ts.name, i, data16, cutset, obsResult, expResults[i])
-					break
-				}
+		expectedOutputS := sRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) {
+				expectedOffset, expectedLength := ts.refImpl(data16[i], cutset)
+				expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
+				expectedOutputS.sizes[i] = expectedLength
 			}
 		}
+
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &inputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, char1, char2, char3, char4 byte) {
@@ -3804,12 +3650,25 @@ func FuzzTrimCharFT(f *testing.F) {
 	})
 }
 
+func trimLeftReference(data string) (uint32, uint32) {
+	// TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
+	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
+	result := strings.TrimLeft(data, whiteSpace)
+
+	return uint32(len(data) - len(result)), uint32(len(result))
+}
+
+func trimRightReference(data string) (uint32, uint32) {
+	// TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
+	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
+	result := strings.TrimRight(data, whiteSpace)
+
+	return uint32(0), uint32(len(result))
+}
+
 // TestTrimWhiteSpaceUT unit-tests for: opTrimWsLeft, opTrimWsRight
 func TestTrimWhiteSpaceUT(t *testing.T) {
 	t.Parallel()
-
-	//TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
-	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
 
 	type unitTest struct {
 		data      string // data at SI
@@ -3823,7 +3682,7 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data) -> result
-		refImpl func(string) string
+		refImpl func(string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
@@ -3837,10 +3696,8 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 				{"     a", "a"},
 				{" €", "€"},
 			},
-			op: opTrimWsLeft,
-			refImpl: func(data string) string {
-				return strings.TrimLeft(data, whiteSpace)
-			},
+			op:      opTrimWsLeft,
+			refImpl: trimLeftReference,
 		},
 		{
 			name: "trim white-space from right (opTrimWsRight)",
@@ -3853,44 +3710,32 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 				{"a     ", "a"},
 				{"€ ", "€"},
 			},
-			op: opTrimWsRight,
-			refImpl: func(data string) string {
-				return strings.TrimRight(data, whiteSpace)
-			},
+			op:      opTrimWsRight,
+			refImpl: trimRightReference,
 		},
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		// first: check reference implementation
-		{
-			obsResult := ts.refImpl(ut.data)
-			if obsResult != ut.expResult {
-				t.Errorf("refImpl: trim %q; observed %q; expected: %q", ut.data, obsResult, ut.expResult)
-			}
-		}
-		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
-		ctx.setData(dataPrefix)                  // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.Execute(ts.op); err != nil {
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			obsResult := ut.data[obsOffsets[i] : obsOffsets[i]+obsLengths[i]]
-			if obsResult != ut.expResult {
-				t.Errorf("lane %v: trim %q; observed %q; expected: %q", i, ut.data, obsResult, ut.expResult)
-				break
+
+		expectedOffset, expectedSize := ts.refImpl(ut.data)
+		expectedOutputS := sRegData{}
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(lanes, i) {
+				expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
+				expectedOutputS.sizes[i] = expectedSize
 			}
 		}
+		verifySRegOutput(t, &outputS, &expectedOutputS)
 	}
 
 	for _, ts := range testSuites {
@@ -3905,7 +3750,6 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 // TestTrimWhiteSpaceBF brute-force for: opTrimWsLeft, opTrimWsRight
 func TestTrimWhiteSpaceBF(t *testing.T) {
 	t.Parallel()
-	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
 
 	type testSuite struct {
 		name string
@@ -3918,7 +3762,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data) -> string
-		refImpl func(string) string
+		refImpl func(string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
@@ -3927,9 +3771,7 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 			dataLenSpace: []int{1, 2, 3, 4, 5},
 			dataMaxSize:  exhaustive,
 			op:           opTrimWsLeft,
-			refImpl: func(data string) string {
-				return strings.TrimLeft(data, whiteSpace)
-			},
+			refImpl:      trimLeftReference,
 		},
 		{
 			name:         "trim whitespace from right (opTrimWsRight)",
@@ -3937,50 +3779,34 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 			dataLenSpace: []int{1, 2, 3, 4, 5},
 			dataMaxSize:  exhaustive,
 			op:           opTrimWsRight,
-			refImpl: func(data string) string {
-				return strings.TrimRight(data, whiteSpace)
-			},
+			refImpl:      trimRightReference,
 		},
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrimWsRight
-		expResults := [16]string{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
+			ctx.clear()
 
-			// first collect expected values
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expResults[i] = ts.refImpl(data16[i])
-				}
-			}
+			inputS := ctx.sRegFromStrings(data16)
+			inputK := kRegData{mask: lanes}
 
-			ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-			ctx.addScalarStrings(data16)
-			ctx.current = lanes
-			scalarBefore := ctx.getScalarUint32()
-
-			// when
-			if err := ctx.Execute(ts.op); err != nil {
+			outputS := sRegData{}
+			if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
-			// then
-			_, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-			for i := 0; i < 16; i++ {
-				resultObs := data16[i][obsOffsets[i] : obsOffsets[i]+obsLengths[i]]
 
-				if expResults[i] != resultObs {
-					t.Errorf("%v\nlane %v: trim %q: observed %q; expected: %q",
-						ts.name, i, data16[i], resultObs, expResults[i])
-					break mainLoop
+			expectedOutputS := sRegData{}
+			for i := 0; i < bcLaneCount; i++ {
+				if getBit(lanes, i) {
+					expectedOffset, expectedSize := ts.refImpl(data16[i])
+					expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
+					expectedOutputS.sizes[i] = expectedSize
 				}
 			}
+			verifySRegOutput(t, &outputS, &expectedOutputS)
 		}
 	}
 
@@ -3993,9 +3819,6 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 
 // FuzzTrimWhiteSpaceFT fuzz tests for: opTrimWsLeft, opTrimWsRight
 func FuzzTrimWhiteSpaceFT(f *testing.F) {
-	//TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
-	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
-
 	f.Add(uint16(0xFFFF), "a", "¢", "€", " 𐍈", "ab", "a¢ ", "a€", "a𐍈", "abb", " ab¢", "ab€", "ab𐍈\t", "\v$¢€𐍈", "\nab¢", "\fab¢", "\rab¢ ")
 
 	type testSuite struct {
@@ -4003,68 +3826,45 @@ func FuzzTrimWhiteSpaceFT(f *testing.F) {
 		// bytecode to run
 		op bcop
 		// portable reference implementation: f(data) -> string
-		refImpl func(string) string
+		refImpl func(string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
-			name: "trim char from left (opTrim4charLeft)",
-			op:   opTrimWsLeft,
-			refImpl: func(data string) string {
-				return strings.TrimLeft(data, whiteSpace)
-			},
+			name:    "trim char from left (opTrim4charLeft)",
+			op:      opTrimWsLeft,
+			refImpl: trimLeftReference,
 		},
 		{
-			name: "trim char from left (opTrim4charLeft)",
-			op:   opTrimWsRight,
-			refImpl: func(data string) string {
-				return strings.TrimRight(data, whiteSpace)
-			},
+			name:    "trim char from left (opTrim4charLeft)",
+			op:      opTrimWsRight,
+			refImpl: trimRightReference,
 		},
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
-		expLanes := lanes
-		expResult := [16]string{}
-		for i := 0; i < 16; i++ {
+		var ctx bctestContext
+		defer ctx.Free()
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+			t.Fatal(err)
+		}
+
+		expectedOutputS := sRegData{}
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
 			if getBit(lanes, i) {
-				expResult[i] = ts.refImpl(data16[i])
+				expectedOffset, expectedSize := ts.refImpl(data16[i])
+				expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
+				expectedOutputS.sizes[i] = expectedSize
 			}
 		}
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opTrim4charRight
-		ctx.setData(dataPrefix)                  // prepend 4 bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		if err := ctx.Execute(ts.op); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		if obsLanes != expLanes {
-			for i := 0; i < 16; i++ {
-				obsLane := getBit(obsLanes, i)
-				expLane := getBit(expLanes, i)
-
-				if (obsLane == expLane) && (obsLane || expLane) {
-					obsResult := data16[i][obsOffsets[i] : obsOffsets[i]+obsLengths[i]]
-
-					if obsResult != expResult[i] {
-						t.Errorf("%v\nlane %v: trim %q; observed %q; expected: %q",
-							ts.name, i, data16, obsResult, expResult)
-						break
-					}
-				}
-			}
-		}
+		verifySRegOutput(t, &outputS, &expectedOutputS)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
@@ -4256,42 +4056,39 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, ut *unitTest, lanes uint16) {
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.needle)
-			for i := 0; i < 16; i++ {
-				if getBit(lanes, i) {
-					expLanes[i], expOffsets[i], expLengths[i] = obsLane, obsOffset, obsLength
-				}
-			}
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("%v\nrefImpl: data %q contains needle %q\n%v", ts.name, ut.data, ut.needle, msg)
-			}
-		}
-
-		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		// TODO [UNSAFE]: prepend three bytes to data such that we can read backwards 4 bytes at a time
+		ctx.appendData(string([]byte{0, 0, 0, 0}))
+
+		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata %q\ncontains needle %q\n%v", ts.name, ut.data, ut.needle, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			expectedResult, expectedOffset, expectedLength := ts.refImpl(ut.data, ut.needle)
+			if getBit(lanes, i) && expectedResult {
+				expectedOutputK.mask |= uint16(1 << i)
+				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+				expectedOutputS.sizes[i] = uint32(expectedLength)
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -4412,10 +4209,8 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, needleSpace []string) {
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
+		var ctx bctestContext
+		defer ctx.Free()
 
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
@@ -4423,35 +4218,40 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 			encNeedles[i] = encodeNeedleOp(needle, ts.op)
 		}
 
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-	mainLoop:
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
+				ctx.clear()
+
+				// TODO [UNSAFE]: prepend three bytes to data such that we can read backwards 4 bytes at a time
+				ctx.appendData(string([]byte{0, 0, 0, 0}))
+
+				ctx.setDict(encNeedles[needleIdx])
+				dictOffset := uint16(0)
+
+				inputS := ctx.sRegFromStrings(data16)
+				inputK := kRegData{mask: lanes}
+
+				outputS := sRegData{}
+				outputK := kRegData{}
+
+				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+					t.Fatal(err)
+				}
+
+				expectedOutputS := sRegData{}
+				expectedOutputK := kRegData{}
+
+				for i := 0; i < bcLaneCount; i++ {
+					expectedResult, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
+					if getBit(lanes, i) && expectedResult {
+						expectedOutputK.mask |= uint16(1 << i)
+						expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+						expectedOutputS.sizes[i] = uint32(expectedLength)
 					}
 				}
 
-				ctx.setDict(encNeedles[needleIdx])
-				ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-				ctx.addScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\ndata %q\ncontains needle %q\n%v", ts.name, data16, needle, msg)
-					break mainLoop
-				}
+				verifyKRegOutput(t, &outputK, &expectedOutputK)
+				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 			}
 		}
 	}
@@ -4513,9 +4313,11 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle) {
+		// empty needle is invalid
 		if needle == "" {
-			return // empty needle is invalid
+			return
 		}
+
 		// only UTF8 code is supposed to handle UTF8 needle data16
 		if (ts.op != opContainsPrefixUTF8Ci) && (ts.op != opContainsSuffixUTF8Ci) {
 			for _, c := range needle {
@@ -4525,39 +4327,46 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 			}
 		}
 
-		// first collect expected values
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		for i := 0; i < 16; i++ {
+		// assume all input data will be valid codepoints
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
-				return // assume all input data will be valid codepoints
-			}
-			if getBit(lanes, i) {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
+				return
 			}
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		// TODO [UNSAFE]: prepend three bytes to data such that we can read backwards 4 bytes at a time
+		ctx.appendData(string([]byte{0, 0, 0, 0}))
+
+		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%v\nneedle=%q\n%v",
-				ts.name, join16Str(data16), needle, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			expectedResult, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
+			if getBit(lanes, i) && expectedResult {
+				expectedOutputK.mask |= uint16(1 << i)
+				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+				expectedOutputS.sizes[i] = uint32(expectedLength)
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, cutset string) {
@@ -4631,37 +4440,36 @@ func TestContainsSubstrUT1(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, ut *unitTest) {
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, ut.needle)
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("%v\nrefImpl: data %q contains needle %q\n%v", ts.name, ut.data, ut.needle, msg)
-			}
-		}
-		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
-		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: 0xFFFF}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(obsLanes, i)
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
-				t.Errorf("%v\nlane %v: data %q contains needle %q\n%v", ts.name, i, ut.data, ut.needle, msg)
-				break
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		active, expectedOffset, expectedLength := ts.refImpl(ut.data, ut.needle)
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(inputK.mask, i) && active {
+				expectedOutputK.mask |= uint16(1 << i)
+				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+				expectedOutputS.sizes[i] = uint32(expectedLength)
 			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -4685,14 +4493,10 @@ func TestContainsSubstrUT2(t *testing.T) {
 		expLengths [16]LengthZ3 // expected length Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
-		unitTests []unitTest
-		// portable reference implementation: f(data, needle) -> match, offset, length
-		refImpl func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3)
-		// bytecode implementation of comparison
-		op bcop
+		name      string                                                    // name to describe this test-suite
+		unitTests []unitTest                                                // the actual tests to run
+		refImpl   func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) // portable reference implementation: f(data, needle) -> match, offset, length
+		op        bcop                                                      // bytecode implementation of comparison
 	}
 
 	testSuites := []testSuite{
@@ -4861,43 +4665,38 @@ func TestContainsSubstrUT2(t *testing.T) {
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		// first: check reference implementation
-		{
-			for i := 0; i < 16; i++ {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(ut.data16[i], ut.needle)
-			} //NOTE cannot not merge both loops due to the break
-			for i := 0; i < 16; i++ {
-				if fault, msg := fault1x1(expLanes[i], expLanes[i], expOffsets[i], ut.expOffsets[i], expLengths[i], ut.expLengths[i]); fault {
-					t.Errorf("refImpl: issue with %v\nlane %v (data16[%v]=%q): searching needle=%q\nin data %q\n%v",
-						ts.name, i, i, ut.data16[i], ut.needle, ut.data16, msg)
-					break
-				}
-			}
-		}
-		// second: check the bytecode implementation
-		enc := encodeNeedleOp(ut.needle, ts.op)
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(enc)
-		ctx.setScalarStrings(ut.data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		enc := encodeNeedleOp(ut.needle, ts.op)
+
+		ctx.setDict(enc)
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(ut.data16[:])
+		inputK := kRegData{mask: 0xFFFF}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, ut.expOffsets, ut.expLengths); fault {
-			t.Errorf("%v\nmatching needle=%q (enc=%v)\non data=%v\n%v",
-				ts.name, ut.needle, []byte(enc), join16Str(ut.data16), msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			active, expectedOffset, expectedLength := ts.refImpl(ut.data16[i], ut.needle)
+			if getBit(inputK.mask, i) && active {
+				expectedOutputK.mask |= uint16(1 << i)
+				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+				expectedOutputS.sizes[i] = uint32(expectedLength)
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -4912,19 +4711,16 @@ func TestContainsSubstrUT2(t *testing.T) {
 // TestContainsSubstrBF brute-force tests for: opContainsSubstrCs, opContainsSubstrCi, opContainsSubstrUTF8Ci
 func TestContainsSubstrBF(t *testing.T) {
 	t.Parallel()
+
 	type testSuite struct {
-		name string
-		// alphabet from which to generate needles and patterns
-		dataAlphabet, needleAlphabet []rune
-		// space of lengths of the words made of alphabet
-		dataLenSpace, needleLenSpace []int
-		// maximum number of elements in dataSpace
-		dataMaxSize, needleMaxSize int
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, needle) -> lane, offset, length
-		refImpl func(Data, Needle) (bool, int, int)
+		name                         string                              // name of the test suite
+		dataAlphabet, needleAlphabet []rune                              // alphabet from which to generate needles and patterns
+		dataLenSpace, needleLenSpace []int                               // space of lengths of the words made of alphabet
+		dataMaxSize, needleMaxSize   int                                 // maximum number of elements in dataSpace
+		op                           bcop                                // bytecode to run
+		refImpl                      func(Data, Needle) (bool, int, int) // portable reference implementation: f(data, needle) -> lane, offset, length
 	}
+
 	testSuites := []testSuite{
 		{
 			name:           "contains substr case-sensitive (opContainsSubstrCs)",
@@ -4974,51 +4770,49 @@ func TestContainsSubstrBF(t *testing.T) {
 
 	run := func(ts *testSuite, dataSpace [][]Data, needleSpace []Needle) {
 		lanes := uint16(0xFFFF)
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
 
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
-		for i, needle := range needleSpace { // precompute encoded needles for speed
+		for i, needle := range needleSpace {
 			encNeedles[i] = encodeNeedleOp(needle, ts.op)
 		}
 
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
 
-	mainLoop:
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
+				ctx.clear()
 
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
+				ctx.setDict(encNeedles[needleIdx])
+				dictOffset := uint16(0)
+
+				inputS := ctx.sRegFromStrings(data16)
+				inputK := kRegData{mask: lanes}
+
+				outputS := sRegData{}
+				outputK := kRegData{}
+
+				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+					t.Fatal(err)
+				}
+
+				expectedOutputS := sRegData{}
+				expectedOutputK := kRegData{}
+
+				for i := 0; i < bcLaneCount; i++ {
+					if getBit(inputK.mask, i) {
+						active, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
+						if active {
+							expectedOutputK.mask |= uint16(1 << i)
+							expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+							expectedOutputS.sizes[i] = uint32(expectedLength)
+						}
 					}
 				}
 
-				//t.Logf("data=%v", join16Str2(data16))
-				//t.Logf("needle=%v", needle)
-
-				ctx.setDict(encNeedles[needleIdx])
-				ctx.setData(dataPrefix) // prepend four bytes to data such that we can read backwards 4bytes at a time
-				ctx.addScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\ndata=%v\nneedle=%q\n%v", ts.name, join16Str2(data16), needle, msg)
-					break mainLoop
-				}
+				verifyKRegOutput(t, &outputK, &expectedOutputK)
+				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 			}
 		}
 	}
@@ -5038,9 +4832,8 @@ func FuzzContainsSubstrFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м")
 
 	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
+		name string // name of the test suite
+		op   bcop   // bytecode to run
 		// portable reference implementation: f(data, needle) -> lane, offset, length
 		refImpl func(Data, Needle) (bool, OffsetZ2, LengthZ3)
 	}
@@ -5063,9 +4856,18 @@ func FuzzContainsSubstrFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle) {
-		if needle == "" {
-			return // empty needle is invalid
+		// assume all input data will be valid codepoints
+		for i := 0; i < bcLaneCount; i++ {
+			if !utf8.ValidString(data16[i]) {
+				return
+			}
 		}
+
+		// empty needle is invalid
+		if needle == "" {
+			return
+		}
+
 		// only UTF8 code is supposed to handle UTF8 needle
 		if ts.op != opContainsSubstrUTF8Ci {
 			for _, c := range needle {
@@ -5075,36 +4877,38 @@ func FuzzContainsSubstrFT(f *testing.F) {
 			}
 		}
 
-		expLanes := [16]bool{}
-		expOffsets := [16]OffsetZ2{}
-		expLengths := [16]LengthZ3{}
-
-		// first collect expected values
-		for i := 0; i < 16; i++ {
-			if !utf8.ValidString(data16[i]) {
-				return // assume all input data will be valid codepoints
-			}
-			if getBit(lanes, i) {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], needle)
-			}
-		}
-
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
-		ctx.setScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%v\nneedle=%q\n%v", ts.name, join16Str(data16), needle, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(inputK.mask, i) {
+				active, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(expectedLength)
+				}
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle) {
@@ -5189,37 +4993,38 @@ func TestContainsPatternUT1(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, ut *unitTest) {
-		// first: check reference implementation
-		{
-			obsLane, obsOffset, obsLength := ts.refImpl(ut.data, &ut.pattern)
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffset, ut.expOffset, obsLength, ut.expLength); fault {
-				t.Errorf("%v\nrefImpl: data=%q pattern=%v\n%v", ts.name, ut.data, ut.pattern, msg)
-			}
-		}
-		// second: check the bytecode implementation
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		dataPrefix := string([]byte{0, 0, 0, 0}) // Necessary for opContainsSuffixUTF8Ci
-		ctx.setDict(encodePatternOp(&ut.pattern, ts.op))
-		ctx.setData(dataPrefix) // prepend three bytes to data such that we can read backwards 4bytes at a time
-		ctx.addScalarStrings(fill16(ut.data))
-		ctx.current = 0xFFFF
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		ctx.setDict(encodePatternOp(&ut.pattern, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		inputK := kRegData{mask: 0xFFFF}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		obsLanes, obsOffsets, obsLengths := getObsValues(ctx, scalarBefore)
-		for i := 0; i < 16; i++ {
-			obsLane := getBit(obsLanes, i)
-			if fault, msg := fault1x1(obsLane, ut.expLane, obsOffsets[i], ut.expOffset, obsLengths[i], ut.expLength); fault {
-				t.Errorf("%v\nlane %v: data=%q; pattern=%v\n%v", ts.name, i, ut.data, ut.pattern, msg)
-				break
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(inputK.mask, i) {
+				active, expectedOffset, expectedLength := ts.refImpl(ut.data, &ut.pattern)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(expectedLength)
+				}
 			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -5539,44 +5344,38 @@ func TestContainsPatternUT2(t *testing.T) {
 	}
 
 	run := func(ts testSuite, ut unitTest, lanes uint16) {
-		expLanes := [16]bool{}
-		expOffsets := [16]OffsetZ2{}
-		expLengths := [16]LengthZ3{}
+		var ctx bctestContext
+		defer ctx.Free()
 
-		// first: check reference implementation
-		{
-			for i := 0; i < 16; i++ {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(ut.data16[i], &ut.pattern)
-			}
-			for i := 0; i < 16; i++ {
-				if fault, msg := fault1x1(expLanes[i], getBit(ut.expLanes, i), expOffsets[i], ut.expOffsets[i], expLengths[i], ut.expLengths[i]); fault {
-					t.Errorf("refImpl: issue with %v\nlane %v (data[%v]=%q): searching pattern=%v\nin data=%v\n%v",
-						ts.name, i, i, ut.data16[i], ut.pattern, join16Str(ut.data16), msg)
-					break
+		ctx.setDict(encodePatternOp(&ut.pattern, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(ut.data16[:])
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+			t.Fatal(err)
+		}
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(inputK.mask, i) {
+				active, expectedOffset, expectedLength := ts.refImpl(ut.data16[i], &ut.pattern)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(expectedLength)
 				}
 			}
 		}
-		// second: check the bytecode implementation
-		enc := encodePatternOp(&ut.pattern, ts.op)
 
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-		ctx.setDict(enc)
-		ctx.setScalarStrings(ut.data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
-
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-			t.Fatal(err)
-		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\nmatching pattern=%v; (enc=%v)\nin data=%v\n%v",
-				ts.name, ut.pattern, []byte(enc), join16Str(ut.data16), msg)
-		}
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	for _, ts := range testSuites {
@@ -5593,15 +5392,11 @@ func TestContainsPatternUT2(t *testing.T) {
 func TestContainsPatternBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name string
-		// alphabet from which to generate needles and patterns
-		dataAlphabet, patternAlphabet []rune
-		// space of lengths of the words made of alphabet
-		dataLenSpace, patternLenSpace []int
-		// maximum number of elements in dataSpace
-		dataMaxSize, patternMaxSize int
-		// bytecode to run
-		op bcop
+		name                          string
+		dataAlphabet, patternAlphabet []rune // alphabet from which to generate needles and patterns
+		dataLenSpace, patternLenSpace []int  // space of lengths of the words made of alphabet
+		dataMaxSize, patternMaxSize   int    // maximum number of elements in dataSpace
+		op                            bcop   // bytecode to run
 		// portable reference implementation: f(data, pattern) -> lane, offset, length
 		refImpl func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3)
 	}
@@ -5686,46 +5481,47 @@ func TestContainsPatternBF(t *testing.T) {
 	}
 
 	run := func(ts *testSuite, dataSpace [][]Data, patternSpace []stringext.Pattern, lanes uint16) {
+		var ctx bctestContext
+		defer ctx.Free()
+
 		// pre-compute encoded patterns for speed
 		encPattern := make([]string, len(patternSpace))
 		for patternIdx, pattern := range patternSpace { // precompute encoded needles for speed
 			encPattern[patternIdx] = encodePatternOp(&pattern, ts.op)
 		}
 
-		expLanes := [16]bool{}
-		expOffsets := [16]OffsetZ2{}
-		expLengths := [16]LengthZ3{}
-
-		var ctx bctestContext
-		defer ctx.Free()
-		ctx.Taint()
-
-	mainLoop:
 		for _, data16 := range dataSpace {
 			for patternIdx, pattern := range patternSpace {
-				// first collect expected values
-				for i := 0; i < 16; i++ {
-					if getBit(lanes, i) {
-						expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], &pattern)
+				ctx.clear()
+				ctx.setDict(encPattern[patternIdx])
+				dictOffset := uint16(0)
+
+				inputS := ctx.sRegFromStrings(data16)
+				inputK := kRegData{mask: lanes}
+
+				outputS := sRegData{}
+				outputK := kRegData{}
+
+				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+					t.Fatal(err)
+				}
+
+				expectedOutputS := sRegData{}
+				expectedOutputK := kRegData{}
+
+				for i := 0; i < bcLaneCount; i++ {
+					if getBit(inputK.mask, i) {
+						active, expectedOffset, expectedLength := ts.refImpl(data16[i], &pattern)
+						if active {
+							expectedOutputK.mask |= uint16(1 << i)
+							expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+							expectedOutputS.sizes[i] = uint32(expectedLength)
+						}
 					}
 				}
 
-				enc := encPattern[patternIdx]
-				ctx.setDict(enc)
-				ctx.setScalarStrings(data16)
-				ctx.current = lanes
-				scalarBefore := ctx.getScalarUint32()
-
-				// when
-				if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
-					t.Fatal(err)
-				}
-				// then
-				if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-					t.Errorf("%v\ndata=%v\npattern=%v (enc=%v)\n%v",
-						ts.name, join16Str2(data16), pattern, enc, msg)
-					break mainLoop
-				}
+				verifyKRegOutput(t, &outputK, &expectedOutputK)
+				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 			}
 		}
 	}
@@ -5790,12 +5586,16 @@ func FuzzContainsPatternFT(f *testing.F) {
 	}
 
 	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, pattern *stringext.Pattern) {
+		// empty pattern is invalid
 		if pattern.Needle == "" {
-			return // empty pattern is invalid
+			return
 		}
+
+		// first and last character of pattern may not be a wildcard
 		if pattern.Wildcard[0] || pattern.Wildcard[len(pattern.Wildcard)-1] {
-			return // first and last character of pattern may not be a wildcard
+			return
 		}
+
 		// only UTF8 code is supposed to handle UTF8 pattern
 		if ts.op != opContainsPatternUTF8Ci {
 			for _, c := range pattern.Needle {
@@ -5805,36 +5605,46 @@ func FuzzContainsPatternFT(f *testing.F) {
 			}
 		}
 
-		// first collect expected values
-		expLanes := [16]bool{}
-		expOffsets := [16]int{}
-		expLengths := [16]int{}
-
-		for i := 0; i < 16; i++ {
+		// assume all input data will be valid codepoints
+		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
-				return // assume all input data will be valid codepoints
-			}
-			if getBit(lanes, i) {
-				expLanes[i], expOffsets[i], expLengths[i] = ts.refImpl(data16[i], pattern)
+				return
 			}
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
-		ctx.Taint()
-		ctx.setDict(encodePatternOp(pattern, ts.op))
-		ctx.setScalarStrings(data16[:])
-		ctx.current = lanes
-		scalarBefore := ctx.getScalarUint32()
 
-		// when
-		if err := ctx.ExecuteImm2(ts.op, 0); err != nil {
+		ctx.clear()
+		ctx.setDict(encodePatternOp(pattern, ts.op))
+		dictOffset := uint16(0)
+
+		inputS := ctx.sRegFromStrings(data16[:])
+		inputK := kRegData{mask: lanes}
+
+		outputS := sRegData{}
+		outputK := kRegData{}
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 			t.Fatal(err)
 		}
-		// then
-		if fault, msg := hasFault(&ctx, scalarBefore, lanes, expLanes, expOffsets, expLengths); fault {
-			t.Errorf("%v\ndata=%v\npattern=%v\n%v", ts.name, join16Str(data16), pattern, msg)
+
+		expectedOutputS := sRegData{}
+		expectedOutputK := kRegData{}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if getBit(inputK.mask, i) {
+				active, expectedOffset, expectedLength := ts.refImpl(data16[i], pattern)
+				if active {
+					expectedOutputK.mask |= uint16(1 << i)
+					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
+					expectedOutputS.sizes[i] = uint32(expectedLength)
+				}
+			}
 		}
+
+		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle) {
@@ -5848,204 +5658,94 @@ func FuzzContainsPatternFT(f *testing.F) {
 
 func TestBytecodeAbsInt(t *testing.T) {
 	t.Parallel()
-	// given
+
 	var ctx bctestContext
 	defer ctx.Free()
-	ctx.Taint()
 
-	values := []int64{5, -52, 1002, -412, 0, 1, -3}
-	ctx.setScalarInt64(values)
-	ctx.current = (1 << len(values)) - 1
+	inputS := i64RegData{values: [16]int64{5, -52, 1002, -412, 0, 1, -3}}
+	inputK := kRegData{mask: uint16((1 << 7) - 1)}
 
-	current := ctx.current
+	outputS := i64RegData{}
+	outputK := kRegData{}
 
-	// when
-	err := ctx.Execute(opabsi)
-	if err != nil {
-		t.Error(err)
-		t.Fail()
-	}
-	// then
-	if ctx.current != current {
-		t.Logf("current  = %02x", current)
-		t.Logf("modified = %02x", ctx.current)
-		t.Error("opcode changed the current mask")
+	if err := ctx.ExecuteOpcode(opabsi64, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+		t.Fatal(err)
 	}
 
-	expected := []int64{5, 52, 1002, 412, 0, 1, 3}
-	result := ctx.getScalarInt64()
-	for i := range expected {
-		if expected[i] != result[i] {
-			t.Logf("expected = %d", expected)
-			t.Logf("got      = %d", result)
-			t.Errorf("mismatch at #%d", i)
-			break
-		}
-	}
+	verifyKRegOutput(t, &outputK, &inputK)
+	verifyI64RegOutput(t, &outputS, &i64RegData{values: [16]int64{5, 52, 1002, 412, 0, 1, 3}})
 }
 
 func TestBytecodeAbsFloat(t *testing.T) {
 	t.Parallel()
-	// given
+
 	var ctx bctestContext
 	defer ctx.Free()
-	ctx.Taint()
 
-	values := []float64{-5, -4, -3, -2, -1, 0, 1, 2, 3, 4}
-	ctx.setScalarFloat64(values)
-	ctx.current = (1 << len(values)) - 1
+	inputS := f64RegData{values: [16]float64{-5, -4, -3, -2, -1, 0, 1, 2, 3, 4}}
+	inputK := kRegData{mask: uint16((1 << 10) - 1)}
 
-	current := ctx.current
+	outputS := f64RegData{}
+	outputK := kRegData{}
 
-	// when
-	err := ctx.Execute(opabsf)
-	if err != nil {
-		t.Error(err)
-		t.Fail()
+	if err := ctx.ExecuteOpcode(opabsf64, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+		t.Fatal(err)
 	}
 
-	// then
-	if ctx.current != current {
-		t.Logf("current  = %02x", current)
-		t.Logf("modified = %02x", ctx.current)
-		t.Error("opcode changed the current mask")
-	}
-
-	expected := []float64{5, 4, 3, 2, 1, 0, 1, 2, 3, 4}
-	result := ctx.getScalarFloat64()
-	for i := range expected {
-		if expected[i] != result[i] {
-			t.Logf("expected = %f", expected)
-			t.Logf("got      = %f", result)
-			t.Errorf("mismatch at #%d", i)
-			break
-		}
-	}
+	verifyKRegOutput(t, &outputK, &inputK)
+	verifyF64RegOutput(t, &outputS, &f64RegData{values: [16]float64{5, 4, 3, 2, 1, 0, 1, 2, 3, 4}})
 }
 
 func TestBytecodeToInt(t *testing.T) {
 	t.Parallel()
-	// given
+
 	var ctx bctestContext
 	defer ctx.Free()
-	ctx.Taint()
 
-	var values []interface{}
-	values = append(values, []byte{0x20})
-	values = append(values, []byte{0x21, 0xff})
-	values = append(values, []byte{0x22, 0x11, 0x33})
-	values = append(values, ion.Int(-42))
-	values = append(values, ion.Uint(12345678))
+	inputV := ctx.vRegFromValues([]any{
+		[]byte{0x20},
+		[]byte{0x21, 0xff},
+		[]byte{0x22, 0x11, 0x33},
+		ion.Int(-42),
+		ion.Uint(12345678),
+	}, nil)
+	inputK := kRegData{mask: uint16((1 << 5) - 1)}
 
-	ctx.setInputIonFields(values, nil)
-	ctx.current = (1 << len(values)) - 1
+	outputS := i64RegData{}
+	outputK := kRegData{}
 
-	current := ctx.current
-
-	// when
-	err := ctx.Execute(optoint)
-	if err != nil {
-		t.Error(err)
-		t.Fail()
+	if err := ctx.ExecuteOpcode(opunboxcoercei64, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+		t.Fatal(err)
 	}
 
-	// then
-	if ctx.current != current {
-		t.Logf("current  = %02x", current)
-		t.Logf("modified = %02x", ctx.current)
-		t.Error("opcode changed the current mask")
-	}
-
-	expected := []int64{0, 255, 0x1133, -42, 12345678}
-	result := ctx.getScalarInt64()
-	for i := range expected {
-		if expected[i] != result[i] {
-			t.Logf("expected = %x", expected)
-			t.Logf("got      = %x", result)
-			t.Errorf("mismatch at #%d", i)
-			break
-		}
-	}
+	verifyKRegOutput(t, &outputK, &inputK)
+	verifyI64RegOutput(t, &outputS, &i64RegData{values: [16]int64{0, 255, 0x1133, -42, 12345678}})
 }
 
 func TestBytecodeIsNull(t *testing.T) {
 	t.Parallel()
-	// given
+
 	var ctx bctestContext
 	defer ctx.Free()
-	ctx.Taint()
 
-	var values []interface{}
-	values = append(values, []byte{0x10})
-	values = append(values, []byte{0x2f})
-	values = append(values, []byte{0x30})
-	values = append(values, []byte{0x40})
+	inputV := ctx.vRegFromValues([]any{
+		[]byte{0x10}, []byte{0x2f}, []byte{0x30}, []byte{0x40},
+		[]byte{0x5f}, []byte{0x6f}, []byte{0x70}, []byte{0x80},
+		[]byte{0x90}, []byte{0xaf}, []byte{0xb0}, []byte{0xcf},
+		[]byte{0xe0}, []byte{0xef}, []byte{0xff}, []byte{0x00},
+	}, nil)
+	inputK := kRegData{mask: 0xFFFF}
+	outputK := kRegData{}
 
-	values = append(values, []byte{0x5f})
-	values = append(values, []byte{0x6f})
-	values = append(values, []byte{0x70})
-	values = append(values, []byte{0x80})
-
-	values = append(values, []byte{0x90})
-	values = append(values, []byte{0xaf})
-	values = append(values, []byte{0xb0})
-	values = append(values, []byte{0xcf})
-
-	values = append(values, []byte{0xe0})
-	values = append(values, []byte{0xef})
-	values = append(values, []byte{0xff})
-	values = append(values, []byte{0x00})
-
-	ctx.current = 0xffff
-	ctx.setInputIonFields(values, nil)
-
-	// when
-	err := ctx.Execute(opisnull)
-	if err != nil {
-		t.Error(err)
-		t.Fail()
+	if err := ctx.ExecuteOpcode(opisnullv, []any{&outputK, &inputV, &inputK}, inputK.mask); err != nil {
+		t.Fatal(err)
 	}
 
-	// then
-	expected := uint16(0x6a32)
-	if ctx.current != expected {
-		t.Logf("expected = %016b (0x%02x)", expected, expected)
-		t.Logf("current  = %016b (0x%02x)", ctx.current, ctx.current)
-		t.Error("wrong mask")
-	}
+	verifyKRegOutput(t, &outputK, &kRegData{mask: 0x6A32})
 }
 
 /////////////////////////////////////////////////////////////
 // Helper functions
-
-func toBoolArray(v uint16) (result [16]bool) {
-	for i := 0; i < 16; i++ {
-		result[i] = getBit(v, i)
-	}
-	return
-}
-
-// join16StrSlice joins values with comma's such that you can copy it a go array
-func join16StrSlice(values []string) (result string) {
-	sb := strings.Builder{}
-	sb.WriteByte('[')
-	for i := 0; i < len(values); i++ {
-		sb.WriteString(fmt.Sprintf("%q", values[i])) // NOTE strings.Join(values, ",") does not escape
-		if i < len(values)-1 {
-			sb.WriteByte(',')
-		}
-	}
-	sb.WriteByte(']')
-	return sb.String()
-}
-
-func join16Str(values [16]string) (result string) {
-	return join16StrSlice(values[:])
-}
-
-func join16Str2(values []string) string {
-	return join16Str(*(*[16]string)(values))
-}
 
 type strCmpType int
 
@@ -6067,10 +5767,6 @@ func (t strCmpType) String() string {
 	return "??"
 }
 
-func toStrIP4(v uint32) string {
-	return fmt.Sprintf("%v.%v.%v.%v", (v>>(3*8))&0xFF, (v>>(2*8))&0xFF, (v>>(1*8))&0xFF, (v>>(0*8))&0xFF)
-}
-
 func toArrayIP4(v uint32) [4]byte {
 	return [4]byte{byte(v >> (3 * 8)), byte(v >> (2 * 8)), byte(v >> (1 * 8)), byte(v >> (0 * 8))}
 }
@@ -6090,7 +5786,7 @@ func setBit(data uint16, idx int, value bool) uint16 {
 func flatten(dataSpace [][]Data) []Data {
 	result := make([]Data, len(dataSpace)*16)
 	for j, data16 := range dataSpace {
-		for i := 0; i < 16; i++ {
+		for i := 0; i < bcLaneCount; i++ {
 			result[j*16+i] = data16[i]
 		}
 	}
@@ -6117,14 +5813,13 @@ func split16(data []Data) [][]Data {
 
 func fill16(msg string) (result []string) {
 	result = make([]string, 16)
-	for i := 0; i < 16; i++ {
+	for i := 0; i < bcLaneCount; i++ {
 		result[i] = msg
 	}
 	return
 }
 
 func fill4(cutset string) string {
-
 	cutsetRunes := []rune(cutset)
 	switch len(cutsetRunes) {
 	case 0:
@@ -6146,115 +5841,6 @@ func fill4(cutset string) string {
 	default:
 		panic("cutset larger than 4 not supported")
 	}
-}
-
-// hasFault determines if there are faults and returns a description of the fault
-func hasFault(ctx *bctestContext, scalarBefore [2][16]uint32, initLanes uint16, expLanes [16]bool, expOffsets, expLengths [16]int) (bool, string) {
-
-	btou := func(b bool) uint8 {
-		if b {
-			return 1
-		}
-		return 0
-	}
-
-	toStringWithColor := func(initLanes, obsLanes uint16, expLanes [16]bool, obsOffsets, expOffsets, obsLengths, expLengths [16]int) (result [6]string) {
-		colorRed := "\033[31m"
-		colorReset := "\033[0m"
-
-		result[0] = ""
-		result[1] = ""
-		result[2] = "["
-		result[3] = "["
-		result[4] = "["
-		result[5] = "["
-		for j := 0; j < 16; j++ {
-			color1 := colorReset
-			color2 := colorReset
-			color3 := colorReset
-
-			initLane := getBit(initLanes, j)
-			obsLane := getBit(obsLanes, j)
-			expLane := expLanes[j]
-
-			if initLane && (obsLane || expLane) {
-				if obsLane != expLane {
-					color1 = colorRed
-				}
-				if obsOffsets[j] != expOffsets[j] {
-					color2 = colorRed
-				}
-				if obsLengths[j] != expLengths[j] {
-					color3 = colorRed
-				}
-			}
-			result[0] = fmt.Sprintf("%v%v%v", color1, btou(obsLane), colorReset) + result[0]
-			result[1] = fmt.Sprintf("%v%v%v", color1, btou(expLane), colorReset) + result[1]
-			result[2] += fmt.Sprintf("%v%v%v", color2, obsOffsets[j], colorReset)
-			result[3] += fmt.Sprintf("%v%v%v", color2, expOffsets[j], colorReset)
-			result[4] += fmt.Sprintf("%v%v%v", color3, obsLengths[j], colorReset)
-			result[5] += fmt.Sprintf("%v%v%v", color3, expLengths[j], colorReset)
-
-			if j == 15 {
-				result[0] = "0b" + result[0]
-				result[1] = "0b" + result[1]
-				result[2] += "]"
-				result[3] += "]"
-				result[4] += "]"
-				result[5] += "]"
-			} else {
-				result[2] += ","
-				result[3] += ","
-				result[4] += ","
-				result[5] += ","
-			}
-		}
-		return
-	}
-
-	obsLanes, obsOffsets, obsLengths := getObsValues(*ctx, scalarBefore)
-
-	for i := 0; i < 16; i++ {
-		if getBit(initLanes, i) {
-			obsLane := getBit(obsLanes, i)
-			if fault, _ := fault1x1(obsLane, expLanes[i], obsOffsets[i], expOffsets[i], obsLengths[i], expLengths[i]); fault {
-				str := toStringWithColor(initLanes, obsLanes, expLanes, obsOffsets, expOffsets, obsLengths, expLengths)
-				return true, fmt.Sprintf("issue with lane %v:\ninitial:  lanes=0b%08b\nobserved: lanes=%v, offset=%v, length=%v\nexpected: lanes=%v, offset=%v, length=%v\n-----------------------------------",
-					i, initLanes, str[0], str[2], str[4], str[1], str[3], str[5])
-			}
-		}
-	}
-	return false, ""
-}
-
-// hasFaultLanesOnly determines if there are faults (for the lanes only) and returns a description of the fault
-func hasFaultLanesOnly(ctx *bctestContext, scalarBefore [2][16]uint32, initLanes uint16, expLanes [16]bool) (bool, string) {
-	_, obsOffsets, obsLengths := getObsValues(*ctx, scalarBefore)
-	return hasFault(ctx, scalarBefore, initLanes, expLanes, obsOffsets, obsLengths)
-}
-
-func fault1x1(obsLane, expLane bool, obsOffset, expOffset, obsLength, expLength int) (bool, string) {
-	if obsLane != expLane {
-		return true, fmt.Sprintf("observed: lane=%v, offset=%v, length=%v\nexpected: lane=%v, offset=%v, length=%v\n-----------------------------------",
-			obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
-	}
-	if obsLane { // if the expected and observed lane are equal, and the match is true, then also check the offset and length
-		if (obsOffset != expOffset) || (obsLength != expLength) {
-			return true, fmt.Sprintf("observed: lane=%v, offset=%v, length=%v\nexpected: lane=%v, offset=%v, length=%v\n-----------------------------------",
-				obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
-		}
-	}
-	return false, ""
-}
-
-func getObsValues(ctx bctestContext, initialScalar [2][16]uint32) (lanes uint16, offset, length [16]int) {
-	scalarAfter := ctx.getScalarUint32()
-	lanes = ctx.current
-	for i := 0; i < 16; i++ {
-		offset[i] = int(scalarAfter[0][i]) - int(initialScalar[0][i]) // NOTE the reference implementation returns offset starting from zero
-		length[i] = int(scalarAfter[1][i])
-	}
-	return
 }
 
 // referenceSkipCharLeft skips n code-point from data; valid is true if successful, false if provided string is not UTF-8
@@ -6450,10 +6036,8 @@ func equalPatternRefUTF8CI(data Data, pattern *stringext.Pattern) (bool, OffsetZ
 // runRegexTests iterates over all regexes with the provided regex space,and determines equality over all
 // needles from the provided data space
 func runRegexTests(t *testing.T, name string, dataSpace [][]string, regexSpace []string, regexType regexp2.RegexType, writeDot bool) {
-
 	var ctx bctestContext
 	defer ctx.Free()
-	ctx.Taint()
 
 mainLoop:
 	for _, regexStr := range regexSpace {
@@ -6467,25 +6051,23 @@ mainLoop:
 				return
 			}
 
+			ctx.clear()
 			ctx.setDict(string(dsByte))
-			ctx.setScalarStrings(data16)
-			ctx.current = 0xFFFF
+			dictOffset := uint16(0)
 
-			// when
-			if err := ctx.ExecuteImm2(op, 0); err != nil {
+			inputS := ctx.sRegFromStrings(data16)
+			inputK := kRegData{mask: 0xFFFF}
+			outputK := kRegData{}
+
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
 				t.Fatal(err)
 			}
 
-			obsLanes := ctx.current
-			if obsLanes != expLanes {
-				for i := 0; i < 16; i++ {
-					obsLane := getBit(obsLanes, i)
-					expLane := getBit(expLanes, i)
-					if obsLane != expLane {
-						t.Errorf("%v: issue with lane %v, \ndata=%q\nexpected=%016b (regexGolang=%q)\nobserved=%016b (regexSneller=%q)",
-							name, i, data16, expLanes, ds.RegexGolang.String(), obsLanes, ds.RegexSneller.String())
-						return true
-					}
+			for i := 0; i < bcLaneCount; i++ {
+				if getBit(outputK.mask, i) != getBit(expLanes, i) {
+					t.Errorf("%v: issue with lane %v, \ndata=%q\nexpected=%016b (regexGolang=%q)\nobserved=%016b (regexSneller=%q)",
+						name, i, data16, expLanes, ds.RegexGolang.String(), outputK.mask, ds.RegexSneller.String())
+					return true
 				}
 			}
 			return false
@@ -6493,7 +6075,7 @@ mainLoop:
 
 		for _, data16 := range dataSpace {
 			expLanes := uint16(0)
-			for i := 0; i < 16; i++ {
+			for i := 0; i < bcLaneCount; i++ {
 				expLanes = setBit(expLanes, i, ds.RegexGolang.MatchString(data16[i]))
 			}
 
@@ -6632,7 +6214,7 @@ func createSpacePattern(dataLenSpace []int, alphabet []rune, maxSize int) []stri
 	alphabetExt := append(alphabet, utf8.MaxRune) // use maxRune as a wildcard identifier
 	result := make([]stringext.Pattern, 0)
 	for _, data16 := range createSpace(dataLenSpace, alphabetExt, maxSize) {
-		for i := 0; i < 16; i++ {
+		for i := 0; i < bcLaneCount; i++ {
 			dataRune := []rune(data16[i])
 			nRunes := len(dataRune)
 			if (dataRune[0] != utf8.MaxRune) && (dataRune[nRunes-1] != utf8.MaxRune) {

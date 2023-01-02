@@ -19,567 +19,567 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"unsafe"
+
+	"github.com/SnellerInc/sneller/ion"
 )
 
 //go:generate go run _generate/genops.go
 //go:generate gofmt -w ops_gen.go
 
-// --- VM machine model ---
-// The WHERE bytecode VM uses a simple stack-based bytecode
-// to perform vectorized row operations. The VM has the following
-// pieces of implicit state:
-//
-//   - current struct
-//   - current value
-//   - current scalar
-//   - current mask
-//
-// Additionally, there is a stack of values that
-// can be fed to certain instructions
-//
 // --- How to Add an Instruction ---
 //  - define a new TEXT label in evalbc_{arch}.s
 //    that begins with 'bc'
 //  - run 'go generate'
 //  - add opcode information below
 
+const bcSlotSize = 2                    // stack slot size in bytes
+const bcLaneCount = 16                  // number of lanes processed per iteration
+const bcLaneCountMask = bcLaneCount - 1 // number of lanes as mask
+
 // actual bytecode constants are generated automatically
 // by reading the assembly source and generating a named
 // constant for each bytecode function
 type bcop uint16
 
-// bytecode operation flags
-type bcflags uint32
-
-const bcLaneCount = 16
-const bcLaneCountMask = bcLaneCount - 1
+// bcArgType is a type of a single BC instruction argument that follows its opcode
+// identifier.
+type bcArgType uint8
 
 const (
-	bcReadK  bcflags = 1 << iota // opcode reads a mask register
-	bcWriteK                     // opcode writes to mask register
-	bcReadS                      // opcode reads a scalar
-	bcWriteS                     // opcode writes to scalar register
-	bcReadV                      // opcode reads value pointers
-	bcWriteV                     // opcode writes to value register
-	bcReadB                      // opcode reads structure pointers
-	bcWriteB                     // opcode writes to structure register
-	bcReadH                      // opcode reads hash register
-	bcWriteH                     // opcode writes to hash register
+	bcReadK      bcArgType = iota // read-only bool stack-slot, shown as k[imm]
+	bcWriteK                      // write-only bool stack-slot, shown as w:k[imm]
+	bcReadS                       // read-only scalar stack-slot, shown as s[imm]
+	bcWriteS                      // write-only scalar stack-slot, shown as w:s[imm]
+	bcReadV                       // read-only value stack-slot, shown as v[imm]
+	bcWriteV                      // write-only value stack-slot, shown as w:v[imm]
+	bcReadWriteV                  // read-write value stack-slot, shown as x:v[imm] (not exposed to SSA)
+	bcReadB                       // read-only struct pointer, shown as b[imm]
+	bcWriteB                      // write-only struct pointer, shown as w:b[imm]
+	bcReadH                       // read-only hash-slot, shown as h[imm]
+	bcWriteH                      // write-only hash-slot, shown as w:h[imm]
+	bcDictSlot                    // 16-bit dictionary reference, shown as dict[imm]
+	bcAuxSlot                     // 32-bit aux value slot
+	bcAggSlot                     // 32-bit aggregation slot
+	bcHashSlot                    // 32-bit aggregation hash slot
+	bcSymbolID                    // 32-bit symbol identifier
+	bcLitRef                      // 64-bit value reference
+	bcImmI8                       // signed 8-bit int immediate argument
+	bcImmI16                      // signed 16-bit int immediate argument
+	bcImmI32                      // signed 32-bit int immediate argument
+	bcImmI64                      // signed 64-bit int immediate argument
+	bcImmU8                       // unsigned 8-bit int immediate argument
+	bcImmU16                      // unsigned 16-bit int immediate argument
+	bcImmU32                      // unsigned 32-bit int immediate argument
+	bcImmU64                      // unsigned 64-bit int immediate argument
+	bcImmF64                      // 64-bit float immediate argument
 
-	bcReadWriteK = bcReadK | bcWriteK
-	bcReadWriteS = bcReadS | bcWriteS
-	bcReadWriteV = bcReadV | bcWriteV
-	bcReadWriteB = bcReadB | bcWriteB
-	bcReadWriteH = bcReadH | bcWriteH
+	bcPredicate = bcReadK
 )
 
-// Type of an immediate value that follows bcop in a compiled code
-type bcImmType uint8
-
-const (
-	bcImmI8     bcImmType = iota // signed 8-bit int
-	bcImmI16                     // signed 16-bit int
-	bcImmI32                     // signed 32-bit int
-	bcImmI64                     // signed 64-bit int
-	bcImmU8                      // unsigned 8-bit int
-	bcImmU16                     // unsigned 16-bit int
-	bcImmU32                     // unsigned 32-bit int
-	bcImmU64                     // unsigned 64-bit int
-	bcImmU8Hex                   // unsigned 8-bit int (shown as hex)
-	bcImmU16Hex                  // unsigned 16-bit int (shown as hex)
-	bcImmU32Hex                  // unsigned 32-bit int (shown as hex)
-	bcImmU64Hex                  // unsigned 64-bit int (shown as hex)
-	bcImmF64                     // 64-bit float
-	bcImmS16                     // 16-bit stack slot, shown as [imm]
-	bcImmDict                    // 16-bit dictionary reference, shown as dict[imm]
-)
-
-// Maps each bcImmType into a width of the immediate in bytes.
-var bcImmWidth = [...]uint8{
-	bcImmI8:     1,
-	bcImmI16:    2,
-	bcImmI32:    4,
-	bcImmI64:    8,
-	bcImmU8:     1,
-	bcImmU16:    2,
-	bcImmU32:    4,
-	bcImmU64:    8,
-	bcImmU8Hex:  1,
-	bcImmU16Hex: 2,
-	bcImmU32Hex: 4,
-	bcImmU64Hex: 8,
-	bcImmF64:    8,
-	bcImmS16:    2,
-	bcImmDict:   2,
+func (a bcArgType) String() string {
+	switch a {
+	case bcReadK:
+		return "ReadK"
+	case bcWriteK:
+		return "WriteK"
+	case bcReadS:
+		return "ReadS"
+	case bcWriteS:
+		return "WriteS"
+	case bcReadV:
+		return "ReadV"
+	case bcWriteV:
+		return "WriteV"
+	case bcReadB:
+		return "ReadB"
+	case bcWriteB:
+		return "WriteB"
+	case bcReadH:
+		return "ReadH"
+	case bcWriteH:
+		return "WriteH"
+	case bcDictSlot:
+		return "DictSlot"
+	case bcAuxSlot:
+		return "AuxSlot"
+	case bcAggSlot:
+		return "AggSlot"
+	case bcHashSlot:
+		return "HashSlot"
+	case bcSymbolID:
+		return "SymbolID"
+	case bcLitRef:
+		return "LitRef"
+	case bcImmI8:
+		return "ImmI8"
+	case bcImmI16:
+		return "ImmI16"
+	case bcImmI32:
+		return "ImmI32"
+	case bcImmI64:
+		return "ImmI64"
+	case bcImmU8:
+		return "ImmU8"
+	case bcImmU16:
+		return "ImmU16"
+	case bcImmU32:
+		return "ImmU32"
+	case bcImmU64:
+		return "ImmU64"
+	case bcImmF64:
+		return "ImmF64"
+	default:
+		return "<Unknown>"
+	}
 }
 
-func (t bcImmType) Size() int {
-	return int(bcImmWidth[t])
+// Maps each bcArgType into a width of the immediate in bytes.
+var bcImmWidth = [...]uint8{
+	bcReadK:    bcSlotSize,
+	bcWriteK:   bcSlotSize,
+	bcReadS:    bcSlotSize,
+	bcWriteS:   bcSlotSize,
+	bcReadV:    bcSlotSize,
+	bcWriteV:   bcSlotSize,
+	bcReadB:    bcSlotSize,
+	bcWriteB:   bcSlotSize,
+	bcReadH:    bcSlotSize,
+	bcWriteH:   bcSlotSize,
+	bcDictSlot: 2,
+	bcAuxSlot:  2,
+	bcAggSlot:  4,
+	bcHashSlot: 4,
+	bcSymbolID: 4,
+	bcLitRef:   8,
+	bcImmI8:    1,
+	bcImmI16:   2,
+	bcImmI32:   4,
+	bcImmI64:   8,
+	bcImmU8:    1,
+	bcImmU16:   2,
+	bcImmU32:   4,
+	bcImmU64:   8,
+	bcImmF64:   8,
+}
+
+func (a bcArgType) immWidth() int {
+	return int(bcImmWidth[a])
 }
 
 type bcopinfo struct {
 	text     string
-	imms     []bcImmType
-	vaImms   []bcImmType
-	flags    bcflags
-	scratch  int   // desired scratch space (up to PageSize)
+	args     []bcArgType
+	va       []bcArgType
 	immwidth uint8 // immediate size
+	scratch  int   // desired scratch space (up to PageSize)
 	inverse  bcop  // for comparisons, etc., the inverse operation
 }
 
-// Shared immediate combinations used in opinfo (to reduce the number of dynamic memory allocations on init).
-var bcImmsS16 = []bcImmType{bcImmS16}
-var bcImmsS16S16 = []bcImmType{bcImmS16, bcImmS16}
-var bcImmsS16U8 = []bcImmType{bcImmS16, bcImmU8}
-var bcImmsS16U16 = []bcImmType{bcImmS16, bcImmU16}
-var bcImmsS16H32 = []bcImmType{bcImmS16, bcImmU32Hex}
-var bcImmsS16I64 = []bcImmType{bcImmS16, bcImmI64}
-var bcImmsS16U32 = []bcImmType{bcImmS16, bcImmU32}
-var bcImmsS16U64 = []bcImmType{bcImmS16, bcImmU64}
-var bcImmsS16S16S16 = []bcImmType{bcImmS16, bcImmS16, bcImmS16}
-var bcImmsU8 = []bcImmType{bcImmU8}
-var bcImmsU16 = []bcImmType{bcImmU16}
-var bcImmsU32 = []bcImmType{bcImmU32}
-var bcImmsU32S16 = []bcImmType{bcImmU32, bcImmS16}
-var bcImmsU32H32 = []bcImmType{bcImmU32, bcImmU32Hex}
-var bcImmsH32S16S16 = []bcImmType{bcImmU32Hex, bcImmS16, bcImmS16}
-var bcImmsH32 = []bcImmType{bcImmU32Hex}
-var bcImmsH32H32 = []bcImmType{bcImmU32Hex, bcImmU32Hex}
-var bcImmsI64 = []bcImmType{bcImmI64}
-var bcImmsU64 = []bcImmType{bcImmU64}
-var bcImmsF64 = []bcImmType{bcImmF64}
-var bcImmsDict = []bcImmType{bcImmDict}
-var bcImmsDictS16 = []bcImmType{bcImmDict, bcImmS16}
+func bcmakeopinfo() [_maxbcop]bcopinfo {
+	sharedArgs := make(map[string][]bcArgType)
 
-var opinfo = [_maxbcop]bcopinfo{
-	// When adding a new entry, please read the following rules:
-	//   - Opcode 'text' should represent the opcode name, use dots to separate type(s) the instruction operates on
-	//   - Opcode 'imms' combination should use the shared combinations as defined above
-	//   - Opcode 'flags' order should follow their declaration order, for example K register is first, etc...
+	makeArgs := func(args ...bcArgType) []bcArgType {
+		key := fmt.Sprint(args)
+		if val, ok := sharedArgs[key]; ok {
+			return val
+		}
+		sharedArgs[key] = args
+		return args
+	}
 
-	// Control flow instructions:
-	//   - ret  - terminates execution; returns current mask
-	//   - jz N - adds 'N' to the virtual PC if K1 == 0
-	opret: {text: "ret"},
-	opjz:  {text: "jz", imms: bcImmsU64, flags: bcReadK},
+	return [_maxbcop]bcopinfo{
+		// When adding a new entry, please read the following rules:
+		//   - Opcode 'text' represents the opcode name, use dots to separate type(s) the instruction operates on
+		//   - Opcode 'args' represents opcode arguments, use makeArgs() to define them
+		//   - Opcode 'va' field represents variable arguments that follow regular `args`
 
-	// Load/Save instructions:
-	//   - Load instructions load a register from a stack slot
-	//   - Save instructions save a register to a stack slot
-	//   - Zero means zeroing (either during load/save)
-	//   - Blend means blending (either during load/save)
-	oploadk:         {text: "load.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opsavek:         {text: "save.k", imms: bcImmsS16, flags: bcReadK},
-	opxchgk:         {text: "xchg.k", imms: bcImmsS16, flags: bcReadWriteK},
-	oploadb:         {text: "load.b", imms: bcImmsS16, flags: bcWriteB},
-	opsaveb:         {text: "save.b", imms: bcImmsS16, flags: bcReadB},
-	oploadv:         {text: "load.v", imms: bcImmsS16, flags: bcWriteV},
-	opsavev:         {text: "save.v", imms: bcImmsS16, flags: bcReadV},
-	oploadzerov:     {text: "loadzero.v", imms: bcImmsS16, flags: bcWriteK | bcWriteV},
-	opsavezerov:     {text: "savezero.v", imms: bcImmsS16, flags: bcReadK | bcReadV},
-	oploadpermzerov: {text: "loadpermzero.v", imms: bcImmsS16, flags: bcWriteK | bcWriteV},
-	oploads:         {text: "load.s", imms: bcImmsS16, flags: bcWriteS},
-	opsaves:         {text: "save.s", imms: bcImmsS16, flags: bcReadS},
-	oploadzeros:     {text: "loadzero.s", imms: bcImmsS16, flags: bcWriteK | bcWriteS},
-	opsavezeros:     {text: "savezero.s", imms: bcImmsS16, flags: bcReadK | bcReadS},
+		// Control flow instructions:
+		//   - ret  - terminates execution; returns current mask
+		//   - jz N - adds 'N' to the virtual PC if K1 == 0
+		opret:    {text: "ret"},
+		opretk:   {text: "ret.k", args: makeArgs(bcReadK)},
+		opretsk:  {text: "ret.s.k", args: makeArgs(bcReadS, bcReadK)},
+		opretbk:  {text: "ret.b.k", args: makeArgs(bcReadB, bcReadK)},
+		opretbhk: {text: "ret.b.h.k", args: makeArgs(bcReadB, bcReadH, bcReadK)},
+		opjz:     {text: "jz", args: makeArgs(bcReadK, bcImmU64)},
 
-	// Mask instructions:
-	//   - false - sets predicate to FALSE
-	//   - others - mask-only operations
-	opbroadcastimmk: {text: "broadcast.imm.k", imms: bcImmsU16, flags: bcWriteK},
-	opfalse:         {text: "false", flags: bcWriteK},
-	opandk:          {text: "and.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opork:           {text: "or.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opandnotk:       {text: "andnot.k", imms: bcImmsS16, flags: bcReadWriteK}, // really 'and not'
-	opnandk:         {text: "nand.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opxork:          {text: "xor.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opxnork:         {text: "xnor.k", imms: bcImmsS16, flags: bcReadWriteK},
-	opnotk:          {text: "not.k", flags: bcReadWriteK},
+		opinit: {text: "init", args: makeArgs(bcWriteB, bcWriteK)},
 
-	// Arithmetic and logical instructions
-	opbroadcastimmf: {text: "broadcast.imm.f", imms: bcImmsF64, flags: bcWriteS},
-	opbroadcastimmi: {text: "broadcast.imm.i", imms: bcImmsI64, flags: bcWriteS},
-	opabsf:          {text: "abs.f", flags: bcReadK | bcReadWriteS},
-	opabsi:          {text: "abs.i", flags: bcReadK | bcReadWriteS},
-	opnegf:          {text: "neg.f", flags: bcReadK | bcReadWriteS},
-	opnegi:          {text: "neg.i", flags: bcReadK | bcReadWriteS},
-	opsignf:         {text: "sign.f", flags: bcReadK | bcReadWriteS},
-	opsigni:         {text: "sign.i", flags: bcReadK | bcReadWriteS},
-	opsquaref:       {text: "square.f", flags: bcReadK | bcReadWriteS},
-	opsquarei:       {text: "square.i", flags: bcReadK | bcReadWriteS},
-	opbitnoti:       {text: "bitnot.i", flags: bcReadK | bcReadWriteS},
-	opbitcounti:     {text: "bitcount.i", flags: bcReadK | bcReadWriteS},
-	opsqrtf:         {text: "sqrt.f", flags: bcReadK | bcReadWriteS},
-	opcbrtf:         {text: "cbrt.f", flags: bcReadK | bcReadWriteS},
-	oproundf:        {text: "round.f", flags: bcReadK | bcReadWriteS},
-	oproundevenf:    {text: "roundeven.f", flags: bcReadK | bcReadWriteS},
-	optruncf:        {text: "trunc.f", flags: bcReadK | bcReadWriteS},
-	opfloorf:        {text: "floor.f", flags: bcReadK | bcReadWriteS},
-	opceilf:         {text: "ceil.f", flags: bcReadK | bcReadWriteS},
-	opaddf:          {text: "add.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opaddi:          {text: "add.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opaddimmf:       {text: "add.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opaddimmi:       {text: "add.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opsubf:          {text: "sub.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opsubi:          {text: "sub.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opsubimmf:       {text: "sub.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opsubimmi:       {text: "sub.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	oprsubf:         {text: "rsub.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oprsubi:         {text: "rsub.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oprsubimmf:      {text: "rsub.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	oprsubimmi:      {text: "rsub.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opmulf:          {text: "mul.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opmuli:          {text: "mul.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opmulimmf:       {text: "mul.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opmulimmi:       {text: "mul.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opdivf:          {text: "div.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opdivi:          {text: "div.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opdivimmf:       {text: "div.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opdivimmi:       {text: "div.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	oprdivf:         {text: "rdiv.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oprdivi:         {text: "rdiv.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oprdivimmf:      {text: "rdiv.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	oprdivimmi:      {text: "rdiv.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opmodf:          {text: "mod.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opmodi:          {text: "mod.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opmodimmf:       {text: "mod.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opmodimmi:       {text: "mod.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	oprmodf:         {text: "rmod.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oprmodi:         {text: "rmod.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oprmodimmf:      {text: "rmod.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	oprmodimmi:      {text: "rmod.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opaddmulimmi:    {text: "addmul.imm.i", imms: bcImmsS16I64, flags: bcReadK | bcReadWriteS},
-	opminvaluef:     {text: "minvalue.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opminvaluei:     {text: "minvalue.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opminvalueimmf:  {text: "minvalue.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opminvalueimmi:  {text: "minvalue.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opmaxvaluef:     {text: "maxvalue.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opmaxvaluei:     {text: "maxvalue.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opmaxvalueimmf:  {text: "maxvalue.imm.f", imms: bcImmsF64, flags: bcReadK | bcReadWriteS},
-	opmaxvalueimmi:  {text: "maxvalue.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opandi:          {text: "and.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opandimmi:       {text: "and.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opori:           {text: "or.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oporimmi:        {text: "or.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opxori:          {text: "xor.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opxorimmi:       {text: "xor.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opslli:          {text: "sll.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opsllimmi:       {text: "sll.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opsrai:          {text: "sra.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opsraimmi:       {text: "sra.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opsrli:          {text: "srl.i", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opsrlimmi:       {text: "srl.imm.i", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
+		oploadpermzerov: {text: "loadpermzero.v", args: makeArgs(bcWriteV, bcWriteK, bcReadV)},
 
-	// Math functions
-	opexpf:   {text: "exp.f", flags: bcReadK | bcReadWriteS},
-	opexpm1f: {text: "expm1.f", flags: bcReadK | bcReadWriteS},
-	opexp2f:  {text: "exp2.f", flags: bcReadK | bcReadWriteS},
-	opexp10f: {text: "exp10.f", flags: bcReadK | bcReadWriteS},
-	oplnf:    {text: "ln.f", flags: bcReadK | bcReadWriteS},
-	opln1pf:  {text: "ln1p.f", flags: bcReadK | bcReadWriteS},
-	oplog2f:  {text: "log2.f", flags: bcReadK | bcReadWriteS},
-	oplog10f: {text: "log10.f", flags: bcReadK | bcReadWriteS},
-	opsinf:   {text: "sin.f", flags: bcReadK | bcReadWriteS},
-	opcosf:   {text: "cos.f", flags: bcReadK | bcReadWriteS},
-	optanf:   {text: "tan.f", flags: bcReadK | bcReadWriteS},
-	opasinf:  {text: "asin.f", flags: bcReadK | bcReadWriteS},
-	opacosf:  {text: "acos.f", flags: bcReadK | bcReadWriteS},
-	opatanf:  {text: "atan.f", flags: bcReadK | bcReadWriteS},
-	opatan2f: {text: "atan2.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	ophypotf: {text: "hypot.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	oppowf:   {text: "pow.f", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+		// Mask instructions:
+		//   - false - sets predicate to FALSE
+		//   - others - mask-only operations
+		opbroadcast0k: {text: "broadcast0.k", args: makeArgs(bcWriteK)},             // k[0] = 0
+		opbroadcast1k: {text: "broadcast1.k", args: makeArgs(bcWriteK)},             // k[0] = 1              & ValidLanes
+		opnotk:        {text: "not.k", args: makeArgs(bcWriteK, bcReadK)},           // k[0] = !k[1]          & ValidLanes
+		opandk:        {text: "and.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)},  // k[0] = k[1] & k[2]    & ValidLanes
+		opnandk:       {text: "nand.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = !(k[1] & k[2]) & ValidLanes
+		opandnk:       {text: "andn.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = !k[1] & k[2]   & ValidLanes
+		opork:         {text: "or.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)},   // k[0] = k[1] | k[2]    & ValidLanes
+		opxork:        {text: "xor.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)},  // k[0] = k[1] ^ k[2]    & ValidLanes
+		opxnork:       {text: "xnor.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = k[1] XNOR k[2] & ValidLanes
+		opfalse:       {text: "false.k", args: makeArgs(bcWriteV, bcWriteK)},
 
-	// Conversion instructions
-	opcvtktof64:   {text: "cvtktof64", flags: bcReadK | bcWriteS}, // convert mask -> floats
-	opcvtktoi64:   {text: "cvtktoi64", flags: bcReadK | bcWriteS}, // convert mask -> ints
-	opcvti64tok:   {text: "cvti64tok", flags: bcReadWriteK | bcReadS},
-	opcvti64tof64: {text: "cvti64tof64", flags: bcReadWriteK | bcReadWriteS},
-	opcvtf64toi64: {text: "cvtf64toi64", flags: bcReadWriteK | bcReadWriteS},
-	opcvtf64tok:   {text: "cvti64tok", flags: bcReadWriteK | bcReadS},
-	opfproundd:    {text: "fproundd", flags: bcReadWriteK | bcReadWriteS},
-	opfproundu:    {text: "fproundu", flags: bcReadWriteK | bcReadWriteS},
-	opcvti64tostr: {text: "cvti64tostr", flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
+		// Integer math
+		opbroadcasti64:   {text: "broadcast.i64", args: makeArgs(bcWriteS, bcImmI64)},
+		opabsi64:         {text: "abs.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opnegi64:         {text: "neg.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opsigni64:        {text: "sign.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opsquarei64:      {text: "square.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opbitnoti64:      {text: "bitnot.i64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opbitcounti64:    {text: "bitcount.i64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opaddi64:         {text: "add.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opaddi64imm:      {text: "add.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opsubi64:         {text: "sub.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opsubi64imm:      {text: "sub.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		oprsubi64imm:     {text: "rsub.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opmuli64:         {text: "mul.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opmuli64imm:      {text: "mul.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opdivi64:         {text: "div.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opdivi64imm:      {text: "div.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		oprdivi64imm:     {text: "rdiv.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opmodi64:         {text: "mod.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opmodi64imm:      {text: "mod.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		oprmodi64imm:     {text: "rmod.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opaddmuli64imm:   {text: "addmul.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcImmI64, bcPredicate)},
+		opminvaluei64:    {text: "minvalue.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opminvaluei64imm: {text: "minvalue.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opmaxvaluei64:    {text: "maxvalue.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opmaxvaluei64imm: {text: "maxvalue.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opandi64:         {text: "and.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opandi64imm:      {text: "and.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opori64:          {text: "or.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opori64imm:       {text: "or.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opxori64:         {text: "xor.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opxori64imm:      {text: "xor.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opslli64:         {text: "sll.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opslli64imm:      {text: "sll.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opsrai64:         {text: "sra.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opsrai64imm:      {text: "sra.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
+		opsrli64:         {text: "srl.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opsrli64imm:      {text: "srl.i64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
 
-	// Comparison instructions
-	opsortcmpvnf: {text: "sortcmpv@nf", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opsortcmpvnl: {text: "sortcmpv@nl", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opcmpv:       {text: "cmpv", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opcmpvk:      {text: "cmpv.k", imms: bcImmsS16, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opcmpvimmk:   {text: "cmpv.imm.k", imms: bcImmsU8, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opcmpvi64:    {text: "cmpv.i64", flags: bcReadWriteK | bcReadV | bcReadWriteS},
-	opcmpvimmi64: {text: "cmpv.imm.i64", imms: bcImmsI64, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opcmpvf64:    {text: "cmpv.f64", flags: bcReadWriteK | bcReadV | bcReadWriteS},
-	opcmpvimmf64: {text: "cmpv.imm.f64", imms: bcImmsF64, flags: bcReadWriteK | bcReadV | bcWriteS},
-	opcmpltstr:   {text: "cmplt.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
-	opcmplestr:   {text: "cmple.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
-	opcmpgtstr:   {text: "cmpgt.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
-	opcmpgestr:   {text: "cmpge.str", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
-	opcmpltk:     {text: "cmplt.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmpgtk},
-	opcmpltimmk:  {text: "cmplt.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpgtimmk},
-	opcmplek:     {text: "cmple.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmpgek},
-	opcmpleimmk:  {text: "cmple.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpgeimmk},
-	opcmpgtk:     {text: "cmpgt.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmpltk},
-	opcmpgtimmk:  {text: "cmpgt.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpgtimmk},
-	opcmpgek:     {text: "cmpge.k", imms: bcImmsS16S16, flags: bcReadWriteK, inverse: opcmplek},
-	opcmpgeimmk:  {text: "cmpge.imm.k", imms: bcImmsS16U8, flags: bcReadWriteK, inverse: opcmpleimmk},
-	opcmpeqf:     {text: "cmpeq.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpeqf},
-	opcmpeqi:     {text: "cmpeq.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS},
-	opcmpeqimmf:  {text: "cmpeq.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS},
-	opcmpeqimmi:  {text: "cmpeq.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS},
-	opcmpltf:     {text: "cmplt.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgtf},
-	opcmplti:     {text: "cmplt.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgti},
-	opcmpltimmf:  {text: "cmplt.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgtimmf},
-	opcmpltimmi:  {text: "cmplt.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpgtimmi},
-	opcmplef:     {text: "cmple.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgef},
-	opcmplei:     {text: "cmple.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpgei},
-	opcmpleimmf:  {text: "cmple.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmf},
-	opcmpleimmi:  {text: "cmple.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpgeimmi},
-	opcmpgtf:     {text: "cmpgt.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmpltf},
-	opcmpgti:     {text: "cmpgt.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplti},
-	opcmpgtimmf:  {text: "cmpgt.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpltimmf},
-	opcmpgtimmi:  {text: "cmpgt.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpltimmi},
-	opcmpgef:     {text: "cmpge.f", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplef},
-	opcmpgei:     {text: "cmpge.i", imms: bcImmsS16, flags: bcReadWriteK | bcReadS, inverse: opcmplei},
-	opcmpgeimmf:  {text: "cmpge.imm.f", imms: bcImmsF64, flags: bcReadWriteK | bcReadS, inverse: opcmpleimmf},
-	opcmpgeimmi:  {text: "cmpge.imm.i", imms: bcImmsI64, flags: bcReadWriteK | bcReadS, inverse: opcmpleimmi},
+		// Floating point math
+		opbroadcastf64:   {text: "broadcast.f64", args: makeArgs(bcWriteS, bcImmF64)},
+		opabsf64:         {text: "abs.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opnegf64:         {text: "neg.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opsignf64:        {text: "sign.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opsquaref64:      {text: "square.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opsqrtf64:        {text: "sqrt.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opcbrtf64:        {text: "cbrt.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		oproundf64:       {text: "round.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		oproundevenf64:   {text: "roundeven.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		optruncf64:       {text: "trunc.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opfloorf64:       {text: "floor.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opceilf64:        {text: "ceil.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opaddf64:         {text: "add.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opaddf64imm:      {text: "add.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opsubf64:         {text: "sub.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opsubf64imm:      {text: "sub.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		oprsubf64imm:     {text: "rsub.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opmulf64:         {text: "mul.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opmulf64imm:      {text: "mul.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opdivf64:         {text: "div.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opdivf64imm:      {text: "div.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		oprdivf64imm:     {text: "rdiv.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opmodf64:         {text: "mod.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opmodf64imm:      {text: "mod.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		oprmodf64imm:     {text: "rmod.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opminvaluef64:    {text: "minvalue.f64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opminvaluef64imm: {text: "minvalue.f64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmF64, bcPredicate)},
+		opmaxvaluef64:    {text: "maxvalue.f64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opmaxvaluef64imm: {text: "maxvalue.f64@imm", args: makeArgs(bcWriteS, bcReadS, bcImmF64, bcPredicate)},
+		opexpf64:         {text: "exp.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opexpm1f64:       {text: "expm1.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opexp2f64:        {text: "exp2.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opexp10f64:       {text: "exp10.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		oplnf64:          {text: "ln.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opln1pf64:        {text: "ln1p.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		oplog2f64:        {text: "log2.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		oplog10f64:       {text: "log10.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opsinf64:         {text: "sin.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opcosf64:         {text: "cos.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		optanf64:         {text: "tan.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opasinf64:        {text: "asin.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opacosf64:        {text: "acos.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opatanf64:        {text: "atan.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opatan2f64:       {text: "atan2.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		ophypotf64:       {text: "hypot.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		oppowf64:         {text: "pow.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
 
-	// Test instructions:
-	//   - null checks - each of these evaluates mask &= is{not}{false,true}(current value)
-	opisnanf:       {text: "isnan.f", flags: bcReadWriteK | bcReadS},
-	opchecktag:     {text: "checktag", imms: bcImmsU16, flags: bcReadWriteK | bcReadV}, // checks that an ion tag is one of the set bits in the uint16 immediate
-	opisnull:       {text: "isnull", flags: bcReadWriteK | bcReadV, inverse: opisnotnull},
-	opisnotnull:    {text: "isnotnull", flags: bcReadWriteK | bcReadV, inverse: opisnull},
-	opisfalse:      {text: "isfalse", flags: bcReadWriteK | bcReadV},
-	opistrue:       {text: "istrue", flags: bcReadWriteK | bcReadV},
-	opeqslice:      {text: "eqslice", imms: bcImmsS16, flags: bcReadWriteK | bcReadS}, // compare timestamp or string slices
-	opequalv:       {text: "equalv", imms: bcImmsS16, flags: bcReadWriteK | bcReadV},
-	opeqv4mask:     {text: "eqv4mask", imms: bcImmsU32H32, flags: bcReadWriteK | bcReadV},
-	opeqv4maskplus: {text: "eqv4mask+", imms: bcImmsU32H32, flags: bcReadWriteK | bcReadV},
-	opeqv8:         {text: "eqv8", imms: bcImmsU64, flags: bcReadWriteK | bcReadV},
-	opeqv8plus:     {text: "eqv8+", imms: bcImmsU64, flags: bcReadWriteK | bcReadV},
-	opleneq:        {text: "leneq", imms: bcImmsU32, flags: bcReadWriteK | bcReadV},
+		// Conversion instructions
+		opcvtktof64:        {text: "cvt.ktof64", args: makeArgs(bcWriteS, bcReadK)},
+		opcvtktoi64:        {text: "cvt.ktoi64", args: makeArgs(bcWriteS, bcReadK)},
+		opcvti64tok:        {text: "cvt.i64tok", args: makeArgs(bcWriteK, bcReadS, bcPredicate)},
+		opcvtf64tok:        {text: "cvt.f64tok", args: makeArgs(bcWriteK, bcReadS, bcPredicate)},
+		opcvti64tof64:      {text: "cvt.i64tof64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opcvttruncf64toi64: {text: "cvttrunc.f64toi64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opcvtfloorf64toi64: {text: "cvtfloor.f64toi64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opcvtceilf64toi64:  {text: "cvtceil.f64toi64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opcvti64tostr:      {text: "cvt.i64tostr", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate), scratch: 20 * 16},
 
-	// Timestamp instructions
-	opdateaddmonth:           {text: "dateaddmonth", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opdateaddmonthimm:        {text: "dateaddmonth.imm", imms: bcImmsI64, flags: bcReadK | bcReadWriteS},
-	opdateaddquarter:         {text: "dateaddquarter", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opdateaddyear:            {text: "dateaddyear", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opdatediffparam:          {text: "datediffparam", imms: bcImmsS16U64, flags: bcReadK | bcReadWriteS},
-	opdatediffmonthyear:      {text: "datediffmonthyear", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS},
-	opdateextractmicrosecond: {text: "dateextractmicrosecond", flags: bcReadK | bcReadWriteS},
-	opdateextractmillisecond: {text: "dateextractmillisecond", flags: bcReadK | bcReadWriteS},
-	opdateextractsecond:      {text: "dateextractsecond", flags: bcReadK | bcReadWriteS},
-	opdateextractminute:      {text: "dateextractminute", flags: bcReadK | bcReadWriteS},
-	opdateextracthour:        {text: "dateextracthour", flags: bcReadK | bcReadWriteS},
-	opdateextractday:         {text: "dateextractday", flags: bcReadK | bcReadWriteS},
-	opdateextractdow:         {text: "dateextractdow", flags: bcReadK | bcReadWriteS},
-	opdateextractdoy:         {text: "dateextractdoy", flags: bcReadK | bcReadWriteS},
-	opdateextractmonth:       {text: "dateextractmonth", flags: bcReadK | bcReadWriteS},
-	opdateextractquarter:     {text: "dateextractquarter", flags: bcReadK | bcReadWriteS},
-	opdateextractyear:        {text: "dateextractyear", flags: bcReadK | bcReadWriteS},
-	opdatetounixepoch:        {text: "datetounixepoch", flags: bcReadK | bcReadWriteS},
-	opdatetruncmillisecond:   {text: "datetruncmillisecond", flags: bcReadK | bcReadWriteS},
-	opdatetruncsecond:        {text: "datetruncsecond", flags: bcReadK | bcReadWriteS},
-	opdatetruncminute:        {text: "datetruncminute", flags: bcReadK | bcReadWriteS},
-	opdatetrunchour:          {text: "datetrunchour", flags: bcReadK | bcReadWriteS},
-	opdatetruncday:           {text: "datetruncday", flags: bcReadK | bcReadWriteS},
-	opdatetruncdow:           {text: "datetruncdow", imms: bcImmsU16, flags: bcReadK | bcReadWriteS},
-	opdatetruncmonth:         {text: "datetruncmonth", flags: bcReadK | bcReadWriteS},
-	opdatetruncquarter:       {text: "datetruncquarter", flags: bcReadK | bcReadWriteS},
-	opdatetruncyear:          {text: "datetruncyear", flags: bcReadK | bcReadWriteS},
-	opunboxts:                {text: "unboxts", flags: bcReadK | bcWriteS},
-	opboxts:                  {text: "boxts", flags: bcReadK | bcReadS, scratch: 16 * 16},
-	opconsttm:                {text: "consttm", imms: bcImmsDict, flags: bcReadWriteS},
-	optimelt:                 {text: "timelt", flags: bcReadWriteK | bcReadS},
-	optimegt:                 {text: "timegt", flags: bcReadWriteK | bcReadS},
-	optmextract:              {text: "tmextract", imms: []bcImmType{bcImmU8}, flags: bcReadWriteK | bcReadWriteS},
+		// Comparison instructions
+		opsortcmpvnf:  {text: "sortcmpv@nf", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcReadV, bcPredicate)},
+		opsortcmpvnl:  {text: "sortcmpv@nl", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcReadV, bcPredicate)},
+		opcmpv:        {text: "cmpv", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcReadV, bcPredicate)},
+		opcmpvk:       {text: "cmpv.k", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcReadK, bcPredicate)},
+		opcmpvkimm:    {text: "cmpv.k@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcImmU16, bcPredicate)},
+		opcmpvi64:     {text: "cmpv.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcReadS, bcPredicate)},
+		opcmpvi64imm:  {text: "cmpv.i64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcImmI64, bcPredicate)},
+		opcmpvf64:     {text: "cmpv.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcReadS, bcPredicate)},
+		opcmpvf64imm:  {text: "cmpv.f64@imm", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcImmF64, bcPredicate)},
+		opcmpltstr:    {text: "cmplt.str", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmplestr:    {text: "cmple.str", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpgtstr:    {text: "cmpgt.str", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpgestr:    {text: "cmpge.str", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpltk:      {text: "cmplt.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
+		opcmpltkimm:   {text: "cmplt.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmpgtkimm},
+		opcmplek:      {text: "cmple.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
+		opcmplekimm:   {text: "cmple.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmpgekimm},
+		opcmpgtk:      {text: "cmpgt.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
+		opcmpgtkimm:   {text: "cmpgt.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmpgtkimm},
+		opcmpgek:      {text: "cmpge.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
+		opcmpgekimm:   {text: "cmpge.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmplekimm},
+		opcmpeqf64:    {text: "cmpeq.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpeqf64},
+		opcmpeqf64imm: {text: "cmpeq.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opcmpeqi64:    {text: "cmpeq.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpeqi64},
+		opcmpeqi64imm: {text: "cmpeq.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opcmpltf64:    {text: "cmplt.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgtf64},
+		opcmpltf64imm: {text: "cmplt.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmpgtf64imm},
+		opcmplti64:    {text: "cmplt.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgti64},
+		opcmplti64imm: {text: "cmplt.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmpgti64imm},
+		opcmplef64:    {text: "cmple.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgef64},
+		opcmplef64imm: {text: "cmple.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmpgef64imm},
+		opcmplei64:    {text: "cmple.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgei64},
+		opcmplei64imm: {text: "cmple.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmpgei64imm},
+		opcmpgtf64:    {text: "cmpgt.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpltf64},
+		opcmpgtf64imm: {text: "cmpgt.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmpltf64imm},
+		opcmpgti64:    {text: "cmpgt.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmplti64},
+		opcmpgti64imm: {text: "cmpgt.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmplti64imm},
+		opcmpgef64:    {text: "cmpge.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmplef64},
+		opcmpgef64imm: {text: "cmpge.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmplef64imm},
+		opcmpgei64:    {text: "cmpge.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmplei64},
+		opcmpgei64imm: {text: "cmpge.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmplei64imm},
 
-	// Bucket instructions
-	opwidthbucketf: {text: "widthbucket.f", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
-	opwidthbucketi: {text: "widthbucket.i", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
-	optimebucketts: {text: "timebucket.ts", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+		// Test instructions:
+		//   - null checks - each of these evaluates mask &= is{not}{false,true}(current value)
+		opisnullv:    {text: "isnull.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate), inverse: opisnotnullv},
+		opisnotnullv: {text: "isnotnull.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate), inverse: opisnullv},
+		opisfalsev:   {text: "isfalse.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate)},
+		opistruev:    {text: "istrue.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate)},
+		opisnanf:     {text: "isnan.f", args: makeArgs(bcWriteK, bcReadS, bcPredicate)},
+		opchecktag:   {text: "checktag", args: makeArgs(bcWriteV, bcWriteK, bcReadV, bcImmU16, bcPredicate)}, // checks that an ion tag is one of the set bits in the uint16 immediate
+		opcmpeqslice: {text: "cmpeq.slice", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},         // compare timestamp or string slices
+		opcmpeqv:     {text: "cmpeq.v", args: makeArgs(bcWriteK, bcReadV, bcReadV, bcPredicate)},
+		opcmpeqvimm:  {text: "cmpeq.v@imm", args: makeArgs(bcWriteK, bcReadV, bcLitRef, bcPredicate)},
 
-	// Geo instructions
-	opgeohash:      {text: "geohash", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
-	opgeohashimm:   {text: "geohashimm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
-	opgeotilex:     {text: "geotilex", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opgeotiley:     {text: "geotiley", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opgeotilees:    {text: "geotilees", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
-	opgeotileesimm: {text: "geotilees.imm", imms: bcImmsS16U16, flags: bcReadK | bcReadWriteS, scratch: 20 * 16},
-	opgeodistance:  {text: "geodistance", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
+		// Timestamp instructions
+		opdateaddmonth:           {text: "dateaddmonth", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opdateaddmonthimm:        {text: "dateaddmonth.imm", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opdateaddquarter:         {text: "dateaddquarter", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opdateaddyear:            {text: "dateaddyear", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opdatediffmicrosecond:    {text: "datediffmicrosecond", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opdatediffparam:          {text: "datediffparam", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcImmU64, bcPredicate)},
+		opdatediffmqy:            {text: "datediffmqy", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcImmU16, bcPredicate)},
+		opdateextractmicrosecond: {text: "dateextractmicrosecond", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractmillisecond: {text: "dateextractmillisecond", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractsecond:      {text: "dateextractsecond", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractminute:      {text: "dateextractminute", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextracthour:        {text: "dateextracthour", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractday:         {text: "dateextractday", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractdow:         {text: "dateextractdow", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractdoy:         {text: "dateextractdoy", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractmonth:       {text: "dateextractmonth", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractquarter:     {text: "dateextractquarter", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdateextractyear:        {text: "dateextractyear", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetounixepoch:        {text: "datetounixepoch", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetounixmicro:        {text: "datetounixmicro", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncmillisecond:   {text: "datetruncmillisecond", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncsecond:        {text: "datetruncsecond", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncminute:        {text: "datetruncminute", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetrunchour:          {text: "datetrunchour", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncday:           {text: "datetruncday", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncdow:           {text: "datetruncdow", args: makeArgs(bcWriteS, bcReadS, bcImmU16, bcPredicate)},
+		opdatetruncmonth:         {text: "datetruncmonth", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncquarter:       {text: "datetruncquarter", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opdatetruncyear:          {text: "datetruncyear", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opunboxts:                {text: "unboxts", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		opboxts:                  {text: "boxts", args: makeArgs(bcWriteV, bcReadS, bcPredicate), scratch: 16 * 16},
 
-	opconcatlenget1: {text: "concatlenget1", flags: bcReadK | bcReadWriteS},
-	opconcatlenget2: {text: "concatlenget2", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opconcatlenget3: {text: "concatlenget3", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opconcatlenget4: {text: "concatlenget4", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
+		// Bucket instructions
+		opwidthbucketf64: {text: "widthbucket.f64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcReadS, bcPredicate)},
+		opwidthbucketi64: {text: "widthbucket.i64", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcReadS, bcPredicate)},
+		optimebucketts:   {text: "timebucket.ts", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
 
-	opconcatlenacc1: {text: "concatlenacc1", flags: bcReadK | bcReadWriteS},
-	opconcatlenacc2: {text: "concatlenacc2", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opconcatlenacc3: {text: "concatlenacc3", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opconcatlenacc4: {text: "concatlenacc4", imms: bcImmsS16S16S16, flags: bcReadK | bcReadWriteS},
+		// Geo instructions
+		opgeohash:      {text: "geohash", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcPredicate), scratch: 16 * 16},
+		opgeohashimm:   {text: "geohashimm", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcImmU16, bcPredicate), scratch: 16 * 16},
+		opgeotilex:     {text: "geotilex", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opgeotiley:     {text: "geotiley", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcPredicate)},
+		opgeotilees:    {text: "geotilees", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcPredicate), scratch: 32 * 16},
+		opgeotileesimm: {text: "geotilees.imm", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcImmU16, bcPredicate), scratch: 32 * 16},
+		opgeodistance:  {text: "geodistance", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcReadS, bcReadS, bcPredicate)},
 
-	opallocstr:  {text: "alloc.str", flags: bcReadWriteK | bcReadWriteS, scratch: PageSize},
-	opappendstr: {text: "append.str", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
+		// String instructions
+		opalloc:     {text: "alloc", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate), scratch: PageSize},
+		opconcatstr: {text: "concatstr", args: makeArgs(bcWriteS, bcWriteK), va: makeArgs(bcReadS, bcReadK), scratch: PageSize},
 
-	// Find Symbol instructions
-	//   - findsym - computes 'current struct' . 'symbol'
-	opfindsym:     {text: "findsym", imms: bcImmsH32, flags: bcReadWriteK | bcReadB | bcWriteV},
-	opfindsym2:    {text: "findsym2", imms: bcImmsS16H32, flags: bcReadWriteK | bcReadB | bcReadWriteV},
-	opfindsym2rev: {text: "findsym2rev", imms: bcImmsS16H32, flags: bcReadWriteK | bcReadB | bcReadWriteV},
-	opfindsym3:    {text: "findsym3", imms: bcImmsH32, flags: bcReadWriteK | bcReadB | bcReadWriteV},
+		// Find Symbol instructions
+		//   - findsym - computes 'current struct' . 'symbol'
+		opfindsym:  {text: "findsym", args: makeArgs(bcWriteV, bcWriteK, bcReadB, bcSymbolID, bcPredicate)},
+		opfindsym2: {text: "findsym2", args: makeArgs(bcWriteV, bcWriteK, bcReadB, bcReadV, bcReadK, bcSymbolID, bcPredicate)},
 
-	// Blend instructions
-	opblendnum:      {text: "blendnum", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opblendnumrev:   {text: "blendnumrev", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opblendslice:    {text: "blendslice", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opblendslicerev: {text: "blendslicerev", imms: bcImmsS16, flags: bcReadK | bcReadWriteS},
-	opblendv:        {text: "blend.v", imms: bcImmsS16, flags: bcReadK | bcReadWriteV},
-	opblendrevv:     {text: "blendrev.v", imms: bcImmsS16, flags: bcReadK | bcReadWriteV},
+		// Blend instructions:
+		opblendv:     {text: "blend.v", args: makeArgs(bcWriteV, bcWriteK, bcReadV, bcReadK, bcReadV, bcReadK)},
+		opblendk:     {text: "blend.k", args: makeArgs(bcWriteK, bcWriteK, bcReadK, bcReadK, bcReadK, bcReadK)},
+		opblendi64:   {text: "blend.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadK, bcReadS, bcReadK)},
+		opblendf64:   {text: "blend.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadK, bcReadS, bcReadK)},
+		opblendslice: {text: "blend.slice", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadK, bcReadS, bcReadK)},
 
-	// Unboxing instructions:
-	opunboxktoi64:    {text: "unboxktoi64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	opunboxcoercef64: {text: "unboxcoerce.f64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	opunboxcoercei64: {text: "unboxcoerce.i64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	opunboxcvtf64:    {text: "unboxcvt.f64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	opunboxcvti64:    {text: "unboxcvt.i64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	optoint:          {text: "toint", flags: bcReadWriteK | bcWriteS | bcReadV},
-	optof64:          {text: "tof64", flags: bcReadWriteK | bcWriteS | bcReadV},
-	// unpack a slice type (string/array/timestamp/etc.)
-	opunpack: {text: "unpack", imms: []bcImmType{bcImmU8Hex}, flags: bcReadWriteK | bcWriteS | bcReadV},
+		// Unboxing instructions:
+		opunboxktoi64:    {text: "unbox.k@i64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		opunboxcoercef64: {text: "unbox.coerce.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		opunboxcoercei64: {text: "unbox.coerce.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		opunboxcvtf64:    {text: "unbox.cvt.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		opunboxcvti64:    {text: "unbox.cvt.i64", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
 
-	opunsymbolize: {text: "unsymbolize", flags: bcReadWriteV},
+		// unpack a slice type (string/array/timestamp/etc.)
+		opunpack: {text: "unpack", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcImmU16, bcPredicate)},
 
-	// Boxing instructions
-	opboxmask:   {text: "boxmask", imms: bcImmsS16, flags: bcReadK, scratch: 16},
-	opboxmask2:  {text: "boxmask2", imms: bcImmsS16, flags: bcReadK, scratch: 16},
-	opboxmask3:  {text: "boxmask3", flags: bcReadK, scratch: 16},
-	opboxint:    {text: "boxint", flags: bcReadK | bcReadS, scratch: 2 * 9 * 16},
-	opboxfloat:  {text: "boxfloat", flags: bcReadK | bcReadS, scratch: 2 * 9 * 16},
-	opboxstring: {text: "boxstring", flags: bcReadK | bcReadS, scratch: PageSize},
-	opboxlist:   {text: "boxlist", flags: bcReadK | bcReadS, scratch: PageSize},
+		opunsymbolize: {text: "unsymbolize", args: makeArgs(bcWriteV, bcReadV, bcPredicate)},
 
-	// Make instructions
-	opmakelist:   {text: "makelist", vaImms: bcImmsS16S16, flags: bcReadWriteK | bcWriteV, scratch: PageSize},
-	opmakestruct: {text: "makestruct", vaImms: bcImmsH32S16S16, flags: bcReadWriteK | bcWriteV, scratch: PageSize},
+		// Boxing instructions
+		opboxk:    {text: "box.k", args: makeArgs(bcWriteV, bcReadK, bcPredicate), scratch: 16},
+		opboxi64:  {text: "box.i64", args: makeArgs(bcWriteV, bcReadS, bcPredicate), scratch: 9 * 16},
+		opboxf64:  {text: "box.f64", args: makeArgs(bcWriteV, bcReadS, bcPredicate), scratch: 9 * 16},
+		opboxstr:  {text: "box.str", args: makeArgs(bcWriteV, bcReadS, bcPredicate), scratch: PageSize},
+		opboxlist: {text: "box.list", args: makeArgs(bcWriteV, bcReadS, bcPredicate), scratch: PageSize},
 
-	// Hash instructions
-	ophashvalue:     {text: "hashvalue", imms: bcImmsS16, flags: bcReadK | bcReadV | bcWriteH},
-	ophashvalueplus: {text: "hashvalue+", imms: bcImmsS16S16, flags: bcReadK | bcReadV | bcReadWriteH},
-	ophashmember:    {text: "hashmember", imms: bcImmsS16U16, flags: bcReadWriteK | bcReadH},
-	ophashlookup:    {text: "hashlookup", imms: bcImmsS16U16, flags: bcReadWriteK | bcWriteV | bcReadH},
+		// Make instructions
+		opmakelist:   {text: "makelist", args: makeArgs(bcWriteV, bcWriteK, bcPredicate), va: makeArgs(bcReadV, bcReadK), scratch: PageSize},
+		opmakestruct: {text: "makestruct", args: makeArgs(bcWriteV, bcWriteK, bcPredicate), va: makeArgs(bcImmU32, bcReadV, bcReadK), scratch: PageSize},
 
-	// Simple aggregate operations
-	opaggandk:  {text: "aggand.k", imms: bcImmsS16U32, flags: bcReadK},
-	opaggork:   {text: "aggor.k", imms: bcImmsS16U32, flags: bcReadK},
-	opaggsumf:  {text: "aggsum.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggsumi:  {text: "aggsum.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggminf:  {text: "aggmin.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggmini:  {text: "aggmin.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggmaxf:  {text: "aggmax.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggmaxi:  {text: "aggmax.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggandi:  {text: "aggand.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggori:   {text: "aggor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggxori:  {text: "aggxor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggcount: {text: "aggcount", imms: bcImmsU32, flags: bcReadK},
+		// Hash instructions
+		ophashvalue:     {text: "hashvalue", args: makeArgs(bcWriteH, bcReadV, bcPredicate)},
+		ophashvalueplus: {text: "hashvalue+", args: makeArgs(bcWriteH, bcReadH, bcReadV, bcPredicate)},
+		ophashmember:    {text: "hashmember", args: makeArgs(bcWriteK, bcReadH, bcImmU16, bcPredicate)},
+		ophashlookup:    {text: "hashlookup", args: makeArgs(bcWriteV, bcWriteK, bcReadH, bcImmU16, bcPredicate)},
 
-	// Slot aggregate operations
-	opaggbucket:    {text: "aggbucket", imms: bcImmsS16, flags: bcReadK | bcWriteS | bcReadH},
-	opaggslotandk:  {text: "aggslotand.k", imms: bcImmsU32S16, flags: bcReadK},
-	opaggslotork:   {text: "aggslotor.k", imms: bcImmsU32S16, flags: bcReadK},
-	opaggslotaddf:  {text: "aggslotadd.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotaddi:  {text: "aggslotadd.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotavgf:  {text: "aggslotavg.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotavgi:  {text: "aggslotavg.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotmaxf:  {text: "aggslotmax.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotmaxi:  {text: "aggslotmax.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotminf:  {text: "aggslotmin.f", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotmini:  {text: "aggslotmin.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotandi:  {text: "aggslotand.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotori:   {text: "aggslotor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotxori:  {text: "aggslotxor.i", imms: bcImmsU32, flags: bcReadK | bcReadS},
-	opaggslotcount: {text: "aggslotcount", imms: bcImmsU32, flags: bcReadK},
+		// Simple aggregate operations
+		opaggandk:  {text: "aggand.k", args: makeArgs(bcAggSlot, bcReadK, bcPredicate)},
+		opaggork:   {text: "aggor.k", args: makeArgs(bcAggSlot, bcReadK, bcPredicate)},
+		opaggsumf:  {text: "aggsum.f64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggsumi:  {text: "aggsum.i64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggminf:  {text: "aggmin.f64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggmini:  {text: "aggmin.i64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggmaxf:  {text: "aggmax.f64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggmaxi:  {text: "aggmax.i64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggandi:  {text: "aggand.i64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggori:   {text: "aggor.i64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggxori:  {text: "aggxor.i64", args: makeArgs(bcAggSlot, bcReadS, bcPredicate)},
+		opaggcount: {text: "aggcount", args: makeArgs(bcAggSlot, bcReadK)},
 
-	// Uncategorized instructions
-	oplitref:     {text: "litref", imms: bcImmsH32H32, flags: bcWriteV},
-	opauxval:     {text: "auxval", imms: bcImmsS16, flags: bcWriteV | bcWriteK},
-	opsplit:      {text: "split", flags: bcReadWriteK | bcReadWriteS | bcWriteV}, // split a list into head and tail components
-	optuple:      {text: "tuple", flags: bcReadV | bcWriteB},
-	opdupv:       {text: "dup.v", imms: bcImmsS16S16, flags: 0}, // duplicates a saved stack slot
-	opzerov:      {text: "zero.v", imms: bcImmsS16, flags: 0},   // zeroes all values in a slot
-	opobjectsize: {text: "objectsize", flags: bcReadWriteK | bcWriteS | bcReadV},
+		// Slot aggregate operations
+		opaggbucket:    {text: "aggbucket", args: makeArgs(bcReadH, bcPredicate)},
+		opaggslotandk:  {text: "aggslotand.k", args: makeArgs(bcHashSlot, bcReadK, bcPredicate)},
+		opaggslotork:   {text: "aggslotor.k", args: makeArgs(bcHashSlot, bcReadK, bcPredicate)},
+		opaggslotaddf:  {text: "aggslotadd.f64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotaddi:  {text: "aggslotadd.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotavgf:  {text: "aggslotavg.f64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotavgi:  {text: "aggslotavg.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotmaxf:  {text: "aggslotmax.f64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotmaxi:  {text: "aggslotmax.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotminf:  {text: "aggslotmin.f64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotmini:  {text: "aggslotmin.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotandi:  {text: "aggslotand.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotori:   {text: "aggslotor.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotxori:  {text: "aggslotxor.i64", args: makeArgs(bcHashSlot, bcReadS, bcPredicate)},
+		opaggslotcount: {text: "aggslotcount", args: makeArgs(bcHashSlot, bcReadK)},
 
-	// string comparing operations
-	opCmpStrEqCs:     {text: "cmp_str_eq_cs", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
-	opCmpStrEqCi:     {text: "cmp_str_eq_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
-	opCmpStrEqUTF8Ci: {text: "cmp_str_eq_utf8_ci", imms: bcImmsDict, flags: bcReadS | bcReadWriteK},
+		// Uncategorized instructions
+		oplitref:     {text: "litref", args: makeArgs(bcWriteV, bcLitRef)},
+		opauxval:     {text: "auxval", args: makeArgs(bcWriteV, bcWriteK, bcAuxSlot)},
+		opsplit:      {text: "split", args: makeArgs(bcWriteV, bcWriteS, bcWriteK, bcReadS, bcPredicate)}, // split a list into head and tail components
+		optuple:      {text: "tuple", args: makeArgs(bcWriteB, bcWriteK, bcReadV, bcPredicate)},
+		opmovk:       {text: "mov.k", args: makeArgs(bcWriteK, bcReadK)},                          // duplicates a mask
+		opzerov:      {text: "zero.v", args: makeArgs(bcWriteV)},                                  // zeroes a value
+		opmovv:       {text: "mov.v", args: makeArgs(bcWriteV, bcReadV, bcPredicate)},             // duplicates a value
+		opmovvk:      {text: "mov.v.k", args: makeArgs(bcWriteV, bcWriteK, bcReadV, bcPredicate)}, // duplicates a value + mask
+		opmovf64:     {text: "mov.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates f64
+		opmovi64:     {text: "mov.i64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates i64
+		opobjectsize: {text: "objectsize", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
 
-	opEqPatternCs:     {text: "eq_pattern_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opEqPatternCi:     {text: "eq_pattern_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opEqPatternUTF8Ci: {text: "eq_pattern_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+		// string comparing operations
+		opCmpStrEqCs:              {text: "cmp_str_eq_cs", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opCmpStrEqCi:              {text: "cmp_str_eq_ci", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opCmpStrEqUTF8Ci:          {text: "cmp_str_eq_utf8_ci", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opEqPatternCs:             {text: "eq_pattern_cs", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opEqPatternCi:             {text: "eq_pattern_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opEqPatternUTF8Ci:         {text: "eq_pattern_utf8_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opCmpStrFuzzyA3:           {text: "cmp_str_fuzzy_A3", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcDictSlot, bcPredicate)},
+		opCmpStrFuzzyUnicodeA3:    {text: "cmp_str_fuzzy_unicode_A3", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcDictSlot, bcPredicate)},
+		opHasSubstrFuzzyA3:        {text: "contains_fuzzy_A3", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcDictSlot, bcPredicate)},
+		opHasSubstrFuzzyUnicodeA3: {text: "contains_fuzzy_unicode_A3", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcDictSlot, bcPredicate)},
+		// TODO: op_cmp_less_str, op_cmp_neq_str, op_cmp_between_str
 
-	opCmpStrFuzzyA3:           {text: "cmp_str_fuzzy_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
-	opCmpStrFuzzyUnicodeA3:    {text: "cmp_str_fuzzy_unicode_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
-	opHasSubstrFuzzyA3:        {text: "contains_fuzzy_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
-	opHasSubstrFuzzyUnicodeA3: {text: "contains_fuzzy_unicode_A3", imms: bcImmsDictS16, flags: bcReadS | bcReadWriteK},
-	// TODO: op_cmp_less_str, op_cmp_neq_str, op_cmp_between_str
+		// string trim operations
+		opTrimWsLeft:     {text: "trim_ws_left", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opTrimWsRight:    {text: "trim_ws_right", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opTrim4charLeft:  {text: "trim_char_left", args: makeArgs(bcWriteS, bcReadS, bcDictSlot, bcPredicate)},
+		opTrim4charRight: {text: "trim_char_right", args: makeArgs(bcWriteS, bcReadS, bcDictSlot, bcPredicate)},
 
-	// string trim operations
-	opTrimWsLeft:     {text: "trim_ws_left", flags: bcReadK | bcReadWriteS},
-	opTrimWsRight:    {text: "trim_ws_right", flags: bcReadK | bcReadWriteS},
-	opTrim4charLeft:  {text: "trim_char_left", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
-	opTrim4charRight: {text: "trim_char_right", imms: bcImmsDict, flags: bcReadK | bcReadWriteS},
+		// string prefix/suffix matching operations
+		opContainsPrefixCs:      {text: "contains_prefix_cs", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsPrefixUTF8Ci:  {text: "contains_prefix_utf8_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsPrefixCi:      {text: "contains_prefix_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsSuffixCs:      {text: "contains_suffix_cs", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsSuffixCi:      {text: "contains_suffix_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsSuffixUTF8Ci:  {text: "contains_suffix_utf8_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsSubstrCs:      {text: "contains_substr_cs", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsSubstrCi:      {text: "contains_substr_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsSubstrUTF8Ci:  {text: "contains_substr_utf8_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsPatternCs:     {text: "contains_pattern_cs", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsPatternCi:     {text: "contains_pattern_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
 
-	// string contains prefix/suffix/substr matching operations
-	opContainsPrefixCs:     {text: "contains_prefix_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsPrefixCi:     {text: "contains_prefix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsPrefixUTF8Ci: {text: "contains_prefix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+		// ip matching operations
+		opIsSubnetOfIP4: {text: "is_subnet_of_ip4", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
 
-	opContainsSuffixCs:     {text: "contains_suffix_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsSuffixCi:     {text: "contains_suffix_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsSuffixUTF8Ci: {text: "contains_suffix_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+		// char skipping
+		opSkip1charLeft:  {text: "skip_1char_left", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opSkip1charRight: {text: "skip_1char_right", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate)},
+		opSkipNcharLeft:  {text: "skip_nchar_left", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opSkipNcharRight: {text: "skip_nchar_right", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
 
-	opContainsSubstrCs:     {text: "contains_substr_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsSubstrCi:     {text: "contains_substr_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsSubstrUTF8Ci: {text: "contains_substr_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+		opLengthStr: {text: "lengthstr", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opSubstr:    {text: "substr", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcPredicate)},
+		opSplitPart: {text: "split_part", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcReadS, bcPredicate)},
 
-	opContainsPatternCs:     {text: "contains_pattern_cs", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsPatternCi:     {text: "contains_pattern_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opContainsPatternUTF8Ci: {text: "contains_pattern_utf8_ci", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+		opDfaT6:  {text: "dfa_tiny6", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opDfaT7:  {text: "dfa_tiny7", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opDfaT8:  {text: "dfa_tiny8", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opDfaT6Z: {text: "dfa_tiny6Z", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opDfaT7Z: {text: "dfa_tiny7Z", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opDfaT8Z: {text: "dfa_tiny8Z", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
+		opDfaLZ:  {text: "dfa_largeZ", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
 
-	// ip matching operations
-	opIsSubnetOfIP4: {text: "is_subnet_of_ip4", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
+		opslower: {text: "slower", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate), scratch: PageSize},
+		opsupper: {text: "supper", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcPredicate), scratch: PageSize},
 
-	// char skipping
-	opSkip1charLeft:  {text: "skip_1char_left", flags: bcReadWriteK | bcReadWriteS},
-	opSkip1charRight: {text: "skip_1char_right", flags: bcReadWriteK | bcReadWriteS},
-	opSkipNcharLeft:  {text: "skip_nchar_left", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},
-	opSkipNcharRight: {text: "skip_nchar_right", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},
+		optypebits: {text: "typebits", args: makeArgs(bcWriteS, bcReadV, bcPredicate)},
 
-	opLengthStr: {text: "lengthstr", flags: bcReadK | bcReadWriteS},
-	opSubstr:    {text: "substr", imms: bcImmsS16S16, flags: bcReadK | bcReadWriteS},
-	opSplitPart: {text: "split_part", imms: bcImmsDictS16, flags: bcReadWriteK | bcReadWriteS},
+		opaggapproxcount:          {text: "aggapproxcount", args: makeArgs(bcAggSlot, bcReadH, bcImmU16, bcPredicate)},
+		opaggapproxcountmerge:     {text: "aggapproxcountmerge", args: makeArgs(bcAggSlot, bcReadS, bcImmU16, bcPredicate)},
+		opaggslotapproxcount:      {text: "aggslotapproxcount", args: makeArgs(bcAggSlot, bcReadH, bcImmU16, bcPredicate)},
+		opaggslotapproxcountmerge: {text: "aggslotapproxcountmerge", args: makeArgs(bcAggSlot, bcReadS, bcImmU16, bcPredicate)},
 
-	opDfaT6:  {text: "dfa_tiny6", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaT7:  {text: "dfa_tiny7", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaT8:  {text: "dfa_tiny8", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaT6Z: {text: "dfa_tiny6Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaT7Z: {text: "dfa_tiny7Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaT8Z: {text: "dfa_tiny8Z", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-	opDfaLZ:  {text: "dfa_largeZ", imms: bcImmsDict, flags: bcReadWriteK | bcReadS},
-
-	opslower:      {text: "slower", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},
-	opsupper:      {text: "supper", imms: bcImmsS16, flags: bcReadWriteK | bcReadWriteS},
-	opsadjustsize: {text: "saddjustsize", flags: bcReadWriteS},
-
-	optypebits: {text: "typebits", flags: bcReadK | bcReadV | bcWriteS},
-
-	opaggapproxcount:          {text: "aggapproxcount", flags: bcReadK | bcReadH, imms: []bcImmType{bcImmU64, bcImmU16, bcImmU16}},
-	opaggapproxcountmerge:     {text: "aggapproxcountmerge", flags: bcReadK | bcReadH, imms: []bcImmType{bcImmU64, bcImmU16}},
-	opaggslotapproxcount:      {text: "aggslotapproxcount", flags: bcReadK | bcReadS | bcReadH, imms: []bcImmType{bcImmU64, bcImmU16, bcImmU16}},
-	opaggslotapproxcountmerge: {text: "aggslotapproxcountmerge", flags: bcReadK | bcReadS, imms: []bcImmType{bcImmU64, bcImmU16}},
-
-	optrap: {text: "trap"},
+		optrap: {text: "trap"},
+	}
 }
+
+var opinfo [_maxbcop]bcopinfo = bcmakeopinfo()
 
 func init() {
 	// Multiple purposes:
@@ -591,20 +591,20 @@ func init() {
 			panic(fmt.Sprintf("missing opinfo for bcop %v", i))
 		}
 
-		immw := uint(0)
-		for j := 0; j < len(info.imms); j++ {
-			immw += uint(info.imms[j].Size())
+		width := uint(0)
+		for j := 0; j < len(info.args); j++ {
+			width += uint(info.args[j].immWidth())
 		}
 
-		if len(info.vaImms) != 0 {
-			immw += 4 // variable argument count is 4 bytes
+		if len(info.va) != 0 {
+			width += 4 // variable argument count is 4 bytes
 		}
 
-		if immw >= 256 {
-			panic(fmt.Sprintf("%s immediate width too large: %d bytes", info.text, immw))
+		if width >= 256 {
+			panic(fmt.Sprintf("%s immediate width too large: %d bytes", info.text, width))
 		}
 
-		info.immwidth = uint8(immw)
+		info.immwidth = uint8(width)
 	}
 }
 
@@ -710,112 +710,171 @@ type bytecode struct {
 	errinfo int
 }
 
-func formatImmediatesTo(b *strings.Builder, imms []bcImmType, bc []byte) int {
-	i := 0
-	size := len(bc)
+type bcFormatFlags uint
 
-	for immIndex := 0; immIndex < len(imms); immIndex++ {
-		immType := imms[immIndex]
-		immWidth := immType.Size()
+const (
+	// Redacted mode (the default).
+	//
+	// This turns off all formatting features.
+	bcFormatRedacted = 0
 
-		if size-i < immWidth {
-			fmt.Fprintf(b, "<bytecode is truncated, cannot decode immediate value of size %d while there is only %d bytes left>", immWidth, size-i)
+	// Formatter will try to output the string representation
+	// of each symbol found in the compiled BC program.
+	//
+	// NOTE: That this flag cannot be used in production!
+	bcFormatSymbols bcFormatFlags = (1 << iota)
+
+	//lint:ignore U1000 can be used during debugging
+	//
+	// Enable all format features, which can be useful during debugging
+	bcFormatAll = bcFormatSymbols
+)
+
+func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcArgType, flags bcFormatFlags) int {
+	offset := 0
+	size := len(compiled)
+
+	for i, argType := range args {
+		width := argType.immWidth()
+		if size-offset < width {
+			fmt.Fprintf(dst, "<bytecode error: cannot decode argument of size %d while there is only %d bytes left>", width, size-offset)
 			return -1
 		}
 
-		immValue := uint64(0)
-		for immByte := 0; immByte < immWidth; immByte++ {
-			immValue |= uint64(bc[i]) << (immByte * 8)
-			i++
+		value := uint64(0)
+		for argByte := 0; argByte < width; argByte++ {
+			value |= uint64(compiled[offset]) << (argByte * 8)
+			offset++
 		}
 
-		if immIndex != 0 {
-			b.WriteString(", ")
+		if i != 0 {
+			dst.WriteString(", ")
 		}
 
-		switch immType {
+		switch argType {
+		case bcReadK:
+			fmt.Fprintf(dst, "k[%d]", value)
+		case bcWriteK:
+			fmt.Fprintf(dst, "w:k[%d]", value)
+
+		case bcReadS:
+			fmt.Fprintf(dst, "s[%d]", value)
+		case bcWriteS:
+			fmt.Fprintf(dst, "w:s[%d]", value)
+
+		case bcReadV:
+			fmt.Fprintf(dst, "v[%d]", value)
+		case bcWriteV:
+			fmt.Fprintf(dst, "w:v[%d]", value)
+		case bcReadWriteV:
+			fmt.Fprintf(dst, "x:v[%d]", value)
+
+		case bcReadB:
+			fmt.Fprintf(dst, "b[%d]", value)
+		case bcWriteB:
+			fmt.Fprintf(dst, "w:b[%d]", value)
+
+		case bcReadH:
+			fmt.Fprintf(dst, "h[%d]", value)
+		case bcWriteH:
+			fmt.Fprintf(dst, "w:h[%d]", value)
+
+		case bcAuxSlot:
+			fmt.Fprintf(dst, "aux[%d]", value)
+		case bcAggSlot:
+			fmt.Fprintf(dst, "agg[%d]", value)
+		case bcHashSlot:
+			fmt.Fprintf(dst, "hash[%d]", value)
+		case bcDictSlot:
+			fmt.Fprintf(dst, "dict[%d]", value)
+
+		case bcSymbolID:
+			if (flags&bcFormatSymbols) != 0 && value < uint64(len(bc.symtab)) {
+				encodedSymbolValue := bc.symtab[value].mem()
+				str, _, err := ion.ReadString(encodedSymbolValue)
+				if err == nil {
+					fmt.Fprintf(dst, "sym(%d, %q)", value, str)
+				} else {
+					fmt.Fprintf(dst, "sym(%d, <%v>)", value, err)
+				}
+				continue
+			}
+			fmt.Fprintf(dst, "sym(%d)", value)
+
 		case bcImmI8:
-			fmt.Fprintf(b, "i8(%d)", int8(immValue))
+			fmt.Fprintf(dst, "i8(%d)", int8(value))
 		case bcImmI16:
-			fmt.Fprintf(b, "i16(%d)", int16(immValue))
+			fmt.Fprintf(dst, "i16(%d)", int16(value))
 		case bcImmI32:
-			fmt.Fprintf(b, "i32(%d)", int32(immValue))
+			fmt.Fprintf(dst, "i32(%d)", int32(value))
 		case bcImmI64:
-			fmt.Fprintf(b, "i64(%d)", int64(immValue))
+			fmt.Fprintf(dst, "i64(%d)", int64(value))
 		case bcImmU8:
-			fmt.Fprintf(b, "u8(%d)", immValue)
+			fmt.Fprintf(dst, "u8(%d)", value)
 		case bcImmU16:
-			fmt.Fprintf(b, "u16(%d)", immValue)
+			fmt.Fprintf(dst, "u16(%d)", value)
 		case bcImmU32:
-			fmt.Fprintf(b, "u32(%d)", immValue)
+			fmt.Fprintf(dst, "u32(%d)", value)
 		case bcImmU64:
-			fmt.Fprintf(b, "u64(%d)", immValue)
-		case bcImmU8Hex:
-			fmt.Fprintf(b, "u8(0x%X)", immValue)
-		case bcImmU16Hex:
-			fmt.Fprintf(b, "u16(0x%X)", immValue)
-		case bcImmU32Hex:
-			fmt.Fprintf(b, "u32(0x%X)", immValue)
-		case bcImmU64Hex:
-			fmt.Fprintf(b, "u64(0x%X)", immValue)
+			fmt.Fprintf(dst, "u64(%d)", value)
 		case bcImmF64:
-			fmt.Fprintf(b, "f64(%g)", math.Float64frombits(immValue))
-		case bcImmS16:
-			fmt.Fprintf(b, "[%d]", immValue)
-		case bcImmDict:
-			fmt.Fprintf(b, "dict[%d]", immValue)
+			fmt.Fprintf(dst, "f64(%g)", math.Float64frombits(value))
+
+		case bcLitRef:
+			fmt.Fprintf(dst, "litref(%d, %d)", value&0xFFFFFFFF, value>>32)
+
 		default:
-			panic(fmt.Sprintf("Unhandled immediate type %v", immType))
+			panic(fmt.Sprintf("Unhandled immediate type %v", value))
 		}
 	}
 
-	return i
+	return offset
 }
 
-func formatBytecode(bc []byte) string {
+func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
 	var b strings.Builder
 
-	i := int(0)
-	size := len(bc)
+	compiled := bc.compiled
+	size := len(compiled)
+	offset := int(0)
 
-	for i < size {
-		if size-i < 8 {
-			fmt.Fprintf(&b, "<bytecode is truncated, cannot decode opcode of size %d while there is only %d bytes left>", 8, size-i)
-			break
+	for offset < size {
+		if size-offset < 8 {
+			fmt.Fprintf(&b, "<bytecode error: cannot decode opcode of size %d while there is only %d bytes left>", 8, size-offset)
+			return b.String()
 		}
 
-		opaddr := uintptr(binary.LittleEndian.Uint64(bc[i:]))
-		i += 8
+		opaddr := uintptr(binary.LittleEndian.Uint64(compiled[offset:]))
+		offset += 8
 
 		op, ok := opcodeID(opaddr)
-
 		if !ok {
-			fmt.Fprintf(&b, "<invalid:%x>\n", opaddr)
-			continue
+			fmt.Fprintf(&b, "<bytecode error: failed to translate opcode address 0x%x>\n", opaddr)
+			return b.String()
 		}
 
 		info := &opinfo[op]
 		b.WriteString(info.text)
 
-		if len(info.imms) != 0 {
+		if len(info.args) != 0 {
 			b.WriteString(" ")
-			immSize := formatImmediatesTo(&b, info.imms, bc[i:])
+			immSize := formatArgs(bc, &b, compiled[offset:], info.args, flags)
 			if immSize == -1 {
-				break
+				return b.String()
 			}
-			i += immSize
+			offset += immSize
 		}
 
-		if len(info.vaImms) != 0 {
-			if size-i < 4 {
-				fmt.Fprintf(&b, "<bytecode is truncated, cannot decode va-length consisting of %d bytes while there is only %d bytes left>", 4, size-i)
-				break
+		if len(info.va) != 0 {
+			if size-offset < 4 {
+				fmt.Fprintf(&b, "<bytecode error: cannot decode va-length consisting of %d bytes while there is only %d bytes left>", 4, size-offset)
+				return b.String()
 			}
 
-			vaLength := uint(binary.LittleEndian.Uint32(bc[i:]))
-			i += 4
+			vaLength := uint(binary.LittleEndian.Uint32(compiled[offset:]))
+			offset += 4
 
-			if len(info.imms) != 0 {
+			if len(info.args) != 0 {
 				b.WriteString(", ")
 			} else {
 				b.WriteString(" ")
@@ -824,29 +883,29 @@ func formatBytecode(bc []byte) string {
 			fmt.Fprintf(&b, "va(%d)", vaLength)
 			for vaIndex := 0; vaIndex < int(vaLength); vaIndex++ {
 				b.WriteString(", {")
-				immSize := formatImmediatesTo(&b, info.vaImms, bc[i:])
+				immSize := formatArgs(bc, &b, compiled[offset:], info.va, flags)
 				if immSize == -1 {
-					break
+					return b.String()
 				}
-				i += immSize
+				offset += immSize
 				b.WriteString("}")
 			}
 		}
 
 		b.WriteString("\n")
 	}
+
 	return b.String()
 }
 
 func (b *bytecode) String() string {
-	return formatBytecode(b.compiled)
+	return formatBytecode(b, bcFormatRedacted)
 }
 
 // finalize append the final 'return' instruction
 // to the bytecode buffer and checks that the stack
 // depth is sane
 func (b *bytecode) finalize() error {
-	b.compiled = append(b.compiled, opcodeToBytes(opret)...)
 	return nil
 }
 
@@ -857,21 +916,25 @@ func (b *bytecode) ensureVStackSize(size int) {
 	}
 }
 
+func alignVStackBuffer(buf []uint64) []uint64 {
+	alignmentInU64Units := uintptr(bcStackAlignment >> 3)
+
+	addr := uintptr(unsafe.Pointer(&buf[0]))
+	alignDiff := (alignmentInU64Units - (addr >> 3)) & (alignmentInU64Units - 1)
+	return buf[int(alignDiff):cap(buf)]
+}
+
 // Allocates all stacks that are needed to execute the bytecode program.
 func (b *bytecode) allocStacks() {
 	vSize := (b.vstacksize + 7) >> 3
 	hSize := (b.hstacksize + 7) >> 3
 
 	if cap(b.vstack) < vSize {
-		b.vstack = make([]uint64, vSize)
-	} else if len(b.vstack) != vSize {
-		b.vstack = b.vstack[:vSize]
+		b.vstack = alignVStackBuffer(make([]uint64, vSize+(bcStackAlignment>>3)-1))
 	}
 
 	if cap(b.hashmem) < hSize {
 		b.hashmem = make([]uint64, hSize)
-	} else if len(b.hashmem) != hSize {
-		b.hashmem = b.hashmem[:hSize]
 	}
 }
 

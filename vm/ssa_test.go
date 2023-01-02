@@ -500,7 +500,7 @@ func TestSSATicketsQueries(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), tcs[i].expr(p)))
+			p.returnBK(p.validLanes(), tcs[i].expr(p))
 			var sample prog
 			var bc bytecode
 			err = p.cloneSymbolize(&st, &sample, &auxbindings{})
@@ -557,7 +557,7 @@ func TestSSATickets2Queries(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
+			p.returnBK(p.validLanes(), expr(p))
 			var sample prog
 			var bc bytecode
 			err = p.cloneSymbolize(&st, &sample, &auxbindings{})
@@ -626,7 +626,7 @@ func TestSSANYCQueries(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
+			p.returnBK(p.validLanes(), expr(p))
 			var out QueryBuffer
 			err := CopyRows(where(p, &out), table(), 4)
 			if err != nil {
@@ -670,7 +670,7 @@ func TestSSANYCQueries(t *testing.T) {
 			// the Select
 			*p = prog{}
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
+			p.returnBK(p.validLanes(), expr(p))
 			var c Count
 			dst := NewProjection(progsel(p), where(p, &c))
 			err = CopyRows(dst, table(), 4)
@@ -729,7 +729,7 @@ func TestNestedTicketsQueries(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := new(prog)
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), expr(p)))
+			p.returnBK(p.validLanes(), expr(p))
 			var out QueryBuffer
 			err := CopyRows(where(p, &out), buftbl(buf), 4)
 			if err != nil {
@@ -775,7 +775,7 @@ func BenchmarkParkingTicketsQueries(b *testing.B) {
 			var c Count
 			var p prog
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), expr(&p)))
+			p.returnBK(p.validLanes(), expr(&p))
 			w := where(&p, &c)
 			b.SetBytes(int64(len(buf)))
 			b.SetParallelism(1)
@@ -808,7 +808,7 @@ func BenchmarkNYCQueries(b *testing.B) {
 			var c Count
 			var p prog
 			p.begin()
-			p.returnValue(p.rowsMasked(p.validLanes(), expr(&p)))
+			p.returnBK(p.validLanes(), expr(&p))
 			w := where(&p, &c)
 			b.SetBytes(int64(len(buf)))
 			b.SetParallelism(1)

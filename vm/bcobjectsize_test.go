@@ -27,101 +27,84 @@ import (
 )
 
 func TestSizeUnsupportedIonValues(t *testing.T) {
-	expectedLengths := [16]uint64{}
-
-	var values []interface{}
-	values = append(values, ion.Int(-42))
-	values = append(values, ion.Uint(42))
-	values = append(values, ion.Float(-5))
-	values = append(values, ion.String("xyz123"))
-	values = append(values, ion.Bool(true))
-	values = append(values, ion.Bool(false))
-	values = append(values, ion.Timestamp(date.Time{}))
-	values = append(values, ion.Annotation(nil, "", ion.Null))
-	values = append(values, ion.Blob([]byte{0x01, 0x02}))
-	values = append(values, []byte{0x00})
-	values = append(values, []byte{0x00})
-	values = append(values, []byte{0x00})
-	values = append(values, []byte{0x00})
-	values = append(values, []byte{0x00})
-	values = append(values, []byte{0x00})
-	values = append(values, []byte{0x00})
-
 	var ctx bctestContext
-	ctx.current = 0xffff
 	defer ctx.Free()
-	ctx.setInputIonFields(values, nil)
 
-	err := ctx.Execute(opobjectsize)
-	if err != nil {
+	inputV := ctx.vRegFromValues([]any{
+		ion.Int(-42),
+		ion.Uint(42),
+		ion.Float(-5),
+		ion.String("xyz123"),
+		ion.Bool(true),
+		ion.Bool(false),
+		ion.Timestamp(date.Time{}),
+		ion.Annotation(nil, "", ion.Null),
+		ion.Blob([]byte{0x01, 0x02}),
+		[]byte{0x00},
+		[]byte{0x00},
+		[]byte{0x00},
+		[]byte{0x00},
+		[]byte{0x00},
+		[]byte{0x00},
+		[]byte{0x00},
+	}, nil)
+	inputK := kRegData{mask: 0xFFFF}
+
+	outputS := i64RegData{}
+	outputK := kRegData{}
+
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
 
-	lengths := ctx.getScalarUint64()
-
-	if ctx.current != 0x00 {
-		t.Errorf("Valid mask has to be zero, it is %02x", ctx.current)
-	}
-
-	if !reflect.DeepEqual(lengths, expectedLengths) {
-		t.Logf("expected = %d", expectedLengths)
-		t.Logf("got      = %d", lengths)
-		t.Errorf("wrong lengths")
-	}
+	verifyKRegOutput(t, &outputK, &kRegData{})
+	verifyI64RegOutput(t, &outputS, &i64RegData{})
 }
 
 func TestSizeNullContainers(t *testing.T) {
-	expectedLengths := [16]uint64{}
+	var ctx bctestContext
+	defer ctx.Free()
 
 	nullList := []byte{0xbf}
 	nullSexp := []byte{0xcf}
 	nullStruct := []byte{0xdf}
 
-	var values []interface{}
-	values = append(values, nullList)
-	values = append(values, nullSexp)
-	values = append(values, nullStruct)
-	values = append(values, nullList)
-	values = append(values, nullSexp)
-	values = append(values, nullStruct)
-	values = append(values, nullList)
-	values = append(values, nullSexp)
-	values = append(values, nullStruct)
-	values = append(values, nullList)
-	values = append(values, nullSexp)
-	values = append(values, nullStruct)
-	values = append(values, nullList)
-	values = append(values, nullSexp)
-	values = append(values, nullStruct)
-	values = append(values, nullList)
+	inputV := ctx.vRegFromValues([]any{
+		nullList,
+		nullSexp,
+		nullStruct,
+		nullList,
+		nullSexp,
+		nullStruct,
+		nullList,
+		nullSexp,
+		nullStruct,
+		nullList,
+		nullSexp,
+		nullStruct,
+		nullList,
+		nullSexp,
+		nullStruct,
+		nullList,
+	}, nil)
+	inputK := kRegData{mask: 0xFFFF}
 
-	var ctx bctestContext
-	defer ctx.Free()
-	ctx.current = 0xffff
-	ctx.setInputIonFields(values, nil)
+	outputS := i64RegData{}
+	outputK := kRegData{}
 
-	err := ctx.Execute(opobjectsize)
-	if err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
 
-	lengths := ctx.getScalarUint64()
-
-	if ctx.current != 0x00 {
-		t.Errorf("Valid mask has to be zero, it is %02x", ctx.current)
-	}
-
-	if !reflect.DeepEqual(lengths, expectedLengths) {
-		t.Logf("expected = %d", expectedLengths)
-		t.Logf("got      = %d", lengths)
-		t.Errorf("wrong lengths")
-	}
+	verifyKRegOutput(t, &outputK, &kRegData{})
+	verifyI64RegOutput(t, &outputS, &i64RegData{})
 }
 
 func TestSizeEmptyContainers(t *testing.T) {
-	expectedLengths := [16]uint64{}
+	var ctx bctestContext
+	defer ctx.Free()
 
 	// Ion length L == 0
 	emptyList := []byte{0xb0}
@@ -133,45 +116,44 @@ func TestSizeEmptyContainers(t *testing.T) {
 	emptySexp2 := []byte{0xce, 0x80}
 	emptyStruct2 := []byte{0xde, 0x80}
 
-	var values []interface{}
-	values = append(values, emptyList)
-	values = append(values, emptySexp)
-	values = append(values, emptyStruct)
-	values = append(values, emptyList2)
-	values = append(values, emptySexp2)
-	values = append(values, emptyStruct2)
-	values = append(values, emptyList)
-	values = append(values, emptySexp)
-	values = append(values, emptyStruct2)
-	values = append(values, emptyList2)
-	values = append(values, emptySexp2)
-	values = append(values, emptyStruct2)
-	values = append(values, emptyList)
-	values = append(values, emptySexp)
-	values = append(values, emptyStruct)
-	values = append(values, emptyList2)
+	inputV := ctx.vRegFromValues([]any{
+		emptyList,
+		emptySexp,
+		emptyStruct,
+		emptyList2,
+		emptySexp2,
+		emptyStruct2,
+		emptyList,
+		emptySexp,
+		emptyStruct2,
+		emptyList2,
+		emptySexp2,
+		emptyStruct2,
+		emptyList,
+		emptySexp,
+		emptyStruct,
+		emptyList2,
+	}, nil)
+	inputK := kRegData{mask: 0xFFFF}
 
-	var ctx bctestContext
-	defer ctx.Free()
-	ctx.current = 0xffff
-	ctx.setInputIonFields(values, nil)
+	outputS := i64RegData{}
+	outputK := kRegData{}
 
-	err := ctx.Execute(opobjectsize)
-	if err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
 
-	lengths := ctx.getScalarUint64()
-	if !reflect.DeepEqual(lengths, expectedLengths) {
-		t.Logf("expected = %d", expectedLengths)
-		t.Logf("got      = %d", lengths)
-		t.Errorf("wrong lengths")
-	}
+	verifyKRegOutput(t, &outputK, &kRegData{mask: 0xFFFF})
+	verifyI64RegOutput(t, &outputS, &i64RegData{})
 }
 
 func TestSizeList(t *testing.T) {
-	expectedLengths := [16]uint64{1, 10, 50, 7, 0, 12, 42, 89, 300, 111, 4, 0, 20, 30, 51, 230}
+	var ctx bctestContext
+	defer ctx.Free()
+
+	expectedOutputS := i64RegData{values: [16]int64{1, 10, 50, 7, 0, 12, 42, 89, 300, 111, 4, 0, 20, 30, 51, 230}}
+	expectedOutputK := kRegData{mask: 0xFFFF}
 
 	makeList := func(size int) ion.List {
 		list := make([]ion.Datum, size)
@@ -181,40 +163,34 @@ func TestSizeList(t *testing.T) {
 		return ion.NewList(nil, list)
 	}
 
-	var values []interface{}
-	for i := range expectedLengths {
-		size := int(expectedLengths[i])
-		values = append(values, makeList(size).Datum())
+	var inputData []any
+	for i := range expectedOutputS.values {
+		size := int(expectedOutputS.values[i])
+		inputData = append(inputData, makeList(size).Datum())
 	}
 
-	var ctx bctestContext
-	defer ctx.Free()
-	ctx.setInputIonFields(values, nil)
-	ctx.current = 0xffff
+	inputV := ctx.vRegFromValues(inputData, nil)
+	inputK := kRegData{mask: 0xFFFF}
 
-	valid := ctx.current
+	outputS := i64RegData{}
+	outputK := kRegData{}
 
-	err := ctx.Execute(opobjectsize)
-	if err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
 
-	lengths := ctx.getScalarUint64()
-
-	if ctx.current != valid {
-		t.Logf("expected %02x, got %02x", valid, ctx.current)
-		t.Errorf("invalid mask")
-	}
-
-	if !reflect.DeepEqual(lengths, expectedLengths) {
-		t.Logf("expected = %d", expectedLengths)
-		t.Logf("got      = %d", lengths)
-		t.Errorf("wrong lengths")
-	}
+	verifyKRegOutput(t, &outputK, &expectedOutputK)
+	verifyI64RegOutput(t, &outputS, &expectedOutputS)
 }
 
 func TestSizeListWithNulls(t *testing.T) {
+	var ctx bctestContext
+	defer ctx.Free()
+
+	expectedOutputS := i64RegData{values: [16]int64{1, 10, -1, 7, 0, 12, 42, 89, -1, 111, 4, 0, 20, 30, 51, -1}}
+	expectedOutputK := kRegData{}
+
 	makeList := func(size int) interface{} {
 		if size < 0 {
 			return []byte{0xbf}
@@ -226,62 +202,39 @@ func TestSizeListWithNulls(t *testing.T) {
 		return ion.NewList(nil, list).Datum()
 	}
 
-	var expectedLengths [16]uint64
-	var expectedMask uint16
-	var values []interface{}
-	{
-		lengths := [16]int{1, 10, -1, 7, 0, 12, 42, 89, -1, 111, 4, 0, 20, 30, 51, -1}
-		for i, size := range lengths {
-			values = append(values, makeList(size))
-			if size >= 0 {
-				expectedLengths[i] = uint64(size)
-				expectedMask |= uint16(1 << i)
-			} else {
-				expectedLengths[i] = 0
-			}
+	var inputData []interface{}
+	for i, size := range expectedOutputS.values {
+		inputData = append(inputData, makeList(int(size)))
+		if size >= 0 {
+			expectedOutputK.mask |= uint16(1) << i
+		} else {
+			// missing lanes would have length zeroed
+			expectedOutputS.values[i] = 0
 		}
 	}
 
-	var ctx bctestContext
-	defer ctx.Free()
-	ctx.setInputIonFields(values, nil)
-	ctx.current = 0xffff
+	inputV := ctx.vRegFromValues(inputData, nil)
+	inputK := kRegData{mask: 0xFFFF}
 
-	err := ctx.Execute(opobjectsize)
-	if err != nil {
+	outputS := i64RegData{}
+	outputK := kRegData{}
+
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
 
-	lengths := ctx.getScalarUint64()
-
-	if ctx.current != expectedMask {
-		t.Logf("expected = %016b", expectedMask)
-		t.Logf("got      = %016b", ctx.current)
-		t.Errorf("invalid mask")
-	}
-
-	if !reflect.DeepEqual(lengths, expectedLengths) {
-		t.Logf("expected = %d", expectedLengths)
-		t.Logf("got      = %d", lengths)
-		t.Errorf("wrong lengths")
-	}
+	verifyKRegOutput(t, &outputK, &expectedOutputK)
+	verifyI64RegOutput(t, &outputS, &expectedOutputS)
 }
 
 func TestSizeStruct(t *testing.T) {
-	// given
-	expectedLengths := [16]uint64{
-		100, 1, 5, 487,
-		17, 0, 200, 80,
-		89, 44, 9, 31,
-		128, 127, 0, 8,
-	}
-
-	if len(expectedLengths) != 16 {
-		panic("please define exactly 16 testcases, as they have to fit in an AVX512 register")
-	}
-
+	var ctx bctestContext
 	var symtab ion.Symtab
+	defer ctx.Free()
+
+	expectedOutputS := i64RegData{values: [16]int64{100, 1, 5, 487, 17, 0, 200, 80, 89, 44, 9, 31, 128, 127, 0, 8}}
+	expectedOutputK := kRegData{mask: 0xFFFF}
 
 	// create structure {"field1": 1, "field2": 2, ..., "fieldN": N}
 	makeStruct := func(size int) ion.Struct {
@@ -293,34 +246,24 @@ func TestSizeStruct(t *testing.T) {
 		return ion.NewStruct(&symtab, fields)
 	}
 
-	var values []interface{}
-	for i := range expectedLengths {
-		size := int(expectedLengths[i])
-		values = append(values, makeStruct(size).Datum())
+	var inputData []interface{}
+	for _, size := range expectedOutputS.values {
+		inputData = append(inputData, makeStruct(int(size)).Datum())
 	}
 
-	var ctx bctestContext
-	defer ctx.Free()
-	ctx.setInputIonFields(values, &symtab)
-	ctx.current = 0xffff
+	inputV := ctx.vRegFromValues(inputData, &symtab)
+	inputK := kRegData{mask: 0xFFFF}
 
-	err := ctx.Execute(opobjectsize)
-	if err != nil {
+	outputS := i64RegData{}
+	outputK := kRegData{}
+
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
 
-	lengths := ctx.getScalarUint64()
-
-	if ctx.current != 0xffff {
-		t.Errorf("Valid mask has to be 0xffff, it is %02x", ctx.current)
-	}
-
-	if !reflect.DeepEqual(lengths, expectedLengths) {
-		t.Logf("expected = %d", expectedLengths)
-		t.Logf("got      = %d", lengths)
-		t.Errorf("wrong lengths")
-	}
+	verifyKRegOutput(t, &outputK, &expectedOutputK)
+	verifyI64RegOutput(t, &outputS, &expectedOutputS)
 }
 
 // --------------------------------------------------

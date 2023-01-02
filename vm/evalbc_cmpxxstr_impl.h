@@ -12,23 +12,22 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// This file provides an implementation of 'bccmpxxstr' operations (unboxed string vs string compare).
+// This file provides an implementation of 'bccmpxxstr' operations (string vs string compare).
 //
 // It uses the following macros:
 //   - BC_CMP_NAME  - name of the bc instruction
 //   - BC_CMP_I_IMM - predicate for integer comparison (VPCMPx instruction)
 
+// k[0] = cmp_xx(str[1], str[2]).k[3]
 TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
-  KTESTW K1, K1
-  MOVWQZX 0(VIRT_PCREG), R8
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K3), IN(R8))
 
-  VMOVDQU32 Z2, K1, Z6                                // Z6 <- left string slice offsets
-  VMOVDQU32 Z3, K1, Z7                                // Z7 <- left string slice lengths
-  VMOVDQU32.Z 0(VIRT_VALUES)(R8*1), K1, Z4            // Z4 <- right string slice offsets
-  VMOVDQU32.Z 64(VIRT_VALUES)(R8*1), K1, Z5           // Z5 <- right string slice lengths
-
-  KMOVW K1, K3                                        // K3 <- mask of active lanes to process
+  KTESTW K3, K3
   KXORW K1, K1, K1                                    // K1 <- results of all comparisons, initially all false
+
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z6), OUT(Z7), IN(BX), IN(K3)) // Z6:Z7 <- left string slice offsets
+  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(CX), IN(K3)) // Z4:Z5 <- right string slice offsets
 
   JZ next
 
@@ -188,4 +187,6 @@ scalar_done:
   KORW K4, K1, K1
 
 next:
-  NEXT_ADVANCE(2)
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)

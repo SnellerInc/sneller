@@ -18,12 +18,11 @@ package vm
 // For sample usage please see evalbc_test.go.
 
 import (
-	"encoding/binary"
 	"fmt"
-	"hash/fnv"
-	"math"
 	"reflect"
 	"strings"
+	"testing"
+	"unsafe"
 
 	"github.com/SnellerInc/sneller/ion"
 )
@@ -32,34 +31,41 @@ func buftbl(buf []byte) *BufferedTable {
 	return &BufferedTable{buf: buf, align: defaultAlign}
 }
 
+func vRegAsUInt64Slice(ptr *vRegData) []uint64 {
+	return (*(*[vRegSize / 8]uint64)(unsafe.Pointer(ptr)))[:]
+}
+
+func sRegAsUInt64Slice(ptr *sRegData) []uint64 {
+	return (*(*[sRegSize / 8]uint64)(unsafe.Pointer(ptr)))[:]
+}
+
+func i64RegAsUInt64Slice(ptr *i64RegData) []uint64 {
+	return (*(*[sRegSize / 8]uint64)(unsafe.Pointer(ptr)))[:]
+}
+
+func f64RegAsUInt64Slice(ptr *f64RegData) []uint64 {
+	return (*(*[sRegSize / 8]uint64)(unsafe.Pointer(ptr)))[:]
+}
+
+func appendZerosToUInt64Slice(slice []uint64, count int) []uint64 {
+	n := (count + 7) / 8
+	for i := 0; i < n; i++ {
+		slice = append(slice, 0)
+	}
+	return slice
+}
+
 // bctestContext defines input/output parameters
 // for an opcode.
 //
 // This matches specification from bc_amd64.h
 type bctestContext struct {
-	data    []byte // SI = VIRT_BASE; the input buffer
-	current uint16 // K1 = current mask bits
-	valid   uint16 // K7 = valid mask bits
-
-	// 'current row'
-	structBase [16]uint32 // Z0 = struct base
-	structLen  [16]uint32 // Z1 = struct len
-
-	// 'current scalar'
-	scalar [2][8]uint64 // Z2 + Z3 = current scalar
-
-	// 'current value'
-	valueBase [16]uint32 // Z30 = this field base
-	valueLen  [16]uint32 // Z31 = this field len
-
-	stack []byte // R12 = VIRT_VALUES
-
-	// dictionary for bytecode
-	dict []string
+	data []byte   // SI = VIRT_BASE; the input buffer
+	dict []string // dictionary for bytecode
 }
 
 //go:noescape
-func bctest_run_aux(bc *bytecode, ctx *bctestContext)
+func bctest_run_aux(bc *bytecode, ctx *bctestContext, activeLanes uint64)
 
 func (c *bctestContext) Free() {
 	if c.data != nil {
@@ -68,168 +74,44 @@ func (c *bctestContext) Free() {
 	}
 }
 
-// Execute runs a single opcode. It setups all the needed
-// CPU registers and, after the opcode finished, read
-// them back.
-func (c *bctestContext) Execute(op bcop) error {
-	asm := assembler{}
-	asm.emitOpcode(op)
-	asm.emitOpcode(opret)
-	p := asm.grabCode()
-	return c.execute(p)
-}
-
-// ExecuteImm2 runs a single opcode with a 2-byte immediate.
-func (c *bctestContext) ExecuteImm2(op bcop, imm2 uint16) error {
-	asm := assembler{}
-	asm.emitOpcode(op)
-	asm.emitImmU16(imm2)
-	asm.emitOpcode(opret)
-	p := asm.grabCode()
-	return c.execute(p)
-}
-
-// Execute2Imm2 runs a single opcode with two 2-byte immediate.
-func (c *bctestContext) Execute2Imm2(op bcop, imm2a, imm2b uint16) error {
-	asm := assembler{}
-	asm.emitOpcode(op)
-	asm.emitImmU16(imm2a)
-	asm.emitImmU16(imm2b)
-	asm.emitOpcode(opret)
-	p := asm.grabCode()
-	return c.execute(p)
-}
-
-func (c *bctestContext) execute(prog []byte) error {
-	bc := bytecode{
-		compiled: prog,
-		dict:     c.dict,
-	}
-
-	bctest_run_aux(&bc, c)
-	if bc.err != 0 {
-		return fmt.Errorf("bytecode error: %s (%d)", bc.err.Error(), bc.err)
-	}
-
-	return nil
-}
-
-func (c *bctestContext) getScalarUint64() (result [16]uint64) {
-	for i := 0; i < 16; i++ {
-		result[i] = c.scalar[i/8][i%8]
-	}
-
-	return
-}
-
-func (c *bctestContext) setScalarInt64(values []int64) {
-	if len(values) > 16 {
-		panic("Can set up to 16 scalar values for VM opcode")
-	}
-
-	for i, v := range values {
-		c.scalar[i/8][i%8] = uint64(v)
-	}
-}
-
-func (c *bctestContext) getScalarInt64() (result [16]int64) {
-	for i := 0; i < 16; i++ {
-		result[i] = int64(c.scalar[i/8][i%8])
-	}
-
-	return
-}
-
-func (c *bctestContext) getScalarUint32() (result [2][16]uint32) {
-	for i := 0; i < 16; i++ {
-		if i%2 == 0 {
-			result[0][i] = uint32(c.scalar[0][i/2]) // offset
-			result[1][i] = uint32(c.scalar[1][i/2]) // length
-		} else {
-			result[0][i] = uint32(c.scalar[0][i/2] >> 32) // offset
-			result[1][i] = uint32(c.scalar[1][i/2] >> 32) // length
-		}
-	}
-	return
-}
-
-func (c *bctestContext) setScalarFloat64(values []float64) {
-	if len(values) > 16 {
-		panic("Can set up to 16 scalar values for VM opcode")
-	}
-
-	for i, v := range values {
-		c.scalar[i/8][i%8] = math.Float64bits(v)
-	}
-}
-
-func (c *bctestContext) getScalarFloat64() (result [16]float64) {
-	for i := 0; i < 16; i++ {
-		result[i] = math.Float64frombits(c.scalar[i/8][i%8])
-	}
-
-	return
-}
-
-func (c *bctestContext) setData(value string) {
-	if c.data == nil {
-		c.data = Malloc()
-	}
+func (c *bctestContext) clear() {
 	c.data = c.data[:0]
-	c.data = append(c.data, value...)
+	c.dict = c.dict[:0]
 }
 
-func (c *bctestContext) addScalarStrings(values []string) {
-	if len(values) > 16 {
-		panic("Can set up to 16 input values for VM opcode")
-	}
+func (c *bctestContext) ensureData() []byte {
 	if c.data == nil {
 		c.data = Malloc()
 		c.data = c.data[:0]
 	}
-	for i, str := range values {
+	return c.data
+}
+
+func (c *bctestContext) appendData(value string) {
+	c.data = append(c.ensureData(), value...)
+}
+
+func (c *bctestContext) vRegFromValues(values []any, st *ion.Symtab) vRegData {
+	out := vRegData{}
+
+	if len(values) > bcLaneCount {
+		panic(fmt.Sprintf("Can set up to %d input values for VM opcode, not %d", bcLaneCount, len(values)))
+	}
+
+	if st == nil {
+		st = &ion.Symtab{}
+	}
+
+	c.ensureData()
+
+	var buf ion.Buffer
+	var chunk []byte
+	for i := range values {
 		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
 		if !ok {
 			panic("c.data more than 1MB?")
 		}
-		if i%2 == 0 {
-			c.scalar[0][i/2] = uint64(base)
-			c.scalar[1][i/2] = uint64(len(str))
-		} else {
-			c.scalar[0][i/2] |= uint64(base) << 32
-			c.scalar[1][i/2] |= uint64(len(str)) << 32
-		}
-		c.data = append(c.data, str...)
-	}
-}
 
-func (c *bctestContext) setScalarStrings(values []string) {
-	if c.data == nil {
-		c.data = Malloc()
-	}
-	c.data = c.data[:0] // clear data and then add new values
-	c.addScalarStrings(values)
-}
-
-func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) {
-	if len(values) > 16 {
-		panic("Can set up to 16 input values for VM opcode")
-	}
-	if c.data == nil {
-		c.data = Malloc()
-	}
-	c.data = c.data[:0]
-	var buf ion.Buffer
-	var symtab *ion.Symtab
-
-	if st != nil {
-		symtab = st
-	} else {
-		symtab = &ion.Symtab{}
-	}
-
-	var chunk []byte
-	for i := range values {
 		switch v := values[i].(type) {
 		case []byte:
 			chunk = v
@@ -239,38 +121,45 @@ func (c *bctestContext) setInputIonFields(values []interface{}, st *ion.Symtab) 
 
 		case ion.Datum:
 			buf.Reset()
-			v.Encode(&buf, symtab)
+			v.Encode(&buf, st)
 			chunk = buf.Bytes()
 
 		default:
 			typ := reflect.TypeOf(v).String()
 			panic("only bytes, string and ion.Datum are supported, got " + typ)
 		}
+
+		out.offsets[i] = uint32(base)
+		out.sizes[i] = uint32(len(chunk))
+		c.data = append(c.data, chunk...)
+	}
+
+	return out
+}
+
+func (c *bctestContext) sRegFromStrings(values []string) sRegData {
+	out := sRegData{}
+
+	if len(values) > bcLaneCount {
+		panic(fmt.Sprintf("Can set up to %d input values for VM opcode, not %d", bcLaneCount, len(values)))
+	}
+
+	c.ensureData()
+
+	for i, str := range values {
 		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
 		if !ok {
 			panic("c.data more than 1MB?")
 		}
-		c.valueBase[i] = uint32(base)
-		c.valueLen[i] = uint32(len(chunk))
-		c.data = append(c.data, chunk...)
+
+		if len(str) != 0 {
+			out.offsets[i] = base
+			out.sizes[i] = uint32(len(str))
+			c.data = append(c.data, str...)
+		}
 	}
-}
 
-func (c *bctestContext) addStack(value []byte) {
-	c.stack = append(c.stack, value...)
-}
-
-func (c *bctestContext) setStackUint64(values []uint64) {
-	c.stack = c.stack[:0]
-	c.addStackUint64(values)
-}
-
-func (c *bctestContext) addStackUint64(values []uint64) {
-	buf := make([]byte, 8)
-	for i := range values {
-		binary.LittleEndian.PutUint64(buf, values[i])
-		c.addStack(buf)
-	}
+	return out
 }
 
 func padNBytes(s string, nBytes int) string {
@@ -283,42 +172,281 @@ func (c *bctestContext) setDict(value string) {
 	c.dict = append(c.dict[:0], padNBytes(value, 4))
 }
 
-// Taint initializes all input values with some random bits.
-//
-// It is meant to be used before calling any setScalar or
-// setInput procedure to make sure the opcode sets all
-// expected output registers.
-func (c *bctestContext) Taint() {
-	hash32 := func(s string) uint32 {
-		a := fnv.New32()
-		a.Write([]byte(s))
-		return a.Sum32()
+// Execute runs a single opcode. It serializes all inputs to virtual stack,
+// allocates stack slots passed to the instruction, and after the execution
+// it deserializes content from virtual stack back to output arguments passed
+// in testArgs.
+func (c *bctestContext) ExecuteOpcode(op bcop, testArgs []any, activeLanes uint16) error {
+	info := &opinfo[op]
+
+	if len(info.args) != len(testArgs) {
+		panic(fmt.Sprintf("argument count mismatch: opcode %s requires %d arguments, %d given", info.text, len(info.args), len(testArgs)))
 	}
 
-	hash64 := func(s string) uint64 {
-		a := fnv.New64()
-		a.Write([]byte(s))
-		return a.Sum64()
+	args := make([]any, len(info.args))
+	vStack := []uint64{}
+
+	// serialize arguments to vStack
+	for i := range testArgs {
+		testArg := testArgs[i]
+
+		// set the argument to a stack slot by default (saves
+		// us some typing in each bcReadX|bcWriteX handler)
+		args[i] = stackslot(len(vStack) * 8)
+
+		switch info.args[i] {
+		case bcWriteK:
+			vStack = appendZerosToUInt64Slice(vStack, kRegSize)
+
+		case bcWriteV:
+			vStack = appendZerosToUInt64Slice(vStack, vRegSize)
+
+		case bcWriteS:
+			vStack = appendZerosToUInt64Slice(vStack, sRegSize)
+
+		case bcReadK:
+			k := uint64(0)
+			switch v := testArg.(type) {
+			case uint:
+				k = uint64(v)
+			case uint16:
+				k = uint64(v)
+			case *kRegData:
+				k = uint64(v.mask)
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcReadK requires *kRegData|uint|uint16 data types", i))
+			}
+			vStack = append(vStack, k)
+
+		case bcReadV:
+			switch v := testArg.(type) {
+			case *vRegData:
+				vStack = append(vStack, vRegAsUInt64Slice(v)...)
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcReadV requires *vRegData data type", i))
+			}
+
+		case bcReadS:
+			switch v := testArg.(type) {
+			case *sRegData:
+				vStack = append(vStack, sRegAsUInt64Slice(v)...)
+			case *i64RegData:
+				vStack = append(vStack, i64RegAsUInt64Slice(v)...)
+			case *f64RegData:
+				vStack = append(vStack, f64RegAsUInt64Slice(v)...)
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcReadV requires *sRegData|*i64RegData|*f64RegData data types", i))
+			}
+
+		case bcDictSlot:
+			slot := uint16(0)
+
+			switch v := testArg.(type) {
+			case int:
+				slot = uint16(v)
+			case uint:
+				slot = uint16(v)
+			case uint16:
+				slot = uint16(v)
+			case uint32:
+				slot = uint16(v)
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcReadV requires uint16|uint32 data types", i))
+			}
+
+			args[i] = slot
+
+		case bcImmI8, bcImmI16, bcImmI32, bcImmI64, bcImmU8, bcImmU16, bcImmU32, bcImmU64, bcImmF64:
+			// no need to do anything special regarding immediates; they are passed as is
+			args[i] = testArg
+
+		default:
+			// if you hit this panic it means you are trying
+			// to test something not supported at the moment
+			panic(fmt.Sprintf("unsupported argument type: %s", info.args[i].String()))
+		}
 	}
 
-	c.current = uint16(hash32("K1"))
-	c.valid = uint16(hash32("K7"))
+	a := assembler{}
+	a.emitOpcode(op, args...)
+	a.emitOpcode(opret)
 
-	z0 := hash32("Z0")
-	z1 := hash32("Z1")
-	z30 := hash32("Z30")
-	z31 := hash32("Z31")
-	for i := 0; i < 16; i++ {
-		c.structBase[i] = z0
-		c.structLen[i] = z1
-		c.valueBase[i] = z30
-		c.valueLen[i] = z31
+	bc := bytecode{
+		compiled: a.code,
+		dict:     c.dict,
+		vstack:   vStack,
 	}
 
-	z2 := hash64("Z2")
-	z3 := hash64("Z3")
-	for i := 0; i < 8; i++ {
-		c.scalar[0][i] = z2
-		c.scalar[1][i] = z3
+	bctest_run_aux(&bc, c, uint64(activeLanes))
+
+	if bc.err != 0 {
+		return fmt.Errorf("bytecode error: %s (%d)", bc.err.Error(), bc.err)
 	}
+
+	// deserialize arguments from vStack
+	for i := range testArgs {
+		testArg := testArgs[i]
+
+		switch info.args[i] {
+		case bcWriteK:
+			offset := int(args[i].(stackslot)) / 8
+
+			switch v := testArg.(type) {
+			case *kRegData:
+				v.mask = uint16(vStack[offset] & 0xFFFF)
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteK requires *kRegData data type", i))
+			}
+
+		case bcWriteV:
+			start := int(args[i].(stackslot)) / 8
+			end := start + start + vRegSize/8
+
+			switch v := testArg.(type) {
+			case *vRegData:
+				copy(vRegAsUInt64Slice(v), vStack[start:end])
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteV requires *vRegData data type", i))
+			}
+
+		case bcWriteS:
+			start := int(args[i].(stackslot)) / 8
+			end := start + start + sRegSize/8
+
+			switch v := testArg.(type) {
+			case *sRegData:
+				copy(sRegAsUInt64Slice(v), vStack[start:end])
+			case *i64RegData:
+				copy(i64RegAsUInt64Slice(v), vStack[start:end])
+			case *f64RegData:
+				copy(f64RegAsUInt64Slice(v), vStack[start:end])
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteS requires *sRegData|*i64RegData*f64RegData data types", i))
+			}
+		}
+	}
+
+	return nil
+}
+
+// NOTE: I tried to use generics for these, but since unsafe.Sizeof() cannot be used
+// with a parameter type it won't work, so there are multiple functions that do the
+// same.
+
+func verifyKRegOutput(t *testing.T, output, expected *kRegData) {
+	if *output != *expected {
+		t.Errorf("K register doesn't match: output 0b%b (0x%X) doesn't match 0b%b (0x%X)",
+			output.mask, output.mask, expected.mask, expected.mask)
+	}
+}
+
+func verifySRegOutput(t *testing.T, output, expected *sRegData) {
+	if *output != *expected {
+		t.Errorf("S register doesn't match:")
+		for i := 0; i < bcLaneCount; i++ {
+			if output.offsets[i] != expected.offsets[i] || output.sizes[i] != expected.sizes[i] {
+				t.Logf("lane {%d}: output [%d:%d] doesn't match [%d:%d]",
+					i, output.offsets[i], output.sizes[i], expected.offsets[i], expected.sizes[i])
+			}
+		}
+	}
+}
+
+func verifySRegOutputP(t *testing.T, output, expected *sRegData, predicate *kRegData) {
+	outputMaskedS := *output
+	expectedMaskedS := *expected
+
+	for i := 0; i < bcLaneCount; i++ {
+		if (predicate.mask & (1 << i)) == 0 {
+			outputMaskedS.offsets[i] = 0
+			outputMaskedS.sizes[i] = 0
+			expectedMaskedS.offsets[i] = 0
+			expectedMaskedS.sizes[i] = 0
+		}
+	}
+
+	verifySRegOutput(t, &outputMaskedS, &expectedMaskedS)
+}
+
+func verifyVRegOutput(t *testing.T, output, expected *vRegData) {
+	if *output != *expected {
+		t.Errorf("V register doesn't match:")
+		for i := 0; i < bcLaneCount; i++ {
+			if output.offsets[i] != expected.offsets[i] || output.sizes[i] != expected.sizes[i] {
+				t.Logf("lane {%d}: output [%d:%d] doesn't match [%d:%d]",
+					i, output.offsets[i], output.sizes[i], expected.offsets[i], expected.sizes[i])
+			}
+		}
+	}
+}
+
+//lint:ignore U1000 available for use
+func verifyVRegOutputP(t *testing.T, output, expected *vRegData, predicate *kRegData) {
+	outputMaskedV := *output
+	expectedMaskedV := *expected
+
+	for i := 0; i < bcLaneCount; i++ {
+		if (predicate.mask & (1 << i)) == 0 {
+			outputMaskedV.offsets[i] = 0
+			outputMaskedV.sizes[i] = 0
+			expectedMaskedV.offsets[i] = 0
+			expectedMaskedV.sizes[i] = 0
+		}
+	}
+
+	verifyVRegOutput(t, &outputMaskedV, &expectedMaskedV)
+}
+
+func verifyI64RegOutput(t *testing.T, output, expected *i64RegData) {
+	if *output != *expected {
+		t.Errorf("S register doesn't match:")
+		for i := 0; i < bcLaneCount; i++ {
+			if output.values[i] != expected.values[i] {
+				t.Logf("lane {%d}: output (%d) doesn't match (%d)",
+					i, output.values[i], expected.values[i])
+			}
+		}
+	}
+}
+
+//lint:ignore U1000 available for use
+func verifyI64RegOutputP(t *testing.T, output, expected *i64RegData, predicate *kRegData) {
+	outputMaskedS := *output
+	expectedMaskedS := *expected
+
+	for i := 0; i < bcLaneCount; i++ {
+		if (predicate.mask & (1 << i)) == 0 {
+			outputMaskedS.values[i] = 0
+			outputMaskedS.values[i] = 0
+		}
+	}
+
+	verifyI64RegOutput(t, &outputMaskedS, &expectedMaskedS)
+}
+
+func verifyF64RegOutput(t *testing.T, output, expected *f64RegData) {
+	if *output != *expected {
+		t.Errorf("S register doesn't match:")
+		for i := 0; i < bcLaneCount; i++ {
+			if output.values[i] != expected.values[i] {
+				t.Logf("lane {%d}: output (%f) doesn't match (%f)",
+					i, output.values[i], expected.values[i])
+			}
+		}
+	}
+}
+
+//lint:ignore U1000 available for use
+func verifyF64RegOutputP(t *testing.T, output, expected *f64RegData, predicate *kRegData) {
+	outputMasked := *output
+	expectedMasked := *expected
+
+	for i := 0; i < bcLaneCount; i++ {
+		if (predicate.mask & (1 << i)) == 0 {
+			outputMasked.values[i] = 0
+			outputMasked.values[i] = 0
+		}
+	}
+
+	verifyF64RegOutput(t, &outputMasked, &expectedMasked)
 }

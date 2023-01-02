@@ -245,6 +245,7 @@ ret:
   SUBQ    DI, ret+80(FP)
   MOVQ    R9, ret1+88(FP)
   RET
+
 genmask:
   // K1 = (1 << CX)-1
   MOVL    $1, R8

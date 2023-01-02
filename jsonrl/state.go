@@ -526,7 +526,7 @@ func (s *state) coerceNumber() bool {
 	return s.hints.hints&hintNumber != 0
 }
 
-func (s *state) coerceInt() bool {
+func (s *state) coerceI64() bool {
 	return s.hints.hints&hintInt != 0
 }
 
@@ -867,7 +867,7 @@ func (s *state) parseBool(b bool) {
 		} else {
 			s.out.WriteString("false")
 		}
-	} else if s.coerceInt() {
+	} else if s.coerceI64() {
 		if b {
 			s.out.WriteInt(1)
 		} else {
@@ -910,7 +910,7 @@ func (s *state) parseString(seg []byte, esc bool) {
 				s.out.WriteFloat64(f)
 			}
 		}
-	} else if s.coerceInt() {
+	} else if s.coerceI64() {
 		if i, err := strconv.Atoi(string(seg)); err == nil {
 			emitDefault = false
 			s.out.WriteInt(int64(i))

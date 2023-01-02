@@ -22,6 +22,9 @@ import (
 type stackslot uint16
 
 const invalidstackslot = stackslot(0xFFFF)
+const permanentStackSlot = stackslot(0x0001)
+
+const bcStackAlignment = 64
 
 // The type of the stack used by bytecode programs.
 //
@@ -186,9 +189,6 @@ type stackmap struct {
 	idToSlot  [_maxregclass][]stackslot      // a map that holds allocated value IDs and their stack slots
 }
 
-// Initializes the stackmap.
-func (s *stackmap) init() {}
-
 func (s *stackmap) reserveSlot(rc regclass, slot stackslot) {
 	stackType := stackTypeByRegClass[rc]
 	s.allocator[stackType].reserveSlot(slot, int(regSizeByRegClass[rc]))
@@ -217,16 +217,16 @@ func (s *stackmap) allocSlot(rc regclass) stackslot {
 	stackType := stackTypeByRegClass[rc]
 	allocator := &s.allocator[stackType]
 
-	// Always allocate 8-byte regions of the stack to make it aligned to 64-bit units.
-	alignedSlotSize := (slotSize + 7) & ^uint32(7)
+	// Always allocate regions that keep the stack aligned to the required alignment.
+	alignedSlotSize := (slotSize + bcStackAlignment - 1) & ^uint32(bcStackAlignment-1)
 	slot := allocator.allocSlot(int(alignedSlotSize))
 
-	// Keep stack size always aligned to 8 bytes, because this is the unit that we allocate.
+	// Keep stack size always aligned to N bytes, because this is the unit that we allocate.
 	// If we just allocated a smaller unit (like mask) then allocate more slots of the same
 	// kind and add them to freeSlots - this way we would reuse the space we just aligned
 	// for more masks, when needed, and kept the data aligned so we can assume uint64 to be
 	// the allocation unit.
-	if slotSize < 8 {
+	if slotSize < alignedSlotSize {
 		extraOffset := int(alignedSlotSize) - int(slotSize)
 		for extraOffset >= int(slotSize) {
 			freeSlots = append(freeSlots, slot+stackslot(extraOffset))
@@ -244,18 +244,29 @@ func (s *stackmap) freeSlot(rc regclass, slot stackslot) {
 	s.freeSlots[regSizeGroup] = append(s.freeSlots[regSizeGroup], slot)
 }
 
+func (s *stackmap) assignFreeableSlot(rc regclass, valueID int, slot stackslot) {
+	idToSlot := s.idToSlot[rc]
+	for i := len(idToSlot); i <= valueID; i++ {
+		idToSlot = append(idToSlot, invalidstackslot)
+	}
+	idToSlot[valueID] = slot
+	s.idToSlot[rc] = idToSlot
+}
+
+func (s *stackmap) assignPermanentSlot(rc regclass, valueID int, slot stackslot) {
+	idToSlot := s.idToSlot[rc]
+	for i := len(idToSlot); i <= valueID; i++ {
+		idToSlot = append(idToSlot, invalidstackslot)
+	}
+	idToSlot[valueID] = slot | permanentStackSlot
+	s.idToSlot[rc] = idToSlot
+}
+
 func (s *stackmap) allocValue(rc regclass, valueID int) stackslot {
 	slot := s.allocSlot(rc)
-
 	if valueID >= 0 {
-		idToSlot := s.idToSlot[rc]
-		for i := len(idToSlot); i <= valueID; i++ {
-			idToSlot = append(idToSlot, invalidstackslot)
-		}
-		idToSlot[valueID] = slot
-		s.idToSlot[rc] = idToSlot
+		s.assignFreeableSlot(rc, valueID, slot)
 	}
-
 	return slot
 }
 
@@ -264,38 +275,35 @@ func (s *stackmap) freeValue(rc regclass, valueID int) {
 	if slot == invalidstackslot {
 		panic("invalid stack slot used in stackmap.freeValue(): the value is not allocated")
 	}
+
+	// Don't free a permanent slot - if we do that, it would enter
+	// in a freeSlot array and the allocator would pick it next.
+	if (slot & permanentStackSlot) != 0 {
+		return
+	}
+
 	s.freeSlot(rc, slot)
 	s.idToSlot[rc][valueID] = invalidstackslot
 }
 
-func (s *stackmap) replaceValue(rc regclass, oldID, newID int) {
-	if oldID < 0 || newID < 0 {
-		panic("both value ids must be valid when exchanging a value")
-	}
-
-	idToSlot := s.idToSlot[rc]
-
-	if len(idToSlot) <= newID {
-		for len(idToSlot) <= newID {
-			idToSlot = append(idToSlot, invalidstackslot)
-		}
-		s.idToSlot[rc] = idToSlot
-	}
-
-	idToSlot[newID] = idToSlot[oldID]
-	idToSlot[oldID] = invalidstackslot
-}
-
 func (s *stackmap) slotOf(rc regclass, valueID int) stackslot {
 	idToSlot := s.idToSlot[rc]
+
 	if len(idToSlot) <= valueID {
 		return invalidstackslot
 	}
-	return idToSlot[valueID]
+
+	slot := idToSlot[valueID]
+	if slot == invalidstackslot {
+		return slot
+	}
+
+	return slot &^ permanentStackSlot
 }
 
-func (s *stackmap) hasSlot(rc regclass, valueID int) bool {
-	return s.slotOf(rc, valueID) != invalidstackslot
+func (s *stackmap) hasFreeableSlot(rc regclass, valueID int) bool {
+	slot := s.slotOf(rc, valueID)
+	return (slot & permanentStackSlot) == 0
 }
 
 func (s *stackmap) stackSize(st stacktype) int {

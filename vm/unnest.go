@@ -83,7 +83,7 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 		return err
 	}
 	list := p.ssa2(stolist, v, p.mask(v))
-	p.returnValue(p.msk(p.initMem(), list, p.mask(list)))
+	p.returnScalar(p.initMem(), list, p.mask(list))
 	p.symbolize(st, aux)
 	err = p.compile(&u.splat, st)
 	if err != nil {

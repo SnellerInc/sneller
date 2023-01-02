@@ -37,7 +37,7 @@ func compileLogical(e expr.Node) (*prog, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.returnValue(p.rowsMasked(p.validLanes(), v))
+	p.returnBK(p.validLanes(), v)
 	return p, nil
 }
 
@@ -299,7 +299,7 @@ func compile(p *prog, e expr.Node) (*value, error) {
 	case *expr.Member:
 		return p.member(n.Arg, n.Values)
 	case expr.Missing:
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	default:
 		return nil, fmt.Errorf("unhandled expression %T %q", e, e)
 	}
@@ -311,9 +311,9 @@ func (p *prog) compileAsBool(e expr.Node) (*value, error) {
 	coerce := false
 	switch e := e.(type) {
 	case expr.Null:
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	case expr.Missing:
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	case *expr.Case:
 		return p.compileLogicalCase(e)
 	case *expr.Logical:
@@ -324,7 +324,7 @@ func (p *prog) compileAsBool(e expr.Node) (*value, error) {
 		if e {
 			return p.validLanes(), nil
 		}
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	case *expr.Builtin:
 	case *expr.Not:
 	case *expr.Member:
@@ -387,7 +387,7 @@ func (p *prog) compileAsTime(e expr.Node) (*value, error) {
 	if v.op == sliteral {
 		return v, nil
 	}
-	if t := v.primary(); t != stValue && t != stTime && t != stTimeInt {
+	if t := v.primary(); t != stValue && t != stTime {
 		if v.op == sinvalid {
 			return nil, fmt.Errorf("compiling %s: %v", e, v.imm)
 		}
@@ -992,14 +992,14 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			n = expr.JSONTypeBits(ion.ListType)
 		case stInt, stFloat:
 			n = expr.JSONTypeBits(ion.FloatType)
-		case stTime, stTimeInt:
+		case stTime:
 			n = expr.JSONTypeBits(ion.TimestampType)
 		case stString:
 			n = expr.JSONTypeBits(ion.StringType)
 		}
 		v := p.constant(uint64(n))
 		if k.op != sinit {
-			v = p.vk(v, k)
+			v = p.makevk(v, k)
 		}
 		return v, nil
 
@@ -1022,25 +1022,25 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			if typeset.AnyOf(expr.StringType) {
 				return arg, nil
 			}
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 
 		case stFloat:
 			if typeset.AnyOf(expr.FloatType) {
 				return arg, nil
 			}
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 
 		case stInt:
 			if typeset.AnyOf(expr.IntegerType) {
 				return arg, nil
 			}
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 
-		case stTime, stTimeInt:
+		case stTime:
 			if typeset.AnyOf(expr.TimeType) {
 				return arg, nil
 			}
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 		}
 
 		return nil, fmt.Errorf("cannot handle value of type %q", arg.primary())
@@ -1067,29 +1067,19 @@ func (p *prog) compileHashLookup(lst []expr.Node) (*value, error) {
 	return p.hashLookup(base, datums)
 }
 
-func (p *prog) toTime(v *value) *value {
-	switch v.primary() {
-	case stValue:
-		return p.ssa2(stotime, v, p.mask(v))
-	case stTime:
-		return v
-	}
-	return p.errorf("cannot convert result of %s to time", v)
-}
-
 func (p *prog) hashLookup(e expr.Node, lookup []ion.Datum) (*value, error) {
 	v, err := p.serialized(e)
 	if err != nil {
 		return nil, err
 	}
+
 	h := p.hash(v)
 	if len(lookup)&1 != 0 {
 		// there is an ELSE value, so we need
 		//   ret = hash_lookup(x)?:else
 		elseval := p.constant(lookup[len(lookup)-1])
 		fetched := p.ssaimm(shashlookup, lookup[:len(lookup)-1], h, p.mask(h))
-		blended := p.ssa3(sblendv, fetched, elseval, p.not(fetched))
-		return p.vk(blended, p.mask(v)), nil
+		return p.ssa4(sblendv, elseval, p.mask(elseval), fetched, p.mask(fetched)), nil
 	}
 	return p.ssaimm(shashlookup, lookup, h, p.mask(h)), nil
 }
@@ -1211,8 +1201,8 @@ func (p *prog) serialized(e expr.Node) (*value, error) {
 	case stFloat:
 		return p.ssa2(sboxfloat, v, p.mask(v)), nil
 	case stString:
-		return p.ssa2(sboxstring, v, p.mask(v)), nil
-	case stTimeInt:
+		return p.ssa2(sboxstr, v, p.mask(v)), nil
+	case stTime:
 		return p.ssa2(sboxts, v, p.mask(v)), nil
 	case stList:
 		return p.ssa2(sboxlist, v, p.mask(v)), nil
@@ -1295,6 +1285,88 @@ func (p *prog) compileLogicalCase(c *expr.Case) (*value, error) {
 	return outk, nil
 }
 
+// a "generic case" is one in which all the
+// results of the arms of the case are coerced to stValue,
+// which happens if a) they were already all stValue,
+// or b) they have incompatible types and the caller needs
+// to perform unboxing again to get at the results
+func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
+	var outV, outK *value
+	var elseV, elseK, matched *value
+
+	if c.Else != nil && c.Else != (expr.Missing{}) {
+		els, err := p.serialized(c.Else)
+		if err != nil {
+			return nil, err
+		}
+
+		els = p.unsymbolized(els)
+		if els.primary() != stValue {
+			panic("unexpected return type in compileGenericCase()")
+		}
+
+		if p.mask(els).op != skfalse {
+			elseV = els
+			elseK = p.mask(els)
+		}
+	}
+
+	for i := len(c.Limbs) - 1; i >= 0; i-- {
+		when, err := p.compileAsBool(c.Limbs[i].When)
+		if err != nil {
+			return nil, err
+		}
+
+		if when.op == skfalse {
+			continue
+		}
+
+		thenV, err := p.serialized(c.Limbs[i].Then)
+		if err != nil {
+			return nil, err
+		}
+
+		thenV = p.unsymbolized(thenV)
+		if thenV.primary() != stValue {
+			panic("unexpected return type in compileGenericCase()")
+		}
+
+		thenK := p.and(p.mask(thenV), when)
+		if thenK.op == skfalse {
+			continue
+		}
+
+		if elseV != nil {
+			if matched != nil {
+				matched = p.or(matched, when)
+			} else {
+				matched = when
+			}
+		}
+
+		if outV == nil {
+			outV = thenV
+			outK = thenK
+		} else {
+			outV = p.ssa4(sblendv, outV, outK, thenV, thenK)
+			outK = outV
+		}
+	}
+
+	// ELSE must be merged at the end as we need all matching lanes for that.
+	if elseV != nil {
+		if outV != nil {
+			outV = p.ssa4(sblendv, outV, outK, elseV, p.nand(matched, elseK))
+			outK = outV
+		} else {
+			outV = elseV
+			outK = elseK
+		}
+	}
+
+	return p.makevk(outV, outK), nil
+}
+
 func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 	// special case: if this is a path case,
 	// we can just merge the path expression values
@@ -1304,157 +1376,60 @@ func (p *prog) compileNumericCase(c *expr.Case) (*value, error) {
 		if err != nil {
 			return nil, err
 		}
-		v, k := p.coercefp(v)
-		return p.floatk(v, k), nil
+		v, _ = p.coerceF64(v)
+		return v, nil
 	}
 
-	var outnum, outk, merged *value
+	var outV, outK *value
 
-	// if the ELSE result is actually numeric,
-	// produce the initial value and output mask
-	// that we merge into
 	if c.Else != nil && c.Else != (expr.Missing{}) && c.Else != (expr.Null{}) {
 		els, err := p.compileAsNumber(c.Else)
 		if err != nil {
 			return nil, err
 		}
-		if els.op == sliteral {
-			if !isNumericImmediate(els.imm) {
-				return nil, fmt.Errorf("%v of type %T is not float nor integer number", els.imm, els.imm)
+		if els.op != skfalse {
+			if els.op == sliteral {
+				if !isNumericImmediate(els.imm) {
+					return nil, fmt.Errorf("%v of type %T is not float nor integer number", els.imm, els.imm)
+				}
 			}
-			outnum, outk = p.coercefp(els)
-			merged = p.ssa0(skfalse)
-		} else if els.op != skfalse {
-			merged = p.ssa0(skfalse)
-			switch els.primary() {
-			case stValue, stFloat, stInt:
-				outnum, outk = p.coercefp(els)
-			default:
-				return nil, fmt.Errorf("unexpected ELSE in numeric CASE: %s", c.Else)
-			}
+			outV, outK = p.coerceF64(els)
 		}
 	}
 
-	for i := range c.Limbs {
+	for i := len(c.Limbs) - 1; i >= 0; i-- {
 		when, err := p.compileAsBool(c.Limbs[i].When)
 		if err != nil {
 			return nil, err
 		}
+
 		if when.op == skfalse {
 			continue
 		}
+
 		then, err := p.compileAsNumber(c.Limbs[i].Then)
 		if err != nil {
 			return nil, err
 		}
-		if then.op == skfalse {
-			merged = p.or(merged, when)
-			continue
-		}
+
 		if then.op == sliteral {
 			if !isNumericImmediate(then.imm) {
 				return nil, fmt.Errorf("%v of type %T is not float nor integer number", then.imm, then.imm)
 			}
-			then, _ = p.coercefp(then)
 		}
-		if outnum == nil {
-			// first limb; easy case
-			merged = when
-			switch then.primary() {
-			case stValue, stInt, stFloat:
-				t, k := p.coercefp(then)
-				outnum = t
-				outk = p.and(k, when)
 
-			default:
-				return nil, fmt.Errorf("cannot convert %s in CASE to float", c.Limbs[i].Then)
-			}
-			continue
-		}
-		// the set of lanes moved into
-		// the result is (!merged AND WHEN is true)
-		shouldmerge := p.nand(merged, when)
-		if shouldmerge.op == skfalse {
-			continue
-		}
-		// the set of lanes merged is now
-		// merged OR WHEN is true
-		merged = p.or(merged, when)
-		switch then.primary() {
-		case stInt:
-			then, _ = p.coercefp(then)
-			fallthrough
-		case stFloat:
-			outk = p.or(outk, p.and(p.mask(then), shouldmerge))
-			outnum = p.ssa3(sblendfloat, outnum, then, shouldmerge)
-		case stValue:
-			// we can perform blending by
-			// performing in-line conversion
-			f, k := p.blendv2fp(outnum, then, shouldmerge)
-			outk = p.or(outk, k)
-			outnum = f
-		default:
-			return nil, fmt.Errorf("cannot convert %s in CASE to float", c.Limbs[i].Then)
-		}
-	}
-	return p.floatk(outnum, outk), nil
-}
+		thenV, thenK := p.coerceF64(then)
+		thenK = p.and(thenK, when)
 
-// a "generic case" is one in which all the
-// results of the arms of the case are coerced to stValue,
-// which happens if a) they were already all stValue,
-// or b) they have incompatible types and the caller needs
-// to perform unboxing again to get at the results
-func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
-	var v, k, merged *value
-	var err error
-	if c.Else != nil && c.Else != (expr.Missing{}) {
-		v, err = p.serialized(c.Else)
-		if err != nil {
-			return nil, err
+		if outV == nil {
+			outV, outK = thenV, thenK
+		} else {
+			outV = p.ssa4(sblendf64, outV, outK, thenV, thenK)
+			outK = outV
 		}
-		v = p.unsymbolized(v)
-		k = p.mask(v)
-		merged = p.ssa0(skfalse)
-	}
-	for i := range c.Limbs {
-		when, err := p.compileAsBool(c.Limbs[i].When)
-		if err != nil {
-			return nil, err
-		}
-		if when.op == skfalse {
-			continue
-		}
-		then, err := p.serialized(c.Limbs[i].Then)
-		if err != nil {
-			return nil, err
-		}
-		then = p.unsymbolized(then)
-
-		// return type can be that of 'dot'
-		// or that of 'split'
-		if then.primary() != stValue {
-			panic("inside compilePathCase: unexpected return type")
-		}
-		if v == nil {
-			k = p.and(when, p.mask(then))
-			v = then
-			merged = when
-			continue
-		}
-		shouldmerge := p.nand(merged, when)
-		v = p.ssa3(sblendv, v, then, shouldmerge)
-		k = p.or(k, p.and(shouldmerge, p.mask(then)))
-		merged = p.or(merged, when)
 	}
 
-	if v == nil {
-		return p.ssa0(skfalse), nil
-	}
-	if v == k {
-		return v, nil
-	}
-	return p.vk(v, k), nil
+	return p.floatk(outV, outK), nil
 }
 
 func (p *prog) compileCast(c *expr.Cast) (*value, error) {
@@ -1464,7 +1439,7 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 	}
 	switch c.To {
 	case expr.MissingType:
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	case expr.NullType:
 		return p.constant(nil), nil
 	case expr.BoolType:
@@ -1472,9 +1447,9 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		case stBool:
 			return from, nil
 		case stInt:
-			return p.ssa2(scvtitok, from, p.mask(from)), nil
+			return p.ssa2(scvti64tok, from, p.mask(from)), nil
 		case stFloat:
-			return p.ssa2(scvtftok, from, p.mask(from)), nil
+			return p.ssa2(scvtf64tok, from, p.mask(from)), nil
 		case stValue:
 			// we can convert booleans and numbers to bools
 			iszero := p.ssa2imm(sequalconst, from, p.mask(from), 0)
@@ -1487,13 +1462,13 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			return ret, nil
 		default:
 			// not convertible
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 		}
 	case expr.IntegerType:
 		switch from.primary() {
 		case stBool:
 			// true/false/missing -> 1/0/missing
-			return p.ssa2(scvtktoi, from, p.notMissing(from)), nil
+			return p.ssa2(scvtktoi64, from, p.notMissing(from)), nil
 		case stInt:
 			return from, nil
 		case stFloat:
@@ -1501,20 +1476,20 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		case stValue:
 			return p.ssa2(sunboxcvti64, from, p.mask(from)), nil
 		default:
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 		}
 	case expr.FloatType:
 		switch from.primary() {
 		case stBool:
-			return p.ssa2(scvtktof, from, p.notMissing(from)), nil
+			return p.ssa2(scvtktof64, from, p.notMissing(from)), nil
 		case stInt:
-			return p.ssa2(scvtitof, from, p.mask(from)), nil
+			return p.ssa2(scvti64tof64, from, p.mask(from)), nil
 		case stFloat:
 			return from, nil
 		case stValue:
 			return p.ssa2(sunboxcvtf64, from, p.mask(from)), nil
 		default:
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 		}
 	case expr.StringType:
 		switch from.primary() {
@@ -1527,7 +1502,7 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			// so include symbols in the bits we check
 			return p.checkTag(from, c.To|expr.SymbolType), nil
 		default:
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 		}
 	case expr.TimeType:
 		switch from.primary() {
@@ -1536,7 +1511,7 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		case stValue:
 			return p.checkTag(from, c.To), nil
 		default:
-			return p.ssa0(skfalse), nil
+			return p.missing(), nil
 		}
 	case expr.ListType:
 		if from.ret()&stList != 0 {
@@ -1545,12 +1520,12 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 		if from.primary() == stValue {
 			return p.checkTag(from, c.To), nil
 		}
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	case expr.StructType, expr.DecimalType, expr.SymbolType:
 		if from.ret()&stValue != 0 {
 			return p.checkTag(from, c.To), nil
 		}
-		return p.ssa0(skfalse), nil
+		return p.missing(), nil
 	default:
 		return nil, fmt.Errorf("unsupported cast %q", c)
 	}

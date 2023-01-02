@@ -37,13 +37,20 @@
 #define BC_VA_PREDICATE_STACK_SLOT 6
 #endif
 
+// v[0].k[1] = make_list(va...).k[2]
+// v[0].k[1] = make_struct(va...).k[2]
+//
 // Boxes a list/struct composed of boxed values (va)
 TEXT BC_INSTRUCTION_NAME(SB), NOSPLIT|NOFRAME, $0
-  MOVL 0(VIRT_PCREG), CX // CX <- count of variable arguments
-  ADDQ $4, VIRT_PCREG    // PCREG <- variable arguments base
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
+  BC_UNPACK_RU32(BC_SLOT_SIZE*3, OUT(CX))              // CX <- count of variable arguments
+
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  ADDQ $(BC_SLOT_SIZE*3 + 4), VIRT_PCREG               // VIRT_PCREG <- VA base
 
   VPXORQ X4, X4, X4
   VPXORQ X5, X5, X5
+  VMOVQ VIRT_PCREG, X20                                // X20 <- Save VIRT_PCREG
 
   // it's not allowed to have zero arguments here, but check anyway...
   XORL DX, DX
@@ -102,11 +109,10 @@ calc_length_iter:
   VPSLLD.Z $3, Z4, K1, Z8                              // Z8 <- [xDDDDDDD|xxxxxxxx|xxxxxxxx|xxxxxxxx]
   VMOVDQA32.Z Z4, K1, Z13                              // Z13 <- lengths of each active lane (inactive are set to zeros)
 
-  // VPTERNLOG(0xD8) == (A & ~C) | (B & C) == Blend(A, B, ~C)
   VPBROADCASTD CONSTD_0x007F007F(), Z10
-  VPTERNLOGD $0xD8, Z10, Z5, Z6                        // Z6 <- [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
-  VPTERNLOGD $0xD8, Z10, Z7, Z8                        // Z8 <- [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
-  VPTERNLOGD.BCST $0xD8, CONSTD_0xFFFF0000(), Z8, Z6   // Z6 <- [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z10, Z5, Z6            // Z6 <- [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD $TERNLOG_BLEND_BA, Z10, Z7, Z8            // Z8 <- [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
+  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0xFFFF0000(), Z8, Z6 // Z6 <- [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
   VPANDD.BCST CONSTD_0x7F7F7F7F(), Z6, Z6              // Z6 <- [0DDDDDDD|0CCCCCCC|0BBBBBBB|0AAAAAAA]
 
   VPBROADCASTD CONSTD_4(), Z8
@@ -287,13 +293,21 @@ copy_tail:
   JNE va_iter
 
 va_end:
+  VMOVQ X20, BX                                        // BX <- The original VIRT_PCREG that points to VA base
+
 #ifdef BC_GENERATE_MAKE_STRUCT
   // restore spilled R10 and R11
   VMOVQ X16, R11
   VMOVQ X15, R10
 #endif
 
-  NEXT()
+  BC_MOV_SLOT (-BC_SLOT_SIZE*3 - 4)(BX), DX
+  BC_MOV_SLOT (-BC_SLOT_SIZE*2 - 4)(BX), R8
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(0)
 
 no_va_args:
   MOVL $const_bcerrCorrupt, bytecode_err(VIRT_BCPTR)

@@ -16,6 +16,9 @@ package vm
 
 import (
 	"fmt"
+	"math"
+
+	"github.com/SnellerInc/sneller/ion"
 )
 
 type assembler struct {
@@ -27,21 +30,6 @@ func (a *assembler) grabCode() []byte {
 	r := a.code
 	a.code = nil
 	return r
-}
-
-func (a *assembler) emitImm(imm uint64, size int) {
-	switch size {
-	case 1:
-		a.emitImmU8(uint8(imm))
-	case 2:
-		a.emitImmU16(uint16(imm))
-	case 4:
-		a.emitImmU32(uint32(imm))
-	case 8:
-		a.emitImmU64(imm)
-	default:
-		panic(fmt.Sprintf("invalid immediate size: %d", size))
-	}
 }
 
 func (a *assembler) emitImmU8(imm uint8) {
@@ -64,7 +52,11 @@ func (a *assembler) emitImmUPtr(imm uintptr) {
 	a.emitImmU64(uint64(imm))
 }
 
-func (a *assembler) emitOpcode(op bcop) {
+// emitOpcodeValue emits a 16-bit opcode value to the assembler buffer
+// without any other arguments. In addition, it tracks the use of scratch
+// buffer and automatically increments `a.scratchuse` when the opcode
+// actually uses scratch (for example it creates a string slice or value).
+func (a *assembler) emitOpcodeValue(op bcop) {
 	a.scratchuse += op.scratch()
 	if a.scratchuse > PageSize {
 		a.scratchuse = PageSize
@@ -72,8 +64,111 @@ func (a *assembler) emitOpcode(op bcop) {
 	a.emitImmUPtr(op.address())
 }
 
-func opcodeToBytes(op bcop) []byte {
-	asm := assembler{}
-	asm.emitOpcode(op)
-	return asm.grabCode()
+// emitOpcodeArg emits a single argument to the assembler buffer.
+func (a *assembler) emitOpcodeArg(arg any, argType bcArgType) {
+	switch argType {
+	case bcReadK, bcWriteK:
+		a.emitImmU16(uint16(arg.(stackslot)))
+	case bcReadS, bcWriteS:
+		a.emitImmU16(uint16(arg.(stackslot)))
+	case bcReadV, bcWriteV, bcReadWriteV:
+		a.emitImmU16(uint16(arg.(stackslot)))
+	case bcReadB, bcWriteB:
+		a.emitImmU16(uint16(arg.(stackslot)))
+	case bcReadH, bcWriteH:
+		a.emitImmU16(uint16(arg.(stackslot)))
+	case bcDictSlot:
+		a.emitImmU16(uint16(toi64(arg)))
+	case bcAuxSlot:
+		a.emitImmU16(uint16(toi64(arg)))
+	case bcAggSlot:
+		a.emitImmU32(uint32(arg.(aggregateslot)))
+	case bcHashSlot:
+		a.emitImmU32(uint32(arg.(aggregateslot)))
+	case bcSymbolID:
+		a.emitImmU32(uint32(arg.(ion.Symbol)))
+	case bcLitRef:
+		a.emitImmU64(uint64(toi64(arg)))
+	case bcImmI8:
+		a.emitImmU8(uint8(toi64(arg)))
+	case bcImmI16:
+		a.emitImmU16(uint16(toi64(arg)))
+	case bcImmI32:
+		a.emitImmU32(uint32(toi64(arg)))
+	case bcImmI64:
+		a.emitImmU64(uint64(toi64(arg)))
+	case bcImmU8:
+		a.emitImmU8(uint8(toi64(arg)))
+	case bcImmU16:
+		a.emitImmU16(uint16(toi64(arg)))
+	case bcImmU32:
+		a.emitImmU32(uint32(toi64(arg)))
+	case bcImmU64:
+		a.emitImmU64(uint64(toi64(arg)))
+	case bcImmF64:
+		a.emitImmU64(math.Float64bits(tof64(arg)))
+	default:
+		panic(fmt.Sprintf("unhandled opcode argument %v", argType))
+	}
+}
+func (a *assembler) emitOpcode(op bcop, args ...any) {
+	info := &opinfo[op]
+
+	// verify the number of arguments matches its signature
+	argCount := len(info.args)
+	if len(info.va) != 0 {
+		panic(fmt.Sprintf("error when emitting opcode '%v': emitOpcode() cannot emit opcode that uses variable arguments", op))
+	}
+
+	if len(args) != argCount {
+		panic(fmt.Sprintf("invalid argument count while emitting opcode '%v' (count=%d, required=%d)", op, len(args), argCount))
+	}
+
+	// emit opcode and required arguments
+	a.emitOpcodeValue(op)
+	for i := 0; i < argCount; i++ {
+		a.emitOpcodeArg(args[i], info.args[i])
+	}
+}
+
+func (a *assembler) emitOpcodeVA(op bcop, args []any) {
+	info := &opinfo[op]
+
+	// Verify the number of arguments matches the signature. vaImms contains a signature of each
+	// argument tuple that is considered a single va argument. For example if the bc instruction
+	// uses [stString, stBool] tuple, it's a group of 2 values for each va argument.
+	baseArgCount := len(info.args)
+	vaTupleSize := len(info.va)
+
+	if vaTupleSize == 0 {
+		panic(fmt.Sprintf("error when emitting opcode '%v': emitOpcodeVA() can only emit opcode that uses variable arguments", op))
+	}
+
+	if len(args) < baseArgCount {
+		panic(fmt.Sprintf("invalid immediate count while emitting opcode '%v' (count=%d, mandatory=%d, tupleSize=%d)",
+			op, len(args), baseArgCount, vaTupleSize))
+	}
+
+	vaLength := (len(args) - baseArgCount) / vaTupleSize
+	if baseArgCount+vaLength*vaTupleSize != len(args) {
+		panic(fmt.Sprintf("invalid immediate count while emitting opcode '%v' (count=%d, mandatory=%d, tupleSize=%d)",
+			op, len(args), baseArgCount, vaTupleSize))
+	}
+
+	// emit opcode and required arguments
+	a.emitOpcodeValue(op)
+	for i := 0; i < baseArgCount; i++ {
+		a.emitOpcodeArg(args[i], info.args[i])
+	}
+
+	// emit va (length followed by arguments)
+	a.emitImmU32(uint32(vaLength))
+	j := 0
+	for i := baseArgCount; i < len(args); i++ {
+		a.emitOpcodeArg(args[i], info.va[j])
+		j++
+		if j >= len(info.va) {
+			j = 0
+		}
+	}
 }

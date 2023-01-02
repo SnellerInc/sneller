@@ -20,7 +20,7 @@ import (
 )
 
 func TestBytecodeLayout(t *testing.T) {
-	if unsafe.Sizeof(vRegLayout{}) != vRegSize {
-		t.Fatalf("VRegLayout (%d) doesn't match vRegSize (%d)", unsafe.Sizeof(vRegLayout{}), vRegSize)
+	if unsafe.Sizeof(vRegData{}) != vRegSize {
+		t.Fatalf("VRegLayout (%d) doesn't match vRegSize (%d)", unsafe.Sizeof(vRegData{}), vRegSize)
 	}
 }

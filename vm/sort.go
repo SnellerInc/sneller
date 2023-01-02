@@ -313,7 +313,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 	return nil
 }
 
-func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out []vRegLayout, err error) {
+func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out []vRegData, err error) {
 	if findbc.compiled == nil {
 		panic("bcfind() called before symbolize()")
 	}
@@ -332,7 +332,7 @@ func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out [
 		return
 	}
 
-	out = vRegLayoutFromVStackCast(&findbc.vstack, regCount)
+	out = vRegDataFromVStackCast(&findbc.vstack, regCount)
 	return
 }
 
@@ -362,7 +362,7 @@ func (s *sortstateMulticolumn) symbolize(st *symtab, aux *auxbindings) error {
 	return symbolize(s.parent, &s.findbc, st, aux, true)
 }
 
-func (s *sortstateMulticolumn) bcfind(delims []vmref, rp *rowParams) ([]vRegLayout, error) {
+func (s *sortstateMulticolumn) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
 	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
@@ -475,7 +475,7 @@ func (s *sortstateSingleColumn) symbolize(st *symtab, aux *auxbindings) error {
 	return symbolize(s.parent, &s.findbc, st, aux, true)
 }
 
-func (s *sortstateSingleColumn) bcfind(delims []vmref, rp *rowParams) ([]vRegLayout, error) {
+func (s *sortstateSingleColumn) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
 	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
@@ -638,7 +638,7 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 	return symbolize(s.parent, &s.findbc, st, aux, false)
 }
 
-func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegLayout, error) {
+func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
 	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
@@ -681,7 +681,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 	p.begin()
 
 	prevequal := p.validLanes() // all the previous columns are equal
-	result := p.ssa0(skfalse)
+	result := p.missing()
 
 	for i := range s.parent.columns {
 		f := rec.UnsafeField(i)
@@ -761,7 +761,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 		prevequal = p.and(prevequal, equal)           // prevequal &= (col[i] == imm[i])
 	} // for
 
-	p.returnValue(result)
+	p.returnBool(p.initMem(), result)
 
 	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
 	err := p.compile(&s.filtbc, s.st)

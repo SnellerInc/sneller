@@ -76,17 +76,31 @@
 // BC_STR_CHANGE_CASE generates body of string lower/upper functions.
 // They differ only in the way of transforming ASCII bytes.
 #define BC_STR_CHANGE_CASE(QWORD_LO, QWORD_HI, displacement, delta)            \
+    BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))                         \
+                                                                               \
+    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))                                      \
+    BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z23), OUT(Z24), IN(BX), IN(K1))         \
+                                                                               \
     KTESTW K1, K1                                                              \
     JZ next                                                                    \
                                                                                \
+    /* calculate the worst case output length */                               \
+    VPBROADCASTD CONSTD_4(), Z4                                                \
+    VPSRLD $1, Z24, Z5                                                         \
+    VPADDD Z24, Z5, Z5                                                         \
+    VPADDD.Z Z4, Z5, K1, Z5                                                    \
+                                                                               \
+    BC_HORIZONTAL_LENGTH_SUM(OUT(R15), OUT(Z5), OUT(Z6), OUT(Z7), OUT(K1), IN(Z5), IN(K1), X10, K2) \
+    BC_ALLOC_SLICE(OUT(Z2), IN(R15), CX, R8)                                   \
+    VPADDD.Z Z5, Z2, K1, Z2                                                    \
+                                                                               \
     KMOVW K1, BX                                                               \
-    MOVWQZX (0)(VIRT_PCREG), R8                                                \
-    LEAQ 0(VIRT_VALUES)(R8*1), R8                                              \
-    VMOVDQU32.Z 0(R8), K1, Z23                                                 \
-    VMOVDQU32.Z 64(R8), K1, Z24                                                \
+    VPXORD X3, X3, X3                                                          \
                                                                                \
     /* Calculate offsets of output strings */                                  \
-    VPADDD Z2, Z3, Z29                                                         \
+    VMOVDQU32.Z Z2, K1, Z29                                                    \
+                                                                               \
+    KMOVW K1, K3                                                               \
                                                                                \
 utf8:                                                                          \
     MOVQ            QWORD_LO, BX                                               \
@@ -184,7 +198,11 @@ utf8_end:                                                                      \
     VPADDD      Z27, Z3, K1, Z3                                                \
                                                                                \
 next:                                                                          \
-    NEXT_ADVANCE(2)
+    BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))                                      \
+    BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                             \
+    BC_STORE_K_TO_SLOT(IN(K1), IN(R8))                                         \
+                                                                               \
+    NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
 
 // BC_UTF8_TO_UTF32 converts **non-ASCII** UTF-8 characters into
@@ -367,10 +385,14 @@ TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
     // 0x25 = 128 - ord('Z') - 1
     BC_STR_CHANGE_CASE($0x2525252525252525, $0x3f3f3f3f3f3f3f3f, str_tolower_lookup, str_tolower_data)
 
+    _BC_ERROR_HANDLER_MORE_SCRATCH()
+
 TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
     // 0x1f = 128 - ord('a')
     // 0x05 = 128 - ord('z') - 1
     BC_STR_CHANGE_CASE($0x0505050505050505, $0x1f1f1f1f1f1f1f1f, str_toupper_lookup, str_toupper_data)
+
+    _BC_ERROR_HANDLER_MORE_SCRATCH()
 
 
 #undef TERN_MERGE

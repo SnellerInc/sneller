@@ -32,14 +32,37 @@ func isfalse(v *value) (*value, bool) {
 	return nil, false
 }
 
+// eliminateMovs replaces `mov` arguments of `v` with `mov` sources. The purpose of
+// this optimization is to completely remove instructions such as `smakevk`, which
+// are only used by SSA to create a value with a custom mask associated with it.
+func eliminateMovs(p *prog, v *value) bool {
+	info := &ssainfo[v.op]
+	changed := false
+
+	for i, arg := range v.args {
+		if arg.op == smakevk {
+			if (info.argtypes[i] & stValue) != 0 {
+				v.args[i] = arg.args[0]
+				changed = true
+			} else if (info.argtypes[i] & stBool) != 0 {
+				v.args[i] = arg.args[1]
+				changed = true
+			}
+		}
+	}
+
+	return changed
+}
+
 func rewrite(p *prog, v *value) (*value, bool) {
+	info := &ssainfo[v.op]
+
 	// (op ... false) -> false
 	// when the op is conjunctive and returns
 	// either stValue or stBool or both
 	// (since the type of false is stValueMasked)
 	m := v.maskarg()
 	if vfalse, ok := isfalse(m); ok {
-		info := &ssainfo[v.op]
 		if !info.disjunctive && info.rettype&^stValueMasked == 0 {
 			return vfalse, true
 		}
@@ -84,6 +107,11 @@ func (p *prog) simplify(pi *proginfo) {
 					v.args[i] = rewrote[arg.id]
 				}
 			}
+
+			if eliminateMovs(p, v) {
+				changed = true
+			}
+
 			out, ok := rewrite(p, v)
 			if ok {
 				changed = true
