@@ -33,14 +33,6 @@ func TestIndirectTree(t *testing.T) {
 
 	dir := NewDirFS(t.TempDir())
 
-	// force generation of new indirect refs
-	// so we get coverage of larger ref lists
-	oldRefSize := targetRefSize
-	targetRefSize = 2048
-	t.Cleanup(func() {
-		targetRefSize = oldRefSize
-	})
-
 	now := func() date.Time {
 		return date.Now().Truncate(time.Microsecond)
 	}
@@ -202,8 +194,16 @@ func TestIndirectTree(t *testing.T) {
 		all = append(all, d)
 		idx.Inline = append(idx.Inline, d)
 
-		// flush once we've seen 3 input objects
-		err = idx.SyncOutputs(dir, path.Join("db", "foo", "bar"), ds*10, ds*10, 0)
+		// force all but the latest object
+		// to be flushed to the indirect list
+		c := IndexConfig{
+			MaxInlined: ds * 10,
+			TargetSize: ds * 10,
+			// force generation of new indirect refs
+			// so we get coverage of larger ref lists
+			TargetRefSize: 2048,
+		}
+		err = c.SyncOutputs(idx, dir, path.Join("db", "foo", "bar"))
 		if err != nil {
 			t.Fatal(err)
 		}

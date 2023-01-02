@@ -663,15 +663,36 @@ func (idx *Index) SyncInputs(dir string, expiry time.Duration) error {
 	})
 }
 
+// A IndexConfig is a set of configurations for
+// synchronizing an Index.
+type IndexConfig struct {
+	// MaxInlined is the maximum number of bytes
+	// to ingest in a single SyncOutputs operation
+	// (not including merging). If MaxInlined is
+	// less than or equal to zero, it is ignored
+	// and no limit is applied.
+	MaxInlined int64
+	// TargetSize is the target size of packfiles
+	// when compacting.
+	TargetSize int64
+	// TargetRefSize is the target size of stored
+	// indirect references. If this is less than
+	// or equal to zero, a default value is used.
+	TargetRefSize int64
+	// Expiry is the minimum time that a
+	// quarantined file should be left around
+	// after it has been dereferenced.
+	Expiry time.Duration
+}
+
 // SyncOutputs synchronizes idx.Indirect to a directory
-// with the provided UploadFS. SyncOutputs uses maxInlined
+// with the provided UploadFS. SyncOutputs uses c.MaxInlined
 // to determine which (if any) of the leading entries in
 // idx.Inlined should be moved into the indirect tree
 // by trimming leading entries until the decompressed size
 // of the data referenced by idx.Inline is less than or
-// equal to maxInlined.
-func (idx *Index) SyncOutputs(ofs UploadFS, dir string,
-	maxInlined int64, targetSize int64, expiry time.Duration) error {
+// equal to b.MaxInlined.
+func (c *IndexConfig) SyncOutputs(idx *Index, ofs UploadFS, dir string) error {
 	if len(idx.Inline) < 2 {
 		return nil
 	}
@@ -679,18 +700,18 @@ func (idx *Index) SyncOutputs(ofs UploadFS, dir string,
 	for i := range idx.Inline {
 		inline += idx.Inline[i].Trailer.Decompressed()
 	}
-	if inline < maxInlined {
+	if inline < c.MaxInlined {
 		return nil
 	}
 	// take the bottom half of the inline list and
 	// compact the results into larger packfiles
 	half := len(idx.Inline) / 2
 	lo, hi := idx.Inline[:half], idx.Inline[half:]
-	compacted, toRemove, err := Compact(ofs, lo, targetSize, date.Now().Truncate(time.Microsecond).Add(expiry))
+	compacted, toRemove, err := c.Compact(ofs, lo)
 	if err != nil {
 		return err
 	}
-	err = idx.append(&idx.Indirect, ofs, dir, compacted, expiry, len(lo))
+	err = c.append(idx, ofs, dir, compacted, len(lo))
 	if err != nil {
 		return err
 	}

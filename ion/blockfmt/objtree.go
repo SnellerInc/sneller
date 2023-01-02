@@ -271,15 +271,16 @@ func (i *IndirectTree) Search(ifs InputFS, filt *Filter) ([]Descriptor, error) {
 	return descs, err
 }
 
-// targetRefSize is the target size of stored refs;
-// we keep appending to an IndirectRef until its
-// compressed size exceeds this threshold
+// defaultTargetRefSize is the default target
+// size of stored refs; we keep appending to an
+// IndirectRef until its compressed size exceeds
+// this threshold
 //
 // (the number of descriptors that fit in this range
 // will depend on the compression ratio and the number
 // of sparse indices, but "a few hundred bytes" is a good
 // approximation of the compressed size of one ref)
-var targetRefSize = 256 * 1024
+const defaultTargetRefSize = 256 * 1024
 
 // append 1 new block to dst
 // for each indexed value in lst[*].Trailer.Sparse
@@ -302,7 +303,7 @@ func updateSummary(dst *SparseIndex, lst []Descriptor) {
 // append appends a list of descriptors to the tree
 // and writes any new decriptor lists to files in basedir
 // relative to the root of ofs.
-func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []Descriptor, expiry time.Duration, delta int) error {
+func (c *IndexConfig) append(idx *Index, ofs UploadFS, basedir string, lst []Descriptor, delta int) error {
 	if len(lst) == 0 {
 		return nil
 	}
@@ -311,7 +312,12 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	var r *IndirectRef
 
 	var prev string
-	if len(i.Refs) > 0 && i.Refs[len(i.Refs)-1].Size < int64(targetRefSize) {
+	targetRefSize := c.TargetRefSize
+	if targetRefSize <= 0 {
+		targetRefSize = defaultTargetRefSize
+	}
+	i := &idx.Indirect
+	if len(i.Refs) > 0 && i.Refs[len(i.Refs)-1].Size < targetRefSize {
 		r = &i.Refs[len(i.Refs)-1]
 		prev = r.Path
 		updateSummary(&i.Sparse, lst)
@@ -366,7 +372,7 @@ func (idx *Index) append(i *IndirectTree, ofs UploadFS, basedir string, lst []De
 	if prev != "" {
 		idx.ToDelete = append(idx.ToDelete, Quarantined{
 			Path:   prev,
-			Expiry: date.Now().Add(expiry).Truncate(time.Microsecond),
+			Expiry: date.Now().Add(c.Expiry).Truncate(time.Microsecond),
 		})
 	}
 	return nil

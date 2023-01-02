@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 )
@@ -151,7 +152,9 @@ func suffixForComp(c string) string {
 // (hopefully shorter) list of descriptors containing the same data
 // along with the list of quarantined descriptor paths that should
 // be deleted.
-func Compact(fs UploadFS, lst []Descriptor, target int64, expiry date.Time) ([]Descriptor, []Quarantined, error) {
+func (c *IndexConfig) Compact(fs UploadFS, lst []Descriptor) ([]Descriptor, []Quarantined, error) {
+	target := c.TargetSize
+	expiry := date.Now().Truncate(time.Microsecond).Add(c.Expiry)
 	if len(lst) == 1 {
 		return lst, nil, nil
 	}

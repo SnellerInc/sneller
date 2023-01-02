@@ -127,6 +127,10 @@ type Builder struct {
 	// If this value is zero, then DefaultMaxInlineBytes
 	// is used instead.
 	MaxInlineBytes int64
+	// TargetRefSize is the target size for stored
+	// indirect references. If this value is zero,
+	// a reasonable default is used.
+	TargetRefSize int64
 
 	// GCLikelihood is the likelihood that
 	// a Sync, Append, or Scan operation
@@ -765,7 +769,13 @@ func (st *tableState) flush(idx *blockfmt.Index, cache *IndexCache) (err error) 
 		invalidate(cache)
 		return err
 	}
-	err = idx.SyncOutputs(st.ofs, dir, st.conf.maxInlineBytes(), int64(st.conf.targetMerge()), st.conf.GCMinimumAge)
+	b := blockfmt.IndexConfig{
+		MaxInlined:    st.conf.maxInlineBytes(),
+		TargetSize:    int64(st.conf.targetMerge()),
+		TargetRefSize: st.conf.TargetRefSize,
+		Expiry:        st.conf.GCMinimumAge,
+	}
+	err = b.SyncOutputs(idx, st.ofs, dir)
 	if err != nil {
 		invalidate(cache)
 		return err
