@@ -2317,10 +2317,10 @@ func (a *Arithmetic) typeof(hint Hint) TypeSet {
 		return MissingType
 	}
 	both := (left | right)
-	if a.Op == DivOp || (both&^NumericType) != 0 {
-		// div is unusual; divide-by-zero can
-		// yield missing even if both inputs
-		// are always numbers
+	if (a.Op == DivOp || a.Op == ModOp) || (both&^NumericType) != 0 {
+		// div & mod are unusual; divide/modulo-by-zero
+		// can yield missing even if both inputs are
+		// always numbers
 		//
 		// similarly, if either input can be
 		// a non-numeric value, we'd expect
