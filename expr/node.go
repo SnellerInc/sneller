@@ -2162,7 +2162,36 @@ const (
 	ShiftRightLogicalOp
 )
 
-// Arithmetic is an arithmetic expression
+func (a ArithOp) String() string {
+	switch a {
+	case AddOp:
+		return "+"
+	case SubOp:
+		return "-"
+	case MulOp:
+		return "*"
+	case DivOp:
+		return "/"
+	case ModOp:
+		return "%"
+	case BitAndOp:
+		return "&"
+	case BitOrOp:
+		return "|"
+	case BitXorOp:
+		return "^"
+	case ShiftLeftLogicalOp:
+		return "<<"
+	case ShiftRightArithmeticOp:
+		return ">>"
+	case ShiftRightLogicalOp:
+		return ">>>"
+	default:
+		return fmt.Sprintf("<ArithOp=%d>", int(a))
+	}
+}
+
+// Arithmetic is a binary arithmetic expression
 type Arithmetic struct {
 	Op          ArithOp
 	Left, Right Node
@@ -2209,38 +2238,9 @@ func (a *Arithmetic) text(dst *strings.Builder, redact bool) {
 	// an operator of higher precedence
 	// (we could compare precedence directly,
 	// but it's easier just to do this unconditionally)
-	var middle string
-
-	switch a.Op {
-	case AddOp:
-		middle = " + "
-	case SubOp:
-		middle = " - "
-	case MulOp:
-		middle = " * "
-	case DivOp:
-		middle = " / "
-	case ModOp:
-		middle = " % "
-	case BitAndOp:
-		middle = " & "
-	case BitOrOp:
-		middle = " | "
-	case BitXorOp:
-		middle = " ^ "
-	case ShiftLeftLogicalOp:
-		middle = " << "
-	case ShiftRightArithmeticOp:
-		middle = " >> "
-	case ShiftRightLogicalOp:
-		middle = " >>> "
-	default:
-		middle = " ? "
-	}
-
 	parens := infix(a.Right)
 	a.Left.text(dst, redact)
-	dst.WriteString(middle)
+	dst.WriteString(fmt.Sprintf(" %s ", a.Op))
 	if parens {
 		dst.WriteByte('(')
 	}
@@ -2267,13 +2267,11 @@ func (a *Arithmetic) rewrite(r Rewriter) Node {
 
 func (a *Arithmetic) Equals(x Node) bool {
 	xa, ok := x.(*Arithmetic)
-	if ok && a.Op == xa.Op && a.Left.Equals(xa.Left) {
-		if a.Right == nil {
-			return xa.Right == nil
-		}
-		return a.Right.Equals(xa.Right)
+	if !ok {
+		return false
 	}
-	return false
+
+	return a.Op == xa.Op && a.Left.Equals(xa.Left) && a.Right.Equals(xa.Right)
 }
 
 func (a *Arithmetic) Encode(dst *ion.Buffer, st *ion.Symtab) {
@@ -2283,10 +2281,8 @@ func (a *Arithmetic) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.WriteUint(uint64(a.Op))
 	dst.BeginField(st.Intern("left"))
 	a.Left.Encode(dst, st)
-	if a.Right != nil {
-		dst.BeginField(st.Intern("right"))
-		a.Right.Encode(dst, st)
-	}
+	dst.BeginField(st.Intern("right"))
+	a.Right.Encode(dst, st)
 	dst.EndStruct()
 }
 

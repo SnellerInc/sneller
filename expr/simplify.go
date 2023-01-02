@@ -657,9 +657,6 @@ func (u *UnaryArith) simplify(h Hint) Node {
 }
 
 func (a *Arithmetic) canonical(h Hint) *Arithmetic {
-	if a.Right == nil {
-		return a
-	}
 	li := IsConstant(a.Left)
 	ri := IsConstant(a.Right)
 	if ri == li {
@@ -701,21 +698,17 @@ func (a *Arithmetic) canonical(h Hint) *Arithmetic {
 
 func (a *Arithmetic) simplify(h Hint) Node {
 	a.Left = missingUnless(a.Left, h, NumericType)
-	if a.Right != nil {
-		a.Right = missingUnless(a.Right, h, NumericType)
-	}
+	a.Right = missingUnless(a.Right, h, NumericType)
 
 	a = a.canonical(h)
 	left := a.Left
 	right := a.Right
 	// arithmetic with MISSING is MISSING
-	if miss(left, h) || (right != nil && miss(right, h)) {
+	if miss(left, h) || miss(right, h) {
 		return Missing{}
 	}
-	if right != nil {
-		ln, okl := left.(number)
-		rn, okr := right.(number)
-		if okr && okl {
+	if ln, okl := left.(number); okl {
+		if rn, okr := right.(number); okr {
 			return constmath(a.Op, ln.rat(), rn.rat())
 		}
 	}

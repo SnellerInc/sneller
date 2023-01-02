@@ -292,7 +292,7 @@ func (a *Arithmetic) check(h Hint) error {
 		}
 	}
 
-	if !numeric(a.Left, h) || (a.Right != nil && !numeric(a.Right, h)) {
+	if !numeric(a.Left, h) || !numeric(a.Right, h) {
 		return errtype(a, "arguments are not numeric")
 	}
 	return nil
