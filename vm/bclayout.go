@@ -24,13 +24,13 @@ type kRegData struct {
 }
 
 type vRegData struct {
-	offsets [16]uint32
-	sizes   [16]uint32
+	offsets [bcLaneCount]uint32
+	sizes   [bcLaneCount]uint32
 }
 
 type sRegData struct {
-	offsets [16]uint32
-	sizes   [16]uint32
+	offsets [bcLaneCount]uint32
+	sizes   [bcLaneCount]uint32
 }
 
 type i64RegData struct {
@@ -49,12 +49,23 @@ func i64RegDataFromScalar(v int64) i64RegData {
 	return out
 }
 
-const kRegSize = 2
-const sRegSize = 128
-const vRegSize = 128
-const bRegSize = 128
-const hRegSize = 256
-const lRegSize = 128
+const (
+	kRegSize = 2
+	vRegSize = 128
+	sRegSize = 128
+	bRegSize = 128
+	hRegSize = 256
+	lRegSize = 128
+)
+
+// assert that the size of each reg struct matches the sizes understood by VM
+const (
+	_ = ^uintptr(0) + (uintptr(kRegSize) - unsafe.Sizeof(kRegData{}))
+	_ = ^uintptr(0) + (uintptr(vRegSize) - unsafe.Sizeof(vRegData{}))
+	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(sRegData{}))
+	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(i64RegData{}))
+	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(f64RegData{}))
+)
 
 func vRegDataFromVStackCast(vstack *[]uint64, count int) (out []vRegData) {
 	hdr := (*reflect.SliceHeader)(unsafe.Pointer(vstack))
