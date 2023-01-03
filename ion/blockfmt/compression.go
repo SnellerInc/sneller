@@ -223,25 +223,33 @@ func (w *CompressionWriter) SkipChecks() {
 	w.skipChecks = true
 }
 
+func pickPrefix(t *Trailer, minchunks int) (index int, offset int64) {
+	for index < len(t.Blocks) && t.Blocks[index].Chunks >= minchunks {
+		index++
+	}
+	offset = t.Offset
+	if index < len(t.Blocks) {
+		offset = t.Blocks[index].Offset
+	}
+	return index, offset
+}
+
 // consume maybe *some* of an existing object
 // without doing any heavy lifting w.r.t compression
 func (w *CompressionWriter) writeStart(r io.Reader, t *Trailer) error {
 	if t.Algo != w.Comp.Name() || 1<<t.BlockShift != w.InputAlign {
 		return nil // not directly compatible
 	}
-	j := 0
-	for j < len(t.Blocks)-1 && t.Blocks[j].Chunks >= w.MinChunksPerBlock {
-		j++
-	}
-	if j == 0 || t.Blocks[j].Offset < int64(w.Output.MinPartSize()) {
+	j, offset := pickPrefix(t, w.MinChunksPerBlock)
+	if j == 0 || offset < int64(w.Output.MinPartSize()) {
 		return nil
 	}
-	pn, err := uploadReader(w.Output, w.partnum+1, r, t.Blocks[j].Offset)
+	pn, err := uploadReader(w.Output, w.partnum+1, r, offset)
 	if err != nil {
 		return err
 	}
 	w.partnum = pn - 1
-	w.lastblock = t.Blocks[j].Offset
+	w.lastblock = offset
 	w.offset = w.lastblock
 	w.Trailer.Blocks = t.Blocks[:j]
 	w.Trailer.Sparse = t.Sparse.Trim(j)

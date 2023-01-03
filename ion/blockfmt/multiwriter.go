@@ -180,19 +180,16 @@ func (m *MultiWriter) writeStart(r io.Reader, t *Trailer) error {
 	if t.Algo != m.Algo || 1<<t.BlockShift != m.InputAlign {
 		return nil // not directly compatible
 	}
-	j := 0
-	for j < len(t.Blocks)-1 && t.Blocks[j].Chunks >= m.MinChunksPerBlock {
-		j++
-	}
-	if j == 0 || t.Blocks[j].Offset < int64(m.Output.MinPartSize()) {
+	j, offset := pickPrefix(t, m.MinChunksPerBlock)
+	if j == 0 || offset < int64(m.Output.MinPartSize()) {
 		return nil
 	}
-	pn, err := uploadReader(m.Output, m.nextpart, r, t.Blocks[j].Offset)
+	pn, err := uploadReader(m.Output, m.nextpart, r, offset)
 	if err != nil {
 		return err
 	}
 	m.nextpart = pn
-	m.base = t.Blocks[j].Offset
+	m.base = offset
 	m.Trailer.Blocks = t.Blocks[:j]
 	m.Trailer.Sparse = t.Sparse.Trim(j)
 	t.Blocks = t.Blocks[j:]
