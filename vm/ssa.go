@@ -490,17 +490,19 @@ func (p *prog) ssa5(op ssaop, arg0, arg1, arg2, arg3, arg4 *value) *value {
 
 // overwrite a value with new opcode + args, etc.
 func (p *prog) setssa(v *value, op ssaop, imm interface{}, args ...*value) *value {
-	v.notMissing = nil
 	v.op = op
-	v.args = shrink(v.args, len(args))
-	copy(v.args, args)
-	for i := range args {
-		v.checkarg(args[i], i)
-	}
+	v.notMissing = nil
+
 	if imm == nil {
 		v.imm = nil
 	} else {
 		v.setimm(imm)
+	}
+
+	v.args = shrink(v.args, len(args))
+	copy(v.args, args)
+	for i := range args {
+		v.checkarg(args[i], i)
 	}
 	return v
 }
