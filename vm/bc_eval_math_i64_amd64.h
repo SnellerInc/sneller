@@ -169,7 +169,7 @@ TEXT bcsquarei64(SB), NOSPLIT|NOFRAME, $0
   VPCMPQ $VPCMP_IMM_LE, Z6, Z2, K1, K1
   VPCMPQ $VPCMP_IMM_LE, Z6, Z3, K2, K2
 
-  // We use VPMULDQ because any input ingere greater than 32-bit would overflow anyway. On many
+  // We use VPMULDQ because any input integer greater than 32-bit would overflow anyway. On many
   // architectures this is much faster than using VPMULLQ, which performs a full 64-bit multiply.
   VPMULDQ.Z Z2, Z2, K1, Z4
   VPMULDQ.Z Z3, Z3, K2, Z5

@@ -183,6 +183,11 @@ type simplerw struct {
 }
 
 func (s simplerw) Rewrite(n Node) Node {
+	if fs := s.Values(n); fs != nil {
+		if val := fs.Singleton(); val != nil {
+			n = val
+		}
+	}
 	if rs, ok := n.(simplifier); ok {
 		n = rs.simplify(s.Hint)
 	}
@@ -197,6 +202,11 @@ type logicrw struct {
 }
 
 func (l logicrw) Rewrite(n Node) Node {
+	if fs := l.Values(n); fs != nil {
+		if val := fs.Singleton(); val != nil {
+			n = val
+		}
+	}
 	if rs, ok := n.(simplifier); ok {
 		n = rs.simplify(l.Hint)
 	}
@@ -559,10 +569,6 @@ func constmath(op ArithOp, left, right *big.Rat) Node {
 	}
 }
 
-func (u *UnaryArith) canonical(h Hint) *UnaryArith {
-	return u
-}
-
 type roundOp uint8
 
 const (
@@ -637,9 +643,21 @@ func simplifyTrunc(h Hint, args []Node) Node     { return simplifyRoundOp(h, arg
 func simplifyFloor(h Hint, args []Node) Node     { return simplifyRoundOp(h, args, roundFloorOp) }
 func simplifyCeil(h Hint, args []Node) Node      { return simplifyRoundOp(h, args, roundCeilOp) }
 
+func asint64(x *big.Rat) (int64, bool) {
+	if !x.IsInt() {
+		return roundBigRat(x, roundTruncOp).Num().Int64(), true
+	}
+
+	u64 := x.Num()
+	if !u64.IsInt64() {
+		return 0, false
+	}
+
+	return u64.Int64(), true
+}
+
 func (u *UnaryArith) simplify(h Hint) Node {
 	u.Child = missingUnless(u.Child, h, NumericType)
-	u = u.canonical(h)
 
 	// Arithmetic operation with MISSING is MISSING.
 	if miss(u.Child, h) {
@@ -650,6 +668,10 @@ func (u *UnaryArith) simplify(h Hint) Node {
 		switch u.Op {
 		case NegOp:
 			return (*Rational)(new(big.Rat).Neg(cn.rat()))
+		case BitNotOp:
+			if i64, ok := asint64(cn.rat()); ok {
+				return Integer(^i64)
+			}
 		}
 	}
 
@@ -1062,12 +1084,8 @@ func (c *Cast) simplify(h Hint) Node {
 	if c.To == IntegerType {
 		if fn, ok := c.From.(number); ok {
 			rat := fn.rat()
-			if !rat.IsInt() {
-				rat = roundBigRat(rat, roundTruncOp)
-			}
-			num := rat.Num()
-			if num.IsInt64() {
-				return Integer(num.Int64())
+			if i64, ok := asint64(rat); ok {
+				return Integer(i64)
 			}
 			return (*Rational)(rat)
 		}

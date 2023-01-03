@@ -1119,19 +1119,28 @@ func (h *testHintWithValues) Values(e Node) *FiniteSet {
 	return nil
 }
 
-func TestSimplifyWithValueHints(t *testing.T) {
-	values := []Constant{
-		Integer(4),
-		Integer(5),
-		Integer(6),
-	}
-	h := &testHintWithValues{
-		path: "x",
+func mktesthint(path string, values ...Constant) Hint {
+	return &testHintWithValues{
+		path: path,
 		values: &FiniteSet{
 			values: values,
 		},
 	}
+}
+
+func TestSimplifyWithValueHints(t *testing.T) {
+	// x in {4, 5, 6}
 	x := path("x")
+	set := mktesthint("x", Integer(4), Integer(5), Integer(6))
+
+	// y = 42
+	y := path("y")
+	intsingleton := mktesthint("y", Integer(42))
+
+	// z = "sneller"
+	z := path("z")
+	strsingleton := mktesthint("z", String("sneller"))
+
 	testcases := []struct {
 		before, after Node
 		hint          Hint
@@ -1140,56 +1149,92 @@ func TestSimplifyWithValueHints(t *testing.T) {
 			// x{4, 5, 6} IN (4, 5, 6, 7, 8) => true (all lhs values match rhs)
 			before: In(x, Integer(4), Integer(5), Integer(6), Integer(7), Integer(8)),
 			after:  Bool(true),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} IN (1, 2, 3) => false (none of lhs values match rhs)
 			before: In(x, Integer(1), Integer(2), Integer(3)),
 			after:  Bool(false),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} IN (1, 5) => x = 1 OR x = 5 (IN cannot be evaluated in compile time ...)
 			//                      => x = 5          (... but x = 1 is always false)
 			before: In(x, Integer(1), Integer(5)),
 			after:  Compare(Equals, x, Integer(5)),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} BETWEEN 1 AND 10 => true
 			before: Between(x, Integer(1), Integer(10)),
 			after:  Bool(true),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} = 5 => unchanged
 			before: Compare(Equals, x, Integer(5)),
 			after:  Compare(Equals, x, Integer(5)),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} < 5 => unchanged (4 < 5 = true, 5 < 5 = false, 5 < 6 = false)
 			before: Compare(Less, x, Integer(5)),
 			after:  Compare(Less, x, Integer(5)),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} < 1 => false (4 < 5 = false, 5 < 5 = false, 5 < 6 = false)
 			before: Compare(Less, x, Integer(1)),
 			after:  Bool(false),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// x{4, 5, 6} < 100 => false (4 < 5 = true, 5 < 5 = true, 5 < 6 = true)
 			before: Compare(Less, x, Integer(100)),
 			after:  Bool(true),
-			hint:   h,
+			hint:   set,
 		},
 		{
 			// 100 > x{4, 5, 6} => false
 			before: Compare(Greater, Integer(100), x),
 			after:  Bool(true),
-			hint:   h,
+			hint:   set,
+		},
+		{
+			// y(=42) > 32 => true
+			before: Compare(Greater, y, Integer(32)),
+			after:  Bool(true),
+			hint:   intsingleton,
+		},
+		{
+			// z(="sneller") == "go" => false
+			before: Compare(Equals, z, String("go")),
+			after:  Bool(false),
+			hint:   strsingleton,
+		},
+		{
+			// y(=42) + 5 => 47
+			before: Add(y, Integer(5)),
+			after:  Integer(47),
+			hint:   intsingleton,
+		},
+		{
+			// -y(=42) => -42
+			before: Neg(y),
+			after:  Integer(-42),
+			hint:   intsingleton,
+		},
+		{
+			// ~y(=42=uint64(0x000000000000002a)) => -43 (0xffffffffffffffd5)
+			before: BitNot(y),
+			after:  Integer(-43),
+			hint:   intsingleton,
+		},
+		{
+			// CHAR_LENGTH(z) = CHAR_LENGTH("sneller") => 7
+			before: Call(CharLength, z),
+			after:  Integer(7),
+			hint:   strsingleton,
 		},
 	}
 
