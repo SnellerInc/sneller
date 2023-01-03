@@ -1081,6 +1081,8 @@ func (d *Dot) setfield(name string, st *ion.Symtab, val []byte) (err error) {
 				err = fmt.Errorf("symbol %d isn't part ofthe symbol table", sym)
 			}
 		}
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
@@ -1157,6 +1159,8 @@ func (i *Index) setfield(name string, st *ion.Symtab, val []byte) (err error) {
 		if err == nil {
 			i.Offset = int(v)
 		}
+	default:
+		return errUnexpectedField
 	}
 	return err
 }
