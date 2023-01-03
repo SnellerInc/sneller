@@ -16,6 +16,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/SnellerInc/sneller/db"
@@ -29,6 +30,37 @@ type errorWriter struct {
 func (e *errorWriter) Write(p []byte) (int, error) {
 	e.any = true
 	return os.Stderr.Write(p)
+}
+
+func validateFiles(creds db.Tenant, files []string) {
+	ofs := root(creds)
+	e := errorWriter{}
+	for i := range files {
+		if dashv {
+			fmt.Printf("checking %s\n", files[i])
+		}
+		f, err := ofs.Open(files[i])
+		if err != nil {
+			exitf("opening %s: %s", files[i], err)
+		}
+		info, err := f.Stat()
+		if err != nil {
+			exitf("stat %s: %s", files[i], err)
+		}
+		ra, ok := f.(io.ReaderAt)
+		if !ok {
+			exitf("%T doesn't implement io.ReaderAt", f)
+		}
+		t, err := blockfmt.ReadTrailer(ra, info.Size())
+		if err != nil {
+			exitf("reading trailer for %s: %s", files[i], err)
+		}
+		blockfmt.Validate(f, t, &e)
+		f.Close()
+	}
+	if e.any {
+		os.Exit(1)
+	}
 }
 
 func validate(creds db.Tenant, dbname, table string) {
@@ -81,6 +113,23 @@ It may take a long time for this command to run on large tables.
 				return false
 			}
 			validate(creds(), args[1], args[2])
+			return true
+		},
+	})
+	addApplet(applet{
+		name: "validate-file",
+		help: "path-to-files...",
+		desc: `validate files within root
+The command
+  $ sdb validate-file /path/to/file.zion
+interprets its arguments as a list of files to
+be validated. (Paths are interpreted as being relative
+to -root=...)
+
+See also: validate
+`,
+		run: func(args []string) bool {
+			validateFiles(creds(), args[1:])
 			return true
 		},
 	})

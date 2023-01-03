@@ -16,9 +16,11 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -65,6 +67,51 @@ func describeTrailer(t *blockfmt.Trailer, compsize int64) {
 	}
 }
 
+func descriptors(ofs db.InputFS, files []string) []blockfmt.Descriptor {
+	out := make([]blockfmt.Descriptor, 0, len(files))
+	for i := range files {
+		f, err := ofs.Open(files[i])
+		if err != nil {
+			exitf("opening %s: %s", files[i], err)
+		}
+		info, err := f.Stat()
+		if err != nil {
+			exitf("stat %s: %s", files[i], err)
+		}
+		var etag string
+		// skip populating the ETag if this is a local file;
+		// the DirFS ETags are computed via hashing
+		if _, ok := ofs.(*db.DirFS); !ok {
+			etag, _ = ofs.ETag(files[i], info)
+		}
+		ra, ok := f.(io.ReaderAt)
+		if !ok {
+			exitf("%T doesn't implement io.ReaderAt", f)
+		}
+		t, err := blockfmt.ReadTrailer(ra, info.Size())
+		if err != nil {
+			exitf("reading trailer for %s: %s", files[i], err)
+		}
+		f.Close()
+		out = append(out, blockfmt.Descriptor{
+			ObjectInfo: blockfmt.ObjectInfo{
+				Path:         files[i],
+				ETag:         etag,
+				LastModified: date.FromTime(info.ModTime()),
+				Size:         info.Size(),
+			},
+			Trailer: *t,
+		})
+	}
+	return out
+}
+
+func describeFiles(creds db.Tenant, files []string) {
+	ofs := root(creds)
+	descs := descriptors(ofs, files)
+	describeDescs(ofs, descs, 0)
+}
+
 func describe(creds db.Tenant, dbname, table string) {
 	ofs := root(creds)
 	idx, err := db.OpenIndex(ofs, dbname, table, creds.Key())
@@ -75,17 +122,21 @@ func describe(creds db.Tenant, dbname, table string) {
 	if err != nil {
 		exitf("getting indirect blobs: %s", err)
 	}
+	nindirect := len(descs)
+	descs = append(descs, idx.Inline...)
+	describeDescs(ofs, descs, nindirect)
+}
+
+func describeDescs(src blockfmt.InputFS, descs []blockfmt.Descriptor, indirect int) {
 	totalComp := int64(0)
 	totalDecomp := int64(0)
 	blocks := 0
-	nindirect := len(descs)
-	descs = append(descs, idx.Inline...)
 	for i := range descs {
 		totalComp += descs[i].Size
 		totalDecomp += descs[i].Trailer.Decompressed()
 		blocks += len(descs[i].Trailer.Blocks)
-		fmt.Printf("%s%s %s %s\n", ofs.Prefix(), descs[i].Path, descs[i].ETag, human(descs[i].Size))
-		if i < nindirect {
+		fmt.Printf("%s%s %s %s\n", src.Prefix(), descs[i].Path, descs[i].ETag, human(descs[i].Size))
+		if i < indirect {
 			fmt.Printf("\t (indirect)\n")
 		}
 		describeTrailer(&descs[i].Trailer, descs[i].Size)
@@ -111,6 +162,21 @@ the given database+table.
 				return false
 			}
 			describe(creds(), args[1], args[2])
+			return true
+		},
+	})
+	addApplet(applet{
+		name: "describe-file",
+		help: "files...",
+		desc: `describe a file
+The command
+  $ sdb describe-file file...
+will output a textual description of the packfile(s)
+specified by the arguments. Arguments are interpreted as
+paths relative to -root=...
+`,
+		run: func(args []string) bool {
+			describeFiles(creds(), args[1:])
 			return true
 		},
 	})
