@@ -118,7 +118,7 @@ func TestSimplify(t *testing.T) {
 			Is(path("t", "x"), IsNull),
 		},
 		{
-			// 3 < 5 -> TRUE
+			// 3 < 3.5 -> TRUE
 			Compare(Less, Integer(3), Float(3.5)),
 			Bool(true),
 		},
@@ -560,9 +560,7 @@ func TestSimplify(t *testing.T) {
 		},
 		{
 			// SIZE(["a", "b", "c", "d") => 4
-			Call(ObjectSize, &List{Values: []Constant{
-				String("a"), String("b"), String("c"), String("d"),
-			}}),
+			Call(ObjectSize, mktestlist(String("a"), String("b"), String("c"), String("d"))),
 			Integer(4),
 		},
 		{
@@ -963,6 +961,16 @@ func TestSimplify(t *testing.T) {
 			String("bar"),
 		},
 		{
+			// ["a", "b", "c"][1] => "b"
+			&Index{Inner: Call(MakeList, String("a"), String("b"), String("c")), Offset: 1},
+			String("b"),
+		},
+		{
+			// ["a", "b", "c"][1] => "b"
+			&Index{Inner: mktestlist(String("a"), String("b"), String("c")), Offset: 1},
+			String("b"),
+		},
+		{
 			// SELECT * FROM ... ORDER BY const1, ..., constN => drop ORDER BY
 			&Select{OrderBy: []Order{
 				{Column: Integer(5)},
@@ -1141,6 +1149,12 @@ func TestSimplifyWithValueHints(t *testing.T) {
 	z := path("z")
 	strsingleton := mktesthint("z", String("sneller"))
 
+	// w = {"x": 2, "y": [3, 40, 500]}
+	structsingleton := mktesthint("w", &Struct{Fields: []Field{
+		{Label: "x", Value: Integer(2)},
+		{Label: "y", Value: mktestlist(Integer(3), Integer(40), Integer(500))},
+	}})
+
 	testcases := []struct {
 		before, after Node
 		hint          Hint
@@ -1236,6 +1250,19 @@ func TestSimplifyWithValueHints(t *testing.T) {
 			after:  Integer(7),
 			hint:   strsingleton,
 		},
+		{
+			// expand the constant
+			before: z,
+			after:  String("sneller"),
+			hint:   strsingleton,
+		},
+		{
+			// w = {"x": 2, "y": [3, 40, 500]}
+			// w.x + w.y[1] => 42
+			before: Add(path("w", "x"), mkpath("w.y[1]")),
+			after:  Integer(42),
+			hint:   structsingleton,
+		},
 	}
 
 	for i := range testcases {
@@ -1247,6 +1274,11 @@ func TestSimplifyWithValueHints(t *testing.T) {
 			opt := Simplify(before, tc.hint)
 			if !opt.Equals(after) {
 				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(before), ToString(opt), ToString(after))
+			}
+			err := Check(opt)
+			if err != nil {
+				t.Log(ToString(opt))
+				t.Fatalf("simplified query is not valid: %s", err)
 			}
 			testEquivalence(before, t)
 			testEquivalence(after, t)
@@ -1266,4 +1298,19 @@ func jsontxt(st *ion.Symtab, buf *ion.Buffer) string {
 func mkintptr(x int64) *Integer {
 	i := Integer(x)
 	return &i
+}
+
+func mktestlist(values ...Constant) *List {
+	return &List{
+		Values: values,
+	}
+}
+
+func mkpath(s string) Node {
+	n, err := ParsePath(s)
+	if err != nil {
+		panic(err)
+	}
+
+	return n
 }

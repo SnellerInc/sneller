@@ -1078,7 +1078,7 @@ func (d *Dot) setfield(name string, st *ion.Symtab, val []byte) (err error) {
 			var ok bool
 			d.Field, ok = st.Lookup(sym)
 			if !ok {
-				err = fmt.Errorf("in Dot.setfield: symbol %d isn't part ofthe symbol table", sym)
+				err = fmt.Errorf("symbol %d isn't part ofthe symbol table", sym)
 			}
 		}
 	}
@@ -1098,14 +1098,6 @@ func (d *Dot) walk(v Visitor) {
 func (d *Dot) rewrite(r Rewriter) Node {
 	d.Inner = Rewrite(r, d.Inner)
 	return d
-}
-
-func (d *Dot) check(h Hint) error {
-	it := TypeOf(d.Inner, h)
-	if !it.Contains(ion.StructType) {
-		return errtype(d.Inner, "cannot use '.' operator on non-struct type")
-	}
-	return nil
 }
 
 // {'x': v}.x -> v
@@ -3267,6 +3259,21 @@ func (s *Struct) setfield(name string, st *ion.Symtab, body []byte) error {
 		return errUnexpectedField
 	}
 	return nil
+}
+
+// FieldByName returns value for given field or nil if there's no such field
+func (s *Struct) FieldByName(f string) Constant {
+	for i := range s.Fields {
+		if s.Fields[i].Label == f {
+			return s.Fields[i].Value
+		}
+	}
+
+	return nil
+}
+
+func (s *Struct) HasField(f string) bool {
+	return s.FieldByName(f) != nil
 }
 
 // List is a literal list constant.

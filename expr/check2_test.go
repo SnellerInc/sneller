@@ -185,6 +185,14 @@ func TestCheckInvalidQuery(t *testing.T) {
 			`SELECT y % 0 FROM table`,
 			`modulo by zero`,
 		},
+		{
+			`SELECT {'x': 5}.test`,
+			`struct does not have field "test"`,
+		},
+		{
+			`SELECT 'test'.test`,
+			`cannot use '.' operator on non-struct type`,
+		},
 	}
 	for i := range testcases {
 		i := i

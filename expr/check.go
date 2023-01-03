@@ -372,6 +372,35 @@ func (s *Select) check(h Hint) error {
 	return nil
 }
 
+func (d *Dot) check(h Hint) error {
+	it := TypeOf(d.Inner, h)
+	if !it.Contains(ion.StructType) {
+		return errtype(d.Inner, "cannot use '.' operator on non-struct type")
+	}
+
+	switch n := d.Inner.(type) {
+	case *Struct:
+		if !n.HasField(string(d.Field)) {
+			return errtypef(d.Inner, "struct does not have field %q", d.Field)
+		}
+
+	case *Builtin:
+		if n.Func == MakeStruct {
+			for i := 0; i < len(n.Args); i += 2 {
+				str := n.Args[i].(String)
+				if string(str) == d.Field {
+					return nil
+				}
+			}
+			return errtypef(d.Inner, "struct does not have field %q", d.Field)
+		} else {
+			return errtypef(d.Inner, "function %q does not return struct", n.Func)
+		}
+	}
+
+	return nil
+}
+
 func (i *Index) check(h Hint) error {
 	listLen := func(e Node) (int, bool) {
 		switch t := e.(type) {
