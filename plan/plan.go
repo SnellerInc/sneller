@@ -16,6 +16,7 @@ package plan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -435,7 +436,7 @@ func writeIon(b *ion.Buffer, dst vm.QuerySink) (int, vm.QuerySink, error) {
 		return -1, nil, err
 	}
 	_, err = w.Write(b.Bytes())
-	if err != nil {
+	if err != nil && !errors.Is(err, io.EOF) {
 		w.Close()
 		return -1, nil, err
 	}
