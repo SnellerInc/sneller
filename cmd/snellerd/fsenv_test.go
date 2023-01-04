@@ -146,7 +146,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 		t.Fatal(err)
 	}
 
-	b := db.Builder{
+	c := db.Config{
 		Align:         testBlocksize,
 		RangeMultiple: 10,
 		Fallback: func(_ string) blockfmt.RowFormat {
@@ -154,7 +154,7 @@ func testdirEnviron(t *testing.T) db.Tenant {
 		},
 	}
 	tt := db.NewLocalTenant(dfs)
-	err = b.Sync(tt, "default", "*")
+	err = c.Sync(tt, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}

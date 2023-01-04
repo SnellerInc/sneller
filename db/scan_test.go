@@ -64,10 +64,10 @@ func newDirFS(t *testing.T, dir string) *DirFS {
 	return dfs
 }
 
-func fullScan(t *testing.T, b *Builder, who Tenant, db, table string, expect int) {
+func fullScan(t *testing.T, c *Config, who Tenant, db, table string, expect int) {
 	total := 0
 	for {
-		n, err := b.Scan(who, db, table)
+		n, err := c.Scan(who, db, table)
 		if err != nil {
 			if blockfmt.IsFatal(err) {
 				fs, err := who.Root()
@@ -98,9 +98,9 @@ func fullScan(t *testing.T, b *Builder, who Tenant, db, table string, expect int
 	}
 }
 
-func noScan(t *testing.T, b *Builder, who *testTenant, db, table string) {
+func noScan(t *testing.T, c *Config, who *testTenant, db, table string) {
 	who.ro = true
-	fullScan(t, b, who, db, table, 0)
+	fullScan(t, c, who, db, table, 0)
 	who.ro = false
 }
 
@@ -143,7 +143,7 @@ func TestScan(t *testing.T) {
 	}
 
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -157,7 +157,7 @@ func TestScan(t *testing.T) {
 		GCLikelihood: 50,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
-	fullScan(t, &b, owner, "default", "taxi", objects)
+	fullScan(t, &c, owner, "default", "taxi", objects)
 
 	idx, err := OpenIndex(dfs, "default", "taxi", owner.Key())
 	if err != nil {
@@ -192,7 +192,7 @@ func TestScan(t *testing.T) {
 	if count != objects {
 		t.Fatalf("expected %d objects in input; got %d", objects, count)
 	}
-	noScan(t, &b, owner, "default", "taxi")
+	noScan(t, &c, owner, "default", "taxi")
 }
 
 func TestScanPartitioned(t *testing.T) {
@@ -250,7 +250,7 @@ func TestScanPartitioned(t *testing.T) {
 	}
 
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -264,7 +264,7 @@ func TestScanPartitioned(t *testing.T) {
 		GCLikelihood: 50,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
-	fullScan(t, &b, owner, "default", "taxi", parts*objects)
+	fullScan(t, &c, owner, "default", "taxi", parts*objects)
 
 	idx, err := OpenIndex(dfs, "default", "taxi", owner.Key())
 	if err != nil {
@@ -315,7 +315,7 @@ func TestScanPartitioned(t *testing.T) {
 			t.Fatalf("part %d: expected %d objects in input; got %d", part, objects, count)
 		}
 	}
-	noScan(t, &b, owner, "default", "taxi")
+	noScan(t, &c, owner, "default", "taxi")
 }
 
 func TestNewIndexScan(t *testing.T) {
@@ -357,7 +357,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -370,12 +370,12 @@ func TestNewIndexScan(t *testing.T) {
 		NewIndexScan: true,
 	}
 
-	lst, err := collectGlob(dfs, b.Fallback, "b-prefix/*.block")
+	lst, err := collectGlob(dfs, c.Fallback, "b-prefix/*.block")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = b.append(owner, "default", "taxi", lst, nil)
+	err = c.append(owner, "default", "taxi", lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -393,7 +393,7 @@ func TestNewIndexScan(t *testing.T) {
 
 	// second attempt should fail again,
 	// but Scanning should be false
-	err = b.append(owner, "default", "taxi", lst, nil)
+	err = c.append(owner, "default", "taxi", lst, nil)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -425,11 +425,11 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	// final append should be a no-op
-	err = b.append(owner, "default", "taxi", lst, nil)
+	err = c.append(owner, "default", "taxi", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	noScan(t, &b, owner, "default", "taxi")
+	noScan(t, &c, owner, "default", "taxi")
 }
 
 func TestScanFail(t *testing.T) {
@@ -488,13 +488,13 @@ func TestScanFail(t *testing.T) {
 	}
 
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align:          1024,
 		Logf:           t.Logf,
 		MaxScanObjects: 2,
 		NewIndexScan:   true,
 	}
 
-	fullScan(t, &b, owner, "default", "files", good0+good1)
-	noScan(t, &b, owner, "default", "files")
+	fullScan(t, &c, owner, "default", "files", good0+good1)
+	noScan(t, &c, owner, "default", "files")
 }

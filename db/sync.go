@@ -66,18 +66,18 @@ const DefaultMaxInlineBytes = 100 * giga
 // for compressing data blocks.
 const DefaultAlgo = "zion"
 
-// ErrBuildAgain is returned by db.Builder.Sync
+// ErrBuildAgain is returned by db.Config.Sync
 // when only some of the input objects were successfully
 // ingested.
 var ErrBuildAgain = errors.New("partial db update")
 
-// Builder is a set of configuration items
+// Config is a set of configuration items
 // for synchronizing an Index to match
 // a specification from a Definition.
-type Builder struct {
+type Config struct {
 	// Algo is the compression algorithm
 	// used for producing output data blocks.
-	// If Algo is the empty string, Builder
+	// If Algo is the empty string, Config
 	// uses DefaultAlgo instead.
 	Algo string
 	// Align is the alignment of new
@@ -161,18 +161,18 @@ type Builder struct {
 	Logf func(f string, args ...interface{})
 }
 
-func (b *Builder) minMergeSize() int64 {
-	if b.MinMergeSize > 0 {
-		return int64(b.MinMergeSize)
+func (c *Config) minMergeSize() int64 {
+	if c.MinMergeSize > 0 {
+		return int64(c.MinMergeSize)
 	}
 	return DefaultMinMerge
 }
 
-func (b *Builder) targetMerge() int {
-	if b.TargetMergeSize <= 0 {
+func (c *Config) targetMerge() int {
+	if c.TargetMergeSize <= 0 {
 		return DefaultTargetMergeSize
 	}
-	return b.TargetMergeSize
+	return c.TargetMergeSize
 }
 
 // Format picks the row format for an object
@@ -182,10 +182,10 @@ func (b *Builder) targetMerge() int {
 //     then that format is returned.
 //  2. If 'name' has a suffix that indicates a known format,
 //     then that format is returned.
-//  3. If b.Fallback is non-nil, then Fallback(name) is returned.
+//  3. If c.Fallback is non-nil, then Fallback(name) is returned.
 //
 // Otherwise, Format returns nil.
-func (b *Builder) Format(chosen, name string, hints []byte) (blockfmt.RowFormat, error) {
+func (c *Config) Format(chosen, name string, hints []byte) (blockfmt.RowFormat, error) {
 	if chosen != "" {
 		if f := blockfmt.SuffixToFormat["."+chosen]; f != nil {
 			return f(hints)
@@ -196,27 +196,27 @@ func (b *Builder) Format(chosen, name string, hints []byte) (blockfmt.RowFormat,
 			return f(hints)
 		}
 	}
-	if b.Fallback != nil {
-		return b.Fallback(name), nil
+	if c.Fallback != nil {
+		return c.Fallback(name), nil
 	}
 	return nil, nil
 }
 
-func (b *Builder) logf(f string, args ...interface{}) {
-	if b.Logf != nil {
-		b.Logf(f, args...)
+func (c *Config) logf(f string, args ...interface{}) {
+	if c.Logf != nil {
+		c.Logf(f, args...)
 	}
 }
 
 type tableState struct {
 	def       *Definition
-	conf      Builder
+	conf      Config
 	owner     Tenant
 	ofs       OutputFS
 	db, table string
 }
 
-func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
+func (c *Config) open(db, table string, owner Tenant) (*tableState, error) {
 	ifs, err := owner.Root()
 	if err != nil {
 		return nil, err
@@ -233,7 +233,7 @@ func (b *Builder) open(db, table string, owner Tenant) (*tableState, error) {
 	}
 	ts := &tableState{
 		def:   def,
-		conf:  *b, // copy config so we can update it w/ features
+		conf:  *c, // copy config so we can update it w/ features
 		owner: owner,
 		ofs:   ofs,
 		db:    db,
@@ -391,13 +391,13 @@ func shouldRebuild(err error) bool {
 // and it assumes the list of new elements to be inserted
 // has already been computed.
 //
-// If the index to be updated is currently scanning (see Builder.Scan),
+// If the index to be updated is currently scanning (see Config.Scan),
 // then append will perform some scanning inserts and return ErrBuildAgain.
 // append will continue to return ErrBuildAgain until scanning is complete,
 // at which point append operations will be accepted. (The caller must continuously
 // call append for scanning to occur.)
-func (b *Builder) append(who Tenant, db, table string, parts []partition, cache *IndexCache) error {
-	st, err := b.open(db, table, who)
+func (c *Config) append(who Tenant, db, table string, parts []partition, cache *IndexCache) error {
+	st, err := c.open(db, table, who)
 	if err != nil {
 		return err
 	}
@@ -428,12 +428,12 @@ func (b *Builder) append(who Tenant, db, table string, parts []partition, cache 
 			return err
 		}
 		if len(parts) == 0 {
-			b.logf("index for %s already up-to-date", table)
+			c.logf("index for %s already up-to-date", table)
 			return nil
 		}
 		return st.append(idx, parts, cache)
 	}
-	if b.NewIndexScan && !st.def.SkipBackfill && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
+	if c.NewIndexScan && !st.def.SkipBackfill && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
 			Name: table,
 			Algo: "zstd",
@@ -476,7 +476,7 @@ func (st *tableState) append(idx *blockfmt.Index, parts []partition, cache *Inde
 // converts the list of input objects
 // into the right set of output objects,
 // and writes the associated index signed with 'key'.
-func (b *Builder) Sync(who Tenant, db, tblpat string) error {
+func (c *Config) Sync(who Tenant, db, tblpat string) error {
 	if tblpat == "" {
 		tblpat = "*"
 	}
@@ -491,11 +491,11 @@ func (b *Builder) Sync(who Tenant, db, tblpat string) error {
 	var tables []string
 	for i := range possible {
 		tab, _ := path.Split(possible[i])
-		b.logf("detected table at path %q", tab)
+		c.logf("detected table at path %q", tab)
 		tables = append(tables, path.Base(tab))
 	}
 	syncTable := func(table string) error {
-		st, err := b.open(db, table, who)
+		st, err := c.open(db, table, who)
 		if err != nil {
 			return err
 		}
@@ -564,16 +564,16 @@ func combine(lst []error) error {
 	}
 }
 
-func (b *Builder) align() int {
-	if b.Align > 0 {
-		return b.Align
+func (c *Config) align() int {
+	if c.Align > 0 {
+		return c.Align
 	}
 	return 1024 * 1024
 }
 
-func (b *Builder) comp() string {
-	if b.Algo != "" {
-		return b.Algo
+func (c *Config) comp() string {
+	if c.Algo != "" {
+		return c.Algo
 	}
 	return DefaultAlgo
 }
@@ -609,12 +609,12 @@ func (st *tableState) emptyIndex(cache *IndexCache) error {
 	return err
 }
 
-func (b *Builder) flushMeta() int {
-	align := b.align()
-	if b.RangeMultiple <= 0 {
+func (c *Config) flushMeta() int {
+	align := c.align()
+	if c.RangeMultiple <= 0 {
 		return align * DefaultRangeMultiple
 	}
-	return align * b.RangeMultiple
+	return align * c.RangeMultiple
 }
 
 // after failing to read an object,
@@ -694,18 +694,18 @@ func (st *tableState) preciseGC(idx *blockfmt.Index) {
 	}
 }
 
-func (b *Builder) maxInlineBytes() int64 {
-	if b.MaxInlineBytes <= 0 {
+func (c *Config) maxInlineBytes() int64 {
+	if c.MaxInlineBytes <= 0 {
 		return DefaultMaxInlineBytes
 	}
-	return b.MaxInlineBytes
+	return c.MaxInlineBytes
 }
 
-func (b *Builder) inputMinAge() time.Duration {
-	if b.InputMinimumAge <= 0 {
+func (c *Config) inputMinAge() time.Duration {
+	if c.InputMinimumAge <= 0 {
 		return DefaultInputMinimumAge
 	}
-	return b.InputMinimumAge
+	return c.InputMinimumAge
 }
 
 // userdata makes a datum to place into the
@@ -769,13 +769,13 @@ func (st *tableState) flush(idx *blockfmt.Index, cache *IndexCache) (err error) 
 		invalidate(cache)
 		return err
 	}
-	b := blockfmt.IndexConfig{
+	c := blockfmt.IndexConfig{
 		MaxInlined:    st.conf.maxInlineBytes(),
 		TargetSize:    int64(st.conf.targetMerge()),
 		TargetRefSize: st.conf.TargetRefSize,
 		Expiry:        st.conf.GCMinimumAge,
 	}
-	err = b.SyncOutputs(idx, st.ofs, dir)
+	err = c.SyncOutputs(idx, st.ofs, dir)
 	if err != nil {
 		invalidate(cache)
 		return err
@@ -808,7 +808,7 @@ type errUpdateFailed struct {
 }
 
 func (e *errUpdateFailed) Error() string {
-	return fmt.Sprintf("db.Builder: running blockfmt.Converter: %v", e.err)
+	return fmt.Sprintf("db.Config: running blockfmt.Converter: %v", e.err)
 }
 
 func (e *errUpdateFailed) Unwrap() error {

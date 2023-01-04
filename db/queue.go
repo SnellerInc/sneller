@@ -116,7 +116,7 @@ type QueueRunner struct {
 	Owner Tenant
 	// Conf is the configuration
 	// used for building tables.
-	Conf Builder
+	Conf Config
 
 	// Logf is used to log errors encountered
 	// while processing entries from a queue.
@@ -250,7 +250,7 @@ func open(infs InputFS, name, etag string, size int64) (fs.File, error) {
 // the patterns in def and the config in bld
 //
 // this is supposed to be safe to call from multiple goroutines
-func (q *QueueRunner) filter(bld *Builder, def *Definition, dst *batch) error {
+func (q *QueueRunner) filter(cfg *Config, def *Definition, dst *batch) error {
 	var mr matcher
 	dst.filtered.init(def.Partitions)
 	dst.indirect = dst.indirect[:0]
@@ -280,7 +280,7 @@ outer:
 				}
 				return err
 			}
-			fm, err := bld.Format(def.Inputs[j].Format, p, def.Inputs[j].Hints)
+			fm, err := cfg.Format(def.Inputs[j].Format, p, def.Inputs[j].Hints)
 			if err != nil {
 				return err
 			}

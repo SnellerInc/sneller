@@ -19,11 +19,11 @@ package db
 // Unknown feature strings are silently ignored.
 //
 // See also Definition.Features.
-func (b *Builder) SetFeatures(lst []string) {
+func (c *Config) SetFeatures(lst []string) {
 	for _, x := range lst {
 		switch x {
 		case "legacy-zstd":
-			b.Algo = "zstd"
+			c.Algo = "zstd"
 		}
 	}
 }

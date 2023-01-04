@@ -39,7 +39,7 @@ func sync(args []string) {
 
 	var err error
 	for {
-		b := db.Builder{
+		c := db.Config{
 			Align:         1024 * 1024, // maximum alignment with current span size
 			RangeMultiple: 100,         // metadata once every 100MB
 			Force:         force,
@@ -47,9 +47,9 @@ func sync(args []string) {
 			GCMinimumAge:  5 * time.Minute,
 		}
 		if dashv {
-			b.Logf = logf
+			c.Logf = logf
 		}
-		err = b.Sync(creds(), dbname, tblpat)
+		err = c.Sync(creds(), dbname, tblpat)
 		if !errors.Is(err, db.ErrBuildAgain) {
 			break
 		}

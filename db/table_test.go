@@ -196,14 +196,14 @@ func TestBuildBlobs(t *testing.T) {
 
 	owner := newTenant(dfs)
 	dfs.Log = t.Logf
-	b := Builder{
+	c := Config{
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
 		},
 		Align: 1024,
 		Logf:  t.Logf,
 	}
-	err = b.Sync(owner, "db0", "table*")
+	err = c.Sync(owner, "db0", "table*")
 	if err != nil {
 		t.Fatal(err)
 	}

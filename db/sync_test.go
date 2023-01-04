@@ -237,7 +237,7 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -253,7 +253,7 @@ func TestSync(t *testing.T) {
 		GCLikelihood: 1,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,14 +284,14 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	// now we should ingest some data
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// test that a second Sync determines
 	// that everything is up-to-date and does nothing
 	owner.ro = true
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	// for this sync, append to the previous data
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,7 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +397,7 @@ func TestSync(t *testing.T) {
 	}})
 
 	owner.ro = true
-	err = b.append(owner, "default", "parking", lst, nil)
+	err = c.append(owner, "default", "parking", lst, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +445,7 @@ func TestMaxBytesSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -467,10 +467,10 @@ func TestMaxBytesSync(t *testing.T) {
 	symlink("../testdata/parking.10n", "a-prefix/parking1.10n")
 	symlink("../testdata/parking.10n", "a-prefix/parking2.10n")
 	// this should fit 2 but not 3 copies of parking.10n
-	b.MaxScanBytes = 200000
+	c.MaxScanBytes = 200000
 	// disable merging of non-trivial objects
-	b.MinMergeSize = 1
-	err = b.Sync(owner, "default", "*")
+	c.MinMergeSize = 1
+	err = c.Sync(owner, "default", "*")
 	if !errors.Is(err, ErrBuildAgain) {
 		t.Fatalf("expected ErrBuildAgain; got %v", err)
 	}
@@ -490,7 +490,7 @@ func TestMaxBytesSync(t *testing.T) {
 	}
 
 	// this should bring everything fully up-to-date
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,7 +508,7 @@ func TestMaxBytesSync(t *testing.T) {
 	// test that a second Sync determines
 	// that everything is up-to-date and does nothing
 	owner.ro = true
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -70,21 +70,21 @@ func TestGC(t *testing.T) {
 	}
 
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
 		},
 		Logf: t.Logf,
 	}
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// test that a second Sync determines
 	// that everything is up-to-date and does nothing
 	owner.ro = true
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}

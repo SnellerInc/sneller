@@ -36,10 +36,10 @@ var errStop = errors.New("stop walking")
 // calls to Scan are necessary to build the table.
 //
 // Semantically, Scan performs a list operation and a call
-// to b.Append on the listed items, taking care to list
+// to c.Append on the listed items, taking care to list
 // incrementally from the last call to Append.
-func (b *Builder) Scan(who Tenant, db, table string) (int, error) {
-	st, err := b.open(db, table, who)
+func (c *Config) Scan(who Tenant, db, table string) (int, error) {
+	st, err := c.open(db, table, who)
 	if err != nil {
 		return 0, err
 	}

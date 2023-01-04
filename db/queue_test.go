@@ -306,7 +306,7 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 
 	owner := newTenant(dfs)
 	r.Owner = owner
-	r.Conf = Builder{
+	r.Conf = Config{
 		Align:        1024,
 		NewIndexScan: scan,
 		GCLikelihood: 2,

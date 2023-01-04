@@ -66,10 +66,10 @@ func TestFormat(t *testing.T) {
 	}
 
 	for i := range cases {
-		b := Builder{
+		c := Config{
 			Fallback: cases[i].fallback,
 		}
-		f, err := b.Format(cases[i].explicit, cases[i].name, nil)
+		f, err := c.Format(cases[i].explicit, cases[i].name, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
