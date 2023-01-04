@@ -8028,7 +8028,8 @@ tests:
   VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
 //; compare data with needle
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;474761AE K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPANDD.BCST   (R14), Z19, Z14
+  VPCMPD        $0, Z14, Z8, K1, K1       //;474761AE K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
 
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
@@ -8088,7 +8089,8 @@ tests:
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
 //; compare data with needle
-  VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;474761AE K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
+  VPANDD.BCST   (R14), Z19, Z14
+  VPCMPD        $0, Z14, Z13, K1,  K1     //;474761AE K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
 
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
