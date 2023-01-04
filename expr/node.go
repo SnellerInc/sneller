@@ -573,11 +573,10 @@ func Equivalent(a, b Node) bool {
 	return a.Equals(b)
 }
 
-// IsIdentifier returns whether
-// 'e' is &Path{First: s, Rest: nil},
-// in other words, a path expression
-// with a single component that is equivalent
-// to the given string
+// IsIdentifier returns whether e == Ident(s),
+// in other words, a path expression with a
+// single component that is equivalent to the
+// given string.
 func IsIdentifier(e Node, s string) bool {
 	return e == Ident(s)
 }
@@ -2544,8 +2543,6 @@ func (i *IsKey) invert() Node {
 
 // ParsePath parses simple path expressions
 // like 'a.b.z' or 'a[0].y', etc.
-//
-// Please only use this for testing.
 func ParsePath(x string) (Node, error) {
 	var cur Node
 	pushfield := func(s string) {

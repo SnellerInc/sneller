@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
@@ -410,15 +411,12 @@ func (c *Config) append(who Tenant, db, table string, parts []partition, cache *
 
 		idx.Inputs.Backing = st.ofs
 		if idx.Scanning {
-			// force a reload unconditionally
-			// after a scan; the scan code does
-			// not update the cached index
-			invalidate(cache)
-			_, err = st.scan(idx, true)
+			_, err = st.scan(idx, cache, true)
 			if err != nil {
 				return err
 			}
 			// currently rebuilding; please try again
+			invalidate(cache)
 			return ErrBuildAgain
 		}
 
@@ -438,7 +436,7 @@ func (c *Config) append(who Tenant, db, table string, parts []partition, cache *
 			Name: table,
 			Algo: "zstd",
 		}
-		_, err = st.scan(idx, true)
+		_, err = st.scan(idx, cache, true)
 		if err != nil {
 			return err
 		}
@@ -500,6 +498,7 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 			return err
 		}
 		fresh := false
+		gc := false
 		idx, err := st.index(nil)
 		if err != nil {
 			// if the index isn't present
@@ -514,7 +513,7 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 				return err
 			}
 		} else {
-			st.preciseGC(idx)
+			gc = st.preciseGC(idx)
 		}
 		restart := false
 		if !idx.Scanning {
@@ -522,9 +521,10 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 			restart = true
 		}
 		// we flush the new index on termination
-		// if it is a) a new index file, or
-		// b) it was already in the scanning state
-		_, err = st.scan(idx, fresh || !restart)
+		// if it is a) a new index file,
+		// b) it was already in the scanning state,
+		// or c) we ran GC and it modified the index
+		_, err = st.scan(idx, nil, fresh || !restart || gc)
 		if err != nil {
 			return err
 		}
@@ -687,11 +687,48 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 	}
 }
 
-func (st *tableState) preciseGC(idx *blockfmt.Index) {
+// purgeExpired purges expired entries,
+// returning a value indicating whether or not
+// any entries were expired
+func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
+	rp := st.def.Retention
+	if rp == nil || rp.Field == "" || rp.ValidFor.Zero() {
+		return false
+	}
+	field, err := expr.ParsePath(rp.Field)
+	if err != nil {
+		return false
+	}
+	// field >= (now - validity)
+	exp := rp.ValidFor.Sub(date.Now())
+	cond := expr.Compare(expr.GreaterEquals, field, &expr.Timestamp{Value: exp})
+
+	var filt blockfmt.Filter
+	filt.Compile(cond)
+	todelete, err := idx.Indirect.Purge(st.ofs, &filt, st.conf.GCMinimumAge)
+	if err != nil {
+		st.conf.logf("failed purging expired entries: %s", err)
+		return false
+	}
+	if len(todelete) == 0 {
+		return false
+	}
+	idx.ToDelete = append(idx.ToDelete, todelete...)
+	return true
+}
+
+// preciseGC runs precise garbage collection,
+// returning a value indicating whether any work
+// was done (and thus whether the index should
+// be flushed)
+func (st *tableState) preciseGC(idx *blockfmt.Index) bool {
+	purged := st.purgeExpired(idx)
+	gc := false
 	if rmfs, ok := st.ofs.(RemoveFS); ok && st.conf.GCLikelihood > 0 {
 		gcconf := GCConfig{Precise: true, Logf: st.conf.Logf}
-		gcconf.preciseGC(rmfs, idx)
+		gc = gcconf.preciseGC(rmfs, idx)
 	}
+	return purged || gc
 }
 
 func (c *Config) maxInlineBytes() int64 {

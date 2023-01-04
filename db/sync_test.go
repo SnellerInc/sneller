@@ -28,8 +28,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
+	"golang.org/x/exp/slices"
 )
 
 // simple db.Resolver wrapping a DirFS
@@ -513,4 +515,115 @@ func TestMaxBytesSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.ro = false
+}
+
+func TestSyncRetention(t *testing.T) {
+	type input struct{ name, text string }
+	const day = 24 * time.Hour
+	checkFiles(t)
+	tmpdir := t.TempDir()
+	err := os.MkdirAll(path.Join(tmpdir, "inputs"), 0750)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dfs := newDirFS(t, tmpdir)
+	now := date.Now()
+
+	contents := func(ages ...time.Duration) string {
+		const format = `{"date": %q, "data": "foo"}`
+		s := ""
+		for i := range ages {
+			date := now.Add(-ages[i])
+			s += fmt.Sprintf(format, date.AppendRFC3339Nano(nil))
+		}
+		return s
+	}
+
+	// use partitions to make sure we generate
+	// multiple disjoint packfiles
+	def := &Definition{
+		Name: "table",
+		Inputs: []Input{
+			{Pattern: "file://inputs/{file}.json"},
+		},
+		Retention:  nil, // fill this in later
+		Partitions: []Partition{{Field: "file"}},
+	}
+	err = WriteDefinition(dfs, "default", def)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inputs := []input{
+		{"file0.json", contents(
+			14*day, 15*day, 16*day, 17*day, // expired
+		)},
+		{"file1.json", contents(
+			10*day, 11*day, 12*day, 13*day, // expired
+		)},
+		{"file2.json", contents(
+			8*day, 9*day, 10*day, 11*day, // retained
+		)},
+		{"file3.json", contents(
+			0*day, 1*day, 2*day, 3*day, // retained
+		)},
+	}
+	owner := newTenant(dfs)
+	b := Builder{
+		Align: 1024,
+		Fallback: func(_ string) blockfmt.RowFormat {
+			return blockfmt.UnsafeION()
+		},
+		Logf:            t.Logf,
+		MaxInlineBytes:  1,
+		TargetMergeSize: 1,
+		TargetRefSize:   1,
+		GCLikelihood:    100,
+	}
+	for _, x := range inputs {
+		// sync after every write to create multiple
+		// indirect refs
+		_, err := dfs.WriteFile("inputs/"+x.name, []byte(x.text))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = b.Sync(owner, "default", "*")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// set the retention policy then do a final
+	// sync to garbage collect expired outputs
+	def.Retention = &RetentionPolicy{
+		Field:    "date",
+		ValidFor: date.Duration{Day: 10},
+	}
+	err = WriteDefinition(dfs, "default", def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Sync(owner, "default", "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx, err := OpenIndex(dfs, "default", "table", owner.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	idx.Inputs.Backing = dfs
+	objs, err := idx.Indirect.Search(dfs, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	objs = append(objs, idx.Inline...)
+	for i := range objs {
+		part := strings.TrimPrefix(path.Dir(objs[i].Path), "db/default/table/")
+		got = append(got, part)
+	}
+	slices.Sort(got)
+	want := []string{"file2", "file3"}
+	if !slices.Equal(want, got) {
+		t.Errorf("unexpected results: want %s, got %s", want, got)
+	}
 }

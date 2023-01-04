@@ -38,6 +38,36 @@ func ParseDuration(s string) (Duration, bool) {
 	return Duration{y, m, d}, true
 }
 
+// Add adds d to t.
+func (d Duration) Add(t Time) Time {
+	year := t.Year() + d.Year
+	month := t.Month() + d.Month
+	day := t.Day() + d.Day
+	hour := t.Hour()
+	min := t.Minute()
+	sec := t.Second()
+	ns := t.Nanosecond()
+	return Date(year, month, day, hour, min, sec, ns)
+}
+
+// Sub subtracts d from t.
+func (d Duration) Sub(t Time) Time {
+	year := t.Year() - d.Year
+	month := t.Month() - d.Month
+	day := t.Day() - d.Day
+	hour := t.Hour()
+	min := t.Minute()
+	sec := t.Second()
+	ns := t.Nanosecond()
+	return Date(year, month, day, hour, min, sec, ns)
+}
+
+// Zero returns whether d is equal to the zero
+// value of a Duration.
+func (d Duration) Zero() bool {
+	return d == Duration{}
+}
+
 // String implements io.Stringer
 func (d Duration) String() string {
 	var sb strings.Builder
@@ -66,16 +96,4 @@ func (d *Duration) UnmarshalText(b []byte) error {
 	}
 	*d = dn
 	return nil
-}
-
-// Add adds d to t.
-func (d Duration) Add(t Time) Time {
-	year := t.Year() + d.Year
-	month := t.Month() + d.Month
-	day := t.Day() + d.Day
-	hour := t.Hour()
-	min := t.Minute()
-	sec := t.Second()
-	ns := t.Nanosecond()
-	return Date(year, month, day, hour, min, sec, ns)
 }

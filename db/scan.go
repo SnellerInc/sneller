@@ -56,7 +56,7 @@ func (c *Config) Scan(who Tenant, db, table string) (int, error) {
 			return 0, err
 		}
 	}
-	return st.scan(idx, true)
+	return st.scan(idx, nil, true)
 }
 
 // defChanged returns whether st.def has changed
@@ -67,7 +67,7 @@ func (st *tableState) defChanged(idx *blockfmt.Index) bool {
 	return !ok || !bytes.Equal(st.def.Hash(), hash)
 }
 
-func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, error) {
+func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComplete bool) (int, error) {
 	changed := st.defChanged(idx)
 	if changed {
 		flushOnComplete = true
@@ -213,7 +213,7 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			panic("should not be possible: idx.Scanning && total == 0")
 		}
 		if flushOnComplete {
-			return 0, st.flushScanDone(idx.Cursors)
+			return 0, st.flush(idx, cache)
 		}
 		return 0, nil
 	}
@@ -222,31 +222,10 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			st.deleteInline(idx, c.parts[i].prepend)
 		}
 	}
-	err = st.force(idx, c.parts, nil)
+	err = st.force(idx, c.parts, cache)
 	if err != nil {
+		invalidate(cache)
 		return 0, err
 	}
 	return total, nil
-}
-
-// mark scanning=false and set the cursors
-// to their final values; we do this by re-loading
-// the index so that any modifications we made
-// along the way (other than scanning for cursors)
-// are discarded
-func (st *tableState) flushScanDone(cursors []string) error {
-	old, err := st.index(nil)
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			old = &blockfmt.Index{
-				Name: st.table,
-				Algo: "zstd",
-			}
-		} else {
-			return fmt.Errorf("scan: flushScanDone: %w", err)
-		}
-	}
-	old.Scanning = false
-	old.Cursors = cursors
-	return st.flush(old, nil)
 }

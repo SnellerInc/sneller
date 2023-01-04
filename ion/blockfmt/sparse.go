@@ -74,6 +74,19 @@ func (s *SparseIndex) Clone() SparseIndex {
 	}
 }
 
+// emptyClone produces a copy of s with the same
+// indices but no blocks.
+func (s *SparseIndex) emptyClone() SparseIndex {
+	out := SparseIndex{
+		consts:  s.consts,
+		indices: make([]timeIndex, len(s.indices)),
+	}
+	for i := range s.indices {
+		out.indices[i].path = s.indices[i].path
+	}
+	return out
+}
+
 // Append tries to append next to s and returns
 // true if the append operation was successful,
 // or false otherwise. (Append will fail if the

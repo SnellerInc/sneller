@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+
+	"github.com/SnellerInc/sneller/date"
 )
 
 // Input is one input pattern
@@ -42,6 +44,31 @@ type Input struct {
 	// eliminate some of the data as it is parsed.
 	// Hints data is format-specific.
 	Hints json.RawMessage `json:"hints,omitempty"`
+}
+
+// RetentionPolicy describes a policy for retaining data.
+//
+// For a given field and validity window, the retention
+// policy only retains data that satisfies the relation
+//
+//	field >= (now - valid_for)
+type RetentionPolicy struct {
+	// Field is the path expression for the field
+	// used to determine the age of a record for
+	// the purpose of the data retention policy.
+	//
+	// Currently only timestamp fields are
+	// supported.
+	Field string `json:"field,omitempty"`
+	// ValidFor is the validity window relative to
+	// now.
+	//
+	// This is a string with a format like
+	// "<n>y<n>m<n>d" where "<n>" is a number and
+	// any component can be omitted.
+	//
+	// For example: "6m", "1000d", "1y6m15d"
+	ValidFor date.Duration `json:"valid_for"`
 }
 
 // A Partition defines a synthetic field that is
@@ -80,6 +107,11 @@ type Definition struct {
 	// are generated from components of the input
 	// URI and used to partition table data.
 	Partitions []Partition `json:"partitions,omitempty"`
+	// Retention is the expiration policy for data.
+	// Data older than the expiration window will
+	// be periodically purged from the backing
+	// store during table updates.
+	Retention *RetentionPolicy `json:"retention_policy,omitempty"`
 	// Features is a list of feature flags that
 	// can be used to turn on features for beta-testing.
 	Features []string `json:"beta_features,omitempty"`

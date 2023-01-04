@@ -322,6 +322,10 @@ func FuzzTimeIndexAppendBlocks(f *testing.F) {
 			t.Run(fmt.Sprintf("i=%d/j=%d", i, j), func(t *testing.T) {
 				got := mkindex(ts0)
 				got.appendBlocks(&next, i, j)
+				// check the block count
+				if n0, n1 := len(ts0)+j-i, got.Blocks(); n0 != n1 {
+					t.Errorf("wrong number of blocks: %d != %d", n0, n1)
+				}
 				// if both inputs are monotonic, the
 				// result can be checked against the
 				// index rebuilt from the result of

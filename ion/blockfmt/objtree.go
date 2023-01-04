@@ -247,6 +247,80 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, fi
 	return in, err
 }
 
+// Purge purges entries from the tree that do not
+// satisfy the filter condition specified in [keep].
+// Entries to be deleted are returned as quarantined
+// path entries.
+//
+// Purge may elect to purge less than the maximum
+// amount of data possible to purge if it would be
+// prohibitively expensive to produce the quarantine list.
+func (i *IndirectTree) Purge(ifs InputFS, keep *Filter, expiry time.Duration) ([]Quarantined, error) {
+	var kept, deleted []IndirectRef
+	var err error
+	si := i.Sparse.emptyClone()
+	prevend := 0
+	keep.Visit(&i.Sparse, func(start, end int) {
+		if err != nil {
+			return
+		}
+		if si.Fields() > 0 {
+			if !si.AppendBlocks(&i.Sparse, start, end) {
+				err = fmt.Errorf("sparse index append failed?")
+			}
+		}
+		deleted = append(deleted, i.Refs[prevend:start]...)
+		kept = append(kept, i.Refs[start:end]...)
+		prevend = end
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(kept) == len(i.Refs) {
+		// nothing to do
+		return nil, nil
+	}
+	deleted = append(deleted, i.Refs[prevend:]...)
+
+	// make sure the new sparse index is coherent
+	// with the refs we are keeping
+	if si.Fields() != 0 {
+		if nb, nk := si.Blocks(), len(kept); nb != nk {
+			return nil, fmt.Errorf("bad bookkeeping: %d blocks, %d kept", nb, nk)
+		}
+	}
+
+	var descs []Descriptor
+	for j := range deleted {
+		descs, err = i.decode(ifs, &deleted[j], descs, nil)
+		if err != nil {
+			return nil, err
+		}
+		if len(descs) > 1000 {
+			// don't get wedged if we have an enormous list
+			// of objects to be deleted; just wait for another
+			// Purge call and pick up the data then
+			break
+		}
+	}
+	quarantined := make([]Quarantined, 0, len(deleted)+len(descs))
+	for j := range deleted {
+		quarantined = append(quarantined, Quarantined{
+			Expiry: date.Now().Add(expiry),
+			Path:   deleted[j].Path,
+		})
+	}
+	for j := range descs {
+		quarantined = append(quarantined, Quarantined{
+			Expiry: date.Now().Add(expiry),
+			Path:   descs[j].Path,
+		})
+	}
+	i.Refs = kept
+	i.Sparse = si
+	return quarantined, nil
+}
+
 // Search traverses the IndirectTree through
 // the backing store (ifs) to produce the
 // list of blobs that match the given predicate.
