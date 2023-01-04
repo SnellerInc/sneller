@@ -39,7 +39,7 @@ type SparseIndex struct {
 func (t *timeIndex) trim(j int) timeIndex {
 	return timeIndex{
 		path:   t.path,
-		ranges: t.ranges.trim(j),
+		ranges: t.ranges.trim(0, j),
 	}
 }
 
@@ -81,6 +81,17 @@ func (s *SparseIndex) Clone() SparseIndex {
 // The block positions in next are assumed to start
 // at s.Blocks().
 func (s *SparseIndex) Append(next *SparseIndex) bool {
+	return s.AppendBlocks(next, 0, next.blocks)
+}
+
+// AppendBlocks is like Append, but only appends
+// blocks from next from block i up to block j.
+//
+// This will panic if i > j or j > next.Blocks().
+func (s *SparseIndex) AppendBlocks(next *SparseIndex, i, j int) bool {
+	if i < 0 || j < 0 || i > j || j > next.blocks {
+		panic("SparseIndex.AppendBlocks: index out of range")
+	}
 	if !s.consts.Equal(next.consts) {
 		return false
 	}
@@ -91,9 +102,9 @@ func (s *SparseIndex) Append(next *SparseIndex) bool {
 		return false
 	}
 	for i := range s.indices {
-		s.indices[i].ranges.Append(&next.indices[i].ranges)
+		s.indices[i].ranges.appendBlocks(&next.indices[i].ranges, i, j)
 	}
-	s.blocks += next.blocks
+	s.blocks += j - i
 	return true
 }
 

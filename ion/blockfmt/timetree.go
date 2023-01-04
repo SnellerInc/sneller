@@ -31,6 +31,10 @@ type timespan struct {
 	offset int       // offset associated with this value
 }
 
+func (t timespan) String() string {
+	return fmt.Sprintf("{%s, %d}", t.when, t.offset)
+}
+
 // TimeIndex maintains a lossy mapping of time ranges
 // to "blocks", where the time range -> block mapping is
 // preserved precisely if the ranges are monotonic with
@@ -215,12 +219,55 @@ func (t *TimeIndex) End(when date.Time) int {
 // ranges indexed by next occur immediately after
 // the ranges indexed by t.
 func (t *TimeIndex) Append(next *TimeIndex) {
-	n := t.Blocks()
-	for i := range next.min {
-		t.pushMin(next.min[i].when, next.min[i].offset+n)
+	t.appendBlocks(next, 0, next.Blocks())
+}
+
+// appendBlocks appends blocks i up to j from
+// next to t. This is equivalent to calling
+// next.trim(i, j) followed by appending each
+// block, though without the copy overhead.
+func (t *TimeIndex) appendBlocks(next *TimeIndex, i, j int) {
+	if i < 0 || j < 0 || i >= j || j > next.Blocks() {
+		panic("TimeIndex.appendBlocks: index out of range")
 	}
-	for i := range next.max {
-		t.pushMax(next.max[i].when, next.max[i].offset+n)
+	if len(t.max) == 0 {
+		*t = next.trim(i, j)
+		return
+	}
+	n := t.Blocks()
+
+	// append mins where i <= min.offset < j
+	mj := len(next.min)
+	for mj > 0 && next.min[mj-1].offset >= j {
+		mj--
+	}
+	mi := 0
+	for mi < mj && next.min[mi].offset < i {
+		mi++
+	}
+	if next.min[mi].offset > i {
+		// push a left-hand boundary
+		t.pushMin(next.min[mi].when, n+i)
+	}
+	for k := mi; k < mj; k++ {
+		t.pushMin(next.min[k].when, n+next.min[k].offset-i)
+	}
+
+	// append maxes where i+1 <= max.offset < j+1
+	mj = len(next.max)
+	for mj > 0 && next.max[mj-1].offset >= j+1 {
+		mj--
+	}
+	mi = 0
+	for mi < mj && next.max[mi].offset < i+1 {
+		mi++
+	}
+	for k := mi; k < mj; k++ {
+		t.pushMax(next.max[k].when, n+next.max[k].offset-i)
+	}
+	if mj == 0 || next.max[mj-1].offset < j {
+		// include a right-hand boundary
+		t.pushMax(next.max[mj].when, n+j-i)
 	}
 }
 
@@ -364,47 +411,70 @@ func (t *TimeIndex) Max() (date.Time, bool) {
 	return t.max[len(t.max)-1].when, true
 }
 
-func (t *TimeIndex) trim(max int) TimeIndex {
-	if max == 0 {
-		panic("empty trim")
+func (t *TimeIndex) trim(i, j int) TimeIndex {
+	if i < 0 || j < 0 || i >= j {
+		panic("TimeIndex.trim: index out of range")
 	}
 	if len(t.max) == 0 {
 		return TimeIndex{}
 	}
 	blocks := t.max[len(t.max)-1].offset
-	if max > blocks {
+	if j > blocks {
 		panic("TimeIndex.trim beyond max offset")
 	}
-	if max == blocks {
+	if i == 0 && j == blocks {
 		return t.Clone()
 	}
 
-	// copy mins where min.offset < max
-	j := len(t.min)
-	for j > 0 && t.min[j-1].offset >= max {
-		j--
+	// copy mins where i <= min.offset < j
+	mj := len(t.min)
+	for mj > 0 && t.min[mj-1].offset >= j {
+		mj--
+	}
+	mi := 0
+	for mi < mj && t.min[mi].offset < i {
+		mi++
 	}
 	var newmin []timespan
-	if j == 0 {
-		newmin = []timespan{{offset: 0, when: t.min[0].when}}
+	if mi == mj {
+		newmin = []timespan{{offset: 0, when: t.min[mi].when}}
 	} else {
-		newmin = slices.Clone(t.min[:j])
+		newmin = make([]timespan, 0, mj-mi)
+		for k := mi; k < mj; k++ {
+			newmin = append(newmin, timespan{
+				offset: t.min[k].offset - i,
+				when:   t.min[k].when,
+			})
+		}
 	}
 
-	// copy maxes where max.offset <= max
-	j = len(t.max)
-	for j > 0 && t.max[j-1].offset > max {
-		j--
+	// copy maxes where i+1 <= max.offset < j+1
+	mj = len(t.max)
+	for mj > 0 && t.max[mj-1].offset >= j+1 {
+		mj--
 	}
-	newmax := slices.Clone(t.max[:j])
-
-	// ... and additionally include a final
-	// right-hand-side boundary at max
-	if j == 0 || newmax[j-1].offset < max {
-		newmax = append(newmax, timespan{
-			offset: max,
-			when:   t.max[j].when,
-		})
+	mi = 0
+	for mi < mj && t.max[mi].offset < i+1 {
+		mi++
+	}
+	var newmax []timespan
+	if mi == mj {
+		newmax = []timespan{{offset: 1, when: t.max[mi].when}}
+	} else {
+		newmax = make([]timespan, 0, mj-mi+1)
+		for k := mi; k < mj; k++ {
+			newmax = append(newmax, timespan{
+				offset: t.max[k].offset - i,
+				when:   t.max[k].when,
+			})
+		}
+		// include a right-hand boundary
+		if newmax[len(newmax)-1].offset < j-i {
+			newmax = append(newmax, timespan{
+				offset: j - i,
+				when:   t.max[mj].when,
+			})
+		}
 	}
 	return TimeIndex{
 		min: newmin,

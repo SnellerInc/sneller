@@ -15,6 +15,7 @@
 package blockfmt
 
 import (
+	"fmt"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -225,10 +226,10 @@ func TestTimetreeTrim(t *testing.T) {
 		return args
 	}
 
-	run := func(trim int, min, max []timespan, wantmin, wantmax []timespan) {
+	run := func(i, j int, min, max []timespan, wantmin, wantmax []timespan) {
 		t.Helper()
 		ts := TimeIndex{min, max}
-		got := ts.trim(trim)
+		got := ts.trim(i, j)
 		want := TimeIndex{wantmin, wantmax}
 		if !reflect.DeepEqual(want, got) {
 			t.Errorf("want %#v", want)
@@ -236,19 +237,127 @@ func TestTimetreeTrim(t *testing.T) {
 		}
 	}
 
-	run(1,
+	run(0, 1,
 		grp(hp(0, 0), hp(1, 1)),
 		grp(hp(2, 2)),
 		grp(hp(0, 0)),
 		grp(hp(2, 1)))
-	run(2,
+	run(0, 2,
 		grp(hp(0, 0), hp(1, 1), hp(2, 2)),
 		grp(hp(3, 2), hp(4, 3)),
 		grp(hp(0, 0), hp(1, 1)),
 		grp(hp(3, 2)))
-	run(50,
+	run(0, 50,
 		grp(hp(0, 3), hp(1, 49), hp(2, 50)),
 		grp(hp(44, 48), hp(47, 49), hp(48, 51)),
 		grp(hp(0, 3), hp(1, 49)),
 		grp(hp(44, 48), hp(47, 49), hp(48, 50)))
+	run(1, 2,
+		grp(hp(0, 0), hp(1, 1), hp(2, 2)),
+		grp(hp(3, 2), hp(4, 3)),
+		grp(hp(1, 0)),
+		grp(hp(3, 1)))
+	run(10, 50,
+		grp(hp(0, 3), hp(1, 49), hp(2, 50)),
+		grp(hp(44, 48), hp(47, 49), hp(48, 51)),
+		grp(hp(1, 39)),
+		grp(hp(44, 38), hp(47, 39), hp(48, 40)))
+}
+
+func FuzzTimeIndexAppendBlocks(f *testing.F) {
+	now := date.Now().Truncate(time.Minute)
+	// generate produces a series of time ranges
+	// using the values in a []byte provided by
+	// the fuzzer, and returns whether the
+	// resulting time intervals are monotonic
+	generate := func(b []byte) (out [][2]date.Time, mono bool) {
+		out = make([][2]date.Time, len(b))
+		mono = true
+		base := now
+		for i := range b {
+			d1 := b[i] & 0b00001111
+			d2 := b[i] & 0b11110000 >> 4
+			out[i][0] = base
+			out[i][1] = base.Add(time.Duration(d1) * time.Minute)
+			base = base.Add(time.Duration(d2) * time.Minute)
+			if d2 <= d1 {
+				mono = false
+			}
+		}
+		return out, mono
+	}
+	// appendall is a trivially correct version of
+	// append that works on the whole range
+	appendall := func(t, next *TimeIndex) {
+		n := t.Blocks()
+		for i := range next.min {
+			t.pushMin(next.min[i].when, next.min[i].offset+n)
+		}
+		for i := range next.max {
+			t.pushMax(next.max[i].when, next.max[i].offset+n)
+		}
+	}
+	mkindex := func(ts [][2]date.Time) TimeIndex {
+		var out TimeIndex
+		for i := range ts {
+			out.Push(ts[i][0], ts[i][1])
+		}
+		return out
+	}
+	f.Add([]byte{0x1a}, []byte{0x01, 0x10})
+	f.Add([]byte{0x01, 0x23}, []byte{0xab, 0xcd})
+	f.Fuzz(func(t *testing.T, b0, b1 []byte) {
+		if len(b0) > 20 || len(b1) > 20 {
+			t.Skip("skipping large input")
+		}
+		if len(b1) < 1 {
+			t.Skip("skipping empty range")
+		}
+		ts0, mono0 := generate(b0)
+		ts1, mono1 := generate(b1)
+		next := mkindex(ts1)
+		blocks := next.Blocks()
+		run := func(i, j int) {
+			t.Helper()
+			t.Run(fmt.Sprintf("i=%d/j=%d", i, j), func(t *testing.T) {
+				got := mkindex(ts0)
+				got.appendBlocks(&next, i, j)
+				// if both inputs are monotonic, the
+				// result can be checked against the
+				// index rebuilt from the result of
+				// appending ts1[i:j] to t0
+				if mono0 && mono1 {
+					want := mkindex(append(ts0, ts1[i:j]...))
+					if !reflect.DeepEqual(want, got) {
+						t.Errorf("did not match (appended inputs)")
+						t.Errorf("  want: %v", want)
+						t.Errorf("  got:  %v", got)
+					}
+				}
+				// also check against trim + append
+				// which should handle time indexes
+				// built from non-monotonic inputs the
+				// same way
+				trimmed := mkindex(ts1)
+				trimmed = trimmed.trim(i, j)
+				want := mkindex(ts0)
+				appendall(&want, &trimmed)
+				if !reflect.DeepEqual(want, got) {
+					t.Errorf("  want: %v", want)
+					t.Errorf("  got:  %v", got)
+				}
+			})
+		}
+		if !mono0 || !mono1 {
+			// skip most non-monotonic series for now
+			run(0, blocks)
+			return
+		}
+		// try appending every combination
+		for i := 0; i < blocks; i++ {
+			for j := i + 1; j <= blocks; j++ {
+				run(i, j)
+			}
+		}
+	})
 }
