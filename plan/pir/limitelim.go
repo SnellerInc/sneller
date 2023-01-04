@@ -24,6 +24,17 @@ search:
 		switch n := next.(type) {
 		case *Bind: // Bind is the only op that preserves the number of rows
 			skip = n
+		case *Aggregate:
+			if self.Count == 1 && len(n.GroupBy) == 0 {
+				// AGGREGATE ... LIMIT 1 is redundant
+				if b.top == self {
+					b.top = n
+				} else {
+					// splice us out of the chain
+					par.setparent(n)
+				}
+				return
+			}
 		default:
 			break search
 		}

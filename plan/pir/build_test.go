@@ -1230,6 +1230,14 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"AGGREGATE SNELLER_DATASHAPE_MERGE($_2_0) AS datashape",
 			},
 		},
+		{
+			// eliminate redundant LIMIT 1
+			input: `SELECT COUNT(*) FROM table LIMIT 1`,
+			expect: []string{
+				"ITERATE table FIELDS []",
+				"AGGREGATE COUNT(*) AS \"count\"",
+			},
+		},
 	}
 
 	for i := range tests {
