@@ -2490,8 +2490,11 @@ TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
   VCMPPD $VCMP_IMM_LT_OQ, Z21, Z10, K3
   VCMPPD $VCMP_IMM_LT_OQ, Z21, Z11, K4
 
-  VSUBPD.BCST CONSTF64_11(), Z12, K3, Z12
-  VSUBPD.BCST CONSTF64_11(), Z13, K4, Z13
+  VPBROADCASTQ CONSTF64_11(), Z25
+  VPBROADCASTQ CONSTQ_12(), Z26
+
+  VSUBPD Z25, Z12, K3, Z12
+  VSUBPD Z25, Z13, K4, Z13
 
   VDIVPD.RD_SAE Z20, Z12, Z12
   VDIVPD.RD_SAE Z20, Z13, Z13
@@ -2504,8 +2507,8 @@ TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z13, Z9, Z9
 
   // Z10/Z11 <- Corrected month index [0, 11] (where 0 represents March).
-  VPMULLQ.BCST CONSTQ_12(), Z12, Z12
-  VPMULLQ.BCST CONSTQ_12(), Z13, Z13
+  VPMULLQ Z26, Z12, Z12
+  VPMULLQ Z26, Z13, Z13
 
   VPSUBQ Z12, Z10, Z10
   VPSUBQ Z13, Z11, Z11
@@ -2522,17 +2525,20 @@ TEXT dateaddmonth_tail(SB), NOSPLIT|NOFRAME, $0
   // Z6/Z7 <- Final number of days.
   BC_COMPOSE_YEAR_TO_DAYS(Z6, Z7, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15)
 
+  VPBROADCASTQ CONSTQ_86400000000(), Z25
+  VPBROADCASTQ CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z26
+
   // Z6/Z7 <- Final number of days converted to microseconds.
-  VPMULLQ.BCST CONSTQ_86400000000(), Z6, Z6
-  VPMULLQ.BCST CONSTQ_86400000000(), Z7, Z7
+  VPMULLQ Z25, Z6, Z6
+  VPMULLQ Z25, Z7, Z7
 
   // Z6/Z7 <- Combined microseconds of all days and microseconds of the remaining day.
   VPADDQ Z4, Z6, Z6
   VPADDQ Z5, Z7, Z7
 
   // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
-  VPSUBQ.BCST.Z CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z6, K1, Z2
-  VPSUBQ.BCST.Z CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z7, K2, Z3
+  VPSUBQ.Z Z26, Z6, K1, Z2
+  VPSUBQ.Z Z26, Z7, K2, Z3
 
   BC_STORE_K_TO_SLOT(IN(K1), IN(R15))
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
@@ -2620,9 +2626,12 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   //   Z14/Z15 - Day of month - starting from zero.
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
+  VPBROADCASTQ CONSTQ_12(), Z25
+  VPBROADCASTQ CONSTQ_1(), Z26
+
   // Z22/Z23 <- Lesser timestamp's 'Year * 12 + MonthIndex'.
-  VPMULLQ.BCST CONSTQ_12(), Z8, Z8
-  VPMULLQ.BCST CONSTQ_12(), Z9, Z9
+  VPMULLQ Z25, Z8, Z8
+  VPMULLQ Z25, Z9, Z9
   VPADDQ Z8, Z10, Z22
   VPADDQ Z9, Z11, Z23
 
@@ -2642,8 +2651,8 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z4, Z5)
 
   // Z10/Z11 <- Greater timestamp's 'Year * 12 + MonthIndex'.
-  VPMULLQ.BCST CONSTQ_12(), Z8, Z8
-  VPMULLQ.BCST CONSTQ_12(), Z9, Z9
+  VPMULLQ Z25, Z8, Z8
+  VPMULLQ Z25, Z9, Z9
   VPADDQ Z8, Z10, Z10
   VPADDQ Z9, Z11, Z11
 
@@ -2652,8 +2661,8 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   VPSUBQ Z23, Z11, Z5
 
   // Z4/Z5 <- Rough months difference - 1.
-  VPSUBQ.BCST CONSTQ_1(), Z4, Z4
-  VPSUBQ.BCST CONSTQ_1(), Z5, Z5
+  VPSUBQ Z26, Z4, Z4
+  VPSUBQ Z26, Z5, Z5
 
   // Z10 <- Zeros
   // Z11 <- Multiplier used to implement the same bytecode for MONTH and YEAR difference.
@@ -2664,8 +2673,8 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   VPCMPQ $VPCMP_IMM_GE, Z20, Z14, K3
   VPCMPQ $VPCMP_IMM_GE, Z21, Z15, K4
 
-  VPADDQ.BCST CONSTQ_1(), Z4, K3, Z4
-  VPADDQ.BCST CONSTQ_1(), Z5, K4, Z5
+  VPADDQ Z26, Z4, K3, Z4
+  VPADDQ Z26, Z5, K4, Z5
 
   // Z4/Z5 <- Final months difference - always positive at this point.
   VPMAXSQ Z10, Z4, Z4
@@ -2972,15 +2981,18 @@ TEXT bcdateextractmonth(SB), NOSPLIT|NOFRAME, $0
 
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
+  VPBROADCASTQ  CONSTQ_3(), Z20
+  VPBROADCASTQ  CONSTQ_12(), Z21
+
   // Convert our MonthIndex into a month in a range from [1, 12], where 1 is January.
-  VPADDQ.BCST CONSTQ_3(), Z10, Z10
-  VPADDQ.BCST CONSTQ_3(), Z11, Z11
-  VPCMPUQ.BCST $VPCMP_IMM_GT, CONSTQ_12(), Z10, K5
-  VPCMPUQ.BCST $VPCMP_IMM_GT, CONSTQ_12(), Z11, K6
+  VPADDQ Z20, Z10, Z10
+  VPADDQ Z20, Z11, Z11
+  VPCMPUQ $VPCMP_IMM_GT, Z21, Z10, K5
+  VPCMPUQ $VPCMP_IMM_GT, Z21, Z11, K6
 
   // Wrap the month if it was greater than 12 after adding the final offset.
-  VPSUBQ.BCST CONSTQ_12(), Z10, K5, Z10
-  VPSUBQ.BCST CONSTQ_12(), Z11, K6, Z11
+  VPSUBQ Z21, Z10, K5, Z10
+  VPSUBQ Z21, Z11, K6, Z11
 
   VMOVDQA64 Z10, K1, Z2
   VMOVDQA64 Z11, K2, Z3
@@ -3025,19 +3037,23 @@ TEXT bcdateextractyear(SB), NOSPLIT|NOFRAME, $0
 
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
+  VPBROADCASTQ  CONSTQ_3(), Z20
+  VPBROADCASTQ  CONSTQ_12(), Z21
+  VPBROADCASTQ  CONSTQ_1(), Z22
+
   // Convert our MonthIndex into a month in a range from [1, 12], where 1 is January.
-  VPADDQ.BCST CONSTQ_3(), Z10, Z10
-  VPADDQ.BCST CONSTQ_3(), Z11, Z11
-  VPCMPUQ.BCST $VPCMP_IMM_GT, CONSTQ_12(), Z10, K5
-  VPCMPUQ.BCST $VPCMP_IMM_GT, CONSTQ_12(), Z11, K6
+  VPADDQ Z20, Z10, Z10
+  VPADDQ Z20, Z11, Z11
+  VPCMPUQ $VPCMP_IMM_GT, Z21, Z10, K5
+  VPCMPUQ $VPCMP_IMM_GT, Z21, Z11, K6
 
   // Wrap the month if it was greater than 12 after adding the final offset.
-  VPSUBQ.BCST CONSTQ_12(), Z10, K5, Z10
-  VPSUBQ.BCST CONSTQ_12(), Z11, K6, Z11
+  VPSUBQ Z21, Z10, K5, Z10
+  VPSUBQ Z21, Z11, K6, Z11
 
   // Increment one year if required to adjust for the month greater than 12 after adding the final offset.
-  VPADDQ.BCST CONSTQ_1(), Z8, K5, Z8
-  VPADDQ.BCST CONSTQ_1(), Z9, K6, Z9
+  VPADDQ Z22, Z8, K5, Z8
+  VPADDQ Z22, Z9, K6, Z9
 
   VMOVDQA64 Z8, K1, Z2
   VMOVDQA64 Z9, K2, Z3
@@ -3122,7 +3138,6 @@ TEXT bcdatetruncminute(SB), NOSPLIT|NOFRAME, $0
 
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
-  NEXT()
 
 // ts[0] = date_trunc_hour(ts[1]).k[2]
 TEXT bcdatetrunchour(SB), NOSPLIT|NOFRAME, $0
@@ -3229,13 +3244,16 @@ TEXT bcdatetruncmonth(SB), NOSPLIT|NOFRAME, $0
   // Z4/Z5 <- Number of days of all years, including days in the last month.
   BC_COMPOSE_YEAR_TO_DAYS(Z4, Z5, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15)
 
+  VPBROADCASTQ  CONSTQ_86400000000(), Z20
+  VPBROADCASTQ  CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z21
+
   // Z4/Z5 <- Final number of days converted to microseconds.
-  VPMULLQ.BCST CONSTQ_86400000000(), Z4, Z4
-  VPMULLQ.BCST CONSTQ_86400000000(), Z5, Z5
+  VPMULLQ Z20, Z4, Z4
+  VPMULLQ Z20, Z5, Z5
 
   // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
+  VPSUBQ Z21, Z4, K1, Z2
+  VPSUBQ Z21, Z5, K2, Z3
 
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -3281,13 +3299,16 @@ TEXT bcdatetruncquarter(SB), NOSPLIT|NOFRAME, $0
   // Z4/Z5 <- Number of days of all years, including days in the last month.
   BC_COMPOSE_YEAR_TO_DAYS(Z4, Z5, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15)
 
+  VPBROADCASTQ CONSTQ_86400000000(), Z20
+  VPBROADCASTQ CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z21
+
   // Z4/Z5 <- Final number of days converted to microseconds.
-  VPMULLQ.BCST CONSTQ_86400000000(), Z4, Z4
-  VPMULLQ.BCST CONSTQ_86400000000(), Z5, Z5
+  VPMULLQ Z20, Z4, Z4
+  VPMULLQ Z20, Z5, Z5
 
   // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
+  VPSUBQ Z21, Z4, K1, Z2
+  VPSUBQ Z21, Z5, K2, Z3
 
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -3302,27 +3323,33 @@ TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
   // Z10/Z11 <- Month index - starting from zero, where zero represents March.
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
+  VPBROADCASTQ CONSTQ_10(), Z20
+  VPBROADCASTQ CONSTQ_1(), Z21
+
   // Since the month starts from March, we have to check whether the truncation doesn't
   // need to decrement one year (January/February have 10/11 indexes, respectively)
-  VPCMPUQ.BCST $VPCMP_IMM_LT, CONSTQ_10(), Z10, K3
-  VPCMPUQ.BCST $VPCMP_IMM_LT, CONSTQ_10(), Z11, K4
+  VPCMPUQ $VPCMP_IMM_LT, Z20, Z10, K3
+  VPCMPUQ $VPCMP_IMM_LT, Z20, Z11, K4
 
   // Decrement one year if required.
-  VPSUBQ.BCST CONSTQ_1(), Z8, K3, Z8
-  VPSUBQ.BCST CONSTQ_1(), Z9, K4, Z9
+  VPSUBQ Z21, Z8, K3, Z8
+  VPSUBQ Z21, Z9, K4, Z9
 
   VPBROADCASTQ CONSTQ_306(), Z4
   VMOVDQA64 Z4, Z5
 
   BC_COMPOSE_YEAR_TO_DAYS(Z4, Z5, Z8, Z9, Z10, Z11, Z12, Z13, Z14, Z15)
 
+  VPBROADCASTQ CONSTQ_86400000000(), Z20
+  VPBROADCASTQ CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z21
+
   // Z4/Z5 <- Final number of days converted to microseconds.
-  VPMULLQ.BCST CONSTQ_86400000000(), Z4, Z4
-  VPMULLQ.BCST CONSTQ_86400000000(), Z5, Z5
+  VPMULLQ Z20, Z4, Z4
+  VPMULLQ Z20, Z5, Z5
 
   // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z4, K1, Z2
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z5, K2, Z3
+  VPSUBQ Z21, Z4, K1, Z2
+  VPSUBQ Z21, Z5, K2, Z3
 
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -3406,8 +3433,9 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPSRLQ $8, Z5, K4, Z5
 
   // Z4/Z5 <- [?|?|?|Second|Minute|Hour|Day|Month] with 0x80 bit cleared in each value.
-  VPANDQ.BCST CONSTQ_0x0000007F7F7F7F7F(), Z4, Z4
-  VPANDQ.BCST CONSTQ_0x0000007F7F7F7F7F(), Z5, Z5
+  VPBROADCASTQ CONSTQ_0x0000007F7F7F7F7F(), Z25
+  VPANDQ Z25, Z4, Z4
+  VPANDQ Z25, Z5, Z5
 
   // Z8/Z9 <- Month (always 1 byte), indexed from 1.
   VPANDQ Z20, Z4, Z8
@@ -3465,8 +3493,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPERMD Z13, Z9, Z13
   VPADDQ Z12, Z10, Z8
   VPADDQ Z13, Z11, Z9
-  VPSUBQ.BCST CONSTQ_1(), Z8, Z8
-  VPSUBQ.BCST CONSTQ_1(), Z9, Z9
+  VPSUBQ Z22, Z8, Z8
+  VPSUBQ Z22, Z9, Z9
 
   // Z8/Z9 <- Number of days of all years, including days in the last month.
   BC_COMPOSE_YEAR_TO_DAYS(Z8, Z9, Z6, Z7, Z10, Z11, Z12, Z13, Z14, Z15)
@@ -3474,14 +3502,18 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   // Z18 <- Convert last 4 bytes of the timestamp to microseconds (it's either a value or zero).
   VPSHUFB CONST_GET_PTR(bswap24_zero_last_byte, 0), Z18, Z18
 
+  VPBROADCASTQ CONSTQ_86400000000(), Z25
+  VPBROADCASTQ CONSTQ_1000000(), Z26
+  VPBROADCASTQ CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z27
+
   // Z8/Z9 <- Final number of days converted to microseconds.
-  VPMULLQ.BCST CONSTQ_86400000000(), Z8, Z8
-  VPMULLQ.BCST CONSTQ_86400000000(), Z9, Z9
+  VPMULLQ Z25, Z8, Z8
+  VPMULLQ Z25, Z9, Z9
 
   // Z8/Z9 <- Combined microseconds of all days and microseconds of the remaining day.
   VEXTRACTI32X8 $1, Z18, Y19
-  VPMULLQ.BCST CONSTQ_1000000(), Z4, Z4
-  VPMULLQ.BCST CONSTQ_1000000(), Z5, Z5
+  VPMULLQ Z26, Z4, Z4
+  VPMULLQ Z26, Z5, Z5
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
 
   VPMOVZXDQ Y18, Z18
@@ -3492,8 +3524,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z19, Z9, Z9
 
   // Z2/Z3 <- Make it a unix timestamp starting from 1970-01-01.
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z8, K1, Z2
-  VPSUBQ.BCST CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET(), Z9, K2, Z3
+  VPSUBQ Z27, Z8, K1, Z2
+  VPSUBQ Z27, Z9, K2, Z3
 
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
@@ -3523,23 +3555,27 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   // Z14/Z15 - Day of month - starting from zero.
   BC_DECOMPOSE_TIMESTAMP_PARTS(Z2, Z3)
 
+  VPBROADCASTQ CONSTQ_3(), Z20
+  VPBROADCASTQ CONSTQ_1(), Z21
+  VPBROADCASTQ CONSTQ_12(), Z22
+
   // Convert our MonthIndex into a month in a range from [1, 12], where 1 is January.
-  VPADDQ.BCST CONSTQ_3(), Z10, Z10
-  VPADDQ.BCST CONSTQ_3(), Z11, Z11
-  VPCMPUQ.BCST $VPCMP_IMM_GT, CONSTQ_12(), Z10, K5
-  VPCMPUQ.BCST $VPCMP_IMM_GT, CONSTQ_12(), Z11, K6
+  VPADDQ Z20, Z10, Z10
+  VPADDQ Z20, Z11, Z11
+  VPCMPUQ $VPCMP_IMM_GT, Z22, Z10, K5
+  VPCMPUQ $VPCMP_IMM_GT, Z22, Z11, K6
 
   // Increment one year if required to adjust for the month greater than 12 after adding the final offset.
-  VPADDQ.BCST CONSTQ_1(), Z8, K5, Z8
-  VPADDQ.BCST CONSTQ_1(), Z9, K6, Z9
+  VPADDQ Z21, Z8, K5, Z8
+  VPADDQ Z21, Z9, K6, Z9
 
   // Wrap the month if it was greater than 12 after adding the final offset.
-  VPSUBQ.BCST CONSTQ_12(), Z10, K5, Z10
-  VPSUBQ.BCST CONSTQ_12(), Z11, K6, Z11
+  VPSUBQ Z22, Z10, K5, Z10
+  VPSUBQ Z22, Z11, K6, Z11
 
   // Increment one day to make the day of the month start from 1.
-  VPADDQ.BCST CONSTQ_1(), Z14, Z14
-  VPADDQ.BCST CONSTQ_1(), Z15, Z15
+  VPADDQ Z21, Z14, Z14
+  VPADDQ Z21, Z15, Z15
 
   // Construct Type|L, Offset, Year, Month, and DayOfMonth data, where:
   //   - Type|L is  (one byte).
@@ -3554,7 +3590,6 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPSLLQ $8, Z10, Z10
   VPSLLQ $8, Z11, Z11
   VPBROADCASTQ CONSTQ_0x7F(), Z16
-  VPBROADCASTQ CONSTQ_1(), Z17
   VPORQ Z14, Z10, Z10
   VPORQ Z15, Z11, Z11
 
@@ -3562,21 +3597,22 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   //   - Modified by the algorithm depending on the year's length.
   //   - Used later to calculate the offset to the higher value (representing Hour/Minute/Second/Microsecond).
   VPBROADCASTQ CONSTQ_7(), Z14
-  VPBROADCASTQ CONSTQ_7(), Z15
+  VMOVDQA32 Z14, Z15
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1 byte)].
+  VPBROADCASTQ CONSTQ_0x0000000000808080(), Z24
   VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, Z10
   VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, Z11
-  VPORQ.BCST CONSTQ_0x0000000000808080(), Z10, Z10
-  VPORQ.BCST CONSTQ_0x0000000000808080(), Z11, Z11
+  VPORQ Z24, Z10, Z10
+  VPORQ Z24, Z11, Z11
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1-2 bytes)].
   VPCMPQ $VPCMP_IMM_GT, Z16, Z8, K5
   VPCMPQ $VPCMP_IMM_GT, Z16, Z9, K6
   VPSRLQ $7, Z8, Z8
   VPSRLQ $7, Z9, Z9
-  VPADDQ Z17, Z14, K5, Z14
-  VPADDQ Z17, Z15, K6, Z15
+  VPADDQ Z21, Z14, K5, Z14
+  VPADDQ Z21, Z15, K6, Z15
   VPSLLQ $8, Z10, K5, Z10
   VPSLLQ $8, Z11, K6, Z11
   VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, K5, Z10
@@ -3587,22 +3623,24 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPCMPQ $VPCMP_IMM_GT, Z16, Z9, K6
   VPSRLQ $7, Z8, Z8
   VPSRLQ $7, Z9, Z9
-  VPADDQ Z17, Z14, K5, Z14
-  VPADDQ Z17, Z15, K6, Z15
+  VPADDQ Z21, Z14, K5, Z14
+  VPADDQ Z21, Z15, K6, Z15
   VPSLLQ $8, Z10, K5, Z10
   VPSLLQ $8, Z11, K6, Z11
   VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, K5, Z10
   VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, K6, Z11
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1-3 bytes), Offset (always zero), Type|L (without a possible microsecond encoding length)].
+  VPBROADCASTQ CONSTQ_0x0000000000008060(), Z20
   VPSLLQ $16, Z10, Z10
   VPSLLQ $16, Z11, Z11
-  VPTERNLOGQ.BCST $0xFE, CONSTQ_0x0000000000008060(), Z14, Z10
-  VPTERNLOGQ.BCST $0xFE, CONSTQ_0x0000000000008060(), Z15, Z11
+  VPTERNLOGQ $0xFE, Z20, Z14, Z10
+  VPTERNLOGQ $0xFE, Z20, Z15, Z11
 
   // Z14/Z15 - The size of the lower value of the encoded timestamp, in bytes, including Type|L field.
-  VPSUBQ.BCST CONSTQ_2(), Z14, Z14
-  VPSUBQ.BCST CONSTQ_2(), Z15, Z15
+  VPBROADCASTQ CONSTQ_2(), Z25
+  VPSUBQ Z25, Z14, Z14
+  VPSUBQ Z25, Z15, Z15
 
   // Construct Hour, Minute, Second, and an optional Microsecond
   //   - Hour [0, 23] (one byte)
@@ -3636,8 +3674,9 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST(Z12, Z13, Z4, Z5, CONSTQ_1125899907(), 50)
 
   // Z4/Z5 - Microsecond [0, 999999].
-  VPMULLQ.BCST CONSTQ_1000000(), Z12, Z16
-  VPMULLQ.BCST CONSTQ_1000000(), Z13, Z17
+  VPBROADCASTQ CONSTQ_1000000(), Z20
+  VPMULLQ Z20, Z12, Z16
+  VPMULLQ Z20, Z13, Z17
   VPSUBQ Z16, Z4, Z4
   VPSUBQ Z17, Z5, Z5
 
