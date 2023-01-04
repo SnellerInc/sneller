@@ -158,7 +158,6 @@ func (c *bctestContext) sRegFromStrings(values []string) sRegData {
 			c.data = append(c.data, str...)
 		}
 	}
-
 	return out
 }
 
