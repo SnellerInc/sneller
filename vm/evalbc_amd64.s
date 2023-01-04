@@ -1894,7 +1894,6 @@ TEXT bctypebits(SB), NOSPLIT|NOFRAME, $0
 
   VPMOVZXBD CONST_GET_PTR(consts_typebits_shuf, 0), Z14
   VPSRLD $4, Z15, Z15                              // Z15 >>= 4
-  VPANDD.BCST CONSTD_0x0F(), Z15, Z15              // Z15 = (bytes >> 4) & 0xf
   VPERMD.Z Z14, Z15, K1, Z15                       // Z15 = json type bits
 
   VEXTRACTI32X8 $1, Z15, Y3
