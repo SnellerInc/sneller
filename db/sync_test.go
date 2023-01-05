@@ -569,7 +569,7 @@ func TestSyncRetention(t *testing.T) {
 		)},
 	}
 	owner := newTenant(dfs)
-	b := Builder{
+	c := Config{
 		Align: 1024,
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
@@ -587,7 +587,7 @@ func TestSyncRetention(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = b.Sync(owner, "default", "*")
+		err = c.Sync(owner, "default", "*")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -602,7 +602,7 @@ func TestSyncRetention(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = b.Sync(owner, "default", "*")
+	err = c.Sync(owner, "default", "*")
 	if err != nil {
 		t.Fatal(err)
 	}
