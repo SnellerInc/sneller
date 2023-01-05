@@ -337,32 +337,70 @@ func overwrite(cache *IndexCache, value *blockfmt.Index, etag string) {
 	}
 }
 
-func (q *QueueRunner) runTable(db string, def *Definition, cache *IndexCache) {
+func (ti *tableInfo) bgScan(state *scanState) {
+	// before returning, set ti.scan.state = nil
+	// and then post on the waitgroup in case anyone
+	// is waiting for us to have finished scanning
+	defer state.wg.Done()
+	defer ti.scan.CompareAndSwap(state, nil)
+	for !state.canceled.Load() {
+		idx, err := ti.state.index(&ti.cache)
+		if err != nil && !shouldRebuild(err) {
+			ti.state.conf.logf("%s/%s: aborting scan; couldn't read index: %s", ti.state.db, ti.state.table, err)
+			return
+		}
+		if idx == nil {
+			idx = &blockfmt.Index{
+				Name: ti.state.table,
+				Algo: "zstd",
+			}
+		} else if !idx.Scanning {
+			ti.state.conf.logf("%s/%s: scan complete", ti.state.db, ti.state.table)
+			return
+		}
+		ti.state.preciseGC(idx)
+		items, err := ti.state.scan(idx, &ti.cache, true)
+		if err != nil {
+			ti.state.conf.logf("%s/%s: aborting scan on error: %s", ti.state.db, ti.state.table, err)
+			return
+		}
+		ti.state.conf.logf("%s/%s: scan inserted %d items", ti.state.db, ti.state.table, items)
+		// TODO: handle queue items?
+	}
+}
+
+func (q *QueueRunner) runTable(ti *tableInfo) {
 	// clone the config and add features;
 	// note that runTable is invoked in separate
 	// goroutines for each table, so we need to
 	// deep-copy these structures to keep things race-free
 	conf := q.Conf
-	conf.SetFeatures(def.Features)
+	conf.SetFeatures(ti.state.def.Features)
 
 	var dst batch
-	err := q.filter(&conf, def, &dst)
+	err := q.filter(&conf, ti.state.def, &dst)
 	if err == nil && !dst.filtered.empty() {
-		total, size := dst.filtered.total()
-		err = conf.append(q.Owner, db, def.Name, dst.filtered.parts, cache)
-		if err == nil {
-			q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
-				db, def.Name, total, size, time.Since(dst.latest), time.Since(dst.earliest))
+		if ti.scanning() {
+			err = ErrBuildAgain
+		} else {
+			total, size := dst.filtered.total()
+			err = ti.append(dst.filtered.parts)
+			if err == nil {
+				q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
+					ti.state.db, ti.state.table, total, size, time.Since(dst.latest), time.Since(dst.earliest))
+			}
 		}
 	}
 	if err != nil {
 		// for safety, invalidate the cache whenever
 		// we encounter an error; the index file is
 		// likely not in a consistent state
-		if err != ErrBuildAgain {
-			invalidate(cache)
+		if err == ErrBuildAgain {
+			q.logf("%s/%s: still scanning", ti.state.db, ti.state.table)
+		} else {
+			invalidate(&ti.cache)
 		}
-		q.logf("updating %s/%s: %s", db, def.Name, err)
+		q.logf("updating %s/%s: %s", ti.state.db, ti.state.table, err)
 	}
 
 	// atomically merge status codes back into parent
@@ -430,9 +468,46 @@ func (q *QueueRunner) gather(in Queue) error {
 	return nil
 }
 
+type scanState struct {
+	wg       sync.WaitGroup // Wait() will block until the state is deregistered
+	canceled atomic.Bool    // indicates the caller wants scanning to stop
+}
+
 type tableInfo struct {
-	def   *Definition
+	state tableState
+	// cache holds the current index or nil
 	cache IndexCache
+	scan  atomic.Pointer[scanState]
+}
+
+func (ti *tableInfo) scanning() bool {
+	return ti.scan.Load() != nil
+}
+
+// endScan cancels the background scan (if any)
+// and blocks until it is complete
+func (ti *tableInfo) endScan() {
+	p := ti.scan.Load()
+	if p != nil {
+		p.canceled.Store(true)
+		p.wg.Wait()
+	}
+}
+
+// start background scanning a table; cancel with endScan()
+func startScan(ti *tableInfo) {
+	state := &scanState{}
+	if ti.scan.Swap(state) != nil {
+		panic("startScan racing with endScan")
+	}
+	state.wg.Add(1)
+	go ti.bgScan(state)
+}
+
+func stopScans(defs map[dbtable]*tableInfo) {
+	for _, ti := range defs {
+		ti.endScan()
+	}
 }
 
 // Run processes entries from in until ReadInputs returns io.EOF,
@@ -440,6 +515,7 @@ type tableInfo struct {
 func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
 	subdefs := make(map[dbtable]*tableInfo)
+	defer stopScans(subdefs)
 readloop:
 	for {
 		err := q.gather(in)
@@ -470,12 +546,12 @@ func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*tableInfo) {
 	for i := range q.status {
 		q.status[i] = StatusOK
 	}
-	for dbt, def := range dst {
+	for _, def := range dst {
 		wg.Add(1)
-		go func(db string, def *Definition, cache *IndexCache) {
+		go func(ti *tableInfo) {
 			defer wg.Done()
-			q.runTable(db, def, cache)
-		}(dbt.db, def.def, &def.cache)
+			q.runTable(ti)
+		}(def)
 	}
 	// wait for q.status[*] to be updated (atomically!)
 	// by runTable()
@@ -485,11 +561,30 @@ func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*tableInfo) {
 	}
 }
 
+// check to see if we should start scanning
+func (q *QueueRunner) init(ti *tableInfo) {
+	idx, err := ti.state.index(&ti.cache)
+	if errors.Is(err, fs.ErrNotExist) {
+		err = ti.state.emptyIndex(&ti.cache)
+		idx = ti.cache.value // may be nil if err != nil
+	}
+	if err != nil {
+		ti.state.conf.logf("%s/%s: loading index: %s", ti.state.db, ti.state.table, err)
+		return
+	}
+	// TODO: if ti.state.defChanged(idx), flush and rebuild
+	if idx.Scanning {
+		startScan(ti)
+	}
+}
+
 func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 	dir, err := q.Owner.Root()
 	if err != nil {
 		return err
 	}
+	ofs, _ := dir.(OutputFS)
+	stopScans(m)
 	// flush known tables, including the table cache
 	maps.Clear(m)
 	dbs, err := fs.ReadDir(dir, "db")
@@ -519,9 +614,19 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 				// don't get hung up on invalid definitions
 				continue
 			}
-			m[dbtable{db: dbname, table: tables[j].Name()}] = &tableInfo{
-				def: def,
+			ti := &tableInfo{
+				state: tableState{
+					def:   def,
+					conf:  q.Conf,
+					ofs:   ofs,
+					db:    dbname,
+					table: def.Name,
+					owner: q.Owner,
+				},
 			}
+			ti.state.conf.SetFeatures(ti.state.def.Features)
+			m[dbtable{db: dbname, table: tables[j].Name()}] = ti
+			q.init(ti)
 		}
 	}
 	return nil

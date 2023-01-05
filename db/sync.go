@@ -387,6 +387,10 @@ func shouldRebuild(err error) bool {
 		errors.Is(err, blockfmt.ErrIndexObsolete)
 }
 
+func (c *Config) shouldScan(def *Definition) bool {
+	return c.NewIndexScan && !def.SkipBackfill
+}
+
 // append works similarly to Sync,
 // but it only works on one database and table at a time,
 // and it assumes the list of new elements to be inserted
@@ -397,46 +401,39 @@ func shouldRebuild(err error) bool {
 // append will continue to return ErrBuildAgain until scanning is complete,
 // at which point append operations will be accepted. (The caller must continuously
 // call append for scanning to occur.)
-func (c *Config) append(who Tenant, db, table string, parts []partition, cache *IndexCache) error {
-	st, err := c.open(db, table, who)
-	if err != nil {
-		return err
-	}
-
-	idx, err := st.index(cache)
+func (ti *tableInfo) append(parts []partition) error {
+	idx, err := ti.state.index(&ti.cache)
 	if err == nil {
 		// begin by removing any unreferenced files,
 		// if we have some left around that need removing
-		st.preciseGC(idx)
-
-		idx.Inputs.Backing = st.ofs
+		ti.state.preciseGC(idx)
+		idx.Inputs.Backing = ti.state.ofs
 		if idx.Scanning {
-			_, err = st.scan(idx, cache, true)
+			_, err = ti.state.scan(idx, &ti.cache, true)
 			if err != nil {
 				return err
 			}
 			// currently rebuilding; please try again
-			invalidate(cache)
+			invalidate(&ti.cache)
 			return ErrBuildAgain
 		}
-
 		// trim pre-existing elements from lst
-		parts, err = st.dedup(idx, parts)
+		parts, err = ti.state.dedup(idx, parts)
 		if err != nil {
 			return err
 		}
 		if len(parts) == 0 {
-			c.logf("index for %s already up-to-date", table)
+			ti.state.conf.logf("index for %s already up-to-date", ti.state.table)
 			return nil
 		}
-		return st.append(idx, parts, cache)
+		return ti.state.append(idx, parts, &ti.cache)
 	}
-	if c.NewIndexScan && !st.def.SkipBackfill && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
+	if ti.state.shouldScan() && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
-			Name: table,
+			Name: ti.state.table,
 			Algo: "zstd",
 		}
-		_, err = st.scan(idx, cache, true)
+		_, err = ti.state.scan(idx, &ti.cache, true)
 		if err != nil {
 			return err
 		}
@@ -449,8 +446,10 @@ func (c *Config) append(who Tenant, db, table string, parts []partition, cache *
 		// caller should probably Sync instead
 		return err
 	}
-	return st.append(nil, parts, cache)
+	return ti.state.append(nil, parts, &ti.cache)
 }
+
+func (st *tableState) shouldScan() bool { return st.conf.shouldScan(st.def) }
 
 func (st *tableState) append(idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
@@ -591,8 +590,9 @@ func uuid() string {
 
 func (st *tableState) emptyIndex(cache *IndexCache) error {
 	idx := blockfmt.Index{
-		Created: date.Now().Truncate(time.Microsecond),
-		Name:    st.table,
+		Created:  date.Now().Truncate(time.Microsecond),
+		Name:     st.table,
+		Scanning: st.shouldScan(),
 		// no Inline, etc.
 	}
 	buf, err := blockfmt.Sign(st.owner.Key(), &idx)
@@ -644,7 +644,7 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 			Name: st.table,
 			// this is a new index, so we have
 			// to respect NewIndexScan configuration
-			Scanning: st.conf.NewIndexScan,
+			Scanning: st.shouldScan(),
 		}
 		overwrite(cache, idx, "")
 	} else {
@@ -657,7 +657,7 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 			if errors.Is(err, fs.ErrNotExist) {
 				idx = &blockfmt.Index{
 					Name:     st.table,
-					Scanning: st.conf.NewIndexScan,
+					Scanning: st.shouldScan(),
 				}
 				overwrite(cache, idx, "")
 			} else {

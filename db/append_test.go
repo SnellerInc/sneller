@@ -17,6 +17,7 @@ package db
 import (
 	"errors"
 	"io"
+	"io/fs"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -75,6 +76,29 @@ func mkparts(lst []blockfmt.Input) []partition {
 	}}
 }
 
+func info(c *Config, owner Tenant, db, table string) *tableInfo {
+	infs, err := owner.Root()
+	if err != nil {
+		panic(err)
+	}
+	def, err := OpenDefinition(infs, db, table)
+	if errors.Is(err, fs.ErrNotExist) {
+		def = &Definition{Name: table}
+	} else if err != nil {
+		panic(err)
+	}
+	return &tableInfo{
+		state: tableState{
+			def:   def,
+			owner: owner,
+			db:    db,
+			table: table,
+			ofs:   infs.(OutputFS),
+			conf:  *c,
+		},
+	}
+}
+
 func TestAppend(t *testing.T) {
 	checkFiles(t)
 	tmpdir := t.TempDir()
@@ -98,8 +122,8 @@ func TestAppend(t *testing.T) {
 		Logf:         t.Logf,
 		GCLikelihood: 1,
 	}
-	var cache IndexCache
-	err := c.append(owner, "default", "parking", nil, &cache)
+	ti := info(&c, owner, "default", "parking")
+	err := ti.append(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +164,11 @@ func TestAppend(t *testing.T) {
 	}
 
 	// now we should ingest some data
-	err = c.append(owner, "default", "parking", lst, &cache)
+	err = ti.append(lst)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := len(cache.value.Inline)
+	before := len(ti.cache.value.Inline)
 
 	// confirm that it doesn't do anything
 	// a second time around
@@ -154,12 +178,12 @@ func TestAppend(t *testing.T) {
 	}
 
 	owner.ro = true
-	err = c.append(owner, "default", "parking", lst, &cache)
+	err = ti.append(lst)
 	if err != nil {
 		t.Fatal(err)
 	}
 	owner.ro = false
-	after := len(cache.value.Inline)
+	after := len(ti.cache.value.Inline)
 	if before != after {
 		t.Fatal("dropped entries from Inline in no-op")
 	}
@@ -168,7 +192,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.append(owner, "default", "taxi", lst, nil)
+	err = ti.append(lst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +221,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = c.append(owner, "default", "parking", lst, &cache)
+	err = ti.append(lst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +273,7 @@ func TestAppend(t *testing.T) {
 		return mkparts([]blockfmt.Input{v})
 	}
 
-	err = c.append(owner, "default", "parking", mk(bad), &cache)
+	err = ti.append(mk(bad))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -266,7 +290,7 @@ func TestAppend(t *testing.T) {
 
 	// try again; this should be a no-op
 	owner.ro = true
-	err = c.append(owner, "default", "parking", mk(bad), nil)
+	err = ti.append(mk(bad))
 	if err != nil {
 		t.Fatal("got an error re-inserting a bad item:", err)
 	}
@@ -278,7 +302,7 @@ func TestAppend(t *testing.T) {
 	bad.ETag = "good-ETag"
 	bad.Size = int64(len(goodtext))
 	bad.R = io.NopCloser(strings.NewReader(goodtext))
-	err = c.append(owner, "default", "parking", mk(bad), nil)
+	err = ti.append(mk(bad))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,16 +374,15 @@ func TestAppendBadScan(t *testing.T) {
 		NewIndexScan:   true,
 		MaxScanObjects: 1,
 	}
-	var cache IndexCache
-
-	err = c.append(owner, "default", "foo", nil, &cache)
+	ti := info(&c, owner, "default", "foo")
+	err = ti.append(nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
 	if !blockfmt.IsFatal(err) {
 		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T: %[1]v", err)
 	}
-	if cache.value != nil {
+	if ti.cache.value != nil {
 		t.Error("cache is populated after an error")
 	}
 	// there should still be one output object
@@ -380,14 +403,14 @@ func TestAppendBadScan(t *testing.T) {
 	}
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
-	err = c.append(owner, "default", "foo", nil, &cache)
+	err = ti.append(nil)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
 		}
 		t.Fatal(err)
 	}
-	if cache.value != nil {
+	if ti.cache.value != nil {
 		t.Error("cache value is populated after ErrBuildAgain")
 	}
 
@@ -401,7 +424,7 @@ func TestAppendBadScan(t *testing.T) {
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
 	// now get the last object:
-	err = c.append(owner, "default", "foo", nil, &cache)
+	err = ti.append(nil)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -425,7 +448,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 
 	// this one should turn off scanning:
-	err = c.append(owner, "default", "foo", nil, &cache)
+	err = ti.append(nil)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -439,7 +462,7 @@ func TestAppendBadScan(t *testing.T) {
 	if idx.Scanning {
 		t.Error("still scanning?")
 	}
-	err = c.append(owner, "default", "foo", nil, &cache)
+	err = ti.append(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

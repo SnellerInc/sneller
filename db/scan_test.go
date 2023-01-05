@@ -370,12 +370,14 @@ func TestNewIndexScan(t *testing.T) {
 		NewIndexScan: true,
 	}
 
+	ti := info(&c, owner, "default", "taxi")
+
 	lst, err := collectGlob(dfs, c.Fallback, "b-prefix/*.block")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = c.append(owner, "default", "taxi", lst, nil)
+	err = ti.append(lst)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -393,7 +395,7 @@ func TestNewIndexScan(t *testing.T) {
 
 	// second attempt should fail again,
 	// but Scanning should be false
-	err = c.append(owner, "default", "taxi", lst, nil)
+	err = ti.append(lst)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -425,7 +427,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	// final append should be a no-op
-	err = c.append(owner, "default", "taxi", lst, nil)
+	err = ti.append(lst)
 	if err != nil {
 		t.Fatal(err)
 	}

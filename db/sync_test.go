@@ -381,11 +381,11 @@ func TestSync(t *testing.T) {
 	}
 
 	// appending should do nothing:
-	info, err := fs.Stat(dfs, "a-prefix/parking2.json")
+	ino, err := fs.Stat(dfs, "a-prefix/parking2.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	etag, err := dfs.ETag("a-prefix/parking2.json", info)
+	etag, err := dfs.ETag("a-prefix/parking2.json", ino)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,13 +393,14 @@ func TestSync(t *testing.T) {
 		Path: "file://a-prefix/parking2.json",
 		ETag: etag,
 		// deliberately omit LastModified
-		Size: info.Size(),
+		Size: ino.Size(),
 		R:    noReadCloser{t},
 		F:    blockfmt.MustSuffixToFormat(".json"),
 	}})
 
+	ti := info(&c, owner, "default", "parking")
 	owner.ro = true
-	err = c.append(owner, "default", "parking", lst, nil)
+	err = ti.append(lst)
 	if err != nil {
 		t.Fatal(err)
 	}
