@@ -8027,10 +8027,9 @@ tests:
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
   VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
 //; compare data with needle
-  VPANDD.BCST   (R14), Z19, Z14
-  VPCMPD        $0, Z14, Z8, K1, K1       //;474761AE K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-
+  VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
@@ -8083,15 +8082,14 @@ tests:
   VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
   VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
 //; str_to_upper: IN zmm8; OUT zmm13
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
 //; compare data with needle
-  VPANDD.BCST   (R14), Z19, Z14
-  VPCMPD        $0, Z14, Z13, K1,  K1     //;474761AE K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
-
+  VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
@@ -9603,7 +9601,7 @@ tests:
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
   VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
 //; compare data with needle
   VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
   VPADDD        Z25, Z2,  K1,  Z2         //;8A3B8A20 str_start += needle_length      ;Z2=str_start; K1=lane_active; Z25=needle_length;
@@ -9664,7 +9662,7 @@ tests:
   VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
   VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 data_needle := tail_mask & [needle_ptr];Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
 //; str_to_upper: IN zmm8; OUT zmm13
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
@@ -9900,6 +9898,7 @@ tail:
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
   VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
 
+//; compare data with needle
   VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
 update:
   VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
