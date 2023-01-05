@@ -74,54 +74,72 @@ restart:
   PREFETCHT0 0(R14)(AX*1)
 
   MOVL  AX, R9
-  MOVQ  0(SI)(AX*1), R15
+  MOVQ  0(SI)(AX*1), R14
   INCQ  AX
-  MOVL  R15, R14
-  ANDL  $0xf0, R14
-  CMPL  R14, $0xd0
+  CMPB  R14, $0xde      // assume we have valid Ion and most records are rather big
+  JZ    largestruct
+  MOVL  R14, R15
+  ANDL  $0xf0, R15
+  CMPL  R15, $0xd0
   JNZ   foundNoStruct
-  MOVL  R15, R14
-  ANDL  $0x0f, R14
-  CMPL  R14, $0x0e
-  JNE   endloop
-  TESTL $0x80808000, R15
-  JZ    done_early       // doesn't have varint stop bit
-  XORL  R14, R14
-varint:
-  SHLL  $7, R14
-  SHRQ  $8, R15
+  ANDL  $0x0f, R14  // struct with size encoded in the TLV byte
+  JMP   endloop
+largestruct: // struct with size encoded with varint
+  TESTL $0x00008000, R14
+  JNZ   varint_1byte
+  TESTL $0x00800000, R14
+  JNZ   varint_2bytes
+  TESTL $0x80000000, R14
+  JZ    done_early  // no stop-bit set
+varint_3bytes:
+  ADDQ  $3, AX
+  MOVL  R14, R13
+  MOVL  R14, R15
+  ANDL  $0x00007f00, R13
+  ANDL  $0x007f0000, R14
+  ANDL  $0x7f000000, R15
+  SHLL  $6,  R13
+  SHRL  $9,  R14
+  SHRL  $24, R15
+  ORL   R13, R14
+  ORL   R15, R14
+  JMP   endloop
+varint_2bytes:
+  ADDQ  $2, AX
+  MOVL  R14, R15
+  ANDL  $0x00007f00, R14
+  ANDL  $0x007f0000, R15
+  SHRL  $1,  R14
+  SHRL  $16, R15
+  ORL   R15, R14
+  JMP   endloop
+varint_1byte:
   INCQ  AX
-  MOVL  R15, R13
-  ANDL  $0x7f, R13
-  ADDL  R13, R14
-  TESTL $0x80, R15
-  JZ    varint
+  SHRL  $8, R14
+  ANDL  $0x7f, R14
 endloop:
   // if the next offset is *beyond*
   // the end of this buffer, then do
   // not include it as a delimiter;
   // this allows the caller to limit
   // the range of inputs up to some #bytes
-  MOVL AX, R15
-  ADDL R14, R15
-  CMPL R15, DX
+  LEAL (R14)(AX*1), R15 // R15 = off + length (the next offset)
+  CMPL R15, DX          // compare the next offset with the output length [AAA]
   JA   done_early
 
   MOVL AX, 0(DI)(CX*8)  // delims[cx].offset = off
   MOVL R14, 4(DI)(CX*8) // delims[cx].length = length
-  ADDL R14, AX          // off += length
-  INCL CX               // cx++
+  MOVL R15, AX          // off += length
+  LEAL 1(CX), CX        // cx++ (do not alter CF)
 
-  CMPL R15, DX          // at end of buffer? done
-  JEQ  done
-  MOVL R15, AX
+  JEQ  done             // at end of buffer? done (flags set in the AAA line)
   CMPL CX, R8
   JLT  restart
 done:
   RET
 done_early:
   MOVL R9, AX // restore previous offset
-  JMP  done
+  RET
 
 foundBVM:
 // We encountered the binary version marker (BVM)
@@ -138,13 +156,13 @@ foundNoStruct:
   //
   // First, check for starting byte of BVM marker
   //        (=0xe0; which is strictly speaking invalid as L should be >= 3) 
-  MOVL    R15, R14;
-  ANDL    $0xff, R14
-  CMPL    R14, $0xe0
+  MOVL    R14, R15;
+  ANDL    $0xff, R15
+  CMPL    R15, $0xe0
   JZ      foundBVM
 
   // Otherwise parse (and skip) length of this element
-  MOVQ    R15, R14
+  MOVL    R14, R15
   ANDQ    $0x0f, R14
   CMPQ    R14, $0x0e
   JNZ     foundNoStructDone
