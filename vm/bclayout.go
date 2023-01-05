@@ -23,6 +23,14 @@ type kRegData struct {
 	mask uint16
 }
 
+func (k *kRegData) getBit(idx int) bool {
+	return (k.mask>>idx)&1 == 1
+}
+
+func (k *kRegData) setBit(idx int) {
+	k.mask |= 1 << idx
+}
+
 type vRegData struct {
 	offsets [bcLaneCount]uint32
 	sizes   [bcLaneCount]uint32

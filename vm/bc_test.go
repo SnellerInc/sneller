@@ -171,11 +171,11 @@ func (c *bctestContext) setDict(value string) {
 	c.dict = append(c.dict[:0], padNBytes(value, 4))
 }
 
-// Execute runs a single opcode. It serializes all inputs to virtual stack,
+// ExecuteOpcode runs a single opcode. It serializes all inputs to virtual stack,
 // allocates stack slots passed to the instruction, and after the execution
 // it deserializes content from virtual stack back to output arguments passed
 // in testArgs.
-func (c *bctestContext) ExecuteOpcode(op bcop, testArgs []any, activeLanes uint16) error {
+func (c *bctestContext) ExecuteOpcode(op bcop, testArgs []any, activeLanes kRegData) error {
 	info := &opinfo[op]
 
 	if len(info.args) != len(testArgs) {
@@ -276,7 +276,7 @@ func (c *bctestContext) ExecuteOpcode(op bcop, testArgs []any, activeLanes uint1
 		vstack:   vStack,
 	}
 
-	bctest_run_aux(&bc, c, uint64(activeLanes))
+	bctest_run_aux(&bc, c, uint64(activeLanes.mask))
 
 	if bc.err != 0 {
 		return fmt.Errorf("bytecode error: %s (%d)", bc.err.Error(), bc.err)
@@ -339,6 +339,7 @@ func verifyKRegOutput(t *testing.T, output, expected *kRegData) {
 	}
 }
 
+//lint:ignore U1000 available for use
 func verifySRegOutput(t *testing.T, output, expected *sRegData) {
 	if *output != *expected {
 		t.Errorf("S register doesn't match:")
@@ -351,6 +352,7 @@ func verifySRegOutput(t *testing.T, output, expected *sRegData) {
 	}
 }
 
+//lint:ignore U1000 available for use
 func verifySRegOutputP(t *testing.T, output, expected *sRegData, predicate *kRegData) {
 	outputMaskedS := *output
 	expectedMaskedS := *expected

@@ -53,7 +53,7 @@ func TestSizeUnsupportedIonValues(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -93,7 +93,7 @@ func TestSizeNullContainers(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -139,7 +139,7 @@ func TestSizeEmptyContainers(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -175,7 +175,7 @@ func TestSizeList(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -219,7 +219,7 @@ func TestSizeListWithNulls(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -257,7 +257,7 @@ func TestSizeStruct(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}

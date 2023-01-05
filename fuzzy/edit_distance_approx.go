@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/SnellerInc/sneller/internal/stringext"
 )
 
-type Data = string
-type Needle = string
+type Data = stringext.Data
+type Needle = stringext.Needle
 type idxNeedleT int
 type idxDataT int
 
@@ -323,7 +325,7 @@ func refHasPrefixFuzzy(data Data, prefix Needle, threshold int, ascii bool, meth
 func refHasSubstrFuzzy(data Data, needle Needle, threshold int, ascii bool, method MatchMethod) bool {
 	lenData := len(data)
 	if lenData == 0 {
-		return utf8.RuneCountInString(needle) <= threshold
+		return utf8.RuneCountInString(string(needle)) <= threshold
 	}
 	for i := 0; i < lenData; i++ {
 		if refHasPrefixFuzzy(data[i:], needle, threshold, ascii, method) {

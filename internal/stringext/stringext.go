@@ -26,7 +26,7 @@ import (
 )
 
 // Needle string type to distinguish from the Data string type
-type Needle = string
+type Needle string
 
 // Data string type to distinguish from the Needle string type
 type Data = string
@@ -898,65 +898,65 @@ func stringAlternatives(str string) (alt []byte) {
 }
 
 // EncodeEqualStringCS encodes the provided string for usage with bcStrCmpEqCs
-func EncodeEqualStringCS(needle string) string {
-	return needle
+func EncodeEqualStringCS(needle Needle) string {
+	return string(needle)
 }
 
 // EncodeEqualStringCI encodes the provided string for usage with bcStrCmpEqCi
-func EncodeEqualStringCI(needle string) string {
+func EncodeEqualStringCI(needle Needle) string {
 	// only normalize ASCII values, leave other values (UTF8) unchanged
-	return NormalizeStringASCIIOnlyString(needle)
+	return NormalizeStringASCIIOnlyString(string(needle))
 }
 
 // EncodeEqualStringUTF8CI encodes the provided string for usage with bcStrCmpEqUTF8Ci
-func EncodeEqualStringUTF8CI(needle string) string {
-	return genNeedleUTF8Ci(needle, false)
+func EncodeEqualStringUTF8CI(needle Needle) string {
+	return genNeedleUTF8Ci(string(needle), false)
 }
 
 // EncodeContainsPrefixCS encodes the provided string for usage with bcContainsPrefixCs
-func EncodeContainsPrefixCS(needle string) string {
-	return needle
+func EncodeContainsPrefixCS(needle Needle) string {
+	return string(needle)
 }
 
 // EncodeContainsPrefixCI encodes the provided string for usage with bcContainsPrefixCi
-func EncodeContainsPrefixCI(needle string) string {
-	return NormalizeString(needle)
+func EncodeContainsPrefixCI(needle Needle) string {
+	return NormalizeString(string(needle))
 }
 
 // EncodeContainsPrefixUTF8CI encodes the provided string for usage with bcContainsPrefixUTF8Ci
-func EncodeContainsPrefixUTF8CI(needle string) string {
-	return genNeedleUTF8Ci(needle, false)
+func EncodeContainsPrefixUTF8CI(needle Needle) string {
+	return genNeedleUTF8Ci(string(needle), false)
 }
 
 // EncodeContainsSuffixCS encodes the provided string for usage with bcContainsSuffixCs
-func EncodeContainsSuffixCS(needle string) string {
-	return needle
+func EncodeContainsSuffixCS(needle Needle) string {
+	return string(needle)
 }
 
 // EncodeContainsSuffixCI encodes the provided string for usage with bcContainsSuffixCi
-func EncodeContainsSuffixCI(needle string) string {
-	return NormalizeString(needle)
+func EncodeContainsSuffixCI(needle Needle) string {
+	return NormalizeString(string(needle))
 }
 
 // EncodeContainsSuffixUTF8CI encodes the provided string for usage with bcContainsSuffixUTF8Ci
-func EncodeContainsSuffixUTF8CI(needle string) string {
-	return genNeedleUTF8Ci(needle, true)
+func EncodeContainsSuffixUTF8CI(needle Needle) string {
+	return genNeedleUTF8Ci(string(needle), true)
 }
 
 // EncodeContainsSubstrCS encodes the provided string for usage with bcContainsSubstrCs
-func EncodeContainsSubstrCS(needle string) string {
-	return needle
+func EncodeContainsSubstrCS(needle Needle) string {
+	return string(needle)
 }
 
 // EncodeContainsSubstrCI encodes the provided string for usage with bcContainsSubstrCi
-func EncodeContainsSubstrCI(needle string) string {
-	return NormalizeStringASCIIOnlyString(needle)
+func EncodeContainsSubstrCI(needle Needle) string {
+	return NormalizeStringASCIIOnlyString(string(needle))
 }
 
 // EncodeContainsSubstrUTF8CI encodes the provided string for usage with bcContainsSubstrUTF8Ci
-func EncodeContainsSubstrUTF8CI(needle string) string {
-	result := to4ByteArray(utf8.RuneCountInString(needle))
-	result = append(result, stringAlternatives(needle)...)
+func EncodeContainsSubstrUTF8CI(needle Needle) string {
+	result := to4ByteArray(utf8.RuneCountInString(string(needle)))
+	result = append(result, stringAlternatives(string(needle))...)
 	return string(result)
 }
 
@@ -979,14 +979,14 @@ func EncodeContainsPatternCS(pattern *Pattern) string {
 
 // EncodeContainsPatternCI encodes the provided string for usage with bcContainsPatternCi
 func EncodeContainsPatternCI(pattern *Pattern) string {
-	pattern.Needle = NormalizeStringASCIIOnlyString(pattern.Needle)
+	pattern.Needle = Needle(NormalizeStringASCIIOnlyString(string(pattern.Needle)))
 	return EncodeContainsPatternCS(pattern)
 }
 
 // EncodeContainsPatternUTF8CI encodes the provided string for usage with bcContainsPatternUTF8Ci
 func EncodeContainsPatternUTF8CI(pattern *Pattern) string {
-	result := to4ByteArray(utf8.RuneCountInString(pattern.Needle))
-	result = append(result, stringAlternatives(pattern.Needle)...)
+	result := to4ByteArray(utf8.RuneCountInString(string(pattern.Needle)))
+	result = append(result, stringAlternatives(string(pattern.Needle))...)
 	needleRune := []rune(pattern.Needle)
 
 	for i := 0; i < len(needleRune); i++ {
@@ -1065,7 +1065,7 @@ type Pattern struct {
 }
 
 // NewPattern creates a new Pattern for the provided string, wildcard and
-// escape character. Eg. for "a@b_c@_d" with wildcard '_' and escape '@'
+// escape character. E.g. for "a@b_c@_d" with wildcard '_' and escape '@'
 // a pattern is created with Pattern.Needle = "ab_c_d", and Pattern.Wildcard =
 // [false, false, true, false, false, false]. Appreciate that the second wildcard
 // is escaped and thus corresponds to the value true in the wildcard slice.
@@ -1082,7 +1082,7 @@ func NewPattern(str string, wc, escape rune) Pattern {
 				p.Wildcard = append(p.Wildcard, true)
 				p.HasWildcard = true
 			} else {
-				p.Needle += string(r)
+				p.Needle += Needle(r)
 				p.Wildcard = append(p.Wildcard, false)
 			}
 		}
@@ -1097,7 +1097,7 @@ func NewPattern(str string, wc, escape rune) Pattern {
 				p.Wildcard = append(p.Wildcard, true)
 				p.HasWildcard = true
 			} else {
-				p.Needle += string(r)
+				p.Needle += Needle(r)
 				p.Wildcard = append(p.Wildcard, false)
 			}
 		}
@@ -1124,7 +1124,7 @@ func (p Pattern) SplitWC() ([]Needle, [][]bool) {
 				runes2 = append(runes2, runes[i])
 				wildcard2 = append(wildcard2, b)
 			} else {
-				needles = append(needles, string(runes2))
+				needles = append(needles, Needle(runes2))
 				wildcards = append(wildcards, wildcard2)
 
 				b = p.Wildcard[i]
@@ -1134,7 +1134,7 @@ func (p Pattern) SplitWC() ([]Needle, [][]bool) {
 		}
 	}
 	if len(runes2) > 0 {
-		needles = append(needles, string(runes2))
+		needles = append(needles, Needle(runes2))
 		wildcards = append(wildcards, wildcard2)
 	}
 	return needles, wildcards

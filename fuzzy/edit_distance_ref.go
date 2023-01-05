@@ -127,6 +127,6 @@ func (t *TrueDamerauLevenshtein) Distance(a, b string) int {
 	return t.matrix[lenA+1][lenB+1]
 }
 
-func editDistanceRef(data, needle string) int {
-	return new(100).Distance(data, needle)
+func editDistanceRef(data Data, needle Needle) int {
+	return new(100).Distance(data, string(needle))
 }

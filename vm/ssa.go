@@ -1634,7 +1634,7 @@ func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) equalsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+func (p *prog) equalsFuzzy(str *value, needle stringext.Needle, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceI64(threshold)
 	mask := p.and(str, thresholdMask)
 	if ascii {
@@ -1649,7 +1649,7 @@ func (p *prog) equalsFuzzy(str *value, needle string, threshold *value, ascii bo
 // Equality is computed with Damerau–Levenshtein distance estimation based on three
 // character horizon. If the distance exceeds the provided threshold, the match is
 // rejected; that is, str and needle are considered unequal.
-func (p *prog) containsFuzzy(str *value, needle string, threshold *value, ascii bool) *value {
+func (p *prog) containsFuzzy(str *value, needle stringext.Needle, threshold *value, ascii bool) *value {
 	thresholdInt, thresholdMask := p.coerceI64(threshold)
 	mask := p.and(str, thresholdMask)
 	if ascii {

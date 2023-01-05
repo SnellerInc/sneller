@@ -39,39 +39,259 @@ const exhaustive = -1
 
 type Data = stringext.Data
 type Needle = stringext.Needle
-type OffsetZ2 = int
-type LengthZ3 = int
+type OffsetZ2 int
+type LengthZ3 int
 
-// TestStringCompareUT unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
-func TestStringCompareUT(t *testing.T) {
+var fullMask = kRegData{mask: 0xFFFF}
+
+func prettyName(op bcop) string {
+	switch op {
+	case opCmpStrEqCs:
+		return "compare string case-sensitive (opCmpStrEqCs)"
+	case opCmpStrEqCi:
+		return "compare string case-insensitive (opCmpStrEqCi)"
+	case opCmpStrEqUTF8Ci:
+		return "compare string case-insensitive unicode (opCmpStrEqUTF8Ci)"
+	case opCmpStrFuzzyA3:
+		return "compare string fuzzy (opCmpStrFuzzyA3)"
+	case opCmpStrFuzzyUnicodeA3:
+		return "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)"
+	case opHasSubstrFuzzyA3:
+		return "has string fuzzy (opHasSubstrFuzzyA3)"
+	case opHasSubstrFuzzyUnicodeA3:
+		return "has string fuzzy unicode (opHasSubstrFuzzyUnicodeA3)"
+	case opSkip1charLeft:
+		return "skip 1 char from left (opSkip1charLeft)"
+	case opSkip1charRight:
+		return "skip 1 char from right (opSkip1charRight)"
+	case opSkipNcharLeft:
+		return "skip N char from left (opSkipNcharLeft)"
+	case opSkipNcharRight:
+		return "skip N char from right (opSkipNcharRight)"
+
+	case opSubstr:
+		return "substring (opSubstr)"
+	case opSplitPart:
+		return "split part (opSplitPart)"
+	case opLengthStr:
+		return "length string (bcLengthStr)"
+	case opIsSubnetOfIP4:
+		return "is-subnet-of IP4 IP (opIsSubnetOfIP4)"
+
+	case opTrim4charLeft:
+		return "trim char from left (opTrim4charLeft)"
+	case opTrim4charRight:
+		return "trim char from right (opTrim4charRight)"
+	case opTrimWsLeft:
+		return "trim white-space from left (opTrimWsLeft)"
+	case opTrimWsRight:
+		return "trim white-space from right (opTrimWsRight)"
+
+	case opContainsPrefixCs:
+		return "contains prefix case-sensitive (opContainsPrefixCs)"
+	case opContainsPrefixCi:
+		return "contains prefix case-insensitive (opContainsPrefixCi)"
+	case opContainsPrefixUTF8Ci:
+		return "contains prefix case-insensitive unicode (opContainsPrefixUTF8Ci)"
+	case opContainsSuffixCs:
+		return "contains suffix case-sensitive (opContainsSuffixCs)"
+	case opContainsSuffixCi:
+		return "contains suffix case-insensitive (opContainsSuffixCi)"
+	case opContainsSuffixUTF8Ci:
+		return "contains suffix case-insensitive unicode (opContainsSuffixUTF8Ci)"
+	case opContainsSubstrCs:
+		return "contains substr case-sensitive (opContainsSubstrCs)"
+	case opContainsSubstrCi:
+		return "contains substr case-insensitive (opContainsSubstrCi)"
+	case opContainsSubstrUTF8Ci:
+		return "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)"
+	case opContainsPatternCs:
+		return "contains pattern case-sensitive (opContainsPatternCs)"
+	case opContainsPatternCi:
+		return "contains pattern case-insensitive (opContainsPatternCi)"
+	case opContainsPatternUTF8Ci:
+		return "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)"
+	case opEqPatternCs:
+		return "equal pattern case-sensitive (opEqPatternCs)"
+	case opEqPatternCi:
+		return "equal pattern case-insensitive (opEqPatternCi)"
+	case opEqPatternUTF8Ci:
+		return "equal pattern case-insensitive unicode (opEqPatternUTF8Ci)"
+	default:
+		return "unknown op"
+	}
+}
+
+// refFunc return the reference function for the provided bc operation
+func refFunc(op bcop) any {
+	switch op {
+
+	case opCmpStrEqCs:
+		return func(data Data, needle Needle) bool {
+			if len(needle) == 0 { //NOTE: empty needles match with nothing (by design)
+				return false
+			}
+			return string(data) == string(needle)
+		}
+	case opCmpStrEqCi:
+		return func(data Data, needle Needle) bool {
+			if len(needle) == 0 { //NOTE: empty needles match with nothing (by design)
+				return false
+			}
+			return stringext.NormalizeStringASCIIOnlyString(string(data)) == stringext.NormalizeStringASCIIOnlyString(string(needle))
+		}
+	case opCmpStrEqUTF8Ci:
+		return func(data Data, needle Needle) bool {
+			if len(needle) == 0 { //NOTE: empty needles match with nothing (by design)
+				return false
+			}
+			return strings.EqualFold(string(data), string(needle))
+		}
+
+	case opCmpStrFuzzyA3:
+		return fuzzy.RefCmpStrFuzzyASCIIApprox3
+	case opCmpStrFuzzyUnicodeA3:
+		return fuzzy.RefCmpStrFuzzyUnicodeApprox3
+	case opHasSubstrFuzzyA3:
+		return fuzzy.RefHasSubstrFuzzyASCIIApprox3
+	case opHasSubstrFuzzyUnicodeA3:
+		return fuzzy.RefHasSubstrFuzzyUnicodeApprox3
+
+	case opSkip1charLeft, opSkipNcharLeft:
+		return referenceSkipCharLeft
+	case opSkip1charRight, opSkipNcharRight:
+		return referenceSkipCharRight
+
+	case opSubstr:
+		return referenceSubstr
+	case opSplitPart:
+		return referenceSplitPart
+	case opLengthStr:
+		return func(data Data) LengthZ3 {
+			return LengthZ3(utf8.RuneCountInString(string(data)))
+		}
+	case opIsSubnetOfIP4:
+		return referenceIsSubnetOfIP4
+
+	case opTrim4charLeft:
+		return func(data Data, needle Needle) (OffsetZ2, LengthZ3) {
+			result := strings.TrimLeft(string(data), string(needle))
+			return OffsetZ2(len(data) - len(result)), LengthZ3(len(result))
+		}
+	case opTrim4charRight:
+		return func(data Data, needle Needle) (OffsetZ2, LengthZ3) {
+			result := strings.TrimRight(string(data), string(needle))
+			return OffsetZ2(0), LengthZ3(len(result))
+		}
+	case opTrimWsLeft:
+		return func(data Data) (OffsetZ2, LengthZ3) {
+			// TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
+			whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
+			result := strings.TrimLeft(data, whiteSpace)
+			return OffsetZ2(len(data) - len(result)), LengthZ3(len(result))
+		}
+	case opTrimWsRight:
+		return func(data Data) (OffsetZ2, LengthZ3) {
+			// TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
+			whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
+			result := strings.TrimRight(data, whiteSpace)
+			return OffsetZ2(0), LengthZ3(len(result))
+		}
+
+	case opContainsPrefixCs:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			return refContainsPrefix(data, needle, true, true)
+		}
+	case opContainsPrefixCi:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			return refContainsPrefix(data, needle, false, true)
+		}
+	case opContainsPrefixUTF8Ci:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			return refContainsPrefix(data, needle, false, false)
+		}
+
+	case opContainsSuffixCs:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			return refContainsSuffix(data, needle, true, true)
+		}
+	case opContainsSuffixCi:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			return refContainsSuffix(data, needle, false, true)
+		}
+	case opContainsSuffixUTF8Ci:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			return refContainsSuffix(data, needle, false, false)
+		}
+
+	case opContainsSubstrCs:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			wildcard := make([]bool, utf8.RuneCountInString(string(needle)))
+			pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: needle, Wildcard: wildcard, HasWildcard: false}
+			return matchPatternRef(data, &pattern, stringext.CS, true)
+		}
+	case opContainsSubstrCi:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			wildcard := make([]bool, utf8.RuneCountInString(string(needle)))
+			pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: needle, Wildcard: wildcard, HasWildcard: false}
+			return matchPatternRef(data, &pattern, stringext.CiASCII, true)
+		}
+	case opContainsSubstrUTF8Ci:
+		return func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
+			wildcard := make([]bool, utf8.RuneCountInString(string(needle)))
+			pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: needle, Wildcard: wildcard, HasWildcard: false}
+			return matchPatternRef(data, &pattern, stringext.CiUTF8, true)
+		}
+
+	case opContainsPatternCs:
+		return func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
+			return matchPatternRef(data, pattern, stringext.CS, true)
+		}
+	case opContainsPatternCi:
+		return func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
+			return matchPatternRef(data, pattern, stringext.CiASCII, true)
+		}
+	case opContainsPatternUTF8Ci:
+		return func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
+			return matchPatternRef(data, pattern, stringext.CiUTF8, true)
+		}
+
+	case opEqPatternCs:
+		return func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
+			return matchPatternRef(data, pattern, stringext.CS, false)
+		}
+	case opEqPatternCi:
+		return func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
+			return matchPatternRef(data, pattern, stringext.CiASCII, false)
+		}
+	case opEqPatternUTF8Ci:
+		return func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
+			return matchPatternRef(data, pattern, stringext.CiUTF8, false)
+		}
+	default:
+		panic("X")
+		return nil
+	}
+}
+
+// TestStringCompareUT1 unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
+func TestStringCompareUT1(t *testing.T) {
 	t.Parallel()
 
 	type unitTest struct {
-		data, needle string
-		expLane      bool
+		data    Data
+		needle  Needle
+		expLane bool
 	}
 
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// portable reference implementation: f(data, needle) -> lane
-		refImpl func(string, string) bool
-		// bytecode to run
-		op bcop
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name: "compare string case-sensitive (opCmpStrEqCs)",
-			op:   opCmpStrEqCs,
-			refImpl: func(x, y string) bool {
-				if len(y) == 0 { //NOTE: empty needles match with nothing (by design)
-					return false
-				}
-				return x == y
-			},
+			op: opCmpStrEqCs,
 			unitTests: []unitTest{
 				{"aaaa", "aaaa", true},
 				{"aaa", "aaaa", false},
@@ -85,14 +305,7 @@ func TestStringCompareUT(t *testing.T) {
 			},
 		},
 		{
-			name: "refImpl string case-insensitive (opCmpStrEqCi)",
-			op:   opCmpStrEqCi,
-			refImpl: func(x, y string) bool {
-				if len(y) == 0 { //NOTE: empty needles match with nothing (by design)
-					return false
-				}
-				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
-			},
+			op: opCmpStrEqCi,
 			unitTests: []unitTest{
 				{"aaaa", "aaaa", true},
 				{"aaa", "aaaa", false},
@@ -107,15 +320,9 @@ func TestStringCompareUT(t *testing.T) {
 			},
 		},
 		{
-			name: "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
-			op:   opCmpStrEqUTF8Ci,
-			refImpl: func(x, y string) bool {
-				if len(y) == 0 { //NOTE: empty needles match with nothing (by design)
-					return false
-				}
-				return strings.EqualFold(x, y)
-			},
+			op: opCmpStrEqUTF8Ci,
 			unitTests: []unitTest{
+				{"0000", "0000", true},
 				//NOTE all UTF8 byte code assumes valid UTF8 input
 				{"aΩa\nb", "aΩa\nB", true},
 				{"aΩaa", "aΩaa", true},
@@ -142,7 +349,7 @@ func TestStringCompareUT(t *testing.T) {
 
 				{"¢¢", "¢¢", true},
 				{"$¢€𐍈", "$¢€𐍈", true},
-				{string([]byte{0x41, 0x41, 0xC2, 0xA2, 0xC2, 0xA2, 0x41, 0x41, 0xC2, 0xA2})[6:7], "A", true},
+				{Data([]byte{0x41, 0x41, 0xC2, 0xA2, 0xC2, 0xA2, 0x41, 0x41, 0xC2, 0xA2})[6:7], "A", true},
 
 				{"AA¢¢¢¢"[0:4], "AA¢", true},
 				{"$¢€𐍈ĳĲ", "$¢€𐍈ĲĲ", true},
@@ -158,45 +365,140 @@ func TestStringCompareUT(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		if !utf8.ValidString(ut.needle) {
+		if !utf8.ValidString(string(ut.needle)) {
 			t.Logf("needle is not valid UTF8; skipping this test")
 			return
 		}
 
 		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
-		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: lanes}
-		outputK := kRegData{}
+		inputS := ctx.sRegFromStrings(fill16(string(ut.data)))
+		var obsK, expK kRegData
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, 0, &inputK}, lanes); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, 0, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, Needle) bool)
+		expLane := ref(ut.data, ut.needle)
+
+		if nok, msg := reportIssueKRef(expLane, ut.expLane); nok {
+			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+		}
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				active := ts.refImpl(ut.data, ut.needle)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-				}
-				if active != ut.expLane {
-					t.Errorf("%v\nrefImpl: comparing needle %q to data %q\nobserved %v; expected %v (data16 %v; needle %v)",
-						ts.name, ut.needle, ut.data, active, ut.expLane, []byte(ut.data), []byte(ut.needle))
+			if inputK.getBit(i) {
+				if expLane {
+					expK.setBit(i)
 				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
+			}
+		})
+	}
+}
+
+// TestStringCompareUT2 unit-tests for: opCmpStrEqCs, opCmpStrEqCi, opCmpStrEqUTF8Ci
+func TestStringCompareUT2(t *testing.T) {
+	t.Parallel()
+
+	type unitTest struct {
+		data16   [16]Data // data pointed to by SI
+		needle   Needle   // segments of the pattern: needs to be encoded and passed as string constant via the immediate dictionary
+		expLanes uint16   // expected lanes K1
+	}
+	type testSuite struct {
+		unitTests []unitTest
+		op        bcop
+	}
+
+	testSuites := []testSuite{
+		{
+			op: opCmpStrEqCs,
+			unitTests: []unitTest{
+				{
+					needle:   "0000",
+					data16:   [16]Data{"0000", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"},
+					expLanes: uint16(0b0000000000000001),
+				},
+			},
+		},
+		{
+			op: opCmpStrEqCi,
+			unitTests: []unitTest{
+				{
+					needle:   "0000",
+					data16:   [16]Data{"0000", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"},
+					expLanes: uint16(0b0000000000000001),
+				},
+			},
+		},
+		{
+			op: opCmpStrEqUTF8Ci,
+			unitTests: []unitTest{
+				{
+					needle:   "0000",
+					data16:   [16]Data{"0000", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"},
+					expLanes: uint16(0b0000000000000001),
+				},
+			},
+		},
+	}
+
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
+		var ctx bctestContext
+		defer ctx.Free()
+
+		if !utf8.ValidString(string(ut.needle)) {
+			t.Logf("needle is not valid UTF8; skipping this test")
+			return
+		}
+
+		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
+		inputS := ctx.sRegFromStrings(ut.data16[:])
+		var obsK, expK kRegData
+
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, 0, &inputK}, inputK); err != nil {
+			t.Fatal(err)
+		}
+
+		ref := refFunc(ts.op).(func(Data, Needle) bool)
+
+		for i := 0; i < bcLaneCount; i++ {
+			if inputK.getBit(i) {
+				expLane := ref(ut.data16[i], ut.needle)
+				if expLane {
+					expK.setBit(i)
+				}
+				if nok, msg := reportIssueKRef(expLane, getBit(ut.expLanes, i)); nok {
+					t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data16, msg)
+					return
+				}
+			}
+		}
+
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, prettyData(ut.data16), msg)
+		}
+	}
+
+	for _, ts := range testSuites {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			for _, ut := range ts.unitTests {
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -207,60 +509,53 @@ func TestStringCompareBF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name string
 		// alphabet from which to generate words
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
 		dataLenSpace []int
 		// maximum number of elements in dataSpace
 		dataMaxSize int
-		// portable reference implementation: f(data, needle) -> lane
-		refImpl func(string, string) bool
 		// bytecode implementation of comparison
 		op bcop
 	}
 
 	testSuites := []testSuite{
 		{
+			op: opCmpStrEqCs,
 			// U+017F 'ſ' (2 bytes) -> U+0053 'S' (1 bytes)
 			// U+2126 'Ω' (3 bytes) -> U+03A9 'Ω' (2 bytes)
 			// U+212A 'K' (3 bytes) -> U+004B 'K' (1 bytes)
-			name:         "compare string case-sensitive (opCmpStrEqCs)",
 			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K', 'Ω', 'Ω'},
 			dataLenSpace: []int{1, 2, 3, 4},
 			dataMaxSize:  exhaustive,
-			refImpl:      func(x, y string) bool { return x == y },
-			op:           opCmpStrEqCs,
 		},
 		{
-			name:         "compare string case-insensitive (opCmpStrEqCi)",
+			op:           opCmpStrEqCi,
 			dataAlphabet: []rune{'a', 'b', 'c', 'd', 'A', 'B', 'C', 'D', 'z', '!', '@'},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 			dataMaxSize:  1000,
-			refImpl: func(x, y string) bool {
-				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
-			},
-			op: opCmpStrEqCi,
 		},
 		{
-			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
+			op:           opCmpStrEqUTF8Ci,
 			dataAlphabet: []rune{'s', 'S', 'ſ', 'k', 'K', 'K'},
 			dataLenSpace: []int{1, 2, 3, 4},
 			dataMaxSize:  exhaustive,
-			refImpl:      strings.EqualFold,
-			op:           opCmpStrEqUTF8Ci,
 		},
 		{ // test to explicitly check that byte length changing normalizations work
-			name:         "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci) 2",
+			op:           opCmpStrEqUTF8Ci,
 			dataAlphabet: []rune{'a', 'Ω', 'Ω'}, // U+2126 'Ω' (E2 84 A6 = 226 132 166) -> U+03A9 'Ω' (CE A9 = 207 137)
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6},
 			dataMaxSize:  exhaustive,
-			refImpl:      strings.EqualFold,
+		},
+		{
 			op:           opCmpStrEqUTF8Ci,
+			dataAlphabet: []rune{'0', '1'},
+			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			dataMaxSize:  exhaustive,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, needleSpace []string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data, needleSpace []Needle) {
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
 		for i, needle := range needleSpace {
@@ -270,36 +565,41 @@ func TestStringCompareBF(t *testing.T) {
 		var ctx bctestContext
 		defer ctx.Free()
 
+		ref := refFunc(ts.op).(func(Data, Needle) bool)
+
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
 				ctx.clear()
 				ctx.setDict(encNeedles[needleIdx])
 
 				inputS := ctx.sRegFromStrings(data16)
-				inputK := kRegData{mask: lanes}
-				outputK := kRegData{}
+				var obsK, expK kRegData
 
-				if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, 0, &inputK}, lanes); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, 0, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputK := kRegData{}
 				for i := 0; i < bcLaneCount; i++ {
-					if getBit(lanes, i) && ts.refImpl(needle, data16[i]) {
-						expectedOutputK.mask |= uint16(1 << i)
+					if inputK.getBit(i) {
+						expLane := ref(data16[i], needle)
+						if expLane {
+							expK.setBit(i)
+						}
 					}
 				}
 
-				verifyKRegOutput(t, &outputK, &expectedOutputK)
+				if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+					t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), needle, prettyDataSlice(data16), msg)
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			needleSpace := flatten(dataSpace)
-			run(&ts, 0xFFFF, dataSpace, needleSpace)
+			run(&ts, fullMask, dataSpace, needleSpace)
 		})
 	}
 }
@@ -308,70 +608,52 @@ func TestStringCompareBF(t *testing.T) {
 func FuzzStringCompareFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "s", "ss", "S", "SS", "ſ", "ſſ", "a", "aa", "as", "bss", "cS", "dSS", "eſ", "fſſ", "ga", "haa", "s")
 
-	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// portable comparison function
-		refImpl func(string, string) bool
-		// bytecode to run
-		op bcop
+	testSuites := []bcop{
+		opCmpStrEqCs,
+		opCmpStrEqCi,
+		opCmpStrEqUTF8Ci,
 	}
 
-	testSuites := []testSuite{
-		{
-			name:    "compare string case-sensitive (opCmpStrEqCs)",
-			refImpl: func(x, y string) bool { return x == y },
-			op:      opCmpStrEqCs,
-		},
-		{
-			name: "compare string case-insensitive (opCmpStrEqCi)",
-			refImpl: func(x, y string) bool {
-				return stringext.NormalizeStringASCIIOnlyString(x) == stringext.NormalizeStringASCIIOnlyString(y)
-			},
-			op: opCmpStrEqCi,
-		},
-		{
-			name:    "compare string case-insensitive UTF8 (opCmpStrEqUTF8Ci)",
-			refImpl: strings.EqualFold,
-			op:      opCmpStrEqUTF8Ci,
-		},
-	}
-
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, needle string) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, needle Needle) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		if !utf8.ValidString(needle) || needle == "" {
+		if !utf8.ValidString(string(needle)) || needle == "" {
 			return // invalid needles are ignored
 		}
 
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		ctx.setDict(encodeNeedleOp(needle, op))
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
-		outputK := kRegData{}
+		var obsK, expK kRegData
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, 0, &inputK}, lanes); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsK, &inputS, 0, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, Needle) bool)
+
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) && ts.refImpl(data16[i], needle) {
-				expectedOutputK.mask |= uint16(1 << i)
+			if inputK.getBit(i) {
+				expLane := ref(data16[i], needle)
+				if expLane {
+					expK.setBit(i)
+				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(op), needle, prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, needle string) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data, needle)
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data, Needle(needle))
 		}
 	})
 }
@@ -386,20 +668,12 @@ func TestStrFuzzyUT1(t *testing.T) {
 		expLane   bool
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// portable reference implementation: f(data, needle) -> lane
-		refImpl func(Data, Needle, int) bool
-		// bytecode to run
-		op bcop
+		op        bcop
 	}
 	testSuites := []testSuite{
 		{
-			name:    "compare string fuzzy (opCmpStrFuzzyA3)",
-			op:      opCmpStrFuzzyA3,
-			refImpl: fuzzy.RefCmpStrFuzzyASCIIApprox3,
+			op: opCmpStrFuzzyA3,
 			unitTests: []unitTest{
 
 				{"abc", "aXc", 1, true}, // substitution at pos 1: b -> X
@@ -448,43 +722,49 @@ func TestStrFuzzyUT1(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		if !utf8.ValidString(ut.needle) {
+		if !utf8.ValidString(string(ut.needle)) {
 			t.Logf("needle is not valid UTF8; skipping this test")
 			return
 		}
 
 		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
 		dictOffset := uint16(0)
-		data16 := fill16(ut.data)
 
-		inputS := ctx.sRegFromStrings(data16)
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
 		inputThreshold := i64RegDataFromScalar(int64(ut.threshold))
-		inputK := kRegData{mask: lanes}
+		var obsK, expK kRegData
 
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputK := kRegData{}
-		expectedResult := ts.refImpl(ut.data, ut.needle, ut.threshold)
+		ref := refFunc(ts.op).(func(Data, Needle, int) bool)
+		expLane := ref(ut.data, ut.needle, ut.threshold)
+
+		if nok, msg := reportIssueKRef(expLane, ut.expLane); nok {
+			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+			return
+		}
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) && expectedResult {
-				expectedOutputK.mask |= uint16(1 << i)
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
 			}
 		}
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -501,21 +781,13 @@ func TestStrFuzzyUT2(t *testing.T) {
 		threshold [16]int
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// portable reference implementation: f(data, needle) -> lane
-		refImpl func(Data, Needle, int) bool
-		// bytecode implementation of comparison
-		op bcop
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name:    "compare string fuzzy (opCmpStrFuzzyA3)",
-			op:      opCmpStrFuzzyA3,
-			refImpl: fuzzy.RefCmpStrFuzzyASCIIApprox3,
+			op: opCmpStrFuzzyA3,
 			unitTests: []unitTest{
 				{
 					needle:    "0",
@@ -550,9 +822,7 @@ func TestStrFuzzyUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)",
-			op:      opCmpStrFuzzyUnicodeA3,
-			refImpl: fuzzy.RefCmpStrFuzzyUnicodeApprox3,
+			op: opCmpStrFuzzyUnicodeA3,
 			unitTests: []unitTest{
 				{
 					needle:    "020",
@@ -593,9 +863,7 @@ func TestStrFuzzyUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "has substring fuzzy (opHasSubstrFuzzyA3)",
-			op:      opHasSubstrFuzzyA3,
-			refImpl: fuzzy.RefHasSubstrFuzzyASCIIApprox3,
+			op: opHasSubstrFuzzyA3,
 			unitTests: []unitTest{
 				{
 					needle:    "A",
@@ -606,9 +874,7 @@ func TestStrFuzzyUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "has substring fuzzy (opHasSubstrFuzzyUnicodeA3)",
-			op:      opHasSubstrFuzzyUnicodeA3,
-			refImpl: fuzzy.RefHasSubstrFuzzyUnicodeApprox3,
+			op: opHasSubstrFuzzyUnicodeA3,
 			unitTests: []unitTest{
 				{
 					needle:    "AA",
@@ -620,7 +886,7 @@ func TestStrFuzzyUT2(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -629,31 +895,37 @@ func TestStrFuzzyUT2(t *testing.T) {
 
 		inputS := ctx.sRegFromStrings(ut.data16[:])
 		inputThreshold := i64RegData{}
-		inputK := kRegData{mask: lanes}
-		outputK := kRegData{}
+		var obsK, expK kRegData
 
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, Needle, int) bool)
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				active := ts.refImpl(ut.data16[i], ut.needle, ut.threshold[i])
-				if active {
+			if inputK.getBit(i) {
+				expLane := ref(ut.data16[i], ut.needle, ut.threshold[i])
+				if expLane {
 					inputThreshold.values[i] = int64(ut.threshold[i])
-					expectedOutputK.mask |= uint16(1 << i)
+					expK.setBit(i)
+				}
+				if nok, msg := reportIssueKRef(expLane, getBit(ut.expLanes, i)); nok {
+					t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data16, msg)
+					return
 				}
 			}
 		}
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, prettyData(ut.data16), msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -663,24 +935,19 @@ func TestStrFuzzyUT2(t *testing.T) {
 func TestStrFuzzyBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name string
 		// alphabet from which to generate words
 		dataAlphabet, needleAlphabet []rune
 		// space of lengths of the words made of alphabet
 		dataLenSpace, needleLenSpace, thresholdSpace []int
 		// maximum number of elements in dataSpace
 		dataMaxSize, needleMaxSize int
-		// portable reference implementation: f(data, needle) -> lane
-		refImpl func(Data, Needle, int) bool
 		// bytecode implementation of comparison
 		op bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name:           "compare string fuzzy (opCmpStrFuzzyA3)",
 			op:             opCmpStrFuzzyA3,
-			refImpl:        fuzzy.RefCmpStrFuzzyASCIIApprox3,
 			dataAlphabet:   []rune{'A', 'B', 'C', 'Ω'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4},
 			dataMaxSize:    exhaustive,
@@ -690,9 +957,7 @@ func TestStrFuzzyBF(t *testing.T) {
 			thresholdSpace: []int{1, 2, 3},
 		},
 		{
-			name:           "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)",
 			op:             opCmpStrFuzzyUnicodeA3,
-			refImpl:        fuzzy.RefCmpStrFuzzyUnicodeApprox3,
 			dataAlphabet:   []rune{'A', 'B', 'C', 'Ω'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4},
 			dataMaxSize:    exhaustive,
@@ -702,9 +967,7 @@ func TestStrFuzzyBF(t *testing.T) {
 			thresholdSpace: []int{0, 1, 2, 3},
 		},
 		{
-			name:           "has substring fuzzy (opHasSubstrFuzzyA3)",
 			op:             opHasSubstrFuzzyA3,
-			refImpl:        fuzzy.RefHasSubstrFuzzyASCIIApprox3,
 			dataAlphabet:   []rune{'A', 'B', 'C', 'Ω'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4},
 			dataMaxSize:    exhaustive,
@@ -714,9 +977,7 @@ func TestStrFuzzyBF(t *testing.T) {
 			thresholdSpace: []int{0, 1, 2, 3},
 		},
 		{
-			name:           "has substring fuzzy unicode (opHasSubstrFuzzyUnicodeA3)",
 			op:             opHasSubstrFuzzyUnicodeA3,
-			refImpl:        fuzzy.RefHasSubstrFuzzyUnicodeApprox3,
 			dataAlphabet:   []rune{'A', '$', '¢', '€', '𐍈'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4},
 			dataMaxSize:    exhaustive,
@@ -727,7 +988,7 @@ func TestStrFuzzyBF(t *testing.T) {
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]Data, needleSpace []Needle) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data, needleSpace []Needle) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -737,7 +998,11 @@ func TestStrFuzzyBF(t *testing.T) {
 			encNeedles[i] = encodeNeedleOp(needle, ts.op)
 		}
 
+		ref := refFunc(ts.op).(func(Data, Needle, int) bool)
+
 		for _, threshold := range ts.thresholdSpace {
+			inputThreshold := i64RegDataFromScalar(int64(threshold))
+
 			for _, data16 := range dataSpace {
 				for needleIdx, needle := range needleSpace {
 					ctx.clear()
@@ -745,31 +1010,34 @@ func TestStrFuzzyBF(t *testing.T) {
 					dictOffset := uint16(0)
 
 					inputS := ctx.sRegFromStrings(data16)
-					inputK := kRegData{mask: lanes}
-					inputThreshold := i64RegDataFromScalar(int64(threshold))
-					outputK := kRegData{}
+					var obsK, expK kRegData
 
-					if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
+					for i := 0; i < bcLaneCount; i++ {
+						if inputK.getBit(i) {
+							expLane := ref(data16[i], needle, threshold)
+							if expLane {
+								expK.setBit(i)
+							}
+						}
+					}
+
+					if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK); err != nil {
 						t.Fatal(err)
 					}
 
-					expectedOutputK := kRegData{}
-					for i := 0; i < bcLaneCount; i++ {
-						if getBit(lanes, i) && ts.refImpl(data16[i], needle, threshold) {
-							expectedOutputK.mask |= uint16(1 << i)
-						}
+					if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+						t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), needle, prettyDataSlice(data16), msg)
 					}
-					verifyKRegOutput(t, &outputK, &expectedOutputK)
 				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			needleSpace := createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize)
-			run(&ts, 0xFFFF, dataSpace, flatten(needleSpace))
+			run(&ts, fullMask, dataSpace, flatten(needleSpace))
 		})
 	}
 }
@@ -778,43 +1046,18 @@ func TestStrFuzzyBF(t *testing.T) {
 func FuzzStrFuzzyFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "s", "ss", "S", "SS", "ſ", "ſſ", "a", "aa", "as", "bss", "cS", "dSS", "eſ", "fſſ", "ga", "haa", "s", 1)
 
-	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// portable comparison function
-		refImpl func(Data, Needle, int) bool
-		// bytecode to run
-		op bcop
+	testSuites := []bcop{
+		opCmpStrFuzzyA3,
+		opCmpStrFuzzyUnicodeA3,
+		opHasSubstrFuzzyA3,
+		opHasSubstrFuzzyUnicodeA3,
 	}
 
-	testSuites := []testSuite{
-		{
-			name:    "compare string fuzzy (opCmpStrFuzzyA3)",
-			op:      opCmpStrFuzzyA3,
-			refImpl: fuzzy.RefCmpStrFuzzyASCIIApprox3,
-		},
-		{
-			name:    "compare string fuzzy unicode (opCmpStrFuzzyUnicodeA3)",
-			op:      opCmpStrFuzzyUnicodeA3,
-			refImpl: fuzzy.RefCmpStrFuzzyUnicodeApprox3,
-		},
-		{
-			name:    "compare string fuzzy (opHasSubstrFuzzyA3)",
-			op:      opHasSubstrFuzzyA3,
-			refImpl: fuzzy.RefHasSubstrFuzzyASCIIApprox3,
-		},
-		{
-			name:    "compare string fuzzy (opHasSubstrFuzzyUnicodeA3)",
-			op:      opHasSubstrFuzzyUnicodeA3,
-			refImpl: fuzzy.RefHasSubstrFuzzyUnicodeApprox3,
-		},
-	}
-
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle, threshold int) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, needle Needle, threshold int) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		if ts.op == opCmpStrFuzzyA3 || ts.op == opHasSubstrFuzzyA3 {
+		if op == opCmpStrFuzzyA3 || op == opHasSubstrFuzzyA3 {
 			for _, c := range needle {
 				if c >= utf8.RuneSelf {
 					return // ascii code do not accept unicode code-points
@@ -822,38 +1065,44 @@ func FuzzStrFuzzyFT(f *testing.F) {
 			}
 		}
 
-		if !utf8.ValidString(needle) || (needle == "") {
+		if !utf8.ValidString(string(needle)) || (needle == "") {
 			return // invalid needles are ignored
 		}
 
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		ctx.setDict(encodeNeedleOp(needle, op))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
 		inputThreshold := i64RegDataFromScalar(int64(threshold))
-		inputK := kRegData{mask: lanes}
-		outputK := kRegData{}
+		var obsK, expK kRegData
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK.mask); err != nil {
-			t.Fatal(err)
-		}
+		ref := refFunc(op).(func(Data, Needle, int) bool)
 
-		expectedOutputK := kRegData{}
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) && ts.refImpl(data16[i], needle, threshold) {
-				expectedOutputK.mask |= uint16(1 << i)
+			if inputK.getBit(i) {
+				expLane := ref(data16[i], needle, threshold)
+				if expLane {
+					expK.setBit(i)
+				}
 			}
 		}
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+
+		if err := ctx.ExecuteOpcode(op, []any{&obsK, &inputS, &inputThreshold, dictOffset, &inputK}, inputK); err != nil {
+			t.Fatal(err)
+		}
+
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(op), needle, prettyData(data16), msg)
+		}
 	}
 
-	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle, threshold int) {
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, needle string, threshold int) {
 		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data, needle, threshold)
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data, Needle(needle), threshold)
 		}
 	})
 }
@@ -1338,7 +1587,7 @@ func TestRegexMatchUT1(t *testing.T) {
 		{`0.0.0.0`, `(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)`, true, regexp2.SimilarTo},
 	}
 
-	run := func(ut unitTest, lanes uint16) {
+	run := func(ut unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -1360,17 +1609,16 @@ func TestRegexMatchUT1(t *testing.T) {
 			dictOffset := uint16(0)
 
 			inputS := ctx.sRegFromStrings(data16)
-			inputK := kRegData{mask: lanes}
 			outputK := kRegData{}
 
-			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
 			for i := 0; i < bcLaneCount; i++ {
-				if getBit(outputK.mask, i) != expLane {
+				if outputK.getBit(i) != expLane {
 					t.Errorf("%v: lane %v: issue with data %q\nregexGolang=%q yields expected %v; regexSneller=%q yields observed %v",
-						info, i, data16[i], ds.RegexGolang.String(), expLane, ds.RegexSneller.String(), getBit(outputK.mask, i))
+						info, i, data16[i], ds.RegexGolang.String(), expLane, ds.RegexSneller.String(), outputK.getBit(i))
 					break
 				}
 			}
@@ -1397,7 +1645,7 @@ func TestRegexMatchUT1(t *testing.T) {
 
 	for i, ut := range unitTests {
 		t.Run(fmt.Sprintf(`case %d:`, i), func(t *testing.T) {
-			run(ut, 0xFFFF)
+			run(ut, fullMask)
 		})
 	}
 }
@@ -1408,9 +1656,9 @@ func TestRegexMatchUT2(t *testing.T) {
 	name := "regex match UnitTest2"
 
 	type unitTest struct {
-		data16    [16]string // data pointed to by SI
-		expr      string     // dictValue of the pattern: need to be encoded and passed as string constant via the immediate dictionary
-		expLanes  uint16     // resulting lanes K1
+		data16    [16]Data // data pointed to by SI
+		expr      Needle   // dictValue of the pattern: need to be encoded and passed as string constant via the immediate dictionary
+		expLanes  uint16   // resulting lanes K1
 		regexType regexp2.RegexType
 	}
 
@@ -1453,17 +1701,17 @@ func TestRegexMatchUT2(t *testing.T) {
 		},
 	}
 
-	run := func(ut unitTest, lanes uint16) {
+	run := func(ut unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		ds, err := regexp2.CreateDs(ut.expr, ut.regexType, false, regexp2.MaxNodesAutomaton)
+		ds, err := regexp2.CreateDs(string(ut.expr), ut.regexType, false, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			t.Error(err)
 		}
 
 		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
-		regexDataTest := func(ctx *bctestContext, dsByte []byte, info string, op bcop, needle string, expLanes uint16) {
+		regexDataTest := func(ctx *bctestContext, dsByte []byte, info string, op bcop, needle Needle, expLanes kRegData) {
 			if dsByte == nil {
 				return
 			}
@@ -1473,20 +1721,19 @@ func TestRegexMatchUT2(t *testing.T) {
 			dictOffset := uint16(0)
 
 			inputS := ctx.sRegFromStrings(ut.data16[:])
-			inputK := kRegData{mask: lanes}
 			outputK := kRegData{}
 
-			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
-			if outputK.mask != expLanes {
+			if outputK != expLanes {
 				for i := 0; i < bcLaneCount; i++ {
-					obsLane := getBit(outputK.mask, i)
-					expLane := getBit(expLanes, i)
+					obsLane := outputK.getBit(i)
+					expLane := expLanes.getBit(i)
 					if obsLane != expLane {
 						t.Errorf("%v-%v: issue with lane %v, \ndata=%q\nexpected=%016b (regexGolang=%q)\nobserved=%016b (regexSneller=%q)",
-							name, info, i, ut.data16, expLanes, ds.RegexGolang.String(), outputK.mask, ds.RegexSneller.String())
+							name, info, i, prettyData(ut.data16), expLanes, ds.RegexGolang.String(), outputK.mask, ds.RegexSneller.String())
 						break
 					}
 				}
@@ -1506,18 +1753,19 @@ func TestRegexMatchUT2(t *testing.T) {
 		}
 
 		// second: check the bytecode implementation
-		regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, ut.expr, ut.expLanes)
-		regexDataTest(&ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, ut.expr, ut.expLanes)
-		regexDataTest(&ctx, ds.DsT7, "DfaT7", opDfaT7, ut.expr, ut.expLanes)
-		regexDataTest(&ctx, ds.DsT7Z, "DfaT7Z", opDfaT7Z, ut.expr, ut.expLanes)
-		regexDataTest(&ctx, ds.DsT8, "DfaT8", opDfaT8, ut.expr, ut.expLanes)
-		regexDataTest(&ctx, ds.DsT8Z, "DfaT8Z", opDfaT8Z, ut.expr, ut.expLanes)
-		regexDataTest(&ctx, ds.DsLZ, "DfaLZ", opDfaLZ, ut.expr, ut.expLanes)
+		expLanes := kRegData{mask: ut.expLanes}
+		regexDataTest(&ctx, ds.DsT6, "DfaT6", opDfaT6, ut.expr, expLanes)
+		regexDataTest(&ctx, ds.DsT6Z, "DfaT6Z", opDfaT6Z, ut.expr, expLanes)
+		regexDataTest(&ctx, ds.DsT7, "DfaT7", opDfaT7, ut.expr, expLanes)
+		regexDataTest(&ctx, ds.DsT7Z, "DfaT7Z", opDfaT7Z, ut.expr, expLanes)
+		regexDataTest(&ctx, ds.DsT8, "DfaT8", opDfaT8, ut.expr, expLanes)
+		regexDataTest(&ctx, ds.DsT8Z, "DfaT8Z", opDfaT8Z, ut.expr, expLanes)
+		regexDataTest(&ctx, ds.DsLZ, "DfaLZ", opDfaLZ, ut.expr, expLanes)
 	}
 
 	for i, ut := range unitTests {
 		t.Run(fmt.Sprintf(`case %d:`, i), func(t *testing.T) {
-			run(ut, 0xFFFF)
+			run(ut, fullMask)
 		})
 	}
 }
@@ -1533,10 +1781,10 @@ func FuzzRegexMatchRun(f *testing.F) {
 			dictOffset := uint16(0)
 
 			inputS := ctx.sRegFromStrings(fill16(needle))
-			inputK := kRegData{mask: 0xFFFF}
+			inputK := fullMask
 			outputK := kRegData{}
 
-			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
@@ -1644,7 +1892,7 @@ func FuzzRegexMatchCompile(f *testing.F) {
 }
 
 // referenceSubstr is the reference implementation for: opSubstr
-func referenceSubstr(input string, start, length int) (uint32, uint32) {
+func referenceSubstr(input Data, start, length int) (OffsetZ2, LengthZ3) {
 	if !utf8.ValidString(input) {
 		return 0, 0
 	}
@@ -1673,16 +1921,17 @@ func referenceSubstr(input string, start, length int) (uint32, uint32) {
 	removedStr := string(asRunes[0:start])
 	outputStr := string(asRunes[start : start+length])
 
-	return uint32(len(removedStr)), uint32(len(outputStr))
+	return OffsetZ2(len(removedStr)), LengthZ3(len(outputStr))
 }
 
 // TestSubstrUT unit-tests for: opSubstr
 func TestSubstrUT(t *testing.T) {
 	t.Parallel()
-	name := "substring (opSubstr)"
+
+	const op = opSubstr
 
 	type unitTest struct {
-		data      string
+		data      Data
 		begin     int
 		length    int
 		expResult string // expected result
@@ -1744,50 +1993,51 @@ func TestSubstrUT(t *testing.T) {
 		},
 	}
 
-	run := func(ut [16]unitTest, lanes uint16) {
+	run := func(ut [16]unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		data16 := make([]string, 16)
+		data16 := make([]Data, 16)
+		var inputFrom, inputLength i64RegData
 		for i := 0; i < bcLaneCount; i++ {
 			data16[i] = ut[i].data
+			inputFrom.values[i] = int64(ut[i].begin)
+			inputLength.values[i] = int64(ut[i].length)
 		}
 
 		inputS := ctx.sRegFromStrings(data16)
-		inputFrom := i64RegData{}
-		inputLength := i64RegData{}
-		inputK := kRegData{mask: 0xFFFF}
+		var obsS, expS sRegData
 
-		outputS := sRegData{}
-		expectedOutputS := sRegData{}
-		for i := 0; i < bcLaneCount; i++ {
-			expectedOffset, expectedLength := referenceSubstr(ut[i].data, ut[i].begin, ut[i].length)
-			expectedString := ut[i].data[expectedOffset : expectedOffset+expectedLength]
-
-			if expectedString != ut[i].expResult {
-				t.Errorf("refImpl: input %q; begin=%v; length=%v; reference %q; expected %q",
-					data16[i], ut[i].begin, ut[i].length, expectedString, ut[i].expResult)
-			}
-
-			inputFrom.values[i] = int64(ut[i].begin)
-			inputLength.values[i] = int64(ut[i].length)
-
-			if expectedLength > 0 {
-				expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
-				expectedOutputS.sizes[i] = expectedLength
-			}
-		}
-
-		if err := ctx.ExecuteOpcode(opSubstr, []any{&outputS, &inputS, &inputFrom, &inputLength, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &inputS, &inputFrom, &inputLength, &inputK}, fullMask); err != nil {
 			t.Fatal(err)
 		}
 
-		verifySRegOutput(t, &outputS, &expectedOutputS)
+		ref := refFunc(op).(func(Data, int, int) (OffsetZ2, LengthZ3))
+
+		for i := 0; i < bcLaneCount; i++ {
+			if inputK.getBit(i) {
+				expOffset, expLength := ref(data16[i], ut[i].begin, ut[i].length)
+				expString := ut[i].data[expOffset : int(expOffset)+int(expLength)]
+
+				if expString != ut[i].expResult {
+					t.Errorf("refImpl: input %q; begin=%v; length=%v; reference %q; expected %q",
+						data16[i], ut[i].begin, ut[i].length, expString, ut[i].expResult)
+				}
+				if expLength > 0 {
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
+				}
+			}
+		}
+
+		if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), prettyDataSlice(data16), msg)
+		}
 	}
 
-	t.Run(name, func(t *testing.T) {
+	t.Run(prettyName(op), func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut, 0xFFFF)
+			run(ut, fullMask)
 		}
 	})
 }
@@ -1796,7 +2046,6 @@ func TestSubstrUT(t *testing.T) {
 func TestSubstrBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -1809,70 +2058,68 @@ func TestSubstrBF(t *testing.T) {
 		lengthSpace []int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data, begin, length) -> result
-		refImpl func(string, int, int) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
-			name:         "substring (opSubstr)",
+			op:           opSubstr,
 			dataAlphabet: []rune{'a', 'b', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6},
 			dataMaxSize:  exhaustive,
 			beginSpace:   []int{0, 1, 2, 4, 5},
 			lengthSpace:  []int{-1, 0, 1, 3, 4},
-			op:           opSubstr,
-			refImpl:      referenceSubstr,
 		},
 		{
-			name:         "substring (opSubstr) UTF8",
+			op:           opSubstr,
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5},
 			dataMaxSize:  exhaustive,
 			beginSpace:   []int{1, 3, 4, 5},
 			lengthSpace:  []int{0, 1, 3, 4},
-			op:           opSubstr,
-			refImpl:      referenceSubstr,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
 
+		ref := refFunc(ts.op).(func(Data, int, int) (OffsetZ2, LengthZ3))
+
 		for _, data16 := range dataSpace {
 			for _, length := range ts.lengthSpace {
+				inputLength := i64RegDataFromScalar(int64(length))
 				for _, begin := range ts.beginSpace {
 					ctx.clear()
 
 					inputS := ctx.sRegFromStrings(data16)
 					inputFrom := i64RegDataFromScalar(int64(begin))
-					inputLength := i64RegDataFromScalar(int64(length))
-					inputK := kRegData{mask: lanes}
-					outputS := sRegData{}
+					var obsS, expS sRegData
 
-					if err := ctx.ExecuteOpcode(opSubstr, []any{&outputS, &inputS, &inputFrom, &inputLength, &inputK}, inputK.mask); err != nil {
+					if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &inputS, &inputFrom, &inputLength, &inputK}, inputK); err != nil {
 						t.Fatal(err)
 					}
 
-					expectedOutputS := sRegData{}
 					for i := 0; i < bcLaneCount; i++ {
-						if getBit(lanes, i) {
-							expectedOffset, expectedLength := ts.refImpl(data16[i], begin, length)
-							if expectedLength > 0 {
-								expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
-								expectedOutputS.sizes[i] = expectedLength
+						if inputK.getBit(i) {
+							expOffset, expLength := ref(data16[i], begin, length)
+							if expLength > 0 {
+								expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+								expS.sizes[i] = uint32(expLength)
 							}
 						}
 					}
-					verifySRegOutput(t, &outputS, &expectedOutputS)
+
+					if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+						t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), prettyDataSlice(data16), msg)
+						return
+					}
 				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -1888,22 +2135,11 @@ func FuzzSubstrFT(f *testing.F) {
 		4, 1, 2, 4, 4, 2, 1, 2, 3, 5, 6, 7, 3, 5, 6, 7,
 		1, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 5, 0, 1, 1, 2)
 
-	type testSuite struct {
-		name string // name to describe this test-suite
-		op   bcop   // bytecode to run
-		// portable reference implementation: f(data, begin, length) -> result
-		refImpl func(string, int, int) (uint32, uint32)
+	testSuites := []bcop{
+		opSubstr,
 	}
 
-	testSuites := []testSuite{
-		{
-			name:    "sub-string (opSubstr)",
-			op:      opSubstr,
-			refImpl: referenceSubstr,
-		},
-	}
-
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, begin, length [16]int) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, begin, length [16]int) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -1919,44 +2155,47 @@ func FuzzSubstrFT(f *testing.F) {
 		}
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
 
-		outputS := sRegData{}
-		if err := ctx.ExecuteOpcode(opSubstr, []any{&outputS, &inputS, &inputFrom, &inputLength, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &inputS, &inputFrom, &inputLength, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
+		ref := refFunc(op).(func(Data, int, int) (OffsetZ2, LengthZ3))
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				expectedOffset, expectedLength := ts.refImpl(data16[i], begin[i], length[i])
-				if expectedLength > 0 {
-					expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
-					expectedOutputS.sizes[i] = expectedLength
+			if inputK.getBit(i) {
+				expOffset, expLength := ref(data16[i], begin[i], length[i])
+				if expLength > 0 {
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
 		}
-		verifySRegOutput(t, &outputS, &expectedOutputS)
+
+		if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string,
 		b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15 int,
 		s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15 int) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
 		begin := [16]int{b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15}
 		length := [16]int{s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data, begin, length)
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data, begin, length)
 		}
 	})
 }
 
 // referenceIsSubnetOfIP4 reference implementation for opIsSubnetOfIP4
-func referenceIsSubnetOfIP4(msg string, min, max uint32) bool {
+func referenceIsSubnetOfIP4(data Data, min, max uint32) bool {
 	// str2ByteArray parses an IP; will also parse leasing zeros: eg. "000.001.010.100" is returned as [0,1,10,100]
-	str2ByteArray := func(str string) (result []byte, ok bool) {
+	str2ByteArray := func(data Data) (result []byte, ok bool) {
 		result = make([]byte, 4)
-		components := strings.Split(str, ".")
+		components := strings.Split(string(data), ".")
 		if len(components) != 4 {
 			return result, false
 		}
@@ -1990,22 +2229,22 @@ func referenceIsSubnetOfIP4(msg string, min, max uint32) bool {
 		return true
 	}
 
-	if byteSlice, ok := str2ByteArray(msg); ok {
+	if byteSlice, ok := str2ByteArray(data); ok {
 		r2 := inRangeByteWise(byteSlice, toArrayIP4(min), toArrayIP4(max))
 		return r2
 	}
 	return false
 }
 
-// TestIsSubnetOfIP4UT runs unit-tests for: opIsSubnetOfIP4
-func TestIsSubnetOfIP4UT(t *testing.T) {
+// TestIsSubnetOfIP4UT1 runs unit-tests for: opIsSubnetOfIP4
+func TestIsSubnetOfIP4UT1(t *testing.T) {
 	t.Parallel()
 
-	name := "is-subnet-of IP4 (opIsSubnetOfIP4)"
+	const op = opIsSubnetOfIP4
 
 	type unitTest struct {
-		ip, min, max string
-		expLane      bool
+		data, min, max string
+		expLane        bool
 	}
 
 	unitTests := []unitTest{
@@ -2069,7 +2308,7 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 		{"8.8.8.2", "8.8.8.1", "8.8.8.1", false}, // min_3 < ip_3 > max_3
 	}
 
-	run := func(ut unitTest, lanes uint16) {
+	run := func(ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -2082,31 +2321,34 @@ func TestIsSubnetOfIP4UT(t *testing.T) {
 		ctx.setDict(stringext.ToBCD(&minA, &maxA))
 		dictOffset := uint16(0)
 
-		inputS := ctx.sRegFromStrings(fill16(ut.ip))
-		inputK := kRegData{mask: lanes}
-		outputK := kRegData{}
+		inputS := ctx.sRegFromStrings(fill16(ut.data))
+		var obsK, expK kRegData
 
-		if err := ctx.ExecuteOpcode(opIsSubnetOfIP4, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputK := kRegData{}
-		active := referenceIsSubnetOfIP4(ut.ip, min, max)
-		if active != ut.expLane {
-			t.Errorf("refImpl: data=%q; min=%q; max=%q; observed=%v; expected=%v",
-				ut.ip, ut.min, ut.max, active, ut.expLane)
+		ref := refFunc(op).(func(Data, uint32, uint32) bool)
+		expLane := ref(ut.data, min, max)
+
+		if nok, msg := reportIssueKRef(expLane, ut.expLane); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), ut.data, msg)
 		}
 
-		if active {
-			expectedOutputK.mask = inputK.mask
+		for i := 0; i < bcLaneCount; i++ {
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), ut.data, msg)
+		}
 	}
 
-	t.Run(name, func(t *testing.T) {
+	t.Run(prettyName(op), func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut, 0xFFFF)
+			run(&ut, fullMask)
 		}
 	})
 }
@@ -2116,30 +2358,24 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name         string
-		dataAlphabet []rune                            // alphabet from which to generate data
-		dataLenSpace []int                             // space of lengths of the words made of alphabet
-		dataMaxSize  int                               // maximum number of elements in dataSpace
-		op           bcop                              // bytecode to run
-		refImpl      func(string, uint32, uint32) bool // portable reference implementation: f(data, min, max) -> lane
+		dataAlphabet []rune // alphabet from which to generate data
+		dataLenSpace []int  // space of lengths of the words made of alphabet
+		dataMaxSize  int    // maximum number of elements in dataSpace
+		op           bcop   // bytecode to run
 	}
 
 	testSuites := []testSuite{
 		{
-			name:         "is-subnet-of IP4 IP (opIsSubnetOfIP4)",
+			op:           opIsSubnetOfIP4,
 			dataAlphabet: []rune{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'A', 0},
 			dataLenSpace: []int{9, 10, 11, 12, 13, 14, 15, 16},
 			dataMaxSize:  100000,
-			op:           opIsSubnetOfIP4,
-			refImpl:      referenceIsSubnetOfIP4,
 		},
 		{
-			name:         "is-subnet-of IP4 IP (opIsSubnetOfIP4) 2",
+			op:           opIsSubnetOfIP4,
 			dataAlphabet: []rune{'0', '1', '.'},
 			dataLenSpace: []int{9, 10, 11, 12, 13},
 			dataMaxSize:  exhaustive,
-			op:           opIsSubnetOfIP4,
-			refImpl:      referenceIsSubnetOfIP4,
 		},
 	}
 
@@ -2157,9 +2393,11 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 		return
 	}
 
-	run := func(ts testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
+
+		ref := refFunc(ts.op).(func(Data, uint32, uint32) bool)
 
 		for _, data16 := range dataSpace {
 			min, max := randomMinMaxValues()
@@ -2171,46 +2409,51 @@ func TestIsSubnetOfIP4BF(t *testing.T) {
 			dictOffset := uint16(0)
 
 			inputS := ctx.sRegFromStrings(data16)
-			inputK := kRegData{mask: lanes}
-			outputK := kRegData{}
+			var obsK, expK kRegData
 
-			if err := ctx.ExecuteOpcode(ts.op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(ts.op, []any{&obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
-			expectedOutputK := kRegData{}
 			for i := 0; i < bcLaneCount; i++ {
-				if getBit(lanes, i) && ts.refImpl(data16[i], min, max) {
-					expectedOutputK.mask |= uint16(1 << i)
+				expLane := ref(data16[i], min, max)
+				if inputK.getBit(i) && expLane {
+					expK.setBit(i)
 				}
 			}
-			verifyKRegOutput(t, &outputK, &expectedOutputK)
+
+			if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+				t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), prettyDataSlice(data16), msg)
+			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			var dataSpace []string
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			var dataSpace []Data
 			if ts.dataMaxSize == exhaustive {
-				dataSpace = make([]string, 0)
+				dataSpace = make([]Data, 0)
 				for _, data := range flatten(createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)) {
-					if net.ParseIP(data).To4() != nil {
-						dataSpace = append(dataSpace, data)
+					if net.ParseIP(string(data)).To4() != nil {
+						dataSpace = append(dataSpace, Data(data))
 					}
 				}
 			} else {
-				dataSpace = make([]string, ts.dataMaxSize)
+				dataSpace = make([]Data, ts.dataMaxSize)
 				for i := 0; i < ts.dataMaxSize; i++ {
 					dataSpace[i] = randomIP4Addr().String()
 				}
 			}
-			run(ts, 0xFFFF, split16(dataSpace))
+			run(&ts, fullMask, split16(dataSpace))
 		})
 	}
 }
 
 // FuzzIsSubnetOfIP4FT runs fuzz tests for: opIsSubnetOfIP4
 func FuzzIsSubnetOfIP4FT(f *testing.F) {
+
+	const op = opIsSubnetOfIP4
+
 	str2Uint32 := func(str string) uint32 {
 		result := uint32(0)
 		for i, segStr := range strings.Split(str, ".") {
@@ -2268,7 +2511,7 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		f.Add(uint16(0xFFFF), a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, ut.min, ut.max)
 	}
 
-	run := func(t *testing.T, lanes uint16, data16 [16]string, min, max uint32) {
+	run := func(t *testing.T, inputK kRegData, data16 [16]Data, min, max uint32) {
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
@@ -2286,53 +2529,51 @@ func FuzzIsSubnetOfIP4FT(f *testing.F) {
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
-		outputK := kRegData{}
+		var obsK, expK kRegData
 
-		if err := ctx.ExecuteOpcode(opIsSubnetOfIP4, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, uint32, uint32) bool)
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) && referenceIsSubnetOfIP4(data16[i], min, max) {
-				expectedOutputK.mask |= uint16(1 << i)
+			expLane := ref(data16[i], min, max)
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
 			}
 		}
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
+
+		if nok, msg := reportIssueK(&inputK, &obsK, &expK); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, min, max uint32) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		run(t, lanes, data, min, max)
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		run(t, kRegData{mask: lanes}, data, min, max)
 	})
 }
 
-// TestSkip1CharUT unit-tests for opSkip1charLeft, opSkip1charRight
-func TestSkip1CharUT(t *testing.T) {
+// TestSkip1CharUT1 unit-tests for opSkip1charLeft, opSkip1charRight
+func TestSkip1CharUT1(t *testing.T) {
 	t.Parallel()
 
 	type unitTest struct {
-		data      string // data at SI
-		expLane   bool   // expected lane K1
-		expOffset int    // expected offset Z2
-		expLength int    // expected length Z3
+		data      Data     // data at SI
+		expLane   bool     // expected lane K1
+		expOffset OffsetZ2 // expected offset Z2
+		expLength LengthZ3 // expected length Z3
 	}
 
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, skipCount) -> lane, offset, length
-		refImpl func(string, int) (bool, int, int)
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name: "skip 1 char from left (opSkip1charLeft)",
+			op: opSkip1charLeft,
 			unitTests: []unitTest{
 				{"", false, 0, 0},
 				{"a", true, 1, 0},
@@ -2354,11 +2595,9 @@ func TestSkip1CharUT(t *testing.T) {
 				{"a𐍈aaa", true, 1, 7},
 				{"a𐍈aaaa", true, 1, 8},
 			},
-			op:      opSkip1charLeft,
-			refImpl: referenceSkipCharLeft,
 		},
 		{
-			name: "skip 1 char from right (opSkip1charRight)",
+			op: opSkip1charRight,
 			unitTests: []unitTest{
 				{"", false, 0, 0},
 				{"a", true, 0, 0},
@@ -2380,46 +2619,45 @@ func TestSkip1CharUT(t *testing.T) {
 				{"aaa𐍈a", true, 0, 7},
 				{"aaaa𐍈a", true, 0, 8},
 			},
-			op:      opSkip1charRight,
-			refImpl: referenceSkipCharRight,
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
+		expLane, expOffset, expLength := ref(ut.data, 1)
 
-		// first: check reference implementation
-		obsLane, obsOffset, obsLength := ts.refImpl(ut.data, 1)
+		if nok, msg := reportIssueKSRef(expLane, ut.expLane, expOffset, ut.expOffset, expLength, ut.expLength); nok {
+			t.Errorf("RefImpl: %v\ndata=%v\n%v", prettyName(ts.op), ut.data, msg)
+		}
+
 		for i := 0; i < bcLaneCount; i++ {
-			if obsLane && getBit(lanes, i) {
-				expectedOutputK.mask |= uint16(1 << i)
-				expectedOutputS.offsets[i] = uint32(obsOffset) + uint32(inputS.offsets[i])
-				expectedOutputS.sizes[i] = uint32(obsLength)
+			if expLane && inputK.getBit(i) {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -2430,7 +2668,6 @@ func TestSkip1CharBF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -2439,30 +2676,24 @@ func TestSkip1CharBF(t *testing.T) {
 		dataMaxSize int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data, skipCount) -> lane, offset, length
-		refImpl func(string, int) (bool, int, int)
 	}
 
 	testSuites := []testSuite{
 		{
-			name:         "skip 1 char from left (opSkip1charLeft)",
+			op:           opSkip1charLeft,
 			dataAlphabet: []rune{'s', 'S', 'ſ', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6},
 			dataMaxSize:  exhaustive,
-			op:           opSkip1charLeft,
-			refImpl:      referenceSkipCharLeft,
 		},
 		{
-			name:         "skip 1 char from right (opSkip1charRight)",
+			op:           opSkip1charRight,
 			dataAlphabet: []rune{'s', 'S', 'ſ', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6},
 			dataMaxSize:  exhaustive,
-			op:           opSkip1charRight,
-			refImpl:      referenceSkipCharRight,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -2470,37 +2701,36 @@ func TestSkip1CharBF(t *testing.T) {
 			ctx.clear()
 
 			inputS := ctx.sRegFromStrings(data16)
-			inputK := kRegData{mask: uint16((1 << len(data16)) - 1)}
+			var obsS, expS sRegData
+			var obsK, expK kRegData
 
-			outputS := sRegData{}
-			outputK := kRegData{}
-
-			if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
-			expectedOutputS := sRegData{}
-			expectedOutputK := kRegData{}
+			ref := refFunc(ts.op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
 
 			for i := 0; i < bcLaneCount; i++ {
-				if getBit(lanes, i) {
-					active, offset, size := ts.refImpl(data16[i], 1)
-					if active {
-						expectedOutputK.mask |= uint16(1 << i)
-						expectedOutputS.offsets[i] = uint32(offset) + inputS.offsets[i]
-						expectedOutputS.sizes[i] = uint32(size)
+				if inputK.getBit(i) {
+					expLane, expOffset, expLength := ref(data16[i], 1)
+					if expLane {
+						expK.setBit(i)
+						expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+						expS.sizes[i] = uint32(expLength)
 					}
 				}
 			}
 
-			verifyKRegOutput(t, &outputK, &expectedOutputK)
-			verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+			if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+				t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), prettyDataSlice(data16), msg)
+				return
+			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -2509,96 +2739,72 @@ func TestSkip1CharBF(t *testing.T) {
 func FuzzSkip1CharFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "b", "c", "d", "e", "f", "g", "h", "ſ", "ſſ", "s", "SS", "SSS", "SSSS", "ſS", "ſSS")
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, skipCount) -> lane, offset, length
-		refImpl func(string, int) (bool, int, int)
+	testSuites := []bcop{
+		opSkip1charLeft,
+		opSkip1charRight,
 	}
 
-	testSuites := []testSuite{
-		{
-			name:    "skip 1 char from left (opSkip1charLeft)",
-			op:      opSkip1charLeft,
-			refImpl: referenceSkipCharLeft,
-		},
-		{
-			name:    "skip 1 char from right (opSkip1charRight)",
-			op:      opSkip1charRight,
-			refImpl: referenceSkipCharRight,
-		},
-	}
-
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) {
-				active, offset, length := ts.refImpl(data16[i], 1)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(offset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(length)
+			if inputK.getBit(i) {
+				expLane, expOffset, expLength := ref(data16[i], 1)
+				if expLane {
+					expK.setBit(i)
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data)
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data)
 		}
 	})
 }
 
-// TestSkipNCharUT unit-tests for opSkipNcharLeft, opSkipNcharRight
-func TestSkipNCharUT(t *testing.T) {
+// TestSkipNCharUT1 unit-tests for opSkipNcharLeft, opSkipNcharRight
+func TestSkipNCharUT1(t *testing.T) {
 	t.Parallel()
 
 	type unitTest struct {
-		data      string // data at SI
-		skipCount int    // number of code-points to skip
-		expLane   bool   // expected lane K1
-		expOffset int    // expected offset Z2
-		expLength int    // expected length Z3
+		data      Data     // data at SI
+		skipCount int      // number of code-points to skip
+		expLane   bool     // expected lane K1
+		expOffset OffsetZ2 // expected offset Z2
+		expLength LengthZ3 // expected length Z3
 	}
 
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, skipCount) -> lane, offset, length
-		refImpl func(string, int) (bool, int, int)
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name: "skip N char from left (opSkipNcharLeft)",
+			op: opSkipNcharLeft,
 			unitTests: []unitTest{
 				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
 				{"a", 1, true, 1, 0},
@@ -2631,11 +2837,9 @@ func TestSkipNCharUT(t *testing.T) {
 				{"a", 0, true, 0, 1},
 				{"𐍈", 2, false, -1, -1},
 			},
-			op:      opSkipNcharLeft,
-			refImpl: referenceSkipCharLeft,
 		},
 		{
-			name: "skip N char from right (opSkipNcharRight)",
+			op: opSkipNcharRight,
 			unitTests: []unitTest{
 				{"", 1, false, -1, -1}, //NOTE offset and length are irrelevant
 				{"a", 1, true, 0, 0},
@@ -2669,45 +2873,46 @@ func TestSkipNCharUT(t *testing.T) {
 				{"a", 0, true, 0, 1},
 				{"𐍈", 2, false, -1, -1},
 			},
-			op:      opSkipNcharRight,
-			refImpl: referenceSkipCharRight,
 		},
 	}
 
-	run := func(ts *testSuite, ut *unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
 		inputCount := i64RegDataFromScalar(int64(ut.skipCount))
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputCount, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, &inputCount, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
+		expLane, expOffset, expLength := ref(ut.data, ut.skipCount)
+
+		if nok, msg := reportIssueKSRef(expLane, ut.expLane, expOffset, ut.expOffset, expLength, ut.expLength); nok {
+			t.Errorf("RefImpl: %v\ndata=%v\n%v", prettyName(ts.op), ut.data, msg)
+		}
+
 		for i := 0; i < bcLaneCount; i++ {
-			active, expectedOffset, expectedLength := ts.refImpl(ut.data, ut.skipCount)
-			if getBit(lanes, i) && active {
-				expectedOutputS.offsets[i] = uint32(expectedOffset) + uint32(inputS.offsets[i])
-				expectedOutputS.sizes[i] = uint32(expectedLength)
-				expectedOutputK.mask |= uint16(1 << i)
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nskipCount=%q\ndata=%v\n%v", prettyName(ts.op), ut.skipCount, ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(&ts, &ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -2718,7 +2923,6 @@ func TestSkipNCharBF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -2729,32 +2933,26 @@ func TestSkipNCharBF(t *testing.T) {
 		skipCountSpace []int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data, skipCount) -> lane, offset, length
-		refImpl func(string, int) (bool, int, int)
 	}
 
 	testSuites := []testSuite{
 		{
-			name:           "skip N char from left (opSkipNcharLeft)",
+			op:             opSkipNcharLeft,
 			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
 			dataLenSpace:   []int{1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			skipCountSpace: []int{0, 1, 2, 3, 4, 5, 6},
-			op:             opSkipNcharLeft,
-			refImpl:        referenceSkipCharLeft,
 		},
 		{
-			name:           "skip N char from right (opSkipNcharRight)",
+			op:             opSkipNcharRight,
 			dataAlphabet:   []rune{'s', 'S', 'ſ', '\n', 0},
 			dataLenSpace:   []int{1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			skipCountSpace: []int{0, 1, 2, 3, 4, 5, 6},
-			op:             opSkipNcharRight,
-			refImpl:        referenceSkipCharRight,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -2763,37 +2961,35 @@ func TestSkipNCharBF(t *testing.T) {
 				ctx.clear()
 
 				inputS := ctx.sRegFromStrings(data16)
-				inputK := kRegData{mask: lanes}
 				inputCountS := i64RegDataFromScalar(int64(skipCount))
+				var obsS, expS sRegData
+				var obsK, expK kRegData
 
-				outputS := sRegData{}
-				outputK := kRegData{}
-
-				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputCountS, &inputK}, inputK.mask); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, &inputCountS, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputS := sRegData{}
-				expectedOutputK := kRegData{}
+				ref := refFunc(ts.op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
 
 				for i := 0; i < bcLaneCount; i++ {
-					active, expectedOffset, expectedLength := ts.refImpl(data16[i], skipCount)
-					if getBit(lanes, i) && active {
-						expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-						expectedOutputS.sizes[i] = uint32(expectedLength)
-						expectedOutputK.mask |= uint16(1 << i)
+					expLane, expOffset, expLength := ref(data16[i], skipCount)
+					if inputK.getBit(i) && expLane {
+						expK.setBit(i)
+						expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+						expS.sizes[i] = uint32(expLength)
 					}
 				}
 
-				verifyKRegOutput(t, &outputK, &expectedOutputK)
-				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+				if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+					t.Errorf("%v\nskipCount=%q\ndata=%v\n%v", prettyName(ts.op), skipCount, prettyDataSlice(data16), msg)
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -2804,28 +3000,12 @@ func FuzzSkipNCharFT(f *testing.F) {
 	f.Add(uint16(0xF0F0), "a", "b", "c", "d", "e", "f", "g", "h", "ſ", "ſſ", "s", "SS", "SSS", "SSSS", "ſS", "ſSS", 0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7)
 	f.Add(uint16(0b0000000000000011), "𐍈𐍈", "111𐍈", "", "", "", "", "", "", "", "", "", "", "", "", "", "", 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, skipCount) -> lane, offset, length
-		refImpl func(string, int) (bool, int, int)
+	testSuites := []bcop{
+		opSkipNcharLeft,
+		opSkipNcharRight,
 	}
 
-	testSuites := []testSuite{
-		{
-			name:    "skip N char from left (opSkipNcharLeft)",
-			op:      opSkipNcharLeft,
-			refImpl: referenceSkipCharLeft,
-		},
-		{
-			name:    "skip N char from right (opSkipNcharRight)",
-			op:      opSkipNcharRight,
-			refImpl: referenceSkipCharRight,
-		},
-	}
-
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, skipCount [16]int) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, skipCount [16]int) {
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
@@ -2837,7 +3017,8 @@ func FuzzSkipNCharFT(f *testing.F) {
 
 		inputS := ctx.sRegFromStrings(data16[:])
 		inputCount := i64RegData{}
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
 		for i := 0; i < bcLaneCount; i++ {
 			if skipCount[i] >= 0 {
@@ -2845,43 +3026,40 @@ func FuzzSkipNCharFT(f *testing.F) {
 			}
 		}
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, &inputCount, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, &inputCount, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, int) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			active, expectedOffset, expectedLength := ts.refImpl(data16[i], skipCount[i])
-			if getBit(lanes, i) && active {
-				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-				expectedOutputS.sizes[i] = uint32(expectedLength)
-				expectedOutputK.mask |= uint16(1 << i)
+			expLane, expOffset, expLength := ref(data16[i], skipCount[i])
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nskipCount=%q\ndata=%v\n%v", prettyName(op), skipCount, prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15 int) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
 		skipCount := [16]int{s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data, skipCount)
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data, skipCount)
 		}
 	})
 }
 
 // referenceSplitPart splits data on delimiter and returns the offset and length of the idx part (NOTE 1-based index)
-func referenceSplitPart(data string, idx int, delimiter rune) (lane bool, offset, length int) {
+func referenceSplitPart(data Data, idx int, delimiter rune) (lane bool, offset OffsetZ2, length LengthZ3) {
 	idx-- // because this method is written as 0-indexed, but called as 1-indexed.
 	offset = 0
-	length = len(data)
+	length = LengthZ3(len(data))
 	lane = false
 
 	bytePosBegin := -1
@@ -2910,24 +3088,24 @@ func referenceSplitPart(data string, idx int, delimiter rune) (lane bool, offset
 		}
 	}
 
-	offset = bytePosBegin
-	length = bytePosEnd - bytePosBegin
+	offset = OffsetZ2(bytePosBegin)
+	length = LengthZ3(bytePosEnd - bytePosBegin)
 	lane = true
 	return
 }
 
-// TestSplitPartUT unit-tests for: opSplitPart
-func TestSplitPartUT(t *testing.T) {
+// TestSplitPartUT1 unit-tests for: opSplitPart
+func TestSplitPartUT1(t *testing.T) {
 	t.Parallel()
-	name := "split part (opSplitPart)"
+	const op = opSplitPart
 
 	type unitTest struct {
-		data      string
+		data      Data
 		idx       int
 		delimiter rune
-		expLane   bool // expected lane K1
-		expOffset int  // expected offset Z2
-		expLength int  // expected length Z3
+		expLane   bool     // expected lane K1
+		expOffset OffsetZ2 // expected offset Z2
+		expLength LengthZ3 // expected length Z3
 	}
 	unitTests := []unitTest{
 
@@ -2972,7 +3150,7 @@ func TestSplitPartUT(t *testing.T) {
 		{"aa;𐍈", 2, ';', true, 3, 4}, // select "𐍈"
 	}
 
-	run := func(ut unitTest, lanes uint16) {
+	run := func(ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -2981,36 +3159,36 @@ func TestSplitPartUT(t *testing.T) {
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
 		inputIndex := i64RegDataFromScalar(int64(ut.idx))
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(opSplitPart, []any{&outputS, &outputK, &inputS, dictOffset, &inputIndex, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, dictOffset, &inputIndex, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, int, rune) (bool, OffsetZ2, LengthZ3))
+		expLane, expOffset, expLength := ref(ut.data, ut.idx, ut.delimiter)
 
-		{
-			active, expectedOffset, expectedLength := referenceSplitPart(ut.data, ut.idx, ut.delimiter)
-			for i := 0; i < bcLaneCount; i++ {
-				if getBit(lanes, i) && active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(expectedLength)
-				}
+		if nok, msg := reportIssueKSRef(expLane, ut.expLane, expOffset, ut.expOffset, expLength, ut.expLength); nok {
+			t.Errorf("RefImpl: %v\nidx=%v\ndata=%v\n%v", prettyName(op), ut.idx, ut.data, msg)
+		}
+
+		for i := 0; i < bcLaneCount; i++ {
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nidx=%q\ndata=%v\n%v", prettyName(op), ut.idx, ut.data, msg)
+		}
 	}
 
-	t.Run(name, func(t *testing.T) {
+	t.Run(prettyName(op), func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut, 0xFFFF)
+			run(&ut, fullMask)
 		}
 	})
 }
@@ -3020,7 +3198,6 @@ func TestSplitPartBF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -3033,36 +3210,32 @@ func TestSplitPartBF(t *testing.T) {
 		delimiter rune
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data, idx, delimiter) -> lane, offset, length
-		refImpl func(string, int, rune) (bool, int, int)
 	}
 
 	testSuites := []testSuite{
 		{
-			name:         "split part (opSplitPart)",
+			op:           opSplitPart,
 			dataAlphabet: []rune{'a', 'b', 0, ';'},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
 			idxSpace:     []int{0, 1, 2, 3, 4, 5},
 			delimiter:    ';',
-			op:           opSplitPart,
-			refImpl:      referenceSplitPart,
 		},
 		{
-			name:         "split part (opSplitPart) UTF8",
+			op:           opSplitPart,
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', ';'},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
 			idxSpace:     []int{0, 1, 2, 3, 4, 5},
 			delimiter:    ';',
-			op:           opSplitPart,
-			refImpl:      referenceSplitPart,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
+
+		ref := refFunc(ts.op).(func(Data, int, rune) (bool, OffsetZ2, LengthZ3))
 
 		for _, idx := range ts.idxSpace {
 			for _, data16 := range dataSpace {
@@ -3072,38 +3245,34 @@ func TestSplitPartBF(t *testing.T) {
 
 				inputS := ctx.sRegFromStrings(data16)
 				inputIndex := i64RegDataFromScalar(int64(idx))
-				inputK := kRegData{mask: lanes}
+				var obsS, expS sRegData
+				var obsK, expK kRegData
 
-				outputS := sRegData{}
-				outputK := kRegData{}
-
-				if err := ctx.ExecuteOpcode(opSplitPart, []any{&outputS, &outputK, &inputS, dictOffset, &inputIndex, &inputK}, inputK.mask); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputIndex, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputS := sRegData{}
-				expectedOutputK := kRegData{}
-
 				for i := 0; i < bcLaneCount; i++ {
-					if getBit(lanes, i) {
-						active, expectedOffset, expectedLength := ts.refImpl(data16[i], idx, ts.delimiter)
-						if active {
-							expectedOutputK.mask |= uint16(1 << i)
-							expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-							expectedOutputS.sizes[i] = uint32(expectedLength)
+					if inputK.getBit(i) {
+						expLane, expOffset, expLength := ref(data16[i], idx, ts.delimiter)
+						if expLane {
+							expK.setBit(i)
+							expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+							expS.sizes[i] = uint32(expLength)
 						}
 					}
 				}
 
-				verifyKRegOutput(t, &outputK, &expectedOutputK)
-				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+				if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+					t.Errorf("%v\nidx=%q\ndata=%v\n%v", prettyName(ts.op), idx, prettyDataSlice(data16), msg)
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -3113,23 +3282,11 @@ func FuzzSplitPartFT(f *testing.F) {
 	f.Add(uint16(0xFFF0), "a", "a;b", "a;b;c", "", ";", "𐍈", "𐍈;𐍈", "𐍈;𐍈;", "a", "a;b", "a;b;c", "", ";", "𐍈", "𐍈;𐍈", "𐍈;𐍈;", 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, byte(';'))
 	f.Add(uint16(0xFFFF), ";;;;;", "a", ";", "", "", "", "", "", "", "", "", "", "", "", "", "", 6, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(';'))
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, idx, delimiter) -> lane, offset, length
-		refImpl func(string, int, rune) (bool, int, int)
+	testSuites := []bcop{
+		opSplitPart,
 	}
 
-	testSuites := []testSuite{
-		{
-			name:    "split part (opSplitPart)",
-			op:      opSplitPart,
-			refImpl: referenceSplitPart,
-		},
-	}
-
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, idx [16]int, delimiterByte byte) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, idx [16]int, delimiterByte byte) {
 		if (delimiterByte == 0) || (delimiterByte >= 0x80) {
 			return // delimiter can only be ASCII and not 0
 		}
@@ -3148,7 +3305,8 @@ func FuzzSplitPartFT(f *testing.F) {
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
 		inputIndex := i64RegData{}
 		for i := 0; i < bcLaneCount; i++ {
@@ -3157,38 +3315,35 @@ func FuzzSplitPartFT(f *testing.F) {
 			}
 		}
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputIndex, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, dictOffset, &inputIndex, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, int, rune) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				active, expectedOffset, expectedLength := ts.refImpl(data16[i], idx[i], delimiter)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) {
+				expLane, expOffset, expLength := ref(data16[i], idx[i], delimiter)
+				if expLane {
+					expK.setBit(i)
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nidx=%q\ndata=%v\n%v", prettyName(op), idx, prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16,
 		d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string,
 		s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15 int, delimiter byte) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
 		idx := [16]int{s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data, idx, delimiter)
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data, idx, delimiter)
 		}
 	})
 }
@@ -3196,10 +3351,10 @@ func FuzzSplitPartFT(f *testing.F) {
 // TestSplitPartUT unit-tests for: opLengthStr
 func TestLengthStrUT(t *testing.T) {
 	t.Parallel()
-	name := "length string (bcLengthStr)"
+	const op = opLengthStr
 
 	type unitTest struct {
-		data     string
+		data     Data
 		expChars int // expected number of code-points in data
 	}
 	unitTests := []unitTest{
@@ -3220,36 +3375,31 @@ func TestLengthStrUT(t *testing.T) {
 		{string([]byte{0xC2, 0xA2, 0xC2, 0xA2, 0x24}), 3},
 	}
 
-	run := func(ut unitTest, lanes uint16) {
+	run := func(ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: 0xFFFF}
+		var obsS, expS i64RegData
 
-		outputS := i64RegData{}
-
-		if err := ctx.ExecuteOpcode(opLengthStr, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &inputS, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		// first: check reference implementation
 		expChars := utf8.RuneCountInString(ut.data)
 		if expChars != ut.expChars {
 			t.Errorf("refImpl: length of %q; observed %v; expected: %v", ut.data, expChars, ut.expChars)
 		}
 
-		// second: check the bytecode implementation
-		expectedOutputS := i64RegData{}
 		for i := 0; i < bcLaneCount; i++ {
-			expectedOutputS.values[i] = int64(expChars)
+			expS.values[i] = int64(expChars)
 		}
-		verifyI64RegOutput(t, &outputS, &expectedOutputS)
+		verifyI64RegOutput(t, &obsS, &expS)
 	}
 
-	t.Run(name, func(t *testing.T) {
+	t.Run(prettyName(op), func(t *testing.T) {
 		for _, ut := range unitTests {
-			run(ut, 0xFFFF)
+			run(&ut, fullMask)
 		}
 	})
 }
@@ -3258,7 +3408,6 @@ func TestLengthStrUT(t *testing.T) {
 func TestLengthStrBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name string
 		// alphabet from which to generate data
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -3267,58 +3416,51 @@ func TestLengthStrBF(t *testing.T) {
 		dataMaxSize int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data) -> expChars
-		refImpl func(string) int
 	}
 	testSuites := []testSuite{
 		{
-			name:         "length string (bcLengthStr)",
+			op:           opLengthStr,
 			dataAlphabet: []rune{'a', 'b', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
-			op:           opLengthStr,
-			refImpl:      utf8.RuneCountInString,
 		},
 		{
-			name:         "length string (bcLengthStr) UTF8",
+			op:           opLengthStr,
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
-			op:           opLengthStr,
-			refImpl:      utf8.RuneCountInString,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
+
+		ref := refFunc(ts.op).(func(Data) LengthZ3)
 
 		for _, data16 := range dataSpace {
 			ctx.clear()
 
 			inputS := ctx.sRegFromStrings(data16)
-			inputK := kRegData{mask: uint16((1 << len(data16)) - 1)}
+			var obsS, expS i64RegData
 
-			outputS := i64RegData{}
-
-			if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &inputS, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
-			expectedOutputS := i64RegData{}
 			for i := 0; i < bcLaneCount; i++ {
-				if getBit(lanes, i) {
-					expectedOutputS.values[i] = int64(ts.refImpl(data16[i]))
+				if inputK.getBit(i) {
+					expS.values[i] = int64(ref(data16[i]))
 				}
 			}
 
-			verifyI64RegOutput(t, &outputS, &expectedOutputS)
+			verifyI64RegOutput(t, &obsS, &expS)
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -3327,22 +3469,11 @@ func TestLengthStrBF(t *testing.T) {
 func FuzzLengthStrFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "¢", "€", "𐍈", "ab", "a¢", "a€", "a𐍈", "abb", "ab¢", "ab€", "ab𐍈", "$¢€𐍈", "ab¢", "ab¢", "ab¢")
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data) -> nChars
-		refImpl func(string) int
-	}
-	testSuites := []testSuite{
-		{
-			name:    "length string (opLengthStr)",
-			op:      opLengthStr,
-			refImpl: utf8.RuneCountInString,
-		},
+	testSuites := []bcop{
+		opLengthStr,
 	}
 
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data) {
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
@@ -3353,120 +3484,102 @@ func FuzzLengthStrFT(f *testing.F) {
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: 0xFFFF}
-		outputS := i64RegData{}
+		var obsS, expS i64RegData
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &inputS, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := i64RegData{}
+		ref := refFunc(op).(func(Data) LengthZ3)
+
 		for i := 0; i < bcLaneCount; i++ {
-			expectedOutputS.values[i] = int64(ts.refImpl(data16[i]))
+			expS.values[i] = int64(ref(data16[i]))
 		}
 
-		verifyI64RegOutput(t, &outputS, &expectedOutputS)
+		verifyI64RegOutput(t, &obsS, &expS)
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data)
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data)
 		}
 	})
 }
 
-func referenceTrimLeft(s, cutset string) (uint32, uint32) {
-	result := strings.TrimLeft(s, cutset)
-	return uint32(len(s) - len(result)), uint32(len(result))
-}
-
-func referenceTrimRight(s, cutset string) (uint32, uint32) {
-	result := strings.TrimRight(s, cutset)
-	return uint32(0), uint32(len(result))
-}
-
-// TestTrimCharUT unit-tests for: opTrim4charLeft, opTrim4charRight
-func TestTrimCharUT(t *testing.T) {
+// TestTrimCharUT2 unit-tests for: opTrim4charLeft, opTrim4charRight
+func TestTrimCharUT2(t *testing.T) {
 	t.Parallel()
 	type unitTest struct {
-		data      [16]string // data at SI
-		cutset    string     // characters to trim
-		expResult [16]string // expected result in Z2:Z3
+		data      [16]Data // data at SI
+		cutset    Needle   // characters to trim
+		expResult [16]Data // expected result in Z2:Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, cutset) -> result
-		refImpl func(string, string) (uint32, uint32)
+		op        bcop
 	}
 	testSuites := []testSuite{
 		{
-			name: "trim char from left (opTrim4charLeft)",
+			op: opTrim4charLeft,
 			unitTests: []unitTest{
 				{
-					data:      [16]string{"ae", "eeeeef", "e", "b", "e¢€𐍈", "b", "c", "d", "a", "b", "c", "d", "a", "b", "c", "d"},
-					expResult: [16]string{"ae", "f", "", "b", "¢€𐍈", "b", "c", "", "a", "b", "c", "", "a", "b", "c", ""},
+					data:      [16]Data{"ae", "eeeeef", "e", "b", "e¢€𐍈", "b", "c", "d", "a", "b", "c", "d", "a", "b", "c", "d"},
+					expResult: [16]Data{"ae", "f", "", "b", "¢€𐍈", "b", "c", "", "a", "b", "c", "", "a", "b", "c", ""},
 					cutset:    "ed", //TODO cutset with non-ascii not supported
 				},
 				{
-					data:      [16]string{"0", "0", "0", "0", "0", "a", "0", "0", "0", "0", "0", "0", "", "0", "0", "0"},
-					expResult: [16]string{"0", "0", "0", "0", "0", "", "0", "0", "0", "0", "0", "0", "", "0", "0", "0"},
+					data:      [16]Data{"0", "0", "0", "0", "0", "a", "0", "0", "0", "0", "0", "0", "", "0", "0", "0"},
+					expResult: [16]Data{"0", "0", "0", "0", "0", "", "0", "0", "0", "0", "0", "0", "", "0", "0", "0"},
 					cutset:    "abc;",
 				},
 			},
-			op:      opTrim4charLeft,
-			refImpl: referenceTrimLeft,
 		},
 		{
-			name: "trim char from right (opTrim4charRight)",
+			op: opTrim4charRight,
 			unitTests: []unitTest{
 				{
-					data:      [16]string{"ae", "feeeee", "e", "b", "¢€𐍈e", "b", "c", "d", "a", "b", "c", "d", "a", "b", "c", "d"},
-					expResult: [16]string{"a", "f", "", "b", "¢€𐍈", "b", "c", "", "a", "b", "c", "", "a", "b", "c", ""},
+					data:      [16]Data{"ae", "feeeee", "e", "b", "¢€𐍈e", "b", "c", "d", "a", "b", "c", "d", "a", "b", "c", "d"},
+					expResult: [16]Data{"a", "f", "", "b", "¢€𐍈", "b", "c", "", "a", "b", "c", "", "a", "b", "c", ""},
 					cutset:    "ed", //TODO cutset with non-ascii not supported
 				},
 			},
-			op:      opTrim4charRight,
-			refImpl: referenceTrimRight,
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		ctx.setDict(fill4(ut.cutset))
+		ctx.setDict(fill4(string(ut.cutset)))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(ut.data[:])
-		inputK := kRegData{mask: lanes}
-		outputS := sRegData{}
+		var obsS, expS sRegData
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
+		ref := refFunc(ts.op).(func(Data, Needle) (OffsetZ2, LengthZ3))
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				expectedOffset, expectedLength := ts.refImpl(ut.data[i], ut.cutset)
-				expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
-				expectedOutputS.sizes[i] = expectedLength
+			if inputK.getBit(i) {
+				expOffset, expLength := ref(ut.data[i], ut.cutset)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &inputK)
+		if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -3476,7 +3589,6 @@ func TestTrimCharUT(t *testing.T) {
 func TestTrimCharBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet, cutsetAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -3485,94 +3597,86 @@ func TestTrimCharBF(t *testing.T) {
 		dataMaxSize, cutsetMaxSize int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data, cutset) -> string
-		refImpl func(string, string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
-			name:           "trim char from left (opTrim4charLeft)",
+			op:             opTrim4charLeft,
 			dataAlphabet:   []rune{'a', 'b', '\n'},
 			dataLenSpace:   []int{1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'},
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
-			op:             opTrim4charLeft,
-			refImpl:        referenceTrimLeft,
 		},
 		{
-			name:           "trim char from left (opTrim4charLeft) UTF8",
+			op:             opTrim4charLeft,
 			dataAlphabet:   []rune{'a', '¢', '€', '𐍈', '\n', 0},
 			dataLenSpace:   []int{1, 2, 3, 4},
 			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'}, //TODO cutset can only be ASCII
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
-			op:             opTrim4charLeft,
-			refImpl:        referenceTrimLeft,
 		},
 		{
-			name:           "trim char from right (opTrim4charRight)",
+			op:             opTrim4charRight,
 			dataAlphabet:   []rune{'a', 'b', '\n'},
 			dataLenSpace:   []int{1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'},
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
-			op:             opTrim4charRight,
-			refImpl:        referenceTrimRight,
 		},
 		{
-			name:           "trim char from right (opTrim4charRight) UTF8",
+			op:             opTrim4charRight,
 			dataAlphabet:   []rune{'a', '¢', '€', '𐍈', '\n', 0},
 			dataLenSpace:   []int{1, 2, 3, 4},
 			dataMaxSize:    exhaustive,
 			cutsetAlphabet: []rune{'a', 'b'}, //TODO cutset can only be ASCII
 			cutsetLenSpace: []int{1, 2, 3, 4},
 			cutsetMaxSize:  exhaustive,
-			op:             opTrim4charRight,
-			refImpl:        referenceTrimRight,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, cutsetSpace []string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data, cutsetSpace []Needle) {
 		var ctx bctestContext
 		defer ctx.Free()
+
+		ref := refFunc(ts.op).(func(Data, Needle) (OffsetZ2, LengthZ3))
 
 		for _, data16 := range dataSpace {
 			for _, cutset := range cutsetSpace {
 				ctx.clear()
 
-				ctx.setDict(fill4(cutset))
+				ctx.setDict(fill4(string(cutset)))
 				dictOffset := uint16(0)
 
 				inputS := ctx.sRegFromStrings(data16)
-				inputK := kRegData{mask: lanes}
-				outputS := sRegData{}
+				var obsS, expS sRegData
 
-				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &inputS, dictOffset, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputS := sRegData{}
 				for i := 0; i < bcLaneCount; i++ {
-					if getBit(lanes, i) {
-						expectedOffset, expectedLength := ts.refImpl(data16[i], cutset)
-						expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
-						expectedOutputS.sizes[i] = expectedLength
+					if inputK.getBit(i) {
+						expOffset, expLength := ref(data16[i], cutset)
+						expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+						expS.sizes[i] = uint32(expLength)
 					}
 				}
 
-				verifySRegOutputP(t, &outputS, &expectedOutputS, &inputK)
+				if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+					t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), prettyDataSlice(data16), msg)
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			cutsetSpace := flatten(createSpace(ts.cutsetLenSpace, ts.cutsetAlphabet, ts.cutsetMaxSize))
-			run(&ts, 0xFFFF, dataSpace, cutsetSpace)
+			run(&ts, fullMask, dataSpace, cutsetSpace)
 		})
 	}
 }
@@ -3582,27 +3686,12 @@ func FuzzTrimCharFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "ab", "ac", "da", "ea", "fa", "ag", "ha", "ia", "ja", "ka", "a", "a¢€𐍈", "a", "a", "a", byte('a'), byte('b'), byte('c'), byte(';'))
 	f.Add(uint16(0xFFFF), "0", "0", "0", "0", "0", "a", "0", "0", "0", "0", "0", "0", "", "0", "0", "0", byte('a'), byte('b'), byte('c'), byte(';'))
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, cutset) -> string
-		refImpl func(string, string) (uint32, uint32)
-	}
-	testSuites := []testSuite{
-		{
-			name:    "trim char from left (opTrim4charLeft)",
-			op:      opTrim4charLeft,
-			refImpl: referenceTrimLeft,
-		},
-		{
-			name:    "trim char from right (opTrim4charRight)",
-			op:      opTrim4charRight,
-			refImpl: referenceTrimRight,
-		},
+	testSuites := []bcop{
+		opTrim4charLeft,
+		opTrim4charRight,
 	}
 
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string, cutset string) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, cutset Needle) {
 		for _, c := range cutset {
 			if c >= utf8.RuneSelf {
 				return //TODO cutset does not yet support non-ASCII
@@ -3618,52 +3707,38 @@ func FuzzTrimCharFT(f *testing.F) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		ctx.setDict(cutset)
+		ctx.setDict(string(cutset))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
-		outputS := sRegData{}
+		var obsS, expS sRegData
 
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
+		ref := refFunc(op).(func(Data, Needle) (OffsetZ2, LengthZ3))
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				expectedOffset, expectedLength := ts.refImpl(data16[i], cutset)
-				expectedOutputS.offsets[i] = expectedOffset + inputS.offsets[i]
-				expectedOutputS.sizes[i] = expectedLength
+			if inputK.getBit(i) {
+				expOffset, expLength := ref(data16[i], cutset)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &inputK)
+		if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, char1, char2, char3, char4 byte) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		cutset := string([]byte{char1, char2, char3, char4})
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data, cutset)
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		cutset := Needle([]byte{char1, char2, char3, char4})
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data, cutset)
 		}
 	})
-}
-
-func trimLeftReference(data string) (uint32, uint32) {
-	// TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
-	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
-	result := strings.TrimLeft(data, whiteSpace)
-
-	return uint32(len(data) - len(result)), uint32(len(result))
-}
-
-func trimRightReference(data string) (uint32, uint32) {
-	// TODO: currently only ASCII whitespace chars are supported, not U+0085 (NEL), U+00A0 (NBSP)
-	whiteSpace := string([]byte{'\t', '\n', '\v', '\f', '\r', ' '})
-	result := strings.TrimRight(data, whiteSpace)
-
-	return uint32(0), uint32(len(result))
 }
 
 // TestTrimWhiteSpaceUT unit-tests for: opTrimWsLeft, opTrimWsRight
@@ -3671,22 +3746,16 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 	t.Parallel()
 
 	type unitTest struct {
-		data      string // data at SI
+		data      Data   // data at SI
 		expResult string // expected result Z2:Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data) -> result
-		refImpl func(string) (uint32, uint32)
+		op        bcop
 	}
 	testSuites := []testSuite{
 		{
-			name: "trim white-space from left (opTrimWsLeft)",
+			op: opTrimWsLeft,
 			unitTests: []unitTest{
 				{"a", "a"},
 				{" a", "a"},
@@ -3696,11 +3765,9 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 				{"     a", "a"},
 				{" €", "€"},
 			},
-			op:      opTrimWsLeft,
-			refImpl: trimLeftReference,
 		},
 		{
-			name: "trim white-space from right (opTrimWsRight)",
+			op: opTrimWsRight,
 			unitTests: []unitTest{
 				{"a", "a"},
 				{"a ", "a"},
@@ -3710,38 +3777,38 @@ func TestTrimWhiteSpaceUT(t *testing.T) {
 				{"a     ", "a"},
 				{"€ ", "€"},
 			},
-			op:      opTrimWsRight,
-			refImpl: trimRightReference,
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
 
-		outputS := sRegData{}
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &inputS, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOffset, expectedSize := ts.refImpl(ut.data)
-		expectedOutputS := sRegData{}
+		ref := refFunc(ts.op).(func(Data) (OffsetZ2, LengthZ3))
+		expOffset, expLength := ref(ut.data)
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(lanes, i) {
-				expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
-				expectedOutputS.sizes[i] = expectedSize
+			if inputK.getBit(i) {
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
-		verifySRegOutput(t, &outputS, &expectedOutputS)
+		if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -3752,7 +3819,6 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -3761,58 +3827,54 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 		dataMaxSize int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data) -> string
-		refImpl func(string) (uint32, uint32)
 	}
 	testSuites := []testSuite{
 		{
-			name:         "trim whitespace from left (opTrimWsLeft)",
+			op:           opTrimWsLeft,
 			dataAlphabet: []rune{'a', '¢', '\t', '\n', '\v', '\f', '\r', ' '},
 			dataLenSpace: []int{1, 2, 3, 4, 5},
 			dataMaxSize:  exhaustive,
-			op:           opTrimWsLeft,
-			refImpl:      trimLeftReference,
 		},
 		{
-			name:         "trim whitespace from right (opTrimWsRight)",
+			op:           opTrimWsRight,
 			dataAlphabet: []rune{'a', '¢', '\t', '\n', '\v', '\f', '\r', ' '},
 			dataLenSpace: []int{1, 2, 3, 4, 5},
 			dataMaxSize:  exhaustive,
-			op:           opTrimWsRight,
-			refImpl:      trimRightReference,
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
+
+		ref := refFunc(ts.op).(func(Data) (OffsetZ2, LengthZ3))
 
 		for _, data16 := range dataSpace {
 			ctx.clear()
 
 			inputS := ctx.sRegFromStrings(data16)
-			inputK := kRegData{mask: lanes}
+			var obsS, expS sRegData
 
-			outputS := sRegData{}
-			if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &inputS, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
-			expectedOutputS := sRegData{}
 			for i := 0; i < bcLaneCount; i++ {
-				if getBit(lanes, i) {
-					expectedOffset, expectedSize := ts.refImpl(data16[i])
-					expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
-					expectedOutputS.sizes[i] = expectedSize
+				if inputK.getBit(i) {
+					expOffset, expLength := ref(data16[i])
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
-			verifySRegOutput(t, &outputS, &expectedOutputS)
+			if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+				t.Errorf("%v\ndata=%v\n%v", prettyName(ts.op), prettyDataSlice(data16), msg)
+			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
-			run(&ts, 0xFFFF, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+		t.Run(prettyName(ts.op), func(t *testing.T) {
+			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
 		})
 	}
 }
@@ -3821,126 +3883,109 @@ func TestTrimWhiteSpaceBF(t *testing.T) {
 func FuzzTrimWhiteSpaceFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "¢", "€", " 𐍈", "ab", "a¢ ", "a€", "a𐍈", "abb", " ab¢", "ab€", "ab𐍈\t", "\v$¢€𐍈", "\nab¢", "\fab¢", "\rab¢ ")
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data) -> string
-		refImpl func(string) (uint32, uint32)
-	}
-	testSuites := []testSuite{
-		{
-			name:    "trim char from left (opTrim4charLeft)",
-			op:      opTrimWsLeft,
-			refImpl: trimLeftReference,
-		},
-		{
-			name:    "trim char from left (opTrim4charLeft)",
-			op:      opTrimWsRight,
-			refImpl: trimRightReference,
-		},
+	testSuites := []bcop{
+		opTrimWsLeft,
+		opTrimWsRight,
 	}
 
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]string) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data) {
 		var ctx bctestContext
 		defer ctx.Free()
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
 
-		outputS := sRegData{}
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &inputS, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &inputS, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
+		ref := refFunc(op).(func(Data) (OffsetZ2, LengthZ3))
+
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
 				return // assume all input data will be valid codepoints
 			}
-			if getBit(lanes, i) {
-				expectedOffset, expectedSize := ts.refImpl(data16[i])
-				expectedOutputS.offsets[i] = inputS.offsets[i] + expectedOffset
-				expectedOutputS.sizes[i] = expectedSize
+			if inputK.getBit(i) {
+				expOffset, expLength := ref(data16[i])
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
-		verifySRegOutput(t, &outputS, &expectedOutputS)
+		if nok, msg := reportIssueS(&inputK, &obsS, &expS); nok {
+			t.Errorf("%v\ndata=%v\n%v", prettyName(op), prettyData(data16), msg)
+		}
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
-		data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data)
+		data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data)
 		}
 	})
 }
 
-func refContainsPrefix(s, prefix string, caseSensitive, ASCIIOnly bool) (lane bool, offset, length int) {
+func refContainsPrefix(s Data, prefix Needle, caseSensitive, ASCIIOnly bool) (lane bool, offset OffsetZ2, length LengthZ3) {
+	dataLen := LengthZ3(len(s))
 	if prefix == "" { //NOTE: empty needles are dead lanes
-		return false, 0, len(s)
+		return false, 0, dataLen
 	}
 	hasPrefix := false
 	if caseSensitive {
-		hasPrefix = strings.HasPrefix(s, prefix)
+		hasPrefix = strings.HasPrefix(string(s), string(prefix))
 	} else if ASCIIOnly {
-		hasPrefix = strings.HasPrefix(stringext.NormalizeStringASCIIOnlyString(s), stringext.NormalizeStringASCIIOnlyString(prefix))
+		hasPrefix = strings.HasPrefix(stringext.NormalizeStringASCIIOnlyString(string(s)), stringext.NormalizeStringASCIIOnlyString(string(prefix)))
 	} else {
-		hasPrefix = strings.HasPrefix(stringext.NormalizeString(s), stringext.NormalizeString(prefix))
+		hasPrefix = strings.HasPrefix(stringext.NormalizeString(string(s)), stringext.NormalizeString(string(prefix)))
 	}
 	if hasPrefix {
-		nRunesPrefix := utf8.RuneCountInString(prefix)
+		nRunesPrefix := utf8.RuneCountInString(string(prefix))
 		nBytesPrefix2 := len(string([]rune(s)[:nRunesPrefix]))
-		return true, nBytesPrefix2, len(s) - nBytesPrefix2
+		return true, OffsetZ2(nBytesPrefix2), dataLen - LengthZ3(nBytesPrefix2)
 	}
-	return false, 0, len(s)
+	return false, 0, dataLen
 }
 
-func refContainsSuffix(s, suffix string, caseSensitive, ASCIIOnly bool) (lane bool, offset, length int) {
+func refContainsSuffix(s Data, suffix Needle, caseSensitive, ASCIIOnly bool) (lane bool, offset OffsetZ2, length LengthZ3) {
+	dataLen := LengthZ3(len(s))
 	if suffix == "" { //NOTE: empty needles are dead lanes
-		return false, 0, len(s)
+		return false, 0, dataLen
 	}
 	hasSuffix := false
 	if caseSensitive {
-		hasSuffix = strings.HasSuffix(s, suffix)
+		hasSuffix = strings.HasSuffix(s, string(suffix))
 	} else if ASCIIOnly {
-		hasSuffix = strings.HasSuffix(stringext.NormalizeStringASCIIOnlyString(s), stringext.NormalizeStringASCIIOnlyString(suffix))
+		hasSuffix = strings.HasSuffix(stringext.NormalizeStringASCIIOnlyString(s), stringext.NormalizeStringASCIIOnlyString(string(suffix)))
 	} else {
-		hasSuffix = strings.HasSuffix(stringext.NormalizeString(s), stringext.NormalizeString(suffix))
+		hasSuffix = strings.HasSuffix(stringext.NormalizeString(s), stringext.NormalizeString(string(suffix)))
 	}
 	if hasSuffix {
-		nRunesSuffix := utf8.RuneCountInString(suffix)
+		nRunesSuffix := utf8.RuneCountInString(string(suffix))
 		sRunes := []rune(s)
 		nBytesSuffix2 := len(string(sRunes[(len(sRunes) - nRunesSuffix):]))
-		return true, 0, len(s) - nBytesSuffix2
+		return true, 0, dataLen - LengthZ3(nBytesSuffix2)
 	}
-	return false, 0, len(s)
+	return false, 0, dataLen
 }
 
-// TestContainsPrefixSuffixUT unit-tests for: opContainsPrefixCs, opContainsPrefixCi, opContainsPrefixUTF8Ci,
+// TestContainsPrefixSuffixUT1 unit-tests for: opContainsPrefixCs, opContainsPrefixCi, opContainsPrefixUTF8Ci,
 // opContainsSuffixCs, opContainsSuffixCi, opContainsSuffixUTF8Ci
-func TestContainsPrefixSuffixUT(t *testing.T) {
+func TestContainsPrefixSuffixUT1(t *testing.T) {
 	t.Parallel()
 	type unitTest struct {
-		data      string // data at SI
-		needle    string // prefix/suffix to test
-		expLane   bool   // expected K1
-		expOffset int    // expected Z2
-		expLength int    // expected Z3
+		data      Data     // data at SI
+		needle    Needle   // prefix/suffix to test
+		expLane   bool     // expected K1
+		expOffset OffsetZ2 // expected Z2
+		expLength LengthZ3 // expected Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, needle, caseSensitive) -> (lane, offset, length)
-		refImpl func(string, string) (bool, int, int)
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name: "contains prefix case-sensitive (opContainsPrefixCs)",
+			op: opContainsPrefixCs,
 			unitTests: []unitTest{
 				{"s", "s", true, 1, 0},
 				{"sb", "s", true, 1, 1},
@@ -3950,11 +3995,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"sssss", "sssss", true, 5, 0},
 				{"ss", "b", false, 0, 2},
 			},
-			op:      opContainsPrefixCs,
-			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
 		},
 		{
-			name: "contains prefix case-insensitive (opContainsPrefixCi)",
+			op: opContainsPrefixCi,
 			unitTests: []unitTest{
 				{"Sb", "s", true, 1, 1},
 				{"sb", "S", true, 1, 1},
@@ -3966,11 +4009,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"sSsSs", "sssss", true, 5, 0},
 				{"ss", "b", false, 0, 2},
 			},
-			op:      opContainsPrefixCi,
-			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
 		},
 		{
-			name: "contains prefix case-insensitive (opContainsPrefixUTF8Ci)",
+			op: opContainsPrefixUTF8Ci,
 			unitTests: []unitTest{
 				{"sſsSa", "ssss", true, 5, 1},
 				{"ssss", "ssss", true, 4, 0},
@@ -3989,11 +4030,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"ss", "b", false, 0, 2},
 				{"a", "a\x00\x00\x00", false, 0, 1},
 			},
-			op:      opContainsPrefixUTF8Ci,
-			refImpl: func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
 		},
 		{
-			name: "contains suffix case-sensitive (opContainsSuffixCs)",
+			op: opContainsSuffixCs,
 			unitTests: []unitTest{
 				{"ab", "b", true, 0, 1},
 				{"a", "a", true, 0, 0},
@@ -4004,11 +4043,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"aaaaa", "aaaaa", true, 0, 0},
 				{"aa", "b", false, 0, 2},
 			},
-			op:      opContainsSuffixCs,
-			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
 		},
 		{
-			name: "contains suffix case-insensitive (opContainsSuffixCi)",
+			op: opContainsSuffixCi,
 			unitTests: []unitTest{
 				{"aB", "b", true, 0, 1},
 				{"ab", "B", true, 0, 1},
@@ -4021,11 +4058,9 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"aAaAa", "aaaaa", true, 0, 0},
 				{"aa", "b", false, 0, 2},
 			},
-			op:      opContainsSuffixCi,
-			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
 		},
 		{
-			name: "contains suffix case-insensitive (opContainsSuffixUTF8Ci)",
+			op: opContainsSuffixUTF8Ci,
 			unitTests: []unitTest{
 				{"0", "0\x00\x00\x00", false, 0, 1},
 				{"sss", "ſss", true, 0, 0},
@@ -4050,12 +4085,10 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 				{"a", "a\x00\x00\x00", false, 0, 1},
 				{"0", "\xff\xff\x00\x00\x00\x00aaaa", false, 0, 0}, // read beyond data length test
 			},
-			op:      opContainsSuffixUTF8Ci,
-			refImpl: func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
 		},
 	}
 
-	run := func(ts *testSuite, ut *unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -4066,35 +4099,38 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
+		expLane, expOffset, expLength := ref(ut.data, ut.needle)
+
+		if nok, msg := reportIssueKSRef(expLane, ut.expLane, expOffset, ut.expOffset, expLength, ut.expLength); nok {
+			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+		}
 
 		for i := 0; i < bcLaneCount; i++ {
-			expectedResult, expectedOffset, expectedLength := ts.refImpl(ut.data, ut.needle)
-			if getBit(lanes, i) && expectedResult {
-				expectedOutputK.mask |= uint16(1 << i)
-				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-				expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+			return
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(&ts, &ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -4105,7 +4141,6 @@ func TestContainsPrefixSuffixUT(t *testing.T) {
 func TestContainsPrefixSuffixBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name string
 		// alphabet from which to generate needles and patterns
 		dataAlphabet, needleAlphabet []rune
 		// space of lengths of the words made of alphabet
@@ -4114,101 +4149,83 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		dataMaxSize, needleMaxSize int
 		// bytecode to run
 		op bcop
-		// portable reference implementation: f(data, needle) -> lane, offset, length
-		refImpl func(string, string) (bool, int, int)
 	}
 	testSuites := []testSuite{
 		{
-			name:           "contains prefix case-sensitive (opContainsPrefixCs)",
+			op:             opContainsPrefixCs,
 			dataAlphabet:   []rune{'a', 'b', '\n'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
-			op:             opContainsPrefixCs,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
 		},
 		{
-			name:           "contains prefix case-insensitive (opContainsPrefixCi)",
+			op:             opContainsPrefixCi,
 			dataAlphabet:   []rune{'a', 's', 'S'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 's', 'S'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
-			op:             opContainsPrefixCi,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
 		},
 		{
-			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
+			op:             opContainsPrefixUTF8Ci,
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
-			op:             opContainsPrefixUTF8Ci,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
 		},
 		{
-			name:           "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
+			op:             opContainsPrefixUTF8Ci,
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			dataMaxSize:    1000,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			needleMaxSize:  500,
-			op:             opContainsPrefixUTF8Ci,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
 		},
 		{
-			name:           "contains suffix case-sensitive (opContainsSuffixCs)",
+			op:             opContainsSuffixCs,
 			dataAlphabet:   []rune{'a', 'b', '\n', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			needleMaxSize:  exhaustive,
-			op:             opContainsSuffixCs,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
 		},
 		{
-			name:           "contains suffix case-insensitive (opContainsSuffixCi)",
+			op:             opContainsSuffixCi,
 			dataAlphabet:   []rune{'s', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'s', 'S'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6},
 			needleMaxSize:  exhaustive,
-			op:             opContainsSuffixCi,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
 		},
 		{
-			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
+			op:             opContainsSuffixUTF8Ci,
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5},
 			needleMaxSize:  exhaustive,
-			op:             opContainsSuffixUTF8Ci,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
 		},
 		{
-			name:           "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
+			op:             opContainsSuffixUTF8Ci,
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			dataMaxSize:    500,
 			needleAlphabet: []rune{'s', 'S', 'ſ'},
 			needleLenSpace: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19},
 			needleMaxSize:  1000,
-			op:             opContainsSuffixUTF8Ci,
-			refImpl:        func(data, needle string) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
 		},
 	}
 
-	run := func(ts *testSuite, lanes uint16, dataSpace [][]string, needleSpace []string) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data, needleSpace []Needle) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -4217,6 +4234,8 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 		for i, needle := range needleSpace { // precompute encoded needles for speed
 			encNeedles[i] = encodeNeedleOp(needle, ts.op)
 		}
+
+		ref := refFunc(ts.op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
 
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
@@ -4229,38 +4248,35 @@ func TestContainsPrefixSuffixBF(t *testing.T) {
 				dictOffset := uint16(0)
 
 				inputS := ctx.sRegFromStrings(data16)
-				inputK := kRegData{mask: lanes}
+				var obsS, expS sRegData
+				var obsK, expK kRegData
 
-				outputS := sRegData{}
-				outputK := kRegData{}
-
-				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputS := sRegData{}
-				expectedOutputK := kRegData{}
-
 				for i := 0; i < bcLaneCount; i++ {
-					expectedResult, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
-					if getBit(lanes, i) && expectedResult {
-						expectedOutputK.mask |= uint16(1 << i)
-						expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-						expectedOutputS.sizes[i] = uint32(expectedLength)
+					expLane, expOffset, expLength := ref(data16[i], needle)
+					if inputK.getBit(i) && expLane {
+						expK.setBit(i)
+						expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+						expS.sizes[i] = uint32(expLength)
 					}
 				}
 
-				verifyKRegOutput(t, &outputK, &expectedOutputK)
-				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+				if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+					t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), needle, prettyDataSlice(data16), msg)
+					return
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			needleSpace := flatten(createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize))
-			run(&ts, 0xFFFF, dataSpace, needleSpace)
+			run(&ts, fullMask, dataSpace, needleSpace)
 		})
 	}
 }
@@ -4272,54 +4288,21 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "𐍈")
 	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м")
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, needle) -> lane, offset, length
-		refImpl func(string, string) (bool, int, int)
-	}
-	testSuites := []testSuite{
-		{
-			name:    "contains prefix case-sensitive (opContainsPrefixCs)",
-			op:      opContainsPrefixCs,
-			refImpl: func(data Data, needle Needle) (bool, int, int) { return refContainsPrefix(data, needle, true, true) },
-		},
-		{
-			name:    "contains prefix case-insensitive (opContainsPrefixCi)",
-			op:      opContainsPrefixCi,
-			refImpl: func(data Data, needle Needle) (bool, int, int) { return refContainsPrefix(data, needle, false, true) },
-		},
-		{
-			name:    "contains prefix case-insensitive UTF8 (opContainsPrefixUTF8Ci)",
-			op:      opContainsPrefixUTF8Ci,
-			refImpl: func(data Data, needle Needle) (bool, int, int) { return refContainsPrefix(data, needle, false, false) },
-		},
-		{
-			name:    "contains suffix case-sensitive (opContainsSuffixCs)",
-			op:      opContainsSuffixCs,
-			refImpl: func(data Data, needle Needle) (bool, int, int) { return refContainsSuffix(data, needle, true, true) },
-		},
-		{
-			name:    "contains suffix case-insensitive (opContainsSuffixCi)",
-			op:      opContainsSuffixCi,
-			refImpl: func(data Data, needle Needle) (bool, int, int) { return refContainsSuffix(data, needle, false, true) },
-		},
-		{
-			name:    "contains suffix case-insensitive UTF8 (opContainsSuffixUTF8Ci)",
-			op:      opContainsSuffixUTF8Ci,
-			refImpl: func(data Data, needle Needle) (bool, int, int) { return refContainsSuffix(data, needle, false, false) },
-		},
+	testSuites := []bcop{
+		opContainsPrefixCs,
+		opContainsPrefixCi,
+		opContainsPrefixUTF8Ci,
+		opContainsSuffixCs,
+		opContainsSuffixCi,
+		opContainsSuffixUTF8Ci,
 	}
 
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle) {
-		// empty needle is invalid
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, needle Needle) {
 		if needle == "" {
-			return
+			return // empty needle is invalid
 		}
-
 		// only UTF8 code is supposed to handle UTF8 needle data16
-		if (ts.op != opContainsPrefixUTF8Ci) && (ts.op != opContainsSuffixUTF8Ci) {
+		if (op != opContainsPrefixUTF8Ci) && (op != opContainsSuffixUTF8Ci) {
 			for _, c := range needle {
 				if c >= utf8.RuneSelf {
 					return
@@ -4340,39 +4323,37 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 		// TODO [UNSAFE]: prepend three bytes to data such that we can read backwards 4 bytes at a time
 		ctx.appendData(string([]byte{0, 0, 0, 0}))
 
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		ctx.setDict(encodeNeedleOp(needle, op))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			expectedResult, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
-			if getBit(lanes, i) && expectedResult {
-				expectedOutputK.mask |= uint16(1 << i)
-				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-				expectedOutputS.sizes[i] = uint32(expectedLength)
+			expLane, expOffset, expLength := ref(data16[i], needle)
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(op), needle, prettyData(data16), msg)
+		}
 	}
 
-	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, cutset string) {
-		for _, ts := range testSuites {
-			data := [16]string{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-			run(t, &ts, lanes, data, cutset)
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, needle string) {
+		for _, op := range testSuites {
+			data := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+			run(t, op, kRegData{mask: lanes}, data, Needle(needle))
 		}
 	})
 }
@@ -4381,27 +4362,20 @@ func FuzzContainsPrefixSuffixFT(f *testing.F) {
 func TestContainsSubstrUT1(t *testing.T) {
 	t.Parallel()
 	type unitTest struct {
-		data      Data   // data at SI
-		needle    Needle // substr to test
-		expLane   bool   // expected K1
-		expOffset int    // expected Z2
-		expLength int    // expected Z3
+		data      Data     // data at SI
+		needle    Needle   // substr to test
+		expLane   bool     // expected K1
+		expOffset OffsetZ2 // expected Z2
+		expLength LengthZ3 // expected Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, needle, caseSensitive) -> (lane, offset, length)
-		refImpl func(Data, Needle) (bool, int, int)
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name: "contains substr case-sensitive (opContainsSubstrCs)",
-			op:   opContainsSubstrCs,
+			op: opContainsSubstrCs,
 			unitTests: []unitTest{
 				{"Ω", "Ω", true, 3, 0},
 				{"因", "因", true, 3, 0}, // chinese with no equal-fold alternative
@@ -4411,11 +4385,9 @@ func TestContainsSubstrUT1(t *testing.T) {
 				{"sssss", "sssss", true, 5, 0},
 				{"ss", "b", false, 0, 2},
 			},
-			refImpl: containsSubstrRefCS,
 		},
 		{
-			name: "contains substr case-insensitive (opContainsSubstrCi)",
-			op:   opContainsSubstrCi,
+			op: opContainsSubstrCi,
 			unitTests: []unitTest{
 				{"s", "s", true, 1, 0},
 				{"sb", "s", true, 1, 1},
@@ -4423,11 +4395,9 @@ func TestContainsSubstrUT1(t *testing.T) {
 				{"ssSss", "sssss", true, 5, 0},
 				{"sS", "b", false, 0, 2},
 			},
-			refImpl: containsSubstrRefCI,
 		},
 		{
-			name: "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)",
-			op:   opContainsSubstrUTF8Ci,
+			op: opContainsSubstrUTF8Ci,
 			unitTests: []unitTest{
 				{"s", "s", true, 1, 0},
 				{"sb", "s", true, 1, 1},
@@ -4435,11 +4405,10 @@ func TestContainsSubstrUT1(t *testing.T) {
 				{"ssSss", "sssss", true, 5, 0},
 				{"sS", "b", false, 0, 2},
 			},
-			refImpl: containsSubstrRefUTF8CI,
 		},
 	}
 
-	run := func(ts *testSuite, ut *unitTest) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -4447,35 +4416,37 @@ func TestContainsSubstrUT1(t *testing.T) {
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: 0xFFFF}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
+		expLane, expOffset, expLength := ref(ut.data, ut.needle)
 
-		active, expectedOffset, expectedLength := ts.refImpl(ut.data, ut.needle)
+		if nok, msg := reportIssueKSRef(expLane, ut.expLane, expOffset, ut.expOffset, expLength, ut.expLength); nok {
+			t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+		}
+
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(inputK.mask, i) && active {
-				expectedOutputK.mask |= uint16(1 << i)
-				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-				expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(&ts, &ut)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -4493,17 +4464,13 @@ func TestContainsSubstrUT2(t *testing.T) {
 		expLengths [16]LengthZ3 // expected length Z3
 	}
 	type testSuite struct {
-		name      string                                                    // name to describe this test-suite
-		unitTests []unitTest                                                // the actual tests to run
-		refImpl   func(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) // portable reference implementation: f(data, needle) -> match, offset, length
-		op        bcop                                                      // bytecode implementation of comparison
+		unitTests []unitTest
+		op        bcop
 	}
 
 	testSuites := []testSuite{
 		{
-			name:    "contains substr case-sensitive (opContainsSubstrCs)",
-			op:      opContainsSubstrCs,
-			refImpl: containsSubstrRefCS,
+			op: opContainsSubstrCs,
 			unitTests: []unitTest{
 				{
 					data16:     [16]Data{"0100", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
@@ -4579,9 +4546,7 @@ func TestContainsSubstrUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "contains substr case-insensitive (opContainsSubstrCi)",
-			op:      opContainsSubstrCi,
-			refImpl: containsSubstrRefCI,
+			op: opContainsSubstrCi,
 			unitTests: []unitTest{
 				{
 					data16:     [16]Data{"aAaA", "ab", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
@@ -4593,9 +4558,7 @@ func TestContainsSubstrUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)",
-			op:      opContainsSubstrUTF8Ci,
-			refImpl: containsSubstrRefUTF8CI,
+			op: opContainsSubstrUTF8Ci,
 			unitTests: []unitTest{
 				{
 					data16:     [16]Data{"asa", "aaa", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
@@ -4664,45 +4627,48 @@ func TestContainsSubstrUT2(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		enc := encodeNeedleOp(ut.needle, ts.op)
-
-		ctx.setDict(enc)
+		ctx.setDict(encodeNeedleOp(ut.needle, ts.op))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(ut.data16[:])
-		inputK := kRegData{mask: 0xFFFF}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			active, expectedOffset, expectedLength := ts.refImpl(ut.data16[i], ut.needle)
-			if getBit(inputK.mask, i) && active {
-				expectedOutputK.mask |= uint16(1 << i)
-				expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-				expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) {
+				expLane, expOffset, expLength := ref(ut.data16[i], ut.needle)
+				if nok, msg := reportIssueKSRef(expLane, getBit(ut.expLanes, i), expOffset, ut.expOffsets[i], expLength, ut.expLengths[i]); nok {
+					t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, ut.data16, msg)
+					return
+				}
+				if expLane {
+					expK.setBit(i)
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
+				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.needle, prettyData(ut.data16), msg)
+			return
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -4713,115 +4679,101 @@ func TestContainsSubstrBF(t *testing.T) {
 	t.Parallel()
 
 	type testSuite struct {
-		name                         string                              // name of the test suite
-		dataAlphabet, needleAlphabet []rune                              // alphabet from which to generate needles and patterns
-		dataLenSpace, needleLenSpace []int                               // space of lengths of the words made of alphabet
-		dataMaxSize, needleMaxSize   int                                 // maximum number of elements in dataSpace
-		op                           bcop                                // bytecode to run
-		refImpl                      func(Data, Needle) (bool, int, int) // portable reference implementation: f(data, needle) -> lane, offset, length
+		dataAlphabet, needleAlphabet []rune // alphabet from which to generate needles and patterns
+		dataLenSpace, needleLenSpace []int  // space of lengths of the words made of alphabet
+		dataMaxSize, needleMaxSize   int    // maximum number of elements in dataSpace
+		op                           bcop   // bytecode to run
 	}
 
 	testSuites := []testSuite{
 		{
-			name:           "contains substr case-sensitive (opContainsSubstrCs)",
+			op:             opContainsSubstrCs,
 			dataAlphabet:   []rune{'a', 'b', 0x0, 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 'b'},
 			needleLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty needle is handled in go
 			needleMaxSize:  exhaustive,
-			op:             opContainsSubstrCs,
-			refImpl:        containsSubstrRefCS,
 		},
 		{
-			name:           "contains substr case-sensitive (opContainsSubstrCs)",
+			op:             opContainsSubstrCs,
 			dataAlphabet:   []rune{'a', 'b'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a'},
 			needleLenSpace: []int{1, 4, 5}, // NOTE empty needle is handled in go
 			needleMaxSize:  exhaustive,
-			op:             opContainsSubstrCs,
-			refImpl:        containsSubstrRefCS,
 		},
 		{
-			name:           "contains substr case-insensitive (opContainsSubstrCi)",
+			op:             opContainsSubstrCi,
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 's'},
 			needleLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty needle is handled in go
 			needleMaxSize:  exhaustive,
-			op:             opContainsSubstrCi,
-			refImpl:        containsSubstrRefCI,
 		},
 		{
-			name:           "contains substr case-insensitive unicode (opContainsSubstrUTF8Ci)",
+			op:             opContainsSubstrUTF8Ci,
 			dataAlphabet:   []rune{'a', 's', 'S', 'ſ'},
 			dataLenSpace:   []int{0, 1, 2, 3, 4, 5},
 			dataMaxSize:    exhaustive,
 			needleAlphabet: []rune{'a', 's', 'S', 'ſ'},
 			needleLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty needle is handled in go
 			needleMaxSize:  exhaustive,
-			op:             opContainsSubstrUTF8Ci,
-			refImpl:        containsSubstrRefUTF8CI,
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]Data, needleSpace []Needle) {
-		lanes := uint16(0xFFFF)
-
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data, needleSpace []Needle) {
 		// pre-compute encoded needles for speed
 		encNeedles := make([]string, len(needleSpace))
-		for i, needle := range needleSpace {
+		for i, needle := range needleSpace { // precompute encoded needles for speed
 			encNeedles[i] = encodeNeedleOp(needle, ts.op)
 		}
 
 		var ctx bctestContext
 		defer ctx.Free()
 
+		ref := refFunc(ts.op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
+
 		for _, data16 := range dataSpace {
 			for needleIdx, needle := range needleSpace {
 				ctx.clear()
-
 				ctx.setDict(encNeedles[needleIdx])
 				dictOffset := uint16(0)
 
 				inputS := ctx.sRegFromStrings(data16)
-				inputK := kRegData{mask: lanes}
+				var obsS, expS sRegData
+				var obsK, expK kRegData
 
-				outputS := sRegData{}
-				outputK := kRegData{}
-
-				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputS := sRegData{}
-				expectedOutputK := kRegData{}
-
 				for i := 0; i < bcLaneCount; i++ {
-					if getBit(inputK.mask, i) {
-						active, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
-						if active {
-							expectedOutputK.mask |= uint16(1 << i)
-							expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-							expectedOutputS.sizes[i] = uint32(expectedLength)
+					if inputK.getBit(i) {
+						expLane, expOffset, expLength := ref(data16[i], needle)
+						if expLane {
+							expK.setBit(i)
+							expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+							expS.sizes[i] = uint32(expLength)
 						}
 					}
 				}
 
-				verifyKRegOutput(t, &outputK, &expectedOutputK)
-				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+				if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+					t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), needle, prettyDataSlice(data16), msg)
+					return
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			needleSpace := flatten(createSpace(ts.needleLenSpace, ts.needleAlphabet, ts.needleMaxSize))
-			run(&ts, dataSpace, needleSpace)
+			run(&ts, fullMask, dataSpace, needleSpace)
 		})
 	}
 }
@@ -4831,31 +4783,13 @@ func FuzzContainsSubstrFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "a")
 	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м")
 
-	type testSuite struct {
-		name string // name of the test suite
-		op   bcop   // bytecode to run
-		// portable reference implementation: f(data, needle) -> lane, offset, length
-		refImpl func(Data, Needle) (bool, OffsetZ2, LengthZ3)
-	}
-	testSuites := []testSuite{
-		{
-			name:    "contains substr case-sensitive (opContainsSubstrCs)",
-			op:      opContainsSubstrCs,
-			refImpl: containsSubstrRefCS,
-		},
-		{
-			name:    "contains substr case-sensitive (opContainsSubstrCi)",
-			op:      opContainsSubstrCi,
-			refImpl: containsSubstrRefCI,
-		},
-		{
-			name:    "contains substr case-sensitive unicode (opContainsSubstrUTF8Ci)",
-			op:      opContainsSubstrUTF8Ci,
-			refImpl: containsSubstrRefUTF8CI,
-		},
+	testSuites := []bcop{
+		opContainsSubstrCs,
+		opContainsSubstrCi,
+		opContainsSubstrUTF8Ci,
 	}
 
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, needle Needle) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, needle Needle) {
 		// assume all input data will be valid codepoints
 		for i := 0; i < bcLaneCount; i++ {
 			if !utf8.ValidString(data16[i]) {
@@ -4863,13 +4797,12 @@ func FuzzContainsSubstrFT(f *testing.F) {
 			}
 		}
 
-		// empty needle is invalid
 		if needle == "" {
-			return
+			return // empty needle is invalid
 		}
 
 		// only UTF8 code is supposed to handle UTF8 needle
-		if ts.op != opContainsSubstrUTF8Ci {
+		if op != opContainsSubstrUTF8Ci {
 			for _, c := range needle {
 				if c >= utf8.RuneSelf {
 					return
@@ -4880,41 +4813,41 @@ func FuzzContainsSubstrFT(f *testing.F) {
 		var ctx bctestContext
 		defer ctx.Free()
 
-		ctx.setDict(encodeNeedleOp(needle, ts.op))
+		ctx.setDict(encodeNeedleOp(needle, op))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, Needle) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(inputK.mask, i) {
-				active, expectedOffset, expectedLength := ts.refImpl(data16[i], needle)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) {
+				expLane, expOffset, expLength := ref(data16[i], needle)
+				if expLane {
+					expK.setBit(i)
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(op), needle, prettyData(data16), msg)
+			return
+		}
 	}
 
-	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle) {
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, needle string) {
 		data16 := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data16, needle)
+		for _, op := range testSuites {
+
+			run(t, op, kRegData{mask: lanes}, data16, Needle(needle))
 		}
 	})
 }
@@ -4926,19 +4859,13 @@ func TestContainsPatternUT1(t *testing.T) {
 	type unitTest struct {
 		data      Data // data at SI
 		pattern   stringext.Pattern
-		expLane   bool // expected K1
-		expOffset int  // expected Z2
-		expLength int  // expected Z3
+		expLane   bool     // expected K1
+		expOffset OffsetZ2 // expected Z2
+		expLength LengthZ3 // expected Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, pattern, caseSensitive) -> (lane, offset, length)
-		refImpl func(data Data, pattern *stringext.Pattern) (bool, int, int)
+		op        bcop
 	}
 
 	const wc = '_'
@@ -4946,9 +4873,7 @@ func TestContainsPatternUT1(t *testing.T) {
 
 	testSuites := []testSuite{
 		{
-			name:    "contains pattern case-sensitive (opContainsPatternCs)",
-			op:      opContainsPatternCs,
-			refImpl: containsPatternRefCS,
+			op: opContainsPatternCs,
 			unitTests: []unitTest{
 				{"s", stringext.NewPattern("s", wc, escape), true, 1, 0},
 				{"sb", stringext.NewPattern("s", wc, escape), true, 1, 1},
@@ -4958,9 +4883,7 @@ func TestContainsPatternUT1(t *testing.T) {
 			},
 		},
 		{
-			name:    "equal pattern case-sensitive (opEqPatternCs)",
-			op:      opEqPatternCs,
-			refImpl: equalPatternRefCS,
+			op: opEqPatternCs,
 			unitTests: []unitTest{
 				{"a", stringext.NewPattern("a", wc, escape), true, 1, 0},
 				{"a", stringext.NewPattern("b", wc, escape), false, 0, 0},
@@ -4970,9 +4893,7 @@ func TestContainsPatternUT1(t *testing.T) {
 			},
 		},
 		{
-			name:    "equal pattern case-insensitive (opEqPatternCi)",
-			op:      opEqPatternCi,
-			refImpl: equalPatternRefCI,
+			op: opEqPatternCi,
 			unitTests: []unitTest{
 				{"A", stringext.NewPattern("a", wc, escape), true, 1, 0},
 				{"A", stringext.NewPattern("b", wc, escape), false, 0, 0},
@@ -4982,17 +4903,15 @@ func TestContainsPatternUT1(t *testing.T) {
 			},
 		},
 		{
-			name:    "equal pattern case-insensitive unicode (opEqPatternUTF8Ci)",
-			op:      opEqPatternUTF8Ci,
-			refImpl: equalPatternRefUTF8CI,
+			op: opEqPatternUTF8Ci,
 			unitTests: []unitTest{
-				//{"as", stringext.NewPattern("s", wc, escape), false, 1, 0},
+				{"as", stringext.NewPattern("s", wc, escape), false, 1, 0},
 				{"ſſ", stringext.NewPattern("s", wc, escape), false, 0, 0},
 			},
 		},
 	}
 
-	run := func(ts *testSuite, ut *unitTest) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -5000,37 +4919,37 @@ func TestContainsPatternUT1(t *testing.T) {
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(fill16(ut.data))
-		inputK := kRegData{mask: 0xFFFF}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, *stringext.Pattern) (bool, OffsetZ2, LengthZ3))
+		expLane, expOffset, expLength := ref(ut.data, &ut.pattern)
+
+		if nok, msg := reportIssueKSRef(expLane, ut.expLane, expOffset, ut.expOffset, expLength, ut.expLength); nok {
+			t.Errorf("RefImpl: %v\npattern=%q\ndata=%v\n%v", prettyName(ts.op), ut.pattern, ut.data, msg)
+		}
 
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(inputK.mask, i) {
-				active, expectedOffset, expectedLength := ts.refImpl(ut.data, &ut.pattern)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(expectedLength)
-				}
+			if inputK.getBit(i) && expLane {
+				expK.setBit(i)
+				expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+				expS.sizes[i] = uint32(expLength)
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\npattern=%q\ndata=%v\n%v", prettyName(ts.op), ut.pattern, ut.data, msg)
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(&ts, &ut)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -5049,14 +4968,8 @@ func TestContainsPatternUT2(t *testing.T) {
 		expLengths [16]LengthZ3      // expected length Z3
 	}
 	type testSuite struct {
-		// name to describe this test-suite
-		name string
-		// the actual tests to run
 		unitTests []unitTest
-		// portable reference implementation: f(data, pattern) -> match, offset, length
-		refImpl func(data Data, pattern *stringext.Pattern) (bool, int, int)
-		// bytecode implementation of comparison
-		op bcop
+		op        bcop
 	}
 
 	const wc = '_'
@@ -5064,9 +4977,7 @@ func TestContainsPatternUT2(t *testing.T) {
 
 	testSuites := []testSuite{
 		{
-			name:    "contains pattern case-sensitive (opContainsPatternCs)",
-			op:      opContainsPatternCs,
-			refImpl: containsPatternRefCS,
+			op: opContainsPatternCs,
 			unitTests: []unitTest{
 				{
 					pattern:    stringext.NewPattern("a", wc, escape),
@@ -5209,9 +5120,7 @@ func TestContainsPatternUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "contains pattern case-insensitive (opContainsPatternCi)",
-			op:      opContainsPatternCi,
-			refImpl: containsPatternRefCI,
+			op: opContainsPatternCi,
 			unitTests: []unitTest{
 				{
 					pattern:    stringext.NewPattern("ss_s", wc, escape),
@@ -5237,9 +5146,7 @@ func TestContainsPatternUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)",
-			op:      opContainsPatternUTF8Ci,
-			refImpl: containsPatternRefUTF8CI,
+			op: opContainsPatternUTF8Ci,
 			unitTests: []unitTest{
 				{
 					pattern:    stringext.NewPattern("ss_s", wc, escape),
@@ -5265,9 +5172,7 @@ func TestContainsPatternUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "equal pattern case-sensitive (opEqPatternCs)",
-			op:      opEqPatternCs,
-			refImpl: equalPatternRefCS,
+			op: opEqPatternCs,
 			unitTests: []unitTest{
 				{
 					pattern:    stringext.NewPattern("a", wc, escape),
@@ -5286,9 +5191,7 @@ func TestContainsPatternUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "equal pattern case-insensitive (opEqPatternCi)",
-			op:      opEqPatternCi,
-			refImpl: equalPatternRefCI,
+			op: opEqPatternCi,
 			unitTests: []unitTest{
 				{
 					pattern:    stringext.NewPattern("a", wc, escape),
@@ -5307,10 +5210,15 @@ func TestContainsPatternUT2(t *testing.T) {
 			},
 		},
 		{
-			name:    "equal pattern case-insensitive unicode (opEqPatternUTF8Ci)",
-			op:      opEqPatternUTF8Ci,
-			refImpl: equalPatternRefUTF8CI,
+			op: opEqPatternUTF8Ci,
 			unitTests: []unitTest{
+				{
+					pattern:    stringext.NewPattern("00000", wc, escape),
+					data16:     [16]Data{"00000", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"},
+					expLanes:   uint16(0b0000000000000001),
+					expOffsets: [16]OffsetZ2{5, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 4, 1, 1},
+					expLengths: [16]LengthZ3{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+				},
 				{
 					pattern:    stringext.NewPattern("s_s", wc, escape),
 					data16:     [16]Data{"sbs", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
@@ -5343,7 +5251,7 @@ func TestContainsPatternUT2(t *testing.T) {
 		},
 	}
 
-	run := func(ts testSuite, ut unitTest, lanes uint16) {
+	run := func(ts *testSuite, ut *unitTest, inputK kRegData) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -5351,37 +5259,40 @@ func TestContainsPatternUT2(t *testing.T) {
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(ut.data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(ts.op).(func(Data, *stringext.Pattern) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(inputK.mask, i) {
-				active, expectedOffset, expectedLength := ts.refImpl(ut.data16[i], &ut.pattern)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) {
+				expLane, expOffset, expLength := ref(ut.data16[i], &ut.pattern)
+				if nok, msg := reportIssueKSRef(expLane, getBit(ut.expLanes, i), expOffset, ut.expOffsets[i], expLength, ut.expLengths[i]); nok {
+					t.Errorf("RefImpl: %v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.pattern, ut.data16, msg)
+					return
+				}
+				if expLane {
+					expK.setBit(i)
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\nneedle=%q\ndata=%v\n%v", prettyName(ts.op), ut.pattern, prettyData(ut.data16), msg)
+			return
+		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			for _, ut := range ts.unitTests {
-				run(ts, ut, 0xFFFF)
+				run(&ts, &ut, fullMask)
 			}
 		})
 	}
@@ -5392,95 +5303,96 @@ func TestContainsPatternUT2(t *testing.T) {
 func TestContainsPatternBF(t *testing.T) {
 	t.Parallel()
 	type testSuite struct {
-		name                          string
 		dataAlphabet, patternAlphabet []rune // alphabet from which to generate needles and patterns
 		dataLenSpace, patternLenSpace []int  // space of lengths of the words made of alphabet
 		dataMaxSize, patternMaxSize   int    // maximum number of elements in dataSpace
 		op                            bcop   // bytecode to run
-		// portable reference implementation: f(data, pattern) -> lane, offset, length
-		refImpl func(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3)
 	}
 	testSuites := []testSuite{
 		{
-			name:            "contains pattern case-sensitive (opContainsPatternCs)",
+			op:              opContainsPatternCs,
 			dataAlphabet:    []rune{'a', 'b', '$', '¢', '€', '𐍈'},
-			dataLenSpace:    []int{2, 3, 4, 5, 6},
+			dataLenSpace:    []int{2, 3, 4, 5},
 			dataMaxSize:     exhaustive,
 			patternAlphabet: []rune{'a', 'b'},
 			patternLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty pattern is handled in go
 			patternMaxSize:  exhaustive,
-			op:              opContainsPatternCs,
-			refImpl:         containsPatternRefCS,
 		},
 		{
-			name:            "contains pattern case-sensitive 2 (opContainsPatternCs)",
-			dataAlphabet:    []rune{'a', 'b'},
-			dataLenSpace:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
-			dataMaxSize:     exhaustive,
-			patternAlphabet: []rune{'a', 'b'},
-			patternLenSpace: []int{4, 5}, // NOTE empty pattern is handled in go
-			patternMaxSize:  exhaustive,
 			op:              opContainsPatternCs,
-			refImpl:         containsPatternRefCS,
-		},
-		{
-			name:            "contains pattern case-insensitive (opContainsPatternCi)",
 			dataAlphabet:    []rune{'a', 'b'},
 			dataLenSpace:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
 			dataMaxSize:     exhaustive,
 			patternAlphabet: []rune{'a', 'b'},
 			patternLenSpace: []int{4, 5}, // NOTE empty pattern is handled in go
 			patternMaxSize:  exhaustive,
+		},
+		{
 			op:              opContainsPatternCi,
-			refImpl:         containsPatternRefCI,
-		},
-		{
-			name:            "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)",
-			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
-			dataLenSpace:    []int{1, 2, 3, 4},
-			dataMaxSize:     exhaustive,
-			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
-			patternLenSpace: []int{1, 2, 3, 4, 5},
-			patternMaxSize:  exhaustive,
-			op:              opContainsPatternUTF8Ci,
-			refImpl:         containsPatternRefUTF8CI,
-		},
-		{
-			name:            "equal pattern case-sensitive (opEqPatternCs)",
-			dataAlphabet:    []rune{'a', 'b', '$', '¢', '€', '𐍈'},
-			dataLenSpace:    []int{2, 3, 4, 5, 6},
-			dataMaxSize:     exhaustive,
-			patternAlphabet: []rune{'a', 'b'},
-			patternLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty pattern is handled in go
-			patternMaxSize:  exhaustive,
-			op:              opEqPatternCs,
-			refImpl:         equalPatternRefCS,
-		},
-		{
-			name:            "equal pattern case-insensitive (opEqPatternCi)",
 			dataAlphabet:    []rune{'a', 'b'},
 			dataLenSpace:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
 			dataMaxSize:     exhaustive,
 			patternAlphabet: []rune{'a', 'b'},
 			patternLenSpace: []int{4, 5}, // NOTE empty pattern is handled in go
 			patternMaxSize:  exhaustive,
-			op:              opEqPatternCi,
-			refImpl:         equalPatternRefCI,
 		},
 		{
-			name:            "equal pattern case-insensitive unicode (opEqPatternUTF8Ci)",
+			op:              opContainsPatternUTF8Ci,
 			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
 			dataLenSpace:    []int{1, 2, 3, 4},
 			dataMaxSize:     exhaustive,
 			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
 			patternLenSpace: []int{1, 2, 3, 4, 5},
 			patternMaxSize:  exhaustive,
+		},
+		{
+			op:              opEqPatternCs,
+			dataAlphabet:    []rune{'a', 'b', '$', '¢', '€', '𐍈'},
+			dataLenSpace:    []int{2, 3, 4, 5},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'a', 'b'},
+			patternLenSpace: []int{1, 2, 3, 4, 5}, // NOTE empty pattern is handled in go
+			patternMaxSize:  exhaustive,
+		},
+		{
+			op:              opEqPatternCs,
+			dataAlphabet:    []rune{'0', '1'},
+			dataLenSpace:    []int{1, 2, 3, 4, 5, 6, 7, 8},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'0', '1'},
+			patternLenSpace: []int{1, 2, 3, 4, 5, 6, 7, 8},
+			patternMaxSize:  exhaustive,
+		},
+		{
+			op:              opEqPatternCi,
+			dataAlphabet:    []rune{'a', 'b'},
+			dataLenSpace:    []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'a', 'b'},
+			patternLenSpace: []int{4, 5}, // NOTE empty pattern is handled in go
+			patternMaxSize:  exhaustive,
+		},
+		{
 			op:              opEqPatternUTF8Ci,
-			refImpl:         equalPatternRefUTF8CI,
+			dataAlphabet:    []rune{'a', 'b', 'c', 's', 'ſ'},
+			dataLenSpace:    []int{1, 2, 3, 4},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'s', 'S', 'k', 'K'},
+			patternLenSpace: []int{1, 2, 3, 4, 5},
+			patternMaxSize:  exhaustive,
+		},
+		{
+			op:              opEqPatternUTF8Ci,
+			dataAlphabet:    []rune{'0', '1'},
+			dataLenSpace:    []int{1, 2, 3, 4, 5, 6, 7, 8},
+			dataMaxSize:     exhaustive,
+			patternAlphabet: []rune{'0', '1'},
+			patternLenSpace: []int{1, 2, 3, 4, 5, 6, 7, 8},
+			patternMaxSize:  exhaustive,
 		},
 	}
 
-	run := func(ts *testSuite, dataSpace [][]Data, patternSpace []stringext.Pattern, lanes uint16) {
+	run := func(ts *testSuite, inputK kRegData, dataSpace [][]Data, patternSpace []stringext.Pattern) {
 		var ctx bctestContext
 		defer ctx.Free()
 
@@ -5490,6 +5402,8 @@ func TestContainsPatternBF(t *testing.T) {
 			encPattern[patternIdx] = encodePatternOp(&pattern, ts.op)
 		}
 
+		ref := refFunc(ts.op).(func(Data, *stringext.Pattern) (bool, OffsetZ2, LengthZ3))
+
 		for _, data16 := range dataSpace {
 			for patternIdx, pattern := range patternSpace {
 				ctx.clear()
@@ -5497,40 +5411,37 @@ func TestContainsPatternBF(t *testing.T) {
 				dictOffset := uint16(0)
 
 				inputS := ctx.sRegFromStrings(data16)
-				inputK := kRegData{mask: lanes}
+				var obsS, expS sRegData
+				var obsK, expK kRegData
 
-				outputS := sRegData{}
-				outputK := kRegData{}
-
-				if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+				if err := ctx.ExecuteOpcode(ts.op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 					t.Fatal(err)
 				}
 
-				expectedOutputS := sRegData{}
-				expectedOutputK := kRegData{}
-
 				for i := 0; i < bcLaneCount; i++ {
-					if getBit(inputK.mask, i) {
-						active, expectedOffset, expectedLength := ts.refImpl(data16[i], &pattern)
-						if active {
-							expectedOutputK.mask |= uint16(1 << i)
-							expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-							expectedOutputS.sizes[i] = uint32(expectedLength)
+					if inputK.getBit(i) {
+						expLane, expOffset, expLength := ref(data16[i], &pattern)
+						if expLane {
+							expK.setBit(i)
+							expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+							expS.sizes[i] = uint32(expLength)
 						}
 					}
 				}
 
-				verifyKRegOutput(t, &outputK, &expectedOutputK)
-				verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+				if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+					t.Errorf("%v\npattern=%q\ndata=%v\n%v", prettyName(ts.op), pattern, prettyDataSlice(data16), msg)
+					return
+				}
 			}
 		}
 	}
 
 	for _, ts := range testSuites {
-		t.Run(ts.name, func(t *testing.T) {
+		t.Run(prettyName(ts.op), func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			patternSpace := createSpacePattern(ts.patternLenSpace, ts.patternAlphabet, ts.patternMaxSize)
-			run(&ts, dataSpace, patternSpace, 0xFFFF)
+			run(&ts, fullMask, dataSpace, patternSpace)
 		})
 	}
 }
@@ -5541,51 +5452,19 @@ func FuzzContainsPatternFT(f *testing.F) {
 	f.Add(uint16(0xFFFF), "a", "a;", "a\n", "a𐍈", "𐍈a", "𐍈", "aaa", "abbb", "accc", "a𐍈", "𐍈aaa", "𐍈aa", "aaa", "bbba", "cca", "da", "a")
 	f.Add(uint16(0xFFFF), "M", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "м")
 
-	type testSuite struct {
-		name string
-		// bytecode to run
-		op bcop
-		// portable reference implementation: f(data, pattern) -> lane, offset, length
-		refImpl func(data Data, pattern *stringext.Pattern) (bool, int, int)
-	}
-
 	const wc = '_'
 	const escape = '@'
 
-	testSuites := []testSuite{
-		{
-			name:    "contains pattern case-sensitive (opContainsPatternCs)",
-			op:      opContainsPatternCs,
-			refImpl: containsPatternRefCS,
-		},
-		{
-			name:    "contains pattern case-insensitive (opContainsPatternCi)",
-			op:      opContainsPatternCi,
-			refImpl: containsPatternRefCI,
-		},
-		{
-			name:    "contains pattern case-insensitive unicode (opContainsPatternUTF8Ci)",
-			op:      opContainsPatternUTF8Ci,
-			refImpl: containsPatternRefUTF8CI,
-		},
-		{
-			name:    "equals pattern case-sensitive (opEqPatternCs)",
-			op:      opEqPatternCs,
-			refImpl: equalPatternRefCS,
-		},
-		{
-			name:    "equals pattern case-insensitive (opEqPatternCi)",
-			op:      opEqPatternCi,
-			refImpl: equalPatternRefCI,
-		},
-		{
-			name:    "equals pattern case-insensitive unicode (opEqPatternUTF8Ci)",
-			op:      opEqPatternUTF8Ci,
-			refImpl: equalPatternRefUTF8CI,
-		},
+	testSuites := []bcop{
+		opContainsPatternCs,
+		opContainsPatternCi,
+		opContainsPatternUTF8Ci,
+		opEqPatternCs,
+		opEqPatternCi,
+		opEqPatternUTF8Ci,
 	}
 
-	run := func(t *testing.T, ts *testSuite, lanes uint16, data16 [16]Data, pattern *stringext.Pattern) {
+	run := func(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, pattern *stringext.Pattern) {
 		// empty pattern is invalid
 		if pattern.Needle == "" {
 			return
@@ -5597,7 +5476,7 @@ func FuzzContainsPatternFT(f *testing.F) {
 		}
 
 		// only UTF8 code is supposed to handle UTF8 pattern
-		if ts.op != opContainsPatternUTF8Ci {
+		if op != opContainsPatternUTF8Ci {
 			for _, c := range pattern.Needle {
 				if c >= utf8.RuneSelf {
 					return
@@ -5616,42 +5495,41 @@ func FuzzContainsPatternFT(f *testing.F) {
 		defer ctx.Free()
 
 		ctx.clear()
-		ctx.setDict(encodePatternOp(pattern, ts.op))
+		ctx.setDict(encodePatternOp(pattern, op))
 		dictOffset := uint16(0)
 
 		inputS := ctx.sRegFromStrings(data16[:])
-		inputK := kRegData{mask: lanes}
+		var obsS, expS sRegData
+		var obsK, expK kRegData
 
-		outputS := sRegData{}
-		outputK := kRegData{}
-
-		if err := ctx.ExecuteOpcode(ts.op, []any{&outputS, &outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+		if err := ctx.ExecuteOpcode(op, []any{&obsS, &obsK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 			t.Fatal(err)
 		}
 
-		expectedOutputS := sRegData{}
-		expectedOutputK := kRegData{}
+		ref := refFunc(op).(func(Data, *stringext.Pattern) (bool, OffsetZ2, LengthZ3))
 
 		for i := 0; i < bcLaneCount; i++ {
-			if getBit(inputK.mask, i) {
-				active, expectedOffset, expectedLength := ts.refImpl(data16[i], pattern)
-				if active {
-					expectedOutputK.mask |= uint16(1 << i)
-					expectedOutputS.offsets[i] = uint32(expectedOffset) + inputS.offsets[i]
-					expectedOutputS.sizes[i] = uint32(expectedLength)
+			if inputK.getBit(i) {
+				expLane, expOffset, expLength := ref(data16[i], pattern)
+				if expLane {
+					expK.setBit(i)
+					expS.offsets[i] = uint32(expOffset) + inputS.offsets[i]
+					expS.sizes[i] = uint32(expLength)
 				}
 			}
 		}
 
-		verifyKRegOutput(t, &outputK, &expectedOutputK)
-		verifySRegOutputP(t, &outputS, &expectedOutputS, &outputK)
+		if nok, msg := reportIssueKS(&inputK, &obsK, &expK, &obsS, &expS); nok {
+			t.Errorf("%v\npattern=%q\ndata=%v\n%v", prettyName(op), pattern, prettyData(data16), msg)
+			return
+		}
 	}
 
-	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 Data, needle Needle) {
+	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string, needle string) {
 		data16 := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
 		pattern := stringext.NewPattern(needle, wc, escape)
-		for _, ts := range testSuites {
-			run(t, &ts, lanes, data16, &pattern)
+		for _, op := range testSuites {
+			run(t, op, kRegData{mask: lanes}, data16, &pattern)
 		}
 	})
 }
@@ -5668,7 +5546,7 @@ func TestBytecodeAbsInt(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opabsi64, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opabsi64, []any{&outputS, &outputK, &inputS, &inputK}, inputK); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5688,7 +5566,7 @@ func TestBytecodeAbsFloat(t *testing.T) {
 	outputS := f64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opabsf64, []any{&outputS, &outputK, &inputS, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opabsf64, []any{&outputS, &outputK, &inputS, &inputK}, inputK); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5714,7 +5592,7 @@ func TestBytecodeToInt(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opunboxcoercei64, []any{&outputS, &outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opunboxcoercei64, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5737,7 +5615,7 @@ func TestBytecodeIsNull(t *testing.T) {
 	inputK := kRegData{mask: 0xFFFF}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opisnullv, []any{&outputK, &inputV, &inputK}, inputK.mask); err != nil {
+	if err := ctx.ExecuteOpcode(opisnullv, []any{&outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Fatal(err)
 	}
 
@@ -5746,6 +5624,24 @@ func TestBytecodeIsNull(t *testing.T) {
 
 /////////////////////////////////////////////////////////////
 // Helper functions
+
+// prettyDataSlice joins values with comma's such that you can copy it a go array
+func prettyDataSlice(values []Data) (result string) {
+	sb := strings.Builder{}
+	sb.WriteByte('[')
+	for i := 0; i < len(values); i++ {
+		sb.WriteString(fmt.Sprintf("%q", values[i])) // NOTE strings.Join(values, ",") does not escape
+		if i < len(values)-1 {
+			sb.WriteByte(',')
+		}
+	}
+	sb.WriteByte(']')
+	return sb.String()
+}
+
+func prettyData(values [16]Data) string {
+	return prettyDataSlice(values[:])
+}
 
 type strCmpType int
 
@@ -5783,11 +5679,11 @@ func setBit(data uint16, idx int, value bool) uint16 {
 }
 
 // flatten flattens the provided slice of slices into one single slice; dual of split16
-func flatten(dataSpace [][]Data) []Data {
-	result := make([]Data, len(dataSpace)*16)
+func flatten(dataSpace [][]Data) []Needle {
+	result := make([]Needle, len(dataSpace)*16)
 	for j, data16 := range dataSpace {
 		for i := 0; i < bcLaneCount; i++ {
-			result[j*16+i] = data16[i]
+			result[j*16+i] = Needle(data16[i])
 		}
 	}
 	return result
@@ -5843,43 +5739,152 @@ func fill4(cutset string) string {
 	}
 }
 
+func reportIssueKS(initK, obsK, expK *kRegData, obsS, expS *sRegData) (hasIssue bool, msg string) {
+
+	btou := func(b bool) uint8 {
+		if b {
+			return 1
+		}
+		return 0
+	}
+
+	toStringWithColor := func(initK, obsK, expK *kRegData, obsS, expS *sRegData) (result [6]string) {
+		colorRed := "\033[31m"
+		colorReset := "\033[0m"
+
+		result[0] = ""
+		result[1] = ""
+		result[2] = "["
+		result[3] = "["
+		result[4] = "["
+		result[5] = "["
+		for j := 0; j < bcLaneCount; j++ {
+			color1 := colorReset
+			color2 := colorReset
+			color3 := colorReset
+
+			initLane := initK.getBit(j)
+			obsLane := obsK.getBit(j)
+			expLane := expK.getBit(j)
+
+			if initLane && (obsLane || expLane) {
+				if obsLane != expLane {
+					color1 = colorRed
+				}
+				if obsS.offsets[j] != expS.offsets[j] {
+					color2 = colorRed
+				}
+				if obsS.sizes[j] != expS.sizes[j] {
+					color3 = colorRed
+				}
+			}
+			result[0] = fmt.Sprintf("%v%v%v", color1, btou(obsLane), colorReset) + result[0]
+			result[1] = fmt.Sprintf("%v%v%v", color1, btou(expLane), colorReset) + result[1]
+			result[2] += fmt.Sprintf("%v%v%v", color2, obsS.offsets[j], colorReset)
+			result[3] += fmt.Sprintf("%v%v%v", color2, expS.offsets[j], colorReset)
+			result[4] += fmt.Sprintf("%v%v%v", color3, obsS.sizes[j], colorReset)
+			result[5] += fmt.Sprintf("%v%v%v", color3, expS.sizes[j], colorReset)
+
+			if j == 15 {
+				result[0] = "0b" + result[0]
+				result[1] = "0b" + result[1]
+				result[2] += "]"
+				result[3] += "]"
+				result[4] += "]"
+				result[5] += "]"
+			} else {
+				result[2] += ","
+				result[3] += ","
+				result[4] += ","
+				result[5] += ","
+			}
+		}
+		return
+
+	}
+
+	for i := 0; i < bcLaneCount; i++ {
+		obsLane := obsK.getBit(i)
+		kMismatch := obsLane != expK.getBit(i)
+		sMismatch := obsLane && (obsS.offsets[i] != expS.offsets[i]) && (obsS.sizes[i] != expS.sizes[i])
+		if kMismatch || sMismatch {
+			str := toStringWithColor(initK, obsK, expK, obsS, expS)
+
+			sb := strings.Builder{}
+			sb.WriteString(fmt.Sprintf("issue with lane %v:\n", i))
+			sb.WriteString(fmt.Sprintf("initial:  lanes=0b%016b\n", initK.mask))
+			sb.WriteString(fmt.Sprintf("observed: lanes=%v, offset=%v, length=%v\n", str[0], str[2], str[4]))
+			sb.WriteString(fmt.Sprintf("expected: lanes=%v, offset=%v, length=%v\n", str[1], str[3], str[5]))
+			return true, sb.String()
+		}
+	}
+	return false, ""
+}
+
+func reportIssueK(initK, obsK, expK *kRegData) (hasIssue bool, msg string) {
+	var obsS, expS sRegData
+	return reportIssueKS(initK, obsK, expK, &obsS, &expS)
+}
+
+func reportIssueS(initK *kRegData, obsS, expS *sRegData) (hasIssue bool, msg string) {
+	return reportIssueKS(initK, &fullMask, &fullMask, obsS, expS)
+}
+
+func reportIssueKSRef(obsLane, expLane bool, obsOffset, expOffset OffsetZ2, obsLength, expLength LengthZ3) (hasIssue bool, msg string) {
+	if obsLane != expLane {
+		return true, fmt.Sprintf("observed: lane=%v, offset=%v, length=%v\nexpected: lane=%v, offset=%v, length=%v\n-----------------------------------",
+			obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
+	}
+	if obsLane { // if the expected and observed lane are equal, and the match is true, then also check the offset and length
+		if (obsOffset != expOffset) || (obsLength != expLength) {
+			return true, fmt.Sprintf("observed: lane=%v, offset=%v, length=%v\nexpected: lane=%v, offset=%v, length=%v\n-----------------------------------",
+				obsLane, obsOffset, obsLength, expLane, expOffset, expLength)
+		}
+	}
+	return false, ""
+}
+
+func reportIssueKRef(obsLane, expLane bool) (hasIssue bool, msg string) {
+	return reportIssueKSRef(obsLane, expLane, 0, 0, 0, 0)
+}
+
 // referenceSkipCharLeft skips n code-point from data; valid is true if successful, false if provided string is not UTF-8
-func referenceSkipCharLeft(msg string, skipCount int) (laneOut bool, offsetOut, lengthOut int) {
+func referenceSkipCharLeft(data Data, skipCount int) (laneOut bool, offsetOut OffsetZ2, lengthOut LengthZ3) {
 	if skipCount < 0 {
 		skipCount = 0
 	}
-	length := len(msg)
-	if !utf8.ValidString(msg) {
+	length := len(data)
+	if !utf8.ValidString(string(data)) {
 		panic("invalid data provided")
 	}
 	laneOut = true
-	nRunes := utf8.RuneCountInString(msg)
+	nRunes := utf8.RuneCountInString(string(data))
 	nRunesToRemove := skipCount
 	if nRunesToRemove > nRunes {
 		nRunesToRemove = nRunes
 		laneOut = false
 	}
-	strToRemove := string([]rune(msg)[:nRunesToRemove])
+	strToRemove := string([]rune(data)[:nRunesToRemove])
 	nBytesToSkip := len(strToRemove)
 	if nBytesToSkip > length {
 		nBytesToSkip = length
 	}
-	offsetOut = nBytesToSkip
-	lengthOut = length - nBytesToSkip
+	offsetOut = OffsetZ2(nBytesToSkip)
+	lengthOut = LengthZ3(length - nBytesToSkip)
 	return
 }
 
 // referenceSkipCharRight skips n code-point from data; valid is true if successful, false if provided string is not UTF-8
-func referenceSkipCharRight(msg string, skipCount int) (laneOut bool, offsetOut, lengthOut int) {
+func referenceSkipCharRight(data Data, skipCount int) (laneOut bool, offsetOut OffsetZ2, lengthOut LengthZ3) {
 	if skipCount < 0 {
 		skipCount = 0
 	}
-	length := len(msg)
-	if !utf8.ValidString(msg) {
+	length := len(data)
+	if !utf8.ValidString(string(data)) {
 		panic("invalid data provided")
 	}
 	laneOut = true
-	nRunes := utf8.RuneCountInString(msg)
+	nRunes := utf8.RuneCountInString(string(data))
 
 	nRunesToRemove := skipCount
 	if nRunesToRemove > nRunes {
@@ -5888,13 +5893,13 @@ func referenceSkipCharRight(msg string, skipCount int) (laneOut bool, offsetOut,
 	}
 	nRunesToKeep := nRunes - nRunesToRemove
 
-	strToRemove := string([]rune(msg)[nRunesToKeep:])
+	strToRemove := string([]rune(data)[nRunesToKeep:])
 	nBytesToSkip := len(strToRemove)
 	if nBytesToSkip > length {
 		nBytesToSkip = length
 	}
 	offsetOut = 0
-	lengthOut = length - nBytesToSkip
+	lengthOut = LengthZ3(length - nBytesToSkip)
 	return
 }
 
@@ -5920,7 +5925,7 @@ func matchPatternRef(data Data, pattern *stringext.Pattern, cmpType stringext.St
 		return false
 	}
 
-	nBytesData := len(data)
+	nBytesData := LengthZ3(len(data))
 
 	if len(pattern.Needle) == 0 { // not sure how to handle an empty pattern, currently it always matches
 		return true, 0, nBytesData
@@ -5956,16 +5961,16 @@ func matchPatternRef(data Data, pattern *stringext.Pattern, cmpType stringext.St
 			}
 			if match {
 				x := bytePosData + nBytesNeedle
-				return true, x, nBytesData - x
+				return true, OffsetZ2(x), nBytesData - LengthZ3(x)
 			}
 			bytePosData += utf8.RuneLen(dataRune[runeDataIdx])
 		}
-		if bytePosData != nBytesData {
+		if bytePosData != int(nBytesData) {
 			panic("Should not happen")
 		}
 	} else {
 		if len(dataRune) != len(needleRune) {
-			return false, nBytesData, 0
+			return false, OffsetZ2(nBytesData), 0
 		}
 		match := true
 		nBytesNeedle := 0 // number of bytes of the needle when matched in the data
@@ -5984,69 +5989,26 @@ func matchPatternRef(data Data, pattern *stringext.Pattern, cmpType stringext.St
 		}
 		if match {
 			x := bytePosData + nBytesNeedle
-			return true, x, nBytesData - x
+			return true, OffsetZ2(x), nBytesData - LengthZ3(x)
 		}
 	}
 
-	return false, nBytesData, 0
-}
-
-func containsPatternRefCS(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
-	return matchPatternRef(data, pattern, stringext.CS, true)
-}
-
-func containsPatternRefCI(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
-	return matchPatternRef(data, pattern, stringext.CiASCII, true)
-}
-
-func containsPatternRefUTF8CI(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
-	return matchPatternRef(data, pattern, stringext.CiUTF8, true)
-}
-
-func containsSubstrRefCS(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
-	wildcard := make([]bool, utf8.RuneCountInString(needle))
-	pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: needle, Wildcard: wildcard, HasWildcard: false}
-	return matchPatternRef(data, &pattern, stringext.CS, true)
-}
-
-func containsSubstrRefCI(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
-	wildcard := make([]bool, utf8.RuneCountInString(needle))
-	pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: needle, Wildcard: wildcard, HasWildcard: false}
-	return matchPatternRef(data, &pattern, stringext.CiASCII, true)
-}
-
-func containsSubstrRefUTF8CI(data Data, needle Needle) (bool, OffsetZ2, LengthZ3) {
-	wildcard := make([]bool, utf8.RuneCountInString(needle))
-	pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: needle, Wildcard: wildcard, HasWildcard: false}
-	return matchPatternRef(data, &pattern, stringext.CiUTF8, true)
-}
-
-func equalPatternRefCS(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
-	return matchPatternRef(data, pattern, stringext.CS, false)
-}
-
-func equalPatternRefCI(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
-	return matchPatternRef(data, pattern, stringext.CiASCII, false)
-}
-
-func equalPatternRefUTF8CI(data Data, pattern *stringext.Pattern) (bool, OffsetZ2, LengthZ3) {
-	return matchPatternRef(data, pattern, stringext.CiUTF8, false)
+	return false, OffsetZ2(nBytesData), 0
 }
 
 // runRegexTests iterates over all regexes with the provided regex space,and determines equality over all
 // needles from the provided data space
-func runRegexTests(t *testing.T, name string, dataSpace [][]string, regexSpace []string, regexType regexp2.RegexType, writeDot bool) {
+func runRegexTests(t *testing.T, name string, dataSpace [][]Data, regexSpace []string, regexType regexp2.RegexType, writeDot bool) {
 	var ctx bctestContext
 	defer ctx.Free()
 
-mainLoop:
 	for _, regexStr := range regexSpace {
 		ds, err := regexp2.CreateDs(regexStr, regexType, writeDot, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			t.Error(err)
 		}
 		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
-		regexDataTest := func(ctx *bctestContext, dsByte []byte, name string, op bcop, data16 []string, expLanes uint16) (fault bool) {
+		regexDataTest := func(ctx *bctestContext, dsByte []byte, name string, op bcop, data16 []Data, expLanes uint16) (fault bool) {
 			if dsByte == nil {
 				return
 			}
@@ -6056,17 +6018,17 @@ mainLoop:
 			dictOffset := uint16(0)
 
 			inputS := ctx.sRegFromStrings(data16)
-			inputK := kRegData{mask: 0xFFFF}
+			inputK := fullMask
 			outputK := kRegData{}
 
-			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK.mask); err != nil {
+			if err := ctx.ExecuteOpcode(op, []any{&outputK, &inputS, dictOffset, &inputK}, inputK); err != nil {
 				t.Fatal(err)
 			}
 
 			for i := 0; i < bcLaneCount; i++ {
-				if getBit(outputK.mask, i) != getBit(expLanes, i) {
+				if outputK.getBit(i) != getBit(expLanes, i) {
 					t.Errorf("%v: issue with lane %v, \ndata=%q\nexpected=%016b (regexGolang=%q)\nobserved=%016b (regexSneller=%q)",
-						name, i, data16, expLanes, ds.RegexGolang.String(), outputK.mask, ds.RegexSneller.String())
+						name, i, prettyDataSlice(data16), expLanes, ds.RegexGolang.String(), outputK.mask, ds.RegexSneller.String())
 					return true
 				}
 			}
@@ -6087,7 +6049,7 @@ mainLoop:
 			hasFault6 := regexDataTest(&ctx, ds.DsT8Z, name+":DfaT8Z", opDfaT8Z, data16, expLanes)
 			hasFault7 := regexDataTest(&ctx, ds.DsLZ, name+":DfaLZ", opDfaLZ, data16, expLanes)
 			if hasFault1 || hasFault2 || hasFault3 || hasFault4 || hasFault5 || hasFault6 || hasFault7 {
-				break mainLoop
+				return
 			}
 		}
 	}
@@ -6120,8 +6082,8 @@ func max(slice []int) int {
 	return result
 }
 
-func createSpaceExhaustive(dataLenSpace []int, alphabet []rune) [][]string {
-	result := make([][]string, 0)
+func createSpaceExhaustive(dataLenSpace []int, alphabet []rune) [][]Data {
+	result := make([][]Data, 0)
 	alphabetSize := len(alphabet)
 	indices := make([]byte, max(dataLenSpace))
 
@@ -6130,17 +6092,17 @@ func createSpaceExhaustive(dataLenSpace []int, alphabet []rune) [][]string {
 		done := false
 		j := 0
 
-		data16 := make([]string, 16)
+		data16 := make([]Data, 16)
 		for !done {
 			for i := 0; i < strLength; i++ {
 				strRunes[i] = alphabet[indices[i]]
 			}
 			if j < 16 {
-				data16[j] = string(strRunes)
+				data16[j] = Data(strRunes)
 				j++
 			} else {
 				result = append(result, data16)
-				data16 = make([]string, 16)
+				data16 = make([]Data, 16)
 				j = 0
 			}
 			done = !next(&indices, alphabetSize, strLength)
@@ -6157,9 +6119,9 @@ func createSpaceExhaustive(dataLenSpace []int, alphabet []rune) [][]string {
 	return result
 }
 
-func createSpace(dataLenSpace []int, alphabet []rune, maxSize int) [][]string {
-	createSpaceRandom := func(maxLength int, alphabet []rune, maxSize int) []string {
-		set := make(map[string]struct{}) // new empty set
+func createSpace(dataLenSpace []int, alphabet []rune, maxSize int) [][]Data {
+	createSpaceRandom := func(maxLength int, alphabet []rune, maxSize int) []Data {
+		set := make(map[Data]struct{}) // new empty set
 
 		// Note: not the most efficient implementation: space of short strings
 		// is quickly exhausted while we are still trying to find something
@@ -6171,7 +6133,7 @@ func createSpace(dataLenSpace []int, alphabet []rune, maxSize int) [][]string {
 			for i := 0; i < strLength; i++ {
 				strRunes[i] = alphabet[rand.Intn(alphabetSize)]
 			}
-			set[string(strRunes)] = struct{}{}
+			set[Data(strRunes)] = struct{}{}
 		}
 		return maps.Keys(set)
 	}
@@ -6225,7 +6187,7 @@ func createSpacePattern(dataLenSpace []int, alphabet []rune, maxSize int) []stri
 						dataRune[j] = '_' // any ASCII would do
 					}
 				}
-				pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: string(dataRune), Wildcard: wildcard, HasWildcard: false}
+				pattern := stringext.Pattern{WC: utf8.MaxRune, Escape: stringext.NoEscape, Needle: Needle(dataRune), Wildcard: wildcard, HasWildcard: false}
 				result = append(result, pattern)
 			}
 		}

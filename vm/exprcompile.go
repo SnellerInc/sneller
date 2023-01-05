@@ -22,10 +22,10 @@ import (
 	"net"
 	"unicode/utf8"
 
-	"github.com/SnellerInc/sneller/regexp2"
-
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/regexp2"
 )
 
 // compileLogical compiles a logical expression
@@ -761,7 +761,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		lhs := v[0]
 		s := args[1].(expr.String)
 
-		return p.contains(lhs, string(s), fn == expr.Contains), nil
+		return p.contains(lhs, stringext.Needle(s), fn == expr.Contains), nil
 
 	case expr.EqualsCI:
 		v, err := compileargs(p, args, compileString, literalString)
@@ -772,7 +772,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		lhs := v[0]
 		s := args[1].(expr.String)
 
-		return p.equalsStr(lhs, string(s), false), nil
+		return p.equalsStr(lhs, stringext.Needle(s), false), nil
 
 	case expr.EqualsFuzzy, expr.EqualsFuzzyUnicode:
 		val, err := compileargs(p, args, compileString, literalString, compileNumber)
@@ -780,7 +780,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 		ascii := fn == expr.EqualsFuzzy
-		return p.equalsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
+		return p.equalsFuzzy(val[0], stringext.Needle(args[1].(expr.String)), val[2], ascii), nil
 
 	case expr.ContainsFuzzy, expr.ContainsFuzzyUnicode:
 		val, err := compileargs(p, args, compileString, literalString, compileNumber)
@@ -788,7 +788,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			return nil, err
 		}
 		ascii := fn == expr.ContainsFuzzy
-		return p.containsFuzzy(val[0], string(args[1].(expr.String)), val[2], ascii), nil
+		return p.containsFuzzy(val[0], stringext.Needle(args[1].(expr.String)), val[2], ascii), nil
 
 	case expr.IsSubnetOf:
 		v, err := compileargs(p, args, literalString, literalString, compileString)

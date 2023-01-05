@@ -25,8 +25,8 @@ func TestEditDistanceRef(t *testing.T) {
 
 	t.Parallel()
 	type unitTest struct {
-		needle         string
-		data           string
+		needle         Needle
+		data           Data
 		approxDistance int
 		trueDistance   int
 	}
@@ -68,12 +68,12 @@ func TestEditDistanceRef(t *testing.T) {
 	}
 
 	run := func(ut unitTest) {
-		if !utf8.ValidString(ut.needle) {
+		if !utf8.ValidString(string(ut.needle)) {
 			t.Logf("needle is not valid UTF8; skipping this test")
 			return
 		}
 		trueDistance := refImpl(ut.data, ut.needle)
-		obsApproxDistance := EditDistance(ut.data, ut.needle, true, Approx2)
+		obsApproxDistance := EditDistance(ut.data, Needle(ut.needle), true, Approx2)
 
 		if (trueDistance != ut.trueDistance) || (obsApproxDistance != ut.approxDistance) {
 			t.Errorf("needle=%q; data %q; exp=%v; true=%v; approx=%v",
@@ -89,8 +89,8 @@ func TestEditDistanceRef(t *testing.T) {
 }
 
 type unitTest struct {
-	needle       string
-	data         string
+	needle       Needle
+	data         Data
 	expDistance  int
 	trueDistance int
 }
@@ -169,7 +169,7 @@ func TestEditDistanceApprox2(t *testing.T) {
 
 	run := func(ut unitTest) {
 		obsDistance := editDistanceRef(ut.data, ut.needle)
-		obsDistance2 := EditDistance(ut.data, ut.needle, true, Approx2)
+		obsDistance2 := EditDistance(ut.data, Needle(ut.needle), true, Approx2)
 		if (obsDistance != ut.trueDistance) || (obsDistance2 != ut.expDistance) {
 			t.Errorf("needle=%q; data %q; exp=%v; true=%v; approx=%v",
 				ut.needle, ut.data, ut.expDistance, obsDistance, obsDistance2)
