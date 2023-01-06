@@ -80,6 +80,23 @@ func doesNotReference(e expr.Node, bind string) bool {
 	return !ref
 }
 
+// determine if 'e' only references one binding
+func onlyReferences(e expr.Node, bind string) bool {
+	ref := true
+	visit := func(e expr.Node) bool {
+		if !ref {
+			return false
+		}
+		id, ok := e.(expr.Ident)
+		if ok && string(id) != bind {
+			ref = false
+		}
+		return !ok
+	}
+	expr.Walk(visitfn(visit), e)
+	return ref
+}
+
 // tables accept filters directly
 func (i *IterTable) filter(e expr.Node, scope *Trace) {
 	i.Filter = conjoin(i.Filter, e, scope, i)
@@ -138,6 +155,29 @@ func push(f *Filter, dst Step, s *Trace) bool {
 	type filterer interface {
 		filter(e expr.Node, s *Trace)
 	}
+
+	// handle filtering through an EquiJoin;
+	// most of this is handled by EquiJoin.filterOne
+	if eqj, ok := dst.(*EquiJoin); ok {
+		conj := conjunctions(f.Where, nil)
+		var remaining expr.Node
+		for j := range conj {
+			if eqj.filterOne(conj[j], s) {
+				continue
+			}
+			if remaining == nil {
+				remaining = conj[j]
+			} else {
+				remaining = conjoin(remaining, conj[j], s, eqj)
+			}
+		}
+		if remaining == nil {
+			return true
+		}
+		f.Where = remaining
+		return false
+	}
+
 	// this is an unusual case because we
 	// can only push down *part* of the filter:
 	if iv, ok := dst.(*IterValue); ok {

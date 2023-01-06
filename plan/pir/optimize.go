@@ -43,7 +43,7 @@ func simplify(b *Trace) {
 	}
 }
 
-func (b *Trace) optimize() {
+func (b *Trace) optimize() error {
 	// pre-passes to make optimization easier:
 	freezefinal(b) // explicitly choose final output names
 
@@ -58,15 +58,20 @@ func (b *Trace) optimize() {
 	strengthReduce(b)      // strength-reduce kernels, replacing generic subtraces with their case-specific optimized variants
 	filterelim(b)          // eliminate WHERE TRUE
 	filterpushdown(b)      // merge adjacent filters
-	projectpushdown(b)     // merge adjacent projections
-	projectelim(b)         // drop un-used bindings
-	limitpushdown(b)       // push down LIMIT
-	flatten(b)             // eliminate left-to-right bindings
-	mergereplacements(b)   // eliminate common sub-traces
-	simplify(b)            // final simplification pass
+	err := joinelim(b)     // turn EquiJoin into a correlated sub-query + projection
+	if err != nil {
+		return err
+	}
+	projectpushdown(b)   // merge adjacent projections
+	projectelim(b)       // drop un-used bindings
+	limitpushdown(b)     // push down LIMIT
+	flatten(b)           // eliminate left-to-right bindings
+	mergereplacements(b) // eliminate common sub-traces
+	simplify(b)          // final simplification pass
 
 	// TODO:
 	//  - push down DISTINCT when it occurs
 	//  after a simple projection (but not extended projection)
 	//
+	return nil
 }

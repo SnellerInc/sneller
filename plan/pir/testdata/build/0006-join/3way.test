@@ -1,0 +1,17 @@
+SELECT SUM(b.num) AS bsum, SUM(c.num) AS csum, a.grp
+FROM a a JOIN b b ON a.x = b.y JOIN c c ON b.y = c.z
+WHERE b.foo = 3 and a.foo = 700 and c.foo = 400
+GROUP BY a.grp
+---
+WITH (
+	ITERATE b AS b FIELDS [foo, num, y] WHERE foo = 3
+	PROJECT y AS $__key, num AS num, y AS y
+) AS REPLACEMENT(0)
+WITH (
+	ITERATE c AS c FIELDS [foo, num, z] WHERE foo = 400
+	PROJECT z AS $__key, num AS num
+) AS REPLACEMENT(1)
+ITERATE a AS a FIELDS [foo, grp, x] WHERE foo = 700
+ITERATE FIELD HASH_REPLACEMENT(0, 'list', '$__key', x) AS b
+ITERATE FIELD HASH_REPLACEMENT(1, 'list', '$__key', b.y) AS c
+AGGREGATE SUM(b.num) AS bsum, SUM(c.num) AS csum BY grp AS grp

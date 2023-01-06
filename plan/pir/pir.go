@@ -221,6 +221,88 @@ func (i *IterValue) rewrite(rw func(expr.Node, bool) expr.Node) {
 	i.Value = rw(i.Value, false)
 }
 
+type EquiFilter struct {
+	Outer, Inner expr.Node
+}
+
+type EquiJoin struct {
+	parented
+
+	// build a SELECT for the rhs of the join
+	// and delay evaluating it until we've done
+	// some optimizations; we start with just
+	//
+	//   SELECT * FROM table x
+	//
+	// and then add predicate and dereference pushdown info
+	// as it becomes availble
+	built *expr.Select
+
+	env Env
+
+	// key is the computed inner key expression,
+	// and value is the outer variable compared against it
+	key, value expr.Node
+}
+
+func (e *EquiJoin) get(x string) (Step, expr.Node) {
+	// explicit reference to a result of the join:
+	if x == e.built.From.(*expr.Table).Result() {
+		return e, e.built.From.(*expr.Table).Expr
+	}
+	return e.parent().get(x)
+}
+
+// push one part of a filter expression
+func (e *EquiJoin) filterOne(node expr.Node, s *Trace) bool {
+	self := e.built.From.(*expr.Table).Result()
+	// base case: doesn't reference the join
+	if doesNotReference(node, self) {
+		push(&Filter{Where: node}, e.parent(), s)
+		return true
+	}
+	// another base case: *only* references the join
+	if onlyReferences(node, self) {
+		// easy: just push this into the inner WHERE
+		if e.built.Where == nil {
+			e.built.Where = node
+		} else {
+			e.built.Where = expr.And(e.built.Where, node)
+		}
+		return true
+	}
+	return false
+}
+
+func (e *EquiJoin) describe(w io.Writer) {
+	fmt.Fprintf(w, "EQUIJOIN ON %s = %s FROM %s\n",
+		expr.ToString(e.key), expr.ToString(e.value), expr.ToString(e.built))
+}
+
+func (e *EquiJoin) equals(s Step) bool {
+	e2, ok := s.(*EquiJoin)
+	if !ok {
+		return false
+	}
+	return e.built.Equals(e2.built) &&
+		e.key.Equals(e2.key) &&
+		e.value.Equals(e2.value)
+}
+
+func (e *EquiJoin) rewrite(rw func(expr.Node, bool) expr.Node) {
+	// we're only rewriting the inner expressions;
+	// the outer expressions are computed against
+	// the sub-query and should *not* be rewritten
+	// (they aren't part of this trace!)
+	e.value = rw(e.value, false)
+}
+
+func (e *EquiJoin) walk(v expr.Visitor) {
+	expr.Walk(v, e.value)
+}
+
+var _ Step = &EquiJoin{}
+
 type parented struct {
 	par Step
 }
@@ -946,6 +1028,45 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 	// Limit doesnt include any
 	// meaningful expressions
 	b.cur = l
+	return b.push()
+}
+
+func (b *Trace) innerJoin(bind *expr.Binding, on expr.Node, env Env) error {
+	cmp, ok := on.(*expr.OnEquals)
+	if !ok {
+		return fmt.Errorf("ON must be an equality condition; have %s", expr.ToString(on))
+	}
+	self := bind.Result()
+	var key, value expr.Node
+	if onlyReferences(cmp.Left, self) && doesNotReference(cmp.Right, self) {
+		key = cmp.Left
+		value = cmp.Right
+	} else if onlyReferences(cmp.Right, self) && doesNotReference(cmp.Left, self) {
+		key = cmp.Right
+		value = cmp.Left
+	} else {
+		return fmt.Errorf("cannot disambiguate JOIN ... ON condition")
+	}
+	eq := &EquiJoin{
+		built: &expr.Select{
+			Columns: []expr.Binding{expr.Bind(key, "$__key")},
+			From:    &expr.Table{Binding: *bind},
+		},
+		env: env,
+		key: key,
+	}
+	eq.setparent(b.top)
+	b.cur = eq
+	// check the inner condition (the one that references the outer table(s))
+	// against the existing trace
+	value, err := b.pathwalk(value)
+	if err != nil {
+		return err
+	}
+	eq.value = value
+	if err := check(b.top, value); err != nil {
+		return err
+	}
 	return b.push()
 }
 

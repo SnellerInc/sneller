@@ -86,17 +86,21 @@ func (b *Trace) walkFromTable(f *expr.Table, e Env) error {
 }
 
 func (b *Trace) walkFromJoin(f *expr.Join, e Env) error {
-	if f.Kind != expr.CrossJoin {
-		return errorf(f, "join %q not yet supported", f.Kind)
-	}
 	err := b.walkFrom(f.Left, e)
 	if err != nil {
 		return err
 	}
-	// FIXME: if the rhs expression is a SELECT,
-	// then this is almost certainly a correlated
-	// sub-query ...
-	return b.Iterate(&f.Right)
+	switch f.Kind {
+	case expr.CrossJoin:
+		// FIXME: if the rhs expression is a SELECT,
+		// then this is almost certainly a correlated
+		// sub-query ...
+		return b.Iterate(&f.Right)
+	case expr.InnerJoin:
+		return b.innerJoin(&f.Right, f.On, e)
+	default:
+		return errorf(f, "join %q not yet supported", f.Kind)
+	}
 }
 
 // walk a list of bindings and determine if
@@ -203,8 +207,8 @@ func build(parent *Trace, s *expr.Select, e Env) (*Trace, error) {
 	if err != nil {
 		return nil, err
 	}
-	b.optimize()
-	return b, nil
+	err = b.optimize()
+	return b, err
 }
 
 type tableReplacer struct {
