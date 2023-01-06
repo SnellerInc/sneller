@@ -73,6 +73,8 @@ type Chunker struct {
 	// chunk.
 	Ranges Ranges
 
+	writesyms Symtab // symbol table for Write()
+
 	rowcount int // row count associated with Ranges
 
 	// WalkTimeRanges is the list of time ranges
@@ -548,86 +550,49 @@ func noteTimeFields(d Datum, c *Chunker) {
 // If write does not begin with a BVM and/or symbol table,
 // then previous calls to Write must have already set the symbol table.
 // (The output stream of Chunker is compatible with Write.)
-//
-// NOTE: this is *not* safe to use on un-trusted data!
 func (c *Chunker) Write(block []byte) (int, error) {
-	// we cannot resymbolize inside Write because
-	// sequential Write calls are allowed to assume
-	// that the symbol table has not changed between calls;
-	// resymbolization is only allowed during ordinary building
+	// don't bother apply compression here;
+	// we expect the input is reasonably well-compressed already
+	// and the symbolization step is pretty expensive
 	c.noResymbolize = true
 	defer func() {
 		c.noResymbolize = false
 	}()
-
+	var dat Datum
 	var err error
-	n := len(block)
-	if IsBVM(block) {
-		// if the new symbol table is compatible
-		// with the current one, then we can avoid
-		// the call to Flush()
-		var newsyms Symtab
-		block, err = newsyms.Unmarshal(block)
-		if err != nil {
-			return 0, err
-		}
-		// if newsyms contains the current symbol table,
-		// then we have to change the symbol table,
-		// but we can still avoid flushing
-		if !newsyms.Contains(&c.Symbols) {
-			// Since ranges are encoded using Symbuf (symbols),
-			// we can't actually record new ranges values unless
-			// everything up to this point is fully flushed.
-			// We can let blockfmt.MultiWriter handle coalescing
-			// Flushes that happen too frequently.
-			//
-			// TODO: this can leave some padding
-			// that we might not want to keep around;
-			// we could transcode the contents of the
-			// buffer w/ the new symbol table...
-			err := c.Flush()
-			if err != nil {
-				return 0, err
-			}
-			if c.Buffer.Size() > 0 {
-				panic("data left over after Flush()?")
-			}
-			// force the next adjustSyms call
-			// to emit a BVM
-			c.tmpID = 0
-			c.flushID = 0
-			c.Ranges.reset()
-		}
-		newsyms.CloneInto(&c.Symbols)
-		// new symbols mean the range symbols are stale
-		c.rangeSyms = c.rangeSyms[:0]
-	} else if TypeOf(block) == AnnotationType {
-		block, err = c.Symbols.Unmarshal(block)
-		if err != nil {
-			return 0, err
-		}
-		// new symbols mean the range symbols are stale
-		c.rangeSyms = c.rangeSyms[:0]
+	start := len(block)
+	r := resymbolizer{
+		srctab: &c.writesyms,
+		dsttab: &c.Symbols,
 	}
 	for len(block) > 0 {
-		size := SizeOf(block)
-		if size <= 0 || size > len(block) {
-			return 0, fmt.Errorf("object size %d out of range [:%d]", size, len(block))
+		if IsBVM(block) {
+			// we only need to reset on a BVM;
+			// a symbol table append doesn't require us
+			// to reset the symbol cache because all of
+			// the existing old->new mappings are valid
+			r.reset()
 		}
-		typ := TypeOf(block)
-		// skip nop pads, etc.
-		if typ == StructType {
-			rec := block[:size]
-			c.Buffer.UnsafeAppend(rec)
-			c.walkTimeRanges(rec)
-			err = c.Commit()
-			if err != nil {
-				return 0, err
-			}
+		dat, block, err = ReadDatum(&c.writesyms, block)
+		if err != nil {
+			return start - len(block), err
 		}
-		block = block[size:]
+		if dat.Empty() || dat.Type() != StructType {
+			continue // ignore nop padding
+		}
+		pos := c.Buffer.Size()
+		id := c.Symbols.MaxID()
+		r.resym(&c.Buffer, dat.buf)
+		if id != c.Symbols.MaxID() {
+			c.rangeSyms = c.rangeSyms[:0] // force recomputation of range symbols
+		}
+		c.walkTimeRanges(c.Buffer.Bytes()[pos:])
+		err = c.Commit()
+		if err != nil {
+			return start - len(block), err
+		}
 	}
-	return n, nil
+	return start, nil
 }
 
 func pathLess(left, right []Symbol) bool {

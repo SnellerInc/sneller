@@ -152,30 +152,83 @@ func (d Datum) Type() Type {
 	return TypeOf(d.buf)
 }
 
+type resymbolizer struct {
+	// idmap is a cache of old->new symbol mappings
+	idmap  []Symbol
+	srctab *Symtab
+	dsttab *Symtab
+}
+
+func (r *resymbolizer) reset() {
+	for i := range r.idmap {
+		r.idmap[i] = 0
+	}
+}
+
+func (r *resymbolizer) get(sym Symbol) Symbol {
+	if int(sym) < len(r.idmap) && r.idmap[sym] != 0 {
+		return r.idmap[sym]
+	}
+	if cap(r.idmap) > int(sym) {
+		r.idmap = r.idmap[:int(sym)+1]
+	} else {
+		newmap := make([]Symbol, int(sym)+1)
+		copy(newmap, r.idmap)
+		r.idmap = newmap
+	}
+	r.idmap[sym] = r.dsttab.Intern(r.srctab.Get(sym))
+	return r.idmap[sym]
+}
+
 func (d Datum) Encode(dst *Buffer, st *Symtab) {
 	// fast path: no need to resymbolize
 	if len(d.st) == 0 || st.contains(d.st) {
 		dst.UnsafeAppend(d.buf)
 		return
 	}
-	switch typ := d.Type(); typ {
+	srcsyms := d.symtab()
+	rs := &resymbolizer{
+		srctab: &srcsyms,
+		dsttab: st,
+	}
+	rs.resym(dst, d.buf)
+}
+
+// performance-sensitive resymbolization path
+func (r *resymbolizer) resym(dst *Buffer, buf []byte) {
+	switch TypeOf(buf) {
 	case SymbolType:
-		s, _ := d.String()
-		dst.WriteSymbol(st.Intern(s))
+		sym, _, _ := ReadSymbol(buf)
+		dst.WriteSymbol(r.get(sym))
 	case StructType:
-		s, _ := d.Struct()
-		s.Encode(dst, st)
+		dst.BeginStruct(-1)
+		body, _ := Contents(buf)
+		var sym Symbol
+		for len(body) > 0 {
+			sym, body, _ = ReadLabel(body)
+			dst.BeginField(r.get(sym))
+			size := SizeOf(body)
+			r.resym(dst, body[:size])
+			body = body[size:]
+		}
+		dst.EndStruct()
 	case ListType:
-		l, _ := d.List()
-		l.Encode(dst, st)
+		dst.BeginList(-1)
+		body, _ := Contents(buf)
+		for len(body) > 0 {
+			size := SizeOf(body)
+			r.resym(dst, body[:size])
+			body = body[size:]
+		}
+		dst.EndList()
 	case AnnotationType:
-		lbl, val, _ := d.Annotation()
+		sym, body, _, _ := ReadAnnotation(buf)
 		dst.BeginAnnotation(1)
-		dst.BeginField(st.Intern(lbl))
-		val.Encode(dst, st)
+		dst.BeginField(r.get(sym))
+		r.resym(dst, body)
 		dst.EndAnnotation()
 	default:
-		panic("resymbolizing non-symbolized type: " + typ.String())
+		dst.UnsafeAppend(buf)
 	}
 }
 
