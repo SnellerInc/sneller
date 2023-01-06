@@ -332,7 +332,7 @@ func do(arg string) {
 	query := parse(arg)
 	tree, err := plan.New(query, mkenv())
 	if err != nil {
-		exit(err)
+		exitf("making query plan: %s", err)
 	}
 
 	if dashg {

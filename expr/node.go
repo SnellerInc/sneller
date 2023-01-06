@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
 
 	"golang.org/x/exp/slices"
@@ -1629,6 +1630,11 @@ func (s *StringMatch) setfield(name string, st *ion.Symtab, val []byte) error {
 
 func (s *StringMatch) walk(v Visitor) { Walk(v, s.Expr) }
 
+func (s *StringMatch) rewrite(r Rewriter) Node {
+	s.Expr = Rewrite(r, s.Expr)
+	return s
+}
+
 func (s *StringMatch) text(dst *strings.Builder, redact bool) {
 	var middle string
 	switch s.Op {
@@ -1648,7 +1654,7 @@ func (s *StringMatch) text(dst *strings.Builder, redact bool) {
 	s.Expr.text(dst, redact)
 	dst.WriteString(middle)
 	quote(dst, s.Pattern)
-	if s.Escape != "" {
+	if s.Escape != "" && s.Escape != string(stringext.NoEscape) {
 		dst.WriteString(" ESCAPE ")
 		quote(dst, s.Escape)
 	}

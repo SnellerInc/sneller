@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	"github.com/SnellerInc/sneller/aws"
@@ -71,5 +72,6 @@ func s3fs(name string) *db.S3FS {
 	root.Client = &s3.DefaultClient
 	root.Bucket = bucket
 	root.Key = key
+	root.Ctx = context.Background()
 	return root
 }

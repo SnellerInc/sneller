@@ -1232,9 +1232,9 @@ z = (SELECT a FROM bar LIMIT 1)`,
 		},
 		{
 			// eliminate redundant LIMIT 1
-			input: `SELECT COUNT(*) FROM table LIMIT 1`,
+			input: `SELECT COUNT(*) FROM table WHERE x LIKE '%foo%' LIMIT 1`,
 			expect: []string{
-				"ITERATE table FIELDS []",
+				"ITERATE table FIELDS [x] WHERE x LIKE '%foo%'",
 				"AGGREGATE COUNT(*) AS \"count\"",
 			},
 		},
