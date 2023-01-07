@@ -98,7 +98,13 @@ type Config struct {
 	// files that are compacted into larger packfiles.
 	// If TargetMergeSize is zero, then DefaultTargetMergeSize is used.
 	TargetMergeSize int
-
+	// MinInputBytesPerCPU, if non-zero, determines the minimum
+	// number of input bytes necessary to cause the conversion
+	// process to decide to use an additional CPU core.
+	// For example, if MinInputBytesPerCPU is 512kB, then 3MB of input
+	// data would use 6 CPU cores (provided GOMAXPROCS is at least this high).
+	// See blockfmt.MinInputBytesPerCPU
+	MinInputBytesPerCPU int64
 	// Force forces a full index rebuild
 	// even when the input appears to be up-to-date.
 	Force bool
@@ -902,11 +908,12 @@ func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *Index
 
 func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partition) error {
 	c := blockfmt.Converter{
-		Inputs:    part.lst,
-		Align:     st.conf.align(),
-		FlushMeta: st.conf.flushMeta(),
-		Comp:      st.conf.comp(),
-		Constants: part.cons,
+		Inputs:              part.lst,
+		Align:               st.conf.align(),
+		FlushMeta:           st.conf.flushMeta(),
+		Comp:                st.conf.comp(),
+		Constants:           part.cons,
+		MinInputBytesPerCPU: st.conf.MinInputBytesPerCPU,
 	}
 
 	if prepend != nil {

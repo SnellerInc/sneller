@@ -172,6 +172,17 @@ func UnsafeION() RowFormat {
 	return ionConverter{}
 }
 
+func isCompressed(r RowFormat) bool {
+	switch r := r.(type) {
+	case *jsonConverter:
+		return r.decomp != nil
+	case *xsvConverter:
+		return r.decomp != nil
+	default:
+		return false
+	}
+}
+
 // SuffixToFormat is a list of known
 // filename suffixes that correspond
 // to known constructors for RowFormat
@@ -345,6 +356,18 @@ type Converter struct {
 	// uploads. If Parallel is <= 0, then
 	// GOMAXPROCS is used instead.
 	Parallel int
+	// MinInputBytesPerCPU is used to determine
+	// the level of parallelism used for converting data.
+	// If this setting is non-zero, then the converter
+	// will try to ensure that there are at least this
+	// many bytes of input data for each independent
+	// parallel stream used for conversion.
+	//
+	// Picking a larger setting for MinInputBytesPerCPU
+	// will generally increase the effiency of the
+	// conversion (in bytes converted per CPU-second)
+	// and also the compactness of the output data.
+	MinInputBytesPerCPU int64
 	// DisablePrefetch, if true, disables
 	// prefetching of inputs.
 	DisablePrefetch bool
@@ -397,10 +420,49 @@ func IsFatal(err error) bool {
 	return errors.As(err, &cie)
 }
 
+func (c *Converter) parallel() int {
+	p := c.Parallel
+	if p == 0 {
+		p = runtime.GOMAXPROCS(0)
+	}
+	// clamp to # inputs:
+	if p > len(c.Inputs) {
+		p = len(c.Inputs)
+	}
+	if c.MinInputBytesPerCPU == 0 {
+		return p
+	}
+
+	// calculate the number of input bytes
+	// based on the raw input sizes and the
+	// presence or absence of compression
+	//
+	// without actually opening the files,
+	// just make a conservative guess on the
+	// compression ratio
+	insize := int64(0)
+	const compressionRatio = 5
+	for i := range c.Inputs {
+		size := c.Inputs[i].Size
+		if isCompressed(c.Inputs[i].F) {
+			size *= compressionRatio
+		}
+		insize += size
+	}
+	max := int(c.MinInputBytesPerCPU / insize)
+	if max == 0 {
+		max = 1
+	}
+	if max < p {
+		p = max
+	}
+	return p
+}
+
 // MultiStream returns whether the configuration of Converter
 // would lead to a multi-stream upload.
 func (c *Converter) MultiStream() bool {
-	return len(c.Inputs) > 1 && (c.Parallel <= 0 || c.Parallel > 1)
+	return c.parallel() > 1
 }
 
 // Run runs the conversion operation
@@ -419,8 +481,9 @@ func (c *Converter) Run() error {
 	if len(c.Inputs) == 0 && c.Prepend.R == nil {
 		return errors.New("no inputs or merge sources")
 	}
-	if c.MultiStream() {
-		return c.runMulti()
+	p := c.parallel()
+	if p > 1 {
+		return c.runMulti(p)
 	}
 	return c.runSingle()
 }
@@ -551,7 +614,7 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 	return err
 }
 
-func (c *Converter) runMulti() error {
+func (c *Converter) runMulti(p int) error {
 	cname := c.Comp
 	if cname == "zstd" {
 		cname = "zstd-better"
@@ -575,10 +638,6 @@ func (c *Converter) runMulti() error {
 	err := c.fastPrepend(w)
 	if err != nil {
 		return err
-	}
-	p := c.Parallel
-	if p <= 0 {
-		p = runtime.GOMAXPROCS(0)
 	}
 	startc := make(chan *Input, p)
 	readyc := startc
