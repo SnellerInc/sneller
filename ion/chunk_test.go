@@ -553,6 +553,49 @@ func results(t *testing.T, buf []byte) []ion.Struct {
 	return out
 }
 
+func assertEqual(t *testing.T, left, right ion.Struct) {
+	nop := func(f ion.Field) bool { return true }
+	if err := left.Each(nop); err != nil {
+		t.Helper()
+		t.Errorf("left: %v", err)
+		return
+	}
+	if err := right.Each(nop); err != nil {
+		t.Helper()
+		t.Errorf("right: %v", err)
+		return
+	}
+	a := left.Datum()
+	b := right.Datum()
+	if a.Equal(b) {
+		return
+	}
+	t.Helper()
+	var text bytes.Buffer
+	w := ion.NewJSONWriter(&text, '\n')
+	var buf ion.Buffer
+	var st ion.Symtab
+
+	a.Encode(&buf, &st)
+	pos := buf.Size()
+	st.Marshal(&buf, true)
+	w.Write(append(buf.Bytes()[pos:], buf.Bytes()[:pos]...))
+	leftstr := text.String()
+
+	buf.Reset()
+	text.Reset()
+	st.Reset()
+
+	b.Encode(&buf, &st)
+	pos = buf.Size()
+	st.Marshal(&buf, true)
+	w.Write(append(buf.Bytes()[pos:], buf.Bytes()[:pos]...))
+	rightstr := text.String()
+
+	t.Errorf("left: %s", leftstr)
+	t.Errorf("right %s", rightstr)
+}
+
 func checkEquivalent(t *testing.T, left, right []byte) {
 	gotleft := results(t, left)
 	gotright := results(t, right)
@@ -561,18 +604,7 @@ func checkEquivalent(t *testing.T, left, right []byte) {
 		t.Fatalf("left has %d results, right has %d", len(gotleft), len(gotright))
 	}
 	for i := range gotleft {
-		if !gotleft[i].Equal(gotright[i]) {
-			f0 := gotleft[i].Fields(nil)
-			f1 := gotright[i].Fields(nil)
-			for len(f0) > 0 &&
-				len(f1) > 0 &&
-				f0[0].Equal(&f1[0]) {
-				f0 = f0[1:]
-				f1 = f1[1:]
-			}
-			t.Errorf("left %v", f0)
-			t.Errorf("right %v", f1)
-		}
+		assertEqual(t, gotleft[i], gotright[i])
 	}
 }
 
@@ -903,8 +935,9 @@ func BenchmarkChunkerWrite(b *testing.B) {
 			const align = 1024 * 1024
 			var tmp bytes.Buffer
 			cn := ion.Chunker{
-				W:     &tmp,
-				Align: align,
+				W:          &tmp,
+				Align:      align,
+				RangeAlign: 50 * align,
 			}
 			err = jsonrl.Convert(f, &cn, nil, nil)
 			if err != nil {

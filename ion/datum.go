@@ -169,12 +169,14 @@ func (r *resymbolizer) get(sym Symbol) Symbol {
 	if int(sym) < len(r.idmap) && r.idmap[sym] != 0 {
 		return r.idmap[sym]
 	}
-	if cap(r.idmap) > int(sym) {
-		r.idmap = r.idmap[:int(sym)+1]
-	} else {
-		newmap := make([]Symbol, int(sym)+1)
-		copy(newmap, r.idmap)
-		r.idmap = newmap
+	if int(sym) >= len(r.idmap) {
+		if cap(r.idmap) > int(sym) {
+			r.idmap = r.idmap[:int(sym)+1]
+		} else {
+			newmap := make([]Symbol, int(sym)+1)
+			copy(newmap, r.idmap)
+			r.idmap = newmap
+		}
 	}
 	r.idmap[sym] = r.dsttab.Intern(r.srctab.Get(sym))
 	return r.idmap[sym]
@@ -571,7 +573,7 @@ func (s Struct) Each(fn func(Field) bool) error {
 		}
 		val, _, err := ReadDatum(&st, body[:next])
 		if err != nil {
-			return err
+			return fmt.Errorf("field %q: %s", name, err)
 		}
 		f := Field{
 			Label: name,

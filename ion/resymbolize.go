@@ -19,27 +19,17 @@ package ion
 // and set st to the new (hopefully smaller) symbol table
 func resymbolize(dst *Buffer, rng *Ranges, st *Symtab, buf []byte) {
 	var newst Symtab
-	for len(buf) > 0 {
-		var d Datum
-		var err error
-		d, buf, err = ReadDatum(st, buf)
-		if err != nil {
-			panic(err)
-		}
-		d.Encode(dst, &newst)
+	rs := resymbolizer{
+		srctab: st,
+		dsttab: &newst,
 	}
+	rs.resym(dst, buf)
 
 	// resymbolize ranges:
-	var new Symbuf
 	newm := make(map[symstr]dataRange)
 	newp := rng.paths[:0]
 	for oldstr, r := range rng.m {
-		strs := oldstr.resolve(st)
-		new.Prepare(len(strs))
-		for i := range strs {
-			new.Push(newst.Intern(strs[i]))
-		}
-		newstr := symstr(new)
+		newstr := oldstr.transcode(&rs)
 		newm[newstr] = r
 		newp = append(newp, newstr)
 	}

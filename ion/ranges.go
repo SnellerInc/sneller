@@ -201,6 +201,18 @@ func (b *Symbuf) Push(sym Symbol) {
 // can be used as a map key.
 type symstr string
 
+// transcode converts a symstr to an equivalent symstr
+// using a different symbol table via a resymbolizer
+func (s symstr) transcode(rs *resymbolizer) symstr {
+	ret := make([]byte, len(s))
+	for i := 0; i < len(s); i += 4 {
+		n := binary.LittleEndian.Uint32([]byte(s[i:]))
+		sym := rs.get(Symbol(n))
+		binary.LittleEndian.PutUint32(ret[i:], uint32(sym))
+	}
+	return symstr(ret)
+}
+
 // resolve the path using the given symbol table.
 func (s symstr) resolve(st *Symtab) []string {
 	if len(s) == 0 {

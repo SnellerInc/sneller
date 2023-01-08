@@ -54,7 +54,9 @@ type Chunker struct {
 	// buffered data.
 	Buffer
 	// Symbols is the current symbol table.
-	Symbols Symtab
+	Symbols  Symtab
+	symEpoch int // incremented when Symbols resets
+
 	// Align is the alignment of output data.
 	// (Align should not be modified once the
 	// data has begun being committed to the Chunker.)
@@ -95,8 +97,8 @@ type Chunker struct {
 	// marshalled and flushed maximum symbol IDs, respectively:
 	tmpID, flushID int
 
-	// resymbolization is disabled
-	noResymbolize bool
+	// compression is disabled
+	noCompress bool
 }
 
 // Snapshot holds the state of a Chunker at a point in
@@ -169,6 +171,7 @@ func (c *Chunker) adjustSyms() bool {
 	// ordering should be
 	//   c.flushID <= c.tmpID <= max
 	if max < c.tmpID || c.tmpID < c.flushID {
+		println("flush", c.flushID, "tmp", c.tmpID, "max", max)
 		panic("bad symbol ID bookkeeping")
 	}
 	if max == c.tmpID {
@@ -268,7 +271,7 @@ func (c *Chunker) flushRanges() error {
 }
 
 func (c *Chunker) compressOrFlush() error {
-	if !c.noResymbolize && !c.compressed {
+	if !c.noCompress && !c.compressed {
 		c.compressed = c.compress()
 		// if we are fully serialized, no need to flush
 		if c.Buffer.Size() <= c.Align && c.compressed {
@@ -332,11 +335,17 @@ func (c *Chunker) forceFlush(final bool) error {
 		if final {
 			panic("final && tail != nil")
 		}
-		if c.flushID == 0 && !c.noResymbolize {
+		// if we just flushed ranges OR the symbol table
+		// is getting to be too large, then resymbolize
+		// using just the trailing row
+		if c.flushID == 0 || c.Symbols.memsize >= (c.Align/2) {
 			// if we are going to need a full symbol table
 			// in the next block, resymbolize so that we
 			// don't carry over old symbols
 			resymbolize(&c.Buffer, &c.Ranges, &c.Symbols, tail)
+			c.symEpoch++
+			c.tmpID = 0
+			c.flushID = 0
 		} else {
 			c.Buffer.UnsafeAppend(tail)
 		}
@@ -436,7 +445,7 @@ func (c *Chunker) Flush() error {
 		}
 		return nil
 	}
-	if !c.noResymbolize && !c.compressed {
+	if !c.noCompress && !c.compressed {
 		c.compressed = c.compress()
 	}
 	return c.forceFlush(true)
@@ -552,12 +561,10 @@ func noteTimeFields(d Datum, c *Chunker) {
 func (c *Chunker) Write(block []byte) (int, error) {
 	// don't bother apply compression here;
 	// we expect the input is reasonably well-compressed already
-	// and the symbolization step is pretty expensive
-	c.noResymbolize = true
+	c.noCompress = true
 	defer func() {
-		c.noResymbolize = false
+		c.noCompress = false
 	}()
-	var dat Datum
 	var err error
 	start := len(block)
 	r := resymbolizer{
@@ -571,24 +578,37 @@ func (c *Chunker) Write(block []byte) (int, error) {
 			// to reset the symbol cache because all of
 			// the existing old->new mappings are valid
 			r.reset()
+			block, err = c.writesyms.Unmarshal(block)
+		} else if TypeOf(block) == AnnotationType {
+			block, err = c.writesyms.Unmarshal(block)
 		}
-		dat, block, err = ReadDatum(&c.writesyms, block)
 		if err != nil {
 			return start - len(block), err
 		}
-		if dat.Empty() || dat.Type() != StructType {
-			continue // ignore nop padding
+		size := SizeOf(block)
+		if size <= 0 || size > len(block) {
+			return start - len(block), fmt.Errorf("size %d?", size)
+		}
+		dat := block[:size]
+		block = block[size:]
+		if TypeOf(dat) != StructType {
+			continue // ignore nop pads
 		}
 		pos := c.Buffer.Size()
 		id := c.Symbols.MaxID()
-		r.resym(&c.Buffer, dat.buf)
+		r.resym(&c.Buffer, dat)
 		if id != c.Symbols.MaxID() {
 			c.rangeSyms = c.rangeSyms[:0] // force recomputation of range symbols
 		}
 		c.walkTimeRanges(c.Buffer.Bytes()[pos:])
+		epoch := c.symEpoch
 		err = c.Commit()
 		if err != nil {
 			return start - len(block), err
+		}
+		if c.symEpoch != epoch {
+			r.reset() // symbol table was flushed
+			c.rangeSyms = c.rangeSyms[:0]
 		}
 	}
 	return start, nil
