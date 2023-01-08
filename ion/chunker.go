@@ -269,10 +269,11 @@ func (c *Chunker) flushRanges() error {
 
 func (c *Chunker) compressOrFlush() error {
 	if !c.noResymbolize && !c.compressed {
-		c.compress()
-		c.compressed = true
+		c.compressed = c.compress()
 		// if we are fully serialized, no need to flush
-		if c.Buffer.Size() < c.Align && c.tmpID == c.Symbols.MaxID() {
+		if c.Buffer.Size() <= c.Align && c.compressed {
+			// commit the current row
+			c.lastoff = c.Buffer.Size()
 			return nil
 		}
 	}
@@ -336,7 +337,6 @@ func (c *Chunker) forceFlush(final bool) error {
 			// in the next block, resymbolize so that we
 			// don't carry over old symbols
 			resymbolize(&c.Buffer, &c.Ranges, &c.Symbols, tail)
-			c.compressed = false
 		} else {
 			c.Buffer.UnsafeAppend(tail)
 		}
@@ -437,8 +437,7 @@ func (c *Chunker) Flush() error {
 		return nil
 	}
 	if !c.noResymbolize && !c.compressed {
-		c.compress()
-		c.compressed = true
+		c.compressed = c.compress()
 	}
 	return c.forceFlush(true)
 }

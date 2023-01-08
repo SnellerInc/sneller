@@ -25,7 +25,7 @@ const (
 	evictWindow = 64 * 1024
 )
 
-func (c *Chunker) compress() {
+func (c *Chunker) compress() bool {
 	// we would like
 	//   c.lastst <= c.lastcomp <= c.lastoff <= c.Align
 	if c.lastoff > c.Align {
@@ -35,7 +35,7 @@ func (c *Chunker) compress() {
 		panic("lastcomp < c.lastst")
 	}
 	// scan body for repeated strings
-	var stab strtab
+	stab := strtab{seed: maphash.MakeSeed()}
 	body := c.Buffer.Bytes()[c.lastcomp:]
 	prefix := c.Buffer.Bytes()[c.lastst:c.lastcomp]
 	toscan := body
@@ -44,7 +44,7 @@ func (c *Chunker) compress() {
 	}
 	if stab.prepop == 0 {
 		// didn't turn any new strings to symbols
-		return
+		return false
 	}
 
 	// re-encode the data with the new
@@ -76,7 +76,7 @@ func (c *Chunker) compress() {
 		// grow rather than shrink, and in that case
 		// we cannot compress because there isn't
 		// space to grow the symbol table -- just bail out
-		return
+		return false
 	}
 	// commit the new compressed data
 	c.lastoff = lastoff
@@ -87,6 +87,7 @@ func (c *Chunker) compress() {
 	c.tmpbuf.Set(c.Buffer.Bytes()[:0])
 	c.Buffer.Set(newbody)
 	c.lastcomp = c.Buffer.Size()
+	return true
 }
 
 const (
@@ -115,6 +116,7 @@ func distance(from, to []byte) int {
 
 // strtab is a lossy hash table of strings
 type strtab struct {
+	seed    maphash.Seed
 	entries [strtabSize]strentry
 	misses  int
 	hits    int
@@ -122,9 +124,7 @@ type strtab struct {
 }
 
 func (s *strtab) hash(str []byte) (*strentry, *strentry) {
-	var h maphash.Hash
-	h.Write(str)
-	u := h.Sum64()
+	u := maphash.Bytes(s.seed, str)
 	e0 := &s.entries[u&strtabMask]
 	e1 := &s.entries[(u>>strtabBits)&strtabMask]
 	return e0, e1
