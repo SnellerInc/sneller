@@ -215,52 +215,6 @@ func TestChunkerRange(t *testing.T) {
 	}
 }
 
-func TestChunkerSnapshot(t *testing.T) {
-	rw := new(rangeWriter)
-	c := &ion.Chunker{
-		W:     rw,
-		Align: 1024 * 1024,
-	}
-
-	foo := c.Symbols.Intern("foo")
-
-	date1 := date.Date(2021, 11, 11, 11, 11, 11, 0)
-	date2 := date.Date(2021, 12, 12, 12, 12, 12, 0)
-
-	var snap ion.Snapshot
-
-	// First write
-	//   { "foo": /* take snapshot */ date1 }
-	// ...then load snapshot and write date2 instead.
-	c.BeginStruct(-1)
-	c.BeginField(foo)
-	c.Save(&snap)
-	c.Ranges.AddTime(mksymbuf(foo), date1)
-	c.WriteTime(date1)
-	c.EndStruct()
-	c.Load(&snap)
-	c.Ranges.AddTime(mksymbuf(foo), date2)
-	c.WriteTime(date2)
-	c.EndStruct()
-
-	if err := c.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Flush(); err != nil {
-		t.Fatal(err)
-	}
-
-	if want := [][]ranges{{{
-		path: []string{"foo"},
-		min:  timestamp("2021-12-12T12:12:12Z"),
-		max:  timestamp("2021-12-12T12:12:12Z"),
-	}}}; !reflect.DeepEqual(want, rw.allRanges) {
-		t.Errorf("ranges not equal")
-		t.Errorf("want: %v", want)
-		t.Errorf("got:  %v", rw.allRanges)
-	}
-}
-
 func checkEncoding(t *testing.T, buf *rangeBuf, align int) {
 	mem := buf.Bytes()
 	var st ion.Symtab

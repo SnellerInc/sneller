@@ -22,61 +22,6 @@ import (
 	"github.com/SnellerInc/sneller/date"
 )
 
-func TestRangesSaveLoad(t *testing.T) {
-	var rs Ranges
-	var snap Snapshot
-
-	p1 := mksymstr(1)
-	p2 := mksymstr(2)
-	p3 := mksymstr(3)
-	ts := date.Date(2021, 11, 11, 11, 0, 0, 0)
-
-	rs.AddTime(mksymbuf(1), ts)
-	rs.save(&snap)
-	rs.AddTime(mksymbuf(2), ts)
-	rs.AddTime(mksymbuf(3), ts)
-
-	if want := (Ranges{
-		paths: []symstr{p1, p2, p3},
-		m: map[symstr]dataRange{
-			p1: newTimeRange(ts),
-			p2: newTimeRange(ts),
-			p3: newTimeRange(ts),
-		},
-	}); !rangesEqual(want, rs) {
-		t.Errorf("mismatch before load")
-		t.Errorf("want: %#v", want)
-		t.Errorf("got:  %#v", rs)
-	}
-
-	rs.load(&snap)
-
-	if want := (Ranges{
-		paths: []symstr{p1},
-		m: map[symstr]dataRange{
-			p1: newTimeRange(ts),
-		},
-	}); !rangesEqual(want, rs) {
-		t.Errorf("mismatch after load")
-		t.Errorf("want: %#v", want)
-		t.Errorf("got:  %#v", rs)
-	}
-
-	rs.AddTime(mksymbuf(3), ts)
-
-	if want := (Ranges{
-		paths: []symstr{p1, p3},
-		m: map[symstr]dataRange{
-			p1: newTimeRange(ts),
-			p3: newTimeRange(ts),
-		},
-	}); !rangesEqual(want, rs) {
-		t.Errorf("mismatch after addTime")
-		t.Errorf("want: %#v", want)
-		t.Errorf("got:  %#v", rs)
-	}
-}
-
 func TestRangesCommit(t *testing.T) {
 	var rs Ranges
 

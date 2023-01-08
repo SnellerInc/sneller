@@ -56,20 +56,6 @@ type Buffer struct {
 	// for the size of the TLV bytes?
 }
 
-// Save takes a snapshot of the current state of the
-// buffer.
-func (b *Buffer) Save(snap *Snapshot) {
-	snap.buf = b.buf
-	snap.segs = append(snap.segs[:0], b.segs...)
-}
-
-// Load resets the buffer to the state at the time the
-// snapshot was saved.
-func (b *Buffer) Load(snap *Snapshot) {
-	b.buf = snap.buf
-	b.segs = append(b.segs[:0], snap.segs...)
-}
-
 // Set sets the buffer used by 'b'
 // and resets the state of the buffer.
 // Subsequent calls to Write* functions

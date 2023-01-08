@@ -25,26 +25,6 @@ type Ranges struct {
 	m     map[symstr]dataRange
 }
 
-// save rs.paths to snap.
-func (rs *Ranges) save(snap *Snapshot) {
-	snap.paths = append(snap.paths[:0], rs.paths...)
-}
-
-// load rs.paths from snap and deletes any keys in m
-// that are not present.
-func (rs *Ranges) load(snap *Snapshot) {
-	rs.paths = append(rs.paths[:0], snap.paths...)
-outer:
-	for k := range rs.m {
-		for _, p := range snap.paths {
-			if k == p {
-				continue outer
-			}
-		}
-		delete(rs.m, k)
-	}
-}
-
 // AddTruncatedTime adds a truncated time value to the
 // range tracker.
 func (rs *Ranges) AddTruncatedTime(p Symbuf, t date.Time, trunc TimeTrunc) {

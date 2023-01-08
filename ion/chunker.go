@@ -101,28 +101,6 @@ type Chunker struct {
 	noCompress bool
 }
 
-// Snapshot holds the state of a Chunker at a point in
-// time which can be reloaded by calling Load.
-type Snapshot struct {
-	paths []symstr  // paths in Ranges
-	buf   []byte    // buf in Buffer
-	segs  []segment // segs in Buffer
-}
-
-// Save takes a snapshot of the current state of the
-// buffer.
-func (c *Chunker) Save(snap *Snapshot) {
-	c.Ranges.save(snap)
-	c.Buffer.Save(snap)
-}
-
-// Load resets the buffer to the state stored in the
-// snapshot.
-func (c *Chunker) Load(snap *Snapshot) {
-	c.Ranges.load(snap)
-	c.Buffer.Load(snap)
-}
-
 // Set sets the buffer used by c to b and resets c to
 // its initial state. This should only be used between
 // benchmark runs to avoid allocation overhead.
@@ -406,10 +384,6 @@ func (c *Chunker) Commit() error {
 		return err2big(c.Align)
 	}
 	c.compressed = false
-	// we're guessing here that if we leave enough
-	// slack space for the symbol table to double
-	// in size, we will still have enough space left
-	// after encoding it...
 	if len(cur) <= c.Align && c.adjustSyms() {
 		c.lastoff = c.Buffer.Size()
 		if c.lastoff > c.Align {
