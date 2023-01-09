@@ -240,6 +240,27 @@ func (s *Order) finalizeKtop() error {
 	var globalst ion.Symtab
 	var err error
 	records := s.ktop.Capture()
+
+	// once we have accumulated this many data bytes,
+	// flush the output buffer:
+	const flushAt = PageSize / 2
+
+	// temporary buffer for flushing:
+	var out []byte
+	flush := func() error {
+		slice := tmp.Size()
+		if slice == 0 {
+			return nil
+		}
+		globalst.Marshal(&tmp, true)
+		out = append(out[:0], tmp.Bytes()[slice:]...)
+		out = append(out, tmp.Bytes()[:slice]...)
+		globalst.Reset()
+		tmp.Reset()
+		_, err := s.dst.Write(out)
+		return err
+	}
+
 	// for each record, re-encode into
 	// the new global symbol table and then
 	// serialize into the temporary buffer
@@ -262,14 +283,14 @@ func (s *Order) finalizeKtop() error {
 			})
 		}
 		tmp.WriteStruct(&globalst, row)
+		if tmp.Size() >= flushAt {
+			err := flush()
+			if err != nil {
+				return err
+			}
+		}
 	}
-	slice := tmp.Size()
-	globalst.Marshal(&tmp, true)
-	out := make([]byte, tmp.Size())
-	pre := copy(out, tmp.Bytes()[slice:])
-	copy(out[pre:], tmp.Bytes()[:slice])
-	_, err = s.dst.Write(out)
-	return err
+	return flush()
 }
 
 // ----------------------------------------------------------------------
