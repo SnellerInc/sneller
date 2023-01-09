@@ -32,10 +32,14 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// we try to keep this many bytes in-flight
-// at all times, regardless of the level of
-// parallelism we are using to ingest files
-const wantInflight = 80 * 1024 * 1024
+const (
+	// DefaultMaxReadsInFlight is the default maximum
+	// number of outstanding read operations in Converter.Run
+	DefaultMaxReadsInFlight = 400
+	// DefaultMaxBytesInFlight is the default maximum
+	// number of bytes in flight in Converter.Run
+	DefaultMaxBytesInFlight = 80 * 1024 * 1024
+)
 
 // RowFormat is the interface through which
 // input streams are converted into aligned
@@ -368,6 +372,11 @@ type Converter struct {
 	// conversion (in bytes converted per CPU-second)
 	// and also the compactness of the output data.
 	MinInputBytesPerCPU int64
+	// MaxReadsInFlight is the maximum number of
+	// prefetched reads in flight. If this is less
+	// than or equal to zero, then DefaultMaxReadsInFlight is used.
+	MaxReadsInFlight int
+
 	// DisablePrefetch, if true, disables
 	// prefetching of inputs.
 	DisablePrefetch bool
@@ -488,6 +497,13 @@ func (c *Converter) Run() error {
 	return c.runSingle()
 }
 
+func (c *Converter) prefetch() int {
+	if c.MaxReadsInFlight > 0 {
+		return c.MaxReadsInFlight
+	}
+	return DefaultMaxReadsInFlight
+}
+
 func (c *Converter) runSingle() error {
 	cname := c.Comp
 	if cname == "zstd" {
@@ -540,7 +556,7 @@ func (c *Converter) runSingle() error {
 			next = i + 1
 		}
 		// start readahead on inputs that we will need
-		for !c.DisablePrefetch && inflight < wantInflight && (next-i) < 64 && next < len(c.Inputs) {
+		for !c.DisablePrefetch && inflight < DefaultMaxBytesInFlight && (next-i) < c.prefetch() && next < len(c.Inputs) {
 			if saved != nil {
 				ready[next] = saved
 				saved = nil
@@ -644,11 +660,11 @@ func (c *Converter) runMulti(p int) error {
 	if p >= len(c.Inputs) {
 		p = len(c.Inputs)
 	} else if !c.DisablePrefetch {
-		max := 64
+		max := c.prefetch()
 		if max > len(c.Inputs) {
 			max = len(c.Inputs)
 		}
-		readyc = doPrefetch(startc, max, wantInflight)
+		readyc = doPrefetch(startc, max, DefaultMaxBytesInFlight)
 	}
 	errs := make(chan error, p)
 	// NOTE: consume must be called
