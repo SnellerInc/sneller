@@ -168,12 +168,10 @@ func (a bcArgType) immWidth() int {
 }
 
 type bcopinfo struct {
-	text     string
-	args     []bcArgType
-	va       []bcArgType
-	immwidth uint8 // immediate size
-	scratch  int   // desired scratch space (up to PageSize)
-	inverse  bcop  // for comparisons, etc., the inverse operation
+	text    string
+	args    []bcArgType
+	va      []bcArgType
+	scratch int // desired scratch space (up to PageSize)
 }
 
 func bcmakeopinfo() [_maxbcop]bcopinfo {
@@ -335,38 +333,38 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opcmpgtstr:    {text: "cmpgt.str", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		opcmpgestr:    {text: "cmpge.str", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		opcmpltk:      {text: "cmplt.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
-		opcmpltkimm:   {text: "cmplt.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmpgtkimm},
+		opcmpltkimm:   {text: "cmplt.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate)},
 		opcmplek:      {text: "cmple.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
-		opcmplekimm:   {text: "cmple.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmpgekimm},
+		opcmplekimm:   {text: "cmple.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate)},
 		opcmpgtk:      {text: "cmpgt.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
-		opcmpgtkimm:   {text: "cmpgt.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmpgtkimm},
+		opcmpgtkimm:   {text: "cmpgt.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate)},
 		opcmpgek:      {text: "cmpge.k", args: makeArgs(bcWriteK, bcReadK, bcReadK, bcPredicate)},
-		opcmpgekimm:   {text: "cmpge.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate), inverse: opcmplekimm},
-		opcmpeqf64:    {text: "cmpeq.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpeqf64},
+		opcmpgekimm:   {text: "cmpge.k@imm", args: makeArgs(bcWriteK, bcReadK, bcImmU16, bcPredicate)},
+		opcmpeqf64:    {text: "cmpeq.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		opcmpeqf64imm: {text: "cmpeq.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate)},
-		opcmpeqi64:    {text: "cmpeq.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpeqi64},
+		opcmpeqi64:    {text: "cmpeq.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		opcmpeqi64imm: {text: "cmpeq.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate)},
-		opcmpltf64:    {text: "cmplt.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgtf64},
-		opcmpltf64imm: {text: "cmplt.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmpgtf64imm},
-		opcmplti64:    {text: "cmplt.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgti64},
-		opcmplti64imm: {text: "cmplt.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmpgti64imm},
-		opcmplef64:    {text: "cmple.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgef64},
-		opcmplef64imm: {text: "cmple.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmpgef64imm},
-		opcmplei64:    {text: "cmple.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpgei64},
-		opcmplei64imm: {text: "cmple.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmpgei64imm},
-		opcmpgtf64:    {text: "cmpgt.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmpltf64},
-		opcmpgtf64imm: {text: "cmpgt.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmpltf64imm},
-		opcmpgti64:    {text: "cmpgt.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmplti64},
-		opcmpgti64imm: {text: "cmpgt.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmplti64imm},
-		opcmpgef64:    {text: "cmpge.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmplef64},
-		opcmpgef64imm: {text: "cmpge.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate), inverse: opcmplef64imm},
-		opcmpgei64:    {text: "cmpge.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate), inverse: opcmplei64},
-		opcmpgei64imm: {text: "cmpge.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate), inverse: opcmplei64imm},
+		opcmpltf64:    {text: "cmplt.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpltf64imm: {text: "cmplt.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opcmplti64:    {text: "cmplt.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmplti64imm: {text: "cmplt.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opcmplef64:    {text: "cmple.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmplef64imm: {text: "cmple.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opcmplei64:    {text: "cmple.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmplei64imm: {text: "cmple.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opcmpgtf64:    {text: "cmpgt.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpgtf64imm: {text: "cmpgt.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opcmpgti64:    {text: "cmpgt.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpgti64imm: {text: "cmpgt.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate)},
+		opcmpgef64:    {text: "cmpge.f64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpgef64imm: {text: "cmpge.f64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmF64, bcPredicate)},
+		opcmpgei64:    {text: "cmpge.i64", args: makeArgs(bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		opcmpgei64imm: {text: "cmpge.i64@imm", args: makeArgs(bcWriteK, bcReadS, bcImmI64, bcPredicate)},
 
 		// Test instructions:
 		//   - null checks - each of these evaluates mask &= is{not}{false,true}(current value)
-		opisnullv:    {text: "isnull.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate), inverse: opisnotnullv},
-		opisnotnullv: {text: "isnotnull.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate), inverse: opisnullv},
+		opisnullv:    {text: "isnull.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate)},
+		opisnotnullv: {text: "isnotnull.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate)},
 		opisfalsev:   {text: "isfalse.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate)},
 		opistruev:    {text: "istrue.v", args: makeArgs(bcWriteK, bcReadV, bcPredicate)},
 		opisnanf:     {text: "isnan.f", args: makeArgs(bcWriteK, bcReadS, bcPredicate)},
@@ -582,29 +580,12 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 var opinfo [_maxbcop]bcopinfo = bcmakeopinfo()
 
 func init() {
-	// Multiple purposes:
-	//   - Verify that new ops have been added to the opinfo table
-	//   - Automatically calculate the final immediate width from all immediates
+	// Verify that new ops have been added to the opinfo table
 	for i := 0; i < _maxbcop; i++ {
 		info := &opinfo[i]
 		if info.text == "" {
 			panic(fmt.Sprintf("missing opinfo for bcop %v", i))
 		}
-
-		width := uint(0)
-		for j := 0; j < len(info.args); j++ {
-			width += uint(info.args[j].immWidth())
-		}
-
-		if len(info.va) != 0 {
-			width += 4 // variable argument count is 4 bytes
-		}
-
-		if width >= 256 {
-			panic(fmt.Sprintf("%s immediate width too large: %d bytes", info.text, width))
-		}
-
-		info.immwidth = uint8(width)
 	}
 }
 

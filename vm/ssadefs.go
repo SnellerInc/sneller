@@ -269,16 +269,12 @@ const (
 	sdivi         // out = x / y
 	sdivimmf      // out = x / imm
 	sdivimmi      // out = x / imm
-	srdivf        // out = y / x
-	srdivi        // out = y / x
 	srdivimmf     // out = imm / x
 	srdivimmi     // out = imm / x
 	smodf         // out = x % y
 	smodi         // out = x % y
 	smodimmf      // out = x % imm
 	smodimmi      // out = x % imm
-	srmodf        // out = y % x
-	srmodi        // out = y % x
 	srmodimmf     // out = imm % x
 	srmodimmi     // out = imm % x
 	sminvaluef    // out = min(x, y)
@@ -527,18 +523,16 @@ type ssaopinfo struct {
 	// vaArgs indicates arguments tuple that follow mandatory arguments. If
 	// vaArgs is for example [X, Y] then the function accepts variable arguments
 	// as [X, Y] pairs, so [], [X, Y], [X, Y, X, Y], [X, Y, X, Y, ...] signatures
-	// are valid, but not [X, Y, X]. This makes sure to enfore values with predicates.
+	// are valid, but not [X, Y, X]. This makes sure to enforce values with predicates.
 	vaArgs  []ssatype
 	rettype ssatype
 
-	inverse  ssaop // for two-operand ops, flip the arguments
-	priority int   // instruction scheduling priority; high = early, low = late
+	priority int // instruction scheduling priority; high = early, low = late
 
 	// the emit function, if we're not using the default
 	emit func(v *value, c *compilestate)
 	// when non-zero, the corresponding bytecode op
-	bc    bcop
-	bcrev bcop
+	bc bcop
 
 	// immfmt indicates the format
 	// of the immediate value in value.imm
@@ -678,50 +672,50 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	scmplestr:   {text: "cmple.str", argtypes: str2Args, rettype: stBool, bc: opcmplestr},
 	scmpgtstr:   {text: "cmpgt.str", argtypes: str2Args, rettype: stBool, bc: opcmpgtstr},
 	scmpgestr:   {text: "cmpge.str", argtypes: str2Args, rettype: stBool, bc: opcmpgestr},
-	scmpeqstr:   {text: "cmpeq.str", argtypes: []ssatype{stString, stString, stBool}, rettype: stBool, bc: opcmpeqslice, inverse: scmpeqstr},
+	scmpeqstr:   {text: "cmpeq.str", argtypes: []ssatype{stString, stString, stBool}, rettype: stBool, bc: opcmpeqslice},
 
-	scmpltk:    {text: "cmplt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpltk, inverse: scmpgtk},
+	scmpltk:    {text: "cmplt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpltk},
 	scmpltimmk: {text: "cmplt.k@imm", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpltkimm},
-	scmplek:    {text: "cmple.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmplek, inverse: scmpgek},
+	scmplek:    {text: "cmple.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmplek},
 	scmpleimmk: {text: "cmple.k@imm", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmplekimm},
-	scmpgtk:    {text: "cmpgt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgtk, inverse: scmpltk},
+	scmpgtk:    {text: "cmpgt.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgtk},
 	scmpgtimmk: {text: "cmpgt.k@imm", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpgtkimm},
-	scmpgek:    {text: "cmpge.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgek, inverse: scmplek},
+	scmpgek:    {text: "cmpge.k", argtypes: argsBoolBoolBool, rettype: stBool, bc: opcmpgek},
 	scmpgeimmk: {text: "cmpge.k@imm", argtypes: argsBoolBool, rettype: stBool, immfmt: fmtbool, bc: opcmpgekimm},
 
-	scmpeqf:    {text: "cmpeq.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpeqf64, inverse: scmpeqf},
+	scmpeqf:    {text: "cmpeq.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpeqf64},
 	scmpeqimmf: {text: "cmpeq.f64@imm", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpeqf64imm},
-	scmpeqi:    {text: "cmpeq.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpeqi64, inverse: scmpeqi},
+	scmpeqi:    {text: "cmpeq.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpeqi64},
 	scmpeqimmi: {text: "cmpeq.i64@imm", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpeqi64imm},
-	scmpltf:    {text: "cmplt.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpltf64, inverse: scmpgtf},
+	scmpltf:    {text: "cmplt.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpltf64},
 	scmpltimmf: {text: "cmplt.f64@imm", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpltf64imm},
-	scmplti:    {text: "cmplt.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplti64, inverse: scmpgti},
+	scmplti:    {text: "cmplt.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplti64},
 	scmpltimmi: {text: "cmplt.i64@imm", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmplti64imm},
-	scmplef:    {text: "cmple.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmplef64, inverse: scmpgef},
+	scmplef:    {text: "cmple.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmplef64},
 	scmpleimmf: {text: "cmple.f64@imm", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmplef64imm},
-	scmplei:    {text: "cmple.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplei64, inverse: scmpgei},
+	scmplei:    {text: "cmple.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmplei64},
 	scmpleimmi: {text: "cmple.i64@imm", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmplei64imm},
-	scmpgtf:    {text: "cmpgt.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgtf64, inverse: scmpltf},
+	scmpgtf:    {text: "cmpgt.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgtf64},
 	scmpgtimmf: {text: "cmpgt.f64@imm", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgtf64imm},
-	scmpgti:    {text: "cmpgt.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgti64, inverse: scmplti},
+	scmpgti:    {text: "cmpgt.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgti64},
 	scmpgtimmi: {text: "cmpgt.i64@imm", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgti64imm},
-	scmpgef:    {text: "cmpge.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgef64, inverse: scmplef},
+	scmpgef:    {text: "cmpge.f64", argtypes: argsFloatFloatBool, rettype: stBool, bc: opcmpgef64},
 	scmpgeimmf: {text: "cmpge.f64@imm", argtypes: fp1Args, rettype: stBool, immfmt: fmtf64, bc: opcmpgef64imm},
-	scmpgei:    {text: "cmpge.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgei64, inverse: scmplei},
+	scmpgei:    {text: "cmpge.i64", argtypes: argsIntIntBool, rettype: stBool, bc: opcmpgei64},
 	scmpgeimmi: {text: "cmpge.i64@imm", argtypes: int1Args, rettype: stBool, immfmt: fmti64, bc: opcmpgei64imm},
 
-	scmpeqts: {text: "cmpeq.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmpeqi64, inverse: scmpeqts},
-	scmpltts: {text: "cmplt.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmplti64, inverse: scmpgtts},
-	scmplets: {text: "cmple.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmplei64, inverse: scmpgets},
-	scmpgtts: {text: "cmpgt.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmpgti64, inverse: scmpltts},
-	scmpgets: {text: "cmpge.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmpgei64, inverse: scmplets},
+	scmpeqts: {text: "cmpeq.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmpeqi64},
+	scmpltts: {text: "cmplt.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmplti64},
+	scmplets: {text: "cmple.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmplei64},
+	scmpgtts: {text: "cmpgt.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmpgti64},
+	scmpgets: {text: "cmpge.ts", rettype: stBool, argtypes: []ssatype{stTime, stTime, stBool}, bc: opcmpgei64},
 
 	// generic equality comparison
 	scmpeqv: {text: "cmpeq.v", argtypes: scalar2Args, rettype: stBool, bc: opcmpeqv},
 
 	// single-operand on values
-	sisnull:    {text: "isnull", argtypes: scalar1Args, rettype: stBool, bc: opisnullv, inverse: sisnonnull},
-	sisnonnull: {text: "isnonnull", argtypes: scalar1Args, rettype: stBool, bc: opisnotnullv, inverse: sisnull},
+	sisnull:    {text: "isnull", argtypes: scalar1Args, rettype: stBool, bc: opisnullv},
+	sisnonnull: {text: "isnonnull", argtypes: scalar1Args, rettype: stBool, bc: opisnotnullv},
 	sistrue:    {text: "istrue", argtypes: scalar1Args, rettype: stBool, bc: opistruev},
 	sisfalse:   {text: "isfalse", argtypes: scalar1Args, rettype: stBool, bc: opisfalsev},
 
@@ -903,44 +897,44 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	saddf:         {text: "add.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opaddf64},
 	saddi:         {text: "add.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stBool}, bc: opaddi64},
-	saddimmf:      {text: "add.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opaddf64imm, bcrev: opaddf64imm},
-	saddimmi:      {text: "add.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opaddi64imm, bcrev: opaddi64imm},
+	saddimmf:      {text: "add.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opaddf64imm},
+	saddimmi:      {text: "add.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opaddi64imm},
 	ssubf:         {text: "sub.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opsubf64},
 	ssubi:         {text: "sub.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsubi64},
-	ssubimmf:      {text: "sub.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opsubf64imm, bcrev: oprsubf64imm},
-	ssubimmi:      {text: "sub.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsubi64imm, bcrev: oprsubi64imm},
-	srsubimmf:     {text: "rsub.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprsubf64imm, bcrev: opsubf64imm},
-	srsubimmi:     {text: "rsub.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprsubi64imm, bcrev: opsubi64imm},
+	ssubimmf:      {text: "sub.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opsubf64imm},
+	ssubimmi:      {text: "sub.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsubi64imm},
+	srsubimmf:     {text: "rsub.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprsubf64imm},
+	srsubimmi:     {text: "rsub.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprsubi64imm},
 	smulf:         {text: "mul.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmulf64},
 	smuli:         {text: "mul.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmuli64},
-	smulimmf:      {text: "mul.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmulf64imm, bcrev: opmulf64imm},
-	smulimmi:      {text: "mul.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmuli64imm, bcrev: opmuli64imm},
+	smulimmf:      {text: "mul.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmulf64imm},
+	smulimmi:      {text: "mul.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmuli64imm},
 	sdivf:         {text: "div.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opdivf64},
 	sdivi:         {text: "div.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stBool}, bc: opdivi64},
-	sdivimmf:      {text: "div.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opdivf64imm, bcrev: oprdivf64imm},
-	sdivimmi:      {text: "div.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opdivi64imm, bcrev: oprdivi64imm},
-	srdivimmf:     {text: "rdiv.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprdivf64imm, bcrev: opdivf64imm},
-	srdivimmi:     {text: "rdiv.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprdivi64imm, bcrev: opdivi64imm},
+	sdivimmf:      {text: "div.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opdivf64imm},
+	sdivimmi:      {text: "div.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opdivi64imm},
+	srdivimmf:     {text: "rdiv.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprdivf64imm},
+	srdivimmi:     {text: "rdiv.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprdivi64imm},
 	smodf:         {text: "mod.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmodf64},
 	smodi:         {text: "mod.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmodi64},
-	smodimmf:      {text: "mod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmodf64imm, bcrev: oprmodf64imm},
-	smodimmi:      {text: "mod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmodi64imm, bcrev: oprmodi64imm},
-	srmodimmf:     {text: "rmod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprmodf64imm, bcrev: opmodf64imm},
-	srmodimmi:     {text: "rmod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprmodi64imm, bcrev: opmodi64imm},
+	smodimmf:      {text: "mod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmodf64imm},
+	smodimmi:      {text: "mod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmodi64imm},
+	srmodimmf:     {text: "rmod.imm.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: oprmodf64imm},
+	srmodimmi:     {text: "rmod.imm.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: oprmodi64imm},
 	sminvaluef:    {text: "minvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opminvaluef64},
 	sminvaluei:    {text: "minvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opminvaluei64},
-	sminvalueimmf: {text: "minvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opminvaluef64imm, bcrev: opminvaluef64imm},
-	sminvalueimmi: {text: "minvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opminvaluei64imm, bcrev: opminvaluei64imm},
+	sminvalueimmf: {text: "minvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opminvaluef64imm},
+	sminvalueimmi: {text: "minvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opminvaluei64imm},
 	smaxvaluef:    {text: "maxvalue.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: opmaxvaluef64},
 	smaxvaluei:    {text: "maxvalue.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opmaxvaluei64},
-	smaxvalueimmf: {text: "maxvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmaxvaluef64imm, bcrev: opmaxvaluef64imm},
-	smaxvalueimmi: {text: "maxvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmaxvaluei64imm, bcrev: opmaxvaluei64imm},
+	smaxvalueimmf: {text: "maxvalue.imm.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmtf64, bc: opmaxvaluef64imm},
+	smaxvalueimmi: {text: "maxvalue.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opmaxvaluei64imm},
 	sandi:         {text: "and.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opandi64},
-	sandimmi:      {text: "and.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opandi64imm, bcrev: opandi64imm},
+	sandimmi:      {text: "and.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opandi64imm},
 	sori:          {text: "or.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opori64},
-	sorimmi:       {text: "or.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opori64imm, bcrev: opori64imm},
+	sorimmi:       {text: "or.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opori64imm},
 	sxori:         {text: "xor.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opxori64},
-	sxorimmi:      {text: "xor.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opxori64imm, bcrev: opxori64imm},
+	sxorimmi:      {text: "xor.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opxori64imm},
 	sslli:         {text: "sll.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opslli64},
 	ssllimmi:      {text: "sll.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opslli64imm},
 	ssrai:         {text: "sra.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsrai64},
