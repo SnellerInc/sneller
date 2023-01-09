@@ -84,8 +84,13 @@ type Uploader struct {
 	// list of ETags collected as
 	// parts are uploaded; these are
 	// sent as part of the CompleteMultipartUpload call
-	lock  sync.Mutex
-	parts []tagpart
+	lock    sync.Mutex
+	parts   []tagpart
+	maxpart int64
+
+	// background uploads
+	bg       sync.WaitGroup
+	asyncerr error
 }
 
 // MinPartSize returns the minimum part size
@@ -245,6 +250,9 @@ func (u *Uploader) upload(num int64, contents []byte) error {
 		return fmt.Errorf("s3.Uploader.UploadPart: response missing ETag?")
 	}
 	u.lock.Lock()
+	if num > u.maxpart {
+		u.maxpart = num
+	}
 	u.parts = append(u.parts, tagpart{
 		Num:  num,
 		ETag: etag,
@@ -262,6 +270,11 @@ func (u *Uploader) upload(num int64, contents []byte) error {
 // simultaneously. However, calls to CopyFrom must be
 // synchronized to occur strictly after a call to Start
 // and strictly before a call to Close.
+//
+// As an optimization, most of the work for CopyFrom is
+// performed asynchronously. Callers must call Close and
+// check its return value in order to correctly handle
+// errors from CopyFrom.
 func (u *Uploader) CopyFrom(num int64, source *Reader, start int64, end int64) error {
 	if !u.started {
 		panic("s3.Uploader.CopyFrom before Start()")
@@ -279,10 +292,31 @@ func (u *Uploader) CopyFrom(num int64, source *Reader, start int64, end int64) e
 	if size < MinPartSize {
 		return fmt.Errorf("CopyFrom size %d below min part size %d", size, MinPartSize)
 	}
-	return u.copy(num, source, start, end)
+
+	// update the max part before launching anything
+	// so that Close can perform an upload at the same time
+	// as the copy-part operation is still happening
+	u.lock.Lock()
+	if num > u.maxpart {
+		u.maxpart = num
+	}
+	u.lock.Unlock()
+
+	u.bg.Add(1)
+	go u.copy(num, source, start, end)
+	return nil
 }
 
-func (u *Uploader) copy(num int64, source *Reader, start int64, end int64) error {
+func (u *Uploader) noteErr(err error) {
+	u.lock.Lock()
+	defer u.lock.Unlock()
+	if u.asyncerr == nil {
+		u.asyncerr = err
+	}
+}
+
+func (u *Uploader) copy(num int64, source *Reader, start int64, end int64) {
+	defer u.bg.Done()
 	req := u.req("PUT", u.Object, fmt.Sprintf("partNumber=%d&uploadId=%s", num, u.id))
 	req.Header.Add("x-amz-copy-source", fmt.Sprintf("/%s/%s", source.Bucket, source.Path))
 	req.Header.Add("x-amz-copy-source-if-match", source.ETag)
@@ -294,11 +328,13 @@ func (u *Uploader) copy(num int64, source *Reader, start int64, end int64) error
 	u.Key.SignV4(req, nil)
 	res, err := flakyDo(u.Client, req)
 	if err != nil {
-		return err
+		u.noteErr(err)
+		return
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return fmt.Errorf("CopyFrom: %s %q", res.Status, extractMessage(res.Body))
+		u.noteErr(fmt.Errorf("CopyFrom: %s %q", res.Status, extractMessage(res.Body)))
+		return
 	}
 	var etag string
 	rt := struct {
@@ -308,7 +344,8 @@ func (u *Uploader) copy(num int64, source *Reader, start int64, end int64) error
 		etag = rt.ETag
 	}
 	if etag == "" {
-		return fmt.Errorf("s3.Uploader.CopyFrom: response missing ETag?")
+		u.noteErr(fmt.Errorf("s3.Uploader.CopyFrom: response missing ETag?"))
+		return
 	}
 	u.lock.Lock()
 	u.parts = append(u.parts, tagpart{
@@ -317,7 +354,6 @@ func (u *Uploader) copy(num int64, source *Reader, start int64, end int64) error
 		size: size,
 	})
 	u.lock.Unlock()
-	return nil
 }
 
 // CompletedParts returns the number of parts
@@ -341,20 +377,6 @@ func (u *Uploader) Closed() bool { return u.finished }
 // The return value of ID is only valid after
 // Start has been called.
 func (u *Uploader) ID() string { return u.id }
-
-// maxpart is used for selecting the part
-// number of the last part to be uploaded;
-// the safest thing to do is to pick a part number
-// higher than any previously-selected part number
-func (u *Uploader) maxpart() int64 {
-	max := int64(1)
-	for i := range u.parts {
-		if u.parts[i].Num > max {
-			max = u.parts[i].Num
-		}
-	}
-	return max
-}
 
 func (u *Uploader) Size() int64 {
 	u.lock.Lock()
@@ -384,10 +406,20 @@ func (u *Uploader) Close(final []byte) error {
 		panic("multiple calls to s3.Uploader.Close")
 	}
 	if len(final) > 0 {
-		err := u.upload(u.maxpart()+1, final)
+		// it is safe to read maxpart here because
+		// maxpart is updated in calls to CopyFrom and Upload,
+		// and we've specified that it is not safe for the caller
+		// to let those race with Close
+		err := u.upload(u.maxpart+1, final)
 		if err != nil {
 			return err
 		}
+	}
+	// wait for any/all CopyFrom operations to finish;
+	// after this we know u.parts will be fully up-to-date
+	u.bg.Wait()
+	if u.asyncerr != nil {
+		return u.asyncerr
 	}
 
 	// the S3 API barfs if parts are not in ascending order
@@ -493,6 +525,7 @@ func (u *Uploader) Abort() error {
 	if !u.started || u.finished {
 		return nil
 	}
+	u.bg.Wait()
 	req := u.req("DELETE", u.Object, fmt.Sprintf("uploadId=%s", u.id))
 	u.Key.SignV4(req, nil)
 
