@@ -88,7 +88,6 @@ top:
     MOVQ    src_len+8(FP), AX
     ADDQ    src_base+0(FP), AX // AX = &src[0] + len(src)
     SUBQ    SI, AX             // AX = remaining bytes
-    TESTQ   AX, AX
     JZ      ret_ok      // assert len(src) != 0
     MOVBLZX 0(SI), R10  // R10 = descriptor
     MOVL    R10, R11
