@@ -171,7 +171,6 @@ size_class_0:
     CMPQ      DI, $0xd
     JA        ret_err
     MOVL      $0xd0, R8
-    ANDL      $0xf, DI
     ORL       DI, R8
     MOVB      R8, 0(R10)
     JMP       begin_struct
@@ -182,7 +181,6 @@ size_class_1:
     CMPQ      DI, $127
     JA        ret_err
     MOVL      $0x80de, R8
-    ANDL      $0x7f, DI
     SHLL      $8, DI
     ORL       DI, R8
     MOVW      R8, 0(R10)
