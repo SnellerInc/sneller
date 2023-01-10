@@ -35,6 +35,7 @@ type memItem struct {
 	size       int64
 	qtime      time.Time
 	complete   func()
+	finalized  bool
 }
 
 func (m *memItem) Path() string         { return m.path }
@@ -43,15 +44,14 @@ func (m *memItem) Size() int64          { return m.size }
 func (m *memItem) EventTime() time.Time { return m.qtime }
 
 type memqueue struct {
-	in          chan *memItem
-	retry       []*memItem
-	outstanding []*memItem
-	ticker      *time.Ticker
-	closed      bool
+	lock   sync.Mutex
+	in     chan *memItem
+	ticker *time.Ticker
+	closed bool
 }
 
 func newQueue() *memqueue {
-	return &memqueue{in: make(chan *memItem, 1)}
+	return &memqueue{in: make(chan *memItem, 100)}
 }
 
 func (m *memqueue) push(path, etag string, size int64, complete func()) {
@@ -65,31 +65,24 @@ func (m *memqueue) push(path, etag string, size int64, complete func()) {
 }
 
 func (m *memqueue) Close() error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	m.closed = true
 	return nil
 }
 
 func (m *memqueue) Finalize(item QueueItem, status QueueStatus) {
-	if m.closed {
-		panic("Finalize on closed queue")
-	}
 	want := item.(*memItem)
-	idx := -1
-	for i := 0; i < len(m.outstanding); i++ {
-		if m.outstanding[i] == want {
-			idx = i
-			break
+	if want.finalized {
+		panic("double-finalize of queue item")
+	}
+	if status == StatusOK {
+		want.finalized = true
+		if want.complete != nil {
+			want.complete()
 		}
-	}
-	if idx < 0 {
-		panic("Finalize of non-existent queue item " + item.Path())
-	}
-	m.outstanding[idx] = m.outstanding[len(m.outstanding)-1]
-	m.outstanding = m.outstanding[:len(m.outstanding)-1]
-	if status != StatusOK {
-		m.retry = append(m.retry, want)
-	} else if want.complete != nil {
-		want.complete()
+	} else {
+		m.in <- want
 	}
 }
 
@@ -98,21 +91,16 @@ func (m *memqueue) close() {
 }
 
 func (m *memqueue) Next(pause time.Duration) (QueueItem, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 	if m.closed {
 		panic("Next on closed queue")
-	}
-	if len(m.retry) > 0 {
-		tail := m.retry[len(m.retry)-1]
-		m.retry = m.retry[:len(m.retry)-1]
-		m.outstanding = append(m.outstanding, tail)
-		return tail, nil
 	}
 	if pause < 0 {
 		item, ok := <-m.in
 		if !ok {
 			return nil, io.EOF
 		}
-		m.outstanding = append(m.outstanding, item)
 		return item, nil
 	}
 	if m.ticker == nil {
@@ -126,7 +114,6 @@ func (m *memqueue) Next(pause time.Duration) (QueueItem, error) {
 		if !ok {
 			return nil, io.EOF
 		}
-		m.outstanding = append(m.outstanding, item)
 		return item, nil
 	case <-m.ticker.C:
 		m.ticker.Stop()

@@ -162,8 +162,9 @@ type QueueRunner struct {
 	// will pause if it encounters an I/O error from
 	// the backing filesystem.
 	IOErrDelay time.Duration
+}
 
-	// scratch space for processing batches
+type queueBatch struct {
 	inputs []QueueItem
 	status []QueueStatus
 }
@@ -250,14 +251,14 @@ func open(infs InputFS, name, etag string, size int64) (fs.File, error) {
 // the patterns in def and the config in bld
 //
 // this is supposed to be safe to call from multiple goroutines
-func (q *QueueRunner) filter(cfg *Config, def *Definition, dst *batch) error {
+func (q *QueueRunner) filter(src *queueBatch, cfg *Config, def *Definition, dst *batch) error {
 	var mr matcher
 	dst.filtered.init(def.Partitions)
 	dst.indirect = dst.indirect[:0]
 outer:
-	for i := range q.inputs {
-		p := q.inputs[i].Path()
-		etag := q.inputs[i].ETag()
+	for i := range src.inputs {
+		p := src.inputs[i].Path()
+		etag := src.inputs[i].ETag()
 		for j := range def.Inputs {
 			glob := def.Inputs[j].Pattern
 			found, err := mr.match(glob, p)
@@ -268,7 +269,7 @@ outer:
 			if err != nil {
 				return err
 			}
-			f, err := open(infs, name, etag, q.inputs[i].Size())
+			f, err := open(infs, name, etag, src.inputs[i].Size())
 			if err != nil {
 				if errors.Is(err, fs.ErrNotExist) {
 					q.Logf("ignoring %q (doesn't exist)", name)
@@ -284,12 +285,12 @@ outer:
 			if err != nil {
 				return err
 			}
-			dst.note(q.inputs[i].EventTime())
+			dst.note(src.inputs[i].EventTime())
 			dst.indirect = append(dst.indirect, i)
 			_, err = dst.filtered.add(glob, blockfmt.Input{
 				Path: p,
 				ETag: etag,
-				Size: q.inputs[i].Size(),
+				Size: src.inputs[i].Size(),
 				R:    f,
 				F:    fm,
 			})
@@ -369,7 +370,7 @@ func (ti *tableInfo) bgScan(state *scanState) {
 	}
 }
 
-func (q *QueueRunner) runTable(ti *tableInfo) {
+func (q *QueueRunner) runTable(src *queueBatch, ti *tableInfo) {
 	// clone the config and add features;
 	// note that runTable is invoked in separate
 	// goroutines for each table, so we need to
@@ -378,7 +379,7 @@ func (q *QueueRunner) runTable(ti *tableInfo) {
 	conf.SetFeatures(ti.state.def.Features)
 
 	var dst batch
-	err := q.filter(&conf, ti.state.def, &dst)
+	err := q.filter(src, &conf, ti.state.def, &dst)
 	if err == nil && !dst.filtered.empty() {
 		if ti.scanning() {
 			err = ErrBuildAgain
@@ -406,7 +407,7 @@ func (q *QueueRunner) runTable(ti *tableInfo) {
 	// atomically merge status codes back into parent
 	status := errResult(err)
 	for _, j := range dst.indirect {
-		q.status[j].atomicMerge(status)
+		src.status[j].atomicMerge(status)
 	}
 }
 
@@ -423,21 +424,15 @@ func (q *QueueRunner) tableRefresh() time.Duration {
 	return time.Minute
 }
 
-func bounce(q Queue, lst []QueueItem, st QueueStatus) {
-	for i := range lst {
-		q.Finalize(lst[i], st)
-	}
-}
-
 type dbtable struct {
 	db, table string
 }
 
-// set q.inputs to a list of items
+// set dst.inputs to a list of items
 // gathered from the queue using the
 // provided batching parameters
-func (q *QueueRunner) gather(in Queue) error {
-	q.inputs = q.inputs[:0]
+func (q *QueueRunner) gather(in Queue, dst *queueBatch) error {
+	dst.inputs = dst.inputs[:0]
 
 	// first item: block forever
 	first, err := in.Next(-1)
@@ -451,9 +446,9 @@ func (q *QueueRunner) gather(in Queue) error {
 	total := first.Size()
 	// keep gathering items up to the max batch size
 	// or the max delay time
-	q.inputs = append(q.inputs, first)
+	dst.inputs = append(dst.inputs, first)
 	end := time.Now().Add(q.BatchInterval)
-	for total < q.max() && len(q.inputs) < hardlimit {
+	for total < q.max() && len(dst.inputs) < hardlimit {
 		u := time.Until(end)
 		if u <= 0 {
 			break
@@ -462,7 +457,7 @@ func (q *QueueRunner) gather(in Queue) error {
 		if err != nil || item == nil {
 			break
 		}
-		q.inputs = append(q.inputs, item)
+		dst.inputs = append(dst.inputs, item)
 		total += item.Size()
 	}
 	return nil
@@ -516,48 +511,62 @@ func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
 	subdefs := make(map[dbtable]*tableInfo)
 	defer stopScans(subdefs)
+
+	// double-buffered queue batches
+	var batches [2]queueBatch
+	curb := 0
+	// for waiting for previous batches to complete
+	var wg sync.WaitGroup
 readloop:
 	for {
-		err := q.gather(in)
+		if time.Since(lastRefresh) > q.tableRefresh() {
+			wg.Wait() // everything should be idle
+			err := q.updateDefs(subdefs)
+			if err != nil {
+				q.logf("updating table definitions: %s", err)
+				q.delay()
+				continue readloop
+			}
+			lastRefresh = time.Now()
+		}
+		curbatch := &batches[curb&1]
+		err := q.gather(in, curbatch)
 		if err != nil {
+			wg.Wait()
 			cerr := in.Close()
 			if err == io.EOF {
 				err = cerr
 			}
 			return err
 		}
-		if time.Since(lastRefresh) > q.tableRefresh() {
-			err := q.updateDefs(subdefs)
-			if err != nil {
-				q.logf("updating table definitions: %s", err)
-				bounce(in, q.inputs, StatusWriteError)
-				q.delay()
-				continue readloop
-			}
-			lastRefresh = time.Now()
-		}
-		q.runBatches(in, subdefs)
+		// wait for the previous runBatches call to complete,
+		// then launch a new one
+		wg.Wait()
+		wg.Add(1)
+		go q.runBatches(in, curbatch, subdefs, &wg)
+		curb++
 	}
 }
 
-func (q *QueueRunner) runBatches(parent Queue, dst map[dbtable]*tableInfo) {
+func (q *QueueRunner) runBatches(parent Queue, batch *queueBatch, dst map[dbtable]*tableInfo, done *sync.WaitGroup) {
+	defer done.Done()
 	var wg sync.WaitGroup
-	q.status = slices.Grow(q.status[:0], len(q.inputs))[:len(q.inputs)]
-	for i := range q.status {
-		q.status[i] = StatusOK
+	batch.status = slices.Grow(batch.status[:0], len(batch.inputs))[:len(batch.inputs)]
+	for i := range batch.status {
+		batch.status[i] = StatusOK
 	}
 	for _, def := range dst {
 		wg.Add(1)
 		go func(ti *tableInfo) {
 			defer wg.Done()
-			q.runTable(ti)
+			q.runTable(batch, ti)
 		}(def)
 	}
-	// wait for q.status[*] to be updated (atomically!)
+	// wait for batch.status[*] to be updated (atomically!)
 	// by runTable()
 	wg.Wait()
-	for i := range q.status {
-		parent.Finalize(q.inputs[i], q.status[i])
+	for i := range batch.status {
+		parent.Finalize(batch.inputs[i], batch.status[i])
 	}
 }
 
