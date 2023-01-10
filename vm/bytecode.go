@@ -204,8 +204,6 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 
 		opinit: {text: "init", args: makeArgs(bcWriteB, bcWriteK)},
 
-		oploadpermzerov: {text: "loadpermzero.v", args: makeArgs(bcWriteV, bcWriteK, bcReadV)},
-
 		// Mask instructions:
 		//   - false - sets predicate to FALSE
 		//   - others - mask-only operations
@@ -666,11 +664,6 @@ type bytecode struct {
 	// savedlit is the saved literal contents
 	// that are copied into scratch[:] before execution
 	savedlit []byte
-
-	//lint:ignore U1000 not unused; used in assembly
-	outer *bytecode // outer variable bindings
-	//lint:ignore U1000 not unused; used in assembly
-	perm [16]int32 // permutation from outer to inner bindings
 
 	//lint:ignore U1000 not unused; used in assembly
 	// Area that is used by bytecode instructions to temporarily spill registers.

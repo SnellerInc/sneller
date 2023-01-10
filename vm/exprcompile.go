@@ -840,19 +840,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		return p.splitPart(lhs, delimiterStr[0], splitPartIndex), nil
 
 	case expr.Unspecified:
-		switch b.Name() {
-		case "UPVALUE":
-			if len(args) != 1 {
-				return nil, fmt.Errorf("UPVALUE should have 1 argument")
-			}
-			n, ok := args[0].(expr.Integer)
-			if !ok {
-				return nil, fmt.Errorf("first arg to UPVALUE should be an integer; found %s", args[0])
-			}
-			return p.upvalue(p.initMem(), stackSlotFromIndex(regV, int(n))), nil
-		default:
-			return nil, fmt.Errorf("unhandled builtin %q", b.Name())
-		}
+		return nil, fmt.Errorf("unhandled builtin %q", b.Name())
 
 	case expr.ToUnixEpoch:
 		v, err := compileargs(p, args, compileTime)

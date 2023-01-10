@@ -191,7 +191,6 @@ const (
 	shashlookup // look up a hash in a tree for a value; returns boxed
 
 	sstorev // copy a value from one slot to another
-	sloadvperm
 
 	sretm   // return mem
 	sretmk  // return mem+predicate tuple
@@ -836,8 +835,7 @@ var _ssainfo = [_ssamax]ssaopinfo{
 
 	sliteral: {text: "literal", rettype: stValue, immfmt: fmtother, bc: oplitref, safeValueMask: true}, // yields <value>.kinit
 
-	sstorev:    {text: "store.v", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
-	sloadvperm: {text: "load.perm.v", rettype: stValueMasked, argtypes: []ssatype{stMem}, immfmt: fmtslot, bc: oploadpermzerov, priority: prioParse, safeValueMask: true},
+	sstorev: {text: "store.v", rettype: stMem, argtypes: []ssatype{stMem, stValue, stBool}, immfmt: fmtother, emit: emitstorev, priority: prioMem},
 
 	// return operations construct a value into a single
 	// argument that can be passed to `prog.returnValue()`

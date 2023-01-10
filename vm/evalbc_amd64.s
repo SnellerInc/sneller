@@ -423,24 +423,6 @@ TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
 
-// Load & Save Instructions
-// ------------------------
-
-// load a value pointer from bytecode.outer
-// using the permutation specified in
-// bytecode.perm
-TEXT bcloadpermzerov(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT(0, R8)
-
-  MOVQ        bytecode_outer(VIRT_BCPTR), R15
-  VMOVDQU32   bytecode_perm(VIRT_BCPTR), Z28
-  MOVQ        bytecode_vstack(R15), R15
-  VPERMD      0(R15)(R8*1), Z28, Z30
-  VPERMD      64(R15)(R8*1), Z28, Z31
-  VPTESTMD    Z31, Z31, K1
-
-  NEXT_ADVANCE(BC_SLOT_SIZE)
-
 // Mask Instructions
 // -----------------
 

@@ -313,25 +313,6 @@ func (p *prog) ssa1(op ssaop, arg *value) *value {
 	return v
 }
 
-func (p *prog) ssa1imm(op ssaop, arg *value, imm interface{}) *value {
-	var hc hashcode
-	hc[0] = uint64(op)
-	hc[1] = uint64(arg.id)
-	hc[2] = p.tobits(imm)
-	if v := p.exprs[hc]; v != nil {
-		return v
-	}
-	v := p.val()
-	v.op = op
-	v.setimm(imm)
-	v.args = []*value{arg}
-	v.checkarg(arg, 0)
-	if v.op != sinvalid {
-		p.exprs[hc] = v
-	}
-	return v
-}
-
 func (p *prog) ssa2imm(op ssaop, arg0, arg1 *value, imm interface{}) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
@@ -701,13 +682,6 @@ func (p *prog) notMissing(v *value) *value {
 		}
 		return p.notMissing(m)
 	}
-}
-
-// Upvalue loads an upvalue (a value bound by
-// an enclosing binding context) from a parent's
-// stack slot
-func (p *prog) upvalue(mem *value, slot stackslot) *value {
-	return p.ssa1imm(sloadvperm, mem, int(slot))
 }
 
 // MergeMem merges memory tokens into a memory token.
