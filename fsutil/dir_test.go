@@ -15,12 +15,14 @@
 package fsutil
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -56,7 +58,7 @@ func TestVisitDir(t *testing.T) {
 	trivial := func(seek, pattern string) []string {
 		var out []string
 		for i := range list {
-			if list[i] < seek {
+			if list[i] <= seek {
 				continue
 			}
 			if pattern != "" {
@@ -78,7 +80,7 @@ func TestVisitDir(t *testing.T) {
 		pattern := cases[i].pattern
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			var got []string
-			err := VisitDir(dir, ".", seek, pattern, func(d fs.DirEntry) error {
+			err := VisitDir(dir, ".", seek, pattern, func(d DirEntry) error {
 				got = append(got, d.Name())
 				return nil
 			})
@@ -102,7 +104,7 @@ func TestVisitDir(t *testing.T) {
 //
 // This is the behavior we want to ensure that
 // WalkDir correctly implements.
-func trivialWalkDir(f fs.FS, name, seek, pattern string, fn fs.WalkDirFunc) error {
+func trivialWalkDir(f fs.FS, name, seek, pattern string, fn WalkDirFn) error {
 	return fs.WalkDir(f, name, func(p string, d fs.DirEntry, err error) error {
 		if pattern != "" {
 			match, err := path.Match(pattern, p)
@@ -110,7 +112,7 @@ func trivialWalkDir(f fs.FS, name, seek, pattern string, fn fs.WalkDirFunc) erro
 				return err
 			}
 		}
-		if pathcmp(p, seek) >= 0 {
+		if pathcmp(p, seek) > 0 {
 			return fn(p, d, err)
 		}
 		return err
@@ -119,12 +121,12 @@ func trivialWalkDir(f fs.FS, name, seek, pattern string, fn fs.WalkDirFunc) erro
 
 // walkDirFn is any function with a signature
 // like WalkDir.
-type walkDirFn func(f fs.FS, name, seek, pattern string, fn fs.WalkDirFunc) error
+type walkDirFn func(f fs.FS, name, seek, pattern string, fn WalkDirFn) error
 
 // flatwalk returns all walked paths in a list.
 func flatwalk(walkdir walkDirFn, f fs.FS, name, seek, pattern string) ([]string, error) {
 	var out []string
-	err := walkdir(f, name, seek, pattern, func(p string, d fs.DirEntry, err error) error {
+	err := walkdir(f, name, seek, pattern, func(p string, d DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -202,8 +204,18 @@ func FuzzWalkDir(f *testing.F) {
 		}
 	}
 	validate := func(seek, pattern string) bool {
-		if seek != "" && !fs.ValidPath(seek) {
-			return false
+		if seek != "" {
+			if !fs.ValidPath(seek) {
+				return false
+			}
+			// make sure path is not rejected by the
+			// file system
+			f, err := dir.Open(seek)
+			if err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return false
+			} else if err == nil {
+				f.Close()
+			}
 		}
 		if pattern != "" && !fs.ValidPath(pattern) {
 			return false
@@ -228,20 +240,22 @@ func FuzzWalkDir(f *testing.F) {
 		if !validate(seek, pattern) {
 			t.Skipf("skipping invalid arguments seek=%q pattern=%q", seek, pattern)
 		}
-		for _, name := range list {
-			got, err := flatwalk(WalkDir, dir, name, seek, pattern)
-			if err != nil {
-				t.Fatalf("WalkDir(%q, %q, %q, %q) returned %v", dir, name, seek, pattern, err)
-			}
-			want, err := flatwalk(trivialWalkDir, dir, name, seek, pattern)
-			if err != nil {
-				t.Fatalf("trivialWalkDir(%q, %q, %q, %q) returned %v", dir, name, seek, pattern, err)
-			}
-			if !reflect.DeepEqual(want, got) {
-				t.Errorf("walk(%q, %q, %q) mismatch:", name, seek, pattern)
-				t.Errorf("  want: %q", want)
-				t.Errorf("  got:  %q", got)
-			}
+		for i, name := range list {
+			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				got, err := flatwalk(WalkDir, dir, name, seek, pattern)
+				if err != nil {
+					t.Fatalf("WalkDir(%q, %q, %q, %q) returned %v", dir, name, seek, pattern, err)
+				}
+				want, err := flatwalk(trivialWalkDir, dir, name, seek, pattern)
+				if err != nil {
+					t.Fatalf("trivialWalkDir(%q, %q, %q, %q) returned %v", dir, name, seek, pattern, err)
+				}
+				if !reflect.DeepEqual(want, got) {
+					t.Errorf("walk(%q, %q, %q) mismatch:", name, seek, pattern)
+					t.Errorf("  want: %q", want)
+					t.Errorf("  got:  %q", got)
+				}
+			})
 		}
 	})
 }
@@ -360,6 +374,69 @@ func FuzzPathcmp(f *testing.F) {
 			want := trivial(a, b)
 			if got != want {
 				t.Errorf("pathcmp(%q, %q): want %d, got %d", a, b, want, got)
+			}
+		}
+		test(a, b)
+		test(b, a)
+	})
+}
+
+func FuzzTreecmp(f *testing.F) {
+	trivial := func(root, p string) int {
+		if root == "." {
+			return 0
+		}
+		if p == "." {
+			return -1
+		}
+		if root == p || strings.HasPrefix(p, root) && p[len(root)] == '/' {
+			return 0
+		}
+		// make a file tree
+		tree := []string{
+			root,
+			path.Join(root, "foo"),
+			path.Join(root, "foo/bar"),
+		}
+		// insert p
+		tree = append(tree, p)
+		// sort it lexically
+		slices.SortFunc(tree, func(a, b string) bool {
+			return pathcmp(a, b) < 0
+		})
+		// look for p
+		if tree[0] == p {
+			return -1
+		}
+		if tree[len(tree)-1] == p {
+			return 1
+		}
+		return 0
+	}
+	cases := []struct {
+		a, b string
+	}{
+		{".", "."},
+		{".", "a"},
+		{"a", "a/b"},
+		{"a/b", "."},
+		{"a/b/c", "a/b"},
+		{"foo/bar", "a/b"},
+		{"c/e", "c/d/e"},
+	}
+	for i := range cases {
+		f.Add(cases[i].a, cases[i].b)
+	}
+	f.Fuzz(func(t *testing.T, a, b string) {
+		test := func(a, b string) {
+			if !fs.ValidPath(a) || !fs.ValidPath(b) {
+				return
+			}
+			t.Helper()
+			got := treecmp(a, b)
+			want := trivial(a, b)
+			if got != want {
+				t.Errorf("treecmp(%q, %q): want %d, got %d", a, b, want, got)
 			}
 		}
 		test(a, b)

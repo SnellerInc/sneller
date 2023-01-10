@@ -221,3 +221,55 @@ func testWalkGlob(t *testing.T, b *BucketFS, prefix string) {
 		})
 	}
 }
+
+// This test will walk a bucket until we've seen
+// 100 files and measure the time taken. It is
+// intended to benchmark listing more so than
+// test functionality.
+func TestAWSListPerformance(t *testing.T) {
+	bucket := os.Getenv("AWS_TEST_LIST_PERF_BUCKET")
+	prefix := os.Getenv("AWS_TEST_LIST_PERF_PREFIX")
+	if testing.Short() || bucket == "" {
+		t.Skip("skipping AWS-specific test")
+	}
+	if prefix == "" {
+		prefix = "."
+	}
+	key, err := aws.AmbientKey("s3", DeriveForBucket(bucket))
+	if err != nil {
+		t.Skipf("skipping; couldn't derive key: %s", err)
+	}
+	b := &BucketFS{
+		Key:      key,
+		Bucket:   bucket,
+		DelayGet: true,
+		Ctx:      context.Background(),
+	}
+	dir, err := b.Open(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pre, ok := dir.(*Prefix)
+	if !ok {
+		t.Fatalf("got %T back from BucketFS.Open(%s)", dir, ".")
+	}
+	start := time.Now()
+	walked := 0
+	err = fsutil.WalkDir(pre, prefix, "", "", func(p string, d fsutil.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		t.Log(p)
+		if !d.IsDir() {
+			walked++
+		}
+		if walked >= 100 {
+			return fs.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("walked %d files in %s", walked, time.Since(start))
+}

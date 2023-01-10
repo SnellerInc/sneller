@@ -39,7 +39,7 @@ func TestWalkGlob(t *testing.T) {
 		{"x/y", "?/?/?", []string{"x/y/a", "x/y/z"}},
 		{"x/y", "x/*y/*", []string{"x/y/a", "x/y/z"}},
 		{"x", "x/?/?", []string{"x/b/c", "x/y/a", "x/y/z"}},
-		{"x/y/a", "?/?/?", []string{"x/y/a", "x/y/z"}},
+		{"x/y/a", "?/?/?", []string{"x/y/z"}},
 		{"x/c", "?/?/?", []string{"x/y/a", "x/y/z"}},
 		{"x/b/z", "?/?/?", []string{"x/y/a", "x/y/z"}},
 	}

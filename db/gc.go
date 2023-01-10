@@ -155,7 +155,7 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 		}
 		return nil
 	}
-	walk := func(p string, d fs.DirEntry, err error) error {
+	walk := func(p string, d fsutil.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}

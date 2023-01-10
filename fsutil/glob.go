@@ -50,7 +50,7 @@ type Opener interface {
 // to pass to walk. Otherwise, fs.Open will be used.
 func WalkGlob(f fs.FS, seek, pattern string, walk WalkGlobFn) error {
 	pre := MetaPrefix(pattern)
-	outer := func(p string, d fs.DirEntry, err error) error {
+	outer := func(p string, d DirEntry, err error) error {
 		if err != nil {
 			return walk(p, nil, err)
 		}
