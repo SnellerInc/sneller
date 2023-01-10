@@ -180,12 +180,9 @@ label_done:
     SHRL    $6, BX
     CMPQ    Decoder_buckets+const_bitsOff+8(R9), BX
     JBE     parse_value     // skip if (bit >> 6) > len(set.bits)
-    MOVQ    0(DX)(BX*8), BX // BX = words[bit>>6]
     ANDL    $63, R8
-    MOVL    $1, R15
-    SHLXQ   R8, R15, R8     // R8 = 1 << (bit & 63)
-    XORQ    R8, BX          // flip bitmap bit
-    ANDQ    R8, BX          // BX is non-zero if we should skip this entry
+    BTQ     R8, 0(DX)(BX*8) // CF = words[bit>>6].bit[bit & 63]
+    SBBL    BX, BX          // BX = CF ? -1 : 0
 parse_value:
     // parse value
     MOVL    0(SI)(CX*1), R14  // load first 4 bytes of value
@@ -220,8 +217,8 @@ end_varint:
 just_one_byte:
     INCL   CX                          // size += descriptor byte
     ADDL   CX, Decoder_base(R9)(R13*4) // bucket base += size
-    TESTQ  BX, BX
-    JNZ    skip_bucket
+    TESTL  BX, BX
+    JNS    skip_bucket
     MOVQ   24(SP), R15
     SUBQ   DI, R15
     SUBQ   CX, R15
