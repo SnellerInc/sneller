@@ -598,6 +598,10 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 	maps.Clear(m)
 	dbs, err := fs.ReadDir(dir, "db")
 	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			// tenant has not configured any tables
+			err = nil
+		}
 		return err
 	}
 	for i := range dbs {
