@@ -171,7 +171,20 @@ func (b *BucketFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	if name == "." {
 		return b.sub(".").ReadDir(-1)
 	}
-	return b.sub(name + "/").ReadDir(-1)
+	ret, err := b.sub(name + "/").ReadDir(-1)
+	if err != nil {
+		return ret, err
+	}
+	if len(ret) == 0 {
+		// *almost always* because name doesn't actually exist;
+		// we should double-check
+		f, err := b.sub(name + "/").openDir()
+		if err != nil {
+			return nil, err
+		}
+		f.Close()
+	}
+	return nil, nil
 }
 
 // Prefix implements fs.File, fs.ReadDirFile,
@@ -471,7 +484,7 @@ func (p *Prefix) VisitDir(name, seek, pattern string, walk fsutil.VisitDirFn) er
 	for {
 		d, tok, err := subp.readDirAt(-1, token, seek, pattern)
 		if err != nil && err != io.EOF {
-			return err
+			return &fs.PathError{Op: "visit", Path: subp.Path, Err: err}
 		}
 		// despite being called "start-after", the
 		// S3 API includes the seek key in the list
@@ -507,12 +520,14 @@ func (p *Prefix) ReadDir(n int) ([]fs.DirEntry, error) {
 	d, next, err := p.readDirAt(n, p.token, "", "")
 	if err == io.EOF {
 		p.dirEOF = true
-		if len(d) > 0 {
+		if len(d) > 0 || n < 0 {
+			// the spec for fs.ReadDirFile says
+			// ReadDir(-1) shouldn't produce an explicit EOF
 			err = nil
 		}
 	}
 	if err != nil {
-		return nil, err
+		return nil, &fs.PathError{Op: "readdir", Path: p.Path, Err: err}
 	}
 	p.token = next
 	return d, nil
@@ -582,6 +597,12 @@ func (p *Prefix) list(n int, token, seek, prefix string) (*listResponse, error) 
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
+		if res.StatusCode == 404 {
+			// this can actually mean the bucket doesn't exist,
+			// but for practical purposes we can treat it
+			// as an empty filesystem
+			return nil, fs.ErrNotExist
+		}
 		return nil, fmt.Errorf("s3 list objects s3://%s/%s: %s", p.Bucket, p.Path, res.Status)
 	}
 	ret := &listResponse{}

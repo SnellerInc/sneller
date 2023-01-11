@@ -66,6 +66,10 @@ func TestAWS(t *testing.T) {
 			"WalkGlob",
 			testWalkGlob,
 		},
+		{
+			"ReadDir",
+			testReadDir,
+		},
 	}
 	for _, tr := range tests {
 		t.Run(tr.name, func(t *testing.T) {
@@ -91,6 +95,17 @@ func TestAWS(t *testing.T) {
 	err = fs.WalkDir(b, prefix, rm)
 	if err != nil {
 		t.Fatalf("removing left-over items: %s", err)
+	}
+}
+
+func testReadDir(t *testing.T, b *BucketFS, prefix string) {
+	fullp := path.Join(prefix, "xyz-does-not-exist")
+	items, err := fs.ReadDir(b, fullp)
+	if len(items) > 0 {
+		t.Errorf("got %d items?", len(items))
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("got error %v %[1]T", err)
 	}
 }
 
