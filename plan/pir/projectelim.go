@@ -159,31 +159,40 @@ func (b *bindflattener) Walk(e expr.Node) expr.Rewriter {
 func projectpushdown(scope *Trace) {
 outer:
 	for s := scope.top; s != nil; s = s.parent() {
-		b, ok := s.(*Bind)
-		if !ok {
+		var rewrite func(bf *bindflattener)
+		switch s := s.(type) {
+		case *Bind:
+			rewrite = func(bf *bindflattener) {
+				h := &stepHint{s.parent()}
+				for i := range s.bind {
+					s.bind[i].Expr = expr.Simplify(expr.Rewrite(bf, s.bind[i].Expr), h)
+				}
+			}
+		case *Aggregate:
+			rewrite = func(bf *bindflattener) {
+				h := &stepHint{s.parent()}
+				for i := range s.Agg {
+					s.Agg[i].Expr = expr.Simplify(expr.Rewrite(bf, s.Agg[i].Expr), h).(*expr.Aggregate)
+				}
+				for i := range s.GroupBy {
+					s.GroupBy[i].Expr = expr.Simplify(expr.Rewrite(bf, s.GroupBy[i].Expr), h)
+				}
+			}
+		default:
 			continue
 		}
-
 		// while the parent node is a Bind,
 		// merge the results into a single
 		// extended projection
 		for {
-			p := b.parent()
+			p := s.parent()
 			pb, ok := p.(*Bind)
 			if !ok {
 				continue outer
 			}
-			// now we have Bind(Bind(...)),
-			// so we can just take the results
-			// of the inner bind and replace the
-			// outer binding references with those
-			// expressions
 			rw := bindflattener{from: pb.bind}
-			for i := range b.bind {
-				b.bind[i].Expr = expr.Simplify(expr.Rewrite(&rw, b.bind[i].Expr), &stepHint{b.parent()})
-			}
-			// ... and splice out the inner Bind
-			b.setparent(pb.parent())
+			rewrite(&rw)
+			s.setparent(pb.parent())
 		}
 	}
 }

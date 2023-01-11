@@ -9,8 +9,7 @@ WITH (
 	WITH (
 		ITERATE foo FIELDS [col0, col1]
 		FILTER DISTINCT [col0, col1]
-		PROJECT col0 AS $_3_0
-		AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
+		AGGREGATE COUNT(*) AS $__val BY col0 AS $__key
 	) AS REPLACEMENT(0)
 	ITERATE foo FIELDS [col0, col1]
 	FILTER DISTINCT [col0, col1]

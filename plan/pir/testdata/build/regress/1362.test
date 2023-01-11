@@ -10,8 +10,7 @@ LIMIT 10
 WITH (
 	ITERATE table FIELDS [a, accountName, b, timestamp, type] WHERE timestamp >= `2022-07-18T21:06:10Z` AND timestamp <= `2022-07-19T21:06:10Z` AND type = 'pattern0' AND accountName = 'pattern1'
 	FILTER DISTINCT [a.x, b.y]
-	PROJECT a.x AS $_3_0
-	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
+	AGGREGATE COUNT(*) AS $__val BY a.x AS $__key
 ) AS REPLACEMENT(0)
 ITERATE table FIELDS [a, accountName, timestamp, type] WHERE timestamp >= `2022-07-18T21:06:10Z` AND timestamp <= `2022-07-19T21:06:10Z` AND type = 'pattern0' AND accountName = 'pattern1'
 AGGREGATE COUNT(*) AS $_0_1 BY a.x AS $_0_0
@@ -24,8 +23,7 @@ WITH (
 		ITERATE PART table FIELDS [a, accountName, b, timestamp, type] WHERE timestamp >= `2022-07-18T21:06:10Z` AND timestamp <= `2022-07-19T21:06:10Z` AND type = 'pattern0' AND accountName = 'pattern1'
 		FILTER DISTINCT [a.x, b.y])
 	FILTER DISTINCT [a.x, b.y]
-	PROJECT a.x AS $_3_0
-	AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
+	AGGREGATE COUNT(*) AS $__val BY a.x AS $__key
 ) AS REPLACEMENT(0)
 UNION MAP table (
 	ITERATE PART table FIELDS [a, accountName, timestamp, type] WHERE timestamp >= `2022-07-18T21:06:10Z` AND timestamp <= `2022-07-19T21:06:10Z` AND type = 'pattern0' AND accountName = 'pattern1'
