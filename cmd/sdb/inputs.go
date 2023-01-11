@@ -28,8 +28,8 @@ func inputs(creds db.Tenant, args []string) {
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.StringVar(&seek, "seek", "", "seek position within inputs")
 	flags.IntVar(&limit, "limit", 1000, "limit on files to iterate")
-	flags.Parse(args)
-	args = flags.Args()[1:]
+	flags.Parse(args[1:])
+	args = flags.Args()
 	if len(args) != 2 {
 		flags.Usage()
 		return

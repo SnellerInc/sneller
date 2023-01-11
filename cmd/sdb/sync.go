@@ -28,8 +28,8 @@ func sync(args []string) {
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.BoolVar(&force, "f", false, "force rebuild")
 	flags.Int64Var(&dashm, "m", 100*giga, "maximum input bytes read per index update")
-	flags.Parse(args)
-	args = flags.Args()[1:]
+	flags.Parse(args[1:])
+	args = flags.Args()
 	if len(args) != 2 {
 		flags.Usage()
 		return

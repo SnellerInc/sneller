@@ -51,7 +51,7 @@ func unpack(args []string) {
 
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.StringVar(&dasho, "o", "-", "output file (\"-\" means stdout)")
-	flags.Parse(args)
+	flags.Parse(args[1:])
 	args = flags.Args()
 
 	var err error
@@ -97,7 +97,7 @@ from the tenant rootfs to the local filesystem.
 			if len(args) < 2 {
 				return false
 			}
-			unpack(args[1:])
+			unpack(args)
 			return true
 		},
 	})
