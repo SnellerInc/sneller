@@ -15,7 +15,6 @@
 package jsonrl
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -159,9 +158,12 @@ func (b *reader) lexOne(token string) error {
 		}
 		b.chomp()
 		cur := b.avail()
-		if len(cur) >= len(token) && bytes.Equal(cur[:len(token)], []byte(token)) {
-			b.rpos += len(token)
-			return nil
+		if len(cur) >= len(token) {
+			if string(cur[:len(token)]) == token {
+				b.rpos += len(token)
+				return nil
+			}
+			return fmt.Errorf("unexpected token %q searching for %q", string(cur[:len(token)]), token)
 		}
 	}
 	return b.err

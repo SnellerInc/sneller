@@ -82,11 +82,16 @@ func FuzzConvert(f *testing.F) {
 		f.Add([]byte(objs[i]))
 	}
 	// confirm no crashes from adversarial input
-	f.Fuzz(func(t *testing.T, input []byte) {
+	run := func(t *testing.T, input []byte, cloudtrail bool) {
 		var out bytes.Buffer
 		cn := ion.Chunker{W: &out, Align: 2048}
 		in := bytes.NewReader(input)
-		err := Convert(in, &cn, nil, nil)
+		var err error
+		if cloudtrail {
+			err = ConvertCloudtrail(in, &cn, nil)
+		} else {
+			err = Convert(in, &cn, nil, nil)
+		}
 		if err != nil {
 			return
 		}
@@ -111,6 +116,14 @@ func FuzzConvert(f *testing.F) {
 				t.Errorf("got a non-struct value %#v", d)
 			}
 		}
+	}
+	f.Fuzz(func(t *testing.T, input []byte) {
+		t.Run("convert", func(t *testing.T) {
+			run(t, input, false)
+		})
+		t.Run("cloudtrail", func(t *testing.T) {
+			run(t, input, true)
+		})
 	})
 }
 
