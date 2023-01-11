@@ -184,7 +184,7 @@ func (b *BucketFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		}
 		f.Close()
 	}
-	return nil, nil
+	return ret, nil
 }
 
 // Prefix implements fs.File, fs.ReadDirFile,
