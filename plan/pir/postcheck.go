@@ -28,6 +28,11 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 		if err != nil {
 			return false
 		}
+		_, ok := e.(*expr.Select)
+		if ok {
+			// do not traverse sub-queries
+			return false
+		}
 		agg, ok := e.(*expr.Aggregate)
 		if ok {
 			if agg.Over != nil {

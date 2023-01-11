@@ -1,0 +1,21 @@
+SELECT (
+	SELECT col0, col1, COUNT(*) OVER (PARTITION BY col0)
+	FROM foo
+	GROUP BY col0, col1
+	LIMIT 100
+) AS results
+---
+WITH (
+	WITH (
+		ITERATE foo FIELDS [col0, col1]
+		FILTER DISTINCT [col0, col1]
+		PROJECT col0 AS $_3_0
+		AGGREGATE COUNT(*) AS $__val BY $_3_0 AS $__key
+	) AS REPLACEMENT(0)
+	ITERATE foo FIELDS [col0, col1]
+	FILTER DISTINCT [col0, col1]
+	LIMIT 100
+	PROJECT col0 AS col0, col1 AS col1, HASH_REPLACEMENT(0, 'scalar', '$__key', col0, 0) AS "count"
+) AS REPLACEMENT(0)
+[{}]
+PROJECT LIST_REPLACEMENT(0) AS results
