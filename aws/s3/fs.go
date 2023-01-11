@@ -473,6 +473,13 @@ func (p *Prefix) VisitDir(name, seek, pattern string, walk fsutil.VisitDirFn) er
 		if err != nil && err != io.EOF {
 			return err
 		}
+		// despite being called "start-after", the
+		// S3 API includes the seek key in the list
+		// response, which is not consistent with
+		// fsutil.VisitDir, so filter it out here...
+		if len(d) > 0 && d[0].Name() == seek {
+			d = d[1:]
+		}
 		for i := range d {
 			err := walk(d[i])
 			if err != nil {
