@@ -31,14 +31,25 @@ type jstable struct {
 }
 
 type jsquery struct {
-	vm.QuerySink
+	dst vm.QuerySink
+}
+
+func (j *jsquery) Close() error {
+	// A little hack: in the case of query execution, that's
+	// the responsibility of executor (exec.go) to close the
+	// output sink. But also jsonl.Splitter closes the sink.
+	// Thus jsquery, used only by Splitter, prevents from
+	// double closing the top-level query sink.
+	return nil
+}
+
+func (j *jsquery) Open() (io.WriteCloser, error) {
+	return j.dst.Open()
 }
 
 func (j *jsquery) CloseError(err error) {
 	exit(fmt.Errorf("jsquery: %s", err))
 }
-
-func (j *jstable) Chunks() int { return -1 }
 
 func (j *jstable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	if parallel <= 0 {
@@ -47,7 +58,7 @@ func (j *jstable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	sp := jsonrl.Splitter{
 		Alignment:   1024 * 1024,
 		MaxParallel: parallel,
-		Output:      &jsquery{dst},
+		Output:      &jsquery{dst: dst},
 	}
 	const maxWindowSize = 8 * 1024 * 1024
 	if j.size/int64(parallel) < maxWindowSize {
@@ -55,5 +66,6 @@ func (j *jstable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	} else {
 		sp.WindowSize = maxWindowSize
 	}
+
 	return sp.Split(j.in, j.size)
 }
