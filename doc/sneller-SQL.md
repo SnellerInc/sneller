@@ -1071,7 +1071,7 @@ See [Postgres Conditional Expressions](https://www.postgresql.org/docs/current/f
 
 #### `BIT_COUNT`
 
-`BIT_COUNT(expr)` returns the number of bits set of `expr` casted to a
+`BIT_COUNT(expr)` returns the number of bits set of `expr` cast to a
 64-bit signed integer, or `MISSING` if `expr` is not of numeric type.
 
 ### Math Constants
@@ -1086,7 +1086,7 @@ See [Postgres Conditional Expressions](https://www.postgresql.org/docs/current/f
 
 `ABS(expr)` returns the absolute value
 of the expression `expr` if `expr` evaluates to a number;
-otherwse, it returns `MISSING`.
+otherwise, it returns `MISSING`.
 
 #### `CBRT`
 
@@ -1365,7 +1365,7 @@ External resources:
     into Mercator projection
 
   - https://en.wikipedia.org/wiki/Tiled_web_map provides insight into
-    geo tiling, our implementation is desiged to be compatible
+    geo tiling, our implementation is designed to be compatible
 
 #### `GEO_TILE_ES`
 
