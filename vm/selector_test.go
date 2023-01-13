@@ -211,8 +211,6 @@ type looptable struct {
 	chunk []byte
 }
 
-func (l *looptable) Chunks() int { return int(l.count) }
-
 func (l *looptable) run(dst io.Writer) error {
 	tmp := Malloc()
 	defer Free(tmp)

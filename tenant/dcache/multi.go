@@ -99,15 +99,6 @@ func (m *MultiTable) open(parallel int) int {
 	return parallel
 }
 
-// Chunks implements vm.Table.Chunks
-func (m *MultiTable) Chunks() int {
-	out := 0
-	for i := range m.inner {
-		out += m.inner[i].Chunks()
-	}
-	return out
-}
-
 // WriteChunks implements vm.Table.WriteChunks
 func (m *MultiTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	err := vm.SplitInput(dst, m.open(parallel), m.write)

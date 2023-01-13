@@ -559,9 +559,6 @@ func readThrough(seg Segment, mp *mapping, w io.Writer) (bool, error) {
 	return mp != nil, seg.Decode(w, buf)
 }
 
-// Chunks implements vm.Table.Chunks
-func (t *Table) Chunks() int { return -1 }
-
 // WriteChunks implements vm.Table.WriteChunks
 //
 // NOTE: the WriteChunks method is not safe to call

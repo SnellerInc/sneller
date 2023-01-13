@@ -135,8 +135,8 @@ func (r *ReaderAtTable) Size() int64 { return r.size }
 // Align returns the configured alignment for chunks in the table
 func (r *ReaderAtTable) Align() int { return r.align }
 
-// Chunks returns the number of chunks in the table
-func (r *ReaderAtTable) Chunks() int { return int((r.size + int64(r.align-1)) / int64(r.align)) }
+// chunks returns the number of chunks in the table
+func (r *ReaderAtTable) chunks() int { return int((r.size + int64(r.align-1)) / int64(r.align)) }
 
 func (r *ReaderAtTable) run(dst io.Writer) error {
 	if r.align > PageSize {
@@ -172,7 +172,7 @@ func (r *ReaderAtTable) run(dst io.Writer) error {
 
 // WriteChunks implements Table.WriteChunks
 func (r *ReaderAtTable) WriteChunks(dst QuerySink, parallel int) error {
-	if c := r.Chunks(); c < parallel && c > 0 {
+	if c := r.chunks(); c < parallel && c > 0 {
 		parallel = c
 	}
 	return SplitInput(dst, parallel, r.run)
@@ -198,9 +198,6 @@ func BufferTable(buf []byte, align int) *BufferedTable {
 
 // Size returns the number of bytes in the table
 func (b *BufferedTable) Size() int64 { return int64(len(b.buf)) }
-
-// Chunks implements Table.Chunks
-func (b *BufferedTable) Chunks() int { return (len(b.buf) + b.align - 1) / b.align }
 
 func (b *BufferedTable) run(w io.Writer) error {
 	tmp := Malloc()

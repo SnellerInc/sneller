@@ -173,8 +173,6 @@ func (h *TenantHandle) Filter(e expr.Node) plan.TableHandle {
 
 type emptyTable struct{}
 
-func (emptyTable) Chunks() int { return 0 }
-
 func (emptyTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	w, err := dst.Open()
 	if err != nil {

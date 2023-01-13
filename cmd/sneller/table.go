@@ -37,14 +37,6 @@ type readerTable struct {
 
 var allBytes int64
 
-func (f *readerTable) Chunks() int {
-	n := 0
-	for i := range f.t.Blocks {
-		n += f.t.Blocks[i].Chunks
-	}
-	return n
-}
-
 // satisfied by s3.Reader
 type rangeReader interface {
 	RangeReader(off, width int64) (io.ReadCloser, error)

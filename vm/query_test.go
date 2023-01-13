@@ -205,8 +205,6 @@ func (b *benchTable) Open(_ context.Context) (vm.Table, error) {
 	return b, nil
 }
 
-func (b *benchTable) Chunks() int { return int(b.count) }
-
 func (b *benchTable) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected benchTable.Encode")
 }
