@@ -7972,9 +7972,8 @@ trap:
 
 //; #region string methods
 
-// k[0] = streq_cs(slice[1], dict_ptr[2]).k[3]
-//
 //; #region bcCmpStrEqCs
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcCmpStrEqCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -8015,17 +8014,15 @@ tests:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcCmpStrEqCs
 
-// k[0] = streq_ci(slice[1], dict_ptr[2]).k[3]
-//
 //; #region bcCmpStrEqCi
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcCmpStrEqCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
 
   VPBROADCASTD  8(R14),Z6                 //;713DF24F bcst needle_length              ;Z6=counter_needle; R14=needle_slice;
   VPTESTMD      Z6,  Z6,  K1,  K1         //;EF7C0710 K1 &= (counter_needle != 0)     ;K1=lane_active; Z6=counter_needle;
@@ -8075,13 +8072,11 @@ tests:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcCmpStrEqCi
 
-// k[0] = streq_ci_utf8(slice[1], dict_ptr[2]).k[3]
-//
 //; #region bcCmpStrEqUTF8Ci
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; empty needles or empty data always result in a dead lane
 TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -8170,20 +8165,18 @@ mixed_ascii:
 
 next:
   VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len;
-
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE*1)
-
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcCmpStrEqUTF8Ci
 
-// k[0] = cmp_str_fuzzy_a3(slice[1], i64[2], dict[3]).k[4]
 //; #region bcCmpStrFuzzyA3
+//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
 TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
 
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
@@ -8191,8 +8184,6 @@ TEXT bcCmpStrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   ADDQ          $512,R14                  //;46443C9E needle_ptr += 512               ;R14=needle_ptr;
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
-//; load from stack-slot: load 16x uint32 into Z14
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
@@ -8295,15 +8286,16 @@ loop2:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcCmpStrFuzzyA3
 
 //; #region bcCmpStrFuzzyUnicodeA3
+//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
 TEXT bcCmpStrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
 
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
@@ -8311,8 +8303,6 @@ TEXT bcCmpStrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   ADDQ          $512,R14                  //;46443C9E needle_ptr += 512               ;R14=needle_ptr;
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
-//; load from stack-slot: load 16x uint32 into Z14
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
@@ -8494,15 +8484,16 @@ loop2:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcCmpStrFuzzyUnicodeA3
 
 //; #region bcHasSubstrFuzzyA3
+//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
 TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
 
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
@@ -8510,8 +8501,6 @@ TEXT bcHasSubstrFuzzyA3(SB), NOSPLIT|NOFRAME, $0
   ADDQ          $512,R14                  //;46443C9E needle_ptr += 512               ;R14=needle_ptr;
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
-//; load from stack-slot: load 16x uint32 into Z14
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
@@ -8632,15 +8621,16 @@ loop1:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcHasSubstrFuzzyA3
 
 //; #region bcHasSubstrFuzzyUnicodeA3
+//; k[0] = func(slice[1], i64[2], dict[3]).k[4]
 TEXT bcHasSubstrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R15), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
 
 //; load parameters
   MOVQ          (R15),R15                 //;D2647DF0 load needle_ptr                 ;R15=update_data_ptr;
@@ -8648,9 +8638,7 @@ TEXT bcHasSubstrFuzzyUnicodeA3(SB), NOSPLIT|NOFRAME, $0
   ADDQ          $512,R14                  //;46443C9E needle_ptr += 512               ;R14=needle_ptr;
   VPBROADCASTD  (R14),Z13                 //;713DF24F bcst needle_len                 ;Z13=needle_len; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B63DFEAF needle_ptr += 4                 ;R14=needle_ptr;
-//; load from stack-slot: load 16x uint32 into Z14
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
-  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z11=scratch2;
+  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch2;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch1;
   VINSERTI64X4  $1,  Y26, Z27, Z14        //;3944001B merge into 16x uint32           ;Z14=threshold; Z27=scratch2; Z26=scratch1;
 //; load constants
@@ -8847,13 +8835,11 @@ loop1:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcHasSubstrFuzzyUnicodeA3
 
-// slice[0].k[1] = skip_1_char_left(slice[2]).k[3]
-//
 //; #region bcSkip1charLeft
+//; slice[0].k[1] = func(slice[2]).k[3]
 //; skip the first UTF-8 codepoint in Z2:Z3
 TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
@@ -8876,77 +8862,69 @@ next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 //; #endregion bcSkip1charLeft
 
-// slice[0].k[1] = skip_1_char_right(slice[2]).k[3]
-//
 //; #region bcSkip1charRight
+//; slice[0].k[1] = func(slice[2]).k[3]
 //; skip the last UTF-8 codepoint in Z2:Z3
 TEXT bcSkip1charRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  VPTESTMD      Z3,  Z3,  K1,  K1         //;B1146BCF update lane mask with non-empty lanes;K1=lane_active; Z3=str_length;
+  VPTESTMD      Z3,  Z3,  K1,  K1         //;B1146BCF K1 &= (data_len != 0); update lane mask with non-empty lanes;K1=lane_active; Z3=data_len;
   KTESTW        K1,  K1                   //;69D1CDA2 all lanes empty?                ;K1=lane_active;
   JZ            next                      //;A5924904 yes, then exit; jump if zero (ZF = 1);
 
   VPBROADCASTD  CONSTD_UTF8_2B_MASK(),Z27 //;F6E81301 load constant UTF8 2byte mask   ;Z27=UTF8_2byte_mask;
   VPBROADCASTD  CONSTD_UTF8_3B_MASK(),Z28 //;B1E12620 load constant UTF8 3byte mask   ;Z28=UTF8_3byte_mask;
   VPBROADCASTD  CONSTD_UTF8_4B_MASK(),Z29 //;D896A9E1 load constant UTF8 4byte mask   ;Z29=UTF8_4byte_mask;
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z31
+  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
+  VPADDD        Z10, Z10, Z24             //;EDD57CAF load constant 2                 ;Z24=2; Z10=1;
+  VPADDD        Z10, Z24, Z25             //;7E7A1CB0 load constant 3                 ;Z25=3; Z24=2; Z10=1;
+  VPADDD        Z24, Z24, Z20             //;9408A2D9 load constant 4                 ;Z20=4; Z24=2;
+  VPADDD        Z2,  Z3,  Z4              //;5684E300 data_end := data_len + data_off ;Z4=data_end; Z3=data_len; Z2=data_off;
 
-  VPADDD        Z10, Z10, Z24             //;EDD57CAF load constant 2                 ;Z24=constd_2; Z10=constd_1;
-  VPADDD        Z10, Z24, Z25             //;7E7A1CB0 load constant 3                 ;Z25=constd_3; Z24=constd_2; Z10=constd_1;
-  VPADDD        Z2,  Z3,  Z4              //;5684E300 compute end-of-string ptr       ;Z4=end_of_str; Z3=str_length; Z2=str_start;
-
-  VPMINUD       Z31, Z3, Z0
-  VPSUBD        Z0, Z31, Z0
-  VPADDD        Z0, Z4, Z1
-  VPSLLD        $3, Z0, Z0
-  VPTESTMD      Z3, Z3, K1, K3
-  VPXORD        X8, X8, X8
-  VPGATHERDD    -4(SI)(Z1*1), K3, Z8
-  VPSLLVD       Z0, Z8, Z8
-
-//; #region count_bytes_code_point_right; data in Z8; result out Z7
-  VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z27=UTF8_2byte_mask;
+  VPTESTMD      Z3,  Z3,  K1,  K3         //;6639548B K3 := K1 & (data_len != 0)      ;K3=tmp_mask; K1=lane_active; Z3=data_len;
+//; calculate offset that is always positive
+  VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
+  VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
+  VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+//; adjust data
+  VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
+  VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
+  VPSLLVD       Z23, Z8,  Z8              //;67300525 data <<= adjust                 ;Z8=data; Z23=adjust;
+//; count_bytes_code_point_right; data in Z8; result out Z7
+  VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data; Z27=UTF8_2byte_mask;
   VPCMPD        $0,  Z27, Z26, K1,  K3    //;C6890BF4 K3 := K1 & (scratch_Z26==UTF8_2byte_mask); create 2byte mask;K3=tmp_mask; K1=lane_active; Z26=scratch_Z26; Z27=UTF8_2byte_mask; 0=Eq;
-  VPANDD        Z28, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data_msg; Z28=UTF8_3byte_mask;
+  VPANDD        Z28, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data; Z28=UTF8_3byte_mask;
   VPCMPD        $0,  Z28, Z26, K1,  K4    //;14C32DC0 K4 := K1 & (scratch_Z26==UTF8_3byte_mask); create 3byte mask;K4=tmp_mask2; K1=lane_active; Z26=scratch_Z26; Z28=UTF8_3byte_mask; 0=Eq;
-  VPANDD        Z29, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data_msg; Z29=UTF8_4byte_mask;
+  VPANDD        Z29, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data; Z29=UTF8_4byte_mask;
   VPCMPD        $0,  Z29, Z26, K1,  K5    //;1AE0A51C K5 := K1 & (scratch_Z26==UTF8_4byte_mask); create 4byte mask;K5=tmp_mask3; K1=lane_active; Z26=scratch_Z26; Z29=UTF8_4byte_mask; 0=Eq;
-  VMOVDQA32     Z10, Z7                   //;A7640B64 n_bytes_data := 1               ;Z7=n_bytes_data; Z10=constd_1;
-  VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_data; K3=tmp_mask; Z10=constd_1;
-  VPADDD        Z24, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_data; K4=tmp_mask2; Z24=constd_2;
-  VPADDD        Z25, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_data; K5=tmp_mask3; Z25=constd_3;
-//; #endregion count_bytes_code_point_right; data in Z8; result out Z7
+  VMOVDQA32     Z10, Z7                   //;A7640B64 n_bytes_to_skip := 1            ;Z7=n_bytes_to_skip; Z10=1;
+  VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_to_skip; K3=tmp_mask; Z10=1;
+  VPADDD        Z24, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_to_skip; K4=tmp_mask2; Z24=2;
+  VPADDD        Z25, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_to_skip; K5=tmp_mask3; Z25=3;
 
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;B69EBA11 data_len -= n_bytes_to_skip     ;Z3=data_len; K1=lane_active; Z7=n_bytes_to_skip;
 
 next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
 //; #endregion bcSkip1charRight
 
-// slice[0].k[1] = skip_n_chars_left(slice[2], i64[3]).k[4]
-//
 //; #region bcSkipNcharLeft
+//; slice[0].k[1] = func(slice[2], i64[3]).k[4]
 //; skip the first n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
-
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-
-//; load from stack-slot: load 16x uint32 into Z6
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
@@ -8981,69 +8959,65 @@ next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 //; #endregion bcSkipNcharLeft
 
-// slice[0].k[1] = skip_n_chars_right(slice[2], i64[3]).k[4]
-//
 //; #region bcSkipNcharRight
+//; slice[0].k[1] = func(slice[2], i64[3]).k[4]
 //; skip the last n UTF-8 code-points in Z2:Z3
 TEXT bcSkipNcharRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
-
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
 
-//; load from stack-slot: load 16x uint32 into Z6
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
 
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (str_len>=counter)        ;K1=lane_active; Z3=str_len; Z6=counter; 5=GreaterEq;
-  VPCMPD        $1,  Z6,  Z11, K1,  K2    //;7E49CD56 K2 := K1 & (0<counter)          ;K2=lane_todo; K1=lane_active; Z11=0; Z6=counter; 1=LessThen;
+  VPCMPD        $5,  Z6,  Z3,  K1,  K1    //;502E314F K1 &= (data_len>=counter)       ;K1=lane_active; Z3=data_len; Z6=counter; 5=GreaterEq;
+  VPTESTMD      Z6,  Z6,  K1,  K2         //;D962A698 K2 := K1 & (counter != 0)       ;K2=lane_todo; K1=lane_active; Z6=counter;
   KTESTW        K2,  K2                   //;69D1CDA2 ZF := (K2==0); CF := 1          ;K2=lane_todo;
   JZ            next                      //;A5924904 jump if zero (ZF = 1)           ;
 
   VPBROADCASTD  CONSTD_UTF8_2B_MASK(),Z27 //;F6E81301 load constant UTF8 2byte mask   ;Z27=UTF8_2byte_mask;
   VPBROADCASTD  CONSTD_UTF8_3B_MASK(),Z28 //;B1E12620 load constant UTF8 3byte mask   ;Z28=UTF8_3byte_mask;
   VPBROADCASTD  CONSTD_UTF8_4B_MASK(),Z29 //;D896A9E1 load constant UTF8 4byte mask   ;Z29=UTF8_4byte_mask;
+  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
-  VPBROADCASTD  CONSTD_4(),Z31
   VPADDD        Z10, Z10, Z22             //;EDD57CAF load constant 2                 ;Z22=2; Z10=1;
-  VPADDD        Z10, Z22, Z23             //;7E7A1CB0 load constant 3                 ;Z23=3; Z22=2; Z10=1;
-
+  VPADDD        Z10, Z22, Z24             //;7E7A1CB0 load constant 3                 ;Z24=3; Z22=2; Z10=1;
+  VPADDD        Z22, Z22, Z20             //;9408A2D9 load constant 4                 ;Z20=4; Z22=2;
 loop:
-  VPADDD        Z2,  Z3,  Z4              //;5684E300 str_end := str_len + str_start  ;Z4=str_end; Z3=str_len; Z2=str_start;
-  VPMINUD       Z31, Z3, Z0
-  VPSUBD        Z0, Z31, Z0
-  VPADDD        Z0, Z4, Z1
-  VPSLLD        $3, Z0, Z0
-  VPTESTMD      Z3, Z3, K2, K3
-  VPXORD        X8, X8, X8
-  VPGATHERDD    -4(SI)(Z1*1), K3, Z8
-  VPSLLVD       Z0, Z8, Z8
-
+  VPADDD        Z3,  Z2,  Z4              //;813A5F04 data_end := data_off + data_len ;Z4=data_end; Z2=data_off; Z3=data_len;
+  VPTESTMD      Z3,  Z3,  K2,  K3         //;6639548B K3 := K2 & (data_len != 0)      ;K3=tmp_mask; K2=lane_todo; Z3=data_len;
+//; calculate offset that is always positive
+  VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
+  VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
+  VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+//; adjust data
+  VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
+  VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
+  VPSLLVD       Z23, Z8,  Z8              //;67300525 data <<= adjust                 ;Z8=data; Z23=adjust;
 //; count_bytes_code_point_right; data in Z8; result out Z7
-  VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z27=UTF8_2byte_mask;
+  VPANDD        Z27, Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data; Z27=UTF8_2byte_mask;
   VPCMPD        $0,  Z27, Z26, K2,  K3    //;C6890BF4 K3 := K2 & (scratch_Z26==UTF8_2byte_mask); create 2byte mask;K3=tmp_mask; K2=lane_todo; Z26=scratch_Z26; Z27=UTF8_2byte_mask; 0=Eq;
-  VPANDD        Z28, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data_msg; Z28=UTF8_3byte_mask;
+  VPANDD        Z28, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data; Z28=UTF8_3byte_mask;
   VPCMPD        $0,  Z28, Z26, K2,  K4    //;14C32DC0 K4 := K2 & (scratch_Z26==UTF8_3byte_mask); create 3byte mask;K4=tmp_mask2; K2=lane_todo; Z26=scratch_Z26; Z28=UTF8_3byte_mask; 0=Eq;
-  VPANDD        Z29, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data_msg; Z29=UTF8_4byte_mask;
+  VPANDD        Z29, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data; Z29=UTF8_4byte_mask;
   VPCMPD        $0,  Z29, Z26, K2,  K5    //;1AE0A51C K5 := K2 & (scratch_Z26==UTF8_4byte_mask); create 4byte mask;K5=tmp_mask3; K2=lane_todo; Z26=scratch_Z26; Z29=UTF8_4byte_mask; 0=Eq;
-  VMOVDQA32     Z10, Z7                   //;A7640B64 n_bytes_data := 1               ;Z7=n_bytes_data; Z10=1;
-  VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_data; K3=tmp_mask; Z10=1;
-  VPADDD        Z22, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_data; K4=tmp_mask2; Z22=2;
-  VPADDD        Z23, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_data; K5=tmp_mask3; Z23=3;
+  VMOVDQA32     Z10, Z7                   //;A7640B64 n_bytes_to_skip := 1            ;Z7=n_bytes_to_skip; Z10=1;
+  VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_to_skip; K3=tmp_mask; Z10=1;
+  VPADDD        Z22, Z7,  K4,  Z7         //;A542E2E5 3byte UTF-8: add extra 2bytes   ;Z7=n_bytes_to_skip; K4=tmp_mask2; Z22=2;
+  VPADDD        Z24, Z7,  K5,  Z7         //;26F561C2 4byte UTF-8: add extra 3bytes   ;Z7=n_bytes_to_skip; K5=tmp_mask3; Z24=3;
 //; advance
-  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_len -= n_bytes_data         ;Z3=str_len; K2=lane_todo; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 data_len -= n_bytes_to_skip     ;Z3=data_len; K2=lane_todo; Z7=n_bytes_to_skip;
   VPSUBD        Z10, Z6,  Z6              //;97723E12 counter--                       ;Z6=counter; Z10=1;
 //; tests
   VPCMPD        $1,  Z6,  Z11, K2,  K2    //;DF88A710 K2 &= (0<counter)               ;K2=lane_todo; Z11=0; Z6=counter; 1=LessThen;
-  VPCMPD        $2,  Z3,  Z11, K2,  K2    //;B623ED13 K2 &= (0<=str_len)              ;K2=lane_todo; Z11=0; Z3=str_len; 2=LessEq;
-  VPCMPD        $5,  Z3,  Z11, K2,  K3    //;2E4360D2 K3 := K2 & (0>=str_len)         ;K3=tmp_mask; K2=lane_todo; Z11=0; Z3=str_len; 5=GreaterEq;
+  VPCMPD        $2,  Z3,  Z11, K2,  K2    //;B623ED13 K2 &= (0<=data_len)             ;K2=lane_todo; Z11=0; Z3=data_len; 2=LessEq;
+  VPCMPD        $5,  Z3,  Z11, K2,  K3    //;2E4360D2 K3 := K2 & (0>=data_len)        ;K3=tmp_mask; K2=lane_todo; Z11=0; Z3=data_len; 5=GreaterEq;
   KANDNW        K1,  K3,  K1              //;21163EF3 lane_active &= ~tmp_mask        ;K1=lane_active; K3=tmp_mask;
   KTESTW        K2,  K1                   //;799F076E ZF := ((K1&K2)==0); CF := ((~K1&K2)==0);K1=lane_active; K2=lane_todo;
   JNZ           loop                      //;203DDAE1 any chars left? NO, loop next; jump if not zero (ZF = 0);
@@ -9052,18 +9026,13 @@ next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 //; #endregion bcSkipNcharRight
 
-// slice[0] = trim_left_ws(slice[1]).k[2]
-//
 //; #region bcTrimWsLeft
-//; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
-//; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
+//; slice[0] = func(slice[1]).k[2]
 TEXT bcTrimWsLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
-
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
@@ -9111,81 +9080,66 @@ loop:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 //; #endregion bcTrimWsLeft
 
-// slice[0] = trim_right_ws(slice[1]).k[2]
-//
 //; #region bcTrimWsRight
-//; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
-//; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
+//; slice[0] = func(slice[1]).k[2]
 TEXT bcTrimWsRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
-
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VPXORD        Z11, Z11, Z11             //;F4B92302 constd_0 := 0                   ;Z11=constd_0;
-//; #region load white space chars
-  MOVL          $0xD0920,R8               //;00000000                                 ;R8=tmp_constant;
-  VPBROADCASTB  R8,  Z15                  //;7D467BFE load whitespace                 ;Z15=c_char_space; R8=tmp_constant;
-  SHRL          $8,  R8                   //;69731820                                 ;R8=tmp_constant;
-  VPBROADCASTB  R8,  Z16                  //;1FD6A756 load tab                        ;Z16=c_char_tab; R8=tmp_constant;
-  SHRL          $8,  R8                   //;FA1E61C9                                 ;R8=tmp_constant;
-  VPBROADCASTB  R8,  Z17                  //;14E0AB16 load cr                         ;Z17=c_char_cr; R8=tmp_constant;
-//; #endregion load white space chars
-  VPADDD        Z3,  Z2,  Z14             //;00000000 str_pos_end := str_start + str_length;Z14=str_pos_end; Z2=str_start; Z3=str_length;
-  VPSUBD        Z20, Z14, Z14             //;00000000 str_pos_end -= 4                ;Z14=str_pos_end; Z20=constd_4;
+  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
+  MOVL          $0xD0920,R14              //;4AB6FA4E                                 ;R14=scratch;
+  VPBROADCASTB  R14, Z15                  //;7D467BFE load whitespace                 ;Z15=c_char_space; R14=scratch;
+  SHRL          $8,  R14                  //;69731820 scratch >>= 8                   ;R14=scratch;
+  VPBROADCASTB  R14, Z16                  //;1FD6A756 load tab                        ;Z16=c_char_tab; R14=scratch;
+  SHRL          $8,  R14                  //;FA1E61C9 scratch >>= 8                   ;R14=scratch;
+  VPBROADCASTB  R14, Z17                  //;14E0AB16 load cr                         ;Z17=c_char_cr; R14=scratch;
+  VPADDD        Z3,  Z2,  Z4              //;813A5F04 data_end := data_off + data_len ;Z4=data_end; Z2=data_off; Z3=data_len;
 loop:
-  VPMINUD       Z20, Z3, Z21
-  VPSUBD        Z21, Z20, Z21
-  VPADDD        Z21, Z14, Z22
-  VPSLLD        $3, Z21, Z21
-  VPTESTMD      Z3, Z3, K1, K3            //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPXORD        X8, X8, X8
-  VPGATHERDD    (SI)(Z22*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_end;
-  VPSLLVD       Z21, Z8, Z8
-//; #region trim left/right whitespace comparison
-  VPCMPB        $0,  Z15, Z8,  K3         //;529F46B9 K3 := (data_msg==c_char_space); test if equal to SPACE char;K3=tmp_mask; Z8=data_msg; Z15=c_char_space; 0=Eq;
-  VPCMPB        $2,  Z8,  Z16, K2         //;AD553F19 K2 := (c_char_tab<=data_msg); is TAB (0x09) <= char;K2=scratch2_mask; Z16=c_char_tab; Z8=data_msg; 2=LessEq;
-  VPCMPB        $2,  Z17, Z8,  K2,  K2    //;6BC60637 K2 &= (data_msg<=c_char_cr); and is char <= CR (0x0D);K2=scratch2_mask; Z8=data_msg; Z17=c_char_cr; 2=LessEq;
-  KORQ          K3,  K2,  K3              //;00000000                                 ;K3=tmp_mask; K2=scratch2_mask;
+  VPTESTMD      Z3,  Z3,  K1,  K3         //;6639548B K3 := K1 & (data_len != 0)      ;K3=tmp_mask; K1=lane_active; Z3=data_len;
+//; calculate offset that is always positive
+  VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
+  VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
+  VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+//; adjust data
+  VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
+  VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
+  VPSLLVD       Z23, Z8,  Z8              //;67300525 data <<= adjust                 ;Z8=data; Z23=adjust;
+//; trim left/right whitespace comparison
+  VPCMPB        $0,  Z15, Z8,  K3         //;529F46B9 K3 := (data==c_char_space); test if equal to SPACE char;K3=tmp_mask; Z8=data; Z15=c_char_space; 0=Eq;
+  VPCMPB        $2,  Z8,  Z16, K2         //;AD553F19 K2 := (c_char_tab<=data); is TAB (0x09) <= char;K2=scratch2_mask; Z16=c_char_tab; Z8=data; 2=LessEq;
+  VPCMPB        $2,  Z17, Z8,  K2,  K2    //;6BC60637 K2 &= (data<=c_char_cr); and is char <= CR (0x0D);K2=scratch2_mask; Z8=data; Z17=c_char_cr; 2=LessEq;
+  KORQ          K3,  K2,  K3              //;00000000 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
   KTESTQ        K3,  K3                   //;A522D4C2 1 for every whitespace          ;K3=tmp_mask;
-  JZ            next                      //;DC07C307 no matching chars found : no need to update string_start_position; jump if zero (ZF = 1);
-//; #endregion
+  JZ            next                      //;DC07C307 no matching chars found: no need to update string_start_position; jump if zero (ZF = 1);
+//; trim comparison done: K3 contains matched characters
 
-//; #region convert mask to selected byte count
-  VPMOVM2B      K3,  Z8                   //;B0C4D1C5 promote 64x bit to 64x byte     ;Z8=data_msg; K3=tmp_mask;
-  VPTERNLOGQ    $15, Z8,  Z8,  Z8         //;249B4036 negate                          ;Z8=data_msg;
-  VPLZCNTD      Z8,  K1,  Z8              //;90920F43 count leading zeros             ;Z8=data_msg; K1=lane_active;
-  VPSRLD        $3,  Z8,  K1,  Z8         //;68276EFE divide by 8 yields byte_count   ;Z8=data_msg; K1=lane_active;
-  VPMINSD       Z3,  Z8,  K1,  Z8         //;6616691F take minimun of length          ;Z8=data_msg; K1=lane_active; Z3=str_length;
-//; #endregion zmm8 = #bytes
+//; convert mask K3 to selected byte count zmm7
+  VPMOVM2B      K3,  Z7                   //;B0C4D1C5 promote 64x bit to 64x byte     ;Z7=n_bytes_to_trim; K3=tmp_mask;
+  VPTERNLOGQ    $0b00001111,Z7,  Z7,  Z7  //;249B4036 negate                          ;Z7=n_bytes_to_trim;
+  VPLZCNTD      Z7,  K1,  Z7              //;90920F43 count leading zeros             ;Z7=n_bytes_to_trim; K1=lane_active;
+  VPSRLD        $3,  Z7,  K1,  Z7         //;68276EFE divide by 8 yields byte_count   ;Z7=n_bytes_to_trim; K1=lane_active;
+  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_to_trim; K1=lane_active; Z3=data_len;
+//; done convert mask: zmm7 = #bytes
 
-  VPSUBD        Z8,  Z14, K1,  Z14        //;40C40F7D str_pos_end -= data_msg         ;Z14=str_pos_end; K1=lane_active; Z8=data_msg;
-  VPSUBD        Z8,  Z3,  K1,  Z3         //;63A2C77B str_length -= data_msg          ;Z3=str_length; K1=lane_active; Z8=data_msg;
-//; select lanes that have([essential] remaining string length > 0)
-  VPCMPD        $2,  Z3,  Z11, K1,  K2    //;94B55922 K2 := K1 & (0<=str_length)      ;K2=scratch_mask1; K1=lane_active; Z11=constd_0; Z3=str_length; 2=LessEq;
-//; select lanes that have([optimization] number of trimmed chars = 4)
-  VPCMPD        $0,  Z20, Z8,  K2,  K2    //;D3BA3C05 K2 &= (data_msg==4)             ;K2=scratch_mask1; Z8=data_msg; Z20=constd_4; 0=Eq;
-  KTESTW        K2,  K2                   //;7CB2A200                                 ;K2=scratch_mask1;
-  JNZ           loop                      //;00000000 jump if not zero (ZF = 0)       ;
+  VPSUBD        Z7,  Z4,  K1,  Z4         //;40C40F7D data_end -= n_bytes_to_trim     ;Z4=data_end; K1=lane_active; Z7=n_bytes_to_trim;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B data_len -= n_bytes_to_trim     ;Z3=data_len; K1=lane_active; Z7=n_bytes_to_trim;
+  VPCMPD        $0,  Z20, Z7,  K3         //;D3BA3C05 K3 := (n_bytes_to_trim==4)      ;K3=tmp_mask; Z7=n_bytes_to_trim; Z20=4; 0=Eq;
+  KTESTW        K1,  K3                   //;7CB2A200 more chars to trim?             ;K3=tmp_mask; K1=lane_active;
+  JNZ           loop                      //;7E49CD56 yes, then loop; jump if not zero (ZF = 0);
 
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 //; #endregion bcTrimWsRight
 
-// slice[0] = trim_left_4_chars(slice[1], dict[2]).k[3]
-//
 //; #region bcTrim4charLeft
-//; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
-//; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
+//; slice[0] = func(slice[1], dict[2]).k[3]
 TEXT bcTrim4charLeft(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9240,21 +9194,16 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charLeft
 
-// slice[0] = trim_right_4_chars(slice[1], dict[2]).k[3]
-//
 //; #region bcTrim4charRight
-//; Z2 = string offsets. Contains the start position of the strings, which may be updated (increased)
-//; Z3 = string lengths. Contains the length of the strings, which may be updated (decreased)
+//; slice[0] = func(slice[1], dict[2]).k[3]
 TEXT bcTrim4charRight(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
-  MOVQ          (R14),R14                 //;26BB22F5 Load ptr of string              ;R14=chars_ptr; R14=chars_slice;
-  MOVL          (R14),R14                 //;B7C25D43 Load first 4 chars              ;R14=chars_ptr;
+  MOVQ          (R14),R14                 //;26BB22F5 load ptr of string              ;R14=chars_ptr; R14=chars_slice;
+  MOVL          (R14),R14                 //;B7C25D43 load first 4 chars              ;R14=chars_ptr;
   VPBROADCASTB  R14, Z9                   //;96085025                                 ;Z9=c_char0; R14=chars_ptr;
   SHRL          $8,  R14                  //;63D19F3B chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z10                  //;FCEBCAA6                                 ;Z10=c_char1; R14=chars_ptr;
@@ -9262,43 +9211,43 @@ TEXT bcTrim4charRight(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTB  R14, Z12                  //;66A9E2D3                                 ;Z12=c_char2; R14=chars_ptr;
   SHRL          $8,  R14                  //;C5E83B19 chars_ptr >>= 8                 ;R14=chars_ptr;
   VPBROADCASTB  R14, Z13                  //;C18E3641                                 ;Z13=c_char3; R14=chars_ptr;
-  VPADDD        Z3,  Z2,  Z14             //;813A5F04 str_end := str_start + str_len  ;Z14=str_end; Z2=str_start; Z3=str_len;
-  VPSUBD        Z20, Z14, Z14             //;EAF06C41 str_end -= 4                    ;Z14=str_end; Z20=4;
+  VPADDD        Z3,  Z2,  Z4              //;813A5F04 data_end := data_off + data_len ;Z4=data_end; Z2=data_off; Z3=data_len;
 loop:
-  VPMINUD       Z20, Z3, Z21
-  VPSUBD        Z21, Z20, Z21
-  VPADDD        Z21, Z14, Z22
-  VPSLLD        $3, Z21, Z21
-  VPTESTMD      Z3, Z3, K1, K3            //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPXORD        X8, X8, X8
-  VPGATHERDD    (SI)(Z22*1),K3,  Z8       //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z14=str_end;
-  VPSLLVD       Z21, Z8, Z8
-//; #region trim left/right 4char comparison
-  VPCMPB        $0,  Z9,  Z8,  K3         //;D8545E6D K3 := (data_msg==c_char0); is char == char0;K3=tmp_mask; Z8=data_msg; Z9=c_char0; 0=Eq;
-  VPCMPB        $0,  Z10, Z8,  K2         //;933CFC19 K2 := (data_msg==c_char1); is char == char1;K2=scratch2_mask; Z8=data_msg; Z10=c_char1; 0=Eq;
+  VPTESTMD      Z3,  Z3,  K1,  K3         //;6639548B K3 := K1 & (data_len != 0)      ;K3=tmp_mask; K1=lane_active; Z3=data_len;
+//; calculate offset that is always positive
+  VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
+  VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
+  VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+//; adjust data
+  VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
+  VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
+  VPSLLVD       Z23, Z8,  Z8              //;67300525 data <<= adjust                 ;Z8=data; Z23=adjust;
+//; trim left/right 4char comparison
+  VPCMPB        $0,  Z9,  Z8,  K3         //;D8545E6D K3 := (data==c_char0); is char == char0;K3=tmp_mask; Z8=data; Z9=c_char0; 0=Eq;
+  VPCMPB        $0,  Z10, Z8,  K2         //;933CFC19 K2 := (data==c_char1); is char == char1;K2=scratch2_mask; Z8=data; Z10=c_char1; 0=Eq;
   KORQ          K2,  K3,  K3              //;7B471502 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
-  VPCMPB        $0,  Z12, Z8,  K2         //;D206A939 K2 := (data_msg==c_char2); is char == char2;K2=scratch2_mask; Z8=data_msg; Z12=c_char2; 0=Eq;
+  VPCMPB        $0,  Z12, Z8,  K2         //;D206A939 K2 := (data==c_char2); is char == char2;K2=scratch2_mask; Z8=data; Z12=c_char2; 0=Eq;
   KORQ          K2,  K3,  K3              //;FD738F32 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
-  VPCMPB        $0,  Z13, Z8,  K2         //;AB8B7AAA K2 := (data_msg==c_char3); is char == char3;K2=scratch2_mask; Z8=data_msg; Z13=c_char3; 0=Eq;
+  VPCMPB        $0,  Z13, Z8,  K2         //;AB8B7AAA K2 := (data==c_char3); is char == char3;K2=scratch2_mask; Z8=data; Z13=c_char3; 0=Eq;
   KORQ          K2,  K3,  K3              //;CDC8B5A9 tmp_mask |= scratch2_mask       ;K3=tmp_mask; K2=scratch2_mask;
-  KORTESTQ      K3,  K3                   //;A522D4C2 1 for every whitespace          ;K3=tmp_mask;
-  JZ            next                      //;DC07C307 no matching chars found : no need to update string_start_position; jump if zero (ZF = 1);
-//; #endregion
+  KTESTQ        K3,  K3                   //;A522D4C2 1 for every whitespace          ;K3=tmp_mask;
+  JZ            next                      //;DC07C307 no matching chars found: no need to update string_start_position; jump if zero (ZF = 1);
+//; trim comparison done: K3 contains matched characters
 
-//; #region convert mask k3 to selected byte count zmm7
-  VPMOVM2B      K3,  Z7                   //;B0C4D1C5 promote 64x bit to 64x byte     ;Z7=n_bytes_data; K3=tmp_mask;
-  VPTERNLOGQ    $15, Z7,  Z7,  Z7         //;249B4036 negate                          ;Z7=n_bytes_data;
-  VPLZCNTD      Z7,  K1,  Z7              //;90920F43 count leading zeros             ;Z7=n_bytes_data; K1=lane_active;
-  VPSRLD        $3,  Z7,  K1,  Z7         //;68276EFE divide by 8 yields byte_count   ;Z7=n_bytes_data; K1=lane_active;
-  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_data; K1=lane_active; Z3=str_len;
-//; #endregion zmm7 = #bytes
+//; convert mask K3 to selected byte count zmm7
+  VPMOVM2B      K3,  Z7                   //;B0C4D1C5 promote 64x bit to 64x byte     ;Z7=n_bytes_to_trim; K3=tmp_mask;
+  VPTERNLOGQ    $0b00001111,Z7,  Z7,  Z7  //;249B4036 negate                          ;Z7=n_bytes_to_trim;
+  VPLZCNTD      Z7,  K1,  Z7              //;90920F43 count leading zeros             ;Z7=n_bytes_to_trim; K1=lane_active;
+  VPSRLD        $3,  Z7,  K1,  Z7         //;68276EFE divide by 8 yields byte_count   ;Z7=n_bytes_to_trim; K1=lane_active;
+  VPMINSD       Z3,  Z7,  K1,  Z7         //;6616691F take minimun of length          ;Z7=n_bytes_to_trim; K1=lane_active; Z3=data_len;
+//; done convert mask: zmm7 = #bytes
 
-  VPSUBD        Z7,  Z14, K1,  Z14        //;40C40F7D str_end -= n_bytes_data         ;Z14=str_end; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
-  VPCMPD        $2,  Z3,  Z11, K1,  K2    //;94B55922 K2 := K1 & (0<=str_len)         ;K2=scratch_mask1; K1=lane_active; Z11=0; Z3=str_len; 2=LessEq;
-  VPCMPD        $0,  Z20, Z7,  K2,  K2    //;D3BA3C05 K2 &= (n_bytes_data==4)         ;K2=scratch_mask1; Z7=n_bytes_data; Z20=4; 0=Eq;
-  KTESTW        K2,  K2                   //;7CB2A200 ZF := (K2==0); CF := 1          ;K2=scratch_mask1;
-  JNZ           loop                      //;7E49CD56 jump if not zero (ZF = 0)       ;
+  VPSUBD        Z7,  Z4,  K1,  Z4         //;40C40F7D data_end -= n_bytes_to_trim     ;Z4=data_end; K1=lane_active; Z7=n_bytes_to_trim;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;63A2C77B data_len -= n_bytes_to_trim     ;Z3=data_len; K1=lane_active; Z7=n_bytes_to_trim;
+  VPCMPD        $0,  Z20, Z7,  K3         //;D3BA3C05 K3 := (n_bytes_to_trim==4)      ;K3=tmp_mask; Z7=n_bytes_to_trim; Z20=4; 0=Eq;
+  KTESTW        K1,  K3                   //;7CB2A200 more chars to trim?             ;K3=tmp_mask; K1=lane_active;
+  JNZ           loop                      //;7E49CD56 yes, then loop; jump if not zero (ZF = 0);
 
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
@@ -9306,9 +9255,8 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charRight
 
-// i64[0] = utf8_len(slice[1]).k[2]
-//
 //; #region bcLengthStr
+//; i64[0] = func(slice[1]).k[2]
 //; count number of UTF-8 code-points in Z2:Z3 (str interpretation); store the result in Z2:Z3 (int64 interpretation)
 TEXT bcLengthStr(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
@@ -9365,9 +9313,8 @@ non_ascii:  //; NOTE: this is the assumed to be a somewhat unlikely branch
   JMP           update                    //;A596F5F6                                 ;
 //; #endregion bcLengthStr
 
-// slice[0] = sub_str(slice[1], i64[2], i64[3]).k[4]
-//
 //; #region bcSubstr
+//; slice[0] = func(slice[1], i64[2], i64[3]).k[4]
 //; Get a substring of UTF-8 code-points in Z2:Z3 (str interpretation). The substring starts
 //; from the specified start-index and ends at the specified length or at the last character
 //; of the string (which ever is first). The start-index is 1-based! The first index of the
@@ -9376,17 +9323,15 @@ TEXT bcSubstr(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_4xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(DX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z29), OUT(Z28), IN(DX))
 
-//; load from stack-slot: load 16x uint32 into Z6
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z28), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
+  VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
+  VINSERTI64X4  $1,  Y26, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z26=scratch_Z26;
+  VPMOVQD       Z29, Y29                  //;17FCB103 truncate uint64 to uint32       ;Z29=scratch_z4;
   VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
-  VINSERTI64X4  $1,  Y28, Z27, Z6         //;3944001B merge into 16x uint32           ;Z6=counter; Z27=scratch_Z27; Z28=scratch_Z28;
-//; load from stack-slot: load 16x uint32 into Z12
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z28), IN(DX))
-  VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
-  VPMOVQD       Z28, Y28                  //;8F762E8E truncate uint64 to uint32       ;Z28=scratch_Z28;
-  VINSERTI64X4  $1,  Y28, Z27, Z12        //;3944001B merge into 16x uint32           ;Z12=substr_length; Z27=scratch_Z27; Z28=scratch_Z28;
+  VINSERTI64X4  $1,  Y28, Z29, Z12        //;3944001B merge into 16x uint32           ;Z12=substr_length; Z29=scratch_z4; Z28=scratch_Z28;
 //; load constants
   VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
   VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=0;
@@ -9439,33 +9384,30 @@ test2:
 //; overwrite str_length with correct values
   VPSUBD        Z2,  Z4,  Z3              //;E24AE85F str_len := curr_offset - str_start;Z3=str_len; Z4=curr_offset; Z2=str_start;
 
-  // clear the offsets of slices that are empty and store the result
+//; clear the offsets of slices that are empty and store the result
+  VPTESTMD      Z3,  Z3,  K1              //;68596EF0 K1 := (str_len!=0)              ;K1=lane_active; Z3=str_len;
+  VMOVDQA32.Z   Z2,  K1,  Z2              //;AF2DA299 str_start := str_start          ;Z2=str_start; K1=lane_active;
   BC_UNPACK_SLOT(0, OUT(DX))
-  VPTESTMD Z3, Z3, K1
-  VMOVDQA32.Z Z2, K1, Z2
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 //; #endregion bcSubstr
 
-// slice[0].k[1] = split_part(slice[2], dict[3], i64[4]).k[5]
 //; #region bcSplitPart
 //; NOTE: the delimiter cannot be byte 0
+//; slice[0].k[1] = func(slice[2], dict[3], i64[4]).k[5]
 TEXT bcSplitPart(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
   BC_UNPACK_DICT(BC_SLOT_SIZE*3, OUT(R14))
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*3+BC_DICT_SIZE, OUT(CX), OUT(R8))
-
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
 
   MOVQ          (R14),R14                 //;FEE415A0                                 ;R14=split_info;
   VPBROADCASTB  (R14),Z21                 //;B4B43F80 bcst delimiter                  ;Z21=delim; R14=split_info;
-//; #region load from stack-slot: load 16x uint32 into Z7
-  BC_LOAD_I64_FROM_SLOT(OUT(Z27), OUT(Z26), IN(CX))
   VPMOVQD       Z27, Y27                  //;17FCB103 truncate uint64 to uint32       ;Z27=scratch_Z27;
   VPMOVQD       Z26, Y26                  //;8F762E8E truncate uint64 to uint32       ;Z26=scratch_Z26;
   VINSERTI64X4  $1,  Y26, Z27, Z7         //;3944001B merge into 16x uint32           ;Z7=counter_delim; Z27=scratch_Z27; Z26=scratch_Z26;
-//; #endregion load from stack-slot
   VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=1;
   VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=4;
   VMOVDQU32     bswap32<>(SB),Z22         //;2510A88F load constant_bswap32           ;Z22=constant_bswap32;
@@ -9539,12 +9481,11 @@ next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
   NEXT_ADVANCE(BC_SLOT_SIZE*5 + BC_DICT_SIZE)
 //; #endregion bcSplitPart
 
 //; #region bcContainsPrefixCs
-//; equal ascii string in slice in Z2:Z3, with stack[imm]
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsPrefixCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9597,7 +9538,7 @@ next:
 //; #endregion bcContainsPrefixCs
 
 //; #region bcContainsPrefixCi
-//; equal ascii string in slice in Z2:Z3, with stack[imm]
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsPrefixCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9663,6 +9604,7 @@ next:
 //; #endregion bcContainsPrefixCi
 
 //; #region bcContainsPrefixUTF8Ci
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; empty needles or empty data always result in a dead lane
 TEXT bcContainsPrefixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
@@ -9756,12 +9698,10 @@ next:
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
-
 //; #endregion bcContainsPrefixUTF8Ci
 
-// k[0] = str_contains_suffix_cs(slice[1], dict[2]).k[3]
-//
 //; #region bcContainsSuffixCs
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9769,7 +9709,7 @@ TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
 
 //; restrict lanes based on the length of needle
   VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_len                 ;Z25=needle_len; R14=needle_slice;
-  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_len>=needle_len)     ;K1=lane_active; Z3=str_len; Z25=needle_len; 5=GreaterEq;
+  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (data_len>=needle_len)    ;K1=lane_active; Z3=data_len; Z25=needle_len; 5=GreaterEq;
   VPTESTMD      Z25, Z25, K1,  K1         //;6C36C5E7 K1 &= (needle_len != 0)         ;K1=lane_active; Z25=needle_len;
   KTESTW        K1,  K1                   //;6E50BE85 any lanes still alive??         ;K1=lane_active;
   JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
@@ -9778,20 +9718,20 @@ TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
 //; init variables
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   VMOVDQA32     Z25, Z6                   //;6F6F1342 counter := needle_len           ;Z6=counter; Z25=needle_len;
-  VPSUBD        Z25, Z3,  K1,  Z24        //;4ADB5015 search_base := str_len - needle_len;Z24=search_base; K1=lane_active; Z3=str_len; Z25=needle_len;
-  VPADDD        Z2,  Z24, Z24             //;3E1762B7 search_base += str_start        ;Z24=search_base; Z2=str_start;
+  VPADDD        Z3,  Z2,  Z4              //;813A5F04 data_end := data_off + data_len ;Z4=data_end; Z2=data_off; Z3=data_len;
+  VPSUBD.Z      Z25, Z4,  K1,  Z24        //;EB9BEEEE offset := data_end - needle_len ;Z24=offset; K1=lane_active; Z4=data_end; Z25=needle_len;
   JMP           tail                      //;F2A3982D                                 ;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
 //; compare data with needle
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data_msg==[needle_ptr])  ;K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data==[needle_ptr])      ;K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 //; advance 4 ASCIIs
   VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=4;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=4;
+  VPADDD        Z20, Z24, Z24             //;D7CC90DD offset += 4                     ;Z24=offset; Z20=4;
 tail:
   VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=4; 5=GreaterEq;
   KTESTW        K1,  K3                   //;77067C8D ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
@@ -9802,14 +9742,14 @@ tail:
   JZ            update                    //;4DA2206F no, update results; jump if zero (ZF = 1);
 //; load the last 1-4 ASCIIs
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
   VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
-  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
+  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data; Z19=tail_mask;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=needle; Z19=tail_mask; R14=needle_ptr;
 //; compare data with needle
-  VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data_msg==data_needle)   ;K1=lane_active; Z8=data_msg; Z9=data_needle; 0=Eq;
+  VPCMPD        $0,  Z9,  Z8,  K1,  K1    //;474761AE K1 &= (data==needle)            ;K1=lane_active; Z8=data; Z9=needle; 0=Eq;
 update:
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 data_len -= needle_len          ;Z3=data_len; K1=lane_active; Z25=needle_len;
 
 next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
@@ -9818,9 +9758,8 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSuffixCs
 
-// k[0] = str_contains_suffix_ci(slice[1], dict[2]).k[3]
-//
 //; #region bcContainsSuffixCi
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9828,7 +9767,7 @@ TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
 
 //; restrict lanes based on the length of needle
   VPBROADCASTD  8(R14),Z25                //;713DF24F bcst needle_len                 ;Z25=needle_len; R14=needle_slice;
-  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (str_len>=needle_len)     ;K1=lane_active; Z3=str_len; Z25=needle_len; 5=GreaterEq;
+  VPCMPD        $5,  Z25, Z3,  K1,  K1    //;502E314F K1 &= (data_len>=needle_len)    ;K1=lane_active; Z3=data_len; Z25=needle_len; 5=GreaterEq;
   VPTESTMD      Z25, Z25, K1,  K1         //;6C36C5E7 K1 &= (needle_len != 0)         ;K1=lane_active; Z25=needle_len;
   KTESTW        K1,  K1                   //;6E50BE85 any lanes still alive??         ;K1=lane_active;
   JZ            next                      //;BD98C1A8 no, exit; jump if zero (ZF = 1) ;
@@ -9840,17 +9779,17 @@ TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
 //; init variables
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
   VMOVDQA32     Z25, Z6                   //;6F6F1342 counter := needle_len           ;Z6=counter; Z25=needle_len;
-  VPSUBD        Z25, Z3,  K1,  Z24        //;4ADB5015 search_base := str_len - needle_len;Z24=search_base; K1=lane_active; Z3=str_len; Z25=needle_len;
-  VPADDD        Z2,  Z24, Z24             //;3E1762B7 search_base += str_start        ;Z24=search_base; Z2=str_start;
+  VPADDD        Z3,  Z2,  Z4              //;813A5F04 data_end := data_off + data_len ;Z4=data_end; Z2=data_off; Z3=data_len;
+  VPSUBD.Z      Z25, Z4,  K1,  Z24        //;EB9BEEEE offset := data_end - needle_len ;Z24=offset; K1=lane_active; Z4=data_end; Z25=needle_len;
   JMP           tail                      //;F2A3982D                                 ;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
 //; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data; Z15=c_0b00100000;
 //; compare data with needle
   VPCMPD.BCST   $0,  (R14),Z13, K1,  K1   //;F0E5B3BD K1 &= (data_msg_upper==[needle_ptr]);K1=lane_active; Z13=data_msg_upper; R14=needle_ptr; 0=Eq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
@@ -9858,7 +9797,7 @@ loop:
 //; advance 4 ASCIIs
   VPSUBD        Z20, Z6,  Z6              //;AEDCD850 counter -= 4                    ;Z6=counter; Z20=4;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
-  VPADDD        Z20, Z24, Z24             //;D7CC90DD search_base += 4                ;Z24=search_base; Z20=4;
+  VPADDD        Z20, Z24, Z24             //;D7CC90DD offset += 4                     ;Z24=offset; Z20=4;
 tail:
   VPCMPD        $5,  Z20, Z6,  K3         //;C28D3832 K3 := (counter>=4); 4 or more chars in needle?;K3=tmp_mask; Z6=counter; Z20=4; 5=GreaterEq;
   KTESTW        K1,  K3                   //;77067C8D ZF := ((K3&K1)==0); CF := ((~K3&K1)==0);K3=tmp_mask; K1=lane_active;
@@ -9869,21 +9808,20 @@ tail:
   JZ            update                    //;4DA2206F no, update results; jump if zero (ZF = 1);
 //; load the last 1-4 ASCIIs
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
   VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
-  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
-  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
-//; compare data with needle
+  VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data; Z19=tail_mask;
+  VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=needle; Z19=tail_mask; R14=needle_ptr;
 //; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data; Z15=c_0b00100000;
 
 //; compare data with needle
-  VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==data_needle);K1=lane_active; Z13=data_msg_upper; Z9=data_needle; 0=Eq;
+  VPCMPD        $0,  Z9,  Z13, K1,  K1    //;474761AE K1 &= (data_msg_upper==needle)  ;K1=lane_active; Z13=data_msg_upper; Z9=needle; 0=Eq;
 update:
-  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 str_len -= needle_len           ;Z3=str_len; K1=lane_active; Z25=needle_len;
+  VPSUBD        Z25, Z3,  K1,  Z3         //;B5FDDA17 data_len -= needle_len          ;Z3=data_len; K1=lane_active; Z25=needle_len;
 
 next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
@@ -9892,9 +9830,8 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSuffixCi
 
-// k[0] = str_contains_suffix_utf8_ci(slice[1], dict[2]).k[3]
-//
 //; #region bcContainsSuffixUTF8Ci
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
@@ -9904,7 +9841,7 @@ TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   MOVL          (R14),CX                  //;5B83F09F load number of code-points      ;CX=n_runes; R14=needle_ptr;
   VPBROADCASTD  CX,  Z26                  //;485C8362 bcst number of code-points      ;Z26=scratch_Z26; CX=n_runes;
   VPTESTMD      Z26, Z26, K1,  K1         //;CD49D8A5 K1 &= (scratch_Z26 != 0); empty needles are dead lanes;K1=lane_active; Z26=scratch_Z26;
-  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;B73A4F83 K1 &= (scratch_Z26<=str_len)    ;K1=lane_active; Z26=scratch_Z26; Z3=str_len; 2=LessEq;
+  VPCMPD        $2,  Z3,  Z26, K1,  K1    //;B73A4F83 K1 &= (scratch_Z26<=data_len)   ;K1=lane_active; Z26=scratch_Z26; Z3=data_len; 2=LessEq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 
@@ -9920,38 +9857,46 @@ TEXT bcContainsSuffixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
   VPADDD        Z10, Z10, Z14             //;EDD57CAF load constant 2                 ;Z14=2; Z10=1;
   VPADDD        Z10, Z14, Z12             //;7E7A1CB0 load constant 3                 ;Z12=3; Z14=2; Z10=1;
   VPADDD        Z10, Z12, Z20             //;9CFA6ADD load constant 4                 ;Z20=4; Z12=3; Z10=1;
-  VPADDD        Z2,  Z3,  Z24             //;ADF771FC search_base := str_len + str_start;Z24=search_base; Z3=str_len; Z2=str_start;
+  VPADDD.Z      Z3,  Z2,  K1,  Z4         //;813A5F04 data_end := data_off + data_len ;Z4=data_end; K1=lane_active; Z2=data_off; Z3=data_len;
 
 loop:
-  VPCMPD        $5,  Z10, Z3,  K1,  K1    //;790C4E82 K1 &= (str_len>=1); empty data are dead lanes;K1=lane_active; Z3=str_len; Z10=1; 5=GreaterEq;
-  KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    -4(SI)(Z24*1),K3,  Z8     //;573D089A gather data from end            ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPCMPD        $5,  Z10, Z3,  K1,  K1    //;790C4E82 K1 &= (data_len>=1); empty data are dead lanes;K1=lane_active; Z3=data_len; Z10=1; 5=GreaterEq;
+  VPTESTMD      Z3,  Z3,  K1,  K3         //;6639548B K3 := K1 & (data_len != 0)      ;K3=tmp_mask; K1=lane_active; Z3=data_len;
+//; calculate offset that is always positive
+  VPMINUD       Z20, Z3,  Z31             //;B086F272 adjust := min(data_len, 4)      ;Z31=adjust; Z3=data_len; Z20=4;
+  VPSUBD.Z      Z31, Z4,  K3,  Z24        //;998E9936 offset := data_end - adjust     ;Z24=offset; K3=tmp_mask; Z4=data_end; Z31=adjust;
+  VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
+  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
+//; adjust data
+  VPSUBD        Z31, Z20, Z31             //;83BCC5BB adjust := 4 - adjust            ;Z31=adjust; Z20=4;
+  VPSLLD        $3,  Z31, Z31             //;D2F273B1 times 8 gives number of bytes   ;Z31=adjust;
+  VPSLLVD       Z31, Z8,  Z8              //;67300525 data <<= adjust                 ;Z8=data; Z31=adjust;
 //; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
   CMPL          CX,  $4                   //;E273EEEA are we in the needle tail?      ;CX=n_runes;
   JL            mixed_ascii               //;A8685FD7 yes, then jump; jump if less (SF neq OF);
-  VPBROADCASTD.Z 16(R14),K1,  Z9          //;2694A02F load needle data                ;Z9=data_needle; K1=lane_active; R14=needle_ptr;
+  VPBROADCASTD.Z 16(R14),K1,  Z9          //;2694A02F load needle data                ;Z9=needle; K1=lane_active; R14=needle_ptr;
 //; clear tail from data: IN zmm8; OUT zmm8
-  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
+  VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, data_len) ;Z26=scratch_Z26; Z20=4; Z3=data_len;
   VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data_msg; Z19=tail_mask;
+  VPANDD        Z8,  Z19, Z8              //;64208067 mask data from msg              ;Z8=data; Z19=tail_mask;
 //; determine if either data or needle has non-ASCII content
-  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := data_needle | data_msg;Z26=scratch_Z26; K1=lane_active; Z9=data_needle; Z8=data_msg;
+  VPORD.Z       Z8,  Z9,  K1,  Z26        //;3692D686 scratch_Z26 := needle | data    ;Z26=scratch_Z26; K1=lane_active; Z9=needle; Z8=data;
   VPMOVB2M      Z26, K3                   //;5303B427 get 64 sign-bits                ;K3=tmp_mask; Z26=scratch_Z26;
   KTESTQ        K3,  K3                   //;A2B0951C all sign-bits zero?             ;K3=tmp_mask;
   JNZ           mixed_ascii               //;303EFD4D no, found a non-ascii char; jump if not zero (ZF = 0);
 
 //; str_to_upper: IN zmm8; OUT zmm13
-  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data_msg>=char_a)        ;K3=tmp_mask; Z8=data_msg; Z16=char_a; 5=GreaterEq;
-  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data_msg<=char_z)        ;K3=tmp_mask; Z8=data_msg; Z17=char_z; 2=LessEq;
+  VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
+  VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
   VPMOVM2B      K3,  Z13                  //;ADC21F45 mask with selected chars        ;Z13=data_msg_upper; K3=tmp_mask;
-  VPTERNLOGQ    $76, Z15, Z8,  Z13        //;1BB96D97 see stringext.md                ;Z13=data_msg_upper; Z8=data_msg; Z15=c_0b00100000;
+  VPTERNLOGD    $0b01001100,Z15, Z8,  Z13 //;1BB96D97                                 ;Z13=data_msg_upper; Z8=data; Z15=c_0b00100000;
 //; compare data with needle for 4 ASCIIs
-  VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (data_needle==data_msg_upper);K1=lane_active; Z9=data_needle; Z13=data_msg_upper; 0=Eq;
+  VPCMPD        $0,  Z13, Z9,  K1,  K1    //;BBBDF880 K1 &= (needle==data_msg_upper)  ;K1=lane_active; Z9=needle; Z13=data_msg_upper; 0=Eq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 //; advance to the next 4 ASCIIs
-  VPSUBD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base -= 4                ;Z24=search_base; K1=lane_active; Z20=4;
-  VPSUBD        Z20, Z3,  K1,  Z3         //;83ADFEDA str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
+  VPSUBD.Z      Z20, Z4,  K1,  Z4         //;D7CC90DD data_end -= 4                   ;Z4=data_end; K1=lane_active; Z20=4;
+  VPSUBD        Z20, Z3,  K1,  Z3         //;83ADFEDA data_len -= 4                   ;Z3=data_len; K1=lane_active; Z20=4;
   ADDQ          $80, R14                  //;F0BC3163 needle_ptr += 80                ;R14=needle_ptr;
   SUBL          $4,  CX                   //;646B86C9 n_runes -= 4                    ;CX=n_runes;
   JG            loop                      //;1EBC2C20 jump if greater ((ZF = 0) and (SF = OF));
@@ -9959,11 +9904,11 @@ loop:
 
 mixed_ascii:
 //; count_bytes_code_point_right; data in Z8; result out Z7
-  VPANDD        Z5,  Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data_msg; Z5=UTF8_2byte_mask;
+  VPANDD        Z5,  Z8,  Z26             //;B7541DA7 remove irrelevant bits for 2byte test;Z26=scratch_Z26; Z8=data; Z5=UTF8_2byte_mask;
   VPCMPD        $0,  Z5,  Z26, K1,  K3    //;C6890BF4 K3 := K1 & (scratch_Z26==UTF8_2byte_mask); create 2byte mask;K3=tmp_mask; K1=lane_active; Z26=scratch_Z26; Z5=UTF8_2byte_mask; 0=Eq;
-  VPANDD        Z23, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data_msg; Z23=UTF8_3byte_mask;
+  VPANDD        Z23, Z8,  Z26             //;D14D6426 remove irrelevant bits for 3byte test;Z26=scratch_Z26; Z8=data; Z23=UTF8_3byte_mask;
   VPCMPD        $0,  Z23, Z26, K1,  K4    //;14C32DC0 K4 := K1 & (scratch_Z26==UTF8_3byte_mask); create 3byte mask;K4=alt2_match; K1=lane_active; Z26=scratch_Z26; Z23=UTF8_3byte_mask; 0=Eq;
-  VPANDD        Z21, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data_msg; Z21=UTF8_4byte_mask;
+  VPANDD        Z21, Z8,  Z26             //;C19D386F remove irrelevant bits for 4byte test;Z26=scratch_Z26; Z8=data; Z21=UTF8_4byte_mask;
   VPCMPD        $0,  Z21, Z26, K1,  K5    //;1AE0A51C K5 := K1 & (scratch_Z26==UTF8_4byte_mask); create 4byte mask;K5=alt3_match; K1=lane_active; Z26=scratch_Z26; Z21=UTF8_4byte_mask; 0=Eq;
   VMOVDQA32     Z10, Z7                   //;A7640B64 n_bytes_data := 1               ;Z7=n_bytes_data; Z10=1;
   VPADDD        Z10, Z7,  K3,  Z7         //;684FACB1 2byte UTF-8: add extra 1byte    ;Z7=n_bytes_data; K3=tmp_mask; Z10=1;
@@ -9972,20 +9917,20 @@ mixed_ascii:
 //; shift code-point to least significant position
   VPSUBD        Z7,  Z20, Z26             //;C8ECAA75 scratch_Z26 := 4 - n_bytes_data ;Z26=scratch_Z26; Z20=4; Z7=n_bytes_data;
   VPSLLD        $3,  Z26, Z26             //;5734792E scratch_Z26 <<= 3               ;Z26=scratch_Z26;
-  VPSRLVD       Z26, Z8,  Z8              //;529FFC90 data_msg >>= scratch_Z26        ;Z8=data_msg; Z26=scratch_Z26;
+  VPSRLVD       Z26, Z8,  Z8              //;529FFC90 data >>= scratch_Z26            ;Z8=data; Z26=scratch_Z26;
 //; compare data with needle for 1 UTF8 byte sequence
-  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K3   //;345D0BF3 K3 := K1 & (data_msg==[needle_ptr]);K3=tmp_mask; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data_msg==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data_msg==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
-  VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data_msg==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data_msg; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  (R14),Z8,  K1,  K3   //;345D0BF3 K3 := K1 & (data==[needle_ptr]) ;K3=tmp_mask; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  4(R14),Z8,  K1,  K4  //;EFD0A9A3 K4 := K1 & (data==[needle_ptr+4]);K4=alt2_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  8(R14),Z8,  K1,  K5  //;CAC0FAC6 K5 := K1 & (data==[needle_ptr+8]);K5=alt3_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
+  VPCMPD.BCST   $0,  12(R14),Z8,  K1,  K6  //;50C70740 K6 := K1 & (data==[needle_ptr+12]);K6=alt4_match; K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
   KORW          K3,  K4,  K3              //;58E49245 tmp_mask |= alt2_match          ;K3=tmp_mask; K4=alt2_match;
   KORW          K3,  K5,  K3              //;BDCB8940 tmp_mask |= alt3_match          ;K3=tmp_mask; K5=alt3_match;
   KORW          K6,  K3,  K1              //;AAF6ED91 lane_active := tmp_mask | alt4_match;K1=lane_active; K3=tmp_mask; K6=alt4_match;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
   JZ            next                      //;B763A908 no, exit; jump if zero (ZF = 1) ;
 //; advance to the next rune
-  VPSUBD        Z7,  Z24, K1,  Z24        //;D35D27FB search_base -= n_bytes_data     ;Z24=search_base; K1=lane_active; Z7=n_bytes_data;
-  VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z4,  K1,  Z4         //;D35D27FB data_end -= n_bytes_data        ;Z4=data_end; K1=lane_active; Z7=n_bytes_data;
+  VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 data_len -= n_bytes_data        ;Z3=data_len; K1=lane_active; Z7=n_bytes_data;
   ADDQ          $20, R14                  //;1F8D79B1 needle_ptr += 20                ;R14=needle_ptr;
   DECL          CX                        //;A99E9290 n_runes--                       ;CX=n_runes;
   JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
@@ -9995,16 +9940,14 @@ next:
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
-
 //; #endregion bcContainsSuffixUTF8Ci
 
-// k[0] = str_contains_substring_cs(slice[1], dict[2]).k[3]
-//
 //; #region bcContainsSubstrCs
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsSubstrCs(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   VPBROADCASTD  8(R14),Z6                 //;F6AC18B2 bcst needle_len                 ;Z6=needle_len1; R14=needle_ptr1;
@@ -10105,13 +10048,12 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsSubstrCs
 
-// k[0] = str_contains_substring_ci(slice[1], dict[2]).k[3]
-//
 //; #region bcContainsSubstrCi
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsSubstrCi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   VPBROADCASTD  8(R14),Z6                 //;F6AC18B2 bcst needle_len                 ;Z6=needle_len1; R14=needle_ptr1;
@@ -10247,9 +10189,9 @@ next:
 
 //; #region bcContainsSubstrUTF8Ci
 TEXT bcContainsSubstrUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
@@ -10360,9 +10302,9 @@ next:
 
 //; #region bcEqPatternCs
 TEXT bcEqPatternCs(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
@@ -10460,9 +10402,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 
 //; #region bcEqPatternCi
 TEXT bcEqPatternCi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
@@ -10577,11 +10519,12 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #endregion bcEqPatternCi
 
 //; #region bcEqPatternUTF8Ci
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; empty needles or empty data always result in a dead lane
 TEXT bcEqPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameters
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr; R14=needle_slice;
@@ -10629,6 +10572,7 @@ loop:
   VPSUBD        Z7,  Z3,  K1,  Z3         //;24E04BE7 str_len -= n_bytes_data         ;Z3=str_len; K1=lane_active; Z7=n_bytes_data;
   DECL          CX                        //;A99E9290 needle_len--                    ;CX=needle_len;
   JG            loop                      //;80013DFA jump if greater ((ZF = 0) and (SF = OF));
+
 next:
   VPTESTNMD     Z3,  Z3,  K1,  K1         //;E555E77C K1 &= (str_len==0)              ;K1=lane_active; Z3=str_len;
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
@@ -10638,10 +10582,11 @@ next:
 //; #endregion bcEqPatternUTF8Ci
 
 //; #region bcContainsPatternCs
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsPatternCs(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
@@ -10795,10 +10740,11 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 //; #endregion bcContainsPatternCs
 
 //; #region bcContainsPatternCi
+//; k[0] = func(slice[1], dict[2]).k[3]
 TEXT bcContainsPatternCi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
@@ -10986,9 +10932,9 @@ unicode_match:                            //;B1B3AECE a wildcard has matched wit
 
 //; #region bcContainsPatternUTF8Ci
 TEXT bcContainsPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(CX))
+  BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R14), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
 //; load parameter
   MOVQ          (R14),R14                 //;D2647DF0 load needle_ptr                 ;R14=needle_ptr1; R14=needle_slice;
@@ -11105,8 +11051,8 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + BC_DICT_SIZE)
 //; #endregion bcContainsPatternUTF8Ci
 
-// k[0] = is_subnet_of_ip4(slice[1], dict[2]).k[3]
 //; #region bcIsSubnetOfIP4
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; Determine whether the string at Z2:Z3 is an IP address between the 4 provided bytewise min/max values
 //; To prevent parsing of the IP string into an integer, every component is compared with a BCD min/max values
 TEXT bcIsSubnetOfIP4(SB), NOSPLIT|NOFRAME, $0
@@ -11213,9 +11159,8 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcIsSubnetOfIP4
 
-// k[0] = dfa_tiny_6(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaT6
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT6 Deterministic Finite Automaton (DFA) with 6-bits lookup-key and unicode wildcard
 TEXT bcDfaT6(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -11313,9 +11258,8 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT6
 
-// k[0] = dfa_tiny_7(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaT7
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT7 Deterministic Finite Automaton (DFA) with 7-bits lookup-key and unicode wildcard
 TEXT bcDfaT7(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -11414,9 +11358,8 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT7
 
-// k[0] = dfa_tiny_8(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaT8
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT8 Deterministic Finite Automaton (DFA) with 8-bits lookup-key
 TEXT bcDfaT8(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -11538,9 +11481,8 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT8
 
-// k[0] = dfa_tiny_6z(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaT6Z
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT6Z Deterministic Finite Automaton (DFA) with 6-bits lookup-key and Zero length remaining assertion
 TEXT bcDfaT6Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -11655,9 +11597,8 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT6Z
 
-// k[0] = dfa_tiny_7z(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaT7Z
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT7Z Deterministic Finite Automaton (DFA) with 7-bits lookup-key and Zero length remaining assertion
 TEXT bcDfaT7Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -11773,9 +11714,8 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT7Z
 
-// k[0] = dfa_tiny_8z(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaT8Z
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaT8Z Deterministic Finite Automaton 8-bits with Zero length remaining assertion
 TEXT bcDfaT8Z(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))
@@ -11913,9 +11853,8 @@ skip_wildcard:
   JMP           tail                      //;E21E4B3D                                 ;
 //; #endregion bcDfaT8Z
 
-// k[0] = dfa_large_z(slice[1], dict[2]).k[3]
-//
 //; #region bcDfaLZ
+//; k[0] = func(slice[1], dict[2]).k[3]
 //; DfaLZ Deterministic Finite Automaton(DFA) with unlimited capacity (Large) and Remaining Length Zero Assertion (RLZA)
 TEXT bcDfaLZ(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT_DICT_SLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R14), OUT(R8))

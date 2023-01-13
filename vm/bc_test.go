@@ -67,7 +67,7 @@ type bctestContext struct {
 //go:noescape
 func bctest_run_aux(bc *bytecode, ctx *bctestContext, activeLanes uint64)
 
-func (c *bctestContext) Free() {
+func (c *bctestContext) free() {
 	if c.data != nil {
 		Free(c.data)
 		c.data = nil
@@ -79,16 +79,11 @@ func (c *bctestContext) clear() {
 	c.dict = c.dict[:0]
 }
 
-func (c *bctestContext) ensureData() []byte {
+func (c *bctestContext) ensureData() {
 	if c.data == nil {
 		c.data = Malloc()
 		c.data = c.data[:0]
 	}
-	return c.data
-}
-
-func (c *bctestContext) appendData(value string) {
-	c.data = append(c.ensureData(), value...)
 }
 
 func (c *bctestContext) vRegFromValues(values []any, st *ion.Symtab) vRegData {
@@ -171,11 +166,11 @@ func (c *bctestContext) setDict(value string) {
 	c.dict = append(c.dict[:0], padNBytes(value, 4))
 }
 
-// ExecuteOpcode runs a single opcode. It serializes all inputs to virtual stack,
+// executeOpcode runs a single opcode. It serializes all inputs to virtual stack,
 // allocates stack slots passed to the instruction, and after the execution
 // it deserializes content from virtual stack back to output arguments passed
 // in testArgs.
-func (c *bctestContext) ExecuteOpcode(op bcop, testArgs []any, activeLanes kRegData) error {
+func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegData) error {
 	info := &opinfo[op]
 
 	if len(info.args) != len(testArgs) {

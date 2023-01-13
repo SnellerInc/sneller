@@ -28,7 +28,7 @@ import (
 
 func TestSizeUnsupportedIonValues(t *testing.T) {
 	var ctx bctestContext
-	defer ctx.Free()
+	defer ctx.free()
 
 	inputV := ctx.vRegFromValues([]any{
 		ion.Int(-42),
@@ -53,7 +53,7 @@ func TestSizeUnsupportedIonValues(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
+	if err := ctx.executeOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -64,7 +64,7 @@ func TestSizeUnsupportedIonValues(t *testing.T) {
 
 func TestSizeNullContainers(t *testing.T) {
 	var ctx bctestContext
-	defer ctx.Free()
+	defer ctx.free()
 
 	nullList := []byte{0xbf}
 	nullSexp := []byte{0xcf}
@@ -93,7 +93,7 @@ func TestSizeNullContainers(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
+	if err := ctx.executeOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -104,7 +104,7 @@ func TestSizeNullContainers(t *testing.T) {
 
 func TestSizeEmptyContainers(t *testing.T) {
 	var ctx bctestContext
-	defer ctx.Free()
+	defer ctx.free()
 
 	// Ion length L == 0
 	emptyList := []byte{0xb0}
@@ -139,7 +139,7 @@ func TestSizeEmptyContainers(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
+	if err := ctx.executeOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -150,7 +150,7 @@ func TestSizeEmptyContainers(t *testing.T) {
 
 func TestSizeList(t *testing.T) {
 	var ctx bctestContext
-	defer ctx.Free()
+	defer ctx.free()
 
 	expectedOutputS := i64RegData{values: [16]int64{1, 10, 50, 7, 0, 12, 42, 89, 300, 111, 4, 0, 20, 30, 51, 230}}
 	expectedOutputK := kRegData{mask: 0xFFFF}
@@ -175,7 +175,7 @@ func TestSizeList(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
+	if err := ctx.executeOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -186,7 +186,7 @@ func TestSizeList(t *testing.T) {
 
 func TestSizeListWithNulls(t *testing.T) {
 	var ctx bctestContext
-	defer ctx.Free()
+	defer ctx.free()
 
 	expectedOutputS := i64RegData{values: [16]int64{1, 10, -1, 7, 0, 12, 42, 89, -1, 111, 4, 0, 20, 30, 51, -1}}
 	expectedOutputK := kRegData{}
@@ -219,7 +219,7 @@ func TestSizeListWithNulls(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
+	if err := ctx.executeOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
@@ -231,7 +231,7 @@ func TestSizeListWithNulls(t *testing.T) {
 func TestSizeStruct(t *testing.T) {
 	var ctx bctestContext
 	var symtab ion.Symtab
-	defer ctx.Free()
+	defer ctx.free()
 
 	expectedOutputS := i64RegData{values: [16]int64{100, 1, 5, 487, 17, 0, 200, 80, 89, 44, 9, 31, 128, 127, 0, 8}}
 	expectedOutputK := kRegData{mask: 0xFFFF}
@@ -257,7 +257,7 @@ func TestSizeStruct(t *testing.T) {
 	outputS := i64RegData{}
 	outputK := kRegData{}
 
-	if err := ctx.ExecuteOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
+	if err := ctx.executeOpcode(opobjectsize, []any{&outputS, &outputK, &inputV, &inputK}, inputK); err != nil {
 		t.Error(err)
 		t.Fail()
 	}
