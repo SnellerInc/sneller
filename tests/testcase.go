@@ -17,8 +17,6 @@ package tests
 import (
 	"bufio"
 	"bytes"
-	"fmt"
-	"io"
 	"os"
 )
 
@@ -34,24 +32,14 @@ func ParseTestcase(fname string) ([][]string, error) {
 		return nil, err
 	}
 	defer f.Close()
-	rd := bufio.NewReader(f)
+	rd := bufio.NewScanner(f)
 
 	partID := 0
 	var parts [][]string
 	parts = append(parts, []string{})
 
-	for {
-		line, pre, err := rd.ReadLine()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return nil, err
-		}
-		if pre {
-			return nil, fmt.Errorf("buffer not big enough to fit line beginning with %s", line)
-		}
+	for rd.Scan() {
+		line := rd.Bytes()
 		if bytes.HasPrefix(line, sepdash) {
 			partID += 1
 			parts = append(parts, []string{})
@@ -69,6 +57,8 @@ func ParseTestcase(fname string) ([][]string, error) {
 
 		parts[partID] = append(parts[partID], string(line))
 	}
-
+	if err := rd.Err(); err != nil {
+		return nil, err
+	}
 	return parts, nil
 }

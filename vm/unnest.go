@@ -96,13 +96,27 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 //go:noescape
 func evalsplat(bc *bytecode, indelims, outdelims []vmref, perm []int32) (int, int)
 
-func shrink[T any](s []T, n int) []T {
-	if cap(s) < n {
-		s = make([]T, n)
+func shrink[T any](s []T, c int) []T {
+	if cap(s) < c {
+		s = make([]T, c)
 	} else {
-		s = s[:n]
+		s = s[:c]
 	}
 	return s
+}
+
+func resetAux(aux []vmref, size int) []vmref {
+	// always pad to lane multiple with zeros
+	wantcap := (size + bcLaneCountMask) &^ bcLaneCountMask
+	if cap(aux) < wantcap {
+		return make([]vmref, size, wantcap)
+	}
+	aux = aux[:size]
+	tail := aux[size:cap(aux)]
+	for i := range tail {
+		tail[i] = vmref{}
+	}
+	return aux
 }
 
 func (u *unnesting) splatParams(in *rowParams, consumed int, perm []int32, inner []vmref) *rowParams {
@@ -115,7 +129,7 @@ func (u *unnesting) splatParams(in *rowParams, consumed int, perm []int32, inner
 	// splat existing row-oriented bindings
 	u.params.auxbound = shrink(u.params.auxbound, u.auxnum+1)
 	for i := range in.auxbound {
-		u.params.auxbound[i] = shrink(u.params.auxbound[i], len(inner))
+		u.params.auxbound[i] = resetAux(u.params.auxbound[i], len(inner))
 		for j, n := range perm {
 			u.params.auxbound[i][j] = in.auxbound[i][consumed+int(n)]
 		}
