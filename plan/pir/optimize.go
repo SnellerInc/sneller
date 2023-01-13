@@ -43,9 +43,26 @@ func simplify(b *Trace) {
 	}
 }
 
+func subflatten(b *Trace) {
+	var prev Step
+	for s := b.top; s != nil; s = s.parent() {
+		if pt, ok := s.(*pseudoTable); ok {
+			if prev == nil {
+				b.top = pt.parent()
+			} else {
+				prev.setparent(pt.parent())
+			}
+			continue
+		}
+		prev = s
+	}
+}
+
 func (b *Trace) optimize() error {
 	// pre-passes to make optimization easier:
 	freezefinal(b) // explicitly choose final output names
+
+	subflatten(b) // remove pseudo-tables
 
 	// actual optimization passes:
 	simplify(b)

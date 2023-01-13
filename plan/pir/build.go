@@ -72,12 +72,17 @@ func (b *Trace) walkFrom(f expr.From, e Env) error {
 func (b *Trace) walkFromTable(f *expr.Table, e Env) error {
 	switch s := f.Expr.(type) {
 	case *expr.Select:
-		// TODO: if any subsequent expressions
-		// refer to a binding created by
-		//   FROM (SELECT ...) AS x,
-		// we should strip 'x.' from those
-		// bindings...
-		return b.walkSelect(s, e)
+		err := b.walkSelect(s, e)
+		if err != nil {
+			return err
+		}
+		// make sure we strip psuedo-table bindings correctly
+		if f.Binding.Explicit() {
+			pt := &pseudoTable{name: f.Binding.Result()}
+			pt.setparent(b.top)
+			b.top = pt
+		}
+		return nil
 	case *expr.Unpivot:
 		return b.buildUnpivot(s, e)
 	default:
@@ -217,19 +222,24 @@ type tableReplacer struct {
 }
 
 func (t *tableReplacer) Rewrite(e expr.Node) expr.Node {
-	tbl, ok := e.(*expr.Table)
-	if !ok {
+	var bind *expr.Binding
+	switch e := e.(type) {
+	case *expr.Table:
+		bind = &e.Binding
+	case *expr.Join:
+		// we'll walk e.Left later
+		bind = &e.Right
+	default:
 		return e
 	}
-
-	switch v := tbl.Expr.(type) {
+	switch v := bind.Expr.(type) {
 	case expr.Ident:
-		if cte := t.cloneCTE(v, tbl); cte != nil {
-			tbl.Expr = cte
+		if cte := t.cloneCTE(v, bind); cte != nil {
+			bind.Expr = cte
 		}
 	case *expr.Unpivot:
 		if id, ok := v.TupleRef.(expr.Ident); ok {
-			if cte := t.cloneCTE(id, tbl); cte != nil {
+			if cte := t.cloneCTE(id, bind); cte != nil {
 				v.TupleRef = cte
 			}
 		}
@@ -238,7 +248,7 @@ func (t *tableReplacer) Rewrite(e expr.Node) expr.Node {
 		for i := range v.Values {
 			id, ok := v.Values[i].(expr.Ident)
 			if ok {
-				if cte := t.cloneCTE(id, tbl); cte != nil {
+				if cte := t.cloneCTE(id, bind); cte != nil {
 					v.Values[i] = cte
 				}
 			}
@@ -249,7 +259,7 @@ func (t *tableReplacer) Rewrite(e expr.Node) expr.Node {
 }
 
 // cloneCTE finds CTE by name and returns its copy
-func (t *tableReplacer) cloneCTE(id expr.Ident, table *expr.Table) expr.Node {
+func (t *tableReplacer) cloneCTE(id expr.Ident, bind *expr.Binding) expr.Node {
 	with := t.with
 	// search for a matching binding in
 	// binding order:
@@ -261,8 +271,8 @@ func (t *tableReplacer) cloneCTE(id expr.Ident, table *expr.Table) expr.Node {
 		// see FIXME in Walk;
 		// for now we refuse bindings for tables
 		// that can conflict with one another
-		if table.Result() == t.with[i].Table {
-			t.err = errorf(table.Expr, "table binding %q shadows CTE binding %q", table.Result(), t.with[i].Table)
+		if bind.Result() == t.with[i].Table {
+			t.err = errorf(bind.Expr, "table binding %q shadows CTE binding %q", bind.Result(), t.with[i].Table)
 			break
 		}
 	}

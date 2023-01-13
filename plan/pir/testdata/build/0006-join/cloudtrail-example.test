@@ -1,0 +1,23 @@
+# compute packetcount -> instance ID mapping
+# from cloudtrail data plus vpcflowlog data
+WITH instance_info AS (SELECT item.instanceId, item.networkInterfaceSet.items[0].networkInterfaceId interface_id
+                       FROM "cloudtrail" c, c.responseElements.instancesSet.items item
+                       WHERE c.eventTime > `2023-01-01T00:00:00Z`
+                       AND c.eventName = 'RunInstances'),
+	 iface_info AS (SELECT interface_id, SUM(packets) AS packetcount
+                    FROM vpcflowlogs
+                    WHERE start > `2023-01-01T00:00:00Z`
+                    GROUP BY interface_id)
+SELECT inst.instanceId, SUM(iface.packetcount)
+FROM instance_info inst JOIN iface_info iface ON inst.interface_id = iface.interface_id
+GROUP BY inst.instanceId
+---
+WITH (
+	ITERATE vpcflowlogs FIELDS [interface_id, packets, start] WHERE start > `2023-01-01T00:00:00Z`
+	AGGREGATE SUM(packets) AS packetcount BY interface_id AS $__key
+) AS REPLACEMENT(0)
+ITERATE cloudtrail AS c FIELDS [eventName, eventTime, responseElements] WHERE eventName = 'RunInstances' AND eventTime > `2023-01-01T00:00:00Z`
+ITERATE FIELD responseElements.instancesSet.items AS item
+PROJECT item.instanceId AS instanceId, item.networkInterfaceSet.items[0].networkInterfaceId AS interface_id
+ITERATE FIELD HASH_REPLACEMENT(0, 'list', '$__key', interface_id) AS iface
+AGGREGATE SUM(iface.packetcount) AS "sum" BY instanceId AS instanceId

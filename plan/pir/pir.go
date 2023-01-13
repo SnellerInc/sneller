@@ -87,7 +87,6 @@ type IterTable struct {
 	// within this trace that ostensibly
 	// reference this table; they may actually
 	// be correlated with a parent trace!
-
 	free, definite map[string]struct{}
 
 	Table       *expr.Table
@@ -301,7 +300,47 @@ func (e *EquiJoin) walk(v expr.Visitor) {
 	expr.Walk(v, e.value)
 }
 
-var _ Step = &EquiJoin{}
+// pseudoTable exists as a shim during construction
+// in order to allow the syntax
+//
+//	FROM (SELECT ...) x
+//
+// In the example above, we'd use name = "x" to ensure
+// that references to e.g. x.foo are correctly stripped
+// of the leading "x" and resolved against the preceding trace steps
+type pseudoTable struct {
+	parented
+	noexprs
+	name string
+}
+
+func (pt *pseudoTable) describe(w io.Writer) {
+	fmt.Fprintf(w, "PSEUDOTABLE %s\n", pt.name)
+}
+
+// this is the reason pseudoTable exists:
+// we know that a sub-SELECT has been bound
+// to a variable, so we can strip the leading
+// variable reference here to make sure it is
+// resolved correctly
+func (pt *pseudoTable) strip(p []string) ([]string, error) {
+	if len(p) > 1 && p[0] == pt.name {
+		return p[1:], nil
+	}
+	return p, nil
+}
+
+func (pt *pseudoTable) get(x string) (Step, expr.Node) {
+	if x == pt.name {
+		return pt, nil
+	}
+	return pt.parent().get(x)
+}
+
+func (pt *pseudoTable) equals(s Step) bool {
+	p2, ok := s.(*pseudoTable)
+	return ok && pt.name == p2.name
+}
 
 type parented struct {
 	par Step
