@@ -142,6 +142,9 @@ func (u *kernelUnpivotAsAt) flush() error {
 	if len(u.dummy) == 0 {
 		return nil
 	}
+	// ensure that lane-width reads produce zeros for inactive lanes
+	u.params.auxbound[0] = sanitizeAux(u.params.auxbound[0], len(u.params.auxbound[0]))
+	u.params.auxbound[1] = sanitizeAux(u.params.auxbound[1], len(u.params.auxbound[1]))
 	if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 		return err
 	}
@@ -328,6 +331,7 @@ func (u *kernelUnpivotAs) writeRows(rows []vmref, params *rowParams) error {
 		}
 	}
 	if len(u.dummy) > 0 {
+		u.params.auxbound[0] = sanitizeAux(u.params.auxbound[0], len(u.params.auxbound[0]))
 		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 			return err
 		}
@@ -406,6 +410,7 @@ func (u *kernelUnpivotAt) writeRows(rows []vmref, params *rowParams) error {
 		}
 	}
 	if len(u.dummy) > 0 {
+		u.params.auxbound[0] = sanitizeAux(u.params.auxbound[0], len(u.params.auxbound[0]))
 		if err := u.out.writeRows(u.dummy, &u.params); err != nil {
 			return err
 		}

@@ -105,14 +105,19 @@ func shrink[T any](s []T, c int) []T {
 	return s
 }
 
-func resetAux(aux []vmref, size int) []vmref {
+// sanitizeAux returns aux[:size] such that the lanes
+// in aux[size:] up to the next multiple of bcLaneCount
+// are a) valid memory, and b) zeroed
+func sanitizeAux(aux []vmref, size int) []vmref {
 	// always pad to lane multiple with zeros
 	wantcap := (size + bcLaneCountMask) &^ bcLaneCountMask
 	if cap(aux) < wantcap {
-		return make([]vmref, size, wantcap)
+		ret := make([]vmref, size, wantcap)
+		copy(ret, aux)
+		return ret
 	}
 	aux = aux[:size]
-	tail := aux[size:cap(aux)]
+	tail := aux[size:wantcap]
 	for i := range tail {
 		tail[i] = vmref{}
 	}
@@ -129,7 +134,7 @@ func (u *unnesting) splatParams(in *rowParams, consumed int, perm []int32, inner
 	// splat existing row-oriented bindings
 	u.params.auxbound = shrink(u.params.auxbound, u.auxnum+1)
 	for i := range in.auxbound {
-		u.params.auxbound[i] = resetAux(u.params.auxbound[i], len(inner))
+		u.params.auxbound[i] = sanitizeAux(u.params.auxbound[i], len(inner))
 		for j, n := range perm {
 			u.params.auxbound[i][j] = in.auxbound[i][consumed+int(n)]
 		}

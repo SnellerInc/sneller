@@ -142,7 +142,7 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 		// the assembly already did the compression for us:
 		w.params.auxbound = shrink(w.params.auxbound, len(rp.auxbound))
 		for i := range w.params.auxbound {
-			w.params.auxbound[i] = rp.auxbound[i][:valid]
+			w.params.auxbound[i] = sanitizeAux(rp.auxbound[i], valid) // ensure rp.auxbound[i][valid:] is zeroed up to the lane multiple
 		}
 		return w.dst.writeRows(delims[:valid], &w.params)
 	}
