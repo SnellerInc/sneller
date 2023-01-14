@@ -23,7 +23,7 @@ import (
 
 // Unnest un-nests an array and produces rows
 // that have their contents cross-joined with
-// the array contents as an auxilliary binding
+// the array contents as an auxiliary binding
 type Unnest struct {
 	dst    QuerySink
 	field  expr.Node
@@ -32,7 +32,7 @@ type Unnest struct {
 
 // NewUnnest creates an Unnest QuerySink that cross-joins
 // the given field (which should be an array) into the
-// input stream as an auxilliary binding with the given name.
+// input stream as an auxiliary binding with the given name.
 func NewUnnest(dst QuerySink, field expr.Node, result string) *Unnest {
 	return &Unnest{
 		dst:    dst,
@@ -85,7 +85,7 @@ func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
 	list := p.ssa2(stolist, v, p.mask(v))
 	p.returnScalar(p.initMem(), list, p.mask(list))
 	p.symbolize(st, aux)
-	err = p.compile(&u.splat, st)
+	err = p.compile(&u.splat, st, "unnesting")
 	if err != nil {
 		return err
 	}

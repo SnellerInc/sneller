@@ -84,7 +84,7 @@ func TestSplat(t *testing.T) {
 	list := p.ssa2(stolist, field, field)
 	p.returnScalar(p.initMem(), list, p.mask(list))
 	p.symbolize(&st, &auxbindings{})
-	err = p.compile(&bc, &st)
+	err = p.compile(&bc, &st, "TestSplat")
 	if err != nil {
 		t.Fatal(err)
 	}

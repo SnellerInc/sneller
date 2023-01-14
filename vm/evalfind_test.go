@@ -203,7 +203,7 @@ func symbolizeTest(findbc *bytecode, st *symtab, node expr.Node) error {
 	mem = append(mem, val)
 	program.returnValue(program.mergeMem(mem...))
 	program.symbolize(st, &auxbindings{})
-	err = program.compile(findbc, st)
+	err = program.compile(findbc, st, "symbolizeTest")
 	if err != nil {
 		return fmt.Errorf("symbolizeTest: %w", err)
 	}

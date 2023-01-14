@@ -132,7 +132,7 @@ func (i *IterTable) Wildcard() bool {
 // Note that zero fields are returned if
 // *either* the table is referenced with *
 // or if no fields are actually referenced.
-// Use IterTable.Wilcard to determine if the
+// Use IterTable.Wildcard to determine if the
 // table is referenced with *
 func (i *IterTable) Fields() []string {
 	if i.star {

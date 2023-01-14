@@ -514,7 +514,7 @@ func (a *aggtable) EndSegment() {
 }
 
 func (a *aggtable) symbolize(st *symtab, aux *auxbindings) error {
-	return recompile(st, &a.parent.prog, &a.prog, &a.bc, aux)
+	return recompile(st, &a.parent.prog, &a.prog, &a.bc, aux, "aggtable")
 }
 
 func (b *bytecode) getVRegOffsetAndSize(base, index int) (uint32, uint32) {

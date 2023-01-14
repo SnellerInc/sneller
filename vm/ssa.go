@@ -22,6 +22,7 @@ import (
 	"math/bits"
 	"os"
 	"strconv"
+	"strings"
 
 	"golang.org/x/exp/slices"
 	"golang.org/x/sys/cpu"
@@ -37,6 +38,23 @@ import (
 // MaxSymbolID is the largest symbol ID
 // supported by the system.
 const MaxSymbolID = (1 << 21) - 1
+
+// traceOut is the destination for writing VM bytecode while compiling.
+var traceOut io.Writer
+
+// tracef formats according to a format specifier and writes to
+// the trace destination
+func tracef(f string, args ...any) {
+	if traceOut != nil {
+		io.WriteString(traceOut, fmt.Sprintf(f, args...))
+	}
+}
+
+// Trace enables tracing of all VM bytecode compilation
+// if w is non-nil, or disables tracing if w is nil.
+func Trace(w io.Writer) {
+	traceOut = w
+}
 
 type value struct {
 	id   int
@@ -621,7 +639,7 @@ func (p *prog) notMissing(v *value) *value {
 		}
 		return false
 	}
-	// non-logical insructions
+	// non-logical instructions
 	// (scalar comparisons, etc.) only operate
 	// on non-MISSING lanes, so the mask argument
 	// is equivalent to NOT MISSING
@@ -3992,11 +4010,19 @@ func (p *prog) eliminateOutputMoves(c *compilestate) {
 	p.values = p.values[:out]
 }
 
-func (p *prog) compile(dst *bytecode, st *symtab) error {
+func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
 	var c compilestate
 
 	if err := p.compileinto(&c); err != nil {
 		return err
+	}
+
+	if traceOut != nil {
+		sb := strings.Builder{}
+		sb.WriteString(callerName + ":\n")
+		p.writeTo(&sb)
+		sb.WriteString("----------------\n")
+		tracef(sb.String())
 	}
 
 	dst.vstacksize = c.stack.stackSize(stackTypeV)
@@ -4122,7 +4148,7 @@ func (p *prog) unsymbolized(v *value) *value {
 // ssa program (src) and the symbolized program (dst);
 // recompile also takes care of restoring a saved scratch
 // buffer for final if it has been temporarily dropped
-func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings) error {
+func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings, callerName string) error {
 	final.symtab = st.symrefs
 	if !dst.isStale(st) {
 		// the scratch buffer may be invalid,
@@ -4134,7 +4160,7 @@ func recompile(st *symtab, src, dst *prog, final *bytecode, aux *auxbindings) er
 	if err != nil {
 		return err
 	}
-	return dst.compile(final, st)
+	return dst.compile(final, st, "recompile "+callerName)
 }
 
 // IsStale returns whether the symbolized program

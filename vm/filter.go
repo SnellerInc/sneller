@@ -115,7 +115,7 @@ type wherebc struct {
 func evalfilterbc(w *bytecode, delims []vmref) int
 
 func (w *wherebc) symbolize(st *symtab, aux *auxbindings) error {
-	err := recompile(st, w.parent.prog, &w.ssa, &w.bc, aux)
+	err := recompile(st, w.parent.prog, &w.ssa, &w.bc, aux, "wherebc")
 	if err != nil {
 		return err
 	}

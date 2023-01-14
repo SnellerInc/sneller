@@ -22,7 +22,7 @@ import (
 
 // Filter is a plan that
 // filters the input rows on
-// some set of critera
+// some set of criteria
 type Filter struct {
 	Nonterminal
 	Expr expr.Node

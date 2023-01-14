@@ -507,7 +507,7 @@ func TestSSATicketsQueries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc, &st)
+			err = sample.compile(&bc, &st, name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -564,7 +564,7 @@ func TestSSATickets2Queries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc, &st)
+			err = sample.compile(&bc, &st, name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -651,7 +651,7 @@ func TestSSANYCQueries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc, &st)
+			err = sample.compile(&bc, &st, name)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -691,7 +691,7 @@ func TestSSANYCQueries(t *testing.T) {
 				if err != nil {
 					t.Error(err)
 				}
-				err = sample.compile(&bc, &st)
+				err = sample.compile(&bc, &st, name)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -754,7 +754,7 @@ func TestNestedTicketsQueries(t *testing.T) {
 			if err != nil {
 				t.Error(err)
 			}
-			err = sample.compile(&bc, &st)
+			err = sample.compile(&bc, &st, name)
 			if err != nil {
 				t.Fatal(err)
 			}

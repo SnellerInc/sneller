@@ -28,7 +28,7 @@ import (
 // QuerySink represents a sink for query outputs.
 // Every query writes into a QuerySink.
 type QuerySink interface {
-	// Open() opens a new stream for output.
+	// Open opens a new stream for output.
 	// Each stream is only safe to use from
 	// a single goroutine. Multiple streams
 	// may be opened for concurrent output.
@@ -117,7 +117,7 @@ type rowConsumer interface {
 	// this may be nil
 	next() rowConsumer
 
-	// Close indicates that the caller has
+	// Closer indicates that the caller has
 	// finished writing row data.
 	io.Closer
 }

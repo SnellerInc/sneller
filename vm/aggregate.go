@@ -612,7 +612,7 @@ func (q *Aggregate) Close() error {
 }
 
 func (p *aggregateLocal) symbolize(st *symtab, aux *auxbindings) error {
-	return recompile(st, p.parent.prog, &p.prog, &p.bc, aux)
+	return recompile(st, p.parent.prog, &p.prog, &p.bc, aux, "aggregateLocal")
 }
 
 func (p *aggregateLocal) writeRows(delims []vmref, rp *rowParams) error {

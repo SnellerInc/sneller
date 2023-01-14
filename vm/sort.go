@@ -326,7 +326,7 @@ func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings)
 	}
 	program.returnValue(program.mergeMem(mem...))
 	program.symbolize(st, aux)
-	err := program.compile(findbc, st)
+	err := program.compile(findbc, st, "symbolizeLocal")
 	findbc.symtab = st.symrefs
 	if err != nil {
 		return fmt.Errorf("sortstate.symbolize(): %w", err)
@@ -785,7 +785,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 	p.returnBool(p.initMem(), result)
 
 	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
-	err := p.compile(&s.filtbc, s.st)
+	err := p.compile(&s.filtbc, s.st, "sortstateKtop")
 	s.filtbc.symtab = s.st.symrefs
 	if err != nil {
 		return err

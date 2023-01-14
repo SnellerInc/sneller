@@ -51,6 +51,7 @@ var (
 	dashg        bool
 	dashg2       bool
 	dashg3       bool
+	dashbc       bool
 	dasho        string
 	dashr        string
 	dashtoken    string
@@ -80,6 +81,7 @@ func init() {
 	flag.BoolVar(&dashg, "g", false, "just dump the query plan graphviz; do not execute")
 	flag.BoolVar(&dashg2, "g2", false, "just dump DFA of first regex graphviz; do not execute")
 	flag.BoolVar(&dashg3, "g3", false, "just dump data-structure of first regex; do not execute")
+	flag.BoolVar(&dashbc, "bc", false, "print compiled bytecode on stderr")
 	flag.BoolVar(&dashj, "j", false, "write output as JSON instead of ion")
 	flag.BoolVar(&dashN, "N", false, "interpret input as NDJSON")
 	flag.StringVar(&dasho, "o", "", "file for output (default is stdout)")
@@ -352,13 +354,15 @@ func do(arg string) {
 	}
 
 	if !cpu.X86.HasAVX512 {
-		fmt.Fprintln(os.Stderr, "CPU doesn't support AVX-512")
-		os.Exit(1)
+		exitf("CPU doesn't support AVX-512")
+	}
+
+	if dashbc {
+		vm.Trace(os.Stderr)
 	}
 
 	var stat plan.ExecStats
-	err = plan.Exec(tree, dst, &stat)
-	if err != nil {
+	if err = plan.Exec(tree, dst, &stat); err != nil {
 		exit(err)
 	}
 }
@@ -381,6 +385,7 @@ func printHelp() {
 		"Output target",
 		"o",
 		"S",
+		"bc",
 		"Output format",
 		"j",
 		"g",

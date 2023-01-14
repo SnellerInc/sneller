@@ -3508,19 +3508,19 @@ func equalPointed[T comparable](lhs, rhs *T) bool {
 type ExplainFormat uint8
 
 const (
-	// No explain
+	// ExplainNone does no explain
 	ExplainNone ExplainFormat = iota
 
-	// Return singe blob of text
+	// ExplainDefault returns singe blob of text
 	ExplainDefault
 
-	// Return a singe blob of text
+	// ExplainText returns a singe blob of text
 	ExplainText
 
-	// Return each line of plan separately
+	// ExplainList returns each line of plan separately
 	ExplainList
 
-	// Return plan in graphviz format
+	// ExplainGraphviz returns plan in graphviz format
 	ExplainGraphviz
 )
 

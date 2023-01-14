@@ -398,9 +398,9 @@ func parseObject(st *state, in []byte) (int, error) {
 // will automatically flatten top-level arrays-of-records.
 //
 // Convert will return an error if the input JSON is malformed,
-// if it violates some internal limit (see MaxObjectSize, MaxObjectDepth),
-// or if the object does not fit in dst.Align after being
-// serialized as ion data.
+// if it violates some internal limit (see MaxDatumSize,
+// MaxObjectDepth, MaxIndexingDepth), or if the object does not
+// fit in dst.Align after being serialized as ion data.
 func Convert(src io.Reader, dst *ion.Chunker, hints *Hint, cons []ion.Field) error {
 	st := newState(dst)
 	st.UseHints(hints)

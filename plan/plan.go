@@ -1233,7 +1233,7 @@ func (u *UnpivotAtDistinct) setfield(_ Decoder, name string, st *ion.Symtab, buf
 	return err
 }
 
-// Explain is leaf executor for explaing queries
+// Explain is leaf executor for explaining queries
 type Explain struct {
 	Format expr.ExplainFormat
 	Query  *expr.Query

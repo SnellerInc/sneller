@@ -232,11 +232,14 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	// preserve the initial predicate mask
 	// so that we can use it for projection
 	prg.returnBool(prg.mergeMem(mem...), prg.validLanes())
-	prg.symbolize(st, aux)
-	err = prg.compile(&p.bc, st)
-	if err != nil {
+
+	if err := prg.symbolize(st, aux); err != nil {
 		return fmt.Errorf("projector.symbolize(): %w", err)
 	}
+	if err := prg.compile(&p.bc, st, "projector"); err != nil {
+		return fmt.Errorf("projector.compile(): %w", err)
+	}
+
 	return p.update(st, aux)
 }
 

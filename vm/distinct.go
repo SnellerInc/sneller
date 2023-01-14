@@ -132,7 +132,7 @@ type deduper struct {
 }
 
 func (d *deduper) symbolize(st *symtab, aux *auxbindings) error {
-	err := recompile(st, &d.parent.prog, &d.prog, &d.bc, aux)
+	err := recompile(st, &d.parent.prog, &d.prog, &d.bc, aux, "deduper")
 	if err != nil {
 		return err
 	}

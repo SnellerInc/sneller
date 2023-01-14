@@ -89,7 +89,7 @@ func TestRadixBytecodeFind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.compile(&agt.bc, &st)
+	err = p.compile(&agt.bc, &st, "TestRadixBytecodeFind")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = p.compile(&agt.bc, &st)
+	err = p.compile(&agt.bc, &st, "TestRadixBytecodeInsert")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestRadixBytecodeInsert(t *testing.T) {
 	agt2.tree = newRadixTree(8)
 	agt2.parent = agt.parent
 	agt2.aggregateOps = agt.parent.aggregateOps
-	err = agt.prog.compile(&agt2.bc, &st)
+	err = agt.prog.compile(&agt2.bc, &st, "TestRadixBytecodeInsert")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func BenchmarkAggregate(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = p.compile(&agt.bc, &st)
+	err = p.compile(&agt.bc, &st, "BenchmarkAggregate")
 	if err != nil {
 		b.Fatal(err)
 	}
