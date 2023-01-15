@@ -7490,9 +7490,9 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
   VPSRLQ     $32, Z9, Z9  // Z9 = second 8 >>= 32
   VPMOVQD    Z9, Y13      // Y13 = second 8 lengths
 
-  VINSERTI32X8 $1, Y12, Z10, Z30 // concatenate offsets
-  VINSERTI32X8 $1, Y13, Z11, Z31 // concatenate lengths
-  VPTESTMD     Z31, Z31, K1      // zero-length values -> MISSING
+  VINSERTI32X8.Z $1, Y12, Z10, K7, Z30 // concatenate offsets
+  VINSERTI32X8.Z $1, Y13, Z11, K7, Z31 // concatenate lengths
+  VPTESTMD       Z31, Z31, K1      // zero-length values -> MISSING
 
   BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), OUT(CX))

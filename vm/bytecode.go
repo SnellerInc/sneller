@@ -923,6 +923,7 @@ func (b *bytecode) dropScratch() {
 // so that it has the correct number of bytes allocated
 // from the symbol table's spare pages
 func (b *bytecode) restoreScratch(st *symtab) {
+	b.symtab = st.symrefs
 	if b.scratchtotal == 0 {
 		// this will trigger a fault if it is used:
 		b.scratchoff = 0x80000000
