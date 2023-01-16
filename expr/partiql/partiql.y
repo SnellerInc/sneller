@@ -108,7 +108,7 @@ import (
 %type <bindings> group_expr binding_list
 %type <bind> value_binding
 %type <from> from_expr lhs_from_expr
-%type <values> value_list any_value_list field_value_list field_value_pair node_list maybe_toplevel_distinct
+%type <values> partition_expr value_list any_value_list field_value_list field_value_pair node_list maybe_toplevel_distinct
 %type <order> order_one_col
 %type <orders> order_expr order_cols
 %type <jk> join_kind
@@ -232,6 +232,14 @@ expr:
 datum_or_parens
 {
   $$ = $1
+}
+| AGGREGATE '(' ')' optional_filter maybe_window
+{
+  agg, err := toAggregate(expr.AggregateOp($1), nil, false, $4, $5)
+  if err != nil {
+    yylex.Error(err.Error())
+  }
+  $$ = agg
 }
 | AGGREGATE '(' maybe_distinct expr ')' optional_filter maybe_window
 {
@@ -611,10 +619,17 @@ field_value_list ',' field_value_pair { $$ = append($1, $3...) } |
 field_value_pair:
 STRING ':' expr { $$ = []expr.Node{expr.String($1), $3} }
 
-maybe_window:
-OVER '(' PARTITION BY value_list order_expr ')'
+partition_expr:
+PARTITION BY value_list
 {
-  $$ = &expr.Window{PartitionBy: $5, OrderBy: $6}
+  $$ = $3
+}
+| { $$ = nil }
+
+maybe_window:
+OVER '(' partition_expr order_expr ')'
+{
+  $$ = &expr.Window{PartitionBy: $3, OrderBy: $4}
 }
 | { $$ = nil }
 

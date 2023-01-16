@@ -131,6 +131,10 @@ func TestString(t *testing.T) {
 			Call(MakeStruct, String("foo"), Identifier("x"), String("bar"), Integer(3)),
 			`{'foo': x, 'bar': 3}`,
 		},
+		{
+			&Aggregate{Op: OpRowNumber, Over: &Window{OrderBy: []Order{{Column: Identifier("foo")}}}},
+			"ROW_NUMBER() OVER (ORDER BY foo ASC NULLS FIRST)",
+		},
 	}
 	for i := range testcases {
 		got := ToString(testcases[i].in)

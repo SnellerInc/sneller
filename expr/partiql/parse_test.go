@@ -95,6 +95,7 @@ var sameq = []string{
 	`SELECT * FROM table1 UNION SELECT * FROM table2`,
 	`SELECT * FROM table1 UNION ALL SELECT * FROM table2`,
 	`SELECT * FROM table1 UNION SELECT * FROM table2 UNION ALL SELECT * FROM table3 UNION SELECT * FROM table4`,
+	`SELECT agg, SUM(x), ROW_NUMBER() OVER (ORDER BY SUM(x) ASC NULLS FIRST) FROM table GROUP BY agg`,
 }
 
 func TestParseSFW(t *testing.T) {

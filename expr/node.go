@@ -168,6 +168,15 @@ const (
 	// intermediate data and yields the final integer value
 	OpApproxCountDistinctMerge
 
+	// OpRowNumber corresponds to ROW_NUMBER()
+	OpRowNumber
+
+	// OpRank corresponds to RANK()
+	OpRank
+
+	// OpDenseRank corresponds to DENSE_RANK()
+	OpDenseRank
+
 	// Describes SNELLER_DATASHAPE aggregate
 	OpSystemDatashape
 
@@ -199,6 +208,12 @@ func (a AggregateOp) defaultResult() string {
 		return "max"
 	case OpSystemDatashape:
 		return "datashape"
+	case OpRowNumber:
+		return "row_number"
+	case OpRank:
+		return "rank"
+	case OpDenseRank:
+		return "dense_rank"
 	default:
 		return ""
 	}
@@ -242,6 +257,12 @@ func (a AggregateOp) String() string {
 		return "APPROX_COUNT_DISTINCT_PARTIAL"
 	case OpApproxCountDistinctMerge:
 		return "APPROX_COUNT_DISTINCT_MERGE"
+	case OpRowNumber:
+		return "ROW_NUMBER"
+	case OpRank:
+		return "RANK"
+	case OpDenseRank:
+		return "DENSE_RANK"
 	case OpSystemDatashape:
 		return "SNELLER_DATASHAPE"
 	case OpSystemDatashapeMerge:
@@ -255,11 +276,22 @@ func (a AggregateOp) private() bool {
 	switch a {
 	case OpCount, OpSum, OpAvg, OpMin, OpMax, OpEarliest, OpLatest,
 		OpBitAnd, OpBitOr, OpBitXor, OpBoolAnd, OpBoolOr,
-		OpApproxCountDistinct, OpSystemDatashape:
+		OpApproxCountDistinct, OpSystemDatashape, OpRowNumber, OpRank, OpDenseRank:
 		return false
 	}
 
 	return true
+}
+
+// WindowOnly returns whether or no the aggregate op
+// is only valid when used with a window function
+func (a AggregateOp) WindowOnly() bool {
+	switch a {
+	case OpRowNumber, OpRank, OpDenseRank:
+		return true
+	default:
+		return false
+	}
 }
 
 // AcceptDistinct returns true if the aggregate can be used with DISTINCT keyword.
@@ -294,7 +326,8 @@ type Aggregate struct {
 	Op AggregateOp
 	// Precision is the parameter for OpApproxCountDistinct
 	Precision uint8
-	// Inner is the expression to be aggregated
+	// Inner is the expression to be aggregated;
+	// this may be nil when the operation is a window function
 	Inner Node
 	// Over, if non-nil, is the OVER part
 	// of the aggregation
@@ -308,7 +341,8 @@ func (a *Aggregate) Equals(e Node) bool {
 	if !ok {
 		return false
 	}
-	if ea.Op != a.Op || !a.Inner.Equals(ea.Inner) {
+	if ea.Op != a.Op || (a.Inner == nil) != (ea.Inner == nil) ||
+		(a.Inner != nil && !a.Inner.Equals(ea.Inner)) {
 		return false
 	}
 	if ea.Precision != a.Precision {
@@ -345,8 +379,10 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 		dst.BeginField(st.Intern("precision"))
 		dst.WriteUint(uint64(a.Precision))
 	}
-	dst.BeginField(st.Intern("inner"))
-	a.Inner.Encode(dst, st)
+	if a.Inner != nil {
+		dst.BeginField(st.Intern("inner"))
+		a.Inner.Encode(dst, st)
+	}
 
 	if a.Over != nil {
 		dst.BeginField(st.Intern("over_partition"))
@@ -435,7 +471,9 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 	default:
 		dst.WriteString(a.Op.String())
 		dst.WriteByte('(')
-		a.Inner.text(dst, redact)
+		if a.Inner != nil {
+			a.Inner.text(dst, redact)
+		}
 		dst.WriteByte(')')
 	}
 
@@ -446,28 +484,34 @@ func (a *Aggregate) text(dst *strings.Builder, redact bool) {
 	}
 
 	if a.Over != nil {
-		dst.WriteString(" OVER (PARTITION BY ")
+		dst.WriteString(" OVER (")
 		for i := range a.Over.PartitionBy {
-			if i > 0 {
+			if i == 0 {
+				dst.WriteString("PARTITION BY ")
+			} else {
 				dst.WriteString(", ")
 			}
 			a.Over.PartitionBy[i].text(dst, redact)
 		}
-		if len(a.Over.OrderBy) > 0 {
-			dst.WriteString(" ORDER BY ")
-			for i := range a.Over.OrderBy {
-				if i > 0 {
-					dst.WriteString(", ")
+		for i := range a.Over.OrderBy {
+			if i == 0 {
+				if len(a.Over.PartitionBy) > 0 {
+					dst.WriteByte(' ')
 				}
-				a.Over.OrderBy[i].text(dst, redact)
+				dst.WriteString("ORDER BY ")
+			} else {
+				dst.WriteString(", ")
 			}
+			a.Over.OrderBy[i].text(dst, redact)
 		}
 		dst.WriteByte(')')
 	}
 }
 
 func (a *Aggregate) walk(v Visitor) {
-	Walk(v, a.Inner)
+	if a.Inner != nil {
+		Walk(v, a.Inner)
+	}
 	if a.Over != nil {
 		for i := range a.Over.PartitionBy {
 			Walk(v, a.Over.PartitionBy[i])
@@ -482,7 +526,9 @@ func (a *Aggregate) walk(v Visitor) {
 }
 
 func (a *Aggregate) rewrite(r Rewriter) Node {
-	a.Inner = Rewrite(r, a.Inner)
+	if a.Inner != nil {
+		a.Inner = Rewrite(r, a.Inner)
+	}
 	if a.Over != nil {
 		for i := range a.Over.PartitionBy {
 			a.Over.PartitionBy[i] = Rewrite(r, a.Over.PartitionBy[i])
@@ -499,7 +545,7 @@ func (a *Aggregate) rewrite(r Rewriter) Node {
 
 func (a *Aggregate) typeof(h Hint) TypeSet {
 	switch a.Op {
-	case OpCount, OpCountDistinct, OpSumCount, OpApproxCountDistinct:
+	case OpCount, OpCountDistinct, OpSumCount, OpApproxCountDistinct, OpRowNumber, OpRank, OpDenseRank:
 		return UnsignedType
 	case OpSumInt:
 		// if the inner type is only ever unsigned,

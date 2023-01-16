@@ -666,6 +666,44 @@ The result for sample data:
 
 ```
 
+#### `ROW_NUMBER`, `RANK`, and `DENSE_RANK`
+
+The `ROW_NUMBER()`, `RANK()` and `DENSE_RANK()` window functions
+can be used to produce an integer corresponding to the position
+of the row produced by `SELECT` over a particular ordering.
+
+For example:
+
+```sql
+-- for each group, produce the group name and
+-- the number of elements in the group, plus
+-- the position of the row when the result-set is
+-- sorted in ascending order by COUNT(*)
+SELECT groupname, COUNT(*), ROW_NUMBER() OVER (ORDER BY COUNT(*))
+FROM table
+```
+
+`ROW_NUMBER()`, `RANK()`, and `DENSE_RANK()` only differ in terms
+of how they handle adjacent rows that are equivalent.
+`ROW_NUMBER()` always produces distinct integers.
+`RANK()` assigns the same result to equivalent rows and then
+skips the intermediate ordinal numbers after it has assigned
+the same result value to equivalent rows more than once.
+`DENSE_RANK()` assigns the same result to equivalent rows
+but *does not* skip intermediate ordinal numbers.
+For example, given the ordered sequence of strings `'a', 'b', 'b', 'c'` for a column,
+the corresponding window function results would be `1, 2, 3, 4` for `ROW_NUMBER()`,
+`1, 2, 2, 4` for `RANK()`, and `1, 2, 2, 3` for `DENSE_RANK()`.
+
+These window functions *must* include an `ORDER BY` clause
+in the `OVER` clause in order to be meaningful.
+They may also include a `PARTITION BY` clause in order to
+apply the window over groups within the result-set rather
+than the entire result-set.
+
+**Current limitations:** These window functions are only supported
+in `SELECT-FROM-WHERE` queries that employ a `GROUP BY`.
+
 #### `SNELLER_DATASHAPE`
 
 `SNELLER_DATASHAPE(*)` is an aggregate that collects unique

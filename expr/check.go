@@ -298,6 +298,24 @@ func (a *Arithmetic) check(h Hint) error {
 	return nil
 }
 
+func (a *Aggregate) check(h Hint) error {
+	if a.Op.WindowOnly() {
+		if a.Filter != nil {
+			return fmt.Errorf("FILTER in %s not supported", ToString(a))
+		}
+		if a.Inner != nil {
+			return fmt.Errorf("window function doesn't accept argument %s", ToString(a.Inner))
+		}
+		if a.Over == nil {
+			return fmt.Errorf("window function %s needs OVER (...) clause", a.Op)
+		}
+		if len(a.Over.OrderBy) == 0 {
+			return fmt.Errorf("window function %s is meaningless without ORDER BY", a.Op)
+		}
+	}
+	return nil
+}
+
 func (c *Case) check(h Hint) error {
 	for i := range c.Limbs {
 		if !TypeOf(c.Limbs[i].When, h).Contains(ion.BoolType) {

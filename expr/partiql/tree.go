@@ -124,6 +124,9 @@ func init() {
 		{"BIT_AND", int(expr.OpBitAnd)},
 		{"BIT_OR", int(expr.OpBitOr)},
 		{"BIT_XOR", int(expr.OpBitXor)},
+		{"ROW_NUMBER", int(expr.OpRowNumber)},
+		{"RANK", int(expr.OpRank)},
+		{"DENSE_RANK", int(expr.OpDenseRank)},
 	} {
 		code, ok := wordcode([]byte(pair.name))
 		if !ok {
