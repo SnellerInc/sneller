@@ -1035,9 +1035,37 @@ func (b *Trace) Aggregate(agg vm.Aggregation, groups []expr.Binding) error {
 		ag.Agg = append(ag.Agg, agg[i])
 		bind = append(bind, expr.Bind(agg[i].Expr, agg[i].Result))
 	}
+
+	isExisting := func(e expr.Node) bool {
+		for i := range bind {
+			if e == expr.Ident(bind[i].Result()) ||
+				bind[i].Expr.Equals(e) {
+				return true
+			}
+		}
+		return false
+	}
+
 	for i := range agg {
 		if err := check(b.top, ag.Agg[i].Expr); err != nil {
 			return err
+		}
+		// implementation restriction:
+		// force PARTITION BY / ORDER BY cols inside OVER
+		// to match an existing binding outside the aggregate
+		//
+		// (we can relax this constraint later with some additional pain)
+		if wind := ag.Agg[i].Expr.Over; wind != nil {
+			for j := range wind.PartitionBy {
+				if !isExisting(wind.PartitionBy[j]) {
+					return fmt.Errorf("PARTITION BY %s is not bound outside the window", expr.ToString(wind.PartitionBy[j]))
+				}
+			}
+			for j := range wind.OrderBy {
+				if !isExisting(wind.OrderBy[j].Column) {
+					return fmt.Errorf("ORDER BY %s in window is not also bound outside the window", expr.ToString(wind.OrderBy[j].Column))
+				}
+			}
 		}
 	}
 	ag.complete = true

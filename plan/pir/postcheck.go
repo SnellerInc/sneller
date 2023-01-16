@@ -35,7 +35,7 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 		}
 		agg, ok := e.(*expr.Aggregate)
 		if ok {
-			if agg.Over != nil {
+			if !agg.Op.WindowOnly() && agg.Over != nil {
 				err = errorf(agg, "window function in unexpected position")
 				return false
 			}

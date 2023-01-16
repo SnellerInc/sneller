@@ -671,6 +671,11 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	if agg.Over == nil {
 		return e
 	}
+	if agg.Op.WindowOnly() {
+		// handled natively by the core
+		return e
+	}
+
 	if len(agg.Over.PartitionBy) != 1 {
 		w.err = errorf(agg, "only 1 PARTITION BY column supported (for now)")
 		return e

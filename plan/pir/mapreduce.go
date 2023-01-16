@@ -15,6 +15,8 @@
 package pir
 
 import (
+	"fmt"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -285,13 +287,14 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 
 	// first, compute the set of output columns
 	var out vm.Aggregation
-	for i := range a.Agg {
-		age := a.Agg[i].Expr
-		result := a.Agg[i].Result
+	current := a.Agg
+	for i := range current {
+		age := current[i].Expr
+		result := current[i].Result
 		// rename the outputs of the mapping-step aggregates;
 		// we will re-map them to their original outputs
 		gen := gensym(2, i)
-		a.Agg[i].Result = gen
+		current[i].Result = gen
 		innerref := expr.Identifier(gen)
 		var newagg *expr.Aggregate
 		switch age.Op {
@@ -318,6 +321,9 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			newagg = &expr.Aggregate{
 				Op:    expr.OpSystemDatashapeMerge,
 				Inner: innerref}
+		case expr.OpRowNumber, expr.OpRank, expr.OpDenseRank:
+			newagg = current[i].Expr
+			current[i].Expr = nil // delete this op
 		}
 
 		if newagg == nil {
@@ -327,13 +333,41 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 
 		out = append(out, vm.AggBinding{Expr: newagg, Result: result})
 	}
+
+	// remove any aggregates that were deleted entirely
+	// (this is mostly window functions)
+	newaggs := a.Agg[:0]
+	for i := range a.Agg {
+		age := a.Agg[i].Expr
+		if age != nil {
+			newaggs = append(newaggs, a.Agg[i])
+			continue
+		}
+		into := out[i].Expr
+		// walk ORDER BY and extract any columns
+		// necessary for us to calculate
+		//
+		// FIXME: we could actually generate the right bindings here,
+		// but it's unusual and kind of a pain
+		for j := range into.Over.OrderBy {
+			found := false
+			col := into.Over.OrderBy[j].Column
+			for k := range a.Agg {
+				if k != i && a.Agg[k].Expr != nil && col.Equals(a.Agg[k].Expr) {
+					into.Over.OrderBy[j].Column = expr.Ident(out[k].Result)
+					found = true
+					break
+				}
+			}
+			if !found {
+				return fmt.Errorf("window ORDER BY references aggregate %s not in outer aggregation", expr.ToString(age.Over.OrderBy[i].Column))
+			}
+		}
+	}
+	a.Agg = newaggs
+
 	// the mapping step terminates here
-	// FIXME: update final outputs for mapping
 	mapping.top = a
-	// FIXME: re-write reduce.Scope() so that
-	// bindings that used to originate from
-	// the old aggregate expression now point
-	// to the new reduction aggregate step
 	red := &Aggregate{
 		Agg: out,
 	}

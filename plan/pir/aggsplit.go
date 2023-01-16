@@ -69,11 +69,14 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order, fn func(
 	// encountering an aggregate expression
 	// (and the inner visitor errors when it finds
 	// inner aggregates)
-	var walkouter, walkinner visitor
+	var walkouter, walkinner, walkwindow visitor
 	walkouter = func(e expr.Node) expr.Visitor {
 		agg, ok := e.(*expr.Aggregate)
 		if ok {
 			fn(agg)
+			if agg.Over != nil {
+				return walkwindow
+			}
 			return walkinner
 		}
 		return walkouter
@@ -96,6 +99,24 @@ func rejectNestedAggregates(columns []expr.Binding, order []expr.Order, fn func(
 
 		return walkinner
 	}
+	// window functions often *do* have embedded aggregates;
+	// don't worry about them
+	walkwindow = func(e expr.Node) expr.Visitor {
+		if err != nil {
+			return nil
+		}
+		agg, ok := e.(*expr.Aggregate)
+		if ok && agg.Over != nil {
+			err = errorf(agg, "cannot handle nested aggregate %s", expr.ToString(agg))
+			return nil
+		}
+		_, ok = e.(*expr.Select)
+		if ok {
+			return walkouter
+		}
+		return walkinner
+	}
+
 	for i := range columns {
 		expr.Walk(walkouter, columns[i].Expr)
 		if err != nil {
@@ -297,7 +318,7 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 	symno := 0
 
 	rewriteAggregate := func(age *expr.Aggregate, allowOver, addAggBinding bool) expr.Node {
-		if !allowOver && age.Over != nil {
+		if !allowOver && age.Over != nil && !age.Op.WindowOnly() {
 			err = errorf(age, "window function in illegal position")
 			return age
 		}
@@ -511,6 +532,9 @@ func aggelim(b *Trace) {
 }
 
 func agg2const(tbl *IterTable, agg *expr.Aggregate) expr.Constant {
+	if agg.Inner == nil {
+		return nil
+	}
 	p, ok := expr.FlatPath(agg.Inner)
 	if !ok {
 		return nil
