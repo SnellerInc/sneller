@@ -1,0 +1,28 @@
+SELECT grp, SUM(val),
+       ROW_NUMBER() OVER (ORDER BY SUM(val)) AS asc_num,
+       ROW_NUMBER() OVER (ORDER BY SUM(val) DESC) AS desc_num
+FROM input
+GROUP BY grp
+ORDER BY grp
+---
+{"grp": "A", "val": 100}
+{"grp": "A", "val": 200}
+{"grp": "A", "val": 300}
+{"grp": "A", "val": 400}
+{"grp": "B", "val": 10}
+{"grp": "B", "val": 20}
+{"grp": "B", "val": 30}
+{"grp": "B", "val": 40}
+{"grp": "C", "val": 1}
+{"grp": "C", "val": 2}
+{"grp": "C", "val": 3}
+{"grp": "C", "val": 4}
+{"grp": "D", "val": -10}
+{"grp": "D", "val": -20}
+{"grp": "D", "val": -30}
+{"grp": "D", "val": -40}
+---
+{"grp": "A", "sum": 1000, "asc_num": 4, "desc_num": 1}
+{"grp": "B", "sum": 100, "asc_num": 3, "desc_num": 2}
+{"grp": "C", "sum": 10, "asc_num": 2, "desc_num": 3}
+{"grp": "D", "sum": -100, "asc_num": 1, "desc_num": 4}

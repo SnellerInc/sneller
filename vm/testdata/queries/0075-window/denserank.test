@@ -1,0 +1,28 @@
+SELECT grp, SUM(val),
+       DENSE_RANK() OVER (ORDER BY SUM(val)) AS asc_rank,
+       DENSE_RANK() OVER (ORDER BY SUM(val) DESC) AS desc_rank
+FROM input
+GROUP BY grp
+ORDER BY grp
+---
+{"grp": "A", "val": 100}
+{"grp": "A", "val": 200}
+{"grp": "A", "val": 300}
+{"grp": "A", "val": 400}
+{"grp": "B", "val": 250}
+{"grp": "B", "val": 250}
+{"grp": "B", "val": 250}
+{"grp": "B", "val": 250}
+{"grp": "C", "val": 1}
+{"grp": "C", "val": 2}
+{"grp": "C", "val": 3}
+{"grp": "C", "val": 4}
+{"grp": "D", "val": -10}
+{"grp": "D", "val": -20}
+{"grp": "D", "val": -30}
+{"grp": "D", "val": -40}
+---
+{"grp": "A", "sum": 1000, "asc_rank": 3, "desc_rank": 1}
+{"grp": "B", "sum": 1000, "asc_rank": 3, "desc_rank": 1}
+{"grp": "C", "sum": 10, "asc_rank": 2, "desc_rank": 2}
+{"grp": "D", "sum": -100, "asc_rank": 1, "desc_rank": 3}

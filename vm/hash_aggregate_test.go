@@ -110,7 +110,7 @@ func TestHashAggregate(t *testing.T) {
 		ordering := tcs[i].aggorder
 		t.Run(name, func(t *testing.T) {
 			var qb QueryBuffer
-			ha, err := NewHashAggregate(agg, Selection{{Expr: group}}, &qb)
+			ha, err := NewHashAggregate(agg, nil, Selection{{Expr: group}}, &qb)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,7 +199,7 @@ func BenchmarkHashAggregate(b *testing.B) {
 		ordering := bcs[i].aggorder
 		b.Run(fmt.Sprintf("case-%d", i), func(b *testing.B) {
 			b.Logf("name: %s", name)
-			ha, err := NewHashAggregate(agg, Selection{{Expr: group}}, nopSink{})
+			ha, err := NewHashAggregate(agg, nil, Selection{{Expr: group}}, nopSink{})
 			if err != nil {
 				b.Fatal(err)
 			}

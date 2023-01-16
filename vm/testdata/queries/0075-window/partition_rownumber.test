@@ -1,0 +1,31 @@
+SELECT grp0, grp1, SUM(val),
+       ROW_NUMBER() OVER (PARTITION BY grp0 ORDER BY SUM(val)) AS asc_num
+FROM input
+GROUP BY grp0, grp1
+ORDER BY grp0, grp1, SUM(val)
+---
+{"grp0": "part0", "grp1": "prefix0", "val": 1}
+{"grp0": "part0", "grp1": "prefix1", "val": 2}
+{"grp0": "part0", "grp1": "prefix2", "val": 3}
+{"grp0": "part0", "grp1": "prefix3", "val": 4}
+{"grp0": "part1", "grp1": "prefix0", "val": 10}
+{"grp0": "part1", "grp1": "prefix1", "val": 20}
+{"grp0": "part1", "grp1": "prefix2", "val": 30}
+{"grp0": "part1", "grp1": "prefix3", "val": 40}
+{"grp0": "part2", "grp1": "prefix0", "val": 100}
+{"grp0": "part2", "grp1": "prefix1", "val": 200}
+{"grp0": "part2", "grp1": "prefix2", "val": 300}
+{"grp0": "part2", "grp1": "prefix3", "val": 400}
+---
+{"grp0": "part0", "grp1": "prefix0", "sum": 1, "asc_num": 1}
+{"grp0": "part0", "grp1": "prefix1", "sum": 2, "asc_num": 2}
+{"grp0": "part0", "grp1": "prefix2", "sum": 3, "asc_num": 3}
+{"grp0": "part0", "grp1": "prefix3", "sum": 4, "asc_num": 4}
+{"grp0": "part1", "grp1": "prefix0", "sum": 10, "asc_num": 1}
+{"grp0": "part1", "grp1": "prefix1", "sum": 20, "asc_num": 2}
+{"grp0": "part1", "grp1": "prefix2", "sum": 30, "asc_num": 3}
+{"grp0": "part1", "grp1": "prefix3", "sum": 40, "asc_num": 4}
+{"grp0": "part2", "grp1": "prefix0", "sum": 100, "asc_num": 1}
+{"grp0": "part2", "grp1": "prefix1", "sum": 200, "asc_num": 2}
+{"grp0": "part2", "grp1": "prefix2", "sum": 300, "asc_num": 3}
+{"grp0": "part2", "grp1": "prefix3", "sum": 400, "asc_num": 4}

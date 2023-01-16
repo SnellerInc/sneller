@@ -630,6 +630,7 @@ type HashAggregate struct {
 	Nonterminal
 	Agg     vm.Aggregation
 	By      vm.Selection
+	Windows vm.Aggregation
 	Limit   int
 	OrderBy []HashOrder
 }
@@ -642,6 +643,9 @@ func (h *HashAggregate) rewrite(rw expr.Rewriter) {
 	for i := range h.By {
 		h.By[i].Expr = expr.Rewrite(rw, h.By[i].Expr)
 	}
+	for i := range h.Windows {
+		h.Windows[i].Expr = expr.Rewrite(rw, h.Windows[i].Expr).(*expr.Aggregate)
+	}
 }
 
 type HashOrder struct {
@@ -651,7 +655,11 @@ type HashOrder struct {
 }
 
 func (h *HashAggregate) String() string {
-	s := fmt.Sprintf("HASH AGGREGATE %s GROUP BY %s", h.Agg, h.By)
+	s := fmt.Sprintf("HASH AGGREGATE %s ", h.Agg)
+	if len(h.Windows) > 0 {
+		s += fmt.Sprintf("WINDOWS %s ", h.Windows)
+	}
+	s += fmt.Sprintf("GROUP BY %s", h.By)
 	if h.OrderBy != nil {
 		s += " ORDER BY "
 		for i := range h.OrderBy {
@@ -695,6 +703,10 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 		}
 		dst.EndList()
 	}
+	if len(h.Windows) > 0 {
+		dst.BeginField(st.Intern("windows"))
+		encodeAggregation(h.Windows, dst, st)
+	}
 	dst.EndStruct()
 	return nil
 }
@@ -724,6 +736,8 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 	switch name {
 	case "agg":
 		return decodeAggregation(&h.Agg, st, buf)
+	case "windows":
+		return decodeAggregation(&h.Windows, st, buf)
 	case "by":
 		return decodeSel(&h.By, st, buf)
 	case "limit":
@@ -764,7 +778,7 @@ func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []b
 }
 
 func (h *HashAggregate) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
-	ha, err := vm.NewHashAggregate(h.Agg, h.By, dst)
+	ha, err := vm.NewHashAggregate(h.Agg, h.Windows, h.By, dst)
 	if err != nil {
 		return -1, nil, err
 	}
@@ -775,11 +789,12 @@ func (h *HashAggregate) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySin
 		col := h.OrderBy[i].Column
 		if col < len(h.Agg) {
 			ha.OrderByAggregate(col, h.OrderBy[i].Desc)
-		} else {
+		} else if col < len(h.Agg)+len(h.By) {
 			ha.OrderByGroup(col-len(h.Agg), h.OrderBy[i].Desc, h.OrderBy[i].NullsLast)
+		} else {
+			ha.OrderByWindow(col-len(h.Agg)-len(h.By), h.OrderBy[i].Desc, h.OrderBy[i].NullsLast)
 		}
 	}
-
 	return h.From.wrap(ha, ep)
 }
 

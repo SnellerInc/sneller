@@ -41,8 +41,6 @@ type HashAggregate struct {
 	aggregateOps []AggregateOp
 	initialData  []byte
 
-	pos2id []int
-
 	lock  sync.Mutex
 	final *aggtable
 	limit int
@@ -50,7 +48,73 @@ type HashAggregate struct {
 	// ordering functions;
 	// applied in order to determine
 	// the total ordering
-	order []func(*aggtable, hpair, hpair) int
+	order []aggOrderFn
+
+	windows []window
+}
+
+type aggOrderFn func(*aggtable, int, int) int
+
+type window struct {
+	// order computes the partitions *plus*
+	// the ORDER BY clause for the window
+	order []aggOrderFn
+	// order[:partitions] is the ordering
+	// that produces the individual partitions;
+	// this may be zero if no PARTITION BY was supplied
+	partitions int
+	fn         windowFunc
+	final      []uint // actual final results
+	result     string
+}
+
+// run computes the results of applying the window function
+// and sets w.final
+func (w *window) run(agt *aggtable) {
+	ret := make([]uint, len(agt.pairs))
+
+	// pairs[order[0..i]] will order the pairs by this window's partitions + order
+	order := make([]int, len(agt.pairs))
+	for i := range order {
+		order[i] = i
+	}
+
+	fullorder := w.order
+	partorder := w.order[:w.partitions]
+	partcmp := func(i, j int) int {
+		for k := range partorder {
+			dir := partorder[k](agt, i, j)
+			if dir != 0 {
+				return dir
+			}
+		}
+		return 0
+	}
+	cmp := func(i, j int) int {
+		for k := range fullorder {
+			dir := fullorder[k](agt, i, j)
+			if dir != 0 {
+				return dir
+			}
+		}
+		return 0
+	}
+	slices.SortFunc(order, func(i, j int) bool {
+		dir := cmp(i, j)
+		return dir < 0
+	})
+	// walk pairs in order
+	repeat := false
+	for i := range order {
+		repeat = i > 0 && cmp(order[i-1], order[i]) == 0
+		if i == 0 || partcmp(order[i-1], order[i]) != 0 {
+			w.fn.reset()
+			repeat = false
+		}
+		val := w.fn.next(repeat)
+		ret[order[i]] = val
+	}
+	w.final = ret
 }
 
 // Limit sets the maximum number of output rows.
@@ -59,10 +123,7 @@ func (h *HashAggregate) Limit(n int) {
 	h.limit = n
 }
 
-func (h *HashAggregate) OrderByGroup(n int, desc bool, nullslast bool) error {
-	if n < 0 || n >= len(h.by) {
-		return fmt.Errorf("group %d doesn't exist", n)
-	}
+func (h *HashAggregate) groupFn(n int, desc, nullslast bool) aggOrderFn {
 	o := sorting.Ordering{}
 	o.Direction = sorting.Ascending
 	o.Nulls = sorting.NullsFirst
@@ -72,63 +133,68 @@ func (h *HashAggregate) OrderByGroup(n int, desc bool, nullslast bool) error {
 	if nullslast {
 		o.Nulls = sorting.NullsLast
 	}
-	h.order = append(h.order, func(agt *aggtable, left, right hpair) int {
-		leftmem := agt.repridx(&left, n)
-		rightmem := agt.repridx(&right, n)
+	return func(agt *aggtable, i, j int) int {
+		leftmem := agt.repridx(&agt.pairs[i], n)
+		rightmem := agt.repridx(&agt.pairs[j], n)
 		return o.Compare(leftmem, rightmem)
-	})
-	return nil
+	}
 }
 
-func (h *HashAggregate) OrderByAggregate(n int, desc bool) error {
-	if n >= len(h.agg) {
-		return fmt.Errorf("aggregate %d doesn't exist", n)
-	}
-	aggregateFn := h.aggregateOps[n].fn
-	h.order = append(h.order, func(agt *aggtable, left, right hpair) int {
-		lmem := agt.valueof(&left)
-		rmem := agt.valueof(&right)
+func (h *HashAggregate) aggFn(n int, desc, nullslast bool) aggOrderFn {
+	return func(agt *aggtable, i, j int) int {
+		aggregateFn := h.aggregateOps[n].fn
+		lmem := agt.valueof(&agt.pairs[i])
+		rmem := agt.valueof(&agt.pairs[j])
 		dir := aggcmp(aggregateFn, lmem, rmem)
 		if desc {
 			return -dir
 		}
 		return dir
-	})
+	}
+}
+
+func (h *HashAggregate) windowOrder(n int, desc, nullslast bool) aggOrderFn {
+	return func(agt *aggtable, i, j int) int {
+		return int(h.windows[n].final[i]) - int(h.windows[n].final[j])
+	}
+}
+
+func (h *HashAggregate) OrderByGroup(n int, desc bool, nullslast bool) error {
+	if n < 0 || n >= len(h.by) {
+		return fmt.Errorf("group %d doesn't exist", n)
+	}
+	h.order = append(h.order, h.groupFn(n, desc, nullslast))
 	return nil
 }
 
-func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggregate, error) {
+func (h *HashAggregate) OrderByAggregate(n int, desc bool) error {
+	if n < 0 || n >= len(h.agg) {
+		return fmt.Errorf("aggregate %d doesn't exist", n)
+	}
+	h.order = append(h.order, h.aggFn(n, desc, false))
+	return nil
+}
+
+func (h *HashAggregate) OrderByWindow(n int, desc, nullslast bool) error {
+	if n < 0 || n >= len(h.windows) {
+		return fmt.Errorf("window %d doesn't exist", n)
+	}
+	h.order = append(h.order, h.windowOrder(n, desc, nullslast))
+	return nil
+}
+
+func NewHashAggregate(agg, windows Aggregation, by Selection, dst QuerySink) (*HashAggregate, error) {
 	if len(by) == 0 {
 		return nil, fmt.Errorf("cannot aggregate an empty selection")
 	}
-
 	if len(agg) == 0 {
 		return nil, fmt.Errorf("zero aggregations...?")
 	}
-
-	// compute the final positions of each
-	// of the projected outputs by sorting
-	// them by minimum symbol ID
-	//
-	// pos[0:len(by)] is the final position of each 'by',
-	// and pos[len(by):] is the final position of each 'agg'
-	pos2id := make([]int, len(by)+len(agg))
-	for i := range pos2id {
-		pos2id[i] = i
+	h := &HashAggregate{dst: dst, agg: agg, by: by}
+	err := h.compileWindows(windows, by)
+	if err != nil {
+		return nil, err
 	}
-	posResult := func(i int) string {
-		if i >= len(by) {
-			return agg[i-len(by)].Result
-		}
-		return by[i].Result()
-	}
-	// shuffle results around so that the
-	// output symbol table can always be ordered
-	slices.SortStableFunc(pos2id, func(i, j int) bool {
-		return ion.MinimumID(posResult(i)) < ion.MinimumID(posResult(j))
-	})
-
-	h := &HashAggregate{agg: agg, by: by, dst: dst, pos2id: pos2id}
 
 	prog := &h.prog
 	prog.begin()
@@ -169,14 +235,14 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 	}
 
 	mem := prog.mergeMem(colmem...)
-	out := make([]*value, len(agg))
-	ops := make([]AggregateOp, len(agg))
+	out := make([]*value, len(h.agg))
+	ops := make([]AggregateOp, len(h.agg))
 	bucket := prog.aggbucket(mem, allColumnsHash, allColumnsMask)
 	offset := aggregateslot(0)
 
-	for i := range agg {
+	for i := range h.agg {
 		var filter *value
-		if filterExpr := agg[i].Expr.Filter; filterExpr != nil {
+		if filterExpr := h.agg[i].Expr.Filter; filterExpr != nil {
 			var err error
 			// Note: duplicated filter expression will be removed during CSE
 			filter, err = prog.compileAsBool(filterExpr)
@@ -190,14 +256,14 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			mask = prog.and(mask, filter)
 		}
 
-		switch op := agg[i].Expr.Op; op {
+		switch op := h.agg[i].Expr.Op; op {
 		case expr.OpCount:
 			// COUNT(...) is the only aggregate op that doesn't accept numbers;
 			// additionally, it accepts '*', which has a special meaning in this context.
-			if _, ok := agg[i].Expr.Inner.(expr.Star); ok {
+			if _, ok := h.agg[i].Expr.Inner.(expr.Star); ok {
 				// `COUNT(*) GROUP BY X` is equivalent to `COUNT(X) GROUP BY X`
 			} else {
-				k, err := compile(prog, agg[i].Expr.Inner)
+				k, err := compile(prog, h.agg[i].Expr.Inner)
 				if err != nil {
 					return nil, err
 				}
@@ -211,11 +277,11 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			expr.OpApproxCountDistinctPartial,
 			expr.OpApproxCountDistinctMerge:
 
-			argv, err := compile(prog, agg[i].Expr.Inner)
+			argv, err := compile(prog, h.agg[i].Expr.Inner)
 			if err != nil {
-				return nil, fmt.Errorf("cannot compile %q: %w", agg[i].Expr.Inner, err)
+				return nil, fmt.Errorf("cannot compile %q: %w", h.agg[i].Expr.Inner, err)
 			}
-			precision := agg[i].Expr.Precision
+			precision := h.agg[i].Expr.Precision
 
 			ops[i].precision = precision
 			switch op {
@@ -232,9 +298,9 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 			}
 
 		case expr.OpBoolAnd, expr.OpBoolOr:
-			argv, err := prog.compileAsBool(agg[i].Expr.Inner)
+			argv, err := prog.compileAsBool(h.agg[i].Expr.Inner)
 			if err != nil {
-				return nil, fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
+				return nil, fmt.Errorf("don't know how to aggregate %q: %w", h.agg[i].Expr.Inner, err)
 			}
 			switch op {
 			case expr.OpBoolAnd:
@@ -244,13 +310,13 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 				out[i] = prog.aggregateSlotBoolOr(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpOrK
 			default:
-				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
+				return nil, fmt.Errorf("unsupported aggregate operation: %s", &h.agg[i])
 			}
 
 		default:
-			argv, err := prog.compileAsNumber(agg[i].Expr.Inner)
+			argv, err := prog.compileAsNumber(h.agg[i].Expr.Inner)
 			if err != nil {
-				return nil, fmt.Errorf("don't know how to aggregate %q: %w", agg[i].Expr.Inner, err)
+				return nil, fmt.Errorf("don't know how to aggregate %q: %w", h.agg[i].Expr.Inner, err)
 			}
 			var fp bool
 			switch op {
@@ -304,7 +370,7 @@ func NewHashAggregate(agg Aggregation, by Selection, dst QuerySink) (*HashAggreg
 				out[i] = prog.aggregateSlotLatest(mem, bucket, argv, mask, offset)
 				ops[i].fn = AggregateOpMaxTS
 			default:
-				return nil, fmt.Errorf("unsupported aggregate operation: %s", &agg[i])
+				return nil, fmt.Errorf("unsupported aggregate operation: %s", &h.agg[i])
 			}
 		}
 
@@ -336,13 +402,17 @@ func (h *HashAggregate) Open() (io.WriteCloser, error) {
 	return splitter(at), nil
 }
 
-func (h *HashAggregate) sort(pairs []hpair) {
-	if h.order == nil {
-		return
+func (h *HashAggregate) sort() []int {
+	ret := make([]int, len(h.final.pairs))
+	for i := range ret {
+		ret[i] = i
 	}
-	slices.SortFunc(pairs, func(left, right hpair) bool {
+	if h.order == nil {
+		return ret
+	}
+	slices.SortFunc(ret, func(i, j int) bool {
 		for k := range h.order {
-			dir := h.order[k](h.final, left, right)
+			dir := h.order[k](h.final, i, j)
 			if dir < 0 {
 				return true
 			}
@@ -353,6 +423,7 @@ func (h *HashAggregate) sort(pairs []hpair) {
 		}
 		return false
 	})
+	return ret
 }
 
 func (h *HashAggregate) Close() error {
@@ -369,6 +440,7 @@ func (h *HashAggregate) Close() error {
 
 	var aggsyms []ion.Symbol
 	var bysyms []ion.Symbol
+	var windowsyms []ion.Symbol
 
 	for i := range h.by {
 		bysyms = append(bysyms, outst.Intern(h.by[i].Result()))
@@ -376,15 +448,21 @@ func (h *HashAggregate) Close() error {
 	for i := range h.agg {
 		aggsyms = append(aggsyms, outst.Intern(h.agg[i].Result))
 	}
-
+	for i := range h.windows {
+		windowsyms = append(windowsyms, outst.Intern(h.windows[i].result))
+	}
 	outst.Marshal(&outbuf, true)
 
-	// perform ORDER BY and LIMIT steps
-	pairs := h.final.pairs
-	h.sort(pairs)
-	if h.limit > 0 && len(pairs) > h.limit {
-		pairs = pairs[:h.limit]
+	// compute final window results
+	for i := range h.windows {
+		h.windows[i].run(h.final)
 	}
+	// compute ORDER BY + LIMIT
+	order := h.sort()
+	if h.limit > 0 && len(order) > h.limit {
+		order = order[:h.limit]
+	}
+	pairs := h.final.pairs
 
 	// for each of the pairs,
 	// emit the records;
@@ -403,30 +481,21 @@ func (h *HashAggregate) Close() error {
 		return off
 	}
 
-	for i := range pairs {
+	for _, n := range order {
+		p := &pairs[n]
 		outbuf.BeginStruct(-1)
-		valmem := h.final.valueof(&pairs[i])
-		prevsym := ion.Symbol(0)
-		for _, pos := range h.pos2id {
-			if pos < len(h.by) {
-				sym := bysyms[pos]
-				if sym < prevsym {
-					panic("symbols out-of-order")
-				}
-				prevsym = sym
-				outbuf.BeginField(sym)
-				outval := h.final.repridx(&pairs[i], pos)
-				outbuf.UnsafeAppend(outval)
-			} else {
-				pos -= len(bysyms)
-				sym := aggsyms[pos]
-				if sym < prevsym {
-					panic("symbols out-of-order")
-				}
-				prevsym = sym
-				outbuf.BeginField(aggsyms[pos])
-				writeAggregatedValue(&outbuf, valmem[offset(pos):], aggregateOps[pos])
-			}
+		valmem := h.final.valueof(p)
+		for j, sym := range bysyms {
+			outbuf.BeginField(sym)
+			outbuf.UnsafeAppend(h.final.repridx(p, j))
+		}
+		for j, sym := range aggsyms {
+			outbuf.BeginField(sym)
+			writeAggregatedValue(&outbuf, valmem[offset(j):], aggregateOps[j])
+		}
+		for j, sym := range windowsyms {
+			outbuf.BeginField(sym)
+			outbuf.WriteUint(uint64(h.windows[j].final[n]))
 		}
 		outbuf.EndStruct()
 	}

@@ -111,6 +111,18 @@ func iscountstar(a vm.Aggregation) bool {
 	return isstar
 }
 
+func splitWindows(lst vm.Aggregation) (agg vm.Aggregation, window vm.Aggregation) {
+	agg = lst[:0]
+	for i := range lst {
+		if lst[i].Expr.Op.WindowOnly() {
+			window = append(window, lst[i])
+		} else {
+			agg = append(agg, lst[i])
+		}
+	}
+	return agg, window
+}
+
 func lowerAggregate(in *pir.Aggregate, from Op) (Op, error) {
 	if in.GroupBy == nil {
 		// simple aggregate; check for COUNT(*) first
@@ -125,10 +137,11 @@ func lowerAggregate(in *pir.Aggregate, from Op) (Op, error) {
 			Outputs:     in.Agg,
 		}, nil
 	}
-
+	agg, windows := splitWindows(in.Agg)
 	return &HashAggregate{
 		Nonterminal: Nonterminal{From: from},
-		Agg:         in.Agg,
+		Agg:         agg,
+		Windows:     windows,
 		By:          in.GroupBy,
 	}, nil
 }
@@ -153,6 +166,16 @@ func lowerOrder(in *pir.Order, from Op) (Op, error) {
 				if expr.IsIdentifier(ex, ha.By[col].Result()) {
 					ha.OrderBy = append(ha.OrderBy, HashOrder{
 						Column:    len(ha.Agg) + col,
+						Desc:      in.Columns[i].Desc,
+						NullsLast: in.Columns[i].NullsLast,
+					})
+					continue outer
+				}
+			}
+			for col := range ha.Windows {
+				if expr.IsIdentifier(ex, ha.Windows[i].Result) {
+					ha.OrderBy = append(ha.OrderBy, HashOrder{
+						Column:    len(ha.Agg) + len(ha.By) + col,
 						Desc:      in.Columns[i].Desc,
 						NullsLast: in.Columns[i].NullsLast,
 					})

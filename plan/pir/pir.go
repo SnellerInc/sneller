@@ -1056,6 +1056,9 @@ func (b *Trace) Aggregate(agg vm.Aggregation, groups []expr.Binding) error {
 		//
 		// (we can relax this constraint later with some additional pain)
 		if wind := ag.Agg[i].Expr.Over; wind != nil {
+			if len(groups) == 0 {
+				return fmt.Errorf("window function disallowed without GROUP BY: %s", expr.ToString(ag.Agg[i].Expr))
+			}
 			for j := range wind.PartitionBy {
 				if !isExisting(wind.PartitionBy[j]) {
 					return fmt.Errorf("PARTITION BY %s is not bound outside the window", expr.ToString(wind.PartitionBy[j]))
