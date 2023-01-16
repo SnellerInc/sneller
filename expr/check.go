@@ -301,17 +301,19 @@ func (a *Arithmetic) check(h Hint) error {
 func (a *Aggregate) check(h Hint) error {
 	if a.Op.WindowOnly() {
 		if a.Filter != nil {
-			return fmt.Errorf("FILTER in %s not supported", ToString(a))
+			return errsyntax(a, "FILTER not supported")
 		}
 		if a.Inner != nil {
-			return fmt.Errorf("window function doesn't accept argument %s", ToString(a.Inner))
+			return errsyntax(a, "aggregate does not accept an argument")
 		}
 		if a.Over == nil {
-			return fmt.Errorf("window function %s needs OVER (...) clause", a.Op)
+			return errsyntax(a, "aggregate needs an OVER clause")
 		}
 		if len(a.Over.OrderBy) == 0 {
-			return fmt.Errorf("window function %s is meaningless without ORDER BY", a.Op)
+			return errsyntax(a, "window function is meaningless without ORDER BY")
 		}
+	} else if a.Inner == nil {
+		return errsyntax(a, "aggregate needs an argument")
 	}
 	return nil
 }
