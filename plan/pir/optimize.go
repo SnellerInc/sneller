@@ -79,8 +79,8 @@ func (b *Trace) optimize() error {
 	if err != nil {
 		return err
 	}
-	projectpushdown(b)   // merge adjacent projections
 	projectelim(b)       // drop un-used bindings
+	projectpushdown(b)   // merge adjacent projections
 	limitpushdown(b)     // push down LIMIT
 	flatten(b)           // eliminate left-to-right bindings
 	mergereplacements(b) // eliminate common sub-traces

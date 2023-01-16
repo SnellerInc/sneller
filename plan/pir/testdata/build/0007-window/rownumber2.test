@@ -1,0 +1,6 @@
+SELECT agg, SUM(foo), ROW_NUMBER() OVER (ORDER BY SUM(foo)) AS rownum
+FROM tbl
+GROUP BY agg
+---
+ITERATE tbl FIELDS [agg, foo]
+AGGREGATE SUM(foo) AS "sum", ROW_NUMBER() OVER (ORDER BY SUM(foo) ASC NULLS FIRST) AS rownum BY agg AS agg

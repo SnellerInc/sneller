@@ -1,0 +1,9 @@
+SELECT grp0, grp1, SUM(val) AS x,
+       ROW_NUMBER() OVER (PARTITION BY grp0 ORDER BY SUM(val)) AS asc_num
+FROM input
+GROUP BY grp0, grp1
+ORDER BY grp0, grp1, SUM(val)
+---
+ITERATE input FIELDS [grp0, grp1, val]
+AGGREGATE SUM(val) AS x, ROW_NUMBER() OVER (PARTITION BY grp0 ORDER BY SUM(val) ASC NULLS FIRST) AS asc_num BY grp0 AS grp0, grp1 AS grp1
+ORDER BY grp0 ASC NULLS FIRST, grp1 ASC NULLS FIRST, x ASC NULLS FIRST

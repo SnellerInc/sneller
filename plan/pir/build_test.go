@@ -1233,6 +1233,14 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"AGGREGATE COUNT(*) AS \"count\"",
 			},
 		},
+		{
+			input: `SELECT col FROM (SELECT col, COUNT(*) FROM tbl GROUP BY col)`,
+			expect: []string{
+				"ITERATE tbl FIELDS [col]",
+				"FILTER DISTINCT [col]",
+				"PROJECT col AS col",
+			},
+		},
 	}
 
 	for i := range tests {

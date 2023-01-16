@@ -1,0 +1,11 @@
+SELECT key1, key2, SUM(foo), ROW_NUMBER() OVER (PARTITION BY key1 ORDER BY SUM(foo)) AS rownum
+FROM tbl
+GROUP BY key1, key2
+---
+ITERATE tbl FIELDS [foo, key1, key2]
+AGGREGATE SUM(foo) AS "sum", ROW_NUMBER() OVER (PARTITION BY key1 ORDER BY SUM(foo) ASC NULLS FIRST) AS rownum BY key1 AS key1, key2 AS key2
+---
+UNION MAP tbl (
+	ITERATE PART tbl FIELDS [foo, key1, key2]
+	AGGREGATE SUM(foo) AS $_2_0 BY key1 AS key1, key2 AS key2)
+AGGREGATE SUM($_2_0) AS "sum", ROW_NUMBER() OVER (PARTITION BY key1 ORDER BY "sum" ASC NULLS FIRST) AS rownum BY key1 AS key1, key2 AS key2

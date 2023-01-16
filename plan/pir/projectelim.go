@@ -43,6 +43,14 @@ func (w walkfn) Visit(e expr.Node) expr.Visitor {
 	return w
 }
 
+func columns(b []expr.Binding) []expr.Node {
+	out := make([]expr.Node, len(b))
+	for i := range b {
+		out[i] = b[i].Expr
+	}
+	return out
+}
+
 // for each Bind step, eliminate bindings
 // that are not referenced in subsequent steps
 func projectelim(b *Trace) {
@@ -91,6 +99,18 @@ loop:
 				_, ok := used[ab.Result]
 				return ok
 			})
+			if len(s.Agg) == 0 {
+				if len(s.GroupBy) == 0 {
+					parent.setparent(DummyOutput{})
+				} else {
+					// GROUP BY ... -> DISTINCT ...
+					d := &Distinct{Columns: columns(s.GroupBy)}
+					d.setparent(s.parent())
+					b := &Bind{binds: binds{s.GroupBy}, complete: true}
+					b.setparent(d)
+					parent.setparent(b)
+				}
+			}
 			maps.Clear(used)
 			first = false
 		case *IterTable:

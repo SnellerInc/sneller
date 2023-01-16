@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("SELECT(0)FROM(SELECT SUM(0)FROM A GROUP BY 0)")
