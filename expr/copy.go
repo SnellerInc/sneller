@@ -15,6 +15,7 @@
 package expr
 
 import (
+	"math/big"
 	"reflect"
 
 	"github.com/SnellerInc/sneller/ion"
@@ -46,15 +47,17 @@ func isValueType(v reflect.Value) bool {
 
 // call into.Set(v) with v cloned if it is not a value type
 func copyValue(into, v reflect.Value) {
-	// ion.Datum knows how to clone itself
-	if d, ok := v.Interface().(ion.Datum); ok {
-		into.Set(reflect.ValueOf(d.Clone()))
+	iface := v.Interface()
+	// a few special cases:
+	switch v := iface.(type) {
+	case ion.Datum:
+		into.Set(reflect.ValueOf(v.Clone()))
 		return
-	}
-	// Binding has unexported fields, so we
-	// need special handling for copying
-	if b, ok := v.Interface().(Binding); ok {
-		into.Set(reflect.ValueOf(Binding{Expr: Copy(b.Expr), as: b.as, explicit: b.explicit}))
+	case Binding:
+		into.Set(reflect.ValueOf(Binding{Expr: Copy(v.Expr), as: v.as, explicit: v.explicit}))
+		return
+	case *Rational:
+		into.Set(reflect.ValueOf((*Rational)(new(big.Rat).Set((*big.Rat)(v)))))
 		return
 	}
 	if isValueType(v) {
