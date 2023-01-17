@@ -49,14 +49,6 @@ type f64RegData struct {
 	values [bcLaneCount]float64
 }
 
-func i64RegDataFromScalar(v int64) i64RegData {
-	out := i64RegData{}
-	for i := 0; i < bcLaneCount; i++ {
-		out.values[i] = v
-	}
-	return out
-}
-
 const (
 	kRegSize = 2
 	vRegSize = 128

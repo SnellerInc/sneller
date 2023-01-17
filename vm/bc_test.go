@@ -393,16 +393,18 @@ func verifyVRegOutputP(t *testing.T, output, expected *vRegData, predicate *kReg
 	verifyVRegOutput(t, &outputMaskedV, &expectedMaskedV)
 }
 
-func verifyI64RegOutput(t *testing.T, output, expected *i64RegData) {
+func verifyI64RegOutput(t *testing.T, output, expected *i64RegData) bool {
 	if *output != *expected {
 		t.Errorf("S register doesn't match:")
 		for i := 0; i < bcLaneCount; i++ {
 			if output.values[i] != expected.values[i] {
 				t.Logf("lane {%d}: output (%d) doesn't match (%d)",
 					i, output.values[i], expected.values[i])
+				return false
 			}
 		}
 	}
+	return true
 }
 
 //lint:ignore U1000 available for use
