@@ -6662,10 +6662,11 @@ loop_tail:
   VMOVDQA32     Z9, K3, Z8             // Z8 = good offsets
   KORW          K2, K3, K1             // K1 = (matched hash0)|(matched hash1)
   KMOVW         K1, K2
+  VPXORD        X30, X30, X30
   VPGATHERDD    8(R15)(Z8*1), K2, Z30   // load boxed offsets
+  VPXORD        X31, X31, X31
   KMOVW         K1, K3
   VPGATHERDD    12(R15)(Z8*1), K3, Z31  // load boxed lengths
-  VPADDD.BCST   bytecode_scratchoff(VIRT_BCPTR), Z30, K1, Z30
 
 next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))

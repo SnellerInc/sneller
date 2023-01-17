@@ -27,19 +27,6 @@ const (
 func (s *symflags) set(f symflags)   { *s |= f }
 func (s *symflags) clear(f symflags) { *s &^= f }
 
-type syms interface {
-	Get(ion.Symbol) string
-	Intern(x string) ion.Symbol
-	Symbolize(string) (ion.Symbol, bool)
-}
-
-func ionsyms(x syms) *ion.Symtab {
-	if st, ok := x.(*ion.Symtab); ok {
-		return st
-	}
-	return &x.(*symtab).Symtab
-}
-
 // symtab serves two purposes:
 //
 //  1. Wrap ion.Symtab; this is our source-of-truth

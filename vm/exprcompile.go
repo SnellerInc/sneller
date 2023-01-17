@@ -1083,68 +1083,42 @@ func (p *prog) member(e expr.Node, values []expr.Constant) (*value, error) {
 	return p.ssaimm(shashmember, values, h, p.mask(h)), nil
 }
 
-func (p *prog) recordDatum(d ion.Datum, st syms) {
-	switch d.Type() {
-	case ion.StructType:
-		d, _ := d.Struct()
-		d.Each(func(f ion.Field) bool {
-			p.record(st.Get(f.Sym), f.Sym)
-			p.recordDatum(f.Value, st)
-			return true
-		})
-	case ion.ListType:
-		d, _ := d.List()
-		d.Each(func(d ion.Datum) bool {
-			p.recordDatum(d, st)
-			return true
-		})
-	case ion.SymbolType:
-		d, _ := d.String()
-		sym, ok := st.Symbolize(d)
-		if !ok {
-			sym = ^ion.Symbol(0)
-		}
-		p.record(d, sym)
-	}
-}
-
-type hashResult struct {
-	tree     *radixTree64
-	literals []byte
-}
-
-func (p *prog) mkhash(st syms, imm interface{}) *hashResult {
+func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 	values := imm.([]ion.Datum)
-	var tmp, tmp2 ion.Buffer
+	var tmp ion.Buffer
 	tree := newRadixTree(8)
 	var hmem [16]byte
 	for len(values) >= 2 {
 		ifeq := values[0]
 		then := values[1]
 		values = values[2:]
-		p.recordDatum(ifeq, st)
-		p.recordDatum(then, st)
 
 		tmp.Reset()
-		ifeq.Encode(&tmp, ionsyms(st))
+		ifeq.Encode(&tmp, &st.Symtab)
 		chacha8Hash(tmp.Bytes(), hmem[:])
 		buf, _ := tree.Insert(binary.LittleEndian.Uint64(hmem[:]))
 
-		// encode reference to scratch buffer
-		// (4-byte base + 4-byte offset)
-		base := tmp2.Size()
-		then.Encode(&tmp2, ionsyms(st))
-		binary.LittleEndian.PutUint32(buf, uint32(base))
-		size := tmp2.Size() - base
-		binary.LittleEndian.PutUint32(buf[4:], uint32(size))
+		// encode a raw vmref
+		tmp.Reset()
+		then.Encode(&tmp, &st.Symtab)
+		// NOTE: we're assuming the record size here
+		// is less than the vm page size...
+		data := st.slab.malloc(tmp.Size())
+		copy(data, tmp.Bytes())
+		pos, ok := vmdispl(data)
+		if !ok {
+			panic("vm.slab.malloc returned a bad address")
+		}
+		binary.LittleEndian.PutUint32(buf, uint32(pos))
+		binary.LittleEndian.PutUint32(buf[4:], uint32(tmp.Size()))
 	}
-	return &hashResult{tree: tree, literals: tmp2.Bytes()}
+	return tree
 }
 
 // hook called on symbolization of hashmember;
 // convert []expr.Constant into a hash tree
 // using the current input symbol table
-func (p *prog) mktree(st syms, imm interface{}) *radixTree64 {
+func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
 	values := imm.([]expr.Constant)
 
 	var tmp ion.Buffer
@@ -1153,8 +1127,7 @@ func (p *prog) mktree(st syms, imm interface{}) *radixTree64 {
 	for i := range values {
 		tmp.Reset()
 		dat := values[i].Datum()
-		dat.Encode(&tmp, ionsyms(st))
-		p.recordDatum(dat, st)
+		dat.Encode(&tmp, &st.Symtab)
 		chacha8Hash(tmp.Bytes(), hmem[:])
 		tree.insertSlow(binary.LittleEndian.Uint64(hmem[:]))
 	}

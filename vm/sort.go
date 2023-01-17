@@ -784,7 +784,7 @@ func (s *sortstateKtop) maybePrefilter() error {
 
 	p.returnBool(p.initMem(), result)
 
-	p.symbolize(&s.symtabs[len(s.symtabs)-1], s.aux)
+	p.symbolize(s.st, s.aux)
 	err := p.compile(&s.filtbc, s.st, "sortstateKtop")
 	s.filtbc.symtab = s.st.symrefs
 	if err != nil {

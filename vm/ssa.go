@@ -15,7 +15,6 @@
 package vm
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -3466,21 +3465,8 @@ func emithashlookup(v *value, c *compilestate) {
 	k := v.args[1]
 
 	tSlot := len(c.trees)
-	hr := v.imm.(*hashResult)
-	c.trees = append(c.trees, hr.tree)
-
-	if len(c.litbuf) != 0 {
-		// adjust the negated offsets of the literals
-		// to reflect their final positions in c.litbuf
-		base := uint32(len(c.litbuf))
-		for i := 0; i < len(hr.tree.values); i += (aggregateTagSize + 8) {
-			val := binary.LittleEndian.Uint32(hr.tree.values[i+aggregateTagSize:])
-			val += base
-			binary.LittleEndian.PutUint32(hr.tree.values[i+aggregateTagSize:], val)
-		}
-	}
-	c.litbuf = append(c.litbuf, hr.literals...)
-
+	tree := v.imm.(*radixTree64)
+	c.trees = append(c.trees, tree)
 	c.asm.emitOpcode(ssainfo[v.op].bc,
 		c.slotOf(v, regV),
 		c.slotOf(v, regK),
@@ -4120,7 +4106,7 @@ func (p *prog) Renumber() {
 // Symbolize applies the symbol table from 'st'
 // to the program by copying the old program
 // to 'dst' and applying rewrites to findsym operations.
-func (p *prog) cloneSymbolize(st syms, dst *prog, aux *auxbindings) error {
+func (p *prog) cloneSymbolize(st *symtab, dst *prog, aux *auxbindings) error {
 	p.clone(dst)
 	return dst.symbolize(st, aux)
 }
@@ -4209,7 +4195,8 @@ func (p *prog) recordEmpty(str string) {
 	})
 }
 
-func (p *prog) symbolize(st syms, aux *auxbindings) error {
+func (p *prog) symbolize(st *symtab, aux *auxbindings) error {
+	defer st.build() // make sure symtab is up-to-date
 	p.resolved = p.resolved[:0]
 	for i := range p.values {
 		v := p.values[i]
@@ -4224,7 +4211,7 @@ func (p *prog) symbolize(st syms, aux *auxbindings) error {
 			if d, ok := v.imm.(ion.Datum); ok {
 				p.literals = true
 				var tmp ion.Buffer
-				d.Encode(&tmp, ionsyms(st))
+				d.Encode(&tmp, &st.Symtab)
 				v.imm = rawDatum(tmp.Bytes())
 			}
 		case sdot:
