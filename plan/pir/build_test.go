@@ -147,6 +147,33 @@ func TestBuildError(t *testing.T) {
 			input: "SELECT a FROM UNPIVOT table AS a AT a",
 			rx:    "the AS and AT UNPIVOT labels must not be the same 'a'",
 		},
+		{
+			input: `SELECT x, ROW_NUMBER() OVER() FROM tbl`,
+			rx:    "meaningless without ORDER BY",
+		},
+		{
+			input: `SELECT x, ROW_NUMBER() OVER () FROM tbl GROUP BY x`,
+			rx:    "meaningless without ORDER BY",
+		},
+		{
+			input: `SELECT x, COUNT(*), ROW_NUMBER() OVER () FROM tbl GROUP BY x`,
+			rx:    "meaningless without ORDER BY",
+		},
+		{
+			// legal but not supported: COUNT(*) isn't part of the outer aggregation
+			input: `SELECT x, SUM(y), ROW_NUMBER() OVER (ORDER BY COUNT(*)) FROM tbl GROUP BY x`,
+			rx:    "bound outside the window",
+		},
+		{
+			// legal but not supported: PARTITION BY element isn't explicitly bound
+			input: `SELECT x, SUM(y), ROW_NUMBER() OVER (PARTITION BY x+100 ORDER BY SUM(y)) FROM tbl GROUP BY x`,
+			rx:    "bound outside the window",
+		},
+		{
+			// implicit recursive aggregate via window functions:
+			input: `SELECT x, COUNT(*), ROW_NUMBER() OVER (ORDER BY COUNT(*)) AS rn, RANK() OVER (ORDER BY rn)`,
+			rx:    "nested aggregate",
+		},
 	}
 	for i := range tests {
 		in := tests[i].input

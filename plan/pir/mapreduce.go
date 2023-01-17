@@ -191,6 +191,23 @@ func numberOrMissing(e expr.Node) expr.Node {
 	return expr.Add(e, expr.Integer(0))
 }
 
+func windowMatch(e expr.Node, srcagg, dstagg vm.Aggregation, groups []expr.Binding) (string, bool) {
+	for i := range srcagg {
+		if srcagg[i].Expr == nil || srcagg[i].Expr.Over != nil {
+			continue
+		}
+		if e.Equals(srcagg[i].Expr) {
+			return dstagg[i].Result, true
+		}
+	}
+	for i := range groups {
+		if e.Equals(groups[i].Expr) {
+			return groups[i].Result(), true
+		}
+	}
+	return "", false
+}
+
 // take an aggregate expression and re-write it
 // so that the output bindings are sufficient
 // for the reduction step to produce the correct
@@ -344,24 +361,22 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			continue
 		}
 		into := out[i].Expr
-		// walk ORDER BY and extract any columns
-		// necessary for us to calculate
-		//
-		// FIXME: we could actually generate the right bindings here,
-		// but it's unusual and kind of a pain
+		// match PARTITION BY to corresponding columns
+		for j := range into.Over.PartitionBy {
+			if id, ok := windowMatch(into.Over.PartitionBy[j], a.Agg, out, a.GroupBy); ok {
+				into.Over.PartitionBy[j] = expr.Ident(id)
+				continue
+			}
+			return fmt.Errorf("window PARTITION BY references aggregate %s not in outer aggregation", expr.ToString(age.Over.PartitionBy[j]))
+		}
+		// match ORDER BY to corresponding columns
 		for j := range into.Over.OrderBy {
-			found := false
 			col := into.Over.OrderBy[j].Column
-			for k := range a.Agg {
-				if k != i && a.Agg[k].Expr != nil && col.Equals(a.Agg[k].Expr) {
-					into.Over.OrderBy[j].Column = expr.Ident(out[k].Result)
-					found = true
-					break
-				}
+			if id, ok := windowMatch(col, a.Agg, out, a.GroupBy); ok {
+				into.Over.OrderBy[j].Column = expr.Ident(id)
+				continue
 			}
-			if !found {
-				return fmt.Errorf("window ORDER BY references aggregate %s not in outer aggregation", expr.ToString(age.Over.OrderBy[i].Column))
-			}
+			return fmt.Errorf("window ORDER BY references aggregate %s not in outer aggregation", expr.ToString(age.Over.OrderBy[j].Column))
 		}
 	}
 	a.Agg = newaggs
