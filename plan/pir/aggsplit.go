@@ -253,6 +253,14 @@ func flattenInto(x, y []expr.Binding) {
 	})
 }
 
+func flattenOne(x []expr.Binding, e expr.Node) expr.Node {
+	f := newFlattener(len(x))
+	for i := range x {
+		f.add(x[i])
+	}
+	return expr.Rewrite(f, e)
+}
+
 func flattenIntoFunc(x []expr.Binding, n int, item func(int) *expr.Node) {
 	f := newFlattener(len(x))
 	for i := range x {
@@ -369,6 +377,10 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 	}
 	rw := &agglifter{rewrite: rewrite}
 	if having != nil {
+		// flatten any SELECT bindings into the HAVING clause
+		// so that it can operate with the same set of bindings
+		// as we had before actually computing the final projection
+		having = flattenOne(columns, having)
 		// note: performing the same rewrite
 		// for HAVING as we do for projection means
 		// that HAVING can actually introduce new aggregate
