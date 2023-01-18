@@ -208,7 +208,7 @@ func scanstrs(st *Symtab, body []byte, stab *strtab) []byte {
 		return rest
 	case StringType:
 		body, rest, _ := ReadStringShared(body)
-		stab.mark(body, st, 3)
+		stab.mark(body, st, 10)
 		return rest
 	default:
 		return body[SizeOf(body):]
