@@ -59,10 +59,16 @@ TEXT ·zipfast1(SB), NOSPLIT, $0
     MOVQ  dst_base+24(FP), DI // DI = &dst[0]
     MOVQ  $0, ret+72(FP)      // consumed = 0
     MOVQ  $0, ret1+80(FP)     // wrote = 0
-    MOVQ  sym+56(FP), DX      // DX = target symbol
     MOVQ  count+64(FP), BX    // BX = target count
-    TESTQ BX, BX
-    JZ    ret
+    CMPQ  BX, $0
+    JLE   ret
+
+    MOVQ  sym+56(FP), DX      // DX = target symbol
+    MOVQ  src_len+8(FP), R10
+    ADDQ  SI, R10             // R10 = &src[len(src)] -- a past-end pointer
+    MOVQ  dst_len+32(FP), R11
+    ADDQ  DI, R11             // R11 = &dst[len(dst)] -- a past-end pointer
+
 loop_top:
     // now we have SI pointing to an ion label + value;
     // we need to decode the # of bytes in this memory
@@ -71,7 +77,7 @@ loop_top:
     MOVL    0(SI), R14
     MOVL    R14, R15
     ANDL    $0x00808080, R15 // check for stop bit
-    JZ      ret_err
+    JZ      ret_baddata
     MOVL    $1, CX
     MOVL    R14, R8
     ANDL    $0x7f, R8
@@ -101,7 +107,7 @@ value_is_varint:
     INCL    CX
     SHRL    $8, R14
     TESTL   $0x00808080, R14  // if there isn't a stop bit, we have a problem
-    JZ      ret_err
+    JZ      ret_baddata
     MOVL    R14, R15
     ANDL    $0x7f, R15        // accum = desc[0]&0x7f
     TESTL   $0x80, R14
@@ -119,10 +125,22 @@ end_varint:
     ADDL    R15, CX          // size += sizeof(object)
 just_one_byte:
     INCL   CX                // size += descriptor byte
+
+    // check src bounds
+    LEAQ   (SI)(CX*1), AX    // AX = src pointer after copy/skip
+    CMPQ   AX, R10
+    JA     ret_truncated     // check if the future SI won't go outside `src`
+
     CMPQ   R8, DX
     JNE    skip_object
     CMPQ   CX, $0xe
     JGE    size2
+
+    // check dst bounds
+    LEAQ   1(DI)(CX*1), AX
+    CMPQ   AX, R11
+    JA     ret_toolarge
+
     MOVL   CX, AX
     ORL    $0xd0, AX
     MOVB   AX, 0(DI)
@@ -131,6 +149,12 @@ just_one_byte:
 size2:
     CMPQ   CX, $(1<<7)
     JGE    size3
+
+    // check dst bounds
+    LEAQ   2(DI)(CX*1), AX
+    CMPQ   AX, R11
+    JA     ret_toolarge
+
     MOVL   CX, AX
     SHLL   $8, AX
     ORL    $0x80de, AX
@@ -140,6 +164,12 @@ size2:
 size3:
     CMPQ   CX, $(1<<14)
     JGE    size4
+
+    // check dst bounds
+    LEAQ   3(DI)(CX*1), AX
+    CMPQ   AX, R11
+    JA     ret_toolarge
+
     MOVL   $0x8000de, AX
     MOVL   CX, R8
     ANDL   $(0x7f << 7), R8
@@ -154,7 +184,13 @@ size3:
     JMP    do_memcpy
 size4:
     CMPQ  CX, $(1<<21)
-    JGE   ret_err
+    JGE   ret_baddata
+
+    // check dst bounds
+    LEAQ   3(DI)(CX*1), AX
+    CMPQ   AX, R11
+    JA     ret_toolarge
+
     MOVL  $0x800000de, AX
     MOVL  CX, R8
     ANDL  $0x7f, R8
@@ -185,17 +221,20 @@ memcpy_end:
     DECL    BX
     JZ      ret
 loop_tail:
-    MOVQ    src_base+0(FP), AX
-    ADDQ    src_len+8(FP), AX
-    CMPQ    SI, AX
+    CMPQ    SI, R10
     JB      loop_top
 write_zeros:
+    // check dst capacity
+    LEAQ    (DI)(BX*1), AX
+    CMPQ    AX, R11
+    JA      ret_toolarge
+write_zeros_loop:
     // for all the elements we didn't consume,
     // write out the empty structure:
     MOVB    $0xd0, 0(DI)
     INCQ    DI
     DECL    BX
-    JNZ     write_zeros
+    JNZ     write_zeros_loop
 ret:
     MOVQ    d+48(FP), R9
     MOVL    $0, Decoder_fault(R9)
@@ -208,15 +247,15 @@ ret:
 skip_object:
     ADDQ    CX, SI
     JMP     loop_tail
-ret_err:
+ret_baddata:
     MOVQ    d+48(FP), R9
     MOVL    $const_faultBadData, Decoder_fault(R9)
     RET
-memcpy_slow:
-    MOVBQZX  0(SI), R8
-    INCQ     SI
-    MOVB     R8, 0(DI)
-    INCQ     DI
-    DECL     CX
-    JNZ      memcpy_slow
-    JMP      memcpy_end
+ret_toolarge:
+    MOVQ    d+48(FP), R9
+    MOVL    $const_faultTooLarge, Decoder_fault(R9)
+    RET
+ret_truncated:
+    MOVQ    d+48(FP), R9
+    MOVL    $const_faultTruncated, Decoder_fault(R9)
+    RET

@@ -17,6 +17,8 @@
 package zion
 
 import (
+	"fmt"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -95,4 +97,185 @@ func TestNoOverwrite(t *testing.T) {
 	if consumed != len(shape) {
 		t.Errorf("consumed %d of %d?", consumed, len(shape))
 	}
+}
+
+func TestZipFast1(t *testing.T) {
+	testcases := []struct {
+		ion      []byte
+		dsc      string
+		fault    fault
+		consumed int
+		wrote    int
+		output   []byte // used if procedure didn't set any error
+		dstsize  int    // non-default dst size
+		count    int    // non-default count
+		setcount bool
+	}{
+		{
+			dsc:   "no varuint at the beginning",
+			ion:   pad8([]byte{0x0a}),
+			fault: faultBadData,
+		},
+		{
+			dsc:      "XXX: only label followed by 1-byte NOP",
+			ion:      pad8([]byte{0x85, 0x00}),
+			fault:    noFault, // should be faultBadData?
+			consumed: 2,
+			wrote:    5,
+			// we're looking for symbol 0xa, not 0x5, thus we output 5 x 0xd0 {empty structs}
+			output: []byte{0xd0, 0xd0, 0xd0, 0xd0, 0xd0},
+		},
+		{
+			dsc:   "no object length after struct marker",
+			ion:   pad8([]byte{0x85, 0xde}),
+			fault: faultBadData,
+		},
+		{
+			dsc:   "object size is 248, but input has at most 8 bytes",
+			ion:   pad8([]byte{0x85, 0xde, 0x02, 0x82}),
+			fault: faultTruncated,
+		},
+		{
+			dsc: "copy object (symbol 0xa encoded with 1 byte)",
+			ion: pad8([]byte{
+				0x85, 0x82, 0x61, 0x63,
+				0x8a, 0x83, 0xaa, 0xbb, 0xcc,
+			}),
+			consumed: 9,
+			wrote:    10,
+			output:   []byte{0xd5, 0x8a, 0x83, 0xaa, 0xbb, 0xcc, 0xd0, 0xd0, 0xd0, 0xd0},
+		},
+		{
+			dsc:      "copy object (symbol 0xa encoded with 2 bytes)",
+			ion:      pad8([]byte{0x00, 0x8a, 0x82, 0xaa, 0xbb}),
+			consumed: 5,
+			wrote:    10,
+			output:   []byte{0xd5, 0x00, 0x8a, 0x82, 0xaa, 0xbb, 0xd0, 0xd0, 0xd0, 0xd0},
+		},
+		{
+			dsc:      "copy object (symbol 0xa encoded with 3 bytes)",
+			ion:      pad8([]byte{0x00, 0x00, 0x8a, 0x82, 0xaa, 0xbb}),
+			consumed: 6,
+			wrote:    11,
+			output:   []byte{0xd6, 0x00, 0x00, 0x8a, 0x82, 0xaa, 0xbb, 0xd0, 0xd0, 0xd0, 0xd0},
+		},
+		{
+			dsc: "copy 10-byte string that won't fit in dst; object length encoded in TLV byte",
+			ion: pad8([]byte{
+				0x8a, 0x8a, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+				0x01, 0x01, 0x01, 0x01}),
+			fault:   faultTooLarge,
+			dstsize: 8,
+		},
+		{
+			dsc:   "copy long string that won't fit in dst; object length encoded with 1 byte",
+			ion:   pad8(ionobject(ion.Symbol(0xa), (1<<7)-4)),
+			fault: faultTooLarge,
+		},
+		{
+			dsc:   "copy long string that won't fit in dst; object length encoded with 2 bytes",
+			ion:   pad8(ionobject(ion.Symbol(0xa), (1<<14)-5)),
+			fault: faultTooLarge,
+		},
+		{
+			dsc:   "copy long string that won't fit in dst; object length encoded with 3 bytes",
+			ion:   pad8(ionobject(ion.Symbol(0xa), (1<<21)-6)),
+			fault: faultTooLarge,
+		},
+		{
+			dsc:   "copy string longer than allowed size (1 << 21)",
+			ion:   pad8(ionobject(ion.Symbol(0xa), (1 << 22))),
+			fault: faultBadData,
+		},
+		{
+			dsc:   "wrote more empty structs than dst can fit (dst has 20 bytes)",
+			ion:   pad8([]byte{0x81, 0x0f}),
+			count: 42 * 5,
+			fault: faultTooLarge,
+		},
+		{
+			dsc:   "call with negative count",
+			ion:   pad8([]byte{0x81, 0x11, 0x8a, 0x11}),
+			count: -5,
+		},
+		{
+			dsc:      "call with zero count",
+			ion:      pad8([]byte{0x81, 0x11, 0x8a, 0x11}),
+			count:    0,
+			setcount: true,
+		},
+	}
+
+	for i := range testcases {
+		tc := &testcases[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			var d Decoder
+			sym := ion.Symbol(0xa)
+
+			dstsize := tc.dstsize
+			if dstsize == 0 {
+				dstsize = 20
+			}
+
+			count := tc.count
+			if !tc.setcount && count == 0 {
+				count = 5
+			}
+
+			dst := make([]byte, dstsize)
+			consumed, wrote := zipfast1(tc.ion, dst, &d, sym, count)
+
+			fail := false
+			if d.fault != tc.fault {
+				t.Logf("want: %s", tc.fault)
+				t.Logf("got:  %s", d.fault)
+				t.Error("wrong decoder fault value")
+				fail = true
+			}
+
+			if consumed != tc.consumed {
+				t.Logf("want: %d", tc.consumed)
+				t.Logf("got:  %d", consumed)
+				t.Error("wrong consumed value")
+				fail = true
+			}
+
+			if wrote != tc.wrote {
+				t.Logf("want: %d", tc.wrote)
+				t.Logf("got:  %d", wrote)
+				t.Error("wrong wrote value")
+				fail = true
+			}
+
+			if d.fault == noFault && tc.output != nil {
+				n := len(dst)
+				if wrote < n {
+					n = wrote
+				}
+				buf := dst[:n]
+				if !slices.Equal(buf, tc.output) {
+					t.Logf("want: % x", tc.output)
+					t.Logf("got:  % x", buf)
+					t.Error("wrong output value")
+					fail = true
+				}
+			}
+
+			if fail {
+				t.Fail()
+			}
+		})
+	}
+}
+
+// ionobject returns encoded label + string (without struct header)
+func ionobject(sym ion.Symbol, length int) []byte {
+	var buf ion.Buffer
+	buf.BeginStruct(-1)
+	buf.BeginField(sym)
+	buf.WriteString(strings.Repeat("?", length))
+	buf.EndStruct()
+
+	ion, _ := ion.Contents(buf.Bytes())
+	return ion
 }

@@ -29,10 +29,26 @@ import (
 type fault int32
 
 const (
-	noFault       fault = iota // no error encountered
-	faultTooLarge              // not enough room in the output buffer
-	faultBadData               // unexpected data in the input
+	noFault        fault = iota // no error encountered
+	faultTooLarge               // not enough room in the output buffer
+	faultBadData                // unexpected data in the input
+	faultTruncated              // input data truncated (or Ion corrupted)
 )
+
+func (f fault) String() string {
+	switch f {
+	default:
+		return "unknown fault"
+	case noFault:
+		return "no fault"
+	case faultTooLarge:
+		return "not enough room in the output buffer"
+	case faultBadData:
+		return "unexpected data in the input"
+	case faultTruncated:
+		return "input data truncated"
+	}
+}
 
 const (
 	DefaultTargetWrite = 128 * 1024
@@ -90,7 +106,7 @@ func (d *Decoder) Reset() {
 	d.out = d.out[:0]
 	d.tmp = d.tmp[:0]
 	d.dst = nil
-	d.fault = 0
+	d.fault = noFault
 }
 
 // SetWildcard tells the decoder to decode
@@ -322,7 +338,7 @@ func (d *Decoder) walk(shape []byte) error {
 			panic("consumed == 0 but wrote > 0")
 		}
 		switch d.fault {
-		case faultBadData:
+		case faultBadData, faultTruncated:
 			return errCorrupt
 		case noFault:
 			if consumed == 0 {
