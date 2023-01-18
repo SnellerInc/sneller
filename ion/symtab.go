@@ -438,12 +438,20 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 			if lst == nil {
 				return nil, fmt.Errorf("Symtab.Unmarshal: Contents(%x)==nil", start(body))
 			}
+			// an optimization: allocate the string memory *once*
+			// and then produce the individual symbol strings
+			// as sub-strings of the full string list
+			fullstr := string(lst)
+			anchor := cap(lst)
 			for len(lst) > 0 {
-				var str string
-				str, lst, err = ReadString(lst)
+				var strseg []byte
+				strseg, lst, err = ReadStringShared(lst)
 				if err != nil {
 					return nil, fmt.Errorf("Symtab.Unmarshal (in 'symbols:') %w", err)
 				}
+				end := anchor - cap(lst)
+				start := end - len(strseg)
+				str := fullstr[start:end]
 				// XXX what is the correct behavior here
 				// when a string is interned more than
 				// once?
