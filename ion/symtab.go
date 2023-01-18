@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -28,10 +27,15 @@ import (
 
 // Symtab is an ion symbol table
 type Symtab struct {
-	interned []string       // symbol -> string lookup
-	aliased  int            // read-only len of interned
-	toindex  map[string]int // string -> symbol lookup
-	memsize  int
+	interned []string // symbol -> string lookup
+	aliased  int      // read-only len of interned
+
+	// toindex maps interned symbols to integers
+	// but *only* if they are actually part of the symbol table;
+	// it is allowed to contain erroneous string->int mappings,
+	// so callers need to cross-check results against interned[]
+	toindex map[string]int
+	memsize int
 }
 
 func (s *Symtab) init() {
@@ -66,9 +70,6 @@ func (s *Symtab) Truncate(max int) {
 	}
 	tail := s.interned[max:]
 	for _, k := range tail {
-		if s.toindex != nil {
-			delete(s.toindex, k)
-		}
 		s.memsize -= len(k)
 	}
 	s.interned = s.interned[:max]
@@ -113,7 +114,30 @@ func (s *Symtab) getBytes(buf []byte) (Symbol, bool) {
 		i, ok := system2id[string(buf)]
 		return Symbol(i), ok
 	}
+	return s.rawGetBytes(buf)
+}
+
+func (s *Symtab) rawGet(x string) (Symbol, bool) {
+	i, ok := s.toindex[x]
+	if ok && i >= len(systemsyms) {
+		n := i - len(systemsyms)
+		if n >= len(s.interned) {
+			return 0, false
+		}
+		ok = s.interned[n] == x
+	}
+	return Symbol(i), ok
+}
+
+func (s *Symtab) rawGetBytes(buf []byte) (Symbol, bool) {
 	i, ok := s.toindex[string(buf)]
+	if ok && i >= len(systemsyms) {
+		n := i - len(systemsyms)
+		if n >= len(s.interned) {
+			return 0, false
+		}
+		ok = s.interned[n] == string(buf)
+	}
 	return Symbol(i), ok
 }
 
@@ -124,9 +148,8 @@ func (s *Symtab) InternBytes(buf []byte) Symbol {
 	if s.toindex == nil {
 		s.init()
 	}
-	i, ok := s.toindex[string(buf)]
-	if ok {
-		return Symbol(i)
+	if sym, ok := s.rawGetBytes(buf); ok {
+		return sym
 	}
 	id := len(s.interned) + len(systemsyms)
 	s.toindex[string(buf)] = id
@@ -142,9 +165,8 @@ func (s *Symtab) Intern(x string) Symbol {
 	if s.toindex == nil {
 		s.init()
 	}
-	i, ok := s.toindex[x]
-	if ok {
-		return Symbol(i)
+	if sym, ok := s.rawGet(x); ok {
+		return sym
 	}
 	id := len(s.interned) + len(systemsyms)
 	s.toindex[x] = id
@@ -162,8 +184,7 @@ func (s *Symtab) Symbolize(x string) (Symbol, bool) {
 		i, ok := system2id[x]
 		return Symbol(i), ok
 	}
-	i, ok := s.toindex[x]
-	return Symbol(i), ok
+	return s.rawGet(x)
 }
 
 // SymbolizeBytes works identically to Symbolize,
@@ -173,13 +194,12 @@ func (s *Symtab) SymbolizeBytes(x []byte) (Symbol, bool) {
 		i, ok := system2id[string(x)]
 		return Symbol(i), ok
 	}
-	i, ok := s.toindex[string(x)]
-	return Symbol(i), ok
+	return s.rawGetBytes(x)
 }
 
 // Equal checks if two symtabs are equal.
 func (s *Symtab) Equal(o *Symtab) bool {
-	return reflect.DeepEqual(s, o)
+	return slices.Equal(s.interned, o.interned)
 }
 
 // CloneInto performs a deep copy
@@ -187,42 +207,19 @@ func (s *Symtab) Equal(o *Symtab) bool {
 // use some of the existing storage in o
 // in order to reduce the copying overhead.
 func (s *Symtab) CloneInto(o *Symtab) {
-	// skip common prefix:
-	i := 0
-	for i < len(o.interned) && i < len(s.interned) && s.interned[i] == o.interned[i] {
-		i++
-	}
+	o.interned = s.alias()
+	o.aliased = len(o.interned)
 	if o.toindex == nil {
-		o.init()
+		o.toindex = make(map[string]int, len(o.interned)+len(systemsyms))
 	}
-	// for non-overlapping elements in o,
-	// overwrite with elements from s
-	// or delete the associated toindex entry
-	for ; i < len(o.interned); i++ {
-		str := o.interned[i]
-		if old, ok := o.toindex[str]; ok && old == i+len(systemsyms) {
-			// we can only delete if the key
-			// was not part of an insert already
-			// (i.e. the symbol was moved from
-			// a high to a low position)
-			delete(o.toindex, str)
-		}
-		s.memsize -= len(o.interned[i])
-		if i < len(s.interned) {
-			o.set(i, s.interned[i])
-			s.memsize += len(s.interned[i])
-			o.toindex[o.interned[i]] = i + len(systemsyms)
+	o.memsize = s.memsize
+	if s.toindex != nil {
+		for k, v := range s.toindex {
+			if v < o.MaxID() {
+				o.toindex[k] = v
+			}
 		}
 	}
-	// if we are inserting more elements, keep going:
-	for len(o.interned) < len(s.interned) {
-		x := s.interned[len(o.interned)]
-		o.memsize += len(x)
-		o.toindex[x] = len(o.interned) + len(systemsyms)
-		o.append(x)
-	}
-	// ... or, drop the tail now that we've deleted toindex[...]
-	o.interned = o.interned[:len(s.interned)]
 }
 
 func (s *Symtab) append(v string) {
@@ -347,13 +344,20 @@ func IsBVM(buf []byte) bool {
 	return word&0xff0000ff == 0xea0000e0
 }
 
+const clearToItems = 1000
+
 func (s *Symtab) clear() {
+	// don't let the lookup cache remain enormous
+	// if it is already quite large; remove some entries
+	// so that the strings can be GC'd
+	if s.toindex != nil && len(s.interned) > clearToItems {
+		tail := s.interned[clearToItems:]
+		for i := range tail {
+			delete(s.toindex, tail[i])
+		}
+	}
 	s.interned = s.interned[:0]
 	s.memsize = 0
-	if s.toindex != nil {
-		maps.Clear(s.toindex)
-		maps.Copy(s.toindex, system2id)
-	}
 }
 
 func start(x []byte) []byte {
@@ -457,9 +461,7 @@ func (s *Symtab) Unmarshal(src []byte) ([]byte, error) {
 				// once?
 				s.append(str)
 				s.memsize += len(str)
-				if _, ok := s.toindex[str]; !ok {
-					s.toindex[str] = len(s.interned) - 1 + len(systemsyms)
-				}
+				s.toindex[str] = len(s.interned) - 1 + len(systemsyms)
 			}
 		default:
 			// skip unknown field
