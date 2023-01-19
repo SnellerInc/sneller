@@ -231,22 +231,17 @@ TEXT bcbitcounti64(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// TODO: AVX-512 LEVEL-2 enablement.
-/*
-// i64[0].k[1] = bit_count(i64[2]).k[3]
-TEXT bitcounti64_v2(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+// i64[0] = bit_count(i64[1]).k[2]
+TEXT bcbitcounti64_v2(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   VPOPCNTQ.Z 0(VIRT_VALUES)(BX*1), K1, Z2
   VPOPCNTQ.Z 64(VIRT_VALUES)(BX*1), K2, Z3
 
-  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-
-  NEXT_ADVANCE(BC_SLOT_SIZE*4)
-*/
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // Integer Math Instructions - Add
 // -------------------------------

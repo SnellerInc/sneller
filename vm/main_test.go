@@ -23,8 +23,34 @@ import (
 	"time"
 )
 
+const (
+	envvar = "SNELLER_AVX512_LEVEL"
+)
+
 func TestMain(m *testing.M) {
 	rand.Seed(time.Now().UnixNano()) // needed by evalbc_test.go
+
+	{
+		val, _ := os.LookupEnv(envvar)
+		switch val {
+		default:
+			fmt.Printf("Environment variable %q: unknown value %q\n", envvar, val)
+			os.Exit(2)
+
+		case "": // do nothing
+
+		case "v1":
+			setavx512level(avx512level1)
+
+		case "v2":
+			if avx512level() >= avx512level2 {
+				setavx512level(avx512level2)
+			} else {
+				fmt.Printf("Environment variable %q: CPU does not support features required by v2\n", envvar)
+				os.Exit(2)
+			}
+		}
+	}
 
 	var leakbuf bytes.Buffer
 	ret := 0

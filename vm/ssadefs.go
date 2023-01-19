@@ -618,6 +618,7 @@ var ssainfo [_ssamax]ssaopinfo
 
 func init() {
 	copy(ssainfo[:], _ssainfo[:])
+	setavx512level(avx512highestlevel)
 }
 
 const (

@@ -579,6 +579,10 @@ var opinfo [_maxbcop]bcopinfo = bcmakeopinfo()
 
 func init() {
 	// Verify that new ops have been added to the opinfo table
+	for _, r := range patchAVX512Level2 {
+		opinfo[r.to] = opinfo[r.from]
+	}
+
 	for i := 0; i < _maxbcop; i++ {
 		info := &opinfo[i]
 		if info.text == "" {
