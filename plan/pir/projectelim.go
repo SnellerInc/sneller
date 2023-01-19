@@ -89,8 +89,18 @@ loop:
 				parent.setparent(s.parent())
 				continue loop
 			}
+			for i := range s.bind {
+				if _, ok := s.bind[i].Expr.(expr.Star); ok {
+					return // we're using everything from previous steps
+				}
+			}
 			first = false
 		case *Aggregate:
+			for i := range s.Agg {
+				if op := s.Agg[i].Expr.Op; op == expr.OpSystemDatashape || op == expr.OpSystemDatashapeMerge {
+					return // using everything
+				}
+			}
 			if first {
 				first = false
 				break

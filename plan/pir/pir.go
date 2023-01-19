@@ -175,6 +175,7 @@ func (i *IterTable) trim(used map[string]struct{}) {
 	}
 	maps.DeleteFunc(i.definite, pred)
 	maps.DeleteFunc(i.free, pred)
+	i.star = false
 }
 
 func (i *IterTable) describe(dst io.Writer) {

@@ -1268,6 +1268,22 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"PROJECT col AS col",
 			},
 		},
+		{
+			// make sure "SELECT *" doesn't automatically inhibit dereference push-down
+			input: `WITH data AS (SELECT * FROM tbl) SELECT COUNT(*) FROM data`,
+			expect: []string{
+				"ITERATE tbl FIELDS []",
+				"AGGREGATE COUNT(*) AS \"count\"",
+			},
+		},
+		{
+			// same as above: make sure dereference push-down works
+			input: `WITH data AS (SELECT * FROM tbl) SELECT a, b, c FROM data WHERE d = 3`,
+			expect: []string{
+				"ITERATE tbl FIELDS [a, b, c, d] WHERE d = 3",
+				"PROJECT a AS a, b AS b, c AS c",
+			},
+		},
 	}
 
 	for i := range tests {
