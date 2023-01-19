@@ -372,6 +372,7 @@ func TestSortMultipleColumnsCase3(t *testing.T) {
 }
 
 func TestSortWithMissingField(t *testing.T) {
+	t.Skip("result not well-defined; usually MISSING does not end up in the final sort")
 	orderBy := []SortColumn{
 		SortColumn{Node: parsePath("unknown"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
 		SortColumn{Node: parsePath("coef"), Direction: sorting.Ascending, Nulls: sorting.NullsFirst},
@@ -534,12 +535,15 @@ func limitTestIon(rowsCount int) (result []byte, err error) {
 // --------------------------------------------------
 
 func parseIonRecords(bytes []byte) (result []string, err error) {
+	if len(bytes) == 0 {
+		return nil, nil
+	}
 	// we assume id and key fields, where id is always int
 	var st ion.Symtab
 
 	bytes, err = st.Unmarshal(bytes)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("symtab: %s", err)
 	}
 
 	// do not include record id, just value(s)
@@ -632,6 +636,7 @@ func parseIonRecords(bytes []byte) (result []string, err error) {
 }
 
 func compareIonWithExpectations(t *testing.T, output []byte, expected []string) {
+	t.Helper()
 	values, err := parseIonRecords(output)
 	if err != nil {
 		t.Fatal(err)

@@ -88,6 +88,12 @@ type Order struct {
 // If limit is non-nil, then the number of rows output
 // by the Order will be less than or equal to the limit.
 func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, parallelism int) *Order {
+	if limit == nil {
+		limit = &sorting.Limit{
+			Kind:  sorting.LimitToHeadRows,
+			Limit: 100000,
+		}
+	}
 	s := &Order{
 		columns:     columns,
 		limit:       limit,
