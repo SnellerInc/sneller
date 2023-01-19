@@ -150,7 +150,8 @@ func (p *Projection) Open() (io.WriteCloser, error) {
 	}
 	rc, ok := dst.(rowConsumer)
 	if !ok && p.constexpr != nil {
-		return splitter(&constproject{datum: p.constexpr, dst: dst}), nil
+		cp := &constproject{datum: p.constexpr, dst: dst}
+		return splitter(cp), nil
 	}
 	pj := &projector{parent: p, dst: dst, dstrc: rc}
 
@@ -167,7 +168,7 @@ func (p *Projection) Close() error {
 
 func (p *projector) update(st *symtab, aux *auxbindings) error {
 	if p.aw.buf == nil {
-		p.aw.init(p.dst, nil, defaultAlign)
+		p.aw.init(p.dst)
 	}
 	err := p.aw.setpre(st)
 	if err != nil {
@@ -345,39 +346,48 @@ func evalproject(bc *bytecode, delims []vmref, dst []byte, symbols []syminfo) (i
 // when the output is known to be a constant structure;
 // we pre-encode the output and just emit it on each input row
 type constproject struct {
-	datum    *ion.Struct // constant row
-	data     ion.Buffer  // scratch buffer for parent.constexpr
-	datasize int         // data.Bytes()[:datasize] is the row contents
-	dst      io.WriteCloser
+	datum *ion.Struct // constant row
+	data  ion.Buffer  // scratch buffer for parent.constexpr
+	dst   io.WriteCloser
+	aw    alignedWriter
 }
 
 func (p *constproject) next() rowConsumer { return nil }
 
 func (p *constproject) symbolize(st *symtab, aux *auxbindings) error {
 	p.data.Reset()
-	// capture all symbols via first encode:
 	p.datum.Encode(&p.data, &st.Symtab)
-	p.datasize = p.data.Size()
 
-	// write out symbol table immediately
-	st.Marshal(&p.data, true)
-	_, err := p.dst.Write(p.data.Bytes()[p.datasize:])
-	if err != nil {
-		return err
+	if p.aw.buf == nil {
+		p.aw.init(p.dst)
 	}
-	return nil
+
+	return p.aw.setpre(st)
 }
 
 func (p *constproject) writeRows(delims []vmref, rp *rowParams) error {
-	// it is almost always the case that len(delims) == 1
-	row := p.data.Bytes()[:p.datasize]
+	row := p.data.Bytes()
+	n := len(row)
 	for range delims {
-		_, err := p.dst.Write(row)
-		if err != nil {
-			return err
+		if p.aw.space() < n {
+			_, err := p.aw.flush()
+			if err != nil {
+				return err
+			}
 		}
+
+		if n > p.aw.space() {
+			return fmt.Errorf("row too big (%d bytes > buffer size %d bytes)", n, len(p.aw.buf))
+		}
+
+		copy(p.aw.buf[p.aw.off:], row)
+		p.aw.off += n
 	}
 	return nil
 }
 
-func (p *constproject) Close() error { return p.dst.Close() }
+func (p *constproject) Close() error { return p.aw.Close() }
+
+func (p *constproject) EndSegment() {
+	p.aw.maybeDrop()
+}

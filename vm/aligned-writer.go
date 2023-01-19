@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	pageSlack    = 16
 	defaultAlign = 1024 * 1024
 )
 
@@ -34,13 +33,9 @@ type alignedWriter struct {
 	off, save int
 }
 
-func (a *alignedWriter) init(out io.WriteCloser, pre []byte, align int) {
+func (a *alignedWriter) init(out io.WriteCloser) {
 	a.out = out
 	a.buf = Malloc()
-	if pre != nil {
-		a.off = copy(a.buf, pre)
-		a.save = a.off
-	}
 }
 
 func (a *alignedWriter) space() int {
