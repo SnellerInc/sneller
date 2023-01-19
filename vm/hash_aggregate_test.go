@@ -160,7 +160,7 @@ func TestHashAggregate(t *testing.T) {
 					if inner.Empty() {
 						t.Fatalf("output row %d: unexpected field %q", rownum, name)
 					}
-					val := f.Value
+					val := f.Datum
 					if !reflect.DeepEqual(val, inner) {
 						t.Errorf("row %d field %q - got %#v want %#v", rownum, name, val, inner)
 					}

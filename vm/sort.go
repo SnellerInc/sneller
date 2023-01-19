@@ -279,7 +279,7 @@ func (s *Order) finalizeKtop() error {
 			}
 			row = append(row, ion.Field{
 				Label: st.Get(sym),
-				Value: val,
+				Datum: val,
 			})
 		}
 		tmp.WriteStruct(&globalst, row)

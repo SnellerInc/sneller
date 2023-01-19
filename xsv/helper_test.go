@@ -65,7 +65,7 @@ func testConvert(t *testing.T, file string, ch RowChopper, h *Hint) {
 		dst.W = ion.NewJSONWriter(&cw, '\n')
 	}
 
-	err = Convert(f, &dst, ch, h, []ion.Field{{Label: "input_file", Value: ion.String(file)}})
+	err = Convert(f, &dst, ch, h, []ion.Field{{Label: "input_file", Datum: ion.String(file)}})
 	if err != nil {
 		t.Fatalf("cannot convert: %s", err)
 	}

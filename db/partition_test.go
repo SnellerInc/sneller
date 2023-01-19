@@ -62,8 +62,8 @@ func TestCollector(t *testing.T) {
 	},
 		"/foo/bar", "/{x}/{y}", "foo/bar",
 		[]ion.Field{
-			{Label: "x", Value: ion.String("foo")},
-			{Label: "y", Value: ion.String("bar")},
+			{Label: "x", Datum: ion.String("foo")},
+			{Label: "y", Datum: ion.String("bar")},
 		},
 	)
 	good([]Partition{
@@ -71,7 +71,7 @@ func TestCollector(t *testing.T) {
 	},
 		"/foo/bar", "/{x}/{y}", "foo/bar",
 		[]ion.Field{
-			{Label: "path", Value: ion.String("foo/bar")},
+			{Label: "path", Datum: ion.String("foo/bar")},
 		},
 	)
 	good([]Partition{
@@ -79,7 +79,7 @@ func TestCollector(t *testing.T) {
 	},
 		"/foo/bar/baz", "/foo/{x}/baz", "foo-bar-baz",
 		[]ion.Field{
-			{Label: "bar", Value: ion.String("foo-bar-baz")},
+			{Label: "bar", Datum: ion.String("foo-bar-baz")},
 		},
 	)
 	good([]Partition{
@@ -87,7 +87,7 @@ func TestCollector(t *testing.T) {
 	},
 		"/foo/123/bar", "/foo/{n}/bar", "123",
 		[]ion.Field{
-			{Label: "n", Value: ion.Int(123)},
+			{Label: "n", Datum: ion.Int(123)},
 		},
 	)
 	good([]Partition{
@@ -97,7 +97,7 @@ func TestCollector(t *testing.T) {
 		"/foo/{yyyy}/{mm}/{dd}/*.json",
 		"2022-10-26",
 		[]ion.Field{
-			{Label: "date", Value: ion.Timestamp(date.Date(2022, 10, 26, 0, 0, 0, 0))},
+			{Label: "date", Datum: ion.Timestamp(date.Date(2022, 10, 26, 0, 0, 0, 0))},
 		},
 	)
 	good([]Partition{{
@@ -107,7 +107,7 @@ func TestCollector(t *testing.T) {
 		"/foo/{yyyy}/{mm}/{dd}/{hh}/*.json",
 		"2022-10-26 03:00:00",
 		[]ion.Field{
-			{Label: "time", Value: ion.Timestamp(date.Date(2022, 10, 26, 3, 0, 0, 0))},
+			{Label: "time", Datum: ion.Timestamp(date.Date(2022, 10, 26, 3, 0, 0, 0))},
 		},
 	)
 	// test some bad partitions

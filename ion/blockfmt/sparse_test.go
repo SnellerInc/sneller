@@ -101,7 +101,7 @@ func TestSparseCorruption(t *testing.T) {
 	var st ion.Symtab
 	var got SparseIndex
 	consts := ion.NewStruct(&st, []ion.Field{
-		{Label: "foo", Value: ion.String("bar")},
+		{Label: "foo", Datum: ion.String("bar")},
 	})
 	si := SparseIndex{consts: consts}
 	si.Encode(&buf, &st)

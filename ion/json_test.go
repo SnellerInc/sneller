@@ -72,11 +72,11 @@ func TestToJSON(t *testing.T) {
 				[]Field{
 					{
 						Label: "blob",
-						Value: Blob([]byte{0x0, 0x1, 0x2}),
+						Datum: Blob([]byte{0x0, 0x1, 0x2}),
 					},
 					{
 						Label: "int",
-						Value: Int(100),
+						Datum: Int(100),
 					},
 				},
 			).Datum(),
@@ -135,14 +135,14 @@ func TestToJSON(t *testing.T) {
 func TestJSONArray(t *testing.T) {
 	st0 := NewStruct(nil,
 		[]Field{
-			{Label: "Foo", Value: String("foo")},
-			{Label: "xyz", Value: Null},
+			{Label: "Foo", Datum: String("foo")},
+			{Label: "xyz", Datum: Null},
 		},
 	)
 	st1 := NewStruct(nil,
 		[]Field{
-			{Label: "xyz", Value: String("xyz2")},
-			{Label: "abc", Value: Uint(123)},
+			{Label: "xyz", Datum: String("xyz2")},
+			{Label: "abc", Datum: Uint(123)},
 		},
 	)
 	ann0 := Annotation(nil, "final_result", String("some text here"))

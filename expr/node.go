@@ -3257,7 +3257,7 @@ func (s *Struct) Datum() ion.Datum {
 	for i := range s.Fields {
 		out = append(out, ion.Field{
 			Label: s.Fields[i].Label,
-			Value: s.Fields[i].Value.Datum(),
+			Datum: s.Fields[i].Value.Datum(),
 		})
 	}
 	return ion.NewStruct(nil, out).Datum()
@@ -3425,7 +3425,7 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		ok := true
 		d.Each(func(f ion.Field) bool {
 			var val Constant
-			val, ok = AsConstant(f.Value)
+			val, ok = AsConstant(f.Datum)
 			if !ok {
 				return false
 			}

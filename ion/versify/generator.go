@@ -451,7 +451,7 @@ func (s *Struct) Generate(src *rand.Rand) ion.Datum {
 		if val.Empty() {
 			continue // MISSING
 		}
-		lst = append(lst, ion.Field{Label: f, Value: val})
+		lst = append(lst, ion.Field{Label: f, Datum: val})
 	}
 	return ion.NewStruct(nil, lst).Datum()
 }
@@ -478,12 +478,12 @@ func (s *Struct) Add(value ion.Datum) Union {
 			// and set the value to the union of MISSING or the actual field value
 			s.fields = append(s.fields, f.Label)
 			s.values = append(s.values,
-				(&None{hits: s.hits - 1}).Add(f.Value))
+				(&None{hits: s.hits - 1}).Add(f.Datum))
 			s.indices[f.Label] = len(s.fields) - 1
 			return true
 		}
 		s.touched[j] = true
-		s.values[j] = s.values[j].Add(f.Value)
+		s.values[j] = s.values[j].Add(f.Datum)
 		return true
 	})
 	for i := range s.touched {
@@ -504,7 +504,7 @@ func FromStruct(s ion.Struct) *Struct {
 	s.Each(func(f ion.Field) bool {
 		out.indices[f.Label] = len(out.fields)
 		out.fields = append(out.fields, f.Label)
-		out.values = append(out.values, Single(f.Value))
+		out.values = append(out.values, Single(f.Datum))
 		return true
 	})
 	return out

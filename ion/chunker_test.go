@@ -51,14 +51,14 @@ func TestPathLess(t *testing.T) {
 
 func TestUniqueFields(t *testing.T) {
 	fields := []Field{
-		{Value: Uint(1000)},
-		{Value: String("foobarbaz")},
-		{Value: Null},
-		{Value: Empty}, // set below
+		{Datum: Uint(1000)},
+		{Datum: String("foobarbaz")},
+		{Datum: Null},
+		{Datum: Empty}, // set below
 	}
 	fields2 := []Field{
-		{Value: String("inner")},
-		{Value: Float(3.5)},
+		{Datum: String("inner")},
+		{Datum: Float(3.5)},
 	}
 	cn := Chunker{
 		W:     io.Discard,
@@ -73,7 +73,7 @@ func TestUniqueFields(t *testing.T) {
 		fields[3].Label = fmt.Sprintf("f3_%d", i)
 		fields2[0].Label = fmt.Sprintf("f0_%d", i-1)
 		fields2[1].Label = fmt.Sprintf("f1_%d", i+1)
-		fields[3].Value = NewStruct(nil, fields2).Datum()
+		fields[3].Datum = NewStruct(nil, fields2).Datum()
 		NewStruct(nil, fields).Encode(&cn.Buffer, &cn.Symbols)
 		err := cn.Commit()
 		if err != nil {

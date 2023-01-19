@@ -143,7 +143,7 @@ func (f *Filter) eqstring(p []string, str expr.String) evalfn {
 	name := p[0]
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)
-		if !ok || eq(str, field.Value) {
+		if !ok || eq(str, field.Datum) {
 			rest(0, si.Blocks())
 		}
 	}
@@ -164,7 +164,7 @@ func (f *Filter) eqint(p []string, n expr.Integer) evalfn {
 	}
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)
-		if !ok || eq(n, field.Value) {
+		if !ok || eq(n, field.Datum) {
 			rest(0, si.Blocks())
 		}
 	}

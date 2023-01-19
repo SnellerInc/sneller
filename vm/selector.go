@@ -87,7 +87,7 @@ func (s Selection) toConst() (ion.Struct, bool) {
 		}
 		fields = append(fields, ion.Field{
 			Label: s[i].Result(),
-			Value: c.Datum(),
+			Datum: c.Datum(),
 		})
 	}
 	return ion.NewStruct(nil, fields), true

@@ -44,8 +44,8 @@ func TestTrailerEncode(t *testing.T) {
 				},
 			},
 			Sparse: mksparse([]ion.Field{
-				{Label: "foo", Value: ion.String("foo")},
-				{Label: "bar", Value: ion.Int(100)},
+				{Label: "foo", Datum: ion.String("foo")},
+				{Label: "bar", Datum: ion.Int(100)},
 			}, []TimeRange{
 				{[]string{"foo"}, time0, time0.Add(time.Second)},
 				{[]string{"foo"}, time0.Add(time.Second), time0.Add(time.Minute)},

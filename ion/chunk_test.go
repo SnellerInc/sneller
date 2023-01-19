@@ -458,7 +458,7 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 		}
 		n++
 		s.Each(func(f ion.Field) bool {
-			ts, ok := f.Value.Timestamp()
+			ts, ok := f.Timestamp()
 			if !ok {
 				return true
 			}
@@ -668,7 +668,7 @@ func TestSyntheticRanges(t *testing.T) {
 				continue
 			}
 			if len(path) == 1 {
-				ts, ok := lst[i].Value.Timestamp()
+				ts, ok := lst[i].Timestamp()
 				if !ok {
 					continue
 				}
@@ -677,7 +677,7 @@ func TestSyntheticRanges(t *testing.T) {
 				if date.Time(ts).Before(date.Time(min)) || date.Time(ts).After(date.Time(max)) {
 					t.Errorf("value %s %s out of range [%s, %s]", path[0], date.Time(ts), date.Time(min), date.Time(max))
 				}
-			} else if st, ok := lst[i].Value.Struct(); ok {
+			} else if st, ok := lst[i].Struct(); ok {
 				walkRange(st.Fields(nil), path[1:], min, max)
 			}
 		}
@@ -745,29 +745,29 @@ func TestChunkerChangingSymbols(t *testing.T) {
 			[]ion.Field{
 				{
 					Label: "row",
-					Value: ion.Uint(uint64(n)),
+					Datum: ion.Uint(uint64(n)),
 				},
 				{
 					Label: "foo",
-					Value: ion.String("value"),
+					Datum: ion.String("value"),
 				},
 				{
 					Label: "bar",
-					Value: ion.Uint(0),
+					Datum: ion.Uint(0),
 				},
 				{
 					Label: "xyz",
-					Value: ion.NewList(nil, []ion.Datum{
+					Datum: ion.NewList(nil, []ion.Datum{
 						ion.Int(-1), ion.Uint(1),
 					}).Datum(),
 				},
 				{
 					Label: "quux",
-					Value: ion.Null,
+					Datum: ion.Null,
 				},
 				{
 					Label: "timestamp",
-					Value: ion.Timestamp(date.Unix(int64(n), 0)),
+					Datum: ion.Timestamp(date.Unix(int64(n), 0)),
 				},
 			},
 		)

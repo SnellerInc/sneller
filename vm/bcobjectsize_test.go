@@ -241,7 +241,7 @@ func TestSizeStruct(t *testing.T) {
 		fields := make([]ion.Field, size)
 		for i := range fields {
 			fields[i].Label = fmt.Sprintf("field%d", i+1)
-			fields[i].Value = ion.Int(int64(i + 1))
+			fields[i].Datum = ion.Int(int64(i + 1))
 		}
 		return ion.NewStruct(&symtab, fields)
 	}

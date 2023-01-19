@@ -47,7 +47,7 @@ func jsonStruct(st *Symtab, d *json.Decoder) (Datum, error) {
 		}
 		out = append(out, Field{
 			Label: name,
-			Value: dat,
+			Datum: dat,
 		})
 	}
 	return NewStruct(st, out).Datum(), nil

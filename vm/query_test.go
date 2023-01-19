@@ -320,12 +320,12 @@ func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].Value.String(); ok {
+			if str, ok := fields[i].String(); ok {
 				if r.Intn(2) == 0 {
-					fields[i].Value = ion.Interned(st, str)
+					fields[i].Datum = ion.Interned(st, str)
 				}
 			} else {
-				fields[i].Value = symbolizeRandomly(fields[i].Value, st, r)
+				fields[i].Datum = symbolizeRandomly(fields[i].Datum, st, r)
 			}
 		}
 		return ion.NewStruct(st, fields).Datum()
@@ -373,12 +373,12 @@ func insertSpecialFPValues(d ion.Datum, st *ion.Symtab) ion.Datum {
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].Value.String(); ok {
+			if str, ok := fields[i].String(); ok {
 				if v := parseSpecialFPValues(str); !v.Empty() {
-					fields[i].Value = v
+					fields[i].Datum = v
 				}
 			} else {
-				fields[i].Value = insertSpecialFPValues(fields[i].Value, st)
+				fields[i].Datum = insertSpecialFPValues(fields[i].Datum, st)
 			}
 		}
 		return ion.NewStruct(st, fields).Datum()
@@ -561,10 +561,10 @@ func unsymbolize(d ion.Datum, st *ion.Symtab) ion.Datum {
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].Value.String(); ok {
-				fields[i].Value = ion.String(str)
+			if str, ok := fields[i].String(); ok {
+				fields[i].Datum = ion.String(str)
 			} else {
-				fields[i].Value = unsymbolize(fields[i].Value, st)
+				fields[i].Datum = unsymbolize(fields[i].Datum, st)
 			}
 		}
 		return ion.NewStruct(st, fields).Datum()

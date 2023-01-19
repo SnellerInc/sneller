@@ -42,8 +42,8 @@ func TestConstant(t *testing.T) {
 	}
 
 	cons := []ion.Field{
-		{Label: "const0", Value: ion.Uint(1)},
-		{Label: "const1", Value: ion.String("two")},
+		{Label: "const0", Datum: ion.Uint(1)},
+		{Label: "const1", Datum: ion.String("two")},
 	}
 
 	var buf bytes.Buffer

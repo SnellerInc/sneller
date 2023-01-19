@@ -509,7 +509,7 @@ func noteTimeFields(d Datum, c *Chunker) {
 		return
 	}
 	err := s.Each(func(f Field) bool {
-		ts, ok := f.Value.Timestamp()
+		ts, ok := f.Timestamp()
 		if !ok {
 			return true
 		}

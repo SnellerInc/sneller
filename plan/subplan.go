@@ -51,7 +51,7 @@ func (r *replacement) toScalar() (expr.Constant, bool) {
 	if !ok {
 		return expr.Null{}, true
 	}
-	return expr.AsConstant(f.Value)
+	return expr.AsConstant(f.Datum)
 }
 
 func (r *replacement) toScalarList() ([]expr.Constant, bool) {
@@ -61,7 +61,7 @@ func (r *replacement) toScalarList() ([]expr.Constant, bool) {
 		if !ok {
 			continue
 		}
-		tmp = append(tmp, f.Value)
+		tmp = append(tmp, f.Datum)
 	}
 
 	slices.SortFunc(tmp, func(a, b ion.Datum) bool {
@@ -146,11 +146,11 @@ func (c *scalarConverter) add(row *ion.Struct) bool {
 			return false
 		}
 	}
-	key, ok := expr.AsConstant(f[0].Value)
+	key, ok := expr.AsConstant(f[0].Datum)
 	if !ok {
 		return false
 	}
-	val, ok := expr.AsConstant(f[1].Value)
+	val, ok := expr.AsConstant(f[1].Datum)
 	if !ok {
 		return false
 	}
@@ -176,7 +176,7 @@ func (c *structConverter) add(row *ion.Struct) bool {
 	fields := make([]expr.Field, 0, row.Len()-1)
 	row.Each(func(f ion.Field) bool {
 		var val expr.Constant
-		val, ok = expr.AsConstant(f.Value)
+		val, ok = expr.AsConstant(f.Datum)
 		if !ok {
 			return false
 		}
@@ -215,7 +215,7 @@ func (c *listConverter) add(row *ion.Struct) bool {
 	fields := make([]expr.Field, 0, row.Len()-1)
 	row.Each(func(f ion.Field) bool {
 		var val expr.Constant
-		val, ok = expr.AsConstant(f.Value)
+		val, ok = expr.AsConstant(f.Datum)
 		if !ok {
 			return false
 		}

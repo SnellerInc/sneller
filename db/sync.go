@@ -756,9 +756,9 @@ func (c *Config) inputMinAge() time.Duration {
 func (st *tableState) userdata() ion.Datum {
 	return ion.NewStruct(nil, []ion.Field{{
 		Label: "definition",
-		Value: ion.NewStruct(nil, []ion.Field{{
+		Datum: ion.NewStruct(nil, []ion.Field{{
 			Label: "hash",
-			Value: ion.Blob(st.def.Hash()),
+			Datum: ion.Blob(st.def.Hash()),
 		}}).Datum(),
 	}}).Datum()
 }

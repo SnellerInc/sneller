@@ -168,7 +168,7 @@ func (c *collector) part(glob, path string) (*partition, error) {
 		}
 		cons = append(cons, ion.Field{
 			Label: c.def[i].Field,
-			Value: d,
+			Datum: d,
 		})
 	}
 	str := string(c.buf)

@@ -793,9 +793,7 @@ func (s *state) emitConst(lst []ion.Field) {
 		s.constResolved = true
 	}
 	for i := range lst {
-		sym := lst[i].Sym
-		s.out.BeginField(sym)
-		lst[i].Value.Encode(&s.out.Buffer, &s.out.Symbols)
+		lst[i].Encode(&s.out.Buffer, &s.out.Symbols)
 	}
 }
 

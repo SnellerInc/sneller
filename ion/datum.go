@@ -295,7 +295,7 @@ func (d Datum) Field(name string) Datum {
 	if !ok {
 		return Empty
 	}
-	return f.Value
+	return f.Datum
 }
 
 func (d Datum) List() (List, bool) {
@@ -413,12 +413,33 @@ func Uint(u uint64) Datum {
 // Field is a structure field in a Struct or Annotation datum
 type Field struct {
 	Label string
-	Value Datum
-	Sym   Symbol // symbol, if assigned
+	Datum
+	Sym Symbol // symbol, if assigned
+}
+
+func ReadField(st *Symtab, body []byte) (Field, []byte, error) {
+	sym, body, err := ReadLabel(body)
+	if err != nil {
+		return Field{}, nil, err
+	}
+	name, ok := st.Lookup(sym)
+	if !ok {
+		return Field{}, nil, fmt.Errorf("symbol %d not in symbol table", sym)
+	}
+	val, rest, err := ReadDatum(st, body)
+	if err != nil {
+		return Field{}, nil, err
+	}
+	return Field{Label: name, Datum: val, Sym: sym}, rest, nil
+}
+
+func (f *Field) Encode(dst *Buffer, st *Symtab) {
+	dst.BeginField(st.Intern(f.Label))
+	f.Datum.Encode(dst, st)
 }
 
 func (f *Field) Equal(f2 *Field) bool {
-	return f.Label == f2.Label && f.Sym == f2.Sym && f.Value.Equal(f2.Value)
+	return f.Label == f2.Label && f.Sym == f2.Sym && f.Datum.Equal(f2.Datum)
 }
 
 type composite struct {
@@ -451,8 +472,7 @@ func (b *Buffer) WriteStruct(st *Symtab, f []Field) {
 	}
 	b.BeginStruct(-1)
 	for i := range f {
-		b.BeginField(st.Intern(f[i].Label))
-		f[i].Value.Encode(b, st)
+		f[i].Encode(b, st)
 	}
 	b.EndStruct()
 }
@@ -472,8 +492,7 @@ func (s Struct) Encode(dst *Buffer, st *Symtab) {
 	}
 	dst.BeginStruct(-1)
 	s.Each(func(f Field) bool {
-		dst.BeginField(st.Intern(f.Label))
-		f.Value.Encode(dst, st)
+		f.Encode(dst, st)
 		return true
 	})
 	dst.EndStruct()
@@ -506,7 +525,7 @@ func (s Struct) Equal(s2 Struct) bool {
 		if f1[i].Label != f2[i].Label {
 			return false
 		}
-		if !Equal(f1[i].Value, f2[i].Value) {
+		if !Equal(f1[i].Datum, f2[i].Datum) {
 			return false
 		}
 	}
@@ -577,7 +596,7 @@ func (s Struct) Each(fn func(Field) bool) error {
 		}
 		f := Field{
 			Label: name,
-			Value: val,
+			Datum: val,
 			Sym:   sym,
 		}
 		if !fn(f) {

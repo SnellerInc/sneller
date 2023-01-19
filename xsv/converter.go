@@ -106,8 +106,7 @@ func Convert(r io.Reader, dst *ion.Chunker, ch RowChopper, hint *Hint, cons []io
 
 		dst.BeginStruct(-1)
 		for i := range cons {
-			dst.BeginField(cons[i].Sym)
-			cons[i].Value.Encode(&dst.Buffer, &dst.Symbols)
+			cons[i].Encode(&dst.Buffer, &dst.Symbols)
 		}
 		recordNr++
 

@@ -41,17 +41,17 @@ func noppad(buf []byte) {
 func TestRematerializeIssue561(t *testing.T) {
 	row0 := ion.NewStruct(nil,
 		[]ion.Field{
-			{Label: "foo", Value: ion.Int(0)},
-			{Label: "bar", Value: ion.String("the value for bar, row0")},
+			{Label: "foo", Datum: ion.Int(0)},
+			{Label: "bar", Datum: ion.String("the value for bar, row0")},
 		},
 	)
 	row1 := ion.NewStruct(nil,
 		// note: fields out-of-order w.r.t. the above
 		// will yield a different symbol table
 		[]ion.Field{
-			{Label: "bar", Value: ion.String("the value for bar, row1")},
-			{Label: "foo", Value: ion.Int(1)},
-			{Label: "quux", Value: ion.Bool(true)},
+			{Label: "bar", Datum: ion.String("the value for bar, row1")},
+			{Label: "foo", Datum: ion.Int(1)},
+			{Label: "quux", Datum: ion.Bool(true)},
 		},
 	)
 

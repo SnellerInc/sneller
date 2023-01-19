@@ -140,10 +140,10 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	// add some constants
 	si.consts = ion.NewStruct(nil, []ion.Field{{
 		Label: "foo",
-		Value: ion.String("foo"),
+		Datum: ion.String("foo"),
 	}, {
 		Label: "bar",
-		Value: ion.Int(100),
+		Datum: ion.Int(100),
 	}})
 	minute := func(i int) string {
 		return "`" + base.Add(time.Minute*time.Duration(i)).Time().Format(time.RFC3339Nano) + "`"

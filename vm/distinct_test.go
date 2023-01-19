@@ -76,7 +76,7 @@ func TestDistinct(t *testing.T) {
 		if !ok {
 			t.Fatalf("row %d missing VendorID", i)
 		}
-		str, _ := vend.Value.String()
+		str, _ := vend.String()
 		vendors = append(vendors, str)
 	}
 	// should produce the unique list of vendors;
