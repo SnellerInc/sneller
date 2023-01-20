@@ -16,6 +16,7 @@ package ion
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -24,6 +25,13 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 )
+
+// Stop can be returned by the function passed
+// to List.Each and Struct.Each to stop
+// iterating and return early.
+//
+//lint:ignore ST1012 sentinel error
+var Stop = errors.New("stop early")
 
 // Datum represents any Ion datum.
 //
@@ -619,9 +627,9 @@ func (s Struct) Encode(dst *Buffer, st *Symtab) {
 		return
 	}
 	dst.BeginStruct(-1)
-	s.Each(func(f Field) bool {
+	s.Each(func(f Field) error {
 		f.Encode(dst, st)
-		return true
+		return nil
 	})
 	dst.EndStruct()
 }
@@ -665,9 +673,9 @@ func (s Struct) Len() int {
 		return 0
 	}
 	n := 0
-	s.Each(func(Field) bool {
+	s.Each(func(Field) error {
 		n++
-		return true
+		return nil
 	})
 	return n
 }
@@ -687,11 +695,13 @@ func (s *Struct) bytes() []byte {
 	return s.buf
 }
 
-// Each calls fn for each field in the struct. If fn
-// returns false, Each returns early. Each may return
-// a non-nil error if the original struct encoding
-// was malformed.
-func (s Struct) Each(fn func(Field) bool) error {
+// Each calls fn for each field in the struct.
+// If fn returns Stop, Each stops and returns nil.
+// If fn returns any other non-nil error, Each
+// stops and returns that error. If Each
+// encounters a malformed field while unpacking
+// the struct, Each returns a non-nil error.
+func (s Struct) Each(fn func(Field) error) error {
 	if s.Empty() {
 		return nil
 	}
@@ -704,33 +714,17 @@ func (s Struct) Each(fn func(Field) bool) error {
 	}
 	st := s.symtab()
 	for len(body) > 0 {
-		var sym Symbol
-		var err error
-		sym, body, err = ReadLabel(body)
+		f, rest, err := ReadField(&st, body)
 		if err != nil {
 			return err
 		}
-		name, ok := st.Lookup(sym)
-		if !ok {
-			return fmt.Errorf("symbol %d not in symbol table", sym)
-		}
-		next := SizeOf(body)
-		if next <= 0 || next > len(body) {
-			return fmt.Errorf("next object size %d exceeds buffer size %d", next, len(body))
-		}
-		val, _, err := ReadDatum(&st, body[:next])
-		if err != nil {
-			return fmt.Errorf("field %q: %s", name, err)
-		}
-		f := Field{
-			Label: name,
-			Datum: val,
-			Sym:   sym,
-		}
-		if !fn(f) {
+		err = fn(f)
+		if err == Stop {
 			break
+		} else if err != nil {
+			return err
 		}
-		body = body[next:]
+		body = rest
 	}
 	return nil
 }
@@ -739,9 +733,9 @@ func (s Struct) Each(fn func(Field) bool) error {
 // the appended slice.
 func (s Struct) Fields(fields []Field) []Field {
 	fields = slices.Grow(fields, s.Len())
-	s.Each(func(f Field) bool {
+	s.Each(func(f Field) error {
 		fields = append(fields, f)
-		return true
+		return nil
 	})
 	return fields
 }
@@ -749,12 +743,12 @@ func (s Struct) Fields(fields []Field) []Field {
 func (s Struct) Field(x Symbol) (Field, bool) {
 	var field Field
 	var ok bool
-	s.Each(func(f Field) bool {
+	s.Each(func(f Field) error {
 		if f.Sym == x {
 			field, ok = f, true
-			return false
+			return Stop
 		}
-		return true
+		return nil
 	})
 	return field, ok
 }
@@ -762,18 +756,18 @@ func (s Struct) Field(x Symbol) (Field, bool) {
 func (s Struct) FieldByName(name string) (Field, bool) {
 	var field Field
 	var ok bool
-	s.Each(func(f Field) bool {
+	s.Each(func(f Field) error {
 		if f.Label == name {
 			field, ok = f, true
-			return false
+			return Stop
 		}
-		return true
+		return nil
 	})
 	return field, ok
 }
 
 // mergeFields merges the given fields with the
-// fields of this structinto a new struct,
+// fields of this struct into a new struct,
 // overwriting any previous fields with
 // conflicting names.
 //
@@ -790,9 +784,9 @@ func (s Struct) mergeFields(st *Symtab, fields []Field) Struct {
 		}
 		into = append(into, f)
 	}
-	s.Each(func(f Field) bool {
+	s.Each(func(f Field) error {
 		add(f)
-		return true
+		return nil
 	})
 	for i := range fields {
 		add(fields[i])
@@ -850,9 +844,9 @@ func (l List) Encode(dst *Buffer, st *Symtab) {
 		return
 	}
 	dst.BeginList(-1)
-	l.Each(func(d Datum) bool {
+	l.Each(func(d Datum) error {
 		d.Encode(dst, st)
-		return true
+		return nil
 	})
 	dst.EndList()
 }
@@ -862,9 +856,9 @@ func (l List) Len() int {
 		return 0
 	}
 	n := 0
-	l.Each(func(Datum) bool {
+	l.Each(func(Datum) error {
 		n++
-		return true
+		return nil
 	})
 	return n
 }
@@ -888,7 +882,7 @@ func (l *List) bytes() []byte {
 // list and calls fn on each datum in order.
 // Each returns when it encounters an internal error
 // (due to malformed ion) or when fn returns false.
-func (l List) Each(fn func(Datum) bool) error {
+func (l List) Each(fn func(Datum) error) error {
 	if l.empty() {
 		return nil
 	}
@@ -901,27 +895,26 @@ func (l List) Each(fn func(Datum) bool) error {
 	}
 	st := l.symtab()
 	for len(body) > 0 {
-		next := SizeOf(body)
-		if next <= 0 || next > len(body) {
-			return fmt.Errorf("object size %d exceeds buffer size %d", next, len(body))
-		}
-		val, _, err := ReadDatum(&st, body[:next])
+		v, rest, err := ReadDatum(&st, body)
 		if err != nil {
 			return err
 		}
-		if !fn(val) {
-			return nil
+		err = fn(v)
+		if err == Stop {
+			break
+		} else if err != nil {
+			return err
 		}
-		body = body[next:]
+		body = rest
 	}
 	return nil
 }
 
 func (l List) Items(items []Datum) []Datum {
 	items = slices.Grow(items, l.Len())
-	l.Each(func(d Datum) bool {
+	l.Each(func(d Datum) error {
 		items = append(items, d)
-		return true
+		return nil
 	})
 	return items
 }

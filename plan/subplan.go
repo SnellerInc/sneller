@@ -35,9 +35,9 @@ type replacement struct {
 func first(s *ion.Struct) (ion.Field, bool) {
 	var field ion.Field
 	var ok bool
-	s.Each(func(f ion.Field) bool {
+	s.Each(func(f ion.Field) error {
 		field, ok = f, true
-		return false
+		return ion.Stop
 	})
 	return field, ok
 }
@@ -174,21 +174,21 @@ func (c *structConverter) add(row *ion.Struct) bool {
 	var key expr.Constant
 	var ok bool
 	fields := make([]expr.Field, 0, row.Len()-1)
-	row.Each(func(f ion.Field) bool {
+	row.Each(func(f ion.Field) error {
 		var val expr.Constant
 		val, ok = expr.AsConstant(f.Datum)
 		if !ok {
-			return false
+			return ion.Stop
 		}
 		if f.Label == c.label {
 			key = val
-			return true
+			return nil
 		}
 		fields = append(fields, expr.Field{
 			Label: f.Label,
 			Value: val,
 		})
-		return true
+		return nil
 	})
 	if !ok || key == nil {
 		return false
@@ -213,21 +213,21 @@ func (c *listConverter) add(row *ion.Struct) bool {
 	var key expr.Constant
 	var ok bool
 	fields := make([]expr.Field, 0, row.Len()-1)
-	row.Each(func(f ion.Field) bool {
+	row.Each(func(f ion.Field) error {
 		var val expr.Constant
 		val, ok = expr.AsConstant(f.Datum)
 		if !ok {
-			return false
+			return ion.Stop
 		}
 		if f.Label == c.label {
 			key = val
-			return true
+			return nil
 		}
 		fields = append(fields, expr.Field{
 			Label: f.Label,
 			Value: val,
 		})
-		return true
+		return nil
 	})
 	if !ok || key == nil {
 		return false

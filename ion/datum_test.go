@@ -188,10 +188,10 @@ func FuzzReadDatum(f *testing.F) {
 			switch d.Type() {
 			case ListType:
 				d, _ := d.List()
-				d.Each(func(d Datum) bool { return true })
+				d.Each(func(d Datum) error { return nil })
 			case StructType:
 				d, _ := d.Struct()
-				d.Each(func(f Field) bool { return true })
+				d.Each(func(f Field) error { return nil })
 			}
 		}
 	})

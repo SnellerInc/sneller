@@ -509,20 +509,20 @@ func noteTimeFields(d Datum, c *Chunker) {
 		return
 	}
 	s, _ := d.Struct()
-	err := s.Each(func(f Field) bool {
+	err := s.Each(func(f Field) error {
 		if !f.IsTimestamp() {
-			return true
+			return nil
 		}
 		ts, _ := f.Timestamp()
 		sym, ok := c.Symbols.Symbolize(f.Label)
 		if !ok {
-			return true
+			return nil
 		}
 		var buf Symbuf
 		buf.Prepare(1)
 		buf.Push(sym)
 		c.Ranges.AddTime(buf, date.Time(ts))
-		return true
+		return nil
 	})
 	if err != nil {
 		panic(err)

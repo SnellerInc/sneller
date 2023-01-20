@@ -3423,17 +3423,17 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		d, _ := d.Struct()
 		fields := make([]Field, 0, d.Len())
 		ok := true
-		d.Each(func(f ion.Field) bool {
+		d.Each(func(f ion.Field) error {
 			var val Constant
 			val, ok = AsConstant(f.Datum)
 			if !ok {
-				return false
+				return ion.Stop
 			}
 			fields = append(fields, Field{
 				Label: f.Label,
 				Value: val,
 			})
-			return true
+			return nil
 		})
 		if !ok {
 			return nil, false
@@ -3443,14 +3443,14 @@ func AsConstant(d ion.Datum) (Constant, bool) {
 		d, _ := d.List()
 		values := make([]Constant, 0, d.Len())
 		ok := true
-		d.Each(func(d ion.Datum) bool {
+		d.Each(func(d ion.Datum) error {
 			var val Constant
 			val, ok = AsConstant(d)
 			if !ok {
-				return false
+				return ion.Stop
 			}
 			values = append(values, val)
-			return true
+			return nil
 		})
 		if !ok {
 			return nil, false

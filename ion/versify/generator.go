@@ -475,7 +475,7 @@ func (s *Struct) Add(value ion.Datum) Union {
 		}
 	}
 	s.touched = s.touched[:len(s.fields)]
-	st.Each(func(f ion.Field) bool {
+	st.Each(func(f ion.Field) error {
 		j, ok := s.indices[f.Label]
 		if !ok {
 			// new field: add the new field label
@@ -484,11 +484,11 @@ func (s *Struct) Add(value ion.Datum) Union {
 			s.values = append(s.values,
 				(&None{hits: s.hits - 1}).Add(f.Datum))
 			s.indices[f.Label] = len(s.fields) - 1
-			return true
+			return nil
 		}
 		s.touched[j] = true
 		s.values[j] = s.values[j].Add(f.Datum)
-		return true
+		return nil
 	})
 	for i := range s.touched {
 		if s.touched[i] {
@@ -505,11 +505,11 @@ func (s *Struct) Add(value ion.Datum) Union {
 func FromStruct(s ion.Struct) *Struct {
 	out := &Struct{hits: 1}
 	out.indices = make(map[string]int)
-	s.Each(func(f ion.Field) bool {
+	s.Each(func(f ion.Field) error {
 		out.indices[f.Label] = len(out.fields)
 		out.fields = append(out.fields, f.Label)
 		out.values = append(out.values, Single(f.Datum))
-		return true
+		return nil
 	})
 	return out
 }
@@ -587,11 +587,11 @@ func (l *List) Add(value ion.Datum) Union {
 // that always returns lst.
 func FromList(lst ion.List) *List {
 	out := &List{hits: 1}
-	lst.Each(func(d ion.Datum) bool {
+	lst.Each(func(d ion.Datum) error {
 		out.min++
 		out.max++
 		out.values = append(out.values, Single(d))
-		return true
+		return nil
 	})
 	return out
 }

@@ -148,7 +148,7 @@ func TestHashAggregate(t *testing.T) {
 				if s.Len() != len(outcols) {
 					t.Errorf("output row %d: has %d columns; want %d", rownum, s.Len(), len(outcols))
 				}
-				s.Each(func(f ion.Field) bool {
+				s.Each(func(f ion.Field) error {
 					name := f.Label
 					var inner ion.Datum
 					for j := range outcols {
@@ -164,7 +164,7 @@ func TestHashAggregate(t *testing.T) {
 					if !reflect.DeepEqual(val, inner) {
 						t.Errorf("row %d field %q - got %#v want %#v", rownum, name, val, inner)
 					}
-					return true
+					return nil
 				})
 				rownum++
 			}

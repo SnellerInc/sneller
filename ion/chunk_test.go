@@ -231,14 +231,14 @@ func checkEncoding(t *testing.T, buf *rangeBuf, align int) {
 		}
 		s, _ := d.Struct()
 		max := st.MaxID()
-		s.Each(func(f ion.Field) bool {
+		s.Each(func(f ion.Field) error {
 			if int(f.Sym) >= max {
 				offset := insize - len(mem)
 				t.Logf("field: %v", f)
 				t.Logf("offset %d (chunk %d)", offset, offset/align)
 				t.Errorf("invalid symbol %d of %d", f.Sym, max)
 			}
-			return true
+			return nil
 		})
 	}
 }
@@ -457,9 +457,9 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 		}
 		s, _ := dat.Struct()
 		n++
-		s.Each(func(f ion.Field) bool {
+		s.Each(func(f ion.Field) error {
 			if !f.IsTimestamp() {
-				return true
+				return nil
 			}
 			ts, _ := f.Timestamp()
 			found := false
@@ -483,7 +483,7 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 				}
 				t.Fatalf("no range entry for %s date %s (%d ranges)", f.Label, date.Time(ts), len(r))
 			}
-			return true
+			return nil
 		})
 	}
 	return n
@@ -508,7 +508,7 @@ func results(t *testing.T, buf []byte) []ion.Struct {
 }
 
 func assertEqual(t *testing.T, left, right ion.Struct) {
-	nop := func(f ion.Field) bool { return true }
+	nop := func(f ion.Field) error { return nil }
 	if err := left.Each(nop); err != nil {
 		t.Helper()
 		t.Errorf("left: %v", err)
