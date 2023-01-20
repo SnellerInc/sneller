@@ -75,14 +75,12 @@ func errsyntax(e Node, msg string) *SyntaxError {
 // to the query planner.
 type Hint interface {
 	TypeOf(e Node) TypeSet
-	Values(e Node) *FiniteSet
 }
 
 // noHint is the empty Hint
 type noHint struct{}
 
-func (noHint) TypeOf(Node) TypeSet    { return AnyType }
-func (noHint) Values(Node) *FiniteSet { return nil }
+func (noHint) TypeOf(Node) TypeSet { return AnyType }
 
 var NoHint noHint
 

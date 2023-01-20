@@ -26,6 +26,8 @@ import (
 	"github.com/SnellerInc/sneller/internal/stringext"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/regexp2"
+
+	"golang.org/x/exp/slices"
 )
 
 // compileLogical compiles a logical expression
@@ -297,7 +299,7 @@ func compile(p *prog, e expr.Node) (*value, error) {
 	case *expr.Timestamp:
 		return p.constant(n.Value), nil
 	case *expr.Member:
-		return p.member(n.Arg, n.Values)
+		return p.member(n.Arg, &n.Set)
 	case expr.Missing:
 		return p.missing(), nil
 	default:
@@ -956,6 +958,9 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			if err != nil {
 				return nil, err
 			}
+			// unsymbolize values so that they
+			// can be used as keys in hashlookup, etc.
+			val = p.unsymbolized(val)
 			structArgs = append(structArgs, p.ssa0imm(smakestructkey, string(key)), val, p.mask(val))
 		}
 		return p.makeStruct(structArgs), nil
@@ -1072,7 +1077,7 @@ func (p *prog) hashLookup(e expr.Node, lookup []ion.Datum) (*value, error) {
 	return p.ssaimm(shashlookup, lookup, h, p.mask(h)), nil
 }
 
-func (p *prog) member(e expr.Node, values []expr.Constant) (*value, error) {
+func (p *prog) member(e expr.Node, set *ion.Bag) (*value, error) {
 	v, err := p.serialized(e)
 	if err != nil {
 		return nil, err
@@ -1080,7 +1085,7 @@ func (p *prog) member(e expr.Node, values []expr.Constant) (*value, error) {
 	h := p.hash(v)
 	// we're using ssaimm here because we don't
 	// want the CSE code to look at the immediate field
-	return p.ssaimm(shashmember, values, h, p.mask(h)), nil
+	return p.ssaimm(shashmember, set, h, p.mask(h)), nil
 }
 
 func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
@@ -1115,21 +1120,51 @@ func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 	return tree
 }
 
-// hook called on symbolization of hashmember;
-// convert []expr.Constant into a hash tree
-// using the current input symbol table
+// hook called on symbolization of hashmember
 func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
-	values := imm.([]expr.Constant)
-
-	var tmp ion.Buffer
+	values := imm.(*ion.Bag)
 	tree := newRadixTree(0)
-	var hmem [16]byte
-	for i := range values {
-		tmp.Reset()
-		dat := values[i].Datum()
-		dat.Encode(&tmp, &st.Symtab)
-		chacha8Hash(tmp.Bytes(), hmem[:])
-		tree.insertSlow(binary.LittleEndian.Uint64(hmem[:]))
+	// TODO: if the contents of the bag are all
+	// values without symbols (strings, etc.),
+	// then we could note that and avoid resymbolization
+	// altogether on the next run
+
+	// gather up to 4 values before hashing
+	var tmp ion.Buffer
+	var endpos [4]uint32
+	var pos int
+
+	enc := values.Transcoder(&st.Symtab)
+	values.Each(func(d ion.Datum) bool {
+		enc(&tmp, d)
+		endpos[pos] = uint32(tmp.Size())
+		pos++
+		if pos == 4 {
+			buf := tmp.Bytes()
+			// ensure a movq at buf[len(buf)-1] will touch valid memory:
+			buf = slices.Grow(buf, 7)
+			ret := chacha8x4(&buf[0], endpos)
+			for i := 0; i < 4; i++ {
+				tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+			}
+			pos = 0
+			tmp.Set(buf[:0])
+		}
+		return true
+	})
+	if pos > 0 {
+		valid := pos
+		for pos < 4 {
+			// duplicate zero-width lanes up to 4
+			endpos[pos] = endpos[pos-1]
+			pos++
+		}
+		buf := tmp.Bytes()
+		buf = slices.Grow(buf, 7)
+		ret := chacha8x4(&buf[0], endpos)
+		for i := 0; i < valid; i++ {
+			tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+		}
 	}
 	return tree
 }

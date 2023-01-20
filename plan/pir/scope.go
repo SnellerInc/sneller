@@ -48,7 +48,3 @@ func (s *stepHint) TypeOf(e expr.Node) expr.TypeSet {
 	hint := &stepHint{parent: next}
 	return expr.TypeOf(node, hint)
 }
-
-func (s *stepHint) Values(expr.Node) *expr.FiniteSet {
-	return nil
-}

@@ -412,7 +412,7 @@ func TestSimplify(t *testing.T) {
 		{
 			// in general, this cannot be optimized to FALSE, but see below
 			And(Missing{}, path("x")),
-			And(Missing{}, path("x")),
+			Missing{},
 		},
 		{
 			// IS TRUE should trigger some additional logical optimizations
@@ -526,7 +526,8 @@ func TestSimplify(t *testing.T) {
 			// x||"suffix" IN (...)
 			// could only possibly match string-typed constants
 			In(Call(Concat, path("x"), String("suffix")), String("start-suffix"), Integer(3), String("second-suffix"), Bool(false)),
-			Or(Compare(Equals, Call(Concat, path("x"), String("suffix")), String("second-suffix")), Compare(Equals, Call(Concat, path("x"), String("suffix")), String("start-suffix"))),
+			Or(Compare(Equals, Call(Concat, path("x"), String("suffix")), String("start-suffix")),
+				Compare(Equals, Call(Concat, path("x"), String("suffix")), String("second-suffix"))),
 		},
 		{
 			// when the list of possible comparisons shrinks to 1,
@@ -1104,185 +1105,8 @@ func testEquivalence(e Node, t *testing.T) {
 	}
 	if !Equivalent(res, e) {
 		t.Logf("json: %s", jsontxt(&st, &buf))
-		t.Errorf("input : %s", e)
-		t.Errorf("output: %s", res)
-	}
-}
-
-type testHintWithValues struct {
-	path   string
-	values *FiniteSet
-}
-
-func (h *testHintWithValues) TypeOf(Node) TypeSet {
-	return AnyType
-}
-
-func (h *testHintWithValues) Values(e Node) *FiniteSet {
-	id, ok := e.(Ident)
-	if ok && string(id) == h.path {
-		return h.values
-	}
-
-	return nil
-}
-
-func mktesthint(path string, values ...Constant) Hint {
-	return &testHintWithValues{
-		path: path,
-		values: &FiniteSet{
-			values: values,
-		},
-	}
-}
-
-func TestSimplifyWithValueHints(t *testing.T) {
-	// x in {4, 5, 6}
-	x := path("x")
-	set := mktesthint("x", Integer(4), Integer(5), Integer(6))
-
-	// y = 42
-	y := path("y")
-	intsingleton := mktesthint("y", Integer(42))
-
-	// z = "sneller"
-	z := path("z")
-	strsingleton := mktesthint("z", String("sneller"))
-
-	// w = {"x": 2, "y": [3, 40, 500]}
-	structsingleton := mktesthint("w", &Struct{Fields: []Field{
-		{Label: "x", Value: Integer(2)},
-		{Label: "y", Value: mktestlist(Integer(3), Integer(40), Integer(500))},
-	}})
-
-	testcases := []struct {
-		before, after Node
-		hint          Hint
-	}{
-		{
-			// x{4, 5, 6} IN (4, 5, 6, 7, 8) => true (all lhs values match rhs)
-			before: In(x, Integer(4), Integer(5), Integer(6), Integer(7), Integer(8)),
-			after:  Bool(true),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} IN (1, 2, 3) => false (none of lhs values match rhs)
-			before: In(x, Integer(1), Integer(2), Integer(3)),
-			after:  Bool(false),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} IN (1, 5) => x = 1 OR x = 5 (IN cannot be evaluated in compile time ...)
-			//                      => x = 5          (... but x = 1 is always false)
-			before: In(x, Integer(1), Integer(5)),
-			after:  Compare(Equals, x, Integer(5)),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} BETWEEN 1 AND 10 => true
-			before: Between(x, Integer(1), Integer(10)),
-			after:  Bool(true),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} = 5 => unchanged
-			before: Compare(Equals, x, Integer(5)),
-			after:  Compare(Equals, x, Integer(5)),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} < 5 => unchanged (4 < 5 = true, 5 < 5 = false, 5 < 6 = false)
-			before: Compare(Less, x, Integer(5)),
-			after:  Compare(Less, x, Integer(5)),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} < 1 => false (4 < 5 = false, 5 < 5 = false, 5 < 6 = false)
-			before: Compare(Less, x, Integer(1)),
-			after:  Bool(false),
-			hint:   set,
-		},
-		{
-			// x{4, 5, 6} < 100 => false (4 < 5 = true, 5 < 5 = true, 5 < 6 = true)
-			before: Compare(Less, x, Integer(100)),
-			after:  Bool(true),
-			hint:   set,
-		},
-		{
-			// 100 > x{4, 5, 6} => false
-			before: Compare(Greater, Integer(100), x),
-			after:  Bool(true),
-			hint:   set,
-		},
-		{
-			// y(=42) > 32 => true
-			before: Compare(Greater, y, Integer(32)),
-			after:  Bool(true),
-			hint:   intsingleton,
-		},
-		{
-			// z(="sneller") == "go" => false
-			before: Compare(Equals, z, String("go")),
-			after:  Bool(false),
-			hint:   strsingleton,
-		},
-		{
-			// y(=42) + 5 => 47
-			before: Add(y, Integer(5)),
-			after:  Integer(47),
-			hint:   intsingleton,
-		},
-		{
-			// -y(=42) => -42
-			before: Neg(y),
-			after:  Integer(-42),
-			hint:   intsingleton,
-		},
-		{
-			// ~y(=42=uint64(0x000000000000002a)) => -43 (0xffffffffffffffd5)
-			before: BitNot(y),
-			after:  Integer(-43),
-			hint:   intsingleton,
-		},
-		{
-			// CHAR_LENGTH(z) = CHAR_LENGTH("sneller") => 7
-			before: Call(CharLength, z),
-			after:  Integer(7),
-			hint:   strsingleton,
-		},
-		{
-			// expand the constant
-			before: z,
-			after:  String("sneller"),
-			hint:   strsingleton,
-		},
-		{
-			// w = {"x": 2, "y": [3, 40, 500]}
-			// w.x + w.y[1] => 42
-			before: Add(path("w", "x"), mkpath("w.y[1]")),
-			after:  Integer(42),
-			hint:   structsingleton,
-		},
-	}
-
-	for i := range testcases {
-		tc := testcases[i]
-
-		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
-			before := tc.before
-			after := tc.after
-			opt := Simplify(before, tc.hint)
-			if !opt.Equals(after) {
-				t.Errorf("\noriginal   %q\nsimplified %q\nwanted     %q", ToString(before), ToString(opt), ToString(after))
-			}
-			err := Check(opt)
-			if err != nil {
-				t.Log(ToString(opt))
-				t.Fatalf("simplified query is not valid: %s", err)
-			}
-			testEquivalence(before, t)
-			testEquivalence(after, t)
-		})
+		t.Errorf("input : %s", ToString(e))
+		t.Errorf("output: %s", ToString(res))
 	}
 }
 
@@ -1304,13 +1128,4 @@ func mktestlist(values ...Constant) *List {
 	return &List{
 		Values: values,
 	}
-}
-
-func mkpath(s string) Node {
-	n, err := ParsePath(s)
-	if err != nil {
-		panic(err)
-	}
-
-	return n
 }

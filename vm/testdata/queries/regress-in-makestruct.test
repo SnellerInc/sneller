@@ -1,0 +1,19 @@
+WITH everything AS (
+    SELECT DISTINCT a, b
+    FROM input
+)
+SELECT COUNT(*)
+FROM input
+WHERE {'a':a,'b':b} IN (SELECT {'a':a,'b':b} FROM everything)
+---
+{"a":"a","b":"b"}
+{"a":"b","b":"c"}
+{"a":"c","b":"d"}
+{"a":"d","b":"e"}
+{"a":"e","b":"f"}
+{"a":"f","b":"g"}
+{"a":"g","b":"h"}
+{"a":"h","b":"i"}
+{"a":"i","b":"j"}
+---
+{"count": 9}

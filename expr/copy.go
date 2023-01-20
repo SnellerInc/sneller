@@ -59,6 +59,9 @@ func copyValue(into, v reflect.Value) {
 	case *Rational:
 		into.Set(reflect.ValueOf((*Rational)(new(big.Rat).Set((*big.Rat)(v)))))
 		return
+	case ion.Bag:
+		into.Set(reflect.ValueOf(v.Clone()))
+		return
 	}
 	if isValueType(v) {
 		into.Set(v)

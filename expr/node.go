@@ -1438,15 +1438,12 @@ func Between(val, lo, hi Node) *Logical {
 // that compares against a list of constant
 // values, i.e. MEMBER(x, 3, 'foo', ['x', 1.5])
 type Member struct {
-	Arg    Node
-	Values []Constant
+	Arg Node
+	Set ion.Bag
 }
 
 func (m *Member) walk(v Visitor) {
 	Walk(v, m.Arg)
-	for i := range m.Values {
-		Walk(v, m.Values[i])
-	}
 }
 
 func (m *Member) rewrite(r Rewriter) Node {
@@ -1460,12 +1457,20 @@ func (m *Member) rewrite(r Rewriter) Node {
 func (m *Member) text(out *strings.Builder, redact bool) {
 	m.Arg.text(out, redact)
 	out.WriteString(" IN (")
-	for i := range m.Values {
+	i := 0
+	m.Set.Each(func(d ion.Datum) bool {
 		if i != 0 {
 			out.WriteString(", ")
 		}
-		m.Values[i].text(out, redact)
-	}
+		c, ok := AsConstant(d)
+		if !ok {
+			out.WriteString("'?'")
+		} else {
+			c.text(out, redact)
+		}
+		i++
+		return true
+	})
 	out.WriteString(")")
 }
 
@@ -1476,9 +1481,7 @@ func (m *Member) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	m.Arg.Encode(dst, st)
 	dst.BeginField(st.Intern("values"))
 	dst.BeginList(-1)
-	for i := range m.Values {
-		m.Values[i].Encode(dst, st)
-	}
+	m.Set.Encode(dst, st)
 	dst.EndList()
 	dst.EndStruct()
 }
@@ -1489,45 +1492,23 @@ func (m *Member) setfield(name string, st *ion.Symtab, body []byte) error {
 	case "arg":
 		m.Arg, _, err = Decode(st, body)
 	case "values":
-		return unpackList(body, func(arg []byte) error {
-			v, _, err := Decode(st, arg)
-			if err != nil {
-				return err
-			}
-			c, ok := v.(Constant)
-			if !ok {
-				return fmt.Errorf("%T not a constant", v)
-			}
-			m.Values = append(m.Values, c)
-			return nil
-		})
+		body, _ = ion.Contents(body) // wrapped in a list datum
+		return m.Set.Add(st, body)
 	default:
 		return errUnexpectedField
 	}
 	return err
 }
 
-func (m *Member) SortValues() {
-	slices.SortFunc(m.Values, func(a, b Constant) bool {
-		return a.Datum().LessImprecise(b.Datum())
-	})
-}
-
 func (m *Member) Equals(e Node) bool {
 	me, ok := e.(*Member)
-	if !ok || len(me.Values) != len(m.Values) {
+	if !ok || me.Set.Len() != m.Set.Len() {
 		return false
 	}
 	if !m.Arg.Equals(me.Arg) {
 		return false
 	}
-	// Note: it's expected that Values are orderd
-	for i := range m.Values {
-		if !m.Values[i].Equals(me.Values[i]) {
-			return false
-		}
-	}
-	return true
+	return m.Set.Equals(&me.Set)
 }
 
 func allConst(lst []Node) bool {
@@ -1547,9 +1528,8 @@ func In(val Node, cmp ...Node) Node {
 	if len(cmp) >= 1 && allConst(cmp) {
 		mem := &Member{Arg: val}
 		for i := range cmp {
-			mem.Values = append(mem.Values, cmp[i].(Constant))
+			mem.Set.AddDatum(cmp[i].(Constant).Datum())
 		}
-		mem.SortValues()
 		return mem
 	}
 

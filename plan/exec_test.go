@@ -265,10 +265,6 @@ func (h *partialHint) TypeOf(e expr.Node) expr.TypeSet {
 	return expr.AnyType
 }
 
-func (h *partialHint) Values(expr.Node) *expr.FiniteSet {
-	return nil
-}
-
 func partial(field string, ts expr.TypeSet) expr.Hint {
 	return &partialHint{
 		field: field,

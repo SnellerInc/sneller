@@ -74,7 +74,7 @@ func TestString(t *testing.T) {
 		},
 		{
 			In(path("t", "x"), String("foo"), String("bar")),
-			"t.x IN ('bar', 'foo')",
+			"t.x IN ('foo', 'bar')",
 		},
 		{
 			Compare(Less, Add(path("t", "x"), path("t", "y")), Integer(5)),

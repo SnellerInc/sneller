@@ -22,11 +22,8 @@ import (
 	"testing"
 )
 
-//chacha8x4 uses length[lane]==0 as masking
-
-//go:noescape
-func chacha8x4(base *byte, offsets *[4]uint32, lengths *[4]uint32) [4][16]byte
-
+// chacha8x4 uses length[lane]==0 as masking
+//
 //go:noescape
 func chacha8bulk(buf []byte, in [][2]uint32, out []uint64) int
 
@@ -103,51 +100,38 @@ func TestChaCha8Portable(t *testing.T) {
 }
 
 func TestChaCha8x4(t *testing.T) {
-	buf := make([]byte, 48*4, (48*4)+8)
-	rand.Seed(0xfeed)
+	buf := make([]byte, 48*4)
 	rand.Read(buf)
-	offsets := [4]uint32{0, 48, 2 * 48, 3 * 48}
-	lengths := [4]uint32{53, 7, 33, 48}
-
-	xor16 := func(x, y []byte) {
-		for i := range x {
-			x[i] ^= y[i]
-		}
-	}
-
-	inner := func(t *testing.T, lens [4]uint32) {
+	inner := func(t *testing.T, ends [4]uint32) {
 		t.Helper()
-		got := chacha8x4(&buf[0], &offsets, &lengths)
+		got := chacha8x4(&buf[0], ends)
 		for i := range got {
 			want := make([]byte, 16)
-			chacha8Hash(buf[offsets[i]:offsets[i]+lengths[i]], want)
+			off := 0
+			if i > 0 {
+				off = int(ends[i-1])
+			}
+			chacha8Hash(buf[off:ends[i]], want)
 			if !bytes.Equal(want, got[i][:]) {
-				xor16(want, got[i][:])
-				t.Logf("lengths: %d", lengths)
-				t.Errorf("got[%d] (len %d) is %x", i, lengths[i], got[i][:])
+				t.Logf("ends: %d", ends)
+				t.Errorf("got[%d] (end %d) is %x", i, ends[i], got[i][:])
 				t.Errorf("got[%d] diff %08x", i, want)
 			}
 		}
 	}
-
-	t.Run("zeros", func(t *testing.T) {
-		inner(t, [4]uint32{})
-	})
-	t.Run("disjoint-rounds", func(t *testing.T) {
-		inner(t, [4]uint32{48 * 3, 48 * 2, 48 * 1, 0})
-		inner(t, [4]uint32{(48 * 3) - 1, (48 * 2) - 1, (48 * 1) - 1, 0})
-	})
-
 	// create a large random test corpus
 	// and test the results against the
 	// portable reference implementation
 	t.Run("random-cases", func(t *testing.T) {
 		for rounds := 0; rounds < 1000; rounds++ {
-			for i := range lengths {
-				// random length from offsets[i] to end of buf
-				lengths[i] = uint32(rand.Intn(len(buf) - int(offsets[i])))
+			var ends [4]uint32
+			prev := 0
+			for i := range ends {
+				n := rand.Intn(len(buf)-prev) + prev
+				ends[i] = uint32(n)
+				prev = n
 			}
-			inner(t, lengths)
+			inner(t, ends)
 			if t.Failed() {
 				break
 			}
@@ -254,13 +238,11 @@ func TestChaCha8Bulk(t *testing.T) {
 func BenchmarkChaCha8x4Core(b *testing.B) {
 	buf := make([]byte, (48*4)+8)
 	rand.Read(buf)
-	offsets := [4]uint32{0, 48, 48 * 2, 48 * 3}
-	lengths := [4]uint32{11, 27, 33, 47}
-
+	ends := [4]uint32{11, 11 + 27, 11 + 27 + 33, 11 + 27 + 33 + 47}
 	b.SetBytes(11 + 27 + 33 + 47)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = chacha8x4(&buf[0], &offsets, &lengths)
+		_ = chacha8x4(&buf[0], ends)
 	}
 }
 

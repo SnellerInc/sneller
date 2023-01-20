@@ -54,29 +54,16 @@ func (r *replacement) toScalar() (expr.Constant, bool) {
 	return expr.AsConstant(f.Datum)
 }
 
-func (r *replacement) toScalarList() ([]expr.Constant, bool) {
-	tmp := make([]ion.Datum, 0, len(r.rows))
+func (r *replacement) toScalarList() (ion.Bag, bool) {
+	var ret ion.Bag
 	for i := range r.rows {
 		f, ok := first(&r.rows[i])
 		if !ok {
 			continue
 		}
-		tmp = append(tmp, f.Datum)
+		ret.AddDatum(f.Datum)
 	}
-
-	slices.SortFunc(tmp, func(a, b ion.Datum) bool {
-		return a.LessImprecise(b)
-	})
-
-	out := make([]expr.Constant, 0, len(tmp))
-	for i := range tmp {
-		v, ok := expr.AsConstant(tmp[i])
-		if !ok {
-			return nil, false
-		}
-		out = append(out, v)
-	}
-	return out, true
+	return ret, true
 }
 
 func (r *replacement) toList() (expr.Constant, bool) {
@@ -360,8 +347,8 @@ func (r *replacer) Rewrite(e expr.Node) expr.Node {
 			return e
 		}
 		return &expr.Member{
-			Arg:    b.Args[0],
-			Values: lst,
+			Arg: b.Args[0],
+			Set: lst,
 		}
 	case expr.HashReplacement:
 		r.rewrote = true

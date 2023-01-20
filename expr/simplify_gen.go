@@ -592,6 +592,14 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 				}
 			}
 		}
+		// (eq x y), "(TypeOf(x, h)&TypeOf(y, h)) == 0" -> (bool "false")
+		if x := src.Left; true {
+			if y := src.Right; true {
+				if (TypeOf(x, h) & TypeOf(y, h)) == 0 {
+					return Bool(false)
+				}
+			}
+		}
 		// (eq (upper _) (string lit)), "!isUpper(string(lit))" -> (bool "false")
 		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 			if lit, ok := (src.Right).(String); ok {
@@ -842,6 +850,14 @@ func simplifyClass4(src *Logical, h Hint) Node {
 				}
 			}
 		}
+		// (and (missing) _) -> (missing)
+		if _, ok := (src.Left).(Missing); ok {
+			return Missing{}
+		}
+		// (and _ (missing)) -> (missing)
+		if _, ok := (src.Right).(Missing); ok {
+			return Missing{}
+		}
 		// (and (bool x) y), "x && TypeOf(y, h) == LogicalType" -> y
 		if x, ok := (src.Left).(Bool); ok {
 			if y := src.Right; true {
@@ -878,6 +894,22 @@ func simplifyClass4(src *Logical, h Hint) Node {
 		// (or x x), "TypeOf(x, h) == LogicalType" -> x
 		if x := src.Left; true {
 			if x.Equals(src.Right) {
+				if TypeOf(x, h) == LogicalType {
+					return x
+				}
+			}
+		}
+		// (or x (missing)), "TypeOf(x, h) == LogicalType" -> x
+		if x := src.Left; true {
+			if _, ok := (src.Right).(Missing); ok {
+				if TypeOf(x, h) == LogicalType {
+					return x
+				}
+			}
+		}
+		// (or (missing) x), "TypeOf(x, h) == LogicalType" -> x
+		if _, ok := (src.Left).(Missing); ok {
+			if x := src.Right; true {
 				if TypeOf(x, h) == LogicalType {
 					return x
 				}

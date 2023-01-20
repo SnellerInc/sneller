@@ -183,11 +183,6 @@ type simplerw struct {
 }
 
 func (s simplerw) Rewrite(n Node) Node {
-	if fs := s.Values(n); fs != nil {
-		if val := fs.Singleton(); val != nil {
-			n = val
-		}
-	}
 	if rs, ok := n.(simplifier); ok {
 		n = rs.simplify(s.Hint)
 	}
@@ -202,11 +197,6 @@ type logicrw struct {
 }
 
 func (l logicrw) Rewrite(n Node) Node {
-	if fs := l.Values(n); fs != nil {
-		if val := fs.Singleton(); val != nil {
-			n = val
-		}
-	}
 	if rs, ok := n.(simplifier); ok {
 		n = rs.simplify(l.Hint)
 	}
@@ -477,21 +467,7 @@ func (c *Comparison) simplify(h Hint) Node {
 			return Xor(left, right)
 		}
 	}
-
 	c.canonical()
-
-	// try to evaluate in compile time expr `{known-values} op constant`
-	if rc, ok := c.Right.(Constant); ok {
-		if lv := h.Values(c.Left); lv != nil {
-			switch lv.Compare(c.Op, rc) {
-			case AlwaysTrue:
-				return Bool(true)
-			case AlwaysFalse:
-				return Bool(false)
-			}
-		}
-	}
-
 	return c
 }
 
@@ -1135,62 +1111,44 @@ func (c *Cast) simplify(h Hint) Node {
 const minMemberArguments = 10
 
 func (m *Member) simplify(h Hint) Node {
-	// when the first argument and
-	// the values do not share overlapping
-	// type descriptions, the constant
-	// can be removed
-	argtype := TypeOf(m.Arg, h)
-	for i := 0; i < len(m.Values); i++ {
-		vt := TypeOf(m.Values[i], h)
-		if !vt.AnyOf(argtype) {
-			// remove this entry and swap
-			// it for the last one, then shorten the slice
-			m.Values[i] = m.Values[len(m.Values)-1]
-			m.Values = m.Values[:len(m.Values)-1]
-			i--
-			continue
-		}
-	}
-	if len(m.Values) == 0 {
+	if m.Set.Len() == 0 {
 		// x IN () -> FALSE
 		return Bool(false)
 	}
-
-	if v := h.Values(m.Arg); v != nil {
-		switch v.In(m.Values) {
-		case AlwaysTrue:
-			return Bool(true)
-		case AlwaysFalse:
-			return Bool(false)
-		}
-	}
-
-	if len(m.Values) < minMemberArguments {
+	if m.Set.Len() < minMemberArguments {
 		var expr Node
-		for i := range m.Values {
-			eq := Compare(Equals, m.Arg, m.Values[i])
+		m.Set.Each(func(d ion.Datum) bool {
+			c, ok := AsConstant(d)
+			if !ok {
+				expr = nil
+				return false
+			}
+			eq := Compare(Equals, m.Arg, c)
 			if expr == nil {
 				expr = eq
 			} else {
 				expr = Or(expr, eq)
 			}
+			return true
+		})
+		if expr != nil {
+			return Simplify(expr, h)
 		}
-		return Simplify(expr, h)
+		return m
 	}
-
+	// if we have a constant argument,
+	// just perform a look-up directly
 	carg, ok := m.Arg.(Constant)
 	if !ok {
 		return m
 	}
-	for i := range m.Values {
-		if carg.Equals(m.Values[i]) {
-			return Bool(true)
-		}
-	}
-	// if we have a Constant and
-	// none of the arguments match,
-	// this must be a false match
-	return Bool(false)
+	dat := carg.Datum()
+	eq := false
+	m.Set.Each(func(d ion.Datum) bool {
+		eq = eq || dat.Equal(d)
+		return !eq
+	})
+	return Bool(eq)
 }
 
 var integerOne = Integer(1)

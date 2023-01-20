@@ -96,6 +96,9 @@ func xorcopy(dst, src []byte) int {
 	return l
 }
 
+//go:noescape
+func chacha8x4(base *byte, ends [4]uint32) [4][16]byte
+
 // Contrive a hash function by creating a sponge
 // from chacha8 as out core permutation function.
 // If we treat chacha8 as a 512-bit permutation,

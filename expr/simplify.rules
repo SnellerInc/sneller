@@ -16,6 +16,8 @@
 // and MISSING appear as lists like (null) and (missing).
 
 (and x x), `TypeOf(x, h) == LogicalType` -> x
+(and (missing) _) -> (missing)
+(and _ (missing)) -> (missing)
 (and (bool x) y), `x && TypeOf(y, h) == LogicalType` -> y
 (and x (bool y)), `y && TypeOf(x, h) == LogicalType` -> x
 (and (bool x) (bool y)) -> (bool "x && y")
@@ -23,6 +25,8 @@
 (and x (and y z)) -> (and (and x y) z)
 
 (or x x), `TypeOf(x, h) == LogicalType` -> x
+(or x (missing)), `TypeOf(x, h) == LogicalType` -> x
+(or (missing) x), `TypeOf(x, h) == LogicalType` -> x
 (or (bool x) y), `!x`, `TypeOf(y, h) == LogicalType` -> y
 (or x (bool y)), `!y`, `TypeOf(x, h) == LogicalType` -> x
 (or (bool x) (bool y)) -> (bool "x || y")
@@ -65,6 +69,8 @@
 (like (lower x) pat esc), `isLower(pat)` -> (ilike x pat esc)
 (like (upper _) pat), `!isUpper(pat)` -> (bool `false`)
 (like (lower _) pat), `!isLower(pat)` -> (bool `false`)
+
+(eq x y), `(TypeOf(x, h)&TypeOf(y, h)) == 0` -> (bool `false`)
 
 // produced via the rewrite above:
 (eq (upper _) (string lit)), `!isUpper(string(lit))` -> (bool `false`)

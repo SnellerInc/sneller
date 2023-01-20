@@ -209,6 +209,7 @@ type resymbolizer struct {
 	idmap  []Symbol
 	srctab *Symtab
 	dsttab *Symtab
+	expand bool
 }
 
 func (r *resymbolizer) reset() {
@@ -249,14 +250,19 @@ func (d Datum) Encode(dst *Buffer, st *Symtab) {
 }
 
 // performance-sensitive resymbolization path
-func (r *resymbolizer) resym(dst *Buffer, buf []byte) {
+func (r *resymbolizer) resym(dst *Buffer, buf []byte) []byte {
 	switch TypeOf(buf) {
 	case SymbolType:
-		sym, _, _ := ReadSymbol(buf)
-		dst.WriteSymbol(r.get(sym))
+		sym, rest, _ := ReadSymbol(buf)
+		if r.expand {
+			dst.WriteString(r.srctab.Get(sym))
+		} else {
+			dst.WriteSymbol(r.get(sym))
+		}
+		return rest
 	case StructType:
 		dst.BeginStruct(-1)
-		body, _ := Contents(buf)
+		body, rest := Contents(buf)
 		var sym Symbol
 		for len(body) > 0 {
 			sym, body, _ = ReadLabel(body)
@@ -266,23 +272,28 @@ func (r *resymbolizer) resym(dst *Buffer, buf []byte) {
 			body = body[size:]
 		}
 		dst.EndStruct()
+		return rest
 	case ListType:
 		dst.BeginList(-1)
-		body, _ := Contents(buf)
+		body, rest := Contents(buf)
 		for len(body) > 0 {
 			size := SizeOf(body)
 			r.resym(dst, body[:size])
 			body = body[size:]
 		}
 		dst.EndList()
+		return rest
 	case AnnotationType:
-		sym, body, _, _ := ReadAnnotation(buf)
+		sym, body, rest, _ := ReadAnnotation(buf)
 		dst.BeginAnnotation(1)
 		dst.BeginField(r.get(sym))
 		r.resym(dst, body)
 		dst.EndAnnotation()
+		return rest
 	default:
-		dst.UnsafeAppend(buf)
+		s := SizeOf(buf)
+		dst.UnsafeAppend(buf[:s])
+		return buf[s:]
 	}
 }
 
