@@ -63,39 +63,9 @@ type IonRecord struct {
 	SymtabID int
 }
 
-func setSlice[T any](v *[]T, other []T) {
-	if cap(*v) >= len(other) {
-		*v = (*v)[:len(other)]
-	} else {
-		*v = make([]T, len(other))
-	}
-	copy((*v), other)
-}
-
-func (r *IonRecord) set(other *IonRecord) {
-	setSlice(&r.FieldDelims, other.FieldDelims)
-	setSlice(&r.Raw, other.Raw)
-	r.Boxed = other.Boxed
-	r.SymtabID = other.SymtabID
-}
-
 // Bytes returns Ion bytes
 func (r *IonRecord) Bytes() []byte {
 	return r.Raw[int(r.Boxed):]
-}
-
-// snapshot makes copy of all record memory.
-//
-// We assume that newly added records use shared memory (see ../../sort.go),
-// thus to keep the records across calls we have to make a snapshot.
-func (r *IonRecord) snapshot() {
-	raw := make([]byte, len(r.Raw))
-	copy(raw, r.Raw)
-	fields := make([][2]uint32, len(r.FieldDelims))
-	copy(fields, r.FieldDelims)
-
-	r.Raw = raw
-	r.FieldDelims = fields
 }
 
 // missingIndicator is an Ion value returned when a field is missing.

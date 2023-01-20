@@ -24,6 +24,7 @@ import (
 	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
+	"github.com/SnellerInc/sneller/heap"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/sorting"
 )
@@ -64,8 +65,7 @@ type Order struct {
 	rawrecords map[uint32][][]byte
 
 	// collection of k-top rows
-	ktop    *sorting.Ktop
-	symtabs []ion.Symtab
+	kheap kheap
 
 	// lock for writing to `records`/`rawrecords`/'ktop'
 	recordsLock sync.Mutex
@@ -105,9 +105,6 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, paralle
 	s.rp.UseStdlib = true // see #917
 
 	s.rawrecords = make(map[uint32][][]byte)
-	if s.useKtop() {
-		s.ktop = s.newKtop()
-	}
 
 	s.bytesAlloc.Init(1024 * 1024)
 	s.indicesAlloc.Init(len(columns) * 1024)
@@ -149,13 +146,13 @@ func (s *Order) useKtop() bool {
 	return s.limit.Kind == sorting.LimitToHeadRows
 }
 
-func (s *Order) newKtop() *sorting.Ktop {
+func (s *Order) orderList() []sorting.Ordering {
 	orders := make([]sorting.Ordering, len(s.columns))
 	for i := range s.columns {
 		orders[i].Direction = s.columns[i].Direction
 		orders[i].Nulls = s.columns[i].Nulls
 	}
-	return sorting.NewKtop(s.limit.Limit, orders)
+	return orders
 }
 
 // Open implements QuerySink.Open
@@ -163,7 +160,10 @@ func (s *Order) Open() (io.WriteCloser, error) {
 	s.wg.Add(1)
 
 	if s.useKtop() {
-		return splitter(&sortstateKtop{parent: s, ktop: s.newKtop()}), nil
+		kt := &sortstateKtop{parent: s}
+		kt.kheap.fields = s.orderList()
+		kt.kheap.limit = s.limit.Limit
+		return splitter(kt), nil
 	} else if s.useSingleColumnSorter() {
 		chunkID := atomic.AddUint32(&s.chunkID, 1) - 1
 		recordID := uint64(chunkID) << 32 // start with ID().chunk() = chunkID and ID().row() == 0
@@ -239,13 +239,8 @@ func (s *Order) finalizeSingleColumnSorting() error {
 }
 
 func (s *Order) finalizeKtop() error {
-	var row []ion.Field
-	var sym ion.Symbol
-	var val ion.Datum
-	var tmp ion.Buffer
 	var globalst ion.Symtab
-	var err error
-	records := s.ktop.Capture()
+	var tmp ion.Buffer
 
 	// once we have accumulated this many data bytes,
 	// flush the output buffer:
@@ -266,29 +261,18 @@ func (s *Order) finalizeKtop() error {
 		_, err := s.dst.Write(out)
 		return err
 	}
-
-	// for each record, re-encode into
-	// the new global symbol table and then
-	// serialize into the temporary buffer
-	for i := range records {
-		st := &s.symtabs[records[i].SymtabID]
-		row = row[:0]
-		contents := records[i].Bytes()
-		for len(contents) > 0 {
-			sym, contents, err = ion.ReadLabel(contents)
-			if err != nil {
-				return err
-			}
-			val, contents, err = ion.ReadDatum(st, contents)
-			if err != nil {
-				return err
-			}
-			row = append(row, ion.Field{
-				Label: st.Get(sym),
-				Datum: val,
-			})
-		}
-		tmp.WriteStruct(&globalst, row)
+	// reverse the max-heap ordering
+	// to end up with the final desired ordering:
+	final := make([]krecord, len(s.kheap.heaporder))
+	i := len(final) - 1
+	for len(s.kheap.heaporder) > 0 {
+		n := heap.PopSlice(&s.kheap.heaporder, s.kheap.greater)
+		final[i] = s.kheap.records[n]
+		i--
+	}
+	for i := range final {
+		rec := &final[i]
+		rec.data.Encode(&tmp, &globalst)
 		if tmp.Size() >= flushAt {
 			err := flush()
 			if err != nil {
@@ -594,41 +578,34 @@ type sortstateKtop struct {
 	// most recent aux bindings
 	// passed to symbolize()
 	aux *auxbindings
+	// auxyms[i] corresponds to aux.bound[i]
+	// for the most recent symbol table
+	auxsyms []ion.Symbol
 
 	// see the comment in `sortstateMulticolumn`
 	parentNotified bool
 
 	// bytecode for locating columns
 	findbc bytecode
-
-	// local k-top rows
-	ktop *sorting.Ktop
-
-	// a buffer to keep the scratch + record data of the current record in `writeRows`
-	buffer []byte
-
 	// most recent symbolize() symtab
 	st *symtab
-	// list of all captured symbol tables
-	symtabs []ion.Symtab
-	// # of captures of symtabs[len(symtabs)-1]
-	captures int
 
-	// a buffer to keep the fields for the current record in `writeRows`
-	fields [][2]uint32
+	kheap   kheap
+	scratch ion.Buffer
+	colbuf  [][]byte
 
 	// if prefilter is true,
 	// then filtbc is a program that
 	// prefilters input rows
 	prefilter bool
-	recent    [][]byte
+	recent    []byte
 	filtbc    bytecode
 	filtprog  prog
 }
 
 func (s *sortstateKtop) invalidatePrefilter() {
 	s.prefilter = false
-	s.recent = make([][]byte, len(s.parent.columns))
+	s.recent = s.recent[:0]
 	s.filtbc.reset()
 	s.filtprog = prog{}
 }
@@ -641,27 +618,17 @@ func (s *sortstateKtop) EndSegment() {
 }
 
 func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
-	s.st = st
-	if s.captures > 0 || len(s.symtabs) == 0 {
-		s.symtabs = append(s.symtabs, ion.Symtab{})
-	}
-
 	if s.prefilter && s.filtprog.isStale(st) {
 		s.invalidatePrefilter()
 	} else {
 		s.filtbc.restoreScratch(st)
 	}
-	if len(aux.bound) > 0 {
-		// FIXME: we'd need to permute the auxilliary binding variables
-		// in the same way that we manipulate the input rows
-		return fmt.Errorf("ORDER BY cannot handle auxilliary bindings")
-	}
+	s.st = st
 	s.aux = aux
-
-	// copy the source symbol table
-	// so that we can still use it after
-	// it has been updated
-	st.Symtab.CloneInto(&s.symtabs[len(s.symtabs)-1])
+	s.auxsyms = s.auxsyms[:0]
+	for i := range s.aux.bound {
+		s.auxsyms = append(s.auxsyms, st.Intern(s.aux.bound[i]))
+	}
 	return symbolize(s.parent, &s.findbc, st, aux, false)
 }
 
@@ -669,39 +636,33 @@ func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error
 	return bcfind(s.parent, &s.findbc, delims, rp)
 }
 
-func (s *sortstateKtop) bcfilter(delims []vmref) ([]vmref, error) {
-	n := evalfilterbc(&s.filtbc, delims)
+func (s *sortstateKtop) bcfilter(delims []vmref, rp *rowParams) ([]vmref, error) {
+	s.filtbc.prepare(rp)
+	valid := evalfilterbc(&s.filtbc, delims)
 	if s.filtbc.err != 0 {
 		return nil, fmt.Errorf("ktop prefilter: %w", s.filtbc.err)
 	}
-	return delims[:n], nil
+	if valid > 0 {
+		// the assembly already did the compression for us:
+		for i := range rp.auxbound {
+			rp.auxbound[i] = sanitizeAux(rp.auxbound[i], valid) // ensure rp.auxbound[i][valid:] is zeroed up to the lane multiple
+		}
+	}
+	return delims[:valid], nil
 }
 
 // peek at the "greatest" retained element
 // and compile a filter that drops everything
 // that is larger/smaller than this element
 func (s *sortstateKtop) maybePrefilter() error {
-	if s.prefilter {
+	if s.prefilter || len(s.kheap.records) == 0 {
 		// already enabled
 		return nil
 	}
-	rec := s.ktop.Greatest()
-	if rec == nil {
+	rec := &s.kheap.records[s.kheap.heaporder[0]]
+	if bytes.Equal(rec.order, s.recent) {
+		// equivalent state
 		return nil
-	}
-
-	anychanged := func() bool {
-		for i := range s.parent.columns {
-			f := rec.UnsafeField(i)
-			if !bytes.Equal(f, s.recent[i]) {
-				return true
-			}
-		}
-		return false
-	}
-
-	if !anychanged() {
-		return nil // up-to-date
 	}
 
 	p := &s.filtprog
@@ -710,8 +671,12 @@ func (s *sortstateKtop) maybePrefilter() error {
 	prevequal := p.validLanes() // all the previous columns are equal
 	result := p.missing()
 
-	for i := range s.parent.columns {
-		f := rec.UnsafeField(i)
+	data := rec.order
+	colnum := 0
+	for len(data) > 0 {
+		size := ion.SizeOf(data)
+		f := data[:size]
+		data = data[size:]
 		t := ion.TypeOf(f)
 		var (
 			imm     *value
@@ -763,10 +728,11 @@ func (s *sortstateKtop) maybePrefilter() error {
 			return nil
 		}
 
-		v, err := compile(p, s.parent.columns[i].Node)
+		v, err := compile(p, s.parent.columns[colnum].Node)
 		if err != nil {
 			return err
 		}
+		colnum++
 
 		validtype := p.checkTag(v, typeset)
 
@@ -796,13 +762,97 @@ func (s *sortstateKtop) maybePrefilter() error {
 	if err != nil {
 		return err
 	}
-
 	// record the current prefilter state
 	s.prefilter = true
-	for i := range s.parent.columns {
-		s.recent[i] = rec.UnsafeField(i)
+	s.recent = append(s.recent[:0], rec.order...)
+	return nil
+}
+
+// krecord is a record snapshot in a ktop heap
+type krecord struct {
+	order []byte
+	data  ion.Datum
+}
+
+// kheap is a heap of ion records
+type kheap struct {
+	heaporder []int              // records[heaporder[...]] is the max-heap ordering
+	records   []krecord          // raw record storage
+	fields    []sorting.Ordering // ordering constraint
+	limit     int                // target size
+}
+
+// insert a set of ordering fields into the heap,
+// returning a non-nil pointer to the destination datum
+// *if* the entry should be captured, or nil otherwise
+func (k *kheap) insert(fields [][]byte) *ion.Datum {
+	if len(fields) != len(k.fields) {
+		panic("bad # fields")
+	}
+	flatten := func(dst []byte, src [][]byte) []byte {
+		for i := range src {
+			dst = append(dst, src[i]...)
+		}
+		return dst
+	}
+	if len(k.records) < k.limit {
+		n := len(k.records)
+		k.records = append(k.records, krecord{
+			order: flatten(nil, fields),
+		})
+		heap.PushSlice(&k.heaporder, n, k.greater)
+		return &k.records[n].data
+	}
+	top := &k.records[k.heaporder[0]]
+	topdata := top.order
+	for i := range fields {
+		size := ion.SizeOf(topdata)
+		if k.fields[i].Compare(fields[i], topdata[:size]) < 0 {
+			// overwrite
+			top.order = flatten(top.order[:0], fields)
+			heap.FixSlice(k.heaporder, 0, k.greater)
+			return &top.data
+		}
+		topdata = topdata[size:]
 	}
 	return nil
+}
+
+func (k *kheap) greater(left, right int) bool {
+	lr := &k.records[left]
+	rr := &k.records[right]
+	return k.reccmp(lr, rr) > 0
+}
+
+func (k *kheap) reccmp(lr, rr *krecord) int {
+	lrdata, rrdata := lr.order, rr.order
+	for i := range k.fields {
+		ls, rs := ion.SizeOf(lrdata), ion.SizeOf(rrdata)
+		cmp := k.fields[i].Compare(lrdata[:ls], rrdata[:rs])
+		if cmp != 0 {
+			return cmp
+		}
+		lrdata, rrdata = lrdata[ls:], rrdata[rs:]
+	}
+	return 0
+}
+
+func (k *kheap) merge(from *kheap) {
+	for len(from.heaporder) > 0 {
+		n := heap.PopSlice(&from.heaporder, from.greater)
+		rec := &from.records[n]
+		if len(k.heaporder) < k.limit {
+			// need more values, so append unconditionally
+			n := len(k.records)
+			k.records = append(k.records, *rec)
+			heap.PushSlice(&k.heaporder, n, k.greater)
+		} else if k.reccmp(&k.records[k.heaporder[0]], rec) > 0 {
+			// need more records or have a better "worst" record candidate;
+			// insert the value:
+			k.records[k.heaporder[0]] = *rec
+			heap.FixSlice(k.heaporder, 0, k.greater)
+		}
+	}
 }
 
 func (s *sortstateKtop) writeRows(delims []vmref, rp *rowParams) error {
@@ -811,8 +861,7 @@ func (s *sortstateKtop) writeRows(delims []vmref, rp *rowParams) error {
 	}
 	if s.prefilter {
 		var err error
-		s.filtbc.prepare(rp)
-		delims, err = s.bcfilter(delims)
+		delims, err = s.bcfilter(delims, rp)
 		if err != nil {
 			return err
 		}
@@ -826,64 +875,41 @@ func (s *sortstateKtop) writeRows(delims []vmref, rp *rowParams) error {
 	if err != nil {
 		return err
 	}
-
-	if s.buffer == nil {
-		s.buffer = make([]byte, 16*1024)                    // this may grow
-		s.fields = make([][2]uint32, len(s.parent.columns)) // this is constant
-	}
-
-	// split input data into separate records
-	columnCount := len(s.parent.columns)
-
-	var record sorting.IonRecord
-	record.SymtabID = len(s.symtabs) - 1
-
+	cols := shrink(s.colbuf, len(s.kheap.fields))
 outer:
 	for rowID := 0; rowID < len(delims); rowID++ {
-		// extract the record data
-		bytes := delims[rowID].mem()
-
-		// calculate space for boxed values
-		record.Boxed = 0
-		for columnID := 0; columnID < columnCount; columnID++ {
-			record.Boxed += getdelim(fieldsView, rowID, columnID, columnCount)[1]
-		}
-
-		// grow byte buffer when necessary
-		bufsize := int(record.Boxed) + len(bytes)
-		if bufsize > cap(s.buffer) {
-			s.buffer = make([]byte, bufsize)
-		}
-
-		s.buffer = s.buffer[:bufsize]
-
-		// copy original row data
-		copy(s.buffer[record.Boxed:], bytes)
-
-		// copy field delimiters and boxed values (if any)
-		boxedOffset := 0
-		for columnID := 0; columnID < columnCount; columnID++ {
-			it := getdelim(fieldsView, rowID, columnID, columnCount)
-			size := it.size()
-			if size == 0 {
-				continue outer // MISSING field (cannot sort)
+		for j := 0; j < len(cols); j++ {
+			cols[j] = getdelim(fieldsView, rowID, j, len(cols)).mem()
+			if len(cols[j]) == 0 {
+				continue outer // MISSING
 			}
-			s.fields[columnID][0] = uint32(boxedOffset)
-			s.fields[columnID][1] = uint32(size)
-			copy(s.buffer[boxedOffset:], it.mem())
-			boxedOffset += size
 		}
-		record.Raw = s.buffer
-		record.FieldDelims = s.fields
-
-		// when record is added, its data is being copied,
-		// and there will be a new item we need to prefilter against
-		if s.ktop.Add(&record) {
-			s.captures++
-			s.invalidatePrefilter()
+		datptr := s.kheap.insert(cols)
+		if datptr == nil {
+			continue
 		}
+		s.scratch.Reset()
+		s.scratch.BeginStruct(-1)
+		// TODO: speed up the transcoding process here:
+		data := delims[rowID].mem()
+		for len(data) > 0 {
+			var sym ion.Symbol
+			sym, data, _ = ion.ReadLabel(data)
+			s.scratch.BeginField(sym)
+			size := ion.SizeOf(data)
+			s.scratch.UnsafeAppend(data[:size])
+			data = data[size:]
+		}
+		for j := range s.auxsyms {
+			s.scratch.BeginField(s.auxsyms[j])
+			s.scratch.UnsafeAppend(rp.auxbound[j][rowID].mem())
+		}
+		s.scratch.EndStruct()
+		dat, _, _ := ion.ReadDatum(&s.st.Symtab, s.scratch.Bytes())
+		dat.CloneInto(datptr)
+		s.invalidatePrefilter()
 	}
-	if s.ktop.Full() {
+	if len(s.kheap.records) == s.kheap.limit {
 		// since the heap is full,
 		// we can begin trying to prefilter
 		// anything that wouldn't be added trivially
@@ -900,19 +926,20 @@ func (s *sortstateKtop) Close() error {
 		return nil
 	}
 	s.parentNotified = true
+	defer s.parent.wg.Done()
 
 	s.findbc.reset()
-	s.parent.recordsLock.Lock()
-	base := len(s.parent.symtabs)
-	recs := s.ktop.Records()
-	for i := range recs {
-		recs[i].SymtabID += base
+	s.filtbc.reset()
+	if len(s.kheap.records) == 0 {
+		return nil
 	}
-	s.parent.symtabs = append(s.parent.symtabs, s.symtabs...)
-	s.parent.ktop.Merge(s.ktop)
+	s.parent.recordsLock.Lock()
+	if len(s.parent.kheap.records) == 0 {
+		s.parent.kheap = s.kheap
+	} else {
+		s.parent.kheap.merge(&s.kheap)
+	}
 	s.parent.recordsLock.Unlock()
-	s.parent.wg.Done()
-
 	return nil
 }
 

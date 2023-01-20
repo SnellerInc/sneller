@@ -59,6 +59,13 @@ func rawDatum(st *Symtab, b []byte) Datum {
 // Empty is the zero value of a Datum.
 var Empty = Datum{}
 
+// CloneInto clobbers the underlying storage for dst
+// with the contents of d.
+func (d Datum) CloneInto(dst *Datum) {
+	dst.st = d.st
+	dst.buf = append(dst.buf[:0], d.buf...)
+}
+
 func (d Datum) Clone() Datum {
 	return Datum{
 		st:  d.st, // no need to clone

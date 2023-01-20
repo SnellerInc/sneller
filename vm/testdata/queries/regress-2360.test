@@ -1,0 +1,19 @@
+SELECT *
+FROM input i, i.tags tag
+WHERE tag.key = 'pickme'
+ORDER BY i.rn
+LIMIT 50
+---
+{"rn": 0, "tags": [{"key": "pickme"},{"row": 0}]}
+{"rn": 1, "tags": [{}]}
+{"rn": 2, "tags": [{"key": "pickme"}]}
+{"rn": 3, "tags": [{"key": "no"}]}
+{"rn": 4, "tags": [{"key": "pickme"}]}
+{"rn": 5, "tags": [{"key": "still no"}, {"key": ""}]}
+{"rn": 6, "tags": [{"key": "pickme"}]}
+{"rn": 7, "tags": [{"key": "not this one either"}]}
+---
+{"rn": 0, "tags": [{"key": "pickme"},{"row":0}], "tag": {"key": "pickme"}}
+{"rn": 2, "tags": [{"key": "pickme"}], "tag": {"key": "pickme"}}
+{"rn": 4, "tags": [{"key": "pickme"}], "tag": {"key": "pickme"}}
+{"rn": 6, "tags": [{"key": "pickme"}], "tag": {"key": "pickme"}}
