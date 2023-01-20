@@ -320,7 +320,7 @@ func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].String(); ok {
+			if str, err := fields[i].String(); err == nil {
 				if r.Intn(2) == 0 {
 					fields[i].Datum = ion.Interned(st, str)
 				}
@@ -333,7 +333,7 @@ func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
 		d, _ := d.List()
 		items := d.Items(nil)
 		for i := range items {
-			if str, ok := items[i].String(); ok {
+			if str, err := items[i].String(); err == nil {
 				if r.Intn(2) == 0 {
 					items[i] = ion.Interned(st, str)
 				}
@@ -373,8 +373,8 @@ func insertSpecialFPValues(d ion.Datum, st *ion.Symtab) ion.Datum {
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].String(); ok {
-				if v := parseSpecialFPValues(str); !v.Empty() {
+			if str, err := fields[i].String(); err == nil {
+				if v := parseSpecialFPValues(str); !v.IsEmpty() {
 					fields[i].Datum = v
 				}
 			} else {
@@ -386,8 +386,8 @@ func insertSpecialFPValues(d ion.Datum, st *ion.Symtab) ion.Datum {
 		d, _ := d.List()
 		items := d.Items(nil)
 		for i := range items {
-			if str, ok := items[i].String(); ok {
-				if v := parseSpecialFPValues(str); !v.Empty() {
+			if str, err := items[i].String(); err == nil {
+				if v := parseSpecialFPValues(str); !v.IsEmpty() {
 					items[i] = v
 				}
 			} else {
@@ -561,7 +561,7 @@ func unsymbolize(d ion.Datum, st *ion.Symtab) ion.Datum {
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
-			if str, ok := fields[i].String(); ok {
+			if str, err := fields[i].String(); err == nil {
 				fields[i].Datum = ion.String(str)
 			} else {
 				fields[i].Datum = unsymbolize(fields[i].Datum, st)
@@ -572,7 +572,7 @@ func unsymbolize(d ion.Datum, st *ion.Symtab) ion.Datum {
 		d, _ := d.List()
 		items := d.Items(nil)
 		for i := range items {
-			if str, ok := items[i].String(); ok {
+			if str, err := items[i].String(); err == nil {
 				items[i] = ion.String(str)
 			} else {
 				items[i] = unsymbolize(items[i], st)
@@ -704,7 +704,7 @@ func shuffleSymtab(q *expr.Query) bool {
 const shufflecount = 10
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {
-	if d.Empty() {
+	if d.IsEmpty() {
 		return "<nil>"
 	}
 	var ib ion.Buffer

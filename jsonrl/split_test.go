@@ -79,13 +79,13 @@ func check(t *testing.T, contents []byte, objcount int) {
 			if err != nil {
 				t.Fatalf("offset %d object %d pre %x %s", off, objn, pre, err)
 			}
-			if dat.Null() {
+			if dat.IsNull() {
 				if len(mem) != 0 {
 					t.Errorf("offset %d object %d is null but not a nop pad", off, objn)
 				}
 				break
 			}
-			if _, ok := dat.Struct(); !ok {
+			if !dat.IsStruct() {
 				t.Errorf("found non-struct datum %T", dat)
 			}
 			objn++

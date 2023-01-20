@@ -63,73 +63,110 @@ func (d Datum) Clone() Datum {
 func (d Datum) Equal(x Datum) bool {
 	switch d.Type() {
 	case NullType:
-		return x.Null()
+		return x.IsNull()
 	case FloatType:
-		f, _ := d.Float()
-		switch x.Type() {
-		case FloatType:
-			f2, _ := x.Float()
-			return f2 == f || (math.IsNaN(f) && math.IsNaN(f2))
-		case IntType:
-			i, _ := x.Int()
-			return float64(int64(f)) == float64(f) && int64(f) == int64(i)
-		case UintType:
-			u, _ := x.Uint()
-			return float64(uint64(f)) == float64(f) && uint64(f) == uint64(u)
+		if x.IsFloat() {
+			d, _ := d.Float()
+			x, _ := x.Float()
+			return x == d || (math.IsNaN(d) && math.IsNaN(x))
 		}
-		return false
+		if x.IsInt() {
+			d, _ := d.Float()
+			x, _ := x.Int()
+			return float64(int64(d)) == float64(d) && int64(d) == int64(x)
+		}
+		if x.IsUint() {
+			d, _ := d.Float()
+			x, _ := x.Uint()
+			return float64(uint64(d)) == float64(d) && uint64(d) == uint64(x)
+		}
 	case IntType:
-		i, _ := d.Int()
-		switch x.Type() {
-		case IntType:
+		if x.IsInt() {
+			d, _ := d.Int()
 			x, _ := x.Int()
-			return x == i
-		case UintType:
-			x, _ := x.Uint()
-			return i >= 0 && uint64(i) == x
-		case FloatType:
-			x, _ := x.Float()
-			return float64(int64(x)) == float64(x) && int64(x) == int64(i)
+			return x == d
 		}
-		return false
+		if x.IsUint() {
+			d, _ := d.Int()
+			x, _ := x.Uint()
+			return d >= 0 && uint64(d) == x
+		}
+		if x.IsFloat() {
+			d, _ := d.Int()
+			x, _ := x.Float()
+			return float64(int64(x)) == float64(x) && int64(x) == int64(d)
+		}
 	case UintType:
-		u, _ := d.Uint()
-		switch x.Type() {
-		case UintType:
+		if x.IsUint() {
+			d, _ := d.Uint()
 			x, _ := x.Uint()
-			return u == x
-		case IntType:
+			return d == x
+		}
+		if x.IsInt() {
+			d, _ := d.Uint()
 			x, _ := x.Int()
-			return x >= 0 && uint64(x) == u
-		case FloatType:
+			return x >= 0 && uint64(x) == d
+		}
+		if x.IsFloat() {
+			d, _ := d.Uint()
 			x, _ := x.Float()
-			return float64(uint64(x)) == float64(x) && uint64(x) == uint64(u)
+			return float64(uint64(x)) == float64(x) && uint64(x) == uint64(d)
+		}
+	case StructType:
+		if x.IsStruct() {
+			d, _ := d.Struct()
+			x, _ := x.Struct()
+			return d.Equal(x)
 		}
 		return false
-	case StructType:
-		s, _ := d.Struct()
-		s2, ok := x.Struct()
-		return ok && s.Equal(s2)
 	case ListType:
-		l, _ := d.List()
-		l2, ok := x.List()
-		return ok && l.Equal(l2)
+		if x.IsList() {
+			d, _ := d.List()
+			x, _ := x.List()
+			return d.Equal(x)
+		}
+		return false
 	case BoolType:
-		b, _ := d.Bool()
-		b2, ok := x.Bool()
-		return ok && b == b2
-	case StringType, SymbolType:
-		s, _ := d.String()
-		s2, ok := x.String()
-		return ok && s == s2
+		if x.IsBool() {
+			d, _ := d.Bool()
+			x, _ := x.Bool()
+			return d == x
+		}
+		return false
+	case StringType:
+		if x.IsString() {
+			d, _ := d.String()
+			x, _ := x.StringShared()
+			return d == string(x)
+		}
+		if x.IsSymbol() {
+			d, _ := d.String()
+			x, _ := x.String()
+			return d == x
+		}
+	case SymbolType:
+		if x.IsString() {
+			d, _ := d.String()
+			x, _ := x.StringShared()
+			return d == string(x)
+		}
+		if x.IsSymbol() {
+			d, _ := d.String()
+			x, _ := x.String()
+			return d == x
+		}
 	case BlobType:
-		b, _ := d.Blob()
-		b2, ok := x.Blob()
-		return ok && string(b) == string(b2)
+		if x.IsBlob() {
+			d, _ := d.BlobShared()
+			x, _ := x.BlobShared()
+			return string(d) == string(x)
+		}
 	case TimestampType:
-		t, _ := d.Timestamp()
-		t2, ok := x.Timestamp()
-		return ok && t.Equal(t2)
+		if x.IsTimestamp() {
+			d, _ := d.Timestamp()
+			x, _ := x.Timestamp()
+			return d.Equal(x)
+		}
 	}
 	return false
 }
@@ -234,52 +271,93 @@ func (r *resymbolizer) resym(dst *Buffer, buf []byte) {
 	}
 }
 
-func (d Datum) Empty() bool {
-	return len(d.buf) == 0
-}
+func (d Datum) IsEmpty() bool      { return len(d.buf) == 0 }
+func (d Datum) IsNull() bool       { return d.Type() == NullType }
+func (d Datum) IsFloat() bool      { return d.Type() == FloatType }
+func (d Datum) IsInt() bool        { return d.Type() == IntType }
+func (d Datum) IsUint() bool       { return d.Type() == UintType }
+func (d Datum) IsStruct() bool     { return d.Type() == StructType }
+func (d Datum) IsList() bool       { return d.Type() == ListType }
+func (d Datum) IsAnnotation() bool { return d.Type() == AnnotationType }
+func (d Datum) IsBool() bool       { return d.Type() == BoolType }
+func (d Datum) IsSymbol() bool     { return d.Type() == SymbolType }
+func (d Datum) IsString() bool     { return d.Type() == StringType }
+func (d Datum) IsBlob() bool       { return d.Type() == BlobType }
+func (d Datum) IsTimestamp() bool  { return d.Type() == TimestampType }
 
-func (d Datum) Null() bool {
-	return d.Type() == NullType
-}
+func (d Datum) Null() error                        { return d.null("") }
+func (d Datum) Float() (float64, error)            { return d.float("") }
+func (d Datum) Int() (int64, error)                { return d.int("") }
+func (d Datum) Uint() (uint64, error)              { return d.uint("") }
+func (d Datum) Struct() (Struct, error)            { return d.struc("") }
+func (d Datum) List() (List, error)                { return d.list("") }
+func (d Datum) Annotation() (string, Datum, error) { return d.annotation("") }
+func (d Datum) Bool() (bool, error)                { return d.bool("") }
+func (d Datum) Symbol() (Symbol, error)            { return d.symbol("") }
+func (d Datum) String() (string, error)            { return d.string("") }
+func (d Datum) Blob() ([]byte, error)              { return d.blob("") }
+func (d Datum) Timestamp() (date.Time, error)      { return d.timestamp("") }
 
-func (d Datum) Float() (float64, bool) {
-	if d.Type() == FloatType {
-		f, _, err := ReadFloat64(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return f, true
+// StringShared returns a []byte aliasing the
+// contents of this Datum and should be copied
+// as necessary to avoid issues that may arise
+// from retaining aliased bytes.
+//
+// Unlike String, this method will not work with
+// a symbol datum.
+func (d Datum) StringShared() ([]byte, error) { return d.stringShared("") }
+
+// BlobShared returns a []byte aliasing the
+// contents of this Datum and should be copied
+// as necessary to avoid issues that may arise
+// from retaining aliased bytes.
+func (d Datum) BlobShared() ([]byte, error) { return d.blobShared("") }
+
+func (d Datum) null(field string) error {
+	if !d.IsNull() {
+		return d.bad(field, NullType)
 	}
-	return 0, false
+	return nil
 }
 
-func (d Datum) Int() (int64, bool) {
-	if d.Type() == IntType {
-		i, _, err := ReadInt(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return i, true
+func (d Datum) float(field string) (float64, error) {
+	if !d.IsFloat() {
+		return 0, d.bad(field, FloatType)
 	}
-	return 0, false
+	f, _, err := ReadFloat64(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return f, nil
 }
 
-func (d Datum) Uint() (uint64, bool) {
-	if d.Type() == UintType {
-		u, _, err := ReadUint(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return u, true
+func (d Datum) int(field string) (int64, error) {
+	if !d.IsInt() {
+		return 0, d.bad(field, IntType)
 	}
-	return 0, false
+	i, _, err := ReadInt(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return i, nil
 }
 
-func (d Datum) Struct() (Struct, bool) {
-	if d.Type() == StructType {
-		return Struct{st: d.st, buf: d.buf}, true
+func (d Datum) uint(field string) (uint64, error) {
+	if !d.IsUint() {
+		return 0, d.bad(field, UintType)
 	}
-	return Struct{}, false
+	u, _, err := ReadUint(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return u, nil
+}
+
+func (d Datum) struc(field string) (Struct, error) {
+	if !d.IsStruct() {
+		return Struct{}, d.bad(field, StructType)
+	}
+	return Struct{st: d.st, buf: d.buf}, nil
 }
 
 // Field returns the value associated with the
@@ -287,10 +365,10 @@ func (d Datum) Struct() (Struct, bool) {
 // If d is not a struct or the field is not
 // present, this returns Empty.
 func (d Datum) Field(name string) Datum {
-	s, ok := d.Struct()
-	if !ok {
+	if !d.IsStruct() {
 		return Empty
 	}
+	s, _ := d.Struct()
 	f, ok := s.FieldByName(name)
 	if !ok {
 		return Empty
@@ -298,91 +376,105 @@ func (d Datum) Field(name string) Datum {
 	return f.Datum
 }
 
-func (d Datum) List() (List, bool) {
-	if d.Type() == ListType {
-		return List{st: d.st, buf: d.buf}, true
+func (d Datum) list(field string) (List, error) {
+	if !d.IsList() {
+		return List{}, d.bad(field, ListType)
 	}
-	return List{}, false
+	return List{st: d.st, buf: d.buf}, nil
 }
 
-func (d Datum) Annotation() (string, Datum, bool) {
-	if d.Type() == AnnotationType {
-		sym, body, _, err := ReadAnnotation(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		st := d.symtab()
-		s, ok := st.Lookup(sym)
-		if !ok {
-			panic("ion.Datum.Annotation: missing symbol")
-		}
-		return s, Datum{st: d.st, buf: body}, true
+func (d Datum) annotation(field string) (string, Datum, error) {
+	if !d.IsAnnotation() {
+		return "", Empty, d.bad(field, AnnotationType)
 	}
-	return "", Empty, false
+	sym, body, _, err := ReadAnnotation(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	st := d.symtab()
+	s, ok := st.Lookup(sym)
+	if !ok {
+		panic("ion.Datum.Annotation: missing symbol")
+	}
+	return s, Datum{st: d.st, buf: body}, nil
 }
 
-func (d Datum) Bool() (v, ok bool) {
-	if d.Type() == BoolType {
-		b, _, err := ReadBool(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return b, true
+func (d Datum) bool(field string) (bool, error) {
+	if !d.IsBool() {
+		return false, d.bad(field, BoolType)
 	}
-	return false, false
+	b, _, err := ReadBool(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return b, nil
 }
 
-func (d Datum) Symbol() (Symbol, bool) {
-	if d.Type() == SymbolType {
-		sym, _, err := ReadSymbol(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return sym, true
+func (d Datum) symbol(field string) (Symbol, error) {
+	if !d.IsSymbol() {
+		return 0, d.bad(field, SymbolType)
 	}
-	return 0, false
+	sym, _, err := ReadSymbol(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return sym, nil
 }
 
-func (d Datum) String() (string, bool) {
-	switch d.Type() {
-	case StringType:
-		s, _, err := ReadString(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return s, true
-	case SymbolType:
+func (d Datum) string(field string) (string, error) {
+	if d.IsSymbol() {
 		sym, _ := d.Symbol()
 		st := d.symtab()
 		s, ok := st.Lookup(sym)
 		if !ok {
 			panic("ion.Datum.String: missing symbol")
 		}
-		return s, true
+		return s, nil
 	}
-	return "", false
+	s, err := d.stringShared(field)
+	return string(s), err
 }
 
-func (d Datum) Blob() ([]byte, bool) {
-	if d.Type() == BlobType {
-		b, _ := Contents(d.buf)
-		if b == nil {
-			panic("ion.Datum.Blob: invalid ion")
-		}
-		return b, true
+func (d Datum) stringShared(field string) ([]byte, error) {
+	if !d.IsString() {
+		return nil, d.bad(field, StringType)
 	}
-	return nil, false
+	s, _, err := ReadStringShared(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return s, nil
 }
 
-func (d Datum) Timestamp() (date.Time, bool) {
-	if d.Type() == TimestampType {
-		t, _, err := ReadTime(d.buf)
-		if err != nil {
-			panic(err)
-		}
-		return t, true
+func (d Datum) blob(field string) ([]byte, error) {
+	b, err := d.blobShared(field)
+	return slices.Clone(b), err
+}
+
+func (d Datum) blobShared(field string) ([]byte, error) {
+	if !d.IsBlob() {
+		return nil, d.bad(field, BlobType)
 	}
-	return date.Time{}, false
+	b, _ := Contents(d.buf)
+	if b == nil {
+		panic("ion.Datum.Blob: invalid ion")
+	}
+	return b, nil
+}
+
+func (d Datum) timestamp(field string) (date.Time, error) {
+	if !d.IsTimestamp() {
+		return date.Time{}, d.bad(field, TimestampType)
+	}
+	t, _, err := ReadTime(d.buf)
+	if err != nil {
+		panic(err)
+	}
+	return t, nil
+}
+
+func (d *Datum) bad(field string, want Type) error {
+	return &TypeError{Wanted: want, Found: d.Type(), Field: field}
 }
 
 func (d *Datum) symtab() Symtab {
@@ -441,6 +533,42 @@ func (f *Field) Encode(dst *Buffer, st *Symtab) {
 func (f *Field) Equal(f2 *Field) bool {
 	return f.Label == f2.Label && f.Sym == f2.Sym && f.Datum.Equal(f2.Datum)
 }
+
+func (f Field) Clone() Field {
+	return Field{
+		Label: f.Label,
+		Datum: f.Datum.Clone(),
+		Sym:   f.Sym,
+	}
+}
+
+func (f Field) Null() error                        { return f.null(f.Label) }
+func (f Field) Float() (float64, error)            { return f.float(f.Label) }
+func (f Field) Int() (int64, error)                { return f.int(f.Label) }
+func (f Field) Uint() (uint64, error)              { return f.uint(f.Label) }
+func (f Field) Struct() (Struct, error)            { return f.struc(f.Label) }
+func (f Field) List() (List, error)                { return f.list(f.Label) }
+func (f Field) Annotation() (string, Datum, error) { return f.annotation(f.Label) }
+func (f Field) Bool() (bool, error)                { return f.bool(f.Label) }
+func (f Field) Symbol() (Symbol, error)            { return f.symbol(f.Label) }
+func (f Field) String() (string, error)            { return f.string(f.Label) }
+func (f Field) Blob() ([]byte, error)              { return f.blob(f.Label) }
+func (f Field) Timestamp() (date.Time, error)      { return f.timestamp(f.Label) }
+
+// StringShared returns a []byte aliasing the
+// contents of this Field and should be copied
+// as necessary to avoid issues that may arise
+// from retaining aliased bytes.
+//
+// Unlike String, this method will not work with
+// a symbol datum.
+func (f Field) StringShared() ([]byte, error) { return f.stringShared(f.Label) }
+
+// BlobShared returns a []byte aliasing the
+// contents of this Field and should be copied
+// as necessary to avoid issues that may arise
+// from retaining aliased bytes.
+func (f Field) BlobShared() ([]byte, error) { return f.blobShared(f.Label) }
 
 type composite struct {
 	st  []string
@@ -869,7 +997,7 @@ func Annotation(st *Symtab, label string, val Datum) Datum {
 	}
 	dst.BeginAnnotation(1)
 	dst.BeginField(st.Intern(label))
-	if val.Empty() {
+	if val.IsEmpty() {
 		dst.WriteNull()
 	} else {
 		val.Encode(&dst, st)

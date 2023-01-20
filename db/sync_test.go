@@ -346,9 +346,9 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash2, ok := idx2.UserData.Field("definition").Field("hash").Blob()
-	if !ok {
-		t.Fatal("idx2 had no definition hash present")
+	hash2, err := idx2.UserData.Field("definition").Field("hash").BlobShared()
+	if err != nil {
+		t.Fatal("idx2 had no definition hash present:", err)
 	}
 	def3 := &Definition{
 		Name: "taxi",
@@ -369,9 +369,9 @@ func TestSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hash3, ok := idx3.UserData.Field("definition").Field("hash").Blob()
-	if !ok {
-		t.Fatal("idx3 had no definition hash present")
+	hash3, err := idx3.UserData.Field("definition").Field("hash").BlobShared()
+	if err != nil {
+		t.Fatal("idx3 had no definition hash present:", err)
 	}
 	if bytes.Equal(hash2, hash3) {
 		t.Errorf("expected different hashes, both were: %x", hash2)

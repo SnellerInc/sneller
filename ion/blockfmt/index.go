@@ -243,7 +243,7 @@ func Sign(key *Key, idx *Index) ([]byte, error) {
 	buf.WriteTime(idx.Created)
 
 	// encode user data
-	if !idx.UserData.Empty() {
+	if !idx.UserData.IsEmpty() {
 		buf.BeginField(userdata)
 		idx.UserData.Encode(&buf, &st)
 	}

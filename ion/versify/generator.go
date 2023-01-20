@@ -56,7 +56,7 @@ func merge(self Union, kind ion.Type, hits int, value ion.Datum) Union {
 	any := &Any{}
 	any.typemap[kind] = self
 	any.hits[kind] = hits
-	if value.Empty() {
+	if value.IsEmpty() {
 		any.typemap[missingType] = &None{hits: 1}
 		any.hits[missingType] = 1
 	} else {
@@ -85,7 +85,7 @@ func (n *None) Generate(src *rand.Rand) ion.Datum {
 
 // Add implments Union.Add
 func (n *None) Add(value ion.Datum) Union {
-	if value.Empty() {
+	if value.IsEmpty() {
 		n.hits++
 		return n
 	}
@@ -108,7 +108,7 @@ func (n *Null) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (n *Null) Add(value ion.Datum) Union {
-	if value.Null() {
+	if value.IsNull() {
 		n.hits++
 		return n
 	}
@@ -153,7 +153,8 @@ func (b *Bool) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (b *Bool) Add(value ion.Datum) Union {
-	if v, ok := value.Bool(); ok {
+	if value.IsBool() {
+		v, _ := value.Bool()
 		if v {
 			b.truecount++
 		} else {
@@ -216,7 +217,8 @@ func (i *Integer) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add.
 func (i *Integer) Add(value ion.Datum) Union {
-	if vi, ok := value.Int(); ok {
+	if value.IsInt() {
+		vi, _ := value.Int()
 		vii := int64(vi)
 		if vii > i.hi {
 			i.hi = vii
@@ -227,7 +229,8 @@ func (i *Integer) Add(value ion.Datum) Union {
 		i.hits++
 		return i
 	}
-	if vu, ok := value.Uint(); ok {
+	if value.IsUint() {
+		vu, _ := value.Uint()
 		vuu := uint64(vu)
 		if int64(vuu) > i.hi {
 			i.hi = int64(vuu)
@@ -275,7 +278,8 @@ func (f *Float) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (f *Float) Add(value ion.Datum) Union {
-	if fv, ok := value.Float(); ok {
+	if value.IsFloat() {
+		fv, _ := value.Float()
 		if fv < f.lo {
 			f.lo = fv
 		}
@@ -329,8 +333,8 @@ func (t *Time) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (t *Time) Add(value ion.Datum) Union {
-	if vt, ok := value.Timestamp(); ok {
-		vt := date.Time(vt)
+	if value.IsTimestamp() {
+		vt, _ := value.Timestamp()
 		if vt.Before(t.earliest) {
 			t.earliest = vt
 		}
@@ -378,8 +382,8 @@ func (s *String) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (s *String) Add(value ion.Datum) Union {
-	if si, ok := value.String(); ok {
-		si := string(si)
+	if value.IsString() {
+		si, _ := value.String()
 		if _, ok := s.seen[si]; !ok {
 			s.seen[si] = len(s.set)
 			s.set = append(s.set, si)
@@ -448,7 +452,7 @@ func (s *Struct) Generate(src *rand.Rand) ion.Datum {
 	for i := range s.fields {
 		f := s.fields[i]
 		val := s.values[i].Generate(src)
-		if val.Empty() {
+		if val.IsEmpty() {
 			continue // MISSING
 		}
 		lst = append(lst, ion.Field{Label: f, Datum: val})
@@ -458,10 +462,10 @@ func (s *Struct) Generate(src *rand.Rand) ion.Datum {
 
 // Add implements Union.Add
 func (s *Struct) Add(value ion.Datum) Union {
-	st, ok := value.Struct()
-	if !ok {
+	if !value.IsStruct() {
 		return merge(s, ion.StructType, s.hits, value)
 	}
+	st, _ := value.Struct()
 	s.hits++
 	if cap(s.touched) < len(s.fields) {
 		s.touched = make([]bool, len(s.fields))
@@ -553,10 +557,10 @@ func (l *List) String() string {
 
 // Add implements Union.Add
 func (l *List) Add(value ion.Datum) Union {
-	list, ok := value.List()
-	if !ok {
+	if !value.IsList() {
 		return merge(l, ion.ListType, l.hits, value)
 	}
+	list, _ := value.List()
 	lst := list.Items(nil)
 	l.hits++
 	if len(lst) < l.min {
@@ -597,7 +601,7 @@ func FromList(lst ion.List) *List {
 // a value identical (or in some cases just very similar)
 // to the input value.
 func Single(value ion.Datum) Union {
-	if value.Empty() {
+	if value.IsEmpty() {
 		return &None{hits: 1}
 	}
 	switch value.Type() {

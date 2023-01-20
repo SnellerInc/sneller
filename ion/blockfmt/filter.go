@@ -137,8 +137,15 @@ func (f *Filter) eqstring(p []string, str expr.String) evalfn {
 		return nil
 	}
 	eq := func(s expr.String, d ion.Datum) bool {
-		s2, ok := d.String()
-		return ok && string(s) == s2
+		if d.IsSymbol() {
+			s2, _ := d.String()
+			return string(s) == s2
+		}
+		if d.IsString() {
+			s2, _ := d.StringShared()
+			return string(s) == string(s2)
+		}
+		return false
 	}
 	name := p[0]
 	return func(f *Filter, si *SparseIndex, rest cont) {
@@ -155,12 +162,15 @@ func (f *Filter) eqint(p []string, n expr.Integer) evalfn {
 	}
 	name := p[0]
 	eq := func(n expr.Integer, d ion.Datum) bool {
-		n2, ok := d.Int()
-		if ok {
+		if d.IsInt() {
+			n2, _ := d.Int()
 			return int64(n) == n2
 		}
-		u2, ok := d.Uint()
-		return ok && n >= 0 && uint64(n) == u2
+		if d.IsUint() && n >= 0 {
+			u2, _ := d.Uint()
+			return uint64(n) == u2
+		}
+		return false
 	}
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)

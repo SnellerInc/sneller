@@ -109,7 +109,7 @@ func FuzzConvert(f *testing.F) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if d.Empty() || d.Null() {
+			if d.IsEmpty() || d.IsNull() {
 				continue
 			}
 			if d.Type() != ion.StructType {

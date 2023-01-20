@@ -184,11 +184,10 @@ func (d *TrailerDecoder) decodeSparse(s *SparseIndex, body []byte) error {
 			if err != nil {
 				return err
 			}
-			consts, ok := d.Struct()
-			if !ok {
+			if !d.IsStruct() {
 				return fmt.Errorf("expected consts to be a struct")
 			}
-			s.consts = consts
+			s.consts, _ = d.Struct()
 		case "indices":
 			_, err := ion.UnpackList(field, func(field []byte) error {
 				var val timeIndex

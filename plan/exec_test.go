@@ -282,7 +282,7 @@ const (
 )
 
 func toJSON(st *ion.Symtab, d ion.Datum) string {
-	if d.Empty() {
+	if d.IsEmpty() {
 		return "<nil>"
 	}
 	var ib ion.Buffer

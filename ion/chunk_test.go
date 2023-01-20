@@ -62,7 +62,7 @@ func (v *validator) Write(p []byte) (int, error) {
 		if err != nil {
 			return v.align - len(p), fmt.Errorf("validator.Write: %w", err)
 		}
-		if dat.Null() {
+		if dat.IsNull() {
 			// nop pad
 			continue
 		}
@@ -226,10 +226,10 @@ func checkEncoding(t *testing.T, buf *rangeBuf, align int) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, ok := d.Struct()
-		if !ok {
+		if !d.IsStruct() {
 			continue
 		}
+		s, _ := d.Struct()
 		max := st.MaxID()
 		s.Each(func(f ion.Field) bool {
 			if int(f.Sym) >= max {
@@ -452,16 +452,16 @@ func checkRange(t *testing.T, st *ion.Symtab, r []ranges, contents []byte) int {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, ok := dat.Struct()
-		if !ok {
+		if !dat.IsStruct() {
 			continue
 		}
+		s, _ := dat.Struct()
 		n++
 		s.Each(func(f ion.Field) bool {
-			ts, ok := f.Timestamp()
-			if !ok {
+			if !f.IsTimestamp() {
 				return true
 			}
+			ts, _ := f.Timestamp()
 			found := false
 			for j := range r {
 				if len(r[j].path) == 1 && r[j].path[0] == f.Label {
@@ -499,8 +499,8 @@ func results(t *testing.T, buf []byte) []ion.Struct {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s, ok := dat.Struct()
-		if ok {
+		if dat.IsStruct() {
+			s, _ := dat.Struct()
 			out = append(out, s)
 		}
 	}
@@ -668,16 +668,17 @@ func TestSyntheticRanges(t *testing.T) {
 				continue
 			}
 			if len(path) == 1 {
-				ts, ok := lst[i].Timestamp()
-				if !ok {
+				if !lst[i].IsTimestamp() {
 					continue
 				}
+				ts, _ := lst[i].Timestamp()
 				min, _ := min.Timestamp()
 				max, _ := max.Timestamp()
 				if date.Time(ts).Before(date.Time(min)) || date.Time(ts).After(date.Time(max)) {
 					t.Errorf("value %s %s out of range [%s, %s]", path[0], date.Time(ts), date.Time(min), date.Time(max))
 				}
-			} else if st, ok := lst[i].Struct(); ok {
+			} else if lst[i].IsStruct() {
+				st, _ := lst[i].Struct()
 				walkRange(st.Fields(nil), path[1:], min, max)
 			}
 		}
@@ -694,10 +695,10 @@ func TestSyntheticRanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, ok := dat.Struct()
-			if !ok {
+			if !dat.IsStruct() {
 				continue
 			}
+			s, _ := dat.Struct()
 			for i := range ranges {
 				walkRange(s.Fields(nil), ranges[i].path, ranges[i].min, ranges[i].max)
 				if t.Failed() {
@@ -843,13 +844,13 @@ func TestChunkerChangingSymbols(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, ok := dat.Struct()
-			if !ok {
-				if !dat.Null() {
+			if !dat.IsStruct() {
+				if !dat.IsNull() {
 					t.Error("got non-null pad datum?")
 				}
 				continue
 			}
+			s, _ := dat.Struct()
 			want := forRow(&outst, n)
 			n++
 

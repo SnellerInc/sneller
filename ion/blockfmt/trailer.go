@@ -274,12 +274,12 @@ func (d *TrailerDecoder) unpackRanges(st *ion.Symtab, field []byte) ([]Range, er
 			// NOTE: this should never
 			// happen in practice, but
 			// handle it anyway...
-			if min.Empty() && tmin.ok {
+			if min.IsEmpty() && tmin.ok {
 				min = ion.Timestamp(tmin.ts)
 			} else {
 				min = min.Clone()
 			}
-			if max.Empty() && tmax.ok {
+			if max.IsEmpty() && tmax.ok {
 				max = ion.Timestamp(tmax.ts)
 			} else {
 				max = max.Clone()

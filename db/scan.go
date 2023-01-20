@@ -15,7 +15,6 @@
 package db
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -63,8 +62,12 @@ func (c *Config) Scan(who Tenant, db, table string) (int, error) {
 // since the index was built by comparing the
 // hash of st.def against the hash in idx.
 func (st *tableState) defChanged(idx *blockfmt.Index) bool {
-	hash, ok := idx.UserData.Field("definition").Field("hash").Blob()
-	return !ok || !bytes.Equal(st.def.Hash(), hash)
+	d := idx.UserData.Field("definition").Field("hash")
+	if !d.IsBlob() {
+		return false
+	}
+	hash, _ := d.BlobShared()
+	return string(st.def.Hash()) != string(hash)
 }
 
 func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComplete bool) (int, error) {

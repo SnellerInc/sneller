@@ -950,7 +950,7 @@ func (f *FileTree) encode(dst *ion.Buffer, st *ion.Symtab) {
 	if len(f.journal.entries) > 0 {
 		dst.BeginStruct(-1)
 		dst.BeginField(st.Intern("inner"))
-		if f.oldroot.Empty() {
+		if f.oldroot.IsEmpty() {
 			// only journal entries; just encode [] as the tree
 			dst.BeginList(-1)
 			dst.EndList()

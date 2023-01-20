@@ -57,7 +57,7 @@ func TestDistinct(t *testing.T) {
 			t.Error(err)
 			break
 		}
-		if dat.Null() {
+		if dat.IsNull() {
 			break
 		}
 		outrows = append(outrows, dat)
@@ -68,8 +68,8 @@ func TestDistinct(t *testing.T) {
 	// collect the VendorID fields
 	var vendors []string
 	for i := range outrows {
-		s, ok := outrows[i].Struct()
-		if !ok {
+		s, err := outrows[i].Struct()
+		if err != nil {
 			t.Fatalf("row %d is %#v", i, outrows[i])
 		}
 		vend, ok := s.FieldByName("VendorID")

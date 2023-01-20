@@ -53,7 +53,7 @@ func (o *Any) Generate(src *rand.Rand) ion.Datum {
 
 func (o *Any) Add(value ion.Datum) Union {
 	var t ion.Type
-	if value.Empty() {
+	if value.IsEmpty() {
 		t = missingType
 	} else {
 		t = value.Type()

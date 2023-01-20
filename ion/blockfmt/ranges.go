@@ -31,13 +31,13 @@ type Range interface {
 }
 
 func NewRange(path []string, min, max ion.Datum) Range {
-	if min, ok := min.Timestamp(); ok {
-		if max, ok := max.Timestamp(); ok {
-			return &TimeRange{
-				path: path,
-				min:  date.Time(min),
-				max:  date.Time(max),
-			}
+	if min.IsTimestamp() && max.IsTimestamp() {
+		min, _ := min.Timestamp()
+		max, _ := max.Timestamp()
+		return &TimeRange{
+			path: path,
+			min:  min,
+			max:  max,
 		}
 	}
 	return &datumRange{

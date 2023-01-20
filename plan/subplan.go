@@ -273,7 +273,7 @@ func (s *subreplacement) Write(buf []byte) (int, error) {
 		if err != nil {
 			return orig - len(buf), err
 		}
-		if d.Empty() || d.Null() {
+		if d.IsEmpty() || d.IsNull() {
 			continue // symbol table or nop pad
 		}
 		st, _ := d.Struct()

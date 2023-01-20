@@ -462,10 +462,10 @@ func TestSimpleFS(t *testing.T) {
 			if !errors.Is(err, io.EOF) {
 				t.Fatal(err)
 			}
-			if final.Empty() {
+			if final.IsEmpty() {
 				t.Fatal("missing final_status trailer")
 			}
-			if !final.Field("error").Empty() {
+			if !final.Field("error").IsEmpty() {
 				str, _ := final.Field("error").String()
 				t.Fatalf("query error: %s", str)
 			}

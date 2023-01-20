@@ -141,8 +141,8 @@ func TestHashAggregate(t *testing.T) {
 				if err != nil {
 					t.Fatalf("reading datum: %s", err)
 				}
-				s, ok := d.Struct()
-				if !ok {
+				s, err := d.Struct()
+				if err != nil {
 					t.Fatalf("top-level datum isnt a struct: %#v", d)
 				}
 				if s.Len() != len(outcols) {
@@ -157,7 +157,7 @@ func TestHashAggregate(t *testing.T) {
 							break
 						}
 					}
-					if inner.Empty() {
+					if inner.IsEmpty() {
 						t.Fatalf("output row %d: unexpected field %q", rownum, name)
 					}
 					val := f.Datum

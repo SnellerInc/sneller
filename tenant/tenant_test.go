@@ -619,7 +619,7 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, key tnprot
 		if err != nil {
 			t.Fatalf("reading row %d: %s", rownum, err)
 		}
-		if len(want) == 0 && !row.Empty() {
+		if len(want) == 0 && !row.IsEmpty() {
 			if rownum >= count {
 				t.Errorf("extra row %d: %v", rownum, row)
 			}

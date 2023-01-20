@@ -221,11 +221,28 @@ func (t Type) Integer() bool {
 // type expected by the function.
 type TypeError struct {
 	Wanted, Found Type
-	Func          string
+	Func, Field   string
 }
 
 func (t *TypeError) Error() string {
-	return fmt.Sprintf("ion.%s: found type %s, wanted type %s", t.Func, t.Found, t.Wanted)
+	const (
+		fn    = "ion.%s: "
+		field = "field %q: "
+		msg   = "found type %s, wanted type %s"
+	)
+	if t.Func == "" {
+		if t.Field == "" {
+			return fmt.Sprintf(msg, t.Found, t.Wanted)
+		} else {
+			return fmt.Sprintf(field+msg, t.Field, t.Found, t.Wanted)
+		}
+	} else {
+		if t.Field == "" {
+			return fmt.Sprintf(fn+msg, t.Func, t.Found, t.Wanted)
+		} else {
+			return fmt.Sprintf(fn+field+msg, t.Func, t.Field, t.Found, t.Wanted)
+		}
+	}
 }
 
 func bad(got, want Type, fn string) error {

@@ -35,7 +35,7 @@ func init() {
 	}))
 	structEncoders.Store(reflect.TypeOf(Datum{}), encodefn(func(st *Symtab, dst *Buffer, v reflect.Value) {
 		d := v.Interface().(Datum)
-		if d.Empty() {
+		if d.IsEmpty() {
 			dst.WriteNull()
 		} else {
 			d.Encode(dst, st)

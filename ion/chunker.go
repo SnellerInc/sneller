@@ -482,8 +482,9 @@ func (c *Chunker) ReadFrom(r io.Reader, cons []Field) (int64, error) {
 		if err != nil {
 			return n, err
 		}
-		if !dat.Empty() {
-			if s, ok := dat.Struct(); ok {
+		if !dat.IsEmpty() {
+			if dat.IsStruct() {
+				s, _ := dat.Struct()
 				dat = s.mergeFields(&st, cons).Datum()
 			} else if len(cons) > 0 {
 				return n, fmt.Errorf("row constants disallowed; not a struct (%s)", dat.Type())
@@ -504,15 +505,15 @@ func (c *Chunker) ReadFrom(r io.Reader, cons []Field) (int64, error) {
 }
 
 func noteTimeFields(d Datum, c *Chunker) {
-	s, ok := d.Struct()
-	if !ok {
+	if !d.IsStruct() {
 		return
 	}
+	s, _ := d.Struct()
 	err := s.Each(func(f Field) bool {
-		ts, ok := f.Timestamp()
-		if !ok {
+		if !f.IsTimestamp() {
 			return true
 		}
+		ts, _ := f.Timestamp()
 		sym, ok := c.Symbols.Symbolize(f.Label)
 		if !ok {
 			return true
