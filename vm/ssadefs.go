@@ -172,7 +172,6 @@ const (
 	sDfaT6Z // DFA tiny 6-bit Zero remaining length assertion
 	sDfaT7Z // DFA tiny 7-bit Zero remaining length assertion
 	sDfaT8Z // DFA tiny 8-bit Zero remaining length assertion
-	sDfaL   // DFA large
 	sDfaLZ  // DFA large Zero remaining length assertion
 
 	// raw literal comparison

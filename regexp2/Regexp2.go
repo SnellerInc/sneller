@@ -250,8 +250,16 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 		name += "_nfa"
 		nfaStore.dot().WriteToFile(tmpPath+name+".dot", name, regex.String())
 	}
-	err = nfaStore.refactorEdges()
-	if err != nil {
+
+	if err = nfaStore.pruneRLZ(); err != nil {
+		return nil, fmt.Errorf("%v::CompileDFA", err)
+	}
+	if writeDot {
+		name += "_prn"
+		nfaStore.dot().WriteToFile(tmpPath+name+".dot", name, regex.String())
+	}
+
+	if err = nfaStore.refactorEdges(); err != nil {
 		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 	if writeDot {
@@ -266,14 +274,30 @@ func CompileDFADebug(regex *regexp.Regexp, writeDot bool, maxNodes int) (*DFASto
 		name += "_dfa"
 		dfaStore.Dot().WriteToFile(tmpPath+name+".dot", name, regex.String())
 	}
+
+	if err = dfaStore.pruneUnreachable(); err != nil {
+		return nil, fmt.Errorf("%v::CompileDFA", err)
+	}
+	if err = dfaStore.pruneNeverAccepting(); err != nil {
+		return nil, fmt.Errorf("%v::CompileDFA", err)
+	}
+
+	if writeDot {
+		name += "_prn"
+		dfaStore.Dot().WriteToFile(tmpPath+name+".dot", name, regex.String())
+	}
+
 	dfaStore, err = minDfa(dfaStore, maxNodes)
 	if err != nil {
 		return nil, fmt.Errorf("%v::CompileDFA", err)
 	}
 
 	dfaStore.removeEdgesFromAcceptNodes() // remove all outgoing edges from accepting nodes
-	dfaStore.mergeAcceptNodes()           // we can merge accept nodes since they do not have outgoing edges (anymore)
 
+	// we can merge accept nodes since they do not have outgoing edges (anymore)
+	if err := dfaStore.mergeAcceptNodes(); err != nil {
+		return nil, fmt.Errorf("%v::CompileDFA", err)
+	}
 	if writeDot {
 		name += "_min"
 		dfaStore.Dot().WriteToFile(tmpPath+name+".dot", name, regex.String())

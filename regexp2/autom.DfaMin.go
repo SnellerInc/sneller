@@ -76,7 +76,7 @@ func splitVector(str string) vectorT[nodeIDT] {
 	return result
 }
 
-func getReverseEdges(startID nodeIDT, dfaStore *DFAStore) (setT[symbolRangeT], revEdgesT) {
+func getReverseEdges(startID nodeIDT, dfaStore *DFAStore) (setT[symbolRangeT], revEdgesT, error) {
 	queue := newQueue()
 	visited := newSet[nodeIDT]()
 	symbolSet := newSet[symbolRangeT]()
@@ -87,7 +87,10 @@ func getReverseEdges(startID nodeIDT, dfaStore *DFAStore) (setT[symbolRangeT], r
 	for !queue.empty() {
 		topID := queue.front()
 		queue.pop()
-		top, _ := dfaStore.get(topID)
+		top, err := dfaStore.get(topID)
+		if err != nil {
+			return nil, nil, err
+		}
 		for symbolRange := range top.symbolSet {
 			symbolSet.insert(symbolRange)
 			nextID := top.trans.at(symbolRange)
@@ -101,7 +104,7 @@ func getReverseEdges(startID nodeIDT, dfaStore *DFAStore) (setT[symbolRangeT], r
 			}
 		}
 	}
-	return symbolSet, revEdges
+	return symbolSet, revEdges, nil
 }
 
 func hopcroft(symbolSet setT[symbolRangeT], revEdges revEdgesT, dfaStore *DFAStore) partitionsType {
@@ -300,8 +303,10 @@ func minDfa(dfaStore *DFAStore, maxNodes int) (*DFAStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%v::minDfa", err)
 	}
-	symbolSet, revEdges := getReverseEdges(startNodeID, dfaStore)
-
+	symbolSet, revEdges, err := getReverseEdges(startNodeID, dfaStore)
+	if err != nil {
+		return nil, fmt.Errorf("%v::minDfa", err)
+	}
 	partitions := hopcroft(symbolSet, revEdges, dfaStore)
 	return buildMinDfa(startNodeID, partitions, revEdges, dfaStore, maxNodes)
 }

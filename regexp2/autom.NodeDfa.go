@@ -120,7 +120,9 @@ func (store *DFAStore) Dot() *Graphviz {
 func (store *DFAStore) newNode() (nodeIDT, error) {
 	nNodesBefore := store.NumberOfNodes()
 	if nNodesBefore >= store.maxNodes {
-		store.removeNonReachableNodes()
+		if err := store.pruneUnreachable(); err != nil {
+			return -1, err
+		}
 		nNodesAfter := store.NumberOfNodes()
 		if nNodesAfter > (nNodesBefore - 10) {
 			return -1, fmt.Errorf("DFA exceeds max number of nodes %v::newNode", store.maxNodes)
@@ -180,44 +182,6 @@ func (store *DFAStore) NumberOfNodes() int {
 	return len(store.data)
 }
 
-// removeNonReachableNodes removes states that are not reachable from the start-state
-func (store *DFAStore) removeNonReachableNodes() error {
-
-	// reachableNodes return set of all nodes that are reachable from the start-state
-	reachableNodes := func() (*setT[nodeIDT], error) {
-
-		var reachableNodesTraverse func(nodeID nodeIDT, reachable *setT[nodeIDT])
-		reachableNodesTraverse = func(nodeID nodeIDT, reachable *setT[nodeIDT]) {
-			if !reachable.contains(nodeID) {
-				reachable.insert(nodeID)
-				node, _ := store.get(nodeID)
-				for _, edge := range node.edges {
-					reachableNodesTraverse(edge.to, reachable)
-				}
-			}
-		}
-
-		startID, err := store.startID()
-		if err != nil {
-			return nil, fmt.Errorf("%v::reachableNodes", err)
-		}
-		reachable := newSet[nodeIDT]()
-		reachableNodesTraverse(startID, &reachable)
-		return &reachable, nil
-	}
-
-	if reachableNodes, err := reachableNodes(); err != nil {
-		return fmt.Errorf("%v::removeNonReachableNodes", err)
-	} else {
-		for nodeID := range store.data {
-			if !reachableNodes.contains(nodeID) {
-				delete(store.data, nodeID)
-			}
-		}
-		return nil
-	}
-}
-
 // removeEdgesFromAcceptNodes removes edges from accepting nodes
 func (store *DFAStore) removeEdgesFromAcceptNodes() {
 	for _, node := range store.data {
@@ -240,7 +204,7 @@ func (store *DFAStore) removeEdgesFromAcceptNodes() {
 }
 
 // mergeAcceptNodes merges all acceptNodeID states into one single state (and thus reduces the number of states)
-func (store *DFAStore) mergeAcceptNodes() {
+func (store *DFAStore) mergeAcceptNodes() error {
 
 	merge := func(vec vectorT[nodeIDT]) {
 		nNodes := vec.size()
@@ -282,8 +246,13 @@ func (store *DFAStore) mergeAcceptNodes() {
 
 	merge(acceptNodeIDs)
 
-	store.removeNonReachableNodes()
-	store.rebuildInternals()
+	if err := store.pruneUnreachable(); err != nil {
+		return fmt.Errorf("%v::mergeAcceptNodes", err)
+	}
+	if err := store.mergeConsecutiveRLZ(); err != nil {
+		return fmt.Errorf("%v::mergeAcceptNodes", err)
+	}
+	return nil
 }
 
 // HasUnicodeEdge returns true if the store has an edge with a non-ASCII unicode
@@ -351,4 +320,168 @@ func (store *DFAStore) MergeEdgeRanges(discardRLZ bool) {
 	for _, node := range store.data {
 		node.edges = mergeEdgeRanges(node.edges, discardRLZ)
 	}
+}
+
+// mergeConsecutiveRLZ merges Consecutive nodes with only RLZ edges:
+// "a -$> b; b -$> c" becomes "a -$> c"
+func (store *DFAStore) mergeConsecutiveRLZ() error {
+
+	nodeDone := newSet[nodeIDT]()
+	nodeDone.insert(store.startIDi)
+
+	changed := true
+	for changed {
+		changed = false
+	label:
+		for _, node1 := range store.data {
+			if !node1.rlza() {
+				continue
+			}
+			for edge1Idx, edge1 := range node1.edges {
+				if !edge1.rlza() {
+					continue
+				}
+				nodeID2 := edge1.to
+				node2, err := store.get(nodeID2)
+				if err != nil {
+					return err
+				}
+				if node2.rlza() && (len(node2.edges) == 1) && !nodeDone.contains(nodeID2) {
+					nodeDone.insert(nodeID2)
+					node1.edges[edge1Idx].to = node2.edges[0].to // this may create unreachable nodes
+					changed = true
+					goto label // jump out of both for-loops
+				}
+			}
+		}
+	}
+	return store.pruneUnreachable()
+}
+
+// pruneUnreachable removes nodes that are unreachable from the start node
+func (store *DFAStore) pruneUnreachable() error {
+	reachable := func() (setT[nodeIDT], error) {
+		nodesTodo := newSet[nodeIDT]()
+		nodesTodo.insert(store.startIDi)
+		nodesReachable := newSet[nodeIDT]()
+		for !nodesTodo.empty() {
+			for nodeID1 := range nodesTodo {
+				nodesTodo.erase(nodeID1)
+				if nodesReachable.contains(nodeID1) {
+					continue
+				}
+				nodesReachable.insert(nodeID1)
+				node1, err := store.get(nodeID1)
+				if err != nil {
+					return nil, err
+				}
+				for _, edge1 := range node1.edges {
+					nodesTodo.insert(edge1.to)
+				}
+			}
+		}
+		return nodesReachable, nil
+	}
+	{
+		// find nodes that are reachable from the start node
+		nodesReachable, err := reachable()
+		if err != nil {
+			return err
+		}
+		// remove all nodes that are unreachable
+		for nodeID := range store.data {
+			if !nodesReachable.contains(nodeID) {
+				delete(store.data, nodeID)
+			}
+		}
+	}
+	return nil
+}
+
+// pruneNeverAccepting removes nodes that cannot reach an accepting node
+func (store *DFAStore) pruneNeverAccepting() error {
+
+	acceptReachable := newSet[nodeIDT]()
+	{
+		// create a reverse lookup table
+		reverse := newMap[nodeIDT, *setT[nodeIDT]]()
+		for nodeID1, node1 := range store.data {
+			for _, edge := range node1.edges {
+				nodeID2 := edge.to
+				if reverse.containsKey(nodeID2) {
+					reverse.at(nodeID2).insert(nodeID1)
+				} else {
+					s := newSet[nodeIDT]()
+					s.insert(nodeID1)
+					reverse.insert(nodeID2, &s)
+				}
+			}
+		}
+
+		// find out which nodes will reach an accepting node
+		nodesTodo := newSet[nodeIDT]()
+		if present, acceptID := store.acceptNodeID(); present {
+			nodesTodo.insert(acceptID)
+		}
+		for !nodesTodo.empty() {
+			for nodeID1 := range nodesTodo {
+				nodesTodo.erase(nodeID1)
+				if !acceptReachable.contains(nodeID1) {
+					acceptReachable.insert(nodeID1)
+
+					if reverse.containsKey(nodeID1) {
+						for nodeID2 := range *reverse.at(nodeID1) {
+							nodesTodo.insert(nodeID2)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// remove all nodes that do not reach an accepting node,
+	// but do not remove the start node
+	startID, err := store.startID()
+	if err != nil {
+		return err
+	}
+	startNode, err := store.get(startID)
+	if err != nil {
+		return err
+	}
+	for nodeID := range store.data {
+		if !acceptReachable.contains(nodeID) {
+			if nodeID == startID {
+				// we were about to remove the start node, don't do that
+				// but do remove all outgoing edges from the start node
+				startNode.edges = startNode.edges[:0]
+			} else {
+				delete(store.data, nodeID)
+			}
+		}
+	}
+	return nil
+}
+
+// IsTrivial return whether the DFA is a trivial automation; if
+// the DFA is trivial, accept indicate whether the DFA always accepts
+// or always rejects
+func (store *DFAStore) IsTrivial() (trivial, accept bool) {
+	// check if an accepting node exists, if there are none than the machine cannot accept
+	present, acceptID := store.acceptNodeID()
+	if !present {
+		return true, false
+	}
+	// there are thus at least one node (the accept-node)
+	startID, err := store.startID()
+	if err != nil {
+		// there was no start node
+		return true, false
+	}
+	if startID == acceptID {
+		// the start node is also accepting, this machine accepts anything
+		return true, true
+	}
+	// the DFA is not trivial
+	return false, false
 }

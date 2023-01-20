@@ -178,7 +178,7 @@ func nfaToDfa(nfaStore *NFAStore, maxNodes int) (*DFAStore, error) {
 		}
 	}
 	dfaStore.removeEdgesFromAcceptNodes()
-	if err = dfaStore.removeNonReachableNodes(); err != nil {
+	if err = dfaStore.pruneUnreachable(); err != nil {
 		return nil, fmt.Errorf("%v::nfaToDfa", err)
 	}
 	dfaStore.mergeAcceptNodes()

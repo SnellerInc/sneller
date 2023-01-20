@@ -27,6 +27,7 @@ func (e *edgeT) epsilon() bool {
 	return (0x7FFFFFFFFFFFFFFF & e.symbolRange) == edgeEpsilonRange
 }
 
+// rlza return true when the edge has a Remaining Length Zero Assertion ('$')
 func (e *edgeT) rlza() bool {
 	return e.symbolRange == edgeRLZARange
 }

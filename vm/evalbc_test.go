@@ -1012,7 +1012,9 @@ func TestRegexMatchBF1(t *testing.T) {
 		t.Run(ts.name, func(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			regexSpace := createSpaceRegex(ts.regexMaxlen, ts.regexAlphabet, ts.regexType)
-			runRegexTests(t, ts.name, dataSpace, regexSpace, ts.regexType, false)
+			if !runRegexTests(t, ts.name, dataSpace, regexSpace, ts.regexType, false) {
+				return
+			}
 		})
 	}
 }
@@ -1178,7 +1180,9 @@ func TestRegexMatchBF2(t *testing.T) {
 			dataSpace := createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize)
 			for _, ut := range ts.unitTests {
 				regexSpace := []string{ut.expr} // space with only one element
-				runRegexTests(t, ts.name, dataSpace, regexSpace, ts.regexType, ut.writeDot)
+				if !runRegexTests(t, ts.name, dataSpace, regexSpace, ts.regexType, ut.writeDot) {
+					return
+				}
 			}
 		})
 	}
@@ -1196,6 +1200,33 @@ func TestRegexMatchUT1(t *testing.T) {
 
 	const regexType = regexp2.Regexp
 	unitTests := []unitTest{
+
+		{`a`, `$a`, false, regexp2.Regexp},
+		{`a`, `$.*0....0`, false, regexp2.Regexp},
+		{`a`, `$$$$7*900000000000.0`, false, regexp2.Regexp},
+		{`a`, `$.0000000000000200001700A`, false, regexp2.Regexp},
+		{`a`, `$*`, true, regexp2.Regexp},
+
+		// FIXME BUG Sneller: empty data with RLZ assertion: ASM issue
+		//{``, `$`, true, regexp2.Regexp},
+		{``, `a`, false, regexp2.Regexp},
+		{`a`, `$`, true, regexp2.Regexp},
+		{`a`, `$$`, true, regexp2.Regexp},
+		{`a`, `$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$`, true, regexp2.Regexp},
+
+		{`a`, `(a|$)(b|$)`, true, regexp2.Regexp},
+		{`ab`, `(a|$)(b|$)`, true, regexp2.Regexp},
+		{`abx`, `(a|$)(b|$)`, true, regexp2.Regexp},
+
+		//TODO BUG GO: both should yield true but go 1.19.4 incorrectly gives true
+		//{`ax`, `(a|$)(b|$)`, false, regexp2.Regexp},
+		//{`ax`, `ab|a$|$b|$$`, false, regexp2.Regexp},
+
+		{`x`, `$0`, false, regexp2.Regexp},
+		{`x`, `X1B+1Z\\n090 1B0A9$0000`, false, regexp2.Regexp},
+		{`x`, `$.`, false, regexp2.Regexp},
+		{`a`, `^$`, false, regexp2.Regexp},
+
 		{"abaa", "%a_a", false, regexp2.SimilarTo},
 		{"abbb", "%a_b", false, regexp2.SimilarTo},
 		{`ab`, `a($|b)`, true, regexp2.Regexp},
@@ -1209,12 +1240,11 @@ func TestRegexMatchUT1(t *testing.T) {
 		{"ΩaΩb", ".*a.*b", true, regexp2.Regexp}, // DFA Tiny6 with wildcard
 		{"Ωb\nΩbc", "^a", false, regexp2.Regexp},
 
-		{`a`, `$`, true, regexp2.Regexp},
 		{`a`, `(a|)`, true, regexp2.SimilarTo},
 		{`ab`, `(a|)($|c)`, true, regexp2.Regexp},
 		{`ab`, `(a|$)($|c)`, true, regexp2.Regexp},
 		{`a`, `a|$`, true, regexp2.Regexp},
-		//FIXME{`b`, `a|$`, false, regexp2.Regexp},
+		{`b`, `a|$`, true, regexp2.Regexp},
 		{`ab`, `a|$`, true, regexp2.Regexp},
 		{"a", "|", true, regexp2.Regexp},
 		{`a`, ``, false, regexp2.SimilarTo},
@@ -1261,8 +1291,6 @@ func TestRegexMatchUT1(t *testing.T) {
 		{`ax`, `(?s)a$`, false, regexp2.Regexp},
 		{"a\n", `(?s)a$`, false, regexp2.Regexp},
 		{"a\n", `(?m)a$`, true, regexp2.Regexp},
-
-		//FIXME{`a`, `$*`, false, regexp2.Regexp}, // not equal to postgres; fault: golang
 		{`e`, `^(.*e$)`, true, regexp2.Regexp},
 
 		// NOTE: \b will issue InstEmptyWidth with EmptyWordBoundary in golang NFA
@@ -1458,7 +1486,7 @@ func TestRegexMatchUT1(t *testing.T) {
 				if obsLane != expLane {
 					t.Errorf("%v: lane %v: issue with data %q\nregexGolang=%q yields expected %v; regexSneller=%q yields observed %v",
 						info, i, data16[i], ds.RegexGolang.String(), expLane, ds.RegexSneller.String(), obsLane)
-					break
+					return
 				}
 			}
 		}
@@ -1698,6 +1726,10 @@ func FuzzRegexMatchCompile(f *testing.F) {
 	f.Add(`^.$+^+`)      // invalid noise regex
 	f.Add(`.*a.......b`) // combinatorial explosion in NFA -> DFA
 	f.Add("$")
+	f.Add("$0")
+	f.Add("$$$$0")
+	f.Add("$000070000000000000000000001200")
+	f.Add("$.0000000000000200001700A")
 
 	f.Fuzz(func(t *testing.T, re string) {
 		rec, err := regexp.Compile(re)
@@ -1722,12 +1754,26 @@ func FuzzRegexMatchCompile(f *testing.F) {
 		if err != nil {
 			t.Fatalf(fmt.Sprintf("DFATiny: error (%v) for regex %q", err, re))
 		}
-		dsTiny.Data(6, hasUnicodeWildcard, wildcardRange)
-		dsTiny.Data(7, hasUnicodeWildcard, wildcardRange)
-		dsTiny.Data(8, hasUnicodeWildcard, wildcardRange)
+		valid := false
 
-		if _, err = regexp2.NewDsLarge(store); err != nil {
-			t.Fatalf(fmt.Sprintf("DFALarge: error (%v) for regex %q", err, re))
+		if !valid {
+			_, valid = dsTiny.Data(6, hasUnicodeWildcard, wildcardRange)
+		}
+		if !valid {
+			_, valid = dsTiny.Data(7, hasUnicodeWildcard, wildcardRange)
+		}
+		if !valid {
+			_, valid = dsTiny.Data(8, hasUnicodeWildcard, wildcardRange)
+		}
+		if !valid {
+			if _, err = regexp2.NewDsLarge(store); err != nil {
+				t.Fatalf(fmt.Sprintf("DFALarge: error (%v) for regex %q", err, re))
+			} else {
+				valid = true
+			}
+		}
+		if !valid {
+			t.Fatalf(fmt.Sprintf("No valid data-structure for regex %q", re))
 		}
 	})
 }
@@ -5140,7 +5186,7 @@ func matchPatternRef(data Data, pattern *stringext.Pattern, cmpType stringext.St
 
 // runRegexTests iterates over all regexes with the provided regex space,and determines equality over all
 // needles from the provided data space
-func runRegexTests(t *testing.T, name string, dataSpace [][16]Data, regexSpace []string, regexType regexp2.RegexType, writeDot bool) {
+func runRegexTests(t *testing.T, name string, dataSpace [][16]Data, regexSpace []string, regexType regexp2.RegexType, writeDot bool) bool {
 	var ctx bctestContext
 	defer ctx.free()
 
@@ -5148,6 +5194,7 @@ func runRegexTests(t *testing.T, name string, dataSpace [][16]Data, regexSpace [
 		ds, err := regexp2.CreateDs(regexStr, regexType, writeDot, regexp2.MaxNodesAutomaton)
 		if err != nil {
 			t.Error(err)
+			return false
 		}
 		// regexDataTest tests the equality for all regexes provided in the data-structure container for one provided needle
 		regexDataTest := func(ctx *bctestContext, dsByte []byte, name string, op bcop, data16 [16]Data, expLanes kRegData) (fault bool) {
@@ -5193,10 +5240,11 @@ func runRegexTests(t *testing.T, name string, dataSpace [][16]Data, regexSpace [
 			hasFault6 := regexDataTest(&ctx, ds.DsT8Z, name+":DfaT8Z", opDfaT8Z, data16, expLanes)
 			hasFault7 := regexDataTest(&ctx, ds.DsLZ, name+":DfaLZ", opDfaLZ, data16, expLanes)
 			if hasFault1 || hasFault2 || hasFault3 || hasFault4 || hasFault5 || hasFault6 || hasFault7 {
-				return
+				return false
 			}
 		}
 	}
+	return true
 }
 
 // next updates x to the successor; return true/false whether the x is valid

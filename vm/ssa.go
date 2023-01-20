@@ -1590,6 +1590,12 @@ func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *v
 
 // RegexMatch matches 'str' as a string against regex
 func (p *prog) regexMatch(str *value, store *regexp2.DFAStore) (*value, error) {
+	if trivial, accepting := store.IsTrivial(); trivial {
+		if accepting {
+			return p.mask(str), nil
+		}
+		return p.ssa0(skfalse), nil
+	}
 	if cpu.X86.HasAVX512VBMI && !store.HasUnicodeEdge() {
 		hasRLZA := store.HasRLZA()
 		hasWildcard, wildcardRange := store.HasUnicodeWildcard()

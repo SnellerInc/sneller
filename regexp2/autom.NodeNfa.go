@@ -177,3 +177,107 @@ func (store *NFAStore) refactorEdges() (err error) {
 	}
 	return nil
 }
+
+// cleanupStaleEdges removes edges that point to removed nodes
+func (store *NFAStore) cleanupStaleEdges() {
+	nodeIDs := newSet[nodeIDT]()
+	for _, nodeID := range maps.Keys(store.data) {
+		nodeIDs.insert(nodeID)
+	}
+	for _, node := range store.data {
+		for _, edge := range node.edges {
+			if !nodeIDs.contains(edge.to) {
+				node.removeEdge(edge.symbolRange, edge.to)
+			}
+		}
+	}
+}
+
+// pruneRLZ removes nodes that are 'after' the RLZA ('$')
+// and are thus unreachable
+func (store *NFAStore) pruneRLZ() error {
+
+	// get the nodeIDs that are eligible for prune
+	// 1. add all nodes that are reachable from a $-node.
+	//    a $-node is a node that has an incoming $-edge.
+	// 2. remove all nodes that are reachable from the
+	//    start node, but stop traversing when a $-edge
+	//    is encountered.
+	// 3. remove all these eligible nodes from the NFA.
+
+	eligible := newSet[nodeIDT]()
+	done := newSet[nodeIDT]()
+
+	var reachable1 func(nodeID nodeIDT) error
+	reachable1 = func(nodeID nodeIDT) error {
+		if done.contains(nodeID) {
+			return nil
+		}
+		done.insert(nodeID)
+
+		node, err := store.get(nodeID)
+		if err != nil {
+			return err
+		}
+		for _, edge := range node.edges {
+			if edge.rlza() || edge.epsilon() {
+				if err := reachable1(edge.to); err != nil {
+					return err
+				}
+			} else {
+				eligible.insert(edge.to)
+			}
+		}
+		return nil
+	}
+
+	var reachable2 func(nodeID nodeIDT) error
+	reachable2 = func(nodeID nodeIDT) error {
+		if done.contains(nodeID) {
+			return nil
+		}
+		done.insert(nodeID)
+
+		eligible.erase(nodeID)
+		node, err := store.get(nodeID)
+		if err != nil {
+			return err
+		}
+		for _, edge := range node.edges {
+			if !edge.rlza() {
+				if err := reachable2(edge.to); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	// 1. add all nodes that are reachable from a $-node.
+	for _, node := range store.data {
+		for _, edge := range node.edges {
+			if edge.rlza() {
+				if err := reachable1(edge.to); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	done.clear()
+
+	// 2. remove all nodes that are reachable from the
+	if err := reachable2(store.startIDi); err != nil {
+		return err
+	}
+
+	// 3. remove all these eligible nodes from the NFA.
+	changed := false
+	for nodeID := range eligible {
+		changed = true
+		delete(store.data, nodeID)
+	}
+	if changed {
+		store.cleanupStaleEdges()
+	}
+	return nil
+}
