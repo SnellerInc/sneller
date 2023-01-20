@@ -122,19 +122,19 @@ just_one_byte:
     CMPQ   CX, R8
     JG     ret_toolarge                // error if size > remaining(dst)
     ADDL   CX, Decoder_base(R9)(R13*4) // bucket base += size
-    SUBQ   $8, R8
+    SUBQ   $16, R8
     CMPQ   CX, R8                      // size > remaining(dst)-8
     JG     memcpy_slow                 // have to copy precisely
 do_memcpy:
     // memcpy(di, si, cx); di += cx; si += cx;
-    MOVQ    0(SI), R8
-    ADDQ    $8, SI
-    MOVQ    R8, 0(DI)
-    ADDQ    $8, DI
-    SUBQ    $8, CX
-    JG      do_memcpy
-    ADDQ    CX, DI            // add negative CX component
-    ADDQ    CX, SI            // back into SI, DI to get corrected amt
+    VMOVUPS  0(SI), X1
+    ADDQ     $16, SI
+    VMOVUPS  X1, 0(DI)
+    ADDQ     $16, DI
+    SUBQ     $16, CX
+    JG       do_memcpy
+    ADDQ     CX, DI           // add negative CX component
+    ADDQ     CX, SI           // back into SI, DI to get corrected amt
 skip_bucket:
     SHRQ    $4, R12           // bits >>= 4
     DECL    R11               // elements--

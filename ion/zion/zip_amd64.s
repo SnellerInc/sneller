@@ -222,15 +222,15 @@ just_one_byte:
     SUBQ   DI, R15
     SUBQ   CX, R15
     JL     ret_toolarge
-    CMPQ   R15, $8
+    CMPQ   R15, $16
     JL     memcpy_slow
 do_memcpy:
     // memcpy(di, si, cx); di += cx; si += cx;
-    MOVQ    0(SI), R8
-    ADDQ    $8, SI
-    MOVQ    R8, 0(DI)
-    ADDQ    $8, DI
-    SUBQ    $8, CX
+    VMOVUPS 0(SI), X1
+    ADDQ    $16, SI
+    VMOVUPS X1, 0(DI)
+    ADDQ    $16, DI
+    SUBQ    $16, CX
     JG      do_memcpy
     ADDQ    CX, DI            // add negative CX component
     ADDQ    CX, SI            // back into SI, DI to get corrected amt
