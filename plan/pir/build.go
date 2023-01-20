@@ -550,7 +550,7 @@ func (h *hoistwalk) rewriteInSubquery(b *expr.Builtin) expr.Node {
 		h.in = append(h.in, t)
 		return expr.Call(expr.InReplacement, b.Args[0], expr.Integer(index))
 	default:
-		h.err = errorf(b.Args[1].(*expr.Select), "sub-query cardinality too large: %s", b.Args[1])
+		h.err = errorf(b.Args[1].(*expr.Select), "sub-query cardinality too large: %s", expr.ToString(b.Args[1]))
 		return b
 	}
 }
