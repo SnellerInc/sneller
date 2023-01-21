@@ -189,6 +189,8 @@ func testFilter(t testing.TB, f *Filter, si *SparseIndex, run func(filt string, 
 	run(sprintf("timestamp < %s and (timestamp >= %s or timestamp > %s)", minute(10), minute(0), minute(60)), [][2]int{{0, 10}})
 	// test with constant fields
 	run(sprintf("foo = 'foo'"), [][2]int{{0, 60}})
+	run(sprintf("foo IN ('foo', 'bar', 'baz', 'quux', 0, 1, 2, 3, 4, 5, 6)"), [][2]int{{0, 60}})
+	run(sprintf("foo IN ('food', 'bar', 'baz', 'quux', 0, 1, 2, 3, 4, 5, 6)"), [][2]int{{0, 0}})
 	run(sprintf("foo = 'bar'"), [][2]int{{0, 0}})
 	run(sprintf("foo != 'bar'"), [][2]int{{0, 60}})
 	run(sprintf("foo.x = 'bar'"), [][2]int{{0, 60}})

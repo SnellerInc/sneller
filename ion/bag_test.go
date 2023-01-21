@@ -87,4 +87,40 @@ func TestBag(t *testing.T) {
 	if n != bag.Len() {
 		t.Fatalf("Each iterated %d times, but bag.Len()=%d", n, bag.Len())
 	}
+
+	bag.Reset()
+	if bag.Len() != 0 {
+		t.Fatalf("bag.Len = %d after reset?", bag.Len())
+	}
+	i = 0
+	bag.Each(func(d Datum) bool {
+		i++
+		return true
+	})
+	if i > 0 {
+		t.Fatalf("bag has contents (%d items) after reset?", i)
+	}
+	bag = bag2.Clone()
+	if !bag.Equals(&bag2) {
+		t.Errorf("cloned Bag not equal to itself")
+	}
+
+	var bag3 Bag
+	buf.Reset()
+	st.Reset()
+	w := bag3.Writer()
+	bag2.Encode(&buf, &st)
+	stpos := buf.Size()
+	st.Marshal(&buf, true)
+	data := append(buf.Bytes()[stpos:], buf.Bytes()[:stpos]...)
+	n, err := w.Write(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(data) {
+		t.Fatalf("ion.Bag.Writer().Write wrote %d instead of %d bytes", n, len(data))
+	}
+	if !bag3.Equals(&bag2) {
+		t.Fatal("using bagWriter.Write did not produce an equivalent Bag")
+	}
 }

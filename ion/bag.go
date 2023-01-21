@@ -64,21 +64,15 @@ func (b *Bag) Equals(o *Bag) bool {
 	srcdata := o.data
 	eq := true
 	b.Each(func(d Datum) bool {
-		if !eq {
-			return false
-		}
 		if len(srcdata) == 0 {
 			eq = false
 			return false
 		}
 		s := SizeOf(srcdata)
 		rhs := Datum{st: o.st.interned, buf: srcdata[:s]}
-		if !d.Equal(rhs) {
-			eq = false
-			return false
-		}
+		eq = d.Equal(rhs)
 		srcdata = srcdata[s:]
-		return true
+		return eq
 	})
 	return eq && len(srcdata) == 0
 }
@@ -120,6 +114,7 @@ type bagWriter struct {
 }
 
 func (b *bagWriter) Write(p []byte) (int, error) {
+	n := len(p)
 	var err error
 	if IsBVM(p) || TypeOf(p) == AnnotationType {
 		p, err = b.srctab.Unmarshal(p)
@@ -131,7 +126,7 @@ func (b *bagWriter) Write(p []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return len(p), nil
+	return n, nil
 }
 
 // Writer returns an io.Writer that can be used

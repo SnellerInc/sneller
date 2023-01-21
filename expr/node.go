@@ -1457,9 +1457,9 @@ func (m *Member) rewrite(r Rewriter) Node {
 func (m *Member) text(out *strings.Builder, redact bool) {
 	m.Arg.text(out, redact)
 	out.WriteString(" IN (")
-	i := 0
+	first := true
 	m.Set.Each(func(d ion.Datum) bool {
-		if i != 0 {
+		if !first {
 			out.WriteString(", ")
 		}
 		c, ok := AsConstant(d)
@@ -1468,7 +1468,7 @@ func (m *Member) text(out *strings.Builder, redact bool) {
 		} else {
 			c.text(out, redact)
 		}
-		i++
+		first = false
 		return true
 	})
 	out.WriteString(")")

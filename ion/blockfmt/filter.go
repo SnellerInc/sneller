@@ -180,6 +180,30 @@ func (f *Filter) eqint(p []string, n expr.Integer) evalfn {
 	}
 }
 
+func (f *Filter) contains(p []string, set *ion.Bag) evalfn {
+	if len(p) != 1 {
+		return nil
+	}
+	name := p[0]
+	match := func(d ion.Datum) bool {
+		any := false
+		set.Each(func(val ion.Datum) bool {
+			if d.Equal(val) {
+				any = true
+				return false
+			}
+			return !any
+		})
+		return any
+	}
+	return func(f *Filter, si *SparseIndex, rest cont) {
+		field, ok := si.consts.FieldByName(name)
+		if !ok || match(field.Datum) {
+			rest(0, si.Blocks())
+		}
+	}
+}
+
 // filter where !e
 func (f *Filter) negate(e expr.Node) evalfn {
 	// we expect DNF ("disjunctive normal form"),
@@ -240,6 +264,11 @@ func (f *Filter) union(a, b expr.Node) evalfn {
 
 func (f *Filter) compile(e expr.Node) evalfn {
 	switch e := e.(type) {
+	case *expr.Member:
+		p, ok := expr.FlatPath(e.Arg)
+		if ok {
+			return f.contains(p, &e.Set)
+		}
 	case *expr.Not:
 		return f.negate(e.Expr)
 	case *expr.Logical:
