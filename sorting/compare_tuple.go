@@ -250,6 +250,11 @@ func compareIonValues(raw1, raw2 []byte,
 			return 0
 
 		case ion.TimestampType:
+			// same length and same fraction_exponent:
+			if len(raw1) == 13 && len(raw2) == 13 && raw1[9] == raw2[9] {
+				return bytes.Compare(raw1, raw2)
+			}
+
 			val1, ok1 := ionParseSimplifiedTimestamp(raw1)
 			val2, ok2 := ionParseSimplifiedTimestamp(raw2)
 			if ok1 && ok2 {
