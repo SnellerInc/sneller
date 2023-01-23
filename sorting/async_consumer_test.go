@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestAsyncConsumerCase1(t *testing.T) {
@@ -167,6 +168,47 @@ func testPassingErrorsToThreadPool(t *testing.T, writer FakeSortedDataWriter, ex
 	consumer.Start(threadPool)
 
 	go consumer.Notify(0, 100)
+
+	err := threadPool.Wait()
+
+	// then
+	if err == nil {
+		t.Errorf("Expected error to be returned")
+		return
+	}
+
+	if err.Error() != expected.Error() {
+		t.Errorf("Expected error %v, got %v", expected, err)
+	}
+}
+
+func TestMultipleClientsInCaseOfWriteError(t *testing.T) {
+	// given
+	var writer FakeSortedDataWriter
+	expected := fmt.Errorf("Write error")
+
+	const subthreads = 1_000
+
+	consumer := NewAsyncConsumer(&writer, 0, subthreads, nil)
+	threadPool := NewThreadPool(4)
+
+	sortfn := func(start, end int, args any, pool ThreadPool) {
+		consumer.Notify(start, end)
+	}
+
+	// when
+	consumer.Start(threadPool)
+
+	for i := 0; i < subthreads; i++ {
+		go func(i int) {
+			time.Sleep(2 * time.Millisecond)
+			threadPool.Enqueue(i, i, sortfn, nil)
+		}(i)
+
+		if i == subthreads/3 {
+			writer.writeErr = expected
+		}
+	}
 
 	err := threadPool.Wait()
 

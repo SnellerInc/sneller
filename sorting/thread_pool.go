@@ -21,54 +21,91 @@ import (
 type threadPool struct {
 	threads  int
 	wg       *sync.WaitGroup
-	requests chan sortRequest
-	errMutex sync.Mutex
+	reqMutex sync.Mutex
+	requests []sortRequest
 	err      error
+	closed   bool
+	cond     *sync.Cond
 }
 
 type sortRequest struct {
 	start, end int
 	function   SortingFunction
-	args       interface{}
+	args       any
 }
 
 func NewThreadPool(threads int) ThreadPool {
-	pool := threadPool{
-		threads:  threads,
-		wg:       new(sync.WaitGroup),
-		requests: make(chan sortRequest)}
+	pool := &threadPool{
+		threads: threads,
+		wg:      new(sync.WaitGroup),
+	}
 
 	pool.init()
-	return &pool
+	return pool
 }
 
 func (t *threadPool) init() {
 
+	t.cond = sync.NewCond(&t.reqMutex)
+
+	var started sync.WaitGroup
+
 	worker := func(id int) {
 		defer t.wg.Done()
+		started.Done()
 
-		for request := range t.requests {
-			request.function(request.start, request.end, request.args, t)
+		var request sortRequest
+		var n int
+		for {
+			t.reqMutex.Lock()
+			n = len(t.requests)
+			for !t.closed && n == 0 {
+				t.cond.Wait()
+				n = len(t.requests)
+			}
+			if t.closed {
+				t.reqMutex.Unlock()
+				break
+			}
+			if n > 0 {
+				request = t.requests[n-1]
+				t.requests = t.requests[:n-1]
+			}
+			t.reqMutex.Unlock()
+
+			if n > 0 {
+				request.function(request.start, request.end, request.args, t)
+			}
 		}
 	}
 
+	started.Add(t.threads)
+	t.wg.Add(t.threads)
 	for i := 0; i < t.threads; i++ {
-		t.wg.Add(1)
 		go worker(i)
 	}
+
+	// Wait for all worker threads to be ready.
+	// Otherwise possible condition notification
+	// will not reach the workers.
+	started.Wait()
 }
 
 func (t *threadPool) Enqueue(start, end int, fun SortingFunction, args interface{}) {
-	go func() {
-		t.requests <- sortRequest{start, end, fun, args}
-	}()
+	t.reqMutex.Lock()
+	if !t.closed {
+		t.requests = append(t.requests, sortRequest{start, end, fun, args})
+		t.cond.Broadcast()
+	}
+	t.reqMutex.Unlock()
 }
 
 func (t *threadPool) Close(err error) {
-	t.errMutex.Lock()
-	defer t.errMutex.Unlock()
+	t.reqMutex.Lock()
 	t.err = err
-	close(t.requests)
+	t.closed = true
+	t.cond.Broadcast()
+	t.reqMutex.Unlock()
 }
 
 func (t *threadPool) Wait() error {

@@ -577,7 +577,7 @@ const (
 	sortFloats
 )
 
-// Find out what kind of numeric conversion is neeed to properly sort
+// Find out what kind of numeric conversion is needed to properly sort
 // numeric types. All low-level Ion numeric types (int, uint, float32,
 // float32) are treated the same.
 func chooseNumericSorting(col *MixedTypeColumn) numericSorting {

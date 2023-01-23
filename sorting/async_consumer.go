@@ -16,6 +16,7 @@ package sorting
 
 import (
 	"container/heap"
+	"sync"
 )
 
 // indicesRange is a closed interval of indices (both start and end are inclusive).
@@ -42,8 +43,8 @@ type AsyncConsumer struct {
 	limit     indicesRange     // subrange of `all` to be written out (limit==all if no limits are applied)
 	remaining indicesRange     // tail of `all` that left to sort
 	queue     sortedRangeQueue // already sorted subranges that are not ready to be written out
-
-	ready chan indicesRange
+	mutex     sync.Mutex
+	cond      *sync.Cond
 }
 
 func NewAsyncConsumer(writer SortedDataWriter, start, end int, limit *Limit) SortedDataConsumer {
@@ -52,7 +53,7 @@ func NewAsyncConsumer(writer SortedDataWriter, start, end int, limit *Limit) Sor
 		queue:     sortedRangeQueue{},
 		all:       indicesRange{start, end},
 		remaining: indicesRange{start, end},
-		ready:     make(chan indicesRange)}
+	}
 
 	if limit == nil {
 		consumer.limit = consumer.all
@@ -64,6 +65,8 @@ func NewAsyncConsumer(writer SortedDataWriter, start, end int, limit *Limit) Sor
 
 	heap.Init(&consumer.queue)
 
+	consumer.cond = sync.NewCond(&consumer.mutex)
+
 	return &consumer
 }
 
@@ -72,7 +75,10 @@ func NewAsyncConsumer(writer SortedDataWriter, start, end int, limit *Limit) Sor
 // We are assuming that all incoming ranges are disjoint and finally
 // their sum equals to a.all.
 func (a *AsyncConsumer) Notify(start, end int) {
-	a.ready <- indicesRange{start, end}
+	a.mutex.Lock()
+	heap.Push(&a.queue, indicesRange{start, end})
+	a.cond.Broadcast()
+	a.mutex.Unlock()
 }
 
 // Start implements SortedDataConsumer
@@ -81,14 +87,25 @@ func (a *AsyncConsumer) Start(pool ThreadPool) {
 
 	go func() {
 
+		canWrite := func() bool {
+			if len(a.queue) == 0 {
+				return false
+			}
+
+			return (a.queue)[0].start == a.remaining.start
+		}
+
 		writeAllReadyChunks := func() error {
-			for len(a.queue) > 0 {
-				if (a.queue)[0].start != a.remaining.start {
-					break
+			for {
+				a.mutex.Lock()
+				if !canWrite() {
+					a.mutex.Unlock()
+					return nil
 				}
 
 				// range r covers the head of remaining range, it can be saved
 				r := heap.Pop(&a.queue).(indicesRange)
+				a.mutex.Unlock()
 				if !r.disjoint(a.limit) {
 					start := maxInt(r.start, a.limit.start)
 					end := minInt(r.end, a.limit.end)
@@ -109,10 +126,6 @@ func (a *AsyncConsumer) Start(pool ThreadPool) {
 		var err error
 
 		for {
-			// get the next sorted subrange
-			r := <-a.ready
-			heap.Push(&a.queue, r)
-
 			err = writeAllReadyChunks()
 			if err != nil {
 				break
@@ -122,6 +135,12 @@ func (a *AsyncConsumer) Start(pool ThreadPool) {
 			if a.remaining.start >= a.remaining.end {
 				break
 			}
+
+			a.mutex.Lock()
+			for len(a.queue) == 0 {
+				a.cond.Wait()
+			}
+			a.mutex.Unlock()
 		}
 
 		a.pool.Close(err)
