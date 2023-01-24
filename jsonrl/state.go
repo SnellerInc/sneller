@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"math/bits"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +62,57 @@ const (
 	hintNoIndex
 )
 
+var (
+	hintStrings = map[hints]string{
+		hintDefault:          "default",
+		hintString:           "string",
+		hintNumber:           "number",
+		hintInt:              "int",
+		hintBool:             "bool",
+		hintDateTime:         "datetime",
+		hintUnixSeconds:      "unix_seconds",
+		hintUnixMilliSeconds: "unix_milli_seconds",
+		hintUnixMicroSeconds: "unix_micro_seconds",
+		hintUnixNanoSeconds:  "unix_nano_seconds",
+		hintIgnore:           "ignore",
+		hintNoIndex:          "no_index",
+	}
+	hintValues = reverseMap(hintStrings)
+)
+
+func reverseMap[K, V comparable](m map[K]V) map[V]K {
+	n := make(map[V]K, len(m))
+	for k, v := range m {
+		n[v] = k
+	}
+	return n
+}
+
+func (h hints) String() string {
+	if h == hintDefault {
+		return hintStrings[hintDefault]
+	}
+
+	var result []string
+
+	for k, v := range hintStrings {
+		if k == hintDefault {
+			continue
+		}
+		if h&k != 0 {
+			result = append(result, v)
+		}
+	}
+
+	if len(result) == 0 {
+		return "invalid"
+	}
+
+	sort.Strings(result)
+
+	return strings.Join(result[:], ", ")
+}
+
 // Hint represents a structure containing type-hints and/or other flags to be used
 // by the json parser. See ParseHint for further information.
 type Hint struct {
@@ -74,12 +126,19 @@ type Hint struct {
 // ParseHint parses a json byte array into a Hint structure which can
 // later be used to pass type-hints and/or other flags to the json parser.
 //
-// The input must contain a valid json object with the individual rules:
+// The input must contain a valid JSON array with the individual rules:
 //
-//	  {
-//		   "path.to.value.a": "hint",
-//		   "path.to.value.b": ["hint_a", "hint_b"]
-//	  }
+//	[
+//	  { "path": "path.to.value.a", "hints": "hint" },
+//	  { "path": "path.to.value.b", "hints": ["hint_a", "hint_b"] }
+//	]
+//
+// A JSON object may be used as an alternative (not recommended):
+//
+//	{
+//	  "path.to.value.a": "hint",
+//	  "path.to.value.b": ["hint_a", "hint_b"]
+//	}
 //
 // The precedence of overlapping rules is determined by the order in which the rules
 // are written.
@@ -100,58 +159,161 @@ type Hint struct {
 //   - bool
 //   - datetime -> RFC3339Nano
 //   - unix_seconds
-func ParseHint(rules []byte) (*Hint, error) {
-	var obj map[string]interface{}
-	err := json.Unmarshal(rules, &obj)
+func ParseHint(rules []byte) (hint *Hint, err error) {
+	hint = &Hint{}
+	err = json.Unmarshal(rules, hint)
 	if err != nil {
 		return nil, err
 	}
-
-	// We need the keys in their original order which is not guaranteed if we would
-	// use `map[string]interface{}`
-	keys, err := objectKeys(rules)
-	if err != nil {
-		return nil, err
-	}
-
-	root := makeHintNode(nil, hintDefault, false)
-
-	for _, path := range keys {
-		value := obj[path]
-		hints, err := hintsFromJSON(value)
-		if err != nil {
-			return nil, err
-		}
-		if err = root.encodeRuleString(path, hints); err != nil {
-			return nil, err
-		}
-	}
-
-	return root, nil
+	return
 }
 
-func objectKeys(b []byte) ([]string, error) {
-	d := json.NewDecoder(bytes.NewReader(b))
+func (n *Hint) String() string {
+	return n.printTree("root", 0)
+}
+
+func (n *Hint) UnmarshalJSON(data []byte) error {
+	*n = *makeHintNode(nil, hintDefault, false)
+
+	d := json.NewDecoder(bytes.NewReader(data))
 	t, err := d.Token()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if t != json.Delim('{') {
-		return nil, errors.New("expected start of object")
+
+	switch t {
+	case json.Delim('{'):
+		return n.decodeRulesFromObject(d)
+	case json.Delim('['):
+		return n.decodeRulesFromArray(d)
 	}
-	var keys []string
+
+	return errors.New("unsupported type; expected 'object' or 'array'")
+}
+
+func (n *Hint) decodeRulesFromObject(d *json.Decoder) error {
 	for {
 		t, err := d.Token()
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if t == json.Delim('}') {
-			return keys, nil
+			// End of main json object -> done
+			return nil
 		}
-		keys = append(keys, t.(string))
-		if err := skipValue(d); err != nil {
-			return nil, err
+
+		path := t.(string)
+		hints, err := decodeHints(d)
+		if err != nil {
+			return err
 		}
+
+		if err = n.encodeRuleString(path, hints); err != nil {
+			return err
+		}
+	}
+}
+
+func (n *Hint) decodeRulesFromArray(d *json.Decoder) error {
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return err
+		}
+		if t == json.Delim(']') {
+			// End of main json array -> done
+			return nil
+		}
+
+		if t == json.Delim('{') {
+			path, hints, err := decodeRuleObject(d)
+			if err != nil {
+				return err
+			}
+			if err = n.encodeRuleString(path, hints); err != nil {
+				return err
+			}
+			continue
+		}
+
+		return errors.New("unsupported type; expected 'object'")
+	}
+}
+
+func decodeRuleObject(d *json.Decoder) (path string, hints hints, err error) {
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return "", 0, err
+		}
+		if t == json.Delim('}') {
+			// End of rule json object -> done
+			break
+		}
+
+		label := strings.ToLower(t.(string))
+		switch label {
+		case "path":
+			t, err = d.Token()
+			if err != nil {
+				return "", 0, err
+			}
+			value, ok := t.(string)
+			if !ok {
+				return "", 0, errors.New("unsupported type; expected 'string'")
+			}
+			path = value
+		case "hints":
+			value, err := decodeHints(d)
+			if err != nil {
+				return "", 0, err
+			}
+			hints = value
+		default:
+			// Ignore all extra fields..
+			if err = skipValue(d); err != nil {
+				return "", 0, err
+			}
+		}
+	}
+	return
+}
+
+func decodeHints(d *json.Decoder) (hints, error) {
+	t, err := d.Token()
+	if err != nil {
+		return 0, err
+	}
+
+	value, ok := t.(string)
+	if ok {
+		return hintFromString(value)
+	}
+
+	if t != json.Delim('[') {
+		return 0, errors.New("unsupported type; expected 'string' or '[]string'")
+	}
+
+	result := hints(0)
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return 0, err
+		}
+		if t == json.Delim(']') {
+			return result, nil
+		}
+		value, ok := t.(string)
+		if !ok {
+			return 0, errors.New("unsupported type; expected 'string'")
+		}
+
+		hint, err := hintFromString(value)
+		if err != nil {
+			return 0, err
+		}
+
+		result |= hint
 	}
 }
 
@@ -178,57 +340,14 @@ func skipValue(d *json.Decoder) error {
 
 var errErrDelim = errors.New("invalid end of array or object")
 
-func hintsFromJSON(value interface{}) (hints, error) {
-	s, ok := value.(string)
-	if ok {
-		return hintFromString(s)
-	}
-	a, ok := value.([]string)
-
-	if ok {
-		result := hintDefault
-		for _, v := range a {
-			h, err := hintFromString(v)
-			if err != nil {
-				return hintDefault, err
-			}
-			result |= h
-		}
-		return result, nil
-	}
-
-	return hintDefault, errors.New("unsupported hint type; expected 'string' or '[]string'")
-}
-
 func hintFromString(value string) (hints, error) {
-	switch value {
-	case "default":
-		return hintDefault, nil
-	case "string":
-		return hintString, nil
-	case "number":
-		return hintNumber, nil
-	case "int":
-		return hintInt, nil
-	case "bool":
-		return hintBool, nil
-	case "datetime":
-		return hintDateTime, nil
-	case "unix_seconds":
-		return hintUnixSeconds, nil
-	case "unix_milli_seconds":
-		return hintUnixMilliSeconds, nil
-	case "unix_micro_seconds":
-		return hintUnixMicroSeconds, nil
-	case "unix_nano_seconds":
-		return hintUnixNanoSeconds, nil
-	case "ignore":
-		return hintIgnore, nil
-	case "no_index":
-		return hintNoIndex, nil
+	for k, v := range hintValues {
+		if strings.EqualFold(value, k) {
+			return v, nil
+		}
 	}
 
-	return hintDefault, fmt.Errorf("unsupported hint '%s'", value)
+	return 0, fmt.Errorf("unsupported hint '%s'", value)
 }
 
 func makeHintNode(parent *Hint, hints hints, isRecursiveWildcard bool) *Hint {
@@ -388,6 +507,56 @@ func (n *Hint) getOrCreate(label string, hints hints, isWildcard bool, isRecursi
 	return next
 }
 
+func (n *Hint) printTree(name string, level int) string {
+	sp1 := ""
+	sp2 := ""
+	if level != 0 {
+		sp1 = " :" + strings.Repeat("  :", level-1)
+		sp2 = "."
+	}
+
+	hints := ""
+	if n.hints != hintDefault {
+		hints = fmt.Sprintf(" = [%s]", n.hints.String())
+	}
+	result := fmt.Sprintf("%s%s%s%s\n", sp1, sp2, name, hints)
+
+	childCount := len(n.fields)
+	if n.wildcard != nil {
+		childCount++
+	}
+	children := make([]struct {
+		key   string
+		value string
+	}, childCount)
+
+	i := 0
+	for k, v := range n.fields {
+		children[i].key = k
+		children[i].value = v.printTree(k, level+1)
+		i++
+	}
+	slices.SortFunc(children, func(a, b struct {
+		key   string
+		value string
+	}) bool {
+		return strings.Compare(a.key, b.key) < 0
+	})
+	for i := range children {
+		result += children[i].value
+	}
+
+	if n.wildcard != nil {
+		wildcard := "wc_?"
+		if n.isRecursiveWildcard {
+			wildcard = "wc_*"
+		}
+		result += n.wildcard.printTree(wildcard, level+1)
+	}
+
+	return result
+}
+
 type hintState struct {
 	root    *Hint
 	hints   hints
@@ -413,7 +582,7 @@ func (s *hintState) nextIsRecursive() bool {
 	return s.next == nil || s.next.isRecursiveWildcard
 }
 
-// / enter should be invoked before a sub-structure (either record or array) is entered
+// enter should be invoked before a sub-structure (either record or array) is entered
 func (s *hintState) enter() {
 	if s.nextIsRecursive() || s.level > 0 {
 		s.level++
@@ -426,7 +595,7 @@ func (s *hintState) enter() {
 	}
 }
 
-// / leave should be invoked before a sub-structure (either record or array) is left
+// leave should be invoked before a sub-structure (either record or array) is left
 func (s *hintState) leave() {
 	if s.level > 0 {
 		s.level--
@@ -443,7 +612,7 @@ func (s *hintState) leave() {
 	}
 }
 
-// / field should be invoked before a field label is parsed
+// field should be invoked before a field label is parsed
 func (s *hintState) field(label []byte) {
 	if s.level > 0 {
 		return
@@ -459,7 +628,7 @@ func (s *hintState) field(label []byte) {
 	s.next = next
 }
 
-// / afterListEntered should be invoked after a list has been entered
+// afterListEntered should be invoked after a list has been entered
 func (s *hintState) afterListEntered() {
 	// Invoking `field` with an empty `label` sets `next` to `current` and updates the
 	// currently effective hints
