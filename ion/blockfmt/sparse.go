@@ -142,7 +142,7 @@ func (s *SparseIndex) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("blocks"))
 	dst.WriteInt(int64(s.blocks))
-	if !s.consts.Empty() {
+	if !s.consts.IsEmpty() {
 		dst.BeginField(st.Intern("consts"))
 		s.consts.Encode(dst, st)
 	}

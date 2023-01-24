@@ -339,6 +339,18 @@ func (d Datum) StringShared() ([]byte, error) { return d.stringShared("") }
 // from retaining aliased bytes.
 func (d Datum) BlobShared() ([]byte, error) { return d.blobShared("") }
 
+// UnpackStruct calls d.Struct and calls
+// UnpackStruct on the result.
+func (d Datum) UnpackStruct(fn func(Field) error) error { return d.unpackStruct("", fn) }
+
+// UnpackList calls d.List and calls UnpackList
+// on the result.
+func (d Datum) UnpackList(fn func(Datum) error) error { return d.unpackList("", fn) }
+
+// Iterator calls d.List and calls Iterator on
+// the result.
+func (d Datum) Iterator() (Iterator, error) { return d.iterator("") }
+
 func (d Datum) null(field string) error {
 	if !d.IsNull() {
 		return d.bad(field, NullType)
@@ -358,7 +370,7 @@ func (d Datum) float(field string) (float64, error) {
 }
 
 func (d Datum) int(field string) (int64, error) {
-	if !d.IsInt() {
+	if !d.IsInt() && !d.IsUint() {
 		return 0, d.bad(field, IntType)
 	}
 	i, _, err := ReadInt(d.buf)
@@ -499,12 +511,44 @@ func (d Datum) timestamp(field string) (date.Time, error) {
 	return t, nil
 }
 
+func (d Datum) unpackStruct(field string, fn func(Field) error) error {
+	s, err := d.struc(field)
+	if err != nil {
+		return err
+	}
+	return s.Each(fn)
+}
+
+func (d Datum) unpackList(field string, fn func(Datum) error) error {
+	l, err := d.list(field)
+	if err != nil {
+		return err
+	}
+	return l.Each(fn)
+}
+
+func (d Datum) iterator(field string) (Iterator, error) {
+	l, err := d.list(field)
+	if err != nil {
+		return Iterator{}, err
+	}
+	return l.Iterator()
+}
+
 func (d *Datum) bad(field string, want Type) error {
 	return &TypeError{Wanted: want, Found: d.Type(), Field: field}
 }
 
 func (d *Datum) symtab() Symtab {
 	return Symtab{interned: d.st}
+}
+
+// Raw returns the raw byte slice underlying d.
+// The returned slice aliases the contents of d,
+// so care should be taken when retaining or
+// modifying the returned slice.
+func (d Datum) Raw() []byte {
+	return d.buf
 }
 
 func Float(f float64) Datum {
@@ -596,16 +640,26 @@ func (f Field) StringShared() ([]byte, error) { return f.stringShared(f.Label) }
 // from retaining aliased bytes.
 func (f Field) BlobShared() ([]byte, error) { return f.blobShared(f.Label) }
 
-type composite struct {
-	st  []string
-	buf []byte
-	_   struct{} // disallow conversion to Datum
-}
+// UnpackStruct calls f.Struct and calls
+// UnpackStruct on the result.
+func (f Field) UnpackStruct(fn func(Field) error) error { return f.unpackStruct(f.Label, fn) }
+
+// UnpackList calls f.List and calls UnpackList
+// on the result.
+func (f Field) UnpackList(fn func(Datum) error) error { return f.unpackList(f.Label, fn) }
+
+// Iterator calls f.List and calls Iterator on
+// the result.
+func (f Field) Iterator() (Iterator, error) { return f.iterator(f.Label) }
 
 var emptyStruct = []byte{0xd0}
 
 // Struct is an ion structure datum
-type Struct composite
+type Struct struct {
+	st    []string
+	buf   []byte
+	struc struct{} //lint:ignore U1000 disallow conversion
+}
 
 func NewStruct(st *Symtab, f []Field) Struct {
 	if len(f) == 0 {
@@ -640,7 +694,7 @@ func (s Struct) Datum() Datum {
 
 func (s Struct) Encode(dst *Buffer, st *Symtab) {
 	// fast path: we can avoid resym
-	if s.Empty() || st.contains(s.st) {
+	if s.IsEmpty() || st.contains(s.st) {
 		dst.UnsafeAppend(s.bytes())
 		return
 	}
@@ -653,8 +707,8 @@ func (s Struct) Encode(dst *Buffer, st *Symtab) {
 }
 
 func (s Struct) Equal(s2 Struct) bool {
-	if s.Empty() {
-		return s2.Empty()
+	if s.IsEmpty() {
+		return s2.IsEmpty()
 	}
 	if bytes.Equal(s.buf, s2.buf) && stoverlap(s.st, s2.st) {
 		return true
@@ -687,7 +741,7 @@ func (s Struct) Equal(s2 Struct) bool {
 }
 
 func (s Struct) Len() int {
-	if s.Empty() {
+	if s.IsEmpty() {
 		return 0
 	}
 	n := 0
@@ -698,7 +752,7 @@ func (s Struct) Len() int {
 	return n
 }
 
-func (s *Struct) Empty() bool {
+func (s *Struct) IsEmpty() bool {
 	if len(s.buf) == 0 {
 		return true
 	}
@@ -720,7 +774,7 @@ func (s *Struct) bytes() []byte {
 // encounters a malformed field while unpacking
 // the struct, Each returns a non-nil error.
 func (s Struct) Each(fn func(Field) error) error {
-	if s.Empty() {
+	if s.IsEmpty() {
 		return nil
 	}
 	if TypeOf(s.buf) != StructType {
@@ -819,7 +873,11 @@ func (s *Struct) symtab() Symtab {
 var emptyList = []byte{0xb0}
 
 // List is an ion list datum
-type List composite
+type List struct {
+	st   []string
+	buf  []byte
+	list struct{} //lint:ignore U1000 disallow conversion
+}
 
 func NewList(st *Symtab, items []Datum) List {
 	if len(items) == 0 {
@@ -857,7 +915,7 @@ func (l List) Datum() Datum {
 
 func (l List) Encode(dst *Buffer, st *Symtab) {
 	// fast path: we can avoid resym
-	if l.empty() || st.contains(l.st) {
+	if l.IsEmpty() || st.contains(l.st) {
 		dst.UnsafeAppend(l.bytes())
 		return
 	}
@@ -870,7 +928,7 @@ func (l List) Encode(dst *Buffer, st *Symtab) {
 }
 
 func (l List) Len() int {
-	if l.empty() {
+	if l.IsEmpty() {
 		return 0
 	}
 	n := 0
@@ -881,7 +939,7 @@ func (l List) Len() int {
 	return n
 }
 
-func (l *List) empty() bool {
+func (l List) IsEmpty() bool {
 	if len(l.buf) == 0 {
 		return true
 	}
@@ -890,30 +948,43 @@ func (l *List) empty() bool {
 }
 
 func (l *List) bytes() []byte {
-	if l.empty() {
+	if l.IsEmpty() {
 		return emptyList
 	}
 	return l.buf
 }
 
-// Each iterates over each datum in the
-// list and calls fn on each datum in order.
-// Each returns when it encounters an internal error
-// (due to malformed ion) or when fn returns false.
-func (l List) Each(fn func(Datum) error) error {
-	if l.empty() {
-		return nil
+// Iterator returns an iterator which can be
+// used to iterator over the items in the list.
+func (l List) Iterator() (Iterator, error) {
+	if l.IsEmpty() {
+		return Iterator{}, nil
 	}
 	if TypeOf(l.buf) != ListType {
-		return fmt.Errorf("expected a list; found ion type %s", TypeOf(l.buf))
+		return Iterator{}, fmt.Errorf("expected a list; found ion type %s", TypeOf(l.buf))
 	}
 	body, _ := Contents(l.buf)
 	if body == nil {
-		return errInvalidIon
+		return Iterator{}, errInvalidIon
 	}
-	st := l.symtab()
-	for len(body) > 0 {
-		v, rest, err := ReadDatum(&st, body)
+	return Iterator{
+		st:  l.st,
+		buf: body,
+	}, nil
+}
+
+// Each iterates over each datum in the
+// list and calls fn on each datum in order.
+// Each returns when it encounters an internal error
+// (due to malformed ion) or when fn returns a
+// non-nil error.
+func (l List) Each(fn func(Datum) error) error {
+	i, err := l.Iterator()
+	if err != nil {
+		return err
+	}
+	for !i.Done() {
+		v, err := i.Next()
 		if err != nil {
 			return err
 		}
@@ -923,7 +994,6 @@ func (l List) Each(fn func(Datum) error) error {
 		} else if err != nil {
 			return err
 		}
-		body = rest
 	}
 	return nil
 }
@@ -937,13 +1007,9 @@ func (l List) Items(items []Datum) []Datum {
 	return items
 }
 
-func (l *List) symtab() Symtab {
-	return Symtab{interned: l.st}
-}
-
 func (l List) Equal(l2 List) bool {
-	if l.empty() {
-		return l2.empty()
+	if l.IsEmpty() {
+		return l2.IsEmpty()
 	}
 	if bytes.Equal(l.buf, l2.buf) && stoverlap(l.st, l2.st) {
 		return true
@@ -960,6 +1026,70 @@ func (l List) Equal(l2 List) bool {
 		}
 	}
 	return true
+}
+
+// ErrUnexpectedEnd is returned if Iterator.Next
+// is called after the list has been exhausted.
+var ErrUnexpectedEnd = errors.New("unexpected end of list")
+
+// An Iterator can be used to iterate over items
+// in a list.
+type Iterator struct {
+	st   []string
+	buf  []byte
+	iter struct{} //lint:ignore U1000 disallow conversion
+}
+
+// Next returns the next item in the list. The
+// caller should check Done first to ensure that
+// there are still items in the list.
+//
+// If Next is called after reaching the the end
+// of the list, this returns ErrUnexpectedEnd.
+// If there is an error decoding the next item
+// in the list, that error is returned.
+func (i *Iterator) Next() (Datum, error) {
+	if len(i.buf) == 0 {
+		return Empty, ErrUnexpectedEnd
+	}
+	st := i.symtab()
+	v, rest, err := ReadDatum(&st, i.buf)
+	if err != nil {
+		return Empty, err
+	}
+	i.buf = rest
+	return v, nil
+}
+
+// Done returns whether the iterator has reached
+// the end of the list. If Done returns false,
+// the next call to Next will not return
+func (i *Iterator) Done() bool {
+	return len(i.buf) == 0
+}
+
+func (i *Iterator) Float() (float64, error)       { return iternext(i, Datum.Float) }
+func (i *Iterator) Int() (int64, error)           { return iternext(i, Datum.Int) }
+func (i *Iterator) Uint() (uint64, error)         { return iternext(i, Datum.Uint) }
+func (i *Iterator) Struct() (Struct, error)       { return iternext(i, Datum.Struct) }
+func (i *Iterator) List() (List, error)           { return iternext(i, Datum.List) }
+func (i *Iterator) Bool() (bool, error)           { return iternext(i, Datum.Bool) }
+func (i *Iterator) Symbol() (Symbol, error)       { return iternext(i, Datum.Symbol) }
+func (i *Iterator) String() (string, error)       { return iternext(i, Datum.String) }
+func (i *Iterator) Blob() ([]byte, error)         { return iternext(i, Datum.Blob) }
+func (i *Iterator) Timestamp() (date.Time, error) { return iternext(i, Datum.Timestamp) }
+
+func iternext[V any](i *Iterator, fn func(Datum) (V, error)) (V, error) {
+	d, err := i.Next()
+	if err != nil {
+		var empty V
+		return empty, err
+	}
+	return fn(d)
+}
+
+func (i *Iterator) symtab() Symtab {
+	return Symtab{interned: i.st}
 }
 
 var (
