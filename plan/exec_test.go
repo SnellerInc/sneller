@@ -2161,6 +2161,8 @@ func (t testindexer) Index(e expr.Node) (Index, error) {
 
 type testindex map[string][2]date.Time
 
+func (t testindex) HasPartition(x string) bool { return false }
+
 func (t testindex) TimeRange(p []string) (min, max date.Time, ok bool) {
 	r, ok := t[p[0]]
 	return r[0], r[1], ok

@@ -68,6 +68,8 @@ type timeIndex struct {
 	min, max date.Time
 }
 
+func (h timeIndex) HasPartition(string) bool { return false }
+
 func (h timeIndex) TimeRange(p []string) (min, max date.Time, ok bool) {
 	return h.min, h.max, true
 }

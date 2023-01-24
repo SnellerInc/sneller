@@ -46,7 +46,7 @@
 #define BC_MOV_SLOT MOVWLZX // Instruction to load a stack slot
 #define BC_MOV_DICT MOVWLZX // Instruction to load a stack slot
 
-#define VREG_SIZE 128       // Size of a V register
+#define VREG_SIZE const_vRegSize       // Size of a V register
 
 // BCCLEARSCRATCH resets the output scratch buffer:
 // len(bytecode.scratch) = len(bytecode.savedlit)

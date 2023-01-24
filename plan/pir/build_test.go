@@ -29,6 +29,8 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/tests"
+
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -38,14 +40,11 @@ const (
 	countType  = uintType
 )
 
-func mkenv(h expr.Hint, idx *blockfmt.Index) Env {
-	if h == nil && idx == nil {
+func mkenv(h expr.Hint, idx *blockfmt.Index, parts []string) Env {
+	if h == nil && idx == nil && parts == nil {
 		return nil
 	}
-	return &testenv{
-		hint: h,
-		idx:  idx,
-	}
+	return &testenv{hint: h, idx: idx, parts: parts}
 }
 
 func TestBuildError(t *testing.T) {
@@ -184,7 +183,7 @@ func TestBuildError(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			b, err := Build(s, mkenv(schema, nil))
+			b, err := Build(s, mkenv(schema, nil, nil))
 			if err == nil {
 				var str strings.Builder
 				b.Describe(&str)
@@ -204,8 +203,26 @@ func TestBuildError(t *testing.T) {
 }
 
 type testenv struct {
-	hint expr.Hint
-	idx  *blockfmt.Index
+	hint  expr.Hint
+	idx   *blockfmt.Index
+	parts []string
+}
+
+type testindex struct {
+	idx   *blockfmt.Index
+	parts []string
+}
+
+func (t *testindex) TimeRange(path []string) (min, max date.Time, ok bool) {
+	if t.idx == nil {
+		ok = false
+		return
+	}
+	return t.idx.TimeRange(path)
+}
+
+func (t *testindex) HasPartition(x string) bool {
+	return slices.Contains(t.parts, x)
 }
 
 func (e *testenv) Schema(expr.Node) expr.Hint {
@@ -213,7 +230,7 @@ func (e *testenv) Schema(expr.Node) expr.Hint {
 }
 
 func (e *testenv) Index(expr.Node) (Index, error) {
-	return e.idx, nil
+	return &testindex{idx: e.idx, parts: e.parts}, nil
 }
 
 type nameType struct {
@@ -254,9 +271,12 @@ type buildTestcase struct {
 	results []expr.TypeSet
 	schema  expr.Hint // applied to the inner-most table expression
 	index   *blockfmt.Index
+	parts   []string
 }
 
 func TestBuild(t *testing.T) {
+	partitionsEnabled = true
+
 	basetime, _ := date.Parse([]byte("2022-02-22T20:22:22Z"))
 	now := func(hours int) date.Time {
 		return basetime.Add(time.Duration(hours) * time.Hour)
@@ -1147,6 +1167,49 @@ ORDER BY m, d, h`,
 			},
 		},
 		{
+			// same as above except with data already partitioned by y
+			input: `select x, y, SUM(var), COUNT(x) OVER (PARTITION BY y) AS x_per_y FROM foo WHERE z = 'foo' GROUP BY x, y HAVING x_per_y > 100`,
+			expect: []string{
+				"WITH (",
+				"	UNION MAP foo PARTITION BY y (",
+				"		ITERATE PART foo FIELDS [x, y, z] WHERE z = 'foo'",
+				"		FILTER DISTINCT [x, y]",
+				"		AGGREGATE COUNT(x) AS $__val",
+				"		PROJECT PARTITION_VALUE(0) AS $__key, $__val AS $__val)",
+				") AS REPLACEMENT(0)",
+				// TODO: recognize that we are doing a HASH_REPLACEMENT()
+				// of a PARTITION_VALUE() and move the replacement step
+				// into this subquery so that the hash lookup can be eliminated altogether
+				"UNION MAP foo PARTITION BY y (",
+				"	ITERATE PART foo FIELDS [var, x, z] WHERE z = 'foo'",
+				"	AGGREGATE SUM(var) AS $_0_2 BY x AS $_0_1",
+				"	FILTER HASH_REPLACEMENT(0, 'scalar', '$__key', PARTITION_VALUE(0), 0) > 100",
+				"	PROJECT $_0_1 AS x, PARTITION_VALUE(0) AS y, $_0_2 AS \"sum\", HASH_REPLACEMENT(0, 'scalar', '$__key', PARTITION_VALUE(0), 0) AS x_per_y)",
+			},
+			split: []string{
+				"WITH (",
+				"	UNION MAP foo PARTITION BY y (",
+				"		UNION MAP foo (",
+				"			ITERATE PART foo FIELDS [x, y, z] WHERE z = 'foo'",
+				"			FILTER DISTINCT [x, y])",
+				"		FILTER DISTINCT [x, y]",
+				"		AGGREGATE COUNT(x) AS $__val",
+				"		PROJECT PARTITION_VALUE(0) AS $__key, $__val AS $__val)",
+				") AS REPLACEMENT(0)",
+				// TODO: recognize that we are doing a HASH_REPLACEMENT()
+				// of a PARTITION_VALUE() and move the replacement step
+				// into this subquery so that the hash lookup can be eliminated altogether
+				"UNION MAP foo PARTITION BY y (",
+				"	UNION MAP foo (",
+				"		ITERATE PART foo FIELDS [var, x, z] WHERE z = 'foo'",
+				"		AGGREGATE SUM(var) AS $_2_0 BY x AS $_0_1)",
+				"	AGGREGATE SUM($_2_0) AS $_0_2 BY $_0_1 AS $_0_1",
+				"	FILTER HASH_REPLACEMENT(0, 'scalar', '$__key', PARTITION_VALUE(0), 0) > 100",
+				"	PROJECT $_0_1 AS x, PARTITION_VALUE(0) AS y, $_0_2 AS \"sum\", HASH_REPLACEMENT(0, 'scalar', '$__key', PARTITION_VALUE(0), 0) AS x_per_y)",
+			},
+			parts: []string{"y"},
+		},
+		{
 			input: `SELECT SUBSTRING(str, 2, 2) AS x, SUM(y+0) OVER (PARTITION BY x) AS ysum FROM input`,
 			expect: []string{
 				"WITH (",
@@ -1156,6 +1219,7 @@ ORDER BY m, d, h`,
 				"ITERATE input FIELDS [str]",
 				"PROJECT SUBSTRING(str, 2, 2) AS x, HASH_REPLACEMENT(0, 'scalar', '$__key', SUBSTRING(str, 2, 2), NULL) AS ysum",
 			},
+			parts: []string{"x"}, // should not get distracted by this binding!
 		},
 		{
 			input: `SELECT (x + 1) AS y, (y + 1) AS z FROM table`,
@@ -1280,6 +1344,44 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"PROJECT a AS a, b AS b, c AS c",
 			},
 		},
+		{
+			// full GROUP BY elimination on a partition
+			input: `SELECT SUM(x), COUNT(y), z FROM tbl GROUP BY z`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY z (",
+				"	ITERATE PART tbl FIELDS [x, y]",
+				"	AGGREGATE SUM(x) AS \"sum\", COUNT(y) AS \"count\"",
+				"	PROJECT PARTITION_VALUE(0) AS z, \"sum\" AS \"sum\", \"count\" AS \"count\")",
+			},
+			split: []string{
+				"UNION MAP tbl PARTITION BY z (",
+				"	UNION MAP tbl (",
+				"		ITERATE PART tbl FIELDS [x, y]",
+				"		AGGREGATE SUM(x) AS $_2_0, COUNT(y) AS $_2_1)",
+				"	AGGREGATE SUM($_2_0) AS \"sum\", SUM_COUNT($_2_1) AS \"count\"",
+				"	PROJECT PARTITION_VALUE(0) AS z, \"sum\" AS \"sum\", \"count\" AS \"count\")",
+			},
+			parts: []string{"z"},
+		},
+		{
+			// partial GROUP BY elimination on a partition
+			input: `SELECT a, b, SUM(x), COUNT(y) FROM tbl GROUP BY a, b`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY a (",
+				"	ITERATE PART tbl FIELDS [b, x, y]",
+				"	AGGREGATE SUM(x) AS \"sum\", COUNT(y) AS \"count\" BY b AS b",
+				"	PROJECT PARTITION_VALUE(0) AS a, b AS b, \"sum\" AS \"sum\", \"count\" AS \"count\")",
+			},
+			split: []string{
+				"UNION MAP tbl PARTITION BY a (",
+				"	UNION MAP tbl (",
+				"		ITERATE PART tbl FIELDS [b, x, y]",
+				"		AGGREGATE SUM(x) AS $_2_0, COUNT(y) AS $_2_1 BY b AS b)",
+				"	AGGREGATE SUM($_2_0) AS \"sum\", SUM_COUNT($_2_1) AS \"count\" BY b AS b",
+				"	PROJECT PARTITION_VALUE(0) AS a, b AS b, \"sum\" AS \"sum\", \"count\" AS \"count\")",
+			},
+			parts: []string{"a"},
+		},
 	}
 
 	for i := range tests {
@@ -1297,7 +1399,7 @@ func buildSplit(t *testing.T, tc *buildTestcase, split bool) *Trace {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Build(s, mkenv(tc.schema, tc.index))
+	b, err := Build(s, mkenv(tc.schema, tc.index, tc.parts))
 	if err != nil {
 		t.Fatal(err)
 	}

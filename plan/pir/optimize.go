@@ -85,6 +85,7 @@ func (b *Trace) optimize() error {
 	flatten(b)           // eliminate left-to-right bindings
 	mergereplacements(b) // eliminate common sub-traces
 	simplify(b)          // final simplification pass
+	partition(b)
 
 	// TODO:
 	//  - push down DISTINCT when it occurs

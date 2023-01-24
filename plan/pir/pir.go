@@ -221,10 +221,6 @@ func (i *IterValue) rewrite(rw func(expr.Node, bool) expr.Node) {
 	i.Value = rw(i.Value, false)
 }
 
-type EquiFilter struct {
-	Outer, Inner expr.Node
-}
-
 type EquiJoin struct {
 	parented
 
@@ -408,6 +404,12 @@ type UnionMap struct {
 	// Child is the sub-query that is
 	// applied to the partitioned table.
 	Child *Trace
+	// PartitionBy is a list of fields
+	// over which the unioning should be partitioned.
+	// PartitionBy[i] corresponds to PARTITION_VALUE(i)
+	// within each step within Child.
+	PartitionBy []string
+
 	noexprs
 }
 
@@ -440,6 +442,14 @@ func (u *UnionMap) describe(dst io.Writer) {
 	inner = bytes.ReplaceAll(inner, []byte{'\n'}, []byte{'\n', '\t'})
 	io.WriteString(dst, "UNION MAP ")
 	io.WriteString(dst, expr.ToString(u.Inner.Table))
+	for i := range u.PartitionBy {
+		if i > 0 {
+			io.WriteString(dst, ", ")
+		} else {
+			io.WriteString(dst, " PARTITION BY ")
+		}
+		io.WriteString(dst, u.PartitionBy[i])
+	}
 	io.WriteString(dst, " (\n\t")
 	dst.Write(inner)
 	io.WriteString(dst, ")\n")
@@ -870,7 +880,7 @@ func (b *Trace) Begin(f *expr.Table, e Env) error {
 	return nil
 }
 
-func (b *Trace) beginUnionMap(src *Trace, table *IterTable) {
+func (b *Trace) beginUnionMap(src *Trace, terminal Step) {
 	// we know that the result of a
 	// parallelized query ought to be
 	// the same as a non-parallelized query,
@@ -879,7 +889,13 @@ func (b *Trace) beginUnionMap(src *Trace, table *IterTable) {
 	infinal := src.FinalBindings()
 	final := make([]expr.Binding, len(infinal))
 	copy(final, infinal)
-	table.Partitioned = true
+	var table *IterTable
+	if um, ok := terminal.(*UnionMap); ok {
+		table = um.Inner
+	} else {
+		table = terminal.(*IterTable)
+		table.Partitioned = true
+	}
 	b.top = &UnionMap{Child: src, Inner: table}
 	b.final = final
 }

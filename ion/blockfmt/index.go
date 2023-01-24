@@ -720,6 +720,17 @@ func (c *IndexConfig) SyncOutputs(idx *Index, ofs UploadFS, dir string) error {
 	return nil
 }
 
+// HasPartition returns true if the index can partition
+// descriptors on the top-level field x or false otherwise.
+func (idx *Index) HasPartition(x string) bool {
+	if len(idx.Inline) == 0 {
+		return false
+	}
+	desc := &idx.Inline[len(idx.Inline)-1]
+	_, ok := desc.Trailer.Sparse.Const(x)
+	return ok
+}
+
 // TimeRange returns the inclusive time range for the
 // given path expression.
 func (idx *Index) TimeRange(path []string) (min, max date.Time, ok bool) {

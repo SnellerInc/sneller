@@ -161,6 +161,10 @@ type Index interface {
 	// for the given path expression across the
 	// given table.
 	TimeRange(path []string) (min, max date.Time, ok bool)
+	// HasPartition returns true if the index
+	// can be partitioned on the provided field,
+	// or false otherwise.
+	HasPartition(field string) bool
 }
 
 // Build walks the provided Query
@@ -758,7 +762,6 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 // (i.e. everything that happens before SELECT)
 func copyForWindow(s *expr.Select) *expr.Select {
 	alt := &expr.Select{
-		Having:  s.Having,
 		GroupBy: s.GroupBy,
 		Where:   s.Where,
 		From:    s.From,

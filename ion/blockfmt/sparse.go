@@ -36,6 +36,18 @@ type SparseIndex struct {
 	blocks  int
 }
 
+// Const extracts the datum associated with
+// the constant x from the sparse index,
+// or returns (ion.Empty, false) if no such
+// datum exists.
+func (s *SparseIndex) Const(x string) (ion.Datum, bool) {
+	f, ok := s.consts.FieldByName(x)
+	if !ok {
+		return ion.Empty, false
+	}
+	return f.Datum, true
+}
+
 func (t *timeIndex) trim(j int) timeIndex {
 	return timeIndex{
 		path:   t.path,

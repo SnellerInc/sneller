@@ -91,6 +91,20 @@ func splitOne(s Step, mapping, reduce *Trace) (bool, error) {
 			reduce.top = s
 			return false, nil
 		}
+		if um, ok := s.(*UnionMap); ok {
+			// we can't split a PARTITION BY ... step
+			// but we can split its contents!
+			if len(um.PartitionBy) == 0 {
+				return false, fmt.Errorf("pir: unexpected partitioning step encountered during splitting")
+			}
+			child, err := Split(um.Child)
+			if err != nil {
+				return false, err
+			}
+			um.Child = child
+			reduce.top = um
+			return false, nil
+		}
 		// must just be IterTable;
 		// this can always be split and
 		// assigned to the mapping step

@@ -81,6 +81,15 @@ func (m multiIndex) TimeRange(p []string) (min, max date.Time, ok bool) {
 	return min, max, len(m) > 0
 }
 
+func (m multiIndex) HasPartition(x string) bool {
+	for i := range m {
+		if !m[i].HasPartition(x) {
+			return false
+		}
+	}
+	return true
+}
+
 func decodeHandles(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
 	var ths tableHandles
 	ion.UnpackList(mem, func(mem []byte) error {

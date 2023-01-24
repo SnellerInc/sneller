@@ -246,6 +246,8 @@ const (
 	TypeBit // TYPE_BIT(arg) produces the bits associated with the type of arg
 	AssertIonType
 
+	PartitionValue // PARTITION_VALUE(int) is used as a placeholder during query planning
+
 	Unspecified // catch-all for opaque built-ins; sql:UNKNOWN
 	maxBuiltin
 )
@@ -1098,10 +1100,11 @@ var builtinInfo = [maxBuiltin]binfo{
 	MakeList:   {ret: ListType, private: true, text: makeListText, simplify: simplifyMakeList},
 	MakeStruct: {ret: StructType, private: true, text: makeStructText, simplify: simplifyMakeStruct},
 
-	TypeBit:       {check: fixedArgs(AnyType), ret: UnsignedType, simplify: simplifyTypeBit},
-	AssertIonType: {check: checkAssertIonType, ret: AnyType, simplify: simplifyAssertIonType, private: true},
-	TableGlob:     {check: checkTableGlob, ret: AnyType, isTable: true},
-	TablePattern:  {check: checkTablePattern, ret: AnyType, isTable: true},
+	TypeBit:        {check: fixedArgs(AnyType), ret: UnsignedType, simplify: simplifyTypeBit},
+	AssertIonType:  {check: checkAssertIonType, ret: AnyType, simplify: simplifyAssertIonType, private: true},
+	TableGlob:      {check: checkTableGlob, ret: AnyType, isTable: true},
+	TablePattern:   {check: checkTablePattern, ret: AnyType, isTable: true},
+	PartitionValue: {ret: AnyType, private: true},
 }
 
 // JSONTypeBits returns a unique bit pattern
