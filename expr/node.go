@@ -1454,23 +1454,31 @@ func (m *Member) rewrite(r Rewriter) Node {
 	return m
 }
 
-func (m *Member) text(out *strings.Builder, redact bool) {
-	m.Arg.text(out, redact)
-	out.WriteString(" IN (")
+func bagText(src *ion.Bag, dst *strings.Builder, redact bool) {
+	if redact {
+		fmt.Fprintf(dst, "'<redacted; %d elements>'", src.Len())
+		return
+	}
 	first := true
-	m.Set.Each(func(d ion.Datum) bool {
+	src.Each(func(d ion.Datum) bool {
 		if !first {
-			out.WriteString(", ")
+			dst.WriteString(", ")
 		}
 		c, ok := AsConstant(d)
 		if !ok {
-			out.WriteString("'?'")
+			dst.WriteString("'?'")
 		} else {
-			c.text(out, redact)
+			c.text(dst, redact)
 		}
 		first = false
 		return true
 	})
+}
+
+func (m *Member) text(out *strings.Builder, redact bool) {
+	m.Arg.text(out, redact)
+	out.WriteString(" IN (")
+	bagText(&m.Set, out, redact)
 	out.WriteString(")")
 }
 
@@ -1539,6 +1547,97 @@ func In(val Node, cmp ...Node) Node {
 		top = Or(top, Compare(Equals, val, rest[i]))
 	}
 	return top
+}
+
+// Lookup is an associative array lookup operation
+// against a constant table.
+type Lookup struct {
+	// Expr is the value to be looked up in Keys,
+	// and Else is the value to be returned if
+	// there is no corresponding key (or MISSING
+	// if Else is nil).
+	Expr, Else Node
+	// Keys and Values are the corresponding
+	// keys and values for the contents of the
+	// lookup table.
+	Keys, Values ion.Bag
+}
+
+func (l *Lookup) Equals(o Node) bool {
+	l2, ok := o.(*Lookup)
+	return ok && l.Expr.Equals(l2.Expr) &&
+		Equivalent(l.Else, l2.Else) &&
+		l.Keys.Equals(&l2.Keys) &&
+		l.Values.Equals(&l2.Values)
+}
+
+func (l *Lookup) walk(v Visitor) {
+	Walk(v, l.Expr)
+	if l.Else != nil {
+		Walk(v, l.Else)
+	}
+}
+
+func (l *Lookup) rewrite(r Rewriter) Node {
+	l.Expr = Rewrite(r, l.Expr)
+	if l.Else != nil {
+		l.Else = Rewrite(r, l.Else)
+	}
+	return l
+}
+
+func (l *Lookup) text(out *strings.Builder, redact bool) {
+	out.WriteString("HASH_LOOKUP(")
+	l.Expr.text(out, redact)
+	out.WriteString(", [")
+	bagText(&l.Keys, out, redact)
+	out.WriteString("], [")
+	bagText(&l.Values, out, redact)
+	out.WriteString("]")
+	if l.Else != nil {
+		out.WriteString(", ")
+		l.Else.text(out, redact)
+	}
+	out.WriteString(")")
+}
+
+func (l *Lookup) Encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	settype(dst, st, "lookup")
+	dst.BeginField(st.Intern("expr"))
+	l.Expr.Encode(dst, st)
+	if l.Else != nil {
+		dst.BeginField(st.Intern("else"))
+		l.Else.Encode(dst, st)
+	}
+	dst.BeginField(st.Intern("keys"))
+	dst.BeginList(-1)
+	l.Keys.Encode(dst, st)
+	dst.EndList()
+	dst.BeginField(st.Intern("values"))
+	dst.BeginList(-1)
+	l.Values.Encode(dst, st)
+	dst.EndList()
+	dst.EndStruct()
+}
+
+func (l *Lookup) setfield(name string, st *ion.Symtab, body []byte) error {
+	var err error
+	switch name {
+	case "expr":
+		l.Expr, _, err = Decode(st, body)
+	case "else":
+		l.Else, _, err = Decode(st, body)
+	case "keys":
+		body, _ = ion.Contents(body)
+		l.Keys.Add(st, body)
+	case "values":
+		body, _ = ion.Contents(body)
+		l.Values.Add(st, body)
+	default:
+		return errUnexpectedField
+	}
+	return err
 }
 
 type Comparison struct {

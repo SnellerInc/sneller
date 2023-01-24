@@ -105,21 +105,26 @@ func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) (ex
 			return nil, false
 		}
 	}
-	args := conv.args(x)
-	if elseval != nil {
-		args = append(args, elseval)
-	}
-	return expr.Call(expr.HashLookup, args...), true
+	return conv.result(x, elseval), true
 }
 
 type rowConverter interface {
 	add(row *ion.Struct) (ok bool)
-	args(...expr.Node) []expr.Node
+	result(key, elseval expr.Node) *expr.Lookup
 }
 
 type scalarConverter struct {
-	label string
-	argv  []expr.Node
+	label        string
+	keys, values ion.Bag
+}
+
+func (c *scalarConverter) result(key, elseval expr.Node) *expr.Lookup {
+	return &expr.Lookup{
+		Expr:   key,
+		Else:   elseval,
+		Keys:   c.keys,
+		Values: c.values,
+	}
 }
 
 func (c *scalarConverter) add(row *ion.Struct) bool {
@@ -133,64 +138,59 @@ func (c *scalarConverter) add(row *ion.Struct) bool {
 			return false
 		}
 	}
-	key, ok := expr.AsConstant(f[0].Datum)
-	if !ok {
-		return false
-	}
-	val, ok := expr.AsConstant(f[1].Datum)
-	if !ok {
-		return false
-	}
-	c.argv = append(c.argv, key, val)
+	c.keys.AddDatum(f[0].Datum)
+	c.values.AddDatum(f[1].Datum)
 	return true
 }
 
-func (c *scalarConverter) args(n ...expr.Node) []expr.Node {
-	return append(n, c.argv...)
+type structConverter struct {
+	label        string
+	keys, values ion.Bag
 }
 
-type structConverter struct {
-	label string
-	argv  []expr.Node
+func (c *structConverter) result(key, elseval expr.Node) *expr.Lookup {
+	return &expr.Lookup{
+		Expr:   key,
+		Else:   elseval,
+		Keys:   c.keys,
+		Values: c.values,
+	}
 }
 
 func (c *structConverter) add(row *ion.Struct) bool {
 	if row.Len() == 0 {
 		return false
 	}
-	var key expr.Constant
-	var ok bool
-	fields := make([]expr.Field, 0, row.Len()-1)
+	var key ion.Datum
+	fields := make([]ion.Field, 0, row.Len()-1)
 	row.Each(func(f ion.Field) error {
-		var val expr.Constant
-		val, ok = expr.AsConstant(f.Datum)
-		if !ok {
-			return ion.Stop
-		}
-		if f.Label == c.label {
-			key = val
+		if key.IsEmpty() && f.Label == c.label {
+			key = f.Datum
 			return nil
 		}
-		fields = append(fields, expr.Field{
-			Label: f.Label,
-			Value: val,
-		})
+		fields = append(fields, f)
 		return nil
 	})
-	if !ok || key == nil {
+	if key.IsEmpty() {
 		return false
 	}
-	c.argv = append(c.argv, key, &expr.Struct{Fields: fields})
+	c.keys.AddDatum(key)
+	c.values.AddDatum(ion.NewStruct(nil, fields).Datum())
 	return true
-}
-
-func (c *structConverter) args(n ...expr.Node) []expr.Node {
-	return append(n, c.argv...)
 }
 
 type listConverter struct {
 	label string
 	m     map[expr.Constant]*expr.List
+}
+
+func (c *listConverter) result(key, elseval expr.Node) *expr.Lookup {
+	l := &expr.Lookup{Expr: key, Else: elseval}
+	for k, v := range c.m {
+		l.Keys.AddDatum(k.Datum())
+		l.Values.AddDatum(v.Datum())
+	}
+	return l
 }
 
 func (c *listConverter) add(row *ion.Struct) bool {
@@ -229,18 +229,6 @@ func (c *listConverter) add(row *ion.Struct) bool {
 	}
 	lst.Values = append(lst.Values, &expr.Struct{Fields: fields})
 	return true
-}
-
-func (c *listConverter) args(n ...expr.Node) []expr.Node {
-	if len(n)+len(c.m) > cap(n) {
-		n2 := make([]expr.Node, len(n), len(n)+len(c.m))
-		copy(n2, n)
-		n = n2
-	}
-	for k, v := range c.m {
-		n = append(n, k, v)
-	}
-	return n
 }
 
 type subreplacement struct {

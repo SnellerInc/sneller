@@ -902,11 +902,13 @@ func missingUnless(e Node, h Hint, want TypeSet) Node {
 	return c.simplify(h)
 }
 
-func (c *Case) toHashLookup() (*Builtin, bool) {
-	if c.Else != nil && c.Else != (Missing{}) {
+func (c *Case) toHashLookup() (*Lookup, bool) {
+	if len(c.Limbs) < 10 {
+		// likely not profitable
 		return nil, false
 	}
-	var lookup []Node
+	var keys, values []ion.Datum
+	var lookup Node
 	for i := range c.Limbs {
 		when := c.Limbs[i].When
 		then := c.Limbs[i].Then
@@ -925,17 +927,25 @@ func (c *Case) toHashLookup() (*Builtin, bool) {
 		// canonicalization should have put
 		// the comparison on the right-hand-side
 		if lookup == nil {
-			lookup = append(lookup, left)
-		} else if !Equivalent(lookup[0], left) {
+			lookup = left
+		} else if !Equivalent(lookup, left) {
 			return nil, false
 		}
 		c, ok := right.(Constant)
 		if !ok {
 			return nil, false
 		}
-		lookup = append(lookup, c, res)
+		keys = append(keys, c.Datum())
+		values = append(values, res.Datum())
 	}
-	return &Builtin{Func: HashLookup, Args: lookup}, true
+	l := &Lookup{Expr: lookup, Else: c.Else}
+	for i := range keys {
+		l.Keys.AddDatum(keys[i])
+	}
+	for i := range values {
+		l.Values.AddDatum(values[i])
+	}
+	return l, true
 }
 
 func (c *Case) simplify(h Hint) Node {
@@ -1149,6 +1159,51 @@ func (m *Member) simplify(h Hint) Node {
 		return !eq
 	})
 	return Bool(eq)
+}
+
+func (l *Lookup) simplify(h Hint) Node {
+	if l.Keys.Len() == 0 {
+		els := l.Else
+		if els == nil {
+			return Missing{}
+		}
+		return els
+	}
+	// constprop:
+	if c, ok := l.Expr.(Constant); ok {
+		want := c.Datum()
+		idx := 0
+		match := false
+		l.Keys.Each(func(d ion.Datum) bool {
+			match = want.Equal(d)
+			if !match {
+				idx++
+			}
+			return !match
+		})
+		if match {
+			j := 0
+			var got ion.Datum
+			l.Values.Each(func(d ion.Datum) bool {
+				if j == idx {
+					got = d
+				}
+				j++
+				return j <= idx
+			})
+			ret, ok := AsConstant(got)
+			if ok {
+				return ret
+			}
+		} else {
+			// no match
+			if l.Else == nil {
+				return Missing{}
+			}
+			return l.Else
+		}
+	}
+	return l
 }
 
 var integerOne = Integer(1)

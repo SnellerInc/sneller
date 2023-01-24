@@ -63,6 +63,14 @@ func coalesce(args ...Node) Node {
 	return Coalesce(args)
 }
 
+func mkbag(args ...ion.Datum) ion.Bag {
+	var ret ion.Bag
+	for i := range args {
+		ret.AddDatum(args[i])
+	}
+	return ret
+}
+
 func TestSimplify(t *testing.T) {
 	testcases := []struct {
 		before, after Node
@@ -591,13 +599,6 @@ func TestSimplify(t *testing.T) {
 			String("xyzabc"),
 		},
 		{
-			// CASE WHEN x = 0 THEN 'is_zero' WHEN 'foo' = x THEN 0 END
-			// -> HASH_LOOKUP(x, 0, 'is_zero', 'foo', 0)
-			casen(Compare(Equals, path("x"), Integer(0)), String("is_zero"),
-				Compare(Equals, String("foo"), path("x")), Integer(0)),
-			Call(HashLookup, path("x"), Integer(0), String("is_zero"), String("foo"), Integer(0)),
-		},
-		{
 			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
 			Count(casen(Is(path("x"), IsNotMissing), Null{}, Missing{})),
 		},
@@ -1071,6 +1072,14 @@ func TestSimplify(t *testing.T) {
 					Bind(path("category"), ""),
 				},
 			},
+		},
+		{
+			&Lookup{Expr: String("x"), Keys: mkbag(ion.String("foo"), ion.String("x")), Values: mkbag(ion.Int(0), ion.Int(1))},
+			Integer(1),
+		},
+		{
+			&Lookup{Expr: String("not-present"), Else: Null{}, Keys: mkbag(ion.String("foo"), ion.String("x")), Values: mkbag(ion.Int(0), ion.Int(1))},
+			Null{},
 		},
 	}
 

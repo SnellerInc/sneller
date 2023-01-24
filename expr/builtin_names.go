@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [114]string{
+var builtin2Name = [113]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -106,7 +106,6 @@ var builtin2Name = [114]string{
 	"TABLE_GLOB",               // TableGlob
 	"TABLE_PATTERN",            // TablePattern
 	"IN_SUBQUERY",              // InSubquery
-	"HASH_LOOKUP",              // HashLookup
 	"IN_REPLACEMENT",           // InReplacement
 	"HASH_REPLACEMENT",         // HashReplacement
 	"SCALAR_REPLACEMENT",       // ScalarReplacement
@@ -333,8 +332,6 @@ func name2Builtin(s string) BuiltinOp {
 		return TablePattern
 	case "IN_SUBQUERY":
 		return InSubquery
-	case "HASH_LOOKUP":
-		return HashLookup
 	case "IN_REPLACEMENT":
 		return InReplacement
 	case "HASH_REPLACEMENT":

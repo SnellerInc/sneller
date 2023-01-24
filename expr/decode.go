@@ -148,6 +148,8 @@ func getEmpty(name string) composite {
 		return &Cast{}
 	case "member":
 		return &Member{}
+	case "lookup":
+		return &Lookup{}
 	case "struct":
 		return &Struct{}
 	case "list":

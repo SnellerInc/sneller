@@ -300,6 +300,8 @@ func compile(p *prog, e expr.Node) (*value, error) {
 		return p.constant(n.Value), nil
 	case *expr.Member:
 		return p.member(n.Arg, &n.Set)
+	case *expr.Lookup:
+		return p.hashLookup(n)
 	case expr.Missing:
 		return p.missing(), nil
 	default:
@@ -904,8 +906,6 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		}
 
 		return p.ssa2(sobjectsize, v[0], p.mask(v[0])), nil
-	case expr.HashLookup:
-		return p.compileHashLookup(b.Args)
 	case expr.Lower, expr.Upper:
 		vals, err := compileargs(p, args, compileString)
 		if err != nil {
@@ -1043,38 +1043,25 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 	}
 }
 
-func (p *prog) compileHashLookup(lst []expr.Node) (*value, error) {
-	var datums []ion.Datum
-	if len(lst) <= 1 {
-		return nil, fmt.Errorf("HASH_LOOKUP with %d arguments?", len(lst))
-	}
-	base := lst[0]
-	lst = lst[1:]
-	for i := range lst {
-		c, ok := lst[i].(expr.Constant)
-		if !ok {
-			return nil, fmt.Errorf("expr %s is not a constant", expr.ToString(lst[i]))
-		}
-		datums = append(datums, c.Datum())
-	}
-	return p.hashLookup(base, datums)
-}
-
-func (p *prog) hashLookup(e expr.Node, lookup []ion.Datum) (*value, error) {
-	v, err := p.serialized(e)
+func (p *prog) hashLookup(lookup *expr.Lookup) (*value, error) {
+	v, err := p.serialized(lookup.Expr)
 	if err != nil {
 		return nil, err
 	}
-
-	h := p.hash(v)
-	if len(lookup)&1 != 0 {
-		// there is an ELSE value, so we need
-		//   ret = hash_lookup(x)?:else
-		elseval := p.constant(lookup[len(lookup)-1])
-		fetched := p.ssaimm(shashlookup, lookup[:len(lookup)-1], h, p.mask(h))
-		return p.ssa4(sblendv, elseval, p.mask(elseval), fetched, p.mask(fetched)), nil
+	var elseval *value
+	if lookup.Else != nil {
+		elseval, err = compile(p, lookup.Else)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return p.ssaimm(shashlookup, lookup, h, p.mask(h)), nil
+	h := p.hash(v)
+	res := p.ssaimm(shashlookup, lookup, h, p.mask(h))
+	if elseval != nil {
+		// blend in ELSE value for missing lookups
+		res = p.ssa4(sblendv, elseval, p.mask(elseval), res, p.mask(res))
+	}
+	return res, nil
 }
 
 func (p *prog) member(e expr.Node, set *ion.Bag) (*value, error) {
@@ -1089,33 +1076,57 @@ func (p *prog) member(e expr.Node, set *ion.Bag) (*value, error) {
 }
 
 func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
-	values := imm.([]ion.Datum)
+	lut := imm.(*expr.Lookup)
+	putkey := lut.Keys.Transcoder(&st.Symtab)
+	putval := lut.Values.Transcoder(&st.Symtab)
+
 	var tmp ion.Buffer
 	tree := newRadixTree(8)
-	var hmem [16]byte
-	for len(values) >= 2 {
-		ifeq := values[0]
-		then := values[1]
-		values = values[2:]
 
-		tmp.Reset()
-		ifeq.Encode(&tmp, &st.Symtab)
-		chacha8Hash(tmp.Bytes(), hmem[:])
-		buf, _ := tree.Insert(binary.LittleEndian.Uint64(hmem[:]))
+	// batches of 4
+	var pos int
+	var endpos [4]uint32
+	var recent [4]ion.Datum
 
-		// encode a raw vmref
-		tmp.Reset()
-		then.Encode(&tmp, &st.Symtab)
-		// NOTE: we're assuming the record size here
-		// is less than the vm page size...
-		data := st.slab.malloc(tmp.Size())
-		copy(data, tmp.Bytes())
-		pos, ok := vmdispl(data)
-		if !ok {
-			panic("vm.slab.malloc returned a bad address")
+	flush := func(n int) {
+		buf := tmp.Bytes()
+		buf = slices.Grow(buf, 7)
+		ret := chacha8x4(&buf[0], endpos)
+		tmp.Set(buf[:0])
+		for i := 0; i < n; i++ {
+			putval(&tmp, recent[i])
+			buf, _ := tree.Insert(binary.LittleEndian.Uint64(ret[i][:]))
+			data := st.slab.malloc(tmp.Size())
+			copy(data, tmp.Bytes())
+			pos, ok := vmdispl(data)
+			if !ok {
+				panic("vm.slab.malloc returned a bad address")
+			}
+			binary.LittleEndian.PutUint32(buf, uint32(pos))
+			binary.LittleEndian.PutUint32(buf[4:], uint32(tmp.Size()))
+			tmp.Reset()
 		}
-		binary.LittleEndian.PutUint32(buf, uint32(pos))
-		binary.LittleEndian.PutUint32(buf[4:], uint32(tmp.Size()))
+	}
+
+	lut.Keys.EachPair(&lut.Values, func(k, v ion.Datum) bool {
+		putkey(&tmp, k)
+		endpos[pos] = uint32(tmp.Size())
+		recent[pos] = v
+		pos++
+		if pos == 4 {
+			flush(4)
+			pos = 0
+		}
+		return true
+	})
+	if pos > 0 {
+		valid := pos
+		for pos < 4 {
+			// duplicate zero-width lanes up to 4
+			endpos[pos] = endpos[pos-1]
+			pos++
+		}
+		flush(valid)
 	}
 	return tree
 }

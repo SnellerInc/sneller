@@ -232,7 +232,6 @@ const (
 
 	// used by query planner:
 	InSubquery        // matches IN (SELECT ...)
-	HashLookup        // matches CASE with only literal comparisons
 	InReplacement     // IN_REPLACEMENT(x, id)
 	HashReplacement   // HASH_REPLACEMENT(id, kind, k, x)
 	ScalarReplacement // SCALAR_REPLACEMENT(id)
@@ -577,21 +576,6 @@ func checkInSubquery(h Hint, args []Node) error {
 	}
 	if _, ok := args[1].(*Select); !ok {
 		return errsyntaxf("second argument to IN_SUBQUERY is %q", args[1])
-	}
-	return nil
-}
-
-// HASH_LOOKUP(value, if_first, then_first, ..., [otherwise])
-func checkHashLookup(h Hint, args []Node) error {
-	if len(args) < 3 || len(args)&1 == 0 {
-		return mismatch(3, len(args))
-	}
-	tail := args[1:]
-	for i := range tail {
-		_, ok := tail[i].(Constant)
-		if !ok {
-			errsyntaxf("argument %s to HASH_LOOKUP not a literal", tail[i])
-		}
 	}
 	return nil
 }
@@ -1103,7 +1087,6 @@ var builtinInfo = [maxBuiltin]binfo{
 	ObjectSize: {check: checkObjectSize, ret: NumericType | MissingType},
 
 	InSubquery:        {check: checkInSubquery, private: true, ret: LogicalType},
-	HashLookup:        {check: checkHashLookup, private: true, ret: AnyType},
 	InReplacement:     {check: checkInReplacement, private: true, ret: LogicalType},
 	HashReplacement:   {check: checkHashReplacement, private: true, ret: AnyType},
 	ScalarReplacement: {check: checkScalarReplacement, private: true, ret: AnyType},

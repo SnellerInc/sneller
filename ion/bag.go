@@ -52,6 +52,22 @@ func (b *Bag) Each(fn func(d Datum) bool) {
 	}
 }
 
+// EachPair iterates b and x up to min(b.Len(), x.Len())
+// and returns the corresponding values in each bag
+// at each position.
+func (b *Bag) EachPair(x *Bag, fn func(b, x Datum) bool) {
+	left, right := b.data, x.data
+	for len(left) > 0 && len(right) > 0 {
+		ls, rs := SizeOf(left), SizeOf(right)
+		ld := Datum{st: b.st.interned, buf: left[:ls]}
+		rd := Datum{st: x.st.interned, buf: right[:rs]}
+		if !fn(ld, rd) {
+			return
+		}
+		left, right = left[ls:], right[rs:]
+	}
+}
+
 // Equals compares two bags and returns true
 // if they are equivalent.
 //
