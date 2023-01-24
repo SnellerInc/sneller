@@ -27,18 +27,31 @@ import (
 type Unnest struct {
 	dst    QuerySink
 	field  expr.Node
+	prog   prog
 	result string
 }
 
 // NewUnnest creates an Unnest QuerySink that cross-joins
 // the given field (which should be an array) into the
 // input stream as an auxiliary binding with the given name.
-func NewUnnest(dst QuerySink, field expr.Node, result string) *Unnest {
-	return &Unnest{
+func NewUnnest(dst QuerySink, field expr.Node, result string) (*Unnest, error) {
+	u := &Unnest{
 		dst:    dst,
 		field:  field,
 		result: result,
 	}
+	p := &u.prog
+	p.begin()
+	// produce a program that sticks the slice
+	// to be splat-ed into Z2:Z3
+	v, err := compile(p, u.field)
+	if err != nil {
+		return nil, err
+	}
+	list := p.ssa2(stolist, v, p.mask(v))
+	p.returnScalar(p.initMem(), list, p.mask(list))
+	p.Renumber()
+	return u, nil
 }
 
 func (u *Unnest) Open() (io.WriteCloser, error) {
@@ -56,6 +69,7 @@ func (u *Unnest) Close() error {
 
 type unnesting struct {
 	parent *Unnest
+	prog   prog
 	splat  bytecode
 	perms  []int32
 	dstrc  rowConsumer
@@ -73,19 +87,7 @@ func (u *unnesting) EndSegment() {
 }
 
 func (u *unnesting) symbolize(st *symtab, aux *auxbindings) error {
-	var p prog
-	var err error
-	p.begin()
-	// produce a program that sticks the slice
-	// to be splat-ed into Z2:Z3
-	v, err := compile(&p, u.parent.field)
-	if err != nil {
-		return err
-	}
-	list := p.ssa2(stolist, v, p.mask(v))
-	p.returnScalar(p.initMem(), list, p.mask(list))
-	p.symbolize(st, aux)
-	err = p.compile(&u.splat, st, "unnesting")
+	err := recompile(st, &u.parent.prog, &u.prog, &u.splat, aux, "unnesting")
 	if err != nil {
 		return err
 	}

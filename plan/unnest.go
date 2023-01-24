@@ -86,5 +86,9 @@ func (u *Unnest) String() string {
 }
 
 func (u *Unnest) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
-	return u.From.wrap(vm.NewUnnest(dst, u.Expr, u.Result), ep)
+	op, err := vm.NewUnnest(dst, u.Expr, u.Result)
+	if err != nil {
+		return -1, nil, err
+	}
+	return u.From.wrap(op, ep)
 }

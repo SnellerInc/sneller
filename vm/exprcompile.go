@@ -1043,6 +1043,145 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 	}
 }
 
+type hashImm struct {
+	table *expr.Lookup
+
+	// precomputed is non-nil if the set of keys
+	// for the hash table does not depend on the symbol table
+	// (i.e. a list of strings or integers, which is quite common);
+	// positions are the locations in the precomputed radix tree
+	// to which the n'th key value is mapped
+	//
+	// NOTE: since we tend to share one prog for many cores,
+	// the tree here has to be cloned to each CPU (and cannot be written to)
+	precomputed *radixTree64
+	positions   []int32
+}
+
+type hashSetImm struct {
+	set         *ion.Bag
+	precomputed *radixTree64
+}
+
+// note: ion.Bag.Transcoder flattens symbols,
+// so a raw symbol value is just hashed as a string
+// and thus we can treat those as hash consts as well
+func isHashConst(d ion.Datum) bool {
+	switch d.Type() {
+	case ion.StructType, ion.ListType:
+		return false
+	default:
+		return true
+	}
+}
+
+// attempt to set h.precomputed and h.positions
+func (h *hashImm) precompute() {
+	tree := newRadixTree(8)
+	var positions []int32
+	var empty ion.Symtab
+
+	// gather up to 4 values before hashing
+	var tmp ion.Buffer
+	var endpos [4]uint32
+	var pos int
+
+	flush := func(n int) {
+		buf := tmp.Bytes()
+		// ensure a movq at buf[len(buf)-1] will touch valid memory:
+		buf = slices.Grow(buf, 7)
+		ret := chacha8x4(&buf[0], endpos)
+		for i := 0; i < n; i++ {
+			n, _ := tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+			positions = append(positions, n)
+		}
+		pos = 0
+		tmp.Set(buf[:0])
+	}
+
+	enc := h.table.Keys.Transcoder(&empty)
+	ok := true
+	h.table.Keys.Each(func(d ion.Datum) bool {
+		if !isHashConst(d) {
+			ok = false
+			return false
+		}
+		enc(&tmp, d)
+		endpos[pos] = uint32(tmp.Size())
+		pos++
+		if pos == 4 {
+			flush(4)
+		}
+		return true
+	})
+	if !ok {
+		return
+	}
+	if pos > 0 {
+		valid := pos
+		for pos < 4 {
+			// duplicate zero-width lanes up to 4
+			endpos[pos] = endpos[pos-1]
+			pos++
+		}
+		flush(valid)
+	}
+	h.precomputed = tree
+	h.positions = positions
+}
+
+func (h *hashSetImm) precompute() {
+	values := h.set
+	tree := newRadixTree(0)
+
+	// gather up to 4 values before hashing
+	var tmp ion.Buffer
+	var empty ion.Symtab
+	var endpos [4]uint32
+	var pos int
+
+	flush := func(n int) {
+		buf := tmp.Bytes()
+		// ensure a movq at buf[len(buf)-1] will touch valid memory:
+		buf = slices.Grow(buf, 7)
+		ret := chacha8x4(&buf[0], endpos)
+		for i := 0; i < n; i++ {
+			tree.insertSlow(binary.LittleEndian.Uint64(ret[i][:]))
+		}
+		pos = 0
+		tmp.Set(buf[:0])
+	}
+
+	enc := values.Transcoder(&empty)
+	ok := true
+	values.Each(func(d ion.Datum) bool {
+		if !isHashConst(d) {
+			ok = false
+			return false
+		}
+		enc(&tmp, d)
+		endpos[pos] = uint32(tmp.Size())
+		pos++
+		if pos == 4 {
+			flush(4)
+		}
+		return true
+	})
+	if !ok {
+		return
+	}
+	if pos > 0 {
+		valid := pos
+		for pos < 4 {
+			// duplicate zero-width lanes up to 4
+			endpos[pos] = endpos[pos-1]
+			pos++
+		}
+		flush(valid)
+	}
+	h.precomputed = tree
+}
+
 func (p *prog) hashLookup(lookup *expr.Lookup) (*value, error) {
 	v, err := p.serialized(lookup.Expr)
 	if err != nil {
@@ -1055,8 +1194,12 @@ func (p *prog) hashLookup(lookup *expr.Lookup) (*value, error) {
 			return nil, err
 		}
 	}
+	imm := &hashImm{
+		table: lookup,
+	}
+	imm.precompute()
 	h := p.hash(v)
-	res := p.ssaimm(shashlookup, lookup, h, p.mask(h))
+	res := p.ssaimm(shashlookup, imm, h, p.mask(h))
 	if elseval != nil {
 		// blend in ELSE value for missing lookups
 		res = p.ssa4(sblendv, elseval, p.mask(elseval), res, p.mask(res))
@@ -1069,18 +1212,43 @@ func (p *prog) member(e expr.Node, set *ion.Bag) (*value, error) {
 	if err != nil {
 		return nil, err
 	}
+	imm := &hashSetImm{
+		set: set,
+	}
+	imm.precompute()
 	h := p.hash(v)
 	// we're using ssaimm here because we don't
 	// want the CSE code to look at the immediate field
-	return p.ssaimm(shashmember, set, h, p.mask(h)), nil
+	return p.ssaimm(shashmember, imm, h, p.mask(h)), nil
 }
 
 func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
-	lut := imm.(*expr.Lookup)
-	putkey := lut.Keys.Transcoder(&st.Symtab)
-	putval := lut.Values.Transcoder(&st.Symtab)
-
 	var tmp ion.Buffer
+	lut := imm.(*hashImm)
+	putval := lut.table.Values.Transcoder(&st.Symtab)
+	if lut.precomputed != nil {
+		// fast (common) path: just insert values
+		tree := lut.precomputed.clone()
+		i := 0
+		lut.table.Values.Each(func(d ion.Datum) bool {
+			tmp.Reset()
+			putval(&tmp, d)
+			data := st.slab.malloc(tmp.Size())
+			copy(data, tmp.Bytes())
+			pos, ok := vmdispl(data)
+			if !ok {
+				panic("vm.slab.malloc returned a bad address")
+			}
+			_, buf := tree.value(lut.positions[i])
+			i++
+			binary.LittleEndian.PutUint32(buf, uint32(pos))
+			binary.LittleEndian.PutUint32(buf[4:], uint32(tmp.Size()))
+			return true
+		})
+		return tree
+	}
+
+	putkey := lut.table.Keys.Transcoder(&st.Symtab)
 	tree := newRadixTree(8)
 
 	// batches of 4
@@ -1108,7 +1276,7 @@ func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 		}
 	}
 
-	lut.Keys.EachPair(&lut.Values, func(k, v ion.Datum) bool {
+	lut.table.Keys.EachPair(&lut.table.Values, func(k, v ion.Datum) bool {
 		putkey(&tmp, k)
 		endpos[pos] = uint32(tmp.Size())
 		recent[pos] = v
@@ -1133,13 +1301,13 @@ func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 
 // hook called on symbolization of hashmember
 func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
-	values := imm.(*ion.Bag)
-	tree := newRadixTree(0)
-	// TODO: if the contents of the bag are all
-	// values without symbols (strings, etc.),
-	// then we could note that and avoid resymbolization
-	// altogether on the next run
+	hset := imm.(*hashSetImm)
+	if hset.precomputed != nil {
+		return hset.precomputed
+	}
 
+	values := hset.set
+	tree := newRadixTree(0)
 	// gather up to 4 values before hashing
 	var tmp ion.Buffer
 	var endpos [4]uint32

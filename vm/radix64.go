@@ -46,6 +46,14 @@ type radixTree64 struct {
 	vsize int
 }
 
+func (t *radixTree64) clone() *radixTree64 {
+	return &radixTree64{
+		index:  slices.Clone(t.index),
+		values: slices.Clone(t.values),
+		vsize:  t.vsize,
+	}
+}
+
 func newRadixTree(datasize int) *radixTree64 {
 	rt := &radixTree64{
 		index:  make([][tabsize]int32, 1),
