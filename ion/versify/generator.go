@@ -398,6 +398,36 @@ func (s *String) String() string {
 	return fmt.Sprintf("string[%d unique]", len(s.set))
 }
 
+// Symbol is a collection of ion.Symbol
+type Symbol struct {
+	symbols []ion.Datum
+	hits    int
+}
+
+func FromSymbol(datum ion.Datum) *Symbol {
+	return &Symbol{
+		symbols: []ion.Datum{datum},
+	}
+}
+
+// Add implements Union.Add
+func (s *Symbol) Add(value ion.Datum) Union {
+	if value.IsSymbol() {
+		s.symbols = append(s.symbols, value)
+		s.hits++
+		return s
+	}
+	return merge(s, ion.SymbolType, s.hits, value)
+}
+
+func (s *Symbol) Generate(src *rand.Rand) ion.Datum {
+	return s.symbols[src.Intn(len(s.symbols))]
+}
+
+func (s *Symbol) String() string {
+	return fmt.Sprintf("symbols[%d elements]", len(s.symbols))
+}
+
 // Struct is Generator
 // that represents a superposition of structures.
 //
@@ -621,9 +651,11 @@ func Single(value ion.Datum) Union {
 	case ion.TimestampType:
 		v, _ := value.Timestamp()
 		return FromTime(v)
-	case ion.StringType, ion.SymbolType:
+	case ion.StringType:
 		v, _ := value.String()
 		return FromString(v)
+	case ion.SymbolType:
+		return FromSymbol(value)
 	case ion.ListType:
 		v, _ := value.List()
 		return FromList(v)
