@@ -143,7 +143,8 @@ func (s *Order) useKtop() bool {
 	if s.limit == nil {
 		return false
 	}
-	return s.limit.Kind == sorting.LimitToHeadRows
+	return s.limit.Kind == sorting.LimitToHeadRows ||
+		s.limit.Kind == sorting.LimitToRange
 }
 
 func (s *Order) orderList() []sorting.Ordering {
@@ -162,7 +163,8 @@ func (s *Order) Open() (io.WriteCloser, error) {
 	if s.useKtop() {
 		kt := &sortstateKtop{parent: s}
 		kt.kheap.fields = s.orderList()
-		kt.kheap.limit = s.limit.Limit
+		// we'll trim this later:
+		kt.kheap.limit = s.limit.Limit + s.limit.Offset
 		return splitter(kt), nil
 	} else if s.useSingleColumnSorter() {
 		chunkID := atomic.AddUint32(&s.chunkID, 1) - 1
@@ -261,11 +263,22 @@ func (s *Order) finalizeKtop() error {
 		_, err := s.dst.Write(out)
 		return err
 	}
+
+	off := s.limit.Offset
+	if off >= len(s.kheap.heaporder) {
+		return flush() // symbol table + no data
+	}
 	// reverse the max-heap ordering
-	// to end up with the final desired ordering:
-	final := make([]krecord, len(s.kheap.heaporder))
+	// to end up with the final desired ordering,
+	// taking care to ignore the top N OFFSET values;
+	// we currently have LIMIT+OFFSET and we just want LIMIT
+	want := len(s.kheap.heaporder) - off
+	if s.limit.Limit < want {
+		want = s.limit.Limit
+	}
+	final := make([]krecord, want)
 	i := len(final) - 1
-	for len(s.kheap.heaporder) > 0 {
+	for i >= 0 {
 		n := heap.PopSlice(&s.kheap.heaporder, s.kheap.greater)
 		final[i] = s.kheap.records[n]
 		i--
