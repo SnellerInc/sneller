@@ -17,8 +17,6 @@ package vm
 import (
 	"fmt"
 	"math"
-
-	"github.com/SnellerInc/sneller/ion"
 )
 
 type assembler struct {
@@ -86,7 +84,7 @@ func (a *assembler) emitOpcodeArg(arg any, argType bcArgType) {
 	case bcHashSlot:
 		a.emitImmU32(uint32(arg.(aggregateslot)))
 	case bcSymbolID:
-		a.emitImmU32(uint32(arg.(ion.Symbol)))
+		a.emitImmU32(arg.(uint32))
 	case bcLitRef:
 		a.emitImmU64(uint64(toi64(arg)))
 	case bcImmI8:

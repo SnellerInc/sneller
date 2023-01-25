@@ -455,7 +455,7 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 
 		// Make instructions
 		opmakelist:   {text: "makelist", args: makeArgs(bcWriteV, bcWriteK, bcPredicate), va: makeArgs(bcReadV, bcReadK), scratch: PageSize},
-		opmakestruct: {text: "makestruct", args: makeArgs(bcWriteV, bcWriteK, bcPredicate), va: makeArgs(bcImmU32, bcReadV, bcReadK), scratch: PageSize},
+		opmakestruct: {text: "makestruct", args: makeArgs(bcWriteV, bcWriteK, bcPredicate), va: makeArgs(bcSymbolID, bcReadV, bcReadK), scratch: PageSize},
 
 		// Hash instructions
 		ophashvalue:     {text: "hashvalue", args: makeArgs(bcWriteH, bcReadV, bcPredicate)},
@@ -767,15 +767,18 @@ func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcAr
 			fmt.Fprintf(dst, "dict[%d]", value)
 
 		case bcSymbolID:
-			if (flags&bcFormatSymbols) != 0 && value < uint64(len(bc.symtab)) {
-				encodedSymbolValue := bc.symtab[value].mem()
-				str, _, err := ion.ReadString(encodedSymbolValue)
-				if err == nil {
-					fmt.Fprintf(dst, "sym(%d, %q)", value, str)
-				} else {
-					fmt.Fprintf(dst, "sym(%d, <%v>)", value, err)
+			if (flags & bcFormatSymbols) != 0 {
+				decoded := decodeSymbolID(uint32(value))
+				if uint64(decoded) < uint64(len(bc.symtab)) {
+					encodedSymbolValue := bc.symtab[decoded].mem()
+					str, _, err := ion.ReadString(encodedSymbolValue)
+					if err == nil {
+						fmt.Fprintf(dst, "sym(%d, %q)", decoded, str)
+					} else {
+						fmt.Fprintf(dst, "sym(%d, <%v>)", decoded, err)
+					}
+					continue
 				}
-				continue
 			}
 			fmt.Fprintf(dst, "sym(%d)", value)
 

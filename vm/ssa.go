@@ -3765,7 +3765,7 @@ func emitauto(v *value, c *compilestate) {
 			if ssaImmDone {
 				panic(fmt.Sprintf("error emitting %s: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
 			}
-			args[i] = v.imm
+			args[i] = encodeSymbolID(v.imm.(ion.Symbol))
 			ssaImmDone = true
 
 		case bcImmI8, bcImmI16, bcImmI32, bcImmI64, bcImmU8, bcImmU16, bcImmU32, bcImmU64, bcImmF64:
@@ -3827,20 +3827,6 @@ func emitMakeList(v *value, c *compilestate) {
 	c.asm.emitOpcodeVA(info.bc, args)
 }
 
-func encodeSymbolIDForMakeStruct(id ion.Symbol) uint32 {
-	if id >= (1<<28)-1 {
-		panic(fmt.Sprintf("symbol id too large: %d", id))
-	}
-
-	encoded := uint32((id & 0x7F) | 0x80)
-	id >>= 7
-	for id != 0 {
-		encoded = (encoded << 8) | (uint32(id) & 0x7F)
-		id >>= 7
-	}
-	return encoded
-}
-
 func emitMakeStruct(v *value, c *compilestate) {
 	j := 0
 	orderedSymbols := make([]uint64, (len(v.args)-1)/3)
@@ -3867,11 +3853,7 @@ func emitMakeStruct(v *value, c *compilestate) {
 
 		val := v.args[i+1]
 		mask := v.args[i+2]
-
-		args = append(args,
-			encodeSymbolIDForMakeStruct(sym),
-			c.slotOf(val, regV),
-			c.slotOf(mask, regK))
+		args = append(args, encodeSymbolID(sym), c.slotOf(val, regV), c.slotOf(mask, regK))
 	}
 
 	info := &ssainfo[v.op]

@@ -23,12 +23,9 @@ type kRegData struct {
 	mask uint16
 }
 
-func (k *kRegData) getBit(idx int) bool {
-	return (k.mask>>idx)&1 == 1
-}
-
-func (k *kRegData) setBit(idx int) {
-	k.mask |= 1 << idx
+type bRegData struct {
+	offsets [bcLaneCount]uint32
+	sizes   [bcLaneCount]uint32
 }
 
 type vRegData struct {
@@ -49,11 +46,19 @@ type f64RegData struct {
 	values [bcLaneCount]float64
 }
 
+func (k *kRegData) getBit(idx int) bool {
+	return (k.mask>>idx)&1 == 1
+}
+
+func (k *kRegData) setBit(idx int) {
+	k.mask |= 1 << idx
+}
+
 const (
 	kRegSize = 2
+	bRegSize = 128
 	vRegSize = 128
 	sRegSize = 128
-	bRegSize = 128
 	hRegSize = 256
 	lRegSize = 128
 )
@@ -61,6 +66,7 @@ const (
 // assert that the size of each reg struct matches the sizes understood by VM
 const (
 	_ = ^uintptr(0) + (uintptr(kRegSize) - unsafe.Sizeof(kRegData{}))
+	_ = ^uintptr(0) + (uintptr(bRegSize) - unsafe.Sizeof(bRegData{}))
 	_ = ^uintptr(0) + (uintptr(vRegSize) - unsafe.Sizeof(vRegData{}))
 	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(sRegData{}))
 	_ = ^uintptr(0) + (uintptr(sRegSize) - unsafe.Sizeof(i64RegData{}))

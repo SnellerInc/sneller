@@ -31,6 +31,10 @@ func buftbl(buf []byte) *BufferedTable {
 	return &BufferedTable{buf: buf, align: defaultAlign}
 }
 
+func bRegAsUInt64Slice(ptr *bRegData) []uint64 {
+	return (*(*[bRegSize / 8]uint64)(unsafe.Pointer(ptr)))[:]
+}
+
 func vRegAsUInt64Slice(ptr *vRegData) []uint64 {
 	return (*(*[vRegSize / 8]uint64)(unsafe.Pointer(ptr)))[:]
 }
@@ -84,6 +88,56 @@ func (c *bctestContext) ensureData() {
 		c.data = Malloc()
 		c.data = c.data[:0]
 	}
+}
+
+func (c *bctestContext) bRegFromValues(values []any, st *ion.Symtab) bRegData {
+	out := bRegData{}
+
+	if len(values) > bcLaneCount {
+		panic(fmt.Sprintf("Can set up to %d input structs for VM opcode, not %d", bcLaneCount, len(values)))
+	}
+
+	if st == nil {
+		st = &ion.Symtab{}
+	}
+
+	c.ensureData()
+
+	var buf ion.Buffer
+	var chunk []byte
+	for i := range values {
+		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
+		if !ok {
+			panic("c.data more than 1MB?")
+		}
+
+		switch v := values[i].(type) {
+		case []byte:
+			chunk = v
+
+		case string:
+			chunk = []byte(v)
+
+		case ion.Struct:
+			buf.Reset()
+			v.Encode(&buf, st)
+			chunk = buf.Bytes()
+
+		default:
+			typ := reflect.TypeOf(v).String()
+			panic("only bytes, string and ion.Struct are supported, got " + typ)
+		}
+
+		content, _ := ion.Contents(chunk)
+		headerSize := uint32(len(chunk) - len(content))
+
+		out.offsets[i] = base + headerSize
+		out.sizes[i] = uint32(len(chunk)) - headerSize
+
+		c.data = append(c.data, chunk...)
+	}
+
+	return out
 }
 
 func (c *bctestContext) vRegFromValues(values []any, st *ion.Symtab) vRegData {
@@ -212,6 +266,14 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 			}
 			vStack = append(vStack, k)
 
+		case bcReadB:
+			switch v := testArg.(type) {
+			case *bRegData:
+				vStack = append(vStack, bRegAsUInt64Slice(v)...)
+			default:
+				panic(fmt.Sprintf("failed to extract argument #%d: bcReadB requires *bRegData data type", i))
+			}
+
 		case bcReadV:
 			switch v := testArg.(type) {
 			case *vRegData:
@@ -253,6 +315,9 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 		case bcImmI8, bcImmI16, bcImmI32, bcImmI64, bcImmU8, bcImmU16, bcImmU32, bcImmU64, bcImmF64:
 			// no need to do anything special regarding immediates; they are passed as is
 			args[i] = testArg
+
+		case bcSymbolID:
+			args[i] = encodeSymbolID(testArg.(ion.Symbol))
 
 		default:
 			// if you hit this panic it means you are trying

@@ -4837,160 +4837,218 @@ done:
 
 // v[0].k[1] = find_symbol(b[2], SymbolID[3]).k[4]
 TEXT bcfindsym(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_ZI32(BC_SLOT_SIZE*3, OUT(Z27))             // Z27 <- encoded symbol to match
+
+  VPXORD X2, X2, X2                                    // Z2 <- zeroed, preparation for VPGATHERDD
+  VMOVDQU32 0(VIRT_VALUES)(BX*1), Z28                  // Z28 <- struct offsets / initial offsets
+
   BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 4, OUT(R8))
-  BC_UNPACK_ZI32(BC_SLOT_SIZE*3, OUT(Z22))
+  VPADDD 64(VIRT_VALUES)(BX*1), Z28, Z29               // Z29 <- end of struct
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))                // K1 <- struct predicate
+  VPCMPUD $VPCMP_IMM_LT, Z29, Z28, K1, K5              // K5 <- lanes to scan
 
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(R8), OUT(BX))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+  VMOVDQA32.Z Z28, K1, Z30                             // Z30 <- output offsets
+  VPXORD X31, X31, X31                                 // Z31 <- output lengths
 
-  VMOVDQA32 Z0, Z30                  // Z30 = offset
-  VPADDD Z1, Z0, Z26                 // Z26 = end of struct
-
-  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
   ADDQ $(BC_SLOT_SIZE*4 + 4), VIRT_PCREG
   JMP findsym_tail(SB)
 
 // v[0].k[1] = find_symbol(b[2], v[3], k[4], SymbolID[5]).k[6]
 TEXT bcfindsym2(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_ZI32(BC_SLOT_SIZE*5, OUT(Z27))             // Z27 <- encoded symbol to match
+
+  VPXORD X2, X2, X2                                    // Z2 <- zeroed, preparation for VPGATHERDD
+  VMOVDQU32 0(VIRT_VALUES)(BX*1), Z3                   // Z3 <- struct offsets
+
   BC_UNPACK_SLOT(BC_SLOT_SIZE*5 + 4, OUT(R8))
-  BC_UNPACK_ZI32(BC_SLOT_SIZE*5, OUT(Z22))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3, OUT(CX));
+  VPADDD 64(VIRT_VALUES)(BX*1), Z3, Z29                // Z29 <- end of struct
 
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_UNPACK_4xSLOT(BC_SLOT_SIZE*1, OUT(R8), OUT(BX), OUT(CX), OUT(R15))
-  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(R15))
+  VMOVDQU32 0(VIRT_VALUES)(CX*1), Z30                  // Z30 <- previous match offsets (or initial base)
+  VMOVDQU32 64(VIRT_VALUES)(CX*1), Z31                 // Z31 <- previous match lengths (or zero if no match)
 
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(CX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))                // K1 <- struct predicate
+  VPADDD Z30, Z31, K1, Z28                             // Z28 <- struct offsets (based on previous match)
 
-  VPADDD Z30, Z31, K2, Z30
-  VPADDD Z0, Z1, Z26
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VPCMPUD $VPCMP_IMM_LT, Z29, Z28, K1, K5              // K5 <- lanes to scan
 
-  BC_UNPACK_SLOT(0, OUT(DX))
   ADDQ $(BC_SLOT_SIZE*6 + 4), VIRT_PCREG
   JMP findsym_tail(SB)
 
 // inputs:
-//   K1 = active lanes
-//   Z30 = starting offset (dword)
-//   Z26 = end of row (dword)
-//   Z22 = symbol ID to match (dword)
+//   DX  <- output value slot
+//   R8  <- output mask slot
+//   K5  <- active lanes
+//   Z27 <- encoded symbol IDs to match
+//   Z28 <- current symbol+value offset
+//   Z29 <- end of struct
+//   Z30 <- previous match offsets (or initial base)
+//   Z31 <- previous match lengths (or zero if no match)
 //
 // outputs:
-//   K1 = lanes matched
-//   Z30 = offset (location of symbol >= search)
-//   Z31 = length (when K1 is set; undef otherwise)
-//
+//   Stack[DX] = value (offset:length:TypeL:hLen), where offset means symbol >= search regardless of a match
+//   Stack[R8] = lanes matched predicate (non-matched lanes can still have offset:length values initialized!)
+
 TEXT findsym_tail(SB), NOSPLIT|NOFRAME, $0
-  VPXORD       Z31, Z31, Z31         // Z31 = length
-  KMOVW        K1, K5                // K5 = active
-  KXORW        K0, K0, K1            // K1 = found
-  // synthesize constants:
-  // we're doing a little arithmetic to avoid
-  // doing lots of broadcasts, which are apparently expensive
-  VPBROADCASTD CONSTD_0x00808080(), Z20 // Z20 = 0x00808080 (uvarint stop bits)
-  VONES(Z19)                         // Z19 = 0xffffffff
-  VPABSD       Z19, Z21              // Z21 = ABS(-1) = 1
-  VPSRLD       $24, Z19, Z19         // Z19 = 0x000000ff
-  VPANDD       Z19, Z20, Z25         // Z25 = (0x0080808080 & 0xff) = 0x80
-  VPSUBD       Z21, Z25, Z24         // Z24 = 0x80 - 1 = 0x7f
-  VPSRLD       $4, Z19, Z18          // Z18 = 0xff >> 4 = 0x0f
-  VPSUBD       Z21, Z18, Z17         // Z17 = 0x0f - 1 = 0x0e
-  VPADDD       Z21, Z18, Z16         //
-  VPADDD       Z21, Z16, Z16         // Z16 = 0x0f + 2 = TRUE (0x11)
-  JMP          looptail
-loop:
-  // load 4 bytes and process the leading uvarint
-  VPXORD       X29, X29, X29
-  XORL         CX, CX                // indicates jump to uvarintdone
-  KMOVW        K5, K2
-  VPXORD X29, X29, X29
-  VPGATHERDD   (SI)(Z30*1), K2, Z29  // Z29 = first 4 bytes
-  VMOVDQA32.Z  Z21, K5, Z23          // Z23 = uvarint size = 1 (for now)
-  VPANDD       Z24, Z29, Z28         // Z28 = accumulator = byte & 0x7f
-  VPTESTNMD    Z25, Z29, K5, K4      // K4 = varint bit set
-  KANDNW       K5, K4, K2
-  VPSRLD       $8, Z29, K2, Z29      // shift to get descriptor byte as lsb
-  KTESTW       K4, K4
-  KMOVW        K4, K3
-  JNZ          uvarint_parse2        // slow path for symbol > 0x7f
-uvarintdone:
-  VPCMPD        $VPCMP_IMM_GE, Z28, Z22, K5, K5  // only keep lanes active where search >= symbol
-  VPCMPEQD      Z28, Z22, K5, K2           // K2 = active & symbol matches
-  KORW          K2, K1, K1                 // set result in K1
-  VPADDD        Z23, Z30, K5, Z30          // update offset *when search >= symbol!*
-  VPANDD        Z19, Z29, Z11              // Z11 is just the lsb (Z29 &= 0xff)
-  VPANDD        Z18, Z29, Z28              // Z28 = data&0xf
-  VPCMPEQD      Z17, Z28, K5, K6           // K6 = Z28==0xe (varint-encoded item)
-  KANDNW        K5, K6, K4                 // K4 = active non-varint items
-  VPCMPEQD      Z18, Z28, K4, K3           // K3 = Z28==0xf (null item)
-  VMOVDQA32     Z21, K3, Z31               // length = 1 if null
-  KANDNW        K4, K3, K4                 // K4 = immediate but not null
-  VPCMPEQD      Z16, Z11, K4, K3           // K3 = lsb value is 'true'
-  VPXORD        Z28, Z28, K3, Z28          // length = 0 for 0x11 ('true')
-  VPADDD        Z21, Z28, K4, Z31          // ... in which case length = 1 + immediate
-  KTESTW        K6, K6
-  JZ            fieldlendone               // fast-path when everything is short
+  KTESTW K5, K5
+  KMOVW K5, K6                                         // K6 <- remaining lanes to match
+  VPBROADCASTB CONSTD_0x80(), Z22                      // Z22 <- dword(0x80808080)
+  JZ no_symbols
 
-  // parse object size when uvarint-encoded
-  INCL         CX                    // CX != 0 indicates jump to fieldlendone
-  VPSRLD       $8, Z29, K6, Z29      // bits >>= 8
-  VPTESTNMD    Z20, Z29, K6, K4      // test for varint stop bit
-  KTESTW       K4, K4                // only gather if no stop bit is present in the loaded bits
-  JNZ          more_bits
-didgather:
-  VPADDD       Z21, Z21, Z23         // Z23 = varint size + descriptor = 2 (currently)
-  VPANDD.Z     Z24, Z29, K6, Z28     // Z28 = bytes&0x7f or 0 when not varint
-  VPTESTNMD    Z25, Z29, K6, K4      // test bytes&0x80
-  KTESTW       K4, K4
-  JNZ          uvarint_parse3        // common case is 1-byte field length
-fieldlendone:
-  VPADDD       Z23, Z28, K6, Z31     // for varints: length = varint size + encoding size
-  KANDNW       K5, K2, K5            // unset active lanes when symbol matched
-  VPADDD       Z30, Z31, K5, Z30     // offset += length when not matched
-looptail:
-  VPCMPUD      $5, Z26, Z30, K5, K4
-  KANDNW       K5, K4, K5            // unset active lanes when at end
-  KTESTW       K5, K5                // early exit if we've consumed everything
-  JNZ          loop
+  VPGATHERDD 0(SI)(Z28*1), K5, Z2                      // Z2 <- gather bytes for the first iteration here...
 
-done:
+  VPSRLD $31, Z22, Z21                                 // Z21 <- dword(1)
+  VPSRLD $24, Z22, Z14                                 // Z14 <- dword(0x80)
+  VPXORD X26, X26, X26                                 // Z26 <- matched symbol IDs (initially no matched symbols)
+  VPSRLD $(24+4), Z22, Z19                             // Z19 <- dword(8)
+  VPSUBD Z21, Z14, Z15                                 // Z15 <- dword(0x7F)
+  VPADDD Z21, Z21, Z20                                 // Z20 <- dword(2)
+  VPSRLD $3, Z15, Z13                                  // Z13 <- dword(0xF)
+  VPORD Z15, Z14, Z16                                  // Z16 <- dword(0xFF)
+  VPSRLD $(24+2), Z22, Z18                             // Z18 <- dword(32)
+  VPXORD Z21, Z13, Z17                                 // Z17 <- dword(14)
+
+  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z23       // Z23 <- bswap32 predicate for VPSHUFB
+  KMOVQ CONSTQ_0x5555555555555555(), K3                // K3 <- predicate for VPADDB (VarUInt decoding)
+
+  // TODO: we can remove these 3 lines if we preencode the symbol differently
+  VPLZCNTD Z27, Z10
+  VPSLLVD Z10, Z27, Z27
+  VPSHUFB Z23, Z27, Z27
+
+  JMP decode_init
+
+decode_loop:
+  VPXORD X2, X2, X2
+  KMOVW K5, K6                                         // K6 <- remaining lanes to scan
+  VPGATHERDD 0(SI)(Z28*1), K5, Z2                      // Z2 <- gathered bytes
+
+decode_init:
+  VPTESTMD Z14, Z2, K6, K4                             // K4 <- active lanes having 1-byte SymbolID
+  KTESTW K6, K4                                        // CF <- cleared if not all lanes have 1-byte SymbolID
+
+  VPSRLW.Z $8, Z2, K3, Z6                              // Z6 <- Type|L byte that is valid for lanes that have 1-byte SymbolID
+  JCC decode_long_symbol                               // jump to a more complex decode if at least one lane has long SymbolID
+
+  VPCMPUD $VPCMP_IMM_GE, Z18, Z6, K6, K5               // K5 <- Type != NULL|BOOL (Type|L >= 32)
+  VPANDD.Z Z13, Z6, K5, Z7                             // Z7 <- L field extracted from Type|L and corrected to 0 if NULL/BOOL
+  VPANDD Z16, Z2, K6, Z26                              // Z26 <- update encoded SymbolIDs
+  VPCMPEQD Z17, Z7, K6, K5                             // K5 <- lanes that need a separate Length data when L == 14
+  VPSRLD $16, Z2, K5, Z7                               // Z7 <- L field or 1-byte Length data
+  VPCMPUD $VPCMP_IMM_LE, Z27, Z26, K6, K1              // K1 <- lanes where SymbolID <= SymbolIDToMatch
+  VPTESTMD Z14, Z7, K5, K4                             // K4 <- lanes that use a separate Length data represented as 1 byte VarUInt
+  KTESTW K5, K4                                        // CF <- cleared if there is a lane having incomplete Length data (need more bytes)
+
+  VPCMPUD $VPCMP_IMM_LT, Z27, Z26, K6, K2              // K2 <- remaining lanes where SymbolID < SymbolIDToMatch
+  VPADDD Z21, Z28, K1, Z30                             // Z30 <- Z28 + len(symbol) (next value offset)
+  VPBLENDMD Z20, Z21, K5, Z5                           // Z5 <- set to either 1 (when L field is valid) or 2 when 1-byte Length data is used
+  VPANDD Z7, Z15, Z7                                   // Z7 <- L field or decoded Length data
+  VPADDD Z5, Z7, K1, Z31                               // Z31 <- 1 + Length data size + length
+  JCC decode_long_length_of_1_byte_symbols             // jump to a more complex decode if the Length data uses 2 or more bytes
+
+decode_advance:
+  VPADDD.Z Z30, Z31, K6, Z28                           // Z28 <- update offsets for remaining lanes
+  VPCMPUD $VPCMP_IMM_LT, Z29, Z28, K2, K5              // K5 <- remaining lanes to scan considering both symbol ids and end of struct
+  KTESTW K5, K5
+  JNZ decode_loop                                      // all lanes done if K5 is zero...
+
+finished:
+  VPCMPEQD Z27, Z26, K1
   BC_STORE_SLICE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
   NEXT_ADVANCE(0)
 
-more_bits:
-  VPGATHERDD 1(SI)(Z30*1), K4, Z29 // load next 4 bytes into Z29 when we need a stop bit
-  JMP        didgather
-// un-rolled uvarint parsing
-#define CHOMP()                  \
-  VPADDD       Z21, Z23, K4, Z23 \
-  VPSLLD       $7, Z28, K4, Z28  \
-  VPSRLD       $8, Z29, K4, Z29  \
-  VPANDD       Z24, Z29, Z27     \
-  VPORD        Z27, Z28, K4, Z28 \
-  VPTESTNMD    Z25, Z29, K4, K4
-uvarint_parse3:
-  CHOMP()
-uvarint_parse2:
-  CHOMP()
-  CHOMP()
-  KTESTW       K4, K4
-  JNZ          trap                 // assert symbol < max symbol ID
-  // since the Go assembler won't let you
-  // compute the address of a label (AAAAAHHHH WHY)
-  // we use CX to indicate the return branch target
-  TESTL        CX, CX
-  JNZ          fieldlendone
-  // uvarintdone expects that we have
-  // shifted zmm29 so that the first byte
-  // is the beginning of the next object
-  VPSRLD       $8, Z29, K3, Z29
-  JMP          uvarintdone
-trap:
-  FAIL()
+decode_long_length_of_1_byte_symbols:
+  KANDNW K5, K4, K4                                    // K4 <- lanes that need more than 1-byte Length
+  VPSRLD $24, Z2, Z2                                   // Z2 <- second Length byte at LSB
+  VPTESTNMD Z22, Z2, K4, K1                            // K1 <- lanes that need more than 2-byte Length
+  KTESTW K1, K1
 
-#undef CHOMP
+  VPANDD Z15, Z2, Z2                                   // Z2 <- Z2 & 0x7F
+  JNZ decode_long_length_needs_gather                  // jump to a more complex decode if gather is needed to fetch Length bytes
+
+  VPADDD Z21, Z5, K4, Z5                               // Z5 <- Either 1, 2, or 3 depending on the size of the Length field (includes Type|L)
+  VPSLLD $7, Z7, K4, Z7                                // Z7 <- Z7 << 7 (only lanes that use 2-byte length)
+  VPORD Z2, Z7, K4, Z7                                 // Z7 <- Either L or a decoded 1-byte or 2-byte length
+  VPADDD Z5, Z7, K4, Z31                               // Z31 <- 1 + Length data size + length
+  JMP decode_advance
+
+decode_long_symbol:
+  VPSHUFB Z23, Z2, Z3                                  // Z3 <- bswap32(bytes)
+  VPANDD Z22, Z3, Z4                                   // Z4 <- bswap32(bytes) & 0x80808080
+  VPLZCNTD Z4, Z4                                      // Z4 <- lzcnt(bswap32(bytes) & 0x80808080)
+  VPADDD.Z Z19, Z4, K6, Z4                             // Z4 <- lzcnt(bswap32(bytes) & 0x80808080) + 8
+  VPSLLVD Z4, Z3, Z5                                   // Z5 <- Type|L byte at MSB, preceded by up to 2 non-zero bytes
+  VPSUBD.Z Z4, Z18, K6, Z8                             // Z8 <- 32 - lzcnt(bswap32(bytes) & 0x80808080) - 8
+  VPSRLD $24, Z5, Z6                                   // Z6 <- Type|L byte
+  VPCMPUD $VPCMP_IMM_GE, Z18, Z6, K6, K5               // K5 <- Type != NULL|BOOL (Type|L >= 32)
+
+  VPSRLVD Z8, Z3, K6, Z26                              // Z26 <- update encoded symbol ids
+  VPANDD.Z Z13, Z6, K5, Z7                             // Z7 <- L field extracted from Type|L and corrected to 0 if NULL/BOOL
+  VPCMPEQD Z17, Z7, K6, K5                             // K5 <- lanes that need a separate Length field when L == 14
+  KTESTW K5, K5
+
+  VPCMPUD $VPCMP_IMM_LE, Z27, Z26, K6, K1              // K1 <- lanes where SymbolID <= SymbolIDToMatch
+  VPSRLD $3, Z4, Z6                                    // Z6 <- len(SymbolID)
+  VPCMPUD $VPCMP_IMM_LT, Z27, Z26, K6, K2              // K2 <- remaining lanes where SymbolID < SymbolIDToMatch
+  VPADDD Z21, Z7, K1, Z31                              // Z31 <- 1 + L (accounts Type|L byte + L)
+  VPADDD Z6, Z28, K1, Z30                              // Z30 <- Z28 + len(symbol) (next value offset)
+  JZ decode_advance                                    // done decoding if all values need only L (length < 14)
+
+  VPSLLD $8, Z5, Z2                                    // Z2 <- Length bytes, starting at MSB
+  VPTESTNMD Z22, Z2, K5, K4                            // K4 <- lanes that need more Length bytes than we have at the moment
+  KTESTW K4, K4
+  JNZ decode_long_length_needs_gather                  // jump to a slow path where additional gather is needed to fetch Length field
+
+  // The following code handles either 1 byte symbol and
+  // 1-2 byte length or 2 byte symbol and 1 byte length.
+
+  VPMOVD2M Z2, K4                                      // K4 <- termination bit at 0x80000000 (at MSB) => Length is 1 byte long
+  VPANDND Z2, Z22, Z4                                  // Z4 <- Z2 & 0x7F7F7F7F
+  VPADDB Z2, Z2, K3, Z2                                // Z2 <- shift all EVEN bytes left by 1 to get [0BBBBBBB|AAAAAAA0|00000000|00000000]
+  VPSRLD.Z $6, Z16, K5, Z5                             // Z5 <- dword(3)
+  VPSRLD $17, Z2, Z2                                   // Z2 <- decoded 2 byte VarUInt Length yieding [00000000|00000000|00BBBBBB|BAAAAAAA]
+  VPSUBD Z21, Z5, K4, Z5                               // Z5 <- 1 + Length field size itself (the final value is either 2 or 3)
+  VPSRLD $24, Z4, K4, Z2                               // Z2 <- updated to decoded Length from either 1 or 2 bytes of data
+  VPADDD Z5, Z2, K5, Z31                               // Z31 <- updates the length of the value: Type|L + Length field + Content length
+  JMP decode_advance
+
+decode_long_length_needs_gather:
+  KMOVW K5, K4
+  VPGATHERDD 1(SI)(Z30*1), K4, Z2
+
+  MOVL $0x40000001, BX
+  VPBROADCASTD BX, Z4                                  // Z4 <- constant(0x40000001 == (1 << 30) | 1)
+
+  VPSHUFB Z23, Z2, Z2                                  // Z2 <- bswap32(Z2)
+  VPANDD Z2, Z22, Z3                                   // Z3 <- bswap32(Z2) & 0x80808080
+  VPANDND Z2, Z22, Z2                                  // Z2 <- bswap32(Z2) & 0x7F7F7F7F
+
+  VPLZCNTD Z3, Z3                                      // Z3 <- lzcnt(bswap32(Z2) & 0x80808080)
+  VPADDB Z2, Z2, K3, Z2                                // Z2 <- shift all EVEN bytes left by 1 to get    [0DDDDDDD|CCCCCCC0|0BBBBBBB|AAAAAAA0]
+
+  VPADDD Z19, Z3, Z3                                   // Z3 <- lzcnt(bswap32(Z2) & 0x80808080) + 8
+  VPSRLW $1, Z2, Z2                                    // Z6 <- shift WORD pairs right by 1 to get       [00DDDDDD|DCCCCCCC|00BBBBBB|BAAAAAAA]
+  VPMADDWD Z4, Z2, Z2                                  // Z2 <- transform length bytes to content length [0000DDDD|DDDCCCCC|CCBBBBBB|BAAAAAAA]
+
+  VPSUBD Z3, Z18, Z4                                   // Z4 <- 32 - lzcnt(bswap32(Z2) & 0x80808080) - 8
+  VPSRLD $3, Z4, Z5                                    // Z5 <- (32 - lzcnt(bswap32(Z2) & 0x80808080) - 8) / 8
+  VPADDD Z19, Z3, Z3                                   // Z3 <- lzcnt(bswap32(Z2)) + 16
+  VPSUBD Z5, Z4, Z4
+  VPSRLD $3, Z3, Z3                                    // Z3 <- size of the Length field in bytes, including Type|L byte
+  VPSRLVD Z4, Z2, Z2                                   // Z2 <- value content length
+  VPADDD Z3, Z2, K5, Z31                               // Z31 <- updated to 1 + length field size + content length for lanes having Length field
+  JMP decode_advance
+
+no_symbols:
+  BC_STORE_SLICE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  MOVW $0, 0(VIRT_VALUES)(R8*1)
+  NEXT_ADVANCE(0)
+
 
 // Blend Instructions
 // ------------------
