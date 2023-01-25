@@ -505,6 +505,22 @@ func TestParseErrors(t *testing.T) {
 			query: "SELECT 3.4.x",
 			msg:   "",
 		},
+		{
+			query: `SELECT col~COUNT(col2)`,
+			msg:   `unexpected AGGREGATE, expecting STRING`,
+		},
+		{
+			query: `SELECT col~*COUNT(col2)`,
+			msg:   `unexpected AGGREGATE, expecting STRING`,
+		},
+		{
+			query: `SELECT col~~COUNT(col2)`,
+			msg:   `unexpected AGGREGATE, expecting STRING`,
+		},
+		{
+			query: `SELECT col~~*COUNT(col2)`,
+			msg:   `unexpected AGGREGATE, expecting STRING`,
+		},
 	}
 
 	for i := range testcases {
@@ -525,6 +541,67 @@ func TestParseErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseIdentifiers(t *testing.T) {
+	operators := []string{
+		"+",
+		"-",
+		"*",
+		"/",
+		"%",
+		"=",
+		"<",
+		"<=",
+		">",
+		">=",
+		"!=",
+		"<>",
+		"<<",
+		">>",
+		">>>",
+		"|",
+		"&",
+		"^",
+	}
+
+	for i := range operators {
+		query := fmt.Sprintf("SELECT col%sCOUNT(col2)", operators[i])
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			e, err := Parse([]byte(query))
+			if err != nil {
+				t.Logf("query: %q", query)
+				t.Error(err)
+			}
+
+			q := e.Body.(*expr.Select)
+			v := &testaggsearch{}
+			expr.Walk(v, q)
+
+			if !v.hasagg {
+				t.Logf("query: %q", query)
+				t.Errorf(`"COUNT(col2)" expected to be parsed as an aggregate`)
+			}
+		})
+	}
+}
+
+type testaggsearch struct {
+	hasagg bool
+}
+
+func (t *testaggsearch) Visit(e expr.Node) expr.Visitor {
+	if t.hasagg {
+		return nil
+	}
+
+	_, ok := e.(*expr.Aggregate)
+	if ok {
+		t.hasagg = true
+		return nil
+	}
+
+	return t
 }
 
 func testEquivalence(t *testing.T, e expr.Node) {

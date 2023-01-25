@@ -256,10 +256,17 @@ func (s *scanner) lex(l *yySymType) int {
 }
 
 // issep returns whether x is a word separator
-//
-// right now this is whitespace, parentheses, or ','
 func issep(x byte) bool {
-	return isspace(x) || x == '(' || x == ')' || x == ','
+	if isspace(x) {
+		return true
+	}
+
+	switch x {
+	case '(', ')', ',', '=', '<', '>', '!', '~':
+		return true
+	}
+
+	return false
 }
 
 // lex an identifier and either return it
