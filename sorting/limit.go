@@ -14,23 +14,8 @@
 
 package sorting
 
-// LimitKind describes how to interpret query limits parameters.
-type LimitKind byte
-
-const (
-	// Use the first rows in range [0:limit]
-	LimitToHeadRows LimitKind = iota
-
-	// Use the top rows in range [len(collection) - limit:]
-	LimitToTopRows
-
-	// Use subrange of rows in range [offset:offset + limit]
-	LimitToRange
-)
-
 // Limit stores raw values of LIMIT and OFFSET from a query.
 type Limit struct {
-	Kind          LimitKind
 	Limit, Offset int
 }
 
@@ -38,25 +23,12 @@ type Limit struct {
 //
 // It takes into account the number of rows.
 func (l *Limit) FinalRange(rowsCount int) indicesRange {
-	switch l.Kind {
-	case LimitToHeadRows:
-		return indicesRange{start: 0,
-			end: minInt(rowsCount-1, l.Limit-1)}
-
-	case LimitToTopRows:
-		return indicesRange{start: maxInt(rowsCount-l.Limit, 0),
-			end: rowsCount - 1}
-
-	case LimitToRange:
-		if l.Offset >= rowsCount {
-			return indicesRange{start: rowsCount, end: rowsCount}
-		}
-
-		return indicesRange{start: l.Offset,
-			end: minInt(l.Offset+l.Limit-1, rowsCount-1)}
+	if l.Offset >= rowsCount {
+		return indicesRange{start: rowsCount, end: rowsCount}
 	}
 
-	return indicesRange{}
+	return indicesRange{start: l.Offset,
+		end: minInt(l.Offset+l.Limit-1, rowsCount-1)}
 }
 
 func minInt(a, b int) int {

@@ -877,13 +877,11 @@ func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, err
 	var limit *sorting.Limit
 	if o.Offset > 0 && o.Limit > 0 {
 		limit = &sorting.Limit{
-			Kind:   sorting.LimitToRange,
 			Offset: o.Offset,
 			Limit:  o.Limit,
 		}
 	} else if o.Limit > 0 {
 		limit = &sorting.Limit{
-			Kind:  sorting.LimitToHeadRows,
 			Limit: o.Limit,
 		}
 	}

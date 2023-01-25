@@ -90,7 +90,6 @@ type Order struct {
 func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, parallelism int) *Order {
 	if limit == nil {
 		limit = &sorting.Limit{
-			Kind:  sorting.LimitToHeadRows,
 			Limit: 100000,
 		}
 	}
@@ -140,11 +139,7 @@ func (s *Order) useSingleColumnSorter() bool {
 }
 
 func (s *Order) useKtop() bool {
-	if s.limit == nil {
-		return false
-	}
-	return s.limit.Kind == sorting.LimitToHeadRows ||
-		s.limit.Kind == sorting.LimitToRange
+	return s.limit != nil
 }
 
 func (s *Order) orderList() []sorting.Ordering {

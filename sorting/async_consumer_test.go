@@ -107,42 +107,32 @@ func TestAsyncConsumerLimitHandling(t *testing.T) {
 		notifications []indicesRange
 	}{
 		{
-			limit:         Limit{Kind: LimitToHeadRows, Offset: 0, Limit: 5},
+			limit:         Limit{Offset: 0, Limit: 5},
 			items:         []int{0, 1, 2, 3, 4},
 			notifications: []indicesRange{R(0, 100)},
 		},
 		{
-			limit:         Limit{Kind: LimitToHeadRows, Offset: 0, Limit: 5},
+			limit:         Limit{Offset: 0, Limit: 5},
 			items:         []int{0, 1, 2, 3, 4},
 			notifications: []indicesRange{R(0, 0), R(1, 1), R(2, 2), R(3, 3), R(4, 4), R(5, 100)},
 		},
 		{
-			limit:         Limit{Kind: LimitToHeadRows, Offset: 0, Limit: 150},
+			limit:         Limit{Offset: 0, Limit: 150},
 			items:         all,
 			notifications: []indicesRange{R(0, 0), R(1, 1), R(2, 2), R(3, 3), R(4, 4), R(5, 100)},
 		},
 		{
-			limit:         Limit{Kind: LimitToHeadRows, Offset: 0, Limit: 5},
+			limit:         Limit{Offset: 0, Limit: 5},
 			items:         []int{0, 1, 2, 3, 4},
 			notifications: []indicesRange{R(0, 3), R(4, 20), R(21, 100)},
 		},
 		{
-			limit:         Limit{Kind: LimitToTopRows, Offset: 0, Limit: 6},
-			items:         []int{95, 96, 97, 98, 99, 100},
-			notifications: []indicesRange{R(0, 100)},
-		},
-		{
-			limit:         Limit{Kind: LimitToTopRows, Offset: 0, Limit: 200},
-			items:         all,
-			notifications: []indicesRange{R(0, 100)},
-		},
-		{
-			limit:         Limit{Kind: LimitToRange, Offset: 40, Limit: 4},
+			limit:         Limit{Offset: 40, Limit: 4},
 			items:         []int{40, 41, 42, 43},
 			notifications: []indicesRange{R(0, 100)},
 		},
 		{
-			limit:         Limit{Kind: LimitToRange, Offset: 90, Limit: 40},
+			limit:         Limit{Offset: 90, Limit: 40},
 			items:         []int{90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100},
 			notifications: []indicesRange{R(0, 100)},
 		},
