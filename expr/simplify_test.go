@@ -1084,7 +1084,7 @@ func TestSimplify(t *testing.T) {
 	}
 
 	for i := range testcases {
-		tc := testcases[i]
+		tc := &testcases[i]
 
 		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
 			before := Copy(tc.before)
@@ -1095,6 +1095,40 @@ func TestSimplify(t *testing.T) {
 			}
 			testEquivalence(before, t)
 			testEquivalence(after, t)
+		})
+	}
+}
+
+// check cases when ret() might return nil
+func TestSimplifyWithNaN(t *testing.T) {
+	expressions := []Node{
+		// compare
+		Compare(Less, Float(5), NaN),
+		Compare(Less, NaN, Float(1)),
+		Compare(Less, NaN, NaN),
+
+		// round/roundeven/trunc/floor (func simplifyRoundOp)
+		Call(Round, NaN),
+
+		// unary artihmetic
+		Neg(NaN),
+		BitNot(NaN),
+
+		// arithmetic
+		Add(Float(1), NaN),
+		Add(NaN, Float(-3)),
+		Add(NaN, NaN),
+
+		// cast
+		&Cast{From: NaN, To: FloatType},
+		&Cast{From: NaN, To: IntegerType},
+		&Cast{From: NaN, To: StringType},
+	}
+
+	for i := range expressions {
+		expr := expressions[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			_ = Simplify(expr, NoHint)
 		})
 	}
 }

@@ -405,10 +405,10 @@ func (c *Comparison) simplify(h Hint) Node {
 		return Missing{}
 	}
 
-	ln, okl := left.(number)
-	rn, okr := right.(number)
-	if okr && okl {
-		return constcmp(c.Op, ln.rat(), rn.rat())
+	if l := asrational(left); l != nil {
+		if r := asrational(right); r != nil {
+			return constcmp(c.Op, l, r)
+		}
 	}
 
 	// if the lhs or rhs is a CASE expression,
@@ -606,8 +606,8 @@ func simplifyRoundOp(h Hint, args []Node, op roundOp) Node {
 	}
 
 	args[0] = missingUnless(args[0], h, NumericType)
-	if cn, ok := args[0].(number); ok {
-		return (*Rational)(roundBigRat(cn.rat(), op))
+	if cn := asrational(args[0]); cn != nil {
+		return (*Rational)(roundBigRat(cn, op))
 	}
 
 	return nil
@@ -640,12 +640,12 @@ func (u *UnaryArith) simplify(h Hint) Node {
 		return Missing{}
 	}
 
-	if cn, ok := u.Child.(number); ok {
+	if cn := asrational(u.Child); cn != nil {
 		switch u.Op {
 		case NegOp:
-			return (*Rational)(new(big.Rat).Neg(cn.rat()))
+			return (*Rational)(new(big.Rat).Neg(cn))
 		case BitNotOp:
-			if i64, ok := asint64(cn.rat()); ok {
+			if i64, ok := asint64(cn); ok {
 				return Integer(^i64)
 			}
 		}
@@ -705,9 +705,10 @@ func (a *Arithmetic) simplify(h Hint) Node {
 	if miss(left, h) || miss(right, h) {
 		return Missing{}
 	}
-	if ln, okl := left.(number); okl {
-		if rn, okr := right.(number); okr {
-			return constmath(a.Op, ln.rat(), rn.rat())
+
+	if l := asrational(left); l != nil {
+		if r := asrational(right); r != nil {
+			return constmath(a.Op, l, r)
 		}
 	}
 
@@ -1053,9 +1054,8 @@ func (c *Cast) simplify(h Hint) Node {
 
 	// literal FP conversion constprop
 	if c.To == FloatType {
-		if fn, ok := c.From.(number); ok {
-			rat := fn.rat()
-			f, _ := rat.Float64()
+		if r := asrational(c.From); r != nil {
+			f, _ := r.Float64()
 			return Float(f)
 		}
 		if b, ok := c.From.(Bool); ok {
@@ -1068,8 +1068,7 @@ func (c *Cast) simplify(h Hint) Node {
 
 	// literal integer conversion constprop
 	if c.To == IntegerType {
-		if fn, ok := c.From.(number); ok {
-			rat := fn.rat()
+		if rat := asrational(c.From); rat != nil {
 			if i64, ok := asint64(rat); ok {
 				return Integer(i64)
 			}
@@ -1085,8 +1084,7 @@ func (c *Cast) simplify(h Hint) Node {
 
 	// literal string conversion constprop
 	if c.To == StringType {
-		if fn, ok := c.From.(number); ok {
-			rat := fn.rat()
+		if rat := asrational(c.From); rat != nil {
 			if rat.IsInt() {
 				return String(rat.RatString())
 			}
