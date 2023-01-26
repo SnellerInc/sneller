@@ -140,9 +140,6 @@ func (e *executor) add(dst vm.QuerySink, n *Node) error {
 	}
 	if e.tasks[in].input == nil {
 		handle := e.inputs[in].Handle
-		if e.ep.Rewrite != nil {
-			_, handle = e.ep.Rewrite(e.inputs[in].Table, handle)
-		}
 		if handle == nil {
 			return fmt.Errorf("nil table handle")
 		}

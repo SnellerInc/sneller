@@ -489,7 +489,7 @@ func (c *Client) Exec(t *Tree, ep *ExecParams) error {
 	c.st.Reset()
 	c.iob.Reset()
 	c.valid = 0
-	err := c.send(t, ep.Rewrite)
+	err := c.send(t)
 	if err != nil {
 		return err
 	}
@@ -501,8 +501,8 @@ func (c *Client) Close() error {
 	return c.Pipe.Close()
 }
 
-func (c *Client) send(t *Tree, rw TableRewrite) error {
-	err := t.EncodePart(&c.iob, &c.st, rw)
+func (c *Client) send(t *Tree) error {
+	err := t.Encode(&c.iob, &c.st)
 	if err != nil {
 		return fmt.Errorf("plan.Client.Exec: encoding plan: %w", err)
 	}

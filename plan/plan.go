@@ -1124,10 +1124,10 @@ func (u *Unpivot) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, err
 	return u.From.wrap(vmu, ep)
 }
 
-func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab) error {
 	// encode the parent(s) of this op first
 	if parent := p.input(); parent != nil {
-		err := encoderec(parent, dst, st, rw)
+		err := encoderec(parent, dst, st)
 		if err != nil {
 			return err
 		}
@@ -1150,39 +1150,32 @@ func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 //
 // See also: Tree.EncodePart, Decode
 func (t *Tree) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return t.EncodePart(dst, st, nil)
-}
-
-// EncodePart is equivalent to Encode, except that it
-// uses rw to re-write table expressions during
-// serialization.
-func (t *Tree) EncodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
 	dst.BeginStruct(-1)
 	if len(t.Inputs) > 0 {
 		dst.BeginField(st.Intern("inputs"))
 		dst.BeginList(-1)
 		for i := range t.Inputs {
-			if err := t.Inputs[i].encode(dst, st, rw); err != nil {
+			if err := t.Inputs[i].encode(dst, st); err != nil {
 				return err
 			}
 		}
 		dst.EndList()
 	}
 	dst.BeginField(st.Intern("root"))
-	if err := t.Root.encodePart(dst, st, rw); err != nil {
+	if err := t.Root.encode(dst, st); err != nil {
 		return err
 	}
 	dst.EndStruct()
 	return nil
 }
 
-func (n *Node) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+func (n *Node) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	if len(n.Inputs) > 0 {
 		dst.BeginField(st.Intern("inputs"))
 		dst.BeginList(-1)
 		for i := range n.Inputs {
-			if err := n.Inputs[i].encode(dst, st, rw); err != nil {
+			if err := n.Inputs[i].encode(dst, st); err != nil {
 				return err
 			}
 		}
@@ -1192,7 +1185,7 @@ func (n *Node) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) erro
 		dst.BeginField(st.Intern("children"))
 		dst.BeginList(-1)
 		for i := range n.Children {
-			if err := n.Children[i].encodePart(dst, st, rw); err != nil {
+			if err := n.Children[i].encode(dst, st); err != nil {
 				return err
 			}
 		}
@@ -1200,7 +1193,7 @@ func (n *Node) encodePart(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) erro
 	}
 	dst.BeginField(st.Intern("op"))
 	dst.BeginList(-1)
-	err := encoderec(n.Op, dst, st, rw)
+	err := encoderec(n.Op, dst, st)
 	if err != nil {
 		return err
 	}

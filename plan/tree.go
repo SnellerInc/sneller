@@ -30,12 +30,9 @@ type Input struct {
 	Handle TableHandle
 }
 
-func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab, rw TableRewrite) error {
+func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	tbl, handle := i.Table, i.Handle
-	if rw != nil {
-		tbl, handle = rw(tbl, handle)
-	}
 	dst.BeginField(st.Intern("table"))
 	tbl.Encode(dst, st)
 	if handle != nil {

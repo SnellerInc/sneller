@@ -31,10 +31,6 @@ type ExecParams struct {
 	// Stats are stats that are collected
 	// during query execution.
 	Stats ExecStats
-	// Rewrite is a function that is applied
-	// to tables before expanding them in queries.
-	// Rewrite may be nil.
-	Rewrite TableRewrite
 	// Parallel determines the (local) parallelism
 	// of plan execution. If Parallel is unset, then
 	// runtime.GOMAXPROCS(0) is used instead.
