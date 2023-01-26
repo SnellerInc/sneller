@@ -197,6 +197,26 @@ func TestCheckExpressions(t *testing.T) {
 	}
 }
 
+func TestCheckValidExpressions(t *testing.T) {
+	testcases := []struct {
+		expr Node
+	}{
+		{
+			// regression test: nullptr dereference on NaN
+			expr: Div(path("x"), NaN),
+		},
+	}
+	for i := range testcases {
+		tc := &testcases[i]
+		t.Run(fmt.Sprintf("case-%d", i), func(t *testing.T) {
+			err := Check(tc.expr)
+			if err != nil {
+				t.Errorf("unexpected error: %s", err)
+			}
+		})
+	}
+}
+
 func innermostError(err error) error {
 	var result error
 	for {

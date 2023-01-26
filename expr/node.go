@@ -877,6 +877,8 @@ func (f Float) text(dst *strings.Builder, redact bool) {
 }
 
 func (f Float) rat() *big.Rat {
+	// Note: big.Rat cannot carry infinity nor NaN - for such
+	//       float64 values the method would return nil.
 	return new(big.Rat).SetFloat64(float64(f))
 }
 
@@ -910,6 +912,8 @@ func (f Float) Equals(e Node) bool {
 	}
 	return false
 }
+
+var NaN = Float(math.NaN())
 
 // Integer is a literal integer AST node
 type Integer int64
@@ -3737,3 +3741,12 @@ func (u *Union) text(dst *strings.Builder, redact bool) {
 }
 
 var _ Node = &Union{}
+
+func asrational(e Node) *big.Rat {
+	n, ok := e.(number)
+	if !ok {
+		return nil
+	}
+
+	return n.rat()
+}

@@ -275,8 +275,8 @@ func (u *UnaryArith) check(h Hint) error {
 
 func (a *Arithmetic) check(h Hint) error {
 	iszero := func() bool {
-		n, ok := a.Right.(number)
-		return ok && n.rat().Sign() == 0
+		r := asrational(a.Right)
+		return r != nil && r.Sign() == 0
 	}
 
 	switch a.Op {
