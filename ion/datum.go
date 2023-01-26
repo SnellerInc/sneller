@@ -1307,31 +1307,6 @@ func decodeAnnotationDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 	}, rest, nil
 }
 
-var _datumTable = [...](func(*Symtab, []byte) (Datum, []byte, error)){
-	NullType:       decodeNullDatum,
-	BoolType:       decodeBoolDatum,
-	UintType:       decodeUintDatum,
-	IntType:        decodeIntDatum,
-	FloatType:      decodeFloatDatum,
-	DecimalType:    decodeDecimalDatum,
-	TimestampType:  decodeTimestampDatum,
-	SymbolType:     decodeSymbolDatum,
-	StringType:     decodeBytesDatum,
-	ClobType:       decodeBytesDatum, // fixme: treat clob differently than blob?
-	BlobType:       decodeBytesDatum,
-	ListType:       decodeListDatum,
-	SexpType:       decodeListDatum, // fixme: treat sexp differently than list?
-	StructType:     decodeStructDatum,
-	AnnotationType: decodeAnnotationDatum,
-	ReservedType:   decodeReserved,
-}
-
-var datumTable [16](func(*Symtab, []byte) (Datum, []byte, error))
-
-func init() {
-	copy(datumTable[:], _datumTable[:])
-}
-
 // ReadDatum reads the next datum from buf
 // and returns it. ReadDatum does not return
 // symbol tables directly; instead it unmarshals
@@ -1358,7 +1333,42 @@ func ReadDatum(st *Symtab, buf []byte) (Datum, []byte, error) {
 			return Empty, buf, nil
 		}
 	}
-	return datumTable[TypeOf(buf)](st, buf)
+	switch t := TypeOf(buf); t {
+	case NullType:
+		return decodeNullDatum(st, buf)
+	case BoolType:
+		return decodeBoolDatum(st, buf)
+	case UintType:
+		return decodeUintDatum(st, buf)
+	case IntType:
+		return decodeIntDatum(st, buf)
+	case FloatType:
+		return decodeFloatDatum(st, buf)
+	case DecimalType:
+		return decodeDecimalDatum(st, buf)
+	case TimestampType:
+		return decodeTimestampDatum(st, buf)
+	case SymbolType:
+		return decodeSymbolDatum(st, buf)
+	case StringType:
+		return decodeBytesDatum(st, buf)
+	case ClobType:
+		return decodeBytesDatum(st, buf)
+	case BlobType:
+		return decodeBytesDatum(st, buf)
+	case ListType:
+		return decodeListDatum(st, buf)
+	case SexpType:
+		return decodeListDatum(st, buf)
+	case StructType:
+		return decodeStructDatum(st, buf)
+	case AnnotationType:
+		return decodeAnnotationDatum(st, buf)
+	case ReservedType:
+		return decodeReserved(st, buf)
+	default:
+		return Empty, nil, fmt.Errorf("unsupported type: %x", t)
+	}
 }
 
 // validateDatum validates that the next datum in buf

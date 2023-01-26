@@ -154,6 +154,20 @@ func BenchmarkDatumPassthrough(b *testing.B) {
 	}
 }
 
+func BenchmarkIteratorNextAllocs(b *testing.B) {
+	in := make([]Datum, b.N)
+	for i := range in {
+		in[i] = String("foo")
+	}
+	l := NewList(nil, in)
+	it, _ := l.Iterator()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for !it.Done() {
+		it.Next()
+	}
+}
+
 func FuzzReadDatum(f *testing.F) {
 	var tcs = []string{
 		"0",
