@@ -122,7 +122,7 @@ func TestSplit(t *testing.T) {
 			}
 			var sp Splitter
 			// we're making the window size
-			// extra amll and the parallelism high
+			// extra small and the parallelism high
 			// in order to get more coverage
 			sp.WindowSize = 8 * 1024
 			sp.MaxParallel = 20

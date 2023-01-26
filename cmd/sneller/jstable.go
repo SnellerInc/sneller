@@ -61,7 +61,12 @@ func (j *jstable) WriteChunks(dst vm.QuerySink, parallel int) error {
 		Output:      &jsquery{dst: dst},
 	}
 	const maxWindowSize = 8 * 1024 * 1024
-	if j.size/int64(parallel) < maxWindowSize {
+	const smallInput = 64 * 1024
+	if j.size < smallInput {
+		// do not bother spawning more threads if we have small input
+		sp.WindowSize = smallInput
+		sp.MaxParallel = 1
+	} else if j.size/int64(parallel) < maxWindowSize {
 		sp.WindowSize = int(j.size / int64(parallel))
 	} else {
 		sp.WindowSize = maxWindowSize

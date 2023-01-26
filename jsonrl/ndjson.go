@@ -191,7 +191,7 @@ func (s *Splitter) Split(r io.ReaderAt, size int64) error {
 	var err error
 	for range offsets {
 		err1 := <-s.errc
-		if err == nil {
+		if err == nil && err1 != nil {
 			err = err1
 			// do not assume all threads have been spawned, break immediately
 			break
