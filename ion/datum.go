@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 
 	"golang.org/x/exp/slices"
@@ -945,15 +944,24 @@ func (l List) Encode(dst *Buffer, st *Symtab) {
 	dst.EndList()
 }
 
+// Len returns the number of items in the list.
+// If the list is malformed, the results are
+// undefined.
 func (l List) Len() int {
 	if l.IsEmpty() {
 		return 0
 	}
+	body, _ := Contents(l.buf)
 	n := 0
-	l.Each(func(Datum) error {
+	for len(body) > 0 {
+		next := SizeOf(body)
+		if next <= 0 || next > len(body) {
+			// malformed ion...
+			return n
+		}
 		n++
-		return nil
-	})
+		body = body[next:]
+	}
 	return n
 }
 
@@ -1262,13 +1270,6 @@ func decodeListDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 	if body == nil {
 		return Empty, nil, errInvalidIon
 	}
-	for len(body) > 0 {
-		var err error
-		body, err = validateDatum(st, body)
-		if err != nil {
-			return Empty, nil, err
-		}
-	}
 	return rawDatum(st, b), rest, nil
 }
 
@@ -1280,25 +1281,6 @@ func decodeStructDatum(st *Symtab, b []byte) (Datum, []byte, error) {
 	fields, rest := Contents(b)
 	if fields == nil {
 		return Empty, nil, errInvalidIon
-	}
-	for len(fields) > 0 {
-		var sym Symbol
-		var err error
-		sym, fields, err = ReadLabel(fields)
-		if err != nil {
-			return Empty, nil, err
-		}
-		if len(fields) == 0 {
-			return Empty, nil, io.ErrUnexpectedEOF
-		}
-		_, ok := st.Lookup(sym)
-		if !ok {
-			return Empty, nil, fmt.Errorf("symbol %d not in symbol table", sym)
-		}
-		fields, err = validateDatum(st, fields)
-		if err != nil {
-			return Empty, nil, err
-		}
 	}
 	return rawDatum(st, b), rest, nil
 }
