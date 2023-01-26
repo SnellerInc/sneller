@@ -193,6 +193,8 @@ func (s *Splitter) Split(r io.ReaderAt, size int64) error {
 		err1 := <-s.errc
 		if err == nil {
 			err = err1
+			// do not assume all threads have been spawned, break immediately
+			break
 		}
 	}
 	if err != nil {
