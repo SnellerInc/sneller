@@ -159,6 +159,11 @@ func (q *Query) Encode(dst *ion.Buffer, st *ion.Symtab) {
 //
 // Returns query, tail of unprocessed Ion and error.
 func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
+	d, rest, err := ion.ReadDatum(st, msg)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	q := &Query{}
 
 	settype := func(typename string) error {
@@ -168,12 +173,12 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 		return nil
 	}
 
-	setitem := func(name string, msg []byte) error {
+	setitem := func(f ion.Field) error {
 		var err error
-		switch name {
+		switch f.Label {
 		case "explain":
 			var v int64
-			v, _, err = ion.ReadInt(msg)
+			v, err = f.Int()
 			if err != nil {
 				return err
 			}
@@ -183,10 +188,10 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 		case "with":
 			hastable := false
 			var table string
-			_, err = ion.UnpackList(msg, func(val []byte) error {
+			err = f.UnpackList(func(d ion.Datum) error {
 				if !hastable {
 					var err error
-					table, _, err = ion.ReadString(val)
+					table, err = d.String()
 					if err != nil {
 						return err
 					}
@@ -195,7 +200,7 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 				}
 
 				// hastable == true
-				node, _, err := Decode(st, val)
+				node, err := FromDatum(d)
 				if err != nil {
 					return err
 				}
@@ -214,19 +219,24 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 			}
 
 		case "into":
-			q.Into, _, err = Decode(st, msg)
+			q.Into, err = FromDatum(f.Datum)
 
 		case "body":
-			q.Body, _, err = Decode(st, msg)
+			q.Body, err = FromDatum(f.Datum)
 
 		default:
-			err = fmt.Errorf("DecodeQuery: unknown field %q", name)
+			err = fmt.Errorf("DecodeQuery: unknown field %q", f.Label)
 		}
 
 		return err
 	}
 
-	rest, err := ion.UnpackTypedStruct(st, msg, settype, setitem)
+	s, err := d.Struct()
+	if err != nil {
+		return nil, rest, err
+	}
+
+	err = s.UnpackTyped(settype, setitem)
 	if err != nil {
 		return nil, rest, fmt.Errorf("DecodeQuery: %w", err)
 	}

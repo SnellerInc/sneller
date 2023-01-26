@@ -77,24 +77,24 @@ func (d *decodeComp) getInterface() Interface {
 	return d.comp
 }
 
-func (d *decodeComp) Init(*ion.Symtab) {
+func (d *decodeComp) Init() {
 	d.comp = d.parent.compressed()
 }
 
-func (d *decodeComp) SetField(name string, body []byte) error {
+func (d *decodeComp) SetField(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "from":
-		d.comp.From, _, err = d.parent.decode(body)
+		d.comp.From, err = d.parent.decode(f.Datum)
 	case "trailer":
-		err = d.parent.td.Decode(body, &d.comp.Trailer)
+		err = d.parent.td.Decode(f.Datum.Raw(), &d.comp.Trailer)
 	case "etext":
-		d.comp.etext, _, err = ion.ReadString(body)
+		d.comp.etext, err = f.String()
 	case "skip":
 		// ignore
 	case "iid":
 		var id int64
-		id, _, err = ion.ReadInt(body)
+		id, err = f.Int()
 		if err != nil {
 			return err
 		}
@@ -295,7 +295,6 @@ func (c *CompressedPart) encode(be *blobEncoder, dst *ion.Buffer, st *ion.Symtab
 }
 
 type decodeCPart struct {
-	st     *ion.Symtab
 	parent *blobDecoder
 	comp   *CompressedPart
 }
@@ -304,23 +303,22 @@ func (d *decodeCPart) getInterface() Interface {
 	return d.comp
 }
 
-func (d *decodeCPart) Init(st *ion.Symtab) {
-	d.st = st
+func (d *decodeCPart) Init() {
 	d.comp = new(CompressedPart)
 }
 
-func (d *decodeCPart) SetField(name string, body []byte) error {
+func (d *decodeCPart) SetField(f ion.Field) error {
 	var err error
 	var n int64
-	switch name {
+	switch f.Label {
 	case "start":
-		n, _, err = ion.ReadInt(body)
+		n, err = f.Int()
 		d.comp.StartBlock = int(n)
 	case "end":
-		n, _, err = ion.ReadInt(body)
+		n, err = f.Int()
 		d.comp.EndBlock = int(n)
 	case "parent-id":
-		n, _, err = ion.ReadInt(body)
+		n, err = f.Int()
 		if err == nil {
 			if idx := n - 1; idx >= 0 && int(idx) < len(d.parent.interned) {
 				d.comp.Parent = d.parent.interned[idx]
@@ -336,11 +334,15 @@ func (d *decodeCPart) SetField(name string, body []byte) error {
 				return fmt.Errorf("unexpected parent blob type %q", typename)
 			}
 
-			dec.Init(d.st)
+			dec.Init()
 			return nil
 		}
 
-		_, err := ion.UnpackTypedStruct(d.st, body, setitem, dec.SetField)
+		s, err := f.Struct()
+		if err != nil {
+			return err
+		}
+		err = s.UnpackTyped(setitem, dec.SetField)
 		if err != nil {
 			return err
 		}

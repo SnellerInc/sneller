@@ -405,24 +405,24 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (a *Aggregate) setfield(f ion.Field) error {
+	switch f.Label {
 	case "op":
-		u, _, err := ion.ReadUint(body)
+		u, err := f.Uint()
 		if err != nil {
 			return err
 		}
 		a.Op = AggregateOp(u)
 	case "inner":
 		var err error
-		a.Inner, _, err = Decode(st, body)
+		a.Inner, err = FromDatum(f.Datum)
 		return err
 	case "over_partition":
 		if a.Over == nil {
 			a.Over = new(Window)
 		}
-		return unpackList(body, func(field []byte) error {
-			item, _, err := Decode(st, field)
+		return f.UnpackList(func(d ion.Datum) error {
+			item, err := FromDatum(d)
 			if err != nil {
 				return err
 			}
@@ -434,14 +434,14 @@ func (a *Aggregate) setfield(name string, st *ion.Symtab, body []byte) error {
 			a.Over = new(Window)
 		}
 		var err error
-		a.Over.OrderBy, err = decodeOrder(st, body)
+		a.Over.OrderBy, err = decodeOrder(f.Datum)
 		return err
 	case "filter_where":
 		var err error
-		a.Filter, _, err = Decode(st, body)
+		a.Filter, err = FromDatum(f.Datum)
 		return err
 	case "precision":
-		p, _, err := ion.ReadUint(body)
+		p, err := f.Uint()
 		if err != nil {
 			return err
 		}
@@ -1007,10 +1007,10 @@ func (r *Rational) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (r *Rational) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (r *Rational) setfield(f ion.Field) error {
+	switch f.Label {
 	case "blob":
-		mem, _, err := ion.ReadBytesShared(body)
+		mem, err := f.BlobShared()
 		if err != nil {
 			return err
 		}
@@ -1113,20 +1113,12 @@ func (d *Dot) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (d *Dot) setfield(name string, st *ion.Symtab, val []byte) (err error) {
-	switch name {
+func (d *Dot) setfield(f ion.Field) (err error) {
+	switch f.Label {
 	case "inner":
-		d.Inner, _, err = Decode(st, val)
+		d.Inner, err = FromDatum(f.Datum)
 	case "field":
-		var sym ion.Symbol
-		sym, _, err = ion.ReadSymbol(val)
-		if err == nil {
-			var ok bool
-			d.Field, ok = st.Lookup(sym)
-			if !ok {
-				err = fmt.Errorf("symbol %d isn't part ofthe symbol table", sym)
-			}
-		}
+		d.Field, err = f.String()
 	default:
 		return errUnexpectedField
 	}
@@ -1195,13 +1187,13 @@ func (i *Index) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (i *Index) setfield(name string, st *ion.Symtab, val []byte) (err error) {
-	switch name {
+func (i *Index) setfield(f ion.Field) (err error) {
+	switch f.Label {
 	case "inner":
-		i.Inner, _, err = Decode(st, val)
+		i.Inner, err = FromDatum(f.Datum)
 	case "offset":
 		var v int64
-		v, _, err = ion.ReadInt(val)
+		v, err = f.Int()
 		if err == nil {
 			i.Offset = int(v)
 		}
@@ -1263,7 +1255,7 @@ func (s Star) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s Star) setfield(name string, st *ion.Symtab, body []byte) error {
+func (s Star) setfield(ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -1290,7 +1282,7 @@ func (m Missing) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (m Missing) setfield(string, *ion.Symtab, []byte) error {
+func (m Missing) setfield(ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -1494,14 +1486,13 @@ func (m *Member) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (m *Member) setfield(name string, st *ion.Symtab, body []byte) error {
+func (m *Member) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "arg":
-		m.Arg, _, err = Decode(st, body)
+		m.Arg, err = FromDatum(f.Datum)
 	case "values":
-		body, _ = ion.Contents(body) // wrapped in a list datum
-		return m.Set.Add(st, body)
+		return m.Set.AddList(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -1621,19 +1612,17 @@ func (l *Lookup) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (l *Lookup) setfield(name string, st *ion.Symtab, body []byte) error {
+func (l *Lookup) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "expr":
-		l.Expr, _, err = Decode(st, body)
+		l.Expr, err = FromDatum(f.Datum)
 	case "else":
-		l.Else, _, err = Decode(st, body)
+		l.Else, err = FromDatum(f.Datum)
 	case "keys":
-		body, _ = ion.Contents(body)
-		l.Keys.Add(st, body)
+		l.Keys.AddList(f.Datum)
 	case "values":
-		body, _ = ion.Contents(body)
-		l.Values.Add(st, body)
+		l.Values.AddList(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -1663,21 +1652,21 @@ func (c *Comparison) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (c *Comparison) setfield(name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (c *Comparison) setfield(f ion.Field) error {
+	switch f.Label {
 	case "op":
-		u, _, err := ion.ReadUint(buf)
+		u, err := f.Uint()
 		if err != nil {
 			return err
 		}
 		c.Op = CmpOp(u)
 	case "left":
 		var err error
-		c.Left, _, err = Decode(st, buf)
+		c.Left, err = FromDatum(f.Datum)
 		return err
 	case "right":
 		var err error
-		c.Right, _, err = Decode(st, buf)
+		c.Right, err = FromDatum(f.Datum)
 		return err
 	default:
 		return errUnexpectedField
@@ -1730,19 +1719,19 @@ func (s *StringMatch) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s *StringMatch) setfield(name string, st *ion.Symtab, val []byte) error {
+func (s *StringMatch) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "op":
 		v := int64(0)
-		v, _, err = ion.ReadInt(val)
+		v, err = f.Int()
 		s.Op = StringMatchOp(v)
 	case "expr":
-		s.Expr, _, err = Decode(st, val)
+		s.Expr, err = FromDatum(f.Datum)
 	case "pattern":
-		s.Pattern, _, err = ion.ReadString(val)
+		s.Pattern, err = f.String()
 	case "escape":
-		s.Escape, _, err = ion.ReadString(val)
+		s.Escape, err = f.String()
 	default:
 		return errUnexpectedField
 	}
@@ -1824,11 +1813,11 @@ func (n *Not) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (n *Not) setfield(name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (n *Not) setfield(f ion.Field) error {
+	switch f.Label {
 	case "inner":
 		var err error
-		n.Expr, _, err = Decode(st, buf)
+		n.Expr, err = FromDatum(f.Datum)
 		return err
 	}
 	return errUnexpectedField
@@ -2016,17 +2005,17 @@ func (l *Logical) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (l *Logical) setfield(name string, st *ion.Symtab, body []byte) error {
+func (l *Logical) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "op":
 		var u uint64
-		u, _, err = ion.ReadUint(body)
+		u, err = f.Uint()
 		l.Op = LogicalOp(u)
 	case "left":
-		l.Left, _, err = Decode(st, body)
+		l.Left, err = FromDatum(f.Datum)
 	case "right":
-		l.Right, _, err = Decode(st, body)
+		l.Right, err = FromDatum(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2117,26 +2106,24 @@ func (b *Builtin) Name() string {
 	return strings.ToUpper(b.Text)
 }
 
-func (b *Builtin) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (b *Builtin) setfield(f ion.Field) error {
+	switch f.Label {
 	case "func":
-		str, _, err := ion.ReadString(body)
+		str, err := f.String()
 		b.Func = name2Builtin(str)
 		if b.Func == Unspecified {
 			b.Text = str
 		}
 		return err
 	case "args":
-		var err error
-		lst, _ := ion.Contents(body)
-		for len(lst) > 0 {
-			var nod Node
-			nod, lst, err = Decode(st, lst)
+		return f.UnpackList(func(d ion.Datum) error {
+			nod, err := FromDatum(d)
 			if err != nil {
 				return err
 			}
 			b.Args = append(b.Args, nod)
-		}
+			return nil
+		})
 	default:
 		return errUnexpectedField
 	}
@@ -2242,16 +2229,16 @@ func (u *UnaryArith) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (u *UnaryArith) setfield(name string, st *ion.Symtab, body []byte) error {
+func (u *UnaryArith) setfield(f ion.Field) error {
 	var err error
 
-	switch name {
+	switch f.Label {
 	case "op":
 		var val uint64
-		val, _, err = ion.ReadUint(body)
+		val, err = f.Uint()
 		u.Op = UnaryArithOp(val)
 	case "child":
-		u.Child, _, err = Decode(st, body)
+		u.Child, err = FromDatum(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2412,17 +2399,17 @@ func (a *Arithmetic) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (a *Arithmetic) setfield(name string, st *ion.Symtab, body []byte) error {
+func (a *Arithmetic) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "op":
 		var u uint64
-		u, _, err = ion.ReadUint(body)
+		u, err = f.Uint()
 		a.Op = ArithOp(u)
 	case "left":
-		a.Left, _, err = Decode(st, body)
+		a.Left, err = FromDatum(f.Datum)
 	case "right":
-		a.Right, _, err = Decode(st, body)
+		a.Right, err = FromDatum(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2523,11 +2510,11 @@ func (a *Appended) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (a *Appended) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (a *Appended) setfield(f ion.Field) error {
+	switch f.Label {
 	case "values":
-		return unpackList(body, func(body []byte) error {
-			v, _, err := Decode(st, body)
+		return f.UnpackList(func(d ion.Datum) error {
+			v, err := FromDatum(d)
 			if err != nil {
 				return err
 			}
@@ -2622,15 +2609,15 @@ func (i *IsKey) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (i *IsKey) setfield(name string, st *ion.Symtab, body []byte) error {
+func (i *IsKey) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "key":
 		var u uint64
-		u, _, err = ion.ReadUint(body)
+		u, err = f.Uint()
 		i.Key = Keyword(u)
 	case "inner":
-		i.Expr, _, err = Decode(st, body)
+		i.Expr, err = FromDatum(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2925,22 +2912,28 @@ func (c *Case) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (c *Case) setfield(name string, st *ion.Symtab, body []byte) error {
+func (c *Case) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "limbs":
-		return unpackList(body, func(field []byte) error {
-			var when, then Node
-			var err error
-			body, _ := ion.Contents(field)
-			if body == nil {
-				return fmt.Errorf("invalid contents")
-			}
-			when, body, err = Decode(st, body)
+		return f.UnpackList(func(d ion.Datum) error {
+			i, err := d.Iterator()
 			if err != nil {
 				return err
 			}
-			then, _, err = Decode(st, body)
+			d, err = i.Next()
+			if err != nil {
+				return err
+			}
+			when, err := FromDatum(d)
+			if err != nil {
+				return err
+			}
+			d, err = i.Next()
+			if err != nil {
+				return err
+			}
+			then, err := FromDatum(d)
 			if err != nil {
 				return err
 			}
@@ -2948,9 +2941,9 @@ func (c *Case) setfield(name string, st *ion.Symtab, body []byte) error {
 			return nil
 		})
 	case "else":
-		c.Else, _, err = Decode(st, body)
+		c.Else, err = FromDatum(f.Datum)
 	case "valence":
-		c.Valence, _, err = ion.ReadString(body)
+		c.Valence, err = f.String()
 	default:
 		return errUnexpectedField
 	}
@@ -3084,16 +3077,16 @@ func (c *Cast) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (c *Cast) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (c *Cast) setfield(f ion.Field) error {
+	switch f.Label {
 	case "from":
-		from, _, err := Decode(st, body)
+		from, err := FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
 		c.From = from
 	case "to":
-		to, _, err := ion.ReadInt(body)
+		to, err := f.Int()
 		if err != nil {
 			return err
 		}
@@ -3367,17 +3360,13 @@ func (s *Struct) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s *Struct) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (s *Struct) setfield(f ion.Field) error {
+	switch f.Label {
 	case "value":
 		// should just be a raw structure datum
-		value, _, err := ion.ReadDatum(st, body)
-		if err != nil {
-			return err
-		}
-		rv, ok := AsConstant(value)
+		rv, ok := AsConstant(f.Datum)
 		if !ok {
-			return fmt.Errorf("cannot use %T as constant", value)
+			return fmt.Errorf("cannot use %s as constant", f.Type())
 		}
 		sval, ok := rv.(*Struct)
 		if !ok {
@@ -3457,16 +3446,12 @@ func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (l *List) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (l *List) setfield(f ion.Field) error {
+	switch f.Label {
 	case "value":
-		dat, _, err := ion.ReadDatum(st, body)
-		if err != nil {
-			return err
-		}
-		cnst, ok := AsConstant(dat)
+		cnst, ok := AsConstant(f.Datum)
 		if !ok {
-			return fmt.Errorf("got value of type %T", dat)
+			return fmt.Errorf("got value of type %s", f.Type())
 		}
 		lst, ok := cnst.(*List)
 		if !ok {
@@ -3586,19 +3571,19 @@ func (u *Unpivot) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (u *Unpivot) setfield(name string, st *ion.Symtab, body []byte) error {
+func (u *Unpivot) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "As":
 		var s string
-		s, _, err = ion.ReadString(body)
+		s, err = f.String()
 		u.As = &s
 	case "At":
 		var s string
-		s, _, err = ion.ReadString(body)
+		s, err = f.String()
 		u.At = &s
 	case "TupleRef":
-		u.TupleRef, _, err = Decode(st, body)
+		u.TupleRef, err = FromDatum(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -3701,28 +3686,25 @@ func (u *Union) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (u *Union) setfield(name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (u *Union) setfield(f ion.Field) error {
+	switch f.Label {
 	case "uniontype":
-		v, _, err := ion.ReadUint(body)
+		v, err := f.Uint()
 		if err != nil {
 			return err
 		}
-
 		u.Type = UnionType(v)
 	case "left":
-		v, _, err := Decode(st, body)
+		v, err := FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
-
 		u.Left = v
 	case "right":
-		v, _, err := Decode(st, body)
+		v, err := FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
-
 		u.Right = v
 	default:
 		return errUnexpectedField
@@ -3755,8 +3737,3 @@ func (u *Union) text(dst *strings.Builder, redact bool) {
 }
 
 var _ Node = &Union{}
-
-func unpackList(body []byte, fn func([]byte) error) error {
-	_, err := ion.UnpackList(body, fn)
-	return err
-}

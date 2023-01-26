@@ -95,12 +95,13 @@ func FuzzCheck(f *testing.F) {
 		var buf ion.Buffer
 		var st ion.Symtab
 		q.Body.Encode(&buf, &st)
-		ret, rest, err := expr.Decode(&st, buf.Bytes())
+		d, _, err := ion.ReadDatum(&st, buf.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ret, err := expr.FromDatum(d)
 		if err != nil {
 			t.Fatalf("Decode of %s failed: %s", expr.ToString(q.Body), err)
-		}
-		if len(rest) > 0 {
-			t.Errorf("%d left-over bytes from Decode?", len(rest))
 		}
 		// Encode -> Decode should yield an Equivalent expression
 		if !expr.Equivalent(q.Body, ret) {

@@ -1106,7 +1106,11 @@ func testEquivalence(e Node, t *testing.T) {
 	var st ion.Symtab
 	e.Encode(&buf, &st)
 
-	res, _, err := Decode(&st, buf.Bytes())
+	d, _, err := ion.ReadDatum(&st, buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := FromDatum(d)
 	if err != nil {
 		t.Helper()
 		t.Errorf("node in: %s - error %s", e, err)

@@ -158,32 +158,29 @@ func (d *decodeURL) getInterface() Interface {
 	return d.url
 }
 
-func (d *decodeURL) Init(*ion.Symtab) {
+func (d *decodeURL) Init() {
 	d.url = d.parent.url()
 }
 
-func (d *decodeURL) SetField(name string, body []byte) error {
+func (d *decodeURL) SetField(f ion.Field) error {
 	var err error
-	var b []byte
-	switch name {
+	switch f.Label {
 	case "value":
-		b, _, err = ion.ReadStringShared(body)
-		d.url.Value = d.parent.string(b)
+		d.url.Value, err = d.parent.string(f)
 	case "etag":
-		b, _, err = ion.ReadStringShared(body)
-		d.url.Info.ETag = d.parent.string(b)
+		d.url.Info.ETag, err = d.parent.string(f)
 	case "size":
-		d.url.Info.Size, _, err = ion.ReadInt(body)
+		d.url.Info.Size, err = f.Int()
 	case "align":
 		var align int64
-		align, _, err = ion.ReadInt(body)
+		align, err = f.Int()
 		d.url.Info.Align = int(align)
 	case "last-modified":
-		d.url.Info.LastModified, _, err = ion.ReadTime(body)
+		d.url.Info.LastModified, err = f.Timestamp()
 	case "ephemeral":
-		d.url.Info.Ephemeral, _, err = ion.ReadBool(body)
+		d.url.Info.Ephemeral, err = f.Bool()
 	case "no-if-match":
-		d.url.UnsafeNoIfMatch, _, err = ion.ReadBool(body)
+		d.url.UnsafeNoIfMatch, err = f.Bool()
 	default:
 		return fmt.Errorf("unrecognized field")
 	}
@@ -335,59 +332,65 @@ func (l *List) encode(dst *ion.Buffer, st *ion.Symtab) {
 }
 
 func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
-	if ion.TypeOf(body) != ion.StructType {
-		return decodeList(st, body)
+	d, _, err := ion.ReadDatum(st, body)
+	if err != nil {
+		return nil, err
+	}
+	if !d.IsStruct() {
+		return decodeList(st, d)
 	}
 	var dec compr.Decompressor
-	var buf []byte
-	_, err := ion.UnpackStruct(st, body, func(name string, inner []byte) error {
-		switch name {
+	var buf, data []byte
+	err = d.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "algo":
-			algo, _, err := ion.ReadStringShared(inner)
+			algo, err := f.StringShared()
 			if err != nil {
 				return err
 			}
 			dec = compr.Decompression(string(algo))
 		case "size":
-			size, _, err := ion.ReadInt(inner)
+			size, err := f.Int()
 			if err != nil {
 				return err
 			}
 			buf = make([]byte, size)
 		case "data":
-			if dec == nil || buf == nil {
-				return fmt.Errorf("blob.DecodeList: missing algo or size")
-			}
-			data, _, err := ion.ReadBytesShared(inner)
-			if err != nil {
-				return err
-			}
-			return dec.Decompress(data, buf)
+			data, err = f.BlobShared()
+			return err
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return decodeList(st, buf)
+	if dec == nil || buf == nil || data == nil {
+		return nil, fmt.Errorf("blob.DecodeList: missing algo, size, or data")
+	}
+	err = dec.Decompress(data, buf)
+	if err != nil {
+		return nil, err
+	}
+	d2, err := d.DecodeRelated(buf)
+	if err != nil {
+		return nil, err
+	}
+	return decodeList(st, d2)
 }
 
-func decodeList(st *ion.Symtab, body []byte) (*List, error) {
-	l := &List{}
-	d := blobDecoder{}
-	d.td.Symbols = st
-
-	_, err := ion.UnpackList(body, func(buf []byte) error {
-		inner, _, err := d.decode(buf)
+func decodeList(st *ion.Symtab, d ion.Datum) (*List, error) {
+	out := &List{}
+	dec := blobDecoder{}
+	dec.td.Symbols = st
+	err := d.UnpackList(func(d ion.Datum) error {
+		inner, err := dec.decode(d)
 		if err != nil {
 			return err
 		}
-
-		l.Contents = append(l.Contents, inner)
+		out.Contents = append(out.Contents, inner)
 		return nil
 	})
-
-	return l, err
+	return out, err
 }
 
 type blobEncoder struct {
@@ -448,9 +451,18 @@ func (d *blobDecoder) compressed() *Compressed {
 	return &d.comps[len(d.comps)-1]
 }
 
-// string copies b to a contiguous buffer and returns a
-// string aliasing it.
-func (d *blobDecoder) string(b []byte) string {
+// string copies the string value of f to a
+// contiguous buffer and returns a string
+// aliasing it. This returns an error if d is
+// not a string or symbol.
+func (d *blobDecoder) string(f ion.Field) (string, error) {
+	if f.IsSymbol() {
+		return f.String() // no need to copy
+	}
+	b, err := f.StringShared()
+	if err != nil {
+		return "", err
+	}
 	if len(b) > cap(d.str) {
 		d.strcap = len(b) + 2*d.strcap
 		d.str = make([]byte, 0, d.strcap)
@@ -459,26 +471,17 @@ func (d *blobDecoder) string(b []byte) string {
 	copy(d.str, b)
 	s := *(*string)(unsafe.Pointer(&d.str))
 	d.str = d.str[len(d.str):]
-	return s
+	return s, nil
 }
 
 type interfaceDecoder interface {
-	ion.StructParser
+	Init()
+	SetField(ion.Field) error
+	Finalize() error
 	getInterface() Interface
 }
 
-func (d *blobDecoder) decode(buf []byte) (Interface, []byte, error) {
-	st := d.td.Symbols
-	if ion.TypeOf(buf) != ion.StructType {
-		if ion.TypeOf(buf) == ion.StringType {
-			str, _, err := ion.ReadString(buf)
-			if str != "" && err == nil {
-				return nil, nil, fmt.Errorf("blob.DecodeList: %s", str)
-			}
-		}
-		return nil, nil, fmt.Errorf("blob.DecodeList: unexpected blob ion type %v", ion.TypeOf(buf))
-	}
-
+func (d *blobDecoder) decode(v ion.Datum) (Interface, error) {
 	var dec interfaceDecoder
 
 	settype := func(typename string) error {
@@ -493,15 +496,19 @@ func (d *blobDecoder) decode(buf []byte) (Interface, []byte, error) {
 			return fmt.Errorf("unrecognized blob type %q", typename)
 		}
 
-		dec.Init(st)
+		dec.Init()
 		return nil
 	}
 
-	setitem := func(name string, body []byte) error {
-		return dec.SetField(name, body)
+	setitem := func(f ion.Field) error {
+		return dec.SetField(f)
 	}
 
-	rest, err := ion.UnpackTypedStruct(st, buf, settype, setitem)
+	s, err := v.Struct()
+	if err != nil {
+		return nil, err
+	}
+	err = s.UnpackTyped(settype, setitem)
 	var err2 error
 	if dec != nil {
 		err2 = dec.Finalize()
@@ -510,8 +517,8 @@ func (d *blobDecoder) decode(buf []byte) (Interface, []byte, error) {
 		err = err2
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("blob.DecodeList: %w", err)
+		return nil, fmt.Errorf("blob.DecodeList: %w", err)
 	}
 
-	return dec.getInterface(), rest, nil
+	return dec.getInterface(), nil
 }

@@ -172,6 +172,18 @@ func (b *Bag) Add(st *Symtab, raw []byte) error {
 	return nil
 }
 
+// AddList adds the contents of a list to the
+// bag. If d is not a list, this returns an
+// error.
+func (b *Bag) AddList(d Datum) error {
+	i, err := d.Iterator()
+	if err != nil {
+		return err
+	}
+	st := i.symtab()
+	return b.Add(&st, i.buf)
+}
+
 // AddDatum adds a single datum to the bag.
 func (b *Bag) AddDatum(d Datum) {
 	if d.IsEmpty() {

@@ -68,7 +68,11 @@ func TestDecodeFailures(t *testing.T) {
 			buf.EndStruct()
 
 			// when
-			_, _, err := Decode(&st, buf.Bytes())
+			d, _, err := ion.ReadDatum(&st, buf.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = FromDatum(d)
 
 			// then
 			if err == nil {

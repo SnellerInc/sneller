@@ -23,48 +23,58 @@ import (
 )
 
 func Decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
-	node, rest, err := decode(st, msg)
+	d, rest, err := ion.ReadDatum(st, msg)
+	if err != nil {
+		return nil, nil, err
+	}
+	n, err := FromDatum(d)
+	return n, rest, err
+}
+
+func FromDatum(d ion.Datum) (Node, error) {
+	node, err := fromDatum(d)
 	if err != nil {
 		err = fmt.Errorf("expr.Decode: %w", err)
 	}
-	return node, rest, err
+	return node, err
 }
 
-func decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
-	if len(msg) == 0 {
-		return nil, nil, fmt.Errorf("no input data")
+func fromDatum(d ion.Datum) (Node, error) {
+	if d.IsEmpty() {
+		return nil, fmt.Errorf("no input data")
 	}
-	switch ion.TypeOf(msg) {
+	switch d.Type() {
 	case ion.NullType:
-		return Null{}, msg[ion.SizeOf(msg):], nil
+		return Null{}, nil
 	case ion.BoolType:
-		b, rest, err := ion.ReadBool(msg)
-		return Bool(b), rest, err
+		b, err := d.Bool()
+		return Bool(b), err
 	case ion.UintType:
-		u, rest, err := ion.ReadUint(msg)
-		return Integer(u), rest, err
+		u, err := d.Uint()
+		return Integer(u), err
 	case ion.IntType:
-		i, rest, err := ion.ReadInt(msg)
-		return Integer(i), rest, err
+		i, err := d.Int()
+		return Integer(i), err
 	case ion.FloatType:
-		f, rest, err := ion.ReadFloat64(msg)
-		return Float(f), rest, err
+		f, err := d.Float()
+		return Float(f), err
 	case ion.StringType:
-		s, rest, err := ion.ReadString(msg)
-		return String(s), rest, err
+		s, err := d.String()
+		return String(s), err
 	case ion.StructType:
-		return decodeStruct(st, msg)
-	case ion.SymbolType:
-		sym, rest, err := ion.ReadSymbol(msg)
-		return Ident(st.Get(sym)), rest, err
-	case ion.TimestampType:
-		d, rest, err := ion.ReadTime(msg)
-		return &Timestamp{Value: d}, rest, err
-	default:
-		if len(msg) > 8 {
-			msg = msg[:8]
+		s, err := d.Struct()
+		if err != nil {
+			return nil, err
 		}
-		return nil, nil, fmt.Errorf("cannot decode ion %x", msg)
+		return decodeStruct(s)
+	case ion.SymbolType:
+		s, err := d.String()
+		return Ident(s), err
+	case ion.TimestampType:
+		d, err := d.Timestamp()
+		return &Timestamp{Value: d}, err
+	default:
+		return nil, fmt.Errorf("cannot decode ion %s", d.Type())
 	}
 }
 
@@ -72,7 +82,7 @@ var (
 	errUnexpectedField = errors.New("unexpected field")
 )
 
-func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
+func decodeStruct(s ion.Struct) (composite, error) {
 	var node composite
 
 	settype := func(typename string) error {
@@ -84,22 +94,18 @@ func decodeStruct(st *ion.Symtab, msg []byte) (composite, []byte, error) {
 		return nil
 	}
 
-	setfield := func(name string, field []byte) error {
-		err := node.setfield(name, st, field)
-		if err != nil {
-			return fmt.Errorf("decoding %T, field %q: %w", node, name, err)
-		}
-		return nil
+	setfield := func(f ion.Field) error {
+		return node.setfield(f)
 	}
 
-	rest, err := ion.UnpackTypedStruct(st, msg, settype, setfield)
+	err := s.UnpackTyped(settype, setfield)
 
-	return node, rest, err
+	return node, err
 }
 
 type composite interface {
 	Node
-	setfield(name string, st *ion.Symtab, buf []byte) error
+	setfield(f ion.Field) error
 }
 
 func getEmpty(name string) composite {

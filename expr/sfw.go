@@ -217,13 +217,13 @@ func (t *Table) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (t *Table) setfield(name string, st *ion.Symtab, body []byte) error {
+func (t *Table) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "expr":
-		t.Expr, _, err = Decode(st, body)
+		t.Expr, err = FromDatum(f.Datum)
 	case "bind":
-		str, _, err := ion.ReadString(body)
+		str, err := f.String()
 		if err != nil {
 			return err
 		}
@@ -275,13 +275,13 @@ func (o *OnEquals) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (o *OnEquals) setfield(name string, st *ion.Symtab, body []byte) error {
+func (o *OnEquals) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "left":
-		o.Left, _, err = Decode(st, body)
+		o.Left, err = FromDatum(f.Datum)
 	case "right":
-		o.Right, _, err = Decode(st, body)
+		o.Right, err = FromDatum(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -353,20 +353,20 @@ func (j *Join) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (j *Join) setfield(name string, st *ion.Symtab, body []byte) error {
+func (j *Join) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "kind":
-		u, _, err := ion.ReadUint(body)
+		u, err := f.Uint()
 		if err != nil {
 			return err
 		}
 		j.Kind = JoinKind(u)
 	case "on":
-		j.On, _, err = Decode(st, body)
+		j.On, err = FromDatum(f.Datum)
 		return err
 	case "left":
-		e, _, err := Decode(st, body)
+		e, err := FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -378,10 +378,10 @@ func (j *Join) setfield(name string, st *ion.Symtab, body []byte) error {
 		return nil
 	case "right":
 		var err error
-		j.Right.Expr, _, err = Decode(st, body)
+		j.Right.Expr, err = FromDatum(f.Datum)
 		return err
 	case "bind":
-		str, _, err := ion.ReadString(body)
+		str, err := f.String()
 		if err != nil {
 			return err
 		}
@@ -735,24 +735,25 @@ func (s *Select) HasDistinct() bool {
 	return s.Distinct || s.DistinctExpr != nil
 }
 
-func decodeOrder(st *ion.Symtab, body []byte) ([]Order, error) {
+func decodeOrder(d ion.Datum) ([]Order, error) {
 	var out []Order
-	_, err := ion.UnpackList(body, func(body []byte) error {
+	err := d.UnpackList(func(d ion.Datum) error {
 		var o Order
-		_, err := ion.UnpackStruct(st, body, func(name string, inner []byte) error {
+		s, err := d.Struct()
+		if err != nil {
+			return err
+		}
+		err = s.Each(func(f ion.Field) error {
 			var err error
-			switch name {
+			switch f.Label {
 			case "col":
-				o.Column, _, err = Decode(st, inner)
+				o.Column, err = FromDatum(f.Datum)
 			case "desc":
-				o.Desc, _, err = ion.ReadBool(inner)
+				o.Desc, err = f.Bool()
 			case "nulls_last":
-				o.NullsLast, _, err = ion.ReadBool(inner)
+				o.NullsLast, err = f.Bool()
 			}
-			if err != nil {
-				return fmt.Errorf("decoding field %s: %w", name, err)
-			}
-			return nil
+			return err
 		})
 		if err != nil {
 			return err
@@ -770,27 +771,35 @@ func decodeOrder(st *ion.Symtab, body []byte) ([]Order, error) {
 }
 
 func DecodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
-	b, err := decodeBindings(st, body)
+	d, _, err := ion.ReadDatum(st, body)
+	if err != nil {
+		return nil, err
+	}
+	b, err := decodeBindings(d)
 	if err != nil {
 		err = fmt.Errorf("expr.DecodeBindings: %w", err)
 	}
 	return b, err
 }
 
-func decodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
+func decodeBindings(d ion.Datum) ([]Binding, error) {
 	var out []Binding
-	_, err := ion.UnpackList(body, func(body []byte) error {
+	err := d.UnpackList(func(d ion.Datum) error {
 		var b Binding
-		_, err := ion.UnpackStruct(st, body, func(name string, inner []byte) error {
-			switch name {
+		s, err := d.Struct()
+		if err != nil {
+			return err
+		}
+		err = s.Each(func(f ion.Field) error {
+			switch f.Label {
 			case "expr":
-				exp, _, err := Decode(st, inner)
+				exp, err := FromDatum(f.Datum)
 				if err != nil {
 					return err
 				}
 				b.Expr = exp
 			case "bind":
-				str, _, err := ion.ReadString(inner)
+				str, err := f.String()
 				if err != nil {
 					return err
 				}
@@ -813,31 +822,30 @@ func decodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
 	return out, nil
 }
 
-func decodeDistinctExpr(st *ion.Symtab, body []byte) ([]Node, error) {
+func decodeDistinctExpr(d ion.Datum) ([]Node, error) {
 	var out []Node
-	_, err := ion.UnpackList(body, func(body []byte) error {
-		n, _, err := Decode(st, body)
+	err := d.UnpackList(func(d ion.Datum) error {
+		n, err := FromDatum(d)
 		if err != nil {
 			return err
 		}
 		out = append(out, n)
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
+func (s *Select) setfield(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "cols":
-		s.Columns, err = decodeBindings(st, body)
+		s.Columns, err = decodeBindings(f.Datum)
 	case "from":
 		var e Node
-		e, _, err = Decode(st, body)
+		e, err = FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -847,20 +855,20 @@ func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 		}
 		s.From = f
 	case "where":
-		s.Where, _, err = Decode(st, body)
+		s.Where, err = FromDatum(f.Datum)
 	case "having":
-		s.Having, _, err = Decode(st, body)
+		s.Having, err = FromDatum(f.Datum)
 	case "group_by":
-		s.GroupBy, err = decodeBindings(st, body)
+		s.GroupBy, err = decodeBindings(f.Datum)
 	case "order_by":
-		s.OrderBy, err = decodeOrder(st, body)
+		s.OrderBy, err = decodeOrder(f.Datum)
 	case "distinct":
-		s.Distinct, _, err = ion.ReadBool(body)
+		s.Distinct, err = f.Bool()
 	case "distinct_expr":
-		s.DistinctExpr, err = decodeDistinctExpr(st, body)
+		s.DistinctExpr, err = decodeDistinctExpr(f.Datum)
 	case "limit":
 		var i int64
-		i, _, err = ion.ReadInt(body)
+		i, err = f.Int()
 		if err != nil {
 			return err
 		}
@@ -868,7 +876,7 @@ func (s *Select) setfield(name string, st *ion.Symtab, body []byte) error {
 		s.Limit = &lim
 	case "offset":
 		var i int64
-		i, _, err = ion.ReadInt(body)
+		i, err = f.Int()
 		if err != nil {
 			return err
 		}

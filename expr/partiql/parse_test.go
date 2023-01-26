@@ -173,10 +173,14 @@ func BenchmarkDeserialize(b *testing.B) {
 			var buf ion.Buffer
 			var st ion.Symtab
 			e.Body.Encode(&buf, &st)
+			d, _, err := ion.ReadDatum(&st, buf.Bytes())
+			if err != nil {
+				b.Fatal(err)
+			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				_, _, err := expr.Decode(&st, buf.Bytes())
+				_, err := expr.FromDatum(d)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -608,8 +612,12 @@ func testEquivalence(t *testing.T, e expr.Node) {
 	var obuf ion.Buffer
 	var st ion.Symtab
 	e.Encode(&obuf, &st)
-
-	res, _, err := expr.Decode(&st, obuf.Bytes())
+	d, _, err := ion.ReadDatum(&st, obuf.Bytes())
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
+	res, err := expr.FromDatum(d)
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)

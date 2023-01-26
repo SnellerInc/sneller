@@ -535,6 +535,24 @@ func (d Datum) iterator(field string) (Iterator, error) {
 	return l.Iterator()
 }
 
+// DecodeRelated attempts to decode a datum that
+// was encoded using the same symbol table as
+// this datum, for example when a struct
+// contains a blob holding the compressed
+// encoded form of another composite object.
+//
+// This method only works with lists and
+// structs. Calling this method on any other
+// data type will result in an error.
+func (d Datum) DecodeRelated(b []byte) (Datum, error) {
+	if !d.IsList() && !d.IsStruct() {
+		return Empty, fmt.Errorf("ion.Datum.DecodeRelated: receiver must be List or Struct")
+	}
+	st := d.symtab()
+	d2, _, err := ReadDatum(&st, b)
+	return d2, err
+}
+
 func (d *Datum) bad(field string, want Type) error {
 	return &TypeError{Wanted: want, Found: d.Type(), Field: field}
 }

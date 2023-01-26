@@ -46,12 +46,13 @@ func TestSelectEquals(t *testing.T) {
 		var buf ion.Buffer
 		var st ion.Symtab
 		s.Body.Encode(&buf, &st)
-		node, rest, err := expr.Decode(&st, buf.Bytes())
+		d, _, err := ion.ReadDatum(&st, buf.Bytes())
+		if err != nil {
+			t.Fatalf("case %d: decode datum: %s", i, err)
+		}
+		node, err := expr.FromDatum(d)
 		if err != nil {
 			t.Fatalf("case %d: decode: %s", i, err)
-		}
-		if len(rest) != 0 {
-			t.Errorf("case %d: %d bytes left over?", i, len(rest))
 		}
 		s3, ok := node.(*expr.Select)
 		if !ok {

@@ -15,7 +15,6 @@
 package ion
 
 import (
-	"errors"
 	"fmt"
 )
 
@@ -23,54 +22,63 @@ import (
 // first field is "type". The value of field is passed
 // to settype callback. Subsequent fields are passed
 // to setitem callback.
+//
+// XXX: This method is deprecated. Use
+// Struct.UnpackTyped.
 func UnpackTypedStruct(st *Symtab, buf []byte, settype func(typename string) error, setfield func(name string, body []byte) error) ([]byte, error) {
-	_, err := UnpackStruct(st, buf, func(name string, body []byte) error {
-		if name != "type" {
-			// Note: "type" would be usually the first field, but
-			//       since fields are ordered by id, and it's
-			//       not guaranteed.
-			return nil
-		}
-
-		sym, _, err := ReadSymbol(body)
-		if err != nil {
-			return err
-		}
-
-		typename, ok := st.Lookup(sym)
-		if !ok {
-			return fmt.Errorf("symbol %d not found", sym)
-		}
-
-		err = settype(typename)
-		if err != nil {
-			return err
-		}
-
-		return errStop
-	})
-
-	if err != nil && err != errStop {
+	d, rest, err := ReadDatum(st, buf)
+	if err != nil {
 		return nil, err
 	}
-
-	if err != errStop {
-		return nil, fmt.Errorf("field \"type\" not found")
+	s, err := d.Struct()
+	if err != nil {
+		return nil, err
 	}
-
-	return UnpackStruct(st, buf, func(name string, body []byte) error {
-		if name != "type" {
-			err := setfield(name, body)
-			if err != nil {
-				return fmt.Errorf("decoding field %q: %w", name, err)
-			}
-		}
-
-		return nil
+	return rest, s.UnpackTyped(settype, func(f Field) error {
+		return setfield(f.Label, f.buf)
 	})
 }
 
-var errStop = errors.New("stop iteration")
+func (s Struct) UnpackTyped(settype func(typ string) error, setfield func(Field) error) error {
+	var fields []Field // fields seen before type
+	found := false
+	err := s.Each(func(f Field) error {
+		if f.Label != "type" {
+			if found {
+				return setfield(f)
+			}
+			fields = append(fields, f)
+			return nil
+		}
+		if found {
+			// shouldn't be possible...
+			return fmt.Errorf("duplicate type field")
+		}
+		typ, err := f.String()
+		if err != nil {
+			return err
+		}
+		err = settype(typ)
+		if err != nil {
+			return err
+		}
+		found = true
+		for i := range fields {
+			if err := setfield(fields[i]); err != nil {
+				return err
+			}
+		}
+		fields = nil
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("field \"type\" not found")
+	}
+	return nil
+}
 
 // StructParser is an Ion struct decoder.
 type StructParser interface {
