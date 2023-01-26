@@ -40,6 +40,7 @@ const MaxSymbolID = (1 << 21) - 1
 
 // traceOut is the destination for writing VM bytecode while compiling.
 var traceOut io.Writer
+var traceOutDot bool
 
 // tracef formats according to a format specifier and writes to
 // the trace destination
@@ -51,8 +52,9 @@ func tracef(f string, args ...any) {
 
 // Trace enables tracing of all VM bytecode compilation
 // if w is non-nil, or disables tracing if w is nil.
-func Trace(w io.Writer) {
+func Trace(w io.Writer, dot bool) {
 	traceOut = w
+	traceOutDot = dot
 }
 
 type value struct {
@@ -2903,6 +2905,7 @@ func (v *value) String() string {
 	return str
 }
 
+// writeTo writes bytecode as text to io.Writer w
 func (p *prog) writeTo(w io.Writer) (int64, error) {
 	var nn int64
 	values := p.values
@@ -2919,6 +2922,55 @@ func (p *prog) writeTo(w io.Writer) (int64, error) {
 	n, err := fmt.Fprintf(w, "ret: %s\n", p.ret.Name())
 	nn += int64(n)
 	return nn, err
+}
+
+// writeToDot writes bytecode as dot graph to io.Writer w
+func (p *prog) writeToDot(w io.Writer, name string) (int64, error) {
+	getResults := func(v *value) []string {
+		var results []string
+		rt := ssainfo[v.op].rettype
+		value := rt &^ stBool
+		if value != 0 {
+			results = append(results, string(value.char())+strconv.Itoa(v.id))
+		}
+		if rt&stBool != 0 {
+			results = append(results, "k"+strconv.Itoa(v.id))
+		}
+		return results
+	}
+
+	getArgs := func(v *value) []string {
+		var args []string
+		info := &ssainfo[v.op]
+		for i := range v.args {
+			arg := string(info.argType(i).char()) + strconv.Itoa(v.args[i].id)
+			args = append(args, arg)
+		}
+		return args
+	}
+
+	var nn int64
+	values := p.values
+	nodeID := make(map[string]int)
+	n, _ := io.WriteString(w, fmt.Sprintf("digraph a {\n\tnode [shape=\"rectangle\"];\n\trankdir=TD;\n\tlabelloc=\"t\";\n\tlabel=\"%v\";\n", name))
+	nn += int64(n)
+
+	for idCurr, v := range values {
+		for _, id := range getResults(v) {
+			nodeID[id] = idCurr
+		}
+		args := getArgs(v)
+		n, _ := io.WriteString(w, fmt.Sprintf("\ts%v [label=\"%v\"];\n", idCurr, v.String()))
+		nn += int64(n)
+
+		for _, id := range args {
+			n, _ := io.WriteString(w, fmt.Sprintf("\ts%v -> s%v [label=\"%v\"];\n", nodeID[id], idCurr, id))
+			nn += int64(n)
+		}
+	}
+	n, _ = io.WriteString(w, "}\n")
+	nn += int64(n)
+	return nn, nil
 }
 
 // core post-order instruction scheduling logic
@@ -3993,9 +4045,17 @@ func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
 
 	if traceOut != nil {
 		sb := strings.Builder{}
-		sb.WriteString(callerName + ":\n")
-		p.writeTo(&sb)
-		sb.WriteString("----------------\n")
+		if traceOutDot {
+			if _, err := p.writeToDot(&sb, callerName); err != nil {
+				return err
+			}
+		} else {
+			sb.WriteString(callerName + ":\n")
+			if _, err := p.writeTo(&sb); err != nil {
+				return err
+			}
+			sb.WriteString("----------------\n")
+		}
 		tracef(sb.String())
 	}
 

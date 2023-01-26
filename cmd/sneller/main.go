@@ -337,7 +337,7 @@ func do(arg string) {
 		exitf("making query plan: %s", err)
 	}
 
-	if dashg {
+	if dashg && !dashbc {
 		// -g -> just Graphviz
 		if err = plan.Graphviz(tree, dst); err != nil {
 			exit(err)
@@ -358,7 +358,7 @@ func do(arg string) {
 	}
 
 	if dashbc {
-		vm.Trace(os.Stderr)
+		vm.Trace(os.Stderr, dashg)
 	}
 
 	var stat plan.ExecStats
@@ -434,7 +434,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if (dashg || dashg2 || dashg3) && dashj {
+	if (dashg && !dashbc) || dashg2 || dashg3 {
 		// can't write graphviz output
 		// as json, obviously...
 		dashj = false
