@@ -1123,6 +1123,12 @@ func TestSimplifyWithNaN(t *testing.T) {
 		&Cast{From: NaN, To: FloatType},
 		&Cast{From: NaN, To: IntegerType},
 		&Cast{From: NaN, To: StringType},
+
+		// abs (via rules)
+		Call(Abs, NaN),
+
+		// sign (via rules)
+		Call(Sign, NaN),
 	}
 
 	for i := range expressions {

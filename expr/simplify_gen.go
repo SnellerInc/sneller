@@ -138,9 +138,11 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 	switch src.Func {
 	case Abs:
 		if len(src.Args) == 1 {
-			// (abs (number x)) -> "(*Rational)(new(big.Rat).Abs(x.rat()))"
-			if x, ok := (src.Args[0]).(number); ok {
-				return (*Rational)(new(big.Rat).Abs(x.rat()))
+			// (abs (number x)) -> "(*Rational)(new(big.Rat).Abs(x))"
+			if _tmp001000 := asrational(src.Args[0]); _tmp001000 != nil {
+				if x := _tmp001000; true {
+					return (*Rational)(new(big.Rat).Abs(x))
+				}
 			}
 		}
 	case CharLength:
@@ -461,9 +463,11 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 		}
 	case Sign:
 		if len(src.Args) == 1 {
-			// (sign (number x)) -> "(*Rational)(new(big.Rat).SetInt64(int64(x.rat().Sign())))"
-			if x, ok := (src.Args[0]).(number); ok {
-				return (*Rational)(new(big.Rat).SetInt64(int64(x.rat().Sign())))
+			// (sign (number x)) -> "(*Rational)(new(big.Rat).SetInt64(int64(x.Sign())))"
+			if _tmp001000 := asrational(src.Args[0]); _tmp001000 != nil {
+				if x := _tmp001000; true {
+					return (*Rational)(new(big.Rat).SetInt64(int64(x.Sign())))
+				}
 			}
 		}
 	case Substring:

@@ -242,6 +242,7 @@ var (
 	classBinaryArithmetic *opclass
 	classIsKey            *opclass
 	classConst            *opclass
+	classConstNumber      *opclass
 	classNull             *opclass
 	classPatmatch         *opclass
 
@@ -268,11 +269,20 @@ func init() {
 			"string":   "String",
 			"ts":       "*Timestamp",
 			"int":      "Integer",
-			"number":   "number",
 			"constant": "Constant",
 			"bool":     "Bool",
 			"struct":   "*Struct",
 			"list":     "*List",
+		},
+	}
+	classConstNumber = &opclass{
+		casematch: nil,
+		argnum:    constArgnum,
+		match:     constNumericMatch,
+		cons:      constCons,
+		auxtab: map[string]string{
+			// name -> Go typename
+			"number": "number",
 		},
 	}
 	classBuiltin = &opclass{
@@ -384,7 +394,7 @@ func init() {
 		"float":    classConst,
 		"int":      classConst,
 		"constant": classConst,
-		"number":   classConst,
+		"number":   classConstNumber,
 		"ts":       classConst,
 		"list":     classConst,
 		"struct":   classConst,
@@ -540,6 +550,22 @@ func constMatch(c *opclass, op string, args []rules.Term, bind, expvar string) s
 		args[0].Value = rules.String(wrap(gotype, lit))
 	}
 	return castBind(bind, expvar, gotype)
+}
+
+func constNumericMatch(c *opclass, op string, args []rules.Term, bind, expvar string) string {
+	if len(args) != 1 {
+		fatalf("expected const op %s to have 1 arg", op)
+	}
+	gotype, ok := c.auxtab[op]
+	if !ok {
+		fatalf("unrecognized const type %s", op)
+	}
+	// if we are matching a go literal constant,
+	// it needs to be cast appropriately
+	if lit, ok := args[0].Value.(rules.String); ok {
+		args[0].Value = rules.String(wrap(gotype, lit))
+	}
+	return fmt.Sprintf("%s := asrational(%s); %[1]s != nil", bind, expvar)
 }
 
 func nullMatch(c *opclass, op string, args []rules.Term, bind, expvar string) string {

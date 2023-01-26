@@ -156,8 +156,8 @@
 (concat (string x) (lower y)), `isLower(string(x))` -> (lower (concat x y))
 
 // math constprop
-(abs (number x)) -> "(*Rational)(new(big.Rat).Abs(x.rat()))"
-(sign (number x)) -> "(*Rational)(new(big.Rat).SetInt64(int64(x.rat().Sign())))"
+(abs (number x)) -> "(*Rational)(new(big.Rat).Abs(x))"
+(sign (number x)) -> "(*Rational)(new(big.Rat).SetInt64(int64(x.Sign())))"
 
 // object size
 (object_size (list l)) -> `Integer(len(l.Values))`
