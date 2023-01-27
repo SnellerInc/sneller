@@ -913,6 +913,10 @@ func (f Float) Equals(e Node) bool {
 	return false
 }
 
+func (f Float) isint() bool {
+	return Float(int64(f)) == f
+}
+
 var NaN = Float(math.NaN())
 
 // Integer is a literal integer AST node

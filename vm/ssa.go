@@ -2305,6 +2305,11 @@ func (p *prog) pow(left, right *value) *value {
 	return p.makeBinaryArithmeticOpFp(spowf, left, right)
 }
 
+func (p *prog) powuint(arg *value, exp int64) *value {
+	x, m := p.coerceF64(arg)
+	return p.ssa2imm(spowuintf, x, m, exp)
+}
+
 func (p *prog) atan2(left, right *value) *value {
 	return p.makeBinaryArithmeticOpFp(satan2f, left, right)
 }

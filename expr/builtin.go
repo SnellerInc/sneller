@@ -154,7 +154,8 @@ const (
 	Log
 	Log2
 	Log10
-	Pow // sql:POW sql:POWER
+	Pow     // sql:POW sql:POWER
+	PowUint // sql:POW_UINT
 
 	Pi
 	Degrees
@@ -1021,6 +1022,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	Log2:      {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log2)},
 	Log10:     {check: fixedArgs(NumericType), ret: FloatType | MissingType, simplify: mathfunc(math.Log10)},
 	Pow:       {check: fixedArgs(NumericType, NumericType), ret: FloatType | MissingType, simplify: mathfunc2(math.Pow)},
+	PowUint:   {private: true, ret: FloatType | MissingType},
 	Pi:        {check: fixedArgs(), ret: FloatType | MissingType},
 	Degrees:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},
 	Radians:   {check: fixedArgs(NumericType), ret: FloatType | MissingType},

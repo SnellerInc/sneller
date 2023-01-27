@@ -438,6 +438,7 @@ const (
 	compileTime
 	compileBool
 	literalString
+	constInteger
 	omit
 )
 
@@ -465,6 +466,11 @@ func compileargs(p *prog, args []expr.Node, types ...compileType) ([]*value, err
 			_, ok := args[i].(expr.String)
 			if !ok {
 				err = fmt.Errorf("expected literal string, got %T", args[i])
+			}
+		case constInteger:
+			_, ok := args[i].(expr.Integer)
+			if !ok {
+				err = fmt.Errorf("expected an integer, got %T", args[i])
 			}
 		case omit:
 			// do nothing
@@ -669,6 +675,20 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			val = p.atan2(arg1, arg2)
 		}
 		return val, nil
+
+	case expr.PowUint:
+		v, err := compileargs(p, args, compileNumber, constInteger)
+		if err != nil {
+			return nil, err
+		}
+
+		arg := v[0]
+		exp := int64(args[1].(expr.Integer))
+		if exp < 0 {
+			return nil, fmt.Errorf("exponent must not be less than zero")
+		}
+
+		return p.powuint(arg, exp), nil
 
 	case expr.Concat:
 		sargs := make([]*value, len(args))

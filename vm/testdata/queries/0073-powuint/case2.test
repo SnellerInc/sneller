@@ -1,0 +1,18 @@
+# compare against the generic function
+SELECT
+    x,
+    POW(x, exp2) AS pow_generic,    # force use genereric POW(var, var)
+    POW(x, 2) AS pow_uint           # use specalisation POW(var, const uint)
+FROM input
+---
+{"x": 0, "exp2": 2.0}
+{"x": 1, "exp2": 2.0}
+{"x": "float64:+inf", "exp2": 2.0}
+{"x": "float64:-inf", "exp2": 2.0}
+{"x": "float64:NaN",  "exp2": 2.0}
+---
+{"pow_generic": 0, "pow_uint": 0, "x": 0}
+{"pow_generic": 1, "pow_uint": 1, "x": 1}
+{"pow_generic": "float64:+inf", "pow_uint": "float64:+inf", "x": "float64:+inf"}
+{"pow_generic": "float64:+inf", "pow_uint": "float64:+inf", "x": "float64:-inf"}
+{"pow_generic": "float64:NaN", "pow_uint": "float64:NaN", "x": "float64:NaN"}

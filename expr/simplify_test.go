@@ -849,6 +849,22 @@ func TestSimplify(t *testing.T) {
 			Float(8.0),
 		},
 		{
+			Call(Pow, path("x"), Float(3.5)),
+			Call(Pow, path("x"), Float(3.5)),
+		},
+		{
+			Call(Pow, path("x"), Float(3.0)),
+			Call(PowUint, path("x"), Integer(3)),
+		},
+		{
+			Call(Pow, path("x"), Integer(4)),
+			Call(PowUint, path("x"), Integer(4)),
+		},
+		{
+			Call(Pow, path("x"), Integer(-5)),
+			Div(Float(1.0), Call(PowUint, path("x"), Integer(5))),
+		},
+		{
 			Call(Tan, Float(math.Pi/4)),
 			Float(1.0),
 		},

@@ -113,6 +113,7 @@
 #define BC_UNPACK_ZF64(Offset, DstZ) VBROADCASTSD (Offset)(VIRT_PCREG), DstZ
 #define BC_UNPACK_RU16(Offset, DstR) MOVWLZX (Offset)(VIRT_PCREG), DstR
 #define BC_UNPACK_RU32(Offset, DstR) MOVL (Offset)(VIRT_PCREG), DstR
+#define BC_UNPACK_RU64(Offset, DstR) MOVQ (Offset)(VIRT_PCREG), DstR
 
 // DstR = imm * sizeof(string) + DictBase
 #define BC_UNPACK_DICT(Offset, DstR)                                           \
@@ -237,6 +238,9 @@
 
 #define BC_LOAD_RU32_FROM_SLOT(Dst1, Slot)                                     \
   MOVL 0(VIRT_VALUES)(Slot*1), Dst1
+
+#define BC_LOAD_RU64_FROM_SLOT(Dst1, Slot)                                     \
+  MOVQ 0(VIRT_VALUES)(Slot*1), Dst1
 
 #define BC_LOAD_K1_FROM_SLOT(Dst1, Slot)                                       \
   KMOVW 0(VIRT_VALUES)(Slot*1), Dst1

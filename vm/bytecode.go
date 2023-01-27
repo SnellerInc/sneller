@@ -304,6 +304,7 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opatan2f64:       {text: "atan2.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		ophypotf64:       {text: "hypot.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		oppowf64:         {text: "pow.f64", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
+		oppowuintf64:     {text: "powuint.f64", args: makeArgs(bcWriteS, bcReadS, bcImmI64, bcPredicate)},
 
 		// Conversion instructions
 		opcvtktof64:        {text: "cvt.ktof64", args: makeArgs(bcWriteS, bcReadK)},

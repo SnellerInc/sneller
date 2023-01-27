@@ -432,6 +432,41 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				return Null{}
 			}
 		}
+	case Pow:
+		if len(src.Args) == 2 {
+			// (pow x (int y)), "y >= 0" -> (pow-uint x y)
+			if x := src.Args[0]; true {
+				if y, ok := (src.Args[1]).(Integer); ok {
+					if y >= 0 {
+						return Call(PowUint, x, y)
+					}
+				}
+			}
+			// (pow x (int y)), "y < 0" -> (div (float "1.0") (pow-uint x "-y"))
+			if x := src.Args[0]; true {
+				if y, ok := (src.Args[1]).(Integer); ok {
+					if y < 0 {
+						return &Arithmetic{Op: DivOp, Left: Float(1.0), Right: Call(PowUint, x, -y)}
+					}
+				}
+			}
+			// (pow x (float y)), "y.isint() && y >= 0" -> (pow-uint x (int y))
+			if x := src.Args[0]; true {
+				if y, ok := (src.Args[1]).(Float); ok {
+					if y.isint() && y >= 0 {
+						return Call(PowUint, x, Integer(y))
+					}
+				}
+			}
+			// (pow x (float y)), "y.isint() && y < 0" -> (div (float "1.0") (pow-uint x (int "-y")))
+			if x := src.Args[0]; true {
+				if y, ok := (src.Args[1]).(Float); ok {
+					if y.isint() && y < 0 {
+						return &Arithmetic{Op: DivOp, Left: Float(1.0), Right: Call(PowUint, x, Integer(-y))}
+					}
+				}
+			}
+		}
 	case Rtrim:
 		if len(src.Args) == 1 {
 			// (rtrim (ltrim x)) -> (trim x)

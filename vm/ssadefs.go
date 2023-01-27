@@ -298,6 +298,7 @@ const (
 	satan2f       // out = atan2(x, y)
 	shypotf       // out = hypot(x, y)
 	spowf         // out = pow(x, y)
+	spowuintf     // out = powuint(x, uint_y)
 
 	swidthbucketf // out = width_bucket(val, min, max, bucket_count)
 	swidthbucketi // out = width_bucket(val, min, max, bucket_count)
@@ -940,8 +941,9 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	ssrli:         {text: "srl.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stBool}, bc: opsrli64},
 	ssrlimmi:      {text: "srl.imm.i", rettype: stInt, argtypes: []ssatype{stInt, stBool}, immfmt: fmti64, bc: opsrli64imm},
 
-	shypotf: {text: "hypot.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf64},
-	spowf:   {text: "pow.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf64},
+	shypotf:   {text: "hypot.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: ophypotf64},
+	spowf:     {text: "pow.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf64},
+	spowuintf: {text: "powuint.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmti64, bc: oppowuintf64},
 
 	swidthbucketf: {text: "widthbucket.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf64},
 	swidthbucketi: {text: "widthbucket.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi64},

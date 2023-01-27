@@ -424,6 +424,8 @@ func init() {
 		"assert_int":             "AssertIonType",
 		"assert_float":           "AssertIonType",
 		"assert_num":             "AssertIonType",
+		"pow":                    "Pow",
+		"pow-uint":               "PowUint",
 	}
 
 	builtinargs = map[string][]string{
@@ -651,7 +653,7 @@ func isKeyCons(c *opclass, op string, args []rules.Term) {
 func builtinCons(c *opclass, op string, args []rules.Term) {
 	enum, ok := op2builtin[op]
 	if !ok {
-		panic(fmt.Sprintf("function %q is not know; upgrade op2builtin lookup", op))
+		panic(fmt.Sprintf("function %q is not known; upgrade op2builtin lookup", op))
 	}
 	fmt.Fprintf(stdout, "Call(%s", enum)
 	for i := range args {

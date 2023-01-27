@@ -12036,6 +12036,79 @@ TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 */
 #include "evalbc_approxcount.h"
 
+// POW(x, intpow) implementation
+
+// BC_POWINT generates specialisation for either for floats
+// or ints.
+//
+// Algorithm:
+//
+// res := 1
+// pow := x
+// while (exponent != 0) {
+//    if exponent & 1 != 0 {
+//        res = res * pow
+//    }
+//    exponent = exponent >> 1
+//    pow = pow * pow
+// }
+//
+// Input:
+// * Z2:Z3      - unboxed int64 or float64
+// * K1, K2     - active masks
+// * one        - ZMM register populated with uint64(1) or float64(1.0)
+// * VMUL       - AVX512 instruction that multiplies (VMULPD or VPMULUDQ)
+// * exponent   - GPR register containing an *unsigned* exponent
+// * tmp        - temporary GPR
+//
+// Clobbers:
+// * K3, K4, K5
+#define BC_POWINT(one, VMUL, exponent, tmp)                                    \
+    VMOVDQA64   one, Z20    /* Z20 - POWINT(Z2, exponent) */                   \
+    VMOVDQA64   one, Z21    /* Z21 - POWINT(Z3, exponent) */                   \
+    VMOVDQA64   Z2, Z22                                                        \
+    VMOVDQA64   Z3, Z23                                                        \
+loop:                                                                          \
+    TESTQ   exponent, exponent                                                 \
+    JZ      zero                                                               \
+                                                                               \
+    SHRQ    $1, exponent    /* CF = LSB(exponent), exponent = exponent >> 1 */ \
+    SBBQ    tmp, tmp        /* populate CF */                                  \
+    KMOVQ   tmp, K3                                                            \
+                                                                               \
+    /* exponent & 1 != 0 */                                                    \
+    KANDQ   K3, K2, K4                                                         \
+    KANDQ   K3, K1, K3                                                         \
+                                                                               \
+    /* res = pow * res */                                                      \
+    VMUL    Z20, Z22, K3, Z20                                                  \
+    VMUL    Z21, Z23, K4, Z21                                                  \
+                                                                               \
+    /* pow = pow * pow */                                                      \
+    VMUL    Z22, Z22, K1, Z22                                                  \
+    VMUL    Z23, Z23, K2, Z23                                                  \
+    JMP     loop                                                               \
+zero:                                                                          \
+    VMOVDQA64   Z20, Z2                                                        \
+    VMOVDQA64   Z21, Z3
+
+
+// f64[0] = pow(f64[1], int64[2]).k[3]
+TEXT bcpowuintf64(SB), NOSPLIT|NOFRAME, $0
+    BC_UNPACK_SLOT(BC_SLOT_SIZE, OUT(DX))
+    BC_UNPACK_RU64(BC_SLOT_SIZE*2, OUT(BX))
+    BC_UNPACK_SLOT(BC_SLOT_SIZE*2 + 8, OUT(R8))
+    BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+    BC_LOAD_F64_FROM_SLOT(OUT(Z2), OUT(Z3), IN(DX))
+
+    VBROADCASTSD  CONSTF64_1(), Z9
+    BC_POWINT(Z9, VMULPD, BX, CX)
+
+    BC_UNPACK_SLOT(0, OUT(BX))
+    BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(BX))
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + 8)
+
+
 // chacha8 random initialization vector
 DATA  chachaiv<>+0(SB)/4, $0x9722F977  // XOR'd with length for real IV
 DATA  chachaiv<>+4(SB)/4, $0x3320646e

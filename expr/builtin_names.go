@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [114]string{
+var builtin2Name = [115]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -41,6 +41,7 @@ var builtin2Name = [114]string{
 	"LOG2",                     // Log2
 	"LOG10",                    // Log10
 	"POW",                      // Pow
+	"POW_UINT",                 // PowUint
 	"PI",                       // Pi
 	"DEGREES",                  // Degrees
 	"RADIANS",                  // Radians
@@ -203,6 +204,8 @@ func name2Builtin(s string) BuiltinOp {
 		return Pow
 	case "POWER":
 		return Pow
+	case "POW_UINT":
+		return PowUint
 	case "PI":
 		return Pi
 	case "DEGREES":

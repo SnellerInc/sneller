@@ -60,6 +60,12 @@
 (mul (mul x (constant y)) (constant z)) -> (mul x (mul y z))
 (mul (mul a (constant b)) (mul c (constant d))) -> (mul (mul a c) (mul b d))
 
+// simplify  pow with const exponent
+(pow x (int y)), "y >= 0" -> (pow-uint x y)
+(pow x (int y)), "y < 0" -> (div (float `1.0`) (pow-uint x "-y"))
+(pow x (float y)), "y.isint() && y >= 0" -> (pow-uint x (int y))
+(pow x (float y)), "y.isint() && y < 0" -> (div (float `1.0`) (pow-uint x (int "-y")))
+
 // a 'like' w/o any meta-characters is just a string equality check:
 (like x pat), `!strings.ContainsAny(pat, "%_")` -> (eq x (string pat))
 (ilike x pat), `!strings.ContainsAny(pat, "%_")` -> (equals_ci x (string pat))
