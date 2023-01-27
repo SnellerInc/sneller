@@ -125,7 +125,7 @@ func anyOrderHasAggregate(lst []expr.Order) bool {
 
 func hasAggregate(e expr.Node) bool {
 	found := false
-	visit := visitfn(func(e expr.Node) bool {
+	visit := expr.WalkFunc(func(e expr.Node) bool {
 		if found {
 			return false
 		}
@@ -496,11 +496,33 @@ func (h *hoistwalk) Rewrite(e expr.Node) expr.Node {
 		return expr.Missing{}
 	}
 	index := expr.Integer(len(h.in))
-	label, corrv, err := t.decorrelate()
+	label, corrv, corrbind, err := t.decorrelate()
 	if err != nil {
 		h.err = err
 		return e
 	}
+
+	if corrv != nil {
+		var err error
+		visit := func(e expr.Node) bool {
+			sel, ok := e.(*expr.Select)
+			if ok && sel == s {
+				err = fmt.Errorf("decorrelation error: subquery %q is self-referenced as %q in the outer query",
+					expr.ToString(sel), corrbind)
+				return false
+			}
+
+			return true
+		}
+
+		expr.Walk(expr.WalkFunc(visit), corrv)
+
+		if err != nil {
+			h.err = err
+			return e
+		}
+	}
+
 	switch class {
 	case SizeOne:
 		h.in = append(h.in, t)
@@ -637,7 +659,7 @@ func (w *windowHoist) Walk(e expr.Node) expr.Rewriter {
 
 func hasOnlyOneAggregate(outer *expr.Select) bool {
 	var uniq []*expr.Aggregate
-	visit := func(e expr.Node) bool {
+	visit := expr.WalkFunc(func(e expr.Node) bool {
 		if s, ok := e.(*expr.Select); ok {
 			return s == outer
 		}
@@ -652,8 +674,8 @@ func hasOnlyOneAggregate(outer *expr.Select) bool {
 		}
 		uniq = append(uniq, agg)
 		return false
-	}
-	expr.Walk(visitfn(visit), outer)
+	})
+	expr.Walk(visit, outer)
 	return len(uniq) == 1
 }
 

@@ -41,7 +41,7 @@ import (
 // If err != nil, the subquery did contain a correlated
 // reference, but decorrelation was unsuccessful and
 // the trace may no longer be valid.
-func (b *Trace) decorrelate() (k, v expr.Node, err error) {
+func (b *Trace) decorrelate() (k, v expr.Node, x string, err error) {
 	// first we need to find a correlated variable
 	// in the trace by checking its free variables
 	// against the parent trace
@@ -53,9 +53,8 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 	}
 	it, ok := top.(*IterTable)
 	if !ok {
-		return nil, nil, nil
+		return nil, nil, "", nil
 	}
-	var x string
 	for free := range it.free {
 		if free == x {
 			continue
@@ -70,14 +69,14 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		// multiple correlated references are
 		// unsupported for now
 		if x != "" {
-			return nil, nil, decorrerr(node, free)
+			return nil, nil, "", decorrerr(node, free)
 		}
 		x = free
 		v = node
 		continue
 	}
 	if x == "" {
-		return nil, nil, nil
+		return nil, nil, "", nil
 	}
 	// remove any limit steps in the child trace
 	var prev Step
@@ -91,7 +90,7 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		// unless we have a way to filter N
 		// distinct results for a given column
 		if li.Count > 1 {
-			return nil, nil, decorrerr(v, x)
+			return nil, nil, "", decorrerr(v, x)
 		}
 		if b.top == s {
 			b.top = s.parent()
@@ -103,18 +102,18 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 	// find "x = y" in the WHERE clause
 	y := b.decorrelateWhere(x, it)
 	if y == nil {
-		return nil, nil, decorrerr(v, x)
+		return nil, nil, "", decorrerr(v, x)
 	}
 	// the top step must either be a Bind or
 	// Aggregate with at least one output
 	switch s := b.top.(type) {
 	case *Bind:
 		if len(s.bind) == 0 {
-			return nil, nil, decorrerr(v, x)
+			return nil, nil, "", decorrerr(v, x)
 		}
 		for i := range s.bind {
 			if hasReference(x, s.bind[i].Expr) {
-				return nil, nil, decorrerr(v, x)
+				return nil, nil, "", decorrerr(v, x)
 			}
 		}
 		key := expr.Bind(y, gensym(0, 0))
@@ -129,17 +128,17 @@ func (b *Trace) decorrelate() (k, v expr.Node, err error) {
 		k = expr.String(key.Result())
 	case *Aggregate:
 		if len(s.Agg) == 0 || s.GroupBy != nil || hasReference(x, s.Agg[0].Expr) {
-			return nil, nil, decorrerr(v, x)
+			return nil, nil, "", decorrerr(v, x)
 		}
 		by := expr.Bind(y, gensym(0, 0))
 		s.GroupBy = append(s.GroupBy, by)
 		k = expr.String(by.Result())
 	default:
-		return nil, nil, decorrerr(v, x)
+		return nil, nil, "", decorrerr(v, x)
 	}
 	// do some bookkeeping
 	delete(it.free, x)
-	return k, v, nil
+	return k, v, x, nil
 }
 
 func decorrerr(e expr.Node, x string) error {
@@ -174,7 +173,7 @@ func (b *Trace) decorrelateWhere(x string, it *IterTable) (y expr.Node) {
 // hasReference returns whether n references x.
 func hasReference(x string, n expr.Node) bool {
 	found := false
-	visit := visitfn(func(e expr.Node) bool {
+	visit := expr.WalkFunc(func(e expr.Node) bool {
 		if !found {
 			found = expr.IsIdentifier(e, x)
 		}

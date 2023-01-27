@@ -683,19 +683,12 @@ func shuffleOutput(q *expr.Query) bool {
 	return sel.OrderBy == nil && sel.GroupBy == nil && !sel.Distinct
 }
 
-type visitfn func(expr.Node) expr.Visitor
-
-func (v visitfn) Visit(e expr.Node) expr.Visitor {
-	return v(e)
-}
-
 // can symtab be safely shuffled?
 func shuffleSymtab(q *expr.Query) bool {
 	allowed := true
-	var fn visitfn
-	fn = func(n expr.Node) expr.Visitor {
+	fn := expr.WalkFunc(func(n expr.Node) bool {
 		if !allowed {
-			return nil
+			return false
 		}
 
 		s, ok := n.(*expr.Select)
@@ -703,12 +696,12 @@ func shuffleSymtab(q *expr.Query) bool {
 			// sorting fails if a symtab change (sort & limit prevents symtab changes)
 			if !(s.OrderBy == nil || (s.OrderBy != nil && s.Limit != nil)) {
 				allowed = false
-				return nil
+				return false
 			}
 		}
 
-		return fn
-	}
+		return true
+	})
 
 	expr.Walk(fn, q.Body)
 

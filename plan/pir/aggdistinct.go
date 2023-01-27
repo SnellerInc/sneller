@@ -74,7 +74,7 @@ func hasMixedDistinctAndRegularAggregates(columns []expr.Binding) bool {
 	hasDistinct := false
 	hasAggregate := false
 
-	visit := visitfn(func(e expr.Node) bool {
+	visit := expr.WalkFunc(func(e expr.Node) bool {
 		agg, ok := e.(*expr.Aggregate)
 		if ok {
 			if agg.IsDistinct() {

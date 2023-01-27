@@ -91,6 +91,16 @@ func Walk(v Visitor, n Node) {
 	}
 }
 
+type WalkFunc func(Node) bool
+
+func (w WalkFunc) Visit(e Node) Visitor {
+	if w(e) {
+		return w
+	}
+
+	return nil
+}
+
 // AggregateOp is one of the aggregation operations
 type AggregateOp int
 

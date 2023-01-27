@@ -586,34 +586,26 @@ func TestParseIdentifiers(t *testing.T) {
 				t.Error(err)
 			}
 
-			q := e.Body.(*expr.Select)
-			v := &testaggsearch{}
-			expr.Walk(v, q)
+			hasagg := false
+			visit := expr.WalkFunc(func(e expr.Node) bool {
+				_, ok := e.(*expr.Aggregate)
+				if ok {
+					hasagg = true
+					return false
+				}
 
-			if !v.hasagg {
+				return true
+			})
+
+			q := e.Body.(*expr.Select)
+			expr.Walk(visit, q)
+
+			if !hasagg {
 				t.Logf("query: %q", query)
 				t.Errorf(`"COUNT(col2)" expected to be parsed as an aggregate`)
 			}
 		})
 	}
-}
-
-type testaggsearch struct {
-	hasagg bool
-}
-
-func (t *testaggsearch) Visit(e expr.Node) expr.Visitor {
-	if t.hasagg {
-		return nil
-	}
-
-	_, ok := e.(*expr.Aggregate)
-	if ok {
-		t.hasagg = true
-		return nil
-	}
-
-	return t
 }
 
 func testEquivalence(t *testing.T, e expr.Node) {

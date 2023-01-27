@@ -173,6 +173,11 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT x, COUNT(*), ROW_NUMBER() OVER (ORDER BY COUNT(*)) AS rn, RANK() OVER (ORDER BY rn)`,
 			rx:    "nested aggregate",
 		},
+		{
+			// decorellation error: x refers to expression containing the sub-query
+			input: `SELECT EXISTS (SELECT 1 FROM table1 WHERE x = y) AS x FROM table`,
+			rx:    `is self-referenced as "x" in the outer query`,
+		},
 	}
 	for i := range tests {
 		in := tests[i].input

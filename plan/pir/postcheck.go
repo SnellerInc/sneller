@@ -24,7 +24,7 @@ var rules = []func(t *Trace) error{
 
 func checkAggregateWorkInProgress(e expr.Node) error {
 	var err error
-	v := visitfn(func(e expr.Node) bool {
+	v := expr.WalkFunc(func(e expr.Node) bool {
 		if err != nil {
 			return false
 		}
@@ -48,7 +48,7 @@ func checkAggregateWorkInProgress(e expr.Node) error {
 
 func checkNoAggregateInCondition(e expr.Node, context string) error {
 	var err error
-	v := visitfn(func(e expr.Node) bool {
+	v := expr.WalkFunc(func(e expr.Node) bool {
 		if err != nil {
 			return false
 		}

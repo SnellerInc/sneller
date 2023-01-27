@@ -51,22 +51,13 @@ func conjoin(x, y expr.Node, scope *Trace, at Step) expr.Node {
 	return expr.SimplifyLogic(expr.And(x, y), &stepHint{parent: at.parent()})
 }
 
-type visitfn func(expr.Node) bool
-
-func (v visitfn) Visit(e expr.Node) expr.Visitor {
-	if v(e) {
-		return v
-	}
-	return nil
-}
-
 // determine if 'e' has no references to 'step'
 //
 // n.b. false negatives are okay here; they will
 // just end up inhibiting optimizations
 func doesNotReference(e expr.Node, bind string) bool {
 	ref := false
-	visit := func(e expr.Node) bool {
+	visit := expr.WalkFunc(func(e expr.Node) bool {
 		if ref {
 			return false
 		}
@@ -75,15 +66,15 @@ func doesNotReference(e expr.Node, bind string) bool {
 			ref = true
 		}
 		return !ok
-	}
-	expr.Walk(visitfn(visit), e)
+	})
+	expr.Walk(visit, e)
 	return !ref
 }
 
 // determine if 'e' only references one binding
 func onlyReferences(e expr.Node, bind string) bool {
 	ref := true
-	visit := func(e expr.Node) bool {
+	visit := expr.WalkFunc(func(e expr.Node) bool {
 		if !ref {
 			return false
 		}
@@ -92,8 +83,8 @@ func onlyReferences(e expr.Node, bind string) bool {
 			ref = false
 		}
 		return !ok
-	}
-	expr.Walk(visitfn(visit), e)
+	})
+	expr.Walk(visit, e)
 	return ref
 }
 
