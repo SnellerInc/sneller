@@ -67,6 +67,41 @@ func (s *scanner) Err() error {
 	return s.err
 }
 
+// position determines a human-readable line and column coordinates
+func (s *scanner) position(p int) (line int, column int, ok bool) {
+	if p > len(s.from) {
+		return 0, 0, false
+	}
+
+	buf := s.from
+	line = 1
+	column = 1
+	for len(buf) > 0 {
+		end := bytes.IndexByte(buf, '\n')
+		if end == -1 {
+			end = len(buf)
+			buf = buf[:0]
+		} else {
+			buf = buf[end+1:]
+		}
+
+		if p <= end {
+			// position in the current line or at the '\n'
+			column = p + 1
+			ok = true
+			return
+		}
+
+		column = end + 1
+		p -= end + 1
+		if p > 0 {
+			line++
+		}
+	}
+
+	return
+}
+
 // chomp whitespace from input
 func (s *scanner) chompws() {
 	for s.pos < len(s.from) {
@@ -75,6 +110,11 @@ func (s *scanner) chompws() {
 			s.pos++
 		} else if s.from[s.pos] == '#' {
 			s.pos++
+			for s.pos < len(s.from) && s.from[s.pos] != '\n' {
+				s.pos++
+			}
+		} else if s.from[s.pos] == '-' && s.pos+1 < len(s.from) && s.from[s.pos+1] == '-' {
+			s.pos += 2
 			for s.pos < len(s.from) && s.from[s.pos] != '\n' {
 				s.pos++
 			}
@@ -246,11 +286,7 @@ func (s *scanner) lex(l *yySymType) int {
 		s.pos++
 		return '~'
 	default:
-		s.err = &LexerError{
-			Position: s.pos,
-			Length:   1,
-			Message:  fmt.Sprintf("unexpected character %q", b)}
-
+		s.err = s.mkerror(1, "unexpected character %q", b)
 		return ERROR
 	}
 }
@@ -365,7 +401,7 @@ func (s *scanner) lexNumber(l *yySymType) int {
 	// limit the amount of space this big.Rat can occupy
 	// FIXME: determine this before parsing it!
 	if !r.Num().IsInt64() || !r.Denom().IsInt64() {
-		s.err = fmt.Errorf("text string %q produces a number out-of-range", str)
+		s.err = s.mkerror(len(str), "text string %q produces a number out-of-range", str)
 		return ERROR
 	}
 	l.expr = (*expr.Rational)(r)
@@ -461,12 +497,12 @@ func (s *scanner) lexIon(l *yySymType) int {
 	body := s.from[s.pos+1:]
 	end := bytes.IndexByte(body, '`')
 	if end == -1 {
-		s.err = fmt.Errorf("unterminated ion datum literal")
+		s.err = s.mkerror(len(body), "unterminated ion datum literal, missing '`'")
 		return ERROR
 	}
 	t, ok := date.Parse(body[:end])
 	if !ok {
-		s.err = fmt.Errorf("couldn't parse ion literal %q", s.from[s.pos:s.pos+end])
+		s.err = s.mkerror(end+2, "couldn't parse ion literal %s", s.from[s.pos:s.pos+end+2])
 		return ERROR
 	}
 	t = t.Truncate(time.Microsecond)
@@ -493,25 +529,38 @@ func toint(e expr.Node) (int, error) {
 	return int(r.Num().Int64()), nil
 }
 
+func (s *scanner) mkerror(length int, msg string, args ...any) *LexerError {
+	err := &LexerError{}
+	err.Message = fmt.Sprintf(msg, args...)
+	err.Position = s.pos
+	err.Length = length
+	err.Line, err.Column, _ = s.position(err.Position)
+
+	return err
+}
+
 func (s *scanner) Error(msg string) {
-	err := &LexerError{Position: s.pos}
 	if s.err != nil {
-		err.Message = fmt.Sprintf("%s (%s)", msg, s.err)
-	} else {
-		err.Message = msg
+		return
 	}
 
-	s.err = err
+	s.err = s.mkerror(0, msg)
 }
 
 // LexerError describes a lexing error
 type LexerError struct {
 	Position int    // offset in the input string
+	Line     int    // line
+	Column   int    // column
 	Length   int    // length of wrong substring (0 if unknown)
-	Message  string // textual descritption of an error
+	Message  string // textual description of an error
 }
 
 func (e *LexerError) Error() string {
+	if e.Line > 0 && e.Column > 0 {
+		return fmt.Sprintf("at %d:%d: %s", e.Line, e.Column, e.Message)
+	}
+
 	return fmt.Sprintf("at position %d: %s", e.Position, e.Message)
 }
 

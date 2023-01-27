@@ -314,6 +314,14 @@ func TestParseNormalization(t *testing.T) {
 			`SELECT 5+4`,
 			`SELECT 9`,
 		},
+		{
+			`SELECT 12 -- sample comment`,
+			`SELECT 12`,
+		},
+		{
+			`SELECT 42--42 - The Ultimate Answer`,
+			`SELECT 42`,
+		},
 	}
 
 	tm, ok := date.Parse([]byte("2006-01-02T15:04:05.999Z"))

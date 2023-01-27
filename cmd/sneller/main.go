@@ -176,7 +176,7 @@ func parse(arg string) *expr.Query {
 		if errors.As(err, &lexError) {
 			position := lexError.Position
 			length := lexError.Length
-			if length == 0 {
+			if length <= 0 {
 				length = 2
 			}
 
