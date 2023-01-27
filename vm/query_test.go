@@ -28,6 +28,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -428,18 +429,18 @@ func (e *queryenv) ListTables(db string) ([]string, error) {
 }
 
 // walk d and replace 50% of the strings with stringSyms
-func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
+func symbolizeRandomly(d ion.Datum, st *ion.Symtab, symbolize func() bool) ion.Datum {
 	switch d.Type() {
 	case ion.StructType:
 		d, _ := d.Struct()
 		fields := d.Fields(nil)
 		for i := range fields {
 			if str, err := fields[i].String(); err == nil {
-				if r.Intn(2) == 0 {
+				if symbolize() {
 					fields[i].Datum = ion.Interned(st, str)
 				}
 			} else {
-				fields[i].Datum = symbolizeRandomly(fields[i].Datum, st, r)
+				fields[i].Datum = symbolizeRandomly(fields[i].Datum, st, symbolize)
 			}
 		}
 		return ion.NewStruct(st, fields).Datum()
@@ -448,11 +449,11 @@ func symbolizeRandomly(d ion.Datum, st *ion.Symtab, r *rand.Rand) ion.Datum {
 		items := d.Items(nil)
 		for i := range items {
 			if str, err := items[i].String(); err == nil {
-				if r.Intn(2) == 0 {
+				if symbolize() {
 					items[i] = ion.Interned(st, str)
 				}
 			} else {
-				items[i] = symbolizeRandomly(items[i], st, r)
+				items[i] = symbolizeRandomly(items[i], st, symbolize)
 			}
 		}
 		return ion.NewList(st, items).Datum()
@@ -513,11 +514,10 @@ func insertSpecialFPValues(d ion.Datum, st *ion.Symtab) ion.Datum {
 	return d
 }
 
-func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
+func rows(b []byte, outst *ion.Symtab, symbolize func() bool) ([]ion.Datum, error) {
 	if len(b) == 0 {
 		return nil, nil
 	}
-	r := rand.New(rand.NewSource(0))
 	d := json.NewDecoder(bytes.NewReader(b))
 	var lst []ion.Datum
 	for {
@@ -529,8 +529,8 @@ func rows(b []byte, outst *ion.Symtab, symbolize bool) ([]ion.Datum, error) {
 			return nil, err
 		}
 		d = insertSpecialFPValues(d, outst)
-		if symbolize {
-			d = symbolizeRandomly(d, outst, r)
+		if symbolize != nil {
+			d = symbolizeRandomly(d, outst, symbolize)
 		}
 		lst = append(lst, d)
 	}
@@ -919,7 +919,7 @@ func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, ou
 
 	n := len(spec.Sections)
 	if n < 3 {
-		t.Fatalf("expected at least 3 sections of testcase, got %d", n)
+		t.Fatalf("expected at least 3 sections in testcase, got %d", n)
 	}
 
 	part2bytes := func(part []string) []byte {
@@ -952,6 +952,10 @@ func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, ou
 	return query, inputs, output
 }
 
+type benchmarkSettings struct {
+	symbolizeprob float64 // symbolize probability: 0=never, 1=always
+}
+
 // readBenchmark reads a benchmark specification.
 //
 // Benchmark may contain either SQL query (text) and sample
@@ -960,7 +964,7 @@ func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, ou
 // Alternatively, it may contain only an SQL query. But
 // then the FROM part has to be a string which is treated
 // as a filename and this file is read into the input (JSONRL).
-func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
+func readBenchmark(t testing.TB, fname string) (*expr.Query, *benchmarkSettings, []byte) {
 	spec, err := tests.ReadTestcaseFromFile(fname)
 	if err != nil {
 		t.Fatal(err)
@@ -1014,21 +1018,43 @@ func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
 		t.Fatalf("expected at most two parts of benchmark, got %d", n)
 	}
 
-	return query, input
+	bs := &benchmarkSettings{
+		symbolizeprob: 0.0,
+	}
+	v := spec.Tags["symbolize"]
+	switch v {
+	case "":
+		// do nothing
+	case "never":
+		bs.symbolizeprob = 0.0
+	case "always":
+		bs.symbolizeprob = 1.0
+	default:
+		p, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			t.Errorf("cannot parse symbolize=%q: %s", v, err)
+		}
+		if p < 0.0 || p > 1.0 {
+			t.Errorf("symbolize=%f: wrong value, it has to be float in range [0, 1]", p)
+		}
+	}
+
+	return query, bs, input
 }
 
 func testPath(t *testing.T, fname string) {
 	query, inputs, output := readTestcase(t, fname)
 	var inst ion.Symtab
 	inrows := make([][]ion.Datum, len(inputs))
+	r := rand.New(rand.NewSource(0))
 	for i := range inrows {
-		rows, err := rows(inputs[i], &inst, true)
+		rows, err := rows(inputs[i], &inst, func() bool { return r.Intn(2) == 0 })
 		if err != nil {
 			t.Fatalf("parsing input[%d] rows: %s", i, err)
 		}
 		inrows[i] = rows
 	}
-	outrows, err := rows(output, &inst, false)
+	outrows, err := rows(output, &inst, func() bool { return false })
 	if err != nil {
 		t.Fatalf("parsing output rows: %s", err)
 	}
@@ -1092,10 +1118,15 @@ func versifyGetter(inst *ion.Symtab, inrows []ion.Datum) func() ([]byte, int) {
 }
 
 func benchPath(b *testing.B, fname string) {
-	query, input := readBenchmark(b, fname)
+	query, bs, input := readBenchmark(b, fname)
 	var inst ion.Symtab
 
-	inrows, err := rows(input, &inst, false)
+	prob := bs.symbolizeprob
+	r := rand.New(rand.NewSource(0))
+	symbolize := func() bool {
+		return r.Float64() > prob
+	}
+	inrows, err := rows(input, &inst, symbolize)
 	if err != nil {
 		b.Fatalf("parsing input rows: %s", err)
 	}
