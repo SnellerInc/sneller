@@ -177,40 +177,35 @@ func (s *SparseIndex) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (d *TrailerDecoder) decodeSparse(s *SparseIndex, body []byte) error {
-	_, err := ion.UnpackStruct(d.Symbols, body, func(name string, field []byte) error {
-		switch name {
+func (d *TrailerDecoder) decodeSparse(s *SparseIndex, v ion.Datum) error {
+	err := v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "blocks":
-			n, _, err := ion.ReadInt(field)
+			n, err := f.Int()
 			if err != nil {
 				return err
 			}
 			s.blocks = int(n)
 		case "consts":
+			if !f.IsStruct() {
+				return fmt.Errorf("expected consts to be a struct")
+			}
 			// XXX: we have to copy the bytes because
 			// the resulting ion.Struct will alias the
 			// slice and so we need to make a copy to
 			// avoid data corruption
-			field = slices.Clone(field)
-			d, _, err := ion.ReadDatum(d.Symbols, field)
-			if err != nil {
-				return err
-			}
-			if !d.IsStruct() {
-				return fmt.Errorf("expected consts to be a struct")
-			}
-			s.consts, _ = d.Struct()
+			s.consts, _ = f.Datum.Clone().Struct()
 		case "indices":
-			_, err := ion.UnpackList(field, func(field []byte) error {
+			err := f.UnpackList(func(v ion.Datum) error {
 				var val timeIndex
-				_, err := ion.UnpackStruct(d.Symbols, field, func(name string, field []byte) error {
-					switch name {
+				err := v.UnpackStruct(func(f ion.Field) error {
+					switch f.Label {
 					case "path":
 						var err error
-						val.path, err = d.path(field)
+						val.path, err = d.path(f.Datum)
 						return err
 					case "ranges":
-						return d.decodeTimes(&val.ranges, field)
+						return d.decodeTimes(&val.ranges, f.Datum)
 					}
 					return nil
 				})

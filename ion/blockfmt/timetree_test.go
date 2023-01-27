@@ -33,10 +33,13 @@ func (t *TimeIndex) Equal(o *TimeIndex) bool {
 }
 
 func (t *TimeIndex) Decode(st *ion.Symtab, buf []byte) error {
+	d, _, err := ion.ReadDatum(st, buf)
+	if err != nil {
+		return err
+	}
 	*t = TimeIndex{}
 	var td TrailerDecoder
-	td.Symbols = st
-	return td.decodeTimes(t, buf)
+	return td.decodeTimes(t, d)
 }
 
 func testTimeIndexRoundtrip(t *testing.T, ti *TimeIndex) {

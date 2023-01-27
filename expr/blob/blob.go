@@ -337,7 +337,7 @@ func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
 		return nil, err
 	}
 	if !d.IsStruct() {
-		return decodeList(st, d)
+		return decodeList(d)
 	}
 	var dec compr.Decompressor
 	var buf, data []byte
@@ -375,13 +375,12 @@ func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeList(st, d2)
+	return decodeList(d2)
 }
 
-func decodeList(st *ion.Symtab, d ion.Datum) (*List, error) {
+func decodeList(d ion.Datum) (*List, error) {
 	out := &List{}
 	dec := blobDecoder{}
-	dec.td.Symbols = st
 	err := d.UnpackList(func(d ion.Datum) error {
 		inner, err := dec.decode(d)
 		if err != nil {

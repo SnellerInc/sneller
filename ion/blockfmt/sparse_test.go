@@ -42,8 +42,11 @@ func testSparseRoundtrip(t *testing.T, si *SparseIndex) {
 
 func (s *SparseIndex) Decode(st *ion.Symtab, body []byte) error {
 	var td TrailerDecoder
-	td.Symbols = st
-	return td.decodeSparse(s, body)
+	d, _, err := ion.ReadDatum(st, body)
+	if err != nil {
+		return err
+	}
+	return td.decodeSparse(s, d)
 }
 
 func TestSparseIndex(t *testing.T) {

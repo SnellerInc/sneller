@@ -102,39 +102,39 @@ func (i *IndirectTree) encode(st *ion.Symtab, buf *ion.Buffer) {
 	buf.EndStruct()
 }
 
-func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
+func (i *IndirectTree) parse(td *TrailerDecoder, d ion.Datum) error {
 	haveRanges := false
-	err := unpackStruct(td.Symbols, body, func(name string, field []byte) error {
-		switch name {
+	err := d.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "refs":
-			return unpackList(field, func(field []byte) error {
+			return f.UnpackList(func(d ion.Datum) error {
 				var ir IndirectRef
-				err := unpackStruct(td.Symbols, field, func(name string, field []byte) error {
-					switch name {
+				err := d.UnpackStruct(func(f ion.Field) error {
+					switch f.Label {
 					case "ranges":
 						haveRanges = true
-						ranges, err := td.unpackRanges(td.Symbols, field)
+						ranges, err := td.unpackRanges(f.Datum)
 						if err != nil {
 							return err
 						}
 						ir.ranges = ranges
 						return nil
 					case "objects":
-						n, _, err := ion.ReadInt(field)
+						n, err := f.Int()
 						if err != nil {
 							return err
 						}
 						ir.Objects = int(n)
 						return nil
 					case "orig-objects":
-						n, _, err := ion.ReadInt(field)
+						n, err := f.Int()
 						if err != nil {
 							return err
 						}
 						ir.OrigObjects = int(n)
 						return nil
 					default:
-						_, _, err := ir.ObjectInfo.set(name, field)
+						_, err := ir.ObjectInfo.set(f)
 						return err
 					}
 				})
@@ -152,13 +152,13 @@ func (i *IndirectTree) parse(td *TrailerDecoder, body []byte) error {
 			if haveRanges {
 				return fmt.Errorf("IndirectTree.parse: have ranges *and* sparse?")
 			}
-			err := td.decodeSparse(&i.Sparse, field)
+			err := td.decodeSparse(&i.Sparse, f.Datum)
 			if err != nil {
 				err = fmt.Errorf("Indirect.Sparse.Decode: %w", err)
 			}
 			return err
 		default:
-			return fmt.Errorf("IndirectTree.parse: unexpected field name %q", name)
+			return fmt.Errorf("IndirectTree.parse: unexpected field name %q", f.Label)
 		}
 	})
 	// build time ranges if we have them
@@ -221,16 +221,19 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, fi
 	var st ion.Symtab
 	buf, err = st.Unmarshal(buf)
 	if err != nil {
-		return in, fmt.Errorf("IndirectTree.load: %w", err)
+		return in, fmt.Errorf("IndirectTree.decode: %w", err)
+	}
+	d, _, err := ion.ReadDatum(&st, buf)
+	if err != nil {
+		return in, fmt.Errorf("IndirectTree.decode: %w", err)
 	}
 	var td TrailerDecoder
-	td.Symbols = &st
-	err = unpackStruct(&st, buf, func(name string, field []byte) error {
-		switch name {
+	err = d.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "contents":
-			return unpackList(field, func(field []byte) error {
+			return f.UnpackList(func(v ion.Datum) error {
 				var d Descriptor
-				err := d.decode(&td, field, 0)
+				err := d.decode(&td, v, 0)
 				if err != nil {
 					return err
 				}
@@ -240,7 +243,7 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, fi
 				return nil
 			})
 		default:
-			return fmt.Errorf("unrecognized field %q", name)
+			return fmt.Errorf("unrecognized field %q", f.Label)
 		}
 		return nil
 	})

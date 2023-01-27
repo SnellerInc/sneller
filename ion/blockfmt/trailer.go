@@ -126,23 +126,12 @@ func (t *Trailer) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func countList(body []byte) (int, error) {
-	n := 0
-	err := unpackList(body, func([]byte) error {
-		n++
-		return nil
-	})
-	return n, err
-}
-
-func unpackList(body []byte, fn func(field []byte) error) error {
-	_, err := ion.UnpackList(body, fn)
-	return err
-}
-
-func unpackStruct(st *ion.Symtab, body []byte, fn func(name string, field []byte) error) error {
-	_, err := ion.UnpackStruct(st, body, fn)
-	return err
+func countList(d ion.Datum) (int, error) {
+	l, err := d.List()
+	if err != nil {
+		return 0, err
+	}
+	return l.Len(), nil
 }
 
 // A TrailerDecoder can be used to decode multiple
@@ -150,10 +139,6 @@ func unpackStruct(st *ion.Symtab, body []byte, fn func(name string, field []byte
 // memory-efficient way than decoding the trailers
 // individually.
 type TrailerDecoder struct {
-	// Symbols is the symbol table to use when
-	// decoding symbols.
-	Symbols *ion.Symtab
-
 	blockcap int
 	blocks   []Blockdesc
 	spans    []timespan
@@ -178,20 +163,21 @@ func (d *TrailerDecoder) makeBlocks(n int) []Blockdesc {
 }
 
 // path returns an interned []string representation of
-// the path represented by data.
-func (d *TrailerDecoder) path(data []byte) ([]string, error) {
+// the path represented by v.
+func (d *TrailerDecoder) path(v ion.Datum) ([]string, error) {
+	data := v.Raw()
 	if d.paths == nil {
 		d.paths = make(map[string][]string)
 	} else if s, ok := d.paths[string(data)]; ok {
 		return s, nil
 	}
 	var path []string
-	err := unpackList(data, func(comp []byte) error {
-		sym, _, err := ion.ReadSymbol(comp)
+	err := v.UnpackList(func(v ion.Datum) error {
+		s, err := v.String()
 		if err != nil {
 			return err
 		}
-		path = append(path, d.Symbols.Get(sym))
+		path = append(path, s)
 		return nil
 	})
 	if err != nil {
@@ -227,38 +213,44 @@ func (d *TrailerDecoder) timeRange(path []string, min, max date.Time) *TimeRange
 	return &d.timeRanges[len(d.timeRanges)-1]
 }
 
-func (d *TrailerDecoder) unpackRanges(st *ion.Symtab, field []byte) ([]Range, error) {
-	n, err := countList(field)
-	if err != nil || n == 0 {
+func (d *TrailerDecoder) unpackRanges(v ion.Datum) ([]Range, error) {
+	n, err := countList(v)
+	if n == 0 {
 		return nil, err
 	}
 	ranges := d.makeRange(n)[:0]
-	err = unpackList(field, func(field []byte) error {
+	err = v.UnpackList(func(v ion.Datum) error {
 		var tmin, tmax struct {
 			ts date.Time
 			ok bool
 		}
 		var min, max ion.Datum
 		var path []string
-		err := unpackStruct(d.Symbols, field, func(name string, field []byte) error {
+		err := v.UnpackStruct(func(f ion.Field) error {
 			var err error
-			switch name {
+			switch f.Label {
 			case "min":
-				if ion.TypeOf(field) == ion.TimestampType {
-					tmin.ts, _, err = ion.ReadTime(field)
-					tmin.ok = err == nil
+				if f.IsTimestamp() {
+					tmin.ts, err = f.Timestamp()
+					if err != nil {
+						return err
+					}
+					tmin.ok = true
 				} else {
-					min, _, err = ion.ReadDatum(d.Symbols, field)
+					min = f.Datum
 				}
 			case "max":
-				if ion.TypeOf(field) == ion.TimestampType {
-					tmax.ts, _, err = ion.ReadTime(field)
-					tmax.ok = err == nil
+				if f.IsTimestamp() {
+					tmax.ts, err = f.Timestamp()
+					if err != nil {
+						return err
+					}
+					tmax.ok = true
 				} else {
-					max, _, err = ion.ReadDatum(d.Symbols, field)
+					max = f.Datum
 				}
 			case "path":
-				path, err = d.path(field)
+				path, err = d.path(f.Datum)
 			}
 			return err
 		})
@@ -295,24 +287,24 @@ func (d *TrailerDecoder) unpackRanges(st *ion.Symtab, field []byte) ([]Range, er
 }
 
 // Decode decodes a trailer.
-func (d *TrailerDecoder) Decode(body []byte, dst *Trailer) error {
+func (d *TrailerDecoder) Decode(v ion.Datum, dst *Trailer) error {
 	seenSparse := false
-	err := unpackStruct(d.Symbols, body, func(fieldname string, body []byte) error {
-		switch fieldname {
+	err := v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "version":
-			v, _, err := ion.ReadInt(body)
+			v, err := f.Int()
 			if err != nil {
 				return err
 			}
 			dst.Version = int(v)
 		case "offset":
-			off, _, err := ion.ReadInt(body)
+			off, err := f.Int()
 			if err != nil {
 				return err
 			}
 			dst.Offset = off
 		case "algo":
-			alg, _, err := ion.ReadStringShared(body)
+			alg, err := f.StringShared()
 			if err != nil {
 				return err
 			}
@@ -327,46 +319,46 @@ func (d *TrailerDecoder) Decode(body []byte, dst *Trailer) error {
 			}
 			dst.Algo = d.algo
 		case "blockshift":
-			shift, _, err := ion.ReadInt(body)
+			shift, err := f.Int()
 			if err != nil {
 				return err
 			}
 			dst.BlockShift = int(shift)
 		case "sparse":
 			seenSparse = true
-			return d.decodeSparse(&dst.Sparse, body)
+			return d.decodeSparse(&dst.Sparse, f.Datum)
 		case "blocks-delta":
 			// smaller delta-encoded block list format
-			n, err := countList(body)
+			n, err := countList(f.Datum)
 			if err != nil || n == 0 {
 				return err
 			}
 			dst.Blocks = d.makeBlocks(n / 2)[:0]
-			dst.unpackBlocks(body)
+			dst.unpackBlocks(f.Raw())
 		case "blocks":
 			// old-format block lists
-			n, err := countList(body)
+			n, err := countList(f.Datum)
 			if err != nil || n == 0 {
 				return err
 			}
 			dst.Blocks = d.makeBlocks(n)[:0]
-			err = unpackList(body, func(field []byte) error {
+			err = f.UnpackList(func(v ion.Datum) error {
 				dst.Blocks = dst.Blocks[:len(dst.Blocks)+1]
 				blk := &dst.Blocks[len(dst.Blocks)-1]
 				// if the 'chunks' field isn't present,
 				// then the number of chunks must be 1
 				blk.Chunks = 1
 				seenRanges := false
-				err := unpackStruct(d.Symbols, field, func(name string, field []byte) error {
-					switch name {
+				err := v.UnpackStruct(func(f ion.Field) error {
+					switch f.Label {
 					case "offset":
-						off, _, err := ion.ReadInt(field)
+						off, err := f.Int()
 						if err != nil {
 							return err
 						}
 						blk.Offset = off
 					case "chunks":
-						chunks, _, err := ion.ReadInt(field)
+						chunks, err := f.Int()
 						if err != nil {
 							return err
 						}
@@ -377,7 +369,7 @@ func (d *TrailerDecoder) Decode(body []byte, dst *Trailer) error {
 						}
 						seenRanges = true
 						// TODO: unpack ranges into Sparse
-						ranges, err := d.unpackRanges(d.Symbols, field)
+						ranges, err := d.unpackRanges(f.Datum)
 						if err != nil {
 							return fmt.Errorf("error unpacking range %d: %w", len(ranges), err)
 						}
@@ -403,7 +395,7 @@ func (d *TrailerDecoder) Decode(body []byte, dst *Trailer) error {
 			if dst.Version != 1 {
 				return nil
 			}
-			return fmt.Errorf("unexpected field %q", fieldname)
+			return fmt.Errorf("unexpected field %q", f.Label)
 		}
 		return nil
 	})
@@ -445,8 +437,12 @@ func (t *Trailer) unpackBlocks(body []byte) error {
 
 // Decode decodes a trailer encoded using Encode.
 func (t *Trailer) Decode(st *ion.Symtab, body []byte) error {
-	d := TrailerDecoder{Symbols: st}
-	return d.Decode(body, t)
+	v, _, err := ion.ReadDatum(st, body)
+	if err != nil {
+		return err
+	}
+	var d TrailerDecoder
+	return d.Decode(v, t)
 }
 
 // Decompressed returns the decompressed size

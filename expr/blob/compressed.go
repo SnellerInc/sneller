@@ -87,7 +87,7 @@ func (d *decodeComp) SetField(f ion.Field) error {
 	case "from":
 		d.comp.From, err = d.parent.decode(f.Datum)
 	case "trailer":
-		err = d.parent.td.Decode(f.Datum.Raw(), &d.comp.Trailer)
+		err = d.parent.td.Decode(f.Datum, &d.comp.Trailer)
 	case "etext":
 		d.comp.etext, err = f.String()
 	case "skip":

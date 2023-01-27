@@ -160,14 +160,14 @@ func (d *TrailerDecoder) unpackSpans(dst *[]timespan, buf []byte) error {
 	return nil
 }
 
-func (d *TrailerDecoder) decodeTimes(t *TimeIndex, buf []byte) error {
-	_, err := ion.UnpackStruct(d.Symbols, buf, func(name string, field []byte) error {
+func (d *TrailerDecoder) decodeTimes(t *TimeIndex, v ion.Datum) error {
+	err := v.UnpackStruct(func(f ion.Field) error {
 		var err error
-		switch name {
+		switch f.Label {
 		case "max":
-			err = d.unpackSpans(&t.max, field)
+			err = d.unpackSpans(&t.max, f.Raw())
 		case "min":
-			err = d.unpackSpans(&t.min, field)
+			err = d.unpackSpans(&t.min, f.Raw())
 		}
 		return err
 	})

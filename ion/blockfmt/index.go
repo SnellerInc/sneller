@@ -364,14 +364,16 @@ func WriteDescriptor(buf *ion.Buffer, st *ion.Symtab, desc *Descriptor) {
 // ReadDescriptor reads a single descriptor from buf
 // using the provided symbol table.
 func ReadDescriptor(mem []byte, st *ion.Symtab) (*Descriptor, []byte, error) {
-	var td TrailerDecoder
-	td.Symbols = st
-	ret := new(Descriptor)
-	err := ret.decode(&td, mem, 0)
+	d, rest, err := ion.ReadDatum(st, mem)
 	if err != nil {
 		return nil, mem, err
 	}
-	rest := mem[ion.SizeOf(mem):]
+	var td TrailerDecoder
+	ret := new(Descriptor)
+	err = ret.decode(&td, d, 0)
+	if err != nil {
+		return nil, mem, err
+	}
 	return ret, rest, nil
 }
 
@@ -413,37 +415,36 @@ var (
 	ErrBadMAC = errors.New("bad index signature")
 )
 
-func (o *ObjectInfo) set(field string, value []byte) ([]byte, bool, error) {
-	var ret []byte
+func (o *ObjectInfo) set(f ion.Field) (bool, error) {
 	var err error
-	switch field {
+	switch f.Label {
 	case "etag":
-		o.ETag, ret, err = ion.ReadString(value)
+		o.ETag, err = f.String()
 	case "path":
-		o.Path, ret, err = ion.ReadString(value)
+		o.Path, err = f.String()
 	case "format":
-		o.Format, ret, err = ion.ReadString(value)
+		o.Format, err = f.String()
 	case "last-modified":
-		o.LastModified, ret, err = ion.ReadTime(value)
+		o.LastModified, err = f.Timestamp()
 	case "size":
-		o.Size, ret, err = ion.ReadInt(value)
+		o.Size, err = f.Int()
 	default:
-		return nil, false, nil
+		return false, nil
 	}
-	return ret, true, err
+	return true, err
 }
 
-func (d *Descriptor) decode(td *TrailerDecoder, field []byte, opts Flag) error {
-	return unpackStruct(td.Symbols, field, func(name string, field []byte) error {
-		if name == "original" {
+func (d *Descriptor) decode(td *TrailerDecoder, v ion.Datum, opts Flag) error {
+	return v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
+		case "original":
 			return nil // ignore for backwards-compat
+		case "trailer":
+			return td.Decode(f.Datum, &d.Trailer)
 		}
-		if name == "trailer" {
-			return td.Decode(field, &d.Trailer)
-		}
-		_, ok, err := d.set(name, field)
+		ok, err := d.set(f)
 		if !ok {
-			return fmt.Errorf("unexpected field %q", name)
+			return fmt.Errorf("unexpected field %q", f.Label)
 		}
 		return err
 	})
@@ -459,16 +460,16 @@ const (
 	FlagSkipInputs Flag = 1 << iota
 )
 
-func (idx *Index) readInputs(st *ion.Symtab, body []byte, isize int64, alg string) error {
-	if ion.TypeOf(body) != ion.BlobType {
+func (idx *Index) readInputs(st *ion.Symtab, d ion.Datum, isize int64, alg string) error {
+	if !d.IsBlob() {
 		// stored decompressed
-		return idx.Inputs.decode(st, body)
+		return idx.Inputs.decode(d)
 	}
 	if alg == "" {
 		alg = "zstd"
 	}
 	decomp := compr.Decompression(alg)
-	b, _, err := ion.ReadBytes(body)
+	b, err := d.Blob()
 	if err != nil {
 		return fmt.Errorf("DecodeIndex: readInputs: %w", err)
 	}
@@ -476,7 +477,11 @@ func (idx *Index) readInputs(st *ion.Symtab, body []byte, isize int64, alg strin
 	if err := decomp.Decompress(b, contents); err != nil {
 		return fmt.Errorf("DecodeIndex: readInputs: %w", err)
 	}
-	return idx.Inputs.decode(st, contents)
+	d, _, err = ion.ReadDatum(st, contents)
+	if err != nil {
+		return err
+	}
+	return idx.Inputs.decode(d)
 }
 
 // DecodeIndex decodes a signed index (see Sign)
@@ -513,52 +518,63 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 	if err != nil {
 		return nil, err
 	}
-	idx := new(Index)
-	td := TrailerDecoder{
-		Symbols: &st,
+	d, _, err := ion.ReadDatum(&st, rest)
+	if err != nil {
+		return nil, err
 	}
-	var contents []byte
+	s, err := d.Struct()
+	if err != nil {
+		return nil, err
+	}
+	idx := new(Index)
+	var td TrailerDecoder
+	var contents, inputs ion.Datum
 	var size, isize, version int64
-	err = unpackStruct(&st, rest, func(name string, field []byte) (err error) {
-		switch name {
+	err = s.Each(func(f ion.Field) (err error) {
+		switch f.Label {
 		case "created":
-			idx.Created, _, err = ion.ReadTime(field)
+			idx.Created, err = f.Timestamp()
 		case "name":
-			idx.Name, _, err = ion.ReadString(field)
+			idx.Name, err = f.String()
 		case "user-data":
-			idx.UserData, _, err = ion.ReadDatum(&st, field)
+			idx.UserData = f.Datum
 		case "contents":
-			contents = field
+			contents = f.Datum
 		case "algo":
-			idx.Algo, _, err = ion.ReadString(field)
+			idx.Algo, err = f.String()
 		case "version":
-			version, _, err = ion.ReadInt(field)
+			version, err = f.Int()
 		case "size":
-			size, _, err = ion.ReadInt(field)
+			size, err = f.Int()
 		case "input-size":
-			isize, _, err = ion.ReadInt(field)
+			isize, err = f.Int()
 		case "inputs":
 			// set this so Index objects can be
 			// compared directly:
 			idx.Inputs.root.isInner = true
 			if opts&FlagSkipInputs == 0 {
-				err = idx.readInputs(&st, field, isize, idx.Algo)
+				// defer decoding this until we have
+				// scanned the whole structure since we
+				// need other fields which may not have
+				// been seen yet
+				inputs = f.Datum
 			}
+			return nil
 		case "indirect":
-			err = idx.Indirect.parse(&td, field)
+			err = idx.Indirect.parse(&td, f.Datum)
 		case "to-delete":
 			if opts&FlagSkipInputs != 0 {
 				return nil
 			}
-			return unpackList(field, func(field []byte) error {
+			return f.UnpackList(func(d ion.Datum) error {
 				var item Quarantined
-				err := unpackStruct(&st, field, func(name string, field []byte) error {
+				err = d.UnpackStruct(func(f ion.Field) error {
 					var err error
-					switch name {
+					switch f.Label {
 					case "expiry":
-						item.Expiry, _, err = ion.ReadTime(field)
+						item.Expiry, err = f.Timestamp()
 					case "path":
-						item.Path, _, err = ion.ReadString(field)
+						item.Path, err = f.String()
 					default:
 						// ignore
 					}
@@ -571,10 +587,10 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 				return nil
 			})
 		case "scanning":
-			idx.Scanning, _, err = ion.ReadBool(field)
+			idx.Scanning, err = f.Bool()
 		case "cursors":
-			err = unpackList(field, func(item []byte) error {
-				str, _, err := ion.ReadString(item)
+			err = f.UnpackList(func(d ion.Datum) error {
+				str, err := d.String()
 				if err != nil {
 					return err
 				}
@@ -582,40 +598,50 @@ func DecodeIndex(key *Key, index []byte, opts Flag) (*Index, error) {
 				return nil
 			})
 		case "last-scan":
-			idx.LastScan, _, err = ion.ReadTime(field)
+			idx.LastScan, err = f.Timestamp()
 		default:
-			err = fmt.Errorf("unexpected field %q", name)
+			err = fmt.Errorf("unexpected field %q", f.Label)
 		}
 		return
 	})
 	if err != nil {
 		return nil, fmt.Errorf("DecodeIndex: decoding structure: %w", err)
 	}
+	if !inputs.IsEmpty() {
+		err := idx.readInputs(&st, inputs, isize, idx.Algo)
+		if err != nil {
+			return nil, fmt.Errorf("DecodeIndex: decoding inputs: %w", err)
+		}
+	}
 	// we don't currently maintain any backwards-compatibility shims:
 	if version != IndexVersion {
 		return nil, fmt.Errorf("%w %d", ErrIndexObsolete, version)
 	}
-	if contents == nil {
+	if contents.IsEmpty() {
 		return idx, nil
 	}
-	if ion.TypeOf(contents) == ion.BlobType {
+	if contents.IsBlob() {
 		if idx.Algo == "" {
 			return nil, fmt.Errorf("DecodeIndex: missing compression algorithm")
 		}
-		b, _, err := ion.ReadBytes(contents)
+		b, err := contents.Blob()
 		if err != nil {
 			return nil, fmt.Errorf("DecodeIndex: %w", err)
 		}
 		decomp := compr.Decompression(idx.Algo)
-		contents = malloc(int(size))
-		defer free(contents)
-		if err := decomp.Decompress(b, contents); err != nil {
+		buf := malloc(int(size))
+		defer free(buf)
+		if err := decomp.Decompress(b, buf); err != nil {
 			return nil, fmt.Errorf("DecodeIndex: %w", err)
 		}
+		contents, _, err = ion.ReadDatum(&st, buf)
+		if err != nil {
+			return nil, fmt.Errorf("DecodeIndex: reading Contents %w", err)
+		}
 	}
-	err = unpackList(contents, func(field []byte) error {
+	err = contents.UnpackList(func(d ion.Datum) error {
 		var self Descriptor
-		if err := self.decode(&td, field, opts); err != nil {
+		if err := self.decode(&td, d, opts); err != nil {
 			return err
 		}
 		idx.Inline = append(idx.Inline, self)

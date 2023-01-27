@@ -222,20 +222,20 @@ func (j *journal) marshal(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndList()
 }
 
-func (j *journal) unmarshal(st *ion.Symtab, buf []byte) error {
+func (j *journal) unmarshal(d ion.Datum) error {
 	j.clear()
-	return unpackList(buf, func(field []byte) error {
+	return d.UnpackList(func(d ion.Datum) error {
 		var path, etag string
 		var id int64
-		err := unpackStruct(st, field, func(name string, field []byte) error {
+		err := d.UnpackStruct(func(f ion.Field) error {
 			var err error
-			switch name {
+			switch f.Label {
 			case "path":
-				path, _, err = ion.ReadString(field)
+				path, err = f.String()
 			case "etag":
-				etag, _, err = ion.ReadString(field)
+				etag, err = f.String()
 			case "id":
-				id, _, err = ion.ReadInt(field)
+				id, err = f.Int()
 			}
 			return err
 		})
@@ -354,43 +354,47 @@ func (f *level) load(fs UploadFS) error {
 	return f.decode(buf)
 }
 
-func (f *level) unmarshalLeaf(st *ion.Symtab, in []byte) error {
-	if ion.TypeOf(in) != ion.ListType {
-		return fmt.Errorf("unexpected ion type %s", ion.TypeOf(in))
+// XXX: unmarshalLeaf reuses the contents of d
+// to avoid unnecessary allocations, which in
+// turn causes d to be unusable after this
+// method returns.
+func (f *level) unmarshalLeaf(d ion.Datum) error {
+	if !d.IsList() {
+		return fmt.Errorf("unexpected ion type %s", d.Type())
 	}
 	f.isInner = false
 	// subtle: we can re-use this buffer
 	// because the data we stash is strictly
 	// smaller than the original ion input
-	f.raw = in[:0]
-	err := unpackList(in, func(item []byte) error {
+	f.raw = d.Raw()[:0]
+	err := d.UnpackList(func(d ion.Datum) error {
 		f.contents = append(f.contents, fentry{})
 		fe := &f.contents[len(f.contents)-1]
-		return unpackStruct(st, item, func(name string, field []byte) error {
+		return d.UnpackStruct(func(sf ion.Field) error {
 			var err error
 			var id int64
 			var contents []byte
-			switch name {
+			switch sf.Label {
 			case "path":
-				contents, _, err = ion.ReadStringShared(field)
+				contents, err = sf.StringShared()
 				if err == nil {
 					fe.ppos = len(f.raw)
 					f.raw = append(f.raw, contents...)
 				}
 			case "etag":
-				contents, _, err = ion.ReadStringShared(field)
+				contents, err = sf.StringShared()
 				if err == nil {
 					fe.epos = len(f.raw)
 					f.raw = append(f.raw, contents...)
 					fe.endpos = len(f.raw)
 				}
 			case "desc":
-				id, _, err = ion.ReadInt(field)
+				id, err = sf.Int()
 				if err == nil {
 					fe.desc = int(id)
 				}
 			default:
-				err = fmt.Errorf("unrecognized field name %q", name)
+				err = fmt.Errorf("unrecognized field name %q", sf.Label)
 			}
 			return err
 		})
@@ -457,37 +461,32 @@ func (f *level) compressLeaf(tmp *ion.Buffer, st *ion.Symtab) []byte {
 	return ret
 }
 
-func (f *FileTree) decode(st *ion.Symtab, buf []byte) error {
-	readInner := func(st *ion.Symtab, buf []byte) error {
-		err := f.root.unmarshalInner(st, buf, true)
-		if err == nil {
-			f.oldroot, _, err = ion.ReadDatum(st, buf)
-			if err != nil {
-				panic(err)
-			}
-		} else {
+func (f *FileTree) decode(d ion.Datum) error {
+	readInner := func(d ion.Datum) error {
+		err := f.root.unmarshalInner(d, true)
+		if err != nil {
 			return fmt.Errorf("FileTree.decode: unmarshalInner: %s", err)
 		}
+		f.oldroot = d
 		return nil
 	}
-	switch t := ion.TypeOf(buf); t {
+	switch t := d.Type(); t {
 	case ion.StructType:
-		_, err := ion.UnpackStruct(st, buf, func(field string, body []byte) error {
-			switch field {
+		return d.UnpackStruct(func(sf ion.Field) error {
+			switch sf.Label {
 			case "inner":
-				return readInner(st, body)
+				return readInner(sf.Datum)
 			case "journal":
 				f.replayed = false
-				return f.journal.unmarshal(st, body)
+				return f.journal.unmarshal(sf.Datum)
 			default:
-				return fmt.Errorf("blockfmt.FileTree.decode: unrecognized field %q", field)
+				return fmt.Errorf("blockfmt.FileTree.decode: unrecognized field %q", sf.Label)
 			}
 		})
-		return err
 	case ion.ListType:
 		f.journal.clear()
 		f.replayed = true // empty journal; fully replayed
-		return readInner(st, buf)
+		return readInner(d)
 	default:
 		return fmt.Errorf("blockfmt.FileTree.decode: unexpected type %s", t)
 	}
@@ -503,10 +502,14 @@ func (f *level) decode(in []byte) error {
 	if err != nil {
 		return err
 	}
-	if f.isInner {
-		return f.unmarshalInner(&st, ret, false)
+	d, _, err := ion.ReadDatum(&st, ret)
+	if err != nil {
+		return err
 	}
-	return f.unmarshalLeaf(&st, ret)
+	if f.isInner {
+		return f.unmarshalInner(d, false)
+	}
+	return f.unmarshalLeaf(d)
 }
 
 // ErrETagChanged is returned by FileTree.Append
@@ -999,19 +1002,19 @@ func (f *level) encodeInner(dst *ion.Buffer, st *ion.Symtab, inline bool) {
 
 // unmarshalInner unmarshals an inner node's contents
 //
-// NOTE: f.levels[i].{path,etag,last} will alias in!
-func (f *level) unmarshalInner(st *ion.Symtab, in []byte, root bool) error {
+// NOTE: f.levels[i].{path,etag,last} will alias d!
+func (f *level) unmarshalInner(d ion.Datum, root bool) error {
 	if f.contents != nil {
 		panic("level.unmarshalInner on leaf")
 	}
 	f.isInner = true
-	err := unpackList(in, func(field []byte) error {
+	err := d.UnpackList(func(d ion.Datum) error {
 		f.levels = append(f.levels, level{})
 		fe := &f.levels[len(f.levels)-1]
-		return unpackStruct(st, field, func(name string, field []byte) error {
+		return d.UnpackStruct(func(sf ion.Field) error {
 			var dst *[]byte
 			var err error
-			switch name {
+			switch sf.Label {
 			case "last":
 				dst = &fe.last
 			case "path":
@@ -1019,13 +1022,13 @@ func (f *level) unmarshalInner(st *ion.Symtab, in []byte, root bool) error {
 			case "etag":
 				dst = &fe.etag
 			case "is_inner":
-				fe.isInner, _, err = ion.ReadBool(field)
+				fe.isInner, err = sf.Bool()
 				return err
 			}
 			if dst == nil {
-				return fmt.Errorf("unrecognized filetree field %q", name)
+				return fmt.Errorf("unrecognized filetree field %q", sf.Label)
 			}
-			*dst, _, err = ion.ReadStringShared(field)
+			*dst, err = sf.StringShared()
 			return err
 		})
 	})

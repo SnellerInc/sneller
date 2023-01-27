@@ -177,7 +177,11 @@ func TestFiletreeInsert(t *testing.T) {
 			panic("root should not be dirty")
 		}
 		f.Reset()
-		f.decode(&st, buf.Bytes())
+		d, _, err := ion.ReadDatum(&st, buf.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.decode(d)
 	}
 
 	var appended, overwritten int
@@ -302,7 +306,11 @@ func TestFiletreeOverwrite(t *testing.T) {
 		}
 		f.encode(&buf, &st)
 		f.Reset()
-		f.decode(&st, buf.Bytes())
+		d, _, err := ion.ReadDatum(&st, buf.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.decode(d)
 	}
 
 	// insert should succeed
@@ -434,7 +442,11 @@ func testFiletreeShrink(t *testing.T, reloadLikelihood float64) {
 		f.encode(&buf, &st)
 		if rand.Float64() < reloadLikelihood {
 			f.Reset()
-			f.decode(&st, buf.Bytes())
+			d, _, err := ion.ReadDatum(&st, buf.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.decode(d)
 		}
 	}
 
