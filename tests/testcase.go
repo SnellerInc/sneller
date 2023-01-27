@@ -17,37 +17,54 @@ package tests
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"os"
+	"strings"
 )
 
 var sepdash = []byte("---")
 
-// ParseTestcase reads parts of a textfile separated by `---`.
-//
-// Each part is a list of lines.
-// The procedure skips empty lines and lines staring with the `#`.
-func ParseTestcase(fname string) ([][]string, error) {
+// Spec holds the pre-parsed testcase content.
+type Spec struct {
+	// List of lines between `---` marks
+	Sections [][]string
+
+	// Map of key:value tags extracted from comments
+	Tags map[string]string
+}
+
+// ReadTestcaseFromFile is a wrapper for ReadTestcase that reads
+// testcase from a file.
+func ReadTestcaseFromFile(fname string) (*Spec, error) {
 	f, err := os.Open(fname)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	rd := bufio.NewScanner(f)
 
-	partID := 0
-	var parts [][]string
-	parts = append(parts, []string{})
+	return ReadTestcase(f)
+}
+
+// ReadTestcase reads parts of a text separated by lines `---`.
+//
+// Each part is a list of lines.
+// The procedure skips empty lines and lines staring with the `#`.
+// The procedure collects all key=value settings that start with double '##'.
+func ReadTestcase(reader io.Reader) (*Spec, error) {
+	rd := bufio.NewScanner(reader)
+
+	spec := &Spec{
+		Tags: make(map[string]string),
+	}
+
+	sectionID := 0
+	spec.Sections = append(spec.Sections, []string{})
 
 	for rd.Scan() {
 		line := rd.Bytes()
 		if bytes.HasPrefix(line, sepdash) {
-			partID += 1
-			parts = append(parts, []string{})
-			continue
-		}
-
-		// allow # line comments iff they begin the line
-		if len(line) > 0 && line[0] == '#' {
+			sectionID += 1
+			spec.Sections = append(spec.Sections, []string{})
 			continue
 		}
 
@@ -55,10 +72,38 @@ func ParseTestcase(fname string) ([][]string, error) {
 			continue
 		}
 
-		parts[partID] = append(parts[partID], string(line))
+		// allow # line comments iff they begin the line
+		n := len(line)
+		if n > 0 && line[0] == '#' {
+			if n > 1 && line[1] == '#' {
+				// parse '## key: value'
+				k, v, ok := parsekeyvalue(string(line[2:]))
+				if ok {
+					spec.Tags[k] = v
+				}
+			}
+
+			continue
+		}
+
+		spec.Sections[sectionID] = append(spec.Sections[sectionID], string(line))
 	}
 	if err := rd.Err(); err != nil {
 		return nil, err
 	}
-	return parts, nil
+
+	return spec, nil
+}
+
+func parsekeyvalue(line string) (key string, value string, ok bool) {
+	key, value, ok = strings.Cut(line, ":")
+	if !ok {
+		return
+	}
+
+	key = strings.TrimSpace(key)
+	key = strings.ToLower(key)
+	value = strings.TrimSpace(value)
+	ok = len(key) != 0 && len(value) != 0
+	return
 }

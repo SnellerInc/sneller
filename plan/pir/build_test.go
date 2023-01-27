@@ -1640,22 +1640,23 @@ func runTestcasesFromFiles(t *testing.T) {
 }
 
 func parseTestcase(fname string) (*buildTestcase, error) {
-	parts, err := tests.ParseTestcase(fname)
+	spec, err := tests.ReadTestcaseFromFile(fname)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(parts) < 2 || len(parts) > 3 {
-		return nil, fmt.Errorf("expected 2 or 3 sections in testcase, got %d", len(parts))
+	n := len(spec.Sections)
+	if n < 2 || n > 3 {
+		return nil, fmt.Errorf("expected 2 or 3 sections in testcase, got %d", n)
 	}
 
 	tc := buildTestcase{
-		input:  strings.Join(parts[0], "\n"),
-		expect: parts[1],
+		input:  strings.Join(spec.Sections[0], "\n"),
+		expect: spec.Sections[1],
 	}
 
-	if len(parts) == 3 {
-		tc.split = parts[2]
+	if n == 3 {
+		tc.split = spec.Sections[2]
 	}
 
 	if len(tc.expect) == 0 {

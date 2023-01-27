@@ -912,14 +912,14 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 // expected rows (JSONRL) and the middle parts are inputs (also
 // in the JSONRL format).
 func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, output []byte) {
-	parts, err := tests.ParseTestcase(fname)
+	spec, err := tests.ReadTestcaseFromFile(fname)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	n := len(parts)
+	n := len(spec.Sections)
 	if n < 3 {
-		t.Fatalf("expected at least 3 parts of testcase, got %d", n)
+		t.Fatalf("expected at least 3 sections of testcase, got %d", n)
 	}
 
 	part2bytes := func(part []string) []byte {
@@ -942,11 +942,11 @@ func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, ou
 		return res
 	}
 
-	query = part2bytes(parts[0])
-	output = jsonrl2bytes(parts[n-1])
+	query = part2bytes(spec.Sections[0])
+	output = jsonrl2bytes(spec.Sections[n-1])
 
 	for i := 1; i < n-1; i++ {
-		inputs = append(inputs, jsonrl2bytes(parts[i]))
+		inputs = append(inputs, jsonrl2bytes(spec.Sections[i]))
 	}
 
 	return query, inputs, output
@@ -961,7 +961,7 @@ func readTestcase(t testing.TB, fname string) (query []byte, inputs [][]byte, ou
 // then the FROM part has to be a string which is treated
 // as a filename and this file is read into the input (JSONRL).
 func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
-	parts, err := tests.ParseTestcase(fname)
+	spec, err := tests.ReadTestcaseFromFile(fname)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -976,14 +976,14 @@ func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
 		return res
 	}
 
-	text := part2bytes(parts[0])
+	text := part2bytes(spec.Sections[0])
 	query, err := partiql.Parse(text)
 	if err != nil {
 		t.Fatalf("cannot parse %q: %s", text, err)
 	}
 
 	var input []byte
-	switch n := len(parts); n {
+	switch n := len(spec.Sections); n {
 	case 1: // only query
 		sel := query.Body.(*expr.Select)
 		table := sel.From.(*expr.Table)
@@ -1008,7 +1008,7 @@ func readBenchmark(t testing.TB, fname string) (*expr.Query, []byte) {
 		table.Expr = expr.Ident("input")
 
 	case 2: // query and inline input
-		input = part2bytes(parts[1])
+		input = part2bytes(spec.Sections[1])
 
 	default:
 		t.Fatalf("expected at most two parts of benchmark, got %d", n)
