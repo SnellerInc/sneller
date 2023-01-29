@@ -34,6 +34,14 @@ import (
 
 type tableHandles []TableHandle
 
+func (h tableHandles) Size() int64 {
+	n := int64(0)
+	for i := range h {
+		n += h[i].Size()
+	}
+	return n
+}
+
 func (h tableHandles) Open(ctx context.Context) (vm.Table, error) {
 	ts := make(tables, len(h))
 	for i := range h {
@@ -212,73 +220,6 @@ func (w *multiWriter) EndSegment() {
 func (w *multiWriter) Close() error {
 	return nil
 }
-
-// A teeSink is a vm.QuerySink implementation
-// that writes all written rows to each of the
-// provided sinks in sequence.
-type teeSink struct {
-	dst []vm.QuerySink
-}
-
-// appendSink appends sink to sinks, producing a
-// teeSink for multiple sinks. nil parameters
-// are handled appropriately.
-func appendSink(sinks, sink vm.QuerySink) vm.QuerySink {
-	if sink == nil {
-		return sinks
-	}
-	if sinks == nil {
-		return sink
-	}
-	if ts, ok := sink.(*teeSink); ok {
-		for i := range ts.dst {
-			sinks = appendSink(sinks, ts.dst[i])
-		}
-		return sinks
-	}
-	if ts, ok := sinks.(*teeSink); ok {
-		ts.dst = append(ts.dst, sink)
-		return ts
-	}
-	return &teeSink{dst: []vm.QuerySink{sinks, sink}}
-}
-
-func (s *teeSink) Open() (io.WriteCloser, error) {
-	if len(s.dst) == 0 {
-		return eofWriter{}, nil
-	}
-	w, err := s.dst[0].Open()
-	if err != nil {
-		return nil, err
-	}
-	if len(s.dst) == 1 {
-		return w, err
-	}
-	tw := vm.NewTeeWriter(w, func(int64, error) { w.Close() })
-	for i := 1; i < len(s.dst); i++ {
-		w, err := s.dst[i].Open()
-		if err != nil {
-			tw.Close()
-			return nil, err
-		}
-		tw.Add(w, func(int64, error) { w.Close() })
-	}
-	return tw, nil
-}
-
-func (s *teeSink) Close() error {
-	var err error
-	for i := range s.dst {
-		err = appenderr(err, s.dst[i].Close())
-	}
-	return err
-}
-
-type eofWriter struct{}
-
-func (eofWriter) Write([]byte) (int, error) { return 0, io.EOF }
-func (eofWriter) Close() error              { return nil }
-func (eofWriter) EndSegment()               {}
 
 // TableLister is an interface an Env or Index can
 // optionally implement to support TABLE_GLOB and

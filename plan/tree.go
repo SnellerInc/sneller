@@ -33,8 +33,10 @@ type Input struct {
 func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	tbl, handle := i.Table, i.Handle
-	dst.BeginField(st.Intern("table"))
-	tbl.Encode(dst, st)
+	if tbl != nil {
+		dst.BeginField(st.Intern("table"))
+		tbl.Encode(dst, st)
+	}
 	if handle != nil {
 		dst.BeginField(st.Intern("handle"))
 		err := handle.Encode(dst, st)
@@ -53,8 +55,11 @@ func (i *Input) encode(dst *ion.Buffer, st *ion.Symtab) error {
 // or NewSplit and it can be executed
 // with Exec or Transport.Exec.
 type Tree struct {
-	// Inputs are the tables to use as inputs to
-	// the root of the plan tree.
+	// Inputs is the global list of inputs for the tree.
+	// Each [Node.Input] references an element of this array.
+	//
+	// (These are stored globally so that the same table
+	// referenced multiple times does not consume extra space.)
 	Inputs []Input
 	// Root is the root node of the plan tree.
 	Root Node
@@ -78,22 +83,19 @@ func tabline(dst *strings.Builder, indent int, line string) {
 	dst.WriteByte('\n')
 }
 
-func printops(dst *strings.Builder, indent int, op Op, in []Input) {
-	if u, ok := op.(*UnionMap); ok {
-		in = []Input{{Table: u.Orig}}
-	}
+func printops(dst *strings.Builder, indent int, op Op) {
 	if from := op.input(); from != nil {
-		printops(dst, indent, from, in)
+		printops(dst, indent, from)
 	}
 	if l, ok := op.(*Leaf); ok {
-		tabline(dst, indent, l.describe(in))
+		tabline(dst, indent, l.describe())
 		return
 	}
 	tabline(dst, indent, op.String())
 }
 
 func (t *Tree) describe(dst *strings.Builder) {
-	t.Root.describe(0, dst, t.Inputs)
+	t.Root.describe(0, dst)
 }
 
 // String implements fmt.Stringer
@@ -101,6 +103,25 @@ func (t *Tree) String() string {
 	var out strings.Builder
 	t.describe(&out)
 	return out.String()
+}
+
+// MaxScanned returns the maximum number of scanned
+// bytes for this query plan by traversing the plan tree
+// and adding TableHandle.Size bytes for each table reference.
+func (t *Tree) MaxScanned() int64 {
+	ret := int64(0)
+	var walk func(*Node)
+	walk = func(n *Node) {
+		for i := range n.Children {
+			walk(n.Children[i])
+		}
+		i := n.Input
+		if i >= 0 && i < len(t.Inputs) {
+			ret += t.Inputs[i].Handle.Size()
+		}
+	}
+	walk(&t.Root)
+	return ret
 }
 
 // A Node is one node of a query plan tree and
@@ -130,15 +151,13 @@ type Node struct {
 	// a known ResultSet.
 	OutputType ResultSet
 
-	// Inputs are the tables to use as inputs to
-	// the children of this plan tree node.
-	Inputs []Input
-
 	// Children is the list of sub-queries
 	// that produce results that are prerequisites
 	// to computing this query.
 	Children []*Node
 
+	// Input is the original input associated with this Op.
+	Input int
 	// Op is the first element of a linked list
 	// of query execution steps. The linked list
 	// is encoded in reverse-execution-order, so
@@ -148,18 +167,18 @@ type Node struct {
 	Op Op
 }
 
-func (n *Node) describe(indent int, dst *strings.Builder, in []Input) {
+func (n *Node) describe(indent int, dst *strings.Builder) {
 	for i := range n.Children {
 		tabfprintf(dst, indent, "WITH REPLACEMENT(%d) AS (\n", i)
-		n.Children[i].describe(indent+1, dst, n.Inputs)
+		n.Children[i].describe(indent+1, dst)
 		tabline(dst, indent, ")")
 	}
-	printops(dst, indent, n.Op, in)
+	printops(dst, indent, n.Op)
 }
 
 // String implements fmt.Stringer
 func (n *Node) String() string {
 	var out strings.Builder
-	n.describe(0, &out, nil)
+	n.describe(0, &out)
 	return out.String()
 }

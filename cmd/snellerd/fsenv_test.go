@@ -598,7 +598,7 @@ SELECT ROUND(SUM(total_amount)) AS "sum" FROM default.taxi WHERE VendorID = (SEL
 				if err != nil {
 					t.Errorf("getting scanned bytes: %s", err)
 				}
-				t.Logf("scanned %d bytes", scannedsize)
+				t.Logf("max scan %d bytes", scannedsize)
 				if scannedsize%testBlocksize != 0 {
 					t.Errorf("scanned size %d not a multiple of the block size", scannedsize)
 				}

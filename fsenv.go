@@ -47,7 +47,9 @@ type savedList struct {
 
 // FSEnv provides a plan.Env from a db.FS
 type FSEnv struct {
-	Root   db.FS
+	Root     db.FS
+	Splitter *Splitter
+
 	db     string
 	tenant db.Tenant
 
@@ -58,6 +60,8 @@ type FSEnv struct {
 	// keep the accumulated state here:
 	hash    hash.Hash
 	modtime date.Time
+
+	maxscan int64
 }
 
 func Environ(t db.Tenant, dbname string) (*FSEnv, error) {
@@ -142,6 +146,10 @@ func (f *FSEnv) index(e expr.Node) (*blockfmt.Index, error) {
 	return index, nil
 }
 
+// MaxScanned returns the maximum number of
+// bytes that need to be scanned to satisfy this query.
+func (f *FSEnv) MaxScanned() int64 { return f.maxscan }
+
 // Stat implements plan.Env.Stat
 func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	index, err := f.index(e)
@@ -149,15 +157,17 @@ func (f *FSEnv) Stat(e expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 		return nil, err
 	}
 	fh := &FilterHandle{
+		Splitter:  f.Splitter,
 		Expr:      h.Filter,
 		Fields:    h.Fields,
 		AllFields: h.AllFields,
 	}
 	fh.compiled.Compile(fh.Expr)
-	blobs, err := db.Blobs(f.Root, index, &fh.compiled)
+	blobs, size, err := db.Blobs(f.Root, index, &fh.compiled)
 	if err != nil {
 		return nil, err
 	}
+	f.maxscan += size
 	fh.Blobs = blobs
 	return fh, nil
 }

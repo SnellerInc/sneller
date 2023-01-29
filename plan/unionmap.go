@@ -16,10 +16,8 @@ package plan
 
 import (
 	"fmt"
-	"io"
 	"sync"
 
-	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -30,9 +28,6 @@ import (
 // and without deduplication)
 type UnionMap struct {
 	Nonterminal
-
-	Orig *expr.Table
-	Sub  Subtables
 }
 
 var (
@@ -153,137 +148,119 @@ func (d *decodeLocal) Finalize() error {
 	return nil
 }
 
-func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
-	w, err := dst.Open()
-	if err != nil {
-		return -1, nil, err
+func doSplit(th TableHandle) (Subtables, error) {
+	if sp, ok := th.(SplitHandle); ok {
+		return sp.Split()
 	}
-	s := vm.Locked(w)
-
-	// NOTE: the heuristic here at the momement
-	// is that the reduction step of sub-queries
-	// does not benefit substantially from having
-	// parallelism, so we union all the output bytes
-	// into a single thread here
-	errors := make([]error, u.Sub.Len())
-	var wg sync.WaitGroup
-	wg.Add(u.Sub.Len())
-	for i := 0; i < u.Sub.Len(); i++ {
-		go func(i int) {
-			defer wg.Done()
-			var sub Subtable
-			u.Sub.Subtable(i, &sub)
-			subep := &ExecParams{
-				Output:   s,
-				Parallel: ep.Parallel, // ...meaningful?
-				Context:  ep.Context,
-			}
-			// wrap the rest of the query in a Tree;
-			// this makes it look to the Transport
-			// like we are executing a sub-query, which
-			// is approximately true
-			stub := &Tree{
-				Root: Node{Op: u.From},
-				Inputs: []Input{{
-					Table:  sub.Table,
-					Handle: sub.Handle,
-				}},
-			}
-			errors[i] = sub.Exec(stub, subep)
-			ep.Stats.atomicAdd(&subep.Stats)
-		}(i)
+	hs, ok := th.(tableHandles)
+	if !ok {
+		return SubtableList{{
+			Transport: &LocalTransport{},
+			Handle:    th,
+		}}, nil
 	}
-	return -1, &unionMapSink{
-		w: w, dst: dst, wg: &wg, errors: errors,
-	}, nil
-}
-
-type unionMapSink struct {
-	dst    vm.QuerySink
-	w      io.Closer
-	wg     *sync.WaitGroup
-	errors []error
-}
-
-func (s *unionMapSink) Open() (io.WriteCloser, error) {
-	panic("(*unionMapSink).Open should never be called")
-}
-
-func (s *unionMapSink) Close() error {
-	s.wg.Wait()
-
-	// for now, just yield the first error;
-	// it's not clear what we would do differently
-	// if we had a whole bunch of them turn up
-	var err error
-	for i := range s.errors {
-		if s.errors[i] != nil {
-			err = s.errors[i]
-			break
+	var out Subtables
+	for i := range hs {
+		sub, err := doSplit(hs[i])
+		if err != nil {
+			return nil, err
+		}
+		if out == nil {
+			out = sub
+		} else {
+			out = out.Append(sub)
 		}
 	}
-	if err != nil {
-		s.w.Close()
-		s.dst.Close()
+	return out, nil
+}
+
+func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+	// on execution, split the handle and then dispatch to u.From
+	return func(h TableHandle) error {
+		tbls, err := doSplit(h)
+		if err != nil {
+			return err
+		}
+		if tbls.Len() == 0 {
+			// write no data
+			var b ion.Buffer
+			var st ion.Symtab
+			st.Marshal(&b, true)
+			return writeIon(&b, dst)
+		}
+		w, err := dst.Open()
+		if err != nil {
+			return err
+		}
+		s := vm.Locked(w)
+
+		// NOTE: the heuristic here at the momement
+		// is that the reduction step of sub-queries
+		// does not benefit substantially from having
+		// parallelism, so we union all the output bytes
+		// into a single thread here
+		errors := make([]error, tbls.Len())
+		var wg sync.WaitGroup
+		wg.Add(tbls.Len())
+		for i := 0; i < tbls.Len(); i++ {
+			go func(i int) {
+				defer wg.Done()
+				var sub Subtable
+				tbls.Subtable(i, &sub)
+				subep := &ExecParams{
+					Output:   s,
+					Parallel: ep.Parallel, // ...meaningful?
+					Context:  ep.Context,
+				}
+				// wrap the rest of the query in a Tree;
+				// this makes it look to the Transport
+				// like we are executing a sub-query, which
+				// is approximately true
+				stub := &Tree{
+					Inputs: []Input{{
+						Handle: sub.Handle,
+					}},
+					Root: Node{
+						Op:    u.From,
+						Input: 0,
+					},
+				}
+				errors[i] = sub.Exec(stub, subep)
+				ep.Stats.atomicAdd(&subep.Stats)
+			}(i)
+		}
+		wg.Wait()
+		for i := range errors {
+			if errors[i] != nil {
+				err = errors[i]
+				break
+			}
+		}
+		err2 := w.Close()
+		err3 := dst.Close()
+		if err == nil {
+			err = err2
+		}
+		if err == nil {
+			err = err3
+		}
 		return err
 	}
-	err = s.w.Close()
-	err2 := s.dst.Close()
-	if err == nil {
-		err = err2
-	}
-	return err
 }
 
 func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginStruct(-1)
 	settype("unionmap", dst, st)
-	dst.BeginField(st.Intern("orig"))
-	u.Orig.Encode(dst, st)
-	// subtables are encoded as
-	//   [[transport, table-expr] ...]
-	dst.BeginField(st.Intern("sub"))
-	if err := u.Sub.Encode(st, dst); err != nil {
-		return err
-	}
 	dst.EndStruct()
 	return nil
 }
 
 func (u *UnionMap) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
 	switch name {
-	case "orig":
-		nod, _, err := expr.Decode(st, body)
-		if err != nil {
-			return err
-		}
-		t, ok := nod.(*expr.Table)
-		if !ok {
-			return fmt.Errorf("UnionMap.Orig: cannot use node of type %T", nod)
-		}
-		u.Orig = t
-	case "sub":
-		sub, err := DecodeSubtables(d, st, body[:ion.SizeOf(body)])
-		if err != nil {
-			return err
-		}
-		u.Sub = sub
 	default:
 		return errUnexpectedField
 	}
 	return nil
 }
 
-func tableStrings(lst Subtables) []string {
-	out := make([]string, lst.Len())
-	for i := range out {
-		var sub Subtable
-		lst.Subtable(i, &sub)
-		out[i] = expr.ToString(sub)
-	}
-	return out
-}
-
-func (u *UnionMap) String() string {
-	return fmt.Sprintf("UNION MAP %s %v", expr.ToString(u.Orig), tableStrings(u.Sub))
-}
+func (u *UnionMap) String() string { return "UNION MAP" }

@@ -235,60 +235,14 @@ func lowerBind(in *pir.Bind, from Op) (Op, error) {
 	}, nil
 }
 
-func lowerUnionMap(in *pir.UnionMap, env Env, split Splitter) (Op, error) {
-	// NOTE: we're passing the same splitter
-	// to the child here. We don't currently
-	// produce nested split queries, so it isn't
-	// meaningful at the moment, but it's possible
-	// at some point we will need to indicate that
-	// we are splitting an already-split query
-	sub, err := walkBuild(in.Child.Final(), env, split)
+func (w *walker) lowerUnionMap(in *pir.UnionMap, env Env) (Op, error) {
+	sub, err := w.walkBuild(in.Child.Final(), env)
 	if err != nil {
 		return nil, err
-	}
-	handle, err := stat(env, in.Inner.Table.Expr, &Hints{
-		Filter:    in.Inner.Filter,
-		Fields:    in.Inner.Fields(),
-		AllFields: in.Inner.Wildcard(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	tbls, err := doSplit(split, in.Inner.Table.Expr, handle)
-	if err != nil {
-		return nil, err
-	}
-	// no subtables means no output
-	if tbls.Len() == 0 {
-		return NoOutput{}, nil
 	}
 	return &UnionMap{
 		Nonterminal: Nonterminal{From: sub},
-		Orig:        in.Inner.Table,
-		Sub:         tbls,
 	}, nil
-}
-
-// doSplit calls s.Split(tbl, th) with special handling
-// for tableHandles.
-func doSplit(s Splitter, tbl expr.Node, th TableHandle) (Subtables, error) {
-	hs, ok := th.(tableHandles)
-	if !ok {
-		return s.Split(tbl, th)
-	}
-	var out Subtables
-	for i := range hs {
-		sub, err := doSplit(s, tbl, hs[i])
-		if err != nil {
-			return nil, err
-		}
-		if out == nil {
-			out = sub
-		} else {
-			out = out.Append(sub)
-		}
-	}
-	return out, nil
 }
 
 // UploadFS is a blockfmt.UploadFS that can be encoded
@@ -506,9 +460,10 @@ func (i *input) merge(in *input) bool {
 // deduplicated.
 type walker struct {
 	inputs []input
+	latest int
 }
 
-func (w *walker) put(it *pir.IterTable) int {
+func (w *walker) put(it *pir.IterTable) {
 	in := input{
 		table: it.Table,
 		hints: Hints{
@@ -519,26 +474,22 @@ func (w *walker) put(it *pir.IterTable) int {
 	}
 	for i := range w.inputs {
 		if w.inputs[i].merge(&in) {
-			return i
+			w.latest = i
+			return
 		}
 	}
-	i := len(w.inputs)
+	w.latest = len(w.inputs)
 	w.inputs = append(w.inputs, in)
-	return i
 }
 
-func walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
-	w := walker{}
-	return w.walkBuild(in, env, split)
-}
-
-func (w *walker) walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
+func (w *walker) walkBuild(in pir.Step, env Env) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
+		w.put(it) // set w.latest
 		// TODO: we should handle table globs and
 		// the ++ operator specially
 		out := Op(&Leaf{
-			Input: w.put(it),
+			Orig: it.Table,
 		})
 		if it.Filter != nil {
 			out = &Filter{
@@ -558,10 +509,10 @@ func (w *walker) walkBuild(in pir.Step, env Env, split Splitter) (Op, error) {
 
 	// ... and UnionMap as well
 	if u, ok := in.(*pir.UnionMap); ok {
-		return lowerUnionMap(u, env, split)
+		return w.lowerUnionMap(u, env)
 	}
 
-	input, err := w.walkBuild(pir.Input(in), env, split)
+	input, err := w.walkBuild(pir.Input(in), env)
 	if err != nil {
 		return nil, err
 	}
@@ -632,42 +583,37 @@ func results(b *pir.Trace) ResultSet {
 	return out
 }
 
-func toTree(in *pir.Trace, env Env, split Splitter) (*Tree, error) {
-	w := walker{}
+func toTree(in *pir.Trace, env Env) (*Tree, error) {
+	w := walker{latest: -1}
 	t := &Tree{}
-	err := w.toNode(&t.Root, in, env, split)
+	err := w.toNode(&t.Root, in, env)
 	if err != nil {
 		return nil, err
 	}
-	inputs, err := w.finish(env)
+	t.Inputs, err = w.finish(env)
 	if err != nil {
 		return nil, err
 	}
-	t.Inputs = inputs
 	return t, nil
 }
 
-func (w *walker) toNode(t *Node, in *pir.Trace, env Env, split Splitter) error {
-	op, err := w.walkBuild(in.Final(), env, split)
+func (w *walker) toNode(t *Node, in *pir.Trace, env Env) error {
+	t.Children = make([]*Node, len(in.Replacements))
+	for i := range in.Replacements {
+		t.Children[i] = &Node{}
+		err := w.toNode(t.Children[i], in.Replacements[i], env)
+		if err != nil {
+			return err
+		}
+	}
+	w.latest = -1
+	op, err := w.walkBuild(in.Final(), env)
 	if err != nil {
 		return err
 	}
 	t.Op = op
 	t.OutputType = results(in)
-	t.Children = make([]*Node, len(in.Replacements))
-	sub := walker{}
-	for i := range in.Replacements {
-		t.Children[i] = &Node{}
-		err := sub.toNode(t.Children[i], in.Replacements[i], env, split)
-		if err != nil {
-			return err
-		}
-	}
-	inputs, err := sub.finish(env)
-	if err != nil {
-		return err
-	}
-	t.Inputs = inputs
+	t.Input = w.latest
 	return nil
 }
 
@@ -693,16 +639,20 @@ func (e pirenv) Index(tbl expr.Node) (pir.Index, error) {
 
 // New creates a new Tree from raw query AST.
 func New(q *expr.Query, env Env) (*Tree, error) {
-	return NewSplit(q, env, nil)
+	return newTree(q, env, false)
 }
 
 // NewSplit creates a new Tree from raw query AST.
-func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
+func NewSplit(q *expr.Query, env Env) (*Tree, error) {
+	return newTree(q, env, true)
+}
+
+func newTree(q *expr.Query, env Env, split bool) (*Tree, error) {
 	b, err := pir.Build(q, pirenv{env})
 	if err != nil {
 		return nil, err
 	}
-	if split != nil {
+	if split {
 		reduce, err := pir.Split(b)
 		if err != nil {
 			return nil, err
@@ -712,7 +662,7 @@ func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
 		b = pir.NoSplit(b)
 	}
 
-	tree, err := toTree(b, env, split)
+	tree, err := toTree(b, env)
 	if err != nil {
 		return nil, err
 	}
@@ -728,7 +678,7 @@ func NewSplit(q *expr.Query, env Env, split Splitter) (*Tree, error) {
 		Tree:   tree,
 	}
 
-	res := &Tree{Root: Node{Op: op}}
+	res := &Tree{Inputs: tree.Inputs, Root: Node{Op: op}}
 	return res, nil
 
 }

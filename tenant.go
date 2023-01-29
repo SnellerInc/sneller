@@ -64,8 +64,8 @@ type TenantEnv struct {
 }
 
 type TenantHandle struct {
-	parent *TenantEnv
-	inner  plan.TableHandle
+	*FilterHandle // share Size(), Encode()
+	parent        *TenantEnv
 }
 
 func (t *TenantEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error) {
@@ -76,7 +76,7 @@ func (t *TenantEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error)
 	if err != nil {
 		return nil, err
 	}
-	return &TenantHandle{parent: t, inner: th}, nil
+	return &TenantHandle{parent: t, FilterHandle: th.(*FilterHandle)}, nil
 }
 
 func (t *TenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
@@ -84,23 +84,7 @@ func (t *TenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, 
 	if err := h.Decode(st, buf); err != nil {
 		return nil, err
 	}
-	return &TenantHandle{parent: t, inner: h}, nil
-}
-
-var _ plan.SubtableDecoder = (*TenantEnv)(nil)
-
-// DecodeSubtables implements plan.SubtableDecoder.
-func (t *TenantEnv) DecodeSubtables(st *ion.Symtab, buf []byte) (plan.Subtables, error) {
-	thfn := func(blobs []blob.Interface, hint *plan.Hints) plan.TableHandle {
-		h := &FilterHandle{
-			Blobs:     &blob.List{Contents: blobs},
-			Fields:    hint.Fields,
-			AllFields: hint.AllFields,
-			Expr:      hint.Filter,
-		}
-		return &TenantHandle{parent: t, inner: h}
-	}
-	return DecodeSubtables(st, buf, thfn)
+	return &TenantHandle{parent: t, FilterHandle: h}, nil
 }
 
 var _ plan.UploaderDecoder = (*TenantEnv)(nil)
@@ -119,12 +103,12 @@ func (t *TenantEnv) Post() {
 	}
 }
 
-func (h *TenantHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
-	return h.inner.Encode(dst, st)
+func (h *TenantHandle) Split() (plan.Subtables, error) {
+	return h.Splitter.split(h)
 }
 
 func (h *TenantHandle) Open(ctx context.Context) (vm.Table, error) {
-	fh := h.inner.(*FilterHandle)
+	fh := h.FilterHandle
 	lst := fh.Blobs
 	if !CanVMOpen {
 		panic("shouldn't have called tenantHandle.Open()")
@@ -166,8 +150,8 @@ func (h *TenantHandle) Open(ctx context.Context) (vm.Table, error) {
 
 func (h *TenantHandle) Filter(e expr.Node) plan.TableHandle {
 	return &TenantHandle{
-		parent: h.parent,
-		inner:  h.inner.(*FilterHandle).Filter(e),
+		parent:       h.parent,
+		FilterHandle: h.FilterHandle.Filter(e).(*FilterHandle),
 	}
 }
 

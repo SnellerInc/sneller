@@ -37,8 +37,6 @@ type Subtables interface {
 	// This may panic if i is out of range.
 	// Implementations must not retain sun.
 	Subtable(i int, sub *Subtable)
-	// Encode encodes the subtables into dst.
-	Encode(st *ion.Symtab, dst *ion.Buffer) error
 	// Filter applies the given filter expression
 	// to every TableHandle in each subtables.
 	Filter(expr.Node)
@@ -64,18 +62,6 @@ func (s SubtableList) Subtable(i int, sub *Subtable) {
 	*sub = s[i]
 }
 
-// Encode encodes the list into dst.
-func (s SubtableList) Encode(st *ion.Symtab, dst *ion.Buffer) error {
-	dst.BeginList(-1)
-	for i := range s {
-		if err := s[i].encode(st, dst); err != nil {
-			return err
-		}
-	}
-	dst.EndList()
-	return nil
-}
-
 // Filter applies the given filter expression to every
 // TableHandle in the list.
 func (s SubtableList) Filter(e expr.Node) {
@@ -92,50 +78,6 @@ func (s SubtableList) Append(sub Subtables) Subtables {
 	return append(s, sub.(SubtableList)...)
 }
 
-// DecodeSubtables decodes a list of Subtable objects
-func DecodeSubtables(d Decoder, st *ion.Symtab, body []byte) (Subtables, error) {
-	if d, ok := d.(SubtableDecoder); ok {
-		return d.DecodeSubtables(st, body)
-	}
-	var sub SubtableList
-	err := unpackList(body, func(field []byte) error {
-		body, err := nonemptyList(field)
-		if err != nil {
-			return err
-		}
-		t, err := DecodeTransport(st, body)
-		if err != nil {
-			return err
-		}
-		body = body[ion.SizeOf(body):]
-		e, body, err := expr.Decode(st, body)
-		if err != nil {
-			return err
-		}
-		tbl, ok := e.(*expr.Table)
-		if !ok {
-			return fmt.Errorf("decoding UnionMap: cannot use %T as expr.Table", e)
-		}
-		var th TableHandle
-		if len(body) > 0 && ion.TypeOf(body) != ion.NullType {
-			th, err = decodeHandle(d, st, body)
-			if err != nil {
-				return err
-			}
-		}
-		sub = append(sub, Subtable{
-			Transport: t,
-			Table:     tbl,
-			Handle:    th,
-		})
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return sub, nil
-}
-
 // Subtable is a (Transport, Table) tuple
 // that is returned by Splitter.Split
 // to indicate how queries that access
@@ -147,44 +89,7 @@ type Subtable struct {
 	// over which the subquery should
 	// be executed.
 	Transport
-
-	// Table is the expression
-	// that the Transport should use
-	// as the table value.
-	*expr.Table
-
 	Handle TableHandle
-}
-
-// encode as [transport, table-expr, handle]
-func (s *Subtable) encode(st *ion.Symtab, dst *ion.Buffer) error {
-	dst.BeginList(-1)
-	err := EncodeTransport(s.Transport, st, dst)
-	if err != nil {
-		return err
-	}
-	s.Table.Encode(dst, st)
-	if s.Handle == nil {
-		dst.WriteNull()
-	} else if err := s.Handle.Encode(dst, st); err != nil {
-		return err
-	}
-	dst.EndList()
-	return nil
-}
-
-// Splitter is the interface through which
-// a caller can control how queries are split
-// into multiple sub-queries that are executed
-// using different Transports.
-type Splitter interface {
-	// Split takes the table expression
-	// from the original query along with
-	// the table handle returned by Env.Stat
-	// and yields a list of Subtables to
-	// be used to evaluate the sub-query
-	// in parallel.
-	Split(expr.Node, TableHandle) (Subtables, error)
 }
 
 type frame uint32

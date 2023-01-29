@@ -54,6 +54,10 @@ func (b bufhandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected bufhandle.Encode")
 }
 
+func (b bufhandle) Size() int64 {
+	return int64(len(b))
+}
+
 type chunkshandle struct {
 	chunks [][]byte
 	fields []string
@@ -61,6 +65,14 @@ type chunkshandle struct {
 
 func (c *chunkshandle) Open(_ context.Context) (vm.Table, error) {
 	return c, nil
+}
+
+func (c *chunkshandle) Size() int64 {
+	n := int64(0)
+	for i := range c.chunks {
+		n += int64(len(c.chunks[i]))
+	}
+	return n
 }
 
 func (c *chunkshandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -137,6 +149,37 @@ func (p *parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected parallelchunks.Encode")
 }
 
+func (p *parallelchunks) Size() int64 {
+	n := int64(0)
+	for i := range p.chunks {
+		n += int64(len(p.chunks[i]))
+	}
+	return n
+}
+
+/* FIXME: uncomment this once BOOL_AND() is fixed
+   so that partitions for which the condition is not satisfied
+   do not cause the merged result to short-circuit to FALSE
+func (p *parallelchunks) Split() (plan.Subtables, error) {
+	tp := &plan.LocalTransport{Threads: 1}
+	if len(p.chunks) == 1 {
+		return plan.SubtableList{{Transport: tp, Handle: p}}, nil
+	}
+	first := p.chunks[:len(p.chunks)/2]
+	second := p.chunks[len(p.chunks)/2:]
+	return plan.SubtableList{
+		{
+			Transport: tp,
+			Handle: &parallelchunks{chunks: first, fields: p.fields},
+		},
+		{
+			Transport: tp,
+			Handle: &parallelchunks{chunks: second, fields: p.fields},
+		},
+	}, nil
+}
+*/
+
 func (p *parallelchunks) Open(_ context.Context) (vm.Table, error) {
 	return p, nil
 }
@@ -205,6 +248,10 @@ func (b *benchTable) Open(_ context.Context) (vm.Table, error) {
 	return b, nil
 }
 
+func (b *benchTable) Size() int64 {
+	return b.count * int64(len(b.buf))
+}
+
 func (b *benchTable) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return fmt.Errorf("unexpected benchTable.Encode")
 }
@@ -262,39 +309,6 @@ func (e *queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	}
 	setHints(handle, h)
 	return handle, nil
-}
-
-// Split implements plan.Splitter.Split
-func (e *queryenv) Split(t expr.Node, th plan.TableHandle) (plan.Subtables, error) {
-	// if the input has been split into multiple pieces,
-	// use those as the split components
-	var multi [][]byte
-	switch t := th.(type) {
-	case *parallelchunks:
-		multi = [][]byte(t.chunks)
-	case *chunkshandle:
-		multi = [][]byte(t.chunks)
-	default:
-	}
-	if multi != nil {
-		sl := make(plan.SubtableList, len(multi))
-		for i := range multi {
-			sl[i] = plan.Subtable{
-				Transport: &plan.LocalTransport{},
-				Table: &expr.Table{
-					Binding: expr.Bind(t, fmt.Sprintf("part-%d", i)),
-				},
-				Handle: bufhandle(multi[i]),
-			}
-		}
-	}
-	return plan.SubtableList{{
-		Transport: &plan.LocalTransport{},
-		Table: &expr.Table{
-			Binding: expr.Bind(t, "local-copy"),
-		},
-		Handle: th,
-	}}, nil
 }
 
 var _ plan.TableLister = (*queryenv)(nil)
@@ -521,7 +535,7 @@ func run(t *testing.T, q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags ru
 	var tree *plan.Tree
 	var err error
 	if flags&flagSplit != 0 {
-		tree, err = plan.NewSplit(q, env, env)
+		tree, err = plan.NewSplit(q, env)
 	} else {
 		tree, err = plan.New(q, env)
 	}

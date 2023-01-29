@@ -52,6 +52,16 @@ type testenv struct {
 	mustfail string
 }
 
+func (t *testenv) stat(fname string) int64 {
+	t.t.Helper()
+	f := t.get(fname)
+	info, err := f.Stat()
+	if err != nil {
+		t.t.Fatal(err)
+	}
+	return info.Size()
+}
+
 func (t *testenv) get(fname string) *os.File {
 	t.t.Helper()
 	if t.open != nil {
@@ -122,6 +132,8 @@ func (t *testenv) Index(tbl expr.Node) (Index, error) {
 type literalHandle struct {
 	body []byte
 }
+
+func (l *literalHandle) Size() int64 { return int64(len(l.body)) }
 
 func (l *literalHandle) Open(_ context.Context) (vm.Table, error) {
 	return vm.BufferTable(l.body, len(l.body)), nil
@@ -202,6 +214,10 @@ func (t *testenv) ListTables(db string) ([]string, error) {
 type fileHandle struct {
 	name   string
 	parent *testenv
+}
+
+func (fh *fileHandle) Size() int64 {
+	return fh.parent.stat(fh.name)
 }
 
 func (fh *fileHandle) Open(ctx context.Context) (vm.Table, error) {
@@ -1892,7 +1908,7 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 		t.Fatal(err)
 	}
 
-	tree, err := NewSplit(s, e, nopSplitter{})
+	tree, err := NewSplit(s, e)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2047,6 +2063,8 @@ type hangHandle struct {
 	real TableHandle
 }
 
+func (h *hangHandle) Size() int64 { return 0 }
+
 func (h *hangHandle) Open(ctx context.Context) (vm.Table, error) {
 	<-ctx.Done()
 	return nil, fmt.Errorf("hangHandle.Open")
@@ -2128,23 +2146,6 @@ func TestClientCancel(t *testing.T) {
 	if !errors.Is(serverr, context.Canceled) {
 		t.Fatalf("got error %T %[1]s", serverr)
 	}
-}
-
-// nopSplitter is a splitter that
-// "splits" the sub-query into a single
-// sub-query that is executed locally
-type nopSplitter struct{}
-
-// Split returns the original table and the local transport
-func (n nopSplitter) Split(t expr.Node, th TableHandle) (Subtables, error) {
-	bind := expr.Bind(t, "local-copy")
-	return SubtableList{{
-		Transport: &LocalTransport{},
-		Table: &expr.Table{
-			Binding: bind,
-		},
-		Handle: th,
-	}}, nil
 }
 
 type testindexer map[string]Index

@@ -192,22 +192,20 @@ func (s *server) executeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	var tree *plan.Tree
 	start = time.Now()
 	if len(endPoints) == 0 {
-		// TODO: apply scan limits to unsplit
-		// queries
 		tree, err = plan.New(parsedQuery, planEnv)
 	} else {
-		split := s.newSplitter(id, key, endPoints)
-		tree, err = plan.NewSplit(parsedQuery, planEnv, split)
-		if err == nil {
-			w.Header().Set("X-Sneller-Max-Scanned-Bytes", utoa(split.MaxScan))
-			if maxScan > 0 && split.MaxScan > maxScan {
-				err = &errPlanLimit{scan: split.MaxScan, max: maxScan}
-			}
-		}
+		planEnv.Splitter = s.newSplitter(id, key, endPoints)
+		tree, err = plan.NewSplit(parsedQuery, planEnv)
 	}
 	if err != nil {
 		s.logger.Printf("tenant %s query ID %s planning failed: %s", tenantID, queryID, err)
 		planError(w, err)
+		return
+	}
+	willScan := uint64(tree.MaxScanned())
+	w.Header().Set("X-Sneller-Max-Scanned-Bytes", utoa(willScan))
+	if maxScan > 0 && willScan > maxScan {
+		planError(w, &errPlanLimit{scan: willScan, max: maxScan})
 		return
 	}
 	s.logger.Printf("tenant %s query ID %s auth %s planning %s", tenantID, queryID, authElapsed, time.Since(start))

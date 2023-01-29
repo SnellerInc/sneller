@@ -168,6 +168,16 @@ func (t *tableHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
+// the calling code expects splitting to duplicate the data 4x
+func (t *tableHandle) Split() (plan.Subtables, error) {
+	ret := make(plan.SubtableList, 4)
+	for i := 0; i < 4; i++ {
+		ret[i].Handle = t
+		ret[i].Transport = &plan.LocalTransport{}
+	}
+	return ret, nil
+}
+
 func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
 	if len(buf) == 0 {
 		return nil, fmt.Errorf("no TableHandle present")

@@ -29,7 +29,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -58,6 +57,14 @@ type stubenv struct{}
 
 type stubHandle string
 
+func (s stubHandle) Size() int64 {
+	info, err := os.Stat(string(s))
+	if err != nil {
+		panic(err)
+	}
+	return info.Size()
+}
+
 func (s stubHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened stubenv locally!")
 }
@@ -72,6 +79,8 @@ func (s stubHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 
 type badHandle struct{}
 
+func (b badHandle) Size() int64 { return 0 }
+
 func (b badHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("shouldn't have opened badHandle")
 }
@@ -84,6 +93,14 @@ func (b badHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 type repeatHandle struct {
 	count int
 	file  string
+}
+
+func (r *repeatHandle) Size() int64 {
+	info, err := os.Stat(r.file)
+	if err != nil {
+		panic(err)
+	}
+	return info.Size() * int64(r.count)
 }
 
 func (r *repeatHandle) Open(_ context.Context) (vm.Table, error) {
@@ -103,6 +120,8 @@ func (r *repeatHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 type hangHandle struct {
 	file string
 }
+
+func (h *hangHandle) Size() int64 { return 0 }
 
 func (h *hangHandle) Open(_ context.Context) (vm.Table, error) {
 	panic("hangHandle.Open in parent")
@@ -483,62 +502,16 @@ func TestExec(t *testing.T) {
 	t.Logf("at end: %d fds", nfds())
 }
 
-type split4 struct {
-	id   tnproto.ID
-	key  tnproto.Key
-	port int // local port on which the tenant is bound
-}
-
-func (s *split4) Split(tbl expr.Node, h plan.TableHandle) (plan.Subtables, error) {
-	out := make(plan.SubtableList, 4)
-	out[0].Handle = h
-	out[0].Table = &expr.Table{
-		Binding: expr.Bind(tbl, "copy-0"),
-	}
-	// get test coverage of using a LocalTransport
-	// for one of the UnionMap sub-plans
-	out[0].Transport = &plan.LocalTransport{}
-	for i := 1; i < 4; i++ {
-		out[i].Handle = h
-		out[i].Table = &expr.Table{
-			// textually the same as the original input,
-			// but not == in terms of strict equality
-			Binding: expr.Bind(tbl, fmt.Sprintf("copy-%d", i)),
-		}
-		out[i].Transport = &tnproto.Remote{
-			ID:   s.id,
-			Key:  s.key,
-			Net:  "tcp",
-			Addr: net.JoinHostPort("localhost", strconv.Itoa(s.port)),
-		}
-	}
-	return out, nil
-}
-
-func mksplit(t *testing.T, query string, env plan.Env, split plan.Splitter) *plan.Tree {
+func mksplit(t *testing.T, query string, env plan.Env) *plan.Tree {
 	s, err := partiql.Parse([]byte(query))
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err := plan.NewSplit(s, env, split)
+	tree, err := plan.NewSplit(s, env)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return tree
-}
-
-// when m.Remote is bound to localhost:0 (for testing),
-// determine which port it chose
-func getport(t *testing.T, m *Manager) int {
-	addr := m.remote.Addr()
-	tcpa, ok := addr.(*net.TCPAddr)
-	if !ok {
-		t.Fatalf("bad local manager addr type %T", addr)
-	}
-	if !tcpa.IP.IsLoopback() {
-		t.Fatalf("bad IP; expected loopback; found %d", tcpa.IP)
-	}
-	return tcpa.Port
 }
 
 func socketPair(t testing.TB) (net.Conn, net.Conn) {
@@ -553,7 +526,7 @@ func socketPair(t testing.TB) (net.Conn, net.Conn) {
 // begin execution of a split query and yield the
 // returned data.
 func splitquery(t *testing.T, query string, m *Manager, id tnproto.ID, key tnproto.Key) (io.ReadCloser, io.ReadCloser) {
-	tree := mksplit(t, query, stubenv{}, &split4{id: id, key: key, port: getport(t, m)})
+	tree := mksplit(t, query, stubenv{})
 	me, there := socketPair(t)
 
 	t.Logf("split plan: %s", tree.String())
@@ -750,6 +723,8 @@ func (b *benchHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	b.List.Encode(dst, st)
 	return nil
 }
+
+func (b *benchHandle) Size() int64 { return 0 }
 
 func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 	// produce N fake compressed blobs

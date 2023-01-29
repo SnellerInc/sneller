@@ -37,25 +37,37 @@ func (e emptyenv) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("cannot open emptyenv table")
 }
 
+func (e emptyenv) Size() int64 { return 0 }
+
 func (e emptyenv) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.WriteNull()
 	return nil
 }
 
-type twosplit struct{}
+type twosplit struct {
+	Env
+}
 
-func (t twosplit) Split(e expr.Node, _ TableHandle) (Subtables, error) {
-	sub := make(SubtableList, 2)
-	for i := range sub {
-		newstr := expr.Identifier(expr.ToString(e) + fmt.Sprintf("-part%d", i+1))
-		sub[i] = Subtable{
-			Transport: &LocalTransport{},
-			Table: &expr.Table{
-				Binding: expr.Bind(newstr, ""),
-			},
-		}
+type twohandle struct {
+	TableHandle
+	table expr.Node
+}
+
+func (t *twohandle) Size() int64 { return 2 * t.TableHandle.Size() }
+
+func (t *twohandle) Split() (Subtables, error) {
+	return SubtableList{
+		{Transport: &LocalTransport{}, Handle: t.TableHandle},
+		{Transport: &LocalTransport{}, Handle: t.TableHandle},
+	}, nil
+}
+
+func (t *twosplit) Stat(e expr.Node, h *Hints) (TableHandle, error) {
+	handle, err := t.Env.Stat(e, h)
+	if err != nil {
+		return nil, err
 	}
-	return sub, nil
+	return &twohandle{TableHandle: handle, table: e}, nil
 }
 
 func TestSplit(t *testing.T) {
@@ -70,7 +82,7 @@ func TestSplit(t *testing.T) {
 				"foo",
 				"COUNT(*) AS $_2_0",
 				// describes table -> [tables...] mapping
-				"UNION MAP foo [\"foo-part1\" \"foo-part2\"]",
+				"UNION MAP",
 				"AGGREGATE SUM_COUNT($_2_0) AS \"count\"",
 			},
 		},
@@ -79,7 +91,7 @@ func TestSplit(t *testing.T) {
 			lines: []string{
 				`table`,
 				`AGGREGATE MAX(n) AS $_2_0`,
-				`UNION MAP table ["table-part1" "table-part2"]`,
+				`UNION MAP`,
 				`AGGREGATE MAX($_2_0) AS "max"`,
 			},
 		},
@@ -88,7 +100,7 @@ func TestSplit(t *testing.T) {
 			lines: []string{
 				`table`,
 				`AGGREGATE SUM(n) AS $_2_0, COUNT(n + 0) AS $_2_1`,
-				`UNION MAP table ["table-part1" "table-part2"]`,
+				`UNION MAP`,
 				`AGGREGATE SUM($_2_0) AS "avg", SUM_COUNT($_2_1) AS $_1_0`,
 				`PROJECT CASE WHEN $_1_0 = 0 THEN NULL ELSE "avg" / $_1_0 END AS "avg"`,
 			},
@@ -98,7 +110,7 @@ func TestSplit(t *testing.T) {
 			lines: []string{
 				`table`,
 				`AGGREGATE APPROX_COUNT_DISTINCT_PARTIAL(field) AS $_2_0`,
-				`UNION MAP table ["table-part1" "table-part2"]`,
+				`UNION MAP`,
 				`AGGREGATE APPROX_COUNT_DISTINCT_MERGE($_2_0) AS "count"`,
 			},
 		},
@@ -107,7 +119,7 @@ func TestSplit(t *testing.T) {
 			lines: []string{
 				`table`,
 				`AGGREGATE SUM(x) AS $_2_0, MAX(y) AS $_2_1, APPROX_COUNT_DISTINCT_PARTIAL(z) AS $_2_2, COUNT(x + 0) AS $_2_3`,
-				`UNION MAP table ["table-part1" "table-part2"]`,
+				`UNION MAP`,
 				`AGGREGATE SUM($_2_0) AS "avg", MAX($_2_1) AS "max", APPROX_COUNT_DISTINCT_MERGE($_2_2) AS "count", SUM_COUNT($_2_3) AS $_1_0`,
 				`PROJECT CASE WHEN $_1_0 = 0 THEN NULL ELSE "avg" / $_1_0 END AS "avg", "max" AS "max", "count" AS "count"`,
 			},
@@ -122,7 +134,7 @@ func TestSplit(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			split, err := NewSplit(s, env, twosplit{})
+			split, err := NewSplit(s, &twosplit{env})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -36,7 +36,7 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (p *Project) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+func (p *Project) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	return p.From.wrap(vm.NewProjection(vm.Selection(p.Using), dst), ep)
 }
 

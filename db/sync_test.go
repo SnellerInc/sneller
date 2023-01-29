@@ -405,14 +405,14 @@ func TestSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.ro = false
-	blobs, err := Blobs(dfs, idx1, nil)
+	blobs, _, err := Blobs(dfs, idx1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blobs.Contents) != 1 {
-		t.Errorf("got back %d blobs?", len(blobs.Contents))
+	if len(blobs.Contents) == 0 {
+		t.Fatal("no blobs?")
 	}
-	tr := blobs.Contents[0].(*blob.Compressed).Trailer
+	tr := blobs.Contents[0].(*blob.CompressedPart).Parent.Trailer
 	ranges := tr.Sparse.Fields()
 	if ranges == 0 {
 		// the parking2.json file

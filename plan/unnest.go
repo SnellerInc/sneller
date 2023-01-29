@@ -85,10 +85,10 @@ func (u *Unnest) String() string {
 	return out.String()
 }
 
-func (u *Unnest) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+func (u *Unnest) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	op, err := vm.NewUnnest(dst, u.Expr, u.Result)
 	if err != nil {
-		return -1, nil, err
+		return delay(err)
 	}
 	return u.From.wrap(op, ep)
 }

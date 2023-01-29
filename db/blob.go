@@ -71,81 +71,96 @@ func noIfMatch(fs FS) bool {
 	return false
 }
 
-func keepAny(t *blockfmt.Trailer, filt *blockfmt.Filter) bool {
-	if filt == nil || filt.Trivial() {
-		return true
-	}
-	return filt.MatchesAny(&t.Sparse)
-}
-
 // Blobs collects the list of objects
 // from an index and returns them as
-// a list of blobs against which queries can be run.
-// Only blobs that reference objects for which
-// at least one block satisfies keep(Blockdesc.Ranges)
-// are returned.
+// a list of blobs against which queries can be run
+// along with the number of (decompressed) bytes that
+// comprise the returned blobs. If [keep] is non-nil,
+// then the returned blob list will be comprised only
+// of blobs for which the filter condition is satisfied
+// by at least one row in the data pointed to by the blob.
 //
 // Note that the returned blob.List may consist
 // of zero blobs if the index has no contents.
-func Blobs(src FS, idx *blockfmt.Index, keep *blockfmt.Filter) (*blob.List, error) {
+func Blobs(src FS, idx *blockfmt.Index, keep *blockfmt.Filter) (*blob.List, int64, error) {
 	out := &blob.List{}
+	var size int64
+	var err error
 	for i := range idx.Inline {
 		if idx.Inline[i].Format != blockfmt.Version {
-			return nil, fmt.Errorf("don't know how to convert format %q into a blob", idx.Inline[i].Format)
+			return nil, 0, fmt.Errorf("don't know how to convert format %q into a blob", idx.Inline[i].Format)
 		}
-		if !keepAny(&idx.Inline[i].Trailer, keep) {
-			continue
-		}
-		canExpire := idx.Inline[i].Size < DefaultMinMerge && i == len(idx.Inline)-1
-		b, err := descToBlob(src, &idx.Inline[i], canExpire)
+		out.Contents, err = descToBlobs(src, &idx.Inline[i], keep, out.Contents, &size)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		out.Contents = append(out.Contents, b)
 	}
-	descs, err := idx.Indirect.Search(src, keep)
+	var descs []blockfmt.Descriptor
+	descs, err = idx.Indirect.Search(src, keep)
 	if err != nil {
-		return out, err
+		return out, size, err
 	}
 	for i := range descs {
-		b, err := descToBlob(src, &descs[i], false)
+		out.Contents, err = descToBlobs(src, &idx.Inline[i], keep, out.Contents, &size)
 		if err != nil {
-			return out, err
+			return out, size, err
 		}
-		out.Contents = append(out.Contents, b)
 	}
-	return out, nil
+	return out, size, nil
 }
 
-func descToBlob(src FS, b *blockfmt.Descriptor, canExpire bool) (*blob.Compressed, error) {
+func descToBlobs(src FS, b *blockfmt.Descriptor, keep *blockfmt.Filter, into []blob.Interface, size *int64) ([]blob.Interface, error) {
+	var self *blob.Compressed
 	info := (*descInfo)(b)
 	uri, err := src.URL(b.Path, info, b.ETag)
 	if err != nil {
-		return nil, err
+		return into, err
 	}
-	return &blob.Compressed{
-		From: &blob.URL{
-			Value: uri,
-			// when we are testing with a DirFS,
-			// don't send the If-Match header,
-			// since http.FileServer doesn't handle it
-			UnsafeNoIfMatch: noIfMatch(src),
-			Info: blob.Info{
-				// Note: blob.URL.ReadAt automatically
-				// inserts the If-Match header to ensure
-				// that the object can't change while
-				// we are reading it.
-				ETag: b.ETag,
-				Size: info.Size(),
-				// Note: the Align of blob.Compressed.From
-				// is ignored, since blob.Compressed reads
-				// the trailer to figure out the alignment.
-				Align: 1,
-				// LastModified should match info.ModTime exactly
-				LastModified: date.FromTime(info.ModTime()),
-				Ephemeral:    canExpire,
-			},
-		},
-		Trailer: b.Trailer,
-	}, nil
+	visit := func(start, end int) {
+		if start == end {
+			return
+		}
+		if self == nil {
+			self = &blob.Compressed{
+				From: &blob.URL{
+					Value: uri,
+					// when we are testing with a DirFS,
+					// don't send the If-Match header,
+					// since http.FileServer doesn't handle it
+					UnsafeNoIfMatch: noIfMatch(src),
+					Info: blob.Info{
+						// Note: blob.URL.ReadAt automatically
+						// inserts the If-Match header to ensure
+						// that the object can't change while
+						// we are reading it.
+						ETag: b.ETag,
+						Size: info.Size(),
+						// Note: the Align of blob.Compressed.From
+						// is ignored, since blob.Compressed reads
+						// the trailer to figure out the alignment.
+						Align: 1,
+						// LastModified should match info.ModTime exactly
+						LastModified: date.FromTime(info.ModTime()),
+						Ephemeral:    b.Size < DefaultMinMerge,
+					},
+				},
+				Trailer: b.Trailer,
+			}
+		}
+		// for now, just map blocks -> blobs 1:1
+		for i := start; i < end; i++ {
+			*size += int64(b.Trailer.Blocks[i].Chunks << b.Trailer.BlockShift)
+			into = append(into, &blob.CompressedPart{
+				Parent:     self,
+				StartBlock: i,
+				EndBlock:   i + 1,
+			})
+		}
+	}
+	if keep == nil {
+		visit(0, len(b.Trailer.Blocks))
+	} else {
+		keep.Visit(&b.Trailer.Sparse, visit)
+	}
+	return into, nil
 }

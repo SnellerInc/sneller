@@ -222,21 +222,18 @@ func TestBuildBlobs(t *testing.T) {
 	if !match {
 		t.Fatalf("unexpected contents[0] path %s", idx.Inline[0].Path)
 	}
-	lst, err := Blobs(dfs, idx, nil)
+	lst, _, err := Blobs(dfs, idx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(lst.Contents) != 1 {
 		t.Fatalf("got %d blobs back?", len(lst.Contents))
 	}
-	bc, ok := lst.Contents[0].(*blob.Compressed)
+	bc, ok := lst.Contents[0].(*blob.CompressedPart)
 	if !ok {
-		t.Fatalf("expected blobs.Compressed; got %T", bc)
+		t.Fatalf("expected *blob.CompressedPart; got %T", bc)
 	}
-	urlb, ok := bc.From.(*blob.URL)
-	if !ok {
-		t.Fatalf("expected blobs.URL; got %T", bc.From)
-	}
+	urlb := bc.Parent.From.(*blob.URL)
 	info, err := fs.Stat(dfs, idx.Inline[0].Path)
 	if err != nil {
 		t.Fatal(err)

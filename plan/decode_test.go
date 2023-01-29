@@ -84,6 +84,21 @@ type blobHandle struct {
 	*blob.List
 }
 
+func (b *blobHandle) Size() int64 {
+	n := int64(0)
+	for i := range b.Contents {
+		if pc, ok := b.Contents[i].(*blob.Compressed); ok {
+			n += pc.Trailer.Decompressed()
+		} else {
+			info, _ := b.Contents[i].Stat()
+			if info != nil {
+				n += info.Size
+			}
+		}
+	}
+	return n
+}
+
 func (b *blobHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, fmt.Errorf("Open() not allowed")
 }

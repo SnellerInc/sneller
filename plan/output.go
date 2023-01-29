@@ -156,16 +156,16 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (o *OutputPart) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+func (o *OutputPart) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	if o.Basename == "" {
-		return -1, nil, fmt.Errorf("OutputPart: basename not set")
+		return delay(fmt.Errorf("OutputPart: basename not set"))
 	} else if o.Store == nil {
-		return -1, nil, fmt.Errorf("OutputPart: store not set")
+		return delay(fmt.Errorf("OutputPart: store not set"))
 	}
 	name := path.Join(o.Basename, "packed-"+uuid())
 	up, err := o.Store.Create(name)
 	if err != nil {
-		return -1, nil, err
+		return delay(err)
 	}
 	us := &uploadSink{
 		store: o.Store,
@@ -318,13 +318,13 @@ func (is *indexSink) Close() error {
 	return w.Close()
 }
 
-func (o *OutputIndex) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+func (o *OutputIndex) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	if o.Basename == "" {
-		return -1, nil, fmt.Errorf("OutputIndex: basename not set")
+		return delay(fmt.Errorf("OutputIndex: basename not set"))
 	} else if o.Store == nil {
-		return -1, nil, fmt.Errorf("OutputIndex: store not set")
+		return delay(fmt.Errorf("OutputIndex: store not set"))
 	} else if o.Key == nil {
-		return -1, nil, fmt.Errorf("OutputIndex: key not set")
+		return delay(fmt.Errorf("OutputIndex: key not set"))
 	}
 	tbl := &expr.Dot{
 		Inner: expr.Ident(o.DB),

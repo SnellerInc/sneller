@@ -35,15 +35,6 @@ type Decoder interface {
 	DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error)
 }
 
-// SubtableDecoder can optionally be implemented by
-// Decoder to handle decoding subtables using a more
-// sophisticated representation than the default.
-type SubtableDecoder interface {
-	// DecodeSubtables decodes Subtables produced
-	// by Subtables.Encode.
-	DecodeSubtables(st *ion.Symtab, mem []byte) (Subtables, error)
-}
-
 // UploaderDecoder can optionally be implemented by a
 // Decoder to handle decoding an UploadFS, which is
 // required to enable support for SELECT INTO.
@@ -126,11 +117,12 @@ func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
 			var err error
 			n.Op, err = decodeOps(d, st, inner)
 			return err
-		case "inputs":
-			return unpackList(inner, func(field []byte) error {
-				n.Inputs = append(n.Inputs, Input{})
-				return n.Inputs[len(n.Inputs)-1].decode(d, st, field)
-			})
+		case "input":
+			v, _, err := ion.ReadInt(inner)
+			if err == nil {
+				n.Input = int(v)
+			}
+			return err
 		case "children":
 			return unpackList(inner, func(field []byte) error {
 				nn := &Node{}

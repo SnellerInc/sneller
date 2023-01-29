@@ -17,12 +17,12 @@ package sneller
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/blob"
 	"github.com/SnellerInc/sneller/ion"
-	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tenant/tnproto"
 	"github.com/dchest/siphash"
@@ -36,24 +36,82 @@ type Splitter struct {
 	WorkerKey tnproto.Key
 	Peers     []*net.TCPAddr
 	SelfAddr  string
-
-	// MaxScan is the computed maximum bytes
-	// scanned after sparse indexing has been
-	// applied.
-	MaxScan uint64
 }
 
-func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtables, error) {
-	var blobs []blob.Interface
-	fh, ok := handle.(*FilterHandle)
-	if !ok {
-		return nil, fmt.Errorf("cannot split table handle of type %T", handle)
+func (s *Splitter) encode(dst *ion.Buffer, st *ion.Symtab) {
+	dst.BeginStruct(-1)
+	dst.BeginField(st.Intern("SplitSize"))
+	dst.WriteInt(s.SplitSize)
+	dst.BeginField(st.Intern("WorkerID"))
+	dst.WriteBlob(s.WorkerID[:])
+	dst.BeginField(st.Intern("WorkerKey"))
+	dst.WriteBlob(s.WorkerKey[:])
+	dst.BeginField(st.Intern("Peers"))
+	dst.BeginList(-1)
+	for i := range s.Peers {
+		dst.WriteString(s.Peers[i].String())
 	}
-	size := s.SplitSize
-	if s.SplitSize == 0 {
-		size = DefaultSplitSize
+	dst.EndList()
+	dst.BeginField(st.Intern("SelfAddr"))
+	dst.WriteString(s.SelfAddr)
+	dst.EndStruct()
+}
+
+func parseAddr(x string) (*net.TCPAddr, error) {
+	host, port, err := net.SplitHostPort(x)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse %q: %w", x, err)
 	}
-	flt, _ := fh.CompileFilter()
+	portnum, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't parse port number %q: %w", port, err)
+	}
+	ip := net.ParseIP(host)
+	if len(ip) == 0 {
+		return nil, fmt.Errorf("couldn't parse IP %q: %w", host, err)
+	}
+	return &net.TCPAddr{IP: ip, Port: portnum}, nil
+}
+
+func (s *Splitter) setField(f ion.Field) error {
+	var err error
+	var buf []byte
+	switch f.Label {
+	case "SplitSize":
+		s.SplitSize, err = f.Int()
+	case "WorkerID":
+		buf, err = f.BlobShared()
+		if err == nil {
+			copy(s.WorkerID[:], buf)
+		}
+	case "WorkerKey":
+		buf, err = f.BlobShared()
+		if err == nil {
+			copy(s.WorkerKey[:], buf)
+		}
+	case "Peers":
+		err = f.UnpackList(func(d ion.Datum) error {
+			str, err := d.String()
+			if err != nil {
+				return err
+			}
+			addr, err := parseAddr(str)
+			if err != nil {
+				return err
+			}
+			s.Peers = append(s.Peers, addr)
+			return nil
+		})
+	case "SelfAddr":
+		s.SelfAddr, err = f.String()
+	default:
+		err = fmt.Errorf("Splitter: unexpected field %q", f.Label)
+	}
+	return err
+}
+
+func (s *Splitter) split(fh *TenantHandle) (plan.Subtables, error) {
+	blobs := make([]blob.Interface, 0, len(fh.Blobs.Contents))
 	splits := make([]split, len(s.Peers))
 	for i := range splits {
 		splits[i].tp = s.transport(i)
@@ -68,40 +126,18 @@ func (s *Splitter) Split(table expr.Node, handle plan.TableHandle) (plan.Subtabl
 		return nil
 	}
 	for _, b := range fh.Blobs.Contents {
-		stat, err := b.Stat()
-		if err != nil {
+		if err := insert(b); err != nil {
 			return nil, err
-		}
-		c, ok := b.(*blob.Compressed)
-		if !ok {
-			// we can only really do interesting
-			// splitting stuff with blob.Compressed
-			if err := insert(b); err != nil {
-				return nil, err
-			}
-			s.MaxScan += uint64(stat.Size)
-			continue
-		}
-		sub, err := c.Split(int(size))
-		if err != nil {
-			return nil, err
-		}
-		sub = stripsub(&c.Trailer, sub, flt)
-		for i := range sub {
-			s.MaxScan += uint64(sub[i].Decompressed())
-			if err := insert(&sub[i]); err != nil {
-				return nil, err
-			}
 		}
 	}
 	return &Subtables{
+		parent:    fh.parent,
+		table:     expr.Null{},
 		splits:    compact(splits),
-		table:     table,
-		blobs:     blobs,
+		blobs:     fh.Blobs.Contents,
 		fields:    fh.Fields,
 		allFields: fh.AllFields,
 		filter:    nil, // pushed down later
-		fn:        blobsToHandle,
 	}, nil
 }
 
@@ -112,19 +148,6 @@ func compact(splits []split) []split {
 	for i := range splits {
 		if len(splits[i].blobs) > 0 {
 			out = append(out, splits[i])
-		}
-	}
-	return out
-}
-
-func stripsub(t *blockfmt.Trailer, lst []blob.CompressedPart, f *blockfmt.Filter) []blob.CompressedPart {
-	if f == nil || f.Trivial() {
-		return lst
-	}
-	out := lst[:0]
-	for i := range lst {
-		if f.Overlaps(&t.Sparse, lst[i].StartBlock, lst[i].EndBlock) {
-			out = append(out, lst[i])
 		}
 	}
 	return out
@@ -167,54 +190,10 @@ type split struct {
 	blobs []int
 }
 
-// encode as [tp, blobs]
-func (s *split) encode(st *ion.Symtab, buf *ion.Buffer) error {
-	buf.BeginList(-1)
-	if err := plan.EncodeTransport(s.tp, st, buf); err != nil {
-		return err
-	}
-	buf.BeginList(-1)
-	for i := range s.blobs {
-		buf.WriteInt(int64(s.blobs[i]))
-	}
-	buf.EndList()
-	buf.EndList()
-	return nil
-}
-
-func decodeSplit(st *ion.Symtab, body []byte) (split, error) {
-	var s split
-	if ion.TypeOf(body) != ion.ListType {
-		return s, fmt.Errorf("expected a list; found ion type %s", ion.TypeOf(body))
-	}
-	body, _ = ion.Contents(body)
-	if body == nil {
-		return s, fmt.Errorf("invalid list encoding")
-	}
-	var err error
-	s.tp, err = plan.DecodeTransport(st, body)
-	if err != nil {
-		return s, err
-	}
-	body = body[ion.SizeOf(body):]
-	_, err = ion.UnpackList(body, func(body []byte) error {
-		n, _, err := ion.ReadInt(body)
-		if err != nil {
-			return err
-		}
-		s.blobs = append(s.blobs, int(n))
-		return nil
-	})
-	return s, err
-}
-
-// A tableHandleFn is used to produce a TableHandle
-// from a list of blobs and a filter.
-type tableHandleFn func(blobs []blob.Interface, h *plan.Hints) plan.TableHandle
-
 // Subtables is the plan.Subtables implementation
-// returned by (*splitter).Split.
+// returned by TenantHandle.Split
 type Subtables struct {
+	parent *TenantEnv // for local execution
 	splits []split
 	table  expr.Node
 	blobs  []blob.Interface
@@ -225,10 +204,6 @@ type Subtables struct {
 	allFields bool
 
 	next *Subtables // set if combined
-
-	// fn is called to produce the TableHandles
-	// embedded in the subtables
-	fn tableHandleFn
 }
 
 // Len implements plan.Subtables.Len.
@@ -247,136 +222,24 @@ func (s *Subtables) Subtable(i int, sub *plan.Subtable) {
 		return
 	}
 	sp := &s.splits[i]
-	name := fmt.Sprintf("part.%d", i)
-	table := &expr.Table{
-		Binding: expr.Bind(s.table, name),
-	}
 	blobs := make([]blob.Interface, len(sp.blobs))
 	for i, bi := range sp.blobs {
 		blobs[i] = s.blobs[bi]
 	}
-	hint := plan.Hints{
-		Filter:    s.filter,
-		Fields:    s.fields,
-		AllFields: s.allFields,
-	}
 	*sub = plan.Subtable{
 		Transport: sp.tp,
-		Table:     table,
-		Handle:    s.fn(blobs, &hint),
+		Handle: &TenantHandle{
+			parent: s.parent,
+			FilterHandle: &FilterHandle{
+				// NOTE: we're not setting Splitter here
+				// because we don't expect a second splitting...
+				Blobs:     &blob.List{Contents: blobs},
+				Fields:    s.fields,
+				AllFields: s.allFields,
+				Expr:      s.filter,
+			},
+		},
 	}
-}
-
-func blobsToHandle(blobs []blob.Interface, hints *plan.Hints) plan.TableHandle {
-	return &FilterHandle{
-		Blobs:     &blob.List{Contents: blobs},
-		Fields:    hints.Fields,
-		AllFields: hints.AllFields,
-		Expr:      hints.Filter,
-	}
-}
-
-// Encode implements plan.Subtables.Encode.
-func (s *Subtables) Encode(st *ion.Symtab, dst *ion.Buffer) error {
-	// encode as [splits, table, blobs, filter, fields, next]
-	dst.BeginList(-1)
-	dst.BeginList(-1)
-	for i := range s.splits {
-		if err := s.splits[i].encode(st, dst); err != nil {
-			return err
-		}
-	}
-	dst.EndList()
-	s.table.Encode(dst, st)
-	lst := blob.List{Contents: s.blobs}
-	lst.Encode(dst, st)
-	if s.filter == nil {
-		dst.WriteNull()
-	} else {
-		s.filter.Encode(dst, st)
-	}
-	// we write null for allFields and [] for zero fields
-	if s.allFields {
-		dst.WriteNull()
-	} else {
-		dst.BeginList(-1)
-		for i := range s.fields {
-			dst.WriteString(s.fields[i])
-		}
-		dst.EndList()
-	}
-	if s.next == nil {
-		dst.WriteNull()
-	} else if err := s.next.Encode(st, dst); err != nil {
-		return err
-	}
-	dst.EndList()
-	return nil
-}
-
-func DecodeSubtables(st *ion.Symtab, body []byte, fn tableHandleFn) (*Subtables, error) {
-	if ion.TypeOf(body) != ion.ListType {
-		return nil, fmt.Errorf("expected a list; found ion type %s", ion.TypeOf(body))
-	}
-	body, _ = ion.Contents(body)
-	if body == nil {
-		return nil, fmt.Errorf("invalid list encoding")
-	}
-	s := &Subtables{fn: fn}
-	body, err := ion.UnpackList(body, func(body []byte) error {
-		sp, err := decodeSplit(st, body)
-		if err != nil {
-			return err
-		}
-		s.splits = append(s.splits, sp)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	s.table, body, err = expr.Decode(st, body)
-	if err != nil {
-		return nil, err
-	}
-	lst, err := blob.DecodeList(st, body)
-	if err != nil {
-		return nil, err
-	}
-	s.blobs = lst.Contents
-	body = body[ion.SizeOf(body):]
-	if ion.TypeOf(body) != ion.NullType {
-		s.filter, body, err = expr.Decode(st, body)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		body = body[ion.SizeOf(body):]
-	}
-	if ion.TypeOf(body) != ion.NullType {
-		s.allFields = false
-		body, err = ion.UnpackList(body, func(field []byte) error {
-			var str string
-			str, _, err = ion.ReadString(field)
-			if err != nil {
-				return err
-			}
-			s.fields = append(s.fields, str)
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		s.allFields = true
-		body = body[ion.SizeOf(body):]
-	}
-	if ion.TypeOf(body) != ion.NullType {
-		s.next, err = DecodeSubtables(st, body, fn)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return s, nil
 }
 
 // Filter implements plan.Subtables.Filter.

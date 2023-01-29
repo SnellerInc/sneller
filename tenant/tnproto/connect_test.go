@@ -76,6 +76,8 @@ func (l largeOpaque) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
+func (l largeOpaque) Size() int64 { return 100 * 1000 * 1000 }
+
 // See #381
 //
 // Make sure that a call to recvmsg
@@ -104,13 +106,15 @@ func TestDirectExecHugeBody(t *testing.T) {
 		var b Buffer
 		b.Prepare(&plan.Tree{
 			Inputs: []plan.Input{{
-				Table: &expr.Table{
-					Binding: expr.Bind(expr.Identifier("foo"), ""),
-				},
 				Handle: largeOpaque{},
 			}},
 			Root: plan.Node{
-				Op: &plan.Leaf{Input: 0},
+				Input: 0,
+				Op: &plan.Leaf{
+					Orig: &expr.Table{
+						Binding: expr.Bind(expr.Identifier("foo"), ""),
+					},
+				},
 			},
 		}, OutputRaw)
 		rc, err := b.DirectExec(there, myconn)

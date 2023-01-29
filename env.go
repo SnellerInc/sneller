@@ -57,6 +57,10 @@ func (f *FilterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	}
 	dst.BeginField(st.Intern("blobs"))
 	f.Blobs.Encode(dst, st)
+	if f.Splitter != nil {
+		dst.BeginField(st.Intern("splitter"))
+		f.Splitter.encode(dst, st)
+	}
 	dst.EndStruct()
 	return nil
 }
@@ -80,6 +84,17 @@ func (f *FilterHandle) Decode(st *ion.Symtab, mem []byte) error {
 			})
 		case "all_fields":
 			f.AllFields, _, err = ion.ReadBool(body)
+		case "splitter":
+			dat, _, err := ion.ReadDatum(st, body)
+			if err != nil {
+				return err
+			}
+			s := new(Splitter)
+			err = dat.UnpackStruct(s.setField)
+			if err != nil {
+				return err
+			}
+			f.Splitter = s
 		default:
 			return fmt.Errorf("unrecognized field %q", name)
 		}
@@ -111,6 +126,9 @@ type FilterHandle struct {
 	// table this handle refers to.
 	Blobs *blob.List
 
+	// Splitter is used to split blobs
+	Splitter *Splitter
+
 	// cached result of compileFilter(Expr)
 	compiled blockfmt.Filter
 }
@@ -130,4 +148,29 @@ func (f *FilterHandle) CompileFilter() (*blockfmt.Filter, bool) {
 		return nil, false
 	}
 	return &f.compiled, true
+}
+
+func blobsSize(lst []blob.Interface) int64 {
+	n := int64(0)
+	for i := range lst {
+		switch c := lst[i].(type) {
+		case *blob.Compressed:
+			n += c.Trailer.Decompressed()
+		case *blob.CompressedPart:
+			n += c.Decompressed()
+		default:
+			info, _ := c.Stat()
+			if info != nil {
+				n += info.Size
+			}
+		}
+	}
+	return n
+}
+
+func (f *FilterHandle) Size() int64 {
+	if f.Blobs == nil {
+		return 0
+	}
+	return blobsSize(f.Blobs.Contents)
 }

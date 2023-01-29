@@ -143,6 +143,8 @@ type eenv func(expr.Node, *plan.Hints) (vm.Table, error)
 
 type handle func() (vm.Table, error)
 
+func (h handle) Size() int64 { return 0 }
+
 func (h handle) Open(_ context.Context) (vm.Table, error) {
 	return h()
 }

@@ -37,25 +37,6 @@ func (f fuzzEnv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 	return nil, nil
 }
 
-type fuzzSplitter struct{}
-
-func (f fuzzSplitter) Split(t expr.Node, h plan.TableHandle) (plan.Subtables, error) {
-	return plan.SubtableList{
-		plan.Subtable{
-			Transport: &plan.LocalTransport{},
-			Table: &expr.Table{
-				Binding: expr.Bind(t, "local-copy-0"),
-			},
-		},
-		plan.Subtable{
-			Transport: &plan.LocalTransport{},
-			Table: &expr.Table{
-				Binding: expr.Bind(t, "local-copy-1"),
-			},
-		},
-	}, nil
-}
-
 func addQueries(f *testing.F) {
 	// add every file from vm/testdata/queries
 	dir := filepath.Clean("../vm/testdata/queries")
@@ -128,7 +109,7 @@ func FuzzNewSplit(f *testing.F) {
 		if err != nil {
 			return
 		}
-		tree, err := plan.NewSplit(q, fuzzEnv{}, fuzzSplitter{})
+		tree, err := plan.NewSplit(q, fuzzEnv{})
 		if err != nil {
 			return
 		}

@@ -35,15 +35,15 @@ func (f *Filter) String() string {
 func (f *Filter) rewrite(rw expr.Rewriter) {
 	f.From.rewrite(rw)
 	f.Expr = expr.Rewrite(rw, f.Expr)
+	// we may have observed something interesting:
+	push(f.Expr, f.From)
 }
 
-func (f *Filter) wrap(dst vm.QuerySink, ep *ExecParams) (int, vm.QuerySink, error) {
+func (f *Filter) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	filter, err := vm.NewFilter(f.Expr, dst)
 	if err != nil {
-		return 0, nil, err
+		return delay(err)
 	}
-
-	push(f.Expr, f.From)
 	return f.From.wrap(filter, ep)
 }
 
@@ -80,11 +80,7 @@ func push(e expr.Node, op Op) {
 	}
 }
 
-func (f *Filter) filter(e expr.Node)  { push(expr.And(f.Expr, e), f.From) }
-func (o *OrderBy) filter(e expr.Node) { push(e, o.From) }
-func (l *Leaf) filter(e expr.Node)    { l.Filter = e }
-
-func (u *UnionMap) filter(e expr.Node) {
-	u.Sub.Filter(e)
-	push(e, u.From)
-}
+func (f *Filter) filter(e expr.Node)   { push(expr.And(f.Expr, e), f.From) }
+func (o *OrderBy) filter(e expr.Node)  { push(e, o.From) }
+func (u *UnionMap) filter(e expr.Node) { push(e, u.From) }
+func (l *Leaf) filter(e expr.Node)     { l.Filter = e }

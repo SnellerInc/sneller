@@ -17,6 +17,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"testing"
 
@@ -60,6 +61,8 @@ type filterHandle struct {
 	env *filterEnv
 }
 
+func (h *filterHandle) Size() int64 { return h.th.Size() }
+
 func (h *filterHandle) Open(ctx context.Context) (vm.Table, error) {
 	return h.th.Open(ctx)
 }
@@ -90,8 +93,7 @@ func TestFilter(t *testing.T) {
 	}, {
 		query: `SELECT * FROM 'parking.10n' WHERE IssueData < (SELECT LATEST(IssueData) FROM 'parking.10n' WHERE Make IS MISSING)`,
 		filters: []string{
-			"Make IS MISSING",
-			"IssueData < SCALAR_REPLACEMENT(0)",
+			"IssueData < `2000-01-01T00:00:00Z`",
 		},
 	}, {
 		query:   `SELECT * FROM (SELECT COUNT(*) AS foo FROM 'parking.10n') WHERE foo < 1000`,
@@ -116,6 +118,11 @@ func TestFilter(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Log("tree:", tree)
+			var stats ExecStats
+			err = Exec(tree, io.Discard, &stats)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !reflect.DeepEqual(env.filters, tc.filters) {
 				t.Errorf("New: filter expression mismatch")
 				t.Errorf("\tgot:  %q", env.filters)
