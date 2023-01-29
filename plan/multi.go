@@ -251,7 +251,7 @@ func (s *teeSink) Open() (io.WriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(s.dst) == 0 {
+	if len(s.dst) == 1 {
 		return w, err
 	}
 	tw := vm.NewTeeWriter(w, func(int64, error) { w.Close() })
