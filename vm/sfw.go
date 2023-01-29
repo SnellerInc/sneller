@@ -47,6 +47,10 @@ type auxbindings struct {
 	bound []string
 }
 
+func (a *auxbindings) set(from *auxbindings) {
+	a.bound = append(a.bound[:0], from.bound...)
+}
+
 func (a *auxbindings) reset() {
 	a.bound = a.bound[:0]
 }

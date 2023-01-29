@@ -1,0 +1,36 @@
+WITH
+  "$source" AS
+	(SELECT *
+	 FROM input AS "$source", "$source"."record"."tags" AS "splat"
+	 WHERE "$source"."timestamp" >= `2023-01-04T10:33:54.746Z` AND "$source"."timestamp" <= `2023-01-05T10:33:54.746Z`
+	   AND "splat"."key" = 'find-me'
+	)
+SELECT
+  (SELECT COUNT(*) FROM "$source") AS "$total_count",
+  (SELECT * FROM "$source" ORDER BY timestamp ASC LIMIT 10) AS "$hits"
+---
+{"timestamp": "2023-01-04T10:33:55Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:33:56Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:33:57Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:33:58Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:33:59Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:00Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:01Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:02Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:03Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:04Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:05Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:06Z", "record": {"tags": [{"key": "find-me"}]}}
+{"timestamp": "2023-01-04T10:34:07Z", "record": {"tags": [{"key": "find-me"}]}}
+---
+{"$total_count": 13, "$hits": [
+{"timestamp": "2023-01-04T10:33:55Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:33:56Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:33:57Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:33:58Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:33:59Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:34:00Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:34:01Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:34:02Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:34:03Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}},
+{"timestamp": "2023-01-04T10:34:04Z", "record": {"tags": [{"key": "find-me"}]}, "splat": {"key": "find-me"}}]}

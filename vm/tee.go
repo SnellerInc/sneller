@@ -200,6 +200,7 @@ type teeSplitter struct {
 }
 
 type splitState struct {
+	aux   auxbindings
 	dst   rowConsumer
 	final func(int64, error)
 	zout  zionConsumer
@@ -242,12 +243,13 @@ func (t *teeSplitter) zionOk() bool {
 func (t *teeSplitter) symbolize(st *symtab, aux *auxbindings) error {
 	any := false
 	for i := 0; i < len(t.state); i++ {
+		t.state[i].aux.set(aux)
 		// XXX: we are really relying here on the
 		// fact that rowConsumers don't destructively
 		// modify the symbol table; they can add to it
 		// (which is fine; they are allowed to see each
 		// other's symbols) but they cannot remove anything
-		err := t.state[i].dst.symbolize(st, aux)
+		err := t.state[i].dst.symbolize(st, &t.state[i].aux)
 		if err != nil {
 			t.state[i].final(t.pos, err)
 			t.state = deleteOne(t.state, i)
