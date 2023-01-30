@@ -75,7 +75,8 @@ type Chunker struct {
 	// chunk.
 	Ranges Ranges
 
-	writesyms Symtab // symbol table for Write()
+	writesyms Symtab       // symbol table for Write()
+	rs        resymbolizer // resymbolizer for Write()
 
 	rowcount int // row count associated with Ranges
 
@@ -542,9 +543,10 @@ func (c *Chunker) Write(block []byte) (int, error) {
 	}()
 	var err error
 	start := len(block)
-	r := resymbolizer{
-		srctab: &c.writesyms,
-		dsttab: &c.Symbols,
+	r := &c.rs
+	if r.srctab == nil {
+		r.srctab = &c.writesyms
+		r.dsttab = &c.Symbols
 	}
 	for len(block) > 0 {
 		if IsBVM(block) {
