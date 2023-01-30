@@ -188,7 +188,7 @@ func testWalkGlob(t *testing.T, b *BucketFS, prefix string) {
 		{"", "x/[by]/c", []string{"x/b/c"}},
 		{"x/y/a", "?/?/?", []string{"x/y/z", "z/#/b"}},
 		{"", "?/b*/?", []string{"a/b/c", "x/b/c", "y/bc/a", "y/bc/b"}},
-		{"", "z/#*", []string{"z/#", "z/#.txt"}},
+		{"", "z/#*", []string{"z/#.txt"}},
 	}
 	for _, full := range dirs {
 		// NOTE: don't use path.Join, it will remove

@@ -20,7 +20,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestWalkGlob(t *testing.T) {
@@ -120,4 +123,96 @@ func TestOpenGlob(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// test that WalkGlob doesn't do too many
+// unnecessary call as it walks a file tree.
+func TestWalkGlobOps(t *testing.T) {
+	// file tree to create
+	list := []string{
+		"a/",
+		"a/b",
+		"a/c",
+		"a/d/",
+		"a/e",
+		"b/",
+		"b/c",
+		"b/d",
+		"b/e/",
+		"b/f/",
+	}
+	// create test files
+	tmp := t.TempDir()
+	for i := range list {
+		if strings.HasSuffix(list[i], "/") {
+			name := strings.TrimSuffix(list[i], "/")
+			err := os.Mkdir(filepath.Join(tmp, name), 0750)
+			if err != nil {
+				t.Fatalf("creating dir %q: %v", name, err)
+			}
+		} else {
+			err := os.WriteFile(filepath.Join(tmp, list[i]), []byte{}, 0640)
+			if err != nil {
+				t.Fatalf("creating file %q: %v", list[i], err)
+			}
+		}
+	}
+	tfs := &traceFS{fs: os.DirFS(tmp)}
+	var got []string
+	err := WalkGlob(tfs, "", "*/*", func(p string, f fs.File, err error) error {
+		if err != nil {
+			return err
+		}
+		f.Close()
+		got = append(got, p)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"a/b",
+		"a/c",
+		"a/e",
+		"b/c",
+		"b/d",
+	}
+	if !slices.Equal(want, got) {
+		t.Errorf("walked files: want %q, got %q", want, got)
+	}
+	wantops := []string{
+		"open(.)",
+		"visitdir(.)",
+		"visitdir(a)",
+		"open(a/b)",
+		"open(a/c)",
+		"open(a/e)",
+		"visitdir(b)",
+		"open(b/c)",
+		"open(b/d)",
+	}
+	if !slices.Equal(wantops, tfs.ops) {
+		t.Errorf("ops mismatch:")
+		t.Errorf("  want: %q", wantops)
+		t.Errorf("  got:  %q", tfs.ops)
+	}
+}
+
+type traceFS struct {
+	fs  fs.FS
+	ops []string
+}
+
+func (f *traceFS) Open(name string) (fs.File, error) {
+	f.logf("open(%s)", name)
+	return f.fs.Open(name)
+}
+
+func (f *traceFS) VisitDir(name, seek, pattern string, fn VisitDirFn) error {
+	f.logf("visitdir(%s)", name)
+	return VisitDir(f.fs, name, seek, pattern, fn)
+}
+
+func (f *traceFS) logf(fm string, args ...any) {
+	f.ops = append(f.ops, fmt.Sprintf(fm, args...))
 }

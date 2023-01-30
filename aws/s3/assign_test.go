@@ -24,4 +24,3 @@ import (
 var _ fsutil.VisitDirFS = &s3.BucketFS{}
 var _ fsutil.VisitDirFS = &s3.Prefix{}
 var _ fsutil.NamedFile = &s3.File{}
-var _ fsutil.Opener = &s3.File{}

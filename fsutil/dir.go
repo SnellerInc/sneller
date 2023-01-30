@@ -269,6 +269,12 @@ func walkdir(f fs.FS, name, seek, pattern string, d DirEntry, fn WalkDirFn) erro
 	if !ok {
 		return patherrf("walkdir", name, "bad pattern %q", pattern)
 	}
+	if pattern0 != "" && pattern1 == "" {
+		// no need to descend into the directory,
+		// the pattern is not long enough to include
+		// anything inside it...
+		return nil
+	}
 	cmp := pathcmp(name, seek0)
 	if cmp < 0 || !match(pattern0, name) {
 		return nil

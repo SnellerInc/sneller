@@ -15,6 +15,7 @@
 package fsutil
 
 import (
+	"fmt"
 	"io/fs"
 )
 
@@ -30,36 +31,33 @@ import (
 // then walking will stop.
 type WalkGlobFn func(name string, file fs.File, err error) error
 
-// Opener may be implemented by a DirEntry that
-// can more efficiently open a file than calling
-// fs.FS.Open on the file path.
-type Opener interface {
-	Open() (fs.File, error)
-}
-
 // WalkGlob opens all of the non-directory
 // files in f that match pattern.
-// The seek paramter determines the full path
+// The seek parameter determines the full path
 // at which walking begins, and pattern indicates
 // the glob pattern against which file paths are matched
 // before being passed to the walk callback.
 //
 // WalkGlob uses WalkDir to walk the file tree.
 // If it encounters an fs.DirEntry that implements
-// Opener, Opener.Open will be used to open the file
-// to pass to walk. Otherwise, fs.Open will be used.
+// fs.File, it will be passed to walk directly.
+// Otherwise, fs.Open will be used.
 func WalkGlob(f fs.FS, seek, pattern string, walk WalkGlobFn) error {
+	if pattern == "" {
+		return fmt.Errorf("fsutil.WalkGlob: pattern is required")
+	}
 	pre := MetaPrefix(pattern)
 	outer := func(p string, d DirEntry, err error) error {
 		if err != nil {
 			return walk(p, nil, err)
 		}
-		var file fs.File
-		if o, ok := d.(Opener); ok {
-			file, err = o.Open()
-		} else {
-			file, err = f.Open(p)
+		if d.IsDir() {
+			return nil
 		}
+		if f, ok := d.(fs.File); ok {
+			return walk(p, f, nil)
+		}
+		file, err := f.Open(p)
 		return walk(p, file, err)
 	}
 	return WalkDir(f, pre, seek, pattern, outer)
