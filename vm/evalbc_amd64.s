@@ -23,6 +23,7 @@
 #include "bc_amd64.h"
 #include "bc_imm_amd64.h"
 #include "bc_constant.h"
+#include "bc_constant_gen.h"
 #include "bc_constant_rempi.h"
 #include "bc_macros_amd64.h"
 #include "ops_mask.h" // provides OPMASK
@@ -1924,6 +1925,9 @@ TEXT bcisnotnullv(SB), NOSPLIT|NOFRAME, $0
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
+// CONSTD_TRUE_BYTE() = 0x11
+// CONSTD_FALSE_BYTE() = 0x10
+
 // k[0] = is_true(v[1]).k[2]
 //
 // calculated as `(tag[0] & 0xFF == 0x11)`
@@ -2436,6 +2440,21 @@ TEXT bcdateaddquarter(SB), NOSPLIT|NOFRAME, $0
 
   ADDQ $(BC_SLOT_SIZE*5), VIRT_PCREG
   JMP dateaddmonth_tail(SB)
+
+/*
+    Constants
+
+    Unix microseconds from 1st January 1970 to 1st March 0000:
+    ((146097 * 5 - 11017) * 86400000000) == 62162035200000000
+
+    CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET() = 62162035200000000
+
+    ((146097 * 5 - 11017) * 86400000000) >> 13
+    CONSTQ_1970_01_01_TO_0000_03_01_US_OFFSET_SHR_13() = 7588139062500
+
+    float64((60 * 60 * 24 * 1000000) >> 13) == float64(10546875)
+    CONSTF64_MICROSECONDS_IN_1_DAY_SHR_13() = 10546875
+*/
 
 // Tail instruction implementing DATE_ADD(MONTH, interval, timestamp).
 //
@@ -3864,8 +3883,19 @@ TEXT bctimebucketts(SB), NOSPLIT|NOFRAME, $0
 // GEO Functions
 // -------------
 
-#define CONST_GEO_TILE_MAX_PRECISION() CONSTQ_32()
+/*
+    CONSTF64_PI_DIV_180() = uint64(0x3f91df46a2529d39)
+    CONSTF64_0p9999() = 0.9999
+    CONSTF64_MINUS_0p9999() = -0.9999
 
+    // (1 << 48) / (3.1415926535897931 * 4);
+    CONSTF64_281474976710656_DIV_4PI() = uint64(0x42b45f306dc9c883)
+
+    // (1 << 48) / 360.0
+    CONSTF64_281474976710656_DIV_360() = uint64(0x4266c16c16c16c17)
+*/
+
+#define CONST_GEO_TILE_MAX_PRECISION() CONSTQ_32()
 // Calculates GEO HASH bits with full precision.
 //
 // The output can contain many bits, so it's necessary to BIT-AND the results to get the designated precision.
@@ -8028,6 +8058,19 @@ trap:
 
 // String Instructions
 // -------------------
+
+/*
+    UTF-8 constants.
+
+    CONSTD_UTF8_2B_MASK() = 0b10000000110000000000000000000000
+    CONSTD_UTF8_3B_MASK() = 0b10000000100000001110000000000000
+    CONSTD_UTF8_4B_MASK() = 0b10000000100000001000000011110000
+
+    CONSTD_0b11000000() = 0b11000000
+    CONSTD_0b11100000() = 0b11100000
+    CONSTD_0b11110000() = 0b11110000
+    CONSTD_0b11111000() = 0b11111000
+*/
 
 //; #region string methods
 

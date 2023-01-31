@@ -17,6 +17,7 @@
 #include "go_asm.h"
 #include "bc_imm_amd64.h"
 #include "../internal/asmutils/ion_constants_amd64.h"
+#include "bc_constant_gen.h"
 
 // func unpivotAtDistinctDeduplicate(rows []vmref, vmbase uintptr, bitvector *simdChunk)
 TEXT ·unpivotAtDistinctDeduplicate(SB), NOSPLIT, $192-40

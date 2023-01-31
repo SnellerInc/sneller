@@ -110,6 +110,18 @@
   BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))                          \
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
+// Floating Point common constants
+/*
+    CONSTF64_ABS_BITS() = uint64(0x7FFFFFFFFFFFFFFF)
+    CONSTF64_SIGN_BIT() = uint64(0x8000000000000000)
+    CONSTF64_NEGATIVE_INF() = uint64(0xFFF0000000000000)
+    CONSTF64_POSITIVE_INF() = uint64(0x7FF0000000000000)
+    CONSTF64_HALF() = 0.5
+
+    CONSTD_NEG_1() = 0xffffffff
+    CONSTQ_NEG_1() = 0xffffffffffffffff
+*/
+
 // Floating Point Math Instructions - Broadcast
 // --------------------------------------------
 
