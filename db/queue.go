@@ -384,11 +384,12 @@ func (q *QueueRunner) runTable(src *queueBatch, ti *tableInfo) {
 		if ti.scanning() {
 			err = ErrBuildAgain
 		} else {
+			batchstart := time.Now()
 			total, size := dst.filtered.total()
 			err = ti.append(dst.filtered.parts)
 			if err == nil {
-				q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s",
-					ti.state.db, ti.state.table, total, size, time.Since(dst.latest), time.Since(dst.earliest))
+				q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s wallclock %s",
+					ti.state.db, ti.state.table, total, size, time.Since(dst.latest), time.Since(dst.earliest), time.Since(batchstart))
 			}
 		}
 	}
