@@ -246,6 +246,7 @@ func check(t *testing.T, buf *BufferUploader) int {
 	n := Validate(r, trailer, &errlog)
 	if errlog.Len() > 0 {
 		t.Helper()
+		errlog.Truncate(4096) // don't fill the screen
 		t.Fatal(errlog.String())
 	}
 	return n

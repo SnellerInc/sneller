@@ -25,6 +25,7 @@ import (
 
 	"github.com/SnellerInc/sneller/aws/s3"
 	"github.com/SnellerInc/sneller/ion"
+	"github.com/SnellerInc/sneller/ion/zion"
 	"github.com/SnellerInc/sneller/jsonrl"
 	"github.com/SnellerInc/sneller/xsv"
 
@@ -612,6 +613,86 @@ func (c *Converter) fastPrepend(tw trailerWriter) error {
 	return tw.writeStart(c.Prepend.R, c.Prepend.Trailer)
 }
 
+type compressWriter interface {
+	writeCompressed(p []byte) error
+	setSymbols(st *ion.Symtab)
+}
+
+var (
+	_ compressWriter = &CompressionWriter{}
+	_ compressWriter = &singleStream{}
+)
+
+// fastWriter exists to bypass ion.Chunker + (*CompressionWriter|*MultiWriter)
+// when we are prepending complete blocks; we can simply re-use the compressed
+// data as long as the blocks are (mostly) full
+type fastWriter struct {
+	slowpath   bool
+	configured bool
+	zd         zion.Decoder
+	tmp        []byte
+	dst        *ion.Chunker
+	trailer    *Trailer
+	inner      compressWriter
+	skipped    int
+	targetFull int
+	maxchunks  int
+}
+
+var _ ZionWriter = &fastWriter{}
+
+func (f *fastWriter) ConfigureZion(_ []string) bool {
+	f.zd.SetWildcard() // decompress everything
+	f.configured = true
+	// fall back to slow path if blocks aren't 90% full
+	f.targetFull = (9 * f.dst.Align) / 10
+	return true
+}
+
+// consume raw compressed zion data;
+// we always decompress it but we often avoid
+// re-compressing the input if the block is sufficiently full
+func (f *fastWriter) Write(p []byte) (int, error) {
+	var err error
+	if !f.configured {
+		panic("fastWriter not configured as ZionWriter?")
+	}
+	f.tmp, err = f.zd.Decode(p, f.tmp[:0])
+	if err != nil {
+		return 0, err
+	}
+	// for as long as we have mostly-full blocks,
+	// just update the chunker symbol table
+	//
+	// TODO: figure out if we can judge "full" blocks
+	// without decompressing *all* of the data
+	if !f.slowpath {
+		if f.maxchunks > 0 && len(f.tmp) >= f.targetFull {
+			if ion.IsBVM(f.tmp) || ion.TypeOf(f.tmp) == ion.AnnotationType {
+				_, err = f.dst.Symbols.Unmarshal(f.tmp)
+				if err != nil {
+					return 0, err
+				}
+			}
+			f.skipped += f.dst.Align
+			f.maxchunks--
+			return len(p), f.inner.writeCompressed(p)
+		}
+		f.slowpath = true
+		if f.skipped > 0 {
+			f.dst.FastForward(f.skipped)
+			f.inner.setSymbols(&f.dst.Symbols)
+			for _, p := range f.dst.WalkTimeRanges {
+				min, max, ok := f.trailer.Sparse.MinMax(p)
+				if ok {
+					f.dst.SetTimeRange(p, min, max)
+				}
+			}
+		}
+	}
+	return f.dst.Write(f.tmp)
+}
+
 func (c *Converter) runPrepend(cn *ion.Chunker) error {
 	if c.Prepend.R == nil {
 		return nil
@@ -623,8 +704,27 @@ func (c *Converter) runPrepend(cn *ion.Chunker) error {
 	if len(t.Blocks) > 0 {
 		size = t.Offset - t.Blocks[0].Offset
 	}
+	if size == 0 {
+		return nil
+	}
+	dst := (io.Writer)(cn)
+
+	// if we are appending to a short block (i.e. size < RangeAlign)
+	// then try to consume all but the final chunk without re-compressing
+	if len(t.Blocks) == 1 &&
+		c.Comp == "zion" && t.Algo == "zion" && // not changing compression
+		cn.Align == 1<<t.BlockShift && // not changing block size
+		t.Blocks[0].Chunks > 1 && // more than 1 chunk to use fast-path
+		cn.RangeAlign >= t.Blocks[0].Chunks<<t.BlockShift {
+		dst = &fastWriter{
+			dst:       cn,
+			trailer:   t,
+			inner:     cn.W.(compressWriter),
+			maxchunks: t.Blocks[0].Chunks - 1, // skip over all but the last chunk
+		}
+	}
 	d.Set(c.Prepend.Trailer, len(t.Blocks))
-	_, err := d.Copy(cn, io.LimitReader(c.Prepend.R, size))
+	_, err := d.Copy(dst, io.LimitReader(c.Prepend.R, size))
 	c.Prepend.R.Close()
 	cn.WalkTimeRanges = nil
 	return err

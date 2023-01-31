@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestPrependMultiSingle(t *testing.T) {
@@ -115,6 +116,8 @@ func TestPrependSingle(t *testing.T) {
 	}
 	for _, m := range multiples {
 		for _, file := range files {
+			m := m
+			file := file
 			t.Run(fmt.Sprintf("%s/m=%d", file, m), func(t *testing.T) {
 				fp := "../../testdata/" + file
 				f, err := os.Open(fp)
@@ -130,7 +133,7 @@ func TestPrependSingle(t *testing.T) {
 				out.PartSize = align * m
 				c := Converter{
 					Output:    &out,
-					Comp:      "zstd",
+					Comp:      "zion",
 					Inputs:    inputs,
 					Align:     align,
 					FlushMeta: m * align,
@@ -162,7 +165,7 @@ func TestPrependSingle(t *testing.T) {
 				var out2 BufferUploader
 				c = Converter{
 					Output: &out2,
-					Comp:   "zstd",
+					Comp:   "zion",
 					Inputs: inputs,
 					// Align:     4096, // changing alignment
 					// FlushMeta: m * 4096,
@@ -216,7 +219,10 @@ func TestPrependMulti(t *testing.T) {
 	}
 	for _, algo := range algos {
 		for _, m := range multiples {
-			t.Run(fmt.Sprintf("m=%d", m), func(t *testing.T) {
+			m := m
+			algo := algo
+			t.Run(fmt.Sprintf("%s/%d", algo, m), func(t *testing.T) {
+				t.Parallel()
 				var out BufferUploader
 				align := 2048
 				out.PartSize = align * m
@@ -267,5 +273,55 @@ func TestPrependMulti(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestPrependGenerated(t *testing.T) {
+	t.Parallel() // kind of a slow test
+	var rn int
+	start := time.Now()
+
+	rows := func(n int, dst *bytes.Buffer) {
+		for n > 0 {
+			cur := start.Add(time.Duration(rn) * time.Second)
+			fmt.Fprintf(dst, `{"timestamp": "%s", "rownum": %d}`,
+				cur.Format(time.RFC3339Nano), rn)
+			rn++
+			n--
+		}
+	}
+
+	var jsbuf bytes.Buffer
+	var trailer *Trailer
+	var prepend io.ReadCloser
+	for ins := 0; ins < 200; ins++ {
+		var obuf BufferUploader
+		jsbuf.Reset()
+		rows(1000, &jsbuf)
+		conv := Converter{
+			Comp: "zion",
+			Inputs: []Input{{
+				Path: fmt.Sprintf("mem://iter%d", ins),
+				ETag: fmt.Sprintf("iter-%d-etag", ins),
+				R:    io.NopCloser(bytes.NewReader(jsbuf.Bytes())),
+				F:    MustSuffixToFormat(".json"),
+			}},
+			Output:     &obuf,
+			Align:      16 * 1024,
+			FlushMeta:  10 * 16 * 1024,
+			TargetSize: 64 * 1024,
+		}
+		if trailer != nil {
+			conv.Prepend.R = prepend
+			conv.Prepend.Trailer = trailer
+		}
+		err := conv.Run()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		check(t, &obuf)
+		trailer = conv.Trailer()
+		prepend = io.NopCloser(bytes.NewReader(obuf.Bytes()))
 	}
 }

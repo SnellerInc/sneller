@@ -211,6 +211,34 @@ type minMaxSetter interface {
 	SetMinMax(path []string, min, max Datum)
 }
 
+// FastForward changes the initial values for
+// the number of flushed bytes to c.W and the
+// contents of the chunker ranges.
+// c.Symbols should be set to whatever the "current"
+// symbol table is expected to be.
+func (c *Chunker) FastForward(n int) {
+	if c.Buffer.Size() != 0 {
+		panic("ion.Chunker.FastForward called with non-zero buffer contents")
+	}
+	c.Symbols.CloneInto(&c.writesyms)
+	c.flushID = c.Symbols.MaxID()
+	c.tmpID = c.flushID
+	c.written = n
+}
+
+// SetTimeRange clobbers the currently-stored time range values
+func (c *Chunker) SetTimeRange(p []string, min, max date.Time) {
+	var sb Symbuf
+	sb.Prepare(len(p))
+	for i := range p {
+		sb.Push(c.Symbols.Intern(p[i]))
+	}
+	c.Ranges.AddTime(sb, min)
+	c.Ranges.commit()
+	c.Ranges.AddTime(sb, max)
+	c.Ranges.commit()
+}
+
 func (c *Chunker) flushRanges() error {
 	// ensure we write out a fresh
 	// symbol table after each Flush()

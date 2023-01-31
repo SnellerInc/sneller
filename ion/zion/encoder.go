@@ -47,6 +47,14 @@ type Encoder struct {
 	seed uint32
 }
 
+// SetSymbols sets the current state of the
+// internal symbol table in the Encoder.
+// This can be used to resume encoding in
+// the middle of an existing ion stream.
+func (e *Encoder) SetSymbols(st *ion.Symtab) {
+	st.CloneInto(&e.st)
+}
+
 // Reset resets the Encoder's internal
 // symbol table and its seed.
 func (e *Encoder) Reset() {
@@ -82,7 +90,7 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 		}
 		// shape starts with the symbol table
 		e.shape = append(e.shape[:0], src[:len(src)-len(body)]...)
-		if isBVM {
+		if isBVM || len(e.sym2bucket) == 0 {
 			e.sym2bucket = e.sym2bucket[:0]
 			err = e.pickSeed(body)
 			if err != nil {
@@ -92,6 +100,12 @@ func (e *Encoder) Encode(src, dst []byte) ([]byte, error) {
 	} else {
 		body = src
 		e.shape = e.shape[:0]
+		if len(e.sym2bucket) == 0 {
+			err = e.pickSeed(body)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	e.precompute()
 

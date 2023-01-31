@@ -276,6 +276,16 @@ func (s *singleStream) Write(p []byte) (int, error) {
 	return len(p), err
 }
 
+func (s *singleStream) setSymbols(st *ion.Symtab) {
+	s.comp.(*zionCompressor).enc.SetSymbols(st)
+}
+
+func (s *singleStream) writeCompressed(p []byte) error {
+	s.flushblocks++
+	s.buf = appendRawFrame(s.buf, p)
+	return nil
+}
+
 // promote returns true if the current span
 // is pushed into s.parent.unallocated, or
 // false if s.parent.unallocated was merged

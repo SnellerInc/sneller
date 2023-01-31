@@ -73,6 +73,10 @@ func uploadReader(dst Uploader, startpart int64, src io.Reader, size int64) (int
 	}
 	var buffer []byte
 	target := dst.MinPartSize()
+	if target == 1 {
+		// this is a BufferUploader
+		target = 64 * 1024
+	}
 	n := int64(0)
 	for n < size {
 		remaining := size - n

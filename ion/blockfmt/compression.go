@@ -251,9 +251,12 @@ func (w *CompressionWriter) writeStart(r io.Reader, t *Trailer) error {
 	w.partnum = pn - 1
 	w.lastblock = offset
 	w.offset = w.lastblock
+	// set the currently-output state:
 	w.Trailer.Blocks = t.Blocks[:j]
 	w.Trailer.Sparse = t.Sparse.Trim(j)
+	// set the state of what we expect to consume:
 	t.Blocks = t.Blocks[j:]
+	t.Sparse.Slice(j, t.Sparse.Blocks())
 	return nil
 }
 
@@ -283,6 +286,16 @@ func (w *CompressionWriter) upload() error {
 	return nil
 }
 
+func (w *CompressionWriter) setSymbols(st *ion.Symtab) {
+	w.Comp.(*zionCompressor).enc.SetSymbols(st)
+}
+
+func (w *CompressionWriter) writeCompressed(p []byte) error {
+	before := len(w.buffer)
+	w.buffer = appendRawFrame(w.buffer, p)
+	return w.checkFlush(before)
+}
+
 // Write implements io.Writer.
 // Each call to Write must be of w.InputAlign bytes.
 func (w *CompressionWriter) Write(p []byte) (n int, err error) {
@@ -295,20 +308,24 @@ func (w *CompressionWriter) Write(p []byte) (n int, err error) {
 	if w.flushblocks == 0 && !w.skipChecks && !ion.IsBVM(p) {
 		return 0, fmt.Errorf("blockfmt.CompressionWriter.Write: blocks flushed, but no BVM")
 	}
-	w.flushblocks++
 	before := len(w.buffer)
 	w.buffer, err = appendFrame(w.buffer, w.Comp, p)
 	if err != nil {
 		return
 	}
+	return len(p), w.checkFlush(before)
+}
+
+func (w *CompressionWriter) checkFlush(before int) error {
+	w.flushblocks++
 	w.offset += int64(len(w.buffer) - before)
 	if len(w.buffer) >= w.target() {
-		err = w.upload()
+		err := w.upload()
 		if err != nil {
-			return 0, err
+			return err
 		}
 	}
-	return len(p), nil
+	return nil
 }
 
 // use a []blockpart to populate dst.Sparse and dst.Blocks,
@@ -424,6 +441,18 @@ func fill(t *Trailer, rd io.ReaderAt, insize int64) error {
 		return err
 	}
 	return nil
+}
+
+func appendRawFrame(dst, src []byte) []byte {
+	size := len(src)
+	dst = append(dst,
+		byte((ion.BlobType)<<4)|0xe,
+		byte(size>>21)&0x7f,
+		byte(size>>14)&0x7f,
+		byte(size>>7)&0x7f,
+		byte(size&0x7f)|0x80)
+	dst = append(dst, src...)
+	return dst
 }
 
 // append a compressed frame to dst

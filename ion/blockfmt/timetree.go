@@ -412,10 +412,10 @@ func (t *TimeIndex) Max() (date.Time, bool) {
 }
 
 func (t *TimeIndex) trim(i, j int) TimeIndex {
-	if i < 0 || j < 0 || i >= j {
+	if i < 0 || j < 0 || i > j {
 		panic("TimeIndex.trim: index out of range")
 	}
-	if len(t.max) == 0 {
+	if len(t.max) == 0 || i == j {
 		return TimeIndex{}
 	}
 	blocks := t.max[len(t.max)-1].offset
@@ -437,7 +437,7 @@ func (t *TimeIndex) trim(i, j int) TimeIndex {
 	}
 	var newmin []timespan
 	if mi == mj {
-		newmin = []timespan{{offset: 0, when: t.min[mi].when}}
+		newmin = []timespan{{offset: 0, when: t.min[mi-1].when}}
 	} else {
 		newmin = make([]timespan, 0, mj-mi)
 		for k := mi; k < mj; k++ {

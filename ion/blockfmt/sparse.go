@@ -48,29 +48,39 @@ func (s *SparseIndex) Const(x string) (ion.Datum, bool) {
 	return f.Datum, true
 }
 
-func (t *timeIndex) trim(j int) timeIndex {
+func (t *timeIndex) slice(i, j int) timeIndex {
 	return timeIndex{
 		path:   t.path,
-		ranges: t.ranges.trim(0, j),
+		ranges: t.ranges.trim(i, j),
 	}
 }
 
-// Trim produces a copy of s that only includes
-// information up to block j. Trim will panic
-// if j is greater than s.Blocks().
-func (s *SparseIndex) Trim(j int) SparseIndex {
-	if j > s.Blocks() {
-		panic("SparseIndex.Trim beyond blocks")
+// Slice produces a sparse index for just the blocks
+// in the half-open interval [i:j].
+// Slice will panic if i is greater than j, i is less than zero,
+// or j is greater than the number of blocks in the index.
+func (s *SparseIndex) Slice(i, j int) SparseIndex {
+	if i > j || i < 0 || j > s.Blocks() {
+		panic("SparseIndex.Slice beyond blocks")
 	}
 	indices := make([]timeIndex, len(s.indices))
-	for i := range indices {
-		indices[i] = s.indices[i].trim(j)
+	for k := range indices {
+		indices[k] = s.indices[k].slice(i, j)
 	}
 	return SparseIndex{
 		consts:  s.consts,
 		indices: indices,
 		blocks:  j,
 	}
+}
+
+// Trim produces a copy of s that only includes
+// information up to block j. Trim will panic
+// if j is greater than s.Blocks().
+//
+// Trim is equivalent to s.Slice(0, j)
+func (s *SparseIndex) Trim(j int) SparseIndex {
+	return s.Slice(0, j)
 }
 
 // Clone produces a deep copy of s.
