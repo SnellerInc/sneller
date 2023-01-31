@@ -476,9 +476,12 @@ func (p *Prefix) VisitDir(name, seek, pattern string, walk fsutil.VisitDirFn) er
 	if !ValidBucket(p.Bucket) {
 		return badBucket(p.Bucket)
 	}
-	subp := p.sub(name)
-	if !strings.HasSuffix(subp.Path, "/") {
-		subp.Path += "/"
+	subp := p
+	if name != "." {
+		subp = p.sub(name)
+		if !strings.HasSuffix(subp.Path, "/") {
+			subp.Path += "/"
+		}
 	}
 	token := ""
 	for {

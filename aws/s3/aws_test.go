@@ -67,6 +67,10 @@ func TestAWS(t *testing.T) {
 			testWalkGlob,
 		},
 		{
+			"WalkGlobRoot",
+			testWalkGlobRoot,
+		},
+		{
 			"ReadDir",
 			testReadDir,
 		},
@@ -234,6 +238,46 @@ func testWalkGlob(t *testing.T, b *BucketFS, prefix string) {
 				t.Errorf("want %v got %v", want, got)
 			}
 		})
+	}
+}
+
+func testWalkGlobRoot(t *testing.T, b *BucketFS, prefix string) {
+	name := prefix + ".txt"
+	_, err := b.put(name, nil)
+	if err != nil {
+		t.Fatal("creating test file:", err)
+	}
+	t.Cleanup(func() {
+		t.Log("remove", name)
+		b.Remove(name)
+	})
+	root, err := b.Open(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pre, ok := root.(*Prefix)
+	if !ok {
+		t.Fatalf(`got %T back from BucketFS.Open(".")`, root)
+	}
+	// look for the prefix in the root
+	found := false
+	err = fsutil.WalkGlob(pre, "", "go-test-*.txt", func(p string, f fs.File, err error) error {
+		t.Log("visiting:", p)
+		if err != nil {
+			t.Errorf("%s: %v\n", p, err)
+			return nil
+		}
+		f.Close()
+		if p == name {
+			found = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal("fsutil.WalkGlob:", err)
+	}
+	if !found {
+		t.Errorf("could not find %q in the bucket", name)
 	}
 }
 
