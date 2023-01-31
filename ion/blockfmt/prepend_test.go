@@ -320,8 +320,20 @@ func TestPrependGenerated(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		check(t, &obuf)
+		n := check(t, &obuf)
+		if n != (ins+1)*1000 {
+			t.Fatalf("%d instead of %d records", n, (ins+1)*1000)
+		}
 		trailer = conv.Trailer()
+		ti := trailer.Sparse.Get([]string{"timestamp"})
+		if ti == nil {
+			t.Fatal("didn't index timestamp?")
+		}
+		// records are inserted monotonically,
+		// so we should have 100% precise block boundaries:
+		if nb := len(trailer.Blocks); ti.StartIntervals() != nb || ti.EndIntervals() != nb {
+			t.Fatalf("%d start intervals, %d end intervals; %d blocks", ti.StartIntervals(), ti.EndIntervals(), nb)
+		}
 		prepend = io.NopCloser(bytes.NewReader(obuf.Bytes()))
 	}
 }

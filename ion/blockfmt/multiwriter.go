@@ -193,6 +193,7 @@ func (m *MultiWriter) writeStart(r io.Reader, t *Trailer) error {
 	m.Trailer.Blocks = t.Blocks[:j]
 	m.Trailer.Sparse = t.Sparse.Trim(j)
 	t.Blocks = t.Blocks[j:]
+	t.Sparse = t.Sparse.Slice(j, t.Sparse.Blocks())
 	return nil
 }
 

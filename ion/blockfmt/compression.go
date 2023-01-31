@@ -256,7 +256,7 @@ func (w *CompressionWriter) writeStart(r io.Reader, t *Trailer) error {
 	w.Trailer.Sparse = t.Sparse.Trim(j)
 	// set the state of what we expect to consume:
 	t.Blocks = t.Blocks[j:]
-	t.Sparse.Slice(j, t.Sparse.Blocks())
+	t.Sparse = t.Sparse.Slice(j, t.Sparse.Blocks())
 	return nil
 }
 
