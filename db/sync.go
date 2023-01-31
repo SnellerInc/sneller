@@ -698,7 +698,15 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 // any entries were expired
 func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 	rp := st.def.Retention
-	if rp == nil || rp.Field == "" || rp.ValidFor.Zero() {
+	if rp == nil {
+		return false
+	}
+	if rp.Field == "" {
+		st.conf.logf("retention policy field name is not set")
+		return false
+	}
+	if rp.ValidFor.Zero() {
+		st.conf.logf("retention policy expiry time is not set or invalid")
 		return false
 	}
 	field, err := expr.ParsePath(rp.Field)
@@ -719,6 +727,7 @@ func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 	if len(todelete) == 0 {
 		return false
 	}
+	st.conf.logf("purged %d expired entries before %s", len(todelete), exp)
 	idx.ToDelete = append(idx.ToDelete, todelete...)
 	return true
 }
