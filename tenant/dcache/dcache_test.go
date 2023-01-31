@@ -31,14 +31,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-
-	"github.com/SnellerInc/sneller/expr/blob"
 )
 
 type testSegment struct {
 	all             []byte
 	align, spansize int
-	skip            blob.Bitmap
 
 	// segment hash -> segment number
 	seghashes map[string]int
@@ -187,9 +184,6 @@ func (ts *testSegment) decode(dst io.Writer, src []byte) (int64, error) {
 	}
 	n := int64(0)
 	for off := 0; off < len(ts.all); off += ts.align {
-		if ts.skip.Get(off / ts.align) {
-			continue
-		}
 		mem := ts.all[off:]
 		if len(mem) > ts.align {
 			mem = mem[:ts.align]
