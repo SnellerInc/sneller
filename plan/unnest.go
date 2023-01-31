@@ -47,8 +47,8 @@ func (u *Unnest) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func decodeSel(dst *vm.Selection, st *ion.Symtab, src []byte) error {
-	bind, err := expr.DecodeBindings(st, src)
+func decodeSel(dst *vm.Selection, d ion.Datum) error {
+	bind, err := expr.DecodeBindings(d)
 	if err != nil {
 		return err
 	}
@@ -56,16 +56,16 @@ func decodeSel(dst *vm.Selection, st *ion.Symtab, src []byte) error {
 	return nil
 }
 
-func (u *Unnest) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (u *Unnest) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "result":
-		s, _, err := ion.ReadString(body)
+		s, err := f.String()
 		if err != nil {
 			return err
 		}
 		u.Result = s
 	case "expr":
-		e, _, err := expr.Decode(st, body)
+		e, err := expr.FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}

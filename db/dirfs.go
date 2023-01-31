@@ -50,13 +50,13 @@ func NewDirFS(dir string) *DirFS {
 }
 
 // DecodeDirFS decodes the output of (*DirFS).Encode.
-func DecodeDirFS(st *ion.Symtab, mem []byte) (*DirFS, error) {
+func DecodeDirFS(d ion.Datum) (*DirFS, error) {
 	var root string
-	_, err := ion.UnpackStruct(st, mem, func(field string, mem []byte) error {
+	err := d.UnpackStruct(func(f ion.Field) error {
 		var err error
-		switch field {
+		switch f.Label {
 		case "root":
-			root, _, err = ion.ReadString(mem)
+			root, err = f.String()
 		}
 		return err
 	})

@@ -98,10 +98,10 @@ func (m multiIndex) HasPartition(x string) bool {
 	return true
 }
 
-func decodeHandles(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
+func decodeHandles(d Decoder, v ion.Datum) (TableHandle, error) {
 	var ths tableHandles
-	ion.UnpackList(mem, func(mem []byte) error {
-		th, err := decodeHandle(d, st, mem)
+	v.UnpackList(func(v ion.Datum) error {
+		th, err := decodeHandle(d, v)
 		if err != nil {
 			return err
 		}

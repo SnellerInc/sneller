@@ -770,11 +770,7 @@ func decodeOrder(d ion.Datum) ([]Order, error) {
 	return out, nil
 }
 
-func DecodeBindings(st *ion.Symtab, body []byte) ([]Binding, error) {
-	d, _, err := ion.ReadDatum(st, body)
-	if err != nil {
-		return nil, err
-	}
+func DecodeBindings(d ion.Datum) ([]Binding, error) {
 	b, err := decodeBindings(d)
 	if err != nil {
 		err = fmt.Errorf("expr.DecodeBindings: %w", err)

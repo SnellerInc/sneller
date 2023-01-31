@@ -67,35 +67,35 @@ func (d *decodeRemote) GetTransport() (plan.Transport, error) {
 	return d.remote, nil
 }
 
-func (d *decodeRemote) Init(*ion.Symtab) {
+func (d *decodeRemote) Init() {
 	d.remote = new(Remote)
 }
 
-func (d *decodeRemote) SetField(name string, field []byte) error {
+func (d *decodeRemote) SetField(f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "net":
-		d.remote.Net, _, err = ion.ReadString(field)
+		d.remote.Net, err = f.String()
 	case "addr":
-		d.remote.Addr, _, err = ion.ReadString(field)
+		d.remote.Addr, err = f.String()
 	case "timeout":
 		var i int64
-		i, _, err = ion.ReadInt(field)
+		i, err = f.Int()
 		d.remote.Timeout = time.Duration(i)
 	case "id":
 		var buf []byte
-		buf, _, err = ion.ReadBytesShared(field)
+		buf, err = f.BlobShared()
 		if err == nil && copy(d.remote.ID[:], buf) != len(d.remote.ID[:]) {
 			err = fmt.Errorf("decoding tnproto.Remote: tenant ID should not be %d bytes", len(buf))
 		}
 	case "key":
 		var buf []byte
-		buf, _, err = ion.ReadBytesShared(field)
+		buf, err = f.BlobShared()
 		if err == nil && copy(d.remote.Key[:], buf) != len(d.remote.Key[:]) {
 			err = fmt.Errorf("decoding tnproto.Remote: tenant key should not be %d bytes", len(buf))
 		}
 	default:
-		return fmt.Errorf("decoding tnproto.Remote: unknown field %q", name)
+		return fmt.Errorf("decoding tnproto.Remote: unknown field %q", f.Label)
 	}
 
 	return err

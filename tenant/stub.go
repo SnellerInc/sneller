@@ -55,8 +55,8 @@ func (e *Env) post() {
 
 var _ plan.UploaderDecoder = (*Env)(nil)
 
-func (e *Env) DecodeUploader(st *ion.Symtab, buf []byte) (plan.UploadFS, error) {
-	return db.DecodeDirFS(st, buf)
+func (e *Env) DecodeUploader(d ion.Datum) (plan.UploadFS, error) {
+	return db.DecodeDirFS(d)
 }
 
 // handle implements plan.Handle and cache.Segment
@@ -178,8 +178,8 @@ func (t *tableHandle) Split() (plan.Subtables, error) {
 	return ret, nil
 }
 
-func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
-	if len(buf) == 0 {
+func (e *Env) DecodeHandle(d ion.Datum) (plan.TableHandle, error) {
+	if d.IsEmpty() {
 		return nil, fmt.Errorf("no TableHandle present")
 	}
 	th := &tableHandle{
@@ -188,16 +188,16 @@ func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 			repeat: 1,
 		},
 	}
-	_, err := ion.UnpackStruct(st, buf, func(name string, field []byte) error {
-		switch name {
+	err := d.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "repeat":
-			n, _, err := ion.ReadInt(field)
+			n, err := f.Int()
 			if err != nil {
 				return err
 			}
 			th.repeat = int(n)
 		case "filename":
-			str, _, err := ion.ReadString(field)
+			str, err := f.String()
 			if err != nil {
 				return err
 			}
@@ -211,13 +211,13 @@ func (e *Env) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error)
 			th.filename = str
 			th.size = fi.Size()
 		case "hang":
-			hang, _, err := ion.ReadBool(field)
+			hang, err := f.Bool()
 			if err != nil {
 				return err
 			}
 			th.hang = hang
 		default:
-			return fmt.Errorf("unrecognized field %q", name)
+			return fmt.Errorf("unrecognized field %q", f.Label)
 		}
 		return nil
 	})

@@ -158,12 +158,7 @@ func (q *Query) Encode(dst *ion.Buffer, st *ion.Symtab) {
 // DecodeQuery decodes an Ion structure representing a query.
 //
 // Returns query, tail of unprocessed Ion and error.
-func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
-	d, rest, err := ion.ReadDatum(st, msg)
-	if err != nil {
-		return nil, nil, err
-	}
-
+func DecodeQuery(d ion.Datum) (*Query, error) {
 	q := &Query{}
 
 	settype := func(typename string) error {
@@ -233,19 +228,19 @@ func DecodeQuery(st *ion.Symtab, msg []byte) (*Query, []byte, error) {
 
 	s, err := d.Struct()
 	if err != nil {
-		return nil, rest, err
+		return nil, err
 	}
 
 	err = s.UnpackTyped(settype, setitem)
 	if err != nil {
-		return nil, rest, fmt.Errorf("DecodeQuery: %w", err)
+		return nil, fmt.Errorf("DecodeQuery: %w", err)
 	}
 
 	if q.Body == nil {
-		return nil, rest, fmt.Errorf(`DecodeQuery: missing "body" field`)
+		return nil, fmt.Errorf(`DecodeQuery: missing "body" field`)
 	}
 
-	return q, rest, nil
+	return q, nil
 }
 
 // CheckHint checks consistency of the whole query using a hint

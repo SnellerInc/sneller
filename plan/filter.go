@@ -56,10 +56,10 @@ func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (f *Filter) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (f *Filter) setfield(d Decoder, sf ion.Field) error {
+	switch sf.Label {
 	case "expr":
-		e, _, err := expr.Decode(st, body)
+		e, err := expr.FromDatum(sf.Datum)
 		if err != nil {
 			return err
 		}

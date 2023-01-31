@@ -79,9 +79,9 @@ func (t *TenantEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error)
 	return &TenantHandle{parent: t, FilterHandle: th.(*FilterHandle)}, nil
 }
 
-func (t *TenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, error) {
+func (t *TenantEnv) DecodeHandle(d ion.Datum) (plan.TableHandle, error) {
 	h := new(FilterHandle)
-	if err := h.Decode(st, buf); err != nil {
+	if err := h.Decode(d); err != nil {
 		return nil, err
 	}
 	return &TenantHandle{parent: t, FilterHandle: h}, nil
@@ -90,11 +90,11 @@ func (t *TenantEnv) DecodeHandle(st *ion.Symtab, buf []byte) (plan.TableHandle, 
 var _ plan.UploaderDecoder = (*TenantEnv)(nil)
 
 // DecodeUploader implements plan.UploaderDecoder.
-func (t *TenantEnv) DecodeUploader(st *ion.Symtab, buf []byte) (plan.UploadFS, error) {
+func (t *TenantEnv) DecodeUploader(d ion.Datum) (plan.UploadFS, error) {
 	if t.Local {
-		return db.DecodeDirFS(st, buf)
+		return db.DecodeDirFS(d)
 	}
-	return db.DecodeS3FS(st, buf)
+	return db.DecodeS3FS(d)
 }
 
 func (t *TenantEnv) Post() {

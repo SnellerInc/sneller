@@ -374,32 +374,32 @@ func (s *SigningKey) Encode(st *ion.Symtab, dst *ion.Buffer) {
 
 // DecodeKey decodes a SigningKey encoded
 // using (*SigningKey).Encode.
-func DecodeKey(st *ion.Symtab, buf []byte) (*SigningKey, error) {
-	if ion.TypeOf(buf) == ion.NullType {
+func DecodeKey(d ion.Datum) (*SigningKey, error) {
+	if d.IsNull() {
 		return nil, nil
 	}
 	s := &SigningKey{}
-	_, err := ion.UnpackStruct(st, buf, func(field string, buf []byte) error {
+	err := d.UnpackStruct(func(f ion.Field) error {
 		var err error
-		switch field {
+		switch f.Label {
 		case "base_uri":
-			s.BaseURI, _, err = ion.ReadString(buf)
+			s.BaseURI, err = f.String()
 		case "region":
-			s.Region, _, err = ion.ReadString(buf)
+			s.Region, err = f.String()
 		case "service":
-			s.Service, _, err = ion.ReadString(buf)
+			s.Service, err = f.String()
 		case "access_key":
-			s.AccessKey, _, err = ion.ReadString(buf)
+			s.AccessKey, err = f.String()
 		case "token":
-			s.Token, _, err = ion.ReadString(buf)
+			s.Token, err = f.String()
 		case "derived":
 			var t date.Time
-			t, _, err = ion.ReadTime(buf)
+			t, err = f.Timestamp()
 			s.Derived = t.Time()
 		case "clamped0":
-			s.clamped0, _, err = ion.ReadBytes(buf)
+			s.clamped0, err = f.Blob()
 		case "clamped1":
-			s.clamped1, _, err = ion.ReadBytes(buf)
+			s.clamped1, err = f.Blob()
 		}
 		return err
 	})

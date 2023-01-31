@@ -48,8 +48,8 @@ func (e *filterEnv) Stat(t expr.Node, h *Hints) (TableHandle, error) {
 	}, nil
 }
 
-func (e *filterEnv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
-	h, err := e.env.DecodeHandle(st, mem)
+func (e *filterEnv) DecodeHandle(d ion.Datum) (TableHandle, error) {
+	h, err := e.env.DecodeHandle(d)
 	if err != nil {
 		return nil, err
 	}

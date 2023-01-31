@@ -64,7 +64,7 @@ type Op interface {
 	// to the decoded value of 'obj'
 	//
 	// Method has to report unrecognized fields.
-	setfield(d Decoder, name string, st *ion.Symtab, obj []byte) error
+	setfield(d Decoder, f ion.Field) error
 }
 
 // Nonterminal is embedded in every
@@ -267,18 +267,21 @@ func encodeAggregation(lst vm.Aggregation, dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndList()
 }
 
-func decodeAggregation(dst *vm.Aggregation, st *ion.Symtab, buf []byte) error {
+func decodeAggregation(dst *vm.Aggregation, d ion.Datum) error {
 	var out vm.Aggregation
-	mem, err := nonemptyList(buf)
+	i, err := d.Iterator()
 	if err != nil {
-		return fmt.Errorf("decoding aggregation: %w", err)
+		return err
 	}
-	for len(mem) > 0 {
+	for !i.Done() {
 		// decode expression + string pairs
 		var b vm.AggBinding
 		var e expr.Node
 
-		e, mem, err = expr.Decode(st, mem)
+		d, err := i.Next()
+		if err == nil {
+			e, err = expr.FromDatum(d)
+		}
 		if err != nil {
 			return fmt.Errorf("decoding aggregate expression: %w", err)
 		}
@@ -287,9 +290,9 @@ func decodeAggregation(dst *vm.Aggregation, st *ion.Symtab, buf []byte) error {
 			return fmt.Errorf("decoding aggregate: invalid expression %q", expr.ToString(e))
 		}
 		b.Expr = ag
-		b.Result, mem, err = ion.ReadString(mem)
+		b.Result, err = i.String()
 		if err != nil {
-			return err
+			return fmt.Errorf("decoding aggregate result: %w", err)
 		}
 		out = append(out, b)
 	}
@@ -354,10 +357,10 @@ func (s *SimpleAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (s *SimpleAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (s *SimpleAggregate) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "agg":
-		return decodeAggregation(&s.Outputs, st, buf)
+		return decodeAggregation(&s.Outputs, f.Datum)
 	}
 	return errUnexpectedField
 }
@@ -426,16 +429,16 @@ func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (l *Leaf) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (l *Leaf) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "orig":
-		n, _, err := expr.Decode(st, buf)
+		n, err := expr.FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
 		l.Orig = n.(*expr.Table)
 	case "filter":
-		f, _, err := expr.Decode(st, buf)
+		f, err := expr.FromDatum(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -492,7 +495,7 @@ func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (n NoOutput) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
+func (n NoOutput) setfield(d Decoder, f ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -528,7 +531,7 @@ func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (n DummyOutput) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
+func (n DummyOutput) setfield(d Decoder, f ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -554,10 +557,10 @@ func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (l *Limit) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (l *Limit) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "limit":
-		i, _, err := ion.ReadInt(buf)
+		i, err := f.Int()
 		if err != nil {
 			return err
 		}
@@ -640,10 +643,10 @@ func (c *CountStar) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (c *CountStar) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (c *CountStar) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "as":
-		n, _, err := ion.ReadString(buf)
+		n, err := f.String()
 		if err != nil {
 			return err
 		}
@@ -739,60 +742,39 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func unpackList(buf []byte, fn func([]byte) error) error {
-	_, err := ion.UnpackList(buf, fn)
-	return err
-}
-
-func unpackStruct(st *ion.Symtab, body []byte, fn func(string, []byte) error) error {
-	_, err := ion.UnpackStruct(st, body, fn)
-	return err
-}
-
-func nonemptyList(buf []byte) ([]byte, error) {
-	if ion.TypeOf(buf) != ion.ListType {
-		return nil, fmt.Errorf("expected a list; got %s", ion.TypeOf(buf))
-	}
-	buf, _ = ion.Contents(buf)
-	if len(buf) == 0 {
-		return nil, fmt.Errorf("corrupted list length")
-	}
-	return buf, nil
-}
-
-func (h *HashAggregate) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "agg":
-		return decodeAggregation(&h.Agg, st, buf)
+		return decodeAggregation(&h.Agg, f.Datum)
 	case "windows":
-		return decodeAggregation(&h.Windows, st, buf)
+		return decodeAggregation(&h.Windows, f.Datum)
 	case "by":
-		return decodeSel(&h.By, st, buf)
+		return decodeSel(&h.By, f.Datum)
 	case "limit":
-		i, _, err := ion.ReadInt(buf)
+		i, err := f.Int()
 		if err != nil {
 			return err
 		}
 		h.Limit = int(i)
 	case "order":
-		return unpackList(buf, func(ord []byte) error {
+		return f.UnpackList(func(d ion.Datum) error {
 			var o HashOrder
 			var err error
 			var i int64
-			ord, err = nonemptyList(ord)
+			it, err := d.Iterator()
 			if err != nil {
 				return err
 			}
-			i, ord, err = ion.ReadInt(ord)
+			i, err = it.Int()
 			if err != nil {
 				return fmt.Errorf("reading \"OrderBy.Column\": %w", err)
 			}
 			o.Column = int(i)
-			o.Desc, ord, err = ion.ReadBool(ord)
+			o.Desc, err = it.Bool()
 			if err != nil {
 				return fmt.Errorf("reading \"OrderBy.Desc\": %w", err)
 			}
-			o.NullsLast, _, err = ion.ReadBool(ord)
+			o.NullsLast, err = it.Bool()
 			if err != nil {
 				return fmt.Errorf("reading \"OrderBy.NullsLast\": %w", err)
 			}
@@ -974,25 +956,28 @@ func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (o *OrderBy) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (o *OrderBy) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "columns":
-		return unpackList(buf, func(inner []byte) error {
+		return f.UnpackList(func(v ion.Datum) error {
 			var col OrderByColumn
 			var err error
-			inner, err = nonemptyList(inner)
+			i, err := v.Iterator()
 			if err != nil {
 				return err
 			}
-			col.Node, inner, err = expr.Decode(st, inner)
+			v, err = i.Next()
+			if err == nil {
+				col.Node, err = expr.FromDatum(v)
+			}
 			if err != nil {
 				return err
 			}
-			col.Desc, inner, err = ion.ReadBool(inner)
+			col.Desc, err = i.Bool()
 			if err != nil {
 				return err
 			}
-			col.NullsLast, _, err = ion.ReadBool(inner)
+			col.NullsLast, err = i.Bool()
 			if err != nil {
 				return err
 			}
@@ -1000,13 +985,13 @@ func (o *OrderBy) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) e
 			return nil
 		})
 	case "limit":
-		i, _, err := ion.ReadInt(buf)
+		i, err := f.Int()
 		if err != nil {
 			return err
 		}
 		o.Limit = int(i)
 	case "offset":
-		i, _, err := ion.ReadInt(buf)
+		i, err := f.Int()
 		if err != nil {
 			return err
 		}
@@ -1058,11 +1043,11 @@ func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (d *Distinct) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (d *Distinct) setfield(_ Decoder, f ion.Field) error {
+	switch f.Label {
 	case "fields":
-		return unpackList(buf, func(inner []byte) error {
-			e, _, err := expr.Decode(st, inner)
+		return f.UnpackList(func(v ion.Datum) error {
+			e, err := expr.FromDatum(v)
 			if err != nil {
 				return err
 			}
@@ -1071,7 +1056,7 @@ func (d *Distinct) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) 
 		})
 	case "limit":
 		var err error
-		d.Limit, _, err = ion.ReadInt(buf)
+		d.Limit, err = f.Int()
 		return err
 	default:
 		return errUnexpectedField
@@ -1127,16 +1112,16 @@ func (u *Unpivot) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (u *Unpivot) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) error {
+func (u *Unpivot) setfield(_ Decoder, f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "As":
 		var x string
-		x, _, err = ion.ReadString(buf)
+		x, err = f.String()
 		u.As = &x
 	case "At":
 		var x string
-		x, _, err = ion.ReadString(buf)
+		x, err = f.String()
 		u.At = &x
 	default:
 		return errUnexpectedField
@@ -1242,11 +1227,11 @@ func (u *UnpivotAtDistinct) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHan
 	return u.From.wrap(vmu, ep)
 }
 
-func (u *UnpivotAtDistinct) setfield(_ Decoder, name string, st *ion.Symtab, buf []byte) error {
+func (u *UnpivotAtDistinct) setfield(_ Decoder, f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "At":
-		u.At, _, err = ion.ReadString(buf)
+		u.At, err = f.String()
 	default:
 		return errUnexpectedField
 	}
@@ -1278,26 +1263,22 @@ func (e *Explain) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (e *Explain) setfield(d Decoder, field string, st *ion.Symtab, obj []byte) error {
-	switch field {
+func (e *Explain) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "format":
-		k, _, err := ion.ReadInt(obj)
+		k, err := f.Int()
 		if err != nil {
 			return err
 		}
-
 		e.Format = expr.ExplainFormat(k)
-
 	case "query":
-		q, _, err := expr.DecodeQuery(st, obj)
+		q, err := expr.DecodeQuery(f.Datum)
 		if err != nil {
 			return err
 		}
-
 		e.Query = q
-
 	case "tree":
-		tree, err := Decode(d, st, obj)
+		tree, err := DecodeDatum(d, f.Datum)
 		if err != nil {
 			return err
 		}

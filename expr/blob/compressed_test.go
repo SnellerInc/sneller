@@ -114,7 +114,7 @@ func TestCompressedRange(t *testing.T) {
 			ibuf.Reset()
 			l := List{Contents: []Interface{part}}
 			l.Encode(&ibuf, &st)
-			lout, err := DecodeList(&st, ibuf.Bytes())
+			lout, err := DecodeList(readDatum(t, &st, &ibuf))
 			if err != nil {
 				t.Fatal(err)
 			}

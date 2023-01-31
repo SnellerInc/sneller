@@ -50,15 +50,15 @@ func (s *S3FS) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 }
 
 // DecodeS3FS decodes the output of (*S3FS).Encode.
-func DecodeS3FS(st *ion.Symtab, buf []byte) (*S3FS, error) {
+func DecodeS3FS(d ion.Datum) (*S3FS, error) {
 	s := &S3FS{}
-	_, err := ion.UnpackStruct(st, buf, func(field string, buf []byte) error {
+	err := d.UnpackStruct(func(f ion.Field) error {
 		var err error
-		switch field {
+		switch f.Label {
 		case "key":
-			s.Key, err = aws.DecodeKey(st, buf)
+			s.Key, err = aws.DecodeKey(f.Datum)
 		case "bucket":
-			s.Bucket, _, err = ion.ReadString(buf)
+			s.Bucket, err = f.String()
 		}
 		return err
 	})

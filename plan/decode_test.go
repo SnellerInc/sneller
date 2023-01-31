@@ -68,8 +68,8 @@ type benchenv struct {
 	blocks int
 }
 
-func (b *benchenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
-	l, err := blob.DecodeList(st, mem)
+func (b *benchenv) DecodeHandle(v ion.Datum) (TableHandle, error) {
+	l, err := blob.DecodeList(v)
 	if err != nil {
 		return nil, err
 	}

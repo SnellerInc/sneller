@@ -83,10 +83,10 @@ func (s Struct) UnpackTyped(settype func(typ string) error, setfield func(Field)
 // StructParser is an Ion struct decoder.
 type StructParser interface {
 	// Init is called before parsing start
-	Init(st *Symtab)
+	Init()
 
 	// SetField is called for each structure field.
-	SetField(name string, body []byte) error
+	SetField(Field) error
 
 	// Finalize is called after all fields were visited.
 	// This method is meant to perform additional validation.
@@ -99,29 +99,28 @@ type TypeResolver interface {
 	Resolve(typename string) (StructParser, error)
 }
 
-// UnpackTypedStructWithClasses performs exactly the same job as
-// UnpackTypedStruct, but uses external classes to perform
-// actual operations rather callbacks.
-func UnpackTypedStructWithClasses(st *Symtab, buf []byte, resolver TypeResolver) ([]byte, error) {
+// UnpackTypedRes performs exactly the same job as
+// UnpackTyped, but uses a TypeResolver to perform
+// type resolution rather than callbacks.
+func (s Struct) UnpackTypedRes(resolver TypeResolver) error {
 	var parser StructParser
 	var err error
-	var rest []byte
 
 	settype := func(typename string) error {
 		parser, err = resolver.Resolve(typename)
 		if err == nil {
-			parser.Init(st)
+			parser.Init()
 		} else {
 			parser = nil
 		}
 		return err
 	}
 
-	setitem := func(name string, body []byte) error {
-		return parser.SetField(name, body)
+	setitem := func(f Field) error {
+		return parser.SetField(f)
 	}
 
-	rest, err = UnpackTypedStruct(st, buf, settype, setitem)
+	err = s.UnpackTyped(settype, setitem)
 	var err2 error
 	if parser != nil {
 		err2 = parser.Finalize()
@@ -131,5 +130,5 @@ func UnpackTypedStructWithClasses(st *Symtab, buf []byte, resolver TypeResolver)
 		err = err2
 	}
 
-	return rest, err
+	return err
 }

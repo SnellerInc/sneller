@@ -32,7 +32,7 @@ type Decoder interface {
 	// encountered when decoding a TableHandle,
 	// this function will be called for each item
 	// in the list to produce a concatenated table.
-	DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error)
+	DecodeHandle(ion.Datum) (TableHandle, error)
 }
 
 // UploaderDecoder can optionally be implemented by a
@@ -41,24 +41,24 @@ type Decoder interface {
 //
 // See also: UploadEnv
 type UploaderDecoder interface {
-	DecodeUploader(st *ion.Symtab, mem []byte) (UploadFS, error)
+	DecodeUploader(ion.Datum) (UploadFS, error)
 }
 
 // decodeHandle calls d.DecodeHandle with special
 // handling for lists.
-func decodeHandle(d Decoder, st *ion.Symtab, mem []byte) (TableHandle, error) {
-	if ion.TypeOf(mem) == ion.ListType {
-		return decodeHandles(d, st, mem)
+func decodeHandle(d Decoder, v ion.Datum) (TableHandle, error) {
+	if v.IsList() {
+		return decodeHandles(d, v)
 	}
-	return d.DecodeHandle(st, mem)
+	return d.DecodeHandle(v)
 }
 
 // decode decodes an input structure.
-func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
-	err := unpackStruct(st, mem, func(field string, buf []byte) error {
-		switch field {
+func (i *Input) decode(d Decoder, v ion.Datum) error {
+	err := v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "table":
-			e, _, err := expr.Decode(st, buf)
+			e, err := expr.FromDatum(f.Datum)
 			if err != nil {
 				return err
 			}
@@ -68,7 +68,7 @@ func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
 			}
 			i.Table = t
 		case "handle":
-			th, err := decodeHandle(d, st, buf[:ion.SizeOf(buf)])
+			th, err := decodeHandle(d, f.Datum)
 			if err != nil {
 				return err
 			}
@@ -90,16 +90,24 @@ func (i *Input) decode(d Decoder, st *ion.Symtab, mem []byte) error {
 // will have its TableHandle populated with env.Stat.
 // See also: Plan.Encode, Plan.EncodePart.
 func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
+	v, _, err := ion.ReadDatum(st, buf)
+	if err != nil {
+		return nil, err
+	}
+	return DecodeDatum(d, v)
+}
+
+func DecodeDatum(d Decoder, v ion.Datum) (*Tree, error) {
 	t := &Tree{}
-	err := unpackStruct(st, buf, func(field string, inner []byte) error {
-		switch field {
+	err := v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "inputs":
-			return unpackList(inner, func(field []byte) error {
+			return f.UnpackList(func(v ion.Datum) error {
 				t.Inputs = append(t.Inputs, Input{})
-				return t.Inputs[len(t.Inputs)-1].decode(d, st, field)
+				return t.Inputs[len(t.Inputs)-1].decode(d, v)
 			})
 		case "root":
-			return t.Root.decode(d, st, inner)
+			return t.Root.decode(d, f.Datum)
 		default:
 			return nil
 		}
@@ -110,23 +118,23 @@ func Decode(d Decoder, st *ion.Symtab, buf []byte) (*Tree, error) {
 	return t, nil
 }
 
-func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
-	err := unpackStruct(st, buf, func(field string, inner []byte) error {
-		switch field {
+func (n *Node) decode(d Decoder, v ion.Datum) error {
+	err := v.UnpackStruct(func(f ion.Field) error {
+		switch f.Label {
 		case "op":
 			var err error
-			n.Op, err = decodeOps(d, st, inner)
+			n.Op, err = decodeOps(d, f.Datum)
 			return err
 		case "input":
-			v, _, err := ion.ReadInt(inner)
+			v, err := f.Int()
 			if err == nil {
 				n.Input = int(v)
 			}
 			return err
 		case "children":
-			return unpackList(inner, func(field []byte) error {
+			return f.UnpackList(func(v ion.Datum) error {
 				nn := &Node{}
-				err := nn.decode(d, st, field)
+				err := nn.decode(d, v)
 				if err != nil {
 					return err
 				}
@@ -154,10 +162,10 @@ func (n *Node) decode(d Decoder, st *ion.Symtab, buf []byte) error {
 //
 // During decoding, each *Leaf plan that references
 // a table has its TableHandle populated with env.Stat.
-func decodeOps(d Decoder, st *ion.Symtab, buf []byte) (Op, error) {
+func decodeOps(d Decoder, v ion.Datum) (Op, error) {
 	var top Op
 	itemid := 0
-	err := unpackList(buf, func(body []byte) error {
+	err := v.UnpackList(func(v ion.Datum) error {
 		var op Op
 
 		settype := func(typename string) error {
@@ -168,15 +176,15 @@ func decodeOps(d Decoder, st *ion.Symtab, buf []byte) (Op, error) {
 			return nil
 		}
 
-		setitem := func(name string, body []byte) error {
-			err := op.setfield(d, name, st, body)
-			if err != nil {
-				return fmt.Errorf("decoding %T, field %s: %w", op, name, err)
-			}
-			return nil
+		setitem := func(f ion.Field) error {
+			return op.setfield(d, f)
 		}
 
-		_, err := ion.UnpackTypedStruct(st, body, settype, setitem)
+		s, err := v.Struct()
+		if err != nil {
+			return err
+		}
+		err = s.UnpackTyped(settype, setitem)
 		if err != nil {
 			return err
 		}

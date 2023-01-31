@@ -191,10 +191,10 @@ func (o *OutputPart) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (o *OutputPart) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
-	switch name {
+func (o *OutputPart) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "basename":
-		basename, _, err := ion.ReadString(buf)
+		basename, err := f.String()
 		if err != nil {
 			return err
 		}
@@ -204,7 +204,7 @@ func (o *OutputPart) setfield(d Decoder, name string, st *ion.Symtab, buf []byte
 		if !ok {
 			return fmt.Errorf("Decoder doesn't support UploaderDecoder: %T", d)
 		}
-		store, err := up.DecodeUploader(st, buf)
+		store, err := up.DecodeUploader(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -344,23 +344,23 @@ func (o *OutputIndex) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) e
 	return o.From.wrap(is, ep)
 }
 
-func (o *OutputIndex) setfield(d Decoder, name string, st *ion.Symtab, buf []byte) error {
+func (o *OutputIndex) setfield(d Decoder, f ion.Field) error {
 	var err error
-	switch name {
+	switch f.Label {
 	case "db":
-		o.DB, _, err = ion.ReadString(buf)
+		o.DB, err = f.String()
 	case "table":
-		o.Table, _, err = ion.ReadString(buf)
+		o.Table, err = f.String()
 	case "basename":
-		o.Basename, _, err = ion.ReadString(buf)
+		o.Basename, err = f.String()
 	case "store":
 		up, ok := d.(UploaderDecoder)
 		if !ok {
 			return fmt.Errorf("Decoder doesn't support UploaderDecoder: %T", d)
 		}
-		o.Store, err = up.DecodeUploader(st, buf)
+		o.Store, err = up.DecodeUploader(f.Datum)
 	case "key":
-		inner, _, err := ion.ReadBytesShared(buf)
+		inner, err := f.BlobShared()
 		if err != nil {
 			return err
 		}

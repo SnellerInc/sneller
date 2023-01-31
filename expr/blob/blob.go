@@ -331,16 +331,13 @@ func (l *List) encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndList()
 }
 
-func DecodeList(st *ion.Symtab, body []byte) (*List, error) {
-	d, _, err := ion.ReadDatum(st, body)
-	if err != nil {
-		return nil, err
-	}
+func DecodeList(d ion.Datum) (*List, error) {
 	if !d.IsStruct() {
 		return decodeList(d)
 	}
 	var dec compr.Decompressor
 	var buf, data []byte
+	var err error
 	err = d.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
 		case "algo":

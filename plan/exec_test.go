@@ -83,19 +83,19 @@ func (t *testenv) get(fname string) *os.File {
 	return f
 }
 
-func (t *testenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
+func (t *testenv) DecodeHandle(d ion.Datum) (TableHandle, error) {
 	if t.mustfail != "" {
 		return nil, errors.New(t.mustfail)
 	}
-	switch typ := ion.TypeOf(mem); typ {
+	switch typ := d.Type(); typ {
 	case ion.BlobType:
-		buf, _, err := ion.ReadBytes(mem)
+		buf, err := d.Blob()
 		if err != nil {
 			return nil, err
 		}
 		return &literalHandle{buf}, nil
 	case ion.StringType:
-		str, _, err := ion.ReadString(mem)
+		str, err := d.String()
 		if err != nil {
 			return nil, err
 		}
@@ -1823,8 +1823,13 @@ func testSerialize(t *testing.T, e expr.Node) {
 	var obuf ion.Buffer
 	var st ion.Symtab
 	e.Encode(&obuf, &st)
+	d, _, err := ion.ReadDatum(&st, obuf.Bytes())
+	if err != nil {
+		t.Helper()
+		t.Fatal(err)
+	}
 
-	res, _, err := expr.Decode(&st, obuf.Bytes())
+	res, err := expr.FromDatum(d)
 	if err != nil {
 		t.Helper()
 		t.Logf("js: %s", buf2json(&st, &obuf))
@@ -2074,8 +2079,8 @@ func (h *hangHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	panic("hangHandle.Encode")
 }
 
-func (h *hangenv) DecodeHandle(st *ion.Symtab, mem []byte) (TableHandle, error) {
-	real, err := h.testenv.DecodeHandle(st, mem)
+func (h *hangenv) DecodeHandle(d ion.Datum) (TableHandle, error) {
+	real, err := h.testenv.DecodeHandle(d)
 	if err != nil {
 		return nil, err
 	}

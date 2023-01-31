@@ -106,14 +106,16 @@ func (d *decoderResolver) Resolve(typename string) (ion.StructParser, error) {
 
 // DecodeTransport decodes a transport encoded with
 // EncodeTransport.
-func DecodeTransport(st *ion.Symtab, body []byte) (Transport, error) {
+func DecodeTransport(d ion.Datum) (Transport, error) {
 	resolver := decoderResolver{}
-	_, err := ion.UnpackTypedStructWithClasses(st, body, &resolver)
-
+	s, err := d.Struct()
 	if err != nil {
 		return nil, err
 	}
-
+	err = s.UnpackTypedRes(&resolver)
+	if err != nil {
+		return nil, err
+	}
 	return resolver.decoder.GetTransport()
 }
 
@@ -125,14 +127,14 @@ func (d *decodeLocal) GetTransport() (Transport, error) {
 	return d.transport, nil
 }
 
-func (d *decodeLocal) Init(*ion.Symtab) {
+func (d *decodeLocal) Init() {
 	d.transport = &LocalTransport{}
 }
 
-func (d *decodeLocal) SetField(name string, buf []byte) error {
-	switch name {
+func (d *decodeLocal) SetField(f ion.Field) error {
+	switch f.Label {
 	case "threads":
-		i, _, err := ion.ReadInt(buf)
+		i, err := f.Int()
 		if err != nil {
 			return err
 		}
@@ -255,12 +257,8 @@ func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (u *UnionMap) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
-	switch name {
-	default:
-		return errUnexpectedField
-	}
-	return nil
+func (u *UnionMap) setfield(d Decoder, f ion.Field) error {
+	return errUnexpectedField
 }
 
 func (u *UnionMap) String() string { return "UNION MAP" }

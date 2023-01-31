@@ -65,17 +65,17 @@ func (f *FilterHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (f *FilterHandle) Decode(st *ion.Symtab, mem []byte) error {
-	_, err := ion.UnpackStruct(st, mem, func(name string, body []byte) error {
+func (f *FilterHandle) Decode(d ion.Datum) error {
+	err := d.UnpackStruct(func(sf ion.Field) error {
 		var err error
-		switch name {
+		switch sf.Label {
 		case "filter":
-			f.Expr, _, err = expr.Decode(st, body)
+			f.Expr, err = expr.FromDatum(sf.Datum)
 		case "blobs":
-			f.Blobs, err = blob.DecodeList(st, body)
+			f.Blobs, err = blob.DecodeList(sf.Datum)
 		case "fields":
-			_, err = ion.UnpackList(body, func(field []byte) error {
-				str, _, err := ion.ReadString(field)
+			err = sf.UnpackList(func(d ion.Datum) error {
+				str, err := d.String()
 				if err != nil {
 					return err
 				}
@@ -83,20 +83,16 @@ func (f *FilterHandle) Decode(st *ion.Symtab, mem []byte) error {
 				return nil
 			})
 		case "all_fields":
-			f.AllFields, _, err = ion.ReadBool(body)
+			f.AllFields, err = sf.Bool()
 		case "splitter":
-			dat, _, err := ion.ReadDatum(st, body)
-			if err != nil {
-				return err
-			}
 			s := new(Splitter)
-			err = dat.UnpackStruct(s.setField)
+			err = sf.UnpackStruct(s.setField)
 			if err != nil {
 				return err
 			}
 			f.Splitter = s
 		default:
-			return fmt.Errorf("unrecognized field %q", name)
+			return fmt.Errorf("unrecognized field %q", sf.Label)
 		}
 
 		return err

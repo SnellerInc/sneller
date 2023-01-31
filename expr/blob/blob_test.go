@@ -187,8 +187,9 @@ func TestSerialization(t *testing.T) {
 	var buf ion.Buffer
 	var st ion.Symtab
 	lst.Encode(&buf, &st)
+	d := readDatum(t, &st, &buf)
 
-	got, err := DecodeList(&st, buf.Bytes())
+	got, err := DecodeList(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +264,7 @@ func TestSerializationCompressed(t *testing.T) {
 	if compressed.Size() >= uncompressed.Size() {
 		t.Errorf("list suspiciously big (%d bytes) after compression", compressed.Size())
 	}
-	got, err := DecodeList(&st, compressed.Bytes())
+	got, err := DecodeList(readDatum(t, &st, &compressed))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +346,7 @@ func BenchmarkSerializationCompressed(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_, err := DecodeList(&st, buf.Bytes())
+			_, err := DecodeList(readDatum(b, &st, &buf))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -371,4 +372,13 @@ func TestFlakyNoSecrets(t *testing.T) {
 	if strings.Contains(errmsg, "secret") {
 		t.Fatal("error message contains secret")
 	}
+}
+
+func readDatum(t testing.TB, st *ion.Symtab, buf *ion.Buffer) ion.Datum {
+	t.Helper()
+	d, _, err := ion.ReadDatum(st, buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }

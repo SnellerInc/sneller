@@ -120,8 +120,8 @@ func mkoutenv(t *testing.T, dir string) *outputenv {
 func (o *outputenv) Uploader() UploadFS { return o.fs }
 func (o *outputenv) Key() *blockfmt.Key { return o.key }
 
-func (o *outputenv) DecodeUploader(st *ion.Symtab, mem []byte) (UploadFS, error) {
-	return db.DecodeDirFS(st, mem)
+func (o *outputenv) DecodeUploader(d ion.Datum) (UploadFS, error) {
+	return db.DecodeDirFS(d)
 }
 
 type logfs struct {

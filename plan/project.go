@@ -49,10 +49,10 @@ func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	return nil
 }
 
-func (p *Project) setfield(d Decoder, name string, st *ion.Symtab, body []byte) error {
-	switch name {
+func (p *Project) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
 	case "project":
-		bind, err := expr.DecodeBindings(st, body)
+		bind, err := expr.DecodeBindings(f.Datum)
 		if err != nil {
 			return err
 		}
