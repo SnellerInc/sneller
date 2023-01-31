@@ -50,14 +50,14 @@ type Shape struct {
 }
 
 //go:noescape
-func shapecount(shape []byte) (int, bool)
+func shapecount(shape []byte) int
 
 // Count returns the number of records implied by the shape bitstream.
 // The caller should have already called s.Decode at least once to
 // populate the shape bits.
 func (s *Shape) Count() (int, error) {
-	count, ok := shapecount(s.Bits[s.Start:])
-	if !ok {
+	count := shapecount(s.Bits[s.Start:])
+	if count < 0 {
 		return 0, fmt.Errorf("zll.Shape.Count: corrupt data")
 	}
 	return count, nil

@@ -21,9 +21,7 @@ TEXT ·shapecount(SB), NOSPLIT, $0
     MOVQ shape_len+8(FP), DX
     ADDQ SI, DX       // end-of-source
     XORL CX, CX       // count
-    XORL AX, AX       // fc
     XORL BX, BX       // zero
-    MOVB $1, ret1+32(FP)
     JMP  loop_tail
 loop:
     MOVBLZX 0(SI), AX
@@ -41,5 +39,5 @@ loop_tail:
     MOVQ    CX, ret+24(FP)
     RET
 corrupt:
-    MOVB    $0, ret1+32(FP)
+    MOVQ    $-1, ret+24(FP)
     RET
