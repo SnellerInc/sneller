@@ -1,0 +1,207 @@
+SELECT
+  a,
+  ARRAY_POSITION(b, a) AS out
+FROM
+  input
+---
+{"a": false, "b": [true, true, true, false]}
+{"a": true, "b": [true, false, true, true]}
+{"a": false, "b": [false, false, true, false]}
+{"a": true, "b": [false, true, false, false]}
+{"a": true, "b": [true, true, true, true]}
+{"a": true, "b": [true, false, false, true]}
+{"a": true, "b": [true, true, false, false]}
+{"a": true, "b": [false, true, false, false]}
+{"a": true, "b": [false, false, true, true]}
+{"a": true, "b": [true, true, false, false]}
+{"a": false, "b": [true, true, true, false]}
+{"a": true, "b": [true, true, false, false]}
+{"a": false, "b": [true, true, false, true]}
+{"a": true, "b": [false, false, false, false]}
+{"a": true, "b": [false, true, true, false]}
+{"a": false, "b": [true, true, false, false]}
+{"a": true, "b": [true, true, false, true]}
+{"a": false, "b": [true, true, false, false]}
+{"a": true, "b": [true, true, true, true]}
+{"a": false, "b": [true, false, false, false]}
+{"a": false, "b": [true, false, true, true]}
+{"a": true, "b": [false, false, false, false]}
+{"a": true, "b": [false, false, false, true]}
+{"a": false, "b": [false, false, false, false]}
+{"a": false, "b": [false, false, false, false]}
+{"a": false, "b": [true, false, false, false]}
+{"a": false, "b": [false, true, false, true]}
+{"a": true, "b": [true, true, true, false]}
+{"a": false, "b": [true, false, true, true]}
+{"a": false, "b": [false, true, false, true]}
+{"a": true, "b": [false, false, false, true]}
+{"a": false, "b": [false, true, true, false]}
+{"a": false, "b": [false, true, false, false]}
+{"a": false, "b": [false, false, false, false]}
+{"a": false, "b": [false, true, true, true]}
+{"a": true, "b": [true, false, true, true]}
+{"a": true, "b": [true, true, false, true]}
+{"a": true, "b": [false, true, true, true]}
+{"a": false, "b": [false, false, true, false]}
+{"a": true, "b": [true, false, false, false]}
+{"a": true, "b": [true, true, false, true]}
+{"a": false, "b": [true, false, false, true]}
+{"a": false, "b": [true, true, true, false]}
+{"a": false, "b": [false, true, true, true]}
+{"a": false, "b": [false, false, true, false]}
+{"a": true, "b": [true, false, true, true]}
+{"a": false, "b": [true, false, true, true]}
+{"a": false, "b": [false, true, true, true]}
+{"a": false, "b": [false, false, false, true]}
+{"a": false, "b": [false, true, true, true]}
+{"a": true, "b": [false, false, true, true]}
+{"a": true, "b": [true, false, false, true]}
+{"a": true, "b": [true, false, true, true]}
+{"a": false, "b": [false, false, true, true]}
+{"a": false, "b": [true, true, false, true]}
+{"a": false, "b": [false, true, true, true]}
+{"a": true, "b": [false, true, true, true]}
+{"a": true, "b": [true, true, false, true]}
+{"a": false, "b": [false, false, true, true]}
+{"a": true, "b": [false, true, false, false]}
+{"a": true, "b": [false, true, true, true]}
+{"a": false, "b": [false, true, false, false]}
+{"a": false, "b": [false, true, false, false]}
+{"a": true, "b": [false, true, true, false]}
+{"a": true, "b": [false, true, false, true]}
+{"a": true, "b": [false, false, true, false]}
+{"a": true, "b": [false, false, false, false]}
+{"a": false, "b": [false, false, false, false]}
+{"a": false, "b": [true, false, false, false]}
+{"a": false, "b": [false, false, true, false]}
+{"a": true, "b": [false, true, false, true]}
+{"a": true, "b": [false, true, true, false]}
+{"a": true, "b": [false, false, false, true]}
+{"a": true, "b": [true, true, false, false]}
+{"a": true, "b": [true, true, true, false]}
+{"a": true, "b": [true, true, true, false]}
+{"a": true, "b": [false, false, false, false]}
+{"a": false, "b": [false, false, true, false]}
+{"a": true, "b": [false, true, false, false]}
+{"a": true, "b": [true, false, false, true]}
+{"a": true, "b": [false, true, true, false]}
+{"a": false, "b": [false, false, true, true]}
+{"a": false, "b": [false, false, true, false]}
+{"a": true, "b": [false, true, false, true]}
+{"a": false, "b": [true, true, false, true]}
+{"a": false, "b": [false, false, false, true]}
+{"a": false, "b": [true, false, false, false]}
+{"a": true, "b": [false, true, false, false]}
+{"a": true, "b": [false, true, false, true]}
+{"a": true, "b": [true, false, false, false]}
+{"a": true, "b": [false, true, true, false]}
+{"a": false, "b": [true, false, false, false]}
+{"a": false, "b": [false, true, false, false]}
+{"a": true, "b": [true, true, false, false]}
+{"a": false, "b": [true, true, false, false]}
+{"a": true, "b": [false, true, true, false]}
+{"a": false, "b": [true, false, true, false]}
+{"a": true, "b": [false, false, true, true]}
+{"a": false, "b": [true, true, true, true]}
+{"a": false, "b": [false, false, true, false]}
+---
+{"a": false, "out": 4}
+{"a": true, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 3}
+{"a": true, "out": 1}
+{"a": false, "out": 4}
+{"a": true, "out": 1}
+{"a": false, "out": 3}
+{"a": true}
+{"a": true, "out": 2}
+{"a": false, "out": 3}
+{"a": true, "out": 1}
+{"a": false, "out": 3}
+{"a": true, "out": 1}
+{"a": false, "out": 2}
+{"a": false, "out": 2}
+{"a": true}
+{"a": true, "out": 4}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": false, "out": 2}
+{"a": false, "out": 1}
+{"a": true, "out": 1}
+{"a": false, "out": 2}
+{"a": false, "out": 1}
+{"a": true, "out": 4}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": true, "out": 2}
+{"a": false, "out": 1}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": false, "out": 2}
+{"a": false, "out": 4}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 1}
+{"a": false, "out": 2}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 3}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": false, "out": 1}
+{"a": false, "out": 3}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 2}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 2}
+{"a": true, "out": 3}
+{"a": true}
+{"a": false, "out": 1}
+{"a": false, "out": 2}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 2}
+{"a": true, "out": 4}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": true, "out": 1}
+{"a": true}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": true, "out": 1}
+{"a": true, "out": 2}
+{"a": false, "out": 1}
+{"a": false, "out": 1}
+{"a": true, "out": 2}
+{"a": false, "out": 3}
+{"a": false, "out": 1}
+{"a": false, "out": 2}
+{"a": true, "out": 2}
+{"a": true, "out": 2}
+{"a": true, "out": 1}
+{"a": true, "out": 2}
+{"a": false, "out": 2}
+{"a": false, "out": 1}
+{"a": true, "out": 1}
+{"a": false, "out": 3}
+{"a": true, "out": 2}
+{"a": false, "out": 2}
+{"a": true, "out": 3}
+{"a": false}
+{"a": false, "out": 1}

@@ -2564,6 +2564,24 @@ func (p *prog) upper(s *value) *value {
 	return p.ssa2(supperstr, s, p.mask(s))
 }
 
+func (p *prog) arrayContains(array, item *value) *value {
+	array = p.tolist(array)
+	item = p.unsymbolized(item)
+	mask := p.and(p.mask(array), p.mask(item))
+
+	out := p.ssa1(snotmissing, p.ssa3(sarrayposition, array, item, mask))
+	out.notMissing = mask
+	return out
+}
+
+func (p *prog) arrayPosition(array, item *value) *value {
+	array = p.tolist(array)
+	item = p.unsymbolized(item)
+	mask := p.and(p.mask(array), p.mask(item))
+
+	return p.ssa3(sarrayposition, array, item, mask)
+}
+
 func emitNone(v *value, c *compilestate) {
 	// does nothing...
 }

@@ -78,6 +78,9 @@
 #define SHUFFLE_IMM_2x1b(HI, LO) ((HI) << 1 | LO)
 #define SHUFFLE_IMM_4x2b(I3, I2, I1, I0) ((I3) << 6 | (I2 << 4) | (I1 << 2) | (I0))
 
+#define TLOG_BLEND_AB 0xE4
+#define TLOG_BLEND_BA 0xD8
+
 #define TERNLOG_BLEND_AB 0xE4
 #define TERNLOG_BLEND_BA 0xD8
 

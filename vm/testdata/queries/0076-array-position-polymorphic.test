@@ -1,0 +1,87 @@
+SELECT
+  a,
+  ARRAY_POSITION(b, a) AS out
+FROM
+  input
+---
+{"a": 0, "b": null}
+{"a": 1, "b": false}
+{"a": 2, "b": true}
+{"a": 3, "b": 0}
+{"a": 4, "b": -1}
+{"a": 5, "b": 1111}
+{"a": 6, "b": 0.5}
+{"a": 7, "b": ["a", 7]}
+{"a": 8, "b": ["a", "b", "c", "long string to test Length field decoding", 9, 9, 1111, 8]}
+{"a": 9, "b": ["b", 8, 10, 11, 12, 13, 14, 15, 15, 1999, 0.5]}
+{"a": 10, "b": [10]}
+{"a": 11, "b": [11]}
+{"a": 12, "b": [12, 13, 14, 15, 19999, "some string"]}
+{"a": 13, "b": [true, false, null]}
+{"a": 14, "b": [true, false, null, 14, 14, 14]}
+{"a": 15, "b": ["15 is not here...", "", null, ""]}
+{"a": -1, "b": [["nested array just to test a 2-byte Length field", 100000, 100000, 100000, 100000, 100000, 100000, 100001, 1000002, 100000004, 1000000005, 1000000009, 1000000010, 10000, 10000, 10000, 10000, 100000, 10000000, 10000, 1, 2, 3, 4, 5, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0], 1, -1]}
+{"a": null, "b": null}
+{"a": null, "b": [null]}
+{"a": null, "b": [1, 2, 3, 4, 5, null]}
+{"a": null, "b": [1, 2, 3, null, 4, 5]}
+{"a": null, "b": [1, 2, 3, 4, 5, "null is not here..."]}
+{"a": false, "b": false}
+{"a": false, "b": [false]}
+{"a": false, "b": true}
+{"a": false, "b": [true]}
+{"a": true, "b": false}
+{"a": true, "b": [false]}
+{"a": true, "b": true}
+{"a": true, "b": [true]}
+{"a": "string", "b": "string"}
+{"a": "string", "b": ["string"]}
+{"a": "string", "b": [false, true, "string"]}
+{"a": "string", "b": [false, true, "not the required string here..."]}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "b": null}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "b": []}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "b": [1, 2, 3, 4]}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "b": [false, true, null, 12, 134, "aaaa"]}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "b": [false, true, null, 12, 134, "longer string match XXXXXXXXXXXXXXXXXXXX", "aaaaaaaaa"]}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "b": ["longer string match XXXXXXXXXXXXXXXXXXXX"]}
+---
+{"a": 0}
+{"a": 1}
+{"a": 2}
+{"a": 3}
+{"a": 4}
+{"a": 5}
+{"a": 6}
+{"a": 7, "out": 2}
+{"a": 8, "out": 8}
+{"a": 9}
+{"a": 10, "out": 1}
+{"a": 11, "out": 1}
+{"a": 12, "out": 1}
+{"a": 13}
+{"a": 14, "out": 4}
+{"a": 15}
+{"a": -1, "out": 3}
+{"a": null}
+{"a": null, "out": 1}
+{"a": null, "out": 6}
+{"a": null, "out": 4}
+{"a": null}
+{"a": false}
+{"a": false, "out": 1}
+{"a": false}
+{"a": false}
+{"a": true}
+{"a": true}
+{"a": true}
+{"a": true, "out": 1}
+{"a": "string"}
+{"a": "string", "out": 1}
+{"a": "string", "out": 3}
+{"a": "string"}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX"}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX"}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX"}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX"}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "out": 6}
+{"a": "longer string match XXXXXXXXXXXXXXXXXXXX", "out": 1}

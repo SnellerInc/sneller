@@ -1620,6 +1620,29 @@ LTRIM('\r\nline\r\n', '\r\n') -> 'line\r\n'
  as an integer
  - Otherwise, `MISSING`
 
+#### `ARRAY_CONTAINS`
+
+`ARRAY_CONTAINS(list, element)` returns whether the `element` is in
+`list` or `MISSING` if the `element` is `MISSING`, is not in `list`
+or `list` is not a list.
+
+Compatibility notice: `ARRAY_CONTAINS()` can be used to match `NULL`
+values, for example `ARRAY_CONTAINS([1, 2, NULL], NULL)` would
+yield `TRUE`. `MISSING` values cannot be matched nor stored in arrays.
+
+#### `ARRAY_POSITION`
+
+`ARRAY_POSITION(list, element)` returns the position of an `element`
+in `list` or `MISSING` if the `element` is `MISSING`, is not in `list`
+or `list` is not a list.
+
+The position returned is indexed from `1` and the returned position
+is always the first occurrence of the element in the list.
+
+Compatibility notice: `ARRAY_POSITION()` can be used to match `NULL`
+values, for example `ARRAY_POSITION([1, 2, NULL], NULL)` would yield
+`3`. `MISSING` values cannot be matched nor stored in lists.
+
 #### `CHAR_LENGTH` or `CHARACTER_LENGTH`
 
 `CHAR_LENGTH(str)` (or, alternatively, `CHARACTER_LENGTH(str)`)

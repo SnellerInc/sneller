@@ -8056,6 +8056,239 @@ trap:
 #undef CONST_0x80808080
 #undef CONST_0x03
 
+// i64[0].k[1] = array_position(array[2], v[3]).k[4]
+//
+// Legend:
+//   - 'A' - refers to v[3] (the item to match)
+//   - 'B' - refers to values stored in array[2]
+//
+// NOTES:
+//   - This function requires A to be already unsymbolized.
+//   - It's guaranteed that if the first 4 bytes match both A and B have the same length.
+TEXT bcarrayposition(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_3xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(CX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPTESTMD Z1, Z1, K1, K1                              // K1 <- items to match (empty arrays discarded)
+  KTESTW K1, K1
+
+  MOVQ bytecode_symtab+0(VIRT_BCPTR), R8               // R8 <- symbol table base
+  BC_LOAD_VALUE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(CX))    // Z2:Z3 <- value to match
+
+  VPXORD X20, X20, X20                                 // Z20 <- current position in array (counted from 1)
+  VPXORD X21, X21, X21                                 // Z21 <- matched positions
+  VPBROADCASTD CONSTD_7(), Z22                         // Z22 <- dword(7)
+  VPBROADCASTD CONSTD_1(), Z23                         // Z23 <- dword(1)
+  VPBROADCASTD CONSTD_14(), Z24                        // Z24 <- dword(14)
+  VPBROADCASTD CONSTD_0x0F(), Z25                      // Z25 <- dword(0xF)
+  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z27       // Z27 <- bswap32 predicate for VPSHUFB
+  VPBROADCASTD CONSTD_0x00808080(), Z28                // Z28 <- dword(0x808080)
+  VPBROADCASTD CONSTD_32(), Z29                        // Z29 <- dword(32)
+  VPBROADCASTD CONSTD_0x7F(), Z30                      // Z30 <- dword(0x7F)
+  VMOVDQU64 CONST_GET_PTR(consts_byte_mask_q, 0), Z31  // Z31 <- consts_byte_mask_q
+  JZ done
+
+  VEXTRACTI32X8 $1, Z2, Y14
+
+  KMOVW K1, K3
+  VPXORD X10, X10, X10
+  VPGATHERDQ 0(SI)(Y2*1), K3, Z10                      // Z10 <- first 8 bytes of A (low)
+
+  KSHIFTRW $8, K1, K4
+  VPXORD X11, X11, X11
+  VPGATHERDQ 0(SI)(Y14*1), K4, Z11                     // Z11 <- first 8 bytes of A (high)
+
+  VPADDD Z22, Z23, Z26                                 // Z26 <- dword(8)
+
+  VPMOVQD Z10, Y12
+  VPMOVQD Z11, Y13
+  VINSERTI32X8 $1, Y13, Z12, Z12                       // Z12 <- first 4 bytes of A
+  VPSRLD $4, Z12, Z13
+  VPANDD Z25, Z13, Z13                                 // Z13 <- type of A
+
+  VPMINUD Z26, Z3, Z8
+  VEXTRACTI32X8 $1, Z8, Y9
+  VPADDD.Z Z0, Z1, K1, Z1                              // Z1  <- end of the list
+  VPADDD.Z Z2, Z3, K1, Z3                              // Z3  <- end of the value
+
+  VPMOVZXDQ Y8, Z8
+  VPMOVZXDQ Y9, Z9
+  VPERMQ Z31, Z8, Z8                                   // Z8  <- leading byte mask
+  VPERMQ Z31, Z9, Z9                                   // Z9  <- leading byte mask
+
+  VPANDQ Z8, Z10, Z10
+  VPANDQ Z9, Z11, Z11
+
+  // K6 <- lanes in A that don't contain strings - this is important as we do
+  // not want to unsymbolize B values that would not compare against strings.
+  VPCMPD $VPCMP_IMM_NE, Z26, Z13, K1, K6
+
+  // Z22 <- comparisong predicate for unsymbolize - it either contains `7` for lanes that
+  // need to unsymbolize in case that they contain symbol, or a non-compatible type value
+  // for lanes that don't need unsymbolize (not comparing agains a string of A value).
+  // We can keep this predicate in K6, but there is much less K registers than ZMM registers
+  // so it's just better to keep this in ZMM register and have one more K register available.
+  VMOVDQA32 Z30, K6, Z22
+
+array_loop:
+  KSHIFTRW $8, K1, K2
+  VEXTRACTI32X8 $1, Z0, Y13
+
+  KMOVB K1, K3
+  VPXORD X18, X18, X18
+  VPGATHERDQ 0(SI)(Y0*1), K3, Z18                      // Z18 <- first 8 bytes of B (low)
+
+  KMOVB K2, K4
+  VPADDD.Z Z23, Z20, K1, Z20                           // Z20 <- advance current position
+
+  VPXORD X19, X19, X19
+  VPGATHERDQ 0(SI)(Y13*1), K4, Z19                     // Z19 <- first 8 bytes of B (high)
+
+  VPMOVQD Z18, Y14
+  VPMOVQD Z19, Y13
+  VINSERTI32X8 $1, Y13, Z14, Z13                       // Z13 <- first 4 bytes of B (B.hdr32)
+
+  VPSRLD $4, Z13, Z14                                  // Z14 <- B.hdr32 >> 4
+  VPSHUFB Z27, Z13, Z17                                // Z17 <- bswap32(B.hdr32)
+  VPANDD Z25, Z14, Z14                                 // Z14 <- B.type
+  VPANDD Z28, Z17, Z16                                 // Z16 <- bswap32(B.hdr32) & 0x00808080
+  VPCMPUD $VPCMP_IMM_GT, Z23, Z14, K1, K3              // K3  <- B.type != NULL|BOOL
+  VPANDND Z17, Z28, Z6                                 // Z6  <- bswap32(B.hdr32) & 0xFF7F7F7F
+
+  VPLZCNTD.Z Z16, K3, Z16                              // Z16 <- lzcnt(bswap32(B.hdr32) & 0x00808080)
+  VPCMPEQD Z22, Z14, K1, K4                            // K4  <- B.type == SYMBOL that needs to be unsymbolized
+  VPANDD.Z Z25, Z13, K3, Z15                           // Z15 <- B.L or zero if B.type == NULL|BOOL
+  KTESTW K4, K4
+
+  VPSUBD Z16, Z29, Z14                                 // Z14 <- 32 - lzcnt(bswap32(B.hdr32) & 0x00808080) (number of bits to discard)
+  VPCMPEQD Z24, Z15, K1, K3                            // K3  <- B.L == 14 (required to decode Length field)
+  VPSLLD $8, Z6, Z13                                   // Z13 <- (bswap32(B.hdr32) & 0xFF7F7F7F) << 8
+  VPSRLVD Z14, Z13, K3, Z15                            // Z15 <- B.L or B.optLen [00000000|0CCCCCCC|0BBBBBBB|0AAAAAAA]
+  VPSRLD.Z $3, Z16, K3, Z16                            // Z16 <- B.hLen - 1
+
+  VPSRLD $1, Z15, Z13                                  // Z13 <- B.dataLen >> 1  [00000000|00CCCCCC|C0BBBBBB|B0AAAAAA]
+  VPSRLD $2, Z15, Z14                                  // Z14 <- B.dataLen >> 2  [00000000|000CCCCC|CC0BBBBB|BB0AAAAA]
+  VPTERNLOGD $TLOG_BLEND_AB, Z30, Z13, Z15             // Z15 <- B.dataLen as    [00000000|00CCCCCC|C0BBBBBB|BAAAAAAA]
+  VPADDD Z23, Z16, Z16                                 // Z16 <- B.hLen
+  VPTERNLOGD.BCST $TLOG_BLEND_AB, CONSTD_0x3FFF(), Z14, Z15 // Z15 <- B.dataLen
+
+  VPADDD Z26, Z2, Z6                                   // Z6  <- A.offset + 8
+  VPADDD Z16, Z15, Z14                                 // Z14 <- B.valLen
+  VPADDD Z26, Z0, Z7                                   // Z7  <- B.offset + 8
+  VPADDD Z14, Z0, Z0                                   // Z0  <- advance array by the current value length
+  JZ skip_unsymbolize
+
+  VPSLLD $8, Z17, Z17                                  // Z17 <- bswap32(B.hdr32) << 8 (symbol data)
+  VPSLLD $3, Z15, Z14                                  // Z14 <- B.dataLen << 3 (data length in bits)
+  VPSUBD Z14, Z29, Z14                                 // Z14 <- 32 - B.dataLen << 3 (number of bits to discard in Z13)
+  VPSRLVD.Z Z14, Z17, K4, Z17                          // Z17 <- extracted SymbolIDs from B
+  VPCMPUD.BCST $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z17, K4, K4 // K4 <- only unsymbolize symbols present in symtab
+
+  KMOVW K4, K5
+  VPGATHERDD 0(R8)(Z17*8), K5, Z7                      // gather 16 symbol offsets (we don't care of lengths in this case)
+
+  KMOVB K4, K5
+  VPGATHERDQ 0(SI)(Y7*1), K5, Z18                      // Z18 <- merge first 8 bytes of B to the existing vector (low)
+
+  VEXTRACTI32X8 $1, Z7, Y13
+  KSHIFTRW $8, K4, K5
+  VPGATHERDQ 0(SI)(Y13*1), K5, Z19                     // Z19 <- merge first 8 bytes of B to the existing vector (high)
+
+  VPADDD Z26, Z7, K4, Z7                               // Z7  <- B.offset += 8 (where symbols)
+
+skip_unsymbolize:
+  // first 8 bytes of A in (Z10:Z11) and first 8 bytes of B in (Z18:Z19)
+  VPANDQ Z8, Z18, Z18                                  // Z18 <- B.hdr64 & lead_mask (low)
+  VPANDQ Z9, Z19, Z19                                  // Z19 <- B.hdr64 & lead_mask (high)
+  VPCMPEQQ Z10, Z18, K1, K3                            // K3  <- A.hdr64 == B.hdr64 (low)
+  VPCMPEQQ Z11, Z19, K2, K4                            // K4  <- A.hdr64 == B.hdr64 (high)
+  KORTESTB K3, K4
+
+  KUNPCKBW K3, K4, K3                                  // K3  <- A.hdr64 == B.hdr64
+  JZ array_advance                                     // bail early if hdr64 values don't match
+
+  // at least one lane matched all leading bytes - this means that both A and B have a compatible
+  // header, which implies that they have the same length as well (as length is part of the header).
+
+  VPCMPUD $VPCMP_IMM_GE, Z3, Z6, K3, K4                // K4  <- lanes that matched (offset >= end)
+  KANDNW K3, K4, K3                                    // K3  <- remaining lanes where to continue value comparison
+  KTESTW K3, K3
+
+  VMOVDQA32 Z20, K4, Z21                               // Z21 <- update matched positions
+  KANDNW K1, K4, K1
+  JZ array_advance
+
+value_loop:
+  KSHIFTRW $8, K3, K4
+  VEXTRACTI32X8 $1, Z6, Y15
+
+  KMOVB K3, K5
+  VPXORD X16, X16, X16
+  VPGATHERDQ 0(SI)(Y6*1), K5, Z16                      // Z16 <- next 8 bytes of A (low)
+
+  VPSUBD Z6, Z3, Z13                                   // Z13 <- remaining_length
+  VPADDD Z26, Z6, Z6                                   // Z6  <- A.offset += 8
+
+  KMOVB K4, K5
+  VPXORD X17, X17, X17
+  VPGATHERDQ 0(SI)(Y15*1), K5, Z17                     // Z17 <- next 8 bytes of A (high)
+
+  VPMINUD.Z Z26, Z13, K3, Z13                          // Z13 <- min(remaining_length, 8)
+  VEXTRACTI32X8 $1, Z7, Y15
+
+  KMOVB K3, K5
+  VPXORD X18, X18, X18
+  VPGATHERDQ 0(SI)(Y7*1), K5, Z18                      // Z18 <- next 8 bytes of B (low)
+
+  VPADDD Z26, Z7, Z7                                   // Z7  <- B.offset += 8
+  VEXTRACTI32X8 $1, Z13, Y14
+  VPMOVZXDQ Y13, Z13                                   // Z13 <- min(remaining_length, 8) (low)
+
+  KMOVB K4, K5
+  VPXORD X19, X19, X19
+  VPGATHERDQ 0(SI)(Y15*1), K5, Z19                     // Z19 <- next 8 bytes of B (high)
+
+  VPMOVZXDQ Y14, Z14                                   // Z14 <- min(remaining_length, 8) (high)
+  VPERMQ Z31, Z13, Z13                                 // Z14 <- compare byte mask (low)
+  VPERMQ Z31, Z14, Z14                                 // Z15 <- compare byte mask (high)
+
+  // 0x28 == (A ^ B) & C
+  VPTERNLOGQ $0x28, Z13, Z16, Z18                      // Z18 <- each QWORD lane contains zero if equal (low)
+  VPTERNLOGQ $0x28, Z14, Z17, Z19                      // Z19 <- each QWORD lane contains zero if equal (high)
+
+  VPTESTNMQ Z18, Z18, K3, K3                           // K3  <- lanes where 64-bit data or tail bytes are equal (low)
+  VPTESTNMQ Z19, Z19, K4, K4                           // K4  <- lanes where 64-bit data or tail bytes are equal (high)
+  KUNPCKBW K3, K4, K3                                  // K3  <- lanes where 64-bit data or tail bytes are equal
+
+  VPCMPUD $VPCMP_IMM_GE, Z3, Z6, K3, K4                // K4  <- lanes that matched (offset >= end)
+  KANDNW K3, K4, K3                                    // K3  <- remaining lanes where to continue value comparison
+  KANDNW K1, K4, K1                                    // K1  <- remaining lanes where to match the next value
+
+  VPCMPUD $VPCMP_IMM_LT, Z3, Z6, K3, K3                // K3  <- remaining lanes where to continue value comparison (and have data)
+  VMOVDQA32 Z20, K4, Z21                               // Z21 <- update matched positions
+
+  KTESTW K3, K3
+  JNZ value_loop                                       // continue if we don't have a match yet and there are more bytes to compare
+
+array_advance:
+  VPCMPD $VPCMP_IMM_LT, Z1, Z0, K1, K1                 // K1 <- remaining lanes to compare
+  KTESTW K1, K1
+  JNZ array_loop
+
+done:
+  // extend UINT32 positions to INT64
+  VEXTRACTI32X8 $1, Z21, Y23
+  VPTESTMD Z21, Z21, K1
+  VPMOVZXDQ Y21, Z21
+  VPMOVZXDQ Y23, Z23
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  BC_STORE_I64_TO_SLOT(IN(Z21), IN(Z23), IN(DX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
+
 // String Instructions
 // -------------------
 

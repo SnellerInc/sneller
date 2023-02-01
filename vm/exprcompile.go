@@ -437,6 +437,7 @@ const (
 	compileString
 	compileTime
 	compileBool
+	compileValue
 	literalString
 	constInteger
 	omit
@@ -460,6 +461,8 @@ func compileargs(p *prog, args []expr.Node, types ...compileType) ([]*value, err
 			val, err = p.compileAsTime(args[i])
 		case compileBool:
 			val, err = p.compileAsBool(args[i])
+		case compileValue:
+			val, err = p.serialized(args[i])
 		case compileExpression:
 			val, err = compile(p, args[i])
 		case literalString:
@@ -924,8 +927,22 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		if err != nil {
 			return nil, err
 		}
-
 		return p.ssa2(sobjectsize, v[0], p.mask(v[0])), nil
+
+	case expr.ArrayContains:
+		v, err := compileargs(p, args, compileExpression, compileValue)
+		if err != nil {
+			return nil, err
+		}
+		return p.arrayContains(v[0], v[1]), nil
+
+	case expr.ArrayPosition:
+		v, err := compileargs(p, args, compileExpression, compileValue)
+		if err != nil {
+			return nil, err
+		}
+		return p.arrayPosition(v[0], v[1]), nil
+
 	case expr.Lower, expr.Upper:
 		vals, err := compileargs(p, args, compileString)
 		if err != nil {

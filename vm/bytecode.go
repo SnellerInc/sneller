@@ -497,17 +497,19 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opaggslotcount: {text: "aggslotcount", args: makeArgs(bcHashSlot, bcReadK)},
 
 		// Uncategorized instructions
-		oplitref:     {text: "litref", args: makeArgs(bcWriteV, bcLitRef)},
-		opauxval:     {text: "auxval", args: makeArgs(bcWriteV, bcWriteK, bcAuxSlot)},
-		opsplit:      {text: "split", args: makeArgs(bcWriteV, bcWriteS, bcWriteK, bcReadS, bcPredicate)}, // split a list into head and tail components
-		optuple:      {text: "tuple", args: makeArgs(bcWriteB, bcWriteK, bcReadV, bcPredicate)},
-		opmovk:       {text: "mov.k", args: makeArgs(bcWriteK, bcReadK)},                          // duplicates a mask
-		opzerov:      {text: "zero.v", args: makeArgs(bcWriteV)},                                  // zeroes a value
-		opmovv:       {text: "mov.v", args: makeArgs(bcWriteV, bcReadV, bcPredicate)},             // duplicates a value
-		opmovvk:      {text: "mov.v.k", args: makeArgs(bcWriteV, bcWriteK, bcReadV, bcPredicate)}, // duplicates a value + mask
-		opmovf64:     {text: "mov.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates f64
-		opmovi64:     {text: "mov.i64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates i64
-		opobjectsize: {text: "objectsize", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		oplitref: {text: "litref", args: makeArgs(bcWriteV, bcLitRef)},
+		opauxval: {text: "auxval", args: makeArgs(bcWriteV, bcWriteK, bcAuxSlot)},
+		opsplit:  {text: "split", args: makeArgs(bcWriteV, bcWriteS, bcWriteK, bcReadS, bcPredicate)}, // split a list into head and tail components
+		optuple:  {text: "tuple", args: makeArgs(bcWriteB, bcWriteK, bcReadV, bcPredicate)},
+		opmovk:   {text: "mov.k", args: makeArgs(bcWriteK, bcReadK)},                          // duplicates a mask
+		opzerov:  {text: "zero.v", args: makeArgs(bcWriteV)},                                  // zeroes a value
+		opmovv:   {text: "mov.v", args: makeArgs(bcWriteV, bcReadV, bcPredicate)},             // duplicates a value
+		opmovvk:  {text: "mov.v.k", args: makeArgs(bcWriteV, bcWriteK, bcReadV, bcPredicate)}, // duplicates a value + mask
+		opmovf64: {text: "mov.f64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates f64
+		opmovi64: {text: "mov.i64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates i64
+
+		opobjectsize:    {text: "objectsize", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		oparrayposition: {text: "arrayposition", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadV, bcPredicate)},
 
 		// string comparing operations
 		opCmpStrEqCs:              {text: "cmp_str_eq_cs", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},

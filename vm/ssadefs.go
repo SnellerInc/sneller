@@ -387,6 +387,7 @@ const (
 	sgeodistance
 
 	sobjectsize // built-in function SIZE()
+	sarrayposition
 
 	sboxmask  // box a mask
 	sboxint   // box an integer
@@ -1051,7 +1052,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	schecktag: {text: "checktag", argtypes: []ssatype{stValue, stBool}, rettype: stValueMasked, immfmt: fmtother, bc: opchecktag},
 	stypebits: {text: "typebits", argtypes: []ssatype{stValue, stBool}, rettype: stInt, bc: optypebits},
 
-	sobjectsize: {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
+	sobjectsize:    {text: "objectsize", argtypes: []ssatype{stValue, stBool}, rettype: stIntMasked, bc: opobjectsize},
+	sarrayposition: {text: "arrayposition", argtypes: []ssatype{stList, stValue, stBool}, rettype: stIntMasked, bc: oparrayposition},
 
 	saggapproxcount: {
 		text:     "aggapproxcount",

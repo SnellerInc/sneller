@@ -479,14 +479,14 @@ CONST_GLOBAL(consts_boxts_microsecond_swap, $16)
 // A byte mask for QWORD bytes.
 //
 // Can be used to mask out bytes that are not part of ION encoded data after QWORD gather.
-CONST_DATA_U64(consts_byte_mask_q,  0, $0x00000000000000FF)
-CONST_DATA_U64(consts_byte_mask_q,  8, $0x000000000000FFFF)
-CONST_DATA_U64(consts_byte_mask_q, 16, $0x0000000000FFFFFF)
-CONST_DATA_U64(consts_byte_mask_q, 24, $0x00000000FFFFFFFF)
-CONST_DATA_U64(consts_byte_mask_q, 32, $0x000000FFFFFFFFFF)
-CONST_DATA_U64(consts_byte_mask_q, 40, $0x0000FFFFFFFFFFFF)
-CONST_DATA_U64(consts_byte_mask_q, 48, $0x00FFFFFFFFFFFFFF)
-CONST_DATA_U64(consts_byte_mask_q, 56, $0xFFFFFFFFFFFFFFFF)
+CONST_DATA_U64(consts_byte_mask_q,  0, $0xFFFFFFFFFFFFFFFF)
+CONST_DATA_U64(consts_byte_mask_q,  8, $0x00000000000000FF)
+CONST_DATA_U64(consts_byte_mask_q, 16, $0x000000000000FFFF)
+CONST_DATA_U64(consts_byte_mask_q, 24, $0x0000000000FFFFFF)
+CONST_DATA_U64(consts_byte_mask_q, 32, $0x00000000FFFFFFFF)
+CONST_DATA_U64(consts_byte_mask_q, 40, $0x000000FFFFFFFFFF)
+CONST_DATA_U64(consts_byte_mask_q, 48, $0x0000FFFFFFFFFFFF)
+CONST_DATA_U64(consts_byte_mask_q, 56, $0x00FFFFFFFFFFFFFF)
 CONST_GLOBAL(consts_byte_mask_q, $64)
 
 // UTF-8 related constants

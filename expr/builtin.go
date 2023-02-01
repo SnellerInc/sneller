@@ -227,6 +227,8 @@ const (
 	GeoDistance
 
 	ObjectSize // sql:SIZE
+	ArrayContains
+	ArrayPosition
 
 	TableGlob
 	TablePattern
@@ -631,9 +633,28 @@ func checkObjectSize(h Hint, args []Node) error {
 	if len(args) != 1 {
 		return errsyntaxf("SIZE expects one argument, but found %d", len(args))
 	}
-	expect := StructType | ListType
-	if t := TypeOf(args[0], h); t&expect == 0 || args[0] == (Star{}) {
+	if !TypeOf(args[0], h).AnyOf(StructType|ListType) || args[0] == (Star{}) {
 		return errtype(args[0], "SIZE expects a structure or list argument")
+	}
+	return nil
+}
+
+func checkArrayContains(h Hint, args []Node) error {
+	if len(args) != 2 {
+		return errsyntaxf("ARRAY_CONTAINS expects two arguments, but found %d", len(args))
+	}
+	if !TypeOf(args[0], h).AnyOf(ListType) {
+		return errtype(args[0], "first argument to ARRAY_CONTAINS must be a list")
+	}
+	return nil
+}
+
+func checkArrayPosition(h Hint, args []Node) error {
+	if len(args) != 2 {
+		return errsyntaxf("ARRAY_POSITION expects two arguments, but found %d", len(args))
+	}
+	if !TypeOf(args[0], h).AnyOf(ListType) {
+		return errtype(args[0], "first argument to ARRAY_POSITION must be a list")
 	}
 	return nil
 }
@@ -1088,7 +1109,9 @@ var builtinInfo = [maxBuiltin]binfo{
 	GeoTileES:   {check: fixedArgs(NumericType, NumericType, IntegerType), ret: StringType | MissingType},
 	GeoDistance: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: FloatType | MissingType},
 
-	ObjectSize: {check: checkObjectSize, ret: NumericType | MissingType},
+	ObjectSize:    {check: checkObjectSize, ret: NumericType | MissingType},
+	ArrayContains: {check: checkArrayContains, ret: LogicalType | MissingType},
+	ArrayPosition: {check: checkArrayPosition, ret: NumericType | MissingType},
 
 	InSubquery:        {check: checkInSubquery, private: true, ret: LogicalType},
 	InReplacement:     {check: checkInReplacement, private: true, ret: LogicalType},
