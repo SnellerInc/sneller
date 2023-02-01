@@ -11,7 +11,8 @@ SELECT
   SUM(x) AS sum,
   MIN(x) AS min,
   MAX(x) AS max,
-  AVG(x) AS avg
+  AVG(x) AS avg,
+  ROUND(STDDEV(x)*1e4) AS stddev
 FROM input
 ---
 {"x": null}
@@ -33,4 +34,4 @@ FROM input
 {"x": 10000000000}
 {"x": 100000000000}
 ---
-{"all": 18, "count": 18, "sum": 111111111716, "min": -1000, "max": 100000000000, "avg": 6535947748}
+{"all": 18, "count": 18, "sum": 111111111716, "min": -1000, "max": 100000000000, "avg": 6535947748, "stddev": 234831525098466} #stddev = 2.34831525098466e+10

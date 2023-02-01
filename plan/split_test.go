@@ -96,7 +96,7 @@ func TestSplit(t *testing.T) {
 			},
 		},
 		{
-			query: `SELECT AVG(n) FROM table`,
+			query: `SELECT AVG(n) AS avg FROM table`,
 			lines: []string{
 				`table`,
 				`AGGREGATE SUM(n) AS $_2_0, COUNT(n + 0) AS $_2_1`,
@@ -122,6 +122,16 @@ func TestSplit(t *testing.T) {
 				`UNION MAP`,
 				`AGGREGATE SUM($_2_0) AS "avg", MAX($_2_1) AS "max", APPROX_COUNT_DISTINCT_MERGE($_2_2) AS "count", SUM_COUNT($_2_3) AS $_1_0`,
 				`PROJECT CASE WHEN $_1_0 = 0 THEN NULL ELSE "avg" / $_1_0 END AS "avg", "max" AS "max", "count" AS "count"`,
+			},
+		},
+		{
+			query: `SELECT STDDEV(x) as stddev FROM table`,
+			lines: []string{
+				`table`,
+				`AGGREGATE SUM_INT(CASE WHEN x IS NOT NULL THEN 1 ELSE 0 END) AS $_2_0, SUM(x * x) AS $_2_1, SUM(x) AS $_2_2`,
+				`UNION MAP`,
+				`AGGREGATE SUM_INT($_2_0) AS $_0_0, SUM($_2_1) AS $_0_1, SUM($_2_2) AS $_0_2`,
+				`PROJECT CASE WHEN $_0_0 = 0 THEN NULL ELSE SQRT($_0_1 / $_0_0 - ($_0_2 / $_0_0 * ($_0_2 / $_0_0))) END AS "stddev"`,
 			},
 		},
 	}

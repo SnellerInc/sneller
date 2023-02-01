@@ -1,0 +1,2 @@
+# go test -bench BenchmarkTestQueries/0076-agg-stddev
+SELECT STDDEV(height) FROM 'data.jsonrl'

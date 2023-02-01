@@ -1,0 +1,2 @@
+# go test -bench BenchmarkTestQueries/0076-agg-avg
+SELECT AVG(height) FROM 'data.jsonrl'

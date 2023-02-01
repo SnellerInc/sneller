@@ -1,0 +1,15 @@
+# go test -v -run=TestQueries/0076
+# see basic example https://en.wikipedia.org/wiki/Standard_deviation
+#
+SELECT AVG(grade) AS avg, STDDEV_POP(grade) AS stddev_pop FROM input
+---
+{"grade": 2}
+{"grade": 4}
+{"grade": 4}
+{"grade": 4}
+{"grade": 5}
+{"grade": 5}
+{"grade": 7}
+{"grade": 9}
+---
+{"avg": 5, "stddev_pop": 2}

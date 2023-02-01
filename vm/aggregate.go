@@ -288,7 +288,7 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 			dst = dst[n:]
 			src = src[n:]
 		default:
-			panic(fmt.Sprintf("unuspported operation %s", aggregateOps[i].fn))
+			panic(fmt.Sprintf("unsupported operation %s", aggregateOps[i].fn))
 		}
 	}
 }
@@ -377,18 +377,19 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp
 			AggregateOpApproxCountDistinctPartial,
 			AggregateOpApproxCountDistinctMerge:
 
-			// Note: realies on the implicit lock, not a real atomic op
+			// Note: relies on the implicit lock, not a real atomic op
 			n := aggregateOps[i].dataSize()
 			aggApproxCountDistinctUpdateBuckets(n, dst, src)
 			dst = dst[n:]
 			src = src[n:]
 
 		default:
-			panic(fmt.Sprintf("unuspported operation %s", aggregateOps[i].fn))
+			panic(fmt.Sprintf("unsupported operation %s", aggregateOps[i].fn))
 		}
 	}
 }
 
+// writeAggregatedValue writes the final result of the Aggregation to the ion.Buffer
 func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 	switch op.fn {
 	case AggregateOpSumF, AggregateOpMinF, AggregateOpMaxF:

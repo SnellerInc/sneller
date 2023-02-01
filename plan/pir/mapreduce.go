@@ -298,13 +298,8 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 				// CASE count IS NOT NULL THEN sum / count ELSE NULL
 				sumid := expr.Identifier(a.Agg[i].Result)
 				countid := expr.Identifier(count)
-				result := &expr.Case{
-					Limbs: []expr.CaseLimb{{
-						When: expr.Compare(expr.Equals, countid, expr.Integer(0)),
-						Then: expr.Null{},
-					}},
-					Else: expr.Div(cast(sumid), cast(countid)),
-				}
+				result := expr.IfThenElse(expr.Compare(expr.Equals, countid, expr.Integer(0)),
+					expr.Null{}, expr.Div(cast(sumid), cast(countid)))
 				bind.bind = append(bind.bind, expr.Bind(result, a.Agg[i].Result))
 			}
 		}
@@ -340,7 +335,7 @@ func reduceAggregate(a *Aggregate, mapping, reduce *Trace) error {
 			}
 		case expr.OpSum, expr.OpSumInt, expr.OpSumCount,
 			expr.OpBitAnd, expr.OpBitOr, expr.OpBitXor, expr.OpBoolAnd, expr.OpBoolOr,
-			expr.OpEarliest, expr.OpLatest:
+			expr.OpEarliest, expr.OpLatest, expr.OpStdDevPop:
 			// these are all distributive
 			newagg = &expr.Aggregate{Op: age.Op, Inner: innerref}
 		case expr.OpApproxCountDistinctPartial:

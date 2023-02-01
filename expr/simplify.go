@@ -774,6 +774,14 @@ func (i *IsKey) simplify(h Hint) Node {
 
 func (a *Aggregate) simplify(h Hint) Node {
 	switch a.Op {
+	case OpStdDevPop:
+		a.Inner = missingUnless(a.Inner, h, NumericType)
+		cnt := CountNonNull(a.Inner)
+		avgS := Div(Sum(a.Inner), cnt)
+		avgSQ := Div(Sum(Mul(a.Inner, a.Inner)), cnt)
+		variance := Sub(avgSQ, Mul(avgS, avgS))
+		stdDev := Call(Sqrt, variance)
+		return IfThenElse(Compare(Equals, cnt, Integer(0)), Null{}, stdDev)
 	case OpMin, OpMax, OpSum, OpAvg:
 		a.Inner = missingUnless(a.Inner, h, NumericType)
 	}

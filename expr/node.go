@@ -168,6 +168,10 @@ const (
 	// intermediate data and yields the final integer value
 	OpApproxCountDistinctMerge
 
+	// OpStdDev is equivalent to the STDDEV() and STDDEV_POP() operation
+	// Note that it does not calculates the sample standard deviation
+	OpStdDevPop
+
 	// OpRowNumber corresponds to ROW_NUMBER()
 	OpRowNumber
 
@@ -202,6 +206,8 @@ func (a AggregateOp) defaultResult() string {
 		return "sum"
 	case OpAvg:
 		return "avg"
+	case OpStdDevPop:
+		return "stddev_pop"
 	case OpMin, OpEarliest:
 		return "min"
 	case OpMax, OpLatest:
@@ -227,6 +233,8 @@ func (a AggregateOp) String() string {
 		return "SUM"
 	case OpAvg:
 		return "AVG"
+	case OpStdDevPop:
+		return "STDDEV_POP"
 	case OpMin:
 		return "MIN"
 	case OpMax:
@@ -274,7 +282,7 @@ func (a AggregateOp) String() string {
 
 func (a AggregateOp) private() bool {
 	switch a {
-	case OpCount, OpSum, OpAvg, OpMin, OpMax, OpEarliest, OpLatest,
+	case OpCount, OpSum, OpAvg, OpStdDevPop, OpMin, OpMax, OpEarliest, OpLatest,
 		OpBitAnd, OpBitOr, OpBitXor, OpBoolAnd, OpBoolOr,
 		OpApproxCountDistinct, OpSystemDatashape, OpRowNumber, OpRank, OpDenseRank:
 		return false
@@ -568,6 +576,12 @@ func (a *Aggregate) IsDistinct() bool {
 
 // Count produces the COUNT(e) aggregate
 func Count(e Node) *Aggregate { return &Aggregate{Op: OpCount, Inner: e} }
+
+// CountNonNull counts the number of non-null rows
+func CountNonNull(e Node) *Aggregate {
+	// Consider creating ASM aggregator comparable to the row counter in average aggregator
+	return SumInt(IfThenElse(Is(e, IsNotNull), Integer(1), Integer(0)))
+}
 
 // CountDistinct produces the COUNT(DISTINCT e) aggregate
 func CountDistinct(e Node) *Aggregate { return &Aggregate{Op: OpCountDistinct, Inner: e} }
@@ -2974,13 +2988,7 @@ func Coalesce(nodes []Node) *Case {
 //
 //	CASE WHEN a = b THEN NULL ELSE a
 func NullIf(a, b Node) Node {
-	return &Case{
-		Limbs: []CaseLimb{{
-			When: Compare(Equals, a, b),
-			Then: Null{},
-		}},
-		Else: a,
-	}
+	return IfThenElse(Compare(Equals, a, b), Null{}, a)
 }
 
 func (c *Case) typeof(h Hint) TypeSet {
@@ -3003,6 +3011,19 @@ func (c *Case) typeof(h Hint) TypeSet {
 		return out | TypeOf(c.Else, h)
 	}
 	return out | NullType
+}
+
+// IfThenElse ternary conditional. eg. result := (count=0) ? thenExpr : elseExpr
+// is written as IfThenElse(Compare(Equals, count, Integer(0)), thenExpr, elseExpr)
+func IfThenElse(whenExpr, thenExpr, elseExpr Node) Node {
+	result := Case{
+		Limbs: []CaseLimb{{
+			When: whenExpr,
+			Then: thenExpr,
+		}},
+		Else: elseExpr,
+	}
+	return &result
 }
 
 // Cast represents a CAST(... AS ...) expression.

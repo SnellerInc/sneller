@@ -1,0 +1,15 @@
+# go test -v -run=TestQueries/0076
+SELECT STDDEV_POP(x) AS stddev_pop FROM input
+---
+{"x": 4}
+{"x": 9}
+{"x": 11}
+{"x": 12}
+{"x": 17}
+{"x": 5}
+{"x": 8}
+{"x": 12}
+{"x": 14}
+{"x": null}
+---
+{"stddev_pop": 3.937787810370969}

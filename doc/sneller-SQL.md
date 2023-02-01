@@ -560,6 +560,14 @@ If `expr` never evaluates to a number, `SUM(expr)` yields `NULL`.
 for all the rows that reach the aggregation expression.
 If `expr` never evaluates to a number, `AVG(expr)` yields `NULL`.
 
+#### `STDDEV` and `STDDEV_POP`
+
+`STDDEV_POP(expr)` accumulates the population standard deviation of `expr`
+for all rows that reach the aggregation expression. `STDDEV` is a shorthand
+for `STDDEV_POP`. Note that the sample standard deviation (`STDDEV_SAMP`)
+is not implemented. If `expr` does not evaluate to a number, `STDDEV(expr)`
+yields `NULL`.
+
 #### `BIT_AND`
 
 `BIT_AND(expr)` computes bitwise AND of all results produced by
