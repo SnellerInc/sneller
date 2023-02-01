@@ -101,7 +101,7 @@ func Blobs(src FS, idx *blockfmt.Index, keep *blockfmt.Filter) (*blob.List, int6
 		return out, size, err
 	}
 	for i := range descs {
-		out.Contents, err = descToBlobs(src, &idx.Inline[i], keep, out.Contents, &size)
+		out.Contents, err = descToBlobs(src, &descs[i], keep, out.Contents, &size)
 		if err != nil {
 			return out, size, err
 		}
