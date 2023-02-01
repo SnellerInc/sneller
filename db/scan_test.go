@@ -16,6 +16,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -377,7 +378,7 @@ func TestNewIndexScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -395,7 +396,7 @@ func TestNewIndexScan(t *testing.T) {
 
 	// second attempt should fail again,
 	// but Scanning should be false
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != ErrBuildAgain {
 		t.Fatal("got err", err)
 	}
@@ -427,7 +428,7 @@ func TestNewIndexScan(t *testing.T) {
 	}
 
 	// final append should be a no-op
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -42,7 +43,7 @@ func (c *Config) Scan(who Tenant, db, table string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	idx, err := st.index(nil)
+	idx, err := st.index(context.Background(), nil)
 	if err != nil {
 		// if the index isn't present
 		// or is out-of-date, create a new one
@@ -216,7 +217,7 @@ func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComple
 			panic("should not be possible: idx.Scanning && total == 0")
 		}
 		if flushOnComplete {
-			return 0, st.flush(idx, cache)
+			return 0, st.flush(context.Background(), idx, cache)
 		}
 		return 0, nil
 	}
@@ -225,7 +226,7 @@ func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComple
 			st.deleteInline(idx, c.parts[i].prepend)
 		}
 	}
-	err = st.force(idx, c.parts, cache)
+	err = st.force(context.Background(), idx, c.parts, cache)
 	if err != nil {
 		invalidate(cache)
 		return 0, err

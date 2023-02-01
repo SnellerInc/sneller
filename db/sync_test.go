@@ -16,6 +16,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -400,7 +401,7 @@ func TestSync(t *testing.T) {
 
 	ti := info(&c, owner, "default", "parking")
 	owner.ro = true
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != nil {
 		t.Fatal(err)
 	}

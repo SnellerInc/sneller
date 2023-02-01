@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"io"
 	"io/fs"
@@ -123,7 +124,7 @@ func TestAppend(t *testing.T) {
 		GCLikelihood: 1,
 	}
 	ti := info(&c, owner, "default", "parking")
-	err := ti.append(nil)
+	err := ti.append(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +165,7 @@ func TestAppend(t *testing.T) {
 	}
 
 	// now we should ingest some data
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestAppend(t *testing.T) {
 	}
 
 	owner.ro = true
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +222,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = ti.append(lst)
+	err = ti.append(context.Background(), lst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +274,7 @@ func TestAppend(t *testing.T) {
 		return mkparts([]blockfmt.Input{v})
 	}
 
-	err = ti.append(mk(bad))
+	err = ti.append(context.Background(), mk(bad))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -290,7 +291,7 @@ func TestAppend(t *testing.T) {
 
 	// try again; this should be a no-op
 	owner.ro = true
-	err = ti.append(mk(bad))
+	err = ti.append(context.Background(), mk(bad))
 	if err != nil {
 		t.Fatal("got an error re-inserting a bad item:", err)
 	}
@@ -302,7 +303,7 @@ func TestAppend(t *testing.T) {
 	bad.ETag = "good-ETag"
 	bad.Size = int64(len(goodtext))
 	bad.R = io.NopCloser(strings.NewReader(goodtext))
-	err = ti.append(mk(bad))
+	err = ti.append(context.Background(), mk(bad))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +376,7 @@ func TestAppendBadScan(t *testing.T) {
 		MaxScanObjects: 1,
 	}
 	ti := info(&c, owner, "default", "foo")
-	err = ti.append(nil)
+	err = ti.append(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -403,7 +404,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
-	err = ti.append(nil)
+	err = ti.append(context.Background(), nil)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -424,7 +425,7 @@ func TestAppendBadScan(t *testing.T) {
 	checkContents(t, idx, dfs)
 	checkNoGarbage(t, dfs, "db/default/foo", idx)
 	// now get the last object:
-	err = ti.append(nil)
+	err = ti.append(context.Background(), nil)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -448,7 +449,7 @@ func TestAppendBadScan(t *testing.T) {
 	}
 
 	// this one should turn off scanning:
-	err = ti.append(nil)
+	err = ti.append(context.Background(), nil)
 	if !errors.Is(err, ErrBuildAgain) {
 		if err == nil {
 			t.Fatal("nil error?")
@@ -462,7 +463,7 @@ func TestAppendBadScan(t *testing.T) {
 	if idx.Scanning {
 		t.Error("still scanning?")
 	}
-	err = ti.append(nil)
+	err = ti.append(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

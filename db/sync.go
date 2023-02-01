@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base32"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"io/fs"
 	prand "math/rand"
 	"path"
+	"runtime/trace"
 	"strings"
 	"sync"
 	"time"
@@ -250,10 +252,11 @@ func (c *Config) open(db, table string, owner Tenant) (*tableState, error) {
 	return ts, nil
 }
 
-func (st *tableState) index(cache *IndexCache) (*blockfmt.Index, error) {
+func (st *tableState) index(ctx context.Context, cache *IndexCache) (*blockfmt.Index, error) {
 	if cache != nil && cache.value != nil {
 		return cache.value, nil
 	}
+	defer trace.StartRegion(ctx, "load-index").End()
 	ipath := IndexPath(st.db, st.table)
 	idx, info, err := openIndex(st.ofs, ipath, st.owner.Key(), 0)
 	if err != nil {
@@ -324,7 +327,8 @@ func (st *tableState) deleteInline(idx *blockfmt.Index, i int) {
 	})
 }
 
-func (st *tableState) dedup(idx *blockfmt.Index, parts []partition) ([]partition, error) {
+func (st *tableState) dedup(ctx context.Context, idx *blockfmt.Index, parts []partition) ([]partition, error) {
+	defer trace.StartRegion(ctx, "dedup-inputs").End()
 	out := parts[:0]
 	nextID := idx.Objects()
 	for i := range parts {
@@ -407,8 +411,8 @@ func (c *Config) shouldScan(def *Definition) bool {
 // append will continue to return ErrBuildAgain until scanning is complete,
 // at which point append operations will be accepted. (The caller must continuously
 // call append for scanning to occur.)
-func (ti *tableInfo) append(parts []partition) error {
-	idx, err := ti.state.index(&ti.cache)
+func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
+	idx, err := ti.state.index(ctx, &ti.cache)
 	if err == nil {
 		// begin by removing any unreferenced files,
 		// if we have some left around that need removing
@@ -424,7 +428,7 @@ func (ti *tableInfo) append(parts []partition) error {
 			return ErrBuildAgain
 		}
 		// trim pre-existing elements from lst
-		parts, err = ti.state.dedup(idx, parts)
+		parts, err = ti.state.dedup(ctx, idx, parts)
 		if err != nil {
 			return err
 		}
@@ -432,7 +436,7 @@ func (ti *tableInfo) append(parts []partition) error {
 			ti.state.conf.logf("index for %s already up-to-date", ti.state.table)
 			return nil
 		}
-		return ti.state.append(idx, parts, &ti.cache)
+		return ti.state.append(ctx, idx, parts, &ti.cache)
 	}
 	if ti.state.shouldScan() && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
@@ -452,12 +456,12 @@ func (ti *tableInfo) append(parts []partition) error {
 		// caller should probably Sync instead
 		return err
 	}
-	return ti.state.append(nil, parts, &ti.cache)
+	return ti.state.append(ctx, nil, parts, &ti.cache)
 }
 
 func (st *tableState) shouldScan() bool { return st.conf.shouldScan(st.def) }
 
-func (st *tableState) append(idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
+func (st *tableState) append(ctx context.Context, idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
 	if len(parts) == 0 {
@@ -465,7 +469,7 @@ func (st *tableState) append(idx *blockfmt.Index, parts []partition, cache *Inde
 			err = st.emptyIndex(cache)
 		}
 	} else {
-		err = st.force(idx, parts, cache)
+		err = st.force(ctx, idx, parts, cache)
 	}
 	if err != nil {
 		invalidate(cache)
@@ -504,7 +508,7 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 		}
 		fresh := false
 		gc := false
-		idx, err := st.index(nil)
+		idx, err := st.index(context.Background(), nil)
 		if err != nil {
 			// if the index isn't present
 			// or is out-of-date, create a new one
@@ -625,7 +629,8 @@ func (c *Config) flushMeta() int {
 
 // after failing to read an object,
 // update the index state to reflect the fatal errors we encountered
-func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCache) {
+func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []partition, cache *IndexCache) {
+	defer trace.StartRegion(ctx, "update-failed").End()
 	// invalidate cache so that a reload pulls the previous one
 	invalidate(cache)
 
@@ -658,7 +663,7 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 		// worry about reverting any changes we made
 		// to the index object
 		// (it is expensive to preemptively perform a deep copy)
-		idx, err = st.index(cache)
+		idx, err = st.index(ctx, cache)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				idx = &blockfmt.Index{
@@ -687,7 +692,7 @@ func (st *tableState) updateFailed(empty bool, parts []partition, cache *IndexCa
 	}
 	idx.Created = date.Now()
 	idx.Algo = "zstd"
-	err = st.flush(idx, cache)
+	err = st.flush(ctx, idx, cache)
 	if err != nil {
 		st.conf.logf("flushing index in updateFailed: %s", err)
 	}
@@ -811,12 +816,14 @@ func (st *tableState) writeIndex(idx *blockfmt.Index, cache *IndexCache) error {
 // flush writes out the provided index
 // and updates or invalidates cache to point
 // to the new index value + etag
-func (st *tableState) flush(idx *blockfmt.Index, cache *IndexCache) (err error) {
+func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index, cache *IndexCache) (err error) {
 	idx.Name = st.table
 	idx.UserData = st.userdata()
 	idx.Inputs.Backing = st.ofs
 	dir := path.Join("db", st.db, st.table)
-	err = idx.SyncInputs(dir, st.conf.inputMinAge())
+	trace.WithRegion(ctx, "flush-inputs", func() {
+		err = idx.SyncInputs(dir, st.conf.inputMinAge())
+	})
 	if err != nil {
 		invalidate(cache)
 		return err
@@ -827,7 +834,9 @@ func (st *tableState) flush(idx *blockfmt.Index, cache *IndexCache) (err error) 
 		TargetRefSize: st.conf.TargetRefSize,
 		Expiry:        st.conf.GCMinimumAge,
 	}
-	err = c.SyncOutputs(idx, st.ofs, dir)
+	trace.WithRegion(ctx, "flush-outputs", func() {
+		err = c.SyncOutputs(idx, st.ofs, dir)
+	})
 	if err != nil {
 		invalidate(cache)
 		return err
@@ -867,7 +876,7 @@ func (e *errUpdateFailed) Unwrap() error {
 	return e.err
 }
 
-func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
+func (st *tableState) force(ctx context.Context, idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
 	extra := make([]blockfmt.Descriptor, 0, len(parts))
 	errs := make([]error, len(parts))
 	var wg sync.WaitGroup
@@ -883,7 +892,7 @@ func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *Index
 		}
 		go func(i int) {
 			defer wg.Done()
-			errs[i] = st.forcePart(prepend, dst, &parts[i])
+			errs[i] = st.forcePart(ctx, prepend, dst, &parts[i])
 		}(i)
 	}
 	wg.Wait()
@@ -894,7 +903,7 @@ func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *Index
 		}
 	}
 	if ferr != nil {
-		st.updateFailed(idx == nil, parts, cache)
+		st.updateFailed(ctx, idx == nil, parts, cache)
 		return ferr
 	}
 	if idx == nil {
@@ -908,14 +917,15 @@ func (st *tableState) force(idx *blockfmt.Index, parts []partition, cache *Index
 	idx.Algo = "zstd"
 	idx.Created = date.Now().Truncate(time.Microsecond)
 	idx.Inline = append(idx.Inline, extra...)
-	err := st.flush(idx, cache)
+	err := st.flush(ctx, idx, cache)
 	if err != nil {
 		return err
 	}
-	return st.runGC(idx)
+	return st.runGC(ctx, idx)
 }
 
-func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partition) error {
+func (st *tableState) forcePart(ctx context.Context, prepend, dst *blockfmt.Descriptor, part *partition) error {
+	defer trace.StartRegion(ctx, "force-part").End()
 	c := blockfmt.Converter{
 		Inputs:              part.lst,
 		Align:               st.conf.align(),
@@ -967,7 +977,7 @@ func (st *tableState) forcePart(prepend, dst *blockfmt.Descriptor, part *partiti
 	return nil
 }
 
-func (st *tableState) runGC(idx *blockfmt.Index) error {
+func (st *tableState) runGC(ctx context.Context, idx *blockfmt.Index) error {
 	if prand.Intn(100) >= st.conf.GCLikelihood {
 		return nil
 	}
@@ -975,6 +985,7 @@ func (st *tableState) runGC(idx *blockfmt.Index) error {
 	if !ok {
 		return nil
 	}
+	defer trace.StartRegion(ctx, "run-gc").End()
 	conf := GCConfig{
 		Logf:            st.conf.Logf,
 		MinimumAge:      st.conf.GCMinimumAge,

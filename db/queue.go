@@ -15,11 +15,13 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"path"
+	"runtime/trace"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -344,8 +346,10 @@ func (ti *tableInfo) bgScan(state *scanState) {
 	// is waiting for us to have finished scanning
 	defer state.wg.Done()
 	defer ti.scan.CompareAndSwap(state, nil)
+	ctx, task := trace.NewTask(context.Background(), "bg-scan")
+	defer task.End()
 	for !state.canceled.Load() {
-		idx, err := ti.state.index(&ti.cache)
+		idx, err := ti.state.index(ctx, &ti.cache)
 		if err != nil && !shouldRebuild(err) {
 			ti.state.conf.logf("%s/%s: aborting scan; couldn't read index: %s", ti.state.db, ti.state.table, err)
 			return
@@ -370,7 +374,7 @@ func (ti *tableInfo) bgScan(state *scanState) {
 	}
 }
 
-func (q *QueueRunner) runTable(src *queueBatch, ti *tableInfo) {
+func (q *QueueRunner) runTable(ctx context.Context, src *queueBatch, ti *tableInfo) {
 	// clone the config and add features;
 	// note that runTable is invoked in separate
 	// goroutines for each table, so we need to
@@ -386,7 +390,7 @@ func (q *QueueRunner) runTable(src *queueBatch, ti *tableInfo) {
 		} else {
 			batchstart := time.Now()
 			total, size := dst.filtered.total()
-			err = ti.append(dst.filtered.parts)
+			err = ti.append(ctx, dst.filtered.parts)
 			if err == nil {
 				q.logf("table %s/%s inserted %d objects %d source bytes mindelay %s maxdelay %s wallclock %s",
 					ti.state.db, ti.state.table, total, size, time.Since(dst.latest), time.Since(dst.earliest), time.Since(batchstart))
@@ -550,6 +554,8 @@ readloop:
 }
 
 func (q *QueueRunner) runBatches(parent Queue, batch *queueBatch, dst map[dbtable]*tableInfo, done *sync.WaitGroup) {
+	ctx, task := trace.NewTask(context.Background(), "run-batch")
+	defer task.End()
 	defer done.Done()
 	var wg sync.WaitGroup
 	batch.status = slices.Grow(batch.status[:0], len(batch.inputs))[:len(batch.inputs)]
@@ -560,7 +566,9 @@ func (q *QueueRunner) runBatches(parent Queue, batch *queueBatch, dst map[dbtabl
 		wg.Add(1)
 		go func(ti *tableInfo) {
 			defer wg.Done()
-			q.runTable(batch, ti)
+			subctx, subtask := trace.NewTask(ctx, "update-table")
+			q.runTable(subctx, batch, ti)
+			subtask.End()
 		}(def)
 	}
 	// wait for batch.status[*] to be updated (atomically!)
@@ -573,7 +581,7 @@ func (q *QueueRunner) runBatches(parent Queue, batch *queueBatch, dst map[dbtabl
 
 // check to see if we should start scanning
 func (q *QueueRunner) init(ti *tableInfo) {
-	idx, err := ti.state.index(&ti.cache)
+	idx, err := ti.state.index(context.Background(), &ti.cache)
 	if errors.Is(err, fs.ErrNotExist) {
 		err = ti.state.emptyIndex(&ti.cache)
 		idx = ti.cache.value // may be nil if err != nil
