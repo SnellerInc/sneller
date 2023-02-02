@@ -1,0 +1,1 @@
+SELECT CHAR_LENGTH(country) + CHAR_LENGTH(name) FROM 'data.jsonrl'

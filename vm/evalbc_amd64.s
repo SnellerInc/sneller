@@ -9648,6 +9648,64 @@ non_ascii:  //; NOTE: this is the assumed to be a somewhat unlikely branch
   JMP           update                    //;A596F5F6                                 ;
 //; #endregion bcLengthStr
 
+TEXT bcLengthStr_v2(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPBROADCASTD  CONSTD_4(), Z24             // Z24 = 4
+  VMOVDQU32     CONST_TAIL_MASK(), Z20      // Z20 - tail_mask lookup
+  VPBROADCASTD  CONSTD_0x80808080(), Z28    // Z28 - mask for MSB of each bit
+
+  VMOVDQA32     Z3, Z10                     // Z10 - string length in bytes
+  JMP           test
+loop:
+  KMOVW         K2, K3
+  VPXORD        Z8, Z8, Z8
+  VPGATHERDD    (SI)(Z2*1), K3, Z8          // Z8 - 4 bytes
+
+  VPMINSD       Z24, Z3,  Z7                // Z20 = min(str_length, 4)
+  VPERMD        Z20, Z7,  Z21               // Z21 = tail mask
+  VPANDD        Z8,  Z21, Z8                // remove tail from data
+
+  VPSUBD        Z24, Z3, K2, Z3             // str_length -= 4
+  VPADDD        Z24, Z2, K2, Z2             // offset += 4
+
+  // The length of **a valid UTF-8 string** can be calculated in
+  // the following way:
+  //
+  //    the length of input in bytes - the number of continuation bytes
+  //
+  // Continuation bytes are in form 10xxx_xxxx, and none of leading
+  // bytes (starting a UTF-8 sequence) have such bit pattern.
+
+  // 1. Convert 10xxx_xxxx into 1000_0000 and any other bit
+  //    pattern into zero. It is done by: bit7 and not bit6 and msb_mask.
+  VPADDD        Z8,  Z8, Z9             // Z9 = Z8 << 1
+  VPANDND       Z8,  Z9, Z8             // Z8 = Z8 & ~Z9
+  VPANDD        Z28, Z8, Z8             // Z8 = keep only the MSB
+
+  // 2. Count continuation bytes
+  VPOPCNTD      Z8, Z8
+
+  // 3. Finally, subtract it from the byte count
+  VPSUBD        Z8, Z10, Z10
+
+test:
+  VPXORD        Z11, Z11, Z11
+  VPCMPD        $VPCMP_IMM_GT, Z11, Z3, K1, K2   // K2 := K1 & (str_length > 0)
+  KTESTW        K2, K2
+  JNZ           loop
+
+  // cast 16 x int32 into 16 x int64
+  VPMOVZXDQ     Y10,  Z2
+  VEXTRACTI32X8 $1, Z10, Y10
+  VPMOVZXDQ     Y10,  Z3
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
 //; #region bcSubstr
 //; slice[0] = func(slice[1], i64[2], i64[3]).k[4]
 //; Get a substring of UTF-8 code-points in Z2:Z3 (str interpretation). The substring starts
