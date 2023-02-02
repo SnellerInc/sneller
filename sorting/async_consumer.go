@@ -119,8 +119,6 @@ func (a *AsyncConsumer) Start(pool ThreadPool) {
 				// advance the pointer
 				a.remaining.start = r.end + 1
 			}
-
-			return nil
 		}
 
 		var err error

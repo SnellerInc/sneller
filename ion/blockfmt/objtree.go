@@ -245,7 +245,6 @@ func (i *IndirectTree) decode(ifs InputFS, src *IndirectRef, in []Descriptor, fi
 		default:
 			return fmt.Errorf("unrecognized field %q", f.Label)
 		}
-		return nil
 	})
 	return in, err
 }

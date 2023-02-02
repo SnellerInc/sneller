@@ -2149,8 +2149,6 @@ func (b *Builtin) setfield(f ion.Field) error {
 	default:
 		return errUnexpectedField
 	}
-
-	return nil
 }
 
 func (b *Builtin) text(dst *strings.Builder, redact bool) {

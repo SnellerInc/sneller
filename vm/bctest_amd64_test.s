@@ -21,7 +21,7 @@
 TEXT ·bctest_run_aux(SB), NOSPLIT, $0
     // prepare the necessary environment for invoking the VM
     MOVQ ctx+8(FP), CX
-    KMOVW ctx+16(FP), K7
+    KMOVQ activeLanes+16(FP), K7
 
     MOVQ bc+0(FP), VIRT_BCPTR  // DI
     MOVQ ·vmm+0(SB), VIRT_BASE // SI real static base
