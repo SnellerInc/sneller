@@ -195,10 +195,6 @@ func Build(q *expr.Query, e Env) (*Trace, error) {
 			}
 			t.Into(q.Into, path.Join("db", p[0], p[1]))
 		}
-		err = postcheck(t)
-		if err != nil {
-			return nil, err
-		}
 		return t, nil
 	}
 	// TODO: body can be UNION ALL, UNION, etc.

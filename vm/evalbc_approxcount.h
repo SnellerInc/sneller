@@ -22,20 +22,20 @@ TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
 
     BC_UNPACK_RU32(0, OUT(R15))
     BC_UNPACK_SLOT(4, OUT(R8))
+    // unpacked out-of-order due to the R12 clobber:
+    BC_UNPACK_SLOT(4 + BC_SLOT_SIZE + 2, OUT(BX))
+    BC_LOAD_RU16_FROM_SLOT(OUT(R14), IN(BX)) // BX = valid lanes
     BC_UNPACK_RU16(4 + BC_SLOT_SIZE, OUT(R12))
-
-    // TODO (Wojciech): K1 is not used
-    // BC_UNPACK_SLOT(4 + BC_SLOT_SIZE + 2, OUT(BX))
-    // BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
 
     // Note: The virtual hash registers are 128-bit ones, we use the higher 64 bits of each.
     ADDQ    AggregateDataBuffer, R15    // R15 -> aggregate buffer of size 1 << precision bytes
     ADDQ    bytecode_hashmem(VIRT_BCPTR), R8
     MOVQ    $64, R13
     SUBQ    R12, R13                    // R13 = 64 - R12 - hash bits
-    MOVQ    $16, R14                    // the number of hashes
 
 scalar_loop:
+    TESTL   $1, R14
+    JZ      loop_tail
     MOVQ    (R8), DX    // DX = higher 64-bit of the 128-bit hash
     SHLXQ   R12, DX, CX // CX - hash
     LZCNTQ  CX, CX
@@ -48,8 +48,9 @@ scalar_loop:
     CMOVQLT CX, BX      // BX = max(DX, BX)
     MOVB    BL, (R15)(DX*1)
 
+loop_tail:
     ADDQ    $16, R8
-    DECQ    R14
+    SHRL    $1, R14
     JNZ     scalar_loop
 
 next:

@@ -33,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
@@ -155,6 +156,76 @@ func (p *parallelchunks) Size() int64 {
 		n += int64(len(p.chunks[i]))
 	}
 	return n
+}
+
+func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
+	type part struct {
+		keys, values []ion.Datum
+	}
+
+	okType := func(d ion.Datum) bool {
+		switch d.Type() {
+		case ion.StringType, ion.IntType, ion.UintType, ion.FloatType:
+			return true
+		default:
+			return false
+		}
+	}
+
+	partset := make(map[string]*part)
+
+	var st ion.Symtab
+	var tmp ion.Buffer
+	var d ion.Datum
+	var err error
+	for i := range p.chunks {
+		buf := p.chunks[i]
+		for len(buf) > 0 {
+			d, buf, err = ion.ReadDatum(&st, buf)
+			if err != nil {
+				panic(err)
+			}
+			s, err := d.Struct()
+			if err != nil {
+				panic(err)
+			}
+			var keys []ion.Datum
+			for _, part := range parts {
+				f, ok := s.FieldByName(part)
+				if !ok {
+					return nil, fmt.Errorf("record missing %q field", part)
+				}
+				if !okType(f.Datum) {
+					return nil, fmt.Errorf("value for %q has unacceptable type", part)
+				}
+				keys = append(keys, f.Datum)
+			}
+			tmp.Reset()
+			for _, key := range keys {
+				key.Encode(&tmp, &st)
+			}
+			if p := partset[string(tmp.Bytes())]; p != nil {
+				p.values = append(p.values, d)
+			} else {
+				partset[string(tmp.Bytes())] = &part{
+					keys:   keys,
+					values: []ion.Datum{d},
+				}
+			}
+		}
+	}
+
+	ret := make([]plan.TablePart, 0, len(partset))
+	for _, v := range partset {
+		st.Reset()
+		tmp.Reset()
+		data := flatten(v.values, &st)
+		ret = append(ret, plan.TablePart{
+			Handle: bufhandle(data),
+			Parts:  v.keys,
+		})
+	}
+	return ret, nil
 }
 
 /* FIXME: uncomment this once BOOL_AND() is fixed
@@ -309,6 +380,34 @@ func (e *queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	}
 	setHints(handle, h)
 	return handle, nil
+}
+
+var _ plan.Indexer = &queryenv{}
+
+type handleIndex struct {
+	h plan.TableHandle
+}
+
+func (h *handleIndex) TimeRange(path []string) (min, max date.Time, ok bool) {
+	return // unimplemented for now
+}
+
+func (h *handleIndex) HasPartition(x string) bool {
+	sh, ok := h.h.(plan.PartitionHandle)
+	if ok {
+		// XXX very slow:
+		_, err := sh.SplitBy([]string{x})
+		return err == nil
+	}
+	return false
+}
+
+func (e *queryenv) Index(t expr.Node) (plan.Index, error) {
+	handle, ok := e.handle(t)
+	if !ok {
+		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
+	}
+	return &handleIndex{handle}, nil
 }
 
 var _ plan.TableLister = (*queryenv)(nil)

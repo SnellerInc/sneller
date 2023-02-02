@@ -394,7 +394,12 @@ func (c *Client) Exec(t *Tree, ep *ExecParams) error {
 	c.st.Reset()
 	c.iob.Reset()
 	c.valid = 0
-	err := c.send(t)
+	// honor rewrites by serializing the rewritten expressions:
+	rw := ep.Rewriter
+	if rw == nil {
+		rw = nopRewriter{}
+	}
+	err := c.send(t, rw)
 	if err != nil {
 		return err
 	}
@@ -406,8 +411,8 @@ func (c *Client) Close() error {
 	return c.Pipe.Close()
 }
 
-func (c *Client) send(t *Tree) error {
-	err := t.Encode(&c.iob, &c.st)
+func (c *Client) send(t *Tree, rw expr.Rewriter) error {
+	err := t.encode(&c.iob, &c.st, rw)
 	if err != nil {
 		return fmt.Errorf("plan.Client.Exec: encoding plan: %w", err)
 	}

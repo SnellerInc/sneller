@@ -229,6 +229,8 @@ func empty(name string) Op {
 		return &Unnest{}
 	case "unionmap":
 		return &UnionMap{}
+	case "union_partition":
+		return &UnionPartition{}
 	case "outpart":
 		return &OutputPart{}
 	case "outidx":

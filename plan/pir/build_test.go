@@ -280,8 +280,6 @@ type buildTestcase struct {
 }
 
 func TestBuild(t *testing.T) {
-	partitionsEnabled = true
-
 	basetime, _ := date.Parse([]byte("2022-02-22T20:22:22Z"))
 	now := func(hours int) date.Time {
 		return basetime.Add(time.Duration(hours) * time.Hour)

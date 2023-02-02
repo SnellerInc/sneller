@@ -47,8 +47,8 @@ func (e *executor) subexec(n *Node, ep *ExecParams) error {
 	repl := &replacer{
 		inputs: rp,
 	}
-	n.Op.rewrite(repl)
-	return repl.err
+	ep.AddRewrite(repl)
+	return nil
 }
 
 type executor struct {

@@ -78,7 +78,6 @@ type Order struct {
 
 	// mutable state shared
 	// with sorting threads
-	wg sync.WaitGroup
 
 	rp sorting.RuntimeParameters
 }
@@ -153,7 +152,6 @@ func (s *Order) orderList() []sorting.Ordering {
 
 // Open implements QuerySink.Open
 func (s *Order) Open() (io.WriteCloser, error) {
-	s.wg.Add(1)
 
 	if s.useKtop() {
 		kt := &sortstateKtop{parent: s}
@@ -176,7 +174,7 @@ func (s *Order) Close() error {
 	// indicate that they have been closed;
 	// after this returns we can access
 	// s.sub safely
-	s.wg.Wait()
+	// s.wg.Wait()
 
 	if !s.useKtop() && s.symtab == nil {
 		if len(s.records) == 0 {
@@ -461,7 +459,6 @@ func (s *sortstateMulticolumn) Close() error {
 	s.parentNotified = true
 
 	s.findbc.reset()
-	s.parent.wg.Done()
 
 	return nil
 }
@@ -573,7 +570,6 @@ func (s *sortstateSingleColumn) Close() error {
 	s.parent.rawrecords[s.chunkID] = s.records
 	s.parent.recordsLock.Unlock()
 
-	s.parent.wg.Done()
 	return nil
 }
 
@@ -934,7 +930,6 @@ func (s *sortstateKtop) Close() error {
 		return nil
 	}
 	s.parentNotified = true
-	defer s.parent.wg.Done()
 
 	s.findbc.reset()
 	s.filtbc.reset()

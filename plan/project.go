@@ -37,14 +37,14 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 }
 
 func (p *Project) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	return p.From.wrap(vm.NewProjection(vm.Selection(p.Using), dst), ep)
+	return p.From.wrap(vm.NewProjection(ep.rewriteBind(p.Using), dst), ep)
 }
 
-func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("project", dst, st)
 	dst.BeginField(st.Intern("project"))
-	expr.EncodeBindings(p.Using, dst, st)
+	encodeBindings(p.Using, dst, st, rw)
 	dst.EndStruct()
 	return nil
 }

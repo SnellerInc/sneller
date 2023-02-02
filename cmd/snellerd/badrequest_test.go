@@ -27,6 +27,7 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/SnellerInc/sneller/db"
 )
@@ -52,6 +53,9 @@ func testlogger(t *testing.T) *log.Logger {
 	l := log.New(&buf, t.Name(), log.LstdFlags)
 	t.Cleanup(func() {
 		if t.Failed() {
+			// since logs are captured in the background,
+			// provide some time for panic traces, etc.
+			time.Sleep(100 * time.Millisecond)
 			buf.Lock()
 			defer buf.Unlock()
 			buf.WriteTo(os.Stderr)

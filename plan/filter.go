@@ -40,18 +40,22 @@ func (f *Filter) rewrite(rw expr.Rewriter) {
 }
 
 func (f *Filter) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	filter, err := vm.NewFilter(f.Expr, dst)
+	filt := ep.rewrite(f.Expr)
+	if ep.Rewriter != nil {
+		push(filt, f.From)
+	}
+	filter, err := vm.NewFilter(filt, dst)
 	if err != nil {
 		return delay(err)
 	}
 	return f.From.wrap(filter, ep)
 }
 
-func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("filter", dst, st)
 	dst.BeginField(st.Intern("expr"))
-	f.Expr.Encode(dst, st)
+	expr.Rewrite(rw, f.Expr).Encode(dst, st)
 	dst.EndStruct()
 	return nil
 }

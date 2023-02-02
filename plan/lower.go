@@ -240,6 +240,12 @@ func (w *walker) lowerUnionMap(in *pir.UnionMap, env Env) (Op, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(in.PartitionBy) > 0 {
+		return &UnionPartition{
+			Nonterminal: Nonterminal{From: sub},
+			By:          in.PartitionBy,
+		}, nil
+	}
 	return &UnionMap{
 		Nonterminal: Nonterminal{From: sub},
 	}, nil
@@ -506,7 +512,6 @@ func (w *walker) walkBuild(in pir.Step, env Env) (Op, error) {
 	if _, ok := in.(pir.DummyOutput); ok {
 		return DummyOutput{}, nil
 	}
-
 	// ... and UnionMap as well
 	if u, ok := in.(*pir.UnionMap); ok {
 		return w.lowerUnionMap(u, env)

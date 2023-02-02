@@ -17,6 +17,7 @@ package sneller
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -68,6 +69,11 @@ type TenantHandle struct {
 	parent        *TenantEnv
 }
 
+var (
+	_ plan.SplitHandle     = &TenantHandle{}
+	_ plan.PartitionHandle = &TenantHandle{}
+)
+
 func (t *TenantEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	if t.FSEnv == nil {
 		panic("plan.TenantEnv: cannot call Stat without FSEnv set")
@@ -113,6 +119,7 @@ func (h *TenantHandle) Open(ctx context.Context) (vm.Table, error) {
 	if !CanVMOpen {
 		panic("shouldn't have called tenantHandle.Open()")
 	}
+	filt, _ := fh.CompileFilter()
 	segs := make([]dcache.Segment, 0, len(lst.Contents))
 	var size int64
 	for i := range lst.Contents {
@@ -120,10 +127,10 @@ func (h *TenantHandle) Open(ctx context.Context) (vm.Table, error) {
 			blob.Use(lst.Contents[i], h.parent.HTTPClient)
 		}
 		b := lst.Contents[i]
-		if pc, ok := b.(*blob.CompressedPart); ok &&
-			!fh.compiled.Trivial() &&
-			!fh.compiled.Overlaps(&pc.Parent.Trailer.Sparse, pc.StartBlock, pc.EndBlock) {
-			continue
+		if pc, ok := b.(*blob.CompressedPart); ok && filt != nil {
+			if !filt.Overlaps(&pc.Parent.Trailer.Sparse, pc.StartBlock, pc.EndBlock) {
+				continue
+			}
 		}
 		seg := &blobSegment{
 			fields:    fh.Fields,
@@ -153,6 +160,84 @@ func (h *TenantHandle) Filter(e expr.Node) plan.TableHandle {
 		parent:       h.parent,
 		FilterHandle: h.FilterHandle.Filter(e).(*FilterHandle),
 	}
+}
+
+func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
+	type part struct {
+		values []ion.Datum
+		blobs  *blob.List
+	}
+	var st ion.Symtab // not really used
+	var buf ion.Buffer
+
+	// since partition constants are always strings or numbers,
+	// we can use their concatenated ion representation as the
+	// key for splitting them into the appropriate tables
+	putkey := func(t *blockfmt.Trailer, dst *ion.Buffer) error {
+		dst.Reset()
+		for _, part := range parts {
+			d, ok := t.Sparse.Const(part)
+			if !ok {
+				return fmt.Errorf("trailer missing part %q", part)
+			}
+			d.Encode(dst, &st)
+		}
+		return nil
+	}
+
+	partset := make(map[string]*part)
+
+	add := func(b blob.Interface, t *blockfmt.Trailer) error {
+		err := putkey(t, &buf)
+		if err != nil {
+			return err
+		}
+		if p := partset[string(buf.Bytes())]; p != nil {
+			p.blobs.Contents = append(p.blobs.Contents, b)
+			return nil
+		}
+		var values []ion.Datum
+		for _, part := range parts {
+			dat, _ := t.Sparse.Const(part)
+			values = append(values, dat)
+		}
+		partset[string(buf.Bytes())] = &part{
+			blobs:  &blob.List{Contents: []blob.Interface{b}},
+			values: values,
+		}
+		return nil
+	}
+
+	for i := range h.Blobs.Contents {
+		var err error
+		switch b := h.Blobs.Contents[i].(type) {
+		case *blob.Compressed:
+			err = add(b, &b.Trailer)
+		case *blob.CompressedPart:
+			err = add(b, &b.Parent.Trailer)
+		default:
+			err = fmt.Errorf("cannot split on blob type %T", b)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	ret := make([]plan.TablePart, 0, len(partset))
+	for _, v := range partset {
+		fh := new(FilterHandle)
+		*fh = *h.FilterHandle
+		fh.Blobs = v.blobs
+		// not safe to copy:
+		fh.compiled = blockfmt.Filter{}
+		ret = append(ret, plan.TablePart{
+			Handle: &TenantHandle{
+				parent:       h.parent,
+				FilterHandle: fh,
+			},
+			Parts: v.values,
+		})
+	}
+	return ret, nil
 }
 
 type emptyTable struct{}

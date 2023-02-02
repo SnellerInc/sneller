@@ -57,7 +57,7 @@ type Op interface {
 	// should have the label "type" and produce
 	// a symbol that corresponds to the name of
 	// the type of the plan op (see decode.go)
-	encode(dst *ion.Buffer, st *ion.Symtab) error
+	encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error
 
 	// setfield should take the field label name "name"
 	// and use it to set the corresponding struct field
@@ -258,10 +258,25 @@ func (s *SimpleAggregate) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func encodeAggregation(lst vm.Aggregation, dst *ion.Buffer, st *ion.Symtab) {
+func encodeBindings(lst []expr.Binding, dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) {
 	dst.BeginList(-1)
 	for i := range lst {
-		lst[i].Expr.Encode(dst, st)
+		dst.BeginStruct(-1)
+		dst.BeginField(st.Intern("expr"))
+		expr.Rewrite(rw, lst[i].Expr).Encode(dst, st)
+		if lst[i].Explicit() {
+			dst.BeginField(st.Intern("bind"))
+			dst.WriteString(lst[i].Result())
+		}
+		dst.EndStruct()
+	}
+	dst.EndList()
+}
+
+func encodeAggregation(lst vm.Aggregation, dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) {
+	dst.BeginList(-1)
+	for i := range lst {
+		expr.Rewrite(rw, lst[i].Expr).Encode(dst, st)
 		dst.WriteString(lst[i].Result)
 	}
 	dst.EndList()
@@ -348,11 +363,11 @@ func settype(name string, dst *ion.Buffer, st *ion.Symtab) {
 	dst.WriteSymbol(st.Intern(name))
 }
 
-func (s *SimpleAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (s *SimpleAggregate) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("agg", dst, st)
 	dst.BeginField(st.Intern("agg"))
-	encodeAggregation(s.Outputs, dst, st)
+	encodeAggregation(s.Outputs, dst, st, rw)
 	dst.EndStruct()
 	return nil
 }
@@ -391,10 +406,11 @@ func (l *Leaf) rewrite(rw expr.Rewriter) {}
 
 func (l *Leaf) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	return func(h TableHandle) error {
+		filt := ep.rewrite(l.Filter)
 		// apply any last-minute filtering
-		if l.Filter != nil {
+		if filt != nil {
 			if f, ok := h.(Filterable); ok {
-				h = f.Filter(l.Filter)
+				h = f.Filter(filt)
 			}
 		}
 		tbl, err := h.Open(ep.Context)
@@ -414,16 +430,16 @@ func (l *Leaf) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	}
 }
 
-func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("leaf", dst, st)
 	if l.Orig != nil {
 		dst.BeginField(st.Intern("orig"))
-		l.Orig.Encode(dst, st)
+		expr.Rewrite(rw, l.Orig).Encode(dst, st)
 	}
 	if l.Filter != nil {
 		dst.BeginField(st.Intern("filter"))
-		l.Filter.Encode(dst, st)
+		expr.Rewrite(rw, l.Filter).Encode(dst, st)
 	}
 	dst.EndStruct()
 	return nil
@@ -488,7 +504,7 @@ func (n NoOutput) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 	}
 }
 
-func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("none", dst, st)
 	dst.EndStruct()
@@ -524,7 +540,7 @@ func (n DummyOutput) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) er
 	}
 }
 
-func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("dummy", dst, st)
 	dst.EndStruct()
@@ -548,7 +564,7 @@ func (l *Limit) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 	return l.From.wrap(vm.NewLimit(l.Num, dst), ep)
 }
 
-func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("limit", dst, st)
 	dst.BeginField(st.Intern("limit"))
@@ -634,7 +650,7 @@ func (c *countSink) Close() error {
 	return err
 }
 
-func (c *CountStar) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (c *CountStar) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("count(*)", dst, st)
 	dst.BeginField(st.Intern("as"))
@@ -711,13 +727,13 @@ func (h *HashAggregate) String() string {
 	return s
 }
 
-func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("hashagg", dst, st)
 	dst.BeginField(st.Intern("agg"))
-	encodeAggregation(h.Agg, dst, st)
+	encodeAggregation(h.Agg, dst, st, rw)
 	dst.BeginField(st.Intern("by"))
-	expr.EncodeBindings(h.By, dst, st)
+	encodeBindings(h.By, dst, st, rw)
 	if h.Limit > 0 {
 		dst.BeginField(st.Intern("limit"))
 		dst.WriteInt(int64(h.Limit))
@@ -736,7 +752,7 @@ func (h *HashAggregate) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	}
 	if len(h.Windows) > 0 {
 		dst.BeginField(st.Intern("windows"))
-		encodeAggregation(h.Windows, dst, st)
+		encodeAggregation(h.Windows, dst, st, rw)
 	}
 	dst.EndStruct()
 	return nil
@@ -788,7 +804,7 @@ func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
 }
 
 func (h *HashAggregate) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	ha, err := vm.NewHashAggregate(h.Agg, h.Windows, h.By, dst)
+	ha, err := vm.NewHashAggregate(ep.rewriteAgg(h.Agg), ep.rewriteAgg(h.Windows), ep.rewriteBind(h.By), dst)
 	if err != nil {
 		return delay(err)
 	}
@@ -869,7 +885,7 @@ func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 
 	orderBy := make([]vm.SortColumn, len(o.Columns))
 	for i := range orderBy {
-		orderBy[i].Node = o.Columns[i].Node
+		orderBy[i].Node = ep.rewrite(o.Columns[i].Node)
 
 		if o.Columns[i].Desc {
 			orderBy[i].Direction = sorting.Descending
@@ -928,7 +944,7 @@ func (s *orderSink) Close() error {
 	return err
 }
 
-func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("order", dst, st)
 
@@ -936,7 +952,7 @@ func (o *OrderBy) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	dst.BeginList(-1)
 	for i := range o.Columns {
 		dst.BeginList(-1)
-		o.Columns[i].Node.Encode(dst, st)
+		expr.Rewrite(rw, o.Columns[i].Node).Encode(dst, st)
 		dst.WriteBool(o.Columns[i].Desc)
 		dst.WriteBool(o.Columns[i].NullsLast)
 		dst.EndList()
@@ -1016,7 +1032,7 @@ func (d *Distinct) rewrite(rw expr.Rewriter) {
 }
 
 func (d *Distinct) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	df, err := vm.NewDistinct(d.Fields, dst)
+	df, err := vm.NewDistinct(ep.rewriteAll(d.Fields), dst)
 	if err != nil {
 		return delay(err)
 	}
@@ -1026,13 +1042,13 @@ func (d *Distinct) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) erro
 	return d.From.wrap(df, ep)
 }
 
-func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("distinct", dst, st)
 	dst.BeginField(st.Intern("fields"))
 	dst.BeginList(-1)
 	for i := range d.Fields {
-		d.Fields[i].Encode(dst, st)
+		expr.Rewrite(rw, d.Fields[i]).Encode(dst, st)
 	}
 	dst.EndList()
 	if d.Limit > 0 {
@@ -1097,7 +1113,7 @@ func (u *Unpivot) String() string {
 	return str.String()
 }
 
-func (u *Unpivot) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (u *Unpivot) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("unpivot", dst, st)
 	if u.As != nil {
@@ -1137,30 +1153,39 @@ func (u *Unpivot) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 	return u.From.wrap(vmu, ep)
 }
 
-func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab) error {
+func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	// encode the parent(s) of this op first
 	if parent := p.input(); parent != nil {
-		err := encoderec(parent, dst, st)
+		err := encoderec(parent, dst, st, rw)
 		if err != nil {
 			return err
 		}
-		return p.encode(dst, st)
+		return p.encode(dst, st, rw)
 	}
 	// nodes without parents
 	type encodable interface {
-		encode(dst *ion.Buffer, st *ion.Symtab) error
+		encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error
 	}
 
 	if n, ok := p.(encodable); ok {
-		return n.encode(dst, st)
+		return n.encode(dst, st, rw)
 	}
 
 	return fmt.Errorf("cannot encode %T", p)
 }
 
+type nopRewriter struct{}
+
+func (n nopRewriter) Walk(e expr.Node) expr.Rewriter { return n }
+func (n nopRewriter) Rewrite(e expr.Node) expr.Node  { return e }
+
 // Encode encodes a plan tree
 // for later decoding using Decode.
 func (t *Tree) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	return t.encode(dst, st, nopRewriter{})
+}
+
+func (t *Tree) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("inputs"))
 	dst.BeginList(-1)
@@ -1169,14 +1194,14 @@ func (t *Tree) Encode(dst *ion.Buffer, st *ion.Symtab) error {
 	}
 	dst.EndList()
 	dst.BeginField(st.Intern("root"))
-	if err := t.Root.encode(dst, st); err != nil {
+	if err := t.Root.encode(dst, st, rw); err != nil {
 		return err
 	}
 	dst.EndStruct()
 	return nil
 }
 
-func (n *Node) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (n *Node) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("input"))
 	dst.WriteInt(int64(n.Input))
@@ -1184,7 +1209,7 @@ func (n *Node) encode(dst *ion.Buffer, st *ion.Symtab) error {
 		dst.BeginField(st.Intern("children"))
 		dst.BeginList(-1)
 		for i := range n.Children {
-			if err := n.Children[i].encode(dst, st); err != nil {
+			if err := n.Children[i].encode(dst, st, rw); err != nil {
 				return err
 			}
 		}
@@ -1192,7 +1217,7 @@ func (n *Node) encode(dst *ion.Buffer, st *ion.Symtab) error {
 	}
 	dst.BeginField(st.Intern("op"))
 	dst.BeginList(-1)
-	err := encoderec(n.Op, dst, st)
+	err := encoderec(n.Op, dst, st, rw)
 	if err != nil {
 		return err
 	}
@@ -1210,7 +1235,7 @@ func (u *UnpivotAtDistinct) String() string {
 	return fmt.Sprintf("UNPIVOT_AT_DISTINCT %s", u.At)
 }
 
-func (u *UnpivotAtDistinct) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (u *UnpivotAtDistinct) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("unpivotatdistinct", dst, st)
 	dst.BeginField(st.Intern("At"))
@@ -1250,15 +1275,18 @@ func (e *Explain) rewrite(expr.Rewriter) {}
 func (e *Explain) input() Op             { return nil }
 func (e *Explain) setinput(Op)           { panic("Explain: cannot setinput()") }
 
-func (e *Explain) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (e *Explain) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("explain", dst, st)
 	dst.BeginField(st.Intern("format"))
 	dst.WriteInt(int64(e.Format))
 	dst.BeginField(st.Intern("query"))
+	// NOTE: we are *not* applying a rewrite
+	// because presumably the query here is
+	// for presentation purposes only
 	e.Query.Encode(dst, st)
 	dst.BeginField(st.Intern("tree"))
-	e.Tree.Encode(dst, st)
+	e.Tree.encode(dst, st, rw)
 	dst.EndStruct()
 	return nil
 }

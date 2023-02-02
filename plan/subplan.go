@@ -32,6 +32,14 @@ type replacement struct {
 	rows []ion.Struct
 }
 
+func mustConst(d ion.Datum) expr.Constant {
+	c, ok := expr.AsConstant(d)
+	if !ok {
+		panic("cannot convert value to constant")
+	}
+	return c
+}
+
 func first(s *ion.Struct) (ion.Field, bool) {
 	var field ion.Field
 	var ok bool
@@ -42,19 +50,19 @@ func first(s *ion.Struct) (ion.Field, bool) {
 	return field, ok
 }
 
-func (r *replacement) toScalar() (expr.Constant, bool) {
+func (r *replacement) toScalar() expr.Constant {
 	if len(r.rows) == 0 {
-		return expr.Null{}, true
+		return expr.Null{}
 	}
 	s := &r.rows[0]
 	f, ok := first(s)
 	if !ok {
-		return expr.Null{}, true
+		return expr.Null{}
 	}
-	return expr.AsConstant(f.Datum)
+	return mustConst(f.Datum)
 }
 
-func (r *replacement) toScalarList() (ion.Bag, bool) {
+func (r *replacement) toScalarList() ion.Bag {
 	var ret ion.Bag
 	for i := range r.rows {
 		f, ok := first(&r.rows[i])
@@ -63,31 +71,27 @@ func (r *replacement) toScalarList() (ion.Bag, bool) {
 		}
 		ret.AddDatum(f.Datum)
 	}
-	return ret, true
+	return ret
 }
 
-func (r *replacement) toList() (expr.Constant, bool) {
+func (r *replacement) toList() expr.Constant {
 	lst := new(expr.List)
 	for i := range r.rows {
-		val, ok := expr.AsConstant(r.rows[i].Datum())
-		if !ok {
-			return nil, false
-		}
-		lst.Values = append(lst.Values, val)
+		lst.Values = append(lst.Values, mustConst(r.rows[i].Datum()))
 	}
-	return lst, true
+	return lst
 }
 
-func (r *replacement) toStruct() (expr.Constant, bool) {
+func (r *replacement) toStruct() expr.Constant {
 	if len(r.rows) == 0 {
-		return &expr.Struct{}, true
+		return &expr.Struct{}
 	}
-	return expr.AsConstant(r.rows[0].Datum())
+	return mustConst(r.rows[0].Datum())
 }
 
-func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) (expr.Node, bool) {
+func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) expr.Node {
 	if len(r.rows) == 0 {
-		return expr.Missing{}, true
+		return expr.Missing{}
 	}
 	var conv rowConverter
 	switch kind {
@@ -98,18 +102,16 @@ func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) (ex
 	case "list":
 		conv = &listConverter{label: label}
 	default:
-		return nil, false
+		return expr.Null{}
 	}
 	for i := range r.rows {
-		if !conv.add(&r.rows[i]) {
-			return nil, false
-		}
+		conv.add(&r.rows[i])
 	}
-	return conv.result(x, elseval), true
+	return conv.result(x, elseval)
 }
 
 type rowConverter interface {
-	add(row *ion.Struct) (ok bool)
+	add(row *ion.Struct)
 	result(key, elseval expr.Node) *expr.Lookup
 }
 
@@ -127,20 +129,19 @@ func (c *scalarConverter) result(key, elseval expr.Node) *expr.Lookup {
 	}
 }
 
-func (c *scalarConverter) add(row *ion.Struct) bool {
+func (c *scalarConverter) add(row *ion.Struct) {
 	if row.Len() != 2 {
-		return false
+		return
 	}
 	f := row.Fields(make([]ion.Field, 0, 2))
 	if f[0].Label != c.label {
 		f[0], f[1] = f[1], f[0]
 		if f[0].Label != c.label {
-			return false
+			return
 		}
 	}
 	c.keys.AddDatum(f[0].Datum)
 	c.values.AddDatum(f[1].Datum)
-	return true
 }
 
 type structConverter struct {
@@ -157,9 +158,9 @@ func (c *structConverter) result(key, elseval expr.Node) *expr.Lookup {
 	}
 }
 
-func (c *structConverter) add(row *ion.Struct) bool {
+func (c *structConverter) add(row *ion.Struct) {
 	if row.Len() == 0 {
-		return false
+		return
 	}
 	var key ion.Datum
 	fields := make([]ion.Field, 0, row.Len()-1)
@@ -172,11 +173,10 @@ func (c *structConverter) add(row *ion.Struct) bool {
 		return nil
 	})
 	if key.IsEmpty() {
-		return false
+		return
 	}
 	c.keys.AddDatum(key)
 	c.values.AddDatum(ion.NewStruct(nil, fields).Datum())
-	return true
 }
 
 type listConverter struct {
@@ -193,19 +193,14 @@ func (c *listConverter) result(key, elseval expr.Node) *expr.Lookup {
 	return l
 }
 
-func (c *listConverter) add(row *ion.Struct) bool {
+func (c *listConverter) add(row *ion.Struct) {
 	if row.Len() == 0 {
-		return false
+		return
 	}
 	var key expr.Constant
-	var ok bool
 	fields := make([]expr.Field, 0, row.Len()-1)
 	row.Each(func(f ion.Field) error {
-		var val expr.Constant
-		val, ok = expr.AsConstant(f.Datum)
-		if !ok {
-			return ion.Stop
-		}
+		val := mustConst(f.Datum)
 		if f.Label == c.label {
 			key = val
 			return nil
@@ -216,8 +211,8 @@ func (c *listConverter) add(row *ion.Struct) bool {
 		})
 		return nil
 	})
-	if !ok || key == nil {
-		return false
+	if key == nil {
+		return
 	}
 	lst := c.m[key]
 	if lst == nil {
@@ -228,7 +223,6 @@ func (c *listConverter) add(row *ion.Struct) bool {
 		c.m[key] = lst
 	}
 	lst.Values = append(lst.Values, &expr.Struct{Fields: fields})
-	return true
 }
 
 type subreplacement struct {
@@ -284,7 +278,6 @@ func (r *replacement) Close() error {
 // with the appropriate constant from
 // the replacement list
 type replacer struct {
-	err     error
 	inputs  []replacement
 	simpl   expr.Rewriter
 	rewrote bool
@@ -304,9 +297,6 @@ func (r *replacer) simplify(e expr.Node) expr.Node {
 }
 
 func (r *replacer) Walk(e expr.Node) expr.Rewriter {
-	if r.err != nil {
-		return nil
-	}
 	return r
 }
 
@@ -321,22 +311,13 @@ func (r *replacer) Rewrite(e expr.Node) expr.Node {
 	case expr.ListReplacement:
 		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
-		value, ok := r.inputs[id].toList()
-		if !ok {
-			r.err = fmt.Errorf("cannot interpolate value %v as constant", r.inputs[id].rows)
-		}
-		return value
+		return r.inputs[id].toList()
 	case expr.InReplacement:
 		r.rewrote = true
 		id := int(b.Args[1].(expr.Integer))
-		lst, ok := r.inputs[id].toScalarList()
-		if !ok {
-			r.err = fmt.Errorf("cannot interpolate %v as const list", r.inputs[id].rows)
-			return e
-		}
 		return &expr.Member{
 			Arg: b.Args[0],
-			Set: lst,
+			Set: r.inputs[id].toScalarList(),
 		}
 	case expr.HashReplacement:
 		r.rewrote = true
@@ -347,29 +328,14 @@ func (r *replacer) Rewrite(e expr.Node) expr.Node {
 		if len(b.Args) == 5 {
 			elseval = b.Args[4]
 		}
-		fn, ok := r.inputs[id].toHashLookup(kind, label, b.Args[3], elseval)
-		if !ok {
-			r.err = fmt.Errorf("cannot interpolate %v as case", r.inputs[id].rows)
-			return e
-		}
-		return fn
+		return r.inputs[id].toHashLookup(kind, label, b.Args[3], elseval)
 	case expr.StructReplacement:
 		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
-		value, ok := r.inputs[id].toStruct()
-		if !ok {
-			r.err = fmt.Errorf("cannot interpolate %v as a structure", r.inputs[id].rows)
-			return e
-		}
-		return value
+		return r.inputs[id].toStruct()
 	case expr.ScalarReplacement:
 		r.rewrote = true
 		id := int(b.Args[0].(expr.Integer))
-		value, ok := r.inputs[id].toScalar()
-		if !ok {
-			r.err = fmt.Errorf("cannot interpolate value %v as a constant", r.inputs[id].rows)
-			return e
-		}
-		return value
+		return r.inputs[id].toScalar()
 	}
 }

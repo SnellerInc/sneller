@@ -15,9 +15,12 @@
 package plan
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"sync"
 
+	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
 )
@@ -167,6 +170,7 @@ func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) erro
 					Output:   s,
 					Parallel: ep.Parallel, // ...meaningful?
 					Context:  ep.Context,
+					Rewriter: ep.Rewriter,
 				}
 				// wrap the rest of the query in a Tree;
 				// this makes it look to the Transport
@@ -204,7 +208,7 @@ func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) erro
 	}
 }
 
-func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("unionmap", dst, st)
 	dst.EndStruct()
@@ -216,3 +220,136 @@ func (u *UnionMap) setfield(d Decoder, f ion.Field) error {
 }
 
 func (u *UnionMap) String() string { return "UNION MAP" }
+
+type UnionPartition struct {
+	Nonterminal
+	By []string
+}
+
+func (u *UnionPartition) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
+	dst.BeginStruct(-1)
+	settype("union_partition", dst, st)
+	dst.BeginField(st.Intern("by"))
+	dst.BeginList(-1)
+	for i := range u.By {
+		dst.WriteString(u.By[i])
+	}
+	dst.EndList()
+	dst.EndStruct()
+	return nil
+}
+
+func (u *UnionPartition) setfield(d Decoder, f ion.Field) error {
+	switch f.Label {
+	case "by":
+		return f.UnpackList(func(d ion.Datum) error {
+			str, err := d.String()
+			if err != nil {
+				return err
+			}
+			u.By = append(u.By, str)
+			return nil
+		})
+	default:
+		return errUnexpectedField
+	}
+}
+
+// TablePart represents part of a table
+// split on a particular set of partitions.
+//
+// TablePart implements expr.Rewriter in order
+// to rewrite PARTITION_VALUE() expresions into
+// the corresponding Parts constants.
+type TablePart struct {
+	Handle TableHandle
+	Parts  []ion.Datum
+}
+
+func (t *TablePart) Walk(e expr.Node) expr.Rewriter {
+	return t
+}
+
+func (t *TablePart) Rewrite(e expr.Node) expr.Node {
+	b, ok := e.(*expr.Builtin)
+	if !ok || b.Func != expr.PartitionValue {
+		return e
+	}
+	id := int(b.Args[0].(expr.Integer))
+	return mustConst(t.Parts[id])
+}
+
+// PartitionHandle is an optional interface implemented
+// by TableHandle for partitions.
+type PartitionHandle interface {
+	// SplitBy should split the table on the given partition(s)
+	// and return one TablePart for each unique partition tuple.
+	// Each TablePart[*].Parts datum should correspond to
+	// the list of parts provided to SplitBy.
+	// The returned slice of TableParts should have at least one element.
+	SplitBy(parts []string) ([]TablePart, error)
+}
+
+func (u *UnionPartition) String() string {
+	return fmt.Sprintf("UNION PARTITION %v", u.By)
+}
+
+func (u *UnionPartition) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+	if len(u.By) == 0 {
+		return delay(fmt.Errorf("plan: UnionPartition: 0 partitions to split?"))
+	}
+	return func(h TableHandle) error {
+		ph, ok := h.(PartitionHandle)
+		if !ok {
+			return fmt.Errorf("plan: UnionPartition: handle %T cannot be partitioned", h)
+		}
+		parts, err := ph.SplitBy(u.By)
+		if err != nil {
+			return err
+		}
+		if len(parts) == 0 {
+			return fmt.Errorf("plan: UnionPartition: handle %T by %v produced 0 parts?", h, u.By)
+		}
+		var wg sync.WaitGroup
+		errs := make([]error, len(parts))
+		for i := range parts {
+			w, err := dst.Open()
+			if err != nil {
+				return err
+			}
+			subep := &ExecParams{
+				Output:   w,
+				Parallel: ep.Parallel,
+				Context:  ep.Context,
+				Rewriter: ep.Rewriter,
+			}
+			// stack the PARTITION_VALUE() rewrite
+			subep.AddRewrite(&parts[i])
+			into := vm.LockedSink(w)
+			inner := u.From.wrap(into, subep)
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				err := inner(parts[i].Handle)
+				err2 := w.Close()
+				if err == nil || errors.Is(err, io.EOF) {
+					err = err2
+				}
+				errs[i] = err
+				ep.Stats.atomicAdd(&subep.Stats)
+			}(i)
+		}
+		wg.Wait()
+		for i := range errs {
+			if errs[i] != nil && !errors.Is(errs[i], io.EOF) {
+				err = errs[i]
+				break
+			}
+		}
+		err2 := dst.Close()
+		if err == nil {
+			err = err2
+		}
+		return err
+	}
+}

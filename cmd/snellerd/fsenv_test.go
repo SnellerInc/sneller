@@ -108,8 +108,9 @@ func testdirEnviron(t *testing.T) db.Tenant {
 	err := db.WriteDefinition(dfs, "default", &db.Definition{
 		Name: "parking",
 		Inputs: []db.Input{
-			{Pattern: "file://a-prefix/*.10n"},
+			{Pattern: "file://a-{prefix}/*.10n"},
 		},
+		Partitions: []db.Partition{{Field: "prefix"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -489,6 +490,8 @@ func TestSimpleFS(t *testing.T) {
 	}{
 		// get coverage of both empty db and default db
 		{input: "SELECT COUNT(*) FROM default.parking", output: `{"count": 1023}`},
+		// group by partition coverage:
+		{input: "SELECT COUNT(*), prefix FROM default.parking GROUP BY prefix", output: `{"count": 1023, "prefix": "prefix"}`},
 		{input: "SELECT COUNT(*) FROM parking", db: "default", output: `{"count": 1023}`},
 		// check base case for taxi
 		{input: "SELECT COUNT(*) FROM default.taxi", output: `{"count": 8560}`},

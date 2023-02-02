@@ -11,4 +11,4 @@ FROM input
 {"x": 1}
 {"x": 1}
 ---
-{"x_count": 3, "y_count": 0}
+{"x_count": 2, "y_count": 0}

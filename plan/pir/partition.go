@@ -18,8 +18,6 @@ import (
 	"github.com/SnellerInc/sneller/expr"
 )
 
-var partitionsEnabled = false
-
 func aggByPartition(b *Trace, agg *Aggregate) (*UnionMap, bool) {
 	// split the GROUP BY clause into
 	// partition-specific and non-partition-specific results
@@ -103,10 +101,6 @@ func trivialSplit(s Step) bool {
 }
 
 func partition(b *Trace) {
-	// only on in testing right now
-	if !partitionsEnabled {
-		return
-	}
 	lst := steps(b)
 	for i := range lst {
 		s := lst[i]

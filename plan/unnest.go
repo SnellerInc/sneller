@@ -36,11 +36,11 @@ func (u *Unnest) rewrite(rw expr.Rewriter) {
 	u.Expr = expr.Rewrite(rw, u.Expr)
 }
 
-func (u *Unnest) encode(dst *ion.Buffer, st *ion.Symtab) error {
+func (u *Unnest) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	settype("unnest", dst, st)
 	dst.BeginField(st.Intern("expr"))
-	u.Expr.Encode(dst, st)
+	expr.Rewrite(rw, u.Expr).Encode(dst, st)
 	dst.BeginField(st.Intern("result"))
 	dst.WriteString(u.Result)
 	dst.EndStruct()
@@ -86,7 +86,7 @@ func (u *Unnest) String() string {
 }
 
 func (u *Unnest) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	op, err := vm.NewUnnest(dst, u.Expr, u.Result)
+	op, err := vm.NewUnnest(dst, ep.rewrite(u.Expr), u.Result)
 	if err != nil {
 		return delay(err)
 	}
