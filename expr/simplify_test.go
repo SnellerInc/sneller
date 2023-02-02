@@ -1166,7 +1166,7 @@ func testEquivalence(e Node, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := FromDatum(d)
+	res, err := Decode(d)
 	if err != nil {
 		t.Helper()
 		t.Errorf("node in: %s - error %s", e, err)

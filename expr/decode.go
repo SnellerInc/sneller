@@ -22,15 +22,15 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-func FromDatum(d ion.Datum) (Node, error) {
-	node, err := fromDatum(d)
+func Decode(d ion.Datum) (Node, error) {
+	node, err := decode(d)
 	if err != nil {
 		err = fmt.Errorf("expr.Decode: %w", err)
 	}
 	return node, err
 }
 
-func fromDatum(d ion.Datum) (Node, error) {
+func decode(d ion.Datum) (Node, error) {
 	if d.IsEmpty() {
 		return nil, fmt.Errorf("no input data")
 	}

@@ -58,7 +58,7 @@ func (i *Input) decode(d Decoder, v ion.Datum) error {
 	err := v.UnpackStruct(func(f ion.Field) error {
 		switch f.Label {
 		case "table":
-			e, err := expr.FromDatum(f.Datum)
+			e, err := expr.Decode(f.Datum)
 			if err != nil {
 				return err
 			}

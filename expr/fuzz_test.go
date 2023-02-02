@@ -99,7 +99,7 @@ func FuzzCheck(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ret, err := expr.FromDatum(d)
+		ret, err := expr.Decode(d)
 		if err != nil {
 			t.Fatalf("Decode of %s failed: %s", expr.ToString(q.Body), err)
 		}

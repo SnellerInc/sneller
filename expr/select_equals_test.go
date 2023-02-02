@@ -50,7 +50,7 @@ func TestSelectEquals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("case %d: decode datum: %s", i, err)
 		}
-		node, err := expr.FromDatum(d)
+		node, err := expr.Decode(d)
 		if err != nil {
 			t.Fatalf("case %d: decode: %s", i, err)
 		}

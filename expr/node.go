@@ -423,14 +423,14 @@ func (a *Aggregate) SetField(f ion.Field) error {
 		a.Op = AggregateOp(u)
 	case "inner":
 		var err error
-		a.Inner, err = FromDatum(f.Datum)
+		a.Inner, err = Decode(f.Datum)
 		return err
 	case "over_partition":
 		if a.Over == nil {
 			a.Over = new(Window)
 		}
 		return f.UnpackList(func(d ion.Datum) error {
-			item, err := FromDatum(d)
+			item, err := Decode(d)
 			if err != nil {
 				return err
 			}
@@ -446,7 +446,7 @@ func (a *Aggregate) SetField(f ion.Field) error {
 		return err
 	case "filter_where":
 		var err error
-		a.Filter, err = FromDatum(f.Datum)
+		a.Filter, err = Decode(f.Datum)
 		return err
 	case "precision":
 		p, err := f.Uint()
@@ -1138,7 +1138,7 @@ func (d *Dot) Encode(dst *ion.Buffer, st *ion.Symtab) {
 func (d *Dot) SetField(f ion.Field) (err error) {
 	switch f.Label {
 	case "inner":
-		d.Inner, err = FromDatum(f.Datum)
+		d.Inner, err = Decode(f.Datum)
 	case "field":
 		d.Field, err = f.String()
 	default:
@@ -1212,7 +1212,7 @@ func (i *Index) Encode(dst *ion.Buffer, st *ion.Symtab) {
 func (i *Index) SetField(f ion.Field) (err error) {
 	switch f.Label {
 	case "inner":
-		i.Inner, err = FromDatum(f.Datum)
+		i.Inner, err = Decode(f.Datum)
 	case "offset":
 		var v int64
 		v, err = f.Int()
@@ -1512,7 +1512,7 @@ func (m *Member) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "arg":
-		m.Arg, err = FromDatum(f.Datum)
+		m.Arg, err = Decode(f.Datum)
 	case "values":
 		return m.Set.AddList(f.Datum)
 	default:
@@ -1638,9 +1638,9 @@ func (l *Lookup) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "expr":
-		l.Expr, err = FromDatum(f.Datum)
+		l.Expr, err = Decode(f.Datum)
 	case "else":
-		l.Else, err = FromDatum(f.Datum)
+		l.Else, err = Decode(f.Datum)
 	case "keys":
 		l.Keys.AddList(f.Datum)
 	case "values":
@@ -1684,11 +1684,11 @@ func (c *Comparison) SetField(f ion.Field) error {
 		c.Op = CmpOp(u)
 	case "left":
 		var err error
-		c.Left, err = FromDatum(f.Datum)
+		c.Left, err = Decode(f.Datum)
 		return err
 	case "right":
 		var err error
-		c.Right, err = FromDatum(f.Datum)
+		c.Right, err = Decode(f.Datum)
 		return err
 	default:
 		return errUnexpectedField
@@ -1749,7 +1749,7 @@ func (s *StringMatch) SetField(f ion.Field) error {
 		v, err = f.Int()
 		s.Op = StringMatchOp(v)
 	case "expr":
-		s.Expr, err = FromDatum(f.Datum)
+		s.Expr, err = Decode(f.Datum)
 	case "pattern":
 		s.Pattern, err = f.String()
 	case "escape":
@@ -1839,7 +1839,7 @@ func (n *Not) SetField(f ion.Field) error {
 	switch f.Label {
 	case "inner":
 		var err error
-		n.Expr, err = FromDatum(f.Datum)
+		n.Expr, err = Decode(f.Datum)
 		return err
 	}
 	return errUnexpectedField
@@ -2035,9 +2035,9 @@ func (l *Logical) SetField(f ion.Field) error {
 		u, err = f.Uint()
 		l.Op = LogicalOp(u)
 	case "left":
-		l.Left, err = FromDatum(f.Datum)
+		l.Left, err = Decode(f.Datum)
 	case "right":
-		l.Right, err = FromDatum(f.Datum)
+		l.Right, err = Decode(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2139,7 +2139,7 @@ func (b *Builtin) SetField(f ion.Field) error {
 		return err
 	case "args":
 		return f.UnpackList(func(d ion.Datum) error {
-			nod, err := FromDatum(d)
+			nod, err := Decode(d)
 			if err != nil {
 				return err
 			}
@@ -2258,7 +2258,7 @@ func (u *UnaryArith) SetField(f ion.Field) error {
 		val, err = f.Uint()
 		u.Op = UnaryArithOp(val)
 	case "child":
-		u.Child, err = FromDatum(f.Datum)
+		u.Child, err = Decode(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2427,9 +2427,9 @@ func (a *Arithmetic) SetField(f ion.Field) error {
 		u, err = f.Uint()
 		a.Op = ArithOp(u)
 	case "left":
-		a.Left, err = FromDatum(f.Datum)
+		a.Left, err = Decode(f.Datum)
 	case "right":
-		a.Right, err = FromDatum(f.Datum)
+		a.Right, err = Decode(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2534,7 +2534,7 @@ func (a *Appended) SetField(f ion.Field) error {
 	switch f.Label {
 	case "values":
 		return f.UnpackList(func(d ion.Datum) error {
-			v, err := FromDatum(d)
+			v, err := Decode(d)
 			if err != nil {
 				return err
 			}
@@ -2637,7 +2637,7 @@ func (i *IsKey) SetField(f ion.Field) error {
 		u, err = f.Uint()
 		i.Key = Keyword(u)
 	case "inner":
-		i.Expr, err = FromDatum(f.Datum)
+		i.Expr, err = Decode(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -2945,7 +2945,7 @@ func (c *Case) SetField(f ion.Field) error {
 			if err != nil {
 				return err
 			}
-			when, err := FromDatum(d)
+			when, err := Decode(d)
 			if err != nil {
 				return err
 			}
@@ -2953,7 +2953,7 @@ func (c *Case) SetField(f ion.Field) error {
 			if err != nil {
 				return err
 			}
-			then, err := FromDatum(d)
+			then, err := Decode(d)
 			if err != nil {
 				return err
 			}
@@ -2961,7 +2961,7 @@ func (c *Case) SetField(f ion.Field) error {
 			return nil
 		})
 	case "else":
-		c.Else, err = FromDatum(f.Datum)
+		c.Else, err = Decode(f.Datum)
 	case "valence":
 		c.Valence, err = f.String()
 	default:
@@ -3107,7 +3107,7 @@ func (c *Cast) Encode(dst *ion.Buffer, st *ion.Symtab) {
 func (c *Cast) SetField(f ion.Field) error {
 	switch f.Label {
 	case "from":
-		from, err := FromDatum(f.Datum)
+		from, err := Decode(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -3610,7 +3610,7 @@ func (u *Unpivot) SetField(f ion.Field) error {
 		s, err = f.String()
 		u.At = &s
 	case "TupleRef":
-		u.TupleRef, err = FromDatum(f.Datum)
+		u.TupleRef, err = Decode(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -3722,13 +3722,13 @@ func (u *Union) SetField(f ion.Field) error {
 		}
 		u.Type = UnionType(v)
 	case "left":
-		v, err := FromDatum(f.Datum)
+		v, err := Decode(f.Datum)
 		if err != nil {
 			return err
 		}
 		u.Left = v
 	case "right":
-		v, err := FromDatum(f.Datum)
+		v, err := Decode(f.Datum)
 		if err != nil {
 			return err
 		}

@@ -198,7 +198,7 @@ func (q *Query) SetField(f ion.Field) error {
 				return nil
 			}
 			// hastable == true
-			node, err := FromDatum(d)
+			node, err := Decode(d)
 			if err != nil {
 				return err
 			}
@@ -214,9 +214,9 @@ func (q *Query) SetField(f ion.Field) error {
 			return err
 		}
 	case "into":
-		q.Into, err = FromDatum(f.Datum)
+		q.Into, err = Decode(f.Datum)
 	case "body":
-		q.Body, err = FromDatum(f.Datum)
+		q.Body, err = Decode(f.Datum)
 	default:
 		err = fmt.Errorf("DecodeQuery: unknown field %q", f.Label)
 	}

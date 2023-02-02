@@ -221,7 +221,7 @@ func (t *Table) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "expr":
-		t.Expr, err = FromDatum(f.Datum)
+		t.Expr, err = Decode(f.Datum)
 	case "bind":
 		str, err := f.String()
 		if err != nil {
@@ -279,9 +279,9 @@ func (o *OnEquals) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "left":
-		o.Left, err = FromDatum(f.Datum)
+		o.Left, err = Decode(f.Datum)
 	case "right":
-		o.Right, err = FromDatum(f.Datum)
+		o.Right, err = Decode(f.Datum)
 	default:
 		return errUnexpectedField
 	}
@@ -363,10 +363,10 @@ func (j *Join) SetField(f ion.Field) error {
 		}
 		j.Kind = JoinKind(u)
 	case "on":
-		j.On, err = FromDatum(f.Datum)
+		j.On, err = Decode(f.Datum)
 		return err
 	case "left":
-		e, err := FromDatum(f.Datum)
+		e, err := Decode(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -378,7 +378,7 @@ func (j *Join) SetField(f ion.Field) error {
 		return nil
 	case "right":
 		var err error
-		j.Right.Expr, err = FromDatum(f.Datum)
+		j.Right.Expr, err = Decode(f.Datum)
 		return err
 	case "bind":
 		str, err := f.String()
@@ -747,7 +747,7 @@ func decodeOrder(d ion.Datum) ([]Order, error) {
 			var err error
 			switch f.Label {
 			case "col":
-				o.Column, err = FromDatum(f.Datum)
+				o.Column, err = Decode(f.Datum)
 			case "desc":
 				o.Desc, err = f.Bool()
 			case "nulls_last":
@@ -789,7 +789,7 @@ func decodeBindings(d ion.Datum) ([]Binding, error) {
 		err = s.Each(func(f ion.Field) error {
 			switch f.Label {
 			case "expr":
-				exp, err := FromDatum(f.Datum)
+				exp, err := Decode(f.Datum)
 				if err != nil {
 					return err
 				}
@@ -821,7 +821,7 @@ func decodeBindings(d ion.Datum) ([]Binding, error) {
 func decodeDistinctExpr(d ion.Datum) ([]Node, error) {
 	var out []Node
 	err := d.UnpackList(func(d ion.Datum) error {
-		n, err := FromDatum(d)
+		n, err := Decode(d)
 		if err != nil {
 			return err
 		}
@@ -841,7 +841,7 @@ func (s *Select) SetField(f ion.Field) error {
 		s.Columns, err = decodeBindings(f.Datum)
 	case "from":
 		var e Node
-		e, err = FromDatum(f.Datum)
+		e, err = Decode(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -851,9 +851,9 @@ func (s *Select) SetField(f ion.Field) error {
 		}
 		s.From = f
 	case "where":
-		s.Where, err = FromDatum(f.Datum)
+		s.Where, err = Decode(f.Datum)
 	case "having":
-		s.Having, err = FromDatum(f.Datum)
+		s.Having, err = Decode(f.Datum)
 	case "group_by":
 		s.GroupBy, err = decodeBindings(f.Datum)
 	case "order_by":

@@ -180,7 +180,7 @@ func BenchmarkDeserialize(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				_, err := expr.FromDatum(d)
+				_, err := expr.Decode(d)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -625,7 +625,7 @@ func testEquivalence(t *testing.T, e expr.Node) {
 		t.Helper()
 		t.Fatal(err)
 	}
-	res, err := expr.FromDatum(d)
+	res, err := expr.Decode(d)
 	if err != nil {
 		t.Helper()
 		t.Fatal(err)

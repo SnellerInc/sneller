@@ -280,7 +280,7 @@ func decodeAggregation(dst *vm.Aggregation, d ion.Datum) error {
 
 		d, err := i.Next()
 		if err == nil {
-			e, err = expr.FromDatum(d)
+			e, err = expr.Decode(d)
 		}
 		if err != nil {
 			return fmt.Errorf("decoding aggregate expression: %w", err)
@@ -432,13 +432,13 @@ func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab) error {
 func (l *Leaf) setfield(d Decoder, f ion.Field) error {
 	switch f.Label {
 	case "orig":
-		n, err := expr.FromDatum(f.Datum)
+		n, err := expr.Decode(f.Datum)
 		if err != nil {
 			return err
 		}
 		l.Orig = n.(*expr.Table)
 	case "filter":
-		f, err := expr.FromDatum(f.Datum)
+		f, err := expr.Decode(f.Datum)
 		if err != nil {
 			return err
 		}
@@ -968,7 +968,7 @@ func (o *OrderBy) setfield(d Decoder, f ion.Field) error {
 			}
 			v, err = i.Next()
 			if err == nil {
-				col.Node, err = expr.FromDatum(v)
+				col.Node, err = expr.Decode(v)
 			}
 			if err != nil {
 				return err
@@ -1047,7 +1047,7 @@ func (d *Distinct) setfield(_ Decoder, f ion.Field) error {
 	switch f.Label {
 	case "fields":
 		return f.UnpackList(func(v ion.Datum) error {
-			e, err := expr.FromDatum(v)
+			e, err := expr.Decode(v)
 			if err != nil {
 				return err
 			}

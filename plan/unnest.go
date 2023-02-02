@@ -65,7 +65,7 @@ func (u *Unnest) setfield(d Decoder, f ion.Field) error {
 		}
 		u.Result = s
 	case "expr":
-		e, err := expr.FromDatum(f.Datum)
+		e, err := expr.Decode(f.Datum)
 		if err != nil {
 			return err
 		}

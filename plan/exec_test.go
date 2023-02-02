@@ -1829,7 +1829,7 @@ func testSerialize(t *testing.T, e expr.Node) {
 		t.Fatal(err)
 	}
 
-	res, err := expr.FromDatum(d)
+	res, err := expr.Decode(d)
 	if err != nil {
 		t.Helper()
 		t.Logf("js: %s", buf2json(&st, &obuf))

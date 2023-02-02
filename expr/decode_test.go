@@ -72,7 +72,7 @@ func TestDecodeFailures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = FromDatum(d)
+			_, err = Decode(d)
 
 			// then
 			if err == nil {

@@ -59,7 +59,7 @@ func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab) error {
 func (f *Filter) setfield(d Decoder, sf ion.Field) error {
 	switch sf.Label {
 	case "expr":
-		e, err := expr.FromDatum(sf.Datum)
+		e, err := expr.Decode(sf.Datum)
 		if err != nil {
 			return err
 		}

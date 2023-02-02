@@ -70,7 +70,7 @@ func (f *FilterHandle) Decode(d ion.Datum) error {
 		var err error
 		switch sf.Label {
 		case "filter":
-			f.Expr, err = expr.FromDatum(sf.Datum)
+			f.Expr, err = expr.Decode(sf.Datum)
 		case "blobs":
 			f.Blobs, err = blob.DecodeList(sf.Datum)
 		case "fields":
