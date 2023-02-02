@@ -16,7 +16,90 @@ package pir
 
 import (
 	"github.com/SnellerInc/sneller/expr"
+
+	"golang.org/x/exp/slices"
 )
+
+func isPartition(s Step, id expr.Ident, it *IterTable) (*IterTable, bool) {
+	step, _ := s.parent().get(string(id))
+	it2, ok := step.(*IterTable)
+	if !ok || (it != nil && it2 != it) {
+		return nil, false
+	}
+	return it2, it2.Index != nil && it2.Index.HasPartition(string(id))
+}
+
+// is lst exactly the list of results produced by bind
+func matchesBindings(bind []expr.Binding, lst []string) bool {
+	if len(lst) != len(bind) {
+		return false
+	}
+	for i := range bind {
+		if !slices.Contains(lst, bind[i].Result()) {
+			return false
+		}
+	}
+	return true
+}
+
+func distinctByPartition(b *Trace, s *Bind) (*UnionMap, bool) {
+	d, ok := s.parent().(*Distinct)
+	if !ok {
+		return nil, false
+	}
+	var parts []string
+	var keep []expr.Node
+	var it *IterTable
+	for _, col := range d.Columns {
+		id, ok := col.(expr.Ident)
+		if !ok {
+			keep = append(keep, col)
+			continue
+		}
+		it, ok = isPartition(d, id, it)
+		if ok {
+			parts = append(parts, string(id))
+		} else {
+			keep = append(keep, col)
+		}
+	}
+	if it == nil || len(parts) == 0 {
+		return nil, false
+	}
+
+	if len(keep) == 0 {
+		if matchesBindings(s.bind, parts) && d.parent() == it && it.Filter == nil {
+			// if we eliminated everything, then we are outputting 1 row
+			s.setparent(DummyOutput{})
+		} else {
+			// we can output the partition as soon as we have
+			// one row produced by the input
+			lim := &Limit{Count: 1}
+			lim.setparent(d.parent())
+			s.setparent(lim)
+		}
+	} else {
+		d.Columns = keep
+	}
+
+	// replace all the references to the distinct partition(s)
+	// with PARTITION_VALUE() expressions at the projection step
+	bf := bindflattener{}
+	for i := range parts {
+		bf.from = append(bf.from, expr.Bind(expr.Call(expr.PartitionValue, expr.Integer(i)), parts[i]))
+	}
+	for i := range s.bind {
+		s.bind[i].Expr = expr.Rewrite(&bf, s.bind[i].Expr)
+	}
+	return &UnionMap{
+		Inner: it,
+		Child: &Trace{
+			Parent: b,
+			top:    s,
+		},
+		PartitionBy: parts,
+	}, true
+}
 
 func aggByPartition(b *Trace, agg *Aggregate) (*UnionMap, bool) {
 	// split the GROUP BY clause into
@@ -104,11 +187,16 @@ func partition(b *Trace) {
 	lst := steps(b)
 	for i := range lst {
 		s := lst[i]
-		agg, ok := s.(*Aggregate)
-		if !ok || len(agg.GroupBy) == 0 {
-			continue
+		var ok bool
+		var self *UnionMap
+		switch s := s.(type) {
+		case *Aggregate:
+			if len(s.GroupBy) > 0 {
+				self, ok = aggByPartition(b, s)
+			}
+		case *Bind:
+			self, ok = distinctByPartition(b, s)
 		}
-		self, ok := aggByPartition(b, agg)
 		if !ok {
 			continue
 		}

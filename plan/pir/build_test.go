@@ -1385,6 +1385,85 @@ z = (SELECT a FROM bar LIMIT 1)`,
 			},
 			parts: []string{"a"},
 		},
+		{
+			// partial DISTINCT elimination via partition
+			input: `SELECT DISTINCT x, y FROM tbl`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY x (",
+				"	ITERATE tbl FIELDS [y]",
+				"	FILTER DISTINCT [y]",
+				"	PROJECT PARTITION_VALUE(0) AS x, y AS y)",
+			},
+			split: []string{
+				"UNION MAP tbl PARTITION BY x (",
+				"	UNION MAP tbl (",
+				"		ITERATE PART tbl FIELDS [y]",
+				"		FILTER DISTINCT [y])",
+				"	FILTER DISTINCT [y]",
+				"	PROJECT PARTITION_VALUE(0) AS x, y AS y)",
+			},
+			parts: []string{"x"},
+		},
+		{
+			// complete DISTINCT elimination via partition
+			input: `SELECT DISTINCT x FROM tbl`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY x (",
+				"	[{}]",
+				"	PROJECT PARTITION_VALUE(0) AS x)",
+			},
+			split: []string{
+				// no splitting b/c the terminal element is the dummy row
+				"UNION MAP tbl PARTITION BY x (",
+				"	[{}]",
+				"	PROJECT PARTITION_VALUE(0) AS x)",
+			},
+			parts: []string{"x"},
+		},
+		{
+			// complete DISTINCT elimination via partition
+			input: `SELECT DISTINCT x, y FROM tbl`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY x, y (",
+				"	[{}]",
+				"	PROJECT PARTITION_VALUE(0) AS x, PARTITION_VALUE(1) AS y)",
+			},
+			split: []string{
+				// no splitting b/c the terminal element is the dummy row
+				"UNION MAP tbl PARTITION BY x, y (",
+				"	[{}]",
+				"	PROJECT PARTITION_VALUE(0) AS x, PARTITION_VALUE(1) AS y)",
+			},
+			parts: []string{"x", "y"},
+		},
+		{
+			input: `SELECT DISTINCT x FROM tbl WHERE complex_expr`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY x (",
+				"	ITERATE tbl FIELDS [complex_expr] WHERE complex_expr",
+				"	LIMIT 1",
+				"	PROJECT PARTITION_VALUE(0) AS x)",
+			},
+			parts: []string{"x"},
+		},
+		{
+			input: `SELECT DISTINCT ON(x) x, foo, bar FROM tbl`,
+			expect: []string{
+				"UNION MAP tbl PARTITION BY x (",
+				"	ITERATE tbl FIELDS [bar, foo]",
+				"	LIMIT 1",
+				"	PROJECT PARTITION_VALUE(0) AS x, foo AS foo, bar AS bar)",
+			},
+			split: []string{
+				"UNION MAP tbl PARTITION BY x (",
+				"	UNION MAP tbl (",
+				"		ITERATE PART tbl FIELDS [bar, foo]",
+				"		LIMIT 1)",
+				"	LIMIT 1",
+				"	PROJECT PARTITION_VALUE(0) AS x, foo AS foo, bar AS bar)",
+			},
+			parts: []string{"x"},
+		},
 	}
 
 	for i := range tests {

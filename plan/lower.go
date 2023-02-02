@@ -241,6 +241,12 @@ func (w *walker) lowerUnionMap(in *pir.UnionMap, env Env) (Op, error) {
 		return nil, err
 	}
 	if len(in.PartitionBy) > 0 {
+		if w.latest == -1 {
+			// it's possible that the inner node
+			// is actually a dummy (we eliminated the iteration);
+			// make sure we actually partition the right data!
+			w.put(in.Inner)
+		}
 		return &UnionPartition{
 			Nonterminal: Nonterminal{From: sub},
 			By:          in.PartitionBy,
