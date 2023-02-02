@@ -18,34 +18,37 @@ import (
 	"fmt"
 )
 
-// UnpackTypedStruct walks a structure and expects the
-// first field is "type". The value of field is passed
-// to settype callback. Subsequent fields are passed
-// to setitem callback.
+// UnpackTyped iterates the fields in a struct
+// to find a string field named "type" which is
+// passed to fn to resolve to a concrete type.
+// The other fields are passed to SetField on
+// the returned object.
 //
-// XXX: This method is deprecated. Use
-// Struct.UnpackTyped.
-func UnpackTypedStruct(st *Symtab, buf []byte, settype func(typename string) error, setfield func(name string, body []byte) error) ([]byte, error) {
-	d, rest, err := ReadDatum(st, buf)
-	if err != nil {
-		return nil, err
-	}
-	s, err := d.Struct()
-	if err != nil {
-		return nil, err
-	}
-	return rest, s.UnpackTyped(settype, func(f Field) error {
-		return setfield(f.Label, f.buf)
+// fn should return true to indicate that the
+// type was resolved, and false to indicate that
+// the type is not supported.
+//
+// If d is not a struct or the "type" field is
+// not present, this returns an error.
+func UnpackTyped[T FieldSetter](d Datum, fn func(typ string) (T, bool)) (T, error) {
+	out, err := unpackTyped(d, func(typ string) (FieldSetter, bool) {
+		return fn(typ)
 	})
+	if err != nil {
+		var empty T
+		return empty, err
+	}
+	return out.(T), nil
 }
 
-func (s Struct) UnpackTyped(settype func(typ string) error, setfield func(Field) error) error {
+func unpackTyped(d Datum, fn func(typ string) (FieldSetter, bool)) (FieldSetter, error) {
+	var out FieldSetter
 	var fields []Field // fields seen before type
 	found := false
-	err := s.Each(func(f Field) error {
+	err := d.UnpackStruct(func(f Field) error {
 		if f.Label != "type" {
 			if found {
-				return setfield(f)
+				return out.SetField(f)
 			}
 			fields = append(fields, f)
 			return nil
@@ -58,13 +61,12 @@ func (s Struct) UnpackTyped(settype func(typ string) error, setfield func(Field)
 		if err != nil {
 			return err
 		}
-		err = settype(typ)
-		if err != nil {
-			return err
+		out, found = fn(typ)
+		if !found {
+			return fmt.Errorf("unrecognized type %q", typ)
 		}
-		found = true
 		for i := range fields {
-			if err := setfield(fields[i]); err != nil {
+			if err := out.SetField(fields[i]); err != nil {
 				return err
 			}
 		}
@@ -72,63 +74,17 @@ func (s Struct) UnpackTyped(settype func(typ string) error, setfield func(Field)
 		return nil
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !found {
-		return fmt.Errorf("field \"type\" not found")
+		return nil, fmt.Errorf("field \"type\" not found")
 	}
-	return nil
+	return out, nil
 }
 
-// StructParser is an Ion struct decoder.
-type StructParser interface {
-	// Init is called before parsing start
-	Init()
-
+// FieldSetter is an object which can accept
+// fields from an ion struct.
+type FieldSetter interface {
 	// SetField is called for each structure field.
 	SetField(Field) error
-
-	// Finalize is called after all fields were visited.
-	// This method is meant to perform additional validation.
-	Finalize() error
-}
-
-// TypeResolver is an object that uses the type name to
-// select a proper parser for structure.
-type TypeResolver interface {
-	Resolve(typename string) (StructParser, error)
-}
-
-// UnpackTypedRes performs exactly the same job as
-// UnpackTyped, but uses a TypeResolver to perform
-// type resolution rather than callbacks.
-func (s Struct) UnpackTypedRes(resolver TypeResolver) error {
-	var parser StructParser
-	var err error
-
-	settype := func(typename string) error {
-		parser, err = resolver.Resolve(typename)
-		if err == nil {
-			parser.Init()
-		} else {
-			parser = nil
-		}
-		return err
-	}
-
-	setitem := func(f Field) error {
-		return parser.SetField(f)
-	}
-
-	err = s.UnpackTyped(settype, setitem)
-	var err2 error
-	if parser != nil {
-		err2 = parser.Finalize()
-	}
-
-	if err == nil {
-		err = err2
-	}
-
-	return err
 }

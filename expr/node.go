@@ -413,7 +413,7 @@ func (a *Aggregate) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (a *Aggregate) setfield(f ion.Field) error {
+func (a *Aggregate) SetField(f ion.Field) error {
 	switch f.Label {
 	case "op":
 		u, err := f.Uint()
@@ -1029,7 +1029,7 @@ func (r *Rational) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (r *Rational) setfield(f ion.Field) error {
+func (r *Rational) SetField(f ion.Field) error {
 	switch f.Label {
 	case "blob":
 		mem, err := f.BlobShared()
@@ -1135,7 +1135,7 @@ func (d *Dot) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (d *Dot) setfield(f ion.Field) (err error) {
+func (d *Dot) SetField(f ion.Field) (err error) {
 	switch f.Label {
 	case "inner":
 		d.Inner, err = FromDatum(f.Datum)
@@ -1209,7 +1209,7 @@ func (i *Index) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (i *Index) setfield(f ion.Field) (err error) {
+func (i *Index) SetField(f ion.Field) (err error) {
 	switch f.Label {
 	case "inner":
 		i.Inner, err = FromDatum(f.Datum)
@@ -1277,7 +1277,7 @@ func (s Star) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s Star) setfield(ion.Field) error {
+func (s Star) SetField(ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -1304,7 +1304,7 @@ func (m Missing) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (m Missing) setfield(ion.Field) error {
+func (m Missing) SetField(ion.Field) error {
 	return errUnexpectedField
 }
 
@@ -1508,7 +1508,7 @@ func (m *Member) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (m *Member) setfield(f ion.Field) error {
+func (m *Member) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "arg":
@@ -1634,7 +1634,7 @@ func (l *Lookup) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (l *Lookup) setfield(f ion.Field) error {
+func (l *Lookup) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "expr":
@@ -1674,7 +1674,7 @@ func (c *Comparison) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (c *Comparison) setfield(f ion.Field) error {
+func (c *Comparison) SetField(f ion.Field) error {
 	switch f.Label {
 	case "op":
 		u, err := f.Uint()
@@ -1741,7 +1741,7 @@ func (s *StringMatch) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s *StringMatch) setfield(f ion.Field) error {
+func (s *StringMatch) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "op":
@@ -1835,7 +1835,7 @@ func (n *Not) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (n *Not) setfield(f ion.Field) error {
+func (n *Not) SetField(f ion.Field) error {
 	switch f.Label {
 	case "inner":
 		var err error
@@ -2027,7 +2027,7 @@ func (l *Logical) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (l *Logical) setfield(f ion.Field) error {
+func (l *Logical) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "op":
@@ -2128,7 +2128,7 @@ func (b *Builtin) Name() string {
 	return strings.ToUpper(b.Text)
 }
 
-func (b *Builtin) setfield(f ion.Field) error {
+func (b *Builtin) SetField(f ion.Field) error {
 	switch f.Label {
 	case "func":
 		str, err := f.String()
@@ -2249,7 +2249,7 @@ func (u *UnaryArith) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (u *UnaryArith) setfield(f ion.Field) error {
+func (u *UnaryArith) SetField(f ion.Field) error {
 	var err error
 
 	switch f.Label {
@@ -2419,7 +2419,7 @@ func (a *Arithmetic) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (a *Arithmetic) setfield(f ion.Field) error {
+func (a *Arithmetic) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "op":
@@ -2530,7 +2530,7 @@ func (a *Appended) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (a *Appended) setfield(f ion.Field) error {
+func (a *Appended) SetField(f ion.Field) error {
 	switch f.Label {
 	case "values":
 		return f.UnpackList(func(d ion.Datum) error {
@@ -2629,7 +2629,7 @@ func (i *IsKey) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (i *IsKey) setfield(f ion.Field) error {
+func (i *IsKey) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "key":
@@ -2932,7 +2932,7 @@ func (c *Case) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (c *Case) setfield(f ion.Field) error {
+func (c *Case) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "limbs":
@@ -3104,7 +3104,7 @@ func (c *Cast) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (c *Cast) setfield(f ion.Field) error {
+func (c *Cast) SetField(f ion.Field) error {
 	switch f.Label {
 	case "from":
 		from, err := FromDatum(f.Datum)
@@ -3387,7 +3387,7 @@ func (s *Struct) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (s *Struct) setfield(f ion.Field) error {
+func (s *Struct) SetField(f ion.Field) error {
 	switch f.Label {
 	case "value":
 		// should just be a raw structure datum
@@ -3473,7 +3473,7 @@ func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (l *List) setfield(f ion.Field) error {
+func (l *List) SetField(f ion.Field) error {
 	switch f.Label {
 	case "value":
 		cnst, ok := AsConstant(f.Datum)
@@ -3598,7 +3598,7 @@ func (u *Unpivot) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (u *Unpivot) setfield(f ion.Field) error {
+func (u *Unpivot) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "As":
@@ -3713,7 +3713,7 @@ func (u *Union) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (u *Union) setfield(f ion.Field) error {
+func (u *Union) SetField(f ion.Field) error {
 	switch f.Label {
 	case "uniontype":
 		v, err := f.Uint()

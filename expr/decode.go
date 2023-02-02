@@ -22,15 +22,6 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-func Decode(st *ion.Symtab, msg []byte) (Node, []byte, error) {
-	d, rest, err := ion.ReadDatum(st, msg)
-	if err != nil {
-		return nil, nil, err
-	}
-	n, err := FromDatum(d)
-	return n, rest, err
-}
-
 func FromDatum(d ion.Datum) (Node, error) {
 	node, err := fromDatum(d)
 	if err != nil {
@@ -62,11 +53,7 @@ func fromDatum(d ion.Datum) (Node, error) {
 		s, err := d.String()
 		return String(s), err
 	case ion.StructType:
-		s, err := d.Struct()
-		if err != nil {
-			return nil, err
-		}
-		return decodeStruct(s)
+		return decodeStruct(d)
 	case ion.SymbolType:
 		s, err := d.String()
 		return Ident(s), err
@@ -82,89 +69,72 @@ var (
 	errUnexpectedField = errors.New("unexpected field")
 )
 
-func decodeStruct(s ion.Struct) (composite, error) {
-	var node composite
-
-	settype := func(typename string) error {
-		node = getEmpty(typename)
-		if node == nil {
-			return fmt.Errorf("unknown structure %q", typename)
-		}
-
-		return nil
-	}
-
-	setfield := func(f ion.Field) error {
-		return node.setfield(f)
-	}
-
-	err := s.UnpackTyped(settype, setfield)
-
-	return node, err
+func decodeStruct(d ion.Datum) (composite, error) {
+	return ion.UnpackTyped(d, getEmpty)
 }
 
 type composite interface {
 	Node
-	setfield(f ion.Field) error
+	ion.FieldSetter
 }
 
-func getEmpty(name string) composite {
+func getEmpty(name string) (composite, bool) {
 	switch name {
 	case "aggregate":
-		return &Aggregate{}
+		return &Aggregate{}, true
 	case "rat":
-		return (*Rational)(new(big.Rat))
+		return (*Rational)(new(big.Rat)), true
 	case "star":
-		return Star{}
+		return Star{}, true
 	case "dot":
-		return &Dot{}
+		return &Dot{}, true
 	case "index":
-		return &Index{}
+		return &Index{}, true
 	case "cmp":
-		return &Comparison{}
+		return &Comparison{}, true
 	case "stringmatch":
-		return &StringMatch{}
+		return &StringMatch{}, true
 	case "not":
-		return &Not{}
+		return &Not{}, true
 	case "logical":
-		return &Logical{}
+		return &Logical{}, true
 	case "builtin":
-		return &Builtin{}
+		return &Builtin{}, true
 	case "unaryArith":
-		return &UnaryArith{}
+		return &UnaryArith{}, true
 	case "arith":
-		return &Arithmetic{}
+		return &Arithmetic{}, true
 	case "append":
-		return &Appended{}
+		return &Appended{}, true
 	case "is":
-		return &IsKey{}
+		return &IsKey{}, true
 	case "select":
-		return &Select{}
+		return &Select{}, true
 	case "on":
-		return &OnEquals{}
+		return &OnEquals{}, true
 	case "join":
-		return &Join{}
+		return &Join{}, true
 	case "missing":
-		return Missing{}
+		return Missing{}, true
 	case "table":
-		return &Table{}
+		return &Table{}, true
 	case "case":
-		return &Case{}
+		return &Case{}, true
 	case "cast":
-		return &Cast{}
+		return &Cast{}, true
 	case "member":
-		return &Member{}
+		return &Member{}, true
 	case "lookup":
-		return &Lookup{}
+		return &Lookup{}, true
 	case "struct":
-		return &Struct{}
+		return &Struct{}, true
 	case "list":
-		return &List{}
+		return &List{}, true
 	case "unpivot":
-		return &Unpivot{}
+		return &Unpivot{}, true
 	case "union":
-		return &Union{}
+		return &Union{}, true
 	default:
-		return nil
+		return nil, false
 	}
 }

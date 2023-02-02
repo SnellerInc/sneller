@@ -154,12 +154,8 @@ type decodeURL struct {
 	url    *URL
 }
 
-func (d *decodeURL) getInterface() Interface {
-	return d.url
-}
-
-func (d *decodeURL) Init() {
-	d.url = d.parent.url()
+func (d *decodeURL) finalize() (Interface, error) {
+	return d.url, nil
 }
 
 func (d *decodeURL) SetField(f ion.Field) error {
@@ -186,10 +182,6 @@ func (d *decodeURL) SetField(f ion.Field) error {
 	}
 
 	return err
-}
-
-func (d *decodeURL) Finalize() error {
-	return nil
 }
 
 // Stat implements blob.Interface.Stat
@@ -471,50 +463,24 @@ func (d *blobDecoder) string(f ion.Field) (string, error) {
 }
 
 type interfaceDecoder interface {
-	Init()
-	SetField(ion.Field) error
-	Finalize() error
-	getInterface() Interface
+	ion.FieldSetter
+	finalize() (Interface, error)
 }
 
 func (d *blobDecoder) decode(v ion.Datum) (Interface, error) {
-	var dec interfaceDecoder
-
-	settype := func(typename string) error {
-		switch typename {
+	dec, err := ion.UnpackTyped(v, func(typ string) (interfaceDecoder, bool) {
+		switch typ {
 		case "blob.URL":
-			dec = &decodeURL{parent: d}
+			return &decodeURL{parent: d, url: d.url()}, true
 		case "blob.Compressed":
-			dec = &decodeComp{parent: d}
+			return &decodeComp{parent: d, comp: d.compressed()}, true
 		case "blob.CompressedPart":
-			dec = &decodeCPart{parent: d}
-		default:
-			return fmt.Errorf("unrecognized blob type %q", typename)
+			return &decodeCPart{parent: d, comp: new(CompressedPart)}, true
 		}
-
-		dec.Init()
-		return nil
-	}
-
-	setitem := func(f ion.Field) error {
-		return dec.SetField(f)
-	}
-
-	s, err := v.Struct()
+		return nil, false
+	})
 	if err != nil {
 		return nil, err
 	}
-	err = s.UnpackTyped(settype, setitem)
-	var err2 error
-	if dec != nil {
-		err2 = dec.Finalize()
-	}
-	if err == nil {
-		err = err2
-	}
-	if err != nil {
-		return nil, fmt.Errorf("blob.DecodeList: %w", err)
-	}
-
-	return dec.getInterface(), nil
+	return dec.finalize()
 }

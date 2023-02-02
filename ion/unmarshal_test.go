@@ -377,6 +377,65 @@ func TestUnmarshal(t *testing.T) {
 	}
 }
 
+type testUnpacker struct {
+	foo string
+	bar string
+}
+
+func (u *testUnpacker) SetField(f Field) error {
+	var err error
+	switch f.Label {
+	case "foo":
+		u.foo, err = f.String()
+	case "bar":
+		u.bar, err = f.String()
+	case "type":
+		panic("should never be called")
+	}
+	return err
+}
+
+func TestUnpackTyped(t *testing.T) {
+	d := NewStruct(nil, []Field{{
+		Label: "foo",
+		Datum: String("foo"),
+	}, {
+		Label: "type",
+		Datum: String("foo"),
+	}, {
+		Label: "bar",
+		Datum: String("bar"),
+	}}).Datum()
+
+	want := &testUnpacker{
+		foo: "foo",
+		bar: "bar",
+	}
+	got, err := UnpackTyped(d, func(typ string) (*testUnpacker, bool) {
+		switch typ {
+		case "foo":
+			return new(testUnpacker), true
+		}
+		return nil, false
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(want, got) {
+		t.Fatalf("mismatch:")
+		t.Fatalf("  want: %v", want)
+		t.Fatalf("  got:  %v", got)
+	}
+
+	// test unresolved type
+	_, err = UnpackTyped(d, func(string) (*testUnpacker, bool) {
+		return nil, false
+	})
+	if err == nil {
+		t.Fatal("no error?")
+	}
+}
+
 func BenchmarkMarshalUnmarshal(b *testing.B) {
 	now := time.Now().UTC()
 	tcs := []struct {

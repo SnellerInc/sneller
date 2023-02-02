@@ -159,88 +159,68 @@ func (q *Query) Encode(dst *ion.Buffer, st *ion.Symtab) {
 //
 // Returns query, tail of unprocessed Ion and error.
 func DecodeQuery(d ion.Datum) (*Query, error) {
-	q := &Query{}
-
-	settype := func(typename string) error {
-		if typename != "query" {
-			return fmt.Errorf(`unsupported "type" value %q`, typename)
+	q, err := ion.UnpackTyped(d, func(typ string) (*Query, bool) {
+		if typ == "query" {
+			return new(Query), true
 		}
-		return nil
-	}
-
-	setitem := func(f ion.Field) error {
-		var err error
-		switch f.Label {
-		case "explain":
-			var v int64
-			v, err = f.Int()
-			if err != nil {
-				return err
-			}
-
-			q.Explain = ExplainFormat(v)
-
-		case "with":
-			hastable := false
-			var table string
-			err = f.UnpackList(func(d ion.Datum) error {
-				if !hastable {
-					var err error
-					table, err = d.String()
-					if err != nil {
-						return err
-					}
-					hastable = true
-					return nil
-				}
-
-				// hastable == true
-				node, err := FromDatum(d)
-				if err != nil {
-					return err
-				}
-
-				sel, ok := node.(*Select)
-				if !ok {
-					return fmt.Errorf("expected Select node, got %T", node)
-				}
-
-				q.With = append(q.With, CTE{Table: table, As: sel})
-				hastable = false
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-		case "into":
-			q.Into, err = FromDatum(f.Datum)
-
-		case "body":
-			q.Body, err = FromDatum(f.Datum)
-
-		default:
-			err = fmt.Errorf("DecodeQuery: unknown field %q", f.Label)
-		}
-
-		return err
-	}
-
-	s, err := d.Struct()
+		return nil, false
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	err = s.UnpackTyped(settype, setitem)
-	if err != nil {
-		return nil, fmt.Errorf("DecodeQuery: %w", err)
-	}
-
 	if q.Body == nil {
 		return nil, fmt.Errorf(`DecodeQuery: missing "body" field`)
 	}
-
 	return q, nil
+}
+
+func (q *Query) SetField(f ion.Field) error {
+	var err error
+	switch f.Label {
+	case "explain":
+		var v int64
+		v, err = f.Int()
+		if err != nil {
+			return err
+		}
+		q.Explain = ExplainFormat(v)
+	case "with":
+		hastable := false
+		var table string
+		err = f.UnpackList(func(d ion.Datum) error {
+			if !hastable {
+				var err error
+				table, err = d.String()
+				if err != nil {
+					return err
+				}
+				hastable = true
+				return nil
+			}
+			// hastable == true
+			node, err := FromDatum(d)
+			if err != nil {
+				return err
+			}
+			sel, ok := node.(*Select)
+			if !ok {
+				return fmt.Errorf("expected Select node, got %T", node)
+			}
+			q.With = append(q.With, CTE{Table: table, As: sel})
+			hastable = false
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	case "into":
+		q.Into, err = FromDatum(f.Datum)
+	case "body":
+		q.Body, err = FromDatum(f.Datum)
+	default:
+		err = fmt.Errorf("DecodeQuery: unknown field %q", f.Label)
+	}
+	return err
 }
 
 // CheckHint checks consistency of the whole query using a hint

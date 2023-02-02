@@ -154,6 +154,15 @@ func (n *Node) decode(d Decoder, v ion.Datum) error {
 	return nil
 }
 
+type decOp struct {
+	op Op
+	d  Decoder
+}
+
+func (d *decOp) SetField(f ion.Field) error {
+	return d.op.setfield(d.d, f)
+}
+
 // Decode decodes a query plan from 'buf'
 // using the ion symbol table 'st' and the
 // environment 'env.'
@@ -164,46 +173,31 @@ func (n *Node) decode(d Decoder, v ion.Datum) error {
 // a table has its TableHandle populated with env.Stat.
 func decodeOps(d Decoder, v ion.Datum) (Op, error) {
 	var top Op
-	itemid := 0
+	i := 0
+	dec := decOp{d: d}
 	err := v.UnpackList(func(v ion.Datum) error {
-		var op Op
-
-		settype := func(typename string) error {
-			op = empty(typename)
-			if op == nil {
-				return fmt.Errorf("unrecognized type name %q", typename)
+		_, err := ion.UnpackTyped(v, func(typ string) (*decOp, bool) {
+			dec.op = empty(typ)
+			if dec.op != nil {
+				return &dec, true
 			}
-			return nil
-		}
-
-		setitem := func(f ion.Field) error {
-			return op.setfield(d, f)
-		}
-
-		s, err := v.Struct()
+			return nil, false
+		})
 		if err != nil {
 			return err
 		}
-		err = s.UnpackTyped(settype, setitem)
-		if err != nil {
-			return err
-		}
-
 		if top == nil {
-			top = op
+			top = dec.op
 		} else {
-			op.setinput(top)
-			top = op
+			dec.op.setinput(top)
+			top = dec.op
 		}
-
-		itemid += 1
+		i++
 		return nil
 	})
-
 	if err != nil {
-		return nil, fmt.Errorf("plan.Decode: item #%d: %w", itemid, err)
+		return nil, fmt.Errorf("plan.Decode: item #%d: %w", i, err)
 	}
-
 	return top, nil
 }
 

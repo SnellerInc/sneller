@@ -25,7 +25,9 @@ import (
 )
 
 func init() {
-	plan.AddTransportDecoder("remote-tenant", &decodeRemote{})
+	plan.AddTransportDecoder("remote-tenant", func() plan.TransportDecoder {
+		return new(Remote)
+	})
 }
 
 // Remote is an implementation of plan.Transport
@@ -58,40 +60,27 @@ type Remote struct {
 	Timeout time.Duration
 }
 
-// remote transport decoder
-type decodeRemote struct {
-	remote *Remote
-}
-
-func (d *decodeRemote) GetTransport() (plan.Transport, error) {
-	return d.remote, nil
-}
-
-func (d *decodeRemote) Init() {
-	d.remote = new(Remote)
-}
-
-func (d *decodeRemote) SetField(f ion.Field) error {
+func (r *Remote) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "net":
-		d.remote.Net, err = f.String()
+		r.Net, err = f.String()
 	case "addr":
-		d.remote.Addr, err = f.String()
+		r.Addr, err = f.String()
 	case "timeout":
 		var i int64
 		i, err = f.Int()
-		d.remote.Timeout = time.Duration(i)
+		r.Timeout = time.Duration(i)
 	case "id":
 		var buf []byte
 		buf, err = f.BlobShared()
-		if err == nil && copy(d.remote.ID[:], buf) != len(d.remote.ID[:]) {
+		if err == nil && copy(r.ID[:], buf) != len(r.ID[:]) {
 			err = fmt.Errorf("decoding tnproto.Remote: tenant ID should not be %d bytes", len(buf))
 		}
 	case "key":
 		var buf []byte
 		buf, err = f.BlobShared()
-		if err == nil && copy(d.remote.Key[:], buf) != len(d.remote.Key[:]) {
+		if err == nil && copy(r.Key[:], buf) != len(r.Key[:]) {
 			err = fmt.Errorf("decoding tnproto.Remote: tenant key should not be %d bytes", len(buf))
 		}
 	default:
@@ -99,10 +88,6 @@ func (d *decodeRemote) SetField(f ion.Field) error {
 	}
 
 	return err
-}
-
-func (d *decodeRemote) Finalize() error {
-	return nil
 }
 
 func (r *Remote) Encode(dst *ion.Buffer, st *ion.Symtab) {

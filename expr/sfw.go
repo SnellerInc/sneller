@@ -217,7 +217,7 @@ func (t *Table) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (t *Table) setfield(f ion.Field) error {
+func (t *Table) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "expr":
@@ -275,7 +275,7 @@ func (o *OnEquals) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (o *OnEquals) setfield(f ion.Field) error {
+func (o *OnEquals) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "left":
@@ -353,7 +353,7 @@ func (j *Join) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	dst.EndStruct()
 }
 
-func (j *Join) setfield(f ion.Field) error {
+func (j *Join) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "kind":
@@ -834,7 +834,7 @@ func decodeDistinctExpr(d ion.Datum) ([]Node, error) {
 	return out, nil
 }
 
-func (s *Select) setfield(f ion.Field) error {
+func (s *Select) SetField(f ion.Field) error {
 	var err error
 	switch f.Label {
 	case "cols":

@@ -32,49 +32,42 @@ type UnionMap struct {
 
 var (
 	transLock     sync.Mutex
-	transDecoders map[string]TransportDecoder
+	transDecoders map[string]func() TransportDecoder
 )
 
 func init() {
-	AddTransportDecoder("local", &decodeLocal{})
+	AddTransportDecoder("local", func() TransportDecoder {
+		return new(LocalTransport)
+	})
 }
 
-// AddTransportDecoder adds a decoding function
-// for Tranport objects.
-//
-// When Decode needs to decode a Transport,
-// it examines the first field of the ion
-// structure, which should be of the form 'type: `name`'.
-// If the value of that field matches name,
-// then the provided decode function will be passed
-// the bytes consisting of the body of the transport
-// structure.
-func AddTransportDecoder(name string, decoder TransportDecoder) {
+// AddTransportDecoder adds function which
+// returns a new TransportDecoder for the given
+// type name.
+func AddTransportDecoder(typ string, fn func() TransportDecoder) {
 	transLock.Lock()
 	defer transLock.Unlock()
 	if transDecoders == nil {
-		transDecoders = make(map[string]TransportDecoder)
+		transDecoders = make(map[string]func() TransportDecoder)
 	}
-	transDecoders[name] = decoder
+	transDecoders[typ] = fn
 }
 
-// TransportDecoder is a function that decodes
-// a Transport object from a set of ion struct fields.
-//
-// A TransportDecoder function must be safe to call
-// from multiple goroutines simultaneously.
+// TransportDecoder is a transport that can be
+// decoded from an ion struct.
 type TransportDecoder interface {
-	ion.StructParser
-	GetTransport() (Transport, error)
+	ion.FieldSetter
+	Transport
 }
 
-func getDecoder(name string) TransportDecoder {
+func getDecoder(name string) (TransportDecoder, bool) {
 	transLock.Lock()
 	defer transLock.Unlock()
-	if transDecoders == nil {
-		return nil
+	fn := transDecoders[name]
+	if fn == nil {
+		return nil, false
 	}
-	return transDecoders[name]
+	return fn(), true
 }
 
 // EncodeTransport attempts to encode t to buf. If t
@@ -91,62 +84,23 @@ func EncodeTransport(t Transport, st *ion.Symtab, buf *ion.Buffer) error {
 	return nil
 }
 
-type decoderResolver struct {
-	decoder TransportDecoder
-}
-
-func (d *decoderResolver) Resolve(typename string) (ion.StructParser, error) {
-	d.decoder = getDecoder(typename)
-	if d.decoder == nil {
-		return nil, fmt.Errorf("no transport decoder for name %q", typename)
-	}
-
-	return d.decoder, nil
-}
-
 // DecodeTransport decodes a transport encoded with
 // EncodeTransport.
 func DecodeTransport(d ion.Datum) (Transport, error) {
-	resolver := decoderResolver{}
-	s, err := d.Struct()
-	if err != nil {
-		return nil, err
-	}
-	err = s.UnpackTypedRes(&resolver)
-	if err != nil {
-		return nil, err
-	}
-	return resolver.decoder.GetTransport()
+	return ion.UnpackTyped(d, getDecoder)
 }
 
-type decodeLocal struct {
-	transport *LocalTransport
-}
-
-func (d *decodeLocal) GetTransport() (Transport, error) {
-	return d.transport, nil
-}
-
-func (d *decodeLocal) Init() {
-	d.transport = &LocalTransport{}
-}
-
-func (d *decodeLocal) SetField(f ion.Field) error {
+func (l *LocalTransport) SetField(f ion.Field) error {
 	switch f.Label {
 	case "threads":
 		i, err := f.Int()
 		if err != nil {
 			return err
 		}
-		d.transport.Threads = int(i)
+		l.Threads = int(i)
 	default:
 		return errUnexpectedField
 	}
-
-	return nil
-}
-
-func (d *decodeLocal) Finalize() error {
 	return nil
 }
 
