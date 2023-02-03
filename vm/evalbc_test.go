@@ -4923,26 +4923,6 @@ func prettyPrint[V any](values [16]V) string {
 	return sb.String()
 }
 
-type strCmpType int
-
-const (
-	cs      strCmpType = iota
-	ciASCII            // case-insensitive on ASCII only
-	ciUTF8             // case-insensitive all unicode code-points
-)
-
-func (t strCmpType) String() string {
-	switch t {
-	case cs:
-		return "CS"
-	case ciASCII:
-		return "CI_ASCII"
-	case ciUTF8:
-		return "CI_UTF8"
-	}
-	return "??"
-}
-
 func toArrayIP4(v uint32) [4]byte {
 	return [4]byte{byte(v >> (3 * 8)), byte(v >> (2 * 8)), byte(v >> (1 * 8)), byte(v >> (0 * 8))}
 }

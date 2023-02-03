@@ -24,11 +24,6 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
-const (
-	partstride = 42
-	flushover  = partstride / 3
-)
-
 // MultiWriter is a multi-stream writer
 // that turns multiple streams of input blocks
 // into a single output stream of compressed blocks.
