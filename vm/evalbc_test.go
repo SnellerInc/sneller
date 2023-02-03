@@ -75,8 +75,6 @@ func prettyName(op bcop) string {
 		return "split part (opSplitPart)"
 	case opLengthStr:
 		return "length string (bcLengthStr)"
-	case opLengthStr_v2:
-		return "length string (bcLengthStr) v2"
 	case opIsSubnetOfIP4:
 		return "is-subnet-of IP4 IP (opIsSubnetOfIP4)"
 
@@ -168,7 +166,7 @@ func refFunc(op bcop) any {
 		return referenceSubstr
 	case opSplitPart:
 		return referenceSplitPart
-	case opLengthStr, opLengthStr_v2:
+	case opLengthStr:
 		return func(data Data) int {
 			return utf8.RuneCountInString(string(data))
 		}
@@ -3026,7 +3024,7 @@ func TestLengthStrUT1(t *testing.T) {
 
 	testSuites := []testSuite{
 		{
-			ops: []bcop{opLengthStr, opLengthStr_v2},
+			ops: []bcop{opLengthStr},
 			unitTests: []unitTest{
 				{"", 0},
 				{"a", 1},
@@ -3075,7 +3073,7 @@ func TestLengthStrUT2(t *testing.T) {
 	}
 	testSuites := []testSuite{
 		{
-			ops: []bcop{opLengthStr, opLengthStr_v2},
+			ops: []bcop{opLengthStr},
 			unitTests: []unitTest{
 				{
 					data16:   [16]Data{"a", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
@@ -3121,13 +3119,13 @@ func TestLengthStrBF(t *testing.T) {
 	}
 	testSuites := []testSuite{
 		{
-			ops:          []bcop{opLengthStr, opLengthStr_v2},
+			ops:          []bcop{opLengthStr},
 			dataAlphabet: []rune{'a', 'b', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
 		},
 		{
-			ops:          []bcop{opLengthStr, opLengthStr_v2},
+			ops:          []bcop{opLengthStr},
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
@@ -3158,7 +3156,6 @@ func FuzzLengthStrFT(f *testing.F) {
 
 	testSuites := []bcop{
 		opLengthStr,
-		opLengthStr_v2,
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {

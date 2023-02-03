@@ -9590,120 +9590,71 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charRight
 
-//; #region bcLengthStr
-//; i64[0] = func(slice[1]).k[2]
-//; count number of UTF-8 code-points in Z2:Z3 (str interpretation); store the result in Z2:Z3 (int64 interpretation)
+// i64[0] = utf8_length(slice[1]).k[2]
+//
+// The length of **a valid UTF-8 string** can be calculated in the following way:
+//
+//    the length of input in bytes - the number of continuation bytes
+//
+// Continuation bytes are in form 0b10xxxxxx, and none of leading bytes (starting
+// a UTF-8 sequence) have such bit pattern. This calculation takes advantage of
+// the VPSADBW instruction, which sums up to 8 bytes, which match the 0b10xxxxxx
+// pattern - this sum is then subtracted from the initial byte length of the string.
 TEXT bcLengthStr(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  VPBROADCASTD  CONSTD_1(),Z10            //;6F57EE92 load constant 1                 ;Z10=constd_1;
-  VPBROADCASTD  CONSTD_4(),Z20            //;C8AFBE50 load constant 4                 ;Z20=constd_4;
-  VPBROADCASTB  CONSTD_0x80(),Z27         //;96E41B4F load constant 80808080          ;Z27=constd_80808080;
-  VMOVDQU32     CONST_TAIL_MASK(),Z18     //;7DB21CB0 load tail_mask_data             ;Z18=tail_mask_data;
-  VMOVDQU32     CONST_N_BYTES_UTF8(),Z21  //;B323211A load table_n_bytes_utf8         ;Z21=table_n_bytes_utf8;
-  VPXORD        Z11, Z11, Z11             //;81C90120 load constant 0                 ;Z11=constd_0;
-  VPXORD        Z6,  Z6,  Z6              //;F292B105 counter := 0                    ;Z6=counter;
-  JMP           test                      //;4CAF1B53                                 ;
+  VPTESTMD Z1, Z1, K1, K2
+  KTESTW K2, K2
+
+  VMOVDQU64 CONST_GET_PTR(consts_utf8_len_byte_mask_q, 0), Z10
+  VEXTRACTI32X8 $1, Z1, Y9
+
+  VPBROADCASTB CONSTD_1(), Z11              // Z11 <- 0x01010101 (LSB of each bit)
+  VPBROADCASTB CONSTD_0x80(), Z12           // Z12 <- 0x80808080 (MSB of each bit)
+  VPBROADCASTD CONSTD_8(), Z13              // Z13 <- dword(8)
+  VPMOVZXDQ Y1, Z8                          // Z8 <- initial character length (low)
+  VPMOVZXDQ Y9, Z9                          // Z9 <- initial character length (high)
+  JZ next
 
 loop:
-  KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data_msg := 0                   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  KMOVB K2, K4
+  VPXORD X2, X2, X2
+  VPGATHERDQ (SI)(Y0*1), K4, Z2             // Z2 <- 8 bytes (low)
 
-  VPMINSD       Z20, Z3,  Z7              //;DDF0DB53 n_bytes_data := min(str_length, 4);Z7=n_bytes_data; Z3=str_length; Z20=constd_4;
-  VPERMD        Z18, Z7,  Z19             //;8F3EBC09 get tail_mask                   ;Z19=tail_mask; Z7=n_bytes_data; Z18=tail_mask_data;
-  VPANDD        Z8,  Z19, Z8              //;EF91B1F3 remove tail from data           ;Z8=data_msg; Z19=tail_mask;
-  VPMOVB2M      Z8,  K3                   //;F22D958D get 64 sign-bits                ;K3=tmp_mask; Z8=data_msg;
-  KTESTQ        K3,  K3                   //;F2C8F6C8 all sign-bits zero?             ;K3=tmp_mask;
-  JNZ           non_ascii                 //;71B77ACE no: non-ascii present; jump if not zero (ZF = 0);
-  VPADDD        Z7,  Z6,  K2,  Z6         //;978F956A counter += n_bytes_data         ;Z6=counter; K2=lane2_mask; Z7=n_bytes_data;
+  KSHIFTRW $8, K2, K5
+  VPMINUD Z13, Z1, Z5                       // Z5 <- min(remaining_length, 8)
+  VEXTRACTI32X8 $1, Z0, Y4
+  VEXTRACTI32X8 $1, Z5, Y7
+  KMOVB K5, K3
+  VPXORD X3, X3, X3
+  VPMOVZXDQ Y5, Z6                          // Z6 <- min(remaining_length, 8) (low)
+  VPMOVZXDQ Y7, Z7                          // Z7 <- min(remaining_length, 8) (high)
+  VPGATHERDQ (SI)(Y4*1), K5, Z3             // Z3 <- 8 bytes (high)
 
-update:
-  VPSUBD        Z7,  Z3,  K2,  Z3         //;B69EBA11 str_length -= n_bytes_data      ;Z3=str_length; K2=lane2_mask; Z7=n_bytes_data;
-  VPADDD        Z7,  Z2,  K2,  Z2         //;45909060 str_start += n_bytes_data       ;Z2=str_start; K2=lane2_mask; Z7=n_bytes_data;
+  VPERMQ Z10, Z6, Z6                        // Z6 <- data byte mask (low)
+  VPERMQ Z10, Z7, Z7                        // Z7 <- data byte mask (high)
+  VPSUBD.Z Z5, Z1, K2, Z1                   // Z1 <- length -= remaining_length
+  VPADDD.Z Z5, Z0, K2, Z0                   // Z0 <- offset += remaining_length
+  VPANDQ.Z Z6, Z2, K2, Z2                   // Z2 <- string data masked for comparison (low)
+  VPTESTMD Z1, Z1, K1, K2
+  VPANDQ.Z Z7, Z3, K3, Z3                   // Z3 <- string data masked for comparison (high)
+  KTESTW K2, K2
 
-test:
-//; We could compare Z2 > end_of_str, and remove the above sub Z3, but the min(4, Z3) prevents that
-  VPCMPD        $6,  Z11, Z3,  K1,  K2    //;DA211F9B K2 := K1 & (str_length>0)       ;K2=lane2_mask; K1=lane_active; Z3=str_length; Z11=constd_0; 6=Greater;
-  KTESTW        K2,  K2                   //;799F076E all lanes done? 0 means lane is done;K2=lane2_mask;
-  JNZ           loop                      //;203DDAE1 if some lanes alive then loop; jump if not zero (ZF = 0);
+  VPXORD Z2, Z12, Z2                        // Z2 <- Z2 ^ 0x80 => 0 if equals 0x80, non-zero othrewise
+  VPXORD Z3, Z12, Z3                        // Z3 <- Z3 ^ 0x80 => 0 if equals 0x80, non-zero othrewise
+  VPMINUB Z2, Z11, Z2                       // Z2 <- Z2[i] != 0 ? 1 : 0
+  VPMINUB Z3, Z11, Z3                       // Z3 <- Z3[i] != 0 ? 1 : 0
+  VPSADBW Z2, Z11, Z2                       // Z2:Z3 <- sum(1 - Z2[j]) <- diff is 0 if Z2[j] is 1 (not equal)
+  VPSADBW Z3, Z11, Z3                       //                            diff is 1 if Z3[j] is 0 (equal)
+  VPSUBQ Z2, Z8, Z8                         // Z8 <- update character length (low)
+  VPSUBQ Z3, Z9, Z9                         // Z9 <- update character length (high)
+  JNZ loop
 
-  VPMOVZXDQ     Y6,  Z2                   //;9CA47A78 cast 8 x int32 to 8 x int64     ;Z2=str_start; Z6=counter;
-  VEXTRACTI32X8 $1,  Z6,  Y6              //;DC597720 256-bits to lower lane          ;Z6=counter;
-  VPMOVZXDQ     Y6,  Z3                   //;C24D656F cast 8 x int32 to 8 x int64     ;Z3=str_length; Z6=counter;
-
+next:
   BC_UNPACK_SLOT(0, OUT(DX))
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE*3)
-
-non_ascii:  //; NOTE: this is the assumed to be a somewhat unlikely branch
-  VPTESTNMD     Z27, Z8,  K2,  K3         //;85E34261 K3 is all-ascii lanes           ;K3=tmp_mask; K2=lane2_mask; Z8=data_msg; Z27=constd_80808080;
-  VPADDD        Z7,  Z6,  K3,  Z6         //;D765BB59 for all ascii lanes             ;Z6=counter; K3=tmp_mask; Z7=n_bytes_data;
-  KANDNW        K2,  K3,  K3              //;5A982E07 K3 is mixed-ascii lanes         ;K3=tmp_mask; K2=lane2_mask;
-  VPADDD        Z10, Z6,  K3,  Z6         //;8E335D11 for mixed-ascii lanes           ;Z6=counter; K3=tmp_mask; Z10=constd_1;
-  VPSRLD        $4,  Z8,  Z26             //;FE5F1413 shift 4 bits to right           ;Z26=scratch_Z26; Z8=data_msg;
-  VPERMD        Z21, Z26, K3,  Z7         //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; K3=tmp_mask; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
-  JMP           update                    //;A596F5F6                                 ;
-//; #endregion bcLengthStr
-
-TEXT bcLengthStr_v2(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
-  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-
-  VPBROADCASTD  CONSTD_4(), Z24             // Z24 = 4
-  VMOVDQU32     CONST_TAIL_MASK(), Z20      // Z20 - tail_mask lookup
-  VPBROADCASTD  CONSTD_0x80808080(), Z28    // Z28 - mask for MSB of each bit
-
-  VMOVDQA32     Z3, Z10                     // Z10 - string length in bytes
-  JMP           test
-loop:
-  KMOVW         K2, K3
-  VPXORD        Z8, Z8, Z8
-  VPGATHERDD    (SI)(Z2*1), K3, Z8          // Z8 - 4 bytes
-
-  VPMINSD       Z24, Z3,  Z7                // Z20 = min(str_length, 4)
-  VPERMD        Z20, Z7,  Z21               // Z21 = tail mask
-  VPANDD        Z8,  Z21, Z8                // remove tail from data
-
-  VPSUBD        Z24, Z3, K2, Z3             // str_length -= 4
-  VPADDD        Z24, Z2, K2, Z2             // offset += 4
-
-  // The length of **a valid UTF-8 string** can be calculated in
-  // the following way:
-  //
-  //    the length of input in bytes - the number of continuation bytes
-  //
-  // Continuation bytes are in form 10xxx_xxxx, and none of leading
-  // bytes (starting a UTF-8 sequence) have such bit pattern.
-
-  // 1. Convert 10xxx_xxxx into 1000_0000 and any other bit
-  //    pattern into zero. It is done by: bit7 and not bit6 and msb_mask.
-  VPADDD        Z8,  Z8, Z9             // Z9 = Z8 << 1
-  VPANDND       Z8,  Z9, Z8             // Z8 = Z8 & ~Z9
-  VPANDD        Z28, Z8, Z8             // Z8 = keep only the MSB
-
-  // 2. Count continuation bytes
-  VPOPCNTD      Z8, Z8
-
-  // 3. Finally, subtract it from the byte count
-  VPSUBD        Z8, Z10, Z10
-
-test:
-  VPXORD        Z11, Z11, Z11
-  VPCMPD        $VPCMP_IMM_GT, Z11, Z3, K1, K2   // K2 := K1 & (str_length > 0)
-  KTESTW        K2, K2
-  JNZ           loop
-
-  // cast 16 x int32 into 16 x int64
-  VPMOVZXDQ     Y10,  Z2
-  VEXTRACTI32X8 $1, Z10, Y10
-  VPMOVZXDQ     Y10,  Z3
-
-  BC_UNPACK_SLOT(0, OUT(DX))
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_I64_TO_SLOT(IN(Z8), IN(Z9), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 //; #region bcSubstr
