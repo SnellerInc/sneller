@@ -77,3 +77,20 @@ func patchssadefs(repl []opreplace) {
 		}
 	}
 }
+
+// isSupported determines whether the provided bytecode op
+// is supported on the current hardware
+func isSupported(bc bcop) bool {
+	// consider creating a case switch in ops_gen.go that
+	// given a bc returns the level. Then we can remove the
+	// inefficient code below
+	if avx512level() == avx512level2 {
+		return true
+	}
+	for _, repl := range patchAVX512Level2 {
+		if repl.to == bc {
+			return false
+		}
+	}
+	return true
+}

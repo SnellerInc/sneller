@@ -472,19 +472,17 @@ func verifyI64RegOutput(t *testing.T, output, expected *i64RegData) bool {
 	return true
 }
 
-//lint:ignore U1000 available for use
-func verifyI64RegOutputP(t *testing.T, output, expected *i64RegData, predicate *kRegData) {
+func verifyI64RegOutputP(t *testing.T, output, expected *i64RegData, predicate *kRegData) bool {
 	outputMaskedS := *output
 	expectedMaskedS := *expected
 
 	for i := 0; i < bcLaneCount; i++ {
-		if (predicate.mask & (1 << i)) == 0 {
+		if !predicate.getBit(i) {
 			outputMaskedS.values[i] = 0
-			outputMaskedS.values[i] = 0
+			expectedMaskedS.values[i] = 0
 		}
 	}
-
-	verifyI64RegOutput(t, &outputMaskedS, &expectedMaskedS)
+	return verifyI64RegOutput(t, &outputMaskedS, &expectedMaskedS)
 }
 
 func verifyF64RegOutput(t *testing.T, output, expected *f64RegData) {

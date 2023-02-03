@@ -75,6 +75,8 @@ func prettyName(op bcop) string {
 		return "split part (opSplitPart)"
 	case opLengthStr:
 		return "length string (bcLengthStr)"
+	case opLengthStr_v2:
+		return "length string (bcLengthStr) v2"
 	case opIsSubnetOfIP4:
 		return "is-subnet-of IP4 IP (opIsSubnetOfIP4)"
 
@@ -166,7 +168,7 @@ func refFunc(op bcop) any {
 		return referenceSubstr
 	case opSplitPart:
 		return referenceSplitPart
-	case opLengthStr:
+	case opLengthStr, opLengthStr_v2:
 		return func(data Data) int {
 			return utf8.RuneCountInString(string(data))
 		}
@@ -2976,7 +2978,7 @@ func FuzzSplitPartFT(f *testing.F) {
 
 func runLengthStr(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, hasMan bool, manS i64RegData) bool {
 	if !validData(data16) {
-		return true // assume all input data will be validData codepoints
+		return true // assume all input data will be valid codepoints
 	}
 	var ctx bctestContext
 	defer ctx.free()
@@ -2994,7 +2996,7 @@ func runLengthStr(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, hasMa
 
 	// if manual values are provided (hasMan == true), then check the values of the reference implementation
 	if hasMan {
-		if !verifyI64RegOutput(t, &manS, &expS) {
+		if !verifyI64RegOutputP(t, &manS, &expS, &inputK) {
 			t.Errorf("refImpl: data %q", prettyPrint(data16))
 			return false
 		}
@@ -3006,42 +3008,102 @@ func runLengthStr(t *testing.T, op bcop, inputK kRegData, data16 [16]Data, hasMa
 	}
 
 	// check the observed values from the bytecode with the expected values from the reference implementation
-	return verifyI64RegOutput(t, &obsS, &expS)
+	return verifyI64RegOutputP(t, &obsS, &expS, &inputK)
 }
 
 // TestLengthStrUT1 unit-tests for: opLengthStr
 func TestLengthStrUT1(t *testing.T) {
 	t.Parallel()
-	const op = opLengthStr
 
 	type unitTest struct {
 		data     Data
 		expChars int // expected number of code-points in data
 	}
-	unitTests := []unitTest{
-		{"", 0},
-		{"a", 1},
-		{"¢", 1},
-		{"€", 1},
-		{"𐍈", 1},
-		{"ab", 2},
-		{"a¢", 2},
-		{"a€", 2},
-		{"a𐍈", 2},
-		{"abb", 3},
-		{"ab¢", 3},
-		{"ab€", 3},
-		{"ab𐍈", 3},
-		{"$¢€𐍈", 4},
-		{string([]byte{0xC2, 0xA2, 0xC2, 0xA2, 0x24}), 3},
+	type testSuite struct {
+		unitTests []unitTest
+		ops       []bcop
 	}
 
-	t.Run(prettyName(op), func(t *testing.T) {
-		for _, ut := range unitTests {
-			manS := i64RegData{make16(int64(ut.expChars))}
-			runLengthStr(t, op, fullMask, make16(ut.data), true, manS)
+	testSuites := []testSuite{
+		{
+			ops: []bcop{opLengthStr, opLengthStr_v2},
+			unitTests: []unitTest{
+				{"", 0},
+				{"a", 1},
+				{"¢", 1},
+				{"€", 1},
+				{"𐍈", 1},
+				{"ab", 2},
+				{"a¢", 2},
+				{"a€", 2},
+				{"a𐍈", 2},
+				{"abb", 3},
+				{"ab¢", 3},
+				{"ab€", 3},
+				{"ab𐍈", 3},
+				{"$¢€𐍈", 4},
+				{string([]byte{0xC2, 0xA2, 0xC2, 0xA2, 0x24}), 3},
+			},
+		},
+	}
+
+	for _, ts := range testSuites {
+		for _, op := range ts.ops {
+			if isSupported(op) {
+				t.Run(prettyName(op), func(t *testing.T) {
+					for _, ut := range ts.unitTests {
+						manS := i64RegData{make16(int64(ut.expChars))}
+						runLengthStr(t, op, fullMask, make16(ut.data), true, manS)
+					}
+				})
+			}
 		}
-	})
+	}
+}
+
+// TestSubstrUT2 unit-tests for: opLengthStr
+func TestLengthStrUT2(t *testing.T) {
+	t.Parallel()
+	type unitTest struct {
+		data16   [16]Data
+		expChars [16]int64 // expected number of code-points in data
+		lanes    uint16
+	}
+	type testSuite struct {
+		unitTests []unitTest
+		ops       []bcop
+	}
+	testSuites := []testSuite{
+		{
+			ops: []bcop{opLengthStr, opLengthStr_v2},
+			unitTests: []unitTest{
+				{
+					data16:   [16]Data{"a", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
+					expChars: [16]int64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+					lanes:    0b1111_1111_1111_1110,
+				},
+				{
+					data16:   [16]Data{"0", "", "", "", "0", "0", "", "0", "0", "0", "", "", "", "0", "0", "0"},
+					expChars: [16]int64{1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1},
+					lanes:    0b1111_1111_1010_1101,
+				},
+			},
+		},
+	}
+
+	for _, ts := range testSuites {
+		for _, op := range ts.ops {
+			if isSupported(op) {
+				t.Run(prettyName(op), func(t *testing.T) {
+					for _, ut := range ts.unitTests {
+						manS := i64RegData{ut.expChars}
+						inputK := kRegData{ut.lanes}
+						runLengthStr(t, op, inputK, ut.data16, true, manS)
+					}
+				})
+			}
+		}
+	}
 }
 
 // TestSplitPartBF brute-force tests for: opLengthStr
@@ -3055,35 +3117,38 @@ func TestLengthStrBF(t *testing.T) {
 		// maximum number of elements in dataSpace
 		dataMaxSize int
 		// bytecode to run
-		op bcop
+		ops []bcop
 	}
 	testSuites := []testSuite{
 		{
-			op:           opLengthStr,
+			ops:          []bcop{opLengthStr, opLengthStr_v2},
 			dataAlphabet: []rune{'a', 'b', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
 		},
 		{
-			op:           opLengthStr,
+			ops:          []bcop{opLengthStr, opLengthStr_v2},
 			dataAlphabet: []rune{'$', '¢', '€', '𐍈', '\n', 0},
 			dataLenSpace: []int{1, 2, 3, 4, 5, 6, 7},
 			dataMaxSize:  exhaustive,
 		},
 	}
 
-	run := func(ts *testSuite, inputK kRegData, dataSpace [][16]Data) {
+	run := func(op bcop, inputK kRegData, dataSpace [][16]Data) {
 		for _, data16 := range dataSpace {
-			if !runLengthStr(t, ts.op, inputK, data16, false, i64RegData{}) {
+			if !runLengthStr(t, op, inputK, data16, false, i64RegData{}) {
 				return
 			}
 		}
 	}
-
 	for _, ts := range testSuites {
-		t.Run(prettyName(ts.op), func(t *testing.T) {
-			run(&ts, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
-		})
+		for _, op := range ts.ops {
+			if isSupported(op) {
+				t.Run(prettyName(op), func(t *testing.T) {
+					run(op, fullMask, createSpace(ts.dataLenSpace, ts.dataAlphabet, ts.dataMaxSize))
+				})
+			}
+		}
 	}
 }
 
@@ -3093,13 +3158,16 @@ func FuzzLengthStrFT(f *testing.F) {
 
 	testSuites := []bcop{
 		opLengthStr,
+		opLengthStr_v2,
 	}
 
 	f.Fuzz(func(t *testing.T, lanes uint16, d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15 string) {
 		data16 := [16]Data{d0, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, d15}
+		inputK := kRegData{lanes}
 		for _, op := range testSuites {
-			inputK := kRegData{lanes}
-			runLengthStr(t, op, inputK, data16, false, i64RegData{})
+			if isSupported(op) {
+				runLengthStr(t, op, inputK, data16, false, i64RegData{})
+			}
 		}
 	})
 }
