@@ -47,12 +47,7 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 	return k, nil
 }
 
-// AmbientKey tries to produce a signing key
-// from the ambient filesystem, environment, etc.
-// The key is derived using derive, unless it is nil,
-// in which case DefaultDerive is used instead.
-//
-// Keys are searched for in the following order:
+// AmbientCreds tries to find the AWS credentials from:
 //
 //  1. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
 //     and AWS_REGION/AWS_DEFAULT_REGION environment
@@ -78,16 +73,7 @@ func DefaultDerive(baseURI, id, secret, token, region, service string) (*Signing
 // is safer than the aws SDK's "NewSession" function
 // but less safe than explicitly picking up secrets
 // from where you expect to find them. Caveat emptor.
-func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
-	var id, secret, region, token string
-	if derive == nil {
-		derive = DefaultDerive
-	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("trying to find $HOME: %w", err)
-	}
+func AmbientCreds() (id, secret, region, token string, err error) {
 	envdefault := func(base, env string) string {
 		if x := os.Getenv(env); x != "" {
 			return env
@@ -95,7 +81,6 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 		return base
 	}
 	profile := envdefault("default", "AWS_PROFILE")
-	configfile := envdefault(filepath.Join(home, ".aws", "credentials"), "AWS_CONFIG_FILE")
 
 	if x := os.Getenv("AWS_ACCESS_KEY_ID"); x != "" {
 		id = x
@@ -112,36 +97,36 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 		token = x
 	}
 
-	if id != "" && secret != "" && region != "" {
-		s3baseURI := os.Getenv("S3_ENDPOINT")
-		if s3baseURI == "" {
-			s3baseURI = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
-		}
-		return derive(s3baseURI, id, secret, token, region, service)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("trying to find $HOME: %w", err)
 	}
+	configfile := envdefault(filepath.Join(home, ".aws", "credentials"), "AWS_CONFIG_FILE")
 
-	info, err := os.Stat(filepath.Dir(configfile))
-	if err != nil {
-		return nil, fmt.Errorf("examining %s: %w", filepath.Dir(configfile), err)
-	}
-	err = check(info)
-	if err != nil {
-		return nil, err
+	if id == "" || secret == "" || region == "" {
+		info, err := os.Stat(filepath.Dir(configfile))
+		if err != nil {
+			return "", "", "", "", fmt.Errorf("examining %s: %w", filepath.Dir(configfile), err)
+		}
+		err = check(info)
+		if err != nil {
+			return "", "", "", "", err
+		}
 	}
 
 	if id == "" || secret == "" {
 		f, err := os.Open(configfile)
 		if err != nil {
-			return nil, err
+			return "", "", "", "", err
 		}
 		defer f.Close()
 		info, err := f.Stat()
 		if err != nil {
-			return nil, fmt.Errorf("examinig credentials: %w", err)
+			return "", "", "", "", fmt.Errorf("examining credentials: %w", err)
 		}
 		err = check(info)
 		if err != nil {
-			return nil, err
+			return "", "", "", "", err
 		}
 		err = scan(f, profile, []scanspec{
 			{"aws_access_key_id", &id},
@@ -150,37 +135,65 @@ func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
 			{"aws_session_token", &token},
 		})
 		if err != nil {
-			return nil, err
+			return "", "", "", "", err
 		}
 	}
 	if region == "" {
 		f, err := os.Open(filepath.Join(home, ".aws", "config"))
 		if err != nil {
-			return nil, err
+			return "", "", "", "", err
 		}
 		defer f.Close()
 		info, err := f.Stat()
 		if err != nil {
-			return nil, fmt.Errorf("examining config: %w", err)
+			return "", "", "", "", fmt.Errorf("examining config: %w", err)
 		}
 		err = check(info)
 		if err != nil {
-			return nil, err
+			return "", "", "", "", err
 		}
 		err = scan(f, profile, []scanspec{
 			{"region", &region},
 		})
 		if err != nil {
-			return nil, err
+			return "", "", "", "", err
 		}
 	}
 	if id == "" || secret == "" {
-		return nil, fmt.Errorf("unable to determine id or secret")
+		return "", "", "", "", fmt.Errorf("unable to determine id or secret")
 	}
 	if region == "" {
-		return nil, fmt.Errorf("unable to determine region")
+		return "", "", "", "", fmt.Errorf("unable to determine region")
 	}
-	return derive("", id, secret, token, region, service)
+	return
+}
+
+// AmbientKey tries to produce a signing key
+// from the ambient filesystem, environment, etc.
+// The key is derived using derive, unless it is nil,
+// in which case DefaultDerive is used instead.
+func AmbientKey(service string, derive DeriveFn) (*SigningKey, error) {
+	if derive == nil {
+		derive = DefaultDerive
+	}
+
+	id, secret, region, token, err := AmbientCreds()
+	if err != nil {
+		return nil, err
+	}
+
+	baseURI := ""
+	switch service {
+	case "s3":
+		baseURI = os.Getenv("S3_ENDPOINT")
+		if baseURI == "" {
+			baseURI = fmt.Sprintf("https://s3.%s.amazonaws.com", region)
+		}
+	default:
+		return nil, fmt.Errorf("unknown service %s", service)
+	}
+
+	return derive(baseURI, id, secret, token, region, service)
 }
 
 type scanspec struct {

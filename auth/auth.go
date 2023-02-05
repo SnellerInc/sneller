@@ -46,6 +46,9 @@ type Provider interface {
 // http(s):// prefix is detected and otherwise
 // the specification is interpreted as a file name.
 func Parse(spec string) (Provider, error) {
+	if spec == "" {
+		return NewEnvProvider()
+	}
 	if strings.HasPrefix(spec, "http://") || strings.HasPrefix(spec, "https://") {
 		return FromEndPoint(spec)
 	}
@@ -54,7 +57,7 @@ func Parse(spec string) (Provider, error) {
 
 // FromEndPoint creates an authorization provider that uses
 // and endpoint to validate and return the proper credentials.
-// See alse S3Bearer.
+// See also S3Bearer.
 func FromEndPoint(uri string) (Provider, error) {
 	return &S3Bearer{
 		URI: uri,
