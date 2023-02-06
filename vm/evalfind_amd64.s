@@ -24,8 +24,8 @@ TEXT ·evalfindbc(SB), NOSPLIT, $16
   MOVQ stride+32(FP), R10
   MOVQ R10, 0(SP)         // 0(SP) = stack pointer incrementor
   XORL R10, R10           // R10 = current stack pointer addend
-  BCCLEARSCRATCH(R15)
-  BCCLEARERROR()
+  BC_CLEAR_SCRATCH(R15)
+  BC_CLEAR_ERROR()
   JMP  tail
 loop:
   // load delims
@@ -55,7 +55,7 @@ doit:
   MOVQ    bytecode_compiled(DI), VIRT_PCREG
   MOVQ    bytecode_vstack(DI), VIRT_VALUES
   ADDQ    R10, VIRT_VALUES                     // stack offset += rows out
-  VMINVOKE()
+  BC_INVOKE()
   JC      opcode_failed                        // break on error
 
   ADDQ    0(SP), R10                           // moar stack
@@ -111,7 +111,7 @@ doit:
   MOVQ    bc+0(FP), VIRT_BCPTR
   MOVQ    ·vmm+0(SB), SI       // real static base
   // enter bytecode interpretation
-  VMENTER()
+  BC_ENTER()
   JCS     did_abort
 
   KMOVW   K1, R15         // R15 = active rows bitmask

@@ -52,7 +52,7 @@ Each bytecode VM operation is an assembly function that
 conforms to a particular ABI for passing arguments, return values,
 a local "stack" of saved values, a continuation address, and so forth.
 The VM is always entered through a trampoline that sets up the initial
-state. (See the `VMENTER()` macro in `bc_amd64.h`.)
+state. (See the `BC_ENTER()` macro in `bc_amd64.h`.)
 
 Typically, the physical operators communicate with the VM
 by inspecting the final stack and register state of the

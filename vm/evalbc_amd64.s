@@ -19,7 +19,6 @@
 #include "textflag.h"
 #include "funcdata.h"
 #include "go_asm.h"
-#include "avx512.h"
 #include "bc_amd64.h"
 #include "bc_imm_amd64.h"
 #include "bc_constant.h"
@@ -418,11 +417,19 @@ next:
 // Temporary instruction to save registers alive at entry to stack slots.
 TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, DX, R8)
+  MOVQ bytecode_symtab+0(VIRT_BCPTR), BX // BC <- symbol table base
 
   BC_STORE_SLICE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
+  // Verify that a symbol table exists and fail if not. The test here prevents
+  // asserting the presence of symtab every time a symbol is unsymbolized.
+  TESTQ BX, BX
+  JZ error_null_symtab
+
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
+
+  _BC_ERROR_HANDLER_NULL_SYMTAB()
 
 // Mask Instructions
 // -----------------
@@ -986,9 +993,9 @@ TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
   VPADDD.BCST CONSTD_1(), Z3, K2, Z3
 
   // Make sure we have at least 20 bytes for each lane, we always overallocate to make the conversion easier.
-  VM_CHECK_SCRATCH_CAPACITY($(20 * 16), R8, abort)
+  BC_CHECK_SCRATCH_CAPACITY($(20 * 16), R8, abort)
 
-  VM_GET_SCRATCH_BASE_GP(R8)
+  BC_GET_SCRATCH_BASE_GP(R8)
 
   // Update the length of the output buffer.
   ADDQ $(20 * 16), bytecode_scratch+8(VIRT_BCPTR)
@@ -2226,8 +2233,8 @@ next:
   /* Z4/Z5 <- Number of hours, minutes, seconds, and microseconds. */                       \
   VPSLLQ $13, Z6, Z4                                                                        \
   VPSLLQ $13, Z7, Z5                                                                        \
-  VPTERNLOGQ.BCST $TERNLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT1, Z4                            \
-  VPTERNLOGQ.BCST $TERNLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT2, Z5                            \
+  VPTERNLOGQ.BCST $TLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT1, Z4                            \
+  VPTERNLOGQ.BCST $TLOG_BLEND_BA, CONSTQ_0x1FFF(), INPUT2, Z5                            \
                                                                                             \
   /* Z8/Z9 <- Number of 400Y cycles. */                                                     \
   BC_DIV_U64_WITH_CONST_RECIPROCAL_BCST(Z8, Z9, Z12, Z13, CONSTQ_963315389(), 47)           \
@@ -2706,8 +2713,8 @@ TEXT bcdatediffmqy(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTQ CONSTQ_0x1FFF(), TMP3                                                      \
   VPSLLQ $13, TMP1, OUT1                                                                  \
   VPSLLQ $13, TMP2, OUT2                                                                  \
-  VPTERNLOGQ $TERNLOG_BLEND_BA, TMP3, IN1, OUT1 /* (A & ~C) | (B & C) */                  \
-  VPTERNLOGQ $TERNLOG_BLEND_BA, TMP3, IN2, OUT2 /* (A & ~C) | (B & C) */
+  VPTERNLOGQ $TLOG_BLEND_BA, TMP3, IN1, OUT1 /* (A & ~C) | (B & C) */                  \
+  VPTERNLOGQ $TLOG_BLEND_BA, TMP3, IN2, OUT2 /* (A & ~C) | (B & C) */
 
 // i64[0] = extract_microsecond(ts[1]).k[2]
 //
@@ -3397,8 +3404,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   // KUNPCKBW K3, K4, K5
   VPSLLQ $7, Z6, K3, Z6
   VPSLLQ $7, Z7, K4, Z7
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z4, K3, Z6
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z5, K4, Z7
+  VPTERNLOGQ $TLOG_BLEND_BA, Z20, Z4, K3, Z6
+  VPTERNLOGQ $TLOG_BLEND_BA, Z20, Z5, K4, Z7
   VPSRLQ $8, Z4, K3, Z4
   VPSRLQ $8, Z5, K4, Z5
 
@@ -3406,8 +3413,8 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPTESTNMQ Z21, Z5, K4, K4
   VPSLLQ $7, Z6, K3, Z6
   VPSLLQ $7, Z7, K4, Z7
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z4, K3, Z6
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z20, Z5, K4, Z7
+  VPTERNLOGQ $TLOG_BLEND_BA, Z20, Z4, K3, Z6
+  VPTERNLOGQ $TLOG_BLEND_BA, Z20, Z5, K4, Z7
   VPSRLQ $8, Z4, K3, Z4
   VPSRLQ $8, Z5, K4, Z5
 
@@ -3518,10 +3525,10 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
 
   // Make sure we have at least 16 bytes for each lane, we always overallocate to make the boxing simpler.
-  VM_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
+  BC_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
 
   // set zmm30.k1 to the current scratch base
-  VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
+  BC_GET_SCRATCH_BASE_ZMM(Z30, K1)
 
   // Update the length of the output buffer.
   ADDQ $(16 * 16), bytecode_scratch+8(VIRT_BCPTR)
@@ -3580,8 +3587,8 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1 byte)].
   VPBROADCASTQ CONSTQ_0x0000000000808080(), Z24
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, Z10
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, Z11
+  VPTERNLOGQ $TLOG_BLEND_BA, Z16, Z8, Z10
+  VPTERNLOGQ $TLOG_BLEND_BA, Z16, Z9, Z11
   VPORQ Z24, Z10, Z10
   VPORQ Z24, Z11, Z11
 
@@ -3594,8 +3601,8 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z21, Z15, K6, Z15
   VPSLLQ $8, Z10, K5, Z10
   VPSLLQ $8, Z11, K6, Z11
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, K5, Z10
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, K6, Z11
+  VPTERNLOGQ $TLOG_BLEND_BA, Z16, Z8, K5, Z10
+  VPTERNLOGQ $TLOG_BLEND_BA, Z16, Z9, K6, Z11
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1-3 bytes)].
   VPCMPQ $VPCMP_IMM_GT, Z16, Z8, K5
@@ -3606,8 +3613,8 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z21, Z15, K6, Z15
   VPSLLQ $8, Z10, K5, Z10
   VPSLLQ $8, Z11, K6, Z11
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z8, K5, Z10
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z16, Z9, K6, Z11
+  VPTERNLOGQ $TLOG_BLEND_BA, Z16, Z8, K5, Z10
+  VPTERNLOGQ $TLOG_BLEND_BA, Z16, Z9, K6, Z11
 
   // Z10/Z11 <- [DayOfMonth, Month, Year (1-3 bytes), Offset (always zero), Type|L (without a possible microsecond encoding length)].
   VPBROADCASTQ CONSTQ_0x0000000000008060(), Z20
@@ -3979,10 +3986,10 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPSLLQ $3, Z6, Z6                             // [________|________|________|________|__bbcccd|deeeffgg|ghhiiijj|kkkll___] {lo}
   VPSLLQ $3, Z7, Z7                             // [________|________|________|________|__bbcccd|deeeffgg|ghhiiijj|kkkll___] {hi}
 
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z4, Z6     // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {lo}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z5, Z7     // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {hi}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z10, Z4    // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {lo}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z14, Z11, Z5    // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {hi}
+  VPTERNLOGD $TLOG_BLEND_BA, Z14, Z4, Z6        // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {lo}
+  VPTERNLOGD $TLOG_BLEND_BA, Z14, Z5, Z7        // [________|________|________|________|__bbBBBd|dDDDffFF|FhhHHHjj|JJJllLLL] {hi}
+  VPTERNLOGD $TLOG_BLEND_BA, Z14, Z10, Z4       // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {lo}
+  VPTERNLOGD $TLOG_BLEND_BA, Z14, Z11, Z5       // [________|________|________|________|__AAaaaC|CcccEEee|eGGgggII|iiiKKkkk] {hi}
 
   VPBROADCASTQ CONSTQ_0xFFFFFF(), Z14
   VPSLLQ $9, Z4, Z10                            // [________|________|________|_AAaaaCC|cccEEeee|________|________|________] {lo}
@@ -3990,10 +3997,10 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPSLLQ $9, Z6, Z12                            // [________|________|________|_bbBBBdd|DDDffFFF|________|________|________] {lo}
   VPSLLQ $9, Z7, Z13                            // [________|________|________|_bbBBBdd|DDDffFFF|________|________|________] {hi}
 
-  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z10, Z4    // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {lo}
-  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z11, Z5    // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {hi}
-  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z12, Z6    // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {lo}
-  VPTERNLOGQ $TERNLOG_BLEND_AB, Z14, Z13, Z7    // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {hi}
+  VPTERNLOGQ $TLOG_BLEND_AB, Z14, Z10, Z4       // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {lo}
+  VPTERNLOGQ $TLOG_BLEND_AB, Z14, Z11, Z5       // [________|________|________|_AAaaaCC|cccEEeee|________|eGGgggII|iiiKKkkk] {hi}
+  VPTERNLOGQ $TLOG_BLEND_AB, Z14, Z12, Z6       // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {lo}
+  VPTERNLOGQ $TLOG_BLEND_AB, Z14, Z13, Z7       // [________|________|________|_bbBBBdd|DDDffFFF|________|FhhHHHjj|JJJllLLL] {hi}
 
   VPSLLQ $3, Z4, Z10                            // [________|________|________|___CCccc|________|________|___IIiii|________] {lo}
   VPSLLQ $3, Z5, Z11                            // [________|________|________|___CCccc|________|________|___IIiii|________] {hi}
@@ -4013,15 +4020,15 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPANDD Z18, Z7, Z7                            // [00000000|00000000|00000000|00000000|000ffFFF|00000000|00000000|000llLLL] {hi}
 
   VPSLLQ $16, Z18, Z18
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z10, Z4    // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {lo}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z11, Z5    // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {hi}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z12, Z6    // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {lo}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z19, Z13, Z7    // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {hi}
+  VPTERNLOGD $TLOG_BLEND_BA, Z19, Z10, Z4       // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {lo}
+  VPTERNLOGD $TLOG_BLEND_BA, Z19, Z11, Z5       // [00000000|00000000|00000000|000CCccc|000EEeee|00000000|000IIiii|000KKkkk] {hi}
+  VPTERNLOGD $TLOG_BLEND_BA, Z19, Z12, Z6       // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {lo}
+  VPTERNLOGD $TLOG_BLEND_BA, Z19, Z13, Z7       // [00000000|00000000|00000000|000ddDDD|000ffFFF|00000000|000jjJJJ|000llLLL] {hi}
 
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z14, Z4    // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {lo}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z15, Z5    // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {hi}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z16, Z6    // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {lo}
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z18, Z17, Z7    // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {hi}
+  VPTERNLOGD $TLOG_BLEND_BA, Z18, Z14, Z4       // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {lo}
+  VPTERNLOGD $TLOG_BLEND_BA, Z18, Z15, Z5       // [00000000|00000000|000AAaaa|000CCccc|000EEeee|000GGggg|000IIiii|000KKkkk] {hi}
+  VPTERNLOGD $TLOG_BLEND_BA, Z18, Z16, Z6       // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {lo}
+  VPTERNLOGD $TLOG_BLEND_BA, Z18, Z17, Z7       // [00000000|00000000|000bbBBB|000ddDDD|000ffFFF|000hhHHH|000jjJJJ|000llLLL] {hi}
 
   // Encode the bits into characters.
   //
@@ -4046,9 +4053,9 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
 
   // Make sure we have at least 16 bytes for each lane, we always overallocate to make the encoding easier.
   // The encoded hash per lane is 12 bytes, however, we store 16 byte quantities, so we need 16 bytes.
-  VM_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
+  BC_CHECK_SCRATCH_CAPACITY($(16 * 16), R8, abort)
 
-  VM_GET_SCRATCH_BASE_GP(R8)
+  BC_GET_SCRATCH_BASE_GP(R8)
 
   // Update the length of the output buffer.
   ADDQ $(16 * 16), bytecode_scratch+8(VIRT_BCPTR)
@@ -4240,9 +4247,9 @@ TEXT bcgeotileesimm(SB), NOSPLIT|NOFRAME, $0
 
 TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
   // Make sure we have at least 32 bytes for each lane, we always overallocate to make the conversion easier.
-  VM_CHECK_SCRATCH_CAPACITY($(32 * 16), R15, abort)
+  BC_CHECK_SCRATCH_CAPACITY($(32 * 16), R15, abort)
 
-  VM_GET_SCRATCH_BASE_GP(R15)
+  BC_GET_SCRATCH_BASE_GP(R15)
 
   // Update the length of the output buffer.
   ADDQ $(32 * 16), bytecode_scratch+8(VIRT_BCPTR)
@@ -5262,9 +5269,6 @@ TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
   VPSHUFB Z16, Z6, Z6                            // Z6 <- bswap32(symbol bytes)
   VPSRLVD Z5, Z6, Z6                             // Z6 <- SymbolIDs
 
-  TESTQ R8, R8
-  JZ error_null_symbol_table
-
   VPCMPUD.BCST $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z6, K2, K2
   KMOVB K2, K3                                   // K3 <- gather predicate (low)
   KSHIFTRW $8, K2, K4                            // K4 <- gather predicate (high)
@@ -5281,8 +5285,6 @@ TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
 next:
   BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
-
-  _BC_ERROR_HANDLER_NULL_SYMBOL_TABLE()
 
 // i64[0].k[1] = unbox_bool(v[2]).k[3]
 //
@@ -5613,8 +5615,8 @@ TEXT bcboxf64(SB), NOSPLIT|NOFRAME, $0
   VPSRLQ $3, Z7, Z7                      // Z7 <- leading zero bytes count of i64 values (high)
 
   VPXORD X30, X30, X30
-  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, error_handler_more_scratch)
-  VM_GET_SCRATCH_BASE_GP(R8)
+  BC_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, error_handler_more_scratch)
+  BC_GET_SCRATCH_BASE_GP(R8)
 
   // NOTE: Regardless of the strategy used (mixed float/ints or 7-byte ints) we always allocate
   // the same amount of scratch to make the function more deterministic in regards of scratch
@@ -5713,8 +5715,8 @@ TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
   VPSRLQ $3, Z7, Z7                      // Z7 <- leading zero bytes count of i64 values (high)
 
   VPXORD X30, X30, X30
-  VM_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, error_handler_more_scratch)
-  VM_GET_SCRATCH_BASE_GP(R8)
+  BC_CHECK_SCRATCH_CAPACITY($(9 * 16), R15, error_handler_more_scratch)
+  BC_GET_SCRATCH_BASE_GP(R8)
 
   // NOTE: Regardless of the strategy used (boxing 7-byte or 8-byte integers) we always allocate
   // the same amount of scratch to make the function more deterministic in regards of scratch
@@ -5806,7 +5808,7 @@ TEXT bcboxk(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTB CONSTD_1(), Z11                      // Z11 <- byte(0x01)
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))             // K1 <- predicate
 
-  VM_CHECK_SCRATCH_CAPACITY($16, R15, error_handler_more_scratch)
+  BC_CHECK_SCRATCH_CAPACITY($16, R15, error_handler_more_scratch)
   VPADDB       X10, X11, K2, X10                    // X10 <- Type|L (true or false)
   MOVQ         bytecode_scratch(VIRT_BCPTR), R14
   ADDQ         bytecode_scratch+8(VIRT_BCPTR), R14
@@ -5817,7 +5819,7 @@ TEXT bcboxk(SB), NOSPLIT|NOFRAME, $0
   // offsets are [0, 1, 2, 3...] plus base offset; then complemented for Z30
   VPMOVZXBD byteidx<>+0(SB), Z12
   VPXORD Z30, Z30, Z30
-  VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
+  BC_GET_SCRATCH_BASE_ZMM(Z30, K1)
   VPSRLD.Z $24, Z11, K1, Z31
   VPADDD.Z Z12, Z30, K1, Z30
 
@@ -5888,9 +5890,9 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   VPSLLD.Z $3, Z3, K1, Z7                                        // Z7 = [xDDDDDDD|xxxxxxxx|xxxxxxxx|xxxxxxxx]
 
   // Use VPTERNLOGD to combine the extracted bits:
-  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0x007F007F(), Z4, Z5 // Z5 = [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
-  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0x007F007F(), Z6, Z7 // Z7 = [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
-  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0xFFFF0000(), Z7, Z5 // Z5 = [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD.BCST $TLOG_BLEND_BA, CONSTD_0x007F007F(), Z4, Z5 // Z5 = [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD.BCST $TLOG_BLEND_BA, CONSTD_0x007F007F(), Z6, Z7 // Z7 = [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
+  VPTERNLOGD.BCST $TLOG_BLEND_BA, CONSTD_0xFFFF0000(), Z7, Z5 // Z5 = [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
   VPANDD.BCST CONSTD_0x7F7F7F7F(), Z5, Z5                        // Z5 = [0DDDDDDD|0CCCCCCC|0BBBBBBB|0AAAAAAA]
 
   // Find the last leading bit set, which will be used to determine the number
@@ -6419,7 +6421,7 @@ TEXT bchashmember(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64   Z16, Z18
 
   // load some immediates
-  VONES(Z10)                       // Z10 = all ones
+  BC_FILL_ONES(Z10)                       // Z10 = all ones
   VPSRLD        $28, Z10, Z6       // Z6 = 0xf
   VPXORQ        Z14, Z14, Z14      // Z14 = constant 0
   VPXORQ        Z7, Z7, Z7         // Z7 = shift count
@@ -6560,7 +6562,7 @@ TEXT bchashlookup(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64   Z16, Z18
 
   // load some immediates
-  VONES(Z10)                       // Z10 = all ones
+  BC_FILL_ONES(Z10)                       // Z10 = all ones
   VPSRLD        $28, Z10, Z6       // Z6 = 0xf
   VPXORQ        Z14, Z14, Z14      // Z14 = constant 0
   VPXORQ        Z7, Z7, Z7         // Z7 = shift count
@@ -6733,9 +6735,9 @@ TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
 
   KMOVW K1, R15
   VADDPD Z4, Z5, Z5
-  VEXTRACTF64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTF64X4 $1, Z5, Y4
   VADDPD Y4, Y5, Y5
-  VEXTRACTF64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTF64X2 $1, Y5, X4
   VADDPD X4, X5, X5
 
   BC_UNPACK_RU32(0, OUT(DX))
@@ -6756,9 +6758,9 @@ TEXT bcaggsumi(SB), NOSPLIT|NOFRAME, $0
 
   KMOVW K1, R15
   VPADDQ Z4, Z5, Z5
-  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTI64X4 $1, Z5, Y4
   VPADDQ Y4, Y5, Y5
-  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTI64X2 $1, Y5, X4
   VPADDQ X4, X5, X5
 
   BC_UNPACK_RU32(0, OUT(DX))
@@ -6782,10 +6784,10 @@ TEXT bcaggminf(SB), NOSPLIT|NOFRAME, $0
   VMINPD 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTF64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTF64X4 $1, Z5, Y4
   VMINPD Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTF64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTF64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VMINPD X4, X5, X5
@@ -6807,10 +6809,10 @@ TEXT bcaggmini(SB), NOSPLIT|NOFRAME, $0
   VPMINSQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTI64X4 $1, Z5, Y4
   VPMINSQ Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTI64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPMINSQ X4, X5, X5
@@ -6833,10 +6835,10 @@ TEXT bcaggmaxf(SB), NOSPLIT|NOFRAME, $0
   VMAXPD 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTF64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTF64X4 $1, Z5, Y4
   VMAXPD Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTF64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTF64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VMAXPD X4, X5, X5
@@ -6858,10 +6860,10 @@ TEXT bcaggmaxi(SB), NOSPLIT|NOFRAME, $0
   VPMAXSQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTI64X4 $1, Z5, Y4
   VPMAXSQ Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTI64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPMAXSQ X4, X5, X5
@@ -6884,10 +6886,10 @@ TEXT bcaggandi(SB), NOSPLIT|NOFRAME, $0
   VPANDQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTI64X4 $1, Z5, Y4
   VPANDQ Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTI64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPANDQ X4, X5, X5
@@ -6909,10 +6911,10 @@ TEXT bcaggori(SB), NOSPLIT|NOFRAME, $0
   VPORQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTI64X4 $1, Z5, Y4
   VPORQ Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTI64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPORQ X4, X5, X5
@@ -6934,10 +6936,10 @@ TEXT bcaggxori(SB), NOSPLIT|NOFRAME, $0
   VPXORQ 64(VIRT_VALUES)(BX*1), Z5, K2, Z5
 
   KMOVW K1, R15
-  VEXTRACTI64X4 $VEXTRACT_IMM_HI, Z5, Y4
+  VEXTRACTI64X4 $1, Z5, Y4
   VPXORQ Y4, Y5, Y5
   POPCNTL R15, R15
-  VEXTRACTI64X2 $VEXTRACT_IMM_HI, Y5, X4
+  VEXTRACTI64X2 $1, Y5, X4
 
   BC_UNPACK_RU32(0, OUT(DX))
   VPXORQ X4, X5, X5
@@ -6996,7 +6998,7 @@ TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64   Z16, Z18
 
   // load some immediates
-  VONES(Z10)                       // Z10 = all ones
+  BC_FILL_ONES(Z10)                       // Z10 = all ones
   VPSRLD        $28, Z10, Z6       // Z6 = 0xf
   VPXORQ        Z14, Z14, Z14      // Z14 = constant 0
   VPXORQ        Z7, Z7, Z7         // Z7 = shift count
@@ -7561,9 +7563,9 @@ TEXT bcsplit(SB), NOSPLIT|NOFRAME, $0
 
   VPSRLD $1, Z8, Z11                                           // Z11 <- length data as [00000000|00CCCCCCC|C0BBBBBBB|BAAAAAAAA]
   VPSRLD $2, Z8, Z12                                           // Z12 <- length data as [00000000|000CCCCCC|CC0BBBBBB|BBAAAAAAA]
-  VPTERNLOGD.BCST $TERNLOG_BLEND_AB, CONSTD_0x7F(), Z11, Z8    // Z8  <- length data as [00000000|00CCCCCCC|C0BBBBBBB|BAAAAAAAA]
+  VPTERNLOGD.BCST $TLOG_BLEND_AB, CONSTD_0x7F(), Z11, Z8       // Z8  <- length data as [00000000|00CCCCCCC|C0BBBBBBB|BAAAAAAAA]
   BC_UNPACK_SLOT(0, OUT(DX))
-  VPTERNLOGD.BCST $TERNLOG_BLEND_AB, CONSTD_0x3FFF(), Z12, Z8  // Z8  <- length data as [00000000|000CCCCCC|CCBBBBBBB|BAAAAAAAA]
+  VPTERNLOGD.BCST $TLOG_BLEND_AB, CONSTD_0x3FFF(), Z12, Z8     // Z8  <- length data as [00000000|000CCCCCC|CCBBBBBBB|BAAAAAAAA]
 
   BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(CX))
   VPADDD.Z Z8, Z10, K1, Z12                                    // Z12 <- value length

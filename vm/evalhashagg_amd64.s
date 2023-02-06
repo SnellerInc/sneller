@@ -64,7 +64,7 @@ loop:
   VINSERTI32X8 $1, Y3, Z2, Z1
 
   MOVQ   ·vmm+0(SB), VIRT_BASE
-  VMENTER()
+  BC_ENTER()
   JC     early_end
   JMP    loop
 end:

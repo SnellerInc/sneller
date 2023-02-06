@@ -48,7 +48,7 @@ doit:
   // enter bytecode interpretation
   MOVQ bc+0(FP), VIRT_BCPTR
   MOVQ ·vmm+0(SB), VIRT_BASE
-  VMENTER()
+  BC_ENTER()
   JC bytecode_error  // break the loop on error
 
   // load the low 64 bits of the sixteen hashes;

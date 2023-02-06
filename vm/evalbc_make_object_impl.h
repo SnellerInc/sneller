@@ -110,9 +110,9 @@ calc_length_iter:
   VMOVDQA32.Z Z4, K1, Z13                              // Z13 <- lengths of each active lane (inactive are set to zeros)
 
   VPBROADCASTD CONSTD_0x007F007F(), Z10
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z10, Z5, Z6            // Z6 <- [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
-  VPTERNLOGD $TERNLOG_BLEND_BA, Z10, Z7, Z8            // Z8 <- [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
-  VPTERNLOGD.BCST $TERNLOG_BLEND_BA, CONSTD_0xFFFF0000(), Z8, Z6 // Z6 <- [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD $TLOG_BLEND_BA, Z10, Z5, Z6            // Z6 <- [xxxxxxxx|xxxxxxxx|xBBBBBBB|xAAAAAAA]
+  VPTERNLOGD $TLOG_BLEND_BA, Z10, Z7, Z8            // Z8 <- [xDDDDDDD|xCCCCCCC|xxxxxxxx|xxxxxxxx]
+  VPTERNLOGD.BCST $TLOG_BLEND_BA, CONSTD_0xFFFF0000(), Z8, Z6 // Z6 <- [xDDDDDDD|xCCCCCCC|xBBBBBBB|xAAAAAAA]
   VPANDD.BCST CONSTD_0x7F7F7F7F(), Z6, Z6              // Z6 <- [0DDDDDDD|0CCCCCCC|0BBBBBBB|0AAAAAAA]
 
   VPBROADCASTD CONSTD_4(), Z8

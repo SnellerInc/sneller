@@ -47,7 +47,7 @@ vmenter:
   // enter bytecode interpretation
   MOVQ   bc+0(FP), DI
   MOVQ   ·vmm+0(SB), SI  // real static base
-  VMENTER()
+  BC_ENTER()
   JC bytecode_error  // break the loop on error
 
   // now we need to scan (z2:z3).k1 as arrays

@@ -229,8 +229,8 @@ TEXT bcroundf64(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTSD CONSTF64_SIGN_BIT(), Z6
   VMOVAPD Z4, Z5
 
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z6, Z2, Z4
-  VPTERNLOGQ $TERNLOG_BLEND_BA, Z6, Z3, Z5
+  VPTERNLOGQ $TLOG_BLEND_BA, Z6, Z2, Z4
+  VPTERNLOGQ $TLOG_BLEND_BA, Z6, Z3, Z5
 
   // Equivalent to trunc(x + 0.5 * sign(x)) having the intermediate calculation truncated.
   VADDPD.RZ_SAE Z4, Z2, K1, Z2

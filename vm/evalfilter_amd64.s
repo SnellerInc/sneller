@@ -48,7 +48,7 @@ doit:
 
   // enter bytecode interpretation
   MOVQ         ·vmm+0(SB), VIRT_BASE
-  VMENTER()
+  BC_ENTER()
   JC bytecode_error // break the loop on error
 
   // compress output into delims

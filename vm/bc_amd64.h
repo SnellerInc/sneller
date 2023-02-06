@@ -51,49 +51,74 @@
 
 #define VREG_SIZE const_vRegSize       // Size of a V register
 
-// BCCLEARSCRATCH resets the output scratch buffer:
-// len(bytecode.scratch) = len(bytecode.savedlit)
-#define BCCLEARSCRATCH(tmp) \
-  MOVQ    bytecode_savedlit+8(VIRT_BCPTR), tmp   \
-  MOVQ    tmp, bytecode_scratch+8(VIRT_BCPTR)
+// Generic Macros
+// --------------
 
-// BCCLEARERROR resets error code of bytecode program
-#define BCCLEARERROR() \
-  MOVL $0, bytecode_err(VIRT_BCPTR)
+// Fills the destination register with ones
+#define BC_FILL_ONES(Out) VPTERNLOGD $0xFF, Out, Out, Out
 
-// VMINVOKE implements the lowest-level VM entry mechanism. All the required registers must be preset by the caller.
-#define VMINVOKE()      \
-  ADDQ $8, VIRT_PCREG   \
+// BC Interpreter
+// --------------
+
+// BC_INVOKE implements the lowest-level VM entry mechanism. All the
+// required registers must be preset by the caller.
+#define BC_INVOKE()   \
+  ADDQ $8, VIRT_PCREG \
   CALL -8(VIRT_PCREG)
 
-// VMENTER() sets up the VM control registers and jumps into the VM instructions
-// (VIRT_BCPTR must be set to the *bytecode pointer)
+// BC_ENTER() sets up the VM control registers and jumps into the VM
+// instructions (VIRT_BCPTR must be set to the *bytecode pointer)
 //
-//  VMENTER() also takes care to reset the output scratch buffer
-#define VMENTER()                                 \
-  KMOVW K1, K7                                    \
-  BCCLEARSCRATCH(VIRT_PCREG)                      \
-  MOVQ bytecode_compiled(VIRT_BCPTR), VIRT_PCREG  \
-  MOVQ bytecode_vstack(VIRT_BCPTR), VIRT_VALUES   \
-  VMINVOKE()
+// BC_ENTER() also takes care to reset the output scratch buffer
+#define BC_ENTER()                                             \
+  KMOVW K1, K7                                                 \
+  BC_CLEAR_SCRATCH(VIRT_PCREG)                                 \
+  MOVQ bytecode_compiled(VIRT_BCPTR), VIRT_PCREG               \
+  MOVQ bytecode_vstack(VIRT_BCPTR), VIRT_VALUES                \
+  BC_INVOKE()
 
-// VM_GET_SCRATCH_BASE_ZMM(dst, mask) sets dst.mask
+// BC Scratch Buffer
+// -----------------
+
+// BC_CLEAR_SCRATCH resets the output scratch buffer:
+// len(bytecode.scratch) = len(bytecode.savedlit)
+#define BC_CLEAR_SCRATCH(tmp)                                  \
+  MOVQ bytecode_savedlit+8(VIRT_BCPTR), tmp                    \
+  MOVQ tmp, bytecode_scratch+8(VIRT_BCPTR)
+
+// BC_GET_SCRATCH_BASE_ZMM(dst, mask) sets dst.mask
 // to the current scratch base (equal in all lanes);
 // this address can be scattered to safely as long
 // as the scratch capacity has been checked in advance
-#define VM_GET_SCRATCH_BASE_ZMM(dst, mask) \
-  VPBROADCASTD  bytecode_scratchoff(VIRT_BCPTR), mask, dst \
-  VPADDD.BCST   bytecode_scratch+8(VIRT_BCPTR), dst, mask, dst
-
-#define VM_GET_SCRATCH_BASE_GP(dst) \
-  MOVLQSX bytecode_scratchoff(VIRT_BCPTR), dst \
+#define BC_GET_SCRATCH_BASE_GP(dst)                            \
+  MOVLQSX bytecode_scratchoff(VIRT_BCPTR), dst                 \
   ADDQ bytecode_scratch+8(VIRT_BCPTR), dst
 
-#define VM_CHECK_SCRATCH_CAPACITY(size, sizereg, abrt) \
-  MOVQ bytecode_scratch+16(VIRT_BCPTR), sizereg \
-  SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg \
+#define BC_GET_SCRATCH_BASE_ZMM(dst, mask)                     \
+  VPBROADCASTD bytecode_scratchoff(VIRT_BCPTR), mask, dst      \
+  VPADDD.BCST bytecode_scratch+8(VIRT_BCPTR), dst, mask, dst
+
+#define BC_CHECK_SCRATCH_CAPACITY(size, sizereg, abrt)         \
+  MOVQ bytecode_scratch+16(VIRT_BCPTR), sizereg                \
+  SUBQ bytecode_scratch+8(VIRT_BCPTR), sizereg                 \
   CMPQ sizereg, size \
   JLT  abrt
+
+// BC Error Handling
+// -----------------
+
+// BC_CLEAR_ERROR resets error code of bytecode program
+#define BC_CLEAR_ERROR() MOVL $0, bytecode_err(VIRT_BCPTR)
+
+#define _BC_ERROR_HANDLER_MORE_SCRATCH()                       \
+error_handler_more_scratch:                                    \
+  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)       \
+  RET_ABORT()
+
+#define _BC_ERROR_HANDLER_NULL_SYMTAB()                        \
+error_null_symtab:                                             \
+  MOVL $const_bcerrNullSymbolTable, bytecode_err(VIRT_BCPTR)   \
+  RET_ABORT()
 
 // BC Instruction Unpack Helpers
 // -----------------------------
@@ -201,7 +226,7 @@
 
 #define BC_UNPACK_3xSLOT_MASK_SLOT(Offset, DstR1, DstR2, DstR3, DstK4, DstR5)  \
   BC_UNPACK_3xSLOT(Offset, DstR1, DstR2, DstR3)                                \
-  BC_UNPACK_MASK(Offset+BC_SLOT_SIZE*3, DstK4                                  \
+  BC_UNPACK_MASK(Offset+BC_SLOT_SIZE*3, DstK4)                                 \
   BC_UNPACK_SLOT(Offset+BC_SLOT_SIZE*3 + 2, DstR5)
 
 #define BC_UNPACK_3xSLOT_ZF64_SLOT(Offset, DstR1, DstR2, DstR3, DstZ4, DstR5)  \
@@ -332,19 +357,6 @@
   VMOVDQU64 SrcZ2, 64(VIRT_VALUES)(Slot*1)                                     \
   VMOVDQU8 SrcTlvX, 128(VIRT_VALUES)(Slot*1)                                   \
   VMOVDQU8 SrcHLenX, 144(VIRT_VALUES)(Slot*1)
-
-// BC Error Handlers
-// -----------------
-
-#define _BC_ERROR_HANDLER_MORE_SCRATCH()                                       \
-error_handler_more_scratch:                                                    \
-  MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)                       \
-  RET_ABORT()
-
-#define _BC_ERROR_HANDLER_NULL_SYMBOL_TABLE()                                  \
-error_null_symbol_table:                                                       \
-  MOVL $const_bcerrNullSymbolTable, bytecode_err(VIRT_BCPTR)                   \
-  RET_ABORT()
 
 // BC Working With Values and Symbols
 // ----------------------------------

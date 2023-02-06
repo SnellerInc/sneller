@@ -25,11 +25,11 @@ TEXT ·bctest_run_aux(SB), NOSPLIT, $0
 
     MOVQ bc+0(FP), VIRT_BCPTR  // DI
     MOVQ ·vmm+0(SB), VIRT_BASE // SI real static base
-    BCCLEARSCRATCH(VIRT_PCREG)
+    BC_CLEAR_SCRATCH(VIRT_PCREG)
     MOVQ bytecode_compiled(VIRT_BCPTR), VIRT_PCREG
     MOVQ bytecode_vstack(VIRT_BCPTR), VIRT_VALUES // R12
 
     // execute the bytecode
-    VMINVOKE()
+    BC_INVOKE()
 
     RET

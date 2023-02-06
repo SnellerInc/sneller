@@ -14,10 +14,6 @@
 
 // This file contains immediate values / predicates that can be used as operands in some instructions
 
-// Immediates for VEXTRACT[...] that extracts low|high half of ZMM|YMM register
-#define VEXTRACT_IMM_LO     0
-#define VEXTRACT_IMM_HI     1
-
 // Immediates for VROUND[PD|PS|SD|SS]
 #define VROUND_IMM_NEAREST     0x00
 #define VROUND_IMM_DOWN        0x01
@@ -80,9 +76,6 @@
 
 #define TLOG_BLEND_AB 0xE4
 #define TLOG_BLEND_BA 0xD8
-
-#define TERNLOG_BLEND_AB 0xE4
-#define TERNLOG_BLEND_BA 0xD8
 
 // CMOVcc instructions that use INTEL syntax instead of Plan9
 //
