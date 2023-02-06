@@ -54,8 +54,7 @@ doit:
   // load the low 64 bits of the sixteen hashes;
   // we should have Z15 = first 8 lo 64, Z16 = second 8 lo 64
   MOVQ        slot+64(FP), R8
-  SHLQ        $8, R8 // TODO: BC REFACTOR, REMOVE...
-  ADDQ        bytecode_hashmem(VIRT_BCPTR), R8
+  ADDQ        VIRT_VALUES, R8
   VMOVDQU64   0(R8), Z15
   VMOVDQU64   64(R8), Z16
   VPUNPCKLQDQ Z16, Z15, Z15

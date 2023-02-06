@@ -26,18 +26,6 @@ const permanentStackSlot = stackslot(0x0001)
 
 const bcStackAlignment = 64
 
-// The type of the stack used by bytecode programs.
-//
-// At the moment the stack is separated to virtual stack and hash stack.
-// Virtual stack is used to spill all registers except hash registers.
-type stacktype uint8
-
-const (
-	stackTypeV stacktype = iota
-	stackTypeH
-	stackTypeCount
-)
-
 // Groups registers that have the same size so the allocator can reuse freed
 // registers more efficiently (sharing stack sizes instead of register types)
 type regsizegroup uint8
@@ -49,15 +37,6 @@ const (
 	regSizeGroup4xVec
 	regSizeGroupCount
 )
-
-var stackTypeByRegClass = [...]stacktype{
-	regK: stackTypeV,
-	regS: stackTypeV,
-	regV: stackTypeV,
-	regB: stackTypeV,
-	regH: stackTypeH,
-	regL: stackTypeV,
-}
 
 var regSizeGroupByRegClass = [...]regsizegroup{
 	regK: regSizeGroup1xK,
@@ -185,14 +164,13 @@ func (s *stackalloc) allocSlot(size int) stackslot {
 // stackmap manages a virtual stack. It allows to allocate stack regions either permanently or temporarily.
 // Temporary allocations can be reused by multiple virtual registers that don't live at the same time.
 type stackmap struct {
-	allocator [stackTypeCount]stackalloc     // low-level allocator for each virtual stack
+	allocator stackalloc                     // low-level stack allocator
 	freeSlots [regSizeGroupCount][]stackslot // a map of unuset slots for each register size group
 	idToSlot  [_maxregclass][]stackslot      // a map that holds allocated value IDs and their stack slots
 }
 
 func (s *stackmap) reserveSlot(rc regclass, slot stackslot) {
-	stackType := stackTypeByRegClass[rc]
-	s.allocator[stackType].reserveSlot(slot, int(regSizeByRegClass[rc]))
+	s.allocator.reserveSlot(slot, int(regSizeByRegClass[rc]))
 }
 
 // Allocates a slot of the specified register class
@@ -215,16 +193,13 @@ func (s *stackmap) allocSlot(rc regclass) stackslot {
 		panic("invalid state in stackmap.allocSlot(): slot size is zero")
 	}
 
-	stackType := stackTypeByRegClass[rc]
-	allocator := &s.allocator[stackType]
-
 	// regV uses a bit different logic - since it's not aligned to 64 bytes (only to 32 bytes)
 	// we always allocate a pair of these to prevent misaligning the virtual stack. This means
 	// that one of the two would only be aligned to 32 bytes, but that seems to be just ok (the
 	// rest of virtual registers are still aligned to 64 bytes).
 	if rc == regV {
-		slot1 := allocator.allocSlot(int(slotSize))
-		slot2 := allocator.allocSlot(int(slotSize))
+		slot1 := s.allocator.allocSlot(int(slotSize))
+		slot2 := s.allocator.allocSlot(int(slotSize))
 		s.freeSlots[regSizeGroup] = append(freeSlots, slot2)
 
 		return slot1
@@ -232,7 +207,7 @@ func (s *stackmap) allocSlot(rc regclass) stackslot {
 
 	// Always allocate regions that keep the stack aligned to the required alignment.
 	alignedSlotSize := (slotSize + bcStackAlignment - 1) & ^uint32(bcStackAlignment-1)
-	slot := allocator.allocSlot(int(alignedSlotSize))
+	slot := s.allocator.allocSlot(int(alignedSlotSize))
 
 	// Keep stack size always aligned to N bytes, because this is the unit that we allocate.
 	// If we just allocated a smaller unit (like mask) then allocate more slots of the same
@@ -318,15 +293,14 @@ func (s *stackmap) hasFreeableSlot(rc regclass, valueID int) bool {
 	return (slot & permanentStackSlot) == 0
 }
 
-func (s *stackmap) stackSize(st stacktype) int {
-	return s.stackSizeInUInt64Units(st) << 3
+func (s *stackmap) stackSize() int {
+	return s.stackSizeInUInt64Units() << 3
 }
 
-func (s *stackmap) stackSizeInUInt64Units(st stacktype) int {
-	allocator := &s.allocator[st]
-	offset := allocator.offset
-	if len(allocator.reservedSlots) > 0 {
-		last := allocator.reservedSlots[len(allocator.reservedSlots)-1]
+func (s *stackmap) stackSizeInUInt64Units() int {
+	offset := s.allocator.offset
+	if len(s.allocator.reservedSlots) > 0 {
+		last := s.allocator.reservedSlots[len(s.allocator.reservedSlots)-1]
 		reservedEnd := last.offset + last.size
 		if offset < reservedEnd {
 			offset = reservedEnd

@@ -566,7 +566,7 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 		// consider allocating table space more aggressively?
 		step := 16 - bits.LeadingZeros16(abort)
 		hashslot := a.bc.errinfo >> 3 // `bcaggbucket` sets the current byte-offset to hashslot
-		hashmem := a.bc.hashmem[hashslot:]
+		hashmem := a.bc.vstack[hashslot:]
 		for i := 0; i < step; i++ {
 			if abort&(1<<i) == 0 {
 				continue

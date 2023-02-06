@@ -52,25 +52,21 @@ func TestStackMapBasics(t *testing.T) {
 	assertStackSlot(m.allocSlot(regK), stackslot(kSize*6))
 
 	// Hash registers use separate slots at the moment.
-	assertStackSlot(m.allocSlot(regH), stackslot(0))
-	assertStackSlot(m.allocSlot(regH), stackslot(hSize))
+	assertStackSlot(m.allocSlot(regH), stackslot(bcStackAlignment+vRegSize*2))
+	assertStackSlot(m.allocSlot(regH), stackslot(bcStackAlignment+vRegSize*2+hSize))
 
-	vStackSize := m.stackSize(stackTypeV)
-	if vStackSize != int(vSize*2+bcStackAlignment) {
-		t.Errorf("invalid virtual stack size reported: expected %d, got %d", vSize*2+bcStackAlignment, vStackSize)
-	}
-
-	hStackSize := m.stackSize(stackTypeH)
-	if hStackSize != int(hSize*2) {
-		t.Errorf("invalid hash stack size reported: expected %d, got %d", hSize*2, hStackSize)
+	vStackSize := m.stackSize()
+	expectedSize := int(vSize*2 + bcStackAlignment + hSize*2)
+	if vStackSize != expectedSize {
+		t.Errorf("invalid virtual stack size reported: expected %d, got %d", expectedSize, vStackSize)
 	}
 
 	// Properly aligned stack size should be reported even if the last register is K.
 	assertStackSlot(m.allocSlot(regK), stackslot(kSize*7))
 
-	vStackSize = m.stackSize(stackTypeV)
-	if vStackSize != int(vSize*2+bcStackAlignment) {
-		t.Errorf("invalid virtual stack size when checking alignment: expected %d, got %d", vSize*2+bcStackAlignment, vStackSize)
+	vStackSize = m.stackSize()
+	if vStackSize != expectedSize {
+		t.Errorf("invalid virtual stack size when checking alignment: expected %d, got %d", expectedSize, vStackSize)
 	}
 }
 
@@ -132,14 +128,14 @@ func TestStackMapWithReservedSlotInTheMiddle(t *testing.T) {
 	assertStackSlot(m.allocSlot(regV), stackslot(vSize*10))
 	assertStackSlot(m.allocSlot(regV), stackslot(vSize*11))
 
-	stackSize := m.stackSize(stackTypeV)
+	stackSize := m.stackSize()
 	if stackSize != int(vSize*12) {
 		t.Errorf("invalid stack size reported: expected %d, got %d", vSize*12, stackSize)
 	}
 
 	// Stack size must also cover all explicitly reserved regions.
 	m.reserveSlot(regV, stackslot(8192))
-	stackSize = m.stackSize(stackTypeV)
+	stackSize = m.stackSize()
 	if stackSize != int(8192+vSize) {
 		t.Errorf("invalid stack size after reservation: expected %d, got %d", 8192+vSize, stackSize)
 	}

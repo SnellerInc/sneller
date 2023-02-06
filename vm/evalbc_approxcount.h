@@ -25,11 +25,12 @@ TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
     // unpacked out-of-order due to the R12 clobber:
     BC_UNPACK_SLOT(4 + BC_SLOT_SIZE + 2, OUT(BX))
     BC_LOAD_RU16_FROM_SLOT(OUT(R14), IN(BX)) // BX = valid lanes
+
+    ADDQ VIRT_VALUES, R8
     BC_UNPACK_RU16(4 + BC_SLOT_SIZE, OUT(R12))
 
     // Note: The virtual hash registers are 128-bit ones, we use the higher 64 bits of each.
     ADDQ    AggregateDataBuffer, R15    // R15 -> aggregate buffer of size 1 << precision bytes
-    ADDQ    bytecode_hashmem(VIRT_BCPTR), R8
     MOVQ    $64, R13
     SUBQ    R12, R13                    // R13 = 64 - R12 - hash bits
 
@@ -173,7 +174,7 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     KMOVW   K1, CURRENT_MASK
 
     // Get the offset in hashmem
-    ADDQ    bytecode_hashmem(VIRT_BCPTR), HASHMEM_PTR
+    ADDQ    VIRT_VALUES, HASHMEM_PTR
 
     // Get parameters for the HLL algorithm
     MOVQ    $64, BITS_PER_HLL_HASH

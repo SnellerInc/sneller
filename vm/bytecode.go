@@ -659,8 +659,6 @@ type bytecode struct {
 	auxvals  [][]vmref
 	auxpos   int
 
-	hashmem []uint64 // the H virtual registers (128 bits per lane)
-
 	trees []*radixTree64 // trees used for hashmember, etc.
 
 	//lint:ignore U1000 not unused; used in assembly
@@ -688,7 +686,6 @@ type bytecode struct {
 	spillArea [512]byte
 
 	vstacksize int
-	hstacksize int
 
 	// set from abort handlers
 	err   bcerr
@@ -951,14 +948,8 @@ func alignVStackBuffer(buf []uint64) []uint64 {
 // Allocates all stacks that are needed to execute the bytecode program.
 func (b *bytecode) allocStacks() {
 	vSize := (b.vstacksize + 7) >> 3
-	hSize := (b.hstacksize + 7) >> 3
-
 	if cap(b.vstack) < vSize {
 		b.vstack = alignVStackBuffer(make([]uint64, vSize+((bcStackAlignment-1)>>3)))
-	}
-
-	if cap(b.hashmem) < hSize {
-		b.hashmem = make([]uint64, hSize)
 	}
 }
 

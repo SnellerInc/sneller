@@ -4086,9 +4086,7 @@ func (p *prog) compile(dst *bytecode, st *symtab, callerName string) error {
 		tracef(sb.String())
 	}
 
-	dst.vstacksize = c.stack.stackSize(stackTypeV)
-	dst.hstacksize = c.stack.stackSize(stackTypeH)
-
+	dst.vstacksize = c.stack.stackSize()
 	dst.allocStacks()
 	dst.trees = c.trees
 	dst.dict = c.dict

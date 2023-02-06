@@ -6209,7 +6209,7 @@ TEXT bchashvalue(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
   VPXORD X10, X10, X10
   ADDQ $(BC_SLOT_SIZE*3), VIRT_PCREG
-  ADDQ bytecode_hashmem(VIRT_BCPTR), DX
+  ADDQ VIRT_VALUES, DX
 
   VMOVDQU32 Z10, (DX)
   VMOVDQU32 Z10, 64(DX)
@@ -6228,8 +6228,8 @@ TEXT bchashvalueplus(SB), NOSPLIT|NOFRAME, $0
 
   BC_UNPACK_2xSLOT(0, OUT(R14), OUT(DX))
   ADDQ $(BC_SLOT_SIZE*4), VIRT_PCREG
-  ADDQ bytecode_hashmem(VIRT_BCPTR), R14
-  ADDQ bytecode_hashmem(VIRT_BCPTR), DX
+  ADDQ VIRT_VALUES, R14
+  ADDQ VIRT_VALUES, DX
   MOVQ VIRT_BASE, R15
 
   JMP hashimpl_tail(SB)
@@ -6400,7 +6400,7 @@ TEXT bchashmember(SB), NOSPLIT|NOFRAME, $0
   KTESTW  K1, K1
   JZ      next
 
-  ADDQ    bytecode_hashmem(VIRT_BCPTR), R8       // R8 = pointer to input hash slot
+  ADDQ    VIRT_VALUES, R8       // R8 = pointer to input hash slot
   MOVQ    bytecode_trees(VIRT_BCPTR), R14
   MOVQ    0(R14)(R13*8), R13                     // R13 = tree pointer
   KMOVW   K1, K2
@@ -6541,7 +6541,7 @@ TEXT bchashlookup(SB), NOSPLIT|NOFRAME, $0
   KTESTW  K1, K1
   JZ      next
 
-  ADDQ    bytecode_hashmem(VIRT_BCPTR), R8       // R8 = pointer to input hash slot
+  ADDQ    VIRT_VALUES, R8       // R8 = pointer to input hash slot
   MOVQ    bytecode_trees(VIRT_BCPTR), R14
   MOVQ    0(R14)(R13*8), R13                     // R13 = tree pointer
   KMOVW   K1, K2
@@ -6979,7 +6979,7 @@ TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
   KTESTW  K1, K1
   JZ      next
 
-  ADDQ    bytecode_hashmem(VIRT_BCPTR), R8 // R8 = pointer to input hash slot
+  ADDQ    VIRT_VALUES, R8 // R8 = pointer to input hash slot
   KMOVW   K1, K2
   KMOVW   K1, K3
 
