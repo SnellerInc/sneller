@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -1114,9 +1115,13 @@ func benchPath(b *testing.B, fname string) {
 	})
 }
 
+// symLinkFlag flag to toggle whether symlinks are crawled while searching for test cases.
+// '-symlink=true' (or '-symlink') is default. To switch off symlink crawling use '-symlink=false'
+var symLinkFlag = flag.Bool("symlink", true, "whether to crawl tests using symbolic links")
+
 func BenchmarkTestQueries(b *testing.B) {
 	for _, dir := range []string{"./testdata/queries/", "./testdata/benchmarks/"} {
-		bench, err := findQueries(dir, ".bench")
+		bench, err := findQueries(dir, ".bench", *symLinkFlag)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1134,7 +1139,7 @@ func BenchmarkTestQueries(b *testing.B) {
 // as quickly as possible, tests are
 // run in parallel.
 func TestQueries(t *testing.T) {
-	test, err := findQueries("./testdata/queries/", ".test")
+	test, err := findQueries("./testdata/queries/", ".test", *symLinkFlag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1155,18 +1160,23 @@ type queryTest struct {
 	name, path string
 }
 
-func findQueries(dir, suffix string) ([]queryTest, error) {
+func findQueries(dir, suffix string, symlink bool) ([]queryTest, error) {
 	var tests []queryTest
 
 	rootdir := filepath.Clean(dir)
 	prefix := rootdir + "/"
 
-	err := filepath.WalkDir(rootdir, func(path string, d fs.DirEntry, err error) error {
+	var walker fs.WalkDirFunc
+	walker = func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			return nil
+		}
+		if symlink && d.Type()&fs.ModeSymlink != 0 {
+			path, _ = filepath.EvalSymlinks(path)
+			return filepath.WalkDir(path, walker)
 		}
 		if !strings.HasSuffix(d.Name(), suffix) {
 			return nil
@@ -1183,7 +1193,6 @@ func findQueries(dir, suffix string) ([]queryTest, error) {
 
 		tests = append(tests, t)
 		return nil
-	})
-
-	return tests, err
+	}
+	return tests, filepath.WalkDir(rootdir, walker)
 }
