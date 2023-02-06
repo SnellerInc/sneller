@@ -20,9 +20,9 @@
 
 TEXT ·evalaggregatebc(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
-  MOVQ w+0(FP), DI                     // RDI = &w
+  MOVQ w+0(FP), VIRT_BCPTR             // RDI = &w
   XORQ R9, R9                          // R9  = rows consumed
-  MOVQ aggregateDataBuffer+32(FP), R10 // R10 = aggregate data buffer
+  MOVQ aggregateDataBuffer+32(FP), VIRT_AGG_BUFFER // R10 = aggregate data buffer
 
 loop:
   MOVQ delims_len+16(FP), CX
@@ -60,21 +60,14 @@ loop:
   VINSERTI32X8 $1, Y3, Z2, Z1
 
   // Enter bytecode interpretation
-  VPXORD Z30, Z30, Z30
-  VPXORD Z31, Z31, Z31
   MOVQ   ·vmm+0(SB), VIRT_BASE
   VMENTER()
   JC bytecode_error // break the loop on error
 
   JMP loop
 
-trap:
-  BYTE $0xCC
-
 end:
-  // The function returns an integer, but at the moment we just return zero as each aggregate value has a separate counter.
-  XORL R10, R10
-  MOVQ R10, ret+56(FP)
+  MOVQ R9, ret+56(FP)
   RET
 
 bytecode_error:

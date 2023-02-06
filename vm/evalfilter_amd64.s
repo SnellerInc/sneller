@@ -19,7 +19,7 @@
 
 TEXT ·evalfilterbc(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
-  MOVQ w+0(FP), DI    // DI = &w
+  MOVQ w+0(FP), VIRT_BCPTR
   XORQ R9, R9         // R9 = rows consumed
   XORQ R10, R10       // R10 = rows out
   JMP  tail
@@ -47,9 +47,7 @@ doit:
   ADDQ         $16, R9
 
   // enter bytecode interpretation
-  VPXORD       Z30, Z30, Z30
-  VPXORD       Z31, Z31, Z31
-  MOVQ         ·vmm+0(SB), SI  // real static base
+  MOVQ         ·vmm+0(SB), VIRT_BASE
   VMENTER()
   JC bytecode_error // break the loop on error
 
@@ -114,5 +112,3 @@ genmask:
   JMP         doit
 bytecode_error:
   RET
-trap:
-  BYTE $0xCC

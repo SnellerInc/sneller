@@ -62,8 +62,7 @@ loop:
 
   VINSERTI32X8 $1, Y1, Z0, Z0
   VINSERTI32X8 $1, Y3, Z2, Z1
-  VPXORD Z30, Z30, Z30
-  VPXORD Z31, Z31, Z31
+
   MOVQ   ·vmm+0(SB), VIRT_BASE
   VMENTER()
   JC     early_end

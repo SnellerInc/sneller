@@ -46,8 +46,8 @@ doit:
   ADDQ         $16, R9
 
   // enter bytecode interpretation
-  MOVQ bc+0(FP), DI
-  MOVQ ·vmm+0(SB), SI       // real static base
+  MOVQ bc+0(FP), VIRT_BCPTR
+  MOVQ ·vmm+0(SB), VIRT_BASE
   VMENTER()
   JC bytecode_error  // break the loop on error
 
@@ -248,5 +248,3 @@ genmask:
   JMP         doit
 bytecode_error:
   RET
-trap:
-  BYTE $0xCC
