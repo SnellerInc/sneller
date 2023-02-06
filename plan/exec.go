@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 )
 
@@ -26,9 +27,9 @@ func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
 	return e.do(dst, &t.Root)
 }
 
-func (e *executor) subexec(n *Node, ep *ExecParams) error {
+func (e *executor) subexec(n *Node) (expr.Rewriter, error) {
 	if len(n.Children) == 0 {
-		return nil
+		return nil, nil
 	}
 	rp := make([]replacement, len(n.Children))
 	var wg sync.WaitGroup
@@ -42,13 +43,12 @@ func (e *executor) subexec(n *Node, ep *ExecParams) error {
 	}
 	wg.Wait()
 	if err := appenderrs(nil, errors); err != nil {
-		return err
+		return nil, err
 	}
 	repl := &replacer{
 		inputs: rp,
 	}
-	ep.AddRewrite(repl)
-	return nil
+	return repl, nil
 }
 
 type executor struct {
@@ -64,8 +64,14 @@ func mkexec(ep *ExecParams, inputs []Input) *executor {
 }
 
 func (e *executor) do(dst vm.QuerySink, n *Node) error {
-	if err := e.subexec(n, e.ep); err != nil {
+	rw, err := e.subexec(n)
+	if err != nil {
 		return err
+	}
+	if rw != nil {
+		// this rewrite is scoped to just this node
+		e.ep.AddRewrite(rw)
+		defer e.ep.PopRewrite()
 	}
 	fn := n.Op.wrap(dst, e.ep)
 	i := n.Input

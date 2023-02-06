@@ -82,6 +82,19 @@ func (ep *ExecParams) AddRewrite(r expr.Rewriter) {
 	ep.Rewriter = &multiRewriter{parent: ep.Rewriter, self: r}
 }
 
+// PopRewrite removes the most-recently-added Rewriter
+// added via ep.AddRewrite.
+func (ep *ExecParams) PopRewrite() {
+	if ep.Rewriter == nil {
+		return
+	}
+	if mr, ok := ep.Rewriter.(*multiRewriter); ok {
+		ep.Rewriter = mr.parent
+	} else {
+		ep.Rewriter = nil
+	}
+}
+
 func (ep *ExecParams) rewrite(x expr.Node) expr.Node {
 	if ep.Rewriter == nil {
 		return x

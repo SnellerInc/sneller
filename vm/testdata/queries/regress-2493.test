@@ -1,0 +1,56 @@
+WITH
+  "$source" AS
+	(SELECT *
+	 FROM input
+	 WHERE "timestamp" >= `2023-01-04T10:33:54.746Z` AND "timestamp" <= `2023-01-05T10:33:54.746Z`),
+  "kw0" AS (
+SELECT region, COUNT(*) AS "$doc_count"
+FROM "$source"
+GROUP BY region
+ORDER BY "$doc_count" DESC
+LIMIT 3
+),
+  "kw1" AS (
+SELECT region, acct, COUNT(*) AS "$doc_count"
+FROM "$source"
+WHERE region IN (SELECT region FROM "kw0")
+GROUP BY region, acct
+HAVING ROW_NUMBER() OVER (PARTITION BY region ORDER BY COUNT(*) DESC, acct DESC) <= 2
+ORDER BY COUNT(*) DESC, region DESC
+)
+SELECT
+  (SELECT COUNT(*) FROM "$source") AS "$total_count",
+  (SELECT * FROM "kw0") AS "group0",
+  (SELECT * FROM "kw1") AS "group1"
+---
+{"timestamp": "2023-01-04T10:33:55.0Z", "region": "r1", "acct": "a0"}
+{"timestamp": "2023-01-04T10:33:56.0Z", "region": "r1", "acct": "a1"}
+{"timestamp": "2023-01-04T10:33:56.1Z", "region": "r1", "acct": "a1"}
+{"timestamp": "2023-01-04T10:33:56.2Z", "region": "r6", "acct": "a2"}
+{"timestamp": "2023-01-04T10:33:57.0Z", "region": "r2", "acct": "a0"}
+{"timestamp": "2023-01-04T10:33:58.0Z", "region": "r2", "acct": "a0"}
+{"timestamp": "2023-01-04T10:33:59.0Z", "region": "r3", "acct": "a3"}
+{"timestamp": "2023-01-04T10:34:00.0Z", "region": "r3", "acct": "a4"}
+{"timestamp": "2023-01-04T10:34:00.1Z", "region": "r3", "acct": "a4"}
+{"timestamp": "2023-01-04T10:34:01.0Z", "region": "r3", "acct": "a5"}
+{"timestamp": "2023-01-04T10:34:02.0Z", "region": "r4", "acct": "a0"}
+{"timestamp": "2023-01-04T10:34:03.0Z", "region": "r4", "acct": "a0"}
+{"timestamp": "2023-01-04T10:34:04.0Z", "region": "r4", "acct": "a0"}
+{"timestamp": "2023-01-04T10:34:05.0Z", "region": "r4", "acct": "a1"}
+{"timestamp": "2023-01-04T10:34:06.0Z", "region": "r4", "acct": "a1"}
+{"timestamp": "2023-01-04T10:34:07.0Z", "region": "r5", "acct": "a5"}
+---
+{"$total_count": 16,
+"group0": [
+    {"region": "r4", "$doc_count": 5},
+    {"region": "r3", "$doc_count": 4},
+    {"region": "r1", "$doc_count": 3}
+],
+"group1": [
+    {"region": "r4", "acct": "a0", "$doc_count": 3},
+    {"region": "r4", "acct": "a1", "$doc_count": 2},
+    {"region": "r3", "acct": "a4", "$doc_count": 2},
+    {"region": "r1", "acct": "a1", "$doc_count": 2},
+    {"region": "r3", "acct": "a5", "$doc_count": 1},
+    {"region": "r1", "acct": "a0", "$doc_count": 1}
+]}
