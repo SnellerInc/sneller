@@ -152,7 +152,7 @@ var bcImmWidth = [...]uint8{
 	bcAggSlot:  4,
 	bcHashSlot: 4,
 	bcSymbolID: 4,
-	bcLitRef:   8,
+	bcLitRef:   10,
 	bcImmI8:    1,
 	bcImmI16:   2,
 	bcImmI32:   4,
@@ -622,6 +622,10 @@ const (
 	// bytecode fails a bounds check
 	// in a radix tree lookup
 	bcerrTreeCorrupt
+	// NullSymbolTable is returned when unsymbolize
+	// found symbols, but couldn't process them as
+	// there was no symbol table
+	bcerrNullSymbolTable
 )
 
 func (b bcerr) Error() string {
@@ -634,6 +638,8 @@ func (b bcerr) Error() string {
 		return "internal assertion failed"
 	case bcerrTreeCorrupt:
 		return "radix tree bounds-check failed"
+	case bcerrNullSymbolTable:
+		return "null symbol table"
 	default:
 		return "unknown bytecode error"
 	}
@@ -712,6 +718,14 @@ const (
 	bcFormatAll = bcFormatSymbols
 )
 
+func readUIntFromBC(buf []byte) uint64 {
+	value := uint64(0)
+	for i := 0; i < len(buf); i++ {
+		value |= uint64(buf[i]) << (i * 8)
+	}
+	return value
+}
+
 func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcArgType, flags bcFormatFlags) int {
 	offset := 0
 	size := len(compiled)
@@ -723,54 +737,64 @@ func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcAr
 			return -1
 		}
 
-		value := uint64(0)
-		for argByte := 0; argByte < width; argByte++ {
-			value |= uint64(compiled[offset]) << (argByte * 8)
-			offset++
-		}
-
 		if i != 0 {
 			dst.WriteString(", ")
 		}
 
 		switch argType {
 		case bcReadK:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "k[%d]", value)
 		case bcWriteK:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "w:k[%d]", value)
 
 		case bcReadS:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "s[%d]", value)
 		case bcWriteS:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "w:s[%d]", value)
 
 		case bcReadV:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "v[%d]", value)
 		case bcWriteV:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "w:v[%d]", value)
 		case bcReadWriteV:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "x:v[%d]", value)
 
 		case bcReadB:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "b[%d]", value)
 		case bcWriteB:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "w:b[%d]", value)
 
 		case bcReadH:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "h[%d]", value)
 		case bcWriteH:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "w:h[%d]", value)
 
 		case bcAuxSlot:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "aux[%d]", value)
 		case bcAggSlot:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "agg[%d]", value)
 		case bcHashSlot:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "hash[%d]", value)
 		case bcDictSlot:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "dict[%d]", value)
 
 		case bcSymbolID:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			if (flags & bcFormatSymbols) != 0 {
 				decoded := decodeSymbolID(uint32(value))
 				if uint64(decoded) < uint64(len(bc.symtab)) {
@@ -787,30 +811,45 @@ func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcAr
 			fmt.Fprintf(dst, "sym(%d)", value)
 
 		case bcImmI8:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "i8(%d)", int8(value))
 		case bcImmI16:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "i16(%d)", int16(value))
 		case bcImmI32:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "i32(%d)", int32(value))
 		case bcImmI64:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "i64(%d)", int64(value))
 		case bcImmU8:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "u8(%d)", value)
 		case bcImmU16:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "u16(%d)", value)
 		case bcImmU32:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "u32(%d)", value)
 		case bcImmU64:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "u64(%d)", value)
 		case bcImmF64:
+			value := readUIntFromBC(compiled[offset : offset+width])
 			fmt.Fprintf(dst, "f64(%g)", math.Float64frombits(value))
 
 		case bcLitRef:
-			fmt.Fprintf(dst, "litref(%d, %d)", value&0xFFFFFFFF, value>>32)
+			litOff := readUIntFromBC(compiled[offset : offset+4])
+			litLen := readUIntFromBC(compiled[offset+4 : offset+8])
+			litTLV := compiled[offset+8]
+			litHLen := compiled[offset+9]
+			fmt.Fprintf(dst, "litref(%d, %d, tlv=0x%02X, hLen=%d)", litOff, litLen, litTLV, litHLen)
 
 		default:
-			panic(fmt.Sprintf("Unhandled immediate type %v", value))
+			panic(fmt.Sprintf("Unhandled immediate type: %v", argType))
 		}
+
+		offset += width
 	}
 
 	return offset
@@ -915,7 +954,7 @@ func (b *bytecode) allocStacks() {
 	hSize := (b.hstacksize + 7) >> 3
 
 	if cap(b.vstack) < vSize {
-		b.vstack = alignVStackBuffer(make([]uint64, vSize+(bcStackAlignment>>3)-1))
+		b.vstack = alignVStackBuffer(make([]uint64, vSize+((bcStackAlignment-1)>>3)))
 	}
 
 	if cap(b.hashmem) < hSize {

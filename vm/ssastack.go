@@ -45,6 +45,7 @@ type regsizegroup uint8
 const (
 	regSizeGroup1xK regsizegroup = iota
 	regSizeGroup2xVec
+	regSizeGroup3xVec
 	regSizeGroup4xVec
 	regSizeGroupCount
 )
@@ -61,7 +62,7 @@ var stackTypeByRegClass = [...]stacktype{
 var regSizeGroupByRegClass = [...]regsizegroup{
 	regK: regSizeGroup1xK,
 	regS: regSizeGroup2xVec,
-	regV: regSizeGroup2xVec,
+	regV: regSizeGroup3xVec,
 	regB: regSizeGroup2xVec,
 	regH: regSizeGroup4xVec,
 	regL: regSizeGroup2xVec,
@@ -217,6 +218,18 @@ func (s *stackmap) allocSlot(rc regclass) stackslot {
 	stackType := stackTypeByRegClass[rc]
 	allocator := &s.allocator[stackType]
 
+	// regV uses a bit different logic - since it's not aligned to 64 bytes (only to 32 bytes)
+	// we always allocate a pair of these to prevent misaligning the virtual stack. This means
+	// that one of the two would only be aligned to 32 bytes, but that seems to be just ok (the
+	// rest of virtual registers are still aligned to 64 bytes).
+	if rc == regV {
+		slot1 := allocator.allocSlot(int(slotSize))
+		slot2 := allocator.allocSlot(int(slotSize))
+		s.freeSlots[regSizeGroup] = append(freeSlots, slot2)
+
+		return slot1
+	}
+
 	// Always allocate regions that keep the stack aligned to the required alignment.
 	alignedSlotSize := (slotSize + bcStackAlignment - 1) & ^uint32(bcStackAlignment-1)
 	slot := allocator.allocSlot(int(alignedSlotSize))
@@ -234,7 +247,6 @@ func (s *stackmap) allocSlot(rc regclass) stackslot {
 		}
 		s.freeSlots[regSizeGroup] = freeSlots
 	}
-
 	return slot
 }
 

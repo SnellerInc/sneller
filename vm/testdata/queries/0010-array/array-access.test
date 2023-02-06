@@ -1,0 +1,43 @@
+SELECT
+  x[0] AS out0,
+  x[1] AS out1
+FROM
+  input
+---
+{"x": null}
+{"x": true}
+{"x": false}
+{"x": []}
+{"x": [0, 0]}
+{"x": [1, 0]}
+{"x": 13}
+{"x": ["string"]}
+{"x": ["longer string that needs Length field"]}
+{"x": [1.1]}
+{"x": [329, 33333]}
+{"x": false}
+{"x": "none"}
+{"x": {"y": "z"}}
+{"x": [{"y": "x"}]}
+{"x": true}
+{"x": [1234567]}
+{"x": ["extremely long string ------------------------------------------------------------------------------------------------------ encoded using 2-byte Length field"]}
+---
+{}
+{}
+{}
+{}
+{"out0": 0, "out1": 0}
+{"out0": 1, "out1": 0}
+{}
+{"out0": "string"}
+{"out0": "longer string that needs Length field"}
+{"out0": 1.1}
+{"out0": 329, "out1": 33333}
+{}
+{}
+{}
+{"out0": {"y": "x"}}
+{}
+{"out0": 1234567}
+{"out0": "extremely long string ------------------------------------------------------------------------------------------------------ encoded using 2-byte Length field"}

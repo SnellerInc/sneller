@@ -40,6 +40,7 @@ func TestStackMapBasics(t *testing.T) {
 	// it should keep the internal offset aligned so registers that need
 	// more than 8 bytes are aligned to 8 bytes.
 	assertStackSlot(m.allocSlot(regV), stackslot(bcStackAlignment))
+	assertStackSlot(m.allocSlot(regV), stackslot(bcStackAlignment+vRegSize))
 
 	// StackMap should use the space required for alignment to allocation
 	// unit for the same register group.
@@ -55,8 +56,8 @@ func TestStackMapBasics(t *testing.T) {
 	assertStackSlot(m.allocSlot(regH), stackslot(hSize))
 
 	vStackSize := m.stackSize(stackTypeV)
-	if vStackSize != int(vSize+bcStackAlignment) {
-		t.Errorf("invalid virtual stack size reported: expected %d, got %d", vSize+bcStackAlignment, vStackSize)
+	if vStackSize != int(vSize*2+bcStackAlignment) {
+		t.Errorf("invalid virtual stack size reported: expected %d, got %d", vSize*2+bcStackAlignment, vStackSize)
 	}
 
 	hStackSize := m.stackSize(stackTypeH)
@@ -68,8 +69,8 @@ func TestStackMapBasics(t *testing.T) {
 	assertStackSlot(m.allocSlot(regK), stackslot(kSize*7))
 
 	vStackSize = m.stackSize(stackTypeV)
-	if vStackSize != int(vSize+bcStackAlignment) {
-		t.Errorf("invalid virtual stack size when checking alignment: expected %d, got %d", vSize+bcStackAlignment, vStackSize)
+	if vStackSize != int(vSize*2+bcStackAlignment) {
+		t.Errorf("invalid virtual stack size when checking alignment: expected %d, got %d", vSize*2+bcStackAlignment, vStackSize)
 	}
 }
 

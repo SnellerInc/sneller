@@ -6,7 +6,37 @@ END AS t FROM input
 {"x": 1}
 {"x": 2}
 {"x": 42}
+{"x": 1}
+{"x": 2}
+{"x": 42}
+{"x": 43}
+{"x": 44}
+{"x": 1}
+{"x": 1}
+{"x": 10212198}
+{"x": 2}
+{"x": 2}
+{"x": 102121981}
+{"x": 1}
+{"x": 2}
+{"x": 1}
+{"x": 2}
 ---
 {"t": "text: one"}
 {"t": "text: two"}
 {}
+{"t": "text: one"}
+{"t": "text: two"}
+{}
+{}
+{}
+{"t": "text: one"}
+{"t": "text: one"}
+{}
+{"t": "text: two"}
+{"t": "text: two"}
+{}
+{"t": "text: one"}
+{"t": "text: two"}
+{"t": "text: one"}
+{"t": "text: two"}

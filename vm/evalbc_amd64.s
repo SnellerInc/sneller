@@ -382,7 +382,7 @@ TEXT bcretk(SB), NOSPLIT|NOFRAME, $0
 TEXT bcretbk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(BX), OUT(CX))
 
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z0), OUT(Z1), OUT(BX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
 
   BC_RETURN_SUCCESS()
@@ -401,7 +401,7 @@ TEXT bcretbhk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(BX))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(CX))
 
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z0), OUT(Z1), OUT(BX))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(CX))
 
   BC_RETURN_SUCCESS()
@@ -419,7 +419,7 @@ next:
 TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, DX, R8)
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
@@ -444,7 +444,7 @@ TEXT bcfalse(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
   VPXORD X0, X0, X0
   XORL BX, BX
-  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z0), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z0), IN(Z0), IN(Z0), IN(DX))
   BC_STORE_RU16_TO_SLOT(IN(BX), IN(CX))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2)
@@ -1066,11 +1066,11 @@ CONST_DATA_U64(ion_value_cmp_predicate_nulls_last, 8, $0xFFFFFFFFFFFFFF04)
 CONST_GLOBAL(ion_value_cmp_predicate_nulls_last, $16)
 
 TEXT bcsortcmpvnf(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z11
+  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z7
   JMP sortcmpv_tail(SB)
 
 TEXT bcsortcmpvnl(SB), NOSPLIT|NOFRAME, $0
-  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_last, 0), Z11
+  VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_last, 0), Z7
   JMP sortcmpv_tail(SB)
 
 #define BC_CMP_NAME sortcmpv_tail
@@ -1176,20 +1176,17 @@ TEXT bccmpvi64imm(SB), NOSPLIT|NOFRAME, $0
 
 TEXT cmpvi64_tail(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
 
-  KMOVW K1, K2
-  VPXORQ X9, X9, X9
-  VPGATHERDD 0(SI)(Z30*1), K2, Z9                     // Z9 <- first 4 bytes of the left value
+  BC_LOAD_VALUE_SLICE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z9), IN(BX))
 
   VPXORD X2, X2, X2                                   // Z2 <- Comparison results, initially all zeros (low)
-  VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
-
   VPBROADCASTD CONSTD_0x0F(), Z10
+
+  VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
   VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z11
 
-  VPSRLD $4, Z9, Z8
-  VPANDD Z10, Z8, Z8                                  // Z8 <- left ION type
+  VPSRLD $4, Z9, Z8                                   // Z8 <- left ION type
   VPSHUFB Z8, Z11, Z11                                // Z11 <- left ION type converted to an internal type
   VPANDD Z10, Z9, Z10                                 // Z10 <- left L field
   VPCMPEQD.BCST CONSTD_2(), Z11, K1, K1               // K1 <- number comparison predicate (the output predicate)
@@ -1297,20 +1294,17 @@ TEXT bccmpvf64imm(SB), NOSPLIT|NOFRAME, $0
 
 TEXT cmpvf64_tail(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
 
-  KMOVW K1, K2
-  VPXORQ X9, X9, X9
-  VPGATHERDD 0(SI)(Z30*1), K2, Z9                     // Z9 <- first 4 bytes of the left value
+  BC_LOAD_VALUE_SLICE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z9), IN(BX))
 
   VPXORD X2, X2, X2                                   // Z2 <- Comparison results, initially all zeros (low)
-  VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
-
   VPBROADCASTD CONSTD_0x0F(), Z10
+
+  VPXORD X3, X3, X3                                   // Z3 <- Comparison results, initially all zeros (high)
   VBROADCASTI32X4 CONST_GET_PTR(ion_value_cmp_predicate_nulls_first, 0), Z11
 
-  VPSRLD $4, Z9, Z8
-  VPANDD Z10, Z8, Z8                                  // Z8 <- left ION type
+  VPSRLD $4, Z9, Z8                                   // Z8 <- left ION type
   VPSHUFB Z8, Z11, Z11                                // Z11 <- left ION type converted to an internal type
   VPANDD Z10, Z9, Z10                                 // Z10 <- left L field
   VPCMPEQD.BCST CONSTD_2(), Z11, K1, K1               // K1 <- number comparison predicate (the output predicate)
@@ -1820,28 +1814,26 @@ TEXT bcisnanf(SB), NOSPLIT|NOFRAME, $0
 // Take the tag pointed to in v[1] and determine if it
 // contains _any_ of the immediate bits passed in imm16.
 TEXT bcchecktag(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT(BC_SLOT_SIZE*3+2, OUT(R8))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3+2, OUT(R8))
 
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
 
-  KMOVW K1, K2
-  VPXORD X15, X15, X15
-  VPGATHERDD 0(SI)(Z2*1), K2, Z15                  // Z15 = initial object bytes
-  VPBROADCASTW (BC_SLOT_SIZE*3)(VIRT_PCREG), Z14   // Z14 = tag bits (twice per 32-bit lane, but it's ok)
+  VPBROADCASTD CONSTD_1(), Z11                     // Z11 <- constant(1)
+  VPSRLD $4, Z4, Z5                                // Z5 <- Type
+  VPBROADCASTW (BC_SLOT_SIZE*3)(VIRT_PCREG), Z10   // Z10 <- tag bits (twice per 32-bit lane, but it's ok)
+  VPSLLVD Z5, Z11, Z5                              // Z5 <- 1 << Type
+  VPTESTMD Z10, Z5, K1, K1                         // K1 <- values matching the required tag (tag&Z5 != 0)
 
-  VPBROADCASTD CONSTD_1(), Z21
-  VPSRLD $4, Z15, Z15                              // Z15 >>= 4
-  VPANDD.BCST CONSTD_0x0F(), Z15, Z15              // Z15 = (bytes >> 4) & 0xf
-  VPSLLVD Z15, Z21, Z15                            // Z15 = 1 << ((bytes >> 4) & 0xf)
-  VPTESTMD Z14, Z15, K1, K1                        // test tag&z15 != 0
+  BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  VMOVDQA32.Z Z4, K1, Z4
+  BC_LOAD_VALUE_HLEN_FROM_SLOT_MASKED(OUT(Z5), IN(BX), IN(K1))
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  VMOVDQA32.Z Z2, K1, Z2
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
-  VMOVDQA32.Z Z3, K1, Z3
-  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(Z4), IN(Z5), IN(DX))
+
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
 
 // LUT for ion type bits -> json "type" bits
@@ -1867,60 +1859,55 @@ CONST_GLOBAL(consts_typebits_shuf, $16)
 //
 // turn the tag bits in v[1] into an integer
 TEXT bctypebits(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z2), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
 
-  KMOVW K1, K2
-  VPXORD X15, X15, X15
-  VPGATHERDD 0(SI)(Z2*1), K2, Z15                  // Z15 = initial object bytes
+  VPMOVZXBD CONST_GET_PTR(consts_typebits_shuf, 0), Z5
+  VPSRLD $4, Z2, Z2                                // Z2 <- value tag
+  VPERMD.Z Z5, Z2, K1, Z2                          // Z2 <- type bits
 
-  VPMOVZXBD CONST_GET_PTR(consts_typebits_shuf, 0), Z14
-  VPSRLD $4, Z15, Z15                              // Z15 >>= 4
-  VPERMD.Z Z14, Z15, K1, Z15                       // Z15 = json type bits
+  VEXTRACTI32X8 $1, Z2, Y3
+  BC_UNPACK_SLOT(0, OUT(DX))
 
-  VEXTRACTI32X8 $1, Z15, Y3
-  VPMOVZXDQ Y15, Z2
+  VPMOVZXDQ Y2, Z2
   VPMOVZXDQ Y3, Z3
 
-  VMOVDQU32 Z2, 0(VIRT_VALUES)(DX*1)
-  VMOVDQU32 Z3, 64(VIRT_VALUES)(DX*1)
+  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = is_null(v[1]).k[2]
 //
-// calculated as `(tag[0] & 0xF == 0xF)`
+// calculated as `(tag & 0xF) == 0xF`
 TEXT bcisnullv(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(BX))
+  VPBROADCASTB CONSTD_0x0F(), X3
+
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
+  VPAND BC_VSTACK_PTR(BX, vRegData_typeL), X3, X2
+
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+  BC_UNPACK_SLOT(0, OUT(DX))
 
-  KMOVW K1, K2
-  VPXORD X3, X3, X3
-  VPGATHERDD 0(SI)(Z2*1), K2, Z3
-
-  VPBROADCASTD CONSTD_0x0F(), Z4
-  VPANDD Z3, Z4, Z3
-  VPCMPEQD Z3, Z4, K1, K1
+  VPCMPEQB X3, X2, K1, K1
 
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = !is_null(v[1]).k[2]
 //
-// calculated as `(tag[0] & 0xF != 0xF)`
+// calculated as `(tag & 0xF) != 0xF`
 TEXT bcisnotnullv(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(BX))
+  VPBROADCASTB CONSTD_0x0F(), X3
+
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
+  VPAND BC_VSTACK_PTR(BX, vRegData_typeL), X3, X2
+
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+  BC_UNPACK_SLOT(0, OUT(DX))
 
-  KMOVW K1, K2
-  VPXORD X3, X3, X3
-  VPGATHERDD 0(SI)(Z2*1), K2, Z3
-
-  VPBROADCASTD CONSTD_0x0F(), Z4
-  VPANDD Z3, Z4, Z3
-  VPCMPUD $VPCMP_IMM_NE, Z3, Z4, K1, K1
+  VPCMPUB $VPCMP_IMM_NE, X3, X2, K1, K1
 
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -1930,36 +1917,32 @@ TEXT bcisnotnullv(SB), NOSPLIT|NOFRAME, $0
 
 // k[0] = is_true(v[1]).k[2]
 //
-// calculated as `(tag[0] & 0xFF == 0x11)`
+// calculated as `tag == 0x11`
 TEXT bcistruev(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
+  VPBROADCASTB CONSTD_TRUE_BYTE(), X3
+
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
 
-  KMOVW K1, K2
-  VPXORD X4, X4, X4
-  VPGATHERDD 0(SI)(Z2*1), K2, Z4
-
-  VPANDD.BCST CONSTD_0xFF(), Z4, Z4
-  VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K1
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPCMPEQB BC_VSTACK_PTR(BX, vRegData_typeL), X3, K1, K1
 
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // k[0] = is_false(v[1]).k[2]
 //
-// calculated as `(tag[0] & 0xFF == 0x10)`
+// calculated as `tag[0] == 0x10`
 TEXT bcisfalsev(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
+  VPBROADCASTB CONSTD_FALSE_BYTE(), X3
+
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
 
-  KMOVW K1, K2
-  VPXORD X4, X4, X4
-  VPGATHERDD 0(SI)(Z2*1), K2, Z4
-
-  VPANDD.BCST CONSTD_0xFF(), Z4, Z4
-  VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPCMPEQB BC_VSTACK_PTR(BX, vRegData_typeL), X3, K1, K1
 
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -1982,8 +1965,8 @@ TEXT bccmpeqv(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_3xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z6), OUT(Z7), IN(CX), IN(K1))
+  BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1))
+  BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z6), OUT(Z7), IN(CX), IN(K1))
 
   // restrict the comparison to lanes that have equal lengths
   VPCMPEQD Z7, Z5, K1, K1
@@ -1992,7 +1975,7 @@ TEXT bccmpeqv(SB), NOSPLIT|NOFRAME, $0
 
 // k[0] = cmp_eq(v[1], v@imm[2]).k[3]
 TEXT bccmpeqvimm(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT(BC_SLOT_SIZE*2 + 8, OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2 + 10, OUT(R8))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(DX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
@@ -2098,7 +2081,7 @@ tail:
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE*3+8)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3+10)
 
 // Timestamp Boxing, Unboxing, and Manipulation
 // ============================================
@@ -3358,40 +3341,35 @@ TEXT bcdatetruncyear(SB), NOSPLIT|NOFRAME, $0
 // ts[0].k[1] = unbox_ts(v[2]).k[3]
 TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z16), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z15), IN(BX))
 
-  KMOVW K1, K2
-  VPXORD X15, X15, X15
-  VPGATHERDD 0(SI)(Z2*1), K2, Z15                  // Z15 = initial 4 bytes of the boxed value
+  VPADDD.Z BC_VSTACK_PTR(BX, 0), Z16, K1, Z2       // Z2 <- value offset that follows Type|L + Length
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 64), K1, Z3        // Z3 <- value length including Type|L + Length
+  VEXTRACTI32X8 $1, Z2, Y21                        // Y21 <- 32-bit high offsets for 64-bit gathers
+  VPSUBD.Z Z16, Z3, K1, Z3                         // Z3 <- value length excluding Type|L + Length
 
-  VEXTRACTI32X8 $1, Z2, Y21
   VPBROADCASTD CONSTD_6(), Z20
-  VPBROADCASTD CONSTD_15(), Z17
-
-  VPSRLD $4, Z15, Z16                              // Z16 = Z15 >> 4
-  VPANDD Z17, Z16, Z16                             // Z15 = object tag
-
+  VPSRLD $4, Z15, Z16                              // Z16 = object tag
   VPCMPEQD Z20, Z16, K1, K1                        // K1 <- Lanes that contain timestamp values
   KSHIFTRW $8, K1, K2
 
-  // Z4:Z5 <- First 8 bytes of the timestamp to process, ignoring Type|L
-  //          byte and timezone offset byte, which is assumed to be zero.
+  // Z4:Z5 <- First 8 bytes of the timestamp to process ignoring the timezone offset byte.
   KMOVB K1, K3
-  KMOVB K2, K4
   VPXORQ X4, X4, X4
+  VPGATHERDQ 1(SI)(Y2*1), K3, Z4
+
+  KMOVB K2, K4
   VPXORQ X5, X5, X5
-  VPGATHERDQ 2(SI)(Y2*1), K3, Z4
-  VPGATHERDQ 2(SI)(Y21*1), K4, Z5
+  VPGATHERDQ 1(SI)(Y21*1), K4, Z5
 
   // Z20/Z21 <- Frequently used constants to avoid broadcasts.
   VPBROADCASTQ CONSTQ_0x7F(), Z20
   VPBROADCASTQ CONSTQ_0x80(), Z21
   VPBROADCASTQ CONSTQ_1(), Z22
   VPBROADCASTD CONSTD_8(), Z23
-
-  // Make Z3 one byte less (decreases the byte required for Type|L tag).
-  VPSUBD.BCST.Z CONSTD_1(), Z3, K1, Z3
 
   // Z4/Z5 <- First 8 bytes of the timestamp cleared so only bytes that
   //          are within the length are non-zero, other bytes cleared.
@@ -3468,7 +3446,7 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPCMPD.BCST $VPCMP_IMM_GT, CONSTD_10(), Z3, K1, K3
   VPADDD Z2, Z3, Z19
   VPXORD X18, X18, X18
-  VPGATHERDD (1-4)(SI)(Z19*1), K3, Z18
+  VPGATHERDD (-4)(SI)(Z19*1), K3, Z18
 
   // Z8/Z9 <- Month - 3.
   VPSUBQ.BCST CONSTQ_3(), Z8, Z8
@@ -3730,12 +3708,15 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
 
   VPMOVQD Z10, Y10
   VPMOVQD Z11, Y11
-  VINSERTI64X4 $1, Y11, Z10, Z31
-  VPADDD.BCST CONSTD_1(), Z31, Z31
+
+  VPBROADCASTD CONSTD_1(), Z12        // Header Length (always 1)
+  VINSERTI32X8 $1, Y11, Z10, Z10      // Type|L bytes
+
+  VPADDD Z12, Z10, Z31
   VPANDD.BCST.Z CONSTD_0x0F(), Z31, K1, Z31
 
   BC_UNPACK_SLOT(0, OUT(DX))
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z10), IN(Z12), IN(DX))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
@@ -4812,8 +4793,8 @@ lane_copy_iter:                                        // Iterate over the mask 
   MOVL 64(BX)(R14 * 4), CX                             // CX <- Input length
   MOVL bytecode_spillArea(VIRT_BCPTR)(R14 * 4), R15    // R15 <- Output index
   MOVL 0(BX)(R14 * 4), R14                             // R14 <- Input index
-  ADDQ SI, R14                                         // R14 <- Make input address from input index
   ADDQ SI, R15                                         // R15 <- Make output address from output index
+  ADDQ SI, R14                                         // R14 <- Make input address from input index
 
   SUBL $64, CX
   JCS lane_64b_tail
@@ -4945,19 +4926,20 @@ TEXT findsym_tail(SB), NOSPLIT|NOFRAME, $0
   VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z23       // Z23 <- bswap32 predicate for VPSHUFB
   KMOVQ CONSTQ_0x5555555555555555(), K3                // K3 <- predicate for VPADDB (VarUInt decoding)
 
-  // TODO: we can remove these 3 lines if we preencode the symbol differently
   VPLZCNTD Z27, Z10
   VPSLLVD Z10, Z27, Z27
   VPSHUFB Z23, Z27, Z27
+  VPXORD X10, X10, X10                                 // Z10 <- matched value header lengths
+  VPXORD X11, X11, X11                                 // Z11 <- matched value Type|L bytes
 
   JMP decode_init
 
 decode_loop:
-  VPXORD X2, X2, X2
   KMOVW K5, K6                                         // K6 <- remaining lanes to scan
   VPGATHERDD 0(SI)(Z28*1), K5, Z2                      // Z2 <- gathered bytes
 
 decode_init:
+  VMOVDQU32 Z21, K6, Z10                               // Z10 <- initially set all hLens of active lanes to 1 (we will add Length size later)
   VPTESTMD Z14, Z2, K6, K4                             // K4 <- active lanes having 1-byte SymbolID
   KTESTW K6, K4                                        // CF <- cleared if not all lanes have 1-byte SymbolID
 
@@ -4973,11 +4955,12 @@ decode_init:
   VPTESTMD Z14, Z7, K5, K4                             // K4 <- lanes that use a separate Length data represented as 1 byte VarUInt
   KTESTW K5, K4                                        // CF <- cleared if there is a lane having incomplete Length data (need more bytes)
 
+  VPSRLD $8, Z2, K6, Z11                               // Z11 <- shift Type|L byte to start at LSB
   VPCMPUD $VPCMP_IMM_LT, Z27, Z26, K6, K2              // K2 <- remaining lanes where SymbolID < SymbolIDToMatch
   VPADDD Z21, Z28, K1, Z30                             // Z30 <- Z28 + len(symbol) (next value offset)
-  VPBLENDMD Z20, Z21, K5, Z5                           // Z5 <- set to either 1 (when L field is valid) or 2 when 1-byte Length data is used
+  VPADDD Z21, Z10, K5, Z10                             // Z10 <- updated to either have 1 or 2 bytes that represent Type|L + optional Length
   VPANDD Z7, Z15, Z7                                   // Z7 <- L field or decoded Length data
-  VPADDD Z5, Z7, K1, Z31                               // Z31 <- 1 + Length data size + length
+  VPADDD Z10, Z7, K1, Z31                              // Z31 <- 1 + Length data size + length
   JCC decode_long_length_of_1_byte_symbols             // jump to a more complex decode if the Length data uses 2 or more bytes
 
 decode_advance:
@@ -4988,23 +4971,33 @@ decode_advance:
 
 finished:
   VPCMPEQD Z27, Z26, K1
-  BC_STORE_SLICE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+
+  // NOTE: The following 2 lines are not necessary as we are clearing a content that should
+  // always be ignored, however, if we don't clear these lines then findsym("b") could output
+  // different metadata compared to findsym("a") followed by findsym2("b"), which is something
+  // that we verify doesn't happen. Thus, only output TLV and hLen of matched keys, and clear
+  // the rest.
+  VMOVDQA32.Z Z10, K1, Z10
+  VMOVDQA32.Z Z11, K1, Z11
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z11), IN(Z10), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
   NEXT_ADVANCE(0)
 
 decode_long_length_of_1_byte_symbols:
   KANDNW K5, K4, K4                                    // K4 <- lanes that need more than 1-byte Length
-  VPSRLD $24, Z2, Z2                                   // Z2 <- second Length byte at LSB
-  VPTESTNMD Z22, Z2, K4, K1                            // K1 <- lanes that need more than 2-byte Length
+  VPSRLD $24, Z2, Z3                                   // Z3 <- second Length byte at LSB
+  VPTESTNMD Z22, Z3, K4, K1                            // K1 <- lanes that need more than 2-byte Length
   KTESTW K1, K1
 
-  VPANDD Z15, Z2, Z2                                   // Z2 <- Z2 & 0x7F
+  VPANDD Z15, Z3, Z3                                   // Z3 <- Z3 & 0x7F
   JNZ decode_long_length_needs_gather                  // jump to a more complex decode if gather is needed to fetch Length bytes
 
-  VPADDD Z21, Z5, K4, Z5                               // Z5 <- Either 1, 2, or 3 depending on the size of the Length field (includes Type|L)
+  VPADDD Z21, Z10, K4, Z10                             // Z10 <- Either 1, 2, or 3 depending on the size of the Length field (includes Type|L)
   VPSLLD $7, Z7, K4, Z7                                // Z7 <- Z7 << 7 (only lanes that use 2-byte length)
-  VPORD Z2, Z7, K4, Z7                                 // Z7 <- Either L or a decoded 1-byte or 2-byte length
-  VPADDD Z5, Z7, K4, Z31                               // Z31 <- 1 + Length data size + length
+  VPORD Z3, Z7, K4, Z7                                 // Z7 <- Either L or a decoded 1-byte or 2-byte length
+  VPADDD Z10, Z7, K4, Z31                              // Z31 <- 1 + Length data size + length
   JMP decode_advance
 
 decode_long_symbol:
@@ -5014,11 +5007,11 @@ decode_long_symbol:
   VPADDD.Z Z19, Z4, K6, Z4                             // Z4 <- lzcnt(bswap32(bytes) & 0x80808080) + 8
   VPSLLVD Z4, Z3, Z5                                   // Z5 <- Type|L byte at MSB, preceded by up to 2 non-zero bytes
   VPSUBD.Z Z4, Z18, K6, Z8                             // Z8 <- 32 - lzcnt(bswap32(bytes) & 0x80808080) - 8
-  VPSRLD $24, Z5, Z6                                   // Z6 <- Type|L byte
-  VPCMPUD $VPCMP_IMM_GE, Z18, Z6, K6, K5               // K5 <- Type != NULL|BOOL (Type|L >= 32)
+  VPSRLD $24, Z5, K6, Z11                              // Z11 <- Type|L byte
+  VPCMPUD $VPCMP_IMM_GE, Z18, Z11, K6, K5              // K5 <- Type != NULL|BOOL (Type|L >= 32)
 
   VPSRLVD Z8, Z3, K6, Z26                              // Z26 <- update encoded symbol ids
-  VPANDD.Z Z13, Z6, K5, Z7                             // Z7 <- L field extracted from Type|L and corrected to 0 if NULL/BOOL
+  VPANDD.Z Z13, Z11, K5, Z7                            // Z7 <- L field extracted from Type|L and corrected to 0 if NULL/BOOL
   VPCMPEQD Z17, Z7, K6, K5                             // K5 <- lanes that need a separate Length field when L == 14
   KTESTW K5, K5
 
@@ -5029,53 +5022,53 @@ decode_long_symbol:
   VPADDD Z6, Z28, K1, Z30                              // Z30 <- Z28 + len(symbol) (next value offset)
   JZ decode_advance                                    // done decoding if all values need only L (length < 14)
 
-  VPSLLD $8, Z5, Z2                                    // Z2 <- Length bytes, starting at MSB
-  VPTESTNMD Z22, Z2, K5, K4                            // K4 <- lanes that need more Length bytes than we have at the moment
+  VPSLLD.Z $8, Z5, K5, Z3                              // Z3 <- Length bytes, starting at MSB
+  VPTESTNMD Z22, Z3, K5, K4                            // K4 <- lanes that need more Length bytes than we have at the moment
   KTESTW K4, K4
   JNZ decode_long_length_needs_gather                  // jump to a slow path where additional gather is needed to fetch Length field
 
   // The following code handles either 1 byte symbol and
   // 1-2 byte length or 2 byte symbol and 1 byte length.
 
-  VPMOVD2M Z2, K4                                      // K4 <- termination bit at 0x80000000 (at MSB) => Length is 1 byte long
-  VPANDND Z2, Z22, Z4                                  // Z4 <- Z2 & 0x7F7F7F7F
-  VPADDB Z2, Z2, K3, Z2                                // Z2 <- shift all EVEN bytes left by 1 to get [0BBBBBBB|AAAAAAA0|00000000|00000000]
-  VPSRLD.Z $6, Z16, K5, Z5                             // Z5 <- dword(3)
-  VPSRLD $17, Z2, Z2                                   // Z2 <- decoded 2 byte VarUInt Length yieding [00000000|00000000|00BBBBBB|BAAAAAAA]
-  VPSUBD Z21, Z5, K4, Z5                               // Z5 <- 1 + Length field size itself (the final value is either 2 or 3)
-  VPSRLD $24, Z4, K4, Z2                               // Z2 <- updated to decoded Length from either 1 or 2 bytes of data
-  VPADDD Z5, Z2, K5, Z31                               // Z31 <- updates the length of the value: Type|L + Length field + Content length
+  VPMOVD2M Z3, K4                                      // K4 <- termination bit at 0x80000000 (at MSB) => Length is 1 byte long
+  VPANDND Z3, Z22, Z4                                  // Z4 <- Z3 & 0x7F7F7F7F
+  VPADDB Z3, Z3, K3, Z3                                // Z3 <- shift all EVEN bytes left by 1 to get [0BBBBBBB|AAAAAAA0|00000000|00000000]
+  VPSRLD $6, Z16, K5, Z10                              // Z10 <- either 1 (K5 not set) or 3 (K5 set)
+  VPSRLD $17, Z3, Z3                                   // Z3 <- decoded 2 byte VarUInt Length yieding [00000000|00000000|00BBBBBB|BAAAAAAA]
+  VPSUBD Z21, Z10, K4, Z10                             // Z10 <- 1 + Length field size itself (the final value is either 2 or 3)
+  VPSRLD $24, Z4, K4, Z3                               // Z3 <- updated to decoded Length from either 1 or 2 bytes of data
+  VPADDD Z10, Z3, K5, Z31                              // Z31 <- updates the length of the value: Type|L + Length field + Content length
   JMP decode_advance
 
 decode_long_length_needs_gather:
   KMOVW K5, K4
-  VPGATHERDD 1(SI)(Z30*1), K4, Z2
+  VPGATHERDD 1(SI)(Z30*1), K4, Z9
 
   MOVL $0x40000001, BX
   VPBROADCASTD BX, Z4                                  // Z4 <- constant(0x40000001 == (1 << 30) | 1)
 
-  VPSHUFB Z23, Z2, Z2                                  // Z2 <- bswap32(Z2)
-  VPANDD Z2, Z22, Z3                                   // Z3 <- bswap32(Z2) & 0x80808080
-  VPANDND Z2, Z22, Z2                                  // Z2 <- bswap32(Z2) & 0x7F7F7F7F
+  VPSHUFB Z23, Z9, Z9                                  // Z9 <- bswap32(Z9)
+  VPANDD Z9, Z22, Z3                                   // Z3 <- bswap32(Z9) & 0x80808080
+  VPANDND Z9, Z22, Z9                                  // Z9 <- bswap32(Z9) & 0x7F7F7F7F
 
-  VPLZCNTD Z3, Z3                                      // Z3 <- lzcnt(bswap32(Z2) & 0x80808080)
-  VPADDB Z2, Z2, K3, Z2                                // Z2 <- shift all EVEN bytes left by 1 to get    [0DDDDDDD|CCCCCCC0|0BBBBBBB|AAAAAAA0]
+  VPLZCNTD Z3, Z3                                      // Z3 <- lzcnt(bswap32(Z9) & 0x80808080)
+  VPADDB Z9, Z9, K3, Z9                                // Z9 <- shift all EVEN bytes left by 1 to get    [0DDDDDDD|CCCCCCC0|0BBBBBBB|AAAAAAA0]
 
-  VPADDD Z19, Z3, Z3                                   // Z3 <- lzcnt(bswap32(Z2) & 0x80808080) + 8
-  VPSRLW $1, Z2, Z2                                    // Z6 <- shift WORD pairs right by 1 to get       [00DDDDDD|DCCCCCCC|00BBBBBB|BAAAAAAA]
-  VPMADDWD Z4, Z2, Z2                                  // Z2 <- transform length bytes to content length [0000DDDD|DDDCCCCC|CCBBBBBB|BAAAAAAA]
+  VPADDD Z19, Z3, Z3                                   // Z3 <- lzcnt(bswap32(Z9) & 0x80808080) + 8
+  VPSRLW $1, Z9, Z9                                    // Z6 <- shift WORD pairs right by 1 to get       [00DDDDDD|DCCCCCCC|00BBBBBB|BAAAAAAA]
+  VPMADDWD Z4, Z9, Z9                                  // Z9 <- transform length bytes to content length [0000DDDD|DDDCCCCC|CCBBBBBB|BAAAAAAA]
 
-  VPSUBD Z3, Z18, Z4                                   // Z4 <- 32 - lzcnt(bswap32(Z2) & 0x80808080) - 8
-  VPSRLD $3, Z4, Z5                                    // Z5 <- (32 - lzcnt(bswap32(Z2) & 0x80808080) - 8) / 8
-  VPADDD Z19, Z3, Z3                                   // Z3 <- lzcnt(bswap32(Z2)) + 16
+  VPSUBD Z3, Z18, Z4                                   // Z4 <- 32 - lzcnt(bswap32(Z9) & 0x80808080) - 8
+  VPSRLD $3, Z4, Z5                                    // Z5 <- (32 - lzcnt(bswap32(Z9) & 0x80808080) - 8) / 8
+  VPADDD Z19, Z3, Z3                                   // Z3 <- lzcnt(bswap32(Z9)) + 16
   VPSUBD Z5, Z4, Z4
-  VPSRLD $3, Z3, Z3                                    // Z3 <- size of the Length field in bytes, including Type|L byte
-  VPSRLVD Z4, Z2, Z2                                   // Z2 <- value content length
-  VPADDD Z3, Z2, K5, Z31                               // Z31 <- updated to 1 + length field size + content length for lanes having Length field
+  VPSRLD $3, Z3, K5, Z10                               // Z10 <- size of the Length field in bytes, including Type|L byte
+  VPSRLVD Z4, Z9, Z9                                   // Z9 <- value content length
+  VPADDD Z10, Z9, K5, Z31                              // Z31 <- updated to 1 + length field size + content length for lanes having Length field
   JMP decode_advance
 
 no_symbols:
-  BC_STORE_SLICE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z2), IN(Z2), IN(DX))
   MOVW $0, 0(VIRT_VALUES)(R8*1)
   NEXT_ADVANCE(0)
 
@@ -5098,16 +5091,23 @@ TEXT bcblendv(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(DX))
 
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*4, OUT(CX), OUT(DX))
-  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
+  KUNPCKWD K1, K1, K3
 
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(DX))
+  KUNPCKWD K2, K2, K4
+
+  BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  VMOVDQU8.Z BC_VSTACK_PTR(BX, 128), K3, Y4
   KORW K1, K2, K1
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  VMOVDQU32 0(VIRT_VALUES)(CX*1), K2, Z2
-  VMOVDQU32 64(VIRT_VALUES)(CX*1), K2, Z3
+  VMOVDQU32 BC_VSTACK_PTR(CX, 0), K2, Z2
+  VMOVDQU32 BC_VSTACK_PTR(CX, 64), K2, Z3
+  VMOVDQU8 BC_VSTACK_PTR(CX, 128), K4, Y4
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  VMOVDQU32 Z2, BC_VSTACK_PTR(DX, 0)
+  VMOVDQU32 Z3, BC_VSTACK_PTR(DX, 64)
+  VMOVDQU8 Y4, BC_VSTACK_PTR(DX, 128)
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*6)
@@ -5209,146 +5209,80 @@ TEXT bcblendslice(SB), NOSPLIT|NOFRAME, $0
 //
 // unpack string/array/timestamp to scalar slice
 TEXT bcunpack(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 2, OUT(R8))
   BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3 + 2, OUT(R8))
 
+  VPMOVZXBW BC_VSTACK_PTR(BX, vRegData_typeL), Y5 // Y5 <- TLV bytes as 16-bit words
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_UNPACK_ZI16(BC_SLOT_SIZE*3, OUT(Z23))
 
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
+  VPSRLW $4, Y5, Y5                              // Y5 <- value tags as 16-bit words
+  BC_UNPACK_ZI16(BC_SLOT_SIZE*3, OUT(Y6))
 
-  KTESTW        K1, K1
-  JZ            next
+  VPCMPEQW Y6, Y5, K1, K1                        // K1 <- lanes matching the required tag
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z6), IN(BX))  // Z6 <- header lengths
 
-  VPXORD X26, X26, X26
-  KMOVW         K1, K2
-  VPGATHERDD    0(SI)(Z30*1), K2, Z26      // Z26 = first 4 bytes
+  VMOVDQU32 BC_VSTACK_PTR(BX, 64), Z3            // Z3 <- value lengths
+  VPADDD.Z BC_VSTACK_PTR(BX, 0), Z6, K1, Z2      // Z2 <- slice offsets (value offset + header length)
 
-  VPSRLD $16, Z23, Z23                     // Z23 = descriptor tag (32-bit)
-  VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
-  VPANDD        Z26, Z27, Z25              // Z25 = first 4 & 0x0f = int size
-  VPCMPEQD      Z25, Z27, K1, K2           // K2 = field is null
-  KANDNW        K1, K2, K1                 // unset str.null lanes
-  VPSRLD        $4, Z26, Z26               // first 4 words >>= 4
-  VPANDD        Z27, Z26, Z24              // Z24 = (word >> 4) & 0xf = descriptor tag
-  VPCMPEQD      Z23, Z24, K1, K1           // match only descriptor tag
-  KTESTW        K1, K1
-  JZ            next
-  VPCMPEQD.BCST CONSTD_0x0E(), Z25, K1, K2 // K2 = descriptor=e (varint-sized)
-  KANDNW        K1, K2, K3                 // K3 = non-varint-sized strings
-  VPADDD.BCST.Z CONSTD_1(), Z30, K1, Z2    // Z2 = base = offset+1 (will update later for varints)
-  VMOVDQA32     Z25, K3, Z3                // Z3 = length = first4&0xf for non-varint-size
-  KTESTW        K2, K2
-  JZ            next                       // short-circuit if no varint-length objects
-  // decode up to 3 varint bytes; we expect
-  // not to see 4 bytes because our current chunk
-  // alignment would not allow for objects over
-  // 2^21 bytes long anyway...
-  // TODO: if we need to support longer objects,
-  // the end of this unrolled loop can do another
-  // gatherdd and jump back up to the top here...
-  VPBROADCASTD  CONSTD_1(), Z24         // Z24 = 0x01
-  VPBROADCASTD  CONSTD_0x7F(), Z27      // Z27 = 0x7F
-  VPBROADCASTD  CONSTD_0x80(), Z29      // Z29 = 0x80
-  VPSRLD        $4, Z26, Z26            // now Z26 = 3 bytes following descriptor
-  KMOVW         K2, K3
-  VPANDD.Z      Z27, Z26, K3, Z28       // Z28 = byte1&0x7f = accumulator
-  VPADDD        Z24, Z2, K3, Z2         // base+1
-  VPTESTNMD     Z29, Z26, K3, K3        // test byte1&0x80
-  KTESTW        K3, K3
-  JZ            done
-  // decode 2nd varint byte
-  VPSRLD        $8, Z26, K3, Z26        // word >>= 8
-  VPSLLD        $7, Z28, K3, Z28        // accum <<= 7
-  VPANDD        Z27, Z26, K3, Z25
-  VPORD         Z25, Z28, K3, Z28       // accum |= (word & 0x7f)
-  VPADDD        Z24, Z2, K3, Z2         // base+1
-  VPTESTNMD     Z29, Z26, K3, K3        // test word&0x80
-  // decode 3rd varint byte
-  VPSRLD        $8, Z26, K3, Z26        // word >>= 8
-  VPSLLD        $7, Z28, K3, Z28        // accum <<= 7
-  VPANDD        Z27, Z26, K3, Z25
-  VPORD         Z25, Z28, K3, Z28       // accum |= (word & 0x7f)
-  VPADDD        Z24, Z2, K3, Z2         // base+1
-  VPTESTNMD     Z29, Z26, K3, K3        // test word&0x80
-  KTESTW        K3, K3
-  JNZ           trap                    // trap if length(object) > 2^21
-
-done:
-  VMOVDQA32     Z28, K2, Z3             // set Z3 = length
-
-next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VPSUBD.Z Z6, Z3, K1, Z3                        // Z3 <- slice lengths (value length - header length)
+
   BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
 
-trap:
-  FAIL()
-
 // v[0] = unsymbolize(v[1]).k[2]
 //
-// replaces symbols in v[1] with strings and stores the output to v[0]
+// replaces symbol values in v[1] with string values and stores the output to v[0]
 TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
 
-  KTESTW K1, K1
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z2), IN(BX))
+
+  VPBROADCASTD CONSTD_7(), Z20                   // Z20 <- dword(7)
+  VPSRLD $4, Z2, Z4                              // Z4 <- value tag
+  VPCMPEQD Z20, Z4, K1, K2                       // K2 <- values that are symbols
+  KTESTW K2, K2                                  // check whether we actually have to unsymbolize
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  KMOVW K2, K3
+  BC_LOAD_VALUE_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z3), IN(BX))
   JZ next
 
-  KMOVW K1, K2
-  VPXORD X28, X28, X28
-  VPGATHERDD    0(SI)(Z30*1), K2, Z28           // Z28 = first 4 bytes
+  VPGATHERDD 1(SI)(Z0*1), K3, Z6                 // Z6 <- SymbolID bytes (without TLV, which was skipped)
+  VPSUBD.Z Z1, Z3, K2, Z4                        // Z4 <- -(SymbolIDLength)
+  MOVQ bytecode_symtab+0(VIRT_BCPTR), R8         // R8 <- symbol table base
 
-  VPBROADCASTD  CONSTD_0x0F(), Z10
-  VPSRLD        $4, Z28, Z29
-  VPANDD        Z10, Z29, Z29                   // z29 = (bytes >> 4) & 0x0f = tag
-  VPCMPEQD.BCST CONSTD_7(), Z29, K1, K2         // K2 = lanes that are symbols (tag == 7)
-  KTESTW        K2, K2
-  JZ next                                       // fast path: no symbols
+  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z16 // Z16 <- bswap32 predicate for VPSHUFB
+  VPADDD.BCST CONSTD_4(), Z4, Z4                 // Z4 <- (4 - SymbolIDLength)
+  VPSLLD $3, Z4, Z5                              // Z5 <- (4 - SymbolIDLength) << 3
+  VPSHUFB Z16, Z6, Z6                            // Z6 <- bswap32(symbol bytes)
+  VPSRLVD Z5, Z6, Z6                             // Z6 <- SymbolIDs
 
-  VPBROADCASTD  CONSTD_4(), Z24
-  VPANDD        Z10, Z28, Z29                   // Z29 = bytes & 0x0f = size
-  VPCMPD        $VPCMP_IMM_LT, Z24, Z29, K2, K2 // only choose lanes where size < 4
-  VPSUBD.Z      Z29, Z24, K2, Z29               // Z29 = (4 - size)
-  VPSLLD        $3, Z29, Z29                    // Z29 = (4 - size)<<3 = shift count
-  VPSRLD        $8, Z28, Z28                    // Z28 = uint value plus garbage
-  VBROADCASTI32X4 bswap32<>+0(SB), Z24
-  VPSHUFB         Z24, Z28, Z28                 // Z28 = bswap32(repr)
-  VPSRLVD         Z29, Z28, Z28                 // Z28 = bswap32(repr)>>(4-size) = symbol ID
-  // only keep lanes where id < len(symtab)
-  VPCMPD.BCST     $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z28, K2, K2
-  KMOVB           K2, K3
-  MOVQ            bytecode_symtab+0(VIRT_BCPTR), R8
+  TESTQ R8, R8
+  JZ error_null_symbol_table
 
-  TESTQ           R8, R8
-  JZ              trap
+  VPCMPUD.BCST $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z6, K2, K2
+  KMOVB K2, K3                                   // K3 <- gather predicate (low)
+  KSHIFTRW $8, K2, K4                            // K4 <- gather predicate (high)
+  VEXTRACTI32X8 $1, Z6, Y5                       // Z5 <- SymbolIDs (high)
+  VPGATHERDQ 0(R8)(Y6*8), K3, Z8                 // Z8 <- vmrefs (low)
 
-  VPGATHERDQ      0(R8)(Y28*8), K3, Z22         // gather lo 8 vmrefs
-  KSHIFTRW        $8, K2, K4
-  VEXTRACTI32X8   $1, Z28, Y29
-  VPGATHERDQ      0(R8)(Y29*8), K4, Z23         // gather hi 8 vmrefs
-  VPMOVQD         Z22, Y20
-  VPMOVQD         Z23, Y21
-  VINSERTI32X8    $1, Y21, Z20, Z20             // Z20 = lo 32 bits of 16 vmrefs = offsets
-  VMOVDQA32       Z20, K2, Z30                  // set offsets where successful
-  VPROLQ          $32, Z22, Z22                 // flip lo/hi 32 bits of each element
-  VPROLQ          $32, Z23, Z23
-  VPMOVQD         Z22, Y20
-  VPMOVQD         Z23, Y21
-  VINSERTI32X8    $1, Y21, Z20, Z20             // Z20 = hi 32 bits of 16 vmrefs = lengths
-  VMOVDQA32       Z20, K2, Z31                  // set lengths where successful
+  VPSRLD $2, Z20, Z21                            // Z21 <- dword(1)
+  VPADDD Z20, Z20, Z22                           // Z22 <- dword(14)
+  VPGATHERDQ 0(R8)(Y5*8), K4, Z9                 // Z9 <- vmrefs (high)
+
+  BC_MERGE_VMREFS_TO_VALUE(IN_OUT(Z0), IN_OUT(Z1), IN(Z8), IN(Z9), IN(K2), Z10, Y10, Y11)
+  BC_CALC_STRING_TLV_AND_HLEN(IN_OUT(Z2), IN_OUT(Z3), IN(Z1), IN(K2), IN(Z21), IN(Z22), Z10, K3)
 
 next:
-  BC_UNPACK_SLOT(0, OUT(DX))
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(Z2), IN(Z3), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-trap:
-  BYTE $0xCC
-  JMP  next
+  _BC_ERROR_HANDLER_NULL_SYMBOL_TABLE()
 
 // i64[0].k[1] = unbox_bool(v[2]).k[3]
 //
@@ -5356,19 +5290,14 @@ trap:
 // don't have a way to describe a bool output combined with a predicate in our SSA.
 TEXT bcunboxktoi64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
-  BC_LOAD_ZMM_FROM_SLOT(OUT(Z2), IN(BX))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-
-  KMOVW K1, K2
-  VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z2*1), K2, Z4                      // Z4 <- first 4 bytes (Type|L + ???)
-  VPANDD.BCST CONSTD_0xFF(), Z4, Z4                   // Z4 <- first byte (Type|L)
 
   VPCMPEQD.BCST CONSTD_TRUE_BYTE(), Z4, K1, K2        // K2 <- set to ONEs for TRUE values
   VPCMPEQD.BCST CONSTD_FALSE_BYTE(), Z4, K1, K1       // K1 <- set to ONEs for FALSE values
-  VPBROADCASTQ CONSTQ_1(), Z4
 
   KSHIFTRW $8, K2, K3
+  VPBROADCASTQ CONSTQ_1(), Z4
   KORW K2, K1, K1                                     // K1 <- active lanes (values containing BOOLs)
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
@@ -5383,29 +5312,22 @@ TEXT bcunboxktoi64(SB), NOSPLIT|NOFRAME, $0
 // f64[0].k[1] = unbox_coerce_f64(v[2]).k[3]
 TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  KMOVW K1, K2
-  VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L + ???)
-
-  VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
-  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
-  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
-
-  VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
-  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
-
-  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
-  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPBROADCASTD CONSTD_2(), Z11                        // Z11 <- constant(2)
+  VPSRLD $4, Z4, Z5                                   // Z5 <- ION type
+  VPANDD.BCST CONSTD_0x0F(), Z4, Z6                   // Z6 <- L field
   VPSUBD Z11, Z5, Z4                                  // Z4 <- ION type - 2 (this saves us some instructions / constants)
-
   VPCMPUD $VPCMP_IMM_LE, Z11, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x2, 0x3, or 0x4 ION type
-  VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
-  VPXORQ X3, X3, X3                                   // Z3 <- zero all lanes in case there are no numbers (high)
 
   KTESTW K1, K1
+  VPSRLD $1, Z11, Z10                                 // Z10 <- constant(1)
+  VPSLLD $2, Z11, Z12                                 // Z12 <- constant(8)
+
+  VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
+  VPXORQ X3, X3, X3                                   // Z3 <- zero all lanes in case there are no numbers (high)
   JZ next                                             // Skip unboxing if there are no numbers
 
   VEXTRACTI32X8 $1, Z30, Y13
@@ -5440,7 +5362,7 @@ TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
 
 next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_STORE_F64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
@@ -5448,22 +5370,14 @@ next:
 // f64[0].k[1] = unbox_coerce_i64(v[2]).k[3]
 TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  KMOVW K1, K2
-  VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
-
-  VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
-  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
-  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
-
+  VPBROADCASTD CONSTD_2(), Z11                        // Z11 <- constant(2)
   VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
-  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
 
-  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
-  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPANDD.BCST CONSTD_0x0F(), Z4, Z6                   // Z6 <- L field
   VPSUBD Z11, Z5, Z4                                  // Z4 <- ION type - 2 (this saves us some instructions / constants)
 
   VPCMPUD $VPCMP_IMM_LE, Z11, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x2, 0x3, or 0x4 ION type
@@ -5473,11 +5387,15 @@ TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
   KTESTW K1, K1
   JZ next                                             // Skip unboxing if there are no numbers
 
-  VEXTRACTI32X8 $1, Z30, Y13
   KMOVB K1, K3
+  VEXTRACTI32X8 $1, Z30, Y13
   VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
-  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+
   KSHIFTRW $8, K1, K4
+  VPSLLD $2, Z11, Z12                                 // Z12 <- constant(8)
+  VPSRLD $1, Z11, Z10                                 // Z10 <- constant(1)
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+
   VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
   VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
 
@@ -5519,24 +5437,18 @@ next:
 // a floating point 1.0 representation.
 TEXT bcunboxcvtf64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  KMOVW K1, K2
-  VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
-
   VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
-  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
-  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
-  VPADDD Z10, Z11, Z14                                // Z14 <- constant(3)
-
   VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
-  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
+  VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
+  VPANDD.BCST CONSTD_0x0F(), Z4, Z6                   // Z6 <- L field
 
-  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
-  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
   VPSUBD Z10, Z5, Z4                                  // Z4 <- ION type - 1 (this saves us some instructions / constants)
+  VPADDD Z10, Z11, Z14                                // Z14 <- constant(3)
+  VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
 
   VPCMPUD $VPCMP_IMM_LE, Z14, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x1, 0x2, 0x3, or 0x4 ION type
   VPXORQ X2, X2, X2                                   // Z2 <- zero all lanes in case there are no numbers (low)
@@ -5545,14 +5457,15 @@ TEXT bcunboxcvtf64(SB), NOSPLIT|NOFRAME, $0
   KTESTW K1, K1
   JZ next                                             // Skip unboxing if there are no numbers
 
-  VEXTRACTI32X8 $1, Z30, Y13
   KMOVB K1, K3
+  VEXTRACTI32X8 $1, Z30, Y13
   VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
-  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
-  KSHIFTRW $8, K1, K4
-  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
-  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
 
+  KSHIFTRW $8, K1, K4
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+
+  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
   VEXTRACTI32X8 $1, Z12, Y13
   VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z5
   VPXORQ X15, X15, X15                                // Z15 <- constant(0)
@@ -5591,23 +5504,18 @@ next:
 // f64[0].k[1] = unbox_cast_i64(v[2]).k[3]
 TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_ZMM_FROM_SLOT(OUT(Z30), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  KMOVW K1, K2
-  VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z30*1), K2, Z4                     // Z4 <- read first 4 bytes (Type|L)
-
   VPBROADCASTD CONSTD_1(), Z10                        // Z10 <- constant(1)
-  VPBROADCASTD CONSTD_0x0F(), Z6                      // Z6 <- constant(0xF)
   VPSLLD $1, Z10, Z11                                 // Z11 <- constant(2)
   VPADDD Z10, Z11, Z14                                // Z14 <- constant(3)
 
   VPSRLD $4, Z4, Z5                                   // Z5 <- Z4 >> 4
   VPSLLD $3, Z10, Z12                                 // Z12 <- constant(8)
 
-  VPANDD Z6, Z5, Z5                                   // Z5 <- ION type
-  VPANDD Z6, Z4, Z6                                   // Z6 <- L field
+  VPANDD.BCST CONSTD_0x0F(), Z4, Z6                   // Z6 <- L field
   VPSUBD Z10, Z5, Z4                                  // Z4 <- ION type - 1 (this saves us some instructions / constants)
 
   VPCMPUD $VPCMP_IMM_LE, Z14, Z4, K1, K1              // K1 <- mask of all lanes that contain either 0x2, 0x3, or 0x4 ION type
@@ -5617,14 +5525,15 @@ TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
   KTESTW K1, K1
   JZ next                                             // Skip unboxing if there are no numbers
 
-  VEXTRACTI32X8 $1, Z30, Y13
   KMOVB K1, K3
+  VEXTRACTI32X8 $1, Z30, Y13
   VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
-  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
-  KSHIFTRW $8, K1, K4
-  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
-  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
 
+  KSHIFTRW $8, K1, K4
+  VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
+  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+
+  VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
   VEXTRACTI32X8 $1, Z12, Y13
   VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z5
   VPXORQ X15, X15, X15                                // Z15 <- constant(0)
@@ -5736,6 +5645,7 @@ TEXT bcboxf64(SB), NOSPLIT|NOFRAME, $0
 
   VPSLLVQ Z10, Z2, Z2                    // Z2 <- correctly shifted, ready for bswap64 (low)
   VPSLLVQ Z11, Z3, Z3                    // Z3 <- correctly shifted, ready for bswap64 (high)
+  VPBROADCASTD.Z CONSTD_1(), K1, Z14
 
   JZ box_fast_i64                        // jump to a fast-path if all integers fit into 1+7 bytes boxed
 
@@ -5757,10 +5667,10 @@ TEXT bcboxf64(SB), NOSPLIT|NOFRAME, $0
   KMOVW K1, K3
   VPSCATTERDQ Z2, K3, 1(SI)(Y30*1)
 
-  VPADDD.BCST.Z CONSTD_1(), Z31, K1, Z31 // Z31 <- size of the encoded ion value including Type|L byte
+  VPADDD.Z Z14, Z31, K1, Z31              // Z31 <- size of the encoded ion value including Type|L byte
   VPSCATTERDQ Z3, K2, 1(SI)(Y13*1)
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 box_fast_i64:
@@ -5769,19 +5679,19 @@ box_fast_i64:
   VPADDD.BCST CONSTD_16(), Z8, K5, Z8    // Z8 <- ION Type|L that represents unsigned and/or signed integers
   VPADDD.Z CONST_GET_PTR(consts_offsets_d_8, 0), Z30, K1, Z30 // Z30 <- offsets of boxed numbers
 
-  VEXTRACTI32X8 $1, Z8, Y9
-  VPMOVZXDQ Y8, Z8
-  VPMOVZXDQ Y9, Z9
+  VEXTRACTI32X8 $1, Z8, Y11
+  VPMOVZXDQ Y8, Z10
+  VPMOVZXDQ Y11, Z11
   VPSHUFB Z12, Z2, Z2                    // Z2 <- byteswapped integers having max 7 bytes (low)
   VPSHUFB Z12, Z3, Z3                    // Z3 <- byteswapped integers having max 7 bytes (high)
-  VPORQ Z8, Z2, Z2                       // Z4 <- encoded ION value having max 8 bytes (low)
-  VPORQ Z9, Z3, Z3                       // Z3 <- encoded ION value having max 8 bytes (high)
-  VPADDD.BCST.Z CONSTD_1(), Z31, K1, Z31 // Z31 <- size of the encoded ion value including Type|L byte
+  VPORQ Z10, Z2, Z2                      // Z4 <- encoded ION value having max 8 bytes (low)
+  VPORQ Z11, Z3, Z3                      // Z3 <- encoded ION value having max 8 bytes (high)
+  VPADDD.Z Z14, Z31, K1, Z31             // Z31 <- size of the encoded ion value including Type|L byte
 
-  VMOVDQU64 Z2, 0(SI)(R8*1)
-  VMOVDQU64 Z3, 64(SI)(R8*1)
+  VMOVDQU32 Z2, 0(SI)(R8*1)
+  VMOVDQU32 Z3, 64(SI)(R8*1)
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
   _BC_ERROR_HANDLER_MORE_SCRATCH()
@@ -5825,6 +5735,7 @@ TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD CONSTD_8(), Z13
   VPSLLQ $3, Z6, Z10
   VPSLLQ $3, Z7, Z11
+  VPBROADCASTD.Z CONSTD_1(), K1, Z14
 
   VPBROADCASTD.Z R8, K1, Z30             // Z30 <- initial value offsets
   VPSUBD.Z Z8, Z13, K1, Z31              // Z31 <- size of an ION boxed value, excluding the descriptor byte
@@ -5837,7 +5748,7 @@ TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
   VPSLLVQ Z10, Z4, Z4                    // Z4 <- correctly shifted, ready for bswap64 (low)
   VPSLLVQ Z11, Z5, Z5                    // Z5 <- correctly shifted, ready for bswap64 (high)
   VPADDD.BCST CONSTD_16(), Z8, K5, Z8    // Z8 <- ION Type|L that represents signed integers and unsigned integers
-  VPADDD.BCST.Z CONSTD_1(), Z31, K1, Z31 // Z31 <- size of the boxed value including Type|L field
+  VPADDD.Z Z14, Z31, K1, Z31             // Z31 <- size of the boxed value including Type|L field
 
   JZ box_fast_i64                        // jump to a fast-path if all integers fit into 1+7 bytes boxed
 
@@ -5856,7 +5767,7 @@ TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
   VPSCATTERDQ Z4, K3, 1(SI)(Y30*1)
   VPSCATTERDQ Z5, K2, 1(SI)(Y13*1)
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
   // fast path - if all integers fit into 7 bytes (8 bytes in ION) we can avoid scatter
@@ -5864,18 +5775,18 @@ box_fast_i64:
   VBROADCASTI64X2 CONST_GET_PTR(box_fast_i64_bswap64_7_bytes, 0), Z12
   VPADDD.Z CONST_GET_PTR(consts_offsets_d_8, 0), Z30, K1, Z30 // Z30 <- offsets of boxed numbers
 
-  VEXTRACTI32X8 $1, Z8, Y9
-  VPMOVZXDQ Y8, Z8
-  VPMOVZXDQ Y9, Z9
+  VEXTRACTI32X8 $1, Z8, Y11
+  VPMOVZXDQ Y8, Z10
+  VPMOVZXDQ Y11, Z11
   VPSHUFB Z12, Z4, Z4                    // Z4 <- byteswapped integers having max 7 bytes (low)
   VPSHUFB Z12, Z5, Z5                    // Z5 <- byteswapped integers having max 7 bytes (high)
-  VPORQ Z8, Z4, Z4                       // Z4 <- encoded ION value having max 8 bytes (low)
-  VPORQ Z9, Z5, Z5                       // Z5 <- encoded ION value having max 8 bytes (high)
+  VPORQ Z10, Z4, Z4                      // Z4 <- encoded ION value having max 8 bytes (low)
+  VPORQ Z11, Z5, Z5                      // Z5 <- encoded ION value having max 8 bytes (high)
 
   VMOVDQU64 Z4, 0(SI)(R8*1)
   VMOVDQU64 Z5, 64(SI)(R8*1)
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
   _BC_ERROR_HANDLER_MORE_SCRATCH()
@@ -5887,32 +5798,33 @@ box_fast_i64:
 // see boxmask_tail_vbmi2 for a version that
 // only writes out the lanes that are valid
 TEXT bcboxk(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
 
-  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(BX))             // K2 = true/false
-  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  VPBROADCASTB CONSTD_16(), X10                     // X10 <- byte(0x10)
+  BC_LOAD_K1_FROM_SLOT(OUT(K2), IN(BX))             // K2 <- true/false
+
+  VPBROADCASTB CONSTD_1(), Z11                      // Z11 <- byte(0x01)
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))             // K1 <- predicate
 
   VM_CHECK_SCRATCH_CAPACITY($16, R15, error_handler_more_scratch)
-  MOVL         $0x10, R14
-  VPBROADCASTB R14, X10                             // X10 = false byte x 16
-  MOVL         $1, R14
-  VPBROADCASTB R14, X11
-  VPADDB       X10, X11, K2, X10                    // X10 = true or false bytes (0x10 + 1/0)
+  VPADDB       X10, X11, K2, X10                    // X10 <- Type|L (true or false)
   MOVQ         bytecode_scratch(VIRT_BCPTR), R14
   ADDQ         bytecode_scratch+8(VIRT_BCPTR), R14
   VMOVDQU      X10, 0(R14)                          // store 16 bytes unconditionally
-  // offsets are [0, 1, 2, 3...] plus base offset;
-  // then complemented for Z30
-  VPXORD         Z30, Z30, Z30
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+
+  // offsets are [0, 1, 2, 3...] plus base offset; then complemented for Z30
+  VPMOVZXBD byteidx<>+0(SB), Z12
+  VPXORD Z30, Z30, Z30
   VM_GET_SCRATCH_BASE_ZMM(Z30, K1)
-  VPMOVZXBD byteidx<>+0(SB), Z10
-  VPADDD.Z Z10, Z30, K1, Z30
-  VPBROADCASTD.Z CONSTD_1(), K1, Z31
+  VPSRLD.Z $24, Z11, K1, Z31
+  VPADDD.Z Z12, Z30, K1, Z30
 
   // update used scratch space
   ADDQ $16, bytecode_scratch+8(VIRT_BCPTR)
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT_X(IN(Z30), IN(Z31), IN(X10), IN(X11), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
   _BC_ERROR_HANDLER_MORE_SCRATCH()
@@ -6090,9 +6002,9 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // --- Fast path for small strings (small string in each lane or MISSING) ---
 
   // Make Z7 contain Type|L where Type is the requested ION type
-  VPORD.Z Z20, Z3, K1, Z7                              // Z7  = [L15 L14 L13 L12|L11 L10 L09 L08|L07 L06 L05 L04|L03 L02 L01 L00]
-  VPMOVZXDQ Y7, Z5                                     // Z5  = [___ L07 ___ L06|___ L05 ___ L04|___ L03 ___ L02|___ L01 ___ L00]
-  VSHUFI64X2 $SHUFFLE_IMM_4x2b(1, 0, 3, 2), Z7, Z7, Z7
+  VPORD.Z Z20, Z3, K1, Z20                             // Z20 = [L15 L14 L13 L12|L11 L10 L09 L08|L07 L06 L05 L04|L03 L02 L01 L00]
+  VPMOVZXDQ Y20, Z5                                    // Z5  = [___ L07 ___ L06|___ L05 ___ L04|___ L03 ___ L02|___ L01 ___ L00]
+  VSHUFI64X2 $SHUFFLE_IMM_4x2b(1, 0, 3, 2), Z20, Z20, Z7
 
   VPSLLDQ $7, Z5, Z6                                   // Z6  = [L07 ___ L06 ___|L05 ___ L04 ___|L03 ___ L02 ___|L01 ___ L00 ___]
   VPSLLDQ $15, Z5, Z5                                  // Z5  = [L06 ___ ___ ___|L04 ___ ___ ___|L02 ___ ___ ___|L00 ___ ___ ___]
@@ -6153,8 +6065,8 @@ large_string:
   // We already have encoded ION length, including the information regarding how "long" the length is.
   VPBROADCASTD.Z CONSTD_0x0E(), K1, Z15
   VMOVDQA32 Z3, K3, Z15                                // Z15 = [L15 L14 L13 L12|L11 L10 L09 L08|L07 L06 L05 L04|L03 L02 L01 L00]
-  VPORD.Z Z20, Z15, K1, Z15                            // Z15 = [T15 T14 T13 T12|T11 T10 T09 T08|T07 T06 T05 T04|T03 T02 T01 T00]
-  VPSLLD $24, Z15, Z15
+  VPORD.Z Z20, Z15, K1, Z20                            // Z20 = [T15 T14 T13 T12|T11 T10 T09 T08|T07 T06 T05 T04|T03 T02 T01 T00]
+  VPSLLD $24, Z20, Z15
 
   VPUNPCKLDQ Z5, Z15, Z14                              // Z14 = [L13 T13 L12 T12|L09 T09 L08 T08|L05 T05 L04 T04|L01 T01 L00 T00]
   VPUNPCKHDQ Z5, Z15, Z15                              // Z15 = [L15 T15 L14 T14|L11 T11 L10 T10|L07 T07 L06 T06|L03 T03 L02 T02]
@@ -6257,7 +6169,7 @@ large_skip_3:
 
 next:
   BC_UNPACK_SLOT(0, OUT(DX))
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z20), IN(Z16), IN(DX))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
@@ -6290,7 +6202,7 @@ TEXT bcmakestruct(SB), NOSPLIT|NOFRAME, $0
 TEXT bchashvalue(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z28), OUT(Z29), IN(BX), IN(K1))
+  BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z28), OUT(Z29), IN(BX), IN(K1))
 
   BC_UNPACK_SLOT(0, OUT(DX))
   VPXORD X10, X10, X10
@@ -6310,7 +6222,7 @@ TEXT bchashvalue(SB), NOSPLIT|NOFRAME, $0
 TEXT bchashvalueplus(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z28), OUT(Z29), IN(BX), IN(K1))
+  BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z28), OUT(Z29), IN(BX), IN(K1))
 
   BC_UNPACK_2xSLOT(0, OUT(R14), OUT(DX))
   ADDQ $(BC_SLOT_SIZE*4), VIRT_PCREG
@@ -6758,7 +6670,19 @@ loop_tail:
 
 next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+
+  // read TLV byte and calculate header length
+  VPBROADCASTD CONSTD_1(), Z8          // Z8 <- dword(0xFF)
+  VPBROADCASTD CONSTD_14(), Z9         // Z9 <- dword(14)
+
+  KMOVW K1, K2
+  VPXORD X2, X2, X2
+  VPGATHERDD 0(SI)(Z30*1), K2, Z2
+
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
+  BC_CALC_VALUE_HLEN(OUT(Z3), IN(Z31), IN(K1), IN(Z8), IN(Z9), Z5, K2)
+
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4 + 2)
@@ -7554,36 +7478,47 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
 TEXT bclitref(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
 
-  VPBROADCASTD (BC_SLOT_SIZE+0)(VIRT_PCREG), Z2       // Z2 <- value offset part
-  VPBROADCASTD (BC_SLOT_SIZE+4)(VIRT_PCREG), Z3       // Z3 <- value length part
-  VPADDD.BCST bytecode_scratchoff(VIRT_BCPTR), Z2, Z2 // Z2 <- value offset relative to VM
+  VPBROADCASTD (BC_SLOT_SIZE+0)(VIRT_PCREG), Z2             // Z2 <- value offset part
+  VPBROADCASTD.Z (BC_SLOT_SIZE+4)(VIRT_PCREG), K7, Z3       // Z3 <- value length part
+  VPADDD.BCST.Z bytecode_scratchoff(VIRT_BCPTR), Z2, K7, Z2 // Z2 <- value offset relative to VM
+  VPBROADCASTB.Z (BC_SLOT_SIZE+8)(VIRT_PCREG), K7, X4       // X4 <- tlv byte
+  VPBROADCASTB.Z (BC_SLOT_SIZE+9)(VIRT_PCREG), K7, X5       // X5 <- header length
 
-  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE + 8)
+  BC_STORE_VALUE_TO_SLOT_X(IN(Z2), IN(Z3), IN(X4), IN(X5), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE + 10)
 
 TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_RU16(BC_SLOT_SIZE*2, OUT(BX))
+  IMULQ $24, BX
+  MOVQ bytecode_auxvals+0(VIRT_BCPTR), CX
+  MOVQ bytecode_auxpos(VIRT_BCPTR), DX
+  MOVQ 0(CX)(BX*1), CX
+
+  VMOVDQU32 0(CX)(DX*8), Z1                                 // Z1 <- value [offset, length] (packed) (low)
+  VMOVDQU32 64(CX)(DX*8), Z3                                // Z3 <- value [offset, length] (packed) (high)
+
+  VPMOVQD Z1, Y0                                            // Y0 <- extracted offsets (low)
+  VPSRLQ $32, Z1, Z1                                        // Z1 <- prepare for length extraction (low)
+  VPMOVQD Z3, Y2                                            // Y2 <- extracted offsets (high)
+  VPSRLQ $32, Z3, Z3                                        // Z3 <- prepare for length extraction (high)
+  VPMOVQD Z1, Y1                                            // Y1 <- extracted lengths (low)
+  VPMOVQD Z3, Y3                                            // Y3 <- extracted lengths (high)
+  VPBROADCASTD CONSTD_1(), Z8                               // Z8 <- dword(0xFF)
+
+  VINSERTI32X8.Z $1, Y2, Z0, K7, Z0                         // Z0 <- value offsets
+  VINSERTI32X8.Z $1, Y3, Z1, K7, Z1                         // Z1 <- value lengths
+  VPBROADCASTD CONSTD_14(), Z9                              // Z9 <- dword(14)
+  VPTESTMD Z1, Z1, K1                                       // K1 <- MISSING when a value has zero length
+
+  // read TLV byte and calculate header length
+  KMOVW K1, K2
+  VPXORD X2, X2, X2
+  VPGATHERDD 0(SI)(Z0*1), K2, Z2                            // Z2 <- first 4 bytes of the value
+
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
-  BC_UNPACK_RU16(BC_SLOT_SIZE*2, OUT(R8))
+  BC_CALC_VALUE_HLEN(OUT(Z3), IN(Z1), IN(K1), IN(Z8), IN(Z9), Z5, K2)
 
-  IMULQ      $24, R8
-  MOVQ       bytecode_auxvals+0(VIRT_BCPTR), R15
-  MOVQ       0(R15)(R8*1), R15
-  MOVQ       bytecode_auxpos(VIRT_BCPTR), R8
-  LEAQ       0(R15)(R8*8), R15 // skip entries in group
-  VMOVDQU32  0(R15), Z8   // Z8 = first 8, packed
-  VPMOVQD    Z8, Y10      // Y10 = first 8 offsets
-  VPSRLQ     $32, Z8, Z8  // Z8 = first 8 >>= 32
-  VPMOVQD    Z8, Y11      // Y11 = first 8 lengths
-  VMOVDQU32  64(R15), Z9  // Z9 = second 8, packed
-  VPMOVQD    Z9, Y12      // Y12 = second 8 offsets
-  VPSRLQ     $32, Z9, Z9  // Z9 = second 8 >>= 32
-  VPMOVQD    Z9, Y13      // Y13 = second 8 lengths
-
-  VINSERTI32X8.Z $1, Y12, Z10, K7, Z30 // concatenate offsets
-  VINSERTI32X8.Z $1, Y13, Z11, K7, Z31 // concatenate lengths
-  VPTESTMD       Z31, Z31, K1      // zero-length values -> MISSING
-
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z0), IN(Z1), IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), OUT(CX))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 2)
@@ -7594,152 +7529,86 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
 // in v[0], then update s[1] to point to the rest of the list.
 TEXT bcsplit(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*3, OUT(BX), OUT(R8))
-
-  VPXORD X30, X30, X30
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-  VPXORD X31, X31, X31
-  BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  VPTESTMD Z3, Z3, K1, K1                                      // K1 <- only keep lanes with len != 0
+  VPBROADCASTD CONSTD_1(), Z13                                 // Z13 <- dword(1)
 
-  VPTESTMD      Z3, Z3, K1, K1             // only keep lanes with len != 0
-  KTESTW        K1, K1
-  JZ            next
+  KTESTW K1, K1
+  KMOVW K1, K2
+  VPXORD X4, X4, X4
+  JZ empty
 
-  KMOVW         K1, K2
-  VPXORD        X26, X26, X26
-  VPGATHERDD    0(SI)(Z2*1), K2, Z26       // Z26 = first 4 bytes
+  VPGATHERDD 0(SI)(Z2*1), K2, Z4                               // Z4 <- first 4 ion bytes
+  VPSLLD $5, Z13, Z11                                          // Z11 <- dword(32)
+  VPSHUFB BC_CONST(bswap32), Z4, Z5                            // Z5 <- bswap32(bytes)
+  VPBROADCASTD CONSTD_0x00808080(), Z7                         // Z7 <- dword(0x808080)
+  VPSRLD $24, Z5, Z9                                           // Z9 <- extracted Type|L byte
+  VPANDD Z7, Z5, Z6                                            // Z6 <- bswap32(bytes) & 0x00808080
+  VPANDND Z5, Z7, Z7                                           // Z7 <- bswap32(bytes) & 0xFF7F7F7F
+  VPCMPUD $VPCMP_IMM_GE, Z11, Z9, K1, K3                       // K3 <- Type != NULL|BOOL (Type|L >= 32)
 
-  VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
-  VPBROADCASTD  CONSTD_1(), Z21            // Z21 = 1
-  VPANDD        Z26, Z27, Z25              // Z25 = first 4 & 0x0f = int size
-  VPSRLD        $4, Z26, Z26               // first 4 words >>= 4
-  VPANDD        Z27, Z26, Z24              // Z24 = (word >> 4) & 0xf = descriptor tag
-  VPCMPEQD      Z21, Z24, K1, K4           // K4 = descriptor=1 (boolean)
-  VPCMPEQD      Z25, Z27, K1, K2           // K2 = field is null
-  KORW          K2, K4, K2                 // K2 = field is null or boolean (must be 1 byte)
-  KANDNW        K1, K2, K3                 // K3 = field is active and not 1-byte-sized
-  VPCMPEQD.BCST CONSTD_0x0E(), Z25, K1, K2 // K2 = descriptor=e (varint-sized)
-  KANDNW        K3, K2, K3                 // K3 = non-varint-sized objects
-  VMOVDQA32.Z   Z25, K3, Z22               // Z22 = length = first4&0xf for non-varint-size
-  VPADDD        Z21, Z22, K1, Z22          // Z22++ for all lanes (for descriptor byte)
-  VPCMPEQD      Z24, Z21, K1, K4           // K4 = descriptor tag == 1
-  VMOVDQA32     Z21, K4, Z22               // Z22 = 1 for booleans independent of size bits
-  // decode up to 3 varint bytes; we expect
-  // not to see 4 bytes because our current chunk
-  // alignment would not allow for objects over
-  // 2^21 bytes long anyway...
-  VPBROADCASTD  CONSTD_0x7F(), Z27      // Z27 = 0x7F
-  VPBROADCASTD  CONSTD_0x80(), Z29      // Z29 = 0x80
-  VPSRLD        $4, Z26, Z26            // now Z26 = 3 bytes following descriptor
-  KMOVW         K2, K3
-  VPANDD.Z      Z27, Z26, K3, Z28       // Z28 = byte1&0x7f = accumulator
-  VPADDD        Z21, Z22, K3, Z22       // total++
-  VPTESTNMD     Z29, Z26, K3, K3        // test byte1&0x80
-  KTESTW        K3, K3
-  JZ            done
+  VPLZCNTD Z6, Z6                                              // Z6 <- lzcnt32(bswap32(bytes) & 0x808080) (number of length bytes in bits)
+  VPANDD.BCST.Z CONSTD_15(), Z9, K3, Z8                        // Z8 <- L field extracted from Type|L and corrected to 0 if NULL/BOOL
+  VPSLLD $8, Z7, Z7                                            // Z7 <- (bswap32(bytes) & 0x7F7F7F) << 8
+  VPCMPEQD.BCST CONSTD_14(), Z8, K1, K3                        // K3 <- lanes that need a separate Length data when L == 14
 
-  VPSRLD        $8, Z26, K3, Z26        // word >>= 8
-  VPSLLD        $7, Z28, K3, Z28        // accum <<= 7
-  VPANDD        Z27, Z26, K3, Z25
-  VPORD         Z25, Z28, K3, Z28       // accum |= (word & 0x7f)
-  VPADDD        Z21, Z22, K3, Z22       // total++
-  VPTESTNMD     Z29, Z26, K3, K3        // test word&0x80
-  VPSRLD        $8, Z26, K3, Z26        // word >>= 8
-  VPSLLD        $7, Z28, K3, Z28        // accum <<= 7
-  VPANDD        Z27, Z26, K3, Z25
-  VPORD         Z25, Z28, K3, Z28       // accum |= (word & 0x7f)
-  VPADDD        Z21, Z22, K3, Z22       // total++
-  VPTESTNMD     Z29, Z26, K3, K3        // test word&0x80
-  KTESTW        K3, K3
-  JNZ           trap                    // trap if length(object) > 2^21
+  VPSUBD Z6, Z11, Z11                                          // Z11 <- 32 - lzcnt32(bswap32(bytes) & 0x808080) (number of bits to trash)
+  VPSRLD.Z $3, Z6, K3, Z10                                     // Z10 <- size of Length field, in bytes (or 0, if there is no Length field)
+  VPSRLVD Z11, Z7, K3, Z8                                      // Z8 <- length data as [00000000|0CCCCCCCC|0BBBBBBBB|0AAAAAAAA]
+  VPADDD.Z Z13, Z10, K1, Z10                                   // Z10 <- header length (includes TLV byte and optional Length field size)
 
-done:
-  VPADDD        Z28, Z22, K2, Z22       // size += varint size
-  VPCMPUD       $VPCMP_IMM_GT, Z3, Z22, K1, K3   // bounds check: we are still inside the array
-  KTESTW        K3, K3
-  JNZ           trap
-  VMOVDQA32.Z   Z2, K1, Z30             // Z30 = object base = Z2
-  VMOVDQA32.Z   Z22, K1, Z31            // Z31 = object size = Z22
-  VPADDD        Z22, Z2, K1, Z2         // offset += object size
-  VPSUBD.Z      Z22, Z3, K1, Z3         // length -= object size
+  VPSRLD $1, Z8, Z11                                           // Z11 <- length data as [00000000|00CCCCCCC|C0BBBBBBB|BAAAAAAAA]
+  VPSRLD $2, Z8, Z12                                           // Z12 <- length data as [00000000|000CCCCCC|CC0BBBBBB|BBAAAAAAA]
+  VPTERNLOGD.BCST $TERNLOG_BLEND_AB, CONSTD_0x7F(), Z11, Z8    // Z8  <- length data as [00000000|00CCCCCCC|C0BBBBBBB|BAAAAAAAA]
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPTERNLOGD.BCST $TERNLOG_BLEND_AB, CONSTD_0x3FFF(), Z12, Z8  // Z8  <- length data as [00000000|000CCCCCC|CCBBBBBBB|BAAAAAAAA]
 
-next:
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(CX), OUT(R8))
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), OUT(DX))
-  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(CX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(CX))
+  VPADDD.Z Z8, Z10, K1, Z12                                    // Z12 <- value length
+  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z12), IN(Z9), IN(Z10), IN(DX))
+
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
+  VPADDD.Z Z12, Z2, K1, Z13                                    // Z13 <- offset of the output slice (advancing the input slice)
+  VPSUBD.Z Z12, Z3, K1, Z14                                    // Z14 <- length of the output slice (advancing the input slice)
+  BC_STORE_SLICE_TO_SLOT(IN(Z13), IN(Z14), IN(CX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
-trap:
-  FAIL()
+empty:
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(CX), OUT(R8))
+  BC_STORE_VALUE_TO_SLOT_X(IN(Z4), IN(Z4), IN(X4), IN(X4), OUT(DX))
+  BC_STORE_SLICE_TO_SLOT(IN(Z4), IN(Z4), IN(CX))
+  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*5)
 
 // b[0].k[1] = unbox_struct(v[2]).k[3]
 //
 // take v[0] and parse it as struct, returning offset + length in b[0]
 TEXT bctuple(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3, OUT(R8))
 
-  VPXORD X0, X0, X0
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z4), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+  VPSRLD $4, Z4, Z4
 
-  VPXORD X1, X1, X1
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z30), OUT(Z31), IN(BX))
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z5), IN(BX))
+  VPCMPEQD.BCST CONSTD_13(), Z4, K1, K1
 
-  KTESTW        K1, K1
-  JZ            next
+  VMOVDQU32 BC_VSTACK_PTR(BX, 64), Z3
+  VPADDD.Z BC_VSTACK_PTR(BX, 0), Z5, K1, Z2
 
-  KMOVW         K1, K2
-  VPBROADCASTD  CONSTD_0x0F(), Z27         // Z27 = 0x0F
-  VPBROADCASTD  CONSTD_1(), Z21            // Z21 = 1
-  VMOVDQA32     Z21, Z23                   // Z23 = 1 = offset addend
-  VPGATHERDD    0(SI)(Z30*1), K2, Z28      // Z28 = first 4 bytes
-  VPANDD        Z27, Z28, Z25              // Z25 = first 4 & 0x0f = immediate size
-  VPCMPEQD      Z27, Z25, K1, K2           // K2 = lane is null
-  KANDNW        K1, K2, K1                 // unset lanes that are null values
-  VPSRLD        $4, Z28, Z28               // Z28 >>= 4
-  VPANDD        Z27, Z28, Z26              // Z26 = field tag
-  VPCMPEQD.BCST CONSTD_0x0D(), Z26, K1, K1 // K1 = keep lanes that are actually structures
-  VPCMPEQD.BCST CONSTD_0x0E(), Z25, K1, K2 // K2 = lane has non-immediate length
-  VPSRLD        $4, Z28, Z28               // shift away first byte completely
-  VPBROADCASTD  CONSTD_0x7F(), Z24         // Z24 = 0x7f
-  VPBROADCASTD  CONSTD_0x80(), Z26         // Z26 = 0x80
-  VPADDD        Z21, Z23, K2, Z23          // offset++ (now 2)
-  VPANDD        Z24, Z28, K2, Z25          // outsize = byte&0x7f
-  VPTESTNMD     Z26, Z28, K2, K2           // test if we've hit the stop bit
-  KTESTW        K2, K2
-  JNZ           two_more                   // keep the fast path (length < 127) short
-
-done:
-  VPADDD        Z23, Z30, K1, Z0           // Z0 = base = offset + encoding size
-  VMOVDQA32     Z25, K1, Z1                // Z1 = length
-
-next:
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  BC_STORE_SLICE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  VPSUBD.Z Z5, Z3, K1, Z3
+
+  BC_STORE_SLICE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*4)
-
-trap:
-  FAIL()
-
-two_more:
-  VPADDD        Z21, Z23, K2, Z23
-  VPSLLD        $7, Z25, K2, Z25
-  VPSRLD        $8, Z28, Z28
-  VPANDD        Z24, Z28, K2, Z27
-  VPORD         Z27, Z25, K2, Z25
-  VPTESTNMD     Z26, Z28, K2, K2
-  VPADDD        Z21, Z23, K2, Z23
-  VPSLLD        $7, Z25, K2, Z25
-  VPSRLD        $8, Z28, Z28
-  VPANDD        Z24, Z28, K2, Z27
-  VPORD         Z27, Z25, K2, Z25
-  VPTESTNMD     Z26, Z28, K2, K2
-  KTESTW        K2, K2
-  JNZ           trap
-  JMP           done
 
 // k[0] = k[1]
 TEXT bcmovk(SB), NOSPLIT|NOFRAME, $0
@@ -7754,30 +7623,48 @@ TEXT bcmovk(SB), NOSPLIT|NOFRAME, $0
 TEXT bczerov(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_SLOT(0, OUT(DX))
   VPXORD X2, X2, X2
-  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z2), IN(DX))
+  VMOVDQU32 Z2, BC_VSTACK_PTR(DX, 0)
+  VMOVDQU32 Z2, BC_VSTACK_PTR(DX, 64)
+  VMOVDQU32 Y2, BC_VSTACK_PTR(DX, 128)
   NEXT_ADVANCE(BC_SLOT_SIZE*1)
 
 // v[0] = v[1].k[2]
 TEXT bcmovv(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(BX), OUT(R8))
-
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
-  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(BX))
+  KUNPCKWD K1, K1, K2
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 0), K1, Z2
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 64), K1, Z3
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 128), K2, Y4
+
+  VMOVDQU32 Z2, BC_VSTACK_PTR(DX, 0)
+  VMOVDQU32 Z3, BC_VSTACK_PTR(DX, 64)
+  VMOVDQU32 Y4, BC_VSTACK_PTR(DX, 128)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // v[0].k[1] = v[2].k[3]
 TEXT bcmovvk(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*3, OUT(R8))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-  BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*2, OUT(BX))
+  KUNPCKWD K1, K1, K2
 
-  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  BC_STORE_VALUE_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 0), K1, Z2
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 64), K1, Z3
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 128), K2, Y4
+
+  BC_UNPACK_SLOT(BC_SLOT_SIZE*1, OUT(R8))
+  VMOVDQU32 Z2, BC_VSTACK_PTR(DX, 0)
+  VMOVDQU32 Z3, BC_VSTACK_PTR(DX, 64)
+  VMOVDQU32 Y4, BC_VSTACK_PTR(DX, 128)
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 // f64[0] = f64[1].k[2]
 TEXT bcmovf64(SB), NOSPLIT|NOFRAME, $0
@@ -7927,7 +7814,7 @@ trap:
 TEXT bcobjectsize(SB), NOSPLIT|NOFRAME, $0
     BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-    BC_LOAD_VALUE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
+    BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
 
     VPBROADCASTD CONSTD_1(), CONST_0x01
     VPBROADCASTD CONSTD_0x0F(), CONST_0x0f
@@ -8074,7 +7961,7 @@ TEXT bcarrayposition(SB), NOSPLIT|NOFRAME, $0
   KTESTW K1, K1
 
   MOVQ bytecode_symtab+0(VIRT_BCPTR), R8               // R8 <- symbol table base
-  BC_LOAD_VALUE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(CX))    // Z2:Z3 <- value to match
+  BC_LOAD_VALUE_SLICE_FROM_SLOT(OUT(Z2), OUT(Z3), IN(CX)) // Z2:Z3 <- value to match
 
   VPXORD X20, X20, X20                                 // Z20 <- current position in array (counted from 1)
   VPXORD X21, X21, X21                                 // Z21 <- matched positions

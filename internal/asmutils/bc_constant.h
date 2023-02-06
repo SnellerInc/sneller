@@ -38,6 +38,7 @@
 #endif
 
 #define CONST_GET_PTR(name, offset) name<>+(offset)(SB)
+#define BC_CONST(name) name<>+(0)(SB)
 
 //swap byte 0 and 2, and leave byte 1 and 3 untouched
 #define BSWAP_UTF8_3BYTE() CONST_GET_PTR(bswapUTF_3byte, 0)

@@ -183,11 +183,11 @@ calc_length_iter:
   VEXTRACTI32X8 $1, Z11, Y12
   VPMOVZXDQ Y14, Z8
   VPMOVZXDQ Y9, Z9
-  VPMOVZXDQ Y11, Z11
+  VPMOVZXDQ Y11, Z13
   VPMOVZXDQ Y12, Z12
   VPSLLQ $8, Z8, Z8
   VPSLLQ $8, Z9, Z9
-  VPORQ Z11, Z8, Z8                                    // Z8 <- encoded Type|L + [Length] in each 64-bit lane (low)
+  VPORQ Z13, Z8, Z8                                    // Z8 <- encoded Type|L + [Length] in each 64-bit lane (low)
   VPORQ Z12, Z9, Z9                                    // Z9 <- encoded Type|L + [Length] in each 64-bit lane (high)
 
   // The easiest thing to do is to scatter the Type|L + length as 8 byte units as it's much
@@ -200,8 +200,8 @@ calc_length_iter:
   KSHIFTRW $8, K1, K3
   VPSCATTERDQ Z9, K3, 0(SI)(Y13*1)
 
-  VPADDD Z30, Z5, Z5                                   // Z5 <- offsets of each lane incremented by sizeof(Type|L + Length)
-  VMOVDQU32 Z5, bytecode_spillArea(VIRT_BCPTR)         // save Z5 offsets so we can use them in a scalar loop
+  VPADDD Z30, Z5, Z17                                  // Z17 <- offsets of each lane incremented by sizeof(Type|L + Length)
+  VMOVDQU32 Z17, bytecode_spillArea(VIRT_BCPTR)        // save Z17 offsets so we can use them in a scalar loop
 
   // Now copy all the bytes into the destination buffer by processing each value at once (per lane).
 
@@ -304,7 +304,7 @@ va_end:
   BC_MOV_SLOT (-BC_SLOT_SIZE*3 - 4)(BX), DX
   BC_MOV_SLOT (-BC_SLOT_SIZE*2 - 4)(BX), R8
 
-  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(DX))
+  BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z11), IN(Z5), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(0)

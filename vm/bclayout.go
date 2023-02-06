@@ -29,8 +29,10 @@ type bRegData struct {
 }
 
 type vRegData struct {
-	offsets [bcLaneCount]uint32
-	sizes   [bcLaneCount]uint32
+	offsets    [bcLaneCount]uint32
+	sizes      [bcLaneCount]uint32
+	typeL      [bcLaneCount]byte
+	headerSize [bcLaneCount]byte
 }
 
 type sRegData struct {
@@ -54,10 +56,17 @@ func (k *kRegData) setBit(idx int) {
 	k.mask |= 1 << idx
 }
 
+type litref struct {
+	offset uint32
+	length uint32
+	tlv    uint8
+	hLen   uint8
+}
+
 const (
 	kRegSize = 2
 	bRegSize = 128
-	vRegSize = 128
+	vRegSize = 160
 	sRegSize = 128
 	hRegSize = 256
 	lRegSize = 128

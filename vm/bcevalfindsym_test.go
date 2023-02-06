@@ -23,10 +23,20 @@ import (
 	"github.com/SnellerInc/sneller/ion"
 )
 
+func decodeFieldDatumToVReg(vReg *vRegData, index int, datum ion.Datum, st *ion.Symtab) {
+	buf := ion.Buffer{}
+	datum.Encode(&buf, st)
+	encoded := buf.Bytes()
+
+	vReg.sizes[index] = uint32(len(encoded))
+	vReg.typeL[index] = byte(encoded[0])
+	vReg.headerSize[index] = byte(ion.HeaderSizeOf(encoded))
+}
+
 // testFindSymSingleValue is a findsym tester that tests matching a single
 // Symbol/Value pair. It can be used to verify many Symbol+Value encoding
 // variations.
-func testFindSymSingleValue(t *testing.T, st *ion.Symtab, symbolID ion.Symbol, values []any) {
+func testFindSymSingleValue(t *testing.T, st *ion.Symtab, symbolID ion.Symbol, structs []ion.Struct) {
 	var ctx bctestContext
 	defer ctx.free()
 
@@ -40,8 +50,8 @@ func testFindSymSingleValue(t *testing.T, st *ion.Symtab, symbolID ion.Symbol, v
 		symLen = 3
 	}
 
-	inputB := ctx.bRegFromValues(values, st)
-	inputK := kRegData{mask: uint16(uint64(1)<<len(values) - 1)}
+	inputB := ctx.bRegFromStructs(structs, st)
+	inputK := kRegData{mask: uint16(uint64(1)<<len(structs) - 1)}
 
 	outputV := vRegData{}
 	outputK := kRegData{}
@@ -53,8 +63,12 @@ func testFindSymSingleValue(t *testing.T, st *ion.Symtab, symbolID ion.Symbol, v
 	expectedOutputV := vRegData{}
 	for i := 0; i < bcLaneCount; i++ {
 		if inputB.sizes[i] != 0 {
-			expectedOutputV.offsets[i] = inputB.offsets[i] + symLen
-			expectedOutputV.sizes[i] = inputB.sizes[i] - symLen
+			// not the best way - but we really want to verify that findsym stored a correct TLV byte and header length
+			field, ok := structs[i].Field(symbolID)
+			if ok {
+				expectedOutputV.offsets[i] = inputB.offsets[i] + symLen
+				decodeFieldDatumToVReg(&expectedOutputV, i, field.Datum, st)
+			}
 		}
 	}
 
@@ -76,7 +90,7 @@ func addRandomSymbolsToSymtab(st *ion.Symtab, count int) {
 
 func testFindSymSingleValue0ByteLength(t *testing.T, st *ion.Symtab, symID ion.Symbol) {
 	sym := st.Get(symID)
-	testFindSymSingleValue(t, st, symID, []any{
+	testFindSymSingleValue(t, st, symID, []ion.Struct{
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Null}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Bool(false)}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Bool(true)}}),
@@ -97,7 +111,7 @@ func testFindSymSingleValue0ByteLength(t *testing.T, st *ion.Symtab, symID ion.S
 
 func testFindSymSingleValue1ByteLength(t *testing.T, st *ion.Symtab, symID ion.Symbol) {
 	sym := st.Get(symID)
-	testFindSymSingleValue(t, st, symID, []any{
+	testFindSymSingleValue(t, st, symID, []ion.Struct{
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Null}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Bool(false)}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Bool(true)}}),
@@ -120,7 +134,7 @@ func testFindSymSingleValue2ByteLength(t *testing.T, st *ion.Symtab, symID ion.S
 	longString := strings.Repeat("-", 128)
 
 	sym := st.Get(symID)
-	testFindSymSingleValue(t, st, symID, []any{
+	testFindSymSingleValue(t, st, symID, []ion.Struct{
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Null}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.String(shortString)}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.String(longString)}}),
@@ -145,7 +159,7 @@ func testFindSymSingleValue3ByteLength(t *testing.T, st *ion.Symtab, symID ion.S
 	longestString := strings.Repeat("=", 17985)
 
 	sym := st.Get(symID)
-	testFindSymSingleValue(t, st, symID, []any{
+	testFindSymSingleValue(t, st, symID, []ion.Struct{
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.Null}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.String(shortString)}}),
 		ion.NewStruct(st, []ion.Field{{Label: sym, Datum: ion.String(longString)}}),
@@ -272,7 +286,7 @@ func TestFindSym2NoMissing(t *testing.T) {
 	}
 
 	// The size of each "a" key/value is i + 2 bytes (1 byte symbol, 1 byte string header, the rest is content).
-	inputB := ctx.bRegFromValues([]any{
+	structs := []ion.Struct{
 		ion.NewStruct(&st, []ion.Field{
 			{Label: "a", Datum: ion.String("-")},
 			{Label: "b", Datum: ion.String("a|")},
@@ -309,7 +323,8 @@ func TestFindSym2NoMissing(t *testing.T) {
 			{Label: "a", Datum: ion.String("---------")},
 			{Label: "b", Datum: ion.String("abcdefghi|")},
 		}),
-	}, &st)
+	}
+	inputB := ctx.bRegFromStructs(structs, &st)
 	inputK := kRegData{mask: uint16(0xFF)}
 
 	// First test whether findsym finds "a"
@@ -321,10 +336,14 @@ func TestFindSym2NoMissing(t *testing.T) {
 	}
 
 	expectedOutputV1 := vRegData{}
-	for i := 0; i < bcLaneCount; i++ {
+	for i := 0; i < len(structs); i++ {
 		if inputB.sizes[i] != 0 {
 			expectedOutputV1.offsets[i] = inputB.offsets[i] + 1
-			expectedOutputV1.sizes[i] = uint32(i + 2)
+			field, ok := structs[i].Field(aSymID)
+			if ok {
+				expectedOutputV1.sizes[i] = uint32(i + 2)
+				decodeFieldDatumToVReg(&expectedOutputV1, i, field.Datum, &st)
+			}
 		}
 	}
 	verifyKRegOutput(t, &outputK1, &inputK)
@@ -362,7 +381,7 @@ func TestFindSym2WithMissing(t *testing.T) {
 	}
 
 	// The size of each "a" key/value is i + 2 bytes (1 byte symbol, 1 byte string header, the rest is content).
-	inputB := ctx.bRegFromValues([]any{
+	structs := []ion.Struct{
 		ion.NewStruct(&st, []ion.Field{
 			{Label: "a", Datum: ion.String("-")},
 		}),
@@ -395,8 +414,9 @@ func TestFindSym2WithMissing(t *testing.T) {
 		ion.NewStruct(&st, []ion.Field{}),
 		ion.NewStruct(&st, []ion.Field{}),
 		ion.NewStruct(&st, []ion.Field{}),
-	}, &st)
-	inputK := kRegData{mask: uint16(0xFF)}
+	}
+	inputB := ctx.bRegFromStructs(structs, &st)
+	inputK := kRegData{mask: uint16((uint64(1) << len(structs)) - 1)}
 
 	outputV1 := vRegData{}
 	outputK1 := kRegData{}

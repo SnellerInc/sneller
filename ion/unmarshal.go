@@ -146,6 +146,46 @@ func SizeOf(msg []byte) int {
 	}
 }
 
+// HeaderSizeOf returns the size of the next
+// ION object's header. The function counts
+// TLV byte and the size of the optional Length
+// field.
+//
+// NOTE: This function only counts bytes, it
+// doesn't return the real size of the value.
+func HeaderSizeOf(msg []byte) int {
+	if len(msg) == 0 {
+		return -1
+	}
+
+	tlv := msg[0]
+	if tlv == 0x11 {
+		return 1
+	}
+
+	lo := tlv & 0x0F
+	switch lo {
+	case 0x0F:
+		return 1
+	case 0x0E:
+		maxSize := len(msg)
+		if maxSize > 4 {
+			maxSize = 4
+		}
+
+		for i := 1; i < maxSize; i++ {
+			if (msg[i] & 0x80) != 0 {
+				return i + 1
+			}
+		}
+
+		return -1 // unterminated rest
+	default:
+		// CAUTION: uses the same logic as `SizeOf()` - struct encoded as 0xD1 not handled, never used...
+		return 1
+	}
+}
+
 // Contents parses the TLV descriptor
 // at the beginning of 'msg' and returns
 // the bytes that correspond to the

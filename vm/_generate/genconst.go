@@ -43,6 +43,7 @@ func main() {
 	consts := newconstpool()
 	paths := []string{
 		"evalbc_amd64.s",
+		"bc_amd64.h",
 		"bc_eval_math_i64_amd64.h",
 		"bc_eval_math_f64_amd64.h",
 		"evalbc_approxcount.h",

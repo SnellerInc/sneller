@@ -35,6 +35,8 @@
 #define VIRT_BASE   SI
 #define VIRT_VALUES R12 // points to a value stack
 
+#define BC_VSTACK_PTR(Slot, Offset) (Offset)(VIRT_VALUES)(Slot*1)
+
 // NOTE: It's not enough to change the following macros to get 4 bytes per slot,
 // there are some optimizations in BC_UNPACK_2xSLOT(), etc... that current take
 // advantage of 2 bytes per slot, these would have to be changed to make slots
@@ -107,6 +109,7 @@
 
 #define BC_UNPACK_SLOT(Offset, DstR) BC_MOV_SLOT (Offset)(VIRT_PCREG), DstR
 #define BC_UNPACK_MASK(Offset, DstK) KMOVW (Offset)(VIRT_PCREG), DstK
+#define BC_UNPACK_ZI8(Offset, DstZ)  VPBROADCASTB (Offset)(VIRT_PCREG), DstZ
 #define BC_UNPACK_ZI16(Offset, DstZ) VPBROADCASTW (Offset)(VIRT_PCREG), DstZ
 #define BC_UNPACK_ZI32(Offset, DstZ) VPBROADCASTD (Offset)(VIRT_PCREG), DstZ
 #define BC_UNPACK_ZI64(Offset, DstZ) VPBROADCASTQ (Offset)(VIRT_PCREG), DstZ
@@ -252,13 +255,25 @@
 #define BC_LOAD_ZMM_FROM_SLOT(DstZ, Slot)                                      \
   VMOVDQU32 0(VIRT_VALUES)(Slot*1), DstZ
 
-#define BC_LOAD_VALUE_FROM_SLOT(DstZ1, DstZ2, Slot)                            \
+#define BC_LOAD_VALUE_SLICE_FROM_SLOT(DstZ1, DstZ2, Slot)                      \
   VMOVDQU32 0(VIRT_VALUES)(Slot*1), DstZ1                                      \
   VMOVDQU32 64(VIRT_VALUES)(Slot*1), DstZ2
 
-#define BC_LOAD_VALUE_FROM_SLOT_MASKED(DstZ1, DstZ2, Slot, Mask)               \
+#define BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(DstZ1, DstZ2, Slot, Mask)         \
   VMOVDQU32.Z 0(VIRT_VALUES)(Slot*1), Mask, DstZ1                              \
   VMOVDQU32.Z 64(VIRT_VALUES)(Slot*1), Mask, DstZ2
+
+#define BC_LOAD_VALUE_TYPEL_FROM_SLOT(DstZ, Slot)                              \
+  VPMOVZXBD 128(VIRT_VALUES)(Slot*1), DstZ
+
+#define BC_LOAD_VALUE_TYPEL_FROM_SLOT_MASKED(DstZ, Slot, Mask)                 \
+  VPMOVZXBD.Z 128(VIRT_VALUES)(Slot*1), Mask, DstZ
+
+#define BC_LOAD_VALUE_HLEN_FROM_SLOT(DstZ, Slot)                               \
+  VPMOVZXBD 144(VIRT_VALUES)(Slot*1), DstZ
+
+#define BC_LOAD_VALUE_HLEN_FROM_SLOT_MASKED(DstZ, Slot, Mask)                  \
+  VPMOVZXBD.Z 144(VIRT_VALUES)(Slot*1), Mask, DstZ
 
 #define BC_LOAD_SLICE_FROM_SLOT(DstZ1, DstZ2, Slot)                            \
   VMOVDQU32 0(VIRT_VALUES)(Slot*1), DstZ1                                      \
@@ -305,9 +320,17 @@
   VMOVDQU64 Src1, 0(VIRT_VALUES)(Slot*1)                                       \
   VMOVDQU64 Src2, 64(VIRT_VALUES)(Slot*1)
 
-#define BC_STORE_VALUE_TO_SLOT(Src1, Src2, Slot)                               \
-  VMOVDQU64 Src1, 0(VIRT_VALUES)(Slot*1)                                       \
-  VMOVDQU64 Src2, 64(VIRT_VALUES)(Slot*1)
+#define BC_STORE_VALUE_TO_SLOT(SrcZ1, SrcZ2, SrcTlvZ, SrcHLenZ, Slot)          \
+  VMOVDQU64 SrcZ1, 0(VIRT_VALUES)(Slot*1)                                      \
+  VMOVDQU64 SrcZ2, 64(VIRT_VALUES)(Slot*1)                                     \
+  VPMOVDB SrcTlvZ, 128(VIRT_VALUES)(Slot*1)                                    \
+  VPMOVDB SrcHLenZ, 144(VIRT_VALUES)(Slot*1)
+
+#define BC_STORE_VALUE_TO_SLOT_X(SrcZ1, SrcZ2, SrcTlvX, SrcHLenX, Slot)        \
+  VMOVDQU64 SrcZ1, 0(VIRT_VALUES)(Slot*1)                                      \
+  VMOVDQU64 SrcZ2, 64(VIRT_VALUES)(Slot*1)                                     \
+  VMOVDQU8 SrcTlvX, 128(VIRT_VALUES)(Slot*1)                                   \
+  VMOVDQU8 SrcHLenX, 144(VIRT_VALUES)(Slot*1)
 
 // BC Error Handlers
 // -----------------
@@ -316,6 +339,90 @@
 error_handler_more_scratch:                                                    \
   MOVL $const_bcerrMoreScratch, bytecode_err(VIRT_BCPTR)                       \
   RET_ABORT()
+
+#define _BC_ERROR_HANDLER_NULL_SYMBOL_TABLE()                                  \
+error_null_symbol_table:                                                       \
+  MOVL $const_bcerrNullSymbolTable, bytecode_err(VIRT_BCPTR)                   \
+  RET_ABORT()
+
+// BC Working With Values and Symbols
+// ----------------------------------
+
+// Merges [Offset, Value] pairs into value offset and length registers.
+#define BC_MERGE_VMREFS_TO_VALUE(ValOffZ, ValLenZ, LoZ, HiZ, Msk, TmpZ0, TmpY0, TmpY1) \
+  VPMOVQD LoZ, TmpY0                                                            \
+  VPSRLQ $32, LoZ, LoZ                                                          \
+  VPMOVQD HiZ, TmpY1                                                            \
+  VPSRLQ $32, HiZ, HiZ                                                          \
+  VINSERTI32X8 $1, TmpY1, TmpZ0, Msk, ValOffZ                                   \
+  VPMOVQD LoZ, TmpY0                                                            \
+  VPMOVQD HiZ, TmpY1                                                            \
+  VINSERTI32X8 $1, TmpY1, TmpZ0, Msk, ValLenZ
+
+// This calculates TLV byte and HLen byte from a Value length. The purpose is to use
+// this macro after unsymbolize to recreate these two bytes as they were invalidated
+// by unsymbolizing. As we use a canonical representation it's possible to calculate
+// header length from value length, and to recreate Type|L byte as we know that we
+// have replaced symbols with strings.
+//
+// +------+----------+-------------------+-------------------+---------+
+// | TLV  | [Length] | Value length      | String length     | Comment |
+// +------+----------+-------------------+-------------------+---------+
+// | 0x8L |   none   | 1-14              | 0-13              |         |
+// | 0x8E | 1 byte   | 16-129            | 14-127            |         |
+// | 0x8E | 2 bytes  | 131-16386         | 128-16383         |         |
+// | 0x8E | 3 bytes  | 16388-2097155     | 16384-2097151     |         |
+// | 0x8E | 4 bytes  | 2097157-268435460 | 2097152-268435455 | NotUsed |
+// +------+----------+-------------------+-------------------+---------+
+//
+// LIMITS: Maximum VarUint decoded here is 3 bytes
+#define BC_CALC_VALUE_HLEN(HLenZ, VLenZ, Msk, ConstD_1, ConstD_14, TmpZ1, TmpMsk)   \
+  /* HLenZ <- updated header lengths to 1 (counting TLV byte) */                    \
+  VMOVDQA32.Z ConstD_1, Msk, HLenZ                                                  \
+  /* TmpMsk <- value length >= 16388 (at least 3-byte Length field) */              \
+  VPCMPUD.BCST $VPCMP_IMM_GE, CONSTD_16388(), VLenZ, Msk, TmpMsk                    \
+                                                                                    \
+  /* HLenZ <- increase header length if the Length is encoded as 3 bytes or more */ \
+  VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ                                             \
+  /* TmpMsk <- value length >= 131 (at least 2-byte Length field) */                \
+  VPCMPUD.BCST $VPCMP_IMM_GE, CONSTD_131(), VLenZ, Msk, TmpMsk                      \
+  /* TmpZ1 <- value length - 1 */                                                   \
+  VPSUBD ConstD_1, VLenZ, TmpZ1                                                     \
+  /* HLenZ <- increase header length if the Length is encoded as 2 bytes or more */ \
+  VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ                                             \
+                                                                                    \
+  /* TmpMsk <- (value length - 1) >= 14 (at least 1-byte Length field) */           \
+  VPCMPUD $VPCMP_IMM_GE, ConstD_14, TmpZ1, Msk, TmpMsk                              \
+  /* TmpZ1 <- min(value length - 1, 14) */                                          \
+  VPMINUD ConstD_14, TmpZ1, TmpZ1                                                   \
+  /* HLenZ <- increase header length if the Length is encoded as 1 byte or more */  \
+  VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ
+
+#define BC_CALC_STRING_TLV_AND_HLEN(TlvZ, HLenZ, VLenZ, Msk, ConstD_1, ConstD_14, TmpZ1, TmpMsk) \
+  /* TlvZ <- merged TLV byte with symbols replaced with strings (partial) */        \
+  VPSLLD $7, ConstD_1, Msk, TlvZ                                                    \
+  /* HLenZ <- updated header lengths to 1 (counting TLV byte) */                    \
+  VMOVDQA32 ConstD_1, Msk, HLenZ                                                    \
+  /* TmpMsk <- value length >= 16388 (at least 3-byte Length field) */              \
+  VPCMPUD.BCST $VPCMP_IMM_GE, CONSTD_16388(), VLenZ, Msk, TmpMsk                    \
+                                                                                    \
+  /* HLenZ <- increase header length if the Length is encoded as 3 bytes or more */ \
+  VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ                                             \
+  /* TmpMsk <- value length >= 131 (at least 2-byte Length field) */                \
+  VPCMPUD.BCST $VPCMP_IMM_GE, CONSTD_131(), VLenZ, Msk, TmpMsk                      \
+  /* TmpZ1 <- value length - 1 */                                                   \
+  VPSUBD ConstD_1, VLenZ, TmpZ1                                                     \
+  /* HLenZ <- increase header length if the Length is encoded as 2 bytes or more */ \
+  VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ                                             \
+                                                                                    \
+  /* TmpMsk <- (value length - 1) >= 14 (at least 1-byte Length field) */           \
+  VPCMPUD $VPCMP_IMM_GE, ConstD_14, TmpZ1, Msk, TmpMsk                              \
+  /* TmpZ1 <- min(value length - 1, 14) */                                          \
+  VPMINUD ConstD_14, TmpZ1, TmpZ1                                                   \
+  /* HLenZ <- increase header length if the Length is encoded as 1 byte or more */  \
+  VPADDD ConstD_1, HLenZ, TmpMsk, HLenZ                                             \
+  /* TlvZ <- merged TLV byte with symbols replaced with strings (final) */          \
+  VPORD TmpZ1, TlvZ, Msk, TlvZ
 
 // BC Scratch Buffer Allocation
 // ----------------------------

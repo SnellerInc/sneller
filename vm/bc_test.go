@@ -90,11 +90,11 @@ func (c *bctestContext) ensureData() {
 	}
 }
 
-func (c *bctestContext) bRegFromValues(values []any, st *ion.Symtab) bRegData {
+func (c *bctestContext) bRegFromStructs(structs []ion.Struct, st *ion.Symtab) bRegData {
 	out := bRegData{}
 
-	if len(values) > bcLaneCount {
-		panic(fmt.Sprintf("Can set up to %d input structs for VM opcode, not %d", bcLaneCount, len(values)))
+	if len(structs) > bcLaneCount {
+		panic(fmt.Sprintf("Can set up to %d input structs for VM opcode, not %d", bcLaneCount, len(structs)))
 	}
 
 	if st == nil {
@@ -105,28 +105,15 @@ func (c *bctestContext) bRegFromValues(values []any, st *ion.Symtab) bRegData {
 
 	var buf ion.Buffer
 	var chunk []byte
-	for i := range values {
+	for i := range structs {
 		base, ok := vmdispl(c.data[len(c.data):cap(c.data)])
 		if !ok {
 			panic("c.data more than 1MB?")
 		}
 
-		switch v := values[i].(type) {
-		case []byte:
-			chunk = v
-
-		case string:
-			chunk = []byte(v)
-
-		case ion.Struct:
-			buf.Reset()
-			v.Encode(&buf, st)
-			chunk = buf.Bytes()
-
-		default:
-			typ := reflect.TypeOf(v).String()
-			panic("only bytes, string and ion.Struct are supported, got " + typ)
-		}
+		buf.Reset()
+		structs[i].Encode(&buf, st)
+		chunk = buf.Bytes()
 
 		content, _ := ion.Contents(chunk)
 		headerSize := uint32(len(chunk) - len(content))
@@ -180,6 +167,12 @@ func (c *bctestContext) vRegFromValues(values []any, st *ion.Symtab) vRegData {
 
 		out.offsets[i] = uint32(base)
 		out.sizes[i] = uint32(len(chunk))
+
+		if len(chunk) > 0 {
+			out.typeL[i] = chunk[0]
+			out.headerSize[i] = byte(ion.HeaderSizeOf(chunk))
+		}
+
 		c.data = append(c.data, chunk...)
 	}
 
@@ -433,9 +426,21 @@ func verifyVRegOutput(t *testing.T, output, expected *vRegData) {
 	if *output != *expected {
 		t.Errorf("V register doesn't match:")
 		for i := 0; i < bcLaneCount; i++ {
-			if output.offsets[i] != expected.offsets[i] || output.sizes[i] != expected.sizes[i] {
-				t.Logf("lane {%d}: output [%d:%d] doesn't match [%d:%d]",
-					i, output.offsets[i], output.sizes[i], expected.offsets[i], expected.sizes[i])
+			if output.offsets[i] != expected.offsets[i] ||
+				output.sizes[i] != expected.sizes[i] ||
+				output.typeL[i] != expected.typeL[i] ||
+				output.headerSize[i] != expected.headerSize[i] {
+
+				t.Logf("lane {%d}: output [%d:%d TypeL=%08X HLen=%d] doesn't match [%d:%d TypeL=%08X HLen=%d]",
+					i,
+					output.offsets[i],
+					output.sizes[i],
+					output.typeL[i],
+					output.headerSize[i],
+					expected.offsets[i],
+					expected.sizes[i],
+					expected.typeL[i],
+					expected.headerSize[i])
 			}
 		}
 	}
@@ -450,8 +455,12 @@ func verifyVRegOutputP(t *testing.T, output, expected *vRegData, predicate *kReg
 		if (predicate.mask & (1 << i)) == 0 {
 			outputMaskedV.offsets[i] = 0
 			outputMaskedV.sizes[i] = 0
+			outputMaskedV.typeL[i] = 0
+			outputMaskedV.headerSize[i] = 0
 			expectedMaskedV.offsets[i] = 0
 			expectedMaskedV.sizes[i] = 0
+			expectedMaskedV.typeL[i] = 0
+			expectedMaskedV.headerSize[i] = 0
 		}
 	}
 

@@ -3501,11 +3501,16 @@ func emitinit(v *value, c *compilestate) {}
 
 type rawDatum []byte
 
-func encodeLitRef(off, len uint32) uint64 {
-	return uint64(off) | (uint64(len) << 32)
+func encodeLitRef(off int, buf []byte) litref {
+	return litref{
+		offset: uint32(off),
+		length: uint32(len(buf)),
+		tlv:    buf[0],
+		hLen:   uint8(ion.HeaderSizeOf(buf)),
+	}
 }
 
-func (c *compilestate) storeLitRef(imm any) uint64 {
+func (c *compilestate) storeLitRef(imm any) litref {
 	var b ion.Buffer
 
 	switch t := imm.(type) {
@@ -3537,8 +3542,7 @@ func (c *compilestate) storeLitRef(imm any) uint64 {
 
 	off := len(c.litbuf)
 	c.litbuf = append(c.litbuf, b.Bytes()...)
-
-	return encodeLitRef(uint32(off), uint32(len(b.Bytes())))
+	return encodeLitRef(off, b.Bytes())
 }
 
 func emithashlookup(v *value, c *compilestate) {
@@ -3660,7 +3664,7 @@ func emitconstcmp(v *value, c *compilestate) {
 	c.asm.emitOpcode(opcmpeqvimm,
 		c.slotOf(v, regK),
 		c.slotOf(val, regV),
-		encodeLitRef(uint32(off), uint32(len(b.Bytes()))),
+		encodeLitRef(off, b.Bytes()),
 		c.slotOf(msk, regK),
 	)
 }

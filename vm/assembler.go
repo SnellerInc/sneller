@@ -86,7 +86,14 @@ func (a *assembler) emitOpcodeArg(arg any, argType bcArgType) {
 	case bcSymbolID:
 		a.emitImmU32(arg.(uint32))
 	case bcLitRef:
-		a.emitImmU64(uint64(toi64(arg)))
+		if lr, ok := arg.(litref); ok {
+			a.emitImmU32(lr.offset)
+			a.emitImmU32(lr.length)
+			a.emitImmU8(lr.tlv)
+			a.emitImmU8(lr.hLen)
+		} else {
+			panic(fmt.Sprintf("expected litref, found: %v", arg))
+		}
 	case bcImmI8:
 		a.emitImmU8(uint8(toi64(arg)))
 	case bcImmI16:
