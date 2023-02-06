@@ -1,7 +1,11 @@
 # go test -v -run=TestQueries/0076
 # see basic example https://en.wikipedia.org/wiki/Standard_deviation
 #
-SELECT AVG(grade) AS avg, STDDEV_POP(grade) AS stddev_pop FROM input
+SELECT
+	AVG(grade) AS avg,
+	STDDEV_POP(grade) AS stddev_pop,
+	VARIANCE_POP(grade) AS variance_pop
+	FROM input
 ---
 {"grade": 2}
 {"grade": 4}
@@ -12,4 +16,5 @@ SELECT AVG(grade) AS avg, STDDEV_POP(grade) AS stddev_pop FROM input
 {"grade": 7}
 {"grade": 9}
 ---
-{"avg": 5, "stddev_pop": 2}
+{"avg": 5, "stddev_pop": 2, "variance_pop": 4}
+

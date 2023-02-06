@@ -121,6 +121,8 @@ func init() {
 		{"BOOL_AND", int(expr.OpBoolAnd)},
 		{"BOOL_OR", int(expr.OpBoolOr)},
 		{"AVG", int(expr.OpAvg)},
+		{"VARIANCE", int(expr.OpVariancePop)},
+		{"VARIANCE_POP", int(expr.OpVariancePop)},
 		{"STDDEV", int(expr.OpStdDevPop)},
 		{"STDDEV_POP", int(expr.OpStdDevPop)},
 		{"BIT_AND", int(expr.OpBitAnd)},

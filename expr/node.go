@@ -178,8 +178,12 @@ const (
 	// intermediate data and yields the final integer value
 	OpApproxCountDistinctMerge
 
-	// OpStdDev is equivalent to the STDDEV() and STDDEV_POP() operation
-	// Note that it does not calculates the sample standard deviation
+	// OpVariancePop is equivalent to the VARIANCE() and VARIANCE_POP()
+	// operation and calculates the population variance
+	OpVariancePop
+
+	// OpStdDevPop is equivalent to the STDDEV() and STDDEV_POP() operation
+	// Note that it does not calculate the sample standard deviation
 	OpStdDevPop
 
 	// OpRowNumber corresponds to ROW_NUMBER()
@@ -216,6 +220,8 @@ func (a AggregateOp) defaultResult() string {
 		return "sum"
 	case OpAvg:
 		return "avg"
+	case OpVariancePop:
+		return "variance_pop"
 	case OpStdDevPop:
 		return "stddev_pop"
 	case OpMin, OpEarliest:
@@ -243,6 +249,8 @@ func (a AggregateOp) String() string {
 		return "SUM"
 	case OpAvg:
 		return "AVG"
+	case OpVariancePop:
+		return "VARIANCE_POP"
 	case OpStdDevPop:
 		return "STDDEV_POP"
 	case OpMin:
@@ -292,7 +300,7 @@ func (a AggregateOp) String() string {
 
 func (a AggregateOp) private() bool {
 	switch a {
-	case OpCount, OpSum, OpAvg, OpStdDevPop, OpMin, OpMax, OpEarliest, OpLatest,
+	case OpCount, OpSum, OpAvg, OpVariancePop, OpStdDevPop, OpMin, OpMax, OpEarliest, OpLatest,
 		OpBitAnd, OpBitOr, OpBitXor, OpBoolAnd, OpBoolOr,
 		OpApproxCountDistinct, OpSystemDatashape, OpRowNumber, OpRank, OpDenseRank:
 		return false

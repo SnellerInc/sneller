@@ -1,0 +1,25 @@
+# go test -v -run=TestQueries/0076
+SELECT
+	year,
+	STDDEV_POP(grade) AS stddev_pop,
+	VARIANCE_POP(grade) AS variance_pop
+	FROM input GROUP BY year
+---
+{"grade": 2, "year": 2022}
+{"grade": 4, "year": 2022}
+{"grade": 4, "year": 2022}
+{"grade": 4, "year": 2022}
+{"grade": 5, "year": 2022}
+{"grade": 5, "year": 2022}
+{"grade": 7, "year": 2022}
+{"grade": 9, "year": 2022}
+{"grade": null, "year": 2022}
+#
+{"grade": 5, "year": 2023}
+{"grade": 8, "year": 2023}
+{"grade": 7, "year": 2023}
+{"grade": 9, "year": 2023}
+{"grade": null, "year": 2023}
+---
+{"year": 2022, "stddev_pop": 2, "variance_pop": 4} #double check with simple-stddev.test
+{"year": 2023, "stddev_pop": 1.479019945774904, "variance_pop": 2.1875}

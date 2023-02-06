@@ -1,0 +1,17 @@
+# go test -v -run=TestQueries/0076
+SELECT
+	STDDEV_POP(grade) AS stddev_pop,
+	VARIANCE_POP(grade) AS variance_pop
+	FROM input
+---
+{"grade": 2}
+{"grade": 4}
+{"grade": 4}
+{"grade": 4}
+{"grade": 5}
+{"grade": 5}
+{"grade": 7}
+{"grade": 9}
+{"grade": null}
+---
+{"stddev_pop": 2, "variance_pop": 4}

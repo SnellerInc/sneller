@@ -560,6 +560,13 @@ If `expr` never evaluates to a number, `SUM(expr)` yields `NULL`.
 for all the rows that reach the aggregation expression.
 If `expr` never evaluates to a number, `AVG(expr)` yields `NULL`.
 
+#### `VARIANCE` and `VARIANCE_POP`
+
+`VARIANCE_POP(expr)` accumulates the population variance of `expr`
+for all rows that reach the aggregation expression. `VARIANCE` is a shorthand
+for `VARIANCE_POP`. Note that the sample variance is not implemented.
+If `expr` does not evaluate to a number, `VARIANCE(expr)` yields `NULL`.
+
 #### `STDDEV` and `STDDEV_POP`
 
 `STDDEV_POP(expr)` accumulates the population standard deviation of `expr`
