@@ -970,7 +970,7 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 			if err != nil {
 				return nil, err
 			}
-			items[i] = item
+			items[i] = p.unsymbolized(item)
 		}
 		return p.makeList(items...), nil
 

@@ -1251,6 +1251,20 @@ ORDER BY m, d, h`,
 			},
 		},
 		{
+			input: `SELECT group0, group1, COUNT(DISTINCT group2) AS dist, SUM(x) AS sx FROM input GROUP BY group0, group1`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE input FIELDS [group0, group1, group2]",
+				"	FILTER DISTINCT [group0, group1, group2]",
+				"	AGGREGATE COUNT(*) AS $_0_0 BY group0 AS $_0_1, group1 AS $_0_2",
+				"	PROJECT $_0_0 AS $__val, [$_0_1, $_0_2] AS $__key",
+				") AS REPLACEMENT(0)",
+				"ITERATE input FIELDS [group0, group1, x]",
+				"AGGREGATE SUM(x) AS $_0_2 BY group0 AS $_0_0, group1 AS $_0_1",
+				"PROJECT $_0_0 AS group0, $_0_1 AS group1, HASH_REPLACEMENT(0, 'scalar', '$__key', [$_0_0, $_0_1], 0) AS dist, $_0_2 AS sx",
+			},
+		},
+		{
 			// test that duplicate inputs
 			// are removed and replaced
 			input: `SELECT * FROM foo WHERE

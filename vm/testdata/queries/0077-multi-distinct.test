@@ -1,0 +1,44 @@
+SELECT group0, group1, COUNT(DISTINCT group2) AS gdist, SUM(x) AS sumx
+FROM input
+GROUP BY group0, group1
+ORDER BY group0, group1, gdist DESC
+---
+{"group0": "0", "group1": "0", "group2": "g2_0", "x": 1}
+{"group0": "0", "group1": "1", "group2": "g2_1", "x": 1}
+{"group0": "1", "group1": "0", "group2": "g2_2", "x": 1}
+{"group0": "1", "group1": "1", "group2": "g2_3", "x": 1}
+{"group0": "1", "group1": "2", "group2": "g2_4", "x": 1}
+{"group0": "2", "group1": "0", "group2": "g2_5", "x": 1}
+{"group0": "2", "group1": "1", "group2": "g2_6", "x": 1}
+{"group0": "2", "group1": "2", "group2": "g2_7", "x": 1}
+{"group0": "2", "group1": "3", "group2": "g2_8", "x": 1}
+{"group0": "3", "group1": "0", "group2": "g2_9", "x": 1}
+{"group0": "3", "group1": "1", "group2": "g2_10", "x": 1}
+{"group0": "3", "group1": "2", "group2": "g2_11", "x": 1}
+{"group0": "3", "group1": "3", "group2": "g2_12", "x": 1}
+{"group0": "3", "group1": "4", "group2": "g2_13", "x": 1}
+{"group0": "4", "group1": "1", "group2": "g2_14", "x": 1}
+{"group0": "4", "group1": "2", "group2": "g2_15", "x": 1}
+{"group0": "4", "group1": "3", "group2": "g2_16", "x": 1}
+{"group0": "4", "group1": "4", "group2": "g2_17", "x": 1}
+{"group0": "4", "group1": "5", "group2": "g2_17", "x": 1}
+---
+{"group0": "0", "group1": "0", "gdist": 1, "sumx": 1}
+{"group0": "0", "group1": "1", "gdist": 1, "sumx": 1}
+{"group0": "1", "group1": "0", "gdist": 1, "sumx": 1}
+{"group0": "1", "group1": "1", "gdist": 1, "sumx": 1}
+{"group0": "1", "group1": "2", "gdist": 1, "sumx": 1}
+{"group0": "2", "group1": "0", "gdist": 1, "sumx": 1}
+{"group0": "2", "group1": "1", "gdist": 1, "sumx": 1}
+{"group0": "2", "group1": "2", "gdist": 1, "sumx": 1}
+{"group0": "2", "group1": "3", "gdist": 1, "sumx": 1}
+{"group0": "3", "group1": "0", "gdist": 1, "sumx": 1}
+{"group0": "3", "group1": "1", "gdist": 1, "sumx": 1}
+{"group0": "3", "group1": "2", "gdist": 1, "sumx": 1}
+{"group0": "3", "group1": "3", "gdist": 1, "sumx": 1}
+{"group0": "3", "group1": "4", "gdist": 1, "sumx": 1}
+{"group0": "4", "group1": "1", "gdist": 1, "sumx": 1}
+{"group0": "4", "group1": "2", "gdist": 1, "sumx": 1}
+{"group0": "4", "group1": "3", "gdist": 1, "sumx": 1}
+{"group0": "4", "group1": "4", "gdist": 1, "sumx": 1}
+{"group0": "4", "group1": "5", "gdist": 1, "sumx": 1}

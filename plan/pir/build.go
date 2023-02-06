@@ -684,7 +684,7 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	// other aggregates, we can rewrite it to
 	// work more like a window function:
 	if agg.Op == expr.OpCountDistinct &&
-		len(w.outer.GroupBy) == 1 &&
+		len(w.outer.GroupBy) > 0 &&
 		!hasOnlyOneAggregate(w.outer) {
 		agg.Over = &expr.Window{
 			PartitionBy: expr.BindingValues(w.outer.GroupBy),
@@ -697,19 +697,24 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		// handled natively by the core
 		return e
 	}
-
-	if len(agg.Over.PartitionBy) != 1 {
-		w.err = errorf(agg, "only 1 PARTITION BY column supported (for now)")
+	if len(agg.Over.PartitionBy) == 0 {
+		w.err = fmt.Errorf("PARTITION BY has 0 partition elements")
 		return e
 	}
-	partition := agg.Over.PartitionBy[0]
+
+	partitions := agg.Over.PartitionBy
 	self := copyForWindow(w.outer)
-	key := expr.Copy(partition)
 	if agg.Op == expr.OpCountDistinct {
 		self.GroupBy = append(self.GroupBy, expr.Bind(agg.Inner, "$__distinct"))
 		agg.Op = expr.OpCount
 		agg.Inner = expr.Star{}
 	}
+	// outerkey is the lookup expression to yield in the outer query
+	outerkey := partitions[0]
+	if len(partitions) > 1 {
+		outerkey = expr.Call(expr.MakeList, partitions...)
+	}
+	outerkey = expr.Copy(outerkey)
 	// if there is an existing GROUP BY,
 	// then the PARTITION BY should match
 	// one of those bindings (otherwise it
@@ -720,14 +725,17 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 	if len(self.GroupBy) > 0 {
 		group := self.GroupBy
 		for i := range group {
-			if expr.Equivalent(group[i].Expr, partition) {
-				// since we want to reference this expression
-				// by name, we need to generate a temporary for it
-				// if it doesn't have one already
-				if !group[i].Explicit() {
-					group[i].As(gensym(3, i))
+			for j := range partitions {
+				if expr.Equivalent(group[i].Expr, partitions[j]) {
+					// since we want to reference this expression
+					// by name, we need to generate a temporary for it
+					// if it doesn't have one already
+					if !group[i].Explicit() {
+						group[i].As(gensym(3, i))
+					}
+					partitions[j] = expr.Identifier(group[i].Result())
+					break
 				}
-				partition = expr.Identifier(group[i].Result())
 			}
 		}
 		self.GroupBy = nil
@@ -738,10 +746,18 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		}
 		self = newt
 	}
-	self.GroupBy = []expr.Binding{expr.Bind(partition, "$__key")}
+	for i := range partitions {
+		self.GroupBy = append(self.GroupBy, expr.Bind(partitions[i], ""))
+	}
+	// selfkey is the expression to produce for the sub-query
+	// that is hash-matched against outerkey
+	selfkey := partitions[0]
+	if len(partitions) > 1 {
+		selfkey = expr.Call(expr.MakeList, partitions...)
+	}
 	self.Columns = []expr.Binding{
 		expr.Bind(agg, "$__val"),
-		expr.Bind(expr.Identifier("$__key"), "$__key"),
+		expr.Bind(selfkey, "$__key"),
 	}
 	agg.Over = nil
 	// we want HASH_LOOKUP(<partition_expr>, ...)
@@ -757,8 +773,7 @@ func (w *windowHoist) Rewrite(e expr.Node) expr.Node {
 		expr.Integer(len(w.trace.Replacements)),
 		scalarkind,
 		expr.String("$__key"),
-		key, def)
-
+		outerkey, def)
 	// FIXME: this doesn't do anything yet
 	// because we don't have true window functions;
 	// other aggregates (COUNT, SUM, etc.) are insensitive
