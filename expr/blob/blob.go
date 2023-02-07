@@ -283,7 +283,6 @@ func (u *URL) Reader(start, size int64) (io.ReadCloser, error) {
 	return res.Body, nil
 }
 
-// List implements expr.Opaque
 type List struct {
 	Contents []Interface
 }
@@ -291,8 +290,6 @@ type List struct {
 func (l *List) String() string {
 	return fmt.Sprintf("blobs%v", l.Contents)
 }
-
-func (l *List) TypeName() string { return "blob.List" }
 
 func (l *List) Encode(dst *ion.Buffer, st *ion.Symtab) {
 	var tmp ion.Buffer

@@ -158,19 +158,6 @@ type From interface {
 	Node
 }
 
-// Opaque is an opaque object that
-// can be serialized and deserialized
-type Opaque interface {
-	// TypeName should return a unique
-	// name for this type. It is used
-	// in order to determine how to
-	// decode the object (see AddOpaqueDecoder)
-	TypeName() string
-	// Encode should encode the object to dst,
-	// adding symbols as appropriate to st
-	Encode(dst *ion.Buffer, st *ion.Symtab)
-}
-
 // Table is an implementation of From
 // that simply binds a top-level table
 // as a bag of values
