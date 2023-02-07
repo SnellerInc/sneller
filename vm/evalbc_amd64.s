@@ -6296,6 +6296,27 @@ TEXT hashimpl_tail(SB), NOSPLIT|NOFRAME, $0
   ROTLD_2(rowc)                               \
   ROTLD_1(rowd)
 
+// mask used to expand an 8-bit pattern [?d?c_?b?a]
+// into 16-bit pattern [dddd_cccc_bbbb_aaaa]
+CONST_DATA_U8(hashexpand,  0, $0x01) // bit a
+CONST_DATA_U8(hashexpand,  1, $0x01)
+CONST_DATA_U8(hashexpand,  2, $0x01)
+CONST_DATA_U8(hashexpand,  3, $0x01)
+CONST_DATA_U8(hashexpand,  4, $0x04) // bit b
+CONST_DATA_U8(hashexpand,  5, $0x04)
+CONST_DATA_U8(hashexpand,  6, $0x04)
+CONST_DATA_U8(hashexpand,  7, $0x04)
+CONST_DATA_U8(hashexpand,  8, $0x10) // bit c
+CONST_DATA_U8(hashexpand,  9, $0x10)
+CONST_DATA_U8(hashexpand, 10, $0x10)
+CONST_DATA_U8(hashexpand, 11, $0x10)
+CONST_DATA_U8(hashexpand, 12, $0x40) // bit d
+CONST_DATA_U8(hashexpand, 13, $0x40)
+CONST_DATA_U8(hashexpand, 14, $0x40)
+CONST_DATA_U8(hashexpand, 15, $0x40)
+CONST_GLOBAL(hashexpand, $16)
+
+
 // inputs:
 //   R15 = base, X10:X11 = offset:ptr, Z9 = iv
 // outputs:
@@ -6334,15 +6355,14 @@ TEXT hashx4(SB), NOFRAME|NOSPLIT, $0
 
   KTESTB       K2, K2
   JZ           done
-  KSHIFTRB     $1, K4, K4     // K4 = $0x55
+  VMOVUPD      CONST_GET_PTR(hashexpand, 0), X25
 loop:
-  // extract the 8-bit K2 mask into a 16-bit dword mask
-  KANDB        K2, K4, K3     // K3 = even bits
-  KSHIFTLB     $1, K3, K3     // K3 = K2<<1 = odd bits
-  KORB         K3, K2, K5     // K5: even bits imply odd bits
-  VPMOVM2B     K5, X15        // byte=[0 or 0xff] for each of 8 bits
-  VPUNPCKLBW   X15, X15, X15  // interleave bits
-  VPMOVB2M     X15, K5        // K5 = dword register mask
+  // expand an 8-bit pattern from K2 [?d?c_?b?a]
+  // into a 16-bit pattern [dddd_cccc_bbbb_aaaa]
+  KMOVB        K2, BX
+  VPBROADCASTB BX, X15
+  VPANDD       X15, X25, X15
+  VPCMPEQB     X15, X25, K5
 
   VPXORQ       Z17, Z17, Z17
   VPXORQ       Z18, Z18, Z18
