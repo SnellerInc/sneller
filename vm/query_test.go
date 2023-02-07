@@ -1104,44 +1104,63 @@ func versifyGetter(inst *ion.Symtab, inrows []ion.Datum) func() ([]byte, int) {
 		var outbuf ion.Buffer
 		inst.Marshal(&outbuf, true)
 		rows := 0
+
+		slowProgress := false
+		symtabSize := outbuf.Size()
 		for {
 			d := u.Generate(src)
 			d.Encode(&outbuf, inst)
 			rows++
 			size := outbuf.Size()
+			if rows == len(inrows) {
+				coef := float64(targetSize) / float64(size)
+				if coef > 300_000.0 {
+					slowProgress = true
+					break
+				}
+			}
 			if size > targetSize {
 				break
 			}
 		}
+
+		if slowProgress {
+			n := outbuf.Size() - symtabSize
+			tmp := make([]byte, n)
+			copy(tmp, outbuf.Bytes()[symtabSize:])
+			for {
+				outbuf.UnsafeAppend(tmp)
+				size := outbuf.Size()
+				if size > targetSize {
+					break
+				}
+			}
+		}
+
 		return outbuf.Bytes(), rows
 	}
 }
 
 func benchPath(b *testing.B, fname string) {
-	query, bs, input := readBenchmark(b, fname)
-	var inst ion.Symtab
-
-	prob := bs.symbolizeprob
-	r := rand.New(rand.NewSource(0))
-	symbolize := func() bool {
-		return r.Float64() > prob
-	}
-	inrows, err := rows(input, &inst, symbolize)
-	if err != nil {
-		b.Fatalf("parsing input rows: %s", err)
-	}
-	if len(inrows) == 0 {
-		b.Skip()
-	}
-	// don't actually versify unless b.Run runs
-	// the inner benchmark; versification is expensive
-	getter := versifyGetter(&inst, inrows)
-	var rowmem []byte
-	var rows int
 	b.Run(fname, func(b *testing.B) {
-		if rowmem == nil {
-			rowmem, rows = getter()
+		query, bs, input := readBenchmark(b, fname)
+		var inst ion.Symtab
+
+		prob := bs.symbolizeprob
+		r := rand.New(rand.NewSource(0))
+		symbolize := func() bool {
+			return r.Float64() > prob
 		}
+
+		inrows, err := rows(input, &inst, symbolize)
+		if err != nil {
+			b.Fatalf("parsing input rows: %s", err)
+		}
+		if len(inrows) == 0 {
+			b.Skip()
+		}
+		getter := versifyGetter(&inst, inrows)
+		rowmem, rows := getter()
 		benchInput(b, query, rowmem, rows)
 	})
 }
