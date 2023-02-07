@@ -852,17 +852,14 @@ func formatArgs(bc *bytecode, dst *strings.Builder, compiled []byte, args []bcAr
 	return offset
 }
 
-func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
-	var b strings.Builder
-
+func visitBytecode(bc *bytecode, fn func(offset int, op bcop, info *bcopinfo) error) error {
 	compiled := bc.compiled
 	size := len(compiled)
 	offset := int(0)
 
 	for offset < size {
 		if size-offset < 8 {
-			fmt.Fprintf(&b, "<bytecode error: cannot decode opcode of size %d while there is only %d bytes left>", 8, size-offset)
-			return b.String()
+			return fmt.Errorf("cannot decode opcode of size %d while there is only %d bytes left", 8, size-offset)
 		}
 
 		opaddr := uintptr(binary.LittleEndian.Uint64(compiled[offset:]))
@@ -870,28 +867,59 @@ func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
 
 		op, ok := opcodeID(opaddr)
 		if !ok {
-			fmt.Fprintf(&b, "<bytecode error: failed to translate opcode address 0x%x>\n", opaddr)
-			return b.String()
+			return fmt.Errorf("failed to translate opcode address 0x%x", opaddr)
 		}
 
 		info := &opinfo[op]
+		startoff := offset
+
+		for _, argtype := range info.args {
+			offset += argtype.immWidth()
+		}
+
+		if len(info.va) != 0 {
+			if size-offset < 4 {
+				return fmt.Errorf("cannot decode va-length consisting of %d bytes while there is only %d bytes left", 4, size-offset)
+			}
+
+			vaLength := int(binary.LittleEndian.Uint32(compiled[offset:]))
+			offset += 4
+
+			width := 0
+			for _, argtype := range info.va {
+				width += argtype.immWidth()
+			}
+
+			offset += width * vaLength
+		}
+
+		// at this point the current opcode and its arguments are valid
+		err := fn(startoff, op, info)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
+	var b strings.Builder
+	compiled := bc.compiled
+
+	err := visitBytecode(bc, func(offset int, op bcop, info *bcopinfo) error {
 		b.WriteString(info.text)
 
 		if len(info.args) != 0 {
 			b.WriteString(" ")
 			immSize := formatArgs(bc, &b, compiled[offset:], info.args, flags)
 			if immSize == -1 {
-				return b.String()
+				return nil
 			}
 			offset += immSize
 		}
 
 		if len(info.va) != 0 {
-			if size-offset < 4 {
-				fmt.Fprintf(&b, "<bytecode error: cannot decode va-length consisting of %d bytes while there is only %d bytes left>", 4, size-offset)
-				return b.String()
-			}
-
 			vaLength := uint(binary.LittleEndian.Uint32(compiled[offset:]))
 			offset += 4
 
@@ -906,7 +934,7 @@ func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
 				b.WriteString(", {")
 				immSize := formatArgs(bc, &b, compiled[offset:], info.va, flags)
 				if immSize == -1 {
-					return b.String()
+					return nil
 				}
 				offset += immSize
 				b.WriteString("}")
@@ -914,6 +942,11 @@ func formatBytecode(bc *bytecode, flags bcFormatFlags) string {
 		}
 
 		b.WriteString("\n")
+		return nil
+	})
+
+	if err != nil {
+		fmt.Fprintf(&b, "<bytecode error: %s>", err)
 	}
 
 	return b.String()
