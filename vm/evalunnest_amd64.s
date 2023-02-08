@@ -45,8 +45,8 @@ vmenter:
   ADDQ         CX, R9           // provisional rows consumed += cx
 
   // enter bytecode interpretation
-  MOVQ   bc+0(FP), DI
-  MOVQ   ·vmm+0(SB), SI  // real static base
+  MOVQ   bc+0(FP), VIRT_BCPTR
+  MOVQ   ·vmm+0(SB), VIRT_BASE  // real static base
   BC_ENTER()
   JC bytecode_error  // break the loop on error
 

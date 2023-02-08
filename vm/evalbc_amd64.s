@@ -410,7 +410,7 @@ TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
   MOVQ bytecode_symtab+0(VIRT_BCPTR), BX // BC <- symbol table base
 
   BC_STORE_SLICE_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
-  BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  BC_STORE_K_TO_SLOT(IN(K7), IN(R8))
 
   // Verify that a symbol table exists and fail if not. The test here prevents
   // asserting the presence of symtab every time a symbol is unsymbolized.

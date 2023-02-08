@@ -19,11 +19,11 @@
 
 TEXT ·evalfindbc(SB), NOSPLIT, $16
   NO_LOCAL_POINTERS
-  MOVQ w+0(FP), DI        // DI = &w
-  XORL R9, R9             // R9 = rows consumed
+  MOVQ w+0(FP), VIRT_BCPTR // DI = &w
+  XORL R9, R9              // R9 = rows consumed
   MOVQ stride+32(FP), R10
-  MOVQ R10, 0(SP)         // 0(SP) = stack pointer incrementor
-  XORL R10, R10           // R10 = current stack pointer addend
+  MOVQ R10, 0(SP)          // 0(SP) = stack pointer incrementor
+  XORL R10, R10            // R10 = current stack pointer addend
   BC_CLEAR_SCRATCH(R15)
   BC_CLEAR_ERROR()
   JMP  tail
@@ -50,11 +50,11 @@ doit:
   ADDQ         $16, R9
 
   // enter bytecode interpretation
-  KMOVW   K1, K7
-  MOVQ    ·vmm+0(SB), SI  // real static base
-  MOVQ    bytecode_compiled(DI), VIRT_PCREG
-  MOVQ    bytecode_vstack(DI), VIRT_VALUES
+  MOVQ    ·vmm+0(SB), VIRT_BASE
+  MOVQ    bytecode_compiled(VIRT_BCPTR), VIRT_PCREG
+  MOVQ    bytecode_vstack(VIRT_BCPTR), VIRT_VALUES
   ADDQ    R10, VIRT_VALUES                     // stack offset += rows out
+  KMOVW   K1, K7
   BC_INVOKE()
   JC      opcode_failed                        // break on error
 

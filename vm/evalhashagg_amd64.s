@@ -21,8 +21,8 @@
 TEXT ·evalhashagg(SB), NOSPLIT, $8
   NO_LOCAL_POINTERS
 
-  MOVQ bc+0(FP), DI     // DI = &w
-  MOVQ ·vmm+0(SB), SI   // real static base
+  MOVQ bc+0(FP), VIRT_BCPTR
+  MOVQ ·vmm+0(SB), VIRT_BASE
   XORQ R9, R9           // R9 = rows consumed
   MOVQ tree+32(FP), R10 // R10 = tree pointer
   MOVQ abort+40(FP), R8
@@ -63,7 +63,6 @@ loop:
   VINSERTI32X8 $1, Y1, Z0, Z0
   VINSERTI32X8 $1, Y3, Z2, Z1
 
-  MOVQ   ·vmm+0(SB), VIRT_BASE
   BC_ENTER()
   JC     early_end
   JMP    loop
