@@ -404,15 +404,6 @@ TEXT bcretbhk(SB), NOSPLIT|NOFRAME, $0
 
   BC_RETURN_SUCCESS()
 
-// jump forward 'n' bytes if the current mask is zero
-TEXT bcjz(SB), NOSPLIT|NOFRAME, $0
-  POP(DX)
-  KTESTW K1, K1
-  JNZ    next
-  LEAQ   0(VIRT_PCREG)(DX*1), VIRT_PCREG   // virtual pc += uint32(DX)
-next:
-  NEXT()
-
 // Temporary instruction to save registers alive at entry to stack slots.
 TEXT bcinit(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(0, DX, R8)

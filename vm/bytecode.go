@@ -195,13 +195,11 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 
 		// Control flow instructions:
 		//   - ret  - terminates execution; returns current mask
-		//   - jz N - adds 'N' to the virtual PC if K1 == 0
 		opret:    {text: "ret"},
 		opretk:   {text: "ret.k", args: makeArgs(bcReadK)},
 		opretsk:  {text: "ret.s.k", args: makeArgs(bcReadS, bcReadK)},
 		opretbk:  {text: "ret.b.k", args: makeArgs(bcReadB, bcReadK)},
 		opretbhk: {text: "ret.b.h.k", args: makeArgs(bcReadB, bcReadH, bcReadK)},
-		opjz:     {text: "jz", args: makeArgs(bcReadK, bcImmU64)},
 
 		opinit: {text: "init", args: makeArgs(bcWriteB, bcWriteK)},
 
