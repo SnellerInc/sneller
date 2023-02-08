@@ -16,6 +16,7 @@ package blob
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"fmt"
 	"io"
 	"io/fs"
@@ -128,7 +129,7 @@ func server(buf []byte) *http.Server {
 
 func TestBlobs(t *testing.T) {
 	backing := make([]byte, 2*1024*1024)
-	rand.Read(backing)
+	crand.Read(backing)
 
 	s := server(backing)
 	listening := make(chan struct{}, 1)

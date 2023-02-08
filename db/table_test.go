@@ -15,8 +15,8 @@
 package db
 
 import (
+	"crypto/rand"
 	"io/fs"
-	"math/rand"
 	"net/url"
 	"os"
 	"path"

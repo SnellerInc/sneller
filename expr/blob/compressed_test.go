@@ -16,8 +16,8 @@ package blob
 
 import (
 	"bytes"
+	"crypto/rand"
 	"io"
-	"math/rand"
 	"net"
 	"net/http"
 	"testing"

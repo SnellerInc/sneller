@@ -567,7 +567,7 @@ func iterToplevelIonObjects(buf []byte, callback func([]byte) bool) error {
 }
 
 func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
-	rand.Seed(0) // make the results repeatable
+	r := rand.New(rand.NewSource(0)) // make the results repeatable
 
 	ionNull := []byte{0x0f}
 	ionIntZero := []byte{0x20}
@@ -591,7 +591,7 @@ func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
 	}
 
 	for i := 0; i < spec.zeros; i++ {
-		if rand.Float32() > 0.5 {
+		if r.Float32() > 0.5 {
 			records = append(records, ionFloatZero)
 		} else {
 			records = append(records, ionIntZero)
@@ -607,24 +607,24 @@ func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
 
 	for i := 0; i < spec.negints; i++ {
 		buf.Reset()
-		buf.WriteInt(-rand.Int63())
+		buf.WriteInt(-r.Int63())
 
 		add()
 	}
 
 	for i := 0; i < spec.posints; i++ {
 		buf.Reset()
-		buf.WriteUint(rand.Uint64())
+		buf.WriteUint(r.Uint64())
 
 		add()
 	}
 
 	for i := 0; i < spec.floats; i++ {
 		buf.Reset()
-		if rand.Float32() > 0.5 {
-			buf.WriteFloat32(rand.Float32())
+		if r.Float32() > 0.5 {
+			buf.WriteFloat32(r.Float32())
 		} else {
-			buf.WriteFloat64(rand.Float64())
+			buf.WriteFloat64(r.Float64())
 		}
 
 		add()
@@ -632,9 +632,9 @@ func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
 
 	randString := func() string {
 		var s string
-		n := rand.Intn(32)
+		n := r.Intn(32)
 		for i := 0; i < n; i++ {
-			c := rand.Intn('z' - 'a' + 1)
+			c := r.Intn('z' - 'a' + 1)
 			s += string(rune(c + 'a'))
 		}
 
@@ -650,11 +650,11 @@ func makeTestMixedTypeIonRecords(spec mtcSpec) [][]byte {
 
 	for i := 0; i < spec.timestamps; i++ {
 		buf.Reset()
-		year := 2010 + rand.Intn(30)
-		month := 1 + rand.Intn(13)
-		day := 1 + rand.Intn(30)
-		hour := rand.Intn(60)
-		min := rand.Intn(60)
+		year := 2010 + r.Intn(30)
+		month := 1 + r.Intn(13)
+		day := 1 + r.Intn(30)
+		hour := r.Intn(60)
+		min := r.Intn(60)
 		sec := 0
 		nsec := 0
 		buf.WriteTime(date.Date(year, month, day, hour, min, sec, nsec))

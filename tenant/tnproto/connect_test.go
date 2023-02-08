@@ -16,9 +16,9 @@ package tnproto
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"io"
-	"math/rand"
 	"net"
 	"runtime"
 	"sync"

@@ -16,9 +16,10 @@ package vm
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"math"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 )
 
@@ -127,7 +128,7 @@ func TestChaCha8x4(t *testing.T) {
 			var ends [4]uint32
 			prev := 0
 			for i := range ends {
-				n := rand.Intn(len(buf)-prev) + prev
+				n := mrand.Intn(len(buf)-prev) + prev
 				ends[i] = uint32(n)
 				prev = n
 			}

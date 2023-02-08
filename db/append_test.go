@@ -16,10 +16,10 @@ package db
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"io"
 	"io/fs"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"

@@ -17,10 +17,8 @@ package vm
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"os"
 	"testing"
-	"time"
 )
 
 const (
@@ -28,8 +26,6 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	rand.Seed(time.Now().UnixNano()) // needed by evalbc_test.go
-
 	{
 		val, _ := os.LookupEnv(envvar)
 		switch val {

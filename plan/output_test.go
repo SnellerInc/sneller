@@ -16,8 +16,8 @@ package plan
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/SnellerInc/sneller/db"

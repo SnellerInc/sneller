@@ -15,9 +15,9 @@
 package blockfmt
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io/fs"
-	"math/rand"
 	"os"
 	"path"
 	"path/filepath"

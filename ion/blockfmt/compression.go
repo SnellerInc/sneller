@@ -15,12 +15,12 @@
 package blockfmt
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math/bits"
-	"math/rand"
 	"sync"
 
 	"github.com/SnellerInc/sneller/compr"
