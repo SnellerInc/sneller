@@ -1105,7 +1105,21 @@ type hashSetImm struct {
 // and thus we can treat those as hash consts as well
 func isHashConst(d ion.Datum) bool {
 	switch d.Type() {
-	case ion.StructType, ion.ListType:
+	case ion.ListType:
+		// we used constructed lists for multi-key joins,
+		// so it's helpful to recognize ['foo', 'bar'] as constant
+		iter, err := d.Iterator()
+		if err != nil {
+			return false
+		}
+		for !iter.Done() {
+			next, err := iter.Next()
+			if err != nil || !isHashConst(next) {
+				return false
+			}
+		}
+		return true
+	case ion.StructType:
 		return false
 	default:
 		return true
