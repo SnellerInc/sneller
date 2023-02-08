@@ -55,7 +55,7 @@ var (
 type Hint struct {
 	// SkipRecords allows skipping the first
 	// N records (useful when headers are used)
-	SkipRecords int `json:"skipRecords,omitempty"`
+	SkipRecords int `json:"skip_records,omitempty"`
 	// Separator allows specifying a custom
 	// separator (only applicable for CSV)
 	Separator Delim `json:"separator,omitempty"`
@@ -63,7 +63,7 @@ type Hint struct {
 	// strings which represent missing values.
 	// Entries in Fields may override this on a
 	// per-field basis.
-	MissingValues []string `json:"missingValues,omitempty"`
+	MissingValues []string `json:"missing_values,omitempty"`
 	// Fields specifies the hint for each field
 	Fields []FieldHint `json:"fields"`
 }
@@ -102,19 +102,19 @@ type FieldHint struct {
 	// Allow empty values (only valid for strings) to
 	// be ingested. If flag is set to false, then the
 	// field won't be written for the record instead.
-	AllowEmpty bool `json:"allowEmpty,omitempty"`
+	AllowEmpty bool `json:"allow_empty,omitempty"`
 	// Don't use sparse-indexing for this value.
 	// (only valid for date-time type)
-	NoIndex bool `json:"noIndex,omitempty"`
+	NoIndex bool `json:"no_index,omitempty"`
 	// Optional list of values that represent TRUE
 	// (only valid for bool type)
-	TrueValues []string `json:"trueValues,omitempty"`
+	TrueValues []string `json:"true_values,omitempty"`
 	// Optional list of values that represent FALSE
 	// (only valid for bool type)
-	FalseValues []string `json:"falseValues,omitempty"`
+	FalseValues []string `json:"false_values,omitempty"`
 	// Optional list of values that represent a
 	// missing value
-	MissingValues []string `json:"missingValues,omitempty"`
+	MissingValues []string `json:"missing_values,omitempty"`
 
 	// internals
 	fieldParts      []fieldPart
@@ -227,8 +227,8 @@ func (fh *FieldHint) isRootField() bool {
 //	  "fields": [
 //	    {"name":"field", "type": "<type>"},
 //	    {"name":"field.a", "type": "<type>", "default:" "empty"},
-//	    {"name":"field.b", "type": "datetime", "format": "epoch", "noIndex": true},
-//	    {"name":"anotherField", "type": "bool", "trueValues": ["Y"], "falseValues": ["N"]},
+//	    {"name":"field.b", "type": "datetime", "format": "epoch", "no_index": true},
+//	    {"name":"anotherField", "type": "bool", "true_values": ["Y"], "false_values": ["N"]},
 //	    ...
 //	  ]
 //	}
@@ -251,14 +251,14 @@ func (fh *FieldHint) isRootField() bool {
 // Note that the 'name' can contain multiple levels, so nested objects can
 // be created. This can be useful to group information in the ingested data.
 //
-// Some values may be included in the sparse index. Set the 'noIndex' to `true`
-// to prevent this behavior for the field.
+// Some values may be included in the sparse index. Set the 'no_index' field
+// to `true` to prevent this behavior for the field.
 //
 // Supported types:
-//   - string -> set 'allowEmpty' if you want empty strings to be ingested
+//   - string -> set 'allow_empty' if you want empty strings to be ingested
 //   - number -> either float or int
 //   - int
-//   - bool -> can support custom trueValues/falseValues
+//   - bool -> can support custom true/false values
 //   - datetime -> formats: text (default), epoch, epoch_ms, epoch_us, epoch_ns
 func ParseHint(hint []byte) (*Hint, error) {
 	var h Hint

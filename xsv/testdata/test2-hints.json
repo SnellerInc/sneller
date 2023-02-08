@@ -1,11 +1,11 @@
 {
-    "skipRecords": 1,
+    "skip_records": 1,
     "fields": [
         { "name": "timestamp", "type": "datetime", "format": "unix_seconds" },
         { "name": "from.ip",   "type": "string" },
         { "name": "from.port", "type": "int", "default": "0" },
         { "name": "to.ip",     "type": "string" },
         { "name": "to.port",   "type": "int", "default": "0" },
-        { "name": "blocked",   "type": "bool", "trueValues": [ "Y" ], "falseValues": [ "N" ] }
+        { "name": "blocked",   "type": "bool", "true_values": [ "Y" ], "false_values": [ "N" ] }
     ]
 }
