@@ -135,10 +135,7 @@ func Convert(r io.Reader, dst *ion.Chunker, ch RowChopper, hint *Hint, cons []io
 			}
 			if field.isRootField() {
 				// root-fields can be written immediately
-				err := writeField(field.fieldParts[0].sym, &field, dst, text, symbufs[fieldNr])
-				if err != nil {
-					return err
-				}
+				writeField(field.fieldParts[0].sym, &field, dst, text, symbufs[fieldNr])
 			} else {
 				// nested items are add to the map and written out later
 				fm.addToMap(&field, text)
@@ -238,10 +235,7 @@ func (fm *subfieldNode) writeMap(dst *ion.Chunker) error {
 
 		case *subfieldLeaf:
 			if vv.inUse {
-				err := writeField(k, vv.field, dst, vv.text, vv.symbuf)
-				if err != nil {
-					return err
-				}
+				writeField(k, vv.field, dst, vv.text, vv.symbuf)
 				vv.inUse = false
 			}
 		}
@@ -249,107 +243,106 @@ func (fm *subfieldNode) writeMap(dst *ion.Chunker) error {
 	return nil
 }
 
-func writeField(sym ion.Symbol, field *FieldHint, dst *ion.Chunker, text string, symbufs ion.Symbuf) error {
+func writeField(sym ion.Symbol, field *FieldHint, dst *ion.Chunker, text string, symbufs ion.Symbuf) {
 	dst.BeginField(sym)
-	err := field.convertAndWrite(text, dst, field.NoIndex, symbufs)
-	if err != nil {
-		return fmt.Errorf("xsv: field %q: converting value %q: %w", field.Name, text, err)
-	}
-	return nil
+	field.convertAndWrite(text, dst, field.NoIndex, symbufs)
 }
 
-func stringToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) error {
+func stringToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) {
 	d.WriteString(text)
-	return nil
 }
 
-func floatToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) error {
+func floatToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) {
 	f, err := strconv.ParseFloat(text, 64)
 	if err != nil {
-		return err
+		d.WriteString(text)
+		return
 	}
 	d.WriteFloat64(f)
-	return nil
 }
 
-func intToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) error {
+func intToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) {
 	i, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		return err
+		d.WriteString(text)
+		return
 	}
 	d.WriteInt(i)
-	return nil
 }
 
-func customBoolToION(text string, d *ion.Chunker, trueValues []string, falseValues []string) error {
+func customBoolToION(text string, d *ion.Chunker, trueValues []string, falseValues []string) {
 	if slices.Contains(trueValues, text) {
 		d.WriteBool(true)
-		return nil
+		return
 	}
 	if slices.Contains(falseValues, text) {
 		d.WriteBool(false)
-		return nil
+		return
 	}
-	return fmt.Errorf("invalid boolean format %q (no match with custom values)", text)
+	d.WriteString(text)
 }
 
-func boolToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) error {
+func boolToION(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) {
 	b, err := strconv.ParseBool(text)
 	if err != nil {
-		return fmt.Errorf("invalid bool format %q (try using custom values)", text)
+		d.WriteString(text)
+		return
 	}
 	d.WriteBool(b)
-	return nil
 }
 
-func dateToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) error {
+func dateToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) {
 	t, ok := date.Parse([]byte(text))
 	if !ok {
-		return fmt.Errorf("invalid date/time format %q", text)
+		d.WriteString(text)
+		return
 	}
-	return timeToION(t, d, noIndex, symbuf)
+	timeToION(t, d, noIndex, symbuf)
 }
 
-func epochSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) error {
+func epochSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) {
 	e, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		return err
+		d.WriteString(text)
+		return
 	}
 	t := date.Unix(e, 0)
-	return timeToION(t, d, noIndex, symbuf)
+	timeToION(t, d, noIndex, symbuf)
 }
 
-func epochMSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) error {
+func epochMSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) {
 	e, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		return err
+		d.WriteString(text)
+		return
 	}
 	t := date.UnixMicro(e)
-	return timeToION(t, d, noIndex, symbuf)
+	timeToION(t, d, noIndex, symbuf)
 }
 
-func epochUSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) error {
+func epochUSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) {
 	e, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		return err
+		d.WriteString(text)
+		return
 	}
 	t := date.Unix(e/1e6, 1000*(e%1e6))
-	return timeToION(t, d, noIndex, symbuf)
+	timeToION(t, d, noIndex, symbuf)
 }
 
-func epochNSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) error {
+func epochNSecToION(text string, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) {
 	e, err := strconv.ParseInt(text, 10, 64)
 	if err != nil {
-		return err
+		d.WriteString(text)
+		return
 	}
 	t := date.Unix(e/1e9, e%1e9)
-	return timeToION(t, d, noIndex, symbuf)
+	timeToION(t, d, noIndex, symbuf)
 }
 
-func timeToION(t date.Time, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) error {
+func timeToION(t date.Time, d *ion.Chunker, noIndex bool, symbuf ion.Symbuf) {
 	d.WriteTime(t)
 	if !noIndex {
 		d.Ranges.AddTime(symbuf, t)
 	}
-	return nil
 }

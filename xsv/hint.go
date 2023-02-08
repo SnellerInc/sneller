@@ -118,7 +118,7 @@ type FieldHint struct {
 
 	// internals
 	fieldParts      []fieldPart
-	convertAndWrite func(string, *ion.Chunker, bool, ion.Symbuf) error
+	convertAndWrite func(string, *ion.Chunker, bool, ion.Symbuf)
 }
 
 type fieldPart struct {
@@ -182,8 +182,8 @@ func (fh *FieldHint) UnmarshalJSON(data []byte) error {
 					return ErrTrueAndFalseValuesOverlap
 				}
 			}
-			fh.convertAndWrite = func(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) error {
-				return customBoolToION(text, d, fh.TrueValues, fh.FalseValues)
+			fh.convertAndWrite = func(text string, d *ion.Chunker, _ bool, _ ion.Symbuf) {
+				customBoolToION(text, d, fh.TrueValues, fh.FalseValues)
 			}
 		} else {
 			fh.convertAndWrite = boolToION
