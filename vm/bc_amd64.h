@@ -14,20 +14,10 @@
 
 // static bytecode register assignments:
 //  AX = bytecode dispatch array
+//  DI = bytecode structure pointer
 //  SI = buffer base
-//  DI = &wherebc structure
-//  R11 = mask save buffer
 //  R12 = value save buffer
 //  R9, R10 = callee-save (do not clobber)
-//  'current row:'
-//  Z0 = struct base
-//  Z1 = struct len
-//  'current scalar:'
-//  Z2 + Z3 = current scalar
-//  'current value'
-//  Z30 = this field base (from findsym)
-//  Z31 = this field len  (from findsym)
-//  K1 = current mask bits
 //  K7 = valid mask bits
 
 #define VIRT_PCREG  AX  // points to "bytecode"
@@ -67,7 +57,10 @@
   CALL -8(VIRT_PCREG)
 
 // BC_ENTER() sets up the VM control registers and jumps into the VM
-// instructions (VIRT_BCPTR must be set to the *bytecode pointer)
+// instructions. Preconditions:
+// - VIRT_BCPTR - *bytecode pointer
+// - K1         - current mask
+// - Z0:Z1      - offset and size of records
 //
 // BC_ENTER() also takes care to reset the output scratch buffer
 #define BC_ENTER()                                             \
