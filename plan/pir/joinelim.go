@@ -23,7 +23,7 @@ import (
 func joinhash(b *Trace, eq *EquiJoin) expr.Node {
 	id := len(b.Replacements)
 	b.Replacements = append(b.Replacements, nil) // will be assigned to later
-	return expr.Call(expr.HashReplacement, expr.Integer(id), expr.String("list"), expr.String("$__key"), eq.value)
+	return expr.Call(expr.HashReplacement, expr.Integer(id), expr.String("joinlist"), expr.String("$__key"), eq.value)
 }
 
 type joinResult struct {
@@ -33,13 +33,13 @@ type joinResult struct {
 	err  error
 }
 
-type joinVisitor struct {
+type joinRewriter struct {
 	trace   *Trace
 	parent  Step
 	results []joinResult
 }
 
-func (j *joinVisitor) get(eq *EquiJoin) *joinResult {
+func (j *joinRewriter) get(eq *EquiJoin) *joinResult {
 	for i := range j.results {
 		if j.results[i].eq == eq {
 			return &j.results[i]
@@ -49,22 +49,36 @@ func (j *joinVisitor) get(eq *EquiJoin) *joinResult {
 	return &j.results[len(j.results)-1]
 }
 
-func (j *joinVisitor) addError(eq *EquiJoin, err error) {
+func (j *joinRewriter) addError(eq *EquiJoin, err error) {
 	res := j.get(eq)
 	if res.err == nil {
 		res.err = err
 	}
 }
 
-func (j *joinVisitor) markUsed(eq *EquiJoin, used string) {
+func (j *joinRewriter) markUsed(eq *EquiJoin, used string) int {
 	res := j.get(eq)
-	if res.into == nil {
-		res.into = joinhash(j.trace, eq)
+	for i, str := range res.used {
+		if str == used {
+			return i
+		}
 	}
+	n := len(res.used)
 	res.used = append(res.used, used)
+	return n
 }
 
-func (j *joinVisitor) Visit(e expr.Node) expr.Visitor {
+func (j *joinRewriter) Walk(e expr.Node) expr.Rewriter {
+	if d, ok := e.(*expr.Dot); ok {
+		// don't walk foo.bar -> foo
+		if _, ok := d.Inner.(expr.Ident); ok {
+			return nil
+		}
+	}
+	return j
+}
+
+func (j *joinRewriter) Rewrite(e expr.Node) expr.Node {
 	switch e := e.(type) {
 	case expr.Ident:
 		step, _ := j.parent.get(string(e))
@@ -74,16 +88,18 @@ func (j *joinVisitor) Visit(e expr.Node) expr.Visitor {
 	case *expr.Dot:
 		id, ok := e.Inner.(expr.Ident)
 		if !ok {
-			return j
+			return e
 		}
 		step, _ := j.parent.get(string(id))
 		if eq, ok := step.(*EquiJoin); ok {
-			j.markUsed(eq, e.Field)
+			// turn v.foo into v[index] where index
+			// is the associated field position
+			return &expr.Index{Inner: id, Offset: j.markUsed(eq, e.Field)}
 		}
 		// do not continue traversing
-		return nil
+		return e
 	}
-	return j
+	return e
 }
 
 func joinelim(b *Trace) error {
@@ -100,8 +116,11 @@ func joinelim(b *Trace) error {
 		return nil
 	}
 
-	jw := joinVisitor{
+	jw := joinRewriter{
 		trace: b,
+	}
+	fn := func(e expr.Node, _ bool) expr.Node {
+		return expr.Rewrite(&jw, e)
 	}
 	start := len(b.Replacements)
 	for s := b.top; s != nil; s = s.parent() {
@@ -109,18 +128,22 @@ func joinelim(b *Trace) error {
 		if jw.parent == nil {
 			break
 		}
-		s.walk(&jw)
+		s.rewrite(fn)
 	}
 	for i := range jw.results {
 		jr := &jw.results[i]
 		if jr.err != nil {
 			return jr.err
 		}
+		jr.into = joinhash(b, jr.eq)
 		eq := jr.eq
-		// insert identity bindings for projected columns
+		lstitems := make([]expr.Node, len(jr.used))
 		for j := range jr.used {
-			eq.built.Columns = append(eq.built.Columns, expr.Identity(jr.used[j]))
+			lstitems[j] = expr.Ident(jr.used[j])
 		}
+		collist := expr.Call(expr.MakeList, lstitems...)
+		eq.built.Columns = append(eq.built.Columns,
+			expr.Bind(collist, "$__val"))
 		t, err := build(b, eq.built, eq.env)
 		if err != nil {
 			return err

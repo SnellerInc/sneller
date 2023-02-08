@@ -101,6 +101,8 @@ func (r *replacement) toHashLookup(kind, label string, x, elseval expr.Node) exp
 		conv = &structConverter{label: label}
 	case "list":
 		conv = &listConverter{label: label}
+	case "joinlist":
+		conv = &joinListConverter{label: label}
 	default:
 		return expr.Null{}
 	}
@@ -223,6 +225,40 @@ func (c *listConverter) add(row *ion.Struct) {
 		c.m[key] = lst
 	}
 	lst.Values = append(lst.Values, &expr.Struct{Fields: fields})
+}
+
+type joinListConverter struct {
+	label string
+	m     map[expr.Constant][]ion.Datum
+}
+
+func (j *joinListConverter) add(row *ion.Struct) {
+	var key expr.Constant
+	var val ion.Datum
+	row.Each(func(f ion.Field) error {
+		if f.Label == j.label {
+			key = mustConst(f.Datum)
+		} else {
+			val = f.Datum
+		}
+		return nil
+	})
+	if key == nil || val.IsEmpty() {
+		return
+	}
+	if j.m == nil {
+		j.m = make(map[expr.Constant][]ion.Datum)
+	}
+	j.m[key] = append(j.m[key], val)
+}
+
+func (j *joinListConverter) result(key, elseval expr.Node) *expr.Lookup {
+	l := &expr.Lookup{Expr: key, Else: elseval}
+	for k, v := range j.m {
+		l.Keys.AddDatum(k.Datum())
+		l.Values.AddDatum(ion.NewList(nil, v).Datum())
+	}
+	return l
 }
 
 type subreplacement struct {

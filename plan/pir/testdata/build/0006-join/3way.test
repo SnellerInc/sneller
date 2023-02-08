@@ -5,13 +5,13 @@ GROUP BY a.grp
 ---
 WITH (
 	ITERATE b AS b FIELDS [foo, num, y] WHERE foo = 3
-	PROJECT y AS $__key, num AS num, y AS y
+	PROJECT y AS $__key, [num, y] AS $__val
 ) AS REPLACEMENT(0)
 WITH (
 	ITERATE c AS c FIELDS [foo, num, z] WHERE foo = 400
-	PROJECT z AS $__key, num AS num
+	PROJECT z AS $__key, [num] AS $__val
 ) AS REPLACEMENT(1)
 ITERATE a AS a FIELDS [foo, grp, x] WHERE foo = 700
-ITERATE FIELD HASH_REPLACEMENT(0, 'list', '$__key', x) AS b
-ITERATE FIELD HASH_REPLACEMENT(1, 'list', '$__key', b.y) AS c
-AGGREGATE SUM(b.num) AS bsum, SUM(c.num) AS csum BY grp AS grp
+ITERATE FIELD HASH_REPLACEMENT(0, 'joinlist', '$__key', x) AS b
+ITERATE FIELD HASH_REPLACEMENT(1, 'joinlist', '$__key', b[1]) AS c
+AGGREGATE SUM(b[0]) AS bsum, SUM(c[0]) AS csum BY grp AS grp

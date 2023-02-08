@@ -5,8 +5,8 @@ GROUP BY a.grp
 ---
 WITH (
 	ITERATE b AS b FIELDS [foo, inner, y] WHERE foo = 3
-	PROJECT y AS $__key, "inner" AS "inner"
+	PROJECT y AS $__key, ["inner"] AS $__val
 ) AS REPLACEMENT(0)
 ITERATE a AS a FIELDS [foo, grp, x] WHERE foo = 700
-ITERATE FIELD HASH_REPLACEMENT(0, 'list', '$__key', x) AS b
-AGGREGATE SUM(b."inner".val) AS "sum" BY grp AS grp
+ITERATE FIELD HASH_REPLACEMENT(0, 'joinlist', '$__key', x) AS b
+AGGREGATE SUM(b[0].val) AS "sum" BY grp AS grp
