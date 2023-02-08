@@ -25,7 +25,6 @@
 #include "bc_constant_gen.h"
 #include "bc_constant_rempi.h"
 #include "bc_macros_amd64.h"
-#include "ops_mask.h" // provides OPMASK
 
 // decodes the next instruction from the virtual pc
 // register, advances virtual pc register, and jumps
