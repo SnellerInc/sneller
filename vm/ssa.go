@@ -66,7 +66,7 @@ type value struct {
 	// not-missing-ness, then that is set here
 	notMissing *value
 
-	imm interface{}
+	imm any
 }
 
 type hashcode [6]uint64
@@ -129,7 +129,7 @@ func pad(x string) string {
 
 // used to produce a consistent bit pattern
 // for hashing common subexpressions
-func (p *prog) tobits(imm interface{}) uint64 {
+func (p *prog) tobits(imm any) uint64 {
 	switch v := imm.(type) {
 	case stackslot:
 		panic("Stack slot must be converted to int when storing it in value.imm")
@@ -182,13 +182,13 @@ func (p *prog) tobits(imm interface{}) uint64 {
 
 // overwrite a value with a message
 // indicating why it is invalid
-func (v *value) errf(f string, args ...interface{}) {
+func (v *value) errf(f string, args ...any) {
 	v.op = sinvalid
 	v.args = nil
 	v.imm = fmt.Sprintf(f, args...)
 }
 
-func (v *value) setimm(imm interface{}) {
+func (v *value) setimm(imm any) {
 	if v.op != sinvalid && ssainfo[v.op].immfmt == fmtnone {
 		v.errf("cannot assign immediate %v to op %s", imm, v.op)
 		return
@@ -197,7 +197,7 @@ func (v *value) setimm(imm interface{}) {
 	v.imm = imm
 }
 
-func (p *prog) errorf(f string, args ...interface{}) *value {
+func (p *prog) errorf(f string, args ...any) *value {
 	v := p.val()
 	v.errf(f, args...)
 	return v
@@ -294,7 +294,7 @@ func (p *prog) ssa0(op ssaop) *value {
 	return v
 }
 
-func (p *prog) ssa0imm(op ssaop, imm interface{}) *value {
+func (p *prog) ssa0imm(op ssaop, imm any) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
 	hc[1] = p.tobits(imm)
@@ -332,7 +332,7 @@ func (p *prog) ssa1(op ssaop, arg *value) *value {
 	return v
 }
 
-func (p *prog) ssa2imm(op ssaop, arg0, arg1 *value, imm interface{}) *value {
+func (p *prog) ssa2imm(op ssaop, arg0, arg1 *value, imm any) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
 	hc[1] = uint64(arg0.id)
@@ -394,7 +394,7 @@ func (p *prog) ssa3(op ssaop, arg0, arg1, arg2 *value) *value {
 	return v
 }
 
-func (p *prog) ssa3imm(op ssaop, arg0, arg1, arg2 *value, imm interface{}) *value {
+func (p *prog) ssa3imm(op ssaop, arg0, arg1, arg2 *value, imm any) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
 	hc[1] = uint64(arg0.id)
@@ -439,7 +439,7 @@ func (p *prog) ssa4(op ssaop, arg0, arg1, arg2, arg3 *value) *value {
 	return v
 }
 
-func (p *prog) ssa4imm(op ssaop, arg0, arg1, arg2, arg3 *value, imm interface{}) *value {
+func (p *prog) ssa4imm(op ssaop, arg0, arg1, arg2, arg3 *value, imm any) *value {
 	var hc hashcode
 	hc[0] = uint64(op)
 	hc[1] = uint64(arg0.id)
@@ -489,7 +489,7 @@ func (p *prog) ssa5(op ssaop, arg0, arg1, arg2, arg3, arg4 *value) *value {
 }
 
 // overwrite a value with new opcode + args, etc.
-func (p *prog) setssa(v *value, op ssaop, imm interface{}, args ...*value) *value {
+func (p *prog) setssa(v *value, op ssaop, imm any, args ...*value) *value {
 	v.op = op
 	v.notMissing = nil
 
@@ -507,7 +507,7 @@ func (p *prog) setssa(v *value, op ssaop, imm interface{}, args ...*value) *valu
 	return v
 }
 
-func (p *prog) ssaimm(op ssaop, imm interface{}, args ...*value) *value {
+func (p *prog) ssaimm(op ssaop, imm any, args ...*value) *value {
 	v := p.val()
 	v.op = op
 	v.args = args
@@ -548,7 +548,7 @@ func (p *prog) ssava(op ssaop, args []*value) *value {
 	return v
 }
 
-func (p *prog) constant(imm interface{}) *value {
+func (p *prog) constant(imm any) *value {
 	v := p.val()
 	v.op = sliteral
 	v.imm = imm
@@ -987,7 +987,7 @@ func (p *prog) isnonnull(v *value) *value {
 	return p.ssa2(sisnonnull, v, p.mask(v))
 }
 
-func isBoolImmediate(imm interface{}) bool {
+func isBoolImmediate(imm any) bool {
 	switch imm.(type) {
 	case bool:
 		return true
@@ -996,7 +996,7 @@ func isBoolImmediate(imm interface{}) bool {
 	}
 }
 
-func isIntImmediate(imm interface{}) bool {
+func isIntImmediate(imm any) bool {
 	switch v := imm.(type) {
 	case int, int64, uint, uint64:
 		return true
@@ -1007,7 +1007,7 @@ func isIntImmediate(imm interface{}) bool {
 	}
 }
 
-func isFloatImmediate(imm interface{}) bool {
+func isFloatImmediate(imm any) bool {
 	switch imm.(type) {
 	case float64:
 		return true
@@ -1016,11 +1016,11 @@ func isFloatImmediate(imm interface{}) bool {
 	}
 }
 
-func isNumericImmediate(imm interface{}) bool {
+func isNumericImmediate(imm any) bool {
 	return isFloatImmediate(imm) || isIntImmediate(imm)
 }
 
-func isStringImmediate(imm interface{}) bool {
+func isStringImmediate(imm any) bool {
 	switch imm.(type) {
 	case string:
 		return true
@@ -1029,7 +1029,7 @@ func isStringImmediate(imm interface{}) bool {
 	}
 }
 
-func isTimestampImmediate(imm interface{}) bool {
+func isTimestampImmediate(imm any) bool {
 	switch imm.(type) {
 	case date.Time:
 		return true
@@ -1038,7 +1038,7 @@ func isTimestampImmediate(imm interface{}) bool {
 	}
 }
 
-func tobool(imm interface{}) bool {
+func tobool(imm any) bool {
 	switch v := imm.(type) {
 	case bool:
 		return v
@@ -1059,7 +1059,7 @@ func tobool(imm interface{}) bool {
 	}
 }
 
-func tof64(imm interface{}) float64 {
+func tof64(imm any) float64 {
 	switch i := imm.(type) {
 	case bool:
 		if i {
@@ -1083,7 +1083,7 @@ func tof64(imm interface{}) float64 {
 	}
 }
 
-func toi64(imm interface{}) uint64 {
+func toi64(imm any) uint64 {
 	switch i := imm.(type) {
 	case bool:
 		if i {
@@ -2163,7 +2163,7 @@ func (p *prog) atan(child *value) *value {
 }
 
 // Binary arithmetic operators and functions
-func (p *prog) makeBinaryArithmeticOpImm(regOpF, regOpI ssaop, v *value, imm interface{}) *value {
+func (p *prog) makeBinaryArithmeticOpImm(regOpF, regOpI ssaop, v *value, imm any) *value {
 	if isIntValue(v) && isIntImmediate(imm) {
 		s, k := p.coerceI64(v)
 		i64Imm := toi64(imm)
@@ -3398,7 +3398,7 @@ func (c regclass) String() string {
 	}
 }
 
-func ionType(imm interface{}) ion.Type {
+func ionType(imm any) ion.Type {
 	switch i := imm.(type) {
 	case ion.Datum:
 		return i.Type()

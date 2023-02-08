@@ -103,22 +103,53 @@ func (c *Count) next() rowConsumer { return nil }
 
 func (c *Count) Value() int64 { return c.val }
 
+const (
+	constFalse = 1
+	constTrue  = 2
+)
+
 type wherebc struct {
-	parent *Filter
-	ssa    prog
-	bc     bytecode
-	dst    rowConsumer
-	params rowParams
+	parent      *Filter
+	ssa         prog
+	bc          bytecode
+	dst         rowConsumer
+	params      rowParams
+	constResult int // indicates the result of compiled program
 }
 
 //go:noescape
 func evalfilterbc(w *bytecode, delims []vmref) int
+
+// progresult returns whether the program got simplified to true or false.
+func progresult(p *prog) int {
+	ret := p.ret
+	if ret.op != sretbk {
+		return 0
+	}
+
+	if len(ret.args) < 2 {
+		return 0
+	}
+
+	switch ret.args[1].op {
+	case skfalse:
+		return constFalse
+
+	case sinit:
+		return constTrue
+	}
+
+	return 0
+}
 
 func (w *wherebc) symbolize(st *symtab, aux *auxbindings) error {
 	err := recompile(st, w.parent.prog, &w.ssa, &w.bc, aux, "wherebc")
 	if err != nil {
 		return err
 	}
+
+	w.constResult = progresult(&w.ssa)
+
 	// pass on same aux bindings:
 	return w.dst.symbolize(st, aux)
 }
@@ -133,6 +164,15 @@ func (w *wherebc) writeRows(delims []vmref, rp *rowParams) error {
 	if w.bc.compiled == nil {
 		panic("WriteRows() called before symbolize()")
 	}
+
+	switch w.constResult {
+	case constFalse:
+		return nil
+
+	case constTrue:
+		return w.dst.writeRows(delims, &w.params)
+	}
+
 	w.bc.prepare(rp)
 	valid := evalfilterbc(&w.bc, delims)
 	if w.bc.err != 0 {
