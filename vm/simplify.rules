@@ -11,16 +11,16 @@
 (or.k x (false)) -> x
 (or.k x x) -> x
 
-(nand.k x x) -> (false)
-(nand.k _ f:(false)) -> f
-(nand.k t:(init) _) -> (false)
-(nand.k (false) x) -> x
+(andn.k x x) -> (false)
+(andn.k _ f:(false)) -> f
+(andn.k t:(init) _) -> (false)
+(andn.k (false) x) -> x
 
 // x ^ x -> false
 (xor.k x x) -> (false)
 // TRUE ^ x -> !x
-(xor.k x t:(init)) -> (nand.k x t)
-(xor.k t:(init) x) -> (nand.k x t)
+(xor.k x t:(init)) -> (andn.k x t)
+(xor.k t:(init) x) -> (andn.k x t)
 (xor.k x (false)) -> x
 (xor.k (false) x) -> x
 
@@ -30,8 +30,8 @@
 (xnor.k f (init)) -> f
 (xnor.k (init) f) -> f
 // x == false -> !x
-(xnor.k f (false)) -> (nand.k f (init))
-(xnor.k (false) f) -> (nand.k f (init))
+(xnor.k f (false)) -> (andn.k f (init))
+(xnor.k (false) f) -> (andn.k f (init))
 
 // identity tuple simplifications
 (make.vk val k), `p.mask(val) == k` -> val

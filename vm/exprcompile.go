@@ -1500,14 +1500,14 @@ func (p *prog) compileLogicalCase(c *expr.Case) (*value, error) {
 		}
 		// only merge to result if <WHEN> AND NOT <merged>,
 		// then update the set of already-merged lanes
-		live := p.nand(merged, when)
+		live := p.andn(merged, when)
 		outk = p.or(outk, p.and(live, then))
 		merged = p.or(merged, when)
 	}
 	if final.op == skfalse {
 		return outk, nil
 	}
-	outk = p.or(outk, p.and(final, p.nand(merged, final)))
+	outk = p.or(outk, p.and(final, p.andn(merged, final)))
 	return outk, nil
 }
 
@@ -1582,7 +1582,7 @@ func (p *prog) compileGenericCase(c *expr.Case) (*value, error) {
 	// ELSE must be merged at the end as we need all matching lanes for that.
 	if elseV != nil {
 		if outV != nil {
-			outV = p.ssa4(sblendv, outV, outK, elseV, p.nand(matched, elseK))
+			outV = p.ssa4(sblendv, outV, outK, elseV, p.andn(matched, elseK))
 			outK = outV
 		} else {
 			outV = elseV
@@ -1683,7 +1683,7 @@ func (p *prog) compileCast(c *expr.Cast) (*value, error) {
 			eqfalse := p.or(iszero, isfalse)
 			oktype := p.checkTag(from, expr.BoolType|expr.NumericType)
 			// return (!(b == 0 || b == false) && (b is numeric))
-			ret := p.nand(eqfalse, oktype)
+			ret := p.andn(eqfalse, oktype)
 			ret.notMissing = oktype
 			return ret, nil
 		default:

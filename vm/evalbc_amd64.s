@@ -468,19 +468,6 @@ TEXT bcandk(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// k[0] = !(k[1] & k[2]) (never sets invalid lanes)
-TEXT bcnandk(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
-  KMOVW K7, R8
-  BC_LOAD_RU16_FROM_SLOT(OUT(BX), IN(BX))
-  ANDW 0(VIRT_VALUES)(CX*1), BX
-
-  BC_UNPACK_SLOT(0, OUT(DX))
-  ANDNL R8, BX, BX
-
-  BC_STORE_RU16_TO_SLOT(IN(BX), IN(DX))
-  NEXT_ADVANCE(BC_SLOT_SIZE*3)
-
 // k[0] = !k[1] & k[2] (never sets invalid lanes)
 TEXT bcandnk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
@@ -515,7 +502,7 @@ TEXT bcxork(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// k[0] = xnor(k[1], k[2]) & ValidLanes
+// k[0] = (!(k[1] ^ k[2])) & ValidLanes
 TEXT bcxnork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(CX))
   KMOVW 0(VIRT_VALUES)(BX*1), K1

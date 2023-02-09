@@ -861,7 +861,7 @@ func (p *prog) equals(left, right *value) *value {
 				return left
 			}
 			// left = FALSE -> !left and left is not missing
-			return p.nand(left, p.notMissing(left))
+			return p.andn(left, p.notMissing(left))
 		}
 		if right.ret()&stBool == 0 {
 			return p.errorf("cannot compare bool(%s) and other(%s)", left, right)
@@ -1924,7 +1924,7 @@ func (p *prog) and(left, right *value) *value {
 }
 
 // (^left & right)
-func (p *prog) nand(left, right *value) *value {
+func (p *prog) andn(left, right *value) *value {
 	// !false & x -> x
 	if left.op == skfalse {
 		return right
@@ -1944,8 +1944,8 @@ func (p *prog) nand(left, right *value) *value {
 	// !(!x & y) & y -> x & y
 	//
 	// usually we hit this with Not(Not(x)),
-	// as it would show up as (nand (nand x true) true)
-	if left.op == snand && left.args[1] == right {
+	// as it would show up as (andn (andn x true) true)
+	if left.op == sandn && left.args[1] == right {
 		return p.and(left, right)
 	}
 	return p.ssa2(sandn, left, right)
@@ -1958,10 +1958,10 @@ func (p *prog) xor(left, right *value) *value {
 	}
 	// true ^ x -> !x
 	if left.op == sinit {
-		return p.nand(right, left)
+		return p.andn(right, left)
 	}
 	if right.op == sinit {
-		return p.nand(left, right)
+		return p.andn(left, right)
 	}
 	// false ^ x -> x
 	if left.op == skfalse {
@@ -2007,7 +2007,7 @@ func (p *prog) not(v *value) *value {
 	} else if v.op == sisfalse {
 		return p.ssa2(sistrue, v.args[0], v.args[1])
 	}
-	return p.nand(v, p.validLanes())
+	return p.andn(v, p.validLanes())
 }
 
 func (p *prog) makeBroadcastOp(child *value) *value {

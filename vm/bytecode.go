@@ -210,11 +210,10 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opbroadcast1k: {text: "broadcast1.k", args: makeArgs(bcWriteK)},             // k[0] = 1              & ValidLanes
 		opnotk:        {text: "not.k", args: makeArgs(bcWriteK, bcReadK)},           // k[0] = !k[1]          & ValidLanes
 		opandk:        {text: "and.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)},  // k[0] = k[1] & k[2]    & ValidLanes
-		opnandk:       {text: "nand.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = !(k[1] & k[2]) & ValidLanes
 		opandnk:       {text: "andn.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = !k[1] & k[2]   & ValidLanes
 		opork:         {text: "or.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)},   // k[0] = k[1] | k[2]    & ValidLanes
 		opxork:        {text: "xor.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)},  // k[0] = k[1] ^ k[2]    & ValidLanes
-		opxnork:       {text: "xnor.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = k[1] XNOR k[2] & ValidLanes
+		opxnork:       {text: "xnor.k", args: makeArgs(bcWriteK, bcReadK, bcReadK)}, // k[0] = !(k[1] ^ k[2]) & ValidLanes
 		opfalse:       {text: "false.k", args: makeArgs(bcWriteV, bcWriteK)},
 
 		// Integer math

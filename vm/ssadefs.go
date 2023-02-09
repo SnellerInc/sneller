@@ -32,7 +32,6 @@ const (
 	sbroadcast1k       // mask = 1
 	skfalse            // logical bottom value; FALSE and also MISSING
 	sand               // mask = (mask0 & mask1)
-	snand              // mask = !(mask0 & mask1)
 	sandn              // mask = (!mask0 & mask1)
 	sor                // mask = (mask0 | mask1)
 	sxor               // mask = (mask0 ^ mask1)  (unequal bits)
@@ -649,7 +648,6 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sbroadcast1k: {text: "broadcast1.k", rettype: stBool},
 	skfalse:      {text: "false", rettype: stValueMasked, bc: opfalse, safeValueMask: true},
 	sand:         {text: "and.k", argtypes: argsBoolBool, rettype: stBool, bc: opandk},
-	snand:        {text: "nand.k", argtypes: argsBoolBool, rettype: stBool, bc: opnandk, disjunctive: true},
 	sandn:        {text: "andn.k", argtypes: argsBoolBool, rettype: stBool, bc: opandnk},
 	sor:          {text: "or.k", argtypes: argsBoolBool, rettype: stBool, bc: opork, disjunctive: true},
 	sxor:         {text: "xor.k", argtypes: argsBoolBool, rettype: stBool, bc: opxork, disjunctive: true},
