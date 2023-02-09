@@ -1091,8 +1091,11 @@ type hashImm struct {
 	//
 	// NOTE: since we tend to share one prog for many cores,
 	// the tree here has to be cloned to each CPU (and cannot be written to)
+	// if the precomputation doesn't also include the values
 	precomputed *radixTree64
 	positions   []int32
+	slab        slab
+	complete    bool
 }
 
 type hashSetImm struct {
@@ -1127,7 +1130,7 @@ func isHashConst(d ion.Datum) bool {
 }
 
 // attempt to set h.precomputed and h.positions
-func (h *hashImm) precompute() {
+func (h *hashImm) precompute(p *prog) {
 	tree := newRadixTree(8)
 	var positions []int32
 	var empty ion.Symtab
@@ -1179,6 +1182,37 @@ func (h *hashImm) precompute() {
 	}
 	h.precomputed = tree
 	h.positions = positions
+
+	// now try const-ifying the values
+	enc = h.table.Values.Transcoder(&empty)
+	ok = true
+	tmp.Reset()
+	i := 0
+	h.table.Values.Each(func(d ion.Datum) bool {
+		if !isHashConst(d) {
+			ok = false
+			return false
+		}
+		tmp.Reset()
+		enc(&tmp, d)
+		buf := h.slab.malloc(tmp.Size())
+		copy(buf, tmp.Bytes())
+		pos, ok := vmdispl(buf)
+		if !ok {
+			panic("slab.malloc returned non-vm memory?")
+		}
+		_, dst := tree.value(positions[i])
+		binary.LittleEndian.PutUint32(dst, uint32(pos))
+		binary.LittleEndian.PutUint32(dst[4:], uint32(tmp.Size()))
+		i++
+		return true
+	})
+	if !ok {
+		h.slab.reset()
+		return
+	}
+	h.complete = true
+	p.finalize = append(p.finalize, h.slab.reset)
 }
 
 func (h *hashSetImm) precompute() {
@@ -1248,7 +1282,7 @@ func (p *prog) hashLookup(lookup *expr.Lookup) (*value, error) {
 	imm := &hashImm{
 		table: lookup,
 	}
-	imm.precompute()
+	imm.precompute(p)
 	h := p.hash(v)
 	res := p.ssaimm(shashlookup, imm, h, p.mask(h))
 	if elseval != nil {
@@ -1276,6 +1310,11 @@ func (p *prog) member(e expr.Node, set *ion.Bag) (*value, error) {
 func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 	var tmp ion.Buffer
 	lut := imm.(*hashImm)
+	if lut.complete {
+		// super-fast-path: we've already got a hash table
+		return lut.precomputed
+	}
+
 	putval := lut.table.Values.Transcoder(&st.Symtab)
 	if lut.precomputed != nil {
 		// fast (common) path: just insert values

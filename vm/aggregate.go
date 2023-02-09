@@ -573,6 +573,7 @@ func (q *Aggregate) Open() (io.WriteCloser, error) {
 // Close flushes the result of the
 // aggregation into the next QuerySink
 func (q *Aggregate) Close() error {
+	defer q.prog.reset()
 	var b ion.Buffer
 	var st ion.Symtab
 

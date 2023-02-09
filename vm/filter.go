@@ -58,6 +58,7 @@ func (r *Filter) Open() (io.WriteCloser, error) {
 
 // Close implements io.Closer
 func (r *Filter) Close() error {
+	r.prog.reset()
 	return r.rest.Close()
 }
 

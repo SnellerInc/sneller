@@ -100,6 +100,17 @@ type prog struct {
 	// happens; we use this to determine
 	// staleness
 	resolved []sympair
+
+	// finalizers that must be run when this prog is GC'd
+	finalize []func()
+}
+
+func (p *prog) reset() {
+	for i := range p.finalize {
+		p.finalize[i]()
+	}
+	p.finalize = p.finalize[:0]
+	*p = prog{}
 }
 
 // ReserveSlot reserves a stack slot

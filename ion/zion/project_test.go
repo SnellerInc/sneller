@@ -45,7 +45,10 @@ func projectToJSON(t *testing.T, buf []byte, fields []string) []byte {
 	var tmp bytes.Buffer
 	jw := ion.NewJSONWriter(&tmp, '\n')
 	out := vm.LockedSink(jw)
-	p := vm.NewProjection(vm.Selection(sel), out)
+	p, err := vm.NewProjection(vm.Selection(sel), out)
+	if err != nil {
+		t.Fatal(err)
+	}
 	w, err := p.Open()
 	if err != nil {
 		t.Fatal(err)

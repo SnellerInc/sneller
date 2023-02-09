@@ -109,8 +109,11 @@ func TestSelect(t *testing.T) {
 		sel := tcs[i]
 		t.Run(sel.String(), func(t *testing.T) {
 			var out QueryBuffer
-			dst := NewProjection(sel, &out)
-			err := CopyRows(dst, buftbl(buf), 1)
+			dst, err := NewProjection(sel, &out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = CopyRows(dst, buftbl(buf), 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -165,8 +168,11 @@ func TestSelectNested(t *testing.T) {
 	for _, sel := range tcs {
 		t.Run(sel.String(), func(t *testing.T) {
 			var out QueryBuffer
-			dst := NewProjection(sel, &out)
-			err := CopyRows(dst, buftbl(buf), 1)
+			dst, err := NewProjection(sel, &out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = CopyRows(dst, buftbl(buf), 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -235,12 +241,15 @@ func BenchmarkSelect(b *testing.B) {
 		sel := tcs[i]
 		b.Run(sel.String(), func(b *testing.B) {
 			var c Count
-			dst := NewProjection(sel, &c)
+			dst, err := NewProjection(sel, &c)
+			if err != nil {
+				b.Fatal(err)
+			}
 			tbl := &looptable{count: int64(b.N), chunk: buf}
 			b.SetBytes(int64(len(buf)))
 			parallel := runtime.GOMAXPROCS(0)
 			b.SetParallelism(parallel)
-			err := CopyRows(dst, tbl, parallel)
+			err = CopyRows(dst, tbl, parallel)
 			if err != nil {
 				b.Fatal(err)
 			}

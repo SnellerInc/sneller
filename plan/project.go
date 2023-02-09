@@ -37,7 +37,11 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 }
 
 func (p *Project) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	return p.From.wrap(vm.NewProjection(ep.rewriteBind(p.Using), dst), ep)
+	proj, err := vm.NewProjection(ep.rewriteBind(p.Using), dst)
+	if err != nil {
+		return delay(err)
+	}
+	return p.From.wrap(proj, ep)
 }
 
 func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {

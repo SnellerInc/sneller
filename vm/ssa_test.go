@@ -672,14 +672,21 @@ func TestSSANYCQueries(t *testing.T) {
 			p.begin()
 			p.returnBK(p.validLanes(), expr(p))
 			var c Count
-			dst := NewProjection(progsel(p), where(p, &c))
+			dst, err := NewProjection(progsel(p), where(p, &c))
+			if err != nil {
+				t.Fatal(err)
+			}
 			err = CopyRows(dst, table(), 4)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if c.Value() != int64(want) {
 				out.Reset()
-				CopyRows(NewProjection(progsel(p), &out), table(), 1)
+				proj, err := NewProjection(progsel(p), &out)
+				if err != nil {
+					t.Fatal(err)
+				}
+				CopyRows(proj, table(), 1)
 
 				st.Reset()
 				sample = prog{}

@@ -427,6 +427,7 @@ func (h *HashAggregate) sort() []int {
 }
 
 func (h *HashAggregate) Close() error {
+	defer h.prog.reset()
 	c := atomic.LoadInt64(&h.children)
 	if c != 0 {
 		return fmt.Errorf("HashAggregate.Close(): have %d children outstanding", c)

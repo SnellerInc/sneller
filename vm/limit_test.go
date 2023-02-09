@@ -31,8 +31,11 @@ func TestLimit(t *testing.T) {
 	for i := range amounts {
 		var dst QueryBuffer
 		l := NewLimit(int64(amounts[i]), &dst)
-		s := NewProjection(selection("Ticket as t"), l)
-		err := CopyRows(s, buftbl(buf), 1)
+		s, err := NewProjection(selection("Ticket as t"), l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = CopyRows(s, buftbl(buf), 1)
 		if err != nil {
 			t.Errorf("LIMIT %d: %s", amounts[i], err)
 			continue

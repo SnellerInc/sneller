@@ -106,6 +106,7 @@ func (d *DistinctFilter) Open() (io.WriteCloser, error) {
 }
 
 func (d *DistinctFilter) Close() error {
+	d.prog.reset()
 	return d.out.Close()
 }
 

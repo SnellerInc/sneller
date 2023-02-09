@@ -122,9 +122,10 @@ project_objects:
   JZ      next_lane
   MOVQ    symbols_len+64(FP), R8
   MOVQ    symbols+56(FP), BX
-  MOVQ    VIRT_VALUES, DX
   XORL    CX, CX
 get_size:
+  MOVWQZX syminfo_slot(BX), DX
+  ADDQ    VIRT_VALUES, DX
   MOVL    64(DX), AX
   TESTL   AX, AX
   JZ      empty_cell
@@ -133,7 +134,6 @@ get_size:
   ADDL    AX, CX
 empty_cell:
   ADDQ    $syminfo__size, BX
-  ADDQ    $VREG_SIZE, DX
   DECL    R8
   JNZ     get_size
 
@@ -188,8 +188,9 @@ writeheader:
   // actually project
   MOVQ    symbols+56(FP), BX
   MOVQ    symbols_len+64(FP), R8
-  MOVQ    VIRT_VALUES, DX
 copy_field:
+  MOVWQZX syminfo_slot(BX), DX
+  ADDQ    VIRT_VALUES, DX
   MOVL    64(DX), CX
   TESTL   CX, CX
   JZ      next_field
@@ -227,7 +228,6 @@ eight:
   MOVLQSX CX, CX
   ADDQ    CX, DI
 next_field:
-  ADDQ    $VREG_SIZE, DX
   ADDQ    $syminfo__size, BX
   DECL    R8
   JNZ     copy_field

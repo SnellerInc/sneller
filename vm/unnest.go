@@ -64,6 +64,7 @@ func (u *Unnest) Open() (io.WriteCloser, error) {
 }
 
 func (u *Unnest) Close() error {
+	u.prog.reset()
 	return u.dst.Close()
 }
 

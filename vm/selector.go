@@ -17,11 +17,12 @@ package vm
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
+
+	"golang.org/x/exp/slices"
 )
 
 // Selection represents a set of
@@ -53,6 +54,7 @@ func selection(spec string) Selection {
 type syminfo struct {
 	value         ion.Symbol
 	encoded, mask uint32
+	slot          uint16
 	size          int8
 }
 
@@ -69,8 +71,9 @@ func evalfind(w *bytecode, delims []vmref, stride int) error {
 }
 
 type Projection struct {
-	dst QuerySink
-	sel Selection // selection w/ renaming
+	dst  QuerySink
+	sel  Selection // selection w/ renaming
+	prog prog
 
 	// constexpr, if non-nil, indicates
 	// that this projection is actually
@@ -96,7 +99,7 @@ func (s Selection) toConst() (ion.Struct, bool) {
 // NewProjection implements simple column projection from
 // one set of values to a subset of those values,
 // possibly re-named.
-func NewProjection(sel Selection, dst QuerySink) *Projection {
+func NewProjection(sel Selection, dst QuerySink) (*Projection, error) {
 	p := &Projection{
 		dst: dst,
 		sel: sel,
@@ -105,7 +108,22 @@ func NewProjection(sel Selection, dst QuerySink) *Projection {
 	if ok {
 		p.constexpr = &constexpr
 	}
-	return p
+
+	prg := &p.prog
+	prg.begin()
+	mem0 := prg.initMem()
+	mem := make([]*value, len(sel))
+	var err error
+	for i := range sel {
+		mem[i], err = prg.compileStore(mem0, sel[i].Expr, stackSlotFromIndex(regV, i), false)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// preserve the initial predicate mask
+	// so that we can use it for projection
+	prg.returnBool(prg.mergeMem(mem...), prg.validLanes())
+	return p, nil
 }
 
 // goroutine-local component of Select(...)
@@ -116,7 +134,6 @@ type projector struct {
 	aw     alignedWriter
 	dst    io.WriteCloser
 	outsel []syminfo   // output symbol IDs (sorted)
-	inslot []int       // parent.sel[p.inslot[i]] = outsel[i]
 	params rowParams   // always starts empty
 	aux    auxbindings // always starts empty
 
@@ -125,22 +142,6 @@ type projector struct {
 	// in that case we should preserve the delimiters
 	// as we compute them
 	dstrc rowConsumer // if dst is a RowConsumer, this is set
-}
-
-// implements sort.Interface for outsel + outslot
-type byID projector
-
-func (b *byID) Len() int {
-	return len(b.outsel)
-}
-
-func (b *byID) Swap(i, j int) {
-	b.outsel[i], b.outsel[j] = b.outsel[j], b.outsel[i]
-	b.inslot[i], b.inslot[j] = b.inslot[j], b.inslot[i]
-}
-
-func (b *byID) Less(i, j int) bool {
-	return b.outsel[i].value < b.outsel[j].value
 }
 
 func (p *Projection) Open() (io.WriteCloser, error) {
@@ -182,65 +183,23 @@ func (p *projector) update(st *symtab, aux *auxbindings) error {
 }
 
 func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
-	p.bc.restoreScratch(st) // see EndSegment
+	err := recompile(st, &p.parent.prog, &p.prog, &p.bc, aux, "projector")
+	if err != nil {
+		return err
+	}
 	sel := p.parent.sel
-	// output symbol table is the union of the
-	// input symbol table plus the output bindings
 	if len(p.outsel) != len(sel) {
 		p.outsel = make([]syminfo, len(sel))
 	}
-	allsame := true
 	for i := range sel {
-		bind := sel[i].Result()
-		sym := st.Intern(bind)
-		if p.outsel[i].value == sym {
-			continue
-		}
-		allsame = false
+		sym := st.Intern(sel[i].Result())
+		p.outsel[i].slot = uint16(stackSlotFromIndex(regV, i))
 		p.outsel[i].value = sym
 		p.outsel[i].encoded, p.outsel[i].mask, p.outsel[i].size = encoded(sym)
 	}
-	p.bc.symtab = st.symrefs
-	// if the output slot order is the same
-	// *and* the input symbol table has not changed
-	// in a meaningful way, we don't need to recompile
-	// the bytecode
-	if allsame && !p.prog.isStale(st) {
-		return p.update(st, aux)
-	}
-
-	// re-order the output symbols + slots
-	// so that they are ordered
-	if len(p.inslot) != len(p.outsel) {
-		p.inslot = make([]int, len(p.outsel))
-	}
-	for i := range p.inslot {
-		p.inslot[i] = i
-	}
-	sort.Sort((*byID)(p))
-
-	var err error
-	prg := &p.prog
-	prg.begin()
-	mem0 := prg.initMem()
-	mem := make([]*value, len(sel))
-	for i := range sel {
-		mem[i], err = prg.compileStore(mem0, sel[p.inslot[i]].Expr, stackSlotFromIndex(regV, i), false)
-		if err != nil {
-			return err
-		}
-	}
-	// preserve the initial predicate mask
-	// so that we can use it for projection
-	prg.returnBool(prg.mergeMem(mem...), prg.validLanes())
-
-	if err := prg.symbolize(st, aux); err != nil {
-		return fmt.Errorf("projector.symbolize(): %w", err)
-	}
-	if err := prg.compile(&p.bc, st, "projector"); err != nil {
-		return fmt.Errorf("projector.compile(): %w", err)
-	}
-
+	slices.SortFunc(p.outsel, func(x, y syminfo) bool {
+		return x.value < y.value
+	})
 	return p.update(st, aux)
 }
 
