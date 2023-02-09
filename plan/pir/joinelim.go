@@ -167,6 +167,11 @@ func joinelim(b *Trace) error {
 				break
 			}
 		}
+		if res == nil {
+			return fmt.Errorf("unable to eliminate join on %s = %s",
+				expr.ToString(eq.key), expr.ToString(eq.value))
+		}
+
 		// convert this EquiJoin step
 		// into an IterValue step
 		//

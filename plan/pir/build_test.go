@@ -178,6 +178,11 @@ func TestBuildError(t *testing.T) {
 			input: `SELECT EXISTS (SELECT 1 FROM table1 WHERE x = y) AS x FROM table`,
 			rx:    `is self-referenced as "x" in the outer query`,
 		},
+		{
+			// join on with erronous syntax (issue #2471)
+			input: `SELECT passenger_count FROM table JOIN X ON X=Y`,
+			rx:    `unable to eliminate join`,
+		},
 	}
 	for i := range tests {
 		in := tests[i].input
