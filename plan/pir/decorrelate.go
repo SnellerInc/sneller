@@ -52,7 +52,7 @@ func (b *Trace) decorrelate() (k, v expr.Node, x string, err error) {
 		p = top.parent()
 	}
 	it, ok := top.(*IterTable)
-	if !ok {
+	if !ok || it.Filter == nil {
 		return nil, nil, "", nil
 	}
 	for free := range it.free {
