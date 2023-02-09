@@ -42,15 +42,15 @@ func ReadTestcaseFromFile(fname string) (*Spec, error) {
 	}
 	defer f.Close()
 
-	return ReadTestcase(f)
+	return readTestcaseSpec(f)
 }
 
-// ReadTestcase reads parts of a text separated by lines `---`.
+// readTestcaseSpec reads parts of a text separated by lines `---`.
 //
 // Each part is a list of lines.
 // The procedure skips empty lines and lines staring with the `#`.
 // The procedure collects all key=value settings that start with double '##'.
-func ReadTestcase(reader io.Reader) (*Spec, error) {
+func readTestcaseSpec(reader io.Reader) (*Spec, error) {
 	rd := bufio.NewScanner(reader)
 
 	spec := &Spec{
@@ -77,8 +77,7 @@ func ReadTestcase(reader io.Reader) (*Spec, error) {
 		if n > 0 && line[0] == '#' {
 			if n > 1 && line[1] == '#' {
 				// parse '## key: value'
-				k, v, ok := parsekeyvalue(string(line[2:]))
-				if ok {
+				if k, v, ok := parseKeyValue(string(line[2:])); ok {
 					spec.Tags[k] = v
 				}
 			}
@@ -95,7 +94,7 @@ func ReadTestcase(reader io.Reader) (*Spec, error) {
 	return spec, nil
 }
 
-func parsekeyvalue(line string) (key string, value string, ok bool) {
+func parseKeyValue(line string) (key string, value string, ok bool) {
 	key, value, ok = strings.Cut(line, ":")
 	if !ok {
 		return

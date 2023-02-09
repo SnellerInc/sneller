@@ -20,6 +20,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SnellerInc/sneller/testquery"
+
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/plan"
 )
@@ -99,8 +101,8 @@ c41d94d227ad5492de00d395dc9822904999864e656f74656c96deb59a8a
 		if err != nil {
 			t.Fatal(err)
 		}
-		env := &queryenv{in: []plan.TableHandle{
-			bufhandle(decode(tcs[i].body)),
+		env := &testquery.Queryenv{In: []plan.TableHandle{
+			testquery.Bufhandle(decode(tcs[i].body)),
 		}}
 		op, err := plan.New(s, env)
 		if err != nil {
