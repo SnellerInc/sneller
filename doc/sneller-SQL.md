@@ -108,9 +108,15 @@ to navigate through nested structures.
 
 #### Null
 
-The value `NULL` is its own atom distinct
-from the absence of a value.
-The value `NULL` can be detected with the `IS NULL` expression.
+The value `NULL` is its own atom distinct from the absence of a value.
+The only meaningful operations that can be performed with `NULL` are testing its presence
+with `IS NULL` and performing equality comparison with `=`.
+
+Sneller SQL departs from ordinary SQL in that the value `NULL` compares
+equal to itself. In other words, `NULL = NULL` evaluates to `TRUE` rather
+than `NULL` as it would in a 100% SQL-conformant system.
+We chose to depart from the SQL standard here so that it would be possible
+to compare lists and structures with `NULL` fields using the `=` operator.
 
 #### Missing
 
@@ -188,7 +194,7 @@ expression_list = expr { ',' expr } ;
 
 sfw_query = 'SELECT' [ 'DISTINCT' ['ON' '(' expression_list ')'] ] ('*' | binding_list) [ from_clause ] [ where_clause ] [ group_by_clause ] [ order_by_clause ] [ limit_clause ] ;
 
-from_clause = 'FROM' path_expr [ 'AS' identifier]  { ',' path_expr [ 'AS' identifier] } ;
+from_clause = 'FROM' path_expr [ 'AS' identifier]  { (',' | 'JOIN') path_expr [ 'AS' identifier ] [ ON expr ]} ;
 
 where_clause = 'WHERE' expr ;
 
@@ -238,10 +244,14 @@ case_expr = 'CASE' [ expr ] { 'WHEN' expr 'THEN' expr } [ 'ELSE' expr ] 'END' ;
 
 #### JOIN restrictions
 
-The Sneller SQL query engine supports
-"un-nesting" cross joins and inner joins,
-but neither use the `JOIN` SQL keyword explicitly.
-The query engine does not yet support other kinds of SQL joins.
+Currently, the Sneller SQL engine only supports "unnesting" `CROSS JOIN`s
+and `INNER JOIN`s. For `INNER JOIN`, the `ON` condition must be an equality expression
+(i.e. `a = b`). The right-hand-side of the `INNER JOIN` must evaluate to 10,000 or fewer
+rows after predicates (i.e. clauses in `WHERE`) have been applied.
+
+For the best performance, we recommend that the expressions on both sides of the `ON`
+condition for an `INNER JOIN` evaluate to strings, numbers, or lists of strings and/or numbers,
+but not records.
 
 ##### Unnesting
 
@@ -410,8 +420,6 @@ the grouping may generate erroneous results for those buckets.
 (The query engine does not support comparing structures
 for equality across data blocks, so a single logical structure
 may result in more than one grouping bucket.)
-Grouping on lists is supported as long as those lists
-do not contain structures.
 
 <!--
 TODO: should we check for structures
