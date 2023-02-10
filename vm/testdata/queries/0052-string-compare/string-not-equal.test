@@ -1,0 +1,19 @@
+SELECT
+  COUNT(*)
+FROM
+  input
+WHERE
+  TRIM(inp) = want
+---
+{"inp": " x", "want": ""}
+{"inp": " xyz ", "want": "xyZ"}
+{"inp": "xyz", "want": "Xyz"}
+{"inp": "axyz", "want": "aXyz"}
+{"inp": " abcdefgh ", "want": "abcdefgH"}
+{"inp": "  ABCDEFgHIJKLM", "want": "ABCDEFGHIJKLM"}
+{"inp": "  ABCDEFGhIJKLMNOPQ  ", "want": "ABCDEFGHIJKLMNOPQ"}
+{"inp": "  ABCDEFGHiJKLMNOPQR  ", "want": "ABCDEFGHIJKLMNOPQR"}
+{"inp": "  ABCDEFGHIJkLMNOPQRST  ", "want": "ABCDEFGHIJKLMNOPQRST"}
+{"inp": "  ABCDEFGHIJkLMNOPQRST  ", "want": "ABCDEFGHIJKLMNOPQRst"}
+---
+{"count": 0}

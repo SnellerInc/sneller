@@ -1,0 +1,15 @@
+SELECT
+  (0 + CASE WHEN x = 1 THEN 15.5
+            WHEN x = 2 THEN 200
+            ELSE 42
+  END) AS y
+FROM
+  input
+---
+{"x": 1}
+{"x": 2}
+{"x": 7}
+---
+{"y": 15.5}
+{"y": 200}
+{"y": 42}

@@ -1,0 +1,23 @@
+SELECT
+  COUNT(*)
+FROM
+  input
+---
+{"x": 1}
+{"y": 2}
+{"x": 2, "name": "third"}
+{"x": 2, "imports": "fourth"}
+{"z": {"x": 500}}
+{}
+{"list": [0, 2, 3, 4, null]}
+{"x": 1}
+{"y": -3.841}
+{"x": 2, "name": null}
+{"x": 5}
+{"800": {"500": "x"}}
+{"null": null}
+{"list": [0, 2, 3, 4, null]}
+{}
+{}
+---
+{"count": 16}

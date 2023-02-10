@@ -1,0 +1,20 @@
+SELECT
+  (CASE WHEN x = 'one' THEN 1
+        WHEN x = 'two' THEN 2
+        WHEN x > 0 THEN x
+        ELSE 3
+  END) + 1 AS "val"
+FROM
+  input
+---
+{"x": "one"}
+{"x": "two"}
+{"x": "default"}
+{"x": 1}
+{"x": -1}
+---
+{"val": 2}
+{"val": 3}
+{"val": 4}
+{"val": 2}
+{"val": 4}

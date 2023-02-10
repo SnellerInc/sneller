@@ -1,7 +1,0 @@
-SELECT
-    'foo' || 'bar' AS x,
-    null AS y,
-    3 + 2 AS z
----
----
-{"x": "foobar", "y": null, "z": 5}

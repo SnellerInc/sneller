@@ -1,0 +1,14 @@
+# SIZE() on list
+SELECT
+  SIZE(list)
+FROM
+  input
+---
+{"list": []}
+{"list": [1]}
+{"list": [1, 3.14]}
+{"list": [1, 3.14, "sample"]}
+{"list": [1, 3.14, "sample", 4]}
+{"list": [1, 3.14, "sample", 4, 5]}
+{"list": [1, 3.14, "sample", 4, 5, 6]}
+{"list": [1, 3.14, "sample", 4, 5, 6, {"field1": 1, "field2": 512}]}

@@ -1,0 +1,7 @@
+SELECT
+  'foo' || 'bar' AS x,
+  NULL AS y,
+  3 + 2 AS z
+---
+---
+{"x": "foobar", "y": null, "z": 5}
