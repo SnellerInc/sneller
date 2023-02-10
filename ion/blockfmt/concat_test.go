@@ -20,6 +20,8 @@ import (
 	"io"
 	"os"
 	"testing"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestConcat(t *testing.T) {
@@ -65,6 +67,12 @@ func TestConcat(t *testing.T) {
 			Trailer: *c.Trailer(),
 		})
 	}
+	// sort largest desc first
+	slices.SortFunc(descs, func(x, y Descriptor) bool {
+		return x.Trailer.Offset > y.Trailer.Offset
+	})
+	// force buffering of final desc
+	dfs.MinPartSize = int(descs[len(descs)-1].Trailer.Offset) + 1
 
 	var conc concat
 	for i := range descs {

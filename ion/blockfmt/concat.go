@@ -16,6 +16,7 @@ package blockfmt
 
 import (
 	"fmt"
+	"io"
 	"path"
 	"sync"
 	"time"
@@ -96,6 +97,7 @@ func (c *concat) run(fs UploadFS, name string) error {
 	}
 	c.output.Path = name
 
+	var finalbuf []byte
 	part := int64(1)
 	for i := range c.inputs {
 		f, err := fs.Open(c.inputs[i].Path)
@@ -116,10 +118,25 @@ func (c *concat) run(fs UploadFS, name string) error {
 			f.Close()
 			return fmt.Errorf("blockfmt.concat.Run: etag mismatch for %s (%s -> %s)", c.inputs[i].Path, c.inputs[i].ETag, etag)
 		}
-		part, err = uploadReader(up, part, f, c.inputs[i].Trailer.Offset)
-		if err != nil {
-			f.Close()
-			return err
+		if c.inputs[i].Trailer.Offset < int64(up.MinPartSize()) {
+			if i != len(c.inputs)-1 {
+				return fmt.Errorf("non-final object size %d below minimum part size %d", c.inputs[i].Trailer.Offset, up.MinPartSize())
+			}
+			// all but the final input must be above the minimum part size;
+			// the final input can be smaller in which case we buffer it
+			// and prepend it to the trailer
+			finalbuf = make([]byte, c.inputs[i].Trailer.Offset)
+			_, err = io.ReadFull(f, finalbuf)
+			if err != nil {
+				f.Close()
+				return fmt.Errorf("concat last small object: %w", err)
+			}
+		} else {
+			part, err = uploadReader(up, part, f, c.inputs[i].Trailer.Offset)
+			if err != nil {
+				f.Close()
+				return err
+			}
 		}
 		err = f.Close()
 		if err != nil {
@@ -127,6 +144,9 @@ func (c *concat) run(fs UploadFS, name string) error {
 		}
 	}
 	tail := c.output.Trailer.trailer(c.output.Trailer.Algo, 1<<c.output.Trailer.BlockShift)
+	if finalbuf != nil {
+		tail = append(finalbuf, tail...)
+	}
 	err = up.Close(tail)
 	if err != nil {
 		return err
