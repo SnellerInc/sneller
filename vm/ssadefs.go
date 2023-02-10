@@ -161,9 +161,10 @@ const (
 	sStrSkipNCharLeft  // String skip n unicode code-point from left
 	sStrSkipNCharRight // String skip n unicode code-point from right
 
-	sCharLength // count number of unicode-points
-	sSubStr     // select a substring
-	sSplitPart  // Presto split_part
+	soctetlength     // count number of bytes in a string
+	scharacterlength // count number of character in a string
+	sSubStr          // select a substring
+	sSplitPart       // Presto split_part
 
 	sDfaT6  // DFA tiny 6-bit
 	sDfaT7  // DFA tiny 7-bit
@@ -797,9 +798,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// s, k = skip_nchar_right s, k -- skip n unicode character off the end (right) of a string slice
 	sStrSkipNCharRight: {text: "skip_nchar_right", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, bc: opSkipNcharRight},
 
-	sCharLength: {text: "char_length", argtypes: str1Args, rettype: stIntMasked, bc: opLengthStr},
-	sSubStr:     {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stString, bc: opSubstr},
-	sSplitPart:  {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtdict, bc: opSplitPart},
+	soctetlength:     {text: "octetlength", argtypes: str1Args, rettype: stIntMasked, bc: opoctetlength},
+	scharacterlength: {text: "characterlength", argtypes: str1Args, rettype: stIntMasked, bc: opcharlength},
+	sSubStr:          {text: "substr", argtypes: []ssatype{stString, stInt, stInt, stBool}, rettype: stString, bc: opSubstr},
+	sSplitPart:       {text: "split_part", argtypes: []ssatype{stString, stInt, stBool}, rettype: stStringMasked, immfmt: fmtdict, bc: opSplitPart},
 
 	sDfaT6:  {text: "dfa_tiny6", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT6},
 	sDfaT7:  {text: "dfa_tiny7", argtypes: str1Args, rettype: stBool, immfmt: fmtdict, bc: opDfaT7},

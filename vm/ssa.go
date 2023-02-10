@@ -959,10 +959,16 @@ func (p *prog) equals(left, right *value) *value {
 	}
 }
 
-// CharLength returns the number of unicode code-points in v
+// octetLength returns the number of bytes in v
+func (p *prog) octetLength(v *value) *value {
+	v = p.coerceStr(v)
+	return p.ssa2(soctetlength, v, p.mask(v))
+}
+
+// charLength returns the number of unicode code-points in v
 func (p *prog) charLength(v *value) *value {
 	v = p.coerceStr(v)
-	return p.ssa2(sCharLength, v, v)
+	return p.ssa2(scharacterlength, v, p.mask(v))
 }
 
 // Substring returns a substring at the provided startIndex with length

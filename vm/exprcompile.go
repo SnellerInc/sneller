@@ -833,15 +833,19 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 
 		return p.isSubnetOfIP4(lhs, *min, *max), nil
 
+	case expr.OctetLength:
+		v, err := compileargs(p, args, compileString)
+		if err != nil {
+			return nil, err
+		}
+		return p.octetLength(v[0]), nil
+
 	case expr.CharLength:
 		v, err := compileargs(p, args, compileString)
 		if err != nil {
 			return nil, err
 		}
-
-		lhs := v[0]
-
-		return p.charLength(lhs), nil
+		return p.charLength(v[0]), nil
 
 	case expr.Substring:
 		val, err := compileargs(p, args, compileString, compileNumber, compileNumber)

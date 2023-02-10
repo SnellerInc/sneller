@@ -551,9 +551,10 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opSkipNcharLeft:  {text: "skip_nchar_left", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
 		opSkipNcharRight: {text: "skip_nchar_right", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadS, bcPredicate)},
 
-		opLengthStr: {text: "lengthstr", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
-		opSubstr:    {text: "substr", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcPredicate)},
-		opSplitPart: {text: "split_part", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcReadS, bcPredicate)},
+		opoctetlength: {text: "octetlength", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opcharlength:  {text: "characterlength", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
+		opSubstr:      {text: "substr", args: makeArgs(bcWriteS, bcReadS, bcReadS, bcReadS, bcPredicate)},
+		opSplitPart:   {text: "split_part", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcDictSlot, bcReadS, bcPredicate)},
 
 		opDfaT6:  {text: "dfa_tiny6", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},
 		opDfaT7:  {text: "dfa_tiny7", args: makeArgs(bcWriteK, bcReadS, bcDictSlot, bcPredicate)},

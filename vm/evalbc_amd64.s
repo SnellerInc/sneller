@@ -9474,7 +9474,22 @@ next:
   NEXT_ADVANCE(BC_SLOT_SIZE*3 + BC_DICT_SIZE)
 //; #endregion bcTrim4charRight
 
-// i64[0] = utf8_length(slice[1]).k[2]
+// i64[0] = octet_length(slice[1]).k[2]
+TEXT bcoctetlength(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VMOVDQU32.Z BC_VSTACK_PTR(BX, 64), K1, Z0
+  VEXTRACTI32X8 $1, Z0, Y1
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  VPMOVZXDQ Y0, Z0
+  VPMOVZXDQ Y1, Z1
+
+  BC_STORE_I64_TO_SLOT(IN(Z0), IN(Z1), IN(DX))
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
+
+// i64[0] = char_length(slice[1]).k[2]
 //
 // The length of **a valid UTF-8 string** can be calculated in the following way:
 //
@@ -9484,7 +9499,7 @@ next:
 // a UTF-8 sequence) have such bit pattern. This calculation takes advantage of
 // the VPSADBW instruction, which sums up to 8 bytes, which match the 0b10xxxxxx
 // pattern - this sum is then subtracted from the initial byte length of the string.
-TEXT bcLengthStr(SB), NOSPLIT|NOFRAME, $0
+TEXT bccharlength(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
   BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))

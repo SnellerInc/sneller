@@ -1663,6 +1663,11 @@ Compatibility notice: `ARRAY_POSITION()` can be used to match `NULL`
 values, for example `ARRAY_POSITION([1, 2, NULL], NULL)` would yield
 `3`. `MISSING` values cannot be matched nor stored in lists.
 
+#### `OCTET_LENGTH`
+
+`OCTET_LENGTH(str)` returns the length of `str` in bytes or `MISSING`
+if `str` doesn't evaluate to a string.
+
 #### `CHAR_LENGTH` or `CHARACTER_LENGTH`
 
 `CHAR_LENGTH(str)` (or, alternatively, `CHARACTER_LENGTH(str)`)

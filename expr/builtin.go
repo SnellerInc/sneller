@@ -126,7 +126,8 @@ const (
 	EqualsFuzzyUnicode   // sql:EQUALS_FUZZY_UNICODE
 	ContainsFuzzy        // sql:CONTAINS_FUZZY
 	ContainsFuzzyUnicode // sql:CONTAINS_FUZZY_UNICODE
-	CharLength           // sql:CHAR_LENGTH sql:CHARACTER_LENGTH
+	OctetLength
+	CharLength // sql:CHAR_LENGTH sql:CHARACTER_LENGTH
 	IsSubnetOf
 	Substring
 	SplitPart

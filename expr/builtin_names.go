@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [118]string{
+var builtin2Name = [119]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -16,6 +16,7 @@ var builtin2Name = [118]string{
 	"EQUALS_FUZZY_UNICODE",     // EqualsFuzzyUnicode
 	"CONTAINS_FUZZY",           // ContainsFuzzy
 	"CONTAINS_FUZZY_UNICODE",   // ContainsFuzzyUnicode
+	"OCTET_LENGTH",             // OctetLength
 	"CHAR_LENGTH",              // CharLength
 	"IS_SUBNET_OF",             // IsSubnetOf
 	"SUBSTRING",                // Substring
@@ -151,6 +152,8 @@ func name2Builtin(s string) BuiltinOp {
 		return ContainsFuzzy
 	case "CONTAINS_FUZZY_UNICODE":
 		return ContainsFuzzyUnicode
+	case "OCTET_LENGTH":
+		return OctetLength
 	case "CHAR_LENGTH":
 		return CharLength
 	case "CHARACTER_LENGTH":
