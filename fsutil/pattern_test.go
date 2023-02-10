@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package db
+package fsutil
 
 import (
 	"testing"
@@ -21,18 +21,16 @@ import (
 func TestMatch(t *testing.T) {
 	t.Run("pattern", testPattern)
 	t.Run("expand", testExpand)
-	t.Run("detemplate", testDetemplate)
-	t.Run("hascapture", testHasCapture)
 	t.Run("toglob", testToGlob)
 }
 
 func testPattern(t *testing.T) {
-	var mr matcher
+	var mr Matcher
 	n := 0
 	run := func(pattern, name string, want bool, wanterr error) {
 		t.Helper()
 		n++
-		found, err := mr.match(pattern, name)
+		found, err := mr.Match(pattern, name)
 		if found != want {
 			t.Errorf("case %d: expected found = %v, got %v", n, want, found)
 		}
@@ -151,12 +149,12 @@ func testPattern(t *testing.T) {
 }
 
 func testExpand(t *testing.T) {
-	var mr matcher
+	var mr Matcher
 	n := 0
 	run := func(pattern, name, template, result string, merr, eerr error) {
 		t.Helper()
 		n++
-		found, err := mr.match(pattern, name)
+		found, err := mr.Match(pattern, name)
 		if !found {
 			t.Errorf("case %d: expected match", n)
 			return
@@ -168,7 +166,7 @@ func testExpand(t *testing.T) {
 			// ignore results
 			return
 		}
-		got, err := mr.expand(template)
+		got, err := mr.Expand(template)
 		if err != eerr {
 			t.Errorf("case %d: expected expand err = %v, got %v", n, eerr, err)
 		}
@@ -207,61 +205,12 @@ func testExpand(t *testing.T) {
 	)
 }
 
-func testDetemplate(t *testing.T) {
-	n := 0
-	run := func(template, want string, wantok bool, wanterr error) {
-		t.Helper()
-		name, ok, err := detemplate(template)
-		if ok != wantok {
-			t.Errorf("case %d: expected ok = %v, got %v", n, wantok, ok)
-		}
-		if name != want {
-			t.Errorf("case %d: expected name = %q, got %q", n, want, name)
-		}
-		if err != wanterr {
-			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
-		}
-		n++
-	}
-	run("foo", "foo", true, nil)
-	run("$$foo", "$foo", true, nil)
-	run("foo$$", "foo$", true, nil)
-	run("$foo", "", false, nil)
-	run("foo-$bar", "", false, nil)
-	run("foo-$bar", "", false, nil)
-	run("foo-$$bar", "foo-$bar", true, nil)
-	run("foo$", "", false, ErrBadPattern)
-	run("foo${bar", "", false, ErrBadPattern)
-}
-
-func testHasCapture(t *testing.T) {
-	n := 0
-	run := func(pattern string, want, wantok bool) {
-		t.Helper()
-		got, ok := hascapture(pattern)
-		if got != want {
-			t.Errorf("case %d: expected %v, got %v", n, want, got)
-		}
-		if ok != wantok {
-			t.Errorf("case %d: expected ok = %v, got %v", n, wantok, ok)
-		}
-		n++
-	}
-	run("", false, true)
-	run("foo", false, true)
-	run(`foo-\{bar}`, false, true)
-	run("{x}", true, true)
-	run("{x}.json", true, true)
-	run("foo-{x}", true, true)
-	run("foo-{x}.json", true, true)
-}
-
 func testToGlob(t *testing.T) {
 	n := 0
 	run := func(pattern, want string, wanterr error) {
 		t.Helper()
 		n++
-		got, err := toglob(pattern)
+		got, err := ToGlob(pattern)
 		if err != wanterr {
 			t.Errorf("case %d: expected err = %v, got %v", n, wanterr, err)
 		}
@@ -294,9 +243,9 @@ func BenchmarkMatchExpand(b *testing.B) {
 	pat := "s3://bucket/foo/bar/baz-{yyyy}-{mm}-{dd}.tar.gz"
 	tmpl := "table-$yyyy-$mm-$dd"
 	b.ReportAllocs() // should be zero
-	var mr matcher
+	var mr Matcher
 	for i := 0; i < b.N; i++ {
-		mr.match(pat, name)
-		mr.expand(tmpl)
+		mr.Match(pat, name)
+		mr.Expand(tmpl)
 	}
 }

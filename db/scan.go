@@ -198,7 +198,7 @@ func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComple
 			}
 			return nil
 		}
-		pat, err = toglob(pat)
+		pat, err = fsutil.ToGlob(pat)
 		if err != nil {
 			return 0, err
 		}

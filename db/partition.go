@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"golang.org/x/exp/maps"
@@ -40,7 +41,7 @@ type collector struct {
 	parts []partition
 	ind   map[string]int // index into parts
 	buf   []byte
-	mr    matcher
+	mr    fsutil.Matcher
 }
 
 func (c *collector) total() (n int, size int64) {
@@ -86,8 +87,7 @@ func (c *collector) init(parts []Partition) error {
 		// reference a capture group if a template
 		// was not provided
 		if parts[i].Value == "" {
-			_, rest := splitident(field)
-			if rest != "" {
+			if !fsutil.ValidCaptureName(field) {
 				return fmt.Errorf("cannot use field name %q as value template", field)
 			}
 		}
@@ -116,7 +116,7 @@ func (c *collector) add(glob string, in blockfmt.Input) (*partition, error) {
 // this method. Callers should copy the contents
 // as necessary.
 func (c *collector) match(glob, path string) ([]byte, error) {
-	found, err := c.mr.match(glob, path)
+	found, err := c.mr.Match(glob, path)
 	if err != nil {
 		return nil, err
 	} else if !found {
@@ -189,19 +189,19 @@ func (c *collector) part(glob, path string) (*partition, error) {
 // calls p.mr.get(name)
 func (c *collector) expand(name, template string) ([]byte, error) {
 	if template != "" {
-		return c.mr.expand(template)
+		return c.mr.Expand(template)
 	}
 	if name == "" {
 		// should not be possible; we already
 		// validated this at init time
 		return nil, fmt.Errorf("neither field name nor template specified")
 	}
-	s := c.mr.get(name)
+	s := c.mr.Get(name)
 	if s == "" {
 		return nil, fmt.Errorf("no capture group %q in pattern", name)
 	}
 	// reuse the result buffer to avoid alloc...
-	return append(c.mr.result[:0], s...), nil
+	return append(c.mr.Result[:0], s...), nil
 }
 
 func evalconst(typ string, val []byte) (ion.Datum, error) {

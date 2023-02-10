@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/aws/s3"
+	"github.com/SnellerInc/sneller/fsutil"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 
 	"golang.org/x/exp/maps"
@@ -254,7 +255,7 @@ func open(infs InputFS, name, etag string, size int64) (fs.File, error) {
 //
 // this is supposed to be safe to call from multiple goroutines
 func (q *QueueRunner) filter(src *queueBatch, cfg *Config, def *Definition, dst *batch) error {
-	var mr matcher
+	var mr fsutil.Matcher
 	dst.filtered.init(def.Partitions)
 	dst.indirect = dst.indirect[:0]
 outer:
@@ -263,7 +264,7 @@ outer:
 		etag := src.inputs[i].ETag()
 		for j := range def.Inputs {
 			glob := def.Inputs[j].Pattern
-			found, err := mr.match(glob, p)
+			found, err := mr.Match(glob, p)
 			if err != nil || !found {
 				continue
 			}

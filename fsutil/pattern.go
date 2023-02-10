@@ -12,30 +12,36 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package db
+package fsutil
 
 import (
+	"errors"
 	"strings"
 	"unicode/utf8"
 )
+
+// ErrBadPattern is returned by functions when a
+// bad pattern is encountered.
+var ErrBadPattern = errors.New("bad pattern")
 
 // MaxCaptureGroups is the maximum number of
 // capture groups that can appear in a table
 // name template.
 const MaxCaptureGroups = 8
 
-// matcher holds the results of a call to match.
+// Matcher holds the results of a call to match.
 // The caller should copy out the results as
-// needed, as glob and result will be reused
+// needed, as the Result field will be reused
 // across calls to match.
-type matcher struct {
+type Matcher struct {
+	// Result holds the expanded template
+	Result []byte // expanded template
+
 	// bookkeeping for capture groups
-	caps   [MaxCaptureGroups][2]string
-	glob   []byte // expanded pattern
-	result []byte // expanded template
+	caps [MaxCaptureGroups][2]string
 }
 
-// match matches a pattern against the name. If
+// Match matches a pattern against the name. If
 // template != "", this also attempts to expand
 // the template with parts taken from name.
 //
@@ -79,7 +85,7 @@ type matcher struct {
 //	  'a' - 'z' | 'A' - 'Z' | '0' - '9' | '_'
 //
 // Multi-character wildcard groups (* and {...})
-// will match the shortest sequence possible.
+// will Match the shortest sequence possible.
 // For example, the pattern "{x}-*-{y}" matched
 // against "a-b-c-d" and expanded into the
 // template "$x-y" will produce "a-c-d".
@@ -87,7 +93,7 @@ type matcher struct {
 // This returns ErrBadPattern if pattern is
 // malformed or has more than MaxCaptureGroups
 // capture groups.
-func (m *matcher) match(pattern, name string) (bool, error) {
+func (m *Matcher) Match(pattern, name string) (bool, error) {
 	m.caps = [MaxCaptureGroups][2]string{}
 	put := func(name, value string) bool {
 		if name == "" || value == "" {
@@ -125,9 +131,6 @@ outer:
 				if !put(ident, got) {
 					return false, ErrBadPattern
 				}
-				m.glob = append(m.glob, got...)
-			} else {
-				m.glob = append(m.glob, '*')
 			}
 			break
 		}
@@ -157,11 +160,7 @@ outer:
 					if !put(ident, name[:i]) {
 						return false, ErrBadPattern
 					}
-					m.glob = append(m.glob, name[:i]...)
-				} else if wc {
-					m.glob = append(m.glob, '*')
 				}
-				m.glob = append(m.glob, part...)
 				name = rem
 				continue outer
 			}
@@ -179,11 +178,11 @@ outer:
 	return name == "", nil
 }
 
-// get gets a capture result from the last call
+// Get gets a capture result from the last call
 // to match. If a capture group with the given
 // name was not found in the last call to match,
 // this returns "".
-func (m *matcher) get(name string) string {
+func (m *Matcher) Get(name string) string {
 	if name == "" {
 		return ""
 	}
@@ -198,81 +197,57 @@ func (m *matcher) get(name string) string {
 	return ""
 }
 
-// expand attempts to expand a template from
+// Expand attempts to Expand a template from
 // capture groups from the last call to match.
 //
 // The resulting slice is reused by the matcher
 // and may be invalidated by subsequent calls.
 // The caller should arrange to copy the result
 // if needed between calls.
-func (m *matcher) expand(template string) ([]byte, error) {
-	m.result = m.result[:0]
+func (m *Matcher) Expand(template string) ([]byte, error) {
+	m.Result = m.Result[:0]
 	for template != "" {
 		ident, part, rest, ok := splittemplate(template)
 		if !ok {
 			return nil, ErrBadPattern
 		}
 		if ident != "" {
-			got := m.get(ident)
+			got := m.Get(ident)
 			if got == "" {
 				// no match for ident
 				return nil, ErrBadPattern
 			}
-			m.result = append(m.result, got...)
+			m.Result = append(m.Result, got...)
 		}
-		m.result = append(m.result, part...)
+		m.Result = append(m.Result, part...)
 		template = rest
 	}
-	return m.result, nil
+	return m.Result, nil
 }
 
-// detemplate unescapes a template and ensures
-// that it has no template variables. This only
-// returns an error if template is malformed.
-func detemplate(template string) (name string, ok bool, err error) {
-	out := make([]byte, 0, len(template))
-	name = template
-	for template != "" {
-		// usually this will return after the first
-		// iteration, but will loop if template
-		// contains "$$"...
-		ident, part, rest, ok := splittemplate(template)
-		if !ok {
-			return "", false, ErrBadPattern
-		}
-		if ident != "" {
-			// found a template variable
-			return "", false, nil
-		}
-		out = append(out, part...)
-		template = rest
-	}
-	if out != nil {
-		name = string(out)
-	}
-	return name, true, nil
-}
-
-// hascapture returns whether the given pattern
-// contains a capture group.
-func hascapture(pattern string) (has, ok bool) {
-	for pattern != "" {
-		_, ident, _, rest, ok := splitmatch(pattern)
-		if !ok {
-			return false, false
-		}
-		if ident != "" {
-			return true, true
-		}
-		pattern = rest
-	}
-	return false, true
-}
-
-// toglob converts a pattern like
+// ToGlob converts a pattern like
 // "foo-{bar}.json" into "foo-*.json".
-func toglob(pattern string) (string, error) {
+func ToGlob(pattern string) (string, error) {
+	wc, id, part, rest, ok := splitmatch(pattern)
+	if !ok {
+		return "", ErrBadPattern
+	}
+	// avoid allocation if possible
+	if rest == "" {
+		if wc {
+			if id != "" {
+				return "*" + part, nil // pattern like "{id}part"
+			}
+			return pattern, nil // pattern like "*part"
+		}
+		return part, nil // pattern like "part"
+	}
 	var sb strings.Builder
+	if wc {
+		sb.WriteByte('*')
+	}
+	sb.WriteString(part)
+	pattern = rest
 	for pattern != "" {
 		wc, _, part, rest, ok := splitmatch(pattern)
 		if !ok {
@@ -461,6 +436,14 @@ func splittemplate(template string) (ident, part, rest string, ok bool) {
 		rest = template[i:]
 	}
 	return ident, part, rest, true
+}
+
+// ValidCaptureName returns whether or not ident
+// is a valid capture group name for a glob
+// pattern.
+func ValidCaptureName(ident string) bool {
+	_, rest := splitident(ident)
+	return rest == ""
 }
 
 func splitident(s string) (ident, rest string) {

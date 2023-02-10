@@ -17,12 +17,12 @@ package db
 import (
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 
 	"github.com/SnellerInc/sneller/date"
+	"github.com/SnellerInc/sneller/fsutil"
 )
 
 // Input is one input pattern
@@ -199,12 +199,6 @@ func WriteDefinition(dst OutputFS, db string, s *Definition) error {
 	return err
 }
 
-var (
-	// ErrBadPattern should be returned by Resolver.Split
-	// when it encounters an invalid pattern.
-	ErrBadPattern = errors.New("bad pattern")
-)
-
 func badPattern(pat string) error {
-	return fmt.Errorf("%q: %w", pat, ErrBadPattern)
+	return fmt.Errorf("%q: %w", pat, fsutil.ErrBadPattern)
 }
