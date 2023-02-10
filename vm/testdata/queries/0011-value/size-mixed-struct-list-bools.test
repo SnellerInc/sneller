@@ -1,0 +1,206 @@
+SELECT
+  SIZE(obj) AS len
+FROM
+  input
+---
+{}
+{"obj": [false]}
+{"obj": [false, true, true, false, true, false, false, false]}
+{"obj": {"a": true, "b": true, "c": true, "d": false}}
+{"obj": [true, false, false, true, true, true]}
+{"obj": {"a": true}}
+{"obj": [true, true, true, true, true, false, true]}
+{"obj": [true, false, true]}
+{"obj": [false, true]}
+{}
+{"obj": {"a": false, "b": true, "c": false, "d": false, "e": false, "f": true, "g": true}}
+{"obj": [true, true, true, true, true, true, false]}
+{"obj": {"a": true}}
+{"obj": {"a": true, "b": true, "c": true, "d": false, "e": false, "f": false, "g": true, "h": false, "i": false, "j": true}}
+{"obj": {"a": true, "b": false, "c": true, "d": false, "e": true, "f": false, "g": false, "h": false, "i": true}}
+{}
+{"obj": [true, false, true, true, true]}
+{"obj": [true, false, true]}
+{"obj": [false, false, false]}
+{}
+{}
+{"obj": [true, false, false, false, false]}
+{"obj": {"a": true}}
+{"obj": [false, true, false, true, false, true, true, false]}
+{"obj": [true, true, true]}
+{"obj": {"a": true, "b": false, "c": false, "d": true, "e": false}}
+{}
+{"obj": [true, true, true, true, true, false, true, true]}
+{"obj": {"a": true}}
+{"obj": [false, false, false]}
+{}
+{"obj": [false, false, false, false, true, false, false, true]}
+{"obj": [true]}
+{"obj": {"a": false}}
+{}
+{}
+{}
+{"obj": [false, true, true, false, false, false, false, true, false, false, false, false]}
+{"obj": {"a": true, "b": false, "c": false, "d": false, "e": true, "f": false, "g": false, "h": true, "i": true}}
+{"obj": {"a": true, "b": true, "c": false, "d": true, "e": true, "f": true, "g": true, "h": false, "i": false}}
+{"obj": {"a": true, "b": true, "c": true, "d": false, "e": false, "f": false, "g": true, "h": true, "i": false}}
+{}
+{"obj": {"a": true, "b": false, "c": false}}
+{"obj": {"a": false}}
+{"obj": [false, false, true, false]}
+{}
+{"obj": [true, true, true, false, false]}
+{}
+{}
+{}
+{"obj": [false, true]}
+{"obj": {"a": true, "b": false, "c": true, "d": true, "e": true, "f": true, "g": false, "h": false, "i": false}}
+{"obj": {"a": false, "b": false}}
+{"obj": [false]}
+{"obj": {"a": true, "b": true, "c": false, "d": false, "e": true, "f": false}}
+{"obj": [true, true, false, true, true, false, true, false, false, false]}
+{"obj": {"a": false, "b": false, "c": false, "d": true, "e": true, "f": false, "g": true, "h": true, "i": true}}
+{}
+{"obj": [false, true, true, false]}
+{"obj": {"a": true, "b": false, "c": false, "d": true}}
+{"obj": {"a": false, "b": true, "c": false, "d": false, "e": false, "f": true, "g": false, "h": false, "i": false, "j": false, "k": false}}
+{}
+{"obj": {"a": false, "b": true, "c": true, "d": true}}
+{"obj": [true, true, false, true, false, false, false, false, true, false, false]}
+{}
+{}
+{"obj": {"a": false, "b": true, "c": false}}
+{}
+{}
+{"obj": {"a": false, "b": false, "c": false, "d": false, "e": false}}
+{"obj": {"a": true, "b": true, "c": true, "d": true, "e": false}}
+{}
+{"obj": [true, true, true, true]}
+{"obj": {"a": true, "b": true, "c": true, "d": false, "e": false, "f": false, "g": false}}
+{"obj": {"a": true, "b": true}}
+{"obj": [false, true, true]}
+{"obj": {"a": false}}
+{"obj": {"a": false, "b": true, "c": false, "d": true, "e": false, "f": true, "g": true, "h": true, "i": true, "j": true, "k": true, "l": true}}
+{"obj": [false, false, false, true, false, true, true, true]}
+{"obj": {"a": false, "b": false}}
+{"obj": [true, true, true, true, false, true, true, true, true, true, false, true]}
+{"obj": {"a": false}}
+{"obj": {"a": true, "b": true, "c": false, "d": false}}
+{"obj": {"a": false, "b": true, "c": false, "d": false, "e": true, "f": true, "g": true, "h": false, "i": true, "j": false, "k": true, "l": false}}
+{"obj": [false, false, true, false, true, true, true, false, false, true, false]}
+{}
+{}
+{}
+{"obj": [false]}
+{"obj": [true, true, true]}
+{"obj": [true, true]}
+{}
+{"obj": [false, false, true, false, false, false, false, true, false, true]}
+{"obj": [false, false, true, false, true, false, true]}
+{"obj": [true, false, true, false, true, true, false, false, true, false, true]}
+{}
+{"obj": [false, false, false, false, true, true, true, true, false]}
+{"obj": {"a": false, "b": true}}
+{"obj": [false, true]}
+{"obj": [true, true, false]}
+---
+{}
+{"len": 1}
+{"len": 8}
+{"len": 4}
+{"len": 6}
+{"len": 1}
+{"len": 7}
+{"len": 3}
+{"len": 2}
+{}
+{"len": 7}
+{"len": 7}
+{"len": 1}
+{"len": 10}
+{"len": 9}
+{}
+{"len": 5}
+{"len": 3}
+{"len": 3}
+{}
+{}
+{"len": 5}
+{"len": 1}
+{"len": 8}
+{"len": 3}
+{"len": 5}
+{}
+{"len": 8}
+{"len": 1}
+{"len": 3}
+{}
+{"len": 8}
+{"len": 1}
+{"len": 1}
+{}
+{}
+{}
+{"len": 12}
+{"len": 9}
+{"len": 9}
+{"len": 9}
+{}
+{"len": 3}
+{"len": 1}
+{"len": 4}
+{}
+{"len": 5}
+{}
+{}
+{}
+{"len": 2}
+{"len": 9}
+{"len": 2}
+{"len": 1}
+{"len": 6}
+{"len": 10}
+{"len": 9}
+{}
+{"len": 4}
+{"len": 4}
+{"len": 11}
+{}
+{"len": 4}
+{"len": 11}
+{}
+{}
+{"len": 3}
+{}
+{}
+{"len": 5}
+{"len": 5}
+{}
+{"len": 4}
+{"len": 7}
+{"len": 2}
+{"len": 3}
+{"len": 1}
+{"len": 12}
+{"len": 8}
+{"len": 2}
+{"len": 12}
+{"len": 1}
+{"len": 4}
+{"len": 12}
+{"len": 11}
+{}
+{}
+{}
+{"len": 1}
+{"len": 3}
+{"len": 2}
+{}
+{"len": 10}
+{"len": 7}
+{"len": 11}
+{}
+{"len": 9}
+{"len": 2}
+{"len": 2}
+{"len": 3}

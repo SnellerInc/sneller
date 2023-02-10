@@ -1607,8 +1607,8 @@ in other SQL engines:
 
 - `TRIM(cutset FROM str)` or `TRIM(BOTH cutset FROM str)` are both
   equivalent to `TRIM(str, cutset)`;
-- `TRIM(LEADING cutset FROM str) is equivalent to `LTRIM(str, cutset);
-- `TRIM(TRAILING cutset FROM str) is equivalent to `RTRIM(str, cutset).
+- `TRIM(LEADING cutset FROM str)` is equivalent to `LTRIM(str, cutset)`;
+- `TRIM(TRAILING cutset FROM str)` is equivalent to `RTRIM(str, cutset)`.
 
 *Known limitations: the `cutset` string must be a constant
 string of four or fewer ASCII characters.*
@@ -1634,6 +1634,11 @@ LTRIM('\r\nline\r\n', '\r\n') -> 'line\r\n'
  - If `expr` is a struct, the number of fields in that struct
  as an integer
  - Otherwise, `MISSING`
+
+#### `ARRAY_SIZE`
+
+`ARRAY_SIZE(list)` returns the length of the `list` as an integer
+or `MISSING` if the `list` expression doesn't evaluate to a list.
 
 #### `ARRAY_CONTAINS`
 

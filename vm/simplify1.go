@@ -761,7 +761,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 318: /* boxint */
+	case 319: /* boxint */
 		if len(v.args) == 2 {
 			// (boxint _tmp9:(broadcast.i lit) _) -> (literal lit)
 			if _tmp9 := v.args[0]; _tmp9.op == 149 {
@@ -770,7 +770,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 319: /* boxfloat */
+	case 320: /* boxfloat */
 		if len(v.args) == 2 {
 			// (boxfloat _tmp10:(broadcast.f lit) _) -> (literal lit)
 			if _tmp10 := v.args[0]; _tmp10.op == 148 {
@@ -779,7 +779,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 321: /* boxts */
+	case 322: /* boxts */
 		if len(v.args) == 2 {
 			// (boxts _tmp11:(broadcast.ts lit) _), "ts := date.UnixMicro(int64(lit)); true" -> (literal ts)
 			if _tmp11 := v.args[0]; _tmp11.op == 270 {
@@ -790,7 +790,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 328: /* aggapproxcount */
+	case 329: /* aggapproxcount */
 		if len(v.args) == 2 {
 			// (aggapproxcount mem (false) _) -> mem
 			if mem := v.args[0]; true {
@@ -799,7 +799,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 329: /* aggapproxcount.partial */
+	case 330: /* aggapproxcount.partial */
 		if len(v.args) == 2 {
 			// (aggapproxcount.partial mem (false) _) -> mem
 			if mem := v.args[0]; true {
@@ -808,7 +808,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 330: /* aggapproxcount.merge */
+	case 331: /* aggapproxcount.merge */
 		if len(v.args) == 2 {
 			// (aggapproxcount.merge mem (false) _) -> mem
 			if mem := v.args[0]; true {
@@ -817,7 +817,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 331: /* aggslotapproxcount */
+	case 332: /* aggslotapproxcount */
 		if len(v.args) == 4 {
 			// (aggslotapproxcount mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
@@ -826,7 +826,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 332: /* aggslotapproxcount.partial */
+	case 333: /* aggslotapproxcount.partial */
 		if len(v.args) == 4 {
 			// (aggslotapproxcount.partial mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
@@ -835,7 +835,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
-	case 333: /* aggslotapproxcount.merge */
+	case 334: /* aggslotapproxcount.merge */
 		if len(v.args) == 4 {
 			// (aggslotapproxcount.merge mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {

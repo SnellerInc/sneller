@@ -228,6 +228,7 @@ const (
 
 	ObjectSize // sql:SIZE
 	ArrayContains
+	ArraySize
 	ArrayPosition
 
 	TableGlob
@@ -645,6 +646,16 @@ func checkArrayContains(h Hint, args []Node) error {
 	}
 	if !TypeOf(args[0], h).AnyOf(ListType) {
 		return errtype(args[0], "first argument to ARRAY_CONTAINS must be a list")
+	}
+	return nil
+}
+
+func checkArraySize(h Hint, args []Node) error {
+	if len(args) != 1 {
+		return errsyntaxf("ARRAY_SIZE expects one arguments, but found %d", len(args))
+	}
+	if !TypeOf(args[0], h).AnyOf(ListType) {
+		return errtype(args[0], "first argument to ARRAY_SIZE must be a list")
 	}
 	return nil
 }
@@ -1118,6 +1129,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	GeoDistance: {check: fixedArgs(NumericType, NumericType, NumericType, NumericType), ret: FloatType | MissingType},
 
 	ObjectSize:    {check: checkObjectSize, ret: NumericType | MissingType},
+	ArraySize:     {check: checkArraySize, ret: NumericType | MissingType},
 	ArrayContains: {check: checkArrayContains, ret: LogicalType | MissingType},
 	ArrayPosition: {check: checkArrayPosition, ret: NumericType | MissingType},
 

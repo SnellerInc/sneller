@@ -1,0 +1,70 @@
+SELECT
+  ARRAY_SIZE(x) AS size
+FROM
+  input
+---
+{"x": []}
+{"x": [true]}
+{"x": [true, true]}
+{"x": [true, true, true]}
+{"x": [true, true, true, true]}
+{"x": [true, true, true, true, true]}
+{"x": [true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+{"x": [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]}
+---
+{"size": 0}
+{"size": 1}
+{"size": 2}
+{"size": 3}
+{"size": 4}
+{"size": 5}
+{"size": 6}
+{"size": 7}
+{"size": 8}
+{"size": 9}
+{"size": 10}
+{"size": 11}
+{"size": 12}
+{"size": 13}
+{"size": 14}
+{"size": 15}
+{"size": 16}
+{"size": 17}
+{"size": 18}
+{"size": 19}
+{"size": 20}
+{"size": 21}
+{"size": 22}
+{"size": 23}
+{"size": 24}
+{"size": 25}
+{"size": 26}
+{"size": 27}
+{"size": 28}
+{"size": 29}
+{"size": 30}
+{"size": 31}

@@ -2,7 +2,7 @@ package expr
 
 // Code generated automatically; DO NOT EDIT
 
-var builtin2Name = [117]string{
+var builtin2Name = [118]string{
 	"CONCAT",                   // Concat
 	"TRIM",                     // Trim
 	"LTRIM",                    // Ltrim
@@ -105,6 +105,7 @@ var builtin2Name = [117]string{
 	"GEO_DISTANCE",             // GeoDistance
 	"SIZE",                     // ObjectSize
 	"ARRAY_CONTAINS",           // ArrayContains
+	"ARRAY_SIZE",               // ArraySize
 	"ARRAY_POSITION",           // ArrayPosition
 	"TABLE_GLOB",               // TableGlob
 	"TABLE_PATTERN",            // TablePattern
@@ -334,6 +335,8 @@ func name2Builtin(s string) BuiltinOp {
 		return ObjectSize
 	case "ARRAY_CONTAINS":
 		return ArrayContains
+	case "ARRAY_SIZE":
+		return ArraySize
 	case "ARRAY_POSITION":
 		return ArrayPosition
 	case "TABLE_GLOB":

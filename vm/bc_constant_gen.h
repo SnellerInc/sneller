@@ -29,7 +29,6 @@ CONST_DATA_U64(constpool, 40, $8) // 0x0000000000000008
 #define CONSTQ_10() CONST_GET_PTR(constpool, 48)
 CONST_DATA_U64(constpool, 48, $10) // 0x000000000000000a
 
-#define CONSTD_0x0C() CONST_GET_PTR(constpool, 56)
 #define CONSTD_12() CONST_GET_PTR(constpool, 56)
 #define CONSTQ_12() CONST_GET_PTR(constpool, 56)
 CONST_DATA_U64(constpool, 56, $12) // 0x000000000000000c

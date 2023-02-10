@@ -927,7 +927,19 @@ func compilefuncaux(p *prog, b *expr.Builtin, args []expr.Node) (*value, error) 
 		if err != nil {
 			return nil, err
 		}
-		return p.ssa2(sobjectsize, v[0], p.mask(v[0])), nil
+
+		if v[0].primary() == stList {
+			return p.arraySize(v[0]), nil
+		}
+
+		return p.objectSize(v[0]), nil
+
+	case expr.ArraySize:
+		v, err := compileargs(p, args, compileExpression)
+		if err != nil {
+			return nil, err
+		}
+		return p.arraySize(v[0]), nil
 
 	case expr.ArrayContains:
 		v, err := compileargs(p, args, compileExpression, compileValue)

@@ -7685,264 +7685,262 @@ TEXT bcmovi64(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
-// Defines for function SIZE()
-
-#define     HEAD_BYTES      Z29
-#define     T_FIELD         Z28
-#define     L_FIELD         Z27
-#define     OBJECT_SIZE     Z26
-#define     HEADER_LENGTH   Z25
-#define     VALID           K1
-#define     LIST_SEXP       K5
-#define     STRUCT          K6
-
-#define     TMP                 Z5
-#define     TMP2                Z6
-#define     TMP3                Z7
-#define     CONST_0x80          Z8
-#define     CONST_0x7f          Z9
-#define     CONST_0x01          Z10
-#define     CONST_0x0e          Z11
-#define     CONST_0x0f          Z12
-#define     CONST_0x00          Z13
-#define     CONST_BSWAPD        Z14
-#define     CONST_0x80808080    Z15
-#define     CONST_0x03          Z16
-
-
-// Calculate the number bytes occupied by uvint value.
-// Assumes that uvint has at most 3 bytes, for longer
-// values jumps to `trap`.
+// i64[0].k[1] = object_size(val[2]).k[3]
 //
-// Inputs:
-// - BYTES  - 4 initial bytes
-// - VALID  - valid lanes
-//
-// Outputs:
-// - COUNT  - the number of bytes ([0..3] each)
-//
-// Modifies:
-// - BYTES
-#define CALCULATE_UVINT_LENGTH(VALID, BYTES, COUNT)     \
-    VPSHUFB     CONST_BSWAPD, BYTES, BYTES              \
-    VPANDD      CONST_0x80808080, BYTES, BYTES          \
-    VPLZCNTD    BYTES, COUNT                            \
-    VPSRLD      $3, COUNT, VALID, COUNT                 \
-    VPADDD.Z    CONST_0x01, COUNT, VALID, COUNT         \
-    /* check if length > 3 */                           \
-    VPCMPUD     $VPCMP_IMM_GT, CONST_0x03, COUNT, K2    \
-    KTESTW      K2, K2                                  \
-    JNZ trap
-
-
-#define DWORD_CONST(value, target)    \
-    MOVD $value, CX                   \
-    VPBROADCASTD CX, target
-
-
-// Function exposes macro CALCULATE_UVINT_LENGTH for unit test purposes.
-//
-// input:
-// - Z30 - offsets
-// - K1  - active lanes
-// output:
-// - K7  - masks too long uvints
-// - Z31 - 32-bit lengths
-TEXT objectsize_test_uvint_length(SB), NOSPLIT|NOFRAME, $0
-    // init
-    DWORD_CONST(0x80, CONST_0x80)
-    DWORD_CONST(0x01, CONST_0x01)
-    DWORD_CONST(0x03, CONST_0x03)
-    DWORD_CONST(0x80808080, CONST_0x80808080)
-    VBROADCASTI32X4 bswap32<>+0(SB), CONST_BSWAPD
-    DWORD_CONST(0xcacacaca, Z1)
-
-    KMOVW   K1, K2
-    VPGATHERDD (SI)(Z30*1), K2, Z1
-
-    VPXORD Z31, Z31, Z31
-    CALCULATE_UVINT_LENGTH(K1, Z1, Z31)
-    KMOVW K2, K7
-    RET
-
-trap:
-    MOVD $0xffffffff, AX
-    VPBROADCASTD AX, Z31
-    KMOVW K2, K7
-    RET
-
-
-#include "evalbc_ionheader.h"
-
-// Function exposes macro CALCULATE_OBJECT_SIZE for unit test purposes.
-//
-// input:
-// - Z30 - offsets
-// - K1  - active lanes
-// output:
-// - K7  - masks invalid entries
-// - Z30 - header length (TV byte + optional uvint length)
-// - Z31 - object size
-TEXT objectsize_test_object_header_size(SB), NOSPLIT|NOFRAME, $0
-
-    DWORD_CONST(0x01, CONST_0x01)
-    DWORD_CONST(0x0e, CONST_0x0e)
-    DWORD_CONST(0x0f, CONST_0x0f)
-    DWORD_CONST(0x7f, CONST_0x7f)
-    DWORD_CONST(0x80, CONST_0x80)
-
-    // test
-    LOAD_OBJECT_HEADER(K1)
-    CALCULATE_OBJECT_SIZE(K1, no_uvint, uvint_done)
-
-    // store result
-    VMOVDQA32 HEADER_LENGTH, Z1
-    VMOVDQA32 OBJECT_SIZE, Z2
-    KMOVW K2, K7
-    RET
-
-trap:
-    DWORD_CONST(0xffffffff, Z1)
-    DWORD_CONST(0xffffffff, Z2)
-    RET
-
-// i64[0].k[1] = object_size(v[2]).k[3]
-//
-// SIZE(x) function --- returns the number of items
+// SIZE(x) function - returns the number of items
 // in a struct or list, missing otherwise.
 TEXT bcobjectsize(SB), NOSPLIT|NOFRAME, $0
-    BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
-    BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
-    BC_LOAD_VALUE_SLICE_FROM_SLOT_MASKED(OUT(Z30), OUT(Z31), IN(BX), IN(K1))
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*2, OUT(BX), OUT(R8))
 
-    VPBROADCASTD CONSTD_1(), CONST_0x01
-    VPBROADCASTD CONSTD_0x0F(), CONST_0x0f
+  BC_LOAD_VALUE_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
 
-    /* 1. Determine object types */
-    LOAD_OBJECT_HEADER(K1)
+  BC_LOAD_VALUE_TYPEL_FROM_SLOT(OUT(Z2), IN(BX))
+  BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z3), IN(BX))
 
-    VPXORD      Z2, Z2, Z2 /* set the count to zero */
-    VPXORD      Z3, Z3, Z3
+  VPSRLD.Z $4, Z2, K1, Z2                              // Z2 <- V.type
+  VPADDD.Z Z0, Z1, K1, Z1                              // Z1 <- V.dataEnd
 
-    VPCMPD.BCST $VPCMP_IMM_EQ, CONSTD_0x0B(), T_FIELD, K1, K2 /* list */
-    VPCMPD.BCST $VPCMP_IMM_EQ, CONSTD_0x0C(), T_FIELD, K1, LIST_SEXP /* sexp */
-    VPCMPD.BCST $VPCMP_IMM_EQ, CONSTD_0x0D(), T_FIELD, K1, STRUCT /* struct */
+  BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VPADDD.Z Z3, Z0, K1, Z0                              // Z0 <- V.dataOffset
 
-    KORW    K2, LIST_SEXP, LIST_SEXP
-    KORW    LIST_SEXP, STRUCT, K1 /* non-containers -> missing */
-    KTESTW  K1, K1
-    JZ      no_compbound_values_found
+  VPCMPEQD.BCST CONSTD_0x0D(), Z2, K1, K5              // K5 <- lanes that contain structs
+  VPCMPEQD.BCST CONSTD_0x0B(), Z2, K1, K1              // K1 <- lanes that contain lists
+  KTESTW K5, K5
 
-    /* 2. unset all null values */
-    VPCMPD  $VPCMP_IMM_EQ, CONST_0x0f, L_FIELD, K1, K2 /* K2 - null values */
-    KANDNW  K1, K2, K1
-    KTESTW  K1, K1
-    JZ      all_nulls
+  KORW K1, K5, K3                                      // K3 <- output predicate (list | struct)
+  BC_STORE_K_TO_SLOT(IN(K3), IN(R8))                   // store output predicate to output slot
+  JZ tail_to_array_size                                // use bcarraysize fast-path if there aren't structs
 
-    VPBROADCASTD CONSTD_0x0E(), CONST_0x0e
-    VPBROADCASTD CONSTD_0x7F(), CONST_0x7f
-    VPBROADCASTD CONSTD_0x80(), CONST_0x80
-    VPBROADCASTD CONSTD_3(), CONST_0x03
-    DWORD_CONST(0x80808080, CONST_0x80808080)
-    VBROADCASTI32X4 bswap32<>+0(SB), CONST_BSWAPD
-    VPXORD CONST_0x00, CONST_0x00, CONST_0x00
+  // either all structs or mixed structs + lists
 
-    /* 3. find the containers' size */
-    KORW    LIST_SEXP, STRUCT, K2
-    CALCULATE_OBJECT_SIZE(K2, no_uvint1, uvint_done1)
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K3, K1                // K1 <- lanes to process (empty structs/lists discarded)
+  KTESTW K1, K1
 
-    VPADDD  Z30, HEADER_LENGTH, Z30 /* Z30 - points the inner structure */
-    VPADDD  Z30, OBJECT_SIZE, Z31   /* Z31 = points the end of the inner structure */
+  VPXORD X10, X10, X10                                 // Z10 <- current length (dword)
 
-    /* 4. iterate over lists/sexprs */
-count_list_sexp_values:
-    VPCMPD $VPCMP_IMM_LT, Z31, Z30, LIST_SEXP, LIST_SEXP
-    KTESTW  LIST_SEXP, LIST_SEXP
-    JZ count_list_sexp_values_end
+  VPBROADCASTD CONSTD_1(), Z22                         // Z22 <- dword(1)
+  VPBROADCASTD CONSTD_14(), Z23                        // Z23 <- dword(14)
+  VPBROADCASTD CONSTD_0x0F(), Z24                      // Z24 <- dword(0xF)
+  VPBROADCASTD CONSTD_32(), Z25                        // Z25 <- dword(32)
+  VPBROADCASTD CONSTD_0x7F(), Z26                      // Z26 <- dword(0x7F)
+  VPBROADCASTD CONSTD_0x00808080(), Z27                // Z27 <- dword(0x00808080)
+  VBROADCASTI32X4 CONST_GET_PTR(bswap64, 0), Z30       // Z30 <- bswap64 predicate for VPSHUFB
+  JZ done
 
-    LOAD_OBJECT_HEADER(LIST_SEXP)
-    CALCULATE_OBJECT_SIZE(LIST_SEXP, no_uvint2, uvint_done2)
+  KSHIFTRW $8, K5, K6
 
-    VPADDD  CONST_0x01, Z2, LIST_SEXP, Z2       /* count += 1 */
-    VPADDD  HEADER_LENGTH, Z30, LIST_SEXP, Z30  /* offset += header_size */
-    VPADDD  OBJECT_SIZE, Z30, LIST_SEXP, Z30    /* offset += object_size */
+loop:
+  KSHIFTRW $8, K1, K2
+  VEXTRACTI32X8 $1, Z0, Y9
 
-    JMP count_list_sexp_values
-count_list_sexp_values_end:
+  KMOVW K1, K3
+  VPXORD X2, X2, X2
+  VPGATHERDQ 0(SI)(Y0*1), K3, Z2                       // Z2 <- V.hdr64 (struct Symbol+Value or list Value bytes) (low)
 
-    /* 5. iterate over structs */
-count_fields:
-    VPCMPD $VPCMP_IMM_LT, Z31, Z30, STRUCT, STRUCT
-    KTESTW STRUCT, STRUCT
-    JZ count_fields_end
+  VPADDD Z22, Z10, K1, Z10                             // Z10 <- increment length of active lanes
+  VPADDD Z22, Z0, K1, Z0                               // Z0 <- Z0 + 1 (advance by a size of a TVL byte)
 
-    /* skip field id */
-    KMOVW STRUCT, K2
-    VPGATHERDD  (SI)(Z30*1), K2, HEAD_BYTES
-    CALCULATE_UVINT_LENGTH(STRUCT, HEAD_BYTES, TMP)
-    VPADDD  TMP, Z30, Z30
+  KMOVW K2, K4
+  VPXORD X3, X3, X3
+  VPGATHERDQ 0(SI)(Y9*1), K4, Z3                       // Z3 <- V.hdr64 (struct Symbol+Value or list Value bytes) (high)
 
-    /* skip field value */
-    LOAD_OBJECT_HEADER(STRUCT)
-    CALCULATE_OBJECT_SIZE(STRUCT, no_uvint3, uvint_done3)
+  VPSHUFB Z30, Z2, Z2                                  // Z2 <- bswap64(V.hdr64) (low)
+  VPSRLQ $8, Z2, Z4                                    // Z4 <- bswap64(V.hdr64) >> 8 (low)
+  VPANDQ Z27, Z4, Z4                                   // Z4 <- bswap64(V.hdr64) >> 8 & 0x0080808000808080 (low)
+  VPLZCNTQ.Z Z4, K5, Z4                                // Z4 <- lzcnt(bswap64(V.hdr64) >> 8 & 0x0080808000808080) (low)
+  VPSLLVQ Z4, Z2, Z2                                   // Z2 <- bswap64(V.hdr64 << len(SymbolID)) (low)
+  VPSRLQ.Z $3, Z4, K1, Z4                              // Z4 <- len(SymbolID) of lanes having structs (low)
 
-    VPADDD CONST_0x01, Z2, STRUCT, Z2       /* count += 1 */
-    VPADDD HEADER_LENGTH, Z30, STRUCT, Z30  /* offset += header_size */
-    VPADDD OBJECT_SIZE, Z30, STRUCT, Z30    /* offset += object_size */
+  VPSHUFB Z30, Z3, Z3                                  // Z3 <- bswap64(V.hdr64) (high)
+  VPSRLQ $8, Z3, Z5                                    // Z5 <- bswap64(V.hdr64) >> 8 & 0x0080808000808080 (high)
+  VPANDQ Z27, Z5, Z5                                   // Z5 <- bswap64(V.hdr64) >> 8 & 0x0080808000808080 (high)
+  VPLZCNTQ.Z Z5, K6, Z5                                // Z5 <- lzcnt(bswap64(V.hdr64) >> 8 & 0x8080808080808080) (high)
+  VPSLLVQ Z5, Z3, Z3                                   // Z3 <- bswap64(V.hdr64 << len(SymbolID)) (high)
+  VPSRLQ.Z $3, Z5, K2, Z5                              // Z5 <- len(SymbolID) of lanes having structs (high)
 
-    JMP count_fields
-count_fields_end:
-    VEXTRACTI32X8 $1, Z2, Y3
-    VPMOVZXDQ Y2, Z2
-    VPMOVZXDQ Y3, Z3
-    BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
+  VPSRLQ $32, Z2, Z2                                   // Z2 <- V.hdr32 (low)
+  VPSRLQ $32, Z3, Z3                                   // Z3 <- V.hdr32 (high)
+  VPMOVQD Z2, Y2                                       // Z2 <- V.hdr32 (low)
+  VPMOVQD Z3, Y3                                       // Z3 <- V.hdr32 (high)
+  VPMOVQD Z4, Y4                                       // Z4 <- len(SymbolID) of lanes having structs (low)
+  VINSERTI32X8 $1, Y3, Z2, Z2                          // Z2 <- V.hdr32 (value of either struct or list)
+  VPMOVQD Z5, Y5                                       // Z5 <- len(SymbolID) of lanes having structs (high)
+  VINSERTI32X8 $1, Y5, Z4, Z4                          // Z4 <- len(SymbolID)
 
-    BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z3), IN(DX))
-    BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
+  VPSRLD $28, Z2, Z5                                   // Z5 <- V.type
+  VPSRLD $24, Z2, Z6                                   // Z6 <- V.TLV
+  VPCMPUD $VPCMP_IMM_GT, Z22, Z5, K1, K3               // K3 <- V.type != NULL|BOOL
+  VPADDD Z4, Z0, K1, Z0                                // Z0 <- Z0 + len(SymbolID) (advance by len(SymbolID))
+  VPANDD.Z Z24, Z6, K3, Z6                             // Z6 <- V.L or zero if V.type == NULL|BOOL
 
-    NEXT_ADVANCE(BC_SLOT_SIZE*4)
+  VPCMPEQD Z23, Z6, K1, K3                             // K3 <- lanes where L == 14
+  KTESTW K3, K3
+  JNZ varuint_length
 
-no_compbound_values_found:
-all_nulls:
-    VPXORD X2, X2, X2
+  VPADDD Z6, Z0, Z0                                    // Z0 <- advance array by the content length
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K1, K1                // K1 <- remaining lanes to scan
 
-    BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-    BC_STORE_I64_TO_SLOT(IN(Z2), IN(Z2), IN(DX))
-    MOVW $0, 0(VIRT_VALUES)(R8*1)
+  KTESTW K1, K1
+  JNZ loop
 
-    NEXT_ADVANCE(BC_SLOT_SIZE*4)
+done:
+  VEXTRACTI32X8 $1, Z10, Y11
+  VPMOVZXDQ Y10, Z10
+  VPMOVZXDQ Y11, Z11
+  BC_STORE_I64_TO_SLOT(IN(Z10), IN(Z11), IN(DX))
 
-trap:
-    FAIL()
+  NEXT_ADVANCE(BC_SLOT_SIZE*4)
 
+varuint_length:
+  VPANDD Z27, Z2, Z8                                   // Z8 <- bswap32(V.hdr32) & 0x00808080
+  VPANDND Z2, Z27, Z9                                  // Z9 <- bswap32(V.hdr32) & 0xFF7F7F7F
+  VPLZCNTD.Z Z8, K3, Z8                                // Z8 <- lzcnt(bswap32(V.hdr32) & 0x00808080)
+  VPSUBD Z8, Z25, Z5                                   // Z5 <- 32 - lzcnt(bswap32(V.hdr32) & 0x00808080) (number of bits to discard)
+  VPSLLD $8, Z9, Z4                                    // Z4 <- (bswap32(V.hdr32) & 0xFF7F7F7F) << 8
+  VPSRLVD Z5, Z4, K3, Z6                               // Z6 <- V.L or V.optLen [00000000|0CCCCCCC|0BBBBBBB|0AAAAAAA]
+  VPSRLD.Z $3, Z8, K3, Z8                              // Z8 <- V.hLen - 1 (without accounting the TLV byte, which we have already accounted in Z0)
 
-#undef DWORD_CONST
-#undef CALCULATE_UVINT_LENGTH
-#undef LOAD_OBJECT_HEADER
-#undef CALCULATE_OBJECT_SIZE
+  VPSRLD $1, Z6, Z4                                    // Z4 <- V.dataLen >> 1  [00000000|00CCCCCC|C0BBBBBB|B0AAAAAA]
+  VPSRLD $2, Z6, Z5                                    // Z5 <- V.dataLen >> 2  [00000000|000CCCCC|CC0BBBBB|BB0AAAAA]
+  VPTERNLOGD $TLOG_BLEND_AB, Z26, Z4, Z6               // Z6 <- V.dataLen as    [00000000|00CCCCCC|C0BBBBBB|BAAAAAAA]
+  VPTERNLOGD.BCST $TLOG_BLEND_AB, CONSTD_0x3FFF(), Z5, Z6 // Z6 <- V.dataLen
 
-#undef HEAD_BYTES
-#undef T_FIELD
-#undef L_FIELD
-#undef OBJECT_SIZE
-#undef HEADER_LENGTH
-#undef VALID
-#undef LIST_SEXP
-#undef STRUCT
+  VPADDD Z8, Z6, Z5                                    // Z5 <- V.valLen - 1 (without accounting the TLV byte, which we have already accounted in Z0)
+  VPADDD Z5, Z0, Z0                                    // Z0 <- advance array by V.valLen - 1
 
-#undef TMP
-#undef TMP2
-#undef TMP3
-#undef CONST_0x80
-#undef CONST_0x7f
-#undef CONST_0x01
-#undef CONST_0x0e
-#undef CONST_0x0f
-#undef CONST_0x00
-#undef CONST_0x80808080
-#undef CONST_0x03
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K1, K1                // K1 <- remaining lanes to scan
+  KTESTW K1, K1
+  JNZ loop
+  JMP done
 
-// i64[0].k[1] = array_position(array[2], v[3]).k[4]
+tail_to_array_size:
+  ADDQ $(BC_SLOT_SIZE*4), VIRT_PCREG
+  JMP arraysize_tail(SB)
+
+// i64[0] = array_size(array[1]).k[2]
+TEXT bcarraysize(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_2xSLOT(BC_SLOT_SIZE*1, OUT(BX), OUT(R8))
+  BC_LOAD_SLICE_FROM_SLOT(OUT(Z0), OUT(Z1), IN(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
+
+  VPADDD.Z Z0, Z1, K1, Z1                              // Z1 <- end of the list
+
+  BC_UNPACK_SLOT(0, OUT(DX))
+  ADDQ $(BC_SLOT_SIZE*3), VIRT_PCREG
+
+  JMP arraysize_tail(SB)
+
+// Tail call used by both bcobjectsize and bcarraysize.
+//
+// Arguments:
+//   Z0 <- unboxed list slice start/offset
+//   Z1 <- unboxed list slice end
+//   K1 <- predicate
+//   DX <- destination slot
+TEXT arraysize_tail(SB), NOSPLIT|NOFRAME, $0
+  VPCMPUD $VPCMP_IMM_NE, Z0, Z1, K1, K1                // K1 <- lanes to prpocess (empty arrays discarded)
+  KTESTW K1, K1
+
+  VPXORD X10, X10, X10                                 // Z10 <- current length (dword)
+
+  VPBROADCASTD CONSTD_1(), Z22                         // Z22 <- dword(1)
+  VPBROADCASTD CONSTD_14(), Z23                        // Z23 <- dword(14)
+  VPBROADCASTD CONSTD_0x0F(), Z24                      // Z24 <- dword(0xF)
+  VPBROADCASTD CONSTD_32(), Z25                        // Z25 <- dword(32)
+  VPBROADCASTD CONSTD_0x7F(), Z26                      // Z26 <- dword(0x7F)
+  VPBROADCASTD CONSTD_0x00808080(), Z27                // Z27 <- dword(0x808080)
+  VPBROADCASTD CONSTD_4(), Z28                         // Z28 <- dword(4)
+  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z30       // Z30 <- bswap32 predicate for VPSHUFB
+  JZ done
+
+  JMP loop
+
+small_values:
+  VPSLLD $3, Z5, Z6
+  VPSRLVD Z6, Z2, Z2                                   // Z2 <- remaining bytes
+
+  VPSRLD $4, Z2, Z5                                    // Z5 <- V.hdr32 >> 4
+  VPANDD Z24, Z5, Z5                                   // Z5 <- V.type
+  VPCMPUD $VPCMP_IMM_GT, Z22, Z5, K3, K3               // K3 <- remaining lanes where V.type != NULL|BOOL
+  VPANDD.Z Z24, Z2, K3, Z6                             // Z6 <- V.L or zero if V.type == NULL|BOOL
+  VPCMPUD $VPCMP_IMM_NE, Z23, Z6, K3, K4               // K4 <- remaining lanes where V.L != 14
+
+  VPADDD.Z Z22, Z6, K4, Z5                             // Z5 <- V.valLen
+  VPADDD Z22, Z10, K4, Z10                             // Z10 <- increment length of remaining lanes where V.L != 14
+  VPADDD Z5, Z0, K4, Z0                                // Z0 <- advance small values by V.valLen
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K1, K1                // K1 <- remaining lanes to scan
+
+  KTESTW K1, K1
+  JZ done
+
+loop:
+  KMOVW K1, K2
+  VPXORD X2, X2, X2
+  VPGATHERDD 0(SI)(Z0*1), K2, Z2                       // Z2 <- V.hdr32
+
+  VPADDD Z22, Z10, K1, Z10                             // Z10 <- increment length of active lanes
+  VPSHUFB Z30, Z2, Z7                                  // Z7 <- bswap32(V.hdr32)
+  VPANDD.Z Z24, Z2, K1, Z6                             // Z6 <- V.L
+  VPSRLD $28, Z7, Z5                                   // Z5 <- V.type
+  VPCMPEQD Z23, Z6, K1, K4                             // K4 <- lanes where L == 14
+  KTESTW K4, K4
+
+  VPCMPUD $VPCMP_IMM_GT, Z22, Z5, K1, K3               // K3 <- V.type != NULL|BOOL
+  VPANDD.Z Z24, Z2, K3, Z6                             // Z6 <- V.L or zero if V.type == NULL|BOOL
+  JNZ varuint_length
+
+  // If we are here it means that all lanes contain a value that
+  // doesn't need varuint decoding. This means that if the value
+  // is small enough we can try to count another one by inspecting
+  // bytes we have already gathered as a part of the first value.
+  // This can increase the overall query performance by about 20%.
+
+  VPADDD.Z Z22, Z6, K1, Z5                             // Z5 <- V.valLen
+  VPADDD Z5, Z0, Z0                                    // Z0 <- advance array by the current value length
+  VPSUBUSW Z5, Z28, Z9                                 // Z9 <- number of remaining bytes in Z2
+
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K1, K1                // K1 <- remaining lanes to scan
+  VPTESTMD Z9, Z9, K1, K3                              // K3 <- lanes where remaining bytes in Z2 > 0
+
+  KTESTW K3, K3
+  JNZ small_values
+
+  KTESTW K1, K1
+  JNZ loop
+
+done:
+  VEXTRACTI32X8 $1, Z10, Y11
+  VPMOVZXDQ Y10, Z10
+  VPMOVZXDQ Y11, Z11
+  BC_STORE_I64_TO_SLOT(IN(Z10), IN(Z11), IN(DX))
+
+  NEXT_ADVANCE(0)
+
+varuint_length:
+  VPANDD Z27, Z7, Z8                                   // Z8 <- bswap32(V.hdr32) & 0x00808080
+  VPANDND Z7, Z27, Z9                                  // Z9 <- bswap32(V.hdr32) & 0xFF7F7F7F
+  VPLZCNTD.Z Z8, K3, Z8                                // Z8 <- lzcnt(bswap32(V.hdr32) & 0x00808080)
+  VPSUBD Z8, Z25, Z5                                   // Z5 <- 32 - lzcnt(bswap32(V.hdr32) & 0x00808080) (number of bits to discard)
+  VPSLLD $8, Z9, Z4                                    // Z4 <- (bswap32(V.hdr32) & 0xFF7F7F7F) << 8
+  VPSRLVD Z5, Z4, K4, Z6                               // Z6 <- V.L or V.optLen [00000000|0CCCCCCC|0BBBBBBB|0AAAAAAA]
+  VPSRLD.Z $3, Z8, K4, Z8                              // Z8 <- V.hLen - 1
+
+  VPSRLD $1, Z6, Z4                                    // Z4 <- V.dataLen >> 1  [00000000|00CCCCCC|C0BBBBBB|B0AAAAAA]
+  VPSRLD $2, Z6, Z5                                    // Z5 <- V.dataLen >> 2  [00000000|000CCCCC|CC0BBBBB|BB0AAAAA]
+  VPTERNLOGD $TLOG_BLEND_AB, Z26, Z4, Z6               // Z6 <- V.dataLen as    [00000000|00CCCCCC|C0BBBBBB|BAAAAAAA]
+  VPADDD Z22, Z8, Z8                                   // Z8 <- V.hLen
+  VPTERNLOGD.BCST $TLOG_BLEND_AB, CONSTD_0x3FFF(), Z5, Z6 // Z6 <- V.dataLen
+
+  VPADDD Z8, Z6, Z5                                    // Z5 <- V.valLen
+  VPADDD Z5, Z0, Z0                                    // Z0 <- advance array by the current value length
+
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K1, K1                // K1 <- remaining lanes to scan
+  KTESTW K1, K1
+  JNZ loop
+  JMP done
+
+// i64[0].k[1] = array_position(array[2], val[3]).k[4]
 //
 // Legend:
 //   - 'A' - refers to v[3] (the item to match)
@@ -7964,14 +7962,14 @@ TEXT bcarrayposition(SB), NOSPLIT|NOFRAME, $0
 
   VPXORD X20, X20, X20                                 // Z20 <- current position in array (counted from 1)
   VPXORD X21, X21, X21                                 // Z21 <- matched positions
-  VPBROADCASTD CONSTD_7(), Z22                         // Z22 <- dword(7)
-  VPBROADCASTD CONSTD_1(), Z23                         // Z23 <- dword(1)
-  VPBROADCASTD CONSTD_14(), Z24                        // Z24 <- dword(14)
-  VPBROADCASTD CONSTD_0x0F(), Z25                      // Z25 <- dword(0xF)
-  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z27       // Z27 <- bswap32 predicate for VPSHUFB
-  VPBROADCASTD CONSTD_0x00808080(), Z28                // Z28 <- dword(0x808080)
-  VPBROADCASTD CONSTD_32(), Z29                        // Z29 <- dword(32)
-  VPBROADCASTD CONSTD_0x7F(), Z30                      // Z30 <- dword(0x7F)
+  VPBROADCASTD CONSTD_1(), Z22                         // Z22 <- dword(1)
+  VPBROADCASTD CONSTD_14(), Z23                        // Z23 <- dword(14)
+  VPBROADCASTD CONSTD_0x0F(), Z24                      // Z24 <- dword(0xF)
+  VPBROADCASTD CONSTD_32(), Z25                        // Z25 <- dword(32)
+  VPBROADCASTD CONSTD_0x7F(), Z26                      // Z26 <- dword(0x7F)
+  VPBROADCASTD CONSTD_0x00808080(), Z27                // Z27 <- dword(0x808080)
+  VPBROADCASTD CONSTD_7(), Z29                         // Z29 <- dword(7)
+  VBROADCASTI32X4 CONST_GET_PTR(bswap32, 0), Z30       // Z30 <- bswap32 predicate for VPSHUFB
   VMOVDQU64 CONST_GET_PTR(consts_byte_mask_q, 0), Z31  // Z31 <- consts_byte_mask_q
   JZ done
 
@@ -7985,15 +7983,15 @@ TEXT bcarrayposition(SB), NOSPLIT|NOFRAME, $0
   VPXORD X11, X11, X11
   VPGATHERDQ 0(SI)(Y14*1), K4, Z11                     // Z11 <- first 8 bytes of A (high)
 
-  VPADDD Z22, Z23, Z26                                 // Z26 <- dword(8)
+  VPADDD Z29, Z22, Z28                                 // Z28 <- dword(8)
 
   VPMOVQD Z10, Y12
   VPMOVQD Z11, Y13
   VINSERTI32X8 $1, Y13, Z12, Z12                       // Z12 <- first 4 bytes of A
   VPSRLD $4, Z12, Z13
-  VPANDD Z25, Z13, Z13                                 // Z13 <- type of A
+  VPANDD Z24, Z13, Z13                                 // Z13 <- type of A
 
-  VPMINUD Z26, Z3, Z8
+  VPMINUD Z28, Z3, Z8
   VEXTRACTI32X8 $1, Z8, Y9
   VPADDD.Z Z0, Z1, K1, Z1                              // Z1  <- end of the list
   VPADDD.Z Z2, Z3, K1, Z3                              // Z3  <- end of the value
@@ -8008,14 +8006,14 @@ TEXT bcarrayposition(SB), NOSPLIT|NOFRAME, $0
 
   // K6 <- lanes in A that don't contain strings - this is important as we do
   // not want to unsymbolize B values that would not compare against strings.
-  VPCMPD $VPCMP_IMM_NE, Z26, Z13, K1, K6
+  VPCMPD $VPCMP_IMM_NE, Z28, Z13, K1, K6
 
-  // Z22 <- comparisong predicate for unsymbolize - it either contains `7` for lanes that
+  // Z29 <- comparisong predicate for unsymbolize - it either contains `7` for lanes that
   // need to unsymbolize in case that they contain symbol, or a non-compatible type value
   // for lanes that don't need unsymbolize (not comparing agains a string of A value).
   // We can keep this predicate in K6, but there is much less K registers than ZMM registers
   // so it's just better to keep this in ZMM register and have one more K register available.
-  VMOVDQA32 Z30, K6, Z22
+  VMOVDQA32 Z26, K6, Z29
 
 array_loop:
   KSHIFTRW $8, K1, K2
@@ -8026,7 +8024,7 @@ array_loop:
   VPGATHERDQ 0(SI)(Y0*1), K3, Z18                      // Z18 <- first 8 bytes of B (low)
 
   KMOVB K2, K4
-  VPADDD.Z Z23, Z20, K1, Z20                           // Z20 <- advance current position
+  VPADDD.Z Z22, Z20, K1, Z20                           // Z20 <- advance current position
 
   VPXORD X19, X19, X19
   VPGATHERDQ 0(SI)(Y13*1), K4, Z19                     // Z19 <- first 8 bytes of B (high)
@@ -8036,38 +8034,38 @@ array_loop:
   VINSERTI32X8 $1, Y13, Z14, Z13                       // Z13 <- first 4 bytes of B (B.hdr32)
 
   VPSRLD $4, Z13, Z14                                  // Z14 <- B.hdr32 >> 4
-  VPSHUFB Z27, Z13, Z17                                // Z17 <- bswap32(B.hdr32)
-  VPANDD Z25, Z14, Z14                                 // Z14 <- B.type
-  VPANDD Z28, Z17, Z16                                 // Z16 <- bswap32(B.hdr32) & 0x00808080
-  VPCMPUD $VPCMP_IMM_GT, Z23, Z14, K1, K3              // K3  <- B.type != NULL|BOOL
-  VPANDND Z17, Z28, Z6                                 // Z6  <- bswap32(B.hdr32) & 0xFF7F7F7F
+  VPSHUFB Z30, Z13, Z17                                // Z17 <- bswap32(B.hdr32)
+  VPANDD Z24, Z14, Z14                                 // Z14 <- B.type
+  VPANDD Z27, Z17, Z16                                 // Z16 <- bswap32(B.hdr32) & 0x00808080
+  VPCMPUD $VPCMP_IMM_GT, Z22, Z14, K1, K3              // K3  <- B.type != NULL|BOOL
+  VPANDND Z17, Z27, Z6                                 // Z6  <- bswap32(B.hdr32) & 0xFF7F7F7F
 
   VPLZCNTD.Z Z16, K3, Z16                              // Z16 <- lzcnt(bswap32(B.hdr32) & 0x00808080)
-  VPCMPEQD Z22, Z14, K1, K4                            // K4  <- B.type == SYMBOL that needs to be unsymbolized
-  VPANDD.Z Z25, Z13, K3, Z15                           // Z15 <- B.L or zero if B.type == NULL|BOOL
+  VPCMPEQD Z29, Z14, K1, K4                            // K4  <- B.type == SYMBOL that needs to be unsymbolized
+  VPANDD.Z Z24, Z13, K3, Z15                           // Z15 <- B.L or zero if B.type == NULL|BOOL
   KTESTW K4, K4
 
-  VPSUBD Z16, Z29, Z14                                 // Z14 <- 32 - lzcnt(bswap32(B.hdr32) & 0x00808080) (number of bits to discard)
-  VPCMPEQD Z24, Z15, K1, K3                            // K3  <- B.L == 14 (required to decode Length field)
+  VPSUBD Z16, Z25, Z14                                 // Z14 <- 32 - lzcnt(bswap32(B.hdr32) & 0x00808080) (number of bits to discard)
+  VPCMPEQD Z23, Z15, K1, K3                            // K3  <- B.L == 14 (required to decode Length field)
   VPSLLD $8, Z6, Z13                                   // Z13 <- (bswap32(B.hdr32) & 0xFF7F7F7F) << 8
   VPSRLVD Z14, Z13, K3, Z15                            // Z15 <- B.L or B.optLen [00000000|0CCCCCCC|0BBBBBBB|0AAAAAAA]
   VPSRLD.Z $3, Z16, K3, Z16                            // Z16 <- B.hLen - 1
 
   VPSRLD $1, Z15, Z13                                  // Z13 <- B.dataLen >> 1  [00000000|00CCCCCC|C0BBBBBB|B0AAAAAA]
   VPSRLD $2, Z15, Z14                                  // Z14 <- B.dataLen >> 2  [00000000|000CCCCC|CC0BBBBB|BB0AAAAA]
-  VPTERNLOGD $TLOG_BLEND_AB, Z30, Z13, Z15             // Z15 <- B.dataLen as    [00000000|00CCCCCC|C0BBBBBB|BAAAAAAA]
-  VPADDD Z23, Z16, Z16                                 // Z16 <- B.hLen
+  VPTERNLOGD $TLOG_BLEND_AB, Z26, Z13, Z15             // Z15 <- B.dataLen as    [00000000|00CCCCCC|C0BBBBBB|BAAAAAAA]
+  VPADDD Z22, Z16, Z16                                 // Z16 <- B.hLen
   VPTERNLOGD.BCST $TLOG_BLEND_AB, CONSTD_0x3FFF(), Z14, Z15 // Z15 <- B.dataLen
 
-  VPADDD Z26, Z2, Z6                                   // Z6  <- A.offset + 8
+  VPADDD Z28, Z2, Z6                                   // Z6  <- A.offset + 8
   VPADDD Z16, Z15, Z14                                 // Z14 <- B.valLen
-  VPADDD Z26, Z0, Z7                                   // Z7  <- B.offset + 8
+  VPADDD Z28, Z0, Z7                                   // Z7  <- B.offset + 8
   VPADDD Z14, Z0, Z0                                   // Z0  <- advance array by the current value length
   JZ skip_unsymbolize
 
   VPSLLD $8, Z17, Z17                                  // Z17 <- bswap32(B.hdr32) << 8 (symbol data)
   VPSLLD $3, Z15, Z14                                  // Z14 <- B.dataLen << 3 (data length in bits)
-  VPSUBD Z14, Z29, Z14                                 // Z14 <- 32 - B.dataLen << 3 (number of bits to discard in Z13)
+  VPSUBD Z14, Z25, Z14                                 // Z14 <- 32 - B.dataLen << 3 (number of bits to discard in Z13)
   VPSRLVD.Z Z14, Z17, K4, Z17                          // Z17 <- extracted SymbolIDs from B
   VPCMPUD.BCST $VPCMP_IMM_LT, bytecode_symtab+8(VIRT_BCPTR), Z17, K4, K4 // K4 <- only unsymbolize symbols present in symtab
 
@@ -8081,7 +8079,7 @@ array_loop:
   KSHIFTRW $8, K4, K5
   VPGATHERDQ 0(SI)(Y13*1), K5, Z19                     // Z19 <- merge first 8 bytes of B to the existing vector (high)
 
-  VPADDD Z26, Z7, K4, Z7                               // Z7  <- B.offset += 8 (where symbols)
+  VPADDD Z28, Z7, K4, Z7                               // Z7  <- B.offset += 8 (where symbols)
 
 skip_unsymbolize:
   // first 8 bytes of A in (Z10:Z11) and first 8 bytes of B in (Z18:Z19)
@@ -8114,20 +8112,20 @@ value_loop:
   VPGATHERDQ 0(SI)(Y6*1), K5, Z16                      // Z16 <- next 8 bytes of A (low)
 
   VPSUBD Z6, Z3, Z13                                   // Z13 <- remaining_length
-  VPADDD Z26, Z6, Z6                                   // Z6  <- A.offset += 8
+  VPADDD Z28, Z6, Z6                                   // Z6  <- A.offset += 8
 
   KMOVB K4, K5
   VPXORD X17, X17, X17
   VPGATHERDQ 0(SI)(Y15*1), K5, Z17                     // Z17 <- next 8 bytes of A (high)
 
-  VPMINUD.Z Z26, Z13, K3, Z13                          // Z13 <- min(remaining_length, 8)
+  VPMINUD.Z Z28, Z13, K3, Z13                          // Z13 <- min(remaining_length, 8)
   VEXTRACTI32X8 $1, Z7, Y15
 
   KMOVB K3, K5
   VPXORD X18, X18, X18
   VPGATHERDQ 0(SI)(Y7*1), K5, Z18                      // Z18 <- next 8 bytes of B (low)
 
-  VPADDD Z26, Z7, Z7                                   // Z7  <- B.offset += 8
+  VPADDD Z28, Z7, Z7                                   // Z7  <- B.offset += 8
   VEXTRACTI32X8 $1, Z13, Y14
   VPMOVZXDQ Y13, Z13                                   // Z13 <- min(remaining_length, 8) (low)
 
@@ -8158,19 +8156,19 @@ value_loop:
   JNZ value_loop                                       // continue if we don't have a match yet and there are more bytes to compare
 
 array_advance:
-  VPCMPD $VPCMP_IMM_LT, Z1, Z0, K1, K1                 // K1 <- remaining lanes to compare
+  VPCMPUD $VPCMP_IMM_LT, Z1, Z0, K1, K1                // K1 <- remaining lanes to compare
   KTESTW K1, K1
   JNZ array_loop
 
 done:
   // extend UINT32 positions to INT64
-  VEXTRACTI32X8 $1, Z21, Y23
+  VEXTRACTI32X8 $1, Z21, Y22
   VPTESTMD Z21, Z21, K1
   VPMOVZXDQ Y21, Z21
-  VPMOVZXDQ Y23, Z23
+  VPMOVZXDQ Y22, Z22
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(R8))
-  BC_STORE_I64_TO_SLOT(IN(Z21), IN(Z23), IN(DX))
+  BC_STORE_I64_TO_SLOT(IN(Z21), IN(Z22), IN(DX))
   BC_STORE_K_TO_SLOT(IN(K1), IN(R8))
 
   NEXT_ADVANCE(BC_SLOT_SIZE*5)

@@ -2575,6 +2575,17 @@ func (p *prog) upper(s *value) *value {
 	return p.ssa2(supperstr, s, p.mask(s))
 }
 
+func (p *prog) objectSize(v *value) *value {
+	return p.ssa2(sobjectsize, v, p.mask(v))
+}
+
+func (p *prog) arraySize(array *value) *value {
+	array = p.tolist(array)
+	mask := p.mask(array)
+
+	return p.ssa2(sarraysize, array, mask)
+}
+
 func (p *prog) arrayContains(array, item *value) *value {
 	array = p.tolist(array)
 	item = p.unsymbolized(item)

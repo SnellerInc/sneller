@@ -506,6 +506,7 @@ func bcmakeopinfo() [_maxbcop]bcopinfo {
 		opmovi64: {text: "mov.i64", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},           // duplicates i64
 
 		opobjectsize:    {text: "objectsize", args: makeArgs(bcWriteS, bcWriteK, bcReadV, bcPredicate)},
+		oparraysize:     {text: "arraysize", args: makeArgs(bcWriteS, bcReadS, bcPredicate)},
 		oparrayposition: {text: "arrayposition", args: makeArgs(bcWriteS, bcWriteK, bcReadS, bcReadV, bcPredicate)},
 
 		// string comparing operations
