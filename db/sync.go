@@ -722,13 +722,28 @@ func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 	exp := rp.ValidFor.Sub(date.Now())
 	cond := expr.Compare(expr.GreaterEquals, field, &expr.Timestamp{Value: exp})
 
-	var filt blockfmt.Filter
+	var filt blockfmt.Filter // match => keep
 	filt.Compile(cond)
+	// purge indirect tree
 	todelete, err := idx.Indirect.Purge(st.ofs, &filt, st.conf.GCMinimumAge)
 	if err != nil {
 		st.conf.logf("failed purging expired entries: %s", err)
 		return false
 	}
+	// purge inline list
+	expiry := date.Now().Add(st.conf.GCMinimumAge)
+	var keep []blockfmt.Descriptor
+	for i := range idx.Inline {
+		if filt.MatchesAny(&idx.Inline[i].Trailer.Sparse) {
+			keep = append(keep, idx.Inline[i])
+			continue
+		}
+		todelete = append(todelete, blockfmt.Quarantined{
+			Expiry: expiry,
+			Path:   idx.Inline[i].Path,
+		})
+	}
+	idx.Inline = keep
 	if len(todelete) == 0 {
 		return false
 	}

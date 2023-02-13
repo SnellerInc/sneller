@@ -29,8 +29,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/sneller/compr"
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/expr/blob"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 	"golang.org/x/exp/slices"
 )
@@ -520,111 +522,113 @@ func TestMaxBytesSync(t *testing.T) {
 }
 
 func TestSyncRetention(t *testing.T) {
-	type input struct{ name, text string }
-	const day = 24 * time.Hour
-	checkFiles(t)
 	tmpdir := t.TempDir()
-	err := os.MkdirAll(path.Join(tmpdir, "inputs"), 0750)
-	if err != nil {
-		t.Fatal(err)
-	}
 	dfs := newDirFS(t, tmpdir)
 	now := date.Now()
-
-	contents := func(ages ...time.Duration) string {
-		const format = `{"date": %q, "data": "foo"}`
-		s := ""
-		for i := range ages {
-			date := now.Add(-ages[i])
-			s += fmt.Sprintf(format, date.AppendRFC3339Nano(nil))
+	mksparse := func(ago ...time.Duration) blockfmt.SparseIndex {
+		var s blockfmt.SparseIndex
+		for i := 0; i < len(ago); i += 2 {
+			a, z := now.Add(-ago[i+1]), now.Add(-ago[i])
+			rng := blockfmt.NewRange([]string{"date"}, ion.Timestamp(a), ion.Timestamp(z))
+			s.Push([]blockfmt.Range{rng})
 		}
 		return s
 	}
-
-	// use partitions to make sure we generate
-	// multiple disjoint packfiles
-	def := &Definition{
-		Name: "table",
-		Inputs: []Input{
-			{Pattern: "file://inputs/{file}.json"},
+	const day = 24 * time.Hour
+	checkFiles(t)
+	st := tableState{
+		def: &Definition{
+			Retention: &RetentionPolicy{
+				Field:    "date",
+				ValidFor: date.Duration{Day: 10},
+			},
+			Partitions: []Partition{{Field: "file"}},
 		},
-		Retention:  nil, // fill this in later
-		Partitions: []Partition{{Field: "file"}},
+		conf: Config{
+			Logf: t.Logf,
+		},
+		ofs: dfs,
 	}
-	err = WriteDefinition(dfs, "default", def)
+	// construct an index and relevant files
+	// manually since it's not always possible to
+	// control whether output files end up in the
+	// indirect tree or inlined into the index
+	//
+	// TODO: it would be very nice of there was a
+	// cleaner way of doing this...
+	mkempty := func() []byte {
+		var st ion.Symtab
+		var buf ion.Buffer
+		buf.BeginStruct(-1)
+		buf.BeginField(st.Intern("contents"))
+		buf.BeginList(-1)
+		buf.EndList()
+		buf.EndStruct()
+		var stbuf ion.Buffer
+		st.Marshal(&stbuf, true)
+		full := append(stbuf.Bytes(), buf.Bytes()...)
+		return compr.Compression("zstd").Compress(full, nil)
+	}
+	empty := mkempty()
+	root := "db/default/table"
+	err := os.MkdirAll(path.Join(tmpdir, root), 0750)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	inputs := []input{
-		{"file0.json", contents(
-			14*day, 15*day, 16*day, 17*day, // expired
-		)},
-		{"file1.json", contents(
-			10*day, 11*day, 12*day, 13*day, // expired
-		)},
-		{"file2.json", contents(
-			8*day, 9*day, 10*day, 11*day, // retained
-		)},
-		{"file3.json", contents(
-			0*day, 1*day, 2*day, 3*day, // retained
-		)},
+	testobjs := []struct {
+		obj     blockfmt.ObjectInfo
+		content []byte
+	}{
+		{blockfmt.ObjectInfo{Path: root + "/inline-expired"}, nil},
+		{blockfmt.ObjectInfo{Path: root + "/inline-retained"}, nil},
+		{blockfmt.ObjectInfo{Path: root + "/indirect-expired"}, empty},
+		{blockfmt.ObjectInfo{Path: root + "/indirect-retained"}, empty},
 	}
-	owner := newTenant(dfs)
-	c := Config{
-		Align: 1024,
-		Fallback: func(_ string) blockfmt.RowFormat {
-			return blockfmt.UnsafeION()
-		},
-		Logf:            t.Logf,
-		MaxInlineBytes:  1,
-		TargetMergeSize: 1,
-		TargetRefSize:   1,
-		GCLikelihood:    100,
-	}
-	for _, x := range inputs {
-		// sync after every write to create multiple
-		// indirect refs
-		_, err := dfs.WriteFile("inputs/"+x.name, []byte(x.text))
+	for i := range testobjs {
+		o := &testobjs[i]
+		o.obj.ETag, err = dfs.WriteFile(o.obj.Path, o.content)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = c.Sync(owner, "default", "*")
-		if err != nil {
-			t.Fatal(err)
-		}
 	}
-	// set the retention policy then do a final
-	// sync to garbage collect expired outputs
-	def.Retention = &RetentionPolicy{
-		Field:    "date",
-		ValidFor: date.Duration{Day: 10},
+	idx := &blockfmt.Index{
+		Inline: []blockfmt.Descriptor{{
+			ObjectInfo: testobjs[0].obj,
+			Trailer: blockfmt.Trailer{
+				Sparse: mksparse(14*day, 17*day),
+			},
+		}, {
+			ObjectInfo: testobjs[1].obj,
+			Trailer: blockfmt.Trailer{
+				Sparse: mksparse(8*day, 11*day),
+			},
+		}},
+		Indirect: blockfmt.IndirectTree{
+			Refs: []blockfmt.IndirectRef{
+				{ObjectInfo: testobjs[2].obj},
+				{ObjectInfo: testobjs[3].obj},
+			},
+			Sparse: mksparse(
+				10*day, 13*day, // expired
+				0*day, 3*day, // retained
+			),
+		},
 	}
-	err = WriteDefinition(dfs, "default", def)
-	if err != nil {
-		t.Fatal(err)
+
+	purged := st.purgeExpired(idx)
+	if !purged {
+		t.Fatal("expected something to have happened")
 	}
-	err = c.Sync(owner, "default", "*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := OpenIndex(dfs, "default", "table", owner.Key())
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	// make sure the relevant files got
+	// quarantined
 	var got []string
-	idx.Inputs.Backing = dfs
-	objs, err := idx.Indirect.Search(dfs, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	objs = append(objs, idx.Inline...)
-	for i := range objs {
-		part := strings.TrimPrefix(path.Dir(objs[i].Path), "db/default/table/")
+	for i := range idx.ToDelete {
+		part := path.Base(idx.ToDelete[i].Path)
 		got = append(got, part)
 	}
 	slices.Sort(got)
-	want := []string{"file2", "file3"}
+	want := []string{"indirect-expired", "inline-expired"}
 	if !slices.Equal(want, got) {
 		t.Errorf("unexpected results: want %s, got %s", want, got)
 	}
