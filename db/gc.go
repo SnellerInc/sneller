@@ -24,7 +24,11 @@ import (
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/fsutil"
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
+
+	"golang.org/x/exp/maps"
+	"golang.org/x/exp/slices"
 )
 
 // RemoveFS is an fs.FS with a Remove operation.
@@ -38,12 +42,14 @@ var (
 	_ RemoveFS = &DirFS{}
 )
 
+var errLongGC = errors.New("long gc")
+
 const (
 	// DefaultMinimumAge is the default minimum
 	// age of packed-* files to be deleted.
 	DefaultMinimumAge = 15 * time.Minute
 	// DefaultInputMinimumAge is the default
-	// minimuma ge of inputs-* files to be deleted.
+	// minimum age of inputs-* files to be deleted.
 	DefaultInputMinimumAge = 30 * time.Second
 )
 
@@ -62,6 +68,12 @@ type GCConfig struct {
 	// set to some duration longer than any possible ingest cycle.
 	MinimumAge      time.Duration
 	InputMinimumAge time.Duration
+
+	// MaxDelay is the maximum amount of time
+	// that a GC will spend blocking batch inserts.
+	// If MaxDelay is less than or equal to zero,
+	// then the amount of time spent GC'ing is unlimited.
+	MaxDelay time.Duration
 
 	// Logf, if non-nil, is a callback used for logging
 	// detailed information regarding GC decisions.
@@ -147,6 +159,11 @@ func (c *GCConfig) runInputs(rfs RemoveFS, dir string, idx *blockfmt.Index, star
 }
 
 func (c *GCConfig) runPacked(rfs RemoveFS, dir string, idx *blockfmt.Index, start time.Time, min time.Duration) error {
+	ifs, ok := rfs.(blockfmt.InputFS)
+	if !ok {
+		return fmt.Errorf("cannot scan indirect inputs using %T", rfs)
+	}
+	seek := getPackedCursor(idx)
 	used := make(map[string]struct{})
 	subdirs := make(map[string]struct{})
 	// we're cheating a bit: we know that packfile names
@@ -155,12 +172,12 @@ func (c *GCConfig) runPacked(rfs RemoveFS, dir string, idx *blockfmt.Index, star
 	// record the complete path
 	for i := range idx.Inline {
 		subdir, name := path.Split(idx.Inline[i].Path)
+		subdir = path.Clean(subdir)
+		if subdir < seek {
+			continue
+		}
 		used[name] = struct{}{}
-		subdirs[path.Clean(subdir)] = struct{}{}
-	}
-	ifs, ok := rfs.(blockfmt.InputFS)
-	if !ok {
-		return fmt.Errorf("cannot scan indirect inputs using %T", rfs)
+		subdirs[subdir] = struct{}{}
 	}
 	descs, err := idx.Indirect.Search(ifs, nil)
 	if err != nil {
@@ -168,15 +185,23 @@ func (c *GCConfig) runPacked(rfs RemoveFS, dir string, idx *blockfmt.Index, star
 	}
 	for i := range descs {
 		subdir, name := path.Split(descs[i].Path)
+		subdir = path.Clean(subdir)
+		if subdir < seek {
+			continue
+		}
 		used[name] = struct{}{}
-		subdirs[path.Clean(subdir)] = struct{}{}
+		subdirs[subdir] = struct{}{}
 	}
 	const pattern = "packed-*"
-	for sub := range subdirs {
-		matches := func(p string) bool {
-			ok, err := path.Match(pattern, p)
-			return err == nil && ok
-		}
+	matches := func(p string) bool {
+		ok, err := path.Match(pattern, p)
+		return err == nil && ok
+	}
+	subkeys := maps.Keys(subdirs)
+	slices.Sort(subkeys)
+	pos, _ := slices.BinarySearch(subkeys, seek)
+	subkeys = subkeys[pos:]
+	for i, sub := range subkeys {
 		visit := func(d fsutil.DirEntry) error {
 			name := d.Name()
 			if d.IsDir() || !matches(name) {
@@ -202,8 +227,49 @@ func (c *GCConfig) runPacked(rfs RemoveFS, dir string, idx *blockfmt.Index, star
 		if err != nil {
 			return err
 		}
+		if c.MaxDelay > 0 && i < len(subkeys)-1 && time.Since(start) >= c.MaxDelay {
+			// stop early if we've taken too long
+			setPackedCursor(idx, subkeys[i+1])
+			return errLongGC
+		}
 	}
+	setPackedCursor(idx, "")
 	return nil
+}
+
+func getPackedCursor(idx *blockfmt.Index) string {
+	udata := idx.UserData
+	if udata.IsEmpty() || !udata.IsStruct() {
+		return ""
+	}
+	cursor, _ := udata.Field("packed-gc-cursor").String()
+	return cursor
+}
+
+func setPackedCursor(dst *blockfmt.Index, cursor string) {
+	udata := dst.UserData
+	f := ion.Field{Label: "packed-gc-cursor", Datum: ion.String(cursor)}
+	if udata.IsEmpty() {
+		dst.UserData = ion.NewStruct(nil, []ion.Field{f}).Datum()
+		return
+	}
+	if !udata.IsStruct() {
+		return // ???
+	}
+	s, _ := udata.Struct()
+	fields := s.Fields(nil)
+	found := false
+	for i := range fields {
+		if fields[i].Label == f.Label {
+			fields[i] = f
+			found = true
+			break
+		}
+	}
+	if !found {
+		fields = append(fields, f)
+	}
+	dst.UserData = ion.NewStruct(nil, fields).Datum()
 }
 
 // Run calls rfs.Remove(path) for each path
@@ -225,13 +291,13 @@ func (c *GCConfig) Run(rfs RemoveFS, dbname string, idx *blockfmt.Index) error {
 	if inputmin <= 0 {
 		inputmin = DefaultInputMinimumAge
 	}
-	err := c.runInputs(rfs, dir, idx, start, inputmin)
-	if err != nil {
-		return fmt.Errorf("scanning inputs: %w", err)
-	}
-	err = c.runPacked(rfs, dir, idx, start, packedmin)
+	err := c.runPacked(rfs, dir, idx, start, packedmin)
 	if err != nil {
 		return fmt.Errorf("scanning packfiles: %w", err)
+	}
+	err = c.runInputs(rfs, dir, idx, start, inputmin)
+	if err != nil {
+		return fmt.Errorf("scanning inputs: %w", err)
 	}
 	return nil
 }

@@ -43,7 +43,7 @@ func (c *Config) Scan(who Tenant, db, table string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	idx, err := st.index(context.Background(), nil)
+	idx, err := st.index(context.Background())
 	if err != nil {
 		// if the index isn't present
 		// or is out-of-date, create a new one
@@ -56,7 +56,7 @@ func (c *Config) Scan(who Tenant, db, table string) (int, error) {
 			return 0, err
 		}
 	}
-	return st.scan(idx, nil, true)
+	return st.scan(idx, true)
 }
 
 // defChanged returns whether st.def has changed
@@ -71,7 +71,7 @@ func (st *tableState) defChanged(idx *blockfmt.Index) bool {
 	return string(st.def.Hash()) != string(hash)
 }
 
-func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComplete bool) (int, error) {
+func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, error) {
 	changed := st.defChanged(idx)
 	if changed {
 		flushOnComplete = true
@@ -217,7 +217,7 @@ func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComple
 			panic("should not be possible: idx.Scanning && total == 0")
 		}
 		if flushOnComplete {
-			return 0, st.flush(context.Background(), idx, cache)
+			return 0, st.flush(context.Background(), idx)
 		}
 		return 0, nil
 	}
@@ -226,9 +226,9 @@ func (st *tableState) scan(idx *blockfmt.Index, cache *IndexCache, flushOnComple
 			st.deleteInline(idx, c.parts[i].prepend)
 		}
 	}
-	err = st.force(context.Background(), idx, c.parts, cache)
+	err = st.force(context.Background(), idx, c.parts)
 	if err != nil {
-		invalidate(cache)
+		st.invalidate()
 		return 0, err
 	}
 	return total, nil

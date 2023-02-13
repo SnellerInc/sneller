@@ -155,7 +155,6 @@ func TestScan(t *testing.T) {
 		MaxScanBytes:  2 * 1024 * 1024,
 		RangeMultiple: 4,
 
-		GCLikelihood: 50,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
 	fullScan(t, &c, owner, "default", "taxi", objects)
@@ -262,7 +261,6 @@ func TestScanPartitioned(t *testing.T) {
 		MaxScanBytes:  2 * 1024 * 1024,
 		RangeMultiple: 4,
 
-		GCLikelihood: 50,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
 	fullScan(t, &c, owner, "default", "taxi", parts*objects)

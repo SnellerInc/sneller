@@ -324,23 +324,6 @@ type batch struct {
 	earliest, latest time.Time // modtimes for batch
 }
 
-// IndexCache is an opaque cache for index objects.
-type IndexCache struct {
-	value *blockfmt.Index // current in-memory index value
-	etag  string          // if not "", the most-recently-loaded etag
-}
-
-func invalidate(cache *IndexCache) {
-	overwrite(cache, nil, "")
-}
-
-func overwrite(cache *IndexCache, value *blockfmt.Index, etag string) {
-	if cache != nil {
-		cache.value = value
-		cache.etag = etag
-	}
-}
-
 func (ti *tableInfo) bgScan(state *scanState) {
 	// before returning, set ti.scan.state = nil
 	// and then post on the waitgroup in case anyone
@@ -350,7 +333,7 @@ func (ti *tableInfo) bgScan(state *scanState) {
 	ctx, task := trace.NewTask(context.Background(), "bg-scan")
 	defer task.End()
 	for !state.canceled.Load() {
-		idx, err := ti.state.index(ctx, &ti.cache)
+		idx, err := ti.state.index(ctx)
 		if err != nil && !shouldRebuild(err) {
 			ti.state.conf.logf("%s/%s: aborting scan; couldn't read index: %s", ti.state.db, ti.state.table, err)
 			return
@@ -365,7 +348,7 @@ func (ti *tableInfo) bgScan(state *scanState) {
 			return
 		}
 		ti.state.preciseGC(idx)
-		items, err := ti.state.scan(idx, &ti.cache, true)
+		items, err := ti.state.scan(idx, true)
 		if err != nil {
 			ti.state.conf.logf("%s/%s: aborting scan on error: %s", ti.state.db, ti.state.table, err)
 			return
@@ -405,7 +388,7 @@ func (q *QueueRunner) runTable(ctx context.Context, src *queueBatch, ti *tableIn
 		if err == ErrBuildAgain {
 			q.logf("%s/%s: still scanning", ti.state.db, ti.state.table)
 		} else {
-			invalidate(&ti.cache)
+			ti.state.invalidate()
 		}
 		q.logf("updating %s/%s: %s", ti.state.db, ti.state.table, err)
 	}
@@ -476,8 +459,6 @@ type scanState struct {
 
 type tableInfo struct {
 	state tableState
-	// cache holds the current index or nil
-	cache IndexCache
 	scan  atomic.Pointer[scanState]
 }
 
@@ -582,10 +563,10 @@ func (q *QueueRunner) runBatches(parent Queue, batch *queueBatch, dst map[dbtabl
 
 // check to see if we should start scanning
 func (q *QueueRunner) init(ti *tableInfo) {
-	idx, err := ti.state.index(context.Background(), &ti.cache)
+	idx, err := ti.state.index(context.Background())
 	if errors.Is(err, fs.ErrNotExist) {
-		err = ti.state.emptyIndex(&ti.cache)
-		idx = ti.cache.value // may be nil if err != nil
+		err = ti.state.emptyIndex()
+		idx = ti.state.cache.value // may be nil if err != nil
 	}
 	if err != nil {
 		ti.state.conf.logf("%s/%s: loading index: %s", ti.state.db, ti.state.table, err)

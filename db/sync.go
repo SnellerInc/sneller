@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	prand "math/rand"
 	"path"
 	"runtime/trace"
 	"strings"
@@ -141,14 +140,9 @@ type Config struct {
 	// a reasonable default is used.
 	TargetRefSize int64
 
-	// GCLikelihood is the likelihood that
-	// a Sync, Append, or Scan operation
-	// is followed by a GC operation.
-	// This value is interpreted as a statistical
-	// percent likelihood, so 0 means never GC,
-	// 100 means always GC, and number in beteween
-	// mean GC if rand.Intn(100) < GCLikelihood
-	GCLikelihood int
+	// GCMaxDelay is the longest amount of time that
+	// a gc cycle will spend blocking a batch insert operation.
+	GCMaxDelay time.Duration
 	// GCMinimumAge is the minimum time that
 	// a packed file should be left around after
 	// it has been dereferenced.
@@ -218,11 +212,38 @@ func (c *Config) logf(f string, args ...interface{}) {
 }
 
 type tableState struct {
+	cache struct {
+		value *blockfmt.Index
+		etag  string
+	}
 	def       *Definition
 	conf      Config
 	owner     Tenant
 	ofs       OutputFS
 	db, table string
+	shouldGC  bool
+}
+
+func (st *tableState) invalidate() {
+	st.cache.value = nil
+	st.cache.etag = ""
+}
+
+func (st *tableState) overwrite(idx *blockfmt.Index, etag string) {
+	st.cache.value = idx
+	st.cache.etag = etag
+}
+
+func (st *tableState) runGC(ctx context.Context, idx *blockfmt.Index) {
+	st.preciseGC(idx)
+	if st.shouldGC {
+		err := st.fullGC(ctx, idx)
+		if err != nil {
+			st.conf.logf("full gc on %s/%s: %s", st.db, st.table, err)
+		}
+		st.shouldGC = err == nil
+		return
+	}
 }
 
 func (c *Config) open(db, table string, owner Tenant) (*tableState, error) {
@@ -252,9 +273,9 @@ func (c *Config) open(db, table string, owner Tenant) (*tableState, error) {
 	return ts, nil
 }
 
-func (st *tableState) index(ctx context.Context, cache *IndexCache) (*blockfmt.Index, error) {
-	if cache != nil && cache.value != nil {
-		return cache.value, nil
+func (st *tableState) index(ctx context.Context) (*blockfmt.Index, error) {
+	if st.cache.value != nil {
+		return st.cache.value, nil
 	}
 	defer trace.StartRegion(ctx, "load-index").End()
 	ipath := IndexPath(st.db, st.table)
@@ -266,7 +287,11 @@ func (st *tableState) index(ctx context.Context, cache *IndexCache) (*blockfmt.I
 	if err != nil {
 		return nil, err
 	}
-	overwrite(cache, idx, etag)
+	st.overwrite(idx, etag)
+	// flag this table as requiring gc on the first load,
+	// since re-loading a table is an indication that we
+	// may have encountered and error (and created garbage)
+	st.shouldGC = true
 	return idx, nil
 }
 
@@ -412,19 +437,17 @@ func (c *Config) shouldScan(def *Definition) bool {
 // at which point append operations will be accepted. (The caller must continuously
 // call append for scanning to occur.)
 func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
-	idx, err := ti.state.index(ctx, &ti.cache)
+	idx, err := ti.state.index(ctx)
 	if err == nil {
-		// begin by removing any unreferenced files,
-		// if we have some left around that need removing
-		ti.state.preciseGC(idx)
+		ti.state.runGC(ctx, idx)
 		idx.Inputs.Backing = ti.state.ofs
 		if idx.Scanning {
-			_, err = ti.state.scan(idx, &ti.cache, true)
+			_, err = ti.state.scan(idx, true)
 			if err != nil {
 				return err
 			}
 			// currently rebuilding; please try again
-			invalidate(&ti.cache)
+			ti.state.invalidate()
 			return ErrBuildAgain
 		}
 		// trim pre-existing elements from lst
@@ -436,14 +459,14 @@ func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
 			ti.state.conf.logf("index for %s already up-to-date", ti.state.table)
 			return nil
 		}
-		return ti.state.append(ctx, idx, parts, &ti.cache)
+		return ti.state.append(ctx, idx, parts)
 	}
 	if ti.state.shouldScan() && (errors.Is(err, fs.ErrNotExist) || errors.Is(err, blockfmt.ErrIndexObsolete)) {
 		idx := &blockfmt.Index{
 			Name: ti.state.table,
 			Algo: "zstd",
 		}
-		_, err = ti.state.scan(idx, &ti.cache, true)
+		_, err = ti.state.scan(idx, true)
 		if err != nil {
 			return err
 		}
@@ -456,23 +479,23 @@ func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
 		// caller should probably Sync instead
 		return err
 	}
-	return ti.state.append(ctx, nil, parts, &ti.cache)
+	return ti.state.append(ctx, nil, parts)
 }
 
 func (st *tableState) shouldScan() bool { return st.conf.shouldScan(st.def) }
 
-func (st *tableState) append(ctx context.Context, idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
+func (st *tableState) append(ctx context.Context, idx *blockfmt.Index, parts []partition) error {
 	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
 	if len(parts) == 0 {
 		if idx == nil {
-			err = st.emptyIndex(cache)
+			err = st.emptyIndex()
 		}
 	} else {
-		err = st.force(ctx, idx, parts, cache)
+		err = st.force(ctx, idx, parts)
 	}
 	if err != nil {
-		invalidate(cache)
+		st.invalidate()
 		return fmt.Errorf("force: %w", err)
 	}
 	st.conf.logf("update of table %s complete", st.table)
@@ -508,7 +531,7 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 		}
 		fresh := false
 		gc := false
-		idx, err := st.index(context.Background(), nil)
+		idx, err := st.index(context.Background())
 		if err != nil {
 			// if the index isn't present
 			// or is out-of-date, create a new one
@@ -533,7 +556,7 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 		// if it is a) a new index file,
 		// b) it was already in the scanning state,
 		// or c) we ran GC and it modified the index
-		_, err = st.scan(idx, nil, fresh || !restart || gc)
+		_, err = st.scan(idx, fresh || !restart || gc)
 		if err != nil {
 			return err
 		}
@@ -598,7 +621,7 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (st *tableState) emptyIndex(cache *IndexCache) error {
+func (st *tableState) emptyIndex() error {
 	idx := blockfmt.Index{
 		Created:  date.Now().Truncate(time.Microsecond),
 		Name:     st.table,
@@ -612,9 +635,9 @@ func (st *tableState) emptyIndex(cache *IndexCache) error {
 	p := IndexPath(st.db, st.table)
 	etag, err := st.ofs.WriteFile(p, buf)
 	if err == nil {
-		overwrite(cache, &idx, etag)
+		st.overwrite(&idx, etag)
 	} else {
-		invalidate(cache)
+		st.invalidate()
 	}
 	return err
 }
@@ -629,10 +652,10 @@ func (c *Config) flushMeta() int {
 
 // after failing to read an object,
 // update the index state to reflect the fatal errors we encountered
-func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []partition, cache *IndexCache) {
+func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []partition) {
 	defer trace.StartRegion(ctx, "update-failed").End()
 	// invalidate cache so that a reload pulls the previous one
-	invalidate(cache)
+	st.invalidate()
 
 	any := false
 	for i := range parts {
@@ -657,20 +680,20 @@ func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []part
 			// to respect NewIndexScan configuration
 			Scanning: st.shouldScan(),
 		}
-		overwrite(cache, idx, "")
+		st.overwrite(idx, "")
 	} else {
 		// we re-load the index so that we don't have to
 		// worry about reverting any changes we made
 		// to the index object
 		// (it is expensive to preemptively perform a deep copy)
-		idx, err = st.index(ctx, cache)
+		idx, err = st.index(ctx)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				idx = &blockfmt.Index{
 					Name:     st.table,
 					Scanning: st.shouldScan(),
 				}
-				overwrite(cache, idx, "")
+				st.overwrite(idx, "")
 			} else {
 				st.conf.logf("re-opening index to record failure: %s", err)
 				return
@@ -692,7 +715,7 @@ func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []part
 	}
 	idx.Created = date.Now()
 	idx.Algo = "zstd"
-	err = st.flush(ctx, idx, cache)
+	err = st.flush(ctx, idx)
 	if err != nil {
 		st.conf.logf("flushing index in updateFailed: %s", err)
 	}
@@ -759,7 +782,7 @@ func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 func (st *tableState) preciseGC(idx *blockfmt.Index) bool {
 	purged := st.purgeExpired(idx)
 	gc := false
-	if rmfs, ok := st.ofs.(RemoveFS); ok && st.conf.GCLikelihood > 0 {
+	if rmfs, ok := st.ofs.(RemoveFS); ok {
 		gcconf := GCConfig{Precise: true, Logf: st.conf.Logf}
 		gc = gcconf.preciseGC(rmfs, idx)
 	}
@@ -792,26 +815,26 @@ func (st *tableState) userdata() ion.Datum {
 	}}).Datum()
 }
 
-func (st *tableState) writeIndex(idx *blockfmt.Index, cache *IndexCache) error {
+func (st *tableState) writeIndex(idx *blockfmt.Index) error {
 	idp := IndexPath(st.db, st.table)
-	if cache != nil {
-		info, err := fs.Stat(st.ofs, idp)
-		if cache.etag == "" {
-			// expect no file to exist
-			if err == nil || !errors.Is(err, fs.ErrNotExist) {
-				return fmt.Errorf("synchronization violation detected: fs.Stat for %s produced %v", idp, err)
-			}
-		} else {
-			if err != nil {
-				return fmt.Errorf("writeIndex: %w", err)
-			}
-			etag, err := st.ofs.ETag(idp, info)
-			if err != nil {
-				return fmt.Errorf("writeIndex: determining etag: %w", err)
-			}
-			if cache.etag != etag {
-				return fmt.Errorf("synchronization violation detected: found etag %s -> %s", cache.etag, etag)
-			}
+	info, err := fs.Stat(st.ofs, idp)
+	if st.cache.etag == "" {
+		// expect no file to exist
+		if err == nil || !errors.Is(err, fs.ErrNotExist) {
+			st.invalidate()
+			return fmt.Errorf("synchronization violation detected: fs.Stat for %s produced %v", idp, err)
+		}
+	} else {
+		if err != nil {
+			return fmt.Errorf("writeIndex: %w", err)
+		}
+		etag, err := st.ofs.ETag(idp, info)
+		if err != nil {
+			return fmt.Errorf("writeIndex: determining etag: %w", err)
+		}
+		if st.cache.etag != etag {
+			st.invalidate()
+			return fmt.Errorf("synchronization violation detected: found etag %s -> %s", st.cache.etag, etag)
 		}
 	}
 	buf, err := blockfmt.Sign(st.owner.Key(), idx)
@@ -823,7 +846,7 @@ func (st *tableState) writeIndex(idx *blockfmt.Index, cache *IndexCache) error {
 	}
 	etag, err := st.ofs.WriteFile(idp, buf)
 	if err == nil {
-		overwrite(cache, idx, etag)
+		st.overwrite(idx, etag)
 	}
 	return err
 }
@@ -831,7 +854,13 @@ func (st *tableState) writeIndex(idx *blockfmt.Index, cache *IndexCache) error {
 // flush writes out the provided index
 // and updates or invalidates cache to point
 // to the new index value + etag
-func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index, cache *IndexCache) (err error) {
+func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index) (err error) {
+	defer func() {
+		if err != nil {
+			st.invalidate()
+		}
+	}()
+
 	idx.Name = st.table
 	idx.UserData = st.userdata()
 	idx.Inputs.Backing = st.ofs
@@ -840,7 +869,6 @@ func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index, cache *Ind
 		err = idx.SyncInputs(dir, st.conf.inputMinAge())
 	})
 	if err != nil {
-		invalidate(cache)
 		return err
 	}
 	c := blockfmt.IndexConfig{
@@ -853,15 +881,10 @@ func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index, cache *Ind
 		err = c.SyncOutputs(idx, st.ofs, dir)
 	})
 	if err != nil {
-		invalidate(cache)
 		return err
 	}
-	err = st.writeIndex(idx, cache)
-	if err != nil {
-		invalidate(cache)
-		return err
-	}
-	return nil
+	err = st.writeIndex(idx)
+	return err
 }
 
 func suffixForComp(c string) string {
@@ -891,7 +914,7 @@ func (e *errUpdateFailed) Unwrap() error {
 	return e.err
 }
 
-func (st *tableState) force(ctx context.Context, idx *blockfmt.Index, parts []partition, cache *IndexCache) error {
+func (st *tableState) force(ctx context.Context, idx *blockfmt.Index, parts []partition) error {
 	extra := make([]blockfmt.Descriptor, 0, len(parts))
 	errs := make([]error, len(parts))
 	var wg sync.WaitGroup
@@ -918,7 +941,7 @@ func (st *tableState) force(ctx context.Context, idx *blockfmt.Index, parts []pa
 		}
 	}
 	if ferr != nil {
-		st.updateFailed(ctx, idx == nil, parts, cache)
+		st.updateFailed(ctx, idx == nil, parts)
 		return ferr
 	}
 	if idx == nil {
@@ -932,11 +955,7 @@ func (st *tableState) force(ctx context.Context, idx *blockfmt.Index, parts []pa
 	idx.Algo = "zstd"
 	idx.Created = date.Now().Truncate(time.Microsecond)
 	idx.Inline = append(idx.Inline, extra...)
-	err := st.flush(ctx, idx, cache)
-	if err != nil {
-		return err
-	}
-	return st.runGC(ctx, idx)
+	return st.flush(ctx, idx)
 }
 
 func (st *tableState) forcePart(ctx context.Context, prepend, dst *blockfmt.Descriptor, part *partition) error {
@@ -992,10 +1011,7 @@ func (st *tableState) forcePart(ctx context.Context, prepend, dst *blockfmt.Desc
 	return nil
 }
 
-func (st *tableState) runGC(ctx context.Context, idx *blockfmt.Index) error {
-	if prand.Intn(100) >= st.conf.GCLikelihood {
-		return nil
-	}
+func (st *tableState) fullGC(ctx context.Context, idx *blockfmt.Index) error {
 	rmfs, ok := st.ofs.(RemoveFS)
 	if !ok {
 		return nil
@@ -1005,6 +1021,7 @@ func (st *tableState) runGC(ctx context.Context, idx *blockfmt.Index) error {
 		Logf:            st.conf.Logf,
 		MinimumAge:      st.conf.GCMinimumAge,
 		InputMinimumAge: st.conf.InputMinimumAge,
+		MaxDelay:        st.conf.GCMaxDelay,
 	}
 	return conf.Run(rmfs, st.db, idx)
 }

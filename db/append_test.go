@@ -120,8 +120,7 @@ func TestAppend(t *testing.T) {
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
 		},
-		Logf:         t.Logf,
-		GCLikelihood: 1,
+		Logf: t.Logf,
 	}
 	ti := info(&c, owner, "default", "parking")
 	err := ti.append(context.Background(), nil)
@@ -169,7 +168,7 @@ func TestAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := len(ti.cache.value.Inline)
+	before := len(ti.state.cache.value.Inline)
 
 	// confirm that it doesn't do anything
 	// a second time around
@@ -184,7 +183,7 @@ func TestAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.ro = false
-	after := len(ti.cache.value.Inline)
+	after := len(ti.state.cache.value.Inline)
 	if before != after {
 		t.Fatal("dropped entries from Inline in no-op")
 	}
@@ -383,7 +382,7 @@ func TestAppendBadScan(t *testing.T) {
 	if !blockfmt.IsFatal(err) {
 		t.Fatalf("expected error satisfying blockfmt.IsFatal; got %T: %[1]v", err)
 	}
-	if ti.cache.value != nil {
+	if ti.state.cache.value != nil {
 		t.Error("cache is populated after an error")
 	}
 	// there should still be one output object
@@ -411,7 +410,7 @@ func TestAppendBadScan(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	if ti.cache.value != nil {
+	if ti.state.cache.value != nil {
 		t.Error("cache value is populated after ErrBuildAgain")
 	}
 

@@ -255,7 +255,6 @@ func TestSync(t *testing.T) {
 		// inline ref to an indirect ref
 		MaxInlineBytes: 150 * 1024,
 
-		GCLikelihood: 1,
 		GCMinimumAge: 1 * time.Millisecond,
 	}
 	err = c.Sync(owner, "default", "*")
@@ -456,8 +455,7 @@ func TestMaxBytesSync(t *testing.T) {
 		Fallback: func(_ string) blockfmt.RowFormat {
 			return blockfmt.UnsafeION()
 		},
-		Logf:         t.Logf,
-		GCLikelihood: 1,
+		Logf: t.Logf,
 	}
 	symlink := func(old, new string) {
 		oldabs, err := filepath.Abs(old)

@@ -296,7 +296,6 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 	r.Conf = Config{
 		Align:        1024,
 		NewIndexScan: scan,
-		GCLikelihood: 2,
 	}
 
 	runQueue(t, r, q)

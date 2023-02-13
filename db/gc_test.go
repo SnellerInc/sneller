@@ -29,20 +29,25 @@ func TestGC(t *testing.T) {
 	tmpdir := t.TempDir()
 	for _, dir := range []string{
 		filepath.Join(tmpdir, "a-prefix/foo"),
+		filepath.Join(tmpdir, "a-prefix/bar"),
 	} {
 		err := os.MkdirAll(dir, 0750)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	newname := filepath.Join(tmpdir, "a-prefix/foo/parking.10n")
 	oldname, err := filepath.Abs("../testdata/parking.10n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = os.Symlink(oldname, newname)
-	if err != nil {
-		t.Fatal(err)
+	for _, newname := range []string{
+		"a-prefix/foo/parking.10n",
+		"a-prefix/bar/parking.10n",
+	} {
+		err = os.Symlink(oldname, filepath.Join(tmpdir, newname))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	dfs := newDirFS(t, tmpdir)
@@ -63,7 +68,9 @@ func TestGC(t *testing.T) {
 		"db/default/parking/inputs-0000",
 		"db/default/parking/inputs-1000",
 		"db/default/parking/foo/packed-deleteme0.ion.zst",
+		"db/default/parking/bar/packed-deleteme0.ion.zst",
 		"db/default/parking/foo/packed-deleteme1.ion.zst",
+		"db/default/parking/bar/packed-deleteme1.ion.zst",
 	}
 	for _, x := range bogus {
 		_, err := dfs.WriteFile(x, []byte{})
@@ -92,14 +99,34 @@ func TestGC(t *testing.T) {
 		t.Fatal(err)
 	}
 	owner.ro = false
+	conf := GCConfig{
+		Logf:            t.Logf,
+		MinimumAge:      1,
+		InputMinimumAge: 1,
+		MaxDelay:        1,
+	}
 	idx, err := OpenIndex(dfs, "default", "parking", owner.Key())
 	if err != nil {
 		t.Fatal(err)
 	}
-	conf := GCConfig{Logf: t.Logf, MinimumAge: 1, InputMinimumAge: 1}
+	err = conf.Run(dfs, "default", idx)
+	if !errors.Is(err, errLongGC) {
+		t.Errorf("first run: got %v", err)
+	}
+	// should have a non-empty cursor
+	// since we stopped early:
+	cursor := getPackedCursor(idx)
+	if cursor == "" {
+		t.Errorf("cursor = %s?", cursor)
+	}
 	err = conf.Run(dfs, "default", idx)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// cursor should be empty now:
+	cursor = getPackedCursor(idx)
+	if cursor != "" {
+		t.Errorf("cursor = %s?", cursor)
 	}
 	// make sure all the objects pointed to
 	// by the index still exist, and all the bogus
