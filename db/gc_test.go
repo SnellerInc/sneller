@@ -28,14 +28,14 @@ func TestGC(t *testing.T) {
 	checkFiles(t)
 	tmpdir := t.TempDir()
 	for _, dir := range []string{
-		filepath.Join(tmpdir, "a-prefix"),
+		filepath.Join(tmpdir, "a-prefix/foo"),
 	} {
 		err := os.MkdirAll(dir, 0750)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	newname := filepath.Join(tmpdir, "a-prefix/parking.10n")
+	newname := filepath.Join(tmpdir, "a-prefix/foo/parking.10n")
 	oldname, err := filepath.Abs("../testdata/parking.10n")
 	if err != nil {
 		t.Fatal(err)
@@ -49,8 +49,10 @@ func TestGC(t *testing.T) {
 	err = WriteDefinition(dfs, "default", &Definition{
 		Name: "parking",
 		Inputs: []Input{
-			{Pattern: "file://a-prefix/*.10n"},
-			{Pattern: "file://a-prefix/*.json"},
+			{Pattern: "file://a-prefix/{pre}/*.10n"},
+		},
+		Partitions: []Partition{
+			{Field: "pre"},
 		},
 	})
 	if err != nil {
@@ -58,9 +60,10 @@ func TestGC(t *testing.T) {
 	}
 
 	bogus := []string{
-		"db/default/parking/packed-deleteme0.ion.zst",
-		"db/default/parking/packed-deleteme1.ion.zst",
-		"db/default/parking/foo/bar/packed-deleteme2.ion.zst",
+		"db/default/parking/inputs-0000",
+		"db/default/parking/inputs-1000",
+		"db/default/parking/foo/packed-deleteme0.ion.zst",
+		"db/default/parking/foo/packed-deleteme1.ion.zst",
 	}
 	for _, x := range bogus {
 		_, err := dfs.WriteFile(x, []byte{})
@@ -93,7 +96,7 @@ func TestGC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conf := GCConfig{Logf: t.Logf, MinimumAge: 1}
+	conf := GCConfig{Logf: t.Logf, MinimumAge: 1, InputMinimumAge: 1}
 	err = conf.Run(dfs, "default", idx)
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +120,9 @@ func TestGC(t *testing.T) {
 	})
 	for i := range bogus {
 		_, err := fs.Stat(dfs, bogus[i])
-		if !errors.Is(err, fs.ErrNotExist) {
+		if err == nil {
+			t.Errorf("path %s: still exists?", bogus[i])
+		} else if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("path %s: unexpected error %v", bogus[i], err)
 		}
 	}
