@@ -138,6 +138,17 @@ func pad(x string) string {
 	return string(buf)[:len(x)]
 }
 
+func (p *prog) binaryDataToBits(str string) uint64 {
+	for i := range p.dict {
+		if str == p.dict[i] {
+			return uint64(i)
+		}
+	}
+
+	p.dict = append(p.dict, pad(str))
+	return uint64(len(p.dict) - 1)
+}
+
 // used to produce a consistent bit pattern
 // for hashing common subexpressions
 func (p *prog) tobits(imm any) uint64 {
@@ -163,13 +174,7 @@ func (p *prog) tobits(imm any) uint64 {
 	case aggregateslot:
 		return uint64(v)
 	case string:
-		for i := range p.dict {
-			if v == p.dict[i] {
-				return uint64(i)
-			}
-		}
-		p.dict = append(p.dict, pad(v))
-		return uint64(len(p.dict) - 1)
+		return p.binaryDataToBits(v)
 	case bool:
 		if v {
 			return 1
@@ -178,14 +183,12 @@ func (p *prog) tobits(imm any) uint64 {
 	case date.Time:
 		var buf ion.Buffer
 		buf.WriteTime(v)
-		str := string(buf.Bytes()[1:])
-		for i := range p.dict {
-			if p.dict[i] == str {
-				return uint64(i)
-			}
-		}
-		p.dict = append(p.dict, pad(str))
-		return uint64(len(p.dict) - 1)
+		return p.binaryDataToBits(string(buf.Bytes()[1:]))
+	case ion.Datum:
+		st := ion.Symtab{}
+		buf := ion.Buffer{}
+		v.Encode(&buf, &st)
+		return p.binaryDataToBits(string(buf.Bytes()))
 	default:
 		panic(fmt.Sprintf("invalid immediate %+v with type %T", imm, imm))
 	}
@@ -3654,45 +3657,49 @@ func emitconstcmp(v *value, c *compilestate) {
 		return
 	}
 
-	// if we get a datum object,
-	// then encode it verbatim;
-	// otherwise try to convert
-	// to a datum...
-	d, ok := imm.(ion.Datum)
+	raw, ok := imm.(rawDatum)
 	if !ok {
-		switch imm := imm.(type) {
-		case float64:
-			d = ion.Float(imm)
-		case float32:
-			d = ion.Float(float64(imm)) // TODO: maybe don't convert here...
-		case int64:
-			d = ion.Int(imm)
-		case int:
-			d = ion.Int(int64(imm))
-		case uint64:
-			d = ion.Uint(imm)
-		case string:
-			d = ion.String(imm)
-		case []byte:
-			d = ion.Blob(imm)
-		case date.Time:
-			d = ion.Timestamp(imm)
-		default:
-			panic("type not supported for literal comparison")
+		// if we get a datum object,
+		// then encode it verbatim;
+		// otherwise try to convert
+		// to a datum...
+		d, ok := imm.(ion.Datum)
+		if !ok {
+			switch imm := imm.(type) {
+			case float64:
+				d = ion.Float(imm)
+			case float32:
+				d = ion.Float(float64(imm)) // TODO: maybe don't convert here...
+			case int64:
+				d = ion.Int(imm)
+			case int:
+				d = ion.Int(int64(imm))
+			case uint64:
+				d = ion.Uint(imm)
+			case string:
+				d = ion.String(imm)
+			case []byte:
+				d = ion.Blob(imm)
+			case date.Time:
+				d = ion.Timestamp(imm)
+			default:
+				panic("type not supported for literal comparison")
+			}
 		}
+
+		var b ion.Buffer
+		var st ion.Symtab // TODO: pass input symbol table in here!
+		d.Encode(&b, &st)
+		raw = b.Bytes()
 	}
 
-	var b ion.Buffer
-	var st ion.Symtab // TODO: pass input symbol table in here!
-	d.Encode(&b, &st)
-
 	off := len(c.litbuf)
-	c.litbuf = append(c.litbuf, b.Bytes()...)
+	c.litbuf = append(c.litbuf, raw...)
 
 	c.asm.emitOpcode(opcmpeqvimm,
 		c.slotOf(v, regK),
 		c.slotOf(val, regV),
-		encodeLitRef(off, b.Bytes()),
+		encodeLitRef(off, raw),
 		c.slotOf(msk, regK),
 	)
 }
@@ -4308,13 +4315,6 @@ func (p *prog) symbolize(st *symtab, aux *auxbindings) error {
 		case shashlookup:
 			p.literals = true
 			v.imm = p.mkhash(st, v.imm)
-		case sliteral:
-			if d, ok := v.imm.(ion.Datum); ok {
-				p.literals = true
-				var tmp ion.Buffer
-				d.Encode(&tmp, &st.Symtab)
-				v.imm = rawDatum(tmp.Bytes())
-			}
 		case sdot:
 			str := v.imm.(string)
 
@@ -4355,6 +4355,19 @@ func (p *prog) symbolize(st *symtab, aux *auxbindings) error {
 			}
 			v.imm = sym
 			p.record(str, sym)
+		default:
+			if d, ok := v.imm.(ion.Datum); ok {
+				if !isHashConst(d) {
+					p.literals = true
+				}
+
+				var bag ion.Bag
+				var tmp ion.Buffer
+
+				bag.AddDatum(d)
+				bag.Encode(&tmp, &st.Symtab)
+				v.imm = rawDatum(tmp.Bytes())
+			}
 		}
 	}
 	p.symbolized = true
