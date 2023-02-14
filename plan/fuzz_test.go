@@ -18,6 +18,7 @@ package plan_test
 
 import (
 	"bufio"
+	"context"
 	"io/fs"
 	"os"
 	"path"
@@ -29,12 +30,32 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/plan"
+	"github.com/SnellerInc/sneller/vm"
 )
 
 type fuzzEnv struct{}
 
-func (f fuzzEnv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
+type fuzzHandle struct{}
+
+func (f fuzzHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	dst.WriteNull()
+	return nil
+}
+
+func (f fuzzHandle) Size() int64 { return 0 }
+
+func (f fuzzHandle) Open(_ context.Context) (vm.Table, error) {
 	return nil, nil
+}
+
+func (f fuzzEnv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
+	return fuzzHandle{}, nil
+}
+
+type fuzzDecoder struct{}
+
+func (f fuzzDecoder) DecodeHandle(d ion.Datum) (plan.TableHandle, error) {
+	return fuzzHandle{}, nil
 }
 
 func addQueries(f *testing.F) {
@@ -76,6 +97,7 @@ func addQueries(f *testing.F) {
 
 func FuzzNewPlan(f *testing.F) {
 	addQueries(f)
+	f.Add([]byte("SELECT 0 FROM A++A"))
 	// confirm that expr.Check will not
 	// panic when handed a query that parses correctly
 	f.Fuzz(func(t *testing.T, text []byte) {
@@ -93,7 +115,7 @@ func FuzzNewPlan(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = plan.Decode(nil, &st, buf.Bytes())
+		_, err = plan.Decode(fuzzDecoder{}, &st, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,7 +141,7 @@ func FuzzNewSplit(f *testing.F) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = plan.Decode(nil, &st, buf.Bytes())
+		_, err = plan.Decode(fuzzDecoder{}, &st, buf.Bytes())
 		if err != nil {
 			t.Fatal(err)
 		}
