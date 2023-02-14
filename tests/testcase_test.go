@@ -54,7 +54,7 @@ section 3(b)
 	reader := strings.NewReader(input)
 
 	// when
-	spec, err := readTestCaseSpec(reader)
+	spec, err := readTestcaseSpec(reader)
 
 	// then
 	if err != nil {

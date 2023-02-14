@@ -24,8 +24,8 @@ import (
 
 var sepdash = []byte("---")
 
-// TestCaseSpec holds the pre-parsed testcase content.
-type TestCaseSpec struct {
+// Spec holds the pre-parsed testcase content.
+type Spec struct {
 	// List of lines between `---` marks
 	Sections [][]string
 
@@ -33,27 +33,27 @@ type TestCaseSpec struct {
 	Tags map[string]string
 }
 
-// ReadTestCaseSpecFromFile is a wrapper for ReadTestcase that reads
+// ReadTestcaseFromFile is a wrapper for ReadTestcase that reads
 // testcase from a file.
-func ReadTestCaseSpecFromFile(fname string) (*TestCaseSpec, error) {
+func ReadTestcaseFromFile(fname string) (*Spec, error) {
 	f, err := os.Open(fname)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	return readTestCaseSpec(f)
+	return readTestcaseSpec(f)
 }
 
-// readTestCaseSpec reads parts of a text separated by lines `---`.
+// readTestcaseSpec reads parts of a text separated by lines `---`.
 //
 // Each part is a list of lines.
 // The procedure skips empty lines and lines staring with the `#`.
 // The procedure collects all key=value settings that start with double '##'.
-func readTestCaseSpec(reader io.Reader) (*TestCaseSpec, error) {
+func readTestcaseSpec(reader io.Reader) (*Spec, error) {
 	rd := bufio.NewScanner(reader)
 
-	spec := &TestCaseSpec{
+	spec := &Spec{
 		Tags: make(map[string]string),
 	}
 
