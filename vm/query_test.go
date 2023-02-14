@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/SnellerInc/sneller/expr"
-	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/versify"
 	"github.com/SnellerInc/sneller/plan"
@@ -67,28 +66,32 @@ func (b *benchTable) WriteChunks(dst vm.QuerySink, parallel int) error {
 	})
 }
 
-func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out []ion.Datum) {
+func testInput(t *testing.T, tci *testquery.TestCaseIon, shuffleCount int) {
+
 	var done bool
-	for i := 0; i < testquery.Shufflecount*2; i++ {
+
+	for i := 0; i < shuffleCount*2; i++ {
 		name := fmt.Sprintf("shuffle-%d", i)
 		split := false
-		if i >= testquery.Shufflecount {
+		if i >= shuffleCount {
 			split = true
 			name = fmt.Sprintf("shuffle-split-%d", i)
 		}
+
 		t.Run(name, func(t *testing.T) {
-			st.Reset()
-			q, err := partiql.Parse(query)
-			if err != nil {
-				t.Fatal(err)
+			if i > 0 && !tci.Shuffle() {
+				done = true
+				return
 			}
+			tci.SymbolTable.Reset()
+
 			flags := testquery.RunFlags(0)
 			// if the outputs are input-order-independent,
 			// then we can test the query with parallel inputs:
-			if i > 0 && len(out) <= 1 || !shuffleOutput(q) {
+			if i > 0 && len(tci.Output) <= 1 || !testquery.ShuffleOutput(tci.Query) {
 				flags |= testquery.FlagParallel
 			}
-			if shuffleSymtab(q) {
+			if testquery.ShuffleSymtab(tci.Query) {
 				flags |= testquery.FlagShuffle
 			}
 			if i > 0 {
@@ -97,55 +100,14 @@ func testInput(t *testing.T, query []byte, st *ion.Symtab, in [][]ion.Datum, out
 			if split {
 				flags |= testquery.FlagSplit
 			}
-			if err = testquery.ExecuteQuery(q, st, in, out, flags); err != nil {
+			if err := tci.Execute(flags); err != nil {
 				t.Error(err)
-			}
-			if t.Failed() || !canShuffle(q) {
-				done = true
-				return
-			}
-			// shuffle around the input (and maybe output)
-			// lanes so that we increase the coverage of
-			// lane-specific branches
-			if len(in) != 1 {
-				// don't shuffle multiple inputs
-			} else if in := in[0]; shuffleOutput(q) && len(in) == len(out) {
-				rand.Shuffle(len(in), func(i, j int) {
-					in[i], in[j] = in[j], in[i]
-					out[i], out[j] = out[j], out[i]
-				})
-			} else {
-				rand.Shuffle(len(in), func(i, j int) {
-					in[i], in[j] = in[j], in[i]
-				})
 			}
 		})
 		if done {
 			break
 		}
 	}
-}
-
-func testPath(t *testing.T, fname string) {
-	query, inputs, output, err := testquery.ReadTestcase(fname)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var inst ion.Symtab
-	inrows := make([][]ion.Datum, len(inputs))
-	r := rand.New(rand.NewSource(0))
-	for i := range inrows {
-		rows, err := testquery.Rows(inputs[i], &inst, func() bool { return r.Intn(2) == 0 })
-		if err != nil {
-			t.Fatalf("parsing input[%d] rows: %s", i, err)
-		}
-		inrows[i] = rows
-	}
-	outrows, err := testquery.Rows(output, &inst, func() bool { return false })
-	if err != nil {
-		t.Fatalf("parsing output rows: %s", err)
-	}
-	testInput(t, query, &inst, inrows, outrows)
 }
 
 func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
@@ -230,7 +192,7 @@ func versifyGetter(inst *ion.Symtab, inrows []ion.Datum) func() ([]byte, int) {
 
 func benchPath(b *testing.B, fname string) {
 	b.Run(fname, func(b *testing.B) {
-		query, bs, input, err := testquery.ReadBenchmark(fname)
+		query, bs, input, err := testquery.ReadBenchmarkFromFile(fname)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -242,7 +204,7 @@ func benchPath(b *testing.B, fname string) {
 			return r.Float64() > prob
 		}
 
-		inrows, err := testquery.Rows(input, &inst, symbolize)
+		inrows, err := testquery.IonizeRow(input, &inst, symbolize)
 		if err != nil {
 			b.Fatalf("parsing input rows: %s", err)
 		}
@@ -288,10 +250,13 @@ func TestQueries(t *testing.T) {
 		vm.Errorf = nil
 	}()
 	for i := range test {
-		path := test[i].path
 		t.Run(test[i].name, func(t *testing.T) {
 			t.Parallel()
-			testPath(t, path)
+			tci, err := testquery.ReadTestCaseIonFromFile(test[i].path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			testInput(t, tci, 10)
 		})
 	}
 }
@@ -335,102 +300,4 @@ func findQueries(dir, suffix string, symlink bool) ([]queryTest, error) {
 		return nil
 	}
 	return tests, filepath.WalkDir(rootdir, walker)
-}
-
-// does the output need to be shuffled along
-// with the input?
-func shuffleOutput(q *expr.Query) bool {
-	sel, ok := q.Body.(*expr.Select)
-	if !ok {
-		return false
-	}
-	// ORDER BY, GROUP BY, and DISTINCT
-	// all have output orderings that are
-	// independent of the input
-	return sel.OrderBy == nil && sel.GroupBy == nil && !sel.Distinct
-}
-
-// can symtab be safely shuffled?
-func shuffleSymtab(q *expr.Query) bool {
-	allowed := true
-	fn := expr.WalkFunc(func(n expr.Node) bool {
-		if !allowed {
-			return false
-		}
-
-		s, ok := n.(*expr.Select)
-		if ok {
-			// sorting fails if a symtab change (sort & limit prevents symtab changes)
-			if !(s.OrderBy == nil || (s.OrderBy != nil && s.Limit != nil)) {
-				allowed = false
-				return false
-			}
-		}
-
-		return true
-	})
-
-	expr.Walk(fn, q.Body)
-
-	return allowed
-}
-
-// can the inputs to this query be shuffled?
-func canShuffle(q *expr.Query) bool {
-	sel, ok := q.Body.(*expr.Select)
-	if !ok {
-		return false
-	}
-	if sel.OrderBy != nil {
-		// FIXME: not always true; sorting is not stable...
-		return true
-	}
-	// any aggregate produces only one output row,
-	// so the result can be shuffled trivially
-	if anyHasAggregate(sel.Columns) && len(sel.GroupBy) == 0 {
-		return true
-	}
-	if _, ok := sel.From.(*expr.Join); ok {
-		// cross-join permutes row order;
-		// need an ORDER BY to make results deterministic
-		return false
-	}
-	if sel.GroupBy != nil || sel.Distinct {
-		// these permute the output ordering by hash
-		return false
-	}
-	return true
-}
-
-func anyHasAggregate(lst []expr.Binding) bool {
-	for i := range lst {
-		e := lst[i].Expr
-		if hasAggregate(e) {
-			return true
-		}
-	}
-	return false
-}
-
-type walkfn func(e expr.Node) bool
-
-func (w walkfn) Visit(e expr.Node) expr.Visitor {
-	if w(e) {
-		return w
-	}
-	return nil
-}
-
-func hasAggregate(e expr.Node) bool {
-	any := false
-	w := walkfn(func(e expr.Node) bool {
-		_, ok := e.(*expr.Aggregate)
-		if ok {
-			any = true
-			return false
-		}
-		return !any
-	})
-	expr.Walk(w, e)
-	return any
 }
