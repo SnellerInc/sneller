@@ -36,9 +36,11 @@ func (e *executor) subexec(n *Node) (expr.Rewriter, error) {
 	wg.Add(len(n.Children))
 	errors := make([]error, len(n.Children))
 	for i := range n.Children {
+		subex := e.clone()
 		go func(i int) {
 			defer wg.Done()
-			errors[i] = e.do(&rp[i], n.Children[i])
+			errors[i] = subex.do(&rp[i], n.Children[i])
+			e.ep.Stats.atomicAdd(&subex.ep.Stats)
 		}(i)
 	}
 	wg.Wait()
@@ -54,6 +56,18 @@ func (e *executor) subexec(n *Node) (expr.Rewriter, error) {
 type executor struct {
 	ep     *ExecParams
 	inputs []Input
+}
+
+func (e *executor) clone() *executor {
+	return &executor{
+		ep: &ExecParams{
+			Output:   nil, // not for sub-queries to use
+			Parallel: e.ep.Parallel,
+			Context:  e.ep.Context,
+			Rewriter: e.ep.Rewriter,
+		},
+		inputs: e.inputs,
+	}
 }
 
 func mkexec(ep *ExecParams, inputs []Input) *executor {
