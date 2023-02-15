@@ -38,7 +38,7 @@ import (
 // used for requests made from this package.
 var DefaultClient = http.Client{
 	Transport: &http.Transport{
-		ResponseHeaderTimeout: 5 * time.Second,
+		ResponseHeaderTimeout: 60 * time.Second,
 		// Empirically, AWS creates about 40
 		// DNS entries for S3, so 5 connections
 		// per host is about 100 total connections.
