@@ -1,7 +1,0 @@
-# match bindings introduced by GROUP BY
-SELECT DISTINCT ON (a, b) x, y, z FROM table GROUP BY x, y AS b, z AS a
----
-ITERATE table FIELDS [x, y, z]
-FILTER DISTINCT [x, y, z]
-PROJECT x AS x, y AS y, z AS z
-FILTER DISTINCT [z, y]

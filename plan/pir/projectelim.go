@@ -256,6 +256,11 @@ func flatten(b *Trace) {
 // and eliminate the Bind
 func liftprojectagg(b *Trace) {
 	var child Step
+
+	// these are allowed to sit
+	// in between the projection and the aggregation
+	var lim *Limit
+	var ord *Order
 outer:
 	for s := b.top; s != nil; s = s.parent() {
 		bi, ok := s.(*Bind)
@@ -264,6 +269,15 @@ outer:
 			continue
 		}
 		par := bi.parent()
+		lim, ok = par.(*Limit)
+		if ok {
+			par = lim.parent()
+		}
+		ord, ok = par.(*Order)
+		if ok {
+			par = ord.parent()
+		}
+
 		ag, ok := par.(*Aggregate)
 		if !ok {
 			child = s
@@ -319,6 +333,25 @@ outer:
 			}
 		}
 
+		// rewrite ORDER BY if necessary
+		if ord != nil {
+			altbind := make([]expr.Binding, len(ag.Agg)+len(ag.GroupBy))
+			for i, bidx := range agg2bind {
+				var orig string
+				if i < len(ag.Agg) {
+					orig = ag.Agg[i].Result
+				} else {
+					orig = ag.GroupBy[i-len(ag.Agg)].Result()
+				}
+				altbind[i] = expr.Bind(expr.Ident(bi.bind[bidx].Result()), orig)
+			}
+			bf := &bindflattener{altbind}
+			for j := range ord.Columns {
+				ord.Columns[j].Column = expr.Rewrite(bf, ord.Columns[j].Column)
+			}
+		}
+
+		// rewrite aggregate
 		for i, bidx := range agg2bind {
 			if i < len(ag.Agg) {
 				ag.Agg[i].Result = bi.bind[bidx].Result()
@@ -326,12 +359,18 @@ outer:
 				ag.GroupBy[i-len(ag.Agg)].As(bi.bind[bidx].Result())
 			}
 		}
-
-		// splice out the bind node
-		if child == nil {
-			b.top = ag
+		var newtop Step
+		if lim != nil {
+			newtop = lim
+		} else if ord != nil {
+			newtop = ord
 		} else {
-			child.setparent(ag)
+			newtop = ag
+		}
+		if child == nil {
+			b.top = newtop
+		} else {
+			child.setparent(newtop)
 		}
 	}
 }

@@ -528,7 +528,7 @@ func TestSimpleFS(t *testing.T) {
 			output:  `{"count0": 3391, "count1": 3391}`,
 			partial: true,
 		},
-		{input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"VendorID\": \"VTS\", \"count\": 7353}\n{\"VendorID\": \"CMT\", \"count\": 1055}\n{\"VendorID\": \"DDS\", \"count\": 152}"},
+		{input: "SELECT COUNT(*), VendorID FROM default.taxi GROUP BY VendorID ORDER BY SUM(trip_distance) DESC", output: "{\"count\": 7353, \"VendorID\": \"VTS\"}\n{\"count\": 1055, \"VendorID\": \"CMT\"}\n{\"count\": 152, \"VendorID\": \"DDS\"}"},
 		{input: "SELECT COUNT(DISTINCT RPState) from default.parking", output: `{"count": 25}`},
 
 		// don't care much about the result here; this just

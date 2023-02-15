@@ -69,19 +69,20 @@ func (b *Trace) optimize() error {
 	aggelim(b) // substitute constants for aggregates if possible
 	aggfilter(b)
 	orderelim(b)
-	projectpushdown(b)     // merge adjacent projections
-	liftprojectagg(b)      // eliminate a trivial projection after an aggregate
+	projectpushdown(b) // merge adjacent projections
+	liftprojectagg(b)  // eliminate a trivial projection after an aggregate
+	distinctelim(b)
 	countdistinct2count(b) // turn count(distinct x) -> count(x) from (select distinct ...)
 	strengthReduce(b)      // strength-reduce kernels, replacing generic subtraces with their case-specific optimized variants
 	filterelim(b)          // eliminate WHERE TRUE
 	filterpushdown(b)      // merge adjacent filters
+	limitpushdown(b)       // push down LIMIT
 	err := joinelim(b)     // turn EquiJoin into a correlated sub-query + projection
 	if err != nil {
 		return err
 	}
 	projectelim(b)       // drop un-used bindings
 	projectpushdown(b)   // merge adjacent projections
-	limitpushdown(b)     // push down LIMIT
 	flatten(b)           // eliminate left-to-right bindings
 	mergereplacements(b) // eliminate common sub-traces
 	simplify(b)          // final simplification pass

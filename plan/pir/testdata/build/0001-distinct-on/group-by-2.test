@@ -1,5 +1,5 @@
 SELECT DISTINCT ON (x, y) AVG(v) as v FROM table GROUP BY x, y
 ---
 ITERATE table FIELDS [v, x, y]
-AGGREGATE AVG(v) AS $_0_0 BY x, y
+AGGREGATE AVG(v) AS $_0_0 BY x AS $_0_1, y AS $_0_2
 PROJECT $_0_0 AS v

@@ -116,7 +116,7 @@ func TestBuildError(t *testing.T) {
 		},
 		{
 			input: `select x, y from tbl group by sum(x) over (partition by y)`,
-			rx:    "window",
+			rx:    "GROUP BY cannot contain aggregate",
 		},
 		{
 			input: `SELECT x FROM table WHERE AVG(x) > 1.5`,
@@ -128,15 +128,7 @@ func TestBuildError(t *testing.T) {
 		},
 		{
 			input: `SELECT DISTINCT x, y, z FROM table GROUP BY x, y`,
-			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
-		},
-		{
-			input: `SELECT DISTINCT x, y, z FROM table GROUP BY y, x, w, z`,
-			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
-		},
-		{
-			input: `SELECT DISTINCT x, y, sum(z) AS s, avg(w) AS a FROM table GROUP BY y, x`,
-			rx:    "set of DISTINCT expressions has to be equal to GROUP BY expressions",
+			rx:    "z references an unbound variable",
 		},
 		{
 			input: "SELECT x FROM UNPIVOT table AS v AT a",
@@ -182,6 +174,14 @@ func TestBuildError(t *testing.T) {
 			// join on with erronous syntax (issue #2471)
 			input: `SELECT passenger_count FROM table JOIN X ON X=Y`,
 			rx:    `unable to eliminate join`,
+		},
+		{
+			input: `SELECT DISTINCT ON (a, b) x, y, z FROM table GROUP BY x AS a, y AS b`,
+			rx:    "x references an unbound variable",
+		},
+		{
+			input: `SELECT DISTINCT z, x, AVG(y) AS y FROM table GROUP BY x, AVG(y), z`,
+			rx:    `GROUP BY cannot contain aggregate`,
 		},
 	}
 	for i := range tests {
@@ -408,9 +408,9 @@ func TestBuild(t *testing.T) {
 			expect: []string{
 				"WITH (",
 				"	ITERATE foo FIELDS [y]",
-				"	PROJECT y AS y",
 				"	ORDER BY y DESC NULLS FIRST",
 				"	LIMIT 5",
+				"	PROJECT y AS y",
 				") AS REPLACEMENT(0)",
 				"ITERATE foo FIELDS [x, y] WHERE IN_REPLACEMENT(y, 0)",
 				"AGGREGATE SUM(x) AS \"sum\"",
@@ -419,11 +419,11 @@ func TestBuild(t *testing.T) {
 				"WITH (",
 				"	UNION MAP foo (",
 				"		ITERATE PART foo FIELDS [y]",
-				"		PROJECT y AS y",
 				"		ORDER BY y DESC NULLS FIRST",
 				"		LIMIT 5)",
 				"	ORDER BY y DESC NULLS FIRST",
 				"	LIMIT 5",
+				"	PROJECT y AS y",
 				") AS REPLACEMENT(0)",
 				"UNION MAP foo (",
 				"	ITERATE PART foo FIELDS [x, y] WHERE IN_REPLACEMENT(y, 0)",
@@ -505,10 +505,10 @@ where grp in (select grp from (select count(*), grp from foo group by grp order 
 			expect: []string{
 				"WITH (",
 				"	ITERATE foo FIELDS [grp]",
-				"	AGGREGATE COUNT(*) AS \"count\" BY grp AS grp",
-				"	ORDER BY \"count\" DESC NULLS FIRST",
+				"	AGGREGATE COUNT(*) AS $_0_0 BY grp AS $_0_1",
+				"	ORDER BY $_0_0 DESC NULLS FIRST",
 				"	LIMIT 5",
-				"	PROJECT grp AS grp",
+				"	PROJECT $_0_1 AS grp",
 				") AS REPLACEMENT(0)",
 				"ITERATE foo FIELDS * WHERE IN_REPLACEMENT(grp, 0)",
 			},
@@ -516,11 +516,11 @@ where grp in (select grp from (select count(*), grp from foo group by grp order 
 				"WITH (",
 				"	UNION MAP foo (",
 				"		ITERATE PART foo FIELDS [grp]",
-				"		AGGREGATE COUNT(*) AS $_2_0 BY grp AS grp)",
-				"	AGGREGATE SUM_COUNT($_2_0) AS \"count\" BY grp AS grp",
-				"	ORDER BY \"count\" DESC NULLS FIRST",
+				"		AGGREGATE COUNT(*) AS $_2_0 BY grp AS $_0_1)",
+				"	AGGREGATE SUM_COUNT($_2_0) AS $_0_0 BY $_0_1 AS $_0_1",
+				"	ORDER BY $_0_0 DESC NULLS FIRST",
 				"	LIMIT 5",
-				"	PROJECT grp AS grp",
+				"	PROJECT $_0_1 AS grp",
 				") AS REPLACEMENT(0)",
 				"UNION MAP foo (",
 				"	ITERATE PART foo FIELDS * WHERE IN_REPLACEMENT(grp, 0))",
@@ -686,18 +686,18 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'`,
 			input: `select x, y, z from t order by x LIMIT 9999`,
 			expect: []string{
 				"ITERATE t FIELDS [x, y, z]",
-				"PROJECT x AS x, y AS y, z AS z",
 				"ORDER BY x ASC NULLS FIRST",
 				"LIMIT 9999",
+				"PROJECT x AS x, y AS y, z AS z",
 			},
 			split: []string{
 				"UNION MAP t (",
 				"	ITERATE PART t FIELDS [x, y, z]",
-				"	PROJECT x AS x, y AS y, z AS z",
 				"	ORDER BY x ASC NULLS FIRST",
 				"	LIMIT 9999)",
 				"ORDER BY x ASC NULLS FIRST",
 				"LIMIT 9999",
+				"PROJECT x AS x, y AS y, z AS z",
 			},
 		},
 		{
@@ -1132,9 +1132,9 @@ ORDER BY m, d, h`,
 			input: `SELECT grp FROM table GROUP BY grp ORDER BY COUNT(*) DESC`,
 			expect: []string{
 				"ITERATE table FIELDS [grp]",
-				"AGGREGATE COUNT(*) AS $_0_1 BY grp AS grp",
+				"AGGREGATE COUNT(*) AS $_0_1 BY grp AS $_0_0",
 				"ORDER BY $_0_1 DESC NULLS FIRST",
-				"PROJECT grp AS grp",
+				"PROJECT $_0_0 AS grp",
 			},
 		},
 		{
@@ -1482,6 +1482,25 @@ z = (SELECT a FROM bar LIMIT 1)`,
 				"	PROJECT PARTITION_VALUE(0) AS x, foo AS foo, bar AS bar)",
 			},
 			parts: []string{"x"},
+		},
+		{
+			input: `
+SELECT group0, group1, COUNT(DISTINCT group2) AS gdist, SUM(x) AS sumx
+FROM input
+GROUP BY group0, group1
+ORDER BY group0, group1, gdist DESC`,
+			expect: []string{
+				"WITH (",
+				"	ITERATE input FIELDS [group0, group1, group2]",
+				"	FILTER DISTINCT [group0, group1, group2]",
+				"	AGGREGATE COUNT(*) AS $_0_0 BY group0 AS $_0_1, group1 AS $_0_2",
+				"	PROJECT $_0_0 AS $__val, [$_0_1, $_0_2] AS $__key",
+				") AS REPLACEMENT(0)",
+				"ITERATE input FIELDS [group0, group1, x]",
+				"AGGREGATE SUM(x) AS $_0_2 BY group0 AS $_0_0, group1 AS $_0_1",
+				"ORDER BY $_0_0 ASC NULLS FIRST, $_0_1 ASC NULLS FIRST, HASH_REPLACEMENT(0, 'scalar', '$__key', [$_0_0, $_0_1], 0) DESC NULLS FIRST",
+				"PROJECT $_0_0 AS group0, $_0_1 AS group1, HASH_REPLACEMENT(0, 'scalar', '$__key', [$_0_0, $_0_1], 0) AS gdist, $_0_2 AS sumx",
+			},
 		},
 	}
 

@@ -2,5 +2,5 @@ SELECT DISTINCT ON (x, y) x, y, sum(z) FROM table GROUP BY x, y, z
 ---
 ITERATE table FIELDS [x, y, z]
 AGGREGATE SUM(z) AS $_0_2 BY x AS $_0_0, y AS $_0_1, z
+FILTER DISTINCT [$_0_0, $_0_1]
 PROJECT $_0_0 AS x, $_0_1 AS y, $_0_2 AS "sum"
-FILTER DISTINCT [x, y]

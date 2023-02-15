@@ -19,7 +19,7 @@ HAVING ROW_NUMBER() OVER (PARTITION BY region ORDER BY COUNT(*) DESC, acct DESC)
 ORDER BY COUNT(*) DESC, region DESC
 ),
   "kw2" AS (
-SELECT acct, SUM(stat) AS stat
+SELECT acct, SUM(stat) AS statsum
 FROM input1
 WHERE acct IN (SELECT acct FROM "kw1")
 GROUP BY acct
@@ -88,8 +88,8 @@ SELECT
     {"region": "r1", "acct": "a0", "$doc_count": 1}
 ],
 "group2": [
-    {"acct": "a0", "stat": 0},
-    {"acct": "a1", "stat": 4},
-    {"acct": "a4", "stat": 16},
-    {"acct": "a5", "stat": 20}
+    {"acct": "a0", "statsum": 0},
+    {"acct": "a1", "statsum": 4},
+    {"acct": "a4", "statsum": 16},
+    {"acct": "a5", "statsum": 20}
 ]}

@@ -339,22 +339,14 @@ func pickOutputs(s *expr.Select) {
 	}
 }
 
-// if OrderBy uses a top-level expression
-// in SELECT, replace the ORDER BY expression
-// with the result value
-//
-// according to the PartiQL spec, these expressions
-// have to be syntatically identical, so we ought
-// to be able to match them just with expr.Equivalent()
+// adjust ORDER BY and DISTINCT ON(...) so that it can be computed
+// before the final SELECT binding step
 func normalizeOrderBy(s *expr.Select) {
-	for i := range s.OrderBy {
-		for j := range s.Columns {
-			if expr.Equivalent(s.OrderBy[i].Column, s.Columns[j].Expr) {
-				s.OrderBy[i].Column = expr.Ident(s.Columns[j].Result())
-				break
-			}
-		}
+	if len(s.OrderBy) == 0 {
+		return
 	}
+	flattenIntoOrder(s.Columns, s.OrderBy)
+	flattenIntoExprs(s.Columns, s.DistinctExpr)
 }
 
 type hoistwalk struct {
@@ -818,17 +810,21 @@ func (b *Trace) hoistWindows(s *expr.Select, e Env) error {
 }
 
 func (b *Trace) walkSelect(s *expr.Select, e Env) error {
-	// Walk in binding order:
-	// FROM -> WHERE -> (SELECT / GROUP BY / ORDER BY)
+	// perform normalizations
 	pickOutputs(s)
-	normalizeOrderBy(s)
 	s.Columns = flattenBind(s.Columns)
-
 	err := b.hoistWindows(s, e)
 	if err != nil {
 		return err
 	}
+	normalizeOrderBy(s)
+	err = aggdistinctpromote(s)
+	if err != nil {
+		return err
+	}
 
+	// Walk in binding order:
+	// FROM -> WHERE -> (SELECT / GROUP BY / ORDER BY)
 	err = b.walkFrom(s.From, e)
 	if err != nil {
 		return err
@@ -841,139 +837,51 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		}
 	}
 
-	if s.DistinctExpr != nil {
-		dropConstantsFromDistinctOn(s)
-	}
-
-	err = aggdistinctpromote(s)
-	if err != nil {
-		return err
-	}
-
-	// walk SELECT + GROUP BY + HAVING
-	if s.HasDistinct() && s.GroupBy != nil && s.Having == nil {
-		if s.Distinct {
-			// easy case:
-			// SELECT DISTINCT exprs FROM ... GROUP BY exprs
-			// => SELECT exprs FROM ... GROUP BY exprs
-			if !distinctEqualsGroupBy(s) {
-				return errorf(s, "set of DISTINCT expressions has to be equal to GROUP BY expressions")
-			}
-			s.Distinct = false
-			err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
-		} else {
-			distinctOnPullGroupByBindings(s)
-
-			if distinctOnEqualsGroupBy(s) {
-				// easy case: DISTINCT ON & GROUP BY equals
-				// SELECT DISTINCT ON (exprs) bindings FROM ... GROUP BY exprs
-				// => SELECT bindings FROM ... GROUP BY exprs
-				s.DistinctExpr = nil
-				err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
-			} else {
-				// more complex case: DISTINCT ON & GROUP BY differs
-				// SELECT DISTINCT ON (exprs1) bindings FROM ... GROUP BY exprs2
-				// => SELECT DISTINCT ON (exprs1) bindings FROM (SELECT bindings2 FROM ... GROUP BY exprs2)
-				// where bindings2 are bindings extended with the missing ones from exprs1
-				exists := func(e expr.Node) bool {
-					for i := range s.Columns {
-						if expr.Equivalent(e, s.Columns[i].Expr) {
-							return true
-						}
-					}
-
-					return false
-				}
-
-				var missingBindings []expr.Binding
-				for i := range s.DistinctExpr {
-					if !exists(s.DistinctExpr[i]) {
-						b := expr.Binding{Expr: s.DistinctExpr[i]}
-						missingBindings = append(missingBindings, b)
-					}
-				}
-
-				if len(missingBindings) > 0 {
-					finalColumns, err := b.splitAggregateWithAuxiliary(s.OrderBy, missingBindings, s.Columns, s.GroupBy, s.Having)
-					if err != nil {
-						return err
-					}
-
-					err = b.Distinct(s.DistinctExpr)
-					if err != nil {
-						return err
-					}
-
-					err = b.Bind(identityBindings(finalColumns))
-					if err != nil {
-						return err
-					}
-				} else {
-					err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
-					if err != nil {
-						return err
-					}
-
-					err = b.Distinct(s.DistinctExpr)
-					if err != nil {
-						return err
-					}
-				}
-			}
-		}
-	} else if s.Having != nil ||
-		s.GroupBy != nil ||
-		anyHasAggregate(s.Columns) ||
-		anyOrderHasAggregate(s.OrderBy) {
-		if s.Distinct && s.GroupBy != nil {
-			return errorf(s, "mixed hash aggregate and DISTINCT not supported")
-			// if we have DISTINCT but no group by,
-			// just ignore it; we are only producing
-			// one output row anyway...
-		}
-		err = b.splitAggregate(s.OrderBy, s.Columns, s.GroupBy, s.Having)
-	} else {
-		selectall := isselectall(s)
-		if selectall && !s.HasDistinct() {
-			err = b.BindStar()
-		} else {
-			bindcolumns := true
-			if s.Distinct {
-				err = b.DistinctFromBindings(s.Columns)
-				if err != nil {
-					return err
-				}
-			} else if s.DistinctExpr != nil {
-				err = b.Distinct(s.DistinctExpr)
-				if err != nil {
-					return err
-				}
-
-				if selectall {
-					b.top.get("*")
-					// do not bind '*' in queries 'SELECT DISTINCT ON (...) * FROM ...'
-					bindcolumns = false
-				}
-			}
-			if bindcolumns {
-				err = b.Bind(s.Columns)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		if s.OrderBy != nil {
-			err = b.Order(s.OrderBy)
-			if err != nil {
-				return err
-			}
+	// if we are doing aggregation anywhere, then split it:
+	selectall := isselectall(s)
+	if s.Having != nil || s.GroupBy != nil || anyHasAggregate(s.Columns) || anyOrderHasAggregate(s.OrderBy) {
+		// s.OrderBy and s.Columns are rewritten to reference
+		// the generated aggregate expression
+		// (and also HAVING is taken care of)
+		err = b.splitAggregate(s.OrderBy, s.DistinctExpr, s.Columns, s.GroupBy, s.Having)
+		if err != nil {
+			return err
 		}
 	}
-	if err != nil {
-		return err
+	if selectall && !s.HasDistinct() {
+		err = b.BindStar()
+		if err != nil {
+			return err
+		}
 	}
 
-	// finally, LIMIT
+	// per the postgresql docs, DISTINCT ON(...) is interpreted
+	// with the same rules as ORDER BY
+	if len(s.DistinctExpr) > 0 {
+		err = b.Distinct(s.DistinctExpr)
+		if err != nil {
+			return err
+		}
+	} else if s.Distinct {
+		err = b.DistinctFromBindings(s.Columns)
+		if err != nil {
+			return err
+		}
+	}
+	if selectall {
+		b.top.get("*")
+	}
+	// we're cheating and doing ORDER BY before SELECT
+	// because we've normalized them w.r.t. incoming bindings;
+	// this allows ORDER BY to reference columns that do not
+	// make it to the final SELECT list
+	if s.OrderBy != nil {
+		err = b.Order(s.OrderBy)
+		if err != nil {
+			return err
+		}
+	}
+	// we can evaluate LIMIT before SELECT
 	if s.Limit != nil {
 		offset := int64(0)
 		if s.Offset != nil {
@@ -985,104 +893,18 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 			return err
 		}
 	}
-
+	if !selectall {
+		err = b.Bind(s.Columns)
+		if err != nil {
+			return err
+		}
+	}
 	return b.hoist(e)
 }
 
 // isselectall checks if there's only a single '*' in select
 func isselectall(s *expr.Select) bool {
 	return len(s.Columns) == 1 && s.Columns[0].Expr == (expr.Star{})
-}
-
-func distinctEqualsGroupBy(s *expr.Select) bool {
-	exists := func(e expr.Node) bool {
-		for i := range s.GroupBy {
-			if expr.Equivalent(e, s.GroupBy[i].Expr) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	n := 0
-	for i := range s.Columns {
-		if !exists(s.Columns[i].Expr) {
-			return false
-		}
-
-		n += 1
-	}
-
-	return n == len(s.GroupBy)
-}
-
-// dropConstantsFromDistinctOn simplified DISTINCT ON with constant argument.
-// Case 1:
-//
-//	SELECT DISTINCT ON (expr, const1, const2) ...
-//
-// => SELECT DISTINCT ON (expr) ...
-//
-// Case 2:
-//
-//	SELECT DISTINCT ON (const1, const2) ...
-//
-// => SELECT ... LIMIT 1
-func dropConstantsFromDistinctOn(s *expr.Select) {
-	nonconst := make([]expr.Node, 0, len(s.DistinctExpr))
-	for i := range s.DistinctExpr {
-		_, ok := s.DistinctExpr[i].(expr.Constant)
-		if !ok {
-			nonconst = append(nonconst, s.DistinctExpr[i])
-		}
-	}
-
-	if len(nonconst) == len(s.DistinctExpr) {
-		return
-	}
-
-	if len(nonconst) > 0 {
-		s.DistinctExpr = nonconst
-	} else {
-		s.DistinctExpr = nil
-		s.Limit = new(expr.Integer)
-		*s.Limit = 1
-	}
-}
-
-// distinctOnEqualsGroupBy checks whether the expressions
-// listed in DISTINCT ON clause are the same as in GROUP BY
-// clause.
-func distinctOnEqualsGroupBy(s *expr.Select) bool {
-	exists := func(e expr.Node) bool {
-		for i := range s.GroupBy {
-			if expr.Equivalent(e, s.GroupBy[i].Expr) {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	n := 0
-	for i := range s.DistinctExpr {
-		if !exists(s.DistinctExpr[i]) {
-			return false
-		}
-
-		n += 1
-	}
-
-	return n == len(s.GroupBy)
-}
-
-// distinctOnPullGroupByBindings pulls bindings introduced
-// by the GROUP BY clause into DISTINCT ON list.
-func distinctOnPullGroupByBindings(s *expr.Select) {
-	flattenIntoFunc(s.GroupBy, len(s.DistinctExpr), func(i int) *expr.Node {
-		return &s.DistinctExpr[i]
-	})
 }
 
 func (b *Trace) buildUnpivot(u *expr.Unpivot, e Env) error {

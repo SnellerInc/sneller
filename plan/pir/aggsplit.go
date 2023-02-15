@@ -15,6 +15,8 @@
 package pir
 
 import (
+	"fmt"
+
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/vm"
 
@@ -31,11 +33,12 @@ func (v visitor) Visit(e expr.Node) expr.Visitor {
 // that does not proceed past
 // aggregate expressions
 type agglifter struct {
-	rewrite func(expr.Node) expr.Node
+	rewrite  func(e expr.Node, windowok bool) expr.Node
+	windowok bool
 }
 
 func (a *agglifter) Rewrite(e expr.Node) expr.Node {
-	return a.rewrite(e)
+	return a.rewrite(e, a.windowok)
 }
 
 func (a *agglifter) Walk(e expr.Node) expr.Rewriter {
@@ -247,9 +250,15 @@ func flattenBind(columns []expr.Binding) []expr.Binding {
 	return columns
 }
 
-func flattenInto(x, y []expr.Binding) {
+func flattenIntoExprs(x []expr.Binding, y []expr.Node) {
 	flattenIntoFunc(x, len(y), func(j int) *expr.Node {
-		return &y[j].Expr
+		return &y[j]
+	})
+}
+
+func flattenIntoOrder(x []expr.Binding, y []expr.Order) {
+	flattenIntoFunc(x, len(y), func(j int) *expr.Node {
+		return &y[j].Column
 	})
 }
 
@@ -273,18 +282,10 @@ func flattenIntoFunc(x []expr.Binding, n int, item func(int) *expr.Node) {
 	}
 }
 
-func (b *Trace) splitAggregate(order []expr.Order, columns, groups []expr.Binding, having expr.Node) error {
-	_, err := b.splitAggregateWithAuxiliary(order, nil, columns, groups, having)
-	return err
-}
-
-// Note: `extra` and `columns` are bindings required by the next step,
-//
-//	function returns transformed `columns` to be used later by that
-//	step. Introduced to handle DISTINCT ON + GROUP BY combining;
-//	in the remaining cases, `auxiliary` is nil and the returned `columns `
-//	are ignored.
-func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, groups []expr.Binding, having expr.Node) ([]expr.Binding, error) {
+// splitAggregate generates the aggregation (and HAVING) step(s)
+// and rewrites the order and distinct expressions to use
+// the bindings produced by the aggregation step
+func (b *Trace) splitAggregate(order []expr.Order, distinct []expr.Node, columns, groups []expr.Binding, having expr.Node) error {
 	hasaggregate := false
 	iterall := false // an aggregate needs all columns
 	err := rejectNestedAggregates(columns, order, func(agg *expr.Aggregate) {
@@ -294,27 +295,18 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 		}
 	})
 	if err != nil {
-		return nil, err
+		return err
+	}
+	if anyHasAggregate(groups) {
+		return fmt.Errorf("GROUP BY cannot contain aggregates")
 	}
 	if !hasaggregate {
-		// this is actually a DISTINCT
-		// written in a funny way:
+		flattenIntoExprs(groups, distinct)
 		err = b.DistinctFromBindings(groups)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		// if there are any bindings in groups,
-		// make sure they are reflected in columns
-		flattenInto(groups, columns)
-		flattenInto(groups, extra)
-		err = b.Bind(extra, columns)
-		if err != nil {
-			return nil, err
-		}
-		if order == nil {
-			return columns, nil
-		}
-		return columns, b.Order(order)
+		return b.Bind(groups)
 	}
 
 	if iterall {
@@ -322,10 +314,9 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 	}
 
 	var aggcols vm.Aggregation
-	var aggbindings []expr.Binding // auxiliary bindings for aggregates used only in the ORDER BY clause
 	symno := 0
 
-	rewriteAggregate := func(age *expr.Aggregate, allowOver, addAggBinding bool) expr.Node {
+	rewriteAggregate := func(age *expr.Aggregate, allowOver bool) expr.Node {
 		if !allowOver && age.Over != nil && !age.Op.WindowOnly() {
 			err = errorf(age, "window function in illegal position")
 			return age
@@ -343,22 +334,15 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 		symno++
 		p := expr.Ident(gen)
 		aggcols = append(aggcols, vm.AggBinding{Expr: age, Result: gen})
-
-		if addAggBinding {
-			// add identity binding to first bind
-			aggbindings = append(aggbindings, expr.Bind(expr.Identifier(gen), gen))
-		}
 		return p
 	}
 
 	// in SELECT, take every aggregate or
 	// grouping column reference and lift it out
 	// into a previous aggregation step
-	rewrite := func(e expr.Node) expr.Node {
+	rewrite := func(e expr.Node, windowok bool) expr.Node {
 		if age, ok := e.(*expr.Aggregate); ok {
-			const allowOver = false
-			const addAggBinding = false
-			return rewriteAggregate(age, allowOver, addAggBinding)
+			return rewriteAggregate(age, windowok)
 		}
 		// if this expression matches a grouping expression,
 		// then set the output of the grouping expression
@@ -375,7 +359,7 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 		}
 		return e
 	}
-	rw := &agglifter{rewrite: rewrite}
+	rw := &agglifter{rewrite: rewrite, windowok: false}
 	if having != nil {
 		// flatten any SELECT bindings into the HAVING clause
 		// so that it can operate with the same set of bindings
@@ -387,7 +371,7 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 		// bindings... I suppose that's sometimes useful?
 		having = expr.Rewrite(rw, having)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	// keep a copy of the original projection
@@ -398,73 +382,27 @@ func (b *Trace) splitAggregateWithAuxiliary(order []expr.Order, extra, columns, 
 		columns[i].Expr = expr.Rewrite(rw, columns[i].Expr)
 		columns[i].As(res)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	for i := range extra {
-		res := extra[i].Result()
-		extra[i].Expr = expr.Rewrite(rw, extra[i].Expr)
-		extra[i].As(res)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// add new aggregations as necessary if
-	// they appear in ORDER BY
-	rewrite = func(e expr.Node) expr.Node {
-		if age, ok := e.(*expr.Aggregate); ok {
-			const allowOver = true
-			const addAggBinding = true
-			return rewriteAggregate(age, allowOver, addAggBinding)
-		}
-		return e
-	}
-	rw.rewrite = rewrite
+	rw.windowok = true
+	// ORDER BY and DISTINCT ON have the same binding semantics:
 	for i := range order {
 		order[i].Column = expr.Rewrite(rw, order[i].Column)
+	}
+	for i := range distinct {
+		distinct[i] = expr.Rewrite(rw, distinct[i])
 	}
 	// now we can push these to the builder
 	// in the correct order of evaluation
 	err = b.Aggregate(aggcols, groups)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if having != nil {
 		err = b.Where(having)
-		if err != nil {
-			return nil, err
-		}
 	}
-	err = b.Bind(extra, columns, aggbindings)
-	if err != nil {
-		return nil, err
-	}
-	if order != nil {
-		err = b.Order(order)
-		if err != nil {
-			return nil, err
-		}
-		if len(aggbindings) > 0 {
-			// trim out auxiliary aggregate bindings for ORDER BY
-			err = b.Bind(identityBindings(extra), identityBindings(columns))
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	return columns, nil
-}
-
-// identityBindings builds an identity projection, like: x AS x, y AS y, etc.
-func identityBindings(columns []expr.Binding) []expr.Binding {
-	b := make([]expr.Binding, len(columns))
-	for i := range b {
-		name := columns[i].Result()
-		b[i] = expr.Bind(expr.Identifier(name), name)
-	}
-
-	return b
+	return err
 }
 
 // aggelim replaces aggregate expressions that can be

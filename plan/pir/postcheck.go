@@ -69,7 +69,11 @@ func checkNoAggregateInCondition(e expr.Node, context string) error {
 }
 
 func checkSortSize(t *Trace) error {
-	f, ok := t.Final().(*Order)
+	final := t.Final()
+	if b, ok := final.(*Bind); ok {
+		final = b.parent()
+	}
+	f, ok := final.(*Order)
 	if ok {
 		if c := t.Class(); !c.Small() {
 			return errorf(f.Columns[0].Column,
@@ -78,7 +82,7 @@ func checkSortSize(t *Trace) error {
 		}
 		return nil
 	}
-	l, ok := t.Final().(*Limit)
+	l, ok := final.(*Limit)
 	if !ok {
 		return nil
 	}

@@ -1,6 +1,6 @@
-SELECT
-    cols, vals
-FROM UNPIVOT (SELECT * FROM UNPIVOT input AS a AT b) AT cols AS vals GROUP BY cols
+SELECT DISTINCT cols, vals
+FROM UNPIVOT (SELECT * FROM UNPIVOT input AS a AT b) AT cols AS vals
+ORDER BY cols, vals
 ---
 {"this": "a"}
 {"is": "ab"}
@@ -9,5 +9,13 @@ FROM UNPIVOT (SELECT * FROM UNPIVOT input AS a AT b) AT cols AS vals GROUP BY co
 {"is": "abcde"}
 {"this": "abcdef"}
 ---
-{"cols": "b", "vals": "this"}
 {"cols": "a", "vals": "a"}
+{"cols": "a", "vals": "ab"}
+{"cols": "a", "vals": "abc"}
+{"cols": "a", "vals": "abcd"}
+{"cols": "a", "vals": "abcde"}
+{"cols": "a", "vals": "abcdef"}
+{"cols": "b", "vals": "a"}
+{"cols": "b", "vals": "is"}
+{"cols": "b", "vals": "test"}
+{"cols": "b", "vals": "this"}
