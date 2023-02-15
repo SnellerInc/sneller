@@ -392,13 +392,311 @@ func (e *Queryenv) ListTables(db string) ([]string, error) {
 	return ts, nil
 }
 
-// ReadTestcase reads a testcase file, that contains three or more
-// part separated with '---'.
-//
-// The first part is an SQL query (text), the last part is the
-// expected rows (JSONRL) and the middle parts are inputs (also
-// in the JSONRL format).
-func ReadTestcase(fname string) (query []byte, inputs [][]byte, output []byte, err error) {
+type TestCaseIon struct {
+	QueryStr    []byte
+	Query       *expr.Query
+	SymbolTable *ion.Symtab
+	Input       [][]ion.Datum
+	Output      []ion.Datum
+}
+
+// NeedShuffleOutput determines whether the output
+// need to be shuffled along with the input
+func NeedShuffleOutput(q *expr.Query) bool {
+	sel, ok := q.Body.(*expr.Select)
+	if !ok {
+		return false
+	}
+	// ORDER BY, GROUP BY, and DISTINCT
+	// all have output orderings that are
+	// independent of the input
+	return sel.OrderBy == nil && sel.GroupBy == nil && !sel.Distinct
+}
+
+// CanShuffleSymtab determines whether symtab can
+// be safely shuffled
+func CanShuffleSymtab(q *expr.Query) bool {
+	allowed := true
+	fn := expr.WalkFunc(func(n expr.Node) bool {
+		if !allowed {
+			return false
+		}
+
+		s, ok := n.(*expr.Select)
+		if ok {
+			// sorting fails if a symtab change (sort & limit prevents symtab changes)
+			if !(s.OrderBy == nil || (s.OrderBy != nil && s.Limit != nil)) {
+				allowed = false
+				return false
+			}
+		}
+
+		return true
+	})
+
+	expr.Walk(fn, q.Body)
+
+	return allowed
+}
+
+// CanShuffleInput determines whether the inputs to the query can be shuffled
+func CanShuffleInput(q *expr.Query) bool {
+	sel, ok := q.Body.(*expr.Select)
+	if !ok {
+		return false
+	}
+	if sel.OrderBy != nil {
+		// FIXME: not always true; sorting is not stable...
+		return true
+	}
+	// any aggregate produces only one output row,
+	// so the result can be shuffled trivially
+	if anyHasAggregate(sel.Columns) && len(sel.GroupBy) == 0 {
+		return true
+	}
+	if _, ok := sel.From.(*expr.Join); ok {
+		// cross-join permutes row order;
+		// need an ORDER BY to make results deterministic
+		return false
+	}
+	if sel.GroupBy != nil || sel.Distinct {
+		// these permute the output ordering by hash
+		return false
+	}
+	return true
+}
+
+func anyHasAggregate(lst []expr.Binding) bool {
+	for i := range lst {
+		e := lst[i].Expr
+		if hasAggregate(e) {
+			return true
+		}
+	}
+	return false
+}
+
+type walkfn func(e expr.Node) bool
+
+func (w walkfn) Visit(e expr.Node) expr.Visitor {
+	if w(e) {
+		return w
+	}
+	return nil
+}
+
+func hasAggregate(e expr.Node) bool {
+	any := false
+	w := walkfn(func(e expr.Node) bool {
+		_, ok := e.(*expr.Aggregate)
+		if ok {
+			any = true
+			return false
+		}
+		return !any
+	})
+	expr.Walk(w, e)
+	return any
+}
+
+// Shuffle shuffles if possible
+func (q *TestCaseIon) Shuffle() {
+	// shuffle around the input (and maybe output)
+	// lanes so that we increase the coverage of
+	// lane-specific branches
+	if len(q.Input) != 1 {
+		// don't shuffle multiple inputs
+	} else if in := q.Input[0]; NeedShuffleOutput(q.Query) && len(in) == len(q.Output) {
+		rand.Shuffle(len(in), func(i, j int) {
+			in[i], in[j] = in[j], in[i]
+			q.Output[i], q.Output[j] = q.Output[j], q.Output[i]
+		})
+	} else {
+		rand.Shuffle(len(in), func(i, j int) {
+			in[i], in[j] = in[j], in[i]
+		})
+	}
+}
+
+type RunFlags int
+
+const (
+	FlagParallel    = 1 << iota // run in parallel
+	FlagResymbolize             // resymbolize
+	FlagShuffle                 // shuffle symbol table
+	FlagSplit                   // use a split plan
+)
+
+func (q *TestCaseIon) Execute(flags RunFlags) error {
+
+	// fix up the symbols input lst so that they
+	// match the associated symbols input symbolTable
+	fixup := func(lst []ion.Datum, st *ion.Symtab) {
+		// we reset the symbol elements of structure fields
+		// inside Encode, so the easiest way to do this is
+		// just encode the data and throw it away
+		var dummy ion.Buffer
+		for i := range lst {
+			lst[i].Encode(&dummy, st)
+			dummy.Reset()
+		}
+	}
+
+	// run a query on the given input table and yield the output list
+	run := func(q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags RunFlags) ([]ion.Datum, error) {
+		var unsymbolize func(d ion.Datum, st *ion.Symtab) ion.Datum
+		unsymbolize = func(d ion.Datum, st *ion.Symtab) ion.Datum {
+			switch d.Type() {
+			case ion.StructType:
+				d, _ := d.Struct()
+				fields := d.Fields(nil)
+				for i := range fields {
+					if str, err := fields[i].String(); err == nil {
+						fields[i].Datum = ion.String(str)
+					} else {
+						fields[i].Datum = unsymbolize(fields[i].Datum, st)
+					}
+				}
+				return ion.NewStruct(st, fields).Datum()
+			case ion.ListType:
+				d, _ := d.List()
+				items := d.Items(nil)
+				for i := range items {
+					if str, err := items[i].String(); err == nil {
+						items[i] = ion.String(str)
+					} else {
+						items[i] = unsymbolize(items[i], st)
+					}
+				}
+				return ion.NewList(st, items).Datum()
+			}
+			return d
+		}
+
+		// return a symbol table with the symbols
+		// randomly shuffled
+		shuffled := func(st *ion.Symtab) *ion.Symtab {
+			ret := &ion.Symtab{}
+			// if only one symbol is input the input corpus,
+			// then just bump it up one symbol
+			if st.MaxID() == 11 {
+				ret.Intern("a-random-symbol")
+				ret.Intern(st.Get(11))
+				return ret
+			}
+
+			// first 10 symbols are "pre-interned"
+			symbolmap := make([]ion.Symbol, st.MaxID()-10)
+			for i := range symbolmap {
+				symbolmap[i] = ion.Symbol(i) + 10
+			}
+			rand.Shuffle(len(symbolmap), func(i, j int) {
+				symbolmap[i], symbolmap[j] = symbolmap[j], symbolmap[i]
+			})
+
+			// force symbols to be multi-byte sequences:
+			for i := 0; i < 117; i++ {
+				ret.Intern(fmt.Sprintf("..garbage%d", i))
+			}
+
+			for _, s := range symbolmap {
+				ret.Intern(st.Get(s))
+			}
+			return ret
+		}
+
+		input := make([]plan.TableHandle, len(in))
+		maxp := 0
+		for i, in := range in {
+			if (flags&FlagResymbolize) != 0 && len(in) > 1 {
+				half := len(in) / 2
+				first := flatten(in[:half], st)
+
+				var second []byte
+				if flags&FlagShuffle != 0 {
+					second = flatten(in[half:], shuffled(st))
+				} else {
+					second = flatten(in[half:], st)
+				}
+				if flags&FlagParallel != 0 {
+					maxp = 2
+					input[i] = &parallelchunks{chunks: [][]byte{first, second}}
+				} else {
+					input[i] = &chunkshandle{chunks: [][]byte{first, second}}
+				}
+			} else {
+				input[i] = Bufhandle(flatten(in, st))
+			}
+		}
+		env := &Queryenv{In: input}
+		var tree *plan.Tree
+		var err error
+		if flags&FlagSplit != 0 {
+			tree, err = plan.NewSplit(q, env)
+		} else {
+			tree, err = plan.New(q, env)
+		}
+		if err != nil {
+			return nil, err
+		}
+		var out bytes.Buffer
+		lp := plan.LocalTransport{Threads: maxp}
+		params := plan.ExecParams{
+			Output:   &out,
+			Parallel: maxp,
+			Context:  context.Background(),
+		}
+		err = lp.Exec(tree, &params)
+		if err != nil {
+			return nil, err
+		}
+		outbuf := out.Bytes()
+		var datum ion.Datum
+		var outlst []ion.Datum
+		st.Reset()
+		for len(outbuf) > 0 {
+			datum, outbuf, err = ion.ReadDatum(st, outbuf)
+			if err != nil {
+				return nil, err
+			}
+			datum = unsymbolize(datum, st)
+			outlst = append(outlst, datum)
+		}
+		return outlst, nil
+	}
+
+	gotout, err := run(q.Query, q.Input, q.SymbolTable, flags)
+	if err != nil {
+		return err
+	}
+	q.SymbolTable.Reset()
+	fixup(gotout, q.SymbolTable)
+	fixup(q.Output, q.SymbolTable)
+	if len(q.Output) != len(gotout) {
+		return fmt.Errorf("%d rows output; expected %d", len(gotout), len(q.Output))
+	}
+	nErrors := 0
+	for i := range q.Output {
+		if i >= len(gotout) {
+			err = errors.Join(err, fmt.Errorf("missing %s", toJSON(q.SymbolTable, q.Output[i])))
+			continue
+		}
+		if !ion.Equal(q.Output[i], gotout[i]) {
+			nErrors++
+			err = errors.Join(err, fmt.Errorf("row %d: got  %srow %d: want %s",
+				i, toJSON(q.SymbolTable, gotout[i]), i, toJSON(q.SymbolTable, q.Output[i])))
+		}
+		if nErrors > 10 {
+			err = errors.Join(err, fmt.Errorf("... and more nErrors"))
+			break
+		}
+	}
+	return err
+}
+
+// ParseTestCaseIon parses the provided query,
+// input and output strings into a test case
+func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []string) (tci *TestCaseIon, err error) {
 
 	// stripInlineComment removes comment from **correctly** formated line.
 	// For example: stripInlineComment(`{"x": 5} # sample data`) => `{"x": 5}`
@@ -412,16 +710,6 @@ func ReadTestcase(fname string) (query []byte, inputs [][]byte, output []byte, e
 			return line[:pos+1]
 		}
 		return line
-	}
-
-	spec, err := tests.ReadTestcaseFromFile(fname)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	n := len(spec.Sections)
-	if n < 3 {
-		return nil, nil, nil, fmt.Errorf("expected at least 3 sections in testcase, got %d", n)
 	}
 
 	part2bytes := func(part []string) []byte {
@@ -444,21 +732,76 @@ func ReadTestcase(fname string) (query []byte, inputs [][]byte, output []byte, e
 		return res
 	}
 
-	query = part2bytes(spec.Sections[0])
-	output = jsonrl2bytes(spec.Sections[n-1])
-
-	for i := 1; i < n-1; i++ {
-		inputs = append(inputs, jsonrl2bytes(spec.Sections[i]))
+	var inputs [][]byte
+	for i := 0; i < len(inputsStr); i++ {
+		inputs = append(inputs, jsonrl2bytes(inputsStr[i]))
 	}
 
-	return query, inputs, output, nil
+	output := jsonrl2bytes(outputStr)
+
+	var inst ion.Symtab
+	inputRows := make([][]ion.Datum, len(inputs))
+	r := rand.New(rand.NewSource(0))
+	for i := range inputRows {
+		rows, err := IonizeRow(inputs[i], &inst, func() bool { return r.Intn(2) == 0 })
+		if err != nil {
+			return nil, fmt.Errorf("parsing input[%d] rows: %s", i, err)
+		}
+		inputRows[i] = rows
+	}
+	ouputRows, err := IonizeRow(output, &inst, func() bool { return false })
+	if err != nil {
+		return nil, fmt.Errorf("parsing output rows: %s", err)
+	}
+
+	query := part2bytes(queryStr)
+	exprQuery, err := partiql.Parse(query)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TestCaseIon{
+		QueryStr:    query,
+		Query:       exprQuery,
+		SymbolTable: &inst,
+		Input:       inputRows,
+		Output:      ouputRows,
+	}, nil
+
+}
+
+// ReadTestCaseIonFromFile reads a testcase file, that contains three or more
+// part separated with '---'.
+//
+// The first part is an SQL query (text), the last part is the
+// expected rows (JSONRL) and the middle parts are inputs (also
+// in the JSONRL format).
+func ReadTestCaseIonFromFile(fname string) (qtc *TestCaseIon, err error) {
+
+	spec, err := tests.ReadTestCaseSpecFromFile(fname)
+	if err != nil {
+		return nil, err
+	}
+
+	nSections := len(spec.Sections)
+	if nSections < 3 {
+		return nil, fmt.Errorf("expected at least 3 sections in testcase, got %d", nSections)
+	}
+
+	queryStr := spec.Sections[0]
+	outputStr := spec.Sections[nSections-1]
+	var inputsStr [][]string
+	for i := 1; i < nSections-1; i++ {
+		inputsStr = append(inputsStr, spec.Sections[i])
+	}
+	return ParseTestCaseIon(queryStr, inputsStr, outputStr)
 }
 
 type benchmarkSettings struct {
 	Symbolizeprob float64 // symbolize probability: 0=never, 1=always
 }
 
-// ReadBenchmark reads a benchmark specification.
+// ReadBenchmarkFromFile reads a benchmark specification.
 //
 // Benchmark may contain either SQL query (text) and sample
 // input (JSONRL) separarted with '---'.
@@ -466,8 +809,8 @@ type benchmarkSettings struct {
 // Alternatively, it may contain only an SQL query. But
 // then the FROM part has to be a string which is treated
 // as a filename and this file is read into the input (JSONRL).
-func ReadBenchmark(fname string) (*expr.Query, *benchmarkSettings, []byte, error) {
-	spec, err := tests.ReadTestcaseFromFile(fname)
+func ReadBenchmarkFromFile(fname string) (*expr.Query, *benchmarkSettings, []byte, error) {
+	spec, err := tests.ReadTestCaseSpecFromFile(fname)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -544,7 +887,8 @@ func ReadBenchmark(fname string) (*expr.Query, *benchmarkSettings, []byte, error
 	return query, bs, input, nil
 }
 
-func Rows(b []byte, outst *ion.Symtab, symbolize func() bool) ([]ion.Datum, error) {
+// IonizeRow ionizes the row in b, give outgoing symbol table and symbolize function
+func IonizeRow(b []byte, outst *ion.Symtab, symbolize func() bool) ([]ion.Datum, error) {
 
 	var symbolizeRandomly func(d ion.Datum, st *ion.Symtab, symbolize func() bool) ion.Datum
 	// walk d and replace 50% of the strings with stringSyms
@@ -667,17 +1011,6 @@ func flatten(lst []ion.Datum, st *ion.Symtab) []byte {
 	return outbuf.Bytes()
 }
 
-type RunFlags int
-
-const (
-	FlagParallel    = 1 << iota // run in parallel
-	FlagResymbolize             // resymbolize
-	FlagShuffle                 // shuffle symbol table
-	FlagSplit                   // use a split plan
-)
-
-const Shufflecount = 10
-
 func toJSON(st *ion.Symtab, d ion.Datum) string {
 	if d.IsEmpty() {
 		return "<nil>"
@@ -692,171 +1025,4 @@ func toJSON(st *ion.Symtab, d ion.Datum) string {
 		panic(err)
 	}
 	return sb.String()
-}
-
-func ExecuteQuery(q *expr.Query, st *ion.Symtab, in [][]ion.Datum, out []ion.Datum, flags RunFlags) (err error) {
-
-	// fix up the symbols in lst so that they
-	// match the associated symbols in st
-	fixup := func(lst []ion.Datum, st *ion.Symtab) {
-		// we reset the symbol elements of structure fields
-		// inside Encode, so the easiest way to do this is
-		// just encode the data and throw it away
-		var dummy ion.Buffer
-		for i := range lst {
-			lst[i].Encode(&dummy, st)
-			dummy.Reset()
-		}
-	}
-
-	// run a query on the given input table and yield the output list
-	run := func(q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags RunFlags) ([]ion.Datum, error) {
-		var unsymbolize func(d ion.Datum, st *ion.Symtab) ion.Datum
-		unsymbolize = func(d ion.Datum, st *ion.Symtab) ion.Datum {
-			switch d.Type() {
-			case ion.StructType:
-				d, _ := d.Struct()
-				fields := d.Fields(nil)
-				for i := range fields {
-					if str, err := fields[i].String(); err == nil {
-						fields[i].Datum = ion.String(str)
-					} else {
-						fields[i].Datum = unsymbolize(fields[i].Datum, st)
-					}
-				}
-				return ion.NewStruct(st, fields).Datum()
-			case ion.ListType:
-				d, _ := d.List()
-				items := d.Items(nil)
-				for i := range items {
-					if str, err := items[i].String(); err == nil {
-						items[i] = ion.String(str)
-					} else {
-						items[i] = unsymbolize(items[i], st)
-					}
-				}
-				return ion.NewList(st, items).Datum()
-			}
-			return d
-		}
-
-		// return a symbol table with the symbols
-		// randomly shuffled
-		shuffled := func(st *ion.Symtab) *ion.Symtab {
-			ret := &ion.Symtab{}
-			// if only one symbol is in the input corpus,
-			// then just bump it up one symbol
-			if st.MaxID() == 11 {
-				ret.Intern("a-random-symbol")
-				ret.Intern(st.Get(11))
-				return ret
-			}
-
-			// first 10 symbols are "pre-interned"
-			symbolmap := make([]ion.Symbol, st.MaxID()-10)
-			for i := range symbolmap {
-				symbolmap[i] = ion.Symbol(i) + 10
-			}
-			rand.Shuffle(len(symbolmap), func(i, j int) {
-				symbolmap[i], symbolmap[j] = symbolmap[j], symbolmap[i]
-			})
-
-			// force symbols to be multi-byte sequences:
-			for i := 0; i < 117; i++ {
-				ret.Intern(fmt.Sprintf("..garbage%d", i))
-			}
-
-			for _, s := range symbolmap {
-				ret.Intern(st.Get(s))
-			}
-			return ret
-		}
-
-		input := make([]plan.TableHandle, len(in))
-		maxp := 0
-		for i, in := range in {
-			if (flags&FlagResymbolize) != 0 && len(in) > 1 {
-				half := len(in) / 2
-				first := flatten(in[:half], st)
-
-				var second []byte
-				if flags&FlagShuffle != 0 {
-					second = flatten(in[half:], shuffled(st))
-				} else {
-					second = flatten(in[half:], st)
-				}
-				if flags&FlagParallel != 0 {
-					maxp = 2
-					input[i] = &parallelchunks{chunks: [][]byte{first, second}}
-				} else {
-					input[i] = &chunkshandle{chunks: [][]byte{first, second}}
-				}
-			} else {
-				input[i] = Bufhandle(flatten(in, st))
-			}
-		}
-		env := &Queryenv{In: input}
-		var tree *plan.Tree
-		var err error
-		if flags&FlagSplit != 0 {
-			tree, err = plan.NewSplit(q, env)
-		} else {
-			tree, err = plan.New(q, env)
-		}
-		if err != nil {
-			return nil, err
-		}
-		var out bytes.Buffer
-		lp := plan.LocalTransport{Threads: maxp}
-		params := plan.ExecParams{
-			Output:   &out,
-			Parallel: maxp,
-			Context:  context.Background(),
-		}
-		err = lp.Exec(tree, &params)
-		if err != nil {
-			return nil, err
-		}
-		outbuf := out.Bytes()
-		var datum ion.Datum
-		var outlst []ion.Datum
-		st.Reset()
-		for len(outbuf) > 0 {
-			datum, outbuf, err = ion.ReadDatum(st, outbuf)
-			if err != nil {
-				return nil, err
-			}
-			datum = unsymbolize(datum, st)
-			outlst = append(outlst, datum)
-		}
-		return outlst, nil
-	}
-
-	gotout, err := run(q, in, st, flags)
-	if err != nil {
-		return err
-	}
-	st.Reset()
-	fixup(gotout, st)
-	fixup(out, st)
-	if len(out) != len(gotout) {
-		return fmt.Errorf("%d rows out; expected %d", len(gotout), len(out))
-	}
-	nErrors := 0
-	for i := range out {
-		if i >= len(gotout) {
-			err = errors.Join(err, fmt.Errorf("missing %s", toJSON(st, out[i])))
-			continue
-		}
-		if !ion.Equal(out[i], gotout[i]) {
-			nErrors++
-			err = errors.Join(err, fmt.Errorf("\nrow %d: got  %srow %d: want %s\"",
-				i, toJSON(st, gotout[i]), i, toJSON(st, out[i])))
-		}
-		if nErrors > 10 {
-			err = errors.Join(err, fmt.Errorf("... and more nErrors"))
-			break
-		}
-	}
-	return err
 }

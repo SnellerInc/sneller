@@ -1645,7 +1645,7 @@ func runTestcasesFromFiles(t *testing.T) {
 }
 
 func parseTestcase(fname string) (*buildTestcase, error) {
-	spec, err := tests.ReadTestcaseFromFile(fname)
+	spec, err := tests.ReadTestCaseSpecFromFile(fname)
 	if err != nil {
 		return nil, err
 	}
