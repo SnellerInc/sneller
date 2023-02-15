@@ -282,6 +282,7 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 		Inputs: []Input{
 			{Pattern: "file://aabb/file*.json"},
 		},
+		SkipBackfill: !scan,
 	}))
 	// should get a superset of narrow
 	check(WriteDefinition(dfs, "db1", &Definition{
@@ -289,13 +290,14 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 		Inputs: []Input{
 			{Pattern: "file://aa*/*.json"},
 		},
+		SkipBackfill: !scan,
 	}))
 
 	owner := newTenant(dfs)
 	r.Owner = owner
 	r.Conf = Config{
 		Align:        1024,
-		NewIndexScan: scan,
+		NewIndexScan: true, // consult skip_backfill
 	}
 
 	runQueue(t, r, q)

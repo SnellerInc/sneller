@@ -124,6 +124,11 @@ type Config struct {
 	// If MaxScanBytes is less than or equal to zero,
 	// it is ignored and no limit is applied.
 	MaxScanBytes int64
+	// MaxScanTime is the maximum amount of time
+	// to spend listing objects before deciding
+	// to bail out of a scan.
+	MaxScanTime time.Duration
+
 	// NewIndexScan, if true, enables scanning
 	// for newly-created index objects.
 	NewIndexScan bool
@@ -441,7 +446,7 @@ func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
 	if err == nil {
 		ti.state.runGC(ctx, idx)
 		idx.Inputs.Backing = ti.state.ofs
-		if idx.Scanning {
+		if ti.state.shouldScan() && idx.Scanning {
 			_, err = ti.state.scan(idx, true)
 			if err != nil {
 				return err

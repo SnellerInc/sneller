@@ -573,7 +573,7 @@ func (q *QueueRunner) init(ti *tableInfo) {
 		return
 	}
 	// TODO: if ti.state.defChanged(idx), flush and rebuild
-	if idx.Scanning {
+	if ti.state.shouldScan() && idx.Scanning {
 		startScan(ti)
 	}
 }

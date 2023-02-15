@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math"
+	"time"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/fsutil"
@@ -99,12 +100,17 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 	if maxInputs <= 0 {
 		maxInputs = math.MaxInt
 	}
+	maxDuration := st.conf.MaxScanTime
+	if maxDuration <= 0 {
+		maxDuration = 15 * time.Second
+	}
 
 	total := 0
 	size := int64(0)
 	complete := true
 	ids := make(map[string]int)
 	nextID := idx.Objects()
+	start := time.Now()
 	for i := range st.def.Inputs {
 		if total >= maxInputs || size >= maxSize {
 			complete = false
@@ -164,6 +170,9 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 			if !ret {
 				// file is not new
 				seek = p
+				if time.Since(start) >= maxDuration {
+					return errStop
+				}
 				return nil
 			}
 			fm, err := st.conf.Format(format, p, st.def.Inputs[i].Hints)
@@ -193,7 +202,7 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 				part.prepend = prepend
 			}
 			seek = p
-			if total >= maxInputs || size >= maxSize {
+			if total >= maxInputs || size >= maxSize || time.Since(start) >= maxDuration {
 				return errStop
 			}
 			return nil
@@ -213,9 +222,8 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 	}
 	idx.Scanning = !complete
 	if total == 0 {
-		if idx.Scanning {
-			panic("should not be possible: idx.Scanning && total == 0")
-		}
+		// either we are complete
+		// or we updated the seek position
 		if flushOnComplete {
 			return 0, st.flush(context.Background(), idx)
 		}
