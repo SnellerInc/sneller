@@ -82,6 +82,7 @@ type prog struct {
 
 	// used to find common expressions
 	dict  []string            // common strings
+	tmpSt ion.Symtab          // temporary symbol table we need to encode data for dict
 	exprs map[hashcode]*value // common expressions
 
 	reserved []stackslot
@@ -185,9 +186,8 @@ func (p *prog) tobits(imm any) uint64 {
 		buf.WriteTime(v)
 		return p.binaryDataToBits(string(buf.Bytes()[1:]))
 	case ion.Datum:
-		st := ion.Symtab{}
 		buf := ion.Buffer{}
-		v.Encode(&buf, &st)
+		v.Encode(&buf, &p.tmpSt)
 		return p.binaryDataToBits(string(buf.Bytes()))
 	default:
 		panic(fmt.Sprintf("invalid immediate %+v with type %T", imm, imm))
@@ -222,6 +222,7 @@ func (p *prog) begin() {
 	p.values = nil
 	p.ret = nil
 	p.dict = nil
+	p.tmpSt.Reset()
 
 	// op 0 is always 'init'
 	v := p.val()
