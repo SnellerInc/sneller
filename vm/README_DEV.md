@@ -21,8 +21,7 @@ invoked with the `go generate` command:
 
 2. `_generate/genops.go` scans assembly files for
    definitions of opcode functions (`bc{name}`) and
-   creates constants in `ops_gen.go`, `ops_gen_amd64.s`
-   and `ops_mask.h`.
+   creates constants in `ops_gen.go` and `ops_gen_amd64.s`.
 
 3. `_generate/genconst.go` scans assembly files for
    used constants and produces `bc_constant_gen.h`.
@@ -112,9 +111,9 @@ it to the slot value of our aggregate. That's it.
   ADDQ  R10, DX                 // DX - a pointer to aggregate buffer
 ```
 
-Once we the have address to our data we update buffer as needed.  We have 16
-inputs + buffer. For instance most simple aggregates use 16-byte buffers. The
-lower 8 bytes is used to store aggregation of new 16 inputs (interpreted either
+Once we have the address to our data we update buffer as needed.  We have 16
+input values + buffer. For instance most simple aggregates use a 16-byte buffer.
+The lower 8 bytes is used to store aggregation of new 16 inputs (interpreted either
 as `int64` or `float64`), the higher 8 bytes is total number of rows processed
 (interpreted as `uint64`); for integer addition we execute something like
 that:
@@ -132,7 +131,7 @@ that:
     }
 
     binary.LittleEndian.PutUint64(bytes[0:], uint64(tmp))
-    binary.LittleEndian.PutUint64(bytes[0:], uint64(count + popcount(mask)))
+    binary.LittleEndian.PutUint64(bytes[8:], uint64(count + popcount(mask)))
 ```
 
 ## Hash aggregation
@@ -174,9 +173,9 @@ In a Go-code terms it looks like this:
 Note that currently all aggregates use vectorized code to perform
 the above loop. Please see for instance macro `BC_AGGREGATE_SLOT_MARK_OP`.
 
-Below are shown the code snippets showing how to obtain certain
+Below are code snippets showing how to obtain certain
 values.  If they were placed in a real loop, then we would split
-them - for instance load base address once, and then increase
+them - for instance load the base address once, and then increase
 pointers.  But for better readability, they were put as code sequences.
 
 Reading i-th bucket (**1**).
