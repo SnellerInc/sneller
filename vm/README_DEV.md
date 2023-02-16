@@ -151,7 +151,7 @@ requires the following steps:
 
 It's not the end.  Upon calling an opcode for hash aggregation, an
 external code fills `bytecode.bucket`: it is an array of sixteen
-32-bit slots (**they may repeat**), and these buckets has to be updated.
+32-bit slots (**they may repeat**), and these buckets have to be updated.
 
 In a Go-code terms it looks like this:
 
