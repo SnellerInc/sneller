@@ -5,6 +5,8 @@ import (
 	"math/big"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/SnellerInc/sneller/internal/stringext"
 )
 
 func simplifyClass0(src *Arithmetic, h Hint) Node {
@@ -375,6 +377,17 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 			// (date_extract_year (ts x)) -> (int "x.Value.Year()")
 			if x, ok := (src.Args[0]).(*Timestamp); ok {
 				return Integer(x.Value.Year())
+			}
+		}
+	case EqualsCI:
+		if len(src.Args) == 2 {
+			// (equals_ci x (string lit)), "!stringext.HasCaseSensitiveChar(stringext.Needle(lit))" -> (eq x lit)
+			if x := src.Args[0]; true {
+				if lit, ok := (src.Args[1]).(String); ok {
+					if !stringext.HasCaseSensitiveChar(stringext.Needle(lit)) {
+						return &Comparison{Op: Equals, Left: x, Right: lit}
+					}
+				}
 			}
 		}
 	case Lower:

@@ -527,7 +527,7 @@ func builtinArgnum(c *opclass, i int, bind string) string {
 
 func builtinMatch(c *opclass, op string, args []rules.Term, bind, expvar string) string {
 	return fmt.Sprintf("%s, ok := (%s).(*Builtin); ok && %s.Func == %s && len(%s.Args) == %d",
-		bind, expvar, bind, snake2Pascal(op), bind, len(args))
+		bind, expvar, bind, builtinName(op), bind, len(args))
 }
 
 func constArgnum(c *opclass, i int, bind string) string {
@@ -651,11 +651,7 @@ func isKeyCons(c *opclass, op string, args []rules.Term) {
 }
 
 func builtinCons(c *opclass, op string, args []rules.Term) {
-	enum, ok := op2builtin[op]
-	if !ok {
-		panic(fmt.Sprintf("function %q is not known; upgrade op2builtin lookup", op))
-	}
-	fmt.Fprintf(stdout, "Call(%s", enum)
+	fmt.Fprintf(stdout, "Call(%s", builtinName(op))
 	for i := range args {
 		fmt.Fprintf(stdout, ", ")
 		emitCons(&args[i])
@@ -771,6 +767,15 @@ func iskeyCasematch(c *opclass, in []rule) {
 	fmt.Fprintf(stdout, "}\n") // close *IsKey.Key switch
 }
 
+func builtinName(op string) string {
+	name, ok := op2builtin[op]
+	if ok {
+		return name
+	}
+
+	return snake2Pascal(op)
+}
+
 func builtinCasematch(c *opclass, in []rule) {
 	if len(in) == 0 {
 		return
@@ -782,7 +787,7 @@ func builtinCasematch(c *opclass, in []rule) {
 	var flat []rules.Term
 	for i := range in {
 		r := &in[i]
-		name := snake2Pascal(r.op)
+		name := builtinName(r.op)
 		if current != name {
 			if argc != -1 {
 				fmt.Fprintf(stdout, "}\n") // close argcount check
