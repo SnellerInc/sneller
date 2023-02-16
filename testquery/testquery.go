@@ -926,9 +926,8 @@ func IonizeRow(b []byte, outst *ion.Symtab, symbolize func() bool) ([]ion.Datum,
 
 	parseSpecialFPValues := func(s string) ion.Datum {
 		const prefix = "float64:"
-		if strings.HasPrefix(s, prefix) {
-			s = s[len(prefix):]
-			switch s {
+		if fn, ok := strings.CutPrefix(s, prefix); ok {
+			switch fn {
 			case "inf", "+inf":
 				return ion.Float(math.Inf(+1))
 			case "-inf":

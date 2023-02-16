@@ -87,10 +87,10 @@ type S3Resolver struct {
 
 // Split implements Resolver.Split
 func (s *S3Resolver) Split(pattern string) (InputFS, string, error) {
-	if !strings.HasPrefix(pattern, "s3://") {
+	trimmedPattern, ok := strings.CutPrefix(pattern, "s3://")
+	if !ok {
 		return nil, "", badPattern(pattern)
 	}
-	trimmedPattern := strings.TrimPrefix(pattern, "s3://")
 	i := strings.IndexByte(trimmedPattern, '/')
 	if i == len(pattern)-1 || i <= 0 {
 		return nil, "", badPattern(pattern)

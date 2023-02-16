@@ -41,10 +41,7 @@ const (
 )
 
 func defaultRoot() string {
-	if bucket := os.Getenv("SNELLER_BUCKET"); bucket != "" {
-		return bucket
-	}
-	return ""
+	return os.Getenv("SNELLER_BUCKET")
 }
 
 func init() {
@@ -89,8 +86,7 @@ func creds() db.Tenant {
 	if rootpath == "" {
 		exitf("-root not specified")
 	}
-	if strings.HasPrefix(rootpath, "s3://") {
-		bucket := strings.TrimPrefix(rootpath, "s3://")
+	if bucket, ok := strings.CutPrefix(rootpath, "s3://"); ok {
 		t, err := auth.S3TenantFromEnv(context.Background(), bucket)
 		if err != nil {
 			exitf("deriving tenant creds: %s", err)

@@ -92,11 +92,11 @@ func openFiles(t *testing.T) int {
 }
 
 func (d *dirResolver) Split(pattern string) (InputFS, string, error) {
-	if !strings.HasPrefix(pattern, "file://") {
+	stripped, ok := strings.CutPrefix(pattern, "file://")
+	if !ok {
 		return nil, "", fmt.Errorf("bad pattern %q", pattern)
 	}
-	pattern = strings.TrimPrefix(pattern, "file://")
-	return d.OutputFS, pattern, nil
+	return d.OutputFS, stripped, nil
 }
 
 // noOutputFS is an OutputFS that

@@ -213,8 +213,7 @@ func scan(in io.Reader, section string, into []scanspec) error {
 	s := bufio.NewScanner(in)
 	matched := false
 	for s.Scan() && len(into) > 0 {
-		line := s.Text()
-		line = strings.TrimSpace(line)
+		line := strings.TrimSpace(s.Text())
 		matched = isSection(line, section, matched)
 		if !matched {
 			continue
@@ -222,17 +221,14 @@ func scan(in io.Reader, section string, into []scanspec) error {
 		// we are trying to match
 		//   prefix (space*) '=' (space*) suffix
 		for i := 0; i < len(into); i++ {
-			if strings.HasPrefix(line, into[i].prefix) {
-				// chomp prefix, chomp space*
-				rest := strings.TrimSpace(strings.TrimPrefix(line, into[i].prefix))
-				if len(rest) == 0 || rest[0] != '=' {
-					continue
-				}
-				// chomp '='
-				rest = rest[1:]
-				// chomp space*
-				rest = strings.TrimSpace(rest)
-				*into[i].dst = rest
+			before, after, ok := strings.Cut(line, "=")
+			if !ok {
+				continue
+			}
+
+			before = strings.TrimSpace(before)
+			if before == into[i].prefix {
+				*into[i].dst = strings.TrimSpace(after)
 				into[i], into = into[len(into)-1], into[:len(into)-1]
 			}
 		}

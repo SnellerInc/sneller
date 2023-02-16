@@ -37,7 +37,7 @@ func mmap(f *os.File, size int64, ro bool) ([]byte, error) {
 }
 
 func unmap(f *os.File, buf []byte) error {
-	if !strings.HasSuffix(f.Name(), ".tmp") {
+	if !istmp(f.Name()) {
 		return nil
 	}
 	// overwrite the file contents with 'buf'

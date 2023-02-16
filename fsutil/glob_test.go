@@ -144,8 +144,7 @@ func TestWalkGlobOps(t *testing.T) {
 	// create test files
 	tmp := t.TempDir()
 	for i := range list {
-		if strings.HasSuffix(list[i], "/") {
-			name := strings.TrimSuffix(list[i], "/")
+		if name, ok := strings.CutSuffix(list[i], "/"); ok {
 			err := os.Mkdir(filepath.Join(tmp, name), 0750)
 			if err != nil {
 				t.Fatalf("creating dir %q: %v", name, err)

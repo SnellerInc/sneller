@@ -110,8 +110,8 @@ func parseLine(s string) (m Mapping, ok bool) {
 		terms := strings.Split(c, " ")
 		const prefix = "sql:"
 		for _, term := range terms {
-			if strings.HasPrefix(term, prefix) {
-				m.Names = append(m.Names, term[len(prefix):])
+			if name, ok := strings.CutPrefix(term, prefix); ok {
+				m.Names = append(m.Names, name)
 			}
 		}
 	}
