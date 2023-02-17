@@ -245,6 +245,7 @@ var (
 	classConstNumber      *opclass
 	classNull             *opclass
 	classPatmatch         *opclass
+	classLogicalNot       *opclass
 
 	op2class    map[string]*opclass
 	op2builtin  map[string]string
@@ -354,6 +355,12 @@ func init() {
 		match:     iskeyMatch,
 		cons:      isKeyCons,
 	}
+	classLogicalNot = &opclass{
+		typename: "Not",
+		argnum:   unaryArgnum,
+		cons:     logicalNotCons,
+	}
+
 	// for s-expressions, we assume that
 	// the head of the list is a builtin op
 	// *unless* it matches one of these identifiers:
@@ -388,6 +395,7 @@ func init() {
 		"is_not_true":    classIsKey,
 		"is_false":       classIsKey,
 		"is_not_false":   classIsKey,
+		"not":            classLogicalNot,
 
 		"string":   classConst,
 		"bool":     classConst,
@@ -646,6 +654,15 @@ func binaryCons(c *opclass, op string, args []rules.Term) {
 
 func isKeyCons(c *opclass, op string, args []rules.Term) {
 	fmt.Fprintf(stdout, "&IsKey{Key: %s, Expr:", snake2Pascal(op))
+	emitCons(&args[0])
+	fmt.Fprintf(stdout, "}")
+}
+
+func logicalNotCons(c *opclass, op string, args []rules.Term) {
+	if op != "not" {
+		panic("constructor only for not")
+	}
+	fmt.Fprintf(stdout, "&Not{Expr: ")
 	emitCons(&args[0])
 	fmt.Fprintf(stdout, "}")
 }

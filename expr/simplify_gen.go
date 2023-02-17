@@ -741,22 +741,22 @@ func simplifyClass2(src *Comparison, h Hint) Node {
 				}
 			}
 		}
-		// (neq (upper x) (string lit)), "isUpper(string(lit))" -> "&Not{Call(EqualsCI, x, lit)}"
+		// (neq (upper x) (string lit)), "isUpper(string(lit))" -> (not (equals_ci x lit))
 		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Upper && len(_tmp001000.Args) == 1 {
 			if lit, ok := (src.Right).(String); ok {
 				if x := _tmp001000.Args[0]; true {
 					if isUpper(string(lit)) {
-						return &Not{Call(EqualsCI, x, lit)}
+						return &Not{Expr: Call(EqualsCI, x, lit)}
 					}
 				}
 			}
 		}
-		// (neq (lower x) (string lit)), "isLower(string(lit))" -> "&Not{Call(EqualsCI, x, lit)}"
+		// (neq (lower x) (string lit)), "isLower(string(lit))" -> (not (equals_ci x lit))
 		if _tmp001000, ok := (src.Left).(*Builtin); ok && _tmp001000.Func == Lower && len(_tmp001000.Args) == 1 {
 			if lit, ok := (src.Right).(String); ok {
 				if x := _tmp001000.Args[0]; true {
 					if isLower(string(lit)) {
-						return &Not{Call(EqualsCI, x, lit)}
+						return &Not{Expr: Call(EqualsCI, x, lit)}
 					}
 				}
 			}

@@ -1037,7 +1037,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	IsSubnetOf:           {check: checkIsSubnetOf, ret: LogicalType, simplify: simplifyIsSubnetOf},
 	Substring:            {check: checkSubstring, ret: StringType | MissingType},
 	SplitPart:            {check: checkSplitPart, ret: StringType | MissingType},
-	EqualsCI:             {ret: LogicalType},
+	EqualsCI:             {ret: LogicalType, private: true},
 	EqualsFuzzy:          {check: checkEqualsContainsFuzzy, ret: LogicalType},
 	EqualsFuzzyUnicode:   {check: checkEqualsContainsFuzzy, ret: LogicalType},
 	ContainsFuzzy:        {check: checkEqualsContainsFuzzy, ret: LogicalType},

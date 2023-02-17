@@ -1681,6 +1681,17 @@ if `str` doesn't evaluate to a string.
 `CHAR_LENGTH(str)` (or, alternatively, `CHARACTER_LENGTH(str)`)
 returns the number of Unicode points in a string as an integer.
 
+Example:
+
+```sql
+-- The word "żółw" (in Polish a turtle) has four code points,
+-- its UTF-8 sequence contains seven bytes:
+-- 0xC5, 0xBC, 0xC3, 0xB3, 0xC5, 0x82, 0x77.
+
+SELECT CHAR_LENGTH('żółw')  -- yields: 4
+SELECT OCTER_LENGTH('żółw') -- yields: 7
+```
+
 #### `LOWER` and `UPPER`
 
 `LOWER(str)` and `UPPER(str)` changes case of letters from the
@@ -1689,23 +1700,9 @@ input string.
 Examples:
 
 ```sql
-LOWER('SnElLeR') -- returns 'sneller'
-UPPER('SnElLeR') -- returns 'SNELLER'
+SELECT LOWER('SnElLeR') -- returns 'sneller'
+SELECT UPPER('SnElLeR') -- returns 'SNELLER'
 ```
-
-#### `EQUALS_CI`
-
-`EQUALS_CI(str, constant_str)` compares case-sensitive
-a string expression with a **constant** string.
-
-Example:
-
-```sql
-SELECT * FROM table WHERE EQUALS_CI(status, 'IDLE')
-```
-
-Note: `EQUALS_CI` is an optimized implementation of
-expression `LOWER(str) == LOWER(constant_str)`.
 
 #### `SUBSTRING`
 
@@ -1729,21 +1726,21 @@ when `length` is zero or negative.
 Examples:
 
 ```sql
-SUBSTRING('kitten', 1)      -- returns 'kitten'
-SUBSTRING('kitten', 3)      -- returns 'ten'
+SELECT SUBSTRING('kitten', 1)      -- returns 'kitten'
+SELECT SUBSTRING('kitten', 3)      -- returns 'ten'
 
-SUBSTRING('kitten', 3, 2)   -- returns 'tt'
-SUBSTRING('kitten', 3, -1)  -- returns 'ten'
-SUBSTRING('kitten', -1, 20) -- returns ''
+SELECT SUBSTRING('kitten', 3, 2)   -- returns 'tt'
+SELECT SUBSTRING('kitten', 3, -1)  -- returns 'ten'
+SELECT SUBSTRING('kitten', -1, 20) -- returns ''
 ```
 
 #### `SPLIT_PART`
 
 The expression `SPLIT_PART(str, sep, n)`
 computes the `n`th substring of `str` by
-splitting `str` on `sep`. The index `n` is 1-indexed.
+splitting `str` on `sep`. The index `n` is one-indexed.
 
-For example, `SPLIT_PART('foo\nbar\n', '\n' 1)`
+For example, `SPLIT_PART('foo\nbar\n', '\n', 1)`
 evaluates to `'foo'`, and `SPLIT_PART('foo\nbar\n', '\n', 2)`
 evaluates to `'bar'`.
 

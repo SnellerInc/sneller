@@ -83,11 +83,10 @@
 (eq (lower _) (string lit)), `!isLower(string(lit))` -> (bool `false`)
 (eq (upper x) (string lit)), `isUpper(string(lit))` -> (equals_ci x lit)
 (eq (lower x) (string lit)), `isLower(string(lit))` -> (equals_ci x lit)
+(neq (upper x) (string lit)), `isUpper(string(lit))` -> (not (equals_ci x lit))
+(neq (lower x) (string lit)), `isLower(string(lit))` -> (not (equals_ci x lit))
 
-(neq (upper x) (string lit)), `isUpper(string(lit))` -> `&Not{Call(EqualsCI, x, lit)}`
-(neq (lower x) (string lit)), `isLower(string(lit))` -> `&Not{Call(EqualsCI, x, lit)}`
-
-// EqualsCI(x, '@!$') => x == '@!$'
+// EQUALS_CI(x, '@!$') => x == '@!$'
 (equals_ci x (string lit)), `!stringext.HasCaseSensitiveChar(stringext.Needle(lit))` -> (eq x lit)
 
 // SUBSTRING(s, 1) is the identity function

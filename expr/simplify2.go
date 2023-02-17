@@ -28,7 +28,7 @@ func staticSubstr(x String, i Integer, n Integer) String {
 	length := int(n)
 	if length < 0 {
 		// According to the doc: "This number [length] can't be negative".
-		// But the doc does not say what exactly do in such cases.
+		// But the doc does not say what exactly do in such case.
 		return String("")
 	}
 
