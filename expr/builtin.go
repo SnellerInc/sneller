@@ -888,6 +888,20 @@ func adjtime(fn func(x int64, val date.Time) date.Time) func(Hint, []Node) Node 
 
 func adjpart(part Timepart) func(x int64, val date.Time) date.Time {
 	return func(x int64, val date.Time) date.Time {
+		// for these dateparts, avoid date math entirely
+		// and just perform integer math in microseconds:
+		const micro = 1e6
+		switch part {
+		case Second:
+			return date.UnixMicro(val.UnixMicro() + (x * micro))
+		case Minute:
+			return date.UnixMicro(val.UnixMicro() + (x * 60 * micro))
+		case Hour:
+			return date.UnixMicro(val.UnixMicro() + (x * 60 * 60 * micro))
+		case Day:
+			return date.UnixMicro(val.UnixMicro() + (x * 24 * 60 * 60 * micro))
+		}
+
 		year := val.Year()
 		month := val.Month()
 		day := val.Day()
@@ -897,14 +911,6 @@ func adjpart(part Timepart) func(x int64, val date.Time) date.Time {
 		switch part {
 		default:
 			panic("bad timepart")
-		case Second:
-			sec += int(x)
-		case Minute:
-			minute += int(x)
-		case Hour:
-			hour += int(x)
-		case Day:
-			day += int(x)
 		case Week:
 			day += int(x) * 7
 		case Month:

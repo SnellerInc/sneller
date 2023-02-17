@@ -690,6 +690,10 @@ func TestSimplify(t *testing.T) {
 			ts("2017-01-09T00:00:00Z"),
 		},
 		{
+			DateAdd(Day, Integer(9999*365), ts("0000-01-01T00:00:00Z")),
+			ts("9992-05-12T00:00:00Z"),
+		},
+		{
 			DateAdd(Hour, Integer(1), ts("2017-01-01T00:00:00Z")),
 			ts("2017-01-01T01:00:00Z"),
 		},

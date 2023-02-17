@@ -124,6 +124,7 @@ func FuzzNewPlan(f *testing.F) {
 
 func FuzzNewSplit(f *testing.F) {
 	addQueries(f)
+	f.Add([]byte("SELECT DATE_ADD(DAY,4444404440700000,UTCNOW())"))
 	// confirm that expr.Check will not
 	// panic when handed a query that parses correctly
 	f.Fuzz(func(t *testing.T, text []byte) {
