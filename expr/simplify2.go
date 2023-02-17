@@ -14,7 +14,7 @@
 
 package expr
 
-//go:generate go run terms.go -o simplify_gen.go simplify.rules
+//go:generate go run terms.go -o simplify_gen.go -i simplify.rules
 //go:generate goimports -w .
 
 func staticSubstr(x String, i Integer, n Integer) String {

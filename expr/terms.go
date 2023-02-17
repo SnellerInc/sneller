@@ -17,6 +17,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/md5"
 	"flag"
 	"fmt"
 	"io"
@@ -32,11 +34,13 @@ import (
 
 var (
 	ofile  string
+	ifile  string
 	stdout io.Writer
 )
 
 func init() {
-	flag.StringVar(&ofile, "o", "-", "output file (- means stdout)")
+	flag.StringVar(&ofile, "o", "", "output file")
+	flag.StringVar(&ifile, "i", "", "input file")
 }
 
 // error w/ positional information preserved
@@ -906,37 +910,55 @@ func snake2Pascal(str string) string {
 	return string(out)
 }
 
+func generate(path string) {
+	f, err := os.Open(path)
+	checkErr(err)
+	defer f.Close()
+
+	lst, err := rules.Parse(f)
+	checkErr(err)
+
+	var all []rule
+	for i := range lst {
+		op, args := splitFirst(&lst[i])
+		all = append(all, rule{
+			Rule: lst[i],
+			op:   op,
+			args: args,
+		})
+	}
+
+	writeRules(all)
+}
+
 func main() {
 	flag.Parse()
-	stdout = os.Stdout
-	if ofile != "" && ofile != "-" {
+	buf := bytes.NewBuffer(nil)
+	stdout = buf
+	generate(ifile)
+
+	checksum := []byte(fmt.Sprintf("// checksum: %x\n", md5.Sum(buf.Bytes())))
+	regenerate := true
+	old, err := os.ReadFile(ofile)
+	if err == nil {
+		regenerate = !bytes.HasSuffix(old, checksum)
+	}
+
+	if regenerate {
+		fmt.Printf("Creating %q\n", ofile)
+
 		f, err := os.Create(ofile)
-		if err != nil {
-			fatalf("-o %s: %s", ofile, err)
-		}
-		stdout = f
+		checkErr(err)
 		defer f.Close()
+		_, err = f.Write(buf.Bytes())
+		checkErr(err)
+		_, err = f.Write(checksum)
+		checkErr(err)
 	}
-	var all []rule
-	args := flag.Args()
-	for i := range args {
-		f, err := os.Open(args[i])
-		if err != nil {
-			fatalf("%s", err)
-		}
-		lst, err := rules.Parse(f)
-		if err != nil {
-			fatalf("%s", err)
-		}
-		for i := range lst {
-			op, args := splitFirst(&lst[i])
-			all = append(all, rule{
-				Rule: lst[i],
-				op:   op,
-				args: args,
-			})
-		}
-		f.Close()
+}
+
+func checkErr(err error) {
+	if err != nil {
+		fatalf("%s\n", err)
 	}
-	writeRules(all)
 }

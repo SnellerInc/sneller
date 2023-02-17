@@ -62,14 +62,11 @@ func main() {
 	buf := bytes.NewBuffer(nil)
 	stdout = buf
 	consts.print()
-	old := readfile(outpath)
+	old, _ := os.ReadFile(outpath)
 	if !slices.Equal(old, buf.Bytes()) {
 		fmt.Printf("Creating %q\n", outpath)
-		f, err := os.Create(outpath)
+		err := os.WriteFile(outpath, buf.Bytes(), 0644)
 		checkErr(err)
-		_, err = f.Write(buf.Bytes())
-		checkErr(err)
-		f.Close()
 	}
 }
 
@@ -513,17 +510,6 @@ func has(list []string, needle string) bool {
 func uniq(list []string) []string {
 	slices.Sort(list)
 	return slices.Compact(list)
-}
-
-func readfile(path string) []byte {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer f.Close()
-
-	res, _ := io.ReadAll(f)
-	return res
 }
 
 func stripendings(s, prefix, suffix string) (string, bool) {

@@ -1101,3 +1101,5 @@ func simplify1(src Node, h Hint) Node {
 	}
 	return nil
 }
+
+// checksum: 2ebcddc1d858e8b753331efaafddce6d

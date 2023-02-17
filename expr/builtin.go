@@ -13,7 +13,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //go:generate go run _generate/builtin_names.go
-//go:generate go fmt builtin_names.go
+//go:generate goimports -w builtin_names.go
 
 package expr
 

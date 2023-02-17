@@ -329,3 +329,5 @@ type opreplace struct{ from, to bcop }
 var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opbitcounti64, to: opbitcounti64_v2},
 }
+
+// checksum: c8a99cdb89c50bcaa1958c79f4c01160

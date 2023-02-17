@@ -373,3 +373,5 @@ func name2Builtin(s string) BuiltinOp {
 	}
 	return Unspecified
 }
+
+// checksum: b7402d29e3afbafc67203e277321d787
