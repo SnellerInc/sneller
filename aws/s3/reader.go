@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -48,6 +49,13 @@ var DefaultClient = http.Client{
 		// because it leads to the go client natively
 		// decompressing gzipped objects.
 		DisableCompression: true,
+		// AWS S3 occasionally provides "dead" hosts
+		// in their round-robin DNS responses, and the
+		// fastest way to identify them is during
+		// connection establishment:
+		DialContext: (&net.Dialer{
+			Timeout: 2 * time.Second,
+		}).DialContext,
 	},
 }
 
