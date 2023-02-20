@@ -1,6 +1,8 @@
 module github.com/SnellerInc/elasticproxy
 
-go 1.19
+go 1.20
+
+replace github.com/SnellerInc/sneller => ../oss
 
 require (
 	github.com/SnellerInc/sneller v0.0.0-20230125001655-1dc041dde43b
@@ -16,7 +18,7 @@ require (
 require (
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
-	github.com/klauspost/compress v1.15.13 // indirect
+	github.com/klauspost/compress v1.15.15 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.26.0 // indirect
