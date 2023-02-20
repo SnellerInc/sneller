@@ -128,7 +128,6 @@ loop:
 				first = false
 				break
 			}
-
 			s.trim(used)
 			first = false
 

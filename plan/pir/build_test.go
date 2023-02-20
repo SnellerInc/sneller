@@ -1502,6 +1502,14 @@ ORDER BY group0, group1, gdist DESC`,
 				"PROJECT $_0_0 AS group0, $_0_1 AS group1, HASH_REPLACEMENT(0, 'scalar', '$__key', [$_0_0, $_0_1], 0) AS gdist, $_0_2 AS sumx",
 			},
 		},
+		{
+			// issue #2587
+			input: `SELECT * FROM table source, source.tags AS tag`,
+			expect: []string{
+				"ITERATE table AS source FIELDS *",
+				"ITERATE FIELD tags AS tag",
+			},
+		},
 	}
 
 	for i := range tests {

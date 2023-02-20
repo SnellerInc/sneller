@@ -212,7 +212,7 @@ func build(parent *Trace, s *expr.Select, e Env) (*Trace, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = b.optimize()
+	err = b.optimize(isselectall(s))
 	return b, err
 }
 
@@ -812,6 +812,7 @@ func (b *Trace) hoistWindows(s *expr.Select, e Env) error {
 func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	// perform normalizations
 	pickOutputs(s)
+	selectall := isselectall(s)
 	s.Columns = flattenBind(s.Columns)
 	err := b.hoistWindows(s, e)
 	if err != nil {
@@ -838,18 +839,11 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 	}
 
 	// if we are doing aggregation anywhere, then split it:
-	selectall := isselectall(s)
 	if s.Having != nil || s.GroupBy != nil || anyHasAggregate(s.Columns) || anyOrderHasAggregate(s.OrderBy) {
 		// s.OrderBy and s.Columns are rewritten to reference
 		// the generated aggregate expression
 		// (and also HAVING is taken care of)
 		err = b.splitAggregate(s.OrderBy, s.DistinctExpr, s.Columns, s.GroupBy, s.Having)
-		if err != nil {
-			return err
-		}
-	}
-	if selectall && !s.HasDistinct() {
-		err = b.BindStar()
 		if err != nil {
 			return err
 		}
@@ -863,13 +857,13 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 			return err
 		}
 	} else if s.Distinct {
+		if selectall {
+			return fmt.Errorf("DISTINCT * not supported")
+		}
 		err = b.DistinctFromBindings(s.Columns)
 		if err != nil {
 			return err
 		}
-	}
-	if selectall {
-		b.top.get("*")
 	}
 	// we're cheating and doing ORDER BY before SELECT
 	// because we've normalized them w.r.t. incoming bindings;
@@ -898,6 +892,8 @@ func (b *Trace) walkSelect(s *expr.Select, e Env) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		b.BindStar()
 	}
 	return b.hoist(e)
 }
