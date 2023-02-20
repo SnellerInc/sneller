@@ -37,6 +37,20 @@ type testWriter struct {
 	dec2 Decoder
 }
 
+func testOut(t *testing.T) io.Writer {
+	t0 := &testWriter{t: t}
+	// if the implementation is always portable,
+	// then just do a single testWriter:
+	if !t0.dec.haveasm() {
+		return t0
+	}
+	// ... otherwise, try both:
+	t1 := &testWriter{t: t}
+	t1.dec.SetPortable(true)
+	t1.dec2.SetPortable(true)
+	return io.MultiWriter(t0, t1)
+}
+
 func (t *testWriter) Write(buf []byte) (int, error) {
 	chunk, err := t.enc.Encode(buf, nil)
 	if err != nil {
@@ -58,8 +72,14 @@ func (t *testWriter) Write(buf []byte) (int, error) {
 			off++
 		}
 		off &^= 7
-		t.t.Logf("input:  %x", buf[off:])
-		t.t.Logf("output: %x", out[off:])
+		trunc := func(b []byte) []byte {
+			if len(b) > 32 {
+				b = b[:32]
+			}
+			return b
+		}
+		t.t.Logf("input:  %x", trunc(buf[off:]))
+		t.t.Logf("output: %x", trunc(out[off:]))
 		t.t.Fatal("output and input not identical")
 	}
 	tail := buf[len(out):]
@@ -108,7 +128,7 @@ func TestSimple(t *testing.T) {
 	str := `
 {"foo": 0, "bar": {"baz": "quux", "other": null}, "lst": [3, null, false, "xyzabc"]}
 `
-	tw := &testWriter{t: t}
+	tw := testOut(t)
 	cn := ion.Chunker{
 		W:     tw,
 		Align: 1024,
@@ -315,14 +335,10 @@ func TestRoundtrip(t *testing.T) {
 		}
 	}
 
-	testAll := func(t *testing.T, f *os.File, none bool) {
-		tw := testWriter{t: t}
-		if none {
-			tw.dec.SetComponents(nil)
-			tw.dec2.SetComponents(nil)
-		}
+	testAll := func(t *testing.T, f *os.File) {
+		tw := testOut(t)
 		cn := ion.Chunker{
-			W:     &tw,
+			W:     tw,
 			Align: 256 * 1024,
 		}
 		err := jsonrl.Convert(f, &cn, nil, nil)
@@ -344,10 +360,7 @@ func TestRoundtrip(t *testing.T) {
 			}
 			defer f.Close()
 			t.Run("all", func(t *testing.T) {
-				testAll(t, f, false)
-			})
-			t.Run("none", func(t *testing.T) {
-				testAll(t, f, true)
+				testAll(t, f)
 			})
 			f.Seek(0, 0)
 			t.Run("count(*)", func(t *testing.T) {

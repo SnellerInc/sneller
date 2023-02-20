@@ -177,6 +177,17 @@ func (b *Buckets) setBit(sym ion.Symbol) {
 	b.BucketBits |= 1 << b.Shape.SymbolBucket(sym)
 }
 
+// Selected indicates whether or not the symbol is one
+// of the symbols selected by Select for the current symbol table.
+func (b *Buckets) Selected(sym ion.Symbol) bool {
+	v := uint(sym)
+	word := int(v >> 6)
+	if len(b.SymbolBits) < word {
+		return false
+	}
+	return (b.SymbolBits[word] & (1 << (v & 63))) != 0
+}
+
 // Select ensures that all the buckets corresponding
 // to the selected components are already decompressed.
 // Supplying a nil list of components causes all buckets
