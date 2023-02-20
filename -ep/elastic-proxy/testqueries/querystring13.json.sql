@@ -1,0 +1,1 @@
+((LOWER("$source"."u_string_name") ~ '(^|[ \t])joh?n(ath[oa]n)([ \t]|$)') AND (("$source"."tenant" = 'test') AND ("$source"."server_timestamp" >= `2022-04-25T22:19:24.096092Z`)))

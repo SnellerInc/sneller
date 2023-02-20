@@ -1,0 +1,1 @@
+{"_shards":{"failed":0,"skipped":0,"successful":1,"total":1},"aggregations":{"1":{"value":628.3910128817914}},"hits":{"hits":[],"max_score":null,"total":{"relation":"eq","value":13014}},"timed_out":false,"took":100}

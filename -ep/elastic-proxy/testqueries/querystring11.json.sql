@@ -1,0 +1,1 @@
+((("$source"."u_date_*" >= '2019-07-24T00:00:00-07:00') AND ("$source"."u_date_*" < '2019-07-25T00:00:00-07:00')) AND (("$source"."tenant" = 'test') AND ("$source"."server_timestamp" >= `2022-04-25T22:17:51.353435Z`)))

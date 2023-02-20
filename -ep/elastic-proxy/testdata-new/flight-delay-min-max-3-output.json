@@ -1,0 +1,7 @@
+{
+    "$total_count": 13014,
+    "$bucket:%0": {
+        "minAgg": 0,
+        "maxAgg": 360
+    }
+}

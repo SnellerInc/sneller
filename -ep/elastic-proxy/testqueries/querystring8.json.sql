@@ -1,0 +1,1 @@
+(("$source"."decision" ~ '(^|[ \t])(?i)f.o([ \t]|$)') AND (("$source"."tenant" = 'test') AND ("$source"."server_timestamp" >= `2022-04-25T22:16:29.701736Z`)))

@@ -12,17 +12,15 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
-import (
-	"fmt"
-	"io"
-	"net/http"
-)
-
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+type QueryContext struct {
+	Query                  ElasticJSON
+	Index                  string
+	Database, Table        string
+	DefaultSource          string
+	Sources                []expression
+	IgnoreTotalHits        bool
+	IgnoreSumOtherDocCount bool
+	TypeMapping            map[string]TypeMapping
 }

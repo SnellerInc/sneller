@@ -1,0 +1,37 @@
+{
+    "$total_count": 13014,
+    "$bucket:2%0": [
+        { "$key:2%0": "IT", "$doc_count": 2269 },
+        { "$key:2%0": "US", "$doc_count": 1995 },
+        { "$key:2%0": "JP", "$doc_count":  797 },
+        { "$key:2%0": "CN", "$doc_count":  740 },
+        { "$key:2%0": "CA", "$doc_count":  615 }
+    ],
+    "$bucket:2:3%0": [
+        { "$key:2%0": "IT", "$key:2:3%0": "IT", "$doc_count": 458 },
+        { "$key:2%0": "US", "$key:2:3%0": "IT", "$doc_count": 379 },
+        { "$key:2%0": "IT", "$key:2:3%0": "US", "$doc_count": 327 },
+        { "$key:2%0": "US", "$key:2:3%0": "US", "$doc_count": 321 },
+        { "$key:2%0": "IT", "$key:2:3%0": "CN", "$doc_count": 194 },
+        { "$key:2%0": "JP", "$key:2:3%0": "IT", "$doc_count": 192 },
+        { "$key:2%0": "IT", "$key:2:3%0": "CA", "$doc_count": 192 },
+        { "$key:2%0": "US", "$key:2:3%0": "CN", "$doc_count": 185 },
+        { "$key:2%0": "US", "$key:2:3%0": "CA", "$doc_count": 146 },
+        { "$key:2%0": "US", "$key:2:3%0": "RU", "$doc_count": 128 },
+        { "$key:2%0": "IT", "$key:2:3%0": "JP", "$doc_count": 121 },
+        { "$key:2%0": "JP", "$key:2:3%0": "US", "$doc_count": 117 },
+        { "$key:2%0": "CN", "$key:2:3%0": "CN", "$doc_count": 116 },
+        { "$key:2%0": "CN", "$key:2:3%0": "IT", "$doc_count": 116 },
+        { "$key:2%0": "CA", "$key:2:3%0": "IT", "$doc_count":  98 },
+        { "$key:2%0": "CA", "$key:2:3%0": "US", "$doc_count":  93 },
+        { "$key:2%0": "CN", "$key:2:3%0": "US", "$doc_count":  90 },
+        { "$key:2%0": "CA", "$key:2:3%0": "CN", "$doc_count":  83 },
+        { "$key:2%0": "CN", "$key:2:3%0": "CH", "$doc_count":  81 },
+        { "$key:2%0": "CA", "$key:2:3%0": "CA", "$doc_count":  73 },
+        { "$key:2%0": "JP", "$key:2:3%0": "JP", "$doc_count":  63 },
+        { "$key:2%0": "JP", "$key:2:3%0": "CN", "$doc_count":  54 },
+        { "$key:2%0": "CA", "$key:2:3%0": "CH", "$doc_count":  51 },
+        { "$key:2%0": "JP", "$key:2:3%0": "RU", "$doc_count":  46 },
+        { "$key:2%0": "CN", "$key:2:3%0": "RU", "$doc_count":  39 }
+    ]
+}

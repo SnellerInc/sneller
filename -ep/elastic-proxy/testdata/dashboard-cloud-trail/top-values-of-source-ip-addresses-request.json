@@ -1,0 +1,61 @@
+{
+  "aggs": {
+    "0": {
+      "terms": {
+        "field": "sourceIPAddress.asn.organization_name.keyword",
+        "order": {
+          "_count": "desc"
+        },
+        "size": 5
+      },
+      "aggs": {
+        "1": {
+          "terms": {
+            "field": "sourceIPAddress.geoip.country.keyword",
+            "order": {
+              "_count": "desc"
+            },
+            "size": 3
+          }
+        }
+      }
+    }
+  },
+  "size": 0,
+  "fields": [
+    {
+      "field": "eventTime",
+      "format": "date_time"
+    },
+    {
+      "field": "timestamp",
+      "format": "date_time"
+    }
+  ],
+  "script_fields": {},
+  "stored_fields": [
+    "*"
+  ],
+  "runtime_mappings": {},
+  "_source": {
+    "excludes": []
+  },
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "range": {
+            "eventTime": {
+              "format": "strict_date_optional_time",
+              "gte": "2021-10-28T01:11:19.266Z",
+              "lte": "2021-11-02T01:11:19.266Z"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

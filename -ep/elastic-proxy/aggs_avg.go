@@ -12,17 +12,22 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
-import (
-	"fmt"
-	"io"
-	"net/http"
-)
+type aggsAvg struct {
+	fieldMetricAgg
+}
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+func (f *aggsAvg) transform(subBucket string, c *aggsGenerateContext) error {
+	c.addProjection(subBucket, &exprFunction{
+		Context: c.context,
+		Name:    "AVG",
+		Exprs:   []expression{ParseExprFieldName(c.context, f.Field)},
+	})
+	return nil
+}
+
+func (f *aggsAvg) process(c *aggsProcessContext) (any, error) {
+	v, _ := c.result()
+	return &metricResult{v}, nil
 }

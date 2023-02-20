@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package proxy_http
 
 import (
 	"fmt"
@@ -20,9 +20,8 @@ import (
 	"net/http"
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
+func VersionHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+	io.WriteString(w, fmt.Sprintf("Sneller Elastic-proxy %s", Version))
 }

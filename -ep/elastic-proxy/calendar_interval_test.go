@@ -12,17 +12,39 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
 import (
-	"fmt"
-	"io"
-	"net/http"
+	"encoding/json"
+	"testing"
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+func TestCalendarIntervals(t *testing.T) {
+	data := []struct {
+		json     string
+		interval string
+	}{
+		{`"1m"`, "m"},
+		{`"minute"`, "m"},
+		{`"23h"`, ""},
+		{`"123ms"`, ""},
+	}
+	for _, test := range data {
+		t.Run(test.json, func(t *testing.T) {
+			var ci calendarInterval
+			err := json.Unmarshal([]byte(test.json), &ci)
+
+			if err != nil {
+				if test.interval != "" {
+					t.Errorf("error parsing %q: %v", test.json, err)
+				}
+			} else {
+				if test.interval == "" {
+					t.Errorf("expected error while parsing %q", test.json)
+				} else if string(ci) != test.interval {
+					t.Errorf("parsing %q yielded unexpected result", test.json)
+				}
+			}
+		})
+	}
 }

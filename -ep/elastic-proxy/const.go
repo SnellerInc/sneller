@@ -12,17 +12,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
-import (
-	"fmt"
-	"io"
-	"net/http"
+type AggregationStrategy int
+
+const (
+	//
+	// Perform single scan over the data while
+	// building full tree for all aggregation
+	// levels and prune back when done.
+	// (Consumes more memory and typically
+	//  faster)
+	SingleScan AggregationStrategy = iota
+	//
+	// Perform more than one scan and prune
+	// back interim results after each pass.
+	// (Consumes more memory and typically
+	//  slower)
+	MultiScan
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
-}
+const DefaultElasticUser = "elastic"

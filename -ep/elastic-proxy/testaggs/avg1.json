@@ -1,0 +1,10 @@
+{
+    "size": 0,
+    "aggs": {
+        "avg_price": {
+            "avg": {
+                "field": "price"
+            }
+        }
+    }
+}

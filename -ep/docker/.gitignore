@@ -1,0 +1,5 @@
+.env
+proxy-config.json
+flights/
+news/
+elastic-proxy/

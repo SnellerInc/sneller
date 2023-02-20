@@ -1,0 +1,1 @@
+{"_shards":{"failed":0,"skipped":0,"successful":1,"total":1},"aggregations":{"2":{"buckets":[{"doc_count":3323,"key":"Logstash Airways"},{"doc_count":3261,"key":"JetBeats"},{"doc_count":3219,"key":"Kibana Airlines"},{"doc_count":3211,"key":"ES-Air"}]}},"hits":{"hits":[],"max_score":null,"total":{"relation":"eq","value":13014}},"timed_out":false,"took":100}

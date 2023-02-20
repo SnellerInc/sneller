@@ -1,0 +1,31 @@
+_tmbucket1,_terms1,count
+"1647648000","No Delay",1919
+"1647648000","NAS Delay",177
+"1647648000","Late Aircraft Delay",168
+"1647648000","Carrier Delay",156
+"1647648000","Weather Delay",68
+"1647648000","Security Delay",54
+"1648512000","No Delay",2357
+"1648512000","Late Aircraft Delay",235
+"1648512000","NAS Delay",197
+"1648512000","Carrier Delay",194
+"1648512000","Weather Delay",76
+"1648512000","Security Delay",67
+"1649376000","No Delay",2249
+"1649376000","Carrier Delay",213
+"1649376000","NAS Delay",207
+"1649376000","Late Aircraft Delay",198
+"1649376000","Security Delay",79
+"1649376000","Weather Delay",65
+"1650240000","No Delay",2345
+"1650240000","Late Aircraft Delay",228
+"1650240000","Carrier Delay",225
+"1650240000","NAS Delay",217
+"1650240000","Security Delay",84
+"1650240000","Weather Delay",69
+"1651104000","No Delay",874
+"1651104000","NAS Delay",75
+"1651104000","Carrier Delay",75
+"1651104000","Late Aircraft Delay",74
+"1651104000","Security Delay",42
+"1651104000","Weather Delay",27

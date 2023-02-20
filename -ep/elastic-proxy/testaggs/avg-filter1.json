@@ -1,0 +1,11 @@
+{
+    "size": 0,
+    "aggs": {
+        "t_shirts": {
+            "filter": { "term": { "type": "t-shirt" } },
+            "aggs": {
+                "avg_price": { "avg": { "field": "price" } }
+            }
+        }
+    }
+}

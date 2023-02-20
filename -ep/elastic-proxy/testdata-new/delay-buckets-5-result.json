@@ -1,0 +1,37 @@
+{
+    "timed_out": false,
+    "hits": {
+        "hits": [],
+        "total": {
+            "relation": "eq",
+            "value": 3270
+        },
+        "max_score": null
+    },
+    "_shards": {
+        "successful": 1,
+        "failed": 0,
+        "skipped": 0,
+        "total": 1
+    },
+    "took": 0,
+    "aggregations": {
+        "2": {
+            "buckets": [
+                { "key":   0, "doc_count": 134 },
+                { "key":  30, "doc_count": 278 },
+                { "key":  60, "doc_count": 276 },
+                { "key":  90, "doc_count": 246 },
+                { "key": 120, "doc_count": 264 },
+                { "key": 150, "doc_count": 270 },
+                { "key": 180, "doc_count": 252 },
+                { "key": 210, "doc_count": 294 },
+                { "key": 240, "doc_count": 305 },
+                { "key": 270, "doc_count": 297 },
+                { "key": 300, "doc_count": 261 },
+                { "key": 330, "doc_count": 251 },
+                { "key": 360, "doc_count": 142 }
+            ]
+        }
+    }
+}

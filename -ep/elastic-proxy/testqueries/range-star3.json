@@ -1,0 +1,6 @@
+{
+    "query_string": {
+        "default_field": "timestamp",
+        "query": "[* TO *]"
+    }
+}

@@ -12,17 +12,17 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package proxy_http
 
-import (
-	"fmt"
-	"io"
-	"net/http"
-)
+import "net/http"
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+func BulkProxy(t *Config, l *Logging, w http.ResponseWriter, r *http.Request) bool {
+	return false
+	// cloud := elastic_proxy.Cloud{
+	// 	Endpoint: t.Sneller.EndPoint,
+	// 	Token:    t.Sneller.Token,
+	// }
+
+	// response, custHeaders, err :=
+	// elastic_proxy.ProxyIngestion(&cloud, t.Sneller.Schema, t.Sneller.Table, r.Body)
 }

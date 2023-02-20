@@ -1,0 +1,10 @@
+{
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

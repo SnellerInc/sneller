@@ -1,0 +1,37 @@
+{
+    "$total_count": 13014,
+    "$bucket:2%0": [
+        { "$key:2%0": 1647648000, "$doc_count": 2542 },
+        { "$key:2%0": 1648512000, "$doc_count": 3126 },
+        { "$key:2%0": 1649376000, "$doc_count": 3011 },
+        { "$key:2%0": 1650240000, "$doc_count": 3168 },
+        { "$key:2%0": 1651104000, "$doc_count": 1167 }
+    ],
+    "$bucket:2:3%0": [
+        { "$key:2%0": 1648512000, "$key:2:3%0": "No Delay",            "$doc_count": 2357 },
+        { "$key:2%0": 1650240000, "$key:2:3%0": "No Delay",            "$doc_count": 2345 },
+        { "$key:2%0": 1649376000, "$key:2:3%0": "No Delay",            "$doc_count": 2249 },
+        { "$key:2%0": 1647648000, "$key:2:3%0": "No Delay",            "$doc_count": 1919 },
+        { "$key:2%0": 1651104000, "$key:2:3%0": "No Delay",            "$doc_count":  874 },
+        { "$key:2%0": 1648512000, "$key:2:3%0": "Late Aircraft Delay", "$doc_count":  235 },
+        { "$key:2%0": 1650240000, "$key:2:3%0": "Late Aircraft Delay", "$doc_count":  228 },
+        { "$key:2%0": 1650240000, "$key:2:3%0": "Carrier Delay",       "$doc_count":  225 },
+        { "$key:2%0": 1650240000, "$key:2:3%0": "NAS Delay",           "$doc_count":  217 },
+        { "$key:2%0": 1649376000, "$key:2:3%0": "Carrier Delay",       "$doc_count":  213 },
+        { "$key:2%0": 1649376000, "$key:2:3%0": "NAS Delay",           "$doc_count":  207 },
+        { "$key:2%0": 1649376000, "$key:2:3%0": "Late Aircraft Delay", "$doc_count":  198 },
+        { "$key:2%0": 1648512000, "$key:2:3%0": "NAS Delay",           "$doc_count":  197 },
+        { "$key:2%0": 1648512000, "$key:2:3%0": "Carrier Delay",       "$doc_count":  194 },
+        { "$key:2%0": 1647648000, "$key:2:3%0": "NAS Delay",           "$doc_count":  177 },
+        { "$key:2%0": 1647648000, "$key:2:3%0": "Late Aircraft Delay", "$doc_count":  168 },
+        { "$key:2%0": 1647648000, "$key:2:3%0": "Carrier Delay",       "$doc_count":  156 },
+        { "$key:2%0": 1650240000, "$key:2:3%0": "Security Delay",      "$doc_count":   84 },
+        { "$key:2%0": 1649376000, "$key:2:3%0": "Security Delay",      "$doc_count":   79 },
+        { "$key:2%0": 1648512000, "$key:2:3%0": "Weather Delay",       "$doc_count":   76 },
+        { "$key:2%0": 1651104000, "$key:2:3%0": "Carrier Delay",       "$doc_count":   75 },
+        { "$key:2%0": 1651104000, "$key:2:3%0": "NAS Delay",           "$doc_count":   75 },
+        { "$key:2%0": 1651104000, "$key:2:3%0": "Late Aircraft Delay", "$doc_count":   74 },
+        { "$key:2%0": 1647648000, "$key:2:3%0": "Weather Delay",       "$doc_count":   68 },
+        { "$key:2%0": 1651104000, "$key:2:3%0": "Security Delay",      "$doc_count":   42 }
+    ]
+}

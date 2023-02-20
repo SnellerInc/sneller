@@ -1,0 +1,16 @@
+{
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "exists": {
+            "field": "has.to.exist"
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

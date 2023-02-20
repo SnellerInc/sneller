@@ -1,0 +1,31 @@
+{
+    "timed_out": false,
+    "hits": {
+        "hits": [],
+        "max_score": null,
+        "total": {
+            "relation": "gte",
+            "value": 10000
+        }
+    },
+    "_shards": {
+        "failed": 0,
+        "skipped": 0,
+        "successful": 1,
+        "total": 1
+    },
+    "took": 0,
+    "aggregations": {
+        "name": {
+            "buckets": [
+                {
+                    "doc_count": 1,
+                    "key": 1647820800000,
+                    "key_as_string": "2022-03-21T00:00:00.000Z"
+                }
+            ],
+            "doc_count_error_upper_bound": 0,
+            "sum_other_doc_count": 13013
+        }
+   }
+}

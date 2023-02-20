@@ -1,0 +1,7 @@
+{
+    "$total_count": 13014,
+    "$bucket:2%0": [
+        { "$key:2%0": false, "$doc_count": 11344 },
+        { "$key:2%0": true,  "$doc_count":  1670 }
+    ]
+}

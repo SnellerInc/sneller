@@ -12,17 +12,38 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
 import (
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+type calendarInterval string
+
+func (ci *calendarInterval) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+
+	switch text {
+	case "1m", "minute":
+		*ci = "m"
+	case "1h", "hour":
+		*ci = "h"
+	case "1d", "day":
+		*ci = "d"
+	case "1w", "week":
+		*ci = "w"
+	case "1M", "month":
+		*ci = "M"
+	case "1q", "quarter":
+		*ci = "q"
+	case "1y", "year":
+		*ci = "y"
+	default:
+		return fmt.Errorf("invalid calendar interval %q", text)
+	}
+	return nil
 }

@@ -1,0 +1,8 @@
+{
+    "$doc_count": 13014,
+    "name": {
+        "$groups$": [
+            { "$keys$": ["2022-03-21T00:00:00Z"], "$results$": { "$doc_count": 1 } }
+        ]
+    }
+}

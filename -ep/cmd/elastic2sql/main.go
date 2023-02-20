@@ -15,14 +15,35 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"os"
+
+	elastic_proxy "github.com/SnellerInc/elasticproxy/elastic-proxy"
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprintln(os.Stderr, "usage: elastic2sql <table>")
+		os.Exit(1)
+	}
+	table := os.Args[1]
+
+	var ej elastic_proxy.ElasticJSON
+	if err := json.NewDecoder(os.Stdin).Decode(&ej); err != nil {
+		fmt.Fprintf(os.Stderr, "Query parsing error: %v\n", err)
+		os.Exit(1)
+	}
+
+	qc := elastic_proxy.QueryContext{
+		Table:           table,
+		IgnoreTotalHits: false,
+	}
+	sqlExpr, err := ej.SQL(&qc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "SQL translation error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(elastic_proxy.PrintExprPretty(sqlExpr))
 }

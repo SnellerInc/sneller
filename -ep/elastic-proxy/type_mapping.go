@@ -12,17 +12,24 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
-import (
-	"fmt"
-	"io"
-	"net/http"
-)
+import "encoding/json"
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+type TypeMapping struct {
+	Type   string            `json:"type"`
+	Fields map[string]string `json:"fields,omitempty"`
+}
+
+func (tm *TypeMapping) UnmarshalJSON(data []byte) error {
+	type _typeMapping TypeMapping
+	if err := json.Unmarshal(data, (*_typeMapping)(tm)); err != nil {
+		var typeName string
+		if err := json.Unmarshal(data, &typeName); err != nil {
+			return err
+		}
+		tm.Type = typeName
+		tm.Fields = make(map[string]string, 0)
+	}
+	return nil
 }

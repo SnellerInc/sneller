@@ -1,0 +1,49 @@
+{
+  "size": 0,
+  "track_total_hits": false,
+  "aggs": {
+    "join": {
+      "terms": {
+        "size": 65535,
+        "field": "sourceIPAddress.geoip.country_code.keyword"
+      },
+      "aggs": {}
+    }
+  },
+  "fields": [
+    {
+      "field": "eventTime",
+      "format": "date_time"
+    },
+    {
+      "field": "timestamp",
+      "format": "date_time"
+    }
+  ],
+  "script_fields": {},
+  "stored_fields": [
+    "*"
+  ],
+  "runtime_mappings": {},
+  "_source": {
+    "excludes": []
+  },
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "range": {
+            "eventTime": {
+              "format": "strict_date_optional_time",
+              "gte": "2021-10-28T01:11:19.266Z",
+              "lte": "2021-11-02T01:11:19.266Z"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

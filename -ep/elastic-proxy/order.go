@@ -12,17 +12,35 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
 import (
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+const (
+	OrderAscending  = "ASC"
+	OrderDescending = "DESC"
+)
+
+type order map[string]Ordering
+
+type Ordering string
+
+func (o *Ordering) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+
+	switch text {
+	case "asc":
+		*o = OrderAscending
+	case "desc":
+		*o = OrderDescending
+	default:
+		return fmt.Errorf("unknown order %q", text)
+	}
+	return nil
 }

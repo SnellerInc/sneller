@@ -1,0 +1,27 @@
+{
+    "$total_count": 13014,
+    "$bucket:0%0": [
+        { "$key:0%0": "AE", "$doc_count": 384 },
+        { "$key:0%0": "AR", "$doc_count": 257 },
+        { "$key:0%0": "AT", "$doc_count": 118 },
+        { "$key:0%0": "AU", "$doc_count": 515 },
+        { "$key:0%0": "CA", "$doc_count": 615 }
+    ],
+    "$bucket:0:1%0": [
+        { "$key:0%0": "AU", "$key:0:1%0": "AE", "$doc_count":  3 },
+        { "$key:0%0": "AE", "$key:0:1%0": "AE", "$doc_count":  9 },
+        { "$key:0%0": "CA", "$key:0:1%0": "AR", "$doc_count":  6 },
+        { "$key:0%0": "AR", "$key:0:1%0": "AR", "$doc_count": 10 },
+        { "$key:0%0": "AU", "$key:0:1%0": "AR", "$doc_count": 15 },
+        { "$key:0%0": "AE", "$key:0:1%0": "AR", "$doc_count": 10 },
+        { "$key:0%0": "AT", "$key:0:1%0": "AT", "$doc_count": 29 },
+        { "$key:0%0": "AE", "$key:0:1%0": "AT", "$doc_count":  3 },
+        { "$key:0%0": "AR", "$key:0:1%0": "AT", "$doc_count":  4 },
+        { "$key:0%0": "CA", "$key:0:1%0": "AT", "$doc_count": 17 },
+        { "$key:0%0": "AU", "$key:0:1%0": "AT", "$doc_count": 12 },
+        { "$key:0%0": "CA", "$key:0:1%0": "AU", "$doc_count": 22 },
+        { "$key:0%0": "AR", "$key:0:1%0": "AU", "$doc_count":  7 },
+        { "$key:0%0": "AT", "$key:0:1%0": "CA", "$doc_count": 31 },
+        { "$key:0%0": "AT", "$key:0:1%0": "CH", "$doc_count": 16 }
+    ]
+}

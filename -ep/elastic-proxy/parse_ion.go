@@ -12,17 +12,27 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package main
+package elastic_proxy
 
 import (
-	"fmt"
-	"io"
-	"net/http"
+	"github.com/amazon-ion/ion-go/ion"
 )
 
-func (s *server) versionHandler(w http.ResponseWriter, r *http.Request) {
-	endPoints := s.peers.Get()
-	w.Header().Add("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	io.WriteString(w, fmt.Sprintf("Sneller daemon %s (cluster size: %d nodes)", version, len(endPoints)))
+func ConvertION(v any) any {
+	switch vv := v.(type) {
+	case []any:
+		for i, v := range vv {
+			vv[i] = ConvertION(v)
+		}
+		return vv
+	case map[string]any:
+		for k, v := range vv {
+			vv[k] = ConvertION(v)
+		}
+		return vv
+	case *ion.Timestamp:
+		return vv.GetDateTime()
+	default:
+		return vv
+	}
 }

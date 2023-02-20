@@ -1,0 +1,27 @@
+{
+  "version": true,
+  "size": 12,
+  "sort": [
+    {
+      "timestamp": {
+        "order": "desc",
+        "unmapped_type": "boolean"
+      }
+    }
+  ],
+  "query": {
+    "bool": {
+      "filter": [
+        {
+          "range": {
+            "timestamp": {
+              "gte": "2022-03-01T00:00:00.000Z",
+              "lte": "2022-07-01T00:00:00.000Z",
+              "format": "strict_date_optional_time"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

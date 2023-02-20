@@ -1,0 +1,22 @@
+{
+    "size": 0,
+    "aggs": {
+        "resource_id": {
+            "terms": { "field": "OriginCountry", "size": 1000 },
+            "aggs": {
+                "orig_airport_count": { "cardinality": { "field": "OriginAirportID" } },
+                "dest_airport_count": { "cardinality": { "field": "DestAirportID" } },
+                "total_count": {
+                    "bucket_script": {
+                        "buckets_path": {
+                            "orig_count": "orig_airport_count",
+                            "dest_count": "dest_airport_count"
+                        },
+                        "script": "params.orig_count + params.dest_count"
+                    }
+                },
+                "sorted_total_count": { "bucket_sort": { "size": 10, "sort": [{ "total_count": { "order": "desc" } } ] } }
+            }
+        }
+    }
+}

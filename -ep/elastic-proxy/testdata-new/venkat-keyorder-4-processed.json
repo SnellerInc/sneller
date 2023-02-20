@@ -1,0 +1,72 @@
+{
+    "$doc_count": 13014,
+    "0": {
+        "$groups$": [
+            {
+                "$keys$": [ "AE" ],
+                "$results$": { "$doc_count": 384 },
+                "$nested$": {
+                    "1": {
+                        "$groups$": [
+                            { "$keys$": [ "AE" ], "$results$": { "$doc_count": 9 } },
+                            { "$keys$": [ "AR" ], "$results$": { "$doc_count": 10 } },
+                            { "$keys$": [ "AT" ], "$results$": { "$doc_count": 3 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "AR" ],
+                "$results$": { "$doc_count": 257 },
+                "$nested$": {
+                    "1": {
+                        "$groups$": [
+                            { "$keys$": [ "AR" ], "$results$": { "$doc_count": 10 } },
+                            { "$keys$": [ "AT" ], "$results$": { "$doc_count": 4 } },
+                            { "$keys$": [ "AU" ], "$results$": { "$doc_count": 7 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "AT" ],
+                "$results$": { "$doc_count": 118 },
+                "$nested$": {
+                    "1": {
+                        "$groups$": [
+                            { "$keys$": [ "AT" ], "$results$": { "$doc_count": 29 } },
+                            { "$keys$": [ "CA" ], "$results$": { "$doc_count": 31 } },
+                            { "$keys$": [ "CH" ], "$results$": { "$doc_count": 16 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "AU" ],
+                "$results$": { "$doc_count": 515 },
+                "$nested$": {
+                    "1": {
+                        "$groups$": [
+                            { "$keys$": [ "AE" ], "$results$": { "$doc_count": 3 } },
+                            { "$keys$": [ "AR" ], "$results$": { "$doc_count": 15 } },
+                            { "$keys$": [ "AT" ], "$results$": { "$doc_count": 12 } }
+                        ]
+                    }
+                }
+            },
+            {
+                "$keys$": [ "CA" ],
+                "$results$": { "$doc_count": 615 },
+                "$nested$": {
+                    "1": {
+                        "$groups$": [
+                            { "$keys$": [ "AR" ], "$results$": { "$doc_count": 6 } },
+                            { "$keys$": [ "AT" ], "$results$": { "$doc_count": 17 } },
+                            { "$keys$": [ "AU" ], "$results$": { "$doc_count": 22 } }
+                        ]
+                    }
+                }
+            }
+        ]
+    }
+}

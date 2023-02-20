@@ -1,0 +1,12 @@
+{
+    "fields": ["title","published_at"],
+    "_source": false,
+    "query": {
+        "query_string": {
+            "query": "title:/bide./"
+        }
+    },
+    "sort" : [
+        {"published_at" : {"order" : "asc"}}
+    ]
+}

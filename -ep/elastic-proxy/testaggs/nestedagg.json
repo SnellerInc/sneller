@@ -1,0 +1,24 @@
+{
+    "size": 0,
+    "aggs": {
+        "regional": {
+            "terms": { "field": "region" },
+            "aggs": {
+                "src": {
+                    "terms": { "field": "source_ip" },
+                    "aggs": {
+                        "hosts": {
+                            "cardinality": { "field": "host" }
+                        }
+                    }
+                },
+                "dest": {
+                    "terms": { "field": "dest_ip" }
+                },
+                "avg_duration": {
+                    "avg": { "field": "duration" }
+                }
+            }
+        }
+    }
+}

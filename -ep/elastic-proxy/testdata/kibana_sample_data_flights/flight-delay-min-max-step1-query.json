@@ -1,0 +1,22 @@
+{
+  "aggs":{"maxAgg":{"max":{"field":"FlightDelayMin"}},"minAgg":{"min":{"field":"FlightDelayMin"}}},
+  "size": 0,
+  "query": {
+    "bool": {
+      "must": [],
+      "filter": [
+        {
+          "range": {
+            "timestamp": {
+              "gte": "2022-03-01T00:00:00.000Z",
+              "lte": "2022-07-01T00:00:00.000Z",
+              "format": "strict_date_optional_time"
+            }
+          }
+        }
+      ],
+      "should": [],
+      "must_not": []
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+    "$total_count": 13014,
+    "$bucket:2%0": [
+        { "$key:2%0": "Logstash Airways", "$doc_count": 3323 },
+        { "$key:2%0": "JetBeats",         "$doc_count": 3261 },
+        { "$key:2%0": "Kibana Airlines",  "$doc_count": 3219 },
+        { "$key:2%0": "ES-Air",           "$doc_count": 3211 }
+    ]
+}
