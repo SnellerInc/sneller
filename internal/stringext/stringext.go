@@ -1257,7 +1257,7 @@ func SimplifyLikeExpr(expr string, wc, ks, escape rune) []LikeSegment {
 			// (a,b,'x__')(c,d,'y') -> (a,b,'x')(c+2,d+2,'y')
 			if i < nResults-1 {
 				next := tmp[i+1]
-				if skipRight := countTrailing(curr.Pattern); skipRight > 0 {
+				if skipRight := countTrailing(tmp[i].Pattern); skipRight > 0 {
 					tmp[i+1].SkipMin = add(next.SkipMin, skipRight)
 					tmp[i+1].SkipMax = add(next.SkipMax, skipRight)
 					newLen := len(tmp[i].Pattern) - skipRight

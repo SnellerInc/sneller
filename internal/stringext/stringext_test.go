@@ -276,6 +276,16 @@ func TestSimplifyLikeExpr(t *testing.T) {
 			{1, -1, p("b")},
 			{0, 0, p("")},
 		}},
+		{"a%__%b", []LikeSegment{
+			{0, 0, p("a")},
+			{2, -1, p("b")},
+			{0, 0, p("")},
+		}},
+		{"a%___%b", []LikeSegment{
+			{0, 0, p("a")},
+			{3, -1, p("b")},
+			{0, 0, p("")},
+		}},
 		{"b_%_", []LikeSegment{
 			{0, 0, p("b")},
 			{2, -1, p("")},
@@ -319,4 +329,15 @@ func TestSimplifyLikeExpr(t *testing.T) {
 			run(ut)
 		})
 	}
+}
+
+func FuzzSimplifyLikeExpr(f *testing.F) {
+	const wc = '_'
+	const kc = '%'
+	const esc = '@'
+
+	f.Fuzz(func(t *testing.T, s string) {
+		// SimplifyLikeExpr should not crash
+		SimplifyLikeExpr(s, wc, kc, esc)
+	})
 }
