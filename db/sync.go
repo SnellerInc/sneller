@@ -808,16 +808,19 @@ func (c *Config) inputMinAge() time.Duration {
 	return c.InputMinimumAge
 }
 
-// userdata makes a datum to place into the
-// userdata field of the index.
-func (st *tableState) userdata() ion.Datum {
-	return ion.NewStruct(nil, []ion.Field{{
+func (st *tableState) addDefHash(d ion.Datum) ion.Datum {
+	f := ion.Field{
 		Label: "definition",
 		Datum: ion.NewStruct(nil, []ion.Field{{
 			Label: "hash",
 			Datum: ion.Blob(st.def.Hash()),
 		}}).Datum(),
-	}}).Datum()
+	}
+	s, err := d.Struct()
+	if err != nil {
+		return ion.NewStruct(nil, []ion.Field{f}).Datum()
+	}
+	return s.WithField(f).Datum()
 }
 
 func (st *tableState) writeIndex(idx *blockfmt.Index) error {
@@ -867,7 +870,7 @@ func (st *tableState) flush(ctx context.Context, idx *blockfmt.Index) (err error
 	}()
 
 	idx.Name = st.table
-	idx.UserData = st.userdata()
+	idx.UserData = st.addDefHash(idx.UserData)
 	idx.Inputs.Backing = st.ofs
 	dir := path.Join("db", st.db, st.table)
 	trace.WithRegion(ctx, "flush-inputs", func() {

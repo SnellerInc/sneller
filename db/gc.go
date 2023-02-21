@@ -257,19 +257,7 @@ func setPackedCursor(dst *blockfmt.Index, cursor string) {
 		return // ???
 	}
 	s, _ := udata.Struct()
-	fields := s.Fields(nil)
-	found := false
-	for i := range fields {
-		if fields[i].Label == f.Label {
-			fields[i] = f
-			found = true
-			break
-		}
-	}
-	if !found {
-		fields = append(fields, f)
-	}
-	dst.UserData = ion.NewStruct(nil, fields).Datum()
+	dst.UserData = s.WithField(f).Datum()
 }
 
 // Run calls rfs.Remove(path) for each path

@@ -829,6 +829,27 @@ func (s Struct) Fields(fields []Field) []Field {
 	return fields
 }
 
+// WithField adds or overwrites a field in s
+// and returns a new Struct with the updated field.
+// If a field with f.Label is already present in the
+// structure, it is overwritten with f. Otherwise,
+// f is added to the existing fields.
+func (s Struct) WithField(f Field) Struct {
+	fields := s.Fields(nil)
+	found := false
+	for i := range fields {
+		if fields[i].Label == f.Label {
+			fields[i] = f
+			found = true
+			break
+		}
+	}
+	if !found {
+		fields = append(fields, f)
+	}
+	return NewStruct(nil, fields)
+}
+
 func (s Struct) Field(x Symbol) (Field, bool) {
 	var field Field
 	var ok bool
