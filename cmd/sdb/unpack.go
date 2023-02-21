@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/ion/blockfmt"
 )
 
@@ -48,9 +49,11 @@ func openarg(rootfs fs.FS, name string) (packed, *blockfmt.Trailer) {
 func unpack(args []string) {
 	var out io.WriteCloser
 	var dasho string
+	var dashfmt string
 
 	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
 	flags.StringVar(&dasho, "o", "-", "output file (\"-\" means stdout)")
+	flags.StringVar(&dashfmt, "fmt", "ion", "output format (ion, json, ...)")
 	flags.Parse(args[1:])
 	args = flags.Args()
 
@@ -63,13 +66,22 @@ func unpack(args []string) {
 			exitf("creating output: %s", err)
 		}
 	}
-	rootfs := root(creds())
 	defer out.Close()
+	var w io.Writer
+	switch dashfmt {
+	case "ion":
+		w = out
+	case "json":
+		w = ion.NewJSONWriter(out, '\n')
+	default:
+		exitf("-fmt=%q not supported (try \"ion\" or \"json\")", dashfmt)
+	}
+	rootfs := root(creds())
 	var d blockfmt.Decoder
 	for i := range args {
 		src, trailer := openarg(rootfs, args[i])
 		d.Set(trailer, len(trailer.Blocks))
-		_, err := d.Copy(out, io.LimitReader(src, trailer.Offset))
+		_, err := d.Copy(w, io.LimitReader(src, trailer.Offset))
 		if err != nil {
 			exitf("blockfmt.Decoder.Copy: %s", err)
 		}
@@ -79,16 +91,21 @@ func unpack(args []string) {
 func init() {
 	addApplet(applet{
 		name: "unpack",
-		help: "[-o output] <file> ...",
+		help: "[-o output] [-fmt format] <file> ...",
 		desc: `unpack 1 or more packfiles into ion
 The command
-  $ sdb unpack [-o output] <file> ...
+  $ sdb unpack [-o output] [-fmt format] <file> ...
 unpacks each of the listed files (from the root specified by -root)
 and outputs the decompressed ion data from within the file.
 
 If the -o <output> flag is set, then the output of this
 command will be directed to that file.
 Otherwise, the output is written to stdout.
+
+The -fmt <format> flag is used to specify the format
+of the data written by unpack. The default format
+is the ion binary format, but -fmt=json may also be specified,
+in which case the output is produced as newline-delimited JSON records.
 
 See the "fetch" command for downloading files
 from the tenant rootfs to the local filesystem.
