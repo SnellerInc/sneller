@@ -336,6 +336,10 @@ func FuzzSimplifyLikeExpr(f *testing.F) {
 	const kc = '%'
 	const esc = '@'
 
+	f.Add("_")
+	f.Add("a_b")
+	f.Add("a@_%1")
+
 	f.Fuzz(func(t *testing.T, s string) {
 		// SimplifyLikeExpr should not crash
 		SimplifyLikeExpr(s, wc, kc, esc)

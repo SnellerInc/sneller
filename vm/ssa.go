@@ -1573,9 +1573,31 @@ func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *v
 		expr = stringext.NormalizeString(expr)
 	}
 	likeSegments := stringext.SimplifyLikeExpr(expr, wc, ks, escape)
+	nSegments := len(likeSegments)
+
+	// special situation when expr only contains '_' and '%'
+	if nSegments == 1 {
+		first := likeSegments[0]
+		charLen := p.charLength(str)
+		if first.SkipMax == -1 { // skip at-most inf chars
+			if first.SkipMin == 0 { // skip at-least 0 chars
+				return p.mask(str) // thus skip any number of chars
+			}
+			return p.lessEqual(p.constant(first.SkipMin), charLen)
+		}
+		if first.SkipMax == first.SkipMin {
+			// e.g. LIKE '____' gives 1 segment `[4~4:]` which means
+			// "skip at-least and at-most 4 chars, and match with ''"
+			return p.equals(charLen, p.constant(first.SkipMin))
+		}
+		// not sure if this situation can be constructed in a LIKE expression
+		min := p.lessEqual(charLen, p.constant(first.SkipMin))
+		max := p.less(p.constant(first.SkipMax), charLen)
+		return p.and(min, max)
+	}
 
 	// special situation when expr does not contain ks '%', the equals pattern applies
-	if len(likeSegments) == 2 {
+	if nSegments == 2 {
 		first := likeSegments[0]
 		second := likeSegments[1]
 		if (first.SkipMax == first.SkipMin) && (second.SkipMax == second.SkipMin) {
@@ -1591,10 +1613,10 @@ func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *v
 		str = p.skipCharLeftConst(str, first.SkipMax)
 		str = p.hasPrefixPattern(str, &first.Pattern, caseSensitive)
 		likeSegments = likeSegments[1:] // remove the first segment
+		nSegments--
 	}
 
 	// if the last likeElement is a suffix
-	nSegments := len(likeSegments)
 	last := likeSegments[nSegments-1]
 	if (last.SkipMax != -1) && (last.Pattern.Needle == "") && (nSegments > 1) {
 		pattern := likeSegments[nSegments-2].Pattern

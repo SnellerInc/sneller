@@ -847,3 +847,22 @@ func bcpath(p *prog, str string) *value {
 
 	return base
 }
+
+func FuzzLike(f *testing.F) {
+
+	f.Add("%a_ba", '@', true)
+
+	f.Fuzz(func(t *testing.T, expr string, escape rune, caseSensitive bool) {
+		if escape == '_' || escape == '%' {
+			return
+		}
+		if expr == "" {
+			return
+		}
+
+		var p prog
+		p.begin()
+		node := p.constant("bla")
+		p.like(node, expr, escape, caseSensitive)
+	})
+}
