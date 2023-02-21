@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/SnellerInc/elasticproxy/proxy_http"
-	"github.com/SnellerInc/sneller"
 
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/acme/autocert"
@@ -64,7 +63,7 @@ func (c *config) baseName(t time.Time) string {
 type tenantConfig map[string]*config
 
 func main() {
-	ver, ok := sneller.Version()
+	ver, ok := Version()
 	if ok {
 		proxy_http.Version = ver
 	}

@@ -2,10 +2,7 @@ module github.com/SnellerInc/elasticproxy
 
 go 1.20
 
-replace github.com/SnellerInc/sneller => ../oss
-
 require (
-	github.com/SnellerInc/sneller v0.0.0-20230125001655-1dc041dde43b
 	github.com/amazon-ion/ion-go v1.2.0
 	github.com/elastic/go-elasticsearch/v7 v7.17.7
 	github.com/google/uuid v1.3.0
@@ -16,9 +13,7 @@ require (
 )
 
 require (
-	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
-	github.com/klauspost/compress v1.15.15 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/onsi/gomega v1.26.0 // indirect
@@ -26,6 +21,5 @@ require (
 	github.com/yudai/golcs v0.0.0-20170316035057-ecda9a501e82 // indirect
 	github.com/yudai/pp v2.0.1+incompatible // indirect
 	golang.org/x/net v0.7.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 )
