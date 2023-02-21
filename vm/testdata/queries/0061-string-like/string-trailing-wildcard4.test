@@ -1,0 +1,9 @@
+# go test -v -run=TestQueries/string-trailing-wildcard4
+SELECT COUNT(*) FROM input
+WHERE (str LIKE '_a__%') = (match IS FALSE)
+---
+{"str": "xaxx", "match": true}
+{"str": "xaxxx", "match": true}
+{"str": "xax", "match": false}
+---
+{"count": 0}

@@ -1619,9 +1619,10 @@ func (p *prog) like(str *value, expr string, escape rune, caseSensitive bool) *v
 	// if the last likeElement is a suffix
 	last := likeSegments[nSegments-1]
 	if (last.SkipMax != -1) && (last.Pattern.Needle == "") && (nSegments > 1) {
-		pattern := likeSegments[nSegments-2].Pattern
+		secondLast := likeSegments[nSegments-2]
+		str = p.skipCharLeftConst(str, secondLast.SkipMin)
 		str = p.skipCharRightConst(str, last.SkipMax)
-		str = p.hasSuffixPattern(str, &pattern, caseSensitive)
+		str = p.hasSuffixPattern(str, &secondLast.Pattern, caseSensitive)
 		likeSegments = likeSegments[:nSegments-2] // remove the last two segments
 	}
 
