@@ -141,8 +141,9 @@ type flattenerItem struct {
 }
 
 type flattener struct {
-	bindings map[string]flattenerItem
-	id       int
+	bindings     map[string]flattenerItem
+	id           int
+	replacements int
 }
 
 func newFlattener(size int) *flattener {
@@ -198,6 +199,8 @@ func (f *flattener) Rewrite(e expr.Node) expr.Node {
 	if !ok2 {
 		return e
 	}
+
+	f.replacements += 1
 	return expr.Copy(result.node.Expr)
 }
 
@@ -239,7 +242,13 @@ func flattenBind(columns []expr.Binding) []expr.Binding {
 	// any references to previous columns with
 	// the actual expression on the left-hand-side
 	for i := 1; i < len(columns); i++ {
+		f.replacements = 0
 		columns[i].Expr = expr.Rewrite(f, columns[i].Expr)
+		if f.replacements > 0 {
+			// simplify only modified expressions
+			columns[i].Expr = expr.Simplify(columns[i].Expr, expr.NoHint)
+		}
+
 		f.add(columns[i])
 	}
 
