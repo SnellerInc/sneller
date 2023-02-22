@@ -41,7 +41,15 @@ const (
 )
 
 func defaultRoot() string {
-	return os.Getenv("SNELLER_BUCKET")
+	r := os.Getenv("SNELLER_BUCKET")
+	if r != "" {
+		return r
+	}
+	wd, err := os.Getwd()
+	if err == nil {
+		return wd
+	}
+	return "."
 }
 
 func init() {
