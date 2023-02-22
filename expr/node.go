@@ -1432,7 +1432,7 @@ func (c CmpOp) Flip() CmpOp {
 	case GreaterEquals:
 		return LessEquals
 	default:
-		return c // Equals, NotEquals, Like, etc.
+		return c // Equals, NotEquals
 	}
 }
 

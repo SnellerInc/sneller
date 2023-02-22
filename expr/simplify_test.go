@@ -1106,6 +1106,14 @@ func TestSimplify(t *testing.T) {
 			Call(Sqrt, Float(-5)),
 			Missing{},
 		},
+		{
+			Call(CharLength, String("żółw")), // four characters
+			Integer(4),
+		},
+		{
+			Call(OctetLength, String("żółw")), // three x 2-byte UTF-8 codes + one x ASCII char = 7 bytes
+			Integer(7),
+		},
 	}
 
 	for i := range testcases {

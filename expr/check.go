@@ -27,8 +27,9 @@ import (
 // TypeError is the error type returned
 // from Check when an expression is ill-typed.
 type TypeError struct {
-	At  Node
-	Msg string
+	At   Node
+	Msg  string
+	Hint string
 }
 
 // SyntaxError is the error type
@@ -60,12 +61,21 @@ func errat(err error, whence Node) {
 	}
 }
 
-func errtype(e Node, msg string) *TypeError {
-	return &TypeError{At: e, Msg: msg}
+func errtype(e Node, f string, args ...any) *TypeError {
+	return &TypeError{
+		At:  e,
+		Msg: fmt.Sprintf(f, args...),
+	}
 }
 
 func errsyntax(e Node, msg string) *SyntaxError {
 	return &SyntaxError{At: e, Msg: msg}
+}
+
+func errsyntaxf(f string, args ...any) error {
+	return &SyntaxError{
+		Msg: fmt.Sprintf(f, args...),
+	}
 }
 
 // Hint is an argument that can be
@@ -232,7 +242,9 @@ func (c *Comparison) check(h Hint) error {
 	}
 
 	if lt&rt&oktypes == 0 {
-		return errtype(c, "lhs and rhs of comparison are never comparable")
+		err := errtype(c, "lhs and rhs of comparison are never comparable")
+		err.Hint = fmt.Sprintf("lhs type is {%s}, rhs type is {%s}, allowed ones is {%s}", lt, rt, oktypes)
+		return err
 	}
 
 	return nil
@@ -399,7 +411,7 @@ func (d *Dot) check(h Hint) error {
 	switch n := d.Inner.(type) {
 	case *Struct:
 		if !n.HasField(string(d.Field)) {
-			return errtypef(d.Inner, "struct does not have field %q", d.Field)
+			return errtype(d.Inner, "struct does not have field %q", d.Field)
 		}
 
 	case *Builtin:
@@ -410,9 +422,9 @@ func (d *Dot) check(h Hint) error {
 					return nil
 				}
 			}
-			return errtypef(d.Inner, "struct does not have field %q", d.Field)
+			return errtype(d.Inner, "struct does not have field %q", d.Field)
 		} else {
-			return errtypef(d.Inner, "function %q does not return struct", n.Func)
+			return errtype(d.Inner, "function %q does not return struct", n.Func)
 		}
 	}
 
@@ -438,7 +450,7 @@ func (i *Index) check(h Hint) error {
 		return errtype(i.Inner, "cannot index non-list value")
 	}
 	if llen, ok := listLen(i.Inner); ok && i.Offset >= llen {
-		return errtypef(i, "cannot index a list of length %d at offset %d", llen, i.Offset)
+		return errtype(i, "cannot index a list of length %d at offset %d", llen, i.Offset)
 	}
 	return nil
 }

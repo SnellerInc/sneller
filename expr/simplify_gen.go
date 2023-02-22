@@ -445,6 +445,21 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				return Null{}
 			}
 		}
+	case OctetLength:
+		if len(src.Args) == 1 {
+			// (octet_length (concat x y)) -> (add (octet_length x) (octet_length y))
+			if _tmp001000, ok := (src.Args[0]).(*Builtin); ok && _tmp001000.Func == Concat && len(_tmp001000.Args) == 2 {
+				if x := _tmp001000.Args[0]; true {
+					if y := _tmp001000.Args[1]; true {
+						return &Arithmetic{Op: AddOp, Left: Call(OctetLength, x), Right: Call(OctetLength, y)}
+					}
+				}
+			}
+			// (octet_length (string x)) -> (int "len(x)")
+			if x, ok := (src.Args[0]).(String); ok {
+				return Integer(len(x))
+			}
+		}
 	case Pow:
 		if len(src.Args) == 2 {
 			// (pow x (int y)), "y >= 0" -> (pow-uint x y)
@@ -1102,4 +1117,4 @@ func simplify1(src Node, h Hint) Node {
 	return nil
 }
 
-// checksum: 2ebcddc1d858e8b753331efaafddce6d
+// checksum: 35d42f17a11b6658c1313cc3d4279c62

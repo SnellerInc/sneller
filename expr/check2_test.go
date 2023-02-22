@@ -205,6 +205,7 @@ func TestCheckInvalidQuery(t *testing.T) {
 func TestCheckValidQuery(t *testing.T) {
 	testcases := []testcaseError{
 		{query: `SELECT * FROM TABLE_GLOB(a) ++ TABLE_GLOB(b)`},
+		{query: `SELECT OCTET_LENGTH('foo') = 3`},
 	}
 
 	for i := range testcases {

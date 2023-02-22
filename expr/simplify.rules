@@ -155,6 +155,12 @@
 (char_length (lower x)) -> (char_length x)
 (char_length (upper x)) -> (char_length x)
 
+// distribute OCTET_LENGTH onto concatenation
+(octet_length (concat x y)) -> (add (octet_length x) (octet_length y))
+
+// OCTET_LENGTH constprop
+(octet_length (string x)) -> (int `len(x)`)
+
 // un-distribute lower/upper ops
 (concat (upper x) (string y)), `isUpper(string(y))` -> (upper (concat x y))
 (concat (upper x) (upper y)) -> (upper (concat x y))

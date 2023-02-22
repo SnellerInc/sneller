@@ -34,19 +34,6 @@ func mismatch(want, got int) error {
 	return errsyntaxf("got %d args; need %d", got, want)
 }
 
-func errtypef(n Node, f string, args ...interface{}) error {
-	return &TypeError{
-		At:  n,
-		Msg: fmt.Sprintf(f, args...),
-	}
-}
-
-func errsyntaxf(f string, args ...interface{}) error {
-	return &SyntaxError{
-		Msg: fmt.Sprintf(f, args...),
-	}
-}
-
 // fixedArgs can be used to specify
 // the type arguments for a builtin function
 // when the argument length is fixed
@@ -57,7 +44,7 @@ func fixedArgs(lst ...TypeSet) func(Hint, []Node) error {
 		}
 		for i := range args {
 			if !TypeOf(args[i], h).AnyOf(lst[i]) {
-				return errtypef(args[i], "not compatible with type %s", lst[i])
+				return errtype(args[i], "not compatible with type %s", lst[i])
 			}
 		}
 		return nil
@@ -68,7 +55,7 @@ func variadicArgs(kind TypeSet) func(Hint, []Node) error {
 	return func(h Hint, args []Node) error {
 		for i := range args {
 			if !TypeOf(args[i], h).AnyOf(kind) {
-				return errtypef(args[i], "not compatible with type %s", kind)
+				return errtype(args[i], "not compatible with type %s", kind)
 			}
 		}
 		return nil
@@ -417,25 +404,25 @@ func checkIsSubnetOf(h Hint, args []Node) error {
 	}
 	arg0, ok := args[0].(String)
 	if !ok {
-		return errtypef(args[0], "not a string but a %T", args[0])
+		return errtype(args[0], "not a string but a %T", args[0])
 	}
 	arg1, ok := args[1].(String)
 	if !ok {
-		return errtypef(args[1], "not a string but a %T", args[1])
+		return errtype(args[1], "not a string but a %T", args[1])
 	}
 	if nArgs == 2 {
 		if _, _, err := net.ParseCIDR(string(arg0)); err != nil {
-			return errtypef(args[0], "%s", err)
+			return errtype(args[0], "%s", err)
 		}
 	} else {
 		if net.ParseIP(string(arg0)) == nil {
-			return errtypef(args[0], "not an IP address")
+			return errtype(args[0], "not an IP address")
 		}
 		if net.ParseIP(string(arg1)) == nil {
-			return errtypef(args[1], "not an IP address")
+			return errtype(args[1], "not an IP address")
 		}
 		if !TypeOf(args[2], h).AnyOf(StringType) {
-			return errtypef(args[2], "not a string but a %T", args[2])
+			return errtype(args[2], "not a string but a %T", args[2])
 		}
 	}
 	return nil
@@ -1040,6 +1027,7 @@ var builtinInfo = [maxBuiltin]binfo{
 	Contains:             {check: checkContains, private: true, ret: LogicalType},
 	ContainsCI:           {check: checkContains, private: true, ret: LogicalType},
 	CharLength:           {check: unaryStringArgs, ret: UnsignedType | MissingType},
+	OctetLength:          {check: unaryStringArgs, ret: UnsignedType | MissingType},
 	IsSubnetOf:           {check: checkIsSubnetOf, ret: LogicalType, simplify: simplifyIsSubnetOf},
 	Substring:            {check: checkSubstring, ret: StringType | MissingType},
 	SplitPart:            {check: checkSplitPart, ret: StringType | MissingType},
