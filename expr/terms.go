@@ -415,29 +415,15 @@ func init() {
 		"missing": classNull,
 	}
 
-	// name => BuiltinOp
+	// name => BuiltinOp (only non-trivial renames)
 	op2builtin = map[string]string{
-		"char_length":            "CharLength",
-		"concat":                 "Concat",
-		"lower":                  "Lower",
-		"upper":                  "Upper",
-		"trim":                   "Trim",
-		"rtrim":                  "Rtrim",
-		"ltrim":                  "Ltrim",
-		"substring":              "Substring",
-		"contains":               "Contains",
-		"contains_ci":            "ContainsCI",
-		"equals_ci":              "EqualsCI",
-		"equals_fuzzy":           "EqualsFuzzy",
-		"equals_fuzzy_unicode":   "EqualsFuzzyUnicode",
-		"contains_fuzzy":         "ContainsFuzzy",
-		"contains_fuzzy_unicode": "ContainsFuzzyUnicode",
-		"assert_str":             "AssertIonType",
-		"assert_int":             "AssertIonType",
-		"assert_float":           "AssertIonType",
-		"assert_num":             "AssertIonType",
-		"pow":                    "Pow",
-		"pow-uint":               "PowUint",
+		"contains_ci":  "ContainsCI",
+		"equals_ci":    "EqualsCI",
+		"assert_str":   "AssertIonType",
+		"assert_int":   "AssertIonType",
+		"assert_float": "AssertIonType",
+		"assert_num":   "AssertIonType",
+		"pow-uint":     "PowUint",
 	}
 
 	builtinargs = map[string][]string{

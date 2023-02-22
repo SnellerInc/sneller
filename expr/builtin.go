@@ -107,12 +107,12 @@ const (
 	Upper
 	Lower
 	Contains
-	ContainsCI           // sql:CONTAINS_CI
-	EqualsCI             // sql:EQUALS_CI
-	EqualsFuzzy          // sql:EQUALS_FUZZY
-	EqualsFuzzyUnicode   // sql:EQUALS_FUZZY_UNICODE
-	ContainsFuzzy        // sql:CONTAINS_FUZZY
-	ContainsFuzzyUnicode // sql:CONTAINS_FUZZY_UNICODE
+	ContainsCI // sql:CONTAINS_CI
+	EqualsCI   // sql:EQUALS_CI
+	EqualsFuzzy
+	EqualsFuzzyUnicode
+	ContainsFuzzy
+	ContainsFuzzyUnicode
 	OctetLength
 	CharLength // sql:CHAR_LENGTH sql:CHARACTER_LENGTH
 	IsSubnetOf
