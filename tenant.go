@@ -162,71 +162,27 @@ func (h *TenantHandle) Filter(e expr.Node) plan.TableHandle {
 	}
 }
 
+// SplitBy implements plan.PartitionHandle.SplitBy
 func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
-	type part struct {
-		values []ion.Datum
-		blobs  *blob.List
-	}
-	var st ion.Symtab // not really used
-	var buf ion.Buffer
-
-	// since partition constants are always strings or numbers,
-	// we can use their concatenated ion representation as the
-	// key for splitting them into the appropriate tables
-	putkey := func(t *blockfmt.Trailer, dst *ion.Buffer) error {
-		dst.Reset()
-		for _, part := range parts {
-			d, ok := t.Sparse.Const(part)
-			if !ok {
-				return fmt.Errorf("trailer missing part %q", part)
-			}
-			d.Encode(dst, &st)
-		}
-		return nil
-	}
-
-	partset := make(map[string]*part)
-
-	add := func(b blob.Interface, t *blockfmt.Trailer) error {
-		err := putkey(t, &buf)
-		if err != nil {
-			return err
-		}
-		if p := partset[string(buf.Bytes())]; p != nil {
-			p.blobs.Contents = append(p.blobs.Contents, b)
-			return nil
-		}
-		var values []ion.Datum
-		for _, part := range parts {
-			dat, _ := t.Sparse.Const(part)
-			values = append(values, dat)
-		}
-		partset[string(buf.Bytes())] = &part{
-			blobs:  &blob.List{Contents: []blob.Interface{b}},
-			values: values,
-		}
-		return nil
-	}
-
-	for i := range h.Blobs.Contents {
-		var err error
-		switch b := h.Blobs.Contents[i].(type) {
+	getconst := func(b blob.Interface, x string) (ion.Datum, bool) {
+		switch b := b.(type) {
 		case *blob.Compressed:
-			err = add(b, &b.Trailer)
+			return b.Trailer.Sparse.Const(x)
 		case *blob.CompressedPart:
-			err = add(b, &b.Parent.Trailer)
+			return b.Parent.Trailer.Sparse.Const(x)
 		default:
-			err = fmt.Errorf("cannot split on blob type %T", b)
-		}
-		if err != nil {
-			return nil, err
+			return ion.Empty, false
 		}
 	}
-	ret := make([]plan.TablePart, 0, len(partset))
-	for _, v := range partset {
+	pg, ok := plan.Partition(h.Blobs.Contents, parts, getconst)
+	if !ok {
+		return nil, fmt.Errorf("cannot partition plan by %v", parts)
+	}
+	ret := make([]plan.TablePart, 0, pg.Groups())
+	pg.Each(func(parts []ion.Datum, lst []blob.Interface) {
 		fh := new(FilterHandle)
 		*fh = *h.FilterHandle
-		fh.Blobs = v.blobs
+		fh.Blobs = &blob.List{Contents: lst}
 		// not safe to copy:
 		fh.compiled = blockfmt.Filter{}
 		ret = append(ret, plan.TablePart{
@@ -234,9 +190,9 @@ func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
 				parent:       h.parent,
 				FilterHandle: fh,
 			},
-			Parts: v.values,
+			Parts: parts,
 		})
-	}
+	})
 	return ret, nil
 }
 

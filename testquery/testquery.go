@@ -156,10 +156,6 @@ func (p *parallelchunks) Size() int64 {
 }
 
 func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
-	type part struct {
-		keys, values []ion.Datum
-	}
-
 	okType := func(d ion.Datum) bool {
 		switch d.Type() {
 		case ion.StringType, ion.IntType, ion.UintType, ion.FloatType:
@@ -168,13 +164,22 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 			return false
 		}
 	}
-
-	partset := make(map[string]*part)
+	getconst := func(d ion.Datum, p string) (ion.Datum, bool) {
+		s, err := d.Struct()
+		if err != nil {
+			return ion.Empty, false
+		}
+		f, ok := s.FieldByName(p)
+		if !ok || !okType(f.Datum) {
+			return ion.Empty, false
+		}
+		return f.Datum, true
+	}
 
 	var st ion.Symtab
-	var tmp ion.Buffer
 	var d ion.Datum
 	var err error
+	var lst []ion.Datum
 	for i := range p.chunks {
 		buf := p.chunks[i]
 		for len(buf) > 0 {
@@ -182,46 +187,22 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 			if err != nil {
 				panic(err)
 			}
-			s, err := d.Struct()
-			if err != nil {
-				panic(err)
-			}
-			var keys []ion.Datum
-			for _, part := range parts {
-				f, ok := s.FieldByName(part)
-				if !ok {
-					return nil, fmt.Errorf("record missing %q field", part)
-				}
-				if !okType(f.Datum) {
-					return nil, fmt.Errorf("value for %q has unacceptable type", part)
-				}
-				keys = append(keys, f.Datum)
-			}
-			tmp.Reset()
-			for _, key := range keys {
-				key.Encode(&tmp, &st)
-			}
-			if p := partset[string(tmp.Bytes())]; p != nil {
-				p.values = append(p.values, d)
-			} else {
-				partset[string(tmp.Bytes())] = &part{
-					keys:   keys,
-					values: []ion.Datum{d},
-				}
-			}
+			lst = append(lst, d)
 		}
 	}
 
-	ret := make([]plan.TablePart, 0, len(partset))
-	for _, v := range partset {
-		st.Reset()
-		tmp.Reset()
-		data := flatten(v.values, &st)
+	pg, ok := plan.Partition(lst, parts, getconst)
+	if !ok {
+		return nil, fmt.Errorf("cannot split on %v", parts)
+	}
+	ret := make([]plan.TablePart, 0, pg.Groups())
+	pg.Each(func(parts, rows []ion.Datum) {
+		data := flatten(rows, &st)
 		ret = append(ret, plan.TablePart{
 			Handle: Bufhandle(data),
-			Parts:  v.keys,
+			Parts:  parts,
 		})
-	}
+	})
 	return ret, nil
 }
 
