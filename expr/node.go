@@ -294,7 +294,7 @@ func (a AggregateOp) String() string {
 	case OpSystemDatashapeMerge:
 		return "SNELLER_DATASHAPE_MERGE"
 	default:
-		return "none"
+		return fmt.Sprintf("<AggregateOp=%d>", int(a))
 	}
 }
 
@@ -1411,7 +1411,7 @@ func (c CmpOp) String() string {
 	case GreaterEquals:
 		return ">="
 	default:
-		return "<unknown cmp op>"
+		return fmt.Sprintf("<CmpOp=%d>", int(c))
 	}
 }
 
@@ -1672,7 +1672,6 @@ func (l *Lookup) SetField(f ion.Field) error {
 type Comparison struct {
 	Op          CmpOp
 	Left, Right Node
-	Escape      Node
 }
 
 func (c *Comparison) Equals(x Node) bool {
@@ -1726,6 +1725,23 @@ const (
 	RegexpMatchCi                      // ~* <literal> case-insensitive regex match
 )
 
+func (s StringMatchOp) String() string {
+	switch s {
+	case Like:
+		return "LIKE"
+	case Ilike:
+		return "ILIKE"
+	case SimilarTo:
+		return "SIMILAR TO"
+	case RegexpMatch:
+		return "~"
+	case RegexpMatchCi:
+		return "~*"
+	default:
+		return fmt.Sprintf("<StringMatchOp=%d>", int(s))
+	}
+}
+
 // StringMatch is an expression that matches an
 // arbitrary value against a literal string pattern.
 type StringMatch struct {
@@ -1738,6 +1754,7 @@ type StringMatch struct {
 func (s *StringMatch) Equals(x Node) bool {
 	o, ok := x.(*StringMatch)
 	return ok &&
+		o.Op == s.Op &&
 		o.Expr.Equals(s.Expr) &&
 		o.Pattern == s.Pattern &&
 		o.Escape == s.Escape
@@ -1786,23 +1803,8 @@ func (s *StringMatch) rewrite(r Rewriter) Node {
 }
 
 func (s *StringMatch) text(dst *strings.Builder, redact bool) {
-	var middle string
-	switch s.Op {
-	case Like:
-		middle = " LIKE "
-	case Ilike:
-		middle = " ILIKE "
-	case SimilarTo:
-		middle = " SIMILAR TO "
-	case RegexpMatch:
-		middle = " ~ "
-	case RegexpMatchCi:
-		middle = " ~* "
-	default:
-		middle = " <unknown> "
-	}
 	s.Expr.text(dst, redact)
-	dst.WriteString(middle)
+	fmt.Fprintf(dst, " %s ", s.Op)
 	quote(dst, s.Pattern)
 	if s.Escape != "" && s.Escape != string(stringext.NoEscape) {
 		dst.WriteString(" ESCAPE ")
@@ -1867,10 +1869,6 @@ func (n *Not) SetField(f ion.Field) error {
 // of the given type and with the given arguments
 func Compare(op CmpOp, left, right Node) Node {
 	return &Comparison{Op: op, Left: left, Right: right}
-}
-
-func CompareEscape(op CmpOp, left, right, escape Node) Node {
-	return &Comparison{Op: op, Left: left, Right: right, Escape: escape}
 }
 
 func (c *Comparison) walk(v Visitor) {
@@ -1961,9 +1959,9 @@ func (l LogicalOp) String() string {
 		return "XOR"
 	case OpXnor:
 		return "XNOR"
+	default:
+		return fmt.Sprintf("<LogicalOp=%d>", int(l))
 	}
-
-	return "<unknown logical op>"
 }
 
 // Logical is a Node that represents
@@ -3696,9 +3694,9 @@ func (t UnionType) String() string {
 		return "UNION"
 	case UnionAll:
 		return "UNION ALL"
+	default:
+		return fmt.Sprintf("<UnionType=%d>", int(t))
 	}
-
-	return "<unknown UnionType>"
 }
 
 // Union describes a single pair of expressions connected by UNION keyword
