@@ -190,7 +190,11 @@ func query(args []string) bool {
 	var sql []byte
 	var err error
 	if len(args) == 0 && dashf != "" {
-		sql, err = os.ReadFile(dashf)
+		if dashf == "-" {
+			sql, err = io.ReadAll(os.Stdin)
+		} else {
+			sql, err = os.ReadFile(dashf)
+		}
 		if err != nil {
 			exitf("%s", err)
 		}
@@ -294,11 +298,20 @@ func init() {
 	addApplet(applet{
 		run:  query,
 		name: "query",
-		help: "[-f query.sql]",
+		help: "[-v] [-o output] [-fmt json|ion] [-f query.sql]",
 		desc: `run a query locally
 The command
-  $ sdb -root=... query <sql-text>
+  $ sdb query <sql-text>
 runs a sql query on the local machine.
+
+The SQL query can read data either using a special read_file()
+builtin function that can interpret zion packfiles, or it can
+read tables directly from the hierarchy rooted at the path specified
+by -root. (Note that read_file also reads files relative to -root.)
+
+The -fmt flag can be used to change the output of the query engine.
+The default behavior is to produce binary ion data, but -fmt=json can
+be specified in order to produce JSON data.
 `,
 	})
 }
