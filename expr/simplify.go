@@ -499,7 +499,7 @@ func constmath(op ArithOp, left, right *big.Rat) Node {
 		if right.Sign() == 0 {
 			return Missing{}
 		}
-		return (*Rational)(out.Quo(left, right))
+		return (*Rational)(modulusRational(left, right))
 
 	case BitAndOp:
 		a := roundBigRat(left, roundTruncOp).Num().Int64()

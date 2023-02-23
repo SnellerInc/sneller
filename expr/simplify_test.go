@@ -1114,6 +1114,20 @@ func TestSimplify(t *testing.T) {
 			Call(OctetLength, String("żółw")), // three x 2-byte UTF-8 codes + one x ASCII char = 7 bytes
 			Integer(7),
 		},
+		{
+			Mod(Integer(9), Integer(7)),
+			Integer(2),
+		},
+		{
+			// 0.8 % 4.3 = 0.8
+			Mod((*Rational)(big.NewRat(8, 10)), (*Rational)(big.NewRat(43, 10))),
+			(*Rational)(big.NewRat(8, 10)),
+		},
+		{
+			// 9.3 % 2.2 = 0.8
+			Mod((*Rational)(big.NewRat(8, 10)), (*Rational)(big.NewRat(43, 10))),
+			(*Rational)(big.NewRat(8, 10)),
+		},
 	}
 
 	for i := range testcases {
