@@ -124,16 +124,25 @@ func trivialWalkDir(f fs.FS, name, seek, pattern string, fn WalkDirFn) error {
 type walkDirFn func(f fs.FS, name, seek, pattern string, fn WalkDirFn) error
 
 // flatwalk returns all walked paths in a list.
-func flatwalk(walkdir walkDirFn, f fs.FS, name, seek, pattern string) ([]string, error) {
+func flatwalk(walkdir walkDirFn, f fs.FS, name, seek, pattern string, limit uint) ([]string, error) {
 	var out []string
 	err := walkdir(f, name, seek, pattern, func(p string, d DirEntry, err error) error {
+		if limit > 0 && uint(len(out)) >= limit {
+			panic("fs.SkipAll did not work as expected")
+		}
 		if err != nil {
 			return err
 		}
 		out = append(out, p)
+		if limit > 0 && uint(len(out)) >= limit {
+			return fs.SkipAll
+		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func FuzzWalkDir(f *testing.F) {
@@ -200,7 +209,8 @@ func FuzzWalkDir(f *testing.F) {
 	dir := os.DirFS(tmp)
 	for _, seek := range seeks {
 		for _, pattern := range patterns {
-			f.Add(seek, pattern)
+			f.Add(seek, pattern, uint(0))
+			f.Add(seek, pattern, uint(10))
 		}
 	}
 	validate := func(seek, pattern string) bool {
@@ -235,23 +245,23 @@ func FuzzWalkDir(f *testing.F) {
 		}
 		return true
 	}
-	f.Fuzz(func(t *testing.T, seek, pattern string) {
+	f.Fuzz(func(t *testing.T, seek, pattern string, limit uint) {
 		// ignore invalid arguments
 		if !validate(seek, pattern) {
 			t.Skipf("skipping invalid arguments seek=%q pattern=%q", seek, pattern)
 		}
 		for i, name := range list {
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
-				got, err := flatwalk(WalkDir, dir, name, seek, pattern)
+				got, err := flatwalk(WalkDir, dir, name, seek, pattern, limit)
 				if err != nil {
 					t.Fatalf("WalkDir(%q, %q, %q, %q) returned %v", dir, name, seek, pattern, err)
 				}
-				want, err := flatwalk(trivialWalkDir, dir, name, seek, pattern)
+				want, err := flatwalk(trivialWalkDir, dir, name, seek, pattern, limit)
 				if err != nil {
 					t.Fatalf("trivialWalkDir(%q, %q, %q, %q) returned %v", dir, name, seek, pattern, err)
 				}
 				if !reflect.DeepEqual(want, got) {
-					t.Errorf("walk(%q, %q, %q) mismatch:", name, seek, pattern)
+					t.Errorf("walk(%q, %q, %q, %d) mismatch:", name, seek, pattern, limit)
 					t.Errorf("  want: %q", want)
 					t.Errorf("  got:  %q", got)
 				}

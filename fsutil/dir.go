@@ -26,6 +26,11 @@ import (
 // VisitDirFS can be implemented by a file
 // system that provides an optimized
 // implementation of VisitDir.
+//
+// VisitDirFS implementations do not need to to
+// handle fs.SkipDir or fs.SkipAll specially;
+// those errors may be returned directly if
+// returned by fn.
 type VisitDirFS interface {
 	fs.FS
 	VisitDir(name, seek, pattern string, fn VisitDirFn) error
@@ -45,8 +50,9 @@ type VisitDirFn func(d DirEntry) error
 // If pattern is provided, only entries with
 // names matching the pattern are visited.
 //
-// If fn returns fs.SkipDir, VisitDir returns
-// immediately with a nil error.
+// If fn returns fs.SkipDir or fs.SkipAll,
+// VisitDir returns immediately with a nil
+// error.
 //
 // If f implements VisitDirFS, f.VisitDir is
 // called directly, allowing the implementation
@@ -55,6 +61,16 @@ type VisitDirFn func(d DirEntry) error
 // Otherwise, this simply calls fs.ReadDir and
 // then calls fn for each matching entry.
 func VisitDir(f fs.FS, name, seek, pattern string, fn VisitDirFn) error {
+	err := visitDir(f, name, seek, pattern, fn)
+	if err == fs.SkipAll {
+		err = nil
+	}
+	return err
+}
+
+// visitDir does the work for VisitDir but does
+// not hide fs.SkipAll from the caller.
+func visitDir(f fs.FS, name, seek, pattern string, fn VisitDirFn) error {
 	if err := validpat(pattern); err != nil {
 		return err
 	}
@@ -130,12 +146,26 @@ type WalkDirFn func(path string, d DirEntry, err error) error
 // valid paths according to fs.ValidPath or
 // WalkDir will return an error.
 //
+// WalkDir handles fs.SkipDir or fs.SkipAll
+// returned by fn in the same way that
+// fs.WalkDir does.
+//
 // WalkDir is analogous to fs.WalkDir except
 // that it uses VisitDir to walk the file tree,
 // and accepts seek and pattern arguments which
 // can be used to accelerate directory listing
 // for file systems that implement VisitDirFS.
 func WalkDir(f fs.FS, name, seek, pattern string, fn WalkDirFn) error {
+	err := walkDir(f, name, seek, pattern, fn)
+	if err == fs.SkipAll {
+		err = nil
+	}
+	return err
+}
+
+// walkDir does the work for WalkDir but does
+// not hide fs.SkipAll from the caller.
+func walkDir(f fs.FS, name, seek, pattern string, fn WalkDirFn) error {
 	if !fs.ValidPath(name) {
 		return patherr("walkdir", name, fs.ErrInvalid)
 	}
@@ -157,7 +187,7 @@ func WalkDir(f fs.FS, name, seek, pattern string, fn WalkDirFn) error {
 		case 0:
 			// seek is within the tree: we can start
 			// walking from the seek path
-			seen, err := seekdir(f, name, seek, pattern, fn)
+			seen, err := seekTo(f, name, seek, pattern, fn)
 			if err != nil {
 				return err
 			}
@@ -183,25 +213,25 @@ func WalkDir(f fs.FS, name, seek, pattern string, fn WalkDirFn) error {
 			return err
 		}
 	}
-	err = walkdir(f, name, seek, pattern, d, fn)
+	err = walkInto(f, name, seek, pattern, d, fn)
 	if err == fs.SkipDir {
 		return nil
 	}
 	return err
 }
 
-// seekdir uses seek to determine whether we can
+// seekTo uses seek to determine whether we can
 // start walking the tree from a known directory
 // along the seek path.
 //
-// The return value indicates whether seekdir
+// The return value indicates whether seekTo
 // confirmed the existence of any entry along
 // the seek path, which implies that name exists
 // and is a directory.
 //
-// seek must lexically inside of the file tree
+// seek must be lexically within the file tree
 // rooted at name (see treecmp).
-func seekdir(f fs.FS, name, seek, pattern string, fn WalkDirFn) (seen bool, err error) {
+func seekTo(f fs.FS, name, seek, pattern string, fn WalkDirFn) (seen bool, err error) {
 	for p := seek; p != name; p = path.Dir(p) {
 		if treecmp(name, p) != 0 {
 			// we somehow made our way outside of the
@@ -211,7 +241,7 @@ func seekdir(f fs.FS, name, seek, pattern string, fn WalkDirFn) (seen bool, err 
 		}
 		if seen {
 			d := &dirent{fs: f, name: p, dir: true}
-			err := walkdir(f, p, seek, pattern, d, fn)
+			err := walkInto(f, p, seek, pattern, d, fn)
 			if err != nil && err != fs.SkipDir {
 				return true, err
 			}
@@ -229,7 +259,7 @@ func seekdir(f fs.FS, name, seek, pattern string, fn WalkDirFn) (seen bool, err 
 		}
 		seen = true
 		if d.IsDir() {
-			err := walkdir(f, p, seek, pattern, d, fn)
+			err := walkInto(f, p, seek, pattern, d, fn)
 			if err != nil && err != fs.SkipDir {
 				return true, err
 			}
@@ -238,7 +268,7 @@ func seekdir(f fs.FS, name, seek, pattern string, fn WalkDirFn) (seen bool, err 
 	return seen, nil
 }
 
-func walkdir(f fs.FS, name, seek, pattern string, d DirEntry, fn WalkDirFn) error {
+func walkInto(f fs.FS, name, seek, pattern string, d DirEntry, fn WalkDirFn) error {
 	// check if we should visit the entry by
 	// checking against the whole seek/pattern
 	visit := pathcmp(name, seek) > 0 && match(pattern, name)
@@ -284,9 +314,20 @@ func walkdir(f fs.FS, name, seek, pattern string, d DirEntry, fn WalkDirFn) erro
 		// already passed the seek point
 		seek1 = ""
 	}
+	// VisitDir will hide fs.SkipAll returned by
+	// fn so we should detect that ourselves and
+	// return fs.SkipAll to the caller
+	skipAll := false
 	outer := func(d DirEntry) error {
+		if skipAll {
+			return fs.SkipAll
+		}
 		full := path.Join(name, d.Name())
-		return walkdir(f, full, seek, pattern, d, fn)
+		err := walkInto(f, full, seek, pattern, d, fn)
+		if err == fs.SkipAll {
+			skipAll = true
+		}
+		return err
 	}
 	err := VisitDir(f, name, seek1, pattern1, outer)
 	if err != nil {
@@ -298,6 +339,9 @@ func walkdir(f fs.FS, name, seek, pattern string, d DirEntry, fn WalkDirFn) erro
 			}
 			return err
 		}
+	}
+	if skipAll {
+		return fs.SkipAll
 	}
 	return nil
 }

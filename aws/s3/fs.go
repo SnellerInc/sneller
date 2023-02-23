@@ -499,9 +499,6 @@ func (p *Prefix) VisitDir(name, seek, pattern string, walk fsutil.VisitDirFn) er
 		for i := range d {
 			err := walk(d[i])
 			if err != nil {
-				if err == fs.SkipDir {
-					err = nil
-				}
 				return err
 			}
 		}
