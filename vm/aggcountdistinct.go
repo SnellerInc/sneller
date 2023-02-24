@@ -85,7 +85,7 @@ func estimate(b []byte) float64 {
 func rawestimate(b []byte) float64 {
 	h := 0.0
 	for i := range b {
-		h += pow2IntUnsafe(-int(b[i]))
+		h += 1.0 / float64(uint64(1)<<b[i])
 	}
 
 	m := len(b)
@@ -117,29 +117,4 @@ func alpha(m int) float64 {
 	}
 
 	return 0.7213 / (1.0 + 1.079/float64(m))
-}
-
-// pow2Int calculates Pow(2.0, float64(exp)).
-//
-// Returns error if the exponent is out of range for float64 type.
-func pow2Int(exp int) (float64, error) {
-	const f64minexp = -1022
-	const f64maxexp = 1023
-	if exp < f64minexp || exp > f64maxexp {
-		return 0.0, fmt.Errorf("out of range")
-	}
-
-	return pow2IntUnsafe(exp), nil
-}
-
-// pow2IntUnsafe calculates Pow(2.0, float64(exp)).
-//
-// It assumes the exponent is in the valid range for float64 type.
-func pow2IntUnsafe(exp int) float64 {
-	const f64bias = 1023
-	const f64exppos = 52
-
-	bin := uint64(exp+f64bias) << f64exppos
-
-	return math.Float64frombits(bin)
 }
