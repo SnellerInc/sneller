@@ -50,13 +50,22 @@ type BucketFS struct {
 }
 
 func (b *BucketFS) sub(name string) *Prefix {
+	return b.subctx(b.Ctx, name)
+}
+
+func (b *BucketFS) subctx(ctx context.Context, name string) *Prefix {
 	return &Prefix{
 		Key:    b.Key,
 		Client: b.Client,
 		Bucket: b.Bucket,
 		Path:   name,
-		Ctx:    b.Ctx,
+		Ctx:    ctx,
 	}
+}
+
+// WithContext implements db.ContextFS
+func (b *BucketFS) WithContext(ctx context.Context) fs.FS {
+	return b.subctx(ctx, ".")
 }
 
 func badpath(op, name string) error {
@@ -219,13 +228,22 @@ func (p *Prefix) join(extra string) string {
 }
 
 func (p *Prefix) sub(name string) *Prefix {
+	return p.subctx(p.Ctx, name)
+}
+
+func (p *Prefix) subctx(ctx context.Context, name string) *Prefix {
 	return &Prefix{
 		Key:    p.Key,
 		Client: p.Client,
 		Bucket: p.Bucket,
 		Path:   p.join(name),
-		Ctx:    p.Ctx,
+		Ctx:    ctx,
 	}
+}
+
+// WithContext implements db.ContextFS
+func (p *Prefix) WithContext(ctx context.Context) fs.FS {
+	return p.subctx(ctx, ".")
 }
 
 // Open opens the object or pseudo-directory

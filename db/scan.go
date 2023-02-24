@@ -87,6 +87,7 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 	}
 	idx.Inputs.Backing = st.ofs
 
+	var ctx context.Context // set if needed
 	var c collector
 	err := c.init(st.def.Partitions)
 	if err != nil {
@@ -125,6 +126,16 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		format := st.def.Inputs[i].Format
 		seek := idx.Cursors[i]
 		prefix := infs.Prefix()
+		walkfs := fs.FS(infs)
+		if cfs, ok := infs.(ContextFS); ok {
+			if ctx == nil {
+				deadline := start.Add(maxDuration)
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(context.Background(), deadline)
+				defer cancel()
+			}
+			walkfs = cfs.WithContext(ctx)
+		}
 		walk := func(p string, f fs.File, err error) error {
 			if err != nil {
 				return err
@@ -211,9 +222,9 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		if err != nil {
 			return 0, err
 		}
-		err = fsutil.WalkGlob(infs, seek, pat, walk)
+		err = fsutil.WalkGlob(walkfs, seek, pat, walk)
 		idx.Cursors[i] = seek
-		if err == errStop {
+		if err == errStop || err == context.DeadlineExceeded {
 			complete = false
 			break
 		} else if err != nil {

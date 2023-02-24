@@ -16,6 +16,7 @@ package s3_test
 
 import (
 	"github.com/SnellerInc/sneller/aws/s3"
+	"github.com/SnellerInc/sneller/db"
 	"github.com/SnellerInc/sneller/fsutil"
 )
 
@@ -24,3 +25,5 @@ import (
 var _ fsutil.VisitDirFS = &s3.BucketFS{}
 var _ fsutil.VisitDirFS = &s3.Prefix{}
 var _ fsutil.NamedFile = &s3.File{}
+var _ db.ContextFS = &s3.BucketFS{}
+var _ db.ContextFS = &s3.Prefix{}

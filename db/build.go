@@ -15,6 +15,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"time"
@@ -29,6 +30,17 @@ type OutputFS interface {
 
 type InputFS interface {
 	blockfmt.InputFS
+}
+
+// ContextFS can be implemented by a file system
+// which allows the file system to be configured
+// with a context which will be applied to all
+// file system operations.
+type ContextFS interface {
+	fs.FS
+	// WithContext returns a copy of the file
+	// system configured with the given context.
+	WithContext(ctx context.Context) fs.FS
 }
 
 type aborter interface {
