@@ -1119,6 +1119,22 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 }
 
 func splitOnEqual(self string, on expr.Node) (key, value expr.Node, err error) {
+	// for composite conditions, emit MAKE_LIST(...)
+	if and, ok := on.(*expr.Logical); ok && and.Op == expr.OpAnd {
+		conj := conjunctions(and, nil)
+		var keys, values []expr.Node
+		for i := range conj {
+			k, v, err := splitOnEqual(self, conj[i])
+			if err != nil {
+				return nil, nil, err
+			}
+			keys = append(keys, k)
+			values = append(values, v)
+		}
+		key = expr.Call(expr.MakeList, keys...)
+		value = expr.Call(expr.MakeList, values...)
+		return key, value, nil
+	}
 	eq, ok := on.(*expr.Comparison)
 	if !ok || eq.Op != expr.Equals {
 		return nil, nil, fmt.Errorf("ON must be an equality condition; have %s", expr.ToString(on))

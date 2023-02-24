@@ -1,0 +1,12 @@
+SELECT SUM(b.inner.val), a.grp
+FROM a a JOIN b b ON a.x = b.y AND a.z = b.a
+WHERE b.foo = 3 and a.foo = 700
+GROUP BY a.grp
+---
+WITH (
+	ITERATE b AS b FIELDS [a, foo, inner, y] WHERE foo = 3
+	PROJECT [a, y] AS $__key, ["inner"] AS $__val
+) AS REPLACEMENT(0)
+ITERATE a AS a FIELDS [foo, grp, x, z] WHERE foo = 700
+ITERATE FIELD HASH_REPLACEMENT(0, 'joinlist', '$__key', [z, x]) AS b
+AGGREGATE SUM(b[0].val) AS "sum" BY grp AS grp
