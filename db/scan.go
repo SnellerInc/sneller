@@ -224,7 +224,13 @@ func (st *tableState) scan(idx *blockfmt.Index, flushOnComplete bool) (int, erro
 		}
 		err = fsutil.WalkGlob(walkfs, seek, pat, walk)
 		idx.Cursors[i] = seek
-		if err == errStop || err == context.DeadlineExceeded {
+		if err == errStop || errors.Is(err, context.DeadlineExceeded) {
+			if pe, ok := err.(*fs.PathError); ok {
+				// we aborted early and know the path we
+				// were last scanning, so use that as
+				// the cursor instead of seek
+				idx.Cursors[i] = pe.Path
+			}
 			complete = false
 			break
 		} else if err != nil {
