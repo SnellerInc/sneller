@@ -49,7 +49,6 @@ func main() {
 		"evalbc_approxcount.h",
 		"evalbc_cmpv_impl.h",
 		"evalbc_cmpxxstr_impl.h",
-		"evalbc_ionheader.h",
 		"evalbc_make_object_impl.h",
 		"evalbc_strcase.h",
 	}
