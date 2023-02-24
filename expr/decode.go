@@ -110,8 +110,6 @@ func getEmpty(name string) (composite, bool) {
 		return &IsKey{}, true
 	case "select":
 		return &Select{}, true
-	case "on":
-		return &OnEquals{}, true
 	case "join":
 		return &Join{}, true
 	case "missing":

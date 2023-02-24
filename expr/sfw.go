@@ -221,60 +221,6 @@ func (t *Table) SetField(f ion.Field) error {
 	return err
 }
 
-// OnEquals represents a single
-//
-//	<left> = <right>
-//
-// statement inside an ON clause
-type OnEquals struct {
-	Left, Right Node
-}
-
-func (o *OnEquals) text(dst *strings.Builder, redact bool) {
-	o.Left.text(dst, redact)
-	dst.WriteString(" = ")
-	o.Right.text(dst, redact)
-}
-
-func (o *OnEquals) Equals(x Node) bool {
-	xo, ok := x.(*OnEquals)
-	return ok && o.Left.Equals(xo.Left) && o.Right.Equals(xo.Right)
-}
-
-func (o *OnEquals) walk(v Visitor) {
-	Walk(v, o.Left)
-	Walk(v, o.Right)
-}
-
-func (o *OnEquals) rewrite(r Rewriter) Node {
-	o.Left = Rewrite(r, o.Left)
-	o.Right = Rewrite(r, o.Right)
-	return o
-}
-
-func (o *OnEquals) Encode(dst *ion.Buffer, st *ion.Symtab) {
-	dst.BeginStruct(-1)
-	settype(dst, st, "on")
-	dst.BeginField(st.Intern("left"))
-	o.Left.Encode(dst, st)
-	dst.BeginField(st.Intern("right"))
-	o.Right.Encode(dst, st)
-	dst.EndStruct()
-}
-
-func (o *OnEquals) SetField(f ion.Field) error {
-	var err error
-	switch f.Label {
-	case "left":
-		o.Left, err = Decode(f.Datum)
-	case "right":
-		o.Right, err = Decode(f.Datum)
-	default:
-		return errUnexpectedField
-	}
-	return err
-}
-
 // Join is an implementation of From
 // that joins a table and a subsequent From clause
 type Join struct {

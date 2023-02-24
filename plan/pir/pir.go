@@ -1118,21 +1118,27 @@ func (b *Trace) LimitOffset(limit, offset int64) error {
 	return b.push()
 }
 
-func (b *Trace) innerJoin(bind *expr.Binding, on expr.Node, env Env) error {
-	cmp, ok := on.(*expr.OnEquals)
-	if !ok {
-		return fmt.Errorf("ON must be an equality condition; have %s", expr.ToString(on))
+func splitOnEqual(self string, on expr.Node) (key, value expr.Node, err error) {
+	eq, ok := on.(*expr.Comparison)
+	if !ok || eq.Op != expr.Equals {
+		return nil, nil, fmt.Errorf("ON must be an equality condition; have %s", expr.ToString(on))
 	}
-	self := bind.Result()
-	var key, value expr.Node
-	if onlyReferences(cmp.Left, self) && doesNotReference(cmp.Right, self) {
-		key = cmp.Left
-		value = cmp.Right
-	} else if onlyReferences(cmp.Right, self) && doesNotReference(cmp.Left, self) {
-		key = cmp.Right
-		value = cmp.Left
+	if onlyReferences(eq.Left, self) && doesNotReference(eq.Right, self) {
+		key = eq.Left
+		value = eq.Right
+	} else if onlyReferences(eq.Right, self) && doesNotReference(eq.Left, self) {
+		key = eq.Right
+		value = eq.Left
 	} else {
-		return fmt.Errorf("cannot disambiguate JOIN ... ON condition")
+		return nil, nil, fmt.Errorf("cannot disambiguate JOIN ... ON condition %s", expr.ToString(on))
+	}
+	return key, value, nil
+}
+
+func (b *Trace) innerJoin(bind *expr.Binding, on expr.Node, env Env) error {
+	key, value, err := splitOnEqual(bind.Result(), on)
+	if err != nil {
+		return err
 	}
 	eq := &EquiJoin{
 		built: &expr.Select{
@@ -1146,7 +1152,7 @@ func (b *Trace) innerJoin(bind *expr.Binding, on expr.Node, env Env) error {
 	b.cur = eq
 	// check the inner condition (the one that references the outer table(s))
 	// against the existing trace
-	value, err := b.pathwalk(value)
+	value, err = b.pathwalk(value)
 	if err != nil {
 		return err
 	}

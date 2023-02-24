@@ -648,15 +648,11 @@ from_expr:
 lhs_from_expr { $$ = $1 } |
 { $$ = nil }
 
-// FIXME:
-//   - add support for nested queries
-//   - add support for CROSS JOIN with ON and JOIN without ON
-//   (right now the grammar prohibits both of those)
 lhs_from_expr:
 FROM value_binding { $$ = &expr.Table{Binding: $2} } |
 lhs_from_expr cross_symbol value_binding { $$ = &expr.Join{Kind: expr.CrossJoin, Left: $1, Right: $3} } |
-lhs_from_expr join_kind value_binding ON expr EQ expr
-{ $$ = &expr.Join{Kind: $2, Left: $1, Right: $3, On: &expr.OnEquals{Left: $5, Right: $7} } }
+lhs_from_expr join_kind value_binding ON expr
+{ $$ = &expr.Join{Kind: $2, Left: $1, Right: $3, On: $5 } }
 
 literal_int:
 NUMBER { var idxerr error; $$, idxerr = toint($1); if idxerr != nil { yylex.Error(idxerr.Error()) } }

@@ -39,7 +39,6 @@ func TestDecodeFailures(t *testing.T) {
 		"append",
 		"is",
 		"select",
-		"on",
 		"join",
 		"missing",
 		"table",
