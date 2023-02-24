@@ -322,6 +322,22 @@ func TestParseNormalization(t *testing.T) {
 			`SELECT 42--42 - The Ultimate Answer`,
 			`SELECT 42`,
 		},
+		{
+			`SELECT 'text /* '`,
+			`SELECT 'text \/* '`,
+		},
+		{
+			`SELECT /*/*/*/**/*/*/*/5`,
+			`SELECT 5`,
+		},
+		{
+			`SELECT /*
+                This is a multiline comment
+                    /* nesting is supported /* too */
+                        5 / * * /// ***
+                       */*/42/* another /* comment */*/`,
+			`SELECT 42`,
+		},
 	}
 
 	tm, ok := date.Parse([]byte("2006-01-02T15:04:05.999Z"))
@@ -532,6 +548,22 @@ func TestParseErrors(t *testing.T) {
 		{
 			query: `SELECT col~~*COUNT(col2)`,
 			msg:   `unexpected AGGREGATE, expecting STRING`,
+		},
+		{
+			query: `SELECT 5 + 6*/ 3*4`,
+			msg:   `unexpected "/" or end of multi-line comment`,
+		},
+		{
+			query: `SELECT /* comment`,
+			msg:   "unterminated comment",
+		},
+		{
+			query: `SELECT /* this /*is /*nested (not really) */*/`,
+			msg:   "1:8: unterminated comment",
+		},
+		{
+			query: `SELECT /* this /*is /*nested (not really) */`,
+			msg:   "1:16: unterminated comment",
 		},
 	}
 

@@ -108,18 +108,87 @@ func (s *scanner) chompws() {
 		if isspace(s.from[s.pos]) {
 			s.notkw = false
 			s.pos++
-		} else if s.from[s.pos] == '#' {
-			s.pos++
-			for s.pos < len(s.from) && s.from[s.pos] != '\n' {
-				s.pos++
-			}
-		} else if s.from[s.pos] == '-' && s.pos+1 < len(s.from) && s.from[s.pos+1] == '-' {
-			s.pos += 2
-			for s.pos < len(s.from) && s.from[s.pos] != '\n' {
-				s.pos++
-			}
 		} else {
-			break
+			const (
+				singleline = 1
+				multiline  = 2
+			)
+			comment := 0
+			switch c := s.from[s.pos]; c {
+			case '#':
+				comment = singleline
+				s.pos += 1
+			case '-':
+				if s.pos+1 < len(s.from) && s.from[s.pos+1] == '-' {
+					comment = singleline
+					s.pos += 2
+				}
+			case '/':
+				if s.pos+1 < len(s.from) && s.from[s.pos+1] == '*' {
+					comment = multiline // don't alter s.pos here
+				}
+			case '*':
+				if s.pos+1 < len(s.from) && s.from[s.pos+1] == '/' {
+					s.err = s.mkerror(len("*/"), `unexpected "/" or end of multi-line comment`)
+					return
+				}
+			}
+
+			switch comment {
+			case 0:
+				return
+			case singleline:
+				p := bytes.IndexByte(s.from[s.pos:], '\n')
+				if p >= 0 {
+					s.pos += p + 1
+				} else {
+					s.pos = len(s.from)
+				}
+			case multiline:
+				s.multlinecomment()
+				if s.err != nil {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (s *scanner) multlinecomment() {
+	stack := []int{s.pos} // a stack of open comments positions
+	s.pos += 2
+	for len(stack) > 0 {
+		if s.pos >= len(s.from) {
+			if len(stack) > 0 {
+				s.pos = stack[len(stack)-1] // move cursor to the last comment start
+				s.err = s.mkerror(len("/*"), "unterminated comment")
+			}
+			return
+		}
+		rest := s.from[s.pos:]
+		p := bytes.IndexAny(rest, "/*")
+		if p == -1 {
+			s.pos = len(s.from)
+			continue
+		}
+		s.pos += p
+
+		switch rest[p] {
+		case '*': // try to match '*/'
+			if p+1 < len(rest) && rest[p+1] == '/' {
+				stack = stack[:len(stack)-1]
+				s.pos += 2
+			} else {
+				s.pos += 1
+			}
+
+		case '/': // try to match '/*'
+			if p+1 < len(rest) && rest[p+1] == '*' {
+				stack = append(stack, s.pos)
+				s.pos += 2
+			} else {
+				s.pos += 1
+			}
 		}
 	}
 }
@@ -165,7 +234,7 @@ func (s *scanner) lex(l *yySymType) int {
 		return eof
 	}
 	s.chompws()
-	if s.pos >= len(s.from) {
+	if s.err != nil || s.pos >= len(s.from) {
 		return eof
 	}
 	b := s.peek()
