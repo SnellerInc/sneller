@@ -31,6 +31,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SnellerInc/elasticproxy/helpers"
+
 	"github.com/amazon-ion/ion-go/ion"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/yudai/gojsondiff"
@@ -136,23 +138,27 @@ func runTest(t *testing.T, folder, database, table, index string, typeMapping ma
 
 	t.Logf("query local snellerd: %v, test elastic search: %v", testLocalSnellerd, testWithElasticSearch)
 
-	env, err := parseEnvFile()
+	env, err := helpers.ParseEnvFile()
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("no .env file found")
+			return
+		}
 		t.Fatal(err)
 	}
 
 	var esClient *elasticsearch.Client
 	if testWithElasticSearch {
-		if err = hostReachable(env.elasticsearch.endpoint); err != nil {
-			t.Fatalf("Can't resolve %s: %s", env.elasticsearch.endpoint, err)
+		if err = hostReachable(env.Elasticsearch.Endpoint); err != nil {
+			t.Fatalf("Can't resolve %s: %s", env.Elasticsearch.Endpoint, err)
 		}
-		if err = hostReachable(env.s3.endpoint); err != nil {
-			t.Fatalf("Can't resolve %s: %s", env.s3.endpoint, err)
+		if err = hostReachable(env.S3.Endpoint); err != nil {
+			t.Fatalf("Can't resolve %s: %s", env.S3.Endpoint, err)
 		}
 		esClient, err = elasticsearch.NewClient(elasticsearch.Config{
-			Addresses: []string{env.elasticsearch.endpoint},
-			Username:  env.elasticsearch.username,
-			Password:  env.elasticsearch.password,
+			Addresses: []string{env.Elasticsearch.Endpoint},
+			Username:  env.Elasticsearch.Username,
+			Password:  env.Elasticsearch.Password,
 		})
 		if err != nil {
 			t.Fatalf("can't create elastic client: %v", err)
@@ -209,8 +215,8 @@ func runTest(t *testing.T, folder, database, table, index string, typeMapping ma
 
 			// step 2: write/load ION result
 			if testLocalSnellerd {
-				s := &env.sneller
-				resp, err := ExecuteQuery(s.endpoint, s.token, s.database, gotSQL, 0)
+				s := &env.Sneller
+				resp, err := ExecuteQuery(s.Endpoint, s.Token, s.Database, gotSQL, 0)
 				if err != nil {
 					t.Logf("query: %s", gotSQL)
 					t.Fatalf("can't execute query: %v", err)
@@ -323,12 +329,16 @@ func TestResultProcessing(t *testing.T) {
 		},
 	}
 
-	env, err := parseEnvFile()
+	env, err := helpers.ParseEnvFile()
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("no .env file found")
+			return
+		}
 		t.Fatal(err)
 	}
 
-	runTest(t, "testdata-new", env.sneller.database, env.sneller.tableFlight, env.elasticsearch.indexFlight, typeMapping)
+	runTest(t, "testdata-new", env.Sneller.Database, env.Sneller.TableFlight, env.Elasticsearch.IndexFlight, typeMapping)
 }
 
 func TestResultProcessingNews(t *testing.T) {
@@ -342,12 +352,16 @@ func TestResultProcessingNews(t *testing.T) {
 		},
 	}
 
-	env, err := parseEnvFile()
+	env, err := helpers.ParseEnvFile()
 	if err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("no .env file found")
+			return
+		}
 		t.Fatal(err)
 	}
 
-	runTest(t, "testdata-news", env.sneller.database, env.sneller.tableNews, env.elasticsearch.indexNews, typeMapping)
+	runTest(t, "testdata-news", env.Sneller.Database, env.Sneller.TableNews, env.Elasticsearch.IndexNews, typeMapping)
 }
 
 func hostReachable(endpoint string) error {

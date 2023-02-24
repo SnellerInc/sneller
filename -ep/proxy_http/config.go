@@ -29,12 +29,19 @@ type Config struct {
 		Token    string `json:"token,omitempty"`
 		Timeout  int    `json:"timeout,omitempty"`
 	} `json:"sneller,omitempty"`
-	Mapping map[string]struct {
-		Database               string                               `json:"database"`
-		Table                  string                               `json:"table"`
-		IgnoreTotalHits        bool                                 `json:"ignoreTotalHits"`
-		IgnoreSumOtherDocCount bool                                 `json:"ignoreSumOtherDocCount"`
-		TypeMapping            map[string]elastic_proxy.TypeMapping `json:"typeMapping,omitempty"`
-	} `json:"mapping"`
-	CompareWithElastic bool `json:"compareWithElastic,omitempty"`
+	Mapping            map[string]mappingEntry `json:"mapping"`
+	CompareWithElastic bool                    `json:"compareWithElastic,omitempty"`
+}
+
+const elasticMappingLimitMax = 1_000_000
+
+type mappingEntry struct {
+	Database               string                               `json:"database"`
+	Table                  string                               `json:"table"`
+	IgnoreTotalHits        bool                                 `json:"ignoreTotalHits"`
+	IgnoreSumOtherDocCount bool                                 `json:"ignoreSumOtherDocCount"`
+	TypeMapping            map[string]elastic_proxy.TypeMapping `json:"typeMapping,omitempty"`
+
+	// purposely not serialized, the value is obtained from Sneller directly
+	ElasticMapping *elastic_proxy.ElasticMapping
 }

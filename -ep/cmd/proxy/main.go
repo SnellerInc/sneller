@@ -136,6 +136,15 @@ func main() {
 		return false
 	})))
 
+	r.HandleFunc("/{index}/_mapping", withConfig(func(t *proxy_http.Config, l *proxy_http.Logging, w http.ResponseWriter, r *http.Request) bool {
+		if proxy_http.Forward(t, w, r) {
+			return true
+		}
+
+		return proxy_http.MappingProxy(t, l, w, r)
+	})).Methods(http.MethodGet)
+	r.HandleFunc("/sneller/mapping/{index}", withConfig(proxy_http.MappingProxy)).Methods(http.MethodGet)
+
 	var l net.Listener
 	if *useTLS {
 		var hosts []string

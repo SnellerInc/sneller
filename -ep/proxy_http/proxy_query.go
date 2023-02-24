@@ -231,18 +231,10 @@ func execute(t *Config, l *Logging, pq *proxyQuery, alwaysDetermineCount bool) e
 	}
 
 	// step 5: parse the statistics
-	var stats struct {
-		CacheHits    int `ion:"hits,omitempty"`
-		CacheMisses  int `ion:"misses,omitempty"`
-		BytesScanned int `ion:"scanned,omitempty"`
-	}
-	err = dec.DecodeTo(&stats)
+	err = parseStatistics(l, dec)
 	if err != nil {
 		return err
 	}
-	l.Sneller.CacheHits = stats.CacheHits
-	l.Sneller.CacheMisses = stats.CacheMisses
-	l.Sneller.BytesScanned = stats.BytesScanned
 
 	if len(l.SnellerResult) == 0 {
 		return errors.New("got empty Sneller result (probably invalid SQL query generation)")
@@ -251,4 +243,20 @@ func execute(t *Config, l *Logging, pq *proxyQuery, alwaysDetermineCount bool) e
 	// step 6: convert result
 	l.Result, l.Preprocessed, err = pq.ej.ConvertResult(&qc, l.SnellerResult)
 	return err
+}
+
+func parseStatistics(l *Logging, dec *ion.Decoder) error {
+	var stats struct {
+		CacheHits    int `ion:"hits,omitempty"`
+		CacheMisses  int `ion:"misses,omitempty"`
+		BytesScanned int `ion:"scanned,omitempty"`
+	}
+	err := dec.DecodeTo(&stats)
+	if err != nil {
+		return err
+	}
+	l.Sneller.CacheHits = stats.CacheHits
+	l.Sneller.CacheMisses = stats.CacheMisses
+	l.Sneller.BytesScanned = stats.BytesScanned
+	return nil
 }

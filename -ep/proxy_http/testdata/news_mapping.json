@@ -1,0 +1,30 @@
+{
+    "news": {
+        "properties": {
+            "category": {
+                "type": "keyword"
+            },
+            "country": {
+                "type": "keyword"
+            },
+            "description": {
+                "type": "keyword"
+            },
+            "language": {
+                "type": "keyword"
+            },
+            "published_at": {
+                "type": "date"
+            },
+            "source": {
+                "type": "keyword"
+            },
+            "title": {
+                "type": "keyword"
+            },
+            "url": {
+                "type": "keyword"
+            }
+        }
+    }
+}

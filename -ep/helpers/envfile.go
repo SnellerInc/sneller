@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package elastic_proxy
+package helpers
 
 import (
 	"bufio"
@@ -21,51 +21,53 @@ import (
 	"strings"
 )
 
-type snellerSettings struct {
-	endpoint               string
-	token                  string
-	database               string
-	tableFlight, tableNews string
+type Settings struct {
+	Sneller       SnellerSettings
+	Elasticsearch ElasticsearchSettings
+	S3            S3Settings
 }
 
-type elasticsearchSettings struct {
-	endpoint               string
-	username               string
-	password               string
-	indexFlight, indexNews string
+type SnellerSettings struct {
+	Endpoint               string
+	Token                  string
+	Database               string
+	TableFlight, TableNews string
 }
 
-type s3Settings struct {
-	endpoint string
+type ElasticsearchSettings struct {
+	Endpoint               string
+	Username               string
+	Password               string
+	IndexFlight, IndexNews string
 }
 
-type environmentSettings struct {
-	sneller       snellerSettings
-	elasticsearch elasticsearchSettings
-	s3            s3Settings
+type S3Settings struct {
+	Endpoint string
 }
 
-func parseEnvFile() (*environmentSettings, error) {
-	path := "../docker/.env"
-	m, err := readEnvFile(path)
+const path = "../docker/.env"
+
+// ParseEnvFile parses .env files used in tests.
+func ParseEnvFile() (*Settings, error) {
+	m, err := ReadEnvFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	env := &environmentSettings{}
+	env := &Settings{}
 	fields := []struct {
 		key string
 		val *string
 	}{
-		{"SNELLER_TOKEN", &env.sneller.token},
-		{"SNELLER_DATABASE", &env.sneller.database},
-		{"SNELLER_TABLE1", &env.sneller.tableFlight},
-		{"SNELLER_TABLE2", &env.sneller.tableNews},
-		{"ELASTIC_ENDPOINT", &env.elasticsearch.endpoint},
-		{"ELASTIC_PASSWORD", &env.elasticsearch.password},
-		{"ELASTIC_INDEX1", &env.elasticsearch.indexFlight},
-		{"ELASTIC_INDEX2", &env.elasticsearch.indexNews},
-		{"S3_ENDPOINT", &env.s3.endpoint},
+		{"SNELLER_TOKEN", &env.Sneller.Token},
+		{"SNELLER_DATABASE", &env.Sneller.Database},
+		{"SNELLER_TABLE1", &env.Sneller.TableFlight},
+		{"SNELLER_TABLE2", &env.Sneller.TableNews},
+		{"ELASTIC_ENDPOINT", &env.Elasticsearch.Endpoint},
+		{"ELASTIC_PASSWORD", &env.Elasticsearch.Password},
+		{"ELASTIC_INDEX1", &env.Elasticsearch.IndexFlight},
+		{"ELASTIC_INDEX2", &env.Elasticsearch.IndexNews},
+		{"S3_ENDPOINT", &env.S3.Endpoint},
 	}
 
 	for i := range fields {
@@ -78,13 +80,15 @@ func parseEnvFile() (*environmentSettings, error) {
 	}
 
 	// some hardcoded constants
-	env.sneller.endpoint = "http://localhost:9180"
-	env.elasticsearch.username = DefaultElasticUser
+	env.Sneller.Endpoint = "http://localhost:9180"
+
+	const DefaultElasticUser = "elastic" // keep in sync with elastic-proxy/const.go
+	env.Elasticsearch.Username = DefaultElasticUser
 
 	return env, nil
 }
 
-func readEnvFile(path string) (map[string]string, error) {
+func ReadEnvFile(path string) (map[string]string, error) {
 	env := make(map[string]string)
 
 	f, err := os.Open(path)
