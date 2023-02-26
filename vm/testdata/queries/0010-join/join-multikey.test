@@ -1,0 +1,23 @@
+SELECT i0.x, i1.z
+FROM input0 i0 JOIN input1 i1 ON i0.x = i1.f AND i0.y = i1.g
+ORDER BY i0.x, i1.z
+LIMIT 100
+---
+{"x": 1, "y": "a"}
+{"x": 2, "y": "a"}
+{"x": 3, "y": "b"}
+{"x": 4, "y": "b"}
+---
+{"f": 1, "g": "a", "z": "foo1"}
+{"f": 1, "g": "a", "z": "foo2"}
+{"f": 2, "g": "a", "z": "bar1"}
+{"f": 3, "g": "b", "z": "baz1"}
+{"f": 3, "g": "b", "z": "baz2"}
+{"f": 3, "g": "b", "z": "baz3"}
+---
+{"x": 1, "z": "foo1"}
+{"x": 1, "z": "foo2"}
+{"x": 2, "z": "bar1"}
+{"x": 3, "z": "baz1"}
+{"x": 3, "z": "baz2"}
+{"x": 3, "z": "baz3"}

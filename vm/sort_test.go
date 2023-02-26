@@ -181,7 +181,10 @@ func testSingleColumnSorting(t *testing.T, direction sorting.Direction, nullsOrd
 	const parallelism = 1
 
 	output := new(bytes.Buffer)
-	sorter := NewOrder(output, orderBy, nil, parallelism)
+	sorter, err := NewOrder(output, orderBy, nil, parallelism)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// when
 	err = CopyRows(sorter, buftbl(input), 1)
@@ -405,7 +408,10 @@ func testMultiColumnSorting(t *testing.T, orderBy []SortColumn, expected []strin
 	const parallelism = 1
 
 	output := new(bytes.Buffer)
-	sorter := NewOrder(output, orderBy, nil, parallelism)
+	sorter, err := NewOrder(output, orderBy, nil, parallelism)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// when
 	err = CopyRows(sorter, buftbl(input), 1)
@@ -481,7 +487,10 @@ func TestSortWithLimit(t *testing.T) {
 	const parallelism = 4
 
 	output := new(bytes.Buffer)
-	sorter := NewOrder(output, orderBy, &limit, parallelism)
+	sorter, err := NewOrder(output, orderBy, &limit, parallelism)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// when
 	err = CopyRows(sorter, buftbl(input), parallelism)

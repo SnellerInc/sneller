@@ -121,6 +121,18 @@ func (b *Trace) Class() SizeClass {
 			} else {
 				next = SizeColumnCardinality
 			}
+		case *UnionMap:
+			// we're UNION ALL-ing the child result;
+			// let's assume we're multiplying the size
+			// of the result by a small constant factor
+			switch step.Child.Class() {
+			case SizeZero:
+				return SizeZero
+			case SizeOne, SizeColumnCardinality, SizeExactSmall:
+				return SizeColumnCardinality
+			default:
+				return SizeUnknown
+			}
 		case *Distinct:
 			next = SizeColumnCardinality
 		}

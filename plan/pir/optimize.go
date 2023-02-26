@@ -81,15 +81,15 @@ func (b *Trace) optimize() error {
 	if err != nil {
 		return err
 	}
-	projectelim(b)       // drop un-used bindings
-	projectpushdown(b)   // merge adjacent projections
-	flatten(b)           // eliminate left-to-right bindings
-	mergereplacements(b) // eliminate common sub-traces
-	simplify(b)          // final simplification pass
+	projectelim(b)     // drop un-used bindings
+	projectpushdown(b) // merge adjacent projections
+	flatten(b)         // eliminate left-to-right bindings
+	simplify(b)        // final simplification pass
 	if err := postcheck(b); err != nil {
 		return err
 	}
 	partition(b)
+	mergereplacements(b) // eliminate common sub-traces
 
 	// TODO:
 	//  - push down DISTINCT when it occurs

@@ -1,3 +1,5 @@
+# there's an outstanding issue w/ partitioning on acct here:
+## partition: false
 WITH
   "$source" AS
 	(SELECT *

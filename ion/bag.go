@@ -124,6 +124,10 @@ func (b *Bag) Len() int { return b.items }
 // Size returns the *approximate* size of the bag in memory.
 func (b *Bag) Size() int { return b.st.memsize + len(b.data) }
 
+// Raw returns the raw encoded datums.
+// The caller must not alter the contents of the returned slice.
+func (b *Bag) Raw() []byte { return b.data }
+
 type bagWriter struct {
 	srctab Symtab
 	dst    *Bag

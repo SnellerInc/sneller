@@ -291,6 +291,11 @@ type PartitionHandle interface {
 	// the list of parts provided to SplitBy.
 	// The returned slice of TableParts should have at least one element.
 	SplitBy(parts []string) ([]TablePart, error)
+
+	// SplitOn should return the TableHandle corresponding
+	// to the parts of the table for which the partitions
+	// given by parts are equal to the corresponding datums.
+	SplitOn(parts []string, equal []ion.Datum) (TableHandle, error)
 }
 
 func (u *UnionPartition) String() string {
@@ -301,6 +306,8 @@ func (u *UnionPartition) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle
 	if len(u.By) == 0 {
 		return delay(fmt.Errorf("plan: UnionPartition: 0 partitions to split?"))
 	}
+	orig := ep
+	ep = ep.clone()
 	return func(h TableHandle) error {
 		ph, ok := h.(PartitionHandle)
 		if !ok {
@@ -320,12 +327,8 @@ func (u *UnionPartition) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle
 			if err != nil {
 				return err
 			}
-			subep := &ExecParams{
-				Output:   w,
-				Parallel: ep.Parallel,
-				Context:  ep.Context,
-				Rewriter: ep.Rewriter,
-			}
+			subep := ep.clone()
+			subep.Output = w
 			// stack the PARTITION_VALUE() rewrite
 			subep.AddRewrite(&parts[i])
 			into := vm.LockedSink(w)
@@ -339,7 +342,7 @@ func (u *UnionPartition) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle
 					err = err2
 				}
 				errs[i] = err
-				ep.Stats.atomicAdd(&subep.Stats)
+				orig.Stats.atomicAdd(&subep.Stats)
 			}(i)
 		}
 		wg.Wait()

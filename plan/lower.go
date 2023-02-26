@@ -240,13 +240,21 @@ func (w *walker) lowerUnionMap(in *pir.UnionMap, env Env) (Op, error) {
 	if err != nil {
 		return nil, err
 	}
+	latest := w.latest
+	if latest == -1 {
+		// it's possible that the inner node
+		// is actually a dummy (we eliminated the iteration);
+		// make sure we actually partition the right data!
+		w.put(in.Inner)
+		latest = w.latest
+	}
+	sub, err = w.addReplace(sub, in.Child, env)
+	if err != nil {
+		return nil, err
+	}
+	// restore this
+	w.latest = latest
 	if len(in.PartitionBy) > 0 {
-		if w.latest == -1 {
-			// it's possible that the inner node
-			// is actually a dummy (we eliminated the iteration);
-			// make sure we actually partition the right data!
-			w.put(in.Inner)
-		}
 		return &UnionPartition{
 			Nonterminal: Nonterminal{From: sub},
 			By:          in.PartitionBy,
@@ -501,7 +509,8 @@ func (w *walker) walkBuild(in pir.Step, env Env) (Op, error) {
 		// TODO: we should handle table globs and
 		// the ++ operator specially
 		out := Op(&Leaf{
-			Orig: it.Table,
+			Orig:    it.Table,
+			OnEqual: it.OnEqual,
 		})
 		if it.Filter != nil {
 			out = &Filter{
@@ -608,30 +617,38 @@ func toTree(in *pir.Trace, env Env) (*Tree, error) {
 	return t, nil
 }
 
+func (w *walker) addReplace(op Op, in *pir.Trace, env Env) (Op, error) {
+	if len(in.Replacements) == 0 {
+		return op, nil
+	}
+	// push a substitution node for replacements if necessary
+	inner := make([]*Node, len(in.Replacements))
+	for i := range in.Replacements {
+		inner[i] = &Node{}
+		err := w.toNode(inner[i], in.Replacements[i], env)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &Substitute{
+		Nonterminal: Nonterminal{op},
+		Inner:       inner,
+	}, nil
+}
+
 func (w *walker) toNode(t *Node, in *pir.Trace, env Env) error {
 	w.latest = -1
 	op, err := w.walkBuild(in.Final(), env)
 	if err != nil {
 		return err
 	}
+	t.Input = w.latest
+	op, err = w.addReplace(op, in, env)
+	if err != nil {
+		return err
+	}
 	t.Op = op
 	t.OutputType = results(in)
-	t.Input = w.latest
-	// push a substitution node for replacements if necessary
-	if len(in.Replacements) > 0 {
-		inner := make([]*Node, len(in.Replacements))
-		for i := range in.Replacements {
-			inner[i] = &Node{}
-			err := w.toNode(inner[i], in.Replacements[i], env)
-			if err != nil {
-				return err
-			}
-		}
-		t.Op = &Substitute{
-			Nonterminal: Nonterminal{t.Op},
-			Inner:       inner,
-		}
-	}
 	return nil
 }
 

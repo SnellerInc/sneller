@@ -67,6 +67,8 @@ type TenantEnv struct {
 type TenantHandle struct {
 	*FilterHandle // share Size(), Encode()
 	parent        *TenantEnv
+
+	pg *plan.PartGroups[blob.Interface]
 }
 
 var (
@@ -162,8 +164,13 @@ func (h *TenantHandle) Filter(e expr.Node) plan.TableHandle {
 	}
 }
 
-// SplitBy implements plan.PartitionHandle.SplitBy
-func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
+func (h *TenantHandle) buildpg(parts []string) (*plan.PartGroups[blob.Interface], error) {
+	// stash a cached copy of this partitioned list,
+	// since SplitOn tends to be called multiple times
+	// with the same set of partition keys
+	if h.pg != nil && slices.Equal(h.pg.Fields(), parts) {
+		return h.pg, nil
+	}
 	getconst := func(b blob.Interface, x string) (ion.Datum, bool) {
 		switch b := b.(type) {
 		case *blob.Compressed:
@@ -177,6 +184,30 @@ func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
 	pg, ok := plan.Partition(h.Blobs.Contents, parts, getconst)
 	if !ok {
 		return nil, fmt.Errorf("cannot partition plan by %v", parts)
+	}
+	h.pg = pg
+	return pg, nil
+}
+
+// SplitOn implements plan.PartitionHandle.SplitOn
+func (h *TenantHandle) SplitOn(parts []string, equal []ion.Datum) (plan.TableHandle, error) {
+	pg, err := h.buildpg(parts)
+	if err != nil {
+		return nil, err
+	}
+	lst := pg.Get(equal)
+	fh := new(FilterHandle)
+	*fh = *h.FilterHandle
+	fh.Blobs = &blob.List{Contents: lst}
+	fh.compiled = blockfmt.Filter{}
+	return &TenantHandle{parent: h.parent, FilterHandle: fh}, nil
+}
+
+// SplitBy implements plan.PartitionHandle.SplitBy
+func (h *TenantHandle) SplitBy(parts []string) ([]plan.TablePart, error) {
+	pg, err := h.buildpg(parts)
+	if err != nil {
+		return nil, err
 	}
 	ret := make([]plan.TablePart, 0, pg.Groups())
 	pg.Each(func(parts []ion.Datum, lst []blob.Interface) {

@@ -40,6 +40,8 @@ import (
 	"github.com/SnellerInc/sneller/plan"
 	"github.com/SnellerInc/sneller/tests"
 	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/slices"
 )
 
 type Bufhandle []byte
@@ -138,9 +140,15 @@ func (c *chunkshandle) WriteChunks(dst vm.QuerySink, parallel int) error {
 	return w.Close()
 }
 
+type rowgroup = plan.PartGroups[ion.Datum]
+
+var _ plan.PartitionHandle = &parallelchunks{}
+
 type parallelchunks struct {
 	chunks [][]byte
 	fields []string
+
+	rg *rowgroup
 }
 
 func (p *parallelchunks) Encode(dst *ion.Buffer, st *ion.Symtab) error {
@@ -155,13 +163,34 @@ func (p *parallelchunks) Size() int64 {
 	return n
 }
 
-func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
+// MaxAutoPartitions is the maximum number of distinct
+// partitions produced when attempting to satisfy requests
+// from the query planner to partition the input table(s).
+// This limit exists to keep unit tests from becoming too slow
+// due to the expense of dynamically partitioning the data on-demand.
+const MaxAutoPartitions = 100
+
+func (p *parallelchunks) partition(parts []string) (*rowgroup, error) {
+	if p.rg != nil && slices.Equal(p.rg.Fields(), parts) {
+		return p.rg, nil
+	}
 	okType := func(d ion.Datum) bool {
 		switch d.Type() {
-		case ion.StringType, ion.IntType, ion.UintType, ion.FloatType:
+		// we allow ion.SymbolType here because
+		// it is always flattened into a string
+		case ion.StringType, ion.IntType, ion.UintType, ion.FloatType, ion.SymbolType:
 			return true
 		default:
 			return false
+		}
+	}
+	expand := func(d ion.Datum) ion.Datum {
+		switch d.Type() {
+		case ion.SymbolType:
+			str, _ := d.String()
+			return ion.NewString(str)
+		default:
+			return d
 		}
 	}
 	getconst := func(d ion.Datum, p string) (ion.Datum, bool) {
@@ -173,7 +202,7 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 		if !ok || !okType(f.Datum) {
 			return ion.Empty, false
 		}
-		return f.Datum, true
+		return expand(f.Datum), true
 	}
 
 	var st ion.Symtab
@@ -190,13 +219,36 @@ func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
 			lst = append(lst, d)
 		}
 	}
-
-	pg, ok := plan.Partition(lst, parts, getconst)
+	rg, ok := plan.Partition(lst, parts, getconst)
 	if !ok {
 		return nil, fmt.Errorf("cannot split on %v", parts)
 	}
-	ret := make([]plan.TablePart, 0, pg.Groups())
-	pg.Each(func(parts, rows []ion.Datum) {
+	// don't allow an enormous number of partitions
+	if rg.Groups() > MaxAutoPartitions {
+		return nil, fmt.Errorf("%d groups total for partition on %v exceeds max %d", rg.Groups(), parts, MaxAutoPartitions)
+	}
+	p.rg = rg
+	return rg, nil
+}
+
+func (p *parallelchunks) SplitOn(parts []string, equal []ion.Datum) (plan.TableHandle, error) {
+	rg, err := p.partition(parts)
+	if err != nil {
+		return nil, err
+	}
+	rows := rg.Get(equal)
+	var st ion.Symtab
+	return Bufhandle(flatten(rows, &st)), nil
+}
+
+func (p *parallelchunks) SplitBy(parts []string) ([]plan.TablePart, error) {
+	rg, err := p.partition(parts)
+	if err != nil {
+		return nil, err
+	}
+	var st ion.Symtab
+	ret := make([]plan.TablePart, 0, rg.Groups())
+	rg.Each(func(parts, rows []ion.Datum) {
 		data := flatten(rows, &st)
 		ret = append(ret, plan.TablePart{
 			Handle: Bufhandle(data),
@@ -289,7 +341,8 @@ func (p *parallelchunks) WriteChunks(dst vm.QuerySink, parallel int) error {
 }
 
 type Queryenv struct {
-	In []plan.TableHandle
+	In   []plan.TableHandle
+	tags map[string]string
 }
 
 func (e *Queryenv) handle(t expr.Node) (plan.TableHandle, bool) {
@@ -332,7 +385,8 @@ func (e *Queryenv) Stat(t expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 var _ plan.Indexer = &Queryenv{}
 
 type handleIndex struct {
-	h plan.TableHandle
+	h    plan.TableHandle
+	part bool
 }
 
 func (h *handleIndex) TimeRange(path []string) (min, max date.Time, ok bool) {
@@ -340,6 +394,9 @@ func (h *handleIndex) TimeRange(path []string) (min, max date.Time, ok bool) {
 }
 
 func (h *handleIndex) HasPartition(x string) bool {
+	if !h.part {
+		return false
+	}
 	sh, ok := h.h.(plan.PartitionHandle)
 	if ok {
 		// XXX very slow:
@@ -354,7 +411,10 @@ func (e *Queryenv) Index(t expr.Node) (plan.Index, error) {
 	if !ok {
 		return nil, fmt.Errorf("unexpected table expression %q", expr.ToString(t))
 	}
-	return &handleIndex{handle}, nil
+	return &handleIndex{
+		h:    handle,
+		part: e.tags == nil || e.tags["partition"] != "false",
+	}, nil
 }
 
 var _ plan.TableLister = (*Queryenv)(nil)
@@ -379,6 +439,7 @@ type TestCaseIon struct {
 	SymbolTable *ion.Symtab
 	Input       [][]ion.Datum
 	Output      []ion.Datum
+	Tags        map[string]string
 }
 
 // NeedShuffleOutput determines whether the output
@@ -522,7 +583,7 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 			dummy.Reset()
 		}
 	}
-
+	tags := q.Tags
 	// run a query on the given input table and yield the output list
 	run := func(q *expr.Query, in [][]ion.Datum, st *ion.Symtab, flags RunFlags) ([]ion.Datum, error) {
 		var unsymbolize func(d ion.Datum, st *ion.Symtab) ion.Datum
@@ -609,7 +670,7 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 				input[i] = Bufhandle(flatten(in, st))
 			}
 		}
-		env := &Queryenv{In: input}
+		env := &Queryenv{In: input, tags: tags}
 		var tree *plan.Tree
 		var err error
 		if flags&FlagSplit != 0 {
@@ -654,9 +715,12 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 	fixup(gotout, q.SymbolTable)
 	fixup(q.Output, q.SymbolTable)
 	if len(q.Output) != len(gotout) {
-		return fmt.Errorf("%d rows output; expected %d", len(gotout), len(q.Output))
+		err = fmt.Errorf("%d rows output; expected %d", len(gotout), len(q.Output))
 	}
 	nErrors := 0
+	if err != nil {
+		nErrors++
+	}
 	for i := range q.Output {
 		if i >= len(gotout) {
 			err = errors.Join(err, fmt.Errorf("missing %s", toJSON(q.SymbolTable, q.Output[i])))
@@ -677,7 +741,7 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 
 // ParseTestCaseIon parses the provided query,
 // input and output strings into a test case
-func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []string) (tci *TestCaseIon, err error) {
+func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []string, tags map[string]string) (tci *TestCaseIon, err error) {
 
 	// stripInlineComment removes comment from **correctly** formated line.
 	// For example: stripInlineComment(`{"x": 5} # sample data`) => `{"x": 5}`
@@ -747,6 +811,7 @@ func ParseTestCaseIon(queryStr []string, inputsStr [][]string, outputStr []strin
 		SymbolTable: &inst,
 		Input:       inputRows,
 		Output:      ouputRows,
+		Tags:        tags,
 	}, nil
 
 }
@@ -775,7 +840,7 @@ func ReadTestCaseIonFromFile(fname string) (qtc *TestCaseIon, err error) {
 	for i := 1; i < nSections-1; i++ {
 		inputsStr = append(inputsStr, spec.Sections[i])
 	}
-	return ParseTestCaseIon(queryStr, inputsStr, outputStr)
+	return ParseTestCaseIon(queryStr, inputsStr, outputStr, spec.Tags)
 }
 
 type benchmarkSettings struct {

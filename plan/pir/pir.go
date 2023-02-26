@@ -93,6 +93,13 @@ type IterTable struct {
 	Schema      expr.Hint
 	Index       Index
 	Partitioned bool
+
+	// OnEqual, if present, indicates that this table
+	// is only iterated for partitions that match
+	//
+	//   OnEqual[i] = PARTITION_VALUE(i)
+	//
+	OnEqual []string
 }
 
 func (i *IterTable) equals(x Step) bool {
@@ -187,10 +194,14 @@ func (i *IterTable) describe(dst io.Writer) {
 	if !i.star {
 		fields = formatFields(i.Fields())
 	}
+	fmt.Fprintf(dst, "%s %s", prefix, expr.ToString(i.Table))
+	if len(i.OnEqual) > 0 {
+		fmt.Fprintf(dst, " ON %v", i.OnEqual)
+	}
 	if i.Filter == nil {
-		fmt.Fprintf(dst, "%s %s FIELDS %s\n", prefix, expr.ToString(i.Table), fields)
+		fmt.Fprintf(dst, " FIELDS %s\n", fields)
 	} else {
-		fmt.Fprintf(dst, "%s %s FIELDS %s WHERE %s\n", prefix, expr.ToString(i.Table), fields, expr.ToString(i.Filter))
+		fmt.Fprintf(dst, " FIELDS %s WHERE %s\n", fields, expr.ToString(i.Filter))
 	}
 }
 

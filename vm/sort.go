@@ -44,6 +44,7 @@ type Order struct {
 	columns     []SortColumn   // columns to sort
 	limit       *sorting.Limit // optional limit parameters
 	parallelism int            // number of threads
+	prog        prog           // program for capturing fields
 
 	// symbol table for the whole input
 	symtab *ion.Symtab
@@ -86,7 +87,7 @@ type Order struct {
 // sorts the provided columns (in left-to-right order).
 // If limit is non-nil, then the number of rows output
 // by the Order will be less than or equal to the limit.
-func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, parallelism int) *Order {
+func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, parallelism int) (*Order, error) {
 	if limit == nil {
 		limit = &sorting.Limit{
 			Limit: 100000,
@@ -99,6 +100,17 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, paralle
 		dst:         dst,
 		rp:          sorting.NewRuntimeParameters(parallelism),
 	}
+	s.prog.begin()
+	mem0 := s.prog.initMem()
+	var mem []*value
+	for i := range columns {
+		val, err := s.prog.compileStore(mem0, columns[i].Node, stackSlotFromIndex(regV, i), true)
+		if err != nil {
+			return nil, err
+		}
+		mem = append(mem, val)
+	}
+	s.prog.returnValue(s.prog.mergeMem(mem...))
 
 	s.rp.UseStdlib = true // see #917
 
@@ -107,7 +119,7 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, paralle
 	s.bytesAlloc.Init(1024 * 1024)
 	s.indicesAlloc.Init(len(columns) * 1024)
 
-	return s
+	return s, nil
 }
 
 // setSymbolTable sets symbol table for the sorted data.
@@ -170,6 +182,7 @@ func (s *Order) Open() (io.WriteCloser, error) {
 
 // Close implements QuerySink.Close
 func (s *Order) Close() error {
+	s.prog.reset()
 	// wait for all sorting threads to
 	// indicate that they have been closed;
 	// after this returns we can access
@@ -291,7 +304,7 @@ func (s *Order) finalizeKtop() error {
 
 // ----------------------------------------------------------------------
 
-func symbolize(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings, global bool) error {
+func symbolize(sort *Order, dst *prog, findbc *bytecode, st *symtab, aux *auxbindings, global bool) error {
 	if global {
 		sort.symtabLock.Lock()
 		defer sort.symtabLock.Unlock()
@@ -300,30 +313,14 @@ func symbolize(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings, glob
 			return err
 		}
 
-		return symbolizeLocal(sort, findbc, st, aux)
+		return symbolizeLocal(sort, dst, findbc, st, aux)
 	} else {
-		return symbolizeLocal(sort, findbc, st, aux)
+		return symbolizeLocal(sort, dst, findbc, st, aux)
 	}
 }
 
-func symbolizeLocal(sort *Order, findbc *bytecode, st *symtab, aux *auxbindings) error {
-	findbc.restoreScratch(st)
-	var program prog
-
-	program.begin()
-	mem0 := program.initMem()
-	var mem []*value
-	for i := range sort.columns {
-		val, err := program.compileStore(mem0, sort.columns[i].Node, stackSlotFromIndex(regV, i), true)
-		if err != nil {
-			return err
-		}
-		mem = append(mem, val)
-	}
-	program.returnValue(program.mergeMem(mem...))
-	program.symbolize(st, aux)
-	err := program.compile(findbc, st, "symbolizeLocal")
-	findbc.symtab = st.symrefs
+func symbolizeLocal(sort *Order, dst *prog, findbc *bytecode, st *symtab, aux *auxbindings) error {
+	err := recompile(st, &sort.prog, dst, findbc, aux, "symbolizeLocal")
 	if err != nil {
 		return fmt.Errorf("sortstate.symbolize(): %w", err)
 	}
@@ -358,6 +355,7 @@ func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out [
 type sortstateMulticolumn struct {
 	// the parent context for this sorting operation
 	parent *Order
+	prog   prog
 
 	// Indicates that the parent was already informed about closing
 	// this worker. Used internally to prevent calling Close on parent
@@ -376,7 +374,7 @@ func (s *sortstateMulticolumn) EndSegment() {
 }
 
 func (s *sortstateMulticolumn) symbolize(st *symtab, aux *auxbindings) error {
-	return symbolize(s.parent, &s.findbc, st, aux, true)
+	return symbolize(s.parent, &s.prog, &s.findbc, st, aux, true)
 }
 
 func (s *sortstateMulticolumn) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
@@ -468,6 +466,7 @@ func (s *sortstateMulticolumn) Close() error {
 type sortstateSingleColumn struct {
 	// the parent context for this sorting operation
 	parent *Order
+	prog   prog
 
 	// see the comment in `sortstateMulticolumn`
 	parentNotified bool
@@ -488,7 +487,7 @@ func (s *sortstateSingleColumn) EndSegment() {
 }
 
 func (s *sortstateSingleColumn) symbolize(st *symtab, aux *auxbindings) error {
-	return symbolize(s.parent, &s.findbc, st, aux, true)
+	return symbolize(s.parent, &s.prog, &s.findbc, st, aux, true)
 }
 
 func (s *sortstateSingleColumn) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
@@ -591,6 +590,7 @@ type sortstateKtop struct {
 
 	// bytecode for locating columns
 	findbc bytecode
+	prog   prog
 	// most recent symbolize() symtab
 	st *symtab
 
@@ -633,7 +633,7 @@ func (s *sortstateKtop) symbolize(st *symtab, aux *auxbindings) error {
 	for i := range s.aux.bound {
 		s.auxsyms = append(s.auxsyms, st.Intern(s.aux.bound[i]))
 	}
-	return symbolize(s.parent, &s.findbc, st, aux, false)
+	return symbolize(s.parent, &s.prog, &s.findbc, st, aux, false)
 }
 
 func (s *sortstateKtop) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {

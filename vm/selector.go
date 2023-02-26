@@ -164,6 +164,7 @@ func (p *Projection) Open() (io.WriteCloser, error) {
 }
 
 func (p *Projection) Close() error {
+	p.prog.reset()
 	return p.dst.Close()
 }
 

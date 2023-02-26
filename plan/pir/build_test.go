@@ -1180,8 +1180,8 @@ ORDER BY m, d, h`,
 			expect: []string{
 				"WITH (",
 				"	UNION MAP foo PARTITION BY y (",
-				"		ITERATE PART foo FIELDS [x, y, z] WHERE z = 'foo'",
-				"		FILTER DISTINCT [x, y]",
+				"		ITERATE PART foo FIELDS [x, z] WHERE z = 'foo'",
+				"		FILTER DISTINCT [x, PARTITION_VALUE(0)]",
 				"		AGGREGATE COUNT(x) AS $__val",
 				"		PROJECT PARTITION_VALUE(0) AS $__key, $__val AS $__val)",
 				") AS REPLACEMENT(0)",
@@ -1198,9 +1198,9 @@ ORDER BY m, d, h`,
 				"WITH (",
 				"	UNION MAP foo PARTITION BY y (",
 				"		UNION MAP foo (",
-				"			ITERATE PART foo FIELDS [x, y, z] WHERE z = 'foo'",
-				"			FILTER DISTINCT [x, y])",
-				"		FILTER DISTINCT [x, y]",
+				"			ITERATE PART foo FIELDS [x, z] WHERE z = 'foo'",
+				"			FILTER DISTINCT [x, PARTITION_VALUE(0)])",
+				"		FILTER DISTINCT [x, PARTITION_VALUE(0)]",
 				"		AGGREGATE COUNT(x) AS $__val",
 				"		PROJECT PARTITION_VALUE(0) AS $__key, $__val AS $__val)",
 				") AS REPLACEMENT(0)",
@@ -1509,6 +1509,43 @@ ORDER BY group0, group1, gdist DESC`,
 				"ITERATE table AS source FIELDS *",
 				"ITERATE FIELD tags AS tag",
 			},
+		},
+
+		{
+			input: `
+SELECT SUM(b.inner.val), a.grp
+FROM a a JOIN b b ON a.x = b.y AND a.z = b.a
+WHERE b.foo = 3 and a.foo = 700
+GROUP BY a.grp
+`,
+			expect: []string{
+				"UNION MAP a AS a PARTITION BY x (",
+				"	WITH (",
+				"		ITERATE PART b AS b ON [y] FIELDS [a, foo, inner, y] WHERE foo = 3",
+				"		PROJECT a AS $__key, [\"inner\"] AS $__val",
+				"	) AS REPLACEMENT(0)",
+				"	ITERATE a AS a FIELDS [foo, grp, x, z] WHERE foo = 700",
+				"	ITERATE FIELD HASH_REPLACEMENT(0, 'joinlist', '$__key', z) AS b)",
+				"AGGREGATE SUM(b[0].val) AS \"sum\" BY grp AS grp",
+			},
+			parts: []string{"x", "y"},
+		},
+		{
+			// make sure we compute the cardinality of the
+			// synthesized sub-query correctly
+			input: `SELECT (SELECT attr, COUNT(*) "a", SUM("doesnotexist") "b" FROM input GROUP BY attr ORDER BY a DESC) "x"`,
+			expect: []string{
+				"WITH (",
+				"	UNION MAP input PARTITION BY attr (",
+				"		ITERATE PART input FIELDS [doesnotexist]",
+				"		AGGREGATE COUNT(*) AS a, SUM(doesnotexist) AS b",
+				"		PROJECT PARTITION_VALUE(0) AS attr, a AS a, b AS b)",
+				"	ORDER BY a DESC NULLS FIRST",
+				") AS REPLACEMENT(0)",
+				"[{}]",
+				"PROJECT LIST_REPLACEMENT(0) AS x",
+			},
+			parts: []string{"attr"},
 		},
 	}
 

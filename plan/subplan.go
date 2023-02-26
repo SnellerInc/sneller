@@ -229,34 +229,47 @@ func (c *listConverter) add(row *ion.Struct) {
 
 type joinListConverter struct {
 	label string
-	m     map[expr.Constant][]ion.Datum
+	m     map[string][]ion.Datum
+	st    ion.Symtab
+	tmp   ion.Buffer
+}
+
+func (j *joinListConverter) stringify(d ion.Datum) []byte {
+	j.tmp.Reset()
+	d.Encode(&j.tmp, &j.st)
+	return j.tmp.Bytes()
 }
 
 func (j *joinListConverter) add(row *ion.Struct) {
-	var key expr.Constant
-	var val ion.Datum
+	var key, val ion.Datum
 	row.Each(func(f ion.Field) error {
 		if f.Label == j.label {
-			key = mustConst(f.Datum)
+			key = f.Datum
 		} else {
 			val = f.Datum
 		}
 		return nil
 	})
-	if key == nil || val.IsEmpty() {
+	if key.IsEmpty() || val.IsEmpty() {
 		return
 	}
 	if j.m == nil {
-		j.m = make(map[expr.Constant][]ion.Datum)
+		j.m = make(map[string][]ion.Datum)
 	}
-	j.m[key] = append(j.m[key], val)
+	str := j.stringify(key)
+	j.m[string(str)] = append(j.m[string(str)], val)
 }
 
 func (j *joinListConverter) result(key, elseval expr.Node) *expr.Lookup {
 	l := &expr.Lookup{Expr: key, Else: elseval}
 	for k, v := range j.m {
-		l.Keys.AddDatum(k.Datum())
-		l.Values.AddDatum(ion.NewList(nil, v).Datum())
+		dat, _, err := ion.ReadDatum(&j.st, []byte(k))
+		if err != nil {
+			panic(err)
+		}
+		l.Keys.AddDatum(dat)
+		lst := ion.NewList(nil, v).Datum()
+		l.Values.AddDatum(lst)
 	}
 	return l
 }

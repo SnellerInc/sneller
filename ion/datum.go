@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	"golang.org/x/exp/slices"
 
@@ -232,6 +233,16 @@ func (r *resymbolizer) get(sym Symbol) Symbol {
 	}
 	r.idmap[sym] = r.dsttab.Intern(r.srctab.Get(sym))
 	return r.idmap[sym]
+}
+
+func (d Datum) JSON() string {
+	var buf strings.Builder
+	jw := NewJSONWriter(&buf, '\n')
+	jw.st = d.symtab()
+	jw.Write(d.buf)
+	jw.Close()
+	str := buf.String()
+	return str[:len(str)-1] // remove '\n'
 }
 
 func (d Datum) Encode(dst *Buffer, st *Symtab) {
@@ -668,6 +679,13 @@ func (f Field) UnpackList(fn func(Datum) error) error { return f.unpackList(f.La
 // Iterator calls f.List and calls Iterator on
 // the result.
 func (f Field) Iterator() (Iterator, error) { return f.iterator(f.Label) }
+
+// NewString constructs a new ion Datum from a string.
+func NewString(s string) Datum {
+	var buf Buffer
+	buf.WriteString(s)
+	return Datum{buf: buf.Bytes()}
+}
 
 var emptyStruct = []byte{0xd0}
 

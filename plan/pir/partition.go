@@ -20,13 +20,60 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-func isPartition(s Step, id expr.Ident, it *IterTable) (*IterTable, bool) {
+func isPartition(s Step, e expr.Node, it *IterTable) (expr.Ident, *IterTable, bool) {
+	id, ok := e.(expr.Ident)
+	if !ok {
+		return "", nil, false
+	}
 	step, _ := s.parent().get(string(id))
 	it2, ok := step.(*IterTable)
 	if !ok || (it != nil && it2 != it) {
-		return nil, false
+		return "", nil, false
 	}
-	return it2, it2.Index != nil && it2.Index.HasPartition(string(id))
+	return id, it2, it2.Index != nil && it2.Index.HasPartition(string(id))
+}
+
+type partRewriter struct {
+	node  Step
+	it    *IterTable
+	parts []string
+}
+
+func (p *partRewriter) Walk(e expr.Node) expr.Rewriter { return p }
+
+func (p *partRewriter) Rewrite(e expr.Node) expr.Node {
+	id, ok := e.(expr.Ident)
+	if !ok {
+		return e
+	}
+	from := p.node
+	if from != p.it {
+		from = from.parent()
+		if from == nil {
+			return e
+		}
+		from, _ = from.get(string(id))
+		if from == nil || from != p.it {
+			return e
+		}
+	}
+	for i, part := range p.parts {
+		if string(id) == part {
+			return expr.Call(expr.PartitionValue, expr.Integer(i))
+		}
+	}
+	return e
+}
+
+func rewriteParts(parts []string, s Step, it *IterTable) {
+	pw := &partRewriter{parts: parts, it: it}
+	rw := func(e expr.Node, _ bool) expr.Node {
+		return expr.Rewrite(pw, e)
+	}
+	for s := s; s != nil; s = s.parent() {
+		pw.node = s
+		s.rewrite(rw)
+	}
 }
 
 // is lst exactly the list of results produced by bind
@@ -42,6 +89,97 @@ func matchesBindings(bind []expr.Binding, lst []string) bool {
 	return true
 }
 
+func joinByPartition(b *Trace, s *IterValue) (*UnionMap, bool) {
+	// match
+	//
+	//   HASH_REPLACEMENT(id, 'joinlist', k, MAKE_LIST(lst...))
+	//
+	// in this IterValue and
+	//
+	//   MAKE_LIST(matched...) AS k
+	//
+	// for b.Replacements[id]
+	//
+	hr, ok := s.Value.(*expr.Builtin)
+	if !ok || hr.Func != expr.HashReplacement {
+		return nil, false
+	}
+	if str, ok := hr.Args[1].(expr.String); !ok || string(str) != "joinlist" {
+		return nil, false
+	}
+	lst, ok := hr.Args[3].(*expr.Builtin)
+	if !ok || lst.Func != expr.MakeList {
+		return nil, false
+	}
+	id := int(hr.Args[0].(expr.Integer))
+	k := string(hr.Args[2].(expr.String))
+	sub := b.Replacements[id]
+	whence, from := sub.top.get(k)
+	matched, ok := from.(*expr.Builtin)
+	if !ok || matched.Func != expr.MakeList || len(matched.Args) != len(lst.Args) {
+		return nil, false
+	}
+
+	// for each pair of matched expressions,
+	// see if we can do a partition match instead
+	var um *UnionMap
+	var outert, innert *IterTable
+	for i := 0; i < len(lst.Args) && len(lst.Args) > 1; i++ {
+		var oid, iid expr.Ident
+		oid, outert, ok = isPartition(s, lst.Args[i], outert)
+		if !ok {
+			continue
+		}
+		iid, innert, ok = isPartition(whence, matched.Args[i], innert)
+		if !ok {
+			continue
+		}
+		lst.Args = slices.Delete(lst.Args, i, i+1)
+		matched.Args = slices.Delete(matched.Args, i, i+1)
+		innert.Partitioned = true
+		innert.OnEqual = append(innert.OnEqual, string(iid))
+		if um == nil {
+			um = &UnionMap{
+				Inner: outert,
+				Child: &Trace{
+					Parent:       b,
+					Replacements: []*Trace{sub},
+					top:          s,
+				},
+			}
+		}
+		um.PartitionBy = append(um.PartitionBy, string(oid))
+	}
+	if um == nil {
+		return nil, false
+	}
+	if len(lst.Args) == 0 {
+		panic("should be impossible")
+	}
+	// if we only have 1 arg remaining in each MAKE_LIST,
+	// then we can eliminate the MAKE_LIST entirely
+	if len(lst.Args) == 1 {
+		// these were matched at the beginning, so they should still match:
+		if len(matched.Args) != 1 {
+			panic("mis-matched arg lengths")
+		}
+		// HASH_REPLACEMENT(..., MAKE_LIST(x)) -> HASH_REPLACEMENT(.., x)
+		hr.Args[3] = lst.Args[0]
+		rewrite := func(e expr.Node, _ bool) expr.Node {
+			if e == matched {
+				return matched.Args[0]
+			}
+			return e
+		}
+		// MAKE_LIST(matched...) -> matched[0]
+		whence.rewrite(rewrite)
+	}
+	rewriteParts(um.PartitionBy, s.parent(), outert)
+	rewriteParts(innert.OnEqual, sub.top, innert)
+	b.Replacements[id] = nil // will be removed by mergereplacements
+	return um, true
+}
+
 func distinctByPartition(b *Trace, s *Bind) (*UnionMap, bool) {
 	d, ok := s.parent().(*Distinct)
 	if !ok {
@@ -51,12 +189,8 @@ func distinctByPartition(b *Trace, s *Bind) (*UnionMap, bool) {
 	var keep []expr.Node
 	var it *IterTable
 	for _, col := range d.Columns {
-		id, ok := col.(expr.Ident)
-		if !ok {
-			keep = append(keep, col)
-			continue
-		}
-		it, ok = isPartition(d, id, it)
+		var id expr.Ident
+		id, it, ok = isPartition(d, col, it)
 		if ok {
 			parts = append(parts, string(id))
 		} else {
@@ -91,6 +225,7 @@ func distinctByPartition(b *Trace, s *Bind) (*UnionMap, bool) {
 	for i := range s.bind {
 		s.bind[i].Expr = expr.Rewrite(&bf, s.bind[i].Expr)
 	}
+	rewriteParts(parts, s.parent(), it)
 	return &UnionMap{
 		Inner: it,
 		Child: &Trace{
@@ -102,6 +237,14 @@ func distinctByPartition(b *Trace, s *Bind) (*UnionMap, bool) {
 }
 
 func aggByPartition(b *Trace, agg *Aggregate) (*UnionMap, bool) {
+	// if we have a window function that depends
+	// on being able to see all the groups for the partition,
+	// then we can't split this grouping operation:
+	for i := range agg.Agg {
+		if agg.Agg[i].Expr.Op.WindowOnly() {
+			return nil, false
+		}
+	}
 	// split the GROUP BY clause into
 	// partition-specific and non-partition-specific results
 	var parts, nonparts []expr.Binding
@@ -153,6 +296,7 @@ func aggByPartition(b *Trace, agg *Aggregate) (*UnionMap, bool) {
 	for i := range agg.Agg {
 		proj.bind = append(proj.bind, expr.Identity(agg.Agg[i].Result))
 	}
+	rewriteParts(partnames, agg.parent(), thetable)
 	proj.setparent(agg)
 	um := &UnionMap{
 		// TODO: lift partitioned replacements
@@ -190,6 +334,8 @@ func partition(b *Trace) {
 		var ok bool
 		var self *UnionMap
 		switch s := s.(type) {
+		case *IterValue:
+			self, ok = joinByPartition(b, s)
 		case *Aggregate:
 			if len(s.GroupBy) > 0 {
 				self, ok = aggByPartition(b, s)

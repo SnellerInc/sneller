@@ -88,7 +88,10 @@ func benchmark(b *testing.B, parallelism int, columns []string) {
 	output := new(bytes.Buffer)
 	for i := 0; i < b.N; i++ {
 		output.Reset()
-		sorter := NewOrder(output, orderBy, nil, parallelism)
+		sorter, err := NewOrder(output, orderBy, nil, parallelism)
+		if err != nil {
+			b.Fatal(err)
+		}
 
 		// then
 		err = CopyRows(sorter, buftbl(input), parallelism)

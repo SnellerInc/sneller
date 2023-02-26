@@ -68,28 +68,25 @@ func (p *PartGroups[T]) Get(equal []ion.Datum) []T {
 // This function is often helpful for implementing PartitionHandle.SplitBy.
 func Partition[T any](lst []T, parts []string, getconst func(T, string) (ion.Datum, bool)) (*PartGroups[T], bool) {
 	sets := make(map[string]*cluster[T])
-	var buf ion.Buffer
-	var st ion.Symtab
+	var raw ion.Bag
 	for i := range lst {
-		buf.Reset()
+		raw.Reset()
 		for j := range parts {
 			dat, ok := getconst(lst[i], parts[j])
 			if !ok {
 				return nil, false
 			}
-			dat.Encode(&buf, &st)
+			raw.AddDatum(dat)
 		}
-		key := string(buf.Bytes())
+		key := string(raw.Raw())
 		c := sets[key]
 		if c == nil {
 			c = new(cluster[T])
-			for j := range parts {
-				dat, ok := getconst(lst[i], parts[j])
-				if !ok {
-					panic("getconst is inconsistent")
-				}
-				c.values = append(c.values, dat)
-			}
+			raw.Each(func(d ion.Datum) bool {
+				d = d.Clone() // don't alias bag memory
+				c.values = append(c.values, d)
+				return true
+			})
 			sets[key] = c
 		}
 		c.items = append(c.items, lst[i])

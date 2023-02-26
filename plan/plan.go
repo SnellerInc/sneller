@@ -390,6 +390,16 @@ type Leaf struct {
 	// Filter is pushed down before exec if the
 	// parent node supports filter pushdown.
 	Filter expr.Node
+	// OnEqual is a filtering operation that applies
+	// specifically to partitions. The table will
+	// only be iterated for partitions where
+	//
+	//   OnEqual[i] = PARTITION_VALUE(i)
+	//
+	// Since OnEqual depends on PARTITION_VALUE(i) being rewritten,
+	// OnEqual is only present when Leaf is part of a sub-query
+	// for a partitioned query.
+	OnEqual []string
 }
 
 func (l *Leaf) String() string { return l.describe() }
@@ -399,18 +409,45 @@ func (l *Leaf) setinput(o Op) {
 }
 
 func (l *Leaf) describe() string {
-	return expr.ToString(l.Orig)
+	s := expr.ToString(l.Orig)
+	if len(l.OnEqual) > 0 {
+		s += fmt.Sprintf(" ON %v", l.OnEqual)
+	}
+	return s
 }
 
 func (l *Leaf) rewrite(rw expr.Rewriter) {}
 
 func (l *Leaf) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+	filt := ep.rewrite(l.Filter)
+	var partvals []ion.Datum
+	if len(l.OnEqual) > 0 {
+		partvals = make([]ion.Datum, len(l.OnEqual))
+		for i := range partvals {
+			e := ep.rewrite(expr.Call(expr.PartitionValue, expr.Integer(i)))
+			c, ok := e.(expr.Constant)
+			if !ok {
+				return delay(fmt.Errorf("missing PARTITION_VALUE constant rewrite %d", i))
+			}
+			partvals[i] = c.Datum()
+		}
+	}
 	return func(h TableHandle) error {
-		filt := ep.rewrite(l.Filter)
 		// apply any last-minute filtering
 		if filt != nil {
 			if f, ok := h.(Filterable); ok {
 				h = f.Filter(filt)
+			}
+		}
+		if len(partvals) > 0 {
+			ph, ok := h.(PartitionHandle)
+			if !ok {
+				return fmt.Errorf("cannot partition on %T", h)
+			}
+			var err error
+			h, err = ph.SplitOn(l.OnEqual, partvals)
+			if err != nil {
+				return err
 			}
 		}
 		tbl, err := h.Open(ep.Context)
@@ -911,6 +948,10 @@ func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 			Limit: o.Limit,
 		}
 	}
+	ord, err := vm.NewOrder(writer, orderBy, limit, ep.Parallel)
+	if err != nil {
+		return delay(err)
+	}
 
 	// NOTE: vm.Order does not accept an
 	// io.WriteCloser and thus cannot close the
@@ -919,7 +960,7 @@ func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 	// remove orderSink and return a *vm.Order
 	// directly.
 	sorter := &orderSink{
-		Order: vm.NewOrder(writer, orderBy, limit, ep.Parallel),
+		Order: ord,
 		w:     writer,
 		dst:   dst,
 	}

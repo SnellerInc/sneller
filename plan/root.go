@@ -98,10 +98,10 @@ func (ep *ExecParams) PopRewrite() {
 }
 
 func (ep *ExecParams) rewrite(x expr.Node) expr.Node {
-	if ep.Rewriter == nil {
+	if ep.Rewriter == nil || x == nil {
 		return x
 	}
-	return expr.Rewrite(ep.Rewriter, x)
+	return expr.Rewrite(ep.Rewriter, expr.Copy(x))
 }
 
 func (ep *ExecParams) rewriteAll(lst []expr.Node) []expr.Node {
@@ -110,7 +110,7 @@ func (ep *ExecParams) rewriteAll(lst []expr.Node) []expr.Node {
 	}
 	newlst := slices.Clone(lst)
 	for i := range newlst {
-		newlst[i] = expr.Rewrite(ep.Rewriter, newlst[i])
+		newlst[i] = expr.Rewrite(ep.Rewriter, expr.Copy(newlst[i]))
 	}
 	return newlst
 }
@@ -121,7 +121,8 @@ func (ep *ExecParams) rewriteAgg(v vm.Aggregation) vm.Aggregation {
 	}
 	nv := slices.Clone(v)
 	for i := range nv {
-		nv[i].Expr = expr.Rewrite(ep.Rewriter, nv[i].Expr).(*expr.Aggregate)
+		c := expr.Copy(nv[i].Expr)
+		nv[i].Expr = expr.Rewrite(ep.Rewriter, c).(*expr.Aggregate)
 	}
 	return nv
 }
@@ -132,7 +133,7 @@ func (ep *ExecParams) rewriteBind(lst []expr.Binding) []expr.Binding {
 	}
 	newlst := slices.Clone(lst)
 	for i := range newlst {
-		newlst[i].Expr = expr.Rewrite(ep.Rewriter, newlst[i].Expr)
+		newlst[i].Expr = expr.Rewrite(ep.Rewriter, expr.Copy(newlst[i].Expr))
 	}
 	return newlst
 }

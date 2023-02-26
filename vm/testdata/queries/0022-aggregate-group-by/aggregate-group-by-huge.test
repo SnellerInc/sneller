@@ -1,3 +1,4 @@
+## partition: false
 SELECT COUNT(*), SUM(s) FROM
   (SELECT SUM(x) AS s, pattern FROM input GROUP BY pattern)
 ---
