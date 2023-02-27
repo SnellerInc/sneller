@@ -58,7 +58,7 @@ func subflatten(b *Trace) {
 	}
 }
 
-func (b *Trace) optimize(star bool) error {
+func (b *Trace) optimize() error {
 	// pre-passes to make optimization easier:
 	freezefinal(b) // explicitly choose final output names
 
@@ -81,9 +81,7 @@ func (b *Trace) optimize(star bool) error {
 	if err != nil {
 		return err
 	}
-	if !star {
-		projectelim(b) // drop un-used bindings
-	}
+	projectelim(b)       // drop un-used bindings
 	projectpushdown(b)   // merge adjacent projections
 	flatten(b)           // eliminate left-to-right bindings
 	mergereplacements(b) // eliminate common sub-traces

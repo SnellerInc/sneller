@@ -67,17 +67,43 @@ func projectelim(b *Trace) {
 		}
 	}
 
-	// eliminiate unused bindings for each bind pass
-	first := true
-	var parent Step
-loop:
-	for s := b.top; s != nil; s = s.parent() {
+	// does s consume a known set of bindings
+	// and produce a new (fixed) set of bindings?
+	fixedBind := func(s Step) bool {
 		switch s := s.(type) {
 		case *Bind:
-			if first {
-				first = false
-				break
+			return true
+		case *Aggregate:
+			for i := range s.Agg {
+				if op := s.Agg[i].Expr.Op; op == expr.OpSystemDatashape || op == expr.OpSystemDatashapeMerge {
+					return false
+				}
 			}
+			return true
+		default:
+			return false
+		}
+	}
+
+	// find the first element that consumes
+	// a fixed set of input bindings; we can walk
+	// all the used bindings from here
+	var firstbind Step
+	for s := b.top; s != nil; s = s.parent() {
+		if fixedBind(s) {
+			firstbind = s
+			break
+		}
+	}
+	if firstbind == nil {
+		return
+	}
+	firstbind.walk(walkfn(walk))
+	parent := firstbind
+loop:
+	for s := firstbind.parent(); s != nil; s = s.parent() {
+		switch s := s.(type) {
+		case *Bind:
 			s.bind = filterSlice(s.bind, func(b *expr.Binding) bool {
 				_, ok := used[b.Result()]
 				return ok
@@ -94,16 +120,11 @@ loop:
 					return // we're using everything from previous steps
 				}
 			}
-			first = false
 		case *Aggregate:
 			for i := range s.Agg {
 				if op := s.Agg[i].Expr.Op; op == expr.OpSystemDatashape || op == expr.OpSystemDatashapeMerge {
 					return // using everything
 				}
-			}
-			if first {
-				first = false
-				break
 			}
 			s.Agg = filterSlice(s.Agg, func(ab *vm.AggBinding) bool {
 				_, ok := used[ab.Result]
@@ -122,29 +143,14 @@ loop:
 				}
 			}
 			maps.Clear(used)
-			first = false
 		case *IterTable:
-			if first {
-				first = false
-				break
-			}
 			s.trim(used)
-			first = false
-
 		case *IterValue:
-			if first {
-				first = false
-				break
-			}
 			if _, ok := used[s.Result]; !ok {
 				// cross-join result isn't used
 				parent.setparent(s.parent())
 				continue loop
 			}
-			// we are *not* clearing used because
-			// we only introduce 1 new binding;
-			// we do not overwrite existing bindings
-			first = false
 		case *Unpivot, *UnpivotAtDistinct:
 			return // all incoming fields are used
 		default:

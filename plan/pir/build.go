@@ -212,7 +212,7 @@ func build(parent *Trace, s *expr.Select, e Env) (*Trace, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = b.optimize(isselectall(s))
+	err = b.optimize()
 	return b, err
 }
 
