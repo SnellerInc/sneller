@@ -134,6 +134,12 @@ func doSplit(th TableHandle) (Subtables, error) {
 }
 
 func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+	// we need to capture the rewriting state,
+	// since we can't actually perform rewriting
+	// until we have split the incoming handle
+	orig := ep
+	ep = ep.clone()
+
 	// on execution, split the handle and then dispatch to u.From
 	return func(h TableHandle) error {
 		tbls, err := doSplit(h)
@@ -166,12 +172,6 @@ func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) erro
 				defer wg.Done()
 				var sub Subtable
 				tbls.Subtable(i, &sub)
-				subep := &ExecParams{
-					Output:   s,
-					Parallel: ep.Parallel, // ...meaningful?
-					Context:  ep.Context,
-					Rewriter: ep.Rewriter,
-				}
 				// wrap the rest of the query in a Tree;
 				// this makes it look to the Transport
 				// like we are executing a sub-query, which
@@ -185,8 +185,11 @@ func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) erro
 						Input: 0,
 					},
 				}
+				subep := ep.clone()
+				subep.Output = s
+				// subep.get will be clobbered by Exec here:
 				errors[i] = sub.Exec(stub, subep)
-				ep.Stats.atomicAdd(&subep.Stats)
+				orig.Stats.atomicAdd(&subep.Stats)
 			}(i)
 		}
 		wg.Wait()

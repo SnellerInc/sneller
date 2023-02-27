@@ -609,14 +609,6 @@ func toTree(in *pir.Trace, env Env) (*Tree, error) {
 }
 
 func (w *walker) toNode(t *Node, in *pir.Trace, env Env) error {
-	t.Children = make([]*Node, len(in.Replacements))
-	for i := range in.Replacements {
-		t.Children[i] = &Node{}
-		err := w.toNode(t.Children[i], in.Replacements[i], env)
-		if err != nil {
-			return err
-		}
-	}
 	w.latest = -1
 	op, err := w.walkBuild(in.Final(), env)
 	if err != nil {
@@ -625,6 +617,21 @@ func (w *walker) toNode(t *Node, in *pir.Trace, env Env) error {
 	t.Op = op
 	t.OutputType = results(in)
 	t.Input = w.latest
+	// push a substitution node for replacements if necessary
+	if len(in.Replacements) > 0 {
+		inner := make([]*Node, len(in.Replacements))
+		for i := range in.Replacements {
+			inner[i] = &Node{}
+			err := w.toNode(inner[i], in.Replacements[i], env)
+			if err != nil {
+				return err
+			}
+		}
+		t.Op = &Substitute{
+			Nonterminal: Nonterminal{t.Op},
+			Inner:       inner,
+		}
+	}
 	return nil
 }
 

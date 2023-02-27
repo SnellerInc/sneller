@@ -40,10 +40,14 @@ func gv(n *Node, dst io.Writer, tid, oid int) (int, int, error) {
 		return tid, oid, err
 	}
 	var prev Op
+	var children []*Node
 	for o := n.Op; o != nil; o = o.input() {
 		fmt.Fprintf(dst, "n%d [label=%q];\n", oid, o.String())
 		if prev != nil {
 			fmt.Fprintf(dst, "n%d -> n%d;\n", oid, oid-1)
+		}
+		if s, ok := o.(*Substitute); ok {
+			children = s.Inner
 		}
 		oid++
 		prev = o
@@ -62,9 +66,9 @@ func gv(n *Node, dst io.Writer, tid, oid int) (int, int, error) {
 	}
 	tid++
 	self := oid - 1 // id of this Tree's terminal
-	for i := range n.Children {
+	for i := range children {
 		start := oid // id of last op in child
-		tid, oid, err = gv(n.Children[i], dst, tid, oid)
+		tid, oid, err = gv(children[i], dst, tid, oid)
 		if err != nil {
 			return tid, oid, err
 		}

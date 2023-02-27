@@ -351,7 +351,7 @@ func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandl
 		}
 	}
 
-	a, err := vm.NewAggregate(s.Outputs, dst)
+	a, err := vm.NewAggregate(ep.rewriteAgg(s.Outputs), dst)
 	if err != nil {
 		return delay(err)
 	}
@@ -1205,16 +1205,6 @@ func (n *Node) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 	dst.BeginStruct(-1)
 	dst.BeginField(st.Intern("input"))
 	dst.WriteInt(int64(n.Input))
-	if len(n.Children) > 0 {
-		dst.BeginField(st.Intern("children"))
-		dst.BeginList(-1)
-		for i := range n.Children {
-			if err := n.Children[i].encode(dst, st, rw); err != nil {
-				return err
-			}
-		}
-		dst.EndList()
-	}
 	dst.BeginField(st.Intern("op"))
 	dst.BeginList(-1)
 	err := encoderec(n.Op, dst, st, rw)

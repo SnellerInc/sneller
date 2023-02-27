@@ -131,18 +131,8 @@ func (n *Node) decode(d Decoder, v ion.Datum) error {
 				n.Input = int(v)
 			}
 			return err
-		case "children":
-			return f.UnpackList(func(v ion.Datum) error {
-				nn := &Node{}
-				err := nn.decode(d, v)
-				if err != nil {
-					return err
-				}
-				n.Children = append(n.Children, nn)
-				return nil
-			})
 		default:
-			return nil
+			return errUnexpectedField
 		}
 	})
 	if err != nil {
@@ -241,6 +231,8 @@ func empty(name string) Op {
 		return &UnpivotAtDistinct{}
 	case "explain":
 		return &Explain{}
+	case "substitute":
+		return &Substitute{}
 	}
 	return nil
 }

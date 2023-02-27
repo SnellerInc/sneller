@@ -381,21 +381,3 @@ func splitGlobArg(args []expr.Node) (db, str string, ok bool) {
 	}
 	return path[0], path[1], true
 }
-
-func appenderr(outerr, err error) error {
-	if outerr == nil {
-		return err
-	}
-	if err == nil {
-		return outerr
-	}
-	return fmt.Errorf("%w and %s", outerr, err)
-}
-
-// appenderrs calls appenderr for each of errs.
-func appenderrs(outerr error, errs []error) error {
-	for i := range errs {
-		outerr = appenderr(outerr, errs[i])
-	}
-	return outerr
-}

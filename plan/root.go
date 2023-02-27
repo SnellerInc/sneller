@@ -46,6 +46,8 @@ type ExecParams struct {
 	// of the query. Transports are expected to
 	// stop processing queries after Context is canceled.
 	Context context.Context
+
+	get func(i int) TableHandle
 }
 
 type multiRewriter struct {
@@ -133,6 +135,17 @@ func (ep *ExecParams) rewriteBind(lst []expr.Binding) []expr.Binding {
 		newlst[i].Expr = expr.Rewrite(ep.Rewriter, newlst[i].Expr)
 	}
 	return newlst
+}
+
+// clone everything except ep.Stats
+func (ep *ExecParams) clone() *ExecParams {
+	return &ExecParams{
+		Output:   ep.Output,
+		Parallel: ep.Parallel,
+		Context:  ep.Context,
+		Rewriter: ep.Rewriter,
+		get:      ep.get,
+	}
 }
 
 // Exec executes a plan and writes the
