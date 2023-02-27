@@ -12,8 +12,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//go:generate stringer -type=AggregateOpFn
-
 package vm
 
 import (
@@ -63,6 +61,55 @@ const (
 	AggregateOpApproxCountDistinctPartial
 	AggregateOpApproxCountDistinctMerge
 )
+
+func (o AggregateOpFn) String() string {
+	switch o {
+	case AggregateOpNone:
+		return "AggregateOpNone"
+	case AggregateOpSumF:
+		return "AggregateOpSumF"
+	case AggregateOpAvgF:
+		return "AggregateOpAvgF"
+	case AggregateOpMinF:
+		return "AggregateOpMinF"
+	case AggregateOpMaxF:
+		return "AggregateOpMaxF"
+	case AggregateOpSumI:
+		return "AggregateOpSumI"
+	case AggregateOpSumC:
+		return "AggregateOpSumC"
+	case AggregateOpAvgI:
+		return "AggregateOpAvgI"
+	case AggregateOpMinI:
+		return "AggregateOpMinI"
+	case AggregateOpMaxI:
+		return "AggregateOpMaxI"
+	case AggregateOpAndI:
+		return "AggregateOpAndI"
+	case AggregateOpOrI:
+		return "AggregateOpOrI"
+	case AggregateOpXorI:
+		return "AggregateOpXorI"
+	case AggregateOpAndK:
+		return "AggregateOpAndK"
+	case AggregateOpOrK:
+		return "AggregateOpOrK"
+	case AggregateOpMinTS:
+		return "AggregateOpMinTS"
+	case AggregateOpMaxTS:
+		return "AggregateOpMaxTS"
+	case AggregateOpCount:
+		return "AggregateOpCount"
+	case AggregateOpApproxCountDistinct:
+		return "AggregateOpApproxCountDistinct"
+	case AggregateOpApproxCountDistinctPartial:
+		return "AggregateOpApproxCountDistinctPartial"
+	case AggregateOpApproxCountDistinctMerge:
+		return "AggregateOpApproxCountDistinctMerge"
+	default:
+		return fmt.Sprintf("<AggregateOpFn=%d>", int(o))
+	}
+}
 
 // AggregateOp describes aggregate operation
 type AggregateOp struct {
