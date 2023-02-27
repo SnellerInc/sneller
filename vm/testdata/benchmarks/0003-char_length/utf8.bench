@@ -1,1 +1,1 @@
-SELECT CHAR_LENGTH(country) + CHAR_LENGTH(name) FROM 'data.jsonrl'
+SELECT CHAR_LENGTH(country) + CHAR_LENGTH(name) FROM '../0021-like/data.jsonrl'
