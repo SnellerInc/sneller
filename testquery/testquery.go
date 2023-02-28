@@ -668,7 +668,7 @@ func (q *TestCaseIon) Execute(flags RunFlags) error {
 				i, toJSON(q.SymbolTable, gotout[i]), i, toJSON(q.SymbolTable, q.Output[i])))
 		}
 		if nErrors > 10 {
-			err = errors.Join(err, fmt.Errorf("... and more nErrors"))
+			err = errors.Join(err, fmt.Errorf("... and more %d", nErrors))
 			break
 		}
 	}
