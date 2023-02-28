@@ -6995,7 +6995,7 @@ TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
   VMOVDQA64   Z16, Z18
 
   // load some immediates
-  BC_FILL_ONES(Z10)                       // Z10 = all ones
+  BC_FILL_ONES(Z10)                // Z10 = all ones
   VPSRLD        $28, Z10, Z6       // Z6 = 0xf
   VPXORQ        Z14, Z14, Z14      // Z14 = constant 0
   VPXORQ        Z7, Z7, Z7         // Z7 = shift count
@@ -7444,8 +7444,6 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   //
   // VPMADDUBSW is used to horizontally add two bytes, Z10 is a vector of
   // 0x0101 values, thus multiplying all bytes with 1, and summing them.
-  //
-  // NOTE: This chain can be replaced by `VPOPCNTD Z8, Z8`
   VBROADCASTI32X4 CONST_GET_PTR(popcnt_nibble, 0), Z10
   VPSRLD $4, Z8, Z9
   VPANDD.BCST CONSTD_0x0F0F0F0F(), Z8, Z8
@@ -7467,6 +7465,47 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   VPADDQ Z9, Z5, Z5
   VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
   VPSCATTERDQ Z5, K3, 8(R15)(Y7*1)
+
+  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 4)
+
+TEXT bcaggslotcount_v2(SB), NOSPLIT|NOFRAME, $0
+  BC_UNPACK_SLOT(4, OUT(BX))
+  BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
+
+  // Load buckets as early as possible so we can resolve conflicts early,
+  // because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).
+  VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6
+  VMOVDQU32 bytecode_bucket(VIRT_BCPTR), K1, Z6
+  VPCONFLICTD.Z Z6, K1, Z8
+
+  // Load the aggregation data pointer and prepare high 8 element offsets.
+  MOVL 0(VIRT_PCREG), R15
+  ADDQ radixTree64_values(R10), R15
+  VEXTRACTI32X8 $1, Z6, Y7
+
+  // Z4/Z5 <- gather all 16 lanes representing the current COUNT.
+  KMOVB K1, K2
+  KSHIFTRW $8, K1, K3
+  KMOVB K3, K6
+  VPGATHERDQ 8(R15)(Y6*1), K2, Z4
+  VPGATHERDQ 8(R15)(Y7*1), K3, Z5
+
+  // Now resolve COUNT conflicts. We know that the most significant element
+  // is stored last by scatters, and we know, that conflict detection goes
+  // from the most significant to least significant, so the conflicts are
+  // resolved in the correct order respecting scatter.
+  VPOPCNTD  Z8, Z8
+
+  // Aggregate and store the new COUNT of elements.
+  VPADDD.BCST CONSTD_1(), Z8, Z8
+  KMOVB K1, K2
+  VEXTRACTI32X8 $1, Z8, Y9
+  VPMOVZXDQ Y8, Z8
+  VPMOVZXDQ Y9, Z9
+  VPADDQ Z8, Z4, Z4
+  VPADDQ Z9, Z5, Z5
+  VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
+  VPSCATTERDQ Z5, K6, 8(R15)(Y7*1)
 
   NEXT_ADVANCE(BC_SLOT_SIZE*1 + 4)
 
