@@ -7198,12 +7198,11 @@ resolved:                                                                     \
   KMOVB K1, K2                                                                \
   VSCATTERDPD Z14, K2, 0(R15)(Y6*1)                                           \
                                                                               \
-  KSHIFTRW $8, K1, K2                                                         \
+  KMOVB K6, K2                                                                \
   VPXORQ X14, X14, X14                                                        \
   VGATHERDPD 0(R15)(Y7*1), K2, Z14                                            \
-  KSHIFTRW $8, K1, K2                                                         \
-  Instruction Z5, Z14, K2, Z14                                                \
-  VSCATTERDPD Z14, K2, 0(R15)(Y7*1)                                           \
+  Instruction Z5, Z14, K6, Z14                                                \
+  VSCATTERDPD Z14, K6, 0(R15)(Y7*1)                                           \
                                                                               \
 next:
 
@@ -7301,23 +7300,22 @@ resolved:                                                                     \
   /* Aggregate non-conflicting values and COUNTs into buckets (high). */      \
   VPXORQ X14, X14, X14                                                        \
   VPXORQ X13, X13, X13                                                        \
-  KSHIFTRW $8, K1, K2                                                         \
+  KMOVB K6, K2                                                                \
+  KMOVB K6, K3                                                                \
   VGATHERDPD 0(R15)(Y7*1), K2, Z14                                            \
-  KSHIFTRW $8, K1, K2                                                         \
-  VPGATHERDQ 8(R15)(Y7*1), K2, Z13                                            \
-  KSHIFTRW $8, K1, K2                                                         \
+  VPGATHERDQ 8(R15)(Y7*1), K3, Z13                                            \
+  KMOVB K6, K2                                                                \
   Instruction Z5, Z14, K2, Z14                                                \
   VPADDQ Z16, Z13, K2, Z13                                                    \
   VSCATTERDPD Z14, K2, 0(R15)(Y7*1)                                           \
-  KSHIFTRW $8, K1, K2                                                         \
-  VPSCATTERDQ Z13, K2, 8(R15)(Y7*1)                                           \
+  VPSCATTERDQ Z13, K6, 8(R15)(Y7*1)                                           \
                                                                               \
 next:
 
 TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
@@ -7326,7 +7324,7 @@ TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
 TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
@@ -7334,78 +7332,78 @@ TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
 
 TEXT bcaggslotaddf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VADDPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotaddi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPADDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotavgf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_COUNT_OP(0, VADDPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_COUNT_OP(0, VPADDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VMINPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMINSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VMAXPD)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMAXSQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
   BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
-  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K2), IN(R8))
-  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K2))
+  BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPXORQ)
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
