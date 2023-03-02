@@ -981,7 +981,7 @@ TEXT bccvti64tostr(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTD.Z R8, K1, Z2
 
   // Make R8 the first address where the output will be stored.
-  ADDQ SI, R8
+  ADDQ VIRT_BASE, R8
 
   VPADDD CONST_GET_PTR(consts_offsets_d_20, 4), Z2, Z2
   VPSUBD.Z Z3, Z2, K1, Z2
@@ -1085,7 +1085,7 @@ TEXT bccmpvk(SB), NOSPLIT|NOFRAME, $0
 
   KMOVW K1, K3
   VPXORD X4, X4, X4
-  VPGATHERDD 0(SI)(Z2*1), K3, Z4                       // Z4 <- first 4 bytes of the left value
+  VPGATHERDD 0(VIRT_BASE)(Z2*1), K3, Z4                // Z4 <- first 4 bytes of the left value
 
   VPBROADCASTD CONSTD_0x0F(), Z6                       // Z6 <- Constant(0xF)
   KMOVW 0(VIRT_VALUES)(CX*1), K2                       // K2 <- right boolean value
@@ -1118,7 +1118,7 @@ TEXT bccmpvkimm(SB), NOSPLIT|NOFRAME, $0
 
   KMOVW K1, K2
   VPXORQ X4, X4, X4
-  VPGATHERDD 0(SI)(Z2*1), K2, Z4                       // Z4 <- first 4 bytes of the left value
+  VPGATHERDD 0(VIRT_BASE)(Z2*1), K2, Z4                // Z4 <- first 4 bytes of the left value
 
   VPBROADCASTD CONSTD_0x0F(), Z6                       // Z6 <- Constant(0xF)
   VPSRLD $3, Z6, Z7                                    // Z7 <- Constant(1)
@@ -1182,10 +1182,10 @@ TEXT cmpvi64_tail(SB), NOSPLIT|NOFRAME, $0
   VEXTRACTI32X8 $1, Z30, Y11
   KMOVB K1, K2
   VPXORQ X4, X4, X4
-  VPGATHERDQ 1(SI)(Y30*1), K2, Z4
+  VPGATHERDQ 1(VIRT_BASE)(Y30*1), K2, Z4
   KSHIFTRW $8, K1, K3
   VPXORQ X5, X5, X5
-  VPGATHERDQ 1(SI)(Y11*1), K3, Z5
+  VPGATHERDQ 1(VIRT_BASE)(Y11*1), K3, Z5
 
   // Byteswap each gathered value and shift right in case of signed/unsigned int
   VPBROADCASTD CONSTD_8(), Z11
@@ -1300,10 +1300,10 @@ TEXT cmpvf64_tail(SB), NOSPLIT|NOFRAME, $0
   VEXTRACTI32X8 $1, Z30, Y11
   KMOVB K1, K2
   VPXORQ X4, X4, X4
-  VPGATHERDQ 1(SI)(Y30*1), K2, Z4
+  VPGATHERDQ 1(VIRT_BASE)(Y30*1), K2, Z4
   KSHIFTRW $8, K1, K3
   VPXORQ X5, X5, X5
-  VPGATHERDQ 1(SI)(Y11*1), K3, Z5
+  VPGATHERDQ 1(VIRT_BASE)(Y11*1), K3, Z5
 
   // Byteswap each gathered value and shift right in case of signed/unsigned int
   VPBROADCASTD CONSTD_8(), Z11
@@ -1989,8 +1989,8 @@ TEXT cmpeq_tail(SB), NOSPLIT|NOFRAME, $0
 loop4:
   KMOVW        K2, K3
   KMOVW        K2, K4
-  VPGATHERDD   0(SI)(Z4*1), K3, Z11
-  VPGATHERDD   0(SI)(Z6*1), K2, Z10
+  VPGATHERDD   0(VIRT_BASE)(Z4*1), K3, Z11
+  VPGATHERDD   0(VIRT_BASE)(Z6*1), K2, Z10
   VPCMPEQD     Z10, Z11, K1, K1 // matching &= words are equal
   KANDW        K1, K4, K4
   VPADDD       Z24, Z4, K4, Z4  // offsets += 4
@@ -2008,8 +2008,8 @@ loop4tail:
   VBROADCASTI64X2 tail_mask_map<>(SB), Z9
   VPERMD          Z9, Z7, Z9
   KMOVW           K2, K3
-  VPGATHERDD      0(SI)(Z4*1), K3, Z11
-  VPGATHERDD      0(SI)(Z6*1), K2, Z10
+  VPGATHERDD      0(VIRT_BASE)(Z4*1), K3, Z11
+  VPGATHERDD      0(VIRT_BASE)(Z6*1), K2, Z10
   VPANDD          Z9, Z10, Z10
   VPANDD          Z9, Z11, Z11
   VPCMPEQD        Z10, Z11, K1, K1
@@ -2033,9 +2033,9 @@ TEXT cmpeqimm_tail(SB), NOSPLIT|NOFRAME, $0
 loop:
   KMOVW K1, K2
   VPXORD X10, X10, X10
-  VPGATHERDD 0(SI)(Z4*1), K2, Z10         // gather 4 bytes
-  VPADDD Z24, Z4, K1, Z4                  // increment offsets by 4
-  VPCMPEQD.BCST 0(SI)(BX*1), Z10, K1, K1  // matching &= words are equal
+  VPGATHERDD 0(VIRT_BASE)(Z4*1), K2, Z10         // gather 4 bytes
+  VPADDD Z24, Z4, K1, Z4                         // increment offsets by 4
+  VPCMPEQD.BCST 0(VIRT_BASE)(BX*1), Z10, K1, K1  // matching &= words are equal
 
   ADDQ $4, BX
   KTESTW K1, K1
@@ -2057,8 +2057,8 @@ tail:
   VPERMD Z9, Z5, Z9
   KMOVW K1, K2
   VPXORD X10, X10, X10
-  VPGATHERDD 0(SI)(Z4*1), K2, Z10
-  VPANDD.BCST.Z 0(SI)(BX*1), Z9, K1, Z11
+  VPGATHERDD 0(VIRT_BASE)(Z4*1), K2, Z10
+  VPANDD.BCST.Z 0(VIRT_BASE)(BX*1), Z9, K1, Z11
   VPANDD Z9, Z10, Z10
   VPCMPEQD Z10, Z11, K1, K1
 
@@ -3343,11 +3343,11 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   // Z4:Z5 <- First 8 bytes of the timestamp to process ignoring the timezone offset byte.
   KMOVB K1, K3
   VPXORQ X4, X4, X4
-  VPGATHERDQ 1(SI)(Y2*1), K3, Z4
+  VPGATHERDQ 1(VIRT_BASE)(Y2*1), K3, Z4
 
   KMOVB K2, K4
   VPXORQ X5, X5, X5
-  VPGATHERDQ 1(SI)(Y21*1), K4, Z5
+  VPGATHERDQ 1(VIRT_BASE)(Y21*1), K4, Z5
 
   // Z20/Z21 <- Frequently used constants to avoid broadcasts.
   VPBROADCASTQ CONSTQ_0x7F(), Z20
@@ -3430,7 +3430,7 @@ TEXT bcunboxts(SB), NOSPLIT|NOFRAME, $0
   VPCMPD.BCST $VPCMP_IMM_GT, CONSTD_10(), Z3, K1, K3
   VPADDD Z2, Z3, Z19
   VPXORD X18, X18, X18
-  VPGATHERDD (-4)(SI)(Z19*1), K3, Z18
+  VPGATHERDD (-4)(VIRT_BASE)(Z19*1), K3, Z18
 
   // Z8/Z9 <- Month - 3.
   VPSUBQ.BCST CONSTQ_3(), Z8, Z8
@@ -3680,15 +3680,15 @@ TEXT bcboxts(SB), NOSPLIT|NOFRAME, $0
 
   KMOVB         K1, K3
   KSHIFTRW      $8, K1, K4
-  VPADDD        Z14, Z30, Z29         // Z29 = high positions
-  VEXTRACTI32X8 $1, Z30, Y21          // Y21 = hi 8 base positions
-  VPSCATTERDQ   Z10, K3, 0(SI)(Y30*1) // write leading bits, lo 8 lanes
-  VPSCATTERDQ   Z11, K4, 0(SI)(Y21*1) // write leading bits, hi 8 lanes
+  VPADDD        Z14, Z30, Z29                // Z29 = high positions
+  VEXTRACTI32X8 $1, Z30, Y21                 // Y21 = hi 8 base positions
+  VPSCATTERDQ   Z10, K3, 0(VIRT_BASE)(Y30*1) // write leading bits, lo 8 lanes
+  VPSCATTERDQ   Z11, K4, 0(VIRT_BASE)(Y21*1) // write leading bits, hi 8 lanes
   KMOVB         K1, K3
   KSHIFTRW      $8, K1, K4
-  VEXTRACTI32X8 $1, Z29, Y21          // Y21 = hi 8 upper positions
-  VPSCATTERDQ   Z4, K3, 0(SI)(Y29*1)  // write trailing bits, lo 8 lanes
-  VPSCATTERDQ   Z5, K4, 0(SI)(Y21*1)  // write trailing bits, hi 8 lanes
+  VEXTRACTI32X8 $1, Z29, Y21                 // Y21 = hi 8 upper positions
+  VPSCATTERDQ   Z4, K3, 0(VIRT_BASE)(Y29*1)  // write trailing bits, lo 8 lanes
+  VPSCATTERDQ   Z5, K4, 0(VIRT_BASE)(Y21*1)  // write trailing bits, hi 8 lanes
 
   VPMOVQD Z10, Y10
   VPMOVQD Z11, Y11
@@ -4043,7 +4043,7 @@ TEXT geohash_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDD CONST_GET_PTR(consts_offsets_interleaved_d_16, 0), Z2, Z2
 
   // Make R8 the first address where the output will be stored.
-  ADDQ SI, R8
+  ADDQ VIRT_BASE, R8
 
   // Unpack so we will get 16 characters in each 128-bit part of the register.
   VPUNPCKLBW Z14, Z16, Z4  // Lane: [06][04][02][00]
@@ -4436,15 +4436,15 @@ TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDB Z27, Z5, Z5
   KMOVB K1, K3
   KMOVB K2, K4
-  VPSCATTERQQ Z4, K3, -8(SI)(Z20*1)
-  VPSCATTERQQ Z5, K4, -8(SI)(Z21*1)
+  VPSCATTERQQ Z4, K3, -8(VIRT_BASE)(Z20*1)
+  VPSCATTERQQ Z5, K4, -8(VIRT_BASE)(Z21*1)
 
   VPADDB Z27, Z12, Z12
   VPADDB Z27, Z13, Z13
   KMOVB K1, K3
   KMOVB K2, K4
-  VPSCATTERQQ Z12, K3, -16(SI)(Z20*1)
-  VPSCATTERQQ Z13, K4, -16(SI)(Z21*1)
+  VPSCATTERQQ Z12, K3, -16(VIRT_BASE)(Z20*1)
+  VPSCATTERQQ Z13, K4, -16(VIRT_BASE)(Z21*1)
 
   VPSUBQ Z22, Z20, Z20
   VPSUBQ Z23, Z21, Z21
@@ -4507,15 +4507,15 @@ TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDB Z27, Z7, Z7
   KMOVB K1, K3
   KMOVB K2, K4
-  VPSCATTERQQ Z6, K3, -8(SI)(Z20*1)
-  VPSCATTERQQ Z7, K4, -8(SI)(Z21*1)
+  VPSCATTERQQ Z6, K3, -8(VIRT_BASE)(Z20*1)
+  VPSCATTERQQ Z7, K4, -8(VIRT_BASE)(Z21*1)
 
   VPADDB Z27, Z12, Z12
   VPADDB Z27, Z13, Z13
   KMOVB K1, K3
   KMOVB K2, K4
-  VPSCATTERQQ Z12, K3, -16(SI)(Z20*1)
-  VPSCATTERQQ Z13, K4, -16(SI)(Z21*1)
+  VPSCATTERQQ Z12, K3, -16(VIRT_BASE)(Z20*1)
+  VPSCATTERQQ Z13, K4, -16(VIRT_BASE)(Z21*1)
 
   VPSUBQ Z22, Z20, Z20
   VPSUBQ Z23, Z21, Z21
@@ -4552,8 +4552,8 @@ TEXT geotilees_tail(SB), NOSPLIT|NOFRAME, $0
   VPADDB Z27, Z13, Z13
   KMOVB K1, K3
   KMOVB K2, K4
-  VPSCATTERQQ Z12, K3, -8(SI)(Z20*1)
-  VPSCATTERQQ Z13, K4, -8(SI)(Z21*1)
+  VPSCATTERQQ Z12, K3, -8(VIRT_BASE)(Z20*1)
+  VPSCATTERQQ Z13, K4, -8(VIRT_BASE)(Z21*1)
 
   VPSUBQ Z22, Z20, Z20
   VPSUBQ Z23, Z21, Z21
@@ -4777,8 +4777,8 @@ lane_copy_iter:                                        // Iterate over the mask 
   MOVL 64(BX)(R14 * 4), CX                             // CX <- Input length
   MOVL bytecode_spillArea(VIRT_BCPTR)(R14 * 4), R15    // R15 <- Output index
   MOVL 0(BX)(R14 * 4), R14                             // R14 <- Input index
-  ADDQ SI, R15                                         // R15 <- Make output address from output index
-  ADDQ SI, R14                                         // R14 <- Make input address from input index
+  ADDQ VIRT_BASE, R15                                  // R15 <- Make output address from output index
+  ADDQ VIRT_BASE, R14                                  // R14 <- Make input address from input index
 
   SUBL $64, CX
   JCS lane_64b_tail
@@ -4894,7 +4894,7 @@ TEXT findsym_tail(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTB CONSTD_0x80(), Z22                      // Z22 <- dword(0x80808080)
   JZ no_symbols
 
-  VPGATHERDD 0(SI)(Z28*1), K5, Z2                      // Z2 <- gather bytes for the first iteration here...
+  VPGATHERDD 0(VIRT_BASE)(Z28*1), K5, Z2               // Z2 <- gather bytes for the first iteration here...
 
   VPSRLD $31, Z22, Z21                                 // Z21 <- dword(1)
   VPSRLD $24, Z22, Z14                                 // Z14 <- dword(0x80)
@@ -4920,7 +4920,7 @@ TEXT findsym_tail(SB), NOSPLIT|NOFRAME, $0
 
 decode_loop:
   KMOVW K5, K6                                         // K6 <- remaining lanes to scan
-  VPGATHERDD 0(SI)(Z28*1), K5, Z2                      // Z2 <- gathered bytes
+  VPGATHERDD 0(VIRT_BASE)(Z28*1), K5, Z2               // Z2 <- gathered bytes
 
 decode_init:
   VMOVDQU32 Z21, K6, Z10                               // Z10 <- initially set all hLens of active lanes to 1 (we will add Length size later)
@@ -5026,7 +5026,7 @@ decode_long_symbol:
 
 decode_long_length_needs_gather:
   KMOVW K5, K4
-  VPGATHERDD 1(SI)(Z30*1), K4, Z9
+  VPGATHERDD 1(VIRT_BASE)(Z30*1), K4, Z9
 
   MOVL $0x40000001, BX
   VPBROADCASTD BX, Z4                                  // Z4 <- constant(0x40000001 == (1 << 30) | 1)
@@ -5236,7 +5236,7 @@ TEXT bcunsymbolize(SB), NOSPLIT|NOFRAME, $0
   BC_LOAD_VALUE_HLEN_FROM_SLOT(OUT(Z3), IN(BX))
   JZ next
 
-  VPGATHERDD 1(SI)(Z0*1), K3, Z6                 // Z6 <- SymbolID bytes (without TLV, which was skipped)
+  VPGATHERDD 1(VIRT_BASE)(Z0*1), K3, Z6          // Z6 <- SymbolID bytes (without TLV, which was skipped)
   VPSUBD.Z Z1, Z3, K2, Z4                        // Z4 <- -(SymbolIDLength)
   MOVQ bytecode_symtab+0(VIRT_BCPTR), R8         // R8 <- symbol table base
 
@@ -5311,10 +5311,10 @@ TEXT bcunboxcoercef64(SB), NOSPLIT|NOFRAME, $0
 
   VEXTRACTI32X8 $1, Z30, Y13
   KMOVB K1, K3
-  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPGATHERDQ 1(VIRT_BASE)(Y30*1), K3, Z2              // Z2 <- number data (low)
   VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
   KSHIFTRW $8, K1, K4
-  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPGATHERDQ 1(VIRT_BASE)(Y13*1), K4, Z3              // Z3 <- number data (high)
   VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
 
   VEXTRACTI32X8 $1, Z12, Y13
@@ -5368,14 +5368,14 @@ TEXT bcunboxcoercei64(SB), NOSPLIT|NOFRAME, $0
 
   KMOVB K1, K3
   VEXTRACTI32X8 $1, Z30, Y13
-  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPGATHERDQ 1(VIRT_BASE)(Y30*1), K3, Z2              // Z2 <- number data (low)
 
   KSHIFTRW $8, K1, K4
   VPSLLD $2, Z11, Z12                                 // Z12 <- constant(8)
   VPSRLD $1, Z11, Z10                                 // Z10 <- constant(1)
   VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
 
-  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPGATHERDQ 1(VIRT_BASE)(Y13*1), K4, Z3              // Z3 <- number data (high)
   VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
 
   VEXTRACTI32X8 $1, Z12, Y13
@@ -5438,11 +5438,11 @@ TEXT bcunboxcvtf64(SB), NOSPLIT|NOFRAME, $0
 
   KMOVB K1, K3
   VEXTRACTI32X8 $1, Z30, Y13
-  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPGATHERDQ 1(VIRT_BASE)(Y30*1), K3, Z2              // Z2 <- number data (low)
 
   KSHIFTRW $8, K1, K4
   VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
-  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPGATHERDQ 1(VIRT_BASE)(Y13*1), K4, Z3              // Z3 <- number data (high)
 
   VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
   VEXTRACTI32X8 $1, Z12, Y13
@@ -5506,11 +5506,11 @@ TEXT bcunboxcvti64(SB), NOSPLIT|NOFRAME, $0
 
   KMOVB K1, K3
   VEXTRACTI32X8 $1, Z30, Y13
-  VPGATHERDQ 1(SI)(Y30*1), K3, Z2                     // Z2 <- number data (low)
+  VPGATHERDQ 1(VIRT_BASE)(Y30*1), K3, Z2              // Z2 <- number data (low)
 
   KSHIFTRW $8, K1, K4
   VPSUBD Z6, Z12, Z12                                 // Z12 <- (8 - L)
-  VPGATHERDQ 1(SI)(Y13*1), K4, Z3                     // Z3 <- number data (high)
+  VPGATHERDQ 1(VIRT_BASE)(Y13*1), K4, Z3              // Z3 <- number data (high)
 
   VPSLLD $3, Z12, Z12                                 // Z12 <- (8 - L) << 3
   VEXTRACTI32X8 $1, Z12, Y13
@@ -5637,17 +5637,17 @@ TEXT bcboxf64(SB), NOSPLIT|NOFRAME, $0
 
   // Scatter descriptor bytes of each active lane.
   KMOVW K1, K3
-  VPSCATTERDD Z8, K3, 0(SI)(Z30*1)
+  VPSCATTERDD Z8, K3, 0(VIRT_BASE)(Z30*1)
   VEXTRACTI64X4 $1, Z30, Y13
 
   VPSHUFB Z12, Z2, Z2                    // Z2 <- byteswapped and encoded integers and floating points ready to scatter (low)
   VPSHUFB Z12, Z3, Z3                    // Z3 <- byteswapped and encoded integers and floating points ready to scatter (high)
 
   KMOVW K1, K3
-  VPSCATTERDQ Z2, K3, 1(SI)(Y30*1)
+  VPSCATTERDQ Z2, K3, 1(VIRT_BASE)(Y30*1)
 
   VPADDD.Z Z14, Z31, K1, Z31              // Z31 <- size of the encoded ion value including Type|L byte
-  VPSCATTERDQ Z3, K2, 1(SI)(Y13*1)
+  VPSCATTERDQ Z3, K2, 1(VIRT_BASE)(Y13*1)
 
   BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -5667,8 +5667,8 @@ box_fast_i64:
   VPORQ Z11, Z3, Z3                      // Z3 <- encoded ION value having max 8 bytes (high)
   VPADDD.Z Z14, Z31, K1, Z31             // Z31 <- size of the encoded ion value including Type|L byte
 
-  VMOVDQU32 Z2, 0(SI)(R8*1)
-  VMOVDQU32 Z3, 64(SI)(R8*1)
+  VMOVDQU32 Z2, 0(VIRT_BASE)(R8*1)
+  VMOVDQU32 Z3, 64(VIRT_BASE)(R8*1)
 
   BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -5736,15 +5736,15 @@ TEXT bcboxi64(SB), NOSPLIT|NOFRAME, $0
 
   // Scatter descriptor bytes of each active lane.
   KMOVW K1, K3
-  VPSCATTERDD Z8, K3, 0(SI)(Z30*1)
+  VPSCATTERDD Z8, K3, 0(VIRT_BASE)(Z30*1)
   VEXTRACTI64X4 $1, Z30, Y13
 
   VPSHUFB Z12, Z4, Z4                    // Z4 <- byteswapped and encoded integers ready to scatter (low)
   VPSHUFB Z12, Z5, Z5                    // Z5 <- byteswapped and encoded integers ready to scatter (high)
 
   KMOVW K1, K3
-  VPSCATTERDQ Z4, K3, 1(SI)(Y30*1)
-  VPSCATTERDQ Z5, K2, 1(SI)(Y13*1)
+  VPSCATTERDQ Z4, K3, 1(VIRT_BASE)(Y30*1)
+  VPSCATTERDQ Z5, K2, 1(VIRT_BASE)(Y13*1)
 
   BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -5762,8 +5762,8 @@ box_fast_i64:
   VPORQ Z10, Z4, Z4                      // Z4 <- encoded ION value having max 8 bytes (low)
   VPORQ Z11, Z5, Z5                      // Z5 <- encoded ION value having max 8 bytes (high)
 
-  VMOVDQU64 Z4, 0(SI)(R8*1)
-  VMOVDQU64 Z5, 64(SI)(R8*1)
+  VMOVDQU64 Z4, 0(VIRT_BASE)(R8*1)
+  VMOVDQU64 Z5, 64(VIRT_BASE)(R8*1)
 
   BC_STORE_VALUE_TO_SLOT(IN(Z30), IN(Z31), IN(Z8), IN(Z14), IN(DX))
   NEXT_ADVANCE(BC_SLOT_SIZE*3)
@@ -5842,7 +5842,7 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // Gather LO-8 bytes of LO-8 lanes to Z11.
   KMOVW K1, K4
   VPXORD X11, X11, X11
-  VPGATHERDQ 0(SI)(Y2*1), K4, Z11
+  VPGATHERDQ 0(VIRT_BASE)(Y2*1), K4, Z11
 
   // Z15 will contain HI-8 indexes in the LO 256-bit part of Z15 (for gathers).
   VSHUFI64X2 $SHUFFLE_IMM_4x2b(1, 0, 3, 2), Z2, Z2, Z15
@@ -5890,7 +5890,7 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // Gather HI-8 bytes of LO-8 lanes to Z12.
   KMOVW K1, K5
   VPXORD X12, X12, X12
-  VPGATHERDQ 8(SI)(Y2*1), K5, Z12
+  VPGATHERDQ 8(VIRT_BASE)(Y2*1), K5, Z12
 
   // Z7 would contain the number of bits to discard in Z5.
   VPSUBD Z7, Z8, Z7
@@ -5918,7 +5918,7 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // Gather LO-8 bytes of HI-8 lanes to Z13.
   KSHIFTRW $8, K1, K4
   VPXORD X13, X13, X13
-  VPGATHERDQ 0(SI)(Y15*1), K4, Z13
+  VPGATHERDQ 0(VIRT_BASE)(Y15*1), K4, Z13
 
   MOVL $0xF0F0, R15
   KMOVW R15, K4
@@ -5940,7 +5940,7 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   // Gather HI-8 bytes of HI-8 lanes to Z14.
   KSHIFTRW $8, K2, K5
   VPXORD X14, X14, X14
-  VPGATHERDQ 8(SI)(Y15*1), K5, Z14
+  VPGATHERDQ 8(VIRT_BASE)(Y15*1), K5, Z14
 
   // Z8 now contains the end index of each lane. What we need is, however, the
   // start index, which can be calculated by subtracting start indexes from it.
@@ -5964,7 +5964,7 @@ TEXT boxslice_tail(SB), NOSPLIT|NOFRAME, $0
   MOVQ R15, bytecode_scratch+8(VIRT_BCPTR)             // Store output buffer length back to the bytecode_scratch slice.
 
   MOVL bytecode_scratchoff(VIRT_BCPTR), R8             // R8 = location of scratch base
-  ADDQ SI, R8                                          // R8 += base output address.
+  ADDQ VIRT_BASE, R8                                   // R8 += base output address.
   ADDQ CX, R8                                          // R8 += adjusted output address by its current length.
 
   // Unpack string data into 16-byte units, so we can use 16-byte stores.
@@ -6676,7 +6676,7 @@ next:
 
   KMOVW K1, K2
   VPXORD X2, X2, X2
-  VPGATHERDD 0(SI)(Z30*1), K2, Z2
+  VPGATHERDD 0(VIRT_BASE)(Z30*1), K2, Z2
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
   BC_CALC_VALUE_HLEN(OUT(Z3), IN(Z31), IN(K1), IN(Z8), IN(Z9), Z5, K2)
@@ -7549,7 +7549,7 @@ TEXT bcauxval(SB), NOSPLIT|NOFRAME, $0
   // read TLV byte and calculate header length
   KMOVW K1, K2
   VPXORD X2, X2, X2
-  VPGATHERDD 0(SI)(Z0*1), K2, Z2                            // Z2 <- first 4 bytes of the value
+  VPGATHERDD 0(VIRT_BASE)(Z0*1), K2, Z2                     // Z2 <- first 4 bytes of the value
 
   BC_UNPACK_2xSLOT(0, OUT(DX), OUT(CX))
   BC_CALC_VALUE_HLEN(OUT(Z3), IN(Z1), IN(K1), IN(Z8), IN(Z9), Z5, K2)
@@ -7576,7 +7576,7 @@ TEXT bcsplit(SB), NOSPLIT|NOFRAME, $0
   VPXORD X4, X4, X4
   JZ empty
 
-  VPGATHERDD 0(SI)(Z2*1), K2, Z4                               // Z4 <- first 4 ion bytes
+  VPGATHERDD 0(VIRT_BASE)(Z2*1), K2, Z4                        // Z4 <- first 4 ion bytes
   VPSLLD $5, Z13, Z11                                          // Z11 <- dword(32)
   VPSHUFB BC_CONST(bswap32), Z4, Z5                            // Z5 <- bswap32(bytes)
   VPBROADCASTD CONSTD_0x00808080(), Z7                         // Z7 <- dword(0x808080)
@@ -7773,14 +7773,14 @@ loop:
 
   KMOVW K1, K3
   VPXORD X2, X2, X2
-  VPGATHERDQ 0(SI)(Y0*1), K3, Z2                       // Z2 <- V.hdr64 (struct Symbol+Value or list Value bytes) (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y0*1), K3, Z2                // Z2 <- V.hdr64 (struct Symbol+Value or list Value bytes) (low)
 
   VPADDD Z22, Z10, K1, Z10                             // Z10 <- increment length of active lanes
   VPADDD Z22, Z0, K1, Z0                               // Z0 <- Z0 + 1 (advance by a size of a TVL byte)
 
   KMOVW K2, K4
   VPXORD X3, X3, X3
-  VPGATHERDQ 0(SI)(Y9*1), K4, Z3                       // Z3 <- V.hdr64 (struct Symbol+Value or list Value bytes) (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y9*1), K4, Z3                // Z3 <- V.hdr64 (struct Symbol+Value or list Value bytes) (high)
 
   VPSHUFB Z30, Z2, Z2                                  // Z2 <- bswap64(V.hdr64) (low)
   VPSRLQ $8, Z2, Z4                                    // Z4 <- bswap64(V.hdr64) >> 8 (low)
@@ -7914,7 +7914,7 @@ small_values:
 loop:
   KMOVW K1, K2
   VPXORD X2, X2, X2
-  VPGATHERDD 0(SI)(Z0*1), K2, Z2                       // Z2 <- V.hdr32
+  VPGATHERDD 0(VIRT_BASE)(Z0*1), K2, Z2                // Z2 <- V.hdr32
 
   VPADDD Z22, Z10, K1, Z10                             // Z10 <- increment length of active lanes
   VPSHUFB Z30, Z2, Z7                                  // Z7 <- bswap32(V.hdr32)
@@ -8014,11 +8014,11 @@ TEXT bcarrayposition(SB), NOSPLIT|NOFRAME, $0
 
   KMOVW K1, K3
   VPXORD X10, X10, X10
-  VPGATHERDQ 0(SI)(Y2*1), K3, Z10                      // Z10 <- first 8 bytes of A (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y2*1), K3, Z10               // Z10 <- first 8 bytes of A (low)
 
   KSHIFTRW $8, K1, K4
   VPXORD X11, X11, X11
-  VPGATHERDQ 0(SI)(Y14*1), K4, Z11                     // Z11 <- first 8 bytes of A (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y14*1), K4, Z11              // Z11 <- first 8 bytes of A (high)
 
   VPADDD Z29, Z22, Z28                                 // Z28 <- dword(8)
 
@@ -8058,13 +8058,13 @@ array_loop:
 
   KMOVB K1, K3
   VPXORD X18, X18, X18
-  VPGATHERDQ 0(SI)(Y0*1), K3, Z18                      // Z18 <- first 8 bytes of B (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y0*1), K3, Z18               // Z18 <- first 8 bytes of B (low)
 
   KMOVB K2, K4
   VPADDD.Z Z22, Z20, K1, Z20                           // Z20 <- advance current position
 
   VPXORD X19, X19, X19
-  VPGATHERDQ 0(SI)(Y13*1), K4, Z19                     // Z19 <- first 8 bytes of B (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y13*1), K4, Z19              // Z19 <- first 8 bytes of B (high)
 
   VPMOVQD Z18, Y14
   VPMOVQD Z19, Y13
@@ -8110,11 +8110,11 @@ array_loop:
   VPGATHERDD 0(R8)(Z17*8), K5, Z7                      // gather 16 symbol offsets (we don't care of lengths in this case)
 
   KMOVB K4, K5
-  VPGATHERDQ 0(SI)(Y7*1), K5, Z18                      // Z18 <- merge first 8 bytes of B to the existing vector (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y7*1), K5, Z18               // Z18 <- merge first 8 bytes of B to the existing vector (low)
 
   VEXTRACTI32X8 $1, Z7, Y13
   KSHIFTRW $8, K4, K5
-  VPGATHERDQ 0(SI)(Y13*1), K5, Z19                     // Z19 <- merge first 8 bytes of B to the existing vector (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y13*1), K5, Z19              // Z19 <- merge first 8 bytes of B to the existing vector (high)
 
   VPADDD Z28, Z7, K4, Z7                               // Z7  <- B.offset += 8 (where symbols)
 
@@ -8146,21 +8146,21 @@ value_loop:
 
   KMOVB K3, K5
   VPXORD X16, X16, X16
-  VPGATHERDQ 0(SI)(Y6*1), K5, Z16                      // Z16 <- next 8 bytes of A (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y6*1), K5, Z16               // Z16 <- next 8 bytes of A (low)
 
   VPSUBD Z6, Z3, Z13                                   // Z13 <- remaining_length
   VPADDD Z28, Z6, Z6                                   // Z6  <- A.offset += 8
 
   KMOVB K4, K5
   VPXORD X17, X17, X17
-  VPGATHERDQ 0(SI)(Y15*1), K5, Z17                     // Z17 <- next 8 bytes of A (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y15*1), K5, Z17              // Z17 <- next 8 bytes of A (high)
 
   VPMINUD.Z Z28, Z13, K3, Z13                          // Z13 <- min(remaining_length, 8)
   VEXTRACTI32X8 $1, Z7, Y15
 
   KMOVB K3, K5
   VPXORD X18, X18, X18
-  VPGATHERDQ 0(SI)(Y7*1), K5, Z18                      // Z18 <- next 8 bytes of B (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y7*1), K5, Z18               // Z18 <- next 8 bytes of B (low)
 
   VPADDD Z28, Z7, Z7                                   // Z7  <- B.offset += 8
   VEXTRACTI32X8 $1, Z13, Y14
@@ -8168,7 +8168,7 @@ value_loop:
 
   KMOVB K4, K5
   VPXORD X19, X19, X19
-  VPGATHERDQ 0(SI)(Y15*1), K5, Z19                     // Z19 <- next 8 bytes of B (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y15*1), K5, Z19              // Z19 <- next 8 bytes of B (high)
 
   VPMOVZXDQ Y14, Z14                                   // Z14 <- min(remaining_length, 8) (high)
   VPERMQ Z31, Z13, Z13                                 // Z14 <- compare byte mask (low)
@@ -8246,7 +8246,7 @@ TEXT bcCmpStrEqCs(SB), NOSPLIT|NOFRAME, $0
 loop:
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
   VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
   VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
 //; compare data with needle
@@ -8261,7 +8261,7 @@ tests:
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
   VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
@@ -8294,7 +8294,7 @@ TEXT bcCmpStrEqCi(SB), NOSPLIT|NOFRAME, $0
 loop:
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
   VPSUBD        Z20, Z3,  K1,  Z3         //;AEDCD850 str_len -= 4                    ;Z3=str_len; K1=lane_active; Z20=4;
   VPADDD        Z20, Z2,  K1,  Z2         //;D7CC90DD str_start += 4                  ;Z2=str_start; K1=lane_active; Z20=4;
 //; str_to_upper: IN zmm8; OUT zmm13
@@ -8314,7 +8314,7 @@ tests:
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
   VPERMD        CONST_TAIL_MASK(),Z3,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z3=str_len;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
@@ -8355,7 +8355,7 @@ TEXT bcCmpStrEqUTF8Ci(SB), NOSPLIT|NOFRAME, $0
 loop:
   VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
 //; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
 //;  JMP           mixed_ascii               //;6FE3345D                                 ;
@@ -8475,7 +8475,7 @@ loop2:
   VPCMPD        $6,  Z11, Z3,  K2,  K4    //;FCFCB494 K4 := K2 & (data_len>0)         ;K4=scratch1; K2=lane_todo; Z3=data_len; Z11=0; 6=Greater;
   VPCMPD        $6,  Z11, Z13, K2,  K5    //;7C687BDA K5 := K2 & (needle_len>0)       ;K5=scratch2; K2=lane_todo; Z13=needle_len; Z11=0; 6=Greater;
   KMOVW         K4,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K4=scratch1;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off;
   VPGATHERDD    (R14)(Z5*1),K5,  Z9       //;4EAE4300 gather needle                   ;Z9=needle; K5=scratch2; R14=needle_ptr; Z5=needle_off;
 //; remove tail from data
   VPMINSD       Z3,  Z24, Z26             //;D337D11D scratch1 := min(3, data_len)    ;Z26=scratch1; Z24=3; Z3=data_len;
@@ -8586,7 +8586,7 @@ loop2:
   VPTERNLOGD    $0b11111111,Z28, Z28, Z28 //;3CB765D7 set 0xFFFFFFFF                  ;Z28=d2;
 //; load data0
   VPCMPD        $5,  Z10, Z3,  K2,  K3    //;FCFCB494 K3 := K2 & (data_len>=1)        ;K3=tmp_mask; K2=lane_todo; Z3=data_len; Z10=1; 5=GreaterEq;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data0                    ;Z8=d0; K3=tmp_mask; SI=data_ptr; Z2=data_off;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data0                    ;Z8=d0; K3=tmp_mask; SI=data_ptr; Z2=data_off;
 //; get number of bytes in code-point
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch1 := d0>>4               ;Z26=scratch1; Z8=d0;
   VPERMD        Z24, Z26, Z12             //;68FECBA0 get n_bytes_d0                  ;Z12=n_bytes_d0; Z26=scratch1; Z24=table_n_bytes_utf8;
@@ -8594,7 +8594,7 @@ loop2:
   VPSUBD        Z12, Z3,  Z20             //;8BA4E60E data_len_alt := data_len - n_bytes_d0;Z20=data_len_alt; Z3=data_len; Z12=n_bytes_d0;
   VPCMPD        $5,  Z10, Z20, K2,  K3    //;FCFCB494 K3 := K2 & (data_len_alt>=1)    ;K3=tmp_mask; K2=lane_todo; Z20=data_len_alt; Z10=1; 5=GreaterEq;
   VPADDD        Z12, Z2,  K2,  Z19        //;88A5638D data_off_alt := data_off + n_bytes_d0;Z19=data_off_alt; K2=lane_todo; Z2=data_off; Z12=n_bytes_d0;
-  VPGATHERDD    (SI)(Z19*1),K3,  Z9       //;81256F6A gather data1                    ;Z9=d1; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+  VPGATHERDD    (VIRT_BASE)(Z19*1),K3,  Z9 //;81256F6A gather data1                    ;Z9=d1; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
 //; get number of bytes in code-point
   VPSRLD        $4,  Z9,  Z26             //;FE5F1413 scratch1 := d1>>4               ;Z26=scratch1; Z9=d1;
   VPERMD        Z24, Z26, Z22             //;68FECBA0 get n_bytes_d1                  ;Z22=n_bytes_d1; Z26=scratch1; Z24=table_n_bytes_utf8;
@@ -8602,7 +8602,7 @@ loop2:
   VPSUBD        Z22, Z20, Z20             //;743C9E50 data_len_alt -= n_bytes_d1      ;Z20=data_len_alt; Z22=n_bytes_d1;
   VPCMPD        $5,  Z10, Z20, K2,  K3    //;C500A274 K3 := K2 & (data_len_alt>=1)    ;K3=tmp_mask; K2=lane_todo; Z20=data_len_alt; Z10=1; 5=GreaterEq;
   VPADDD        Z22, Z19, K2,  Z19        //;3656366C data_off_alt += n_bytes_d1      ;Z19=data_off_alt; K2=lane_todo; Z22=n_bytes_d1;
-  VPGATHERDD    (SI)(Z19*1),K3,  Z28      //;3640A661 gather data2                    ;Z28=d2; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+  VPGATHERDD    (VIRT_BASE)(Z19*1),K3,  Z28 //;3640A661 gather data2                    ;Z28=d2; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
 //; get number of bytes in code-point
   VPSRLD        $4,  Z28, Z26             //;FE5F1413 scratch1 := d2>>4               ;Z26=scratch1; Z28=d2;
   VPERMD        Z24, Z26, Z25             //;68FECBA0 get n_bytes_d2                  ;Z25=n_bytes_d2; Z26=scratch1; Z24=table_n_bytes_utf8;
@@ -8799,7 +8799,7 @@ loop1:
   VPCMPD        $6,  Z11, Z6,  K6,  K4    //;FCFCB494 K4 := K6 & (data_len2>0)        ;K4=scratch1; K6=lane_todo2; Z6=data_len2; Z11=0; 6=Greater;
   VPCMPD        $6,  Z11, Z13, K6,  K5    //;7C687BDA K5 := K6 & (needle_len>0)       ;K5=scratch2; K6=lane_todo2; Z13=needle_len; Z11=0; 6=Greater;
   KMOVW         K4,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K4=scratch1;
-  VPGATHERDD    (SI)(Z12*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z12=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z12*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z12=data_off2;
   VPGATHERDD    (R14)(Z5*1),K5,  Z9       //;4EAE4300 gather needle                   ;Z9=needle; K5=scratch2; R14=needle_ptr; Z5=needle_off;
 //; remove tail from data
   VPMINSD       Z6,  Z24, Z26             //;D337D11D scratch1 := min(3, data_len2)   ;Z26=scratch1; Z24=3; Z6=data_len2;
@@ -8924,7 +8924,7 @@ loop1:
   VPTERNLOGD    $0b11111111,Z28, Z28, Z28 //;3CB765D7 set 0xFFFFFFFF                  ;Z28=d2;
 //; load data0
   VPCMPD        $5,  Z10, Z23, K6,  K3    //;FCFCB494 K3 := K6 & (data_len2>=1)       ;K3=tmp_mask; K6=lane_todo2; Z23=data_len2; Z10=1; 5=GreaterEq;
-  VPGATHERDD    (SI)(Z6*1),K3,  Z8        //;E4967C89 gather data0                    ;Z8=d0; K3=tmp_mask; SI=data_ptr; Z6=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z6*1),K3,  Z8 //;E4967C89 gather data0                    ;Z8=d0; K3=tmp_mask; SI=data_ptr; Z6=data_off2;
 //; get number of bytes in code-point
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch1 := d0>>4               ;Z26=scratch1; Z8=d0;
   VPERMD        Z24, Z26, Z12             //;68FECBA0 get n_bytes_d0                  ;Z12=n_bytes_d0; Z26=scratch1; Z24=table_n_bytes_utf8;
@@ -8932,7 +8932,7 @@ loop1:
   VPSUBD        Z12, Z23, Z20             //;8BA4E60E data_len_alt := data_len2 - n_bytes_d0;Z20=data_len_alt; Z23=data_len2; Z12=n_bytes_d0;
   VPCMPD        $5,  Z10, Z20, K6,  K3    //;FCFCB494 K3 := K6 & (data_len_alt>=1)    ;K3=tmp_mask; K6=lane_todo2; Z20=data_len_alt; Z10=1; 5=GreaterEq;
   VPADDD        Z12, Z6,  K6,  Z19        //;88A5638D data_off_alt := data_off2 + n_bytes_d0;Z19=data_off_alt; K6=lane_todo2; Z6=data_off2; Z12=n_bytes_d0;
-  VPGATHERDD    (SI)(Z19*1),K3,  Z9       //;81256F6A gather data1                    ;Z9=d1; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+  VPGATHERDD    (VIRT_BASE)(Z19*1),K3, Z9 //;81256F6A gather data1                    ;Z9=d1; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
 //; get number of bytes in code-point
   VPSRLD        $4,  Z9,  Z26             //;FE5F1413 scratch1 := d1>>4               ;Z26=scratch1; Z9=d1;
   VPERMD        Z24, Z26, Z22             //;68FECBA0 get n_bytes_d1                  ;Z22=n_bytes_d1; Z26=scratch1; Z24=table_n_bytes_utf8;
@@ -8940,7 +8940,7 @@ loop1:
   VPSUBD        Z22, Z20, Z20             //;743C9E50 data_len_alt -= n_bytes_d1      ;Z20=data_len_alt; Z22=n_bytes_d1;
   VPCMPD        $5,  Z10, Z20, K6,  K3    //;C500A274 K3 := K6 & (data_len_alt>=1)    ;K3=tmp_mask; K6=lane_todo2; Z20=data_len_alt; Z10=1; 5=GreaterEq;
   VPADDD        Z22, Z19, K6,  Z19        //;3656366C data_off_alt += n_bytes_d1      ;Z19=data_off_alt; K6=lane_todo2; Z22=n_bytes_d1;
-  VPGATHERDD    (SI)(Z19*1),K3,  Z28      //;3640A661 gather data2                    ;Z28=d2; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
+  VPGATHERDD    (VIRT_BASE)(Z19*1),K3,  Z28 //;3640A661 gather data2                    ;Z28=d2; K3=tmp_mask; SI=data_ptr; Z19=data_off_alt;
 //; get number of bytes in code-point
   VPSRLD        $4,  Z28, Z26             //;FE5F1413 scratch1 := d2>>4               ;Z26=scratch1; Z28=d2;
   VPERMD        Z24, Z26, Z25             //;68FECBA0 get n_bytes_d2                  ;Z25=n_bytes_d2; Z26=scratch1; Z24=table_n_bytes_utf8;
@@ -9107,7 +9107,7 @@ TEXT bcSkip1charLeft(SB), NOSPLIT|NOFRAME, $0
   JZ            next                      //;A5924904 yes, then exit; jump if zero (ZF = 1);
 
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3, Z8  //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        CONST_N_BYTES_UTF8(),Z26, Z7  //;CFC7AA76 get n_bytes_data            ;Z7=n_bytes_data; Z26=scratch_Z26;
@@ -9147,7 +9147,7 @@ TEXT bcSkip1charRight(SB), NOSPLIT|NOFRAME, $0
   VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
   VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
   VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+  VPGATHERDD    (VIRT_BASE)(Z5*1),K3, Z8  //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
 //; adjust data
   VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
   VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
@@ -9196,7 +9196,7 @@ TEXT bcSkipNcharLeft(SB), NOSPLIT|NOFRAME, $0
 
 loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1), K3, Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
@@ -9251,7 +9251,7 @@ loop:
   VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
   VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
   VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+  VPGATHERDD    (VIRT_BASE)(Z5*1), K3, Z8 //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
 //; adjust data
   VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
   VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
@@ -9305,7 +9305,7 @@ TEXT bcTrimWsLeft(SB), NOSPLIT|NOFRAME, $0
 //; #endregion load white space chars
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1), K3, Z8 //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 //; #region trim left/right whitespace comparison
   VPCMPB        $0,  Z15, Z8,  K3         //;529F46B9 K3 := (data_msg==c_char_space); test if equal to SPACE char;K3=tmp_mask; Z8=data_msg; Z15=c_char_space; 0=Eq;
   VPCMPB        $2,  Z8,  Z16, K2         //;AD553F19 K2 := (c_char_tab<=data_msg); is TAB (0x09) <= char;K2=scratch2_mask; Z16=c_char_tab; Z8=data_msg; 2=LessEq;
@@ -9360,7 +9360,7 @@ loop:
   VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
   VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
   VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+  VPGATHERDD    (VIRT_BASE)(Z5*1), K3, Z8 //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
 //; adjust data
   VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
   VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
@@ -9415,7 +9415,7 @@ TEXT bcTrim4charLeft(SB), NOSPLIT|NOFRAME, $0
   VPBROADCASTB  R14, Z13                  //;C18E3641                                 ;Z13=c_char3; R14=chars_ptr;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1), K3, Z8 //;68B7D88C gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 //; #region trim left/right 4char comparison
   VPCMPB        $0,  Z9,  Z8,  K3         //;D8545E6D K3 := (data_msg==c_char0); is char == char0;K3=tmp_mask; Z8=data_msg; Z9=c_char0; 0=Eq;
   VPCMPB        $0,  Z10, Z8,  K2         //;933CFC19 K2 := (data_msg==c_char1); is char == char1;K2=scratch2_mask; Z8=data_msg; Z10=c_char1; 0=Eq;
@@ -9474,7 +9474,7 @@ loop:
   VPMINUD       Z20, Z3,  Z23             //;B086F272 adjust := min(data_len, 4)      ;Z23=adjust; Z3=data_len; Z20=4;
   VPSUBD        Z23, Z4,  Z5              //;998E9936 offset := data_end - adjust     ;Z5=offset; Z4=data_end; Z23=adjust;
   VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z5*1),K3,  Z8        //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
+  VPGATHERDD    (VIRT_BASE)(Z5*1), K3, Z8 //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z5=offset;
 //; adjust data
   VPSUBD        Z23, Z20, Z23             //;83BCC5BB adjust := 4 - adjust            ;Z23=adjust; Z20=4;
   VPSLLD        $3,  Z23, Z23             //;D2F273B1 times 8 gives number of bytes   ;Z23=adjust;
@@ -9557,7 +9557,7 @@ TEXT bccharlength(SB), NOSPLIT|NOFRAME, $0
 loop:
   KMOVB K2, K4
   VPXORD X2, X2, X2
-  VPGATHERDQ (SI)(Y0*1), K4, Z2             // Z2 <- 8 bytes (low)
+  VPGATHERDQ (VIRT_BASE)(Y0*1), K4, Z2      // Z2 <- 8 bytes (low)
 
   KSHIFTRW $8, K2, K5
   VPMINUD Z13, Z1, Z5                       // Z5 <- min(remaining_length, 8)
@@ -9567,7 +9567,7 @@ loop:
   VPXORD X3, X3, X3
   VPMOVZXDQ Y5, Z6                          // Z6 <- min(remaining_length, 8) (low)
   VPMOVZXDQ Y7, Z7                          // Z7 <- min(remaining_length, 8) (high)
-  VPGATHERDQ (SI)(Y4*1), K5, Z3             // Z3 <- 8 bytes (high)
+  VPGATHERDQ (VIRT_BASE)(Y4*1), K5, Z3      // Z3 <- 8 bytes (high)
 
   VPERMQ Z10, Z6, Z6                        // Z6 <- data byte mask (low)
   VPERMQ Z10, Z7, Z7                        // Z7 <- data byte mask (high)
@@ -9626,7 +9626,7 @@ TEXT bcSubstr(SB), NOSPLIT|NOFRAME, $0
 loop1:
 //; load next code-point
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
+  VPGATHERDD    (VIRT_BASE)(Z4*1), K3, Z8 //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
   VPSUBD        Z10, Z6,  Z6              //;19C9DC47 counter--                       ;Z6=counter; Z10=1;
 //; get number of bytes in next code-point
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
@@ -9648,7 +9648,7 @@ test1:
 loop2:
 //; load next code-point
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
+  VPGATHERDD    (VIRT_BASE)(Z4*1),K3,  Z8 //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=curr_offset;
   VPSUBD        Z10, Z12, Z12             //;61D287CD substr_length--                 ;Z12=substr_length; Z10=1;
 //; get number of bytes in next code-point
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
@@ -9703,7 +9703,7 @@ TEXT bcSplitPart(SB), NOSPLIT|NOFRAME, $0
   JMP           tail1                     //;9DD42F87                                 ;
 loop1:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
+  VPGATHERDD    (VIRT_BASE)(Z4*1),K3,  Z8 //;FC80CF41 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
 //; clear tail from data
   VPMINSD       Z3,  Z20, Z26             //;DEC17BF3 scratch_Z26 := min(4, str_len)  ;Z26=scratch_Z26; Z20=4; Z3=str_len;
   VPERMD        Z18, Z26, Z19             //;E5886CFE get tail_mask                   ;Z19=tail_mask; Z26=scratch_Z26; Z18=tail_mask_data;
@@ -9738,7 +9738,7 @@ tail1:
   KMOVW         K1,  K2                   //;A543DE2E lane2_mask := lane_active       ;K2=lane2_mask; K1=lane_active;
 loop2:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane2_mask;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
+  VPGATHERDD    (VIRT_BASE)(Z4*1),K3,  Z8 //;5A704AF6 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z4=search_base;
 //; calculate skip_count in zmm14
   VPCMPB        $0,  Z21, Z8,  K3         //;E8DC9CCA K3 := (data_msg==delim)         ;K3=tmp_mask; Z8=data_msg; Z21=delim; 0=Eq;
   VPMOVM2B      K3,  Z14                  //;E74FDEBD promote 64x bit to 64x byte     ;Z14=skip_count; K3=tmp_mask;
@@ -9786,7 +9786,7 @@ TEXT bcContainsPrefixCs(SB), NOSPLIT|NOFRAME, $0
 loop:
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (VIRT_BASE)(Z24*1),K3, Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
   VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
   VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
 //; compare data with needle
@@ -9801,8 +9801,8 @@ tests:
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
-  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
+  VPGATHERDD    (VIRT_BASE)(Z24*1),K3, Z8 //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPERMD        CONST_TAIL_MASK(), Z6, Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
 //; compare data with needle
@@ -9842,7 +9842,7 @@ TEXT bcContainsPrefixCi(SB), NOSPLIT|NOFRAME, $0
 loop:
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
   VPSUBD        Z20, Z6,  K1,  Z6         //;AEDCD850 counter -= 4                    ;Z6=counter; K1=lane_active; Z20=4;
   VPADDD        Z20, Z24, K1,  Z24        //;D7CC90DD search_base += 4                ;Z24=search_base; K1=lane_active; Z20=4;
 //; str_to_upper: IN zmm8; OUT zmm13
@@ -9862,7 +9862,7 @@ tests:
   JNZ           loop                      //;B678BE90 no, loop again; jump if not zero (ZF = 0);
 //; load data
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
+  VPGATHERDD    (VIRT_BASE)(Z24*1),K3, Z8 //;36FEA5FE gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z24=search_base;
   VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data_msg; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=data_needle; Z19=tail_mask; R14=needle_ptr;
@@ -9910,7 +9910,7 @@ TEXT bcContainsPrefixUTF8Ci(SB), NOSPLIT|NOFRAME, $0
 loop:
   VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1), K3, Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 
 //; NOTE: debugging. If you jump from here to mixed_ascii you bypass the 4 ASCII optimization
 //;  JMP           mixed_ascii               //;6FE3345D                                 ;
@@ -10003,7 +10003,7 @@ TEXT bcContainsSuffixCs(SB), NOSPLIT|NOFRAME, $0
   JMP           tail                      //;F2A3982D                                 ;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
 //; compare data with needle
   VPCMPD.BCST   $0,  (R14),Z8,  K1,  K1   //;F0E5B3BD K1 &= (data==[needle_ptr])      ;K1=lane_active; Z8=data; R14=needle_ptr; 0=Eq;
   KTESTW        K1,  K1                   //;5746030A any lanes still alive?          ;K1=lane_active;
@@ -10022,7 +10022,7 @@ tail:
   JZ            update                    //;4DA2206F no, update results; jump if zero (ZF = 1);
 //; load the last 1-4 ASCIIs
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
+  VPGATHERDD    (VIRT_BASE)(Z24*1),K3, Z8 //;36FEA5FE gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
   VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=needle; Z19=tail_mask; R14=needle_ptr;
@@ -10064,7 +10064,7 @@ TEXT bcContainsSuffixCi(SB), NOSPLIT|NOFRAME, $0
   JMP           tail                      //;F2A3982D                                 ;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;E4967C89 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
 //; str_to_upper: IN zmm8; OUT zmm13
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
@@ -10088,8 +10088,8 @@ tail:
   JZ            update                    //;4DA2206F no, update results; jump if zero (ZF = 1);
 //; load the last 1-4 ASCIIs
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;36FEA5FE gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
-  VPERMD        CONST_TAIL_MASK(),Z6,  Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;36FEA5FE gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
+  VPERMD        CONST_TAIL_MASK(), Z6, Z19 //;E5886CFE get tail_mask                  ;Z19=tail_mask; Z6=counter;
   VPANDD        Z8,  Z19, Z8              //;FC6636EA mask data from msg              ;Z8=data; Z19=tail_mask;
   VPANDD.BCST   (R14),Z19, Z9             //;EE8B32D9 load needle with mask           ;Z9=needle; Z19=tail_mask; R14=needle_ptr;
 //; str_to_upper: IN zmm8; OUT zmm13
@@ -10146,7 +10146,7 @@ loop:
   VPMINUD       Z20, Z3,  Z31             //;B086F272 adjust := min(data_len, 4)      ;Z31=adjust; Z3=data_len; Z20=4;
   VPSUBD.Z      Z31, Z4,  K3,  Z24        //;998E9936 offset := data_end - adjust     ;Z24=offset; K3=tmp_mask; Z4=data_end; Z31=adjust;
   VPXORD        Z8,  Z8,  Z8              //;1882D069 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;30D04944 gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=offset;
 //; adjust data
   VPSUBD        Z31, Z20, Z31             //;83BCC5BB adjust := 4 - adjust            ;Z31=adjust; Z20=4;
   VPSLLD        $3,  Z31, Z31             //;D2F273B1 times 8 gives number of bytes   ;Z31=adjust;
@@ -10254,7 +10254,7 @@ scan_start:
 scan_loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1), K3, Z8 //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
   VPCMPB        $0,  Z9,  Z8,  K3         //;170C9C8F K3 := (data==char1_needle)      ;K3=tmp_mask; Z8=data; Z9=char1_needle; 0=Eq;
   KTESTQ        K3,  K3                   //;AD0284F2 found any char1_needle?         ;K3=tmp_mask;
   JNZ           scan_found_something      //;4645455C yes, found something!; jump if not zero (ZF = 0);
@@ -10294,7 +10294,7 @@ scan_done:                                //;50D019A9 check if the ran out of da
 needle_loop:
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
 //; load needle and apply tail masks
   VPMINSD       Z20, Z25, Z13             //;7D091557 adv_needle := min(needle_len2, 4);Z13=adv_needle; Z25=needle_len2; Z20=4;
   VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
@@ -10363,7 +10363,7 @@ scan_start:
 scan_loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1), K3, Z8 //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
 //; str_to_upper: IN zmm8; OUT zmm26
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
@@ -10418,7 +10418,7 @@ scan_done:                                //;50D019A9 check if the ran out of da
 needle_loop:
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z24*1), K3, Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
 //; str_to_upper: IN zmm8; OUT zmm26
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
@@ -10500,7 +10500,7 @@ scan_start:
   KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
 scan_loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
 //; get tail mask
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
   VPERMD        Z21, Z26, Z27             //;68FECBA0 get n_bytes_data                ;Z27=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
@@ -10540,7 +10540,7 @@ scan_loop:
   KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
 needle_loop:
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z4=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z4*1),K3,  Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z4=data_off2;
 //; advance needle
   VPSUBD        Z10, Z7,  K4,  Z7         //;CAFCD045 needle_len2--                   ;Z7=needle_len2; K4=lane_selected; Z10=1;
 //; mask tail data
@@ -10608,7 +10608,7 @@ TEXT bcEqPatternCs(SB), NOSPLIT|NOFRAME, $0
 needle_loop:
   KMOVW         K1,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
 //; load needle and apply tail masks
   VPMINSD       Z20, Z6,  Z13             //;7D091557 adv_needle := min(needle_len1, 4);Z13=adv_needle; Z6=needle_len1; Z20=4;
   VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
@@ -10711,7 +10711,7 @@ TEXT bcEqPatternCi(SB), NOSPLIT|NOFRAME, $0
 needle_loop:
   KMOVW         K1,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
 //; str_to_upper: IN zmm8; OUT zmm26
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
@@ -10826,7 +10826,7 @@ TEXT bcEqPatternUTF8Ci(SB), NOSPLIT|NOFRAME, $0
 loop:
   VPTESTMD      Z3,  Z3,  K1,  K1         //;790C4E82 K1 &= (str_len != 0); empty data are dead lanes;K1=lane_active; Z3=str_len;
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 //; select next UTF8 byte sequence
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data_msg>>4      ;Z26=scratch_Z26; Z8=data_msg;
   VPERMD        Z21, Z26, Z7              //;68FECBA0 get n_bytes_data                ;Z7=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
@@ -10898,7 +10898,7 @@ scan_start:
 scan_loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
   VPCMPB        $0,  Z9,  Z8,  K3         //;170C9C8F K3 := (data==char1_needle)      ;K3=tmp_mask; Z8=data; Z9=char1_needle; 0=Eq;
   KTESTQ        K3,  K3                   //;AD0284F2 found any char1_needle?         ;K3=tmp_mask;
   JNZ           scan_found_something      //;4645455C yes, found something!; jump if not zero (ZF = 0);
@@ -10939,7 +10939,7 @@ scan_done:                                //;50D019A9 check if the ran out of da
 needle_loop:
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z24*1),K3, Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
 //; load needle and apply tail masks
   VPMINSD       Z20, Z25, Z13             //;7D091557 adv_needle := min(needle_len2, 4);Z13=adv_needle; Z25=needle_len2; Z20=4;
   VPERMD        Z18, Z13, Z27             //;B7D1A978 get tail_mask (needle)          ;Z27=scratch_Z27; Z13=adv_needle; Z18=tail_mask_data;
@@ -11059,7 +11059,7 @@ scan_start:
 scan_loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 if not cleared 170C9C8F will give unncessary matches;Z8=data;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
 //; str_to_upper: IN zmm8; OUT zmm26
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
@@ -11115,7 +11115,7 @@ scan_done:                                //;50D019A9 check if the ran out of da
 needle_loop:
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
   VPXORD        Z8,  Z8,  Z8              //;CED5BB69 data := 0                       ;Z8=data;
-  VPGATHERDD    (SI)(Z24*1),K3,  Z8       //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z24*1),K3, Z8 //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z24=data_off2;
 //; str_to_upper: IN zmm8; OUT zmm26
   VPCMPB        $5,  Z16, Z8,  K3         //;30E9B9FD K3 := (data>=char_a)            ;K3=tmp_mask; Z8=data; Z16=char_a; 5=GreaterEq;
   VPCMPB        $2,  Z17, Z8,  K3,  K3    //;8CE85BA0 K3 &= (data<=char_z)            ;K3=tmp_mask; Z8=data; Z17=char_z; 2=LessEq;
@@ -11246,7 +11246,7 @@ scan_start:
   KXORW         K4,  K4,  K4              //;8403FAC0 lane_selected := 0              ;K4=lane_selected;
 scan_loop:
   KMOVW         K2,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K2=lane_todo;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3, Z8  //;573D089A gather data from end            ;Z8=data; K3=tmp_mask; SI=data_ptr; Z2=data_off1;
 //; get tail mask
   VPSRLD        $4,  Z8,  Z26             //;FE5F1413 scratch_Z26 := data>>4          ;Z26=scratch_Z26; Z8=data;
   VPERMD        Z21, Z26, Z27             //;68FECBA0 get n_bytes_data                ;Z27=n_bytes_data; Z26=scratch_Z26; Z21=table_n_bytes_utf8;
@@ -11287,7 +11287,7 @@ scan_loop:
   KMOVW         K4,  K2                   //;226BBC9E lane_todo := lane_selected      ;K2=lane_todo; K4=lane_selected;
 needle_loop:
   KMOVW         K4,  K3                   //;F271B5DF copy eligible lanes             ;K3=tmp_mask; K4=lane_selected;
-  VPGATHERDD    (SI)(Z4*1),K3,  Z8        //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z4=data_off2;
+  VPGATHERDD    (VIRT_BASE)(Z4*1),K3, Z8  //;2CF4C294 gather data                     ;Z8=data; K3=tmp_mask; SI=data_ptr; Z4=data_off2;
 //; advance needle
   VPSUBD        Z10, Z7,  K4,  Z7         //;CAFCD045 needle_len2--                   ;Z7=needle_len2; K4=lane_selected; Z10=1;
 //; mask tail data
@@ -11358,7 +11358,7 @@ TEXT bcIsSubnetOfIP4(SB), NOSPLIT|NOFRAME, $0
   MOVL          $3,  CX                   //;97E4B0BB compare the first 3 components of IP;CX=counter;
 loop:
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 //; load min and max values for the next component of the IP
   VPBROADCASTD  (R14),Z14                 //;85FE2A68 load min/max BCD values         ;Z14=ip_min; R14=needle_ptr;
   ADDQ          $4,  R14                  //;B2EF9837 needle_ptr += 4                 ;R14=needle_ptr;
@@ -11404,7 +11404,7 @@ loop:
   JNZ           loop                      //;6929AA0C another component in IP present?; jump if not zero (ZF = 0);
 //; load last component of IP address
   KMOVW         K1,  K3                   //;723D04C9 copy eligible lanes             ;K3=tmp_mask; K1=lane_active;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=tmp_mask; SI=msg_ptr; Z2=str_start;
 //; load min and max values for the last component of the IP
   VPBROADCASTD  (R14),Z14                 //;85FE2A68 load min/max BCD values         ;Z14=ip_min; R14=needle_ptr;
   VPSRLD        $4,  Z14, Z15             //;7D831D80 ip_max := ip_min>>4             ;Z15=ip_max; Z14=ip_min;
@@ -11469,7 +11469,7 @@ TEXT bcDfaT6(SB), NOSPLIT|NOFRAME, $0
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
   VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
 //; determine whether a lane has a non-ASCII code-point
   VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
@@ -11569,7 +11569,7 @@ TEXT bcDfaT7(SB), NOSPLIT|NOFRAME, $0
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
   VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
 //; determine whether a lane has a non-ASCII code-point
   VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
@@ -11671,7 +11671,7 @@ TEXT bcDfaT8(SB), NOSPLIT|NOFRAME, $0
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
   VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
 //; determine whether a lane has a non-ASCII code-point
   VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
@@ -11794,7 +11794,7 @@ main_loop:
   VPXORD        Z6,  Z6,  Z6              //;7B026700 rlz_state := 0                  ;Z6=rlz_state;
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
   VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
 //; determine whether a lane has a non-ASCII code-point
   VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
@@ -11911,7 +11911,7 @@ main_loop:
   VPXORD        Z6,  Z6,  Z6              //;7B026700 rlz_state := 0                  ;Z6=rlz_state;
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
   VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
 //; determine whether a lane has a non-ASCII code-point
   VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
@@ -12030,7 +12030,7 @@ main_loop:
   VPXORD        Z6,  Z6,  Z6              //;7B026700 rlz_state := 0                  ;Z6=rlz_state;
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
   VPXORD        Z8,  Z8,  Z8              //;220F8650 clear stale non-ASCII content   ;Z8=data_msg;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
   VPMOVB2M      Z8,  K5                   //;385A4763 extract non-ASCII mask          ;K5=lane_non-ASCII; Z8=data_msg;
 //; determine whether a lane has a non-ASCII code-point
   VPMOVM2B      K5,  Z12                  //;96C10C0D promote 64x bit to 64x byte     ;Z12=scratch_Z12; K5=lane_non-ASCII;
@@ -12169,7 +12169,7 @@ normal_operation:
   VMOVDQA32     Z10, Z7                   //;77B17C9A curr_state := 1                 ;Z7=curr_state; Z10=1;
 main_loop:
   KMOVW         K2,  K3                   //;81412269 copy eligible lanes             ;K3=scratch; K2=lane_todo;
-  VPGATHERDD    (SI)(Z2*1),K3,  Z8        //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
+  VPGATHERDD    (VIRT_BASE)(Z2*1),K3,  Z8 //;E4967C89 gather data                     ;Z8=data_msg; K3=scratch; SI=msg_ptr; Z2=str_start;
 //; init variables before states loop
   VPXORD        Z6,  Z6,  Z6              //;E4D2E400 next_state := 0                 ;Z6=next_state;
   VMOVDQA32     Z10, Z5                   //;A30F50D2 state_id := 1                   ;Z5=state_id; Z10=1;

@@ -99,7 +99,7 @@ TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
   VPADDD.Z BC_VSTACK_PTR(BX, 0), Z0, K1, Z0           // Z0 <- left value content offset (offset + hLen)
   VPXORD X14, X14, X14
 
-  VPGATHERDQ 0(SI)(Y0*1), K3, Z14                     // Z14 <- left value 8 content bytes (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y0*1), K3, Z14              // Z14 <- left value 8 content bytes (low)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   VPXORD X16, X16, X16
@@ -110,7 +110,7 @@ TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
   VEXTRACTI32X8 $1, Z0, Y10
   VEXTRACTI32X8 $1, Z2, Y9
 
-  VPGATHERDQ 0(SI)(Y2*1), K3, Z16                     // Z16 <- right value 8 content bytes (low)
+  VPGATHERDQ 0(VIRT_BASE)(Y2*1), K3, Z16              // Z16 <- right value 8 content bytes (low)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   VPTERNLOGD $0xFF, Z29, Z29, Z29                     // Z29 <- dword(0xFFFFFFFF)
@@ -126,7 +126,7 @@ TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
   VPSHUFB Z4, Z7, Z6                                  // Z6 <- left ION type converted to an internal type
   VPSHUFB Z5, Z7, Z7                                  // Z7 <- right ION type converted to an internal type
 
-  VPGATHERDQ 0(SI)(Y10*1), K2, Z15                    // Z15 <- left value 8 content bytes (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y10*1), K2, Z15             // Z15 <- left value 8 content bytes (high)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 #ifdef BC_CMP_IS_SORT
@@ -153,7 +153,7 @@ TEXT BC_CMP_NAME(SB), NOSPLIT|NOFRAME, $0
   VPSUBD Z31, Z30, K5, Z8                             // Z8 <- merged comparison results from NULL/BOOL comparison
   KANDNW K1, K5, K2                                   // K2 <- comparison predicate, without nulls/bools
 
-  VPGATHERDQ 0(SI)(Y9*1), K4, Z17                     // Z17 <- right value 8 content bytes (high)
+  VPGATHERDQ 0(VIRT_BASE)(Y9*1), K4, Z17              // Z17 <- right value 8 content bytes (high)
   // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   JZ compare_string_or_timestamp                      // skip number comparison if there are no numbers
@@ -319,10 +319,10 @@ compare_string_or_timestamp:
   VEXTRACTI32X8 $1, Z0, Y9
   KMOVB K3, K5
   KSHIFTRW $8, K3, K6
-  VPGATHERDQ 0(SI)(Y0*1), K5, Z14
+  VPGATHERDQ 0(VIRT_BASE)(Y0*1), K5, Z14
 
   BC_MERGE_VMREFS_TO_VALUE(IN_OUT(Z2), IN_OUT(Z3), IN(Z12), IN(Z13), IN(K4), Z18, Y18, Y19)
-  VPGATHERDQ 0(SI)(Y9*1), K6, Z15
+  VPGATHERDQ 0(VIRT_BASE)(Y9*1), K6, Z15
 
   BC_CALC_VALUE_HLEN(OUT(Z9), IN(Z3), IN(K4), IN(Z28), IN(Z21), Z19, K5)
   VPADDD Z9, Z2, K4, Z2
@@ -330,10 +330,10 @@ compare_string_or_timestamp:
 
   KMOVB K4, K5
   KSHIFTRW $8, K4, K6
-  VPGATHERDQ 0(SI)(Y2*1), K5, Z16
+  VPGATHERDQ 0(VIRT_BASE)(Y2*1), K5, Z16
 
   VEXTRACTI32X8 $1, Z2, Y9
-  VPGATHERDQ 0(SI)(Y9*1), K6, Z17
+  VPGATHERDQ 0(VIRT_BASE)(Y9*1), K6, Z17
 
 skip_unsymbolize:
 
@@ -402,7 +402,7 @@ compare_string_vector:
   VEXTRACTI32X8 $1, Z18, Y9
 
   VPXORQ X10, X10, X10
-  VPGATHERDQ 0(SI)(Y18*1), K4, Z10
+  VPGATHERDQ 0(VIRT_BASE)(Y18*1), K4, Z10
 
   // 1.
   VPMINUD Z23, Z20, Z21                               // Z21 <- number of bytes to compare (max 8).
@@ -410,7 +410,7 @@ compare_string_vector:
   VPSUBD Z21, Z23, Z24                                // Z24 <- number of bytes to discard (8 - Z21).
 
   VPXORQ X11, X11, X11
-  VPGATHERDQ 0(SI)(Y9*1), K5, Z11
+  VPGATHERDQ 0(VIRT_BASE)(Y9*1), K5, Z11
 
   KMOVB K3, K4
   KSHIFTRW $8, K3, K5
@@ -421,7 +421,7 @@ compare_string_vector:
   VPSLLD $3, Z24, Z24                                 // Z24 <- number of bits to discard
 
   VPXORQ X12, X12, X12
-  VPGATHERDQ 0(SI)(Y19*1), K4, Z12
+  VPGATHERDQ 0(VIRT_BASE)(Y19*1), K4, Z12
 
   VPADDD Z21, Z19, K3, Z19                            // Z19 <- adjusted right slice offset
   VEXTRACTI32X8 $1, Z24, Y25
@@ -429,7 +429,7 @@ compare_string_vector:
   VPMOVZXDQ Y25, Z25
 
   VPXORQ X13, X13, X13
-  VPGATHERDQ 0(SI)(Y9*1), K5, Z13
+  VPGATHERDQ 0(VIRT_BASE)(Y9*1), K5, Z13
 
 compare_string_vector_after_gather:
 
@@ -497,9 +497,9 @@ compare_string_scalar_lane:
 
   MOVL 128(R8)(DX * 4), CX                            // min(left, right) length
   MOVL 0(R8)(DX * 4), R14                             // left slice offset
-  ADDQ SI, R14                                        // make left offset an absolute VM address
+  ADDQ VIRT_BASE, R14                                 // make left offset an absolute VM address
   MOVL 64(R8)(DX * 4), R15                            // right slice offset
-  ADDQ SI, R15                                        // make right offset an absolute VM address
+  ADDQ VIRT_BASE, R15                                 // make right offset an absolute VM address
 
   SUBL $64, CX
   JCS compare_string_tail

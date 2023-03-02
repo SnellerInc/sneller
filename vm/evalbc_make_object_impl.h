@@ -195,10 +195,10 @@ calc_length_iter:
   //
   // NOTE: Scatter defines overlapping stores, the last is stored last, which follows our data.
   KMOVB K1, K2
-  VPSCATTERDQ Z8, K2, 0(SI)(Y30*1)
+  VPSCATTERDQ Z8, K2, 0(VIRT_BASE)(Y30*1)
   VEXTRACTI32X8 $1, Z30, Y13
   KSHIFTRW $8, K1, K3
-  VPSCATTERDQ Z9, K3, 0(SI)(Y13*1)
+  VPSCATTERDQ Z9, K3, 0(VIRT_BASE)(Y13*1)
 
   VPADDD Z30, Z5, Z17                                  // Z17 <- offsets of each lane incremented by sizeof(Type|L + Length)
   VMOVDQU32 Z17, bytecode_spillArea(VIRT_BCPTR)        // save Z17 offsets so we can use them in a scalar loop
@@ -240,8 +240,8 @@ lane_iter:
   MOVL 0(R8)(DX * 4), R14                              // R14 <- input index
   MOVL bytecode_spillArea(VIRT_BCPTR)(DX * 4), R15     // R15 <- output index
 
-  ADDQ SI, R14                                         // make input address from input index
-  ADDQ SI, R15                                         // make output address from output index
+  ADDQ VIRT_BASE, R14                                  // make input address from input index
+  ADDQ VIRT_BASE, R15                                  // make output address from output index
   ADDL R13, bytecode_spillArea(VIRT_BCPTR)(DX * 4)     // add input length to the output index
 
 #ifdef BC_GENERATE_MAKE_STRUCT

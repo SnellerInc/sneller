@@ -53,16 +53,16 @@ vector_loop_iter:
   KSHIFTRW $8, K3, K5
   VPXORQ X10, X10, X10
   VPXORQ X11, X11, X11
-  VPGATHERDQ 0(SI)(Y6*1), K4, Z10
-  VPGATHERDQ 0(SI)(Y14*1), K5, Z11
+  VPGATHERDQ 0(VIRT_BASE)(Y6*1), K4, Z10
+  VPGATHERDQ 0(VIRT_BASE)(Y14*1), K5, Z11
 
   VEXTRACTI32X8 $1, Z4, Y14
   KMOVB K3, K4
   KSHIFTRW $8, K3, K5
   VPXORQ X12, X12, X12
   VPXORQ X13, X13, X13
-  VPGATHERDQ 0(SI)(Y4*1), K4, Z12
-  VPGATHERDQ 0(SI)(Y14*1), K5, Z13
+  VPGATHERDQ 0(VIRT_BASE)(Y4*1), K4, Z12
+  VPGATHERDQ 0(VIRT_BASE)(Y14*1), K5, Z13
 
   VPMINUD Z23, Z8, Z21                                // Z21 <- number of bytes to compare (max 8).
   VPSUBD Z21, Z23, Z24                                // Z24 <- number of bytes to discard (8 - Z21).
@@ -143,9 +143,9 @@ scalar_lane:
 
   MOVL 128(R8)(DX * 4), CX                            // min(left, right) length
   MOVL 0(R8)(DX * 4), R14                             // left slice offset
-  ADDQ SI, R14                                        // make left offset an absolute VM address
+  ADDQ VIRT_BASE, R14                                 // make left offset an absolute VM address
   MOVL 64(R8)(DX * 4), R15                            // right slice offset
-  ADDQ SI, R15                                        // make right offset an absolute VM address
+  ADDQ VIRT_BASE, R15                                 // make right offset an absolute VM address
 
   SUBL $64, CX
   JCS scalar_tail
