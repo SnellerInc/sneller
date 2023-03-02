@@ -671,11 +671,29 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 				}
 			}
 		}
+	case 257: /* aggslotsum.f */
+		if len(v.args) == 4 {
+			// (aggslotsum.f mem _ _ (false) _) -> mem
+			if mem := v.args[0]; true {
+				if _tmp46 := v.args[3]; _tmp46.op == 7 {
+					return mem, true
+				}
+			}
+		}
+	case 258: /* aggslotsum.i */
+		if len(v.args) == 4 {
+			// (aggslotsum.i mem _ _ (false) _) -> mem
+			if mem := v.args[0]; true {
+				if _tmp47 := v.args[3]; _tmp47.op == 7 {
+					return mem, true
+				}
+			}
+		}
 	case 261: /* aggslotmin.f */
 		if len(v.args) == 4 {
 			// (aggslotmin.f mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp46 := v.args[3]; _tmp46.op == 7 {
+				if _tmp48 := v.args[3]; _tmp48.op == 7 {
 					return mem, true
 				}
 			}
@@ -684,7 +702,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotmin.i mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp47 := v.args[3]; _tmp47.op == 7 {
+				if _tmp49 := v.args[3]; _tmp49.op == 7 {
 					return mem, true
 				}
 			}
@@ -693,7 +711,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotmax.f mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp48 := v.args[3]; _tmp48.op == 7 {
+				if _tmp50 := v.args[3]; _tmp50.op == 7 {
 					return mem, true
 				}
 			}
@@ -702,7 +720,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotmax.i mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp49 := v.args[3]; _tmp49.op == 7 {
+				if _tmp51 := v.args[3]; _tmp51.op == 7 {
 					return mem, true
 				}
 			}
@@ -711,7 +729,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotmin.ts mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp50 := v.args[3]; _tmp50.op == 7 {
+				if _tmp52 := v.args[3]; _tmp52.op == 7 {
 					return mem, true
 				}
 			}
@@ -720,7 +738,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotmax.ts mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp51 := v.args[3]; _tmp51.op == 7 {
+				if _tmp53 := v.args[3]; _tmp53.op == 7 {
 					return mem, true
 				}
 			}
@@ -729,7 +747,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotand.i mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp52 := v.args[3]; _tmp52.op == 7 {
+				if _tmp54 := v.args[3]; _tmp54.op == 7 {
 					return mem, true
 				}
 			}
@@ -738,7 +756,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotor.i mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp53 := v.args[3]; _tmp53.op == 7 {
+				if _tmp55 := v.args[3]; _tmp55.op == 7 {
 					return mem, true
 				}
 			}
@@ -747,7 +765,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotxor.i mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp54 := v.args[3]; _tmp54.op == 7 {
+				if _tmp56 := v.args[3]; _tmp56.op == 7 {
 					return mem, true
 				}
 			}
@@ -756,7 +774,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 3 {
 			// (aggslotcount mem _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp55 := v.args[2]; _tmp55.op == 7 {
+				if _tmp57 := v.args[2]; _tmp57.op == 7 {
 					return mem, true
 				}
 			}
@@ -794,7 +812,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 2 {
 			// (aggapproxcount mem (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp56 := v.args[1]; _tmp56.op == 7 {
+				if _tmp58 := v.args[1]; _tmp58.op == 7 {
 					return mem, true
 				}
 			}
@@ -803,7 +821,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 2 {
 			// (aggapproxcount.partial mem (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp57 := v.args[1]; _tmp57.op == 7 {
+				if _tmp59 := v.args[1]; _tmp59.op == 7 {
 					return mem, true
 				}
 			}
@@ -812,7 +830,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 2 {
 			// (aggapproxcount.merge mem (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp58 := v.args[1]; _tmp58.op == 7 {
+				if _tmp60 := v.args[1]; _tmp60.op == 7 {
 					return mem, true
 				}
 			}
@@ -821,7 +839,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotapproxcount mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp59 := v.args[3]; _tmp59.op == 7 {
+				if _tmp61 := v.args[3]; _tmp61.op == 7 {
 					return mem, true
 				}
 			}
@@ -830,7 +848,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotapproxcount.partial mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp60 := v.args[3]; _tmp60.op == 7 {
+				if _tmp62 := v.args[3]; _tmp62.op == 7 {
 					return mem, true
 				}
 			}
@@ -839,7 +857,7 @@ func rewrite1(p *prog, v *value) (*value, bool) {
 		if len(v.args) == 4 {
 			// (aggslotapproxcount.merge mem _ _ (false) _) -> mem
 			if mem := v.args[0]; true {
-				if _tmp61 := v.args[3]; _tmp61.op == 7 {
+				if _tmp63 := v.args[3]; _tmp63.op == 7 {
 					return mem, true
 				}
 			}

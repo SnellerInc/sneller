@@ -973,8 +973,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	// hash aggregate bucket ops (count, min, max, sum, ...)
 	saggslotandk:  {text: "aggslotand.k", argtypes: []ssatype{stMem, stBucket, stBool, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotandk, priority: prioMem},
 	saggslotork:   {text: "aggslotor.k", argtypes: []ssatype{stMem, stBucket, stBool, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotork, priority: prioMem},
-	saggslotsumf:  {text: "aggslotadd.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotaddf, priority: prioMem},
-	saggslotsumi:  {text: "aggslotadd.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotaddi, priority: prioMem},
+	saggslotsumf:  {text: "aggslotsum.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotsumf, priority: prioMem},
+	saggslotsumi:  {text: "aggslotsum.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotsumi, priority: prioMem},
 	saggslotavgf:  {text: "aggslotavg.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotavgf, priority: prioMem},
 	saggslotavgi:  {text: "aggslotavg.i", argtypes: []ssatype{stMem, stBucket, stInt, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotavgi, priority: prioMem},
 	saggslotminf:  {text: "aggslotmin.f", argtypes: []ssatype{stMem, stBucket, stFloat, stBool}, rettype: stMem, immfmt: fmtslot, bc: opaggslotminf, priority: prioMem},

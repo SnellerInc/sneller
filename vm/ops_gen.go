@@ -162,8 +162,8 @@ const (
 	opaggbucket              bcop = 156
 	opaggslotandk            bcop = 157
 	opaggslotork             bcop = 158
-	opaggslotaddf            bcop = 159
-	opaggslotaddi            bcop = 160
+	opaggslotsumf            bcop = 159
+	opaggslotsumi            bcop = 160
 	opaggslotavgf            bcop = 161
 	opaggslotavgi            bcop = 162
 	opaggslotminf            bcop = 163
@@ -333,4 +333,4 @@ var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opbitcounti64, to: opbitcounti64_v2},
 }
 
-// checksum: 9b308adf433dc1b843078d4d10b88d05
+// checksum: 18d404112e07dd75d04a3f358cebe587
