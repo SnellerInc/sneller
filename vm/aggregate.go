@@ -120,6 +120,39 @@ type AggregateOp struct {
 	precision uint8
 }
 
+type aggregateOpInfo struct {
+	isAtomic   bool         // merging of two buckets can happen atomically
+	isFloat    bool         // floating point aggregation (sum/avg/min/max)
+	initUInt64 uint64       // initializes the first 8 bytes to this value (the rest is zero initialized)
+	initFunc   func([]byte) // custom initialization of the buffer, initUInt64 will not be used if not nil
+}
+
+var aggregateOpInfoTable = [...]aggregateOpInfo{
+	AggregateOpNone: {isAtomic: false, isFloat: false, initUInt64: 0},
+
+	AggregateOpSumF:  {isAtomic: true, isFloat: true, initUInt64: 0},
+	AggregateOpAvgF:  {isAtomic: true, isFloat: true, initUInt64: 0},
+	AggregateOpMinF:  {isAtomic: true, isFloat: true, initUInt64: math.Float64bits(math.Inf(1))},
+	AggregateOpMaxF:  {isAtomic: true, isFloat: true, initUInt64: math.Float64bits(math.Inf(-1))},
+	AggregateOpSumI:  {isAtomic: true, isFloat: false, initUInt64: 0},
+	AggregateOpSumC:  {isAtomic: true, isFloat: false, initUInt64: 0},
+	AggregateOpAvgI:  {isAtomic: true, isFloat: false, initUInt64: 0},
+	AggregateOpMinI:  {isAtomic: true, isFloat: false, initUInt64: 0x7FFFFFFFFFFFFFFF},
+	AggregateOpMaxI:  {isAtomic: true, isFloat: false, initUInt64: 0x8000000000000000},
+	AggregateOpAndI:  {isAtomic: true, isFloat: false, initUInt64: 0xFFFFFFFFFFFFFFFF},
+	AggregateOpOrI:   {isAtomic: true, isFloat: false, initUInt64: 0x0000000000000000},
+	AggregateOpXorI:  {isAtomic: true, isFloat: false, initUInt64: 0x0000000000000000},
+	AggregateOpAndK:  {isAtomic: true, isFloat: false, initUInt64: 0x0000000000000001},
+	AggregateOpOrK:   {isAtomic: true, isFloat: false, initUInt64: 0x0000000000000000},
+	AggregateOpMinTS: {isAtomic: true, isFloat: false, initUInt64: 0x7FFFFFFFFFFFFFFF},
+	AggregateOpMaxTS: {isAtomic: true, isFloat: false, initUInt64: 0x8000000000000000},
+	AggregateOpCount: {isAtomic: true, isFloat: false, initUInt64: 0},
+
+	AggregateOpApproxCountDistinct:        {isAtomic: false, initFunc: aggApproxCountDistinctInit},
+	AggregateOpApproxCountDistinctPartial: {isAtomic: false, initFunc: aggApproxCountDistinctInit},
+	AggregateOpApproxCountDistinctMerge:   {isAtomic: false, initFunc: aggApproxCountDistinctInit},
+}
+
 func (a *AggregateOp) dataSize() int {
 	switch a.fn {
 	case AggregateOpNone:
@@ -171,53 +204,18 @@ func (a *AggregateOp) dataSize() int {
 	return 0
 }
 
-type aggregateOpInfo struct {
-	isFloat      bool
-	firstValue   uint64
-	fnFirstValue func([]byte)
-}
-
-var aggregateOpInfoTable = [...]aggregateOpInfo{
-	AggregateOpNone: {isFloat: false, firstValue: 0},
-
-	AggregateOpSumF: {isFloat: true, firstValue: 0},
-	AggregateOpAvgF: {isFloat: true, firstValue: 0},
-	AggregateOpMinF: {isFloat: true, firstValue: math.Float64bits(math.Inf(1))},
-	AggregateOpMaxF: {isFloat: true, firstValue: math.Float64bits(math.Inf(-1))},
-
-	AggregateOpSumI: {isFloat: false, firstValue: 0},
-	AggregateOpSumC: {isFloat: false, firstValue: 0},
-	AggregateOpAvgI: {isFloat: false, firstValue: 0},
-	AggregateOpMinI: {isFloat: false, firstValue: 0x7FFFFFFFFFFFFFFF},
-	AggregateOpMaxI: {isFloat: false, firstValue: 0x8000000000000000},
-	AggregateOpAndI: {isFloat: false, firstValue: 0xFFFFFFFFFFFFFFFF},
-	AggregateOpOrI:  {isFloat: false, firstValue: 0x0000000000000000},
-	AggregateOpXorI: {isFloat: false, firstValue: 0x0000000000000000},
-
-	AggregateOpAndK: {isFloat: false, firstValue: 0x0000000000000001},
-	AggregateOpOrK:  {isFloat: false, firstValue: 0x0000000000000000},
-
-	AggregateOpMinTS: {isFloat: false, firstValue: 0x7FFFFFFFFFFFFFFF},
-	AggregateOpMaxTS: {isFloat: false, firstValue: 0x8000000000000000},
-
-	AggregateOpCount: {isFloat: false, firstValue: 0},
-
-	AggregateOpApproxCountDistinct:        {fnFirstValue: aggApproxCountDistinctInit},
-	AggregateOpApproxCountDistinctPartial: {fnFirstValue: aggApproxCountDistinctInit},
-	AggregateOpApproxCountDistinctMerge:   {fnFirstValue: aggApproxCountDistinctInit},
-}
-
 func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
 	offset := int(0)
 	for i := range aggregateOps {
-		// First value is initialized to `firstValue`.
+		// First value is initialized to `initUInt64`.
 		op := &aggregateOps[i]
 		info := &aggregateOpInfoTable[op.fn]
 		dataSize := op.dataSize()
-		if info.fnFirstValue != nil {
-			info.fnFirstValue(data[offset : offset+dataSize])
+
+		if info.initFunc != nil {
+			info.initFunc(data[offset : offset+dataSize])
 		} else {
-			binary.LittleEndian.PutUint64(data[offset:], info.firstValue)
+			binary.LittleEndian.PutUint64(data[offset:], info.initUInt64)
 		}
 
 		// All succeeding values were already zero initialized.
@@ -329,11 +327,12 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial:
+		case AggregateOpApproxCountDistinct, AggregateOpApproxCountDistinctPartial, AggregateOpApproxCountDistinctMerge:
 			n := aggregateOps[i].dataSize()
 			aggApproxCountDistinctUpdateBuckets(n, dst, src)
 			dst = dst[n:]
 			src = src[n:]
+
 		default:
 			panic(fmt.Sprintf("unsupported operation %s", aggregateOps[i].fn))
 		}
@@ -420,18 +419,8 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp
 			dst = dst[8:]
 			src = src[8:]
 
-		case AggregateOpApproxCountDistinct,
-			AggregateOpApproxCountDistinctPartial,
-			AggregateOpApproxCountDistinctMerge:
-
-			// Note: relies on the implicit lock, not a real atomic op
-			n := aggregateOps[i].dataSize()
-			aggApproxCountDistinctUpdateBuckets(n, dst, src)
-			dst = dst[n:]
-			src = src[n:]
-
 		default:
-			panic(fmt.Sprintf("unsupported operation %s", aggregateOps[i].fn))
+			panic(fmt.Sprintf("unsupported aggregate operation %s", aggregateOps[i].fn))
 		}
 	}
 }
@@ -548,19 +537,18 @@ type Aggregate struct {
 	lock sync.Mutex
 }
 
-// requiresLock returns if the Aggregate contain any APPROX_COUNT_DISTINCT function.
+// canMergeAtomically returns whether it's possible to use atomic
+// operations to merge two buckets sharing the same hash value.
 //
-// Unlike other aggregate functions that can update the global state using
-// atomic operations, APPROX_COUNT_DISTINCT cannot do it and this is
-// why we need a regular lock in such cases.
-func (q *Aggregate) requiresLock() bool {
+// Only APPROX_COUNT_DISTINCT cannot be merged atomically at the moment.
+func (q *Aggregate) canMergeAtomically() bool {
 	for i := range q.aggregateOps {
-		if q.aggregateOps[i].fn == AggregateOpApproxCountDistinct {
-			return true
+		if !aggregateOpInfoTable[q.aggregateOps[i].fn].isAtomic {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
 type aggregateLocal struct {
@@ -688,14 +676,14 @@ func (p *aggregateLocal) next() rowConsumer {
 }
 
 func (p *aggregateLocal) Close() error {
-	lock := p.parent.requiresLock()
-	if lock {
+	if p.parent.canMergeAtomically() {
+		mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateOps)
+	} else {
 		p.parent.lock.Lock()
-	}
-	mergeAggregatedValuesAtomically(p.parent.AggregatedData, p.partialData, p.parent.aggregateOps)
-	if lock {
+		mergeAggregatedValues(p.parent.AggregatedData, p.partialData, p.parent.aggregateOps)
 		p.parent.lock.Unlock()
 	}
+
 	p.partialData = nil
 	p.bc.reset()
 	return nil
