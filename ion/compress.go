@@ -34,6 +34,7 @@ func (c *Chunker) compress() bool {
 	if c.lastcomp < c.lastst {
 		panic("lastcomp < c.lastst")
 	}
+	oldmax := c.Symbols.MaxID()
 	// scan body for repeated strings
 	stab := strtab{seed: maphash.MakeSeed()}
 	body := c.Buffer.Bytes()[c.lastcomp:]
@@ -76,6 +77,9 @@ func (c *Chunker) compress() bool {
 		// grow rather than shrink, and in that case
 		// we cannot compress because there isn't
 		// space to grow the symbol table -- just bail out
+		//
+		// also, revert changes to the symbol table
+		c.Symbols.Truncate(oldmax)
 		return false
 	}
 	// commit the new compressed data
