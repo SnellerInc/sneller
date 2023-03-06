@@ -229,6 +229,10 @@ type tableState struct {
 	shouldGC  bool
 }
 
+func (st *tableState) logf(f string, args ...any) {
+	st.conf.logf("%s/%s: %s", st.db, st.table, fmt.Sprintf(f, args...))
+}
+
 func (st *tableState) invalidate() {
 	st.cache.value = nil
 	st.cache.etag = ""
@@ -244,7 +248,7 @@ func (st *tableState) runGC(ctx context.Context, idx *blockfmt.Index) {
 	if st.shouldGC {
 		err := st.fullGC(ctx, idx)
 		if err != nil {
-			st.conf.logf("full gc on %s/%s: %s", st.db, st.table, err)
+			st.logf("full gc: %s", err)
 		}
 		st.shouldGC = err == nil
 		return
@@ -350,7 +354,6 @@ func (st *tableState) findPrepend(idx *blockfmt.Index, part string) int {
 // deleteInline marks the ith inline object for
 // deletion. This panics if i is out of range.
 func (st *tableState) deleteInline(idx *blockfmt.Index, i int) {
-	st.conf.logf("re-ingesting %s due to small size", idx.Inline[i].Path)
 	idx.ToDelete = append(idx.ToDelete, blockfmt.Quarantined{
 		Path:   idx.Inline[i].Path,
 		Expiry: date.Now().Add(st.conf.GCMinimumAge),
@@ -461,7 +464,6 @@ func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
 			return err
 		}
 		if len(parts) == 0 {
-			ti.state.conf.logf("index for %s already up-to-date", ti.state.table)
 			return nil
 		}
 		return ti.state.append(ctx, idx, parts)
@@ -490,7 +492,6 @@ func (ti *tableInfo) append(ctx context.Context, parts []partition) error {
 func (st *tableState) shouldScan() bool { return st.conf.shouldScan(st.def) }
 
 func (st *tableState) append(ctx context.Context, idx *blockfmt.Index, parts []partition) error {
-	st.conf.logf("updating table %s/%s...", st.db, st.table)
 	var err error
 	if len(parts) == 0 {
 		if idx == nil {
@@ -503,7 +504,6 @@ func (st *tableState) append(ctx context.Context, idx *blockfmt.Index, parts []p
 		st.invalidate()
 		return fmt.Errorf("force: %w", err)
 	}
-	st.conf.logf("update of table %s complete", st.table)
 	return nil
 }
 
@@ -526,7 +526,6 @@ func (c *Config) Sync(who Tenant, db, tblpat string) error {
 	var tables []string
 	for i := range possible {
 		tab, _ := path.Split(possible[i])
-		c.logf("detected table at path %q", tab)
 		tables = append(tables, path.Base(tab))
 	}
 	syncTable := func(table string) error {
@@ -700,7 +699,6 @@ func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []part
 				}
 				st.overwrite(idx, "")
 			} else {
-				st.conf.logf("re-opening index to record failure: %s", err)
 				return
 			}
 		}
@@ -711,9 +709,12 @@ func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []part
 			if parts[i].lst[j].Err == nil || !blockfmt.IsFatal(parts[i].lst[j].Err) {
 				continue
 			}
-			_, err := idx.Inputs.Append(parts[i].lst[j].Path, parts[i].lst[j].ETag, -1)
+			path := parts[i].lst[j].Path
+			etag := parts[i].lst[j].ETag
+			st.logf("rejecting object: path %s etag %s", path, etag)
+			_, err := idx.Inputs.Append(path, etag, -1)
 			if err != nil {
-				st.conf.logf("updateFailed: %s", err)
+				st.logf("blockfmt.FileTree.Append: %s", err)
 				return
 			}
 		}
@@ -722,7 +723,7 @@ func (st *tableState) updateFailed(ctx context.Context, empty bool, parts []part
 	idx.Algo = "zstd"
 	err = st.flush(ctx, idx)
 	if err != nil {
-		st.conf.logf("flushing index in updateFailed: %s", err)
+		st.logf("flushing index in updateFailed: %s", err)
 	}
 }
 
@@ -735,11 +736,11 @@ func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 		return false
 	}
 	if rp.Field == "" {
-		st.conf.logf("retention policy field name is not set")
+		st.logf("retention policy field name is not set")
 		return false
 	}
 	if rp.ValidFor.Zero() {
-		st.conf.logf("retention policy expiry time is not set or invalid")
+		st.logf("retention policy expiry time is not set or invalid")
 		return false
 	}
 	field, err := expr.ParsePath(rp.Field)
@@ -755,7 +756,7 @@ func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 	// purge indirect tree
 	todelete, err := idx.Indirect.Purge(st.ofs, &filt, st.conf.GCMinimumAge)
 	if err != nil {
-		st.conf.logf("failed purging expired entries: %s", err)
+		st.logf("failed purging expired entries: %s", err)
 		return false
 	}
 	// purge inline list
@@ -775,7 +776,6 @@ func (st *tableState) purgeExpired(idx *blockfmt.Index) bool {
 	if len(todelete) == 0 {
 		return false
 	}
-	st.conf.logf("purged %d expired entries before %s", len(todelete), exp)
 	idx.ToDelete = append(idx.ToDelete, todelete...)
 	return true
 }
@@ -788,7 +788,7 @@ func (st *tableState) preciseGC(idx *blockfmt.Index) bool {
 	purged := st.purgeExpired(idx)
 	gc := false
 	if rmfs, ok := st.ofs.(RemoveFS); ok {
-		gcconf := GCConfig{Precise: true, Logf: st.conf.Logf}
+		gcconf := GCConfig{Precise: true, Logf: st.logf}
 		gc = gcconf.preciseGC(rmfs, idx)
 	}
 	return purged || gc
@@ -1015,7 +1015,6 @@ func (st *tableState) forcePart(ctx context.Context, prepend, dst *blockfmt.Desc
 		},
 		Trailer: *c.Trailer(),
 	}
-	st.conf.logf("table %s: wrote object %s ETag %s", st.table, fp, etag)
 	return nil
 }
 
@@ -1026,7 +1025,7 @@ func (st *tableState) fullGC(ctx context.Context, idx *blockfmt.Index) error {
 	}
 	defer trace.StartRegion(ctx, "run-gc").End()
 	conf := GCConfig{
-		Logf:            st.conf.Logf,
+		Logf:            st.logf,
 		MinimumAge:      st.conf.GCMinimumAge,
 		InputMinimumAge: st.conf.InputMinimumAge,
 		MaxDelay:        st.conf.GCMaxDelay,

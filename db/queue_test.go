@@ -298,6 +298,7 @@ func testQueue(t *testing.T, batchsize int64, scan bool) {
 	r.Conf = Config{
 		Align:        1024,
 		NewIndexScan: true, // consult skip_backfill
+		Logf:         t.Logf,
 	}
 
 	runQueue(t, r, q)
