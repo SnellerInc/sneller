@@ -147,6 +147,51 @@ func simplifyClass1(src *Builtin, h Hint) Node {
 				}
 			}
 		}
+	case ArrayContains:
+		if len(src.Args) == 2 {
+			// (array_contains (list l) (constant x)) -> (bool "l.Index(x) >= 0")
+			if l, ok := (src.Args[0]).(*List); ok {
+				if x, ok := (src.Args[1]).(Constant); ok {
+					return Bool(l.Index(x) >= 0)
+				}
+			}
+			// (array_contains (list _) (missing)) -> (missing)
+			if _, ok := (src.Args[0]).(*List); ok {
+				if _, ok := (src.Args[1]).(Missing); ok {
+					return Missing{}
+				}
+			}
+			// (array_contains (list _) (missing)) -> (missing)
+			if _, ok := (src.Args[0]).(*List); ok {
+				if _, ok := (src.Args[1]).(Missing); ok {
+					return Missing{}
+				}
+			}
+		}
+	case ArrayPosition:
+		if len(src.Args) == 2 {
+			// (array_position (list l) (constant x)) -> "staticArrayPosition(l, x)"
+			if l, ok := (src.Args[0]).(*List); ok {
+				if x, ok := (src.Args[1]).(Constant); ok {
+					return staticArrayPosition(l, x)
+				}
+			}
+		}
+	case ArraySize:
+		if len(src.Args) == 1 {
+			// (array_size (list l)) -> "Integer(len(l.Values))"
+			if l, ok := (src.Args[0]).(*List); ok {
+				return Integer(len(l.Values))
+			}
+			// (array_size (missing)) -> (missing)
+			if _, ok := (src.Args[0]).(Missing); ok {
+				return Missing{}
+			}
+			// (array_size (null)) -> (null)
+			if _, ok := (src.Args[0]).(Null); ok {
+				return Null{}
+			}
+		}
 	case CharLength:
 		if len(src.Args) == 1 {
 			// (char_length (concat x y)) -> (add (char_length x) (char_length y))
@@ -1117,4 +1162,4 @@ func simplify1(src Node, h Hint) Node {
 	return nil
 }
 
-// checksum: 35d42f17a11b6658c1313cc3d4279c62
+// checksum: edc905b3969e625001fe97cd6fb5537e

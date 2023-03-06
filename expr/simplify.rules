@@ -179,6 +179,19 @@
 (object_size (missing)) -> (missing)
 (object_size (null)) -> (null)
 
+// array_size
+(array_size (list l)) -> `Integer(len(l.Values))`
+(array_size (missing)) -> (missing)
+(array_size (null)) -> (null)
+
+// array_contains
+(array_contains (list l) (constant x)) -> (bool `l.Index(x) >= 0`)
+(array_contains (list _) (missing)) -> (missing)
+
+// array_position
+(array_position (list l) (constant x)) -> `staticArrayPosition(l, x)`
+(array_contains (list _) (missing)) -> (missing)
+
 (date_extract_microsecond (ts x)) -> (int `x.Value.Nanosecond() / 1000`)
 (date_extract_millisecond (ts x)) -> (int `x.Value.Nanosecond() / 1000000`)
 (date_extract_second (ts x)) -> (int `x.Value.Second()`)

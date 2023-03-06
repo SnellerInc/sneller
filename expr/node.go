@@ -3453,6 +3453,17 @@ func (l *List) text(dst *strings.Builder, redact bool) {
 	dst.WriteByte(']')
 }
 
+// Index returns position of the first occurance of constant.
+// Returns -1 if no element was found.
+func (l *List) Index(c Constant) int {
+	for i := range l.Values {
+		if Equal(c, l.Values[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
 func (l *List) Type() TypeSet { return ListType }
 
 func (l *List) Datum() ion.Datum {

@@ -40,6 +40,16 @@ func staticSubstr(x String, i Integer, n Integer) String {
 	return res[:length]
 }
 
+// staticArrayPosition evaluates ARRAY_POSITION(list, constant)
+// according to the documentation.
+func staticArrayPosition(l *List, c Constant) Node {
+	if pos := l.Index(c); pos >= 0 {
+		return Integer(pos + 1)
+	}
+
+	return Missing{}
+}
+
 func autoSimplify(e Node, h Hint) Node {
 	better := simplify1(e, h)
 	for better != nil {
