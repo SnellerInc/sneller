@@ -1331,6 +1331,8 @@ func (p *prog) mkhash(st *symtab, imm interface{}) *radixTree64 {
 		return lut.precomputed
 	}
 
+	p.literals = true // recompile on symbol table changes
+
 	putval := lut.table.Values.Transcoder(&st.Symtab)
 	if lut.precomputed != nil {
 		// fast (common) path: just insert values
@@ -1411,6 +1413,7 @@ func (p *prog) mktree(st *symtab, imm interface{}) *radixTree64 {
 	if hset.precomputed != nil {
 		return hset.precomputed
 	}
+	p.literals = true // recompile on symbol table changes
 
 	values := hset.set
 	tree := newRadixTree(0)

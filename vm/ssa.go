@@ -4334,10 +4334,8 @@ func (p *prog) symbolize(st *symtab, aux *auxbindings) error {
 		v := p.values[i]
 		switch v.op {
 		case shashmember:
-			p.literals = true
 			v.imm = p.mktree(st, v.imm)
 		case shashlookup:
-			p.literals = true
 			v.imm = p.mkhash(st, v.imm)
 		case sdot:
 			str := v.imm.(string)
