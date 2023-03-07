@@ -1,1 +1,0 @@
-SELECT 30 * WIDTH_BUCKET(FlightDelayMin+15, 0, 30000, 1000) - 30 AS _wdbucket1, COUNT(*) FROM kibana_sample_data_flights WHERE NOT(FlightDelayMin = 0) AND timestamp BETWEEN `2022-03-01T00:00:00Z` AND `2022-07-01T00:00:00Z` GROUP BY 30 * WIDTH_BUCKET(FlightDelayMin+15, 0, 30000, 1000) - 30 ORDER BY _wdbucket1

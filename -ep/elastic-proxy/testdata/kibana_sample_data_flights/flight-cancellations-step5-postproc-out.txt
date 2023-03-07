@@ -1,3 +1,0 @@
-_terms1,count
-"false","11344",
-"true","1670",

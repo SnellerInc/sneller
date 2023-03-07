@@ -1,1 +1,0 @@
-{"_shards":{"failed":0,"skipped":0,"successful":1,"total":1},"aggregations":{"2":{"buckets":[{"doc_count":11344,"key":0,"key_as_string":"false"},{"doc_count":1670,"key":1,"key_as_string":"true"}]}},"hits":{"hits":[],"max_score":null,"total":{"relation":"eq","value":13014}},"timed_out":false,"took":100}

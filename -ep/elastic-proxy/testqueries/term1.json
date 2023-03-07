@@ -1,8 +1,0 @@
-{
-    "term": {
-        "user.id": {
-            "value": "kimchy",
-            "boost": 1.0
-        }
-    }
-}

@@ -1,9 +1,0 @@
-{
-    "$bucket:name%0": [
-        {
-            "$doc_count": 1,
-            "$key:name%0": "2022-03-21T00:00:00Z"
-        }
-    ],
-    "$total_count": 13014
-}

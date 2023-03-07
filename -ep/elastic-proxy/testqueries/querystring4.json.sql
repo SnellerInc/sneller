@@ -1,1 +1,0 @@
-(("$source"."u_boolean_allowed" = TRUE) AND (("$source"."tenant" = 'test') AND ("$source"."server_timestamp" >= `2022-04-25T22:15:32.364007Z`)))

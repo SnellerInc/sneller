@@ -1,1 +1,0 @@
-("$source"."user"."id" = 'kimchy')

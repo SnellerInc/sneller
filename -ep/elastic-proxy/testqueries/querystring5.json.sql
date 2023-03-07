@@ -1,1 +1,0 @@
-((("$source"."u_string_path" ~ '^(?i)search$') AND ("$source"."decision" ~ '(^|[ \t])(?i)path([ \t]|$)')) AND (("$source"."tenant" = 'test') AND ("$source"."server_timestamp" >= `2022-04-25T22:16:01.702369Z`)))

@@ -1,1 +1,0 @@
-(((("$source"."user"."id" = 'kimchy') AND ("$source"."tags" = 'production')) AND (("$source"."tags" = 'env1') OR ("$source"."tags" = 'deployed'))) AND (NOT (("$source"."age" > 10) AND ("$source"."age" <= 20))))

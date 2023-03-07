@@ -1,6 +1,0 @@
-{
-    "query_string": {
-        "default_field": "timestamp",
-        "query": "[* TO \"2022-03-21T00:00:00.000Z\"]"
-    }
-}

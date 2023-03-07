@@ -1,1 +1,0 @@
-(("$source"."test" ~ '(^|[ \t])(?i)Lease([ \t]|$)') AND ("$source"."input"."request"."namespace" ~ '(^|[ \t])(?i)kube-node-lease([ \t]|$)'))
