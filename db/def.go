@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"reflect"
 
 	"github.com/SnellerInc/sneller/date"
 	"github.com/SnellerInc/sneller/fsutil"
@@ -144,6 +145,12 @@ func (d *Definition) Hash() []byte {
 		panic("db: failed to hash definition: " + err.Error())
 	}
 	return hash.Sum(nil)
+}
+
+// Equals returns whether or not the table
+// definitions are equivalent.
+func (d *Definition) Equals(x *Definition) bool {
+	return reflect.DeepEqual(d, x)
 }
 
 // DecodeDefinition decodes a definition from src

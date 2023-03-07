@@ -496,8 +496,8 @@ func stopScans(defs map[dbtable]*tableInfo) {
 // at which point it will call in.Close.
 func (q *QueueRunner) Run(in Queue) error {
 	var lastRefresh time.Time
-	subdefs := make(map[dbtable]*tableInfo)
-	defer stopScans(subdefs)
+	var ts tableStates
+	defer stopScans(ts.defs)
 
 	// double-buffered queue batches
 	var batches [2]queueBatch
@@ -507,12 +507,15 @@ func (q *QueueRunner) Run(in Queue) error {
 readloop:
 	for {
 		if time.Since(lastRefresh) > q.tableRefresh() {
-			wg.Wait() // everything should be idle
-			err := q.updateDefs(subdefs)
+			err := q.updateDefs(&ts)
 			if err != nil {
 				q.logf("updating table definitions: %s", err)
 				q.delay()
 				continue readloop
+			}
+			if len(ts.update) > 0 {
+				wg.Wait() // everything should be idle
+				q.finishUpdates(&ts)
 			}
 			lastRefresh = time.Now()
 		}
@@ -530,7 +533,7 @@ readloop:
 		// then launch a new one
 		wg.Wait()
 		wg.Add(1)
-		go q.runBatches(in, curbatch, subdefs, &wg)
+		go q.runBatches(in, curbatch, ts.defs, &wg)
 		curb++
 	}
 }
@@ -578,15 +581,16 @@ func (q *QueueRunner) init(ti *tableInfo) {
 	}
 }
 
-func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
+type tableStates struct {
+	update, defs map[dbtable]*tableInfo
+}
+
+func (q *QueueRunner) updateDefs(ts *tableStates) error {
 	dir, err := q.Owner.Root()
 	if err != nil {
 		return err
 	}
 	ofs, _ := dir.(OutputFS)
-	stopScans(m)
-	// flush known tables, including the table cache
-	maps.Clear(m)
 	dbs, err := fs.ReadDir(dir, "db")
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -594,6 +598,14 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 			err = nil
 		}
 		return err
+	}
+	if ts.update == nil {
+		ts.update = make(map[dbtable]*tableInfo)
+	} else {
+		maps.Clear(ts.update)
+	}
+	for key := range ts.defs {
+		ts.update[key] = nil
 	}
 	for i := range dbs {
 		if !dbs[i].IsDir() {
@@ -618,20 +630,39 @@ func (q *QueueRunner) updateDefs(m map[dbtable]*tableInfo) error {
 				// don't get hung up on invalid definitions
 				continue
 			}
+			key := dbtable{db: dbname, table: tables[j].Name()}
+			if ti, ok := ts.defs[key]; ok && ti.state.def.Equals(def) {
+				delete(ts.update, key) // no need to update
+				continue
+			}
 			ti := &tableInfo{
 				state: tableState{
 					def:   def,
 					conf:  q.Conf,
 					ofs:   ofs,
-					db:    dbname,
+					db:    key.db,
 					table: def.Name,
 					owner: q.Owner,
 				},
 			}
 			ti.state.conf.SetFeatures(ti.state.def.Features)
-			m[dbtable{db: dbname, table: tables[j].Name()}] = ti
-			q.init(ti)
+			ts.update[key] = ti
 		}
 	}
 	return nil
+}
+
+func (q *QueueRunner) finishUpdates(ts *tableStates) {
+	stopScans(ts.defs)
+	for key, ti := range ts.update {
+		if ti == nil {
+			delete(ts.defs, key)
+			continue
+		}
+		if ts.defs == nil {
+			ts.defs = make(map[dbtable]*tableInfo)
+		}
+		ts.defs[key] = ti
+		q.init(ti)
+	}
 }
