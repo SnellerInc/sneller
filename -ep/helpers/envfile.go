@@ -12,6 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+// Package helpers provides .env file parser. It is used
+// by integration tests.
 package helpers
 
 import (

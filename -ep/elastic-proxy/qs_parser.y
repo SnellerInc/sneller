@@ -14,6 +14,7 @@
 
 // uses golang.org/x/tools/cmd/goyacc
 %{
+
 package elastic_proxy
 
 import "fmt"

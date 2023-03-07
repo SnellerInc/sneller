@@ -23,7 +23,7 @@ import (
 	"strings"
 )
 
-//line qs_lexer.go:29
+//line qs_lexer.go:27
 const querystring_start int = 10
 const querystring_first_final int = 10
 const querystring_error int = 0
@@ -48,7 +48,7 @@ func newQueryStringLexer(data []byte) *queryStringLexer {
 		defaultOperator: "OR",
 	}
 
-//line qs_lexer.go:56
+//line qs_lexer.go:52
 	{
 		lex.cs = querystring_start
 		lex.ts = 0
@@ -64,7 +64,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 	eof := lex.pe
 	tok := 0
 
-//line qs_lexer.go:72
+//line qs_lexer.go:66
 	{
 		if (lex.p) == (lex.pe) {
 			goto _test_eof
@@ -656,7 +656,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 //line NONE:1
 		lex.ts = (lex.p)
 
-//line qs_lexer.go:441
+//line qs_lexer.go:435
 		switch lex.data[(lex.p)] {
 		case 32:
 			goto tr18
@@ -796,7 +796,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof11
 		}
 	st_case_11:
-//line qs_lexer.go:581
+//line qs_lexer.go:575
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr0
@@ -860,7 +860,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof12
 		}
 	st_case_12:
-//line qs_lexer.go:645
+//line qs_lexer.go:639
 		switch lex.data[(lex.p)] {
 		case 58:
 			goto tr46
@@ -910,7 +910,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof13
 		}
 	st_case_13:
-//line qs_lexer.go:695
+//line qs_lexer.go:689
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -988,7 +988,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof14
 		}
 	st_case_14:
-//line qs_lexer.go:773
+//line qs_lexer.go:767
 		switch lex.data[(lex.p)] {
 		case 34:
 			goto tr5
@@ -1035,7 +1035,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof15
 		}
 	st_case_15:
-//line qs_lexer.go:820
+//line qs_lexer.go:814
 		if lex.data[(lex.p)] == 46 {
 			goto st5
 		}
@@ -1071,7 +1071,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof16
 		}
 	st_case_16:
-//line qs_lexer.go:856
+//line qs_lexer.go:850
 		if 48 <= lex.data[(lex.p)] && lex.data[(lex.p)] <= 57 {
 			goto tr10
 		}
@@ -1112,7 +1112,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof17
 		}
 	st_case_17:
-//line qs_lexer.go:897
+//line qs_lexer.go:891
 		switch lex.data[(lex.p)] {
 		case 47:
 			goto tr12
@@ -1132,7 +1132,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof18
 		}
 	st_case_18:
-//line qs_lexer.go:917
+//line qs_lexer.go:911
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr51
@@ -1197,7 +1197,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof20
 		}
 	st_case_20:
-//line qs_lexer.go:982
+//line qs_lexer.go:976
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1251,7 +1251,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof21
 		}
 	st_case_21:
-//line qs_lexer.go:1036
+//line qs_lexer.go:1030
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1305,7 +1305,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof22
 		}
 	st_case_22:
-//line qs_lexer.go:1090
+//line qs_lexer.go:1084
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1359,7 +1359,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof23
 		}
 	st_case_23:
-//line qs_lexer.go:1144
+//line qs_lexer.go:1138
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1413,7 +1413,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof24
 		}
 	st_case_24:
-//line qs_lexer.go:1198
+//line qs_lexer.go:1192
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1467,7 +1467,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof25
 		}
 	st_case_25:
-//line qs_lexer.go:1252
+//line qs_lexer.go:1246
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1521,7 +1521,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof26
 		}
 	st_case_26:
-//line qs_lexer.go:1306
+//line qs_lexer.go:1300
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1575,7 +1575,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof27
 		}
 	st_case_27:
-//line qs_lexer.go:1360
+//line qs_lexer.go:1354
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1629,7 +1629,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof28
 		}
 	st_case_28:
-//line qs_lexer.go:1414
+//line qs_lexer.go:1408
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1683,7 +1683,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof29
 		}
 	st_case_29:
-//line qs_lexer.go:1468
+//line qs_lexer.go:1462
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1739,7 +1739,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof30
 		}
 	st_case_30:
-//line qs_lexer.go:1524
+//line qs_lexer.go:1518
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1793,7 +1793,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof31
 		}
 	st_case_31:
-//line qs_lexer.go:1578
+//line qs_lexer.go:1572
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1877,7 +1877,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof33
 		}
 	st_case_33:
-//line qs_lexer.go:1662
+//line qs_lexer.go:1656
 		if lex.data[(lex.p)] == 46 {
 			goto st9
 		}
@@ -1897,7 +1897,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof34
 		}
 	st_case_34:
-//line qs_lexer.go:1682
+//line qs_lexer.go:1676
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -1951,7 +1951,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof35
 		}
 	st_case_35:
-//line qs_lexer.go:1736
+//line qs_lexer.go:1730
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2005,7 +2005,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof36
 		}
 	st_case_36:
-//line qs_lexer.go:1790
+//line qs_lexer.go:1784
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2059,7 +2059,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof37
 		}
 	st_case_37:
-//line qs_lexer.go:1844
+//line qs_lexer.go:1838
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2113,7 +2113,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof38
 		}
 	st_case_38:
-//line qs_lexer.go:1898
+//line qs_lexer.go:1892
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2167,7 +2167,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof39
 		}
 	st_case_39:
-//line qs_lexer.go:1952
+//line qs_lexer.go:1946
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2221,7 +2221,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof40
 		}
 	st_case_40:
-//line qs_lexer.go:2006
+//line qs_lexer.go:2000
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2275,7 +2275,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof41
 		}
 	st_case_41:
-//line qs_lexer.go:2060
+//line qs_lexer.go:2054
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2329,7 +2329,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof42
 		}
 	st_case_42:
-//line qs_lexer.go:2114
+//line qs_lexer.go:2108
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2383,7 +2383,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof43
 		}
 	st_case_43:
-//line qs_lexer.go:2168
+//line qs_lexer.go:2162
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2437,7 +2437,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof44
 		}
 	st_case_44:
-//line qs_lexer.go:2222
+//line qs_lexer.go:2216
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2491,7 +2491,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof45
 		}
 	st_case_45:
-//line qs_lexer.go:2276
+//line qs_lexer.go:2270
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2545,7 +2545,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof46
 		}
 	st_case_46:
-//line qs_lexer.go:2330
+//line qs_lexer.go:2324
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46
@@ -2599,7 +2599,7 @@ func (lex *queryStringLexer) Lex(out *yySymType) int {
 			goto _test_eof47
 		}
 	st_case_47:
-//line qs_lexer.go:2384
+//line qs_lexer.go:2378
 		switch lex.data[(lex.p)] {
 		case 38:
 			goto tr46

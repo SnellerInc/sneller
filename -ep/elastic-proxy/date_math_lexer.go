@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-//line date_math_lexer.go:29
+//line date_math_lexer.go:27
 const datemathlexer_start int = 1
 const datemathlexer_first_final int = 37
 const datemathlexer_error int = 0
@@ -58,14 +58,14 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 
 //line date_math_lexer.rl:75
 
-//line date_math_lexer.go:68
+//line date_math_lexer.go:63
 	{
 		lex.cs = datemathlexer_start
 	}
 
 //line date_math_lexer.rl:78
 
-//line date_math_lexer.go:75
+//line date_math_lexer.go:68
 	{
 		if (lex.p) == (lex.pe) {
 			goto _test_eof
@@ -176,7 +176,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof2
 		}
 	st_case_2:
-//line date_math_lexer.go:186
+//line date_math_lexer.go:179
 		if 48 <= lex.data[(lex.p)] && lex.data[(lex.p)] <= 57 {
 			goto st3
 		}
@@ -266,7 +266,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof10
 		}
 	st_case_10:
-//line date_math_lexer.go:276
+//line date_math_lexer.go:269
 		if 48 <= lex.data[(lex.p)] && lex.data[(lex.p)] <= 57 {
 			goto tr14
 		}
@@ -280,7 +280,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof11
 		}
 	st_case_11:
-//line date_math_lexer.go:290
+//line date_math_lexer.go:283
 		if lex.data[(lex.p)] == 58 {
 			goto st13
 		}
@@ -484,7 +484,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof28
 		}
 	st_case_28:
-//line date_math_lexer.go:494
+//line date_math_lexer.go:487
 		if lex.data[(lex.p)] == 124 {
 			goto st37
 		}
@@ -530,7 +530,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof29
 		}
 	st_case_29:
-//line date_math_lexer.go:540
+//line date_math_lexer.go:533
 		if 48 <= lex.data[(lex.p)] && lex.data[(lex.p)] <= 57 {
 			goto st30
 		}
@@ -573,7 +573,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof38
 		}
 	st_case_38:
-//line date_math_lexer.go:583
+//line date_math_lexer.go:576
 		switch lex.data[(lex.p)] {
 		case 43:
 			goto tr41
@@ -600,7 +600,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof31
 		}
 	st_case_31:
-//line date_math_lexer.go:610
+//line date_math_lexer.go:603
 		switch lex.data[(lex.p)] {
 		case 72:
 			goto tr36
@@ -629,7 +629,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 			goto _test_eof39
 		}
 	st_case_39:
-//line date_math_lexer.go:639
+//line date_math_lexer.go:632
 		switch lex.data[(lex.p)] {
 		case 43:
 			goto tr43
@@ -848,7 +848,7 @@ func ParseDateMath(data string, now time.Time) (time.Time, error) {
 				lex.t = round(lex.t, lex.string())
 //line date_math_lexer.rl:74
 				result = lex.t
-//line date_math_lexer.go:778
+//line date_math_lexer.go:771
 			}
 		}
 
