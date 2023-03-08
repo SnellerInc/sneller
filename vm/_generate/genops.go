@@ -40,40 +40,89 @@ type oprename struct {
 	from, to string
 }
 
-func parseAsmFile(ops []opcode, path string) ([]opcode, error) {
+type AsmParser struct {
+	paths   []string            // stack of paths
+	seen    map[string]struct{} // already seen paths
+	offset  int64               // current offset in constant table
+	opcodes []opcode            // parsed opcodes
+}
+
+func (a *AsmParser) parseAll() ([]opcode, error) {
+	for len(a.paths) > 0 {
+		n := len(a.paths)
+		path := a.paths[n-1]
+		a.paths = a.paths[:n-1]
+
+		err := a.parse(path)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return a.opcodes, nil
+}
+
+var systemincludes = []string{"go_asm.h", "funcdata.h", "textflag.h"}
+
+func (a *AsmParser) addPath(path string) {
+	if a.seen == nil {
+		a.seen = make(map[string]struct{})
+		for _, p := range systemincludes {
+			a.seen[p] = struct{}{}
+		}
+	}
+
+	if _, ok := a.seen[path]; ok {
+		return
+	}
+
+	a.paths = append(a.paths, path)
+	a.seen[path] = struct{}{}
+}
+
+var reopcode = regexp.MustCompile(`^TEXT bc(?P<op>.*)\(SB\)`)
+
+func (a *AsmParser) parse(path string) error {
 	f, err := os.Open(path)
 	checkErr(err)
 	defer f.Close()
 
 	rd := bufio.NewReader(f)
-	re := regexp.MustCompile(`^TEXT bc(?P<op>.*)\(SB\)`)
-	ofs := int64(len(ops) * 8)
 
 	scanner := bufio.NewScanner(rd)
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if include, ok := strings.CutPrefix(line, "#include "); ok {
+			n := len(include)
+			if n > 2 && include[0] == '"' && include[n-1] == '"' {
+				a.addPath(include[1 : n-1])
+			} else {
+				return fmt.Errorf("malformed include: %s", line)
+			}
+			continue
+		}
+
 		if !strings.HasPrefix(line, "TEXT bc") {
 			continue
 		}
 
-		if v := re.FindStringSubmatch(line); len(v) > 0 {
-			ops = append(ops, opcode{name: v[1], offset: ofs})
-			ofs += 8
+		if v := reopcode.FindStringSubmatch(line); len(v) > 0 {
+			a.opcodes = append(a.opcodes, opcode{name: v[1], offset: a.offset})
+			a.offset += 8
 		}
 	}
 
-	return ops, scanner.Err()
+	return scanner.Err()
 }
 
-func parseAsmFiles(paths []string) ([]opcode, []oprename, error) {
-	var ops []opcode
-	var err error
-	for _, path := range paths {
-		ops, err = parseAsmFile(ops, path)
-		if err != nil {
-			return nil, nil, err
-		}
+func parseAsmFile(path string) ([]opcode, []oprename, error) {
+	var p AsmParser
+	p.addPath(path)
+
+	ops, err := p.parseAll()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	lookup := make(map[string]*opcode)
@@ -206,7 +255,7 @@ func generateAsm(f io.Writer, ops []opcode) {
 }
 
 func main() {
-	ops, rename, err := parseAsmFiles([]string{"evalbc_amd64.s", "bc_eval_math_i64_amd64.h", "bc_eval_math_f64_amd64.h"})
+	ops, rename, err := parseAsmFile("evalbc_amd64.s")
 	checkErr(err)
 
 	generateGoFile("ops_gen.go", ops, rename)

@@ -6725,9 +6725,6 @@ TEXT bcaggork(SB), NOSPLIT|NOFRAME, $0
 
   NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
-/*
-TEXT bcaggslotsumf(SB), NOSPLIT|NOFRAME, $0
-*/
 #include "evalbc_aggsumf.h"
 
 TEXT bcaggsumf(SB), NOSPLIT|NOFRAME, $0
@@ -12227,22 +12224,11 @@ next:
 // LOWER/UPPER functions
 // --------------------------------------------------
 
-/*
-TEXT bcslower(SB), NOSPLIT|NOFRAME, $0
-TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
-*/
 #include "evalbc_strcase.h"
 
 // APPROX_COUNT_DISTINCT
 // --------------------------------------------------
 
-/*
-TEXT bcaggapproxcount(SB), NOSPLIT|NOFRAME, $0
-TEXT bcaggapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
-
-TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
-TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
-*/
 #include "evalbc_approxcount.h"
 
 // POW(x, intpow) implementation
