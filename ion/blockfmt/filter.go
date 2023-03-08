@@ -28,9 +28,7 @@ import (
 // can be evaluated against a SparseIndex to
 // produce intervals that match the compiled condition.
 type Filter struct {
-	eval  evalfn // entry point
-	grow  cont   // return point
-	paths []string
+	eval evalfn // entry point
 
 	// union of intervals to traverse;
 	// by convention these are always non-empty
@@ -38,13 +36,12 @@ type Filter struct {
 }
 
 type evalfn func(f *Filter, si *SparseIndex, rest cont)
-type cont func(start, end int)
+type cont func(f *Filter, start, end int)
 
 // Compile sets the expression that the filter should evaluate.
 // A call to Compile erases any previously-compiled expression.
 func (f *Filter) Compile(e expr.Node) {
-	f.paths = f.paths[:0]
-	f.eval = f.compile(e)
+	f.eval = filtcompile(e)
 }
 
 // Trivial returns true if the compiled filter
@@ -58,17 +55,17 @@ func (f *Filter) Trivial() bool { return f.eval == nil }
 // expressions with a single expression that computes
 // the intersection of the two ranges computed by
 // left and right
-func (f *Filter) intersect(left, right expr.Node) evalfn {
-	lhs := f.compile(left)
-	rhs := f.compile(right)
+func filtintersect(left, right expr.Node) evalfn {
+	lhs := filtcompile(left)
+	rhs := filtcompile(right)
 	if lhs == nil {
 		return rhs
 	} else if rhs == nil {
 		return lhs
 	}
 	return func(f *Filter, si *SparseIndex, rest cont) {
-		lhs(f, si, func(lo, hi int) {
-			rhs(f, si, func(rlo, rhi int) {
+		lhs(f, si, func(f *Filter, lo, hi int) {
+			rhs(f, si, func(f *Filter, rlo, rhi int) {
 				nlo := lo
 				if rlo > lo {
 					nlo = rlo
@@ -78,7 +75,7 @@ func (f *Filter) intersect(left, right expr.Node) evalfn {
 					nhi = rhi
 				}
 				if nlo < nhi {
-					rest(nlo, nhi)
+					rest(f, nlo, nhi)
 				}
 			})
 		})
@@ -86,53 +83,53 @@ func (f *Filter) intersect(left, right expr.Node) evalfn {
 }
 
 // filter where p <= when
-func (f *Filter) beforeeq(path []string, when date.Time) evalfn {
+func filtbeforeeq(path []string, when date.Time) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
-			rest(0, si.Blocks())
+			rest(f, 0, si.Blocks())
 			return
 		}
 		end := ti.End(when)
 		if end == 0 {
 			return
 		}
-		rest(0, end)
+		rest(f, 0, end)
 	}
 }
 
 // filter where p >= when
-func (f *Filter) aftereq(path []string, when date.Time) evalfn {
+func filtaftereq(path []string, when date.Time) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
-			rest(0, si.Blocks())
+			rest(f, 0, si.Blocks())
 			return
 		}
 		start := ti.Start(when)
 		if start == ti.Blocks() {
 			return
 		}
-		rest(start, ti.Blocks())
+		rest(f, start, ti.Blocks())
 	}
 }
 
-func (f *Filter) within(path []string, when date.Time) evalfn {
+func filtwithin(path []string, when date.Time) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		ti := si.Get(path)
 		if ti == nil {
-			rest(0, si.Blocks())
+			rest(f, 0, si.Blocks())
 			return
 		}
 		start, end := ti.Start(when), ti.End(when.Add(time.Microsecond))
 		if start == end {
 			return
 		}
-		rest(start, end)
+		rest(f, start, end)
 	}
 }
 
-func (f *Filter) eqstring(p []string, str expr.String) evalfn {
+func filteqstring(p []string, str expr.String) evalfn {
 	if len(p) != 1 {
 		return nil
 	}
@@ -151,12 +148,12 @@ func (f *Filter) eqstring(p []string, str expr.String) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)
 		if !ok || eq(str, field.Datum) {
-			rest(0, si.Blocks())
+			rest(f, 0, si.Blocks())
 		}
 	}
 }
 
-func (f *Filter) eqint(p []string, n expr.Integer) evalfn {
+func filteqint(p []string, n expr.Integer) evalfn {
 	if len(p) != 1 {
 		return nil
 	}
@@ -175,12 +172,12 @@ func (f *Filter) eqint(p []string, n expr.Integer) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)
 		if !ok || eq(n, field.Datum) {
-			rest(0, si.Blocks())
+			rest(f, 0, si.Blocks())
 		}
 	}
 }
 
-func (f *Filter) contains(p []string, set *ion.Bag) evalfn {
+func filtcontains(p []string, set *ion.Bag) evalfn {
 	if len(p) != 1 {
 		return nil
 	}
@@ -199,13 +196,13 @@ func (f *Filter) contains(p []string, set *ion.Bag) evalfn {
 	return func(f *Filter, si *SparseIndex, rest cont) {
 		field, ok := si.consts.FieldByName(name)
 		if !ok || match(field.Datum) {
-			rest(0, si.Blocks())
+			rest(f, 0, si.Blocks())
 		}
 	}
 }
 
 // filter where !e
-func (f *Filter) negate(e expr.Node) evalfn {
+func filtnegate(e expr.Node) evalfn {
 	// we expect DNF ("disjunctive normal form"),
 	// so if we have a negation of a disjunction we
 	// need to turn it into a conjunction instead
@@ -216,19 +213,19 @@ func (f *Filter) negate(e expr.Node) evalfn {
 		// which is then
 		//   (A-left AND B-left) OR (A-left AND B-right) OR
 		//   (A-right AND B-left) OR (A-right AND B-right)
-		return f.intersect(&expr.Not{or.Left}, &expr.Not{or.Right})
+		return filtintersect(&expr.Not{or.Left}, &expr.Not{or.Right})
 	}
-	inner := f.compile(e)
+	inner := filtcompile(e)
 	if inner == nil {
 		return nil
 	}
 	return func(f *Filter, si *SparseIndex, rest cont) {
-		inner(f, si, func(x, y int) {
+		inner(f, si, func(f *Filter, x, y int) {
 			if x > 0 {
-				rest(0, x)
+				rest(f, 0, x)
 			}
 			if y < si.Blocks() {
-				rest(y, si.Blocks())
+				rest(f, y, si.Blocks())
 			}
 		})
 	}
@@ -248,9 +245,9 @@ func toUnixMicro(e expr.Node) *expr.Timestamp {
 	return nil
 }
 
-func (f *Filter) union(a, b expr.Node) evalfn {
-	part0 := f.compile(a)
-	part1 := f.compile(b)
+func filtunion(a, b expr.Node) evalfn {
+	part0 := filtcompile(a)
+	part1 := filtcompile(b)
 	if part0 == nil {
 		return part1
 	} else if part1 == nil {
@@ -262,21 +259,21 @@ func (f *Filter) union(a, b expr.Node) evalfn {
 	}
 }
 
-func (f *Filter) compile(e expr.Node) evalfn {
+func filtcompile(e expr.Node) evalfn {
 	switch e := e.(type) {
 	case *expr.Member:
 		p, ok := expr.FlatPath(e.Arg)
 		if ok {
-			return f.contains(p, &e.Set)
+			return filtcontains(p, &e.Set)
 		}
 	case *expr.Not:
-		return f.negate(e.Expr)
+		return filtnegate(e.Expr)
 	case *expr.Logical:
 		switch e.Op {
 		case expr.OpAnd:
-			return f.intersect(e.Left, e.Right)
+			return filtintersect(e.Left, e.Right)
 		case expr.OpOr:
-			return f.union(e.Left, e.Right)
+			return filtunion(e.Left, e.Right)
 		}
 	case *expr.Comparison:
 		conv := func(e expr.Node) *expr.Timestamp {
@@ -313,11 +310,11 @@ func (f *Filter) compile(e expr.Node) evalfn {
 			case *expr.Timestamp:
 				// continue on to timestamp handling
 			case expr.String:
-				return f.eqstring(p, rhs)
+				return filteqstring(p, rhs)
 			case expr.Integer:
 				// TODO: support more than just
 				// equality comparisons
-				return f.eqint(p, rhs)
+				return filteqint(p, rhs)
 			default:
 				return nil
 			}
@@ -329,15 +326,15 @@ func (f *Filter) compile(e expr.Node) evalfn {
 		const epsilon = time.Microsecond
 		switch e.Op {
 		case expr.Equals:
-			return f.within(p, ts.Value)
+			return filtwithin(p, ts.Value)
 		case expr.Less:
-			return f.beforeeq(p, ts.Value.Add(-epsilon))
+			return filtbeforeeq(p, ts.Value.Add(-epsilon))
 		case expr.LessEquals:
-			return f.beforeeq(p, ts.Value)
+			return filtbeforeeq(p, ts.Value)
 		case expr.Greater:
-			return f.aftereq(p, ts.Value.Add(epsilon))
+			return filtaftereq(p, ts.Value.Add(epsilon))
 		case expr.GreaterEquals:
-			return f.aftereq(p, ts.Value)
+			return filtaftereq(p, ts.Value)
 		}
 	}
 	return nil
@@ -380,12 +377,9 @@ func (f *Filter) run(si *SparseIndex) {
 	if f.eval == nil {
 		return
 	}
-	if f.grow == nil {
-		f.grow = func(x, y int) {
-			f.intervals = append(f.intervals, [2]int{x, y})
-		}
-	}
-	f.eval(f, si, f.grow)
+	f.eval(f, si, func(f *Filter, start, end int) {
+		f.intervals = append(f.intervals, [2]int{start, end})
+	})
 	f.compress()
 }
 

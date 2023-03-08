@@ -61,6 +61,11 @@ func TestFilter(t *testing.T) {
 				if !f.Overlaps(&si, 0, start+1) {
 					t.Errorf("doesn't overlap [%d %d]", 0, start+1)
 				}
+				// ensure filter is trivially copy-able:
+				copy := f
+				if !copy.Overlaps(&si, 0, start+1) {
+					t.Errorf("copy doesn't overlap [%d %d]", 0, start+1)
+				}
 				if end > 0 && !f.Overlaps(&si, end-1, si.Blocks()) {
 					t.Errorf("doesn't overlap [%d %d]", end-1, si.Blocks())
 				}
