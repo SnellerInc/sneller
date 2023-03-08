@@ -1,3 +1,15 @@
+# Test queries
+
+The test application has two extra options:
+
+- `-symlink` (default: on) - enables crawling symlinks
+  when looking for test (`TestQueries`) or benchmark files
+  (`BenchamrkTestQueries`).
+
+- `-trace` (default: off) - prints on the standard output
+  bytecode being executed by tests `TestQueries`.
+
+
 # Code generators
 
 The `vm` package contains three major code generators

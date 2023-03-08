@@ -21,6 +21,7 @@ import (
 	"io"
 	"io/fs"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -35,6 +36,12 @@ import (
 	"github.com/SnellerInc/sneller/testquery"
 	"github.com/SnellerInc/sneller/vm"
 )
+
+// symLinkFlag flag to toggle whether symlinks are crawled while searching for test cases.
+// '-symlink=true' (or '-symlink') is default. To switch off symlink crawling use '-symlink=false'
+var symLinkFlag = flag.Bool("symlink", true, "whether to crawl tests using symbolic links")
+
+var traceBytecodeFlag = flag.Bool("trace", false, "print bytecode on stdout")
 
 type benchTable struct {
 	buf   []byte
@@ -223,10 +230,6 @@ func benchPath(b *testing.B, fname string) {
 	})
 }
 
-// symLinkFlag flag to toggle whether symlinks are crawled while searching for test cases.
-// '-symlink=true' (or '-symlink') is default. To switch off symlink crawling use '-symlink=false'
-var symLinkFlag = flag.Bool("symlink", true, "whether to crawl tests using symbolic links")
-
 func BenchmarkTestQueries(b *testing.B) {
 	for _, dir := range []string{"./testdata/queries/", "./testdata/benchmarks/"} {
 		bench, err := findQueries(dir, ".bench", *symLinkFlag)
@@ -252,9 +255,14 @@ func TestQueries(t *testing.T) {
 		t.Fatal(err)
 	}
 	vm.Errorf = t.Logf
+	if *traceBytecodeFlag {
+		vm.Trace(os.Stdout, vm.TraceText)
+	}
+
 	defer func() {
 		vm.Errorf = nil
 	}()
+
 	for i := range test {
 		path := test[i].path
 		t.Run(test[i].name, func(t *testing.T) {

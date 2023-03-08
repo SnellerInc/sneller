@@ -50,11 +50,21 @@ func tracef(f string, args ...any) {
 	}
 }
 
+type TraceType bool
+
+const (
+	// Traces are printed as assembler listings
+	TraceText TraceType = false
+
+	// Traces are printed in graphviz dot format
+	TraceDot TraceType = true
+)
+
 // Trace enables tracing of all VM bytecode compilation
 // if w is non-nil, or disables tracing if w is nil.
-func Trace(w io.Writer, dot bool) {
+func Trace(w io.Writer, dot TraceType) {
 	traceOut = w
-	traceOutDot = dot
+	traceOutDot = bool(dot)
 }
 
 type value struct {
