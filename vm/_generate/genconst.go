@@ -33,26 +33,22 @@ import (
 
 func main() {
 	var outpath string
-	flag.StringVar(&outpath, "o", "", "output file path")
+	var inpath string
+	flag.StringVar(&inpath, "i", "", "input asm file path")
+	flag.StringVar(&outpath, "o", "", "output header file path")
 	flag.Parse()
-	if outpath == "" {
+	if outpath == "" || inpath == "" {
 		flag.Usage()
 		return
 	}
 
 	consts := newconstpool()
-	paths := []string{
-		"evalbc_amd64.s",
-		"bc_amd64.h",
-		"bc_eval_math_i64_amd64.h",
-		"bc_eval_math_f64_amd64.h",
-		"evalbc_approxcount.h",
-		"evalbc_cmpv_impl.h",
-		"evalbc_cmpxxstr_impl.h",
-		"evalbc_make_object_impl.h",
-		"evalbc_strcase.h",
+	parser := AsmParser{
+		consts: consts,
 	}
-	err := parseAsmFiles(consts, paths)
+
+	parser.addPath(inpath)
+	err := parser.parseAll()
 	checkErr(err)
 
 	err = consts.postprocess()
@@ -69,9 +65,19 @@ func main() {
 	}
 }
 
-func parseAsmFiles(consts *constpool, paths []string) error {
-	for _, path := range paths {
-		err := parseAsmFile(consts, path)
+type AsmParser struct {
+	paths  []string            // stack of paths
+	seen   map[string]struct{} // already seen paths
+	consts *constpool
+}
+
+func (a *AsmParser) parseAll() error {
+	for len(a.paths) > 0 {
+		n := len(a.paths)
+		path := a.paths[n-1]
+		a.paths = a.paths[:n-1]
+
+		err := a.parse(path)
 		if err != nil {
 			return fmt.Errorf("%q: %s", path, err)
 		}
@@ -80,12 +86,30 @@ func parseAsmFiles(consts *constpool, paths []string) error {
 	return nil
 }
 
+var systemincludes = []string{"go_asm.h", "funcdata.h", "textflag.h"}
+
+func (a *AsmParser) addPath(path string) {
+	if a.seen == nil {
+		a.seen = make(map[string]struct{})
+		for _, p := range systemincludes {
+			a.seen[p] = struct{}{}
+		}
+	}
+
+	if _, ok := a.seen[path]; ok {
+		return
+	}
+
+	a.paths = append(a.paths, path)
+	a.seen[path] = struct{}{}
+}
+
 var constpat = `CONST[^(_]+_[0-9A-Za-z_]+\(\)`
 var constdef = fmt.Sprintf(`(%s)\s=\s([0-9a-zA-Z.e+()-]+)`, constpat)
 var repat = regexp.MustCompile(constpat)
 var redef = regexp.MustCompile(constdef)
 
-func parseAsmFile(consts *constpool, path string) error {
+func (a *AsmParser) parse(path string) error {
 	f, err := os.Open(path)
 	checkErr(err)
 	defer f.Close()
@@ -95,20 +119,30 @@ func parseAsmFile(consts *constpool, path string) error {
 	for scanner.Scan() {
 		line := scanner.Text()
 
+		if include, ok := strings.CutPrefix(line, "#include "); ok {
+			n := len(include)
+			if n > 2 && include[0] == '"' && include[n-1] == '"' {
+				a.addPath(include[1 : n-1])
+			} else {
+				return fmt.Errorf("malformed include: %s", line)
+			}
+			continue
+		}
+
 		s := redef.FindStringSubmatch(line)
 		if len(s) == 3 {
 			name := s[1][:len(s[1])-2]
 			value := s[2]
-			consts.add(name, value)
+			a.consts.add(name, value)
 			continue
 		}
 
 		s = repat.FindStringSubmatch(line)
 		for i := range s {
 			token := s[i][:len(s[i])-2]
-			err := consts.parse(token)
+			err := a.consts.parse(token)
 			if err != nil {
-				consts.unresolved[token] = struct{}{}
+				a.consts.unresolved[token] = struct{}{}
 			}
 		}
 	}

@@ -26,7 +26,7 @@ import (
 
 //go:generate go run _generate/genops.go
 //go:generate gofmt -w ops_gen.go
-//go:generate go run _generate/genconst.go -o bc_constant_gen.h
+//go:generate go run _generate/genconst.go -i evalbc_amd64.s -o bc_constant_gen.h
 
 // --- How to Add an Instruction ---
 //  - define a new TEXT label in evalbc_{arch}.s
