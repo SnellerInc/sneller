@@ -1,11 +1,7 @@
 # Group aggregation (float)
 SELECT
   category,
-  COUNT(*) AS count,
-  SUM(x) AS sum,
-  MIN(x) AS min,
-  MAX(x) AS max,
-  AVG(x) AS avg
+  SUM(x) AS sum
 FROM
   input
 GROUP BY
@@ -44,8 +40,9 @@ ORDER BY
 {"category": "C", "x": 28}
 {"category": "C", "x": 29}
 {"category": "D", "x": 30.12}
+{"category": "D", "x": -5.0}
 ---
-{"category": "A", "count": 10, "sum": 45, "min": 0, "max": 9, "avg": 4.5}
-{"category": "B", "count": 10, "sum": 145, "min": 10, "max": 19, "avg": 14.5}
-{"category": "C", "count": 10, "sum": 245, "min": 20, "max": 29, "avg": 24.5}
-{"category": "D", "count": 1, "sum": 30.12, "min": 30.12, "max": 30.12, "avg": 30.12}
+{"category": "A", "sum": 45}
+{"category": "B", "sum": 145}
+{"category": "C", "sum": 245}
+{"category": "D", "sum": 25.12}

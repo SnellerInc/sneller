@@ -1,0 +1,10 @@
+SELECT key, SUM(x) FROM input GROUP BY key
+---
+{"key": 0, "x": 0.5}
+{"key": 1, "x": 0.5}
+{"key": 2, "x": 0.5}
+{"key": 3, "x": 0.5}
+{"key": 4, "x": 0.5}
+{"key": 5, "x": 0.5}
+{"key": 6, "x": 0.5}
+{"key": 7, "x": 0.5}

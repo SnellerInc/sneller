@@ -376,7 +376,7 @@ func TestExec(t *testing.T) {
 		{
 			query: `select avg(fare_amount), VendorID from '../testdata/nyc-taxi.block' group by VendorID order by avg(fare_amount)`,
 			want: []string{
-				`{"VendorID": "VTS", "avg": 9.435699641166872}`,
+				`{"VendorID": "VTS", "avg": 9.435699641166867}`,
 				`{"VendorID": "CMT", "avg": 9.685402771563982}`,
 				`{"VendorID": "DDS", "avg": 9.942763085526316}`,
 			},
@@ -398,8 +398,8 @@ func TestExec(t *testing.T) {
 		{
 			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from '../testdata/nyc-taxi.block' group by payment_type order by diff desc`,
 			want: []string{
-				`{"diff": 19975.03998680011, "payment_type": "Credit"}`,
-				`{"diff": 9900.999768399954, "payment_type": "CASH"}`,
+				`{"diff": 19975.039986800024, "payment_type": "Credit"}`,
+				`{"diff": 9900.999768399983, "payment_type": "CASH"}`,
 				`{"diff": 372.4000076, "payment_type": "CREDIT"}`,
 				`{"diff": 236.5999759999977, "payment_type": "Cash"}`,
 				`{"diff": 0, "payment_type": "No Charge"}`,
@@ -604,8 +604,11 @@ func testEqual(t *testing.T, query string, m *Manager, id tnproto.ID, key tnprot
 			t.Fatalf("bad test table entry %q %s", want[0], err)
 		}
 		if !row.Equal(wantrow) {
-			t.Errorf("row %d: got : %#v", rownum, row)
-			t.Errorf("row %d: want: %#v", rownum, wantrow)
+			t.Errorf("row %d", rownum)
+			t.Errorf("got : %#v", row)
+			t.Errorf("want: %#v", wantrow)
+			t.Errorf("got JSON: %s", toJSON(&st, row))
+			t.Errorf("want JSON: %s", toJSON(&st, wantrow))
 		}
 		want = want[1:]
 		rownum++
@@ -756,4 +759,20 @@ func (b *benchenv) Stat(_ expr.Node, _ *plan.Hints) (plan.TableHandle, error) {
 		}
 	}
 	return &benchHandle{&blob.List{lst}}, nil
+}
+
+func toJSON(st *ion.Symtab, d ion.Datum) string {
+	if d.IsEmpty() {
+		return "<nil>"
+	}
+	var ib ion.Buffer
+	ib.StartChunk(st)
+	d.Encode(&ib, st)
+	br := bufio.NewReader(bytes.NewReader(ib.Bytes()))
+	var sb strings.Builder
+	_, err := ion.ToJSON(&sb, br)
+	if err != nil {
+		panic(err)
+	}
+	return sb.String()
 }

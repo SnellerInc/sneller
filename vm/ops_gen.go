@@ -149,20 +149,20 @@ const (
 	ophashlookup             bcop = 143
 	opaggandk                bcop = 144
 	opaggork                 bcop = 145
-	opaggsumf                bcop = 146
-	opaggsumi                bcop = 147
-	opaggminf                bcop = 148
-	opaggmini                bcop = 149
-	opaggmaxf                bcop = 150
-	opaggmaxi                bcop = 151
-	opaggandi                bcop = 152
-	opaggori                 bcop = 153
-	opaggxori                bcop = 154
-	opaggcount               bcop = 155
-	opaggbucket              bcop = 156
-	opaggslotandk            bcop = 157
-	opaggslotork             bcop = 158
-	opaggslotsumf            bcop = 159
+	opaggslotsumf            bcop = 146
+	opaggsumf                bcop = 147
+	opaggsumi                bcop = 148
+	opaggminf                bcop = 149
+	opaggmini                bcop = 150
+	opaggmaxf                bcop = 151
+	opaggmaxi                bcop = 152
+	opaggandi                bcop = 153
+	opaggori                 bcop = 154
+	opaggxori                bcop = 155
+	opaggcount               bcop = 156
+	opaggbucket              bcop = 157
+	opaggslotandk            bcop = 158
+	opaggslotork             bcop = 159
 	opaggslotsumi            bcop = 160
 	opaggslotavgf            bcop = 161
 	opaggslotavgi            bcop = 162
@@ -333,4 +333,4 @@ var patchAVX512Level2 []opreplace = []opreplace{
 	{from: opbitcounti64, to: opbitcounti64_v2},
 }
 
-// checksum: 18d404112e07dd75d04a3f358cebe587
+// checksum: 855e0e03ec74a2ab2d29f3635913886f

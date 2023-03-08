@@ -454,6 +454,26 @@ func (h *HashAggregate) Close() error {
 	}
 	outst.Marshal(&outbuf, true)
 
+	hasfinalize := false
+	for i := range h.final.pairs {
+		p := &h.final.pairs[i]
+		valmem := h.final.valueof(p)
+		offset := 0
+		for j := range h.aggregateOps {
+			op := h.aggregateOps[j]
+			if finalize := aggregateOpInfoTable[op.fn].finalizeFunc; finalize != nil {
+				buf := valmem[offset:]
+				finalize(buf)
+				hasfinalize = true
+			}
+			offset += op.dataSize()
+		}
+
+		if !hasfinalize {
+			break // no finalize found in the first iteration, exit early
+		}
+	}
+
 	// compute final window results
 	for i := range h.windows {
 		h.windows[i].run(h.final)

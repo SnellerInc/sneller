@@ -125,13 +125,20 @@ type aggregateOpInfo struct {
 	isFloat    bool         // floating point aggregation (sum/avg/min/max)
 	initUInt64 uint64       // initializes the first 8 bytes to this value (the rest is zero initialized)
 	initFunc   func([]byte) // custom initialization of the buffer, initUInt64 will not be used if not nil
+
+	// The finalize function is called prior writing out data. Its purpose is to
+	// combine multi-word intermediate result into simple pair of scalar value (int64/float64)
+	// and count (uint64).
+	finalizeFunc func([]byte)
 }
 
 var aggregateOpInfoTable = [...]aggregateOpInfo{
 	AggregateOpNone: {isAtomic: false, isFloat: false, initUInt64: 0},
 
-	AggregateOpSumF:  {isAtomic: true, isFloat: true, initUInt64: 0},
-	AggregateOpAvgF:  {isAtomic: true, isFloat: true, initUInt64: 0},
+	AggregateOpSumF: {isAtomic: false, isFloat: true,
+		initFunc: neumaierSummationInit, finalizeFunc: neumaierSummationFinalize},
+	AggregateOpAvgF: {isAtomic: false, isFloat: true,
+		initFunc: neumaierSummationInit, finalizeFunc: neumaierSummationFinalize},
 	AggregateOpMinF:  {isAtomic: true, isFloat: true, initUInt64: math.Float64bits(math.Inf(1))},
 	AggregateOpMaxF:  {isAtomic: true, isFloat: true, initUInt64: math.Float64bits(math.Inf(-1))},
 	AggregateOpSumI:  {isAtomic: true, isFloat: false, initUInt64: 0},
@@ -158,10 +165,8 @@ func (a *AggregateOp) dataSize() int {
 	case AggregateOpNone:
 		return 8
 
-	case AggregateOpSumF:
-		return 16
-	case AggregateOpAvgF:
-		return 16
+	case AggregateOpSumF, AggregateOpAvgF:
+		return aggregateOpSumFDataSize
 	case AggregateOpMinF:
 		return 16
 	case AggregateOpMaxF:
@@ -226,21 +231,10 @@ func initAggregateValues(data []byte, aggregateOps []AggregateOp) {
 func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 	for i := range aggregateOps {
 		switch aggregateOps[i].fn {
-		case AggregateOpSumF:
-			bufferAddFloat64(dst, src)
-			dst = dst[8:]
-			src = src[8:]
-			bufferOrInt64(dst, src)
-			dst = dst[8:]
-			src = src[8:]
-
-		case AggregateOpAvgF:
-			bufferAddFloat64(dst, src)
-			dst = dst[8:]
-			src = src[8:]
-			bufferAddInt64(dst, src)
-			dst = dst[8:]
-			src = src[8:]
+		case AggregateOpSumF, AggregateOpAvgF:
+			neumaierSummationMerge(dst, src)
+			dst = dst[aggregateOpSumFDataSize:]
+			src = src[aggregateOpSumFDataSize:]
 
 		case AggregateOpMinF:
 			bufferMinFloat64(dst, src)
@@ -342,13 +336,6 @@ func mergeAggregatedValues(dst, src []byte, aggregateOps []AggregateOp) {
 func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp) {
 	for i := range aggregateOps {
 		switch aggregateOps[i].fn {
-		case AggregateOpSumF, AggregateOpAvgF:
-			atomicext.AddFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
-			dst = dst[8:]
-			src = src[8:]
-			atomic.AddUint64((*uint64)(unsafe.Pointer(&dst[0])), binary.LittleEndian.Uint64(src))
-			dst = dst[8:]
-			src = src[8:]
 
 		case AggregateOpMinF:
 			atomicext.MinFloat64((*float64)(unsafe.Pointer(&dst[0])), math.Float64frombits(binary.LittleEndian.Uint64(src)))
@@ -428,20 +415,26 @@ func mergeAggregatedValuesAtomically(dst, src []byte, aggregateOps []AggregateOp
 // writeAggregatedValue writes the final result of the Aggregation to the ion.Buffer
 func writeAggregatedValue(b *ion.Buffer, data []byte, op AggregateOp) int {
 	switch op.fn {
-	case AggregateOpSumF, AggregateOpMinF, AggregateOpMaxF:
+	case AggregateOpSumF, AggregateOpAvgF:
+		count := getuint64(data, 1)
+		if count == 0 {
+			b.WriteNull()
+		} else {
+			sum := getfloat64(data, 0)
+			if op.fn == AggregateOpAvgF {
+				b.WriteCanonicalFloat(sum / float64(count))
+			} else {
+				b.WriteCanonicalFloat(sum)
+			}
+		}
+
+		return op.dataSize()
+	case AggregateOpMinF, AggregateOpMaxF:
 		mark := binary.LittleEndian.Uint64(data[8:])
 		if mark == 0 {
 			b.WriteNull()
 		} else {
 			b.WriteCanonicalFloat(math.Float64frombits(binary.LittleEndian.Uint64(data)))
-		}
-		return 16
-	case AggregateOpAvgF:
-		count := binary.LittleEndian.Uint64(data[8:])
-		if count == 0 {
-			b.WriteNull()
-		} else {
-			b.WriteCanonicalFloat(math.Float64frombits(binary.LittleEndian.Uint64(data)) / float64(count))
 		}
 		return 16
 	case AggregateOpSumI, AggregateOpMinI, AggregateOpMaxI, AggregateOpAndI, AggregateOpOrI, AggregateOpXorI:
@@ -532,15 +525,15 @@ type Aggregate struct {
 	// Aggregated values (results from executing queries, even in parallel)
 	AggregatedData []byte
 
-	// Lock used only when there are APPROX_COUNT_DISTINCT aggregate(s)
-	// This kind of aggregate uses more complex state update.
+	// Lock used only when there are aggregate that cannot use
+	// atomic updates
 	lock sync.Mutex
 }
 
 // canMergeAtomically returns whether it's possible to use atomic
 // operations to merge two buckets sharing the same hash value.
 //
-// Only APPROX_COUNT_DISTINCT cannot be merged atomically at the moment.
+// It's not possible when an aggregate uses more than 8 bytes.
 func (q *Aggregate) canMergeAtomically() bool {
 	for i := range q.aggregateOps {
 		if !aggregateOpInfoTable[q.aggregateOps[i].fn].isAtomic {
@@ -617,14 +610,18 @@ func (q *Aggregate) Close() error {
 	}
 
 	data := q.AggregatedData
-	offset := int(0)
 
 	st.Marshal(&b, true)
 	b.BeginStruct(-1)
 	for i := range q.aggregateOps {
 		sym := st.Intern(q.bind[i].Result)
 		b.BeginField(sym)
-		offset += writeAggregatedValue(&b, data[offset:], q.aggregateOps[i])
+		fn := q.aggregateOps[i].fn
+		if finalize := aggregateOpInfoTable[fn].finalizeFunc; finalize != nil {
+			finalize(data)
+		}
+		consumed := writeAggregatedValue(&b, data, q.aggregateOps[i])
+		data = data[consumed:]
 	}
 	b.EndStruct()
 

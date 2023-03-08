@@ -15,11 +15,14 @@
 package vm
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/SnellerInc/sneller/expr"
@@ -115,7 +118,10 @@ func TestHashAggregate(t *testing.T) {
 				t.Fatal(err)
 			}
 			for i := range ordering {
-				ha.OrderByAggregate(ordering[i], false)
+				err = ha.OrderByAggregate(ordering[i], false)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			// simulate the table being 4x repeated:
 			intable := &looptable{chunk: buf, count: 4}
@@ -162,7 +168,12 @@ func TestHashAggregate(t *testing.T) {
 					}
 					val := f.Datum
 					if !reflect.DeepEqual(val, inner) {
-						t.Errorf("row %d field %q - got %#v want %#v", rownum, name, val, inner)
+						t.Errorf("row %d field %q", rownum, name)
+						t.Logf("got : %#v", val)
+						t.Logf("want: %#v", inner)
+						t.Logf("as JSON")
+						t.Logf("got : %s", toJSON(&st, val))
+						t.Logf("want: %s", toJSON(&st, inner))
 					}
 					return nil
 				})
@@ -217,4 +228,20 @@ func BenchmarkHashAggregate(b *testing.B) {
 			}
 		})
 	}
+}
+
+func toJSON(st *ion.Symtab, d ion.Datum) string {
+	if d.IsEmpty() {
+		return "<nil>"
+	}
+	var ib ion.Buffer
+	ib.StartChunk(st)
+	d.Encode(&ib, st)
+	br := bufio.NewReader(bytes.NewReader(ib.Bytes()))
+	var sb strings.Builder
+	_, err := ion.ToJSON(&sb, br)
+	if err != nil {
+		panic(err)
+	}
+	return sb.String()
 }

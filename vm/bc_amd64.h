@@ -35,6 +35,7 @@
 
 #define BC_SLOT_SIZE 2      // Size of a stack slot, in bytes
 #define BC_DICT_SIZE 2      // Size of a dictionary reference
+#define BC_AGGSLOT_SIZE 4   // Size of an aggregate slot, in bytes
 
 #define BC_MOV_SLOT MOVWLZX // Instruction to load a stack slot
 #define BC_MOV_DICT MOVWLZX // Instruction to load a stack slot

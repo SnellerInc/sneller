@@ -1,0 +1,24 @@
+# Kahan-Babushka-Neumaier summation algorithm properly
+# deals with this input, yielding correct 2.0. Depending
+# on the input, the bare summation might yield 0.0.
+SELECT grp, SUM(x)
+  FROM input
+ GROUP BY grp
+ ORDER BY grp
+---
+{"grp": "A", "x": 1.0}
+{"grp": "A", "x": 1e100}
+{"grp": "A", "x": 1.0}
+{"grp": "A", "x": -1e100}
+{"grp": "B", "x": 1.0}
+{"grp": "B", "x": 1e100}
+{"grp": "B", "x": 1.0}
+{"grp": "B", "x": -1e100}
+{"grp": "C", "x": 1.0}
+{"grp": "C", "x": 1e100}
+{"grp": "C", "x": 1.0}
+{"grp": "C", "x": -1e100}
+---
+{"grp": "A", "sum": 2.0}
+{"grp": "B", "sum": 2.0}
+{"grp": "C", "sum": 2.0}

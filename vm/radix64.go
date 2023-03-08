@@ -514,6 +514,7 @@ func (a *aggtable) fasteval(delims []vmref, abort *uint16) int {
 	if a.bc.compiled == nil {
 		panic("aggtable.bc.compiled == nil")
 	}
+
 	return evalhashagg(&a.bc, delims, a.tree, abort)
 }
 

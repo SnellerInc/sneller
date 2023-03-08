@@ -1,0 +1,11 @@
+# Kahan-Babushka-Neumaier summation algorithm properly
+# deals with this input, yielding correct 2.0. Depending
+# on the input, the bare summation might yield 0.0.
+SELECT SUM(x) FROM input
+---
+{"x": 1.0}
+{"x": 1e100}
+{"x": 1.0}
+{"x": -1e100}
+---
+{"sum": 2.0}

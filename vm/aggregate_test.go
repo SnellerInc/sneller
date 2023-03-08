@@ -16,7 +16,6 @@ package vm
 
 import (
 	"bytes"
-	"encoding/binary"
 	"math"
 	"os"
 	"testing"
@@ -94,7 +93,15 @@ func TestAggregateSSANYCQueries(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got := math.Float64frombits(binary.LittleEndian.Uint64(aggregateQuery.AggregatedData))
+			fn := aggregateQuery.aggregateOps[0].fn
+			if finalize := aggregateOpInfoTable[fn].finalizeFunc; finalize != nil {
+				finalize(aggregateQuery.AggregatedData)
+			}
+
+			got := getfloat64(aggregateQuery.AggregatedData, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if !isFloat64Near(got, want) {
 				t.Errorf("Aggregation failed: Result=%.10f; Expected=%.10f", got, want)
 			}

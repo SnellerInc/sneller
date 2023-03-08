@@ -481,15 +481,15 @@ where coalesce(x, y, z) = 3`,
 		{
 			query:    `select avg(fare_amount) from 'nyc-taxi.block'`,
 			rows:     1,
-			firstrow: fmt.Sprintf(`{"avg": %g}`, 9.475478898890188),
+			firstrow: fmt.Sprintf(`{"avg": %g}`, 9.475478898890179),
 		},
 		{
 			query: `select avg(fare_amount), VendorID from 'nyc-taxi.block' group by VendorID order by avg(fare_amount)`,
 			rows:  3,
 			expectedRows: []string{
-				`{"VendorID": "VTS", "avg": 9.435699641166872}`,
+				`{"VendorID": "VTS", "avg": 9.435699641166867}`,
 				`{"VendorID": "CMT", "avg": 9.685402771563982}`,
-				`{"VendorID": "DDS", "avg": 9.942763085526316}`,
+				`{"VendorID": "DDS", "avg": 9.942763085526314}`,
 			},
 		},
 		// Test arithmetic expressions with immediate values, which should use optimized bytecode.
@@ -737,7 +737,7 @@ where out.Make = 'CHRY' and entry.BodyStyle = 'PA'
 		{
 			query:    `select min(passenger_count), sum(fare_amount) as sum from 'nyc-taxi.block'`,
 			rows:     1,
-			firstrow: `{"min": 1, "sum": 81110.09937450002}`,
+			firstrow: `{"min": 1, "sum": 81110.09937449993}`,
 		},
 		{
 			query:    `select fare_amount + 0.1, total_amount + 0.5, total_amount - 1 from 'nyc-taxi.block' limit 1`,
@@ -1015,10 +1015,10 @@ from 'parking.10n' limit 1`,
 		{
 			query: `select sum(total_amount)-sum(fare_amount) as diff, payment_type from 'nyc-taxi.block' group by payment_type order by diff desc`,
 			expectedRows: []string{
-				`{"diff": 4993.759996700028, "payment_type": "Credit"}`,
-				`{"diff": 2475.2499420999884, "payment_type": "CASH"}`,
+				`{"diff": 4993.759996700002, "payment_type": "Credit"}`,
+				`{"diff": 2475.2499420999957, "payment_type": "CASH"}`,
 				`{"diff": 93.1000019, "payment_type": "CREDIT"}`,
-				`{"diff": 59.149993999999424, "payment_type": "Cash"}`,
+				`{"diff": 59.14999400000033, "payment_type": "Cash"}`,
 				`{"diff": 0, "payment_type": "No Charge"}`,
 				`{"diff": 0, "payment_type": "Dispute"}`,
 			},
@@ -1029,10 +1029,10 @@ from 'parking.10n' limit 1`,
 			query: `select sum(total_amount-fare_amount) as diff, payment_type from 'nyc-taxi.block' group by payment_type order by diff desc`,
 			rows:  6, // can confirm with 'select count(distinct payment_type) ...'
 			expectedRows: []string{
-				`{"payment_type": "Credit", "diff": 4993.7599967000015}`,
-				`{"payment_type": "CASH", "diff": 2475.249942100005}`,
+				`{"payment_type": "Credit", "diff": 4993.759996700001}`,
+				`{"payment_type": "CASH", "diff": 2475.2499421}`,
 				`{"payment_type": "CREDIT", "diff": 93.1000019}`,
-				`{"payment_type": "Cash", "diff": 59.149993999999985}`,
+				`{"payment_type": "Cash", "diff": 59.14999399999999}`,
 				`{"payment_type": "No Charge", "diff": 0}`,
 				`{"payment_type": "Dispute", "diff": 0}`,
 			},

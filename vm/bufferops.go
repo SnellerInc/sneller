@@ -19,16 +19,6 @@ import (
 	"math"
 )
 
-func bufferAddFloat64(dst, src []byte) {
-	_ = dst[:8]
-	_ = src[:8]
-
-	a := math.Float64frombits(binary.LittleEndian.Uint64(dst))
-	b := math.Float64frombits(binary.LittleEndian.Uint64(src))
-	result := a + b
-	binary.LittleEndian.PutUint64(dst, math.Float64bits(result))
-}
-
 func bufferMinFloat64(dst, src []byte) {
 	_ = dst[:8]
 	_ = src[:8]
