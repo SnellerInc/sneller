@@ -108,6 +108,13 @@ type cmdlineEnv struct {
 	plan.Env // fallback environment
 }
 
+func (c *cmdlineEnv) Index(e expr.Node) (plan.Index, error) {
+	if ie, ok := c.Env.(plan.Indexer); ok {
+		return ie.Index(e)
+	}
+	return nil, nil
+}
+
 func (c *cmdlineEnv) Stat(tbl expr.Node, h *plan.Hints) (plan.TableHandle, error) {
 	if b, ok := tbl.(*expr.Builtin); ok && strings.EqualFold(b.Text, "read_file") {
 		return readFileHandle(c.root, b.Args, h)
