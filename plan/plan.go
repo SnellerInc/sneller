@@ -47,10 +47,9 @@ type Op interface {
 	// expression nodes in the op
 	rewrite(rw expr.Rewriter)
 
-	// wrap wraps a query sink with this Op
-	// and returns a function that consumes a table handle
-	// and writes the data to dst
-	wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
+	// exec should write the contents of src into dst,
+	// taking care to honor the rewrite rules in ep
+	exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error
 
 	// encode should write the op as an ion structure
 	// to 'dst'; the first field of the structure
@@ -319,7 +318,7 @@ func (s *SimpleAggregate) String() string {
 	return "AGGREGATE " + s.Outputs.String()
 }
 
-func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (s *SimpleAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	var sysagg expr.AggregateOp
 	system := 0
 	regular := 0
@@ -335,27 +334,27 @@ func (s *SimpleAggregate) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandl
 
 	if system > 0 {
 		if regular > 0 {
-			return delay(fmt.Errorf("mixing system and regular aggregates is not supported"))
+			return fmt.Errorf("mixing system and regular aggregates is not supported")
 		}
 
 		if system > 1 {
-			return delay(fmt.Errorf("using more than one system aggregate is not supported"))
+			return fmt.Errorf("using more than one system aggregate is not supported")
 		}
 
 		switch sysagg {
 		case expr.OpSystemDatashape:
-			return s.From.wrap(vm.NewSystemDatashape(dst), ep)
+			return s.From.exec(vm.NewSystemDatashape(dst), src, ep)
 
 		case expr.OpSystemDatashapeMerge:
-			return s.From.wrap(vm.NewSystemDatashapeMerge(dst), ep)
+			return s.From.exec(vm.NewSystemDatashapeMerge(dst), src, ep)
 		}
 	}
 
 	a, err := vm.NewAggregate(ep.rewriteAgg(s.Outputs), dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
-	return s.From.wrap(a, ep)
+	return s.From.exec(a, src, ep)
 }
 
 func settype(name string, dst *ion.Buffer, st *ion.Symtab) {
@@ -418,7 +417,7 @@ func (l *Leaf) describe() string {
 
 func (l *Leaf) rewrite(rw expr.Rewriter) {}
 
-func (l *Leaf) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (l *Leaf) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	filt := ep.rewrite(l.Filter)
 	var partvals []ion.Datum
 	if len(l.OnEqual) > 0 {
@@ -427,44 +426,42 @@ func (l *Leaf) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
 			e := ep.rewrite(expr.Call(expr.PartitionValue, expr.Integer(i)))
 			c, ok := e.(expr.Constant)
 			if !ok {
-				return delay(fmt.Errorf("missing PARTITION_VALUE constant rewrite %d", i))
+				return fmt.Errorf("missing PARTITION_VALUE constant rewrite %d", i)
 			}
 			partvals[i] = c.Datum()
 		}
 	}
-	return func(h TableHandle) error {
-		// apply any last-minute filtering
-		if filt != nil {
-			if f, ok := h.(Filterable); ok {
-				h = f.Filter(filt)
-			}
+	// apply any last-minute filtering
+	if filt != nil {
+		if f, ok := src.(Filterable); ok {
+			src = f.Filter(filt)
 		}
-		if len(partvals) > 0 {
-			ph, ok := h.(PartitionHandle)
-			if !ok {
-				return fmt.Errorf("cannot partition on %T", h)
-			}
-			var err error
-			h, err = ph.SplitOn(l.OnEqual, partvals)
-			if err != nil {
-				return err
-			}
+	}
+	if len(partvals) > 0 {
+		ph, ok := src.(PartitionHandle)
+		if !ok {
+			return fmt.Errorf("cannot partition on %T", src)
 		}
-		tbl, err := h.Open(ep.Context)
+		var err error
+		src, err = ph.SplitOn(l.OnEqual, partvals)
 		if err != nil {
 			return err
 		}
-		err = tbl.WriteChunks(dst, ep.Parallel)
-		ep.Stats.observe(tbl)
-		err2 := dst.Close()
-		if err == nil {
-			err = err2
-		}
-		if errors.Is(err, io.EOF) {
-			err = nil
-		}
+	}
+	tbl, err := src.Open(ep.Context)
+	if err != nil {
 		return err
 	}
+	err = tbl.WriteChunks(dst, ep.Parallel)
+	ep.Stats.observe(tbl)
+	err2 := dst.Close()
+	if err == nil {
+		err = err2
+	}
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
+	return err
 }
 
 func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
@@ -529,16 +526,13 @@ func writeIon(b *ion.Buffer, dst vm.QuerySink) error {
 	return err
 }
 
-func (n NoOutput) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (n NoOutput) exec(dst vm.QuerySink, _ TableHandle, ep *ExecParams) error {
 	// just output an empty symbol table
 	// and no data following it
 	var b ion.Buffer
 	var st ion.Symtab
 	st.Marshal(&b, true)
-
-	return func(_ TableHandle) error {
-		return writeIon(&b, dst)
-	}
+	return writeIon(&b, dst)
 }
 
 func (n NoOutput) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
@@ -561,7 +555,7 @@ func (n DummyOutput) setinput(o Op) {
 	panic("DummyOutput: cannot setinput()")
 }
 
-func (n DummyOutput) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (n DummyOutput) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	// just output an empty symbol table
 	// plus an empty structure
 	//
@@ -572,9 +566,7 @@ func (n DummyOutput) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) er
 	st.Marshal(&b, true)
 	empty := ion.Struct{}
 	empty.Encode(&b, &st)
-	return func(_ TableHandle) error {
-		return writeIon(&b, dst)
-	}
+	return writeIon(&b, dst)
 }
 
 func (n DummyOutput) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
@@ -597,8 +589,8 @@ func (l *Limit) String() string {
 	return fmt.Sprintf("LIMIT %d", l.Num)
 }
 
-func (l *Limit) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	return l.From.wrap(vm.NewLimit(l.Num, dst), ep)
+func (l *Limit) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+	return l.From.exec(vm.NewLimit(l.Num, dst), src, ep)
 }
 
 func (l *Limit) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
@@ -641,9 +633,9 @@ func (c *CountStar) String() string {
 	return "COUNT(*) AS " + c.name()
 }
 
-func (c *CountStar) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (c *CountStar) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	qs := countSink{dst: dst, as: c.name()}
-	return c.From.wrap(&qs, ep)
+	return c.From.exec(&qs, src, ep)
 }
 
 type countSink struct {
@@ -840,10 +832,10 @@ func (h *HashAggregate) setfield(d Decoder, f ion.Field) error {
 	return nil
 }
 
-func (h *HashAggregate) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (h *HashAggregate) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	ha, err := vm.NewHashAggregate(ep.rewriteAgg(h.Agg), ep.rewriteAgg(h.Windows), ep.rewriteBind(h.By), dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
 	if h.Limit > 0 {
 		ha.Limit(h.Limit)
@@ -858,7 +850,7 @@ func (h *HashAggregate) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle)
 			ha.OrderByWindow(col-len(h.Agg)-len(h.By), h.OrderBy[i].Desc, h.OrderBy[i].NullsLast)
 		}
 	}
-	return h.From.wrap(ha, ep)
+	return h.From.exec(ha, src, ep)
 }
 
 // OrderByColumn represents a single column and its sorting settings in an ORDER BY clause.
@@ -914,10 +906,10 @@ func (o *OrderBy) String() string {
 	return s
 }
 
-func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (o *OrderBy) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	writer, err := dst.Open()
 	if err != nil {
-		return delay(err)
+		return err
 	}
 
 	orderBy := make([]vm.SortColumn, len(o.Columns))
@@ -950,9 +942,8 @@ func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 	}
 	ord, err := vm.NewOrder(writer, orderBy, limit, ep.Parallel)
 	if err != nil {
-		return delay(err)
+		return err
 	}
-
 	// NOTE: vm.Order does not accept an
 	// io.WriteCloser and thus cannot close the
 	// passed writer, so we have to do it
@@ -964,7 +955,7 @@ func (o *OrderBy) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 		w:     writer,
 		dst:   dst,
 	}
-	return o.From.wrap(sorter, ep)
+	return o.From.exec(sorter, src, ep)
 }
 
 type orderSink struct {
@@ -1072,15 +1063,15 @@ func (d *Distinct) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (d *Distinct) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (d *Distinct) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	df, err := vm.NewDistinct(ep.rewriteAll(d.Fields), dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
 	if d.Limit > 0 {
 		df.Limit(d.Limit)
 	}
-	return d.From.wrap(df, ep)
+	return d.From.exec(df, src, ep)
 }
 
 func (d *Distinct) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
@@ -1186,12 +1177,12 @@ func (u *Unpivot) setfield(_ Decoder, f ion.Field) error {
 	return err
 }
 
-func (u *Unpivot) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (u *Unpivot) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	vmu, err := vm.NewUnpivot(u.As, u.At, dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
-	return u.From.wrap(vmu, ep)
+	return u.From.exec(vmu, src, ep)
 }
 
 func encoderec(p Op, dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
@@ -1275,12 +1266,12 @@ func (u *UnpivotAtDistinct) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewr
 	return nil
 }
 
-func (u *UnpivotAtDistinct) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (u *UnpivotAtDistinct) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	vmu, err := vm.NewUnpivotAtDistinct(u.At, dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
-	return u.From.wrap(vmu, ep)
+	return u.From.exec(vmu, src, ep)
 }
 
 func (u *UnpivotAtDistinct) setfield(_ Decoder, f ion.Field) error {
@@ -1351,7 +1342,7 @@ func (e *Explain) setfield(d Decoder, f ion.Field) error {
 	return nil
 }
 
-func (e *Explain) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (e *Explain) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	var b ion.Buffer
 	var st ion.Symtab
 
@@ -1402,12 +1393,10 @@ func (e *Explain) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error
 		var sb strings.Builder
 		err := Graphviz(e.Tree, &sb)
 		if err != nil {
-			return delay(err)
+			return err
 		}
 		b.WriteString(sb.String())
 	}
 	b.EndStruct()
-	return func(_ TableHandle) error {
-		return writeIon(&b, dst)
-	}
+	return writeIon(&b, dst)
 }

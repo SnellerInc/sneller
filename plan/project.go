@@ -36,12 +36,12 @@ func (p *Project) rewrite(rw expr.Rewriter) {
 	}
 }
 
-func (p *Project) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (p *Project) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	proj, err := vm.NewProjection(ep.rewriteBind(p.Using), dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
-	return p.From.wrap(proj, ep)
+	return p.From.exec(proj, src, ep)
 }
 
 func (p *Project) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {

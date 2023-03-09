@@ -39,16 +39,16 @@ func (f *Filter) rewrite(rw expr.Rewriter) {
 	push(f.Expr, f.From)
 }
 
-func (f *Filter) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (f *Filter) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	filt := ep.rewrite(f.Expr)
 	if ep.Rewriter != nil {
 		push(filt, f.From)
 	}
 	filter, err := vm.NewFilter(filt, dst)
 	if err != nil {
-		return delay(err)
+		return err
 	}
-	return f.From.wrap(filter, ep)
+	return f.From.exec(filter, src, ep)
 }
 
 func (f *Filter) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {

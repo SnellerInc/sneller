@@ -26,11 +26,10 @@ func (t *Tree) exec(dst vm.QuerySink, ep *ExecParams) error {
 }
 
 func (n *Node) exec(dst vm.QuerySink, ep *ExecParams) error {
-	fn := n.Op.wrap(dst, ep)
 	i := n.Input
 	var h TableHandle
 	if i >= 0 {
 		h = ep.get(i)
 	}
-	return fn(h)
+	return n.Op.exec(dst, h, ep)
 }

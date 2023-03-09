@@ -144,7 +144,7 @@ type Substitute struct {
 	Inner []*Node
 }
 
-func (s *Substitute) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (s *Substitute) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	rp := make([]replacement, len(s.Inner))
 	var wg sync.WaitGroup
 	wg.Add(len(s.Inner))
@@ -159,11 +159,11 @@ func (s *Substitute) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) er
 	}
 	wg.Wait()
 	if err := errors.Join(errlist...); err != nil {
-		return delay(err)
+		return err
 	}
 	ep.AddRewrite(&replacer{inputs: rp})
 	defer ep.PopRewrite()
-	return s.From.wrap(dst, ep)
+	return s.From.exec(dst, src, ep)
 }
 
 func (s *Substitute) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {

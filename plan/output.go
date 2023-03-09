@@ -156,16 +156,16 @@ func uuid() string {
 	return strings.TrimSuffix(base32.StdEncoding.EncodeToString(buf[:]), "======")
 }
 
-func (o *OutputPart) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (o *OutputPart) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	if o.Basename == "" {
-		return delay(fmt.Errorf("OutputPart: basename not set"))
+		return fmt.Errorf("OutputPart: basename not set")
 	} else if o.Store == nil {
-		return delay(fmt.Errorf("OutputPart: store not set"))
+		return fmt.Errorf("OutputPart: store not set")
 	}
 	name := path.Join(o.Basename, "packed-"+uuid())
 	up, err := o.Store.Create(name)
 	if err != nil {
-		return delay(err)
+		return err
 	}
 	us := &uploadSink{
 		store: o.Store,
@@ -175,7 +175,7 @@ func (o *OutputPart) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) er
 	us.mw.Output = up
 	us.mw.Algo = "zstd" // FIXME: grab this from elsewhere
 	us.mw.InputAlign = 1 << 20
-	return o.From.wrap(us, ep)
+	return o.From.exec(us, src, ep)
 }
 
 func (o *OutputPart) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
@@ -318,13 +318,13 @@ func (is *indexSink) Close() error {
 	return w.Close()
 }
 
-func (o *OutputIndex) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (o *OutputIndex) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	if o.Basename == "" {
-		return delay(fmt.Errorf("OutputIndex: basename not set"))
+		return fmt.Errorf("OutputIndex: basename not set")
 	} else if o.Store == nil {
-		return delay(fmt.Errorf("OutputIndex: store not set"))
+		return fmt.Errorf("OutputIndex: store not set")
 	} else if o.Key == nil {
-		return delay(fmt.Errorf("OutputIndex: key not set"))
+		return fmt.Errorf("OutputIndex: key not set")
 	}
 	tbl := &expr.Dot{
 		Inner: expr.Ident(o.DB),
@@ -341,7 +341,7 @@ func (o *OutputIndex) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) e
 		idx:    idx,
 		dst:    dst,
 	}
-	return o.From.wrap(is, ep)
+	return o.From.exec(is, src, ep)
 }
 
 func (o *OutputIndex) setfield(d Decoder, f ion.Field) error {

@@ -133,82 +133,73 @@ func doSplit(th TableHandle) (Subtables, error) {
 	return out, nil
 }
 
-func (u *UnionMap) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
-	// we need to capture the rewriting state,
-	// since we can't actually perform rewriting
-	// until we have split the incoming handle
-	orig := ep
-	ep = ep.clone()
-
-	// on execution, split the handle and then dispatch to u.From
-	return func(h TableHandle) error {
-		tbls, err := doSplit(h)
-		if err != nil {
-			return err
-		}
-		if tbls.Len() == 0 {
-			// write no data
-			var b ion.Buffer
-			var st ion.Symtab
-			st.Marshal(&b, true)
-			return writeIon(&b, dst)
-		}
-		w, err := dst.Open()
-		if err != nil {
-			return err
-		}
-		s := vm.Locked(w)
-
-		// NOTE: the heuristic here at the momement
-		// is that the reduction step of sub-queries
-		// does not benefit substantially from having
-		// parallelism, so we union all the output bytes
-		// into a single thread here
-		errors := make([]error, tbls.Len())
-		var wg sync.WaitGroup
-		wg.Add(tbls.Len())
-		for i := 0; i < tbls.Len(); i++ {
-			go func(i int) {
-				defer wg.Done()
-				var sub Subtable
-				tbls.Subtable(i, &sub)
-				// wrap the rest of the query in a Tree;
-				// this makes it look to the Transport
-				// like we are executing a sub-query, which
-				// is approximately true
-				stub := &Tree{
-					Inputs: []Input{{
-						Handle: sub.Handle,
-					}},
-					Root: Node{
-						Op:    u.From,
-						Input: 0,
-					},
-				}
-				subep := ep.clone()
-				subep.Output = s
-				// subep.get will be clobbered by Exec here:
-				errors[i] = sub.Exec(stub, subep)
-				orig.Stats.atomicAdd(&subep.Stats)
-			}(i)
-		}
-		wg.Wait()
-		for i := range errors {
-			if errors[i] != nil {
-				err = errors[i]
-				break
-			}
-		}
-		err2 := w.Close()
-		err3 := dst.Close()
-		if err == nil {
-			err = err2
-		}
-		if err == nil {
-			err = err3
-		}
+func (u *UnionMap) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
+	tbls, err := doSplit(src)
+	if err != nil {
 		return err
 	}
+	if tbls.Len() == 0 {
+		// write no data
+		var b ion.Buffer
+		var st ion.Symtab
+		st.Marshal(&b, true)
+		return writeIon(&b, dst)
+	}
+	w, err := dst.Open()
+	if err != nil {
+		return err
+	}
+	s := vm.Locked(w)
+
+	// NOTE: the heuristic here at the momement
+	// is that the reduction step of sub-queries
+	// does not benefit substantially from having
+	// parallelism, so we union all the output bytes
+	// into a single thread here
+	errors := make([]error, tbls.Len())
+	var wg sync.WaitGroup
+	wg.Add(tbls.Len())
+	for i := 0; i < tbls.Len(); i++ {
+		go func(i int) {
+			defer wg.Done()
+			var sub Subtable
+			tbls.Subtable(i, &sub)
+			// wrap the rest of the query in a Tree;
+			// this makes it look to the Transport
+			// like we are executing a sub-query, which
+			// is approximately true
+			stub := &Tree{
+				Inputs: []Input{{
+					Handle: sub.Handle,
+				}},
+				Root: Node{
+					Op:    u.From,
+					Input: 0,
+				},
+			}
+			subep := ep.clone()
+			subep.Output = s
+			// subep.get will be clobbered by Exec here:
+			errors[i] = sub.Exec(stub, subep)
+			ep.Stats.atomicAdd(&subep.Stats)
+		}(i)
+	}
+	wg.Wait()
+	for i := range errors {
+		if errors[i] != nil {
+			err = errors[i]
+			break
+		}
+	}
+	err2 := w.Close()
+	err3 := dst.Close()
+	if err == nil {
+		err = err2
+	}
+	if err == nil {
+		err = err3
+	}
+	return err
 }
 
 func (u *UnionMap) encode(dst *ion.Buffer, st *ion.Symtab, _ expr.Rewriter) error {
@@ -302,60 +293,55 @@ func (u *UnionPartition) String() string {
 	return fmt.Sprintf("UNION PARTITION %v", u.By)
 }
 
-func (u *UnionPartition) wrap(dst vm.QuerySink, ep *ExecParams) func(TableHandle) error {
+func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	if len(u.By) == 0 {
-		return delay(fmt.Errorf("plan: UnionPartition: 0 partitions to split?"))
+		return fmt.Errorf("plan: UnionPartition: 0 partitions to split?")
 	}
-	orig := ep
-	ep = ep.clone()
-	return func(h TableHandle) error {
-		ph, ok := h.(PartitionHandle)
-		if !ok {
-			return fmt.Errorf("plan: UnionPartition: handle %T cannot be partitioned", h)
-		}
-		parts, err := ph.SplitBy(u.By)
+	ph, ok := src.(PartitionHandle)
+	if !ok {
+		return fmt.Errorf("plan: UnionPartition: handle %T cannot be partitioned", src)
+	}
+	parts, err := ph.SplitBy(u.By)
+	if err != nil {
+		return err
+	}
+	if len(parts) == 0 {
+		return fmt.Errorf("plan: UnionPartition: handle %T by %v produced 0 parts?", src, u.By)
+	}
+	var wg sync.WaitGroup
+	errs := make([]error, len(parts))
+	for i := range parts {
+		w, err := dst.Open()
 		if err != nil {
 			return err
 		}
-		if len(parts) == 0 {
-			return fmt.Errorf("plan: UnionPartition: handle %T by %v produced 0 parts?", h, u.By)
-		}
-		var wg sync.WaitGroup
-		errs := make([]error, len(parts))
-		for i := range parts {
-			w, err := dst.Open()
-			if err != nil {
-				return err
-			}
-			subep := ep.clone()
-			subep.Output = w
-			// stack the PARTITION_VALUE() rewrite
-			subep.AddRewrite(&parts[i])
+		subep := ep.clone()
+		subep.Output = w
+		// stack the PARTITION_VALUE() rewrite
+		subep.AddRewrite(&parts[i])
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
 			into := vm.LockedSink(w)
-			inner := u.From.wrap(into, subep)
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				err := inner(parts[i].Handle)
-				err2 := w.Close()
-				if err == nil || errors.Is(err, io.EOF) {
-					err = err2
-				}
-				errs[i] = err
-				orig.Stats.atomicAdd(&subep.Stats)
-			}(i)
-		}
-		wg.Wait()
-		for i := range errs {
-			if errs[i] != nil && !errors.Is(errs[i], io.EOF) {
-				err = errs[i]
-				break
+			err := u.From.exec(into, parts[i].Handle, subep)
+			err2 := w.Close()
+			if err == nil || errors.Is(err, io.EOF) {
+				err = err2
 			}
-		}
-		err2 := dst.Close()
-		if err == nil {
-			err = err2
-		}
-		return err
+			errs[i] = err
+			ep.Stats.atomicAdd(&subep.Stats)
+		}(i)
 	}
+	wg.Wait()
+	for i := range errs {
+		if errs[i] != nil && !errors.Is(errs[i], io.EOF) {
+			err = errs[i]
+			break
+		}
+	}
+	err2 := dst.Close()
+	if err == nil {
+		err = err2
+	}
+	return err
 }
