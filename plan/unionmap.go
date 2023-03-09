@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/ion"
@@ -310,24 +311,24 @@ func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams)
 	}
 	var wg sync.WaitGroup
 	errs := make([]error, len(parts))
+	parallel := distribute(parts, ep.Parallel)
 	for i := range parts {
-		w, err := dst.Open()
+		mw, err := newOpenSink(dst, parallel[i])
 		if err != nil {
+			if i > 0 {
+				dst.Close()
+			}
 			return err
 		}
 		subep := ep.clone()
-		subep.Output = w
+		subep.Parallel = mw.Len()
+		subep.Output = nil
 		// stack the PARTITION_VALUE() rewrite
 		subep.AddRewrite(&parts[i])
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			into := vm.LockedSink(w)
-			err := u.From.exec(into, parts[i].Handle, subep)
-			err2 := w.Close()
-			if err == nil || errors.Is(err, io.EOF) {
-				err = err2
-			}
+			err := u.From.exec(mw, parts[i].Handle, subep)
 			errs[i] = err
 			ep.Stats.atomicAdd(&subep.Stats)
 		}(i)
@@ -344,4 +345,86 @@ func (u *UnionPartition) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams)
 		err = err2
 	}
 	return err
+}
+
+// produce a histogram with a sum equal to value
+// with each element proportional to h[i]
+func distribute(h []TablePart, value int) []int {
+	hist := make([]int64, len(h))
+	out := make([]int, len(h))
+	sum := int64(0)
+	for i := range h {
+		sz := h[i].Handle.Size()
+		if sz == 0 {
+			sz = 1
+		}
+		hist[i] = sz
+		sum += hist[i]
+	}
+	total := value
+	for i := range out {
+		// distribute proportional share of value
+		n := int((hist[i] * int64(value)) / sum)
+		if n <= 0 {
+			n = 1
+		}
+		out[i] += n
+		total -= n
+	}
+	if total > 0 {
+		// distribute any remaining bits
+		out[len(out)-1] += total
+	}
+	return out
+}
+
+// openSink is a QuerySink that collects a list
+// of io.WriteClosers from src (up to max) and stores
+// them internally. If max is less than or equal to zero,
+// then max is reset to 1.
+type openSink struct {
+	cache []io.WriteCloser
+	pos   atomic.Int32
+}
+
+// Len returns the number of internal cached io.WriteClosers.
+func (m *openSink) Len() int { return len(m.cache) }
+
+// Open returns the next cached io.WriteCloser,
+// or (nil, io.EOF) if Open has been called more
+// than m.Len times.
+func (m *openSink) Open() (io.WriteCloser, error) {
+	n := m.pos.Add(1) - 1
+	if int(n) >= len(m.cache) {
+		return nil, io.EOF
+	}
+	return m.cache[n], nil
+}
+
+// Close closes any cached io.WriteClosers
+// that were not returned from Open.
+func (m *openSink) Close() error {
+	n := int(m.pos.Load())
+	for i := n; i < len(m.cache); i++ {
+		m.cache[i].Close()
+	}
+	return nil
+}
+
+func newOpenSink(src vm.QuerySink, max int) (*openSink, error) {
+	if max <= 0 {
+		max = 1
+	}
+	var cache []io.WriteCloser
+	for i := 0; i < max; i++ {
+		w, err := src.Open()
+		if err != nil {
+			if len(cache) == 0 {
+				return nil, err
+			}
+			break
+		}
+		cache = append(cache, w)
+	}
+	return &openSink{cache: cache}, nil
 }

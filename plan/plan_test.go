@@ -22,7 +22,43 @@ import (
 	"github.com/SnellerInc/sneller/expr/partiql"
 	"github.com/SnellerInc/sneller/ion"
 	"github.com/SnellerInc/sneller/vm"
+
+	"golang.org/x/exp/slices"
 )
+
+type sizeHandle int64
+
+func (s sizeHandle) Open(_ context.Context) (vm.Table, error) {
+	panic("nope!")
+}
+
+func (s sizeHandle) Encode(dst *ion.Buffer, st *ion.Symtab) error {
+	panic("nope!")
+}
+
+func (s sizeHandle) Size() int64 { return int64(s) }
+
+func TestDistribute(t *testing.T) {
+	run := func(in []int64, val int, out []int) {
+		t.Helper()
+		parts := make([]TablePart, len(in))
+		for i := range parts {
+			parts[i].Handle = sizeHandle(in[i])
+		}
+		result := distribute(parts, val)
+		if !slices.Equal(result, out) {
+			t.Errorf("got %v want %v", result, out)
+		}
+	}
+
+	run([]int64{0, 0, 0}, 3, []int{1, 1, 1})
+	run([]int64{100, 200}, 3, []int{1, 2})
+	run([]int64{100, 200}, 4, []int{1, 3})
+	run([]int64{100, 200, 300}, 6, []int{1, 2, 3})
+	run([]int64{100, 200, 300}, 12, []int{2, 4, 6})
+	run([]int64{100, 200, 300}, 13, []int{2, 4, 7})
+	run([]int64{102478}, 8, []int{8})
+}
 
 func TestNewSplit(t *testing.T) {
 	testcases := []struct {

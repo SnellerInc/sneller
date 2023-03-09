@@ -85,12 +85,6 @@ func (s *Nonterminal) setinput(p Op) {
 	s.From = p
 }
 
-func delay(err error) func(TableHandle) error {
-	return func(_ TableHandle) error {
-		return err
-	}
-}
-
 // TableHandle is a handle to a table object.
 type TableHandle interface {
 	// Open opens the handle for reading
