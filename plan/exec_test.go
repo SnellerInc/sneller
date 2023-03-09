@@ -1927,13 +1927,23 @@ func testSplitEquivalent(t *testing.T, text string, e *testenv, expected []strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	tree, err = Decode(e, &st, ib.Bytes())
+	newtree, err := Decode(e, &st, ib.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// let's assume equal textual representation
+	// means semantically equivalent:
+	astr := tree.String()
+	bstr := newtree.String()
+	if astr != bstr {
+		t.Errorf("old plan: %s", tree)
+		t.Fatalf("new plan: %s", newtree)
+	}
+
 	t.Logf("plan:\n%s", tree.String())
 
+	tree = newtree
 	st.Reset()
 	var out bytes.Buffer
 	var stat ExecStats

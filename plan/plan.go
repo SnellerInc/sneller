@@ -469,6 +469,14 @@ func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 		dst.BeginField(st.Intern("filter"))
 		expr.Rewrite(rw, l.Filter).Encode(dst, st)
 	}
+	if len(l.OnEqual) > 0 {
+		dst.BeginField(st.Intern("on_equal"))
+		dst.BeginList(-1)
+		for i := range l.OnEqual {
+			dst.WriteString(l.OnEqual[i])
+		}
+		dst.EndList()
+	}
 	dst.EndStruct()
 	return nil
 }
@@ -487,6 +495,15 @@ func (l *Leaf) setfield(d Decoder, f ion.Field) error {
 			return err
 		}
 		l.Filter = f
+	case "on_equal":
+		return f.Datum.UnpackList(func(d ion.Datum) error {
+			str, err := d.String()
+			if err != nil {
+				return err
+			}
+			l.OnEqual = append(l.OnEqual, str)
+			return nil
+		})
 	default:
 		return errUnexpectedField
 	}
