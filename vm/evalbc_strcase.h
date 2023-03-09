@@ -15,8 +15,7 @@
 // LOWER/UPPER functions
 // --------------------------------------------------
 
-#include "bc_constant_tolower.h"
-#include "bc_constant_toupper.h"
+#include "evalbc_strcase_constant.h"
 
 #define TERN_MERGE  $0xd8       // merge op: VPTERNLOGD mask, true, false
 

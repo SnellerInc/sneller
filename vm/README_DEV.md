@@ -27,6 +27,15 @@ invoked with the `go generate` command:
 3. `_generate/genconst.go` scans assembly files for
    used constants and produces `bc_constant_gen.h`.
 
+The code generator `_generate/strcase.go` generates
+lookup tables needed by `tolower` & `toupper` opcodes.
+It should be run manaully when unicode version shipped
+with Go changes. The command is:
+
+```bash
+$ go run _generate/strcase.go -o evalbc_strcase_constant.h
+```
+
 
 # Constant extraction
 
