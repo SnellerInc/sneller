@@ -392,7 +392,8 @@ type Leaf struct {
 	// Since OnEqual depends on PARTITION_VALUE(i) being rewritten,
 	// OnEqual is only present when Leaf is part of a sub-query
 	// for a partitioned query.
-	OnEqual []string
+	OnEqual   []string
+	EqualExpr []expr.Node
 }
 
 func (l *Leaf) String() string { return l.describe() }
@@ -404,21 +405,30 @@ func (l *Leaf) setinput(o Op) {
 func (l *Leaf) describe() string {
 	s := expr.ToString(l.Orig)
 	if len(l.OnEqual) > 0 {
-		s += fmt.Sprintf(" ON %v", l.OnEqual)
+		s += " ON "
+		for i := range l.OnEqual {
+			if i > 0 {
+				s += ", "
+			}
+			s += l.OnEqual[i] + "=" + expr.ToString(l.EqualExpr[i])
+		}
 	}
 	return s
 }
 
-func (l *Leaf) rewrite(rw expr.Rewriter) {}
+func (l *Leaf) rewrite(rw expr.Rewriter) {
+	for i := range l.EqualExpr {
+		l.EqualExpr[i] = expr.Rewrite(rw, l.EqualExpr[i])
+	}
+}
 
 func (l *Leaf) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error {
 	filt := ep.rewrite(l.Filter)
 	var partvals []ion.Datum
-	if len(l.OnEqual) > 0 {
-		partvals = make([]ion.Datum, len(l.OnEqual))
+	if len(l.EqualExpr) > 0 {
+		partvals = make([]ion.Datum, len(l.EqualExpr))
 		for i := range partvals {
-			e := ep.rewrite(expr.Call(expr.PartitionValue, expr.Integer(i)))
-			c, ok := e.(expr.Constant)
+			c, ok := ep.rewrite(l.EqualExpr[i]).(expr.Constant)
 			if !ok {
 				return fmt.Errorf("missing PARTITION_VALUE constant rewrite %d", i)
 			}
@@ -476,6 +486,12 @@ func (l *Leaf) encode(dst *ion.Buffer, st *ion.Symtab, rw expr.Rewriter) error {
 			dst.WriteString(l.OnEqual[i])
 		}
 		dst.EndList()
+		dst.BeginField(st.Intern("equal_expr"))
+		dst.BeginList(-1)
+		for i := range l.EqualExpr {
+			expr.Rewrite(rw, l.EqualExpr[i]).Encode(dst, st)
+		}
+		dst.EndList()
 	}
 	dst.EndStruct()
 	return nil
@@ -502,6 +518,15 @@ func (l *Leaf) setfield(d Decoder, f ion.Field) error {
 				return err
 			}
 			l.OnEqual = append(l.OnEqual, str)
+			return nil
+		})
+	case "equal_expr":
+		return f.Datum.UnpackList(func(d ion.Datum) error {
+			e, err := expr.Decode(d)
+			if err != nil {
+				return err
+			}
+			l.EqualExpr = append(l.EqualExpr, e)
 			return nil
 		})
 	default:

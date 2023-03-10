@@ -505,13 +505,21 @@ func (w *walker) put(it *pir.IterTable) {
 func (w *walker) walkBuild(in pir.Step, env Env) (Op, error) {
 	// IterTable is the terminal node
 	if it, ok := in.(*pir.IterTable); ok {
+		var eqparts []expr.Node
+		if len(it.OnEqual) > 0 {
+			eqparts = make([]expr.Node, len(it.OnEqual))
+			for i := range eqparts {
+				eqparts[i] = expr.Call(expr.PartitionValue, expr.Integer(i))
+			}
+		}
+
 		w.put(it) // set w.latest
-		// TODO: we should handle table globs and
-		// the ++ operator specially
 		out := Op(&Leaf{
-			Orig:    it.Table,
-			OnEqual: it.OnEqual,
+			Orig:      it.Table,
+			OnEqual:   it.OnEqual,
+			EqualExpr: eqparts,
 		})
+
 		if it.Filter != nil {
 			out = &Filter{
 				Nonterminal: Nonterminal{From: out},
