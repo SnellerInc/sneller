@@ -34,12 +34,46 @@ import (
 
 type tableHandles []TableHandle
 
+var _ PartitionHandle = tableHandles(nil)
+
 func (h tableHandles) Size() int64 {
 	n := int64(0)
 	for i := range h {
 		n += h[i].Size()
 	}
 	return n
+}
+
+func (h tableHandles) SplitBy(parts []string) ([]TablePart, error) {
+	var out []TablePart
+	for i := range h {
+		ph, ok := h[i].(PartitionHandle)
+		if !ok {
+			return nil, fmt.Errorf("tableHandles: %T is not a PartitionHandle", h[i])
+		}
+		lst, err := ph.SplitBy(parts)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, lst...)
+	}
+	return out, nil
+}
+
+func (h tableHandles) SplitOn(parts []string, equal []ion.Datum) (TableHandle, error) {
+	var out []TableHandle
+	for i := range h {
+		ph, ok := h[i].(PartitionHandle)
+		if !ok {
+			return nil, fmt.Errorf("tableHandles: %T is not a PartitionHandle", h[i])
+		}
+		handle, err := ph.SplitOn(parts, equal)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, handle)
+	}
+	return tableHandles(out), nil
 }
 
 func (h tableHandles) Open(ctx context.Context) (vm.Table, error) {
