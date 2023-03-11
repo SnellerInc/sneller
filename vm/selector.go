@@ -129,9 +129,11 @@ func NewProjection(sel Selection, dst QuerySink) (*Projection, error) {
 // goroutine-local component of Select(...)
 type projector struct {
 	parent *Projection
+	st     *symtab // most recent symbol table
 	prog   prog
 	bc     bytecode
 	aw     alignedWriter
+	prep   bool // aw contains current symbol table
 	dst    io.WriteCloser
 	outsel []syminfo   // output symbol IDs (sorted)
 	params rowParams   // always starts empty
@@ -168,21 +170,6 @@ func (p *Projection) Close() error {
 	return p.dst.Close()
 }
 
-func (p *projector) update(st *symtab, aux *auxbindings) error {
-	if p.aw.buf == nil {
-		p.aw.init(p.dst)
-	}
-	err := p.aw.setpre(st)
-	if err != nil {
-		return err
-	}
-	if p.dstrc != nil {
-		p.aux.reset()
-		return p.dstrc.symbolize(st, &p.aux)
-	}
-	return nil
-}
-
 func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	err := recompile(st, &p.parent.prog, &p.prog, &p.bc, aux, "projector")
 	if err != nil {
@@ -201,7 +188,13 @@ func (p *projector) symbolize(st *symtab, aux *auxbindings) error {
 	slices.SortFunc(p.outsel, func(x, y syminfo) bool {
 		return x.value < y.value
 	})
-	return p.update(st, aux)
+	p.st = st
+	p.prep = false // p.aw.setpre() on next writeRows call
+	if p.dstrc != nil {
+		p.aux.reset()
+		return p.dstrc.symbolize(st, &p.aux)
+	}
+	return nil
 }
 
 func (p *projector) Close() error {
@@ -241,9 +234,22 @@ func (p *projector) writeRows(delims []vmref, rp *rowParams) error {
 	if len(delims) == 0 {
 		return nil
 	}
-	if p.aw.buf == nil {
+	if p.st == nil {
 		panic("WriteRows() called before Symbolize()")
 	}
+	if p.aw.buf == nil {
+		p.aw.init(p.dst)
+	}
+	// if we haven't prepared the current symbol table,
+	// then prepare it now:
+	if !p.prep {
+		err := p.aw.setpre(p.st)
+		if err != nil {
+			return err
+		}
+		p.prep = true
+	}
+
 	// if the first iteration of the projection
 	// loop would fail due to not enough space,
 	// flush preemptively
