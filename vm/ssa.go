@@ -2666,9 +2666,7 @@ func dateDiffMQYImm(op ssaop) uint16 {
 func emitDateDiffMQY(v *value, c *compilestate) {
 	info := &ssainfo[v.op]
 	bc := info.bc
-	c.asm.emitOpcode(bc,
-		c.slotOf(v, regS),
-		c.slotOf(v, regK),
+	c.emit(v, bc,
 		c.slotOf(v.args[0], regS),
 		c.slotOf(v.args[1], regS),
 		dateDiffMQYImm(v.op),
@@ -3444,6 +3442,62 @@ type compilestate struct {
 	litbuf []byte // output datum literals
 }
 
+func (c *compilestate) emit(v *value, op bcop, args ...any) {
+	// de-allocate argument slots
+	c.final(v)
+
+	clobbers := v.ret().vregs()
+	// allocate return value slots:
+	ret := opinfo[op].out
+	final := make([]any, len(ret), len(args)+len(ret))
+	for i := len(ret) - 1; i >= 0; i-- {
+		switch ret[i] {
+		case bcK:
+			if !clobbers.contains(regK) {
+				panic(fmt.Sprintf("error emitting %s: bcK doesn't correspond to a clobbered regK", opinfo[op].text))
+			}
+			final[i] = c.slotOf(v, regK)
+		case bcS:
+			if !clobbers.contains(regS) {
+				panic(fmt.Sprintf("error emitting %s: bcS doesn't correspond to a clobbered regS", opinfo[op].text))
+			}
+			final[i] = c.slotOf(v, regS)
+		case bcL:
+			if !clobbers.contains(regL) {
+				panic(fmt.Sprintf("error emitting %s: bcL doesn't correspond to a clobbered regL", opinfo[op].text))
+			}
+			final[i] = c.slotOf(v, regL)
+		case bcH:
+			if !clobbers.contains(regH) {
+				panic(fmt.Sprintf("error emitting %s: bcH doesn't correspond to a clobbered regH", opinfo[op].text))
+			}
+			slot := c.slotOf(v, regH)
+			if v.imm == nil {
+				v.imm = int(slot)
+			}
+			final[i] = slot
+		case bcV:
+			if !clobbers.contains(regV) {
+				panic(fmt.Sprintf("error emitting %s: bcV doesn't correspond to a clobbered regV", opinfo[op].text))
+			}
+			final[i] = c.slotOf(v, regV)
+		case bcB:
+			if !clobbers.contains(regB) {
+				panic(fmt.Sprintf("error emitting %s: bcB doesn't correspond to a clobbered regB", opinfo[op].text))
+			}
+			final[i] = c.slotOf(v, regB)
+		default:
+			panic("cannot handle " + ret[i].String())
+		}
+	}
+	all := append(final, args...)
+	if len(opinfo[op].va) == 0 {
+		c.asm.emitOpcode(op, all...)
+	} else {
+		c.asm.emitOpcodeVA(op, all)
+	}
+}
+
 func (c regclass) String() string {
 	switch c {
 	case regK:
@@ -3496,15 +3550,26 @@ func (c *compilestate) final(v *value) {
 	for i := range v.args {
 		arg := v.args[i]
 		argType := info.argType(i)
-		if argType == stMem {
-			continue
-		}
-
-		rng := c.lr.krange
-		rc := regK
-		if argType != stBool {
-			rng = c.lr.vrange
+		rng := c.lr.vrange // normal range info
+		var rc regclass
+		switch argType {
+		case stMem, stList | stFloat | stInt | stString | stTime:
+			continue // not stack-allocated
+		case stBool:
+			rng = c.lr.krange
+			rc = regK
+		case stValue:
 			rc = regV
+		case stBucket:
+			rc = regL
+		case stList, stFloat, stInt, stString, stTime:
+			rc = regS
+		case stBase:
+			rc = regB
+		case stHash:
+			rc = regH
+		default:
+			panic("unexpected return type " + argType.String())
 		}
 		if rng[arg.id] < v.id {
 			panic("arg not live up to use?")
@@ -3514,24 +3579,6 @@ func (c *compilestate) final(v *value) {
 			c.stack.freeValue(rc, arg.id)
 		}
 	}
-}
-
-// at value v, get the H register number of arg
-//
-// if arg is only live up to this instruction,
-// then it will be dropped from the register
-func (c *compilestate) href(v, arg *value) stackslot {
-	ret := c.stack.slotOf(regH, arg.id)
-	if c.lr.vrange[arg.id] == v.id {
-		// value is no longer live, so free the slot
-		c.stack.freeValue(regH, arg.id)
-	}
-	return ret
-}
-
-// allocate an H register number for value v
-func (c *compilestate) hput(v *value) stackslot {
-	return c.stack.allocValue(regH, v.id)
 }
 
 // Returns a stack slot id of the given value. It would
@@ -3561,8 +3608,6 @@ func (c *compilestate) dictimm(str string) uint16 {
 	}
 	return uint16(n)
 }
-
-func emitinit(v *value, c *compilestate) {}
 
 type rawDatum []byte
 
@@ -3617,9 +3662,7 @@ func emithashlookup(v *value, c *compilestate) {
 	tSlot := len(c.trees)
 	tree := v.imm.(*radixTree64)
 	c.trees = append(c.trees, tree)
-	c.asm.emitOpcode(ssainfo[v.op].bc,
-		c.slotOf(v, regV),
-		c.slotOf(v, regK),
+	c.emit(v, ssainfo[v.op].bc,
 		c.slotOf(h, regH),
 		uint64(tSlot),
 		c.slotOf(k, regK),
@@ -3633,8 +3676,7 @@ func emithashmember(v *value, c *compilestate) {
 	tSlot := uint16(len(c.trees))
 	c.trees = append(c.trees, v.imm.(*radixTree64))
 
-	c.asm.emitOpcode(ssainfo[v.op].bc,
-		c.slotOf(v, regK),
+	c.emit(v, ssainfo[v.op].bc,
 		c.slotOf(h, regH),
 		uint64(tSlot),
 		c.slotOf(k, regK),
@@ -3657,9 +3699,7 @@ func emitslice(v *value, c *compilestate) {
 		panic("unrecognized op for emitslice")
 	}
 
-	c.asm.emitOpcode(bc,
-		c.slotOf(v, regS),
-		c.slotOf(v, regK),
+	c.emit(v, bc,
 		c.slotOf(v.args[0], regV),
 		uint64(t),
 		c.slotOf(v.args[1], regK),
@@ -3676,14 +3716,12 @@ func emitconstcmp(v *value, c *compilestate) {
 	if b, ok := imm.(bool); ok {
 		// we have built-in ops for these!
 		if b {
-			c.asm.emitOpcode(opistruev,
-				c.slotOf(v, regK),
+			c.emit(v, opistruev,
 				c.slotOf(val, regV),
 				c.slotOf(msk, regK),
 			)
 		} else {
-			c.asm.emitOpcode(opisfalsev,
-				c.slotOf(v, regK),
+			c.emit(v, opisfalsev,
 				c.slotOf(val, regV),
 				c.slotOf(msk, regK),
 			)
@@ -3730,8 +3768,7 @@ func emitconstcmp(v *value, c *compilestate) {
 	off := len(c.litbuf)
 	c.litbuf = append(c.litbuf, raw...)
 
-	c.asm.emitOpcode(opcmpeqvimm,
-		c.slotOf(v, regK),
+	c.emit(v, opcmpeqvimm,
 		c.slotOf(val, regV),
 		encodeLitRef(off, raw),
 		c.slotOf(msk, regK),
@@ -3748,10 +3785,12 @@ func emitstorev(v *value, c *compilestate) {
 		// don't care what is in the V register;
 		// we are just zeroing the memory
 		c.asm.emitOpcode(opzerov, stackslot(slot))
+		c.final(v) // deallocate argument slots
 		return
 	}
 
 	c.asm.emitOpcode(opmovv, stackslot(slot), c.slotOf(arg, regV), c.slotOf(mask, regK))
+	c.final(v) // deallocate argument slots
 }
 
 func emitauto(v *value, c *compilestate) {
@@ -3768,8 +3807,7 @@ func emitauto(v *value, c *compilestate) {
 		panic(fmt.Sprintf("error emitting %v: the instruction requires %d arguments, not %d", info.bc, len(v.args), len(info.argtypes)))
 	}
 
-	args := make([]any, len(bcInfo.args))
-	clobbers := v.ret().vregs()
+	args := make([]any, len(bcInfo.in))
 
 	ssaImmDone := false
 	ssaArgBegin := int(0)
@@ -3778,51 +3816,11 @@ func emitauto(v *value, c *compilestate) {
 	if ssaArgCount > 0 && (info.argtypes[0]&stMem) != 0 {
 		// skip stMem argument (if first) - it's just for ordering, it has no effect here
 		ssaArgBegin++
-		if ssaArgCount > 1 && (info.argtypes[0]&stBucket) != 0 {
-			// skip stBucket argument (if second)
-			ssaArgBegin++
-		}
 	}
 
-	for i := len(bcInfo.args) - 1; i >= 0; i-- {
-		switch bcInfo.args[i] {
-		case bcWriteK:
-			if !clobbers.contains(regK) {
-				panic(fmt.Sprintf("error emitting %s: bcWriteK doesn't correspond to a clobbered regK", bcInfo.text))
-			}
-			args[i] = c.slotOf(v, regK)
-
-		case bcWriteS:
-			if !clobbers.contains(regS) {
-				panic(fmt.Sprintf("error emitting %s: bcWriteS doesn't correspond to a clobbered regS", bcInfo.text))
-			}
-			args[i] = c.slotOf(v, regS)
-
-		case bcWriteV, bcReadWriteV:
-			if !clobbers.contains(regV) {
-				panic(fmt.Sprintf("error emitting %s: bcWriteV doesn't correspond to a clobbered regV", bcInfo.text))
-			}
-			args[i] = c.slotOf(v, regV)
-
-		case bcWriteB:
-			if !clobbers.contains(regB) {
-				panic(fmt.Sprintf("error emitting %s: bcWriteB doesn't correspond to a clobbered regB", bcInfo.text))
-			}
-			args[i] = c.slotOf(v, regB)
-
-		case bcWriteH:
-			if !clobbers.contains(regH) {
-				panic(fmt.Sprintf("error emitting %s: bcWriteH doesn't correspond to a clobbered regH", bcInfo.text))
-			}
-
-			// just allocate an output register
-			slot := c.hput(v)
-			if v.imm == nil {
-				v.imm = int(slot)
-			}
-			args[i] = stackslot(slot)
-
-		case bcReadK:
+	for i := len(bcInfo.in) - 1; i >= 0; i-- {
+		switch bcInfo.in[i] {
+		case bcK:
 			ssaArgIndex--
 			if ssaArgIndex < ssaArgBegin {
 				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadK) doesn't have a corresponding SSA argument", bcInfo.text, i))
@@ -3833,7 +3831,7 @@ func emitauto(v *value, c *compilestate) {
 			}
 			args[i] = c.slotOf(v.args[ssaArgIndex], regK)
 
-		case bcReadS:
+		case bcS:
 			ssaArgIndex--
 			if ssaArgIndex < ssaArgBegin {
 				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadS) doesn't have a corresponding SSA argument", bcInfo.text, i))
@@ -3844,7 +3842,7 @@ func emitauto(v *value, c *compilestate) {
 			}
 			args[i] = c.slotOf(v.args[ssaArgIndex], regS)
 
-		case bcReadV:
+		case bcV:
 			ssaArgIndex--
 			if ssaArgIndex < ssaArgBegin {
 				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadV) doesn't have a corresponding SSA argument", bcInfo.text, i))
@@ -3855,7 +3853,7 @@ func emitauto(v *value, c *compilestate) {
 			}
 			args[i] = c.slotOf(v.args[ssaArgIndex], regV)
 
-		case bcReadB:
+		case bcB:
 			ssaArgIndex--
 			if ssaArgIndex < ssaArgBegin {
 				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadB) doesn't have a corresponding SSA argument", bcInfo.text, i))
@@ -3866,7 +3864,17 @@ func emitauto(v *value, c *compilestate) {
 			}
 			args[i] = c.slotOf(v.args[ssaArgIndex], regB)
 
-		case bcReadH:
+		case bcL:
+			ssaArgIndex--
+			if ssaArgIndex < ssaArgBegin {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadB) doesn't have a corresponding SSA argument", bcInfo.text, i))
+			}
+			argType := info.argtypes[ssaArgIndex]
+			if (argType & stBucket) == 0 {
+				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadB) is not compatible with SSA arg type %s", bcInfo.text, i, argType.String()))
+			}
+			args[i] = c.slotOf(v.args[ssaArgIndex], regL)
+		case bcH:
 			ssaArgIndex--
 			if ssaArgIndex < ssaArgBegin {
 				panic(fmt.Sprintf("error emitting %s: bytecode argument %d (bcReadH) doesn't have a corresponding SSA argument", bcInfo.text, i))
@@ -3881,7 +3889,7 @@ func emitauto(v *value, c *compilestate) {
 			}
 
 			// the immediate is the H register number of the hash argument
-			slot := c.href(v, v.args[ssaArgIndex])
+			slot := c.slotOf(v.args[ssaArgIndex], regH)
 			v.imm = int(slot)
 			args[i] = stackslot(slot)
 
@@ -3901,7 +3909,7 @@ func emitauto(v *value, c *compilestate) {
 			args[i] = uint64(slot)
 			ssaImmDone = true
 
-		case bcAggSlot, bcHashSlot:
+		case bcAggSlot:
 			if ssaImmDone {
 				panic(fmt.Sprintf("error emitting %s: only one immediate can be encoded, found second immediate at #%d", bcInfo.text, i))
 			}
@@ -3929,18 +3937,16 @@ func emitauto(v *value, c *compilestate) {
 			}
 			args[i] = c.storeLitRef(v.imm)
 			ssaImmDone = true
+		default:
+			panic(fmt.Sprintf("bad bc arg type %s", bcInfo.in[i]))
 		}
 	}
-
-	c.asm.emitOpcode(bc, args...)
+	c.emit(v, bc, args...)
 }
 
 func emitBoolConv(v *value, c *compilestate) {
 	info := &ssainfo[v.op]
-	c.asm.emitOpcode(info.bc,
-		c.slotOf(v, regS),
-		c.slotOf(v.args[0], regK),
-	)
+	c.emit(v, info.bc, c.slotOf(v.args[0], regK))
 }
 
 func emitConcatStr(v *value, c *compilestate) {
@@ -3948,31 +3954,25 @@ func emitConcatStr(v *value, c *compilestate) {
 		panic(fmt.Sprintf("The number of arguments to emitConcatStr() must be even, not %d", len(v.args)))
 	}
 
-	args := make([]any, 2+len(v.args))
-	args[0] = c.slotOf(v, regS)
-	args[1] = c.slotOf(v, regK)
-
-	for i := 0; i < len(v.args); i += 2 {
-		args[i+2] = c.slotOf(v.args[i+0], regS)
-		args[i+3] = c.slotOf(v.args[i+1], regK)
+	args := make([]any, len(v.args))
+	for i := 0; i < len(args); i += 2 {
+		args[i+0] = c.slotOf(v.args[i+0], regS)
+		args[i+1] = c.slotOf(v.args[i+1], regK)
 	}
 
 	info := &ssainfo[v.op]
-	c.asm.emitOpcodeVA(info.bc, args)
+	c.emit(v, info.bc, args...)
 }
 
 func emitMakeList(v *value, c *compilestate) {
-	args := make([]any, 0, 3+len(v.args)-1)
-	args = append(args,
-		c.slotOf(v, regV),
-		c.slotOf(v, regK),
-		c.slotOf(v.args[0], regK))
+	args := make([]any, 0, 1+len(v.args)-1)
+	args = append(args, c.slotOf(v.args[0], regK))
 	for i := 1; i < len(v.args); i += 2 {
 		args = append(args, c.slotOf(v.args[i], regV), c.slotOf(v.args[i+1], regK))
 	}
 
 	info := &ssainfo[v.op]
-	c.asm.emitOpcodeVA(info.bc, args)
+	c.emit(v, info.bc, args...)
 }
 
 func emitMakeStruct(v *value, c *compilestate) {
@@ -3989,11 +3989,8 @@ func emitMakeStruct(v *value, c *compilestate) {
 	}
 	slices.Sort(orderedSymbols)
 
-	args := make([]any, 0, 3+len(v.args)-1)
-	args = append(args,
-		c.slotOf(v, regV),
-		c.slotOf(v, regK),
-		c.slotOf(v.args[0], regK))
+	args := make([]any, 0, 1+len(v.args)-1)
+	args = append(args, c.slotOf(v.args[0], regK))
 
 	for _, orderedSymbol := range orderedSymbols {
 		i := int(orderedSymbol & 0xFFFFFFFF)
@@ -4006,7 +4003,7 @@ func emitMakeStruct(v *value, c *compilestate) {
 
 	info := &ssainfo[v.op]
 	op := info.bc
-	c.asm.emitOpcodeVA(op, args)
+	c.emit(v, op, args...)
 }
 
 func emitaggapproxcount(v *value, c *compilestate) {
@@ -4023,7 +4020,7 @@ func emitaggapproxcount(v *value, c *compilestate) {
 	aggSlot := aggregateslot(imm >> 8)
 	precision := imm & 0xFF
 
-	c.asm.emitOpcode(op,
+	c.emit(v, op,
 		aggSlot,
 		c.slotOf(hash, regH),
 		precision,
@@ -4040,7 +4037,7 @@ func emitaggapproxcountmerge(v *value, c *compilestate) {
 	aggSlot := aggregateslot(imm >> 8)
 	precision := imm & 0xFF
 
-	c.asm.emitOpcode(op,
+	c.emit(v, op,
 		aggSlot,
 		c.slotOf(blob, regS),
 		precision,
@@ -4049,6 +4046,7 @@ func emitaggapproxcountmerge(v *value, c *compilestate) {
 }
 
 func emitaggslotapproxcount(v *value, c *compilestate) {
+	bucket := v.args[1]
 	hash := v.args[2]
 	mask := v.args[3]
 
@@ -4061,8 +4059,9 @@ func emitaggslotapproxcount(v *value, c *compilestate) {
 	aggSlot := aggregateslot(imm >> 8)
 	precision := imm & 0xFF
 
-	c.asm.emitOpcode(ssainfo[v.op].bc,
+	c.emit(v, ssainfo[v.op].bc,
 		aggSlot,
+		c.slotOf(bucket, regL),
 		c.slotOf(hash, regH),
 		precision,
 		c.slotOf(mask, regK),
@@ -4070,6 +4069,7 @@ func emitaggslotapproxcount(v *value, c *compilestate) {
 }
 
 func emitaggslotapproxcountmerge(v *value, c *compilestate) {
+	bucket := v.args[1]
 	blob := v.args[2]
 	mask := v.args[3]
 
@@ -4077,8 +4077,9 @@ func emitaggslotapproxcountmerge(v *value, c *compilestate) {
 	aggSlot := aggregateslot(imm >> 8)
 	precision := imm & 0xFF
 
-	c.asm.emitOpcode(ssainfo[v.op].bc,
+	c.emit(v, ssainfo[v.op].bc,
 		aggSlot,
+		c.slotOf(bucket, regL),
 		c.slotOf(blob, regS),
 		precision,
 		c.slotOf(mask, regK),
@@ -4099,7 +4100,6 @@ func (p *prog) emit1(v *value, c *compilestate) {
 		emit = emitauto
 	}
 	emit(v, c)
-	c.final(v)
 }
 
 // reserve stack slots for any stores that

@@ -65,23 +65,13 @@ func (a *assembler) emitOpcodeValue(op bcop) {
 // emitOpcodeArg emits a single argument to the assembler buffer.
 func (a *assembler) emitOpcodeArg(arg any, argType bcArgType) {
 	switch argType {
-	case bcReadK, bcWriteK:
-		a.emitImmU16(uint16(arg.(stackslot)))
-	case bcReadS, bcWriteS:
-		a.emitImmU16(uint16(arg.(stackslot)))
-	case bcReadV, bcWriteV, bcReadWriteV:
-		a.emitImmU16(uint16(arg.(stackslot)))
-	case bcReadB, bcWriteB:
-		a.emitImmU16(uint16(arg.(stackslot)))
-	case bcReadH, bcWriteH:
+	case bcK, bcS, bcV, bcB, bcH, bcL:
 		a.emitImmU16(uint16(arg.(stackslot)))
 	case bcDictSlot:
 		a.emitImmU16(uint16(toi64(arg)))
 	case bcAuxSlot:
 		a.emitImmU16(uint16(toi64(arg)))
 	case bcAggSlot:
-		a.emitImmU32(uint32(arg.(aggregateslot)))
-	case bcHashSlot:
 		a.emitImmU32(uint32(arg.(aggregateslot)))
 	case bcSymbolID:
 		a.emitImmU32(arg.(uint32))
@@ -120,19 +110,22 @@ func (a *assembler) emitOpcode(op bcop, args ...any) {
 	info := &opinfo[op]
 
 	// verify the number of arguments matches its signature
-	argCount := len(info.args)
+	argCount := len(info.out) + len(info.in)
 	if len(info.va) != 0 {
 		panic(fmt.Sprintf("error when emitting opcode '%v': emitOpcode() cannot emit opcode that uses variable arguments", op))
 	}
-
 	if len(args) != argCount {
 		panic(fmt.Sprintf("invalid argument count while emitting opcode '%v' (count=%d, required=%d)", op, len(args), argCount))
 	}
 
 	// emit opcode and required arguments
 	a.emitOpcodeValue(op)
-	for i := 0; i < argCount; i++ {
-		a.emitOpcodeArg(args[i], info.args[i])
+	for i := range info.out {
+		a.emitOpcodeArg(args[i], info.out[i])
+	}
+	n := len(info.out)
+	for i := range info.in {
+		a.emitOpcodeArg(args[i+n], info.in[i])
 	}
 }
 
@@ -142,7 +135,7 @@ func (a *assembler) emitOpcodeVA(op bcop, args []any) {
 	// Verify the number of arguments matches the signature. vaImms contains a signature of each
 	// argument tuple that is considered a single va argument. For example if the bc instruction
 	// uses [stString, stBool] tuple, it's a group of 2 values for each va argument.
-	baseArgCount := len(info.args)
+	baseArgCount := len(info.in) + len(info.out)
 	vaTupleSize := len(info.va)
 
 	if vaTupleSize == 0 {
@@ -162,8 +155,12 @@ func (a *assembler) emitOpcodeVA(op bcop, args []any) {
 
 	// emit opcode and required arguments
 	a.emitOpcodeValue(op)
-	for i := 0; i < baseArgCount; i++ {
-		a.emitOpcodeArg(args[i], info.args[i])
+	for i := range info.out {
+		a.emitOpcodeArg(args[i], info.out[i])
+	}
+	n := len(info.out)
+	for i := range info.in {
+		a.emitOpcodeArg(args[i+n], info.in[i])
 	}
 
 	// emit va (length followed by arguments)

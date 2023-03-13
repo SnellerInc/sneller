@@ -220,34 +220,44 @@ func (c *bctestContext) setDict(value string) {
 func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegData) error {
 	info := &opinfo[op]
 
-	if len(info.args) != len(testArgs) {
-		panic(fmt.Sprintf("argument count mismatch: opcode %s requires %d arguments, %d given", info.text, len(info.args), len(testArgs)))
+	if len(info.in)+len(info.out) != len(testArgs) {
+		panic(fmt.Sprintf("argument count mismatch: opcode %s requires %d arguments, %d given", info.text, len(info.in)+len(info.out), len(testArgs)))
 	}
 
-	args := make([]any, len(info.args))
+	args := make([]any, len(testArgs))
+	retvals, argvals := testArgs[:len(info.out)], testArgs[len(info.out):]
 	vStack := []uint64{}
 
+	emitzero := func(width int) {
+		vStack = appendZerosToUInt64Slice(vStack, width)
+	}
+
+	for i := range retvals {
+		args[i] = stackslot(len(vStack) * 8)
+		switch info.out[i] {
+		case bcK:
+			emitzero(kRegSize)
+		case bcV:
+			emitzero(vRegSize)
+		case bcS:
+			emitzero(sRegSize)
+		default:
+			panic(fmt.Sprintf("unsupported argument type %s", info.out[i]))
+		}
+	}
+
 	// serialize arguments to vStack
-	for i := range testArgs {
-		testArg := testArgs[i]
+	for i := range argvals {
+		arg := argvals[i]
 
 		// set the argument to a stack slot by default (saves
 		// us some typing in each bcReadX|bcWriteX handler)
-		args[i] = stackslot(len(vStack) * 8)
+		args[i+len(retvals)] = stackslot(len(vStack) * 8)
 
-		switch info.args[i] {
-		case bcWriteK:
-			vStack = appendZerosToUInt64Slice(vStack, kRegSize)
-
-		case bcWriteV:
-			vStack = appendZerosToUInt64Slice(vStack, vRegSize)
-
-		case bcWriteS:
-			vStack = appendZerosToUInt64Slice(vStack, sRegSize)
-
-		case bcReadK:
+		switch info.in[i] {
+		case bcK:
 			k := uint64(0)
-			switch v := testArg.(type) {
+			switch v := arg.(type) {
 			case uint:
 				k = uint64(v)
 			case uint16:
@@ -259,24 +269,24 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 			}
 			vStack = append(vStack, k)
 
-		case bcReadB:
-			switch v := testArg.(type) {
+		case bcB:
+			switch v := arg.(type) {
 			case *bRegData:
 				vStack = append(vStack, bRegAsUInt64Slice(v)...)
 			default:
 				panic(fmt.Sprintf("failed to extract argument #%d: bcReadB requires *bRegData data type", i))
 			}
 
-		case bcReadV:
-			switch v := testArg.(type) {
+		case bcV:
+			switch v := arg.(type) {
 			case *vRegData:
 				vStack = append(vStack, vRegAsUInt64Slice(v)...)
 			default:
 				panic(fmt.Sprintf("failed to extract argument #%d: bcReadV requires *vRegData data type", i))
 			}
 
-		case bcReadS:
-			switch v := testArg.(type) {
+		case bcS:
+			switch v := arg.(type) {
 			case *sRegData:
 				vStack = append(vStack, sRegAsUInt64Slice(v)...)
 			case *i64RegData:
@@ -290,7 +300,7 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 		case bcDictSlot:
 			slot := uint16(0)
 
-			switch v := testArg.(type) {
+			switch v := arg.(type) {
 			case int:
 				slot = uint16(v)
 			case uint:
@@ -303,19 +313,19 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 				panic(fmt.Sprintf("failed to extract argument #%d: bcReadV requires uint16|uint32 data types", i))
 			}
 
-			args[i] = slot
+			args[i+len(retvals)] = slot
 
 		case bcImmI8, bcImmI16, bcImmI32, bcImmI64, bcImmU8, bcImmU16, bcImmU32, bcImmU64, bcImmF64:
 			// no need to do anything special regarding immediates; they are passed as is
-			args[i] = testArg
+			args[i+len(retvals)] = arg
 
 		case bcSymbolID:
-			args[i] = encodeSymbolID(testArg.(ion.Symbol))
+			args[i+len(retvals)] = encodeSymbolID(arg.(ion.Symbol))
 
 		default:
 			// if you hit this panic it means you are trying
 			// to test something not supported at the moment
-			panic(fmt.Sprintf("unsupported argument type: %s", info.args[i].String()))
+			panic(fmt.Sprintf("unsupported argument type: %s", info.in[i].String()))
 		}
 	}
 
@@ -336,36 +346,35 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 	}
 
 	// deserialize arguments from vStack
-	for i := range testArgs {
-		testArg := testArgs[i]
+	for i := range retvals {
+		result := args[i]
+		switch info.out[i] {
+		case bcK:
+			offset := int(result.(stackslot)) / 8
 
-		switch info.args[i] {
-		case bcWriteK:
-			offset := int(args[i].(stackslot)) / 8
-
-			switch v := testArg.(type) {
+			switch v := retvals[i].(type) {
 			case *kRegData:
 				v.mask = uint16(vStack[offset] & 0xFFFF)
 			default:
 				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteK requires *kRegData data type", i))
 			}
 
-		case bcWriteV:
-			start := int(args[i].(stackslot)) / 8
+		case bcV:
+			start := int(result.(stackslot)) / 8
 			end := start + start + vRegSize/8
 
-			switch v := testArg.(type) {
+			switch v := retvals[i].(type) {
 			case *vRegData:
 				copy(vRegAsUInt64Slice(v), vStack[start:end])
 			default:
 				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteV requires *vRegData data type", i))
 			}
 
-		case bcWriteS:
-			start := int(args[i].(stackslot)) / 8
+		case bcS:
+			start := int(result.(stackslot)) / 8
 			end := start + start + sRegSize/8
 
-			switch v := testArg.(type) {
+			switch v := retvals[i].(type) {
 			case *sRegData:
 				copy(sRegAsUInt64Slice(v), vStack[start:end])
 			case *i64RegData:
@@ -373,7 +382,7 @@ func (c *bctestContext) executeOpcode(op bcop, testArgs []any, activeLanes kRegD
 			case *f64RegData:
 				copy(f64RegAsUInt64Slice(v), vStack[start:end])
 			default:
-				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteS requires *sRegData|*i64RegData*f64RegData data types", i))
+				panic(fmt.Sprintf("failed to extract argument #%d: bcWriteS requires *sRegData|*i64RegData|*f64RegData data types", i))
 			}
 		}
 	}

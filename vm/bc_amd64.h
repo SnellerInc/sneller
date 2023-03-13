@@ -320,6 +320,10 @@ error_null_symtab:                                             \
   VMOVUPD.Z 0(VIRT_VALUES)(Slot*1), Mask1, DstZ1                               \
   VMOVUPD.Z 64(VIRT_VALUES)(Slot*1), Mask2, DstZ2
 
+#define BC_LOAD_BUCKET_FROM_SLOT(DstZ1, Slot, Mask) \
+  BC_FILL_ONES(DstZ1) \
+  VMOVDQU32   0(VIRT_VALUES)(Slot*1), Mask, DstZ1
+
 #define BC_STORE_RU16_TO_SLOT(Src, Slot)                                       \
   MOVW Src, 0(VIRT_VALUES)(Slot*1)
 

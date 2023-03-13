@@ -634,12 +634,12 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sinvalid: {text: "INVALID"},
 	// initial top-level values:
 	sinit:     {text: "init", rettype: stBase | stBool, bc: opinit, priority: prioInit},
-	sinitmem:  {text: "initmem", rettype: stMem, emit: emitinit, priority: prioMem},
-	smergemem: {text: "mergemem", vaArgs: memArgs, rettype: stMem, emit: emitinit, priority: prioMem},
+	sinitmem:  {text: "initmem", rettype: stMem, emit: emitNone, priority: prioMem},
+	smergemem: {text: "mergemem", vaArgs: memArgs, rettype: stMem, emit: emitNone, priority: prioMem},
 	// initial scalar register value;
 	// not legal to use except to overwrite
 	// with value-parsing ops
-	sundef: {text: "undef", rettype: stFloat | stInt | stString, emit: emitinit, priority: prioInit - 1},
+	sundef: {text: "undef", rettype: stFloat | stInt | stString, emit: emitNone, priority: prioInit - 1},
 	// kfalse is the canonical 'bottom' mask value;
 	// it is also the MISSING value
 	// (kfalse is overloaded to mean "no result"
@@ -761,10 +761,10 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	sHasSubstrFuzzyA3:        {text: "has_substr_fuzzy_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyA3},
 	sHasSubstrFuzzyUnicodeA3: {text: "has_substr_fuzzy_unicode_A3", argtypes: []ssatype{stString, stInt, stBool}, rettype: stBool, immfmt: fmtother, bc: opHasSubstrFuzzyUnicodeA3},
 
-	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsLeft},
-	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stStringMasked, bc: opTrimWsRight},
-	sStrTrimCharLeft:  {text: "trim_char_left", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charLeft},
-	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opTrim4charRight},
+	sStrTrimWsLeft:    {text: "trim_ws_left", argtypes: str1Args, rettype: stString, bc: opTrimWsLeft},
+	sStrTrimWsRight:   {text: "trim_ws_right", argtypes: str1Args, rettype: stString, bc: opTrimWsRight},
+	sStrTrimCharLeft:  {text: "trim_char_left", argtypes: str1Args, rettype: stString, immfmt: fmtdict, bc: opTrim4charLeft},
+	sStrTrimCharRight: {text: "trim_char_right", argtypes: str1Args, rettype: stString, immfmt: fmtdict, bc: opTrim4charRight},
 
 	// s, k = contains_prefix_cs s, k, $const
 	sStrContainsPrefixCs:     {text: "contains_prefix_cs", argtypes: str1Args, rettype: stStringMasked, immfmt: fmtdict, bc: opContainsPrefixCs},
@@ -947,8 +947,8 @@ var _ssainfo = [_ssamax]ssaopinfo{
 	spowf:     {text: "pow.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stBool}, bc: oppowf64},
 	spowuintf: {text: "powuint.f", rettype: stFloat, argtypes: []ssatype{stFloat, stBool}, immfmt: fmti64, bc: oppowuintf64},
 
-	swidthbucketf: {text: "widthbucket.f", rettype: stFloatMasked, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf64},
-	swidthbucketi: {text: "widthbucket.i", rettype: stIntMasked, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi64},
+	swidthbucketf: {text: "widthbucket.f", rettype: stFloat, argtypes: []ssatype{stFloat, stFloat, stFloat, stFloat, stBool}, bc: opwidthbucketf64},
+	swidthbucketi: {text: "widthbucket.i", rettype: stInt, argtypes: []ssatype{stInt, stInt, stInt, stInt, stBool}, bc: opwidthbucketi64},
 
 	saggandk:  {text: "aggand.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggandk, priority: prioMem},
 	saggork:   {text: "aggor.k", rettype: stMem, argtypes: []ssatype{stMem, stBool, stBool}, immfmt: fmtaggslot, bc: opaggork, priority: prioMem},

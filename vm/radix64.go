@@ -594,7 +594,7 @@ func (a *aggtable) writeRows(delims []vmref, rp *rowParams) error {
 			for n := 0; n < projectedGroupByCount; n++ {
 				lo, hi := a.bc.getVRegOffsetAndSize(n*vRegSizeInUInt64Units, i)
 				if hi == 0 {
-					errorf("abort bit set on a MISSING value")
+					errorf("abort bit set on a MISSING value at offset %d abort %b", n*vRegSize, abort)
 					return bcerrCorrupt
 				}
 				ref := vmref{lo, hi}

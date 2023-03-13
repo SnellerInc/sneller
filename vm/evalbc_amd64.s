@@ -6966,7 +6966,7 @@ TEXT bcaggcount(SB), NOSPLIT|NOFRAME, $0
 //
 // returns early if it cannot locate all of K1
 TEXT bcaggbucket(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(0, OUT(R8), OUT(R15))
+  BC_UNPACK_3xSLOT(0, OUT(DX), OUT(R8), OUT(R15))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R15))
 
   KTESTW  K1, K1
@@ -7103,14 +7103,14 @@ next:
   VPCMPD.BCST   $VPCMP_IMM_GT, radixTree64_values+8(R10), Z13, K1, K4
   KTESTW        K4, K4
   JNZ           bad_radix_bucket
-  VMOVDQU32     Z13, bytecode_bucket(VIRT_BCPTR)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2)
+  VMOVDQU32     Z13, 0(VIRT_VALUES)(DX*1)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3)
 
 early_ret:
   // set bytecode.err to NeedRadix
   // and bytecode.errinfo to the hash slot
   MOVL $const_bcerrNeedRadix, bytecode_err(VIRT_BCPTR)
-  BC_UNPACK_SLOT(0, OUT(R8))
+  BC_UNPACK_SLOT(BC_SLOT_SIZE, OUT(R8))
   MOVQ R8, bytecode_errinfo(VIRT_BCPTR)
   RET_ABORT()
 
@@ -7127,12 +7127,8 @@ bad_radix_bucket:
 // be the aggregated value or NULL - in other words it basically describes
 // whether there was at least one aggregation.
 //
-// Expects 64-bit sources in Z4 and Z5.
+// Expects 64-bit sources in Z4 and Z5, buckets in Z6
 #define BC_AGGREGATE_SLOT_MARK_OP(SlotOffset, Instruction)                    \
-  /* Load buckets as early as possible so we can resolve conflicts early,  */ \
-  /* because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).*/ \
-  VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6                                        \
-  VMOVDQU32 bytecode_bucket(VIRT_BCPTR), K1, Z6                               \
   VPCONFLICTD.Z Z6, K1, Z11                                                   \
   VEXTRACTI32X8 $1, Z6, Y7                                                    \
                                                                               \
@@ -7209,12 +7205,8 @@ next:
 // average and also to decide whether the result is NULL or non-NULL. If the
 // COUNT is zero, the result of the aggregation is NULL.
 //
-// Expects 64-bit sources in Z4 and Z5.
+// Expects 64-bit sources in Z4 and Z5, buckets in Z6
 #define BC_AGGREGATE_SLOT_COUNT_OP(SlotOffset, Instruction)                   \
-  /* Load buckets as early as possible so we can resolve conflicts early,  */ \
-  /* because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).*/ \
-  VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6                                        \
-  VMOVDQU32 bytecode_bucket(VIRT_BCPTR), K1, Z6                               \
   VPCONFLICTD.Z Z6, K1, Z11                                                   \
   VEXTRACTI32X8 $1, Z6, Y7                                                    \
                                                                               \
@@ -7309,100 +7301,107 @@ resolved:                                                                     \
 next:
 
 TEXT bcaggslotandk(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotork(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K4), OUT(K5), IN(BX))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   VPMOVM2Q K4, Z4
   VPMOVM2Q K5, Z5
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotsumi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPADDQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotavgf(SB), NOSPLIT|NOFRAME, $0
   JMP bcaggslotsumf(SB)
 
 TEXT bcaggslotavgi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_COUNT_OP(0, VPADDQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotminf(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VMINPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotmini(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMINSQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotmaxf(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_F64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VMAXPD)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotmaxi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPMAXSQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotandi(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPANDQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotori(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPORQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 TEXT bcaggslotxori(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_2xSLOT(4, OUT(BX), OUT(R8))
+  BC_UNPACK_3xSLOT(4, OUT(DX), OUT(BX), OUT(R8))
   BC_LOAD_K1_K2_FROM_SLOT(OUT(K1), OUT(K6), IN(R8))
   BC_LOAD_I64_FROM_SLOT_MASKED(OUT(Z4), OUT(Z5), IN(BX), IN(K1), IN(K6))
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   BC_AGGREGATE_SLOT_MARK_OP(0, VPXORQ)
-  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4)
 
 // COUNT is a special aggregation function that just counts active lanes stored
 // in K1. This is the simplest aggregation, which only requres a basic conflict
 // resolution that doesn't require to loop over conflicting lanes.
 TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT(4, OUT(BX))
+  BC_UNPACK_2xSLOT(4, OUT(DX), OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
-
-  // Load buckets as early as possible so we can resolve conflicts early,
-  // because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).
-  VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6
-  VMOVDQU32 bytecode_bucket(VIRT_BCPTR), K1, Z6
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   VPCONFLICTD.Z Z6, K1, Z8
 
   // Load the aggregation data pointer and prepare high 8 element offsets.
@@ -7449,16 +7448,12 @@ TEXT bcaggslotcount(SB), NOSPLIT|NOFRAME, $0
   VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
   VPSCATTERDQ Z5, K3, 8(R15)(Y7*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 TEXT bcaggslotcount_v2(SB), NOSPLIT|NOFRAME, $0
-  BC_UNPACK_SLOT(4, OUT(BX))
+  BC_UNPACK_2xSLOT(4, OUT(DX), OUT(BX))
   BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
-
-  // Load buckets as early as possible so we can resolve conflicts early,
-  // because VPCONFLICTD has a very high latency (higher than VPCONFLICTQ).
-  VPBROADCASTD CONSTD_0xFFFFFFFF(), Z6
-  VMOVDQU32 bytecode_bucket(VIRT_BCPTR), K1, Z6
+  BC_LOAD_BUCKET_FROM_SLOT(OUT(Z6), IN(DX), IN(K1))
   VPCONFLICTD.Z Z6, K1, Z8
 
   // Load the aggregation data pointer and prepare high 8 element offsets.
@@ -7490,7 +7485,7 @@ TEXT bcaggslotcount_v2(SB), NOSPLIT|NOFRAME, $0
   VPSCATTERDQ Z4, K2, 8(R15)(Y6*1)
   VPSCATTERDQ Z5, K6, 8(R15)(Y7*1)
 
-  NEXT_ADVANCE(BC_SLOT_SIZE*1 + 4)
+  NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4)
 
 // Uncategorized Instructions
 // --------------------------

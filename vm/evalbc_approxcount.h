@@ -160,12 +160,12 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     VMOVQ R9, X9
     VMOVQ R12, X12
 
-    BC_UNPACK_SLOT(4 + BC_SLOT_SIZE + 2, OUT(BX))
+    BC_UNPACK_SLOT(4 + 2*BC_SLOT_SIZE + 2, OUT(BX))
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(BX))
 
-    BC_UNPACK_SLOT(4, OUT(HASHMEM_PTR))
-    BC_UNPACK_RU16(4 + BC_SLOT_SIZE, OUT(BITS_PER_HLL_BUCKET))
-
+    BC_UNPACK_SLOT(4, OUT(DX)) // regL slot
+    BC_UNPACK_SLOT(4 + BC_SLOT_SIZE, OUT(HASHMEM_PTR)) // regH slot
+    BC_UNPACK_RU16(4 + 2*BC_SLOT_SIZE, OUT(BITS_PER_HLL_BUCKET))
 
     KTESTW  K1, K1
     JZ      next
@@ -181,7 +181,7 @@ TEXT bcaggslotapproxcount(SB), NOSPLIT|NOFRAME, $0
     SUBQ    BITS_PER_HLL_BUCKET, BITS_PER_HLL_HASH    // BITS_PER_HLL_HASH = 64 - BITS_PER_HLL_BUCKET
 
     // Get bucket base pointer
-    LEAQ    bytecode_bucket(VIRT_BCPTR), BYTEBUCKET_PTR
+    LEAQ    0(VIRT_VALUES)(DX*1), BYTEBUCKET_PTR
 
 iter_rows:
     TESTQ   $1, CURRENT_MASK
@@ -241,7 +241,7 @@ skip:
 next:
     VMOVQ X12, R12
     VMOVQ X9, R9
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4 + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4 + 2)
 
 // bcaggslotapproxcountmerge implements update of HLL state for
 // aggregates executed in GROUP BY
@@ -257,8 +257,10 @@ TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
 #define VAL_OFFSETS         BX
 #define VAL_BUFFER_PTR      DX
 
-    // bcAggSlot, bcReadS, bcImmU16, bcPredicate
-    BC_UNPACK_SLOT_RU16_SLOT(4, OUT(BX), OUT(CX), OUT(R8))
+    // bcL
+    BC_UNPACK_SLOT(4, OUT(DX))
+    // bcReadS, bcImmU16, bcPredicate
+    BC_UNPACK_SLOT_RU16_SLOT(4 + BC_SLOT_SIZE, OUT(BX), OUT(CX), OUT(R8))
 
     BC_LOAD_K1_FROM_SLOT(OUT(K1), IN(R8))
     BC_LOAD_SLICE_FROM_SLOT_MASKED(OUT(Z2), OUT(Z3), IN(BX), IN(K1))
@@ -280,7 +282,7 @@ TEXT bcaggslotapproxcountmerge(SB), NOSPLIT|NOFRAME, $0
     SHRQ    $4, BUFFER_SIZE         // SIZE in 16-byte chunks (precision is never less than 4)
 
     // Get bucket base pointer
-    LEAQ        bytecode_bucket(VIRT_BCPTR), BYTEBUCKET_PTR
+    LEAQ        0(VIRT_VALUES)(DX*1), BYTEBUCKET_PTR
 
     /* Input buffers offsets (we already validated all have the correct size) */
     LEAQ        bytecode_spillArea(VIRT_BCPTR), VAL_OFFSETS
@@ -327,7 +329,7 @@ skip:
 #undef VAL_BUFFER_PTR
 
 next:
-    NEXT_ADVANCE(BC_SLOT_SIZE*2 + 4 + 2)
+    NEXT_ADVANCE(BC_SLOT_SIZE*3 + 4 + 2)
 
 
 #undef AggregateDataBuffer
