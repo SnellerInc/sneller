@@ -2049,3 +2049,15 @@ SELECT * FROM TABLE_GLOB(db."*_logs")
 *Note: `TABLE_GLOB` and `TABLE_PATTERN` cannot be used
 to match the database portion of the path, only the
 table name.*
+
+#### Querying multiple tables at once ('++' operator)
+
+The operator `++` (double plus) allows to concatenate multiple sources
+into one. The operator is shorthand for `UNION ALL`; it allows to skip
+the common filter expression, selected columns, etc.
+
+For example the following query will return results from three tables:
+
+```sql
+SELECT COUNT(*) FROM t1 ++ t2 ++ t3 WHERE location = 'Helsinki'
+```
