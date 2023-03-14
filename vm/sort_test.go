@@ -482,7 +482,7 @@ func TestSortWithLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	limit := sorting.Limit{Offset: 2000, Limit: 15}
+	limit := SortLimit{Offset: 2000, Limit: 15}
 
 	const parallelism = 4
 

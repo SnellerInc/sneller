@@ -965,14 +965,14 @@ func (o *OrderBy) exec(dst vm.QuerySink, src TableHandle, ep *ExecParams) error 
 		}
 	}
 
-	var limit *sorting.Limit
+	var limit *vm.SortLimit
 	if o.Offset > 0 && o.Limit > 0 {
-		limit = &sorting.Limit{
+		limit = &vm.SortLimit{
 			Offset: o.Offset,
 			Limit:  o.Limit,
 		}
 	} else if o.Limit > 0 {
-		limit = &sorting.Limit{
+		limit = &vm.SortLimit{
 			Limit: o.Limit,
 		}
 	}

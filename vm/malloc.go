@@ -110,10 +110,6 @@ func (v vmref) valid() bool {
 	return bitmap&(1<<bit) != 0
 }
 
-// size returns the number of bytes
-// that this vmref points to
-func (v vmref) size() int { return int(v[1]) }
-
 func init() {
 	vmm = mapVM()
 	guard(vmm[:vmUse])

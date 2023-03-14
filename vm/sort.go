@@ -19,9 +19,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"sync/atomic"
-
-	"golang.org/x/exp/slices"
 
 	"github.com/SnellerInc/sneller/expr"
 	"github.com/SnellerInc/sneller/heap"
@@ -37,14 +34,19 @@ type SortColumn struct {
 	Nulls     sorting.NullsOrder
 }
 
+type SortLimit struct {
+	Limit  int
+	Offset int
+}
+
 // Order implements a QuerySink that applies
 // an ordering to its output rows.
 type Order struct {
-	dst         io.Writer      // final destination
-	columns     []SortColumn   // columns to sort
-	limit       *sorting.Limit // optional limit parameters
-	parallelism int            // number of threads
-	prog        prog           // program for capturing fields
+	dst         io.Writer    // final destination
+	columns     []SortColumn // columns to sort
+	limit       *SortLimit   // optional limit parameters
+	parallelism int          // number of threads
+	prog        prog         // program for capturing fields
 
 	// symbol table for the whole input
 	symtab *ion.Symtab
@@ -52,53 +54,26 @@ type Order struct {
 	// lock for writing to `symtab`
 	symtabLock sync.Mutex
 
-	// collection of all records received in writeRows (for multicolumn sorting)
-	records []sorting.IonRecord
-
-	// collection of all records received in writeRows (for single column sorting)
-	column  sorting.MixedTypeColumn
-	chunkID uint32
-	// map chunkID -> collected rows for given chunk
-	//
-	// Although we assign sequential chunkIDs, chunk processing obviously
-	// may be completed in any order. This raw data will be used later
-	// by a rows writer.
-	rawrecords map[uint32][][]byte
-
 	// collection of k-top rows
 	kheap kheap
 
-	// lock for writing to `records`/`rawrecords`/'ktop'
+	// lock for writing to the heap
 	recordsLock sync.Mutex
-
-	// allocator for bytes (Ion chunks)
-	bytesAlloc bytesAllocator
-
-	// allocator for field indices
-	indicesAlloc indicesAllocator
-
-	// mutable state shared
-	// with sorting threads
-
-	rp sorting.RuntimeParameters
 }
 
 // NewOrder constructs a new Order QuerySink that
 // sorts the provided columns (in left-to-right order).
 // If limit is non-nil, then the number of rows output
 // by the Order will be less than or equal to the limit.
-func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, parallelism int) (*Order, error) {
+func NewOrder(dst io.Writer, columns []SortColumn, limit *SortLimit, parallelism int) (*Order, error) {
 	if limit == nil {
-		limit = &sorting.Limit{
-			Limit: 100000,
-		}
+		limit = &SortLimit{Limit: 100000}
 	}
 	s := &Order{
 		columns:     columns,
 		limit:       limit,
 		parallelism: parallelism,
 		dst:         dst,
-		rp:          sorting.NewRuntimeParameters(parallelism),
 	}
 	s.prog.begin()
 	mem0 := s.prog.initMem()
@@ -111,13 +86,6 @@ func NewOrder(dst io.Writer, columns []SortColumn, limit *sorting.Limit, paralle
 		mem = append(mem, val)
 	}
 	s.prog.returnValue(s.prog.mergeMem(mem...))
-
-	s.rp.UseStdlib = true // see #917
-
-	s.rawrecords = make(map[uint32][][]byte)
-
-	s.bytesAlloc.Init(1024 * 1024)
-	s.indicesAlloc.Init(len(columns) * 1024)
 
 	return s, nil
 }
@@ -141,18 +109,6 @@ func (s *Order) setSymbolTable(st *symtab) error {
 	return nil
 }
 
-func (s *Order) useSingleColumnSorter() bool {
-	// TODO: add support for `LIMIT` and `OFFSET`
-	if s.limit != nil {
-		return false
-	}
-	return s.rp.UseSingleColumnSorter && len(s.columns) == 1
-}
-
-func (s *Order) useKtop() bool {
-	return s.limit != nil
-}
-
 func (s *Order) orderList() []sorting.Ordering {
 	orders := make([]sorting.Ordering, len(s.columns))
 	for i := range s.columns {
@@ -164,20 +120,11 @@ func (s *Order) orderList() []sorting.Ordering {
 
 // Open implements QuerySink.Open
 func (s *Order) Open() (io.WriteCloser, error) {
-
-	if s.useKtop() {
-		kt := &sortstateKtop{parent: s}
-		kt.kheap.fields = s.orderList()
-		// we'll trim this later:
-		kt.kheap.limit = s.limit.Limit + s.limit.Offset
-		return splitter(kt), nil
-	} else if s.useSingleColumnSorter() {
-		chunkID := atomic.AddUint32(&s.chunkID, 1) - 1
-		recordID := uint64(chunkID) << 32 // start with ID().chunk() = chunkID and ID().row() == 0
-		return splitter(&sortstateSingleColumn{parent: s, chunkID: chunkID, recordID: recordID}), nil
-	}
-
-	return splitter(&sortstateMulticolumn{parent: s}), nil
+	kt := &sortstateKtop{parent: s}
+	kt.kheap.fields = s.orderList()
+	// we'll trim this later:
+	kt.kheap.limit = s.limit.Limit + s.limit.Offset
+	return splitter(kt), nil
 }
 
 // Close implements QuerySink.Close
@@ -189,61 +136,7 @@ func (s *Order) Close() error {
 	// s.sub safely
 	// s.wg.Wait()
 
-	if !s.useKtop() && s.symtab == nil {
-		if len(s.records) == 0 {
-			// no data at all
-			return nil
-		}
-
-		return fmt.Errorf("malformed Ion: there are data to sort, but no symbol table was set")
-	}
-
-	if s.useKtop() {
-		return s.finalizeKtop()
-	} else if s.useSingleColumnSorter() {
-		return s.finalizeSingleColumnSorting()
-	}
-
-	return s.finalizeMultiColumnSorting()
-}
-
-func (s *Order) finalizeMultiColumnSorting() error {
-	rowsWriter, err := sorting.NewRowsWriter(s.dst, s.symtab, s.rp.ChunkAlignment)
-	if err != nil {
-		return err
-	}
-
-	directions := make([]sorting.Direction, len(s.columns))
-	nullsOrder := make([]sorting.NullsOrder, len(s.columns))
-	for i := range s.columns {
-		directions[i] = s.columns[i].Direction
-		nullsOrder[i] = s.columns[i].Nulls
-	}
-
-	err = sorting.ByColumns(s.records, directions, nullsOrder, s.limit, rowsWriter, &s.rp)
-	err2 := rowsWriter.Close()
-	if err != nil {
-		return err
-	}
-
-	return err2
-}
-
-func (s *Order) finalizeSingleColumnSorting() error {
-	rowsWriter, err := sorting.NewRowsWriter(s.dst, s.symtab, s.rp.ChunkAlignment)
-	if err != nil {
-		return err
-	}
-
-	err = sorting.ByColumn(s.rawrecords, &s.column, s.columns[0].Direction, s.columns[0].Nulls,
-		s.limit, rowsWriter, &s.rp)
-
-	err2 := rowsWriter.Close()
-	if err != nil {
-		return err
-	}
-
-	return err2
+	return s.finalizeKtop()
 }
 
 func (s *Order) finalizeKtop() error {
@@ -348,228 +241,6 @@ func bcfind(sort *Order, findbc *bytecode, delims []vmref, rp *rowParams) (out [
 
 	out = vRegDataFromVStackCast(&findbc.vstack, regCount)
 	return
-}
-
-// ----------------------------------------------------------------------
-
-type sortstateMulticolumn struct {
-	// the parent context for this sorting operation
-	parent *Order
-	prog   prog
-
-	// Indicates that the parent was already informed about closing
-	// this worker. Used internally to prevent calling Close on parent
-	// multiple times, as we use simple WaitGroup to
-	// inter-task synchronisation.
-	parentNotified bool
-
-	// bytecode for locating columns
-	findbc bytecode
-}
-
-func (s *sortstateMulticolumn) next() rowConsumer { return nil }
-
-func (s *sortstateMulticolumn) EndSegment() {
-	s.findbc.dropScratch() // restored in symbolize()
-}
-
-func (s *sortstateMulticolumn) symbolize(st *symtab, aux *auxbindings) error {
-	return symbolize(s.parent, &s.prog, &s.findbc, st, aux, true)
-}
-
-func (s *sortstateMulticolumn) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
-	return bcfind(s.parent, &s.findbc, delims, rp)
-}
-
-func (s *sortstateMulticolumn) writeRows(delims []vmref, rp *rowParams) error {
-	// Note: we have to copy all input data, as:
-	// 1. the 'src' buffer is mutable,
-	// 2. the 'delims' array is mutable too.
-	//
-	// Since copying is unavoidable, we split input into
-	// separate rows.
-	if len(delims) == 0 {
-		return nil
-	}
-
-	// locate fields within the src
-	fieldsView, err := s.bcfind(delims, rp)
-	if err != nil {
-		return err
-	}
-
-	// make room for the incoming records
-	s.parent.recordsLock.Lock()
-	s.parent.records = slices.Grow(s.parent.records, len(delims))
-
-	// split input data into separate records
-	blockID := 0
-	columnCount := len(s.parent.columns)
-
-	for rowID := 0; rowID < len(delims); rowID++ {
-		laneID := rowID & bcLaneCountMask
-
-		// extract the record data
-		d := delims[rowID]
-		bytes := d.mem()
-
-		var record sorting.IonRecord
-
-		// calculate space for boxed values
-		for columnID := 0; columnID < columnCount; columnID++ {
-			fieldSize := fieldsView[blockID+columnID].sizes[laneID]
-			record.Boxed += fieldSize
-		}
-
-		// allocate memory and copy original row data
-		record.Raw = s.parent.bytesAlloc.Allocate(len(bytes) + int(record.Boxed))
-		copy(record.Raw[record.Boxed:], bytes)
-
-		// copy the field locations and also the boxed values
-		record.FieldDelims = s.parent.indicesAlloc.Allocate(columnCount)
-
-		boxedOffset := uint32(0)
-		for columnID := 0; columnID < columnCount; columnID++ {
-			fieldOffset := fieldsView[blockID+columnID].offsets[laneID]
-			fieldSize := fieldsView[blockID+columnID].sizes[laneID]
-			record.FieldDelims[columnID][0] = boxedOffset
-			record.FieldDelims[columnID][1] = fieldSize
-			copy(record.Raw[boxedOffset:], vmref{fieldOffset, fieldSize}.mem())
-			boxedOffset += fieldSize
-		}
-
-		s.parent.records = append(s.parent.records, record)
-
-		if laneID == bcLaneCountMask {
-			blockID += columnCount
-		}
-	}
-
-	s.parent.recordsLock.Unlock()
-
-	return nil
-}
-
-func (s *sortstateMulticolumn) Close() error {
-	if s.parentNotified {
-		return nil
-	}
-	s.parentNotified = true
-
-	s.findbc.reset()
-
-	return nil
-}
-
-// ----------------------------------------------------------------------
-
-type sortstateSingleColumn struct {
-	// the parent context for this sorting operation
-	parent *Order
-	prog   prog
-
-	// see the comment in `sortstateMulticolumn`
-	parentNotified bool
-
-	// bytecode for locating columns
-	findbc bytecode
-
-	chunkID   uint32
-	recordID  uint64
-	records   [][]byte
-	subcolumn sorting.MixedTypeColumn
-}
-
-func (s *sortstateSingleColumn) next() rowConsumer { return nil }
-
-func (s *sortstateSingleColumn) EndSegment() {
-	s.findbc.dropScratch() // restored in symbolize()
-}
-
-func (s *sortstateSingleColumn) symbolize(st *symtab, aux *auxbindings) error {
-	return symbolize(s.parent, &s.prog, &s.findbc, st, aux, true)
-}
-
-func (s *sortstateSingleColumn) bcfind(delims []vmref, rp *rowParams) ([]vRegData, error) {
-	return bcfind(s.parent, &s.findbc, delims, rp)
-}
-
-func (s *sortstateSingleColumn) writeRows(delims []vmref, rp *rowParams) error {
-	if len(delims) == 0 {
-		return nil
-	}
-
-	// grow the list of records
-	if len(s.records)+len(delims) > cap(s.records) {
-		newCapacity := 2 * cap(s.records)
-		if newCapacity == 0 {
-			newCapacity = 1024
-		}
-		tmp := make([][]byte, len(s.records), newCapacity)
-		copy(tmp, s.records)
-		s.records = tmp
-	}
-
-	// locate fields within the src
-	fieldsView, err := s.bcfind(delims, rp)
-	if err != nil {
-		return err
-	}
-
-	// split input data into separate records
-	blockID := 0
-	columnCount := len(s.parent.columns)
-
-	for rowID := 0; rowID < len(delims); rowID++ {
-		laneID := rowID & bcLaneCountMask
-
-		// extract the record data
-		bytes := delims[rowID].mem()
-
-		// append record
-		record := make([]byte, len(bytes))
-		//record := s.parent.bytesAlloc.Allocate(len(bytes)) -- slower
-		copy(record, bytes)
-		s.records = append(s.records, record)
-
-		// get the field value
-		item := fieldsView[blockID].item(laneID)
-		if item.size() > 0 {
-			err := s.subcolumn.Add(s.recordID, item.mem())
-			if err != nil {
-				return err
-			}
-		} else {
-			s.subcolumn.AddMissing(s.recordID)
-		}
-
-		s.recordID += 1
-
-		if laneID == bcLaneCountMask {
-			blockID += columnCount
-		}
-	}
-
-	return nil
-}
-
-func (s *sortstateSingleColumn) Close() error {
-	if s.parentNotified {
-		return nil
-	}
-	s.parentNotified = true
-
-	s.findbc.reset()
-	s.parent.recordsLock.Lock()
-
-	// merge column with the global one
-	s.parent.column.Append(&s.subcolumn)
-
-	// and move the collected records
-	s.parent.rawrecords[s.chunkID] = s.records
-	s.parent.recordsLock.Unlock()
-
-	return nil
 }
 
 // ----------------------------------------------------------------------
@@ -944,86 +615,4 @@ func (s *sortstateKtop) Close() error {
 	}
 	s.parent.recordsLock.Unlock()
 	return nil
-}
-
-// ----------------------------------------------------------------------
-
-// bytesAllocator allocates smaller chunks of arbitrary byte
-// from a pre-allocated block of memory.
-//
-// It purpose is to reduce GC overhead, while we know that
-// that all allocated bytes has to be freed at the same time
-// and will not escape the lifetime of sorting routine.
-type bytesAllocator struct {
-	blockSize int
-	blocks    [][]byte
-	lock      sync.Mutex
-}
-
-func (a *bytesAllocator) Init(blockSize int) {
-	a.blockSize = blockSize
-	a.blocks = make([][]byte, 1)
-	a.blocks[0] = make([]byte, a.blockSize)
-}
-
-func (a *bytesAllocator) Allocate(size int) []byte {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	last := &a.blocks[len(a.blocks)-1]
-	if len(*last) >= size {
-		bytes := (*last)[:size:size]
-		*last = (*last)[size:]
-
-		return bytes
-	}
-
-	if size <= a.blockSize {
-		block := make([]byte, a.blockSize)
-		bytes := block[:size:size]
-		a.blocks = append(a.blocks, block[size:])
-
-		return bytes
-	} else {
-		return make([]byte, size)
-	}
-}
-
-// indicesAllocator allocates smaller array for indices
-// from a pre-allocated array of uint32.
-//
-// See comment for bytesAllocator
-type indicesAllocator struct {
-	blockSize int
-	blocks    [][][2]uint32
-	lock      sync.Mutex
-}
-
-func (a *indicesAllocator) Init(blockSize int) {
-	a.blockSize = blockSize
-	a.blocks = make([][][2]uint32, 1)
-	a.blocks[0] = make([][2]uint32, a.blockSize)
-}
-
-func (a *indicesAllocator) Allocate(size int) [][2]uint32 {
-	a.lock.Lock()
-	defer a.lock.Unlock()
-
-	last := &a.blocks[len(a.blocks)-1]
-	if len(*last) >= size {
-		indices := (*last)[:size:size]
-		*last = (*last)[size:]
-
-		return indices
-	}
-
-	if size <= a.blockSize {
-		block := make([][2]uint32, a.blockSize)
-		indices := block[:size:size]
-		a.blocks = append(a.blocks, block[size:])
-
-		return indices
-	} else {
-		return make([][2]uint32, size)
-	}
 }

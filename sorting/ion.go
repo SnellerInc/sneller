@@ -147,12 +147,3 @@ func ionParseTimestamp(raw []byte) date.Time {
 
 	return value
 }
-
-func ionParseString(raw []byte) string {
-	value, _, err := ion.ReadString(raw)
-	if err != nil {
-		panic(err)
-	}
-
-	return value
-}
