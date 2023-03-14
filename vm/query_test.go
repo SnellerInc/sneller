@@ -147,85 +147,96 @@ func benchInput(b *testing.B, sel *expr.Query, inbuf []byte, rows int) {
 	b.ReportMetric(x, "rows/s")
 }
 
-func versifyGetter(inst *ion.Symtab, inrows []ion.Datum) func() ([]byte, int) {
-	return func() ([]byte, int) {
-		var u versify.Union
-		for i := range inrows {
-			if u == nil {
-				u = versify.Single(inrows[i])
-			} else {
-				u = u.Add(inrows[i])
+func versifyInput(inst *ion.Symtab, inrows []ion.Datum) ([]byte, int) {
+	var u versify.Union
+	for i := range inrows {
+		if u == nil {
+			u = versify.Single(inrows[i])
+		} else {
+			u = u.Add(inrows[i])
+		}
+	}
+	src := rand.New(rand.NewSource(0))
+
+	// generate a corpus that is larger than L3 cache
+	// so that we actually measure the performance of
+	// streaming the data in from DRAM
+	const targetSize = 64 * 1024 * 1024
+	var outbuf ion.Buffer
+	inst.Marshal(&outbuf, true)
+	rows := 0
+
+	slowProgress := false
+	symtabSize := outbuf.Size()
+	start := time.Now()
+	for {
+		d := u.Generate(src)
+		d.Encode(&outbuf, inst)
+		rows++
+		size := outbuf.Size()
+		if rows == len(inrows) {
+			// After processing all the input rows,
+			// try to predict how much time the rest of
+			// generating data might take. If it would be
+			// too long, just repeat the already generated
+			// data.
+			coef := float64(targetSize) / float64(size-symtabSize)
+			elapsed := time.Since(start)
+			estimation := time.Duration(float64(elapsed) * coef)
+			if estimation > 3*time.Second {
+				slowProgress = true
+				break
 			}
 		}
-		src := rand.New(rand.NewSource(0))
+		if size > targetSize {
+			break
+		}
+	}
 
-		// generate a corpus that is larger than L3 cache
-		// so that we actually measure the performance of
-		// streaming the data in from DRAM
-		const targetSize = 64 * 1024 * 1024
-		var outbuf ion.Buffer
-		inst.Marshal(&outbuf, true)
-		rows := 0
-
-		slowProgress := false
-		symtabSize := outbuf.Size()
+	if slowProgress {
+		n := outbuf.Size() - symtabSize
+		tmp := make([]byte, n)
+		copy(tmp, outbuf.Bytes()[symtabSize:])
 		for {
-			d := u.Generate(src)
-			d.Encode(&outbuf, inst)
-			rows++
+			outbuf.UnsafeAppend(tmp)
 			size := outbuf.Size()
-			if rows == len(inrows) {
-				coef := float64(targetSize) / float64(size)
-				if coef > 300_000.0 {
-					slowProgress = true
-					break
-				}
-			}
 			if size > targetSize {
 				break
 			}
 		}
-
-		if slowProgress {
-			n := outbuf.Size() - symtabSize
-			tmp := make([]byte, n)
-			copy(tmp, outbuf.Bytes()[symtabSize:])
-			for {
-				outbuf.UnsafeAppend(tmp)
-				size := outbuf.Size()
-				if size > targetSize {
-					break
-				}
-			}
-		}
-
-		return outbuf.Bytes(), rows
 	}
+
+	return outbuf.Bytes(), rows
 }
 
 func benchPath(b *testing.B, qt queryTest) {
+	var query *expr.Query
+	var rowmem []byte
+	var rows int
 	b.Run(qt.name, func(b *testing.B) {
-		query, bs, input, err := testquery.ReadBenchmarkFromFile(qt.path)
-		if err != nil {
-			b.Fatal(err)
-		}
-		var inst ion.Symtab
+		if query == nil {
+			q, bs, input, err := testquery.ReadBenchmarkFromFile(qt.path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			query = q
+			var inst ion.Symtab
 
-		prob := bs.Symbolizeprob
-		r := rand.New(rand.NewSource(0))
-		symbolize := func() bool {
-			return r.Float64() > prob
-		}
+			prob := bs.Symbolizeprob
+			r := rand.New(rand.NewSource(0))
+			symbolize := func() bool {
+				return r.Float64() > prob
+			}
 
-		inrows, err := testquery.IonizeRow(input, &inst, symbolize)
-		if err != nil {
-			b.Fatalf("parsing input rows: %s", err)
+			inrows, err := testquery.IonizeRow(input, &inst, symbolize)
+			if err != nil {
+				b.Fatalf("parsing input rows: %s", err)
+			}
+			if len(inrows) == 0 {
+				b.Skip()
+			}
+			rowmem, rows = versifyInput(&inst, inrows)
 		}
-		if len(inrows) == 0 {
-			b.Skip()
-		}
-		getter := versifyGetter(&inst, inrows)
-		rowmem, rows := getter()
 		benchInput(b, query, rowmem, rows)
 	})
 }
