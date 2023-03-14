@@ -203,9 +203,9 @@ func versifyGetter(inst *ion.Symtab, inrows []ion.Datum) func() ([]byte, int) {
 	}
 }
 
-func benchPath(b *testing.B, fname string) {
-	b.Run(fname, func(b *testing.B) {
-		query, bs, input, err := testquery.ReadBenchmarkFromFile(fname)
+func benchPath(b *testing.B, qt queryTest) {
+	b.Run(qt.name, func(b *testing.B) {
+		query, bs, input, err := testquery.ReadBenchmarkFromFile(qt.path)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -238,7 +238,7 @@ func BenchmarkTestQueries(b *testing.B) {
 		}
 
 		for i := range bench {
-			benchPath(b, bench[i].path)
+			benchPath(b, bench[i])
 		}
 	}
 }
