@@ -32,11 +32,10 @@
 // BC_UTF8_TO_UTF32 constants
 #define utf8_to_utf32_merge_step1   Z18
 #define utf8_to_utf32_merge_step2   Z19
-#define utf8_to_utf32_shl_lookup    Z20
-#define utf8_to_utf32_shr_lookup    Z21
+#define utf8_to_utf32_lookup        Z20
 
 // BC_UTF8_LENGTH_AUX constants
-#define utf8_length_lookup          Z22
+#define utf8_length_lookup          Z21
 
 
 #define BC_STR_SET_CONSTD(const, reg)    \
@@ -115,10 +114,8 @@ utf8:                                                                          \
                                                                                \
     BC_STR_SET_CONSTD(0x01400140, utf8_to_utf32_merge_step1)                   \
     BC_STR_SET_CONSTD(0x00011000, utf8_to_utf32_merge_step2)                   \
-    BC_STR_SET_VPSHUFB(utf8_to_utf32_shift_left, utf8_to_utf32_shl_lookup)     \
-    BC_STR_SET_VPSHUFB(utf8_to_utf32_shift_right, utf8_to_utf32_shr_lookup)    \
-                                                                               \
     BC_STR_SET_VPSHUFB(utf8_length, utf8_length_lookup)                        \
+    VMOVDQU64   CONST_GET_PTR(utf8_to_utf32_aux, 0), utf8_to_utf32_lookup      \
                                                                                \
     VPADDD      Z23, Z24, Z24   /* End pointer */                              \
 utf8_loop:                                                                     \
@@ -251,60 +248,40 @@ next:                                                                          \
     VPMADDWD utf8_to_utf32_merge_step2, Z4, Z4                                      \
                                                                                     \
     /* 4. Reset leading bytes leftovers as well as garbage bits. */                 \
-    /*    Based on the char type, shift left and then right */                      \
-    /*    to clear out the unnedeed bits and, as a result, produce */               \
-    /*    a proper character number. */                                             \
-    VPSHUFB Z5, utf8_to_utf32_shl_lookup, Z6                                        \
-    VPANDD  CONSTD_0x000000ff, Z6, Z6                                               \
+    VPERMD  utf8_to_utf32_lookup, Z5, Z6                                            \
+    VPANDD  CONSTD_0x000000ff, Z6, Z7                                               \
                                                                                     \
-    /* [aaabbbbb|bccccccd|ddddd000|00000000] - 4-byte char (shift by 11 bits) */    \
-    /* [aaaabbbb|bbcccccc|??????00|00000000] - 3-byte char (shift by 10 bits) */    \
-    /* [aaaaabbb|bbb?????|c??????0|00000000] - 2-byte char (shift by 9 bits) */     \
-    VPSLLVD Z6, Z4, Z4                                                              \
+    /* 5. Reset garbage bits by shifting right */                                   \
+    /* [00000000|110aaabb|bbbbcccc|ccdddddd] - 4-byte char (shift by 0 bits) */     \
+    /* [00000000|00000010|aaaabbbb|bbcccccc] - 3-byte char (shift by 6 bits) */     \
+    /* [00000000|00000000|00000aaa|aabbbbbb] - 2-byte char (shift by 12 bits) */    \
+    VPSRLVD Z7, Z4, Z4                                                              \
                                                                                     \
-    /* [00000000|000aaabb|bbbbcccc|ccdddddd] - 4-byte char (shift by 11 bits) */    \
-    /* [00000000|00000000|aaaabbbb|bbcccccc] - 3-byte char (shift by 16 bits) */    \
-    /* [00000000|00000000|00000aaa|aabbbbbb] - 2-byte char (shift by 21 bits) */    \
-    VPSHUFB Z5, utf8_to_utf32_shr_lookup, Z7                                        \
-    VPANDD  CONSTD_0x000000ff, Z7, Z7                                               \
-    VPSRLVD Z7, Z4, Z4
+    /* 5. Reset leading bits leftovers */                                           \
+    /* [00000000|000aaabb|bbbbcccc|ccdddddd] - 4-byte char (mask 21 bits) */        \
+    /* [00000000|00000000|aaaabbbb|bbcccccc] - 3-byte char (mask 16 bits) */        \
+    /* [00000000|00000000|00000aaa|aabbbbbb] - 2-byte char (mask 11 bits) */        \
+    VPSRLD  $8, Z6, Z6                                                              \
+    VPANDD  Z6, Z4, Z4
 
-
-/*  0000:  0  // ASCII char
-    0001:  0  // ...
-    0010:  0  // ...
-    0011:  0  // ...
-    0100:  0  // ...
-    0101:  0  // ...
-    0110:  0  // ...
-    0111:  0  // ...
-    1000:  0  // continuation byte
-    1001:  0  // ...
-    1010:  0  // ...
-    1011:  0  // ...
-    1100:  9  // 2-byte char
-    1101:  9  // 2-byte char
-    1110: 10  // 3-byte char
-    1111: 11  // 4-byte char */
-BC_STR_DEF_VPSHUFB_LANE_CONST(utf8_to_utf32_shift_left, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 9, 10, 11)
-
-/*  0000:  0  // ASCII char
-    0001:  0  // ...
-    0010:  0  // ...
-    0011:  0  // ...
-    0100:  0  // ...
-    0101:  0  // ...
-    0110:  0  // ...
-    0111:  0  // ...
-    1000:  0  // continuation byte
-    1001:  0  // ...
-    1010:  0  // ...
-    1011:  0  // ...
-    1100: 21  // 2-byte char
-    1101: 21  // 2-byte char
-    1110: 16  // 3-byte char
-    1111: 11  // 4-byte char */
-BC_STR_DEF_VPSHUFB_LANE_CONST(utf8_to_utf32_shift_right, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21, 21, 16, 11)
+// combined shift right amount (8 lower bits) and mask (24 higher bits)
+CONST_DATA_U32(utf8_to_utf32_aux,  0*4, $0x0000ff00) // 0000 - ASCII char: shift 0, mask 0xff (8 bits)
+CONST_DATA_U32(utf8_to_utf32_aux,  1*4, $0x0000ff00) // 0001 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  2*4, $0x0000ff00) // 0010 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  3*4, $0x0000ff00) // 0011 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  4*4, $0x0000ff00) // 0100 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  5*4, $0x0000ff00) // 0101 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  6*4, $0x0000ff00) // 0110 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  7*4, $0x0000ff00) // 0111 - ASCII char
+CONST_DATA_U32(utf8_to_utf32_aux,  8*4, $0x00000000) // 1000 - continuation byte
+CONST_DATA_U32(utf8_to_utf32_aux,  9*4, $0x00000000) // 1001 - continuation byte
+CONST_DATA_U32(utf8_to_utf32_aux, 10*4, $0x00000000) // 1010 - continuation byte
+CONST_DATA_U32(utf8_to_utf32_aux, 11*4, $0x00000000) // 1011 - continuation byte
+CONST_DATA_U32(utf8_to_utf32_aux, 12*4, $0x0007ff0c) // 1100 - 2-byte char: shift right 12, mask 0x0007ff (11 bits)
+CONST_DATA_U32(utf8_to_utf32_aux, 13*4, $0x0007ff0c) // 1101 - 2-byte char
+CONST_DATA_U32(utf8_to_utf32_aux, 14*4, $0x00ffff06) // 1110 - 3-byte char: shift right  6, mask 0x00ffff (16 bits)
+CONST_DATA_U32(utf8_to_utf32_aux, 15*4, $0x1fffff00) // 1111 - 4 byte char: shift right  0, mask 0x1fffff
+CONST_GLOBAL(utf8_to_utf32_aux, $64)
 
 // BC_UTF32_CHANGE_CASE changes case of UTF32 characters using
 // two auxiliary tables. The alogrithm is shown in `_generate/strcase.go`;
@@ -405,8 +382,7 @@ TEXT bcsupper(SB), NOSPLIT|NOFRAME, $0
 #undef CONSTD_0x3f3f3f3f
 #undef utf8_to_utf32_merge_step1
 #undef utf8_to_utf32_merge_step2
-#undef utf8_to_utf32_shl_lookup
-#undef utf8_to_utf32_shr_lookup
+#undef utf8_to_utf32_lookup
 #undef utf8_length_lookup
 #undef BC_STR_SET_CONSTD
 #undef BC_STR_SET_VPSHUFB
